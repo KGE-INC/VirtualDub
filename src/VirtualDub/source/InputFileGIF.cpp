@@ -241,7 +241,10 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 				if (length != 4)
 					throw MyError("File \"%ls\" is an invalid GIF file. (Graphic Control Extension header size is not 4 bytes)", pFilename, pos);
 
-				timebase += VDReadUnalignedLEU16(&src[pos + 1]);
+				uint16 delay = VDReadUnalignedLEU16(&src[pos + 1]);
+				if (!delay)
+					delay = 10;
+				timebase += delay;
 				presentationTimes.push_back(timebase);
 
 				if (presentationTimes.size() > 2) {
@@ -435,18 +438,32 @@ const void *VDVideoSourceGIF::getFrame(VDPosition frameNum) {
 	if (mCachedFrame == frameNum)
 		return lpvBuffer;
 
-	if (!read(frameNum, 1, NULL, 0x7FFFFFFF, &lBytes, NULL) && lBytes) {
-		vdblock<char> buffer(lBytes);
-		uint32 lReadBytes;
+	VDPosition current = mCachedFrame + 1;
+	if (current < 0 || current > frameNum)
+		current = 0;
 
-		read(frameNum, 1, buffer.data(), lBytes, &lReadBytes, NULL);
-		pFrame = streamGetFrame(buffer.data(), lReadBytes, FALSE, frameNum, frameNum);
+	vdfastvector<char> buffer;
+	while(current <= frameNum) {
+		read(current, 1, NULL, 0x7FFFFFFF, &lBytes, NULL);
+		
+		if (lBytes) {
+			buffer.resize(lBytes);
+
+			uint32 lReadBytes;
+
+			read(current, 1, buffer.data(), lBytes, &lReadBytes, NULL);
+			streamGetFrame(buffer.data(), lReadBytes, current != frameNum, current, frameNum);
+		}
+
+		++current;
 	}
 
-	return pFrame;
+	return getFrameBuffer();
 }
 
 const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
+	if (frame_num < 0)
+		frame_num = target_sample;
 	const ImageInfo& imageinfo = mImages[(uint32)frame_num];
 	uint32 pos = imageinfo.mOffsetAndKey & 0x7FFFFFFF;
 	sint16 transpColor = imageinfo.mTranspColor;

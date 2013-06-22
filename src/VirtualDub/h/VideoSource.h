@@ -135,7 +135,7 @@ public:
 		return (BITMAPINFOHEADER *)getFormat();
 	}
 
-	const void *getFrameBuffer() {
+	virtual const void *getFrameBuffer() {
 		return lpvBuffer;
 	}
 

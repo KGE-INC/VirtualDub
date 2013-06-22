@@ -1767,7 +1767,23 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 	ovi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
 	if (GetVersionEx(&ovi)) {
-		out.WriteF("Windows %d.%d (Windows %s build %d) [%s]\n"
+#ifdef _M_AMD64
+		const char *build = "x64";
+#else
+		HMODULE hmodKernel32 = GetModuleHandle("kernel32");
+		typedef BOOL (WINAPI *tpIsWow64Process)(HANDLE, PBOOL);
+		tpIsWow64Process pIsWow64Process = (tpIsWow64Process)GetProcAddress(hmodKernel32, "IsWow64Process");
+		const char *build = "x86";
+
+		if (pIsWow64Process) {
+			BOOL is64 = FALSE;
+
+			if (pIsWow64Process(GetCurrentProcess(), &is64) && is64)
+				build = "x64";
+		}
+#endif
+
+		out.WriteF("Windows %d.%d (Windows %s %s build %d) [%s]\n"
 			,ovi.dwMajorVersion
 			,ovi.dwMinorVersion
 			,ovi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS
@@ -1775,6 +1791,7 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 				: ovi.dwPlatformId == VER_PLATFORM_WIN32_NT
 					? (ovi.dwMajorVersion >= 6 ? "Vista" : ovi.dwMajorVersion >= 5 ? ovi.dwMinorVersion>0 ? "XP" : "2000" : "NT")
 					: "?"
+			,build
 			,ovi.dwBuildNumber & 0xffff
 			,ovi.szCSDVersion);
 	}

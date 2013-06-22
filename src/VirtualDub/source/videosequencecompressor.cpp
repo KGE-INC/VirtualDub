@@ -139,7 +139,7 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 
 	this->dwFlags = info.dwFlags;
 
-	if (info.dwFlags & VIDCF_TEMPORAL) {
+	if (info.dwFlags & (VIDCF_TEMPORAL | VIDCF_FASTTEMPORALC)) {
 		if (!(info.dwFlags & VIDCF_FASTTEMPORALC)) {
 			// Allocate backbuffer
 

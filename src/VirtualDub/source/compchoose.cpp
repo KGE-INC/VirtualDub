@@ -292,7 +292,7 @@ void ReenableOptions(HWND hdlg, HIC hic, ICINFO *pii) {
 	EnableWindow(GetDlgItem(hdlg, IDC_DATARATE), fSupports);
 	EnableWindow(GetDlgItem(hdlg, IDC_STATIC_DATARATE), fSupports);
 
-	fSupports = !!(dwFlags & VIDCF_TEMPORAL);
+	fSupports = !!(dwFlags & (VIDCF_TEMPORAL | VIDCF_FASTTEMPORALC));
 
 	EnableWindow(GetDlgItem(hdlg, IDC_USE_KEYFRAMES), fSupports);
 	EnableWindow(GetDlgItem(hdlg, IDC_KEYRATE), fSupports);
@@ -334,7 +334,7 @@ void SelectCompressor(ICINFO *pii, HWND hdlg, CCInfo *pcci) {
 
 	// Show driver caps.
 
-	SetDlgItemText(hdlg, IDC_STATIC_DELTA, pii->dwFlags&VIDCF_TEMPORAL ? g_szYes : g_szNo);
+	SetDlgItemText(hdlg, IDC_STATIC_DELTA, (pii->dwFlags & (VIDCF_TEMPORAL|VIDCF_FASTTEMPORALC)) ? g_szYes : g_szNo);
 
 	// Show driver fourCC code.
 

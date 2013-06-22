@@ -150,6 +150,7 @@ void VDConnectPluginDescription(const VDPluginInfo *pInfo, VDExternalModule *pMo
 	}
 
 	pDesc->mpInfo = pInfo;
+	pDesc->mpShadowedInfo = &pDesc->mShadowedInfo;
 }
 
 void VDConnectPluginDescriptions(const VDPluginInfo *const *ppInfos, VDExternalModule *pModule) {
@@ -164,7 +165,7 @@ void VDDisconnectPluginDescriptions(VDExternalModule *pModule) {
 		VDShadowedPluginDescription& desc = **it;
 
 		if (desc.mpModule == pModule)
-			desc.mpInfo = &desc.mShadowedInfo;
+			desc.mpInfo = NULL;
 	}	
 }
 

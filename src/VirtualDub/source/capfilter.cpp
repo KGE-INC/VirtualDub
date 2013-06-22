@@ -637,8 +637,8 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 void VDCaptureFilterChainAdapter::Run(VDPixmap& px) {
 	VDPixmapBlt(VDAsPixmap(*filters.InputBitmap()), px);
 
-	mfsi.lSourceFrameMS				= mfsi.lCurrentSourceFrame * mfsi.lMicrosecsPerSrcFrame;
-	mfsi.lDestFrameMS				= mfsi.lCurrentFrame * mfsi.lMicrosecsPerFrame;
+	mfsi.lSourceFrameMS				= ((uint64)mfsi.lCurrentSourceFrame * mfsi.lMicrosecsPerSrcFrame + 500) / 1000;
+	mfsi.lDestFrameMS				= ((uint64)mfsi.lCurrentFrame * mfsi.lMicrosecsPerFrame + 500) / 1000;
 
 	filters.RunFilters(mfsi);
 

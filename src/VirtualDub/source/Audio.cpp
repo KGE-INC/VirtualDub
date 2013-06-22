@@ -708,9 +708,8 @@ void AudioStreamSource::Seek(VDPosition pos) {
 	mPreskip = 0;
 	samples_read = pos;
 
+	const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
 	if (mCodec.IsInitialized()) {
-		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
-
 		// flush decompression buffers
 		mCodec.Restart();
 
@@ -731,7 +730,10 @@ void AudioStreamSource::Seek(VDPosition pos) {
 		VDASSERT(mPreskip >= 0);
 
 	} else {
-		cur_samp = pos;
+		// This is a bit of a hack -- we convert the position to time using linear
+		// conversion and then fix it with the VBR conversion.
+		double samplesToMicrosecondsFactor = (double)pwfex->nBlockAlign / (double)pwfex->nAvgBytesPerSec * 1000000.0;
+		cur_samp = aSrc->TimeToPositionVBR(VDRoundToInt64(pos * samplesToMicrosecondsFactor));
 	}
 
 	if (cur_samp > end_samp)

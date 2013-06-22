@@ -1,6 +1,24 @@
 VirtualDub change log
 
-Build %build% (1.7.5, stable): [%date%]
+Build %build% (1.7.6, stable): [%date%]
+   [bugs fixed]
+   * Cancelling the mode selection dialog for "create test video" didn't cancel the open.
+   * IVTC now works when the video format is non-RGB.
+   * Fixed garbled image when scrolling through an animated GIF in filter preview.
+   * Fixed missing frames when opening animated GIFs with zero delay times in frames.
+   * Fixed sync error when processing VBR audio in Direct mode.
+   * PluginSDK: Not supplying a custom signature caused a sketchy match to be returned instead of full match.
+   * PluginSDK: Fixed API host related crashes in filter preview and IVTC paths.
+   * PluginSDK: Fixed support for VBR audio.
+   * PluginSDK: Fixed handling of internal-decode frames.
+   * PluginSDK: Fixed crash when no video stream is present.
+   * Capture: Video filters were receiving frame times that were 1000x too large.
+   
+   [regressions fixed]
+   * AMD64: Fixed a pretty nasty stack misalignment issue in the 64-bit build.
+   * Fixed compression issues with WMV9VCM.
+
+Build 28225 (1.7.5, stable): [September 29, 2007]
    [bugs fixed]
    * Audio display couldn't be opened if the curve editor was open.
    * Temporal smoother filter crashed in out of memory conditions.

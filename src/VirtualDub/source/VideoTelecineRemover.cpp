@@ -20,6 +20,7 @@
 #include "VBitmap.h"
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
+#include <vd2/Kasumi/pixmapops.h>
 
 #include "VideoTelecineRemover.h"
 
@@ -28,7 +29,7 @@ public:
 	CVideoTelecineRemover(VBitmap *pInFormat, bool, int, bool);
 	~CVideoTelecineRemover();
 
-	void ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame);
+	void ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame);
 	bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame);
 
 private:
@@ -259,14 +260,14 @@ static long computeScanImprovement(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, 
 	return imp;
 }
 
-void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame) {
+void CVideoTelecineRemover::ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame) {
 	Pixel8 *src1, *src2;
 	PixDim h;
 	__int64 field1=0, field2=0;
 
 	vb.data = (Pixel *)(pMemBlock + vb.pitch*vb.h * nCurrentIn);
 
-	vb.BitBlt(0, 0, pIn, 0, 0, -1, -1);
+	VDPixmapBlt(VDAsPixmap(vb), in);
 
 	mSourceFrameNums[nCurrentIn] = srcFrame;
 	mTimelineFrameNums[nCurrentIn] = timelineFrame;

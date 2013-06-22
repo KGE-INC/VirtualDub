@@ -18,10 +18,12 @@
 #ifndef f_VIDEOTELECINEREMOVER_H
 #define f_VIDEOTELECINEREMOVER_H
 
+struct VDPixmap;
+
 class __declspec(novtable) VideoTelecineRemover {
 public:
 	virtual ~VideoTelecineRemover() = 0;
-	virtual void ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame) = 0;
+	virtual void ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame) = 0;
 	virtual bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame) = 0;
 };
 

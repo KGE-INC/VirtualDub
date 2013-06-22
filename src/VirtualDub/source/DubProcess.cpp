@@ -396,7 +396,8 @@ void VDDubProcessThread::ThreadRun() {
 									dummyFrameInfo.mRawFrame		= -1;
 									dummyFrameInfo.mDisplayFrame	= -1;
 									dummyFrameInfo.mTimelineFrame	= -1;
-									dummyFrameInfo.mFlags			= kBufferFlagDelta;
+									dummyFrameInfo.mTargetFrame		= -1;
+									dummyFrameInfo.mFlags			= kBufferFlagDelta | kBufferFlagFlushCodec;
 									dummyFrameInfo.mDroptype		= AVIPipe::kDroppable;
 									dummyFrameInfo.mSrcIndex		= lastVideoSourceIndex;
 									pFrameInfo = &dummyFrameInfo;
@@ -848,9 +849,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 	VDCHECKPOINT;
 	CHECK_FPU_STACK
-	{
+	if (!(exdata & kBufferFlagFlushCodec)) {
 		VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing video frame");
-		vsrc->streamGetFrame(buffer, lastSize, false, sample_num, target_num);
+		vsrc->streamGetFrame(buffer, lastSize, (exdata & kBufferFlagPreload), sample_num, target_num);
 	}
 	CHECK_FPU_STACK
 
@@ -884,21 +885,26 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		VBitmap destbm;
 		VDPosition startOffset = vsrc->asStream()->getStart();
 
-		if (!mpInvTelecine && filters.isEmpty()) {
+		if (exdata & kBufferFlagFlushCodec) {
 			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
 			mLoopThrottle.BeginWait();
 			mpBlitter->lock(BUFFERID_OUTPUT);
 			mLoopThrottle.EndWait();
 			mProcessingProfileChannel.End();
+		} else if (!mpInvTelecine && filters.isEmpty()) {
+			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+			mLoopThrottle.BeginWait();
+			mpBlitter->lock(BUFFERID_OUTPUT);
+			mLoopThrottle.EndWait();
+			mProcessingProfileChannel.End();
+
 			VDPixmapBlt(mVideoFilterOutputPixmap, vsrc->getTargetFormat());
 		} else {
 			if (mpInvTelecine) {
-				VBitmap srcbm((void *)vsrc->getFrameBuffer(), vsrc->getDecompressedFormat());
-
 				VDPosition timelineFrameOut, srcFrameOut;
 				bool valid = mpInvTelecine->ProcessOut(initialBitmap, srcFrameOut, timelineFrameOut);
 
-				mpInvTelecine->ProcessIn(&srcbm, display_num, timeline_num);
+				mpInvTelecine->ProcessIn(vsrc->getTargetFormat(), display_num, timeline_num);
 
 				if (!valid) {
 					mpBlitter->unlock(BUFFERID_INPUT);

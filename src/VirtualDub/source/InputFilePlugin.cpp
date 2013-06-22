@@ -207,6 +207,7 @@ void VDXAPIENTRY VDVideoDecoderModelDefaultIP::SetDesiredFrame(sint64 frame_num)
 	// Fast path for previous frame or current frame.
 	if (frame_num == mLastFrame) {
 		mNextFrame = -1;
+		mDesiredFrame = -1;
 		return;
 	}
 
@@ -264,6 +265,7 @@ public:
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
 
 	// VideoSource
+	const void *getFrameBuffer();
 	const VDPixmap& getTargetFormat();
 	bool setTargetFormat(int format);
 	bool setDecompressedFormat(int depth);
@@ -397,8 +399,8 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 	streamInfo.dwSampleSize		= 0;
 	streamInfo.rcFrame.left		= 0;
 	streamInfo.rcFrame.top		= 0;
-	streamInfo.rcFrame.right	= 0;
-	streamInfo.rcFrame.bottom	= 0;
+	streamInfo.rcFrame.right	= mVSInfo.mWidth;
+	streamInfo.rcFrame.bottom	= mVSInfo.mHeight;
 	streamInfo.dwEditCount		= 0;
 	streamInfo.dwFormatChangeCount = 0;
 	streamInfo.szName[0]		= 0;
@@ -425,6 +427,15 @@ int VDVideoSourcePlugin::_read(VDPosition lStart, uint32 lCount, void *lpBuffer,
 	return result || !lpBuffer ? AVIERR_OK : AVIERR_BUFFERTOOSMALL;
 }
 
+const void *VDVideoSourcePlugin::getFrameBuffer() {
+	const void *p;
+	vdwithinputplugin(mContext) {
+		p = mpXVDec->GetFrameBufferBase();
+	}
+
+	return p;
+}
+
 const VDPixmap& VDVideoSourcePlugin::getTargetFormat() {
 	const VDPixmap *p;
 	vdwithinputplugin(mContext) {
@@ -448,7 +459,7 @@ bool VDVideoSourcePlugin::setTargetFormat(int format) {
 		px = &mpXVDec->GetFrameBuffer();
 	}
 
-	VDMakeBitmapFormatFromPixmapFormat(mpTargetFormatHeader, px->w, px->h, px->format, 0);
+	VDMakeBitmapFormatFromPixmapFormat(mpTargetFormatHeader, px->format, 0, px->w, px->h);
 
 	return true;
 }
@@ -489,8 +500,12 @@ bool VDVideoSourcePlugin::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 void VDVideoSourcePlugin::streamSetDesiredFrame(VDPosition frame_num) {
 	VDASSERT_PREEXT_RT((uint64)frame_num < (uint64)mSampleLast, ("streamSetDesiredFrame(): frame %I64d not in 0-%I64d", frame_num, mSampleLast - 1));
 
-	sint64 stream_num;
+	if (frame_num >= mSampleLast)
+		frame_num = mSampleLast - 1;
+	if (frame_num < mSampleFirst)
+		frame_num = mSampleFirst;
 
+	sint64 stream_num;
 	vdwithinputplugin(mContext) {
 		stream_num = mpXVS->GetSampleNumberForFrame(frame_num);
 	}
@@ -578,8 +593,10 @@ const void *VDVideoSourcePlugin::getFrame(VDPosition frameNum) {
 	if (frameNum < 0 || frameNum >= mSSInfo.mSampleCount)
 		return NULL;
 
+	sint64 sampleNum;
 	vdwithinputplugin(mContext) {
-		mpXVDecModel->SetDesiredFrame(frameNum);
+		sampleNum = mpXVS->GetSampleNumberForFrame(frameNum);
+		mpXVDecModel->SetDesiredFrame(sampleNum);
 	}
 
 	// decode frames until we get to the desired point
@@ -592,30 +609,39 @@ const void *VDVideoSourcePlugin::getFrame(VDPosition frameNum) {
 
 		if (pos < 0) {
 			vdwithinputplugin(mContext) {
-				mpXVDec->DecodeFrame(NULL, 0, false, -1, frameNum);
+				mpXVDec->DecodeFrame(NULL, 0, is_preroll, -1, sampleNum);
 			}
 		} else {
 			uint32 actualSamples;
 			uint32 actualBytes;
 
 			for(;;) {
-				bool result;
+				bool result = false;
 				
-				vdwithinputplugin(mContext) {
-					result = mpXS->Read(pos, 1, buffer.data(), buffer.size(), &actualBytes, &actualSamples);
+				if (buffer.size() > padding) {
+					vdwithinputplugin(mContext) {
+						result = mpXS->Read(pos, 1, buffer.data(), buffer.size() - padding, &actualBytes, &actualSamples);
+					}
+
+					if (result && !buffer.empty())
+						break;
 				}
 
-				if (result && !buffer.empty())
-					break;
+				vdwithinputplugin(mContext) {
+					result = mpXS->Read(pos, 1, NULL, 0, &actualBytes, &actualSamples);
+				}
+
+				if (!result)
+					throw MyError("Error detected in plugin \"%ls\": A size query call to IVDXStreamSource::Read() returned false for sample %u.", mContext.mName.c_str(), (unsigned)pos);
 
 				buffer.resize(actualBytes + padding);
 			}
 
 			vdwithinputplugin(mContext) {
-				mpXVDec->DecodeFrame(buffer.data(), buffer.size(), is_preroll, pos, frameNum);
+				mpXVDec->DecodeFrame(buffer.data(), actualBytes, is_preroll, pos, sampleNum);
 			}
 		}
-	} while(!is_preroll);
+	} while(is_preroll);
 
 	const void *fb;
 	
@@ -627,7 +653,7 @@ const void *VDVideoSourcePlugin::getFrame(VDPosition frameNum) {
 }
 
 char VDVideoSourcePlugin::getFrameTypeChar(VDPosition lFrameNum) {
-	if (lFrameNum < 0 || lFrameNum > mSampleLast)
+	if (lFrameNum < mSampleFirst || lFrameNum >= mSampleLast)
 		return ' ';
 
 	vdwithinputplugin(mContext) {
@@ -643,11 +669,14 @@ char VDVideoSourcePlugin::getFrameTypeChar(VDPosition lFrameNum) {
 	return frameInfo.mTypeChar;
 }
 
-IVDVideoSource::eDropType VDVideoSourcePlugin::getDropType(VDPosition lFrameNum) {
+IVDVideoSource::eDropType VDVideoSourcePlugin::getDropType(VDPosition frame) {
 	VDXVideoFrameInfo frameInfo;
 
+	if (frame < mSampleFirst || frame >= mSampleLast)
+		return IVDVideoSource::kDroppable;
+
 	vdwithinputplugin(mContext) {
-		mpXVS->GetSampleInfo(lFrameNum, frameInfo);
+		mpXVS->GetSampleInfo(frame, frameInfo);
 	}
 
 	switch(frameInfo.mFrameType) {
@@ -663,41 +692,44 @@ IVDVideoSource::eDropType VDVideoSourcePlugin::getDropType(VDPosition lFrameNum)
 	}
 }
 
-bool VDVideoSourcePlugin::isKey(VDPosition lSample) {
+bool VDVideoSourcePlugin::isKey(VDPosition frame) {
 	bool iskey;
+
+	if (frame < mSampleFirst || frame >= mSampleLast)
+		return false;
 	
 	vdwithinputplugin(mContext) {
-		VDPosition stream_num = mpXVS->GetSampleNumberForFrame(lSample);
+		VDPosition stream_num = mpXVS->GetSampleNumberForFrame(frame);
 		iskey = mpXVS->IsKey(stream_num);
 	}
 
 	return iskey;
 }
 
-VDPosition VDVideoSourcePlugin::nearestKey(VDPosition lSample) {
-	if (isKey(lSample))
-		return lSample;
+VDPosition VDVideoSourcePlugin::nearestKey(VDPosition frame) {
+	if (isKey(frame))
+		return frame;
 
-	lSample = prevKey(lSample);
-	if (lSample < 0)
-		lSample = 0;
+	frame = prevKey(frame);
+	if (frame < 0)
+		frame = 0;
 
-	return lSample;
+	return frame;
 }
 
-VDPosition VDVideoSourcePlugin::prevKey(VDPosition lSample) {
-	while(--lSample >= mSampleFirst) {
-		if (isKey(lSample))
-			return lSample;
+VDPosition VDVideoSourcePlugin::prevKey(VDPosition frame) {
+	while(--frame >= mSampleFirst) {
+		if (isKey(frame))
+			return frame;
 	}
 
 	return -1;
 }
 
-VDPosition VDVideoSourcePlugin::nextKey(VDPosition lSample) {
-	while(++lSample < mSampleLast) {
-		if (isKey(lSample))
-			return lSample;
+VDPosition VDVideoSourcePlugin::nextKey(VDPosition frame) {
+	while(++frame < mSampleLast) {
+		if (isKey(frame))
+			return frame;
 	}
 
 	return -1;
@@ -708,8 +740,10 @@ bool VDVideoSourcePlugin::isKeyframeOnly() {
 }
 
 VDPosition VDVideoSourcePlugin::streamToDisplayOrder(VDPosition sample_num) {
+	if (sample_num < mSampleFirst || sample_num >= mSampleLast)
+		return sample_num;
+
 	sint64 display_num;
-	
 	vdwithinputplugin(mContext) {
 		display_num = mpXVS->GetFrameNumberForSample(sample_num);
 	}
@@ -717,29 +751,35 @@ VDPosition VDVideoSourcePlugin::streamToDisplayOrder(VDPosition sample_num) {
 	return display_num;
 }
 
-VDPosition VDVideoSourcePlugin::displayToStreamOrder(VDPosition display_num) {
-	sint64 stream_num;
-	
+VDPosition VDVideoSourcePlugin::displayToStreamOrder(VDPosition frame) {
+	if (frame < mSampleFirst || frame >= mSampleLast)
+		return frame;
+
+	sint64 stream_num;	
 	vdwithinputplugin(mContext) {
-		stream_num = mpXVS->GetSampleNumberForFrame(display_num);
+		stream_num = mpXVS->GetSampleNumberForFrame(frame);
 	}
 
 	return stream_num;
 }
 
-VDPosition VDVideoSourcePlugin::getRealDisplayFrame(VDPosition display_num) {
+VDPosition VDVideoSourcePlugin::getRealDisplayFrame(VDPosition frame) {
+	if (frame < mSampleFirst || frame >= mSampleLast)
+		return frame;
+
 	VDPosition pos;
-	
 	vdwithinputplugin(mContext) {
-		pos = mpXVS->GetRealFrame(display_num);
+		pos = mpXVS->GetRealFrame(frame);
 	}
 
 	return pos;
 }
 
 bool VDVideoSourcePlugin::isDecodable(VDPosition sample_num) {
+	if (sample_num < mSampleFirst || sample_num >= mSampleLast)
+		return false;
+
 	bool decodable;
-	
 	vdwithinputplugin(mContext) {
 		decodable = mpXVDec->IsDecodable(sample_num);
 	}
@@ -748,8 +788,10 @@ bool VDVideoSourcePlugin::isDecodable(VDPosition sample_num) {
 }
 
 sint64 VDVideoSourcePlugin::getSampleBytePosition(VDPosition sample_num) {
+	if (sample_num < mSampleFirst || sample_num >= mSampleLast)
+		return -1;
+
 	sint64 bytepos;
-	
 	vdwithinputplugin(mContext) {
 		bytepos = mpXVS->GetSampleBytePosition(sample_num);
 	}
@@ -766,10 +808,15 @@ public:
 	// DubSource
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
 
-	// AudioSource
+	bool IsVBR() const { return mbIsVBR; }
+	VDPosition	TimeToPositionVBR(VDTime us) const;
+	VDTime		PositionToTimeVBR(VDPosition samples) const;
+
 protected:
 	vdrefptr<IVDXAudioSource> mpXAS;
 	vdrefptr<IVDXStreamSource> mpXS;
+
+	bool	mbIsVBR;
 
 	VDInputDriverContextImpl&	mContext;
 
@@ -788,6 +835,7 @@ VDAudioSourcePlugin::VDAudioSourcePlugin(IVDXAudioSource *pAS, VDInputDriverCont
 	vdwithinputplugin(mContext) {
 		mpXS->GetStreamSourceInfo(mSSInfo);
 		pAS->GetAudioSourceInfo(mASInfo);
+		mbIsVBR = mpXS->IsVBR();
 	}
 
 	mSampleFirst = 0;
@@ -848,6 +896,30 @@ int VDAudioSourcePlugin::_read(VDPosition lStart, uint32 lCount, void *lpBuffer,
 		*pSamplesRead = actualSamples;
 
 	return result || !lpBuffer ? AVIERR_OK : AVIERR_BUFFERTOOSMALL;
+}
+
+VDPosition VDAudioSourcePlugin::TimeToPositionVBR(VDTime us) const {
+	if (mbIsVBR) {
+		VDPosition pos;
+		vdwithinputplugin(mContext) {
+			pos = mpXS->TimeToPositionVBR(us);
+		}
+		return pos;
+	}
+
+	return AudioSource::TimeToPositionVBR(us);
+}
+
+VDTime VDAudioSourcePlugin::PositionToTimeVBR(VDPosition samples) const {
+	if (mbIsVBR) {
+		VDTime t;
+		vdwithinputplugin(mContext) {
+			t = mpXS->PositionToTimeVBR(samples);
+		}
+		return t;
+	}
+
+	return AudioSource::PositionToTimeVBR(samples);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1032,6 +1104,7 @@ protected:
 	VDPluginDescription	*mpPluginDesc;
 	const VDPluginInfo				*mpPluginInfo;
 	const VDInputDriverDefinition	*mpDef;
+	const VDInputDriverDefinition	*mpShadowedDef;
 	VDInputDriverContextImpl		mContext;
 
 	VDStringW	mFilenamePattern;
@@ -1040,13 +1113,14 @@ protected:
 VDInputDriverPlugin::VDInputDriverPlugin(VDPluginDescription *pDesc)
 	: mpPluginDesc(pDesc)
 	, mpPluginInfo(NULL)
-	, mpDef(static_cast<const VDInputDriverDefinition *>(mpPluginDesc->mpInfo->mpTypeSpecificInfo))
+	, mpDef(NULL)
+	, mpShadowedDef(static_cast<const VDInputDriverDefinition *>(mpPluginDesc->mpShadowedInfo->mpTypeSpecificInfo))
 	, mContext(mpPluginDesc)
 {
 	mContext.mAPIVersion = kVDPlugin_InputDriverAPIVersion;
 
-	if (mpDef->mpFilenamePattern) {
-		mFilenamePattern = mpDef->mpFilenamePattern;
+	if (mpShadowedDef->mpFilenamePattern) {
+		mFilenamePattern = mpShadowedDef->mpFilenamePattern;
 
 		VDStringW::size_type pos = 0;
 
@@ -1067,15 +1141,15 @@ VDInputDriverPlugin::~VDInputDriverPlugin() {
 }
 
 int VDInputDriverPlugin::GetDefaultPriority() {
-	return mpDef->mPriority;
+	return mpShadowedDef->mPriority;
 }
 
 const wchar_t *VDInputDriverPlugin::GetSignatureName() {
-	return mpDef->mpDriverTagName;
+	return mpShadowedDef->mpDriverTagName;
 }
 
 uint32 VDInputDriverPlugin::GetFlags() {
-	uint32 xflags = mpDef->mFlags;
+	uint32 xflags = mpShadowedDef->mFlags;
 	uint32 flags = 0;
 
 	if (xflags & VDInputDriverDefinition::kFlagSupportsVideo)
@@ -1092,7 +1166,7 @@ const wchar_t *VDInputDriverPlugin::GetFilenamePattern() {
 }
 
 bool VDInputDriverPlugin::DetectByFilename(const wchar_t *pszFilename) {
-	const wchar_t *sig = mpDef->mpFilenameDetectPattern;
+	const wchar_t *sig = mpShadowedDef->mpFilenameDetectPattern;
 
 	if (!sig)
 		return false;
@@ -1112,14 +1186,14 @@ bool VDInputDriverPlugin::DetectByFilename(const wchar_t *pszFilename) {
 }
 
 int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
-	const uint8 *sig = (const uint8 *)mpDef->mpSignature;
+	const uint8 *sig = (const uint8 *)mpShadowedDef->mpSignature;
 
 	if (sig) {
-		if (nHeaderSize < (mpDef->mSignatureLength >> 1))
+		if (nHeaderSize < (mpShadowedDef->mSignatureLength >> 1))
 			return -1;
 
 		const uint8 *data = (const uint8 *)pHeader;
-		for(uint32 i=0; i<mpDef->mSignatureLength; i+=2) {
+		for(uint32 i=0; i<mpShadowedDef->mSignatureLength; i+=2) {
 			uint8 byte = sig[0];
 			uint8 mask = sig[1];
 
@@ -1131,8 +1205,8 @@ int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSi
 		}
 	}
 
-	if (!(mpDef->mFlags & VDInputDriverDefinition::kFlagCustomSignature))
-		return false;
+	if (!(mpShadowedDef->mFlags & VDInputDriverDefinition::kFlagCustomSignature))
+		return 1;
 
 	LoadPlugin();
 	int retval;
@@ -1166,6 +1240,7 @@ InputFile *VDInputDriverPlugin::CreateInputFile(uint32 flags) {
 void VDInputDriverPlugin::LoadPlugin() {
 	if (!mpPluginInfo) {
 		mpPluginInfo = VDLockPlugin(mpPluginDesc);
+		mpDef = static_cast<const VDInputDriverDefinition *>(mpPluginInfo->mpTypeSpecificInfo);
 		vdwithinputplugin(mContext) {
 			mpDef->mpCreate(&mContext, ~mpXObject);
 		}
@@ -1177,6 +1252,7 @@ void VDInputDriverPlugin::UnloadPlugin() {
 
 	if (mpPluginInfo) {
 		VDUnlockPlugin(mpPluginDesc);
+		mpDef = NULL;
 		mpPluginInfo = NULL;
 	}
 }

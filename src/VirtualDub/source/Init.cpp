@@ -354,6 +354,17 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 			HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
 			FARPROC fpSUEF = GetProcAddress(hmodKernel32, "SetUnhandledExceptionFilter");
 
+#ifdef _M_AMD64
+			DWORD oldProtect;
+			if (VirtualProtect(fpSUEF, 3, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+				static const uint8 patch[]={
+					0x33, 0xC0,				// XOR EAX, EAX
+					0xC3					// RET
+				};
+				memcpy(fpSUEF, patch, 3);
+				VirtualProtect(fpSUEF, 3, oldProtect, &oldProtect);
+			}
+#else
 			DWORD oldProtect;
 			if (VirtualProtect(fpSUEF, 5, PAGE_EXECUTE_READWRITE, &oldProtect)) {
 				static const uint8 patch[]={
@@ -363,6 +374,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 				memcpy(fpSUEF, patch, 5);
 				VirtualProtect(fpSUEF, 5, oldProtect, &oldProtect);
 			}
+#endif
 		}
 	}
 
@@ -391,7 +403,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 		// announce startup
 		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.5 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				L"VirtualDub CLI Video Processor Version 1.7.6 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 				,1
 				,&version_num));
 		VDLog(kVDLogInfo, VDswprintf(

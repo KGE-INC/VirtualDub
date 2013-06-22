@@ -211,7 +211,7 @@ void VDVideoCompressorVCM::Start(const void *inputFormat, const void *outputForm
 	this->dwFlags = info.dwFlags;
 
 	mbKeyframeOnly = true;
-	if (info.dwFlags & VIDCF_TEMPORAL) {
+	if (info.dwFlags & (VIDCF_TEMPORAL | VIDCF_FASTTEMPORALC)) {
 		mbKeyframeOnly = false;
 		if (!(info.dwFlags & VIDCF_FASTTEMPORALC)) {
 			// Allocate backbuffer

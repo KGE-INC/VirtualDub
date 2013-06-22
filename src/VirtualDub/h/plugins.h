@@ -19,6 +19,7 @@ struct VDPluginDescription {
 	uint32				mType;
 	VDExternalModule	*mpModule;
 	const VDPluginInfo	*mpInfo;
+	const VDPluginInfo	*mpShadowedInfo;
 };
 
 class VDExternalModule {

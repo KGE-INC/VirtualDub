@@ -177,7 +177,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	VDRenderVideoPipeFrameInfo frameInfo;
 	frameInfo.mLength			= 0;
 	frameInfo.mRawFrame			= stream_frame;
-	frameInfo.mTimelineFrame	= target_frame,
+	frameInfo.mTargetFrame		= target_frame;
 	frameInfo.mDisplayFrame		= display_frame;
 	frameInfo.mTimelineFrame	= timeline_frame;
 	frameInfo.mSrcIndex			= sourceIndex;
@@ -251,16 +251,18 @@ void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame,
 	frameInfo.mLength			= 0;
 	frameInfo.mDisplayFrame		= displayFrame;
 	frameInfo.mTimelineFrame	= timelineFrame;
+	frameInfo.mTargetFrame		= vsrc->displayToStreamOrder(displayFrame);
 	frameInfo.mSrcIndex			= sourceIndex;
 	frameInfo.mbFinal			= true;
 
 	if (displayFrame >= 0) {
-		VDPosition streamFrame = vsrc->displayToStreamOrder(displayFrame);
-		frameInfo.mRawFrame			= streamFrame;
+		frameInfo.mRawFrame			= -1;
 		frameInfo.mFlags			= (vsrc->isKey(displayFrame) ? 0 : kBufferFlagDelta);
 		frameInfo.mDroptype			= vsrc->getDropType(displayFrame);
 	} else {
-		frameInfo.mRawFrame			= displayFrame;
+		// can happen in direct mode for pad frames
+		frameInfo.mRawFrame			= -1;
+		frameInfo.mTargetFrame		= -1;
 		frameInfo.mFlags			= kBufferFlagDelta;
 		frameInfo.mDroptype			= AVIPipe::kDroppable;
 	}

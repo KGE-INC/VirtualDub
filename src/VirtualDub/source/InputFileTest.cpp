@@ -642,10 +642,10 @@ InputFileOptions *VDInputFileTest::promptForOptions(HWND hwnd) {
 
 	peer->Shutdown();
 
-	if (result)
-		return testopts.release();
+	if (!result)
+		throw MyUserAbortError();
 
-	return NULL;
+	return testopts.release();
 }
 
 void VDInputFileTest::setAutomated(bool fAuto) {

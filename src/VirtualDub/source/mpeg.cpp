@@ -1000,9 +1000,12 @@ const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data
 	long frame_num = (long)frame_num64;
 	int buffer;
 
-//	_RPT2(0,"Attempting to fetch frame %d [%c].\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type]);
+	if (frame_num < 0)
+		frame_num = target_num;
 
-	if (is_preroll || (buffer = mpDecoder->GetFrameBuffer(frame_num))<0) {
+//	VDDEBUG("Attempting to fetch frame %d [%c] (target=%d).\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type], (int)target_num);
+
+	if (is_preroll || (buffer = mpDecoder->GetFrameBuffer(target_num))<0) {
 		if (!frame_num) {
 //			mpDecoder->Reset();		hmm...
 		}
@@ -1061,7 +1064,7 @@ const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data
 	}
 	
 	if (!is_preroll) {
-		DecodeFrameBuffer(mpDecoder->GetFrameBuffer(frame_num));
+		DecodeFrameBuffer(mpDecoder->GetFrameBuffer(target_num));
 		mbFBValid = true;
 	}
 

@@ -47,7 +47,8 @@ namespace nsVDDub {
 		kBufferFlagPreload			= 2,		///< This video frame is not a final frame and is being queued for decoding purposes.
 		kBufferFlagDirectWrite		= 4,		///< This video frame should be streamed to the output rather than being processed (smart rendering).
 		kBufferFlagSameAsLast		= 8,		///< This video frame is the same as the previous final frame and can be dropped as a duplicate.
-		kBufferFlagInternalDecode	= 16		///< This video frame is a dummy to pull a frame that the video decoder already has decoded due to reordering.
+		kBufferFlagInternalDecode	= 16,		///< This video frame is a dummy to pull a frame that the video decoder already has decoded due to reordering.
+		kBufferFlagFlushCodec		= 32		///< This video frame is a dummy to pull a frame that the video encoder has queued. Decoding and filtering should be skipped.
 	};
 }
 

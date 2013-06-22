@@ -662,7 +662,7 @@ bool VDProject::UpdateFrame() {
 
 			} else {
 				if (!mFramesDecoded)
-					inputVideoAVI->streamGetFrame(NULL, 0, preroll, mDesiredInputSample, mDesiredInputSample);
+					inputVideoAVI->streamGetFrame(NULL, 0, false, -1, mDesiredInputSample);
 
 				if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
 					mpCB->UIRefreshInputFrame(true);
@@ -765,6 +765,9 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 
 		inputAudioAVI = inputAVI->audioSrc;
 		inputVideoAVI = inputAVI->videoSrc;
+
+		if (!inputVideoAVI)
+			throw MyError("File \"%ls\" does not have a video stream.", filename.c_str());
 
 		if (!inputVideoAVI->setDecompressedFormat(24))
 			if (!inputVideoAVI->setDecompressedFormat(32))

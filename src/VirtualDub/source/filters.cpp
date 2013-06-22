@@ -37,6 +37,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Riza/display.h>
+#include <vd2/Kasumi/pixmapops.h>
 #include "gui.h"
 #include "oshelper.h"
 #include "misc.h"
@@ -753,10 +754,7 @@ void FilterPreview::OnInit() {
 	mpPosition->SetRange(0, mpTimeline->GetLength());
 	mpPosition->SetFrameTypeCallback(VDGetPositionControlCallbackTEMP());
 
-	if (!inputVideoAVI->setDecompressedFormat(24))
-		if (!inputVideoAVI->setDecompressedFormat(32))
-			if (!inputVideoAVI->setDecompressedFormat(16))
-				inputVideoAVI->setDecompressedFormat(8);
+	inputVideoAVI->setTargetFormat(0);
 
 	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)hdlg);
 	if (mhwndDisplay)
@@ -1033,8 +1031,7 @@ VDPosition FilterPreview::FetchFrame(VDPosition pos) {
 		return -1;
 	}
 
-	VBitmap srcbm((void *)inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat());
-	filtsys.InputBitmap()->BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
+	VDPixmapBlt(VDAsPixmap(*filtsys.InputBitmap()), inputVideoAVI->getTargetFormat());
 
 	return pos;
 }
