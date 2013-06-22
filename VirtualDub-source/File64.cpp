@@ -57,6 +57,28 @@ void File64::_readFile2(void *data, long len) {
 		throw MyError("Failure reading file: Unexpected end of file");
 }
 
+long File64::_writeFile(const void *data, long len) {
+	DWORD dwActual;
+
+	if (!WriteFile(hFile, data, len, &dwActual, NULL))
+		return -1;
+
+	i64FilePosition += dwActual;
+
+	return (long)dwActual;
+}
+
+
+void File64::_writeFile2(const void *data, long len) {
+	long lActual = _writeFile(data, len);
+
+	if (lActual < 0)
+		throw MyWin32Error("Failure writing file: %%s.",GetLastError());
+
+	if (lActual != len)
+		throw MyError("Failure writing file: Unknown error (write was short for some reason)");
+}
+
 bool File64::_readChunkHeader(FOURCC& pfcc, DWORD& pdwLen) {
 	DWORD dw[2];
 	long actual;

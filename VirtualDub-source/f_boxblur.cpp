@@ -93,29 +93,6 @@ struct FilterDefinition filterDef_box = {
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern "C" int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm, const FilterFunctions *ff, int& vdfd_ver, int& vdfd_compat);
-extern "C" void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm, const FilterFunctions *ff);
-
-static FilterDefinition *fd_box;
-
-///////////////////////////////////////////////////////////////////////////
-
-int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm, const FilterFunctions *ff, int& vdfd_ver, int& vdfd_compat) {
-	if (!(fd_box = ff->addFilter(fm, &filterDef_box, sizeof(FilterDefinition))))
-		return 1;
-
-	vdfd_ver = VIRTUALDUB_FILTERDEF_VERSION;
-	vdfd_compat = VIRTUALDUB_FILTERDEF_COMPATIBLE;
-
-	return 0;
-}
-
-void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm, const FilterFunctions *ff) {
-	ff->removeFilter(fd_box);
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 int boxInitProc(FilterActivation *fa, const FilterFunctions *ff) {
 	BoxFilterData *mfd = (BoxFilterData *)fa->filter_data;
 
@@ -715,7 +692,7 @@ int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 	BoxFilterData *mfd = (BoxFilterData *)fa->filter_data;
 	PixDim h;
 	Pixel32 *src, *dst;
-	Pixel32 *tsrc, *tdst, *tmp;
+	Pixel32 *tmp;
 	PixOffset srcpitch, dstpitch;
 	int i;
 

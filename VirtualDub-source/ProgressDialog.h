@@ -24,6 +24,9 @@ class ProgressDialog {
 private:
 	HWND hwndProgressBar, hwndDialog, hwndValue;
 	long newval, curval, maxval;
+	int mSparseCount;
+	int mSparseInterval;
+	DWORD dwLastTime;
 	bool fAbortEnabled;
 	bool fAbort;
 
@@ -35,6 +38,8 @@ public:
 	~ProgressDialog();
 
 	void setValueFormat(const char *);
+	void setCaption(const char *);
+	void setLimit(long);
 
 	void advance(long newval) {
 		this->newval = newval;

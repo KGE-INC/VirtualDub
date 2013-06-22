@@ -289,7 +289,7 @@ BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 					capSetCallbackOnVideoStream(hdd->hwndCapture, (LPVOID)CaptureHistogramVideoCallbackProc);
 					PostMessage(hdd->hwndCapture, WM_CAP_SEQUENCE_NOFILE, 0, 0);
 				}
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				e.post(hDlg,"Histogram error");
 
 				if (hdd) CaptureHistogramDestruct(hDlg, hdd);

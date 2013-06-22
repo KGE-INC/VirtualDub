@@ -24,8 +24,10 @@ class IMJPEGDecoder {
 public:
 	virtual ~IMJPEGDecoder() {};
 
-	virtual void decodeFrame16(unsigned long *output, unsigned char *input, int len)=0;
-	virtual void decodeFrame32(unsigned long *output, unsigned char *input, int len)=0;
+	virtual void decodeFrameRGB15(unsigned long *output, unsigned char *input, int len)=0;
+	virtual void decodeFrameRGB32(unsigned long *output, unsigned char *input, int len)=0;
+	virtual void decodeFrameUYVY(unsigned long *output, unsigned char *input, int len)=0;
+	virtual void decodeFrameYUY2(unsigned long *output, unsigned char *input, int len)=0;
 };
 
 IMJPEGDecoder *CreateMJPEGDecoder(int w, int h);

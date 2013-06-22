@@ -371,7 +371,7 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 
 			fa = fa_next;
 		}
-	} catch(MyError) {
+	} catch(const MyError&) {
 		if (hdcDisplay)
 			DeleteDC(hdcDisplay);
 
@@ -415,7 +415,7 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 				try {
 					if (rcode = fa->filter->startProc(fa, &g_filterFuncs))
 						break;
-				} catch(MyError e) {
+				} catch(const MyError& e) {
 					throw MyError("Cannot start filter '%s': %s", fa->filter->name, e.gets());
 				}
 
@@ -425,7 +425,7 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 		}
 
 		VDCHECKPOINT;
-	} catch(MyError) {
+	} catch(const MyError&) {
 		DeinitFilters();
 		throw;
 	}
@@ -519,7 +519,7 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 			if (rcode = fa->filter->runProc(fa, &g_filterFuncs))
 				break;
 			CHECK_FPU_STACK
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			dwFlags |= FILTERS_ERROR;
 			throw MyError("Error running filter '%s': %s", fa->filter->name, e.gets());
 		}

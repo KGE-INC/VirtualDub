@@ -21,6 +21,7 @@
 #include <mmsystem.h>
 
 #include "misc.h"
+#include "cpuaccel.h"
 
 long __declspec(naked) MulDivTrunc(long a, long b, long c) {
 	__asm {
@@ -55,9 +56,57 @@ bool isEqualFOURCC(FOURCC fccA, FOURCC fccB) {
 	return true;
 }
 
+bool isValidFOURCC(FOURCC fcc) {
+	return isprint((unsigned char)(fcc>>24))
+		&& isprint((unsigned char)(fcc>>16))
+		&& isprint((unsigned char)(fcc>> 8))
+		&& isprint((unsigned char)(fcc    ));
+}
+
 FOURCC toupperFOURCC(FOURCC fcc) {
 	return(toupper((unsigned char)(fcc>>24)) << 24)
 		| (toupper((unsigned char)(fcc>>16)) << 16)
 		| (toupper((unsigned char)(fcc>> 8)) <<  8)
 		| (toupper((unsigned char)(fcc    ))      );
 }
+
+#if defined(WIN32) && defined(_M_IX86)
+
+	bool IsMMXState() {
+		char	buf[28];
+		unsigned short tagword;
+
+		__asm fnstenv buf
+
+		tagword = *(unsigned short *)(buf + 8);
+
+		return (tagword != 0xffff);
+	}
+
+	void ClearMMXState() {
+		if (MMX_enabled)
+			__asm emms
+		else {
+			__asm {
+				ffree st(0)
+				ffree st(1)
+				ffree st(2)
+				ffree st(3)
+				ffree st(4)
+				ffree st(5)
+				ffree st(6)
+				ffree st(7)
+			}
+		}
+	}
+
+#else
+
+	bool IsMMXState() {
+		return false;
+	}
+
+	void ClearMMXState() {
+	}
+
+#endif

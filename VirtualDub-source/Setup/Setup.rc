@@ -167,8 +167,8 @@ BEGIN
     PUSHBUTTON      "Abort",IDCANCEL,66,33,50,14
     LTEXT           "Sustained read",IDC_STATIC,7,7,48,8
     LTEXT           "Sustained write",IDC_STATIC,7,18,49,8
-    RTEXT           "0 K/s ",IDC_READ_SPEED,92,7,85,10,SS_SUNKEN
-    RTEXT           "0 K/s ",IDC_WRITE_SPEED,92,18,85,10,SS_SUNKEN
+    RTEXT           "0 KB/s ",IDC_READ_SPEED,92,7,85,10,SS_SUNKEN
+    RTEXT           "0 KB/s ",IDC_WRITE_SPEED,92,18,85,10,SS_SUNKEN
 END
 
 

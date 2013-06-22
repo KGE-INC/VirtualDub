@@ -473,6 +473,8 @@ BOOL VideoSourceMPEG::init() {
 	streamInfo.fccType					= streamtypeVIDEO;
 	streamInfo.fccHandler				= 0;
 	streamInfo.dwFlags					= 0;
+	streamInfo.wPriority				= 0;
+	streamInfo.wLanguage				= 0;
 	streamInfo.dwScale					= 1000;
 	streamInfo.dwRate					= parentPtr->frame_rate;
 	streamInfo.dwStart					= 0;
@@ -777,7 +779,7 @@ int VideoSourceMPEG::streamGetRequiredCount(long *pSize) {
 
 
 	if (frame_type == MPEG_FRAME_TYPE_I) {
-		if (*pSize)
+		if (pSize)
 			*pSize = parentPtr->video_sample_list[current].size;
 		return 1;
 	}
@@ -1758,6 +1760,8 @@ InputFileMPEG::InputFileMPEG() {
 	fIsVCD = false;
 
 	pFastRead = NULL;
+
+	last_packet[0] = last_packet[1] = 0;
 }
 
 InputFile *CreateInputFileMPEG() {
@@ -1818,29 +1822,44 @@ void InputFileMPEG::Init(char *szFile) {
 
 		{
 			char ch[3];
+			int scan_count = 256;
 
 			_read(fh, ch, 3);
 
-			if (ch[0]=='R' && ch[1]=='I' && ch[2]=='F') {
-				fIsVCD = true;
-				fInterleaved = true;
+			while(scan_count > 0) {
+				if (ch[0]=='R' && ch[1]=='I' && ch[2]=='F') {
+					fIsVCD = true;
+					fInterleaved = true;
 
-				// The Read() code skips over the last 4 bytes of a sector
-				// and the beginning 16 bytes of the next, so we need to
-				// back up 4.
+					// The Read() code skips over the last 4 bytes of a sector
+					// and the beginning 16 bytes of the next, so we need to
+					// back up 4.
 
-				_lseeki64(fh, 40, SEEK_SET);
-				i64ScanCpos = 40;
-			} else if (ch[0]==0 && ch[1]==0 && ch[2]==1) {
-				fIsVCD = false;
+					i64ScanCpos = 40 + 256 - scan_count;
+					_lseeki64(fh, i64ScanCpos, SEEK_SET);
 
-				// We want reads to be aligned.
+					break;
+				} else if (ch[0]==0 && ch[1]==0 && ch[2]==1) {
+					fIsVCD = false;
 
-				i64ScanCpos = 0;
-				_lseeki64(fh, 0, SEEK_SET);
-				Skip(3);
-			} else
-				throw MyError("%s: Invalid MPEG file", szME);
+					// We want reads to be aligned.
+
+					i64ScanCpos = 0;
+					_lseeki64(fh, 0, SEEK_SET);
+					Skip(256 + 3 - scan_count);
+
+					break;
+				}
+
+				ch[0] = ch[1];
+				ch[1] = ch[2];
+				_read(fh, ch+2, 1);
+
+				--scan_count;
+
+				if (!scan_count)
+					throw MyError("%s: Invalid MPEG file", szME);
+			}
 		}
 
 		try {
@@ -1987,7 +2006,7 @@ void InputFileMPEG::Init(char *szFile) {
 						break;
 				}
 			} while(!finished && (fInterleaved ? NextStartCode() : !end_of_file));
-		} catch(MyError) {
+		} catch(const MyError&) {
 			if (!fAcceptPartial)
 				throw;
 
@@ -2068,10 +2087,10 @@ void InputFileMPEG::Init(char *szFile) {
 			if (frames) --frames;
 		}
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		DestroyWindow(hWndStatus);
 		hWndStatus = NULL;
-		throw e;
+		throw;
 	}
 
 	EndScan();
@@ -2675,7 +2694,7 @@ BOOL APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam,
 
 				lBytesPerSec = (long)((pInfo->lTotalSize * ((double)thisPtr->videoSrc->streamInfo.dwRate / thisPtr->videoSrc->streamInfo.dwScale)) / pInfo->lFrames + 0.5);
 
-				sprintf(g_msgBuf, "%ld kilobits/sec (%ldK/s)", (lBytesPerSec+124)/125, (lBytesPerSec+1023)/1024);
+				sprintf(g_msgBuf, "%ld Kbps (%ldKB/s)", (lBytesPerSec+124)/125, (lBytesPerSec+1023)/1024);
 				SetDlgItemText(hDlg, IDC_VIDEO_AVGBITRATE, g_msgBuf);
 			}
 
@@ -2683,7 +2702,7 @@ BOOL APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam,
 				static const char *szLayers[]={"I","II","III"};
 				WAVEFORMATEX *fmt = thisPtr->audioSrc->getWaveFormat();
 
-				sprintf(g_msgBuf, "%ldKHz %s, %ldkbps layer %s", fmt->nSamplesPerSec/1000, pInfo->lpszAudioMode, pInfo->lAudioAvgBitrate, szLayers[3-((thisPtr->audio_first_header>>9)&3)]);
+				sprintf(g_msgBuf, "%ldKHz %s, %ldKbps layer %s", fmt->nSamplesPerSec/1000, pInfo->lpszAudioMode, pInfo->lAudioAvgBitrate, szLayers[3-((thisPtr->audio_first_header>>9)&3)]);
 				SetDlgItemText(hDlg, IDC_AUDIO_FORMAT, g_msgBuf);
 
 				sprintf(g_msgBuf, "%ldK", (pInfo->lAudioSize + 1023) / 1024);

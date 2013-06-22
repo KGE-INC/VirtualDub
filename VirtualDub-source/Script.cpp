@@ -31,6 +31,7 @@
 #include "ScriptError.h"
 #include "Error.h"
 #include "VideoSource.h"
+#include "vector.h"
 
 #include "command.h"
 #include "dub.h"
@@ -90,6 +91,7 @@ void DeinitScriptSystem() {
 	}
 }
 
+///////////////////////////////////////////////
 
 void RunScript(char *name, void *hwnd) {
 	static char fileFilters[]=
@@ -128,7 +130,7 @@ void RunScript(char *name, void *hwnd) {
 		return;
 
 	try {
-		char lbuf[512];
+		Vector<char> linebuffer;
 
 		isi = g_SyliaCreateInterpreter();
 		if (!isi) throw MyError("Not enough memory to create script interpreter");
@@ -138,15 +140,23 @@ void RunScript(char *name, void *hwnd) {
 		if (!(f=fopen(name, "r")))
 			throw MyError("Can't open script file");
 
-		while(fgets(lbuf, sizeof lbuf, f)) {
-			isi->ExecuteLine(lbuf);
-		}
+		int c;
 
+		do {
+			c = getc(f);
+
+			if (c == '\n' || c == EOF) {
+				linebuffer.push_back(0);
+				isi->ExecuteLine(&linebuffer[0]);
+				linebuffer.clear();
+			} else
+				linebuffer.push_back(c);
+		} while(c != EOF);
 	} catch(CScriptError cse) {
 		MessageBox(NULL, isi->TranslateScriptError(cse), "Sylia script error", MB_OK | MB_TASKMODAL | MB_TOPMOST);
 	} catch(MyUserAbortError e) {
 		/* do nothing */
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 
@@ -164,7 +174,8 @@ void RunScriptMemory(char *mem) {
 		return;
 
 	try {
-		char lbuf[512], *s=mem, *t;
+		Vector<char> linebuffer;
+		char *s=mem, *t;
 
 		isi = g_SyliaCreateInterpreter();
 		if (!isi) throw MyError("Not enough memory to create script interpreter");
@@ -175,9 +186,11 @@ void RunScriptMemory(char *mem) {
 			t = s;
 			while(*t && *t!='\n') ++t;
 
-			memcpy(lbuf, s, t-s);
-			lbuf[t-s]=0;
-			isi->ExecuteLine(lbuf);
+			linebuffer.resize(t+1-s);
+			memcpy(&linebuffer[0], s, t-s);
+			linebuffer[t-s] = 0;
+
+			isi->ExecuteLine(&linebuffer[0]);
 
 			s = t;
 			if (*s=='\n') ++s;
@@ -189,7 +202,7 @@ void RunScriptMemory(char *mem) {
 		isi->Destroy();
 		DeinitScriptSystem();
 		throw MyError("Aborted by user");
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		isi->Destroy();
 		DeinitScriptSystem();
 
@@ -616,8 +629,6 @@ static void func_VDVideo_EnableIndeoQC(IScriptInterpreter *, CScriptObject *, CS
 }
 
 static void func_VDVideo_SetIVTC(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	R4_ENC_SEQ_DATA r4enc;
-
 	g_dubOpts.video.fInvTelecine = !!arglist[0].asInt();
 	g_dubOpts.video.fIVTCMode = !!arglist[1].asInt();
 	g_dubOpts.video.nIVTCOffset = arglist[2].asInt();
@@ -875,17 +886,26 @@ static void func_VDSubset_Clear(IScriptInterpreter *isi, void *, CScriptValue *a
 		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
 }
 
-static void func_VDSubset_AddFrame(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDSubset_AddRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
 	if (!inputSubset && !(inputSubset = new FrameSubset()))
 		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
 
-	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt());
+	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), false);
+}
+
+static void func_VDSubset_AddMaskedRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+	if (!inputSubset && !(inputSubset = new FrameSubset()))
+		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+
+	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), true);
 }
 
 static ScriptFunctionDef obj_VDSubset_functbl[]={
 	{ (ScriptFunctionPtr)func_VDSubset_Delete			, "Delete"				, "0"		},
 	{ (ScriptFunctionPtr)func_VDSubset_Clear			, "Clear"				, "0"		},
-	{ (ScriptFunctionPtr)func_VDSubset_AddFrame			, "AddFrame"			, "0ii"		},
+	{ (ScriptFunctionPtr)func_VDSubset_AddRange			, "AddFrame"			, "0ii"		},	// DEPRECATED
+	{ (ScriptFunctionPtr)func_VDSubset_AddRange			, "AddRange"			, "0ii"		},
+	{ (ScriptFunctionPtr)func_VDSubset_AddMaskedRange	, "AddMaskedRange"		, "0ii"		},
 
 	{ NULL }
 };
@@ -989,7 +1009,7 @@ static CScriptValue obj_VirtualDub_lookup(IScriptInterpreter *isi, CScriptObject
 
 		LoadString(g_hInst, IDS_TITLE_INITIAL, buf, sizeof buf);
 
-		wsprintf(buf1, buf, version_num,
+		_snprintf(buf1, sizeof buf1, buf, version_num,
 #ifdef _DEBUG
 			"debug"
 #else

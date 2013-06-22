@@ -21,8 +21,11 @@
 #include <windows.h>
 #include <vfw.h>
 
+#include "gui.h"
 #include "AudioSource.h"
 #include "AVIReadHandler.h"
+
+extern HWND g_hWnd;		// TODO: Remove in 1.5.0
 
 AudioSourceWAV::AudioSourceWAV(char *szFile, LONG inputBufferSize) {
 	MMIOINFO mmi;
@@ -102,9 +105,10 @@ int AudioSourceWAV::_read(LONG lStart, LONG lCount, LPVOID buffer, LONG cbBuffer
 
 ///////////////////////////
 
-AudioSourceAVI::AudioSourceAVI(IAVIReadHandler *pAVI) {
+AudioSourceAVI::AudioSourceAVI(IAVIReadHandler *pAVI, bool bAutomated) {
 	pAVIFile	= pAVI;
 	pAVIStream	= NULL;
+	bQuiet = bAutomated;	// ugh, this needs to go... V1.5.0.
 }
 
 AudioSourceAVI::~AudioSourceAVI() {
@@ -130,6 +134,20 @@ BOOL AudioSourceAVI::init() {
 
 	lSampleFirst = pAVIStream->Start();
 	lSampleLast = pAVIStream->End();
+
+	if (!bQuiet) {
+		double mean, stddev, maxdev;
+
+		if (pAVIStream->getVBRInfo(mean, stddev, maxdev)) {
+			guiMessageBoxF(g_hWnd, "VBR audio stream detected", MB_OK|MB_TASKMODAL|MB_SETFOREGROUND,
+				"VirtualDub has detected an improper VBR audio encoding in the source AVI file and will rewrite the audio header "
+				"with standard CBR values during processing for better compatibility. This may introduce up to %.0lf ms of skew "
+				"from the video stream. If this is unacceptable, decompress the *entire* audio stream to an uncompressed WAV file "
+				"and recompress with a constant bitrate encoder. "
+				"(bitrate: %.1lf ± %.1lf kbps)"
+				,maxdev*1000.0,mean*0.001, stddev*0.001);
+		}
+	}
 
 	return TRUE;
 }

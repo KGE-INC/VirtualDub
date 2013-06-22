@@ -912,6 +912,15 @@
 #define ID_CAPTURE_HWACCEL_TOP          40243
 #define ID_CAPTURE_HWACCEL_BOTTOM       40244
 #define ID_CAPTURE_HWACCEL_BOTH         40245
+#define ID_EDIT_AVIASSIST               40247
+#define ID_TOOLS_CREATESPARSEAVI        40248
+#define ID_TOOLS_EXPANDSPARSEAVI        40249
+#define ID_EDIT_MASK                    40250
+#define ID_EDIT_UNMASK                  40251
+#define ID_EDIT_RESET                   40252
+#define ID_VIDEO_SCANFORERRORS          40253
+#define ID_EDIT_PREVRANGE               40256
+#define ID_EDIT_NEXTRANGE               40257
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -954,7 +963,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        241
-#define _APS_NEXT_COMMAND_VALUE         40246
+#define _APS_NEXT_COMMAND_VALUE         40258
 #define _APS_NEXT_CONTROL_VALUE         1380
 #define _APS_NEXT_SYMED_VALUE           107
 #endif

@@ -362,7 +362,7 @@ void CaptureDisplayBT848Tweaker(HWND hwndParent) {
 
 		g_hwndTweaker = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BT8X8), hwndParent, CaptureBT848TweakerDlgProc);
 
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hwndParent, g_szError);
 
 		DeinitializeBT8X8();

@@ -68,6 +68,7 @@ NEEDBITS	macro at		;EAX, EDX, EBX available
 	movzx	eax,word ptr [esi]
 	bswap	eax
 	shr	eax,16
+	add	esi,2
 
 	mov	ecx,eax
 	lea	ebx,[eax+01010101h]
@@ -82,7 +83,6 @@ short_ok:
 	shl	eax,cl
 	sub	dl,16
 	or	ebp,eax
-	add	esi,2
 done:
 	endm
 
@@ -97,6 +97,7 @@ NEEDBITS2	macro at		;EAX, EDX available
 	movzx	eax,word ptr [esi]
 	bswap	eax
 	shr	eax,16
+	add	esi,2
 
 	lea	ecx,[eax+01010101h]
 	not	ecx
@@ -110,7 +111,6 @@ short_ok:
 	shl	eax,cl
 	sub	dl,16
 	or	ebp,eax
-	add	esi,2
 done:
 	endm
 
@@ -319,22 +319,27 @@ AC_reload:
 	movzx	eax,word ptr [esi]
 	bswap	eax
 	shr	eax,16
+	add	esi,2
 
 	mov	ecx,eax
 	lea	edi,[eax+01010101h]
 	and	ecx,80808080h
 	not	edi
 	and	edi,ecx
-	jz	short_ok
+	jnz	ick
+	mov	cl,dl
+	sub	dl,16
+	shl	eax,cl
+	or	ebp,eax
+	jmp	AC_reload_done
+
+	ALIGN16
 ick:
 	call	sucks2
-short_ok:
 	mov	cl,dl
-	shl	eax,cl
 	sub	dl,16
+	shl	eax,cl
 	or	ebp,eax
-	add	esi,2
-done:
 	jmp	AC_reload_done
 
 	ALIGN16
@@ -347,7 +352,7 @@ AC_medium_decode:
 	mov	edi,[esp + l_acquick2]
 	shr	eax,20
 	mov	cl,[edi+eax*2 + 1 - 1600h]
-	lea	edi,[edi+eax*2]
+	movzx	edi,byte ptr [edi+eax*2 - 1600h]
 
 	shl	ebp,cl
 	add	dl,cl
@@ -356,9 +361,8 @@ AC_medium_decode:
 
 	NEEDBITS2 16
 
-	movzx	ecx,byte ptr [edi - 1600h]
-
-	cmp	cl,0f0h
+	mov	ecx,edi
+	cmp	edi,0f0h
 	jz	AC_skip16
 
 AC_do_long:
@@ -368,6 +372,8 @@ AC_do_long:
 	shr	eax,4			;eax = skip
 
 	lea	ebx,[ebx+eax*8]
+	cmp	ebx,[esp + l_quantlimit]
+	jae	AC_exit
 
 	cmp	ebp,80000000h
 	sbb	eax,eax
@@ -394,6 +400,8 @@ AC_do_long:
 AC_exit:
 	mov	ebx,dword ptr [ebx-4]
 	shr	ebx,1
+
+	and	ebx,63		;just in case
 
 	;all done with this macroblock!
 
@@ -462,13 +470,13 @@ AC_long_decode:
 
 	ALIGN16
 sucks2:
-	movzx	eax,byte ptr [esi]
+	movzx	eax,byte ptr [esi-2]
 	lea	ecx,[eax+1]
 	shr	ecx,8
 	add	esi,ecx
 
 	shl	eax,8
-	movzx	ecx,byte ptr [esi+1]
+	movzx	ecx,byte ptr [esi-1]
 
 	add	eax,ecx
 	inc	ecx
@@ -482,8 +490,6 @@ sucks2:
 	ALIGN16
 AC_skip16:
 	add	ebx,16*8
-	cmp	ebx,[esp + l_quantlimit]
-	jae	AC_exit
 	jmp	AC_loop
 
 	end

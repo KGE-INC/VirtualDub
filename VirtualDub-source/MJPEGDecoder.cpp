@@ -15,16 +15,11 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <io.h>
-#include <fcntl.h>
-#include <math.h>
-#include <crtdbg.h>
-#include <windows.h>
-#include <conio.h>
+#include <stddef.h>
 
+#include "Error.h"
 #include "MJPEGDecoder.h"
+#include "cpuaccel.h"
 
 //#define DCTLEN_PROFILE
 //#define PROFILE
@@ -59,6 +54,7 @@ public:
 extern "C" void asm_mb_decode(dword& bitbuf, int& bitcnt, byte *& ptr, int mcu_length, MJPEGBlockDef *pmbd, short **dctarray);
 
 extern "C" void IDCT_mmx(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
+extern "C" void IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -262,8 +258,10 @@ public:
 	MJPEGDecoder(int w, int h);
 	~MJPEGDecoder();
 
-	void decodeFrame16(dword *output, byte *input, int len);
-	void decodeFrame32(dword *output, byte *input, int len);
+	void decodeFrameRGB15(dword *output, byte *input, int len);
+	void decodeFrameRGB32(dword *output, byte *input, int len);
+	void decodeFrameUYVY(dword *output, byte *input, int len);
+	void decodeFrameYUY2(dword *output, byte *input, int len);
 
 private:
 	int quant[4][128];				// quantization matrices
@@ -271,9 +269,11 @@ private:
 	int mcu_width, mcu_height;		// size of frame when blocked into MCUs
 	int mcu_length;
 	int mcu_count;
+	int mcu_size_x;
 	int mcu_size_y;
 	int raw_width, raw_height;
 	int clip_row, clip_lines;
+	int restart_interval;
 	void *pixdst;
 
 	int *comp_quant[3];
@@ -286,9 +286,25 @@ private:
 	short dct_coeff[24][64];
 	short *dct_coeff_ptrs[24];
 
-	bool vc_half;					// chrominance 2:1 vertically?
 	bool interlaced;
-	bool decode16;
+
+	enum {
+		kYCrCb444,
+		kYCrCb422,
+		kYCrCb420,
+
+		kChromaModeCount
+	} mChromaMode;
+
+	enum {
+		kDecodeRGB15,
+		kDecodeRGB32,
+		kDecodeUYVY,
+		kDecodeYUY2,
+
+		kDecodeModeCount
+	} mDecodeMode;
+	int mBPP;
 
 	void decodeFrame(dword *output, byte *input, int len);
 	byte *decodeQuantTables(byte *psrc);
@@ -300,11 +316,12 @@ private:
 };
 
 enum {
-	MARKER_SOF0	= 0xc0,		// start-of-frame, baseline scan
-	MARKER_SOI	= 0xd8,		// start of image
-	MARKER_EOI	= 0xd9,		// end of image
-	MARKER_SOS	= 0xda,		// start of scan
-	MARKER_DQT	= 0xdb,		// define quantization tables
+	MARKER_SOF0			= 0xc0,		// start-of-frame, baseline scan
+	MARKER_SOI			= 0xd8,		// start of image
+	MARKER_EOI			= 0xd9,		// end of image
+	MARKER_SOS			= 0xda,		// start of scan
+	MARKER_DQT			= 0xdb,		// define quantization tables
+	MARKER_DRI			= 0xdd,		// define restart interval
 	MARKER_APP_FIRST	= 0xe0,
 	MARKER_APP_LAST		= 0xef,
 	MARKER_COMMENT		= 0xfe,
@@ -316,11 +333,11 @@ enum {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-MJPEGDecoder::MJPEGDecoder(int w, int h) {
-	this->vc_half			= false;
-	this->width				= w;
-	this->height			= h;
-
+MJPEGDecoder::MJPEGDecoder(int w, int h)
+	: width(w)
+	, height(h)
+	, restart_interval(0)
+{
 	for(int tbl=0; tbl<2; tbl++) {
 		int base=0;
 		byte *ptr = (byte *)huff_ac_quick2[tbl];
@@ -377,13 +394,27 @@ int __inline getshort(byte *p) {
 
 
 
-void MJPEGDecoder::decodeFrame16(dword *output, byte *ptr, int size) {
-	decode16 = true;
+void MJPEGDecoder::decodeFrameRGB15(dword *output, byte *ptr, int size) {
+	mDecodeMode = kDecodeRGB15;
+	mBPP = 2;
 	decodeFrame(output, ptr, size);
 }
 
-void MJPEGDecoder::decodeFrame32(dword *output, byte *ptr, int size) {
-	decode16 = false;
+void MJPEGDecoder::decodeFrameRGB32(dword *output, byte *ptr, int size) {
+	mDecodeMode = kDecodeRGB32;
+	mBPP = 4;
+	decodeFrame(output, ptr, size);
+}
+
+void MJPEGDecoder::decodeFrameUYVY(dword *output, byte *ptr, int size) {
+	mDecodeMode = kDecodeUYVY;
+	mBPP = 2;
+	decodeFrame(output, ptr, size);
+}
+
+void MJPEGDecoder::decodeFrameYUY2(dword *output, byte *ptr, int size) {
+	mDecodeMode = kDecodeYUY2;
+	mBPP = 2;
 	decodeFrame(output, ptr, size);
 }
 
@@ -392,6 +423,7 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 	byte tag;
 	bool odd_field = true;
 	int field_count = 0;
+	bool bFirstField = true;
 
 	do {
 //		_RPT1(0,"Decoding %s field\n", odd_field ? "odd" : "even");
@@ -432,20 +464,34 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 
 					// dmb1 thinks it's interlaced all the time...
 
-					if (raw_height*2 > height)
-						interlaced = false;
+					interlaced = raw_height <= ((height+15)&~15)/2;
+					field_height = interlaced ? height/2 : height;
+
+					if (mcu_height*mcu_size_y > field_height) {
+						mcu_height	= (field_height + mcu_size_y - 1)/mcu_size_y;
+						clip_row = field_height / mcu_size_y;
+						clip_lines = field_height % mcu_size_y;
+					}
 
 					break;
 				case MARKER_SOS:
+
 					pixdst = output;
 					ptr = decodeScan(ptr, odd_field);
-//					_RPT1(0,"scan decode finished at %p\n", ptr);
+
+					bFirstField = false;
 					break;
 				case MARKER_APP_FIRST:
-					interlaced = (ptr[6] != 0);
-					odd_field = (ptr[6] > 1);
-					field_height = interlaced ? height/2 : height;
+					if (bFirstField)
+						odd_field = (ptr[6] <= 0);
+					else
+						odd_field = !odd_field;
+
 					ptr += getshort(ptr);
+					break;
+				case MARKER_DRI:
+					restart_interval = getshort(ptr+2);
+					ptr += 4;
 					break;
 				case 0xff:
 					while(ptr<limit && *ptr == 0xff)
@@ -556,38 +602,46 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 	if (mcu_length > 10)
 		throw "Error: macroblocks per MCU > 10";
 
-	if (comp_mcu_x[0] != 2 || comp_mcu_x[1] != 1)
-		throw "Error: horizontal chrominance subsampling must be 2:1";
+	// check subsampling format
 
-	if ((comp_mcu_x[0] != 2 && comp_mcu_x[0] != 1) || comp_mcu_y[1] != 1)
-		throw "Error: vertical chrominance subsampling must be 1:1 or 2:1";
+	if (comp_mcu_x[1] != 1 || comp_mcu_y[1] != 1)
+		throw "Error: multiple chroma blocks not supported";
 
-	if (comp_mcu_y[0] == 2)
-		vc_half = true;
+	do {
 
-	mcu_width	= (raw_width + 15)/16;
+		// 4:4:4 (PICVideo's 1/1/1)
 
-	if (vc_half)
-		mcu_height	= (raw_height + 15)/16;
-	else
-		mcu_height	= (raw_height + 7)/8;
+		if (comp_mcu_x[0] == 1 && comp_mcu_y[0] == 1) {
+			mChromaMode = kYCrCb444;
+			mcu_width	= (raw_width + 7)/8;
+			mcu_height	= (raw_height + 7)/8;
+			break;
+		}
+
+		// 4:2:2
+
+		if (comp_mcu_x[0] == 2 && comp_mcu_y[0] == 1) {
+			mChromaMode = kYCrCb422;
+			mcu_width	= (raw_width + 15)/16;
+			mcu_height	= (raw_height + 7)/8;
+			break;
+		}
+
+		// 4:2:0 (PICVideo's 4/1/1)
+
+		if (comp_mcu_x[0] == 2 && comp_mcu_y[0] == 2) {
+			mChromaMode = kYCrCb420;
+			mcu_width	= (raw_width + 15)/16;
+			mcu_height	= (raw_height + 15)/16;
+			break;
+		}
+
+		throw "Error: Chroma subsampling mode not supported (must be 4:4:4, 4:2:2, or 4:2:0)";
+	} while(false);
 
 	mcu_count = mcu_width * mcu_height;
+	mcu_size_x = comp_mcu_x[0] * 8;
 	mcu_size_y = comp_mcu_y[0] * 8;
-
-	if (vc_half) {
-		if (mcu_height*16 > field_height) {
-			mcu_height	= (field_height + 15)/16;
-			clip_row = field_height >> 4;
-			clip_lines = (field_height>>1) & 7;
-		}
-	} else {
-		if (mcu_height*8 > field_height) {
-			mcu_height	= (field_height + 7)/8;
-			clip_row = field_height >> 3;
-			clip_lines = field_height & 7;
-		}
-	}
 
 	return psrc + 8 + 3*3;
 }
@@ -631,6 +685,8 @@ byte *MJPEGDecoder::decodeScan(byte *ptr, bool odd_field) {
 
 		mb = comp_start[j];
 
+		// Add the macroblocks *vertically* -- this makes 4:2:0 considerably easier.
+
 		for(j=0; j<comp_mcu_x[i]*comp_mcu_y[i]; j++) {
 			blocks[mb].huff_dc	= huff_dc[ptr[4+2*i]>>4];
 			blocks[mb].huff_ac	= huff_ac[ptr[4+2*i]&15];
@@ -644,24 +700,94 @@ byte *MJPEGDecoder::decodeScan(byte *ptr, bool odd_field) {
 //		comp_last_dc[i] = 128*8;
 	}
 
+	static const char translator_444_422[] = { 0,1,2,3 };
+	static const char translator_420[] = { 0,2,1,3,4,5 };
+
+	const char *pTranslator = (mChromaMode == kYCrCb420) ? translator_420 : translator_444_422;
+
 	for(i=0; i<mcu_length; i++) {
 		blocks[i+mcu_length] = blocks[i];
 		blocks[i+mcu_length*2] = blocks[i];
 		blocks[i+mcu_length*3] = blocks[i];
-		dct_coeff_ptrs[i] = &dct_coeff[i][0];
-		dct_coeff_ptrs[i+mcu_length] = &dct_coeff[i+mcu_length][0];
-		dct_coeff_ptrs[i+mcu_length*2] = &dct_coeff[i+mcu_length*2][0];
-		dct_coeff_ptrs[i+mcu_length*3] = &dct_coeff[i+mcu_length*3][0];
+
+		int j  = pTranslator[i];
+
+		dct_coeff_ptrs[i] = &dct_coeff[j][0];
+		dct_coeff_ptrs[i+mcu_length] = &dct_coeff[j+mcu_length][0];
+		dct_coeff_ptrs[i+mcu_length*2] = &dct_coeff[j+mcu_length*2][0];
+		dct_coeff_ptrs[i+mcu_length*3] = &dct_coeff[j+mcu_length*3][0];
 	}
 
 	comp_last_dc[0] = 128*8;
-	comp_last_dc[1] = 0;
-	comp_last_dc[2] = 0;
+
+	if (mDecodeMode == kDecodeUYVY || mDecodeMode == kDecodeYUY2) {
+		comp_last_dc[1] = 128*8;
+		comp_last_dc[2] = 128*8;
+	} else {
+		comp_last_dc[1] = 0;
+		comp_last_dc[2] = 0;
+	}
 
 	ptr += 12;
 
 	return decodeMCUs(ptr, odd_field);
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+namespace nsVDMJPEG {
+	static const __int64 Cr_coeff = 0x0000005AFFD20000i64;
+	static const __int64 Cb_coeff = 0x00000000FFEA0071i64;
+
+	static const __int64 C_bias = 0x0000008000000080i64;
+	static const __int64 C_bias2 = 0x0080008000800080i64;
+
+	static const __int64 Cr_coeff_R = 0x005A005A005A005Ai64;
+	static const __int64 Cr_coeff_G = 0xFFD2FFD2FFD2FFD2i64;
+
+	static const __int64 CrCb_coeff_G = 0xFFD2FFEAFFD2FFEAi64;
+
+	static const __int64 Cb_coeff_B = 0x0071007100710071i64;
+	static const __int64 Cb_coeff_G = 0xFFEAFFEAFFEAFFEAi64;
+	static const __int64 rb_mask	= 0x7C1F7C1F7C1F7C1Fi64;
+	static const __int64 mask5		= 0xF8F8F8F8F8F8F8F8i64;
+
+	static const __int64 G_const_1	= 0x7C007C007C007C00i64;
+	static const __int64 G_const_2	= 0x7C007C007C007C00i64;
+	static const __int64 G_const_3	= 0x03e003e003e003e0i64;
+	static const __int64 G_const_4	= 0x7F007F007F007F00i64;
+
+	static const __int64 x00FFw			= 0x00FF00FF00FF00FFi64;
+	static const __int64 U_coeff_twice	= 0xFFEA0071FFEA0071i64;
+	static const __int64 V_coeff_twice	= 0x005AFFD2005AFFD2i64;
+	static const __int64 x00000000FFFFFFFF = 0x00000000FFFFFFFFi64;
+	static const __int64 x0000FFFFFFFF0000 = 0x0000FFFFFFFF0000i64;
+};
+
+using namespace nsVDMJPEG;
+
+#define DECLARE_MJPEG_COLOR_CONVERTER(x) static void __declspec(naked) __stdcall MJPEGDecode##x##_MMX(void *dst, const short *dct_coeffs, ptrdiff_t dstpitch, int rows)
+#define MOVNTQ movq
+#define DECLARE_MJPEG_CONSTANTS
+#define	MJPEG_MODE_MMX
+
+#include "mjpeg_color.inl"
+
+#undef	MJPEG_MODE_MMX
+#undef DECLARE_MJPEG_CONSTANTS
+#undef DECLARE_MJPEG_COLOR_CONVERTER
+#undef MOVNTQ
+#define DECLARE_MJPEG_COLOR_CONVERTER(x) static void __declspec(naked) __stdcall MJPEGDecode##x##_ISSE(void *dst, const short *dct_coeffs, ptrdiff_t dstpitch, int rows)
+#define MOVNTQ movntq
+#define MJPEG_MODE_ISSE
+
+#include "mjpeg_color.inl"
+
+#undef MJPEG_MODE_ISSE
+#undef DECLARE_MJPEG_COLOR_CONVERTER
+#undef MOVNTQ
+
+///////////////////////////////////////////////////////////////////////////
 
 // 320x240 -> 20x30 -> 600 MCUs
 // 304x228 -> 19x29 -> 551 MCUs 
@@ -670,56 +796,104 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 	int mcu;
 	dword bitbuf = 0;
 	int bitcnt = 24;	// 24 - bits in buffer
-	dword *pixptr = (dword *)pixdst;
+	char *pixptr = (char *)pixdst;
 	int mb_x = 0, mb_y = 0;
-	long modulo0;
-	long modulo1;
-	long modulo2;
-	long modulo3;
-	long lines = 8;
+#ifdef PROFILE
 	__int64 mb_cycles = 0;
 	__int64 dct_cycles = 0;
 	__int64 cvt_cycles = 0;
+#endif
 
-	pixptr += mcu_width*(decode16 ? 8 : 16) * (height - (vc_half?2:1));
+	ptrdiff_t dst_pitch = width * mBPP;
+	ptrdiff_t dst_pitch_row = dst_pitch * (mcu_size_y - 1);
+	int lines = mcu_size_y;
+
+	if (mDecodeMode != kDecodeUYVY && mDecodeMode != kDecodeYUY2) {
+		pixptr += dst_pitch * (height-1);
+		dst_pitch_row += dst_pitch*2;
+
+		dst_pitch = -dst_pitch;
+		dst_pitch_row = -dst_pitch_row;
+	}
 
 	if (interlaced) {
-		if (vc_half)
-			pixptr -= mcu_width*(decode16 ? 8 : 16) *(odd_field?1:2);
-		else if (!odd_field)
-			pixptr -= mcu_width*(decode16 ? 8 : 16);
+		if (odd_field)
+			pixptr += dst_pitch;
+
+		dst_pitch_row += dst_pitch * mcu_size_y;
+
+		dst_pitch *= 2;
 	}
 
-	if (vc_half) {
-		long bpr = mcu_width * 4 * (decode16 ? 8 : 16);
+	// This is going to get ugly.
 
-		if (interlaced) {
-			modulo0 = 4*bpr + (decode16 ? 32 : 64);
-			modulo1 = 2*bpr;
-		} else {
-			modulo0 = 2*bpr + (decode16 ? 32 : 64);
-			modulo1 = bpr;
+	typedef void (__stdcall *tColorConverter)(void *dst, const short *dct_coeffs, ptrdiff_t dstpitch, int rows);
+	static const tColorConverter sDecodeTable[2][kChromaModeCount][kDecodeModeCount]={
+		{
+			{
+				MJPEGDecode444_RGB15_MMX,
+				MJPEGDecode444_RGB32_MMX,
+				MJPEGDecode444_UYVY_MMX,
+				MJPEGDecode444_YUY2_MMX,
+			},
+			{
+				MJPEGDecode422_RGB15_MMX,
+				MJPEGDecode422_RGB32_MMX,
+				MJPEGDecode422_UYVY_MMX,
+				MJPEGDecode422_YUY2_MMX,
+			},
+			{
+				MJPEGDecode420_RGB15_MMX,
+				MJPEGDecode420_RGB32_MMX,
+				MJPEGDecode420_UYVY_MMX,
+				MJPEGDecode420_YUY2_MMX,
+			},
+		},
+		{
+			{
+				MJPEGDecode444_RGB15_ISSE,
+				MJPEGDecode444_RGB32_ISSE,
+				MJPEGDecode444_UYVY_ISSE,
+				MJPEGDecode444_YUY2_ISSE,
+			},
+			{
+				MJPEGDecode422_RGB15_ISSE,
+				MJPEGDecode422_RGB32_ISSE,
+				MJPEGDecode422_UYVY_ISSE,
+				MJPEGDecode422_YUY2_ISSE,
+			},
+			{
+				MJPEGDecode420_RGB15_ISSE,
+				MJPEGDecode420_RGB32_ISSE,
+				MJPEGDecode420_UYVY_ISSE,
+				MJPEGDecode420_YUY2_ISSE,
+			},
 		}
+	};
 
-		modulo2 = modulo3 = 4;
-	} else {
-		modulo0 = (decode16 ? 1 : 2) * (mcu_width*(interlaced ? 64 : 32) + 16);
-		modulo1 = (decode16 ? 1 : 2) * (mcu_width*(interlaced ? 512 : 256) + 16);
-		modulo2 = 128 - 8;
-		modulo3 = 0;
-	}
+	tColorConverter		pColorConverter = sDecodeTable[ISSE_enabled][mChromaMode][mDecodeMode];
 
+	// Decode!!!
 
 	for(mcu=0; mcu<mcu_length*4; mcu++)
 		memset(dct_coeff[mcu], 0, 128);
 
-	for(mcu=0; mcu<mcu_count; mcu+=4) {
-//	for(mcu=0; mcu<200; mcu++) {
+	int nRestartCounter = restart_interval;
+	int nRestartOffset = 0;
 
-		int mcus = 4;
+	if (!nRestartCounter)
+		nRestartCounter = 0x7FFFFFFF;
 
-		if (mcu >= mcu_count-4)
-			mcus = mcu_count - mcu;
+	mcu = 0;
+	try {
+		while(mcu<mcu_count) {
+			int mcus = 4;
+
+			if (mcus > nRestartCounter)
+				mcus = nRestartCounter;
+
+			if (mcu >= mcu_count-4)
+				mcus = mcu_count - mcu;
 
 #ifdef PROFILE
 		__asm {
@@ -729,7 +903,37 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 		}
 #endif
 
-		asm_mb_decode(bitbuf, bitcnt, ptr, mcu_length*mcus, blocks, dct_coeff_ptrs);
+			asm_mb_decode(bitbuf, bitcnt, ptr, mcu_length*mcus, blocks, dct_coeff_ptrs);
+
+			mcu += mcus;
+
+			nRestartCounter -= mcus;
+			if (!nRestartCounter && mcu < mcu_count) {
+				unsigned tag = 0xd0ff + nRestartOffset;
+
+				for(int i=0; i<8; ++i) {
+					if (*(unsigned short *)ptr  == tag)
+						break;
+
+					--ptr;
+				}
+
+				if (i >= 8)
+					return ptr;
+
+				ptr += 2;
+
+				bitcnt = 24;
+				bitbuf = 0;
+				nRestartCounter = restart_interval;
+				nRestartOffset = (nRestartOffset + 0x0100) & 0xd7ff;
+
+				// Reset all DC coefficients
+
+				comp_last_dc[0] = 128*8;
+				comp_last_dc[1] = 0;
+				comp_last_dc[2] = 0;
+			}
 
 #ifdef PROFILE
 		__asm {
@@ -741,8 +945,8 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 		}
 #endif
 
-		for(int i=0; i<mcu_length*mcus; i++)
-			IDCT_mmx(dct_coeff[i], dct_coeff[i], 16, 2, blocks[i].ac_last);
+			for(int i=0; i<mcu_length*mcus; i++)
+				IDCT_isse(dct_coeff[i], dct_coeff[i], 16, 2, blocks[i].ac_last);
 
 #ifdef PROFILE
 		__asm {
@@ -753,545 +957,25 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 			sbb dword ptr cvt_cycles+4,edx
 		}
 #endif
-		for(i=0; i<mcus; i++) {
-			short *dct_coeffs = (short *)&dct_coeff[mcu_length * i];
+			for(i=0; i<mcus; i++) {
+				short *dct_coeffs = (short *)&dct_coeff[mcu_length * i];
 
-			static const __int64 Cr_coeff = 0x0000005AFFD20000i64;
-			static const __int64 Cb_coeff = 0x00000000FFEA0071i64;
+				pColorConverter(pixptr, dct_coeffs, dst_pitch, lines);
 
-			static const __int64 C_bias = 0x0000008000000080i64;
-			static const __int64 C_bias2 = 0x0080008000800080i64;
+				if (lines != mcu_size_y)
+					memset(dct_coeffs, 0, mcu_length * 64 * sizeof(short));
 
-			static const __int64 Cr_coeff_R = 0x005A005A005A005Ai64;
-			static const __int64 Cr_coeff_G = 0xFFD2FFD2FFD2FFD2i64;
+				pixptr += mcu_size_x * mBPP;
 
-			static const __int64 CrCb_coeff_G = 0xFFD2FFEAFFD2FFEAi64;
+				if (++mb_x >= mcu_width) {
+					mb_x = 0;
 
-			static const __int64 Cb_coeff_B = 0x0071007100710071i64;
-			static const __int64 Cb_coeff_G = 0xFFEAFFEAFFEAFFEAi64;
-			static const __int64 mask5		= 0xF8F8F8F8F8F8F8F8i64;
+					pixptr += dst_pitch_row;
 
-			static const __int64 G_const_1	= 0x7C007C007C007C00i64;
-			static const __int64 G_const_2	= 0x7C007C007C007C00i64;
-			static const __int64 G_const_3	= 0x03e003e003e003e0i64;
-
-			if (vc_half) {
-				if (!decode16)
-				__asm {
-					push		ebp
-					push		edi
-					push		esi
-
-					mov			eax,dct_coeffs
-					mov			edx,dword ptr pixptr
-
-					push		modulo3
-					push		modulo2
-					push		modulo1
-					push		modulo0
-
-					mov			ebx,[esp + 4]
-
-					mov			ecx,eax
-					add			eax,512
-
-					mov			ebp,2
-	zloop420:
-					mov			edi,[esp + 4 + ebp*4]
-					or			edi,edi
-					jz			fastexit32
-	yloop420:
-					mov			esi,4
-	xloop420:
-					movq		mm0,[ecx]		;Y (0A,1A,2A,3A)
-					pxor		mm7,mm7
-					movq		mm1,[ecx+16]	;Y (0B,1B,2B,3B)
-					movd		mm2,[eax+128]	;Cr
-					movd		mm3,[eax]		;Cb
-					movq		[ecx],mm7
-					movq		[ecx+16],mm7
-					movd		[eax],mm7
-					movd		[eax+128],mm7
-					psllw		mm0,6
-					psllw		mm1,6
-					punpcklwd	mm2,mm2
-					punpcklwd	mm3,mm3
-					movq		mm4,mm2
-					movq		mm5,mm3
-					pmullw		mm4,Cr_coeff_G
-					pmullw		mm5,Cb_coeff_G
-					pmullw		mm2,Cr_coeff_R
-					pmullw		mm3,Cb_coeff_B
-					paddw		mm4,mm5
-
-					movq		mm5,mm0
-					movq		mm6,mm0
-					paddw		mm0,mm2
-					paddw		mm5,mm4
-					paddw		mm6,mm3
-					psraw		mm0,6
-					psraw		mm5,6
-					psraw		mm6,6
-					packuswb	mm0,mm0
-					packuswb	mm5,mm5
-					packuswb	mm6,mm6
-					punpcklbw	mm6,mm0
-					punpcklbw	mm5,mm5
-					movq		mm0,mm6
-					punpcklbw	mm0,mm5
-					punpckhbw	mm6,mm5
-					movq		[edx+ebx],mm0
-					movq		[edx+ebx+8],mm6
-
-					movq		mm5,mm1
-					movq		mm7,mm1
-					paddw		mm1,mm2
-					paddw		mm5,mm4
-					paddw		mm7,mm3
-					psraw		mm1,6
-					psraw		mm5,6
-					psraw		mm7,6
-					packuswb	mm1,mm1
-					packuswb	mm5,mm5
-					packuswb	mm7,mm7
-					punpcklbw	mm7,mm1
-					punpcklbw	mm5,mm5
-					movq		mm1,mm7
-					punpcklbw	mm1,mm5
-					punpckhbw	mm7,mm5
-					movq		[edx],mm1
-					movq		[edx+8],mm7
-
-
-					add			eax,4
-					add			ecx,8
-					add			edx,16
-
-					test		esi,1
-					jz			noblockskip32
-
-					add			ecx,7*16
-noblockskip32:
-
-					dec			esi
-					jne			xloop420
-
-					sub			ecx,14*16
-					sub			edx,dword ptr [esp + 0]		/* 2*bpr + 64 */
-
-					dec			edi
-					jne			yloop420
-
-					add			ecx,8*16
-
-					dec			ebp
-					jne			zloop420
-fastexit32:
-					add			esp,16
-
-					pop			esi
-					pop			edi
-					pop			ebp
-				}
-				else
-				__asm {
-					push		ebp
-					push		edi
-					push		esi
-
-					mov			eax,dct_coeffs
-					mov			edx,dword ptr pixptr
-
-					push		modulo3
-					push		modulo2
-					push		modulo1
-					push		modulo0
-
-					mov			ebx,[esp + 4]
-
-					mov			ecx,eax
-					add			eax,512
-
-					mov			ebp,2
-	zloop2420:
-					mov			edi,[esp + 4 + ebp*4]
-					or			edi,edi
-					jz			fastexit16
-	yloop2420:
-					mov			esi,4
-	xloop2420:
-					movq		mm0,[ecx]		;Y (0A,1A,2A,3A)
-					pxor		mm7,mm7
-					movq		mm1,[ecx+16]	;Y (0B,1B,2B,3B)
-					movd		mm2,[eax+128]	;Cr
-					movd		mm3,[eax]		;Cb
-					movq		[ecx],mm7
-					movq		[ecx+16],mm7
-					movd		[eax],mm7
-					movd		[eax+128],mm7
-					psllw		mm0,6
-					psllw		mm1,6
-					punpcklwd	mm2,mm2
-					punpcklwd	mm3,mm3
-					movq		mm4,mm2
-					movq		mm5,mm3
-					pmullw		mm4,Cr_coeff_G
-					pmullw		mm5,Cb_coeff_G
-					pmullw		mm2,Cr_coeff_R
-					pmullw		mm3,Cb_coeff_B
-					paddw		mm4,mm5
-
-					pxor		mm7,mm7
-					movq		mm5,mm0
-					movq		mm6,mm0
-					paddw		mm0,mm2
-					paddw		mm5,mm4
-					paddw		mm6,mm3
-					psraw		mm0,6
-					psraw		mm5,6
-					psraw		mm6,6
-					packuswb	mm0,mm0
-					packuswb	mm6,mm6
-					packuswb	mm5,mm5
-					pand		mm0,mask5
-					pand		mm6,mask5
-					pand		mm5,mask5
-					psrlq		mm0,1
-					psrlq		mm6,3
-					punpcklbw	mm6,mm0
-					punpcklbw	mm5,mm7
-					psllq		mm5,2
-					por			mm6,mm5
-					movq		[edx+ebx],mm6
-
-					pxor		mm0,mm0
-					movq		mm5,mm1
-					movq		mm7,mm1
-					paddw		mm1,mm2
-					paddw		mm5,mm4
-					paddw		mm7,mm3
-					psraw		mm1,6
-					psraw		mm5,6
-					psraw		mm7,6
-					packuswb	mm1,mm1
-					packuswb	mm5,mm5
-					packuswb	mm7,mm7
-					pand		mm1,mask5
-					pand		mm7,mask5
-					pand		mm5,mask5
-					psrlq		mm1,1
-					psrlq		mm7,3
-					punpcklbw	mm7,mm1
-					punpcklbw	mm5,mm0
-					psllq		mm5,2
-					por			mm7,mm5
-					movq		[edx],mm7
-
-
-					add			eax,4
-					add			ecx,8
-					add			edx,8
-
-					test		esi,1
-					jz			noblockskip16
-
-					add			ecx,7*16
-noblockskip16:
-
-					dec			esi
-					jne			xloop2420
-
-					sub			ecx,14*16
-					sub			edx,dword ptr [esp + 0]		/* 2*bpr + 64 */
-
-					dec			edi
-					jne			yloop2420
-
-					add			ecx,8*16
-
-					dec			ebp
-					jne			zloop2420
-fastexit16:
-					add			esp,16
-
-					pop			esi
-					pop			edi
-					pop			ebp
-				}
-			} else {
-				if (!decode16)
-				__asm {
-					push		ebp
-					push		edi
-					push		esi
-
-					mov			eax,dct_coeffs
-					mov			edx,dword ptr pixptr
-
-					push		lines
-					push		modulo3
-					push		modulo2
-					push		modulo1
-
-					mov			ebx,modulo0
-
-					mov			ecx,eax
-					add			eax,256
-
-					mov			ebp,2
-	zloop:
-					mov			edi,[esp + 12]
-	yloop:
-					mov			esi,2
-	xloop:
-					movd		mm4,[eax+128]	;Cr (0,1)
-					pxor		mm1,mm1
-
-					movd		mm6,[eax]		;Cb (0,1)
-					punpcklwd	mm4,mm4
-
-					movq		mm0,[ecx]		;Y (0,1,2,3)
-					punpcklwd	mm6,mm6
-
-					movd		[eax],mm1
-					psllw		mm0,6
-
-					movd		[eax+128],mm1
-					movq		mm5,mm4
-
-					movq		[ecx],mm1	
-					movq		mm7,mm6
-					punpckldq	mm4,mm4		;Cr (0,0,0,0)
-
-					pmullw		mm4,Cr_coeff
-					punpckhdq	mm5,mm5		;Cr (1,1,1,1)
-
-					movq		mm2,mm0
-					punpcklwd	mm0,mm0			;Y (0,0,1,1)
-
-					pmullw		mm5,Cr_coeff
-					punpckhwd	mm2,mm2			;Y (2,2,3,3)
-
-					movq		mm1,mm0
-					punpckldq	mm0,mm0			;Y (0,0,0,0)
-
-					movq		mm3,mm2
-					punpckhdq	mm1,mm1			;Y (1,1,1,1)
-
-					punpckldq	mm6,mm6		;Cb (0,0,0,0)
-					add			ecx,8
-
-					pmullw		mm6,Cb_coeff
-					punpckhdq	mm7,mm7		;Cb (1,1,1,1)
-
-					pmullw		mm7,Cb_coeff
-					punpckhdq	mm3,mm3			;Y (3,3,3,3)
-
-					punpckldq	mm2,mm2			;Y (2,2,2,2)
-					add			eax,4
-
-					paddsw		mm4,mm6
-					paddsw		mm0,mm4
-
-					paddsw		mm5,mm7
-					psraw		mm0,6
-
-					paddsw		mm1,mm4
-					paddsw		mm2,mm5
-
-					psraw		mm1,6
-					paddsw		mm3,mm5
-
-					psraw		mm2,6
-					packuswb	mm0,mm1
-
-					psraw		mm3,6
-					packuswb	mm2,mm3
-
-					movq		[edx],mm0
-					add			edx,16
-
-					dec			esi
-					movq		[edx-8],mm2
-					jne			xloop
-
-					sub			edx,ebx						/* 304*4 + 32 */
-					add			eax,8
-
-					dec			edi
-					jne			yloop
-
-					sub			eax,dword ptr [esp + 4]		/* 256-16 */
-					add			edx,dword ptr [esp + 0]		/* 304*4*8 + 32 */
-					add			ecx,dword ptr [esp + 8]
-
-					dec			ebp
-					jne			zloop
-
-					add			esp,16
-
-					pop			esi
-					pop			edi
-					pop			ebp
-				}
-				else
-				__asm {
-					push		ebp
-					push		edi
-					push		esi
-
-					mov			eax,dct_coeffs
-					mov			edx,dword ptr pixptr
-
-					push		lines
-					push		modulo3
-					push		modulo2
-					push		modulo1
-					mov			ebx,modulo0
-
-					mov			ecx,eax
-					add			eax,256
-
-					mov			ebp,2
-	zloop2:
-	//				pushad
-	//				push		ecx
-	//				call		MJPEG_IDCT
-	//				pop			ecx
-	//				popad
-
-					movq		mm6,mask5
-					pxor		mm7,mm7
-	;				movq		mm2,CrCb_coeff_G
-	;				movq		mm1,x4000400040004000
-	;				movq		mm7,Cr_coeff_R
-					mov			edi,[esp + 12]
-	yloop2:
-					mov			esi,2
-	xloop2:
-					movd		mm5,[eax]		;Cb (0,1)
-
-					movd		mm3,[eax+128]	;Cr (0,1)
-					movq		mm4,mm5			;Cb [duplicate]
-
-					movq		mm0,[ecx]		;Y (0,1,2,3)
-					punpcklwd	mm5,mm5			;Cb [subsampling]
-
-					pmullw		mm5,Cb_coeff_B	;Cb [produce blue impacts]
-					punpcklwd	mm4,mm3			;mm4: [Cr1][Cb1][Cr0][Cb0]
-
-					pmaddwd		mm4,CrCb_coeff_G
-					punpcklwd	mm3,mm3			;Cr [subsampling]
-
-					pmullw		mm3,Cr_coeff_R	;Cr [produce red impacts]
-					psllw		mm0,6
-
-					paddw		mm5,mm0			;B (0,1,2,3)
-					add			edx,8
-
-					packssdw	mm4,mm4			;green impacts
-
-					paddw		mm3,mm0			;R (0,1,2,3)
-					psraw		mm5,6
-
-					paddw		mm4,mm0			;G (0,1,2,3)
-					psraw		mm3,6
-
-					movq		[ecx],mm7
-					packuswb	mm3,mm3
-
-					psraw		mm4,4
-					pand		mm3,mm6
-
-					paddsw		mm4,G_const_1
-					packuswb	mm5,mm5
-
-					pand		mm5,mm6
-					psrlq		mm3,1
-
-					psubusw		mm4,G_const_2
-					psrlq		mm5,3
-
-					pand		mm4,G_const_3
-					punpcklbw	mm5,mm3
-
-					por			mm5,mm4
-					add			eax,4
-
-					add			ecx,8
-					dec			esi
-
-					movq		[edx-8],mm5
-					jne			xloop2
-
-					sub			edx,ebx						/* 304*4 + 32 */
-					add			eax,8
-
-					movq		[eax-16],mm7
-					movq		[eax+128-16],mm7
-
-					dec			edi
-					jne			yloop2
-
-					sub			eax,dword ptr [esp + 4]		/* 256-16 */
-					add			edx,dword ptr [esp + 0]		/* 304*4*8 + 32 */
-					add			ecx,dword ptr [esp + 8]
-
-					dec			ebp
-					jne			zloop2
-
-					add			esp,16
-
-					pop			esi
-					pop			edi
-					pop			ebp
+					if (++mb_y == clip_row)
+						lines = clip_lines;
 				}
 			}
-
-			if (lines < 8)
-				memset(dct_coeffs, 0, mcu_length * 64 * sizeof(short));
-
-			pixptr += decode16 ? 8 : 16;
-			if (++mb_x >= mcu_width) {
-				long bpr = mcu_width * (decode16 ? 8 : 16);
-				mb_x = 0;
-
-				if (vc_half) {
-					if (interlaced)
-						pixptr -= bpr * (4*lines+1);
-					else
-						pixptr -= bpr * (2*lines+1);
-				} else {
-					if (interlaced)
-						pixptr -= bpr * (2*lines+1);
-					else
-						pixptr -= bpr * (lines+1);
-				}
-
-				if (++mb_y == clip_row) {
-					int cl = clip_lines;
-
-					if (!vc_half) {
-						if (decode16)
-							modulo1 = mcu_width*16*2*cl + 16;
-						else
-							modulo1 = mcu_width*16*4*cl + 32;
-						modulo2 = 16*cl - 16;
-						modulo3 = 32*(8-cl);
-					} else {
-						modulo3 = cl;
-						modulo2 = cl-4;
-
-						if (modulo3>4)
-							modulo3=4;
-
-						if (modulo2<0)
-							modulo2=0;
-					}
-					lines = cl;
-				}
-			}
-		}
 #ifdef PROFILE
 		__asm {
 			rdtsc
@@ -1299,7 +983,17 @@ fastexit16:
 			adc dword ptr cvt_cycles+4,edx
 		}
 #endif
+		}
+#if 1
+	} catch(...) {
+		// This ain't good, folks
+
+		__asm emms
+		__asm sfence
+
+		throw MyError("MJPEG decoder: Access violation caught.  Source may be corrupted.");
 	}
+#endif
 
 #ifdef PROFILE
 	{
@@ -1340,6 +1034,9 @@ fastexit16:
 #endif
 
 	__asm emms
+
+	if (ISSE_enabled)
+		__asm sfence
 
 //	return ptr - ((31-bitcnt)>>3);
 	return ptr - 8;

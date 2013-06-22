@@ -68,7 +68,8 @@ enum {
 	FILETYPE_ASF			= 3,
 	FILETYPE_STRIPEDAVI		= 4,
 	FILETYPE_AVICOMPAT		= 5,
-	FILETYPE_AUTODETECT2	= 6,
+	FILETYPE_IMAGE			= 6,
+	FILETYPE_AUTODETECT2	= 7,
 };
 
 void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet=false, bool fAutoscan=false, const char *pInputOpts=0);
@@ -87,5 +88,8 @@ void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long
 void SetSelectionStart(long ms);
 void SetSelectionEnd(long ms);
 void RemakePositionSlider();
+void RecalcPositionTimeConstant();
+void EnsureSubset();
+void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource);
 
 #endif

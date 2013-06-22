@@ -4,7 +4,7 @@
 #include <mmsystem.h>
 #include <vfw.h>
 
-#include <msviddrv.h>
+//#include <msviddrv.h>
 
 #include "IVideoDriver.h"
 #include "IVideoCompressor.h"

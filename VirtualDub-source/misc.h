@@ -38,6 +38,10 @@ __int64 inline int64divroundup(__int64 d1, __int64 d2) {
 }
 
 bool isEqualFOURCC(FOURCC fccA, FOURCC fccB);
+bool isValidFOURCC(FOURCC fcc);
 FOURCC toupperFOURCC(FOURCC fcc);
+
+bool IsMMXState();
+void ClearMMXState();
 
 #endif

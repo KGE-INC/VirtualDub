@@ -256,6 +256,7 @@ static const char g_szCompression			[]="Compression";
 static const char g_szCompressorData		[]="Compressor Data";
 static const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szHideInfoPanel			[]="Hide InfoPanel";
+static const char g_szMultisegment			[]="Multisegment";
 
 static const char g_szAdjustVideoTiming		[]="AdjustVideoTiming";
 
@@ -381,6 +382,26 @@ static bool CaptureMoveWindow(HWND);
 //	misc
 //
 ///////////////////////////////////////////////////////////////////////////
+
+// SetThreadExecutionState() is only available under Windows 98+/2000+.
+
+EXECUTION_STATE MySetThreadExecutionState(EXECUTION_STATE esFlags) {
+	HMODULE hmod = LoadLibrary("kernel32.dll");
+	EXECUTION_STATE es = 0;
+
+	if (hmod) {
+		typedef EXECUTION_STATE (WINAPI *tSetThreadExecutionState)(EXECUTION_STATE);
+
+		tSetThreadExecutionState pFunc = (tSetThreadExecutionState)GetProcAddress(hmod, "SetThreadExecutionState");
+
+		if (pFunc)
+			es = pFunc(esFlags);
+
+		FreeLibrary(hmod);
+	}
+
+	return es;
+}
 
 // time to abuse C++
 
@@ -581,7 +602,7 @@ static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable) {
 
 				capSetCallbackOnFrame(hWndCapture, (LPVOID)CaptureHistoFrameCallback);
 
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				guiSetStatus("Cannot initialize histogram: %s", 0, e.gets());
 			}
 		}
@@ -804,7 +825,7 @@ static void CaptureShowParms(HWND hWnd) {
 
 	SendMessage(hWndStatus, SB_SETTEXT, 1 | SBT_POPOUT, (LPARAM)buf);
 
-	wsprintf(buf, "%ldK/s", (bandwidth+1023)>>10);
+	wsprintf(buf, "%ldKB/s", (bandwidth+1023)>>10);
 	SendMessage(hWndStatus, SB_SETTEXT, 3, (LPARAM)buf);
 }
 
@@ -925,7 +946,7 @@ static void CaptureSetStripingSystem(HWND hwnd, HWND hwndCapture) {
 				throw MyMemoryError();
 
 			CaptureShowFile(hwnd, hwndCapture, false);
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(hwnd, g_szError);
 		}
 	}
@@ -1225,7 +1246,9 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 
 	case ID_CAPTURE_CAPTUREVIDEO:
 		if (g_capStripeSystem) {
-			MessageBox(hWnd, "AVICap cannot capture to a striped AVI system.", g_szError, MB_OK);
+			MessageBox(hWnd, "Cannot capture to a striped AVI system in compatibility mode.", g_szError, MB_OK);
+		} else if (g_fEnableSpill) {
+			MessageBox(hWnd, "Cannot capture to multiple segments in compatibility mode.", g_szError, MB_OK);
 		} else {
 			CapturePriorityWhacker cpw(hWndCapture);
 
@@ -1425,7 +1448,7 @@ LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr) {
 
 			ReleaseDC(hwndParent, hdc);
 		}
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		guiSetStatus("Histogram: %s", 0, e.gets());
 	}
 
@@ -1774,7 +1797,7 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 				lVideoRate = (pcd->total_video_size*1000 + time_diff/2) / time_diff;
 			else
 				lVideoRate = 0;
-			sprintf(buf, "%ldK/s", (lVideoRate+1023)/1024);
+			sprintf(buf, "%ldKB/s", (lVideoRate+1023)/1024);
 			SetDlgItemText(hdlg, IDC_VIDEO_DATARATE, buf);
 
 			if (pcd->total_video_size && pcd->total_cap>=2) {
@@ -1853,7 +1876,7 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 				}
 
 				lAudioRate = (pcd->total_audio_size*1000 + pcd->lCurrentMS/2) / pcd->lAudioLastMS;
-				sprintf(buf,"%ldK/s", (lAudioRate+1023)/1024);
+				sprintf(buf,"%ldKB/s", (lAudioRate+1023)/1024);
 				SetDlgItemText(hdlg, IDC_AUDIO_DATARATE, buf);
 
 				sprintf(buf,"%+ld ms", pcd->lVideoAdjust);
@@ -1997,6 +2020,8 @@ void Capture(HWND hWnd) {
 
 	fCodecInstalled = !!ICInstall(ICTYPE_VIDEO, 'BUDV', (LPARAM)VCMDriverProc, NULL, ICINSTALL_FUNCTION);
 
+	MySetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS);
+
 	try {
 		hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 
@@ -2139,16 +2164,21 @@ void Capture(HWND hWnd) {
 		QueryConfigDword(g_szCapture, g_szChunkCount, (DWORD *)&g_diskChunkCount);
 		QueryConfigDword(g_szCapture, g_szDisableBuffering, (DWORD *)&g_diskDisableBuffer);
 
-		// panel, timing?
-
 		{
 			DWORD dw;
+
+			// panel, timing?
 
 			if (QueryConfigDword(g_szCapture, g_szHideInfoPanel, &dw))
 				g_fInfoPanel = !!dw;
 
 			if (QueryConfigDword(g_szCapture, g_szAdjustVideoTiming, &dw))
 				g_fAdjustVideoTimer = !!dw;
+
+			// multisegment?
+
+			if (QueryConfigDword(g_szCapture, g_szMultisegment, &dw))
+				g_fEnableSpill = !!dw;
 		}
 
 		// Spill settings?
@@ -2215,14 +2245,20 @@ void Capture(HWND hWnd) {
 		{
 			DWORD dw;
 
-			if (QueryConfigDword(g_szCapture, g_szHideInfoPanel, &dw) && !!dw != g_fInfoPanel)
+			if (!QueryConfigDword(g_szCapture, g_szHideInfoPanel, &dw) || !!dw != g_fInfoPanel)
 				SetConfigDword(g_szCapture, g_szHideInfoPanel, g_fInfoPanel);
+
+			if (!QueryConfigDword(g_szCapture, g_szMultisegment, &dw) || !!dw != g_fEnableSpill)
+				SetConfigDword(g_szCapture, g_szMultisegment, g_fEnableSpill);
 		}
 
 	} catch(MyUserAbortError e) {
-	} catch(MyError e) {
+		/* nothing */
+	} catch(const MyError& e) {
 		e.post(hWnd, g_szError);
 	}
+
+	MySetThreadExecutionState(ES_CONTINUOUS);
 
 	// close up shop
 
@@ -2301,7 +2337,7 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 					SetDlgItemText(hDlg, IDC_STATIC_DISK_FREE_SPACE, pb+MAX_PATH);
 
 					if (client_free>=0) {
-						wsprintf(pb, "%ld Mb ", client_free>>20);
+						wsprintf(pb, "%ld MB ", client_free>>20);
 						SendMessage(GetDlgItem(hDlg, IDC_DISK_FREE_SPACE), WM_SETTEXT, 0, (LPARAM)pb);
 					}
 
@@ -2718,8 +2754,8 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 
 		// Right now, only YUY2 is supported.
 
-		if (bihInput->biCompression != '2YUY')
-			throw MyError("Luma squishing is only supported for YUY2.");
+		if (bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU')
+			throw MyError("Luma squishing is only supported for YUY2 and UYVY.");
 	}
 
 	if (g_fSwapFields) {
@@ -2727,7 +2763,7 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 		// We can swap all RGB formats and some YUV ones.
 
 		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY' && bihInput->biCompression!='YUYV')
-			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, YUYV, VYUY formats.");
+			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, YUYV, and VYUY formats.");
 	}
 
 	icd->bihFiltered	= icd->bihClipFormat;
@@ -2926,16 +2962,29 @@ xloop:
 
 
 // Squish 0...255 range to 16...235.
+//
+// The bIsUYVY value MUST be either 0 (false) or 1 (true) ....
 
-static void __declspec(naked) lumasquishYUY2_MMX(void *dst, ptrdiff_t pitch, long w2, long h) {
-	static const __int64 scaler = 0x40003b0040003b00i64;
-	static const __int64 bias   = 0x0000000500000005i64;
+static void __declspec(naked) __cdecl lumasquish_MMX(void *dst, ptrdiff_t pitch, long w2, long h, int bIsUYVY) {
+	static const __int64 scalers[2] = {
+		0x40003b0040003b00i64,		// YUY2
+		0x3b0040003b004000i64,		// UYVY
+	};
+	static const __int64 biases[2] = {
+		0x0000000500000005i64,		// YUY2
+		0x0005000000050000i64,		// UYVY
+	};
 
 	__asm {
 		push		ebp
 		push		edi
 		push		esi
 		push		ebx
+
+		mov			eax,[esp+20+16]
+
+		movq		mm6,qword ptr [scalers+eax*8]
+		movq		mm5,qword ptr [biases+eax*8]
 
 		mov			ecx,[esp+12+16]
 		mov			esi,[esp+4+16]
@@ -2944,9 +2993,6 @@ static void __declspec(naked) lumasquishYUY2_MMX(void *dst, ptrdiff_t pitch, lon
 		mov			edx,ecx
 		shl			edx,2
 		sub			eax,edx
-
-		movq		mm6,scaler
-		movq		mm5,bias
 
 yloop:
 		mov			edx,ecx
@@ -3059,7 +3105,7 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		if (!g_iNoiseReduceThreshold)
 			thresh1 = thresh2;
 
-		dodnrMMX((Pixel32 *)lpVHdr->lpData,
+		dodnrMMX((Pixel32 *)pSrc,
 			(Pixel32 *)icd->pNoiseReductionBuffer,
 			icd->rowdwords,
 			icd->bihClipFormat.biHeight,
@@ -3070,7 +3116,7 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 	}
 
 	if (g_fEnableLumaSquish)
-		lumasquishYUY2_MMX(pSrc, bpr, ((icd->bihClipFormat.biWidth+1) & ~1)/2, icd->bihClipFormat.biHeight);
+		lumasquish_MMX(pSrc, bpr, ((icd->bihClipFormat.biWidth+1) & ~1)/2, icd->bihClipFormat.biHeight, icd->bihClipFormat.biCompression == 'YVYU');
 
 	if (g_fSwapFields) {
 		swaprows(pSrc, (char *)pSrc + bpr, bpr*2, bpr*2, bpr/4, icd->bihClipFormat.biHeight/2);
@@ -3239,7 +3285,7 @@ static LRESULT CALLBACK CaptureAVICapVideoCallbackProc(HWND hWnd, LPVIDEOHDR lpV
 
 	try {		// FIXME
 		CaptureDoFiltering(icd, lpVHdr, true, dwFrameSize);
-	} catch(MyError e) {
+	} catch(const MyError&) {
 	}
 
 	if (!icd->total_cap)
@@ -3437,7 +3483,7 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 		capSetCallbackOnCapControl(hWndCapture, NULL);
 		capSetCallbackOnWaveStream(hWndCapture, NULL);
 		capSetCallbackOnVideoStream(hWndCapture, NULL);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hWnd, "Capture error");
 	}
 
@@ -3623,7 +3669,7 @@ static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
 		++icd->iSpillNumber;
 		icd->lDiskThresh2 = pcsd->threshold;
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		delete aoNew;
 		throw;
 	}
@@ -3649,7 +3695,7 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 	HANDLE hActive[2];
 	MSG msg;
 	bool fSwitch = false;
-	DWORD dwTimer = GetTickCount(), dwNewTime;
+	DWORD dwTimer = GetTickCount();
 	bool fTimerActive = true;
 
 	InitThreadData("Capture spill");
@@ -3720,7 +3766,7 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 					dwTimer = GetTickCount();
 					fTimerActive = true;
 				}
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				icd->fatal_error_2 = new MyError(e);
 			}
 
@@ -4004,7 +4050,7 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 
 				icd->last_video_size = dwBytesUsed + 24;
 			}
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			if (!icd->fatal_error)
 				icd->fatal_error = new MyError(e);
 
@@ -4229,7 +4275,7 @@ _RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
 				icd->total_audio_size += lpWHdr->dwBytesRecorded + 24;
 				icd->segment_audio_size += lpWHdr->dwBytesRecorded + 24;
 			}
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			if (!icd->fatal_error)
 				icd->fatal_error = new MyError(e);
 
@@ -4692,7 +4738,7 @@ _RPT0(0,"Capture has stopped.\n");
 
 		_RPT0(0,"Yatta!!!\n");
 
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hWnd, "Capture error");
 	}
 
@@ -4725,7 +4771,7 @@ _RPT0(0,"Capture has stopped.\n");
 
 				icd.aoFilePending->finalize();
 			}
-		} catch(MyError e) {
+		} catch(const MyError&) {
 		}
 
 	if (icd.fatal_error) delete icd.fatal_error;
@@ -5223,13 +5269,13 @@ static BOOL APIENTRY CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 		"128K",
 		"256K",
 		"512K",
-		"1Mb",
-		"2Mb",
-		"4Mb",
-		"6Mb",
-		"8Mb",
-		"12Mb",
-		"16Mb",
+		"1MB",
+		"2MB",
+		"4MB",
+		"6MB",
+		"8MB",
+		"12MB",
+		"16MB",
 	};
 
 	switch(msg) {

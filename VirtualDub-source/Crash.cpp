@@ -197,6 +197,7 @@ static const struct ExceptionLookup {
 	{	EXCEPTION_INT_OVERFLOW,				"Integer Overflow",		},
 	{	EXCEPTION_PRIV_INSTRUCTION,			"Privileged Instruction",	},
 	{	EXCEPTION_ILLEGAL_INSTRUCTION,		"Illegal instruction"	},
+	{	EXCEPTION_INVALID_HANDLE,			"Invalid handle"		},
 	{	0xe06d7363,							"Unhandled Microsoft C++ Exception",	},
 			// hmm... '_msc'... gee, who would have thought?
 	{	NULL	},
@@ -319,7 +320,7 @@ static void ReportCrashData(HWND hwnd, HWND hwndReason, HANDLE hFile, const EXCE
 	for(i=0; i<8; i++) {
 		long *pReg = (long *)(pContext->FloatSave.RegisterArea + 10*((i-tos) & 7));
 
-		Report(hwnd, hFile, "MM%c = %08lx%08lx", i+'0', pReg[0], pReg[1]);
+		Report(hwnd, hFile, "MM%c = %08lx%08lx", i+'0', pReg[1], pReg[0]);
 	}
 
 	// fill out bomb reason

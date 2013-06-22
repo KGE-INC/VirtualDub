@@ -330,6 +330,9 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	if (dwFlagsIn)
 		dwFlags = AVIIF_KEYFRAME;
 
+	if (IsMMXState())
+		throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
 	VDCHECKPOINT;
 
 	res = ICCompress(hic, dwFlagsIn,
@@ -344,6 +347,16 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 			dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
 
 	VDCHECKPOINT;
+
+	if (IsMMXState()) {
+		ClearMMXState();
+
+		throw MyError(
+			"The current video compressor returned to VirtualDub with a non-empty FPU state. "
+			"This is generally caused by MMX code with a missing EMMS instruction. Contact "
+			"the vendor of the codec and check if an updated version is available."
+			);
+	}
 
 	_RPT2(0,"Compressed frame %d: %d bytes\n", lFrameNum, pbiOutput->bmiHeader.biSizeImage);
 

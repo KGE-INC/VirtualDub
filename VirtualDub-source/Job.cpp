@@ -31,6 +31,7 @@
 #include "List.h"
 #include "Error.h"
 #include "InputFile.h"
+#include "vector.h"
 
 #include "gui.h"
 #include "job.h"
@@ -135,6 +136,7 @@ void JobScriptOutput::write(const char *s, long l) {
 			memcpy(jsob->data + jsob->ptr, s, to_copy);
 			jsob->ptr += to_copy;
 			l -= to_copy;
+			s += to_copy;
 		} else {
 			jsob = (JobScriptOutputBlock *)allocmem(16384);
 
@@ -156,7 +158,7 @@ void JobScriptOutput::adds(const char *s) {
 }
 
 void JobScriptOutput::addf(const char *fmt, ...) {
-	char buf[2048];
+	char buf[8192];
 	va_list val;
 	long l;
 
@@ -342,7 +344,7 @@ void VDJob::Run() {
 		RunScriptMemory(script);
 		_CrtCheckMemory();
 		g_fJobMode = false;
-	} catch(MyError err) {
+	} catch(const MyError& err) {
 		iState = ERR;
 		strcpy(szError, err.gets());
 	}
@@ -446,7 +448,6 @@ static void strgetarg(char *buf, long bufsiz, const char *s) {
 void VDJob::ListLoad(char *lpszName) {
 	FILE *f = NULL;
 	char szName[MAX_PATH], szVDPath[MAX_PATH], *lpFilePart;
-	char linebuf[2048];
 	VDJob *job = NULL;
 
 	// Try to create VirtualDub.jobs in the same directory as VirtualDub.
@@ -471,17 +472,30 @@ void VDJob::ListLoad(char *lpszName) {
 
 		ListClear(true);
 
-		while(fgets(linebuf, sizeof linebuf, f)) {
+		Vector<char> linebuffer;
+		int c;
+
+		do {
 			char *s;
 
-			// kill the ending newline
+			// read in the line
 
-			if (s = strchr(linebuf,'\n'))
-				*s = 0;
+			linebuffer.clear();
+
+			for(;;) {
+				c = getc(f);
+
+				if (c == '\n' || c==EOF)
+					break;
+
+				linebuffer.push_back(c);
+			}
+
+			linebuffer.push_back(0);
 
 			// scan for a command
 
-			if (s = findcmdline(linebuf)) {
+			if (s = findcmdline(&linebuffer[0])) {
 				char *t = s;
 
 				while(isalpha(*t) || *t=='_') ++t;
@@ -555,7 +569,7 @@ void VDJob::ListLoad(char *lpszName) {
 			} else if (script_capture) {
 				// kill starting spaces
 
-				s = linebuf;
+				s = &linebuffer[0];
 
 				while(isspace(*s)) ++s;
 
@@ -564,7 +578,7 @@ void VDJob::ListLoad(char *lpszName) {
 				if (*s)
 					jso.adds(s);
 			}
-		}
+		} while(c != EOF);
 
 	} catch(int e) {
 		_RPT0(0,"I/O error on job load\n");
@@ -757,9 +771,9 @@ static BOOL CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARA
 	case WM_INITDIALOG:
 		{
 			VDJob *vdj = (VDJob *)lParam;
-			char buf[128];
+			char buf[1024];
 
-			wsprintf(buf, "VirtualDub - Job \"%s\"", vdj->szName);
+			_snprintf(buf, sizeof buf, "VirtualDub - Job \"%s\"", vdj->szName);
 			SetWindowText(hdlg, buf);
 
 			SetDlgItemText(hdlg, IDC_ERROR, vdj->szError);
@@ -1032,7 +1046,7 @@ void Job_MenuHit(HWND hdlg, WPARAM wParam) {
 				JobProcessDirectory(hdlg);
 				break;
 		}
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hdlg, "Job system error");
 	}
 }
@@ -1376,7 +1390,7 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 
 void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 	char *mem= NULL;
-	char buf[2048];
+	char buf[4096];
 	long l;
 
 	switch(audioInputMode) {
@@ -1466,7 +1480,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 			opt->video.lStartOffsetMS,
 			opt->video.lEndOffsetMS);
 
-	if (g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) {
+	if ((g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) && g_Vcompression.fccHandler) {
 		output.addf("VirtualDub.video.SetCompression(0x%08lx,%d,%d,%d);",
 				g_Vcompression.fccHandler,
 				g_Vcompression.lKey,
@@ -1531,7 +1545,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 		if (pfsn = inputSubset->getFirstFrame())
 			do {
-				output.addf("VirtualDub.subset.AddFrame(%ld,%ld);", pfsn->start, pfsn->len);
+				output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", pfsn->bMask ? "Masked" : "", pfsn->start, pfsn->len);
 			} while(pfsn = inputSubset->getNextFrame(pfsn));
 	} else
 		output.addf("VirtualDub.subset.Delete();");

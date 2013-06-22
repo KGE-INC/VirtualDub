@@ -42,7 +42,11 @@ BOOL AVIAudioOutputBuffer::init(HWAVEOUT hWaveOut) {
 }
 
 BOOL AVIAudioOutputBuffer::post(HWAVEOUT hWaveOut) {
-	return MMSYSERR_NOERROR == waveOutWrite(hWaveOut,&hdr,sizeof(WAVEHDR));
+	MMRESULT res;
+
+	res = waveOutWrite(hWaveOut,&hdr,sizeof(WAVEHDR));
+
+	return MMSYSERR_NOERROR == res;
 }
 
 void AVIAudioOutputBuffer::deinit(HWAVEOUT hWaveOut) {
@@ -61,10 +65,14 @@ AVIAudioOutput::AVIAudioOutput(long bufsize, int maxbufs) {
 	iBuffersActive = 0;
 
 	hEventBuffersFree	= CreateEvent(NULL,FALSE,FALSE,NULL);
+
+	InitializeCriticalSection(&mcsWaveDevice);
 }
 
 AVIAudioOutput::~AVIAudioOutput() {
 	AVIAudioOutputBuffer *nb;
+
+	DeleteCriticalSection(&mcsWaveDevice);
 
 	if (curState == STATE_SILENT) return;
 
@@ -319,7 +327,11 @@ BOOL AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
 
 	aaob->hdr.dwFlags &= ~WHDR_DONE;
 
-	if (!aaob->post(hWaveOut)) {
+	EnterCriticalSection(&mcsWaveDevice);
+	bool bResult = aaob->post(hWaveOut);
+	LeaveCriticalSection(&mcsWaveDevice);
+
+	if (!bResult) {
 		_RPT0(0,"post failed!\n");
 		return FALSE;
 	}
@@ -343,7 +355,11 @@ long AVIAudioOutput::position() {
 
 	mmtime.wType = TIME_SAMPLES;
 
-	if (MMSYSERR_NOERROR != waveOutGetPosition(hWaveOut, &mmtime, sizeof mmtime))
+	EnterCriticalSection(&mcsWaveDevice);
+	MMRESULT res = waveOutGetPosition(hWaveOut, &mmtime, sizeof mmtime);
+	LeaveCriticalSection(&mcsWaveDevice);
+
+	if (MMSYSERR_NOERROR != res)
 		return -1;
 
 	switch(mmtime.wType) {

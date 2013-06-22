@@ -41,7 +41,9 @@ public:
 	virtual HRESULT FormatSize(long lFrame, long *plSize)=0;
 	virtual HRESULT ReadFormat(long lFrame, void *pFormat, long *plSize)=0;
 	virtual bool isStreaming()=0;
-   virtual bool isKeyframeOnly()=0;
+	virtual bool isKeyframeOnly()=0;
+
+	virtual bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev)=0;
 };
 
 class IAVIReadHandler {

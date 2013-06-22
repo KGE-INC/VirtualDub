@@ -20,6 +20,7 @@
 #define _WIN32_WINNT 0x0500
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
 #include <crtdbg.h>
 
@@ -38,12 +39,140 @@
 
 extern HINSTANCE g_hInst;
 
-////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
-extern const char szHexViewerClassName[]="birdyHexEditor";
+extern const char szHexEditorClassName[]="birdyHexEditor";
+extern const char szHexViewerClassName[]="birdyHexViewer";
 static const char g_szHexWarning[]="Hex editor warning";
 
-////////////////////////////
+static const char hexdig[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
+static bool isValidFOURCC(unsigned long l) {
+	return isprint(l>>24) && isprint((l>>16)&0xff) && isprint((l>>8)&0xff) && isprint(l&0xff);
+}
+
+static const struct RIFFFieldInfo {
+	int offset;
+	enum {
+		ksbyte,
+		kubyte,
+		ksword,
+		kuword,
+		kslong,
+		kulong,
+		kfcc
+	} type;
+	const char *name;
+} g_Fields_strh[]={
+	{ 8, RIFFFieldInfo::kfcc, "fccType: stream type"},
+	{12, RIFFFieldInfo::kfcc, "fccType: stream handler"},
+	{16, RIFFFieldInfo::kulong, "dwFlags"},
+	{20, RIFFFieldInfo::kuword, "wPriority"},
+	{22, RIFFFieldInfo::kuword, "wLanguage"},
+	{24, RIFFFieldInfo::kulong, "dwInitialFrames"},
+	{28, RIFFFieldInfo::kulong, "dwScale: sample rate denominator"},
+	{32, RIFFFieldInfo::kulong, "dwRate: sample rate numerator"},
+	{36, RIFFFieldInfo::kulong, "dwStart: time in samples to start first stored sample at"},
+	{40, RIFFFieldInfo::kulong, "dwLength: stream length in samples"},
+	{44, RIFFFieldInfo::kulong, "dwSuggestedBufferSize"},
+	{48, RIFFFieldInfo::kulong, "dwQuality"},
+	{52, RIFFFieldInfo::kulong, "dwSampleSize"},
+	{56, RIFFFieldInfo::kuword, "rcFrame.left"},
+	{58, RIFFFieldInfo::kuword, "rcFrame.top"},
+	{60, RIFFFieldInfo::kuword, "rcFrame.right"},
+	{62, RIFFFieldInfo::kuword, "rcFrame.bottom"},
+	{64}
+}, g_Fields_avih[]={
+	{ 8, RIFFFieldInfo::kulong, "dwMicroSecPerFrame: frame display rate (may be zero)"},
+	{12, RIFFFieldInfo::kulong, "dwMaxBytesPerSec: maximum transfer rate in bytes"},
+	{16, RIFFFieldInfo::kulong, "dwPaddingGranularity: bytes to pad data chunks to"},
+	{20, RIFFFieldInfo::kulong, "dwFlags"},
+	{24, RIFFFieldInfo::kulong, "dwTotalFrames: number of frames in full clip"},
+	{28, RIFFFieldInfo::kulong, "dwInitialFrames"},
+	{32, RIFFFieldInfo::kulong, "dwStreams: number of audio, video, etc. streams"},
+	{36, RIFFFieldInfo::kulong, "dwSuggestedBufferSize"},
+	{40, RIFFFieldInfo::kulong, "dwWidth: width of video frame used for composited clip"},
+	{44, RIFFFieldInfo::kulong, "dwHeight: height of video frame used for composited clip"},
+	{48+16}
+}, g_Fields_strf_audio[]={
+	{ 8, RIFFFieldInfo::kuword, "wFormatTag: ID tag (0x0001 = PCM, 0x0055 = MP3)" },
+	{10, RIFFFieldInfo::kuword, "nChannels: 1=mono, 2=stereo" },
+	{12, RIFFFieldInfo::kulong, "nSamplesPerSecond: sampling rate of uncompressed audio in Hz" },
+	{16, RIFFFieldInfo::kulong, "nAvgBytesPerSec: average bytes/sec of compressed data" },
+	{20, RIFFFieldInfo::kuword, "nBlockAlign: size of a compressed sample in bytes" },
+	{22, RIFFFieldInfo::kuword, "wBitsPerSample: bits/sample, for PCM only" },
+	{24, RIFFFieldInfo::kuword, "cbSize: number of bytes of format-specific data that follow" },
+	{26}
+}, g_Fields_strf_video[]={
+	{ 8, RIFFFieldInfo::kulong, "biSize: size of bitmap structure (BITMAPINFOHEADER: 0x0028)"},
+	{12, RIFFFieldInfo::kulong, "biWidth: width of bitmap in pixels"},
+	{16, RIFFFieldInfo::kulong, "biHeight: height of bitmap in pixels"},
+	{20, RIFFFieldInfo::kuword, "biPlanes: number of bitplanes"},
+	{22, RIFFFieldInfo::kuword, "biBitCount: number of bits per pixel"},
+	{24, RIFFFieldInfo::kfcc,	"biCompression: encoding algorithm (0 = BI_RGB)"},
+	{28, RIFFFieldInfo::kulong, "biSizeImage: size of compressed image"},
+	{32, RIFFFieldInfo::kulong, "biXPelsPerMeter: horizontal resolution in pixels per meter (typically ignored)"},
+	{36, RIFFFieldInfo::kulong, "biYPelsPerMeter: vertical resolution in pixels per meter (typically ignored)"},
+	{40, RIFFFieldInfo::kulong, "biClrUsed: number of palette entries used by bitmap"},
+	{44, RIFFFieldInfo::kulong, "biClrImportant: number of palette entries \"required\" to display bitmap"},
+	{48}
+};
+
+static const struct RIFFChunkInfo {
+	unsigned long id;
+	const char *desc;
+	const RIFFFieldInfo *fields;
+} g_RIFFChunks[]={
+	{ ' IVA', "Audio/video interleave file" },
+	{ 'XIVA', "AVI2 extension block" },
+	{ 'EVAW', "Sound waveform" },
+	0,
+}, g_LISTChunks[]={
+	{ 'lrdh', "AVI file header block" },
+	{ 'lrts', "AVI stream header block" },
+	{ 'lmdo', "AVI2 extended header block" },
+	{ 'ivom', "AVI data block" },
+	0,
+}, g_JustChunks[]={
+	{ 'KNUJ', "padding" },
+	{ 'hiva', "AVI file header", g_Fields_avih },
+	{ 'hrts', "AVI stream header", g_Fields_strh },
+	{ 'frts', "AVI stream format" },
+	{ 'drts', "AVI stream codec data" },
+	{ 'xdni', "AVI2 hierarchical indexing data" },
+	{ 'hlmd', "AVI2 extended header" },
+	{ '1xdi', "AVI legacy index" },
+	{ 'mges', "VirtualDub next segment pointer" },
+	0
+},
+g_Chunk_strf_audio={ 'strf', "AVI stream format (audio)", g_Fields_strf_audio },
+g_Chunk_strf_video={ 'strf', "AVI stream format (video)", g_Fields_strf_video };
+
+
+static const char *LookupRIFFChunk(const RIFFChunkInfo *tbl, unsigned long ckid) {
+	while(tbl->id) {
+		if (tbl->id == ckid)
+			return tbl->desc;
+		++tbl;
+	}
+
+	return "unknown";
+}
+
+static const RIFFChunkInfo *LookupRIFFChunk(unsigned long ckid) {
+	const RIFFChunkInfo *tbl = g_JustChunks;
+
+	while(tbl->id) {
+		if (tbl->id == ckid)
+			return tbl;
+
+		++tbl;
+	}
+
+	return NULL;
+}
+
+//////////////////////////////////////////////////////////////////////////////
 
 class HVModifiedLine : public ListNode2<HVModifiedLine> {
 public:
@@ -61,100 +190,64 @@ HVModifiedLine::HVModifiedLine(__int64 addr)
 	, mod_flags(0)
 {}
 
+//////////////////////////////////////////////////////////////////////////////
 
+class IHexViewerDataSource {
+public:
+	virtual const char *GetRow(__int64 start, int& len, long& modified_mask) throw() = 0;		// 16 bytes
+	virtual void UndoByte(__int64 byte) throw() = 0;
+	virtual void ModifyByte(__int64 byte, char v, char mask) throw() = 0;
+	virtual void NewLocation(__int64 pos) throw() = 0;
+};
 
-////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 class HexViewer {
+public:
+	HexViewer(HWND hwnd) throw();
+	~HexViewer() throw();
+
+	inline __int64 GetPosition() const throw() { return i64Position; }
+
+	void SetDataSource(IHexViewerDataSource *pDS) throw();
+	void SetDetails(__int64 total_size, bool bWrite) throw();
+	void SetHighlight(__int64 start, __int64 end) throw();
+	void SetMetaHighlight(int offset, int len) throw();
+
+	void ScrollVisible(__int64 nVisPos) throw();
+	void MoveToByte(__int64 pos) throw();
+	void ScrollTopTo(long lLine) throw();
+
+	void InvalidateLine(__int64 address) throw();
+	void InvalidateRegion(__int64 start, __int64 end) throw();
+
+	static LRESULT APIENTRY HexViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
 private:
 	const HWND	hwnd;
-	HWND	hwndFind;
-	HWND	hwndTree;
-	HANDLE	hFile;
-	HFONT	hfont;
+
+	HFONT hfont;
+
 	__int64	i64TopOffset;
 	__int64 i64FileSize;
 	__int64	i64Position;
+	__int64	mHighlightStart, mHighlightEnd;
+	__int64	mMetaHiStart, mMetaHiEnd;
+	int		iMouseWheelDelta;
+	int		nCurrentVisLines;
+	int		nCurrentWholeLines;
 	int		nCharWidth;
 	int		nLineHeight;
 	int		nLineLimit;
-	int		nCurrentVisLines;
-	int		nCurrentWholeLines;
-	int		iMouseWheelDelta;
-
-	char	rowcache[16];
-	__int64	i64RowCacheAddr;
-
-	List2<HVModifiedLine>	listMods;
-
-	ModelessDlgNode	mdnFind;
-	char	*pszFindString;
-	int		nFindLength;
-	bool	bFindCaseInsensitive;
-	bool	bFindHex;
-	bool	bFindReverse;
-
 	bool	bCharMode;
 	bool	bOddHex;
-	bool	bEnableWrite;
 	bool	bCaretHidden;
+	bool	bEnableWrite;
 
-public:
-	HexViewer(HWND);
-	~HexViewer();
+	IHexViewerDataSource	*mpDataSource;
 
-	static LRESULT APIENTRY HexViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
-	static BOOL APIENTRY FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
-	static BOOL APIENTRY TreeDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
-
-private:
 	void Init() throw();
-	void Open() throw();
-	void Open(const char *pszFile, bool bRW) throw();
-	void Close() throw();
-	void Commit() throw();
 
-	const char *FillRowCache(__int64 line) throw();
-	void InvalidateLine(__int64 line) throw();
-	void ScrollTopTo(long lLine) throw();
-	void ScrollVisible(__int64 nVisPos) throw();
 	void MoveCaret() throw();
-	void MoveCaretToByte(__int64 pos) throw();
-
-	LRESULT Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_VSCROLL(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_MOUSEWHEEL(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_LBUTTONDOWN(WPARAM wParam, LPARAM lParam) throw();
-	LRESULT Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw();
-
-	static BOOL CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw();
-	bool AskForValues(const char *title, const char *name1, const char *name2, __int64& default1, __int64& default2, int (HexViewer::*verifier)(HWND hdlg, __int64 v1, __int64 v2) throw()) throw();
-	int JumpVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
-	int ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
-	int TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
-
-	void Extract() throw();
-	void Find() throw();
-	void _RIFFScan(struct RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft);
-	void RIFFTree(HWND hwndTV) throw();
-
-	HVModifiedLine *FindModLine(__int64 addr) throw() {
-		HVModifiedLine *pLine, *pLineNext;
-
-		pLine = listMods.AtHead();
-
-		while(pLineNext = pLine->NextFromHead()) {
-			if (addr == pLine->address)
-				return pLine;
-
-			pLine = pLineNext;
-		}
-
-		return NULL;
-	}
 
 	void Hide() throw() {
 		if (!bCaretHidden) {
@@ -169,38 +262,31 @@ private:
 			ShowCaret(hwnd);
 		}
 	}
+
+	LRESULT Handle_WM_MOUSEWHEEL(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_VSCROLL(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_LBUTTONDOWN(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) throw();
 };
 
-////////////////////////////
-
-HexViewer::HexViewer(HWND _hwnd) : hwnd(_hwnd), hwndFind(0), hwndTree(0), pszFindString(NULL), bFindReverse(false), hfont(0) {
-	hFile = INVALID_HANDLE_VALUE;
-
-	i64TopOffset = i64FileSize = 0;
-	iMouseWheelDelta = 0;
-	i64Position = 0;
-	bCharMode = false;
-	bOddHex = false;
-	i64RowCacheAddr = -1;
+HexViewer::HexViewer(HWND _hwnd) throw()
+	: hwnd(_hwnd)
+	, hfont(NULL)
+	, mpDataSource(NULL)
+	, bCaretHidden(true)
+{
+	SetDetails(0, false);
 }
 
-HexViewer::~HexViewer() {
-	delete[] pszFindString;
-	pszFindString = NULL;
-
-	Close();
-
-	if (hwndTree)
-		DestroyWindow(hwndTree);
-
-	if (hwndFind)
-		DestroyWindow(hwndFind);
-
+HexViewer::~HexViewer() throw() {
 	if (hfont)
 		DeleteObject(hfont);
 }
 
-void HexViewer::Init() {
+void HexViewer::Init() throw() {
 	HDC hdc;
 
 	nLineHeight = 16;
@@ -227,129 +313,99 @@ void HexViewer::Init() {
 	}
 }
 
-void HexViewer::Open() {
-	char szName[MAX_PATH];
-	OPENFILENAME ofn;
-
-	szName[0] = 0;
-
-	memset(&ofn, 0, sizeof ofn);
-
-	ofn.lStructSize			= 0x4c;	//sizeof(OPENFILENAME); stupid beta include files
-	ofn.hwndOwner			= hwnd;
-	ofn.lpstrFilter			= "All files (*.*)\0*.*\0";
-	ofn.lpstrCustomFilter	= NULL;
-	ofn.nFilterIndex		= 1;
-	ofn.lpstrFile			= szName;
-	ofn.nMaxFile			= sizeof szName;
-	ofn.lpstrFileTitle		= NULL;
-	ofn.lpstrInitialDir		= NULL;
-	ofn.lpstrTitle			= NULL;
-	ofn.Flags				= OFN_EXPLORER | OFN_ENABLESIZING | OFN_FILEMUSTEXIST | OFN_READONLY;
-	ofn.lpstrDefExt			= NULL;
-
-	if (GetOpenFileName(&ofn))
-		Open(szName, !(ofn.Flags & OFN_READONLY));
+void HexViewer::SetDataSource(IHexViewerDataSource *pDS) throw() {
+	mpDataSource = pDS;
 }
 
-void HexViewer::Open(const char *pszFile, bool bRW) {
-	Close();
-
-	bEnableWrite = bRW;
-
-	if (bRW)
-		hFile = CreateFile(pszFile, GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-	else
-		hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-
-	if (hFile == INVALID_HANDLE_VALUE) {
-		MyWin32Error("Cannot open file: %%s", GetLastError()).post(hwnd, "Hex editor error");
-		return;
-	}
-
-	char buf[512];
-
-	wsprintf(buf, "VirtualDub Hex Editor - [%s]%s", pszFile, bRW ? "" : " (read only)");
-	SetWindowText(hwnd, buf);
-
-	DWORD dwLow, dwHigh;
-	
-	dwLow = GetFileSize(hFile, &dwHigh);
-
-	i64FileSize = dwLow | ((__int64)dwHigh << 32);
-
-	SetScrollRange(hwnd, SB_VERT, 0, (int)(i64FileSize>>4), TRUE);
-
-	i64RowCacheAddr	= -1;
+void HexViewer::SetDetails(__int64 total_size, bool bWrite) throw() {
+	i64FileSize		= total_size;
 	i64TopOffset	= 0;
+	i64Position		= 0;
+	mHighlightStart = mHighlightEnd = 0;
+	mMetaHiStart	= mMetaHiEnd = 0;
 	nLineLimit		= (int)((i64FileSize+15)>>4);
-	InvalidateRect(hwnd, NULL, TRUE);
-	UpdateWindow(hwnd);
-}
+	bCharMode		= false;
+	bOddHex			= false;
+	bEnableWrite	= bWrite;
 
-void HexViewer::Close() {
-	HVModifiedLine *pLine;
-
-	while(pLine = listMods.RemoveHead())
-		delete pLine;
-
-	if (hFile == INVALID_HANDLE_VALUE)
-		return;
-
-	CloseHandle(hFile);
-	hFile = INVALID_HANDLE_VALUE;
+	SetScrollRange(hwnd, SB_VERT, 0, nLineLimit-1, TRUE);
 
 	InvalidateRect(hwnd, NULL, TRUE);
-	UpdateWindow(hwnd);
-
-	if (hwndTree)
-		DestroyWindow(hwndTree);
 }
 
-void HexViewer::Commit() {
-	HVModifiedLine *pLine;
+static int sorter64(const void *p1, const void *p2) {
+	const __int64 n1 = *(const __int64 *)p1;
+	const __int64 n2 = *(const __int64 *)p2;
 
-	while(pLine = listMods.RemoveHead()) {
-		DWORD dwBytes = 16, dwActual;
+	return n1>n2 ? 1 : n1<n2 ? -1 : 0;
+}
 
-		if (((unsigned __int64)pLine->address>>32) == ((unsigned __int64)i64FileSize >> 32))
-			if (!(((long)pLine->address ^ (long)i64FileSize) & 0xfffffff0))
-				dwBytes = (long)i64FileSize - (long)pLine->address;
+void HexViewer::SetHighlight(__int64 start, __int64 end) throw() {
 
-		SetFilePointer(hFile, (LONG)pLine->address, (LONG *)&pLine->address + 1, FILE_BEGIN);
-		WriteFile(hFile, pLine->data, dwBytes, &dwActual, NULL);
-		delete pLine;
+	// This is cheesy as hell, but throw all four addresses into an array,
+	// sort it, and invalidate 0-1 and 2-3.
+
+	__int64 array[4] = { start, end, mHighlightStart, mHighlightEnd };
+
+	qsort(array, 4, sizeof array[0], sorter64);
+
+	InvalidateRegion(array[0], array[1]);
+	InvalidateRegion(array[2], array[3]);
+
+	mHighlightStart = start;
+	mHighlightEnd = end;
+
+	// reset the metahighlight
+
+	SetMetaHighlight(0,0);
+}
+
+void HexViewer::SetMetaHighlight(int offset, int len) throw() {
+	// clip
+
+	if (offset < 0) {
+		len -= offset;
+		offset = 0;
 	}
 
-	InvalidateRect(hwnd, NULL, TRUE);
+	if (mHighlightStart+offset+len > mHighlightEnd)
+		len = (int)(mHighlightEnd - offset);
+
+	__int64 array[4] = { mMetaHiStart, mMetaHiEnd, mHighlightStart+offset, mHighlightStart+offset+len };
+
+	mMetaHiStart = array[2];
+	mMetaHiEnd = array[3];
+
+	qsort(array, 4, sizeof array[0], sorter64);
+
+	InvalidateRegion(array[0], array[1]);
+	InvalidateRegion(array[2], array[3]);
 }
 
-const char *HexViewer::FillRowCache(__int64 i64Offset) throw() {
-	if (i64Offset == i64RowCacheAddr)
-		return rowcache;
+void HexViewer::ScrollVisible(__int64 nVisPos) throw() {
+	__int64 nTopLine	= i64TopOffset>>4;
+	__int64 nCaretLine	= i64Position>>4;
 
-	DWORD dwActual;
-
-	i64RowCacheAddr = i64Offset;
-
-	SetFilePointer(hFile, (LONG)i64Offset, (LONG *)&i64Offset + 1, FILE_BEGIN);
-	ReadFile(hFile, rowcache, 16, &dwActual, NULL);
-
-	return rowcache;
+	if (nCaretLine < nTopLine)
+		ScrollTopTo((long)nCaretLine);
+	else if (nCaretLine >= nTopLine + nCurrentWholeLines)
+		ScrollTopTo((long)(nCaretLine - nCurrentWholeLines + 1));
 }
 
-void HexViewer::InvalidateLine(__int64 line) throw() {
-	int visidx = (int)(line - i64TopOffset) >> 4;
-	RECT r;
+void HexViewer::MoveToByte(__int64 pos) throw() {
+	if (pos < 0) {
+		bOddHex = false;
+		pos = 0;
+	} else if (pos >= i64FileSize) {
+		pos = i64FileSize - 1;
+		bOddHex = !bCharMode;
+	}
+	i64Position = pos;
+	ScrollVisible(pos);
+	MoveCaret();
 
-	if (visidx < 0 || visidx >= nCurrentVisLines)
-		return;
-
-	GetClientRect(hwnd, &r);
-	r.top		= nLineHeight * visidx;
-	r.bottom	= r.top + nLineHeight;
-
-	InvalidateRect(hwnd, &r, TRUE);
+	if (mpDataSource)
+		mpDataSource->NewLocation(pos);
 }
 
 void HexViewer::ScrollTopTo(long lLine) throw() {
@@ -386,15 +442,38 @@ void HexViewer::ScrollTopTo(long lLine) throw() {
 	MoveCaret();
 }
 
-void HexViewer::ScrollVisible(__int64 nVisPos) throw() {
-	__int64 nTopLine	= i64TopOffset>>4;
-	__int64 nCaretLine	= i64Position>>4;
+void HexViewer::InvalidateRegion(__int64 start, __int64 end) throw() {
+	if (start >= end || end <= i64TopOffset || start >= (i64TopOffset + nCurrentVisLines*16))
+		return;
 
-	if (nCaretLine < nTopLine)
-		ScrollTopTo((long)nCaretLine);
-	else if (nCaretLine >= nTopLine + nCurrentWholeLines)
-		ScrollTopTo((long)(nCaretLine - nCurrentWholeLines + 1));
+	long visidx1 = (long)((start - i64TopOffset) >> 4);
+	long visidx2 = (long)((end - i64TopOffset + 15) >> 4);
+
+	RECT r;
+
+	GetClientRect(hwnd, &r);
+
+	r.top		= nLineHeight * visidx1;
+	r.bottom	= nLineHeight * visidx2;
+
+	InvalidateRect(hwnd, &r, FALSE);
 }
+
+void HexViewer::InvalidateLine(__int64 address) throw() {
+	long visidx = (long)((address - i64TopOffset) >> 4);
+	RECT r;
+
+	if (visidx < 0 || visidx >= nCurrentVisLines)
+		return;
+
+	GetClientRect(hwnd, &r);
+	r.top		= nLineHeight * visidx;
+	r.bottom	= r.top + nLineHeight;
+
+	InvalidateRect(hwnd, &r, TRUE);
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 void HexViewer::MoveCaret() throw() {
 	__int64 nTopLine	= i64TopOffset>>4;
@@ -425,229 +504,18 @@ void HexViewer::MoveCaret() throw() {
 	Show();
 }
 
-void HexViewer::MoveCaretToByte(__int64 pos) throw() {
-	if (pos < 0) {
-		bOddHex = false;
-		pos = 0;
-	} else if (pos >= i64FileSize) {
-		pos = i64FileSize - 1;
-		bOddHex = !bCharMode;
-	}
-	i64Position = pos;
-	ScrollVisible(pos);
-	MoveCaret();
-}
+LRESULT HexViewer::Handle_WM_MOUSEWHEEL(WPARAM wParam, LPARAM lParam) throw() {
+	int iNewDelta, nScroll;
+	
+	iNewDelta = iMouseWheelDelta - (signed short)HIWORD(wParam);
+	nScroll = iNewDelta / WHEEL_DELTA;
 
-LRESULT HexViewer::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw() {
-	switch(LOWORD(wParam)) {
-	case ID_FILE_EXIT:
-		CloseWindow(hwnd);
-		break;
-	case ID_FILE_CLOSE:
-		Close();
-		break;
-	case ID_FILE_OPEN:
-		Open();
-		break;
-	case ID_FILE_SAVE:
-		Commit();
-		break;
-	case ID_FILE_REVERT:
-		if (IDOK==MessageBox(hwnd, "Discard all changes?", g_szHexWarning, MB_OKCANCEL)) {
-			HVModifiedLine *pLine;
-
-			while(pLine = listMods.RemoveHead())
-				delete pLine;
-         
-			InvalidateRect(hwnd, NULL, TRUE);
-		}
-		break;
-	case ID_EDIT_JUMP:
-		{
-			__int64 v1 = i64Position, v2;
-
-			if (AskForValues("Jump to address", "Address:", NULL, v1, v2, JumpVerifier))
-				MoveCaretToByte(v1);
-		}
-		break;
-	case ID_EDIT_TRUNCATE:
-		{
-			__int64 v1 = i64Position, v2;
-
-			if (AskForValues("Truncate file", "Address:", NULL, v1, v2, TruncateVerifier)) {
-				if ((0xFFFFFFFF==SetFilePointer(hFile, (LONG)v1, (LONG *)&v1 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-						|| !SetEndOfFile(hFile))
-					MyWin32Error("Cannot truncate file: %%s", GetLastError()).post(hwnd, "Error");
-
-				i64FileSize = v1;
-
-				ScrollTopTo((long)(i64TopOffset>>4));
-			}
-		}
-		break;
-	case ID_EDIT_EXTRACT:
-		Extract();
-		break;
-
-	case ID_EDIT_FINDNEXT:
-		if (hwndFind) {
-			SendMessage(hwndFind, WM_COMMAND, IDC_FIND, 0);
-			break;
-		} else if (pszFindString) {
-			Find();
-			break;
-		}
-	case ID_EDIT_FIND:
-		if (hwndFind)
-			SetForegroundWindow(hwndFind);
-		else
-			CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_HEXVIEWER_FIND), hwnd, FindDlgProc, (LPARAM)this);
-		break;
-
-	case ID_EDIT_RIFFTREE:
-		if (hwndTree)
-			DestroyWindow(hwndTree);
-		else
-			CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_HEXVIEWER_RIFFLIST), hwnd, TreeDlgProc, (LPARAM)this);
-		break;
-
-	case ID_HELP_WHY:
-		MessageBox(hwnd,
-			"I need a quick way for people to send me parts of files that don't load properly "
-			"in VirtualDub, and this is a handy way to do it. Well, that, and it's annoying to "
-			"check 3Gb AVI files if your hex editor tries to load the file into memory.",
-			"Why is there a hex editor in VirtualDub?",
-			MB_OK);
-		break;
-
-	case ID_HELP_KEYS:
-		MessageBox(hwnd,
-			"arrow keys/PgUp/PgDn: navigation\n"
-			"TAB: switch between ASCII/Hex\n"
-			"Backspace: undo",
-			"Keyboard commands",
-			MB_OK);
-		break;
-
+	if (nScroll) {
+		ScrollTopTo((long)(i64TopOffset>>4) + nScroll);
+		iNewDelta -= WHEEL_DELTA * nScroll;
 	}
 
-	return 0;
-}
-
-static const char hexdig[]="0123456789ABCDEF";
-
-LRESULT HexViewer::Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) throw() {
-	HDC hdc;
-	PAINTSTRUCT ps;
-	char buf[128];
-	__int64 i64Offset;
-	int y;
-	RECT r;
-	int i;
-
-	hdc = BeginPaint(hwnd, &ps);
-
-	GetClientRect(hwnd, &r);
-	r.left = nCharWidth*79;
-	FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW+1));
-
-	i = GetClipBox(hdc, &r);
-
-	if (i != ERROR && i != NULLREGION) {
-		y = r.top - r.top % nLineHeight;
-
-		if (hFile != INVALID_HANDLE_VALUE) {
-			HGDIOBJ hfOld;
-
-			i64Offset = i64TopOffset + (y/nLineHeight)*16;
-
-			hfOld = SelectObject(hdc, hfont ? hfont : GetStockObject(ANSI_FIXED_FONT));
-
-			SetTextAlign(hdc, TA_TOP | TA_LEFT);
-			SetBkMode(hdc, OPAQUE);
-
-			while(y < r.bottom+nLineHeight-1 && i64Offset < i64FileSize) {
-				HVModifiedLine *pModLine = FindModLine(i64Offset);
-				const char *data;
-				char *s;
-				int i, len;
-
-				if (pModLine)
-					data = pModLine->data;
-				else {
-					data = FillRowCache(i64Offset);
-				}
-
-				len = 16;
-
-				if ((i64Offset & -16i64) == (i64FileSize & -16i64))
-					len = (int)i64FileSize & 15;
-
-				s = buf + sprintf(buf, "%12I64X: ", i64Offset);
-
-				for(i=0; i<len; i++) {
-					*s++ = hexdig[(unsigned char)data[i] >> 4];
-					*s++ = hexdig[data[i] & 15];
-					*s++ = ' ';
-				}
-
-				while(i<16) {
-					*s++ = ' ';
-					*s++ = ' ';
-					*s++ = ' ';
-					++i;
-				}
-
-				s[-8*3-1] = '-';
-				*s++ = ' ';
-
-				for(i=0; i<len; i++) {
-					if (data[i]>=0x20 && data[i]<0x7f)
-						*s++ = data[i];
-					else
-						*s++ = '.';
-				}
-
-				TextOut(hdc, 0, y, buf, s - buf);
-
-				// Draw modified constants in blue.
-
-				if (pModLine) {
-					COLORREF crOldTextColor = SetTextColor(hdc, 0xFF0000);
-
-					for(i=0; i<16; i++)
-						if (!(pModLine->mod_flags & (1<<i))) {
-							buf[14 + i*3] = ' ';
-							buf[15 + i*3] = ' ';
-							buf[63+i] =  ' ';
-						}
-
-					buf[37] = ' ';
-
-					SetBkMode(hdc, TRANSPARENT);
-
-					TextOut(hdc, nCharWidth*14, y, buf+14, 16*3-1);
-					TextOut(hdc, nCharWidth*63, y, buf+63, 16);
-
-					SetBkMode(hdc, OPAQUE);
-
-					SetTextColor(hdc, crOldTextColor);
-				}
-
-				y += nLineHeight;
-				i64Offset += 16;
-			}
-
-			SelectObject(hdc, hfOld);
-		}
-
-		if (y < r.bottom+nLineHeight-1) {
-			GetClientRect(hwnd, &r);
-			r.top = y;
-			FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW+1));
-		}
-	}
-	EndPaint(hwnd, &ps);
+	iMouseWheelDelta = iNewDelta;
 
 	return 0;
 }
@@ -684,86 +552,98 @@ LRESULT HexViewer::Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) throw() {
 	return 0;
 }
 
-LRESULT HexViewer::Handle_WM_MOUSEWHEEL(WPARAM wParam, LPARAM lParam) {
-	int iNewDelta, nScroll;
-	
-	iNewDelta = iMouseWheelDelta - (signed short)HIWORD(wParam);
-	nScroll = iNewDelta / WHEEL_DELTA;
-
-	if (nScroll) {
-		ScrollTopTo((long)(i64TopOffset>>4) + nScroll);
-		iNewDelta -= WHEEL_DELTA * nScroll;
-	}
-
-	iMouseWheelDelta = iNewDelta;
-
-	return 0;
-}
-
 LRESULT HexViewer::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw() {
 	switch(wParam) {
 	case VK_UP:
-		MoveCaretToByte(i64Position-16);
+		MoveToByte(i64Position-16);
 		break;
 	case VK_DOWN:
-		MoveCaretToByte(i64Position+16);
+		MoveToByte(i64Position+16);
 		break;
 	case VK_LEFT:
 		if (bCharMode || (bOddHex = !bOddHex))
-			MoveCaretToByte(i64Position-1);
+			MoveToByte(i64Position-1);
 		else
-			MoveCaretToByte(i64Position);
+			MoveToByte(i64Position);
 		break;
 	case VK_RIGHT:
 		if (bCharMode || !(bOddHex = !bOddHex))
-			MoveCaretToByte(i64Position+1);
+			MoveToByte(i64Position+1);
 		else
-			MoveCaretToByte(i64Position);
+			MoveToByte(i64Position);
 		break;
 	case VK_PRIOR:
-		MoveCaretToByte(i64Position - (nCurrentVisLines-1)*16);
+		MoveToByte(i64Position - (nCurrentVisLines-1)*16);
 		break;
 	case VK_NEXT:
-		MoveCaretToByte(i64Position + (nCurrentVisLines-1)*16);
+		MoveToByte(i64Position + (nCurrentVisLines-1)*16);
 		break;
 	case VK_HOME:
 		bOddHex = false;
 		if ((signed short)GetKeyState(VK_CONTROL)<0)
-			MoveCaretToByte(0);
+			MoveToByte(0);
 		else
-			MoveCaretToByte(i64Position & -16i64);
+			MoveToByte(i64Position & -16i64);
 		break;
 	case VK_END:
 		bOddHex = true;
 		if ((signed short)GetKeyState(VK_CONTROL)<0)
-			MoveCaretToByte(i64FileSize - 1);
+			MoveToByte(i64FileSize - 1);
 		else
-			MoveCaretToByte(i64Position | 15);
+			MoveToByte(i64Position | 15);
 		break;
 	case VK_TAB:
 		bCharMode = !bCharMode;
 		bOddHex = false;
-		MoveCaretToByte(i64Position);
+		MoveToByte(i64Position);
 		break;
-	case VK_F3:
-		if (hFile != INVALID_HANDLE_VALUE)
-			Handle_WM_COMMAND(ID_EDIT_FINDNEXT, 0);
-		break;
-	case 'F':
-		if (hFile != INVALID_HANDLE_VALUE)
-			if (GetKeyState(VK_CONTROL)<0)
-				Handle_WM_COMMAND(ID_EDIT_FIND, 0);
-		break;
-	case 'G':
-		if (hFile != INVALID_HANDLE_VALUE)
-			if (GetKeyState(VK_CONTROL)<0)
-				Handle_WM_COMMAND(ID_EDIT_JUMP, 0);
-		break;
-	case 'R':
-		if (hFile != INVALID_HANDLE_VALUE)
-			if (GetKeyState(VK_CONTROL)<0)
-				Handle_WM_COMMAND(ID_EDIT_RIFFTREE, 0);
+	default:
+		return SendMessage(GetParent(hwnd), WM_KEYDOWN, wParam, lParam);
 	}
+
+	return 0;
+}
+
+LRESULT HexViewer::Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw() {
+	int key = wParam;
+
+	if (!bEnableWrite || !mpDataSource)
+		return 0;
+
+	if (key == '\b') {
+		if (bCharMode || !bOddHex)
+			MoveToByte(i64Position-1);
+		else
+			MoveToByte(i64Position);
+
+		bOddHex = false;
+
+		mpDataSource->UndoByte(i64Position);
+
+		return 0;
+	}
+
+	if (!isprint(key) || (!bCharMode && !isxdigit(key)))
+		return 0;
+
+	char mask = (char)(bOddHex?0xf0:0x0f);
+
+	if (bCharMode)
+		mpDataSource->ModifyByte(i64Position, key, (char)0);
+	else {
+		int v = toupper(key) - '0';
+		if (v > 9)
+			v -= 7;
+
+		if (bOddHex)
+			mpDataSource->ModifyByte(i64Position, v, (char)0xf0);
+		else
+			mpDataSource->ModifyByte(i64Position, v<<4, 0x0f);
+	}	
+
+	// Advance right one char
+
+	SendMessage(hwnd, WM_KEYDOWN, VK_RIGHT, 0);
 
 	return 0;
 }
@@ -797,52 +677,550 @@ LRESULT HexViewer::Handle_WM_LBUTTONDOWN(WPARAM wParam, LPARAM lParam) throw() {
 	} else
 		return 0;
 
-	MoveCaretToByte(i64TopOffset + y*16 + x);
+	MoveToByte(i64TopOffset + y*16 + x);
 
 	return 0;
 }
 
-LRESULT HexViewer::Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw() {
-	int key = wParam;
+static int clip_to_row(__int64 v) {
+	return v<0 ? 0 : v>16 ? 16 : (int)v;
+}
 
-	if (!bEnableWrite)
-		return 0;
+LRESULT HexViewer::Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) throw() {
+	HDC hdc;
+	PAINTSTRUCT ps;
+	char buf[128];
+	__int64 i64Offset;
+	int y;
+	RECT r;
+	int i;
 
-	if (key == '\b') {
-		HVModifiedLine *pLine;
-		__int64 i64Offset;
+	hdc = BeginPaint(hwnd, &ps);
 
-		if (bCharMode || !bOddHex)
-			MoveCaretToByte(i64Position-1);
-		else
-			MoveCaretToByte(i64Position);
+	GetClientRect(hwnd, &r);
+	r.left = nCharWidth*79;
+	FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW+1));
 
-		bOddHex = false;
+	i = GetClipBox(hdc, &r);
 
-		i64Offset = i64Position & -16i64;
+	if (i != ERROR && i != NULLREGION) {
+		y = r.top - r.top % nLineHeight;
 
-		if (pLine = FindModLine(i64Offset)) {
-			// Revert byte.
+		if (mpDataSource) {
+			HGDIOBJ hfOld;
 
-			int offset = (int)i64Position & 15;
+			i64Offset = i64TopOffset + (y/nLineHeight)*16;
 
-			pLine->data[offset] = FillRowCache(i64Offset)[offset];
-			pLine->mod_flags &= ~(1<<offset);
+			hfOld = SelectObject(hdc, hfont ? hfont : GetStockObject(ANSI_FIXED_FONT));
 
-			if (!pLine->mod_flags) {
-				pLine->Remove();
-				delete pLine;
+			SetTextAlign(hdc, TA_TOP | TA_LEFT);
+			SetBkMode(hdc, OPAQUE);
+
+			while(y < r.bottom+nLineHeight-1 && i64Offset < i64FileSize) {
+				const char *data;
+				long mod_flags;
+				char *s;
+				int i, len;
+
+				data = mpDataSource->GetRow(i64Offset, len, mod_flags);
+
+				s = buf + sprintf(buf, "%12I64X: ", i64Offset);
+
+				for(i=0; i<len; i++) {
+					*s++ = hexdig[(unsigned char)data[i] >> 4];
+					*s++ = hexdig[data[i] & 15];
+					*s++ = ' ';
+				}
+
+				while(i<16) {
+					*s++ = ' ';
+					*s++ = ' ';
+					*s++ = ' ';
+					++i;
+				}
+
+				s[-8*3-1] = '-';
+				*s++ = ' ';
+
+				for(i=0; i<len; i++) {
+					if (data[i]>=0x20 && data[i]<0x7f)
+						*s++ = data[i];
+					else
+						*s++ = '.';
+				}
+
+				while(i<16) {
+					*s++ = ' ';
+					*s++ = ' ';
+					*s++ = ' ';
+					++i;
+				}
+
+				// Does the highlight region overlap?
+
+				if (mHighlightEnd > i64Offset && mHighlightStart < i64Offset + 16) {
+					int hilite_start	= clip_to_row(mHighlightStart - i64Offset);
+					int hilite_end		= clip_to_row(mHighlightEnd   - i64Offset);
+					int metahi_start	= clip_to_row(mMetaHiStart - i64Offset);
+					int metahi_end		= clip_to_row(mMetaHiEnd   - i64Offset);
+
+					// Split into nine (!) regions.
+
+					const int pos1	= 0;					// white: address and hex prebytes
+					const int pos2	= 14 + 3*hilite_start;	// orange: hex bytes
+					const int pos3	= 14 + 3*metahi_start;	// green: hex bytes
+					const int pos4	= 13 + 3*metahi_end;	// orange: hex bytes
+					const int pos5	= 13 + 3*hilite_end;	// white: hex postbytes and ascii prebytes
+					const int pos6	= 63 + hilite_start;	// orange: ascii bytes
+					const int pos7	= 63 + metahi_start;	// green: ascii bytes
+					const int pos8	= 63 + metahi_end;		// orange: ascii bytes
+					const int pos9	= 63 + hilite_end;		// white: ascii postbytes;
+					const int pos10	= 63 + 16;				// and finally, the end
+
+					// Draw metahighlighted areas.
+
+					SetBkColor(hdc, 0xe0ffc0);
+					TextOut(hdc, nCharWidth*pos3, y, buf + pos3, pos4 - pos3);
+					TextOut(hdc, nCharWidth*pos7, y, buf + pos7, pos8 - pos7);
+
+					// Draw highlighted areas.
+
+					SetBkColor(hdc, 0xc0e0ff);
+					TextOut(hdc, nCharWidth*pos2, y, buf + pos2, pos3 - pos2);
+					TextOut(hdc, nCharWidth*pos4, y, buf + pos4, pos5 - pos4);
+					TextOut(hdc, nCharWidth*pos6, y, buf + pos6, pos7 - pos6);
+					TextOut(hdc, nCharWidth*pos8, y, buf + pos8, pos9 - pos8);
+
+					// Draw non-highlighted areas.
+
+					SetBkColor(hdc, 0xffffff);
+					TextOut(hdc, nCharWidth*pos1, y, buf + pos1, pos2 - pos1);
+					TextOut(hdc, nCharWidth*pos5, y, buf + pos5, pos6 - pos5);
+					TextOut(hdc, nCharWidth*pos9, y, buf + pos9, pos10 - pos9);
+				} else {
+
+					// Not highlighting, draw single line of text.
+
+					SetBkColor(hdc, 0xffffff);
+					TextOut(hdc, 0, y, buf, s - buf);
+				}
+
+				// Draw modified constants in blue.
+
+				if (mod_flags) {
+					COLORREF crOldTextColor = SetTextColor(hdc, 0xFF0000);
+
+					for(i=0; i<16; i++)
+						if (!(mod_flags & (1<<i))) {
+							buf[14 + i*3] = ' ';
+							buf[15 + i*3] = ' ';
+							buf[63+i] =  ' ';
+						}
+
+					buf[37] = ' ';
+
+					SetBkMode(hdc, TRANSPARENT);
+
+					TextOut(hdc, nCharWidth*14, y, buf+14, 16*3-1);
+					TextOut(hdc, nCharWidth*63, y, buf+63, 16);
+
+					SetBkMode(hdc, OPAQUE);
+
+					SetTextColor(hdc, crOldTextColor);
+				}
+
+				y += nLineHeight;
+				i64Offset += 16;
 			}
 
-			InvalidateLine(i64Offset);
+			SelectObject(hdc, hfOld);
 		}
 
+		if (y < r.bottom+nLineHeight-1) {
+			GetClientRect(hwnd, &r);
+			r.top = y;
+			FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW+1));
+		}
+	}
+	EndPaint(hwnd, &ps);
+
+	return 0;
+}
+
+LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
+	HexViewer *pcd = (HexViewer *)GetWindowLong(hwnd, 0);
+
+	switch(msg) {
+
+	case WM_NCCREATE:
+		if (!(pcd = new HexViewer(hwnd)))
+			return FALSE;
+
+		SetWindowLong(hwnd, 0, (LONG)pcd);
+		return DefWindowProc(hwnd, msg, wParam, lParam);
+
+	case WM_CREATE:
+		pcd->Init();
 		return 0;
+
+	case WM_SIZE:
+		return pcd->Handle_WM_SIZE(wParam, lParam);
+
+	case WM_DESTROY:
+		delete pcd;
+		SetWindowLong(hwnd, 0, 0);
+		break;
+
+	case WM_MOUSEWHEEL:
+		return pcd->Handle_WM_MOUSEWHEEL(wParam, lParam);
+
+	case WM_KEYDOWN:
+		return pcd->Handle_WM_KEYDOWN(wParam, lParam);
+
+	case WM_CLOSE:
+		DestroyWindow(hwnd);
+		return 0;
+
+	case WM_VSCROLL:
+		return pcd->Handle_WM_VSCROLL(wParam, lParam);
+
+	case WM_SETFOCUS:
+		CreateCaret(hwnd, NULL, pcd->nCharWidth, pcd->nLineHeight);
+		pcd->bCaretHidden = true;
+		pcd->MoveCaret();
+		return 0;
+
+	case WM_KILLFOCUS:
+		DestroyCaret();
+		return 0;
+
+	case WM_LBUTTONDOWN:
+		return pcd->Handle_WM_LBUTTONDOWN(wParam, lParam);
+
+	case WM_CHAR:
+		return pcd->Handle_WM_CHAR(wParam, lParam);
+
+	case WM_PAINT:
+		return pcd->Handle_WM_PAINT(wParam, lParam);
+
+	default:
+		return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
+	return 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+class HexEditor : public IHexViewerDataSource {
+private:
+	const HWND	hwnd;
+	HWND	hwndFind;
+	HWND	hwndTree;
+	HWND	hwndStatus;
+	HANDLE	hFile;
+	HFONT	hfont;
+	__int64 i64FileSize;
+
+	HexViewer *mpView;
+	HWND	hwndView;
+
+	__int64	i64FileCacheAddr;
+	__int64 i64FileReadPosition;
+
+	char	rowcache[16];
+	__int64	i64RowCacheAddr;
+
+	List2<HVModifiedLine>	listMods;
+
+	ModelessDlgNode	mdnFind;
+	char	*pszFindString;
+	int		nFindLength;
+	bool	bFindCaseInsensitive;
+	bool	bFindHex;
+	bool	bFindReverse;
+
+	bool	bEnableWrite;
+	bool	bEnableAVIAssist;
+
+	// put this last since it's so big
+	
+	union {
+		char	filecache[4096];
+		double	__unused;			// force 8-alignment
+	};
+
+public:
+	HexEditor(HWND);
+	~HexEditor();
+
+	static LRESULT APIENTRY HexEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
+	static BOOL APIENTRY FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
+	static BOOL APIENTRY TreeDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) throw();
+
+private:
+	void Init() throw();
+	void Open() throw();
+	void Open(const char *pszFile, bool bRW) throw();
+	void Close() throw();
+	void Commit() throw();
+
+	const char *GetRow(__int64 start, int& len, long& modified_mask) throw();
+	void UndoByte(__int64 byte) throw();
+	void ModifyByte(__int64 i64Position, char v, char mask) throw();
+	void NewLocation(__int64 i64Position) throw();
+
+	const char *FillRowCache(__int64 line) throw();
+	void InvalidateLine(__int64 line) throw();
+
+	void SetStatus(const char *format, ...) throw();
+
+	LRESULT Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw();
+	LRESULT Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) throw();
+
+	static BOOL CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw();
+	bool AskForValues(const char *title, const char *name1, const char *name2, __int64& default1, __int64& default2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2) throw()) throw();
+	int JumpVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
+	int ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
+	int TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
+
+	void Extract() throw();
+	void Find() throw();
+	void _RIFFScan(struct RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft);
+	void RIFFTree(HWND hwndTV) throw();
+
+	HVModifiedLine *FindModLine(__int64 addr) throw() {
+		HVModifiedLine *pLine, *pLineNext;
+
+		pLine = listMods.AtHead();
+
+		while(pLineNext = pLine->NextFromHead()) {
+			if (addr == pLine->address)
+				return pLine;
+
+			pLine = pLineNext;
+		}
+
+		return NULL;
 	}
 
-	if (!isprint(key) || (!bCharMode && !isxdigit(key)))
-		return 0;
+	bool IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid) throw();
+};
 
+////////////////////////////
+
+HexEditor::HexEditor(HWND _hwnd) : hwnd(_hwnd), hwndFind(0), hwndTree(0), pszFindString(NULL), bFindReverse(false), hfont(0) {
+	hFile = INVALID_HANDLE_VALUE;
+
+	i64FileSize = 0;
+	i64RowCacheAddr = -1;
+	i64FileCacheAddr = -1;
+}
+
+HexEditor::~HexEditor() {
+	delete[] pszFindString;
+	pszFindString = NULL;
+
+	Close();
+
+	if (hwndTree)
+		DestroyWindow(hwndTree);
+
+	if (hwndFind)
+		DestroyWindow(hwndFind);
+
+	if (hfont)
+		DeleteObject(hfont);
+}
+
+void HexEditor::Init() {
+	HDC hdc;
+
+	if (hdc = GetDC(hwnd)) {
+		TEXTMETRIC tm;
+		HGDIOBJ hfOld;
+
+		hfOld = SelectObject(hdc, GetStockObject(ANSI_FIXED_FONT));
+
+		GetTextMetrics(hdc, &tm);
+
+		hfont = CreateFont(tm.tmHeight, 0, 0, 0, 0, FALSE, FALSE, FALSE, ANSI_CHARSET,
+			OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH|FF_DONTCARE, "Lucida Console");
+
+		SelectObject(hdc, hfOld);
+		ReleaseDC(hwnd, hdc);
+	}
+
+	hwndStatus = CreateStatusWindow(WS_CHILD|WS_VISIBLE, "", hwnd, 500);
+
+	hwndView = CreateWindowEx(
+		WS_EX_CLIENTEDGE,
+		szHexViewerClassName,
+		"",
+		WS_VISIBLE|WS_CHILD|WS_VSCROLL,
+		0,0,0,0,
+		hwnd,
+		NULL,
+		g_hInst,
+		NULL);
+
+	mpView = (HexViewer *)GetWindowLong(hwndView, 0);
+}
+
+void HexEditor::Open() {
+	char szName[MAX_PATH];
+	OPENFILENAME ofn;
+
+	szName[0] = 0;
+
+	memset(&ofn, 0, sizeof ofn);
+
+	ofn.lStructSize			= 0x4c;	//sizeof(OPENFILENAME); stupid beta include files
+	ofn.hwndOwner			= hwnd;
+	ofn.lpstrFilter			= "All files (*.*)\0*.*\0";
+	ofn.lpstrCustomFilter	= NULL;
+	ofn.nFilterIndex		= 1;
+	ofn.lpstrFile			= szName;
+	ofn.nMaxFile			= sizeof szName;
+	ofn.lpstrFileTitle		= NULL;
+	ofn.lpstrInitialDir		= NULL;
+	ofn.lpstrTitle			= NULL;
+	ofn.Flags				= OFN_EXPLORER | OFN_ENABLESIZING | OFN_FILEMUSTEXIST | OFN_READONLY;
+	ofn.lpstrDefExt			= NULL;
+
+	if (GetOpenFileName(&ofn))
+		Open(szName, !(ofn.Flags & OFN_READONLY));
+}
+
+void HexEditor::Open(const char *pszFile, bool bRW) {
+	Close();
+
+	bEnableWrite = bRW;
+
+	if (bRW)
+		hFile = CreateFile(pszFile, GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+	else
+		hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		MyWin32Error("Cannot open file: %%s", GetLastError()).post(hwnd, "Hex editor error");
+		return;
+	}
+
+	char buf[512];
+
+	wsprintf(buf, "VirtualDub Hex Editor - [%s]%s", pszFile, bRW ? "" : " (read only)");
+	SetWindowText(hwnd, buf);
+
+	DWORD dwLow, dwHigh;
+	
+	dwLow = GetFileSize(hFile, &dwHigh);
+
+	i64FileSize = dwLow | ((__int64)dwHigh << 32);
+
+	i64RowCacheAddr	= -1;
+	i64FileCacheAddr	= -1;
+	i64FileReadPosition = 0;
+
+	mpView->SetDataSource(this);
+	mpView->SetDetails(i64FileSize, bRW);
+
+	SetStatus("%s: %I64d bytes", pszFile, i64FileSize);
+
+	{
+		int len;
+		long mask;
+
+		const unsigned long *pHeader = (const unsigned long *)GetRow(0, len, mask);
+
+		bEnableAVIAssist = (pHeader[0] == 'FFIR' && pHeader[2]==' IVA');
+	}
+}
+
+void HexEditor::Close() {
+	HVModifiedLine *pLine;
+
+	while(pLine = listMods.RemoveHead())
+		delete pLine;
+
+	if (hFile == INVALID_HANDLE_VALUE)
+		return;
+
+	CloseHandle(hFile);
+	hFile = INVALID_HANDLE_VALUE;
+
+	mpView->SetDataSource(NULL);
+	mpView->SetDetails(0, false);
+
+	if (hwndTree)
+		DestroyWindow(hwndTree);
+
+	SetWindowText(hwnd, "VirtualDub Hex Editor");
+	SetStatus("");
+}
+
+void HexEditor::Commit() {
+	HVModifiedLine *pLine;
+
+	while(pLine = listMods.RemoveHead()) {
+		DWORD dwBytes = 16, dwActual;
+
+		if (((unsigned __int64)pLine->address>>32) == ((unsigned __int64)i64FileSize >> 32))
+			if (!(((long)pLine->address ^ (long)i64FileSize) & 0xfffffff0))
+				dwBytes = (long)i64FileSize - (long)pLine->address;
+
+		SetFilePointer(hFile, (LONG)pLine->address, (LONG *)&pLine->address + 1, FILE_BEGIN);
+		WriteFile(hFile, pLine->data, dwBytes, &dwActual, NULL);
+
+		i64FileReadPosition = pLine->address + 16;
+
+		delete pLine;
+	}
+
+	InvalidateRect(hwnd, NULL, TRUE);
+}
+
+const char *HexEditor::GetRow(__int64 start, int& len, long& modified_mask) throw() {
+	HVModifiedLine *pModLine = FindModLine(start);
+	const char *pszData;
+	
+	if (pModLine) {
+		modified_mask = pModLine->mod_flags;
+		pszData = pModLine->data;
+	} else {
+		modified_mask = 0;
+		pszData = FillRowCache(start);
+	}
+
+	len = (start < i64FileSize-16) ? 16 : (long)(i64FileSize - start);
+
+	return pszData;
+}
+
+void HexEditor::UndoByte(__int64 i64Position) throw() {
+	HVModifiedLine *pLine;
+	__int64 i64Offset;
+
+	i64Offset = i64Position & -16i64;
+
+	if (pLine = FindModLine(i64Offset)) {
+		// Revert byte.
+
+		int offset = (int)i64Position & 15;
+
+		pLine->data[offset] = FillRowCache(i64Offset)[offset];
+		pLine->mod_flags &= ~(1<<offset);
+
+		if (!pLine->mod_flags) {
+			pLine->Remove();
+			delete pLine;
+		}
+
+		mpView->InvalidateLine(i64Offset);
+	}
+}
+
+void HexEditor::ModifyByte(__int64 i64Position, char v, char mask) throw() {
 	// Fetch the mod line.
 
 	__int64 i64Offset = i64Position & -16i64;
@@ -856,8 +1234,9 @@ LRESULT HexViewer::Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw() {
 		pLine = new HVModifiedLine(i64Offset);
 
 		SetFilePointer(hFile, (LONG)i64Offset, (LONG *)&i64Offset + 1, FILE_BEGIN);
-
 		ReadFile(hFile, pLine->data, 16, &dwActual, NULL);
+
+		i64FileReadPosition = i64Offset + 16;
 
 		listMods.AddTail(pLine);
 	}
@@ -866,49 +1245,383 @@ LRESULT HexViewer::Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) throw() {
 
 	int offset = (int)i64Position & 15;
 
-	if (bCharMode)
-		pLine->data[offset] = key;
-	else {
-		int v = toupper(key) - '0';
-		if (v > 9)
-			v -= 7;
-
-		if (bOddHex)
-			pLine->data[offset] = (pLine->data[offset]&0xf0) + v;
-		else
-			pLine->data[offset] = (pLine->data[offset]&0x0f) + (v<<4);
-	}
+	pLine->data[offset] = (pLine->data[offset]&mask) + v;
 	pLine->mod_flags |= 1<<offset;
 
-	// invalidate row cache
+	// invalidate row cache and display
 
 	i64RowCacheAddr = -1;
 
-	InvalidateLine(i64Position);
+	mpView->InvalidateLine(i64Position);
+}
 
-	// Send a RIGHT keypress to advance.
+bool HexEditor::IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid) throw() {
+	union {
+		char charbuf[12];
+		unsigned long longbuf[4];
+	};
 
-	SendMessage(hwnd, WM_KEYDOWN, VK_RIGHT, 0);
+	if (i64Position > i64FileSize - 8)
+		return false;
+
+	int len;
+	int offset = ((long)i64Position&15);
+	long modmask;
+
+	if (offset > 4) {
+		const char *row2 = GetRow(i64Position - offset + 16, len, modmask);
+
+		memcpy(charbuf + (16-offset), row2, offset-4);
+	}
+
+	const char *row1 = GetRow(i64Position - offset, len, modmask);
+
+	memcpy(charbuf, row1+offset, offset>4 ? 16-offset : 12);
+
+	// All four characters in the FOURCC need to be alphanumeric.
+
+	if (!isValidFOURCC(longbuf[0]))
+		return false;
+
+	// If it is RIFF or LIST, the second FOURCC must also be alphanumeric.
+
+	if (longbuf[0] == 'TSIL')
+		if (!isValidFOURCC(longbuf[2]))
+			return false;
+
+	// Size must fit in the remainder of file.
+
+	__int64 end = i64Position + 8 + longbuf[1];
+
+	if (end > i64FileSize)
+		return false;
+
+	// Confirm that what comes after is also a chunk.
+
+	if (!bChain || end == i64FileSize || IsValidHeaderAt((end+1)&~1i64, false, length, ckid)) {
+		length = longbuf[1];
+		ckid = longbuf[0];
+		return true;
+	}
+
+	return false;
+}
+
+void HexEditor::NewLocation(__int64 i64Position) throw() {
+	if (bEnableAVIAssist) {
+		__int64 basepos = i64Position;
+
+		// Step back up to 4K, looking for a valid chunk.
+
+		i64Position &= ~1i64;
+
+		__int64 limit = i64Position - 1024;
+
+		if (limit < 0)
+			limit = 0;
+
+		while(i64Position >= limit) {
+			unsigned long len;
+			unsigned long ckid;
+
+			if (IsValidHeaderAt(i64Position, true, len, ckid)) {
+				mpView->SetHighlight(i64Position, i64Position+8+len);
+
+				// Attempt to lookup field
+
+				const RIFFChunkInfo *rci = LookupRIFFChunk(ckid);
+
+				// The 'strf' chunk is a special case, because it has a different interpretation
+				// depending on whether the stream is an audio or video stream.  We cheat a little
+				// bit and check if the previous chunk is the 'strh' chunk; it may be 56 or 64
+				// bytes depending on which utility wrote it.
+
+				if (ckid == 'frts') {
+					unsigned long len2, ckid2;
+
+					if (	IsValidHeaderAt(i64Position - 64, true, len2, ckid2)
+						||	IsValidHeaderAt(i64Position - 72, true, len2, ckid2))
+					{
+						int len;
+						long modmask;
+						const char *data = GetRow(i64Position - len2, len, modmask);
+
+						switch(data[(int)(i64Position - len2) & 15]) {
+						case 'a':
+							rci = &g_Chunk_strf_audio;
+							break;
+						case 'v':
+							rci = &g_Chunk_strf_video;
+							break;
+						}
+					}
+				}
+
+				if (rci) {
+					const RIFFFieldInfo *rfi = rci->fields;
+
+					if (rfi) {
+						int offset = (int)basepos - (int)i64Position;
+						int size;
+
+						while(rfi[0].name && rfi[1].offset <= offset)
+							++rfi;
+
+						if (rfi[0].name) {
+							switch(rfi[0].type) {
+							case RIFFFieldInfo::kfcc:
+							case RIFFFieldInfo::kulong:
+							case RIFFFieldInfo::kslong:
+								size = 4;
+								break;
+							case RIFFFieldInfo::kuword:
+							case RIFFFieldInfo::ksword:
+								size = 2;
+								break;
+							case RIFFFieldInfo::kubyte:
+							case RIFFFieldInfo::ksbyte:
+								size = 1;
+								break;
+							default:
+								__assume(false);
+							}
+
+							if (offset >= rfi[0].offset && offset < rfi[0].offset + size) {
+								mpView->SetMetaHighlight(rfi[0].offset, size);
+								SetStatus(rfi[0].name);
+							} else {
+								SetStatus("");
+							}
+						}
+					}
+				}
+
+				return;
+			}
+
+			i64Position -= 2;
+		}
+	}
+
+	mpView->SetHighlight(0,0);
+	SetStatus("");
+}
+
+const char *HexEditor::FillRowCache(__int64 i64Offset) throw() {
+	if (i64Offset == i64RowCacheAddr)
+		return rowcache;
+
+	__int64 i64PageOffset = i64Offset & 0xfffffffffffff000i64;
+	DWORD dwActual = 0;
+
+	if (i64PageOffset != i64FileCacheAddr) {
+		if (i64FileReadPosition != i64PageOffset) {
+
+			// if the desired position is less than 128K away, just read through
+
+			__int64 delta = i64PageOffset - i64FileReadPosition;
+
+			if (i64FileReadPosition >= 0 && delta > 0 && delta <= 131072) {
+				long lDelta = (long)delta;
+
+				while(lDelta > 0) {
+					DWORD tc = 4096 - (lDelta & 4095);
+
+					if (!ReadFile(hFile, filecache, tc, &dwActual, NULL) || !dwActual)
+						break;
+
+					lDelta -= tc;
+				}
+
+			} else
+				SetFilePointer(hFile, (LONG)i64PageOffset, (LONG *)&i64PageOffset + 1, FILE_BEGIN);
+		}
+
+		if (ReadFile(hFile, filecache, 4096, &dwActual, NULL)) {
+			i64FileCacheAddr = i64PageOffset;
+			i64FileReadPosition = i64PageOffset + dwActual;
+		} else {
+			i64FileCacheAddr = i64FileReadPosition = -1;
+		}
+	}
+
+	memcpy(rowcache, filecache + ((long)i64Offset & 0xff0), 16);
+
+	i64RowCacheAddr = i64Offset;
+
+	return rowcache;
+}
+
+void HexEditor::SetStatus(const char *format, ...) throw() {
+	char buf[1024];
+	va_list val;
+
+	va_start(val,format);
+	_vsnprintf(buf, sizeof buf, format, val);
+	va_end(val);
+
+	SetWindowText(hwndStatus, buf);
+}
+
+LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw() {
+	switch(LOWORD(wParam)) {
+	case ID_FILE_EXIT:
+		DestroyWindow(hwnd);
+		break;
+	case ID_FILE_CLOSE:
+		Close();
+		break;
+	case ID_FILE_OPEN:
+		Open();
+		break;
+	case ID_FILE_SAVE:
+		Commit();
+		break;
+	case ID_FILE_REVERT:
+		if (IDOK==MessageBox(hwnd, "Discard all changes?", g_szHexWarning, MB_OKCANCEL)) {
+			HVModifiedLine *pLine;
+
+			while(pLine = listMods.RemoveHead())
+				delete pLine;
+         
+			InvalidateRect(hwnd, NULL, TRUE);
+		}
+		break;
+	case ID_EDIT_JUMP:
+		{
+			__int64 v1 = mpView->GetPosition(), v2;
+
+			if (AskForValues("Jump to address", "Address (hex):", NULL, v1, v2, JumpVerifier))
+				mpView->MoveToByte(v1);
+		}
+		break;
+	case ID_EDIT_TRUNCATE:
+		{
+			__int64 v1 = mpView->GetPosition(), v2;
+
+			if (AskForValues("Truncate file", "Address (hex):", NULL, v1, v2, TruncateVerifier)) {
+				if ((0xFFFFFFFF==SetFilePointer(hFile, (LONG)v1, (LONG *)&v1 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
+						|| !SetEndOfFile(hFile))
+					MyWin32Error("Cannot truncate file: %%s", GetLastError()).post(hwnd, "Error");
+
+				i64FileReadPosition = i64FileSize = v1;
+
+				mpView->SetDetails(i64FileSize, bEnableWrite);
+			}
+		}
+		break;
+	case ID_EDIT_EXTRACT:
+		Extract();
+		break;
+
+	case ID_EDIT_FINDNEXT:
+		if (hwndFind) {
+			SendMessage(hwndFind, WM_COMMAND, IDC_FIND, 0);
+			break;
+		} else if (pszFindString) {
+			Find();
+			break;
+		}
+	case ID_EDIT_FIND:
+		if (hwndFind)
+			SetForegroundWindow(hwndFind);
+		else
+			CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_HEXVIEWER_FIND), hwnd, FindDlgProc, (LPARAM)this);
+		break;
+
+	case ID_EDIT_RIFFTREE:
+		if (hwndTree)
+			DestroyWindow(hwndTree);
+		else
+			CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_HEXVIEWER_RIFFLIST), hwnd, TreeDlgProc, (LPARAM)this);
+		break;
+
+	case ID_EDIT_AVIASSIST:
+		bEnableAVIAssist = !bEnableAVIAssist;
+		NewLocation(mpView->GetPosition());
+		break;
+
+	case ID_HELP_WHY:
+		MessageBox(hwnd,
+			"I need a quick way for people to send me parts of files that don't load properly "
+			"in VirtualDub, and this is a handy way to do it. Well, that, and it's annoying to "
+			"check 3GB AVI files if your hex editor tries to load the file into memory.",
+			"Why is there a hex editor in VirtualDub?",
+			MB_OK);
+		break;
+
+	case ID_HELP_KEYS:
+		MessageBox(hwnd,
+			"arrow keys/PgUp/PgDn: navigation\n"
+			"TAB: switch between ASCII/Hex\n"
+			"Backspace: undo",
+			"Keyboard commands",
+			MB_OK);
+		break;
+
+	}
 
 	return 0;
 }
 
+LRESULT HexEditor::Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) throw() {
+	HDWP hdwp;
+	RECT r, rstatus;
+
+	GetClientRect(hwnd, &r);
+	GetWindowRect(hwndStatus, &rstatus);
+	MapWindowPoints(NULL, hwnd, (LPPOINT)&rstatus, 2);
+
+	hdwp = BeginDeferWindowPos(2);
+	DeferWindowPos(hdwp, hwndStatus, NULL, 0, r.bottom-rstatus.bottom, r.right, rstatus.bottom-rstatus.top, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+	DeferWindowPos(hdwp, hwndView, NULL, 0, 0, r.right, r.bottom - (rstatus.bottom-rstatus.top), SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOMOVE);
+	EndDeferWindowPos(hdwp);
+
+	return 0;
+}
+
+LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw() {
+	switch(wParam) {
+	case VK_F3:
+		if (hFile != INVALID_HANDLE_VALUE)
+			Handle_WM_COMMAND(ID_EDIT_FINDNEXT, 0);
+		break;
+	case 'F':
+		if (hFile != INVALID_HANDLE_VALUE)
+			if (GetKeyState(VK_CONTROL)<0)
+				Handle_WM_COMMAND(ID_EDIT_FIND, 0);
+		break;
+	case 'G':
+		if (hFile != INVALID_HANDLE_VALUE)
+			if (GetKeyState(VK_CONTROL)<0)
+				Handle_WM_COMMAND(ID_EDIT_JUMP, 0);
+		break;
+	case 'R':
+		if (hFile != INVALID_HANDLE_VALUE)
+			if (GetKeyState(VK_CONTROL)<0)
+				Handle_WM_COMMAND(ID_EDIT_RIFFTREE, 0);
+	}
+
+	return 0;
+}
+
+
 ////////////////////////////
 
-struct HexViewerAskData {
-	HexViewer *thisPtr;
+struct HexEditorAskData {
+	HexEditor *thisPtr;
 	const char *title, *name1, *name2;
 	__int64 v1, v2;
-	int (HexViewer::*verifier)(HWND, __int64 v1, __int64 v2);
+	int (HexEditor::*verifier)(HWND, __int64 v1, __int64 v2);
 };
 
-BOOL CALLBACK HexViewer::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
-	HexViewerAskData *pData = (HexViewerAskData *)GetWindowLong(hdlg, DWL_USER);
+BOOL CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
+	HexEditorAskData *pData = (HexEditorAskData *)GetWindowLong(hdlg, DWL_USER);
 	char buf[32];
 
 	switch(msg) {
 	case WM_INITDIALOG:
-		pData = (HexViewerAskData *)lParam;
+		pData = (HexEditorAskData *)lParam;
 		SetWindowLong(hdlg, DWL_USER, lParam);
 
 		SetWindowText(hdlg, pData->title);
@@ -990,8 +1703,8 @@ BOOL CALLBACK HexViewer::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam,
 	return FALSE;
 }
 
-bool HexViewer::AskForValues(const char *title, const char *name1, const char *name2, __int64& v1, __int64& v2, int (HexViewer::*verifier)(HWND hdlg, __int64 v1, __int64 v2)) throw() {
-	HexViewerAskData hvad;
+bool HexEditor::AskForValues(const char *title, const char *name1, const char *name2, __int64& v1, __int64& v2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2)) throw() {
+	HexEditorAskData hvad;
 
 	hvad.thisPtr = this;
 	hvad.title = title;
@@ -1009,14 +1722,14 @@ bool HexViewer::AskForValues(const char *title, const char *name1, const char *n
 	return false;
 }
 
-int HexViewer::JumpVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
+int HexEditor::JumpVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
 	if (v1>i64FileSize)
 		return 1;
 
 	return 0;
 }
 
-int HexViewer::ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
+int HexEditor::ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
 	if (v1 > i64FileSize)
 		return 1;
 
@@ -1026,7 +1739,7 @@ int HexViewer::ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
 	return 0;
 }
 
-int HexViewer::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
+int HexEditor::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
 	int r;
 
 	if (v1 < i64FileSize)
@@ -1037,10 +1750,10 @@ int HexViewer::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw() {
 	return r==IDYES ? 0 : -1;
 }
 
-void HexViewer::Extract() throw() {
-	__int64 v1 = i64TopOffset, v2=0x1000;
+void HexEditor::Extract() throw() {
+	__int64 v1 = mpView->GetPosition(), v2=0x1000;
 
-	if (AskForValues("Extract file segment", "Address:", "Length:", v1, v2, ExtractVerifier)) {
+	if (AskForValues("Extract file segment", "Address (hex):", "Length (hex):", v1, v2, ExtractVerifier)) {
 		char szName[MAX_PATH];
 		OPENFILENAME ofn;
 
@@ -1124,9 +1837,11 @@ void HexViewer::Extract() throw() {
 			delete[] pBuf;
 		}
 	}
+
+	i64FileReadPosition = -1;
 }
 
-void HexViewer::Find() throw() {
+void HexEditor::Find() throw() {
 	if (!nFindLength || !pszFindString) {
 		SendMessage(hwnd, WM_COMMAND, ID_EDIT_FIND, 0);
 		return;
@@ -1138,7 +1853,7 @@ void HexViewer::Find() throw() {
 	char *findstring = pszFindString;
 	int i,j;
 
-	if (!next || !searchbuffer) {
+	if (!next || !searchbuffer || !revstring) {
 		delete[] next;
 		delete[] searchbuffer;
 		delete[] revstring;
@@ -1171,12 +1886,13 @@ void HexViewer::Find() throw() {
 
 	int limit=0;
 	int size = 512;
-	__int64 pos = i64Position;
+	__int64 basepos = mpView->GetPosition();
+	__int64 pos = basepos;
 	__int64 posbase;
 	bool bLastPartial = false;
 
 	ProgressDialog pd(GetForegroundWindow(), "Find",
-		bFindReverse?"Reverse searching for string":"Forward searching for string", (long)(((bFindReverse ? i64Position : i64FileSize - i64Position)+1048575)>>20), TRUE);
+		bFindReverse?"Reverse searching for string":"Forward searching for string", (long)(((bFindReverse ? pos : i64FileSize - pos)+1048575)>>20), TRUE);
 	pd.setValueFormat("%dMB of %dMB");
 
 	i = 0;
@@ -1207,8 +1923,8 @@ void HexViewer::Find() throw() {
 
 					limit = (int)dwActual;
 
-					if (pos + limit > i64Position)
-						limit = i64Position - pos;
+					if (pos + limit > basepos)
+						limit = basepos - pos;
 
 					if (!i) 
 						i = limit;
@@ -1235,7 +1951,7 @@ void HexViewer::Find() throw() {
 							++j;
 
 							if (j >= nFindLength) {
-								MoveCaretToByte(posbase+i+1);
+								mpView->MoveToByte(posbase+i+1);
 								goto xit;
 							}
 						} else
@@ -1248,14 +1964,14 @@ void HexViewer::Find() throw() {
 							++j;
 
 							if (j >= nFindLength) {
-								MoveCaretToByte(posbase+i+1);
+								mpView->MoveToByte(posbase+i+1);
 								goto xit;
 							}
 						} else
 							j = next[j];
 					}
 
-				pd.advance((long)((i64Position - pos)>>20));
+				pd.advance((long)((basepos - pos)>>20));
 				pd.check();
 			}
 		} else {
@@ -1303,7 +2019,7 @@ void HexViewer::Find() throw() {
 							++j;
 
 							if (j >= nFindLength) {
-								MoveCaretToByte(pos-limit+i-nFindLength);
+								mpView->MoveToByte(pos-limit+i-nFindLength);
 								goto xit;
 							}
 						} else
@@ -1316,14 +2032,14 @@ void HexViewer::Find() throw() {
 							++j;
 
 							if (j >= nFindLength) {
-								MoveCaretToByte(posbase+i-nFindLength);
+								mpView->MoveToByte(posbase+i-nFindLength);
 								goto xit;
 							}
 						} else
 							j = next[j];
 					}
 
-				pd.advance((long)((pos - i64Position)>>20));
+				pd.advance((long)((pos - basepos)>>20));
 				pd.check();
 			}
 		}
@@ -1339,17 +2055,19 @@ xit:
 	delete[] next;
 	delete[] searchbuffer;
 	delete[] revstring;
+
+	i64FileReadPosition = -1;
 }
 
 ////////////////////////////
 
-LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
-	HexViewer *pcd = (HexViewer *)GetWindowLong(hwnd, 0);
+LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
+	HexEditor *pcd = (HexEditor *)GetWindowLong(hwnd, 0);
 
 	switch(msg) {
 
 	case WM_NCCREATE:
-		if (!(pcd = new HexViewer(hwnd)))
+		if (!(pcd = new HexEditor(hwnd)))
 			return FALSE;
 
 		SetWindowLong(hwnd, 0, (LONG)pcd);
@@ -1357,7 +2075,7 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 	case WM_CREATE:
 		pcd->Init();
-		return 0;
+//		return 0;		// intentional fall through to WM_SIZE
 
 	case WM_SIZE:
 		return pcd->Handle_WM_SIZE(wParam, lParam);
@@ -1367,40 +2085,19 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 		SetWindowLong(hwnd, 0, 0);
 		break;
 
+	case WM_SETFOCUS:
+		SetFocus(pcd->hwndView);
+		return 0;
+
 	case WM_COMMAND:
 		return pcd->Handle_WM_COMMAND(wParam, lParam);
-
-	case WM_PAINT:
-		return pcd->Handle_WM_PAINT(wParam, lParam);
-
-	case WM_MOUSEWHEEL:
-		return pcd->Handle_WM_MOUSEWHEEL(wParam, lParam);
-
-	case WM_KEYDOWN:
-		return pcd->Handle_WM_KEYDOWN(wParam, lParam);
 
 	case WM_CLOSE:
 		DestroyWindow(hwnd);
 		return 0;
 
-	case WM_VSCROLL:
-		return pcd->Handle_WM_VSCROLL(wParam, lParam);
-
-	case WM_SETFOCUS:
-		CreateCaret(hwnd, NULL, pcd->nCharWidth, pcd->nLineHeight);
-		pcd->bCaretHidden = true;
-		pcd->MoveCaret();
-		return 0;
-
-	case WM_KILLFOCUS:
-		DestroyCaret();
-		return 0;
-
-	case WM_LBUTTONDOWN:
-		return pcd->Handle_WM_LBUTTONDOWN(wParam, lParam);
-
-	case WM_CHAR:
-		return pcd->Handle_WM_CHAR(wParam, lParam);
+	case WM_KEYDOWN:
+		return pcd->Handle_WM_KEYDOWN(wParam, lParam);
 
 	case WM_INITMENU:
 		{
@@ -1421,6 +2118,7 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 			EnableMenuItem(hMenu,ID_FILE_CLOSE, dwEnableFlags);
 
 			CheckMenuItem(hMenu, ID_EDIT_RIFFTREE, pcd->hwndTree ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+			CheckMenuItem(hMenu, ID_EDIT_AVIASSIST, pcd->bEnableAVIAssist ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 		}
 		return 0;
 
@@ -1430,13 +2128,13 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 	return 0;
 }
 
-BOOL APIENTRY HexViewer::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
-	HexViewer *pcd = (HexViewer *)GetWindowLong(hwnd, DWL_USER);
+BOOL APIENTRY HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
+	HexEditor *pcd = (HexEditor *)GetWindowLong(hwnd, DWL_USER);
 
 	switch(msg) {
 	case WM_INITDIALOG:
 		SetWindowLong(hwnd, DWL_USER, lParam);
-		pcd = (HexViewer *)lParam;
+		pcd = (HexEditor *)lParam;
 		pcd->hwndFind = hwnd;
 		pcd->mdnFind.hdlg = hwnd;
 		guiAddModelessDialog(&pcd->mdnFind);
@@ -1555,47 +2253,6 @@ BOOL APIENTRY HexViewer::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 ///////////////////////////////////////////////////////////////////////////
 
-static inline bool isValidFOURCC(unsigned long l) {
-	return isprint(l>>24) && isprint((l>>16)&0xff) && isprint((l>>8)&0xff) && isprint(l&0xff);
-}
-
-static const struct RIFFChunkInfo {
-	unsigned long id;
-	const char *desc;
-} g_RIFFChunks[]={
-	' IVA', "Audio/video interleave file",
-	'XIVA', "AVI2 extension block",
-	'EVAW', "Sound waveform",
-	0,
-}, g_LISTChunks[]={
-	'lrdh', "AVI file header block",
-	'lrts', "AVI stream header block",
-	'lmdo', "AVI2 extended header block",
-	'ivom', "AVI data block",
-	0,
-}, g_JustChunks[]={
-	'KNUJ', "padding",
-	'hiva', "AVI file header",
-	'hrts', "AVI stream header",
-	'frts', "AVI stream format",
-	'drts', "AVI stream codec data",
-	'xdni', "AVI2 hierarchical indexing data",
-	'hlmd', "AVI2 extended header",
-	'1xdi', "AVI legacy index",
-	'mges', "VirtualDub next segment pointer",
-	0
-};
-
-static const char *LookupRIFFChunk(const RIFFChunkInfo *tbl, unsigned long ckid) {
-	while(tbl->id) {
-		if (tbl->id == ckid)
-			return tbl->desc;
-		++tbl;
-	}
-
-	return "unknown";
-}
-
 struct RIFFScanInfo {
 	ProgressDialog& pd;
 	int count[100];
@@ -1604,7 +2261,7 @@ struct RIFFScanInfo {
 	RIFFScanInfo(ProgressDialog &_pd) : pd(_pd) {}
 };
 
-void HexViewer::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft) {
+void HexEditor::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft) {
 	char buf[128];
 
 	while(sizeleft > 8) {
@@ -1680,7 +2337,7 @@ void HexViewer::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64
 	}
 }
 
-void HexViewer::RIFFTree(HWND hwndTV) throw() {
+void HexEditor::RIFFTree(HWND hwndTV) throw() {
 	ProgressDialog pd(hwndTree, "Constructing RIFF tree", "Scanning file", (long)((i64FileSize+1023)>>10), true);
 	RIFFScanInfo rsi(pd);
 
@@ -1697,13 +2354,13 @@ void HexViewer::RIFFTree(HWND hwndTV) throw() {
 	SendMessage(hwndTV, WM_SETFONT, (WPARAM)hfont, TRUE);
 }
 
-BOOL APIENTRY HexViewer::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
-	HexViewer *pcd = (HexViewer *)GetWindowLong(hdlg, DWL_USER);
+BOOL APIENTRY HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) throw() {
+	HexEditor *pcd = (HexEditor *)GetWindowLong(hdlg, DWL_USER);
 
 	switch(msg) {
 	case WM_INITDIALOG:
 		SetWindowLong(hdlg, DWL_USER, lParam);
-		pcd = (HexViewer *)lParam;
+		pcd = (HexEditor *)lParam;
 		pcd->hwndTree = hdlg;
 		pcd->RIFFTree(GetDlgItem(hdlg, IDC_TREE));
 		return TRUE;
@@ -1745,7 +2402,7 @@ BOOL APIENTRY HexViewer::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 					TreeView_GetItem(pnmh->hwndFrom, &tvi);
 
 					if (tvi.lParam && 1==sscanf(buf, "%I64x", &seekpos)) {
-						pcd->MoveCaretToByte(seekpos);
+						pcd->mpView->MoveToByte(seekpos);
 						PostMessage(hdlg, WM_APP, 0, 0);
 					}
 				}
@@ -1767,29 +2424,39 @@ BOOL APIENTRY HexViewer::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 
 ///////////////////////////////////////////////////////////////////////////
 
-ATOM RegisterHexViewer() {
-	WNDCLASS wc;
+ATOM RegisterHexEditor() {
+	WNDCLASS wc1, wc2;
 
-	wc.style		= 0;
-	wc.lpfnWndProc	= HexViewer::HexViewerWndProc;
-	wc.cbClsExtra	= 0;
-	wc.cbWndExtra	= sizeof(HexViewer *);
-	wc.hInstance	= g_hInst;
-	wc.hIcon		= NULL;
-    wc.hCursor		= LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground= NULL; //(HBRUSH)(COLOR_WINDOW+1);
-	wc.lpszMenuName	= MAKEINTRESOURCE(IDR_HEXVIEWER_MENU);
-	wc.lpszClassName= HEXVIEWERCLASS;
+	wc1.style			= 0;
+	wc1.lpfnWndProc		= HexEditor::HexEditorWndProc;
+	wc1.cbClsExtra		= 0;
+	wc1.cbWndExtra		= sizeof(HexEditor *);
+	wc1.hInstance		= g_hInst;
+	wc1.hIcon			= NULL;
+    wc1.hCursor			= LoadCursor(NULL, IDC_ARROW);
+	wc1.hbrBackground	= NULL; //(HBRUSH)(COLOR_WINDOW+1);
+	wc1.lpszMenuName	= MAKEINTRESOURCE(IDR_HEXVIEWER_MENU);
+	wc1.lpszClassName	= HEXEDITORCLASS;
 
-	return RegisterClass(&wc);
+	wc2.style			= 0;
+	wc2.lpfnWndProc		= HexViewer::HexViewerWndProc;
+	wc2.cbClsExtra		= 0;
+	wc2.cbWndExtra		= sizeof(HexViewer *);
+	wc2.hInstance		= g_hInst;
+	wc2.hIcon			= NULL;
+    wc2.hCursor			= LoadCursor(NULL, IDC_ARROW);
+	wc2.hbrBackground	= NULL; //(HBRUSH)(COLOR_WINDOW+1);
+	wc2.lpszMenuName	= NULL;
+	wc2.lpszClassName	= szHexViewerClassName;
+
+	return RegisterClass(&wc1) && RegisterClass(&wc2);
 
 }
-void HexView(HWND hwndParent) {
-	CreateWindowEx(
-		WS_EX_CLIENTEDGE,
-		HEXVIEWERCLASS,
+void HexEdit(HWND hwndParent) {
+	CreateWindow(
+		HEXEDITORCLASS,
 		"VirtualDub Hex Editor",
-		WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_VSCROLL,
+		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,

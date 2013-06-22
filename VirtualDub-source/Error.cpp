@@ -28,10 +28,8 @@ MyError::MyError() {
 	buf = NULL;
 }
 
-MyError::MyError(MyError& err) {
-	buf = new char[strlen(err.buf)+1];
-	if (buf)
-		strcpy(buf,err.buf);
+MyError::MyError(const MyError& err) {
+	buf = strdup(err.buf);
 }
 
 MyError::MyError(const char *f, ...) {
@@ -62,16 +60,24 @@ void MyError::vsetf(const char *f, va_list val) {
 	}
 }
 
-void MyError::post(HWND hWndParent, const char *title) {
+void MyError::post(HWND hWndParent, const char *title) const {
 	if (!buf || !*buf)
 		return;
 
 	_RPT2(0,"*** %s: %s\n", title, buf);
-	MessageBox(hWndParent, buf, title, MB_OK | MB_ICONERROR);
+	MessageBox(hWndParent, buf, title, MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
 
 void MyError::discard() {
 	buf = NULL;
+}
+
+void MyError::TransferFrom(MyError& err) {
+	if (buf)
+		free(buf);
+
+	buf = err.buf;
+	err.buf = NULL;
 }
 
 MyICError::MyICError(const char *s, DWORD icErr) {
@@ -210,4 +216,15 @@ MyCrashError::MyCrashError(const char *format, DWORD dwExceptionCode) {
 
 MyUserAbortError::MyUserAbortError() {
 	buf = strdup("");
+}
+
+MyInternalError::MyInternalError(const char *format, ...) {
+	char buf[1024];
+	va_list val;
+
+	va_start(val, format);
+	_vsnprintf(buf, sizeof buf, format, val);
+	va_end(val);
+
+	vsetf("Internal error: %s", buf);
 }

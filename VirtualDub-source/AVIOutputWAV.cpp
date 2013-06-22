@@ -29,7 +29,7 @@
 //////////////////////////////////////////////////////////////////////
 
 AVIOutputWAV::AVIOutputWAV() {
-	hFile				= NULL;
+	hFile				= INVALID_HANDLE_VALUE;
 	fHeaderOpen			= false;
 	dwBytesWritten		= 0;
 	fastIO				= NULL;
@@ -112,16 +112,14 @@ BOOL AVIOutputWAV::finalize() {
 			fHeaderOpen = false;
 		}
 
-		if (hFile) {
-			LONG lLo = dwBytesWritten + len + 28;
-			LONG lHi = 0;
-			DWORD dwError;
+		LONG lLo = dwBytesWritten + len + 28;
+		LONG lHi = 0;
+		DWORD dwError;
 
-			if (0xFFFFFFFF != SetFilePointer(hFile, (LONG)lLo, &lHi, FILE_BEGIN)
-				|| (dwError = GetLastError()) != NO_ERROR) {
+		if (0xFFFFFFFF != SetFilePointer(hFile, (LONG)lLo, &lHi, FILE_BEGIN)
+			|| (dwError = GetLastError()) != NO_ERROR) {
 
-				SetEndOfFile(hFile);
-			}
+			SetEndOfFile(hFile);
 		}
 
 		CloseHandle(hFile);
@@ -149,7 +147,7 @@ void AVIOutputWAV::_writeHdr(void *data, long len) {
 	DWORD dwActual;
 
 	if (!WriteFile(hFile, data, len, &dwActual, NULL)
-		|| dwActual != len)
+		|| (long)dwActual != len)
 
 		throw MyWin32Error("%s: %%s", GetLastError(), szME);
 }

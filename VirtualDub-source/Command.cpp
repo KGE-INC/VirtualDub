@@ -20,6 +20,7 @@
 #include "PositionControl.h"
 
 #include "InputFile.h"
+#include "InputFileImages.h"
 #include "AudioSource.h"
 #include "VideoSource.h"
 #include "AVIOutput.h"
@@ -28,6 +29,8 @@
 #include "Dub.h"
 #include "Error.h"
 #include "FrameSubset.h"
+#include "ProgressDialog.h"
+#include "oshelper.h"
 
 #include "mpeg.h"
 #include "gui.h"
@@ -40,6 +43,9 @@ extern HWND					g_hWnd;
 extern DubOptions			g_dubOpts;
 extern HDC					hDCWindow;
 extern HDRAWDIB				hDDWindow;
+
+extern char g_szInputAVIFile[MAX_PATH];
+extern char g_szInputAVIFileTitle[MAX_PATH];
 
 InputFile			*inputAVI				= NULL;
 AVIOutput			*outputAVI				= NULL;
@@ -74,6 +80,8 @@ void SetAudioSource() {
 	case AUDIOIN_AVI:		inputAudio = inputAudioAVI; break;
 	case AUDIOIN_WAVE:		inputAudio = inputAudioWAV; break;
 	}
+
+	RecalcPositionTimeConstant();
 }
 
 void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool fAutoscan, const char *pInputOpts) {
@@ -141,21 +149,34 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 				iFileType = FILETYPE_MPEG;
 			else if (*(long *)buf == 'rts#')
 				iFileType = FILETYPE_STRIPEDAVI;
-			else if (!memcmp(buf, asf_sig, 16)) {
+			else if (!memcmp(buf, asf_sig, 16))
 				iFileType = FILETYPE_ASF;
-			} else {
+			else if (buf[0] == 'B' && buf[1] == 'M')
+				iFileType = FILETYPE_IMAGE;
+			else {
 
-				// Last ditch: try AVIFile.  This will make Ben happy. :)
+				// Second pass for MPEG.  This time, scan the first 64 bytes for 00 00 01 BA.
 
-				PAVIFILE paf;
-				HRESULT hr = AVIFileOpen(&paf, szFile, OF_READ, NULL);
+				for(int i=0; i<60; ++i)
+					if (*(long *)(buf+i) == 0xba010000 || *(long *)(buf+i)==0xb3010000)
+						break;
 
-				if (hr)
-					throw MyError("Cannot determine file type of \"%s\"", szFile);
+				if (i < 60)
+					iFileType = FILETYPE_MPEG;
+				else {
 
-				AVIFileRelease(paf);
+					// Last ditch: try AVIFile.  This will make Ben happy. :)
 
-				iFileType = FILETYPE_AVICOMPAT;
+					PAVIFILE paf;
+					HRESULT hr = AVIFileOpen(&paf, szFile, OF_READ, NULL);
+
+					if (hr)
+						throw MyError("Cannot determine file type of \"%s\"", szFile);
+
+					AVIFileRelease(paf);
+
+					iFileType = FILETYPE_AVICOMPAT;
+				}
 			}
 		}
 
@@ -181,7 +202,9 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 						"was removed as of V1.3d at the request of Microsoft and to avoid patent "
 						"infringement claims, and as such VirtualDub no longer supports ASF. Please "
 						"do not ask for versions that do.");
-			break;
+
+		case FILETYPE_IMAGE:
+			inputAVI = new InputFileImages;
 		}
 
 		if (!inputAVI) throw MyMemoryError();
@@ -231,10 +254,16 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 				guiSetStatus("Autoloaded %d segments (last was \"%s\")", 255, nFiles, pnode->NextFromTail()->name);
 		}
 
+		// Set current filename
+
+		strcpy(g_szInputAVIFile, szFile);
+		strcpy(g_szInputAVIFileTitle, SplitPathName(szFile));
+
 //		SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputAVI->videoSrc->lSampleFirst);
 //		SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputAVI->videoSrc->lSampleLast);
 		RemakePositionSlider();
-		SendMessage(hWndPosition, PCM_SETFRAMERATE, 0, MulDiv(1000000, inputAVI->videoSrc->streamInfo.dwScale, inputAVI->videoSrc->streamInfo.dwRate));
+		SetAudioSource();
+		RecalcPositionTimeConstant();
 		SendMessage(hWndPosition, PCM_SETPOS, 0, 0);
 	} catch(...) {
 		CloseAVI();
@@ -248,7 +277,7 @@ void AppendAVI(const char *pszFile) {
 
 		if (inputAVI->Append(pszFile)) {
 			if (inputSubset)
-				inputSubset->addRange(lTail, inputAVI->videoSrc->lSampleLast - lTail);
+				inputSubset->addRangeMerge(lTail, inputAVI->videoSrc->lSampleLast - lTail, false);
 			RemakePositionSlider();
 		}
 	}
@@ -514,4 +543,112 @@ void RemakePositionSlider() {
 	} else {
 		SendMessage(hwndPosition, PCM_CLEARSEL, (BOOL)TRUE, 0);
 	}
+}
+
+void RecalcPositionTimeConstant() {
+	HWND hwndPosition = GetDlgItem(g_hWnd, IDC_POSITION);
+
+	DubVideoStreamInfo vInfo;
+	DubAudioStreamInfo aInfo;
+
+	InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
+	SendMessage(hwndPosition, PCM_SETFRAMERATE, 0, vInfo.usPerFrame);
+}
+
+void EnsureSubset() {
+	if (!inputSubset)
+		if (!(inputSubset = new FrameSubset(inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)))
+			throw MyMemoryError();
+}
+
+void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
+	long lFrame = pVideoSource->lSampleFirst;
+	long lFirst = pVideoSource->lSampleFirst;
+	long lLast = pVideoSource->lSampleLast;
+	void *pBuffer = NULL;
+	int cbBuffer = 0;
+
+	try {
+		ProgressDialog pd(g_hWnd, "Frame scan", "Scanning for unreadable frames", lLast-lFrame, true);
+		bool bLastValid = true;
+		long lRangeFirst;
+		long lDeadFrames = 0;
+		long lMaskedFrames = 0;
+
+		pd.setValueFormat("Frame %d of %d");
+
+		pVideoSource->streamBegin(false);
+
+		while(lFrame <= lLast) {
+			LONG lActualBytes, lActualSamples;
+			int err;
+			bool bValid;
+
+			pd.advance(lFrame - lFirst);
+			pd.check();
+
+			do {
+				bValid = false;
+
+				if (!bLastValid && !pVideoSource->isKey(lFrame))
+					break;
+
+				if (lFrame < lLast) {
+					err = pVideoSource->read(lFrame, 1, NULL, 0, &lActualBytes, &lActualSamples);
+
+					if (err)
+						break;
+
+					if (cbBuffer < lActualBytes) {
+						int cbNewBuffer = (lActualBytes + 65535) & ~65535;
+						void *pNewBuffer = realloc(pBuffer, cbNewBuffer);
+
+						if (!pNewBuffer)
+							throw MyMemoryError();
+
+						cbBuffer = cbNewBuffer;
+						pBuffer = pNewBuffer;
+					}
+
+					err = pVideoSource->read(lFrame, 1, pBuffer, cbBuffer, &lActualBytes, &lActualSamples);
+
+					if (err)
+						break;
+
+					try {
+						pVideoSource->streamGetFrame(pBuffer, lActualBytes, pVideoSource->isKey(lFrame), FALSE, lFrame);
+					} catch(...) {
+						++lDeadFrames;
+						break;
+					}
+				}
+
+				bValid = true;
+			} while(false);
+
+			if (!bValid)
+				++lMaskedFrames;
+
+			if (bValid ^ bLastValid) {
+				if (bValid)
+					lRangeFirst = lFrame;
+				else
+					pSubset->setRange(lRangeFirst, lFrame - lRangeFirst, true);
+
+				bLastValid = bValid;
+			}
+
+			++lFrame;
+		}
+
+		pVideoSource->streamEnd();
+
+		guiSetStatus("%ld frames masked (%ld frames bad, %ld frames good but undecodable)", 255, lMaskedFrames, lDeadFrames, lMaskedFrames-lDeadFrames);
+
+	} catch(...) {
+		free(pBuffer);
+		throw;
+	}
+
+	free(pBuffer);
 }

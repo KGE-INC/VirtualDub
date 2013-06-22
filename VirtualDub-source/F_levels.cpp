@@ -148,6 +148,7 @@ static void __declspec(naked) AsmLevelsRunMMX(Pixel32 *dst, PixOffset dstpitch, 
 			push	ebx
 			mov		edi,[esp+4+16]
 			mov		ebp,[esp+12+16]
+			and		ebp,0fffffffeh
 			shl		ebp,2
 			sub		dword ptr [esp+8+16],ebp
 			mov		esi,[esp+20+16]
@@ -220,6 +221,7 @@ do_single:
 			movd		mm2,[edi]
 			movq		mm0,mm6
 			movq		mm1,round
+			punpcklbw	mm2,mm7
 			pmaddwd		mm0,mm2
 			paddd		mm1,mm0
 			psrlq		mm0,32

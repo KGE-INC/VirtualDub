@@ -214,11 +214,11 @@ void guiRedoWindows(HWND hWnd) {
 }
 
 void guiSetStatus(char *format, int nPart, ...) {
-	char buf[256];
+	char buf[1024];
 	va_list val;
 
 	va_start(val, nPart);
-	vsprintf(buf, format, val);
+	_vsnprintf(buf, sizeof buf, format, val);
 	va_end(val);
 
 	SendMessage(GetDlgItem(g_hWnd, IDC_STATUS_WINDOW), SB_SETTEXT, nPart, (LPARAM)buf);
@@ -414,7 +414,7 @@ void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
    			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)dcf, (LPARAM)pFrame);
       }
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		_RPT0(0,"Exception!!!\n");
 	}
 }
@@ -609,15 +609,15 @@ void size_to_str(char *dst, __int64 i64Bytes) {
 	if (i64Bytes < 65536) {
 		sprintf(dst, "%lu bytes", (unsigned long)i64Bytes);
 	} else if (i64Bytes < (1L<<24)) {
-		sprintf(dst, "%luK", (unsigned long)((i64Bytes+512) / 1024));
+		sprintf(dst, "%luKB", (unsigned long)((i64Bytes+512) / 1024));
 	} else if ((unsigned long)i64Bytes == i64Bytes) {
 		i64Bytes += 52429;
 
-		sprintf(dst, "%lu.%cMb", (unsigned long)(i64Bytes >> 20), (char)('0' + (( ((unsigned long)i64Bytes & 1048575) * 10)>>20)));
+		sprintf(dst, "%lu.%cMB", (unsigned long)(i64Bytes >> 20), (char)('0' + (( ((unsigned long)i64Bytes & 1048575) * 10)>>20)));
 	} else {
 		i64Bytes += (long)((1L<<30) / 200);
 
-		sprintf(dst, "%I64u.%02dGb",
+		sprintf(dst, "%I64u.%02dGB",
 				i64Bytes>>30,
 				(int)(
 					(

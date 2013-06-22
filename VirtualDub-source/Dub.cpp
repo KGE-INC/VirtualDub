@@ -462,6 +462,7 @@ Dubber::Dubber(DubOptions *xopt) {
 
 	mDSCLastVideoFrame = -1;
 
+	fSyncToAudioEvenClock = false;
 	mbAudioFrozen = false;
 	mbAudioFrozenValid = false;
 }
@@ -922,7 +923,7 @@ void Dubber::InitOutputFile(char *szFile) {
 				throw MyMemoryError();
 
 			pVideoPacker->init(compVars->hic, compressorVideoFormat, (BITMAPINFO *)AVIout->videoOut->getImageFormat(), compVars->lQ, compVars->lKey);
-			pVideoPacker->setDataRate(compVars->lDataRate*1024, vInfo.usPerFrameIn, vInfo.end_src - vInfo.start_src);
+			pVideoPacker->setDataRate(compVars->lDataRate*1024, vInfo.usPerFrame, vInfo.end_src - vInfo.start_src);
 			pVideoPacker->start();
 
 			lVideoSizeEstimate = pVideoPacker->getMaxSize();
@@ -1525,7 +1526,19 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *
 				long start = vSrc->nearestKey(pfsn->start + vSrc->lSampleFirst) - vSrc->lSampleFirst;
 
 				_RPT3(0,"   subset: %5d[%5d]-%-5d\n", pfsn->start, start, pfsn->start+pfsn->len-1);
-				inputSubsetActive->addRangeMerge(start, end-start);
+				inputSubsetActive->addRange(pfsn->start, pfsn->len, pfsn->bMask);
+
+				// Mask ranges never need to be extended backwards, because they don't hold any
+				// data of their own.  If an include range needs to be extended backwards, though,
+				// it may need to extend into a previous merge range.  To avoid this problem,
+				// we do a delete of the range before adding the tail.
+
+				if (!pfsn->bMask) {
+					if (start < pfsn->start) {
+						inputSubsetActive->deleteInputRange(start, pfsn->start-start);
+						inputSubsetActive->addRangeMerge(start, pfsn->start-start, false);
+					}
+				}
 
 				pfsn = inputSubset->getNextFrame(pfsn);
 			}
@@ -2259,7 +2272,7 @@ void Dubber::NextSegment() {
 					opt->perf.outputBufferSize,
 					opt->audio.enabled))
 			throw MyError("Problem initializing AVI output.");
-	} catch(MyError) {
+	} catch(const MyError&) {
 		delete AVIout_new;
 		throw;
 	}
@@ -2439,22 +2452,29 @@ void Dubber::MainAddVideoFrame() {
 
 				if (!lSpillVideoPoint || vInfo.cur_src < lSpillVideoPoint) {
 
-					// In DSC mode, we may not be able to copy the desired frames due to
-					// frame dependencies.  In that case, copy sequential frames from the
-					// last keyframe.
+					// If we just copied the last frame, drop in a null frame.
 
-					if (opt->video.frameRateDecimation > 1) {
-						long lKey = vSrc->nearestKey(lFrame);
+					if (mDSCLastVideoFrame == lFrame)
+						ReadNullVideoFrame(lFrame);
+					else {
+						// In DSC mode, we may not be able to copy the desired frames due to
+						// frame dependencies.  In that case, copy sequential frames from the
+						// last keyframe.
 
-						if (lKey > mDSCLastVideoFrame)
-							mDSCLastVideoFrame = lKey;
-						else
-							++mDSCLastVideoFrame;
+						if (opt->video.frameRateDecimation > 1) {
+							long lKey = vSrc->nearestKey(lFrame);
 
-						lFrame = mDSCLastVideoFrame;
+							if (lKey > mDSCLastVideoFrame)
+								mDSCLastVideoFrame = lKey;
+							else
+								++mDSCLastVideoFrame;
+
+							lFrame = mDSCLastVideoFrame;
+						}
+
+						ReadVideoFrame(lFrame, lFrame, FALSE);
+						mDSCLastVideoFrame = lFrame;
 					}
-
-					ReadVideoFrame(lFrame, lFrame, FALSE);
 				}
 			}
 		} else {
@@ -2472,6 +2492,13 @@ void Dubber::MainAddAudioFrame(int lag) {
 	long lBlockSize;
 	LONG lAudioPoint;
 	LONG lFrame = ((vInfo.cur_src-vInfo.start_src-lag) / opt->video.frameRateDecimation);
+
+	// If IVTC is active, round up to a multiple of five.
+
+	if (pInvTelecine) {
+		lFrame += 4;
+		lFrame -= lFrame % 5;
+	}
 
 	// Per-frame interleaving?
 
@@ -2609,13 +2636,12 @@ void Dubber::MainThread() {
 
 					}
 			}
-		} catch(MyError e) {
+		} catch(MyError& e) {
 			if (!fError) {
-				err = e;
-				e.discard();
+				err.TransferFrom(e);
 				fError = true;
 			}
-			e.post(NULL, "Dub Error (will attempt to finalize)");
+//			e.post(NULL, "Dub Error (will attempt to finalize)");
 		}
 
 		// wait for the pipeline to clear...
@@ -2654,12 +2680,11 @@ void Dubber::MainThread() {
 
 		fAbort = true;
 
-	} catch(MyError e) {
+	} catch(MyError& e) {
 //		e.post(NULL,"Dub Error");
 
 		if (!fError) {
-			err = e;
-			e.discard();
+			err.TransferFrom(e);
 			fError = true;
 		}
 		fAbort = TRUE;
@@ -2706,7 +2731,6 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSi
 		bool bDrop = !vSrc->isDecodable(sample_num);
 
 		if (mbAudioFrozen && mbAudioFrozenValid) {
-			bDrop = true;
 			lDropFrames = 1;
 		}
 
@@ -3222,7 +3246,7 @@ void Dubber::ProcessingThread() {
 					}
 					WriteVideoFrame(buf, exdata, droptype, len, samples, dframe);
 
-					if (fPreview) {
+					if (fPreview && aSrc) {
 						((AVIAudioPreviewOutputStream *)AVIout->audioOut)->start();
 						mbAudioFrozenValid = true;
 					}
@@ -3243,10 +3267,9 @@ void Dubber::ProcessingThread() {
 
 			}
 		} while(!fAbort && !pipe->isFinalized());
-	} catch(MyError e) {
+	} catch(MyError& e) {
 		if (!fError) {
-			err = e;
-			e.discard();
+			err.TransferFrom(e);
 			fError = true;
 		}
 		pipe->abort();

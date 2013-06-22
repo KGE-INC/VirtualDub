@@ -356,7 +356,7 @@ BOOL CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 					_snprintf(pnldi->item.pszText, pnldi->item.cchTextMax, "%+d", pcsd->priority);
 					break;
 				case 1:
-					_snprintf(pnldi->item.pszText, pnldi->item.cchTextMax, "%ldMb", pcsd->threshold);
+					_snprintf(pnldi->item.pszText, pnldi->item.cchTextMax, "%ldMB", pcsd->threshold);
 					break;
 				case 2:
 					if (pcsd->path)

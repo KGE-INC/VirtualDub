@@ -26,20 +26,22 @@
 
 extern HINSTANCE g_hInst;
 
-ProgressDialog::ProgressDialog(HWND hwndParent, const char *szTitle, const char *szCaption, long maxval, bool fAbortEnabled) {
-	lpszTitle		= szTitle;
-	lpszCaption		= szCaption;
-	lpszValueFormat	= NULL;
-	this->maxval	= maxval;
-	this->curval	= 0;
-	this->newval	= 0;
-	this->fAbortEnabled = fAbortEnabled;
-
-	fAbort = false;
-
-	hwndProgressBar = NULL;
-	hwndValue		= NULL;
-	hwndDialog		= NULL;
+ProgressDialog::ProgressDialog(HWND hwndParent, const char *szTitle, const char *szCaption, long _maxval, bool _fAbortEnabled) 
+	:lpszTitle(szTitle)
+	,lpszCaption(szCaption)
+	,lpszValueFormat(NULL)
+	,maxval(_maxval)
+	,curval(0)
+	,newval(0)
+	,mSparseCount(1)
+	,mSparseInterval(1)
+	,fAbortEnabled(_fAbortEnabled)
+	,fAbort(false)
+	,hwndProgressBar(NULL)
+	,hwndValue(NULL)
+	,hwndDialog(NULL)
+{
+	dwLastTime = GetTickCount();
 
 	CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_PROGRESS), hwndParent, ProgressDlgProc, (LPARAM)this);
 }
@@ -48,25 +50,40 @@ ProgressDialog::~ProgressDialog() {
 	close();
 }
 
+void ProgressDialog::setCaption(const char *sz) {
+	lpszCaption = sz;
+
+	if (hwndDialog)
+		SetDlgItemText(hwndDialog, IDC_STATIC_MESSAGE, sz);
+}
+
 void ProgressDialog::setValueFormat(const char *sz) {
 	lpszValueFormat = sz;
 }
 
-#if 0
-void ProgressDialog::advance(long newval) {
-	if (!hwndProgressBar) return;
-
-	if (newval > curval) {
-		curval = newval;
-		if (curval > maxval) curval = maxval;
-
-		SendMessage(hwndProgressBar, PBM_SETPOS, (WPARAM)MulDiv(curval, 16384, maxval), 0);
-	}
+void ProgressDialog::setLimit(long lim) {
+	curval = 0;		// force a bar update
+	maxval = lim;
 }
-#endif
 
 void ProgressDialog::check() {
 	MSG msg;
+
+	if (--mSparseCount)
+		return;
+
+	DWORD dwTime = GetTickCount();
+
+	mSparseCount = mSparseInterval;
+
+	if (dwTime < dwLastTime + 100) {
+		++mSparseInterval;
+	} else if (dwTime > dwLastTime + 200) {
+		if (mSparseInterval>1)
+			--mSparseInterval;
+	}
+
+	dwLastTime = dwTime;
 
 	while(PeekMessage(&msg, hwndDialog, 0, 0, PM_REMOVE)) {
 		if (!IsWindow(hwndDialog) || !IsDialogMessage(hwndDialog, &msg)) {

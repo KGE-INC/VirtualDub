@@ -43,8 +43,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\amplib" /I "..\sylia" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /Zm1000 /c
-# SUBTRACT CPP /Ow
+# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /Zm1000 /c
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -54,7 +53,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\amplib_new\release\amplib.lib dxguid.lib /nologo /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98 /mapinfo:lines
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98 /mapinfo:lines
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\Release
@@ -79,7 +78,7 @@ PostBuild_Cmds=i:\projwin\mapconv\release\mapconv release\VirtualDub.map release
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /Gm /GX /Zi /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\vdsvrlnk" /I "..\amplib" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /GZ /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /GZ /c
 # ADD BASE MTL /nologo /D "_DEBUG" /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
@@ -89,7 +88,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /debug /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\amplib_new\release\amplib.lib /nologo /subsystem:windows /incremental:no /map /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt"
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /subsystem:windows /incremental:no /map /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt"
 # SUBTRACT LINK32 /profile /pdb:none /nodefaultlib
 # Begin Special Build Tool
 IntDir=.\Debug
@@ -405,6 +404,10 @@ SOURCE=.\InputFile.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\InputFileImages.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\int128.cpp
 # End Source File
 # Begin Source File
@@ -425,11 +428,19 @@ SOURCE=.\SceneDetector.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\sparseavi.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\VBitmap.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=.\VideoSource.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\VideoSourceImages.cpp
 # End Source File
 # Begin Source File
 
@@ -585,6 +596,10 @@ SOURCE=.\InputFile.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\InputFileImages.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\int128.h
 # End Source File
 # Begin Source File
@@ -609,7 +624,15 @@ SOURCE=.\VBitmap.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\vector.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\VideoSource.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\VideoSourceImages.h
 # End Source File
 # Begin Source File
 
@@ -1286,37 +1309,6 @@ InputName=a_mjpgdec
 # End Source File
 # Begin Source File
 
-SOURCE=.\a_mpeg.asm
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-# Begin Custom Build - Assembling...
-IntDir=.\Release
-InputPath=.\a_mpeg.asm
-InputName=a_mpeg
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
-
-# End Custom Build
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-# Begin Custom Build - Assembling...
-IntDir=.\Debug
-InputPath=.\a_mpeg.asm
-InputName=a_mpeg
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
-
-# End Custom Build
-
-!ENDIF 
-
-# End Source File
-# Begin Source File
-
 SOURCE=.\a_predict.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
@@ -1572,6 +1564,10 @@ SOURCE=.\mpeg_tables.cpp
 # Begin Source File
 
 SOURCE=.\CMemoryBitInput.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\mjpeg_color.inl
 # End Source File
 # Begin Source File
 

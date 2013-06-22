@@ -290,7 +290,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 		__int64 divisor = pvinfo->processed*(__int64)pvinfo->usPerFrame;
 
 		s=buf; while(*s) ++s;
-		wsprintf(s, " (%3ldK/s)", (long)((((pvinfo->total_size+1023)/1024)*1000000i64 + divisor - 1) / divisor));
+		wsprintf(s, " (%3ldKB/s)", (long)((((pvinfo->total_size+1023)/1024)*1000000i64 + divisor - 1) / divisor));
 	}
 
 	SetDlgItemText(hWnd, IDC_CURRENT_VSIZE, buf);
@@ -320,7 +320,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 			wsprintf(buf, "%ldK", kilobytes);
 		else {
 			kilobytes = (lProjSize*100) / 1048576;
-			wsprintf(buf, "%ld.%02dMb", (LONG)(kilobytes/100), (LONG)(kilobytes%100));
+			wsprintf(buf, "%ld.%02dMB", (LONG)(kilobytes/100), (LONG)(kilobytes%100));
 		}
 		SetDlgItemText(hWnd, IDC_PROJECTED_FSIZE, buf);
 	} else {
@@ -465,9 +465,9 @@ BOOL APIENTRY DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, UINT wPara
 						thisPtr->lFrameHibound = hi;
 
 						if (lo >= 0x40000000)
-							wsprintf(buf, "%dGb", lo>>30);
+							wsprintf(buf, "%dGB", lo>>30);
 						else if (lo >= 0x100000)
-							wsprintf(buf, "%dMb", lo>>20);
+							wsprintf(buf, "%dMB", lo>>20);
 						else if (lo >= 0x400)
 							wsprintf(buf, "%dK", lo>>10);
 						else
@@ -475,9 +475,9 @@ BOOL APIENTRY DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, UINT wPara
 						SetDlgItemText(hdlg, IDC_STATIC_LOBOUND, buf);
 
 						if (hi >= 0x40000000)
-							wsprintf(buf, "%dGb", hi>>30);
+							wsprintf(buf, "%dGB", hi>>30);
 						else if (hi >= 0x100000)
-							wsprintf(buf, "%dMb", hi>>20);
+							wsprintf(buf, "%dMB", hi>>20);
 						else if (hi >= 0x400)
 							wsprintf(buf, "%dK", hi>>10);
 						else

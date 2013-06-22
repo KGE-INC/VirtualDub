@@ -51,6 +51,8 @@ AsyncBlitter::AsyncBlitter() {
 	fFlush				= false;
 	fPulsed				= FALSE;
 	pulseCallback		= NULL;
+	dwPulseFrame		= 0;
+	dwDrawFrame			= 0;
 
 	hEventDraw			= INVALID_HANDLE_VALUE;
 	hEventDrawReturn	= INVALID_HANDLE_VALUE;
@@ -73,6 +75,8 @@ AsyncBlitter::AsyncBlitter(int maxreq) {
 	fFlush				= false;
 	fPulsed				= FALSE;
 	pulseCallback		= NULL;
+	dwPulseFrame		= 0;
+	dwDrawFrame			= 0;
 
 	hEventDraw			= INVALID_HANDLE_VALUE;
 	hEventDrawReturn	= INVALID_HANDLE_VALUE;

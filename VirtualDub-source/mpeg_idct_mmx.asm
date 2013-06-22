@@ -20,8 +20,6 @@
 	.xmm
 	.model flat
 
-	.data
-
 PROFILE=0
 
 ;This code is based on the fragments from the Intel Application Note AP-922.
@@ -58,7 +56,7 @@ RND_INV_ROW	= 1024 * (6 - BITS_INV_ACC) ; 1 << (SHIFT_INV_ROW-1)
 RND_INV_COL	= 16 * (BITS_INV_ACC - 3) ; 1 << (SHIFT_INV_COL-1)
 RND_INV_CORR	= RND_INV_COL - 1 ; correction -1.0 and round
 
-		.data
+		.const
 		Align	16
 
 one_corr	sword	1, 1, 1, 1
@@ -72,6 +70,7 @@ cos_4_16	sword	-19195, -19195, -19195, -19195	; cos * (2<<16) - 1.0
 ocos_4_16	sword	23170, 23170, 23170, 23170	; cos * (2<<15) + 0.5
 
 jump_tab	dword	tail_inter, tail_intra, tail_mjpeg,0
+jump_tab_isse	dword	tail_inter_isse, tail_intra_isse, tail_mjpeg_isse,0
 
 		IF PROFILE
 		extern _sprintf:near
@@ -749,9 +748,44 @@ nodump:
 	jmp	dword ptr [jump_tab + edx*4]
 
 
+	align 16
+tail_intra:
+	mov		edx,-8*16
+	pxor		mm7,mm7
+intra_loop:
+	movq		mm0,[eax+edx+8*16]
+	movq		mm1,[eax+edx+8*16+8]
+	packuswb	mm0,mm1
+	movq		[ecx],mm0
+	add		ecx,[esp+12]
+	add		edx,16
+	jne		intra_loop
+tail_mjpeg:
+	ret
+
+	align		16
+tail_inter:
+	mov		edx,-8*16
+	pxor		mm7,mm7
+inter_loop:
+	movq		mm0,[eax+edx+8*16]
+	movq		mm1,[eax+edx+8*16+8]
+	movq		mm2,[ecx]
+	movq		mm3,mm2
+	punpcklbw	mm2,mm7
+	punpckhbw	mm3,mm7
+	paddw		mm0,mm2
+	paddw		mm1,mm3
+	packuswb	mm0,mm1
+	movq		[ecx],mm0
+	add		ecx,[esp+12]
+	add		edx,16
+	jne		inter_loop
+	ret
 
 
 
+	align 16
 _IDCT_isse:
 	IF PROFILE
 	rdtsc
@@ -767,31 +801,30 @@ _IDCT_isse:
 	align	16
 dorow_7is:	prefetcht0	tab_i_26
 		prefetcht0	tab_i_26+63
-		prefetcht0	[eax+6*16]
+		prefetcht0	[eax+5*16]
 		DCT_8_INV_ROW_1_ISSE	eax+7*16, eax+7*16, tab_i_17
 dorow_6is:	prefetcht0	tab_i_35
 		prefetcht0	tab_i_35+63
-		prefetcht0	[eax+5*16]
+		prefetcht0	[eax+4*16]
 		DCT_8_INV_ROW_1_ISSE	eax+6*16, eax+6*16, tab_i_26
 dorow_5is:	prefetcht0	tab_i_04
 		prefetcht0	tab_i_04+63
-		prefetcht0	[eax+4*16]
+		prefetcht0	[eax+3*16]
 		DCT_8_INV_ROW_1_ISSE	eax+5*16, eax+5*16, tab_i_35
 dorow_4is:	prefetcht0	tab_i_35
 		prefetcht0	tab_i_35+63
-		prefetcht0	[eax+3*16]
+		prefetcht0	[eax+2*16]
 		DCT_8_INV_ROW_1_ISSE	eax+4*16, eax+4*16, tab_i_04
 dorow_3is:	prefetcht0	tab_i_26
 		prefetcht0	tab_i_26+63
-		prefetcht0	[eax+2*16]
+		prefetcht0	[eax+1*16]
 		DCT_8_INV_ROW_1_ISSE	eax+3*16, eax+3*16, tab_i_35
 dorow_2is:	prefetcht0	tab_i_17
 		prefetcht0	tab_i_17+63
-		prefetcht0	[eax+1*16]
+		prefetcht0	[eax+0*16]
 		DCT_8_INV_ROW_1_ISSE	eax+2*16, eax+2*16, tab_i_26
 dorow_1is:	prefetcht0	tab_i_04
 		prefetcht0	tab_i_04+63
-		prefetcht0	[eax+0*16]
 		DCT_8_INV_ROW_1_ISSE	eax+1*16, eax+1*16, tab_i_17
 dorow_0is:	DCT_8_INV_ROW_1_ISSE	eax+0*16, eax+0*16, tab_i_04
 
@@ -852,32 +885,33 @@ nodump2:
 	mov	edx,[esp+16]
 	mov	eax,[esp+4]
 	mov	ecx,[esp+8]
-	jmp	dword ptr [jump_tab + edx*4]
-
-
-
+	jmp	dword ptr [jump_tab_isse + edx*4]
 
 	align 16
-
-tail_intra:
+tail_intra_isse:
+	push		ebx
 	mov		edx,-8*16
+	mov		ebx,[esp+12+4]
 	pxor		mm7,mm7
-intra_loop:
+intra_loop_isse:
 	movq		mm0,[eax+edx+8*16]
-	movq		mm1,[eax+edx+8*16+8]
-	packuswb	mm0,mm1
-	movq		[ecx],mm0
-	add		ecx,[esp+12]
-	add		edx,16
-	jne		intra_loop
-tail_mjpeg:
+	packuswb	mm0,[eax+edx+8*16+8]
+	movq		mm1,[eax+edx+8*16+16]
+	packuswb	mm1,[eax+edx+8*16+24]
+	add		edx,32
+	movntq		[ecx],mm0
+	movntq		[ecx+ebx],mm1
+	lea		ecx,[ecx+ebx*2]
+	jne		intra_loop_isse
+	pop		ebx
+tail_mjpeg_isse:
 	ret
 
 	align		16
-tail_inter:
+tail_inter_isse:
 	mov		edx,-8*16
 	pxor		mm7,mm7
-inter_loop:
+inter_loop_isse:
 	movq		mm0,[eax+edx+8*16]
 	movq		mm1,[eax+edx+8*16+8]
 	movq		mm2,[ecx]
@@ -890,7 +924,7 @@ inter_loop:
 	movq		[ecx],mm0
 	add		ecx,[esp+12]
 	add		edx,16
-	jne		inter_loop
+	jne		inter_loop_isse
 	ret
 
 	end

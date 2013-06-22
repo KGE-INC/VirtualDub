@@ -53,11 +53,12 @@ class AudioSourceAVI : public AudioSource {
 private:
 	IAVIReadHandler *pAVIFile;
 	IAVIReadStream *pAVIStream;
+	bool bQuiet;
 
 	BOOL _isKey(LONG lSample);
 
 public:
-	AudioSourceAVI(IAVIReadHandler *pAVIFile);
+	AudioSourceAVI(IAVIReadHandler *pAVIFile, bool bAutomated);
 	~AudioSourceAVI();
 
 	void Reinit();

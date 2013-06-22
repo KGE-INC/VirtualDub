@@ -1126,6 +1126,13 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 	if (!(cbuffer = allocmem(bytesPerSample * BUFFER_SIZE)))
 		throw MyMemoryError();
 
+	// Initialize the buffer.
+
+	if (oFormat->wBitsPerSample>8)
+		memset(cbuffer, 0x00, bytesPerSample * BUFFER_SIZE);
+	else
+		memset(cbuffer, 0x80, bytesPerSample * BUFFER_SIZE);
+
 	// If this is a high-quality downsample, allocate memory for the filter bank
 
 	if (hi_quality) {
@@ -1764,7 +1771,7 @@ _RPT1(0,"nError = %I64d\n", nError);
 
 		nTotalFramesAccumulated += fsn->len;
 
-		dst.addRange(start, end-start);
+		dst.addRange(start, end-start, false);
 
 		total += end-start;
 

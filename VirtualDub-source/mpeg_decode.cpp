@@ -334,10 +334,9 @@ void mpeg_initialize(int width, int height, char *imatrix, char *nimatrix, BOOL 
 
 		mpeg_reset();
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		mpeg_deinitialize();
-
-		throw e;
+		throw;
 	}
 }
 
@@ -2816,7 +2815,7 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 
 			CPUEnableExtensions(MMX_enabled ? ISSE_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX);
 		} while(MMX_enabled || ISSE_enabled);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, "MPEG-1 decoder verification error");
 	}
 }

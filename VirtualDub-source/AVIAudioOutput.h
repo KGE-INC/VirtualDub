@@ -45,6 +45,7 @@ private:
 	DWORD nAvgBytesPerSec;
 	int iBuffersActive;
 	long lAvailSpace;
+	CRITICAL_SECTION	mcsWaveDevice;
 
 	enum {
 		STATE_NONE		= 0,

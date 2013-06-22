@@ -31,6 +31,12 @@ Package=<5>
 
 Package=<4>
 {{{
+    Begin Project Dependency
+    Project_Dep_Name Setup
+    End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name vdsvrlnk
+    End Project Dependency
 }}}
 
 ###############################################################################
@@ -48,7 +54,7 @@ Package=<5>
 Package=<4>
 {{{
     Begin Project Dependency
-    Project_Dep_Name VirtualDub
+    Project_Dep_Name vdsvrlnk
     End Project Dependency
 }}}
 
@@ -66,6 +72,9 @@ Package=<5>
 
 Package=<4>
 {{{
+    Begin Project Dependency
+    Project_Dep_Name vdsvrlnk
+    End Project Dependency
 }}}
 
 ###############################################################################

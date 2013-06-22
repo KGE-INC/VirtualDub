@@ -203,7 +203,7 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 			FilterLoadModule(lpCmdLine+1);
 
 			guiSetStatus("Loaded external filter module: %s", 255, lpCmdLine+1);
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(g_hWnd, g_szError);
 		}
 	} else
@@ -284,7 +284,7 @@ bool InitApplication(HINSTANCE hInstance) {
 	if (!RegisterClippingControl()) return false;
 	if (!RegisterPositionControl()) return false;
 	if (!RegisterLevelControl()) return false;
-	if (!RegisterHexViewer()) return false;
+	if (!RegisterHexEditor()) return false;
 
 	// Load menus.
 

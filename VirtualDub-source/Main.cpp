@@ -146,11 +146,14 @@ void SaveStripedAVI(HWND);
 void SaveStripeMaster(HWND);
 void CPUTest();
 void InitDubAVI(char *szFile, BOOL fAudioOnly, DubOptions *quick_options, int iPriority=0, bool fPropagateErrors = false, long lSpillThreshold=0, long lSpillFrameThreshold=0);
+void OpenImageSeq(HWND hwnd);
 void SaveImageSeq(HWND);
 void SaveWAV(HWND);
 void OpenWAV();
 void DoDelete();
+void DoMaskChange(bool bMask);
 void SaveConfiguration(HWND);
+void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 
 BOOL APIENTRY StatusDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
 BOOL APIENTRY AVIInfoDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
@@ -193,7 +196,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				InvalidateRect(g_hWnd, NULL, TRUE);
 			} else
 				g_szFile[0] = g_szInputAVIFile[0] = 0;
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(g_hWnd, g_szError);
 		}
 
@@ -332,13 +335,16 @@ UINT iMainMenuHelpTranslator[]={
 char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos) {
 	try {
 		if (inputVideoAVI)
-			if (inputSubset)
-				return inputVideoAVI->getFrameTypeChar(inputSubset->lookupFrame(pos));
-			else
+			if (inputSubset) {
+				bool bMasked;
+				long nFrame = inputSubset->lookupFrame(pos, bMasked);
+
+				return bMasked ? 'M' : inputVideoAVI->getFrameTypeChar(nFrame);
+			} else
 				return inputVideoAVI->getFrameTypeChar(pos);
 		else
 			return 0;
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		return 0;
 	}
 }
@@ -443,7 +449,7 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 			}
 		}
 
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 //		e.post(hWnd, szError);
 		guiSetStatus("Error fetching frame %ld: %s", 255, pos, e.gets());
 		SceneShuttleStop();
@@ -459,11 +465,16 @@ void SceneShuttleStop() {
 		g_sceneShuttleMode = 0;
 		g_sceneShuttleAdvance = 0;
 		g_sceneShuttleCounter = 0;
-		DisplayFrame(g_hWnd, lSample);
+
+		if (inputVideoAVI)
+			DisplayFrame(g_hWnd, lSample);
 	}
 }
 
 void SceneShuttleStep() {
+	if (!inputVideoAVI)
+		SceneShuttleStop();
+
 	HWND hwndPosition = GetDlgItem(g_hWnd, IDC_POSITION);
 	LONG lSample = SendMessage(hwndPosition, PCM_GETPOS, 0, 0) + g_sceneShuttleMode;
 	long ls2 = inputSubset ? inputSubset->lookupFrame(lSample) : lSample;
@@ -664,572 +675,597 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 	}
 
 	SetAudioSource();
-
+	JobLockDubber();
 	DragAcceptFiles(hWnd, FALSE);
-	switch(id) {
-	case ID_FILE_QUIT:
-		DestroyWindow(hWnd);
-		break;
-	case ID_FILE_OPENAVI:
-		OpenAVI(-1, false);
-		RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
-		break;
-	case ID_FILE_APPENDSEGMENT:
-		AppendAVI();
-		break;
-	case ID_FILE_PREVIEWAVI:
-		JobLockDubber();
-		PreviewAVI(hWnd, NULL, g_prefs.main.iPreviewPriority);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVEAVI:
-		JobLockDubber();
-		SaveAVI(hWnd, false);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVECOMPATIBLEAVI:
-		JobLockDubber();
-		SaveAVI(hWnd, true);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVESTRIPEDAVI:
-		JobLockDubber();
-		SaveStripedAVI(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVESTRIPEMASTER:
-		JobLockDubber();
-		SaveStripeMaster(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVEIMAGESEQ:
-		JobLockDubber();
-		SaveImageSeq(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVESEGMENTEDAVI:
-		JobLockDubber();
-		SaveSegmentedAVI(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVEWAV:
-		JobLockDubber();
-		SaveWAV(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_CLOSEAVI:
-		CloseAVI();
-		RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
-		break;
-	case ID_FILE_STARTSERVER:
-		JobLockDubber();
-		SetAudioSource();
-		ActivateFrameServerDialog(hWnd);
-		MenuMRUListUpdate(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_CAPTUREAVI:
-		JobLockDubber();
-		CPUTest();
-		Capture(hWnd);
-		MenuMRUListUpdate(hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_SAVECONFIGURATION:
-		SaveConfiguration(hWnd);
-		break;
-	case ID_FILE_LOADCONFIGURATION:
-	case ID_FILE_RUNSCRIPT:
-		JobLockDubber();
-		RunScript(NULL, (void *)hWnd);
-		JobUnlockDubber();
-		break;
-	case ID_FILE_JOBCONTROL:
-		OpenJobWindow();
-		break;
-	case ID_FILE_AVIINFO:
-//		if (inputAVI) ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AVI_INFO), hWnd, AVIInfoDlgProc);
-		if (inputAVI)
-			inputAVI->InfoDialog(hWnd);
-		break;
-	case ID_VIDEO_FILTERS:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, FilterDlgProc);
-		RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
-		break;
-	case ID_VIDEO_FRAMERATE:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_FRAMERATE), hWnd, VideoDecimationDlgProc);
-		break;
-	case ID_VIDEO_COLORDEPTH:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_DEPTH), hWnd, VideoDepthDlgProc);
-		break;
-	case ID_VIDEO_CLIPPING:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_CLIPPING), hWnd, VideoClippingDlgProc);
-		break;
-	case ID_VIDEO_COMPRESSION:
-		if (!(g_Vcompression.dwFlags & ICMF_COMPVARS_VALID)) {
-			memset(&g_Vcompression, 0, sizeof g_Vcompression);
-			g_Vcompression.dwFlags |= ICMF_COMPVARS_VALID;
-			g_Vcompression.lQ = 10000;
-		}
 
-		g_Vcompression.cbSize = sizeof(COMPVARS);
-
-#if 0
-		if (inputVideoAVI) {
-//			ICCompressorChoose(hWnd, /*ICMF_CHOOSE_DATARATE |*/ ICMF_CHOOSE_KEYFRAME, (void *)inputVideoAVI->getDecompressedFormat(), NULL, &g_Vcompression, "Select video compression");
-			ICCompressorChoose(hWnd, ICMF_CHOOSE_DATARATE | ICMF_CHOOSE_KEYFRAME, NULL, NULL, &g_Vcompression, "Select video compression");
-		} else
-			ICCompressorChoose(hWnd, ICMF_CHOOSE_ALLCOMPRESSORS | ICMF_CHOOSE_DATARATE | ICMF_CHOOSE_KEYFRAME, NULL, NULL, &g_Vcompression, "Select video compression");*/
-#endif
-
-		ChooseCompressor(hWnd, &g_Vcompression, NULL);
-
-		break;
-	case ID_VIDEO_MODE_DIRECT:
-		g_dubOpts.video.mode = DubVideoOptions::M_NONE;
-		break;
-	case ID_VIDEO_MODE_FASTRECOMPRESS:
-		g_dubOpts.video.mode = DubVideoOptions::M_FASTREPACK;
-		break;
-	case ID_VIDEO_MODE_NORMALRECOMPRESS:
-		g_dubOpts.video.mode = DubVideoOptions::M_SLOWREPACK;
-		break;
-	case ID_VIDEO_MODE_FULL:
-		g_dubOpts.video.mode = DubVideoOptions::M_FULL;
-		break;
-	case ID_VIDEO_COPYSOURCEFRAME:
-		if (!inputVideoAVI || !inputVideoAVI->isFrameBufferValid())
+	try {
+		switch(id) {
+		case ID_FILE_QUIT:
+			DestroyWindow(hWnd);
 			break;
-
-		if (OpenClipboard(hWnd)) {
-			if (EmptyClipboard()) {
-				BITMAPINFOHEADER *pbih = inputVideoAVI->getDecompressedFormat();
-				long lFormatSize = pbih->biSize + (pbih->biBitCount<=16 ? pbih->biClrUsed*sizeof(RGBQUAD) : 0);
-				HANDLE hMem;
-				void *lpvMem;
-
-				if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, pbih->biSizeImage + lFormatSize)) {
-					if (lpvMem = GlobalLock(hMem)) {
-						memcpy(lpvMem, pbih, lFormatSize);
-						memcpy((char *)lpvMem + lFormatSize, inputVideoAVI->getFrameBuffer(), pbih->biSizeImage);
-
-						GlobalUnlock(lpvMem);
-						SetClipboardData(CF_DIB, hMem);
-						CloseClipboard();
-						break;
-					}
-					GlobalFree(hMem);
-				}
-			}
-			CloseClipboard();
-		}
-		break;
-	case ID_VIDEO_COPYOUTPUTFRAME:
-		if (!filters.isRunning())
+		case ID_FILE_OPENAVI:
+			OpenAVI(-1, false);
+			RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+			SetTitleByFile(hWnd);
+			RecalcFrameSizes();
 			break;
-		if (OpenClipboard(hWnd)) {
-			if (EmptyClipboard()) {
-				BITMAPINFOHEADER bih;
-				long lFormatSize;
-				HANDLE hMem;
-				void *lpvMem;
-
-				filters.LastBitmap()->MakeBitmapHeaderNoPadding(&bih);
-				lFormatSize = bih.biSize;
-
-				if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, bih.biSizeImage + lFormatSize)) {
-					if (lpvMem = GlobalLock(hMem)) {
-						memcpy(lpvMem, &bih, lFormatSize);
-
-						VBitmap((char *)lpvMem + lFormatSize, &bih).BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1); 
-
-						GlobalUnlock(lpvMem);
-						SetClipboardData(CF_DIB, hMem);
-						CloseClipboard();
-						break;
-					}
-					GlobalFree(hMem);
-				}
+		case ID_FILE_APPENDSEGMENT:
+			AppendAVI();
+			break;
+		case ID_FILE_PREVIEWAVI:
+			PreviewAVI(hWnd, NULL, g_prefs.main.iPreviewPriority);
+			break;
+		case ID_FILE_SAVEAVI:
+			SaveAVI(hWnd, false);
+			JobUnlockDubber();
+			break;
+		case ID_FILE_SAVECOMPATIBLEAVI:
+			SaveAVI(hWnd, true);
+			break;
+		case ID_FILE_SAVESTRIPEDAVI:
+			SaveStripedAVI(hWnd);
+			break;
+		case ID_FILE_SAVESTRIPEMASTER:
+			SaveStripeMaster(hWnd);
+			break;
+		case ID_FILE_SAVEIMAGESEQ:
+			SaveImageSeq(hWnd);
+			break;
+		case ID_FILE_SAVESEGMENTEDAVI:
+			SaveSegmentedAVI(hWnd);
+			break;
+		case ID_FILE_SAVEWAV:
+			SaveWAV(hWnd);
+			break;
+		case ID_FILE_CLOSEAVI:
+			CloseAVI();
+			RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+			SetTitleByFile(hWnd);
+			break;
+		case ID_FILE_STARTSERVER:
+			SetAudioSource();
+			ActivateFrameServerDialog(hWnd);
+			MenuMRUListUpdate(hWnd);
+			break;
+		case ID_FILE_CAPTUREAVI:
+			CPUTest();
+			Capture(hWnd);
+			MenuMRUListUpdate(hWnd);
+			RecalcFrameSizes();		// necessary because filters can be changed in capture mode
+			break;
+		case ID_FILE_SAVECONFIGURATION:
+			SaveConfiguration(hWnd);
+			break;
+		case ID_FILE_LOADCONFIGURATION:
+		case ID_FILE_RUNSCRIPT:
+			RunScript(NULL, (void *)hWnd);
+			SetTitleByFile(hWnd);
+			RecalcFrameSizes();
+			break;
+		case ID_FILE_JOBCONTROL:
+			OpenJobWindow();
+			break;
+		case ID_FILE_AVIINFO:
+	//		if (inputAVI) ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AVI_INFO), hWnd, AVIInfoDlgProc);
+			if (inputAVI)
+				inputAVI->InfoDialog(hWnd);
+			break;
+		case ID_VIDEO_FILTERS:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, FilterDlgProc);
+			RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+			RecalcFrameSizes();
+			break;
+		case ID_VIDEO_FRAMERATE:
+			SetAudioSource();
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_FRAMERATE), hWnd, VideoDecimationDlgProc);
+			RecalcPositionTimeConstant();
+			break;
+		case ID_VIDEO_COLORDEPTH:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_DEPTH), hWnd, VideoDepthDlgProc);
+			break;
+		case ID_VIDEO_CLIPPING:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_VIDEO_CLIPPING), hWnd, VideoClippingDlgProc);
+			break;
+		case ID_VIDEO_COMPRESSION:
+			if (!(g_Vcompression.dwFlags & ICMF_COMPVARS_VALID)) {
+				memset(&g_Vcompression, 0, sizeof g_Vcompression);
+				g_Vcompression.dwFlags |= ICMF_COMPVARS_VALID;
+				g_Vcompression.lQ = 10000;
 			}
-			CloseClipboard();
-		}
-		break;
 
-	case ID_EDIT_DELETE:
-		DoDelete();
-		break;
+			g_Vcompression.cbSize = sizeof(COMPVARS);
 
-	case ID_EDIT_SETSELSTART:
-		if (inputAVI) {
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+			ChooseCompressor(hWnd, &g_Vcompression, NULL);
 
-			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETSELSTART, (WPARAM)TRUE, lSample);
-
-			guiSetStatus("Start offset set to %ld ms", 255,
-					g_dubOpts.video.lStartOffsetMS = inputVideoAVI->samplesToMs(lSample));
-		}
-		break;
-	case ID_EDIT_SETSELEND:
-		if (inputAVI) {
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
-
-			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETSELEND, (WPARAM)TRUE, lSample);
-
-			guiSetStatus("End offset set to %ld ms", 255,
-				g_dubOpts.video.lEndOffsetMS = inputVideoAVI->samplesToMs((inputSubset ? inputSubset->getTotalFrames() : (inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)) - lSample));
-		}
-		break;
-
-	case ID_AUDIO_CONVERSION:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AUDIO_CONVERSION), hWnd, AudioConversionDlgProc);
-		break;
-	case ID_AUDIO_INTERLEAVE:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_INTERLEAVE), hWnd, AudioInterleaveDlgProc);
-		break;
-	case ID_AUDIO_COMPRESSION:
-#if 0
-		{
-			ACMFORMATCHOOSE afc;
-			DWORD cbFormat;
-			WAVEFORMATEX *pFormat;
-
-			if (acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, &cbFormat))
-				cbFormat = 512;
-
-			if (g_ACompressionFormat && g_ACompressionFormatSize > cbFormat)
-				cbFormat = g_ACompressionFormatSize;
-
-			if (!(pFormat = (WAVEFORMATEX *)allocmem(cbFormat)))
+			break;
+		case ID_VIDEO_MODE_DIRECT:
+			g_dubOpts.video.mode = DubVideoOptions::M_NONE;
+			break;
+		case ID_VIDEO_MODE_FASTRECOMPRESS:
+			g_dubOpts.video.mode = DubVideoOptions::M_FASTREPACK;
+			break;
+		case ID_VIDEO_MODE_NORMALRECOMPRESS:
+			g_dubOpts.video.mode = DubVideoOptions::M_SLOWREPACK;
+			break;
+		case ID_VIDEO_MODE_FULL:
+			g_dubOpts.video.mode = DubVideoOptions::M_FULL;
+			break;
+		case ID_VIDEO_COPYSOURCEFRAME:
+			if (!inputVideoAVI || !inputVideoAVI->isFrameBufferValid())
 				break;
 
-			if (g_ACompressionFormat)
-				memcpy(pFormat, g_ACompressionFormat, g_ACompressionFormatSize);
+			if (OpenClipboard(hWnd)) {
+				if (EmptyClipboard()) {
+					BITMAPINFOHEADER *pbih = inputVideoAVI->getDecompressedFormat();
+					long lFormatSize = pbih->biSize + (pbih->biBitCount<=16 ? pbih->biClrUsed*sizeof(RGBQUAD) : 0);
+					HANDLE hMem;
+					void *lpvMem;
 
-			memset(&afc, 0, sizeof afc);
-			afc.cbStruct		= sizeof(ACMFORMATCHOOSE);
-			afc.fdwStyle		= pFormat ? ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT : 0;
-			afc.hwndOwner		= hWnd;
-			afc.pwfx			= pFormat;
-			afc.cbwfx			= cbFormat;
-			afc.pszTitle		= "Select Audio Compression Format";
-			afc.szFormatTag[0]	= 0;
-			afc.szFormat[0]		= 0;
-			afc.pszName			= NULL;
-			afc.fdwEnum			= 0;
-			afc.pwfxEnum		= NULL;
-			afc.hInstance		= NULL;
-			afc.pszTemplateName	= NULL;
-			afc.pfnHook			= NULL;
+					if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, pbih->biSizeImage + lFormatSize)) {
+						if (lpvMem = GlobalLock(hMem)) {
+							memcpy(lpvMem, pbih, lFormatSize);
+							memcpy((char *)lpvMem + lFormatSize, inputVideoAVI->getFrameBuffer(), pbih->biSizeImage);
 
-			if (!acmFormatChoose(&afc)) {
-				freemem(g_ACompressionFormat);
-				g_ACompressionFormat = pFormat;
-				g_ACompressionFormatSize = cbFormat;
-			} else
-				freemem(pFormat);
-		}
-#else
-		SetAudioSource();
-
-		if (!inputAudio)
-			g_ACompressionFormat = AudioChooseCompressor(hWnd, g_ACompressionFormat, NULL);
-		else {
-	
-			PCMWAVEFORMAT wfex;
-
-			memcpy(&wfex, inputAudio->getWaveFormat(), sizeof(PCMWAVEFORMAT));
-			wfex.wf.wFormatTag = WAVE_FORMAT_PCM;
-
-			switch(g_dubOpts.audio.newPrecision) {
-			case DubAudioOptions::P_8BIT:	wfex.wBitsPerSample = 8; break;
-			case DubAudioOptions::P_16BIT:	wfex.wBitsPerSample = 16; break;
+							GlobalUnlock(lpvMem);
+							SetClipboardData(CF_DIB, hMem);
+							CloseClipboard();
+							break;
+						}
+						GlobalFree(hMem);
+					}
+				}
+				CloseClipboard();
 			}
+			break;
+		case ID_VIDEO_COPYOUTPUTFRAME:
+			if (!filters.isRunning())
+				break;
+			if (OpenClipboard(hWnd)) {
+				if (EmptyClipboard()) {
+					BITMAPINFOHEADER bih;
+					long lFormatSize;
+					HANDLE hMem;
+					void *lpvMem;
 
-			switch(g_dubOpts.audio.newPrecision) {
-			case DubAudioOptions::C_MONO:	wfex.wf.nChannels = 1; break;
-			case DubAudioOptions::C_STEREO:	wfex.wf.nChannels = 2; break;
+					filters.LastBitmap()->MakeBitmapHeaderNoPadding(&bih);
+					lFormatSize = bih.biSize;
+
+					if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, bih.biSizeImage + lFormatSize)) {
+						if (lpvMem = GlobalLock(hMem)) {
+							memcpy(lpvMem, &bih, lFormatSize);
+
+							VBitmap((char *)lpvMem + lFormatSize, &bih).BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1); 
+
+							GlobalUnlock(lpvMem);
+							SetClipboardData(CF_DIB, hMem);
+							CloseClipboard();
+							break;
+						}
+						GlobalFree(hMem);
+					}
+				}
+				CloseClipboard();
 			}
+			break;
 
-			if (g_dubOpts.audio.new_rate) {
-				long samp_frac;
+		case ID_EDIT_DELETE:
+			DoDelete();
+			break;
 
-				if (g_dubOpts.audio.integral_rate)
-					if (g_dubOpts.audio.new_rate > wfex.wf.nSamplesPerSec)
-						samp_frac = 0x10000 / ((g_dubOpts.audio.new_rate + wfex.wf.nSamplesPerSec/2) / wfex.wf.nSamplesPerSec); 
+		case ID_EDIT_MASK:
+			DoMaskChange(true);
+			break;
+
+		case ID_EDIT_UNMASK:
+			DoMaskChange(false);
+			break;
+
+		case ID_EDIT_SETSELSTART:
+			if (inputAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+
+				SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETSELSTART, (WPARAM)TRUE, lSample);
+
+				guiSetStatus("Start offset set to %ld ms", 255,
+						g_dubOpts.video.lStartOffsetMS = inputVideoAVI->samplesToMs(lSample));
+			}
+			break;
+		case ID_EDIT_SETSELEND:
+			if (inputAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+
+				SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETSELEND, (WPARAM)TRUE, lSample);
+
+				guiSetStatus("End offset set to %ld ms", 255,
+					g_dubOpts.video.lEndOffsetMS = inputVideoAVI->samplesToMs((inputSubset ? inputSubset->getTotalFrames() : (inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)) - lSample));
+			}
+			break;
+
+		case ID_AUDIO_CONVERSION:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AUDIO_CONVERSION), hWnd, AudioConversionDlgProc);
+			break;
+		case ID_AUDIO_INTERLEAVE:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_INTERLEAVE), hWnd, AudioInterleaveDlgProc);
+			break;
+		case ID_AUDIO_COMPRESSION:
+			SetAudioSource();
+
+			if (!inputAudio)
+				g_ACompressionFormat = AudioChooseCompressor(hWnd, g_ACompressionFormat, NULL);
+			else {
+		
+				PCMWAVEFORMAT wfex;
+
+				memcpy(&wfex, inputAudio->getWaveFormat(), sizeof(PCMWAVEFORMAT));
+				// Say 16-bit if the source was compressed.
+
+				if (wfex.wf.wFormatTag != WAVE_FORMAT_PCM)
+					wfex.wBitsPerSample = 16;
+
+				wfex.wf.wFormatTag = WAVE_FORMAT_PCM;
+
+				switch(g_dubOpts.audio.newPrecision) {
+				case DubAudioOptions::P_8BIT:	wfex.wBitsPerSample = 8; break;
+				case DubAudioOptions::P_16BIT:	wfex.wBitsPerSample = 16; break;
+				}
+
+				switch(g_dubOpts.audio.newPrecision) {
+				case DubAudioOptions::C_MONO:	wfex.wf.nChannels = 1; break;
+				case DubAudioOptions::C_STEREO:	wfex.wf.nChannels = 2; break;
+				}
+
+				if (g_dubOpts.audio.new_rate) {
+					long samp_frac;
+
+					if (g_dubOpts.audio.integral_rate)
+						if (g_dubOpts.audio.new_rate > wfex.wf.nSamplesPerSec)
+							samp_frac = 0x10000 / ((g_dubOpts.audio.new_rate + wfex.wf.nSamplesPerSec/2) / wfex.wf.nSamplesPerSec); 
+						else
+							samp_frac = 0x10000 * ((wfex.wf.nSamplesPerSec + g_dubOpts.audio.new_rate/2) / g_dubOpts.audio.new_rate);
 					else
-						samp_frac = 0x10000 * ((wfex.wf.nSamplesPerSec + g_dubOpts.audio.new_rate/2) / g_dubOpts.audio.new_rate);
-				else
-					samp_frac = MulDiv(wfex.wf.nSamplesPerSec, 0x10000L, g_dubOpts.audio.new_rate);
+						samp_frac = MulDiv(wfex.wf.nSamplesPerSec, 0x10000L, g_dubOpts.audio.new_rate);
 
-				wfex.wf.nSamplesPerSec = MulDiv(wfex.wf.nSamplesPerSec, 0x10000L, samp_frac);
+					wfex.wf.nSamplesPerSec = MulDiv(wfex.wf.nSamplesPerSec, 0x10000L, samp_frac);
+				}
+
+				wfex.wf.nBlockAlign = (wfex.wBitsPerSample+7)/8 * wfex.wf.nChannels;
+				wfex.wf.nAvgBytesPerSec = wfex.wf.nSamplesPerSec * wfex.wf.nBlockAlign;
+
+				g_ACompressionFormat = AudioChooseCompressor(hWnd, g_ACompressionFormat, (WAVEFORMATEX *)&wfex);
+
 			}
 
-			wfex.wf.nBlockAlign = (wfex.wBitsPerSample+7)/8 * wfex.wf.nChannels;
-			wfex.wf.nAvgBytesPerSec = wfex.wf.nSamplesPerSec * wfex.wf.nBlockAlign;
+			if (g_ACompressionFormat) {
+				g_ACompressionFormatSize = sizeof(WAVEFORMATEX) + g_ACompressionFormat->cbSize;
+			}
+			break;
 
-			g_ACompressionFormat = AudioChooseCompressor(hWnd, g_ACompressionFormat, (WAVEFORMATEX *)&wfex);
+		case ID_AUDIO_VOLUME:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AUDIO_VOLUME), hWnd, AudioVolumeDlgProc);
+			break;
 
-		}
+		case ID_AUDIO_SOURCE_NONE:
+			audioInputMode = AUDIOIN_NONE;
+			CloseWAV();
+			SetAudioSource();
+			RecalcPositionTimeConstant();
+			break;
+		case ID_AUDIO_SOURCE_AVI:
+			audioInputMode = AUDIOIN_AVI;
+			CloseWAV();
+			SetAudioSource();
+			RecalcPositionTimeConstant();
+			break;
+		case ID_AUDIO_SOURCE_WAV:
+			OpenWAV();
+			SetAudioSource();
+			RecalcPositionTimeConstant();
+			break;
 
-		if (g_ACompressionFormat) {
-			g_ACompressionFormatSize = sizeof(WAVEFORMATEX) + g_ACompressionFormat->cbSize;
-		}
-#endif
-		break;
+		case ID_AUDIO_MODE_DIRECT:
+			g_dubOpts.audio.mode = DubAudioOptions::M_NONE;
+			break;
+		case ID_AUDIO_MODE_FULL:
+			g_dubOpts.audio.mode = DubAudioOptions::M_FULL;
+			break;
 
-	case ID_AUDIO_VOLUME:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AUDIO_VOLUME), hWnd, AudioVolumeDlgProc);
-		break;
+		case ID_OPTIONS_PERFORMANCE:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERFORMANCE), hWnd, PerformanceOptionsDlgProc);
+			break;
+		case ID_OPTIONS_DYNAMICCOMPILATION:
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERF_DYNAMIC), hWnd, DynamicCompileOptionsDlgProc);
+			break;
+		case ID_OPTIONS_PREFERENCES:
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_PREFERENCES), hWnd, PreferencesDlgProc);
+			break;
+		case ID_OPTIONS_DISPLAYINPUTVIDEO:
+			if (g_dubStatus)
+				g_dubStatus->ToggleFrame(false);
+			else
+				g_dubOpts.video.fShowInputFrame = !g_dubOpts.video.fShowInputFrame;
+			break;
+		case ID_OPTIONS_DISPLAYOUTPUTVIDEO:
+			if (g_dubStatus)
+				g_dubStatus->ToggleFrame(true);
+			else
+				g_dubOpts.video.fShowOutputFrame = !g_dubOpts.video.fShowOutputFrame;
+			break;
+		case ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT:
+			g_drawDecompressedFrame = !g_drawDecompressedFrame;
+			break;
+		case ID_OPTIONS_SHOWSTATUSWINDOW:
+			if (g_dubStatus)
+				g_dubStatus->ToggleStatus();
+			else
+				g_showStatusWindow = !g_showStatusWindow;
+			break;
+		case ID_OPTIONS_SYNCHRONOUSBLIT:
+			g_syncroBlit = !g_syncroBlit;
+			break;
+		case ID_OPTIONS_VERTICALDISPLAY:
+			g_vertical = !g_vertical;
+			RecalcFrameSizes();
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
+		case ID_OPTIONS_DRAWHISTOGRAMS:
+			g_dubOpts.video.fHistogram = !g_dubOpts.video.fHistogram;
+			break;
+		case ID_OPTIONS_SYNCTOAUDIO:
+			g_dubOpts.video.fSyncToAudio = !g_dubOpts.video.fSyncToAudio;
+			break;
+		case ID_OPTIONS_ENABLEDIRECTDRAW:
+			g_dubOpts.perf.useDirectDraw = !g_dubOpts.perf.useDirectDraw;
+			break;
+		case ID_OPTIONS_DROPFRAMES:
+			g_fDropFrames = !g_fDropFrames;
+			break;
+		case ID_OPTIONS_SWAPPANES:
+			g_fSwapPanes = !g_fSwapPanes;
+			RecalcFrameSizes();
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
 
-	case ID_AUDIO_SOURCE_NONE:
-		audioInputMode = AUDIOIN_NONE;
-		CloseWAV();
-		break;
-	case ID_AUDIO_SOURCE_AVI:
-		audioInputMode = AUDIOIN_AVI;
-		CloseWAV();
-		break;
-	case ID_AUDIO_SOURCE_WAV:
-		OpenWAV();
-		break;
-
-	case ID_AUDIO_MODE_DIRECT:
-		g_dubOpts.audio.mode = DubAudioOptions::M_NONE;
-		break;
-	case ID_AUDIO_MODE_FULL:
-		g_dubOpts.audio.mode = DubAudioOptions::M_FULL;
-		break;
-
-	case ID_OPTIONS_PERFORMANCE:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERFORMANCE), hWnd, PerformanceOptionsDlgProc);
-		break;
-	case ID_OPTIONS_DYNAMICCOMPILATION:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERF_DYNAMIC), hWnd, DynamicCompileOptionsDlgProc);
-		break;
-	case ID_OPTIONS_PREFERENCES:
-		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_PREFERENCES), hWnd, PreferencesDlgProc);
-		break;
-	case ID_OPTIONS_DISPLAYINPUTVIDEO:
-		if (g_dubStatus)
-			g_dubStatus->ToggleFrame(false);
-		else
-			g_dubOpts.video.fShowInputFrame = !g_dubOpts.video.fShowInputFrame;
-		break;
-	case ID_OPTIONS_DISPLAYOUTPUTVIDEO:
-		if (g_dubStatus)
-			g_dubStatus->ToggleFrame(true);
-		else
-			g_dubOpts.video.fShowOutputFrame = !g_dubOpts.video.fShowOutputFrame;
-		break;
-	case ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT:
-		g_drawDecompressedFrame = !g_drawDecompressedFrame;
-		break;
-	case ID_OPTIONS_SHOWSTATUSWINDOW:
-		if (g_dubStatus)
-			g_dubStatus->ToggleStatus();
-		else
-			g_showStatusWindow = !g_showStatusWindow;
-		break;
-	case ID_OPTIONS_SYNCHRONOUSBLIT:
-		g_syncroBlit = !g_syncroBlit;
-		break;
-	case ID_OPTIONS_VERTICALDISPLAY:
-		g_vertical = !g_vertical;
-		InvalidateRect(hWnd, NULL, TRUE);
-		break;
-	case ID_OPTIONS_DRAWHISTOGRAMS:
-		g_dubOpts.video.fHistogram = !g_dubOpts.video.fHistogram;
-		break;
-	case ID_OPTIONS_SYNCTOAUDIO:
-		g_dubOpts.video.fSyncToAudio = !g_dubOpts.video.fSyncToAudio;
-		break;
-	case ID_OPTIONS_ENABLEDIRECTDRAW:
-		g_dubOpts.perf.useDirectDraw = !g_dubOpts.perf.useDirectDraw;
-		break;
-	case ID_OPTIONS_DROPFRAMES:
-		g_fDropFrames = !g_fDropFrames;
-		break;
-	case ID_OPTIONS_SWAPPANES:
-		g_fSwapPanes = !g_fSwapPanes;
-		InvalidateRect(hWnd, NULL, TRUE);
-		break;
-
-	case ID_OPTIONS_PREVIEWPROGRESSIVE:	g_dubOpts.video.nPreviewFieldMode = 0; break;
-	case ID_OPTIONS_PREVIEWFIELDA:		g_dubOpts.video.nPreviewFieldMode = 1; break;
-	case ID_OPTIONS_PREVIEWFIELDB:		g_dubOpts.video.nPreviewFieldMode = 2; break;
-
-
-	case ID_TOOLS_HEXVIEWER:
-		HexView(NULL);
-		break;
+		case ID_OPTIONS_PREVIEWPROGRESSIVE:	g_dubOpts.video.nPreviewFieldMode = 0; break;
+		case ID_OPTIONS_PREVIEWFIELDA:		g_dubOpts.video.nPreviewFieldMode = 1; break;
+		case ID_OPTIONS_PREVIEWFIELDB:		g_dubOpts.video.nPreviewFieldMode = 2; break;
 
 
-	case ID_HELP_LICENSE:
-		DisplayLicense(hWnd);
-		break;
+		case ID_TOOLS_HEXVIEWER:
+			HexEdit(NULL);
+			break;
 
-	case ID_HELP_CONTENTS:
-		HelpShowHelp(hWnd);
-		break;
-	case ID_HELP_CHANGELOG:
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SHOWTEXT), hWnd, ShowTextDlgProc, (LPARAM)MAKEINTRESOURCE(IDR_CHANGES));
-		break;
-	case ID_HELP_RELEASENOTES:
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SHOWTEXT), hWnd, ShowTextDlgProc, (LPARAM)MAKEINTRESOURCE(IDR_RELEASE_NOTES));
-		break;
-	case ID_HELP_ABOUT:
-		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUT), hWnd, AboutDlgProc);
-		break;
+		case ID_TOOLS_CREATESPARSEAVI:
+			CreateExtractSparseAVI(hWnd, false);
+			break;
 
-	case ID_HELP_ONLINE_HOME:	LaunchURL("http://www.virtualdub.org/index"); break;
-	case ID_HELP_ONLINE_FAQ:	LaunchURL("http://www.virtualdub.org/virtualdub_faq"); break;
-	case ID_HELP_ONLINE_NEWS:	LaunchURL("http://www.virtualdub.org/virtualdub_news"); break;
-	case ID_HELP_ONLINE_KB:		LaunchURL("http://www.virtualdub.org/virtualdub_kb"); break;
+		case ID_TOOLS_EXPANDSPARSEAVI:
+			CreateExtractSparseAVI(hWnd, true);
+			break;
 
-	case ID_DUBINPROGRESS_ABORT:
-		if (g_dubber) g_dubber->Abort();
-		break;
+		case ID_HELP_LICENSE:
+			DisplayLicense(hWnd);
+			break;
+
+		case ID_HELP_CONTENTS:
+			HelpShowHelp(hWnd);
+			break;
+		case ID_HELP_CHANGELOG:
+			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SHOWTEXT), hWnd, ShowTextDlgProc, (LPARAM)MAKEINTRESOURCE(IDR_CHANGES));
+			break;
+		case ID_HELP_RELEASENOTES:
+			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SHOWTEXT), hWnd, ShowTextDlgProc, (LPARAM)MAKEINTRESOURCE(IDR_RELEASE_NOTES));
+			break;
+		case ID_HELP_ABOUT:
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUT), hWnd, AboutDlgProc);
+			break;
+
+		case ID_HELP_ONLINE_HOME:	LaunchURL("http://www.virtualdub.org/index"); break;
+		case ID_HELP_ONLINE_FAQ:	LaunchURL("http://www.virtualdub.org/virtualdub_faq"); break;
+		case ID_HELP_ONLINE_NEWS:	LaunchURL("http://www.virtualdub.org/virtualdub_news"); break;
+		case ID_HELP_ONLINE_KB:		LaunchURL("http://www.virtualdub.org/virtualdub_kb"); break;
+
+		case ID_DUBINPROGRESS_ABORT:
+			if (g_dubber) g_dubber->Abort();
+			break;
 
 
-	case ID_VIDEO_SEEK_START:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_START), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_END:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_END), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_PREV:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_BACKWARD), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_NEXT:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_FORWARD), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_PREVONESEC:
-		{
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) - 50;
+		case ID_VIDEO_SEEK_START:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_START), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_END:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_END), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_PREV:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_BACKWARD), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_NEXT:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_FORWARD), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_PREVONESEC:
+			if (inputVideoAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) - 50;
 
-			if (lSample < 0)
-				lSample = 0;
+				if (lSample < 0)
+					lSample = 0;
 
-			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
-			DisplayFrame(hWnd, lSample);
-		}
-		break;
-	case ID_VIDEO_SEEK_NEXTONESEC:
-		{
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) + 50;
-			LONG lMax = (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast);
-
-			if (lSample > lMax)
-				lSample = lMax;
-
-			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
-			DisplayFrame(hWnd, lSample);
-		}
-		break;
-	case ID_VIDEO_SEEK_KEYPREV:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_KEYPREV), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_KEYNEXT:
-		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_KEYNEXT), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
-		break;
-	case ID_VIDEO_SEEK_SELSTART:
-		{
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETSELSTART, 0, 0);
-
-			if (lSample >= 0) {
 				SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
 				DisplayFrame(hWnd, lSample);
 			}
-		}
-		break;
-	case ID_VIDEO_SEEK_SELEND:
-		{
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETSELEND, 0, 0);
+			break;
+		case ID_VIDEO_SEEK_NEXTONESEC:
+			if (inputVideoAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) + 50;
+				LONG lMax = (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast);
 
-			if (lSample >= 0) {
+				if (lSample > lMax)
+					lSample = lMax;
+
 				SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
 				DisplayFrame(hWnd, lSample);
 			}
-		}
-		break;
-	case ID_VIDEO_SEEK_PREVDROP:
-		if (inputAVI) {
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+			break;
+		case ID_VIDEO_SEEK_KEYPREV:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_KEYPREV), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_KEYNEXT:
+			PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_KEYNEXT), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+			break;
+		case ID_VIDEO_SEEK_SELSTART:
+			if (inputVideoAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETSELSTART, 0, 0);
 
-			while(--lSample >= (inputSubset ? 0 : inputVideoAVI->lSampleFirst)) {
-				int err;
-				long lBytes, lSamples;
-
-				err = inputVideoAVI->read(inputSubset ? inputSubset->lookupFrame(lSample) : lSample, 1, NULL, 0, &lBytes, &lSamples);
-				if (err != AVIERR_OK)
-					break;
-
-				if (!lBytes) {
+				if (lSample >= 0) {
 					SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
 					DisplayFrame(hWnd, lSample);
-					break;
 				}
 			}
+			break;
+		case ID_VIDEO_SEEK_SELEND:
+			if (inputVideoAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETSELEND, 0, 0);
 
-			if (lSample < (inputSubset ? 0 : inputVideoAVI->lSampleFirst))
-				guiSetStatus("No previous dropped frame found.", 255);
-		}
-		break;
-
-	case ID_VIDEO_SEEK_NEXTDROP:
-		if (inputAVI) {
-			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
-
-			while(++lSample < (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast)) {
-				int err;
-				long lBytes, lSamples;
-
-				err = inputVideoAVI->read(inputSubset ? inputSubset->lookupFrame(lSample) : lSample, 1, NULL, 0, &lBytes, &lSamples);
-				if (err != AVIERR_OK)
-					break;
-
-				if (!lBytes) {
+				if (lSample >= 0) {
 					SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
 					DisplayFrame(hWnd, lSample);
-					break;
 				}
 			}
+			break;
+		case ID_VIDEO_SEEK_PREVDROP:
+			if (inputAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
 
-			if (lSample >= (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast))
-				guiSetStatus("No next dropped frame found.", 255);
-		}
-		break;
+				while(--lSample >= (inputSubset ? 0 : inputVideoAVI->lSampleFirst)) {
+					int err;
+					long lBytes, lSamples;
 
-	case ID_EDIT_JUMPTO:
-		if (inputAVI) {
-			long lFrame;
+					err = inputVideoAVI->read(inputSubset ? inputSubset->lookupFrame(lSample) : lSample, 1, NULL, 0, &lBytes, &lSamples);
+					if (err != AVIERR_OK)
+						break;
 
-			lFrame = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_JUMPTOFRAME), g_hWnd, VideoJumpDlgProc, SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_GETPOS, 0, 0));
+					if (!lBytes) {
+						SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
+						DisplayFrame(hWnd, lSample);
+						break;
+					}
+				}
 
-			if (lFrame >= 0) {
-				SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lFrame);
-				DisplayFrame(g_hWnd, SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_GETPOS, 0, 0));
+				if (lSample < (inputSubset ? 0 : inputVideoAVI->lSampleFirst))
+					guiSetStatus("No previous dropped frame found.", 255);
 			}
-		}
-		return TRUE;
+			break;
 
-	default:
-		if (id >= ID_MRU_FILE0 && id <= ID_MRU_FILE3) {
-			OpenAVI(id - ID_MRU_FILE0, (signed short)GetAsyncKeyState(VK_SHIFT) < 0);
-			RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+		case ID_VIDEO_SEEK_NEXTDROP:
+			if (inputAVI) {
+				LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+
+				while(++lSample < (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast)) {
+					int err;
+					long lBytes, lSamples;
+
+					err = inputVideoAVI->read(inputSubset ? inputSubset->lookupFrame(lSample) : lSample, 1, NULL, 0, &lBytes, &lSamples);
+					if (err != AVIERR_OK)
+						break;
+
+					if (!lBytes) {
+						SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
+						DisplayFrame(hWnd, lSample);
+						break;
+					}
+				}
+
+				if (lSample >= (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast))
+					guiSetStatus("No next dropped frame found.", 255);
+			}
+			break;
+
+		case ID_VIDEO_SCANFORERRORS:
+			if (inputVideoAVI) {
+				EnsureSubset();
+				ScanForUnreadableFrames(inputSubset, inputVideoAVI);
+			}
+			break;
+
+		case ID_EDIT_JUMPTO:
+			if (inputAVI) {
+				long lFrame;
+
+				lFrame = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_JUMPTOFRAME), g_hWnd, VideoJumpDlgProc, SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_GETPOS, 0, 0));
+
+				if (lFrame >= 0) {
+					SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lFrame);
+					DisplayFrame(g_hWnd, SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_GETPOS, 0, 0));
+				}
+			}
+			break;
+
+		case ID_EDIT_RESET:
+			if (inputAVI && inputSubset) {
+				if (IDOK == MessageBox(g_hWnd, "Discard edits and reset timeline?", g_szWarning, MB_OK|MB_TASKMODAL|MB_SETFOREGROUND)) {
+					delete inputSubset;
+					inputSubset = NULL;
+					RemakePositionSlider();
+				}
+			}
+			break;
+
+		case ID_EDIT_PREVRANGE:
+			if (inputAVI && inputSubset) {
+				long lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+				int offset;
+
+				FrameSubsetNode *pfsn = inputSubset->findNode(offset, lSample);
+
+				if (pfsn) {
+					FrameSubsetNode *pfsn_prev = pfsn->NextFromTail();
+
+					if (pfsn_prev->NextFromTail()) {
+						lSample -= offset;
+						SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lSample - pfsn_prev->len);
+						guiSetStatus("Previous output range %d-%d: %sed source frames %d-%d", 255, lSample - pfsn_prev->len, lSample-1, pfsn_prev->bMask ? "mask" : "includ", pfsn_prev->start, pfsn_prev->start + pfsn_prev->len - 1);
+						break;
+					}
+				}
+			}
+			guiSetStatus("No previous edit range.", 255);
+			break;
+
+		case ID_EDIT_NEXTRANGE:
+			if (inputAVI && inputSubset) {
+				long lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0);
+				int offset;
+
+				FrameSubsetNode *pfsn = inputSubset->findNode(offset, lSample);
+
+				if (pfsn) {
+					FrameSubsetNode *pfsn_next = pfsn->NextFromHead();
+
+					if (pfsn_next->NextFromHead()) {
+						lSample = lSample - offset + pfsn->len;
+						SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lSample);
+						guiSetStatus("Next output range %d-%d: %sed source frames %d-%d", 255, lSample, lSample+pfsn_next->len-1, pfsn_next->bMask ? "mask" : "includ", pfsn_next->start, pfsn_next->start + pfsn_next->len - 1);
+						break;
+					}
+				}
+			}
+			guiSetStatus("No next edit range.", 255);
+			break;
+
+		default:
+			if (id >= ID_MRU_FILE0 && id <= ID_MRU_FILE3) {
+				OpenAVI(id - ID_MRU_FILE0, (signed short)GetAsyncKeyState(VK_SHIFT) < 0);
+				RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+				RecalcFrameSizes();
+				SetTitleByFile(hWnd);
+				break;
+			}
 			break;
 		}
-		DragAcceptFiles(hWnd, TRUE);
-		return FALSE;
+	} catch(const MyError& e) {
+		e.post(g_hWnd, g_szError);
 	}
 
-	SetTitleByFile(hWnd);
-
+	JobUnlockDubber();
 	DragAcceptFiles(hWnd, TRUE);
-
-	// recompute some necessary things
-
-	RecalcFrameSizes();
 
 	return TRUE;
 }
@@ -1537,7 +1573,6 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 							dubOpt->video.fShowInputFrame		= TRUE;
 							dubOpt->video.fShowOutputFrame		= FALSE;
 							dubOpt->video.frameRateDecimation	= 1;
-							dubOpt->video.frameRateNewMicroSecs	= 0;
 							dubOpt->video.lEndOffsetMS			= 0;
 
 							dubOpt->audio.mode					= DubAudioOptions::M_FULL;
@@ -1547,16 +1582,12 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 						dubOpt->fMoveSlider = true;
 
 						if (lStart < inputVideoAVI->lSampleLast) {
-		DragAcceptFiles(hWnd, FALSE);
-		JobLockDubber();
 							PreviewAVI(hWnd, dubOpt, g_prefs.main.iPreviewPriority);
 							MenuMRUListUpdate(hWnd);
-		JobUnlockDubber();
-		DragAcceptFiles(hWnd, TRUE);
 						}
 
 						delete dubOpt;
-					} catch(MyError e) {
+					} catch(const MyError& e) {
 						e.post(hWnd, g_szError);
 					}
 					break;
@@ -1601,13 +1632,14 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 
 						if (inputSubset) {
 							long lSample2;
+							bool bMasked;
 
 							lSample2 = inputSubset->lookupFrame(lSample);
 
 							do {
 								lSample2 = inputVideoAVI->prevKey(lSample2);
-								lSample = inputSubset->revLookupFrame(lSample2);
-							} while(lSample2 >= 0 && lSample < 0);
+								lSample = inputSubset->revLookupFrame(lSample2, bMasked);
+							} while(lSample2 >= 0 && (lSample < 0 || bMasked));
 						} else
 							lSample = inputVideoAVI->prevKey(lSample);
 
@@ -1619,17 +1651,19 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 					break;
 				case PCN_KEYNEXT:
 					{
-						LONG lSample = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
+						long lSampleOld = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
+						long lSample = lSampleOld;
 
 						if (inputSubset) {
 							long lSample2;
+							bool bMasked;
 
 							lSample2 = inputSubset->lookupFrame(lSample);
 
 							do {
 								lSample2 = inputVideoAVI->nextKey(lSample2);
-								lSample = inputSubset->revLookupFrame(lSample2);
-							} while(lSample2 >= 0 && lSample < 0);
+								lSample = inputSubset->revLookupFrame(lSample2, bMasked);
+							} while(lSample2 >= 0 && (lSample <= lSampleOld || bMasked));
 						} else
 							lSample = inputVideoAVI->nextKey(lSample);
 
@@ -1706,22 +1740,27 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 						if (GetKeyState(VK_SHIFT)<0) {
 							if (inputSubset) {
 								long lSample2;
+								bool bMasked;
 
 								lSample2 = inputSubset->lookupFrame(pos);
 
 								lSample2 = inputVideoAVI->nearestKey(lSample2);
-								pos = inputSubset->revLookupFrame(lSample2);
+								pos = inputSubset->revLookupFrame(lSample2, bMasked);
+								if (bMasked)
+									pos = -1;
 							} else
 								pos = inputVideoAVI->nearestKey(pos);
 
-							if (nmh->code != PCN_THUMBTRACK)
+							if (nmh->code != PCN_THUMBTRACK && pos >= 0)
 								SendMessage(nmh->hwndFrom, PCM_SETPOS, TRUE, pos);
 						}
 
-						if (nmh->code == PCN_THUMBTRACK)
-							SendMessage(nmh->hwndFrom, PCM_SETDISPFRAME, 0, pos);
+						if (pos >= 0) {
+							if (nmh->code == PCN_THUMBTRACK)
+								SendMessage(nmh->hwndFrom, PCM_SETDISPFRAME, 0, pos);
 
-						DisplayFrame(hWnd, pos);
+							DisplayFrame(hWnd, pos);
+						}
 					}
 					break;
 				}
@@ -1899,12 +1938,13 @@ extern const char fileFiltersAppend[]=
 		;
 
 static const char fileFilters[]=
-		"All usable types\0"						"*.avi;*.avs;*.mpg;*.mpeg;*.mpv;*.m1v;*.dat;*.stripe;*.vdr\0"
+		"All usable types\0"						"*.avi;*.avs;*.mpg;*.mpeg;*.mpv;*.m1v;*.dat;*.stripe;*.vdr;*.bmp\0"
 		"Audio-Video Interleave (*.avi)\0"			"*.avi\0"
 		"MPEG-1 video file (*.mpeg,*.mpg,*.mpv,*.dat)\0"	"*.mpg;*.mpeg;*.mpv;*.m1v;*.dat\0"
 		"AVI stripe definition (*.stripe)\0"		"*.stripe\0"
 		"VirtualDub remote signpost (*.vdr)\0"		"*.vdr\0"
 		"AVI (compatibility mode) (*.avi,*.avs)\0"	"*.avi;*.avs\0"
+		"DIB image sequence (*.bmp)\0"				"*.bmp\0"
 		"All files (*.*)\0"							"*.*\0"
 		;
 
@@ -1999,6 +2039,7 @@ void OpenAVI(int index, bool ext_opt) {
 		case 3: iFileType = FILETYPE_MPEG; break;
 //		case 4: iFileType = FILETYPE_ASF; break;
 		case 6: iFileType = FILETYPE_AVICOMPAT; break;
+		case 7: iFileType = FILETYPE_IMAGE; break;
 		default:iFileType = FILETYPE_AUTODETECT; break;
 		}
 
@@ -2013,8 +2054,8 @@ void OpenAVI(int index, bool ext_opt) {
 
 		if (index<0)
 			mru_list->add(g_szInputAVIFile);
-	} catch(MyError e) {
-		e.post(NULL, g_szError);
+	} catch(const MyError& e) {
+		e.post(g_hWnd, g_szError);
 	}
 	MenuMRUListUpdate(g_hWnd);
 }
@@ -2065,7 +2106,7 @@ void AppendAVI() {
 			AppendAVIAutoscan(g_szFile);
 		else
 			AppendAVI(g_szFile);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 }
@@ -2093,7 +2134,7 @@ void HandleDragDrop(HDROP hdrop) {
 		RecalcFrameSizes();
 		SetTitleByFile(g_hWnd);
 		RedrawWindow(g_hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 }
@@ -2154,7 +2195,7 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 		if (fAddAsJob) {
 			try {
 				JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, g_szFile, fUseCompatibility, &inputAVI->listFiles, 0, 0);
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				e.post(g_hWnd, g_szError);
 			}
 		} else {
@@ -2363,7 +2404,7 @@ void SaveSegmentedAVI(HWND hWnd) {
 		if (sv.fDefer) {
 			try {
 				JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, g_szFile, true, &inputAVI->listFiles, sv.lThreshMB, sv.lThreshFrames);
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				e.post(g_hWnd, g_szError);
 			}
 		} else {
@@ -2415,7 +2456,7 @@ void SaveStripedAVI(HWND hWnd) {
 	try {
 		if (GetOpenFileName(&ofn))
 			SaveStripedAVI(g_szFile);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 
@@ -2455,7 +2496,7 @@ void SaveStripeMaster(HWND hWnd) {
 	try {
 		if (GetOpenFileName(&ofn))
 			SaveStripeMaster(g_szFile);
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 
@@ -2601,10 +2642,9 @@ void InitDubAVI(char *szFile, BOOL fAudioOnly, DubOptions *quick_options, int iP
 			fError = true;
 		} else
 			MyError(s).post(g_hWnd,g_szError);
-	} catch(MyError err) {
+	} catch( MyError& err) {
 		if (fPropagateErrors) {
-			prop_err = err;
-			err.discard();
+			prop_err.TransferFrom(err);
 			fError = true;
 		} else
 			err.post(g_hWnd,g_szError);
@@ -2701,6 +2741,7 @@ static BOOL CALLBACK SaveImageSeqDlgProc(HWND hDlg, UINT message, WPARAM wParam,
 		SetDlgItemText(hDlg, IDC_DIRECTORY, sisdd->szDirectory);
 		SetWindowLong(hDlg, DWL_USER, lParam);
 		SaveImageSeqShowFilenames(hDlg);
+
 		return TRUE;
 
 	case WM_COMMAND:
@@ -2725,6 +2766,10 @@ static BOOL CALLBACK SaveImageSeqDlgProc(HWND hDlg, UINT message, WPARAM wParam,
 			uiTemp = GetDlgItemInt(hDlg, IDC_FILENAME_DIGITS, &fSuccess, FALSE);
 			if (fSuccess) {
 				sisdd->digits = uiTemp;
+
+				if (sisdd->digits > 15)
+					sisdd->digits = 15;
+
 				SaveImageSeqShowFilenames(hDlg);
 			}
 			return TRUE;
@@ -2830,7 +2875,7 @@ void SaveWAV(HWND hWnd) {
 	if (GetSaveFileName(&ofn))
 		try {
 			SaveWAV(g_szFile);
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(NULL, g_szError);
 		}
 }
@@ -2897,7 +2942,7 @@ void SaveConfiguration(HWND hWnd) {
 
 			fclose(f);
 			f = NULL;
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(NULL, g_szError);
 		}
 
@@ -2918,9 +2963,7 @@ void DoDelete() {
 		LONG lStart = SendMessage(hwndPosition, PCM_GETSELSTART, 0, 0);
 		LONG lEnd = SendMessage(hwndPosition, PCM_GETSELEND, 0, 0);
 
-		if (!inputSubset)
-			if (!(inputSubset = new FrameSubset(inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)))
-				throw MyMemoryError();
+		EnsureSubset();
 
 //		_RPT0(0,"Deleting 1 frame\n");
 
@@ -2937,7 +2980,36 @@ void DoDelete() {
 		g_dubOpts.video.lStartOffsetMS = g_dubOpts.video.lEndOffsetMS = 0;
 
 		DisplayFrame(g_hWnd, SendMessage(hwndPosition, PCM_GETPOS, 0, 0));
-	} catch(MyError e) {
+	} catch(const MyError& e) {
+		e.post(g_hWnd, g_szError);
+	}
+}
+
+void DoMaskChange(bool bNewMode) {
+	if (!inputVideoAVI)
+		return;
+
+	try {
+		HWND hwndPosition = GetDlgItem(g_hWnd, IDC_POSITION);
+		LONG lSample = SendMessage(hwndPosition, PCM_GETPOS, 0, 0);
+		LONG lStart = SendMessage(hwndPosition, PCM_GETSELSTART, 0, 0);
+		LONG lEnd = SendMessage(hwndPosition, PCM_GETSELEND, 0, 0);
+
+		if (!inputSubset)
+			if (!(inputSubset = new FrameSubset(inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)))
+				throw MyMemoryError();
+
+		if (lStart>=0 && lEnd>=0 && lEnd>=lStart)
+			inputSubset->setRange(lStart, lEnd+1-lStart, bNewMode);
+		else {
+			lStart = lSample;
+			inputSubset->setRange(lSample, 1, bNewMode);
+		}
+
+		g_dubOpts.video.lStartOffsetMS = g_dubOpts.video.lEndOffsetMS = 0;
+		SendMessage(hwndPosition, PCM_CLEARSEL, (BOOL)TRUE, 0);
+		DisplayFrame(g_hWnd, SendMessage(hwndPosition, PCM_GETPOS, 0, 0));
+	} catch(const MyError& e) {
 		e.post(g_hWnd, g_szError);
 	}
 }

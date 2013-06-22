@@ -70,6 +70,40 @@ struct CCInfo {
 	char		szCurrentCompression[256];
 };
 
+HIC ICOpenASV1(DWORD fccType, DWORD fccHandler, DWORD dwMode) {
+
+	// ASUSASV1.DLL 1.0.4.0 causes a crash under Windows NT/2000 due to
+	// nasty code that scans the video BIOS directly for "ASUS" by reading
+	// 000C0000-000C00FF.  We workaround the problem by mapping a dummy
+	// memory block over that address if nothing is there already.  This
+	// will always fail under Windows 95/98.  We cannot just check for
+	// the ASV1 code because the ASUSASVD.DLL codec does work and uses
+	// the same code.
+	//
+	// Placing "ASUS" in the memory block works, but the codec checks
+	// the string often during compression calls and would simply crash
+	// on another call.  Also, there are potential licensing issues.
+	// Thus, we simply leave the memory block blank, which basically
+	// disables the codec but prevents it from crashing.
+	//
+	// Under Windows 2000, it appears that this region is always reserved.
+	// So to be safe, use reserve->commit->ICOpen->decommit->release.
+
+	LPVOID pDummyVideoBIOSRegion = VirtualAlloc((LPVOID)0x000C0000, 4096, MEM_RESERVE, PAGE_READWRITE);
+	LPVOID pDummyVideoBIOS = VirtualAlloc((LPVOID)0x000C0000, 4096, MEM_COMMIT, PAGE_READWRITE);
+	HIC hic;
+
+	hic = ICOpen(fccType, fccHandler, dwMode);
+
+	if (pDummyVideoBIOS)
+		VirtualFree(pDummyVideoBIOS, 4096, MEM_DECOMMIT);
+
+	if (pDummyVideoBIOSRegion)
+		VirtualFree(pDummyVideoBIOSRegion, 0, MEM_RELEASE);
+
+	return hic;
+}
+
 void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput) {
 	CCInfo cci;
 	ICINFO info;
@@ -119,7 +153,13 @@ void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *b
 	for(i=0; ICInfo(ICTYPE_VIDEO, i, &info); i++) {
 		HIC hic;
 
-		hic = ICOpen(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+		// Use "special" routine for ASV1.
+
+		if (isEqualFOURCC(info.fccHandler, '1VSA'))
+			hic = ICOpenASV1(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+		else	
+			hic = ICOpen(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+
 		if (hic) {
 			if (!bihInput || ICERR_OK==ICCompressQuery(hic, bihInput, NULL)) {
 

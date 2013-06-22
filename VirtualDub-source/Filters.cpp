@@ -178,7 +178,7 @@ FilterInstance::FilterInstance(FilterDefinition *fd)
 					freemem(filter_data);
 					throw MyError("Filter failed to initialize.");
 				}
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				throw MyError("Cannot initialize filter '%s': %s", fd->name, e.gets());
 			}
 	} else
@@ -246,7 +246,7 @@ int FilterAutoloadModules(int &fail_count) {
 
 							FilterLoadModule(szFile2);
 							++success;
-						} catch(MyError e) {
+						} catch(const MyError&) {
 							++fail;
 						}
 					}
@@ -509,7 +509,7 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 					fResize = fpd->bih.biWidth != w || fpd->bih.biHeight != h;
 					vbm->MakeBitmapHeader(&fpd->bih);
 				}
-			} catch(MyError) {
+			} catch(const MyError&) {
 				return TRUE;
 			}
 
@@ -717,7 +717,7 @@ long FilterPreview::FetchFrame(long lPos) {
 		if (!inputVideoAVI->getFrame(fsi.lCurrentSourceFrame))
 			return -1;
 
-	} catch(MyError) {
+	} catch(const MyError&) {
 		return -1;
 	}
 
@@ -920,7 +920,7 @@ long FilterPreview::SampleFrames() {
 
 		/* so what? */
 
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hdlg, "Video sampling error");
 	}
 

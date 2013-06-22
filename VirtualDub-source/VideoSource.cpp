@@ -281,6 +281,7 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 	hbmLame = NULL;
 	fUseGDI = false;
 	bDirectDecompress = false;
+	lLastFrame = -1;
 
 	// striping...
 
@@ -362,6 +363,10 @@ void VideoSourceAVI::_construct() {
 
 	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
 		throw MyError("Error obtaining video stream info.");
+
+	// Force the video type to be 'vids', in case it was type-1 coming in.
+
+	streamInfo.fccType = 'sdiv';
 
 	// ADDITION FOR STRIPED AVI SUPPORT:
 	//
@@ -460,6 +465,17 @@ void VideoSourceAVI::_construct() {
 	}
 	if (!(bmihTemp = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
 	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
+
+	// Some Dazzle drivers apparently do not set biSizeImage correctly.  Also,
+	// zero is a valid value for BI_RGB, but it's annoying!
+
+	if (bmih->biCompression == BI_RGB) {
+		if (bmih->biPlanes == 1) {
+			long nPitch = ((bmih->biWidth * bmih->biBitCount + 31) >> 5) * 4 * bmih->biHeight;
+
+			bmih->biSizeImage = nPitch;
+		}
+	}
 
 	// We can handle RGB8/16/24/32 and YUY2.
 
@@ -1071,8 +1087,27 @@ int VideoSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 			return AVIERR_OK;
 		}
 
-	} else
-		return pSource->Read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
+	} else {
+
+		if (IsMMXState())
+			throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
+		int rv = pSource->Read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
+
+		// Check for improper MMX state.
+
+		if (IsMMXState()) {
+			ClearMMXState();
+
+			throw MyError(
+				"The AVIFile input driver returned to VirtualDub with a non-empty FPU state. "
+				"This is generally caused by MMX code with a missing EMMS instruction. Contact "
+				"the vendor of the AVIFile driver and check if an updated version is available."
+				);
+		}
+
+		return rv;
+	}
 }
 
 BOOL VideoSourceAVI::_isKey(LONG samp) {
@@ -1200,8 +1235,18 @@ bool VideoSourceAVI::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
 	if (pbih->biCompression == BI_RGB)
 		return setDecompressedFormat(pbih->biBitCount);
 
-	if (mdec)
+	if (mdec) {
+		const BITMAPINFOHEADER *pbihSrc = getImageFormat();
+
+		if (pbih->biWidth == pbihSrc->biWidth && pbih->biHeight == pbihSrc->biHeight
+			&& (pbih->biCompression == '2YUY' || pbih->biCompression == 'YVYU')) {
+			memcpy(bmihDecompressedFormat, pbih, sizeof(BITMAPINFOHEADER));
+			invalidateFrameBuffer();
+			return true;
+		}
+
 		return false;
+	}
 
 	if (pbih->biCompression == getImageFormat()->biCompression) {
 		const BITMAPINFOHEADER *pbihSrc = getImageFormat();
@@ -1290,10 +1335,7 @@ bool VideoSourceAVI::isDecodable(long sample_num) {
 	if (sample_num<lSampleFirst || sample_num >= lSampleLast)
 		return false;
 
-	if (isKey(sample_num))
-		return true;
-
-	return (sample_num >= lLastFrame && lLastFrame >= nearestKey(sample_num));
+	return (isKey(sample_num) || sample_num == lLastFrame+1);
 }
 
 bool VideoSourceAVI::isStreaming() {
@@ -1377,6 +1419,9 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 
 			bmihTemp->biSizeImage = data_len;
 
+			if (IsMMXState())
+				throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
 			VDCHECKPOINT;
 			if (use_ICDecompressEx)
 				err = 	ICDecompressEx(
@@ -1409,24 +1454,47 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 
 			if (ICERR_OK != err)
 				throw MyICError(use_ICDecompressEx ? "VideoSourceAVI [ICDecompressEx]" : "VideoSourceAVI [ICDecompress]", err);
+
+
+			if (IsMMXState()) {
+				ClearMMXState();
+
+				throw MyError(
+					"The current video decompressor returned to VirtualDub with a non-empty FPU state. "
+					"This is generally caused by MMX code with a missing EMMS instruction. Contact "
+					"the vendor of the codec and check if an updated version is available."
+					);
+			}
 		}
 
 	} else if (mdec) {
 
 		try {
-			if (getDecompressedFormat()->biBitCount == 32)
-				mdec->decodeFrame32((unsigned long *)getFrameBuffer(), (unsigned char *)inputBuffer, data_len);
+			const BITMAPINFOHEADER *pbih = getDecompressedFormat();
+			unsigned long *pBuffer = (unsigned long *)getFrameBuffer();
+
+			if (pbih->biCompression == '2YUY')
+				mdec->decodeFrameYUY2(pBuffer, (unsigned char *)inputBuffer, data_len);
+			else if (pbih->biCompression == 'YVYU')
+				mdec->decodeFrameUYVY(pBuffer, (unsigned char *)inputBuffer, data_len);
+			else if (pbih->biBitCount == 16)
+				mdec->decodeFrameRGB15(pBuffer, (unsigned char *)inputBuffer, data_len);
+			else if (pbih->biBitCount == 32)
+				mdec->decodeFrameRGB32(pBuffer, (unsigned char *)inputBuffer, data_len);
 			else
-				mdec->decodeFrame16((unsigned long *)getFrameBuffer(), (unsigned char *)inputBuffer, data_len);
+				__asm int 3
 		} catch(char *s) {
 			throw MyError(s);
 		}
 
    } else {
-      if (data_len < getImageFormat()->biSizeImage)
-         throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, data_len);
+		const BITMAPINFOHEADER *bih = getImageFormat();
+		long nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4 * bih->biHeight;
 
-      DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+		if (data_len < nBytesRequired)
+			throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", nBytesRequired, data_len);
+
+		DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
    }
 //		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
 
@@ -1549,16 +1617,28 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 				}
 			} else if (mdec) {
 				try {
-					if (getDecompressedFormat()->biBitCount == 32)
-						mdec->decodeFrame32((unsigned long *)getFrameBuffer(), (unsigned char *)dataBuffer, lBytesRead);
+					const BITMAPINFOHEADER *pbih = getDecompressedFormat();
+					unsigned long *pBuffer = (unsigned long *)getFrameBuffer();
+
+					if (pbih->biCompression == '2YUY')
+						mdec->decodeFrameYUY2(pBuffer, (unsigned char *)dataBuffer, lBytesRead);
+					else if (pbih->biCompression == 'YVYU')
+						mdec->decodeFrameUYVY(pBuffer, (unsigned char *)dataBuffer, lBytesRead);
+					else if (pbih->biBitCount == 16)
+						mdec->decodeFrameRGB15(pBuffer, (unsigned char *)dataBuffer, lBytesRead);
+					else if (pbih->biBitCount == 32)
+						mdec->decodeFrameRGB32(pBuffer, (unsigned char *)dataBuffer, lBytesRead);
 					else
-						mdec->decodeFrame16((unsigned long *)getFrameBuffer(), (unsigned char *)dataBuffer, lBytesRead);
+						__asm int 3
 				} catch(char *s) {
 					throw MyError(s);
 				}
 			} else {
-				if (lBytesRead < getImageFormat()->biSizeImage)
-					throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, lBytesRead);
+				const BITMAPINFOHEADER *bih = getImageFormat();
+				long nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4 * bih->biHeight;
+
+				if (lBytesRead < nBytesRequired)
+					throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", nBytesRequired, lBytesRead);
 
 				if (!bDirectDecompress)
 					DIBconvert(dataBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
@@ -1569,11 +1649,11 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 		} while(++lFrameNum <= lFrameDesired);
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		if (dataBuffer) freemem(dataBuffer);
 		ICDecompressEnd(hicDecomp);
 		lLastFrame = -1;
-		throw e;
+		throw;
 	}
 
 	if (dataBuffer) freemem(dataBuffer);

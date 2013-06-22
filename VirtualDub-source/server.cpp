@@ -173,7 +173,7 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	if (inputSubset)
 		videoset.addFrom(*inputSubset);
 	else
-		videoset.addRange(video->lSampleFirst, video->lSampleLast-video->lSampleFirst);
+		videoset.addRange(video->lSampleFirst, video->lSampleLast-video->lSampleFirst, false);
 
 	if (opt->audio.fEndAudio)
 		videoset.clip(0, videoset.getTotalFrames() - lOffsetEnd);
@@ -655,7 +655,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(&is_preroll)));
 
 		} else
-			ptr = vSrc->streamGetFrame(NULL, 0, vSrc->isKey(sample), FALSE, sample);
+			ptr = vSrc->streamGetFrame(NULL, 0, vSrc->isKey(sample), FALSE, vSrc->displayToStreamOrder(sample));
 #endif
 		if (filter_list) {
 			VBitmap vbm = *filters.OutputBitmap();
@@ -680,7 +680,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 			} else
 				memcpy(fs->arena, ptr, bmih->biSizeImage);
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		return VDSRVERR_FAILED;
 	}
 
@@ -754,7 +754,7 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 out_of_space:
 		;
 
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		return VDSRVERR_FAILED;
 	}
 
@@ -801,7 +801,7 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 		default:
 			return VDSRVERR_FAILED;
 		}
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		return VDSRVERR_FAILED;
 	}
 #endif
@@ -934,7 +934,7 @@ void ActivateFrameServerDialog(HWND hwnd) {
 
 		_RPT0(0,"Frameserver exit.\n");
 
-	} catch(MyError e) {
+	} catch(const MyError& e) {
 		e.post(hwnd, "Frameserver error");
 	}
 }

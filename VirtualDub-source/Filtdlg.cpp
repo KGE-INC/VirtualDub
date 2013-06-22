@@ -100,7 +100,7 @@ static void RedoFilters(HWND hWndList) {
 		} else {
 			filters.prepareLinearChain(&listFA, NULL, 320, 240, 24, 24);
 		}
-	} catch(MyError e) {
+	} catch(const MyError&) {
 		return;
 	}
 
@@ -153,7 +153,7 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 						else
 							delete fa;
 
-					} catch(MyError e) {
+					} catch(const MyError&) {
 						// bleah!  should really do something...
 					}
 
@@ -219,7 +219,7 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 							SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index, 0);
 							EnableConfigureBox(hDlg, index);
-						} catch(MyError e) {
+						} catch(const MyError& e) {
 							e.post(hDlg, g_szError);
 						}
 					}
@@ -573,7 +573,7 @@ void FilterLoadFilter(HWND hWnd) {
 	if (GetOpenFileName(&ofn)) {
 		try {
 			FilterLoadModule(szFile);
-		} catch(MyError e) {
+		} catch(const MyError& e) {
 			e.post(hWnd,"Filter load error");
 		}
 	}

@@ -358,7 +358,7 @@ void FastWriteStream::BackgroundWrite(HANDLE hFile, long lOffset, long lSize) {
 	}
 		LeaveCriticalSection(&g_diskcs);
 
-	if (dwActual != lSize)
+	if ((long)dwActual != lSize)
 		throw ERROR_WRITE_FAULT;
 }
 

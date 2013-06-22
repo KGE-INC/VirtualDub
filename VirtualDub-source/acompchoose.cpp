@@ -116,7 +116,8 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 	pafe->fCompatible = true;
 
 	if (pData->pwfexSrc) {
-		pafe->fCompatible = !acmStreamOpen(NULL, pData->had, pData->pwfexSrc, pafd->pwfx, NULL, 0, 0, ACM_STREAMOPENF_QUERY);
+		pafe->fCompatible = !acmStreamOpen(NULL, pData->had, pData->pwfexSrc, pafd->pwfx, NULL, 0, 0, ACM_STREAMOPENF_QUERY)
+						|| !acmStreamOpen(NULL, pData->had, pData->pwfexSrc, pafd->pwfx, NULL, 0, 0, ACM_STREAMOPENF_QUERY | ACM_STREAMOPENF_NONREALTIME);
 
 		if (pafd->pwfx->nChannels == pData->pwfexSrc->nChannels
 			&& pafd->pwfx->wBitsPerSample == pData->pwfexSrc->wBitsPerSample
@@ -241,7 +242,7 @@ static void AudioChooseShowFormats(HWND hdlg, ACMTagEntry *pTag, bool fShowCompa
 
 		if (!fShowCompatibleOnly || pFormat->fCompatible) {
 			band = (pFormat->pwfex->nAvgBytesPerSec+1023)/1024;
-			wsprintf(buf, "%s\t%dKb/s", pFormat->afd.szFormat, band);
+			wsprintf(buf, "%s\t%dKB/s", pFormat->afd.szFormat, band);
 
 			idx = SendMessage(hwndListFormats, LB_ADDSTRING, 0, (LPARAM)buf);
 			if (idx != LB_ERR)

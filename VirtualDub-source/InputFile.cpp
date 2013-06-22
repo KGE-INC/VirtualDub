@@ -404,7 +404,7 @@ void InputFileAVI::Init(char *szFile) {
 			MB_OK|MB_ICONEXCLAMATION);
 
 
-	audioSrc = new AudioSourceAVI(pAVIFile);
+	audioSrc = new AudioSourceAVI(pAVIFile, fAutomated);
 	if (!audioSrc->init()) {
 		delete audioSrc;
 		audioSrc = NULL;
@@ -491,7 +491,7 @@ void InputFileAVI::Init(char *szFile) {
 					} else if (!Append(szPath))
 						break;
 				}
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				wsprintf(szPath, "Cannot load video segment %02d", nSegment);
 
 				e.post(NULL, szPath);
@@ -564,7 +564,7 @@ void InputFileAVI::InitStriped(char *szFile) {
 
 	if (fRedoKeyFlags) ((VideoSourceAVI *)videoSrc)->redoKeyFlags();
 
-	if (!(audioSrc = new AudioSourceAVI(index_file)))
+	if (!(audioSrc = new AudioSourceAVI(index_file, fAutomated)))
 		throw MyMemoryError();
 
 	if (!audioSrc->init()) {

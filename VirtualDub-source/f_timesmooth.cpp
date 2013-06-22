@@ -62,7 +62,7 @@ int timesmooth_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	mfd->framecount = 0;
 
-	for(i=0; i<=511; ++i)
+	for(i=0; i<=510; ++i)
 		mfd->square_table[i] = (i-255)*(i-255);
 
 	return 0;

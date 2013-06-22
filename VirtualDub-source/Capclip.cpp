@@ -136,7 +136,7 @@ CaptureFrameSource::CaptureFrameSource(HWND hwndCapture)
 
 		}
 
-	} catch(MyError) {
+	} catch(const MyError&) {
 		_destruct();
 		throw;
 	}
@@ -191,7 +191,7 @@ LRESULT CALLBACK CaptureClippingFrameProc(HWND hWnd, VIDEOHDR *vhdr) {
 		vbm->MakeBitmapHeader(&bih);
 
 		SendMessage(g_hwndClippingDisplay, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)vbm->data);
-	} catch(MyError e) {
+	} catch(const MyError&) {
 	}
 
 	return 0;

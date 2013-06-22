@@ -530,7 +530,7 @@ BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 
 				CheckDlgButton(hDlg, IDC_VMODE_VUMETER, BST_CHECKED);
 
-			} catch(MyError e) {
+			} catch(const MyError& e) {
 				e.post(NULL,"Vumeter error");
 
 				if (vdd) CaptureVumeterDestruct(vdd);

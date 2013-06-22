@@ -326,7 +326,7 @@ FastWriteStream *AVIOutputFile::initCapture(const char *szFile, LONG xSize, LONG
 }
 
 BOOL AVIOutputFile::_init(const char *szFile, LONG xSize, LONG ySize, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved, bool fThreaded) {
-	AVISUPERINDEX asi;
+	AVISUPERINDEX asi={0};
 	struct _avisuperindex_entry asie_dumb[MAX_SUPERINDEX_ENTRIES];
 
 	fLimitTo4Gb = IsFilenameOnFATVolume(szFile);

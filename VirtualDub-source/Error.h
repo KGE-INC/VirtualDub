@@ -22,56 +22,66 @@
 #include <vfw.h>
 
 class MyError {
+private:
+	// I swear I'll implement this someday.
+	const MyError& operator=(const MyError&);
+
 protected:
 	char *buf;
 
 public:
-	MyError(MyError& err);
-	MyError();
-	MyError(const char *f, ...);
-	~MyError();
-	void setf(const char *f, ...);
-	void vsetf(const char *f, va_list val);
-	void post(HWND hWndParent, const char *title);
-	char *gets() {
+	MyError() throw();
+	MyError(const MyError& err) throw();
+	MyError(const char *f, ...) throw();
+	~MyError() throw();
+	void setf(const char *f, ...) throw();
+	void vsetf(const char *f, va_list val) throw();
+	void post(HWND hWndParent, const char *title) const throw();
+	char *gets() const throw() {
 		return buf;
 	}
-	void discard();
+	void discard() throw();
+	void TransferFrom(MyError& err) throw();
 };
 
 class MyICError : public MyError {
 public:
-	MyICError(const char *s, DWORD icErr);
+	MyICError(const char *s, DWORD icErr) throw();
 };
 
 class MyMMIOError : public MyError {
 public:
-	MyMMIOError(const char *s, DWORD icErr);
+	MyMMIOError(const char *s, DWORD icErr) throw();
 };
 
 class MyAVIError : public MyError {
 public:
-	MyAVIError(const char *s, DWORD aviErr);
+	MyAVIError(const char *s, DWORD aviErr) throw();
 };
 
 class MyMemoryError : public MyError {
 public:
-	MyMemoryError();
+	MyMemoryError() throw();
 };
 
 class MyWin32Error : public MyError {
 public:
-	MyWin32Error(const char *format, DWORD err, ...);
+	MyWin32Error(const char *format, DWORD err, ...) throw();
 };
 
 class MyCrashError : public MyError {
 public:
-	MyCrashError(const char *format, DWORD dwExceptionCode);
+	MyCrashError(const char *format, DWORD dwExceptionCode) throw();
 };
 
 class MyUserAbortError : public MyError {
 public:
-	MyUserAbortError();
+	MyUserAbortError() throw();
+};
+
+class MyInternalError : public MyError {
+public:
+	MyInternalError(const char *format, ...) throw();
 };
 
 #endif

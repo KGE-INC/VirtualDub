@@ -252,7 +252,7 @@ BOOL CaptureLog::DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 					if (ferror(f) || fclose(f))
 						throw MyError("Cannot save file: %s", strerror(NULL));
 
-				} catch(MyError e) {
+				} catch(const MyError& e) {
 					e.post(hdlg, "Log write error");
 				}
 

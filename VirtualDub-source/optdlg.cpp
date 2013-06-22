@@ -74,7 +74,7 @@ static void AudioConversionDlgComputeBandwidth(HWND hDlg) {
 	else if (IsDlgButtonChecked(hDlg, IDC_CHANNELS_STEREO))		bps *= 2;
 
 	if (bps)
-		wsprintf(g_msgBuf, "Bandwidth required: %ldK/s", (bps+1023)>>10);
+		wsprintf(g_msgBuf, "Bandwidth required: %ldKB/s", (bps+1023)>>10);
 	else
 		strcpy(g_msgBuf,"Bandwidth required: (unknown)");
 	SetDlgItemText(hDlg, IDC_BANDWIDTH_REQD, g_msgBuf);
@@ -446,18 +446,18 @@ BOOL APIENTRY PerformanceOptionsDlgProc( HWND hDlg, UINT message, UINT wParam, L
 			switch(GetWindowLong((HWND)lParam, GWL_ID)) {
 			case IDC_OUTPUT_BUFFER:
 				if (pos >= 5)
-					wsprintf(g_msgBuf, "VirtualDub will use %ldMb of memory for output buffering.",outputBufferSizeArray[pos]>>20);
+					wsprintf(g_msgBuf, "VirtualDub will use %ldMB of memory for output buffering.",outputBufferSizeArray[pos]>>20);
 				else
-					wsprintf(g_msgBuf, "VirtualDub will use %ldk of memory for output buffering.",outputBufferSizeArray[pos]>>10);
+					wsprintf(g_msgBuf, "VirtualDub will use %ldKB of memory for output buffering.",outputBufferSizeArray[pos]>>10);
 
 				SetDlgItemText(hDlg, IDC_OUTPUT_BUFFER_SIZE, g_msgBuf);
 				return TRUE;
 
 			case IDC_WAVE_INPUT_BUFFER:
 				if (pos >= 14)
-					wsprintf(g_msgBuf, "Replacement WAV audio tracks will use %ldMb of memory for input buffering.",waveBufferSizeArray[pos]>>20);
+					wsprintf(g_msgBuf, "Replacement WAV audio tracks will use %ldMB of memory for input buffering.",waveBufferSizeArray[pos]>>20);
 				else
-					wsprintf(g_msgBuf, "Replacement WAV audio tracks will use %ldk of memory for input buffering.",waveBufferSizeArray[pos]>>10);
+					wsprintf(g_msgBuf, "Replacement WAV audio tracks will use %ldKB of memory for input buffering.",waveBufferSizeArray[pos]>>10);
 
 				SetDlgItemText(hDlg, IDC_WAVE_BUFFER_SIZE, g_msgBuf);
 				return TRUE;

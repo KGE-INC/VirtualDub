@@ -15,19 +15,27 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_HEXVIEWER_H
-#define f_HEXVIEWER_H
+#ifndef f_INPUTFILEIMAGES_H
+#define f_INPUTFILEIMAGES_H
 
-#include <windows.h>
+#include "InputFile.h"
 
-#define HEXEDITORCLASS (szHexEditorClassName)
+class AVIStripeSystem;
 
-#ifndef f_HEXVIEWER_CPP
-extern const char szHexEditorClassName[];
-#endif
+class InputFileImages : public InputFile {
+public:
+	InputFileImages();
+	~InputFileImages();
 
-ATOM RegisterHexEditor();
+	void Init(char *szFile);
 
-void HexEdit(HWND);
+	void setOptions(InputFileOptions *_ifo);
+	InputFileOptions *createOptions(const char *buf);
+	InputFileOptions *promptForOptions(HWND hwnd);
+
+	void setAutomated(bool fAuto);
+
+	void InfoDialog(HWND hwndParent);
+};
 
 #endif

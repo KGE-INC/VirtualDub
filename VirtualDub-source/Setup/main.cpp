@@ -994,12 +994,12 @@ void DiskTestDoIt2(HWND hDlg) {
 		if (dwReadTimeStart == dwReadTimeEnd)
 			SetWindowText(hwndRead, "(too fast to measure)");
 		else
-			PrintfWindowText(hwndRead , "%ld K/s ", MulDiv(lMaxBytes>>10, 1000, dwReadTimeEnd-dwReadTimeStart));
+			PrintfWindowText(hwndRead , "%ldKB/s ", MulDiv(lMaxBytes>>10, 1000, dwReadTimeEnd-dwReadTimeStart));
 
 		if (dwWriteTimeStart == dwWriteTimeEnd)
 			SetWindowText(hwndRead, "(too fast to measure)");
 		else
-			PrintfWindowText(hwndWrite, "%ld K/s ", MulDiv(lMaxBytes>>10, 1000, dwWriteTimeEnd-dwWriteTimeStart));
+			PrintfWindowText(hwndWrite, "%ldKB/s ", MulDiv(lMaxBytes>>10, 1000, dwWriteTimeEnd-dwWriteTimeStart));
 
 		while (GetMessage(&msg, NULL, 0, 0)) {
 			if (!IsDialogMessage(hwndStatus, &msg) && !IsDialogMessage(hDlg, &msg)) {

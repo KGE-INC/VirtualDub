@@ -27,6 +27,8 @@ public:
 	File64(HANDLE _hFile, HANDLE _hFileUnbuffered);
 	long _readFile(void *data, long len);
 	void _readFile2(void *data, long len);
+	long _writeFile(const void *data, long len);
+	void _writeFile2(const void *data, long len);
 	bool _readChunkHeader(FOURCC& pfcc, DWORD& pdwLen);
 	void _seekFile(__int64 i64NewPos);
 	bool _seekFile2(__int64 i64NewPos);

@@ -24,9 +24,10 @@ class FrameSubsetNode : public ListNode2<FrameSubsetNode> {
 friend class FrameSubset;
 public:
 	int start, len;
+	bool bMask;			// if set, all frames map to the previous frame
 
 	FrameSubsetNode() {};
-	FrameSubsetNode(int _s, int _l) : start(_s), len(_l) {}
+	FrameSubsetNode(int _s, int _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
 };
 
 class FrameSubset {
@@ -39,12 +40,24 @@ public:
 	void addFrom(FrameSubset&);
 
 	int getTotalFrames();
-	void addRange(int start, int len);
-	void addRangeMerge(int start, int len);
-	int lookupFrame(int frame);
-	int revLookupFrame(int frame);
-	int lookupRange(int start, int& len);
-	void deleteRange(int start, int len);
+	void addRange(int start, int len, bool bMask);
+	void addRangeMerge(int start, int len, bool bMask);
+	int lookupFrame(int frame) {
+		bool b;
+
+		return lookupFrame(frame, b);
+	}
+	int lookupFrame(int frame, bool& bMasked);
+	int revLookupFrame(int frame, bool& bMasked);
+	int lookupRange(int start, int& len) {
+		bool b;
+
+		return lookupRange(start, len, b);
+	}
+	int lookupRange(int start, int& len, bool& bMasked);
+	void deleteInputRange(int start, int len);	// in source coordinates
+	void deleteRange(int start, int len);	// in translated coordinates
+	void setRange(int start, int len, bool bMask);	// translated coordinates
 	void clipToRange(int start, int len);
 	void clip(int start, int len);
 	void offset(int off);
@@ -65,11 +78,12 @@ public:
 			return 0;
 	}
 
+	FrameSubsetNode *findNode(int& poffset, int iDstFrame);
+
 private:
 	List2<FrameSubsetNode> list;
 
 	void deleteNode(FrameSubsetNode *pfsn);
-	FrameSubsetNode *findNode(int& poffset, int iDstFrame);
 };
 
 #endif

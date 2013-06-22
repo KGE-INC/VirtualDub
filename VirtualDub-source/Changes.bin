@@ -1,6 +1,72 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 13719 (Version 1.4.8):
+   [features added]
+   * Motion JPEG decoder has improved heuristics for field
+     order determination, support for restart markers, and
+	 supports 4:4:4 as well as 4:2:0 and standard 4:2:2.
+   * An error is now thrown if a third-party driver leaves
+     the CPU in MMX state when returning, which previously
+	 could cause floating-point code to malfunction.
+   * Added workaround for ASUS ASV1 driver crashing under
+     Windows NT platforms.
+   * MPEG-1 files with small amounts of junk at the
+     beginning are now recognized.
+   * BMP image sequences can now be loaded as well as saved.
+   * Frame rate changes are reflected in the timestamp
+     panel.
+   * Hex Editor no longer locks files and can highlight
+     important fields in AVI files.
+   * Capture: Luma squish now supports UYVY in addition to
+     YUY2.
+   * AVI handler can now recover OpenDML segments from
+     truncated files and has more aggressive recovery
+	 methods.
+   * AVI handler recognizes 'bt20' as a format that does not
+     have delta frames.
+   * Added workaround for audio sync problems caused by
+     malformed AVI files with VBR MP3 audio.
+   * Support for masking video frames and for autoscanning
+     the video stream for bad frames to mask.
+
+   [bug fixes]
+   * No more crashing when attempting to do certain kinds
+     of seeks with no video loaded.
+   * Capture: Noise reduction works properly with cropping.
+   * Fixed MPEG-1 frame order bug in frameserver that was
+     also introduced in 1.4.6.
+   * Fixed MPEG-to-AVI conversion resulting in trashed
+     wPriority and wLanguage fields in the stream header.
+   * Capture: Under Windows 98/2000, monitor and system
+     power down are inhibited in capture mode.
+   * Fixed scripts and job entries being trashed when the
+     generated script exceeds 16K.
+   * Fixed codec issues caused by script system not handling
+     long strings produced from codec data.  Thanks to the
+	 DivX 4 team for reporting this one.
+   * IVTC no longer causes bitrates for CBR video codecs
+     to drop by 20%.
+   * Fixed output files being generated with type 'ivas'
+     when the source was a type-1 DV file.
+   * Fixed diagonal stripe or crash with MMX version of
+     Levels filter when input bitmap is an odd width.
+   * Fixed AVI streaming routines going off the deep end
+     when encountering garbage data in the AVI stream.
+   * Fixed occasional corrupted frames when playing back
+     AVI with "drop frames when behind" enabled.
+   * IVTC now forces interleaving on a 4-frame basis like
+     it's supposed to.
+   * The audio compression dialog was passing bad precision
+     values to audio codecs and only querying for real-time
+	 compression.
+   * Corrected crashes or errors on uncompressed video
+     streams that have a zero or incorrect biSizeImage field.
+   * Capture: Multisegment and info panel settings saved
+     correctly.
+   * Capture: Compatibility mode capture prohibited when
+     multisegment capture enabled.
+
 Build 13130 (Version 1.4.7):
    [bug fixes]
    * Fixed MAJOR bug in MPEG-1 decoder that I introduced
