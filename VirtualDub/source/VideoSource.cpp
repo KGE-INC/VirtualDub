@@ -776,6 +776,15 @@ void VideoSourceAVI::_construct() {
 		mSourceFrameSize = format->biSizeImage;
 	}
 
+	// init target format to something sane
+	mTargetFormat = VDPixmapFromLayout(mSourceLayout, lpvBuffer);
+	mpTargetFormatHeader.assign(getImageFormat(), sizeof(BITMAPINFOHEADER));
+	mpTargetFormatHeader->biSize			= sizeof(BITMAPINFOHEADER);
+	mpTargetFormatHeader->biPlanes			= 1;
+	mpTargetFormatHeader->biBitCount		= 32;
+	mpTargetFormatHeader->biCompression		= BI_RGB;
+	mpTargetFormatHeader->biSizeImage		= mpTargetFormatHeader->biWidth*mpTargetFormatHeader->biHeight*4;
+
 	// If this is MJPEG, check to see if we should modify the output format and/or stream info
 
 	mSampleFirst = pAVIStream->Start();

@@ -394,7 +394,7 @@ xloop:
 static void box_filter_produce_row(Pixel32 *dst, Pixel16 *tmp, Pixel32 *src_add, Pixel32 *src_sub, int cnt, int filter_width) {
 	Pixel32 A, B;
 	Pixel16 r, g, b;
-	int mult = 0x10000 / (2*filter_width+1);
+	int mult = 0xffff / (2*filter_width+1) + 1;
 
 #ifdef _M_IX86
 	if (MMX_enabled)
@@ -457,7 +457,7 @@ xloop:
 
 static void box_filter_produce_row2(Pixel32 *dst, Pixel16 *tmp, int cnt, int filter_width) {
 	Pixel16 r, g, b;
-	int mult = 0x10000 / (2*filter_width+1);
+	int mult = 0xffff / (2*filter_width+1) + 1;
 
 #ifdef _M_IX86
 	if (MMX_enabled)
@@ -495,143 +495,6 @@ xloop:
 			tmp += 3;
 		} while(--cnt);
 }
-
-///////////////////////////////////////////////////////////////////////
-
-#ifdef DO_UNSHARP_FILTER
-
-static const __int64 x0080w = 0x0080008000800080i64;
-
-static void box_unsharp_produce_row(Pixel32 *dst, Pixel16 *tmp, Pixel32 *src_add, Pixel32 *src_sub, int cnt, int filter_width, Pixel32 *orig) {
-	Pixel32 A, B;
-	Pixel16 r, g, b;
-	int mult = 0x10000 / (2*filter_width+1);
-
-#ifdef _M_IX86
-	if (MMX_enabled)
-		__asm {
-			mov			eax,src_add
-			movd		mm6,mult
-			mov			edx,tmp
-			punpcklwd	mm6,mm6
-			mov			ecx,cnt
-			punpckldq	mm6,mm6
-			mov			ebx,src_sub
-			mov			edi,dst
-			mov			esi,orig
-			movq		mm4,x0080w
-xloop:
-			movq		mm2,[edx+ecx*8-8]
-			pxor		mm7,mm7
-
-			movd		mm0,[eax+ecx*4-4]
-			movq		mm3,mm2
-
-			movd		mm1,[ebx+ecx*4-4]
-			pmulhw		mm2,mm6
-
-			movd		mm5,[esi+ecx*4-4]
-			punpcklbw	mm0,mm7
-
-			punpcklbw	mm5,mm7
-			paddw		mm0,mm3
-
-			punpcklbw	mm1,mm7
-			paddw		mm5,mm4
-
-			psubw		mm0,mm1
-			psubw		mm5,mm2
-
-			packuswb	mm5,mm5
-
-			movq		[edx+ecx*8-8],mm0
-
-			movd		[edi+ecx*4-4],mm5
-
-			dec			ecx
-			jne			xloop
-		}
-	else
-#endif
-	{
-		unsigned char *dst2 = (unsigned char *)dst;
-
-		do {
-			A = *src_add++;
-			B = *src_sub++;
-
-			r = tmp[0];
-			g = tmp[1];
-			b = tmp[2];
-
-			dst2[2] = YUV_clip_table[256 + 128 - ((r*mult)>>16) + ((orig[0]&0xff0000)>>16)];
-			dst2[1] = YUV_clip_table[256 + 128 - ((g*mult)>>16) + ((orig[0]&0x00ff00)>> 8)];
-			dst2[0] = YUV_clip_table[256 + 128 - ((b*mult)>>16) + ((orig[0]&0x0000ff)    )];
-
-			tmp[0] = r + (int)((A>>16)&255) - (int)((B>>16)&255);
-			tmp[1] = g + (int)((A>> 8)&255) - (int)((B>> 8)&255);
-			tmp[2] = b + (int)((A    )&255) - (int)((B    )&255);
-
-			tmp += 3;
-			++orig;
-			dst2 += 4;
-		} while(--cnt);
-	}
-}
-
-static void box_unsharp_produce_row2(Pixel32 *dst, Pixel16 *tmp, int cnt, int filter_width, Pixel32 *orig) {
-	Pixel16 r, g, b;
-	int mult = 0x10000 / (2*filter_width+1);
-
-	if (MMX_enabled)
-		__asm {
-			movd		mm6,mult
-			mov			eax,tmp
-			punpcklwd	mm6,mm6
-			mov			ecx,cnt
-			punpckldq	mm6,mm6
-			mov			edx,dst
-			mov			ebx,orig
-			movq		mm4,x0080w
-xloop:
-			movq		mm2,[eax+ecx*8-8]
-			pxor		mm7,mm7
-
-			movd		mm3,[ebx+ecx*4-4]
-			pmulhw		mm2,mm6
-
-			punpcklbw	mm3,mm7
-
-			paddw		mm3,mm4
-
-			psubw		mm3,mm2
-
-			packuswb	mm3,mm3
-
-			movd		[edx+ecx*4-4],mm3
-
-			dec			ecx
-			jne			xloop
-		}
-	else {
-		unsigned char *dst2 = (unsigned char *)dst;
-
-		do {
-			r = tmp[0];
-			g = tmp[1];
-			b = tmp[2];
-
-			dst2[2] = YUV_clip_table[256 + 128 - ((r*mult)>>16) + ((orig[0]&0xff0000)>>16)];
-			dst2[1] = YUV_clip_table[256 + 128 - ((g*mult)>>16) + ((orig[0]&0x00ff00)>> 8)];
-			dst2[0] = YUV_clip_table[256 + 128 - ((b*mult)>>16) + ((orig[0]&0x0000ff)    )];
-
-			tmp += 3;
-			dst2 += 4;
-			++orig;
-		} while(--cnt);
-	}
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -675,51 +538,6 @@ static void box_do_vertical_pass(Pixel32 *dst, PixOffset dstpitch, Pixel32 *src,
 	box_filter_produce_row2(dst, trow, w, filtwidth);
 }
 
-#ifdef DO_UNSHARP_FILTER
-static void box_do_vertical_unsharp_pass(Pixel32 *dst, PixOffset dstpitch, Pixel32 *src, PixOffset srcpitch, Pixel32 *orig, PixOffset origpitch, Pixel16 *trow, int w, int h, int filtwidth) {
-	Pixel32 *srch = src;
-	int j;
-
-	box_filter_mult_row(trow, src, w, filtwidth + 1);
-
-	src = (Pixel32 *)((char *)src + srcpitch);
-
-	for(j=0; j<filtwidth; j++) {
-		box_filter_add_row(trow, src, w);
-
-		src = (Pixel32 *)((char *)src + srcpitch);
-	}
-
-	for(j=0; j<filtwidth; j++) {
-		box_unsharp_produce_row(dst, trow, src, srch, w, filtwidth, orig);
-
-		src = (Pixel32 *)((char *)src + srcpitch);
-		dst = (Pixel32 *)((char *)dst + dstpitch);
-		orig= (Pixel32 *)((char *)orig+ origpitch);
-	}
-	
-	for(j=0; j<h - (2*filtwidth+1); j++) {
-		box_unsharp_produce_row(dst, trow, src, (Pixel32 *)((char *)src - srcpitch*(2*filtwidth+1)), w, filtwidth, orig);
-
-		src = (Pixel32 *)((char *)src + srcpitch);
-		dst = (Pixel32 *)((char *)dst + dstpitch);
-		orig= (Pixel32 *)((char *)orig+ origpitch);
-	}
-
-	srch = (Pixel32 *)((char *)src - srcpitch);
-
-	for(j=0; j<filtwidth; j++) {
-		box_unsharp_produce_row(dst, trow, srch, (Pixel32 *)((char *)src - srcpitch*(2*filtwidth+1)), w, filtwidth, orig);
-
-		src = (Pixel32 *)((char *)src + srcpitch);
-		dst = (Pixel32 *)((char *)dst + dstpitch);
-		orig= (Pixel32 *)((char *)orig+ origpitch);
-	}
-
-	box_unsharp_produce_row2(dst, trow, w, filtwidth, orig);
-}
-#endif
-
 int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 	BoxFilterData *mfd = (BoxFilterData *)fa->filter_data;
 	PixDim h;
@@ -739,7 +557,7 @@ int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 #else
 	void (*const pRowFilt)(Pixel32*, Pixel32*, int, int, int) = box_filter_row;
 #endif
-	int mult = 0x10000 / (2*mfd->filter_width+1);
+	int mult = 0xffff / (2*mfd->filter_width+1) + 1;
 
 	h = fa->src.h;
 	do {

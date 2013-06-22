@@ -1991,8 +1991,10 @@ VDDEBUG("Capture has stopped.\n");
 
 	if (!fTest)
 		try {
-			if (!fMainFinalized)
-				icd.mpOutput->finalize();
+			if (!fMainFinalized) {
+				if (icd.mpOutput)
+					icd.mpOutput->finalize();
+			}
 
 			if (!fPendingFinalized && icd.mpOutputFilePending && icd.mpOutputFilePending != icd.mpOutputFile)
 				icd.mpOutputFilePending->finalize();

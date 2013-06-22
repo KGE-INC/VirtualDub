@@ -54,10 +54,8 @@ typedef struct MyFilterData {
 	VEffect	*effBlur;
 	void	*pBlurBitmap;
 	bool	fBlurPass;
+	int		*square_table;
 } MyFilterData;
-
-static int *square_table;
-static int init_count = 0;
 
 	// codes[i] = yyy000xx
 	//
@@ -89,6 +87,7 @@ static void __declspec(naked) filtrow_1_mmx(byte *sum, Pixel *src, long width, c
 
 		neg			ecx
 		add			edi,ebp
+		sub			ecx, 1
 		neg			ebp
 		pxor		mm7,mm7
 pixelloop:
@@ -106,27 +105,26 @@ pixelloop:
 		psubw		mm0,mm2
 		punpcklbw	mm3,mm7
 
-		movq		mm2,mm0
-		psraw		mm0,15
-
-		pxor		mm2,mm0
-		paddw		mm2,mm0
-
-		movq		mm0,mm2
 		psubw		mm1,mm3
+		movq		mm2,mm0
 
 		movq		mm3,mm1
+		psraw		mm0,15
+
 		psraw		mm1,15
+		pxor		mm2,mm0
 
 		pxor		mm3,mm1
-		paddw		mm3,mm1
+		psubw		mm0,mm2
 
-		movq		mm1,mm3
+		psubw		mm1,mm3
+		movq		mm2,mm0
+
 		psllq		mm2,16
+		movq		mm3,mm1
 
 		movq		mm4,mm0
 		psllq		mm3,16
-
 
 		movq		mm5,mm1
 		psllq		mm4,32
@@ -138,10 +136,11 @@ pixelloop:
 		paddw		mm0,mm4
 
 		paddw		mm1,mm5
-		punpckhwd	mm0,mm0
+		add			esi,4
+
+		punpckhwd	mm0,mm1
 
 		pmaddwd		mm0,mm0
-		add			esi,4
 
 		movd		eax,mm0
 		add			eax,ecx
@@ -153,10 +152,12 @@ pixelloop:
 		inc			ebp
 		jne			pixelloop
 
-		shr			ebx,1
+		add			ebx, ebx
+		and			ebx, 31
 		mov			al,[codes + ebx]
 		mov			[edi],al
-		shr			ebx,1
+		add			ebx, ebx
+		and			ebx, 31
 		mov			al,[codes + ebx]
 		mov			[edi+1],al
 
@@ -170,7 +171,7 @@ pixelloop:
 }
 #endif
 
-static void filtrow_1(byte *sum, Pixel *src, long width, const long pitch, const long thresh) {
+static void filtrow_1(byte *sum, Pixel *src, long width, const long pitch, const long thresh, const int *square_table) {
 #ifdef _M_IX86
 	if (MMX_enabled) {
 		filtrow_1_mmx(sum, src, width, pitch, thresh);
@@ -187,50 +188,24 @@ static void filtrow_1(byte *sum, Pixel *src, long width, const long pitch, const
 		int grad_x, grad_y;
 
 		// Fetch surrounding pixels.
-
-#if 0
-		pl = src[-1];
-		pr = src[1];
-		pu = *(Pixel *)((char *)src - pitch);
-		pd = *(Pixel *)((char *)src + pitch);
-#else
 		pl = *(Pixel *)((char *)(src-1) + pitch);
 		pr = *(Pixel *)((char *)(src+1) + pitch);
 		pu = *(Pixel *)((char *)src);
 		pd = *(Pixel *)((char *)src + pitch*2);
-#endif
 
 		// Compute gradient at pixel.
+		int rx = ((pr&0xff0000)>>16) - ((pl>>16)&0xff);
+		int gx = ((pr&0x00ff00)>> 8) - ((pl>> 8)&0xff);
+		int bx = ((pr&0x0000ff)    ) - ((pl    )&0xff);
+		int ry = ((pd&0xff0000)>>16) - ((pu>>16)&0xff);
+		int gy = ((pd&0x00ff00)>> 8) - ((pu>> 8)&0xff);
+		int by = ((pd&0x0000ff)    ) - ((pu    )&0xff);
 
-#if 0
-		grad_x	= ((((int)pr&0xff0000) - ((int)pl&0xff0000))>>16)
-				+ ((((int)pr&0x00ff00) - ((int)pl&0x00ff00))>> 8)
-				+ ((((int)pr&0x0000ff) - ((int)pl&0x0000ff))    );
-
-		grad_y	= ((((int)pd&0xff0000) - ((int)pu&0xff0000))>>16)
-				+ ((((int)pd&0x00ff00) - ((int)pu&0x00ff00))>> 8)
-				+ ((((int)pd&0x0000ff) - ((int)pu&0x0000ff))    );
-#elif 0
-		grad_x	= abs((((int)pr&0xff0000) - ((int)pl&0xff0000))>>16)
-				+ abs((((int)pr&0x00ff00) - ((int)pl&0x00ff00))>> 8)
-				+ abs((((int)pr&0x0000ff) - ((int)pl&0x0000ff))    );
-
-		grad_y	= abs((((int)pd&0xff0000) - ((int)pu&0xff0000))>>16)
-				+ abs((((int)pd&0x00ff00) - ((int)pu&0x00ff00))>> 8)
-				+ abs((((int)pd&0x0000ff) - ((int)pu&0x0000ff))    );
-#else
-		Pixel x1 = ((pr&0xff00ff)+0x00000100) - (pl&0xff00ff);
-		Pixel x2 = (pr&0x00ff00) - (pl&0x00ff00);
-		Pixel y1 = ((pd&0xff00ff)+0x00000100) - (pu&0xff00ff);
-		Pixel y2 = (pd&0x00ff00) - (pu&0x00ff00);
-
-		grad_x = (((int)(x1 + (x1<<16)) - 0x01000000) >> 16) + ((int)x2>>8);
-		grad_y = (((int)(y1 + (y1<<16)) - 0x01000000) >> 16) + ((int)y2>>8);
-#endif
+		grad_x = abs(rx) + abs(gx) + abs(bx);
+		grad_y = abs(ry) + abs(gy) + abs(by);
 
 		bitarray >>= 1;
 
-//		if (grad_x*grad_x + grad_y*grad_y > thresh) {
 		if (square_table[765+grad_x] + square_table[765+grad_y] > thresh) {
 			bitarray |= 16;
 		}
@@ -498,7 +473,7 @@ pixelloop:
 }
 
 static void __declspec(naked) avgrow_mmx(Pixel *dst, Pixel *src, long width) {
-	static __int64 add4=0x0004000400040004i64;
+	static const __declspec(align(8)) __int64 add4=0x0004000400040004i64;
 	__asm {
 		push	ebx
 		push	esi
@@ -815,9 +790,9 @@ static void avgrow(Pixel *dst, Pixel *src, long width) {
 
 #ifdef USE_ASM
 static void __declspec(naked) final_mmx(Pixel *dst, int width, byte **row_array, Pixel **avg_array) {
-	static __int64 add4=0x0004000400040004i64;
-	static __int64 add8=0x0008000800080008i64;
-	static __int64 add16=0x0010001000100010i64;
+	static const __declspec(align(8)) __int64 add4=0x0004000400040004i64;
+	static const __declspec(align(8)) __int64 add8=0x0008000800080008i64;
+	static const __declspec(align(8)) __int64 add16=0x0010001000100010i64;
 
 	__asm {
 		push		ebx
@@ -864,8 +839,9 @@ pixelloop:
 		mov			al,[ecx+ebp]
 		mov			ecx,[edi+16]
 		mov			bl,[ecx+ebp]
+		and			al,0e0h
+		and			bl,0e0h
 		add			eax,ebx
-		and			eax,0fffffff0h
 
 		mov			ecx,[edi+4]
 		mov			bl,[ecx+ebp]
@@ -891,9 +867,11 @@ pixelloop:
 		psraw		mm0,3
 		packuswb	mm0,mm0
 		movd		[esi+ebp*4],mm0
-		jmp			high_detail
-		align		16
+		add			ebp, 1
+		jne			pixelloop
+		jmp			xit
 
+		align		16
 low_detail:
 		movd		mm1,[esi+ebp*4]
 		punpcklbw	mm1,mm7
@@ -905,9 +883,11 @@ low_detail:
 		psraw		mm0,5
 		packuswb	mm0,mm0
 		movd		[esi+ebp*4],mm0
-		jmp			short high_detail
+		add			ebp, 1
+		jne			pixelloop
+		jmp			xit
 
-		align 16
+		align		16
 medium_detail:
 		movd		mm1,[esi+ebp*4]
 		punpcklbw	mm1,mm7
@@ -917,10 +897,15 @@ medium_detail:
 		psraw		mm0,4
 		packuswb	mm0,mm0
 		movd		[esi+ebp*4],mm0
-high_detail:
-		inc			ebp
+		add			ebp, 1
 		jne			pixelloop
+		jmp			xit
 
+		align		16
+high_detail:
+		add			ebp, 1
+		jne			pixelloop
+xit:
 		pop			ebp
 		pop			edi
 		pop			esi
@@ -961,28 +946,23 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 	avgrow_ptr = avgrow;
 
-//	memcpy(avg_rows, mfd->avg_row, sizeof(Pixel)*5);
-
 	avgrow_ptr(mfd->avg_row[1], (Pixel *)((char *)fa->src.data + 0*fa->src.pitch), fa->src.w);
 	memcpy(mfd->avg_row[2], mfd->avg_row[1], fa->src.w*4);
 	memcpy(mfd->avg_row[3], mfd->avg_row[1], fa->src.w*4);
 	avgrow_ptr(mfd->avg_row[4], (Pixel *)((char *)fa->src.data + 1*fa->src.pitch), fa->src.w);
 
-//	src = (Pixel *)((char *)fa->src.data + fa->src.pitch);
-//	dst = (Pixel *)((char *)fa->dst.data + fa->dst.pitch);
 	src = fa->src.data;
 	dst = fa->dst.data;
 
 	memset(mfd->sum_row[1], 0, fa->dst.w+2);
 	memset(mfd->sum_row[2], 0, fa->dst.w+2);
 	memset(mfd->sum_row[3], 0, fa->dst.w+2);
-//	filtrow_1(mfd->sum_row[3], src+1, fa->dst.w-2, fa->src.pitch, g_thresh);
-	filtrow_1(mfd->sum_row[4], (Pixel *)((char *)(srcf + 1) + srcf_pitch), fa->dst.w-2, srcf_pitch, g_thresh);
+	filtrow_1(mfd->sum_row[4], (Pixel *)((char *)(srcf + 1) + srcf_pitch), fa->dst.w-2, srcf_pitch, g_thresh, mfd->square_table);
 
 	h = fa->src.h;
 	do {
 		if (h>3)
-			filtrow_1(mfd->sum_row[next_row], (Pixel *)((char *)(srcf + 1) + srcf_pitch*2), fa->dst.w-2, srcf_pitch, g_thresh);
+			filtrow_1(mfd->sum_row[next_row], (Pixel *)((char *)(srcf + 1) + srcf_pitch*2), fa->dst.w-2, srcf_pitch, g_thresh, mfd->square_table);
 		else
 			memset(mfd->sum_row[next_row], 0, fa->dst.w + 2);
 
@@ -1102,9 +1082,6 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			dst = (Pixel *)((char *)dst + fa->dst.modulo);
 			srcf = (Pixel *)((char *)srcf + srcf_pitch);
 		}
-//		dst+=2;
-//		src+=2;
-
 	} while(--h>0);
 
 #ifdef USE_ASM
@@ -1126,12 +1103,12 @@ static int smoother_start(FilterActivation *fa, const FilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 	int i;
 
-	if (!init_count++) {
-		if (!(square_table = new int[765*2+1]))
+	if (!mfd->square_table) {
+		if (!(mfd->square_table = new int[765*2+1]))
 			return 1;
 
 		for(i=0; i<=765; i++)
-			square_table[765+i] = square_table[765-i] = i*i;
+			mfd->square_table[765+i] = mfd->square_table[765-i] = i*i;
 	}
 
 	for(i=0; i<5; i++)
@@ -1159,10 +1136,8 @@ static int smoother_end(FilterActivation *fa, const FilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 	int i;
 
-	if (!--init_count) {
-		delete square_table;
-		square_table = NULL;
-	}
+	delete mfd->square_table;
+	mfd->square_table = NULL;
 
 	for(i=0; i<5; i++) {
 		delete mfd->sum_row[i];

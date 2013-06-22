@@ -588,6 +588,20 @@ static void resize_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 		mfd->fLetterbox = true;
 		mfd->rgbColor = revcolor(argv[5].asInt());
 	}
+
+	// make the sizes somewhat sane
+	if (mfd->new_x < 1.0f)
+		mfd->new_x = 1.0f;
+	if (mfd->new_y < 1.0f)
+		mfd->new_y = 1.0f;
+
+	if (mfd->fLetterbox) {
+		if (mfd->new_xf < mfd->new_x)
+			mfd->new_xf = (int)ceil(mfd->new_x);
+
+		if (mfd->new_yf < mfd->new_y)
+			mfd->new_yf = (int)ceil(mfd->new_y);
+	}
 }
 
 static ScriptFunctionDef resize_func_defs[]={

@@ -646,8 +646,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 	if (audio) {
 		// offset the start of the audio appropriately...
-
-		aInfo.start_us = -1000*opt->audio.offset;
+		aInfo.start_us = -(sint64)1000*opt->audio.offset;
 
 		if (video) {
 			const sint64 video_start	= vInfo.start_src - pVideoStream->getStart();

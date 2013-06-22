@@ -19,7 +19,7 @@ namespace Windows95 {
 #include "vdserver.h"
 
 typedef struct VDubPostedFrameserver {
-	HWND hwndServer;
+	LONG hwndServer;
 	int active_connects;
 	char name[56];
 } VDubPostedFrameserver;
@@ -119,7 +119,7 @@ static BOOL InitSharedSpace() {
 
 	//////////
 
-	hHeap = CreateFileMapping(	(HANDLE)0xFFFFFFFF,
+	hHeap = CreateFileMapping(	INVALID_HANDLE_VALUE,
 								NULL,
 								PAGE_READWRITE,
 								0,
@@ -233,7 +233,7 @@ CVDubAnimConnection::CVDubAnimConnection(VDubPostedFrameserver *vdpf) {
 }
 
 CVDubAnimConnection::~CVDubAnimConnection() {
-	if (dwSessionID) SendMessage(frameserver->hwndServer, VDSRVM_CLOSE, 0, dwSessionID);
+	if (dwSessionID) SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_CLOSE, 0, dwSessionID);
 
 	if (arena) UnmapViewOfFile(arena);
 	if (hArena) CloseHandle(hArena);
@@ -248,7 +248,7 @@ BOOL CVDubAnimConnection::init() {
 
 	// find out how big of an arena we need
 
-	lArenaSize = SendMessage(frameserver->hwndServer, VDSRVM_BIGGEST, 0, 0);
+	lArenaSize = SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_BIGGEST, 0, 0);
 
 	if (!lArenaSize) return FALSE;
 
@@ -261,7 +261,7 @@ BOOL CVDubAnimConnection::init() {
 	// create a shared arena and map a window for us
 
 	hArena = CreateFileMapping(
-			(HANDLE)0xFFFFFFFF,
+			INVALID_HANDLE_VALUE,
 			NULL,
 			PAGE_READWRITE,
 			0,
@@ -280,7 +280,7 @@ BOOL CVDubAnimConnection::init() {
 
 	// hail the server
 
-	dwSessionID = SendMessage(frameserver->hwndServer, VDSRVM_OPEN, lArenaSize, mmapID);
+	dwSessionID = SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_OPEN, lArenaSize, mmapID);
 
 	if (!dwSessionID) return FALSE;		// no response, Captain
 
@@ -288,7 +288,7 @@ BOOL CVDubAnimConnection::init() {
 
 	// on screen!  get me the video format!
 
-	if (SendMessage(frameserver->hwndServer, VDSRVM_REQ_FORMAT, 0, dwSessionID) <= 0)
+	if (SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_REQ_FORMAT, 0, dwSessionID) <= 0)
 		return FALSE;
 
 	{
@@ -303,11 +303,11 @@ BOOL CVDubAnimConnection::init() {
 }
 
 BOOL CVDubAnimConnection::hasAudio() {
-	return VDSRVERR_OK == SendMessage(frameserver->hwndServer, VDSRVM_REQ_STREAMINFO, 1, dwSessionID);
+	return VDSRVERR_OK == SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_REQ_STREAMINFO, 1, dwSessionID);
 }
 
 BOOL CVDubAnimConnection::readStreamInfo(AVISTREAMINFO *lpsi, BOOL fAudio, long *lpFirst, long *lpLast) {
-	if (VDSRVERR_OK == SendMessage(frameserver->hwndServer, VDSRVM_REQ_STREAMINFO, !!fAudio, dwSessionID)) {
+	if (VDSRVERR_OK == SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_REQ_STREAMINFO, !!fAudio, dwSessionID)) {
 		if (lpsi) memcpy(lpsi, arena+8, sizeof(AVISTREAMINFO));
 		if (lpFirst) *lpFirst = *(long *)(arena+0);
 		if (lpLast) *lpLast = *(long *)(arena+4);
@@ -319,7 +319,7 @@ BOOL CVDubAnimConnection::readStreamInfo(AVISTREAMINFO *lpsi, BOOL fAudio, long 
 int CVDubAnimConnection::readFormat(void *ptr, BOOL fAudio) {
 	int err;
 
-	err = SendMessage(frameserver->hwndServer, VDSRVM_REQ_FORMAT, !!fAudio, dwSessionID);
+	err = SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_REQ_FORMAT, !!fAudio, dwSessionID);
 
 	if (err<0) return err;
 
@@ -332,7 +332,7 @@ int CVDubAnimConnection::readVideo(long lSample, void *lpBuffer) {
 	int err;
 
 	_RPT0(0,"Sending message...\n");
-	if (VDSRVERR_OK != (err = SendMessage(frameserver->hwndServer, VDSRVM_REQ_FRAME, lSample, dwSessionID)))
+	if (VDSRVERR_OK != (err = SendMessage((HWND)LongToHandle(frameserver->hwndServer), VDSRVM_REQ_FRAME, lSample, dwSessionID)))
 		return err;
 
 	_RPT2(0,"Copying %ld bytes to user buffer from arena %P\n", lFrameSize, arena);
@@ -348,7 +348,7 @@ int CVDubAnimConnection::readAudio(long lSample, long lCount, void *lpBuffer, lo
 	*(long *)(arena+0) = lCount;
 	*(long *)(arena+4) = cbBuffer;
 
-	if (VDSRVERR_OK != (err = SendMessage(frameserver->hwndServer, lpBuffer?VDSRVM_REQ_AUDIO:VDSRVM_REQ_AUDIOINFO, lSample, dwSessionID)))
+	if (VDSRVERR_OK != (err = SendMessage((HWND)LongToHandle(frameserver->hwndServer), lpBuffer?VDSRVM_REQ_AUDIO:VDSRVM_REQ_AUDIOINFO, lSample, dwSessionID)))
 		return err;
 
 	if (lplSamples) *lplSamples = *(long *)(arena + 4);
@@ -469,7 +469,7 @@ int CVDubServerLink::CreateFrameServer(char *name, HWND hwndServer) {
 	while(heap->fs_table[i].active_connects || heap->fs_table[i].hwndServer)
 		i = (i+1) % MAXIMUM_FRAMESERVERS;
 
-	heap->fs_table[i].hwndServer = hwndServer;
+	heap->fs_table[i].hwndServer = HandleToLong(hwndServer);
 	strncpy(heap->fs_table[i].name, name, sizeof heap->fs_table[i].name);
 
 	heap->fs_table[i].name[(sizeof heap->fs_table[i].name)-1] = 0;
@@ -492,6 +492,6 @@ void CVDubServerLink::DestroyFrameServer(int handle) {
 	ranma();
 }
 
-__declspec(dllexport) IVDubServerLink *GetDubServerInterface() {
+extern "C" __declspec(dllexport) IVDubServerLink *__cdecl GetDubServerInterface() {
 	return &i_dubserver;
 }

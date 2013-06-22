@@ -766,7 +766,8 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		if (!inputVideoAVI->setDecompressedFormat(24))
 			if (!inputVideoAVI->setDecompressedFormat(32))
 				if (!inputVideoAVI->setDecompressedFormat(16))
-					inputVideoAVI->setDecompressedFormat(8);
+					if (!inputVideoAVI->setTargetFormat(0))
+						inputVideoAVI->setDecompressedFormat(8);
 
 		inputVideoAVI->setDecodeErrorMode(g_videoErrorMode);
 

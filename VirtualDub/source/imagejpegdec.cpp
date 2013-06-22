@@ -593,6 +593,8 @@ void VDJPEGDecoder::Parse() {
 				mRestartInterval = (mpSrc[0] << 8) + mpSrc[1];
 			}
 			break;
+		case kEOI:
+			return;
 		default:
 			if (c >= kAPP0 && c <= kAPPF || c == kCOM) {
 				int len = ParseLength();
@@ -948,7 +950,13 @@ void VDJPEGDecoder::ParseScanHeader() {
 		}
 	}
 
+	mBitHeap >>= -(int)mBitCount & 7;
 	mpSrc -= mBitCount >> 3;
+	for(int j=0; j<4; ++j) {
+		if ((uint8)mBitHeap == 0xff)
+			--mpSrc;
+		mBitHeap >>= 8;
+	}
 
 #ifdef _M_AMD64
 	_mm_sfence();

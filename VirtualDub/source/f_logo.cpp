@@ -606,7 +606,7 @@ static const char *logoOpenImage(HWND hwnd, const char *oldfn) {
 
 	ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
 	ofn.hwndOwner			= hwnd;
-	ofn.lpstrFilter			= "Image file (*.bmp,*.tga,*.jpg,*.jpeg)\0*.bmp;*.tga;*.jpg;*.jpeg\0All files (*.*)\0*.*\0";
+	ofn.lpstrFilter			= "Image file (*.bmp,*.tga,*.jpg,*.jpeg,*.png)\0*.bmp;*.tga;*.jpg;*.jpeg;*.png\0All files (*.*)\0*.*\0";
 	ofn.lpstrCustomFilter	= NULL;
 	ofn.nFilterIndex		= 1;
 	ofn.lpstrFile			= szFile;

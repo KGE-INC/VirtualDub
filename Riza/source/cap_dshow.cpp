@@ -3027,7 +3027,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 
 		if (mbAudioPlaybackEnabled) {
-			HRESULT hrRender = mpCapGraphBuilder2->RenderStream(NULL, NULL, pAudioPin, NULL, NULL);
+			HRESULT hrRender = mpGraphBuilder->Render(pAudioPin);
 
 			// Reset the filter graph clock. We have to do this because when we
 			// create a capture graph a different filter may end up being the

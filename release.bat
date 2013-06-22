@@ -164,13 +164,15 @@ if "%_check%"=="false" (
 	upx -9 out\Distribution\bindist\*.exe out\Distribution\bindist\*.dll
 	copy out\ReleaseAMD64\Veedub64.exe out\Distribution\bindist
 	copy out\ReleaseAMD64\Veedub64.vdi out\Distribution\bindist
+	copy out\ReleaseAMD64\vdsvrlnk64.dll out\Distribution\bindist
+	copy out\ReleaseAMD64\vdremote64.dll out\Distribution\bindist
 	copy out\ReleaseAMD64\vdub64.exe out\Distribution\bindist
 	xcopy VirtualDub\dist\* out\Distribution\bindist /s/e/i
 	copy copying out\Distribution\bindist
 	copy out\Helpfile\VirtualDub.chm out\Distribution\bindist
 	cd out\Distribution\bindist
-	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.chm vdub.exe *.dll auxsetup.exe aviproxy\* plugins\* copying
-	zip -9 -X ..\bin-amd64.zip Veedub64.* vdub64.exe copying
+	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.chm vdub.exe vdicmdrv.dll vdremote.dll vdsvrlnk.dll auxsetup.exe aviproxy\* plugins\* copying
+	zip -9 -X ..\bin-amd64.zip Veedub64.* vdub64.exe vdsvrlnk64.dll vdremote64.dll frameserver64.reg copying
 	cd ..\..\..
 	zip -9 -X -j out\Distribution\linkmaps.zip out\Release\VirtualDub.map out\ReleaseAMD64\Veedub64.map
 )
@@ -191,6 +193,8 @@ echo --- Building release: %2
 if "%3"=="AMD64" (
 	rem ---these must be built separately as we can't run AMD64 tools on Win32
 	if "%_incremental%"=="false" (
+		msdev VirtualDub.dsw /make "vdsvrlnk - Win32 %~1" /clean
+		msdev VirtualDub.dsw /make "vdremote - Win32 %~1" /clean
 		msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /clean
 		msdev VirtualDub.dsw /make "test - Win32 %~1" /clean
 	)
@@ -226,7 +230,9 @@ if "%3"=="AMD64" (
 	)
 	set include=%_dx9%\include;!include!
 	set lib=%_dx9%\lib\x64;!lib!
-	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /useenv
+	msdev VirtualDub.dsw /make "vdsvrlnk - Win32 %~1" /useenv
+	if not errorlevel 1 msdev VirtualDub.dsw /make "vdremote - Win32 %~1" /useenv
+	if not errorlevel 1 msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /useenv
 	if not errorlevel 1 msdev VirtualDub.dsw /make "test - Win32 %~1" /useenv
 	endlocal
 	if errorlevel 1 set _build_abort=true

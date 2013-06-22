@@ -26,7 +26,7 @@ _vdasm_capture_resample16_MMX	proc	near public
 		shr			ecx, 1
 		add			ebp, ebp			;convert sample stride to pointer stride
 		mov			esi, [esp+20+16]	;esi = fractional accumulator
-		add			edx, [esp+24+16]	;add integer accumulator
+		add			ecx, [esp+24+16]	;add integer accumulator
 		mov			ebx, [esp+32+16]	;ebx = integer increment
 
 		push		0
@@ -47,7 +47,7 @@ _vdasm_capture_resample16_MMX	proc	near public
 		;ebp		destination stride
 
 		mov			edi, esi
-		shr			edi, 25
+		shr			edi, 23
 		and			edi, 1f0h
 		add			edi, offset _gVDCaptureAudioResamplingKernel
 
@@ -69,7 +69,7 @@ xloop:
 		add			esi, esp
 		adc			ecx, ebx
 		mov			edi, esi
-		shr			edi, 25
+		shr			edi, 23
 		add			edx, ebp
 		and			edi, 1f0h
 		add			edi, offset _gVDCaptureAudioResamplingKernel

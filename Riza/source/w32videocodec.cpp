@@ -137,7 +137,11 @@ bool VDVideoDecompressorVCM::SetTargetFormat(int format) {
 	if (!format) {
 		if (SetTargetFormat(kPixFormat_RGB888)
 			|| SetTargetFormat(kPixFormat_XRGB8888)
-			|| SetTargetFormat(kPixFormat_XRGB1555))
+			|| SetTargetFormat(kPixFormat_XRGB1555)
+			|| SetTargetFormat(kPixFormat_YUV422_YUYV)
+			|| SetTargetFormat(kPixFormat_YUV422_UYVY)
+			|| SetTargetFormat(kPixFormat_YUV420_Planar)
+			)
 		{
 			return true;
 		}

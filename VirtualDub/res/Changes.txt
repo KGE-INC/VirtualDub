@@ -1,6 +1,25 @@
 VirtualDub change log
 
-Build %build% (1.6.15, stable): [%date%]
+Build %build% (1.6.16, stable): [%date%]
+   [features added]
+   * Added AMD64 versions of the frameserver and AVIFile frameclient.
+   * Added .divx to file filter for video open dialog (although AVI files should be tagged .avi, dammit).
+
+   [bugs fixed]
+   * Fixed decoding errors when reading JPEGs with junk at the end of the file.
+   * Improved support for working with video codecs that are configured to only output YUV formats.
+   * Added more checks to script parameters for "resize" video filter.
+   * Fixed gradient bugs in "smoother" video filter.
+   * Added "png" file extension to logo filter open dialog; it has been supported for a while, but you had to manually override the file filter.
+   * Fixed truncation in audio displacement setting that prevented it from working beyond ~35min.
+   * Capture: Fixed crash when attempting to capture with both striping and segmentation (not supported).
+
+   [regressions fixed]
+   * Capture: Audio playback sometimes didn't work.
+   * Capture: Fixed noise issue in resampler.
+   * Improved accuracy of "box blur" filter.
+
+Build 24442 (1.6.15, stable): [May 28, 2006]
    [bugs fixed]
    * Added workaround for BMP files with bad BITMAPINFOHEADER::bfSize fields.
    * Added workaround for TARGA files with run-length encodings that span scanlines (not allowed by spec).
@@ -9,7 +28,7 @@ Build %build% (1.6.15, stable): [%date%]
    * Fixed crash when VirtualDub.jobs file is not writable.
    * Fixed crash when dealing with RLE4 and RLE8 encoded videos.
    * Fixed stride error with odd-width TARGA files.
-   * Fixed occasionally oversized wave format structure begin written when decompressing audio.
+   * Fixed occasionally oversized wave format structure being written when decompressing audio.
    * The "autoselect" input color format now also tries 256 color mode in order to support old codecs that can only output this format.
    * Capture: Switched graph construction code in DirectShow layer to prefer Video Renderer over VMR to avoid Direct3D.
    * AMD64: Fixed one-byte PUSH/POP instructions reporting incorrect registers in disassembly.
@@ -273,7 +292,7 @@ Build 23350 (1.6.5, experimental): [April 4, 2005]
    * Top-down uncompressed RGB AVIs weren't handled properly.
    * Fixed busted non-MMX XRGB1555>XRGB8888 converter.
 
-Build 23174 (1.6.4, experimental): [February 12, 2004]
+Build 23174 (1.6.4, experimental): [February 12, 2005]
    [features added]
    * Capture: Added support for detecting and correcting discrepancies in the video time base. This can reduce frame drops if the incoming frame rate is unexpectedly and regularly too high or too low.
    * Capture: Added command-line support.

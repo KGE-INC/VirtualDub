@@ -773,7 +773,11 @@ static HMODULE hmodServer;
 static IVDubServerLink *ivdsl;
 
 static BOOL InitServerDLL() {
+#ifdef _M_AMD64
+	hmodServer = LoadLibrary("vdsvrlnk64.dll");
+#else
 	hmodServer = LoadLibrary("vdsvrlnk.dll");
+#endif
 
 	VDDEBUG("VDSVRLNK handle: %p\n", hmodServer);
 

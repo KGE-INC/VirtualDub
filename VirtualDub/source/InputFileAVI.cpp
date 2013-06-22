@@ -71,7 +71,7 @@ public:
 	uint32 GetFlags() { return kF_Video | kF_Audio; }
 
 	const wchar_t *GetFilenamePattern() {
-		return L"Audio/video interleave (*.avi)\0*.avi\0";
+		return L"Audio/video interleave (*.avi,*.divx)\0*.avi;*.divx\0";
 	}
 
 	bool DetectByFilename(const wchar_t *pszFilename) {
