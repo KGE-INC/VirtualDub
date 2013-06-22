@@ -41,6 +41,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/Dita/resources.h>
 #include "crash.h"
+#include "DubSource.h"
 
 #include "ClippingControl.h"
 #include "PositionControl.h"
@@ -87,6 +88,9 @@ extern HACCEL		g_hAccelMain;
 
 extern VDProject *g_project;
 extern vdautoptr<VDProjectUI> g_projectui;
+
+extern DubSource::ErrorMode	g_videoErrorMode;
+extern DubSource::ErrorMode	g_audioErrorMode;
 
 extern wchar_t g_szFile[MAX_PATH];
 
@@ -297,6 +301,19 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 		return FALSE;
 
 	LoadPreferences();
+	{
+		VDRegistryAppKey key("Preferences");
+		unsigned errorMode;
+
+		errorMode = key.getInt("Edit: Video error mode");
+		if (errorMode < DubSource::kErrorModeCount)
+			g_videoErrorMode = (DubSource::ErrorMode)errorMode;
+
+		errorMode = key.getInt("Edit: Audio error mode");
+		if (errorMode < DubSource::kErrorModeCount)
+			g_audioErrorMode = (DubSource::ErrorMode)errorMode;
+	}
+
 
 	// initialize interface
 

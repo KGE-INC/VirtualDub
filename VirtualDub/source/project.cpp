@@ -59,8 +59,8 @@ extern HINSTANCE g_hInst;
 extern VDProject *g_project;
 extern InputFileOptions	*g_pInputOpts;
 
-extern DubSource::ErrorMode	g_videoErrorMode;
-extern DubSource::ErrorMode	g_audioErrorMode;
+DubSource::ErrorMode	g_videoErrorMode			= DubSource::kErrorModeReportAll;
+DubSource::ErrorMode	g_audioErrorMode			= DubSource::kErrorModeReportAll;
 
 extern bool				g_fDropFrames;
 extern bool				g_fSwapPanes;
@@ -541,7 +541,7 @@ void VDProject::PreviewInput() {
 	dubOpt.fShowStatus = false;
 	dubOpt.fMoveSlider = true;
 
-	if (lStart < inputVideoAVI->getEnd())
+	if (lStart < inputSubset->getTotalFrames())
 		PreviewAVI(mhwnd, &dubOpt, g_prefs.main.iPreviewPriority);
 }
 
@@ -564,7 +564,7 @@ void VDProject::PreviewOutput() {
 	dubOpt.fShowStatus = false;
 	dubOpt.fMoveSlider = true;
 
-	if (lStart < inputVideoAVI->getEnd())
+	if (lStart < inputSubset->getTotalFrames())
 		PreviewAVI(mhwnd, &dubOpt, g_prefs.main.iPreviewPriority);
 }
 
@@ -726,6 +726,9 @@ void VDProject::MoveToSelectionEnd() {
 }
 
 void VDProject::MoveToPreviousKey() {
+	if (!inputVideoAVI)
+		return;
+
 	LONG lSample = (LONG)GetCurrentFrame();
 
 	if (lSample <= 0)
@@ -773,6 +776,9 @@ void VDProject::MoveToPreviousKey() {
 }
 
 void VDProject::MoveToNextKey() {
+	if (!inputVideoAVI)
+		return;
+
 	long lSampleOld = (long)GetCurrentFrame();
 	long lSample = lSampleOld;
 
@@ -838,11 +844,15 @@ void VDProject::MoveForwardSome() {
 }
 
 void VDProject::StartSceneShuttleReverse() {
+	if (!inputVideoAVI)
+		return;
 	mSceneShuttleMode = -1;
 	UIShuttleModeUpdated();
 }
 
 void VDProject::StartSceneShuttleForward() {
+	if (!inputVideoAVI)
+		return;
 	mSceneShuttleMode = +1;
 	UIShuttleModeUpdated();
 }

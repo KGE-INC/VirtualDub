@@ -1,7 +1,39 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
-Current build (1.5.6, stable):      [October 10, 2003]
+Current build (1.5.7, stable):    [October 20, 2003]
+   [bugs fixed]
+   * Quick preview didn't work if the current position was
+     past the number of source frames, even if the timeline
+     was longer than that.
+   * Added FPU guards that were missing in a couple of
+     critical places (AVIFile open, codec negotation).
+   * The timeline wasn't properly extended if segments were
+     auto-attached by filename after edits had been made.
+   * Configuration scripts saved when no file is open
+     no longer alter the edit list when loaded.
+   * Jobs launched from the command line used the normal
+     error modes rather than those set as default by the
+     user.
+
+   [regressions fixed]
+   * Filter preview buttons weren't updating the frame.
+   * Save Image Sequence command would randomly produce
+     an unrequested job instead of initiating the render
+     directly.
+   * MP3 audio streams were getting written with
+     dwLength=0 if correction was enabled.
+   * MPEG decoder occasionally decoded garbage into the
+     video frame, resulting in sporadic block errors
+     during processing.
+   * A race condition in the fast write code occasionally
+     resulted in spurious write errors.
+   * Append AVI function was incrementing the filename
+     extension instead of the name component.
+   * Avisynth scripts smaller than 60 bytes weren't being
+     autodetected properly.
+
+Build 17971 (1.5.6, stable):      [October 10, 2003]
    [features added]
    * Added support for YV12 during fast recompress.
    * Input video is now displayed during fast recompress
@@ -18,7 +50,7 @@ Current build (1.5.6, stable):      [October 10, 2003]
    * Time base for the position control was improperly
      affected by the "convert to fps" option.
    * "Box blur" filter was broken on CPUs without MMX.
-     Dumb (Dumb compiler bugs....)
+     (Dumb compiler bugs....)
 
    [regressions fixed]
    * Menu cleanup: removed synchronous blit and histogram,

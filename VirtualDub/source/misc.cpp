@@ -105,9 +105,9 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 		__asm mov eax, ctlword
 		__asm fnstcw [eax]
 
-		ctlword &= 0xffff;
+		ctlword &= 0x0f3f;
 
-		return ctlword == 0x027f;
+		return ctlword == 0x023f;
 	}
 
 	void ClearMMXState() {
@@ -128,7 +128,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 	}
 
 	void ResetFPUState() {
-		static const unsigned ctlword = 0x027f;
+		static const unsigned ctlword = 0x023f;
 
 		__asm fnclex
 		__asm fldcw ctlword

@@ -887,10 +887,10 @@ bool VDMPEGDecoder::Init(int width, int height) {
 	mnBlockW	= (width+15) >> 4;
 	mnBlockH	= (height+15) >> 4;
 	mnHeight	= height;
-	mnYPitch	= mnBlockW * 24;
-	mnYPitch8	= mnBlockW * 24 * 8;
-	mnCPitch	= mnBlockW * 48;
-	mnCPitch8	= mnBlockW * 48 * 8;
+	mnYPitch	= (mnBlockW * 24 + 15) & ~15;		// all scanlines must be aligned to 16 for SSE/SSE2
+	mnYPitch8	= mnYPitch * 8;
+	mnCPitch	= mnYPitch * 2;
+	mnCPitch8	= mnCPitch * 8;
 
 	// Attempt to allocate all buffers.
 
@@ -907,7 +907,7 @@ bool VDMPEGDecoder::Init(int width, int height) {
 	}
 
 	for(i=0; i<mnBuffers; ++i) {
-		if (!(mpBuffers[i].pYBuffer = new_nothrow YCCSample[mnYPitch * mnBlockH * 24 + 127])) {
+		if (!(mpBuffers[i].pYBuffer = new_nothrow YCCSample[mnYPitch * mnBlockH * 16 + 127])) {
 			Shutdown();
 			return false;
 		}
@@ -1232,6 +1232,17 @@ int VDMPEGDecoder::DecodeFrame(const void *_src, long len, long frame, int dst, 
 	} else {
 		mpBackY = mpBackCr = mpBackCb = NULL;
 	}
+
+	// Wipe destination frame.
+
+#ifdef _DEBUG
+	for(int y1=0; y1<mnBlockH*16; ++y1)
+		memset(mpY + mnYPitch*y1, 0x80, mnBlockW*16);
+	for(int y2=0; y2<mnBlockH*8; ++y2)
+		memset(mpCr + mnCPitch*y2, 0x80, mnBlockW*8);
+	for(int y3=0; y3<mnBlockH*8; ++y3)
+		memset(mpCb + mnCPitch*y3, 0x80, mnBlockW*8);
+#endif
 
 	// Search for start codes beginning at buf+4 (I) or buf+5 (P/B).
 

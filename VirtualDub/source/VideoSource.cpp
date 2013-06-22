@@ -618,6 +618,8 @@ void VideoSourceAVI::_construct() {
 		VDCHECKPOINT;
 
 		vdprotected2("attempting codec negotiation: fccHandler=0x%08x, biCompression=0x%08x", unsigned, streamInfo.fccHandler, unsigned, fccOriginalCodec) {
+			VDExternalCodeBracket bracket(L"A video codec", __FILE__, __LINE__);
+
 			switch(bmih->biCompression) {
 			case '34PM':		// Microsoft MPEG-4 V3
 			case '3VID':		// "DivX Low-Motion" (4.10.0.3917)

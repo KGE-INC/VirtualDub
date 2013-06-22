@@ -880,7 +880,7 @@ void *VideoSourceMPEG::streamGetFrame(void *inputBuffer, long data_len, BOOL is_
 			VDASSERT(false);
 		}
 
-		mpDecoder->DecodeFrame((char *)inputBuffer+4, data_len, frame_num, dstbuffer, fwdbuffer, revbuffer);
+		mpDecoder->DecodeFrame((char *)inputBuffer+4, data_len-4, frame_num, dstbuffer, fwdbuffer, revbuffer);
 	}
 	
 	if (!is_preroll) {
@@ -1014,6 +1014,11 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 
 			parentPtr->ReadStream(parentPtr->video_packet_buffer, msi->stream_pos, msi->size, FALSE);
 
+			parentPtr->video_packet_buffer[msi->size] = 0;
+			parentPtr->video_packet_buffer[msi->size+1] = 0;
+			parentPtr->video_packet_buffer[msi->size+2] = 1;
+			parentPtr->video_packet_buffer[msi->size+3] = 0;
+
 			int dstbuffer, fwdbuffer, revbuffer;
 
 			switch(parentPtr->video_sample_list[lCurrent].frame_type) {
@@ -1104,7 +1109,7 @@ int VideoSourceMPEG::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuf
 		return AVIERR_OK;
 	}
 
-	if (len > cbBuffer) {
+	if (len+4 > cbBuffer) {
 		if (lSamplesRead) *lSamplesRead = 0;
 		if (lBytesRead) *lBytesRead = 0;
 		return AVIERR_BUFFERTOOSMALL;
@@ -1114,6 +1119,13 @@ int VideoSourceMPEG::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuf
 
 	if (lSamplesRead) *lSamplesRead = 1;
 	if (lBytesRead) *lBytesRead = len+4;
+
+	char *dst = (char *)lpBuffer + len;
+
+	dst[0] = 0;
+	dst[1] = 0;
+	dst[2] = 1;
+	dst[3] = 0;
 
 	return AVIERR_OK;
 }
@@ -2225,7 +2237,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 										const wchar_t *pStreamType = stream_id < 0xe0 ? L"audio" : L"video";
 										const int nStream = (stream_id - 0xc0) & 0x1f;
 										const sint64 nPos = tagpos;
-										VDLogAppMessageLimited(warning_count, kVDLogWarning, kVDST_Mpeg, kVDM_OOOTimestamp, 3, &pStreamType, &nStream, &tagpos);
+										VDLogAppMessageLimited(warning_count, kVDLogWarning, kVDST_Mpeg, kVDM_OOOTimestamp, 5, &pStreamType, &nStream, &tagpos, &last_stream_dts, &dts);
 									}
 
 									last_stream_dts = dts;
@@ -2657,7 +2669,8 @@ void InputFileMPEG::ReadStream(void *buffer, __int64 pos, long len, bool fAudio)
 
 		if (tc>len) tc=len;
 
-//		_RPT3(0,"Reading %ld bytes at %08lx+%ld\n", tc, video_packet_list[pkt].file_pos,delta);
+//		if (!fAudio)
+//			_RPT3(0,"Reading %ld bytes at %08lx+%ld\n", tc, video_packet_list[pkt].file_pos,delta);
 
 		if (pFastRead) {
 			pFastRead->Read(fAudio ? 1 : 0, packet_list[pkt].file_pos + delta, ptr, tc);
@@ -3036,7 +3049,7 @@ public:
 				if (*(const uint32 *)((const uint8 *)pHeader+i) == 0xba010000 || *(const uint32 *)((const uint8 *)pHeader+i)==0xb3010000)
 					break;
 
-			if (i < 60)
+			if (i < limit)
 				return 0;
 
 		}

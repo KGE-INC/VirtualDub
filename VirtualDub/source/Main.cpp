@@ -57,9 +57,6 @@ bool				g_fDropFrames			= false;
 bool				g_fSwapPanes			= false;
 bool				g_bExit					= false;
 
-DubSource::ErrorMode	g_videoErrorMode			= DubSource::kErrorModeReportAll;
-DubSource::ErrorMode	g_audioErrorMode			= DubSource::kErrorModeReportAll;
-
 vdautoptr<VDProjectUI> g_projectui;
 VDProject *g_project;
 
@@ -100,19 +97,6 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	MSG msg;
 
 	Init(hInstance, GetCommandLineW(), nCmdShow);
-
-	{
-		VDRegistryAppKey key("Preferences");
-		unsigned errorMode;
-
-		errorMode = key.getInt("Edit: Video error mode");
-		if (errorMode < DubSource::kErrorModeCount)
-			g_videoErrorMode = (DubSource::ErrorMode)errorMode;
-
-		errorMode = key.getInt("Edit: Audio error mode");
-		if (errorMode < DubSource::kErrorModeCount)
-			g_audioErrorMode = (DubSource::ErrorMode)errorMode;
-	}
 
 	// Load a file on the command line.
 
@@ -605,6 +589,7 @@ void SaveImageSeq(HWND hwnd) {
 	strcpy(dlg.szPostfix,".tga");
 	dlg.lFirstFrame	= 0;
 	dlg.lLastFrame	= inputSubset->getTotalFrames()-1;
+	dlg.bRunAsJob = false;
 
 	if (dlg.ActivateDialog((VDGUIHandle)hwnd)) {
 		if (dlg.bRunAsJob)

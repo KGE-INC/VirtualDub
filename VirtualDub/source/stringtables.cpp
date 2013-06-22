@@ -58,7 +58,7 @@ namespace {
 	const char *const g_strtab_Mpeg[]={
 		"MPEGAudio: Concealing decoding error on frame %lu: %hs.",
 		"MPEG: Opening file \"%ls\"",
-		"MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld (may indicate improper join)",
+		"MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld, from %lld to %lld. This may indicate an improper join.",
 		0
 	};
 

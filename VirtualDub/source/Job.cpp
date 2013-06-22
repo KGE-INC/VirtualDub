@@ -1640,10 +1640,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 		for(FrameSubset::const_iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it)
 			output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", it->bMask ? "Masked" : "", it->start, it->len);
-	} else
-		output.addf("VirtualDub.subset.Delete();");
-
-
+	}
 }
 
 void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInput, const wchar_t *pszInputDriver, List2<InputFilenameNode> *pListAppended) {

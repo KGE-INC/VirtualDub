@@ -110,46 +110,55 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 	if (!inputAVI)
 		return;
 
-	wcscpy(buf, pszFile);
+	VDPosition originalCount = inputAVI->videoSrc->getEnd();
 
-	while(*s) ++s;
+	wcscpy(buf, pszFile);
 
 	t = VDFileSplitExt(VDFileSplitPath(s));
 
 	if (t>buf)
 		--t;
 
-	for(;;) {
-		if (!VDDoesPathExist(VDStringW(buf)))
-			break;
-		
-		if (!inputAVI->Append(buf))
-			break;
-
-		++count;
-
-		s = t;
-
+	try {
 		for(;;) {
-			if (s<buf || !isdigit(*s)) {
-				memmove(s+2, s+1, sizeof(wchar_t) * wcslen(s));
-				s[1] = L'1';
-				++t;
-			} else {
-				if (*s == L'9') {
-					*s-- = L'0';
-					continue;
+			if (!VDDoesPathExist(VDStringW(buf)))
+				break;
+			
+			if (!inputAVI->Append(buf))
+				break;
+
+			++count;
+
+			s = t;
+
+			for(;;) {
+				if (s<buf || !isdigit(*s)) {
+					memmove(s+2, s+1, sizeof(wchar_t) * wcslen(s));
+					s[1] = L'1';
+					++t;
+				} else {
+					if (*s == L'9') {
+						*s-- = L'0';
+						continue;
+					}
+					++*s;
 				}
-				++*s;
+				break;
 			}
-			break;
 		}
+	} catch(const MyError& e) {
+		// log append errors, but otherwise eat them
+
+		VDLog(kVDLogWarning, VDTextAToW(e.gets()));
 	}
 
 	guiSetStatus("Appended %d segments (stopped at \"%s\")", 255, count, VDTextWToA(buf).c_str());
 
-	if (count)
+	if (count) {
+		if (inputSubset)
+			inputSubset->insert(inputSubset->end(), FrameSubsetNode(originalCount, inputAVI->videoSrc->getEnd() - originalCount, false));
 		RemakePositionSlider();
+	}
 }
 
 void CloseAVI() {

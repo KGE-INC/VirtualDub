@@ -2379,7 +2379,7 @@ abort_requested:
 
 				AVIStreamHeader_fixed hdr(mpAudioOut->getStreamInfo());
 				hdr.dwRate = wfex->nAvgBytesPerSec * hdr.dwScale;
-				mpAudioOut->setStreamInfo(hdr);
+				mpAudioOut->updateStreamInfo(hdr);
 			}
 
 			// finalize avi

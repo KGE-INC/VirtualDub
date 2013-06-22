@@ -196,7 +196,7 @@ long VDFile::readData(void *buffer, long length) {
 
 void VDFile::read(void *buffer, long length) {
 	if (length != readData(buffer, length))
-		throw MyError("Cannot read from file \"%s\": %%s", GetLastError(), mpFilename.get());
+		throw MyWin32Error("Cannot read from file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 long VDFile::writeData(const void *buffer, long length) {

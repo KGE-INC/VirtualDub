@@ -43,6 +43,7 @@ public:
 
 	virtual const AVIStreamHeader_fixed& getStreamInfo() = 0;
 	virtual void	setStreamInfo(const AVIStreamHeader_fixed& hdr) = 0;
+	virtual void	updateStreamInfo(const AVIStreamHeader_fixed& hdr) = 0;
 
 	virtual void	write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;
 	virtual void	flush() = 0;
@@ -76,6 +77,10 @@ public:
 		streamInfo = hdr;
 		streamInfo.dwLength = 0;
 		streamInfo.dwSuggestedBufferSize = 0;
+	}
+
+	virtual void updateStreamInfo(const AVIStreamHeader_fixed& hdr) {
+		streamInfo = hdr;
 	}
 
 	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;

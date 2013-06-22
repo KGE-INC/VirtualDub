@@ -415,13 +415,12 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 	AddFilename(szFile);
 
 	if (fCompatibilityMode) {
-		
-		if (IsMMXState())
-			throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
 
-		err = AVIFileOpen(&paf, VDTextWToA(szFile).c_str(), OF_READ, NULL);
+		{
+			VDExternalCodeBracket bracket(L"An AVIFile input handler", __FILE__, __LINE__);
 
-		ClearMMXState();
+			err = AVIFileOpen(&paf, VDTextWToA(szFile).c_str(), OF_READ, NULL);
+		}
 
 		if (err)
 			throw MyAVIError(szME, err);

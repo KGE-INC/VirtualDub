@@ -56,7 +56,7 @@ Project: "Meia"=.\Meia\Meia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Meia
+    Perforce Project
     .
     end source code control
 }}}
@@ -183,22 +183,6 @@ Package=<4>
 
 ###############################################################################
 
-Project: "filtsdk2"=.\filtsdk2\filtsdk2.dsp - Package Owner=<4>
-
-Package=<5>
-{{{
-    begin source code control
-    filtsdk2
-    .\filtsdk2
-    end source code control
-}}}
-
-Package=<4>
-{{{
-}}}
-
-###############################################################################
-
 Project: "helpfile"=.\helpfile\helpfile.dsp - Package Owner=<4>
 
 Package=<5>
@@ -239,7 +223,7 @@ Project: "samplefilter"=.\samplefilter\samplefilter.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    samplefilter
+    Perforce Project
     .\samplefilter
     end source code control
 }}}

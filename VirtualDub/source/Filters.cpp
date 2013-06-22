@@ -728,7 +728,8 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		} else if (LOWORD(wParam) != IDC_POSITION)
 			return TRUE;
 
-		guiPositionHandleCommand(wParam, lParam);
+		if (guiPositionHandleCommand(wParam, lParam) >= 0)
+			OnVideoRedraw();
 		break;
 
 	case WM_USER+0:		// redraw modified frame

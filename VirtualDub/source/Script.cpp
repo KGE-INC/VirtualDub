@@ -1140,15 +1140,18 @@ static void func_VDSubset_Delete(IScriptInterpreter *isi, void *, CScriptValue *
 
 static void func_VDSubset_Clear(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
 	g_project->ResetTimeline();
-	inputSubset->clear();
+	if (inputSubset)
+		inputSubset->clear();
 }
 
 static void func_VDSubset_AddRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), false);
+	if (inputSubset)
+		inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), false);
 }
 
 static void func_VDSubset_AddMaskedRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), true);
+	if (inputSubset)
+		inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), true);
 }
 
 static ScriptFunctionDef obj_VDSubset_functbl[]={

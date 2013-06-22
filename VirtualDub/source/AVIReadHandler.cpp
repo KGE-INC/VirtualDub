@@ -1355,7 +1355,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 			case streamtypeAUDIO:	szPrefix = "Cannot append segment: The audio streams "; break;
 			case streamtypeVIDEO:	szPrefix = "Cannot append segment: The video streams "; break;
 			case 'savi':			szPrefix = "Cannot append segment: The DV streams "; break;
-			default:				szPrefix = ""; break;
+			default:				szPrefix = NULL; break;
 			}
 
 			// If it's not an audio or video stream, why do we care?

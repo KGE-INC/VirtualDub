@@ -164,6 +164,8 @@ void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *b
 			u.buf[4] = 0;
 
 			vdprotected1("opening video codec with FOURCC \"%.4s\"", const char *, u.buf) {
+				VDSilentExternalCodeBracket bracket;
+
 				if (isEqualFOURCC(info.fccHandler, '1VSA'))
 					hic = ICOpenASV1(info.fccType, info.fccHandler, ICMODE_COMPRESS);
 				else	
