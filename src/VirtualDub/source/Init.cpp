@@ -556,6 +556,9 @@ bool InitApplication(HINSTANCE hInstance) {
 	extern bool VDRegisterParameterCurveControl();
 	if (!VDRegisterParameterCurveControl()) return false;
 
+	extern bool VDUIRegisterHotKeyExControl();
+	if (!VDUIRegisterHotKeyExControl()) return false;
+
 	return true;
 }
 
@@ -937,8 +940,11 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				}
 				else if (!wcscmp(token, L"r")) {
 					JobUnlockDubber();
-					JobRunList();
+					bool success = JobRunList();
 					JobLockDubber();
+
+					if (!success)
+						break;
 				}
 				else if (!wcscmp(token, L"s")) {
 					if (!cmdLine.GetNextNonSwitchArgument(it, token))

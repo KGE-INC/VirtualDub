@@ -121,6 +121,7 @@ protected:
 	AudioStreamL3Corrector	*mpAudioCorrector;
 	bool				mbAudioPresent;
 	bool				mbAudioEnded;
+	uint64				mAudioSamplesWritten;
 	vdfastvector<char>	mAudioBuffer;
 
 	// VIDEO SECTION

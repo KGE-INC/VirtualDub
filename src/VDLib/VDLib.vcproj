@@ -334,6 +334,10 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<File
+				RelativePath=".\source\UIProxies.cpp"
+				>
+			</File>
 			<Filter
 				Name="win32"
 				>
@@ -396,6 +400,10 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\VDLib\ParameterCurve.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\VDLib\UIProxies.h"
 				>
 			</File>
 			<Filter

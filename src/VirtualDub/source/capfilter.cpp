@@ -660,14 +660,15 @@ void VDCaptureFilterChainFrameSource::Init(uint32 frameCount, const VDPixmapLayo
 	mWindowFrameCount = 0;
 	mWindowStartIndex = 0;
 	mWindowSize = frameCount;
-	mLayout = layout;
+	
+	SetOutputLayout(layout);
 
 	mFrameQueue.resize(frameCount, NULL);
 }
 
 void VDCaptureFilterChainFrameSource::PreallocateFrames() {
 	for(uint32 i=0; i<mWindowSize; ++i)
-		mpAllocator->Allocate(&mFrameQueue[i]);
+		mAllocator.Allocate(&mFrameQueue[i]);
 }
 
 void VDCaptureFilterChainFrameSource::Shutdown() {
@@ -774,9 +775,9 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 
 	filters.initLinearChain(&g_listFA, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
 
-	mpFrameSource->PreallocateFrames();
-
 	filters.ReadyFilters(VDXFilterStateInfo::kStateRealTime);
+
+	mpFrameSource->PreallocateFrames();
 
 	layout = filters.GetOutputLayout();
 

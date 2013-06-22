@@ -49,10 +49,14 @@ void testfp1(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
 }
 
 void testfp2(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
+	float buf0[64];
 	char buf1[256];
 	float buf2[64];
 	float buf3[64];
 	int i;
+
+	for(i=0; i<64; ++i)
+		buf0[i] = rand();
 
 	for(i=0; i<256; ++i)
 		buf1[i] = rand();
@@ -60,8 +64,8 @@ void testfp2(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
 	for(int p=0; p<4; ++p) {
 		for(int o=0; o<16; ++o) {
 			for(i=0; i<32; ++i) {
-				memcpy(buf2, buf1, sizeof buf2);
-				memcpy(buf3, buf1, sizeof buf3);
+				memcpy(buf2, buf0, sizeof buf2);
+				memcpy(buf3, buf0, sizeof buf3);
 
 				fnScalar(buf2+4+p, buf1+4+o, i);
 				fnSSE   (buf3+4+p, buf1+4+o, i);

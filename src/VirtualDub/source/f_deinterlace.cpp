@@ -403,6 +403,856 @@ static void asm_blend_row(void *dst0, const void *src0, uint32 w, ptrdiff_t srcp
 	}
 #endif
 
+#if defined(VD_CPU_X86)
+	void __declspec(naked) __stdcall ela_L8_MMX(void *dst, const void *srcat, const void *srcab, int w16) {
+		static const __declspec(align(8)) uint64 xFEb = 0xfefefefefefefefe;
+		__asm {
+			push		ebx
+			mov			ebx, [esp + 4 + 4]
+			mov			ecx, [esp + 8 + 4]
+			mov			edx, [esp + 12 + 4]
+			mov			eax, [esp + 16 + 4]
+			movq		mm7, xFEb
+			
+xloop:
+			movq		mm0, [ecx + 15]
+			movq		mm1, [edx + 15]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 15 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 15 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx], mm0
+			por			mm2, mm3
+			movq		[ebx + 8], mm2
+
+			movq		mm0, [ecx + 14]
+			movq		mm1, [edx + 16]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 14 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 16 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 16], mm0
+			por			mm2, mm3
+			movq		[ebx + 24], mm2
+
+			movq		mm0, [ecx + 13]
+			movq		mm1, [edx + 17]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 13 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 17 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 32], mm0
+			por			mm2, mm3
+			movq		[ebx + 40], mm2
+
+			movq		mm0, [ecx + 16]
+			movq		mm1, [edx + 14]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 16 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 14 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 48], mm0
+			por			mm2, mm3
+			movq		[ebx + 56], mm2
+
+			movq		mm0, [ecx + 17]
+			movq		mm1, [edx + 13]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 17 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 13 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 64], mm0
+			por			mm2, mm3
+			movq		[ebx + 72], mm2
+
+			movq		mm0, [ecx + 16]
+			movq		mm1, [edx + 16]
+			movq		mm2, [ecx + 16 + 8]
+			movq		mm3, [edx + 16 + 8]
+			movq		mm4, mm0
+			movq		mm5, mm2
+			pxor		mm0, mm1
+			pxor		mm2, mm3
+			por			mm1, mm4
+			por			mm3, mm5
+			pand		mm0, mm7
+			pand		mm2, mm7
+			psrlw		mm0, 1
+			psrlw		mm2, 1
+			psubb		mm1, mm0
+			psubb		mm3, mm2
+			movq		[ebx + 80], mm1
+			movq		[ebx + 88], mm3
+
+			movq		mm0, [ecx + 15]
+			movq		mm1, [edx + 17]
+			movq		mm2, [ecx + 15 + 8]
+			movq		mm3, [edx + 17 + 8]
+			movq		mm4, mm0
+			movq		mm5, mm2
+			pxor		mm0, mm1
+			pxor		mm2, mm3
+			por			mm1, mm4
+			por			mm3, mm5
+			pand		mm0, mm7
+			pand		mm2, mm7
+			psrlw		mm0, 1
+			psrlw		mm2, 1
+			psubb		mm1, mm0
+			psubb		mm3, mm2
+			movq		[ebx + 96], mm1
+			movq		[ebx + 104], mm3
+
+			movq		mm0, [ecx + 14]
+			movq		mm1, [edx + 18]
+			movq		mm2, [ecx + 14 + 8]
+			movq		mm3, [edx + 18 + 8]
+			movq		mm4, mm0
+			movq		mm5, mm2
+			pxor		mm0, mm1
+			pxor		mm2, mm3
+			por			mm1, mm4
+			por			mm3, mm5
+			pand		mm0, mm7
+			pand		mm2, mm7
+			psrlw		mm0, 1
+			psrlw		mm2, 1
+			psubb		mm1, mm0
+			psubb		mm3, mm2
+			movq		[ebx + 112], mm1
+			movq		[ebx + 120], mm3
+
+			movq		mm0, [ecx + 17]
+			movq		mm1, [edx + 15]
+			movq		mm2, [ecx + 17 + 8]
+			movq		mm3, [edx + 15 + 8]
+			movq		mm4, mm0
+			movq		mm5, mm2
+			pxor		mm0, mm1
+			pxor		mm2, mm3
+			por			mm1, mm4
+			por			mm3, mm5
+			pand		mm0, mm7
+			pand		mm2, mm7
+			psrlw		mm0, 1
+			psrlw		mm2, 1
+			psubb		mm1, mm0
+			psubb		mm3, mm2
+			movq		[ebx + 128], mm1
+			movq		[ebx + 136], mm3
+
+			movq		mm0, [ecx + 18]
+			movq		mm1, [edx + 14]
+			movq		mm2, [ecx + 18 + 8]
+			movq		mm3, [edx + 14 + 8]
+			movq		mm4, mm0
+			movq		mm5, mm2
+			pxor		mm0, mm1
+			pxor		mm2, mm3
+			por			mm1, mm4
+			por			mm3, mm5
+			pand		mm0, mm7
+			pand		mm2, mm7
+			psrlw		mm0, 1
+			psrlw		mm2, 1
+			psubb		mm1, mm0
+			psubb		mm3, mm2
+			movq		[ebx + 144], mm1
+			movq		[ebx + 152], mm3
+
+			add			ebx, 160
+			add			ecx, 16
+			add			edx, 16
+			dec			eax
+			jne			xloop
+
+			emms
+			pop			ebx
+			ret			16
+		}
+	}
+
+	void __declspec(naked) __stdcall ela_L8_ISSE(void *dst, const void *srcat, const void *srcab, int w16) {
+		static const __declspec(align(8)) uint64 xFEb = 0xfefefefefefefefe;
+		__asm {
+			push		ebx
+			mov			ebx, [esp + 4 + 4]
+			mov			ecx, [esp + 8 + 4]
+			mov			edx, [esp + 12 + 4]
+			mov			eax, [esp + 16 + 4]
+			movq		mm7, xFEb
+			
+xloop:
+			movq		mm0, [ecx + 15]
+			movq		mm1, [edx + 15]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 15 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 15 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx], mm0
+			por			mm2, mm3
+			movq		[ebx + 8], mm2
+
+			movq		mm0, [ecx + 14]
+			movq		mm1, [edx + 16]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 14 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 16 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 16], mm0
+			por			mm2, mm3
+			movq		[ebx + 24], mm2
+
+			movq		mm0, [ecx + 13]
+			movq		mm1, [edx + 17]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 13 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 17 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 32], mm0
+			por			mm2, mm3
+			movq		[ebx + 40], mm2
+
+			movq		mm0, [ecx + 16]
+			movq		mm1, [edx + 14]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 16 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 14 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 48], mm0
+			por			mm2, mm3
+			movq		[ebx + 56], mm2
+
+			movq		mm0, [ecx + 17]
+			movq		mm1, [edx + 13]
+			movq		mm4, mm0
+			movq		mm2, [ecx + 17 + 8]
+			psubusb		mm0, mm1
+			movq		mm3, [edx + 13 + 8]
+			movq		mm5, mm2
+			psubusb		mm2, mm3
+			psubusb		mm1, mm4
+			psubusb		mm3, mm5
+			por			mm0, mm1
+			movq		[ebx + 64], mm0
+			por			mm2, mm3
+			movq		[ebx + 72], mm2
+
+			movq		mm0, [ecx + 16]
+			movq		mm1, [edx + 16]
+			movq		mm2, [ecx + 16 + 8]
+			movq		mm3, [edx + 16 + 8]
+			pavgb		mm1, mm0
+			pavgb		mm3, mm2
+			movq		[ebx + 80], mm1
+			movq		[ebx + 88], mm3
+
+			movq		mm0, [ecx + 15]
+			movq		mm1, [edx + 17]
+			movq		mm2, [ecx + 15 + 8]
+			movq		mm3, [edx + 17 + 8]
+			pavgb		mm1, mm0
+			pavgb		mm3, mm2
+			movq		[ebx + 96], mm1
+			movq		[ebx + 104], mm3
+
+			movq		mm0, [ecx + 14]
+			movq		mm1, [edx + 18]
+			movq		mm2, [ecx + 14 + 8]
+			movq		mm3, [edx + 18 + 8]
+			pavgb		mm1, mm0
+			pavgb		mm3, mm2
+			movq		[ebx + 112], mm1
+			movq		[ebx + 120], mm3
+
+			movq		mm0, [ecx + 17]
+			movq		mm1, [edx + 15]
+			movq		mm2, [ecx + 17 + 8]
+			movq		mm3, [edx + 15 + 8]
+			pavgb		mm1, mm0
+			pavgb		mm3, mm2
+			movq		[ebx + 128], mm1
+			movq		[ebx + 136], mm3
+
+			movq		mm0, [ecx + 18]
+			movq		mm1, [edx + 14]
+			movq		mm2, [ecx + 18 + 8]
+			movq		mm3, [edx + 14 + 8]
+			pavgb		mm1, mm0
+			pavgb		mm3, mm2
+			movq		[ebx + 144], mm1
+			movq		[ebx + 152], mm3
+
+			add			ebx, 160
+			add			ecx, 16
+			add			edx, 16
+			dec			eax
+			jne			xloop
+
+			emms
+			pop			ebx
+			ret			16
+		}
+	}
+
+	void __declspec(naked) __stdcall nela_L8_ISSE(void *dst, const void *elabuf, int w16) {
+		static const __declspec(align(8)) uint64 x7fb = 0x7f7f7f7f7f7f7f7f;
+		__asm {
+			mov		edx, [esp+4]
+			mov		ecx, [esp+8]
+			mov		eax, [esp+12]
+xloop:
+			movq	mm0, [ecx+000h]
+			pavgb	mm0, [ecx+002h]
+			pavgb	mm0, [ecx+001h]
+
+			movq	mm1, [ecx+010h]
+			pavgb	mm1, [ecx+012h]
+			pavgb	mm1, [ecx+011h]
+
+			movq	mm2, [ecx+020h]
+			pavgb	mm2, [ecx+022h]
+			pavgb	mm2, [ecx+021h]
+
+			movq	mm3, [ecx+030h]
+			pavgb	mm3, [ecx+032h]
+			pavgb	mm3, [ecx+031h]
+
+			movq	mm4, [ecx+040h]
+			pavgb	mm4, [ecx+042h]
+			pavgb	mm4, [ecx+041h]
+
+			movq	mm5, x7fb
+			pxor	mm0, mm5
+			pxor	mm1, mm5
+			pxor	mm2, mm5
+			pxor	mm3, mm5
+			pxor	mm4, mm5
+
+			;mm0 = scorec0
+			;mm1 = scorel1
+			;mm2 = scorel2
+			;mm3 = scorer1
+			;mm4 = scorer2
+
+			movq	mm5, mm3
+			pcmpgtb	mm5, mm1		;(scorer1 > scorel1) == (scorel1 < scorer1)
+
+			pcmpgtb	mm4, mm3		;scorer2 > scorer1
+			pcmpgtb	mm2, mm1		;scorel2 > scorel1
+
+			pcmpgtb	mm1, mm0		;scorel1 > scorec0
+			pcmpgtb	mm3, mm0		;scorer1 > scorec0
+
+			movq	mm6, mm1
+			pcmpeqb	mm0, mm0
+			por		mm6, mm3		;scorel1 > scorec0 || scorer1 > scorec0
+			pxor	mm0, mm6		;mask_c0
+
+			pand	mm3, mm5		;scorer1 > scorec0 && scorer1 > scorel1
+			pandn	mm5, mm1		;scorel1 > scorec0 && scorel1 >= scorer1
+
+			pand	mm4, mm3		;mask_r2
+			pand	mm2, mm5		;mask_l2
+
+			pxor	mm3, mm4		;mask_r1
+			pxor	mm5, mm2		;mask_l1
+
+			pand	mm0, [ecx+050h]
+			pand	mm5, [ecx+060h]
+			pand	mm2, [ecx+070h]
+			pand	mm3, [ecx+080h]
+			pand	mm4, [ecx+090h]
+			por		mm0, mm5
+			por		mm2, mm3
+			por		mm0, mm4
+			por		mm0, mm2
+			movq	[edx], mm0
+
+			movq	mm0, [ecx+008h]
+			movq	mm5, [ecx+0a0h]
+			movq	mm6, mm0
+			psrlq	mm0, 16
+			movq	mm7, mm5
+			psllq	mm5, 48
+			por		mm0, mm5
+			psrlq	mm6, 8
+			psllq	mm7, 56
+			por		mm6, mm7
+			pavgb	mm0, [ecx+008h]
+			pavgb	mm0, mm6
+
+			movq	mm1, [ecx+018h]
+			movq	mm5, [ecx+0b0h]
+			movq	mm6, mm1
+			psrlq	mm1, 16
+			movq	mm7, mm5
+			psllq	mm5, 48
+			por		mm1, mm5
+			psrlq	mm6, 8
+			psllq	mm7, 56
+			por		mm6, mm7
+			pavgb	mm1, [ecx+018h]
+			pavgb	mm1, mm6
+
+			movq	mm2, [ecx+028h]
+			movq	mm5, [ecx+0c0h]
+			movq	mm6, mm2
+			psrlq	mm2, 16
+			movq	mm7, mm5
+			psllq	mm5, 48
+			por		mm2, mm5
+			psrlq	mm6, 8
+			psllq	mm7, 56
+			por		mm6, mm7
+			pavgb	mm2, [ecx+028h]
+			pavgb	mm2, mm6
+
+			movq	mm3, [ecx+038h]
+			movq	mm5, [ecx+0d0h]
+			movq	mm6, mm3
+			psrlq	mm3, 16
+			movq	mm7, mm5
+			psllq	mm5, 48
+			por		mm3, mm5
+			psrlq	mm6, 8
+			psllq	mm7, 56
+			por		mm6, mm7
+			pavgb	mm3, [ecx+038h]
+			pavgb	mm3, mm6
+
+			movq	mm4, [ecx+048h]
+			movq	mm5, [ecx+0e0h]
+			movq	mm6, mm4
+			psrlq	mm4, 16
+			movq	mm7, mm5
+			psllq	mm5, 48
+			por		mm4, mm5
+			psrlq	mm6, 8
+			psllq	mm7, 56
+			por		mm6, mm7
+			pavgb	mm4, [ecx+048h]
+			pavgb	mm4, mm6
+
+			movq	mm5, x7fb
+			pxor	mm0, mm5
+			pxor	mm1, mm5
+			pxor	mm2, mm5
+			pxor	mm3, mm5
+			pxor	mm4, mm5
+
+			;mm0 = scorec0
+			;mm1 = scorel1
+			;mm2 = scorel2
+			;mm3 = scorer1
+			;mm4 = scorer2
+
+			movq	mm5, mm3
+			pcmpgtb	mm5, mm1		;(scorer1 > scorel1) == (scorel1 < scorer1)
+
+			pcmpgtb	mm4, mm3		;scorer2 > scorer1
+			pcmpgtb	mm2, mm1		;scorel2 > scorel1
+
+			pcmpgtb	mm1, mm0		;scorel1 > scorec0
+			pcmpgtb	mm3, mm0		;scorer1 > scorec0
+
+			movq	mm6, mm1
+			pcmpeqb	mm0, mm0
+			por		mm6, mm3		;scorel1 > scorec0 || scorer1 > scorec0
+			pxor	mm0, mm6		;mask_c0
+
+			pand	mm3, mm5		;scorer1 > scorec0 && scorer1 > scorel1
+			pandn	mm5, mm1		;scorel1 > scorec0 && scorel1 >= scorer1
+
+			pand	mm4, mm3		;mask_r2
+			pand	mm2, mm5		;mask_l2
+
+			pxor	mm3, mm4		;mask_r1
+			pxor	mm5, mm2		;mask_l1
+
+			pand	mm0, [ecx+058h]
+			pand	mm5, [ecx+068h]
+			pand	mm2, [ecx+078h]
+			pand	mm3, [ecx+088h]
+			pand	mm4, [ecx+098h]
+			por		mm0, mm5
+			por		mm2, mm3
+			por		mm0, mm4
+			por		mm0, mm2
+			movq	[edx+8], mm0
+
+			add		ecx, 0a0h
+			add		edx, 16
+
+			dec		eax
+			jnz		xloop
+
+			emms
+			ret		12
+		}
+	}
+
+	void __declspec(naked) __stdcall nela_L8_MMX(void *dst, const void *elabuf, int w16) {
+		static const __declspec(align(8)) uint64 x7fb = 0x7f7f7f7f7f7f7f7f;
+
+		__asm {
+			mov		edx, [esp+4]
+			mov		ecx, [esp+8]
+			mov		eax, [esp+12]
+xloop:
+			movq	mm0, [ecx+000h]
+			movq	mm5, [ecx+002h]
+			movq	mm6, mm0
+			pxor	mm0, mm5
+			por		mm6, mm5
+			movq	mm7, [ecx+001h]
+			psrlq	mm0, 1
+			pand	mm0, x7fb
+			psubb	mm6, mm0
+			movq	mm0, mm6
+			pxor	mm6, mm7
+			por		mm0, mm7
+			psrlq	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm0, mm6
+
+			movq	mm1, [ecx+010h]
+			movq	mm5, [ecx+012h]
+			movq	mm6, mm1
+			pxor	mm1, mm5
+			por		mm6, mm5
+			movq	mm7, [ecx+011h]
+			psrlq	mm1, 1
+			pand	mm1, x7fb
+			psubb	mm6, mm1
+			movq	mm1, mm6
+			pxor	mm6, mm7
+			por		mm1, mm7
+			psrlq	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm1, mm6
+
+			movq	mm2, [ecx+020h]
+			movq	mm5, [ecx+022h]
+			movq	mm6, mm2
+			pxor	mm2, mm5
+			por		mm6, mm5
+			movq	mm7, [ecx+021h]
+			psrlq	mm2, 1
+			pand	mm2, x7fb
+			psubb	mm6, mm2
+			movq	mm2, mm6
+			pxor	mm6, mm7
+			por		mm2, mm7
+			psrlq	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm2, mm6
+
+			movq	mm3, [ecx+030h]
+			movq	mm5, [ecx+032h]
+			movq	mm6, mm3
+			pxor	mm3, mm5
+			por		mm6, mm5
+			movq	mm7, [ecx+031h]
+			psrlq	mm3, 1
+			pand	mm3, x7fb
+			psubb	mm6, mm3
+			movq	mm3, mm6
+			pxor	mm6, mm7
+			por		mm3, mm7
+			psrlq	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm3, mm6
+
+			movq	mm4, [ecx+040h]
+			movq	mm5, [ecx+042h]
+			movq	mm6, mm4
+			pxor	mm4, mm5
+			por		mm6, mm5
+			movq	mm7, [ecx+041h]
+			psrlq	mm4, 1
+			pand	mm4, x7fb
+			psubb	mm6, mm4
+			movq	mm4, mm6
+			pxor	mm6, mm7
+			por		mm4, mm7
+			psrlq	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm4, mm6
+
+
+			movq	mm5, x7fb
+			pxor	mm0, mm5
+			pxor	mm1, mm5
+			pxor	mm2, mm5
+			pxor	mm3, mm5
+			pxor	mm4, mm5
+
+			;mm0 = scorec0
+			;mm1 = scorel1
+			;mm2 = scorel2
+			;mm3 = scorer1
+			;mm4 = scorer2
+
+			movq	mm5, mm3
+			pcmpgtb	mm5, mm1		;(scorer1 > scorel1) == (scorel1 < scorer1)
+
+			pcmpgtb	mm4, mm3		;scorer2 > scorer1
+			pcmpgtb	mm2, mm1		;scorel2 > scorel1
+
+			pcmpgtb	mm1, mm0		;scorel1 > scorec0
+			pcmpgtb	mm3, mm0		;scorer1 > scorec0
+
+			movq	mm6, mm1
+			pcmpeqb	mm0, mm0
+			por		mm6, mm3		;scorel1 > scorec0 || scorer1 > scorec0
+			pxor	mm0, mm6		;mask_c0
+
+			pand	mm3, mm5		;scorer1 > scorec0 && scorer1 > scorel1
+			pandn	mm5, mm1		;scorel1 > scorec0 && scorel1 >= scorer1
+
+			pand	mm4, mm3		;mask_r2
+			pand	mm2, mm5		;mask_l2
+
+			pxor	mm3, mm4		;mask_r1
+			pxor	mm5, mm2		;mask_l1
+
+			pand	mm0, [ecx+050h]
+			pand	mm5, [ecx+060h]
+			pand	mm2, [ecx+070h]
+			pand	mm3, [ecx+080h]
+			pand	mm4, [ecx+090h]
+			por		mm0, mm5
+			por		mm2, mm3
+			por		mm0, mm4
+			por		mm0, mm2
+
+			movq	[edx], mm0
+
+			movq	mm0, [ecx+008h]		;mm0 = x0
+			movq	mm5, [ecx+0a0h]		;mm5 = x1
+			psrlq	mm0, 16				;mm0 = (x0 >> 16)
+			movq	mm7, [ecx+008h]		;mm7 = y0 = x0
+			psllq	mm5, 48				;mm5 = (x1 << 48)
+			movq	mm6, mm7			;mm6 = y0 = x0
+			por		mm0, mm5			;mm0 = y2 = (x0 >> 16) | (x1 << 48)
+			pxor	mm6, mm0			;mm6 = y0 ^ y2
+			por		mm7, mm0			;mm7 = y0 | y2
+			movq	mm5, [ecx+008h]		;mm5 = x0
+			psrlq	mm6, 1				;mm6 = (y0 ^ y2) >> 1
+			movq	mm0, [ecx+0a0h]		;mm0 = x1
+			psrlq	mm5, 8				;mm5 = x0 >> 8
+			pand	mm6, x7fb			;mm6 = ((y0 ^ y2) >> 1) & 0x7f7f7f7f7f7f7f7f
+			psllq	mm0, 56				;mm0 = x1 << 56
+			psubb	mm7, mm6			;mm7 = t = (y0 | y2) - (((y0 ^ y2) >> 1) & 0x7f7f7f7f7f7f7f7f) = avgb(y0, y2)
+			por		mm0, mm5			;mm0 = y1 = (x0 >> 8) | (x1 << 56)
+			movq	mm6, mm7			;mm6 = t
+			pxor	mm7, mm0			;mm7 = t ^ y1
+			por		mm0, mm6			;mm0 = t | y1
+			psrlq	mm7, 1				;mm7 = (t ^ y1) >> 1
+			pand	mm7, x7fb			;mm7 = ((t ^ y1) >> 1) & 0x7f7f7f7f7f7f7f7f
+			psubb	mm0, mm7			;mm0 = (t | y1) - (((t ^ y1) >> 1) & 0x7f7f7f7f7f7f7f7f) = avgb(y1, avgb(y0, y2))
+
+			movq	mm1, [ecx+018h]
+			movq	mm5, [ecx+0b0h]
+			psrlq	mm1, 16
+			movq	mm7, [ecx+018h]
+			psllq	mm5, 48
+			movq	mm6, mm7
+			por		mm1, mm5
+			pxor	mm6, mm1
+			por		mm7, mm1
+			movq	mm5, [ecx+018h]
+			psrlq	mm6, 1
+			movq	mm1, [ecx+0b0h]
+			psrlq	mm5, 8
+			pand	mm6, x7fb
+			psllq	mm1, 56
+			psubb	mm7, mm6
+			por		mm1, mm5
+			movq	mm6, mm7			
+			pxor	mm7, mm1
+			por		mm1, mm6
+			psrlq	mm7, 1
+			pand	mm7, x7fb
+			psubb	mm1, mm7
+
+			movq	mm2, [ecx+028h]
+			movq	mm5, [ecx+0c0h]
+			psrlq	mm2, 16
+			movq	mm7, [ecx+028h]
+			psllq	mm5, 48
+			movq	mm6, mm7
+			por		mm2, mm5
+			pxor	mm6, mm2
+			por		mm7, mm2
+			movq	mm5, [ecx+028h]
+			psrlq	mm6, 1
+			movq	mm2, [ecx+0c0h]
+			psrlq	mm5, 8
+			pand	mm6, x7fb
+			psllq	mm2, 56
+			psubb	mm7, mm6
+			por		mm2, mm5
+			movq	mm6, mm7			
+			pxor	mm7, mm2
+			por		mm2, mm6
+			psrlq	mm7, 1
+			pand	mm7, x7fb
+			psubb	mm2, mm7
+
+			movq	mm3, [ecx+038h]
+			movq	mm5, [ecx+0d0h]
+			psrlq	mm3, 16
+			movq	mm7, [ecx+038h]
+			psllq	mm5, 48
+			movq	mm6, mm7
+			por		mm3, mm5
+			pxor	mm6, mm3
+			por		mm7, mm3
+			movq	mm5, [ecx+038h]
+			psrlq	mm6, 1
+			movq	mm3, [ecx+0d0h]
+			psrlq	mm5, 8
+			pand	mm6, x7fb
+			psllq	mm3, 56
+			psubb	mm7, mm6
+			por		mm3, mm5
+			movq	mm6, mm7			
+			pxor	mm7, mm3
+			por		mm3, mm6
+			psrlq	mm7, 1
+			pand	mm7, x7fb
+			psubb	mm3, mm7
+
+			movq	mm4, [ecx+048h]
+			movq	mm5, [ecx+0e0h]
+			psrlq	mm4, 16
+			movq	mm7, [ecx+048h]
+			psllq	mm5, 48
+			movq	mm6, mm7
+			por		mm4, mm5
+			pxor	mm6, mm4
+			por		mm7, mm4
+			movq	mm5, [ecx+048h]
+			psrlq	mm6, 1
+			movq	mm4, [ecx+0e0h]
+			psrlq	mm5, 8
+			pand	mm6, x7fb
+			psllq	mm4, 56
+			psubb	mm7, mm6
+			por		mm4, mm5
+			movq	mm6, mm7			
+			pxor	mm7, mm4
+			por		mm4, mm6
+			psrlq	mm7, 1
+			pand	mm7, x7fb
+			psubb	mm4, mm7
+
+			movq	mm5, x7fb
+			pxor	mm0, mm5
+			pxor	mm1, mm5
+			pxor	mm2, mm5
+			pxor	mm3, mm5
+			pxor	mm4, mm5
+
+			;mm0 = scorec0
+			;mm1 = scorel1
+			;mm2 = scorel2
+			;mm3 = scorer1
+			;mm4 = scorer2
+
+			movq	mm5, mm3
+			pcmpgtb	mm5, mm1		;(scorer1 > scorel1) == (scorel1 < scorer1)
+
+			pcmpgtb	mm4, mm3		;scorer2 > scorer1
+			pcmpgtb	mm2, mm1		;scorel2 > scorel1
+
+			pcmpgtb	mm1, mm0		;scorel1 > scorec0
+			pcmpgtb	mm3, mm0		;scorer1 > scorec0
+
+			movq	mm6, mm1
+			pcmpeqb	mm0, mm0
+			por		mm6, mm3		;scorel1 > scorec0 || scorer1 > scorec0
+			pxor	mm0, mm6		;mask_c0
+
+			pand	mm3, mm5		;scorer1 > scorec0 && scorer1 > scorel1
+			pandn	mm5, mm1		;scorel1 > scorec0 && scorel1 >= scorer1
+
+			pand	mm4, mm3		;mask_r2
+			pand	mm2, mm5		;mask_l2
+
+			pxor	mm3, mm4		;mask_r1
+			pxor	mm5, mm2		;mask_l1
+
+			pand	mm0, [ecx+058h]
+			pand	mm5, [ecx+068h]
+			pand	mm2, [ecx+078h]
+			pand	mm3, [ecx+088h]
+			pand	mm4, [ecx+098h]
+			por		mm0, mm5
+			por		mm2, mm3
+			por		mm0, mm4
+			por		mm0, mm2
+			movq	[edx+8], mm0
+
+			add		ecx, 0a0h
+			add		edx, 16
+
+			dec		eax
+			jnz		xloop
+
+			emms
+			ret		12
+		}
+	}
+#endif
+
 namespace {
 	void ela_L8_scalar(uint8 *dst, const uint8 *srcat, const uint8 *srcab, int w16) {
 		int w = w16 << 4;
@@ -639,24 +1489,6 @@ xloop:
 			pop			ebp
 			ret
 		}
-		srcat += 4;
-		srcab += 4;
-		do {
-			const uint8 *src1 = srcat;
-			const uint8 *src2 = srcab + 16;
-
-			for(int i=0; i<5; ++i) {
-				int er = abs((int)src1[2] - (int)src2[2]);
-				int eg = abs((int)src1[1] - (int)src2[1]);
-				int eb = abs((int)src1[0] - (int)src2[0]);
-				*dst++ = er*54 + eg*183 + eb*19;
-				src1 += 4;
-				src2 -= 4;
-			}
-
-			srcat += 4;
-			srcab += 4;
-		} while(--w4);
 	}
 #endif
 
@@ -743,6 +1575,48 @@ xloop:
 		ela_X8R8G8B8_MMX(elabuf, (const uint8 *)topbuf, (const uint8 *)botbuf, w4);
 		nela_X8R8G8B8_scalar((uint32 *)dst, elabuf, (const uint8 *)(topbuf + 4), (const uint8 *)(botbuf + 4), w4);
 	}
+
+	void BlendScanLine_NELA_MMX_ISSE(void *dst, const void *srcT, const void *srcB, uint32 w, void *tempBuf) {
+		const uint32 *srcat = (const uint32 *)srcT;
+		const uint32 *srcab = (const uint32 *)srcB;
+		uint32 w16 = (w + 15) >> 4;
+		uint32 w4 = w16 * 4;
+		uint32 *elabuf = (uint32 *)tempBuf;
+		uint32 *topbuf = elabuf + 40*w16;
+		uint32 *botbuf = topbuf + w4 + 8;
+
+		uint32 woffset = w & 15;
+		topbuf[0] = topbuf[1] = topbuf[2] = topbuf[3] = (srcat[0] & 0xff) * 0x01010101;
+		botbuf[0] = botbuf[1] = botbuf[2] = botbuf[3] = (srcab[0] & 0xff) * 0x01010101;
+
+		for(uint32 x=0; x<w4; ++x) {
+			topbuf[x+4] = srcat[x];
+			botbuf[x+4] = srcab[x];
+		}
+
+		if (woffset) {
+			uint8 *topfinal = (uint8 *)&topbuf[w4] + woffset;
+			uint8 *botfinal = (uint8 *)&botbuf[w4] + woffset;
+			const uint8 tv = topfinal[-1];
+			const uint8 bv = botfinal[-1];
+
+			for(uint32 i = woffset; i < 16; ++i) {
+				*topfinal++ = tv;
+				*botfinal++ = bv;
+			}
+		}
+
+		topbuf[w4+4] = topbuf[w4+5] = topbuf[w4+6] = topbuf[w4+7] = topbuf[w4+3];
+		botbuf[w4+4] = topbuf[w4+5] = topbuf[w4+6] = topbuf[w4+7] = botbuf[w4+3];
+
+		if (ISSE_enabled) {
+			ela_L8_ISSE(elabuf, topbuf, botbuf, w16);
+			nela_L8_ISSE(dst, elabuf, w16);
+		} else {
+			ela_L8_MMX(elabuf, topbuf, botbuf, w16);
+			nela_L8_MMX(dst, elabuf, w16);
+		}
+	}
 #endif
 
 	void BlendScanLine_NELA_SSE2(void *dst, const void *srcT, const void *srcB, uint32 w, __m128i *tempBuf) {
@@ -822,7 +1696,18 @@ xloop:
 
 				BlendScanLine_NELA_SSE2((char *)dst + dstpitch*y, srcat, srcab, w, (__m128i *)elabuf);
 			}
-		} else {
+		}
+#if defined(VD_CPU_X86)
+		else if (MMX_enabled || ISSE_enabled) {
+			for(uint32 y = y0; y < h - 1; y += 2) {
+				const __m128i *srcat = (const __m128i *)((const char *)src + srcpitch * (y-1));
+				const __m128i *srcab = (const __m128i *)((const char *)src + srcpitch * (y+1));
+
+				BlendScanLine_NELA_MMX_ISSE((char *)dst + dstpitch*y, srcat, srcab, w, (uint8 *)elabuf);
+			}
+		}
+#endif
+		else {
 			for(uint32 y = y0; y < h - 1; y += 2) {
 				const __m128i *srcat = (const __m128i *)((const char *)src + srcpitch * (y-1));
 				const __m128i *srcab = (const __m128i *)((const char *)src + srcpitch * (y+1));
@@ -855,6 +1740,131 @@ xloop:
 		} while(--h);
 	}
 
+#if defined(VD_CPU_X86)
+	void __declspec(naked) __cdecl Average_MMX(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
+		static const __declspec(align(8)) uint64 x7fb = 0x7f7f7f7f7f7f7f7f;
+		static const __declspec(align(8)) uint64 xfeb = 0xfefefefefefefefe;
+
+		__asm {
+			push		ebp
+			push		edi
+			push		esi
+			push		ebx
+
+			mov			esi, [esp+24+16]
+			mov			eax, [esp+4+16]
+			shl			esi, 4
+			mov			ecx, [esp+12+16]
+			mov			edx, [esp+16+16]
+			mov			ebp, [esp+20+16]
+			mov			edi, [esp+8+16]
+			sub			edi, esi
+			sub			ebp, esi
+
+			movq		mm6, x7fb
+			movq		mm7, xfeb
+
+			mov			esi, [esp+28+16]
+yloop:
+			mov			ebx, [esp+24+16]
+mainRowLoop:
+			movq		mm0, [ecx]
+			movq		mm3, [ecx + 8]
+			movq		mm1, mm0
+			movq		mm2, [edx]
+			movq		mm4, mm3
+			movq		mm5, [edx + 8]
+			por			mm1, mm2
+			pxor		mm0, mm2
+			por			mm4, mm5
+			pxor		mm3, mm5
+			psrlq		mm0, 1
+			pand		mm3, mm7
+			pand		mm0, mm6
+			psrlq		mm3, 1
+			psubb		mm1, mm0
+			psubb		mm4, mm3
+			add			ecx, 16
+			movq		[eax], mm1
+			movq		[eax+8], mm4
+			add			edx, 16
+			add			eax, 16
+			dec			ebx
+			jne			mainRowLoop
+
+			add			eax, edi
+			add			ecx, ebp
+			add			edx, ebp
+			dec			esi
+			jne			yloop
+
+			emms
+			pop			ebx
+			pop			esi
+			pop			edi
+			pop			ebp
+			ret	
+		}
+	}
+
+	void __declspec(naked) __cdecl Average_ISSE(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
+		static const __declspec(align(8)) uint64 x7fb = 0x7f7f7f7f7f7f7f7f;
+		static const __declspec(align(8)) uint64 xfeb = 0xfefefefefefefefe;
+
+		__asm {
+			push		ebp
+			push		edi
+			push		esi
+			push		ebx
+
+			mov			esi, [esp+24+16]
+			mov			eax, [esp+4+16]
+			shl			esi, 4
+			mov			ecx, [esp+12+16]
+			mov			edx, [esp+16+16]
+			mov			ebp, [esp+20+16]
+			mov			edi, [esp+8+16]
+			sub			edi, esi
+			sub			ebp, esi
+
+			movq		mm6, x7fb
+			movq		mm7, xfeb
+
+			mov			esi, [esp+28+16]
+yloop:
+			mov			ebx, [esp+24+16]
+mainRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [ecx + 8]
+			movq		mm2, [edx]
+			movq		mm3, [edx + 8]
+			pavgb		mm0, mm2
+			pavgb		mm1, mm3
+			movq		[eax], mm0
+			add			ecx, 16
+			add			edx, 16
+			movq		[eax+8], mm1
+			add			eax, 16
+			dec			ebx
+			jne			mainRowLoop
+
+			add			eax, edi
+			add			ecx, ebp
+			add			edx, ebp
+			dec			esi
+			jne			yloop
+
+			emms
+			pop			ebx
+			pop			esi
+			pop			edi
+			pop			ebp
+			ret	
+		}
+	}
+#endif
+
+#if defined(VD_CPU_X86) || defined(VD_CPU_AMD64)
 	void Average_SSE2(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
 		do {
 			__m128i *dstv = (__m128i *)dst;
@@ -869,12 +1879,17 @@ xloop:
 			src2 = (char *)src2 + srcPitch;
 		} while(--h);
 	}
+#endif
 
 	void InterpPlane_Bob(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, uint32 w, uint32 h, bool interpField2) {
 		void (*blend_func)(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h);
 #if defined(VD_CPU_X86)
 		if (SSE2_enabled)
 			blend_func = Average_SSE2;
+		else if (ISSE_enabled)
+			blend_func = Average_ISSE;
+		else if (MMX_enabled)
+			blend_func = Average_MMX;
 		else
 			blend_func = Average_scalar;
 #else
@@ -957,6 +1972,65 @@ xloop:
 		} while(--h);
 	}
 
+#if defined(VD_CPU_X86)
+	void  __declspec(naked) __stdcall Absdiff_MMX(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
+		__asm {
+			push		ebp
+			push		edi
+			push		esi
+			push		ebx
+
+			mov			esi, [esp+24+16]
+			mov			eax, [esp+4+16]
+			shl			esi, 4
+			mov			ecx, [esp+12+16]
+			mov			edx, [esp+16+16]
+			mov			ebp, [esp+20+16]
+			mov			edi, [esp+8+16]
+			sub			edi, esi
+			sub			ebp, esi
+
+			mov			esi, [esp+28+16]
+yloop:
+			mov			ebx, [esp+24+16]
+mainRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [edx]
+			movq		mm3, [ecx + 8]
+			movq		mm2, mm0
+			movq		mm4, [edx + 8]
+			movq		mm5, mm3
+			psubusb		mm0, mm1
+			psubusb		mm1, mm2
+			psubusb		mm3, mm4
+			psubusb		mm4, mm5
+			por			mm0, mm1
+			por			mm3, mm4
+
+			movq		[eax], mm0
+			movq		[eax+8], mm3
+			add			ecx, 16
+			add			edx, 16
+			add			eax, 16
+			dec			ebx
+			jne			mainRowLoop
+
+			add			eax, edi
+			add			ecx, ebp
+			add			edx, ebp
+			dec			esi
+			jne			yloop
+
+			emms
+			pop			ebx
+			pop			esi
+			pop			edi
+			pop			ebp
+			ret			28
+		}
+	}
+#endif
+
 	void Absdiff_scalar(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
 		uint32 w = w16 << 4;
 
@@ -1012,6 +2086,200 @@ xloop:
 			src2 = (char *)src2 + srcPitch;
 		} while(--h);
 	}
+
+#if defined(VD_CPU_X86)
+	void __declspec(naked) __stdcall AbsDiffBlended_MMX(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
+		__asm {
+			push		ebp
+			push		edi
+			push		esi
+			push		ebx
+
+			mov			esi, [esp+24+16]
+			mov			eax, [esp+4+16]
+			shl			esi, 4
+			mov			ecx, [esp+12+16]
+			mov			ebx, eax
+			mov			edx, [esp+16+16]
+			add			ebx, [esp+8+16]
+			sub			dword ptr [esp+8+16], esi
+			sub			dword ptr [esp+20+16], esi
+
+			mov			esi, [esp+24+16]
+firstRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [edx]
+			movq		mm3, [ecx + 8]
+			movq		mm2, mm0
+			movq		mm4, [edx + 8]
+			movq		mm5, mm3
+			psubusb		mm0, mm1
+			psubusb		mm1, mm2
+			psubusb		mm3, mm4
+			psubusb		mm4, mm5
+			por			mm0, mm1
+			por			mm3, mm4
+			movq		[eax], mm0
+			movq		[eax+8], mm3
+			movq		[ebx], mm0
+			movq		[ebx+8], mm3
+			add			ecx, 16
+			add			edx, 16
+			add			eax, 16
+			add			ebx, 16
+			dec			esi
+			jne			firstRowLoop
+
+			mov			edi, [esp+28+16]
+			dec			edi
+			jz			xit
+yloop:
+			mov			esi, [esp+24+16]
+mainRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [edx]
+			movq		mm3, [ecx + 8]
+			movq		mm2, mm0
+			movq		mm4, [edx + 8]
+			movq		mm5, mm3
+			psubusb		mm0, mm1
+			psubusb		mm1, mm2
+			psubusb		mm3, mm4
+			psubusb		mm4, mm5
+			por			mm0, mm1
+			por			mm3, mm4
+
+			movq		mm1, [eax]
+			movq		mm2, mm0
+			movq		mm4, [eax+8]
+			movq		mm5, mm3
+			por			mm0, mm1
+			por			mm3, mm6
+			pand		mm1, mm2
+			pand		mm4, mm5
+			psrlw		mm1, 1
+			psrlw		mm4, 1
+			psubb		mm0, mm1
+			psubb		mm3, mm4
+
+			movq		[eax], mm0
+			movq		[eax+8], mm3
+			movq		[ebx], mm2
+			movq		[ebx+8], mm5
+			add			ecx, 16
+			add			edx, 16
+			add			eax, 16
+			add			ebx, 16
+			dec			esi
+			jne			mainRowLoop
+
+			mov			eax, ebx
+			add			ebx, [esp+8+16]
+			add			ecx, [esp+20+16]
+			add			edx, [esp+20+16]
+			dec			edi
+			jne			yloop
+xit:
+			pop			ebx
+			pop			esi
+			pop			edi
+			pop			ebp
+			ret			28
+		}
+	}
+
+	void __declspec(naked) __stdcall AbsDiffBlended_ISSE(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
+		__asm {
+			push		ebp
+			push		edi
+			push		esi
+			push		ebx
+
+			mov			esi, [esp+24+16]
+			mov			eax, [esp+4+16]
+			shl			esi, 4
+			mov			ecx, [esp+12+16]
+			mov			ebx, eax
+			mov			edx, [esp+16+16]
+			add			ebx, [esp+8+16]
+			sub			dword ptr [esp+8+16], esi
+			sub			dword ptr [esp+20+16], esi
+
+			mov			esi, [esp+24+16]
+firstRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [edx]
+			movq		mm3, [ecx + 8]
+			movq		mm2, mm0
+			movq		mm4, [edx + 8]
+			movq		mm5, mm3
+			psubusb		mm0, mm1
+			psubusb		mm1, mm2
+			psubusb		mm3, mm4
+			psubusb		mm4, mm5
+			por			mm0, mm1
+			por			mm3, mm4
+			movq		[eax], mm0
+			movq		[eax+8], mm3
+			movq		[ebx], mm0
+			movq		[ebx+8], mm3
+			add			ecx, 16
+			add			edx, 16
+			add			eax, 16
+			add			ebx, 16
+			dec			esi
+			jne			firstRowLoop
+
+			mov			edi, [esp+28+16]
+			dec			edi
+			jz			xit
+yloop:
+			mov			esi, [esp+24+16]
+mainRowLoop:
+			movq		mm0, [ecx]
+			movq		mm1, [edx]
+			movq		mm3, [ecx + 8]
+			movq		mm2, mm0
+			movq		mm4, [edx + 8]
+			movq		mm5, mm3
+			psubusb		mm0, mm1
+			psubusb		mm1, mm2
+			psubusb		mm3, mm4
+			psubusb		mm4, mm5
+			por			mm0, mm1
+			por			mm3, mm4
+
+			movq		mm1, [eax]
+			movq		mm4, [eax+8]
+			movq		[ebx], mm0
+			pavgb		mm0, mm1
+			movq		[ebx+8], mm3
+			pavgb		mm3, mm4
+
+			movq		[eax], mm0
+			movq		[eax+8], mm3
+			add			ecx, 16
+			add			edx, 16
+			add			eax, 16
+			add			ebx, 16
+			dec			esi
+			jne			mainRowLoop
+
+			mov			eax, ebx
+			add			ebx, [esp+8+16]
+			add			ecx, [esp+20+16]
+			add			edx, [esp+20+16]
+			dec			edi
+			jne			yloop
+xit:
+			pop			ebx
+			pop			esi
+			pop			edi
+			pop			ebp
+			ret			28
+		}
+	}
+#endif
 
 	void AbsDiffBlended_scalar(void *dst, ptrdiff_t dstPitch, const void *src1, const void *src2, ptrdiff_t srcPitch, uint32 w16, uint32 h) {
 		uint32 w = w16 << 4;
@@ -1143,8 +2411,9 @@ xloop:
 			__m128i p3 = pxi;
 			__m128i p4 = pxAvgKL;
 
-			__m128i mx = _mm_min_epu8(_mm_min_epu8(_mm_subs_epu8(p2, p3), _mm_subs_epu8(p2, p1)), _mm_max_epu8(_mm_subs_epu8(p0, p1), _mm_subs_epu8(p4, p3)));
-			__m128i mn = _mm_min_epu8(_mm_min_epu8(_mm_subs_epu8(p3, p2), _mm_subs_epu8(p1, p2)), _mm_max_epu8(_mm_subs_epu8(p1, p0), _mm_subs_epu8(p3, p4)));
+			__m128i mx = _mm_min_epu8(_mm_subs_epu8(p2, _mm_max_epu8(p3, p1)), _mm_max_epu8(_mm_subs_epu8(p0, p1), _mm_subs_epu8(p4, p3)));
+			__m128i mn = _mm_min_epu8(_mm_subs_epu8(_mm_min_epu8(p3, p1), p2), _mm_max_epu8(_mm_subs_epu8(p1, p0), _mm_subs_epu8(p3, p4)));
+
 			tdiff = _mm_max_epu8(_mm_max_epu8(tdiff, mn), mx);
 
 			__m128i lo = _mm_subs_epu8(p2, tdiff);
@@ -1157,6 +2426,230 @@ xloop:
 			*dst2++ = pred;
 		} while(--w16);
 	}
+
+#if defined(VD_CPU_X86)
+	void __declspec(naked) __stdcall YadifTemporal_ISSE(void *dst,
+					const void *srct,
+					const void *srcb,
+					const void *srcAvgT0,	// field 1/3 average, two scanlines up
+					const void *srcAvgC0,	// field 1/3 average, center scanline
+					const void *srcAvgB0,	// field 1/3 average, two scanlines down
+					const void *srcAdfC0,	// field 1/3 absdiff, center scanline
+					const void *srcAdfP0,	// field 0/2 absdiff, averaged one scanline up and down
+					const void *srcAdfN0,	// field 2/4 absdiff, averaged one scanline up and down
+					uint32 w16
+					) {
+
+
+		__asm {
+			push	ebp
+			push	edi
+			push	esi
+			push	ebx
+
+			mov		edi, [esp+40+16]
+			shl		edi, 4
+			mov		eax, [esp+16+16]	;srcAvgT0
+			mov		ebx, [esp+8+16]		;srct
+			mov		esi, [esp+4+16]
+			add		[esp+4+16], edi
+			add		ebx, edi
+			add		[esp+12+16], edi
+			add		eax, edi
+			add		[esp+20+16], edi
+			add		[esp+24+16], edi
+			add		[esp+28+16], edi
+			add		[esp+32+16], edi
+			add		[esp+36+16], edi
+
+			neg		edi
+xloop:
+			mov		ecx, [esp+20+16]
+			mov		edx, [esp+12+16]
+			mov		ebp, [esp+24+16]
+
+			movq	mm0, [eax+edi]
+			movq	mm1, [ebx+edi]
+			movq	mm2, [ecx+edi]
+			movq	mm3, [edx+edi]
+			movq	mm4, [ebp+edi]
+
+			movq	mm6, mm1
+			psubusb	mm6, mm0	;subs(p1, p0)
+			psubusb	mm0, mm1	;subs(p0, p1)
+
+			movq	mm7, mm3
+			psubusb	mm7, mm4	;subs(p3, p4)
+			psubusb	mm4, mm3	;subs(p4, p3)
+
+			pmaxub	mm6, mm7	;max(subs(p1, p0), subs(p3, p4))
+			pmaxub	mm0, mm4	;max(subs(p0, p1), subs(p4, p3))
+
+			movq	mm5, mm1
+			pminub	mm1, mm3	;min(p3, p1)
+			movq	mm7, mm2
+			pmaxub	mm3, mm5	;max(p3, p1)
+			psubusb	mm1, mm2	;subs(min(p3, p1), p2)
+			psubusb	mm2, mm3	;subs(p2, max(p3, p1))
+
+			pminub	mm0, mm2	;min(subs(p2, max(p3, p1)), subs(p2, max(p3, p1)))
+			pminub	mm1, mm6	;min(subs(min(p3, p1), p2), max(subs(p1, p0), subs(p3, p4)))
+
+			pmaxub	mm0, mm1
+
+			mov		ecx, [esp+28+16]
+			mov		edx, [esp+32+16]
+			mov		ebp, [esp+36+16]
+			pxor	mm4, mm4
+			pavgb	mm4, [ecx+edi]
+			pmaxub	mm4, [edx+edi]
+			pmaxub	mm4, [ebp+edi]
+			pmaxub	mm0, mm4
+
+			movq	mm1, mm7
+			psubusb	mm1, mm0
+			paddusb	mm0, mm7
+
+			pminub	mm0, [esi]
+			pmaxub	mm0, mm1
+			movq	[esi], mm0
+			add		esi, 8
+
+			add		edi, 8
+			jnz		xloop
+
+			emms
+			pop		ebx
+			pop		esi
+			pop		edi
+			pop		ebp
+			ret		40
+		}
+	}
+
+	void __declspec(naked) __stdcall YadifTemporal_MMX(void *dst,
+					const void *srct,
+					const void *srcb,
+					const void *srcAvgT0,	// field 1/3 average, two scanlines up
+					const void *srcAvgC0,	// field 1/3 average, center scanline
+					const void *srcAvgB0,	// field 1/3 average, two scanlines down
+					const void *srcAdfC0,	// field 1/3 absdiff, center scanline
+					const void *srcAdfP0,	// field 0/2 absdiff, averaged one scanline up and down
+					const void *srcAdfN0,	// field 2/4 absdiff, averaged one scanline up and down
+					uint32 w16
+					) {
+		static const __declspec(align(8)) uint64 x7fb = 0x7f7f7f7f7f7f7f7f;
+
+		__asm {
+			push	ebp
+			push	edi
+			push	esi
+			push	ebx
+
+			mov		edi, [esp+40+16]
+			shl		edi, 4
+			mov		eax, [esp+16+16]	;srcAvgT0
+			mov		ebx, [esp+8+16]		;srct
+			mov		esi, [esp+4+16]
+			add		[esp+4+16], edi
+			add		ebx, edi
+			add		[esp+12+16], edi
+			add		eax, edi
+			add		[esp+20+16], edi
+			add		[esp+24+16], edi
+			add		[esp+28+16], edi
+			add		[esp+32+16], edi
+			add		[esp+36+16], edi
+
+			neg		edi
+xloop:
+			mov		ecx, [esp+20+16]
+			mov		edx, [esp+12+16]
+			mov		ebp, [esp+24+16]
+
+			movq	mm0, [eax+edi]
+			movq	mm1, [ebx+edi]
+			movq	mm2, [ecx+edi]
+			movq	mm3, [edx+edi]
+			movq	mm4, [ebp+edi]
+
+			movq	mm6, mm1
+			psubusb	mm6, mm0	;subs(p1, p0)
+			psubusb	mm0, mm1	;subs(p0, p1)
+
+			movq	mm7, mm3
+			psubusb	mm7, mm4	;subs(p3, p4)
+			psubusb	mm4, mm3	;subs(p4, p3)
+
+			psubusb	mm7, mm6
+			psubusb	mm4, mm0
+			paddusb	mm6, mm7	;max(subs(p1, p0), subs(p3, p4))
+			paddusb	mm0, mm4	;max(subs(p0, p1), subs(p4, p3))
+
+			movq	mm5, mm1
+			psubusb	mm1, mm3
+			paddusb	mm3, mm1	;max(p3, p1)
+			psubusb	mm5, mm1	;min(p3, p1)
+
+			movq	mm7, mm2
+			psubusb	mm5, mm2	;subs(min(p3, p1), p2)
+			psubusb	mm2, mm3	;subs(p2, max(p3, p1))
+
+			movq	mm1, mm2
+			psubusb	mm2, mm0
+			psubusb	mm1, mm2	;min(subs(p2, max(p3, p1)), max(subs(p0, p1), subs(p4, p3)))
+			movq	mm3, mm6
+			psubusb	mm6, mm5
+			psubusb	mm3, mm6	;min(subs(min(p3, p1), p2), max(subs(p1, p0), subs(p3, p4)))
+
+			psubusb	mm3, mm1
+			paddusb	mm1, mm3
+
+			mov		ecx, [esp+28+16]
+			mov		edx, [esp+32+16]
+			mov		ebp, [esp+36+16]
+			movq	mm6, [ecx+edi]
+			movq	mm0, mm6
+			psrlw	mm6, 1
+			pand	mm6, x7fb
+			psubb	mm0, mm6			;tdiffc = round(diffc, 0)
+			movq	mm2, [edx+edi]
+			movq	mm3, [ebp+edi]
+			psubusb	mm3, mm2
+			paddusb	mm2, mm3
+
+			psubusb	mm0, mm1
+			paddusb	mm1, mm0
+
+			psubusb	mm2, mm1
+			paddusb	mm1, mm2
+
+			movq	mm2, [esi]
+			movq	mm0, mm7
+			psubusb	mm0, mm1			;lower limit
+			paddusb	mm1, mm7			;upper limit
+
+			movq	mm3, mm2
+			psubusb	mm0, mm2
+			psubusb	mm2, mm1
+			psubusb	mm3, mm2
+			paddusb	mm3, mm0
+
+			movq	[esi], mm3
+			add		esi, 8
+
+			add		edi, 8
+			jnz		xloop
+
+			emms
+			pop		ebx
+			pop		esi
+			pop		edi
+			pop		ebp
+			ret		40
+		}
+	}
+#endif
 
 	void YadifTemporal_scalar(void *dst,
 					const void *srct,
@@ -1471,15 +2964,18 @@ protected:
 	struct Buffer {
 		vdblock<uint8, vdaligned_alloc<uint8> > mStorage;
 		BufferDesc mDesc;
+		uint32 mAge;
 
 		void Swap(Buffer& b) {
 			mStorage.swap(b.mStorage);
 			std::swap(mDesc, b.mDesc);
+			std::swap(mAge, b.mAge);
 		}
 	};
 
 	enum { kMaxBuffers = 8 };
 
+	uint32	mBufferClock;
 	Buffer	mBuffers[3][kMaxBuffers];
 
 	vdblock<uint8, vdaligned_alloc<uint8> > mElaBuffer;
@@ -1535,6 +3031,7 @@ uint32 VDVideoFilterDeinterlace::GetParams() {
 
 	mbDoublingRate = (mConfig.mDoubleRate && mConfig.mMode != VDVideoFilterDeinterlaceConfig::kModeFold && mConfig.mMode != VDVideoFilterDeinterlaceConfig::kModeUnfold);
 	mBufferCount = 4;
+	mBufferClock = 0;
 
 	if (mbDoublingRate) {
 		VDFraction fr(fa->dst.mFrameRateHi, fa->dst.mFrameRateLo);
@@ -1754,7 +3251,7 @@ void VDVideoFilterDeinterlace::Run_Yadif(bool keepField2) {
 			{ field1, kTypeAverage }
 		};
 
-		uint32 dirtyBuffers = 15;
+		uint32 dirtyBuffers = (1 << mBufferCount) - 1;
 
 		Buffer *const planeBuffers = mBuffers[plane];
 		for(int i=0; i<mBufferCount; ++i) {
@@ -1771,15 +3268,34 @@ void VDVideoFilterDeinterlace::Run_Yadif(bool keepField2) {
 			}
 		}
 
-		for(int i=0; i<mBufferCount; ++i) {
+		for(int i=0; i<4; ++i) {
 			if (!(dirtyBuffers & (1 << i)))
-				break;
+				continue;
+
+			dirtyBuffers &= ~(1 << i);
+
+			// search for victim
+			for(int j=0; j<mBufferCount; ++j) {
+				if (!(dirtyBuffers & (1 << j)))
+					continue;
+
+				if ((mBufferClock - planeBuffers[j].mAge) > (mBufferClock - planeBuffers[i].mAge))
+					planeBuffers[i].Swap(planeBuffers[j]);
+			}
+
+			planeBuffers[i].mAge = ++mBufferClock;
 
 			int srcOffset = (int)neededBuffers[i].mField - (int)field0;
 			switch(neededBuffers[i].mType) {
 				case kTypeAverage:
 					if (SSE2_enabled)
 						Average_SSE2(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#if defined(VD_CPU_X86)
+					else if (ISSE_enabled)
+						Average_ISSE(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+					else if (MMX_enabled)
+						Average_MMX(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#endif
 					else
 						Average_scalar(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
 					break;
@@ -1787,6 +3303,10 @@ void VDVideoFilterDeinterlace::Run_Yadif(bool keepField2) {
 				case kTypeAbsDiff:
 					if (SSE2_enabled)
 						Absdiff_SSE2(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#if defined(VD_CPU_X86)
+					else if (MMX_enabled)
+						Absdiff_MMX(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#endif
 					else
 						Absdiff_scalar(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
 					break;
@@ -1794,6 +3314,12 @@ void VDVideoFilterDeinterlace::Run_Yadif(bool keepField2) {
 				case kTypeAbsDiffBlended:
 					if (SSE2_enabled)
 						AbsDiffBlended_SSE2(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#if defined(VD_CPU_X86)
+					else if (ISSE_enabled)
+						AbsDiffBlended_ISSE(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+					else if (MMX_enabled)
+						AbsDiffBlended_MMX(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
+#endif
 					else
 						AbsDiffBlended_scalar(planeBuffers[i].mStorage.data(), planePitch, srcPlanes[srcOffset].data, srcPlanes[srcOffset+2].data, srcPitch, planePitch >> 4, h2);
 					break;
@@ -1838,7 +3364,17 @@ void VDVideoFilterDeinterlace::Run_Yadif(bool keepField2) {
 			if (SSE2_enabled) {
 				BlendScanLine_NELA_SSE2(dst, srcT, srcB, rowBytes, (__m128i *)elabuf);
 				YadifTemporal_SSE2(dst, srcT, srcB, srcAvgT, srcAvgC, srcAvgB, srcAdfC, srcAdfP, srcAdfN, planePitch >> 4);
-			} else {
+			}
+#if defined(VD_CPU_X86)
+			else if (ISSE_enabled) {
+				BlendScanLine_NELA_MMX_ISSE(dst, srcT, srcB, rowBytes, elabuf);
+				YadifTemporal_ISSE(dst, srcT, srcB, srcAvgT, srcAvgC, srcAvgB, srcAdfC, srcAdfP, srcAdfN, planePitch >> 4);
+			} else if (MMX_enabled) {
+				BlendScanLine_NELA_MMX_ISSE(dst, srcT, srcB, rowBytes, elabuf);
+				YadifTemporal_MMX(dst, srcT, srcB, srcAvgT, srcAvgC, srcAvgB, srcAdfC, srcAdfP, srcAdfN, planePitch >> 4);
+			}
+#endif
+			else {
 				BlendScanLine_NELA_scalar(dst, srcT, srcB, rowBytes, (uint8 *)elabuf);
 				YadifTemporal_scalar(dst, srcT, srcB, srcAvgT, srcAvgC, srcAvgB, srcAdfC, srcAdfP, srcAdfN, planePitch >> 4);
 			}
@@ -2030,9 +3566,13 @@ bool VDVideoFilterDeinterlace::Prefetch2(sint64 frame, IVDXVideoPrefetcher *pref
 bool VDVideoFilterDeinterlace::OnInvalidateCaches() {
 	for(int plane=0; plane<3; ++plane) {
 		for(int i=0; i<kMaxBuffers; ++i) {
-			mBuffers[plane][i].mDesc.Clear();
+			Buffer& buf = mBuffers[plane][i];
+			buf.mDesc.Clear();
+			buf.mAge = 0;
 		}
 	}
+
+	mBufferClock = 0;
 
 	return true;
 }

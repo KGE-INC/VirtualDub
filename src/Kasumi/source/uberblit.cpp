@@ -1,4 +1,5 @@
 #include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include "uberblit.h"
 #include "uberblit_gen.h"
 
@@ -451,6 +452,13 @@ namespace {
 }
 
 IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src) {
+	const VDPixmapLayout& dstlayout = VDPixmapToLayoutFromBase(dst, dst.data);
+	const VDPixmapLayout& srclayout = VDPixmapToLayoutFromBase(src, src.data);
+
+	return VDPixmapCreateBlitter(dstlayout, srclayout);
+}
+
+IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmapLayout& dst, const VDPixmapLayout& src) {
 	if (src.format == dst.format) {
 		return VDCreatePixmapUberBlitterDirectCopy(dst, src);
 	}

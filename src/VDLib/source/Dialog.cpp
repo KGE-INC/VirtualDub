@@ -103,6 +103,15 @@ void VDDialogFrameW32::End(sintptr result) {
 		DestroyWindow(mhdlg);
 }
 
+void VDDialogFrameW32::AddProxy(VDUIProxyControl *proxy, uint32 id) {
+	HWND hwnd = GetControl(id);
+
+	if (hwnd) {
+		proxy->Attach(hwnd);
+		mMsgDispatcher.AddControl(proxy);
+	}
+}
+
 VDZHWND VDDialogFrameW32::GetControl(uint32 id) {
 	if (!mhdlg)
 		return NULL;
@@ -282,6 +291,10 @@ void VDDialogFrameW32::SignalFailedValidation(uint32 id) {
 		SetFocus(hwnd);
 }
 
+void VDDialogFrameW32::LBClear(uint32 id) {
+	SendDlgItemMessage(mhdlg, id, LB_RESETCONTENT, 0, 0);
+}
+
 sint32 VDDialogFrameW32::LBGetSelectedIndex(uint32 id) {
 	return SendDlgItemMessage(mhdlg, id, LB_GETCURSEL, 0, 0);
 }
@@ -344,6 +357,7 @@ void VDDialogFrameW32::OnSize() {
 }
 
 void VDDialogFrameW32::OnDestroy() {
+	mMsgDispatcher.RemoveAllControls();
 }
 
 bool VDDialogFrameW32::OnTimer(uint32 id) {
@@ -424,7 +438,12 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 				}
 			}
 
-			break;
+			SetWindowLongPtr(mhdlg, DWLP_MSGRESULT, mMsgDispatcher.Dispatch_WM_COMMAND(wParam, lParam));
+			return TRUE;
+
+		case WM_NOTIFY:
+			SetWindowLongPtr(mhdlg, DWLP_MSGRESULT, mMsgDispatcher.Dispatch_WM_NOTIFY(wParam, lParam));
+			return TRUE;
 
 		case WM_DESTROY:
 			OnDestroy();
@@ -486,36 +505,37 @@ void VDDialogResizerW32::Relayout(int width, int height) {
 	mWidth = width;
 	mHeight = height;
 
+	const int xAnchors[4]={ 0, width >> 1, width, width };
+	const int yAnchors[4]={ 0, height >> 1, height, height };
+
 	Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
 	for(; it!=itEnd; ++it) {
 		const ControlEntry& ent = *it;
-		uint32 flags = SWP_NOZORDER|SWP_NOACTIVATE;
+		uint32 flags = SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS;
+		const uint8 alignment = ent.mAlignment;
 
-		if (!(ent.mAlignment & (kAnchorX | kAnchorY)))
+		if (!(alignment & kX1Y1Mask))
 			flags |= SWP_NOMOVE;
 
-		if (!(ent.mAlignment & (kAnchorW | kAnchorH)))
+		if ((alignment & kX1Y1Mask) == (alignment & kX2Y2Mask))
 			flags |= SWP_NOSIZE;
 
-		int x = ent.mX;
-		int y = ent.mY;
-		int w = ent.mW;
-		int h = ent.mH;
+		int x1 = ent.mX1 + xAnchors[(alignment >> 0) & 3];
+		int x2 = ent.mX2 + xAnchors[(alignment >> 2) & 3];
+		int y1 = ent.mY1 + yAnchors[(alignment >> 4) & 3];
+		int y2 = ent.mY2 + yAnchors[(alignment >> 6) & 3];
 
-		if (ent.mAlignment & kAnchorX)
-			x += mWidth;
+		int w = x2 - x1;
+		int h = y2 - y1;
 
-		if (ent.mAlignment & kAnchorW)
-			w += mWidth;
+		if (w < 0)
+			w = 0;
 
-		if (ent.mAlignment & kAnchorY)
-			y += mHeight;
-
-		if (ent.mAlignment & kAnchorH)
-			h += mHeight;
+		if (h < 0)
+			h = 0;
 
 		if (hdwp) {
-			HDWP hdwp2 = DeferWindowPos(hdwp, ent.mhwnd, NULL, x, y, w, h, flags);
+			HDWP hdwp2 = DeferWindowPos(hdwp, ent.mhwnd, NULL, x1, y1, w, h, flags);
 
 			if (hdwp2) {
 				hdwp = hdwp2;
@@ -523,7 +543,7 @@ void VDDialogResizerW32::Relayout(int width, int height) {
 			}
 		}
 
-		SetWindowPos(ent.mhwnd, NULL, x, y, w, h, flags);
+		SetWindowPos(ent.mhwnd, NULL, x1, y1, w, h, flags);
 	}
 
 	if (hdwp)
@@ -546,20 +566,8 @@ void VDDialogResizerW32::Add(uint32 id, int alignment) {
 
 	ce.mhwnd		= hwndControl;
 	ce.mAlignment	= alignment;
-	ce.mX			= r.left;
-	ce.mY			= r.top;
-	ce.mW			= r.right - r.left;
-	ce.mH			= r.bottom - r.top;
-
-	if (alignment & kAnchorX)
-		ce.mX -= mWidth;
-
-	if (alignment & kAnchorW)
-		ce.mW -= mWidth;
-
-	if (alignment & kAnchorY)
-		ce.mY -= mHeight;
-
-	if (alignment & kAnchorH)
-		ce.mH -= mHeight;
+	ce.mX1			= r.left   - ((mWidth  * ((alignment >> 0) & 3)) >> 1);
+	ce.mY1			= r.top    - ((mHeight * ((alignment >> 4) & 3)) >> 1);
+	ce.mX2			= r.right  - ((mWidth  * ((alignment >> 2) & 3)) >> 1);
+	ce.mY2			= r.bottom - ((mHeight * ((alignment >> 6) & 3)) >> 1);
 }

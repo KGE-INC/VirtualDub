@@ -27,6 +27,7 @@
 #include "resource.h"
 
 #include <vd2/system/list.h>
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
@@ -40,6 +41,7 @@
 #include "InputFile.h"
 #include "AudioFilterSystem.h"
 
+#include "uiframe.h"
 #include "gui.h"
 #include "job.h"
 #include "command.h"
@@ -50,6 +52,7 @@
 #include "filters.h"
 #include "FilterInstance.h"
 #include "oshelper.h"
+#include "projectui.h"
 
 #include "JobControl.h"
 
@@ -62,6 +65,7 @@ extern InputFileOptions *g_pInputOpts;
 extern VDProject *g_project;
 extern COMPVARS g_Vcompression;
 extern VDJobQueue g_VDJobQueue;
+extern vdrefptr<VDProjectUI> g_projectui;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -634,8 +638,36 @@ void JobClearList() {
 	g_VDJobQueue.ListClear();
 }
 
-void JobRunList() {
+bool JobRunList() {
 	g_VDJobQueue.RunAllStart();
+
+	while(g_VDJobQueue.IsRunAllInProgress()) {
+		MSG msg;
+
+		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				g_VDJobQueue.RunAllStop();
+				PostQuitMessage(msg.wParam);
+				return false;
+			}
+
+			if (guiCheckDialogs(&msg))
+				continue;
+
+			if (VDUIFrame::TranslateAcceleratorMessage(msg))
+				continue;
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		if (!JobPollAutoRun()) {
+			VDClearEvilCPUStates();		// clear evil CPU states set by Borland DLLs
+
+			WaitMessage();
+		}
+	}
+	return true;
 }
 
 bool JobPollAutoRun() {

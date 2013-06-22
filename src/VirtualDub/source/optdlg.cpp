@@ -692,7 +692,7 @@ void VDDialogPerformanceOptions::OnDataExchange(bool write) {
 		VDPreferencesGetRenderOutputBufferSize() = outputBufferSizeArray[TBGetValue(IDC_OUTPUT_BUFFER)];
 		VDPreferencesGetRenderWaveBufferSize() = waveBufferSizeArray[TBGetValue(IDC_WAVE_INPUT_BUFFER)];
 		VDPreferencesGetRenderVideoBufferCount() = pipeBufferCountArray[TBGetValue(IDC_VIDEO_BUFFERS)];
-		VDPreferencesGetRenderAudioBufferSeconds() = pipeBufferCountArray[TBGetValue(IDC_AUDIO_BUFFER)];
+		VDPreferencesGetRenderAudioBufferSeconds() = audioBufferSizeArray[TBGetValue(IDC_AUDIO_BUFFER)];
 
 		VDSavePreferences();
 	} else {

@@ -33,6 +33,7 @@
 #include "VBitmap.h"
 #include "command.h"
 #include "VideoSource.h"
+#include "VideoWindow.h"
 #include "resource.h"
 #include "oshelper.h"
 #include "dub.h"
@@ -217,6 +218,7 @@ private:
 	HWND		mhwndButton;
 	HWND		mhwndParent;
 	HWND		mhwndPosition;
+	HWND		mhwndVideoWindow;
 	HWND		mhwndDisplay;
 
 	wchar_t		mButtonAccelerator;
@@ -235,6 +237,7 @@ private:
 
 	IVDPositionControl	*mpPosition;
 	IVDVideoDisplay *mpDisplay;
+	IVDVideoWindow *mpVideoWindow;
 	FilterSystem mFiltSys;
 	List		*mpFilterList;
 	FilterInstance *mpThisFilter;
@@ -270,6 +273,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 	, mhwndButton(NULL)
 	, mhwndParent(NULL)
 	, mhwndPosition(NULL)
+	, mhwndVideoWindow(NULL)
 	, mhwndDisplay(NULL)
 	, mButtonAccelerator(0)
 	, mWidth(0)
@@ -284,6 +288,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 	, mLastTimelineTimeMS(0)
 	, mpPosition(NULL)
 	, mpDisplay(NULL)
+	, mpVideoWindow(NULL)
 	, mpFilterList(pFilterList)
 	, mpThisFilter(pfiThisFilter)
 	, mpTimeline(0)
@@ -327,6 +332,9 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 			mpDisplay = NULL;
 			mhwndDisplay = NULL;
 		}
+
+		mhwndVideoWindow = NULL;
+
 		mDlgNode.Remove();
 		return TRUE;
 
@@ -382,8 +390,24 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		break;
 
 	case WM_NOTIFY:
-		if (((NMHDR *)lParam)->idFrom == IDC_FILTDLG_POSITION) {
-			OnVideoRedraw();
+		{
+			const NMHDR& hdr = *(const NMHDR *)lParam;
+			if (hdr.idFrom == IDC_FILTDLG_POSITION) {
+				OnVideoRedraw();
+			} else if (hdr.hwndFrom == mhwndVideoWindow) {
+				switch(hdr.code) {
+					case VWN_RESIZED:
+						{
+							RECT r;
+							GetWindowRect(mhwndVideoWindow, &r);
+
+							r.bottom += 64;
+							AdjustWindowRectEx(&r, GetWindowLong(mhdlg, GWL_STYLE), FALSE, GetWindowLong(mhdlg, GWL_EXSTYLE));
+							SetWindowPos(mhdlg, NULL, 0, 0, r.right-r.left, r.bottom-r.top, SWP_NOZORDER|SWP_NOMOVE|SWP_NOACTIVATE);
+						}
+						break;
+				}
+			}
 		}
 		return TRUE;
 
@@ -406,6 +430,8 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		mFiltSys.InvalidateCachedFrames(mpThisFilter);
 		OnVideoRedraw();
 		return TRUE;
+
+//	case WM_WINDOWPOSCHANGING:
 	}
 
 	return FALSE;
@@ -427,10 +453,15 @@ void FilterPreview::OnInit() {
 	inputVideo->setTargetFormat(0);
 	inputVideo->streamRestart();
 
-	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)mhdlg);
+	mhwndVideoWindow = CreateWindow(VIDEOWINDOWCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 0, mhdlg, (HMENU)100, g_hInst, NULL);
+	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)mhwndVideoWindow);
 	if (mhwndDisplay)
 		mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndDisplay);
 	EnableWindow(mhwndDisplay, FALSE);
+
+	mpVideoWindow = VDGetIVideoWindow(mhwndVideoWindow);
+	mpVideoWindow->SetChild(mhwndDisplay);
+	mpVideoWindow->SetDisplay(mpDisplay);
 
 	mDlgNode.hdlg = mhdlg;
 	mDlgNode.mhAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_PREVIEW_KEYS));
@@ -442,10 +473,10 @@ void FilterPreview::OnResize() {
 
 	GetClientRect(mhdlg, &r);
 
-	mDisplayX	= 4;
-	mDisplayY	= 4;
-	mDisplayW	= r.right - 8;
-	mDisplayH	= r.bottom - 72;
+	mDisplayX	= 0;
+	mDisplayY	= 0;
+	mDisplayW	= r.right;
+	mDisplayH	= r.bottom - 64;
 
 	if (mDisplayW < 0)
 		mDisplayW = 0;
@@ -454,7 +485,7 @@ void FilterPreview::OnResize() {
 		mDisplayH = 0;
 
 	SetWindowPos(mhwndPosition, NULL, 0, r.bottom - 64, r.right, 64, SWP_NOZORDER|SWP_NOACTIVATE);
-	SetWindowPos(mhwndDisplay, NULL, mDisplayX, mDisplayY, mDisplayW, mDisplayH, SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(mhwndVideoWindow, NULL, mDisplayX, mDisplayY, mDisplayW, mDisplayH, SWP_NOZORDER|SWP_NOACTIVATE);
 
 	InvalidateRect(mhdlg, NULL, TRUE);
 }
@@ -471,9 +502,6 @@ void FilterPreview::OnPaint() {
 		RECT r;
 
 		GetClientRect(mhdlg, &r);
-
-		Draw3DRect(hdc,	0, 0, r.right, r.bottom - 64, FALSE);
-		Draw3DRect(hdc,	3, 3, r.right - 6, r.bottom - 70, TRUE);
 	} else {
 		RECT r;
 
@@ -488,6 +516,7 @@ void FilterPreview::OnPaint() {
 		char buf[1024];
 		const char *s = mFailureReason.gets();
 		_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
+		buf[1023] = 0;
 
 		RECT r2 = r;
 		DrawText(hdc, buf, -1, &r2, DT_CENTER|DT_WORDBREAK|DT_NOPREFIX|DT_CALCRECT);
@@ -562,6 +591,9 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		mWidth = w;
 		mHeight = h;
 
+		mpVideoWindow->SetSourceSize(w, h);
+		mpVideoWindow->SetSourcePAR(mFiltSys.GetOutputPixelAspect());
+
 		mpPosition->SetRange(0, mFiltSys.GetOutputFrameCount());
 
 		if (mInitialTimeUS >= 0) {
@@ -620,7 +652,7 @@ void FilterPreview::OnVideoRedraw() {
 		vdrefptr<IVDFilterFrameClientRequest> req;
 		if (mFiltSys.RequestFrame(mLastOutputFrame, ~req)) {
 			while(!req->IsCompleted()) {
-				mpVideoFrameSource->Run();
+				mpVideoFrameSource->RunRequests();
 				mFiltSys.RunToCompletion();
 			}
 
@@ -830,7 +862,7 @@ bool FilterPreview::SampleCurrentFrame() {
 			if (mpThisFilter->CreateSamplingRequest(pos, mpSampleCallback, mpvSampleCBData, ~req)) {
 				while(!req->IsCompleted()) {
 					mFiltSys.RunToCompletion();
-					mpVideoFrameSource->Run();
+					mpVideoFrameSource->RunRequests();
 				}
 			}
 		} catch(const MyError& e) {
@@ -948,7 +980,7 @@ long FilterPreview::SampleFrames() {
 			if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
 				while(!req->IsCompleted()) {
 					mFiltSys.RunToCompletion();
-					mpVideoFrameSource->Run();
+					mpVideoFrameSource->RunRequests();
 				}
 
 				++lCount;

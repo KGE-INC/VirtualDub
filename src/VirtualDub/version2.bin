@@ -1,5 +1,5 @@
-host: "AEGIS-DEV18"         builds: 483
-host: "Aegis (dev19)"       builds: 950
+host: "AEGIS-DEV18"         builds: 494
+host: "Aegis (dev19)"       builds: 1268
 host: "Aegis (sb2)"         builds: 532
 host: "Athena"              builds: 16029
 host: "Athena64"            builds: 96
@@ -9,4 +9,5 @@ host: "KOS-MOS (DEV18)"     builds: 173
 host: "KOS-MOS (SB2)"       builds: 845
 host: "Kumi64"              builds: 138
 host: "Risa"                builds: 203
+host: "Sb3"                 builds: 88
 host: "T-ELOS"              builds: 39

@@ -1,17 +1,73 @@
 #include "test.h"
 #include <vd2/system/vdalloc.h>
+#include <vd2/Kasumi/pixel.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include "../../Kasumi/h/uberblit.h"
+
+namespace {
+	bool CheckBlit(const VDPixmap& dst, const VDPixmap& src) {
+		uint32 w = std::min<uint32>(src.w, dst.w);
+		uint32 h = std::min<uint32>(src.h, dst.h);
+
+		for(uint32 y=0; y<h; ++y) {
+			for(uint32 x=0; x<w; ++x) {
+				uint32 p1 = VDPixmapSample(src, x, y);
+				uint32 p2 = VDPixmapSample(dst, x, y);
+
+				int y1 = ((p1 & 0xff00ff)*0x130036 + (p1 & 0xff00)*0xb700) >> 16;
+				int y2 = ((p2 & 0xff00ff)*0x130036 + (p2 & 0xff00)*0xb700) >> 16;
+
+				if (abs(y1 - y2) > 512) {
+					printf("Bitmap comparison failed at (%d, %d) with formats %s and %s: #%06x != #%06x"
+						, x
+						, y
+						, VDPixmapGetInfo(src.format).name
+						, VDPixmapGetInfo(dst.format).name
+						, p1 & 0xffffff
+						, p2 & 0xffffff
+						);
+
+					VDASSERT(false);
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+}
 
 DEFINE_TEST(Uberblit) {
 	using namespace nsVDPixmap;
 
 	// test primary color conversion
 	const int size = 8;
-	VDPixmapBuffer src(size, size, kPixFormat_XRGB8888);
+
+	static const uint32 kColors[8]={
+		0xff000000,
+		0xffffffff,
+		0xff0000ff,
+		0xff00ff00,
+		0xff00ffff,
+		0xffff0000,
+		0xffff00ff,
+		0xffffff00,
+	};
+
+	const int kColorCount = sizeof(kColors)/sizeof(kColors[0]);
+
+	VDPixmapBuffer src[kColorCount];
+	for(int i=0; i<kColorCount; ++i) {
+		src[i].init(size, size, kPixFormat_XRGB8888);
+		VDMemset32Rect(src[i].data, src[i].pitch, kColors[i], size, size);
+	}
+
 	VDPixmapBuffer output(size, size, kPixFormat_XRGB8888);
+
+	const VDPixmapFormatInfo& fiSrc = VDPixmapGetInfo(src[0].format);
+	const VDPixmapFormatInfo& fiOutput = VDPixmapGetInfo(output.format);
 
 	for(int srcformat = nsVDPixmap::kPixFormat_XRGB1555; srcformat < nsVDPixmap::kPixFormat_Max_Standard; ++srcformat) {
 		VDPixmapFormat srcformat2 = (VDPixmapFormat)srcformat;
@@ -19,51 +75,50 @@ DEFINE_TEST(Uberblit) {
 		if (srcformat == kPixFormat_YUV444_XVYU)
 			continue;
 
+		VDPixmapBuffer in[kColorCount];
+		vdautoptr<IVDPixmapBlitter> blit1;
+				const VDPixmapFormatInfo& fiIn = VDPixmapGetInfo(in[0].format);
+
+		const int maxsrctest = srcformat == kPixFormat_Y8 ? 2 : 8;
+
+		for(int v=0; v<maxsrctest; ++v) {
+			in[v].init(size, size, srcformat);
+
+			if (!v)
+				blit1 = VDPixmapCreateBlitter(in[0], src[0]);
+
+			blit1->Blit(in[v], src[v]);
+			if (!CheckBlit(in[v], src[v])) goto failed2;
+			in[v].validate();
+		}
+
 		for(int dstformat = nsVDPixmap::kPixFormat_XRGB1555; dstformat < nsVDPixmap::kPixFormat_Max_Standard; ++dstformat) {
 			VDPixmapFormat dstformat2 = (VDPixmapFormat)dstformat;
 
 			if (dstformat == kPixFormat_YUV444_XVYU)
 				continue;
 
-			VDPixmapBuffer in(size, size, srcformat);
 			VDPixmapBuffer out(size, size, dstformat);
-
-			static const uint32 kColors[8]={
-				0xff000000,
-				0xffffffff,
-				0xff0000ff,
-				0xff00ff00,
-				0xff00ffff,
-				0xffff0000,
-				0xffff00ff,
-				0xffffff00,
-			};
 
 			int maxtest = (srcformat == kPixFormat_Y8 || dstformat == kPixFormat_Y8) ? 2 : 8;
 
-			vdautoptr<IVDPixmapBlitter> blit1(VDPixmapCreateBlitter(in, src));
-			vdautoptr<IVDPixmapBlitter> blit2(VDPixmapCreateBlitter(out, in));
+			vdautoptr<IVDPixmapBlitter> blit2(VDPixmapCreateBlitter(out, in[0]));
 			vdautoptr<IVDPixmapBlitter> blit3(VDPixmapCreateBlitter(output, out));
 
-			const VDPixmapFormatInfo& fiIn = VDPixmapGetInfo(in.format);
-			const VDPixmapFormatInfo& fiSrc = VDPixmapGetInfo(src.format);
 			const VDPixmapFormatInfo& fiOut = VDPixmapGetInfo(out.format);
-			const VDPixmapFormatInfo& fiOutput = VDPixmapGetInfo(output.format);
 
 			for(int v=0; v<maxtest; ++v) {
-				VDMemset32Rect(src.data, src.pitch, kColors[v], size, size);
-
-				blit1->Blit(in, src);
-				in.validate();
-				blit2->Blit(out, in);
+				blit2->Blit(out, in[v]);
+				if (!CheckBlit(out, in[v])) goto failed;
 				out.validate();
 				blit3->Blit(output, out);
+				if (!CheckBlit(output, out)) goto failed;
 				output.validate();
 
 				// white and black must be exact
 				if (v < 2) {
 					for(int y=0; y<size; ++y) {
-						const uint32 *sp = (const uint32 *)vdptroffset(src.data, src.pitch*y);
+						const uint32 *sp = (const uint32 *)vdptroffset(src[v].data, src[v].pitch*y);
 						uint32 *dp = (uint32 *)vdptroffset(output.data, output.pitch*y);
 
 						for(int x=0; x<size; ++x) {
@@ -80,7 +135,7 @@ DEFINE_TEST(Uberblit) {
 					}
 				} else {
 					for(int y=0; y<size; ++y) {
-						const uint32 *sp = (const uint32 *)vdptroffset(src.data, src.pitch*y);
+						const uint32 *sp = (const uint32 *)vdptroffset(src[v].data, src[v].pitch*y);
 						uint32 *dp = (uint32 *)vdptroffset(output.data, output.pitch*y);
 
 						for(int x=0; x<size; ++x) {
@@ -103,6 +158,7 @@ DEFINE_TEST(Uberblit) {
 failed:;
 			}
 		}
+failed2:;
 	}
 	return 0;
 }

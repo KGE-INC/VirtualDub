@@ -39,7 +39,7 @@ static LRESULT APIENTRY VideoWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 ////////////////////////////
 
-extern const char g_szVideoWindowClass[]="phaeronVideoWindow";
+extern const char g_szVideoWindowClass[]="VDVideoWindow";
 
 ////////////////////////////
 
@@ -56,6 +56,7 @@ public:
 	void SetChild(HWND hwnd);
 	void SetDisplay(IVDVideoDisplay *pDisplay);
 	void SetSourcePAR(const VDFraction& fr);
+	void SetResizeParentEnabled(bool enabled);
 
 private:
 	HWND mhwnd;
@@ -238,6 +239,9 @@ void VDVideoWindow::SetSourcePAR(const VDFraction& fr) {
 	if (fr.getLo())
 		mSourcePAR = fr.asDouble();
 	UpdateSourcePARMenuItem();
+}
+
+void VDVideoWindow::SetResizeParentEnabled(bool enabled) {
 }
 
 LRESULT CALLBACK VDVideoWindow::WndProcStatic(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

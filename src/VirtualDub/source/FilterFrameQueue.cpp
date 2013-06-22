@@ -95,16 +95,20 @@ bool VDFilterFrameQueue::PeekNextRequest(VDFilterFrameRequest **req) {
 			continue;
 		}
 
-		break;
+		bool anyFailed;
+		if (!r->AreSourcesReady(&anyFailed))
+			return false;
+
+		if (anyFailed) {
+			r->MarkComplete(false);
+			continue;
+		}
+
+		r->AddRef();
+		*req = r;
+
+		return true;
 	}
-
-	if (!r->AreSourcesReady())
-		return false;
-
-	r->AddRef();
-	*req = r;
-
-	return true;
 }
 
 bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
@@ -125,16 +129,20 @@ bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
 			continue;
 		}
 
-		break;
+		bool anyFailed;
+		if (!r->AreSourcesReady(&anyFailed))
+			return false;
+
+		if (anyFailed) {
+			r->MarkComplete(false);
+			continue;
+		}
+
+		mRequests.pop_front();
+		*req = r;
+
+		return true;
 	}
-
-	if (!r->AreSourcesReady())
-		return false;
-
-	mRequests.pop_front();
-	*req = r;
-
-	return true;
 }
 
 bool VDFilterFrameQueue::Remove(VDFilterFrameRequest *req) {

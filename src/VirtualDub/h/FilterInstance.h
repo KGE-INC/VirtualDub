@@ -26,6 +26,7 @@
 #include <vd2/system/list.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/refcount.h>
+#include <vd2/system/unknown.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/blitter.h>
 #include <vd2/VDLib/win32/DIBSection.h>
@@ -35,7 +36,7 @@
 #include "VBitmap.h"
 #include "ScriptValue.h"
 #include "FilterFrameQueue.h"
-#include "FilterFrameAllocator.h"
+#include "FilterFrameAllocatorProxy.h"
 #include "FilterFrameCache.h"
 #include "FilterFrameSharingPredictor.h"
 
@@ -56,6 +57,8 @@ class FilterDefinitionInstance;
 class VDFilterFrameBuffer;
 class VDFilterFrameRequest;
 class IVDFilterFrameClientRequest;
+
+class VDFilterFrameAllocatorManager;
 
 ///////////////////
 
@@ -152,23 +155,34 @@ private:
 	VDXFBitmap *mOutputFrameArray[1];
 };
 
-class IVDFilterFrameSource : public IVDRefCount {
+class IVDFilterFrameSource : public IVDRefUnknown {
 public:
-	virtual void SetAllocator(VDFilterFrameAllocator *alloc) = 0;
+	virtual void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev) = 0;
+	virtual VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy() = 0;
+
 	virtual bool CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req) = 0;
 	virtual bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) = 0;
 	virtual sint64 GetSourceFrame(sint64 outputFrame) = 0;
 	virtual sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source) = 0;
 	virtual sint64 GetNearestUniqueFrame(sint64 outputFrame) = 0;
 	virtual const VDPixmapLayout& GetOutputLayout() = 0;
+
+	virtual void InvalidateAllCachedFrames() = 0;
+
+	virtual void Stop() = 0;
+	virtual bool RunRequests() = 0;
 };
 
 class FilterInstance : public ListNode, protected VDFilterActivationImpl, public vdrefcounted<IVDFilterFrameSource> {
 	FilterInstance& operator=(const FilterInstance&);		// outlaw copy assignment
 
 public:
+	enum { kTypeID = 'vfin' };
+
 	FilterInstance(const FilterInstance& fi);
 	FilterInstance(FilterDefinitionInstance *);
+
+	void *AsInterface(uint32 iid);
 
 	FilterInstance *Clone();
 
@@ -196,16 +210,17 @@ public:
 
 	uint32	Prepare(const VFBitmapInternal& input);
 
-	void	Start(int accumulatedDelay, uint32 flags, IVDFilterFrameSource *pSource, VDFilterFrameAllocator *pSourceAllocator);
+	void	Start(uint32 flags, IVDFilterFrameSource *pSource);
 	void	Stop();
 
-	void	SetAllocator(VDFilterFrameAllocator *alloc);
+	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
+	void	RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev);
 	bool	CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req);
 	bool	CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, IVDFilterFrameClientRequest **req);
 	bool	RunRequests();
 
 	bool	Run(VDFilterFrameRequest& request);
-	bool	Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, VDPosition outputFrameOverride);
+	bool	Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
 	void	Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData);
 
 	void	RunSamplingCallback(long frame, long frameCount, VDXFilterPreviewSampleCallback cb, void *cbdata);
@@ -268,22 +283,19 @@ protected:
 
 public:
 	VDFileMappingW32	mFileMapping;
-	VFBitmapInternal	mRealSrcUncropped;
 	VFBitmapInternal	mRealSrc;
 	VFBitmapInternal	mRealDst;
 	VFBitmapInternal	mRealLast;
-	VFBitmapInternal	mExternalSrc;
+	VFBitmapInternal	mExternalSrc;			// post convert
+	VFBitmapInternal	mExternalSrcPreAlign;
+	VFBitmapInternal	mExternalSrcCropped;
 	VFBitmapInternal	mExternalDst;
 
 	bool	mbBlitOnEntry;
 	bool	mbAlignOnEntry;
 	bool	mbConvertOnEntry;
-	int		mBlendBuffer;
 
-	int		mSrcBuf;
-	int		mDstBuf;
-
-	VDPixmap	mBlendPixmap;
+	VFBitmapInternal	mBlendTemp;
 
 protected:
 	bool	mbInvalidFormat;
@@ -333,8 +345,8 @@ protected:
 	vdrefptr<VDParameterCurve> mpAlphaCurve;
 
 	vdrefptr<IVDFilterFrameSource> mpSource;
-	vdrefptr<VDFilterFrameAllocator> mpSourceAllocator;
-	vdrefptr<VDFilterFrameAllocator> mpResultAllocator;
+	VDFilterFrameAllocatorProxy mSourceAllocator;
+	VDFilterFrameAllocatorProxy mResultAllocator;
 
 	VDFilterFrameQueue		mFrameQueueWaiting;
 	VDFilterFrameQueue		mFrameQueueInProgress;

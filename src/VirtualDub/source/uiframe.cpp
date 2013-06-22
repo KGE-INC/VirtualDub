@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include <windows.h>
+#include <vd2/system/w32assist.h>
 #include "oshelper.h"
 #include "uiframe.h"
 #include "resource.h"
@@ -30,6 +31,45 @@ extern HINSTANCE g_hInst;
 
 static const char szAppName[]="VirtualDub";
 static const wchar_t szAppNameW[]=L"VirtualDub";
+
+namespace {
+	void AppendMenus(HMENU dst, HMENU src) {
+		int n = GetMenuItemCount(src);
+		int insertPos = GetMenuItemCount(dst);
+
+		vdfastvector<char> buf;
+		for(int i=0; i<n; ++i) {
+			MENUITEMINFOA mii = {sizeof(MENUITEMINFOA)};
+			mii.fMask = MIIM_BITMAP | MIIM_CHECKMARKS | MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU;
+			mii.dwTypeData = NULL;
+
+			if (GetMenuItemInfoA(src, i, TRUE, &mii)) {
+				++mii.cch;
+				buf.resize(mii.cch, 0);
+
+				mii.dwTypeData = (LPSTR)buf.data();
+
+				if (GetMenuItemInfoA(src, i, TRUE, &mii)) {
+					HMENU submenu = NULL;
+
+					if (mii.hSubMenu) {
+						submenu = CreateMenu();
+
+						if (submenu)
+							AppendMenus(submenu, mii.hSubMenu);
+
+						mii.hSubMenu = submenu;
+					}
+
+					if (InsertMenuItemA(dst, insertPos, TRUE, &mii))
+						++insertPos;
+					else if (submenu)
+						DestroyMenu(submenu);
+				}
+			}
+		}
+	}
+}
 
 bool VDRegisterUIFrameWindow() {
 	return !!VDUIFrame::Register();
@@ -51,6 +91,16 @@ VDUIFrame::VDUIFrame(HWND hwnd)
 {
 	VDASSERT(sFrameList.find(this) == sFrameList.end());
 	sFrameList.push_back(this);
+
+	HMENU hsysmenuapp = LoadMenu(VDGetLocalModuleHandleW32(), MAKEINTRESOURCE(IDR_FRAME_SYSTEM_MENU));
+
+	if (hsysmenuapp) {
+		HMENU hsysmenu = GetSystemMenu(hwnd, FALSE);
+
+		AppendMenus(hsysmenu, hsysmenuapp);
+
+		DestroyMenu(hsysmenuapp);
+	}
 }
 
 VDUIFrame::~VDUIFrame() {
@@ -223,6 +273,23 @@ LRESULT CALLBACK VDUIFrame::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 
 			if (sFrameList.empty())
 				PostQuitMessage(0);
+			break;
+		case WM_SYSCOMMAND:
+			if (wParam == ID_SYSTEM_ALWAYSONTOP) {
+				bool isOnTop = (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+
+				if (isOnTop)
+					SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+				else
+					SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+				return 0;
+			}
+
+			break;
+		case WM_INITMENUPOPUP:
+			if (HIWORD(lParam)) {
+				VDCheckMenuItemByCommandW32((HMENU)wParam, ID_SYSTEM_ALWAYSONTOP, (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+			}
 			break;
 		case VDWM_ENGINE_EVENT:
 			if (p->mpEngine)

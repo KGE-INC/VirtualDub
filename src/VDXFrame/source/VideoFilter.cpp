@@ -153,9 +153,10 @@ bool __cdecl VDXVideoFilter::FilterScriptStr(VDXFilterActivation *fa, const VDXF
 
 	pThis->fa		= fa;
 
+	buf[0] = 0;
 	pThis->GetScriptString(buf, buflen);
 
-	return true;
+	return buf[0] != 0;
 }
 
 void __cdecl VDXVideoFilter::FilterString2  (const VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int maxlen) {

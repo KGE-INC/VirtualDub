@@ -57,8 +57,6 @@ public:
 	bool isRunning();
 	bool isEmpty() const { return listFilters->IsEmpty(); }
 
-	int getFrameLag();
-
 	bool GetDirectFrameMapping(VDPosition outputFrame, VDPosition& sourceFrame, int& sourceIndex) const;
 	sint64	GetSourceFrame(sint64 outframe) const;
 	sint64	GetSymbolicFrame(sint64 outframe, IVDFilterFrameSource *source) const;
@@ -89,12 +87,15 @@ private:
 
 	VFBitmapInternal *bmLast;
 	List *listFilters;
-	int nFrameLag;
 	int mFrameDelayLeft;
 	bool mbFirstFrame;
 
 	unsigned char *lpBuffer;
-	long lAdditionalBytes;
+	long lRequiredSize;
+
+	typedef vdfastvector<IVDFilterFrameSource *> Filters;
+	Filters mFilters;
+	Filters mActiveFilters;
 
 	uint32	mPalette[256];
 };

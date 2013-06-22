@@ -134,7 +134,7 @@ public:
 	bool IsCompleted() const;
 	bool IsActive() const;
 	bool IsSuccessful() const;
-	bool AreSourcesReady() const;
+	bool AreSourcesReady(bool *anyFailed) const;
 
 	bool GetCacheable() const { return mbCacheable; }
 	void SetCacheable(bool cacheable) { mbCacheable = cacheable; }

@@ -37,7 +37,7 @@ void JobLockDubber();
 void JobUnlockDubber();
 void JobPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);
 void JobClearList();
-void JobRunList();
+bool JobRunList();
 void JobAddBatchFile(const wchar_t *srcDir, const wchar_t *dstDir);
 void JobAddBatchDirectory(const wchar_t *srcDir, const wchar_t *dstDir);
 

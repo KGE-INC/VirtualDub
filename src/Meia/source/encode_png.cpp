@@ -619,7 +619,10 @@ void VDPNGDeflateEncoder::Compress(bool flush) {
 			distptr = mpDist;
 			lenptr = mpLen;
 
-			VDASSERT(pos < mHistoryBase + mHistoryTail);
+			// Note that it's possible for the EndBlock() to have flushed out a pending
+			// run and pushed us all the way to maxpos.
+			VDASSERT(pos <= mHistoryBase + mHistoryTail);
+			continue;
 		}
 
 		uint8 c = hist[pos];

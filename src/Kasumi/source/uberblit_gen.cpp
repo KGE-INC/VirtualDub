@@ -42,6 +42,10 @@ IVDPixmapBlitter *VDCreatePixmapUberBlitterDirectCopy(const VDPixmap& dst, const
 	return new VDPixmapUberBlitterDirectCopy;
 }
 
+IVDPixmapBlitter *VDCreatePixmapUberBlitterDirectCopy(const VDPixmapLayout& dst, const VDPixmapLayout& src) {
+	return new VDPixmapUberBlitterDirectCopy;
+}
+
 VDPixmapUberBlitterDirectCopy::VDPixmapUberBlitterDirectCopy() {
 }
 

@@ -18,6 +18,7 @@
 #include "stdafx.h"
 #include <vd2/system/profile.h>
 #include <vd2/system/VDRingBuffer.h>
+#include <vd2/system/log.h>
 #include "DubIO.h"
 #include "Dub.h"
 #include "DubUtils.h"
@@ -28,6 +29,8 @@
 
 using namespace nsVDDub;
 
+bool VDPreferencesIsRenderNoAudioWarningEnabled();
+
 VDDubIOThread::VDDubIOThread(
 		IDubberInternal		*pParent,
 		const vdfastvector<IVDVideoSource *>& videoSources,
@@ -37,11 +40,14 @@ VDDubIOThread::VDDubIOThread(
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
 		VDAtomicInt&		threadCounter,
-		VDDubFrameRequestQueue *videoRequestQueue
+		VDDubFrameRequestQueue *videoRequestQueue,
+		bool				preview
 							 )
 	: VDThread("Dub-I/O")
 	, mpParent(pParent)
 	, mbError(false)
+	, mbPreview(preview)
+	, mAudioSamplesWritten(0)
 	, mbVideoRequestActive(false)
 	, mbVideoRequestFirstSample(false)
 	, mpVideoRequestSource(NULL)
@@ -155,6 +161,10 @@ void VDDubIOThread::ThreadRun() {
 							profchan.Begin(0xe0e0ff, "Audio");
 
 							if (!MainAddAudioFrame() && mpAudio->isEnd()) {
+								if (!mbPreview && !mAudioSamplesWritten && VDPreferencesIsRenderNoAudioWarningEnabled()) {
+									VDLogF(kVDLogWarning, L"Front end: The audio stream is ending with no samples having been sent.");
+								}
+
 								bAudioActive = false;
 								mpAudioPipe->CloseInput();
 							}
@@ -412,6 +422,7 @@ bool VDDubIOThread::MainAddAudioFrame() {
 			samplesLeft -= actualSamples;
 		}
 
+		mAudioSamplesWritten += totalSamples;
 		return totalSamples > 0;
 	} else {
 		long lActualSamples=0;
@@ -460,6 +471,7 @@ bool VDDubIOThread::MainAddAudioFrame() {
 			samples -= ltActualSamples;
 		}
 
+		mAudioSamplesWritten += lActualSamples;
 		return lActualSamples > 0;
 	}
 }

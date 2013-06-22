@@ -4,6 +4,7 @@
 #include <vd2/system/vectors.h>
 
 struct VDPixmap;
+struct VDPixmapLayout;
 
 class IVDPixmapBlitter {
 public:
@@ -13,5 +14,6 @@ public:
 };
 
 IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src);
+IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmapLayout& dst, const VDPixmapLayout& src);
 
 #endif

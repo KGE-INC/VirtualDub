@@ -288,7 +288,17 @@ void VDDubVideoProcessor::Init() {
 	}
 }
 
+void VDDubVideoProcessor::PreShutdown() {
+	// We have to ensure that the threaded compressor is stopped before we exit the processing thread.
+	// If the UI thread ends up trying to stop, the result can be a deadlock when XviD attempts to
+	// do a SendMessage() back to the UI thread from the worker thread.
+	if (mpThreadedVideoCompressor)
+		mpThreadedVideoCompressor->Shutdown();
+}
+
 void VDDubVideoProcessor::Shutdown() {
+	PreShutdown();
+
 	while(!mPendingSourceFrames.empty()) {
 		SourceFrameEntry& srcEnt = mPendingSourceFrames.front();
 
@@ -335,6 +345,8 @@ void VDDubVideoProcessor::UpdateFrames() {
 }
 
 bool VDDubVideoProcessor::WriteVideo() {
+	VDDubAutoThreadLocation loc(*mppCurrentAction, "stepping to next video frame");
+
 	// We cannot wrap the entire loop with a profiling event because typically
 	// involves a nice wait in preview mode.
 	for(;;) {
@@ -364,10 +376,18 @@ bool VDDubVideoProcessor::WriteVideo() {
 
 		// Try to request new frames.
 		const uint32 vpsize = mpVideoPipe->size();
+		bool requestsAdded = false;
 		while(mpVideoRequestQueue->GetQueueLength() < vpsize && mPendingOutputFrames.size() < vpsize) {
 			if (!RequestNextVideoFrame())
 				break;
+
+			requestsAdded = true;
 		}
+
+		// We have to recircle around if we've added frames, since one may have completed already if
+		// it is a duplicate.
+		if (requestsAdded)
+			continue;
 
 		// Drop out frames if we're previewing, behind, and dropping is enabled.
 		if (mbPreview && mpOptions->perf.fDropFrames) {
@@ -750,6 +770,8 @@ bool VDDubVideoProcessor::DoVideoFrameDropTest(const VDRenderVideoPipeFrameInfo&
 }
 
 VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::ReadVideoFrame(const VDRenderVideoPipeFrameInfo& frameInfo) {
+	VDDubAutoThreadLocation loc2(*mppCurrentAction, "reading video frame");
+
 	const void			*buffer				= frameInfo.mpData;
 	const int			exdata				= frameInfo.mFlags;
 	const uint32		lastSize			= frameInfo.mLength;
@@ -805,6 +827,15 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::ReadVideoFrame(const 
 	// Slow Repack: Decompress data and send to compressor.
 	// Full:		Decompress, process, filter, convert, send to compressor.
 
+	vdrefptr<VDRenderOutputBuffer> pBuffer;
+	if (mpFrameBufferTracker) {
+		// If we are using the frame buffer tracker, we need to make sure we allocate the frame buffer
+		// before we begin decoding.
+		VDDubVideoProcessor::VideoWriteResult getFBResult = GetVideoOutputBuffer(~pBuffer);
+		if (getFBResult != kVideoWriteOK)
+			return getFBResult;
+	}
+
 	VDDubVideoProcessor::VideoWriteResult decodeResult = DecodeVideoFrame(frameInfo);
 
 	if (!(exdata & kBufferFlagPreload)) {
@@ -849,10 +880,11 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::ReadVideoFrame(const 
 	if (mpVideoFilters)
 		return kVideoWriteNoOutput;
 
-	vdrefptr<VDRenderOutputBuffer> pBuffer;
-	VDDubVideoProcessor::VideoWriteResult getOutputResult = GetVideoOutputBuffer(~pBuffer);
-	if (getOutputResult != kVideoWriteOK)
-		return getOutputResult;
+	if (!pBuffer) {
+		VDDubVideoProcessor::VideoWriteResult getOutputResult = GetVideoOutputBuffer(~pBuffer);
+		if (getOutputResult != kVideoWriteOK)
+			return getOutputResult;
+	}
 
 	VDASSERT(!mPendingOutputFrames.empty());
 
@@ -906,9 +938,13 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::GetVideoOutputBuffer(
 }
 
 VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::ProcessVideoFrame() {
+	VDDubAutoThreadLocation loc(*mppCurrentAction, "processing video frame");
+
 	vdrefptr<VDRenderOutputBuffer> pBuffer;
 
 	if (mpThreadedVideoCompressor) {
+		VDDubAutoThreadLocation loc2(*mppCurrentAction, "pulling compressed video frame");
+
 		vdrefptr<VDRenderPostCompressionBuffer> pOutBuffer;
 		if (mpThreadedVideoCompressor->ExchangeBuffer(NULL, ~pOutBuffer)) {
 			WriteFinishedVideoFrame(pOutBuffer->mOutputBuffer.data(), pOutBuffer->mOutputSize, pOutBuffer->mbOutputIsKey, false, NULL);
@@ -920,6 +956,8 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::ProcessVideoFrame() {
 	// running in Repack mode only!
 
 	if (mpOptions->video.mode == DubVideoOptions::M_FULL) {
+		VDDubAutoThreadLocation loc2(*mppCurrentAction, "running video filters");
+
 		// process frame
 		mpProcessingProfileChannel->Begin(0x008000, "V-Filter");
 		mpVideoFilters->RunToCompletion();

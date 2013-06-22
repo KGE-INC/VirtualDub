@@ -18,6 +18,7 @@
 #include "stdafx.h"
 #include <vd2/Dita/resources.h>
 #include <vd2/system/error.h>
+#include <vd2/system/log.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Riza/display.h>
 #include <vd2/Riza/videocodec.h>
@@ -35,13 +36,14 @@
 #include "VideoSource.h"
 #include "prefs.h"
 #include "AsyncBlitter.h"
-#include "ThreadedVideoCompressor.h"
 #include "FilterSystem.h"
 #include "FilterFrame.h"
 #include "FilterFrameRequest.h"
 #include "FilterFrameManualSource.h"
 
 using namespace nsVDDub;
+
+bool VDPreferencesIsRenderNoAudioWarningEnabled();
 
 namespace {
 	enum { kVDST_Dub = 1 };
@@ -61,20 +63,32 @@ namespace {
 
 VDDubProcessThread::VDDubProcessThread()
 	: VDThread("Processing")
+	, opt(NULL)
+	, mpInterleaver(NULL)
+	, mpParent(NULL)
 	, mpAVIOut(NULL)
 	, mpVideoOut(NULL)
 	, mpAudioOut(NULL)
 	, mpOutputSystem(NULL)
-	, mpVideoPipe(NULL)
 	, mpAudioPipe(NULL)
+	, mpAudioCorrector(NULL)
+	, mbAudioPresent(false)
+	, mbAudioEnded(false)
+	, mAudioSamplesWritten(0)
+	, mpVideoPipe(NULL)
+	, mbVideoEnded(false)
+	, mbVideoPushEnded(false)
+	, mpVInfo(NULL)
 	, mpBlitter(NULL)
+	, mpStatusHandler(NULL)
+	, mbPreview(false)
+	, mbFirstPacket(false)
 	, mbError(false)
 	, mbCompleted(false)
+	, mpAbort(NULL)
 	, mpCurrentAction("starting up")
 	, mActivityCounter(0)
 	, mProcessingProfileChannel("Processor")
-	, mpAbort(NULL)
-	, mpStatusHandler(NULL)
 {
 }
 
@@ -363,6 +377,8 @@ abort_requested:
 		}
 	}
 
+	mVideoProcessor.PreShutdown();
+
 	mpParent->InternalSignalStop();
 }
 
@@ -432,6 +448,8 @@ bool VDDubProcessThread::WriteAudio(sint32 count) {
 				VDASSERT(pos <= sampleSize);
 			}
 
+			++mAudioSamplesWritten;
+
 			mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
 			{
 				VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
@@ -463,6 +481,10 @@ ended:
 
 			if (!tc) {
 				if (mpAudioPipe->isInputClosed()) {
+					if (!mbPreview && !mAudioSamplesWritten && VDPreferencesIsRenderNoAudioWarningEnabled()) {
+						VDLogF(kVDLogWarning, L"Back end: The audio stream is ending without any audio samples having been received.");
+					}
+
 					mpAudioPipe->CloseOutput();
 					totalBytes -= totalBytes % nBlockAlign;
 					count = totalBytes / nBlockAlign;
@@ -479,6 +501,7 @@ ended:
 				mLoopThrottle.EndWait();
 			}
 
+			mAudioSamplesWritten += tc;
 			totalBytes += tc;
 		}
 		mProcessingProfileChannel.End();

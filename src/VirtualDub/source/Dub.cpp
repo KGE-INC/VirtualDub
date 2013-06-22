@@ -1320,7 +1320,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	// Initialize filter system.
 	const VDPixmap& px = vSrc->getTargetFormat();
-	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
+	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, vSrc->asStream()->getLength(), vSrc->getPixelAspectRatio());
 
 	mpVideoFrameSource = new VDFilterFrameVideoSource;
 	mpVideoFrameSource->Init(vSrc, filters.GetInputLayout());
@@ -1510,7 +1510,8 @@ void Dubber::Go(int iPriority) {
 				aInfo,
 				vInfo,
 				mIOThreadCounter,
-				mpVideoRequestQueue)))
+				mpVideoRequestQueue,
+				fPreview)))
 		throw MyMemoryError();
 
 	if (!mpIOThread->ThreadStart())

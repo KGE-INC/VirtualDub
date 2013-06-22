@@ -7,6 +7,7 @@
 
 #include <vd2/system/vdstl.h>
 #include <vd2/system/win32/miniwindows.h>
+#include <vd2/VDLib/UIProxies.h>
 
 class IVDUIDropFileList {
 public:
@@ -29,6 +30,8 @@ protected:
 	VDDialogFrameW32(uint32 dlgid);
 
 	void End(sintptr result);
+
+	void AddProxy(VDUIProxyControl *proxy, uint32 id);
 
 	VDZHWND GetControl(uint32 id);
 
@@ -58,6 +61,7 @@ protected:
 	void SignalFailedValidation(uint32 id);
 
 	// listbox
+	void LBClear(uint32 id);
 	sint32 LBGetSelectedIndex(uint32 id);
 	void LBSetSelectedIndex(uint32 id, sint32 idx);
 	void LBAddString(uint32 id, const wchar_t *s);
@@ -93,6 +97,9 @@ private:
 
 	const char *mpDialogResourceName;
 	uint32	mFailedId;
+
+protected:
+	VDUIProxyMessageDispatcherW32 mMsgDispatcher;
 };
 
 class VDDialogResizerW32 {
@@ -101,20 +108,27 @@ public:
 	~VDDialogResizerW32();
 
 	enum {
-		kAnchorX	= 0x01,
-		kAnchorW	= 0x02,
-		kAnchorY	= 0x04,
-		kAnchorH	= 0x08,
+		kAnchorX1_C	= 0x01,
+		kAnchorX1_R	= 0x02,
+		kAnchorX2_C	= 0x04,
+		kAnchorX2_R	= 0x08,
+		kAnchorY1_M	= 0x10,
+		kAnchorY1_B	= 0x20,
+		kAnchorY2_M	= 0x40,
+		kAnchorY2_B	= 0x80,
 
 		kL		= 0,
-		kC		= kAnchorW,
-		kR		= kAnchorX,
-		kHMask	= 0x03,
+		kC		= kAnchorX2_R,
+		kR		= kAnchorX2_R | kAnchorX1_R,
+		kHMask	= 0x0F,
 
 		kT		= 0,
-		kM		= kAnchorH,
-		kB		= kAnchorY,
-		kVMask	= 0x0C,
+		kM		= kAnchorY2_B,
+		kB		= kAnchorY2_B | kAnchorY1_B,
+		kVMask	= 0xF0,
+
+		kX1Y1Mask = 0x33,
+		kX2Y2Mask = 0xCC,
 
 		kTL		= kT | kL,
 		kTR		= kT | kR,
@@ -136,10 +150,10 @@ protected:
 	struct ControlEntry {
 		VDZHWND	mhwnd;
 		int		mAlignment;
-		sint32	mX;
-		sint32	mY;
-		sint32	mW;
-		sint32	mH;
+		sint32	mX1;
+		sint32	mY1;
+		sint32	mX2;
+		sint32	mY2;
 	};
 
 	VDZHWND	mhwndBase;

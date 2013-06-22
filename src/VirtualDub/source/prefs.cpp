@@ -46,6 +46,7 @@ namespace {
 		bool			mbAllowDirectYCbCrDecoding;
 		bool			mbDisplayEnableDebugInfo;
 		bool			mbConfirmRenderAbort;
+		bool			mbRenderWarnNoAudio;
 		bool			mbEnableAVIAlignmentThreshold;
 		bool			mbEnableAVIVBRWarning;
 		bool			mbPreferInternalVideoDecoders;
@@ -357,10 +358,12 @@ public:
 			mpBase = pBase;
 			pBase->ExecuteAllLinks();
 			SetValue(100, mPrefs.mbConfirmRenderAbort);
+			SetValue(101, mPrefs.mbRenderWarnNoAudio);
 			return true;
 		case kEventDetach:
 		case kEventSync:
 			mPrefs.mbConfirmRenderAbort = 0 != GetValue(100);
+			mPrefs.mbRenderWarnNoAudio = 0 != GetValue(101);
 			return true;
 		}
 		return false;
@@ -632,6 +635,7 @@ void LoadPreferences() {
 
 	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
 	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
+	g_prefs2.mbRenderWarnNoAudio = key.getBool("Render: Warn if no audio", false);
 	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
 	g_prefs2.mbEnableAVIVBRWarning = key.getBool("AVI: VBR warning enabled", true);
 	g_prefs2.mAVIAlignmentThreshold = key.getInt("AVI: Alignment threshold", 524288);
@@ -674,6 +678,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setString("Timeline format", prefs.mTimelineFormat.c_str());
 	key.setBool("Allow direct YCbCr decoding", prefs.mbAllowDirectYCbCrDecoding);
 	key.setBool("Confirm render abort", prefs.mbConfirmRenderAbort);
+	key.setBool("Render: Warn if no audio", prefs.mbRenderWarnNoAudio);
 	key.setBool("AVI: Alignment threshold enable", prefs.mbEnableAVIAlignmentThreshold);
 	key.setInt("AVI: Alignment threshold", prefs.mAVIAlignmentThreshold);
 	key.setBool("AVI: VBR warning enabled", prefs.mbEnableAVIVBRWarning);
@@ -718,6 +723,10 @@ bool VDPreferencesIsDirectYCbCrInputEnabled() {
 
 bool VDPreferencesIsRenderAbortConfirmEnabled() {
 	return g_prefs2.mbConfirmRenderAbort;
+}
+
+bool VDPreferencesIsRenderNoAudioWarningEnabled() {
+	return g_prefs2.mbRenderWarnNoAudio;
 }
 
 uint32 VDPreferencesGetAVIAlignmentThreshold() {

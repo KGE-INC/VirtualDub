@@ -1640,6 +1640,10 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 
 	Enumerate(mAudioDevices, CLSID_AudioInputDeviceCategory);
 
+#if 0	// Disabled Dazzle hack for now.
+	Enumerate(mAudioDevices, KSCATEGORY_CAPTURE);
+#endif
+
 	// Select the first audio device if there is one.
 	mAudioDeviceIndex = -1;
 	if (!mAudioDevices.empty())

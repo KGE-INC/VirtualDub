@@ -566,8 +566,12 @@ void VDClippingControl::GetClipBounds(vdrect32& r) {
 }
 
 void VDClippingControl::AutoSize(int borderw, int borderh) {
-	int w2 = mSourceWidth;
-	int h2 = mSourceHeight;
+	const LONG du = GetDialogBaseUnits();
+	const int duX = LOWORD(du);
+	const int duY = HIWORD(du);
+
+	int w2 = std::max<int>(mSourceWidth, duX * 12);
+	int h2 = std::max<int>(mSourceHeight, duY * 6);
 
 	int wpad = mOverlayX + 8;
 	int hpad = (GetDlgItem(mhwnd, kIDC_POSITION)?64:0) + mOverlayY + 8;

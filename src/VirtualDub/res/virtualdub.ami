@@ -68,8 +68,8 @@ stringset 7 {		// kVDST_ProjectUI
 	message 0, "%s";
 	message 1, "%s - [%s]";
 	message 2, "%s - [%s] (render in progress)";
-	message 3, "Undo %ls\tCtrl+Z";
-	message 4, "Redo %ls\tCtrl+Y";
+	message 3, "Undo %ls";
+	message 4, "Redo %ls";
 }
 
 stringset 8 {		// kVDST_CaptureUI
@@ -430,8 +430,11 @@ dialog 1016, "" : fill, child {
 	now align=fill;
 	set 0: vertical {
 		group 0, "Render options" {
-			now valign=top, align=left;
-			checkbox 100, "Confirm when abort button is pressed";
+			set 0: vertical, spacing=3 {
+				now valign=top, align=left;
+				checkbox 100, "Confirm when abort button is pressed";
+				checkbox 101, "Warn if no audio is written";
+			}
 		}
 	}
 }

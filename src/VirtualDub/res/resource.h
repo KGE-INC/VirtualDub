@@ -15,6 +15,7 @@
 #define IDC_SAVEASDEFAULT               3
 #define IDOK2                           3
 #define IDC_ADDTOQUEUE                  3
+#define IDCANCEL2                       3
 #define IDC_REMOVE                      4
 #define IDS_TITLE_DUBBING               4
 #define IDC_MOVE_DOWN                   4
@@ -32,6 +33,7 @@
 #define IDC_CLEAR                       5
 #define IDC_APPLY                       5
 #define IDC_FILTEROUTPUTNAMES           5
+#define IDC_RESET                       5
 #define IDC_MOVEDOWN                    6
 #define IDS_TITLE_STATUS                6
 #define IDC_POSTPONE                    6
@@ -232,6 +234,10 @@
 #define IDD_FILTER_INTERPOLATE          281
 #define IDD_FILTER_INTERLACE            282
 #define IDD_FILTER_IVTC                 283
+#define IDD_CONFIGURE_ACCELS            284
+#define IDR_FRAME_SYSTEM_MENU           285
+#define IDD_FILTER_TEST                 286
+#define IDD_FILTER_FIELDDELAY           287
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -893,6 +899,7 @@
 #define IDC_STATIC_LIMIT                1429
 #define IDC_ALIGNMENT_16                1430
 #define IDC_SETTING                     1430
+#define IDC_ALIGNMENT_2                 1431
 #define IDC_BITRATE_AUTO                1435
 #define IDC_BITRATE_CBR                 1436
 #define IDC_BITRATE_VBR                 1437
@@ -945,6 +952,18 @@
 #define IDC_FIELDMODE_KEEPBOTTOM        1467
 #define IDC_FIELDMODE_DOUBLETFF         1468
 #define IDC_FIELDMODE_DOUBLEBFF         1469
+#define IDC_HOTKEY                      1469
+#define IDC_BOUNDCOMMANDS               1470
+#define IDC_AVAILCOMMANDS               1471
+#define IDC_STATIC_BOUNDCOMMANDS        1472
+#define IDC_STATIC_AVAILABLECOMMANDS    1473
+#define IDC_STATIC_QUICKSEARCH          1474
+#define IDC_STATIC_SHORTCUT             1475
+#define IDC_SWAP_BUFFERS                1477
+#define IDC_SOURCE_HDC                  1478
+#define IDC_DEST_HDC                    1479
+#define IDC_FIELDMODE_TFFTOBFF          1480
+#define IDC_FIELDMODE_BFFTOTFF          1481
 #define IDS_HELP_CONTENTS               1536
 #define IDS_HELP_CHANGELOG              1537
 #define IDS_HELP_RELEASENOTES           1538
@@ -1380,6 +1399,9 @@
 #define ID_DISPLAY_6                    40505
 #define ID_DISPLAY_ZOOM_12              40506
 #define ID_DISPLAY_ZOOM_6               40507
+#define ID_OPTIONS_KEYBOARDSHORTCUTS    40508
+#define ID_ALWAYSONTOP                  40509
+#define ID_SYSTEM_ALWAYSONTOP           40510
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1434,9 +1456,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        284
-#define _APS_NEXT_COMMAND_VALUE         40508
-#define _APS_NEXT_CONTROL_VALUE         1469
+#define _APS_NEXT_RESOURCE_VALUE        288
+#define _APS_NEXT_COMMAND_VALUE         40511
+#define _APS_NEXT_CONTROL_VALUE         1482
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

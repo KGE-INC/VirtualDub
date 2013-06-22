@@ -86,6 +86,7 @@ public:
 	void SetVideoOutput(IVDMediaOutputStream *out);
 
 	void Init();
+	void PreShutdown();
 	void Shutdown();
 
 	bool IsCompleted() const;

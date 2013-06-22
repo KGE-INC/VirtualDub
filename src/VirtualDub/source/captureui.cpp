@@ -4022,7 +4022,7 @@ static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM 
 		{ RV('MJPG'),	16, "MJPG\tMotion JPEG" },
 		{ RV('dmb1'),	16, "dmb1\tMatrox MJPEG" },
 		{ RV('HDYC'),	16, "HDYC\tYUV 4:2:2 interleaved (Rec. 701)" },
-		{ RV('v210'),	20, "HDYC\tYUV 4:2:2 interleaved (10-bit)" },
+		{ RV('v210'),	20, "v210\tYUV 4:2:2 interleaved (10-bit)" },
 	};
 #undef RV
 

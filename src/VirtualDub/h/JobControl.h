@@ -77,8 +77,12 @@ public:
 
 	bool IsLocal(const VDJob *job) const;
 
-	bool IsRunInProgress() {
+	bool IsRunInProgress() const {
 		return mbRunning;
+	}
+
+	bool IsRunAllInProgress() const {
+		return mbRunAll;
 	}
 
 	VDJobQueueStatus GetQueueStatus() const;

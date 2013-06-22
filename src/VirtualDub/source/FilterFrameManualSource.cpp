@@ -16,9 +16,11 @@
 //	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "stdafx.h"
+#include <vd2/Kasumi/pixmaputils.h>
 #include "FilterFrame.h"
 #include "FilterFrameManualSource.h"
 #include "FilterFrameRequest.h"
+#include "FilterFrameAllocatorManager.h"
 
 class VDFilterFrameRequest;
 
@@ -29,8 +31,26 @@ VDFilterFrameManualSource::VDFilterFrameManualSource() {
 VDFilterFrameManualSource::~VDFilterFrameManualSource() {
 }
 
-void VDFilterFrameManualSource::SetAllocator(VDFilterFrameAllocator *pAllocator) {
-	mpAllocator = pAllocator;
+void *VDFilterFrameManualSource::AsInterface(uint32 iid) {
+	return NULL;
+}
+
+void VDFilterFrameManualSource::SetOutputLayout(const VDPixmapLayout& layout) {
+	mLayout = layout;
+	mAllocator.Clear();
+
+	uint32 size = VDPixmapLayoutGetMinSize(layout);
+
+	size = (size + 15) & ~15U;
+	mAllocator.AddSizeRequirement(size);
+}
+
+VDFilterFrameAllocatorProxy *VDFilterFrameManualSource::GetOutputAllocatorProxy() {
+	return &mAllocator;
+}
+
+void VDFilterFrameManualSource::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev) {
+	mgr->AddAllocatorProxy(&mAllocator);
 }
 
 bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req) {
@@ -52,6 +72,9 @@ bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable,
 		if (mFrameCache.Lookup(outputFrame, ~buf)) {
 			r->SetResultBuffer(buf);
 			cached = true;
+		} else {
+			if (!InitNewRequest(r, outputFrame, writable))
+				return false;
 		}
 	}
 
@@ -85,6 +108,10 @@ sint64 VDFilterFrameManualSource::GetNearestUniqueFrame(sint64 outputFrame) {
 	return outputFrame;
 }
 
+void VDFilterFrameManualSource::InvalidateAllCachedFrames() {
+	mFrameCache.InvalidateAllFrames();
+}
+
 bool VDFilterFrameManualSource::PeekNextRequestFrame(VDPosition& pos) {
 	vdrefptr<VDFilterFrameRequest> req;
 	if (!mFrameQueueWaiting.PeekNextRequest(~req))
@@ -96,8 +123,15 @@ bool VDFilterFrameManualSource::PeekNextRequestFrame(VDPosition& pos) {
 
 bool VDFilterFrameManualSource::GetNextRequest(VDFilterFrameRequest **ppReq) {
 	vdrefptr<VDFilterFrameRequest> req;
-	if (!mFrameQueueWaiting.GetNextRequest(~req))
-		return false;
+	for(;;) {
+		if (!mFrameQueueWaiting.GetNextRequest(~req))
+			return false;
+
+		if (req->IsActive())
+			break;
+
+		req->MarkComplete(false);
+	}
 
 	mFrameQueueInProgress.Add(req);
 
@@ -107,7 +141,7 @@ bool VDFilterFrameManualSource::GetNextRequest(VDFilterFrameRequest **ppReq) {
 
 bool VDFilterFrameManualSource::AllocateRequestBuffer(VDFilterFrameRequest *req) {
 	vdrefptr<VDFilterFrameBuffer> buf;
-	if (!mpAllocator->Allocate(~buf))
+	if (!mAllocator.Allocate(~buf))
 		return false;
 
 	req->SetResultBuffer(buf);
@@ -123,3 +157,9 @@ void VDFilterFrameManualSource::CompleteRequest(VDFilterFrameRequest *req, bool 
 
 	VDVERIFY(mFrameQueueInProgress.Remove(req));
 }
+
+bool VDFilterFrameManualSource::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {
+	return true;
+}
+
+

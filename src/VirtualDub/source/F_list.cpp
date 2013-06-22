@@ -33,7 +33,10 @@ extern const VDXFilterDefinition
 	filterDef_interlace,
 	filterDef_ivtc,
 	filterDef_fieldswap,
-	filterDef_interpolate;
+	filterDef_interpolate,
+	filterDef_curves,
+	filterDef_fielddelay,
+	filterDef_test;
 
 #ifdef _M_IX86
 extern const VDXFilterDefinition
@@ -103,10 +106,13 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_interlace,
 	&filterDef_ivtc,
 	&filterDef_interpolate,
+	&filterDef_fielddelay,
+//	&filterDef_curves,
 
 #ifdef _DEBUG
 	&filterDef_debugerror,
 	&filterDef_showinfo,
+	&filterDef_test,
 #endif
 
 #ifdef _M_IX86

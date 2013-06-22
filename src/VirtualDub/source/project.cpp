@@ -779,7 +779,7 @@ bool VDProject::UpdateFrame() {
 				}
 			}
 
-			if (!mpVideoFrameSource || !mpVideoFrameSource->Run())
+			if (!mpVideoFrameSource || !mpVideoFrameSource->RunRequests())
 				break;
 
 			workCompleted = true;

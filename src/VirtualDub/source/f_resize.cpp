@@ -1073,6 +1073,7 @@ INT_PTR VDVF1ResizeDlg::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			case IDC_FRAME_AR_LETTERBOX:
 			case IDC_LETTERBOX:
 			case IDC_ALIGNMENT_1:
+			case IDC_ALIGNMENT_2:
 			case IDC_ALIGNMENT_4:
 			case IDC_ALIGNMENT_8:
 			case IDC_ALIGNMENT_16:
@@ -1178,6 +1179,7 @@ uint32 VDVF1ResizeDlg::ExchangeWithDialog(bool write) {
 	ex.ExchangeOption(IDC_FRAME_AR_CROP, mNewConfig.mFrameMode, VDResizeFilterData::kFrameModeARCrop);
 	ex.ExchangeOption(IDC_FRAME_AR_LETTERBOX, mNewConfig.mFrameMode, VDResizeFilterData::kFrameModeARLetterbox);
 	ex.ExchangeOption(IDC_ALIGNMENT_1, mNewConfig.mAlignment, 1);
+	ex.ExchangeOption(IDC_ALIGNMENT_2, mNewConfig.mAlignment, 2);
 	ex.ExchangeOption(IDC_ALIGNMENT_4, mNewConfig.mAlignment, 4);
 	ex.ExchangeOption(IDC_ALIGNMENT_8, mNewConfig.mAlignment, 8);
 	ex.ExchangeOption(IDC_ALIGNMENT_16, mNewConfig.mAlignment, 16);

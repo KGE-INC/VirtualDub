@@ -910,6 +910,9 @@ protected:
 	IVDClippingControl	*mpClipCtrl;
 	IVDPositionControl	*mpPosCtrl;
 
+	int mMinSizeW;
+	int mMinSizeH;
+
 	double			mFilterFramesToSourceFrames;
 	double			mSourceFramesToFilterFrames;
 
@@ -922,6 +925,8 @@ VDFilterClippingDialog::VDFilterClippingDialog(FilterInstance *pFiltInst, List *
 	: VDDialogFrameW32(IDD_FILTER_CLIPPING)
 	, mpFilterList(pFilterList)
 	, mpFilterInst(pFiltInst)
+	, mMinSizeW(0)
+	, mMinSizeH(0)
 {
 }
 
@@ -1006,16 +1011,10 @@ bool VDFilterClippingDialog::OnLoaded()  {
 
 	GetWindowRect(mhdlg, &rw);
 	GetWindowRect(hwndClipping, &rc);
-	const int origH = (rw.bottom - rw.top);
+	const int origW = rw.right - rw.left;
+	const int origH = rw.bottom - rw.top;
 	int padW = (rw.right - rw.left) - (rc.right - rc.left);
 	int padH = origH - (rc.bottom - rc.top);
-
-	mpClipCtrl->AutoSize(padW, padH);
-
-	GetWindowRect(hwndClipping, &rc);
-	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
-
-	const int newH = (rc.bottom - rc.top) + padH;
 
 	mResizer.Init(mhdlg);
 	mResizer.Add(IDOK, VDDialogResizerW32::kBR);
@@ -1023,11 +1022,25 @@ bool VDFilterClippingDialog::OnLoaded()  {
 	mResizer.Add(IDC_STATIC_YCCCROP, VDDialogResizerW32::kBL);
 	mResizer.Add(IDC_CROP_PRECISE, VDDialogResizerW32::kBL);
 	mResizer.Add(IDC_CROP_FAST, VDDialogResizerW32::kBL);
+	mResizer.Add(IDC_BORDERS, VDDialogResizerW32::kMC);
 
-	SetWindowPos(mhdlg, NULL, 0, 0, (rc.right - rc.left) + padW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+	mpClipCtrl->AutoSize(padW, padH);
+
+	GetWindowRect(hwndClipping, &rc);
+	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
+
+	int newH = std::max<int>(origH, (rc.bottom - rc.top) + padH);
+	int newW = std::max<int>(origW, (rc.right - rc.left) + padW);
+
+	SetWindowPos(hwndClipping, NULL, 0, 0, newW - padW, newH - padH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+	if (origW != newW || origH != newH)
+		SetWindowPos(mhdlg, NULL, 0, 0, newW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+
+	mMinSizeW = newW;
+	mMinSizeH = newH;
+
 	SendMessage(mhdlg, DM_REPOSITION, 0, 0);
-
-	mResizer.Relayout();
 
 	// render first frame
 	UpdateFrame(mpPosCtrl->GetPosition());
@@ -1124,6 +1137,22 @@ INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 					return SendMessage(hwndClipping, WM_MOUSEWHEEL, wParam, lParam);
 			}
 			break;
+
+		case WM_SIZE:
+			mResizer.Relayout();
+			return 0;
+
+		case WM_GETMINMAXINFO:
+			{
+				MINMAXINFO& mmi = *(MINMAXINFO *)lParam;
+
+				if (mmi.ptMinTrackSize.x < mMinSizeW)
+					mmi.ptMinTrackSize.x = mMinSizeW;
+
+				if (mmi.ptMinTrackSize.y < mMinSizeH)
+					mmi.ptMinTrackSize.y = mMinSizeH;
+			}
+			return TRUE;
     }
 
 	return VDDialogFrameW32::DlgProc(message, wParam, lParam);
@@ -1143,7 +1172,7 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 
 				if (src->CreateRequest(pos, false, ~req)) {
 					do {
-						mpFrameSource->Run();
+						mpFrameSource->RunRequests();
 						mFilterSys.RunToCompletion();
 					} while(!req->IsCompleted());
 

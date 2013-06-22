@@ -174,6 +174,7 @@ void VDThreadedVideoCompressor::Shutdown() {
 		}
 
 		delete[] mpThreads;
+		mpThreads = NULL;
 	}
 
 	FlushQueues();

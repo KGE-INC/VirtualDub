@@ -1,6 +1,38 @@
 VirtualDub change log
+Build %build% (1.9.2, experimental): [%date%]
+   [features added]
+   * UI: Added support for configuring keyboard shortcuts in edit mode.
+   * UI: Added Always on Top to window menu.
+   * Filters: Filter cropping dialog is now resizable.
+   * Filters: Added align-to-2 option in resize filter.
+   * Filters: ELA and Yadif modes of deinterlace filter are now optimized for CPUs that have MMX but lack SSE2.
+   * Filters: The filter preview window now has the same context menu size and filter options as the main panes.
+   * Filters: Frame conversions at the start of a video filter are now cached.
+   * Filters: Fixed rare crash when downsizing 8-bit YCbCr images with resize filter.
+   * Filters: Improved frame allocator assignment for lower memory usage.
+   * Filters: Added field delay filter.
+   * Render: Added an option to warn if no audio is written on a save operation.
+   * Render: Fixed several blitter bugs, particularly those involving 4:1:1 sampling.
 
-Build %build% (1.9.1, experimental): [%date%]
+   [bugs fixed]
+   * Preferences: Audio buffers value was set incorrectly exiting the dialog. The value show when the dialog appears was correct.
+   * Filters: Fixed positioning issues in the filter cropping dialog for small frame sizes.
+   * Filters: Filters now receive finite mFrameCount values in render mode instead of unspecified (-1).
+   * Filters: Yadif mode of deinterlace filter was not caching internal frames efficiently.
+   * Filters: Fixed crash in certain paths when a filter frame request fails.
+   * Filters: Fixed occasional crashes with aligned scanline requests, particularly with cropping.
+   * Filters: Fixed artifacts in resize filter on right border with certain filter+ratio combos, pre-SSE4.1 CPUs, and YCbCr formats.
+   * Capture: Custom video format had HDYC listed twice instead of HDYC and v210.
+   * Images: Fixed hang in PNG encoder.
+   * Render: Added workaround for random hang when aborting render while using XviD with threaded compression enabled.
+   * AMD64: Fixed crash in resampler with certain filter/ratio combinations.
+
+   [regressions fixed]
+   * UI: Timeline scrubbing is more responsive again when dealing with files that have long delta frame runs (since 1.9.1).
+   * Render: Fixed hang if there is a string of duplicate frames longer than the video pipeline (since 1.9.1).
+   * Filters: Fixed some caching and frame numbering issues with filters that have non-zero lag (since 1.9.1).
+
+Build 31536 (1.9.1, experimental): [March 28, 2009]
    [features added]
    * Render: Audio buffer size is now tunable in Options > Preferences.
    * Render: Blitters are now cached for additional speed.
@@ -19,7 +51,7 @@ Build %build% (1.9.1, experimental): [%date%]
    * PluginAPI: Video filters can request aligned scanlines.
    * PluginAPI: Video filters can initiate direct bypass for frames during smart rendering.
    * Capture: Fixed wrong area captured by screen capture driver with OpenGL acceleration enabled, rescale on, and mouse pointer capture enabled.
-   * Display: Added options for zooming to 12% and 6%.
+   * Display: Added options for zooming to 12%% and 6%%.
    * UI: Added Ctrl+Shift+F7 as a shortcut for batching Save AVI.
    * UI: Preview no longer sticks if you seek to the end of the timeline.
    * UI: Curve editor position now updates at end of timeline.
@@ -86,6 +118,17 @@ Build 30586 (1.9.0, experimental): [December 21, 2008]
    * DDraw: Workaround for rare DWMAPI.DLL->USER32.DLL load errors on XP.
    * Display: Fixed bug where panes didn't redraw when disabled during a render operation.
    * Display: Fixed disabled panes or panes showing end frames drawing bluish colors rather than the correct Windows background color.
+
+Build %build% (1.8.8, stable): [January 4, 2009]
+   [bugs fixed]
+   * Command line: MPEG parser status dialog ate Ctrl+C/Break.
+   * Command line: Ctrl+C/Break while running the job queue (/r) now skips the rest of the queue.
+   * PluginAPI: DetectBySignature() now receives correct file size instead of zero.
+   * PluginAPI: Fixed frame tracking bug in default video decoder object that caused intermittent failures.
+
+   [regressions fixed]
+   * JobControl: Command-line run (/r) was broken by retry logic (since 1.8.7).
+   * Filters: Blur and Blur More no longer write broken config lines into scripts (since 1.8.0).
 
 Build 30080 (1.8.7, stable): [December 21, 2008]
    [bugs fixed]

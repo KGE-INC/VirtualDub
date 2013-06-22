@@ -120,6 +120,9 @@ static int perspective_init(FilterActivation *fa, const FilterFunctions *ff) {
 	mfd->src[2].set(-1, +1);
 	mfd->src[3].set(+1, +1);
 
+	mfd->new_x = 320;
+	mfd->new_y = 240;
+
 	return 0;
 }
 

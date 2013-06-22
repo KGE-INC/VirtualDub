@@ -30,6 +30,7 @@
 #include <vd2/Dita/controls.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/w32control.h>
+#include <vd2/Dita/w32accel.h>
 #include <vd2/Riza/display.h>
 #include "projectui.h"
 #include "resource.h"
@@ -53,6 +54,7 @@
 #include "mrulist.h"
 #include "InputFile.h"
 #include "VideoWindow.h"
+#include "AccelEditDialog.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -223,12 +225,141 @@ UINT iMainMenuHelpTranslator[]={
 	NULL,NULL,
 };
 
-extern const unsigned char fht_tab[];
 namespace {
-	static const wchar_t g_szWAVFileFilters[]=
-			L"Windows audio (*.wav)\0"					L"*.wav\0"
-			L"All files (*.*)\0"						L"*.*\0"
-			;
+	static const VDAccelToCommandEntry kCommandList[]={
+		{ ID_FILE_QUIT,					"File.Quit" },
+		{ ID_FILE_OPENAVI,				"File.Open" },
+		{ ID_FILE_REOPEN,				"File.ReOpen" },
+		{ ID_FILE_APPENDSEGMENT,		"File.Append" },
+		{ ID_FILE_PREVIEWINPUT,			"File.PreviewInput" },
+		{ ID_FILE_PREVIEWOUTPUT,		"File.PreviewOutput" },
+		{ ID_FILE_PREVIEWAVI,			"File.Preview" },
+		{ ID_FILE_RUNVIDEOANALYSISPASS,	"File.RunVideoAnalysisPass" },
+		{ ID_FILE_SAVEAVI,				"File.SaveAVI" },
+		{ ID_FILE_SAVECOMPATIBLEAVI,	"File.SaveCompatibleAVI" },
+		{ ID_FILE_SAVEIMAGESEQ,			"File.SaveImageSequence" },
+		{ ID_FILE_SAVESEGMENTEDAVI,		"File.SaveSegmentedAVI" },
+		{ ID_FILE_SAVEFILMSTRIP,		"File.SaveFilmstrip" },
+		{ ID_FILE_SAVEANIMATEDGIF,		"File.SaveAnimatedGIF" },
+		{ ID_FILE_SAVERAWAUDIO,			"File.SaveRawAudio" },
+		{ ID_FILE_SAVEWAV,				"File.SaveWAV" },
+		{ ID_FILE_CLOSEAVI,				"File.Close" },
+		{ ID_FILE_STARTSERVER,			"App.SwitchToServerMode" },
+		{ ID_FILE_CAPTUREAVI,			"App.SwitchToCaptureMode" },
+		{ ID_FILE_SAVECONFIGURATION,	"File.SaveConfiguration" },
+		{ ID_FILE_LOADCONFIGURATION,	"File.LoadConfiguration" },
+		{ ID_FILE_RUNSCRIPT,			"App.RunScript" },
+		{ ID_FILE_JOBCONTROL,			"Jobs.OpenJobControlDialog" },
+		{ ID_FILE_AVIINFO,				"File.Information" },
+		{ ID_FILE_SETTEXTINFO,			"File.SetTextInfo" },
+		{ ID_QUEUEBATCHOPERATION_SAVEASAVI,	"Jobs.SaveAsAVI" },
+		{ ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI,	"Jobs.SaveAsOldAVI" },
+		{ ID_QUEUEBATCHOPERATION_SAVESEGMENTEDAVI,	"Jobs.SaveSegmentedAVI" },
+		{ ID_QUEUEBATCHOPERATION_SAVEIMAGESEQUENCE,	"Jobs.SaveImageSequence" },
+		{ ID_QUEUEBATCHOPERATION_RUNVIDEOANALYSISPASS,	"Jobs.RunVideoAnalysisPass" },
+		{ ID_QUEUEBATCHOPERATION_SAVEWAV,	"Jobs.SaveWAV" },
+		{ ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO,	"Jobs.SaveRawAudio" },
+		{ ID_FILE_BATCHWIZARD,			"Jobs.ShowBatchWizardDialog" },
+		{ ID_EDIT_UNDO,					"Edit.Undo" },
+		{ ID_EDIT_REDO,					"Edit.Redo" },
+		{ ID_EDIT_CUT,					"Edit.Cut" },
+		{ ID_EDIT_COPY,					"Edit.Copy" },
+		{ ID_EDIT_PASTE,				"Edit.Paste" },
+		{ ID_EDIT_DELETE,				"Edit.Delete" },
+		{ ID_EDIT_CLEAR,				"Edit.Clear" },
+		{ ID_EDIT_SELECTALL,			"Edit.SelectAll" },
+		{ ID_EDIT_CROPTOSELECTION,		"Edit.CropToSelection" },
+		{ ID_EDIT_RESET,				"Edit.Reset" },
+		{ ID_EDIT_JUMPTO,				"Edit.ShowJumpToLocationDialog" },
+		{ ID_VIDEO_SEEK_START,			"Edit.GoToStart" },
+		{ ID_VIDEO_SEEK_END,			"Edit.GoToEnd" },
+		{ ID_VIDEO_SEEK_PREV,			"Edit.GoToPrevFrame" },
+		{ ID_VIDEO_SEEK_NEXT,			"Edit.GoToNextFrame" },
+		{ ID_VIDEO_SEEK_PREVONESEC,		"Edit.GoToPrevUnit" },
+		{ ID_VIDEO_SEEK_NEXTONESEC,		"Edit.GoToNextUnit" },
+		{ ID_EDIT_PREVRANGE,			"Edit.GoToPrevRange" },
+		{ ID_EDIT_NEXTRANGE,			"Edit.GoToNextRange" },
+		{ ID_VIDEO_SEEK_KEYPREV,		"Edit.GoToPrevKey" },
+		{ ID_VIDEO_SEEK_KEYNEXT,		"Edit.GoToNextKey" },
+		{ ID_VIDEO_SEEK_SELSTART,		"Edit.GoToSelectionStart" },
+		{ ID_VIDEO_SEEK_SELEND,			"Edit.GoToSelectionEnd" },
+		{ ID_VIDEO_SEEK_PREVDROP,		"Edit.GoToPrevDrop" },
+		{ ID_VIDEO_SEEK_NEXTDROP,		"Edit.GoToNextDrop" },
+		{ ID_VIDEO_SEEK_PREVSCENE,		"Edit.GoToPrevScene" },
+		{ ID_VIDEO_SEEK_NEXTSCENE,		"Edit.GoToNextScene" },
+		{ ID_EDIT_MASK,					"Edit.MaskSelection" },
+		{ ID_EDIT_UNMASK,				"Edit.UnmaskSelection" },
+		{ ID_EDIT_SETSELSTART,			"Edit.SetSelectionStart" },
+		{ ID_EDIT_SETSELEND,			"Edit.SetSelectionEnd" },
+		{ ID_VIEW_POSITIONCONTROL,		"View.TogglePositionControl" },
+		{ ID_VIEW_STATUSBAR,			"View.ToggleStatusBar" },
+		{ ID_VIEW_CURVEEDITOR,			"View.ToggleCurveEditor" },
+		{ ID_VIEW_AUDIODISPLAY,			"View.ToggleAudioDisplay" },
+		{ ID_OPTIONS_SHOWLOG,			"View.ShowLogWindow" },
+		{ ID_OPTIONS_SHOWPROFILER,		"View.ShowProfilerWindow" },
+		{ ID_VIDEO_SCANFORERRORS,		"Video.ScanForErrors" },
+		{ ID_VIDEO_FILTERS,				"Video.ShowFiltersDialog" },
+		{ ID_VIDEO_FRAMERATE,			"Video.ShowFrameRateDialog" },
+		{ ID_VIDEO_COLORDEPTH,			"Video.ShowFormatDialog" },
+		{ ID_VIDEO_CLIPPING,			"Video.ShowRangeDialog" },
+		{ ID_VIDEO_COMPRESSION,			"Video.ShowCompressionDialog" },
+		{ ID_VIDEO_MODE_DIRECT,			"Video.SetModeDirect" },
+		{ ID_VIDEO_MODE_FASTRECOMPRESS,	"Video.SetModeFastRecompress" },
+		{ ID_VIDEO_MODE_NORMALRECOMPRESS,	"Video.SetModeRecompress" },
+		{ ID_VIDEO_MODE_FULL,			"Video.SetModeFull" },
+		{ ID_VIDEO_SMARTRENDERING,		"Video.ToggleSmartRendering" },
+		{ ID_VIDEO_PRESERVEEMPTYFRAMES,	"Video.TogglePreserveEmptyFrames" },
+		{ ID_VIDEO_COPYSOURCEFRAME,		"Video.CopySourceFrameImage" },
+		{ ID_VIDEO_COPYOUTPUTFRAME,		"Video.CopyOutputFrameImage" },
+		{ ID_VIDEO_ERRORMODE,			"Video.ShowErrorModeDialog" },
+		{ ID_AUDIO_ADVANCEDFILTERING,	"Audio.ToggleAdvancedFiltering" },
+		{ ID_AUDIO_FILTERS,				"Audio.ShowFiltersDialog" },
+		{ ID_AUDIO_CONVERSION,			"Audio.ShowConversionDialog" },
+		{ ID_AUDIO_INTERLEAVE,			"Audio.ShowInterleaveDialog" },
+		{ ID_AUDIO_COMPRESSION,			"Audio.ShowCompressionDialog" },
+		{ ID_AUDIO_VOLUME,				"Audio.ShowVolumeDialog" },
+		{ ID_AUDIO_SOURCE_NONE,			"Audio.SetSourceNone" },
+		{ ID_AUDIO_SOURCE_WAV,			"Audio.ShowSourceFileDialog" },
+		{ ID_AUDIO_MODE_DIRECT,			"Audio.SetModeDirect" },
+		{ ID_AUDIO_MODE_FULL,			"Audio.SetModeFull" },
+		{ ID_AUDIO_ERRORMODE,			"Audio.ShowErrorModeDialog" },
+		{ ID_OPTIONS_PERFORMANCE,		"Options.ShowPerformanceDialog" },
+		{ ID_OPTIONS_DYNAMICCOMPILATION,	"Options.ShowJITDialog" },
+		{ ID_OPTIONS_PREFERENCES,		"Options.ShowPreferencesDialog" },
+		{ ID_OPTIONS_KEYBOARDSHORTCUTS,	"Options.ShowShortcutsDialog" },
+		{ ID_OPTIONS_DISPLAYINPUTVIDEO,	"View.ToggleInputPane" },
+		{ ID_OPTIONS_DISPLAYOUTPUTVIDEO,	"View.ToggleOutputPane" },
+		{ ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT,	"View.ToggleDecompressedOutput" },
+		{ ID_OPTIONS_SHOWSTATUSWINDOW,	"View.ToggleStatusWindow" },
+		{ ID_OPTIONS_VERTICALDISPLAY,	"View.ToggleVerticalDisplay" },
+		{ ID_OPTIONS_SYNCTOAUDIO,		"Options.ToggleSyncToAudio" },
+		{ ID_OPTIONS_ENABLEDIRECTDRAW,	"Options.ToggleVideoOverlay" },
+		{ ID_OPTIONS_DROPFRAMES,		"Options.ToggleFrameDropping" },
+		{ ID_OPTIONS_SWAPPANES,			"View.ToggleSwapPanes" },
+		{ ID_OPTIONS_PREVIEWPROGRESSIVE,	"View.SetPreviewProgressive" },
+		{ ID_OPTIONS_PREVIEWWEAVETFF,	"View.SetPreviewWeaveTFF" },
+		{ ID_OPTIONS_PREVIEWWEAVEBFF,	"View.SetPreviewWeaveBFF" },
+		{ ID_OPTIONS_PREVIEWBOBTFF,		"View.SetPreviewBobTFF" },
+		{ ID_OPTIONS_PREVIEWBOBBFF,		"View.SetPreviewBobBFF" },
+		{ ID_OPTIONS_PREVIEWNONTFF,		"View.SetPreviewFieldsTFF" },
+		{ ID_OPTIONS_PREVIEWNONBFF,		"View.SetPreviewFieldsBFF" },
+		{ ID_TOOLS_HEXVIEWER,			"Tools.OpenHexEditor" },
+		{ ID_TOOLS_CREATESPARSEAVI,		"Tools.CreateSparseAVI" },
+		{ ID_TOOLS_EXPANDSPARSEAVI,		"Tools.ExpandSparseAVI" },
+		{ ID_TOOLS_BENCHMARKRESAMPLER,	"Tools.BenchmarkResampler" },
+		{ ID_TOOLS_CREATEPALETTIZEDAVI,	"Tools.CreatePalettizedAVI" },
+		{ ID_TOOLS_CREATETESTVIDEO,		"Tools.CreateTestVideo" },
+		{ ID_HELP_LICENSE,				"Help.ShowLicense" },
+		{ ID_HELP_CONTENTS,				"Help.ShowContents" },
+		{ ID_HELP_CHANGELOG,			"Help.ShowChangeLog" },
+		{ ID_HELP_RELEASENOTES,			"Help.ShowReleaseNotes" },
+		{ ID_HELP_ABOUT,				"Help.ShowAbout" },
+		{ ID_HELP_ONLINE_HOME,			"Help.ShowOnlineHome" },
+		{ ID_HELP_ONLINE_FAQ,			"Help.ShowOnlineFAQ" },
+		{ ID_HELP_ONLINE_KB,			"Help.ShowOnlineKB" },
+		{ ID_DUBINPROGRESS_ABORTFAST,	"Render.AbortWithoutDialog" },
+		{ ID_DUBINPROGRESS_ABORT,		"Render.Abort" },
+	};
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -326,10 +457,33 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 	mMRUListPosition = GetMenuItemCount(GetSubMenu(mhMenuNormal, 0)) - 2;
 
 	// Load accelerators.
-	if (!(mhAccelMain	= LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_IDLE_KEYS)))) {
-		Detach();
-		return false;
+	{
+		HACCEL haccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_IDLE_KEYS));
+
+		if (haccel)
+			VDUIExtractAcceleratorTableW32(mAccelTableDefault, haccel, kCommandList, sizeof(kCommandList)/sizeof(kCommandList[0]));
+
+		VDRegistryAppKey accelKey("Accelerators\\Main", false);
+
+		bool success = false;
+
+		if (accelKey.isReady()) {
+			try {
+				mAccelTableDef.Load(accelKey, kCommandList, sizeof(kCommandList)/sizeof(kCommandList[0]));
+				success = true;
+			} catch(const MyError&) {
+				// eat the error
+			}
+		}
+
+		if (!success)
+			mAccelTableDef = mAccelTableDefault;
+
+		VDUIUpdateMenuAcceleratorsW32(mhMenuNormal, mAccelTableDef);
 	}
+
+	mhAccelMain = VDUIBuildAcceleratorTableW32(mAccelTableDef);
+
 	pFrame->SetAccelTable(mhAccelMain);
 
 	if (!(mhAccelDub	= LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_DUB_KEYS)))) {
@@ -641,7 +795,12 @@ void VDProjectUI::SaveWAVAsk(bool batchMode) {
 	if (!inputAudio)
 		throw MyError("No input audio stream to extract.");
 
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_WAVAudioOut, mhwnd, L"Save WAV File", g_szWAVFileFilters, g_prefs.main.fAttachExtension ? L"wav" : NULL));
+	static const wchar_t kWAVFileFilters[]=
+			L"Windows audio (*.wav)\0"					L"*.wav\0"
+			L"All files (*.*)\0"						L"*.*\0"
+			;
+
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_WAVAudioOut, mhwnd, L"Save WAV File", kWAVFileFilters, g_prefs.main.fAttachExtension ? L"wav" : NULL));
 
 	if (!filename.empty()) {
 		if (batchMode)
@@ -1321,11 +1480,37 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_OPTIONS_DYNAMICCOMPILATION:
 			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERF_DYNAMIC), (HWND)mhwnd, DynamicCompileOptionsDlgProc);
 			break;
+
 		case ID_OPTIONS_PREFERENCES:
 			extern void VDShowPreferencesDialog(VDGUIHandle h);
 			VDShowPreferencesDialog((VDGUIHandle)mhwnd);
 			VDCPUTest();
 			break;
+
+		case ID_OPTIONS_KEYBOARDSHORTCUTS:
+			if (VDShowDialogEditAccelerators((VDGUIHandle)mhwnd, kCommandList, sizeof(kCommandList)/sizeof(kCommandList[0]), mAccelTableDef, mAccelTableDefault)) {
+				HACCEL acc = VDUIBuildAcceleratorTableW32(mAccelTableDef);
+				VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+				pFrame->SetAccelTable(acc);
+
+				if (mhAccelMain)
+					DestroyAcceleratorTable(mhAccelMain);
+
+				VDUIUpdateMenuAcceleratorsW32(mhMenuNormal, mAccelTableDef);
+				DrawMenuBar((HWND)mhwnd);
+
+				mhAccelMain = acc;
+
+				VDRegistryAppKey accelKey("Accelerators\\Main", true);
+
+				try {
+					mAccelTableDef.Save(accelKey);
+				} catch(const MyError&) {
+					// eat the error
+				}
+			}
+			break;
+
 		case ID_OPTIONS_DISPLAYINPUTVIDEO:
 			if (mpDubStatus)
 				mpDubStatus->ToggleFrame(false);
@@ -1586,8 +1771,23 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	if (!redoAction)
 		redoAction = L"";
 
-	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_UNDO, VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Undo), 1, &undoAction).c_str());
-	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_REDO, VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Redo), 1, &redoAction).c_str());
+	const VDStringW undoPrevCmd(VDGetMenuItemTextByCommandW32(hMenu, ID_EDIT_UNDO));
+	const VDStringW redoPrevCmd(VDGetMenuItemTextByCommandW32(hMenu, ID_EDIT_REDO));
+
+	VDStringW undoCmd(VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Undo), 1, &undoAction));
+	VDStringW redoCmd(VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Redo), 1, &redoAction));
+
+	VDStringW::size_type undoAccel = undoPrevCmd.find('\t');
+	VDStringW::size_type redoAccel = redoPrevCmd.find('\t');
+
+	if (undoAccel != VDStringW::npos)
+		undoCmd.append(undoPrevCmd, undoAccel, VDStringW::npos);
+
+	if (redoAccel != VDStringW::npos)
+		redoCmd.append(redoPrevCmd, redoAccel, VDStringW::npos);
+
+	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_UNDO, undoCmd.c_str());
+	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_REDO, redoCmd.c_str());
 
 	VDEnableMenuItemW32(hMenu, ID_EDIT_SELECTALL			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_START			, bSourceFileExists);

@@ -41,15 +41,23 @@ void VDFilterFrameVideoSource::Init(IVDVideoSource *vs, const VDPixmapLayout& la
 	mpVS = vs;
 	mpSS = vs->asStream();
 	mDecodePadding = vs->streamGetDecodePadding();
-	mLayout = layout;
+
+	SetOutputLayout(layout);
 }
 
-bool VDFilterFrameVideoSource::Run() {
+bool VDFilterFrameVideoSource::RunRequests() {
 	if (!mpVS->streamOwn(this)) {
 		mpVS->streamBegin(false, true);
 	}
 
 	try {
+		if (mpRequest && !mpRequest->IsActive()) {
+			mpRequest->MarkComplete(false);
+			CompleteRequest(mpRequest, false);
+			mpRequest->Release();
+			mpRequest = NULL;
+		}
+
 		if (!mpRequest) {
 			if (!GetNextRequest(&mpRequest))
 				return false;

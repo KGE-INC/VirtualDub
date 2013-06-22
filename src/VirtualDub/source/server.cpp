@@ -612,7 +612,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 		filters.RequestFrame(pos, ~creq);
 
 		while(!creq->IsCompleted()) {
-			mpVideoFrameSource->Run();
+			mpVideoFrameSource->RunRequests();
 			filters.RunToCompletion();
 		}
 

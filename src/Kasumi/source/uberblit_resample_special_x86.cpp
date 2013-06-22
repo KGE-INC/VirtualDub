@@ -25,11 +25,11 @@ void VDPixmapGenResampleCol_d2_pnqrtr_lin_u8_ISSE::Compute(void *dst0, sint32 y)
 }
 
 void VDPixmapGenResampleCol_d4_pn38_lin_u8_ISSE::Compute(void *dst0, sint32 y) {
-	sint32 y2 = (y - 2) >> 1;
+	sint32 y2 = (y - 2) >> 2;
 	const uint8 *src[2] = {
 		(const uint8 *)mpSrc->GetRow(y2, mSrcIndex),
 		(const uint8 *)mpSrc->GetRow(y2+1, mSrcIndex),
 	};
 
-	nsVDPixmapSpanUtils::vert_expand4x_centered_ISSE((uint8 *)dst0, src, mWidth, y << 6);
+	nsVDPixmapSpanUtils::vert_expand4x_centered_ISSE((uint8 *)dst0, src, mWidth, (y - 2) << 6);
 }

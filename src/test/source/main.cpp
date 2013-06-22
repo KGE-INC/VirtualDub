@@ -4,6 +4,7 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/text.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/bitmath.h>
 
 #include "test.h"
 
@@ -53,8 +54,6 @@ int wmain(int argc, wchar_t **argv) {
 	wprintf(L"VirtualDub test harness utility for " BUILD L"\n");
 	wprintf(L"Copyright (C) 2005-2008 Avery Lee. Licensed under GNU General Public License\n\n");
 
-	CPUEnableExtensions(CPUCheckForExtensions());
-
 	Tests selectedTests;
 
 	if (argc <= 1) {
@@ -91,18 +90,30 @@ next:
 		}
 	}
 
+	long exts = CPUCheckForExtensions();
 	int failedTests = 0;
-	for(Tests::const_iterator it(selectedTests.begin()), itEnd(selectedTests.end()); it!=itEnd; ++it) {
-		const Tests::value_type& ent = *it;
 
-		wprintf(L"Running test: %hs\n", ent.mpName);
+	for(;;) {
+		CPUEnableExtensions(exts);
+		wprintf(L"Setting CPU extensions: %08x\n", exts);
 
-		try {
-			ent.mpTestFn();
-		} catch(const AssertionException& e) {
-			wprintf(L"    TEST FAILED: %hs\n", e.gets());
-			++failedTests;
+		for(Tests::const_iterator it(selectedTests.begin()), itEnd(selectedTests.end()); it!=itEnd; ++it) {
+			const Tests::value_type& ent = *it;
+
+			wprintf(L"Running test: %hs\n", ent.mpName);
+
+			try {
+				ent.mpTestFn();
+			} catch(const AssertionException& e) {
+				wprintf(L"    TEST FAILED: %hs\n", e.gets());
+				++failedTests;
+			}
 		}
+
+		if (!exts)
+			break;
+
+		exts &= ~(1 << VDFindHighestSetBitFast(exts));
 	}
 
 	return failedTests;

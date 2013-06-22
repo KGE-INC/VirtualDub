@@ -172,13 +172,23 @@ bool VDFilterFrameRequest::IsSuccessful() const {
 	return mbSuccessful;
 }
 
-bool VDFilterFrameRequest::AreSourcesReady() const {
+bool VDFilterFrameRequest::AreSourcesReady(bool *anyFailed) const {
+	bool failed = false;
+
 	for(SourceRequests::const_iterator it(mSourceRequests.begin()), itEnd(mSourceRequests.end()); it != itEnd; ++it) {
 		IVDFilterFrameClientRequest *creq = *it;
 
-		if (creq && !creq->IsCompleted())
-			return false;
+		if (creq) {
+			if (!creq->IsCompleted())
+				return false;
+
+			if (!creq->IsSuccessful())
+				failed = false;
+		}
 	}
+
+	if (anyFailed)
+		*anyFailed = failed;
 
 	return true;
 }

@@ -21,7 +21,7 @@
 #include <vd2/system/refcount.h>
 #include <vd2/Kasumi/pixmap.h>
 #include "FilterInstance.h"
-#include "FilterFrameAllocator.h"
+#include "FilterFrameAllocatorProxy.h"
 #include "FilterFrameCache.h"
 #include "FilterFrameQueue.h"
 
@@ -35,8 +35,12 @@ public:
 	VDFilterFrameManualSource();
 	~VDFilterFrameManualSource();
 
-	void SetAllocator(VDFilterFrameAllocator *pAllocator);
-	void SetOutputLayout(const VDPixmapLayout& layout) { mLayout = layout; }
+	void *AsInterface(uint32 id);
+
+	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
+
+	void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev);
+	void SetOutputLayout(const VDPixmapLayout& layout);
 
 	bool CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req);
 	bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex);
@@ -44,6 +48,9 @@ public:
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 	const VDPixmapLayout& GetOutputLayout() { return mLayout; }
+	void InvalidateAllCachedFrames();
+	void Stop() {}
+	bool RunRequests() { return false; }
 
 	bool PeekNextRequestFrame(VDPosition& pos);
 	bool GetNextRequest(VDFilterFrameRequest **ppReq);
@@ -51,10 +58,12 @@ public:
 	void CompleteRequest(VDFilterFrameRequest *req, bool cache);
 
 protected:
+	virtual bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);
+
 	VDFilterFrameQueue mFrameQueueWaiting;
 	VDFilterFrameQueue mFrameQueueInProgress;
 	VDFilterFrameCache mFrameCache;
-	vdrefptr<VDFilterFrameAllocator> mpAllocator;
+	VDFilterFrameAllocatorProxy mAllocator;
 
 	VDPixmapLayout mLayout;
 };

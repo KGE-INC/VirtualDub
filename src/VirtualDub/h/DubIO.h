@@ -67,7 +67,8 @@ public:
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
 		VDAtomicInt&		threadCounter,
-		VDDubFrameRequestQueue *videoRequestQueue
+		VDDubFrameRequestQueue *videoRequestQueue,
+		bool				preview
 		);
 	~VDDubIOThread();
 
@@ -99,8 +100,10 @@ protected:
 	IDubberInternal		*mpParent;
 	MyError				mError;
 	bool				mbError;
+	bool				mbPreview;
 
 	vdfastvector<char>	mAudioBuffer;
+	uint64				mAudioSamplesWritten;
 
 	VDDubFrameRequest	mVideoRequest;
 	bool				mbVideoRequestActive;

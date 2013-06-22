@@ -1405,7 +1405,19 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\FilterFrameAllocatorManager.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterFrameAllocatorProxy.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\FilterFrameCache.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterFrameConverter.cpp"
 				>
 			</File>
 			<File
@@ -3002,7 +3014,19 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\FilterFrameAllocatorManager.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterFrameAllocatorProxy.h"
+				>
+			</File>
+			<File
 				RelativePath=".\h\FilterFrameCache.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterFrameConverter.h"
 				>
 			</File>
 			<File
@@ -3130,11 +3154,11 @@
 				>
 			</File>
 			<File
-				RelativePath="res\resource.h"
+				RelativePath="..\Riza\res\resource.h"
 				>
 			</File>
 			<File
-				RelativePath="..\Riza\res\resource.h"
+				RelativePath="res\resource.h"
 				>
 			</File>
 			<File
@@ -4076,6 +4100,10 @@
 			Name="Source - Controls"
 			>
 			<File
+				RelativePath=".\source\AccelEditDialog.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\AudioDisplay.cpp"
 				>
 				<FileConfiguration
@@ -4238,6 +4266,10 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\HotKeyExControl.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\LevelControl.cpp"
@@ -4494,6 +4526,10 @@
 			Name="Headers - Controls"
 			>
 			<File
+				RelativePath=".\h\AccelEditDialog.h"
+				>
+			</File>
+			<File
 				RelativePath="h\AudioDisplay.h"
 				>
 			</File>
@@ -4507,6 +4543,10 @@
 			</File>
 			<File
 				RelativePath="h\HexViewer.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\HotKeyExControl.h"
 				>
 			</File>
 			<File
@@ -6006,6 +6046,10 @@
 					</FileConfiguration>
 				</File>
 				<File
+					RelativePath=".\source\f_curves.cpp"
+					>
+				</File>
+				<File
 					RelativePath=".\source\f_debugerror.cpp"
 					>
 				</File>
@@ -6133,6 +6177,10 @@
 				</File>
 				<File
 					RelativePath=".\source\f_fieldbob2.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_fielddelay.cpp"
 					>
 				</File>
 				<File
@@ -6880,6 +6928,10 @@
 							PreprocessorDefinitions=""
 						/>
 					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\source\f_test.cpp"
+					>
 				</File>
 				<File
 					RelativePath="source\f_threshold.cpp"

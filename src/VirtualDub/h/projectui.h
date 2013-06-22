@@ -30,6 +30,7 @@
 #include "uiframe.h"
 #include "ParameterCurveControl.h"
 #include "AudioDisplay.h"
+#include "AccelEditDialog.h"
 
 class IVDPositionControl;
 class IVDUIWindow;
@@ -199,6 +200,9 @@ protected:
 
 	vdrefptr<IVDUIWindow>	mpUIAudioSplitBar;
 	vdrefptr<IVDUIWindow>	mpUIAudioDisplay;
+
+	VDAccelTableDefinition	mAccelTableDef;
+	VDAccelTableDefinition	mAccelTableDefault;
 
 	VDDelegate mCurveUpdatedDelegate;
 	VDDelegate mCurveStatusUpdatedDelegate;

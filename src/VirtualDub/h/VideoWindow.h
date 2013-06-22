@@ -20,6 +20,7 @@ public:
 	virtual void SetChild(HWND hwnd) = 0;
 	virtual void SetDisplay(IVDVideoDisplay *) = 0;
 	virtual void SetSourcePAR(const VDFraction& fr) = 0;
+	virtual void SetResizeParentEnabled(bool enabled) = 0;
 };
 
 IVDVideoWindow *VDGetIVideoWindow(HWND hwnd);
