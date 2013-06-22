@@ -1,0 +1,65 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<style>
+BODY { background: #ffffff; color: #000000 }
+H1 { font-weight: normal; background: #c0e0ff }
+H2 { font-weight: normal; border-width: 0; border-bottom-width: 4px; border-color: #60c040; border-style: solid }
+U { text-decoration: none; color: #800000 }
+TT { font-family: Lucida Console, monospace }
+PRE { font-family: Lucida Console, monospace }
+DT { color: #800000; margin-top: 4px; margin-bottom: 4px; font-style: italic }
+DD { color: #4060a0 }
+</style>
+<title>VirtualDub source code - release checklist</title>
+</head>
+<body>
+
+<h1>VirtualDub source code - release checklist</h1>
+
+<p>
+So you're about to release your own fork, eh?
+</p>
+
+<h2>The checklist</h2>
+<p>
+Did you....
+</p>
+
+<blockquote>
+<dl>
+	<dt>...make sure any additional libraries or code fragments you linked in were GPL compliant?</dt>
+	<dd>If it doesn't come with the OS or the compiler, the license needs to be compatible with the GPL.</dd>
+
+	<dt>...tag the version as modified?</dt>
+	<dd>You need to edit the version block resource, the string table, and the about and welcome dialog boxes.</dd>
+
+	<dt>...change the contact address?</dt>
+	<dd>Check the welcome dialog box, the about dialog box, the crash dialog box, and the help file entry
+		for crash help.</dd>
+
+	<dt>...build the right version?</dt>
+	<dd>You need at least one of the release builds, and if you only built Release ICL, you need to make sure
+		people know it requires SSE2.</dd>
+
+	<dt>...build a source archive?</dt>
+	<dd>Just zip all the source files.</dd>
+
+	<dt>...remove your debugging code?</dt>
+	<dd>It's embarrassing to have your build crash on a hard breakpoint. WinDiff your tree against the
+		official VirtualDub distribution to make sure you aren't releasing more changes than you intended.</dd>
+
+	<dt>...do basic beta testing or QA?</dt>
+	<dd>Well, at least more than the five minutes I usually do.</dd>
+
+	<dt>...check the size of your archives?</dt>
+	<dd>Make sure you didn't include a <tt>.pdb</tt> or other large file by accident.</dd>
+</dl>
+</blockquote>
+
+<pre>
+-- Avery Lee &lt;phaeron@virtualdub.org&gt;
+</pre>
+
+</body>
+</html>

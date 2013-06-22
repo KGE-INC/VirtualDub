@@ -1,0 +1,97 @@
+Okay, it's a C++ name.  Let's take a sample:
+
+void postDirectDrawCopy(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest);
+?postDirectDrawCopy@AsyncBlitter@@QAEXKPAXPAUtagBITMAPINFOHEADER@@PAVIDDrawSurface@@@Z
+
+QAEXKPAXPAU tagBITMAPINFOHEADER @@ PAV IDDrawSurface
+
+returns:
+		YA PBD XZ -> const char *
+
+parms:
+		YAX PAD K			-> char *, DWORD
+		YAX PAUHWND__@@KPAK	-> HWND, DWORD, DWORD *
+
+	AA -> reference
+	AB -> const reference
+	AC -> volatile reference
+	AE -> class reference(??)
+	C -> signed char
+	D -> char
+	E -> unsigned char
+	F -> short
+	G -> unsigned short
+	H -> int
+	I -> unsigned int
+	J -> long
+	K -> unsigned long
+	M -> float
+	N -> double
+	O -> long double
+	P6 -> pointer to function
+			P6<class name>@@<calling convention>
+	P8 -> pointer to class member
+			P8<class name>@@<calling convention>
+	PA -> pointer
+	PB -> const pointer
+	PC -> volatile pointer
+	T -> union
+	U -> struct
+	V -> class
+	W -> enum
+	X -> void
+	Y -> array
+	_N -> bool
+
+calling conventions:
+	A -> cdecl or thiscall
+	G -> stdcall
+	I -> fastcall
+
+
+Two ??s indicate a special function:
+
+	0 -> constructor
+	1 -> destructor
+	2 -> operator new
+	3 -> operator delete
+	5 -> operator>>
+	6 -> operator<<
+	7 -> operator!
+	8 -> operator==
+	9 -> operator!=
+	D -> operator*
+	E -> operator++
+	F -> operator--
+	G -> operator-
+	H -> operator+
+	I -> operator&
+	K -> operator/
+	L -> operator%
+	M -> operator<
+	N -> operator<=
+	O -> operator>
+	P -> operator>=
+	Q -> operator,
+	S -> operator~
+	T -> operator^
+	U -> operator|
+	V -> operator&&
+	W -> operator||
+	X -> operator*=
+	Y -> operator+=
+	Z -> operator-=
+	_0-> operator/=
+	_1-> operator%=
+	_2-> operator>>=
+	_3-> operator<<=
+	_4-> operator&=
+	_5-> operator|=
+	_6-> operator^=
+	_G-> scalar deleting destructor
+	_E-> vector deleting destructor(?)
+
+?t_void_intarray1@@YAXPAY136H@Z			void t_void_intarray1(int (*x)[4][7]) {}
+?t_void_intarray2@@YAXPAY13N@H@Z		void t_void_intarray2(int (*x)[4][13]) {}
+?t_void_intarray3@@YAXPAY13BL@H@Z		void t_void_intarray3(int (*x)[4][27]) {}
+?t_void_intarray4@@YAXPAY2ME@BH@0H@Z	void t_void_intarray4(int (*x)[196][23][1]) {}
