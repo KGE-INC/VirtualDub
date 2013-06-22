@@ -159,9 +159,9 @@ bool VDRegistryKey::getString(const char *pszName, VDStringW& str) const {
 }
 
 int VDRegistryKey::getBinaryLength(const char *pszName) const {
-	DWORD type, v, s = sizeof(DWORD);
+	DWORD type, s = sizeof(DWORD);
 
-	if (!pHandle || RegQueryValueEx((HKEY)pHandle, pszName, 0, &type, (BYTE *)&v, &s)
+	if (!pHandle || RegQueryValueEx((HKEY)pHandle, pszName, 0, &type, NULL, &s)
 		|| type != REG_BINARY)
 		return -1;
 
@@ -172,6 +172,13 @@ bool VDRegistryKey::getBinary(const char *pszName, char *buf, int maxlen) const 
 	DWORD type, s = maxlen;
 
 	if (!pHandle || RegQueryValueEx((HKEY)pHandle, pszName, 0, &type, (BYTE *)buf, &s) || maxlen < s || type != REG_BINARY)
+		return false;
+
+	return true;
+}
+
+bool VDRegistryKey::removeValue(const char *name) {
+	if (!pHandle || RegDeleteValue((HKEY)pHandle, name))
 		return false;
 
 	return true;

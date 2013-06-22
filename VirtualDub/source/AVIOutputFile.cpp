@@ -175,7 +175,6 @@ private:
 
 	std::vector<char>	mSegmentHint;
 
-	sint64		mEndOfFile;
 	sint64		mFarthestWritePoint;
 
 	struct StreamInfo {
@@ -223,7 +222,6 @@ private:
 	void		HeaderSeek(uint32 pos)	{ mHeaderPosition = pos; }
 	uint32		HeaderTell() { return mHeaderPosition; }
 
-	bool		FastExtend(sint64 i64NewPoint);
 	void		FastWrite(const void *data, int len);
 	void		FileOpen(const wchar_t *pwszFile, bool bCaching, uint32 nBufferSize, uint32 nChunkSize);
 	void		FileWrite(sint64 pos, const void *data, uint32 size);
@@ -632,8 +630,6 @@ bool AVIOutputFile::init(const wchar_t *szFile) {
 
 	BlockOpen();
 
-	mEndOfFile = FileSize();
-
 	// Compute how many bytes are necessary for text information structures.
 	uint32 textInfoSize = 0;
 	if (!mTextInfo.empty()) {
@@ -804,26 +800,7 @@ void AVIOutputFile::HeaderFlush() {
 	FileWrite(0, &mHeaderBlock[0], mHeaderBlock.size());
 }
 
-bool AVIOutputFile::FastExtend(sint64 newlen) {
-	// Have we already extended the file past that point?
-	if (newlen < mEndOfFile)
-		return true;
-
-	// Attempt to extend the file.
-	if (mpFileAsync->Extend(newlen)) {
-		mEndOfFile = newlen;
-		return true;
-	}
-
-	return false;
-}
-
 void AVIOutputFile::FastWrite(const void *data, int len) {
-
-	if (!mbPreemptiveExtendFailed && mFilePosition + len + mIndexSize > mEndOfFile - 8388608) {
-		mbPreemptiveExtendFailed = !FastExtend((mFilePosition + len + mIndexSize + 16777215) & -8388608);
-	}
-
 	mFilePosition += len;
 	mpFileAsync->FastWrite(data, len);
 
@@ -833,6 +810,7 @@ void AVIOutputFile::FastWrite(const void *data, int len) {
 
 void AVIOutputFile::FileOpen(const wchar_t *pwszFile, bool bCaching, uint32 nBufferSize, uint32 nChunkSize) {
 	mpFileAsync = VDCreateFileAsync();
+	mpFileAsync->SetPreemptiveExtend(true);
 	mpFileAsync->Open(pwszFile, mBufferSize / mChunkSize, mChunkSize);
 	mFilePosition = 0;
 }
@@ -937,8 +915,8 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 		throw MyError("Out of file space: Files cannot exceed 4 gigabytes on a FAT32 partition.");
 	}
 
-	if (!FastExtend(maxpoint))
-		throw MyError("Not enough disk space to write additional data.");
+	if (!mpFileAsync->IsPreemptiveExtendActive() && !mpFileAsync->Extend(maxpoint))
+		throw MyError("Not enough space to write additional data.");
 
 	stream.mLastChunkPos = chunkloc;
 

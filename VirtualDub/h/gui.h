@@ -145,11 +145,13 @@ public:
 	void DestroyModeless();
 protected:
 	VDDialogBaseW32(UINT dlgid);
+	~VDDialogBaseW32();
+
 	static INT_PTR CALLBACK StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	virtual INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
 	void End(LRESULT res);
 
-	virtual void PreNCDestroy() {}
+	virtual bool PreNCDestroy() { return false; }
 
 	HWND		mhdlg;
 	LPCTSTR		mpszDialogName;

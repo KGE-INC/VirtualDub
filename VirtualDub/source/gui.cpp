@@ -509,30 +509,34 @@ void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 	try {
 		BITMAPINFOHEADER *dcf;
 
-		dcf = inputVideoAVI->getDecompressedFormat();
-
-		if (lFrame < inputVideoAVI->getStart() || lFrame >= inputVideoAVI->getEnd())
+		if (!inputVideoAVI)
 			SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)NULL);
 		else {
-			Pixel32 *tmpmem;
-			const void *pFrame = inputVideoAVI->getFrame(lFrame);
+			dcf = inputVideoAVI->getDecompressedFormat();
 
-			if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
-				VBitmap vbt(tmpmem, w, h, 32);
-				VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
-				BITMAPINFOHEADER bih;
+			if (lFrame < inputVideoAVI->getStart() || lFrame >= inputVideoAVI->getEnd())
+				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)NULL);
+			else {
+				Pixel32 *tmpmem;
+				const void *pFrame = inputVideoAVI->getFrame(lFrame);
 
-				VBitmap srcbm((void *)pFrame, dcf);
-				vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
-				vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
+				if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
+					VBitmap vbt(tmpmem, w, h, 32);
+					VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
+					BITMAPINFOHEADER bih;
 
-				VDPixmap px(VDAsPixmap(vbt));
+					VBitmap srcbm((void *)pFrame, dcf);
+					vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
+					vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
 
-				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&px);
+					VDPixmap px(VDAsPixmap(vbt));
 
-				delete[] tmpmem;
-			} else
-				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&inputVideoAVI->getTargetFormat());
+					SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&px);
+
+					delete[] tmpmem;
+				} else
+					SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&inputVideoAVI->getTargetFormat());
+			}
 		}
 
 	} catch(const MyError&) {
@@ -848,6 +852,10 @@ VDDialogBaseW32::VDDialogBaseW32(UINT dlgid)
 {
 }
 
+VDDialogBaseW32::~VDDialogBaseW32()
+{
+}
+
 INT_PTR CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	VDDialogBaseW32 *pThis = (VDDialogBaseW32 *)GetWindowLongPtr(hwnd, DWLP_USER);
 
@@ -856,8 +864,18 @@ INT_PTR CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wPar
 		pThis = (VDDialogBaseW32 *)lParam;
 		pThis->mhdlg = hwnd;
 	} else if (msg == WM_NCDESTROY) {
-		if (pThis)
-			pThis->PreNCDestroy();
+		if (pThis) {
+			bool deleteMe = pThis->PreNCDestroy();
+
+			pThis->mhdlg = NULL;
+			SetWindowLongPtr(hwnd, DWLP_USER, (LONG_PTR)(void *)NULL);
+
+			if (deleteMe)
+				delete pThis;
+
+			pThis = NULL;
+			return FALSE;
+		}
 	}
 
 	return pThis ? pThis->DlgProc(msg, wParam, lParam) : FALSE;
@@ -886,6 +904,5 @@ bool VDDialogBaseW32::CreateModeless(VDGUIHandle hParent) {
 
 void VDDialogBaseW32::DestroyModeless() {
 	DestroyWindow(mhdlg);
-	mhdlg = NULL;
 }
 

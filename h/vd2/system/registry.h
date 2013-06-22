@@ -52,6 +52,7 @@ public:
 	int getBinaryLength(const char *pszName) const;
 	bool getBinary(const char *pszName, char *buf, int maxlen) const;
 
+	bool removeValue(const char *);
 };
 
 class VDRegistryAppKey : public VDRegistryKey {

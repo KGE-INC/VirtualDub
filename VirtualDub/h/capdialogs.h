@@ -1,5 +1,5 @@
-//	VirtualDub 2.0 (Nina) - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee, All Rights Reserved.
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,11 +15,19 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_VD2_RYDIA_ACCELDISPLAY_H
-#define f_VD2_RYDIA_ACCELDISPLAY_H
+#ifndef f_CAPDIALOGS_H
+#define f_CAPDIALOGS_H
 
-bool RydiaInitAVICapHotPatch();
-void RydiaEnableAVICapPreview(bool b);
-void RydiaEnableAVICapInvalidate(bool b);
+enum {
+	kVDCapDevOptSaveCurrentAudioFormat = 1,
+	kVDCapDevOptSaveCurrentAudioCompFormat = 2,
+	kVDCapDevOptSaveCurrentVideoFormat = 4,
+	kVDCapDevOptSaveCurrentVideoCompFormat = 8,
+	kVDCapDevOptSaveCurrentFrameRate = 0x10,
+	kVDCapDevOptSaveCurrentDisplayMode = 0x20,
+	kVDCapDevOptSwitchSourcesTogether = 0x40,
+	kVDCapDevOptSlowOverlay = 0x80,
+	kVDCapDevOptSlowPreview = 0x100
+};
 
 #endif

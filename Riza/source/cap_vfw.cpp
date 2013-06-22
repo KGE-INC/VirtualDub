@@ -16,11 +16,16 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#ifdef _MSC_VER
+	#pragma warning(disable: 4786)		// STFU
+#endif
+
 #include <vd2/Riza/capdriver.h>
 #include <vd2/system/vdstring.h>
 #include <vd2/system/error.h>
 #include <windows.h>
 #include <vfw.h>
+#include <vector>
 
 using namespace nsVDCapture;
 
@@ -59,9 +64,13 @@ public:
 	VDCaptureDriverVFW(HMODULE hmodAVICap, int driverIndex);
 	~VDCaptureDriverVFW();
 
-	void	SetCallback(IVDCaptureDriverCallback *pCB);
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
+
+	void	SetCallback(IVDCaptureDriverCallback *pCB);
+
+	void	LockUpdates() {}
+	void	UnlockUpdates() {}
 
 	bool	IsHardwareDisplayAvailable();
 
@@ -80,10 +89,39 @@ public:
 	bool	GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat);
 	bool	SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size);
 
+	bool	SetTunerChannel(int channel) { return false; }
+	int		GetTunerChannel() { return -1; }
+	bool	GetTunerChannelRange(int& minChannel, int& maxChannel) { return false; }
+
+	int		GetAudioDeviceCount();
+	const wchar_t *GetAudioDeviceName(int idx);
+	bool	SetAudioDevice(int idx);
+	int		GetAudioDeviceIndex();
+
+	int		GetVideoSourceCount();
+	const wchar_t *GetVideoSourceName(int idx);
+	bool	SetVideoSource(int idx);
+	int		GetVideoSourceIndex();
+
+	int		GetAudioSourceCount();
+	const wchar_t *GetAudioSourceName(int idx);
+	bool	SetAudioSource(int idx);
+	int		GetAudioSourceIndex();
+
+	int		GetAudioInputCount();
+	const wchar_t *GetAudioInputName(int idx);
+	bool	SetAudioInput(int idx);
+	int		GetAudioInputIndex();
+
+	int		GetAudioSourceForVideoSource(int idx) { return -2; }
+
 	bool	IsAudioCapturePossible();
 	bool	IsAudioCaptureEnabled();
+	bool	IsAudioPlaybackPossible() { return false; }
+	bool	IsAudioPlaybackEnabled() { return false; }
 	void	SetAudioCaptureEnabled(bool b);
 	void	SetAudioAnalysisEnabled(bool b);
+	void	SetAudioPlaybackEnabled(bool b) {}
 
 	void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats);
 
@@ -100,6 +138,8 @@ public:
 protected:
 	void	SyncCaptureStop();
 	void	SyncCaptureAbort();
+	void	InitMixerSupport();
+	void	ShutdownMixerSupport();
 	bool	InitWaveAnalysis();
 	void	ShutdownWaveAnalysis();
 
@@ -111,12 +151,19 @@ protected:
 	static LRESULT CALLBACK WaveCallback(HWND hWnd, LPWAVEHDR lpWHdr);
 	static LRESULT CALLBACK StaticMessageSinkWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+	enum { kPreviewTimerID = 100 };
+
 	HWND	mhwnd;
 	HWND	mhwndParent;
 	HWND	mhwndEventSink;
 	HMODULE	mhmodAVICap;
 
 	bool	mbCapturing;
+	bool	mbVisible;
+	bool	mbBlockVideoFrames;			///< Prevents video frames from being sent the callback. This is used to barrier frames while we sent video format change events.
+	bool	mbAudioHardwarePresent;
+	bool	mbAudioHardwareEnabled;
+	bool	mbAudioCaptureEnabled;
 	bool	mbAudioAnalysisEnabled;
 	bool	mbAudioAnalysisActive;
 
@@ -124,7 +171,14 @@ protected:
 	DisplayMode			mDisplayMode;
 
 	int		mDriverIndex;
+	UINT	mPreviewFrameTimer;
 	VDAtomicInt	mPreviewFrameCount;
+
+	HMIXER	mhMixer;
+	int		mMixerInput;
+	MIXERCONTROL	mMixerInputControl;
+	typedef std::vector<VDStringW>	MixerInputs;
+	MixerInputs	mMixerInputs;
 
 	HWAVEIN mhWaveIn;
 	WAVEHDR	mWaveBufHdrs[2];
@@ -146,10 +200,14 @@ VDCaptureDriverVFW::VDCaptureDriverVFW(HMODULE hmodAVICap, int driverIndex)
 	, mhmodAVICap(hmodAVICap)
 	, mpCB(NULL)
 	, mbCapturing(false)
+	, mbVisible(false)
+	, mbBlockVideoFrames(false)
 	, mbAudioAnalysisEnabled(false)
 	, mbAudioAnalysisActive(false)
 	, mDisplayMode(kDisplayNone)
 	, mDriverIndex(driverIndex)
+	, mPreviewFrameTimer(0)
+	, mhMixer(NULL)
 	, mhWaveIn(NULL)
 {
 	memset(mWaveBufHdrs, 0, sizeof mWaveBufHdrs);
@@ -175,18 +233,30 @@ bool VDCaptureDriverVFW::Init(VDGUIHandle hParent) {
 			return false;
 	}
 
+	// Attempt to open mixer device. It is OK for this to fail. Note that we
+	// have a bit of a problem in that (a) the mixer API doesn't take
+	// WAVE_MAPPER, and (b) we can't get access to the handle that the
+	// capture window creates. For now, we sort of fake it.
+	InitMixerSupport();
+
 	// Create message sink.
-	if (!(mhwndEventSink = CreateWindow((LPCTSTR)sMsgSinkClass, "", WS_POPUP, 0, 0, 0, 0, mhwndParent, NULL, g_hInst, this)))
+	if (!(mhwndEventSink = CreateWindow((LPCTSTR)sMsgSinkClass, "", WS_POPUP, 0, 0, 0, 0, mhwndParent, NULL, g_hInst, this))) {
+		Shutdown();
 		return false;
+	}
 
 	typedef HWND (VFWAPI *tpcapCreateCaptureWindow)(LPCSTR lpszWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hwnd, int nID);
 	const tpcapCreateCaptureWindow pcapCreateCaptureWindow = (tpcapCreateCaptureWindow)GetProcAddress(mhmodAVICap, "capCreateCaptureWindowA");
-	if (!VDINLINEASSERT(pcapCreateCaptureWindow))
+	if (!VDINLINEASSERT(pcapCreateCaptureWindow)) {
+		Shutdown();
 		return false;
+	}
 
 	mhwnd = pcapCreateCaptureWindow("", WS_CHILD, 0, 0, 0, 0, mhwndParent, 0);
-	if (!mhwnd)
+	if (!mhwnd) {
+		Shutdown();
 		return false;
+	}
 
 	if (!capDriverConnect(mhwnd, mDriverIndex)) {
 		Shutdown();
@@ -209,11 +279,25 @@ bool VDCaptureDriverVFW::Init(VDGUIHandle hParent) {
 
 	capPreviewRate(mhwnd, 1000 / 15);
 
+	CAPSTATUS cs;
+
+	mbAudioHardwarePresent = false;
+	if (VDINLINEASSERT(capGetStatus(mhwnd, &cs, sizeof(CAPSTATUS)))) {
+		mbAudioHardwarePresent = (cs.fAudioHardware != 0);
+	}
+	mbAudioHardwareEnabled = mbAudioHardwarePresent;
+	mbAudioCaptureEnabled = true;
+
 	return true;
 }
 
 void VDCaptureDriverVFW::Shutdown() {
 	ShutdownWaveAnalysis();
+
+	if (mPreviewFrameTimer) {
+		KillTimer(mhwndEventSink, mPreviewFrameTimer);
+		mPreviewFrameTimer = 0;
+	}
 
 	if (mhwndEventSink) {
 		DestroyWindow(mhwndEventSink);
@@ -225,6 +309,11 @@ void VDCaptureDriverVFW::Shutdown() {
 		DestroyWindow(mhwnd);
 		mhwnd = NULL;
 	}
+
+	if (mhMixer) {
+		mixerClose(mhMixer);
+		mhMixer = NULL;
+	}
 }
 
 bool VDCaptureDriverVFW::IsHardwareDisplayAvailable() {
@@ -235,21 +324,40 @@ void VDCaptureDriverVFW::SetDisplayMode(DisplayMode mode) {
 	if (mode == mDisplayMode)
 		return;
 
+	if (mDisplayMode == kDisplayAnalyze) {
+		if (mPreviewFrameTimer) {
+			KillTimer(mhwndEventSink, mPreviewFrameTimer);
+			mPreviewFrameTimer = 0;
+		}
+	}
+
 	mDisplayMode = mode;
 
 	switch(mode) {
 	case kDisplayNone:
 		capPreview(mhwnd, FALSE);
 		capOverlay(mhwnd, FALSE);
+		ShowWindow(mhwnd, SW_HIDE);
 		break;
 	case kDisplayHardware:
 		capPreview(mhwnd, FALSE);
 		capOverlay(mhwnd, TRUE);
+		if (mbVisible)
+			ShowWindow(mhwnd, SW_SHOWNA);
 		break;
 	case kDisplaySoftware:
-	case kDisplayAnalyze:
 		capOverlay(mhwnd, FALSE);
 		capPreview(mhwnd, TRUE);
+		if (mbVisible)
+			ShowWindow(mhwnd, SW_SHOWNA);
+		break;
+	case kDisplayAnalyze:
+		capOverlay(mhwnd, FALSE);
+		capPreview(mhwnd, FALSE);
+		if (!mPreviewFrameTimer)
+			mPreviewFrameTimer = SetTimer(mhwndEventSink, kPreviewTimerID, 66, NULL);
+		if (mbVisible)
+			ShowWindow(mhwnd, SW_HIDE);
 		break;
 	}
 }
@@ -270,7 +378,11 @@ vdrect32 VDCaptureDriverVFW::GetDisplayRectAbsolute() {
 }
 
 void VDCaptureDriverVFW::SetDisplayVisibility(bool vis) {
-	ShowWindow(mhwnd, vis ? SW_SHOWNA : SW_HIDE);
+	if (vis == mbVisible)
+		return;
+
+	mbVisible = vis;
+	ShowWindow(mhwnd, vis && mDisplayMode != kDisplayAnalyze ? SW_SHOWNA : SW_HIDE);
 }
 
 void VDCaptureDriverVFW::SetFramePeriod(sint32 ms) {
@@ -280,6 +392,9 @@ void VDCaptureDriverVFW::SetFramePeriod(sint32 ms) {
 		cp.dwRequestMicroSecPerFrame = ms;
 
 		capCaptureSetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS));
+
+		if (mpCB)
+			mpCB->CapEvent(kEventVideoFrameRateChanged);
 	}
 }
 
@@ -306,37 +421,142 @@ bool VDCaptureDriverVFW::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat) {
 }
 
 bool VDCaptureDriverVFW::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size) {
-	capSetVideoFormat(mhwnd, (BITMAPINFOHEADER *)pbih, size);
+	mbBlockVideoFrames = true;
+	if (capSetVideoFormat(mhwnd, (BITMAPINFOHEADER *)pbih, size)) {
+		if (mpCB)
+			mpCB->CapEvent(kEventVideoFormatChanged);
+	}
+	mbBlockVideoFrames = false;
 	return true;
 }
 
+int VDCaptureDriverVFW::GetAudioDeviceCount() {
+	return mbAudioHardwarePresent ? 1 : 0;
+}
+
+const wchar_t *VDCaptureDriverVFW::GetAudioDeviceName(int idx) {
+	if (idx || !mbAudioHardwarePresent)
+		return NULL;
+
+	return L"Wave Mapper";
+}
+
+bool VDCaptureDriverVFW::SetAudioDevice(int idx) {
+	if (idx < -1 || idx >= 1)
+		return false;
+	
+	if (!idx && !mbAudioHardwarePresent)
+		return false;
+
+	bool enable = !idx;
+
+	if (enable == mbAudioHardwareEnabled)
+		return true;
+
+	ShutdownWaveAnalysis();
+	mbAudioHardwareEnabled = enable;
+	InitWaveAnalysis();
+
+	return true;
+}
+
+int VDCaptureDriverVFW::GetAudioDeviceIndex() {
+	return mbAudioHardwareEnabled ? 0 : -1;
+}
+
+int VDCaptureDriverVFW::GetVideoSourceCount() {
+	return 0;
+}
+
+const wchar_t *VDCaptureDriverVFW::GetVideoSourceName(int idx) {
+	return NULL;
+}
+
+bool VDCaptureDriverVFW::SetVideoSource(int idx) {
+	return idx == -1;
+}
+
+int VDCaptureDriverVFW::GetVideoSourceIndex() {
+	return -1;
+}
+
+int VDCaptureDriverVFW::GetAudioSourceCount() {
+	return 0;
+}
+
+const wchar_t *VDCaptureDriverVFW::GetAudioSourceName(int idx) {
+	return NULL;
+}
+
+bool VDCaptureDriverVFW::SetAudioSource(int idx) {
+	return idx == -1;
+}
+
+int VDCaptureDriverVFW::GetAudioSourceIndex() {
+	return -1;
+}
+
+int VDCaptureDriverVFW::GetAudioInputCount() {
+	return mbAudioHardwareEnabled ? mMixerInputs.size() : 0;
+}
+
+const wchar_t *VDCaptureDriverVFW::GetAudioInputName(int idx) {
+	if (!mbAudioHardwareEnabled || (unsigned)idx >= mMixerInputs.size())
+		return NULL;
+
+	MixerInputs::const_iterator it(mMixerInputs.begin());
+
+	std::advance(it, idx);
+
+	return (*it).c_str();
+}
+
+bool VDCaptureDriverVFW::SetAudioInput(int idx) {
+	if (!mbAudioHardwareEnabled || !mhMixer)
+		return idx == -1;
+
+	VDASSERT(mMixerInputs.size() == mMixerInputControl.cMultipleItems);
+
+	if (idx != -1 && (unsigned)idx >= mMixerInputControl.cMultipleItems)
+		return false;
+
+	// attempt to set the appropriate mixer input
+
+	vdblock<MIXERCONTROLDETAILS_BOOLEAN> vals(mMixerInputControl.cMultipleItems);
+
+	for(int i=0; i<mMixerInputControl.cMultipleItems; ++i)
+		vals[i].fValue = (i == idx);
+
+	MIXERCONTROLDETAILS details = {sizeof(MIXERCONTROLDETAILS)};
+
+	details.dwControlID		= mMixerInputControl.dwControlID;
+	details.cChannels		= 1;
+	details.cMultipleItems	= mMixerInputControl.cMultipleItems;
+	details.cbDetails		= sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+	details.paDetails		= vals.data();
+
+	if (MMSYSERR_NOERROR != mixerSetControlDetails((HMIXEROBJ)mhMixer, &details, MIXER_SETCONTROLDETAILSF_VALUE))
+		return false;
+
+	mMixerInput = idx;
+
+	return true;
+}
+
+int VDCaptureDriverVFW::GetAudioInputIndex() {
+	return mbAudioHardwareEnabled ? mMixerInput : -1;
+}
+
 bool VDCaptureDriverVFW::IsAudioCapturePossible() {
-	CAPSTATUS cs;
-
-	if (VDINLINEASSERT(capGetStatus(mhwnd, &cs, sizeof(CAPSTATUS)))) {
-		return cs.fAudioHardware != 0;
-	}
-
-	return false;
+	return mbAudioHardwareEnabled;
 }
 
 bool VDCaptureDriverVFW::IsAudioCaptureEnabled() {
-	CAPTUREPARMS cp;
-
-	if (VDINLINEASSERT(capCaptureGetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS))))
-		return cp.fCaptureAudio != 0;
-
-	return false;
+	return mbAudioHardwareEnabled && mbAudioCaptureEnabled;
 }
 
 void VDCaptureDriverVFW::SetAudioCaptureEnabled(bool b) {
-	CAPTUREPARMS cp;
-
-	if (capCaptureGetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS))) {
-		cp.fCaptureAudio = b;
-
-		capCaptureSetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS));
-	}
+	mbAudioCaptureEnabled = b;
 }
 
 void VDCaptureDriverVFW::SetAudioAnalysisEnabled(bool b) {
@@ -413,6 +633,9 @@ bool VDCaptureDriverVFW::GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) {
 }
 
 bool VDCaptureDriverVFW::SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size) {
+	if (!mbAudioHardwareEnabled)
+		return false;
+
 	ShutdownWaveAnalysis();
 	bool success = 0 != capSetAudioFormat(mhwnd, (WAVEFORMATEX *)pwfex, size);
 	if (mbAudioAnalysisEnabled)
@@ -438,7 +661,20 @@ void VDCaptureDriverVFW::DisplayDriverDialog(DriverDialog dlg) {
 
 	switch(dlg) {
 	case kDialogVideoFormat:
-		capDlgVideoFormat(mhwnd);
+		// The format dialog is special (i.e. nasty) in that it can change the
+		// video format, so we block outgoing frames while it is up and check
+		// for a format change.
+		{
+			vdstructex<BITMAPINFOHEADER> oldFormat, newFormat;
+
+			mbBlockVideoFrames = true;
+			GetVideoFormat(oldFormat);
+			capDlgVideoFormat(mhwnd);
+			GetVideoFormat(newFormat);
+			if (oldFormat != newFormat && mpCB)
+				mpCB->CapEvent(kEventVideoFormatChanged);
+			mbBlockVideoFrames = false;
+		}
 		break;
 	case kDialogVideoSource:
 		capDlgVideoSource(mhwnd);
@@ -455,6 +691,8 @@ bool VDCaptureDriverVFW::CaptureStart() {
 	// Aim for 0.1s audio buffers.
 	CAPTUREPARMS cp;
 	if (capCaptureGetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS))) {
+		cp.fCaptureAudio = mbAudioHardwareEnabled && mbAudioCaptureEnabled;
+
 		if (cp.fCaptureAudio) {
 			vdstructex<WAVEFORMATEX> wfex;
 			if (GetAudioFormat(wfex)) {
@@ -505,7 +743,136 @@ void VDCaptureDriverVFW::SyncCaptureAbort() {
 	}
 }
 
+void VDCaptureDriverVFW::InitMixerSupport() {
+	WAVEINCAPS wcaps={0};
+	if (MMSYSERR_NOERROR == waveInGetDevCaps(WAVE_MAPPER, &wcaps, sizeof wcaps) && wcaps.dwFormats) {
+		WAVEFORMATEX wfex;
+
+		// create lowest-common denominator format for device
+		wfex.wFormatTag			= WAVE_FORMAT_PCM;
+
+		if (wcaps.dwFormats & (WAVE_FORMAT_4M08 | WAVE_FORMAT_4M16 | WAVE_FORMAT_4S08 | WAVE_FORMAT_4S16))
+			wfex.nSamplesPerSec = 11025;
+		else if (wcaps.dwFormats & (WAVE_FORMAT_2M08 | WAVE_FORMAT_2M16 | WAVE_FORMAT_2S08 | WAVE_FORMAT_2S16))
+			wfex.nSamplesPerSec = 22050;
+		else
+			wfex.nSamplesPerSec = 44100;
+
+		if (wcaps.dwFormats & (WAVE_FORMAT_1M08 | WAVE_FORMAT_1M16 | WAVE_FORMAT_2M08 | WAVE_FORMAT_2M16 | WAVE_FORMAT_4M08 | WAVE_FORMAT_4M16))
+			wfex.nChannels = 1;
+		else
+			wfex.nChannels = 2;
+
+		if (wcaps.dwFormats & (WAVE_FORMAT_1M08 | WAVE_FORMAT_1S08 | WAVE_FORMAT_2M08 | WAVE_FORMAT_2S08 | WAVE_FORMAT_4M08 | WAVE_FORMAT_4S08))
+			wfex.wBitsPerSample = 8;
+		else
+			wfex.wBitsPerSample = 16;
+
+		wfex.nBlockAlign		= wfex.wBitsPerSample >> 3;
+		wfex.nAvgBytesPerSec	= wfex.nSamplesPerSec * wfex.nBlockAlign;
+		wfex.cbSize				= 0;
+
+		// create the device
+		HWAVEIN hwi;
+		if (MMSYSERR_NOERROR == waveInOpen(&hwi, WAVE_MAPPER, &wfex, 0, 0, CALLBACK_NULL)) {
+			// create mixer based on device
+
+			if (MMSYSERR_NOERROR == mixerOpen(&mhMixer, (UINT)hwi, 0, 0, MIXER_OBJECTF_HWAVEIN)) {
+				MIXERLINE mixerLine = {sizeof(MIXERLINE)};
+
+				mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_WAVEIN;
+
+				if (MMSYSERR_NOERROR == mixerGetLineInfo((HMIXEROBJ)mhMixer, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE)) {
+
+					// Try to find a MIXER or MUX control
+					MIXERLINECONTROLS lineControls = {sizeof(MIXERLINECONTROLS)};
+
+					mMixerInputControl.cbStruct = sizeof(MIXERCONTROL);
+					mMixerInputControl.dwControlType = 0;
+
+					lineControls.dwLineID = mixerLine.dwLineID;
+					lineControls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUX;
+					lineControls.cControls = 1;
+					lineControls.pamxctrl = &mMixerInputControl;
+					lineControls.cbmxctrl = sizeof(MIXERCONTROL);
+
+					MMRESULT res;
+
+					res = mixerGetLineControls((HMIXEROBJ)mhMixer, &lineControls, MIXER_GETLINECONTROLSF_ONEBYTYPE);
+
+					if (MMSYSERR_NOERROR != res) {
+						lineControls.dwControlType = MIXERCONTROL_CONTROLTYPE_MIXER;
+
+						res = mixerGetLineControls((HMIXEROBJ)mhMixer, &lineControls, MIXER_GETLINECONTROLSF_ONEBYTYPE);
+					}
+
+					// The mux/mixer control must be of MULTIPLE type; otherwise, we reject it.
+					if (!(mMixerInputControl.fdwControl & MIXERCONTROL_CONTROLF_MULTIPLE))
+						res = MMSYSERR_ERROR;
+
+					// If we were successful, then enumerate all source lines and push them into the map.
+					if (MMSYSERR_NOERROR != res) {
+						mixerClose(mhMixer);
+						mhMixer = NULL;
+					} else {
+						// Enumerate control inputs and populate the name array
+						vdblock<MIXERCONTROLDETAILS_LISTTEXT> names(mMixerInputControl.cMultipleItems);
+
+						MIXERCONTROLDETAILS details = {sizeof(MIXERCONTROLDETAILS)};
+
+						details.dwControlID		= mMixerInputControl.dwControlID;
+						details.cChannels		= 1;
+						details.cMultipleItems	= mMixerInputControl.cMultipleItems;
+						details.cbDetails		= sizeof(MIXERCONTROLDETAILS_LISTTEXT);
+						details.paDetails		= names.data();
+
+						mMixerInput = -1;
+
+						if (MMSYSERR_NOERROR == mixerGetControlDetails((HMIXEROBJ)mhMixer, &details, MIXER_GETCONTROLDETAILSF_LISTTEXT)) {
+							mMixerInputs.reserve(details.cMultipleItems);
+
+							for(int i=0; i<details.cMultipleItems; ++i)
+								mMixerInputs.push_back(MixerInputs::value_type(VDTextAToW(names[i].szName)));
+
+							vdblock<MIXERCONTROLDETAILS_BOOLEAN> vals(mMixerInputControl.cMultipleItems);
+
+							details.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+							details.paDetails = vals.data();
+
+							if (MMSYSERR_NOERROR == mixerGetControlDetails((HMIXEROBJ)mhMixer, &details, MIXER_GETCONTROLDETAILSF_VALUE)) {
+								// Attempt to find a mixer input that is set. Note that for
+								// a multiple-select type (MIXER) this will pick the first
+								// enabled input.
+								for(int i=0; i<details.cMultipleItems; ++i)
+									if (vals[i].fValue) {
+										mMixerInput = i;
+										break;
+									}
+							}
+						}
+					}
+				}
+
+				// We don't close the mixer here; it is left open while we have the
+				// capture device opened.
+			}
+
+			waveInClose(hwi);
+		}
+	}
+}
+
+void VDCaptureDriverVFW::ShutdownMixerSupport() {
+	if (mhMixer) {
+		mixerClose(mhMixer);
+		mhMixer = NULL;
+	}
+}
+
 bool VDCaptureDriverVFW::InitWaveAnalysis() {
+	if (!mbAudioHardwareEnabled)
+		return false;
+
 	vdstructex<WAVEFORMATEX> aformat;
 
 	if (!GetAudioFormat(aformat))
@@ -651,21 +1018,25 @@ LRESULT CALLBACK VDCaptureDriverVFW::StatusCallback(HWND hwnd, int nID, LPCSTR l
 LRESULT CALLBACK VDCaptureDriverVFW::ControlCallback(HWND hwnd, int nState) {
 	VDCaptureDriverVFW *pThis = (VDCaptureDriverVFW *)capGetUserData(hwnd);
 
-	if (pThis->mpCB)
-		return pThis->mpCB->CapControl(nState == CONTROLCALLBACK_PREROLL);
+	if (pThis->mpCB) {
+		switch(nState) {
+		case CONTROLCALLBACK_PREROLL:
+			return pThis->mpCB->CapEvent(kEventPreroll);
+		case CONTROLCALLBACK_CAPTURING:
+			return pThis->mpCB->CapEvent(kEventCapturing);
+		}
+	}
 
 	return TRUE;
 }
 
 LRESULT CALLBACK VDCaptureDriverVFW::PreviewCallback(HWND hwnd, VIDEOHDR *lpVHdr) {
 	VDCaptureDriverVFW *pThis = (VDCaptureDriverVFW *)capGetUserData(hwnd);
-	if (pThis->mpCB && pThis->mDisplayMode == kDisplayAnalyze) {
+	if (pThis->mpCB && pThis->mDisplayMode == kDisplayAnalyze && !pThis->mbBlockVideoFrames) {
 		try {
 			pThis->mpCB->CapProcessData(-1, lpVHdr->lpData, lpVHdr->dwBytesUsed, (sint64)lpVHdr->dwTimeCaptured * 1000, 0 != (lpVHdr->dwFlags & VHDR_KEYFRAME), 0);
-		} catch(MyError& e) {
-			pThis->mCaptureError.TransferFrom(e);
-			capCaptureAbort(hwnd);
-			pThis->mbCapturing = false;
+		} catch(MyError&) {
+			// Eat preview errors.
 		}
 	}
 	++pThis->mPreviewFrameCount;
@@ -678,7 +1049,7 @@ LRESULT CALLBACK VDCaptureDriverVFW::VideoCallback(HWND hwnd, LPVIDEOHDR lpVHdr)
 	CAPSTATUS capStatus;
 	capGetStatus(hwnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
 
-	if (pThis->mpCB) {
+	if (pThis->mpCB && !pThis->mbBlockVideoFrames) {
 		try {
 			pThis->mpCB->CapProcessData(0, lpVHdr->lpData, lpVHdr->dwBytesUsed, (sint64)lpVHdr->dwTimeCaptured * 1000, 0 != (lpVHdr->dwFlags & VHDR_KEYFRAME), (sint64)capStatus.dwCurrentTimeElapsedMS * 1000);
 		} catch(MyError& e) {
@@ -747,52 +1118,17 @@ LRESULT CALLBACK VDCaptureDriverVFW::StaticMessageSinkWndProc(HWND hwnd, UINT ms
 				pThis->SyncCaptureAbort();
 			}
 			return 0;
+		case WM_TIMER:
+			{
+				VDCaptureDriverVFW *pThis = (VDCaptureDriverVFW *)GetWindowLongPtr(hwnd, 0);
+				if (pThis->mDisplayMode == kDisplayAnalyze && !pThis->mbCapturing)
+					capGrabFrameNoStop(pThis->mhwnd);
+			}
+			return 0;
 	}
 
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
-
-
-#if 0
-LPARAM VDCaptureProject::CaptureWndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
-	if (mbPreviewAnalysisEnabled) {
-		switch(msg) {
-		case WM_ERASEBKGND:
-			return 0;
-
-		case WM_PAINT:
-			{
-				PAINTSTRUCT ps;
-				HDC hdc;
-
-				hdc = BeginPaint(mhwndCapture, &ps);
-
-				if (mDisplayChromaKey >= 0) {
-					HBRUSH hbrColorKey;
-					RECT r;
-
-					if (hbrColorKey = CreateSolidBrush((COLORREF)mDisplayChromaKey)) {
-						GetClientRect(mhwndCapture, &r);
-						FillRect(hdc, &r, hbrColorKey);
-						DeleteObject(hbrColorKey);
-					}
-				}
-
-				EndPaint(mhwndCapture, &ps);
-			}
-			return 0;
-
-		case WM_TIMER:
-			RydiaEnableAVICapInvalidate(true);
-			CallWindowProc(mOldCaptureProc, mhwndCapture, msg, wParam, lParam);
-			RydiaEnableAVICapInvalidate(false);
-			return 0;
-		}
-	}
-	return CallWindowProc(mOldCaptureProc, mhwndCapture, msg, wParam, lParam);
-}
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////
 

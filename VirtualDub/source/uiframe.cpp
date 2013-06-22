@@ -142,7 +142,7 @@ ATOM VDUIFrame::Register() {
 }
 
 bool VDUIFrame::TranslateAcceleratorMessage(MSG& msg) {
-	if (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN && msg.message != WM_CHAR)
+	if (!msg.hwnd || (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN && msg.message != WM_KEYUP && msg.message != WM_SYSKEYUP && msg.message != WM_CHAR))
 		return false;
 
 	HWND hwnd = VDGetAncestorW32(msg.hwnd, GA_ROOT);
@@ -153,7 +153,22 @@ bool VDUIFrame::TranslateAcceleratorMessage(MSG& msg) {
 		return false;
 
 	VDUIFrame *p = (VDUIFrame *)GetWindowLongPtr(hwnd, 0);
-	return p->mhAccel && TranslateAccelerator(hwnd, p->mhAccel, &msg);
+
+	if (p->mhAccel && TranslateAccelerator(hwnd, p->mhAccel, &msg))
+		return true;
+
+	// check for frame-specific intercept
+	if (p->mpClient) {
+		switch(msg.message) {
+		case WM_CHAR:		return p->mpClient->Intercept_WM_CHAR(msg.wParam, msg.lParam);
+		case WM_KEYDOWN:	return p->mpClient->Intercept_WM_KEYUP(msg.wParam, msg.lParam);
+		case WM_KEYUP:		return p->mpClient->Intercept_WM_KEYDOWN(msg.wParam, msg.lParam);
+		case WM_SYSKEYDOWN:	return p->mpClient->Intercept_WM_SYSKEYDOWN(msg.wParam, msg.lParam);
+		case WM_SYSKEYUP:	return p->mpClient->Intercept_WM_SYSKEYUP(msg.wParam, msg.lParam);
+		}
+	}
+
+	return false;
 }
 
 LRESULT CALLBACK VDUIFrame::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

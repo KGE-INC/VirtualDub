@@ -520,7 +520,7 @@ crunch_complete:
 		pbiOutput->bmiHeader.biCompression == 'divx' ||
 		pbiOutput->bmiHeader.biCompression == 'DIVX'
 		) {
-		if (pbiOutput->bmiHeader.biSizeImage == 1 && *(char *)pOutputBuffer == 0x7f) {
+		if (bytes == 1 && *(char *)pOutputBuffer == 0x7f) {
 			bNoOutputProduced = true;
 		}
 	}

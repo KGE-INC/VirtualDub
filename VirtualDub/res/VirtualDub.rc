@@ -285,22 +285,25 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "E&xit capture mode",          ID_FILE_EXITCAPTUREMODE
     END
-    POPUP "&Audio"
+    POPUP "&Device"
     BEGIN
-        MENUITEM "&Enable audio capture",       ID_AUDIO_ENABLE, CHECKED
-        MENUITEM "Peak meter",                  ID_AUDIO_PEAKMETER
+        MENUITEM "Device settings...",          ID_DEVICE_DEVICESETTINGS
+        POPUP "Tuner"
+        BEGIN
+            MENUITEM "Next channel\tUp",            ID_DEVICE_TUNER_NEXTCHANNEL
+
+            MENUITEM "Previous channel\tDown",      ID_DEVICE_TUNER_PREVIOUSCHANNEL
+
+        END
         MENUITEM SEPARATOR
-        MENUITEM "Raw capture format...",       ID_AUDIO_RAWCAPTUREFORMAT
-        MENUITEM "&Compression...\tA",          ID_AUDIO_COMPRESSION
-        MENUITEM "Windows &mixer...",           ID_AUDIO_WINMIXER
+        MENUITEM "Disconnect",                  ID_VIDEO_DISCONNECT
     END
     POPUP "&Video"
     BEGIN
         MENUITEM "No display",                  ID_VIDEO_NODISPLAY
         MENUITEM "&Overlay\tO",                 ID_VIDEO_OVERLAY, CHECKED
         MENUITEM "&Preview\tP",                 ID_VIDEO_PREVIEW
-        MENUITEM "&Histogram...\tH",            ID_VIDEO_HISTOGRAM
-        POPUP "Display acceleration"
+        POPUP "Preview acceleration"
         BEGIN
             MENUITEM "Off",                         ID_CAPTURE_HWACCEL_NONE
             MENUITEM "Even lines only",             ID_CAPTURE_HWACCEL_TOP
@@ -309,6 +312,14 @@ BEGIN
             MENUITEM "Both fields",                 ID_CAPTURE_HWACCEL_BOTH
         END
         MENUITEM SEPARATOR
+        MENUITEM "Stretch to window",           ID_VIDEO_STRETCH
+        MENUITEM "&Histogram...\tH",            ID_VIDEO_HISTOGRAM
+        MENUITEM SEPARATOR
+        POPUP "Video source"
+        BEGIN
+            MENUITEM "No video source",             ID_VIDEO_VIDEOSOURCE_NOVIDEOSOURCE
+            , GRAYED
+        END
         MENUITEM "&Format...\tF",               ID_VIDEO_FORMAT
         MENUITEM "&Source...\tS",               ID_VIDEO_SOURCE
         MENUITEM "&Display...\tD",              ID_VIDEO_DISPLAY
@@ -318,7 +329,6 @@ BEGIN
         MENUITEM "Crossbar...",                 ID_VIDEO_CROSSBAR
         MENUITEM "Crossbar 2...",               ID_VIDEO_CROSSBAR2
         MENUITEM "Tuner...",                    ID_VIDEO_TUNER
-        MENUITEM "&Compression...\tC",          ID_VIDEO_COMPRESSION
         MENUITEM SEPARATOR
         MENUITEM "Cropping...",                 ID_VIDEO_CROPPING
         MENUITEM "Swap fields",                 ID_VIDEO_SWAPFIELDS
@@ -336,19 +346,38 @@ BEGIN
         END
         MENUITEM "Squish luminance range",      ID_VIDEO_SQUISH_RANGE
         MENUITEM SEPARATOR
+        MENUITEM "&Compression...\tC",          ID_VIDEO_COMPRESSION
         MENUITEM "&Set custom format...\tShift-F", ID_VIDEO_CUSTOMFORMAT
         MENUITEM "F&ilters...",                 ID_VIDEO_FILTERS
         MENUITEM "&Enable RGB filtering",       ID_VIDEO_ENABLEFILTERING
-        MENUITEM "Stretch to window",           ID_VIDEO_STRETCH
         MENUITEM SEPARATOR
         MENUITEM "BT8X8 Tweaker...",            ID_VIDEO_BT8X8TWEAKER
+    END
+    POPUP "&Audio"
+    BEGIN
+        MENUITEM "&Enable audio capture",       ID_AUDIO_ENABLE, CHECKED
+        MENUITEM "Enable audio playback",       ID_AUDIO_ENABLEPLAYBACK
+        MENUITEM "Peak meter",                  ID_AUDIO_PEAKMETER
         MENUITEM SEPARATOR
-        MENUITEM "Disconnect",                  ID_VIDEO_DISCONNECT
+        MENUITEM "Raw capture format...",       ID_AUDIO_RAWCAPTUREFORMAT
+        MENUITEM "&Compression...\tA",          ID_AUDIO_COMPRESSION
+        MENUITEM "Windows &mixer...",           ID_AUDIO_WINMIXER
+        POPUP "Audio input"
+        BEGIN
+            MENUITEM "No audio inputs",             ID_AUDIO_CAPTURE_INPUT
+            , GRAYED
+        END
+        POPUP "Audio source"
+        BEGIN
+            MENUITEM "No audio sources",            ID_AUDIO_CAPTURE_INPUT
+            , GRAYED
+        END
+        MENUITEM SEPARATOR
     END
     POPUP "&Capture"
     BEGIN
         MENUITEM "Capture &video \tF5",         ID_CAPTURE_CAPTUREVIDEO
-        MENUITEM "Test video capture (Internal)\tF7", ID_CAPTURE_TEST
+        MENUITEM "Test video capture\tF7",      ID_CAPTURE_TEST
         MENUITEM "Stop capture\tEsc",           ID_CAPTURE_STOP
         MENUITEM "Real-time profiler",          ID_CAPTURE_SHOWPROFILER
         MENUITEM SEPARATOR
@@ -360,7 +389,7 @@ BEGIN
         MENUITEM "Disk I/O...",                 ID_CAPTURE_DISKIO
         MENUITEM "Capture drives...",           ID_CAPTURE_SPILLSYSTEM
         MENUITEM SEPARATOR
-        MENUITEM "&Hide on capture",            ID_CAPTURE_HIDEONCAPTURE
+        MENUITEM "&Hide display on capture",    ID_CAPTURE_HIDEONCAPTURE
         MENUITEM "Display large timer",         ID_CAPTURE_DISPLAYLARGETIMER
         MENUITEM "Show information panel",      ID_CAPTURE_INFOPANEL
         MENUITEM "Enable multisegment capture", ID_CAPTURE_ENABLESPILL
@@ -784,7 +813,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.2 - Copyright (C) 1998-2004 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.3 - Copyright (C) 1998-2004 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1065,31 +1094,12 @@ EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Capture Settings"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    CONTROL         "Capture &audio",IDC_CAPTURE_AUDIO,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,14,17,60,10
     CONTROL         "&Wait for OK to capture",IDC_CAPTURE_ON_OK,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,14,29,87,10
     LTEXT           "&Frame rate:",IDC_STATIC,128,17,36,8
     EDITTEXT        IDC_CAPTURE_FRAMERATE,170,15,40,12,ES_AUTOHSCROLL
     PUSHBUTTON      "round to nearest &millisecond",IDC_ROUND_FRAMERATE,214,
                     15,94,13
-    CONTROL         "None",IDC_CAPTURE_ABORT_NONE,"Button",
-                    BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,14,66,33,8
-    CONTROL         "Escape",IDC_CAPTURE_ABORT_ESCAPE,"Button",
-                    BS_AUTORADIOBUTTON,67,56,50,8
-    CONTROL         "Space",IDC_CAPTURE_ABORT_SPACE,"Button",
-                    BS_AUTORADIOBUTTON,67,66,50,8
-    CONTROL         "Abort on left mouse button",IDC_CAPTURE_ABORT_ON_LEFT,
-                    "Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,128,56,
-                    99,10
-    CONTROL         "Abort on right mouse button",IDC_CAPTURE_ABORT_ON_RIGHT,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,128,66,103,10
-    LTEXT           "Drop &% limit:",IDC_STATIC,14,94,39,8
-    EDITTEXT        IDC_CAPTURE_DROP_LIMIT,99,92,37,12,ES_AUTOHSCROLL
-    LTEXT           "Maximum &index entries:",IDC_STATIC,14,107,74,8
-    EDITTEXT        IDC_CAPTURE_MAX_INDEX,99,105,37,12,ES_AUTOHSCROLL
-    CONTROL         "&Lock video stream to audio",IDC_CAPTURE_LOCK_TO_AUDIO,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,120,124,10
     LTEXT           "Video buffer limit:",IDC_STATIC,147,94,54,8
     EDITTEXT        IDC_CAPTURE_VIDEO_BUFFERS,206,92,54,12,ES_AUTOHSCROLL
     LTEXT           "Audio buffer limit:",IDC_STATIC,147,107,54,8
@@ -1099,9 +1109,7 @@ BEGIN
                     ES_AUTOHSCROLL
     DEFPUSHBUTTON   "OK",IDOK,279,105,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,279,122,50,14
-    LTEXT           "Abort hotkey:",IDC_STATIC,14,55,43,8
     GROUPBOX        "Capture options",IDC_STATIC,7,7,322,37
-    GROUPBOX        "Abort options",IDC_STATIC,7,45,322,37
     GROUPBOX        "Advanced",IDC_STATIC,7,84,259,52
 END
 
@@ -1265,53 +1273,6 @@ STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION |
 CAPTION "Histogram"
 FONT 8, "MS Shell Dlg"
 BEGIN
-END
-
-IDD_CAPTURE_PREFERENCES DIALOGEX 0, 0, 300, 214
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-EXSTYLE WS_EX_CONTEXTHELP
-CAPTION "Capture Preferences"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
-BEGIN
-    COMBOBOX        IDC_DEFAULT_DRIVER,90,7,203,81,CBS_DROPDOWNLIST | 
-                    WS_VSCROLL | WS_TABSTOP
-    EDITTEXT        IDC_DEFAULT_CAPFILE,89,28,189,14,ES_AUTOHSCROLL
-    PUSHBUTTON      "...",IDC_SELECT_CAPTURE_FILE,279,28,14,14
-    PUSHBUTTON      "Use current capture file",IDC_USE_CURRENT_FILE,90,45,
-                    203,14
-    CONTROL         "Save current capture settings as default",
-                    IDC_SAVE_CAPSETTINGS,"Button",BS_AUTOCHECKBOX | WS_GROUP | 
-                    WS_TABSTOP,7,65,141,10
-    CONTROL         "Save current audio format as default",
-                    IDC_SAVE_AUDIOFORMAT,"Button",BS_AUTOCHECKBOX | 
-                    WS_TABSTOP,7,75,130,10
-    CONTROL         "Save current video format as default",
-                    IDC_SAVE_VIDEOFORMAT,"Button",BS_AUTOCHECKBOX | 
-                    WS_TABSTOP,7,85,130,10
-    CONTROL         "Save video compression settings (Internal mode only)",
-                    IDC_SAVE_COMPRESSION,"Button",BS_AUTOCHECKBOX | BS_TOP | 
-                    BS_MULTILINE | WS_TABSTOP,164,65,129,20
-    COMBOBOX        IDC_DRIVER_TO_SET,106,112,181,81,CBS_DROPDOWNLIST | 
-                    WS_VSCROLL | WS_GROUP | WS_TABSTOP
-    CONTROL         "No display",IDC_INITIAL_NODISPLAY,"Button",
-                    BS_AUTORADIOBUTTON | WS_GROUP,23,140,49,10
-    CONTROL         "Preview",IDC_INITIAL_PREVIEW,"Button",
-                    BS_AUTORADIOBUTTON,23,150,41,10
-    CONTROL         "Overlay",IDC_INITIAL_OVERLAY,"Button",
-                    BS_AUTORADIOBUTTON,23,160,40,10
-    CONTROL         "Disable preview for menus and dialogs",IDC_SLOW_PREVIEW,
-                    "Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,145,140,
-                    137,10
-    CONTROL         "Disable overlay for menus and dialogs",IDC_SLOW_OVERLAY,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,145,150,135,10
-    DEFPUSHBUTTON   "OK",IDOK,189,193,50,14,WS_GROUP
-    PUSHBUTTON      "Cancel",IDCANCEL,243,193,50,14
-    LTEXT           "Default capture driver",IDC_STATIC,7,9,69,8
-    LTEXT           "Default capture file",IDC_STATIC,7,29,60,8
-    GROUPBOX        "Per-driver settings",IDC_STATIC,7,102,286,85
-    LTEXT           "Change driver settings for:",IDC_STATIC,13,114,83,8
-    LTEXT           "Initial display mode:",IDC_STATIC,13,130,62,8
-    LTEXT           """Stupid driver"" settings:",IDC_STATIC,135,130,75,8
 END
 
 IDD_AVIOUTPUTIMAGES_FORMAT DIALOG DISCARDABLE  0, 0, 317, 190
@@ -1660,6 +1621,8 @@ BEGIN
     RTEXT           "",IDC_AUDIO_CORRECTIONS,59,194,46,8
     LTEXT           "Resample",IDC_STATIC,15,204,32,8
     RTEXT           "",IDC_AUDIO_RESAMPLERATE,59,204,46,8
+    LTEXT           "Latency",IDC_STATIC,15,214,26,8
+    RTEXT           "",IDC_AUDIO_LATENCY,59,214,46,8
 END
 
 IDD_DUBBING_MAIN DIALOG DISCARDABLE  0, 0, 172, 102
@@ -2680,11 +2643,11 @@ BEGIN
                     "Button",BS_AUTORADIOBUTTON,21,19,119,10
     CONTROL         "4:2:0 (MPEG-&1)",IDC_MODE_420MPEG1,"Button",
                     BS_AUTORADIOBUTTON,21,29,65,10
-    CONTROL         "4:2:0 (MPEG-2)",IDC_MODE_420MPEG2,"Button",
-                    BS_AUTORADIOBUTTON,21,39,65,10
+    CONTROL         "4:2:0 (MPEG-2, MPEG-&4)",IDC_MODE_420MPEG2,"Button",
+                    BS_AUTORADIOBUTTON,21,39,95,10
     CONTROL         "4:2:2 (MPEG-&2)",IDC_MODE_422,"Button",
                     BS_AUTORADIOBUTTON,21,49,65,10
-    CONTROL         "4:1:0 (Indeo®, MPEG-&4)",IDC_MODE_410,"Button",
+    CONTROL         "4:1:0 (Indeo®)",IDC_MODE_410,"Button",
                     BS_AUTORADIOBUTTON,21,59,98,10
     CONTROL         "4:1:1 (NTSC DV)",IDC_MODE_411,"Button",
                     BS_AUTORADIOBUTTON,21,69,69,10
@@ -2769,7 +2732,7 @@ END
 IDD_FILE_SETTEXTINFO DIALOGEX 0, 0, 290, 181
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Set textual information"
-FONT 8, "MS Sans Serif"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,181,160,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,233,160,50,14
@@ -3042,14 +3005,6 @@ BEGIN
         RIGHTMARGIN, 7
         TOPMARGIN, 7
         BOTTOMMARGIN, 7
-    END
-
-    IDD_CAPTURE_PREFERENCES, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 293
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 207
     END
 
     IDD_AVIOUTPUTIMAGES_FORMAT, DIALOG
@@ -3768,6 +3723,7 @@ BEGIN
     "P",            ID_VIDEO_PREVIEWHISTOGRAM, VIRTKEY, SHIFT, NOINVERT
     "S",            ID_VIDEO_SOURCE,        VIRTKEY, NOINVERT
     "V",            ID_AUDIO_VOLUMEMETER,   VIRTKEY, NOINVERT
+    VK_DOWN,        ID_DEVICE_TUNER_PREVIOUSCHANNEL, VIRTKEY, NOINVERT
     VK_ESCAPE,      ID_CAPTURE_STOP,        VIRTKEY, NOINVERT
     VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
     VK_F10,         ID_CAPTURE_PREFERENCES, VIRTKEY, NOINVERT
@@ -3775,6 +3731,7 @@ BEGIN
     VK_F5,          ID_CAPTURE_CAPTUREVIDEO, VIRTKEY, NOINVERT
     VK_F7,          ID_CAPTURE_TEST,        VIRTKEY, NOINVERT
     VK_F9,          ID_CAPTURE_SETTINGS,    VIRTKEY, NOINVERT
+    VK_UP,          ID_DEVICE_TUNER_NEXTCHANNEL, VIRTKEY, NOINVERT
     "[",            ID_FILE_DECREMENT,      ASCII,  NOINVERT
     "]",            ID_FILE_INCREMENT,      ASCII,  NOINVERT
 END
@@ -3819,8 +3776,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,2,0
- PRODUCTVERSION 1,6,2,0
+ FILEVERSION 1,6,3,0
+ PRODUCTVERSION 1,6,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3838,14 +3795,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.2\0"
+            VALUE "FileVersion", "1.6.3\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.2\0"
+            VALUE "ProductVersion", "1.6.3\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3931,17 +3888,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.2 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.2"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.2 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.2 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.2"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.3 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.3"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.3 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.3 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.3"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.2 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.2 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.2 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.2 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.2 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.3 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.3 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.3 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.3 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.3 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

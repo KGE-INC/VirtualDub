@@ -580,6 +580,7 @@
 #define IDC_STATIC_VOLUME               1228
 #define IDC_AUDIO_RESAMPLERATE          1228
 #define IDC_STATIC_BALANCE              1229
+#define IDC_AUDIO_LATENCY               1229
 #define IDC_TABS                        1230
 #define IDC_STATIC_PROGRESS             1231
 #define IDC_STATIC_PRIORITY             1232
@@ -1120,6 +1121,11 @@
 #define ID_AUDIO_PEAKMETER              40324
 #define ID_TOOLS_CREATEPALETTIZEDAVI    40325
 #define ID_FILE_SETTEXTINFO             40326
+#define ID_AUDIO_ENABLEPLAYBACK         40327
+#define ID_DEVICE_DEVICESETTINGS        40328
+#define ID_VIDEO_VIDEOSOURCE_NOVIDEOSOURCE 40330
+#define ID_DEVICE_TUNER_NEXTCHANNEL     40331
+#define ID_DEVICE_TUNER_PREVIOUSCHANNEL 40332
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1151,6 +1157,10 @@
 #define ID_FRAMERATE_1515FPS            41066
 #define ID_FRAMERATE_1493FPS            41067
 #define ID_VIDEO_CAPTURE_DRIVER         41100
+#define ID_AUDIO_CAPTURE_DRIVER         41150
+#define ID_AUDIO_CAPTURE_INPUT          41200
+#define ID_AUDIO_CAPTURE_SOURCE         41250
+#define ID_VIDEO_CAPTURE_SOURCE         41300
 #define ID_MRU_FILE0                    50000
 #define ID_MRU_FILE1                    50001
 #define ID_MRU_FILE2                    50002
@@ -1161,9 +1171,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        268
-#define _APS_NEXT_COMMAND_VALUE         40327
+#define _APS_NEXT_RESOURCE_VALUE        269
+#define _APS_NEXT_COMMAND_VALUE         40333
 #define _APS_NEXT_CONTROL_VALUE         1413
-#define _APS_NEXT_SYMED_VALUE           108
+#define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

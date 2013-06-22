@@ -34,7 +34,8 @@ namespace nsVDCapture {
 		kDisplayNone,
 		kDisplayHardware,
 		kDisplaySoftware,
-		kDisplayAnalyze
+		kDisplayAnalyze,
+		kDisplayModeCount
 	};
 
 	enum DriverDialog {
@@ -49,13 +50,22 @@ namespace nsVDCapture {
 		kDialogTVTuner,
 		kDialogCount
 	};
+
+	enum DriverEvent {
+		kEventNone,
+		kEventPreroll,
+		kEventCapturing,
+		kEventVideoFormatChanged,
+		kEventVideoFrameRateChanged,
+		kEventCount
+	};
 };
 
 class VDINTERFACE IVDCaptureDriverCallback {
 public:
 	virtual void CapBegin(sint64 global_clock) = 0;
 	virtual void CapEnd(const MyError *pError) = 0;
-	virtual bool CapControl(bool is_preroll) = 0;
+	virtual bool CapEvent(nsVDCapture::DriverEvent event) = 0;
 	virtual void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock) = 0;
 };
 
@@ -66,6 +76,9 @@ public:
 	virtual bool	Init(VDGUIHandle hParent) = 0;
 
 	virtual void	SetCallback(IVDCaptureDriverCallback *pCB) = 0;
+
+	virtual void	LockUpdates() = 0;
+	virtual void	UnlockUpdates() = 0;
 
 	virtual bool	IsHardwareDisplayAvailable() = 0;
 
@@ -84,10 +97,39 @@ public:
 	virtual bool	GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat) = 0;
 	virtual bool	SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size) = 0;
 
+	virtual bool	SetTunerChannel(int channel) = 0;
+	virtual int		GetTunerChannel() = 0;
+	virtual bool	GetTunerChannelRange(int& minChannel, int& maxChannel) = 0;
+
+	virtual int		GetAudioDeviceCount() = 0;
+	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;
+	virtual bool	SetAudioDevice(int idx) = 0;
+	virtual int		GetAudioDeviceIndex() = 0;
+
+	virtual int		GetVideoSourceCount() = 0;
+	virtual const wchar_t *GetVideoSourceName(int idx) = 0;
+	virtual bool	SetVideoSource(int idx) = 0;
+	virtual int		GetVideoSourceIndex() = 0;
+
+	virtual int		GetAudioSourceCount() = 0;
+	virtual const wchar_t *GetAudioSourceName(int idx) = 0;
+	virtual bool	SetAudioSource(int idx) = 0;
+	virtual int		GetAudioSourceIndex() = 0;
+
+	virtual int		GetAudioSourceForVideoSource(int idx) = 0;
+
+	virtual int		GetAudioInputCount() = 0;
+	virtual const wchar_t *GetAudioInputName(int idx) = 0;
+	virtual bool	SetAudioInput(int idx) = 0;
+	virtual int		GetAudioInputIndex() = 0;
+
 	virtual	bool	IsAudioCapturePossible() = 0;
 	virtual bool	IsAudioCaptureEnabled() = 0;
+	virtual bool	IsAudioPlaybackPossible() = 0;
+	virtual bool	IsAudioPlaybackEnabled() = 0;
 	virtual void	SetAudioCaptureEnabled(bool b) = 0;
 	virtual void	SetAudioAnalysisEnabled(bool b) = 0;
+	virtual void	SetAudioPlaybackEnabled(bool b) = 0;
 
 	virtual void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats) = 0;
 

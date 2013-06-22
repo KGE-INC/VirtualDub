@@ -1,6 +1,38 @@
 VirtualDub change log
 
-Build %build% (1.6.2, experimental): [%date%]
+Build %build% (1.6.3, experimental): [%date%]
+   [features added]
+   * Capture: DirectShow driver now supports audio passthrough (Audio > Enable Audio Playback) for devices with integrated audio capture.
+   * Capture: DirectShow driver supports capture from sound cards.
+   * Capture: Reduced graph rebuilding in DirectShow driver for better performance.
+   * Capture: Video/audio source and audio input selection is now supported.
+   * Capture: More settings are automatically saved or savable through Device > Device settings.
+   * Capture: Noise reduction, field swap, and luma squish can be toggled during capture.
+   * Improved asynchronous file write code for better performance and smoother timing in capture.
+
+   [bugs fixed]
+   * Capture: Adjusted audio resampling timing for better accuracy.
+   * Capture: Fixed intermittent crash when audio resampling rate goes very high.
+   * Capture: Fixed erratic resampling and display when capturing with audio compression and with audio peak meter displayed.
+   * Capture: VFW driver now suppresses default preview display when display acceleration is active.
+   * Capture: Fixed crash when exiting capture mode with video histogram enabled.
+   * Capture: DirectShow driver did not stretch display window properly.
+   * Capture: DirectShow driver now supports the "set custom format" command.
+   * Capture: DirectShow driver now works with stop preferences.
+   * Capture: Disabled normal nice-in-background behavior for accelerated display.
+   * Capture: Added workaround for process hang with WDM drivers that need their video port pins rendered.
+   * Capture: Histogram was broken for UYVY format video.
+
+   [regressions fixed]
+   * Fixed crash when decompressing compressed audio with timeline edits.
+   * Fixed 'movi' chunk error on append.
+   * B-frame support was broken.
+   * Fixed crash when adjusting crop parameters for a filter without a video loaded.
+   * Fixed some update problems in the clipping control.
+   * Capture: Multi-segment capture wasn't working for the third segment and beyond.
+   * Capture: Fixed crash when changing video format through capture driver dialog while preview acceleration is active.
+
+Build 22561 (1.6.2, experimental): [December 12, 2004]
    [features added]
    * Capture: Improved Unicode support.
    * Capture: DirectShow video capture support.

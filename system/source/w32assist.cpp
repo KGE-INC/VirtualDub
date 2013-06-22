@@ -121,3 +121,148 @@ EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags) {
 
 	return es;
 }
+
+bool VDSetFilePointerW32(HANDLE h, sint64 pos, DWORD dwMoveMethod) {
+	LONG posHi = (LONG)(pos >> 32);
+	DWORD result = SetFilePointer(h, (LONG)pos, &posHi, dwMoveMethod);
+
+	if (result != INVALID_SET_FILE_POINTER)
+		return true;
+
+	DWORD dwError = GetLastError();
+
+	return (dwError == NO_ERROR);
+}
+
+bool VDGetFileSizeW32(HANDLE h, sint64& size) {
+	DWORD dwSizeHigh;
+	DWORD dwSizeLow = GetFileSize(h, &dwSizeHigh);
+
+	if (dwSizeLow == (DWORD)-1 && GetLastError() != NO_ERROR)
+		return false;
+
+	size = dwSizeLow + ((sint64)dwSizeHigh << 32);
+	return true;
+}
+
+bool VDPatchModuleImportTableW32(HMODULE hmod, const char *srcModule, const char *name, void *pCompareValue, void *pNewValue, void *volatile *ppOldValue) {
+	char *pBase = (char *)hmod;
+
+	__try {
+		// The PEheader offset is at hmod+0x3c.  Add the size of the optional header
+		// to step to the section headers.
+
+		const uint32 peoffset = ((const long *)pBase)[15];
+		const uint32 signature = *(uint32 *)(pBase + peoffset);
+
+		if (signature != IMAGE_NT_SIGNATURE)
+			return false;
+
+		const IMAGE_FILE_HEADER *pHeader = (const IMAGE_FILE_HEADER *)(pBase + peoffset + 4);
+
+		// Verify the PE optional structure.
+
+		if (pHeader->SizeOfOptionalHeader < 104)
+			return false;
+
+		// Find import header.
+
+		const IMAGE_IMPORT_DESCRIPTOR *pImportDir;
+		int nImports;
+
+		switch(*(short *)((char *)pHeader + IMAGE_SIZEOF_FILE_HEADER)) {
+
+#ifdef _M_AMD64
+		case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+			{
+				const IMAGE_OPTIONAL_HEADER64 *pOpt = (IMAGE_OPTIONAL_HEADER64 *)((const char *)pHeader + sizeof(IMAGE_FILE_HEADER));
+
+				if (pOpt->NumberOfRvaAndSizes < 2)
+					return false;
+
+				pImportDir = (const IMAGE_IMPORT_DESCRIPTOR *)(pBase + pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+				nImports = pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
+			}
+			break;
+#else
+		case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
+			{
+				const IMAGE_OPTIONAL_HEADER32 *pOpt = (IMAGE_OPTIONAL_HEADER32 *)((const char *)pHeader + sizeof(IMAGE_FILE_HEADER));
+
+				if (pOpt->NumberOfRvaAndSizes < 2)
+					return false;
+
+				pImportDir = (const IMAGE_IMPORT_DESCRIPTOR *)(pBase + pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+				nImports = pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
+			}
+			break;
+#endif
+
+		default:		// reject PE32+
+			return false;
+		}
+
+		// Hmmm... no imports?
+
+		if ((const char *)pImportDir == pBase)
+			return false;
+
+		// Scan down the import entries.  We are looking for MSVFW32.
+
+		int i;
+
+		for(i=0; i<nImports; ++i) {
+			if (!stricmp(pBase + pImportDir[i].Name, srcModule))
+				return false;
+		}
+
+		if (i >= nImports)
+			return false;
+
+		// Found it.  Start scanning MSVFW32 imports until we find DrawDibDraw.
+
+		const long *pImports = (const long *)(pBase + pImportDir[i].OriginalFirstThunk);
+		void * volatile *pVector = (void * volatile *)(pBase + pImportDir[i].FirstThunk);
+
+		while(*pImports) {
+			if (*pImports >= 0) {
+				const char *pName = pBase + *pImports + 2;
+
+				if (!strcmp(pName, name)) {
+
+					// Found it!  Reset the protection.
+
+					DWORD dwOldProtect;
+
+					if (VirtualProtect((void *)pVector, sizeof(void *), PAGE_EXECUTE_READWRITE, &dwOldProtect)) {
+						if (ppOldValue) {
+							for(;;) {
+								void *old = *pVector;
+								if (pCompareValue && pCompareValue != old)
+									return false;
+
+								*ppOldValue = old;
+								if (old == VDAtomicCompareExchangePointer(pVector, pNewValue, old))
+									break;
+							}
+						} else {
+							*pVector = pNewValue;
+						}
+
+						VirtualProtect((void *)pVector, sizeof(void *), dwOldProtect, &dwOldProtect);
+
+						return true;
+					}
+
+					break;
+				}
+			}
+
+			++pImports;
+			++pVector;
+		}
+	} __except(1) {
+	}
+
+	return false;
+}

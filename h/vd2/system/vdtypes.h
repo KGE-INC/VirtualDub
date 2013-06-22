@@ -242,8 +242,8 @@ extern void VDDebugPrint(const char *format, ...);
 
 	#if defined(_MSC_VER)
 		#ifndef _M_AMD64
-			#define VDASSERT(exp)		__assume(exp)
-			#define VDASSERTPTR(exp)	__assume(exp)
+			#define VDASSERT(exp)		__assume(!!(exp))
+			#define VDASSERTPTR(exp)	__assume(!!(exp))
 		#else
 			#define VDASSERT(exp)		__noop(exp)
 			#define VDASSERTPTR(exp)	__noop(exp)

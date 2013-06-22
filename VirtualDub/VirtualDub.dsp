@@ -307,10 +307,6 @@ SOURCE=.\h\Avisynth.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\h\capvumeter.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\h\convert.h
 # End Source File
 # Begin Source File
@@ -580,14 +576,6 @@ SOURCE=.\res\VirtualDub.rc
 # PROP Default_Filter ""
 # Begin Source File
 
-SOURCE=.\source\capaccel.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\h\capaccel.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\source\capbt848.cpp
 # End Source File
 # Begin Source File
@@ -601,6 +589,10 @@ SOURCE=.\h\capclip.h
 # Begin Source File
 
 SOURCE=.\source\capdialogs.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\capdialogs.h
 # End Source File
 # Begin Source File
 
@@ -653,6 +645,10 @@ SOURCE=.\h\caputils.h
 # Begin Source File
 
 SOURCE=.\source\capvumeter.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\capvumeter.h
 # End Source File
 # Begin Source File
 

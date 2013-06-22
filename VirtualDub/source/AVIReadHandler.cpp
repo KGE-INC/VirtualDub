@@ -1579,6 +1579,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 	AVIFileDesc *pDesc;
 
 	nCurrentFile = -1;
+	i64FilePosition = 0;
 
 	// open file
 

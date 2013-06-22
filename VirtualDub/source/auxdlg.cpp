@@ -233,26 +233,26 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
-#if 1		// 1.6.1 is experimental
+#if 1		// 1.6.3 is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.1", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.3", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.6.1", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.3", 1);
 	}
 #endif
 }
 
 
 void AnnounceCaptureExperimental(VDGUIHandle h) {
-#if 1		// 1.6.1 capture is experimental
+#if 1		// 1.6.3 capture is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.1", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.3", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BROKEN), (HWND)h, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.1", 1);
+		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.3", 1);
 	}
 #endif
 }

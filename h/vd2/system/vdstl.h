@@ -268,6 +268,14 @@ public:
 	T&	operator *() const	{ return *(T *)mpMemory; }
 	T*	operator->() const	{ return (T *)mpMemory; }
 
+	bool operator==(const vdstructex& x) const {
+		return mSize == x.mSize && (!mSize || !memcmp(mpMemory, x.mpMemory, mSize));
+	}
+
+	bool operator!=(const vdstructex& x) const {
+		return mSize != x.mSize || (mSize && memcmp(mpMemory, x.mpMemory, mSize));
+	}
+
 	vdstructex<T>& operator=(const vdstructex<T>& src) {
 		assign(src.mpMemory, src.mSize);
 		return *this;

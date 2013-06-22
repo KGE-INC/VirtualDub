@@ -41,7 +41,9 @@ MyError::MyError(const MyError& err) {
 	buf = strdup(err.buf);
 }
 
-MyError::MyError(const char *f, ...) {
+MyError::MyError(const char *f, ...)
+	: buf(NULL)
+{
 	va_list val;
 
 	va_start(val, f);
@@ -50,11 +52,11 @@ MyError::MyError(const char *f, ...) {
 }
 
 MyError::~MyError() {
-	delete[] buf;
+	free(buf);
 }
 
 void MyError::assign(const MyError& e) {
-	delete[] buf;
+	free(buf);
 	buf = strdup(e.buf);
 }
 
@@ -67,7 +69,7 @@ void MyError::setf(const char *f, ...) {
 }
 
 void MyError::vsetf(const char *f, va_list val) {
-	buf = new char[1024];
+	buf = (char *)realloc(buf, 1024);
 	if (buf) {
 		buf[1023] = 0;
 		_vsnprintf(buf, 1023, f, val);
@@ -85,6 +87,7 @@ void MyError::post(HWND hWndParent, const char *title) const {
 }
 
 void MyError::discard() {
+	free(buf);
 	buf = NULL;
 }
 

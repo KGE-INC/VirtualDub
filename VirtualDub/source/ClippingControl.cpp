@@ -526,9 +526,9 @@ void VDClippingControl::ResetDisplayBounds() {
 	IVDVideoDisplay *pVD = VDGetIVideoDisplay(hwndDisplay);
 
 	if (x1+x2 >= lWidth || y1+y2 >= lHeight)
-		ShowWindow(mhwnd, SW_HIDE);
+		ShowWindow(hwndDisplay, SW_HIDE);
 	else {
-		ShowWindow(mhwnd, SW_SHOWNA);
+		ShowWindow(hwndDisplay, SW_SHOWNA);
 		vdrect32 r(x1, y1, lWidth-x2, lHeight-y2);
 		pVD->SetSourceSubrect(&r);
 		SetWindowPos(hwndDisplay, NULL, xRect+4+x1, yRect+4+y1, lWidth-(x1+x2), lHeight-(y1+y2), SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOZORDER);
@@ -681,6 +681,7 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 					InvalidateRect(mhwnd, &r, TRUE);
 
 					pOverlay->SetBounds(x1, y1, x2, y2);
+					ResetDisplayBounds();
 				}
 			return 0;
 		case IDC_POSITION:

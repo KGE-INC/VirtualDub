@@ -208,6 +208,10 @@ bool VDCaptureVideoHistogram::Process(const VDPixmap& px, float out[256], double
 #endif
 			break;
 		case nsVDPixmap::kPixFormat_YUV422_UYVY:
+			mOffset = 1;
+			// No table setup required
+			mpSpanRoutine = AccumulateSpanY8_2;
+			break;
 		case nsVDPixmap::kPixFormat_YUV422_YUYV:
 			// No table setup required
 			mpSpanRoutine = AccumulateSpanY8_2;

@@ -44,9 +44,13 @@ public:
 	VDCaptureDriverEmulation();
 	~VDCaptureDriverEmulation();
 
-	void	SetCallback(IVDCaptureDriverCallback *pCB);
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
+
+	void	SetCallback(IVDCaptureDriverCallback *pCB);
+
+	void	LockUpdates() {}
+	void	UnlockUpdates() {}
 
 	bool	IsHardwareDisplayAvailable();
 
@@ -65,10 +69,39 @@ public:
 	bool	GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat);
 	bool	SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size);
 
+	bool	SetTunerChannel(int channel) { return false; }
+	int		GetTunerChannel() { return -1; }
+	bool	GetTunerChannelRange(int& minChannel, int& maxChannel) { return false; }
+
+	int		GetAudioDeviceCount();
+	const wchar_t *GetAudioDeviceName(int idx);
+	bool	SetAudioDevice(int idx);
+	int		GetAudioDeviceIndex();
+
+	int		GetVideoSourceCount();
+	const wchar_t *GetVideoSourceName(int idx);
+	bool	SetVideoSource(int idx);
+	int		GetVideoSourceIndex();
+
+	int		GetAudioSourceCount();
+	const wchar_t *GetAudioSourceName(int idx);
+	bool	SetAudioSource(int idx);
+	int		GetAudioSourceIndex();
+
+	int		GetAudioSourceForVideoSource(int idx) { return -2; }
+
+	int		GetAudioInputCount();
+	const wchar_t *GetAudioInputName(int idx);
+	bool	SetAudioInput(int idx);
+	int		GetAudioInputIndex();
+
 	bool	IsAudioCapturePossible();
 	bool	IsAudioCaptureEnabled();
+	bool	IsAudioPlaybackPossible() { return false; }
+	bool	IsAudioPlaybackEnabled() { return false; }
 	void	SetAudioCaptureEnabled(bool b);
 	void	SetAudioAnalysisEnabled(bool b);
+	void	SetAudioPlaybackEnabled(bool b) {}
 
 	void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats);
 
@@ -296,6 +329,74 @@ bool VDCaptureDriverEmulation::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint
 	return false;
 }
 
+int VDCaptureDriverEmulation::GetAudioDeviceCount() {
+	return mpAudio != 0;
+}
+
+const wchar_t *VDCaptureDriverEmulation::GetAudioDeviceName(int idx) {
+	return mpAudio && !idx ? L"Audio stream" : NULL;
+}
+
+bool VDCaptureDriverEmulation::SetAudioDevice(int idx) {
+	// ignored
+	return idx == 0;
+}
+
+int VDCaptureDriverEmulation::GetAudioDeviceIndex() {
+	return mpAudio != 0 ? 0 : -1;
+}
+
+int VDCaptureDriverEmulation::GetVideoSourceCount() {
+	return 0;
+}
+
+const wchar_t *VDCaptureDriverEmulation::GetVideoSourceName(int idx) {
+	return NULL;
+}
+
+bool VDCaptureDriverEmulation::SetVideoSource(int idx) {
+	return idx == -1;
+}
+
+int VDCaptureDriverEmulation::GetVideoSourceIndex() {
+	return -1;
+}
+
+int VDCaptureDriverEmulation::GetAudioSourceCount() {
+	return 0;
+}
+
+const wchar_t *VDCaptureDriverEmulation::GetAudioSourceName(int idx) {
+	return NULL;
+}
+
+bool VDCaptureDriverEmulation::SetAudioSource(int idx) {
+	return idx==-1;
+}
+
+int VDCaptureDriverEmulation::GetAudioSourceIndex() {
+	return -1;
+}
+
+int VDCaptureDriverEmulation::GetAudioInputCount() {
+	return mpAudio != 0 ? 1 : 0;
+}
+
+const wchar_t *VDCaptureDriverEmulation::GetAudioInputName(int idx) {
+	return !idx && mpAudio != 0 ? L"Audio stream" : NULL;
+}
+
+bool VDCaptureDriverEmulation::SetAudioInput(int idx) {
+	if (!mpAudio || idx)
+		return false;
+
+	return true;
+}
+
+int VDCaptureDriverEmulation::GetAudioInputIndex() {
+	return mpAudio != 0 ? -1 : 0;
+}
+
 bool VDCaptureDriverEmulation::IsAudioCapturePossible() {
 	return mpAudio != 0;
 }
@@ -373,6 +474,11 @@ bool VDCaptureDriverEmulation::CaptureStart() {
 		mbCapturing = true;
 
 		if (mpCB) {
+			if (!mpCB->CapEvent(kEventPreroll)) {
+				mbCapturing = false;
+				return false;
+			}
+
 			try {
 				mpCB->CapBegin(0);
 			} catch(MyError& e) {
@@ -466,7 +572,6 @@ void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
 
 		pVideo->setTargetFormat(0);
 		mLastDisplayedVideoFrame = -1;
-		UpdateDisplayMode();
 
 		mFrameTimer.Init(this, (sint32)pVideo->asStream()->getRate().scale64ir(1000));
 	}
@@ -496,6 +601,14 @@ void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
 
 	mpVideo = pVideo;
 	mpAudio = pAudio;
+
+	if (mpVideo)
+		UpdateDisplayMode();
+
+	if (mpCB) {
+		mpCB->CapEvent(kEventVideoFormatChanged);
+		mpCB->CapEvent(kEventVideoFrameRateChanged);
+	}
 }
 
 void VDCaptureDriverEmulation::TimerCallback() {
@@ -505,6 +618,13 @@ void VDCaptureDriverEmulation::TimerCallback() {
 void VDCaptureDriverEmulation::OnTick() {
 	if (!mpVideo)
 		return;
+
+	if (mpCB && mbCapturing) {
+		if (!mpCB->CapEvent(kEventCapturing)) {
+			CaptureStop();
+			return;
+		}
+	}
 
 	int m = mDisplayMode;
 
@@ -522,7 +642,8 @@ void VDCaptureDriverEmulation::OnTick() {
 		if (mbCapturing && mLastCapturedFrame != mFrame) {
 			mLastCapturedFrame = mFrame;
 			const VDPixmap& px = mpVideo->getTargetFormat();
-			mpCB->CapProcessData(0, mpVideo->getFrameBuffer(), (px.pitch<0?-px.pitch:px.pitch) * px.h, clk, true, clk);
+			if (mpCB)
+				mpCB->CapProcessData(0, mpVideo->getFrameBuffer(), (px.pitch<0?-px.pitch:px.pitch) * px.h, clk, true, clk);
 		}
 	} catch(MyError& e) {
 		m = 0;
@@ -542,10 +663,12 @@ void VDCaptureDriverEmulation::OnTick() {
 		++mPreviewFrameCount;
 		if (!mbCapturing && m == kDisplayAnalyze) {
 			const VDPixmap& px = mpVideo->getTargetFormat();
-			try {
-				mpCB->CapProcessData(-1, mpVideo->getFrameBuffer(), (px.pitch < 0 ? -px.pitch : px.pitch) * px.h, clk, true, clk);
-			} catch(const MyError&) {
-				// eat the error
+			if (mpCB) {
+				try {
+					mpCB->CapProcessData(-1, mpVideo->getFrameBuffer(), (px.pitch < 0 ? -px.pitch : px.pitch) * px.h, clk, true, clk);
+				} catch(const MyError&) {
+					// eat the error
+				}
 			}
 		}
 

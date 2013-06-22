@@ -33,27 +33,15 @@
 ///////////////////////////////////////////////////////////////////////////
 
 template<class T, class U>
-static inline T splitimpL(const T& string, const U *s, int offset) {
+static inline T splitimpL(const T& string, const U *s) {
 	const U *p = string.c_str();
-	return T(p, (s+offset) - p);
+	return T(p, s - p);
 }
 
 template<class T, class U>
-static inline T splitimpR(const T& string, const U *s, int offset) {
+static inline T splitimpR(const T& string, const U *s) {
 	const U *p = string.c_str();
-	return T(s+offset);
-}
-
-template<class T, class U>
-static inline T splitimp2L(const T& string, const U *s, int offset) {
-	const U *p = string.c_str();
-	return T(p, (s+offset) - p);
-}
-
-template<class T, class U>
-static inline T splitimp2R(const T& string, const U *s, int offset) {
-	const U *p = string.c_str();
-	return T(s+offset);
+	return T(s);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -98,10 +86,10 @@ const wchar_t *VDFileSplitPath(const wchar_t *s) {
 	return lastsep;
 }
 
-VDString  VDFileSplitPathLeft (const VDString&  s) { return splitimpL(s, VDFileSplitPath(s.c_str()), -1); }
-VDStringW VDFileSplitPathLeft (const VDStringW& s) { return splitimpL(s, VDFileSplitPath(s.c_str()), -1); }
-VDString  VDFileSplitPathRight(const VDString&  s) { return splitimpR(s, VDFileSplitPath(s.c_str()), 0); }
-VDStringW VDFileSplitPathRight(const VDStringW& s) { return splitimpR(s, VDFileSplitPath(s.c_str()), 0); }
+VDString  VDFileSplitPathLeft (const VDString&  s) { return splitimpL(s, VDFileSplitPath(s.c_str())); }
+VDStringW VDFileSplitPathLeft (const VDStringW& s) { return splitimpL(s, VDFileSplitPath(s.c_str())); }
+VDString  VDFileSplitPathRight(const VDString&  s) { return splitimpR(s, VDFileSplitPath(s.c_str())); }
+VDStringW VDFileSplitPathRight(const VDStringW& s) { return splitimpR(s, VDFileSplitPath(s.c_str())); }
 
 const char *VDFileSplitRoot(const char *s) {
 	const char *const t = s;
@@ -121,8 +109,8 @@ const wchar_t *VDFileSplitRoot(const wchar_t *s) {
 	return *s ? *s == L':' && (s[1]==L'/' || s[1]==L'\\') ? s+2 : s+1 : t;
 }
 
-VDString  VDFileSplitRoot(const VDString&  s) { return splitimp2L(s, VDFileSplitRoot(s.c_str()), 0); }
-VDStringW VDFileSplitRoot(const VDStringW& s) { return splitimp2L(s, VDFileSplitRoot(s.c_str()), 0); }
+VDString  VDFileSplitRoot(const VDString&  s) { return splitimpL(s, VDFileSplitRoot(s.c_str())); }
+VDStringW VDFileSplitRoot(const VDStringW& s) { return splitimpL(s, VDFileSplitRoot(s.c_str())); }
 
 const char *VDFileSplitExt(const char *s) {
 	const char *t = s;
@@ -166,10 +154,10 @@ const wchar_t *VDFileSplitExt(const wchar_t *s) {
 	return end;
 }
 
-VDString  VDFileSplitExtLeft (const VDString&  s) { return splitimp2L(s, VDFileSplitExt(s.c_str()), 0); }
-VDStringW VDFileSplitExtLeft (const VDStringW& s) { return splitimp2L(s, VDFileSplitExt(s.c_str()), 0); }
-VDString  VDFileSplitExtRight(const VDString&  s) { return splitimp2R(s, VDFileSplitExt(s.c_str()), 0); }
-VDStringW VDFileSplitExtRight(const VDStringW& s) { return splitimp2R(s, VDFileSplitExt(s.c_str()), 0); }
+VDString  VDFileSplitExtLeft (const VDString&  s) { return splitimpL(s, VDFileSplitExt(s.c_str())); }
+VDStringW VDFileSplitExtLeft (const VDStringW& s) { return splitimpL(s, VDFileSplitExt(s.c_str())); }
+VDString  VDFileSplitExtRight(const VDString&  s) { return splitimpR(s, VDFileSplitExt(s.c_str())); }
+VDStringW VDFileSplitExtRight(const VDStringW& s) { return splitimpR(s, VDFileSplitExt(s.c_str())); }
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -301,14 +289,23 @@ VDStringW VDMakePath(const wchar_t *base, const wchar_t *file) {
 
 	const wchar_t c = result[result.size() - 1];
 
-	if (c != L'/' && c != L'\\' && c != L'/')
+	if (c != L'/' && c != L'\\' && c != L':')
 		result += L'\\';
 
 	result.append(file);
 
 	return result;
 }
- 
+
+void VDFileFixDirPath(VDStringW& path) {
+	if (!path.empty()) {
+		wchar_t c = path[path.size()-1];
+
+		if (c != L'/' && c != L'\\' && c != L':')
+			path += L'\\';
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 VDDirectoryIterator::VDDirectoryIterator(const wchar_t *path)
@@ -316,7 +313,8 @@ VDDirectoryIterator::VDDirectoryIterator(const wchar_t *path)
 	, mpHandle(NULL)
 	, mbSearchComplete(false)
 {
-	mBasePath = VDFileSplitPathLeft(mSearchPath) + L"\\";
+	mBasePath = VDFileSplitPathLeft(mSearchPath);
+	VDFileFixDirPath(mBasePath);
 }
 
 VDDirectoryIterator::~VDDirectoryIterator() {
@@ -363,3 +361,45 @@ bool VDDirectoryIterator::Next() {
 
 	return true;
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef _DEBUG
+
+struct VDSystemFilesysTestObject {
+	VDSystemFilesysTestObject() {
+#define TEST(fn, x, y1, y2) VDASSERT(!strcmp(fn(x), y2)); VDASSERT(!wcscmp(fn(L##x), L##y2)); VDASSERT(fn##Left(VDStringA(x))==y1); VDASSERT(fn##Right(VDStringA(x))==y2); VDASSERT(fn##Left(VDStringW(L##x))==L##y1); VDASSERT(fn##Right(VDStringW(L##x))==L##y2)
+		TEST(VDFileSplitPath, "", "", "");
+		TEST(VDFileSplitPath, "x", "", "x");
+		TEST(VDFileSplitPath, "x\\y", "x\\", "y");
+		TEST(VDFileSplitPath, "x\\y\\z", "x\\y\\", "z");
+		TEST(VDFileSplitPath, "x\\", "x\\", "");
+		TEST(VDFileSplitPath, "x\\y\\z\\", "x\\y\\z\\", "");
+		TEST(VDFileSplitPath, "c:", "c:", "");
+		TEST(VDFileSplitPath, "c:x", "c:", "x");
+		TEST(VDFileSplitPath, "c:\\", "c:\\", "");
+		TEST(VDFileSplitPath, "c:\\x", "c:\\", "x");
+		TEST(VDFileSplitPath, "c:\\x\\", "c:\\x\\", "");
+		TEST(VDFileSplitPath, "c:\\x\\", "c:\\x\\", "");
+		TEST(VDFileSplitPath, "c:x\\y", "c:x\\", "y");
+		TEST(VDFileSplitPath, "\\\\server\\share\\", "\\\\server\\share\\", "");
+		TEST(VDFileSplitPath, "\\\\server\\share\\x", "\\\\server\\share\\", "x");
+#undef TEST
+#define TEST(fn, x, y1, y2) VDASSERT(!strcmp(fn(x), y2)); VDASSERT(!wcscmp(fn(L##x), L##y2)); VDASSERT(fn(VDStringA(x))==y1); VDASSERT(fn(VDStringW(L##x))==L##y1)
+		TEST(VDFileSplitRoot, "", "", "");
+		TEST(VDFileSplitRoot, "c:", "c:", "");
+		TEST(VDFileSplitRoot, "c:x", "c:", "x");
+		TEST(VDFileSplitRoot, "c:x\\", "c:", "x\\");
+		TEST(VDFileSplitRoot, "c:x\\y", "c:", "x\\y");
+		TEST(VDFileSplitRoot, "c:\\", "c:\\", "");
+		TEST(VDFileSplitRoot, "c:\\x", "c:\\", "x");
+		TEST(VDFileSplitRoot, "c:\\x\\", "c:\\", "x\\");
+		TEST(VDFileSplitRoot, "\\", "\\", "");
+		TEST(VDFileSplitRoot, "\\x", "\\", "x");
+		TEST(VDFileSplitRoot, "\\x\\", "\\", "x\\");
+		TEST(VDFileSplitRoot, "\\x\\y", "\\", "x\\y");
+#undef TEST
+	}
+} g_VDSystemFilesysTestObject;
+
+#endif

@@ -50,6 +50,8 @@ protected:
 struct VDCaptureResyncStatus {
 	sint32		mVideoTimingAdjust;
 	float		mAudioResamplingRate;
+	float		mMeasuredLatency;
+	float		mCurrentLatency;
 };
 
 class VDINTERFACE IVDCaptureResyncFilter : public IVDCaptureDriverCallback {

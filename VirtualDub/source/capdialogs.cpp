@@ -27,6 +27,7 @@
 #include "gui.h"
 #include "resource.h"
 #include "capture.h"
+#include "capdialogs.h"
 
 #include <vfw.h>
 
@@ -130,6 +131,8 @@ INT_PTR VDDialogCaptureDiskIO::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 					key.setInt(g_szDisableBuffering, mDiskSettings.mbDisableWriteCache);
 				}
 			}
+			End(true);
+			return TRUE;
 		case IDCANCEL:
 			End(0);
 			return TRUE;
@@ -176,18 +179,18 @@ bool VDShowCaptureDiskIODialog(VDGUIHandle hwndParent, VDCaptureDiskSettings& se
 
 class VDDialogCaptureNRThreshold : public VDDialogBaseW32 {
 public:
-	VDDialogCaptureNRThreshold() : VDDialogBaseW32(IDD_CAPTURE_NOISEREDUCTION), mThreshold(0) {}
+	VDDialogCaptureNRThreshold(IVDCaptureProject *pProject) : VDDialogBaseW32(IDD_CAPTURE_NOISEREDUCTION), mpProject(pProject) {}
 
 protected:
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
-	void PreNCDestroy() {
-		delete this;
+	bool PreNCDestroy() {
+		return true;
 	}
 
 	ModelessDlgNode mDlgNode;
-#pragma vdpragma_TODO("This needs to be hooked up properly")
-	int mThreshold;
+
+	IVDCaptureProject *const mpProject;
 };
 
 namespace {
@@ -198,12 +201,16 @@ INT_PTR VDDialogCaptureNRThreshold::DlgProc(UINT msg, WPARAM wParam, LPARAM lPar
 	HWND hwndItem;
 	switch(msg) {
 		case WM_INITDIALOG:
-			hwndItem = GetDlgItem(mhdlg, IDC_THRESHOLD);
-			SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0, 64));
-			SendMessage(hwndItem, TBM_SETPOS, TRUE, mThreshold);
-			mDlgNode.hdlg = mhdlg;
-			guiAddModelessDialog(&mDlgNode);
-			g_pCapNRDialog = this;
+			{
+				const VDCaptureFilterSetup& filtSetup = mpProject->GetFilterSetup();
+
+				hwndItem = GetDlgItem(mhdlg, IDC_THRESHOLD);
+				SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0, 64));
+				SendMessage(hwndItem, TBM_SETPOS, TRUE, filtSetup.mNRThreshold);
+				mDlgNode.hdlg = mhdlg;
+				guiAddModelessDialog(&mDlgNode);
+				g_pCapNRDialog = this;
+			}
 			return TRUE;
 
 		case WM_COMMAND:
@@ -225,14 +232,23 @@ INT_PTR VDDialogCaptureNRThreshold::DlgProc(UINT msg, WPARAM wParam, LPARAM lPar
 			return TRUE;
 
 		case WM_HSCROLL:
-			mThreshold = SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
+			{
+				VDCaptureFilterSetup filtSetup(mpProject->GetFilterSetup());
+				int thresh = SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
+
+				if (filtSetup.mNRThreshold != thresh) {
+					filtSetup.mNRThreshold = thresh;
+
+					mpProject->SetFilterSetup(filtSetup);
+				}
+			}
 			return TRUE;
 	}
 
 	return FALSE;
 }
 
-void VDShowCaptureToggleNRDialog(VDGUIHandle hwndParent) {
+void VDToggleCaptureNRDialog(VDGUIHandle hwndParent, IVDCaptureProject *pProject) {
 	if (!hwndParent) {
 		if (g_pCapNRDialog)
 			g_pCapNRDialog->DestroyModeless();
@@ -242,7 +258,7 @@ void VDShowCaptureToggleNRDialog(VDGUIHandle hwndParent) {
 	if (g_pCapNRDialog)
 		SetForegroundWindow(g_pCapNRDialog->GetHandle());
 	else {
-		g_pCapNRDialog = new VDDialogCaptureNRThreshold;
+		g_pCapNRDialog = new VDDialogCaptureNRThreshold(pProject);
 		g_pCapNRDialog->CreateModeless(hwndParent);
 	}
 }
@@ -427,7 +443,7 @@ bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, CAPTUREPARMS& parms) {
 
 class VDDialogCaptureAllocate : public VDDialogBaseW32 {
 public:
-	VDDialogCaptureAllocate(const VDStringW& path) : VDDialogBaseW32(IDD_CAPTURE_SETTINGS), mPath(path) {}
+	VDDialogCaptureAllocate(const VDStringW& path) : VDDialogBaseW32(IDD_CAPTURE_PREALLOCATE), mPath(path) {}
 
 protected:
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -440,7 +456,7 @@ INT_PTR VDDialogCaptureAllocate::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_INITDIALOG:
 			{
-				sint64 client_free = VDGetDiskFreeSpace(mPath.c_str());
+				sint64 client_free = VDGetDiskFreeSpace(VDFileSplitPathLeft(mPath).c_str());
 
 				SetDlgItemText(mhdlg, IDC_STATIC_DISK_FREE_SPACE, "Free disk space:");
 
@@ -726,6 +742,7 @@ class VDDialogCaptureRawAudioFormat : public VDDialogBase {
 public:
 	const std::list<vdstructex<WAVEFORMATEX> >& mFormats;
 	int mSelected;
+	bool mbSaveIt;
 
 	VDDialogCaptureRawAudioFormat(const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) : mFormats(formats), mSelected(sel) {}
 
@@ -768,6 +785,7 @@ public:
 		} else if (type == kEventSelect) {
 			if (id == 10) {
 				pBase->EndModal(GetValue(100));
+				mbSaveIt = 0 != GetValue(101);
 				return true;
 			} else if (id == 11) {
 				pBase->EndModal(-1);
@@ -778,7 +796,7 @@ public:
 	}
 };
 
-int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) {
+int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel, bool& saveit) {
 	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
 
 	IVDUIWindow *pWin = VDCreateDialogFromResource(2100, peer);
@@ -789,6 +807,8 @@ int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<
 	pBase->SetCallback(&prefDlg, false);
 	int result = pBase->DoModal();
 	peer->Shutdown();
+
+	saveit = prefDlg.mbSaveIt;
 
 	return result;
 }
@@ -839,6 +859,73 @@ bool VDShowCaptureTimingDialog(VDGUIHandle h, VDCaptureTimingSetup& timing) {
 
 	IVDUIWindow *pWin = VDCreateDialogFromResource(2101, peer);
 	VDDialogTimingOptions prefDlg(timing);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&prefDlg, false);
+	bool result = 0 != pBase->DoModal();
+	peer->Shutdown();
+
+	return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//	device options
+//
+//////////////////////////////////////////////////////////////////////////////
+
+class VDDialogCaptureDeviceOptions : public VDDialogBase {
+public:
+	VDDialogCaptureDeviceOptions(uint32& opts) : mOptions(opts) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+
+			SetValue(100, 0 != (mOptions & kVDCapDevOptSaveCurrentAudioFormat));
+			SetValue(101, 0 != (mOptions & kVDCapDevOptSaveCurrentAudioCompFormat));
+			SetValue(102, 0 != (mOptions & kVDCapDevOptSaveCurrentVideoFormat));
+			SetValue(103, 0 != (mOptions & kVDCapDevOptSaveCurrentVideoCompFormat));
+			SetValue(104, 0 != (mOptions & kVDCapDevOptSaveCurrentFrameRate));
+			SetValue(105, 0 != (mOptions & kVDCapDevOptSaveCurrentDisplayMode));
+			SetValue(106, 0 != (mOptions & kVDCapDevOptSwitchSourcesTogether));
+			SetValue(107, 0 != (mOptions & kVDCapDevOptSlowOverlay));
+			SetValue(108, 0 != (mOptions & kVDCapDevOptSlowPreview));
+
+			pBase->ExecuteAllLinks();
+		} else if (type == kEventSelect) {
+			if (id == 10) {
+				mOptions = 0;
+
+				if (GetValue(100))	mOptions += kVDCapDevOptSaveCurrentAudioFormat;
+				if (GetValue(101))	mOptions += kVDCapDevOptSaveCurrentAudioCompFormat;
+				if (GetValue(102))	mOptions += kVDCapDevOptSaveCurrentVideoFormat;
+				if (GetValue(103))	mOptions += kVDCapDevOptSaveCurrentVideoCompFormat;
+				if (GetValue(104))	mOptions += kVDCapDevOptSaveCurrentFrameRate;
+				if (GetValue(105))	mOptions += kVDCapDevOptSaveCurrentDisplayMode;
+				if (GetValue(106))	mOptions += kVDCapDevOptSwitchSourcesTogether;
+				if (GetValue(107))	mOptions += kVDCapDevOptSlowOverlay;
+				if (GetValue(108))	mOptions += kVDCapDevOptSlowPreview;
+
+				pBase->EndModal(true);
+				return true;
+			} else if (id == 11) {
+				pBase->EndModal(false);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	uint32& mOptions;
+};
+
+bool VDShowCaptureDeviceOptionsDialog(VDGUIHandle h, uint32& opts) {
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(2102, peer);
+	VDDialogCaptureDeviceOptions prefDlg(opts);
 
 	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
 	

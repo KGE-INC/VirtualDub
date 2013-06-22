@@ -32,6 +32,7 @@ public:
 	~VDCaptureAudioCompFilter();
 
 	void SetChildCallback(IVDCaptureDriverCallback *pChild);
+	void SetSourceSplit(bool enable);
 
 	void Init(const WAVEFORMATEX *srcFormat, const WAVEFORMATEX *dstFormat);
 
@@ -39,11 +40,12 @@ public:
 
 	void CapBegin(sint64 global_clock);
 	void CapEnd(const MyError *pError);
-	bool CapControl(bool is_preroll);
+	bool CapEvent(nsVDCapture::DriverEvent event);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
 	IVDCaptureDriverCallback *mpCB;
+	bool	mbSplitSource;
 
 	VDAudioCodecW32	mCodec;
 	VDRTProfileChannel	mProfileChannel;
@@ -66,6 +68,10 @@ void VDCaptureAudioCompFilter::SetChildCallback(IVDCaptureDriverCallback *pChild
 	mpCB = pChild;
 }
 
+void VDCaptureAudioCompFilter::SetSourceSplit(bool enable) {
+	mbSplitSource = enable;
+}
+
 void VDCaptureAudioCompFilter::Init(const WAVEFORMATEX *srcFormat, const WAVEFORMATEX *dstFormat) {
 	mCodec.Init(srcFormat, dstFormat);
 }
@@ -83,8 +89,8 @@ void VDCaptureAudioCompFilter::CapEnd(const MyError *pError) {
 	mpCB->CapEnd(pError);
 }
 
-bool VDCaptureAudioCompFilter::CapControl(bool is_preroll) {
-	return mpCB->CapControl(is_preroll);
+bool VDCaptureAudioCompFilter::CapEvent(nsVDCapture::DriverEvent event) {
+	return mpCB->CapEvent(event);
 }
 
 void VDCaptureAudioCompFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock)  {
@@ -92,6 +98,9 @@ void VDCaptureAudioCompFilter::CapProcessData(int stream, const void *data, uint
 		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
 		return;
 	}
+
+	if (mbSplitSource)
+		mpCB->CapProcessData(-2, data, size, timestamp, key, global_clock);
 
 	while(size > 0) {
 		unsigned bytes;

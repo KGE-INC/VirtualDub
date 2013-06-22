@@ -31,6 +31,11 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 		else
 			isvalid = VDIsValidReadRegion(p, pitch*(h-1)+w);
 
+		if (!isvalid) {
+			VDDEBUG("Kasumi: Invalid pixmap plane detected.\n"
+					"        Base=%p, pitch=%d, size=%dx%d (bytes)\n", p, (int)pitch, w, h);
+		}
+
 		return isvalid;
 	}
 
@@ -38,23 +43,39 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 		const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
 
 		if (px.format) {
-			if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w >> info.qwbits)*info.qsize, -(-px.h >> info.qhbits))))
+			if (!VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w >> info.qwbits)*info.qsize, -(-px.h >> info.qhbits))) {
+				VDDEBUG("Kasumi: Invalid primary plane detected in pixmap.\n"
+						"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+				VDASSERT(!"Kasumi: Invalid primary plane detected in pixmap.\n");
 				return false;
+			}
 
 			if (info.palsize)
-				if (!VDINLINEASSERT(VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize)))
+				if (!VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize)) {
+					VDDEBUG("Kasumi: Invalid palette detected in pixmap.\n"
+							"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+					VDASSERT(!"Kasumi: Invalid palette detected in pixmap.\n");
 					return false;
+				}
 
 			if (info.auxbufs) {
 				const vdpixsize auxw = -(-px.w >> info.auxwbits);
 				const vdpixsize auxh = -(-px.h >> info.auxhbits);
 
-				if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data2, px.pitch2, auxw, auxh)))
+				if (!VDIsValidPixmapPlane(px.data2, px.pitch2, auxw, auxh)) {
+					VDDEBUG("Kasumi: Invalid Cb plane detected in pixmap.\n"
+							"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+					VDASSERT(!"Kasumi: Invalid Cb plane detected in pixmap.\n");
 					return false;
+				}
 
 				if (info.auxbufs > 2) {
-					if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data3, px.pitch3, auxw, auxh)))
+					if (!VDIsValidPixmapPlane(px.data3, px.pitch3, auxw, auxh)) {
+						VDDEBUG("Kasumi: Invalid Cr plane detected in pixmap.\n"
+								"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+						VDASSERT(!"Kasumi: Invalid Cr plane detected in pixmap.\n");
 						return false;
+					}
 				}
 			}
 		}
@@ -193,14 +214,13 @@ void VDPixmapLayoutFlipV(VDPixmapLayout& layout) {
 ///////////////////////////////////////////////////////////////////////////
 
 VDPixmapBuffer::VDPixmapBuffer(const VDPixmap& src)
-	: pBuffer(NULL)
+	: mpBuffer(NULL)
+	, mLinearSize(0)
 {
 	assign(src);
 }
 
 void VDPixmapBuffer::init(sint32 width, sint32 height, int f) {
-	clear();
-
 	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(f);
 	sint32		qw			= -(-width >> srcinfo.qwbits);
 	sint32		qh			= -(-height >> srcinfo.qhbits);
@@ -212,11 +232,15 @@ void VDPixmapBuffer::init(sint32 width, sint32 height, int f) {
 	size_t		subsize		= subpitch * subh;
 	size_t		totalsize	= mainsize + subsize*srcinfo.auxbufs + 4 * srcinfo.palsize;
 
-	pBuffer = new char[totalsize + 15];
+	if (mLinearSize != totalsize) {
+		clear();
+		mpBuffer = new char[totalsize + 15];
+		mLinearSize = totalsize;
+	}
 
-	char *p = pBuffer + (-(int)pBuffer & 15);
+	char *p = mpBuffer + (-(int)mpBuffer & 15);
 
-	data	= pBuffer;
+	data	= p;
 	pitch	= mainpitch;
 	p += mainsize;
 

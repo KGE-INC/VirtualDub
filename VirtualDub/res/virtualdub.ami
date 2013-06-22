@@ -335,6 +335,7 @@ dialog 2010, "" : fill, child {
 dialog 2100, "Select raw audio format" : minw=200, aspect=140, align=fill, valign=fill+expand {
 	set 0 : vertical, fill, spacing=3 {
 		listbox 100 : sunken, fill;
+		checkbox 101, "&Save as default for this device";
 		include template kTemplateOKCancel;
 	}
 }
@@ -350,6 +351,21 @@ dialog 2101, "Capture sync options" : aspect=140, maxw=350 {
 			option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
 		}
 		checkbox 102, "Automatically disable resync when integrated audio/video capture is detected" : margint=5, marginb=5;
+		include template kTemplateOKCancel;
+	}
+}
+
+dialog 2102, "Capture device options" : aspect=140, maxw=350 {
+	set 0 : vertical {
+		checkbox 100, "Save current &audio format as default";
+		checkbox 101, "Save current audio c&ompression format as default";
+		checkbox 102, "Save current &video format as default";
+		checkbox 103, "Save current video &compression format as default";
+		checkbox 104, "Save current &frame rate as default";
+		checkbox 105, "Save current display &mode as default";
+		checkbox 106, "S&witch audio source when changing video source";
+		checkbox 107, "Disable &overlay display when displaying menus";
+		checkbox 108, "Disable &preview display when displaying menus" : marginb=5;
 		include template kTemplateOKCancel;
 	}
 }

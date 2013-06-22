@@ -57,7 +57,17 @@ extern "C" long __cdecl _InterlockedExchangeAdd(volatile long *p, long n);
 #ifdef _M_AMD64
 	extern "C" void *__cdecl _InterlockedExchangePointer(void *volatile *pp, void *p);
 	#pragma intrinsic(_InterlockedExchangePointer)
+	extern "C" void *__cdecl _InterlockedCompareExchangePointer(void *volatile *pp, void *p, void *compare);
+	#pragma intrinsic(_InterlockedCompareExchangePointer)
 #endif
+
+inline void *VDAtomicCompareExchangePointer(void *volatile *pp, void *p, void *compare) {
+#ifdef _M_AMD64
+	return _InterlockedCompareExchangePointer(pp, p, compare);
+#else
+	return (void *)_InterlockedCompareExchange((volatile long *)pp, (long)p, (long)compare);
+#endif
+}
 
 class VDAtomicInt {
 protected:

@@ -32,6 +32,12 @@ class VDINTERFACE IVDUIFrameClient : public IVDRefCount {
 public:
 	virtual void Detach() = 0;
 	virtual LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+
+	virtual bool Intercept_WM_CHAR(WPARAM wParam, LPARAM lParam) { return false; }
+	virtual bool Intercept_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) { return false; }
+	virtual bool Intercept_WM_KEYUP(WPARAM wParam, LPARAM lParam) { return false; }
+	virtual bool Intercept_WM_SYSKEYDOWN(WPARAM wParam, LPARAM lParam) { return false; }
+	virtual bool Intercept_WM_SYSKEYUP(WPARAM wParam, LPARAM lParam) { return false; }
 };
 
 class VDUIFrame : public vdlist<VDUIFrame>::node {

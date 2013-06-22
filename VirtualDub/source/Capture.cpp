@@ -66,7 +66,6 @@
 #include "caphisto.h"
 #include "optdlg.h"
 #include "filtdlg.h"
-#include "capaccel.h"
 #include "caputils.h"
 #include "capfilter.h"
 #include "capvumeter.h"
@@ -112,7 +111,7 @@ public:
 
 	void CapBegin(sint64 global_clock);
 	void CapEnd(const MyError *pError);
-	bool CapControl(bool is_preroll);
+	bool CapEvent(DriverEvent event);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
@@ -182,9 +181,9 @@ void VDCaptureStatsFilter::CapEnd(const MyError *pError) {
 		mpCB->CapEnd(pError);
 }
 
-bool VDCaptureStatsFilter::CapControl(bool is_preroll) {
+bool VDCaptureStatsFilter::CapEvent(DriverEvent event) {
 	if (mpCB)
-		return mpCB->CapControl(is_preroll);
+		return mpCB->CapEvent(event);
 
 	return true;
 }
@@ -261,6 +260,7 @@ public:
 
 	VDCaptureStatsFilter	*mpStatsFilter;
 	IVDCaptureResyncFilter	*mpResyncFilter;
+	IVDCaptureAudioCompFilter *mpAudioCompFilter;
 
 	VDCaptureTimingSetup	mTimingSetup;
 
@@ -389,7 +389,6 @@ static void CaptureInternalHandleException(VDCaptureData *icd, char *op, DWORD e
 //////////////////////////////////////////////////////////////////////
 
 extern const char g_szCapture				[]="Capture";
-extern const char g_szStartupDriver			[]="Startup Driver";
 
 static const char g_szWarnTiming1			[]="Warn Timing1";
 
@@ -413,64 +412,23 @@ static void CaptureInternal(HWND, HWND hWndCapture, bool fTest);
 
 ///////////////////////////////////////////////////////////////////////////
 //
-//	callbacks
-//
-///////////////////////////////////////////////////////////////////////////
-
-#if 0
-LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr) {
-	CAPSTATUS cs;
-	RECT r;
-	HDC hdc;
-	HWND hwndParent;
-
-	if (!g_pHistogram)
-		return 0;
-
-	if (!capGetStatus(hWnd, &cs, sizeof cs))
-		return 0;
-
-	if (cs.fCapturingNow)
-		return 0;
-
-	try {
-		if (!g_pHistogram->CheckFrameSize(cs.uiImageWidth, cs.uiImageHeight))
-			return 0;
-
-		g_pHistogram->Process(vhdr);
-
-		hwndParent = GetParent(hWnd);
-
-		if (hdc = GetDC(hwndParent)) {
-
-			r.left = GetSystemMetrics(SM_CXEDGE);
-			r.top = GetSystemMetrics(SM_CYEDGE) + cs.uiImageHeight;
-			r.right = r.left + 256;
-			r.bottom = r.top + 128;
-
-			g_pHistogram->Draw(hdc, r);
-
-			ReleaseDC(hwndParent, hdc);
-		}
-	} catch(const MyError& e) {
-		guiSetStatus("Histogram: %s", 0, e.gets());
-	}
-
-	return 0;
-}
-#endif
-
-///////////////////////////////////////////////////////////////////////////
-//
 //	VDCaptureProjectBaseCallback
 //
 ///////////////////////////////////////////////////////////////////////////
 
 void VDCaptureProjectBaseCallback::UICaptureDriversUpdated() {}
+void VDCaptureProjectBaseCallback::UICaptureDriverDisconnecting(int driver) {}
+void VDCaptureProjectBaseCallback::UICaptureDriverChanging(int driver) {}
 void VDCaptureProjectBaseCallback::UICaptureDriverChanged(int driver) {}
+void VDCaptureProjectBaseCallback::UICaptureAudioDriversUpdated() {}
+void VDCaptureProjectBaseCallback::UICaptureAudioDriverChanged(int driver) {}
+void VDCaptureProjectBaseCallback::UICaptureAudioSourceChanged(int input) {}
+void VDCaptureProjectBaseCallback::UICaptureAudioInputChanged(int input) {}
 void VDCaptureProjectBaseCallback::UICaptureFileUpdated() {}
 void VDCaptureProjectBaseCallback::UICaptureAudioFormatUpdated() {}
 void VDCaptureProjectBaseCallback::UICaptureVideoFormatUpdated() {}
+void VDCaptureProjectBaseCallback::UICaptureVideoSourceChanged(int input) {}
+void VDCaptureProjectBaseCallback::UICaptureTunerChannelChanged(int ch, bool init) {}
 void VDCaptureProjectBaseCallback::UICaptureParmsUpdated() {}
 bool VDCaptureProjectBaseCallback::UICaptureAnalyzeBegin(const VDPixmap& format) { return false; }
 void VDCaptureProjectBaseCallback::UICaptureAnalyzeFrame(const VDPixmap& format) {}
@@ -480,7 +438,7 @@ void VDCaptureProjectBaseCallback::UICaptureVideoHisto(const float data[256]) {}
 void VDCaptureProjectBaseCallback::UICaptureVideoHistoEnd() {}
 void VDCaptureProjectBaseCallback::UICaptureAudioPeaksUpdated(float l, float r) {}
 void VDCaptureProjectBaseCallback::UICaptureStart() {}
-bool VDCaptureProjectBaseCallback::UICapturePreroll() { return false; }
+bool VDCaptureProjectBaseCallback::UICapturePreroll() { return true; }
 void VDCaptureProjectBaseCallback::UICaptureStatusUpdated(VDCaptureStatus&) {}
 void VDCaptureProjectBaseCallback::UICaptureEnd(bool success) {}
 
@@ -505,6 +463,9 @@ public:
 	IVDCaptureProjectCallback *GetCallback() { return mpCB; }
 	void	SetCallback(IVDCaptureProjectCallback *pCB);
 
+	void	LockUpdates();
+	void	UnlockUpdates();
+
 	bool	IsHardwareDisplayAvailable();
 	void	SetDisplayMode(DisplayMode mode);
 	DisplayMode	GetDisplayMode();
@@ -525,9 +486,42 @@ public:
 	void	SetTimingSetup(const VDCaptureTimingSetup& timing) { mTimingSetup = timing; }
 	const VDCaptureTimingSetup&	GetTimingSetup() { return mTimingSetup; }
 
+	bool	SetTunerChannel(int channel);
+	int		GetTunerChannel();
+	bool	GetTunerChannelRange(int& minChannel, int& maxChannel);
+
+	int		GetAudioDeviceCount();
+	const wchar_t *GetAudioDeviceName(int idx);
+	void	SetAudioDevice(int idx);
+	int		GetAudioDeviceIndex();
+
+	int		GetVideoSourceCount();
+	const wchar_t *GetVideoSourceName(int idx);
+	bool	SetVideoSource(int idx);
+	int		GetVideoSourceIndex();
+	int		GetVideoSourceByName(const wchar_t *name);
+
+	int		GetAudioSourceCount();
+	const wchar_t *GetAudioSourceName(int idx);
+	bool	SetAudioSource(int idx);
+	int		GetAudioSourceIndex();
+	int		GetAudioSourceByName(const wchar_t *name);
+
+	int		GetAudioSourceForVideoSource(int idx);
+
+	int		GetAudioInputCount();
+	const wchar_t *GetAudioInputName(int idx);
+	bool	SetAudioInput(int idx);
+	int		GetAudioInputIndex();
+	int		GetAudioInputByName(const wchar_t *name);
+
 	void	SetAudioCaptureEnabled(bool ena);
 	bool	IsAudioCaptureEnabled();
 	bool	IsAudioCaptureAvailable();
+
+	void	SetAudioPlaybackEnabled(bool ena);
+	bool	IsAudioPlaybackEnabled();
+	bool	IsAudioPlaybackAvailable();
 
 	void	SetAudioVumeterEnabled(bool b);
 	bool	IsAudioVumeterEnabled();
@@ -579,11 +573,15 @@ public:
 	bool	SelectDriver(int nDriver);
 	bool	IsDriverConnected();
 	int		GetConnectedDriverIndex();
+	const wchar_t *GetConnectedDriverName() { return GetDriverName(GetConnectedDriverIndex()); }
 
 	void	Capture(bool bTest);
 	void	CaptureStop();
 
 protected:
+	int		GetByName(int count, const wchar_t *(VDCaptureProject::*pGetNameRout)(int), const wchar_t *name);
+	void	InitVideoAnalysis();
+	void	ShutdownVideoAnalysis();
 	bool	InitFilter();
 	void	ShutdownFilter();
 	bool	InitVideoHistogram();
@@ -594,7 +592,7 @@ protected:
 
 	void	CapBegin(sint64 global_clock);
 	void	CapEnd(const MyError *pError);
-	bool	CapControl(bool is_preroll);
+	bool	CapEvent(DriverEvent event);
 	void	CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 protected:
 
@@ -615,7 +613,14 @@ protected:
 	bool		mbEnableAudioVumeter;
 	bool		mbEnableVideoHistogram;
 	bool		mbEnableVideoFrameTransfer;
+	bool		mbVideoFrameTransferActive;
 
+	// driver state shadowing
+	bool		mbDisplayVisible;
+	bool		mbAudioCaptureEnabled;
+	bool		mbAudioPlaybackEnabled;
+
+	VDCriticalSection		mVideoFilterLock;
 	vdautoptr<IVDCaptureFilterSystem>	mpFilterSys;
 	VDPixmapLayout			mFilterInputLayout;
 	VDPixmapLayout			mFilterOutputLayout;
@@ -665,6 +670,10 @@ VDCaptureProject::VDCaptureProject()
 	, mbEnableAudioVumeter(false)
 	, mbEnableVideoHistogram(false)
 	, mbEnableVideoFrameTransfer(false)
+	, mbVideoFrameTransferActive(false)
+	, mbDisplayVisible(true)
+	, mbAudioCaptureEnabled(true)
+	, mbAudioPlaybackEnabled(false)
 	, mpCaptureData(NULL)
 	, mRefCount(0)
 {
@@ -737,7 +746,7 @@ void VDCaptureProject::Detach() {
 	if (!mhwnd)
 		return;
 
-	mpDriver = NULL;
+	SelectDriver(-1);
 
 	FreeCompressor(&g_compression);
 
@@ -753,8 +762,26 @@ void VDCaptureProject::SetCallback(IVDCaptureProjectCallback *pCB) {
 	if (pCB) {
 		pCB->UICaptureFileUpdated();
 		pCB->UICaptureDriverChanged(mDriverIndex);
-		pCB->UICaptureVideoFormatUpdated();
+		if (mpDriver) {
+			pCB->UICaptureAudioDriversUpdated();
+			pCB->UICaptureAudioDriverChanged(mpDriver->GetAudioDeviceIndex());
+			pCB->UICaptureAudioSourceChanged(mpDriver->GetAudioSourceIndex());
+			pCB->UICaptureAudioInputChanged(mpDriver->GetAudioInputIndex());
+			pCB->UICaptureVideoFormatUpdated();
+			pCB->UICaptureVideoSourceChanged(mpDriver->GetVideoSourceIndex());
+			pCB->UICaptureTunerChannelChanged(mpDriver->GetTunerChannel(), false);
+		}
 	}
+}
+
+void VDCaptureProject::LockUpdates() {
+	if (mpDriver)
+		mpDriver->LockUpdates();
+}
+
+void VDCaptureProject::UnlockUpdates() {
+	if (mpDriver)
+		mpDriver->UnlockUpdates();
 }
 
 bool VDCaptureProject::IsHardwareDisplayAvailable() {
@@ -765,28 +792,37 @@ void VDCaptureProject::SetDisplayMode(DisplayMode mode) {
 	if (mDisplayMode == mode)
 		return;
 
-	if (mDisplayMode == kDisplayAnalyze) {
-		if (mpCB)
-			mpCB->UICaptureAnalyzeEnd();
-		ShutdownVideoHistogram();
-		ShutdownFilter();
+	// Analyze mode unfortunately complicates this quite a bit:
+	//
+	// 1) We have to make sure analysis is setup before turning it on.
+	// 2) We have to make sure analysis is turned off before shutting
+	//    it down.
+	// 3) We have to make sure the existing video display is killed
+	//    before initializing analysis, or else a video overlay conflict
+	//    may occur.
+
+	// If we are turning ON analysis....
+	if (mode == kDisplayAnalyze) {
+		// Kill the existing display to free the video overlay.
+		if (mpDriver)
+			mpDriver->SetDisplayMode(kDisplayNone);
+
+		// Initialize analysis.
+		if (mpDriver)
+			InitVideoAnalysis();
 	}
 
+	// If analysis was enabled, turn it off. ShutdownVideoAnalysis() is
+	// threadsafe so this is OK.
+	if (mDisplayMode == kDisplayAnalyze)
+		ShutdownVideoAnalysis();
+
+	// Flip the display mode.
 	mDisplayMode = mode;
 
-	if (mpDriver) {
-		if (mDisplayMode == kDisplayAnalyze) {
-			InitFilter();
-
-			if (mbEnableVideoHistogram)
-				InitVideoHistogram();
-
-			if (mbEnableVideoFrameTransfer)
-				InitVideoFrameTransfer();
-		}
-
+	// Finally, switch the display mode.
+	if (mpDriver)
 		mpDriver->SetDisplayMode(mode);
-	}
 }
 
 DisplayMode VDCaptureProject::GetDisplayMode() {
@@ -804,6 +840,11 @@ vdrect32 VDCaptureProject::GetDisplayRectAbsolute() {
 }
 
 void VDCaptureProject::SetDisplayVisibility(bool vis) {
+	if (mbDisplayVisible == vis)
+		return;
+
+	mbDisplayVisible = vis;
+
 	if (mpDriver)
 		mpDriver->SetDisplayVisibility(vis);
 }
@@ -845,12 +886,8 @@ bool VDCaptureProject::IsVideoHistogramEnabled() {
 }
 
 void VDCaptureProject::SetFrameTime(sint32 lFrameTime) {
-	if (mpDriver) {
+	if (mpDriver)
 		mpDriver->SetFramePeriod(lFrameTime);
-
-		if (mpCB)
-			mpCB->UICaptureParmsUpdated();
-	}
 }
 
 sint32 VDCaptureProject::GetFrameTime() {
@@ -860,17 +897,166 @@ sint32 VDCaptureProject::GetFrameTime() {
 	return mpDriver->GetFramePeriod();
 }
 
+bool VDCaptureProject::SetTunerChannel(int channel) {
+	if (mpDriver && mpDriver->SetTunerChannel(channel)) {
+		if (mpCB)
+			mpCB->UICaptureTunerChannelChanged(channel, false);
+		return true;
+	}
+	return false;
+}
+
+int VDCaptureProject::GetTunerChannel() {
+	return mpDriver ? mpDriver->GetTunerChannel() : -1;
+}
+
+bool VDCaptureProject::GetTunerChannelRange(int& minChannel, int& maxChannel) {
+	return mpDriver && mpDriver->GetTunerChannelRange(minChannel, maxChannel);
+}
+
+int VDCaptureProject::GetAudioDeviceCount() {
+	return mpDriver ? mpDriver->GetAudioDeviceCount() : 0;
+}
+
+const wchar_t *VDCaptureProject::GetAudioDeviceName(int idx) {
+	return mpDriver ? mpDriver->GetAudioDeviceName(idx) : NULL;
+}
+
+void VDCaptureProject::SetAudioDevice(int idx) {
+	if (mpDriver) {
+		mpDriver->SetAudioDevice(idx);
+
+		if (mpCB) {
+			mpCB->UICaptureAudioDriverChanged(mpDriver->GetAudioDeviceIndex());	// must requery in case of failure
+			mpCB->UICaptureAudioInputChanged(mpDriver->GetAudioInputIndex());
+			mpCB->UICaptureAudioSourceChanged(mpDriver->GetAudioSourceIndex());
+			mpCB->UICaptureAudioFormatUpdated();
+		}
+	}
+}
+
+int VDCaptureProject::GetAudioDeviceIndex() {
+	return mpDriver ? mpDriver->GetAudioDeviceIndex() : -1;
+}
+
+int VDCaptureProject::GetVideoSourceCount() {
+	return mpDriver ? mpDriver->GetVideoSourceCount() : 0;
+}
+
+const wchar_t *VDCaptureProject::GetVideoSourceName(int idx) {
+	return mpDriver ? mpDriver->GetVideoSourceName(idx) : NULL;
+}
+
+bool VDCaptureProject::SetVideoSource(int idx) {
+	if (mpDriver && mpDriver->SetVideoSource(idx)) {
+		if (mpCB)
+			mpCB->UICaptureVideoSourceChanged(mpDriver->GetVideoSourceIndex());
+
+		return true;
+	}
+
+	return false;
+}
+
+int VDCaptureProject::GetVideoSourceIndex() {
+	return mpDriver ? mpDriver->GetVideoSourceIndex() : -1;
+}
+
+int VDCaptureProject::GetVideoSourceByName(const wchar_t *name) {
+	return GetByName(GetVideoSourceCount(), GetVideoSourceName, name);
+}
+
+int VDCaptureProject::GetAudioSourceCount() {
+	return mpDriver ? mpDriver->GetAudioSourceCount() : 0;
+}
+
+const wchar_t *VDCaptureProject::GetAudioSourceName(int idx) {
+	return mpDriver ? mpDriver->GetAudioSourceName(idx) : NULL;
+}
+
+bool VDCaptureProject::SetAudioSource(int idx) {
+	if (mpDriver && mpDriver->SetAudioSource(idx)) {
+		if (mpCB)
+			mpCB->UICaptureAudioSourceChanged(mpDriver->GetAudioSourceIndex());
+
+		return true;
+	}
+
+	return false;
+}
+
+int VDCaptureProject::GetAudioSourceIndex() {
+	return mpDriver ? mpDriver->GetAudioSourceIndex() : -1;
+}
+
+int VDCaptureProject::GetAudioSourceByName(const wchar_t *name) {
+	return GetByName(GetAudioSourceCount(), GetAudioSourceName, name);
+}
+
+int VDCaptureProject::GetAudioSourceForVideoSource(int idx) {
+	return mpDriver ? mpDriver->GetAudioSourceForVideoSource(idx) : -2;
+}
+
+int VDCaptureProject::GetAudioInputCount() {
+	return mpDriver ? mpDriver->GetAudioInputCount() : 0;
+}
+
+const wchar_t *VDCaptureProject::GetAudioInputName(int idx) {
+	return mpDriver ? mpDriver->GetAudioInputName(idx) : NULL;
+}
+
+bool VDCaptureProject::SetAudioInput(int idx) {
+	if (mpDriver && mpDriver->SetAudioInput(idx)) {
+		if (mpCB)
+			mpCB->UICaptureAudioInputChanged(mpDriver->GetAudioInputIndex());
+
+		return true;
+	}
+
+	return false;
+}
+
+int VDCaptureProject::GetAudioInputIndex() {
+	return mpDriver ? mpDriver->GetAudioInputIndex() : -1;
+}
+
+int VDCaptureProject::GetAudioInputByName(const wchar_t *name) {
+	return GetByName(GetAudioInputCount(), GetAudioInputName, name);
+}
+
 void VDCaptureProject::SetAudioCaptureEnabled(bool b) {
+	if (mbAudioCaptureEnabled == b)
+		return;
+
+	mbAudioCaptureEnabled = b;
 	if (mpDriver)
 		mpDriver->SetAudioCaptureEnabled(b);
 }
 
 bool VDCaptureProject::IsAudioCaptureEnabled() {
-	return mpDriver && mpDriver->IsAudioCaptureEnabled();
+	return mbAudioCaptureEnabled;
 }
 
 bool VDCaptureProject::IsAudioCaptureAvailable() {
 	return mpDriver && mpDriver->IsAudioCapturePossible();
+}
+
+void VDCaptureProject::SetAudioPlaybackEnabled(bool b) {
+	if (mbAudioPlaybackEnabled == b)
+		return;
+
+	mbAudioPlaybackEnabled = b;
+
+	if (mpDriver)
+		mpDriver->SetAudioPlaybackEnabled(b);
+}
+
+bool VDCaptureProject::IsAudioPlaybackEnabled() {
+	return mbAudioPlaybackEnabled;
+}
+
+bool VDCaptureProject::IsAudioPlaybackAvailable() {
+	return mpDriver && mpDriver->IsAudioPlaybackPossible();
 }
 
 void VDCaptureProject::SetAudioVumeterEnabled(bool b) {
@@ -951,14 +1137,49 @@ void VDCaptureProject::GetPreviewImageSize(sint32& w, sint32& h) {
 }
 
 void VDCaptureProject::SetFilterSetup(const VDCaptureFilterSetup& setup) {
-	bool analyze = (mDisplayMode == kDisplayAnalyze);
+	bool rebuildAnalyze = (mDisplayMode == kDisplayAnalyze);
 
-	if (analyze)
-		SetDisplayMode(kDisplayNone);
-	VDASSERT(!mpFilterSys);
+	// check if the change actually requires a rebuild... if it's just
+	// the NR threshold, it doesn't
+
+	if (	mFilterSetup.mbEnableFieldSwap == setup.mbEnableFieldSwap
+		&&	mFilterSetup.mbEnableRGBFiltering == setup.mbEnableRGBFiltering
+		&&	mFilterSetup.mCropRect == setup.mCropRect
+		&&	mFilterSetup.mVertSquashMode == setup.mVertSquashMode)
+	{
+		rebuildAnalyze = false;
+	}
+
+	// if we're capturing, we *can't* rebuild the analyze chain
+	if (mpCaptureData)
+		rebuildAnalyze = false;
+
+	if (rebuildAnalyze)
+		ShutdownVideoAnalysis();
 	mFilterSetup = setup;
-	if (analyze)
-		SetDisplayMode(kDisplayAnalyze);
+	if (rebuildAnalyze)
+		InitVideoAnalysis();
+
+	// if we didn't rebuild, modify any running filter chain
+	if (mpFilterSys) {
+		// Oops... capture is active. We can only change a few select
+		// settings in this mode.
+
+		mFilterSetup.mNRThreshold		= setup.mNRThreshold;
+		mFilterSetup.mbEnableNoiseReduction	= setup.mbEnableNoiseReduction;
+		mFilterSetup.mbEnableFieldSwap	= setup.mbEnableFieldSwap;
+		mFilterSetup.mbEnableLumaSquish	= setup.mbEnableLumaSquish;
+
+		if (mpFilterSys) {
+			vdsynchronized(mVideoFilterLock) {
+				mpFilterSys->SetNoiseReduction(setup.mbEnableNoiseReduction ? setup.mNRThreshold : 0);
+				mpFilterSys->SetFieldSwap(setup.mbEnableFieldSwap);
+				mpFilterSys->SetLumaSquish(setup.mbEnableLumaSquish);
+			}
+		}
+
+		return;
+	}
 }
 
 const VDCaptureFilterSetup& VDCaptureProject::GetFilterSetup() {
@@ -989,11 +1210,10 @@ bool VDCaptureProject::SetVideoFormat(const BITMAPINFOHEADER& bih, LONG cbih) {
 	if (!mpDriver)
 		return false;
 
-	if (!mpDriver->SetVideoFormat(&bih, cbih))
+	bool success = mpDriver->SetVideoFormat(&bih, cbih);
+
+	if (!success)
 		return false;
-		
-	if (mpCB)
-		mpCB->UICaptureVideoFormatUpdated();
 
 	return true;
 }
@@ -1073,7 +1293,7 @@ bool VDCaptureProject::IsSpillEnabled() {
 
 void VDCaptureProject::DecrementFileID() {
 	VDStringW name(mFilename);
-	const wchar_t *s = name.data();
+	const wchar_t *s = name.c_str();
 
 	VDStringW::size_type pos = VDFileSplitExt(s) - s;
 	
@@ -1099,7 +1319,7 @@ void VDCaptureProject::DecrementFileID() {
 
 void VDCaptureProject::IncrementFileID() {
 	VDStringW name(mFilename);
-	const wchar_t *s = name.data();
+	const wchar_t *s = name.c_str();
 
 	int pos = VDFileSplitExt(s) - s;
 	
@@ -1148,21 +1368,28 @@ int VDCaptureProject::GetDriverCount() {
 }
 
 const wchar_t *VDCaptureProject::GetDriverName(int i) {
-	tDrivers::const_iterator it(mDrivers.begin()), itEnd(mDrivers.end());
+	if (i >= 0) {
+		tDrivers::const_iterator it(mDrivers.begin()), itEnd(mDrivers.end());
 
-	while(i>0 && it!=itEnd) {
-		--i;
-		++it;
+		while(i>0 && it!=itEnd) {
+			--i;
+			++it;
+		}
+
+		if (it != itEnd)
+			return (*it).mName.c_str();
 	}
-
-	if (it != itEnd)
-		return (*it).mName.c_str();
 
 	return NULL;
 }
 
 bool VDCaptureProject::SelectDriver(int nDriver) {
 	SetDisplayMode(kDisplayNone);
+
+	if (mpDriver) {
+		if (mpCB)
+			mpCB->UICaptureDriverDisconnecting(mDriverIndex);
+	}
 
 	mpDriver = NULL;
 	mDriverIndex = -1;
@@ -1188,6 +1415,10 @@ bool VDCaptureProject::SelectDriver(int nDriver) {
 
 	mpDriver = pSys->CreateDriver(ent.mId);
 
+	if (mpDriver && mpCB)
+		mpCB->UICaptureDriverChanging(nDriver);
+
+	mpDriver->LockUpdates();
 	if (!mpDriver || !mpDriver->Init(mhwnd)) {
 		mpDriver = NULL;
 		MessageBox((HWND)mhwnd, "VirtualDub cannot connect to the desired capture driver.", g_szError, MB_OK);
@@ -1203,16 +1434,25 @@ bool VDCaptureProject::SelectDriver(int nDriver) {
 
 	if (mpCB) {
 		mpCB->UICaptureDriverChanged(nDriver);
+		mpCB->UICaptureAudioDriversUpdated();
+		mpCB->UICaptureAudioDriverChanged(mpDriver->GetAudioDeviceIndex());
+		mpCB->UICaptureAudioInputChanged(mpDriver->GetAudioInputIndex());
+		mpCB->UICaptureAudioSourceChanged(mpDriver->GetAudioSourceIndex());
 		mpCB->UICaptureParmsUpdated();
 		mpCB->UICaptureAudioFormatUpdated();
 		mpCB->UICaptureVideoFormatUpdated();
+		mpCB->UICaptureVideoSourceChanged(mpDriver->GetVideoSourceIndex());
 	}
 
-	mpDriver->SetDisplayVisibility(true);
+	mpDriver->SetDisplayVisibility(mbDisplayVisible);
+	mpDriver->SetAudioCaptureEnabled(mbAudioCaptureEnabled);
+	mpDriver->SetAudioPlaybackEnabled(mbAudioPlaybackEnabled);
 
 	bool bEnableVumeter = mbEnableAudioVumeter;
 	mbEnableAudioVumeter = false;
 	SetAudioVumeterEnabled(bEnableVumeter);
+
+	mpDriver->UnlockUpdates();
 
 	return true;
 }
@@ -1339,15 +1579,16 @@ unknown_PCM_format:
 
 		icd.mInputLayout.format = 0;
 
-		if (InitFilter()) {
+		if (InitFilter()) {		// This also sets mFilterInputLayout even if it returns false.
 			icd.mpFilterSys = mpFilterSys;
-			icd.mInputLayout = mFilterInputLayout;
 
 			VDMakeBitmapFormatFromPixmapFormat(filteredFormat, bmiInput, mFilterOutputLayout.format, 0, mFilterOutputLayout.w, mFilterOutputLayout.h);
 
 			bmiToFile = &*filteredFormat;
 			biSizeToFile = filteredFormat.size();
 		}
+
+		icd.mInputLayout = mFilterInputLayout;
 
 		// initialize video compression
 		vdstructex<BITMAPINFOHEADER> bmiOutput;
@@ -1431,10 +1672,13 @@ unknown_PCM_format:
 		// set up resynchronizer and stats filter
 
 		if (bCaptureAudio && !mAudioCompFormat.empty()) {
+			icd.mpAudioCompFilter = pAudioCompFilter;
 			pAudioCompFilter->SetChildCallback(this);
+			pAudioCompFilter->SetSourceSplit(mAudioAnalysisFormat.wFormatTag != 0);
 			pAudioCompFilter->Init(wfexInput.data(), wfexOutput.data());
 			pResyncFilter->SetChildCallback(pAudioCompFilter);
 		} else {
+			icd.mpAudioCompFilter = NULL;
 			pResyncFilter->SetChildCallback(this);
 		}
 
@@ -1515,8 +1759,13 @@ unknown_PCM_format:
 
 VDDEBUG("Capture has stopped.\n");
 
-		if (icd.mpError)
-			throw *icd.mpError;
+		if (icd.mpError) {
+			MyError e;
+
+			e.TransferFrom(*icd.mpError);
+			icd.mpError = NULL;
+			throw e;
+		}
 
 		if (icd.isThreadAttached()) {
 			icd.PostExitRequest();
@@ -1549,11 +1798,6 @@ VDDEBUG("Capture has stopped.\n");
 
 	mpCaptureData = NULL;
 
-	if (icd.mpFilterSys) {
-		icd.mpFilterSys->Shutdown();
-		icd.mpFilterSys = NULL;
-	}
-
 	// Kill the I/O thread.
 
 	if (icd.isThreadAttached()) {
@@ -1574,6 +1818,9 @@ VDDEBUG("Capture has stopped.\n");
 		} catch(const MyError&) {
 		}
 
+	if (mDisplayMode != kDisplayAnalyze)
+		ShutdownFilter();
+
 	icd.mpVideoCompressor = NULL;
 
 	if (icd.mpOutputFilePending && icd.mpOutputFilePending == icd.mpOutputFile)
@@ -1581,6 +1828,8 @@ VDDEBUG("Capture has stopped.\n");
 
 	delete icd.mpOutput;
 	delete icd.mpOutputFilePending;
+
+	delete icd.mpSpillError;
 
 	// restore the callback
 	mpDriver->SetCallback(this);
@@ -1608,7 +1857,8 @@ VDDEBUG("Capture has stopped.\n");
 }
 
 void VDCaptureProject::CaptureStop() {
-	mpDriver->CaptureStop();
+	if (mpCaptureData)
+		mpDriver->CaptureStop();
 }
 
 void VDCaptureProject::CapBegin(sint64 global_clock) {
@@ -1623,35 +1873,49 @@ void VDCaptureProject::CapEnd(const MyError *pError) {
 	PostThreadMessage(mMainThreadId, WM_APP+100, 0, 0);
 }
 
-bool VDCaptureProject::CapControl(bool is_preroll) {
-	if (is_preroll) {
-#if 0
-		CAPTUREPARMS cp;
-		if (capCaptureGetSetup(hwnd, &cp, sizeof(CAPTUREPARMS)) && cp.fMakeUserHitOKToCapture) {
-			if (pThis->mpCB)
-				return pThis->mpCB->UICapturePreroll();
-		}
-#endif
-
+bool VDCaptureProject::CapEvent(DriverEvent event) {
+	switch(event) {
+	case kEventPreroll:
+		if (mpCB && !mpCB->UICapturePreroll())
+			return false;
 		CaptureBT848Reassert();
-	} else {
-		VDCaptureData *const cd = mpCaptureData;
+		break;
 
-		if (mStopPrefs.fEnableFlags & CAPSTOP_TIME)
-			if (cd->mLastTime >= mStopPrefs.lTimeLimit*1000)
-				return false;
+	case kEventCapturing:
+		{
+			VDCaptureData *const cd = mpCaptureData;
 
-		if (mStopPrefs.fEnableFlags & CAPSTOP_FILESIZE)
-			if ((long)((cd->mTotalVideoSize + cd->mTotalAudioSize + 2048)>>20) > mStopPrefs.lSizeLimit)
-				return false;
+			if (mStopPrefs.fEnableFlags & CAPSTOP_TIME)
+				if (cd->mLastTime >= mStopPrefs.lTimeLimit*1000)
+					return false;
 
-		if (mStopPrefs.fEnableFlags & CAPSTOP_DISKSPACE)
-			if (cd->mDiskFreeBytes && (long)(cd->mDiskFreeBytes>>20) < mStopPrefs.lDiskSpaceThreshold)
-				return false;
+			if (mStopPrefs.fEnableFlags & CAPSTOP_FILESIZE)
+				if ((long)((cd->mTotalVideoSize + cd->mTotalAudioSize + 2048)>>20) > mStopPrefs.lSizeLimit)
+					return false;
 
-		if (mStopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
-			if (cd->mTotalFramesCaptured > 50 && cd->mFramesDropped*100 > mStopPrefs.lMaxDropRate*cd->mTotalFramesCaptured)
-				return false;
+			if (mStopPrefs.fEnableFlags & CAPSTOP_DISKSPACE)
+				if (cd->mDiskFreeBytes && (long)(cd->mDiskFreeBytes>>20) < mStopPrefs.lDiskSpaceThreshold)
+					return false;
+
+			if (mStopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
+				if (cd->mTotalFramesCaptured > 50 && cd->mFramesDropped*100 > mStopPrefs.lMaxDropRate*cd->mTotalFramesCaptured)
+					return false;
+		}
+		break;
+
+	case kEventVideoFrameRateChanged:
+		if (mpCB)
+			mpCB->UICaptureParmsUpdated();
+		break;
+
+	case kEventVideoFormatChanged:
+		if (mDisplayMode == kDisplayAnalyze)
+			ShutdownVideoAnalysis();
+		if (mpCB)
+			mpCB->UICaptureVideoFormatUpdated();
+		if (mDisplayMode == kDisplayAnalyze)
+			InitVideoAnalysis();
+		break;
 	}
 
 	return true;
@@ -1663,8 +1927,10 @@ void VDCaptureProject::CapProcessData(int stream, const void *data, uint32 size,
 			if (stream == -1) {
 				VDPixmap px(VDPixmapFromLayout(mFilterInputLayout, (void *)data));
 
-				if (mpFilterSys)
-					mpFilterSys->Run(px);
+				++mVideoFilterLock;
+					if (mpFilterSys)
+						mpFilterSys->Run(px);
+				--mVideoFilterLock;
 
 				DispatchAnalysis(px);
 			} else {
@@ -1699,7 +1965,7 @@ void VDCaptureProject::CapProcessData(int stream, const void *data, uint32 size,
 	if (stream > 0) {
 		success = icd->WaveCallback(data, size, global_clock);
 
-		if (mAudioAnalysisFormat.wFormatTag == WAVE_FORMAT_PCM) {
+		if (!icd->mpAudioCompFilter && mAudioAnalysisFormat.wFormatTag == WAVE_FORMAT_PCM) {
 			float l=0, r=0;
 			VDComputeWavePeaks(data, mAudioAnalysisFormat.wBitsPerSample, mAudioAnalysisFormat.nChannels, size / mAudioAnalysisFormat.nBlockAlign, l, r);
 			if (mpCB)
@@ -1715,6 +1981,100 @@ void VDCaptureProject::CapProcessData(int stream, const void *data, uint32 size,
 	///////////////////////////////
 
 	return;
+}
+
+namespace {
+	bool fuzzymatch(const wchar_t *s, const wchar_t *t) {
+		for(;;) {
+			wchar_t c = *s;
+			wchar_t d = *t;
+
+			if (c == d) {
+				if (!c)
+					return true;
+
+				++s;
+				++t;
+				continue;
+			}
+
+			if ((unsigned)(c-1) < 0x7f && !isalnum((int)(0xff & c))) {
+				++s;
+				continue;
+			}
+
+			if ((unsigned)(d-1) < 0x7f && !isalnum((int)(0xff & d))) {
+				++t;
+				continue;
+			}
+
+			return false;
+		}
+	}
+
+	bool wcsistr(const wchar_t *s, const wchar_t *t) {		// slow, but that's OK here
+		const size_t l1 = wcslen(s);
+		const size_t l2 = wcslen(t);
+
+		if (l1 < l2)
+			return false;
+
+		for(int off=0; off<(int)(l2-l1); ++off) {
+			if (!_wcsicmp(s+off, t))
+				return true;
+		}
+
+		return false;
+	}
+}
+
+int	VDCaptureProject::GetByName(int count, const wchar_t *(VDCaptureProject::*pGetNameRout)(int), const wchar_t *name) {
+	int best = -1;
+	int bestscore = 0;
+
+	for(int i=0; i<count; ++i) {
+		const wchar_t *s = (this->*pGetNameRout)(i);
+
+		if (!s)
+			continue;
+
+		// exact match automatically wins
+		if (!wcscmp(s, name))
+			return i;
+
+		// two points for fuzzy match, one for substring match
+		if (fuzzymatch(s, name)) {
+			if (bestscore < 2) {
+				bestscore = 2;
+				best = i;
+			}
+		} else if (wcsistr(s, name)) {
+			if (bestscore < 1) {
+				bestscore = 1;
+				best = i;
+			}
+		}
+	}
+
+	return best;
+}
+
+void VDCaptureProject::InitVideoAnalysis() {
+	InitFilter();
+
+	if (mbEnableVideoHistogram)
+		InitVideoHistogram();
+
+	if (mbEnableVideoFrameTransfer)
+		InitVideoFrameTransfer();
+}
+
+void VDCaptureProject::ShutdownVideoAnalysis() {
+	// The order of these is critical if preview is running when this
+	// is called.
+	ShutdownVideoFrameTransfer();
+	ShutdownVideoHistogram();
+	ShutdownFilter();
 }
 
 bool VDCaptureProject::InitFilter() {
@@ -1770,29 +2130,39 @@ bool VDCaptureProject::InitFilter() {
 
 	mFilterInputLayout.palette = mFilterPalette;
 
-	mpFilterSys = VDCreateCaptureFilterSystem();
+	vdautoptr<IVDCaptureFilterSystem> pFilterSys(VDCreateCaptureFilterSystem());
 
-	mpFilterSys->SetCrop(mFilterSetup.mCropRect.left,
+	pFilterSys->SetCrop(mFilterSetup.mCropRect.left,
 							mFilterSetup.mCropRect.top,
 							mFilterSetup.mCropRect.right,
 							mFilterSetup.mCropRect.bottom);
 
 	if (mFilterSetup.mbEnableNoiseReduction)
-		mpFilterSys->SetNoiseReduction(mFilterSetup.mNRThreshold);
+		pFilterSys->SetNoiseReduction(mFilterSetup.mNRThreshold);
 
-	mpFilterSys->SetLumaSquish(mFilterSetup.mbEnableLumaSquish);
-	mpFilterSys->SetFieldSwap(mFilterSetup.mbEnableFieldSwap);
-	mpFilterSys->SetVertSquashMode(mFilterSetup.mVertSquashMode);
-	mpFilterSys->SetChainEnable(mFilterSetup.mbEnableRGBFiltering);
+	pFilterSys->SetLumaSquish(mFilterSetup.mbEnableLumaSquish);
+	pFilterSys->SetFieldSwap(mFilterSetup.mbEnableFieldSwap);
+	pFilterSys->SetVertSquashMode(mFilterSetup.mVertSquashMode);
+	pFilterSys->SetChainEnable(mFilterSetup.mbEnableRGBFiltering);
 
 	mFilterOutputLayout = mFilterInputLayout;
-	mpFilterSys->Init(mFilterOutputLayout, GetFrameTime());
+	pFilterSys->Init(mFilterOutputLayout, GetFrameTime());
+
+	vdsynchronized(mVideoFilterLock) {
+		// This could be atomic, but it's not that critical.
+		mpFilterSys = pFilterSys.release();
+	}
 
 	return true;
 }
 
 void VDCaptureProject::ShutdownFilter() {
-	mpFilterSys = NULL;
+	vdsynchronized(mVideoFilterLock) {
+		// This has to be under lock, because we need to ensure not only
+		// that mpFilterSys isn't being accessed, but also that the filter
+		// system isn't being used.
+		mpFilterSys = NULL;
+	}
 }
 
 bool VDCaptureProject::InitVideoHistogram() {
@@ -1823,7 +2193,9 @@ void VDCaptureProject::ShutdownVideoHistogram() {
 }
 
 bool VDCaptureProject::InitVideoFrameTransfer() {
-	if (mpCB) {
+	if (mpCB && !mbVideoFrameTransferActive) {
+		mbVideoFrameTransferActive = true;
+
 		VDPixmap px;
 		
 		px.data		= NULL;
@@ -1844,6 +2216,11 @@ bool VDCaptureProject::InitVideoFrameTransfer() {
 }
 
 void VDCaptureProject::ShutdownVideoFrameTransfer() {
+	if (mbVideoFrameTransferActive) {
+		mbVideoFrameTransferActive = false;
+		if (mpCB)
+			mpCB->UICaptureAnalyzeEnd();
+	}
 }
 
 void VDCaptureProject::DispatchAnalysis(const VDPixmap& px) {
@@ -1957,7 +2334,7 @@ void VDCaptureData::CreateNewFile() {
 
 		// init the new file
 
-		if (mpProject->IsStripingEnabled()) {
+		if (!mpProject->IsStripingEnabled()) {
 			const VDCaptureDiskSettings& sets = mpProject->GetDiskSettings();
 
 			if (sets.mbDisableWriteCache) {
@@ -2040,7 +2417,7 @@ void VDCaptureData::ThreadRun() {
 		// processing to take place if the timeout expires.  Right now,
 		// we set it to 10 seconds.
 
-		if (!fSuccess || (fTimerActive && (GetTickCount()-dwTimer) > 10000) ) {
+		if (!fSuccess || (fTimerActive && (GetTickCount()-dwTimer) > 1000) ) {
 
 			// Kill timer.
 
@@ -2065,12 +2442,16 @@ void VDCaptureData::ThreadRun() {
 					fTimerActive = true;
 				}
 			} catch(const MyError& e) {
-				mpSpillError = new MyError(e);
+				delete mpSpillError.xchg(new MyError(e));
 			}
 		}
 
-		if (!fSuccess)
-			WaitMessage();
+		if (!fSuccess) {
+			if (fTimerActive)
+				MsgWaitForMultipleObjects(0, NULL, FALSE, 1000, QS_ALLINPUT);
+			else
+				WaitMessage();
+		}
 	}
 
 	VDDeinitThreadData();
@@ -2225,13 +2606,16 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 
 	VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
 
+	// We don't need to lock here as it is illegal to change the filter
+	// mode while capture is running.
 	if (mpFilterSys) {
-		mVideoProfileChannel.Begin(0x008000, "V-Filter");
-		mpFilterSys->Run(px);
-		mVideoProfileChannel.End();
-#pragma vdpragma_TODO("this is pretty wrong")
-		pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
-		dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+		vdsynchronized(mpProject->mVideoFilterLock) {
+			mVideoProfileChannel.Begin(0x008000, "V-Filter");
+			mpFilterSys->Run(px);
+			mVideoProfileChannel.End();
+			pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
+			dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+		}
 	}
 
 	mpProject->DispatchAnalysis(px);
@@ -2341,6 +2725,7 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 
 		status.mVideoTimingAdjustMS = 0;
 		status.mAudioResamplingRate	= 0;
+		status.mAudioLatency		= 0;
 		if (mpResyncFilter) {
 			VDCaptureResyncStatus rstat;
 
@@ -2348,6 +2733,7 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 
 			status.mVideoTimingAdjustMS = rstat.mVideoTimingAdjust;
 			status.mAudioResamplingRate = rstat.mAudioResamplingRate;
+			status.mAudioLatency		= rstat.mCurrentLatency;
 		}
 
 		if (mpProject->mpCB)

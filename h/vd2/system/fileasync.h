@@ -33,6 +33,8 @@ class VDRTProfileChannel;
 class IVDFileAsync {
 public:
 	virtual ~IVDFileAsync() {}
+	virtual void SetPreemptiveExtend(bool b) = 0;
+	virtual bool IsPreemptiveExtendActive() = 0;
 	virtual bool IsOpen() = 0;
 	virtual void Open(const wchar_t *pszFilename, uint32 count, uint32 bufferSize) = 0;
 	virtual void Close() = 0;

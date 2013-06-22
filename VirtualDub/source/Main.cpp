@@ -113,6 +113,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     // Acquire and dispatch messages until a WM_QUIT message is received.
 
+	PostThreadMessage(GetCurrentThreadId(), WM_NULL, 0, 0);
+
 	for(;;) {
 		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 			if (msg.message == WM_QUIT)

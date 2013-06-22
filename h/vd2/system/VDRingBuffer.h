@@ -51,6 +51,8 @@ public:
 	int		 getSize() const { return nSize; }
 	int		 getLevel() const { return nLevel; }
 	int		 getSpace() const { return nSize - nLevel; }
+	int		 getReadOffset() const { return nReadPoint; }
+	int		 getWriteOffset() const { return nWritePoint; }
 	int		 getWriteSpace() const;
 	T *		 getWritePtr() const { return pBuffer+nWritePoint; }
 

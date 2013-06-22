@@ -177,6 +177,7 @@ void VDAudioCodecW32::Restart() {
 	mbFirst	= true;
 	mbFlushing = false;
 	mbEnded = false;
+	mOutputReadPt = 0;
 }
 
 bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {

@@ -40,6 +40,18 @@ inline bool VDIsWindowsNT() {
 #endif
 }
 
+// useful constants missing from the Platform SDK
+
+enum {
+#ifdef _M_AMD64
+	MENUITEMINFO_SIZE_VERSION_400A = sizeof(MENUITEMINFO)
+#else
+	MENUITEMINFO_SIZE_VERSION_400A = (offsetof(MENUITEMINFO, cch) + sizeof(UINT))
+#endif
+};
+
+// helper functions
+
 int			VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr);
 void		VDSetWindowTextW32(HWND hwnd, const wchar_t *s);
 VDStringW	VDGetWindowTextW32(HWND hwnd);
@@ -51,5 +63,8 @@ LRESULT		VDDualCallWindowProcW32(WNDPROC wp, HWND hwnd, UINT msg, WPARAM wParam,
 LRESULT		VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags);
+
+bool		VDSetFilePointerW32(HANDLE h, sint64 pos, DWORD dwMoveMethod);
+bool		VDGetFileSizeW32(HANDLE h, sint64& size);
 
 #endif

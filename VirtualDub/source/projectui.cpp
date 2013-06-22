@@ -327,8 +327,8 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 		return false;
 	}
 
-	mhwndInputDisplay = CreateWindowEx(WS_EX_TRANSPARENT, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndInputFrame, (HMENU)1, g_hInst, NULL);
-	mhwndOutputDisplay = CreateWindowEx(WS_EX_TRANSPARENT, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndOutputFrame, (HMENU)2, g_hInst, NULL);
+	mhwndInputDisplay = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndInputFrame, (HMENU)1, g_hInst, NULL);
+	mhwndOutputDisplay = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndOutputFrame, (HMENU)2, g_hInst, NULL);
 
 	if (!mhwndInputDisplay || !mhwndOutputDisplay) {
 		Detach();

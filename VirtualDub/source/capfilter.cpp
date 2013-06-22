@@ -620,6 +620,8 @@ public:
 	void Shutdown();
 
 protected:
+	void RebuildFilterChain();
+
 	uint32	mCropX1;
 	uint32	mCropY1;
 	uint32	mCropX2;
@@ -630,8 +632,10 @@ protected:
 	bool	mbFieldSwap;
 	bool	mbChainEnable;
 	bool	mbCropEnable;
+	bool	mbInitialized;
 
 	VDPixmapLayout	mLinearLayout;
+	VDPixmapLayout	mPreNRLayout;
 
 	vdblock<char, vdaligned_alloc<char> > mLinearBuffer;
 
@@ -660,6 +664,7 @@ VDCaptureFilterSystem::VDCaptureFilterSystem()
 	, mbLumaSquish(false)
 	, mbFieldSwap(false)
 	, mbChainEnable(false)
+	, mbInitialized(false)
 {
 }
 
@@ -675,15 +680,50 @@ void VDCaptureFilterSystem::SetCrop(uint32 x1, uint32 y1, uint32 x2, uint32 y2) 
 }
 
 void VDCaptureFilterSystem::SetNoiseReduction(uint32 threshold) {
+	if (threshold == mNoiseReductionThreshold)
+		return;
+
+	// We allow this to be set on the fly, as the NR filter doesn't change the
+	// bitmap layout. Note that we may have to tweak the filter chain a bit...
+	bool rebuild = false;
+
+	if (mbInitialized) {
+		mFilterNoiseReduction.SetThreshold(threshold);
+
+		// Check if we have to init or shut down the NR filter.
+		if (threshold && !mNoiseReductionThreshold) {
+			mFilterNoiseReduction.Init(mPreNRLayout);
+			rebuild = true;
+		} else if (!threshold && mNoiseReductionThreshold) {
+			mFilterNoiseReduction.Shutdown();
+			rebuild = true;
+		}
+	}
+
 	mNoiseReductionThreshold = threshold;
+
+	if (rebuild)
+		RebuildFilterChain();
 }
 
 void VDCaptureFilterSystem::SetLumaSquish(bool enable) {
+	if (mbLumaSquish == enable)
+		return;
+
 	mbLumaSquish = enable;
+
+	if (mbInitialized)
+		RebuildFilterChain();
 }
 
 void VDCaptureFilterSystem::SetFieldSwap(bool enable) {
+	if (mbFieldSwap == enable)
+		return;
+
 	mbFieldSwap = enable;
+
+	if (mbInitialized)
+		RebuildFilterChain();
 }
 
 void VDCaptureFilterSystem::SetVertSquashMode(FilterMode mode) {
@@ -695,40 +735,40 @@ void VDCaptureFilterSystem::SetChainEnable(bool enable) {
 }
 
 void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
+	VDASSERT(!mbInitialized);
+	mbInitialized = true;
 	mbCropEnable = false;
+
 	if (mCropX1|mCropY1|mCropX2|mCropY2) {
 		mbCropEnable = true;
 		mFilterCrop.Init(pxl, mCropX1, mCropY1, mCropX2, mCropY2);
-		mFilterChain.push_back(&mFilterCrop);
 	}
 
+	mPreNRLayout = pxl;
 	if (mNoiseReductionThreshold) {
 		mFilterNoiseReduction.SetThreshold(mNoiseReductionThreshold);
 		mFilterNoiseReduction.Init(pxl);
-		mFilterChain.push_back(&mFilterNoiseReduction);
 	}
 
 	if (mbLumaSquish) {
 		mFilterLumaSquish.Init(pxl);
-		mFilterChain.push_back(&mFilterLumaSquish);
 	}
 
 	if (mbFieldSwap) {
 		mFilterSwapFields.Init(pxl);
-		mFilterChain.push_back(&mFilterSwapFields);
 	}
 
 	if (mVertSquashMode) {
 		mFilterVertSquash.SetMode(mVertSquashMode);
 		mFilterVertSquash.Init(pxl);
-		mFilterChain.push_back(&mFilterVertSquash);
 	}
 
 	if (mbChainEnable) {
 		mFilterChainAdapter.SetFrameRate(usPerFrame);
 		mFilterChainAdapter.Init(pxl);
-		mFilterChain.push_back(&mFilterChainAdapter);
 	}
+
+	RebuildFilterChain();
 
 	// We need to linearize the bitmap if cropping is enabled but filter chain is not.
 	if (mbCropEnable && !mbChainEnable) {
@@ -767,6 +807,8 @@ void VDCaptureFilterSystem::Run(VDPixmap& px) {
 #endif
 
 void VDCaptureFilterSystem::Shutdown() {
+	mbInitialized = false;
+
 	tFilterChain::iterator it(mFilterChain.begin()), itEnd(mFilterChain.end());
 
 	for(; it!=itEnd; ++it) {
@@ -776,4 +818,26 @@ void VDCaptureFilterSystem::Shutdown() {
 	}
 
 	mFilterChain.clear();
+}
+
+void VDCaptureFilterSystem::RebuildFilterChain() {
+	mFilterChain.clear();
+
+	if (mbCropEnable)
+		mFilterChain.push_back(&mFilterCrop);
+
+	if (mNoiseReductionThreshold)
+		mFilterChain.push_back(&mFilterNoiseReduction);
+
+	if (mbLumaSquish)
+		mFilterChain.push_back(&mFilterLumaSquish);
+
+	if (mbFieldSwap)
+		mFilterChain.push_back(&mFilterSwapFields);
+
+	if (mVertSquashMode)
+		mFilterChain.push_back(&mFilterVertSquash);
+
+	if (mbChainEnable)
+		mFilterChain.push_back(&mFilterChainAdapter);
 }

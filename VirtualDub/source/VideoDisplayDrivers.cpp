@@ -1266,7 +1266,6 @@ bool VDDirectDrawManager::Init(IVDDirectDrawClient *pClient) {
 		}
 
 		// set cooperative level
-//		hr = mpdd->SetCooperativeLevel(NULL, DDSCL_FPUPRESERVE | DDSCL_NORMAL | DDSCL_NOWINDOWCHANGES);
 		hr = mpdd->SetCooperativeLevel(NULL, DDSCL_NORMAL);
 		if (FAILED(hr)) {
 			DEBUG_LOG("VideoDriver/DDraw: Couldn't set cooperative level\n");

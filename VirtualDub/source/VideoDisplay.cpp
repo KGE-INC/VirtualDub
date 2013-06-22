@@ -235,6 +235,10 @@ void VDVideoDisplayWindow::SetSourcePalette(const uint32 *palette, int count) {
 }
 
 bool VDVideoDisplayWindow::SetSource(bool bAutoUpdate, const VDPixmap& src, void *pObject, ptrdiff_t offset, bool bAllowConversion, bool bInterlaced) {
+	// We do allow data to be NULL for set-without-load.
+	if (src.data)
+		VDAssertValidPixmap(src);
+
 	VDVideoDisplaySourceInfo params;
 
 	params.pixmap			= src;
@@ -252,6 +256,10 @@ bool VDVideoDisplayWindow::SetSource(bool bAutoUpdate, const VDPixmap& src, void
 }
 
 bool VDVideoDisplayWindow::SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced) {
+	// We do allow data to be NULL for set-without-load.
+	if (src.data)
+		VDAssertValidPixmap(src);
+
 	VDVideoDisplaySourceInfo params;
 
 	params.pixmap			= src;
@@ -382,9 +390,7 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 	case WM_NCHITTEST:
-		if (GetWindowLong(mhwnd, GWL_EXSTYLE) & WS_EX_TRANSPARENT)
-			return HTTRANSPARENT;
-		break;
+		return HTTRANSPARENT;
 	}
 
 	return DefWindowProc(mhwnd, msg, wParam, lParam);

@@ -107,6 +107,7 @@ bool VDDoesPathExist(const wchar_t *fileName);
 VDStringW VDGetFullPath(const wchar_t *partialPath);
 
 VDStringW VDMakePath(const wchar_t *base, const wchar_t *file);
+void VDFileFixDirPath(VDStringW& path);
 
 /////////////////////////////////////////////////////////////////////////////
 

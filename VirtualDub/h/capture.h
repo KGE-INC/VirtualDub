@@ -87,6 +87,7 @@ struct VDCaptureStatus {
 
 	sint32		mVideoTimingAdjustMS;
 	float		mAudioResamplingRate;
+	float		mAudioLatency;
 
 	sint32		mVideoFirstFrameTimeMS;
 	sint32		mVideoLastFrameTimeMS;
@@ -101,10 +102,18 @@ struct VDCaptureStatus {
 class VDINTERFACE IVDCaptureProjectCallback {
 public:
 	virtual void UICaptureDriversUpdated() = 0;
+	virtual void UICaptureDriverDisconnecting(int driver) = 0;
+	virtual void UICaptureDriverChanging(int driver) = 0;
 	virtual void UICaptureDriverChanged(int driver) = 0;
+	virtual void UICaptureAudioDriversUpdated() = 0;
+	virtual void UICaptureAudioDriverChanged(int driver) = 0;
+	virtual void UICaptureAudioSourceChanged(int source) = 0;
+	virtual void UICaptureAudioInputChanged(int input) = 0;
 	virtual void UICaptureFileUpdated() = 0;
 	virtual void UICaptureAudioFormatUpdated() = 0;
 	virtual void UICaptureVideoFormatUpdated() = 0;
+	virtual void UICaptureVideoSourceChanged(int source) = 0;
+	virtual void UICaptureTunerChannelChanged(int ch, bool init) = 0;
 	virtual void UICaptureParmsUpdated() = 0;
 	virtual bool UICaptureAnalyzeBegin(const VDPixmap& format) = 0;
 	virtual void UICaptureAnalyzeFrame(const VDPixmap& format) = 0;
@@ -122,10 +131,18 @@ public:
 class VDCaptureProjectBaseCallback : public IVDCaptureProjectCallback {
 public:
 	virtual void UICaptureDriversUpdated();
+	virtual void UICaptureDriverDisconnecting(int driver);
+	virtual void UICaptureDriverChanging(int driver);
 	virtual void UICaptureDriverChanged(int driver);
+	virtual void UICaptureAudioDriversUpdated();
+	virtual void UICaptureAudioDriverChanged(int driver);
+	virtual void UICaptureAudioSourceChanged(int input);
+	virtual void UICaptureAudioInputChanged(int input);
 	virtual void UICaptureFileUpdated();
 	virtual void UICaptureAudioFormatUpdated();
 	virtual void UICaptureVideoFormatUpdated();
+	virtual void UICaptureVideoSourceChanged(int source);
+	virtual void UICaptureTunerChannelChanged(int ch, bool init);
 	virtual void UICaptureParmsUpdated();
 	virtual bool UICaptureAnalyzeBegin(const VDPixmap& format);
 	virtual void UICaptureAnalyzeFrame(const VDPixmap& format);
@@ -150,6 +167,9 @@ public:
 	virtual IVDCaptureProjectCallback *GetCallback() = 0;
 	virtual void	SetCallback(IVDCaptureProjectCallback *pCB) = 0;
 
+	virtual void	LockUpdates() = 0;
+	virtual void	UnlockUpdates() = 0;
+
 	virtual bool	IsHardwareDisplayAvailable() = 0;
 	virtual void	SetDisplayMode(nsVDCapture::DisplayMode mode) = 0;
 	virtual nsVDCapture::DisplayMode	GetDisplayMode() = 0;
@@ -170,9 +190,42 @@ public:
 	virtual void	SetTimingSetup(const VDCaptureTimingSetup& syncSetup) = 0;
 	virtual const VDCaptureTimingSetup&	GetTimingSetup() = 0;
 
+	virtual bool	SetTunerChannel(int channel) = 0;
+	virtual int		GetTunerChannel() = 0;
+	virtual bool	GetTunerChannelRange(int& minChannel, int& maxChannel) = 0;
+
+	virtual int		GetAudioDeviceCount() = 0;
+	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;
+	virtual void	SetAudioDevice(int idx) = 0;
+	virtual int		GetAudioDeviceIndex() = 0;
+
+	virtual int		GetVideoSourceCount() = 0;
+	virtual const wchar_t *GetVideoSourceName(int idx) = 0;
+	virtual bool	SetVideoSource(int idx) = 0;
+	virtual int		GetVideoSourceIndex() = 0;
+	virtual int		GetVideoSourceByName(const wchar_t *name) = 0;
+
+	virtual int		GetAudioSourceCount() = 0;
+	virtual const wchar_t *GetAudioSourceName(int idx) = 0;
+	virtual bool	SetAudioSource(int idx) = 0;
+	virtual int		GetAudioSourceIndex() = 0;
+	virtual int		GetAudioSourceByName(const wchar_t *name) = 0;
+
+	virtual int		GetAudioSourceForVideoSource(int idx) = 0;
+
+	virtual int		GetAudioInputCount() = 0;
+	virtual const wchar_t *GetAudioInputName(int idx) = 0;
+	virtual bool	SetAudioInput(int idx) = 0;
+	virtual int		GetAudioInputIndex() = 0;
+	virtual int		GetAudioInputByName(const wchar_t *name) = 0;
+
 	virtual void	SetAudioCaptureEnabled(bool ena) = 0;
 	virtual bool	IsAudioCaptureEnabled() = 0;
 	virtual bool	IsAudioCaptureAvailable() = 0;
+
+	virtual bool	IsAudioPlaybackEnabled() = 0;
+	virtual bool	IsAudioPlaybackAvailable() = 0;
+	virtual void	SetAudioPlaybackEnabled(bool ena) = 0;
 
 	virtual void	SetAudioVumeterEnabled(bool ena) = 0;
 	virtual bool	IsAudioVumeterEnabled() = 0;
@@ -224,6 +277,7 @@ public:
 	virtual bool	SelectDriver(int nDriver) = 0;
 	virtual bool	IsDriverConnected() = 0;
 	virtual int		GetConnectedDriverIndex() = 0;
+	virtual const wchar_t *GetConnectedDriverName() = 0;
 
 	virtual void	Capture(bool bTest) = 0;
 	virtual void	CaptureStop() = 0;
