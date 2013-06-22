@@ -1,0 +1,15 @@
+Build 32839 (1.9.10, stable): [September 5, 2010]
+   [bugs fixed]
+   * Fixed icon on status dialog.
+   * Fixed crash in scene detector with UYVY/YUY2 input.
+   * Fixed thread handle leak for unnamed threads.
+   * Modified audio display waveform draw code to avoid broken lines when
+     zoomed in.
+   * UI: Fixed curve editor not reselecting the right curve after some video
+     filter list manipulations.
+   * Decoders: Fixed crash in Huffyuv decoder with invalid non-adaptive
+     Huffman tables.
+   * AVI: The palette change flag is now stripped when rewriting streams.
+   * AVI: dwInitialFrames is now forced to zero in all cases for better
+     compatibility.
+

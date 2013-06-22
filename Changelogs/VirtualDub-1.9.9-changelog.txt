@@ -1,0 +1,33 @@
+Build 32817 (1.9.9, stable): [April 9, 2010]
+   [features added]
+   * The log now indicates which plugins failed to load on startup.
+
+   [bugs fixed]
+   * UI: Fixed a case where the output pane could change aspect ratio when
+     auto pane sizing was enabled and the main frame window was resized.
+   * UI: The output pane now has the correct pixel aspect ratio when an input
+     plugin indicates non-square pixels and no filters are used.
+   * UI: 6% zoom menu items didn't display checkmarks properly.
+   * AVI: Fixed incorrect decoding of paletted video files when biClrUsed=0 in
+     the header and the input color mode is set to Autoselect.
+   * AMD64: Fixed incorrect disassembler module in crash handler.
+   * Render: Fixed sporadic hang when using smart rendering with fast
+     recompress mode.
+   * Render: Audio is no longer cut off when "cut off when video ends" option
+     is disabled and IVTC filter is used.
+   * Filters: Fixed duplicate frame fetches when using lagged filters (ex:
+     temporal smoother) at the very end of the source video stream.
+   * Filters: Fixed frame fetch errors when using filters with a frame window
+     (ex: interpolate) at the end of an MPEG-1 video.
+   * Filters: Source length was not set during renders.
+   * Filters: Fixed garbage line at bottom of frame when using IVTC filter
+     with an odd height.
+   * Filters: Fixed bug where filter preview stopped displaying frames past a
+     certain point when edits had occurred on the timeline.
+   * Batch: Timeline had wrong frame counts when creating batch jobs via
+     Process Directory or Batch Wizard with a frame rate changing filter (ex:
+     IVTC).
+   * Decoders: Fixed decoding of Huffyuv files using median prediction and
+     4:2:0 encoding.
+   * Decoders: Fixed incorrect chroma DC handling with restart markers in
+     MJPEG decoder.

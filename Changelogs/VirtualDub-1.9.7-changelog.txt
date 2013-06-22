@@ -1,0 +1,22 @@
+Build 32661 (1.9.7, stable): [October 18, 2009]
+   [bugs fixed]
+   * AVI: Modified indexing traversal to handle deeply nested hierarchical
+     indices.
+   * Filters: Rescaling after changes to filter chain now extends or trims
+     ending ranges as needed to match changes to frame count.
+   * Filters: Fixed bug where a filter capable of both 3D accelerated and
+     unaccelerated modes (resize) could force a conversion to YV24 at its
+     input when RGB32 was a better match.
+   * Filters: Filter preview no longer always runs the filter chain with the
+     input video mode set to default.
+   * Display: Added workaround for video card/driver combos that perform
+     extremely poorly with DirectDraw/Direct3D blits overlapping a secondary
+     monitor. This can be toggled in Options > Preferences > Display.
+   * Command line: The warning dialog at the end of command line processing is
+     now suppressed if /x is specified.
+
+   [regressions fixed]
+   * Filters: Fixed filter errors not showing up properly.
+   * Filters: Fixed crash when PNG decoding error occurs with logo filter.
+   * Filters: Fixed random crash when opening Video Filters dialog before
+     opening any videos.
