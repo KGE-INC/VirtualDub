@@ -100,15 +100,15 @@ void Histogram::Zero() {
 }
 
 void Histogram::Process(const VBitmap *vbmp) {
-#if 0
+#ifndef _M_IX86
 	Pixel c, *src = (Pixel *)vbmp->data;
 	long w, h;
 
-	if (!vbmp->width || !vbmp->height) return;
+	if (!vbmp->w || !vbmp->h) return;
 
-	h = vbmp->height; 
+	h = vbmp->h; 
 	do {
-		w = vbmp->width;
+		w = vbmp->w;
 		do {
 			c = *src++;
 			++histo[(54*((c>>16)&255) + 183*((c>>8)&255) + 19*(c&255))>>8];
@@ -129,7 +129,7 @@ void Histogram::Process(const VBitmap *vbmp) {
 }
 
 void Histogram::Process24(const VBitmap *vbmp) {
-#if 0
+#ifndef _M_IX86
 	Pixel c, *src = (Pixel *)vbmp->data;
 	long w, h;
 
@@ -164,10 +164,14 @@ void Histogram::Process16(const VBitmap *vbmp) {
 		0x7c00,
 	};
 
+#ifdef _M_IX86
 	if (histo_mode < MODE_GRAY)
 		asm_histogram16_run(vbmp->data, vbmp->w, vbmp->h, vbmp->pitch, histo, pixmasks[histo_mode]);
 	else
 		asm_histogram16_run(vbmp->data, vbmp->w, vbmp->h, vbmp->pitch, histo, 0x7fff);
+#else
+#pragma vdpragma_TODO("fixme")
+#endif
 
 	total_pixels += vbmp->w * vbmp->h;
 }
@@ -242,7 +246,7 @@ void Histogram::Draw(HDC hDC, LPRECT lpr) {
 
 	for(i=0; i<256; i++) {
 		char *lp = lpGraphBits + (i>>3);
-		char mask = 0x80 >> (i&7);
+		char mask = (char)(0x80 >> (i&7));
 
 		j = heights[i];
 		if(j) do {

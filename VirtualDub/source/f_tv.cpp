@@ -51,6 +51,7 @@ typedef struct YIQFilterData {
 	IQPixel		*iqmap;
 } YIQFilterData;
 
+#if 0
 static void iq_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
 	Pixel *src = _src;
 	IQPixel *dst = _dst;
@@ -94,6 +95,7 @@ static void iq_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
 	dst[0] = i2 + i1*3;
 	dst[1] = q2 + q1*3;
 }
+#endif
 
 static void iq_average_row5(Pixel *_src, IQPixel *_dst, int _count) {
 	Pixel *src = _src;
@@ -479,10 +481,10 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				// [b]   [ 256  443 -283][q]
 
 				m = mfd->tsramp[255 + ((y+8192)>>14) - *ly];
-				*ly++ = ((y+8192)>>14);
+				*ly++ = (YPixel)((y+8192)>>14);
 
-				liq[0] = i = (liq[0]*m + i*(256-m))>>8;
-				liq[1] = q = (liq[1]*m + q*(256-m))>>8;
+				liq[0] = i = (IQPixel)((liq[0]*m + i*(256-m))>>8);
+				liq[1] = q = (IQPixel)((liq[1]*m + q*(256-m))>>8);
 
 				liq += 2;
 
@@ -564,11 +566,11 @@ static long yiq_param(FilterActivation *fa, const FilterFunctions *ff) {
 
 /////////////////////////////////////////////////////////////
 
-static BOOL APIENTRY YIQConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK YIQConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
-			SetWindowLong(hDlg, DWL_USER, lParam);
+			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 			CheckDlgButton(hDlg, IDC_MODE_Y, ((YIQFilterData *)lParam)->mode == YIQMODE_Y);
 			CheckDlgButton(hDlg, IDC_MODE_I, ((YIQFilterData *)lParam)->mode == YIQMODE_I);
 			CheckDlgButton(hDlg, IDC_MODE_Q, ((YIQFilterData *)lParam)->mode == YIQMODE_Q);
@@ -584,7 +586,7 @@ static BOOL APIENTRY YIQConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LP
 
             case IDOK:
 				{
-					YIQFilterData *mfd = (YIQFilterData *)GetWindowLong(hDlg, DWL_USER);
+					YIQFilterData *mfd = (YIQFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 					if (IsDlgButtonChecked(hDlg, IDC_MODE_Y)) mfd->mode = YIQMODE_Y;
 					if (IsDlgButtonChecked(hDlg, IDC_MODE_I)) mfd->mode = YIQMODE_I;
@@ -664,8 +666,8 @@ static int yiq_start(FilterActivation *fa, const FilterFunctions *ff) {
 			mfd->tsramp[255 - i] = 192;
 		}
 		for(; i<112; i++) {
-			mfd->tsramp[255 + i] = (112-i)<<1;
-			mfd->tsramp[255 - i] = (112-1)<<1;
+			mfd->tsramp[255 + i] = (unsigned char)((112-i)<<1);
+			mfd->tsramp[255 - i] = (unsigned char)((112-i)<<1);
 		}
 		for(; i<256; i++) {
 			mfd->tsramp[255 + i] = 0;

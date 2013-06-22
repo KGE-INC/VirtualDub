@@ -4,11 +4,13 @@
 #include "ScriptValue.h"
 #include "VectorHeap.h"
 
+class VDScriptStringHeap;
+
 class VariableTableEntry {
 public:
 	VariableTableEntry *next;
-	CScriptValue v;
-	char szName[];
+	VDScriptValue v;
+	char szName[1];
 };
 
 class VariableTable {
@@ -23,6 +25,8 @@ private:
 public:
 	VariableTable(int);
 	~VariableTable();
+
+	void MarkStrings(VDScriptStringHeap& heap);
 
 	VariableTableEntry *Lookup(char *szName);
 	VariableTableEntry *Declare(char *szName);

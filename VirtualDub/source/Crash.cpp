@@ -58,13 +58,17 @@
 #include <stdarg.h>
 
 #include <windows.h>
+#ifndef _M_AMD64
 #include <tlhelp32.h>
+#endif
 
 #include "resource.h"
 #include "crash.h"
 #include "disasm.h"
 #include "oshelper.h"
 #include "helpfile.h"
+#include "gui.h"
+#include <vd2/system/thread.h>
 #include <vd2/system/list.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/tls.h>
@@ -75,6 +79,12 @@
 #define CODE_WINDOW (256)
 
 ///////////////////////////////////////////////////////////////////////////
+
+#ifdef _M_AMD64
+	#define PTR_08lx	"%08I64x"
+#else
+	#define PTR_08lx	"%08x"
+#endif
 
 extern HINSTANCE g_hInst;
 extern "C" unsigned long version_num;
@@ -100,8 +110,8 @@ static VDDebugInfoContext g_debugInfo;
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
-bool VDDisplayAdvancedCrashDialog(HWND hwndParent, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
+bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
+bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -223,22 +233,26 @@ static const char *CrashGetModuleBaseName(HMODULE hmod, char *pszBaseName) {
 
 struct ModuleInfo {
 	const char *name;
-	unsigned long base, size;
+	uintptr base, size;
 };
 
 // ARRGH.  Where's psapi.h?!?
 
 struct Win32ModuleInfo {
-	DWORD base, size, entry;
+	LPVOID base;
+	DWORD size;
+	LPVOID entry;
 };
 
 typedef BOOL (__stdcall *PENUMPROCESSMODULES)(HANDLE, HMODULE *, DWORD, LPDWORD);
 typedef DWORD (__stdcall *PGETMODULEBASENAME)(HANDLE, HMODULE, LPTSTR, DWORD);
 typedef BOOL (__stdcall *PGETMODULEINFORMATION)(HANDLE, HMODULE, Win32ModuleInfo *, DWORD);
 
+#ifndef _M_AMD64
 typedef HANDLE (__stdcall *PCREATETOOLHELP32SNAPSHOT)(DWORD, DWORD);
 typedef BOOL (WINAPI *PMODULE32FIRST)(HANDLE, LPMODULEENTRY32);
 typedef BOOL (WINAPI *PMODULE32NEXT)(HANDLE, LPMODULEENTRY32);
+#endif
 
 static ModuleInfo *CrashGetModules(void *&ptr) {
 	void *pMem = VirtualAlloc(NULL, 65536, MEM_COMMIT, PAGE_READWRITE);
@@ -299,7 +313,7 @@ static ModuleInfo *CrashGetModules(void *&ptr) {
 						pszHeap = period+1;
 					}
 
-					pMod->base = mi.base;
+					pMod->base = (uintptr)mi.base;
 					pMod->size = mi.size;
 					++pMod;
 				}
@@ -313,7 +327,9 @@ static ModuleInfo *CrashGetModules(void *&ptr) {
 		}
 
 		FreeLibrary(hmodPSAPI);
-	} else {
+	}
+#ifndef _M_AMD64
+	else {
 		// No PSAPI.  Use the ToolHelp functions in KERNEL.
 
 		HMODULE hmodKERNEL32 = LoadLibrary("kernel32.dll");
@@ -371,6 +387,7 @@ static ModuleInfo *CrashGetModules(void *&ptr) {
 
 		FreeLibrary(hmodKERNEL32);
 	}
+#endif
 
 	VirtualFree(pMem, 0, MEM_RELEASE);
 
@@ -608,12 +625,12 @@ static const char *CrashLookupExport(HMODULE hmod, unsigned long addr, unsigned 
 	return pszName;
 }
 
-static bool LookupModuleByAddress(ModuleInfo& mi, char *szTemp, const ModuleInfo *pMods, uint32 addr, MEMORY_BASIC_INFORMATION *pmeminfo) {
+static bool LookupModuleByAddress(ModuleInfo& mi, char *szTemp, const ModuleInfo *pMods, uintptr addr, MEMORY_BASIC_INFORMATION *pmeminfo) {
 	mi.name = NULL;
 
 	if (pMods) {
 		while(pMods->name) {
-			if ((uint32)(addr - pMods->base) < pMods->size)
+			if ((uintptr)(addr - pMods->base) < pMods->size)
 				break;
 
 			++pMods;
@@ -632,7 +649,7 @@ static bool LookupModuleByAddress(ModuleInfo& mi, char *szTemp, const ModuleInfo
 		// to play with.  So we'll use a nastier method instead.
 
 		if (pmeminfo) {
-			mi.base = (unsigned long)meminfo.AllocationBase;
+			mi.base = (uintptr)meminfo.AllocationBase;
 			mi.name = CrashGetModuleBaseName((HMODULE)mi.base, szTemp);
 		}
 	}
@@ -843,15 +860,19 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 		pszExceptionName = "A privileged instruction or unaligned SSE/SSE2 access occurred";
 		break;
 	case EXCEPTION_ILLEGAL_INSTRUCTION:
+#ifdef _M_IX86
 		switch(VDGetInstructionTypeX86((void *)pExc->ContextRecord->Eip)) {
 		case kX86Inst3DNow:		pszExceptionName = "A 3DNow! (K6/Athlon) instruction not supported by the CPU was executed";				break;
 		case kX86InstMMX:		pszExceptionName = "An MMX instruction not supported by the CPU was executed";								break;
 		case kX86InstMMX2:		pszExceptionName = "An integer SSE (Pentium III/Athlon) instruction not supported by the CPU was executed";	break;
-		case kX86InstSSE:		pszExceptionName = "A floating-point SSE (Pentium III) instruction not supported by the CPU was executed";	break;
-		case kX86InstSSE2:		pszExceptionName = "An SSE2 (Pentium 4) instruction not supported by the CPU was executed";					break;
+		case kX86InstSSE:		pszExceptionName = "A floating-point SSE (Pentium III/Athlon XP) instruction not supported by the CPU was executed";	break;
+		case kX86InstSSE2:		pszExceptionName = "An SSE2 (Pentium 4/Athlon 64) instruction not supported by the CPU was executed";					break;
 		case kX86InstP6:		pszExceptionName = "A Pentium Pro instruction not supported by the CPU was executed";						break;
 		case kX86InstUnknown:	pszExceptionName = "An instruction not supported by the CPU was executed";									break;
 		}
+#else
+		pszExceptionName = "An instruction not supported by the CPU was executed";
+#endif
 		break;
 	default:
 		pszExceptionName = "An exception occurred";
@@ -862,10 +883,18 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 	ModuleInfo mi;
 	char szName[MAX_PATH];
 
+#ifdef _M_AMD64
+	if (LookupModuleByAddress(mi, szName, NULL, (uint32)pExc->ContextRecord->Rip, NULL))
+#else
 	if (LookupModuleByAddress(mi, szName, NULL, (uint32)pExc->ContextRecord->Eip, NULL))
+#endif
 		out.writef(" in module '%.64s'.", mi.name);
 	else
-		out.writef(" at %08lx.", pExc->ContextRecord->Eip);
+#ifdef _M_AMD64
+		out.writef(" at "PTR_08lx".", pExc->ContextRecord->Rip);
+#else
+		out.writef(" at "PTR_08lx".", pExc->ContextRecord->Eip);
+#endif
 
 	__try {
 		for(VDProtectedAutoScope *pScope = g_protectedScopeLink; pScope; pScope = pScope->mpLink) {
@@ -875,6 +904,32 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 		}
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	}
+}
+
+class VDCrashUIThread : public VDThread {
+public:
+	VDCrashUIThread(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *scopeinfo)
+		: mhThread(hThread)
+		, mpExc(pExc)
+		, mpScopeInfo(scopeinfo)
+	{
+	}
+
+	void ThreadRun();
+
+protected:
+	HANDLE mhThread;
+	const EXCEPTION_POINTERS *mpExc;
+	const char *mpScopeInfo;
+};
+
+void VDCrashUIThread::ThreadRun() {
+	if (VDDisplayFriendlyCrashDialog(NULL, mhThread, mpExc, mpScopeInfo))
+		TerminateProcess(GetCurrentProcess(), 0);
+
+	// Display "advanced" crash dialog.
+
+	VDDisplayAdvancedCrashDialog(NULL, mhThread, mpExc, mpScopeInfo);
 }
 
 LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
@@ -944,6 +999,9 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 #ifdef __INTEL_COMPILER		// P4 build
 		SpliceProgramPath(buf, sizeof buf, "VeedubP4.vdi");
 		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
+#elif defined(_M_AMD64)
+		SpliceProgramPath(buf, sizeof buf, "Veedub64.vdi");
+		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
 #else						// General build
 		SpliceProgramPath(buf, sizeof buf, "VirtualDub.vdi");
 		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
@@ -958,16 +1016,42 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 	cdw.parse();
 
+	// Disconnect the modeless dialog hook.
+	VDDeinstallModelessDialogHookW32();
+
 	// Display "friendly" crash dialog.
+	HANDLE hProcess = GetCurrentProcess();
+	HANDLE hThread;
 
-	if (VDDisplayFriendlyCrashDialog(NULL, pExc, scopeinfo.c_str()))
-		TerminateProcess(GetCurrentProcess(), 0);
+	VDVERIFY(DuplicateHandle(hProcess, GetCurrentThread(), hProcess, &hThread, 0, FALSE, DUPLICATE_SAME_ACCESS));
 
-	// Display "advanced" crash dialog.
+	VDCrashUIThread crashThread(hThread, pExc, scopeinfo.c_str());
 
-	VDDisplayAdvancedCrashDialog(NULL, pExc, scopeinfo.c_str());
+	crashThread.ThreadStart();
+	crashThread.ThreadWait();
 
 	VDDebugInfoDeinit(&g_debugInfo);
+
+	// resume all threads so we can clear deadlocks
+
+	EnterCriticalSection(&g_csPerThreadState);
+
+	try {
+		DWORD dwCurrentThread = GetCurrentThreadId();
+
+		for(List2<VirtualDubThreadStateNode>::fwit it = g_listPerThreadState.begin(); it; ++it) {
+			const VirtualDubThreadState *pState = it->pState;
+
+			if (pState->dwThreadId && pState->dwThreadId != dwCurrentThread) {
+				ResumeThread((HANDLE)pState->hThread);
+			}
+		}
+	} catch(...) {
+	}
+
+	LeaveCriticalSection(&g_csPerThreadState);
+
+	// invoke normal OS handler
 
 	UnhandledExceptionFilter(pExc);
 
@@ -1124,6 +1208,7 @@ protected:
 static void VDDebugCrashDumpRegisters(VDDebugCrashTextOutput& out, const EXCEPTION_POINTERS *const pExc) {
 	const CONTEXT *const pContext = (const CONTEXT *)pExc->ContextRecord;
 
+#ifdef _M_IX86
 	out.WriteF("EAX = %08lx\n", pContext->Eax);
 	out.WriteF("EBX = %08lx\n", pContext->Ebx);
 	out.WriteF("ECX = %08lx\n", pContext->Ecx);
@@ -1139,7 +1224,6 @@ static void VDDebugCrashDumpRegisters(VDDebugCrashTextOutput& out, const EXCEPTI
 	out.WriteF("FPUCW = %04x\n", pContext->FloatSave.ControlWord);
 	out.WriteF("FPUTW = %04x\n", pContext->FloatSave.TagWord);
 	out.Write("\n");
-
 	// extract out MMX registers
 
 	int tos = (pContext->FloatSave.StatusWord & 0x3800)>>11;
@@ -1149,6 +1233,29 @@ static void VDDebugCrashDumpRegisters(VDDebugCrashTextOutput& out, const EXCEPTI
 
 		out.WriteF("MM%c = %08lx%08lx\n", i+'0', pReg[1], pReg[0]);
 	}
+#elif defined(_M_AMD64)
+	out.WriteF("RAX = %16I64x\n", pContext->Rax);
+	out.WriteF("RBX = %16I64x\n", pContext->Rbx);
+	out.WriteF("RCX = %16I64x\n", pContext->Rcx);
+	out.WriteF("RDX = %16I64x\n", pContext->Rdx);
+	out.WriteF("RSI = %16I64x\n", pContext->Rsi);
+	out.WriteF("RDI = %16I64x\n", pContext->Rdi);
+	out.WriteF("RBP = %16I64x\n", pContext->Rbp);
+	out.WriteF("R8  = %16I64x\n", pContext->R8);
+	out.WriteF("R9  = %16I64x\n", pContext->R9);
+	out.WriteF("R10 = %16I64x\n", pContext->R10);
+	out.WriteF("R11 = %16I64x\n", pContext->R11);
+	out.WriteF("R12 = %16I64x\n", pContext->R12);
+	out.WriteF("R13 = %16I64x\n", pContext->R13);
+	out.WriteF("R14 = %16I64x\n", pContext->R14);
+	out.WriteF("R15 = %16I64x\n", pContext->R15);
+	out.WriteF("RSP = %16I64x\n", pContext->Rsp);
+	out.WriteF("RIP = %16I64x\n", pContext->Rip);
+	out.WriteF("EFLAGS = %08lx\n", pContext->EFlags);
+	out.Write("\n");
+#else
+	#error Need platform-specific register dump
+#endif
 }
 
 static void VDDebugCrashDumpBombReason(VDDebugCrashTextOutput& out, const EXCEPTION_POINTERS *const pExc) {
@@ -1224,7 +1331,7 @@ bool VDDebugInfoInitFromMemory(VDDebugInfoContext *pctx, const void *_src) {
 
 	// Check version number
 
-	int write_version = (src[1]-'0')*10 + (src[2] - '0');
+//	int write_version = (src[1]-'0')*10 + (src[2] - '0');
 	int compat_version = (src[4]-'0')*10 + (src[5] - '0');
 
 	if (compat_version > 1)
@@ -1369,17 +1476,56 @@ long VDDebugInfoLookupRVA(VDDebugInfoContext *pctx, unsigned rva, char *buf, int
 
 ///////////////////////////////////////////////////////////////////////////
 
-static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTION_POINTERS *const pExc, const void *pDebugSrc) {
+#ifdef _M_AMD64
+	// We need a few definitions that are normally only in the NT DDK.
+	#ifndef _NTDDK_
+		typedef LONG NTSTATUS;
+		typedef LONG KPRIORITY;
+
+		typedef struct _THREAD_BASIC_INFORMATION {
+			NTSTATUS ExitStatus;
+			PVOID TebBaseAddress;
+			ULONG_PTR UniqueProcessId;
+			ULONG_PTR UniqueThreadId;
+			KAFFINITY AffinityMask;
+			KPRIORITY BasePriority;
+		} THREAD_BASIC_INFORMATION;
+	#endif
+
+	NT_TIB *VDGetThreadTibW32(HANDLE hThread, const CONTEXT *pContext) {
+		typedef LONG (APIENTRY *tpNtQueryInformationThread)(HANDLE hThread, int infoclass, void *buf, LONG size, LONG *used);
+
+		const tpNtQueryInformationThread pNtQueryInformationThread = (tpNtQueryInformationThread)GetProcAddress(GetModuleHandle("ntdll"), "NtQueryInformationThread");
+		const int ThreadBasicInformation = 0;
+
+		VDASSERTCT(sizeof(THREAD_BASIC_INFORMATION) == 0x30);
+		THREAD_BASIC_INFORMATION info;
+		LONG actual = 0;
+
+		VDVERIFY(pNtQueryInformationThread(hThread, ThreadBasicInformation, &info, sizeof info, &actual));
+
+		return (NT_TIB *)info.TebBaseAddress;
+	}
+#else
+	NT_TIB *VDGetThreadTibW32(HANDLE hThread, const CONTEXT *pContext) {
+		LDT_ENTRY ldtEnt;
+		VDVERIFY(GetThreadSelectorEntry(hThread, pContext->SegFs, &ldtEnt));
+		return (NT_TIB *)(ldtEnt.BaseLow + ((uintptr)ldtEnt.HighWord.Bytes.BaseMid << 16) + ((uintptr)ldtEnt.HighWord.Bytes.BaseHi << 24));
+	}
+#endif
+
+
+static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, HANDLE hThread, const EXCEPTION_POINTERS *const pExc, const void *pDebugSrc) {
 	const CONTEXT *const pContext = (const CONTEXT *)pExc->ContextRecord;
 	HANDLE hprMe = GetCurrentProcess();
-	char *lpAddr = (char *)pContext->Esp;
 	int limit = 100;
-	unsigned long data;
 	char buf[512];
 
 	if (!g_debugInfo.pRVAHeap) {
 #ifdef __INTEL_COMPILER
 		out.Write("Could not open debug resource file (VeedubP4.vdi).\n");
+#elif defined(_M_AMD64)
+		out.Write("Could not open debug resource file (Veedub64.vdi).\n");
 #else
 		out.Write("Could not open debug resource file (VirtualDub.vdi).\n");
 #endif
@@ -1397,20 +1543,20 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTI
 	ModuleInfo *pModules = CrashGetModules(pModuleMem);
 
 	// Retrieve stack pointers.
-	// Not sure if NtCurrentTeb() is available on Win95....
+	NT_TIB *pTib = VDGetThreadTibW32(hThread, pContext);
 
-	NT_TIB *pTib;
-
-	__asm {
-		mov	eax, fs:[0]_NT_TIB.Self
-		mov pTib, eax
-	}
+#ifdef _M_AMD64
+	uintptr ip = pContext->Rsp;
+#else
+	uintptr ip = pContext->Esp;
+#endif
 
 	char *pStackBase = (char *)pTib->StackBase;
 
-	// Walk up the stack.  Hopefully it wasn't fscked.
+	uintptr data = ip;
+	char *lpAddr = (char *)ip;
 
-	data = pContext->Eip;
+	// Walk up the stack.  Hopefully it wasn't fscked.
 	do {
 		bool fValid = true;
 		int len;
@@ -1423,7 +1569,7 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTI
 			fValid = false;
 		}
 
-		if (data != pContext->Eip) {
+		if (data != ip) {
 			len = 7;
 
 			*(long *)(buf + 0) = *(long *)(buf + 4) = 0;
@@ -1436,7 +1582,7 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTI
 		
 		if (fValid) {
 			if (VDDebugInfoLookupRVA(&g_debugInfo, data, buf, sizeof buf) >= 0) {
-				out.WriteF("%08lx: %s()\n", data, buf);
+				out.WriteF(PTR_08lx": %s()\n", data, buf);
 				--limit;
 			} else {
 				ModuleInfo mi;
@@ -1447,11 +1593,11 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTI
 					const char *pExportName = CrashLookupExport((HMODULE)mi.base, data, fnbase);
 
 					if (pExportName)
-						out.WriteF("%08lx: %s!%s [%08lx+%lx+%lx]\n", data, mi.name, pExportName, mi.base, fnbase, (data-mi.base-fnbase));
+						out.WriteF(PTR_08lx": %s!%s ["PTR_08lx"+%lx+%lx]\n", data, mi.name, pExportName, mi.base, fnbase, (long)(data-mi.base-fnbase));
 					else
-						out.WriteF("%08lx: %s!%08lx\n", data, mi.name, data - mi.base);
+						out.WriteF(PTR_08lx": %s!%08lx\n", data, mi.name, (long)(data - mi.base));
 				} else
-					out.WriteF("%08lx: %08lx\n", data, data);
+					out.WriteF(PTR_08lx": "PTR_08lx"\n", data, data);
 
 				--limit;
 			}
@@ -1460,8 +1606,8 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, const EXCEPTI
 		if (lpAddr >= pStackBase)
 			break;
 
-		lpAddr += 4;
-	} while(limit > 0 && ReadProcessMemory(hprMe, lpAddr-4, &data, 4, NULL));
+		lpAddr += sizeof(void *);
+	} while(limit > 0 && ReadProcessMemory(hprMe, lpAddr-sizeof(void *), &data, sizeof(void *), NULL));
 
 	// All done, close up shop and exit.
 
@@ -1479,13 +1625,15 @@ void VDDebugCrashDumpDisassembly(VDDebugCrashTextOutput& out) {
 	}
 }
 
-static bool DoSave(const char *pszFilename, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
+static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
 	VDDebugCrashTextOutputFile out(pszFilename);
 
 	out.WriteF(
 			"VirtualDub crash report -- build %d ("
 #ifdef DEBUG
 			"debug"
+#elif defined(_M_AMD64)
+			"release-AMD64"
 #elif defined(__INTEL_COMPILER)
 			"release-P4"
 #else
@@ -1536,7 +1684,7 @@ static bool DoSave(const char *pszFilename, const EXCEPTION_POINTERS *pExc, cons
 
 	out.Write("\nThread call stack:");
 
-	VDDebugCrashDumpCallStack(out, pExc, g_pcdw->vdc.pExtraData);
+	VDDebugCrashDumpCallStack(out, hThread, pExc, g_pcdw->vdc.pExtraData);
 
 	out.Write("\n-- End of report\n");
 
@@ -1551,8 +1699,9 @@ static bool DoSave(const char *pszFilename, const EXCEPTION_POINTERS *pExc, cons
 
 class VDCrashDialog {
 protected:
-	VDCrashDialog(const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
-		: mpExc(pExc)
+	VDCrashDialog(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
+		: mhThread(hThread)
+		, mpExc(pExc)
 		, mpszScopeInfo(pszScopeInfo)
 	{
 	}
@@ -1561,13 +1710,13 @@ protected:
 		return 0 != DialogBoxParam(g_hInst, dlgid, hwndParent, StaticDlgProc, (LPARAM)this);
 	}
 
-	static BOOL CALLBACK StaticDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-		VDCrashDialog *pThis = (VDCrashDialog *)GetWindowLong(hdlg, DWL_USER);
+	static INT_PTR CALLBACK StaticDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+		VDCrashDialog *pThis = (VDCrashDialog *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 		switch(msg) {
 		case WM_INITDIALOG:
 			pThis = (VDCrashDialog *)lParam;
-			SetWindowLong(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 			pThis->mhdlg = hdlg;
 			pThis->OnInit();
 			return true;
@@ -1593,7 +1742,7 @@ protected:
 
 		SpliceProgramPath(szModName2, sizeof szModName2, "crashinfo.txt");
 
-		if (::DoSave(szModName2, mpExc, mpszScopeInfo)) {
+		if (::DoSave(szModName2, mhThread, mpExc, mpszScopeInfo)) {
 			sprintf(buf, "Save successful to: %s.\n", szModName2);
 			MessageBox(mhdlg, buf, "VirtualDub Notice", MB_OK | MB_ICONINFORMATION);
 		} else
@@ -1605,14 +1754,15 @@ protected:
 	}
 
 	HWND mhdlg;
+	HANDLE mhThread;
 	const EXCEPTION_POINTERS *mpExc;
 	const char *mpszScopeInfo;
 };
 
 class VDCrashDialogAdvanced : public VDCrashDialog {
 public:
-	VDCrashDialogAdvanced(const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
-		: VDCrashDialog(pExc, pszScopeInfo) {}
+	VDCrashDialogAdvanced(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
+		: VDCrashDialog(hThread, pExc, pszScopeInfo) {}
 
 	bool Display(HWND hwndParent) {
 		return Display2(MAKEINTRESOURCE(IDD_DISASM_CRASH), hwndParent);
@@ -1650,8 +1800,6 @@ protected:
 		HWND hwndList2 = GetDlgItem(mhdlg, IDC_REGDUMP);
 		HWND hwndList3 = GetDlgItem(mhdlg, IDC_CALL_STACK);
 		HWND hwndReason = GetDlgItem(mhdlg, IDC_STATIC_BOMBREASON);
-		const EXCEPTION_RECORD *const pRecord = (const EXCEPTION_RECORD *)mpExc->ExceptionRecord;
-		const CONTEXT *const pContext = (const CONTEXT *)mpExc->ContextRecord;
 
 		g_pcdw->DoInitListbox(hwndList1);
 
@@ -1678,15 +1826,15 @@ protected:
 
 		{
 			VDDebugCrashTextOutputListbox out4(hwndList3);
-			VDDebugCrashDumpCallStack(out4, mpExc, g_pcdw->vdc.pExtraData);
+			VDDebugCrashDumpCallStack(out4, mhThread, mpExc, g_pcdw->vdc.pExtraData);
 		}
 	}
 };
 
 class VDCrashDialogFriendly : public VDCrashDialog {
 public:
-	VDCrashDialogFriendly(const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
-		: VDCrashDialog(pExc, pszScopeInfo) {}
+	VDCrashDialogFriendly(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
+		: VDCrashDialog(hThread, pExc, pszScopeInfo) {}
 
 	bool Display(HWND hwndParent) {
 		return Display2(MAKEINTRESOURCE(IDD_CRASH), hwndParent);
@@ -1732,11 +1880,11 @@ protected:
 	}
 };
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
-	return VDCrashDialogFriendly(pExc, pszScopeInfo).Display(hwndParent);
+bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
+	return VDCrashDialogFriendly(hThread, pExc, pszScopeInfo).Display(hwndParent);
 }
 
-bool VDDisplayAdvancedCrashDialog(HWND hwndParent, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
-	return VDCrashDialogAdvanced(pExc, pszScopeInfo).Display(hwndParent);
+bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
+	return VDCrashDialogAdvanced(hThread, pExc, pszScopeInfo).Display(hwndParent);
 }
 

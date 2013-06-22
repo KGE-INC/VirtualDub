@@ -1,271 +1,391 @@
-#pragma warning(disable: 4786)
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2004 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#include "ctl_grid.h"
+#include <stdafx.h>
+#include <vd2/Dita/basetypes.h>
+#include <vector>
 
-VDUIGrid::VDUIGrid(int cols, int rows) throw()
-		: mpColSpecs(new LineSpec[cols+1])		// +1 for end sentinel in both cases
-		, mpRowSpecs(new LineSpec[rows+1])
-		, mnCols(cols)
-		, mnRows(rows)
-		, mnXPad(0)
-		, mnYPad(0)
-{
-	VDASSERT(rows>0 && cols>0);
+class VDUIGrid : public VDUIWindow, public IVDUIGrid {
+public:
+	VDUIGrid();
+	~VDUIGrid();
 
-	WipeAffinities(1);
+	void *AsInterface(uint32 id);
+
+	bool Create(IVDUIParameters *pParams);
+	void AddChild(IVDUIWindow *pWindow);
+	void AddChild(IVDUIWindow *pWin, int col, int row, int colspan, int rowspan);
+	void RemoveChild(IVDUIWindow *pWindow);
+	void PreLayoutBase(const VDUILayoutSpecs&);
+	void PostLayoutBase(const vduirect&);
+
+	void SetRow(int row, int minsize=-1, int maxsize=-1, int affinity=-1);
+	void SetColumn(int col, int minsize=-1, int maxsize=-1, int affinity=-1);
+	void NextRow();
+
+protected:
+	int mnFillCount;
+	int mSpacing;
+
+	int mX, mY;
+	bool mbVerticalTravel;
+
+	class Axis {
+	public:
+		Axis();
+
+		void Extend(int cell);
+		void SetBehavior(int cell, int minsize, int maxsize, int affinity);
+		void BeginLayout();
+		int GetSpanMax(int start, int end, int limit) const;
+		int GetSpanWidth(int start, int end) const { return mEntries[end-1].end - mEntries[start].start; }
+		void ApplyMinimum(int start, int end, int minval);
+		int GetMinimumSum() const;
+		int GetCount() const { return mEntries.size()-1; }
+		int GetStart(int i) const { return mEntries[i].start; }
+		int GetEnd(int i) const { return mEntries[i].end; }
+		void Layout(int pos, int width, int pad);
+
+	protected:
+		struct Entry {
+			int minsize;
+			int maxsize;
+			int maxsizesum;
+			int affinity;
+			int affinitysum;
+			int mincursize;
+			int start, end;
+
+			Entry() : minsize(0), maxsize(INT_MAX), affinity(0) {}
+		};
+
+		typedef std::vector<Entry> tEntries;
+		tEntries	mEntries;
+	};
+
+	Axis	mRows;
+	Axis	mCols;
+
+	struct GridItem {
+		IVDUIWindow *mpWin;
+		vduirect	mPos;
+	};
+	typedef std::vector<GridItem> tItems;
+
+	tItems		mItems;
+};
+
+IVDUIWindow *VDCreateUIGrid() { return new VDUIGrid; }
+
+VDUIGrid::VDUIGrid() {
+	mAlignX = nsVDUI::kFill;
+	mAlignY = nsVDUI::kFill;
+	mX = 0;
+	mY = 0;
+	mbVerticalTravel = false;
 }
 
-VDUIGrid::~VDUIGrid() throw() {
-	delete[] mpRowSpecs;
-	delete[] mpColSpecs;
+VDUIGrid::~VDUIGrid() {
 }
 
-IVDUIGrid *VDUIGrid::AsUIGrid() {
-	return this;
-}
-
-bool VDUIGrid::Create(IVDUIControl *pParent) {
-	if (VDUIControlBase::Create(pParent)) {
-		SetSpacing(3, 3);
-		return true;
+void *VDUIGrid::AsInterface(uint32 id) {
+	switch(id) {
+	case IVDUIGrid::kTypeID: return static_cast<IVDUIGrid *>(this);
 	}
 
-	return false;
+	return VDUIWindow::AsInterface(id);
 }
 
-void VDUIGrid::Destroy() {
-	for(tChildMap::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		(*it).second.pControl->Destroy();
+bool VDUIGrid::Create(IVDUIParameters *pParams) {
+	mSpacing = pParams->GetI(nsVDUI::kUIParam_Spacing, 0);
+	mbVerticalTravel = pParams->GetB(nsVDUI::kUIParam_IsVertical, false);
+	return VDUIWindow::Create(pParams);
+}
+
+void VDUIGrid::AddChild(IVDUIWindow *pWindow) {
+	AddChild(pWindow, -1, -1, 1, 1);
+}
+
+void VDUIGrid::AddChild(IVDUIWindow *pWin, int col, int row, int colspan, int rowspan) {
+	VDASSERT(rowspan>=1 && colspan>=1);
+
+	if (col >= 0)
+		mX = col;
+
+	if (row >= 0)
+		mY = row;
+
+	tChildren::iterator it(std::find(mChildren.begin(), mChildren.end(), pWin));
+
+	if (it == mChildren.end()) {
+		mChildren.push_back(pWin);
+		pWin->SetParent(this);
+
+		GridItem item;
+		
+		item.mpWin = pWin;
+		item.mPos = vduirect(mX, mY, mX+colspan, mY+rowspan);
+		mItems.push_back(item);
+
+		mCols.Extend(mX);
+		mRows.Extend(mY);
+
+		if (mbVerticalTravel)
+			mY += rowspan;
+		else
+			mX += colspan;
+	}
+}
+
+void VDUIGrid::RemoveChild(IVDUIWindow *pWindow) {
+	tItems::iterator it(mItems.begin()), itEnd(mItems.end());
+
+	for(; it!=itEnd; ++it) {
+		GridItem& item = *it;
+
+		if (item.mpWin == pWindow) {
+			mItems.erase(it);
+			pWindow->SetParent(NULL);
+			break;
+		}
 	}
 
-	mChildren.clear();
-
-	VDUIControlBase::Destroy();
+	VDUIWindow::RemoveChild(pWindow);
 }
 
 void VDUIGrid::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
-	int i,j;
+	vduisize pad = mpBase->MapUnitsToPixels(vduisize(mSpacing, mSpacing));
 
-	for(i=0; i<mnCols; ++i)
-		mpColSpecs[i].minsize = 0;
+	mLayoutSpecs.minsize.w = 0;
+	mLayoutSpecs.minsize.h = 0;
 
-	for(j=0; j<mnRows; ++j)
-		mpRowSpecs[j].minsize = 0;
+	const int rows = mRows.GetCount();
+	const int cols = mCols.GetCount();
 
-	// Iterate over all children in the list and tally up their requirements.
+	mRows.BeginLayout();
+	mCols.BeginLayout();
 
-	for(tChildMap::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it).second.pControl;
-		const int x = (*it).first.first;
-		const int y = (*it).first.second;
-		const int w = (*it).second.w;
-		const int h = (*it).second.h;
+	// phase I: constraint gathering
+	tItems::const_iterator itItem(mItems.begin()), itItemEnd(mItems.end());
+	for(; itItem != itItemEnd; ++itItem) {
+		const GridItem& item = *itItem;
+		const vduirect& cells = item.mPos;
 
-		pControl->PreLayout(parentConstraints);
+		VDUILayoutSpecs cellConstraints;
 
-		const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
+		cellConstraints.minsize.w = mCols.GetSpanMax(cells.left, cells.right, parentConstraints.minsize.w);
+		cellConstraints.minsize.h = mRows.GetSpanMax(cells.top, cells.bottom, parentConstraints.minsize.h);
 
-		// If the control only takes one grid cell, enforce its minimums
-		// upon the row and column it sits in.  Otherwise, split the minima
-		// amongst all rows and columns evenly -- this doesn't guarantee
-		// the optimal grid size, but it's reasonable enough.
+		item.mpWin->PreLayout(cellConstraints);
 
-		if (w == 1) {
-			if (mpColSpecs[x].minsize < specs.minsize.w)
-				mpColSpecs[x].minsize = specs.minsize.w;
-		} else {
-			int left = specs.minsize.w;
+		const VDUILayoutSpecs& specs = item.mpWin->GetLayoutSpecs();
+		const int minw = specs.minsize.w;
+		const int minh = specs.minsize.h;
 
-			for(int wt=0; wt<w; ++wt) {
-				int tc = (left + (w-wt) - 1) / (w-wt);
-
-				if (mpColSpecs[x+wt].minsize < tc)
-					mpColSpecs[x+wt].minsize = tc;
-
-				left -= tc;
-			}
-		}
-
-		if (h == 1) {
-			if (mpRowSpecs[y].minsize < specs.minsize.h)
-				mpRowSpecs[y].minsize = specs.minsize.h;
-		} else {
-			int left = specs.minsize.h;
-
-			for(int ht=0; ht<h; ++ht) {
-				int tc = (left + (h-ht) - 1) / (h-ht);
-
-				if (mpRowSpecs[y+ht].minsize < tc)
-					mpRowSpecs[y+ht].minsize = tc;
-
-				left -= tc;
-			}
-		}
-
+		mCols.ApplyMinimum(cells.left, cells.right, minw);
+		mRows.ApplyMinimum(cells.top, cells.bottom, minh);
 	}
 
-	// Compute aggregate minima.
+	mLayoutSpecs.minsize.w = pad.w*(cols-1) + mCols.GetMinimumSum();
+	mLayoutSpecs.minsize.h = pad.h*(rows-1) + mRows.GetMinimumSum();
+}
 
-	mLayoutSpecs.minsize.w = (mnCols-1) * mnXPad;
-	mLayoutSpecs.minsize.h = (mnRows-1) * mnYPad;
+void VDUIGrid::PostLayoutBase(const vduirect& target) {
+	vduisize pad = mpBase->MapUnitsToPixels(vduisize(mSpacing, mSpacing));
 
-	mTotalRowAffinity = mTotalColAffinity = 0;
+	// phase II: layout columns
+	mCols.Layout(target.left, target.width(), pad.w);
 
-	for(i=0; i<mnCols; ++i) {
-		mLayoutSpecs.minsize.w += mpColSpecs[i].minsize;
-		mTotalColAffinity += mpColSpecs[i].affinity;
+	tItems::const_iterator itItem(mItems.begin()), itItemEnd(mItems.end());
+	for(; itItem != itItemEnd; ++itItem) {
+		const GridItem& item = *itItem;
+		const vduirect& cells = item.mPos;
+
+		VDUILayoutSpecs cellConstraints;
+
+		cellConstraints.minsize.w = mCols.GetSpanWidth(cells.left, cells.right);
+		cellConstraints.minsize.h = target.height();
+
+		item.mpWin->PreLayout(cellConstraints);
+
+		const VDUILayoutSpecs& specs = item.mpWin->GetLayoutSpecs();
+		const int minh = specs.minsize.h;
+
+		mRows.ApplyMinimum(cells.top, cells.bottom, minh);
 	}
 
-	for(i=0; i<mnRows; ++i) {
-		mLayoutSpecs.minsize.h += mpRowSpecs[i].minsize;
-		mTotalRowAffinity += mpRowSpecs[i].affinity;
+	// phase III: final layout
+	mRows.Layout(target.top, target.height(), pad.h);
+
+	itItem = mItems.begin();
+	itItemEnd = mItems.end();
+	for(; itItem != itItemEnd; ++itItem) {
+		const GridItem& item = *itItem;
+		const vduirect& cells = item.mPos;
+
+		item.mpWin->PostLayout(vduirect(mCols.GetStart(cells.left), mRows.GetStart(cells.top), mCols.GetEnd(cells.right-1), mRows.GetEnd(cells.bottom-1)));
 	}
 }
 
-void VDUIGrid::PostLayoutBase(const VDUIRect& target) {
-	// Compute excesses and split amongst rows/cols as we compute each
-	// position.
+void VDUIGrid::SetRow(int row, int minsize, int maxsize, int affinity) {
+	mRows.SetBehavior(row, minsize, maxsize, affinity);
+}
 
-	int excessw = (target.x2 - target.x1) - mLayoutSpecs.minsize.w;
-	int excessh = (target.y2 - target.y1) - mLayoutSpecs.minsize.h;
-	int i, pos, affinity_left;
+void VDUIGrid::SetColumn(int col, int minsize, int maxsize, int affinity) {
+	mCols.SetBehavior(col, minsize, maxsize, affinity);
+}
 
-	if (excessw<0)
-		excessw=0;
-
-	if (excessh<0)
-		excessh=0;
-
-	pos = 0;
-	affinity_left = mTotalColAffinity;
-	for(i=0; i<mnCols; ++i) {
-		int affinity = mpColSpecs[i].affinity;
-
-		mpColSpecs[i].pos = pos;
-		pos += mpColSpecs[i].minsize + mnXPad;
-
-		if (affinity) {
-			int slop = (excessw * affinity + affinity_left - 1) / affinity_left;
-
-			pos += slop;
-			excessw -= slop;
-			affinity_left -= affinity;
-		}
-	}
-	mpColSpecs[i].pos = pos;
-
-	pos = 0;
-	affinity_left = mTotalRowAffinity;
-	for(i=0; i<mnRows; ++i) {
-		int affinity = mpRowSpecs[i].affinity;
-
-		mpRowSpecs[i].pos = pos;
-		pos += mpRowSpecs[i].minsize + mnYPad;
-
-		if (affinity) {
-			int slop = (excessh * affinity + affinity_left - 1) / affinity_left;
-
-			pos += slop;
-
-			excessh -= slop;
-			affinity_left -= affinity;
-		}
-	}
-	mpRowSpecs[i].pos = pos;
-
-	// Reposition all controls.
-
-	for(tChildMap::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it).second.pControl;
-		const int placeX = (*it).first.first;
-		const int placeY = (*it).first.second;
-		const int placeW = (*it).second.w;
-		const int placeH = (*it).second.h;
-
-		VDUIRect r = {
-			target.x1 + mpColSpecs[placeX].pos,
-			target.y1 + mpRowSpecs[placeY].pos,
-			target.x1 + mpColSpecs[placeX + placeW].pos - mnXPad,
-			target.y1 + mpRowSpecs[placeY + placeH].pos - mnYPad
-		};
-
-		pControl->PostLayout(r);
+void VDUIGrid::NextRow() {
+	if (mbVerticalTravel) {
+		++mX;
+		mY = 0;
+	} else {
+		++mY;
+		mX = 0;
 	}
 }
 
-bool VDUIGrid::Add(IVDUIControl *pControl, int x, int y, int w, int h) {
-	Remove(x, y);
+///////////////////////////////////////////////////////////////////////////
 
-	ChildInfo cinfo = { pControl, w, h };
+VDUIGrid::Axis::Axis() {
+	Extend(0);
+}
 
-	std::pair<tChildMap::iterator, bool> rval;
+void VDUIGrid::Axis::Extend(int cell) {
+	VDASSERT(cell >= 0);
 
-	rval = mChildren.insert(tChildMap::value_type(tPlacement(x, y), cinfo));
+	if (cell+1 >= mEntries.size())		// need sentinel at end too
+		mEntries.resize(cell+2);
+}
 
-	if (rval.second) {
-		if (pControl->Create(this)) {
-			GetBase()->AddNonlocal(pControl);
-			return true;
-		}
+void VDUIGrid::Axis::SetBehavior(int cell, int minsize, int maxsize, int affinity) {
+	Extend(cell);
 
-		mChildren.erase(rval.first);
+	Entry& ent = mEntries[cell];
+
+	if (minsize >= 0)
+		ent.minsize = minsize;
+
+	if (maxsize >= 0)
+		ent.maxsize = maxsize;
+
+	if (ent.maxsize < ent.minsize)
+		ent.maxsize = ent.minsize;
+
+	if (affinity >= 0)
+		ent.affinity = affinity;
+}
+
+void VDUIGrid::Axis::BeginLayout() {
+	tEntries::iterator it(mEntries.begin()), itEnd(mEntries.end());
+
+	int affinitysum = 0;
+	int maxsizesum = 0;
+	for(; it!=itEnd; ++it) {
+		Entry& ent = *it;
+
+		ent.mincursize = ent.minsize;
+		ent.affinitysum = affinitysum;
+		ent.maxsizesum = maxsizesum;
+		affinitysum += ent.affinity;
+
+		if (ent.maxsize == INT_MAX)
+			++maxsizesum;
+		else
+			maxsizesum += ent.maxsize << 12;
+	}
+}
+
+int VDUIGrid::Axis::GetSpanMax(int start, int end, int limit) const {
+	VDASSERT(start >= 0);
+	VDASSERT(end < mEntries.size());
+
+	int diff = mEntries[end].maxsizesum - mEntries[start].maxsizesum;
+
+	if (diff & 0xfff)
+		return limit;
+
+	diff >>= 12;
+
+	if (diff > limit)
+		diff = limit;
+
+	return diff;
+}
+
+void VDUIGrid::Axis::ApplyMinimum(int start, int end, int minval) {
+	VDASSERT(start >= 0);
+	VDASSERT(end < mEntries.size());
+
+	// fast path
+	if (end == start+1) {
+		int& curmin = mEntries[start].mincursize;
+
+		if (curmin < minval)
+			curmin = minval;
+
+		return;
 	}
 
-	return false;
+	const int affsum = mEntries[end].affinitysum - mEntries[start].affinitysum;
+	int affleft = affsum ? affsum : end-start;
+
+	for(int i=start; i<end; ++i) {
+		Entry& ent = mEntries[i];
+		int affinity = affsum ? ent.affinity : 1;
+		int minslice = affinity ? (minval * affinity + affleft - 1) / affleft : 0;
+
+		if (ent.mincursize < minslice)
+			ent.mincursize = minslice;
+
+		minval -= minslice;
+	}
 }
 
-void VDUIGrid::Remove(int x, int y) {
-	mChildren.erase(tPlacement(x, y));
+int VDUIGrid::Axis::GetMinimumSum() const {
+	const int ents = mEntries.size();
+	int sum = 0;
+
+	for(int i=0; i<ents-1; ++i)
+		sum += mEntries[i].mincursize;
+
+	return sum;
 }
 
-void VDUIGrid::SetSpacing(int hspacing, int vspacing) {
-	VDUIRect r = { 0, 0, hspacing, vspacing };
+void VDUIGrid::Axis::Layout(int pos, int width, int pad) {
+	const int n = mEntries.size() - 1;
+	const int affsum = mEntries[n].affinitysum - mEntries[0].affinitysum;
+	int affleft = affsum ? affsum : n;
+	int slackleft = width - pad*(n-1) - GetMinimumSum();
 
-	GetBase()->MapUnitsToPixels(r);
+	if (slackleft < 0)
+		slackleft = 0;
 
-	if (hspacing >= 0)
-		mnXPad = r.x2;
+	for(int i=0; i<n; ++i) {
+		Entry& ent = mEntries[i];
+		const int affinity = affsum ? ent.affinity : 1;
+		const int minslice = affinity ? (slackleft * affinity + affleft - 1) / affleft : 0;
 
-	if (vspacing >= 0)
-		mnYPad = r.y2;
-}
+		ent.start = pos;
+		pos += ent.mincursize + minslice;
+		ent.end = pos;
+		pos += pad;
 
-void VDUIGrid::WipeAffinities(int affinity) {
-	int i;
-
-	for(i=0; i<mnCols; ++i)
-		mpColSpecs[i].affinity = affinity;
-
-	for(i=0; i<mnRows; ++i)
-		mpRowSpecs[i].affinity = affinity;
-}
-
-void VDUIGrid::SetRowAffinity(int row, int affinity) throw() {
-	if (row >= 0 && row < mnRows) {
-		mpRowSpecs[row].affinity = affinity;
-	} else
-		VDASSERT(false);
-}
-
-void VDUIGrid::SetColumnAffinity(int col, int affinity) throw() {
-	if (col >= 0 && col < mnCols) {
-		mpColSpecs[col].affinity = affinity;
-	} else
-		VDASSERT(false);
-}
-
-void VDUIGrid::Show(bool b) {
-	VDUIControlBase::Show(b);
-	tChildMap::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it).second.pControl->Show((*it).second.pControl->IsVisible());
-}
-
-void VDUIGrid::Enable(bool b) {
-	VDUIControlBase::Enable(b);
-	tChildMap::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it).second.pControl->Enable((*it).second.pControl->IsEnabled());
+		affleft -= affinity;
+		slackleft -= minslice;
+	}
 }

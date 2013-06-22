@@ -30,6 +30,7 @@
 long CPUCheckForExtensions();
 long CPUEnableExtensions(long lEnableFlags);
 long CPUGetEnabledExtensions();
+void VDCPUCleanupExtensions();
 
 extern "C" bool FPU_enabled, MMX_enabled, ISSE_enabled, SSE2_enabled;
 

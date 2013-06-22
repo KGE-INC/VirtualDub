@@ -44,13 +44,17 @@ std::string get_name() {
 	return name;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
 	FILE *f;
 	uint32 build=0;
 	char s[25];
 	time_t tm;
 
 	//////////////
+
+	bool amd64 = false;
+	if (argc>=2 && !stricmp(argv[1], "amd64"))
+		amd64 = true;
 
 	if (f=fopen("version2.bin","r")) {
 		char linebuf[2048];
@@ -83,20 +87,34 @@ int main(void) {
 	s[24]=0;
 
 	if (f=fopen("verstub.asm","w")) {
-		fprintf(f,
-			"\t"	".386\n"
-			"\t"	".model\t"	"flat\n"
-			"\t"	".data\n"
-			"\n"
-			"\t"	"public\t"	"_version_num\n"
-			"\t"	"public\t"	"_version_time\n"
-			"\n"
-			"_version_num\t"	"dd\t"	"%ld\n"
-			"_version_time\t"	"db\t"	"\"%s\",0\n"
-			"\n"
-			"\t"	"end\n"
-			,build
-			,s);
+		if (amd64)
+			fprintf(f,
+				"\t"	".const\n"
+				"\n"
+				"\t"	"public\t"	"version_num\n"
+				"\t"	"public\t"	"version_time\n"
+				"\n"
+				"version_num\t"	"dd\t"	"%ld\n"
+				"version_time\t"	"db\t"	"\"%s\",0\n"
+				"\n"
+				"\t"	"end\n"
+				,build
+				,s);
+		else
+			fprintf(f,
+				"\t"	".386\n"
+				"\t"	".model\t"	"flat\n"
+				"\t"	".const\n"
+				"\n"
+				"\t"	"public\t"	"_version_num\n"
+				"\t"	"public\t"	"_version_time\n"
+				"\n"
+				"_version_num\t"	"dd\t"	"%ld\n"
+				"_version_time\t"	"db\t"	"\"%s\",0\n"
+				"\n"
+				"\t"	"end\n"
+				,build
+				,s);
 		fclose(f);
 	}
 

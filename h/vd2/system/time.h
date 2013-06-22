@@ -10,6 +10,11 @@
 // resolution is 55ms under Win9x and 10ms under WinNT.
 uint32 VDGetCurrentTick();
 
+// VDGetPreciseTick: Retrieves high-performance timer (QueryPerformanceCounter in
+// Win32).
+uint32 VDGetPreciseTick();
+double VDGetPreciseTicksPerSecond();
+
 // VDCallbackTimer is an abstraction of the Windows multimedia timer.  As such, it
 // is rather expensive to instantiate, and should only be used for critical timing
 // needs... such as multimedia.  Basically, there should only really be one or two
@@ -42,7 +47,11 @@ private:
 	VDSignal		*mpExitSucceeded;
 	volatile bool	mbExit;				// this doesn't really need to be atomic -- think about it
 
+#ifdef _M_AMD64
+	static void __stdcall StaticTimerCallback(unsigned id, unsigned, unsigned __int64 thisPtr, unsigned __int64, unsigned __int64);
+#else
 	static void __stdcall StaticTimerCallback(unsigned id, unsigned, unsigned long thisPtr, unsigned long, unsigned long);
+#endif
 };
 
 #endif

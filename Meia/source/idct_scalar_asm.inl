@@ -601,8 +601,6 @@ m2:
 }
 
 static void scalar_idct_feig_winograd_8x8(int *d) {
-	int i;
-
 	scalar_idct_feig_winograd_8x8_temp(d);
 }
 

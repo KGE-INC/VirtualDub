@@ -19,6 +19,7 @@ CFG=Setup - Win32 Release
 !MESSAGE 
 !MESSAGE "Setup - Win32 Release" (based on "Win32 (x86) Application")
 !MESSAGE "Setup - Win32 Debug" (based on "Win32 (x86) Application")
+!MESSAGE "Setup - Win32 Release AMD64" (based on "Win32 (x86) Application")
 !MESSAGE 
 
 # Begin Project
@@ -81,12 +82,41 @@ LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:windows /debug /machine:I386
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib version.lib winmm.lib /nologo /subsystem:windows /debug /machine:I386 /out:"../out/Debug/AuxSetup.exe"
 
+!ELSEIF  "$(CFG)" == "Setup - Win32 Release AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "Release AMD64"
+# PROP BASE Intermediate_Dir "Release AMD64"
+# PROP BASE Ignore_Export_Lib 0
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 0
+# PROP Output_Dir "../out/ReleaseAMD64"
+# PROP Intermediate_Dir "../obj/ReleaseAMD64/Setup"
+# PROP Ignore_Export_Lib 0
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MD /W3 /GX /O2 /I ".." /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /FD /c
+# ADD CPP /nologo /MD /W3 /GX /O2 /I ".." /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /FD /c
+# ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
+# ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LINK32=link.exe
+# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib version.lib winmm.lib /nologo /subsystem:windows /machine:I386 /out:"../out/Release/AuxSetup.exe"
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib version.lib winmm.lib /nologo /subsystem:windows /machine:IX86 /out:"../out/Release/AuxSetup.exe" /machine:AMD64
+# SUBTRACT LINK32 /pdb:none
+
 !ENDIF 
 
 # Begin Target
 
 # Name "Setup - Win32 Release"
 # Name "Setup - Win32 Debug"
+# Name "Setup - Win32 Release AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat;for;f90"

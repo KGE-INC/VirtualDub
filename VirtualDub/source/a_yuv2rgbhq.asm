@@ -66,33 +66,33 @@ xloop:
 	prefetchnta	[ecx+7]
 	prefetchnta	[edx+7]
 
-	movd		mm0,[esi]	;U4U3U2U1
-	movd		mm6,[esi+ebp]
+	movd		mm0,dword ptr [esi]	;U4U3U2U1
+	movd		mm6,dword ptr [esi+ebp]
 	pavgb		mm6,mm0
 	pavgb		mm0,mm6
 
-	movd		mm1,[edi]	;V4V3V2V1
-	movd		mm6,[edi+ebp]
+	movd		mm1,dword ptr [edi]	;V4V3V2V1
+	movd		mm6,dword ptr [edi+ebp]
 	pavgb		mm6,mm1
 	pavgb		mm1,mm6
 
-	movd		mm2,[esi-1]	;U3U2U1U0
-	movd		mm6,[esi+ebp-1]
+	movd		mm2,dword ptr [esi-1]	;U3U2U1U0
+	movd		mm6,dword ptr [esi+ebp-1]
 	pavgb		mm6,mm2
 	pavgb		mm2,mm6
 
-	movd		mm3,[edi-1]	;V3V2V1V0
-	movd		mm6,[edi+ebp-1]
+	movd		mm3,dword ptr [edi-1]	;V3V2V1V0
+	movd		mm6,dword ptr [edi+ebp-1]
 	pavgb		mm6,mm3
 	pavgb		mm3,mm6
 
-	movd		mm4,[esi+1]	;U5U4U3U2
-	movd		mm6,[esi+ebp+1]
+	movd		mm4,dword ptr [esi+1]	;U5U4U3U2
+	movd		mm6,dword ptr [esi+ebp+1]
 	pavgb		mm6,mm4
 	pavgb		mm4,mm6
 
-	movd		mm5,[edi+1]	;V5V4V3V2
-	movd		mm6,[edi+ebp+1]
+	movd		mm5,dword ptr [edi+1]	;V5V4V3V2
+	movd		mm6,dword ptr [edi+ebp+1]
 	pavgb		mm6,mm5
 	pavgb		mm5,mm6
 
@@ -191,33 +191,33 @@ xloop:
 
 	mov		ebp,UV_down
 
-	movd		mm0,[esi]	;U4U3U2U1
-	movd		mm6,[esi+ebp]
+	movd		mm0,dword ptr [esi]	;U4U3U2U1
+	movd		mm6,dword ptr [esi+ebp]
 	pavgb		mm6,mm0
 	pavgb		mm0,mm6
 
-	movd		mm1,[edi]	;V4V3V2V1
-	movd		mm6,[edi+ebp]
+	movd		mm1,dword ptr [edi]	;V4V3V2V1
+	movd		mm6,dword ptr [edi+ebp]
 	pavgb		mm6,mm1
 	pavgb		mm1,mm6
 
-	movd		mm2,[esi-1]	;U3U2U1U0
-	movd		mm6,[esi+ebp-1]
+	movd		mm2,dword ptr [esi-1]	;U3U2U1U0
+	movd		mm6,dword ptr [esi+ebp-1]
 	pavgb		mm6,mm2
 	pavgb		mm2,mm6
 
-	movd		mm3,[edi-1]	;V3V2V1V0
-	movd		mm6,[edi+ebp-1]
+	movd		mm3,dword ptr [edi-1]	;V3V2V1V0
+	movd		mm6,dword ptr [edi+ebp-1]
 	pavgb		mm6,mm3
 	pavgb		mm3,mm6
 
-	movd		mm4,[esi+1]	;U5U4U3U2
-	movd		mm6,[esi+ebp+1]
+	movd		mm4,dword ptr [esi+1]	;U5U4U3U2
+	movd		mm6,dword ptr [esi+ebp+1]
 	pavgb		mm6,mm4
 	pavgb		mm4,mm6
 
-	movd		mm5,[edi+1]	;V5V4V3V2
-	movd		mm6,[edi+ebp+1]
+	movd		mm5,dword ptr [edi+1]	;V5V4V3V2
+	movd		mm6,dword ptr [edi+ebp+1]
 	pavgb		mm6,mm5
 	pavgb		mm5,mm6
 

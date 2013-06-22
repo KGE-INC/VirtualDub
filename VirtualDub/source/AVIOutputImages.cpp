@@ -22,6 +22,7 @@
 #include <vd2/system/error.h>
 #include "AVIOutput.h"
 #include "AVIOutputImages.h"
+#include "imagejpeg.h"
 
 class AVIOutputImages;
 
@@ -32,27 +33,33 @@ private:
 	DWORD dwFrame;
 	const wchar_t *mpszPrefix;
 	const wchar_t *mpszSuffix;
-	int iDigits;
-	bool mbSaveAsTARGA;
+	int mDigits;
+	int mFormat;
+	int mQuality;
 	char *mpPackBuffer;
 
+	vdautoptr<IVDJPEGEncoder>	mpJPEGEncoder;
+	std::vector<char>			mOutputBuffer;
+
 public:
-	AVIVideoImageOutputStream(AVIOutput *out, const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, bool bSaveAsTARGA);
+	AVIVideoImageOutputStream(const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, int format, int quality);
 	~AVIVideoImageOutputStream();
 
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
 };
 
-AVIVideoImageOutputStream::AVIVideoImageOutputStream(AVIOutput *out, const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, bool bSaveAsTARGA)
-	: AVIOutputStream(out)
-	, mpPackBuffer(NULL)
+AVIVideoImageOutputStream::AVIVideoImageOutputStream(const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, int format, int quality)
+	: mpPackBuffer(NULL)
 	, mpszPrefix(pszPrefix)
 	, mpszSuffix(pszSuffix)
+	, mDigits(iDigits)
+	, mFormat(format)
+	, mQuality(quality)
 {
-	this->iDigits		= iDigits;
-	mbSaveAsTARGA		= bSaveAsTARGA;
-
 	dwFrame = 0;
+
+	if (mFormat == AVIOutputImages::kFormatJPEG)
+		mpJPEGEncoder = VDCreateJPEGEncoder();
 }
 
 AVIVideoImageOutputStream::~AVIVideoImageOutputStream() {
@@ -64,17 +71,37 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 	const BITMAPINFOHEADER& bih = *(const BITMAPINFOHEADER *)getFormat();
 
-	if (mbSaveAsTARGA && (bih.biCompression != BI_RGB ||
+	if (mFormat != AVIOutputImages::kFormatJPEG && (bih.biCompression != BI_RGB ||
 			(bih.biBitCount != 16 && bih.biBitCount != 24 && bih.biBitCount != 32))) {
-		throw MyError("Output settings must be 16/24/32-bit RGB, uncompressed in order to save a TARGA sequence.");
+		throw MyError("Output settings must be 16/24/32-bit RGB, uncompressed in order to save a TARGA or JPEG sequence.");
 	}
 
-	swprintf(szFileName, L"%ls%0*d%ls", mpszPrefix, iDigits, dwFrame++, mpszSuffix);
+	swprintf(szFileName, L"%ls%0*d%ls", mpszPrefix, mDigits, dwFrame++, mpszSuffix);
 
 	using namespace nsVDFile;
 	VDFile mFile(szFileName, kWrite | kDenyNone | kCreateAlways | kSequential);
 
-	if (mbSaveAsTARGA) {
+	if (mFormat == AVIOutputImages::kFormatJPEG) {
+		mOutputBuffer.clear();
+
+		mpJPEGEncoder->Init(mQuality, true);
+
+		switch(bih.biBitCount) {
+		case 16:
+			mpJPEGEncoder->Encode(mOutputBuffer, (const char *)pBuffer + ((bih.biWidth*2+3)&~3) * (bih.biHeight-1), -((2*bih.biWidth+3) & ~3), IVDJPEGEncoder::kFormatRGB15, bih.biWidth, bih.biHeight);
+			break;
+		case 24:
+			mpJPEGEncoder->Encode(mOutputBuffer, (const char *)pBuffer + ((bih.biWidth*3+3)&~3) * (bih.biHeight-1), -((3*bih.biWidth+3) & ~3), IVDJPEGEncoder::kFormatRGB24, bih.biWidth, bih.biHeight);
+			break;
+		case 32:
+			mpJPEGEncoder->Encode(mOutputBuffer, (const char *)pBuffer + bih.biWidth * (bih.biHeight-1) * 4, -4*bih.biWidth, IVDJPEGEncoder::kFormatRGB32, bih.biWidth, bih.biHeight);
+			break;
+		default:
+			VDNEVERHERE;
+		}
+
+		mFile.write(&mOutputBuffer[0], mOutputBuffer.size());
+	} else if (mFormat == AVIOutputImages::kFormatTGA) {
 		struct TGAHeader {
 			unsigned char	IDLength;
 			unsigned char	CoMapType;
@@ -102,12 +129,12 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 		hdr.X_OrgHi		= 0;
 		hdr.Y_OrgLo		= 0;
 		hdr.Y_OrgHi		= 0;
-		hdr.WidthLo		= bih.biWidth & 0xff;
-		hdr.WidthHi		= bih.biWidth >> 8;
-		hdr.HeightLo	= bih.biHeight & 0xff;
-		hdr.HeightHi	= bih.biHeight >> 8;
-		hdr.PixelSize	= bih.biBitCount;
-		hdr.AttBits		= bih.biBitCount==2 ? 1 : bih.biBitCount==4 ? 8 : 0;		// origin is bottom-left, x alpha bits
+		hdr.WidthLo		= (unsigned char)(bih.biWidth & 0xff);
+		hdr.WidthHi		= (unsigned char)(bih.biWidth >> 8);
+		hdr.HeightLo	= (unsigned char)(bih.biHeight & 0xff);
+		hdr.HeightHi	= (unsigned char)(bih.biHeight >> 8);
+		hdr.PixelSize	= (unsigned char)(bih.biBitCount);
+		hdr.AttBits		= (unsigned char)(bih.biBitCount==2 ? 1 : bih.biBitCount==4 ? 8 : 0);		// origin is bottom-left, x alpha bits
 
 		// Do we have a pack buffer yet?
 
@@ -136,7 +163,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 				const short *masksrc = (const short *)src;
 
 				for(x=0; x<bih.biWidth; ++x) {
-					maskdst[x] = masksrc[x] | 0x8000;
+					maskdst[x] = (short)(masksrc[x] | 0x8000);
 				}
 				rlesrc = (const char *)mpPackBuffer;
 			} else if (pelsize == 4) {
@@ -200,7 +227,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 						}
 
 						if (lq) {
-							*dst++ = lq-1;
+							*dst++ = (char)(lq-1);
 							memcpy(dst, literalstart, lq*pelsize);
 							dst += lq*pelsize;
 						}
@@ -269,13 +296,14 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 ////////////////////////////////////
 
-AVIOutputImages::AVIOutputImages(const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int digits, int format) {
-	VDASSERT(format == kFormatBMP || format == kFormatTGA);
-
-	mPrefix = szFilePrefix;
-	mSuffix = szFileSuffix;
-	this->iDigits		= digits;
-	mbSaveAsTARGA		= format != kFormatBMP;
+AVIOutputImages::AVIOutputImages(const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int digits, int format, int quality)
+	: mPrefix(szFilePrefix)
+	, mSuffix(szFileSuffix)
+	, mDigits(digits)
+	, mFormat(format)
+	, mQuality(quality)
+{
+	VDASSERT(format == kFormatBMP || format == kFormatTGA || format == kFormatJPEG);
 }
 
 AVIOutputImages::~AVIOutputImages() {
@@ -285,7 +313,7 @@ AVIOutputImages::~AVIOutputImages() {
 
 IVDMediaOutputStream *AVIOutputImages::createVideoStream() {
 	VDASSERT(!videoOut);
-	if (!(videoOut = new_nothrow AVIVideoImageOutputStream(this, mPrefix.c_str(), mSuffix.c_str(), iDigits, mbSaveAsTARGA)))
+	if (!(videoOut = new_nothrow AVIVideoImageOutputStream(mPrefix.c_str(), mSuffix.c_str(), mDigits, mFormat, mQuality)))
 		throw MyMemoryError();
 	return videoOut;
 }

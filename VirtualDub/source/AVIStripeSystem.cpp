@@ -161,7 +161,7 @@ AVIStripeSystem::AVIStripeSystem(const char *szFile) {
 			stripe[cur]->lChunkSize	= lChunk;
 			stripe[cur]->iNameLen	= t+1-s;
 			stripe[cur]->cStripeMode	= cMode[0];
-			stripe[cur]->scPriority	= iPri;
+			stripe[cur]->scPriority	= (signed char)iPri;
 			strcpy(stripe[cur]->szName, s);
 
 			++lineno;

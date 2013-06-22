@@ -22,6 +22,9 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <vd2/Dita/interface.h>
+#include <vd2/system/registry.h>
+
 #include "resource.h"
 #include "helpfile.h"
 
@@ -33,6 +36,14 @@
 
 extern HINSTANCE g_hInst;
 
+namespace {
+	struct VDPreferences2 {
+		Preferences		mOldPrefs;
+		VDStringW		mTimelineFormat;
+		bool			mbAllowDirectYCbCrDecoding;
+	} g_prefs2;
+}
+
 Preferences g_prefs={
 	{ 0, PreferencesMain::DEPTH_FASTEST, 0, TRUE, 0 },
 	{ 50*16, 4*16 },
@@ -42,395 +53,301 @@ static char g_szMainPrefs[]="Main prefs";
 
 ////////////////////////////////////////////////////////////////
 
-typedef struct PrefsDlgData {
-	Preferences prefs;
 
-	HWND hwndDisplay;
-	RECT rcTab;
-} PrefsDlgData;
-
-static void PreferencesChildPosition(HWND hWnd, PrefsDlgData *pdd) {
-	SetWindowPos(hWnd, HWND_TOP, pdd->rcTab.left, pdd->rcTab.top, 0, 0, SWP_NOSIZE);
-}
-
-static BOOL APIENTRY PreferencesMainDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	static char *szDepths[]={
-		"Fastest (16-bit)",
-		"Use output setting",
-		"Match display depth",
-		"16-bit (HiColor)",
-		"24-bit (TrueColor)",
-	};
-
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hDlg, DWL_USER);
-	HWND hwndItem;
-	int i;
-
-	switch(message) {
-		case WM_INITDIALOG:
-			PreferencesChildPosition(hDlg, (PrefsDlgData *)lParam);
-			SetWindowLong(hDlg, DWL_USER, lParam);
-			pdd = (PrefsDlgData *)lParam;
-
-			//////////////
-
-			hwndItem = GetDlgItem(hDlg, IDC_OUTPUT_DEPTH);
-			for(i=0; i<5; i++)
-				SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)szDepths[i]);
-
-			SendMessage(hwndItem, CB_SETCURSEL, pdd->prefs.main.iPreviewDepth, 0);
-
-
-			hwndItem = GetDlgItem(hDlg, IDC_PREVIEW_PRIORITY);
-			SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)"Default");
-			for(i=0; i<8; i++)
-				SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)g_szDubPriorities[i]);
-
-			SendMessage(hwndItem, CB_SETCURSEL, pdd->prefs.main.iPreviewPriority, 0);
-
-			hwndItem = GetDlgItem(hDlg, IDC_DUB_PRIORITY);
-			SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)"Default");
-			for(i=0; i<8; i++)
-				SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)g_szDubPriorities[i]);
-
-			SendMessage(hwndItem, CB_SETCURSEL, pdd->prefs.main.iDubPriority, 0);
-
-			//////////////
-
-			CheckDlgButton(hDlg, IDC_TACK_EXTENSION, pdd->prefs.main.fAttachExtension);
-			return TRUE;
-
-		case WM_DESTROY:
-			pdd->prefs.main.iPreviewDepth = (char)SendDlgItemMessage(hDlg, IDC_OUTPUT_DEPTH, CB_GETCURSEL, 0, 0);
-			pdd->prefs.main.iPreviewPriority = (char)SendDlgItemMessage(hDlg, IDC_PREVIEW_PRIORITY, CB_GETCURSEL, 0, 0);
-			pdd->prefs.main.iDubPriority = (char)SendDlgItemMessage(hDlg, IDC_DUB_PRIORITY, CB_GETCURSEL, 0, 0);
-			pdd->prefs.main.fAttachExtension = IsDlgButtonChecked(hDlg, IDC_TACK_EXTENSION);
-			return TRUE;
+class VDDialogBase : public IVDUICallback {
+protected:
+	int GetValue(uint32 id) const {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		return pWin ? pWin->GetValue() : 0;
 	}
 
-	return FALSE;
-}
-
-static BOOL APIENTRY PreferencesDisplayDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hDlg, DWL_USER);
-
-	switch(message) {
-		case WM_INITDIALOG:
-			PreferencesChildPosition(hDlg, (PrefsDlgData *)lParam);
-			SetWindowLong(hDlg, DWL_USER, lParam);
-			pdd = (PrefsDlgData *)lParam;
-
-			//////////////
-
-			CheckDlgButton(hDlg, IDC_ENABLE_16DITHERING, !!(pdd->prefs.fDisplay & Preferences::kDisplayDither16));
-			CheckDlgButton(hDlg, IDC_ENABLE_DIRECTX, !(pdd->prefs.fDisplay & Preferences::kDisplayDisableDX));
-			CheckDlgButton(hDlg, IDC_FORCE_DXWITHTS, !!(pdd->prefs.fDisplay & Preferences::kDisplayUseDXWithTS));
-
-			return TRUE;
-
-		case WM_DESTROY:
-			pdd->prefs.fDisplay = 0;
-			
-			if (IsDlgButtonChecked(hDlg, IDC_ENABLE_16DITHERING))
-				pdd->prefs.fDisplay += Preferences::kDisplayDither16;
-			if (!IsDlgButtonChecked(hDlg, IDC_ENABLE_DIRECTX))
-				pdd->prefs.fDisplay += Preferences::kDisplayDisableDX;
-			if (IsDlgButtonChecked(hDlg, IDC_FORCE_DXWITHTS))
-				pdd->prefs.fDisplay += Preferences::kDisplayUseDXWithTS;
-			return TRUE;
+	void SetValue(uint32 id, int value) {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		if (pWin)
+			pWin->SetValue(value);
 	}
 
-	return FALSE;
-}
-
-static BOOL APIENTRY PreferencesSceneDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hDlg, DWL_USER);
-	HWND hwndItem;
-	long pos;
-
-	switch(message) {
-		case WM_INITDIALOG:
-			PreferencesChildPosition(hDlg, (PrefsDlgData *)lParam);
-			SetWindowLong(hDlg, DWL_USER, lParam);
-			pdd = (PrefsDlgData *)lParam;
-
-			//////////////
-
-			hwndItem = GetDlgItem(hDlg, IDC_INTERFRAME_SLIDER);
-			SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0,255));
-			SendMessage(hwndItem, TBM_SETPOS, TRUE,
-					pdd->prefs.scene.iCutThreshold
-						? 256 - ((pdd->prefs.scene.iCutThreshold+8)>>4)
-						: 0
-					);
-			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hwndItem);
-
-			hwndItem = GetDlgItem(hDlg, IDC_INTRAFRAME_SLIDER);
-			SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0,256));
-			SendMessage(hwndItem, TBM_SETPOS, TRUE, pdd->prefs.scene.iFadeThreshold);
-			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hwndItem);
-
-			return TRUE;
-
-		case WM_HSCROLL:
-			pos = SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
-			switch(GetWindowLong((HWND)lParam, GWL_ID)) {
-			case IDC_INTERFRAME_SLIDER:
-				if (!pos)
-					SetDlgItemText(hDlg, IDC_INTERFRAME_VALUE, "Off");
-				else
-					SetDlgItemInt(hDlg, IDC_INTERFRAME_VALUE, pos, FALSE);
-				return TRUE;
-			case IDC_INTRAFRAME_SLIDER:
-				if (!pos)
-					SetDlgItemText(hDlg, IDC_INTRAFRAME_VALUE, "Off");
-				else
-					SetDlgItemInt(hDlg, IDC_INTRAFRAME_VALUE, pos, FALSE);
-
-				return TRUE;
-			}
-			break;
-
-		case WM_DESTROY:
-			{
-				int x = SendDlgItemMessage(hDlg, IDC_INTERFRAME_SLIDER, TBM_GETPOS, 0, 0);
-
-				pdd->prefs.scene.iCutThreshold = x?(256-x)<<4:0;
-				pdd->prefs.scene.iFadeThreshold = SendDlgItemMessage(hDlg, IDC_INTRAFRAME_SLIDER, TBM_GETPOS, 0, 0);
-			}
-			return TRUE;
+	const VDStringW GetCaption(uint32 id) const {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		return pWin ? pWin->GetCaption() : VDStringW();
 	}
 
-	return FALSE;
-}
-
-static BOOL APIENTRY PreferencesCPUDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hDlg, DWL_USER);
-	BOOL fTemp;
-
-	switch(message) {
-		case WM_INITDIALOG:
-			PreferencesChildPosition(hDlg, (PrefsDlgData *)lParam);
-			SetWindowLong(hDlg, DWL_USER, lParam);
-			pdd = (PrefsDlgData *)lParam;
-
-			//////////////
-
-			CheckDlgButton(hDlg, IDC_PERFOPT_FPU, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_FPU));
-			CheckDlgButton(hDlg, IDC_PERFOPT_MMX, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_MMX));
-			CheckDlgButton(hDlg, IDC_PERFOPT_SSE, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_SSE));
-			CheckDlgButton(hDlg, IDC_PERFOPT_SSE2, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_SSE2));
-			CheckDlgButton(hDlg, IDC_PERFOPT_SSEPARTIAL, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_INTEGER_SSE));
-			CheckDlgButton(hDlg, IDC_PERFOPT_3DNOW, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW));
-			CheckDlgButton(hDlg, IDC_PERFOPT_3DNOW2, !!(pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW_EXT));
-
-			if (pdd->prefs.main.fOptimizations & PreferencesMain::OPTF_FORCE) {
-				CheckDlgButton(hDlg, IDC_PERFOPT_FORCE, TRUE);
-			} else {
-				CheckDlgButton(hDlg, IDC_PERFOPT_DEFAULT, TRUE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_FPU), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_MMX), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSE), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSE2), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSEPARTIAL), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_3DNOW), FALSE);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_3DNOW2), FALSE);
-			}
-
-			return TRUE;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDC_PERFOPT_DEFAULT:
-			case IDC_PERFOPT_FORCE:
-				fTemp = !!(SendMessage(GetDlgItem(hDlg, IDC_PERFOPT_FORCE), BM_GETSTATE, 0, 0)&3);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_FPU), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_MMX), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSE), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSE2), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_SSEPARTIAL), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_3DNOW), fTemp);
-				EnableWindow(GetDlgItem(hDlg, IDC_PERFOPT_3DNOW2), fTemp);
-			}
-			return TRUE;
-
-		case WM_DESTROY:
-			pdd->prefs.main.fOptimizations	= (IsDlgButtonChecked(hDlg, IDC_PERFOPT_FORCE) ? PreferencesMain::OPTF_FORCE : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_FPU) ? PreferencesMain::OPTF_FPU : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_MMX) ? PreferencesMain::OPTF_MMX : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_3DNOW) ? PreferencesMain::OPTF_3DNOW : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_3DNOW2) ? PreferencesMain::OPTF_3DNOW_EXT : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_SSEPARTIAL) ? PreferencesMain::OPTF_INTEGER_SSE : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_SSE) ? PreferencesMain::OPTF_SSE : 0)
-											| (IsDlgButtonChecked(hDlg, IDC_PERFOPT_SSE2) ? PreferencesMain::OPTF_SSE2 : 0);
-			return TRUE;
+	void SetCaption(uint32 id, const VDStringW& s) {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		if (pWin)
+			pWin->SetCaption(s);
 	}
 
-	return FALSE;
-}
-
-static BOOL APIENTRY PreferencesAVIDlgProc(HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hdlg, DWL_USER);
-
-	switch(message) {
-		case WM_INITDIALOG:
-			PreferencesChildPosition(hdlg, (PrefsDlgData *)lParam);
-			SetWindowLong(hdlg, DWL_USER, lParam);
-			pdd = (PrefsDlgData *)lParam;
-
-			//////////////
-
-			CheckDlgButton(hdlg, IDC_RESTRICT_AVI_1GB, !!pdd->prefs.fAVIRestrict1Gb);
-			CheckDlgButton(hdlg, IDC_AUTOCORRECT_L3, !!pdd->prefs.fNoCorrectLayer3);
-			return TRUE;
-
-		case WM_DESTROY:
-			pdd->prefs.fAVIRestrict1Gb = IsDlgButtonChecked(hdlg, IDC_RESTRICT_AVI_1GB);
-			pdd->prefs.fNoCorrectLayer3 = IsDlgButtonChecked(hdlg, IDC_AUTOCORRECT_L3);
-			return TRUE;
-	}
-
-	return FALSE;
-}
-
-////////////////////////////////////////////////////////////////
-
-static struct prefsTabs {
-	LPTSTR	rsrc;
-	char	*name;
-	DLGPROC	dProc;
-} tabs[]={
-	{	MAKEINTRESOURCE(IDD_PREFS_MAIN),	"Main",		PreferencesMainDlgProc	},
-	{	MAKEINTRESOURCE(IDD_PREFS_DISPLAY),	"Display",	PreferencesDisplayDlgProc },
-	{	MAKEINTRESOURCE(IDD_PREFS_SCENE),	"Scene",	PreferencesSceneDlgProc	},
-	{	MAKEINTRESOURCE(IDD_PREFS_CPU),		"CPU",		PreferencesCPUDlgProc	},
-	{	MAKEINTRESOURCE(IDD_PREFS_AVI),		"AVI",		PreferencesAVIDlgProc	},
+	IVDUIBase *mpBase;
 };
 
-BOOL APIENTRY PreferencesDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+class VDDialogPreferencesGeneral : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesGeneral(VDPreferences2& p) : mPrefs(p) {}
 
-	PrefsDlgData *pdd = (PrefsDlgData *)GetWindowLong(hDlg, DWL_USER);
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			SetValue(100, mPrefs.mOldPrefs.main.iPreviewDepth);
+			SetValue(101, mPrefs.mOldPrefs.main.iPreviewPriority);
+			SetValue(102, mPrefs.mOldPrefs.main.iDubPriority);
+			SetValue(103, mPrefs.mOldPrefs.main.fAttachExtension);
+			pBase->ExecuteAllLinks();
+			return true;
+		case kEventSync:
+		case kEventDetach:
+			mPrefs.mOldPrefs.main.iPreviewDepth		= GetValue(100);
+			mPrefs.mOldPrefs.main.iPreviewPriority	= GetValue(101);
+			mPrefs.mOldPrefs.main.iDubPriority		= GetValue(102);
+			mPrefs.mOldPrefs.main.fAttachExtension	= GetValue(103);
+			return true;
+		}
+		return false;
+	}
+};
 
-	//////////
+class VDDialogPreferencesDisplay : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesDisplay(VDPreferences2& p) : mPrefs(p) {}
 
-	switch(message) {
-		case WM_INITDIALOG:
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			SetValue(100, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayDither16));
+			SetValue(101,     !(mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayDisableDX));
+			SetValue(102, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayUseDXWithTS));
+			SetValue(103, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3D));
+			SetValue(104, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableOpenGL));
+			pBase->ExecuteAllLinks();
+			return true;
+		case kEventSync:
+		case kEventDetach:
+			mPrefs.mOldPrefs.fDisplay = 0;
+			if ( GetValue(100)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayDither16;
+			if (!GetValue(101)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayDisableDX;
+			if ( GetValue(102)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayUseDXWithTS;
+			if ( GetValue(103)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3D;
+			if ( GetValue(104)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableOpenGL;
+			return true;
+		}
+		return false;
+	}
+};
+
+class VDDialogPreferencesCPU : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesCPU(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			SetValue(100, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_FORCE));
+			SetValue(200, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_FPU));
+			SetValue(201, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_MMX));
+			SetValue(202, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_INTEGER_SSE));
+			SetValue(203, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_SSE));
+			SetValue(204, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_SSE2));
+			SetValue(205, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW));
+			SetValue(206, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW_EXT));
+			pBase->ExecuteAllLinks();
+			return true;
+		case kEventSync:
+		case kEventDetach:
+			mPrefs.mOldPrefs.main.fOptimizations = 0;
+			if (GetValue(100)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_FORCE;
+			if (GetValue(200)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_FPU;
+			if (GetValue(201)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_MMX;
+			if (GetValue(202)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_INTEGER_SSE;
+			if (GetValue(203)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_SSE;
+			if (GetValue(204)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_SSE2;
+			if (GetValue(205)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_3DNOW;
+			if (GetValue(206)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_3DNOW_EXT;
+			return true;
+		}
+		return false;
+	}
+};
+
+class VDDialogPreferencesScene : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesScene(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
 			{
-				RECT r, r2;
-				LONG du = GetDialogBaseUnits();
-				LONG duX = LOWORD(du);
-				LONG duY = HIWORD(du);
-				HWND hWndTab = GetDlgItem(hDlg, IDC_TAB);
-				LONG xDelta, yDelta;
-				POINT p;
-				int i;
+				mpBase = pBase;
 
-				if (!(pdd = new PrefsDlgData)) return FALSE;
-				memset(pdd, 0, sizeof pdd);
-				SetWindowLong(hDlg, DWL_USER, (LPARAM)pdd);
+				IVDUIWindow *pWin = mpBase->GetControl(100);
+				IVDUITrackbar *pTrackbar = vdpoly_cast<IVDUITrackbar *>(pWin);
 
-				pdd->prefs = g_prefs;
-
-				for(i=0; i<(sizeof tabs/sizeof tabs[0]); i++) {
-					TC_ITEM ti;
-
-					ti.mask		= TCIF_TEXT;
-					ti.pszText	= tabs[i].name;
-
-					TabCtrl_InsertItem(hWndTab, i, &ti);
+				if (pTrackbar) {
+					pTrackbar->SetRange(0, 255);
+					pWin->SetValue(mPrefs.mOldPrefs.scene.iCutThreshold ? 256 - ((mPrefs.mOldPrefs.scene.iCutThreshold+8)>>4) : 0);
 				}
 
-				r.left = r.top = 0;
-				r.right = 250;
-				r.bottom = 150;
-				MapDialogRect(hDlg, &r);
+				pWin = mpBase->GetControl(200);
+				pTrackbar = vdpoly_cast<IVDUITrackbar *>(pWin);
 
-				GetWindowRect(hWndTab, &r2);
-				p.x = r2.left;
-				p.y = r2.top;
-				ScreenToClient(hDlg, &p);
-				pdd->rcTab = r;
+				if (pTrackbar) {
+					pTrackbar->SetRange(0, 255);
+					pWin->SetValue(mPrefs.mOldPrefs.scene.iFadeThreshold);
+				}
 
-				TabCtrl_AdjustRect(hWndTab, TRUE, &r);
-				OffsetRect(&pdd->rcTab, p.x-r.left, p.y-r.top);
-
-				xDelta = (r.right-r.left) - (r2.right-r2.left);
-				yDelta = (r.bottom-r.top) - (r2.bottom-r2.top);
-
-				SetWindowPos(hWndTab, NULL, 0, 0, r.right-r.left, r.bottom-r.top, SWP_NOMOVE|SWP_NOACTIVATE|SWP_NOZORDER);
-
-				guiOffsetDlgItem(hDlg, IDC_SAVE, xDelta, yDelta);
-				guiOffsetDlgItem(hDlg, IDOK, xDelta, yDelta);
-				guiOffsetDlgItem(hDlg, IDCANCEL, xDelta, yDelta);
-
-				GetWindowRect(hDlg, &r);
-				SetWindowPos(hDlg, NULL, 0, 0, r.right-r.left + xDelta, r.bottom-r.top + yDelta, SWP_NOMOVE|SWP_NOACTIVATE|SWP_NOZORDER);
-
-				pdd->hwndDisplay = CreateDialogParam(g_hInst, tabs[0].rsrc, hDlg, tabs[0].dProc, (LPARAM)pdd);
+				SyncLabels();
+				pBase->ExecuteAllLinks();
 			}
-			return TRUE;
-
-		case WM_DESTROY:
-			if (pdd) {
-				delete pdd;
-				SetWindowLong(hDlg, DWL_USER, 0);
-			}
-			return TRUE;
-
-		case WM_NOTIFY: {
-			NMHDR *nm = (LPNMHDR)lParam;
-
-			switch(nm->code) {
-			case TCN_SELCHANGE:
-				{
-					int iTab = TabCtrl_GetCurSel(nm->hwndFrom);
-
-					if (iTab>=0) {
-						if (pdd->hwndDisplay) DestroyWindow(pdd->hwndDisplay);
-						pdd->hwndDisplay = CreateDialogParam(g_hInst, tabs[iTab].rsrc, hDlg, tabs[iTab].dProc, (LPARAM)pdd);
-					}
-				}
-				return TRUE;
-			}
-			}break;
-
-	    case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDC_SAVE:
-			case IDOK:
-				if (pdd->hwndDisplay) {
-					DestroyWindow(pdd->hwndDisplay);
-					pdd->hwndDisplay = NULL;
-				}
-				g_prefs = pdd->prefs;
-
-				if (LOWORD(wParam) == IDC_SAVE) {
-					SetConfigBinary("", g_szMainPrefs, (char *)&g_prefs, sizeof g_prefs);
-				}
-
-				EndDialog(hDlg, TRUE);
-				return TRUE;
-			case IDCANCEL:
-				if (pdd->hwndDisplay) {
-					DestroyWindow(pdd->hwndDisplay);
-					pdd->hwndDisplay = NULL;
-				}
-				EndDialog(hDlg, FALSE);
-				return TRUE;
-			}
-            break;
-
-		case WM_HELP:
+			return true;
+		case kEventSync:
+		case kEventDetach:
 			{
-				HELPINFO *lphi = (HELPINFO *)lParam;
-
-				if (lphi->iContextType == HELPINFO_WINDOW)
-					VDShowHelp(hDlg, L"d-preferences.html");
+				int v = GetValue(100);
+				mPrefs.mOldPrefs.scene.iCutThreshold = v ? (256-v)<<4 : 0;
+				mPrefs.mOldPrefs.scene.iFadeThreshold = GetValue(200);
 			}
-			return TRUE;
+			return true;
+
+		case kEventSelect:
+			SyncLabels();
+			return true;
+		}
+		return false;
 	}
 
-	return FALSE;
+	void SyncLabels() {
+		int v = GetValue(100);
+
+		if (!v)
+			SetCaption(101, VDStringW(L"Off"));
+		else
+			SetCaption(101, VDswprintf(L"%u", 1, &v));
+
+		v = GetValue(200);
+		if (!v)
+			SetCaption(201, VDStringW(L"Off"));
+		else
+			SetCaption(201, VDswprintf(L"%u", 1, &v));
+	}
+};
+
+class VDDialogPreferencesAVI : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesAVI(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, 0 != (mPrefs.mOldPrefs.fAVIRestrict1Gb));
+			SetValue(101, 0 != (mPrefs.mOldPrefs.fNoCorrectLayer3));
+			SetValue(102, mPrefs.mbAllowDirectYCbCrDecoding);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mOldPrefs.fAVIRestrict1Gb = 0 != GetValue(100);
+			mPrefs.mOldPrefs.fNoCorrectLayer3 = 0 != GetValue(101);
+			mPrefs.mbAllowDirectYCbCrDecoding = 0!=GetValue(102);
+			return true;
+		}
+		return false;
+	}
+};
+
+class VDDialogPreferencesTimeline : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesTimeline(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetCaption(200, mPrefs.mTimelineFormat);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mTimelineFormat = GetCaption(200);
+			return true;
+		}
+		return false;
+	}
+};
+
+class VDDialogPreferences : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferences(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+			SetValue(100, 0);
+			pBase->ExecuteAllLinks();
+		} else if (id == 101 && type == kEventSelect) {
+			IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetFirstChild());
+
+			if (pSubDialog) {
+				switch(item) {
+				case 0:	pSubDialog->SetCallback(new VDDialogPreferencesGeneral(mPrefs), true); break;
+				case 1:	pSubDialog->SetCallback(new VDDialogPreferencesDisplay(mPrefs), true); break;
+				case 2:	pSubDialog->SetCallback(new VDDialogPreferencesScene(mPrefs), true); break;
+				case 3:	pSubDialog->SetCallback(new VDDialogPreferencesCPU(mPrefs), true); break;
+				case 4:	pSubDialog->SetCallback(new VDDialogPreferencesAVI(mPrefs), true); break;
+				case 5:	pSubDialog->SetCallback(new VDDialogPreferencesTimeline(mPrefs), true); break;
+				}
+			}
+		} else if (type == kEventSelect) {
+			if (id == 10) {
+				pBase->EndModal(true);
+				return true;
+			} else if (id == 11) {
+				pBase->EndModal(false);
+				return true;
+			} else if (id == 12) {
+				IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetFirstChild());
+
+				if (pSubDialog)
+					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);
+
+				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs, sizeof mPrefs);
+
+				VDRegistryAppKey key("Preferences");
+				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
+				key.setBool("Allow direct YCbCr decoding", g_prefs2.mbAllowDirectYCbCrDecoding);
+			}
+		}
+		return false;
+	}
+};
+
+void VDShowPreferencesDialog(VDGUIHandle h) {
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(1000, peer);
+	VDPreferences2 temp(g_prefs2);
+	VDDialogPreferences prefDlg(temp);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&prefDlg, false);
+	int result = pBase->DoModal();
+
+	peer->Shutdown();
+
+	if (result) {
+		g_prefs2 = temp;
+		g_prefs = g_prefs2.mOldPrefs;
+	}
 }
 
 void LoadPreferences() {
@@ -444,4 +361,21 @@ void LoadPreferences() {
 
 		memcpy(&g_prefs, &prefs_t, dwSize);
 	}
+
+	VDRegistryAppKey key("Preferences");
+
+	if (!key.getString("Timeline format", g_prefs2.mTimelineFormat))
+		g_prefs2.mTimelineFormat = L"Frame %f (%h:%02m:%02s.%03t) [%c]";
+
+	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
+
+	g_prefs2.mOldPrefs = g_prefs;
+}
+
+const VDStringW& VDPreferencesGetTimelineFormat() {
+	return g_prefs2.mTimelineFormat;
+}
+
+bool VDPreferencesIsDirectYCbCrInputEnabled() {
+	return g_prefs2.mbAllowDirectYCbCrDecoding;
 }

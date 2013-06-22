@@ -1,90 +1,95 @@
-#include <algorithm>
-#include "ctl_set.h"
-
-///////////////////////////////////////////////////////////////////////////
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2004 Avery Lee
 //
-//	VDUIControlHorizontalSet
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
 //
-///////////////////////////////////////////////////////////////////////////
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-VDUIControlHorizontalSet::VDUIControlHorizontalSet() {
+#include <stdafx.h>
+#include <vd2/Dita/basetypes.h>
+#include <vector>
+
+class VDUISet : public VDUIWindow {
+public:
+	VDUISet();
+	~VDUISet();
+
+	bool Create(IVDUIParameters *pParams);
+	void PreLayoutBase(const VDUILayoutSpecs&);
+	void PostLayoutBase(const vduirect&);
+
+protected:
+	int mnFillCount;
+	int mComponentWidth;
+	int mSpacing;
+	bool mbVertical;
+};
+
+IVDUIWindow *VDCreateUISet() { return new VDUISet; }
+
+VDUISet::VDUISet() {
 	mAlignX = nsVDUI::kFill;
 	mAlignY = nsVDUI::kFill;
 }
 
-VDUIControlHorizontalSet::~VDUIControlHorizontalSet() {
+VDUISet::~VDUISet() {
 }
 
-void VDUIControlHorizontalSet::Destroy() {
-	while(!mChildren.empty()) {
-		mChildren.front()->Destroy();
-		mChildren.pop_front();
-	}
-
-	VDUIControlBase::Destroy();
+bool VDUISet::Create(IVDUIParameters *pParams) {
+	mSpacing = pParams->GetI(nsVDUI::kUIParam_Spacing, 0);
+	mbVertical = pParams->GetB(nsVDUI::kUIParam_IsVertical, false);
+	return VDUIWindow::Create(pParams);
 }
 
-IVDUISet *VDUIControlHorizontalSet::AsUISet() {
-	return this;
-}
-
-void VDUIControlHorizontalSet::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
-	VDUIRect pad = {0, 0, 3, 3};
-	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
-
-	GetBase()->MapUnitsToPixels(pad);
+void VDUISet::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
+	vduisize pad = mpBase->MapUnitsToPixels(vduisize(mSpacing, mSpacing));
+//	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
 
 	mLayoutSpecs.minsize.w = 0;
 	mLayoutSpecs.minsize.h = 0;
 	mnFillCount = 0;
 
-	for(tChildList::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it);
-		nsVDUI::eAlign alignX, alignY;
-		nsVDUI::eCompressType compressType = pControl->GetCompressType();
+	const int spacing = mbVertical ? pad.h : pad.w;
 
-		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
-			mLayoutSpecs.minsize.w += pad.x2;
+	for(tChildren::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
+		IVDUIWindow *pControl = (*it);
+		nsVDUI::Alignment alignX, alignY;
+//		nsVDUI::eCompressType compressType = pControl->GetCompressType();
 
-		lastCompressType = compressType;
+//		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
+			if (mbVertical)
+				mLayoutSpecs.minsize.h += spacing;
+			else
+				mLayoutSpecs.minsize.w += spacing;
+
+//		lastCompressType = compressType;
 
 		pControl->GetAlignment(alignX, alignY);
-		if ((alignX & nsVDUI::kAlignTypeMask) == nsVDUI::kFill)
+
+		const nsVDUI::Alignment align = mbVertical ? alignY : alignX;
+
+		if ((align & nsVDUI::kAlignTypeMask) == nsVDUI::kFill)
 			++mnFillCount;
 		else {
 			pControl->PreLayout(parentConstraints);
 
 			const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
 
-			mLayoutSpecs.minsize.w += specs.minsize.w;
-			if (mLayoutSpecs.minsize.h < specs.minsize.h)
-				mLayoutSpecs.minsize.h = specs.minsize.h;
-		}
-	}
-
-	if (!mChildren.empty())
-		mLayoutSpecs.minsize.w -= pad.x2;
-
-	int fillSize = std::max<int>(0, parentConstraints.minsize.w - mLayoutSpecs.minsize.w);
-	int fillLeft = mnFillCount;
-
-	if (fillLeft) {
-		VDUILayoutSpecs constraints(parentConstraints);
-
-		constraints.minsize.w = fillSize / fillLeft;
-
-		for(tChildList::iterator it2 = mChildren.begin(); it2 != mChildren.end(); ++it2) {
-			IVDUIControl *pControl = (*it2);
-			nsVDUI::eAlign alignX, alignY;
-
-			pControl->GetAlignment(alignX, alignY);
-
-			if ((alignX & nsVDUI::kAlignTypeMask) == nsVDUI::kFill) {
-
-				pControl->PreLayout(constraints);
-
-				const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
-
+			if (mbVertical) {
+				mLayoutSpecs.minsize.h += specs.minsize.h;
+				if (mLayoutSpecs.minsize.w < specs.minsize.w)
+					mLayoutSpecs.minsize.w = specs.minsize.w;
+			} else {
 				mLayoutSpecs.minsize.w += specs.minsize.w;
 				if (mLayoutSpecs.minsize.h < specs.minsize.h)
 					mLayoutSpecs.minsize.h = specs.minsize.h;
@@ -92,234 +97,203 @@ void VDUIControlHorizontalSet::PreLayoutBase(const VDUILayoutSpecs& parentConstr
 		}
 	}
 
-	// cache this since our minsize will be whacked by alignment specs
-	mComponentWidth = mLayoutSpecs.minsize.w;
-}
-
-void VDUIControlHorizontalSet::PostLayoutBase(const VDUIRect& target) {
-	VDUIRect pad = {0, 0, 3, 3};
-	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
-
-	GetBase()->MapUnitsToPixels(pad);
-
-	int x = target.x1 - pad.x2;
-	int spill = target.w() - mComponentWidth;
-	int fillleft = mnFillCount;
-
-	for(tChildList::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it);
-		nsVDUI::eAlign alignX, alignY;
-		nsVDUI::eCompressType compressType = pControl->GetCompressType();
-
-		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
-			x += pad.x2;
-
-		lastCompressType = compressType;
-
-		pControl->GetAlignment(alignX, alignY);
-
-		const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
-		int w = specs.minsize.w;
-
-		if ((alignX & nsVDUI::kAlignTypeMask) == nsVDUI::kFill) {
-			int span = (spill + fillleft - 1) / fillleft;
-
-			w += span;
-			spill -= span;
-			--fillleft;
-		}
-
-		VDUIRect rDest = {x, target.y1, x+w, target.y2};
-
-		pControl->PostLayout(rDest);
-
-		x += w;
-	}
-}
-
-bool VDUIControlHorizontalSet::Add(IVDUIControl *pControl) {
-	mChildren.push_back(pControl);
-
-	if (!pControl->Create(this)) {
-		mChildren.pop_back();
-		return false;
-	}
-
-	GetBase()->AddNonlocal(pControl);
-
-	return true;
-}
-
-void VDUIControlHorizontalSet::Remove(IVDUIControl *pControl) {
-	tChildList::iterator it = std::find(mChildren.begin(), mChildren.end(), pControl);
-
-	if (it != mChildren.end()) {
-		pControl->Destroy();
-		mChildren.erase(it);
-	} else
-		VDASSERT(false);
-}
-
-void VDUIControlHorizontalSet::Show(bool b) {
-	VDUIControlBase::Show(b);
-	tChildList::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it)->Show((*it)->IsVisible());
-}
-
-void VDUIControlHorizontalSet::Enable(bool b) {
-	VDUIControlBase::Enable(b);
-	tChildList::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it)->Enable((*it)->IsEnabled());
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	VDUIControlVerticalSet
-//
-///////////////////////////////////////////////////////////////////////////
-
-VDUIControlVerticalSet::VDUIControlVerticalSet() {
-	mAlignX = nsVDUI::kFill;
-	mAlignY = nsVDUI::kFill;
-}
-
-VDUIControlVerticalSet::~VDUIControlVerticalSet() {
-}
-
-void VDUIControlVerticalSet::Destroy() {
-	while(!mChildren.empty()) {
-		mChildren.front()->Destroy();
-		mChildren.pop_front();
-	}
-
-	VDUIControlBase::Destroy();
-}
-
-IVDUISet *VDUIControlVerticalSet::AsUISet() {
-	return this;
-}
-
-void VDUIControlVerticalSet::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
-	VDUIRect pad = {0, 0, 3, 3};
-	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
-
-	GetBase()->MapUnitsToPixels(pad);
-
-	mLayoutSpecs.minsize.w = 0;
-	mLayoutSpecs.minsize.h = 0;
-	mnFillCount = 0;
-
-	for(tChildList::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it);
-		nsVDUI::eAlign alignX, alignY;
-		nsVDUI::eCompressType compressType = pControl->GetCompressType();
-
-		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
-			mLayoutSpecs.minsize.h += pad.y2;
-
-		lastCompressType = compressType;
-
-		pControl->PreLayout(parentConstraints);
-		pControl->GetAlignment(alignX, alignY);
-
-		if (alignY == nsVDUI::kFill)
-			++mnFillCount;
-
-		const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
-
-		mLayoutSpecs.minsize.h += specs.minsize.h;
-		if (mLayoutSpecs.minsize.w < specs.minsize.w)
-			mLayoutSpecs.minsize.w = specs.minsize.w;
-	}
+	int fillSize;
+	int fillLeft = mnFillCount;
 
 	if (!mChildren.empty())
-		mLayoutSpecs.minsize.h -= pad.y2;
+		if (mbVertical) {
+			mLayoutSpecs.minsize.h -= spacing;
+			fillSize = parentConstraints.minsize.h - mLayoutSpecs.minsize.h;
+		} else {
+			mLayoutSpecs.minsize.w -= spacing;
+			fillSize = parentConstraints.minsize.w - mLayoutSpecs.minsize.w;
+		}
+
+	if (fillSize < 0)
+		fillSize = 0;
+
+	if (fillLeft) {
+		VDUILayoutSpecs constraints(parentConstraints);
+
+		if (mbVertical)
+			constraints.minsize.h = fillSize / fillLeft;
+		else
+			constraints.minsize.w = fillSize / fillLeft;
+
+		for(tChildren::iterator it2 = mChildren.begin(); it2 != mChildren.end(); ++it2) {
+			IVDUIWindow *pControl = (*it2);
+			nsVDUI::Alignment alignX, alignY;
+
+			pControl->GetAlignment(alignX, alignY);
+
+			if (((mbVertical ? alignY : alignX) & nsVDUI::kAlignTypeMask) == nsVDUI::kFill) {
+
+				pControl->PreLayout(constraints);
+
+				const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
+
+				if (mbVertical) {
+					mLayoutSpecs.minsize.h += specs.minsize.h;
+					if (mLayoutSpecs.minsize.w < specs.minsize.w)
+						mLayoutSpecs.minsize.w = specs.minsize.w;
+				} else {
+					mLayoutSpecs.minsize.w += specs.minsize.w;
+					if (mLayoutSpecs.minsize.h < specs.minsize.h)
+						mLayoutSpecs.minsize.h = specs.minsize.h;
+				}
+			}
+		}
+	}
 
 	// cache this since our minsize will be whacked by alignment specs
-	mComponentHeight = mLayoutSpecs.minsize.h;
+	mComponentWidth = mbVertical ? mLayoutSpecs.minsize.h : mLayoutSpecs.minsize.w;
 }
 
-void VDUIControlVerticalSet::PostLayoutBase(const VDUIRect& target) {
-	VDUIRect pad = {0, 0, 3, 3};
-	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
+void VDUISet::PostLayoutBase(const vduirect& target) {
+	vduisize pad = mpBase->MapUnitsToPixels(vduisize(mSpacing, mSpacing));
+//	nsVDUI::eCompressType lastCompressType = nsVDUI::kCompressTypeLimit;
 
-	GetBase()->MapUnitsToPixels(pad);
+	int spacing		= mbVertical ? pad.h : pad.w;
+	int pos			= mbVertical ? target.top - spacing : target.left - spacing;
+	int spill		= mbVertical ? target.height() - mComponentWidth : target.width() - mComponentWidth;
+	int fillleft	= mnFillCount;
 
-	int y = target.y1 - pad.y2;
-	int spill = target.h() - mComponentHeight;
-	int fillleft = mnFillCount;
+	for(tChildren::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
+		IVDUIWindow *pControl = (*it);
+		nsVDUI::Alignment alignX, alignY;
+//		nsVDUI::eCompressType compressType = pControl->GetCompressType();
 
-	for(tChildList::iterator it = mChildren.begin(); it != mChildren.end(); ++it) {
-		IVDUIControl *pControl = (*it);
-		nsVDUI::eAlign alignX, alignY;
-		nsVDUI::eCompressType compressType = pControl->GetCompressType();
+//		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
+			pos += spacing;
 
-		if (lastCompressType != compressType || lastCompressType == nsVDUI::kCompressNone)
-			y += pad.y2;
-
-		lastCompressType = compressType;
+//		lastCompressType = compressType;
 
 		pControl->GetAlignment(alignX, alignY);
 
 		const VDUILayoutSpecs& specs = pControl->GetLayoutSpecs();
-		int h = specs.minsize.h;
+		int size = mbVertical ? specs.minsize.h : specs.minsize.w;
 
-		if (alignY == nsVDUI::kFill) {
+		if (((mbVertical ? alignY : alignX) & nsVDUI::kAlignTypeMask) == nsVDUI::kFill) {
 			int span = (spill + fillleft - 1) / fillleft;
 
-			h += span;
+			size += span;
 			spill -= span;
 			--fillleft;
 		}
 
-		VDUIRect rDest = {target.x1, y, target.x2, y+h};
 
-		pControl->PostLayout(rDest);
+		if (mbVertical)
+			pControl->PostLayout(vduirect(target.left, pos, target.right, pos+size));
+		else
+			pControl->PostLayout(vduirect(pos, target.top, pos+size, target.bottom));
 
-		y += h;
+		pos += size;
 	}
 }
 
-bool VDUIControlVerticalSet::Add(IVDUIControl *pControl) {
-	mChildren.push_back(pControl);
 
-	if (!pControl->Create(this)) {
+///////////////////////////////////////////////////////////////////////////
+
+class VDUIPageSet : public VDUIWindow, public IVDUIPageSet {
+public:
+	VDUIPageSet();
+	~VDUIPageSet();
+
+	void *AsInterface(uint32 id);
+
+	void PreLayoutBase(const VDUILayoutSpecs&);
+	void PostLayoutBase(const vduirect&);
+
+	int GetValue();
+	void SetValue(int value);
+
+	void AddPage(int dialogID);
+protected:
+	int mCurrentPage;
+
+	std::vector<int>	mPages;
+};
+
+IVDUIWindow *VDCreateUIPageSet() { return new VDUIPageSet; }
+
+VDUIPageSet::VDUIPageSet()
+	: mCurrentPage(-1)
+{
+}
+
+VDUIPageSet::~VDUIPageSet() {
+}
+
+void *VDUIPageSet::AsInterface(uint32 id) {
+	switch(id) {
+	case IVDUIPageSet::kTypeID:	return static_cast<IVDUIPageSet *>(this);
+	}
+
+	return VDUIWindow::AsInterface(id);
+}
+
+void VDUIPageSet::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
+	if (!mChildren.empty()) {
+		IVDUIWindow *pWin = mChildren.front();
+
+		pWin->PreLayout(parentConstraints);
+		mLayoutSpecs = pWin->GetLayoutSpecs();
+	}
+}
+
+void VDUIPageSet::PostLayoutBase(const vduirect& target) {
+	VDUIWindow::PostLayoutBase(target);
+
+	if (!mChildren.empty()) {
+		IVDUIWindow *pWin = mChildren.front();
+
+		pWin->PostLayout(target);
+	}
+}
+
+int VDUIPageSet::GetValue() {
+	return mCurrentPage;
+}
+
+void VDUIPageSet::SetValue(int value) {
+	if (mCurrentPage == value)
+		return;
+
+	mCurrentPage = value;
+
+	// destroy children
+	while(!mChildren.empty()) {
+		IVDUIWindow *pChild = mChildren.back();
 		mChildren.pop_back();
-		return false;
+
+		pChild->Shutdown();
+		delete pChild;
 	}
 
-	GetBase()->AddNonlocal(pControl);
+	// create new dialog
+	if ((unsigned)value < mPages.size()) {
+		IVDUIWindow *pChildWin = VDCreateDialogFromResource(mPages[value], this);
 
-	return true;
+		if (pChildWin) {
+			AddChild(pChildWin);
+
+			pChildWin->GetBase()->ExecuteAllLinks();
+		}
+	}
+
+	mpBase->Relayout();
+
+	// send out value change notification
+	mpBase->DispatchEvent(this, mID, IVDUICallback::kEventSelect, mCurrentPage);
 }
 
-void VDUIControlVerticalSet::Remove(IVDUIControl *pControl) {
-	tChildList::iterator it = std::find(mChildren.begin(), mChildren.end(), pControl);
+void VDUIPageSet::AddPage(int dialogID) {
+	if (mPages.empty()) {
+		IVDUIWindow *pChildWin = VDCreateDialogFromResource(dialogID, this);
 
-	if (it != mChildren.end()) {
-		pControl->Destroy();
-		mChildren.erase(it);
-	} else
-		VDASSERT(false);
+		if (pChildWin)
+			AddChild(pChildWin);
+	}
+	mPages.push_back(dialogID);
 }
 
-void VDUIControlVerticalSet::Show(bool b) {
-	VDUIControlBase::Show(b);
-	tChildList::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it)->Show((*it)->IsVisible());
-}
-
-void VDUIControlVerticalSet::Enable(bool b) {
-	VDUIControlBase::Enable(b);
-
-	tChildList::iterator it = mChildren.begin(), itEnd = mChildren.end();
-
-	for(; it!=itEnd; ++it)
-		(*it)->Enable((*it)->IsEnabled());
-}

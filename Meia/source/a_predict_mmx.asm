@@ -100,13 +100,13 @@ predict_Y_quadpel_MMX@loop:
 predict_Y_quadpel_MMX@loop_2:
 	movq	mm0,[ecx]
 
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 
 	movq	mm2,[ecx+esi]
 	psrlq	mm4,8
 
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	psllq	mm1,56
 
 	por	mm1,mm4
@@ -470,14 +470,14 @@ add_Y_quadpel_MMX@loop:
 	mov	eax,2
 add_Y_quadpel_MMX@loop2:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -650,7 +650,7 @@ predict_add_Y_halfpelX_MMX:
 predict_add_Y_halfpelX_MMX@loop:
 	movq	mm0,[ecx]
 
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm2,mm0
 
 	psrlq	mm2,8
@@ -688,7 +688,7 @@ predict_add_Y_halfpelX_MMX@loop:
 	movq	mm1,[ecx+8]		;[2]
 	paddb	mm4,mm0			;[1]
 
-	movd	mm0,[ecx+16]		;[2]
+	movd	mm0,dword ptr [ecx+16]		;[2]
 	movq	mm2,mm1			;[2]
 
 	movq	[edx],mm4		;[1]
@@ -886,14 +886,14 @@ predict_C_quadpel_MMX:
 	mov	edi,8
 predict_C_quadpel_MMX@loop:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -1001,11 +1001,11 @@ predict_C_halfpelX_MMX:
 	mov	edi,4
 predict_C_halfpelX_MMX@loop:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm2,mm0
 	movq	mm3,[ecx+esi]
 	psrlq	mm2,8
-	movd	mm4,[ecx+esi+8]
+	movd	mm4,dword ptr [ecx+esi+8]
 	psllq	mm1,56
 	movq	mm5,mm3
 	por	mm2,mm1
@@ -1119,14 +1119,14 @@ predict_add_C_quadpel_MMX:
 	mov	edi,8
 add_C_quadpel_MMX@loop:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -1263,7 +1263,7 @@ predict_add_C_halfpelX_MMX:
 predict_add_C_halfpelX_MMX@loop:
 	movq	mm0,[ecx]
 
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm2,mm0
 
 	movq	mm3,mm0

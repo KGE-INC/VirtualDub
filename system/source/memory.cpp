@@ -1,5 +1,14 @@
+#include <malloc.h>
 #include <vd2/system/memory.h>
 #include <vd2/system/cpuaccel.h>
+
+void *VDAlignedMalloc(size_t n, unsigned alignment) {
+	return _aligned_malloc(n, alignment);
+}
+
+void VDAlignedFree(void *p) {
+	_aligned_free(p);
+}
 
 void VDSwapMemory(void *p0, void *p1, unsigned bytes) {
 	long *dst0 = (long *)p0;
@@ -87,6 +96,15 @@ void VDMemset32(void *dst, uint32 value, size_t count) {
 	}
 }
 
+void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h) {
+	if (w>0 && h>0) {
+		do {
+			memset(dst, value, w);
+			dst = (char *)dst + pitch;
+		} while(--h);
+	}
+}
+
 #if defined(_WIN32) && defined(_M_IX86)
 	extern "C" void __cdecl VDFastMemcpyPartialScalarAligned8(void *dst, const void *src, size_t bytes);
 	extern "C" void __cdecl VDFastMemcpyPartialMMX(void *dst, const void *src, size_t bytes);
@@ -112,7 +130,7 @@ void VDMemset32(void *dst, uint32 value, size_t count) {
 	}
 
 	void (__cdecl *VDFastMemcpyPartial)(void *dst, const void *src, size_t bytes) = VDFastMemcpyPartialScalar;
-	void (__cdecl *VDFastMemcpyFinish)() = NULL;
+	void (__cdecl *VDFastMemcpyFinish)() = VDFastMemcpyFinishScalar;
 
 	void VDFastMemcpyAutodetect() {
 		long exts = CPUGetEnabledExtensions();

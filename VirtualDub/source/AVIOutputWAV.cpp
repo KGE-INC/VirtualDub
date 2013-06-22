@@ -22,7 +22,6 @@
 #include <vd2/system/error.h>
 
 #include "AVIOutputWAV.h"
-#include "FastWriteStream.h"
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -32,16 +31,19 @@
 
 class AVIAudioOutputStreamWAV : public AVIOutputStream {
 public:
-	AVIAudioOutputStreamWAV(class AVIOutput *out);
+	AVIAudioOutputStreamWAV(AVIOutputWAV *pParent);
 
 	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
+
+protected:
+	AVIOutputWAV *const mpParent;
 };
 
-AVIAudioOutputStreamWAV::AVIAudioOutputStreamWAV(class AVIOutput *out) : AVIOutputStream(out) {
+AVIAudioOutputStreamWAV::AVIAudioOutputStreamWAV(AVIOutputWAV *pParent) : mpParent(pParent) {
 }
 
 void AVIAudioOutputStreamWAV::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
-	static_cast<AVIOutputWAV *>(output)->write(pBuffer, cbBuffer);
+	mpParent->write(pBuffer, cbBuffer);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -53,7 +55,6 @@ void AVIAudioOutputStreamWAV::write(uint32 flags, const void *pBuffer, uint32 cb
 AVIOutputWAV::AVIOutputWAV() {
 	fHeaderOpen			= false;
 	mBytesWritten		= 0;
-	fastIO				= NULL;
 	mBufferSize			= 65536;
 }
 
@@ -76,9 +77,8 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 
 	if (!audioOut) return false;
 
-	mFile.open(pwszFile, nsVDFile::kWrite | nsVDFile::kOpenAlways | nsVDFile::kSequential);
-
-	fastIO = new FastWriteStream(pwszFile, mBufferSize, mBufferSize/2);
+	mpFileAsync = VDCreateFileAsync();
+	mpFileAsync->Open(pwszFile, 2, mBufferSize >> 1);
 
 	dwHeader[0]	= FOURCC_RIFF;
 	dwHeader[1] = 0x7F000000;
@@ -86,11 +86,11 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 	dwHeader[3] = mmioFOURCC('f', 'm', 't', ' ');
 	dwHeader[4] = audioOut->getFormatLen();
 
-	_write(dwHeader, 20);
-	_write(audioOut->getFormat(), dwHeader[4]);
+	write(dwHeader, 20);
+	write(audioOut->getFormat(), dwHeader[4]);
 
 	if (dwHeader[4] & 1)
-		_write("", 1);
+		write("", 1);
 
 	// The 'fact' chunk is required for compressed WAVs and indicates the
 	// number of uncompressed samples in the audio.  It is in fact rather
@@ -102,13 +102,13 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 		dwHeader[0] = mmioFOURCC('f', 'a', 'c', 't');
 		dwHeader[1] = 4;
 		dwHeader[2] = 0;		// This will be filled in later.
-		_write(dwHeader, 12);
+		write(dwHeader, 12);
 	}
 
 	dwHeader[0] = mmioFOURCC('d', 'a', 't', 'a');
 	dwHeader[1] = 0x7E000000;
 
-	_write(dwHeader, 8);
+	write(dwHeader, 8);
 
 	fHeaderOpen = true;
 
@@ -118,33 +118,25 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 void AVIOutputWAV::finalize() {
 	long len = audioOut->getFormatLen();
 
-	if (!mFile.isOpen())
+	if (!mpFileAsync->IsOpen())
 		return;
 
-	DWORD dwTemp;
-
-	if (fastIO) {
-		fastIO->Flush1();
-		fastIO->Flush2((HANDLE)mFile.getRawHandle());
-		delete fastIO;
-		fastIO = NULL;
-	}
+	mpFileAsync->FastWriteEnd();
 
 	if (fHeaderOpen) {
 		const WAVEFORMATEX& wfex = *(const WAVEFORMATEX *)audioOut->getFormat();
 		len = (len+1)&-2;
 
+		DWORD dwTemp;
 		if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
 			dwTemp = mBytesWritten + len + 20;
-			mFile.seek(4);
-			mFile.write(&dwTemp, 4);
 
-			mFile.seek(24 + len);
-			mFile.write(&mBytesWritten, 4);
+			mpFileAsync->Write(4, &dwTemp, 4);
+			mpFileAsync->Write(24 + len, &mBytesWritten, 4);
 		} else {
 			dwTemp = mBytesWritten + len + 32;
-			mFile.seek(4);
-			mFile.write(&dwTemp, 4);
+
+			mpFileAsync->Write(4, &dwTemp, 4);
 
 			DWORD dwHeaderRewrite[3];
 
@@ -152,8 +144,7 @@ void AVIOutputWAV::finalize() {
 			dwHeaderRewrite[1] = mmioFOURCC('d', 'a', 't', 'a');
 			dwHeaderRewrite[2] = mBytesWritten;
 
-			mFile.seek(28 + len);
-			mFile.write(dwHeaderRewrite, 12);
+			mpFileAsync->Write(28 + len, dwHeaderRewrite, 12);
 
 			len += 12;		// offset the end of file by length of 'fact' chunk
 		}
@@ -161,22 +152,11 @@ void AVIOutputWAV::finalize() {
 		fHeaderOpen = false;
 	}
 
-	mFile.seek(mBytesWritten + len + 28);
-	mFile.truncate();
-	mFile.close();
+	mpFileAsync->Truncate(mBytesWritten + len + 28);
+	mpFileAsync->Close();
 }
 
 void AVIOutputWAV::write(const void *pBuffer, uint32 cbBuffer) {
-	_write(pBuffer, cbBuffer);
-
+	mpFileAsync->FastWrite(pBuffer, cbBuffer);
 	mBytesWritten += cbBuffer;
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-void AVIOutputWAV::_write(const void *data, int len) {
-	if (fastIO) {
-		fastIO->Put(data,len);
-	} else
-		mFile.write(data,len);
 }

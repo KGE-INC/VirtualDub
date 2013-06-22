@@ -40,12 +40,18 @@
 #pragma warning(push)
 #pragma warning(disable:4035)
 
-static inline unsigned long bswap(unsigned long v) {
-	__asm {
-		mov eax,v
-		bswap eax
+#if _MSC_VER >= 1300
+	static inline unsigned long bswap(unsigned long v) {
+		return _byteswap_ulong(v);
 	}
-}
+#else
+	static inline unsigned long bswap(unsigned long v) {
+		__asm {
+			mov eax,v
+			bswap eax
+		}
+	}
+#endif
 
 #pragma warning(pop)
 
@@ -586,9 +592,10 @@ public:
 	long GetFrameNumber(int buffer);
 	void CopyFrameBuffer(int dst, int src, long frameno);
 	void SwapFrameBuffers(int dst, int src);
-	const void *GetYBuffer(int buffer, long& pitch);
-	const void *GetCrBuffer(int buffer, long& pitch);
-	const void *GetCbBuffer(int buffer, long& pitch);
+	void ClearFrameBuffers();
+	const void *GetYBuffer(int buffer, ptrdiff_t& pitch);
+	const void *GetCrBuffer(int buffer, ptrdiff_t& pitch);
+	const void *GetCbBuffer(int buffer, ptrdiff_t& pitch);
 	
 	// framebuffer conversion
 
@@ -607,21 +614,21 @@ public:
 		return true;
 	}
 
-	bool DecodeUYVY(void *dst, long pitch, int buffer);
-	bool DecodeYUYV(void *dst, long pitch, int buffer);
-	bool DecodeYVYU(void *dst, long pitch, int buffer);
-	bool DecodeY41P(void *dst, long pitch, int buffer);
-	bool DecodeRGB15(void *dst, long pitch, int buffer);
-	bool DecodeRGB16(void *dst, long pitch, int buffer);
-	bool DecodeRGB24(void *dst, long pitch, int buffer);
-	bool DecodeRGB32(void *dst, long pitch, int buffer);
+	bool DecodeUYVY(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeYUYV(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeYVYU(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeY41P(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeRGB15(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeRGB16(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeRGB24(void *dst, ptrdiff_t pitch, int buffer);
+	bool DecodeRGB32(void *dst, ptrdiff_t pitch, int buffer);
 
 private:
 	template<class T>
-	__forceinline void DecodeBlock(YCCSample *dst, long pitch, bool intra, int dc, bool bPrescaled, T) {
+	__forceinline void DecodeBlock(YCCSample *dst, ptrdiff_t pitch, bool intra, int dc, bool bPrescaled, T) {
 		unsigned long v = bitheap_peekbits(32);
 		T dct_coeff0[67];
-		T *dct_coeff = (T *)(((long)dct_coeff0 + 7) & ~7);
+		T *dct_coeff = (T *)(((uintptr)dct_coeff0 + 7) & ~7);
 		const int *quant = mpCurrentIntraQ;
 		int idx = 0;
 		long level_addend = 0;
@@ -914,7 +921,7 @@ bool VDMPEGDecoder::Init(int width, int height) {
 		}
 
 		// Align Y to a 128-byte boundary (P4 L2 cache line) and set up Cb/Cr
-		mpBuffers[i].pY  = (YCCSample *)(((long)mpBuffers[i].pYBuffer + 127) & ~127);
+		mpBuffers[i].pY  = (YCCSample *)(((uintptr)mpBuffers[i].pYBuffer + 127) & ~127);
 		mpBuffers[i].pCr = mpBuffers[i].pY + mnBlockW * 16;
 		mpBuffers[i].pCb = mpBuffers[i].pCr + mnYPitch;
 	}
@@ -1083,7 +1090,13 @@ void VDMPEGDecoder::SwapFrameBuffers(int dst, int src) {
 	mpBuffers[src] = t;
 }
 
-const void *VDMPEGDecoder::GetYBuffer(int buffer, long& pitch) {
+void VDMPEGDecoder::ClearFrameBuffers() {
+	for(int i=0; i<mnBuffers; ++i) {
+		mpBuffers[i].frame = -1;
+	}
+}
+
+const void *VDMPEGDecoder::GetYBuffer(int buffer, ptrdiff_t& pitch) {
 	if (buffer < 0 || buffer >= mnBuffers)
 		return NULL;
 
@@ -1092,7 +1105,7 @@ const void *VDMPEGDecoder::GetYBuffer(int buffer, long& pitch) {
 	return mpBuffers[buffer].pY;
 }
 
-const void *VDMPEGDecoder::GetCrBuffer(int buffer, long& pitch) {
+const void *VDMPEGDecoder::GetCrBuffer(int buffer, ptrdiff_t& pitch) {
 	if (buffer < 0 || buffer >= mnBuffers)
 		return NULL;
 
@@ -1101,7 +1114,7 @@ const void *VDMPEGDecoder::GetCrBuffer(int buffer, long& pitch) {
 	return mpBuffers[buffer].pCr;
 }
 
-const void *VDMPEGDecoder::GetCbBuffer(int buffer, long& pitch) {
+const void *VDMPEGDecoder::GetCbBuffer(int buffer, ptrdiff_t& pitch) {
 	if (buffer < 0 || buffer >= mnBuffers)
 		return NULL;
 
@@ -1116,35 +1129,35 @@ const void *VDMPEGDecoder::GetCbBuffer(int buffer, long& pitch) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-bool VDMPEGDecoder::DecodeUYVY(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeUYVY(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeUYVY);
 }
 
-bool VDMPEGDecoder::DecodeYUYV(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeYUYV(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeYUYV);
 }
 
-bool VDMPEGDecoder::DecodeYVYU(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeYVYU(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeYVYU);
 }
 
-bool VDMPEGDecoder::DecodeY41P(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeY41P(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeY41P);
 }
 
-bool VDMPEGDecoder::DecodeRGB15(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeRGB15(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeRGB15);
 }
 
-bool VDMPEGDecoder::DecodeRGB16(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeRGB16(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeRGB16);
 }
 
-bool VDMPEGDecoder::DecodeRGB24(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeRGB24(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeRGB24);
 }
 
-bool VDMPEGDecoder::DecodeRGB32(void *dst, long pitch, int buffer) {
+bool VDMPEGDecoder::DecodeRGB32(void *dst, ptrdiff_t pitch, int buffer) {
 	return Decode(dst, pitch, buffer, mpConverters->DecodeRGB32);
 }
 

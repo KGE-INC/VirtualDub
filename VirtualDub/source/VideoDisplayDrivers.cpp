@@ -20,15 +20,18 @@
 #define INITGUID
 #include <vector>
 #include <ddraw.h>
+#include <mmsystem.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/memory.h>
 #include <vd2/system/log.h>
+#include <vd2/system/memory.h>
+#include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Kasumi/pixmapops.h>
 #include "VideoDisplay.h"
 #include "VideoDisplayDrivers.h"
 #include "VBitmap.h"
 
 extern HINSTANCE g_hInst;
-
 
 #if 0
 	#define DEBUG_LOG(x) VDLog(kVDLogInfo, VDStringW(L##x))
@@ -36,292 +39,9 @@ extern HINSTANCE g_hInst;
 	#define DEBUG_LOG(x)
 #endif
 
+using namespace nsVDPixmap;
+
 ///////////////////////////////////////////////////////////////////////////
-
-namespace {
-	struct YCbCrFormatInfo {
-		ptrdiff_t	ystep;
-		ptrdiff_t	cstep;
-		ptrdiff_t	yinc[4];
-		ptrdiff_t	cinc[4];
-		sint8		ypos[4];
-		sint8		cbpos[4];
-		sint8		crpos[4];
-	};
-
-	YCbCrFormatInfo		g_formatInfo_YUV422_YUYV = { -8, -8, {-1,-1,-1,-1}, {-1,-1,-1,-1}, {0,2,4,6}, {1,1,5,5}, {3,3,7,7}};
-	YCbCrFormatInfo		g_formatInfo_YUV422_UYVY = { -8, -8, {-1,-1,-1,-1}, {-1,-1,-1,-1}, {1,3,5,7}, {0,0,4,4}, {2,2,6,6}};
-
-	uint16 ycbcr_to_1555(uint8 y, uint8 cb0, uint8 cr0) {
-		const int cr = (int)cr0 - 128;
-		const int cb = (int)cb0 - 128;
-		const int i = ((int)y - 16) * 76309;
-		int r = i + cr * 104597;
-		int g = i + cb * -25674 + cr * -53279;
-		int b = i + cb * 132201;
-
-		if ((unsigned)r >= 0x1000000)
-			r = ~r >> 31;
-		if ((unsigned)g >= 0x1000000)
-			g = ~g >> 31;
-		if ((unsigned)b >= 0x1000000)
-			b = ~b >> 31;
-
-		return ((r & 0xf80000) >> 9) + ((g & 0xf80000) >> 14) + (b >> 19);
-	}
-
-	uint16 ycbcr_to_565(uint8 y, uint8 cb0, uint8 cr0) {
-		const int cr = (int)cr0 - 128;
-		const int cb = (int)cb0 - 128;
-		const int i = ((int)y - 16) * 76309;
-		int r = i + cr * 104597;
-		int g = i + cb * -25674 + cr * -53279;
-		int b = i + cb * 132201;
-
-		if ((unsigned)r >= 0x1000000)
-			r = ~r >> 31;
-		if ((unsigned)g >= 0x1000000)
-			g = ~g >> 31;
-		if ((unsigned)b >= 0x1000000)
-			b = ~b >> 31;
-
-		return ((r & 0xf80000) >> 8) + ((g & 0xfc0000) >> 13) + (b >> 19);
-	}
-
-	void ycbcr_to_888(uint8 *dst, uint8 y, uint8 cb0, uint8 cr0) {
-		const int cr = (int)cr0 - 128;
-		const int cb = (int)cb0 - 128;
-		const int i = ((int)y - 16) * 76309;
-		int r = i + cr * 104597;
-		int g = i + cb * -25674 + cr * -53279;
-		int b = i + cb * 132201;
-
-		if ((unsigned)r >= 0x1000000)
-			r = ~r >> 31;
-		if ((unsigned)g >= 0x1000000)
-			g = ~g >> 31;
-		if ((unsigned)b >= 0x1000000)
-			b = ~b >> 31;
-
-		dst[0] = (uint8)(b >> 16);
-		dst[1] = (uint8)(g >> 16);
-		dst[2] = (uint8)(r >> 16);
-	}
-
-	uint32 ycbcr_to_8888(uint8 y, uint8 cb0, uint8 cr0) {
-		const int cr = (int)cr0 - 128;
-		const int cb = (int)cb0 - 128;
-		const int i = y * 76309;
-		int r = i + cr * 104597;
-		int g = i + cb * -25674 + cr * -53279;
-		int b = i + cb * 132201;
-
-		if ((unsigned)r >= 0x1000000)
-			r = ~r >> 31;
-		if ((unsigned)g >= 0x1000000)
-			g = ~g >> 31;
-		if ((unsigned)b >= 0x1000000)
-			b = ~b >> 31;
-
-		return (r & 0xff0000) + ((g & 0xff0000) >> 8) + (b >> 16);
-	}
-
-	void VDYCbCrToRGB1555Generic(void *dst, ptrdiff_t dststride, const void *yrow, ptrdiff_t ystride, const void *crrow, const void *cbrow, ptrdiff_t cstride, int w, int h, const YCbCrFormatInfo& formatinfo) {
-		const ptrdiff_t ystep	= formatinfo.ystep;
-		const ptrdiff_t cstep	= formatinfo.cstep;
-		const ptrdiff_t ypos0	= formatinfo.ypos[0];
-		const ptrdiff_t ypos1	= formatinfo.ypos[1];
-		const ptrdiff_t ypos2	= formatinfo.ypos[2];
-		const ptrdiff_t ypos3	= formatinfo.ypos[3];
-		const ptrdiff_t crpos0	= formatinfo.crpos[0];
-		const ptrdiff_t crpos1	= formatinfo.crpos[1];
-		const ptrdiff_t crpos2	= formatinfo.crpos[2];
-		const ptrdiff_t crpos3	= formatinfo.crpos[3];
-		const ptrdiff_t cbpos0	= formatinfo.cbpos[0];
-		const ptrdiff_t cbpos1	= formatinfo.cbpos[1];
-		const ptrdiff_t cbpos2	= formatinfo.cbpos[2];
-		const ptrdiff_t cbpos3	= formatinfo.cbpos[3];
-
-		yrow	= (char *)yrow - ystep * ((w-1) >> 2);
-		crrow	= (char *)crrow - cstep * ((w-1) >> 2);
-		cbrow	= (char *)cbrow - cstep * ((w-1) >> 2);
-		dst		= (char *)dst + 2*(w & ~3) - 8;
-
-		int y = 0;
-		do {
-			const uint8 *ysrc	= (const uint8 *)yrow;
-			const uint8 *crsrc	= (const uint8 *)crrow;
-			const uint8 *cbsrc	= (const uint8 *)cbrow;
-			uint16 *out = (uint16 *)dst;
-			int w2 = -w;
-
-			switch(w2 & 3) {
-				do {
-			case 0:	out[3] = ycbcr_to_1555(ysrc[ypos3], cbsrc[cbpos3], crsrc[crpos3]);
-			case 1:	out[2] = ycbcr_to_1555(ysrc[ypos2], cbsrc[cbpos2], crsrc[crpos2]);
-			case 2:	out[1] = ycbcr_to_1555(ysrc[ypos1], cbsrc[cbpos1], crsrc[crpos1]);
-			case 3:	out[0] = ycbcr_to_1555(ysrc[ypos0], cbsrc[cbpos0], crsrc[crpos0]);
-					out -= 4;
-					ysrc += ystep;
-					crsrc += cstep;
-					cbsrc += cstep;
-				} while((w2 += 4) < 0);
-			}
-
-			dst		= (char *)dst + dststride;
-			yrow	= (const char *)yrow + (ystride & formatinfo.yinc[y & 3]);
-			crrow	= (const char *)crrow + (cstride & formatinfo.cinc[y & 3]);
-			cbrow	= (const char *)cbrow + (cstride & formatinfo.cinc[y & 3]);
-		} while(++y < h);
-	}
-
-	void VDYCbCrToRGB565Generic(void *dst, ptrdiff_t dststride, const void *yrow, ptrdiff_t ystride, const void *crrow, const void *cbrow, ptrdiff_t cstride, int w, int h, const YCbCrFormatInfo& formatinfo) {
-		const ptrdiff_t ystep	= formatinfo.ystep;
-		const ptrdiff_t cstep	= formatinfo.cstep;
-		const ptrdiff_t ypos0	= formatinfo.ypos[0];
-		const ptrdiff_t ypos1	= formatinfo.ypos[1];
-		const ptrdiff_t ypos2	= formatinfo.ypos[2];
-		const ptrdiff_t ypos3	= formatinfo.ypos[3];
-		const ptrdiff_t crpos0	= formatinfo.crpos[0];
-		const ptrdiff_t crpos1	= formatinfo.crpos[1];
-		const ptrdiff_t crpos2	= formatinfo.crpos[2];
-		const ptrdiff_t crpos3	= formatinfo.crpos[3];
-		const ptrdiff_t cbpos0	= formatinfo.cbpos[0];
-		const ptrdiff_t cbpos1	= formatinfo.cbpos[1];
-		const ptrdiff_t cbpos2	= formatinfo.cbpos[2];
-		const ptrdiff_t cbpos3	= formatinfo.cbpos[3];
-
-		yrow	= (char *)yrow - ystep * ((w-1) >> 2);
-		crrow	= (char *)crrow - cstep * ((w-1) >> 2);
-		cbrow	= (char *)cbrow - cstep * ((w-1) >> 2);
-		dst		= (char *)dst + 2*(w & ~3) - 8;
-
-		int y = 0;
-		do {
-			const uint8 *ysrc = (const uint8 *)yrow;
-			const uint8 *crsrc = (const uint8 *)crrow;
-			const uint8 *cbsrc = (const uint8 *)cbrow;
-			uint16 *out = (uint16 *)dst;
-			int w2 = -w;
-
-			switch(w2 & 3) {
-				do {
-			case 0:	out[3] = ycbcr_to_565(ysrc[ypos3], cbsrc[cbpos3], crsrc[crpos3]);
-			case 1:	out[2] = ycbcr_to_565(ysrc[ypos2], cbsrc[cbpos2], crsrc[crpos2]);
-			case 2:	out[1] = ycbcr_to_565(ysrc[ypos1], cbsrc[cbpos1], crsrc[crpos1]);
-			case 3:	out[0] = ycbcr_to_565(ysrc[ypos0], cbsrc[cbpos0], crsrc[crpos0]);
-					out -= 4;
-					ysrc += ystep;
-					crsrc += cstep;
-					cbsrc += cstep;
-				} while((w2 += 4) < 0);
-			}
-
-			dst		= (char *)dst + dststride;
-			yrow	= (const char *)yrow + (ystride & formatinfo.yinc[y & 3]);
-			crrow	= (const char *)crrow + (cstride & formatinfo.cinc[y & 3]);
-			cbrow	= (const char *)cbrow + (cstride & formatinfo.cinc[y & 3]);
-		} while(++y < h);
-	}
-
-	void VDYCbCrToRGB888Generic(void *dst, ptrdiff_t dststride, const void *yrow, ptrdiff_t ystride, const void *crrow, const void *cbrow, ptrdiff_t cstride, int w, int h, const YCbCrFormatInfo& formatinfo) {
-		const ptrdiff_t ystep	= formatinfo.ystep;
-		const ptrdiff_t cstep	= formatinfo.cstep;
-		const ptrdiff_t ypos0	= formatinfo.ypos[0];
-		const ptrdiff_t ypos1	= formatinfo.ypos[1];
-		const ptrdiff_t ypos2	= formatinfo.ypos[2];
-		const ptrdiff_t ypos3	= formatinfo.ypos[3];
-		const ptrdiff_t crpos0	= formatinfo.crpos[0];
-		const ptrdiff_t crpos1	= formatinfo.crpos[1];
-		const ptrdiff_t crpos2	= formatinfo.crpos[2];
-		const ptrdiff_t crpos3	= formatinfo.crpos[3];
-		const ptrdiff_t cbpos0	= formatinfo.cbpos[0];
-		const ptrdiff_t cbpos1	= formatinfo.cbpos[1];
-		const ptrdiff_t cbpos2	= formatinfo.cbpos[2];
-		const ptrdiff_t cbpos3	= formatinfo.cbpos[3];
-
-		yrow	= (char *)yrow - ystep * ((w-1) >> 2);
-		crrow	= (char *)crrow - cstep * ((w-1) >> 2);
-		cbrow	= (char *)cbrow - cstep * ((w-1) >> 2);
-		dst		= (char *)dst + 3*(w & ~3) - 12;
-
-		int y = 0;
-		do {
-			const uint8 *ysrc	= (const uint8 *)yrow;
-			const uint8 *crsrc	= (const uint8 *)crrow;
-			const uint8 *cbsrc	= (const uint8 *)cbrow;
-			uint8 *out = (uint8 *)dst;
-			int w2 = -w;
-
-			switch(w2 & 3) {
-				do {
-			case 0:	ycbcr_to_888(out+9, ysrc[ypos3], cbsrc[cbpos3], crsrc[crpos3]);
-			case 1:	ycbcr_to_888(out+6, ysrc[ypos2], cbsrc[cbpos2], crsrc[crpos2]);
-			case 2:	ycbcr_to_888(out+3, ysrc[ypos1], cbsrc[cbpos1], crsrc[crpos1]);
-			case 3:	ycbcr_to_888(out, ysrc[ypos0], cbsrc[cbpos0], crsrc[crpos0]);
-					out -= 12;
-					ysrc += ystep;
-					crsrc += cstep;
-					cbsrc += cstep;
-				} while((w2 += 4) < 0);
-			}
-
-			dst		= (char *)dst + dststride;
-			yrow	= (const char *)yrow + (ystride & formatinfo.yinc[y & 3]);
-			crrow	= (const char *)crrow + (cstride & formatinfo.cinc[y & 3]);
-			cbrow	= (const char *)cbrow + (cstride & formatinfo.cinc[y & 3]);
-		} while(++y < h);
-	}
-
-	void VDYCbCrToRGB8888Generic(void *dst, ptrdiff_t dststride, const void *yrow, ptrdiff_t ystride, const void *crrow, const void *cbrow, ptrdiff_t cstride, int w, int h, const YCbCrFormatInfo& formatinfo) {
-		const ptrdiff_t ystep	= formatinfo.ystep;
-		const ptrdiff_t cstep	= formatinfo.cstep;
-		const ptrdiff_t ypos0	= formatinfo.ypos[0];
-		const ptrdiff_t ypos1	= formatinfo.ypos[1];
-		const ptrdiff_t ypos2	= formatinfo.ypos[2];
-		const ptrdiff_t ypos3	= formatinfo.ypos[3];
-		const ptrdiff_t crpos0	= formatinfo.crpos[0];
-		const ptrdiff_t crpos1	= formatinfo.crpos[1];
-		const ptrdiff_t crpos2	= formatinfo.crpos[2];
-		const ptrdiff_t crpos3	= formatinfo.crpos[3];
-		const ptrdiff_t cbpos0	= formatinfo.cbpos[0];
-		const ptrdiff_t cbpos1	= formatinfo.cbpos[1];
-		const ptrdiff_t cbpos2	= formatinfo.cbpos[2];
-		const ptrdiff_t cbpos3	= formatinfo.cbpos[3];
-
-		yrow	= (char *)yrow - ystep * ((w-1) >> 2);
-		crrow	= (char *)crrow - cstep * ((w-1) >> 2);
-		cbrow	= (char *)cbrow - cstep * ((w-1) >> 2);
-		dst		= (char *)dst + 4*(w & ~3) - 16;
-
-		int y = 0;
-		do {
-			const uint8 *ysrc	= (const uint8 *)yrow;
-			const uint8 *crsrc	= (const uint8 *)crrow;
-			const uint8 *cbsrc	= (const uint8 *)cbrow;
-			uint32 *out = (uint32 *)dst;
-			int w2 = -w;
-
-			switch(w2 & 3) {
-				do {
-			case 0:	out[3] = ycbcr_to_8888(ysrc[ypos3], cbsrc[cbpos3], crsrc[crpos3]);
-			case 1:	out[2] = ycbcr_to_8888(ysrc[ypos2], cbsrc[cbpos2], crsrc[crpos2]);
-			case 2:	out[1] = ycbcr_to_8888(ysrc[ypos1], cbsrc[cbpos1], crsrc[crpos1]);
-			case 3:	out[0] = ycbcr_to_8888(ysrc[ypos0], cbsrc[cbpos0], crsrc[crpos0]);
-					out -= 4;
-					ysrc += ystep;
-					crsrc += cstep;
-					cbsrc += cstep;
-				} while((w2 += 4) < 0);
-			}
-
-			dst		= (char *)dst + dststride;
-			yrow	= (const char *)yrow + (ystride & formatinfo.yinc[y & 3]);
-			crrow	= (const char *)crrow + (cstride & formatinfo.cinc[y & 3]);
-			cbrow	= (const char *)cbrow + (cstride & formatinfo.cinc[y & 3]);
-		} while(++y < h);
-	}
-}
 
 namespace {
 
@@ -385,7 +105,7 @@ struct VDDitherUtils {
 		}
 	}
 
-	static void DoSpan16To8(uint8 *dstp, const uint16 *srcp, int w2, const uint8 *pLogPal) {
+	static void DoSpan15To8(uint8 *dstp, const uint16 *srcp, int w2, const uint8 *pLogPal) {
 		uint32 px;
 
 		switch(w2 & 3) {
@@ -398,6 +118,25 @@ struct VDDitherUtils {
 				dstp[w2+2] = pLogPal[rdithertab8[rb2 + ((px&0x7c00) >> 7)] + gdithertab8[g2 + ((px&0x03e0) >> 2)] + bdithertab8[rb2 + ((px&0x001f) << 3)]];
 		case 3:	px = srcp[3];
 				dstp[w2+3] = pLogPal[rdithertab8[rb3 + ((px&0x7c00) >> 7)] + gdithertab8[g3 + ((px&0x03e0) >> 2)] + bdithertab8[rb3 + ((px&0x001f) << 3)]];
+
+				srcp += 4;
+			} while((w2 += 4) < 0);
+		}
+	}
+
+	static void DoSpan16To8(uint8 *dstp, const uint16 *srcp, int w2, const uint8 *pLogPal) {
+		uint32 px;
+
+		switch(w2 & 3) {
+			do {
+		case 0:	px = srcp[0];
+				dstp[w2  ] = pLogPal[rdithertab8[rb0 + ((px&0xf800) >> 8)] + gdithertab8[g0 + ((px&0x07e0) >> 3)] + bdithertab8[rb0 + ((px&0x001f) << 3)]];
+		case 1:	px = srcp[1];
+				dstp[w2+1] = pLogPal[rdithertab8[rb1 + ((px&0xf800) >> 8)] + gdithertab8[g1 + ((px&0x07e0) >> 3)] + bdithertab8[rb1 + ((px&0x001f) << 3)]];
+		case 2:	px = srcp[2];
+				dstp[w2+2] = pLogPal[rdithertab8[rb2 + ((px&0xf800) >> 8)] + gdithertab8[g2 + ((px&0x07e0) >> 3)] + bdithertab8[rb2 + ((px&0x001f) << 3)]];
+		case 3:	px = srcp[3];
+				dstp[w2+3] = pLogPal[rdithertab8[rb3 + ((px&0xf800) >> 8)] + gdithertab8[g3 + ((px&0x07e0) >> 3)] + bdithertab8[rb3 + ((px&0x001f) << 3)]];
 
 				srcp += 4;
 			} while((w2 += 4) < 0);
@@ -431,7 +170,7 @@ struct VDDitherUtils {
 	}
 };
 
-void VDDitherImage8To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal, const uint8 *palette) {
+void VDDitherImage8To8(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal, const uint8 *palette) {
 	int h = dst.h;
 	int w = dst.w;
 
@@ -456,7 +195,32 @@ void VDDitherImage8To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal, c
 	} while(--h);
 }
 
-void VDDitherImage16To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
+void VDDitherImage15To8(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
+	int h = dst.h;
+	int w = dst.w;
+
+	uint8 *dstp0 = (uint8 *)dst.data;
+	const uint16 *srcp0 = (const uint16 *)src.data;
+
+	do {
+		int w2 = -w;
+
+		uint8 *dstp = dstp0 + w - (w2&3);
+		const uint16 *srcp = srcp0;
+
+		switch(h & 3) {
+			case 0: VDDitherUtils< 0, 8, 2,10>::DoSpan15To8(dstp, srcp, w2, pLogPal); break;
+			case 1: VDDitherUtils<12, 4,14, 6>::DoSpan15To8(dstp, srcp, w2, pLogPal); break;
+			case 2: VDDitherUtils< 3,11, 1, 9>::DoSpan15To8(dstp, srcp, w2, pLogPal); break;
+			case 3: VDDitherUtils<15, 7,13, 5>::DoSpan15To8(dstp, srcp, w2, pLogPal); break;
+		}
+
+		dstp0 += dst.pitch;
+		srcp0 = (const uint16 *)((const char *)srcp0 + src.pitch);
+	} while(--h);
+}
+
+void VDDitherImage16To8(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
 	int h = dst.h;
 	int w = dst.w;
 
@@ -481,7 +245,7 @@ void VDDitherImage16To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) 
 	} while(--h);
 }
 
-void VDDitherImage24To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
+void VDDitherImage24To8(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
 	int h = dst.h;
 	int w = dst.w;
 
@@ -506,7 +270,7 @@ void VDDitherImage24To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) 
 	} while(--h);
 }
 
-void VDDitherImage32To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
+void VDDitherImage32To8(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
 	int h = dst.h;
 	int w = dst.w;
 
@@ -531,24 +295,27 @@ void VDDitherImage32To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) 
 	} while(--h);
 }
 
-void VDDitherImage(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
+void VDDitherImage(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
 	VDASSERT(dst.w == src.w && dst.h == src.h);
 
 	if (dst.w<=0 || dst.h<=0)
 		return;
 
-	if (dst.depth == 8) {
-		switch(src.depth) {
-		case 8:
+	if (dst.format == kPixFormat_Pal8) {
+		switch(src.format) {
+		case kPixFormat_Pal8:
 			VDDitherImage8To8(dst, src, pLogPal, (const uint8 *)src.palette);
 			break;
-		case 16:
+		case kPixFormat_XRGB1555:
+			VDDitherImage15To8(dst, src, pLogPal);
+			break;
+		case kPixFormat_RGB565:
 			VDDitherImage16To8(dst, src, pLogPal);
 			break;
-		case 24:
+		case kPixFormat_RGB888:
 			VDDitherImage24To8(dst, src, pLogPal);
 			break;
-		case 32:
+		case kPixFormat_XRGB8888:
 			VDDitherImage32To8(dst, src, pLogPal);
 			break;
 		}
@@ -681,11 +448,15 @@ public:
 		GLuint	mTextureID;
 	};
 
-	void Init(VDVideoDisplayGLTable *pgl, int w, int h, bool bPackedPixelsSupported, bool bEdgeClampSupported, bool bMipmapGenerationSupported);
+	VDVideoTextureTilePatternOpenGL() : mbPhase(false) {}
+	void Init(VDVideoDisplayGLTable *pgl, int w, int h, bool bPackedPixelsSupported, bool bEdgeClampSupported);
 	void Shutdown(VDVideoDisplayGLTable *pgl);
+
+	void ReinitFiltering(VDVideoDisplayGLTable *pgl, IVDVideoDisplayMinidriver::FilterMode mode);
 
 	bool IsInited() const { return !mTextures.empty(); }
 
+	void Flip();
 	void GetTileInfo(TileInfo*& pInfo, int& nTiles);
 
 protected:
@@ -702,13 +473,12 @@ protected:
 
 	bool		mbPackedPixelsSupported;
 	bool		mbEdgeClampSupported;
-	bool		mbMipmapGenerationSupported;
+	bool		mbPhase;
 };
 
-void VDVideoTextureTilePatternOpenGL::Init(VDVideoDisplayGLTable *pgl, int w, int h, bool bPackedPixelsSupported, bool bEdgeClampSupported, bool bMipmapGenerationSupported) {
+void VDVideoTextureTilePatternOpenGL::Init(VDVideoDisplayGLTable *pgl, int w, int h, bool bPackedPixelsSupported, bool bEdgeClampSupported) {
 	mbPackedPixelsSupported		= bPackedPixelsSupported;
 	mbEdgeClampSupported		= bEdgeClampSupported;
-	mbMipmapGenerationSupported = bMipmapGenerationSupported;
 
 	GLint maxsize;
 	pgl->pglGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxsize);
@@ -742,9 +512,8 @@ void VDVideoTextureTilePatternOpenGL::Init(VDVideoDisplayGLTable *pgl, int w, in
 	mTextureLastWInvPow2	= 1.0 / xlasttex;
 	mTextureLastHInvPow2	= 1.0 / ylasttex;
 
-	mTextures.resize(ntiles);
-
-	pgl->pglGenTextures(ntiles, &mTextures[0]);
+	mTextures.resize(ntiles*2);
+	pgl->pglGenTextures(ntiles*2, &mTextures[0]);
 
 	vdautoblockptr zerobuffer(malloc(4 * largestW * largestH));
 	memset(zerobuffer, 0, 4 * largestW * largestH);
@@ -756,34 +525,28 @@ void VDVideoTextureTilePatternOpenGL::Init(VDVideoDisplayGLTable *pgl, int w, in
 	int tile = 0;
 	for(int y = 0; y < mTextureTilesH; ++y) {
 		for(int x = 0; x < mTextureTilesW; ++x, ++tile) {
-			pgl->pglBindTexture(GL_TEXTURE_2D, mTextures[tile]);
-
-			if (mbMipmapGenerationSupported) {
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			} else {
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			}
-			pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-			if (mbEdgeClampSupported) {
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE_EXT);
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE_EXT);
-			} else {
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-
-				static const float black[4]={0.f,0.f,0.f,0.f};
-				pgl->pglTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, black);
-			}
-
 			int w = (x==mTextureTilesW-1) ? xlasttex : maxsize;
 			int h = (y==mTextureTilesH-1) ? ylasttex : maxsize;
 
-			if (w==maxsize && h==maxsize)
-				pgl->pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
-			else
-				pgl->pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, zerobuffer.get());
+			for(int offset=0; offset<2; ++offset) {
+				pgl->pglBindTexture(GL_TEXTURE_2D, mTextures[tile*2+offset]);
+
+				if (mbEdgeClampSupported) {
+					pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE_EXT);
+					pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE_EXT);
+				} else {
+					pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+					pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+					static const float black[4]={0.f,0.f,0.f,0.f};
+					pgl->pglTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, black);
+				}
+
+				if (w==maxsize && h==maxsize)
+					pgl->pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
+				else
+					pgl->pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, zerobuffer.get());
+			}
 
 			TileInfo info;
 
@@ -797,28 +560,46 @@ void VDVideoTextureTilePatternOpenGL::Init(VDVideoDisplayGLTable *pgl, int w, in
 			info.mbTop		= y<=0;
 			info.mbRight	= (x==mTextureTilesW-1);
 			info.mbBottom	= (y==mTextureTilesH-1);
-			info.mTextureID	= mTextures[tile];
 
 			mTileInfo.push_back(info);
 		}
 	}
+
+	Flip();
 }
 
 void VDVideoTextureTilePatternOpenGL::Shutdown(VDVideoDisplayGLTable *pgl) {
 	if (mTextures.empty()) {
 		int nTextures = mTextures.size();
 
-		if (mbMipmapGenerationSupported) {
-			for(int i=0; i<nTextures; ++i) {
-				pgl->pglBindTexture(GL_TEXTURE_2D, mTextures[i]);
-				pgl->pglTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_FALSE);
-			}
-		}
-
 		pgl->pglDeleteTextures(nTextures, &mTextures[0]);
 		std::vector<GLuint>().swap(mTextures);
 	}
 	std::vector<TileInfo>().swap(mTileInfo);
+}
+
+void VDVideoTextureTilePatternOpenGL::ReinitFiltering(VDVideoDisplayGLTable *pgl, IVDVideoDisplayMinidriver::FilterMode mode) {
+	const size_t nTextures = mTextures.size();
+	for(int i=0; i<nTextures; ++i) {
+		pgl->pglBindTexture(GL_TEXTURE_2D, mTextures[i]);
+
+		if (mode == IVDVideoDisplayMinidriver::kFilterPoint)
+			pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		else
+			pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+		if (mode == IVDVideoDisplayMinidriver::kFilterPoint)
+			pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		else
+			pgl->pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	}
+}
+
+void VDVideoTextureTilePatternOpenGL::Flip() {
+	mbPhase = !mbPhase;
+	size_t nTiles = mTileInfo.size();
+	for(int i=0; i<nTiles; ++i)
+		mTileInfo[i].mTextureID = mTextures[2*i+mbPhase];
 }
 
 void VDVideoTextureTilePatternOpenGL::GetTileInfo(TileInfo*& pInfo, int& nTiles) {
@@ -839,6 +620,7 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid() { return mbValid; }
+	void SetFilterMode(FilterMode mode);
 
 	bool Tick(int id) { return true; }
 	bool Resize();
@@ -848,7 +630,7 @@ public:
 	void SetLogicalPalette(const uint8 *pLogicalPalette) {}
 
 protected:
-	void Upload(VDVideoDisplaySourceInfo& source, VDVideoTextureTilePatternOpenGL& texPattern);
+	void Upload(const VDPixmap& source, VDVideoTextureTilePatternOpenGL& texPattern);
 
 	static ATOM VDVideoDisplayMinidriverOpenGL::Register();
 	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -866,6 +648,7 @@ protected:
 	bool		mbValid;
 	bool		mbVerticalFlip;
 
+	FilterMode	mPreferredFilter;
 	VDVideoTextureTilePatternOpenGL		mTexPattern[2];
 	VDVideoDisplaySourceInfo			mSource;
 };
@@ -881,6 +664,7 @@ VDVideoDisplayMinidriverOpenGL::VDVideoDisplayMinidriverOpenGL()
 	, mpgl(0)
 	, mhglrc(0)
 	, mbValid(false)
+	, mPreferredFilter(kFilterAnySuitable)
 {
 }
 
@@ -894,9 +678,9 @@ bool VDVideoDisplayMinidriverOpenGL::Init(HWND hwnd, const VDVideoDisplaySourceI
 	// OpenGL doesn't allow upside-down texture uploads, so we simply
 	// upload the surface inverted and then reinvert on display.
 	mbVerticalFlip = false;
-	if (mSource.stride < 0) {
-		mSource.data = (const char *)mSource.data + mSource.stride*(mSource.h - 1);
-		mSource.stride = -mSource.stride;
+	if (mSource.pixmap.pitch < 0) {
+		mSource.pixmap.data = (char *)mSource.pixmap.data + mSource.pixmap.pitch*(mSource.pixmap.h - 1);
+		mSource.pixmap.pitch = -mSource.pixmap.pitch;
 		mbVerticalFlip = true;
 	}
 
@@ -947,20 +731,32 @@ bool VDVideoDisplayMinidriverOpenGL::ModifySource(const VDVideoDisplaySourceInfo
 	if (!mpgl)
 		return false;
 
-	if (info.w == mSource.w && info.h == mSource.h && info.format == mSource.format && info.bInterlaced == mSource.bInterlaced) {
+	if (info.pixmap.w == mSource.pixmap.w && info.pixmap.h == mSource.pixmap.h && info.pixmap.format == mSource.pixmap.format && info.bInterlaced == mSource.bInterlaced) {
 		mSource = info;
 		// OpenGL doesn't allow upside-down texture uploads, so we simply
 		// upload the surface inverted and then reinvert on display.
 		mbVerticalFlip = false;
-		if (mSource.stride < 0) {
-			mSource.data = (const char *)mSource.data + mSource.stride*(mSource.h - 1);
-			mSource.stride = -mSource.stride;
+		if (mSource.pixmap.pitch < 0) {
+			mSource.pixmap.data = (char *)mSource.pixmap.data + mSource.pixmap.pitch*(mSource.pixmap.h - 1);
+			mSource.pixmap.pitch = -mSource.pixmap.pitch;
 			mbVerticalFlip = true;
 		}
 		return true;
 	}
 
 	return false;
+}
+
+void VDVideoDisplayMinidriverOpenGL::SetFilterMode(FilterMode mode) {
+	if (HDC hdc = GetDC(mhwndOGL)) {
+		mpgl->pwglMakeCurrent(hdc, mhglrc);
+
+		mPreferredFilter = mode;
+
+		mTexPattern[0].ReinitFiltering(mpgl, mode);
+		mTexPattern[1].ReinitFiltering(mpgl, mode);
+		mpgl->pwglMakeCurrent(NULL, NULL);
+	}
 }
 
 bool VDVideoDisplayMinidriverOpenGL::Resize() {
@@ -984,30 +780,30 @@ bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
 
 		if (mSource.bInterlaced) {
 			if (fieldmode == kAllFields || fieldmode == kEvenFieldsOnly) {
-				VDVideoDisplaySourceInfo evenFieldSrc(mSource);
+				VDPixmap evenFieldSrc(mSource.pixmap);
 
 				evenFieldSrc.h = (evenFieldSrc.h+1) >> 1;
-				evenFieldSrc.stride += evenFieldSrc.stride;
+				evenFieldSrc.pitch += evenFieldSrc.pitch;
 
 				Upload(evenFieldSrc, mTexPattern[0]);
 			}
 			if (fieldmode == kAllFields || fieldmode == kOddFieldsOnly) {
-				VDVideoDisplaySourceInfo oddFieldSrc(mSource);
+				VDPixmap oddFieldSrc(mSource.pixmap);
 
-				oddFieldSrc.data = (const char *)oddFieldSrc.data + oddFieldSrc.stride;
+				oddFieldSrc.data = (char *)oddFieldSrc.data + oddFieldSrc.pitch;
 				oddFieldSrc.h = (oddFieldSrc.h+1) >> 1;
-				oddFieldSrc.stride += oddFieldSrc.stride;
+				oddFieldSrc.pitch += oddFieldSrc.pitch;
 
 				Upload(oddFieldSrc, mTexPattern[1]);
 			}
 		} else {
-			Upload(mSource, mTexPattern[0]);
+			Upload(mSource.pixmap, mTexPattern[0]);
 		}
 
 		VDASSERT(mpgl->pglGetError() == GL_NO_ERROR);
 
 		mpgl->pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-//		mpgl->pwglMakeCurrent(NULL, NULL);
+		mpgl->pwglMakeCurrent(NULL, NULL);
 
 		mbValid = true;
 
@@ -1024,24 +820,25 @@ void VDVideoDisplayMinidriverOpenGL::Refresh(FieldMode) {
 	}
 }
 
-void VDVideoDisplayMinidriverOpenGL::Upload(VDVideoDisplaySourceInfo& source, VDVideoTextureTilePatternOpenGL& texPattern) {
+void VDVideoDisplayMinidriverOpenGL::Upload(const VDPixmap& source, VDVideoTextureTilePatternOpenGL& texPattern) {
 	VDVideoTextureTilePatternOpenGL::TileInfo *pTiles;
 	int nTiles;
 
 	mpgl->pglPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	switch(source.format) {
-	case IVDVideoDisplay::kFormatRGB1555:
-	case IVDVideoDisplay::kFormatRGB565:
-		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.stride >> 1);
+	case nsVDPixmap::kPixFormat_XRGB1555:
+	case nsVDPixmap::kPixFormat_RGB565:
+		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.pitch >> 1);
 		break;
-	case IVDVideoDisplay::kFormatRGB888:
-		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.stride / 3);
+	case nsVDPixmap::kPixFormat_RGB888:
+		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.pitch / 3);
 		break;
-	case IVDVideoDisplay::kFormatRGB8888:
-		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.stride >> 2);
+	case nsVDPixmap::kPixFormat_XRGB8888:
+		mpgl->pglPixelStorei(GL_UNPACK_ROW_LENGTH, source.pitch >> 2);
 		break;
 	}
 
+	texPattern.Flip();
 	texPattern.GetTileInfo(pTiles, nTiles);
 
 	for(int tileno=0; tileno<nTiles; ++tileno) {
@@ -1050,17 +847,17 @@ void VDVideoDisplayMinidriverOpenGL::Upload(VDVideoDisplaySourceInfo& source, VD
 		mpgl->pglBindTexture(GL_TEXTURE_2D, tile.mTextureID);
 
 		switch(source.format) {
-		case IVDVideoDisplay::kFormatRGB1555:
-			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGRA_EXT, GL_UNSIGNED_SHORT_1_5_5_5_REV, (const char *)source.data + (source.stride*tile.mSrcY + tile.mSrcX*2));
+		case nsVDPixmap::kPixFormat_XRGB1555:
+			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGRA_EXT, GL_UNSIGNED_SHORT_1_5_5_5_REV, (const char *)source.data + (source.pitch*tile.mSrcY + tile.mSrcX*2));
 			break;
-		case IVDVideoDisplay::kFormatRGB565:
-			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGR_EXT, GL_UNSIGNED_SHORT_5_6_5_REV, (const char *)source.data + (source.stride*tile.mSrcY + tile.mSrcX*2));
+		case nsVDPixmap::kPixFormat_RGB565:
+			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGR_EXT, GL_UNSIGNED_SHORT_5_6_5_REV, (const char *)source.data + (source.pitch*tile.mSrcY + tile.mSrcX*2));
 			break;
-		case IVDVideoDisplay::kFormatRGB888:
-			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGR_EXT, GL_UNSIGNED_BYTE, (const char *)source.data + (source.stride*tile.mSrcY + tile.mSrcX*3));
+		case nsVDPixmap::kPixFormat_RGB888:
+			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGR_EXT, GL_UNSIGNED_BYTE, (const char *)source.data + (source.pitch*tile.mSrcY + tile.mSrcX*3));
 			break;
-		case IVDVideoDisplay::kFormatRGB8888:
-			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGRA_EXT, GL_UNSIGNED_BYTE, (const char *)source.data + (source.stride*tile.mSrcY + tile.mSrcX*4));
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			mpgl->pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tile.mSrcW, tile.mSrcH, GL_BGRA_EXT, GL_UNSIGNED_BYTE, (const char *)source.data + (source.pitch*tile.mSrcY + tile.mSrcX*4));
 			break;
 		}
 	}
@@ -1144,30 +941,29 @@ bool VDVideoDisplayMinidriverOpenGL::OnOpenGLInit() {
 
 					bool bPackedPixelsSupported = false;
 					bool bEdgeClampSupported = false;
-					bool bMipmapGenerationSupported = false;
 
 					while(const char *tok = strtok(s, " ")) {
 						if (!strcmp(tok, "GL_EXT_packed_pixels"))
 							bPackedPixelsSupported = true;
 						else if (!strcmp(tok, "GL_EXT_texture_edge_clamp"))
 							bEdgeClampSupported = true;
-						else if (!strcmp(tok, "GL_SGIS_generate_mipmap"))
-							bMipmapGenerationSupported = true;
 						s = NULL;
 					}
 
 					if (mSource.bInterlaced) {
-						mTexPattern[0].Init(mpgl, mSource.w, (mSource.h+1)>>1, bPackedPixelsSupported, bEdgeClampSupported, bMipmapGenerationSupported);
-						mTexPattern[1].Init(mpgl, mSource.w, mSource.h>>1, bPackedPixelsSupported, bEdgeClampSupported, bMipmapGenerationSupported);
+						mTexPattern[0].Init(mpgl, mSource.pixmap.w, (mSource.pixmap.h+1)>>1, bPackedPixelsSupported, bEdgeClampSupported);
+						mTexPattern[1].Init(mpgl, mSource.pixmap.w, mSource.pixmap.h>>1, bPackedPixelsSupported, bEdgeClampSupported);
+						mTexPattern[1].ReinitFiltering(mpgl, mPreferredFilter);
 					} else
-						mTexPattern[0].Init(mpgl, mSource.w, mSource.h, bPackedPixelsSupported, bEdgeClampSupported, bMipmapGenerationSupported);
+						mTexPattern[0].Init(mpgl, mSource.pixmap.w, mSource.pixmap.h, bPackedPixelsSupported, bEdgeClampSupported);
+					mTexPattern[0].ReinitFiltering(mpgl, mPreferredFilter);
 
 					VDASSERT(mpgl->pglGetError() == GL_NO_ERROR);
 
 					mpgl->pwglMakeCurrent(NULL, NULL);
 					ReleaseDC(mhwndOGL, hdc);
 
-					VDDEBUG("VideoDisplay: Using OpenGL for %dx%d display.\n", mSource.w, mSource.h);
+					VDDEBUG("VideoDisplay: Using OpenGL for %dx%d display.\n", mSource.pixmap.w, mSource.pixmap.h);
 					return true;
 				}
 			}
@@ -1226,11 +1022,10 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 		int nTiles;
 
 		if (mSource.bInterlaced) {
-			const int dstW = r.right;
 			const int dstH = r.bottom;
 
 			const double viewmat[16]={
-				2.0 / mSource.w,
+				2.0 / mSource.pixmap.w,
 				0,
 				0,
 				0,
@@ -1275,12 +1070,12 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 					double	u1 = iw * px1;
 					double	u2 = iw * px2;
 
-					ih *= mSource.h / (double)dstH * 0.5;
+					ih *= mSource.pixmap.h / (double)dstH * 0.5;
 
 					mpgl->pglBindTexture(GL_TEXTURE_2D, tile.mTextureID);
 
-					int ytop	= VDRoundToInt(ceil(((ybase + py1)*2 + field - 0.5) * (dstH / (double)mSource.h) - 0.5));
-					int ybottom	= VDRoundToInt(ceil(((ybase + py2)*2 + field - 0.5) * (dstH / (double)mSource.h) - 0.5));
+					int ytop	= VDRoundToInt(ceil(((ybase + py1)*2 + field - 0.5) * (dstH / (double)mSource.pixmap.h) - 0.5));
+					int ybottom	= VDRoundToInt(ceil(((ybase + py2)*2 + field - 0.5) * (dstH / (double)mSource.pixmap.h) - 0.5));
 
 					if ((ytop^field) & 1)
 						++ytop;
@@ -1300,13 +1095,13 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 			}
 		} else {
 			const double viewmat[16]={
-				2.0 / mSource.w,
+				2.0 / mSource.pixmap.w,
 				0,
 				0,
 				0,
 
 				0,
-				(mbVerticalFlip ? +2.0 : -2.0) / mSource.h,
+				(mbVerticalFlip ? +2.0 : -2.0) / mSource.pixmap.h,
 				0,
 				0,
 
@@ -1623,6 +1418,7 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
+	void SetFilterMode(FilterMode mode) {}
 
 	bool Tick(int id);
 	bool Resize();
@@ -1670,6 +1466,7 @@ protected:
 	bool		mbReset;
 	bool		mbValid;
 	bool		mbRepaintOnNextUpdate;
+	bool		mbSwapChromaPlanes;
 
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
@@ -1696,6 +1493,25 @@ VDVideoDisplayMinidriverDirectDraw::~VDVideoDisplayMinidriverDirectDraw() {
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+	switch(info.pixmap.format) {
+	case nsVDPixmap::kPixFormat_Pal8:
+	case nsVDPixmap::kPixFormat_XRGB1555:
+	case nsVDPixmap::kPixFormat_RGB565:
+	case nsVDPixmap::kPixFormat_RGB888:
+	case nsVDPixmap::kPixFormat_XRGB8888:
+	case nsVDPixmap::kPixFormat_YUV422_YUYV:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY:
+	case nsVDPixmap::kPixFormat_YUV444_Planar:
+	case nsVDPixmap::kPixFormat_YUV422_Planar:
+	case nsVDPixmap::kPixFormat_YUV420_Planar:
+	case nsVDPixmap::kPixFormat_YUV411_Planar:
+	case nsVDPixmap::kPixFormat_YUV410_Planar:
+	case nsVDPixmap::kPixFormat_Y8:
+		break;
+	default:
+		return false;
+	}
+
 	mhwnd	= hwnd;
 	mSource	= info;
 
@@ -1723,13 +1539,34 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 	DWORD dwFourCC;
 
-	switch(mSource.format) {
-	case IVDVideoDisplay::kFormatYUV422_YUYV:
+	mbSwapChromaPlanes = false;
+	switch(mSource.pixmap.format) {
+	case nsVDPixmap::kPixFormat_YUV422_YUYV:
 		dwFourCC = MAKEFOURCC('Y', 'U', 'Y', '2');
 		break;
 
-	case IVDVideoDisplay::kFormatYUV422_UYVY:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY:
 		dwFourCC = MAKEFOURCC('U', 'Y', 'V', 'Y');
+		break;
+
+	case nsVDPixmap::kPixFormat_YUV420_Planar:
+		dwFourCC = MAKEFOURCC('Y', 'V', '1', '2');
+		mbSwapChromaPlanes = true;
+		break;
+
+	case nsVDPixmap::kPixFormat_YUV422_Planar:
+		dwFourCC = MAKEFOURCC('Y', 'V', '1', '6');
+		mbSwapChromaPlanes = true;
+		break;
+
+	case nsVDPixmap::kPixFormat_YUV410_Planar:
+		dwFourCC = MAKEFOURCC('Y', 'V', 'U', '9');
+		mbSwapChromaPlanes = true;
+		break;
+
+	case nsVDPixmap::kPixFormat_Y8:
+		dwFourCC = MAKEFOURCC('Y', '8', ' ', ' ');
+		mbSwapChromaPlanes = true;
 		break;
 
 	default:
@@ -1741,8 +1578,8 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 		DDSURFACEDESC ddsdOff = {sizeof(DDSURFACEDESC)};
 
 		ddsdOff.dwFlags						= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
-		ddsdOff.dwWidth						= mSource.w;
-		ddsdOff.dwHeight					= mSource.h;
+		ddsdOff.dwWidth						= mSource.pixmap.w;
+		ddsdOff.dwHeight					= mSource.pixmap.h;
 		ddsdOff.ddsCaps.dwCaps				= DDSCAPS_OVERLAY | DDSCAPS_VIDEOMEMORY;
 		ddsdOff.ddpfPixelFormat.dwSize		= sizeof(DDPIXELFORMAT);
 		ddsdOff.ddpfPixelFormat.dwFlags		= DDPF_FOURCC;
@@ -1782,7 +1619,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 		mOverlayUpdateTimer = SetTimer(mhwnd, kOverlayUpdateTimerId, 100, NULL);
 		memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 
-		VDDEBUG("VideoDisplay: Using DirectDraw overlay for %dx%d display.\n", mSource.w, mSource.h);
+		VDDEBUG("VideoDisplay: Using DirectDraw overlay for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 		DEBUG_LOG("VideoDisplay/DDraw: Overlay surface creation successful\n");
 
 		mbRepaintOnNextUpdate = true;
@@ -1802,39 +1639,29 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 
 		// determine primary surface pixel format
 		if (pf.dwFlags & DDPF_PALETTEINDEXED8) {
-			mPrimaryFormat = IVDVideoDisplay::kFormatPal8;
+			mPrimaryFormat = nsVDPixmap::kPixFormat_Pal8;
 			VDDEBUG("VideoDisplay/DirectDraw: Display is 8-bit paletted.\n");
 		} else if (pf.dwFlags & DDPF_RGB) {
 			if (   pf.dwRGBBitCount == 16 && pf.dwRBitMask == 0x7c00 && pf.dwGBitMask == 0x03e0 && pf.dwBBitMask == 0x001f) {
-				mPrimaryFormat = IVDVideoDisplay::kFormatRGB1555;
+				mPrimaryFormat = nsVDPixmap::kPixFormat_XRGB1555;
 				VDDEBUG("VideoDisplay/DirectDraw: Display is 16-bit xRGB (1-5-5-5).\n");
 			} else if (pf.dwRGBBitCount == 16 && pf.dwRBitMask == 0xf800 && pf.dwGBitMask == 0x07e0 && pf.dwBBitMask == 0x001f) {
-				mPrimaryFormat = IVDVideoDisplay::kFormatRGB565;
+				mPrimaryFormat = nsVDPixmap::kPixFormat_RGB565;
 				VDDEBUG("VideoDisplay/DirectDraw: Display is 16-bit RGB (5-6-5).\n");
 			} else if (pf.dwRGBBitCount == 24 && pf.dwRBitMask == 0xff0000 && pf.dwGBitMask == 0x00ff00 && pf.dwBBitMask == 0x0000ff) {
-				mPrimaryFormat = IVDVideoDisplay::kFormatRGB888;
+				mPrimaryFormat = nsVDPixmap::kPixFormat_RGB888;
 				VDDEBUG("VideoDisplay/DirectDraw: Display is 24-bit RGB (8-8-8).\n");
 			} else if (pf.dwRGBBitCount == 32 && pf.dwRBitMask == 0xff0000 && pf.dwGBitMask == 0x00ff00 && pf.dwBBitMask == 0x0000ff) {
-				mPrimaryFormat = IVDVideoDisplay::kFormatRGB8888;
+				mPrimaryFormat = nsVDPixmap::kPixFormat_XRGB8888;
 				VDDEBUG("VideoDisplay/DirectDraw: Display is 32-bit xRGB (8-8-8-8).\n");
 			} else
 				break;
 		} else
 			break;
 
-		if (mPrimaryFormat != mSource.format) {
+		if (mPrimaryFormat != mSource.pixmap.format) {
 			if (!mSource.bAllowConversion) {
 				VDDEBUG("VideoDisplay/DirectDraw: Display is not compatible with source and conversion is disallowed.\n");
-				return false;
-			}
-
-			switch(mSource.format) {
-			case IVDVideoDisplay::kFormatRGB1555:
-			case IVDVideoDisplay::kFormatRGB888:
-			case IVDVideoDisplay::kFormatRGB8888:
-				break;
-			default:
-				VDDEBUG("VideoDisplay/DirectDraw: Display conversion is not available.\n");
 				return false;
 			}
 		}
@@ -1850,14 +1677,34 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 		DDSURFACEDESC ddsdOff = {sizeof(DDSURFACEDESC)};
 
 		ddsdOff.dwFlags					= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
-		ddsdOff.dwWidth					= mSource.w;
-		ddsdOff.dwHeight				= mSource.h;
+		ddsdOff.dwWidth					= mSource.pixmap.w;
+		ddsdOff.dwHeight				= mSource.pixmap.h;
 		ddsdOff.ddsCaps.dwCaps			= DDSCAPS_OFFSCREENPLAIN;
 		ddsdOff.ddpfPixelFormat			= pf;
 
-		IDirectDrawSurface *pdds;
+		IDirectDrawSurface *pdds = NULL;
 
-		if (FAILED(mpddman->GetDDraw()->CreateSurface(&ddsdOff, &pdds, NULL))) {
+		// if the source is persistent, try to create the surface directly into system memory
+		if (mSource.bPersistent) {
+			mSource.bPersistent = false;
+
+#if 0		// doesn't work in DX3 -- need DX7 interfaces to create client surfaces
+			if (mPrimaryFormat == mSource.format) {
+				DDSURFACEDESC ddsdOff2(ddsdOff);
+
+				ddsdOff2.dwFlags			= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT | DDSD_PITCH | DDSD_LPSURFACE;
+				ddsdOff2.lpSurface			= (void *)mSource.data;
+				ddsdOff2.lPitch				= mSource.pitch;
+				ddsdOff2.ddsCaps.dwCaps		= DDSCAPS_OFFSCREENPLAIN | DDSCAPS_SYSTEMMEMORY;
+				if (SUCCEEDED(mpddman->GetDDraw()->CreateSurface(&ddsdOff2, &pdds, NULL))) {
+					DEBUG_LOG("VideoDriver/DDraw: Created surface directly in system memory (lucky!)\n");
+					mSource.bPersistent = true;
+				}
+			}
+#endif
+		}
+
+		if (!pdds && FAILED(mpddman->GetDDraw()->CreateSurface(&ddsdOff, &pdds, NULL))) {
 			DEBUG_LOG("VideoDriver/DDraw: Couldn't create offscreen surface\n");
 			break;
 		}
@@ -1873,7 +1720,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 		mbRepaintOnNextUpdate = false;
 
 		DEBUG_LOG("VideoDriver/DDraw: Offscreen initialization successful\n");
-		VDDEBUG("VideoDisplay: Using DirectDraw offscreen surface for %dx%d display.\n", mSource.w, mSource.h);
+		VDDEBUG("VideoDisplay: Using DirectDraw offscreen surface for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 		return true;
 	} while(false); 
 
@@ -1913,7 +1760,7 @@ bool VDVideoDisplayMinidriverDirectDraw::ModifySource(const VDVideoDisplaySource
 	if (!mpddsBitmap && !mpddsOverlay)
 		return false;
 
-	if (mSource.w == info.w && mSource.h == info.h && mSource.format == info.format) {
+	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && !mSource.bPersistent) {
 		mSource = info;
 		return true;
 	}
@@ -1968,10 +1815,10 @@ bool VDVideoDisplayMinidriverDirectDraw::Resize() {
 
 			// source clipping
 			RECT rSrc = {
-				(rDst.left   - rDst0.left) * mSource.w / dstw,
-				(rDst.top    - rDst0.top ) * mSource.h / dsth,
-				(rDst.right  - rDst0.left) * mSource.w / dstw,
-				(rDst.bottom - rDst0.top ) * mSource.h / dsth,
+				(rDst.left   - rDst0.left) * mSource.pixmap.w / dstw,
+				(rDst.top    - rDst0.top ) * mSource.pixmap.h / dsth,
+				(rDst.right  - rDst0.left) * mSource.pixmap.w / dstw,
+				(rDst.bottom - rDst0.top ) * mSource.pixmap.h / dsth,
 			};
 
 			// source alignment
@@ -2078,78 +1925,65 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 		return false;
 	}
 
-	VDVideoDisplaySourceInfo source(mSource);
+	VDPixmap source(mSource.pixmap);
 
 	char *dst = (char *)ddsd.lpSurface;
 	ptrdiff_t dstpitch = ddsd.lPitch;
 
-	if (source.bInterlaced && fieldmode != kAllFields) {
+	if (mSource.bInterlaced && fieldmode != kAllFields) {
 		if (fieldmode == kOddFieldsOnly) {
-			source.data = (const char *)source.data + source.stride;
+			source.data = (char *)source.data + source.pitch;
 			source.h >>= 1;
 			dst += dstpitch;
 		} else {
 			source.h = (source.h + 1) >> 1;
 		}
 
-		source.stride += source.stride;
+		source.pitch += source.pitch;
 		dstpitch += dstpitch;
 	}
 
-	if (mpddsBitmap && source.format != mPrimaryFormat) {
-		int mSrcDepth = 16;
-		int mDstDepth = 16;
+	VDPixmap dstbm = { dst, NULL, source.w, source.h, dstpitch, mPrimaryFormat };
 
-		switch(source.format) {
-		case IVDVideoDisplay::kFormatRGB1555:
-			mSrcDepth = 16;
-			break;
-		case IVDVideoDisplay::kFormatRGB888:
-			mSrcDepth = 24;
-			break;
-		case IVDVideoDisplay::kFormatRGB8888:
-			mSrcDepth = 32;
-			break;
+	if (mpddsOverlay)
+		dstbm.format = source.format;
+
+	const VDPixmapFormatInfo& dstinfo = VDPixmapGetInfo(dstbm.format);
+
+	if (dstinfo.auxbufs >= 1) {
+		const int qw = -(-dstbm.w >> dstinfo.qwbits);
+		const int qh = -(-dstbm.h >> dstinfo.qhbits);
+
+		dstbm.data2		= (char *)dstbm.data + dstpitch * qh;
+		dstbm.pitch2	= dstpitch >> dstinfo.auxwbits;
+
+		if (dstinfo.auxbufs >= 2) {
+#pragma vdpragma_TODO("figure out why ATI needs the offset and NVIDIA doesn't")
+			ptrdiff_t offset = (dstinfo.auxhbits && (dstbm.h & 1)) ? dstbm.pitch2 >> 1 : 0;
+			dstbm.data3 = (char *)dstbm.data2 + dstbm.pitch2 * (dstbm.h >> dstinfo.auxhbits);// + offset;
+//			dstbm.data3 = (char *)dstbm.data2 + ((dstpitch * dstbm.h) >> (dstinfo.auxwbits + dstinfo.auxhbits));
+			dstbm.pitch3 = dstbm.pitch2;
 		}
 
-		switch(mPrimaryFormat) {
-		case IVDVideoDisplay::kFormatPal8:
-			mDstDepth = 8;
-			break;
-		case IVDVideoDisplay::kFormatRGB1555:
-			mDstDepth = 16;
-			break;
-		case IVDVideoDisplay::kFormatRGB888:
-			mDstDepth = 24;
-			break;
-		case IVDVideoDisplay::kFormatRGB8888:
-			mDstDepth = 32;
-			break;
+		if (mbSwapChromaPlanes) {
+			std::swap(dstbm.data2, dstbm.data3);
+			std::swap(dstbm.pitch2, dstbm.pitch3);
 		}
-
-		VBitmap srcbm, dstbm;
-
-		srcbm.data		= (Pixel32 *)source.data;
-		srcbm.w			= source.w;
-		srcbm.h			= source.h;
-		srcbm.pitch		= source.stride;
-		srcbm.depth		= mSrcDepth;
-
-		dstbm.data		= (Pixel32 *)dst;
-		dstbm.pitch		= dstpitch;
-		dstbm.w			= source.w;
-		dstbm.h			= source.h;
-		dstbm.depth		= mDstDepth;
-
-		if (mPrimaryFormat == IVDVideoDisplay::kFormatPal8)
-			VDDitherImage(dstbm, srcbm, mpLogicalPalette);
-		else if (mPrimaryFormat == IVDVideoDisplay::kFormatRGB565)
-			dstbm.BitBlt565(0, 0, &srcbm, 0, 0, dstbm.w, dstbm.h);
-		else
-			dstbm.BitBlt(0, 0, &srcbm, 0, 0, dstbm.w, dstbm.h);
-	} else {
-		VDMemcpyRect(dst, dstpitch, source.data, source.stride, source.bpr, source.h);
 	}
+
+#if 0
+	const int qw = -(-dstbm.w >> dstinfo.qwbits);
+	const int qh = -(-dstbm.h >> dstinfo.qhbits);
+
+	for(int y=0; y<qh; ++y)
+		memset((char *)dstbm.data + dstbm.pitch * y, 0xcc, qh*dstinfo.qsize);
+#endif
+
+	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8 && dstbm.format != source.format)
+		VDDitherImage(dstbm, source, mpLogicalPalette);
+	else
+		VDPixmapBlt(dstbm, source);
+
 	
 	hr = pTarget->Unlock(0);
 
@@ -2203,9 +2037,10 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 	if (!mSource.bInterlaced)
 		InternalBlt(pDest, &rDst, NULL);
 	else {
-		uint32 vinc		= (mSource.h << 16) / rClient.bottom;
+		const VDPixmap& source = mSource.pixmap;
+		uint32 vinc		= (source.h << 16) / rClient.bottom;
 		uint32 vaccum	= vinc >> 1;
-		uint32 vtlimit	= (((mSource.h + 1) >> 1) << 17) - 1;
+		uint32 vtlimit	= (((source.h + 1) >> 1) << 17) - 1;
 		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
 		int ystep		= (mode == kAllFields) ? 1 : 2;
 
@@ -2229,7 +2064,7 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 			}
 
 			RECT rDstTemp = { rDst.left, rDst.top+y, rDst.right, rDst.top+y+1 };
-			RECT rSrcTemp = { 0, v, mSource.w, v+1 };
+			RECT rSrcTemp = { 0, v, source.w, v+1 };
 
 			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp))
 				break;
@@ -2286,6 +2121,7 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid() { return mbValid; }
+	void SetFilterMode(FilterMode mode) {}
 
 	bool Tick(int id) { return true; }
 	bool Resize() { return true; }
@@ -2330,12 +2166,25 @@ VDVideoDisplayMinidriverGDI::~VDVideoDisplayMinidriverGDI() {
 }
 
 bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
-	if (!info.bAllowConversion) {
-		switch(info.format) {
-		case IVDVideoDisplay::kFormatYUV422_YUYV:
-		case IVDVideoDisplay::kFormatYUV422_UYVY:
+	switch(info.pixmap.format) {
+	case nsVDPixmap::kPixFormat_Pal8:
+	case nsVDPixmap::kPixFormat_XRGB1555:
+	case nsVDPixmap::kPixFormat_RGB565:
+	case nsVDPixmap::kPixFormat_RGB888:
+	case nsVDPixmap::kPixFormat_XRGB8888:
+		break;
+
+	case nsVDPixmap::kPixFormat_YUV422_YUYV:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY:
+	case nsVDPixmap::kPixFormat_YUV444_Planar:
+	case nsVDPixmap::kPixFormat_YUV422_Planar:
+	case nsVDPixmap::kPixFormat_YUV420_Planar:
+	case nsVDPixmap::kPixFormat_YUV411_Planar:
+	case nsVDPixmap::kPixFormat_YUV410_Planar:
+	case nsVDPixmap::kPixFormat_Y8:
+		if (!info.bAllowConversion)
+	default:
 			return false;
-		}
 	}
 	
 	mhwnd	= hwnd;
@@ -2356,50 +2205,50 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 				} bih;
 
 				bih.hdr.biSize			= sizeof(BITMAPINFOHEADER);
-				bih.hdr.biWidth			= mSource.w;
-				bih.hdr.biHeight		= mSource.h;
+				bih.hdr.biWidth			= mSource.pixmap.w;
+				bih.hdr.biHeight		= mSource.pixmap.h;
 				bih.hdr.biPlanes		= 1;
 				bih.hdr.biCompression	= BI_RGB;
 				bih.hdr.biBitCount		= 8;
 
-				mPitch = ((mSource.w + 3) & ~3);
-				bih.hdr.biSizeImage		= mPitch * mSource.h;
+				mPitch = ((mSource.pixmap.w + 3) & ~3);
+				bih.hdr.biSizeImage		= mPitch * mSource.pixmap.h;
 				bih.hdr.biClrUsed		= 216;
 				bih.hdr.biClrImportant	= 216;
 
 				for(int i=0; i<216; ++i) {
-					bih.pal[i].rgbRed	= (i / 36) * 51;
-					bih.pal[i].rgbGreen	= ((i%36) / 6) * 51;
-					bih.pal[i].rgbBlue	= (i%6) * 51;
+					bih.pal[i].rgbRed	= (BYTE)((i / 36) * 51);
+					bih.pal[i].rgbGreen	= (BYTE)(((i%36) / 6) * 51);
+					bih.pal[i].rgbBlue	= (BYTE)((i%6) * 51);
 					bih.pal[i].rgbReserved = 0;
 				}
 
 				for(int j=0; j<256; ++j)
-					mIdentTab[j] = j;
+					mIdentTab[j] = (uint8)j;
 
 				mhbm = CreateDIBSection(hdc, (const BITMAPINFO *)&bih, DIB_RGB_COLORS, &mpBitmapBits, mSource.pSharedObject, mSource.sharedOffset);
-			} else if (mSource.format == IVDVideoDisplay::kFormatPal8) {
+			} else if (mSource.pixmap.format == nsVDPixmap::kPixFormat_Pal8) {
 				struct {
 					BITMAPINFOHEADER hdr;
 					RGBQUAD pal[256];
 				} bih;
 
 				bih.hdr.biSize			= sizeof(BITMAPINFOHEADER);
-				bih.hdr.biWidth			= mSource.w;
-				bih.hdr.biHeight		= mSource.h;
+				bih.hdr.biWidth			= mSource.pixmap.w;
+				bih.hdr.biHeight		= mSource.pixmap.h;
 				bih.hdr.biPlanes		= 1;
 				bih.hdr.biCompression	= BI_RGB;
 				bih.hdr.biBitCount		= 8;
 
-				mPitch = ((mSource.w + 3) & ~3);
-				bih.hdr.biSizeImage		= mPitch * mSource.h;
+				mPitch = ((mSource.pixmap.w + 3) & ~3);
+				bih.hdr.biSizeImage		= mPitch * mSource.pixmap.h;
 				bih.hdr.biClrUsed		= 256;
 				bih.hdr.biClrImportant	= 256;
 
 				for(int i=0; i<256; ++i) {
-					bih.pal[i].rgbRed	= (uint8)(mSource.palette[i] >> 16);
-					bih.pal[i].rgbGreen	= (uint8)(mSource.palette[i] >> 8);
-					bih.pal[i].rgbBlue	= (uint8)mSource.palette[i];
+					bih.pal[i].rgbRed	= (uint8)(mSource.pixmap.palette[i] >> 16);
+					bih.pal[i].rgbGreen	= (uint8)(mSource.pixmap.palette[i] >> 8);
+					bih.pal[i].rgbBlue	= (uint8)mSource.pixmap.palette[i];
 					bih.pal[i].rgbReserved = 0;
 				}
 
@@ -2408,31 +2257,38 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 				BITMAPV4HEADER bih = {0};
 
 				bih.bV4Size				= sizeof(BITMAPINFOHEADER);
-				bih.bV4Width			= mSource.w;
-				bih.bV4Height			= mSource.h;
+				bih.bV4Width			= mSource.pixmap.w;
+				bih.bV4Height			= mSource.pixmap.h;
 				bih.bV4Planes			= 1;
 				bih.bV4V4Compression	= BI_RGB;
-				bih.bV4BitCount			= mSource.bpp << 3;
+				bih.bV4BitCount			= (WORD)(mSource.bpp << 3);
 
-				switch(mSource.format) {
-				case IVDVideoDisplay::kFormatRGB1555:
-				case IVDVideoDisplay::kFormatRGB888:
-				case IVDVideoDisplay::kFormatRGB8888:
+				switch(mSource.pixmap.format) {
+				case nsVDPixmap::kPixFormat_XRGB1555:
+				case nsVDPixmap::kPixFormat_RGB888:
+				case nsVDPixmap::kPixFormat_XRGB8888:
 					break;
-				case IVDVideoDisplay::kFormatYUV422_YUYV:
-				case IVDVideoDisplay::kFormatYUV422_UYVY:
-				case IVDVideoDisplay::kFormatRGB565:
+				case nsVDPixmap::kPixFormat_YUV422_YUYV:
+				case nsVDPixmap::kPixFormat_YUV422_UYVY:
+				case nsVDPixmap::kPixFormat_YUV444_Planar:
+				case nsVDPixmap::kPixFormat_YUV422_Planar:
+				case nsVDPixmap::kPixFormat_YUV420_Planar:
+				case nsVDPixmap::kPixFormat_YUV411_Planar:
+				case nsVDPixmap::kPixFormat_YUV410_Planar:
+				case nsVDPixmap::kPixFormat_Y8:
+				case nsVDPixmap::kPixFormat_RGB565:
 					bih.bV4V4Compression	= BI_BITFIELDS;
 					bih.bV4RedMask			= 0xf800;
 					bih.bV4GreenMask		= 0x07e0;
 					bih.bV4BlueMask			= 0x001f;
+					bih.bV4BitCount			= 16;
 					break;
 				default:
 					return false;
 				}
 
-				mPitch = ((mSource.w * mSource.bpp + 3) & ~3);
-				bih.bV4SizeImage		= mPitch * mSource.h;
+				mPitch = ((mSource.pixmap.w * bih.bV4BitCount + 31)>>5)*4;
+				bih.bV4SizeImage		= mPitch * mSource.pixmap.h;
 				mhbm = CreateDIBSection(hdc, (const BITMAPINFO *)&bih, DIB_RGB_COLORS, &mpBitmapBits, mSource.pSharedObject, mSource.sharedOffset);
 			}
 
@@ -2441,7 +2297,7 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 
 				if (mhbmOld) {
 					ReleaseDC(mhwnd, hdc);
-					VDDEBUG("VideoDisplay: Using GDI for %dx%d display.\n", mSource.w, mSource.h);
+					VDDEBUG("VideoDisplay: Using GDI for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 					mbValid = (mSource.pSharedObject != 0);
 					return true;
 				}
@@ -2484,7 +2340,7 @@ bool VDVideoDisplayMinidriverGDI::ModifySource(const VDVideoDisplaySourceInfo& i
 	if (!mhdc)
 		return false;
 
-	if (!mSource.pSharedObject && mSource.w == info.w && mSource.h == info.h && mSource.format == info.format) {
+	if (!mSource.pSharedObject && mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format) {
 		mSource = info;
 		return true;
 	}
@@ -2496,70 +2352,45 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 	if (!mSource.pSharedObject) {
 		GdiFlush();
 
-		VDVideoDisplaySourceInfo source(mSource);
+		VDPixmap source(mSource.pixmap);
 
-		char *dst = (char *)mpBitmapBits + mPitch*(mSource.h - 1);
+		char *dst = (char *)mpBitmapBits + mPitch*(source.h - 1);
 		ptrdiff_t dstpitch = -mPitch;
 
-		if (source.bInterlaced && fieldmode != kAllFields) {
+		if (mSource.bInterlaced && fieldmode != kAllFields) {
 			if (fieldmode == kOddFieldsOnly) {
-				source.data = (const char *)source.data + source.stride;
+				source.data = (char *)source.data + source.pitch;
 				source.h >>= 1;
 				dst += dstpitch;
 			} else {
 				source.h = (source.h + 1) >> 1;
 			}
 
-			source.stride += source.stride;
+			source.pitch += source.pitch;
 			dstpitch += dstpitch;
 		}
 
+		VDPixmap dstbm = { dst, NULL, source.w, source.h, dstpitch, source.format };
+
 		if (mbPaletted) {
-			int mSrcDepth;
+			dstbm.format = kPixFormat_Pal8;
 
-			switch(source.format) {
-			case IVDVideoDisplay::kFormatPal8:
-				mSrcDepth = 8;
-				break;
-			case IVDVideoDisplay::kFormatRGB1555:
-				mSrcDepth = 16;
-				break;
-			case IVDVideoDisplay::kFormatRGB888:
-				mSrcDepth = 24;
-				break;
-			case IVDVideoDisplay::kFormatRGB8888:
-				mSrcDepth = 32;
-				break;
-			}
-
-			VBitmap srcbm, dstbm;
-
-			srcbm.data		= (Pixel32 *)source.data;
-			srcbm.palette	= (Pixel32 *)source.palette;
-			srcbm.w			= source.w;
-			srcbm.h			= source.h;
-			srcbm.pitch		= source.stride;
-			srcbm.depth		= mSrcDepth;
-
-			dstbm.data		= (Pixel32 *)dst;
-			dstbm.pitch		= dstpitch;
-			dstbm.w			= source.w;
-			dstbm.h			= source.h;
-			dstbm.depth		= 8;
-
-			VDDitherImage(dstbm, srcbm, mIdentTab);
+			VDDitherImage(dstbm, source, mIdentTab);
 		} else {
 			switch(source.format) {
-			case IVDVideoDisplay::kFormatYUV422_UYVY:
-				VDYCbCrToRGB565Generic(dst, dstpitch, source.data, source.stride, source.data, source.data, source.stride, source.w, source.h, g_formatInfo_YUV422_UYVY);
-				break;
-			case IVDVideoDisplay::kFormatYUV422_YUYV:
-				VDYCbCrToRGB565Generic(dst, dstpitch, source.data, source.stride, source.data, source.data, source.stride, source.w, source.h, g_formatInfo_YUV422_YUYV);
-				break;
-			default:
-				VDMemcpyRect(dst, dstpitch, source.data, source.stride, source.bpr, source.h);
+			case nsVDPixmap::kPixFormat_YUV422_UYVY:
+			case nsVDPixmap::kPixFormat_YUV422_YUYV:
+			case nsVDPixmap::kPixFormat_YUV444_Planar:
+			case nsVDPixmap::kPixFormat_YUV422_Planar:
+			case nsVDPixmap::kPixFormat_YUV420_Planar:
+			case nsVDPixmap::kPixFormat_YUV411_Planar:
+			case nsVDPixmap::kPixFormat_YUV410_Planar:
+			case nsVDPixmap::kPixFormat_Y8:
+				dstbm.format = kPixFormat_RGB565;
 				break;
 			}
+
+			VDPixmapBlt(dstbm, source);
 		}
 
 		mbValid = true;
@@ -2589,9 +2420,10 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 	SetStretchBltMode(hdc, COLORONCOLOR);
 
 	if (mSource.bInterlaced) {
-		uint32 vinc		= (mSource.h << 16) / rClient.bottom;
+		const VDPixmap& source = mSource.pixmap;
+		uint32 vinc		= (source.h << 16) / rClient.bottom;
 		uint32 vaccum	= vinc >> 1;
-		uint32 vtlimit	= (((mSource.h + 1) >> 1) << 17) - 1;
+		uint32 vtlimit	= (((source.h + 1) >> 1) << 17) - 1;
 		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
 		int ystep		= (mode == kAllFields) ? 1 : 2;
 
@@ -2614,10 +2446,10 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 				v = (vt>>16) & ~1;
 			}
 
-			StretchBlt(hdc, 0, y, rClient.right, 1, mhdc, 0, v, mSource.w, 1, SRCCOPY);
+			StretchBlt(hdc, 0, y, rClient.right, 1, mhdc, 0, v, source.w, 1, SRCCOPY);
 			vaccum += vinc;
 		}
 	} else {
-		StretchBlt(hdc, 0, 0, rClient.right, rClient.bottom, mhdc, 0, 0, mSource.w, mSource.h, SRCCOPY);
+		StretchBlt(hdc, 0, 0, rClient.right, rClient.bottom, mhdc, 0, 0, mSource.pixmap.w, mSource.pixmap.h, SRCCOPY);
 	}
 }

@@ -1,7 +1,7 @@
 #ifndef f_SYLIA_SCRIPTERROR_H
 #define f_SYLIA_SCRIPTERROR_H
 
-class CScriptError {
+class VDScriptError {
 public:
 	int err;
 
@@ -39,17 +39,17 @@ public:
 		FCALL_UNKNOWN_STR
 	};
 
-	CScriptError(int err_num) : err(err_num) { }
+	VDScriptError(int err_num) : err(err_num) { }
 
 	int getErr() { return err; }
 };
 
-#define SCRIPT_ERROR(x)			throw CScriptError(CScriptError::##x)
+#define SCRIPT_ERROR(x)			throw VDScriptError(VDScriptError::##x)
 
-const char *TranslateScriptError(int);
+const char *VDScriptTranslateError(int);
 
-static inline const char *TranslateScriptError(CScriptError cse) {
-	return TranslateScriptError(cse.getErr());
+static inline const char *VDScriptTranslateError(VDScriptError cse) {
+	return VDScriptTranslateError(cse.getErr());
 }
 
 #endif

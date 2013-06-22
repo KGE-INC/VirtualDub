@@ -19,6 +19,8 @@
 #include <windows.h>
 #include "VBitmap.h"
 #include <vd2/system/error.h>
+#include <vd2/system/vdalloc.h>
+#include "imagejpegdec.h"
 
 void ConvertOldHeader(BITMAPINFOHEADER& newhdr, const BITMAPCOREHEADER& oldhdr) {
 	newhdr.biSize			= sizeof(BITMAPINFOHEADER);
@@ -89,7 +91,8 @@ void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 		pbih = &bihTemp;
 	}
 
-	vb.BitBlt(0, 0, &VBitmap((char *)pBuffer + pbfh->bfOffBits, (BITMAPINFOHEADER *)pbih), 0, 0, -1, -1);
+	VBitmap src((char *)pBuffer + pbfh->bfOffBits, (BITMAPINFOHEADER *)pbih);
+	vb.BitBlt(0, 0, &src, 0, 0, -1, -1);
 }
 
 struct TGAHeader {
@@ -322,18 +325,58 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+bool IsJPEGHeader(const void *pv, uint32 len) {
+	const uint8 *buf = (const uint8 *)pv;
+
+	if (len >= 32 && buf[0] == 0xFF && buf[1] == 0xD8) {	// x'FF' SOI
+		if (buf[2] == 0xFF && buf[3] == 0xE0) {		// x'FF' APP0
+			// Hmm... might be a JPEG image.  Check for JFIF tag.
+			if (buf[6] == 'J' && buf[7] == 'F' && buf[8] == 'I' && buf[9] == 'F')
+				return true;
+		}
+		if (buf[2] == 0xFF && buf[3] == 0xE1) {		// x'FF' APP1
+			// Hmm... might be a JPEG image.  Check for JFIF tag.
+			if (buf[6] == 'E' && buf[7] == 'x' && buf[8] == 'i' && buf[9] == 'f')
+				return true;
+		}
+	}
+	return false;
+}
+
 void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha) {
 	int w, h;
-	bool bIsBMP =            DecodeBMPHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
-	bool bIsTGA = !bIsBMP && DecodeTGAHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
 
-	if (!bIsBMP && !bIsTGA)
-		throw MyError("Image file must be in Windows BMP or truecolor TARGA format.");
+	bool bIsJPG = IsJPEGHeader(pBuffer, cbBuffer);
+	bool bIsBMP = !bIsJPG &&            DecodeBMPHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+	bool bIsTGA = !bIsJPG && !bIsBMP && DecodeTGAHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+
+	if (!bIsBMP && !bIsTGA && !bIsJPG)
+		throw MyError("Image file must be in Windows BMP, truecolor TARGA format, or sequential JPEG format.");
+
+	vdautoptr<IVDJPEGDecoder> pDecoder;
+
+	if (bIsJPG) {
+		pDecoder = VDCreateJPEGDecoder();
+		pDecoder->Begin(pBuffer, cbBuffer);
+		pDecoder->DecodeHeader(w, h);
+	}
 
 	vb.init(new Pixel32[(((w*desired_depth+31)>>5)<<2) * h], w, h, desired_depth);
 	if (!vb.data)
 		throw MyMemoryError();
 
+	if (bIsJPG) {
+		int format;
+
+		switch(vb.depth) {
+		case 16:	format = IVDJPEGDecoder::kFormatXRGB1555;	break;
+		case 24:	format = IVDJPEGDecoder::kFormatRGB888;		break;
+		case 32:	format = IVDJPEGDecoder::kFormatXRGB8888;	break;
+		}
+
+		pDecoder->DecodeImage((char *)vb.data + vb.pitch * (vb.h - 1), -vb.pitch, format);
+		pDecoder->End();
+	}
 	if (bIsBMP)
 		DecodeBMP(pBuffer, cbBuffer, vb);
 	if (bIsTGA)

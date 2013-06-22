@@ -6,6 +6,9 @@
 #include <map>
 #include <vd2/system/VDScheduler.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/thread.h>
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdaudiofilt.h>
 #include "filter.h"
 
 struct VDPluginInfo;
@@ -90,6 +93,8 @@ public:
 	virtual void DeserializeConfig(const VDFilterConfig&) = 0;
 	virtual void SerializeConfig(VDFilterConfig&) = 0;
 	virtual void *GetObject() = 0;
+	virtual sint64 GetPosition() = 0;
+	virtual sint64 GetLength() = 0;
 	virtual bool GetOutputPinFormats(std::vector<VDWaveFormat>& formats) = 0;
 };
 
@@ -133,15 +138,25 @@ public:
 
 	void Seek(sint64 us);
 
+	IVDAudioFilterInstance *GetClock();
+
+	void SetIdleSignal(VDSignal *pSignal);
+
 protected:
 	VDScheduler		mFilterScheduler;
+
+	VDAudioFilterInstance	*mpClock;
 
 	typedef std::list<VDAudioFilterInstance *> tFilterList;
 	tFilterList		mFilters;
 	tFilterList		mStartedFilters;
 
+	VDCriticalSection	mcsStateChange;
+
 	void SortFilter(tFilterList& newList, VDAudioFilterInstance *pFilt);
 	void Sort();
+	void Suspend();
+	void Resume();
 };
 
 void VDAddAudioFilter(const VDAudioFilterDefinition *);

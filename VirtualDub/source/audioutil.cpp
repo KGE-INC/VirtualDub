@@ -33,7 +33,7 @@ void VDAPIENTRY VDConvertPCM32FToPCM8(void *dst0, const void *src0, uint32 sampl
 	const float *src = (const float *)src0;
 
 	do {
-		const float ftmp = 98304.0 + *src++;
+		const float ftmp = 98304.0f + *src++;
 		sint32 v = reinterpret_cast<const sint32&>(ftmp) - 0x47bfff80;
 
 		if ((uint32)v >= 256)
@@ -51,7 +51,7 @@ void VDAPIENTRY VDConvertPCM32FToPCM16(void *dst0, const void *src0, uint32 samp
 	const float *src = (const float *)src0;
 
 	do {
-		const float ftmp = 384.0 + *src++;
+		const float ftmp = 384.0f + *src++;
 		sint32 v = reinterpret_cast<const sint32&>(ftmp) - 0x43bf8000;
 
 		if ((uint32)v >= 0x10000)
@@ -155,13 +155,22 @@ void VDAPIENTRY VDAudioFilterPCM16SymmetricArray(sint16 *dst, ptrdiff_t dst_stri
 	}
 }
 
+
+#ifdef _M_IX86
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	MMX implementations
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static const __int64 x80b = 0x8080808080808080;
+#ifdef _MSC_VER
+	#pragma warning(disable: 4799)		// warning C4799: function has no MMX instruction
+#endif
+
+namespace {
+	const __int64 x80b = 0x8080808080808080;
+}
 
 void __declspec(naked) VDAPIENTRY VDConvertPCM16ToPCM8_MMX(void *dst0, const void *src0, uint32 samples) {
 
@@ -576,6 +585,7 @@ xit:
 		ret
 	}
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -589,6 +599,7 @@ static const tpVDConvertPCM g_VDConvertPCMTable_scalar[3][3]={
 	{	VDConvertPCM32FToPCM8,		VDConvertPCM32FToPCM16,			0							},
 };
 
+#ifdef _M_IX86
 static const tpVDConvertPCM g_VDConvertPCMTable_MMX[3][3]={
 	{	0,							VDConvertPCM8ToPCM16_MMX,		VDConvertPCM8ToPCM32F		},
 	{	VDConvertPCM16ToPCM8_MMX,	0,								VDConvertPCM16ToPCM32F		},
@@ -600,8 +611,10 @@ static const tpVDConvertPCM g_VDConvertPCMTable_SSE[3][3]={
 	{	VDConvertPCM16ToPCM8_MMX,	0,								VDConvertPCM16ToPCM32F_SSE	},
 	{	VDConvertPCM32FToPCM8_SSE,	VDConvertPCM32FToPCM16_SSE,		0							},
 };
+#endif
 
 tpVDConvertPCMVtbl VDGetPCMConversionVtable() {
+#ifdef _M_IX86
 	uint32 exts = CPUGetEnabledExtensions();
 
 	if (exts & CPUF_SUPPORTS_MMX) {
@@ -610,6 +623,7 @@ tpVDConvertPCMVtbl VDGetPCMConversionVtable() {
 		else
 			return g_VDConvertPCMTable_MMX;
 	}
+#endif
 	return g_VDConvertPCMTable_scalar;
 }
 
@@ -619,17 +633,21 @@ static const VDAudioFilterVtable g_VDAudioFilterVtable_scalar = {
 	VDAudioFilterPCM16SymmetricArray
 };
 
+#ifdef _M_IX86
 static const VDAudioFilterVtable g_VDAudioFilterVtable_MMX = {
 	VDAudioFilterPCM16_MMX,
 	VDAudioFilterPCM16End_MMX,
 	VDAudioFilterPCM16SymmetricArray_MMX
 };
+#endif
 
 const VDAudioFilterVtable *VDGetAudioFilterVtable() {
+#ifdef _M_IX86
 	uint32 exts = CPUGetEnabledExtensions();
 
 	if (exts & CPUF_SUPPORTS_MMX)
 		return &g_VDAudioFilterVtable_MMX;
+#endif
 
 	return &g_VDAudioFilterVtable_scalar;
 }

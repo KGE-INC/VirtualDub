@@ -34,11 +34,8 @@ public:
 	uint32 Prepare();
 	void Start();
 	uint32 Run();
-	uint32 Read(unsigned inpin, void *dst, uint32 samples);
-	sint64 Seek(sint64 us);
 
 protected:
-	VDRingBuffer<sint16>		mOutputBuffer;
 	std::vector<sint16>			mDelayBuffer;
 	uint32						mDelayBufferSize;
 	uint32						mDelayMask;
@@ -74,7 +71,7 @@ uint32 VDAudioFilterStereoChorus::Prepare() {
 
 	pwf->mSampleBits	= 16;
 	pwf->mChannels		= 2;
-	pwf->mBlockSize		= 2 * pwf->mChannels;
+	pwf->mBlockSize		= (uint16)(2 * pwf->mChannels);
 	pwf->mDataRate		= pwf->mSamplingRate * pwf->mBlockSize;
 
 	return 0;
@@ -83,8 +80,6 @@ uint32 VDAudioFilterStereoChorus::Prepare() {
 void VDAudioFilterStereoChorus::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
-
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 
 	// Allocate two 30ms buffers
 
@@ -105,33 +100,22 @@ void VDAudioFilterStereoChorus::Start() {
 uint32 VDAudioFilterStereoChorus::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
-	bool bInputRead = false;
 
 	// foo
 	sint16 buf16[4096];
 
-	int samples = std::min<int>(mpContext->mInputSamples, 4096 / format.mChannels);
-
 	// compute output samples
-	int elems = samples * 2;
-	sint16 *dst;
+	int samples = std::min<int>(mpContext->mCommonSamples, 4096 / format.mChannels);
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 	
-	samples = 0;
-	if (elems > 0) {
-		dst = (sint16 *)mOutputBuffer.LockWrite(elems, elems);
-		samples = elems >> 1;
-	}
-
 	if (!samples) {
-		if (pin.mbEnded && !elems)
+		if (pin.mbEnded && !mpContext->mInputSamples)
 			return kVFARun_Finished;
 
 		return 0;
 	}
 
 	// read buffer
-
-	unsigned count = format.mChannels * samples;
 
 	int actual_samples = mpContext->mpInputs[0]->Read(buf16, samples, false, kVFARead_PCM16);
 	VDASSERT(actual_samples == samples);
@@ -140,8 +124,8 @@ uint32 VDAudioFilterStereoChorus::Run() {
 
 	const int step = format.mChannels;
 
-	sint16 delaycen = format.mSamplingRate * 25 / 1000 * 256;
-	sint16 delayamp = format.mSamplingRate * 1 / 1000 * 256;
+	sint16 delaycen = (sint16)(format.mSamplingRate * 25 / 1000 * 256);
+	sint16 delayamp = (sint16)(format.mSamplingRate * 1 / 1000 * 256);
 
 	sint32 lforate = (sint32)(4294967296.0 * 0.3 / format.mSamplingRate);
 
@@ -161,7 +145,7 @@ uint32 VDAudioFilterStereoChorus::Run() {
 			sint32 fdelval = delval & 255;
 			sint32 v = *src;
 
-			delay[delaypos] = v;
+			delay[delaypos] = (sint16)v;
 
 			sint32 x1 = delay[(delaypos - idelval) & mDelayMask];
 			sint32 x2 = delay[(delaypos - idelval + 1) & mDelayMask];
@@ -186,31 +170,9 @@ uint32 VDAudioFilterStereoChorus::Run() {
 		}
 	}
 
-	mOutputBuffer.UnlockWrite(samples * 2);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
-}
-
-uint32 VDAudioFilterStereoChorus::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() >> 1);
-
-	if (dst) {
-		mOutputBuffer.Read((sint16 *)dst, samples * 2);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterStereoChorus::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_stereochorus = {

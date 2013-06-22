@@ -93,7 +93,8 @@ public:
 		FR_SAMELENGTH = -1
 	};
 
-	char	inputDepth, outputDepth;
+	int		mInputFormat;
+	int		mOutputFormat;
 	char	mode;
 	bool	fShowInputFrame, fShowOutputFrame, fShowDecompressedFrame;
 	bool	fHistogram_unused, fSyncToAudio;
@@ -135,14 +136,14 @@ public:
 
 class DubStreamInfo {
 public:
-	long	start_src;
-	long	cur_src;
-	long	cur_proc_src;
-	long	end_src;
-	long	cur_dst;
-	long	end_dst;
-	long	cur_proc_dst;
-	long	end_proc_dst;
+	sint64	start_src;
+	sint64	cur_src;
+	sint64	cur_proc_src;
+	sint64	end_src;
+	sint64	cur_dst;
+	sint64	end_dst;
+	sint64	cur_proc_dst;
+	sint64	end_proc_dst;
 	sint64	total_size;
 };
 
@@ -184,7 +185,7 @@ public:
 	virtual void SetOutputDisplay(IVDVideoDisplay *pDisplay) = 0;
 	virtual void SetAudioFilterGraph(const VDAudioFilterGraph& graph)=0;
 	virtual void EnableSpill(__int64 size, long lFrameLimit)=0;
-	virtual void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *out, COMPVARS *videoCompVars) = 0;
+	virtual void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *out, COMPVARS *videoCompVars, const FrameSubset *pfs) = 0;
 	virtual void Go(int iPriority = 0) = 0;
 	virtual void Stop() = 0;
 
@@ -200,7 +201,7 @@ public:
 };
 
 IDubber *CreateDubber(DubOptions *xopt);
-void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs=NULL);
+void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, const FrameSubset *pfs=NULL);
 
 #ifndef f_DUB_CPP
 

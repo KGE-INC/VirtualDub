@@ -1,11 +1,9 @@
-	.386
-	.model	flat
-	.data
+	.const
 
-	public	_version_num
-	public	_version_time
+	public	version_num
+	public	version_time
 
-_version_num	dd	18160
-_version_time	db	"Tue Dec 02 00:17:40 2003",0
+version_num	dd	21540
+version_time	db	"Tue Sep 07 00:45:31 2004",0
 
 	end

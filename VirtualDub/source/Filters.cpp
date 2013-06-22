@@ -37,22 +37,27 @@
 #include "gui.h"
 #include "oshelper.h"
 #include "misc.h"
+#include "plugins.h"
 
 #define f_FILTER_GLOBALS
 #include "filter.h"
 #include "filters.h"
 #include "optdlg.h"
 #include "dub.h"
+#include "project.h"
+#include "timeline.h"
 #include "VideoSource.h"
 #include "VideoDisplay.h"
 
 extern vdrefptr<VideoSource> inputVideoAVI;
-extern FrameSubset *inputSubset;
 
 extern HINSTANCE	g_hInst;
 extern "C" unsigned long version_num;
+extern VDProject *g_project;
 
-extern char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos);
+extern const VDScriptObject obj_VDVFiltInst;
+
+extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP();
 extern void CPUTest();
 
 /////////////////////////////////////
@@ -84,7 +89,8 @@ static void FilterThrowExceptMemory() {
 // This is really disgusting...
 
 static void InitVTables(struct FilterVTbls *pvtbls) {
-	pvtbls->pvtblVBitmap = *(void **)&VBitmap();
+	VBitmap tmp;
+	pvtbls->pvtblVBitmap = *(void **)&tmp;
 }
 
 static long FilterGetCPUFlags() {
@@ -134,138 +140,6 @@ FilterActivation::FilterActivation(const FilterActivation& fa, VFBitmap& _dst, V
 	pfsi			= fa.pfsi;
 }
 
-///////////////////////////////////////////////////////////////////////////
-//
-//	FilterModuleInstance
-//
-///////////////////////////////////////////////////////////////////////////
-
-class FilterModuleInstance : public ListNode2<FilterModuleInstance> {
-public:
-	FilterModuleInstance(const VDStringW& filename);
-	~FilterModuleInstance();
-
-	void AttachToModule();
-	void ReleaseModule();
-
-	const VDStringW& GetName() const { return mFilename; }
-	const FilterModule& GetInfo() const { return mModuleInfo; }
-
-	bool IsLoaded() const { return mModuleInfo.hInstModule != 0; }
-
-protected:
-	void Load();
-	void Unload();
-
-	VDStringW		mFilename;
-	FilterModule	mModuleInfo;
-	VDAtomicInt		mRefCount;
-};
-
-FilterModuleInstance::FilterModuleInstance(const VDStringW& filename)
-	: mFilename(filename)
-	, mRefCount(0)
-{
-	memset(&mModuleInfo, 0, sizeof mModuleInfo);
-}
-
-FilterModuleInstance::~FilterModuleInstance() {
-	Unload();
-}
-
-void FilterModuleInstance::AttachToModule() {
-	if (!mRefCount.postinc())
-		try {
-			Load();
-		} catch(...) {
-			--mRefCount;
-			throw;
-		}
-}
-
-void FilterModuleInstance::ReleaseModule() {
-	VDASSERT(mRefCount > 0);
-
-	if (mRefCount.dectestzero())
-		Unload();
-}
-
-void FilterModuleInstance::Load() {
-	if (!mModuleInfo.hInstModule) {
-		VDStringA nameA(VDTextWToA(mFilename));
-
-		{
-			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
-
-			mModuleInfo.hInstModule = LoadLibrary(nameA.c_str());
-		}
-
-		if (!mModuleInfo.hInstModule)
-			throw MyWin32Error("Cannot load filter module \"%s\": %%s", GetLastError(), nameA.c_str());
-
-		try {
-			mModuleInfo.initProc   = (FilterModuleInitProc  )GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleInit2");
-			mModuleInfo.deinitProc = (FilterModuleDeinitProc)GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleDeinit");
-
-			if (!mModuleInfo.initProc) {
-				void *fp = GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleInit");
-
-				if (fp)
-					throw MyError(
-						"This filter was created for VirtualDub 1.1 or earlier, and is not compatible with version 1.2 or later. "
-						"Please contact the author for an updated version.");
-
-				fp = GetProcAddress(mModuleInfo.hInstModule, "NinaFilterModuleInit");
-
-				if (fp)
-					throw MyError("This filter will only work with VirtualDub 2.0 or above.");
-			}
-
-			if (!mModuleInfo.initProc || !mModuleInfo.deinitProc)
-				throw MyError("Module \"%s\" does not contain VirtualDub filters.", nameA.c_str());
-
-			int ver_hi = VIRTUALDUB_FILTERDEF_VERSION;
-			int ver_lo = VIRTUALDUB_FILTERDEF_COMPATIBLE;
-
-			if (mModuleInfo.initProc(&mModuleInfo, &g_filterFuncs, ver_hi, ver_lo))
-				throw MyError("Error initializing module \"%s\".",nameA.c_str());
-
-			if (ver_hi < VIRTUALDUB_FILTERDEF_COMPATIBLE) {
-				mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
-
-				throw MyError(
-					"This filter was created for an earlier, incompatible filter interface. As a result, it will not "
-					"run correctly with this version of VirtualDub. Please contact the author for an updated version.");
-			}
-
-			if (ver_lo > VIRTUALDUB_FILTERDEF_VERSION) {
-				mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
-
-				throw MyError(
-					"This filter uses too new of a filter interface!  You'll need to upgrade to a newer version of "
-					"VirtualDub to use this filter."
-					);
-			}
-		} catch(...) {
-			FreeLibrary(mModuleInfo.hInstModule);
-			mModuleInfo.hInstModule = NULL;
-			throw;
-		}
-	}
-}
-
-void FilterModuleInstance::Unload() {
-	if (mModuleInfo.hInstModule) {
-		mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
-
-		{
-			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
-			FreeLibrary(mModuleInfo.hInstModule);
-		}
-
-		mModuleInfo.hInstModule = NULL;
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -275,7 +149,7 @@ void FilterModuleInstance::Unload() {
 
 class FilterDefinitionInstance : public ListNode2<FilterDefinitionInstance> {
 public:
-	FilterDefinitionInstance(FilterModuleInstance *pfm);
+	FilterDefinitionInstance(VDExternalModule *pfm);
 	~FilterDefinitionInstance();
 
 	void Assign(const FilterDefinition& def, int len);
@@ -284,23 +158,23 @@ public:
 	void Detach();
 
 	const FilterDefinition& GetDef() const { return mDef; }
-	FilterModuleInstance *GetModule() const { return mpModule; }
+	VDExternalModule	*GetModule() const { return mpExtModule; }
 
 	const VDStringA&	GetName() const { return mName; }
 	const VDStringA&	GetAuthor() const { return mAuthor; }
 	const VDStringA&	GetDescription() const { return mDescription; }
 
 protected:
-	FilterModuleInstance *const mpModule;
-	FilterDefinition mDef;
+	VDExternalModule	*mpExtModule;
+	FilterDefinition	mDef;
 	VDAtomicInt			mRefCount;
 	VDStringA			mName;
 	VDStringA			mAuthor;
 	VDStringA			mDescription;
 };
 
-FilterDefinitionInstance::FilterDefinitionInstance(FilterModuleInstance *pfm)
-	: mpModule(pfm)
+FilterDefinitionInstance::FilterDefinitionInstance(VDExternalModule *pfm)
+	: mpExtModule(pfm)
 	, mRefCount(0)
 {
 }
@@ -317,12 +191,12 @@ void FilterDefinitionInstance::Assign(const FilterDefinition& def, int len) {
 	mAuthor			= def.maker ? def.maker : "(internal)";
 	mDescription	= def.desc;
 
-	mDef.module		= const_cast<FilterModule *>(&mpModule->GetInfo());
+	mDef.module		= const_cast<FilterModule *>(&mpExtModule->GetFilterModuleInfo());
 }
 
 const FilterDefinition& FilterDefinitionInstance::Attach() {
-	if (mpModule)
-		mpModule->AttachToModule();
+	if (mpExtModule)
+		mpExtModule->Lock();
 
 	++mRefCount;
 
@@ -332,8 +206,8 @@ const FilterDefinition& FilterDefinitionInstance::Attach() {
 void FilterDefinitionInstance::Detach() {
 	VDASSERT(mRefCount.dec() >= 0);
 
-	if (mpModule)
-		mpModule->ReleaseModule();
+	if (mpExtModule)
+		mpExtModule->Unlock();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -343,7 +217,7 @@ void FilterDefinitionInstance::Detach() {
 ///////////////////////////////////////////////////////////////////////////
 
 FilterInstance::FilterInstance(const FilterInstance& fi)
-	: FilterActivation	(fi, realDst, realSrc, &realLast)
+	: FilterActivation	(fi, (VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
 	, realSrc			(fi.realSrc)
 	, realDst			(fi.realDst)
 	, realLast			(fi.realLast)
@@ -357,12 +231,14 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, fNoDeinit			(fi.fNoDeinit)
 	, pfsiDelayRing		(NULL)
 	, mpFDInst			(fi.mpFDInst)
+	, mScriptFunc		(fi.mScriptFunc)
+	, mScriptObj		(fi.mScriptObj)
 {
 	filter = const_cast<FilterDefinition *>(&fi.mpFDInst->Attach());
 }
 
 FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
-	: FilterActivation(realDst, realSrc, &realLast)
+	: FilterActivation((VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
 	, mpFDInst(fdi)
 {
 	filter = const_cast<FilterDefinition *>(&fdi->Attach());
@@ -394,6 +270,46 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 		mFilterName = VDTextAToW(filter->name);
 	} else
 		filter_data = NULL;
+
+
+	// initialize script object
+	mScriptObj.obj_list		= NULL;
+	mScriptObj.Lookup		= NULL;
+	mScriptObj.func_list	= NULL;
+	mScriptObj.pNextObject	= &obj_VDVFiltInst;
+
+	if (filter->script_obj) {
+		const ScriptFunctionDef *pf = filter->script_obj->func_list;
+
+		if (pf) {
+			for(; pf->func_ptr; ++pf) {
+				VDScriptFunctionDef def;
+
+				def.arg_list	= pf->arg_list;
+				def.name		= pf->name;
+
+				switch(def.arg_list[0]) {
+				default:
+				case '0':
+					def.func_ptr	= ScriptFunctionThunkVoid;
+					break;
+				case 'i':
+					def.func_ptr	= ScriptFunctionThunkInt;
+					break;
+				case 'v':
+					def.func_ptr	= ScriptFunctionThunkVariadic;
+					break;
+				}
+
+				mScriptFunc.push_back(def);
+			}
+
+			VDScriptFunctionDef def_end = {NULL};
+			mScriptFunc.push_back(def_end);
+
+			mScriptObj.func_list	= &mScriptFunc[0];
+		}
+	}
 }
 
 FilterInstance::~FilterInstance() {
@@ -434,127 +350,70 @@ void FilterInstance::ForceNoDeinit() {
 	fNoDeinit = true;
 }
 
+void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+
+	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
+	ScriptVoidFunctionPtr pf = (ScriptVoidFunctionPtr)fd.func_ptr;
+
+	pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc);
+}
+
+void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+
+	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
+	ScriptIntFunctionPtr pf = (ScriptIntFunctionPtr)fd.func_ptr;
+
+	int rval = pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc);
+
+	argv[0] = rval;
+}
+
+void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+
+	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
+	ScriptFunctionPtr pf = fd.func_ptr;
+
+	CScriptValue v(pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc));
+
+	argv[0] = (VDScriptValue&)v;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	Filter global functions
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static ListAlloc<FilterModuleInstance>		g_filterModules;
 static ListAlloc<FilterDefinitionInstance>	g_filterDefs;
 
-int FilterAutoloadModules(int &fail_count) {
-	char szFile[MAX_PATH], szFile2[MAX_PATH];
-	char *lpszName;
-	int success=0, fail=0;
-
-	// splice program name to /PLUGINS.
-
-	if (GetModuleFileName(NULL, szFile, sizeof szFile))
-		if (GetFullPathName(szFile, sizeof szFile2, szFile2, &lpszName)) {
-			HANDLE h;
-			WIN32_FIND_DATA wfd;
-
-			strcpy(lpszName, "plugins\\*");
-
-			h = FindFirstFile(szFile2, &wfd);
-
-			if (h != INVALID_HANDLE_VALUE)
-				do {
-					int l = strlen(wfd.cFileName);
-
-					if (l>4 && !stricmp(wfd.cFileName+l-4, ".vdf")) {
-						try {
-							strcpy(lpszName+8, wfd.cFileName);
-
-							FilterLoadModule(szFile2);
-							++success;
-						} catch(const MyError&) {
-							++fail;
-						}
-					}
-				} while(FindNextFile(h, &wfd));
-
-			FindClose(h);
-		}
-
-	fail_count	= fail;
-	return success;
-}
-
-void FilterLoadModule(const char *szModule) {
-	// convert to full path
-	VDStringW filename(VDGetFullPath(VDTextAToW(szModule, -1)));
-
-	// look for a module by that name
-	for(List2<FilterModuleInstance>::fwit it(g_filterModules.begin()); it; ++it) {
-		FilterModuleInstance& fmi = *it;
-
-		if (!wcscmp(fmi.GetName().c_str(), filename.c_str()))
-			return;		// Module already exists
-	}
-
-	vdprotected1("attempting to load module \"%S\"", const wchar_t *, filename.c_str()) {
-		// create the module
-		vdautoptr<FilterModuleInstance> fmi(new FilterModuleInstance(filename));
-
-		// force the module to load to create filter entries
-		g_filterModules.AddTail(fmi);
-
-		try {
-			fmi->AttachToModule();
-			fmi->ReleaseModule();
-		} catch(...) {
-			fmi->Remove();
-			throw;
-		}
-
-		fmi.release();
-	}
-}
-
-void FilterUnloadModule(FilterModule *fm) {
-	VDASSERT(false);
-}
-
-void FilterUnloadAllModules() {
-	List2<FilterModuleInstance>::fwit it(g_filterModules.begin());
-
-	for(; it; ++it) {
-		FilterModuleInstance& fmi = *it;
-
-		VDASSERT(!fmi.IsLoaded());
-		fmi.Remove();
-		delete &fmi;
-	}
-}
-
 FilterDefinition *FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len) {
-	List2<FilterModuleInstance>::fwit it(g_filterModules.begin());
+	VDExternalModule *pExtModule = VDGetExternalModuleByFilterModule(fm);
 
-	for(; it; ++it) {
-		FilterModuleInstance& fmi = *it;
+	if (pExtModule) {
+		List2<FilterDefinitionInstance>::fwit it2(g_filterDefs.begin());
 
-		if (&fmi.GetInfo() == fm) {
-			List2<FilterDefinitionInstance>::fwit it2(g_filterDefs.begin());
+		for(; it2; ++it2) {
+			FilterDefinitionInstance& fdi = *it2;
 
-			for(; it2; ++it2) {
-				FilterDefinitionInstance& fdi = *it2;
-
-				if (fdi.GetModule() == &fmi && fdi.GetName() == pfd->name) {
-					fdi.Assign(*pfd, fd_len);
-					return const_cast<FilterDefinition *>(&fdi.GetDef());
-				}
+			if (fdi.GetModule() == pExtModule && fdi.GetName() == pfd->name) {
+				fdi.Assign(*pfd, fd_len);
+				return const_cast<FilterDefinition *>(&fdi.GetDef());
 			}
-
-			vdautoptr<FilterDefinitionInstance> pfdi(new FilterDefinitionInstance(&fmi));
-			pfdi->Assign(*pfd, fd_len);
-
-			const FilterDefinition *pfdi2 = &pfdi->GetDef();
-			g_filterDefs.AddTail(pfdi.release());
-
-			return const_cast<FilterDefinition *>(pfdi2);
 		}
+
+		vdautoptr<FilterDefinitionInstance> pfdi(new FilterDefinitionInstance(pExtModule));
+		pfdi->Assign(*pfd, fd_len);
+
+		const FilterDefinition *pfdi2 = &pfdi->GetDef();
+		g_filterDefs.AddTail(pfdi.release());
+
+		return const_cast<FilterDefinition *>(pfdi2);
 	}
 
 	return NULL;
@@ -607,7 +466,7 @@ typedef struct FilterValueInit {
 	char *title;
 } FilterValueInit;
 
-static BOOL APIENTRY FilterValueDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	FilterValueInit *fvi;
 
     switch (message)
@@ -617,13 +476,13 @@ static BOOL APIENTRY FilterValueDlgProc( HWND hDlg, UINT message, UINT wParam, L
 			SendMessage(hDlg, WM_SETTEXT, 0, (LPARAM)fvi->title);
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETRANGE, (WPARAM)FALSE, MAKELONG(fvi->lMin, fvi->lMax));
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETPOS, (WPARAM)TRUE, fvi->cVal); 
-			SetWindowLong(hDlg, DWL_USER, (LONG)fvi);
+			SetWindowLongPtr(hDlg, DWLP_USER, (LONG)fvi);
             return (TRUE);
 
         case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDOK:
-				fvi = (FilterValueInit *)GetWindowLong(hDlg, DWL_USER);
+				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
 				fvi->cVal = SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_GETPOS, 0,0);
 				EndDialog(hDlg, TRUE);
 				return TRUE;
@@ -658,13 +517,13 @@ LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *titl
 
 ///////////////////////////////////////////////////////////////////////
 
-#define IDC_POSITION		(500)
+#define IDC_FILTDLG_POSITION		(500)
 
-BOOL CALLBACK FilterPreview::StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	FilterPreview *fpd = (FilterPreview *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK FilterPreview::StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	FilterPreview *fpd = (FilterPreview *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 	if (message == WM_INITDIALOG) {
-		SetWindowLongPtr(hdlg, DWL_USER, lParam);
+		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 		fpd = (FilterPreview *)lParam;
 		fpd->hdlg = hdlg;
 	}
@@ -677,6 +536,10 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 	case WM_INITDIALOG:
 		OnInit();
 		OnVideoResize(true);
+		return TRUE;
+
+	case WM_DESTROY:
+		mDlgNode.Remove();
 		return TRUE;
 
 	case WM_USER+1:		// handle new size
@@ -708,29 +571,17 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 				} else
 					pttt->lpszText = "Preview image";
 			}
-		} else if (((NMHDR *)lParam)->idFrom == IDC_POSITION) {
+		} else if (((NMHDR *)lParam)->idFrom == IDC_FILTDLG_POSITION) {
 			OnVideoRedraw();
 		}
 		return TRUE;
 
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDCANCEL) {
-
-			if (hwndButton)
-				SetWindowText(hwndButton, "Show preview");
-
-			if (pButtonCallback)
-				pButtonCallback(false, pvButtonCBData);
-
-			DestroyWindow(hdlg);
-			hdlg = NULL;
+		if (LOWORD(wParam) == IDC_FILTDLG_POSITION) {
+			VDTranslatePositionCommand(hdlg, wParam, lParam);
 			return TRUE;
-		} else if (LOWORD(wParam) != IDC_POSITION)
-			return TRUE;
-
-		if (guiPositionHandleCommand(wParam, lParam) >= 0)
-			OnVideoRedraw();
-		break;
+		}
+		return OnCommand(LOWORD(wParam));
 
 	case WM_USER+0:		// redraw modified frame
 		OnVideoRedraw();
@@ -741,13 +592,15 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 }
 
 void FilterPreview::OnInit() {
+	mpTimeline = &g_project->GetTimeline();
+
 	bih.biWidth = bih.biHeight = 0;
 
-	mhwndPosition = CreateWindow(POSITIONCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 64, hdlg, (HMENU)IDC_POSITION, g_hInst, NULL);
+	mhwndPosition = CreateWindow(POSITIONCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 64, hdlg, (HMENU)IDC_FILTDLG_POSITION, g_hInst, NULL);
+	mpPosition = VDGetIPositionControl((VDGUIHandle)mhwndPosition);
 
-	SendMessage(mhwndPosition, PCM_SETRANGEMIN, FALSE, 0);
-	SendMessage(mhwndPosition, PCM_SETRANGEMAX, TRUE, inputSubset->getTotalFrames()-1);
-	SendMessage(mhwndPosition, PCM_SETFRAMETYPECB, (WPARAM)&PositionFrameTypeCallback, 0);
+	mpPosition->SetRange(0, mpTimeline->GetLength());
+	mpPosition->SetFrameTypeCallback(VDGetPositionControlCallbackTEMP());
 
 	if (!inputVideoAVI->setDecompressedFormat(24))
 		if (!inputVideoAVI->setDecompressedFormat(32))
@@ -778,6 +631,10 @@ void FilterPreview::OnInit() {
 	ti.lpszText		= LPSTR_TEXTCALLBACK;
 
 	SendMessage(mhwndToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+
+	mDlgNode.hdlg = hdlg;
+	mDlgNode.mhAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_PREVIEW_KEYS));
+	guiAddModelessDialog(&mDlgNode);
 }
 
 void FilterPreview::OnResize() {
@@ -806,14 +663,11 @@ void FilterPreview::OnPaint() {
 
 		Draw3DRect(hdc,	0, 0, r.right, r.bottom - 64, FALSE);
 		Draw3DRect(hdc,	3, 3, r.right - 6, r.bottom - 70, TRUE);
-	}
-
-	if (!filtsys.isRunning()) {
+	} else {
 		RECT r;
 
-		r.left = r.top = 4;
-		r.right = 324;
-		r.bottom = 244;
+		GetWindowRect(mhwndDisplay, &r);
+		MapWindowPoints(NULL, hdlg, (LPPOINT)&r, 2);
 
 		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
 		SetBkMode(hdc, TRANSPARENT);
@@ -823,7 +677,16 @@ void FilterPreview::OnPaint() {
 		char buf[1024];
 		const char *s = mFailureReason.gets();
 		_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
-		DrawText(hdc, buf, -1, &r, DT_CENTER|DT_VCENTER|DT_WORDBREAK);
+
+		RECT r2 = r;
+		DrawText(hdc, buf, -1, &r2, DT_CENTER|DT_WORDBREAK|DT_NOPREFIX|DT_CALCRECT);
+
+		int text_h = r2.bottom - r2.top;
+		int space_h = r.bottom - r.top;
+		if (text_h < space_h)
+			r.top += (space_h - text_h) >> 1;
+
+		DrawText(hdc, buf, -1, &r, DT_CENTER|DT_WORDBREAK|DT_NOPREFIX);
 		SelectObject(hdc, hgoFont);
 	}
 
@@ -851,8 +714,7 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 				(Pixel *)((char *)pbih + pbih->biSize),
 				pbih2->biWidth,
 				pbih2->biHeight,
-				pbih2->biBitCount,
-				24);
+				0);
 
 		if (!filtsys.ReadyFilters(&fsi)) {
 			VBitmap *vbm = filtsys.OutputBitmap();
@@ -861,6 +723,8 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 			vbm->MakeBitmapHeader(&bih);
 		}
 	} catch(const MyError& e) {
+		mpDisplay->Reset();
+		ShowWindow(mhwndDisplay, SW_HIDE);
 		mFailureReason.assign(e);
 		InvalidateRect(hdlg, NULL, TRUE);
 	}
@@ -913,25 +777,63 @@ void FilterPreview::OnVideoRedraw() {
 	if (!filtsys.isRunning())
 		return;
 
-	FetchFrame();
+	bool bSuccessful = FetchFrame() >= 0;
 
 	try {
-		filtsys.RunFilters();
-		filtsys.OutputBitmap()->BitBlt(0, 0, filtsys.LastBitmap(), 0, 0, -1, -1);
+		if (bSuccessful)
+			filtsys.RunFilters();
+		else {
+			const VBitmap& vb = *filtsys.LastBitmap();
+			uint32 color = GetSysColor(COLOR_3DFACE);
+
+			vb.RectFill(0, 0, vb.w, vb.h, ((color>>16)&0xff) + (color&0xff00) + ((color&0xff)<<16));
+		}
 
 		if (mpDisplay) {
-			VBitmap *out = filtsys.OutputBitmap();
-
-			mpDisplay->SetSource((char *)out->data + out->pitch*(out->h - 1), -out->pitch, out->w, out->h,
-					  out->depth == 16 ? IVDVideoDisplay::kFormatRGB1555
-					: out->depth == 24 ? IVDVideoDisplay::kFormatRGB888
-					:                   IVDVideoDisplay::kFormatRGB8888);
+			ShowWindow(mhwndDisplay, SW_SHOW);
+			mpDisplay->SetSource(false, VDAsPixmap(*filtsys.LastBitmap()));
 			mpDisplay->Update(IVDVideoDisplay::kAllFields);
 		}
 	} catch(const MyError& e) {
+		mpDisplay->Reset();
+		ShowWindow(mhwndDisplay, SW_HIDE);
 		mFailureReason.assign(e);
 		InvalidateRect(hdlg, NULL, TRUE);
 	}
+}
+
+bool FilterPreview::OnCommand(UINT cmd) {
+	switch(cmd) {
+	case IDCANCEL:
+		if (hwndButton)
+			SetWindowText(hwndButton, "Show preview");
+
+		if (pButtonCallback)
+			pButtonCallback(false, pvButtonCBData);
+
+		DestroyWindow(hdlg);
+		hdlg = NULL;
+		return true;
+
+	case ID_EDIT_JUMPTO:
+		{
+			extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS);
+
+			VDPosition pos = VDDisplayJumpToPositionDialog((VDGUIHandle)hdlg, mpPosition->GetPosition(), inputVideoAVI);
+
+			mpPosition->SetPosition(pos);
+			OnVideoRedraw();
+		}
+		return true;
+
+	default:
+		if (VDHandleTimelineCommand(mpPosition, mpTimeline, cmd)) {
+			OnVideoRedraw();
+			return true;
+		}
+	}
+
+	return false;
 }
 
 FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
@@ -963,7 +865,7 @@ FilterPreview::~FilterPreview() {
 }
 
 long FilterPreview::FetchFrame() {
-	return FetchFrame(SendMessage(mhwndPosition, PCM_GETPOS, 0, 0));
+	return FetchFrame(mpPosition->GetPosition());
 }
 
 long FilterPreview::FetchFrame(long lPos) {
@@ -971,7 +873,7 @@ long FilterPreview::FetchFrame(long lPos) {
 		const VDFraction frameRate(inputVideoAVI->getRate());
 
 		fsi.lCurrentFrame			= lPos;
-		fsi.lCurrentSourceFrame		= inputSubset ? inputSubset->lookupFrame(lPos) : lPos;
+		fsi.lCurrentSourceFrame		= mpTimeline->TimelineToSourceFrame(lPos);
 		fsi.lSourceFrameMS			= (long)frameRate.scale64ir(fsi.lCurrentSourceFrame * (sint64)1000);
 		fsi.lDestFrameMS			= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
 
@@ -982,7 +884,8 @@ long FilterPreview::FetchFrame(long lPos) {
 		return -1;
 	}
 
-	filtsys.InputBitmap()->BitBlt(0, 0, &VBitmap(inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat()), 0, 0, -1, -1);
+	VBitmap srcbm((void *)inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat());
+	filtsys.InputBitmap()->BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
 
 	return lPos;
 }
@@ -1071,7 +974,7 @@ bool FilterPreview::SampleCurrentFrame() {
 
 	if (pos >= 0) {
 		filtsys.RunFilters(pfiThisFilter);
-		pSampleCallback(&pfiThisFilter->src, pos, inputSubset->getTotalFrames(), pvSampleCBData);
+		pSampleCallback(&pfiThisFilter->src, pos, mpTimeline->GetLength(), pvSampleCBData);
 	}
 
 	RedoFrame();
@@ -1085,7 +988,7 @@ bool FilterPreview::SampleCurrentFrame() {
 #define	FPSAMP_KEYALL			(2)
 #define	FPSAMP_ALL				(3)
 
-static BOOL CALLBACK SampleFramesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK SampleFramesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
@@ -1133,14 +1036,14 @@ long FilterPreview::SampleFrames() {
 
 	// Time to do the actual sampling.
 
-	long first, last;
+	VDPosition first, last;
 
-	first = inputVideoAVI->getStart();
-	last = inputVideoAVI->getEnd();
+	first = mpTimeline->GetStart();
+	last = mpTimeline->GetEnd();
 
 	try {
 		ProgressDialog pd(hdlg, "Sampling input video", szCaptions[iMode-1], last-first, true);
-		long lSample = first;
+		VDPosition lSample = first;
 		long lSecondIncrement = inputVideoAVI->msToSamples(1000)-1;
 
 		pd.setValueFormat("Sampling frame %ld of %ld");
@@ -1152,14 +1055,9 @@ long FilterPreview::SampleFrames() {
 			pd.advance(lSample - first);
 			pd.check();
 
-			long lSampleInSubset = lSample;
+			VDPosition srcFrame = mpTimeline->TimelineToSourceFrame(lSample);
 
-			if (inputSubset) {
-				bool bMasked;
-				lSampleInSubset = inputSubset->revLookupFrame(lSample, bMasked);
-			}
-
-			if (FetchFrame(lSampleInSubset)>=0) {
+			if (FetchFrame(srcFrame)>=0) {
 				filtsys.RunFilters(pfiThisFilter);
 				pSampleCallback(&pfiThisFilter->src, lSample-first, last-first, pvSampleCBData);
 				++lCount;
@@ -1169,7 +1067,7 @@ long FilterPreview::SampleFrames() {
 			case FPSAMP_KEYONESEC:
 				lSample += lSecondIncrement;
 			case FPSAMP_KEYALL:
-				lSample = inputVideoAVI->nextKey(lSample);
+				lSample = mpTimeline->GetNextKey(lSample);
 				break;
 			case FPSAMP_ALL:
 				++lSample;

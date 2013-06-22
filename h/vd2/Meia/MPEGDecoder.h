@@ -57,23 +57,24 @@ public:
 	virtual long GetFrameNumber(int buffer)=0;
 	virtual void CopyFrameBuffer(int dst, int src, long newframe)=0;
 	virtual void SwapFrameBuffers(int dst, int src)=0;
+	virtual void ClearFrameBuffers()=0;
 
 	// framebuffer access
 
-	virtual const void *GetYBuffer(int buffer, long& pitch)=0;
-	virtual const void *GetCrBuffer(int buffer, long& pitch)=0;
-	virtual const void *GetCbBuffer(int buffer, long& pitch)=0;
+	virtual const void *GetYBuffer(int buffer, ptrdiff_t& pitch)=0;
+	virtual const void *GetCrBuffer(int buffer, ptrdiff_t& pitch)=0;
+	virtual const void *GetCbBuffer(int buffer, ptrdiff_t& pitch)=0;
 
 	// framebuffer conversion
 
-	virtual bool DecodeUYVY(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeYUYV(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeYVYU(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeY41P(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeRGB15(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeRGB16(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeRGB24(void *dst, long pitch, int buffer)=0;
-	virtual bool DecodeRGB32(void *dst, long pitch, int buffer)=0;
+	virtual bool DecodeUYVY(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeYUYV(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeYVYU(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeY41P(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeRGB15(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeRGB16(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeRGB24(void *dst, ptrdiff_t pitch, int buffer)=0;
+	virtual bool DecodeRGB32(void *dst, ptrdiff_t pitch, int buffer)=0;
 };
 
 IVDMPEGDecoder *CreateVDMPEGDecoder();

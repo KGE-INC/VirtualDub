@@ -22,6 +22,7 @@
 #include <vd2/system/text.h>
 
 #include "AVIOutputStriped.h"
+#include "AVIOutputFile.h"
 #include "AVIStripeSystem.h"
 
 ///////////////////////////////////////////////////////////////////////////
@@ -32,16 +33,19 @@
 
 class AVIStripedAudioOutputStream : public AVIOutputStream {
 public:
-	AVIStripedAudioOutputStream(AVIOutput *);
+	AVIStripedAudioOutputStream(AVIOutputStriped *);
 
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
+
+protected:
+	AVIOutputStriped *const mpParent;
 };
 
-AVIStripedAudioOutputStream::AVIStripedAudioOutputStream(AVIOutput *out) : AVIOutputStream(out) {
+AVIStripedAudioOutputStream::AVIStripedAudioOutputStream(AVIOutputStriped *pParent) : mpParent(pParent) {
 }
 
 void AVIStripedAudioOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
-	((AVIOutputStriped *)output)->writeChunk(TRUE, flags, pBuffer, cbBuffer, streamInfo.dwLength, lSamples);
+	mpParent->writeChunk(TRUE, flags, pBuffer, cbBuffer, streamInfo.dwLength, lSamples);
 	streamInfo.dwLength += lSamples;
 }
 
@@ -49,16 +53,19 @@ void AVIStripedAudioOutputStream::write(uint32 flags, const void *pBuffer, uint3
 
 class AVIStripedVideoOutputStream : public AVIOutputStream {
 public:
-	AVIStripedVideoOutputStream(AVIOutput *);
+	AVIStripedVideoOutputStream(AVIOutputStriped *);
 
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
+
+protected:
+	AVIOutputStriped *const mpParent;
 };
 
-AVIStripedVideoOutputStream::AVIStripedVideoOutputStream(AVIOutput *out) : AVIOutputStream(out) {
+AVIStripedVideoOutputStream::AVIStripedVideoOutputStream(AVIOutputStriped *pParent) : mpParent(pParent) {
 }
 
 void AVIStripedVideoOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
-	((AVIOutputStriped *)output)->writeChunk(FALSE, flags, pBuffer, cbBuffer, streamInfo.dwLength, lSamples);
+	mpParent->writeChunk(FALSE, flags, pBuffer, cbBuffer, streamInfo.dwLength, lSamples);
 	streamInfo.dwLength += lSamples;
 }
 
@@ -132,7 +139,7 @@ bool AVIOutputStriped::init(const wchar_t *szFile) {
 
 	memset(stripe_data, 0, sizeof(AVIOutputStripeState)*stripe_count);
 
-	if (!(stripe_files = new AVIOutputFile *[stripe_count]))
+	if (!(stripe_files = new IVDMediaOutputAVIFile *[stripe_count]))
 		throw MyMemoryError();
 
 	bool fFoundIndex = false;
@@ -149,13 +156,15 @@ bool AVIOutputStriped::init(const wchar_t *szFile) {
 	for(i=0; i<stripe_count; i++) {
 		AVIStripe *sinfo = stripesys->getStripeInfo(i);
 
-		stripe_files[i] = new AVIOutputFile();
+		stripe_files[i] = VDCreateMediaOutputAVIFile();
 
 		if (f1GbMode)
 			stripe_files[i]->set_1Gb_limit();
 
+		IVDMediaOutput *pOutput = stripe_files[i];
+
 		if (videoOut && (sinfo->isVideo() || sinfo->isIndex())) {
-			IVDMediaOutputStream *pStripeVideoOut = stripe_files[i]->createVideoStream();
+			IVDMediaOutputStream *pStripeVideoOut = pOutput->createVideoStream();
 
 			if (sinfo->isIndex()) {
 				BITMAPINFOHEADER bmih = *(BITMAPINFOHEADER *)videoOut->getFormat();
@@ -179,7 +188,7 @@ bool AVIOutputStriped::init(const wchar_t *szFile) {
 			pStripeVideoOut->setStreamInfo(vhdr);
 		}
 		if (audioOut && (sinfo->isAudio() || sinfo->isIndex())) {
-			IVDMediaOutputStream *pStripeAudioOut = stripe_files[i]->createAudioStream();
+			IVDMediaOutputStream *pStripeAudioOut = pOutput->createAudioStream();
 
 			pStripeAudioOut->setFormat(audioOut->getFormat(), audioOut->getFormatLen());
 
@@ -199,7 +208,7 @@ bool AVIOutputStriped::init(const wchar_t *szFile) {
 		stripe_files[i]->disable_os_caching();
 		stripe_files[i]->setBuffering(sinfo->lBufferSize, sinfo->lBufferSize >> 2);
 
-		if (!stripe_files[i]->init(VDTextAToW(sinfo->szName).c_str()))
+		if (!pOutput->init(VDTextAToW(sinfo->szName).c_str()))
 			throw MyError("Error initializing stripe #%d", i+1);
 	}
 
@@ -220,7 +229,7 @@ void AVIOutputStriped::writeChunk(bool is_audio, uint32 flags, const void *pBuff
 										uint32 lSampleFirst, uint32 lSampleCount) {
 	AVIStripeIndexEntry *asie;
 	int s, best_stripe=-1;
-	long lBufferSize;
+	uint32 lBufferSize;
 	BOOL best_will_block = TRUE;
 
 	// Pick a stripe to send the data to.
@@ -262,10 +271,12 @@ void AVIOutputStriped::writeChunk(bool is_audio, uint32 flags, const void *pBuff
 	// Write data to stripe.
 
 	if (best_stripe >= 0) {
+		IVDMediaOutput *pOutput = stripe_files[best_stripe];
+
 		if (is_audio)
-			stripe_files[best_stripe]->getAudioOutput()->write(flags, pBuffer, cbBuffer, lSampleCount);
+			pOutput->getAudioOutput()->write(flags, pBuffer, cbBuffer, lSampleCount);
 		else
-			stripe_files[best_stripe]->getVideoOutput()->write(flags, pBuffer, cbBuffer, lSampleCount);
+			pOutput->getVideoOutput()->write(flags, pBuffer, cbBuffer, lSampleCount);
 
 		stripe_data[best_stripe].size += cbBuffer+8;
 	}
@@ -317,13 +328,17 @@ void AVIOutputStriped::FlushCache(BOOL fAudio) {
 	int i;
 
 	if (fAudio) {
+		IVDMediaOutputStream *pIndexAudio = index_file->getAudioOutput();
+
 		for(i=0; i<audio_index_cache_point; i++)
-			index_file->getAudioOutput()->write(audio_index_flags[i], &audio_index_cache[i], sizeof AVIStripeIndexEntry, audio_index_count[i]);
+			pIndexAudio->write(audio_index_flags[i], &audio_index_cache[i], sizeof AVIStripeIndexEntry, audio_index_count[i]);
 
 		audio_index_cache_point = 0;
 	} else {
+		IVDMediaOutputStream *pIndexVideo = index_file->getVideoOutput();
+
 		for(i=0; i<video_index_cache_point; i++)
-			index_file->getVideoOutput()->write(video_index_flags[i], &video_index_cache[i], sizeof AVIStripeIndexEntry, video_index_count[i]);
+			pIndexVideo->write(video_index_flags[i], &video_index_cache[i], sizeof AVIStripeIndexEntry, video_index_count[i]);
 
 		video_index_cache_point = 0;
 	}

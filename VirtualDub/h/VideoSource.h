@@ -21,6 +21,9 @@
 #include <windows.h>
 #include <vfw.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/vdalloc.h>
+#include <vd2/system/vdstl.h>
+#include <vd2/Kasumi/pixmap.h>
 
 #include "DubSource.h"
 
@@ -37,29 +40,31 @@ public:
 
 	virtual BITMAPINFOHEADER *getImageFormat() = 0;
 
-	virtual void *		getFrameBuffer() = 0;
+	virtual const void *getFrameBuffer() = 0;
 
 	virtual HANDLE		getFrameBufferObject() = 0;
 	virtual LONG		getFrameBufferOffset() = 0;
 
+	virtual const VDPixmap& getTargetFormat() = 0;
+	virtual bool		setTargetFormat(int format) = 0;
 	virtual bool		setDecompressedFormat(int depth) = 0;
-	virtual bool		setDecompressedFormat(BITMAPINFOHEADER *pbih) = 0;
+	virtual bool		setDecompressedFormat(const BITMAPINFOHEADER *pbih) = 0;
 
 	virtual BITMAPINFOHEADER *getDecompressedFormat() = 0;
 
-	virtual void		streamSetDesiredFrame(long frame_num) = 0;
-	virtual long		streamGetNextRequiredFrame(BOOL *is_preroll) = 0;
-	virtual int			streamGetRequiredCount(long *pSize) = 0;
-	virtual void *		streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) = 0;
+	virtual void		streamSetDesiredFrame(VDPosition frame_num) = 0;
+	virtual VDPosition	streamGetNextRequiredFrame(bool& is_preroll) = 0;
+	virtual int			streamGetRequiredCount(uint32 *totalsize) = 0;
+	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) = 0;
 
 	virtual void		streamBegin(bool fRealTime) = 0;
 
 	virtual void		invalidateFrameBuffer() = 0;
 	virtual	bool		isFrameBufferValid() = 0;
 
-	virtual void *		getFrame(LONG frameNum) = 0;
+	virtual const void *getFrame(VDPosition frameNum) = 0;
 
-	virtual char		getFrameTypeChar(long lFrameNum) = 0;
+	virtual char		getFrameTypeChar(VDPosition lFrameNum) = 0;
 
 	enum eDropType {
 		kDroppable		= 0,
@@ -67,19 +72,21 @@ public:
 		kIndependent,
 	};
 
-	virtual eDropType	getDropType(long lFrameNum) = 0;
+	virtual eDropType	getDropType(VDPosition lFrameNum) = 0;
 
-	virtual bool isKey(LONG lSample) = 0;
-	virtual LONG nearestKey(LONG lSample) = 0;
-	virtual LONG prevKey(LONG lSample) = 0;
-	virtual LONG nextKey(LONG lSample) = 0;
+	virtual bool isKey(VDPosition lSample) = 0;
+	virtual VDPosition nearestKey(VDPosition lSample) = 0;
+	virtual VDPosition prevKey(VDPosition lSample) = 0;
+	virtual VDPosition nextKey(VDPosition lSample) = 0;
 
 	virtual bool		isKeyframeOnly() = 0;
 	virtual bool		isType1() = 0;
 
-	virtual long		streamToDisplayOrder(long sample_num) = 0;
-	virtual long		displayToStreamOrder(long display_num) = 0;
-	virtual bool		isDecodable(long sample_num) = 0;
+	virtual VDPosition	streamToDisplayOrder(VDPosition sample_num) = 0;
+	virtual VDPosition	displayToStreamOrder(VDPosition display_num) = 0;
+	virtual bool		isDecodable(VDPosition sample_num) = 0;
+
+	virtual sint64		getSampleBytePosition(VDPosition sample_num) = 0;
 };
 
 class VideoSource : public DubSource, public IVDVideoSource {
@@ -87,14 +94,21 @@ protected:
 	HANDLE		hBufferObject;
 	LONG		lBufferOffset;
 	void		*lpvBuffer;
-	BITMAPINFOHEADER *bmihDecompressedFormat;
-	long		stream_desired_frame;
-	long		stream_current_frame;
+	uint32		mFrameBufferSize;
+
+	vdstructex<BITMAPINFOHEADER> mpTargetFormatHeader;
+	VDPixmap	mTargetFormat;
+	int			mTargetFormatVariant;
+	VDPosition	stream_desired_frame;
+	VDPosition	stream_current_frame;
+
+	uint32		mPalette[256];
 
 	void *AllocFrameBuffer(long size);
 	void FreeFrameBuffer();
 
-	virtual bool _isKey(LONG lSample);
+	bool setTargetFormatVariant(int format, int variant);
+	virtual bool _isKey(VDPosition lSample);
 
 	VideoSource();
 
@@ -116,7 +130,7 @@ public:
 		return (BITMAPINFOHEADER *)getFormat();
 	}
 
-	void *getFrameBuffer() {
+	const void *getFrameBuffer() {
 		return lpvBuffer;
 	}
 
@@ -128,51 +142,65 @@ public:
 		return lBufferOffset;
 	}
 
+	virtual const VDPixmap& getTargetFormat() { return mTargetFormat; }
+	virtual bool setTargetFormat(int format);
 	virtual bool setDecompressedFormat(int depth);
-	virtual bool setDecompressedFormat(BITMAPINFOHEADER *pbih);
+	virtual bool setDecompressedFormat(const BITMAPINFOHEADER *pbih);
 
 	BITMAPINFOHEADER *getDecompressedFormat() {
-		return bmihDecompressedFormat;
+		return mpTargetFormatHeader.data();
 	}
 
-	virtual void streamSetDesiredFrame(long frame_num);
-	virtual long streamGetNextRequiredFrame(BOOL *is_preroll);
-	virtual int	streamGetRequiredCount(long *pSize);
-	virtual void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) = NULL;
+	virtual void streamSetDesiredFrame(VDPosition frame_num);
+	virtual VDPosition streamGetNextRequiredFrame(bool& is_preroll);
+	virtual int	streamGetRequiredCount(uint32 *totalsize);
 
 	virtual void streamBegin(bool fRealTime);
 
 	virtual void invalidateFrameBuffer();
 	virtual	bool isFrameBufferValid() = NULL;
 
-	virtual void *getFrame(LONG frameNum) = NULL;
+	virtual const void *getFrame(VDPosition frameNum) = NULL;
 
-	virtual char getFrameTypeChar(long lFrameNum) = 0;
-
-	virtual bool isKey(LONG lSample);
-	virtual LONG nearestKey(LONG lSample);
-	virtual LONG prevKey(LONG lSample);
-	virtual LONG nextKey(LONG lSample);
-
-	virtual eDropType getDropType(long lFrameNum)=0;
+	virtual bool isKey(VDPosition lSample);
+	virtual VDPosition nearestKey(VDPosition lSample);
+	virtual VDPosition prevKey(VDPosition lSample);
+	virtual VDPosition nextKey(VDPosition lSample);
 
 	virtual bool isKeyframeOnly();
 	virtual bool isType1();
 
-	virtual long	streamToDisplayOrder(long sample_num) { return sample_num; }
-	virtual long	displayToStreamOrder(long display_num) { return display_num; }
+	virtual VDPosition	streamToDisplayOrder(VDPosition sample_num) { return sample_num; }
+	virtual VDPosition	displayToStreamOrder(VDPosition display_num) { return display_num; }
 
-	virtual bool isDecodable(long sample_num) = 0;
+	virtual sint64		getSampleBytePosition(VDPosition sample_num) { return -1; }
+};
+
+class VDINTERFACE IVDVideoDecompressor {
+public:
+	virtual ~IVDVideoDecompressor() {}
+	virtual bool QueryTargetFormat(int format) = 0;
+	virtual bool QueryTargetFormat(const void *format) = 0;
+	virtual bool SetTargetFormat(int format) = 0;
+	virtual bool SetTargetFormat(const void *format) = 0;
+	virtual int GetTargetFormat() = 0;
+	virtual int GetTargetFormatVariant() = 0;
+	virtual void Start() = 0;
+	virtual void Stop() = 0;
+	virtual void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) = 0;
+	virtual const void *GetRawCodecHandlePtr() = 0;		// (HIC *) on Win32
+	virtual const wchar_t *GetName() = 0;
 };
 
 class VideoSourceAVI : public VideoSource {
 private:
 	IAVIReadHandler *pAVIFile;
 	IAVIReadStream *pAVIStream;
-	HIC			hicDecomp, hicDecomp2;
-	LONG		lLastFrame;
+	VDPosition		lLastFrame;
 	BITMAPINFOHEADER *bmihTemp;
-	BOOL		use_ICDecompressEx;
+
+	VDPixmapLayout	mSourceLayout;
+	int				mSourceVariant;
 
 	AVIStripeSystem			*stripesys;
 	IAVIReadHandler			**stripe_files;
@@ -180,7 +208,6 @@ private:
 	AVIStripeIndexLookup	*stripe_index;
 	int						stripe_count;
 
-	IMJPEGDecoder *mdec;
 	HBITMAP		hbmLame;
 	bool		fUseGDI;
 	bool		fAllKeyFrames;
@@ -204,6 +231,9 @@ private:
 	ErrorMode	mErrorMode;
 	bool		mbMMXBrokenCodecDetected;
 	bool		mbConcealingErrors;
+	bool		mbDecodeStarted;
+
+	vdautoptr<IVDVideoDecompressor>	mpDecompressor;
 
 	VDStringW	mDriverName;
 	char		szCodecName[128];
@@ -211,8 +241,9 @@ private:
 	void _construct();
 	void _destruct();
 
-	bool AttemptCodecNegotiation(BITMAPINFOHEADER *, bool);
-	void CheckMMX();
+	bool AttemptCodecNegotiation(BITMAPINFOHEADER *);
+
+	void DecompressFrame(const void *src);
 
 	~VideoSourceAVI();
 
@@ -222,35 +253,49 @@ public:
 	void Reinit();
 	void redoKeyFlags();
 
-	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead);
-	bool _isKey(LONG samp);
-	LONG nearestKey(LONG lSample);
-	LONG prevKey(LONG lSample);
-	LONG nextKey(LONG lSample);
+	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
+	bool _isKey(VDPosition samp);
+	VDPosition nearestKey(VDPosition lSample);
+	VDPosition prevKey(VDPosition lSample);
+	VDPosition nextKey(VDPosition lSample);
 
-	bool setDecompressedFormat(int depth);
-	bool setDecompressedFormat(BITMAPINFOHEADER *pbih);
+	bool setTargetFormat(int format);
+	bool setDecompressedFormat(int depth) { return VideoSource::setDecompressedFormat(depth); }
+	bool setDecompressedFormat(const BITMAPINFOHEADER *pbih);
 	void invalidateFrameBuffer();
 	bool isFrameBufferValid();
 	bool isStreaming();
 
 	void streamBegin(bool fRealTime);
-	void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
 	void streamEnd();
 
-	void *getFrame(LONG frameNum);
+	const void *getFrame(VDPosition frameNum);
 
-	HIC	getDecompressorHandle() const { return hicDecomp; }
-	bool isUsingInternalMJPEG() const { return !!mdec; }
+	HIC	getDecompressorHandle() const {
+		if (!mpDecompressor)
+			return NULL;
 
-	char getFrameTypeChar(long lFrameNum);
-	eDropType getDropType(long lFrameNum);
+		const HIC *pHIC = (const HIC *)mpDecompressor->GetRawCodecHandlePtr();
+
+		return pHIC ? *pHIC : NULL;
+	}
+
+	const wchar_t *getDecompressorName() const {
+		return mpDecompressor ? mpDecompressor->GetName() : NULL;
+	}
+
+	char getFrameTypeChar(VDPosition lFrameNum);
+	eDropType getDropType(VDPosition lFrameNum);
 	bool isKeyframeOnly();
 	bool isType1();
-	bool isDecodable(long sample_num);
+	bool isDecodable(VDPosition sample_num);
 
+	ErrorMode getDecodeErrorMode() { return mErrorMode; }
 	void setDecodeErrorMode(ErrorMode mode);
 	bool isDecodeErrorModeSupported(ErrorMode mode);
+
+	sint64 getSampleBytePosition(VDPosition pos);
 };
 
 #endif

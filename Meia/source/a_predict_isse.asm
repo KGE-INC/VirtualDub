@@ -113,13 +113,13 @@ predict_Y_quadpel_ISSE@loop_2:
 	movq	mm0,[ecx]
 	prefetcht0 [ecx+esi]
 
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 
 	movq	mm2,[ecx+esi]
 	psrlq	mm4,8
 
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	psllq	mm1,56
 
 	por	mm1,mm4
@@ -440,13 +440,13 @@ add_Y_quadpel_ISSE@loop2:
 	movq	mm0,[ecx]
 	prefetcht0 [edx]
 
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 
 	movq	mm2,[ecx+esi]
 	psrlq	mm4,8
 
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	psllq	mm1,56
 
 	por	mm1,mm4
@@ -697,14 +697,14 @@ predict_C_quadpel_ISSE:
 	mov	edi,8
 predict_C_quadpel_ISSE@loop:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -894,14 +894,14 @@ predict_add_C_quadpel_ISSE:
 	mov	edi,8
 add_C_quadpel_ISSE@loop:
 	movq	mm0,[ecx]
-	movd	mm1,[ecx+8]
+	movd	mm1,dword ptr [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,[ecx+esi+8]
+	movd	mm3,dword ptr [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56

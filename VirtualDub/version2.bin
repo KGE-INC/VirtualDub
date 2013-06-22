@@ -1,3 +1,5 @@
-host: "Athena"              builds: 15353
-host: "Belldandy"           builds: 2603
+host: "Athena"              builds: 15356
+host: "Athena64"            builds: 50
+host: "Belldandy"           builds: 5792
+host: "Kumi64"              builds: 138
 host: "Risa"                builds: 203

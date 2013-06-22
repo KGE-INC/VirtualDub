@@ -50,7 +50,7 @@ static int emboss_init(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY embossDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK embossDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
@@ -65,20 +65,20 @@ static BOOL APIENTRY embossDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				CheckDlgButton(hDlg, IDC_DIR_MIDDLERIGHT+mfd->direction, TRUE);
 				CheckDlgButton(hDlg, IDC_ROUNDED, !!mfd->rounded);
 
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 			}
             return (TRUE);
 
         case WM_COMMAND:                      
             if (LOWORD(wParam) == IDOK) {
-				MyFilterData *mfd = (struct MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 				int i;
 
 				mfd->height = SendMessage(GetDlgItem(hDlg, IDC_HEIGHT), TBM_GETPOS, 0, 0);
 
 				for(i=0; i<8; i++)
 					if (IsDlgButtonChecked(hDlg, IDC_DIR_MIDDLERIGHT+i)) {
-						mfd->direction = i;
+						mfd->direction = (char)i;
 						break;
 					}
 
@@ -111,7 +111,7 @@ static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, HWND h
 		mfd->height = 16;
 	}
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_EMBOSS), hWnd, embossDlgProc, (LONG)fa->filter_data);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_EMBOSS), hWnd, embossDlgProc, (LPARAM)fa->filter_data);
 
 	memset(mfd->cfd.m, 0, sizeof mfd->cfd.m);
 	mfd->cfd.bias	= 128*256 + 128;
@@ -139,7 +139,7 @@ static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 	FilterActivation *fa = (FilterActivation *)lpVoid;
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	mfd->direction	= argv[0].asInt();
+	mfd->direction	= (char)argv[0].asInt();
 	mfd->height		= argv[1].asInt();
 
 	if (argc>2)

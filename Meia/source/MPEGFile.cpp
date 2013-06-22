@@ -9,7 +9,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDAtomic.h>
-#include <vd2/system/File64.h>
+#include <vd2/system/file.h>
 #include <vd2/system/Progress.h>
 
 #include <vd2/Meia/MPEGFile.h>
@@ -175,6 +175,7 @@ private:
 		case 0x000:		return (1440 * bitrate / 441) + padding;
 		case 0x400:		return 3*bitrate + padding;
 		case 0x800:		return 9*bitrate/2 + padding;
+		default:		VDNEVERHERE; return 0;
 		}
 	}
 
@@ -1044,7 +1045,7 @@ public:
 					minutes = ((mParseBuf[0]&3)<<4) + (mParseBuf[1]>>4);
 					seconds = ((mParseBuf[1]&7)<<3) + (mParseBuf[2]>>5);
 					pictures = (mParseBuf[2]&31)*2 + (mParseBuf[3]>>7);
-					dropf = (bool)(mParseBuf[0]>>7);
+					dropf = 0 != (mParseBuf[0] & 0x80);
 
 					// XingMPEG Encoder kludge
 
@@ -1220,8 +1221,7 @@ private:
 			
 //			_RPT2(0, "picture found: %c-frame (temporal ref: %d)\n", "0IPBD567"[type], tref);
 			
-			if (!type || type>3)
-				__asm int 3
+			VDASSERT(type && type<=3);
 				
 			// Document the frame.
 			
@@ -1772,8 +1772,7 @@ public:
 		_streamSeek(packet - 4);
 
 		if (_streamScanPacket(audio_mask, video_mask, stream, pktlength, pts, dts, packetpos)) {
-			if (stream != desired_stream)
-				__asm int 3
+			VDASSERT(stream == desired_stream);
 			pktlength -= offset;
 			if (pktlength > length)
 				pktlength = length;

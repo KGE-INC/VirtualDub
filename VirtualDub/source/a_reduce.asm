@@ -158,7 +158,7 @@ colloop_MMX:
 	packuswb mm0,mm0
 	dec	ebp
 
-	movd	[edx+ebp*4],mm0
+	movd	dword ptr [edx+ebp*4],mm0
 	jne	colloop_MMX
 
 	pop	ebp
@@ -392,30 +392,30 @@ colloop2_MMX:
 
 	ELSE
 
-	movd	mm0,[esi]
+	movd	mm0,dword ptr [esi]
 
-	movd	mm1,[esi+edi-4]
+	movd	mm1,dword ptr [esi+edi-4]
 	punpcklbw mm0,mm7
 
-	movd	mm2,[esi+edi+4]
+	movd	mm2,dword ptr [esi+edi+4]
 	punpcklbw mm1,mm7
 
-	movd	mm3,[esi+edi*2]
+	movd	mm3,dword ptr [esi+edi*2]
 	punpcklbw mm2,mm7
 
 	punpcklbw mm3,mm7
 	paddw	mm0,mm1
 
-	movd	mm1,[esi-4]
+	movd	mm1,dword ptr [esi-4]
 	paddw	mm0,mm2
 
-	movd	mm2,[esi+4]
+	movd	mm2,dword ptr [esi+4]
 	paddw	mm0,mm3
 
-	movd	mm3,[esi+edi*2-4]
+	movd	mm3,dword ptr [esi+edi*2-4]
 	paddw	mm0,mm0
 
-	movd	mm4,[esi+edi*2+4]
+	movd	mm4,dword ptr [esi+edi*2+4]
 	punpcklbw mm1,mm7
 
 	punpcklbw mm2,mm7
@@ -424,7 +424,7 @@ colloop2_MMX:
 	punpcklbw mm3,mm7
 	paddw	mm0,mm1
 
-	movd	mm1,[esi+edi]
+	movd	mm1,dword ptr [esi+edi]
 	punpcklbw mm4,mm7
 
 	punpcklbw mm1,mm7
@@ -442,7 +442,7 @@ colloop2_MMX:
 	packuswb mm0,mm0
 	dec	ebp
 
-	movd	[edx-4],mm0
+	movd	dword ptr [edx-4],mm0
 	jne	colloop2_MMX
 
 	ENDIF

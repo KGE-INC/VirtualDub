@@ -76,18 +76,18 @@ struct VDCharOpsImpl {
 		return !memcmp(s, t, l*sizeof(T));
 	}
 
-	static int find(const T *s, int l, T c) {
+	static int find(const T *s, int l, T c, int off) {
 		for(int i=0; i<l; ++i)
 			if (s[i] == c)
-				return i;
+				return i+off;
 
 		return -1;
 	}
 
-	static int find_not_first_of(const T *s, int l, T c) {
+	static int find_not_first_of(const T *s, int l, T c, int off) {
 		for(int i=0; i<l; ++i)
 			if (s[i] != c)
-				return i;
+				return i + off;
 
 		return -1;
 	}
@@ -96,21 +96,21 @@ struct VDCharOpsImpl {
 template<class T> struct VDCharOps : public VDCharOpsImpl<T> {};
 
 template<> struct VDCharOps<char> : public VDCharOpsImpl<char> {
-	static int len(const char *s) { return strlen(s); }
+	static int len(const char *s) { return (int)strlen(s); }
 	static int compare(const char *s, int s_length, const char *t, int t_length) {
 		int st_len = s_length < t_length ? s_length : t_length;
 		int r = memcmp(s, t, st_len);
 
 		return r ? r : s_length < t_length ? -1 : s_length > t_length ? +1 : 0;
 	}
-	static int find(const char *s, int l, char c) {
+	static int find(const char *s, int l, char c, int off) {
 		const char *t = (const char *)memchr(s, c, l);
-		return t ? t-s : -1;
+		return t ? (int)(t-s+off) : -1;
 	}
 };
 
 template<> struct VDCharOps<wchar_t> : public VDCharOpsImpl<wchar_t> {
-	static inline int len(const wchar_t *s) { return wcslen(s); }
+	static inline int len(const wchar_t *s) { return (int)wcslen(s); }
 };
 
 template<class T>
@@ -156,7 +156,7 @@ public:
 	// declarations
 
 	typedef T				value_type;
-	typedef int				size_type;
+	typedef unsigned		size_type;
 	typedef T&				reference;
 	typedef T*				pointer;
 	typedef pointer			iterator;
@@ -199,32 +199,32 @@ public:
 	/////////////////////////////////////////////////
 	// accessors
 
-	inline T& operator[](int pos) {
+	inline T& operator[](size_type pos) {
 		if (s->refcount > 1)
 			fork();
 
-		VDASSERT(pos >= 0 && pos < s->length);
+		VDASSERT(pos < s->length);
 
 		return s->str[pos];
 	}
 
-	inline const T& operator[](int pos) const {
-		VDASSERT(pos >= 0 && pos < s->length);
+	inline const T& operator[](size_type pos) const {
+		VDASSERT(pos < s->length);
 
 		return s->str[pos];
 	}
 
-	inline T& at(int pos) {
+	inline T& at(size_type pos) {
 		if (s->refcount>1)
 			fork();
 
-		VDASSERT(pos >= 0 && pos < s->length);
+		VDASSERT(pos < s->length);
 
 		return s->str[pos];
 	}
 
-	inline const T& at(int pos) const {
-		VDASSERT(pos >= 0 && pos < s->length);
+	inline const T& at(size_type pos) const {
+		VDASSERT(pos < s->length);
 
 		return s->str[pos];
 	}
@@ -239,7 +239,7 @@ public:
 		return s->str;
 	}
 
-	inline void copy(T *dst, int count, int off = 0) {
+	inline void copy(T *dst, size_type count, size_type off = 0) {
 		if (count > s->length - off)
 			count = s->length - off;
 		char_ops::copy(dst, s->str + off, count);
@@ -257,22 +257,22 @@ public:
 		return s->str + s->length;
 	}
 
-	inline int length() const {
+	inline size_type length() const {
 		return s->length;
 	}
 
-	inline int size() const {
+	inline size_type size() const {
 		return s->length;
 	}
 
 	/////////////////////////////////////////////////
 	// mutators
 
-	T *alloc(int l) {
+	T *alloc(size_type l) {
 		if (VDAtomicInt::staticDecrementTestZero(&s->refcount))
 			delete s;
 
-		return initalloc(l);
+		return initalloc((int)l);
 	}
 
 	void clear() {
@@ -304,11 +304,43 @@ public:
 		x.s=t;
 	}
 
+	void erase(size_type p, size_type n) {
+		if (p >= s->length)
+			return;
+		if (n > s->length - p)
+			n = s->length - p;
+		if (n > 0) {
+			VDBasicString tmp(s->length - n);
+
+			char_ops::copy(tmp.s->str, s->str, p);
+			char_ops::copy(tmp.s->str + p, s->str + (p+n), s->length - (p+n));
+			swap(tmp);
+		}
+	}
+
+	void replace(size_type p0, size_type n0, const T *s) {
+		replace(p0, n0, s, char_ops::len(s));
+	}
+
+	void replace(size_type p0, size_type n0, const T *src, size_type n) {
+		if (n0 == n)
+			char_ops::copy(s->str + p0, src, n);
+		else {
+			VDBasicString tmp(s->length + n - n0);
+
+			char_ops::copy(tmp.s->str, s->str, p0);
+			char_ops::copy(tmp.s->str + p0, src, n);
+			char_ops::copy(tmp.s->str + p0 + n, s->str + (p0+n0), s->length - (p0+n0));
+
+			swap(tmp);
+		}
+	}
+
 	/////////////////////////////////////////////////
 	// find()/rfind()
 
 	inline int find(const T x, int off = 0) const {
-		return char_ops::find(s->str + off, s->length - off, x);
+		return char_ops::find(s->str + off, s->length - off, x, off);
 	}
 
 	int find_first_not_of(const T x, int off = 0) const {

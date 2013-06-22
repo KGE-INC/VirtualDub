@@ -27,10 +27,12 @@
 
 #include "misc.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Kasumi/resample.h>
 #include "resource.h"
 #include "gui.h"
 #include "filter.h"
-#include "resample.h"
 #include "vbitmap.h"
 
 extern HINSTANCE g_hInst;
@@ -59,19 +61,20 @@ static char *filter_names[]={
 	"Lanczos3"
 };
 
-typedef struct MyFilterData {
-	long new_x, new_y, new_xf, new_yf;
+struct VDResizeFilterData {
+	double new_x, new_y;
+	long new_xf, new_yf;
 	int filter_mode;
 	COLORREF	rgbColor;
 
 	HBRUSH		hbrColor;
 	IFilterPreview *ifp;
 
-	Resampler *resampler;
+	IVDPixmapResampler *resampler;
 
 	bool	fLetterbox;
 	bool	fInterlaced;
-} MyFilterData;
+};
 
 ////////////////////
 
@@ -82,15 +85,27 @@ int revcolor(int c) {
 ////////////////////
 
 static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
-	long dstw = mfd->new_x;
-	long dsth = mfd->new_y;
-	long h_margin=0, w_margin=0, h_margin_half=0;
+	double dstw = mfd->new_x;
+	double dsth = mfd->new_y;
 	Pixel *dst, *src;
 
 	dst = fa->dst.data;
 	src = fa->src.data;
+
+	double framew = dstw;
+	double frameh = dsth;
+
+	if (mfd->fLetterbox) {
+		framew = mfd->new_xf;
+		frameh = mfd->new_yf;
+	}
+
+	int x1 = (int)ceil((framew - dstw)*0.5 - 0.5);
+	int y1 = (int)ceil((frameh - dsth)*0.5 - 0.5);
+	int x2 = (int)ceil((framew + dstw)*0.5 - 0.5);
+	int y2 = (int)ceil((frameh + dsth)*0.5 - 0.5);
 
 	// Draw letterbox bound
 
@@ -100,24 +115,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 		long w1, w2, w, h;
 
-		if (mfd->fInterlaced)
-			dsth = (dsth+1)&~1;
-
-		w_margin = fa->dst.w - dstw;
-		h_margin = fa->dst.h - dsth;
-
-		if (w_margin < 0)
-			w_margin = 0;
-
-		if (h_margin < 0)
-			h_margin = 0;
-
-		h_margin_half = h_margin/2;
-
-		if (mfd->fInterlaced)
-			h_margin_half &= ~1;
-
-		h = h_margin - h_margin_half;
+		h = y1;
 		if (h>0) do {
 			dst3  = dst2;
 			w = fa->dst.w;
@@ -128,10 +126,10 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			dst2 = (Pixel32 *)((char *)dst2 + fa->dst.pitch);
 		} while(--h);
 
-		w1 = w_margin/2;
-		w2 = w_margin - w_margin/2;
+		w1 = x1;
+		w2 = fa->dst.w - x2;
 
-		h = dsth;
+		h = y2-y1;
 		do {
 			dst3 = dst2;
 
@@ -144,7 +142,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			// skip center
 
-			dst3 += mfd->new_x;
+			dst3 += (int)mfd->new_x;
 
 			// fill right
 
@@ -157,7 +155,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			dst2 = (Pixel32 *)((char *)dst2 + fa->dst.pitch);
 		} while(--h);
 
-		h = h_margin_half;
+		h = fa->dst.h - y2;
 		if (h>0) do {
 			dst3  = dst2;
 			w = fa->dst.w;
@@ -167,61 +165,95 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			dst2 = (Pixel32 *)((char *)dst2 + fa->dst.pitch);
 		} while(--h);
-
-		// offset resampled rectangle
-
-		dst = (Pixel *)((char *)dst + fa->dst.pitch * (h_margin/2)) + (w_margin/2);
 	}
 
 	if (mfd->fInterlaced) {
-		VBitmap vbHalfSrc, vbHalfDst;
+		VDPixmap vbHalfSrc, vbHalfDst;
 
-		vbHalfSrc = fa->src;
-		vbHalfSrc.modulo += vbHalfSrc.pitch;
+		// Top field
+
+		vbHalfSrc		= VDAsPixmap((VBitmap&)fa->src);
 		vbHalfSrc.pitch *= 2;
-		vbHalfSrc.data = fa->src.Address32i(0, fa->src.h&1);
-		vbHalfSrc.h >>= 1;
+		vbHalfSrc.h		= (fa->src.h + 1) >> 1;
 
-		vbHalfDst = fa->dst;
-		vbHalfDst.modulo += vbHalfDst.pitch;
+		vbHalfDst		= VDAsPixmap((VBitmap&)fa->dst);
 		vbHalfDst.pitch *= 2;
-		vbHalfDst.h >>= 1;
+		vbHalfDst.h		= (fa->dst.h + 1) >> 1;
 
-		double dy = 0.25 * (1.0 - (double)vbHalfSrc.h / (double)vbHalfDst.h);
+		double dx = (fa->dst.w - dstw) * 0.5;
+		double dy = (fa->dst.h - dsth) * 0.25 + 0.25;
 
-		mfd->resampler->Process(&vbHalfDst, w_margin/2, h_margin/4, &vbHalfSrc, 0, -dy, false);
+		mfd->resampler->Process(vbHalfDst, dx, dy, dx + mfd->new_x, dy + mfd->new_y*0.5, vbHalfSrc, 0, 0.25);
 
-		vbHalfSrc.data = fa->src.Address32i(0, 1+(fa->src.h&1));
-		vbHalfDst.data = fa->dst.Address32i(0, 1);
+		// Bottom field
 
-		mfd->resampler->Process(&vbHalfDst, w_margin/2, h_margin/4, &vbHalfSrc, 0, +dy, false);
-	} else
-		mfd->resampler->Process(&fa->dst, w_margin/2, h_margin/2, &fa->src, 0, 0, false);
+		vdptrstep(vbHalfSrc.data, -fa->src.pitch);
+		vbHalfSrc.h		= fa->src.h >> 1;
+		vdptrstep(vbHalfDst.data, -fa->dst.pitch);
+		vbHalfDst.h		= fa->dst.h >> 1;
+
+		dy -= 0.5;
+		mfd->resampler->Process(vbHalfDst, dx, dy, dx + mfd->new_x, dy + mfd->new_y*0.5, vbHalfSrc, 0, -0.25);
+	} else {
+		VDPixmap pxdst(VDAsPixmap(*(VBitmap *)&fa->dst));
+		VDPixmap pxsrc(VDAsPixmap(*(VBitmap *)&fa->src));
+
+		double dx = (fa->dst.w - dstw) * 0.5;
+		double dy = (fa->dst.h - dsth) * 0.5;
+
+		mfd->resampler->Process(pxdst, dx, dy, dx + mfd->new_x, dy + mfd->new_y, pxsrc, 0, 0);
+	}
 
 	return 0;
 }
 
 static long resize_param(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
+
+	int dstw = (int)ceil(mfd->new_x);
+	int dsth = (int)ceil(mfd->new_y);
 
 	if (mfd->fLetterbox) {
-		fa->dst.w		= std::max<int>(mfd->new_x, mfd->new_xf);
-		fa->dst.h		= std::max<int>(mfd->new_y, mfd->new_yf);
+		fa->dst.w		= std::max<int>(dstw, mfd->new_xf);
+		fa->dst.h		= std::max<int>(dsth, mfd->new_yf);
 	} else {
-		fa->dst.w		= mfd->new_x;
-		fa->dst.h		= mfd->new_y;
+		fa->dst.w		= dstw;
+		fa->dst.h		= dsth;
 	}
-
-	if (mfd->fInterlaced)
-		fa->dst.h = (fa->dst.h+1)&~1;
 
 	fa->dst.AlignTo8();
 
 	return FILTERPARAM_SWAP_BUFFERS;
 }
 
-static BOOL APIENTRY resizeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	MyFilterData *mfd = (struct MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+namespace {
+	void VDSetDlgItemFloatW32(HWND hdlg, UINT id, double v) {
+		char buf[512];
+
+		sprintf(buf, "%g", v);
+		SetDlgItemText(hdlg, id, buf);
+	}
+
+	double VDGetDlgItemFloatW32(HWND hdlg, UINT id, BOOL *success) {
+		char buf[512];
+
+		*success = FALSE;
+
+		if (GetDlgItemText(hdlg, id, buf, sizeof buf)) {
+			double v;
+			if (1 == sscanf(buf, " %lg", &v)) {
+				*success = TRUE;
+				return v;
+			}
+		}
+
+		return 0;
+	}
+};
+
+
+static INT_PTR APIENTRY resizeDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	VDResizeFilterData *mfd = (struct VDResizeFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
@@ -230,10 +262,10 @@ static BOOL APIENTRY resizeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				HWND hwndItem;
 				int i;
 
-				mfd = (MyFilterData *)lParam;
+				mfd = (VDResizeFilterData *)lParam;
 
-				SetDlgItemInt(hDlg, IDC_WIDTH, mfd->new_x, FALSE);
-				SetDlgItemInt(hDlg, IDC_HEIGHT, mfd->new_y, FALSE);
+				VDSetDlgItemFloatW32(hDlg, IDC_WIDTH, mfd->new_x);
+				VDSetDlgItemFloatW32(hDlg, IDC_HEIGHT, mfd->new_y);
 				SetDlgItemInt(hDlg, IDC_FRAMEWIDTH, mfd->new_xf, FALSE);
 				SetDlgItemInt(hDlg, IDC_FRAMEHEIGHT, mfd->new_yf, FALSE);
 
@@ -259,7 +291,7 @@ static BOOL APIENTRY resizeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 
 				mfd->hbrColor = CreateSolidBrush(mfd->rgbColor);
 
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
 			}
@@ -279,37 +311,41 @@ static BOOL APIENTRY resizeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 
 			case IDC_WIDTH:
 				if (HIWORD(wParam) == EN_KILLFOCUS) {
-					long new_x;
+					double new_x;
 					BOOL success;
 
-					new_x = GetDlgItemInt(hDlg, IDC_WIDTH, &success, FALSE);
+					new_x = VDGetDlgItemFloatW32(hDlg, IDC_WIDTH, &success);
 					if (!success || new_x < 16) {
 						SetFocus((HWND)lParam);
 						MessageBeep(MB_ICONQUESTION);
 						return TRUE;
 					}
 
-					mfd->ifp->UndoSystem();
-					mfd->new_x = new_x;
-					mfd->ifp->RedoSystem();
+					if (mfd->new_x != new_x) {
+						mfd->ifp->UndoSystem();
+						mfd->new_x = new_x;
+						mfd->ifp->RedoSystem();
+					}
 				}
 				return TRUE;
 
 			case IDC_HEIGHT:
 				if (HIWORD(wParam) == EN_KILLFOCUS) {
-					long new_y;
+					double new_y;
 					BOOL success;
 
-					new_y = GetDlgItemInt(hDlg, IDC_HEIGHT, &success, FALSE);
+					new_y = VDGetDlgItemFloatW32(hDlg, IDC_HEIGHT, &success);
 					if (!success || new_y < 16) {
 						SetFocus((HWND)lParam);
 						MessageBeep(MB_ICONQUESTION);
 						return TRUE;
 					}
 
-					mfd->ifp->UndoSystem();
-					mfd->new_y = new_y;
-					mfd->ifp->RedoSystem();
+					if (mfd->new_y != new_y) {
+						mfd->ifp->UndoSystem();
+						mfd->new_y = new_y;
+						mfd->ifp->RedoSystem();
+					}
 				}
 				return TRUE;
 
@@ -419,8 +455,8 @@ static BOOL APIENTRY resizeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 }
 
 static int resize_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-	MyFilterData mfd2 = *mfd;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
+	VDResizeFilterData mfd2 = *mfd;
 	int ret;
 
 	mfd->hbrColor = NULL;
@@ -445,7 +481,7 @@ static int resize_config(FilterActivation *fa, const FilterFunctions *ff, HWND h
 }
 
 static void resize_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
 	if (mfd->fLetterbox)
 		wsprintf(buf, " (%s, lbox %dx%d #%06x)", filter_names[mfd->filter_mode],
@@ -455,38 +491,59 @@ static void resize_string(const FilterActivation *fa, const FilterFunctions *ff,
 }
 
 static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-	long dstw = mfd->new_x;
-	long dsth = mfd->new_y;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
+	double dstw = mfd->new_x;
+	double dsth = mfd->new_y;
 
 	if (dstw<16 || dsth<16)
 		return 1;
 
-	Resampler::eFilter fmode;
+	IVDPixmapResampler::FilterMode fmode;
+	bool bInterpolationOnly = true;
+
+	mfd->resampler = VDCreatePixmapResampler();
 
 	switch(mfd->filter_mode) {
-	case FILTER_NONE:			fmode = Resampler::eFilter::kPoint; break;
-	case FILTER_BILINEAR:		fmode = Resampler::eFilter::kLinearInterp; break;
-	case FILTER_BICUBIC:		fmode = Resampler::eFilter::kCubicInterp; break;
-	case FILTER_TABLEBILINEAR:	fmode = Resampler::eFilter::kLinearDecimate; break;
-	case FILTER_TABLEBICUBIC060:	fmode = Resampler::eFilter::kCubicDecimate060; break;
-	case FILTER_TABLEBICUBIC075:	fmode = Resampler::eFilter::kCubicDecimate075; break;
-	case FILTER_TABLEBICUBIC100:	fmode = Resampler::eFilter::kCubicDecimate100; break;
-	case FILTER_LANCZOS3:			fmode = Resampler::eFilter::kLanczos3; break;
+	case FILTER_NONE:
+		fmode = IVDPixmapResampler::kFilterPoint;
+		break;
+	case FILTER_TABLEBILINEAR:
+		bInterpolationOnly = false;
+	case FILTER_BILINEAR:
+		fmode = IVDPixmapResampler::kFilterLinear;
+		break;
+	case FILTER_TABLEBICUBIC060:
+		mfd->resampler->SetSplineFactor(-0.60);
+		fmode = IVDPixmapResampler::kFilterCubic;
+		bInterpolationOnly = false;
+		break;
+	case FILTER_TABLEBICUBIC075:
+		bInterpolationOnly = false;
+	case FILTER_BICUBIC:
+		mfd->resampler->SetSplineFactor(-0.75);
+		fmode = IVDPixmapResampler::kFilterCubic;
+		break;
+	case FILTER_TABLEBICUBIC100:
+		bInterpolationOnly = false;
+		mfd->resampler->SetSplineFactor(-1.0);
+		fmode = IVDPixmapResampler::kFilterCubic;
+		break;
+	case FILTER_LANCZOS3:
+		bInterpolationOnly = false;
+		fmode = IVDPixmapResampler::kFilterLanczos3;
+		break;
 	}
 
-	mfd->resampler = new Resampler();
-
 	if (mfd->fInterlaced)
-		mfd->resampler->Init(fmode, fmode, dstw, (dsth+1)/2, fa->src.w, fa->src.h/2);
+		mfd->resampler->Init(dstw, dsth * 0.5f, nsVDPixmap::kPixFormat_XRGB8888, fa->src.w, fa->src.h * 0.5f, nsVDPixmap::kPixFormat_XRGB8888, fmode, fmode, bInterpolationOnly);
 	else
-		mfd->resampler->Init(fmode, fmode, dstw, dsth, fa->src.w, fa->src.h);
+		mfd->resampler->Init(dstw, dsth, nsVDPixmap::kPixFormat_XRGB8888, fa->src.w, fa->src.h, nsVDPixmap::kPixFormat_XRGB8888, fmode, fmode, bInterpolationOnly);
 
 	return 0;
 }
 
 static int resize_stop(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
 	delete mfd->resampler;	mfd->resampler = NULL;
 
@@ -496,10 +553,10 @@ static int resize_stop(FilterActivation *fa, const FilterFunctions *ff) {
 static void resize_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
 	FilterActivation *fa = (FilterActivation *)lpVoid;
 
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
-	mfd->new_x	= argv[0].asInt();
-	mfd->new_y	= argv[1].asInt();
+	mfd->new_x	= argv[0].asDouble();
+	mfd->new_y	= argv[1].asDouble();
 
 	if (argv[2].isInt())
 		mfd->filter_mode = argv[2].asInt();
@@ -513,7 +570,7 @@ static void resize_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 		else if (!stricmp(s, "bicubic"))
 			mfd->filter_mode = 2;
 		else
-			EXT_SCRIPT_ERROR(FCALL_UNKNOWN_STR);
+			VDSCRIPT_EXT_ERROR(FCALL_UNKNOWN_STR);
 	}
 
 	mfd->fInterlaced = false;
@@ -534,10 +591,10 @@ static void resize_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 }
 
 static ScriptFunctionDef resize_func_defs[]={
-	{ (ScriptFunctionPtr)resize_script_config, "Config", "0iii" },
-	{ (ScriptFunctionPtr)resize_script_config, NULL, "0iis" },
-	{ (ScriptFunctionPtr)resize_script_config, NULL, "0iiiiii" },
-	{ (ScriptFunctionPtr)resize_script_config, NULL, "0iisiii" },
+	{ (ScriptFunctionPtr)resize_script_config, "Config", "0ddi" },
+	{ (ScriptFunctionPtr)resize_script_config, NULL, "0dds" },
+	{ (ScriptFunctionPtr)resize_script_config, NULL, "0ddiiii" },
+	{ (ScriptFunctionPtr)resize_script_config, NULL, "0ddsiii" },
 	{ NULL },
 };
 
@@ -546,14 +603,14 @@ static CScriptObject resize_obj={
 };
 
 static bool resize_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 	int filtmode = mfd->filter_mode + (mfd->fInterlaced ? 128 : 0);
 
 	if (mfd->fLetterbox)
-		_snprintf(buf, buflen, "Config(%d,%d,%d,%d,%d,0x%06x)", mfd->new_x, mfd->new_y, filtmode, mfd->new_xf, mfd->new_yf,
+		_snprintf(buf, buflen, "Config(%g,%g,%d,%d,%d,0x%06x)", mfd->new_x, mfd->new_y, filtmode, mfd->new_xf, mfd->new_yf,
 			revcolor(mfd->rgbColor));
 	else
-		_snprintf(buf, buflen, "Config(%d,%d,%d)", mfd->new_x, mfd->new_y, filtmode);
+		_snprintf(buf, buflen, "Config(%g,%g,%d)", mfd->new_x, mfd->new_y, filtmode);
 
 	return true;
 }
@@ -567,7 +624,7 @@ FilterDefinition filterDef_resize={
 #endif
 			,
 	NULL,NULL,
-	sizeof(MyFilterData),
+	sizeof(VDResizeFilterData),
 	NULL,NULL,
 	resize_run,
 	resize_param,

@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <conio.h>
+#include <crtdbg.h>
 
 void strtrim(char *s) {
 	char *t = s;
@@ -105,6 +106,12 @@ static const char kTarget_lo		= 24;
 static const char kTarget_a			= 25;
 static const char kTarget_ha		= 26;
 static const char kTarget_la		= 27;
+static const char kTarget_r3264		= 28;
+static const char kTarget_r163264	= 29;
+static const char kTarget_ext		= 30;
+
+static const char kTarget_ext_r3264rexX	= 1;
+static const char kTarget_ext_r3264rexB = 2;
 
 static const char kTarget_ap		= (char)224;
 static const char kTarget_p_cs		= (char)225;
@@ -117,6 +124,7 @@ static const char kTarget_p_66		= (char)231;
 static const char kTarget_p_67		= (char)232;
 static const char kTarget_p_F2		= (char)233;
 static const char kTarget_p_F3		= (char)234;
+static const char kTarget_p_rex		= (char)235;
 
 
 void parse_ia(FILE *f) {
@@ -191,6 +199,8 @@ void parse_ia(FILE *f) {
 						r.match_stream.push_back(std::pair<byte, byte>(19,0));
 					else if (!strcmp(token+1, "!s]"))
 						r.match_stream.push_back(std::pair<byte, byte>(20,0));
+					else if (!strcmp(token+1, "q]"))
+						r.match_stream.push_back(std::pair<byte, byte>(21,0));
 					else
 						oops("unknown prefix match token '%s'\n", token);
 				} else if (isxdigit((unsigned char)token[0]) && isxdigit((unsigned char)token[1])
@@ -298,6 +308,9 @@ void parse_ia(FILE *f) {
 					} else if (!strnicmp(s, "ap", 2)) {
 						r.result += kTarget_ap;
 						s += 2;
+					} else if (!strnicmp(s, "p_rex", 5)) {
+						r.result += kTarget_p_rex;
+						s += 5;
 					} else {
 						unsigned long id = strtoul(s, &s, 10);
 
@@ -340,6 +353,7 @@ void parse_ia(FILE *f) {
 						*t = 0;
 
 						char control_byte;
+						char ext_byte = 0;
 
 						if (!stricmp(s, "r32")) {
 							control_byte = kTarget_r32;
@@ -383,6 +397,16 @@ void parse_ia(FILE *f) {
 							control_byte = kTarget_la;
 						} else if (!stricmp(s, "s")) {
 							control_byte = kTarget_s;
+						} else if (!stricmp(s, "r3264")) {
+							control_byte = kTarget_r3264;
+						} else if (!stricmp(s, "r163264")) {
+							control_byte = kTarget_r163264;
+						} else if (!stricmp(s, "r3264rexX")) {
+							control_byte = kTarget_ext;
+							ext_byte = kTarget_ext_r3264rexX;
+						} else if (!stricmp(s, "r3264rexB")) {
+							control_byte = kTarget_ext;
+							ext_byte = kTarget_ext_r3264rexX;
 						} else {
 							oops("unknown macro expansion mode: '%s'\n", s);
 						}
@@ -400,6 +424,9 @@ void parse_ia(FILE *f) {
 						} else {
 							r.result += (char)control_byte;
 						}
+
+						if (ext_byte)
+							r.result += (char)ext_byte;
 
 						s = t+1;
 					}
@@ -442,8 +469,11 @@ void dump_ia(FILE *f) {
 			prematch = postmatch = 0;
 
 			for(i=0; i<4; ++i) {
-				int tprematch = std::mismatch(last_match[i].begin(), last_match[i].end(), r.match_stream.begin()).first - last_match[i].begin();
-				int tpostmatch = std::mismatch(last_match[i].rbegin(), last_match[i].rend(), r.match_stream.rbegin()).first - last_match[i].rbegin();
+				size_t l2 = last_match[i].size();
+				if (l2 > l)
+					l2 = l;
+				int tprematch = std::mismatch(last_match[i].begin(), last_match[i].begin() + l2, r.match_stream.begin()).first - last_match[i].begin();
+				int tpostmatch = std::mismatch(last_match[i].rbegin(), last_match[i].rbegin() + l2, r.match_stream.rbegin()).first - last_match[i].rbegin();
 
 				if (tprematch+tpostmatch > prematch+postmatch) {
 					prematch = tprematch;
@@ -481,9 +511,21 @@ void dump_ia(FILE *f) {
 			ibest = 0;
 			prematch = postmatch = 0;
 
+			const char *cur = r.result.data();
+
 			for(i=0; i<4; ++i) {
-				int tprematch = std::mismatch(last_result[i].begin(), last_result[i].end(), r.result.begin()).first - last_result[i].begin();
-				int tpostmatch = std::mismatch(last_result[i].rbegin(), last_result[i].rend(), r.result.rbegin()).first - last_result[i].rbegin();
+				const char *last = last_result[i].data();
+				const size_t lastsize = last_result[i].size();
+				const size_t maxmatch = l<lastsize?l:lastsize;
+
+				int tprematch = 0;
+				int tpostmatch = 0;
+
+				while(tprematch < maxmatch && last[tprematch] == cur[tprematch])
+					++tprematch;
+
+				while(tpostmatch < maxmatch && last[lastsize-tpostmatch-1] == cur[l-tpostmatch-1])
+					++tpostmatch;
 
 				if (tprematch+tpostmatch > prematch+postmatch) {
 					prematch = tprematch;
@@ -504,8 +546,10 @@ void dump_ia(FILE *f) {
 			ruleHeap.push_back(ibest*64 + postmatch*8 + prematch);
 			ruleHeap.push_back(1+l - prematch - postmatch);
 			s = ruleHeap.size();
-			ruleHeap.resize(s + l - prematch - postmatch);
-			std::copy(r.result.begin() + prematch, r.result.begin() + l - postmatch, &ruleHeap[s]);
+			if (prematch+postmatch < l) {
+				ruleHeap.resize(s + l - prematch - postmatch);
+				std::copy(r.result.begin() + prematch, r.result.begin() + l - postmatch, &ruleHeap[s]);
+			}
 
 			decomp_bytes += l+1;
 
@@ -519,14 +563,18 @@ void dump_ia(FILE *f) {
 		decomp_bytes += 2;
 	}
 
-	static const char header[64]="[01|01] VirtualDub disasm module (IA32:P4/Athlon V1.04)\r\n\x1A";
+#ifndef _M_AMD64
+	static const char header[64]="[02|02] VirtualDub disasm module (IA32:P4/Athlon V1.05)\r\n\x1A";
+#else
+	static const char header[64]="[02|02] VirtualDub disasm module (AMD64:EM64T/Athlon64 V1.0)\r\n\x1A";
+#endif
 
 	fwrite(header, 64, 1, f);
 
 	packed_bytes = ruleHeap.size();
 	fwrite(&packed_bytes, 4, 1, f);
 
-	decomp_bytes += g_RuleSystem.size() * 4 + 4;
+	decomp_bytes += (g_RuleSystem.size()+1)*sizeof(void *);
 
 	fwrite(&decomp_bytes, 4, 1, f);
 
@@ -546,6 +594,7 @@ struct VDDisassemblyContext {
 	bool bAddressOverride;		// 67
 	bool bRepnePrefix;			// F2
 	bool bRepePrefix;			// F3
+	unsigned char	rex;
 	const char *pszSegmentOverride;
 
 	long	physToVirtOffset;
@@ -658,11 +707,13 @@ long VDDisasmPack32(const int *src) {
 }
 
 void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned char *result, const int *sp_base, const unsigned char *source) {
-	static const char *const reg32[8]={"eax","ecx","edx","ebx","esp","ebp","esi","edi"};
-	static const char *const reg16[8]={"ax","cx","dx","bx","sp","bp","si","di"};
-	static const char *const reg8[8]={"al","cl","dl","bl","ah","ch","dh","bh"};
+	static const char *const reg64[16]={"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8" ,"r9" ,"r10" ,"r11" ,"r12" ,"r13" ,"r14" ,"r15" };
+	static const char *const reg32[16]={"eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"};
+	static const char *const reg16[16]={ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di","r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"};
+	static const char *const reg8a[16]={ "al"," cl", "dl", "bl","spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"};
+	static const char *const reg8 [16]={"al","cl","dl","bl","ah","ch","dh","bh"};
 	static const char *const regmmx[8]={"mm0","mm1","mm2","mm3","mm4","mm5","mm6","mm7"};
-	static const char *const regxmm[8]={"xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7"};
+	static const char *const regxmm[16]={"xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","xmm8","xmm9","xmm10","xmm11","xmm12","xmm13","xmm14","xmm15"};
 	static const char *const regcrn[8]={"cr0","cr1","cr2","cr3","cr4","cr5","cr6","cr7"};
 	static const char *const regdrn[8]={"dr0","dr1","dr2","dr3","dr4","dr5","dr6","dr7"};
 	static const char *const regseg[8]={"es","cs","ss","ds","fs","gs","?6s","?7s"};
@@ -733,7 +784,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 								);
 					break;
 				case kTarget_x:
-					s += sprintf(s, "%02x", arg);
+					s += sprintf(s, "0%02xh" + ((unsigned char)arg < 0xa0), arg);
 					break;
 				case kTarget_lo:
 					symoffset = VDDisasmPack32(sp_base + c - 1);
@@ -748,7 +799,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					}
 					break;
 				case kTarget_o:
-					s += sprintf(s, "%c%02x", arg&0x80?'-':'+', abs((signed char)arg));
+					s += sprintf(s, "%c%02xh", arg&0x80?'-':'+', abs((signed char)arg));
 					break;
 				case kTarget_la:
 					symoffset = (long)source + VDDisasmPack32(sp_base + c - 1) + pContext->physToVirtOffset;
@@ -764,6 +815,22 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					break;
 				case kTarget_s:
 					s = strtack(s, arg_s);
+					break;
+				case kTarget_r3264:
+					s = strtack(s, (pContext->rex & 8 ? reg32 : reg64)[arg + ((pContext->rex & 0x04) << 1)]);
+					break;
+				case kTarget_r163264:
+					s = strtack(s, (pContext->rex & 8 ? reg64 : pContext->bAddressOverride ? reg16 : reg32)[arg + ((pContext->rex & 0x04) << 1)]);
+					break;
+				case kTarget_ext:
+					switch(*result++) {
+					case kTarget_ext_r3264rexX:
+						s = strtack(s, (pContext->bAddressOverride ? reg32 : reg64)[arg + ((pContext->rex & 0x02) << 2)]);
+						break;
+					case kTarget_ext_r3264rexB:
+						s = strtack(s, (pContext->bAddressOverride ? reg32 : reg64)[arg + ((pContext->rex & 0x01) << 3)]);
+						break;
+					}
 					break;
 				}
 
@@ -800,6 +867,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 			case kTarget_p_67:	pContext->bAddressOverride = true;			break;
 			case kTarget_p_F2:	pContext->bRepnePrefix = true;				break;
 			case kTarget_p_F3:	pContext->bRepePrefix = true;				break;
+			case kTarget_p_rex:	pContext->rex = sp_base[0];					break;
 			}
 		} else
 			*s++ = c;
@@ -869,6 +937,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 				case 18:	if (!pContext->bRepnePrefix)		return NULL;	break;
 				case 19:	if (!pContext->bRepePrefix)			return NULL;	break;
 				case 20:	if (pContext->pszSegmentOverride)	return NULL;	break;
+				case 21:	if (!(pContext->rex & 8))			return NULL;	break;
 				}
 			}
 		} else {
@@ -903,6 +972,7 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 		pvdc->bRepePrefix = false;
 		pvdc->bRepnePrefix = false;
 		pvdc->pszSegmentOverride = NULL;
+		pvdc->rex = 0;
 
 		do {
 			s = VDDisasmApplyRuleset(pvdc, pvdc->pRuleSystem[0], pvdc->stack, pvdc->heap, src2, bytes, src_end);
@@ -917,10 +987,10 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 		int count = src_end - source;
 		int linecnt;
 
-		printf("%08lx:", (unsigned long)source + pvdc->physToVirtOffset);
+		printf("%08lx: ", (unsigned long)source + pvdc->physToVirtOffset);
 
 		for(linecnt=0; linecnt<7 && source < src_end; ++linecnt)
-			printf(" %02x", (unsigned char)*source++);
+			printf("%02x", (unsigned char)*source++);
 
 		char *t = s;
 		while(*t && *t != ' ')
@@ -929,7 +999,7 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 		if (*t)
 			*t++ = 0;
 
-		printf("%*c%-7s%s\n", 2 + 3*(7-linecnt), ' ', s, t);
+		printf("%*c%-7s%s\n", 2 + 2*(7-linecnt), ' ', s, t);
 
 		// flush remaining bytes
 
@@ -946,8 +1016,16 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+#ifdef _M_AMD64
+void test1() {
+}
+#else
 void __declspec(naked) test1() {
 	__asm {
+		__emit 0x83
+		__emit 0xc3
+		__emit 0x01
+
 		__emit 0x0f
 		__emit 0x18
 		__emit 0x05
@@ -1033,6 +1111,7 @@ y1:
 
 	}
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1080,8 +1159,8 @@ int main(int argc, char **argv) {
 	vdc.pSymLookup = symLookup;
 	vdc.physToVirtOffset = 0;
 
-	VDDisassemble(&vdc, (const byte *)&test1, 1024);
-//	VDDisassemble(&vdc, (const byte *)&VDDisassemble, 1024);
+//	VDDisassemble(&vdc, (const byte *)&test1, 1024);
+	VDDisassemble(&vdc, (const byte *)&VDDisassemble, 1024);
 
 	getch();
 

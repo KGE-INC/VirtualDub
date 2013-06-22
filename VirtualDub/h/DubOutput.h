@@ -24,12 +24,12 @@
 #include "AVIStripeSystem.h"
 #include "fixes.h"
 
-class AVIOutput;
+class IVDMediaOutput;
 
 class VDINTERFACE IVDDubberOutputSystem {
 public:
-	virtual AVIOutput *CreateSegment() = 0;
-	virtual void CloseSegment(AVIOutput *pSegment, bool bLast) = 0;
+	virtual IVDMediaOutput *CreateSegment() = 0;
+	virtual void CloseSegment(IVDMediaOutput *pSegment, bool bLast) = 0;
 	virtual void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) = 0;
 	virtual void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) = 0;
 	virtual bool AcceptsVideo() = 0;
@@ -50,8 +50,8 @@ public:
 	void SetFilename(const wchar_t *pszFilename);
 	void SetFilenamePattern(const wchar_t *pszSegmentPrefix, const wchar_t *pszExt, int nMinimumDigits);
 
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
 	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
 	bool AcceptsVideo();
@@ -82,8 +82,8 @@ public:
 
 	void Set1GBLimit(bool bUse1GBLimit);
 
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
 	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
 	bool AcceptsVideo();
@@ -106,8 +106,9 @@ public:
 	VDAVIOutputWAVSystem(const wchar_t *pszFilename);
 	~VDAVIOutputWAVSystem();
 
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
+	void SetBuffer(int size);
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
 	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
 	bool AcceptsVideo();
@@ -116,6 +117,7 @@ public:
 
 private:
 	VDStringW	mFilename;
+	int			mBufferSize;
 
 	AVIStreamHeader_fixed	mAudioStreamInfo;
 	std::vector<char>		mAudioFormat;
@@ -127,10 +129,10 @@ public:
 	~VDAVIOutputImagesSystem();
 
 	void SetFilenamePattern(const wchar_t *pszSegmentPrefix, const wchar_t *pszSegmentSuffix, int nMinimumDigits);
-	void SetFormat(int format);
+	void SetFormat(int format, int quality);
 
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
 	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
 	bool AcceptsVideo();
@@ -142,6 +144,7 @@ private:
 	VDStringW	mSegmentSuffix;
 	int			mSegmentDigits;
 	int			mFormat;			// from AVIOutputImages
+	int			mQuality;
 
 	AVIStreamHeader_fixed	mVideoStreamInfo;
 	std::vector<char>		mVideoFormat;
@@ -154,8 +157,8 @@ public:
 	VDAVIOutputPreviewSystem();
 	~VDAVIOutputPreviewSystem();
 
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
 	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
 	bool AcceptsVideo();

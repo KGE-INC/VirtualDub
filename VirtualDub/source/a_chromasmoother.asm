@@ -49,7 +49,7 @@ _asm_chromasmoother_FilterHorizontalMPEG1_MMX	proc	near public
 	lea		edx, [edx+eax-4]
 	xor		eax, -4
 
-	movd		mm1, [ecx+eax+4]
+	movd		mm1, dword ptr [ecx+eax+4]
 	punpcklbw	mm1, mm3
 	movq		mm0, mm1
 	paddw		mm1, mm1
@@ -63,7 +63,7 @@ xloop:
 	movq		mm2, mm1
 	movq		mm1, mm0
 
-	movd		mm0, [ecx+eax]
+	movd		mm0, dword ptr [ecx+eax]
 	pxor		mm3, mm3
 
 	punpcklbw	mm0, mm3
@@ -98,7 +98,7 @@ xloop:
 
 	packuswb	mm2, mm2
 
-	movd		[edx+eax], mm2
+	movd		dword ptr [edx+eax], mm2
 
 	add		eax, 4
 	jne		xloop
@@ -137,7 +137,7 @@ _asm_chromasmoother_FilterHorizontalMPEG2_MMX	proc	near public
 	lea		edx, [edx+eax-4]
 	xor		eax, -4
 
-	movd		mm4, [ecx+eax+4]
+	movd		mm4, dword ptr [ecx+eax+4]
 	punpcklbw	mm4, mm3
 
 	mov		ebx, 2
@@ -145,7 +145,7 @@ _asm_chromasmoother_FilterHorizontalMPEG2_MMX	proc	near public
 	jz		skiploop
 
 xloop:
-	movd		mm0, [ecx+eax]
+	movd		mm0, dword ptr [ecx+eax]
 	pxor		mm3, mm3
 
 	punpcklbw	mm0, mm3
@@ -176,7 +176,7 @@ xloop:
 
 	packuswb	mm2, mm2
 
-	movd		[edx+eax], mm2
+	movd		dword ptr [edx+eax], mm2
 
 	add		eax, 4
 	jne		xloop
@@ -220,11 +220,11 @@ _asm_chromasmoother_FilterVerticalMPEG1_MMX	proc	near public
 	psllq		mm7, 48
 
 xloop:
-	movd		mm1, [ecx+eax]
+	movd		mm1, dword ptr [ecx+eax]
 	pxor		mm3, mm3
-	movd		mm0, [ebx+eax]
+	movd		mm0, dword ptr [ebx+eax]
 	punpcklbw	mm1, mm3
-	movd		mm2, [edx+eax]
+	movd		mm2, dword ptr [edx+eax]
 	punpcklbw	mm0, mm3
 	movq		mm4, mm1
 	punpcklbw	mm2, mm3
@@ -243,7 +243,7 @@ xloop:
 	paddw		mm1, mm4
 	psraw		mm1, 2
 	packuswb	mm1, mm1
-	movd		[edi+eax], mm1
+	movd		dword ptr [edi+eax], mm1
 	add			eax, 4
 	jne			xloop
 

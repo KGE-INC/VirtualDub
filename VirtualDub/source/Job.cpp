@@ -31,6 +31,7 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/log.h>
 #include <vd2/system/text.h>
+#include <vd2/system/file.h>
 #include <vd2/Dita/services.h>
 #include "InputFile.h"
 #include "AudioFilterSystem.h"
@@ -41,6 +42,7 @@
 #include "dub.h"
 #include "script.h"
 #include "misc.h"
+#include "project.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -58,6 +60,7 @@ extern FilterFunctions g_filterFuncs;
 extern wchar_t g_szInputAVIFile[];
 extern wchar_t g_szInputWAVFile[];
 extern InputFileOptions *g_pInputOpts;
+extern VDProject *g_project;
 
 HWND g_hwndJobs;
 
@@ -68,8 +71,8 @@ static const char g_szRegKeyShutdownWhenFinished[] = "Shutdown after jobs finish
 
 ///////////////////////////////////////////////////////////////////////////
 
-static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
-static BOOL CALLBACK JobShutdownDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK JobShutdownDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
 static void ExitWindowsExDammit(UINT uFlags, DWORD dwReserved);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -96,6 +99,10 @@ public:
 	void write(const char *s, long l);
 	void adds(const char *s);
 	void addf(const char *fmt, ...);
+
+	const char *data() const { return &mScript[0]; }
+	size_t size() const { return mScript.size(); }
+
 	char *getscript();
 
 protected:
@@ -118,15 +125,12 @@ void JobScriptOutput::clear() {
 }
 
 void JobScriptOutput::write(const char *s, long l) {
-	tScript::size_type	pos(mScript.size());
-
-	mScript.resize(pos + l);
-	std::copy(s, s+l, &mScript[pos]);
+	mScript.insert(mScript.end(), s, s+l);
 }
 
 void JobScriptOutput::adds(const char *s) {
 	write(s, strlen(s));
-	write("\n",1);
+	write("\r\n",2);
 }
 
 void JobScriptOutput::addf(const char *fmt, ...) {
@@ -483,7 +487,7 @@ void VDJob::ListLoad(const char *lpszName) {
 				if (c == '\n' || c==EOF)
 					break;
 
-				linebuffer.push_back(c);
+				linebuffer.push_back((char)c);
 			}
 
 			linebuffer.push_back(0);
@@ -795,7 +799,7 @@ void VDJob::RunAllStop() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-static BOOL CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
 
 	switch(uiMsg) {
 	case WM_INITDIALOG:
@@ -821,7 +825,7 @@ static BOOL CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARA
 	return FALSE;
 }
 
-static BOOL CALLBACK JobLogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK JobLogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
@@ -1065,7 +1069,7 @@ static struct ReposItem jobCtlPosData[]={
 
 POINT jobCtlPos[11];
 
-static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
 	static char *szColumnNames[]={ "Name","Source","Dest","Start","End","Status" };
 	static int iColumnWidths[]={ 100,75,75,50,50,100 };
 
@@ -1171,7 +1175,7 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 					Job_GetDispInfo(nldi);
 					return TRUE;
 				case LVN_ENDLABELEDIT:
-					SetWindowLong(hdlg, DWL_MSGRESULT, TRUE);
+					SetWindowLongPtr(hdlg, DWLP_MSGRESULT, TRUE);
 					vdj = VDJob::ListGet(nldi->item.iItem);
 
 					if (vdj && nldi->item.pszText) {
@@ -1479,9 +1483,8 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 
 	output.addf("VirtualDub.audio.EnableFilterGraph(%d);", opt->audio.bUseAudioFilterGraph);
 
-	output.addf("VirtualDub.video.SetDepth(%d,%d);",
-			16+8*opt->video.inputDepth,
-			16+8*opt->video.outputDepth);
+	output.addf("VirtualDub.video.SetInputFormat(%d);", opt->video.mInputFormat);
+	output.addf("VirtualDub.video.SetOutputFormat(%d);", opt->video.mOutputFormat);
 
 	output.addf("VirtualDub.video.SetMode(%d);",
 			opt->video.mode);
@@ -1603,23 +1606,13 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 					output.addf("VirtualDub.audio.filters.instance[%d].SetInt(%d, %d);", srcfilt, idx, var.GetS32());
 					break;
 				case VDFilterConfigVariant::kTypeU64:
-					output.addf("VirtualDub.audio.filters.instance[%d].SetLong(%d, %d, %d);", srcfilt, idx, (sint32)(var.GetU64() >> 32), (sint32)var.GetU64());
+					output.addf("VirtualDub.audio.filters.instance[%d].SetLong(%d, %I64d);", srcfilt, idx, var.GetU64());
 					break;
 				case VDFilterConfigVariant::kTypeS64:
-					output.addf("VirtualDub.audio.filters.instance[%d].SetLong(%d, %d, %d);", srcfilt, idx, (sint32)(var.GetS64() >> 32), (sint32)var.GetS64());
+					output.addf("VirtualDub.audio.filters.instance[%d].SetLong(%d, %I64d);", srcfilt, idx, var.GetS64());
 					break;
 				case VDFilterConfigVariant::kTypeDouble:
-					{
-						union {
-							double d;
-							struct {
-								sint32 lo;
-								sint32 hi;
-							} bar;
-						} foo = { var.GetDouble() };
-
-						output.addf("VirtualDub.audio.filters.instance[%d].SetDouble(%d, 0x08%x, 0x%x);", srcfilt, idx, foo.bar.hi, foo.bar.lo);
-					}
+					output.addf("VirtualDub.audio.filters.instance[%d].SetDouble(%d, %g);", srcfilt, idx, var.GetDouble());
 					break;
 				case VDFilterConfigVariant::kTypeAStr:
 					output.addf("VirtualDub.audio.filters.instance[%d].SetString(%d, \"%s\");", srcfilt, idx, strCify(VDTextWToU8(VDTextAToW(var.GetAStr())).c_str()));
@@ -1638,12 +1631,12 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 	// Add subset information
 
 	if (bIncludeEditList) {
-		if (inputSubset) {
-			output.addf("VirtualDub.subset.Clear();");
+		const FrameSubset& fs = g_project->GetTimeline().GetSubset();
 
-			for(FrameSubset::const_iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it)
-				output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", it->bMask ? "Masked" : "", it->start, it->len);
-		}
+		output.addf("VirtualDub.subset.Clear();");
+
+		for(FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end()); it!=itEnd; ++it)
+			output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
 	}
 }
 
@@ -1676,7 +1669,7 @@ void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInp
 
 		if (ifn = ifn->NextFromHead())
 			while(ifn_next = ifn->NextFromHead()) {
-				output.addf("VirtualDub.Append(\"%s\");", strCify(ifn->name));
+				output.addf("VirtualDub.Append(\"%s\");", strCify(VDTextWToU8(VDStringW(ifn->name)).c_str()));
 				ifn = ifn_next;
 			}
 	}
@@ -1696,6 +1689,7 @@ void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, cons
 			output.addf("VirtualDub.SaveSegmentedAVI(\"%s\", %d, %d);", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()), lSpillThreshold, lSpillFrameThreshold);
 		else
 			output.addf("VirtualDub.Save%sAVI(\"%s\");", fCompatibility ? "Compatible" : "", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()));
+		output.adds("VirtualDub.audio.SetSource(1);");		// required to close a WAV file
 		output.adds("VirtualDub.Close();");
 
 		///////////////////
@@ -1712,7 +1706,7 @@ void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, cons
 	}
 }
 
-void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended) {
+void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int minDigits, int imageFormat, int quality, List2<InputFilenameNode> *pListAppended) {
 	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
@@ -1724,8 +1718,9 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 
 		VDStringA s(strCify(VDTextWToU8(VDStringW(szFilePrefix)).c_str()));
 
-		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d);", s.c_str(), strCify(VDTextWToU8(VDStringW(szFileSuffix)).c_str()), minDigits, imageFormat);
+		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d, %d);", s.c_str(), strCify(VDTextWToU8(VDStringW(szFileSuffix)).c_str()), minDigits, imageFormat, quality);
 
+		output.adds("VirtualDub.audio.SetSource(1);");		// required to close a WAV file
 		output.adds("VirtualDub.Close();");
 
 		///////////////////
@@ -1742,20 +1737,13 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 	}
 }
 
-void JobWriteConfiguration(FILE *f, DubOptions *opt, bool bIncludeEditList) {
+void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList) {
 	JobScriptOutput output;
-	char *scr;
 
 	JobCreateScript(output, opt, bIncludeEditList);
 
-	scr = output.getscript();
-
-	if (fputs(scr, f)<0 || fflush(f)) {
-		freemem(scr);
-		throw MyError("Can't write configuration: %s.", strerror(errno));
-	}
-
-	freemem(scr);
+	VDFile f(filename, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
+	f.write(output.data(), output.size());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1771,7 +1759,10 @@ void DeinitJobSystem() {
 }
 
 void OpenJobWindow() {
-	if (g_hwndJobs) return;
+	if (g_hwndJobs) {
+		SetForegroundWindow(g_hwndJobs);
+		return;
+	}
 
 	g_hwndJobs = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_JOBCONTROL), NULL, JobCtlDlgProc);
 }
@@ -1886,19 +1877,19 @@ void JobAddBatchDirectory(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
 	}
 }
 
-static BOOL CALLBACK JobShutdownDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK JobShutdownDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		SendDlgItemMessage(hdlg, IDC_PROGRESS, PBM_SETRANGE, TRUE, MAKELONG(0, 40));
 		SendDlgItemMessage(hdlg, IDC_PROGRESS, PBM_SETSTEP, 1, 0);
 		SetTimer(hdlg, 1, 250, NULL);
-		SetWindowLong(hdlg, DWL_USER, 0);
+		SetWindowLongPtr(hdlg, DWLP_USER, 0);
 		return TRUE;
 
 	case WM_TIMER:
 		{
-			DWORD pos = GetWindowLong(hdlg, DWL_USER);
-			SetWindowLong(hdlg, DWL_USER, pos+1);
+			DWORD pos = GetWindowLongPtr(hdlg, DWLP_USER);
+			SetWindowLongPtr(hdlg, DWLP_USER, pos+1);
 
 			SendDlgItemMessage(hdlg, IDC_PROGRESS, PBM_STEPIT, 0, 0);
 

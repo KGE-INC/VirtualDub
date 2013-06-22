@@ -9,8 +9,42 @@
 
 #ifdef _DEBUG
 
+class VDSafeMessageBoxThreadW32 : public VDThread {
+public:
+	VDSafeMessageBoxThreadW32(HWND hwndParent, const char *pszText, const char *pszCaption, DWORD dwFlags)
+		: mhwndParent(hwndParent)
+		, mpszText(pszText)
+		, mpszCaption(pszCaption)
+		, mdwFlags(dwFlags)
+	{
+	}
+
+	DWORD GetResult() const { return mdwResult; }
+
+protected:
+	void ThreadRun() {
+		mdwResult = MessageBox(mhwndParent, mpszText, mpszCaption, mdwFlags);
+	}
+
+	HWND mhwndParent;
+	const char *const mpszText;
+	const char *const mpszCaption;
+	const DWORD mdwFlags;
+	DWORD mdwResult;
+};
+
+UINT VDSafeMessageBoxW32(HWND hwndParent, const char *pszText, const char *pszCaption, DWORD dwFlags) {
+	VDSafeMessageBoxThreadW32 mbox(hwndParent, pszText, pszCaption, dwFlags);
+
+	mbox.ThreadStart();
+	mbox.ThreadWait();
+	return mbox.GetResult();
+}
+
 VDAssertResult VDAssert(const char *exp, const char *file, int line) {
 	char szText[1024];
+
+	VDDEBUG("%s(%d): Assert failed: %s\n", file, line, exp);
 
 	wsprintf(szText,
 		"Assert failed in module %s, line %d:\n"
@@ -19,7 +53,7 @@ VDAssertResult VDAssert(const char *exp, const char *file, int line) {
 		"\n"
 		"Break into debugger?", file, line, exp);
 
-	switch(MessageBox(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
+	switch(VDSafeMessageBoxW32(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
 	case IDABORT:
 		return kVDAssertBreak;
 	case IDRETRY:
@@ -34,6 +68,8 @@ VDAssertResult VDAssert(const char *exp, const char *file, int line) {
 VDAssertResult VDAssertPtr(const char *exp, const char *file, int line) {
 	char szText[1024];
 
+	VDDEBUG("%s(%d): Assert failed: %s is not a valid pointer\n", file, line, exp);
+
 	wsprintf(szText,
 		"Assert failed in module %s, line %d:\n"
 		"\n"
@@ -41,7 +77,7 @@ VDAssertResult VDAssertPtr(const char *exp, const char *file, int line) {
 		"\n"
 		"Break into debugger?", file, line, exp);
 
-	switch(MessageBox(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
+	switch(VDSafeMessageBoxW32(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
 	case IDABORT:
 		return kVDAssertBreak;
 	case IDRETRY:

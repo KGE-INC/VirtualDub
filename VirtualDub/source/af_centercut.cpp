@@ -18,7 +18,6 @@
 #include "stdafx.h"
 #include <math.h>
 #include <vector>
-#include <vd2/system/VDRingBuffer.h>
 #include "af_base.h"
 #include "fht.h"
 
@@ -32,8 +31,6 @@ public:
 	uint32 Run();
 	void Start();
 
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
 	sint64 Seek(sint64);
 
 protected:
@@ -45,8 +42,6 @@ protected:
 
 	uint32		mInputSamplesNeeded;
 	uint32		mInputPos;
-
-	VDRingBuffer<char>	mOutputBuffer[2];
 
 	unsigned	mBitRev[kWindowSize];
 	float		mWindow[kWindowSize];
@@ -96,18 +91,11 @@ uint32 VDAudioFilterCenterCut::Prepare() {
 	pwf1->mSampleBits	= 16;
 	pwf1->mBlockSize	= 2;
 	pwf1->mDataRate		= pwf1->mSamplingRate * 2;
+
 	return 0;
 }
 
 void VDAudioFilterCenterCut::Start() {
-	const VDAudioFilterPin& pin0 = *mpContext->mpOutputs[0];
-	const VDAudioFilterPin& pin1 = *mpContext->mpOutputs[1];
-	const VDWaveFormat& format0 = *pin0.mpFormat;
-	const VDWaveFormat& format1 = *pin1.mpFormat;
-
-	mOutputBuffer[0].Init(format0.mBlockSize * pin0.mBufferSize);
-	mOutputBuffer[1].Init(format1.mBlockSize * pin1.mBufferSize);
-
 	VDCreateBitRevTable(mBitRev, kWindowSize);
 	VDCreateHalfSineTable(mSineTab, kWindowSize);
 
@@ -137,19 +125,17 @@ uint32 VDAudioFilterCenterCut::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	int samples, actual = 0;
 	unsigned i;
 
-	sint16 *dst1 = (sint16 *)mOutputBuffer[0].LockWrite(kQuarterWindow*4, samples);
-	sint16 *dst2 = (sint16 *)mOutputBuffer[1].LockWrite(samples>>1, samples);
-
-	samples >>= 1;
-
-	if (samples < kQuarterWindow)
+	if (!mpContext->mOutputGranules)
 		return 0;
+
+	sint16 *dst1 = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
+	sint16 *dst2 = (sint16 *)mpContext->mpOutputs[1]->mpBuffer;
 
 	// fill up the input window
 
+	int actual = 0;
 	while(mInputSamplesNeeded > 0) {
 		sint16 buf[4096];
 		int tc = mpContext->mpInputs[0]->Read(&buf, std::min<int>(mInputSamplesNeeded, 4096 / format.mChannels), false, kVFARead_PCM16);
@@ -198,12 +184,12 @@ uint32 VDAudioFilterCenterCut::Run() {
 		dot = lR*rR+lI*rI;
 		ldotl = lR*lR+lI*lI;
 		rdotr = rR*rR+rI*rI;
-		alpha = dot/(ldotl+0.0000001);
+		alpha = 1.0/(ldotl+0.0000001f);
 
 		clR = lR * alpha;
 		clI = lI * alpha;
 
-		alpha = dot/(rdotr+0.0000001);
+		alpha = 1./(rdotr+0.0000001f);
 
 		crR = rR * alpha;
 		crI = rI * alpha;
@@ -216,8 +202,8 @@ uint32 VDAudioFilterCenterCut::Run() {
 		C = dot;
 		D = B*B-4*A*C;
 
-		if (D>=0.0F && A>0.00000001) {
-			alpha = (-B-sqrt(D))/(2*A);
+		if (D>=0.0F && A>0.00000001f) {
+			alpha = (-B-(float)sqrt(D))/(2*A);
 
 			cR*=alpha;
 			cI*=alpha;
@@ -252,7 +238,7 @@ uint32 VDAudioFilterCenterCut::Run() {
 			if ((unsigned)v >= 0x10000)
 				v = ~v >> 31;
 
-			return (sint16)v - 0x8000;
+			return (sint16)(v - 0x8000);
 		}
 	};
 
@@ -274,35 +260,16 @@ uint32 VDAudioFilterCenterCut::Run() {
 
 	mInputSamplesNeeded = kQuarterWindow;
 
-	mOutputBuffer[0].UnlockWrite(kQuarterWindow * mpContext->mpOutputs[0]->mpFormat->mBlockSize);
-	mOutputBuffer[1].UnlockWrite(kQuarterWindow * mpContext->mpOutputs[1]->mpFormat->mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer[0].getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	mpContext->mpOutputs[1]->mCurrentLevel = mOutputBuffer[1].getLevel() / mpContext->mpOutputs[1]->mpFormat->mBlockSize;
+	mpContext->mpOutputs[0]->mSamplesWritten = kQuarterWindow;
+	mpContext->mpOutputs[1]->mSamplesWritten = kQuarterWindow;
 
 	return 0;
 }
 
-uint32 VDAudioFilterCenterCut::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer[pinno].getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer[pinno].Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[pinno]->mCurrentLevel = mOutputBuffer[pinno].getLevel() / mpContext->mpOutputs[pinno]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
 sint64 VDAudioFilterCenterCut::Seek(sint64 us) {
-	mOutputBuffer[0].Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	mOutputBuffer[1].Flush();
-	mpContext->mpOutputs[1]->mCurrentLevel = 0;
-	return us;
+	const VDWaveFormat& inputFormat = *mpContext->mpInputs[0]->mpFormat;
+
+	return us - ((sint64)1000000 * kWindowSize / inputFormat.mSamplingRate);
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_centercut = {

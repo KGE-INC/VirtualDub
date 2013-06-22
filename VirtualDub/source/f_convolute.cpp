@@ -19,9 +19,8 @@
 
 #include <windows.h>
 
-#include "ScriptValue.h"
-#include "ScriptInterpreter.h"
-#include "ScriptError.h"
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdvideofiltold.h>
 
 #include "resource.h"
 #include "filter.h"
@@ -222,7 +221,7 @@ static int convolute_init(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY convoluteDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK convoluteDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	int i;
 
     switch (message)
@@ -237,13 +236,13 @@ static BOOL APIENTRY convoluteDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 				for(i=0; i<9; i++)
 					SetDlgItemInt(hDlg, IDC_MATRIX_1+i, cfd->m[i], TRUE);
 
-				SetWindowLong(hDlg, DWL_USER, (LONG)cfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)cfd);
 			}
             return (TRUE);
 
         case WM_COMMAND:                      
             if (LOWORD(wParam) == IDOK) {
-				struct ConvoluteFilterData *cfd = (struct ConvoluteFilterData *)GetWindowLong(hDlg, DWL_USER);
+				struct ConvoluteFilterData *cfd = (struct ConvoluteFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 				cfd->fClip = IsDlgButtonChecked(hDlg, IDC_ENABLE_CLIPPING);
 				cfd->bias = GetDlgItemInt(hDlg, IDC_BIAS, NULL, TRUE)*256 + 128;
@@ -268,7 +267,6 @@ static int convolute_config(FilterActivation *fa, const FilterFunctions *ff, HWN
 
 static void convolute_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
 	FilterActivation *fa = (FilterActivation *)lpVoid;
-	int lv = argv[0].asInt();
 
 	ConvoluteFilterData *cfd = (ConvoluteFilterData *)fa->filter_data;
 
@@ -324,7 +322,7 @@ extern DubOptions g_dubOpts;
 
 char *DCG_emit_MOV(char *ptr, int dest, int src) {
 	ptr[0] = (char)0x8b;
-	ptr[1] = 0xc0 + (dest<<3) + src;
+	ptr[1] = (char)(0xc0 + (dest<<3) + src);
 
 	return ptr+2;
 }
@@ -333,44 +331,44 @@ char *DCG_emit_MOV_from_indexed(char *ptr, int dest, int src, long disp32) {
 	ptr[0] = (char)0x8b;
 	if (src != REG_ESP) {
 		if (src != REG_EBP && !disp32) {
-			ptr[1] = (dest<<3) + src;
+			ptr[1] = (char)((dest<<3) + src);
 			return ptr+2;
 		}
 		if (disp32>=-128 && disp32<128) {
-			ptr[1] = 0x40 + (dest<<3) + src;
-			ptr[2] = disp32 & 0xff;
+			ptr[1] = (char)(0x40 + (dest<<3) + src);
+			ptr[2] = (char)(disp32 & 0xff);
 			return ptr+3;
 		}
-		ptr[1] = 0x80 + (dest<<3) + src;
+		ptr[1] = (char)(0x80 + (dest<<3) + src);
 		*(long *)(ptr+2) = disp32;
 		return ptr+6;
 	}
 
 	ptr[2] = 0x24;
 	if (!disp32) {
-		ptr[1] = 0x00 + (dest<<3);
+		ptr[1] = (char)(0x00 + (dest<<3));
 		return ptr+3;
 	}
 	if (disp32>=-128 && disp32<128) {
-		ptr[1] = 0x40 + (dest<<3);
+		ptr[1] = (char)(0x40 + (dest<<3));
 		ptr[3] = 0;
 		return ptr+4;
 	}
-	ptr[1] = 0x80 + (dest<<3);
+	ptr[1] = (char)(0x80 + (dest<<3));
 	*(long *)(ptr+3) = 0;
 	return ptr+7;
 }
 
 char *DCG_emit_ADD(char *ptr, int dest, int src) {
 	ptr[0] = 0x03;
-	ptr[1] = 0xc0 + (dest<<3) + src;
+	ptr[1] = (char)(0xc0 + (dest<<3) + src);
 
 	return ptr+2;
 }
 
 char *DCG_emit_SUB(char *ptr, int dest, int src) {
 	ptr[0] = 0x2B;
-	ptr[1] = 0xc0 + (dest<<3) + src;
+	ptr[1] = (char)(0xc0 + (dest<<3) + src);
 
 	return ptr+2;
 }
@@ -378,13 +376,13 @@ char *DCG_emit_SUB(char *ptr, int dest, int src) {
 char *DCG_emit_SHL(char *ptr, int dest, int bits) {
 	if (bits==1) {
 		ptr[0] = (char)0xd1;
-		ptr[1] = 0xe0 + dest;
+		ptr[1] = (char)(0xe0 + dest);
 
 		return ptr+2;
 	}
 	ptr[0] = (char)0xc1;
-	ptr[1] = 0xe0 + dest;
-	ptr[2] = bits;
+	ptr[1] = (char)(0xe0 + dest);
+	ptr[2] = (char)bits;
 
 	return ptr+3;
 }
@@ -392,20 +390,20 @@ char *DCG_emit_SHL(char *ptr, int dest, int bits) {
 char *DCG_emit_SHR(char *ptr, int dest, int bits) {
 	if (bits==1) {
 		ptr[0] = (char)0xd1;
-		ptr[1] = 0xe8 + dest;
+		ptr[1] = (char)(0xe8 + dest);
 
 		return ptr+2;
 	}
 	ptr[0] = (char)0xc1;
-	ptr[1] = 0xe8 + dest;
-	ptr[2] = bits;
+	ptr[1] = (char)(0xe8 + dest);
+	ptr[2] = (char)bits;
 
 	return ptr+3;
 }
 
 char *DCG_emit_AND_immediate(char *ptr, int dest, long imm32) {
 	ptr[0] = (char)0x81;
-	ptr[1] = 0xe0 + dest;
+	ptr[1] = (char)(0xe0 + dest);
 	*(long *)(ptr+2) = imm32;
 
 	return ptr+6;
@@ -416,11 +414,11 @@ char *DCG_emit_AND_immediate(char *ptr, int dest, long imm32) {
 char *DCG_emit_LEA(char *ptr, int dest, int src1, int scale) {
 	ptr[0] = (char)0x8d;
 	if (!scale && src1!=REG_EBP && src1!=REG_ESP) {
-		ptr[1] = (dest<<3) | src1;
+		ptr[1] = (char)((dest<<3) | src1);
 		return ptr+2;
 	}
-	ptr[1] = 0x04 | (dest<<3);
-	ptr[2] = (scale<<6) | (src1<<3) | 0x05;
+	ptr[1] = (char)(0x04 | (dest<<3));
+	ptr[2] = (char)((scale<<6) | (src1<<3) | 0x05);
 	*(long *)(ptr+3)=0;
 
 	return ptr+7;
@@ -431,13 +429,13 @@ char *DCG_emit_LEA(char *ptr, int dest, int src1, int scale) {
 char *DCG_emit_LEA(char *ptr, int dest, int src1, int scale, int src2) {
 	ptr[0] = (char)0x8d;
 	if (src2 == REG_EBP) {
-		ptr[1] = 0x44 | (dest<<3);
-		ptr[2] = (scale<<6) | (src1<<3) | src2;
+		ptr[1] = (char)(0x44 | (dest<<3));
+		ptr[2] = (char)((scale<<6) | (src1<<3) | src2);
 		ptr[3] = 0;
 		return ptr+4;
 	}
-	ptr[1] = 0x04 | (dest<<3);
-	ptr[2] = (scale<<6) | (src1<<3) | src2;
+	ptr[1] = (char)(0x04 | (dest<<3));
+	ptr[2] = (char)((scale<<6) | (src1<<3) | src2);
 
 	return ptr+3;
 }

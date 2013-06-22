@@ -1,7 +1,55 @@
 VirtualDub change log
---------------- start VirtualDub change log ---------------
+Build 21538 (1.6.0, experimental): [September 7, 2004]
+   [features added]
+   * Native AMD64 build (see Release Notes for restrictions).
+   * New "perspective" video filter can deproject subimages that are displayed obliquely in a scene.
+   * YUV formats can now be directly selected for decompression and compression.
+   * Planar YUV formats are now supported for both display and output.
+   * Added preliminary DirectX 9 (D3D9) display driver support, with support for filter mode selection and multipass bicubic filtering. This driver must be manually enabled in Preferences.
+   * Added OpenGL display driver, with support for filter mode selection. This driver must be manually enabled in Preferences.
+   * Frame seeking is now incremental so that extremely long frame distances between key frames no longer hang the app during the preload.
+   * Added support for the PRELOAD flag on video decompression to speed up seeking.
+   * New position slider that displays frame number markers and supports mouse wheel scrolling beyond 32K.
+   * Fast recompress format is reported in log.
+   * Basic movement keyboard shortcuts now work in filter preview.
+   * JPEG image sequence input and output is now supported.
+   * Single images can be opened as video files.
+   * Integrated DV video decoder.
+   * Audio is now decoded from type-1 DV files.
+   * Audio filter dialog now has a position control to allow previewing at arbitrary points.
+   * The frame indicator in the timeline control can now be customized via Preferences/Timeline.
 
-Current build (1.5.10, stable):
+   [optimizations]
+   * Major optimizations to Resize video filter.
+   * SSE2-optimized IDCT kernel.
+
+   [workarounds]
+   * Added workaround for codecs that pass decode queries for formats they can't actually decode. VirtualDub will only use these codecs to decode formats with FOURCCs that the codec is registered with, or that the codec naturally produces.
+   * Improved workaround for codecs that unmask FPU exceptions in their DLL initialization, particularly FP Divide by Zero (which can cause other codecs to crash).
+
+   [bugs fixed]
+   * Expanded a number of internal variables to 64-bit to reduce problems with long streams that have more than 2^31 bytes or samples.
+   * Fixed crash when opening file for first time with output pane disabled.
+   * Fixed crash when displaying odd-width 16-bit video on a 32-bit display.
+   * Corrected asymmetry in response of TV filter in 5x5 chroma blur + tsoften mode.
+   * A low frame rate video with no audio could cause the blitter thread to consume 100% CPU at high priority, virtually locking the system.
+   * Enabling error concealment prevented the bad video frame scan from working.
+   * Fixed crash when changing priority in the middle of render termination.
+   * Fixed 3072 sample delay in "center cut" audio filter.
+   * Aggressive AVI recovery was very slow when processing large blocks of invalid data, such as 8MB of nulls.
+   * Fixed leak of handles in frameclient driver that was causing Windows XP Explorer to keep AVI files open frameclient proxy mode was enabled.
+   * Jobs using WAV file audio didn't close the WAV file after completion, keeping it locked across subsequent jobs.
+   * Appended file lists were being written out in job scripts in ANSI rather than UTF-8, causing problems with high-plane characters.
+   * Audio information in File Information wasn't taking all samples into account.
+   * Long paths in the most recently used (MRU) list now ellipsize.
+   * Lowered priority of livelock messages to Info so they don't flag as warnings in the job queue.
+   * Fixed race condition that sometimes resulted in final B frames not being flushed completely.
+   * "Butterfly" audio filter didn't work with 8-bit audio.
+   * Unbuffered I/O is now disabled on non-hard-disk paths for better efficiency on slow links, particularly over networks.
+   * Frameserver paths longer than 64 bytes prevented the frameclient from connecting properly.
+   * Improved input validation on frame rate entry fields to catch period/comma mixups.
+
+Build 18160 (1.5.10, stable):    [December 2, 2003]
    [features added]
    * Removed "accept partial streams" from MPEG-1 options
      and made it enabled by default; added warning.
@@ -16,8 +64,6 @@ Current build (1.5.10, stable):
    * BMP reader can now handle BITMAPCOREHEADER type
      headers (fixes incompatibility with ZSNES
      screenshots).
-   * Filters were receiving garbage frame timings in
-     capture mode.
 
    [regressions fixed]
    * Fixed instability in application when parsing VideoCD
@@ -87,6 +133,10 @@ Build 18068 (1.5.8, stable):   [November 3, 2003]
    * Fixed display of 8-bit paletted video.
    * Program starts under Windows 95 again.
 
+Current build (1.5.8, experimental):
+   [features added]
+   * Rudimentary support for IFF ANIM format.
+
 Current build (1.5.7, stable):    [October 20, 2003]
    [bugs fixed]
    * Quick preview didn't work if the current position was
@@ -107,15 +157,15 @@ Current build (1.5.7, stable):    [October 20, 2003]
    * Save Image Sequence command would randomly produce
      an unrequested job instead of initiating the render
      directly.
+   * Append AVI function was incrementing the filename
+     extension instead of the name component.
+   * Avisynth scripts smaller than 60 bytes weren't being
+     autodetected properly.
    * MP3 audio streams were getting written with
      dwLength=0 if correction was enabled.
    * MPEG decoder occasionally decoded garbage into the
      video frame, resulting in sporadic block errors
      during processing.
-   * Append AVI function was incrementing the filename
-     extension instead of the name component.
-   * Avisynth scripts smaller than 60 bytes weren't being
-     autodetected properly.
 
 Build 17971 (1.5.6, stable):      [October 10, 2003]
    [features added]
@@ -1548,5 +1598,4 @@ Build 1482 (Public Release 1):
    * Audio interleaving fixed.
    * Preview mode audio playback no longer cut off.
    * Miscellaneous bug fixes.
-
-------------------- end VirtualDub log --------------------
+ 

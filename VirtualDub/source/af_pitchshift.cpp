@@ -38,7 +38,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		char buf[256];
 
 		switch(msg) {
@@ -85,8 +85,6 @@ public:
 	uint32 Prepare();
 	void Start();
 	uint32 Run();
-	uint32 Read(unsigned inpin, void *dst, uint32 samples);
-	sint64 Seek(sint64 us);
 
 	void *GetConfigPtr() { return &mConfig; }
 
@@ -106,7 +104,6 @@ public:
 protected:
 	VDAudioFilterPitchShiftConfig	mConfig;
 	std::vector<sint16>		mPitchBuffer;
-	VDRingBuffer<char>		mOutputBuffer;
 	sint32 mSrcSamples;
 	uint32 mdudx;
 	std::vector<sint32>		mScores;
@@ -140,7 +137,7 @@ uint32 VDAudioFilterPitchShift::Prepare() {
 	mpContext->mpOutputs[0]->mpFormat = pwf;
 
 	pwf->mSampleBits	= 16;
-	pwf->mBlockSize		= 2 * pwf->mChannels;
+	pwf->mBlockSize		= (uint16)(2 * pwf->mChannels);
 	pwf->mDataRate		= pwf->mSamplingRate * pwf->mBlockSize;
 
 	return 0;
@@ -152,7 +149,6 @@ void VDAudioFilterPitchShift::Start() {
 
 	mPitchBuffer.resize(2048 * format.mChannels);
 	mScores.resize(32 * format.mChannels);
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 	mSrcSamples = 0;
 	mus.resize(format.mChannels*3);
 	std::fill(mus.begin(), mus.end(), 0);
@@ -162,25 +158,15 @@ void VDAudioFilterPitchShift::Start() {
 uint32 VDAudioFilterPitchShift::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
-	bool bInputRead = false;
 
 	// foo
 	short buf16[4096];
 
-	int samples = std::min<int>(mpContext->mInputSamples, 4096 / format.mChannels);
-
 	// compute output samples
-	int bytes = samples * format.mBlockSize;
-	sint16 *dst;
-	
-	samples = 0;
-	if (bytes > 0) {
-		dst = (sint16 *)mOutputBuffer.LockWrite(bytes, bytes);
-		samples = bytes / format.mBlockSize;
-	}
+	int samples = std::min<int>(mpContext->mCommonSamples, 4096 / format.mChannels);
 
 	if (!samples) {
-		if (pin.mbEnded && !bytes)
+		if (pin.mbEnded && !mpContext->mInputSamples)
 			return kVFARun_Finished;
 
 		return 0;
@@ -200,14 +186,16 @@ uint32 VDAudioFilterPitchShift::Run() {
 			const sint32 l = tmp[0];
 			const sint32 r = tmp[1];
 
-			tmp[0] = (l+r+1)>>1;
-			tmp[1] = (l-r+1)>>1;
+			tmp[0] = (sint16)((l+r+1)>>1);
+			tmp[1] = (sint16)((l-r+1)>>1);
 			tmp += 2;
 		}
 	}
 
 	const int delta = mdudx > 0x10000 ? -128 : 128;
 	const ptrdiff_t nch = format.mChannels;
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
+
 	for(unsigned ch=0; ch<nch; ++ch) {
 		const sint16 *src = &buf16[ch];
 		sint16 *bufp = &mPitchBuffer[2048 * ch];
@@ -275,7 +263,6 @@ uint32 VDAudioFilterPitchShift::Run() {
 		for(unsigned i=0; i<samples; ++i) {
 			const unsigned inpos = srcidx++ & 2047;
 			const unsigned outpos0 = (u0>>16)&2047;
-			const unsigned outpos1 = (u1>>16)&2047;
 
 			bufp[inpos] = *src;
 
@@ -283,7 +270,7 @@ uint32 VDAudioFilterPitchShift::Run() {
 			const sint32 v1 = sample::fn(bufp, u1);
 			const sint32 vo = v0+(((v1-v0)*(sint32)blend) >> 5);
 
-			dst2[i*nch] = vo;
+			dst2[i*nch] = (sint16)vo;
 			u0 += mdudx;
 			u1 += mdudx;
 			src += nch;
@@ -336,39 +323,17 @@ uint32 VDAudioFilterPitchShift::Run() {
 			if (r >= 0x10000)
 				r = (sint32)~r >> 31;
 
-			tmp[0] = l - 0x8000;
-			tmp[1] = r - 0x8000;
+			tmp[0] = (sint16)(l - 0x8000);
+			tmp[1] = (sint16)(r - 0x8000);
 			tmp += 2;
 		}
 	}
 
 	mSrcSamples += samples;
 
-	mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
-}
-
-uint32 VDAudioFilterPitchShift::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterPitchShift::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {

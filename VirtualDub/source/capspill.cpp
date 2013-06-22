@@ -123,7 +123,6 @@ CapSpillDrive *CapSpillPickDrive(bool fAudio) {
 CapSpillDrive *CapSpillFindDrive(const char *path) {
 	CapSpillDrive *pcsd = g_spillDrives.AtHead();
 	CapSpillDrive *pcsd_next;
-	CapSpillDrive *pcsd_best = NULL;
 
 	while(pcsd_next = pcsd->NextFromHead()) {
 		const char *s = path, *t = pcsd->path;
@@ -227,7 +226,7 @@ bool CapSpillAdd(HWND hwnd, CapSpillDrive *pcsd, bool fAddList) {
 	return true;
 }
 
-BOOL CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
@@ -339,8 +338,7 @@ BOOL CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 			NMLVDISPINFO *pnldi = (NMLVDISPINFO *)lParam;
 
 			if (pnldi->hdr.code == LVN_GETDISPINFO) {
-				CapSpillDrive *pcsd, *pcsd_next = NULL;
-				int i = pnldi->item.iItem;
+				CapSpillDrive *pcsd;
 
 				pcsd = (CapSpillDrive *)pnldi->item.lParam;
 
@@ -438,7 +436,7 @@ static void LVDestroyEdit(bool write, bool sort) {
 }
 
 static LRESULT APIENTRY LVEditWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	WNDPROC wpOld = (WNDPROC)GetWindowLong(hwnd, GWL_USERDATA);
+	WNDPROC wpOld = (WNDPROC)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
 	switch(msg) {
 	case WM_GETDLGCODE:
@@ -552,7 +550,7 @@ static void LVBeginEdit(HWND hwndLV, int index, int subitem) {
 }
 
 static LRESULT APIENTRY LVWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	WNDPROC wpOld = (WNDPROC)GetWindowLong(hwnd, GWL_USERDATA);
+	WNDPROC wpOld = (WNDPROC)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
 	switch(msg) {
 	case WM_DESTROY:

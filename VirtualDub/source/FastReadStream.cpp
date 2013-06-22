@@ -136,7 +136,6 @@ void FastReadStream::Flush() {
 
 int FastReadStream::_PickVictim(int stream) {
 	int i;
-	int iLoneBlock = -1;
 	long fStreamEncounteredBits=0, fStreamNotLoneBits=0;
 	int iOurLowest=-1, iGlobalLowest=-1, iPreferred=-1;
 	long fStreamMask = 1L<<stream;

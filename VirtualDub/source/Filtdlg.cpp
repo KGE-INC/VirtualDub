@@ -24,7 +24,9 @@
 #include "VideoSource.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
+#include <vd2/Dita/services.h>
 
+#include "plugins.h"
 #include "resource.h"
 #include "oshelper.h"
 #include "ClippingControl.h"
@@ -39,9 +41,13 @@ extern FilterFunctions g_filterFuncs;
 
 extern vdrefptr<VideoSource> inputVideoAVI;
 
+enum {
+	kFileDialog_LoadPlugin		= 'plug',
+};
+
 //////////////////////////////
 
-BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam);
+INT_PTR CALLBACK FilterClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 void FilterLoadFilter(HWND hWnd);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -58,7 +64,7 @@ public:
 	FilterDefinitionInstance *Activate(VDGUIHandle hParent);
 
 protected:
-	BOOL DlgProc(UINT message, UINT wParam, LONG lParam);
+	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 	void ReinitDialog();
 
 	HWND						mhwndList;
@@ -93,7 +99,7 @@ void VDDialogFilterListW32::ReinitDialog() {
 	}
 }
 
-BOOL VDDialogFilterListW32::DlgProc(UINT message, UINT wParam, LONG lParam) {
+INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
@@ -198,9 +204,9 @@ static void RedoFilters(HWND hWndList) {
 	try {
 		if (inputVideoAVI) {
 			BITMAPINFOHEADER *bmih = inputVideoAVI->getImageFormat();
-			filters.prepareLinearChain(&listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 24, 24);
+			filters.prepareLinearChain(&listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 24);
 		} else {
-			filters.prepareLinearChain(&listFA, NULL, 320, 240, 24, 24);
+			filters.prepareLinearChain(&listFA, NULL, 320, 240, 24);
 		}
 	} catch(const MyError&) {
 		return;
@@ -236,7 +242,7 @@ static void RedoFilters(HWND hWndList) {
       SendMessage(hWndList, LB_SETCURSEL, sel, 0);
 }
 
-BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
+INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	static const char szPending[]="(pending)";
 
@@ -492,7 +498,7 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 //
 ///////////////////////////////////////////////////////////////////////////
 
-BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+INT_PTR CALLBACK FilterClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	FilterInstance *fa;
 
     switch (message)
@@ -505,7 +511,7 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				HWND hWnd, hWndCancel;
 
 				fa = (FilterInstance *)lParam;
-				SetWindowLong(hDlg, DWL_USER, (LONG)fa);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)fa);
 
 				hWnd = GetDlgItem(hDlg, IDC_BORDERS);
 				ccb.x1	= fa->x1;
@@ -522,7 +528,8 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->origw,fa->origh));
 				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
-				guiPositionInitFromStream(hWnd);
+				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hWnd);
+				guiPositionInitFromStream(pc);
 
 				GetWindowRect(hDlg, &rw);
 				GetWindowRect(hWnd, &rc);
@@ -553,7 +560,7 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				{
 					ClippingControlBounds ccb;
 
-					fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
+					fa = (FilterInstance *)GetWindowLongPtr(hDlg, DWLP_USER);
 					SendMessage(GetDlgItem(hDlg, IDC_BORDERS), CCM_GETCLIPBOUNDS, 0, (LPARAM)&ccb);
 					fa->x1 = ccb.x1;
 					fa->y1 = ccb.y1;
@@ -566,18 +573,25 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				EndDialog(hDlg, FALSE);
 				return TRUE;
 			case IDC_BORDERS:
-				fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
-				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam), fa->origw, fa->origh);
+				fa = (FilterInstance *)GetWindowLongPtr(hDlg, DWLP_USER);
+
+				{
+					IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)(HWND)lParam);
+					guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, pc), fa->origw, fa->origh);
+				}
 				return TRUE;
 			}
             break;
 
 		case WM_NOTIFY:
 			if (GetWindowLong(((NMHDR *)lParam)->hwndFrom, GWL_ID) == IDC_BORDERS) {
-				fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
+				fa = (FilterInstance *)GetWindowLongPtr(hDlg, DWLP_USER);
 
-				if (fa)
-					guiPositionBlit(((NMHDR *)lParam)->hwndFrom, guiPositionHandleNotify(wParam, lParam), fa->origw, fa->origh);
+				if (fa) {
+					HWND hwndClipping = ((NMHDR *)lParam)->hwndFrom;
+					IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
+					guiPositionBlit(hwndClipping, guiPositionHandleNotify(lParam, pc), fa->origw, fa->origh);
+				}
 			}
 			break;
 
@@ -588,30 +602,13 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 ///////////////////////////////////////////////////////////////////////
 
 void FilterLoadFilter(HWND hWnd) {
-	OPENFILENAME ofn;
-	char szFile[MAX_PATH];
+	const VDStringW filename(VDGetLoadFileName(kFileDialog_LoadPlugin, (VDGUIHandle)hWnd, L"Load external filter", L"VirtualDub filter (*.vdf)\0*.vdf\0Windows Dynamic-Link Library (*.dll)\0*.dll\0All files (*.*)\0*.*\0", NULL, NULL, NULL));
 
-	szFile[0]=0;
-
-	ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
-	ofn.hwndOwner			= hWnd;
-	ofn.lpstrFilter			= "VirtualDub filter (*.vdf)\0*.vdf\0Windows Dynamic-Link Library (*.dll)\0*.dll\0All files (*.*)\0*.*\0";
-	ofn.lpstrCustomFilter	= NULL;
-	ofn.nFilterIndex		= 1;
-	ofn.lpstrFile			= szFile;
-	ofn.nMaxFile			= sizeof szFile;
-	ofn.lpstrFileTitle		= NULL;
-	ofn.nMaxFileTitle		= 0;
-	ofn.lpstrInitialDir		= NULL;
-	ofn.lpstrTitle			= "Load external filter";
-	ofn.Flags				= OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_ENABLESIZING;
-	ofn.lpstrDefExt			= NULL;
-
-	if (GetOpenFileName(&ofn)) {
+	if (!filename.empty()) {
 		try {
-			FilterLoadModule(szFile);
+			VDAddPluginModule(filename.c_str());
 		} catch(const MyError& e) {
-			e.post(hWnd,"Filter load error");
+			e.post(hWnd, g_szError);
 		}
 	}
 }

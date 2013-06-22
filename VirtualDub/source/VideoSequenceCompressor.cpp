@@ -56,6 +56,8 @@
 //
 //	ICM_COMPRESS:
 //
+//		lpbiOutput->biSizeImage	Indeterminate (same as last time).
+//
 //		dwFlags			Equal to ICCOMPRESS_KEYFRAME if a keyframe is
 //						required, and zero otherwise.
 //		lpckid			Always points to zero.
@@ -206,11 +208,12 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 
 	lMaxFrameSize = 0;
 	lSlopSpace = 0;
+	lKeySlopSpace = 0;
 }
 
 void VideoSequenceCompressor::setDataRate(long lDataRate, long lUsPerFrame, long lFrameCount) {
 
-	if (lDataRate && (dwFlags & VIDCF_CRUNCH))
+	if (lDataRate && (dwFlags & (VIDCF_CRUNCH|VIDCF_QUALITY)))
 		lMaxFrameSize = MulDiv(lDataRate, lUsPerFrame, 1000000);
 	else
 		lMaxFrameSize = 0;
@@ -299,6 +302,11 @@ void VideoSequenceCompressor::start() {
 
 	fCompressionStarted = true;
 	lFrameNum = 0;
+
+
+	mQualityLo = 0;
+	mQualityLast = 10000;
+	mQualityHi = 10000;
 }
 
 void VideoSequenceCompressor::finish() {
@@ -332,10 +340,7 @@ void VideoSequenceCompressor::dropFrame() {
 }
 
 void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *plSize) {
-	DWORD dwChunkId = 0;
-	DWORD dwFlags=0, dwFlagsIn = ICCOMPRESS_KEYFRAME;
-	DWORD res;
-	DWORD sizeImage;
+	DWORD dwFlagsOut=0, dwFlagsIn = ICCOMPRESS_KEYFRAME;
 	long lAllowableFrameSize=0;//xFFFFFF;	// yes, this is illegal according
 											// to the docs (see below)
 
@@ -377,33 +382,129 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	//	   a bug in the Indeo 5 QC driver, which page faults if
 	//	   keyframe interval=0 and max frame size = 0.
 
-	sizeImage = pbiOutput->bmiHeader.biSizeImage;
-
-//	pbiOutput->bmiHeader.biSizeImage = 0;
-
 	// Compress!
 
-	if (dwFlagsIn)
-		dwFlags = AVIIF_KEYFRAME;
+	sint32 bytes;
 
-	VDCHECKPOINT;
-	{
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		vdprotected3("compressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer) {
-			res = ICCompress(hic, dwFlagsIn,
-					(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
-					(LPBITMAPINFOHEADER)pbiInput, pBits,
-					&dwChunkId,
-					&dwFlags,
-					lFrameNum,
-					lFrameNum ? lAllowableFrameSize : 0xFFFFFF,
-					lQuality,
-					dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
-					dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
+	if (lMaxFrameSize && !(dwFlags & VIDCF_CRUNCH)) {
+		sint32 maxDelta = lMaxFrameSize/20 + 1;
+		int packs = 0;
+
+		PackFrameInternal(0, mQualityLast, pBits, dwFlagsIn, dwFlagsOut, bytes);
+		++packs;
+
+		// Don't do crunching for key frames to keep consistent quality.
+		if (abs(bytes - lAllowableFrameSize) <= maxDelta || dwFlagsIn)
+			goto crunch_complete;
+
+		if (bytes < lAllowableFrameSize) {		// too low -- squeeze [mid, hi]
+			PackFrameInternal(0, mQualityHi, pBits, dwFlagsIn, dwFlagsOut, bytes);
+			++packs;
+
+			if (abs(bytes - lAllowableFrameSize) <= maxDelta) {
+				mQualityLast = mQualityHi;
+				mQualityHi = (mQualityHi + 10001) >> 1;
+				goto crunch_complete;
+			}
+
+			if (bytes < lAllowableFrameSize) {
+				mQualityLast = mQualityHi;
+				mQualityHi = 10000;
+			}
+
+			if (mQualityHi > mQualityLast + 1000)
+				mQualityHi = mQualityLast + 1000;
+
+			sint32 lo = mQualityLast, hi = mQualityHi, q;
+
+			while(lo <= hi) {
+				q = (lo+hi)>>1;
+
+				PackFrameInternal(0, q, pBits, dwFlagsIn, dwFlagsOut, bytes);
+				++packs;
+
+				sint32 delta = (bytes - lAllowableFrameSize);
+
+				if (delta < -maxDelta)
+					lo = q+1;
+				else if (delta > +maxDelta)
+					hi = q-1;
+				else
+					break;
+			}
+
+			if (q + q > mQualityHi + mQualityLast)
+				mQualityHi += 100;
+			else
+				mQualityHi -= 100;
+
+			if (mQualityHi <= q + 100)
+				mQualityHi = q + 100;
+
+			if (mQualityHi > 10000)
+				mQualityHi = 10000;
+
+			mQualityLast = q;
+
+		} else {							// too low -- squeeze [lo, mid]
+			PackFrameInternal(0, mQualityLo, pBits, dwFlagsIn, dwFlagsOut, bytes);
+			++packs;
+
+			if (abs(bytes - lAllowableFrameSize)*20 <= lAllowableFrameSize) {
+				mQualityLast = mQualityLo;
+				mQualityLo = mQualityLo >> 1;
+				goto crunch_complete;
+			}
+
+			if (bytes > lAllowableFrameSize) {
+				mQualityLast = mQualityLo;
+				mQualityLo = 1;
+			}
+
+			if (mQualityLo < mQualityLast - 1000)
+				mQualityLo = mQualityLast - 1000;
+
+			sint32 lo = mQualityLo, hi = mQualityLast, q;
+
+			while(lo <= hi) {
+				q = (lo+hi)>>1;
+
+				PackFrameInternal(0, q, pBits, dwFlagsIn, dwFlagsOut, bytes);
+				++packs;
+
+				sint32 delta = (bytes - lAllowableFrameSize);
+
+				if (delta < -maxDelta)
+					lo = q+1;
+				else if (delta > +maxDelta)
+					hi = q-1;
+				else
+					break;
+			}
+
+			if (q + q < mQualityLo + mQualityLast)
+				mQualityLo -= 100;
+			else
+				mQualityLo += 100;
+
+			if (mQualityLo >= q - 100)
+				mQualityLo = q - 100;
+
+			if (mQualityLo < 1)
+				mQualityLo = 1;
+
+			mQualityLast = q;
 		}
-	}
 
-	VDCHECKPOINT;
+crunch_complete:
+		;
+
+		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes, iterations = %d, range = [%5d, %5d, %5d]\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize, packs, mQualityLo, mQualityLast, mQualityHi);
+	} else {	// No crunching or crunch directly supported
+		PackFrameInternal(lAllowableFrameSize, lQuality, pBits, dwFlagsIn, dwFlagsOut, bytes);
+
+		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize);
+	}
 
 	// Special handling for DivX 5 and XviD codecs:
 	//
@@ -422,71 +523,52 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 		}
 	}
 
-	// Special handling for XviD codec:
-	//
-	// Query codec for extended status.
-
-#if 0
-	if (mVFWExtensionMessageID) {
-		struct {
-			DWORD input_consumed;
-			DWORD output_produced;
-		} result;
-
-		if (ICERR_OK == ICSendMessage(hic, mVFWExtensionMessageID, VFW_EXT_RESULT, (LPARAM)&result)) {
-
-			if (!result.output_produced) {
-				bNoOutputProduced = true;
-			}
-		}
-	}
-#endif
-
 	if (bNoOutputProduced) {
-		pbiOutput->bmiHeader.biSizeImage = sizeImage;
 		lKeyRateCounter = lKeyRateCounterSave;
 		return NULL;
 	}
 
-
-	_RPT2(0,"Compressed frame %d: %d bytes\n", lFrameNum, pbiOutput->bmiHeader.biSizeImage);
-
-	++lFrameNum;
-
-	*plSize = pbiOutput->bmiHeader.biSizeImage;
-
 	// If we're using a compressor with a stupid algorithm (Microsoft Video 1),
 	// we have to decompress the frame again to compress the next one....
 
-	if (res==ICERR_OK && pPrevBuffer && (!lKeyRate || lKeyRateCounter>1)) {
+	if (pPrevBuffer && (!lKeyRate || lKeyRateCounter>1)) {
+		DWORD res;
 
-		VDCHECKPOINT;
-
-		res = ICDecompress(hic, dwFlags & AVIIF_KEYFRAME ? 0 : ICDECOMPRESS_NOTKEYFRAME
-				,(LPBITMAPINFOHEADER)pbiOutput
-				,pOutputBuffer
-				,(LPBITMAPINFOHEADER)pbiInput
-				,pPrevBuffer);
-
-		VDCHECKPOINT;
+		{
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+			vdprotected3("decompressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pOutputBuffer, unsigned, (unsigned)pPrevBuffer) {
+				res = ICDecompress(hic, dwFlagsOut & AVIIF_KEYFRAME ? 0 : ICDECOMPRESS_NOTKEYFRAME
+						,(LPBITMAPINFOHEADER)pbiOutput
+						,pOutputBuffer
+						,(LPBITMAPINFOHEADER)pbiInput
+						,pPrevBuffer);
+			}
+		}
+		if (res != ICERR_OK)
+			throw MyICError("Video compression", res);
 	}
 
-	pbiOutput->bmiHeader.biSizeImage = sizeImage;
-
-	if (res != ICERR_OK)
-		throw MyICError("Video compression", res);
+	++lFrameNum;
+	*plSize = bytes;
 
 	// Update quota.
 
 	if (lMaxFrameSize) {
-		lSlopSpace += lMaxFrameSize - *plSize;
+		if (lKeyRate && dwFlagsIn)
+			lKeySlopSpace += lMaxFrameSize - bytes;
+		else
+			lSlopSpace += lMaxFrameSize - bytes;
 
-		_RPT3(0,"Compression: allowed %d, actual %d, slop %+d\n", lAllowableFrameSize, *plSize, lSlopSpace);
+		if (lKeyRate) {
+			long delta = lKeySlopSpace / lKeyRateCounter;
+			lSlopSpace += delta;
+			lKeySlopSpace -= delta;
+		}
 	}
 
 	// Was it a keyframe?
 
-	if (dwFlags & AVIIF_KEYFRAME) {
+	if (dwFlagsOut & AVIIF_KEYFRAME) {
 		*pfKeyframe = true;
 		lKeyRateCounter = lKeyRate;
 	} else {
@@ -494,4 +576,35 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	}
 
 	return pOutputBuffer;
+}
+
+void VideoSequenceCompressor::PackFrameInternal(DWORD frameSize, DWORD q, void *pBits, DWORD dwFlagsIn, DWORD& dwFlagsOut, sint32& bytes) {
+	DWORD dwChunkId = 0;
+	DWORD res;
+
+	dwFlagsOut = 0;
+	if (dwFlagsIn)
+		dwFlagsOut = AVIIF_KEYFRAME;
+
+	DWORD sizeImage = pbiOutput->bmiHeader.biSizeImage;
+
+	VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+	vdprotected3("compressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer) {
+		res = ICCompress(hic, dwFlagsIn,
+				(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
+				(LPBITMAPINFOHEADER)pbiInput, pBits,
+				&dwChunkId,
+				&dwFlagsOut,
+				lFrameNum,
+				lFrameNum ? frameSize : 0xFFFFFF,
+				q,
+				dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
+				dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
+	}
+
+	bytes = pbiOutput->bmiHeader.biSizeImage;
+	pbiOutput->bmiHeader.biSizeImage = sizeImage;
+
+	if (res != ICERR_OK)
+		throw MyICError("Video compression", res);
 }

@@ -34,7 +34,7 @@ public:
 	Licensor();
 	Licensor(HWND);
 
-	static BOOL APIENTRY DProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+	static INT_PTR APIENTRY DProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 	static void depack(HWND hDlg);
 } g_licensor;
 
@@ -85,7 +85,7 @@ void Licensor::depack(HWND hDlg) {
 				while(t != textbuf + 18316) {
 					if (*s >= 0xa0) {
 						*t++ = ' ';
-						*t++ = *s & 0x7f;
+						*t++ = (char)(*s & 0x7f);
 					} else if (*s >= 0x80)
 						while((*s)-->=0x80)
 							*t++ = ' ';
@@ -109,7 +109,7 @@ void Licensor::depack(HWND hDlg) {
 	EndDialog(hDlg, 0);
 }
 
-BOOL APIENTRY Licensor::DProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+INT_PTR APIENTRY Licensor::DProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
@@ -133,7 +133,7 @@ Licensor::Licensor() {
 	DWORD dw;
 
 	for(i=0; i<10; i++)
-		str[i] = fht_tab[i]^0xaa;
+		str[i] = (char)(fht_tab[i]^0xaa);
 	str[i] = 0;
 
 	if (QueryConfigDword(NULL, str, &dw) && dw)

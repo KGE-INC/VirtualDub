@@ -1,5 +1,21 @@
-#pragma warning(disable: 4786)
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2004 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include <stdafx.h>
 #include <map>
 #include <vector>
 #include <string.h>
@@ -15,7 +31,6 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/VDString.h>
 #include <vd2/Dita/services.h>
-#include <vd2/Dita/interface.h>
 
 #ifndef OPENFILENAME_SIZE_VERSION_400
 #define OPENFILENAME_SIZE_VERSION_400 0x4c
@@ -27,11 +42,13 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
+#if 0
 IVDUIContext *VDGetUIContext() {
 	static vdautoptr<IVDUIContext> spctx(VDCreateUIContext());
 
 	return spctx;
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -256,12 +273,12 @@ void VDInitFilespecSystem() {
 
 struct VDGetFileNameHook {
 	static UINT_PTR CALLBACK HookFn(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
-		VDGetFileNameHook *pThis = (VDGetFileNameHook *)GetWindowLongPtr(hdlg, DWL_USER);
+		VDGetFileNameHook *pThis = (VDGetFileNameHook *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 		switch(uiMsg) {
 		case WM_INITDIALOG:
 			pThis = (VDGetFileNameHook *)(((const OPENFILENAMEA *)lParam)->lCustData);
-			SetWindowLongPtr(hdlg, DWL_USER, (LONG_PTR)pThis);
+			SetWindowLongPtr(hdlg, DWLP_USER, (LONG_PTR)pThis);
 			pThis->Init(hdlg);
 			return 0;
 
@@ -361,6 +378,11 @@ static const VDStringW VDGetFileName(bool bSaveAs, long nKey, VDGUIHandle ctxPar
 		OPENFILENAMEA a;
 		OPENFILENAMEW w;
 	} ofn={0};
+
+	// Slight annoyance: If we want to use custom templates and still keep the places
+	// bar, the lStructSize parameter must be greater than OPENFILENAME_SIZE_VERSION_400.
+	// But if sizeof(OPENFILENAME) is used under Windows 95/98, the open call fails.
+	// Argh.
 
 	bool bIsAtLeastWin2K = (sint32)(GetVersion() & 0x800000FF) >= 5;	// OS must be NT, major version >= 5
 

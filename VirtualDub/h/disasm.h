@@ -22,13 +22,15 @@
 
 
 struct VDDisassemblyContext {
-	const unsigned char **pRuleSystem;
+	const unsigned char *pRuleBase;
+	const unsigned *pRuleSystemOffsets;
 	long (*pSymLookup)(VDDisassemblyContext *pctx, unsigned long virtAddr, char *buf, int buf_len);
 
 	bool bSizeOverride;			// 66
 	bool bAddressOverride;		// 67
 	bool bRepnePrefix;			// F2
 	bool bRepePrefix;			// F3
+	unsigned char	rex;
 	const char *pszSegmentOverride;
 
 	long	physToVirtOffset;
@@ -36,7 +38,7 @@ struct VDDisassemblyContext {
 	void	*pRawBlock;
 	char	*heap;
 	char	*heap_limit;
-	int		*stack;
+	ptrdiff_t		*stack;
 
 	void	*pExtraData;
 	int		cbExtraData;
@@ -51,7 +53,7 @@ char *VDDisassemble(VDDisassemblyContext *pvdc, const unsigned char *source, int
 
 class CodeDisassemblyWindow {
 private:
-	static BOOL CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
+	static INT_PTR CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
 
 	void *code, *rbase, *abase;
 	long length;

@@ -115,7 +115,7 @@ public:
 	CAVIStreamRemote(CAVIFileRemote *parentPtr, BOOL isAudio, AVISTREAMINFO *asi, void *format, long format_len, long sample_first, long sample_last);
 	~CAVIStreamRemote();
 
-	STDMETHODIMP Create(LONG lParam1, LONG lParam2);
+	STDMETHODIMP Create(LPARAM lParam1, LPARAM lParam2);
 	STDMETHODIMP Delete(LONG lStart, LONG lSamples);
 	STDMETHODIMP_(LONG) Info(AVISTREAMINFOW *psi, LONG lSize);
 	STDMETHODIMP_(LONG) FindSample(LONG lPos, LONG lFlags);

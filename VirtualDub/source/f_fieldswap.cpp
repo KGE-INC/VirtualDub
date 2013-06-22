@@ -27,6 +27,7 @@ extern HINSTANCE g_hInst;
 
 ///////////////////////////////////
 
+#ifdef _M_IX86
 static void __declspec(naked) asm_fieldswap(void *data, int bytes4, int bytes1, int height, long pitch) {
 	__asm {
 		push	ebp
@@ -75,6 +76,34 @@ no_extra:
 		ret
 	}
 }
+#else
+static void asm_fieldswap(void *data, int bytes4, int bytes1, int height, long pitch) {
+	uint32 *p1 = (uint32 *)data;
+	uint32 *p2 = (uint32 *)((char *)data + pitch);
+
+	if (bytes4)
+		do {
+			const uint32 x = *p1;
+			const uint32 y = *p2;
+
+			*p1++ = y;
+			*p2++ = x;
+		} while(--bytes4);
+
+	if (bytes1) {
+		uint8 *p1b = (uint8 *)p1;
+		uint8 *p2b = (uint8 *)p2;
+
+		do {
+			const uint8 x = *p1b;
+			const uint8 y = *p2b;
+
+			*p1b++ = y;
+			*p1b++ = x;
+		} while(--bytes1);
+	}
+}
+#endif
 
 ///////////////////////////////////
 

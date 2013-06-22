@@ -19,14 +19,10 @@
 #define f_VIDEODISPLAYDRIVERS_H
 
 #include <windows.h>
+#include <vd2/Kasumi/pixmap.h>
 
 struct VDVideoDisplaySourceInfo {
-	const void	*data;
-	const uint32 *palette;
-	ptrdiff_t	stride;
-	int			w;
-	int			h;
-	int			format;
+	VDPixmap	pixmap;
 	int			bpp;
 	int			bpr;
 	void		*pSharedObject;
@@ -45,6 +41,13 @@ public:
 		kOddFieldsOnly
 	};
 
+	enum FilterMode {
+		kFilterAnySuitable,
+		kFilterPoint,
+		kFilterBilinear,
+		kFilterBicubic,
+	};
+
 	virtual ~IVDVideoDisplayMinidriver() {}
 
 	virtual bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) = 0;
@@ -53,6 +56,7 @@ public:
 	virtual bool ModifySource(const VDVideoDisplaySourceInfo& info) = 0;
 
 	virtual bool IsValid() = 0;
+	virtual void SetFilterMode(FilterMode mode) = 0;
 
 	virtual bool Tick(int id) = 0;
 	virtual bool Resize() = 0;
@@ -66,5 +70,6 @@ public:
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverOpenGL();
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw();
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverGDI();
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9();
 
 #endif

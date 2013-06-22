@@ -5,7 +5,7 @@ class VectorHeapHeader {
 public:
 	VectorHeapHeader *next;
 	long lSize, lPoint;
-	char heap[];
+	char heap[1];
 };
 
 class VectorHeap {

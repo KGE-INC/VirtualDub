@@ -158,7 +158,7 @@ predict_Y_halfpelY_SSE2:
 	PREDICT_START
 	mov	edi,8
 	mov	eax,esi
-	movdqu	mm0,[ecx]
+	movdqu	xmm0,[ecx]
 	add	eax,eax
 predict_Y_halfpelY_SSE2@loop:
 	prefetcht0 [ecx+eax]

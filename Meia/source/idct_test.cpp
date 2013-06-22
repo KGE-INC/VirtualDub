@@ -189,6 +189,8 @@ namespace {
 		}
 		total /= 64.0;
 
+		result.mWorstSquaredError = max;
+		result.mAverageSquaredError = total;
 		result.mbWorstSquaredErrorOK = (max <= 0.06);
 		result.mbAverageSquaredErrorOK = (total <= 0.02);
 		
@@ -198,9 +200,10 @@ namespace {
 			total += err;
 			if (err < 0.0) err = -err;
 			if (max < err) max = err;
-			if ((i%8) == 8-1) printf("\n");
 		}
 		total /= 64.0;
+		result.mWorstError = max;
+		result.mAverageError = total;
 		result.mbWorstErrorOK = (max <= 0.015);
 		result.mbAverageErrorOK = (total <= 0.0015);
 

@@ -22,6 +22,7 @@
 
 #include <vd2/system/VDString.h>
 #include <vd2/system/text.h>
+#include <vd2/system/vdstl.h>
 
 long MulDivTrunc(long a, long b, long c);
 int NearestLongValue(long v, const long *array, int array_size);
@@ -83,5 +84,22 @@ struct VDExternalCodeBracket {
 
 char *strCify(const char *s);
 VDStringA VDEncodeScriptString(const VDStringW& sw);
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	pixmap <-> bitmap format converters
+//
+//	pixmap format:	describes channel layout, color space, subsampling
+//	variant:		describes variations in layout and FOURCC that may
+//					correspond to the same pixmap format
+//	bitmap format:	Win32 BITMAPINFOHEADER
+//
+struct VDPixmapLayout;
+
+int VDGetPixmapToBitmapVariants(int format);
+int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr);
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant);
+uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint32 h, int format, int variant);
+
 
 #endif

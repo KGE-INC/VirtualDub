@@ -21,11 +21,13 @@
 #include <vd2/system/refcount.h>
 #include <vd2/system/error.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/fraction.h>
 #include "resource.h"
 #include "gui.h"
 #include "AudioFilterSystem.h"
 #include "FilterGraph.h"
 #include "plugins.h"
+#include "PositionControl.h"
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
 
@@ -33,8 +35,6 @@ extern const char g_szError[];
 extern const char g_szWarning[];
 
 class AudioSource;
-
-extern vdrefptr<AudioSource> inputAudio;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -45,29 +45,6 @@ namespace {
 		VDFilterConfig		mConfigBlock;
 		bool				mbHasConfigDialog;
 	};
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-// yuk.
-
-namespace {
-	HWND g_hdlgNestedModeless;
-	HHOOK g_hhkNestedModeless;
-
-	static LRESULT CALLBACK VDNestedModelessDialogHookW32(int code, WPARAM wParam, LPARAM lParam) {
-		static bool s_bRecursive = false;
-
-		if (!s_bRecursive && code == MSGF_DIALOGBOX) {
-			s_bRecursive = true;
-			BOOL bAbsorb = IsDialogMessage(g_hdlgNestedModeless, (MSG *)lParam);
-			s_bRecursive = false;
-
-			return bAbsorb;
-		}
-
-		return CallNextHookEx(g_hhkNestedModeless, code, wParam, lParam);
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -87,7 +64,7 @@ public:
 	const VDPluginDescription *GetFilter() const { return mpSelectedFilter; }
 
 protected:
-	BOOL DlgProc(UINT message, UINT wParam, LONG lParam);
+	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 	void InitDialog();
 	void DestroyModeless();
@@ -97,14 +74,20 @@ protected:
 	const VDPluginDescription *mpSelectedFilter;
 
 	IVDDialogAddAudioFilterCallbackW32 *mpParent;
+
+	ModelessDlgNode		mDlgNode;
 };
 
-BOOL VDDialogAddAudioFilterW32::DlgProc(UINT msg, UINT wParam, LONG lParam) {
+INT_PTR VDDialogAddAudioFilterW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
         case WM_INITDIALOG:
 			InitDialog();
 			SetFocus(GetDlgItem(mhdlg, IDC_FILTER_LIST));
             return FALSE;
+		case WM_DESTROY:
+			mDlgNode.Remove();
+			mpParent->FilterDialogClosed();
+			return FALSE;
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDC_ADD:
@@ -168,16 +151,13 @@ void VDDialogAddAudioFilterW32::InitDialog() {
 		}
 	}
 
-	g_hhkNestedModeless = SetWindowsHookEx(WH_MSGFILTER, VDNestedModelessDialogHookW32, NULL, GetCurrentThreadId());
-	g_hdlgNestedModeless = mhdlg;
+	mDlgNode.hdlg	= mhdlg;
+	mDlgNode.mhAccel = NULL;
+
+	guiAddModelessDialog(&mDlgNode);
 }
 
 void VDDialogAddAudioFilterW32::DestroyModeless() {
-	if (g_hhkNestedModeless) {
-		UnhookWindowsHookEx(g_hhkNestedModeless);
-		g_hhkNestedModeless = 0;
-	}
-	mpParent->FilterDialogClosed();
 	VDDialogBaseW32::DestroyModeless();
 }
 
@@ -201,25 +181,39 @@ public:
 	VDAudioFilterPreviewThread();
 	~VDAudioFilterPreviewThread();
 
-	bool Start(const VDAudioFilterGraph& graph);
+	bool Start(const VDAudioFilterGraph& graph, sint64 us);
 	void Stop();
+	void Seek(sint64 us);
+
+	sint64 GetPosition() const { return mPosition; }
+	sint64 GetLength() const { return mLength; }
 
 protected:
 	void ThreadRun();
 
 	VDAudioFilterSystem			mFilterSys;
-	VDAtomicInt					mRequestExit;
+	VDSignal					msigIdle;
+	VDSignal					msigResumed;
+	volatile bool				mbRequestExit;
+	volatile bool				mbSuspend;
+	volatile bool				mbResume;
+
+	volatile sint64		mPosition;
+	sint64				mLength;
 };
 
 VDAudioFilterPreviewThread::VDAudioFilterPreviewThread()
-	: mRequestExit(0)
+	: mbRequestExit(false)
+	, mbSuspend(false)
+	, mbResume(false)
 {
+	mFilterSys.SetIdleSignal(&msigIdle);
 }
 
 VDAudioFilterPreviewThread::~VDAudioFilterPreviewThread() {
 }
 
-bool VDAudioFilterPreviewThread::Start(const VDAudioFilterGraph& graph) {
+bool VDAudioFilterPreviewThread::Start(const VDAudioFilterGraph& graph, sint64 us) {
 	Stop();
 
 	// copy the graph and replace Output nodes with Preview nodes
@@ -240,22 +234,54 @@ bool VDAudioFilterPreviewThread::Start(const VDAudioFilterGraph& graph) {
 		mFilterSys.LoadFromGraph(graph2, filterPtrs);
 	}
 	mFilterSys.Start();
+	mFilterSys.Seek(us);
 
-	mRequestExit=false;
+	IVDAudioFilterInstance *pClock = mFilterSys.GetClock();
+	mPosition = us;
+	mLength = 0;
+	if (pClock)
+		mLength = pClock->GetLength();
+
+	mbRequestExit=false;
 	return ThreadStart();
 }
 
 void VDAudioFilterPreviewThread::Stop() {
-	mRequestExit = true;
+	mbRequestExit = true;
+	msigIdle.signal();
 	ThreadWait();
 }
 
+void VDAudioFilterPreviewThread::Seek(sint64 us) {
+	VDDEBUG2("starting seek\n");
+	mbSuspend = true;
+	mFilterSys.Seek(us);
+	mbResume = true;
+	msigResumed.wait();
+	VDDEBUG2("stopping seek\n");
+}
+
 void VDAudioFilterPreviewThread::ThreadRun() {
-	while(!mRequestExit) {
-		if (!mFilterSys.Run()) {
-			VDDEBUG("AudioFilterPreview: Audio filter graph has halted.\n");
-			break;
+	IVDAudioFilterInstance *pClock = mFilterSys.GetClock();
+
+	while(!mbRequestExit) {
+		if (mbResume) {
+			mbResume = false;
+			mbSuspend = false;
+			msigResumed.signal();
 		}
+
+		if (!mFilterSys.Run()) {
+			if (mbSuspend) {
+				msigIdle.wait();
+			} else {
+				VDDEBUG("AudioFilterPreview: Audio filter graph has halted.\n");
+				break;
+			}
+		}
+
+		if (pClock)
+			mPosition = pClock->GetPosition();
 	}
 	mFilterSys.Stop();
 }
@@ -264,14 +290,20 @@ void VDAudioFilterPreviewThread::ThreadRun() {
 
 class VDDialogAudioFiltersW32 : public VDDialogBaseW32, public IVDDialogAddAudioFilterCallbackW32, public IVDFilterGraphControlCallback {
 public:
-	inline VDDialogAudioFiltersW32(VDAudioFilterGraph& afg) : VDDialogBaseW32(IDD_AF_SETUP), mAddDialog(this), mGraph(afg) {}
+	inline VDDialogAudioFiltersW32(VDAudioFilterGraph& afg, AudioSource *pAS)
+			: VDDialogBaseW32(IDD_AF_SETUP)
+			, mAddDialog(this)
+			, mGraph(afg)
+			, mpAudio(pAS)
+			, mbPreviewActive(false)
+	{}
 
 	void Activate(VDGUIHandle hParent) {
 		ActivateDialog(hParent);
 	}
 
 protected:
-	BOOL DlgProc(UINT msg, UINT wParam, LONG lParam);
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 	void InitDialog();
 	void SaveDialogSettings();
 	void FilterSelected() {
@@ -328,9 +360,13 @@ protected:
 	VDAudioFilterPreviewThread	mPreview;
 	VDDialogAddAudioFilterW32	mAddDialog;
 	VDAudioFilterGraph&			mGraph;
+	AudioSource					*mpAudio;
+	IVDPositionControl			*mpPosition;
+	bool						mbPreviewActive;
+	bool						mbPreviewWasActive;
 };
 
-BOOL VDDialogAudioFiltersW32::DlgProc(UINT msg, UINT wParam, LONG lParam) {
+INT_PTR VDDialogAudioFiltersW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 
         case WM_INITDIALOG:
@@ -386,15 +422,59 @@ BOOL VDDialogAudioFiltersW32::DlgProc(UINT msg, UINT wParam, LONG lParam) {
 				return TRUE;
 			}
 			break;
+
+		case WM_TIMER:
+			if (mPreview.isThreadActive())
+				mpPosition->SetPosition(mPreview.GetPosition() / 1000);
+			else
+				mbPreviewActive = false;
+			break;
+
+		case WM_NOTIFY:
+			{
+				const NMHDR& hdr = *(const NMHDR *)lParam;
+
+				if (GetWindowLong(hdr.hwndFrom, GWL_ID) == IDC_POSITION) {
+					switch(hdr.code) {
+					case PCN_BEGINTRACK:
+						mbPreviewWasActive = false;
+						if (mPreview.isThreadActive()) {
+							mbPreviewWasActive = true;
+							mPreview.Stop();
+						}
+						break;
+					case PCN_ENDTRACK:
+						if (mbPreviewWasActive) {
+							VDAudioFilterGraph graph;
+							SaveGraph(graph, mpGraphControl);
+							mPreview.Start(graph, mpPosition->GetPosition() * 1000);
+							mbPreviewActive = true;
+						}
+						break;
+					case PCN_THUMBPOSITION:
+						if (mbPreviewActive)
+							mPreview.Seek(mpPosition->GetPosition() * 1000);
+						break;
+					}
+				}
+			}
+			break;
 	}
 	return FALSE;
 }
 
 void VDDialogAudioFiltersW32::Preview() {
 	try {
-		VDAudioFilterGraph graph;
-		SaveGraph(graph, mpGraphControl);
-		mPreview.Start(graph);
+		if (mbPreviewActive) {
+			mPreview.Stop();
+			mbPreviewActive = false;
+		} else {
+			VDAudioFilterGraph graph;
+			SaveGraph(graph, mpGraphControl);
+			mPreview.Start(graph, mpPosition->GetPosition() * (sint64)1000);
+			mpPosition->SetRange(0, mPreview.GetLength() / 1000);
+			mbPreviewActive = true;
+		}
 	} catch(const MyError& e) {
 		e.post(mhdlg, g_szError);
 	}
@@ -476,7 +556,6 @@ void VDDialogAudioFiltersW32::SaveGraph(VDAudioFilterGraph& graph, IVDFilterGrap
 
 	for(i=0; i<nFilters; ++i) {
 		const VDFilterGraphNode& node = nodes[i];
-		IVDAudioFilterInstance *pDst = filters[i];
 
 		for(int j=0; j<node.inputs; ++j) {
 			VDAudioFilterGraph::FilterConnection c;
@@ -522,6 +601,11 @@ bool VDDialogAudioFiltersW32::RequeryFormats() {
 	try {
 		filterSys.LoadFromGraph(graph, filterPtrs);
 		filterSys.Prepare();
+
+		IVDAudioFilterInstance *pClock = filterSys.GetClock();
+
+		if (pClock)
+			mpPosition->SetRange(0, pClock->GetLength() / 1000);
 	} catch(const MyError&) {
 		// ignore errors
 	}
@@ -554,6 +638,9 @@ bool VDDialogAudioFiltersW32::RequeryFormats() {
 }
 
 void VDDialogAudioFiltersW32::InitDialog() {
+	mpPosition = VDGetIPositionControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_POSITION));
+	mpPosition->SetFrameRate(VDFraction(1000,1));
+
 	mpGraphControl = VDGetIFilterGraphControl(GetDlgItem(mhdlg, IDC_GRAPH));
 	mpGraphControl->SetCallback(this);
 
@@ -569,9 +656,11 @@ void VDDialogAudioFiltersW32::InitDialog() {
 	CheckDlgButton(mhdlg, IDC_AUTOARRANGE, bAutoArrange);
 	CheckDlgButton(mhdlg, IDC_AUTOCONNECT, bAutoConnect);
 
-	EnableWindow(GetDlgItem(mhdlg, IDC_TEST), inputAudio != 0);
+	EnableWindow(GetDlgItem(mhdlg, IDC_TEST), mpAudio != 0);
 
 	SelectionChanged(NULL);
+
+	SetTimer(mhdlg, 1, 250, NULL);
 }
 
 void VDDialogAudioFiltersW32::SaveDialogSettings() {
@@ -581,8 +670,8 @@ void VDDialogAudioFiltersW32::SaveDialogSettings() {
 	regkey.setBool("Auto connect", 0!=IsDlgButtonChecked(mhdlg, IDC_AUTOCONNECT));
 }
 
-void VDDisplayAudioFilterDialog(VDGUIHandle hParent, VDAudioFilterGraph& graph) {
-	VDDialogAudioFiltersW32 dlg(graph);
+void VDDisplayAudioFilterDialog(VDGUIHandle hParent, VDAudioFilterGraph& graph, AudioSource *pAS) {
+	VDDialogAudioFiltersW32 dlg(graph, pAS);
 
 	dlg.Activate(hParent);
 }

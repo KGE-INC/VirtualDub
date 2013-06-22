@@ -20,13 +20,14 @@ CFG=system - Win32 Debug
 !MESSAGE "system - Win32 Release" (based on "Win32 (x86) Static Library")
 !MESSAGE "system - Win32 Debug" (based on "Win32 (x86) Static Library")
 !MESSAGE "system - Win32 Release ICL" (based on "Win32 (x86) Static Library")
+!MESSAGE "system - Win32 Release AMD64" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName "system"
 # PROP Scc_LocalPath "."
-CPP=xicl6.exe
+CPP=cl.exe
 RSC=rc.exe
 
 !IF  "$(CFG)" == "system - Win32 Release"
@@ -48,7 +49,7 @@ RSC=rc.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -71,7 +72,7 @@ LIB32=xilink6.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -94,7 +95,30 @@ LIB32=xilink6.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
+# ADD BASE LIB32 /nologo
+# ADD LIB32 /nologo
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "system___Win32_Release_AMD64"
+# PROP BASE Intermediate_Dir "system___Win32_Release_AMD64"
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 0
+# PROP Output_Dir "..\lib\ReleaseAMD64"
+# PROP Intermediate_Dir "..\obj\ReleaseAMD64\system"
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -105,6 +129,7 @@ LIB32=xilink6.exe -lib
 # Name "system - Win32 Release"
 # Name "system - Win32 Debug"
 # Name "system - Win32 Release ICL"
+# Name "system - Win32 Release AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
@@ -126,7 +151,11 @@ SOURCE=.\source\Error.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\source\File64.cpp
+SOURCE=.\source\file.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\fileasync.cpp
 # End Source File
 # Begin Source File
 
@@ -166,14 +195,6 @@ SOURCE=.\source\progress.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\source\Props.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\PropsEvaluator.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\source\registry.cpp
 # End Source File
 # Begin Source File
@@ -198,10 +219,6 @@ SOURCE=.\source\tls.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\tracelog.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\source\VDAtomic.cpp
 # End Source File
 # Begin Source File
@@ -215,6 +232,14 @@ SOURCE=.\source\VDScheduler.cpp
 # Begin Source File
 
 SOURCE=.\source\VDString.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\vectors.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\w32assist.cpp
 # End Source File
 # Begin Source File
 
@@ -246,7 +271,7 @@ SOURCE=..\h\vd2\system\file.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\h\VD2\system\File64.h
+SOURCE=..\h\vd2\system\fileasync.h
 # End Source File
 # Begin Source File
 
@@ -286,14 +311,6 @@ SOURCE=..\h\VD2\system\progress.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\h\VD2\system\Props.h
-# End Source File
-# Begin Source File
-
-SOURCE=..\h\VD2\system\PropsEvaluator.h
-# End Source File
-# Begin Source File
-
 SOURCE=..\h\vd2\system\refcount.h
 # End Source File
 # Begin Source File
@@ -319,6 +336,10 @@ SOURCE=..\h\vd2\system\time.h
 # Begin Source File
 
 SOURCE=..\h\VD2\system\tls.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\system\unknown.h
 # End Source File
 # Begin Source File
 
@@ -350,6 +371,10 @@ SOURCE=..\h\VD2\system\VDScheduler.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\h\vd2\system\vdstl.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\h\VD2\system\VDString.h
 # End Source File
 # Begin Source File
@@ -358,54 +383,126 @@ SOURCE=..\h\VD2\system\vdtypes.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\h\vd2\system\vectors.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\system\w32assist.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\h\vd2\system\zip.h
 # End Source File
 # End Group
-# Begin Group "Assembly Files"
+# Begin Group "Assembly Files (x86)"
 
-# PROP Default_Filter ".asm"
+# PROP Default_Filter "asm"
 # Begin Source File
 
 SOURCE=.\source\a_memory.asm
 
 !IF  "$(CFG)" == "system - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\system
 InputPath=.\source\a_memory.asm
 InputName=a_memory
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "system - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\system
 InputPath=.\source\a_memory.asm
 InputName=a_memory
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\system
 InputPath=.\source\a_memory.asm
 InputName=a_memory
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# End Group
+# Begin Group "Assembly Files (AMD64)"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\source\a64_int128.asm
+
+!IF  "$(CFG)" == "system - Win32 Release"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+# Begin Custom Build
+IntDir=.\..\obj\ReleaseAMD64\system
+InputPath=.\source\a64_int128.asm
+InputName=a64_int128
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /c /Zi /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ENDIF 
 
+# End Source File
+# End Group
+# Begin Group "Precompiled Header Support"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\source\stdafx.cpp
+
+!IF  "$(CFG)" == "system - Win32 Release"
+
+# ADD CPP /Yc"stdafx.h"
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\stdafx.h
 # End Source File
 # End Group
 # End Target

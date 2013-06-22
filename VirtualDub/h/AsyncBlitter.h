@@ -45,8 +45,8 @@ public:
 		REQTYPE_AFC,
 		REQTYPE_APC,
 	} type;
-	DWORD	bufferID;
-	DWORD	framenum;
+	uint32	bufferID;
+	uint32	framenum;
 
 	union {
 		AsyncBlitRequestAFC afc;
@@ -64,18 +64,18 @@ private:
 	VDSignal		mEventDraw;
 	VDSignal		mEventDrawReturn;
 	VDSignal		mEventAbort;
-	volatile DWORD	dwLockedBuffers;
-	DWORD			dwPulseFrame;
-	DWORD			dwDrawFrame;
-	volatile BOOL	fAbort;
-	BOOL			fPulsed;
+	VDAtomicInt		dwLockedBuffers;
+	uint32			dwPulseFrame;
+	uint32			dwDrawFrame;
+	volatile bool	fAbort;
+	bool			fPulsed;
 	volatile bool	fFlush;
 
 	int		(*pulseCallback)(void *, DWORD);
 	void	*pulseCallbackData;
 
-	void release(DWORD);
-	BOOL waitPulse(DWORD);
+	void release(uint32);
+	bool waitPulse(uint32);
 	bool DoRequest(AsyncBlitRequest *req);
 	void ThreadRun();
 
@@ -103,16 +103,16 @@ public:
 	volatile long lock_state;
 #endif
 
-	void enablePulsing(BOOL);
+	void enablePulsing(bool);
 	void setPulseCallback(int (*pc)(void *, DWORD), void *pcd);
 	void pulse();
-	void setPulseClock(DWORD clk);
-	void lock(DWORD);
-	void unlock(DWORD);
+	void setPulseClock(uint32 clk);
+	bool lock(uint32, sint32 timeout = -1);
+	void unlock(uint32);
 	void nextFrame(long adv=1);
 	long getFrameDelta();
-	void sendAFC(DWORD id, void (*pFunc)(void *), void *pData);
-	void postAPC(DWORD id, bool (*pFunc)(int, void *, void *), void *pData1, void *pData2);
+	void sendAFC(uint32 id, void (*pFunc)(void *), void *pData);
+	void postAPC(uint32 id, bool (*pFunc)(int, void *, void *), void *pData1, void *pData2);
 	void abort();
 	void beginFlush();
 

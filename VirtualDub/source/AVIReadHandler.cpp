@@ -25,8 +25,8 @@
 #include "AVIIndex.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
+#include <vd2/system/file.h>
 #include "Fixes.h"
-#include <vd2/system/File64.h>
 #include <vd2/system/log.h>
 #include <vd2/system/text.h>
 #include <vd2/Dita/resources.h>
@@ -64,11 +64,197 @@ namespace {
 	bool is_palette_change(uint32 ckid) {
 		return (ckid >> 16) == 'cp';
 	}
+
+	bool isValidFOURCCChar(uint8 c) {
+		// FOURCCs must consist of a sequence of alphanumerics, padded at the end by spaces.
+		return (uint8)(c-0x30)<10 || (uint8)(c-0x41)<26 || (uint8)(c-0x61)<26 || c==0x20;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-typedef __int64 QUADWORD;
+class File64 {		// DEPRECATED
+public:
+	VDFileHandle hFile, hFileUnbuffered;
+	sint64 i64FilePosition;
+
+	File64();
+	File64(VDFileHandle _hFile, VDFileHandle _hFileUnbuffered);
+
+	void _openFile(const char *pszFile);
+	void _closeFile();
+
+	long _readFile(void *data, long len);
+	void _readFile2(void *data, long len);
+	bool _readChunkHeader(unsigned long& pfcc, unsigned long& pdwLen);
+	void _seekFile(sint64 i64NewPos);
+	bool _seekFile2(sint64 i64NewPos);
+	void _skipFile(sint64 bytes);
+	bool _skipFile2(sint64 bytes);
+	long _readFileUnbuffered(void *data, long len);
+	void _seekFileUnbuffered(sint64 i64NewPos);
+	sint64 _posFile();
+	sint64 _sizeFile();
+};
+
+File64::File64() : hFile(0), hFileUnbuffered(0) {
+}
+
+File64::File64(HANDLE _hFile, HANDLE _hFileUnbuffered)
+: hFile(_hFile), hFileUnbuffered(_hFileUnbuffered)
+{
+	i64FilePosition = 0;
+}
+
+void File64::_openFile(const char *pszFile) {
+	_closeFile();
+
+	hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (INVALID_HANDLE_VALUE == hFile) {
+		hFile = NULL;
+		throw MyWin32Error("Cannot open file: %%s.", GetLastError());
+	}
+}
+
+void File64::_closeFile() {
+	if (hFile) {
+		CloseHandle(hFile);
+		hFile = NULL;
+	}
+
+	if (hFileUnbuffered) {
+		CloseHandle(hFileUnbuffered);
+		hFileUnbuffered = NULL;
+	}
+}
+
+long File64::_readFile(void *data, long len) {
+	DWORD dwActual;
+
+	if (!ReadFile(hFile, data, len, &dwActual, NULL))
+		return -1;
+
+	i64FilePosition += dwActual;
+
+	return (long)dwActual;
+}
+
+void File64::_readFile2(void *data, long len) {
+	long lActual = _readFile(data, len);
+
+	if (lActual < 0)
+		throw MyWin32Error("Failure reading file: %%s.",GetLastError());
+
+	if (lActual != len)
+		throw MyError("Failure reading file: Unexpected end of file");
+}
+
+bool File64::_readChunkHeader(FOURCC& pfcc, DWORD& pdwLen) {
+	DWORD dw[2];
+	long actual;
+
+	actual = _readFile(dw, 8);
+
+	if (actual != 8)
+		return false;
+
+	pfcc = dw[0];
+	pdwLen = dw[1];
+
+	return true;
+}
+
+void File64::_seekFile(sint64 i64NewPos) {
+	LONG lHi = (LONG)(i64NewPos>>32);
+	DWORD dwError;
+
+	if (0xFFFFFFFF == SetFilePointer(hFile, (LONG)i64NewPos, &lHi, FILE_BEGIN))
+		if ((dwError = GetLastError()) != NO_ERROR)
+			throw MyWin32Error("File64: %%s", dwError);
+
+	i64FilePosition = i64NewPos;
+}
+
+bool File64::_seekFile2(sint64 i64NewPos) {
+	LONG lHi = (LONG)(i64NewPos>>32);
+	DWORD dwError;
+
+//	_RPT1(0,"Seeking to %I64d\n", i64NewPos);
+
+	if (0xFFFFFFFF == SetFilePointer(hFile, (LONG)i64NewPos, &lHi, FILE_BEGIN))
+		if ((dwError = GetLastError()) != NO_ERROR)
+			return false;
+
+	i64FilePosition = i64NewPos;
+
+	return true;
+}
+
+void File64::_skipFile(sint64 bytes) {
+	LONG lHi = (LONG)(bytes>>32);
+	DWORD dwError;
+	LONG lNewLow;
+
+	if (0xFFFFFFFF == (lNewLow = SetFilePointer(hFile, (LONG)bytes, &lHi, FILE_CURRENT)))
+		if ((dwError = GetLastError()) != NO_ERROR)
+			throw MyWin32Error("File64: %%s", dwError);
+
+	i64FilePosition = (unsigned long)lNewLow | (((sint64)(unsigned long)lHi)<<32);
+}
+
+bool File64::_skipFile2(sint64 bytes) {
+	LONG lHi = (LONG)(bytes>>32);
+	DWORD dwError;
+	LONG lNewLow;
+
+	if (0xFFFFFFFF == (lNewLow = SetFilePointer(hFile, (LONG)bytes, &lHi, FILE_CURRENT)))
+		if ((dwError = GetLastError()) != NO_ERROR)
+			return false;
+
+	i64FilePosition = (unsigned long)lNewLow | (((sint64)(unsigned long)lHi)<<32);
+
+	return true;
+}
+
+long File64::_readFileUnbuffered(void *data, long len) {
+	DWORD dwActual;
+
+	if (!ReadFile(hFileUnbuffered, data, len, &dwActual, NULL)) {
+		return -1;
+	}
+
+	return (long)dwActual;
+}
+
+void File64::_seekFileUnbuffered(sint64 i64NewPos) {
+	LONG lHi = (LONG)(i64NewPos>>32);
+	DWORD dwError;
+
+	if (0xFFFFFFFF == SetFilePointer(hFileUnbuffered, (LONG)i64NewPos, &lHi, FILE_BEGIN))
+		if ((dwError = GetLastError()) != NO_ERROR)
+			throw MyWin32Error("File64: %%s", dwError);
+}
+
+sint64 File64::_posFile() {
+	return i64FilePosition;
+}
+
+sint64 File64::_sizeFile() {
+	DWORD dwLow, dwHigh;
+	DWORD dwError;
+
+	dwLow = GetFileSize(hFile, &dwHigh);
+
+	if (dwLow == 0xFFFFFFFF && (dwError = GetLastError()) != NO_ERROR)
+		throw MyWin32Error("Cannot determine file size: %%s", dwError);
+
+	return ((sint64)dwHigh << 32) | (unsigned long)dwLow;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+typedef sint64 QUADWORD;
 
 // The following comes from the OpenDML 1.0 spec for extended AVI files
 
@@ -213,7 +399,7 @@ public:
 	void					*pFormat;
 	long					lFormatLen;
 	AVIIndex				index;
-	__int64					bytes;
+	sint64					bytes;
 	bool					keyframe_only;
 	bool					was_VBR;
 	double					bitrate_mean;
@@ -222,11 +408,11 @@ public:
 	int						handler_count;
 	class AVIReadCache		*cache;
 	int						streaming_count;
-	__int64					stream_push_pos;
-	__int64					stream_bytes;
+	sint64					stream_push_pos;
+	sint64					stream_bytes;
 	int						stream_pushes;
-	long					length;
-	long					frames;
+	sint64					length;
+	sint64					frames;
 	List2<class AVIReadStream>	listHandlers;
 
 	AVIStreamNode();
@@ -267,14 +453,14 @@ void AVIStreamNode::FixVBRAudio() {
 	was_VBR = true;
 
 	const AVIIndexEntry2 *pent = index.index2Ptr();
-	__int64 size_accum = 0;
-	__int64 max_dev = 0;
+	sint64 size_accum = 0;
+	sint64 max_dev = 0;
 	double size_sq_sum = 0.0;
 
 	for(int i=0; i<frames; ++i) {
 		unsigned size = pent[i].size & 0x7ffffffful;
-		__int64 mean_center = (bytes * (2*i+1)) / (2*frames);
-		__int64 dev = mean_center - (size_accum + (size>>1));
+		sint64 mean_center = (bytes * (2*i+1)) / (2*frames);
+		sint64 dev = mean_center - (size_accum + (size>>1));
 
 		if (dev<0)
 			dev = -dev;
@@ -315,7 +501,7 @@ class AVIFileDesc : public ListNode2<AVIFileDesc> {
 public:
 	HANDLE		hFile;
 	HANDLE		hFileUnbuffered;
-	__int64		i64Size;
+	sint64		i64Size;
 };
 
 class AVIStreamNode;
@@ -342,9 +528,9 @@ public:
 	void DisableStreaming(int stream);
 	void AdjustRealTime(bool fRealTime);
 	bool Stream(AVIStreamNode *, _int64 pos);
-	__int64 getStreamPtr();
+	sint64 getStreamPtr();
 	void FixCacheProblems(class AVIReadStream *);
-	long ReadData(int stream, void *buffer, __int64 position, long len);
+	long ReadData(int stream, void *buffer, sint64 position, long len);
 
 private:
 //	enum { STREAM_SIZE = 65536 };
@@ -355,7 +541,7 @@ private:
 	IAvisynthClipInfo *pAvisynthClipInfo;
 	PAVIFILE paf;
 	int ref_count;
-	__int64		i64StreamPosition;
+	sint64		i64StreamPosition;
 	int			streams;
 	char		*streamBuffer;
 	int			sbPosition;
@@ -364,7 +550,7 @@ private:
 	int			nRealTime;
 	int			nActiveStreamers;
 	bool		fFakeIndex;
-	__int64		i64Size;
+	sint64		i64Size;
 	int			nFiles, nCurrentFile;
 	char *		pSegmentHint;
 
@@ -379,8 +565,8 @@ private:
 	void		_construct(const wchar_t *pszFile);
 	void		_parseFile(List2<AVIStreamNode>& streams);
 	bool		_parseStreamHeader(List2<AVIStreamNode>& streams, DWORD dwLengthLeft, bool& bIndexDamaged);
-	bool		_parseIndexBlock(List2<AVIStreamNode>& streams, int count, __int64);
-	void		_parseExtendedIndexBlock(List2<AVIStreamNode>& streams, AVIStreamNode *pasn, __int64 fpos, DWORD dwLength);
+	bool		_parseIndexBlock(List2<AVIStreamNode>& streams, int count, sint64);
+	void		_parseExtendedIndexBlock(List2<AVIStreamNode>& streams, AVIStreamNode *pasn, sint64 fpos, DWORD dwLength);
 	void		_destruct();
 
 	char *		_StreamRead(long& bytes);
@@ -567,9 +753,9 @@ public:
 	HRESULT EndStreaming();
 	HRESULT Info(AVISTREAMINFO *pasi, long lSize);
 	bool IsKeyFrame(long lFrame);
-	HRESULT Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples);
-	long Start();
-	long End();
+	HRESULT Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples);
+	VDPosition Start();
+	VDPosition End();
 	long PrevKeyFrame(long lFrame);
 	long NextKeyFrame(long lFrame);
 	long NearestKeyFrame(long lFrame);
@@ -578,6 +764,8 @@ public:
 	bool isStreaming();
 	bool isKeyframeOnly();
 	bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev) { return false; }
+
+	sint64		getSampleBytePosition(VDPosition sample_num) { return -1; }
 
 private:
 	IAvisynthClipInfo *const pAvisynthClipInfo;
@@ -616,12 +804,12 @@ bool AVIReadTunnelStream::IsKeyFrame(long lFrame) {
 	return !!AVIStreamIsKeyFrame(pas, lFrame);
 }
 
-HRESULT AVIReadTunnelStream::Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
+HRESULT AVIReadTunnelStream::Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
 	HRESULT hr;
 
 	{
 		VDExternalCodeBracket(pAvisynthClipInfo ? L"Avisynth" : L"An AVIFile input stream driver", __FILE__, __LINE__);
-		hr = AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+		hr = AVIStreamRead(pas, (LONG)lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
 	}
 
 	if (pAvisynthClipInfo) {
@@ -634,11 +822,11 @@ HRESULT AVIReadTunnelStream::Read(long lStart, long lSamples, void *lpBuffer, lo
 	return hr;
 }
 
-long AVIReadTunnelStream::Start() {
+VDPosition AVIReadTunnelStream::Start() {
 	return AVIStreamStart(pas);
 }
 
-long AVIReadTunnelStream::End() {
+VDPosition AVIReadTunnelStream::End() {
 	return AVIStreamEnd(pas);
 }
 
@@ -683,9 +871,9 @@ public:
 	HRESULT EndStreaming();
 	HRESULT Info(AVISTREAMINFO *pasi, long lSize);
 	bool IsKeyFrame(long lFrame);
-	HRESULT Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples);
-	long Start();
-	long End();
+	HRESULT Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples);
+	VDPosition Start();
+	VDPosition End();
 	long PrevKeyFrame(long lFrame);
 	long NextKeyFrame(long lFrame);
 	long NearestKeyFrame(long lFrame);
@@ -695,14 +883,15 @@ public:
 	bool isKeyframeOnly();
 	void Reinit();
 	bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev);
+	sint64		getSampleBytePosition(VDPosition sample_num);
 
 private:
 	AVIReadHandler *parent;
 	AVIStreamNode *psnData;
 	AVIIndexEntry2 *pIndex;
 	AVIReadCache *rCache;
-	long& length;
-	long& frames;
+	sint64& length;
+	sint64& frames;
 	long sampsize;
 	int streamno;
 	bool fStreamingEnabled;
@@ -712,7 +901,7 @@ private:
 	long lStreamTrackInterval;
 	bool fRealTime;
 
-	__int64		i64CachedPosition;
+	sint64		i64CachedPosition;
 	AVIIndexEntry2	*pCachedEntry;
 
 };
@@ -859,7 +1048,7 @@ bool AVIReadStream::IsKeyFrame(long lFrame) {
 	}
 }
 
-HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
+HRESULT AVIReadStream::Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
 	long lActual;
 
 	if (lStart < 0 || lStart >= length || (lSamples <= 0 && lSamples != AVISTREAMREAD_CONVENIENT)) {
@@ -875,10 +1064,10 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 
 	if (sampsize) {
 		AVIIndexEntry2 *avie2, *avie2_limit = pIndex+frames;
-		__int64 byte_off = (__int64)lStart * sampsize;
-		__int64 bytecnt;
-		__int64 actual_bytes=0;
-		__int64 block_pos;
+		sint64 byte_off = (sint64)lStart * sampsize;
+		sint64 bytecnt;
+		sint64 actual_bytes=0;
+		sint64 block_pos;
 
 		// too small to hold a sample?
 
@@ -928,7 +1117,7 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 			lSamples = cbBuffer / sampsize;
 
 		if (lStart+lSamples > length)
-			lSamples = length - lStart;
+			lSamples = (long)(length - lStart);
 
 		bytecnt = lSamples * sampsize;
 
@@ -947,8 +1136,8 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 
 					if (iStreamTrackCount >= 15) {
 
-						__int64 streamptr = parent->getStreamPtr();
-						__int64 fptrdiff = streamptr - avie2->pos;
+						sint64 streamptr = parent->getStreamPtr();
+						sint64 fptrdiff = streamptr - avie2->pos;
 
 						if (!parent->isStreaming() || streamptr<0 || (fptrdiff<4194304 && fptrdiff>-4194304)) {
 							if (!psnData->cache)
@@ -1042,8 +1231,8 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 				if (lStreamTrackValue>=0 && lStart-lStreamTrackValue == lStreamTrackInterval) {
 					if (++iStreamTrackCount >= 15) {
 
-						__int64 streamptr = parent->getStreamPtr();
-						__int64 fptrdiff = streamptr - avie2->pos;
+						sint64 streamptr = parent->getStreamPtr();
+						sint64 fptrdiff = streamptr - avie2->pos;
 
 						if (!parent->isStreaming() || streamptr<0 || (fptrdiff<4194304 && fptrdiff>-4194304)) {
 							if (!psnData->cache)
@@ -1125,11 +1314,52 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 	return 0;
 }
 
-long AVIReadStream::Start() {
+sint64 AVIReadStream::getSampleBytePosition(VDPosition pos) {
+	if (pos < 0 || pos >= length)
+		return -1;
+
+	// blocked or discrete?
+
+	if (sampsize) {
+		AVIIndexEntry2 *avie2;
+		sint64 byte_off = (sint64)pos * sampsize;
+		sint64 block_pos;
+
+		// find the frame that has the starting sample -- try and work
+		// from our last position to save time
+
+		if (byte_off >= i64CachedPosition) {
+			block_pos = i64CachedPosition;
+			avie2 = pCachedEntry;
+			byte_off -= block_pos;
+		} else {
+			block_pos = 0;
+			avie2 = pIndex;
+		}
+
+		while(byte_off >= (avie2->size & 0x7FFFFFFF)) {
+			byte_off -= (avie2->size & 0x7FFFFFFF);
+			block_pos += (avie2->size & 0x7FFFFFFF);
+			++avie2;
+		}
+
+		pCachedEntry = avie2;
+		i64CachedPosition = block_pos;
+
+		return (avie2->pos + byte_off) & 0x0000FFFFFFFFFFFF;		// mask off file field
+
+	} else {
+		AVIIndexEntry2 *avie2 = &pIndex[pos];
+
+		return avie2->pos & 0x0000FFFFFFFFFFFF;		// mask off file field
+	}
+}
+
+VDPosition AVIReadStream::Start() {
 	return 0;
 }
 
-long AVIReadStream::End() {
+VDPosition AVIReadStream::End() {
 	return length;
 }
 
@@ -1379,7 +1609,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 
 				// A/B ?= C/D ==> AD ?= BC
 
-				if ((__int64)pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != (__int64)pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
+				if ((sint64)pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != (sint64)pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
 					throw MyError("Cannot append segment \"%ls\": The %s streams have different sampling rates (%.5f vs. %.5f)"
 							,pszFile
 							,szStreamType
@@ -1463,7 +1693,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 
 		for(i=pasn_new->index.indexLen(); i; i--) {
 			idx_new->size ^= 0x80000000;
-			idx_new->pos += (__int64)nFiles << 48;
+			idx_new->pos += (sint64)nFiles << 48;
 			pasn_old->index.add(idx_new++);
 		}
 
@@ -1503,7 +1733,7 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 	MainAVIHeader avihdr;
 	bool bMainAVIHeaderFound = false;
 
-	__int64	i64ChunkMoviPos = 0;
+	sint64	i64ChunkMoviPos = 0;
 	DWORD	dwChunkMoviLength = 0;
 
 	if (!_readChunkHeader(fccType, dwLength))
@@ -1540,8 +1770,6 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 			bAggressive = true;
 			break;
 		}
-
-		bool bInvalidLength = false;
 
 		switch(fccType) {
 		case FOURCC_LIST:
@@ -1673,14 +1901,14 @@ terminate_scan:
 
 		// obtain length of file and limit scanning if so
 
-		__int64 i64FileSize = _sizeFile();
+		sint64 i64FileSize = _sizeFile();
 
 		DWORD dwLengthLeft = dwChunkMoviLength;
 
 		long short_length = (long)((dwChunkMoviLength + 1023i64) >> 10);
 		long long_length = (long)((i64FileSize - i64ChunkMoviPos + 1023i64) >> 10);
 
-		__int64 length = (hyperindexed || bAggressive) ? long_length : short_length;
+		sint64 length = (hyperindexed || bAggressive) ? long_length : short_length;
 		ProgressDialog pd(NULL, "AVI Import Filter", bAggressive ? "Reconstructing missing index block (aggressive mode)" : "Reconstructing missing index block", length, true);
 
 		pd.setValueFormat("%ldK of %ldK");
@@ -1696,7 +1924,7 @@ terminate_scan:
 		bool bStopWhenLengthExhausted = !hyperindexed && !bAggressive;
 
 		for(;;) {
-			pd.advance((long)((_posFile() - i64ChunkMoviPos)/1024));
+			pd.advance((long)((_posFile() - i64ChunkMoviPos)>>10));
 			pd.check();
 
 			// Exit if we are out of movi chunk -- except for OpenDML files.
@@ -1706,7 +1934,6 @@ terminate_scan:
 
 			// Validate the FOURCC itself but avoid validating the size, since it
 			// may be too large for the last LIST/movi.
-			
 			if (!_readChunkHeader(fccType, dwLength))
 				break;
 
@@ -1714,9 +1941,9 @@ terminate_scan:
 
 			// In aggressive mode, verify that a valid FOURCC follows this chunk.
 
-			if (bAggressive) {
-				__int64 current_pos = _posFile();
-				__int64 rounded_length = (dwLength+1i64) & ~1i64;
+			if (bValid && bAggressive) {
+				sint64 current_pos = _posFile();
+				sint64 rounded_length = (dwLength+1i64) & ~1i64;
 
 				if (current_pos + dwLength > i64FileSize)
 					bValid = false;
@@ -1747,9 +1974,15 @@ terminate_scan:
 					pd.setLimit(long_length);
 				}
 
-				// Backup by seven bytes and continue.
+				// Backup by up to seven bytes and continue.
 
-				_seekFile(_posFile()-7);
+				int invalidBytes = 1;
+				while(invalidBytes < 4 && !isValidFOURCCChar(0xff & (fccType >> (invalidBytes<<3))))
+					++invalidBytes;
+				while(invalidBytes < 8 && !isValidFOURCCChar(0xff & (dwLength >> ((invalidBytes-4)<<3))))
+					++invalidBytes;
+
+				_seekFile(_posFile()+(invalidBytes-8));
 				continue;
 			}
 
@@ -1882,7 +2115,7 @@ terminate_scan:
 		}
 
 		if (pasn->hdr.dwSampleSize)
-			pasn->length = (long)pasn->bytes / pasn->hdr.dwSampleSize;
+			pasn->length = pasn->bytes / pasn->hdr.dwSampleSize;
 		else
 			pasn->length = pasn->frames;
 
@@ -1968,7 +2201,7 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 
 			case 'xdni':			// OpenDML extended index
 				{
-					__int64 posFileSave = _posFile();
+					sint64 posFileSave = _posFile();
 
 					try {
 						_parseExtendedIndexBlock(streamlist, pasn, -1, dwLength);
@@ -2005,13 +2238,13 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 	return hyperindexed;
 }
 
-bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int count, __int64 movi_offset) {
+bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int count, sint64 movi_offset) {
 	AVIINDEXENTRY avie[32];
 	AVIStreamNode *pasn, *pasn_next;
 	bool absolute_addr = true;
 
 	// Some AVI files have relative addresses in their AVI index chunks, and some
-	// relative.  They're supposed to be relative to the 'movi' chunk; all versions
+	// absolute.  They're supposed to be relative to the 'movi' chunk; all versions
 	// of VirtualDub using fast write routines prior to build 4936 generate absolute
 	// addresses (oops). AVIFile and ActiveMovie are both ambivalent.  I guess we'd
 	// better be as well.
@@ -2055,7 +2288,7 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 				if (absolute_addr)
 					pasn->index.add(&avie[i]);
 				else
-					pasn->index.add(avie[i].ckid, (movi_offset-4) + (__int64)avie[i].dwChunkOffset, avie[i].dwChunkLength, !!(avie[i].dwFlags & AVIIF_KEYFRAME));
+					pasn->index.add(avie[i].ckid, (movi_offset-4) + (sint64)avie[i].dwChunkOffset, avie[i].dwChunkLength, !!(avie[i].dwFlags & AVIIF_KEYFRAME));
 
 				pasn->bytes += avie[i].dwChunkLength;
 			}
@@ -2066,7 +2299,7 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 
 }
 
-void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, AVIStreamNode *pasn, __int64 fpos, DWORD dwLength) {
+void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, AVIStreamNode *pasn, sint64 fpos, DWORD dwLength) {
 	union {
 		AVISUPERINDEX idxsuper;
 		AVISTDINDEX idxstd;
@@ -2079,7 +2312,7 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 
 	int entries, tp;
 	int i;
-	__int64 i64FPSave = _posFile();
+	sint64 i64FPSave = _posFile();
 
 	if (fpos>=0)
 		_seekFile(fpos);
@@ -2327,7 +2560,7 @@ char *AVIReadHandler::_StreamRead(long& bytes) {
 			}
 		} else {
 			i64StreamPosition += sbSize;
-			sbPosition = i64StreamPosition & (STREAM_BLOCK_SIZE-1);
+			sbPosition = (int)i64StreamPosition & (STREAM_BLOCK_SIZE-1);
 			i64StreamPosition &= -STREAM_BLOCK_SIZE;
 			_seekFileUnbuffered(i64StreamPosition & 0x0000FFFFFFFFFFFFi64);
 
@@ -2353,7 +2586,7 @@ char *AVIReadHandler::_StreamRead(long& bytes) {
 	return streamBuffer + sbPosition - bytes;
 }
 
-bool AVIReadHandler::Stream(AVIStreamNode *pusher, __int64 pos) {
+bool AVIReadHandler::Stream(AVIStreamNode *pusher, sint64 pos) {
 
 	// Do not stream aggressively recovered files.
 
@@ -2523,7 +2756,7 @@ bool AVIReadHandler::Stream(AVIStreamNode *pusher, __int64 pos) {
 	return true;
 }
 
-__int64 AVIReadHandler::getStreamPtr() {
+sint64 AVIReadHandler::getStreamPtr() {
 	return i64StreamPosition + sbPosition;
 }
 
@@ -2590,7 +2823,7 @@ void AVIReadHandler::FixCacheProblems(AVIReadStream *arse) {
 	}
 }
 
-long AVIReadHandler::ReadData(int stream, void *buffer, __int64 position, long len) {
+long AVIReadHandler::ReadData(int stream, void *buffer, sint64 position, long len) {
 	if (nCurrentFile<0 || nCurrentFile != (int)(position>>48))
 		_SelectFile((int)(position>>48));
 

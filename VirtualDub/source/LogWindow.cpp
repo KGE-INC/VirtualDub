@@ -86,11 +86,8 @@ protected:	// internal functions
 		int			mSeverity;
 		VDStringW	*mpText;
 
-		static bool sort1(const Entry& e, const sint32 y) {
-			return e.mPos < y;
-		}
-		static bool sort2(const sint32 y, const Entry& e) {
-			return y < e.mPos;
+		static bool sort(const Entry& e1, const Entry& e2) {
+			return e1.mPos < e2.mPos;
 		}
 	};
 
@@ -157,7 +154,7 @@ VDLogWindowControl *VDLogWindowControl::Create(HWND hwndParent, int x, int y, in
 	HWND hwnd = CreateWindow(g_szLogWindowControlName, "", WS_VISIBLE|WS_CHILD|WS_VSCROLL, x, y, cx, cy, hwndParent, (HMENU)id, g_hInst, NULL);
 
 	if (hwnd)
-		return (VDLogWindowControl *)GetWindowLong(hwnd, 0);
+		return (VDLogWindowControl *)GetWindowLongPtr(hwnd, 0);
 
 	return NULL;
 }
@@ -180,7 +177,7 @@ ATOM RegisterLogWindowControl() {
 }
 
 IVDLogWindowControl *VDGetILogWindowControl(HWND hwnd) {
-	return static_cast<IVDLogWindowControl *>(reinterpret_cast<VDLogWindowControl *>(GetWindowLong(hwnd, 0)));
+	return static_cast<IVDLogWindowControl *>(reinterpret_cast<VDLogWindowControl *>(GetWindowLongPtr(hwnd, 0)));
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -213,14 +210,14 @@ void VDLogWindowControl::AddEntry(int severity, const VDStringW& s) {
 /////////////////////////////////////////////////////////////////////////////
 
 LRESULT CALLBACK VDLogWindowControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDLogWindowControl *pThis = (VDLogWindowControl *)GetWindowLong(hwnd, 0);
+	VDLogWindowControl *pThis = (VDLogWindowControl *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 	case WM_NCCREATE:
 		if (!(pThis = new_nothrow VDLogWindowControl(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 		break;
 
 	case WM_NCDESTROY:
@@ -322,8 +319,12 @@ void VDLogWindowControl::OnPaint() {
 		tLineArray::const_iterator itEnd(mLineArray.end());
 		--itEnd;
 
-		tLineArray::const_iterator itFirst(std::lower_bound((tLineArray::const_iterator)mLineArray.begin(), itEnd, y1, Entry::sort1));
-		tLineArray::const_iterator itLast(std::upper_bound(itFirst, itEnd, y2, Entry::sort2));
+		Entry tmp1;
+		tmp1.mPos = y1;
+		Entry tmp2;
+		tmp2.mPos = y2;
+		tLineArray::const_iterator itFirst(std::lower_bound((tLineArray::const_iterator)mLineArray.begin(), itEnd, tmp1, Entry::sort));
+		tLineArray::const_iterator itLast(std::upper_bound(itFirst, itEnd, tmp2, Entry::sort));
 
 		if (itFirst != mLineArray.begin())
 			--itFirst;
@@ -391,7 +392,7 @@ void VDLogWindowControl::OnTimer() {
 
 	if (bChanged) {
 		mLineArray.back().mpText = 0;
-		SizeEntries(&mLineArray[pos-1]);
+		SizeEntries(mLineArray.begin() + (pos-1));
 	}
 }
 
@@ -780,7 +781,6 @@ void VDLogWindowControl::CreateBuffer(std::vector<char>& buffer) {
 					}
 				}
 
-				const char *t = VDFastTextWToA(s.c_str());
 				int alen = VDTextWToALength(s.data() + nPos, nEnd - nPos);
 				int blen = buffer.size();
 

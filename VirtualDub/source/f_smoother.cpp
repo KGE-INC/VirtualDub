@@ -31,9 +31,15 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define USE_ASM
+#ifdef _M_IX86
+	#define USE_ASM
+#endif
 
 extern HINSTANCE g_hInst;
+
+#ifdef _MSC_VER
+#pragma warning(disable: 4799)		// function has no EMMS instruction
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -65,6 +71,7 @@ static const byte codes[]={
 	0x41, 0x61, 0x62, 0x82, 0x62, 0x82, 0x83, 0xa3,
 };
 
+#ifdef USE_ASM
 static void __declspec(naked) filtrow_1_mmx(byte *sum, Pixel *src, long width, const long pitch, const long thresh) {
 	__asm {
 		push	ebx
@@ -161,15 +168,17 @@ pixelloop:
 		ret
 	}
 }
+#endif
 
 static void filtrow_1(byte *sum, Pixel *src, long width, const long pitch, const long thresh) {
+#ifdef _M_IX86
 	if (MMX_enabled) {
 		filtrow_1_mmx(sum, src, width, pitch, thresh);
 		return;
 	}
+#endif
 
 	long bitarray=0;
-	long bitarray2=0;
 
 	src = (Pixel *)((char *)src - pitch);
 
@@ -235,6 +244,7 @@ static void filtrow_1(byte *sum, Pixel *src, long width, const long pitch, const
 	*sum++ = codes[bitarray>>2];
 }
 
+#ifdef USE_ASM
 static void __declspec(naked) avgrow_asm(Pixel *dst, Pixel *src, long width) {
 	__asm {
 		push	ebx
@@ -720,6 +730,7 @@ pixelloop:
 		ret
 	}
 }
+#endif
 
 static void avgrow(Pixel *dst, Pixel *src, long width) {
 #ifdef USE_ASM
@@ -802,11 +813,7 @@ static void avgrow(Pixel *dst, Pixel *src, long width) {
 #endif
 }
 
-static void avgrow_null(Pixel *dst, Pixel *src, long width) {
-	memset(dst, 0, width*sizeof(Pixel));
-}
-
-
+#ifdef USE_ASM
 static void __declspec(naked) final_mmx(Pixel *dst, int width, byte **row_array, Pixel **avg_array) {
 	static __int64 add4=0x0004000400040004i64;
 	static __int64 add8=0x0008000800080008i64;
@@ -922,7 +929,7 @@ high_detail:
 		ret
 	}
 }
-
+#endif
 
 static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
@@ -939,8 +946,11 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 	///////////
 
+	if (!g_thresh)
+		g_thresh = 1;
+
 	if (mfd->pBlurBitmap) {
-		mfd->effBlur->run(&mfd->vbBlur, &fa->src);
+		mfd->effBlur->run((VBitmap *)&mfd->vbBlur, (VBitmap *)&fa->src);
 		srcf = mfd->vbBlur.data;
 		srcf_pitch = mfd->vbBlur.pitch;
 
@@ -949,7 +959,6 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		srcf_pitch = fa->src.pitch;
 	}
 
-//	avgrow_ptr = avgrow_null;
 	avgrow_ptr = avgrow;
 
 //	memcpy(avg_rows, mfd->avg_row, sizeof(Pixel)*5);
@@ -990,6 +999,7 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		if (++next_avg_row>=5)
 			next_avg_row = 0;
 
+#ifdef USE_ASM
 		if (MMX_enabled) {
 			for(i=0; i<5; i++)
 				row[i] = mfd->sum_row[(next_row+i) % 5] + fa->src.w;
@@ -1002,7 +1012,9 @@ static int smoother_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			src = (Pixel *)((char *)src + fa->src.pitch);
 			dst = (Pixel *)((char *)dst + fa->dst.pitch);
 			srcf = (Pixel *)((char *)srcf + srcf_pitch);
-		} else {
+		} else
+#endif
+		{
 			for(i=0; i<5; i++)
 				row[i] = mfd->sum_row[(next_row+i) % 5];
 
@@ -1136,7 +1148,7 @@ static int smoother_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 		mfd->vbBlur = VBitmap(mfd->pBlurBitmap, fa->src.w, fa->src.h, 32);
 
-		if (!(mfd->effBlur = VCreateEffectBlur(&fa->src)))
+		if (!(mfd->effBlur = VCreateEffectBlur((VBitmap *)&fa->src)))
 			return 1;
 	}
 
@@ -1172,8 +1184,8 @@ static int smoother_end(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY FilterValueDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	MyFilterData *mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	MyFilterData *mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
@@ -1182,7 +1194,7 @@ static BOOL APIENTRY FilterValueDlgProc( HWND hDlg, UINT message, UINT wParam, L
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETRANGE, (WPARAM)FALSE, MAKELONG(0, 100));
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETPOS, (WPARAM)TRUE, (mfd->grad_threshold+100)/200); 
 			CheckDlgButton(hDlg, IDC_PREFILTER, mfd->fBlurPass?BST_CHECKED:BST_UNCHECKED);
-			SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+			SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 			mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
             return (TRUE);
 
@@ -1212,8 +1224,6 @@ static BOOL APIENTRY FilterValueDlgProc( HWND hDlg, UINT message, UINT wParam, L
 				HWND hwndItem = GetDlgItem(hDlg, IDC_SLIDER);
 				SetDlgItemInt(hDlg, IDC_VALUE, SendMessage(hwndItem, TBM_GETPOS, 0,0), FALSE);
 				mfd->grad_threshold = SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_GETPOS, 0,0)*200;
-				if (!mfd->grad_threshold)
-					++mfd->grad_threshold;
 				mfd->ifp->RedoFrame();
 			}
 			return TRUE;

@@ -54,8 +54,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,1
- PRODUCTVERSION 1,0,0,1
+ FILEVERSION 1,5,10,1
+ PRODUCTVERSION 1,5,10,1
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -73,14 +73,14 @@ BEGIN
             VALUE "Comments", "Requires VirtualDub and vdremote.dll/vdicmdrv.dll to be useful\0"
             VALUE "CompanyName", " \0"
             VALUE "FileDescription", "VirtualDub server communication library\0"
-            VALUE "FileVersion", "1.4\0"
+            VALUE "FileVersion", "1.5.10-sp1\0"
             VALUE "InternalName", "vdsvrlnk\0"
-            VALUE "LegalCopyright", "Copyright © 1998-2001 Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1998-2004 Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "vdsvrlnk.dll\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4\0"
+            VALUE "ProductVersion", "1.5.10-sp1\0"
             VALUE "SpecialBuild", "\0"
         END
     END

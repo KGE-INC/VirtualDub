@@ -44,9 +44,9 @@ protected:
 	long format_len;
 
 	AudioStream *source;
-	long samples_read;
-	long stream_len;
-	long stream_limit;
+	sint64 samples_read;
+	sint64 stream_len;
+	sint64 stream_limit;
 
 	AudioStream();
 
@@ -56,16 +56,16 @@ public:
 
 	virtual WAVEFORMATEX *GetFormat();
 	virtual long GetFormatLen();
-	virtual long GetSampleCount();
-	virtual long GetLength();
+	virtual sint64 GetSampleCount();
+	virtual sint64 GetLength();
 
 	virtual long _Read(void *buffer, long max_samples, long *lplBytes);
 	virtual long Read(void *buffer, long max_samples, long *lplBytes);
-	virtual bool Skip(long samples);
+	virtual bool Skip(sint64 samples);
 	virtual void SetSource(AudioStream *source);
-	virtual void SetLimit(long limit);
-	virtual BOOL isEnd();
-	virtual BOOL _isEnd();
+	virtual void SetLimit(sint64 limit);
+	virtual bool isEnd();
+	virtual bool _isEnd();
 
 	virtual void Seek(VDPosition pos);
 };
@@ -74,15 +74,15 @@ class AudioStreamSource : public AudioStream {
 private:
 	AudioSource *aSrc;
 	WAVEFORMATEX *pwfexTempInput;
-	long cur_samp;
-	long end_samp;
+	sint64 cur_samp;
+	sint64 end_samp;
 	HACMSTREAM hACStream;
 	ACMSTREAMHEADER ashBuffer;
 	void *inputBuffer;
 	void *outputBuffer;
 	char *outputBufferPtr;
-	long lPreskip;
-	long mPrefill;
+	sint64 mPreskip;
+	sint64 mPrefill;
 	bool fZeroRead;
 	bool fStart;
 
@@ -91,12 +91,12 @@ private:
 	enum { INPUT_BUFFER_SIZE = 16384 };
 
 public:
-	AudioStreamSource(AudioSource *src, long first_sample, long max_sample, BOOL allow_decompression);
+	AudioStreamSource(AudioSource *src, sint64 first_sample, sint64 max_sample, bool allow_decompression);
 	~AudioStreamSource();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	bool Skip(long samples);
-	BOOL _isEnd();
+	bool Skip(sint64 samples);
+	bool _isEnd();
 	void Seek(VDPosition);
 };
 
@@ -114,9 +114,9 @@ public:
 	~AudioStreamConverter();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	BOOL _isEnd();
+	bool _isEnd();
 
-	bool Skip(long);
+	bool Skip(sint64);
 };
 
 class AudioStreamResampler : public AudioStream {
@@ -143,7 +143,7 @@ public:
 	~AudioStreamResampler();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	BOOL _isEnd();
+	bool _isEnd();
 };
 
 class AudioCompressor : public AudioStream {
@@ -169,7 +169,7 @@ public:
 	~AudioCompressor();
 	void CompensateForMP3();
 	long _Read(void *buffer, long samples, long *lplBytes);
-	BOOL	isEnd();
+	bool	isEnd();
 
 protected:
 	bool Process();
@@ -197,25 +197,25 @@ public:
 	~AudioStreamL3Corrector();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	BOOL _isEnd();
-	bool Skip(long);
+	bool _isEnd();
+	bool Skip(sint64);
 };
 
 class AudioSubset : public AudioStream {
 private:
 	FrameSubset subset;
 	FrameSubset::const_iterator pfsnCur;
-	int iOffset;
-	long lSrcPos;
-	long lSkipSize;
+	sint64 mOffset;
+	sint64 mSrcPos;
+	int mSkipSize;
 
-	char skipBuffer[512];
+	enum { kSkipBufferSize = 512 };
 
 public:
-	AudioSubset(AudioStream *, FrameSubset *, const VDFraction& frameRate, sint64 offset);
+	AudioSubset(AudioStream *, const FrameSubset *, const VDFraction& frameRate, sint64 offset);
 	~AudioSubset();
 	long _Read(void *, long, long *);
-	BOOL _isEnd();
+	bool _isEnd();
 };
 
 class AudioStreamAmplifier : public AudioStream {
@@ -227,8 +227,8 @@ public:
 	~AudioStreamAmplifier();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	BOOL _isEnd();
-	bool Skip(long);
+	bool _isEnd();
+	bool Skip(sint64);
 };
 
 class AudioFilterSystemStream : public AudioStream {
@@ -237,8 +237,8 @@ public:
 	~AudioFilterSystemStream();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
-	BOOL _isEnd();
-	bool Skip(long);
+	bool _isEnd();
+	bool Skip(sint64);
 	void Seek(VDPosition);
 
 protected:
@@ -249,6 +249,6 @@ protected:
 	sint64		mSamplePos;
 };
 
-long AudioTranslateVideoSubset(FrameSubset& dst, FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex);
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex);
 
 #endif

@@ -108,13 +108,13 @@ void ProgressDialog::close() {
 	}
 }
 
-BOOL CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	ProgressDialog *thisPtr = (ProgressDialog *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ProgressDialog *thisPtr = (ProgressDialog *)GetWindowLongPtr(hDlg, DWLP_USER);
 	int newval2;
 
 	switch(msg) {
 		case WM_INITDIALOG:
-			SetWindowLong(hDlg, DWL_USER, lParam);
+			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 			thisPtr = (ProgressDialog *)lParam;
 			thisPtr->hwndProgressBar = GetDlgItem(hDlg, IDC_PROGRESS);

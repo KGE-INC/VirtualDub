@@ -50,7 +50,7 @@
 //    destination and source Y scanline pointers are collapsed together, causing the odd
 //    scanline to be converted twice.
 
-typedef void (*tVDMPEGConverter)(void *dst, ptrdiff_t dpitch, const unsigned char *srcY, ptrdiff_t Ypitch, const unsigned char *srcCr, const unsigned char *srcCb, int Cpitch, int mbw, int height);
+typedef void (*tVDMPEGConverter)(void *dst, ptrdiff_t dpitch, const unsigned char *srcY, ptrdiff_t Ypitch, const unsigned char *srcCr, const unsigned char *srcCb, ptrdiff_t Cpitch, int mbw, int height);
 
 struct VDMPEGConverterSet {
 	tVDMPEGConverter	DecodeUYVY;

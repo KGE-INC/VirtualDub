@@ -18,21 +18,17 @@
 #ifndef f_AVIOUTPUTWAV_H
 #define f_AVIOUTPUTWAV_H
 
-#include <vd2/system/file.h>
+#include <vd2/system/fileasync.h>
+#include <vd2/system/vdalloc.h>
 
 #include "AVIOutput.h"
 
-class FastWriteStream;
-
 class AVIOutputWAV : public AVIOutput {
 private:
-	VDFile		mFile;
+	vdautoptr<IVDFileAsync>	mpFileAsync;
 	bool		fHeaderOpen;
 	uint32		mBytesWritten;
-	FastWriteStream	*fastIO;
 	sint32		mBufferSize;
-
-	void _write(const void *data, int len);
 
 public:
 	AVIOutputWAV();

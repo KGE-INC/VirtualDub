@@ -93,8 +93,8 @@ bool AudioSourceWAV::init() {
 		return FALSE;
 
 	bytesPerSample	= getWaveFormat()->nBlockAlign; //getWaveFormat()->nAvgBytesPerSec / getWaveFormat()->nSamplesPerSec;
-	lSampleFirst	= 0;
-	lSampleLast		= chunkDATA.cksize / bytesPerSample;
+	mSampleFirst	= 0;
+	mSampleLast		= chunkDATA.cksize / bytesPerSample;
 	lCurrentSample	= -1;
 
 	streamInfo.fccType					= streamtypeAUDIO;
@@ -114,7 +114,7 @@ bool AudioSourceWAV::init() {
 	return TRUE;
 }
 
-int AudioSourceWAV::_read(LONG lStart, LONG lCount, LPVOID buffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead) {
+int AudioSourceWAV::_read(VDPosition lStart, uint32 lCount, void *buffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
 	LONG lBytes = lCount * bytesPerSample;
 
 	if (lBytes > cbBuffer) {
@@ -168,8 +168,8 @@ bool AudioSourceAVI::init() {
 	if (pAVIStream->ReadFormat(0, getFormat(), &format_len))
 		return FALSE;
 
-	lSampleFirst = pAVIStream->Start();
-	lSampleLast = pAVIStream->End();
+	mSampleFirst = pAVIStream->Start();
+	mSampleLast = pAVIStream->End();
 
 	// Check for illegal (truncated) MP3 format.
 	const WAVEFORMATEX *pwfex = getWaveFormat();
@@ -212,7 +212,7 @@ bool AudioSourceAVI::init() {
 			else										// off < on < iso
 				wf.fdwFlags			= MPEGLAYER3_FLAG_PADDING_OFF;
 
-		wf.nBlockSize		= (int)floor(0.5 + fAverageFrameSize);	// This is just a guess.  The MP3 codec always turns padding off, so I don't know whether this should be rounded up or not.
+		wf.nBlockSize		= (uint16)floor(0.5 + fAverageFrameSize);	// This is just a guess.  The MP3 codec always turns padding off, so I don't know whether this should be rounded up or not.
 		wf.nFramesPerBlock	= 1;
 		wf.nCodecDelay		= 1393;									// This is the number of samples padded by the compressor.  1393 is the value typically written by the codec.
 
@@ -245,8 +245,8 @@ bool AudioSourceAVI::init() {
 
 void AudioSourceAVI::Reinit() {
 	pAVIStream->Info(&streamInfo, sizeof streamInfo);
-	lSampleFirst = pAVIStream->Start();
-	lSampleLast = pAVIStream->End();
+	mSampleFirst = pAVIStream->Start();
+	mSampleLast = pAVIStream->End();
 }
 
 bool AudioSourceAVI::isStreaming() {
@@ -254,7 +254,7 @@ bool AudioSourceAVI::isStreaming() {
 }
 
 void AudioSourceAVI::streamBegin(bool fRealTime) {
-	pAVIStream->BeginStreaming(lSampleFirst, lSampleLast, fRealTime ? 1000 : 2000);
+	pAVIStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 }
 
 void AudioSourceAVI::streamEnd() {
@@ -262,10 +262,11 @@ void AudioSourceAVI::streamEnd() {
 
 }
 
-BOOL AudioSourceAVI::_isKey(LONG lSample) {
+bool AudioSourceAVI::_isKey(VDPosition lSample) {
 	return pAVIStream->IsKeyFrame(lSample);
 }
-int AudioSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lpBytesRead, LONG *lpSamplesRead) {
+
+int AudioSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lpBytesRead, uint32 *lpSamplesRead) {
 	int err;
 	long lBytes, lSamples;
 
@@ -273,7 +274,12 @@ int AudioSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 	// (audio streams that state their length as being longer than they
 	// really are).  We use a kludge here to get around the problem.
 
-	err = pAVIStream->Read(lStart, lCount, lpBuffer, cbBuffer, lpBytesRead, lpSamplesRead);
+	err = pAVIStream->Read(lStart, lCount, lpBuffer, cbBuffer, &lBytes, &lSamples);
+
+	if (lpBytesRead)
+		*lpBytesRead = lBytes;
+	if (lpSamplesRead)
+		*lpSamplesRead = lSamples;
 
 	if (err != AVIERR_FILEREAD)
 		return err;
@@ -310,4 +316,346 @@ int AudioSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 	}
 
 	return AVIERR_OK;
+}
+
+
+///////////////////////////////////////////////////////////////////////////
+
+AudioSourceDV::AudioSourceDV(IAVIReadStream *pStream, bool bAutomated)
+	: mpStream(pStream)
+	, mLastFrame(-1)
+{
+	bQuiet = bAutomated;	// ugh, this needs to go... V1.5.0.
+}
+
+AudioSourceDV::~AudioSourceDV() {
+	if (mpStream)
+		delete mpStream;
+}
+
+bool AudioSourceDV::init() {
+	LONG format_len;
+
+	mpStream->FormatSize(0, &format_len);
+
+	if (!allocFormat(sizeof(WAVEFORMATEX)))
+		return false;
+
+	WAVEFORMATEX *pwfex = (WAVEFORMATEX *)getFormat();
+
+	// fetch AAUX packet from stream format and determine sampling rate
+	long size;
+	if (FAILED(mpStream->FormatSize(0, &size)))
+		return false;
+
+	if (size < 24)
+		return false;
+
+	vdblock<uint8> format(size);
+	if (FAILED(mpStream->ReadFormat(0, format.data(), &size)))
+		return false;
+
+	bool isPAL = 0 != (format[18] & 0x20);
+
+	sint32 samplingRate;
+
+	switch(format[3] & 0x38) {
+	case 0x00:
+		samplingRate = 48000;
+		mSamplesPerSet		= isPAL ? 19200 : 16016;
+		mMinimumFrameSize	= isPAL ? 1896 : 1580;
+		break;
+	case 0x08:
+		samplingRate = 44100;
+		mSamplesPerSet		= isPAL ? 17640 : 14715;
+		mMinimumFrameSize	= isPAL ? 1742 : 1452;
+		break;
+	case 0x10:
+		samplingRate = 32000;
+		mSamplesPerSet		= isPAL ? 12800 : 10677;
+		mMinimumFrameSize	= isPAL ? 1264 : 1053;
+		break;
+	default:
+		return false;
+	}
+
+	// check for 12-bit quantization
+	unsigned bytesPerSample = (format[3] & 7) ? 3 : 2;
+
+	mTempBuffer.resize(isPAL ? 144000 : 120000);
+
+	pwfex->wFormatTag		= WAVE_FORMAT_PCM;
+	pwfex->nChannels		= 2;
+	pwfex->nSamplesPerSec	= samplingRate;
+	pwfex->nAvgBytesPerSec	= samplingRate*4;
+	pwfex->nBlockAlign		= 4;
+	pwfex->wBitsPerSample	= 16;
+	pwfex->cbSize			= 0;
+
+	if (isPAL) {
+		mGatherTab.resize(1944);
+
+		for(int i=0; i<1944; ++i) {
+			int dif_sequence	= ((i/3)+2*(i%3))%6;
+			int dif_block		= 6 + 16*(3*(i%3) + ((i%54)/18));
+			int byte_offset		= 8 + bytesPerSample*(i/54);
+
+			mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
+		}
+
+		mRightChannelOffset = 12000*6;	// left channel is first 6 DIF sequences
+	} else {
+		mGatherTab.resize(1620);
+
+		for(int i=0; i<1620; ++i) {
+			int dif_sequence	= ((i/3)+2*(i%3))%5;
+			int dif_block		= 6 + 16*(3*(i%3) + ((i%45)/15));
+			int byte_offset		= 8 + bytesPerSample*(i/45);
+
+			mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
+		}
+
+		mRightChannelOffset	= 12000*5;	// left channel is first 5 DIF sequences
+	}
+
+	mpStream->Info(&streamInfo, sizeof streamInfo);
+
+	// wonk most of the stream values since they're not appropriate for audio
+	streamInfo.fccType		= streamtypeAUDIO;
+	streamInfo.fccHandler	= 0;
+	streamInfo.dwStart		= VDRoundToInt((double)streamInfo.dwScale / streamInfo.dwRate * samplingRate);
+	streamInfo.dwRate		= pwfex->nAvgBytesPerSec;
+	streamInfo.dwScale		= pwfex->nBlockAlign;
+	streamInfo.dwInitialFrames			= 0;
+	streamInfo.dwSuggestedBufferSize	= 0;
+	streamInfo.dwQuality				= (DWORD)-1;
+	streamInfo.dwSampleSize				= pwfex->nBlockAlign;
+	memset(&streamInfo.rcFrame, 0, sizeof streamInfo.rcFrame);
+
+	Reinit();
+
+	return true;
+}
+
+void AudioSourceDV::Reinit() {
+	const VDPosition start = mpStream->Start();
+	const VDPosition end = mpStream->End();
+
+	mRawStart		= start;
+	mRawEnd			= end;
+	mRawFrames		= end - start;
+	mSampleFirst	= (start * mSamplesPerSet) / 10;
+	mSampleLast		= (start+end * mSamplesPerSet) / 10;
+
+	streamInfo.dwLength	= mSampleLast - mSampleFirst;
+
+	FlushCache();
+}
+
+bool AudioSourceDV::isStreaming() {
+	return mpStream->isStreaming();
+}
+
+void AudioSourceDV::streamBegin(bool fRealTime) {
+	mpStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
+}
+
+void AudioSourceDV::streamEnd() {
+	mpStream->EndStreaming();
+
+}
+
+bool AudioSourceDV::_isKey(VDPosition lSample) {
+	return true;
+}
+
+int AudioSourceDV::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lpBytesRead, uint32 *lpSamplesRead) {
+	if (lpBuffer && cbBuffer < 4)
+		return AVIERR_BUFFERTOOSMALL;
+
+	if (lCount == AVISTREAMREAD_CONVENIENT)
+		lCount = mSamplesPerSet;
+
+	VDPosition baseSet = lStart / mSamplesPerSet;
+	uint32 offset = (uint32)(lStart % mSamplesPerSet);
+
+	if (lCount > mSamplesPerSet - offset)
+		lCount = mSamplesPerSet - offset;
+
+	if (lpBuffer && lCount > (cbBuffer>>2))
+		lCount = cbBuffer>>2;
+
+	if (lpBuffer) {
+		const CacheLine *pLine = LoadSet(baseSet);
+		if (!pLine)
+			return AVIERR_FILEREAD;
+
+		memcpy(lpBuffer, (char *)pLine->mResampledData + offset*4, 4*lCount);
+	}
+
+	if (lpBytesRead)
+		*lpBytesRead = lCount * 4;
+	if (lpSamplesRead)
+		*lpSamplesRead = lCount;
+
+	return AVIERR_OK;
+}
+
+const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
+	// For now we will be lazy and just direct map the cache.
+	unsigned line = (unsigned)setpos & 3;
+
+	CacheLine& cline = mCache[line];
+
+	if (mCacheLinePositions[line] != setpos) {
+		mCacheLinePositions[line] = -1;
+
+		// load up to 10 frames and linearize the raw data
+		VDPosition pos = mRawStart + 10 * setpos;
+		VDPosition limit = pos + 10;
+		if (limit > mRawEnd)
+			limit = mRawEnd;
+		cline.mRawSamples = 0;
+
+		uint8 *dst = (uint8 *)cline.mRawData;
+
+		while(pos < limit) {
+			long bytes, samples;
+
+			int err = mpStream->Read(pos++, 1, mTempBuffer.data(), mTempBuffer.size(), &bytes, &samples);
+			if (err)
+				return NULL;
+
+			const uint8 *pAAUX = &mTempBuffer[80*(3*16 + 6) + 3];
+
+			const uint32 n = mMinimumFrameSize + (pAAUX[1] & 0x3f);
+
+			if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
+				VDDEBUG("AudioSourceDV: Sample count overflow!\n");
+				VDASSERT(false);
+				break;
+			}
+
+			cline.mRawSamples += n;
+
+			if ((pAAUX[4] & 7) == 1) {	// 1: 12-bit nonlinear
+				const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
+				const ptrdiff_t rightOffset = mRightChannelOffset;
+				sint32 *pOffsets = mGatherTab.data();
+
+				uint16 *dst16 = (uint16 *)dst;
+				dst += 4*n;
+
+				for(int i=0; i<n; ++i) {
+					const ptrdiff_t pos = *pOffsets++;
+					const uint8 *srcF = src0 + pos;
+					const uint8 *srcR = srcF + rightOffset;
+
+					// Convert 12-bit nonlinear (one's complement floating-point) sample to 16-bit linear.
+					// This value is a 1.3.8 floating-point value similar to IEEE style, except that the
+					// sign is represented via 1's-c rather than sign-magnitude.
+					//
+					// Thus, 0000..00FF are positive denormals, 8000 is the largest negative value, etc.
+
+					sint32 vL = ((sint32)srcF[0]<<4) + (srcF[2]>>4);		// reconstitute left 12-bit value
+					sint32 vR = ((sint32)srcF[1]<<4) + (srcF[2] & 15);		// reconstitute right 12-bit value
+
+					static const sint32 addend[16]={
+						-0x0000 << 0,
+						-0x0000 << 0,
+						-0x0100 << 1,
+						-0x0200 << 2,
+						-0x0300 << 3,
+						-0x0400 << 4,
+						-0x0500 << 5,
+						-0x0600 << 6,
+
+						-0x09ff << 6,
+						-0x0aff << 5,
+						-0x0bff << 4,
+						-0x0cff << 3,
+						-0x0dff << 2,
+						-0x0eff << 1,
+						-0x0fff << 0,
+						-0x0fff << 0,
+					};
+					static const int	shift [16]={0,0,1,2,3,4,5,6,6,5,4,3,2,1,0,0};
+
+					int expL = vL >> 8;
+					int expR = vR >> 8;
+
+					dst16[0] = (vL << shift[expL]) + addend[expL];
+					dst16[1] = (vR << shift[expR]) + addend[expR];
+					dst16 += 2;
+				}
+			} else {					// 0: 16-bit linear
+				const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
+				const ptrdiff_t rightOffset = mRightChannelOffset;
+				sint32 *pOffsets = mGatherTab.data();
+
+				for(int i=0; i<n; ++i) {
+					const ptrdiff_t pos = *pOffsets++;
+					const uint8 *srcL = src0 + pos;
+					const uint8 *srcR = srcL + rightOffset;
+
+					// convert big-endian sample to little-endian
+					dst[0] = srcL[1];
+					dst[1] = srcL[0];
+					dst[2] = srcR[1];
+					dst[3] = srcR[0];
+					dst += 4;
+				}
+			}
+		}
+
+		// resample if required
+		if (cline.mRawSamples == mSamplesPerSet) {
+			// no resampling required -- straight copy
+			memcpy(cline.mResampledData, cline.mRawData, 4*mSamplesPerSet);
+		} else {
+			const sint16 *src = &cline.mRawData[0][0];
+			      sint16 *dst = &cline.mResampledData[0][0];
+
+			// copy first sample
+			dst[0] = src[0];
+			dst[1] = src[1];
+			dst += 2;
+
+			// linearly interpolate middle samples
+			uint32 dudx = ((cline.mRawSamples-1) << 16) / (mSamplesPerSet-1);
+			uint32 u = dudx + (dudx >> 1) - 0x8000;
+
+			unsigned n = mSamplesPerSet-2;
+			do {
+				const sint16 *src2 = src + (u>>16)*2;
+				sint32 f = (u>>4)&0xfff;
+
+				u += dudx;
+
+				sint32 a0 = src2[0];
+				sint32 b0 = src2[1];
+				sint32 da = src2[2] - a0;
+				sint32 db = src2[3] - b0;
+
+				dst[0] = a0 + ((da*f + 0x800) >> 12);
+				dst[1] = b0 + ((db*f + 0x800) >> 12);
+				dst += 2;
+			} while(--n);
+
+			// copy last sample
+			dst[0] = src[cline.mRawSamples*2-2];
+			dst[1] = src[cline.mRawSamples*2-1];
+		}
+
+		VDDEBUG("AudioSourceDV: Loaded cache line %u for %u raw samples (%u samples expected)\n", (unsigned)setpos*10, cline.mRawSamples, mSamplesPerSet);
+
+		mCacheLinePositions[line] = setpos;
+	}
+
+	return &cline;
+}
+
+void AudioSourceDV::FlushCache() {
+	for(int i=0; i<kCacheLines; ++i)
+		mCacheLinePositions[i] = -1;
 }

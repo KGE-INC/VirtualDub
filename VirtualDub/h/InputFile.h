@@ -42,9 +42,9 @@ public:
 
 class InputFilenameNode : public ListNode2<InputFilenameNode> {
 public:
-	const char *name;
+	const wchar_t *name;
 
-	InputFilenameNode(const char *_n);
+	InputFilenameNode(const wchar_t *_n);
 	~InputFilenameNode();
 };
 

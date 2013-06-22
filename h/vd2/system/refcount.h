@@ -53,7 +53,10 @@ public:
 template<class T> class vdrefcounted : public T {
 public:
 	vdrefcounted() : mRefCount(0) {}
+	vdrefcounted(const vdrefcounted<T>& src) : mRefCount(0) {}		// do not copy the refcount
 	virtual ~vdrefcounted() {}
+
+	vdrefcounted<T>& operator=(const vdrefcounted<T>&) {}			// do not copy the refcount
 
 	inline virtual int AddRef() {
 		return mRefCount.inc();

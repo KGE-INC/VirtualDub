@@ -102,7 +102,7 @@ static int LevelPixelToRatio(int pix, int w) {
 }
 
 static LRESULT APIENTRY LevelControlWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	LevelControlData *lcd = (LevelControlData *)GetWindowLong(hwnd, 0);
+	LevelControlData *lcd = (LevelControlData *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 
@@ -118,7 +118,7 @@ static LRESULT APIENTRY LevelControlWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 		lcd->rgbHigh	= 0xFFFFFF;
 		lcd->iMovingTab	= -1;
 
-		SetWindowLong(hwnd, 0, (LONG)lcd);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)lcd);
 		return TRUE;
 
 	case WM_CREATE:
@@ -128,7 +128,7 @@ static LRESULT APIENTRY LevelControlWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 	case WM_DESTROY:
 		delete lcd;
-		SetWindowLong(hwnd, 0, 0);
+		SetWindowLongPtr(hwnd, 0, 0);
 		break;
 
 	case WM_PAINT:

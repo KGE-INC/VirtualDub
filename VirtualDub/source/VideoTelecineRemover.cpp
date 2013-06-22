@@ -96,6 +96,7 @@ static inline int sq(int d) {
 	return d*d;
 }
 
+#ifdef _M_IX86
 #if 0
 
 static long __declspec(naked) computeScanImprovementMMX(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, PixDim w) {
@@ -221,6 +222,7 @@ xloop:
 	}
 }
 #endif
+#endif
 
 static long computeScanImprovement(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, PixDim w) {
 	long imp = 0;
@@ -282,6 +284,7 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 		src1 = (Pixel8 *)(pMemBlock + vb.pitch*(vb.h * nCurrentIn + 8));
 		src2 = (Pixel8 *)(pMemBlock + vb.pitch*(vb.h * ((nCurrentIn+9)%10) + 8));
 
+#ifdef _M_IX86
 		if (MMX_enabled) {
 			do {
 				field1 += computeScanImprovementMMX(src1, src2, vb.pitch, longs);
@@ -292,7 +295,9 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 			} while(--h);
 
 			__asm emms
-		} else {
+		} else
+#endif
+		{
 			do {
 				field1 += computeScanImprovement(src1, src2, vb.pitch, longs*4);
 				field2 += computeScanImprovement(src1+vb.pitch, src2+vb.pitch, vb.pitch, longs*4);
@@ -360,6 +365,7 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 	}
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) DeBlendMMX_32_24(void *dst, void *src1, void *src2, void *src3, void *src4, long w3, long h, long spitch, long dmodulo) {
 	static const __int64 one = 0x0001000100010001i64;
 	__asm {
@@ -469,6 +475,7 @@ xloop:
 		ret
 	}
 }
+#endif
 
 long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
 
@@ -518,6 +525,7 @@ long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
 		} else {
 			_RPT2(0,"Recon: %d %d\n", nCurrentIn, nCurrentOut);
 
+#ifdef _M_IX86
 			DeBlendMMX_32_24(
 					pOut->data,
 					pMemBlock + vb.pitch * (vb.h * ((nCurrentOut+9)%10)),
@@ -528,6 +536,9 @@ long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
 					vb.h,
 					vb.pitch,
 					pOut->modulo);
+#endif
+
+#pragma vdpragma_TODO("Need scalar version of this for AMD64")
 		}
 
 		return lFrameNums[nCurrentOut];

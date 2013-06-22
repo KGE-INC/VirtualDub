@@ -17,7 +17,6 @@
 
 #include "stdafx.h"
 
-#include <vd2/system/VDRingBuffer.h>
 #include <vd2/system/Error.h>
 
 #include "filter.h"
@@ -34,13 +33,6 @@ public:
 
 	uint32 Prepare();
 	uint32 Run();
-	void Start();
-
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
-	sint64 Seek(sint64);
-
-	VDRingBuffer<sint16> mOutputBuffer;
 };
 
 VDAudioFilterCenterMix::VDAudioFilterCenterMix()
@@ -79,30 +71,16 @@ uint32 VDAudioFilterCenterMix::Prepare() {
 	return 0;
 }
 
-void VDAudioFilterCenterMix::Start() {
-	const VDAudioFilterPin& pin0 = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format0 = *pin0.mpFormat;
-
-	mOutputBuffer.Init(2 * pin0.mBufferSize);
-}
-
 uint32 VDAudioFilterCenterMix::Run() {
 	VDAudioFilterPin& pin1 = *mpContext->mpInputs[0];
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
-	const VDWaveFormat& format1 = *pin1.mpFormat;
-	const VDWaveFormat& format2 = *pin2.mpFormat;
 
-	int samples, actual = 0;
-
-	sint16 *dst = mOutputBuffer.LockWrite(mOutputBuffer.getSize(), samples);
-
-	samples >>= 1;
-
-	if (samples > mpContext->mInputSamples)
-		samples = mpContext->mInputSamples;
+	int samples = mpContext->mCommonSamples, actual = 0;
 
 	if (!samples && pin1.mbEnded && pin2.mbEnded)
-		return true;
+		return kVFARun_Finished;
+
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 
 	while(samples > 0) {
 		sint16 buf[4096];
@@ -133,31 +111,9 @@ uint32 VDAudioFilterCenterMix::Run() {
 		samples -= tc;
 	}
 
-	mOutputBuffer.UnlockWrite(actual * 2);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
+	mpContext->mpOutputs[0]->mSamplesWritten = actual;
 
 	return 0;
-}
-
-uint32 VDAudioFilterCenterMix::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel()>>1);
-
-	if (dst) {
-		mOutputBuffer.Read((sint16 *)dst, samples*2);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterCenterMix::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_centermix = {

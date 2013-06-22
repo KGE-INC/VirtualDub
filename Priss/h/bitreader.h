@@ -26,12 +26,18 @@ class VDMPEGAudioBitReader {
 public:
 	VDMPEGAudioBitReader(const uint8 *src, uint32 len) : mpSrc(src), mpSrcLimit(src+len), mBitOffset(0) {}
 
+#if _MSC_VER >= 1300
+	static inline uint32 bswap(uint32 v) {
+		return _byteswap_ulong(v);
+	}
+#else
 	static inline uint32 __fastcall bswap(uint32 v) {
 		__asm {
 			mov eax, v
 			bswap eax
 		}
 	}
+#endif
 
 	unsigned get(unsigned bits) {
 		static const uint32 masks[17]={

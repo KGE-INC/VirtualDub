@@ -30,7 +30,6 @@ protected:
 	uint32 Prepare();
 	uint32 Run();
 	void Start();
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
 
 	sint64 Seek(sint64);
 
@@ -57,7 +56,6 @@ protected:
 	uint32 Prepare();
 	uint32 Run();
 	void Start();
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
 
 	sint64 Seek(sint64);
 

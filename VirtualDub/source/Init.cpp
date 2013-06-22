@@ -39,6 +39,7 @@
 #include <vd2/system/profile.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include "crash.h"
 #include "DubSource.h"
@@ -62,7 +63,6 @@
 
 extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
-extern void VDInitAppStringTables();
 extern void VDInitInputDrivers();
 
 ///////////////////////////////////////////////////////////////////////////
@@ -99,12 +99,19 @@ static const wchar_t szAppNameW[]=L"VirtualDub";
 extern const char g_szError[];
 
 bool g_fWine = false;
+bool g_bEnableVTuneProfiling;
+
+void (*g_pPostInitRoutine)();
 
 ///////////////////////////////////////////////////////////////////////////
 
 void VDterminate() {
 	vdprotected("processing call to terminate() (probably caused by exception within destructor)") {
+#if _MSC_VER >= 1300
+		__debugbreak();
+#else
 		__asm int 3
+#endif
 	}
 }
 
@@ -149,10 +156,6 @@ static void crash3() {
 static void crash2() {
 	__try {
 		crash3();
-#ifndef __INTEL_COMPILER		// figures... Intel C/C++ doesn't support 3DNow! opcodes.
-		__asm pavgusb mm0, mm0
-#endif
-		__asm add byte ptr ds:[0], 0
 	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
 	}
 }
@@ -166,8 +169,8 @@ static void crash() {
 
 extern "C" void WinMainCRTStartup();
 
-extern "C" void __declspec(naked) __stdcall VeedubWinMain() {
 #if defined(__INTEL_COMPILER)
+extern "C" void __declspec(naked) __stdcall VeedubWinMain() {
 	static const char g_szSSE2Error[]="This build of VirtualDub is optimized for the Pentium 4 processor and will not run on "
 										"CPUs without SSE2 support. Your CPU does not appear to support SSE2, so you will need to run "
 										"the regular VirtualDub build, which runs on all Pentium and higher CPUs.\n\n"
@@ -241,10 +244,24 @@ exchandler:
 		mov		eax,0					;ExceptionContinueExecution
 		ret
 	}
-
-#else
-	__asm jmp WinMainCRTStartup
+}
 #endif
+
+void VDInitAppResources() {
+	HRSRC hResource = FindResource(NULL, MAKEINTRESOURCE(IDR_RESOURCES), "STUFF");
+
+	if (!hResource)
+		return;
+
+	HGLOBAL hGlobal = LoadResource(NULL, hResource);
+	if (!hGlobal)
+		return;
+
+	LPVOID lpData = LockResource(hGlobal);
+	if (!lpData)
+		return;
+
+	VDLoadResources(0, lpData, SizeofResource(NULL, hResource));
 }
 
 bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
@@ -268,13 +285,15 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 
 	// initialize resource system
 	VDInitResourceSystem();
-	VDInitAppStringTables();
+	VDInitAppResources();
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
 			L"Starting up: VirtualDub build %lu/"
 #ifdef DEBUG
 			L"debug"
+#elif defined(_M_AMD64)
+			L"release-AMD64"
 #elif defined(__INTEL_COMPILER)
 			L"release-P4"
 #else
@@ -322,6 +341,8 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
     if (!InitApplication(hInstance))
             return (FALSE);              
 
+	VDInstallModelessDialogHookW32();
+
 	// display welcome requester
 	Welcome();
 
@@ -342,9 +363,7 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 	vdprotected("autoloading filters at startup") {
 		int f, s;
 
-		VDLoadPlugins(VDMakePath(VDGetProgramPath(), VDStringW(L"plugins")));
-
-		s = FilterAutoloadModules(f);
+		VDLoadPlugins(VDMakePath(VDGetProgramPath(), VDStringW(L"plugins")), s, f);
 
 		if (s || f)
 			guiSetStatus("Autoloaded %d filters (%d failed).", 255, s, f);
@@ -391,6 +410,9 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 
 	VDCHECKPOINT;
 
+	if (g_pPostInitRoutine)
+		g_pPostInitRoutine();
+
 	return true;
 }
 
@@ -400,6 +422,9 @@ void Deinit() {
 	FilterInstance *fa;
 
 	VDCHECKPOINT;
+
+	g_project->CloseAVI();
+	g_project->CloseWAV();
 
 	g_projectui->Detach();
 	g_projectui = 0;
@@ -416,13 +441,7 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
-	FilterUnloadAllModules();
 	VDDeinitPluginSystem();
-
-	VDCHECKPOINT;
-
-	CloseAVI();
-	CloseWAV();
 
 	VDCHECKPOINT;
 
@@ -431,12 +450,16 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
+	if (g_ACompressionFormat)
+		freemem(g_ACompressionFormat);
+
 	if (g_Vcompression.dwFlags & ICMF_COMPVARS_VALID)
 		FreeCompressor(&g_Vcompression);
 
 	if (compInstalled)
 		ICRemove(ICTYPE_VIDEO, 'TSDV', 0);
 
+	VDDeinstallModelessDialogHookW32();
 
 	// deinitialize DirectDraw2
 
@@ -457,15 +480,22 @@ void Deinit() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-LRESULT APIENTRY DummyWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
+LRESULT APIENTRY BaseWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+	case WM_NCCREATE:
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR)NULL);
+		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
-		return 0;
+		break;
 	}
 
-	return IsWindowUnicode(hWnd) ? DefWindowProcW(hWnd, message, wParam, lParam) : DefWindowProcA(hWnd, message, wParam, lParam);
+	WNDPROC wp = (WNDPROC)GetWindowLongPtr(hWnd, 0);
+
+	if (!wp)
+		wp = IsWindowUnicode(hWnd) ? DefWindowProcW : DefWindowProcA;
+
+	return wp(hWnd, message, wParam, lParam);
 }
 
 bool InitApplication(HINSTANCE hInstance) {
@@ -494,15 +524,15 @@ bool InitApplication(HINSTANCE hInstance) {
 	} wc;
 
     wc.a.style			= CS_OWNDC;
-    wc.a.lpfnWndProc	= DummyWndProc;
+    wc.a.lpfnWndProc	= BaseWndProc;
     wc.a.cbClsExtra		= 0;
-    wc.a.cbWndExtra		= 0;
+    wc.a.cbWndExtra		= sizeof(void *);
     wc.a.hInstance		= hInstance;
     wc.a.hIcon			= LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_VIRTUALDUB));
     wc.a.hCursor		= LoadCursor(NULL, IDC_ARROW);
     wc.a.hbrBackground	= (HBRUSH)(COLOR_3DFACE+1); //GetStockObject(LTGRAY_BRUSH); 
 
-	if (GetVersion() < 0x80000000) {
+	if (false && GetVersion() < 0x80000000) {
 	    wc.w.lpszMenuName	= MAKEINTRESOURCEW(IDR_MAIN_MENU);
 		wc.w.lpszClassName	= szAppNameW;
 
@@ -518,23 +548,24 @@ bool InitApplication(HINSTANCE hInstance) {
 ///////////////////////////////////////////////////////////////////////////
 
 bool InitInstance( HANDLE hInstance, int nCmdShow) {
-	char buf[256];
-	char buf2[256];
+	wchar_t buf[256];
 
-	LoadString(g_hInst, IDS_TITLE_INITIAL, buf2, sizeof buf2);
+	VDStringW versionFormat(VDLoadStringW32(IDS_TITLE_INITIAL));
 
-	wsprintf(buf, buf2, version_num,
+	swprintf(buf, versionFormat.c_str(), version_num,
 #ifdef _DEBUG
-		"debug"
+		L"debug"
+#elif defined(_M_AMD64)
+		L"release-AMD64"
 #elif defined(__INTEL_COMPILER)
-		"release-P4"
+		L"release-P4"
 #else
-		"release"
+		L"release"
 #endif
 		);
 
     // Create a main window for this application instance. 
-	if (GetVersion() < 0x80000000) {
+	if (false && GetVersion() < 0x80000000) {
 		g_hWnd = CreateWindowW(
 			szAppNameW,
 			L"",
@@ -570,13 +601,13 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 	g_projectui = new VDProjectUI;
 	g_project = &*g_projectui;
-	g_projectui->Attach(g_hWnd);
+	g_projectui->Attach((VDGUIHandle)g_hWnd);
 
     // Make the window visible; update its client area; and return "success".
     ShowWindow(g_hWnd, nCmdShow);  
     UpdateWindow(g_hWnd);          
 
-	SetWindowText(g_hWnd, buf);
+	VDSetWindowTextW32(g_hWnd, buf);
 
     return (TRUE);               
 
@@ -610,6 +641,8 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 	//	/r						run job list
 	//	/x						exit when jobs complete
 	//	/h						disable crash handler
+	//	/fsck					test crash handler
+	//	/vtprofile				enable VTune profiling
 
 	s = cmdline;
 	g_szFile[0] = 0;
@@ -789,13 +822,17 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 
 				case 'F':
 					try {
-						const VDStringA filenameA(VDTextWToA(token+2));
-						FilterLoadModule(filenameA.c_str());
+						VDAddPluginModule(token + 2);
 
-						guiSetStatus("Loaded external filter module: %s", 255, filenameA.c_str());
+						guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token+2).c_str());
 					} catch(const MyError& e) {
 						e.post(g_hWnd, g_szError);
 					}
+					break;
+
+				case L'v':
+					if (!wcscmp(token+2, L"tprofile"))
+						g_bEnableVTuneProfiling = true;
 					break;
 				}
 			} else

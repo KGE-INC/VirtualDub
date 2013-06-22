@@ -95,7 +95,6 @@ public:
 	static unsigned	__cdecl GetParamProc			(const VDAudioFilterContext *pContext, unsigned idx, void *dst, unsigned size);
 	static void		__cdecl SetParamProc			(const VDAudioFilterContext *pContext, unsigned idx, const void *src, unsigned size);
 	static bool		__cdecl ConfigProc				(const VDAudioFilterContext *pContext, HWND hwnd);
-	static uint32	__cdecl ReadProc				(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples);
 
 	static const VDAudioFilterVtbl sVtbl;
 

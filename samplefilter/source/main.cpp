@@ -305,12 +305,12 @@ long tutorial_saturation_param(FilterActivation *fa, const FilterFunctions *ff) 
 	return 0;
 }
 
-BOOL CALLBACK tutorial_saturation_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)GetWindowLongPtr(hdlg, DWL_USER);
+INT_PTR CALLBACK tutorial_saturation_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 	switch(msg) {
 		case WM_INITDIALOG:
-			SetWindowLongPtr(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 			pfd = (TutorialSaturationFilterData *)lParam;
 
 			if (pfd->ifp)

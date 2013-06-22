@@ -37,12 +37,6 @@ extern vdrefptr<InputFile>		inputAVI;
 
 extern vdrefptr<VideoSource>	inputVideoAVI;
 
-extern vdrefptr<AudioSource>	inputAudio;
-extern vdrefptr<AudioSource>	inputAudioAVI;
-extern vdrefptr<AudioSource>	inputAudioWAV;
-
-extern FrameSubset			*inputSubset;
-
 enum {
 	AUDIOIN_NONE	= 0,
 	AUDIOIN_AVI		= 1,
@@ -65,20 +59,14 @@ extern bool				g_showStatusWindow;
 
 void AppendAVI(const wchar_t *pszFile);
 void AppendAVIAutoscan(const wchar_t *pszFile);
-void SetAudioSource();
-void CloseAVI();
-void OpenWAV(const wchar_t *szFile);
-void CloseWAV();
 void SaveWAV(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_opts=NULL);
 void SaveAVI(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_opts=NULL, bool fCompatibility=false);
 void SaveStripedAVI(const wchar_t *szFile);
 void SaveStripeMaster(const wchar_t *szFile);
 void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
-void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat);
+void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat, int quality);
 void SetSelectionStart(long ms);
 void SetSelectionEnd(long ms);
-void RemakePositionSlider();
-void RecalcPositionTimeConstant();
 void EnsureSubset();
 void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource);
 

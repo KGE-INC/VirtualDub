@@ -37,7 +37,7 @@ const char g_szYes[]="Yes";
 
 ///////////////////////////////////////////////////////////////////////////
 
-BOOL CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -107,7 +107,7 @@ HIC ICOpenASV1(DWORD fccType, DWORD fccHandler, DWORD dwMode) {
 
 void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput) {
 	CCInfo cci;
-	ICINFO info;
+	ICINFO info = {sizeof(ICINFO)};
 	int i;
 	int nComp;
 
@@ -149,7 +149,7 @@ void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *b
 
 		sprintf(cci.szCurrentCompression, "(No recompression: %s)", fccbuf);
 	} else
-		strcpy(cci.szCurrentCompression, "(Uncompressed RGB)");
+		strcpy(cci.szCurrentCompression, "(Uncompressed RGB/YCbCr)");
 
 	vdprotected("enumerating video codecs") {
 		for(i=0; ICInfo(ICTYPE_VIDEO, i, &info); i++) {
@@ -164,12 +164,16 @@ void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *b
 			u.buf[4] = 0;
 
 			vdprotected1("opening video codec with FOURCC \"%.4s\"", const char *, u.buf) {
-				VDSilentExternalCodeBracket bracket;
+				{
+					wchar_t buf[64];
+					_swprintf(buf, L"A video codec with FOURCC '%.4S'", (const char *)&info.fccHandler);
+					VDExternalCodeBracket bracket(buf, __FILE__, __LINE__);
 
-				if (isEqualFOURCC(info.fccHandler, '1VSA'))
-					hic = ICOpenASV1(info.fccType, info.fccHandler, ICMODE_COMPRESS);
-				else	
-					hic = ICOpen(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+					if (isEqualFOURCC(info.fccHandler, '1VSA'))
+						hic = ICOpenASV1(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+					else	
+						hic = ICOpen(info.fccType, info.fccHandler, ICMODE_COMPRESS);
+				}
 
 				if (hic) {
 					ICINFO ici = { sizeof(ICINFO) };
@@ -246,7 +250,7 @@ static int g_depths[]={
 
 void ReenableOptions(HWND hdlg, HIC hic, ICINFO *pii) {
 	BOOL fSupports;
-	ICINFO info;
+	ICINFO info = {sizeof(ICINFO)};
 	DWORD dwFlags;
 
 	if (hic) {
@@ -280,7 +284,7 @@ void ReenableOptions(HWND hdlg, HIC hic, ICINFO *pii) {
 	else
 		dwFlags = 0;
 
-	fSupports = !!(dwFlags & VIDCF_CRUNCH);
+	fSupports = !!(dwFlags & (VIDCF_CRUNCH | VIDCF_QUALITY));		// Strange but true: Windows expects to be able to crunch even if only the quality bit is set.
 
 	EnableWindow(GetDlgItem(hdlg, IDC_USE_DATARATE), fSupports);
 	EnableWindow(GetDlgItem(hdlg, IDC_DATARATE), fSupports);
@@ -368,7 +372,13 @@ void SelectCompressor(ICINFO *pii, HWND hdlg, CCInfo *pcci) {
 		pcci->hic = NULL;
 	}
 
-	hic = ICOpen(pii->fccType, pii->fccHandler, ICMODE_COMPRESS);
+	{
+		wchar_t buf[64];
+		_swprintf(buf, L"A video codec with FOURCC '%.4S'", (const char *)&pii->fccHandler);
+		VDExternalCodeBracket bracket(buf, __FILE__, __LINE__);
+
+		hic = ICOpen(pii->fccType, pii->fccHandler, ICMODE_COMPRESS);
+	}
 
 	if (!hic) {
 		SendMessage(hwndReport, LB_ADDSTRING, 0, (LPARAM)"<Unable to open driver>");
@@ -403,7 +413,8 @@ void SelectCompressor(ICINFO *pii, HWND hdlg, CCInfo *pcci) {
 			bi.bmiHeader.biHeight = h = g_yres[j];
 
 			for(k=0; k<NDEPTHS; k++) {
-				bi.bmiHeader.biBitCount = d = g_depths[k];
+				d = g_depths[k];
+				bi.bmiHeader.biBitCount = (WORD)d;
 				bi.bmiHeader.biSizeImage = ((w*d+31)/32)*4*h;
 
 				if (ICERR_OK == ICCompressQuery(hic, &bi.bmiHeader, NULL))
@@ -427,8 +438,8 @@ pass:
 	// Check all the depths; see if they work
 
 	for(k=0; k<NDEPTHS; k++) {
-		bi.bmiHeader.biBitCount = g_depths[k];
-		bi.bmiHeader.biSizeImage = ((w*g_depths[k]+31)/32)*4*h;
+		bi.bmiHeader.biBitCount		= (WORD)g_depths[k];
+		bi.bmiHeader.biSizeImage	= ((w*g_depths[k]+31)/32)*4*h;
 
 		if (ICERR_OK == ICCompressQuery(hic, &bi.bmiHeader, NULL))
 			depth_bits |= (1<<k);
@@ -436,7 +447,7 @@ pass:
 
 	// Look for X alignment
 
-	bi.bmiHeader.biBitCount = d;
+	bi.bmiHeader.biBitCount = (WORD)d;
 
 	for(i=3; i>=0; i--) {
 		bi.bmiHeader.biWidth	 = w + (1<<i);
@@ -525,14 +536,14 @@ static const DWORD dwHelpLookup[]={
 };
 
 
-BOOL CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
-	CCInfo *pcci = (CCInfo *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
+	CCInfo *pcci = (CCInfo *)GetWindowLongPtr(hdlg, DWLP_USER);
 	int i, ind, ind_select;
 	HWND hwndItem;
 
 	switch(uiMsg) {
 		case WM_INITDIALOG:
-			SetWindowLong(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 
 			pcci = (CCInfo *)lParam;
 

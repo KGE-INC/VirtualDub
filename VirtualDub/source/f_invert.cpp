@@ -27,60 +27,76 @@ extern HINSTANCE g_hInst;
 
 ///////////////////////////////////
 
-void __declspec(naked) asm_invert_run(Pixel32 *data, long w, long h, long pitch) {
-	__asm {
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+namespace {
+#ifdef _M_IX86
+	void __declspec(naked) VDInvertRect32(Pixel32 *data, long w, long h, ptrdiff_t pitch) {
+		__asm {
+			push	ebp
+			push	edi
+			push	esi
+			push	ebx
 
-		mov		edi,[esp+4+16]
-		mov		edx,[esp+8+16]
-		mov		ecx,[esp+12+16]
-		mov		esi,[esp+16+16]
-		mov		eax,edx
-		xor		edx,-1
-		shl		eax,2
-		inc		edx
-		add		edi,eax
-		test	edx,1
-		jz		yloop
-		sub		edi,4
-yloop:
-		mov		ebp,edx
-		inc		ebp
-		sar		ebp,1
-		jz		zero
-xloop:
-		mov		eax,[edi+ebp*8  ]
-		mov		ebx,[edi+ebp*8+4]
-		xor		eax,-1
-		xor		ebx,-1
-		mov		[edi+ebp*8  ],eax
-		mov		[edi+ebp*8+4],ebx
-		inc		ebp
-		jne		xloop
-zero:
-		test	edx,1
-		jz		notodd
-		not		dword ptr [edi]
-notodd:
-		add		edi,esi
-		dec		ecx
-		jne		yloop
+			mov		edi,[esp+4+16]
+			mov		edx,[esp+8+16]
+			mov		ecx,[esp+12+16]
+			mov		esi,[esp+16+16]
+			mov		eax,edx
+			xor		edx,-1
+			shl		eax,2
+			inc		edx
+			add		edi,eax
+			test	edx,1
+			jz		yloop
+			sub		edi,4
+	yloop:
+			mov		ebp,edx
+			inc		ebp
+			sar		ebp,1
+			jz		zero
+	xloop:
+			mov		eax,[edi+ebp*8  ]
+			mov		ebx,[edi+ebp*8+4]
+			xor		eax,-1
+			xor		ebx,-1
+			mov		[edi+ebp*8  ],eax
+			mov		[edi+ebp*8+4],ebx
+			inc		ebp
+			jne		xloop
+	zero:
+			test	edx,1
+			jz		notodd
+			not		dword ptr [edi]
+	notodd:
+			add		edi,esi
+			dec		ecx
+			jne		yloop
 
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
-		ret
-	};
+			pop		ebx
+			pop		esi
+			pop		edi
+			pop		ebp
+			ret
+		};
+	}
+#else
+	void VDInvertRect32(Pixel32 *data, long w, long h, ptrdiff_t pitch) {
+		pitch -= 4*w;
+
+		do {
+			long wt = w;
+			do {
+				*data = ~*data;
+				++data;
+			} while(--wt);
+		} while(--h);
+	}
+#endif
 }
 
 ///////////////////////////////////
 
 int invert_run(const FilterActivation *fa, const FilterFunctions *ff) {	
-	asm_invert_run(
+	VDInvertRect32(
 			fa->src.data,
 			fa->src.w,
 			fa->src.h,

@@ -19,10 +19,15 @@
 #include "DubOutput.h"
 #include <vd2/system/error.h>
 #include "AVIOutput.h"
+#include "AVIOutputFile.h"
 #include "AVIOutputWAV.h"
 #include "AVIOutputImages.h"
 #include "AVIOutputStriped.h"
 #include "AVIOutputPreview.h"
+
+///////////////////////////////////////////
+
+extern "C" unsigned long version_num;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -57,8 +62,8 @@ void VDAVIOutputFileSystem::SetBuffer(int bufferSize) {
 	mBufferSize = bufferSize;
 }
 
-AVIOutput *VDAVIOutputFileSystem::CreateSegment() {
-	vdautoptr<AVIOutputFile> pOutput(new AVIOutputFile);
+IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
+	vdautoptr<IVDMediaOutputAVIFile> pOutput(VDCreateMediaOutputAVIFile());
 
 	if (!mbAllowCaching)
 		pOutput->disable_os_caching();
@@ -91,17 +96,28 @@ AVIOutput *VDAVIOutputFileSystem::CreateSegment() {
 	pOutput->setBuffering(mBufferSize, mBufferSize >> 2);
 	pOutput->setInterleaved(mbInterleaved);
 
+	char buf[80];
+
+	sprintf(buf, "VirtualDub build %d/%s", version_num,
+#ifdef _DEBUG
+		"debug"
+#else
+		"release"
+#endif
+				);
+
+	pOutput->setHiddenTag(buf);
+
 	pOutput->init(s.c_str());
 
 	return pOutput.release();
 }
 
-void VDAVIOutputFileSystem::CloseSegment(AVIOutput *pSegment, bool bLast) {
-	AVIOutputFile *pFile = (AVIOutputFile *)pSegment;
+void VDAVIOutputFileSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 	if (mSegmentDigits)
-		pFile->setSegmentHintBlock(bLast, NULL, 1);
-	pFile->finalize();
-	delete pFile;
+		static_cast<IVDMediaOutputAVIFile *>(pSegment)->setSegmentHintBlock(bLast, NULL, 1);
+	pSegment->finalize();
+	delete pSegment;
 }
 
 void VDAVIOutputFileSystem::SetFilename(const wchar_t *pszFilename) {
@@ -155,7 +171,7 @@ void VDAVIOutputStripedSystem::Set1GBLimit(bool bUse1GBLimit) {
 	mbUse1GBLimit = bUse1GBLimit;
 }
 
-AVIOutput *VDAVIOutputStripedSystem::CreateSegment() {
+IVDMediaOutput *VDAVIOutputStripedSystem::CreateSegment() {
 	vdautoptr<AVIOutputStriped> pFile(new AVIOutputStriped(mpStripeSystem));
 
 	if (!pFile)
@@ -165,9 +181,8 @@ AVIOutput *VDAVIOutputStripedSystem::CreateSegment() {
 	return pFile.release();
 }
 
-void VDAVIOutputStripedSystem::CloseSegment(AVIOutput *pSegment, bool bLast) {
-	AVIOutputFile *pFile = (AVIOutputFile *)pSegment;
-	pFile->setSegmentHintBlock(bLast, NULL, 1);
+void VDAVIOutputStripedSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
+	AVIOutputStriped *pFile = (AVIOutputStriped *)pSegment;
 	pFile->finalize();
 	delete pFile;
 }
@@ -200,25 +215,30 @@ bool VDAVIOutputStripedSystem::AcceptsAudio() {
 
 VDAVIOutputWAVSystem::VDAVIOutputWAVSystem(const wchar_t *pszFilename)
 	: mFilename(pszFilename)
+	, mBufferSize(1048576)
 {
 }
 
 VDAVIOutputWAVSystem::~VDAVIOutputWAVSystem() {
 }
 
-AVIOutput *VDAVIOutputWAVSystem::CreateSegment() {
+void VDAVIOutputWAVSystem::SetBuffer(int bufferSize) {
+	mBufferSize = bufferSize;
+}
+
+IVDMediaOutput *VDAVIOutputWAVSystem::CreateSegment() {
 	vdautoptr<AVIOutputWAV> pOutput(new AVIOutputWAV);
 
 	pOutput->createAudioStream()->setFormat(&mAudioFormat[0], mAudioFormat.size());
 
-	pOutput->setBufferSize(65536);
+	pOutput->setBufferSize(mBufferSize);
 
 	pOutput->init(mFilename.c_str());
 
 	return pOutput.release();
 }
 
-void VDAVIOutputWAVSystem::CloseSegment(AVIOutput *pSegment, bool bLast) {
+void VDAVIOutputWAVSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 	AVIOutputWAV *pFile = (AVIOutputWAV *)pSegment;
 	pFile->finalize();
 	delete pFile;
@@ -254,8 +274,8 @@ VDAVIOutputImagesSystem::VDAVIOutputImagesSystem()
 VDAVIOutputImagesSystem::~VDAVIOutputImagesSystem() {
 }
 
-AVIOutput *VDAVIOutputImagesSystem::CreateSegment() {
-	vdautoptr<AVIOutputImages> pOutput(new AVIOutputImages(mSegmentPrefix.c_str(), mSegmentSuffix.c_str(), mSegmentDigits, mFormat));
+IVDMediaOutput *VDAVIOutputImagesSystem::CreateSegment() {
+	vdautoptr<AVIOutputImages> pOutput(new AVIOutputImages(mSegmentPrefix.c_str(), mSegmentSuffix.c_str(), mSegmentDigits, mFormat, mQuality));
 
 	if (!mVideoFormat.empty())
 		pOutput->createVideoStream()->setFormat(&mVideoFormat[0], mVideoFormat.size());
@@ -268,7 +288,7 @@ AVIOutput *VDAVIOutputImagesSystem::CreateSegment() {
 	return pOutput.release();
 }
 
-void VDAVIOutputImagesSystem::CloseSegment(AVIOutput *pSegment, bool bLast) {
+void VDAVIOutputImagesSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 	AVIOutputImages *pFile = (AVIOutputImages *)pSegment;
 	pFile->finalize();
 	delete pFile;
@@ -280,8 +300,9 @@ void VDAVIOutputImagesSystem::SetFilenamePattern(const wchar_t *pszPrefix, const
 	mSegmentDigits		= nMinimumDigits;
 }
 
-void VDAVIOutputImagesSystem::SetFormat(int format) {
+void VDAVIOutputImagesSystem::SetFormat(int format, int quality) {
 	mFormat = format;
+	mQuality = quality;
 }
 
 void VDAVIOutputImagesSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
@@ -317,7 +338,7 @@ VDAVIOutputPreviewSystem::VDAVIOutputPreviewSystem()
 VDAVIOutputPreviewSystem::~VDAVIOutputPreviewSystem() {
 }
 
-AVIOutput *VDAVIOutputPreviewSystem::CreateSegment() {
+IVDMediaOutput *VDAVIOutputPreviewSystem::CreateSegment() {
 	vdautoptr<AVIOutputPreview> pOutput(new AVIOutputPreview);
 
 	if (!mVideoFormat.empty())
@@ -331,7 +352,7 @@ AVIOutput *VDAVIOutputPreviewSystem::CreateSegment() {
 	return pOutput.release();
 }
 
-void VDAVIOutputPreviewSystem::CloseSegment(AVIOutput *pSegment, bool bLast) {
+void VDAVIOutputPreviewSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 	AVIOutputPreview *pFile = (AVIOutputPreview *)pSegment;
 	pFile->finalize();
 	delete pFile;

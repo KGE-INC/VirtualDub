@@ -1,4 +1,5 @@
-#include <crtdbg.h>
+#include <vd2/system/vdtypes.h>
+#include <vector>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,11 +17,11 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern CScriptObject obj_Sylia;
+extern VDScriptObject obj_Sylia;
 
 ///////////////////////////////////////////////////////////////////////////
 
-class CScriptInterpreter : public IScriptInterpreter {
+class VDScriptInterpreter : public IVDScriptInterpreter {
 private:
 	enum {
 		MAX_FUNCTION_PARAMS = 16,
@@ -30,6 +31,8 @@ private:
 	enum {
 		TOK_IDENT		= 256,
 		TOK_INTEGER,
+		TOK_LONG,
+		TOK_DOUBLE,
 		TOK_STRING,
 		TOK_DECLARE,
 		TOK_TRUE,
@@ -42,108 +45,126 @@ private:
 		TOK_GRTREQ,
 	};
 
-	char *tokstr;
-	long toklval;
+	const char *tokbase;
+	const char *tokstr;
+	union {
+		int tokival;
+		sint64 toklval;
+		double tokdval;
+	};
 	int tokhold;
 	char **tokslit;
 	char szIdent[MAX_IDENT_CHARS+1];
 	char szError[256];
 
-	CScriptValue params[MAX_FUNCTION_PARAMS];
+	std::vector<VDScriptValue> mStack;
+	std::vector<int> mOpStack;
 
-	ScriptRootHandlerPtr lpRoothandler;
+	VDScriptRootHandlerPtr lpRoothandler;
 	void *lpRoothandlerData;
 
-	CStringHeap strheap;
+	VDScriptStringHeap strheap;
 	VariableTable	vartbl;
+
+	const VDScriptFunctionDef *mpCurrentInvocationMethod;
+	int mMethodArgumentCount;
 
 	////////
 
-	CScriptValue	ParseExpression();
-	CScriptValue	ParseExpressionLvalue();
+	void			ParseExpression();
 	int				ExprOpPrecedence(int op);
 	bool			ExprOpIsRightAssoc(int op);
-	CScriptValue	ParseExpression2(CScriptValue v_left, int op);
-	CScriptValue	ParseValue();
+	void			ParseValue();
+	void			Reduce();
+
+	void	ConvertToRvalue();
+	void	InvokeMethod(const VDScriptObject *objdef, const char *name, int argc);
+	void	InvokeMethod(const VDScriptFunctionDef *sfd, int pcount);
 
 	bool	isExprFirstToken(int t);
 	bool	isUnaryToken(int t);
 
-	CScriptValue	LookupRootVariable(char *szName);
+	VDScriptValue	LookupRootVariable(char *szName);
 
 	bool isIdentFirstChar(char c);
 	bool isIdentNextChar(char c);
-	void TokenBegin(char *s);
+	void TokenBegin(const char *s);
 	void TokenUnput(int t);
 	int Token();
+	void GC();
 
 public:
-	CScriptInterpreter();
-	~CScriptInterpreter();
+	VDScriptInterpreter();
+	~VDScriptInterpreter();
 	void Destroy();
 
-	void SetRootHandler(ScriptRootHandlerPtr, void *);
+	void SetRootHandler(VDScriptRootHandlerPtr, void *);
 
-	void ExecuteLine(char *s);
+	void ExecuteLine(const char *s);
 
 	void ScriptError(int e);
-	const char *TranslateScriptError(CScriptError& cse);
+	const char *TranslateScriptError(const VDScriptError& cse);
 	char** AllocTempString(long l);
 
-	CScriptValue	LookupObjectMember(CScriptObject *obj, void *lpVoid, char *szIdent);
+	VDScriptValue	LookupObjectMember(const VDScriptObject *obj, void *lpVoid, char *szIdent);
+
+	const VDScriptFunctionDef *GetCurrentMethod() { return mpCurrentInvocationMethod; }
+	int GetErrorLocation() { return tokstr - tokbase; }
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-CScriptInterpreter::CScriptInterpreter() : strheap(65536, 256), vartbl(128) {
+VDScriptInterpreter::VDScriptInterpreter() : vartbl(128) {
 }
 
-CScriptInterpreter::~CScriptInterpreter() {
+VDScriptInterpreter::~VDScriptInterpreter() {
 	lpRoothandler = NULL;
 }
 
-void CScriptInterpreter::Destroy() {
+void VDScriptInterpreter::Destroy() {
 	delete this;
 }
 
-IScriptInterpreter *CreateScriptInterpreter() {
-	return new CScriptInterpreter();
+IVDScriptInterpreter *VDCreateScriptInterpreter() {
+	return new VDScriptInterpreter();
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-void CScriptInterpreter::SetRootHandler(ScriptRootHandlerPtr rh, void *rh_data) {
+void VDScriptInterpreter::SetRootHandler(VDScriptRootHandlerPtr rh, void *rh_data) {
 	lpRoothandler = rh;
 	lpRoothandlerData = rh_data;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-void CScriptInterpreter::ExecuteLine(char *s) {
+void VDScriptInterpreter::ExecuteLine(const char *s) {
 	int t;
 
-	_RPT1(0,"Sylia: executing \"%s\"\n", s);
+	VDDEBUG("Sylia: executing \"%s\"\n", s);
 
 	TokenBegin(s);
 
 	while(t = Token()) {
 		if (isExprFirstToken(t)) {
-			CScriptValue csv;
+			VDScriptValue csv;
 
 			TokenUnput(t);
-			csv = ParseExpression();
+			ParseExpression();
 
-			if (csv.isInt()) {
-				_RPT1(0,"Expression: integer %ld\n", csv.asInt());
-			} else if (csv.isString()) {
-				_RPT1(0,"Expression: string [%s]\n", *csv.asString());
+			VDASSERT(!mStack.empty());
 
-				strheap.Free(csv.asString(), true);
-			} else if (csv.isVoid()) {
-				_RPT0(0,"Expression: void\n");
-			} else {
-				_RPT0(0,"Expression: unknown type\n");
-			}
+			VDScriptValue& val = mStack.back();
+			if (csv.isInt())
+				VDDEBUG("Expression: integer %ld\n", csv.asInt());
+			else if (csv.isString())
+				VDDEBUG("Expression: string [%s]\n", *csv.asString());
+			else if (csv.isVoid())
+				VDDEBUG("Expression: void\n");
+			else
+				VDDEBUG("Expression: unknown type\n");
+
+			mStack.pop_back();
 
 			if (Token() != ';')
 				SCRIPT_ERROR(SEMICOLON_EXPECTED);
@@ -166,39 +187,45 @@ void CScriptInterpreter::ExecuteLine(char *s) {
 		} else
 			SCRIPT_ERROR(PARSE_ERROR);
 	}
+
+	GC();
 }
 
-void CScriptInterpreter::ScriptError(int e) {
-	throw CScriptError(e);
+void VDScriptInterpreter::ScriptError(int e) {
+	throw VDScriptError(e);
 }
 
-const char *CScriptInterpreter::TranslateScriptError(CScriptError& cse) {
+const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) {
 	char *s;
 	int i;
 
 	switch(cse.err) {
-	case CScriptError::OVERLOADED_FUNCTION_NOT_FOUND:
+	case VDScriptError::OVERLOADED_FUNCTION_NOT_FOUND:
 		{
-			strcpy(szError, "Overloaded method (");
+			if (mpCurrentInvocationMethod && mpCurrentInvocationMethod->name)
+				sprintf(szError, "Overloaded method %s(", mpCurrentInvocationMethod->name);
+			else
+				strcpy(szError, "Overloaded method (");
 
-			s = szError + 19;
+			s = szError + strlen(szError);
 
-			for(i=0; i<MAX_FUNCTION_PARAMS; i++) {
+			const VDScriptValue *const argv = &*(mStack.end() - mMethodArgumentCount);
+
+			for(i=0; i<mMethodArgumentCount; i++) {
 				if (i) {
-					if (params[i].isVoid()) break;
+					if (argv[i].isVoid()) break;
 
 					*s++ = ',';
 				}
 
-				switch(params[i].type) {
-				case CScriptValue::T_VOID:		strcpy(s, "void"); break;
-				case CScriptValue::T_INT:		strcpy(s, "int"); break;
-				case CScriptValue::T_STR:		strcpy(s, "string"); break;
-				case CScriptValue::T_ARRAY:		strcpy(s, "array"); break;
-				case CScriptValue::T_OBJECT:	strcpy(s, "object"); break;
-				case CScriptValue::T_FNAME:		strcpy(s, "method"); break;
-				case CScriptValue::T_FUNCTION:	strcpy(s, "function"); break;
-				case CScriptValue::T_VARLV:		strcpy(s, "var"); break;
+				switch(argv[i].type) {
+				case VDScriptValue::T_VOID:		strcpy(s, "void"); break;
+				case VDScriptValue::T_INT:		strcpy(s, "int"); break;
+				case VDScriptValue::T_STR:		strcpy(s, "string"); break;
+				case VDScriptValue::T_OBJECT:	strcpy(s, "object"); break;
+				case VDScriptValue::T_FNAME:		strcpy(s, "method"); break;
+				case VDScriptValue::T_FUNCTION:	strcpy(s, "function"); break;
+				case VDScriptValue::T_VARLV:		strcpy(s, "var"); break;
 				}
 
 				while(*s) ++s;
@@ -208,16 +235,16 @@ const char *CScriptInterpreter::TranslateScriptError(CScriptError& cse) {
 		}
 
 		return szError;
-	case CScriptError::MEMBER_NOT_FOUND:
+	case VDScriptError::MEMBER_NOT_FOUND:
 		sprintf(szError, "Member '%s' not found", szIdent);
 		return szError;
 	default:
-		return ::TranslateScriptError(cse);
+		return ::VDScriptTranslateError(cse);
 	}
 }
 
-char **CScriptInterpreter::AllocTempString(long l) {
-	char **handle = strheap.Allocate(l, true);
+char **VDScriptInterpreter::AllocTempString(long l) {
+	char **handle = strheap.Allocate(l);
 
 	(*handle)[l]=0;
 
@@ -229,26 +256,7 @@ char **CScriptInterpreter::AllocTempString(long l) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-CScriptValue CScriptInterpreter::ParseExpression() {
-	CScriptValue v_left = ParseValue();
-	int op = Token();
-
-	v_left = ParseExpression2(v_left, op);
-
-	if (v_left.isVarLV())
-		v_left = v_left.asVarLV()->v;
-
-	return v_left;
-}
-
-CScriptValue CScriptInterpreter::ParseExpressionLvalue() {
-	CScriptValue v_left = ParseValue();
-	int op = Token();
-
-	return ParseExpression2(v_left, op);
-}
-
-int CScriptInterpreter::ExprOpPrecedence(int op) {
+int VDScriptInterpreter::ExprOpPrecedence(int op) {
 	switch(op) {
 	case '=':			return 1;
 	case TOK_OR:		return 2;
@@ -273,83 +281,81 @@ int CScriptInterpreter::ExprOpPrecedence(int op) {
 	return 0;
 }
 
-bool CScriptInterpreter::ExprOpIsRightAssoc(int op) {
+bool VDScriptInterpreter::ExprOpIsRightAssoc(int op) {
 	return op == '=';
 }
 
-CScriptValue CScriptInterpreter::ParseExpression2(CScriptValue v_left, int op) {
+void VDScriptInterpreter::ParseExpression() {
+	int depth = 0;
 	int t;
+	bool need_value = true;
 
 	for(;;) {
-		if (!op || op==')' || op==']' || op==',' || op==';') {
-			TokenUnput(op);
-			return v_left;
+		if (need_value) {
+			ParseValue();
+			need_value = false;
 		}
 
-		if (op=='.') {			// object indirection operator
-			_RPT0(0,"found object indirection op\n");
+		t = Token();
 
-			// Reduce lvalues to rvalues
+		if (!t || t==')' || t==']' || t==',' || t==';') {
+			TokenUnput(t);
+			break;
+		}
 
-			if (v_left.isVarLV())
-				v_left = v_left.asVarLV()->v;
+		VDScriptValue& v = mStack.back();
 
-			if (!v_left.isObject()) {
+		if (t=='.') {			// object indirection operator
+			VDDEBUG("found object indirection op\n");
+
+			ConvertToRvalue();
+
+			if (!v.isObject()) {
 				SCRIPT_ERROR(TYPE_OBJECT_REQUIRED);
 			}
 
 			if (Token() != TOK_IDENT)
 				SCRIPT_ERROR(OBJECT_MEMBER_NAME_REQUIRED);
 
-			_RPT1(0,"Attempting to find member: [%s]\n", szIdent);
+			VDDEBUG("Attempting to find member: [%s]\n", szIdent);
 
-			v_left = LookupObjectMember(v_left.asObject(), v_left.lpVoid, szIdent);
+			v = LookupObjectMember(v.asObjectDef(), v.asObjectPtr(), szIdent);
 
-			if (v_left.isVoid())
+			if (v.isVoid())
 				SCRIPT_ERROR(MEMBER_NOT_FOUND);
 
-		} else if (op=='[') {	// array indexing operator
+		} else if (t == '[') {	// array indexing operator
 			// Reduce lvalues to rvalues
 
-			if (v_left.isVarLV())
-				v_left = v_left.asVarLV()->v;
+			ConvertToRvalue();
 
-			if (!v_left.isArray())
-				SCRIPT_ERROR(TYPE_ARRAY_REQUIRED);
+			if (!v.isObject())
+				SCRIPT_ERROR(TYPE_OBJECT_REQUIRED);
 
-			CScriptValue index = ParseExpression();
+			ParseExpression();
+			InvokeMethod((mStack.end() - 2)->asObjectDef(), "[]", 1);
 
-			if (!index.isInt())
-				SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
-//			v_left = v_left.asArray()[index];
-//			v_left = CScriptValue(0);
-			v_left = v_left.asArray()(this, v_left.lpVoid, index.asInt());
+			VDASSERT(mStack.size() >= 2);
+			mStack.erase(mStack.end() - 2);
 
 			if (Token() != ']')
 				SCRIPT_ERROR(CLOSEBRACKET_EXPECTED);
+		} else if (t == '(') {	// function indirection operator
+			const VDScriptValue fcall(mStack.back());
+			mStack.pop_back();
 
-		} else if (op=='(') {	// function indirection operator
-			int pcount;
+			mStack.push_back(VDScriptValue(fcall.u.method.p, fcall.thisPtr));
 
-			// Reduce lvalues to rvalues
-
-			if (v_left.isVarLV())
-				v_left = v_left.asVarLV()->v;
-
-			if (!v_left.isFunction() && !v_left.isFName())
-				SCRIPT_ERROR(TYPE_FUNCTION_REQUIRED);
+			int pcount = 0;
 
 			t = Token();
-
-			if (t==')') {
-				pcount = 0;
-				params[0] = CScriptValue();
-			} else {
+			if (t != ')') {
 				TokenUnput(t);
 
-				for(pcount=0; pcount < MAX_FUNCTION_PARAMS; pcount++) {
-					params[pcount] = ParseExpression();
+				for(;;) {
+					ParseExpression();
+					ConvertToRvalue();
+					++pcount;
 					
 					t = Token();
 
@@ -358,252 +364,114 @@ CScriptValue CScriptInterpreter::ParseExpression2(CScriptValue v_left, int op) {
 					else if (t!=',')
 						SCRIPT_ERROR(FUNCCALLEND_EXPECTED);
 				}
-
-				if (pcount >= MAX_FUNCTION_PARAMS)
-					SCRIPT_ERROR(TOO_MANY_PARAMS);
-
-				++pcount;
-
-				if (pcount < MAX_FUNCTION_PARAMS)
-					params[pcount] = CScriptValue();
 			}
 
-			// If we were passed a function name, attempt to match our parameter
-			// list to one of the overloaded function templates.
-			//
-			// 0 = void, v = value, i = int, . = varargs
-			//
-			// <return value><param1><param2>...
+			InvokeMethod(fcall.u.method.pfn, pcount);
 
-			if (v_left.isFName()) {
-				ScriptFunctionDef *sfd = v_left.u.fname;
-				char c,*s;
-				char *name = sfd->name;
-				CScriptValue *csv;
-				int argcnt;
-
-				// Yes, goto's are usually considered gross... but I prefer
-				// cleanly labeled goto's to excessive boolean variable usage.
-
-				while(sfd->arg_list && (sfd->name == name || !sfd->name)) {
-					s = sfd->arg_list+1;
-					argcnt = pcount;
-					csv = params;
-
-					while((c=*s++) && argcnt--) {
-						switch(c) {
-						case 'v':
-							break;
-						case 'i':
-							if (!csv->isInt()) goto arglist_nomatch;
-							break;
-						case 's':
-							if (!csv->isString()) goto arglist_nomatch;
-							break;
-						case '.':
-							goto arglist_match;
-						default:
-							_RPT1(0,"Sylia external error: invalid argument type '%c' for method\n", c);
-
-							SCRIPT_ERROR(EXTERNAL_ERROR);
-						}
-						++csv;
-					}
-
-					if (!c && !argcnt)
-						goto arglist_match;
-
-arglist_nomatch:
-					++sfd;
-				}
-				SCRIPT_ERROR(OVERLOADED_FUNCTION_NOT_FOUND);
-
-arglist_match:
-				switch(sfd->arg_list[0]) {
-				case '0':	((ScriptVoidFunctionPtr)sfd->func_ptr)(this, v_left.lpVoid, params, pcount);
-							v_left = CScriptValue();
-							break;
-				case 'i':	v_left = CScriptValue(((ScriptIntFunctionPtr)sfd->func_ptr)(this, v_left.lpVoid, params, pcount));
-							break;
-				case 'v':	v_left = sfd->func_ptr(this, v_left.lpVoid, params, pcount);
-							break;
-				default:
-					_RPT1(0,"Sylia external error: invalid return type '%c' for method\n", sfd->arg_list[0]);
-
-					SCRIPT_ERROR(EXTERNAL_ERROR);
-				}
-
-			} else {
-
-				// It's an independent function... call it!
-
-				v_left = v_left.asFunction()(this, v_left.lpVoid, params, pcount);
-			}
-
-			// Free any strings that may have been used as parameters
-
-			for(int i=0; i<pcount; i++)
-				if (params[i].isString())
-					strheap.Free(params[i].asString(), true);
-
+			VDASSERT(mStack.size() >= 2);
+			mStack.erase(mStack.end() - 2);
 		} else {
-			CScriptValue v_right = ParseValue();
-			int prec_left, prec_right;
+			int prec = ExprOpPrecedence(t)*2 - ExprOpIsRightAssoc(t);
 
-			t = Token();
-
-			prec_left = ExprOpPrecedence(op);
-			prec_right = ExprOpPrecedence(t);
-
-			if (prec_right>prec_left || (prec_right==prec_left && ExprOpIsRightAssoc(op)))
-				v_right = ParseExpression2(v_right, t);
-			else
-				TokenUnput(t);
-
-			// If the right operand is an lvalue, reduce to rvalue
-
-			if (v_right.isVarLV())
-				v_right = v_right.asVarLV()->v;
-
-			// If not '=' && left operand is an lvalue, reduce it too
-
-			if (op != '=' && v_left.isVarLV())
-				v_left = v_left.asVarLV()->v;
-
-			// Reduce operator
-
-			if (op == '=') {
-
-				// We also can't assign types other than int and string
-
-//				if (!v_right.isInt() && !v_right.isString())
-//					SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
-				// Propagate v_right to *v_left.  Free a string that may be
-				// in the variable.
-
-				if (v_left.asVarLV()->v.isString())
-					strheap.Free(v_left.asVarLV()->v.asString(), false);
-				
-				if (v_right.isString()) {
-					strcpy(*(v_left.asVarLV()->v = strheap.Allocate(strlen(*v_right.asString()), false)).asString(), *v_right.asString());
-				} else
-					v_left.asVarLV()->v = v_right;
-
-				// '=' evaluates to its right member...
-
-				v_left = v_right;
-
-			} else if (op == '+' && (v_left.isString() || v_right.isString())) {
-				CScriptValue v_res;
-				char lbuf[12], rbuf[12], *lstr, *rstr, *fstr;
-				long l_left, l_right;
-
-				if (v_left.isInt()) {
-					itoa(v_left.asInt(), lbuf, 10);
-					lstr = lbuf;
-				} else if (v_left.isString()) {
-					lstr = *v_left.asString();
-				} else SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
-				if (v_right.isInt()) {
-					itoa(v_right.asInt(), rbuf, 10);
-					rstr = rbuf;
-				} else if (v_right.isString()) {
-					rstr = *v_right.asString();
-				} else SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
-				l_left = strlen(lstr);
-				l_right = strlen(rstr);
-
-				v_res = CScriptValue(strheap.Allocate(l_left + l_right, true));
-				fstr = *v_res.asString();
-				strcpy(fstr, lstr);
-				strcpy(fstr+l_left, rstr);
-
-				if (v_left.isString()) strheap.Free(v_left.asString(), true);
-				if (v_right.isString()) strheap.Free(v_right.asString(), true);
-
-				v_left = v_res;
-			} else {
-
-				if (!v_left.isInt() || !v_right.isInt())
-					SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
-				if (op == '+') {
-					v_left = CScriptValue(v_left.asInt() + v_right.asInt());
-				} else if (op == '-') {
-					v_left = CScriptValue(v_left.asInt() - v_right.asInt());
-				} else if (op == '*') {
-					v_left = CScriptValue(v_left.asInt() * v_right.asInt());
-				} else if (op == '/' || op=='%') {
-					if (!v_right.asInt())
-						SCRIPT_ERROR(DIVIDE_BY_ZERO);
-
-					if (op=='%')
-						v_left = CScriptValue(v_left.asInt() % v_right.asInt());
-					else
-						v_left = CScriptValue(v_left.asInt() / v_right.asInt());
-				} else if (op == '<') v_left = CScriptValue(v_left.asInt() < v_right.asInt());
-				else if (op == '>') v_left = CScriptValue(v_left.asInt() > v_right.asInt());
-				else if (op == '&') v_left = CScriptValue(v_left.asInt() & v_right.asInt());
-				else if (op == '|') v_left = CScriptValue(v_left.asInt() | v_right.asInt());
-				else if (op == '^') v_left = CScriptValue(v_left.asInt() ^ v_right.asInt());
-				else if (op == TOK_LESSEQ)	v_left = CScriptValue(v_left.asInt() <= v_right.asInt());
-				else if (op == TOK_GRTREQ)	v_left = CScriptValue(v_left.asInt() >= v_right.asInt());
-				else if (op == TOK_EQUALS)	v_left = CScriptValue(v_left.asInt() == v_right.asInt());
-				else if (op == TOK_NOTEQ)	v_left = CScriptValue(v_left.asInt() != v_right.asInt());
-				else if (op == TOK_AND)		v_left = CScriptValue(v_left.asInt() && v_right.asInt());
-				else if (op == TOK_OR)		v_left = CScriptValue(v_left.asInt() || v_right.asInt());
-				else
-					SCRIPT_ERROR(OPERATOR_EXPECTED);
-
-				if (v_right.isString())
-					strheap.Free(v_right.asString(), true);
+			while(depth > 0 && ExprOpPrecedence(mOpStack.back())*2 <= prec) {
+				--depth;
+				Reduce();
 			}
-		}
 
-		op = Token();
+			need_value = true;
+		}
 	}
 
-//	return v_left;
+	// reduce until no ops are left
+	while(depth-- > 0)
+		Reduce();
 }
 
-CScriptValue CScriptInterpreter::ParseValue() {
+void VDScriptInterpreter::Reduce() {
+	const int op = mOpStack.back();
+	mOpStack.pop_back();
+
+	switch(op) {
+	case '=':
+		{
+			VDScriptValue& v = mStack[mStack.size() - 2];
+
+			if (!v.isVarLV())
+				SCRIPT_ERROR(TYPE_OBJECT_REQUIRED);
+
+			ConvertToRvalue();
+
+			v.asVarLV()->v = mStack.back();
+			mStack.pop_back();
+		}
+		break;
+	case TOK_OR:		InvokeMethod(&obj_Sylia, "||", 2); break;
+	case TOK_AND:		InvokeMethod(&obj_Sylia, "&&", 2); break;
+	case '|':			InvokeMethod(&obj_Sylia, "|", 2); break;
+	case '^':			InvokeMethod(&obj_Sylia, "^", 2); break;
+	case '&':			InvokeMethod(&obj_Sylia, "&", 2); break;
+	case TOK_EQUALS:	InvokeMethod(&obj_Sylia, "==", 2); break;
+	case TOK_NOTEQ:		InvokeMethod(&obj_Sylia, "!=", 2); break;
+	case '<':			InvokeMethod(&obj_Sylia, "<", 2); break;
+	case '>':			InvokeMethod(&obj_Sylia, ">", 2); break;
+	case TOK_LESSEQ:	InvokeMethod(&obj_Sylia, "<=", 2); break;
+	case TOK_GRTREQ:	InvokeMethod(&obj_Sylia, ">=", 2); break;
+	case '+':			InvokeMethod(&obj_Sylia, "+", 2); break;
+	case '-':			InvokeMethod(&obj_Sylia, "-", 2); break;
+	case '*':			InvokeMethod(&obj_Sylia, "*", 2); break;
+	case '/':			InvokeMethod(&obj_Sylia, "/", 2); break;
+	case '%':			InvokeMethod(&obj_Sylia, "%", 2); break;
+	}
+}
+
+void VDScriptInterpreter::ParseValue() {
 	int t = Token();
 
 	if (t=='(') {
-		CScriptValue v_left = ParseExpressionLvalue();
+		ParseExpression();
 
 		if (Token() != ')')
 			SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
-
-		return v_left;
 	} else if (t==TOK_IDENT) {
-		_RPT1(0,"Resolving variable: [%s]\n", szIdent);
-		return LookupRootVariable(szIdent);
-	} else if (t == TOK_INTEGER) {
-		return CScriptValue(toklval);
-	} else if (t == TOK_STRING) {
-		return CScriptValue(tokslit);
-	} else if (t=='!' || t=='~' || t=='-' || t=='+') {
-		CScriptValue v_left = ParseValue();
+		VDDEBUG("Resolving variable: [%s]\n", szIdent);
+		mStack.push_back(LookupRootVariable(szIdent));
+	} else if (t == TOK_INTEGER)
+		mStack.push_back(VDScriptValue(tokival));
+	else if (t == TOK_LONG)
+		mStack.push_back(VDScriptValue(toklval));
+	else if (t == TOK_DOUBLE)
+		mStack.push_back(VDScriptValue(tokdval));
+	else if (t == TOK_STRING)
+		mStack.push_back(VDScriptValue(tokslit));
+	else if (t=='!' || t=='~' || t=='-' || t=='+') {
+		ParseValue();
 
-		if (!v_left.isInt())
+		VDScriptValue& v = mStack.back();
+
+		if (!v.isInt())
 			SCRIPT_ERROR(TYPE_INT_REQUIRED);
 
 		switch(t) {
-		case '!':	return CScriptValue(!v_left.asInt());
-		case '~':	return CScriptValue(~v_left.asInt());
-		case '+':	return v_left;
-		case '-':	return CScriptValue(-v_left.asInt());
+		case '!':
+			v = VDScriptValue(!v.asInt());
+			break;
+		case '~':
+			v = VDScriptValue(~v.asInt());
+			break;
+		case '+':
+			break;
+		case '-':
+			v = VDScriptValue(-v.asInt());
+			break;
+		default:
+			SCRIPT_ERROR(PARSE_ERROR);
 		}
 	} else if (t == TOK_TRUE)
-		return CScriptValue(1);
+		mStack.push_back(VDScriptValue(1));
 	else if (t == TOK_FALSE)
-		return CScriptValue(0);
-
-	SCRIPT_ERROR(PARSE_ERROR);
+		mStack.push_back(VDScriptValue(0));
+	else
+		SCRIPT_ERROR(PARSE_ERROR);
 }
 
 
@@ -613,14 +481,129 @@ CScriptValue CScriptInterpreter::ParseValue() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-CScriptValue CScriptInterpreter::LookupRootVariable(char *szName) {
+void VDScriptInterpreter::InvokeMethod(const VDScriptObject *obj, const char *name, int argc) {
+	if (obj->func_list) {
+		const VDScriptFunctionDef *sfd = obj->func_list;
+
+		while(sfd->arg_list) {
+			if (sfd->name && !strcmp(sfd->name, name)) {
+				InvokeMethod(sfd, argc);
+				return;
+			}
+
+			++sfd;
+		}
+	}
+
+	SCRIPT_ERROR(OVERLOADED_FUNCTION_NOT_FOUND);
+}
+
+void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcount) {
+	VDScriptValue *const params = &mStack[mStack.size() - pcount];
+
+	mpCurrentInvocationMethod = sfd;
+	mMethodArgumentCount = pcount;
+
+	// If we were passed a function name, attempt to match our parameter
+	// list to one of the overloaded function templates.
+	//
+	// 0 = void, v = value, i = int, . = varargs
+	//
+	// <return value><param1><param2>...
+	char c;
+	const char *s;
+	const char *name = sfd->name;
+	VDScriptValue *csv;
+	int argcnt;
+
+	// Yes, goto's are usually considered gross... but I prefer
+	// cleanly labeled goto's to excessive boolean variable usage.
+
+	while(sfd->arg_list && (sfd->name == name || !sfd->name)) {
+		s = sfd->arg_list+1;
+		argcnt = pcount;
+		csv = params;
+
+		while((c=*s++) && argcnt--) {
+			switch(c) {
+			case 'v':
+				break;
+			case 'i':
+			case 'l':
+			case 'd':
+				if (!csv->isInt() && !csv->isLong() && !csv->isDouble()) goto arglist_nomatch;
+				break;
+			case 's':
+				if (!csv->isString()) goto arglist_nomatch;
+				break;
+			case '.':
+				goto arglist_match;
+			default:
+				VDDEBUG("Sylia external error: invalid argument type '%c' for method\n", c);
+
+				SCRIPT_ERROR(EXTERNAL_ERROR);
+			}
+			++csv;
+		}
+
+		if (!c && !argcnt)
+			goto arglist_match;
+
+arglist_nomatch:
+		++sfd;
+	}
+	SCRIPT_ERROR(OVERLOADED_FUNCTION_NOT_FOUND);
+
+arglist_match:
+	// Make sure there is room for the return value.
+	if (!pcount) {
+		++pcount;
+		mStack.push_back(VDScriptValue());
+	}
+
+	// coerce arguments
+	VDScriptValue *const argv = &*(mStack.end() - pcount);
+	const char *const argdesc = sfd->arg_list + 1;
+
+	for(int i=0; i<pcount; ++i) {
+		VDScriptValue& a = argv[i];
+		switch(argdesc[i]) {
+		case 'i':
+			if (a.isLong())
+				a = VDScriptValue((int)a.asLong());
+			else if (a.isDouble())
+				a = VDScriptValue((int)a.asDouble());
+			break;
+		case 'l':
+			if (a.isInt())
+				a = VDScriptValue((sint64)a.asInt());
+			else if (a.isDouble())
+				a = VDScriptValue((sint64)a.asDouble());
+			break;
+		case 'd':
+			if (a.isInt())
+				a = VDScriptValue((double)a.asInt());
+			else if (a.isLong())
+				a = VDScriptValue((double)a.asLong());
+			break;
+		}
+	}
+
+	// invoke
+	sfd->func_ptr(this, argv, pcount);
+	mStack.resize(mStack.size() + 1 - pcount);
+	if (sfd->arg_list[0] == '0')
+		mStack.back() = VDScriptValue();
+}
+
+VDScriptValue VDScriptInterpreter::LookupRootVariable(char *szName) {
 	VariableTableEntry *vte;
 
 	if (vte = vartbl.Lookup(szName))
-		return CScriptValue(vte);
+		return VDScriptValue(vte);
 
 	if (!strcmp(szName, "Sylia"))
-		return CScriptValue(&obj_Sylia);
+		return VDScriptValue(NULL, &obj_Sylia);
 
 	if (lpRoothandler)
 		return lpRoothandler(this, szName, lpRoothandlerData);
@@ -628,39 +611,47 @@ CScriptValue CScriptInterpreter::LookupRootVariable(char *szName) {
 		SCRIPT_ERROR(VAR_NOT_FOUND);
 }
 
-CScriptValue CScriptInterpreter::LookupObjectMember(CScriptObject *obj, void *lpVoid, char *szIdent) {
-	if (obj->func_list) {
-		ScriptFunctionDef *sfd = obj->func_list;
+VDScriptValue VDScriptInterpreter::LookupObjectMember(const VDScriptObject *obj, void *lpVoid, char *szIdent) {
+	for(; obj; obj = obj->pNextObject) {
+		if (obj->func_list) {
+			const VDScriptFunctionDef *pfd = obj->func_list;
 
-		while(sfd->arg_list) {
-			if (sfd->name && !strcmp(sfd->name, szIdent)) {
-				CScriptValue t(obj, sfd);
-				t.lpVoid = lpVoid;
-				return t;
+			for(; pfd->func_ptr; ++pfd) {
+				if (pfd->name && !strcmp(pfd->name, szIdent))
+					return VDScriptValue(lpVoid, obj, pfd);
 			}
+		}
 
-			++sfd;
+		if (obj->obj_list) {
+			const VDScriptObjectDef *sod = obj->obj_list;
+
+			while(sod->name) {
+				if (!strcmp(sod->name, szIdent)) {
+					VDScriptValue t(lpVoid, sod->obj);
+					return t;
+				}
+
+				++sod;
+			}
+		}
+
+		if (obj->Lookup) {
+			VDScriptValue v(obj->Lookup(this, obj, lpVoid, szIdent));
+			if (!v.isVoid())
+				return v;
 		}
 	}
 
-	if (obj->obj_list) {
-		ScriptObjectDef *sod = obj->obj_list;
+	return VDScriptValue();
+}
 
-		while(sod->name) {
-			if (!strcmp(sod->name, szIdent)) {
-				CScriptValue t(sod->obj);
-				t.lpVoid = lpVoid;
-				return t;
-			}
+void VDScriptInterpreter::ConvertToRvalue() {
+	VDASSERT(!mStack.empty());
 
-			++sod;
-		}
-	}
+	VDScriptValue& val = mStack.back();
 
-	if (obj->Lookup)
-		return obj->Lookup(this, obj, lpVoid, szIdent);
-	else
-		return CScriptValue();
+	if (val.isVarLV())
+		val = val.asVarLV()->v;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -669,11 +660,11 @@ CScriptValue CScriptInterpreter::LookupObjectMember(CScriptObject *obj, void *lp
 //
 ///////////////////////////////////////////////////////////////////////////
 
-bool CScriptInterpreter::isExprFirstToken(int t) {
+bool VDScriptInterpreter::isExprFirstToken(int t) {
 	return t==TOK_IDENT || t==TOK_STRING || t==TOK_INTEGER || isUnaryToken(t) || t=='(';
 }
 
-bool CScriptInterpreter::isUnaryToken(int t) {
+bool VDScriptInterpreter::isUnaryToken(int t) {
 	return t=='+' || t=='-' || t=='!' || t=='~';
 }
 
@@ -683,31 +674,31 @@ bool CScriptInterpreter::isUnaryToken(int t) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-bool CScriptInterpreter::isIdentFirstChar(char c) {
+bool VDScriptInterpreter::isIdentFirstChar(char c) {
 	return isalpha(c) || c=='_';
 }
 
-bool CScriptInterpreter::isIdentNextChar(char c) {
+bool VDScriptInterpreter::isIdentNextChar(char c) {
 	return isalnum(c) || c=='_';
 }
 
-void CScriptInterpreter::TokenBegin(char *s) {
-	tokstr = s;
+void VDScriptInterpreter::TokenBegin(const char *s) {
+	tokbase = tokstr = s;
 	tokhold = 0;
 }
 
-void CScriptInterpreter::TokenUnput(int t) {
+void VDScriptInterpreter::TokenUnput(int t) {
 	tokhold = t;
 
 #ifdef DEBUG_TOKEN
 	if (t>=' ' && t<256)
-		_RPT2(0,"TokenUnput('%c' (%d))\n", (char)t, t);
+		VDDEBUG("TokenUnput('%c' (%d))\n", (char)t, t);
 	else
-		_RPT1(0,"TokenUnput(%d)\n", t);
+		VDDEBUG("TokenUnput(%d)\n", t);
 #endif
 }
 
-int CScriptInterpreter::Token() {
+int VDScriptInterpreter::Token() {
 	static char hexdig[]="0123456789ABCDEF";
 	char *s,c;
 
@@ -740,7 +731,8 @@ int CScriptInterpreter::Token() {
 	// string?
 
 	if (c=='"') {
-		char *t,*s = tokstr;
+		const char *s = tokstr;
+		char *t;
 		long len_adjust=0;
 
 		while((c=*tokstr++) && c!='"') {
@@ -759,7 +751,7 @@ int CScriptInterpreter::Token() {
 			}
 		}
 
-		tokslit = strheap.Allocate(tokstr - s - 1 - len_adjust, true);
+		tokslit = strheap.Allocate(tokstr - s - 1 - len_adjust);
 		t = *tokslit;
 		while(s<tokstr-1) {
 			int val;
@@ -792,7 +784,7 @@ int CScriptInterpreter::Token() {
 		if (!c) --tokstr;
 
 #ifdef DEBUG_TOKEN
-		_RPT1(0,"Literal: [%s]\n", *tokslit);
+		VDDEBUG("Literal: [%s]\n", *tokslit);
 #endif
 
 		return TOK_STRING;
@@ -827,43 +819,50 @@ int CScriptInterpreter::Token() {
 	// test for number: decimal (123), octal (0123), or hexadecimal (0x123)
 
 	if (isdigit(c)) {
-		if (c=='0') {
-			if (tokstr[0] == 'x') {
+		sint64 v = 0;
 
-				// hex (base 16)
+		if (c=='0' && tokstr[0] == 'x') {
 
-				toklval = 0;
-				++tokstr;
+			// hex (base 16)
+			++tokstr;
 
-				while(isxdigit(c = *tokstr++)) {
-					toklval = toklval*16 + (strchr(hexdig, toupper(c))-hexdig);
-				}
-				--tokstr;
-
-				return TOK_INTEGER;
-
-			} else {
-				// octal (base 8)
-
-				toklval = 0;
-
-				while((c=*tokstr++)>='0' && c<='7')
-					toklval = toklval*8 + (c-'0');
-
-				--tokstr;
-
-				return TOK_INTEGER;
+			while(isxdigit((unsigned char)(c = *tokstr++))) {
+				v = v*16 + (strchr(hexdig, toupper(c))-hexdig);
 			}
+
+		} else if (c=='0' && isdigit((unsigned char)tokstr[0])) {
+			// octal (base 8)
+			while((c=*tokstr++)>='0' && c<='7')
+				v = v*8 + (c-'0');
 		} else {
+			// check for float
+			const char *s = tokstr;
+			while(*s) {
+				if (*s == '.' || *s == 'e' || *s == 'E') {
+					// It's a float -- parse and return.
+
+					--tokstr;
+					tokdval = strtod(tokstr, (char **)&tokstr);
+					return TOK_DOUBLE;
+				}
+
+				if (!isdigit((unsigned char)*s))
+					break;
+				++s;
+			}
+
 			// decimal
-
-			toklval = (c-'0');
-
+			v = (c-'0');
 			while(isdigit(c=*tokstr++))
-				toklval = toklval*10 + (c-'0');
+				v = v*10 + (c-'0');
+		}
+		--tokstr;
 
-			--tokstr;
-
+		if (v > 0x7FFFFFFF) {
+			toklval = v;
+			return TOK_LONG;
+		} else {
+			tokival = v;
 			return TOK_INTEGER;
 		}
 	}
@@ -898,4 +897,10 @@ int CScriptInterpreter::Token() {
 		return c;
 
 	SCRIPT_ERROR(PARSE_ERROR);
+}
+
+void VDScriptInterpreter::GC() {
+	strheap.BeginGC();
+	
+	strheap.EndGC();
 }

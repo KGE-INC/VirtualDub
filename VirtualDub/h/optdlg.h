@@ -39,15 +39,15 @@ EXTERN AudioInterleaveOptions audioInt;
 /////////////////
 
 void ActivateDubDialog(HINSTANCE hInst, LPCTSTR lpResource, HWND hDlg, DLGPROC dlgProc);
-BOOL APIENTRY AudioConversionDlgProc	( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY AudioInterleaveDlgProc	( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY AudioVolumeDlgProc		( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY VideoDepthDlgProc			( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY PerformanceOptionsDlgProc	( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY VideoDecimationDlgProc	( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY VideoClippingDlgProc		( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL CALLBACK VideoJumpDlgProc			(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AudioConversionDlgProc	( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AudioInterleaveDlgProc	( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AudioVolumeDlgProc		( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK VideoDepthDlgProc			( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK PerformanceOptionsDlgProc	( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK VideoDecimationDlgProc	( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK VideoClippingDlgProc		( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK VideoJumpDlgProc			(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 #undef EXTERN
 #undef INIT

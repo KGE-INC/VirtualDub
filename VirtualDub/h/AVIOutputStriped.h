@@ -22,16 +22,17 @@
 #include "AVIStripeSystem.h"
 
 class AVIOutputStripeState;
+class IVDMediaOutputAVIFile;
 
 class AVIOutputStriped : public AVIOutput {
 private:
 	AVIStripeSystem			*stripesys;
-	AVIOutputFile			**stripe_files;
+	IVDMediaOutputAVIFile	**stripe_files;
 	AVIOutputStripeState	*stripe_data;
 	int						stripe_count;
 	int						stripe_order;
 
-	AVIOutputFile		*index_file;
+	IVDMediaOutputAVIFile	*index_file;
 
 	enum { CACHE_SIZE = 256 };
 

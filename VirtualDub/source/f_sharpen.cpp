@@ -17,12 +17,10 @@
 
 #include "stdafx.h"
 
-#include "filter.h"
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdvideofiltold.h>
 #include "filters.h"
 #include "f_convolute.h"
-#include "ScriptInterpreter.h"
-#include "ScriptValue.h"
-#include "ScriptError.h"
 
 #define USE_ASM
 

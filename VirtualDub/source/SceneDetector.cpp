@@ -56,8 +56,8 @@ SceneDetector::~SceneDetector() {
 //////////////////////////////////////////////////////////////////////////
 
 void SceneDetector::SetThresholds(int cut_threshold, int fade_threshold) {
-	this->cut_threshold		= (cut_threshold * tile_w * tile_h)/16.0;
-	this->fade_threshold	= (fade_threshold * tile_w * tile_h)/16.0;
+	this->cut_threshold		= (cut_threshold * tile_w * tile_h) >> 4;
+	this->fade_threshold	= (fade_threshold * tile_w * tile_h)/16.0f;
 }
 
 BOOL SceneDetector::Submit(VBitmap *vbm) {
@@ -135,9 +135,11 @@ void SceneDetector::Reset() {
 
 //////////////////////////////////////////////////////////////////////////
 
+#ifdef _M_IX86
 extern "C" Pixel __cdecl asm_scene_lumtile32(void *src, long w, long h, long pitch);
 extern "C" Pixel __cdecl asm_scene_lumtile24(void *src, long w, long h, long pitch);
 extern "C" Pixel __cdecl asm_scene_lumtile16(void *src, long w, long h, long pitch);
+#endif
 
 void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
 	char *src, *src_row = (char *)vbm->data;
@@ -146,6 +148,7 @@ void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
 
 	h = (vbm->h+7)/8;
 
+#ifdef _M_IX86
 	switch(vbm->depth) {
 	case 32:
 		do {
@@ -196,6 +199,9 @@ void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
 		} while(--h);
 		break;
 	}
+#else
+#pragma vdpragma_TODO("fix this")
+#endif
 }
 
 void SceneDetector::FlipBuffers() {

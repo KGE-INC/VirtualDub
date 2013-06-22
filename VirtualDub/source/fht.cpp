@@ -29,11 +29,11 @@
 // simple butterfly.
 //
 
-static const double twopi		= 6.283185307179586476925286766559;
-static const double pi			= 3.1415926535897932384626433832795;
-static const double invsqrt2	= 0.70710678118654752440084436210485;
-
 namespace {
+	const float twopi		= 6.283185307179586476925286766559f;
+	const float pi			= 3.1415926535897932384626433832795f;
+	const float invsqrt2	= 0.70710678118654752440084436210485f;
+
 	bool IsPowerTwo(unsigned v) {
 		return v && !(v&(v-1));
 	}
@@ -66,7 +66,7 @@ void VDCreateRaisedCosineWindow(float *dst, int n, float power) {
 	const double scalefac = 1.0 / n;
 
 	for(int i=0; i<n; ++i) {
-		dst[i] = scalefac * pow(0.5*(1.0 - cos(twopi_over_n * (i+0.5))), (double)power);
+		dst[i] = (float)(scalefac * pow(0.5*(1.0 - cos(twopi_over_n * (i+0.5))), (double)power));
 	}
 }
 
@@ -74,7 +74,7 @@ void VDCreateHalfSineTable(float *dst, int n) {
 	const double twopi_over_n = twopi / n;
 
 	for(int i=0; i<n; ++i) {
-		dst[i] = sin(twopi_over_n * i);
+		dst[i] = (float)sin(twopi_over_n * i);
 	}
 }
 
@@ -94,15 +94,15 @@ void VDComputeFHT(float *A, int nPoints, const float *sinTab) {
 	// FHT - stage 1 and 2 (2 and 4 points)
 
 	for(i=0; i<nPoints; i+=4) {
-		const double	x0 = A[i];
-		const double	x1 = A[i+1];
-		const double	x2 = A[i+2];
-		const double	x3 = A[i+3];
+		const float	x0 = A[i];
+		const float	x1 = A[i+1];
+		const float	x2 = A[i+2];
+		const float	x3 = A[i+3];
 
-		const double	y0 = x0+x1;
-		const double	y1 = x0-x1;
-		const double	y2 = x2+x3;
-		const double	y3 = x2-x3;
+		const float	y0 = x0+x1;
+		const float	y1 = x0-x1;
+		const float	y2 = x2+x3;
+		const float	y3 = x2-x3;
 
 		A[i]	= y0 + y2;
 		A[i+2]	= y0 - y2;
@@ -114,7 +114,7 @@ void VDComputeFHT(float *A, int nPoints, const float *sinTab) {
 	// FHT - stage 3 (8 points)
 
 	for(i=0; i<nPoints; i+= 8) {
-		double alpha, beta;
+		float alpha, beta;
 
 		alpha	= A[i+0];
 		beta	= A[i+4];
@@ -130,8 +130,8 @@ void VDComputeFHT(float *A, int nPoints, const float *sinTab) {
 
 		alpha	= A[i+1];
 
-		const double beta1 = invsqrt2*(A[i+5] + A[i+7]);
-		const double beta2 = invsqrt2*(A[i+5] - A[i+7]);
+		const float beta1 = invsqrt2*(A[i+5] + A[i+7]);
+		const float beta2 = invsqrt2*(A[i+5] - A[i+7]);
 
 		A[i+1]	= alpha + beta1;
 		A[i+5]	= alpha - beta1;
@@ -150,7 +150,7 @@ void VDComputeFHT(float *A, int nPoints, const float *sinTab) {
 		for(i=0; i<nPoints; i+=n) {
 			int j;
 			int theta = theta_inc;
-			double alpha, beta;
+			float alpha, beta;
 			const int n4 = n2>>1;
 
 			alpha	= A[i];
@@ -166,13 +166,13 @@ void VDComputeFHT(float *A, int nPoints, const float *sinTab) {
 			A[i+n2+n4]	= alpha - beta;
 
 			for(j=1; j<n4; j++) {
-				double	sinval	= sinTab[theta];
-				double	cosval	= sinTab[theta + (nPoints>>2)];
+				float	sinval	= sinTab[theta];
+				float	cosval	= sinTab[theta + (nPoints>>2)];
 
-				double	alpha1	= A[i+j];
-				double	alpha2	= A[i-j+n2];
-				double	beta1	= A[i+j+n2]*cosval + A[i-j+n ]*sinval;
-				double	beta2	= A[i+j+n2]*sinval - A[i-j+n ]*cosval;
+				float	alpha1	= A[i+j];
+				float	alpha2	= A[i-j+n2];
+				float	beta1	= A[i+j+n2]*cosval + A[i-j+n ]*sinval;
+				float	beta2	= A[i+j+n2]*sinval - A[i-j+n ]*cosval;
 
 				theta	+= theta_inc;
 

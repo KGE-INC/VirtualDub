@@ -20,6 +20,14 @@
 #include <vd2/system/error.h>
 #include "MJPEGDecoder.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/memory.h>
+
+#ifndef _M_IX86
+#pragma vdpragma_TODO("Need scalar implementation of MJPEG decoder")
+IMJPEGDecoder *CreateMJPEGDecoder(int w, int h) {
+	return NULL;
+}
+#else
 
 //#define DCTLEN_PROFILE
 //#define PROFILE
@@ -55,6 +63,7 @@ extern "C" void asm_mb_decode(dword& bitbuf, int& bitcnt, byte *& ptr, int mcu_l
 
 extern "C" void IDCT_mmx(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
 extern "C" void IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
+extern "C" void IDCT_sse2(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -62,15 +71,26 @@ extern "C" void IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int in
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static const char MJPEG_zigzag[64] = {		// the reverse zigzag scan order
-		 0,  1,  8, 16,  9,  2,  3, 10,
-		17, 24, 32, 25, 18, 11,  4,  5,
-		12, 19, 26, 33, 40, 48, 41, 34,
-		27, 20, 13,  6,  7, 14, 21, 28,
-		35, 42, 49, 56, 57, 50, 43, 36,
-		29, 22, 15, 23, 30, 37, 44, 51,
-		58, 59, 52, 45, 38, 31, 39, 46,
-		53, 60, 61, 54, 47, 55, 62, 63,
+static const char MJPEG_zigzag_mmx[64] = {		// the reverse zigzag scan order
+	 0,  2,  8, 16, 10,  4,  6, 12,
+	18, 24, 32, 26, 20, 14,  1,  3,
+	 9, 22, 28, 34, 40, 48, 42, 36,
+	30, 17, 11,  5,  7, 13, 19, 25,
+	38, 44, 50, 56, 58, 52, 46, 33,
+	27, 21, 15, 23, 29, 35, 41, 54,
+	60, 62, 49, 43, 37, 31, 39, 45,
+	51, 57, 59, 53, 47, 55, 61, 63,
+};
+
+static const char MJPEG_zigzag_sse2[64]={
+	 0,  4,  8, 16, 12,  1,  5,  9,
+	20, 24, 32, 28, 17, 13,  2,  6,
+	10, 21, 25, 36, 40, 48, 44, 33,
+	29, 18, 14,  3,  7, 11, 22, 26,
+	37, 41, 52, 56, 60, 49, 45, 34,
+	30, 19, 15, 23, 27, 38, 42, 53,
+	57, 61, 50, 46, 35, 31, 39, 43,
+	54, 58, 62, 51, 47, 55, 59, 63,
 };
 
 // Huffman tables
@@ -253,7 +273,7 @@ static const byte (*huff_ac_quick2[2])[2] = { huff_ac_0_quick2, huff_ac_1_quick2
 ///////////////////////////////////////////////////////////////////////////
 
 
-class MJPEGDecoder : public IMJPEGDecoder {
+class MJPEGDecoder : public IMJPEGDecoder, public VDAlignedObject<16> {
 public:
 	MJPEGDecoder(int w, int h);
 	~MJPEGDecoder();
@@ -283,7 +303,7 @@ private:
 	int comp_start[3];
 
 	MJPEGBlockDef blocks[24];
-	short dct_coeff[24][64];
+	__declspec(align(16)) short dct_coeff[24][64];
 	short *dct_coeff_ptrs[24];
 
 	bool interlaced;
@@ -370,7 +390,7 @@ MJPEGDecoder::MJPEGDecoder(int w, int h)
 
 				while(first < last) {
 					*ptr++ = *codeptr;
-					*ptr++ = bits;
+					*ptr++ = (byte)bits;
 					++first;
 				}
 
@@ -457,7 +477,6 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 				if ((tag = *ptr++) == MARKER_SOI)
 					break;
 				else if (tag == 0xff) {
-					byte *base = ptr;
 					while(ptr<limit && *ptr == 0xff)
 						++ptr;
 					--ptr;
@@ -545,6 +564,8 @@ byte *MJPEGDecoder::decodeQuantTables(byte *psrc) {
 	int *dst;
 	int n;
 
+	const char *zigzag = SSE2_enabled ? MJPEG_zigzag_sse2 : MJPEG_zigzag_mmx;
+
 	psrc += 2;	// skip length
 	while(*psrc != 0xff) {
 		n = psrc[0] & 15;
@@ -554,15 +575,12 @@ byte *MJPEGDecoder::decodeQuantTables(byte *psrc) {
 		dst = quant[n];
 		++psrc;
 
-		// We have to swap around the zigzag order so that the order
-		// of rows is: 0, 4, 1, 5, 2, 6, 3, 7.
-
 		if (psrc[-1] & 0xf0) {
 			// 16-bit quantization tables
 
 			for(n=0; n<64; n++) {
 				dst[n*2+0] = getshort(psrc + n*2);
-				dst[n*2+1] = ((MJPEG_zigzag[n] & 56) | ((MJPEG_zigzag[n]&3)<<1) | ((MJPEG_zigzag[n]&4)>>2))*2;
+				dst[n*2+1] = zigzag[n]*2;
 			}
 			psrc += 128;
 		} else {
@@ -570,7 +588,7 @@ byte *MJPEGDecoder::decodeQuantTables(byte *psrc) {
 
 			for(n=0; n<64; n++) {
 				dst[n*2+0] = psrc[n];
-				dst[n*2+1] = ((MJPEG_zigzag[n] & 56) | ((MJPEG_zigzag[n]&3)<<1) | ((MJPEG_zigzag[n]&4)>>2))*2;
+				dst[n*2+1] = zigzag[n]*2;
 			}
 			psrc += 64;
 		}
@@ -929,6 +947,15 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 	if (!nRestartCounter)
 		nRestartCounter = 0x7FFFFFFF;
 
+	void (*pIDCT)(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int ac_last);
+
+	if (SSE2_enabled)
+		pIDCT = IDCT_sse2;
+	else if (ISSE_enabled)
+		pIDCT = IDCT_isse;
+	else
+		pIDCT = IDCT_mmx;
+
 	mcu = 0;
 	try {
 		while(mcu<mcu_count) {
@@ -990,13 +1017,10 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 			sbb dword ptr dct_cycles+4,edx
 		}
 #endif
-
-		if (ISSE_enabled)
+		{
 			for(int i=0; i<mcu_length*mcus; i++)
-				IDCT_isse(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
-		else
-			for(int i=0; i<mcu_length*mcus; i++)
-				IDCT_mmx(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
+				pIDCT(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
+		}
 
 #ifdef PROFILE
 		__asm {
@@ -1093,3 +1117,4 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 //	return ptr - ((31-bitcnt)>>3);
 	return ptr - 8;
 }
+#endif

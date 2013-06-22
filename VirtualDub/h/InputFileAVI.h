@@ -40,7 +40,7 @@ private:
 	static char szME[];
 
 	static void _InfoDlgThread(void *pvInfo);
-	static BOOL APIENTRY _InfoDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+	static INT_PTR APIENTRY _InfoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 public:
 	InputFileAVI();
 	~InputFileAVI();

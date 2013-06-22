@@ -1,579 +1,407 @@
-#pragma warning(disable: 4786)
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2004 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#include <list>
-#include <map>
-
-#include <windows.h>
-#include <commctrl.h>
-
-#include <vd2/system/VDRefCount.h>
-#include <vd2/system/VDAtomic.h>
-#include <vd2/system/text.h>
+#include <stdafx.h>
+#include <vd2/system/vdtypes.h>
 #include <vd2/Dita/interface.h>
-#include <vd2/Dita/services.h>
+#include <vd2/Dita/basetypes.h>
+#include <vd2/Dita/bytecode.h>
 #include <vd2/Dita/resources.h>
+#include <vd2/Dita/controls.h>
 
-#include "ctl_set.h"
-#include "ctl_grid.h"
-#include "ctl_file.h"
+#include <vector>
 
-#include "w32peer.h"
-#include "w32dialog.h"
-#include "w32button.h"
-#include "w32group.h"
-#include "w32list.h"
-#include "w32label.h"
-#include "w32edit.h"
-#include "w32trackbar.h"
+using namespace nsVDDitaBytecode;
 
-extern void VDExecuteDialogResource(const unsigned char *pBytecode, IVDUIBase *pBase, IVDUIConstructor *pConstructor);
+namespace {
+	class VDUICreator {
+	public:
+		VDUICreator(IVDUIWindow *pParent);
 
-///////////////////////////////////////////////////////////////////////////
+		IVDUIWindow *Execute(const unsigned char *resdata);
 
-class VDUIContext : public IVDUIContext {
-private:
-	VDAtomicInt mRefCount;
+	protected:
+		union Value {
+			sint32 i;
+			float f;
+			const wchar_t *s;
 
-public:
-	VDUIContext();
+			Value(sint32 _i) : i(_i) {}
+			Value(float _f) : f(_f) {}
+			Value(const wchar_t *_s) : s(_s) {}
+		};
 
-	int AddRef() { return mRefCount.inc(); }
-	int Release() { int rv = mRefCount.dec(); if (!rv) delete this; return rv; }
+		std::vector<IVDUIWindow *>	mWinStack;
+		std::vector<Value>			mValueStack;
+		std::list<VDUIParameters>	mParameters;
 
-	int DoModalDialog(VDGUIHandle handle, IVDUICallback *pCB) {
-		VDUIControlDialogW32 dialog(false);
-		
-		dialog.SetCallback(pCB);
-		return dialog.BeginModal(handle, this);
-	}
+		typedef std::list<std::vector<unsigned char> > tLinkExprs;
+		tLinkExprs	mLinkExprs;
 
-	IVDUIControl *CreateBase()							{ return new VDUIControlDialogW32(false); }
-	IVDUIControl *CreateModelessDialog()				{ return new VDUIControlDialogW32(false); }
-	IVDUIControl *CreateChildDialog()					{ return new VDUIControlDialogW32(true); }
-	IVDUIControl *CreateLabel(int maxlen)				{ return new VDUIControlLabelW32(maxlen); }
-	IVDUIControl *CreateEdit(int maxlen)				{ return new VDUIControlEditW32(maxlen); }
-	IVDUIControl *CreateEditInt(int minv, int maxv)		{ return new VDUIControlEditIntW32(minv, maxv); }
-	IVDUIControl *CreateButton()						{ return new VDUIControlButtonW32; }
-	IVDUIControl *CreateCheckbox()						{ return new VDUIControlCheckboxW32; }
-	IVDUIControl *CreateOption(IVDUIControl	*pParent)	{ return new VDUIControlOptionW32(pParent); }
-	IVDUIControl *CreateListbox(int rows)				{ return new VDUIControlListboxW32(rows); }
-	IVDUIControl *CreateCombobox(int rows)				{ return new VDUIControlComboboxW32(rows); }
-	IVDUIControl *CreateListView(int rows)				{ return new VDUIControlListViewW32(rows); }
-	IVDUIControl *CreateTrackbar(int minv, int maxv)	{ return new VDUIControlTrackbarW32(minv, maxv); }
-	IVDUIControl *CreateFileControl(int maxlen)			{ return new VDUIControlFile(maxlen); }
-	IVDUIControl *CreateGroup()							{ return new VDUIControlGroupW32; }
-	IVDUIControl *CreateHorizontalSet()					{ return new VDUIControlHorizontalSet; }
-	IVDUIControl *CreateVerticalSet()					{ return new VDUIControlVerticalSet; }
-	IVDUIControl *CreateGrid(int w, int h)				{ return new VDUIGrid(w, h); }
-
-	IVDUIConstructor *CreateConstructor(IVDUIControl *pBase) {
-		IVDUIConstructor *pConstructor = VDCreateUIConstructor();
-
-		if (pConstructor) {
-			pConstructor->Init(this, pBase);
-		}
-
-		return pConstructor;
-	}
-
-	virtual bool ExecuteDialogResource(IVDUIBase *pBase, int moduleID, int dialogID) {
-		IVDUIConstructor *pcon = VDGetUIContext()->CreateConstructor(pBase->AsControl());
-
-		if (pcon) {
-			const unsigned char *data = VDLoadDialog(moduleID, dialogID);
-
-			if (data) {
-				VDExecuteDialogResource(data, pBase, pcon);
-				pBase->ProcessAllLinks();
-				pcon->Release();
-				return true;
-			}
-		}
-
-		pcon->Release();
-
-		return false;
-	}
-
-	virtual bool ExecuteTemplateResource(IVDUIBase *pBase, int moduleID, int dialogID) {
-		IVDUIConstructor *pcon = VDGetUIContext()->CreateConstructor(pBase->AsControl());
-
-		if (pcon) {
-			const unsigned char *data = VDLoadTemplate(moduleID, dialogID);
-
-			if (data) {
-				VDExecuteDialogResource(data, pBase, pcon);
-				pBase->ProcessAllLinks();
-				pcon->Release();
-				return true;
-			}
-		}
-
-		pcon->Release();
-
-		return false;
-	}
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-IVDUIContext *VDCreateUIContext() {
-	return new VDUIContext;
+		IVDUIWindow *mpFirstWindow;
+		IVDUIWindow *mpLastWindow;
+	};
 }
 
-VDUIContext::VDUIContext() : mRefCount(0) {
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-VDAppDialogBaseImpl::VDAppDialogBaseImpl(int id, bool bTemplate)
-	: mDialogID(id), mbTemplate(bTemplate)
+VDUICreator::VDUICreator(IVDUIWindow *pParent)
+	: mpFirstWindow(NULL)
 {
+	mParameters.push_back(VDUIParameters());
+
+	if (pParent)
+		mWinStack.push_back(pParent);
 }
 
-VDAppDialogBaseImpl::~VDAppDialogBaseImpl() {
-}
-
-bool VDAppDialogBaseImpl::UIConstructModal(IVDUIContext *pContext, IVDUIBase *pBase) {
-	mpBase = pBase;
-	pBase->AsControl()->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-	if ((pContext->*(mbTemplate ? IVDUIContext::ExecuteTemplateResource : IVDUIContext::ExecuteDialogResource))(pBase, 0, mDialogID)) {
-		Init();
-		pBase->ProcessAllLinks();
-		return true;
-	}
-	return false;
-}
-
-void VDAppDialogBaseImpl::UIEvent(IVDUIControl *pBase, unsigned id, IVDUICallback::eEventType ev, int item) {
-	if (ev == kEventClose) {
-		if (!item || Writeback())
-			pBase->AsBase()->EndModal(item);
-	}
-
-	Event(pBase, id, ev, item);
-}
-
-void VDAppDialogBaseImpl::Init() {}
-void VDAppDialogBaseImpl::Event(IVDUIControl *pBase, unsigned id, IVDUICallback::eEventType ev, int item) {}
-void VDAppDialogBaseImpl::Cancel() {}
-bool VDAppDialogBaseImpl::Writeback() { return true; }
-
-bool VDAppDialogBaseImpl::GetB(unsigned id) const { return mpBase->GetControl(id)->GetStateb(); }
-int VDAppDialogBaseImpl::GetI(unsigned id) const { return mpBase->GetControl(id)->GetStatei(); }
-VDStringW VDAppDialogBaseImpl::GetW(unsigned id) const {
-	IVDUIControl *pControl = mpBase->GetControl(id);
-	VDStringW s;
-	int l = pControl->GetTextLengthw();
-
-	pControl->GetTextw(s.alloc(l), l+1);
-
-	return s;
-}
-void VDAppDialogBaseImpl::SetB(unsigned id, bool b) const { mpBase->GetControl(id)->SetStateb(b); }
-void VDAppDialogBaseImpl::SetI(unsigned id, int v) const { mpBase->GetControl(id)->SetStatei(v); }
-void VDAppDialogBaseImpl::SetW(unsigned id, const wchar_t *s) const { mpBase->GetControl(id)->SetTextw(s); }
-void VDAppDialogBaseImpl::SetW(unsigned id, unsigned strid) const { mpBase->GetControl(id)->SetTextw(VDLoadString(0, mDialogID, strid)); }
-void VDAppDialogBaseImpl::SetWF(unsigned id, unsigned strid, int args, ...) const {
-	va_list val;
-
-	va_start(val, args);
-	SetW(id, VDvswprintf(VDLoadString(0, mDialogID, strid), args, val).c_str());
-	va_end(val);
-}
-void VDAppDialogBaseImpl::Enable(unsigned id, bool b) const {
-	mpBase->GetControl(id)->Enable(b);
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-#if 0
-#include <vd2/system/VDString.h>
-#include <deque>
-
-struct Ent {
-	VDStringW path;
-	int pri;
-	int lim;
-
-	Ent() : pri(0), lim(0) {}
-};
-
-class MyDialog : private IVDUICallback {
-public:
-	Ent& entry;
-
-	MyDialog(Ent& e) : entry(e) {}
-
-	void Go(VDGUIHandle parent) {
-		vdrefptr<IVDUIContext> pctx(CreateVDUIContext());
-
-		pctx->DoModalDialog(parent, this);		
-	}
-
-	bool UIConstructModal(IVDUIContext *pctx, IVDUIBase *pBase) {
-		IVDUIConstructor *pcon = pctx->CreateConstructor(pBase->AsControl());
-
-		if (pcon) {
-			pBase->AsControl()->SetTextw(L"Edit storage entry");
-			pBase->AsControl()->SetDesiredAspectRatio(1.4f);
-			pBase->AsControl()->SetAlignment(nsVDUI::kFill, nsVDUI::kCenter);
-
-			pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-			pcon->BeginGrid(0, 2, 3);
-				pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kCenter);
-				pcon->SetGridColumnAffinity(0, 0);
-				pcon->AddLabel(0, L"Path");
-				pcon->SetMinimumSize(200,0);
-				pcon->AddFileControl(200, entry.path.c_str(), -1);
-				pcon->SetMinimumSize(0,0);
-
-				pcon->SetAlignment(nsVDUI::kLeft, nsVDUI::kCenter);
-				pcon->AddLabel(0, L"Priority");
-				pcon->SetMinimumSize(50, 0);
-				pcon->AddEditInt(201, entry.pri, -128, 127);
-				pcon->SetMinimumSize(0, 0);
-				pcon->AddLabel(0, L"Minimum disk space");
-				pcon->SetMinimumSize(50, 0);
-				pcon->AddEditInt(202, entry.lim, 0, 0xFFFFFF);
-			pcon->EndGrid();
-
-			pcon->SetAlignment(nsVDUI::kRight, nsVDUI::kBottom);
-			pcon->BeginHorizSet(0);
-				pcon->SetMinimumSize(50, 14);
-				pcon->AddButton(100, L"OK");
-				pcon->AddButton(101, L"Cancel");
-			pcon->EndSet();
-
-			if (pcon->GetErrorState()) {
-				VDASSERT(false);
-				return false;
-			}
-
-			pBase->Link(100, nsVDUI::kLinkEndDialog, 100);
-			pBase->Link(101, nsVDUI::kLinkEndDialog, 101);
-		}
-		return true;
-	}
-
-	void UIEvent(IVDUIControl *pControl, unsigned id, eEventType type, int item) {
-		if (type == kEventClose) {
-			if (item) {
-				IVDUIBase *pBase = pControl->AsBase();
-				IVDUIControl *pcPath = pBase->GetControl(200);
-				IVDUIControl *pcPri = pBase->GetControl(201);
-				IVDUIControl *pcLim = pBase->GetControl(202);
-
-				int len = pcPath->GetTextLengthw();
-				wchar_t *pszw = entry.path.alloc(len);
-
-				if (pszw)
-					pcPath->GetTextw(pszw, len+1);
-
-				entry.pri = pcPri->GetStatei();
-				entry.lim = pcLim->GetStatei();
-			}
-		}
-	}
-
-};
-
-class MyIFace : public IVDUICallback, private IVDUIListCallback {
-public:
-	typedef std::list<Ent> tEntryList;
-	
-	tEntryList mEntList;
-
-	bool UIConstructModal(IVDUIContext *pctx, IVDUIBase *pBase) {
-#if 1
-		IVDUIConstructor *pcon = pctx->CreateConstructor(pBase->AsControl());
-
-		pBase->AsControl()->SetTextw(L"Configure storage");
-		pBase->AsControl()->SetDesiredAspectRatio(1.4f);
-		pBase->AsControl()->SetAlignment((nsVDUI::eAlign)(nsVDUI::kFill | nsVDUI::kExpandFlag), nsVDUI::kFill);
-
-		if (pcon) {
-
-			pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-
-			pcon->AddListView(100, 8);
-
-			pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kTop);
-
-			pcon->BeginHorizSet(0);
-				pcon->SetAlignment(0, nsVDUI::kCenter);
-
-				pcon->BeginHorizSet(0);
-					pcon->AddButton(200, L"Add");
-					pcon->AddButton(201, L"Edit");
-					pcon->AddButton(202, L"Remove");
-				pcon->EndSet();
-
-				pcon->AddCheckbox(0, L"Redirect first file");
-			pcon->EndSet();
-
-
-			pcon->BeginGroupSet(0, L"File size control");
-				pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-				pcon->BeginGrid(0,2,2);
-					pcon->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-					pcon->SetGridColumnAffinity(0, 0);
-					pcon->SetGridColumnAffinity(1, 1);
-					pcon->AddLabel(0, L"Minimum file size (MB) ");
-					pcon->AddEditInt(0, 50, 50, 2048);
-					pcon->AddLabel(0, L"Maximum file size (MB) ");
-					pcon->AddEditInt(0, 2048, 50, 2048);
-				pcon->EndGrid();
-			pcon->EndSet();
-
-			pcon->SetAlignment(nsVDUI::kRight, 0);
-
-			pcon->BeginHorizSet(0);
-				pcon->SetMinimumSize(50, 14);
-				pcon->AddButton(300, L"OK");
-				pcon->AddButton(301, L"Cancel");
-			pcon->EndSet();
-
-			if (pcon->GetErrorState()) {
-				VDASSERT(false);
-				return false;
-			}
-
-			IVDUIList *plv = pBase->GetControl(100)->AsUIList();
-
-			plv->AddColumn(L"Path", -1);
-			plv->AddColumn(L"Pri", 40);
-			plv->AddColumn(L"Limit", 40);
-			plv->SetSource(this);
-
-			pBase->Link(201, nsVDUI::kLinkIntSelectedEnable, 100);
-			pBase->Link(202, nsVDUI::kLinkIntSelectedEnable, 100);
-			pBase->Link(300, nsVDUI::kLinkEndDialog, 300);
-			pBase->Link(301, nsVDUI::kLinkEndDialogFalse, 301);
-
-			pBase->ProcessAllLinks();
-		}
-
-		return true;
-#elif 1
-		IVDUIControl *pControl, *pControl0, *pSet, *pSet2;
-
-		pBase->AsControl()->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-
-		pSet = pctx->CreateHorizontalSet();
-
-		pBase->Add(pSet);
-		pBase->SetLayoutControl(pSet);
-
-		pSet2 = pctx->CreateVerticalSet();
-		pSet->AsUISet()->Add(pSet2);
-		
-		pControl = pctx->CreateCombobox(4);
-		pControl->SetID(1000);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetAlignment(nsVDUI::kFill, nsVDUI::kTop);
-		pControl->AsUIList()->AddItem(L"\x3046\x3055\x304E");
-		pControl->AsUIList()->AddItem(L"\x3042\x307F");
-		pControl->AsUIList()->AddItem(L"\x308C\x3044");
-		pControl->AsUIList()->AddItem(L"\x307E\x3053\x3068");
-		pControl->AsUIList()->AddItem(L"\x307F\x306A\x3053");
-		pControl->AsUIList()->AddItem(L"\x307B\x305F\x308B");
-		pControl->AsUIList()->AddItem(L"\x307F\x3061\x308B");
-		pControl->AsUIList()->AddItem(L"\x306F\x308B\x304B");
-		pControl->AsUIList()->AddItem(L"\x305B\x3064\x306A");
-
-//		pControl = pctx->CreateListbox(4);
-		pControl = pctx->CreateListView(9);
-		pControl->SetID(1001);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
-		pControl->AsUIList()->AddColumn(L"Name", -1);
-		pControl->AsUIList()->AddItem(L"\x3046\x3055\x304E");
-		pControl->AsUIList()->AddItem(L"\x3042\x307F");
-		pControl->AsUIList()->AddItem(L"\x308C\x3044");
-		pControl->AsUIList()->AddItem(L"\x307E\x3053\x3068");
-		pControl->AsUIList()->AddItem(L"\x307F\x306A\x3053");
-		pControl->AsUIList()->AddItem(L"\x307B\x305F\x308B");
-		pControl->AsUIList()->AddItem(L"\x307F\x3061\x308B");
-		pControl->AsUIList()->AddItem(L"\x306F\x308B\x304B");
-		pControl->AsUIList()->AddItem(L"\x305B\x3064\x306A");
-
-		pControl = pctx->CreateGroup();
-		pSet->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Buttons");
-		pSet2 = pControl;
-
-		pControl = pctx->CreateVerticalSet();
-		pSet2->AsUISet()->Add(pControl);
-		pSet2 = pControl;
-
-		pControl0 = pControl = pctx->CreateOption(NULL);
-		pControl->SetID(1002);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 1");
-
-		pControl = pctx->CreateOption(pControl0);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 2");
-
-		pControl = pctx->CreateOption(pControl0);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 3");
-
-		pControl = pctx->CreateOption(pControl0);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 4");
-
-		pControl = pctx->CreateOption(pControl0);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 5");
-
-		pControl = pctx->CreateOption(pControl0);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Option 6");
-
-
-		pControl = pctx->CreateEditInt(0, 10);
-		pControl->SetID(1003);
-		pControl->SetMinimumSize(VDUISize(30,0));
-		pSet2->AsUISet()->Add(pControl);
-
-
-		pControl = pctx->CreateButton();
-		pControl->SetID(2000);
-		pSet2->AsUISet()->Add(pControl);
-		pControl->SetTextw(L"Reset");
-
-		pBase->Link(1000, nsVDUI::kLinkInt, 1001);
-		pBase->Link(1000, nsVDUI::kLinkInt, 1002);
-		pBase->Link(1001, nsVDUI::kLinkInt, 1000);
-		pBase->Link(1001, nsVDUI::kLinkInt, 1002);
-		pBase->Link(1002, nsVDUI::kLinkInt, 1000);
-		pBase->Link(1002, nsVDUI::kLinkInt, 1001);
-		pBase->Link(1003, nsVDUI::kLinkInt, 1000);
-		pBase->Link(1003, nsVDUI::kLinkInt, 1001);
-
-		pBase->Link(1000, nsVDUI::kLinkBoolToInt, 2000);
-		pBase->Link(1001, nsVDUI::kLinkBoolToInt, 2000);
-		pBase->Link(1002, nsVDUI::kLinkBoolToInt, 2000);
-#endif
-	}
-
-	void go() {
-		vdrefptr<IVDUIContext> pctx(CreateVDUIContext());
-
-		pctx->DoModalDialog(NULL, this);
-	}
-	
-	void UIEvent(IVDUIControl *pControl, unsigned id, eEventType type, int item) {
-		switch(id) {
-		case 100:
-			if (type == kEventDoubleClick) {
-				int iSel = pControl->GetStatei();
-
-				if (iSel>=0) {
-					Ent *pEnt = (Ent *)pControl->AsUIList()->GetItemCookie(iSel);
-
-					MyDialog(*pEnt).Go(pControl->GetBase()->AsControl()->GetRawHandle());
-					pControl->AsUIList()->UpdateItem(iSel);
-					pControl->AsUIList()->Sort();
-				}
+IVDUIWindow *VDUICreator::Execute(const unsigned char *resdata) {
+	while(const unsigned char c = *resdata++) {
+		switch(c) {
+		case kBC_Zero:
+			mValueStack.push_back(0);
+			break;
+		case kBC_One:
+			mValueStack.push_back(1);
+			break;
+		case kBC_Int8:
+			mValueStack.push_back((sint8)*resdata++);
+			break;
+		case kBC_Int32:
+		case kBC_Float32:
+			mValueStack.push_back((sint32)(resdata[0] + (resdata[1]<<8) + (resdata[2]<<16) + (resdata[3]<<24)));
+			resdata += 4;
+			break;
+		case kBC_String:
+			mValueStack.push_back(VDLoadString(0, resdata[0] + (resdata[1]<<8), resdata[2] + (resdata[3]<<8)));
+			resdata += 4;
+			break;
+
+		case kBC_StringShort:
+			mValueStack.push_back(VDLoadString(0, 0xFFFF, resdata[0] + (resdata[1]<<8)));
+			resdata += 2;
+			break;
+
+		case kBC_StringNull:
+			mValueStack.push_back(L"");
+			break;
+
+		case kBC_InvokeTemplate:
+			if (const unsigned char *tmp = VDLoadTemplate(0, resdata[0] + (resdata[1]<<8)))
+				Execute(tmp);
+			resdata += 2;
+			break;
+
+		case kBC_BeginChildren:
+			mWinStack.push_back(mpLastWindow);
+			break;
+
+		case kBC_EndChildren:
+			mWinStack.pop_back();
+			break;
+
+		case kBC_SetParameterB:
+			{
+				sint32 val = mValueStack.back().i;
+				mValueStack.pop_back();
+				uint32 id = mValueStack.back().i;
+				mValueStack.pop_back();
+				mParameters.back().SetB(id, val != 0);
 			}
 			break;
-		case 200:
-			if (type == kEventSelect) {
-				IVDUIList *pList = pControl->GetBase()->GetControl(100)->AsUIList();
-				mEntList.push_back(Ent());
 
-				if (pList->AddItem(NULL, true, &mEntList.back()) < 0)
-					mEntList.pop_back();
-				else {
-					MyDialog(mEntList.back()).Go(pControl->GetBase()->AsControl()->GetRawHandle());
-					pList->Sort();
-				}
+		case kBC_SetParameterI:
+			{
+				sint32 val = mValueStack.back().i;
+				mValueStack.pop_back();
+				uint32 id = mValueStack.back().i;
+				mValueStack.pop_back();
+				mParameters.back().SetI(id, val);
 			}
 			break;
-		case 201:
-			if (type == kEventSelect) {
-				IVDUIBase *pBase = pControl->GetBase();
-				IVDUIControl *pList = pBase->GetControl(100);
 
-				int iSel = pList->GetStatei();
+		case kBC_SetParameterF:
+			{
+				float val = mValueStack.back().f;
+				mValueStack.pop_back();
+				uint32 id = mValueStack.back().i;
+				mValueStack.pop_back();
+				mParameters.back().SetF(id, val);
+			}
+			break;
 
-				if (iSel >= 0) {
-					Ent *pEnt = (Ent *)pList->AsUIList()->GetItemCookie(iSel);
+		case kBC_PushParameters:
+			mParameters.push_back(mParameters.back());
+			break;
 
-					MyDialog(*pEnt).Go(pControl->GetBase()->AsControl()->GetRawHandle());
-					pList->AsUIList()->UpdateItem(iSel);
-					pList->AsUIList()->Sort();
-				}
+		case kBC_PopParameters:
+			mParameters.pop_back();
+			break;
+
+		case kBC_SetLinkExpr:
+			{
+				const int len = resdata[0] + (resdata[1] << 8);
+				resdata += 2;
+				mLinkExprs.push_back(std::vector<unsigned char>());
+				mLinkExprs.back().assign(resdata, resdata+len);
+				resdata += len;
+			}
+			break;
+
+		case kBC_AddListItem:
+			vdpoly_cast<IVDUIList *>(mWinStack.back())->AddItem(mValueStack.back().s);
+			mValueStack.pop_back();
+			break;
+
+		case kBC_AddPage:
+			vdpoly_cast<IVDUIPageSet *>(mWinStack.back())->AddPage(mValueStack.back().i);
+			mValueStack.pop_back();
+			break;
+
+		case kBC_SetColumn:{
+			IVDUIGrid *const pGrid = vdpoly_cast<IVDUIGrid *>(mWinStack.back());
+			if(VDINLINEASSERT(pGrid)){
+				VDUIParameters& parms = mParameters.back();
+				const int col = mValueStack.back().i;
+				mValueStack.pop_back();
+
+				const int minsize = parms.GetI(nsVDUI::kUIParam_MinW, -1);
+				const int maxsize = parms.GetI(nsVDUI::kUIParam_MaxW, -1);
+				const int affinity = parms.GetI(nsVDUI::kUIParam_Affinity, -1);
+				pGrid->SetColumn(col, minsize, maxsize, affinity);
 			}
 			break;
 		}
-	}
 
-	wchar_t buf[32];
+		case kBC_SetRow:{
+			IVDUIGrid *const pGrid = vdpoly_cast<IVDUIGrid *>(mWinStack.back());
+			if(VDINLINEASSERT(pGrid)){
+				VDUIParameters& parms = mParameters.back();
+				const int row = mValueStack.back().i;
+				mValueStack.pop_back();
 
-	const wchar_t *UIListTextRequest(IVDUIControl *pList, int item, int subitem, bool& bPersistent) {
-		const Ent& entry = *(Ent *)pList->AsUIList()->GetItemCookie(item);
+				const int minsize = parms.GetI(nsVDUI::kUIParam_MinH, -1);
+				const int maxsize = parms.GetI(nsVDUI::kUIParam_MaxH, -1);
+				const int affinity = parms.GetI(nsVDUI::kUIParam_Affinity, -1);
+				pGrid->SetRow(row, minsize, maxsize, affinity);
+			}
+			break;
+		}
 
-		switch(subitem) {
-		case 0:
-			return entry.path.c_str();
-		case 1:
-			_snwprintf(buf, 32, L"%+d", entry.pri);
-			return buf;
-		case 2:
-			_snwprintf(buf, 32, L"%d MB", entry.lim);
-			return buf;
+		case kBC_NextRow:
+			vdpoly_cast<IVDUIGrid *>(mWinStack.back())->NextRow();
+			break;
+
+		case kBC_CreateChildDialog:
+			mpLastWindow = VDCreateDialogFromResource(mValueStack.back().i, mWinStack.empty() ? NULL : mWinStack.back());
+			mValueStack.pop_back();
+			mpLastWindow->SetID(mValueStack.back().i);
+			mValueStack.pop_back();
+			if (!mpFirstWindow)
+				mpFirstWindow = mpLastWindow;
+			break;
+
 		default:
-			VDASSERT(false);
-			return L"";
+			if (c >= 0x80) {
+				switch(c) {
+				case kBC_CreateLabel:		mpLastWindow = VDCreateUILabel(); break;
+				case kBC_CreateButton:		mpLastWindow = VDCreateUIButton(); break;
+				case kBC_CreateCheckBox:	mpLastWindow = VDCreateUICheckbox(); break;
+				case kBC_CreateDialog:		mpLastWindow = VDCreateUIBaseWindow(); break;
+				case kBC_CreateSplitter:	mpLastWindow = VDCreateUISplitter(); break;
+				case kBC_CreateSet:			mpLastWindow = VDCreateUISet(); break;
+				case kBC_CreatePageSet:		mpLastWindow = VDCreateUIPageSet(); break;
+				case kBC_CreateGrid:		mpLastWindow = VDCreateUIGrid(); break;
+				case kBC_CreateComboBox:	mpLastWindow = VDCreateUIComboBox(); break;
+				case kBC_CreateListBox:		mpLastWindow = VDCreateUIListBox(); break;
+				case kBC_CreateListView:	mpLastWindow = VDCreateUIListView(); break;
+				case kBC_CreateTextEdit:	mpLastWindow = VDCreateUITextEdit(); break;
+				case kBC_CreateTextArea:	mpLastWindow = VDCreateUITextArea(); break;
+				case kBC_CreateGroup:		mpLastWindow = VDCreateUIGroup(); break;
+				case kBC_CreateOption:		mpLastWindow = VDCreateUIOption(); break;
+				case kBC_CreateTrackbar:	mpLastWindow = VDCreateUITrackbar(); break;
+				default:	VDNEVERHERE;
+				}
+
+				IVDUIParameters& parms = mParameters.back();
+
+				if (!mWinStack.empty()) {
+					IVDUIWindow *pWin = mWinStack.back();
+
+					if (IVDUIGrid *pGrid = vdpoly_cast<IVDUIGrid *>(pWin))
+						pGrid->AddChild(mpLastWindow,
+							parms.GetI(nsVDUI::kUIParam_Col, -1),
+							parms.GetI(nsVDUI::kUIParam_Row, -1),
+							parms.GetI(nsVDUI::kUIParam_ColSpan, 1),
+							parms.GetI(nsVDUI::kUIParam_RowSpan, 1));
+					else
+						pWin->AddChild(mpLastWindow);
+				}
+
+				IVDUIBase *pBase = mpLastWindow->GetBase();
+
+				mpLastWindow->SetCaption(VDStringW(mValueStack.back().s));
+				mValueStack.pop_back();
+				const uint32 id = mValueStack.back().i;
+				mpLastWindow->SetID(id);
+				mValueStack.pop_back();
+				mpLastWindow->Create(&parms);
+
+				if (pBase && id) {
+					int expr = parms.GetI(nsVDUI::kUIParam_EnableLinkExpr, -1);
+					if (expr >= 0) {
+						tLinkExprs::const_iterator it(mLinkExprs.begin());
+
+						std::advance(it, expr);
+						pBase->Link(id, nsVDUI::kLinkTarget_Enable, &(*it).front(), (*it).size());
+					}
+
+					expr = parms.GetI(nsVDUI::kUIParam_ValueLinkExpr, -1);
+					if (expr >= 0) {
+						tLinkExprs::const_iterator it(mLinkExprs.begin());
+
+						std::advance(it, expr);
+						pBase->Link(id, nsVDUI::kLinkTarget_Value, &(*it).front(), (*it).size());
+					}
+				}
+
+				if (!mpFirstWindow)
+					mpFirstWindow = mpLastWindow;
+			} else {
+				VDNEVERHERE;
+			}
+			break;
 		}
 	}
 
-	int UIListSortRequest(IVDUIControl *pList, void *p1, void *p2) {
-		const Ent& e1 = *(Ent *)p1;
-		const Ent& e2 = *(Ent *)p2;
+	vdpoly_cast<IVDUIBase *>(mpFirstWindow)->Relayout();
 
-		return e1.pri != e2.pri ? e2.pri - e1.pri : e1.path.compare(e2.path);
-	}
-};
-#else
+	return mpFirstWindow;
+}
 
-#include <vd2/Dita/resources.h>
+IVDUIWindow *VDCreateDialogFromResource(int dialogID, IVDUIWindow *pParent) {
+	VDUICreator ctx(pParent);
 
-class MyIFace : public IVDUICallback {
-public:
+	const unsigned char *p = VDLoadDialog(0, dialogID);
 
-	bool UIConstructModal(IVDUIContext *pctx, IVDUIBase *pBase) {
-		IVDUIConstructor *pcon = pctx->CreateConstructor(pBase->AsControl());
+	if (p)
+		return ctx.Execute(p);
 
-		pBase->AsControl()->SetTextw(L"Configure storage");
-		pBase->AsControl()->SetDesiredAspectRatio(1.4f);
-		pBase->AsControl()->SetAlignment((nsVDUI::eAlign)(nsVDUI::kFill), nsVDUI::kFill);
+	return NULL;
+}
 
-		if (pcon) {
-			VDExecuteDialogResource(VDLoadDialog(0, 100), pBase, pcon);
 
-			pBase->ProcessAllLinks();
+
+
+uint32 VDUIExecuteRuntimeExpression(const uint8 *expr, IVDUIWindow *const *pSrcWindows) {
+	std::vector<sint32> stack;
+
+	while(uint8 c = *expr++) {
+		switch(c) {
+		case kBCE_Zero:
+			stack.push_back(0);
+			break;
+		case kBCE_One:
+			stack.push_back(1);
+			break;
+		case kBCE_Int8:
+			stack.push_back((sint8)*expr++);
+			break;
+		case kBCE_Int32:
+			stack.push_back(expr[0] + ((sint32)expr[1] << 8) + ((sint32)expr[2] << 16) + ((sint32)expr[3] << 24));
+			expr += 4;
+			break;
+
+		case kBCE_OpNegate:
+			stack.back() = -stack.back();
+			break;
+
+		case kBCE_OpNot:
+			stack.back() = !stack.back();
+			break;
+
+		case kBCE_OpMul:
+			*(stack.end() - 2) *= stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpDiv:
+			*(stack.end() - 2) /= stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpAdd:
+			*(stack.end() - 2) += stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpSub:
+			*(stack.end() - 2) -= stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpEQ:
+			*(stack.end() - 2) = *(stack.end() - 2) == stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpNE:
+			*(stack.end() - 2) = *(stack.end() - 2) != stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpLT:
+			*(stack.end() - 2) = *(stack.end() - 2) < stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpLE:
+			*(stack.end() - 2) = *(stack.end() - 2) <= stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpGT:
+			*(stack.end() - 2) = *(stack.end() - 2) > stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpGE:
+			*(stack.end() - 2) = *(stack.end() - 2) >= stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpLogicalAnd:
+			*(stack.end() - 2) = *(stack.end() - 2) && stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_OpLogicalOr:
+			*(stack.end() - 2) = *(stack.end() - 2) || stack.back();
+			stack.pop_back();
+			break;
+
+		case kBCE_GetValue:
+			{
+				IVDUIWindow *pWin = pSrcWindows[*expr++];
+
+				stack.push_back(pWin ? pWin->GetValue() : 0);
+			}
+			break;
 		}
-
-		return true;
 	}
 
-	void go() {
-		vdrefptr<IVDUIContext> pctx(VDCreateUIContext());
+	VDASSERT(stack.size() == 1);
 
-		pctx->DoModalDialog(NULL, this);
-	}
-	
-	void UIEvent(IVDUIControl *pControl, unsigned id, eEventType type, int item) {
-	}
-};
-
-#endif
-
-void VDInterfaceTest() {
-	MyIFace().go();
+	return stack.back();
 }

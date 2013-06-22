@@ -220,7 +220,7 @@ VDFilterGraphControl *VDFilterGraphControl::Create(HWND hwndParent, int x, int y
 	HWND hwnd = CreateWindowEx(WS_EX_TRANSPARENT, g_szFilterGraphControlName, "", WS_VISIBLE|WS_CHILD|WS_HSCROLL|WS_VSCROLL, x, y, cx, cy, hwndParent, (HMENU)id, g_hInst, NULL);
 
 	if (hwnd)
-		return (VDFilterGraphControl *)GetWindowLong(hwnd, 0);
+		return (VDFilterGraphControl *)GetWindowLongPtr(hwnd, 0);
 
 	return NULL;
 }
@@ -243,20 +243,20 @@ ATOM RegisterFilterGraphControl() {
 }
 
 IVDFilterGraphControl *VDGetIFilterGraphControl(HWND hwnd) {
-	return static_cast<IVDFilterGraphControl *>(reinterpret_cast<VDFilterGraphControl *>(GetWindowLong(hwnd, 0)));
+	return static_cast<IVDFilterGraphControl *>(reinterpret_cast<VDFilterGraphControl *>(GetWindowLongPtr(hwnd, 0)));
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
 LRESULT CALLBACK VDFilterGraphControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDFilterGraphControl *pThis = (VDFilterGraphControl *)GetWindowLong(hwnd, 0);
+	VDFilterGraphControl *pThis = (VDFilterGraphControl *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 	case WM_NCCREATE:
 		if (!(pThis = new_nothrow VDFilterGraphControl(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 		break;
 
 	case WM_NCDESTROY:
@@ -1252,7 +1252,6 @@ void VDFilterGraphControl::SetFilterGraph(const std::vector<VDFilterGraphNode>& 
 	mConnections.clear();
 
 	int nFilters = filters.size();
-	int nConnections = connections.size();
 	int conn = 0;
 
 	std::vector<Filter *> filtlist;

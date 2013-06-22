@@ -18,6 +18,8 @@
 #ifndef f_VD2_MEIA_MPEGPREDICT_H
 #define f_VD2_MEIA_MPEGPREDICT_H
 
+#include <stddef.h>
+
 // MPEG prediction
 //
 // Motion prediction involves extracting an 8x8 block (Cr/Cb) or 16x16 block (Y)
@@ -32,7 +34,7 @@
 // must be aligned to a 16 byte boundary and the source pitch must be a multiple
 // of 16 bytes.
 
-typedef void (*tVDMPEGPredictor)(unsigned char *dst, unsigned char *src, int pitch);
+typedef void (*tVDMPEGPredictor)(unsigned char *dst, unsigned char *src, ptrdiff_t pitch);
 
 struct VDMPEGPredictorSet {
 	tVDMPEGPredictor	Y_predictors[2][2];

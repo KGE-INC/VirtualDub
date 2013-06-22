@@ -19,8 +19,8 @@
 #define f_AVIOUTPUT_IMAGES_H
 
 #include <windows.h>
-#include <vfw.h>
 #include <vd2/system/VDString.h>
+#include "AVIOutput.h"
 
 class VideoSource;
 
@@ -28,16 +28,19 @@ class AVIOutputImages : public AVIOutput {
 protected:
 	VDStringW mPrefix;
 	VDStringW mSuffix;
-	int iDigits;
-	bool mbSaveAsTARGA;
+	int mDigits;
+	int mFormat;
+	int mQuality;
 
 public:
 	enum {
 		kFormatBMP,
-		kFormatTGA
+		kFormatTGA,
+		kFormatJPEG,
+		kFormatCount
 	};
 
-	AVIOutputImages(const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, int format);
+	AVIOutputImages(const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, int format, int q);
 	~AVIOutputImages();
 
 	IVDMediaOutputStream *createVideoStream();

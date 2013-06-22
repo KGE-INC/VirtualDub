@@ -167,8 +167,8 @@ static void CaptureHistogramDestruct(HWND hwnd, HistogramDlgData *hdd) {
 	delete hdd;
 }
 
-BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	HistogramDlgData *hdd = (HistogramDlgData *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR CALLBACK CaptureHistogramDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	HistogramDlgData *hdd = (HistogramDlgData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 	switch(message) {
 		case WM_INITDIALOG:
@@ -210,7 +210,7 @@ BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 				hdd->vbitmap.pitch	= (hdd->bmihDecomp.biWidth*3+3)&-4;
 				hdd->vbitmap.modulo	= hdd->vbitmap.pitch - hdd->vbitmap.w*3;
 
-				SetWindowLong(hDlg, DWL_USER, (DWORD)hdd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)hdd);
 
 				// resize requester to accommodate histogram
 

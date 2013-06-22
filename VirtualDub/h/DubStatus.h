@@ -46,7 +46,7 @@ public:
 	virtual void Destroy()=0;
 	virtual void SetPositionCallback(DubPositionCallback dpc, void *cookie)=0;
 	virtual bool ToggleStatus()=0;
-	virtual void SetLastPosition(LONG pos)=0;
+	virtual void SetLastPosition(VDPosition pos)=0;
 	virtual void Freeze()=0;
 	virtual bool isVisible()=0;
 	virtual bool isFrameVisible(bool)=0;

@@ -64,7 +64,7 @@ static int fill_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			*dst2++ = c;
 		} while(--w);
 
-		dst = (unsigned long *)((char *)dst + fa->dst.pitch);
+		dst = (Pixel32 *)((char *)dst + fa->dst.pitch);
 	} while(--h);
 
 	return 0;
@@ -75,7 +75,7 @@ static long fill_param(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	MyFilterData *mfd;
 
     switch (message)
@@ -89,7 +89,7 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 				long x,y;
 
 				mfd = (MyFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				hWnd = GetDlgItem(hDlg, IDC_BORDERS);
 				ccb.x1	= mfd->x1;
@@ -108,7 +108,8 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 
 				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
-				guiPositionInitFromStream(hWnd);
+				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hWnd);
+				guiPositionInitFromStream(pc);
 
 				GetWindowRect(hDlg, &rw);
 				GetWindowRect(hWnd, &rc);
@@ -158,7 +159,7 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 				{
 					ClippingControlBounds ccb;
 
-					mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+					mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 					SendMessage(GetDlgItem(hDlg, IDC_BORDERS), CCM_GETCLIPBOUNDS, 0, (LPARAM)&ccb);
 					mfd->x1 = ccb.x1;
 					mfd->y1 = ccb.y1;
@@ -173,7 +174,7 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 				}
 				return TRUE;
 			case IDCANCEL:
-				mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+				mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 				if (mfd->hbrColor) {
 					DeleteObject(mfd->hbrColor);
 					mfd->hbrColor = NULL;
@@ -181,11 +182,14 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 				EndDialog(hDlg, 1);
 				return TRUE;
 			case IDC_BORDERS:
-				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam));
+				{
+					IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)(HWND)lParam);
+					guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, pc));
+				}
 				return TRUE;
 
 			case IDC_PICK_COLOR:
-				mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+				mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 				if (guiChooseColor(hDlg, mfd->color_temp)) {
 					DeleteObject(mfd->hbrColor);
@@ -198,11 +202,15 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
             break;
 
 		case WM_NOTIFY:
-			guiPositionBlit(((NMHDR *)lParam)->hwndFrom, guiPositionHandleNotify(wParam, lParam));
+			{
+				HWND hwndClipping = ((NMHDR *)lParam)->hwndFrom;
+				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
+				guiPositionBlit(hwndClipping, guiPositionHandleNotify(lParam, pc));
+			}
 			break;
 
 		case WM_CTLCOLORSTATIC:
-			mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+			mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 			return (BOOL)mfd->hbrColor;
 			break;
     }

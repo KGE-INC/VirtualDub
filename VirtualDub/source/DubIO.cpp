@@ -52,6 +52,7 @@ VDDubIOThread::VDDubIOThread(
 	, aInfo(_aInfo)
 	, vInfo(_vInfo)
 	, mThreadCounter(threadCounter)
+	, mpCurrentAction("starting up")
 {
 }
 
@@ -59,12 +60,9 @@ VDDubIOThread::~VDDubIOThread() {
 }
 
 void VDDubIOThread::ThreadRun() {
-
-	///////////
-
 	VDDEBUG("Dub/Main: Start.\n");
 
-	VDRTProfileChannel profchan("I/O");		// sensei?
+	VDRTProfileChannel profchan("I/O");
 
 	bool bAudioActive = (mpAudio != 0);
 	bool bVideoActive = (mpVideo != 0);
@@ -74,6 +72,8 @@ void VDDubIOThread::ThreadRun() {
 
 	try {
 		try {
+			mpCurrentAction = "running main loop";
+
 			while(!mbAbort && (bAudioActive || bVideoActive)) { 
 				bool bBlocked = true;
 
@@ -94,6 +94,8 @@ void VDDubIOThread::ThreadRun() {
 				if (bCanWriteVideo) {
 					bBlocked = false;
 
+					VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
+
 					profchan.Begin(0xffe0e0, "Video");
 
 					if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
@@ -107,6 +109,8 @@ void VDDubIOThread::ThreadRun() {
 
 				if (bCanWriteAudio) {
 					bBlocked = false;
+
+					VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
 
 					profchan.Begin(0xe0e0ff, "Audio");
 
@@ -130,6 +134,8 @@ void VDDubIOThread::ThreadRun() {
 						continue;
 					}
 
+					VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
+
 					profchan.Begin(0xe0e0e0, "Idle");
 					if (bAudioActive) {
 						if (bVideoActive)
@@ -150,22 +156,6 @@ void VDDubIOThread::ThreadRun() {
 //			e.post(NULL, "Dub Error (will attempt to finalize)");
 		}
 
-		// wait for the pipelines to clear...
-
-		if (!mbAbort) {
-			// must finalize all pipes before waiting on any of them
-			if (mpAudio)
-				mpAudioPipe->CloseInput();
-			if (mpVideo)
-				mpVideoPipe->finalizeAndWait();
-			if (mpAudio)
-				mpAudioPipe->WaitUntilOutputClosed();
-		}
-
-		// kill everyone else...
-
-		mbAbort = true;
-
 	} catch(MyError& e) {
 //		e.post(NULL,"Dub Error");
 
@@ -182,13 +172,10 @@ void VDDubIOThread::ThreadRun() {
 }
 
 void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload) {
-	LONG lActualBytes;
 	int hr;
 
 	void *buffer;
 	int handle;
-
-	LONG lSize;
 
 	if (mbPhantom) {
 		buffer = mpVideoPipe->getWriteBuffer(0, &handle);
@@ -208,7 +195,12 @@ void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_f
 
 //	VDDEBUG("Reading frame %ld (%s)\n", lVStreamPos, preload ? "preload" : "process");
 
-	hr = mpVideoStream->read(stream_frame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
+	uint32 size;
+	{
+		VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data from disk");
+
+		hr = mpVideoStream->read(stream_frame, 1, NULL, 0x7FFFFFFF, &size, NULL);
+	}
 	if (hr) {
 		if (hr == AVIERR_FILEREAD)
 			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
@@ -219,10 +211,14 @@ void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_f
 	// Add 4 bytes -- otherwise, we can get crashes with uncompressed video because
 	// the bitmap routines expect to be able to read 4 bytes out.
 
-	buffer = mpVideoPipe->getWriteBuffer(lSize+4, &handle);
+	buffer = mpVideoPipe->getWriteBuffer(size+4, &handle);
 	if (!buffer) return;	// hmm, aborted...
 
-	hr = mpVideoStream->read(stream_frame, 1, buffer, lSize,	&lActualBytes,NULL); 
+	uint32 lActualBytes;
+	{
+		VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
+		hr = mpVideoStream->read(stream_frame, 1, buffer, size,	&lActualBytes,NULL); 
+	}
 	if (hr) {
 		if (hr == AVIERR_FILEREAD)
 			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
@@ -238,8 +234,6 @@ void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_f
 		mpVideo->getDropType(display_frame),
 		handle,
 		!preload);
-
-
 }
 
 void VDDubIOThread::ReadNullVideoFrame(VDPosition displayFrame, VDPosition timelineFrame) {
@@ -313,7 +307,10 @@ bool VDDubIOThread::MainAddAudioFrame() {
 			break;
 
 		LONG ltActualBytes, ltActualSamples;
-		ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
+		{
+			VDDubAutoThreadLocation loc(mpCurrentAction, "reading/processing audio data");
+			ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
+		}
 
 		if (ltActualSamples <= 0)
 			break;

@@ -88,7 +88,7 @@ struct ACMChooserData {
 
 ///////////////////////////////////////////////////////////////////////////
 
-BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, DWORD dwInstance, DWORD fdwSupport) {
+BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, DWORD_PTR dwInstance, DWORD fdwSupport) {
 	ACMEnumeratorData *pData = (ACMEnumeratorData *)dwInstance;
 	ACMFormatEntry *pafe = new ACMFormatEntry();
 
@@ -130,7 +130,7 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 	return TRUE;
 }
 
-BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, LPACMFORMATTAGDETAILS paftd, DWORD dwInstance, DWORD fdwSupport) {
+BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, LPACMFORMATTAGDETAILS paftd, DWORD_PTR dwInstance, DWORD fdwSupport) {
 	ACMEnumeratorData *pData = (ACMEnumeratorData *)dwInstance;
 
 	if (paftd->dwFormatTag != WAVE_FORMAT_PCM) {
@@ -150,7 +150,7 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 			afd.pwfx = pData->pwfex;
 			afd.cbwfx = pData->cbwfex;
 			afd.dwFormatTag = paftd->dwFormatTag;
-			pData->pwfex->wFormatTag = paftd->dwFormatTag;
+			pData->pwfex->wFormatTag = (WORD)paftd->dwFormatTag;
 
 			pData->fAttemptedWeird = false;
 			acmFormatEnum(pData->had, &afd, ACMFormatEnumerator, dwInstance, ACM_FORMATENUMF_WFORMATTAG);
@@ -159,7 +159,7 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 
 				CopyWaveFormat(pData->pwfex, pData->pwfexSrc);
 
-				pData->pwfex->wFormatTag = paftd->dwFormatTag;
+				pData->pwfex->wFormatTag = (WORD)paftd->dwFormatTag;
 
 				if (!acmFormatSuggest(pData->had, pData->pwfexSrc, pData->pwfex, pData->cbwfex, ACM_FORMATSUGGESTF_NCHANNELS|ACM_FORMATSUGGESTF_NSAMPLESPERSEC|ACM_FORMATSUGGESTF_WFORMATTAG)) {
 					afd.dwFormatIndex = 0;
@@ -177,7 +177,7 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 	return TRUE;
 }
 
-BOOL /*ACMDRIVERENUMCB*/ CALLBACK ACMDriverEnumerator(HACMDRIVERID hadid, DWORD dwInstance, DWORD fdwSupport) {
+BOOL /*ACMDRIVERENUMCB*/ CALLBACK ACMDriverEnumerator(HACMDRIVERID hadid, DWORD_PTR dwInstance, DWORD fdwSupport) {
 	ACMEnumeratorData *pData = (ACMEnumeratorData *)dwInstance;
 
 	vdprotected1("enumerating audio codec ID %08x", unsigned, (unsigned)hadid) {
@@ -228,7 +228,7 @@ static void AudioChooseDisplaySpecs(HWND hdlg, WAVEFORMATEX *pwfex) {
 }
 
 static void AudioChooseShowFormats(HWND hdlg, ACMTagEntry *pTag, bool fShowCompatibleOnly) {
-	ACMChooserData *thisPtr = (ACMChooserData *)GetWindowLong(hdlg, DWL_USER);
+	ACMChooserData *thisPtr = (ACMChooserData *)GetWindowLongPtr(hdlg, DWLP_USER);
 	HWND hwndListFormats = GetDlgItem(hdlg, IDC_FORMAT);
 	int idx;
 
@@ -260,8 +260,8 @@ static void AudioChooseShowFormats(HWND hdlg, ACMTagEntry *pTag, bool fShowCompa
 	}
 }
 
-static BOOL CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	ACMChooserData *thisPtr = (ACMChooserData *)GetWindowLong(hdlg, DWL_USER);
+static INT_PTR CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ACMChooserData *thisPtr = (ACMChooserData *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 	switch(msg) {
 	case WM_INITDIALOG:
@@ -271,7 +271,7 @@ static BOOL CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM w
 			INT tabs[1];
 
 			thisPtr = (ACMChooserData *)lParam;
-			SetWindowLong(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 
 			tabs[0] = 140;
 

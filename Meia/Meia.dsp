@@ -20,13 +20,14 @@ CFG=Meia - Win32 Debug
 !MESSAGE "Meia - Win32 Release" (based on "Win32 (x86) Static Library")
 !MESSAGE "Meia - Win32 Debug" (based on "Win32 (x86) Static Library")
 !MESSAGE "Meia - Win32 Release ICL" (based on "Win32 (x86) Static Library")
+!MESSAGE "Meia - Win32 Release AMD64" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName "Meia"
 # PROP Scc_LocalPath ".."
-CPP=xicl6.exe
+CPP=cl.exe
 RSC=rc.exe
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
@@ -48,7 +49,7 @@ RSC=rc.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -71,7 +72,7 @@ LIB32=xilink6.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -94,7 +95,30 @@ LIB32=xilink6.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
+# ADD BASE LIB32 /nologo
+# ADD LIB32 /nologo
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "Meia___Win32_Release_AMD64"
+# PROP BASE Intermediate_Dir "Meia___Win32_Release_AMD64"
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 0
+# PROP Output_Dir "..\lib\ReleaseAMD64"
+# PROP Intermediate_Dir "..\obj\ReleaseAMD64\Meia"
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -105,36 +129,32 @@ LIB32=xilink6.exe -lib
 # Name "Meia - Win32 Release"
 # Name "Meia - Win32 Debug"
 # Name "Meia - Win32 Release ICL"
+# Name "Meia - Win32 Release AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
-# Begin Source File
-
-SOURCE=.\source\convert_isse.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\convert_mmx.cpp
-# End Source File
 # Begin Source File
 
 SOURCE=.\source\convert_reference.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\source\convert_scalar.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\source\idct_mmx.cpp
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+!ENDIF 
+
 # End Source File
 # Begin Source File
 
 SOURCE=.\source\idct_reference.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\idct_scalar.cpp
 # End Source File
 # Begin Source File
 
@@ -197,7 +217,7 @@ SOURCE=..\h\vd2\Meia\MPEGIDCT.h
 SOURCE=..\h\vd2\Meia\MPEGPredict.h
 # End Source File
 # End Group
-# Begin Group "Assembly Files"
+# Begin Group "Assembly Files (x86)"
 
 # PROP Default_Filter ".asm"
 # Begin Source File
@@ -206,39 +226,43 @@ SOURCE=.\source\a_predict_isse.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_predict_isse.asm
 InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_predict_isse.asm
 InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_predict_isse.asm
 InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -249,39 +273,43 @@ SOURCE=.\source\a_predict_mmx.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_predict_mmx.asm
 InputName=a_predict_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_predict_mmx.asm
 InputName=a_predict_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_predict_mmx.asm
 InputName=a_predict_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -292,39 +320,43 @@ SOURCE=.\source\a_predict_scalar.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_predict_scalar.asm
 InputName=a_predict_scalar
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_predict_scalar.asm
 InputName=a_predict_scalar
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_predict_scalar.asm
 InputName=a_predict_scalar
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -335,39 +367,43 @@ SOURCE=.\source\a_predict_sse2.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_predict_sse2.asm
 InputName=a_predict_sse2
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_predict_sse2.asm
 InputName=a_predict_sse2
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_predict_sse2.asm
 InputName=a_predict_sse2
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -378,39 +414,43 @@ SOURCE=.\source\a_yuv2rgb.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_yuv2rgb.asm
 InputName=a_yuv2rgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_yuv2rgb.asm
 InputName=a_yuv2rgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_yuv2rgb.asm
 InputName=a_yuv2rgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -421,39 +461,43 @@ SOURCE=.\source\a_yuvtable.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -464,39 +508,90 @@ SOURCE=.\source\mpeg_idct_mmx.asm
 
 !IF  "$(CFG)" == "Meia - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Meia
 InputPath=.\source\mpeg_idct_mmx.asm
 InputName=mpeg_idct_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Meia
 InputPath=.\source\mpeg_idct_mmx.asm
 InputName=mpeg_idct_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseICL\Meia
 InputPath=.\source\mpeg_idct_mmx.asm
 InputName=mpeg_idct_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /nologo /c /coff /Zi /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
 
 # End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\mpeg_idct_sse2.asm
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+# Begin Custom Build
+IntDir=.\..\obj\Release\Meia
+InputPath=.\source\mpeg_idct_sse2.asm
+InputName=mpeg_idct_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+# Begin Custom Build
+IntDir=.\..\obj\Debug\Meia
+InputPath=.\source\mpeg_idct_sse2.asm
+InputName=mpeg_idct_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+# Begin Custom Build
+IntDir=.\..\obj\ReleaseICL\Meia
+InputPath=.\source\mpeg_idct_sse2.asm
+InputName=mpeg_idct_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /nologo /c /coff /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -517,6 +612,146 @@ SOURCE=.\source\idct_test.cpp
 # SUBTRACT CPP /YX
 
 !ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+!ENDIF 
+
+# End Source File
+# End Group
+# Begin Group "Source Files (x86)"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\source\convert_isse.cpp
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\convert_mmx.cpp
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\convert_scalar.cpp
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\idct_scalar.cpp
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
+# End Source File
+# End Group
+# Begin Group "Assembly Files (AMD64)"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\source\a64_idct_sse2.asm
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# Begin Custom Build -
+IntDir=.\..\obj\ReleaseAMD64\Meia
+InputPath=.\source\a64_idct_sse2.asm
+InputName=a64_idct_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\a64_predict_sse2.asm
+
+!IF  "$(CFG)" == "Meia - Win32 Release"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Debug"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release ICL"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "Meia - Win32 Release AMD64"
+
+# Begin Custom Build -
+IntDir=.\..\obj\ReleaseAMD64\Meia
+InputPath=.\source\a64_predict_sse2.asm
+InputName=a64_predict_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
 
 !ENDIF 
 

@@ -62,8 +62,8 @@ private:
 	void GetDispInfo(NMLVDISPINFO *nldi);
 	CapEvent *GetNewRequest();
 
-	BOOL DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-	static BOOL CALLBACK DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+	INT_PTR DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+	static INT_PTR CALLBACK DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 };
 
 #endif

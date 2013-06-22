@@ -99,7 +99,7 @@ static void DeinitializeBT8X8() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	static const struct {
 		DWORD id;
 		DWORD offset;

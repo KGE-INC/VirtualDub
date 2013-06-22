@@ -45,8 +45,8 @@ static VBitmap g_vbAboutSrc, g_vbAboutDst;
 ///////////////////////////////////////////////////////////////////////////
 
 struct TriPt {
-	double x, y;
-	double u, v;
+	float x, y;
+	float u, v;
 };
 
 typedef unsigned short Pixel16;
@@ -85,26 +85,26 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 
 	// Compute gradients
 
-	double A;
-	double one_over_A;
-	double dudx, dvdx;
-	double dudy, dvdy;
+	float A;
+	float one_over_A;
+	float dudx, dvdx;
+	float dudy, dvdy;
 	int dudxi, dvdxi;
 
 	A = (pt->y - pl->y) * (pr->x - pl->x) - (pt->x - pl->x) * (pr->y - pl->y);
-	one_over_A = 1.0 / A;
+	one_over_A = 1.0f / A;
 	dudx = ((pr->u - pl->u) * (pt->y - pl->y) - (pt->u - pl->u) * (pr->y - pl->y)) * one_over_A;
 	dvdx = ((pr->v - pl->v) * (pt->y - pl->y) - (pt->v - pl->v) * (pr->y - pl->y)) * one_over_A;
 	dudy = ((pt->u - pl->u) * (pr->x - pl->x) - (pr->u - pl->u) * (pt->x - pl->x)) * one_over_A;
 	dvdy = ((pt->v - pl->v) * (pr->x - pl->x) - (pr->v - pl->v) * (pt->x - pl->x)) * one_over_A;
 
-	dudxi = (long)(dudx * 16777216.0);
-	dvdxi = (long)(dvdx * 16777216.0);
+	dudxi = (long)(dudx * 16777216.0f);
+	dvdxi = (long)(dvdx * 16777216.0f);
 	
 	// Compute edge walking parameters
 
-	double dxl1=0, dxr1=0, dul1=0, dvl1=0;
-	double dxl2=0, dxr2=0, dul2=0, dvl2=0;
+	float dxl1=0, dxr1=0, dul1=0, dvl1=0;
+	float dxl2=0, dxr2=0, dul2=0, dvl2=0;
 
 	// Compute left-edge interpolation parameters for first half.
 
@@ -141,13 +141,13 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	//
 	// We place pixel centers at (x+0.5, y+0.5).
 
-	double xl, xr, ul, vl, yf;
+	float xl, xr, ul, vl, yf;
 	int y, y1, y2;
 
 	// y_start < y+0.5 to include pixel y.
 
-	y = floor(pt->y + 0.5);
-	yf = (y+0.5) - pt->y;
+	y = (int)floor(pt->y + 0.5f);
+	yf = (y+0.5f) - pt->y;
 
 	xl = pt->x + dxl1 * yf;
 	xr = pt->x + dxr1 * yf;
@@ -156,17 +156,17 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 
 	// Initialize parameters for second half.
 
-	double xl2, xr2, ul2, vl2;
+	float xl2, xr2, ul2, vl2;
 
 	if (pl->y > pr->y) {		// Left edge is long side
 		dxl2 = dxl1;
 		dul2 = dul1;
 		dvl2 = dvl1;
 
-		y1 = floor(pr->y + 0.5);
-		y2 = floor(pl->y + 0.5);
+		y1 = (int)floor(pr->y + 0.5f);
+		y2 = (int)floor(pl->y + 0.5f);
 
-		yf = (y1+0.5) - pr->y;
+		yf = (y1+0.5f) - pr->y;
 
 		// Step left edge.
 
@@ -180,10 +180,10 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	} else {					// Right edge is long side
 		dxr2 = dxr1;
 
-		y1 = floor(pl->y + 0.5);
-		y2 = floor(pr->y + 0.5);
+		y1 = (int)floor(pl->y + 0.5f);
+		y2 = (int)floor(pr->y + 0.5f);
 
-		yf = (y1+0.5) - pl->y;
+		yf = (y1+0.5f) - pl->y;
 
 		// Prestep left edge.
 
@@ -231,17 +231,17 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 		}
 
 		int x1, x2;
-		double xf;
+		float xf;
 		int u, v;
 
 		// x_left must be less than (x+0.5) to include pixel x.
 
-		x1		= (int)floor(xl + 0.5);
-		x2		= (int)floor(xr + 0.5);
-		xf		= (x1+0.5) - xl;
+		x1		= (int)floor(xl + 0.5f);
+		x2		= (int)floor(xr + 0.5f);
+		xf		= (x1+0.5f) - xl;
 		
-		u		= ((int)((ul + xf * dudx)*16777216.0) /*>> mipmaplevel*/) + u_correct;
-		v		= ((int)((vl + xf * dvdx)*16777216.0) /*>> mipmaplevel*/) + v_correct;
+		u		= ((int)((ul + xf * dudx)*16777216.0f) /*>> mipmaplevel*/) + u_correct;
+		v		= ((int)((vl + xf * dvdx)*16777216.0f) /*>> mipmaplevel*/) + v_correct;
 
 /*		if (x1<0) {
 			x1=0;
@@ -252,13 +252,13 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 
 		while(x1 < x2) {
 //			dst[x1++] = tex[(u>>24) + (v>>24)*64];
-			int A = tex[(u>>24) + (v>>24)*32];
-			int B = dst[x1];
+			uint32 A = tex[(u>>24) + (v>>24)*32];
+			uint32 B = dst[x1];
 
 //			dst[x1] = (((A^B) & 0x7bde)>>1) + (A&B);
 
-			uint16 p0 = (((A^B ) & 0x7bde)>>1) + (A&B);
-			uint16 p  = (((A^p0) & 0x7bde)>>1) + (A&B);
+			uint32 p0 = (((A^B ) & 0x7bde)>>1) + (A&B);
+			uint32 p  = (((A^p0) & 0x7bde)>>1) + (A&B);
 			dst[x1] = (uint16)(((((p&0x007c1f)*s + 0x004010) & 0x0f83e0) + (((p&0x0003e0)*s + 0x000200) & 0x007c00)) >> 5);
 
 			++x1;
@@ -291,7 +291,7 @@ static BOOL CALLBACK HideAllButOKCANCELProc(HWND hwnd, LPARAM lParam) {
 	return TRUE;
 }
 
-static void CALLBACK AboutTimerProc(UINT uID, UINT, DWORD dwUser, DWORD, DWORD) {
+static void CALLBACK AboutTimerProc(UINT uID, UINT, DWORD_PTR dwUser, DWORD_PTR, DWORD_PTR) {
 	PostMessage((HWND)dwUser, WM_APP+0, 0, 0);
 }
 
@@ -299,8 +299,20 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 	char buf[4096];
 #ifdef __INTEL_COMPILER
 	const char *const s = "Intel C/C++ Compiler 6.0";
+#elif _MSC_VER >= 1400
+	#ifdef _M_AMD64
+		#if _MSC_FULL_VER <= 14002207
+			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (DDK version)";
+		#else
+			const char *const s = "Microsoft Visual Studio .NET (2005) for AMD64";
+		#endif
+	#else
+		const char *const s = "Microsoft Visual Studio .NET (2005) for X86";
+	#endif
+#elif _MSC_VER >= 1310
+	const char *const s = "Microsoft Visual Studio .NET (2003)";
 #elif _MSC_VER >= 1300
-	const char *const s = "Microsoft Visual Studio .NET";
+	const char *const s = "Microsoft Visual Studio .NET (2002)";
 #else
 	const char *const s = "Microsoft Visual C++ 6.0 SP5 + Processor Pack";
 #endif
@@ -318,7 +330,7 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 	}
 }
 
-BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
+INT_PTR APIENTRY AboutDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	static bool bTimerSet;
 	static bool bRender;
@@ -327,8 +339,8 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 	static RECT rBounce;
 	static RECT rDirtyLast;
 	static int xpos, ypos, xvel, yvel;
-	static double cubeside;
-	static double vx[8][3];
+	static float cubeside;
+	static float vx[8][3];
 	static const int faces[6][4] = {
 		{ 0, 1, 4, 5 },
 		{ 2, 6, 3, 7 },
@@ -463,12 +475,12 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 									{
 										int i;
-										double rs;
+										float rs;
 
 										if (r.right > r.bottom)
-											rs = r.bottom / (3.6*3.0);
+											rs = r.bottom / (3.6f*3.0f);
 										else
-											rs = r.right / (3.6*3.0);
+											rs = r.right / (3.6f*3.0f);
 
 										for(i=0; i<8; i++) {
 											vx[i][0] = i&1 ? -rs : +rs;
@@ -497,7 +509,7 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 										bTimerSet = true;
 										bRender = true;
 
-										mmTimer = timeSetEvent(10, 10, AboutTimerProc, (DWORD)hDlg, TIME_PERIODIC|TIME_CALLBACK_FUNCTION);
+										mmTimer = timeSetEvent(10, 10, AboutTimerProc, (DWORD_PTR)hDlg, TIME_PERIODIC|TIME_CALLBACK_FUNCTION);
 									}
 								}
 							}
@@ -544,7 +556,7 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 		case WM_ERASEBKGND:
 			if (g_pvAboutDisplayBack) {
-				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				SetWindowLongPtr(hDlg, DWLP_MSGRESULT, 0);
 				return TRUE;
 			} else
 				return FALSE;
@@ -568,15 +580,15 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 		case WM_APP:
 			if (g_pvAboutDisplayBack && bRender) {
-				static double theta = 0.0;
-				double xt, yt, zt;
+				static float theta = 0.0;
+				float xt, yt, zt;
 
 				bRender = false;
 
-				xt = sin(theta) / 80.0;
-				yt = sin(theta + 3.1415926535 * 2.0 / 3.0) / 80.0;
-				zt = sin(theta + 3.1415926535 * 4.0 / 3.0) / 80.0;
-				theta = theta + 0.005;
+				xt = sinf(theta) / 80.0f;
+				yt = sinf(theta + 3.1415926535f * 2.0f / 3.0f) / 80.0f;
+				zt = sinf(theta + 3.1415926535f * 4.0f / 3.0f) / 80.0f;
+				theta = theta + 0.005f;
 
 				xpos += xvel;
 				ypos += yvel;
@@ -590,30 +602,28 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 				RECT rDirty2;
 
 				for(int i=0; i<8; i++) {
-					double x0 = vx[i][0];
-					double y0 = vx[i][1];
-					double z0 = vx[i][2];
+					float x0 = vx[i][0];
+					float y0 = vx[i][1];
+					float z0 = vx[i][2];
 
-					double x1 = x0 * cos(zt) - y0 * sin(zt);
-					double y1 = x0 * sin(zt) + y0 * cos(zt);
-					double z1 = z0;
+					float x1 = x0 * cosf(zt) - y0 * sinf(zt);
+					float y1 = x0 * sinf(zt) + y0 * cosf(zt);
+					float z1 = z0;
 
-					double x2 = x1 * cos(yt) - z1 * sin(yt);
-					double y2 = y1;
-					double z2 = x1 * sin(yt) + z1 * cos(yt);
+					float x2 = x1 * cosf(yt) - z1 * sinf(yt);
+					float y2 = y1;
+					float z2 = x1 * sinf(yt) + z1 * cosf(yt);
 
-					double x3 = x2;
-					double y3 = y2 * cos(xt) - z2 * sin(xt);
-					double z3 = y2 * sin(xt) + z2 * cos(xt);
+					float x3 = x2;
+					float y3 = y2 * cosf(xt) - z2 * sinf(xt);
+					float z3 = y2 * sinf(xt) + z2 * cosf(xt);
 
 					vx[i][0] = x3;
 					vx[i][1] = y3;
 					vx[i][2] = z3;
 
 					int ix1 = (int)floor(x3);
-					int ix2 = (int)ceil(x3);
 					int iy1 = (int)floor(y3);
-					int iy2 = (int)ceil(y3);
 
 					if (rDirty.left   > ix1) rDirty.left   = ix1;
 					if (rDirty.right  < ix1) rDirty.right  = ix1;

@@ -70,6 +70,7 @@ VEffectBlur::~VEffectBlur() {
 		delete rows[i];
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) dorow_MMX(Pixel32 *dst, Pixel32 *src, PixDim w) {
 	__asm {
 		mov		eax,[esp+8]
@@ -240,6 +241,7 @@ odd2:
 		ret
 	}
 }
+#endif
 
 static void dorow(Pixel32 *dst, Pixel32 *src, PixDim w) {
 	if (w == 1) {
@@ -247,10 +249,12 @@ static void dorow(Pixel32 *dst, Pixel32 *src, PixDim w) {
 		return;
 	}
 
+#ifdef _M_IX86
 	if (MMX_enabled) {
 		dorow_MMX(dst, src, w);
 		return;
 	}
+#endif
 
 	dst[0] = ((((src[0] & 0x00FF00FF)*3 + (src[1] & 0x00FF00FF) + 0x00020002)>>2) & 0x00FF00FF)
 		   + ((((src[0] & 0x0000FF00)*3 + (src[1] & 0x0000FF00) + 0x00000200)>>2) & 0x0000FF00);
@@ -279,6 +283,7 @@ static void dorow(Pixel32 *dst, Pixel32 *src, PixDim w) {
 		   + ((((src[0] & 0x0000FF00) + (src[1] & 0x0000FF00)*3 + 0x00000200)>>2) & 0x00FF00);
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) docol_MMX(Pixel32 *dst, Pixel32 *src1, Pixel32 *src2, Pixel32 *src3, PixDim w) {
 	__asm {
 		push		ebp
@@ -323,12 +328,15 @@ xloop:
 		ret
 	}
 }
+#endif
 
 static void docol(Pixel32 *dst, Pixel32 *row1, Pixel32 *row2, Pixel32 *row3, PixDim w) {
+#ifdef _M_IX86
 	if (MMX_enabled) {
 		docol_MMX(dst, row1, row2, row3, w);
 		return;
 	}
+#endif
 
 	w = -w;
 	row1 -= w;
@@ -395,8 +403,10 @@ void VEffectBlur::run(const VBitmap *vbmdst, const VBitmap *vbm) {
 		dstr = (Pixel32 *)((char *)dstr + vbmdst->pitch);
 	} while(--h);
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm emms
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -439,6 +449,7 @@ VEffectBlurHi::~VEffectBlurHi() {
 		delete rows[i];
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) dorow2_MMX(Pixel32 *dst, Pixel32 *src, PixDim w) {
 	__asm {
 		mov		eax,[esp+8]
@@ -685,6 +696,7 @@ last2:
 		ret
 	}
 }
+#endif
 
 static void dorow2(Pixel32 *dst, Pixel32 *src, PixDim w) {
 	if (w < 4) {
@@ -692,10 +704,12 @@ static void dorow2(Pixel32 *dst, Pixel32 *src, PixDim w) {
 		return;
 	}
 
+#ifdef _M_IX86
 	if (MMX_enabled) {
 		dorow2_MMX(dst, src, w);
 		return;
 	}
+#endif
 
 	dst[0] = ((((src[0] & 0x00FF00FF)*11 + (src[1] & 0x00FF00FF)*4 + (src[2] & 0x00FF00FF) + 0x00080008)>>4) & 0x00FF00FF)
 		   + ((((src[0] & 0x0000FF00)*11 + (src[1] & 0x0000FF00)*4 + (src[2] & 0x0000FF00) + 0x00000800)>>4) & 0x0000FF00);
@@ -732,6 +746,7 @@ static void dorow2(Pixel32 *dst, Pixel32 *src, PixDim w) {
 		   + ((((src[0] & 0x0000FF00) + (src[1] & 0x0000FF00)*4 + (src[2] & 0x0000FF00)*11 + 0x00000800)>>4) & 0x0000FF00);
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) docol2_MMX(Pixel32 *dst, Pixel32 *src1, Pixel32 *src2, Pixel32 *src3, Pixel32 *src4, Pixel32 *src5, PixDim w) {
 	__asm {
 		push		ebp
@@ -794,12 +809,15 @@ xloop:
 		ret
 	}
 }
+#endif
 
 static void docol2(Pixel32 *dst, Pixel32 *row1, Pixel32 *row2, Pixel32 *row3, Pixel32 *row4, Pixel32 *row5, PixDim w) {
+#ifdef _M_IX86
 	if (MMX_enabled) {
 		docol2_MMX(dst, row1, row2, row3, row4, row5, w);
 		return;
 	}
+#endif
 
 	w = -w;
 	row1 -= w;
@@ -874,6 +892,8 @@ void VEffectBlurHi::run(const VBitmap *vbmdst, const VBitmap *vbm) {
 		dstr = (Pixel32 *)((char *)dstr + vbmdst->pitch);
 	} while(--h);
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm emms
+#endif
 }

@@ -21,11 +21,10 @@
 #include <commctrl.h>
 
 #include "resource.h"
-#include "filter.h"
 #include "filters.h"
-#include "ScriptInterpreter.h"
-#include "ScriptValue.h"
-#include "ScriptError.h"
+
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdvideofiltold.h>
 
 extern HINSTANCE g_hInst;
 

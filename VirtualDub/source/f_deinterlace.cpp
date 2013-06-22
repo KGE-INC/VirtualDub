@@ -58,7 +58,8 @@ static const char *g_szModes[]={
 
 ///////////////////////////////////////////////////////////////////////////
 
-static void __declspec(naked) asm_blend_row_clipped(Pixel *dst, Pixel *src, PixDim w, PixOffset srcpitch) {
+#ifdef _M_IX86
+static void __declspec(naked) asm_blend_row_clipped(Pixel *dst, const Pixel *src, PixDim w, PixOffset srcpitch) {
 	__asm {
 		push	ebp
 		push	edi
@@ -98,7 +99,7 @@ xloop:
 	};
 }
 
-static void __declspec(naked) asm_blend_row(Pixel *dst, Pixel *src, PixDim w, PixOffset srcpitch) {
+static void __declspec(naked) asm_blend_row(Pixel *dst, const Pixel *src, PixDim w, PixOffset srcpitch) {
 	__asm {
 		push	ebp
 		push	edi
@@ -144,7 +145,7 @@ xloop:
 	};
 }
 
-static void __declspec(naked) asm_blend_row_MMX(Pixel *dst, Pixel *src, PixDim w, PixOffset srcpitch) {
+static void __declspec(naked) asm_blend_row_MMX(Pixel *dst, const Pixel *src, PixDim w, PixOffset srcpitch) {
 	static const __int64 mask0 = 0xfcfcfcfcfcfcfcfci64;
 	static const __int64 mask1 = 0x7f7f7f7f7f7f7f7fi64;
 	static const __int64 mask2 = 0x3f3f3f3f3f3f3f3fi64;
@@ -218,20 +219,50 @@ nooddpart:
 		ret
 	};
 }
+#else
+static void asm_blend_row_clipped(Pixel *dst, const Pixel *src, PixDim w, PixOffset srcpitch) {
+	const Pixel *src2 = (const Pixel *)((const char *)src + srcpitch);
+
+	do {
+		const uint32 x = *src++;
+		const uint32 y = *src2++;
+
+		*dst++ = (x|y) - (((x^y)&0xfefefefe)>>1);
+	} while(--w);
+}
+
+static void asm_blend_row(Pixel *dst, const Pixel *src, PixDim w, PixOffset srcpitch) {
+	const Pixel *src2 = (const Pixel *)((const char *)src + srcpitch);
+	const Pixel *src3 = (const Pixel *)((const char *)src2 + srcpitch);
+
+	do {
+		const uint32 a = *src++;
+		const uint32 b = *src2++;
+		const uint32 c = *src3++;
+		const uint32 hi = (a & 0xfcfcfc) + 2*(b & 0xfcfcfc) + (c & 0xfcfcfc);
+		const uint32 lo = (a & 0x030303) + 2*(b & 0x030303) + (c & 0x030303) + 0x020202;
+
+		*dst++ = (hi + (lo & 0x0c0c0c))>>2;
+	} while(--w);
+}
+#endif
 
 static int deinterlace_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 	Pixel32 *src = fa->src.data;
 	Pixel32 *dst = fa->dst.data;
-	PixDim w = fa->src.w;
 	PixDim h = fa->src.h;
-	void (*blend_func)(Pixel32 *, Pixel32 *, PixDim, PixOffset);
+	void (*blend_func)(Pixel32 *, const Pixel32 *, PixDim, PixOffset);
 
 	switch(mfd->mode) {
 	case MODE_BLEND:
 		if (h<2) return 0;
 
+#ifdef _M_IX86
 		blend_func = MMX_enabled ? asm_blend_row_MMX : asm_blend_row;
+#else
+		blend_func = asm_blend_row;
+#endif
 
 		asm_blend_row_clipped(dst, src, fa->src.w, fa->src.pitch);
 		if (h-=2)
@@ -245,8 +276,11 @@ static int deinterlace_run(const FilterActivation *fa, const FilterFunctions *ff
 
 		asm_blend_row_clipped((Pixel *)((char *)dst + fa->dst.pitch), src, fa->src.w, fa->src.pitch);
 
+#ifdef _M_IX86
 		if (MMX_enabled)
 			__asm emms
+#endif
+
 		break;
 	case MODE_DUP2:
 		src = (Pixel *)((char *)src + fa->src.pitch);
@@ -265,35 +299,33 @@ static int deinterlace_run(const FilterActivation *fa, const FilterFunctions *ff
 
 	case MODE_UNFOLD:
 		{
-			VBitmap vbmsrc;
+			VBitmap vbmsrc((VBitmap&)fa->src);
 
-			vbmsrc = fa->src;
 			vbmsrc.modulo += vbmsrc.pitch;
 			vbmsrc.pitch<<=1;
 			vbmsrc.h >>= 1;
 
-			fa->dst.BitBlt(0, 0, &vbmsrc, 0, 0, -1, -1);
+			((VBitmap&)fa->dst).BitBlt(0, 0, &vbmsrc, 0, 0, -1, -1);
 
 			vbmsrc.data = (Pixel32 *)((char *)vbmsrc.data + fa->src.pitch);
 
-			fa->dst.BitBlt(fa->src.w, 0, &vbmsrc, 0, 0, -1, -1);
+			((VBitmap&)fa->dst).BitBlt(fa->src.w, 0, (const VBitmap *)&vbmsrc, 0, 0, -1, -1);
 		}
 		break;
 
 	case MODE_FOLD:
 		{
-			VBitmap vbmdst;
+			VBitmap vbmdst((VBitmap&)fa->dst);
 
-			vbmdst = fa->dst;
 			vbmdst.modulo += vbmdst.pitch;
 			vbmdst.pitch<<=1;
 			vbmdst.h >>= 1;
 
-			vbmdst.BitBlt(0, 0, &fa->src, 0, 0, -1, -1);
+			vbmdst.BitBlt(0, 0, (const VBitmap *)&fa->src, 0, 0, -1, -1);
 
 			vbmdst.data = (Pixel32 *)((char *)vbmdst.data + fa->dst.pitch);
 
-			vbmdst.BitBlt(0, 0, &fa->src, fa->dst.w, 0, -1, -1);
+			vbmdst.BitBlt(0, 0, (const VBitmap *)&fa->src, fa->dst.w, 0, -1, -1);
 		}
 		break;
 	}
@@ -317,7 +349,7 @@ static long deinterlace_param(FilterActivation *fa, const FilterFunctions *ff) {
 	case MODE_DISCARD2:
 		fa->dst.h		>>= 1;
 		fa->dst.pitch	<<= 1;
-		fa->dst.modulo	= fa->dst.Modulo();
+		fa->dst.modulo	= fa->dst.pitch - 4*fa->dst.w;
 		break;
 
 	case MODE_UNFOLD:
@@ -336,7 +368,7 @@ static long deinterlace_param(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY DeinterlaceDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK DeinterlaceDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	MyFilterData *mfd;
 
     switch (message)
@@ -344,7 +376,7 @@ static BOOL APIENTRY DeinterlaceDlgProc(HWND hDlg, UINT message, UINT wParam, LO
         case WM_INITDIALOG:
 			{
 				mfd = (MyFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				switch(mfd->mode) {
 				case MODE_BLEND:		CheckDlgButton(hDlg, IDC_MODE_BLEND, BST_CHECKED); break;
@@ -363,7 +395,7 @@ static BOOL APIENTRY DeinterlaceDlgProc(HWND hDlg, UINT message, UINT wParam, LO
 			switch(LOWORD(wParam)) {
 			case IDOK:
 				{
-					mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+					mfd = (MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 					
 					if (IsDlgButtonChecked(hDlg, IDC_MODE_BLEND))		mfd->mode = MODE_BLEND;
 					if (IsDlgButtonChecked(hDlg, IDC_MODE_DUP1))		mfd->mode = MODE_DUP1;

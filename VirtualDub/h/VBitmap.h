@@ -20,12 +20,12 @@
 
 #include <windows.h>
 
-typedef unsigned long	Pixel;
-typedef unsigned long	Pixel32;
+typedef unsigned		Pixel;
+typedef unsigned		Pixel32;
 typedef unsigned char	Pixel8;
 typedef long			PixCoord;
 typedef	long			PixDim;
-typedef	long			PixOffset;
+typedef	ptrdiff_t		PixOffset;
 
 #ifdef VDEXT_VIDEO_FILTER
 #define NOVTABLE __declspec(novtable)
@@ -147,5 +147,14 @@ private:
 };
 
 #undef NOVTABLE
+
+
+
+#ifndef VDEXT_VIDEO_FILTER
+struct VDPixmap;
+
+VDPixmap VDAsPixmap(const VBitmap& bm);
+VDPixmap VDAsPixmap565(const VBitmap& bm);
+#endif
 
 #endif

@@ -8,10 +8,29 @@ namespace nsVDDitaBytecode {
 		kBC_One,				// push integer 1 onto stack
 		kBC_Int8,				// push signed 8-bit integer onto stack
 		kBC_Int32,				// push full 32-bit integer onto stack
+		kBC_Float32,			// push full 32-bit float onto stack
 		kBC_String,				// push string from string table onto stack
 		kBC_StringShort,		// push string from string table -1 onto stack
+		kBC_StringNull,			// push null string onto stack
 
 		kBC_InvokeTemplate,
+
+		kBC_BeginChildren,
+		kBC_EndChildren,
+
+		kBC_PushParameters,
+		kBC_PopParameters,
+		kBC_SetParameterB,
+		kBC_SetParameterI,
+		kBC_SetParameterF,
+
+		kBC_SetLinkExpr,		// set link expression
+
+		kBC_AddListItem,
+		kBC_AddPage,
+		kBC_SetRow,
+		kBC_SetColumn,
+		kBC_NextRow,
 
 		kBC_CreateLabel	= 0x80,	// create label(id, string, maxwidth)
 		kBC_CreateEdit,			// create edit(id, label, maxlen)
@@ -23,27 +42,44 @@ namespace nsVDDitaBytecode {
 		kBC_CreateListView,		// create listview(id, minrows)
 		kBC_CreateTrackbar,		// create trackbar(id, minv, maxv)
 		kBC_CreateFileControl,	// create filecontrol(id, maxlen)
-		kBC_CreateOptionSet,	// create optionset(id)
-		kBC_AddOption,			// create option(label)
-		kBC_EndOptionSet,		//
-		kBC_CreateHorizSet,		// create horizset(id)
-		kBC_CreateVertSet,		// create vertset(id)
-		kBC_CreateGroupSet,		// create groupset(id, label)
-		kBC_EndSet,				// end set
+		kBC_CreateOption,		// create optionset(id)
+		kBC_CreateSet,			// create horizset(id)
+		kBC_CreatePageSet,		// create pageset(id)
+		kBC_CreateGroup,		// create groupset(id, label)
 		kBC_CreateGrid,			// create grid(id, cols, rows, xpad, ypad, affinity)
-		kBC_EndGrid,			// end grid
-		kBC_SetGridDirection,	// set grid direction(dir)
-		kBC_SpanNext,			// spanNext(w,h)
-		kBC_SkipGrid,			// skipGrid(x,y)
-		kBC_SetGridPos,			// setGridPos(x,y)
-		kBC_SetColumnAffinity,	// setColumnAffinity(x, aff)
-		kBC_SetRowAffinity,		// setRowAffinity(y, aff)
-		kBC_SetDialogInfo,		// setDialogInfo(minw, minh, aspect, title)
-		kBC_SetAlignment,		// setAlignment(alignw, alignh)
-		kBC_SetMinSize,			// setMinSize(minw, minh)
-		kBC_SetMaxSize,			// setMaxSize(maxw, maxh)
-		kBC_Link,				// link(dst, src, linktype)
-		kBC_AddColumn			// addColumn(name, width)
+		kBC_CreateDialog,		// setDialogInfo(minw, minh, aspect, title)
+		kBC_CreateSplitter,
+		kBC_CreateTextEdit,
+		kBC_CreateTextArea,
+		kBC_CreateChildDialog,
+
+		kBC_Count
+	};
+
+	// expression bytecode
+	enum {
+		kBCE_End			= 0,
+		kBCE_Zero,
+		kBCE_One,
+		kBCE_Int8,
+		kBCE_Int32,
+
+		kBCE_OpNegate		= 0x40,
+		kBCE_OpNot,
+		kBCE_OpMul,
+		kBCE_OpDiv,
+		kBCE_OpAdd,
+		kBCE_OpSub,
+		kBCE_OpEQ,
+		kBCE_OpNE,
+		kBCE_OpLT,
+		kBCE_OpLE,
+		kBCE_OpGT,
+		kBCE_OpGE,
+		kBCE_OpLogicalAnd,
+		kBCE_OpLogicalOr,
+
+		kBCE_GetValue		= 0x80
 	};
 };
 

@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <richedit.h>
 
 #include "resource.h"
 #include "auxdlg.h"
@@ -27,6 +28,7 @@
 #include <vd2/Priss/decoder.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/profile.h>
+#include <vd2/system/VDString.h>
 #include "LogWindow.h"
 #include "RTProfileDisplay.h"
 
@@ -55,7 +57,7 @@ public:
 			SetWindowPos(g_hwndLogWindow, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE);
 	}
 
-	static BOOL CALLBACK LogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	static INT_PTR CALLBACK LogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 		switch(msg) {
 		case WM_INITDIALOG:
 			VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG))->AttachAsLogger(false);
@@ -106,7 +108,7 @@ public:
 			SetWindowPos(g_hwndProfileWindow, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE);
 	}
 
-	static BOOL CALLBACK ProfileDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	static INT_PTR CALLBACK ProfileDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 		switch(msg) {
 		case WM_INITDIALOG:
 			g_hwndProfileWindow = hdlg;
@@ -139,7 +141,7 @@ extern void VDOpenProfileWindow() {
 }
 
 
-BOOL APIENTRY ShowTextDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+INT_PTR CALLBACK ShowTextDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	HRSRC hRSRC;
 
     switch (message)
@@ -183,7 +185,7 @@ BOOL APIENTRY ShowTextDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam
     return FALSE;
 }
 
-BOOL APIENTRY WelcomeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
+INT_PTR CALLBACK WelcomeDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
@@ -211,7 +213,7 @@ void Welcome() {
 	}
 }
 
-BOOL APIENTRY AnnounceExperimentalDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
+INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
@@ -230,13 +232,13 @@ BOOL APIENTRY AnnounceExperimentalDlgProc( HWND hDlg, UINT message, UINT wParam,
 }
 
 void AnnounceExperimental() {
-#if 0		// 1.5.6 is not experimental
+#if 1		// 1.6.0 is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.5.5", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.0", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.5.5", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.0", 1);
 	}
 #endif
 }
@@ -284,7 +286,7 @@ static const char g_szAPWarning[]=
 	"further action in response to AngelPotion being loaded."
 	;
 
-BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam)
+INT_PTR CALLBACK DivXWarningDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	const char *s;
 
@@ -310,7 +312,7 @@ BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lPa
 
 static bool DetectDriver(const char *pszName) {
 	char szDriverANSI[256];
-	ICINFO info;
+	ICINFO info = { sizeof(ICINFO) };
 
 	for(int i=0; ICInfo(ICTYPE_VIDEO, i, &info); ++i) {
 		if (WideCharToMultiByte(CP_ACP, 0, info.szDriver, -1, szDriverANSI, sizeof szDriverANSI, NULL, NULL)
@@ -340,4 +342,203 @@ void DetectDivX() {
 			SetConfigDword(NULL, "SeenAngelPotionWarning", 1);
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	struct StreamInData {
+		const char *pos;
+		int len;
+	};
+
+#pragma pack(push, 4)
+	struct EDITSTREAM_fixed {
+		DWORD_PTR	dwCookie;
+		DWORD	dwError;
+		EDITSTREAMCALLBACK pfnCallback;		// WinXP x64 build 1290 calls this at [rax+0Ch]!
+	};
+#pragma pack(pop)
+
+	DWORD CALLBACK TextToRichTextControlCallback(DWORD_PTR dwCookie, LPBYTE pbBuff, LONG cb, LONG *pcb) {
+		StreamInData& sd = *(StreamInData *)dwCookie;
+
+		if (cb > sd.len)
+			cb = sd.len;
+
+		memcpy(pbBuff, sd.pos, cb);
+		sd.pos += cb;
+		sd.len -= cb;
+
+		*pcb = cb;
+		return 0;
+	}
+
+	typedef std::vector<char> tTextStream;
+
+	void append(tTextStream& stream, const char *string) {
+		stream.insert(stream.end(), string, string+strlen(string));
+	}
+
+	void append_cooked(tTextStream& stream, const char *string, const char *stringEnd) {
+		while(string != stringEnd) {
+			const char *s = string;
+
+			if (*s == '{' || *s == '\\' || *s == '}')
+				stream.push_back('\\');
+
+			++s;
+			while(s != stringEnd && *s != '{' && *s != '\\' && *s != '}')
+				++s;
+
+			stream.insert(stream.end(), string, s);
+			string = s;
+		}
+	}
+
+	void TextToRichTextControl(LPCTSTR resName, HWND hdlg, HWND hwndText) {
+		HRSRC hResource = FindResource(NULL, resName, "STUFF");
+
+		if (!hResource)
+			return;
+
+		HGLOBAL hGlobal = LoadResource(NULL, hResource);
+		if (!hGlobal)
+			return;
+
+		LPVOID lpData = LockResource(hGlobal);
+		if (!lpData)
+			return;
+
+		const char *const title = (const char *)lpData;
+		const char *s = title;
+
+		while(*s!='\r') ++s;
+
+		SetWindowText(hdlg, VDString(title, s-title).c_str());
+		s+=2;
+
+		tTextStream rtf;
+
+		static const char header[]=
+					"{\\rtf"
+					"{\\fonttbl{\\f0\\fswiss;}{\\f1\\fnil\\fcharset2 Symbol;}}"
+					"{\\colortbl;\\red0\\green64\\blue128;}"
+					"\\fs20 "
+					;
+		static const char listStart[]="{\\*\\pn\\pnlvlblt\\pnindent0{\\pntxtb\\'B7}}\\fi-240\\li540 ";
+		static const char bulletCompat[]="{\\pntext\\f1\\'B7\\tab}";
+
+		append(rtf, header);
+
+		bool list_active = false;
+
+		while(*s) {
+			// parse line
+			int spaces = 0;
+
+			while(*s == ' ') {
+				++s;
+				++spaces;
+			}
+
+			const char *end = s, *t;
+			while(*end && *end != '\r' && *end != '\n')
+				++end;
+
+			// check for header, etc.
+			if (*s == '[') {
+				t = ++s;
+				while(t != end && *t != ']')
+					++t;
+
+				append(rtf, "\\cf1\\li300\\i ");
+				append_cooked(rtf, s, t);
+				append(rtf, "\\i0\\cf0\\par ");
+			} else {
+				if (*s == '*') {
+					if (!list_active) {
+						list_active = true;
+						append(rtf, listStart);
+					} else
+						append(rtf, "\\par ");
+
+					append_cooked(rtf, s + 2, end);
+				} else {
+					if (list_active) {
+						rtf.push_back(' ');
+						if (s == end) {
+							list_active = false;
+							append(rtf, "\\par\\pard");
+						}
+					}
+
+					if (!list_active) {
+						if (spaces)
+							append(rtf, "\\li300 ");
+						else
+							append(rtf, "\\li0 ");
+					}
+
+					append_cooked(rtf, s, end);
+
+					if (!list_active)
+						append(rtf, "\\par ");
+				}
+			}
+
+			// skip line termination
+			s = end;
+			if (*s == '\r' || *s == '\n') {
+				++s;
+				if ((s[0] ^ s[-1]) == ('\r' ^ '\n'))
+					++s;
+			}
+		}
+
+		rtf.push_back('}');
+
+		SendMessage(hwndText, EM_EXLIMITTEXT, 0, (LPARAM)rtf.size());
+
+		EDITSTREAM_fixed es;
+
+		StreamInData sd={&rtf[0], rtf.size()};
+
+		es.dwCookie = (DWORD_PTR)&sd;
+		es.dwError = 0;
+		es.pfnCallback = (EDITSTREAMCALLBACK)TextToRichTextControlCallback;
+
+		SendMessage(hwndText, EM_STREAMIN, SF_RTF, (LPARAM)&es);
+		SendMessage(hwndText, EM_SETSEL, 0, 0);
+		SetFocus(hwndText);
+	}
+}
+
+INT_PTR CALLBACK VDShowChangeLogDlgProcW32(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_INITDIALOG:
+		TextToRichTextControl((LPCTSTR)lParam, hdlg, GetDlgItem(hdlg, IDC_TEXT));
+		return FALSE;
+	case WM_COMMAND:
+		switch(LOWORD(wParam)) {
+		case IDOK: case IDCANCEL:
+			EndDialog(hdlg, 0);
+			return TRUE;
+		}
+		break;
+	}
+
+	return FALSE;
+}
+
+void VDShowChangeLog(VDGUIHandle hParent) {
+	HMODULE hmod = LoadLibrary("riched32.dll");
+	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CHANGE_LOG), (HWND)hParent, VDShowChangeLogDlgProcW32, (LPARAM)MAKEINTRESOURCE(IDR_CHANGES));
+	FreeLibrary(hmod);
+}
+
+void VDShowReleaseNotes(VDGUIHandle hParent) {
+	HMODULE hmod = LoadLibrary("riched32.dll");
+	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CHANGE_LOG), (HWND)hParent, VDShowChangeLogDlgProcW32, (LPARAM)MAKEINTRESOURCE(IDR_RELEASE_NOTES));
+	FreeLibrary(hmod);
 }

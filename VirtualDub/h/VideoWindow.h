@@ -9,12 +9,15 @@ extern const char g_szVideoWindowClass[];
 
 ATOM RegisterVideoWindow();
 
+class IVDVideoDisplay;
+
 class VDINTERFACE IVDVideoWindow {
 public:
 	virtual void SetSourceSize(int w, int h) = 0;
 	virtual void GetFrameSize(int& w, int& h) = 0;
 	virtual void Resize() = 0;
 	virtual void SetChild(HWND hwnd) = 0;
+	virtual void SetDisplay(IVDVideoDisplay *) = 0;
 };
 
 IVDVideoWindow *VDGetIVideoWindow(HWND hwnd);

@@ -20,6 +20,8 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vector>
+#include <vd2/system/vdstl.h>
 
 #include "DubSource.h"
 
@@ -47,7 +49,7 @@ public:
 	AudioSourceWAV(const wchar_t *fn, LONG inputBufferSize);
 
 	bool init();
-	virtual int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
+	virtual int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
 };
 
 class AudioSourceAVI : public AudioSource {
@@ -56,7 +58,7 @@ private:
 	IAVIReadStream *pAVIStream;
 	bool bQuiet;
 
-	BOOL _isKey(LONG lSample);
+	bool _isKey(VDPosition lSample);
 
 	~AudioSourceAVI();
 
@@ -72,7 +74,55 @@ public:
 	void streamEnd();
 
 	bool init();
-	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
+	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
+};
+
+class AudioSourceDV : public AudioSource {
+public:
+	AudioSourceDV(IAVIReadStream *pAVIStream, bool bAutomated);
+
+	void Reinit();
+	bool isStreaming();
+
+	void streamBegin(bool fRealTime);
+	void streamEnd();
+
+	bool init();
+	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
+
+protected:
+	~AudioSourceDV();
+
+	struct CacheLine;
+
+	const CacheLine *LoadSet(VDPosition set);
+	void FlushCache();
+	bool _isKey(VDPosition lSample);
+
+	vdblock<uint8> mTempBuffer;
+
+	IAVIReadStream *mpStream;
+	bool bQuiet;
+	sint32	mSamplesPerSet;
+	sint32	mMinimumFrameSize;
+	sint32	mRightChannelOffset;
+	VDPosition mLastFrame;
+	VDPosition	mRawFrames;
+	VDPosition	mRawStart;
+	VDPosition	mRawEnd;
+
+	vdblock<sint32>	mGatherTab;
+
+	enum { kCacheLines = 4 };
+
+	VDPosition	mCacheLinePositions[kCacheLines];
+
+	struct CacheLine {
+		sint16	mRawData[1959*10][2];
+		sint16	mResampledData[1920*10][2];
+		uint32	mRawSamples;
+	} mCache[kCacheLines];
+
 };
 
 #endif

@@ -10,6 +10,18 @@ uint32 VDGetCurrentTick() {
 	return (uint32)GetTickCount();
 }
 
+uint32 VDGetPreciseTick() {
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	return li.QuadPart;
+}
+
+double VDGetPreciseTicksPerSecond() {
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	return freq.QuadPart;
+}
+
 VDCallbackTimer::VDCallbackTimer()
 	: mTimerID(NULL)
 	, mTimerPeriod(0)
@@ -47,7 +59,7 @@ bool VDCallbackTimer::Init(IVDTimerCallback *pCB, int period_ms) {
 		if (TIMERR_NOERROR == timeBeginPeriod(accuracy)) {
 			mTimerPeriod = accuracy;
 
-			mTimerID = timeSetEvent(period_ms, period_ms, StaticTimerCallback, (DWORD)this, TIME_CALLBACK_FUNCTION | TIME_PERIODIC);
+			mTimerID = timeSetEvent(period_ms, period_ms, StaticTimerCallback, (DWORD_PTR)this, TIME_CALLBACK_FUNCTION | TIME_PERIODIC);
 
 			return mTimerID != 0;
 		}
@@ -84,7 +96,7 @@ bool VDCallbackTimer::IsTimerRunning() const {
 // This prototype is deliberately different than the one in the header
 // file to avoid having to pull in windows.h for clients; if Microsoft
 // changes the definitions of UINT and DWORD, this won't compile.
-void CALLBACK VDCallbackTimer::StaticTimerCallback(UINT id, UINT, DWORD thisPtr, DWORD, DWORD) {
+void CALLBACK VDCallbackTimer::StaticTimerCallback(UINT id, UINT, DWORD_PTR thisPtr, DWORD_PTR, DWORD_PTR) {
 	VDCallbackTimer *pThis = (VDCallbackTimer *)thisPtr;
 
 	if (pThis->mbExit) {

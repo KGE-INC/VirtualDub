@@ -3,8 +3,8 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/registry.h>
 
-VDRegistryKey::VDRegistryKey(const char *pszKey) {
-	if (RegCreateKeyEx(HKEY_CURRENT_USER, pszKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, (PHKEY)&pHandle, NULL))
+VDRegistryKey::VDRegistryKey(const char *pszKey, bool bGlobal) {
+	if (RegCreateKeyEx(bGlobal ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER, pszKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, (PHKEY)&pHandle, NULL))
 		pHandle = NULL;
 }
 
@@ -98,6 +98,8 @@ bool VDRegistryKey::getString(const char *pszName, VDStringA& str) const {
 	if (RegQueryValueEx((HKEY)pHandle, pszName, 0, NULL, (BYTE *)str.alloc(s), &s))
 		return false;
 
+	str.resize(strlen(str.c_str()));		// Trim off pesky terminating NULLs.
+
 	return true;
 }
 
@@ -119,10 +121,14 @@ bool VDRegistryKey::getString(const char *pszName, VDStringW& str) const {
 	if (!pHandle || RegQueryValueExW((HKEY)pHandle, wsName.c_str(), 0, &type, NULL, &s) || type != REG_SZ)
 		return false;
 
-	str.resize((s + sizeof(wchar_t) - 1) / sizeof(wchar_t));
+	if (s > 0) {
+		str.resize((s + sizeof(wchar_t) - 1) / sizeof(wchar_t));
 
-	if (RegQueryValueExW((HKEY)pHandle, wsName.c_str(), 0, NULL, (BYTE *)&str[0], &s))
-		return false;
+		if (RegQueryValueExW((HKEY)pHandle, wsName.c_str(), 0, NULL, (BYTE *)&str[0], &s))
+			return false;
+	}
+
+	str.resize(wcslen(str.c_str()));		// Trim off pesky terminating NULLs.
 
 	return true;
 }

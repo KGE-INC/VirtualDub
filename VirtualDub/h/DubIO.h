@@ -70,6 +70,10 @@ public:
 		return false;
 	}
 
+	const char *GetCurrentAction() const {
+		return mpCurrentAction;
+	}
+
 protected:
 	void ThreadRun();
 	void ReadVideoFrame(VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload);
@@ -93,6 +97,8 @@ protected:
 	DubAudioStreamInfo&	aInfo;
 	DubVideoStreamInfo& vInfo;
 	VDAtomicInt&		mThreadCounter;
+
+	const char			*volatile mpCurrentAction;
 };
 
 

@@ -31,7 +31,6 @@ class FilterSystemBitmap;
 
 class FilterSystem {
 private:
-	DWORD dwBufferLockFlags;
 	DWORD dwFlags;
 	int iBitmapCount;
 
@@ -41,7 +40,7 @@ private:
 	};
 
 	FilterSystemBitmap *bitmap;
-	VFBitmap *bmLast;
+	FilterSystemBitmap *bmLast;
 	List *listFilters;
 	int nFrameLag;
 	bool mbFirstFrame;
@@ -57,29 +56,26 @@ private:
 
 	void AllocateVBitmaps(int count);
 	void AllocateBuffers(LONG lTotalBufferNeeded);
-	void ClearBufferLocks();
-	void LockBuffer(int buffer);
-	void UnlockBuffer(int buffer);
-	BOOL IsBufferLocked(int buffer);
 
 public:
 	FilterSystem();
 	~FilterSystem();
-	void prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int src_depth, int dest_depth);
-	void initLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int src_depth, int dest_depth);
+	void prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth);
+	void initLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth);
 	int ReadyFilters(FilterStateInfo *);
 	int RunFilters();
 	int RunFilters(FilterInstance *pfiStopPoint);
 	void DeinitFilters();
 	void DeallocateBuffers();
-	VFBitmap *InputBitmap();
-	VFBitmap *OutputBitmap();
-	VFBitmap *LastBitmap();
+	VBitmap *InputBitmap();
+	VBitmap *OutputBitmap();
+	VBitmap *LastBitmap();
 	bool isRunning();
+	bool isEmpty() const { return listFilters->IsEmpty(); }
 
 	int getFrameLag();
 
-	void getOutputMappingParams(HANDLE&, LONG&);
+	bool getOutputMappingParams(HANDLE&, LONG&);
 };
 
 #endif

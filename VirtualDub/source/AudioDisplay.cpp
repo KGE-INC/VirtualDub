@@ -172,7 +172,7 @@ void VDAudioDisplayControl::SetSpectralPaletteDefault() {
 }
 
 LRESULT CALLBACK VDAudioDisplayControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDAudioDisplayControl *pThis = (VDAudioDisplayControl *)GetWindowLong(hwnd, 0);
+	VDAudioDisplayControl *pThis = (VDAudioDisplayControl *)GetWindowLongPtr(hwnd, 0);
 
 	if (msg == WM_NCCREATE) {
 		pThis = new VDAudioDisplayControl(hwnd);
@@ -180,7 +180,7 @@ LRESULT CALLBACK VDAudioDisplayControl::StaticWndProc(HWND hwnd, UINT msg, WPARA
 		if (!pThis)
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 	} else if (msg == WM_NCDESTROY) {
 		delete pThis;
 		return DefWindowProc(hwnd, msg, wParam, lParam);

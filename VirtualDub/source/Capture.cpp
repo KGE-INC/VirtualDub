@@ -30,7 +30,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include "AVIOutput.h"
-#include "FastWriteStream.h"
+#include "AVIOutputFile.h"
 #include "Histogram.h"
 #include "FilterSystem.h"
 #include "AVIOutputStriped.h"
@@ -371,18 +371,18 @@ static void CaptureShowFile(HWND hwnd, HWND hwndCapture, bool fCaptureActive);
 
 static LRESULT CALLBACK CaptureYieldCallback(HWND hwnd);
 
-extern BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-extern BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-extern BOOL CALLBACK CaptureSpillDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+extern INT_PTR CALLBACK CaptureVumeterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+extern INT_PTR CALLBACK CaptureHistogramDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+extern INT_PTR CALLBACK CaptureSpillDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-static BOOL APIENTRY CaptureSettingsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+static INT_PTR CALLBACK CaptureAllocateDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CaptureSettingsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
-static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-static BOOL APIENTRY CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static BOOL APIENTRY CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static BOOL APIENTRY CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CapturePreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static INT_PTR CALLBACK CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 static void CaptureAVICap(HWND hWnd, HWND hWndCapture);
 static void CaptureInternal(HWND, HWND hWndCapture, bool fTest);
@@ -915,11 +915,11 @@ static void CaptureSetPCMAudioFormat(HWND hWndCapture, LONG sampling_rate, BOOL 
 	_RPT3(0,"Setting format %d/%d/%s\n", sampling_rate, is_16bit?16:8, is_stereo?"stereo":"mono");
 
 	wf.wFormatTag		= WAVE_FORMAT_PCM;
-	wf.nChannels		= is_stereo ? 2 : 1;
+	wf.nChannels		= (WORD)(is_stereo ? 2 : 1);
 	wf.nSamplesPerSec	= sampling_rate;
-	wf.wBitsPerSample	= is_16bit ? 16 : 8;
+	wf.wBitsPerSample	= (WORD)(is_16bit ? 16 : 8);
 	wf.nAvgBytesPerSec	= sampling_rate * wf.nChannels * wf.wBitsPerSample/8;
-	wf.nBlockAlign		= wf.nChannels * wf.wBitsPerSample/8;
+	wf.nBlockAlign		= (WORD)(wf.nChannels * (wf.wBitsPerSample>>3));
 	wf.cbSize			= 0;
 
 	if (!capSetAudioFormat(hWndCapture, &wf, sizeof(WAVEFORMATEX)))
@@ -1691,7 +1691,7 @@ void CaptureRedoWindows(HWND hWnd) {
 	}
 }
 
-static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
+static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	if (g_fRestricted) {
 		switch (message) {
@@ -1802,7 +1802,7 @@ static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, UINT wParam, LONG 
     return (0);
 }
 
-static LONG APIENTRY CaptureStatusWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {
+static LONG APIENTRY CaptureStatusWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	switch(message) {
 	case WM_LBUTTONDOWN:
 		if (wParam & MK_LBUTTON) {
@@ -1828,13 +1828,13 @@ static LONG APIENTRY CaptureStatusWndProc( HWND hWnd, UINT message, UINT wParam,
 		if (g_fRestricted)
 			return HTCLIENT;
 	default:
-		return CallWindowProc((WNDPROC)GetWindowLong(hWnd, GWL_USERDATA), hWnd, message, wParam, lParam);
+		return CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, message, wParam, lParam);
 	}
 	return 0;
 }
 
 
-static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		return TRUE;
@@ -1884,7 +1884,7 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 #endif
 
 			if (time_diff >= 1000)
-				lVideoRate = (pcd->total_video_size*1000 + time_diff/2) / time_diff;
+				lVideoRate = (long)((pcd->total_video_size*1000 + time_diff/2) / time_diff);
 			else
 				lVideoRate = 0;
 			sprintf(buf, "%ldKB/s", (lVideoRate+1023)/1024);
@@ -1893,11 +1893,11 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 			if (pcd->total_video_size && pcd->total_cap>=2) {
 				long l;
 
-				l = ((__int64)pcd->uncompressed_frame_size * (pcd->total_cap-1) * 10 + pcd->total_video_size/2) / pcd->total_video_size;
+				l = (long)(((__int64)pcd->uncompressed_frame_size * (pcd->total_cap-1) * 10 + pcd->total_video_size/2) / pcd->total_video_size);
 				sprintf(buf, "%ld.%c:1", l/10, (char)('0' + l%10));
 				SetDlgItemText(hdlg, IDC_VIDEO_RATIO, buf);
 
-				l = pcd->total_video_size / (pcd->total_cap-1) - 24;
+				l = (long)(pcd->total_video_size / (pcd->total_cap-1) - 24);
 				sprintf(buf, "%ld", l);
 				SetDlgItemText(hdlg, IDC_VIDEO_AVGFRAMESIZE, buf);
 			}
@@ -1928,10 +1928,10 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 					//
 					// *sigh* we need doubles here...
 
-					double x = pcd->i64AudioHzX;
-					double y = pcd->i64AudioHzY;
+					double x = (double)pcd->i64AudioHzX;
+					double y = (double)pcd->i64AudioHzY;
 					double x2 = pcd->i64AudioHzX2;
-					double y2 = pcd->i64AudioHzY2;
+//					double y2 = pcd->i64AudioHzY2;
 					double xy = pcd->i64AudioHzXY;
 					double n = pcd->iAudioHzSamples;
 
@@ -1965,7 +1965,7 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 					SetDlgItemText(hdlg, IDC_AUDIO_RATIO, buf);
 				}
 
-				lAudioRate = (pcd->total_audio_size*1000 + pcd->lCurrentMS/2) / pcd->lAudioLastMS;
+				lAudioRate = (long)((pcd->total_audio_size*1000 + pcd->lCurrentMS/2) / pcd->lAudioLastMS);
 				sprintf(buf,"%ldKB/s", (lAudioRate+1023)/1024);
 				SetDlgItemText(hdlg, IDC_AUDIO_DATARATE, buf);
 
@@ -2022,7 +2022,7 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 
 
 
-static LONG APIENTRY CaptureSubWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {
+static LONG APIENTRY CaptureSubWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	if (g_bCaptureDDrawActive) {
 		switch(message) {
 		case WM_ERASEBKGND:
@@ -2094,8 +2094,7 @@ void Capture(HWND hWnd) {
 	static INT aWidths[]={ 50, 100, 150, 200, -1 };
 
 	HMENU	hMenuCapture	= NULL;
-	LONG_PTR	dwOldWndProc	= 0;
-	DWORD	dwOldStatusWndProc	= 0;
+	LONG_PTR	dwOldStatusWndProc	= 0;
 	HWND	hWndCapture		= NULL;
 	HWND	hWndStatus;
 	HWND	hwndItem;
@@ -2150,9 +2149,9 @@ void Capture(HWND hWnd) {
 
 		// subclass the capture window
 
-		g_pCapWndProc = (WNDPROC)GetWindowLong(hWndCapture, GWL_WNDPROC);
+		g_pCapWndProc = (WNDPROC)GetWindowLongPtr(hWndCapture, GWLP_WNDPROC);
 
-		SetWindowLong(hWndCapture, GWL_WNDPROC, (LONG)CaptureSubWndProc);
+		SetWindowLongPtr(hWndCapture, GWLP_WNDPROC, (LONG)CaptureSubWndProc);
 
 		capSetCallbackOnError(hWndCapture, (LPVOID)CaptureErrorCallback);
 		capSetCallbackOnStatus(hWndCapture, (LPVOID)CaptureStatusCallback);
@@ -2294,9 +2293,9 @@ void Capture(HWND hWnd) {
 
 		// Subclass the status window.
 
-		dwOldStatusWndProc = GetWindowLong(hWndStatus, GWL_WNDPROC);
-		SetWindowLong(hWndStatus, GWL_USERDATA, (DWORD)dwOldStatusWndProc);
-		SetWindowLong(hWndStatus, GWL_WNDPROC, (DWORD)CaptureStatusWndProc);
+		dwOldStatusWndProc = GetWindowLongPtr(hWndStatus, GWLP_WNDPROC);
+		SetWindowLongPtr(hWndStatus, GWLP_USERDATA, (LONG_PTR)dwOldStatusWndProc);
+		SetWindowLongPtr(hWndStatus, GWLP_WNDPROC, (LONG_PTR)CaptureStatusWndProc);
 
 		// Update status
 
@@ -2319,14 +2318,7 @@ void Capture(HWND hWnd) {
 		}
 
 		// Subclass the main window.
-
-		if (IsWindowUnicode(hWnd)) {
-			dwOldWndProc = GetWindowLongPtrW(hWnd, GWL_WNDPROC);
-			SetWindowLongPtrW(hWnd, GWL_WNDPROC, (LONG_PTR)CaptureWndProc);
-		} else {
-			dwOldWndProc = GetWindowLongPtrA(hWnd, GWL_WNDPROC);
-			SetWindowLongPtrA(hWnd, GWL_WNDPROC, (LONG_PTR)CaptureWndProc);
-		}
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR)CaptureWndProc);
 
 		VDCHECKPOINT;
 
@@ -2381,12 +2373,7 @@ void Capture(HWND hWnd) {
 	if (hWndStatus)
 		DestroyWindow(hWndStatus);
 
-	if (dwOldWndProc) {
-		if (IsWindowUnicode(hWnd))
-			SetWindowLongPtrW(hWnd, GWL_WNDPROC, dwOldWndProc);
-		else
-			SetWindowLongPtrA(hWnd, GWL_WNDPROC, dwOldWndProc);
-	}
+	SetWindowLongPtr(hWnd, 0, NULL);
 
 	VDCHECKPOINT;
 
@@ -2420,8 +2407,8 @@ void Capture(HWND hWnd) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	HWND hWndCapture = (HWND)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	HWND hWndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
 
 	switch(message) {
 
@@ -2431,7 +2418,7 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 
 				if (!pb) return FALSE;
 
-				SetWindowLong(hDlg, DWL_USER, (DWORD)lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)lParam);
 				hWndCapture = (HWND)lParam;
 
 				if (capFileGetCaptureFile(hWndCapture, pb, MAX_PATH)) {
@@ -2495,8 +2482,8 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static BOOL APIENTRY CaptureSettingsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	HWND hWndCapture = (HWND)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR CALLBACK CaptureSettingsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	HWND hWndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
 
 	switch(message) {
 
@@ -2506,13 +2493,13 @@ static BOOL APIENTRY CaptureSettingsDlgProc( HWND hDlg, UINT message, UINT wPara
 				LONG lV;
 				char buf[32];
 
-				SetWindowLong(hDlg, DWL_USER, (DWORD)lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)lParam);
 				hWndCapture = (HWND)lParam;
 
 				if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
 					return FALSE;
 
-				lV = (10000000000+cp.dwRequestMicroSecPerFrame/2) / cp.dwRequestMicroSecPerFrame;
+				lV = (long)((10000000000+cp.dwRequestMicroSecPerFrame/2) / cp.dwRequestMicroSecPerFrame);
 				wsprintf(buf, "%ld.%04d", lV/10000, lV%10000);
 				SendMessage(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE), WM_SETTEXT, 0, (LPARAM)buf);
 
@@ -2906,7 +2893,7 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 		else
 			icd->bihFiltered2.biBitCount		= bihOut->biBitCount;
 
-		filters.initLinearChain(&g_listFA, (Pixel *)((char *)bihInput + bihInput->biSize), bihOut->biWidth, bihOut->biHeight, 32, icd->bihFiltered2.biBitCount);
+		filters.initLinearChain(&g_listFA, (Pixel *)((char *)bihInput + bihInput->biSize), bihOut->biWidth, bihOut->biHeight, icd->bihFiltered2.biBitCount);
 
 		icd->fsi.lCurrentFrame		= 0;
 		icd->fsi.lMicrosecsPerFrame	= dwRequestMicroSecPerFrame;
@@ -2939,6 +2926,8 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 	return fFormatAltered ? bihOut : bihInput;
 }
 
+
+#ifdef _M_IX86
 
 void __declspec(naked) dodnrMMX(Pixel32 *dst, Pixel32 *src, PixDim w, PixDim h, PixOffset dstmodulo, PixOffset srcmodulo, __int64 thresh1, __int64 thresh2) {
 static const __int64 bythree = 0x5555555555555555i64;
@@ -3365,10 +3354,10 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		else
 			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
 
-		icd->fsi.lSourceFrameMS				= MulDiv(icd->fsi.lCurrentSourceFrame, icd->fsi.lMicrosecsPerSrcFrame, 1000);
-		icd->fsi.lDestFrameMS				= MulDiv(icd->fsi.lCurrentFrame, icd->fsi.lMicrosecsPerFrame, 1000);
-
 		filters.RunFilters();
+
+		icd->fsi.lSourceFrameMS				= icd->fsi.lCurrentSourceFrame * icd->fsi.lMicrosecsPerSrcFrame;
+		icd->fsi.lDestFrameMS				= icd->fsi.lCurrentFrame * icd->fsi.lMicrosecsPerFrame;
 
 		if (fInPlace)
 			vbmSrc.BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1);
@@ -3397,6 +3386,15 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 
 	return pSrc;
 }
+#else
+
+#pragma vdpragma_TODO("Need scalar implementations for this stuff")
+
+static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlace, DWORD& dwFrameSize) {
+	return lpVHdr->lpData;
+}
+
+#endif
 
 static void CaptureDeinitFiltering(CaptureData *icd) {
 	filters.DeinitFilters();
@@ -3554,7 +3552,6 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 	LPARAM biSize, wfSize;
 	CAPTUREPARMS cp;
 	CaptureData cd;
-	BOOL fCompressionOk = FALSE;
 
 //	memset(&cd, 0, sizeof cd);
 
@@ -3665,12 +3662,11 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 class InternalCapVars {
 public:
 	VideoSequenceCompressor *pvsc;
-	AVIOutput		*aoFile;
+	IVDMediaOutput		*mpOutput;
+	IVDMediaOutputAVIFile	*mpOutputFile;
+	IVDMediaOutputAVIFile	*mpOutputFilePending;
 	IVDMediaOutputStream	*mpVideoOut;
 	IVDMediaOutputStream	*mpAudioOut;
-	AVIOutput		*aoFilePending;
-	FastWriteStream	*fwsActive;
-	FastWriteStream	*fwsPending;
 	int				blockAlign;
 	DWORD			lastFrame;
 	MyError *		fatal_error;
@@ -3754,7 +3750,7 @@ static void CaptureInternalHandleException(InternalCapData *icd, char *op, DWORD
 #endif
 
 static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
-	AVIOutputFile *aoNew = NULL;
+	IVDMediaOutputAVIFile *pNewFile = NULL;
 	BITMAPINFO *bmi;
 	char fname[MAX_PATH];
 	CapSpillDrive *pcsd;
@@ -3768,23 +3764,22 @@ static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
 	icd->pszNewPath = pcsd->path;
 
 	try {
-		aoNew = new AVIOutputFile();
-
-		aoNew->setSegmentHintBlock(true, NULL, MAX_PATH+1);
-
-		if (!aoNew)
+		pNewFile = VDCreateMediaOutputAVIFile();
+		if (!pNewFile)
 			throw MyMemoryError();
 
-		IVDMediaOutputStream *pNewVideo = aoNew->createVideoStream();
+		pNewFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
+
+		IVDMediaOutputStream *pNewVideo = pNewFile->createVideoStream();
 		IVDMediaOutputStream *pNewAudio = NULL;
 		
 		if (icd->mpAudioOut)
-			pNewAudio = aoNew->createAudioStream();
+			pNewAudio = pNewFile->createAudioStream();
 
 		if (g_prefs.fAVIRestrict1Gb)
-				aoNew->set_1Gb_limit();
+			pNewFile->set_1Gb_limit();
 
-		aoNew->set_capture_mode(true);
+		pNewFile->set_capture_mode(true);
 
 		// copy over information to new file
 
@@ -3799,8 +3794,8 @@ static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
 		// init the new file
 
 		if (!g_capStripeSystem && g_diskDisableBuffer) {
-			aoNew->disable_os_caching();
-			aoNew->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
+			pNewFile->disable_os_caching();
+			pNewFile->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
 		}
 
 		bmi = (BITMAPINFO *)icd->mpVideoOut->getFormat();
@@ -3813,32 +3808,30 @@ static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
 
 		// init the file
 
-		if (!(icd->fwsPending = aoNew->initCapture(VDTextAToW(fname).c_str())))
-			throw MyError("Error initializing spill capture file \"%s\".", fname);
+		pNewFile->init(VDTextAToW(fname).c_str());
 
-		icd->aoFilePending = aoNew;
+		icd->mpOutputFilePending = pNewFile;
 
 		*(char *)VDFileSplitPath(fname) = 0;
 
-		((AVIOutputFile *)icd->aoFile)->setSegmentHintBlock(false, fname, MAX_PATH);
+		icd->mpOutputFile->setSegmentHintBlock(false, fname, MAX_PATH);
 
 		++icd->iSpillNumber;
 		icd->lDiskThresh2 = pcsd->threshold;
 
 	} catch(const MyError&) {
-		delete aoNew;
+		delete pNewFile;
 		throw;
 	}
 }
 
 static void CaptureInternalSpillFinalizeOld(InternalCapData *const icd) {
-	AVIOutput *ao = icd->aoFile;
+	IVDMediaOutput *ao = icd->mpOutput;
 
-	icd->aoFile = icd->aoFilePending;
-	icd->fwsActive->setSynchronous(true);
+	icd->mpOutputFile	= icd->mpOutputFilePending;
+	icd->mpOutput		= icd->mpOutputFile;
 	ao->finalize();
 	delete ao;
-	icd->fwsActive = icd->fwsPending;
 	icd->pszPath = icd->pszNewPath;
 	icd->lDiskThresh = icd->lDiskThresh2;
 }
@@ -3848,7 +3841,6 @@ static void CaptureInternalSpillFinalizeOld(InternalCapData *const icd) {
 
 static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 	InternalCapData *const icd = (InternalCapData *)pp;
-	HANDLE hActive[2];
 	MSG msg;
 	bool fSwitch = false;
 	DWORD dwTimer = GetTickCount();
@@ -3858,24 +3850,6 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 
 	for(;;) {
 		bool fSuccess = false;
-
-		if (icd->aoFile) {
-			try {
-				fSuccess = icd->fwsActive->BackgroundCheck();
-			} catch(DWORD dw) {
-				icd->fwsActive->putError(dw);
-			}
-			hActive[0] = icd->fwsActive->getSyncHandle();
-		}
-
-		if (icd->aoFilePending) {
-			try {
-				fSuccess |= icd->fwsPending->BackgroundCheck();
-			} catch(DWORD dw) {
-				icd->fwsActive->putError(dw);
-			}
-			hActive[1] = icd->fwsPending->getSyncHandle();
-		}
 
 		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 			if (msg.message == VDCM_EXIT)
@@ -3907,7 +3881,7 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 
 			if (!icd->fatal_error_2) try {
 
-				if (icd->aoFile && !icd->aoFilePending && !icd->fAllFull) {
+				if (icd->mpOutputFile && !icd->mpOutputFilePending && !icd->fAllFull) {
 					CaptureInternalSpillNewFile(icd);
 				}
 
@@ -3925,9 +3899,10 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 			} catch(const MyError& e) {
 				icd->fatal_error_2 = new MyError(e);
 			}
-
-			MsgWaitForMultipleObjects(icd->aoFilePending?2:1, hActive, FALSE, INFINITE, QS_ALLEVENTS);
 		}
+
+		if (!fSuccess)
+			WaitMessage();
 	}
 
 	VDDeinitThreadData();
@@ -3983,7 +3958,7 @@ static void CaptureInternalDoSpill(InternalCapData *icd) {
 			_RPT3(0,"SPILL: video frozen at %I64d, audio(%I64d) trigger at (%I64d)\n", icd->nVideoBlocks, icd->nAudioBlocks, icd->nAudioSwitchPt);
 
 			icd->segment_video_size = 0;
-			icd->mpVideoOut = icd->aoFilePending->getVideoOutput();
+			icd->mpVideoOut = icd->mpOutputFilePending->getVideoOutput();
 
 			return;
 
@@ -3994,8 +3969,9 @@ static void CaptureInternalDoSpill(InternalCapData *icd) {
 
 	_RPT2(0,"SPILL: exact sync switch at %I64d, %I64d\n", icd->nVideoBlocks, icd->nAudioBlocks);
 
-	icd->mpVideoOut = icd->aoFilePending->getVideoOutput();
-	icd->mpAudioOut = icd->aoFilePending->getAudioOutput();
+	IVDMediaOutput *pOutputPending = icd->mpOutputFilePending;
+	icd->mpVideoOut = pOutputPending->getVideoOutput();
+	icd->mpAudioOut = pOutputPending->getAudioOutput();
 	icd->segment_audio_size = icd->segment_video_size = 0;
 
 	PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
@@ -4006,7 +3982,7 @@ static void CaptureInternalCheckVideoAfter(InternalCapData *icd) {
 	
 	if (icd->nVideoSwitchPt && icd->nVideoBlocks == icd->nVideoSwitchPt) {
 
-		icd->mpVideoOut = icd->aoFilePending->getVideoOutput();
+		icd->mpVideoOut = icd->mpOutputFilePending->getVideoOutput();
 
 		if (!icd->nAudioSwitchPt) {
 			PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
@@ -4043,8 +4019,8 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 
 	// Has the I/O thread successfully completed the switch?
 
-	if (icd->aoFile == icd->aoFilePending)
-		icd->aoFilePending = NULL;
+	if (icd->mpOutputFile == icd->mpOutputFilePending)
+		icd->mpOutputFilePending = NULL;
 
 	// Get timestamp
 
@@ -4128,9 +4104,9 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 	////////////////////////////
 
 	if (icd->fNTSC)
-		dwCurrentFrame = ((__int64)dwTime * 30 + 500) / 1001;
+		dwCurrentFrame = (DWORD)(((__int64)dwTime * 30 + 500) / 1001);
 	else
-		dwCurrentFrame = ((__int64)dwTime * 1000 + icd->interval/2) / icd->interval;
+		dwCurrentFrame = (DWORD)(((__int64)dwTime * 1000 + icd->interval/2) / icd->interval);
 
 	if (dwCurrentFrame) --dwCurrentFrame;
 
@@ -4169,7 +4145,7 @@ _RPT2(0,"Drop forward at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, l
 	DWORD dwBytesUsed = lpVHdr->dwBytesUsed;
 	void *pFilteredData = CaptureDoFiltering(icd, lpVHdr, false, dwBytesUsed);
 
-	if (icd->aoFile) {
+	if (icd->mpOutputFile) {
 		try {
 			// While we are early, write dropped frames (grr)
 			//
@@ -4251,7 +4227,7 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 	if (capStatus.dwCurrentTimeElapsedMS - icd->lastMessage > 500)
 	{
 
-		if (icd->aoFilePending && !icd->nAudioSwitchPt && !icd->nVideoSwitchPt && g_fEnableSpill) {
+		if (icd->mpOutputFilePending && !icd->nAudioSwitchPt && !icd->nVideoSwitchPt && g_fEnableSpill) {
 			if (icd->segment_video_size + icd->segment_audio_size >= ((__int64)g_lSpillMaxSize<<20)
 				|| VDGetDiskFreeSpace(VDTextAToW(VDString(icd->pszPath))) < ((__int64)icd->lDiskThresh << 20))
 
@@ -4365,9 +4341,9 @@ static LRESULT CaptureInternalWaveCallbackProc2(InternalCapData *icd, HWND hWnd,
 		// Truncate the division, then accept desired or desired+1.
 
 		if (icd->fNTSC)
-			lDesiredVideoFrame = icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 30000i64) / (icd->wfex.nAvgBytesPerSec*1001i64);
+			lDesiredVideoFrame = (long)(icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 30000i64) / (icd->wfex.nAvgBytesPerSec*1001i64));
 		else
-			lDesiredVideoFrame = icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 1000000i64) / (icd->wfex.nAvgBytesPerSec*(__int64)icd->interval);
+			lDesiredVideoFrame = (long)(icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 1000000i64) / (icd->wfex.nAvgBytesPerSec*(__int64)icd->interval));
 
 		lDelta = (long)icd->lastFrame - lDesiredVideoFrame;
 
@@ -4388,14 +4364,14 @@ _RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
 
 	// Has the I/O thread successfully completed the switch?
 
-	if (icd->aoFile == icd->aoFilePending)
-		icd->aoFilePending = NULL;
+	if (icd->mpOutputFile == icd->mpOutputFilePending)
+		icd->mpOutputFilePending = NULL;
 
 	icd->lAudioLastMS = capStatus.dwCurrentTimeElapsedMS;
 
 	++icd->total_audio_cap;
 
-	if (icd->aoFile) {
+	if (icd->mpOutput) {
 		try {
 			if (g_fEnableSpill) {
 				char *pSrc = (char *)lpWHdr->lpData;
@@ -4419,7 +4395,7 @@ _RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
 					if (icd->nAudioSwitchPt && icd->nAudioBlocks == icd->nAudioSwitchPt) {
 						// Switch audio to next stripe.
 
-						icd->mpAudioOut = icd->aoFilePending->getAudioOutput();
+						icd->mpAudioOut = icd->mpOutputFilePending->getAudioOutput();
 
 						if (!icd->nVideoSwitchPt) {
 							PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
@@ -4523,7 +4499,7 @@ static LRESULT CALLBACK CaptureInternalWaveCallbackProc(HWND hWnd, LPWAVEHDR lpW
 
 //////
 
-static BOOL CALLBACK CaptureInternalHitOKDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureInternalHitOKDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
@@ -4603,29 +4579,30 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 				if (g_fEnableSpill)
 					throw MyError("Sorry, striping and spilling are not compatible.");
 
-				icd.aoFile = new_nothrow AVIOutputStriped(g_capStripeSystem);
-				if (!icd.aoFile)
+				icd.mpOutput = new_nothrow AVIOutputStriped(g_capStripeSystem);
+				if (!icd.mpOutput)
 					throw MyMemoryError();
 
 				if (g_prefs.fAVIRestrict1Gb)
-					((AVIOutputStriped *)icd.aoFile)->set_1Gb_limit();
+					((AVIOutputStriped *)icd.mpOutput)->set_1Gb_limit();
 			} else {
-				icd.aoFile = new_nothrow AVIOutputFile();
-				if (!icd.aoFile)
+				icd.mpOutputFile = VDCreateMediaOutputAVIFile();
+				if (!icd.mpOutputFile)
 					throw MyMemoryError();
 
 				if (g_prefs.fAVIRestrict1Gb)
-					((AVIOutputFile *)icd.aoFile)->set_1Gb_limit();
-			}
+					icd.mpOutputFile->set_1Gb_limit();
 
-			((AVIOutputFile *)icd.aoFile)->set_capture_mode(true);
+				icd.mpOutputFile->set_capture_mode(true);
+				icd.mpOutput = icd.mpOutputFile;
+			}
 
 			// initialize the AVIOutputFile object
 
-			icd.mpVideoOut = icd.aoFile->createVideoStream();
+			icd.mpVideoOut = icd.mpOutput->createVideoStream();
 			icd.mpAudioOut = NULL;
 			if (bCaptureAudio)
-				icd.mpAudioOut = icd.aoFile->createAudioStream();
+				icd.mpAudioOut = icd.mpOutput->createAudioStream();
 		}
 
 		// initialize audio
@@ -4761,22 +4738,19 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		if (!fTest) {
 			if (!g_capStripeSystem && g_diskDisableBuffer) {
-				((AVIOutputFile *)icd.aoFile)->disable_os_caching();
-				((AVIOutputFile *)icd.aoFile)->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
+				icd.mpOutputFile->disable_os_caching();
+				icd.mpOutputFile->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
 			}
 
 			if (g_fEnableSpill) {
 				char szNameFirst[MAX_PATH];
 
-				AVIOutputFile *pOutputFile = ((AVIOutputFile *)icd.aoFile);
-
-				pOutputFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
+				icd.mpOutputFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
 
 				strcpy(szNameFirst, fname);
 				strcpy((char *)VDFileSplitExt(szNameFirst), ".00.avi");
 
-				if (!(icd.fwsActive = pOutputFile->initCapture(VDTextAToW(szNameFirst).c_str())))
-					throw MyError("Error initializing capture file.");
+				icd.mpOutputFile->init(VDTextAToW(szNameFirst).c_str());
 
 				// Figure out what drive the first file is on, to get the disk threshold.  If we
 				// don't know, make it 50Mb.
@@ -4788,7 +4762,7 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 				else
 					icd.lDiskThresh = 50;
 			} else
-				if (!icd.aoFile->init(VDTextAToW(fname).c_str()))
+				if (!icd.mpOutput->init(VDTextAToW(fname).c_str()))
 					throw MyError("Error initializing capture file.");
 		}
 
@@ -4872,19 +4846,13 @@ _RPT0(0,"Capture has stopped.\n");
 			_RPT0(0,"Finalizing main file.\n");
 
 			fMainFinalized = true;
-			if (g_fEnableSpill)
-				icd.fwsActive->setSynchronous(true);
-
-			icd.aoFile->finalize();
+			icd.mpOutput->finalize();
 
 			fPendingFinalized = true;
-			if (icd.aoFilePending && icd.aoFilePending != icd.aoFile) {
+			if (icd.mpOutputFilePending && icd.mpOutputFilePending != icd.mpOutputFile) {
 				_RPT0(0,"Finalizing pending file.\n");
 
-				if (g_fEnableSpill)
-					icd.fwsPending->setSynchronous(true);
-
-				icd.aoFilePending->finalize();
+				icd.mpOutputFilePending->finalize();
 			}
 		}
 
@@ -4913,19 +4881,11 @@ _RPT0(0,"Capture has stopped.\n");
 
 	if (!fTest)
 		try {
-			if (!fMainFinalized) {
-				if (g_fEnableSpill)
-					icd.fwsActive->setSynchronous(true);
+			if (!fMainFinalized)
+				icd.mpOutput->finalize();
 
-				icd.aoFile->finalize();
-			}
-
-			if (!fPendingFinalized && icd.aoFilePending && icd.aoFilePending != icd.aoFile) {
-				if (g_fEnableSpill)
-					icd.fwsPending->setSynchronous(true);
-
-				icd.aoFilePending->finalize();
-			}
+			if (!fPendingFinalized && icd.mpOutputFilePending && icd.mpOutputFilePending != icd.mpOutputFile)
+				icd.mpOutputFilePending->finalize();
 		} catch(const MyError&) {
 		}
 
@@ -4938,10 +4898,12 @@ _RPT0(0,"Capture has stopped.\n");
 	freemem(wfexInput);
 	if (icd.pvsc)
 		delete icd.pvsc;
-	delete icd.aoFile;
 
-	if (icd.aoFilePending && icd.aoFilePending != icd.aoFile)
-		delete icd.aoFilePending;
+	if (icd.mpOutputFilePending && icd.mpOutputFilePending == icd.mpOutputFile)
+		icd.mpOutputFilePending = NULL;
+
+	delete icd.mpOutput;
+	delete icd.mpOutputFilePending;
 
 	// any warnings?
 
@@ -5208,10 +5170,10 @@ static void CapturePreferencesDlgBrowse(HWND hDlg) {
 		SetDlgItemText(hDlg, IDC_DEFAULT_CAPFILE, VDTextWToA(fname).c_str());
 }
 
-static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK CapturePreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	switch(message) {
 		case WM_INITDIALOG:
-			SetWindowLong(hDlg, DWL_USER, lParam);
+			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 			return CapturePreferencesDlgInit(hDlg);
 
 		case WM_HELP:
@@ -5226,7 +5188,7 @@ static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wP
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDOK:
-				CapturePreferencesDlgStore(hDlg, (HWND)GetWindowLong(hDlg, DWL_USER));
+				CapturePreferencesDlgStore(hDlg, (HWND)GetWindowLongPtr(hDlg, DWLP_USER));
 			case IDCANCEL:
 				EndDialog(hDlg, 0);
 				return TRUE;
@@ -5290,7 +5252,7 @@ static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wP
 //
 ////////////////////////////////////////////////////////////////////////////
 
-static BOOL APIENTRY CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 
 	case WM_INITDIALOG:
@@ -5373,7 +5335,7 @@ static BOOL APIENTRY CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wP
 ////////////////////////////////////////////////////////////////////////////
 
 
-static BOOL APIENTRY CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	static const long sizes[]={
 		64,
@@ -5488,7 +5450,7 @@ static BOOL APIENTRY CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 ////////////////////////////////////////////////////////////////////////////
 
 
-static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	static const int s_widths[]={
 		160,
@@ -5558,7 +5520,7 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 			int w = 320, h = 240;
 			int found_w = -1, found_h = -1, found_f = -1;
 
-			SetWindowLong(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 
 			hwndCapture = (HWND)lParam;
 
@@ -5653,7 +5615,7 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 				BITMAPINFOHEADER bih;
 				BITMAPINFOHEADER *pbih;
 
-				hwndCapture = (HWND)GetWindowLong(hdlg, DWL_USER);
+				hwndCapture = (HWND)GetWindowLongPtr(hdlg, DWLP_USER);
 
 				if (IsDlgButtonChecked(hdlg, IDC_CUSTOM)) {
 
@@ -5696,7 +5658,7 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 				} else {
 					pbih->biSize			= sizeof(BITMAPINFOHEADER);
 					pbih->biCompression		= s_formats[f-1].fcc;
-					pbih->biBitCount		= s_formats[f-1].bpp;
+					pbih->biBitCount		= (WORD)s_formats[f-1].bpp;
 				}
 
 				pbih->biWidth			= w;
@@ -5748,7 +5710,7 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 ////////////////////////////////////////////////////////////////////////////
 
 
-static BOOL APIENTRY CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		CheckDlgButton(hdlg, IDC_ADJUSTVIDEOTIMING, g_fAdjustVideoTimer);
@@ -5783,7 +5745,7 @@ static BOOL APIENTRY CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 
 static ModelessDlgNode g_mdnCapNRThreshold(NULL);
 
-static BOOL CALLBACK CaptureNRThresholdDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+static INT_PTR CALLBACK CaptureNRThresholdDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HWND hwndItem;
 	switch(msg) {
 		case WM_INITDIALOG:

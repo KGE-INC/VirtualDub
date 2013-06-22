@@ -221,7 +221,7 @@ public:
 	bool read(const char *buf);
 	int write(char *buf, int buflen);
 
-	static BOOL APIENTRY SetupDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+	static INT_PTR APIENTRY SetupDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 };
 
 InputFileAVIOptions::~InputFileAVIOptions() {
@@ -252,12 +252,12 @@ int InputFileAVIOptions::write(char *buf, int buflen) {
 
 ///////
 
-BOOL APIENTRY InputFileAVIOptions::SetupDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	InputFileAVIOptions *thisPtr = (InputFileAVIOptions *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR APIENTRY InputFileAVIOptions::SetupDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+ 	InputFileAVIOptions *thisPtr = (InputFileAVIOptions *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 	switch(message) {
 		case WM_INITDIALOG:
-			SetWindowLong(hDlg, DWL_USER, lParam);
+			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 			SendDlgItemMessage(hDlg, IDC_FORCE_FOURCC, EM_LIMITTEXT, 4, 0);
 			CheckDlgButton(hDlg, IDC_IF_NORMAL, BST_CHECKED);
 			return TRUE;
@@ -388,12 +388,6 @@ InputFileOptions *InputFileAVI::promptForOptions(HWND hwnd) {
 
 ///////////////////////////////////////////////
 
-static bool fileExists(const char *fn) {
-	DWORD dwAttrib = GetFileAttributes(fn);
-
-	return dwAttrib != -1 && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY);
-}
-
 void InputFileAVI::EnableSegmentAutoscan() {
 	fAutoscanSegments = true;
 }
@@ -449,11 +443,6 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 		VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_RekeyNotSpecified);
 	}
 
-	if (videoSrc->isType1()) {
-		VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_Type1DVNoSound);
-	}
-
-
 	audioSrc = new AudioSourceAVI(pAVIFile, fAutomated);
 	if (!audioSrc->init()) {
 		audioSrc = NULL;
@@ -463,6 +452,12 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 		pwfex->nAvgBytesPerSec = MulDiv(pwfex->nAvgBytesPerSec, lForceAudioHz, pwfex->nSamplesPerSec);
 		pwfex->nSamplesPerSec = lForceAudioHz;
 		static_cast<AudioSourceAVI *>(&*audioSrc)->setRate(VDFraction(pwfex->nAvgBytesPerSec, pwfex->nBlockAlign));
+	}
+
+	if (!audioSrc && videoSrc->isType1()) {
+		audioSrc = new AudioSourceDV(pAVIFile->GetStream('svai', 0), fAutomated);
+		if (!audioSrc->init())
+			audioSrc = NULL;
 	}
 
 	if (fAutoscanSegments) {
@@ -633,7 +628,7 @@ typedef struct MyFileInfo {
 void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 	MyFileInfo *pInfo = (MyFileInfo *)pvInfo;
 	VDPosition i;
-	LONG lActualBytes, lActualSamples;
+	uint32 lActualBytes, lActualSamples;
 	VideoSourceAVI *inputVideoAVI = (VideoSourceAVI *)&*pInfo->thisPtr->videoSrc;
 	AudioSourceAVI *inputAudioAVI = (AudioSourceAVI *)&*pInfo->thisPtr->audioSrc;
 
@@ -669,8 +664,8 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 	}
 
 	if (inputAudioAVI) {
-		const VDPosition audioFrameStart	= inputVideoAVI->getStart();
-		const VDPosition audioFrameEnd		= inputVideoAVI->getEnd();
+		const VDPosition audioFrameStart	= inputAudioAVI->getStart();
+		const VDPosition audioFrameEnd		= inputAudioAVI->getEnd();
 
 		pInfo->lAudioMinSize = 0x7FFFFFFF;
 		pInfo->bAudioFramesIndeterminate = false;
@@ -705,8 +700,8 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 	pInfo->hWndAbort = (HWND)1;
 }
 
-BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	MyFileInfo *pInfo = (MyFileInfo *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	MyFileInfo *pInfo = (MyFileInfo *)GetWindowLongPtr(hDlg, DWLP_USER);
 	InputFileAVI *thisPtr;
 
 	if (pInfo)
@@ -718,14 +713,12 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 			{
 				char buf[128];
 
-				SetWindowLong(hDlg, DWL_USER, lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 				pInfo = (MyFileInfo *)lParam;
 				thisPtr = pInfo->thisPtr;
 
 				if (thisPtr->videoSrc) {
-					ICINFO icinfo;
 					char *s;
-					HIC hic;
 					VideoSourceAVI *pvs = (VideoSourceAVI *)&*thisPtr->videoSrc;
 
 					sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
@@ -744,17 +737,20 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 
 					strcpy(buf, "Unknown");
 
-					if (hic = pvs->getDecompressorHandle()) {
-						if (ICGetInfo(hic, &icinfo, sizeof(ICINFO)))
-							buf[WideCharToMultiByte(CP_ACP, 0, icinfo.szDescription, -1, buf, sizeof(buf)-7, NULL, NULL)]=0;
-					} else if (pvs->isUsingInternalMJPEG())
-						strcpy(buf, "VirtualDub internal MJPEG");
-					else if (pvs->getImageFormat()->biCompression == '2YUY')
-						strcpy(buf, "YUV 4:2:2 (YUY2)");
-					else if (pvs->getImageFormat()->biCompression == '024I')
-						strcpy(buf, "YUV 4:2:0 (I420)");
-					else
-						sprintf(buf, "Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
+					if (const wchar_t *name = pvs->getDecompressorName())
+						VDTextWToA(buf, sizeof(buf)-7, name, -1);
+					else {
+						const uint32 comp = pvs->getImageFormat()->biCompression;
+
+						if (comp == '2YUY')
+							strcpy(buf, "YCbCr 4:2:2 (YUY2)");
+						else if (comp == '024I')
+							strcpy(buf, "YCbCr 4:2:0 planar (I420)");
+						else if (comp == '21VY')
+							strcpy(buf, "YCbCr 4:2:0 planar (YV12)");
+						else
+							sprintf(buf, "Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
+					}
 
 					SetDlgItemText(hDlg, IDC_VIDEO_COMPRESSION, buf);
 				}

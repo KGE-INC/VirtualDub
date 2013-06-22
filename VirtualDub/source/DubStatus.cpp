@@ -23,6 +23,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/time.h>
 
 #include "resource.h"
 #include "gui.h"
@@ -48,11 +49,21 @@ private:
 	long				lLastTitleProgress;
 
 	HWND				hwndStatus;
-	UINT statTimer;
-	DWORD dwStartTime;
-	LONG lastFrame;
-	LONG lFrameDiff1,lFrameDiff2;
-	DWORD dwTicks, dwLastTicks1, dwLastTicks2;
+	UINT				statTimer;
+	uint32				mStartTime;
+
+	struct SamplePoint {
+		uint32		mFramesProcessed;
+		uint32		mTicks;
+	};
+
+	enum {
+		kSamplePoints	= 32			// must be a power of two
+	};
+
+	SamplePoint		mSamplePoints[kSamplePoints];
+	int				mNextSamplePoint;
+	int				mSampleCount;
 
 	enum { MAX_FRAME_SIZES = 512 };
 
@@ -83,11 +94,11 @@ private:
 
 	ModelessDlgNode		mModelessDialogNode;
 
-	static BOOL APIENTRY StatusMainDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
-	static BOOL APIENTRY StatusVideoDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
-	static BOOL APIENTRY StatusPerfDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
-	static BOOL APIENTRY StatusLogDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
-	static BOOL APIENTRY StatusDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
+	static INT_PTR CALLBACK StatusMainDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam );
+	static INT_PTR CALLBACK StatusVideoDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam );
+	static INT_PTR CALLBACK StatusPerfDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam );
+	static INT_PTR CALLBACK StatusLogDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam );
+	static INT_PTR CALLBACK StatusDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam );
 	void StatusTimerProc(HWND hWnd);
 
 	static int iPriorities[][2];
@@ -109,7 +120,7 @@ public:
 	bool ToggleStatus();
 	void SetPositionCallback(DubPositionCallback dpc, void *cookie);
 	void NotifyNewFrame(long f);
-	void SetLastPosition(LONG pos);
+	void SetLastPosition(VDPosition pos);
 	void Freeze();
 	bool isVisible();
 	bool isFrameVisible(bool fOutput);
@@ -182,20 +193,21 @@ static long pickClosestNiceBound(long val, bool higher) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-DubStatus::DubStatus() : mProgress(0) {
-	iLastTitleMode		= TITLE_IDLE;
-	lLastTitleProgress	= 0;
-
+DubStatus::DubStatus()
+	: iLastTitleMode(TITLE_IDLE)
+	, lLastTitleProgress(0)
+	, hwndStatus(NULL)
+	, mNextSamplePoint(0)
+	, mSampleCount(0)
+	, lFrameFirstIndex(0)
+	, lFrameLastIndex(0)
+	, fShowStatusWindow(true)
+	, fFrozen(false)
+	, mpPositionCallback(NULL)
+	, mProgress(0)
+{
 	memset(dwFrameSizes, 0, sizeof dwFrameSizes);
-	lFrameFirstIndex = 0;
-	lFrameLastIndex = 0;
-
-	fShowStatusWindow	= true;
-
-	hwndStatus			= NULL;
-	mpPositionCallback	= NULL;
-
-	fFrozen = false;
+	memset(mSamplePoints, 0, sizeof mSamplePoints);
 }
 
 DubStatus::~DubStatus() {
@@ -222,7 +234,7 @@ void DubStatus::InitLinks(	DubAudioStreamInfo	*painfo,
 	this->pDubber			= pDubber;
 	this->opt				= opt;
 
-	if (!GetWindowLong(g_hWnd, GWL_USERDATA))
+	if (!GetWindowLongPtr(g_hWnd, GWLP_USERDATA))
 		DestroyWindow(g_hWnd);
 }
 
@@ -230,7 +242,12 @@ void DubStatus::InitLinks(	DubAudioStreamInfo	*painfo,
 HWND DubStatus::Display(HWND hwndParent, int iInitialPriority) {
 	iPriority = iInitialPriority;
 
-	if (hwndStatus = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_DUBBING), hwndParent, StatusDlgProc, (LPARAM)this)) {
+	if (GetVersion()&0x80000000)
+		hwndStatus = CreateDialogParamA(g_hInst, MAKEINTRESOURCEA(IDD_DUBBING), hwndParent, StatusDlgProc, (LPARAM)this);
+	else
+		hwndStatus = CreateDialogParamW(g_hInst, MAKEINTRESOURCEW(IDD_DUBBING), hwndParent, StatusDlgProc, (LPARAM)this);
+
+	if (hwndStatus) {
 		if (fShowStatusWindow = opt->fShowStatus) {
 			SetWindowLong(hwndStatus, GWL_STYLE, GetWindowLong(hwndStatus, GWL_STYLE) & ~WS_POPUP);
 			ShowWindow(hwndStatus, SW_SHOW);
@@ -253,14 +270,13 @@ void DubStatus::Destroy() {
 ///////////////////////////////////////////////////////////////////////////
 
 void DubStatus::StatusTimerProc(HWND hWnd) {
-	DWORD dwProgress;
-	__int64 lProjSize;
+	sint64 nProjSize;
 	char buf[256];
 
-	LONG	totalVSamples	= pvinfo->end_proc_dst;
-	LONG	totalASamples	= audioStreamSource ? audioStreamSource->GetLength() : 0;
-	LONG	curVSample		= pvinfo->cur_proc_dst;
-	LONG	curASample		= audioStreamSource ? audioStreamSource->GetSampleCount() : 0;
+	sint64	totalVSamples	= pvinfo->end_proc_dst;
+	sint64	totalASamples	= audioStreamSource ? audioStreamSource->GetLength() : 0;
+	sint64	curVSample		= pvinfo->cur_proc_dst;
+	sint64	curASample		= audioStreamSource ? audioStreamSource->GetSampleCount() : 0;
 	char	*s;
 	bool	bPreloading = false;
 
@@ -271,23 +287,24 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 		bPreloading = true;
 	}
 
-	dwProgress = (curVSample>totalVSamples ? 4096 : MulDiv(curVSample, 4096, totalVSamples))
-				+(curASample>totalASamples ? 4096 : MulDiv(curASample, 4096, totalASamples));
+	int nProgress	= 0;
+	
+	if (totalVSamples)
+		nProgress = curVSample>=totalVSamples ? 4096 : (int)((curVSample << 12) / totalVSamples);
 
-	if (!totalASamples || !totalVSamples || pvinfo->fAudioOnly) dwProgress *= 2;
+	if (totalASamples)
+		nProgress += curASample>=totalASamples ? 4096 : (int)((curASample << 12) / totalASamples);
 
-	dwLastTicks2 = dwLastTicks1;
-	dwLastTicks1 = dwTicks;
-	dwTicks = GetTickCount() - dwStartTime;
+	if (!totalASamples || !totalVSamples || pvinfo->fAudioOnly) nProgress *= 2;
 
 	if (bPreloading) {
 		SetDlgItemText(hWnd, IDC_CURRENT_VFRAME, "Preloading...");
 	} else {
-		wsprintf(buf, "%ld/%ld", curVSample, totalVSamples);
+		sprintf(buf, "%I64d/%I64d", curVSample, totalVSamples);
 		SetDlgItemText(hWnd, IDC_CURRENT_VFRAME, buf);
 	}
 
-	wsprintf(buf, "%ld/%ld", curASample, totalASamples);
+	sprintf(buf, "%I64d/%I64d", curASample, totalASamples);
 	SetDlgItemText(hWnd, IDC_CURRENT_ASAMPLE, buf);
  
 	size_to_str(buf, pvinfo->total_size);
@@ -304,28 +321,28 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	size_to_str(buf, painfo->total_size);
 	SetDlgItemText(hWnd, IDC_CURRENT_ASIZE, buf);
 
-	lProjSize = 0;
+	nProjSize = 0;
 	if (totalVSamples && curVSample) {
-		long divisor = std::min<LONG>(totalVSamples, curVSample);
+		sint64 divisor = std::min<sint64>(totalVSamples, curVSample);
 
-		lProjSize += ((__int64)pvinfo->total_size * totalVSamples + divisor/2) / divisor;
+		nProjSize += ((__int64)pvinfo->total_size * totalVSamples + divisor/2) / divisor;
 	}
 	if (totalASamples && curASample) {
-		__int64 divisor = (__int64)std::min<LONG>(totalASamples, curASample);// * wf->nSamplesPerSec;
+		__int64 divisor = (__int64)std::min<sint64>(totalASamples, curASample);// * wf->nSamplesPerSec;
 
-		lProjSize += ((__int64)painfo->total_size * 
+		nProjSize += ((__int64)painfo->total_size * 
 						(__int64)totalASamples + divisor/2) / divisor;
 	}
 
-	if (lProjSize) {
-		lProjSize += 2048 + 16;
+	if (nProjSize) {
+		nProjSize += 2048 + 16;
 
-		__int64 kilobytes = (lProjSize+1023)>>10;
+		sint64 kilobytes = (nProjSize+1023)>>10;
 
 		if (kilobytes < 65536)
 			wsprintf(buf, "%ldK", kilobytes);
 		else {
-			kilobytes = (lProjSize*100) / 1048576;
+			kilobytes = (nProjSize*100) >> 20;
 			wsprintf(buf, "%ld.%02dMB", (LONG)(kilobytes/100), (LONG)(kilobytes%100));
 		}
 		SetDlgItemText(hWnd, IDC_PROJECTED_FSIZE, buf);
@@ -333,32 +350,57 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 		SetDlgItemText(hWnd, IDC_PROJECTED_FSIZE, "unknown");
 	}
 
+	uint32 dwTicks = VDGetCurrentTick() - mStartTime;
 	ticks_to_str(buf, dwTicks);
 	SetDlgItemText(hWnd, IDC_TIME_ELAPSED, buf);
 
-	if (dwProgress > 16) {
-		ticks_to_str(buf, MulDiv(dwTicks,8192,dwProgress));
+	if (nProgress > 16) {
+		ticks_to_str(buf, MulDiv(dwTicks,8192,nProgress));
 		SetDlgItemText(hWnd, IDC_TIME_REMAINING, buf);
 	}
 
-	lFrameDiff2 = lFrameDiff1;
-	lFrameDiff1 = pvinfo->processed-lastFrame;
-	lastFrame += lFrameDiff1;
+	sint32 fps100 = 0;
+	sint64 nFramesProcessed = pvinfo->processed;
 
-	{
-		long fps10;
+	if (nFramesProcessed) {
+		SamplePoint& prevPt = mSamplePoints[(mNextSamplePoint-1)&(kSamplePoints-1)];
 
-		fps10 = MulDiv(lFrameDiff1 + lFrameDiff2, 10000, dwTicks - dwLastTicks2);
+		if (prevPt.mFramesProcessed != (uint32)nFramesProcessed) {
+			SamplePoint& currentPt = mSamplePoints[mNextSamplePoint];
+			currentPt.mTicks				= dwTicks;
+			currentPt.mFramesProcessed		= (uint32)nFramesProcessed;		// Yes, this truncates.  We'll be okay as long as no more than 2^32-1 frames are processed per interval.
 
-		wsprintf(buf, "%ld.%c fps",fps10/10, (fps10%10) + '0');
-		SetDlgItemText(hWnd, IDC_FPS, buf);
+			if (mSampleCount < kSamplePoints)
+				++mSampleCount;
+
+			mNextSamplePoint = (mNextSamplePoint + 1) & (kSamplePoints - 1);
+		}
+
+		SamplePoint& frontPt = mSamplePoints[(mNextSamplePoint-1) & (kSamplePoints-1)];
+		for(int distance = 2; distance < mSampleCount-1; --distance) {
+			const SamplePoint& lastPt = mSamplePoints[(mNextSamplePoint - distance - 1) & (kSamplePoints - 1)];
+			const uint32	tickDelta = frontPt.mTicks - lastPt.mTicks;
+
+			if (!tickDelta)
+				break;
+
+			const uint32	frameDelta = frontPt.mFramesProcessed - lastPt.mFramesProcessed;
+
+			fps100 = (sint32)(((sint64)frameDelta*100000 + (sint32)(tickDelta>>1)) / (sint32)tickDelta);
+
+			if (fps100 > 100000 / distance)
+				break;
+		}
 	}
 
+	wsprintf(buf, "%u.%02u fps", fps100/100, fps100%100);
+	SetDlgItemText(hWnd, IDC_FPS, buf);
+
 	if (GetWindowLong(g_hWnd, GWL_STYLE) & WS_MINIMIZE) {
-		long lNewProgress = (dwProgress*25)/2048;
+		long lNewProgress = (nProgress*25)/2048;
 
 		if (iLastTitleMode != TITLE_MINIMIZED || lLastTitleProgress != lNewProgress) {
-			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING_MINIMIZED, lNewProgress, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
+			guiSetTitleW(g_hWnd, IDS_TITLE_DUBBING_MINIMIZED, lNewProgress, VDFileSplitPath(g_szInputAVIFile));
 
 			iLastTitleMode = TITLE_MINIMIZED;
 			lLastTitleProgress = lNewProgress;
@@ -366,21 +408,21 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	} else {
 		if (iLastTitleMode != TITLE_NORMAL) {
 			iLastTitleMode = TITLE_NORMAL;
-			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
+			guiSetTitleW(g_hWnd, IDS_TITLE_DUBBING, VDFileSplitPath(g_szInputAVIFile));
 		}
 	}
 }
 
 ///////////////////////////////////
 
-BOOL APIENTRY DubStatus::StatusMainDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK DubStatus::StatusMainDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	DubStatus *thisPtr = (DubStatus *)GetWindowLongPtr(hdlg, DWLP_USER);
 
     switch (message)
     {
         case WM_INITDIALOG:
 			{
-				SetWindowLong(hdlg, DWL_USER, lParam);
+				SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
 				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
@@ -398,14 +440,14 @@ BOOL APIENTRY DubStatus::StatusMainDlgProc( HWND hdlg, UINT message, UINT wParam
 
 
 
-BOOL APIENTRY DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	DubStatus *thisPtr = (DubStatus *)GetWindowLongPtr(hdlg, DWLP_USER);
 
     switch (message)
     {
         case WM_INITDIALOG:
 			{
-				SetWindowLong(hdlg, DWL_USER, lParam);
+				SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
 				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
@@ -573,14 +615,14 @@ BOOL APIENTRY DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, UINT wPara
     return FALSE;
 }
 
-BOOL APIENTRY DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	DubStatus *thisPtr = (DubStatus *)GetWindowLongPtr(hdlg, DWLP_USER);
 
     switch (message)
     {
         case WM_INITDIALOG:
 			{
-				SetWindowLong(hdlg, DWL_USER, lParam);
+				SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
 				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
@@ -609,14 +651,14 @@ BOOL APIENTRY DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, UINT wParam
     return FALSE;
 }
 
-BOOL APIENTRY DubStatus::StatusLogDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK DubStatus::StatusLogDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	DubStatus *thisPtr = (DubStatus *)GetWindowLongPtr(hdlg, DWLP_USER);
 
     switch (message)
     {
         case WM_INITDIALOG:
 			{
-				SetWindowLong(hdlg, DWL_USER, lParam);
+				SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
 				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
@@ -645,7 +687,7 @@ const char * const g_szDubPriorities[]={
 		"Highest",
 };
 
-BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
+INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
 
 	static struct DubStatusTabs {
 		LPTSTR	rsrc;
@@ -658,7 +700,7 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 		{	MAKEINTRESOURCE(IDD_DUBBING_LOG),	"Log",		StatusLogDlgProc	},
 	};
 
-	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+	DubStatus *thisPtr = (DubStatus *)GetWindowLongPtr(hdlg, DWLP_USER);
 	HWND hwndItem;
 	RECT r, r2;
 	int i;
@@ -671,10 +713,13 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 			{
 				long xoffset, yoffset;
 
-				SetWindowLong(hdlg, DWL_USER, lParam);
+				SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
 
 				thisPtr->hwndStatus = hdlg;
+
+				// must do this before any timer requests occur
+				thisPtr->mStartTime		= VDGetCurrentTick();
 
 				// Initialize tab window
 
@@ -735,11 +780,6 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 
 				thisPtr->statTimer = SetTimer(hdlg, 1, 500, NULL);
 				SendMessage(GetDlgItem(hdlg, IDC_PROGRESS), PBM_SETRANGE, 0, MAKELPARAM(0, 8192));
-				thisPtr->dwStartTime	= GetTickCount();
-				thisPtr->lastFrame		= 0;
-				thisPtr->lFrameDiff1	= 0;
-				thisPtr->dwTicks		= 0;
-				thisPtr->dwLastTicks1	= 0;
 
 				CheckDlgButton(hdlg, IDC_DRAW_INPUT, thisPtr->opt->video.fShowInputFrame);
 				CheckDlgButton(hdlg, IDC_DRAW_OUTPUT, thisPtr->opt->video.fShowOutputFrame);
@@ -751,7 +791,7 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 
 				SendMessage(hwndItem, CB_SETCURSEL, thisPtr->iPriority-1, 0);
 
-				guiSetTitle(hdlg, IDS_TITLE_STATUS, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
+				guiSetTitleW(hdlg, IDS_TITLE_STATUS, VDFileSplitPath(g_szInputAVIFile));
 
 			}
 			thisPtr->mModelessDialogNode.hdlg = hdlg;
@@ -776,26 +816,29 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 				SendMessage(thisPtr->hwndStatusChild, WM_TIMER, 0, 0);
 
 			{
-				DWORD dwProgress;
-
-				LONG	totalVSamples	= thisPtr->pvinfo->end_proc_dst;
-				LONG	totalASamples	= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetLength() : 0;
-				LONG	curVSample		= thisPtr->pvinfo->cur_proc_dst;
-				LONG	curASample		= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetSampleCount() : 0;
+				sint64	totalVSamples	= thisPtr->pvinfo->end_proc_dst;
+				sint64	totalASamples	= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetLength() : 0;
+				sint64	curVSample		= thisPtr->pvinfo->cur_proc_dst;
+				sint64	curASample		= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetSampleCount() : 0;
 
 				/////////////
 
 				if (curVSample<0)
 					curVSample = 0;
 
-				dwProgress = (curVSample>totalVSamples ? 4096 : MulDiv(curVSample, 4096, totalVSamples))
-							+(curASample>totalASamples ? 4096 : MulDiv(curASample, 4096, totalASamples));
+				int nProgress = 0;
+				
+				if (totalVSamples && !thisPtr->pvinfo->fAudioOnly)
+					nProgress += curVSample>=totalVSamples ? 4096 : (int)((curVSample << 12) / totalVSamples);
 
-				if (!totalASamples || !totalVSamples || thisPtr->pvinfo->fAudioOnly) dwProgress *= 2;
+				if (totalASamples)
+					nProgress += curASample>totalASamples ? 4096 : (int)((curASample << 12) / totalASamples);
 
-				thisPtr->mProgress = dwProgress;
+				if (!totalASamples || !totalVSamples || thisPtr->pvinfo->fAudioOnly) nProgress *= 2;
 
-				SendMessage(GetDlgItem(hdlg, IDC_PROGRESS), PBM_SETPOS,	(WPARAM)dwProgress, 0);
+				thisPtr->mProgress = nProgress;
+
+				SendMessage(GetDlgItem(hdlg, IDC_PROGRESS), PBM_SETPOS,	(WPARAM)nProgress, 0);
 			}
 
 			thisPtr->pDubber->UpdateFrames();
@@ -886,7 +929,7 @@ void DubStatus::NotifyNewFrame(long f) {
 	dwFrameSizes[(lFrameLastIndex++)&(MAX_FRAME_SIZES-1)] = (DWORD)f;
 }
 
-void DubStatus::SetLastPosition(LONG pos) {
+void DubStatus::SetLastPosition(VDPosition pos) {
 		if (mpPositionCallback)
 			mpPositionCallback(
 					pvinfo->start_src,

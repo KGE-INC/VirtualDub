@@ -27,23 +27,84 @@
 #include "resource.h"
 #include "filter.h"
 #include <vd2/system/cpuaccel.h>
-#include "resample.h"
 #include "gui.h"
 
 /////////////////////////////////////////////////////////////////////
 
 #define USE_ASM
 
+#ifdef _MSC_VER
+	#pragma warning(disable: 4799)		// function has no EMMS instruction
+#endif
+
 /////////////////////////////////////////////////////////////////////
 
 extern HINSTANCE g_hInst;
 
-typedef struct RotateRow {
-	int leftzero, left, right, rightzero;
-	__int64 xaccum_left, yaccum_left;
-} RotateRow;
+namespace {
+	//	void MakeCubic4Table(
+	//		int *table,			pointer to 256x4 int array
+	//		double A,			'A' value - determines characteristics
+	//		mmx_table);			generate interleaved table
+	//
+	//	Generates a table suitable for cubic 4-point interpolation.
+	//
+	//	Each 4-int entry is a set of four coefficients for a point
+	//	(n/256) past y[1].  They are in /16384 units.
+	//
+	//	A = -1.0 is the original VirtualDub bicubic filter, but it tends
+	//	to oversharpen video, especially on rotates.  Use A = -0.75
+	//	for a filter that resembles Photoshop's.
 
-typedef struct MyFilterData {
+
+	void MakeCubic4Table(int *table, double A, bool mmx_table) throw() {
+		int i;
+
+		for(i=0; i<256; i++) {
+			double d = (double)i / 256.0;
+			int y1, y2, y3, y4, ydiff;
+
+			// Coefficients for all four pixels *must* add up to 1.0 for
+			// consistent unity gain.
+			//
+			// Two good values for A are -1.0 (original VirtualDub bicubic filter)
+			// and -0.75 (closely matches Photoshop).
+
+			y1 = (int)floor(0.5 + (        +     A*d -       2.0*A*d*d +       A*d*d*d) * 16384.0);
+			y2 = (int)floor(0.5 + (+ 1.0             -     (A+3.0)*d*d + (A+2.0)*d*d*d) * 16384.0);
+			y3 = (int)floor(0.5 + (        -     A*d + (2.0*A+3.0)*d*d - (A+2.0)*d*d*d) * 16384.0);
+			y4 = (int)floor(0.5 + (                  +           A*d*d -       A*d*d*d) * 16384.0);
+
+			// Normalize y's so they add up to 16384.
+
+			ydiff = (16384 - y1 - y2 - y3 - y4)/4;
+			_ASSERT(ydiff > -16 && ydiff < 16);
+
+			y1 += ydiff;
+			y2 += ydiff;
+			y3 += ydiff;
+			y4 += ydiff;
+
+			if (mmx_table) {
+				table[i*4 + 0] = table[i*4 + 1] = (y2<<16) | (y1 & 0xffff);
+				table[i*4 + 2] = table[i*4 + 3] = (y4<<16) | (y3 & 0xffff);
+			} else {
+				table[i*4 + 0] = y1;
+				table[i*4 + 1] = y2;
+				table[i*4 + 2] = y3;
+				table[i*4 + 3] = y4;
+			}
+		}
+	}
+
+	struct RotateRow {
+		int leftzero, left, right, rightzero;
+		sint64 xaccum_left, yaccum_left;
+	};
+}
+
+
+struct VDRotate2FilterData {
 	int angle;
 	int filtmode;
 
@@ -51,8 +112,8 @@ typedef struct MyFilterData {
 
 	IFilterPreview *ifp;
 
-	__int64	u_step;
-	__int64	v_step;
+	sint64	u_step;
+	sint64	v_step;
 
 	RotateRow *rows;
 	int *coeff_tbl;
@@ -62,7 +123,7 @@ typedef struct MyFilterData {
 
 	bool	fExpandBounds;
 	
-} MyFilterData;
+};
 
 static const char *const szModeStrings[]={
 	"point",
@@ -142,9 +203,10 @@ static inline Pixel cc(const Pixel *yptr, const int *tbl) {
 #undef GRN
 #undef BLU
 
+#ifdef _M_IX86
 static Pixel32 __declspec(naked) cc_MMX(const Pixel32 *src, const int *table) {
 
-	static const __int64 x0000200000002000 = 0x0000200000002000i64;
+	static const sint64 x0000200000002000 = 0x0000200000002000i64;
 
 	//	[esp + 4]	src
 	//	[esp + 8]	table
@@ -216,6 +278,7 @@ static inline Pixel32 bicubic_interp_MMX(const Pixel32 *src, PixOffset pitch, un
 
 	return cc_MMX(x, table + coy*4);
 }
+#endif
 
 static inline Pixel32 bicubic_interp(const Pixel32 *src, PixOffset pitch, unsigned long cox, unsigned long coy, const int *table) {
 	Pixel32 x[4];
@@ -238,13 +301,13 @@ static Pixel32 ColorRefToPixel32(COLORREF rgb) {
 }
 
 static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
-	const MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-	__int64 xaccum, yaccum;
+	const VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
+	sint64 xaccum, yaccum;
 	Pixel32 *src, *dst, pixFill;
 	PixDim w, h;
 	const RotateRow *rr = mfd->rows;
-	const __int64 du = mfd->u_step;
-	const __int64 dv = mfd->v_step;
+	const sint64 du = mfd->u_step;
+	const sint64 dv = mfd->v_step;
 
 	unsigned long Ustep, Vstep;
 	unsigned long UVintstepV, UVintstepnoV;
@@ -481,20 +544,21 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			w = fa->dst.w - (rr->leftzero + rr->left + rr->right + rr->rightzero);
 			if (w) {
-				__int64 xa = xaccum;
-				__int64 ya = yaccum;
+				sint64 xa = xaccum;
+				sint64 ya = yaccum;
 
 				src = (Pixel32*)((char *)fa->src.data + (int)(xa>>32)*4 + (int)(ya>>32)*fa->src.pitch);
 
 				xaccum += du * w;
 				yaccum += dv * w;
 
+#ifdef _M_IX86
 				if (MMX_enabled)
 					do {
 						*dst++ = bicubic_interp_MMX(src, fa->src.pitch, (unsigned long)xa, (unsigned long)ya, mfd->coeff_tbl);
 
-						xa = (__int64)(unsigned long)xa + Ustep;
-						ya = (__int64)(unsigned long)ya + Vstep;
+						xa = (sint64)(unsigned long)xa + Ustep;
+						ya = (sint64)(unsigned long)ya + Vstep;
 
 						src += (xa>>32) + (ya>>32 ? UVintstepV : UVintstepnoV);
 
@@ -502,11 +566,12 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 						ya = (unsigned long)ya;
 					} while(--w);
 				else
+#endif
 					do {
 						*dst++ = bicubic_interp(src, fa->src.pitch, (unsigned long)xa, (unsigned long)ya, mfd->coeff_tbl);
 
-						xa = (__int64)(unsigned long)xa + Ustep;
-						ya = (__int64)(unsigned long)ya + Vstep;
+						xa = (sint64)(unsigned long)xa + Ustep;
+						ya = (sint64)(unsigned long)ya + Vstep;
 
 						src += (xa>>32) + (ya>>32 ? UVintstepV : UVintstepnoV);
 
@@ -571,14 +636,16 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 	} while(--h);
 
+#ifndef _M_AMD64
 	if (MMX_enabled)
 		__asm emms
+#endif
 
 	return 0;
 }
 
 static long rotate2_param(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 	int destw, desth;
 
 	if (mfd->fExpandBounds) {
@@ -609,14 +676,14 @@ static long rotate2_param(FilterActivation *fa, const FilterFunctions *ff) {
 	return FILTERPARAM_SWAP_BUFFERS;
 }
 
-static BOOL APIENTRY rotate2DlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK rotate2DlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	static const char * const szModes[]={
 		"Point sampling",
 		"Bilinear - 2x2",
 		"Bicubic - 4x4",
 	};
 
-	MyFilterData *mfd = (struct MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+	VDRotate2FilterData *mfd = (struct VDRotate2FilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 	HWND hwndItem;
 
     switch (message)
@@ -626,8 +693,8 @@ static BOOL APIENTRY rotate2DlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 				char buf[32];
 				int i;
 
-				mfd = (struct MyFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, lParam);
+				mfd = (struct VDRotate2FilterData *)lParam;
+				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 				sprintf(buf, "%.3f", (double)mfd->angle * (360.0 / 4294967296.0));
 				SetDlgItemText(hDlg, IDC_ANGLE, buf);
@@ -722,8 +789,8 @@ static BOOL APIENTRY rotate2DlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 }
 
 static int rotate2_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-	MyFilterData mfd2 = *mfd;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
+	VDRotate2FilterData mfd2 = *mfd;
 	int ret;
 
 	mfd->hbrColor = NULL;
@@ -743,17 +810,17 @@ static int rotate2_config(FilterActivation *fa, const FilterFunctions *ff, HWND 
 ///////////////////////////////////////////
 
 static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
 	// Compute step parameters.
 
 	double ang = mfd->angle * (3.14159265358979323846 / 2147483648.0);
 	double ustep = cos(ang);
 	double vstep = -sin(ang);
-	__int64 du, dv;
+	sint64 du, dv;
 
-	mfd->u_step = du = (__int64)floor(ustep*4294967296.0 + 0.5);
-	mfd->v_step = dv = (__int64)floor(vstep*4294967296.0 + 0.5);
+	mfd->u_step = du = (sint64)floor(ustep*4294967296.0 + 0.5);
+	mfd->v_step = dv = (sint64)floor(vstep*4294967296.0 + 0.5);
 
 	if (!(mfd->rows = (RotateRow *)callocmem(sizeof(RotateRow), fa->dst.h)))
 		return 1;
@@ -761,9 +828,9 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 	// It's time for Mr.Bonehead!!
 
 	int x0, x1, x2, x3, y;
-	__int64 xaccum, yaccum;
-	__int64 xaccum_low, yaccum_low, xaccum_high, yaccum_high, xaccum_base, yaccum_base;
-	__int64 xaccum_low2, yaccum_low2, xaccum_high2, yaccum_high2;
+	sint64 xaccum, yaccum;
+	sint64 xaccum_low, yaccum_low, xaccum_high, yaccum_high, xaccum_base, yaccum_base;
+	sint64 xaccum_low2, yaccum_low2, xaccum_high2, yaccum_high2;
 	RotateRow *rr = mfd->rows;
 
 	// Compute allowable source bounds.
@@ -813,7 +880,7 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 	}
 
 	for(y=0; y<fa->dst.h; y++) {
-		__int64 xa, ya;
+		sint64 xa, ya;
 
 		xa = xaccum;
 		ya = yaccum;
@@ -877,7 +944,7 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 }
 
 static int rotate2_end(FilterActivation *fa, const FilterFunctions *ff) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
 	freemem(mfd->rows); mfd->rows = NULL;
 	freemem(mfd->coeff_tbl); mfd->coeff_tbl = NULL;
@@ -886,7 +953,7 @@ static int rotate2_end(FilterActivation *fa, const FilterFunctions *ff) {
 }
 
 static void rotate2_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
 	sprintf(buf, " (%.3f\xb0, %s, #%06X%s)",
 			mfd->angle * (360.0 / 4294967296.0),
@@ -897,7 +964,7 @@ static void rotate2_string(const FilterActivation *fa, const FilterFunctions *ff
 
 static void rotate2_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
 	FilterActivation *fa = (FilterActivation *)lpVoid;
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
 	mfd->angle		= argv[0].asInt()<<8;
 	mfd->filtmode	= argv[1].asInt();
@@ -920,7 +987,7 @@ static CScriptObject rotate2_obj={
 };
 
 static bool rotate2_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
-	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
 	_snprintf(buf, buflen, "Config(%d, %d, 0x%06X, %d)", (mfd->angle+0x80)>>8, mfd->filtmode,
 		ColorRefToPixel32(mfd->rgbColor), mfd->fExpandBounds?1:0);
@@ -937,7 +1004,7 @@ FilterDefinition filterDef_rotate2={
 #endif
 		,
 	NULL,NULL,
-	sizeof(MyFilterData),
+	sizeof(VDRotate2FilterData),
 	NULL,NULL,
 	rotate2_run,
 	rotate2_param,

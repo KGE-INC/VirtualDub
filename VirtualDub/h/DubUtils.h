@@ -19,76 +19,23 @@ int VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr);
 
 
 ///////////////////////////////////////////////////////////////////////////
-//
-//	VDFormatStruct
-//
-//	VDFormatStruct describes an extensible format structure, such as
-//	BITMAPINFOHEADER or WAVEFORMATEX, without the pain-in-the-butt
-//	casting normally associated with one.
-//
-///////////////////////////////////////////////////////////////////////////
 
-template<class T>
-class VDFormatStruct {
+class VDDubAutoThreadLocation {
 public:
-	typedef size_t			size_type;
-	typedef T				value_type;
-
-	VDFormatStruct() : mpMemory(NULL), mSize(0) {}
-
-	VDFormatStruct(const T *pStruct, size_t len) : mSize(len), mpMemory((T*)malloc(len)) {
-		memcpy(mpMemory, pStruct, len);
+	VDDubAutoThreadLocation(const char *volatile& locationVar, const char *location)
+		: mLocationVar(locationVar)
+	{
+		mpOldLocation = mLocationVar;
+		mLocationVar = location;
 	}
 
-	VDFormatStruct(const VDFormatStruct<T>& src) : mSize(src.mSize), mpMemory((T*)malloc(src.mSize)) {
-		memcpy(mpMemory, pStruct, len);
+	~VDDubAutoThreadLocation() {
+		mLocationVar = mpOldLocation;
 	}
 
-	~VDFormatStruct() {
-		free(mpMemory);
-	}
-
-	bool		empty() const		{ return !mpMemory; }
-	size_type	size() const		{ return mSize; }
-
-	T&	operator *() const	{ return *(T *)mpMemory; }
-	T*	operator->() const	{ return (T *)mpMemory; }
-
-	VDFormatStruct<T>& operator=(const VDFormatStruct<T>& src) {
-		assign(src.mpMemory, src.mSize);
-		return *this;
-	}
-
-	void assign(const T *pStruct, size_type len) {
-		if (mSize < len) {
-			free(mpMemory);
-			mpMemory = NULL;
-			mpMemory = (T *)malloc(len);
-			mSize = len;
-		}
-
-		memcpy(mpMemory, pStruct, len);
-	}
-
-	void clear() {
-		free(mpMemory);
-		mpMemory = NULL;
-		mSize = 0;
-	}
-
-	void resize(size_type len) {
-		if (mSize < len) {
-			mpMemory = (T *)realloc(mpMemory, len);
-			mSize = len;
-		}
-	}
-
-protected:
-	size_type	mSize;
-	T *mpMemory;
+	const char *volatile& mLocationVar;
+	const char *mpOldLocation;
 };
-
-
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -187,20 +134,21 @@ protected:
 
 class VDRenderFrameMap {
 public:
-	void		Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect);
+	void		Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect);
 
 	VDPosition	size() const { return mFrameMap.size(); }
 
 	VDPosition	TimelineFrame(VDPosition outFrame) const {
-		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[outFrame].first : -1;
+		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[(tFrameMap::size_type)outFrame].first : -1;
 	}
 
 	VDPosition	DisplayFrame(VDPosition outFrame) const {
-		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[outFrame].second : -1;
+		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[(tFrameMap::size_type)outFrame].second : -1;
 	}
 
 protected:
-	std::vector<std::pair<VDPosition, VDPosition> > mFrameMap;
+	typedef std::vector<std::pair<VDPosition, VDPosition> > tFrameMap;
+	tFrameMap mFrameMap;
 	VDPosition mMaxFrame;
 };
 

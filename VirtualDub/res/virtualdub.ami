@@ -1,0 +1,287 @@
+// The IDs below are deliberately not exposed via a header file to avoid having to recompile
+// the entire app when editing strings.
+
+stringset 1 {		// kVDST_Dub
+	message 0, "Dub: Output segment overflow occurred -- segment byte size may be too low.";
+	message 1, "Dub: Switching to new segment.";
+	message 2, "Dub: I/O thread has not cycled for thirty seconds -- possible livelock. (Thread action: %[1]hs) (Current address: %[0]p)";
+	message 3, "Dub: Processing thread has not cycled for thirty seconds -- possible livelock. (Thread action: %[1]hs) (Current address: %[0]p)";
+	message 4, "Dub: Video codec produced delay frame while trying to flush codec B-frame delay! Ignoring to avert possible infinite loop.";
+	message 5, "Dub: Video codec is requesting B-frame delay %d frames longer than end of video! Stopping video stream to avert possible infinite loop.";
+	message 6, "Dub: Fast recompress mode started with format: %hs.";
+}
+
+stringset 2 {		// kVDST_AVIReadHandler
+	message 0, "AVI: Avisynth detected. Extended error handling enabled.";
+	message 1, "AVI: OpenDML hierarchical index detected on stream %d.";
+	message 2, "AVI: Index not found or damaged -- reconstructing via file scan.";
+	message 3, "AVI: Invalid chunk detected at %lld. Enabling aggressive recovery mode.";
+	message 4, "AVI: Invalid block found at %lld -- disabling streaming.";
+	message 5, "AVI: Stream %d has an invalid sample rate. Substituting %lg samples/sec as a placeholder.";
+	message 6, "AVI: Palette changes detected. These are not currently supported -- color palette errors may appear in the output.";
+}
+
+stringset 3 {		// kVDST_VideoSource
+	message 0, "AVI: Resuming normal decoding (concealment off) at frame %u";
+	message 1, "AVI: Decoding error on frame %u -- attempting to bypass.";
+	message 2, "AVI: Frame %u is too short (%d < %d bytes) but decoding anyway.";
+	message 3, "Video codec \"%.64hs\" is buggy and returned to VirtualDub with MMX active. Applying workaround.";
+	message 4, "AVI: Video format structure in file is abnormally large (%d bytes > 16K). Truncating to %d bytes.";
+	message 5, "Video codec \"%.128ls\" modified the video format passed to it by VirtualDub.  This indicates a codec "
+		"bug that may cause the Windows video codec system to malfunction.  Please remove the errant codec "
+		"or replace it with an updated version from the original vendor.";
+	message 6, "Video codec \"%.128ls\" is claiming to be able to decompress formats that it does not actually "
+		"support. This can cause the Windows video codec system to malfunction and may cause applications "
+		"to crash.  Please remove the errant codec or replace it with an updated version from the original vendor.";
+}
+
+stringset 4 {		// kVDST_InputFileAVI
+	message 0, "AVI: Opening file \"%ls\"";
+	message 1, "AVI: Keyframe flag reconstruction was not specified in open options and the video stream "
+						"is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.";
+	message 2, "AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.";
+}
+
+stringset 5 {		// kVDST_Mpeg
+	message 0, "MPEGAudio: Concealing decoding error on frame %lu: %hs.";
+	message 1, "MPEG: Opening file \"%ls\"";
+	message 2, "MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld, from %lld to %lld. This may indicate an improper join.";
+	message 3, "MPEG: File ended unexpectedly during parsing at byte position %lld -- file may be damaged or incomplete.";
+}
+
+stringset 6 {		// kVDST_AudioSource
+	message 0, "AVI: Truncated or invalid MP3 audio format detected (%d bytes, should be %d). Attempting to fix.";
+}
+
+stringset 7 {		// kVDST_ProjectUI
+	message 0, "%s";
+	message 1, "%s - [%s]";
+	message 2, "%s - [%s] (render in progress)";
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+stringset 1000 {
+	message 10, "OK";
+	message 11, "Cancel";
+	message 12, "Save";
+}
+
+enum {
+	kID_OK		= 10,
+	kID_Cancel	= 11,
+	kID_Save	= 12
+};
+
+enum {
+	kTemplateOKCancel = 1000
+};
+
+
+
+template kTemplateOKCancel {
+	using valign=bottom {
+		set 0 : align=right, spacing=3 {
+			now minw=50, minh=14;
+			button kID_OK, [1000, 0];
+			button kID_Cancel, [1000, 1];
+		}
+	}
+}
+
+dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
+	set 0: vertical {
+		set 0 : spacing=5 {
+			now fill;
+
+			listbox 100 : minw=50, sunken, align=left {
+				listitem "Main";
+				listitem "Display";
+				listitem "Scene";
+				listitem "CPU";
+				listitem "AVI";
+				listitem "Timeline";
+			}
+
+			pageset 101 : value={@100} {
+				page 1010;
+				page 1011;
+				page 1012;
+				page 1013;
+				page 1014;
+				page 1015;
+			}
+		}
+
+		using valign=bottom {
+			set 0 : align=right, spacing=3 {
+				now minw=50, minh=14;
+				button kID_Save, [1000, 12];
+				button kID_OK, [1000, 10];
+				button kID_Cancel, [1000, 11];
+			}
+		}
+	}
+}
+
+dialog 1010, "" : fill, child {
+	now align=fill;
+	set 0 : vertical {
+		group 0, "Quick preview defaults" {
+			grid 0 : spacing=2 {
+				now valign=fill;
+				column 0: minw=100;
+				column 1: affinity=1;
+
+				label 0, "Output color depth";
+				combobox 100 {
+					listitem "Fastest (16-bit)";
+					listitem "Use output setting";
+					listitem "Match display depth";
+					listitem "16-bit (HiColor)";
+					listitem "24-bit (TrueColor)";
+				}
+
+				nextrow;
+
+				label 0, "Process priority";
+				combobox 101 {
+					listitem "Default";
+					listitem "Idle";
+					listitem "Lowest";
+					listitem "Even lower";
+					listitem "Lower";
+					listitem "Normal";
+					listitem "Higher";
+					listitem "Even higher";
+					listitem "Highest";
+				}
+			}
+		}
+
+		group 0, "Dub defaults" {
+			grid 0 : spacing=2 {
+				now valign=fill;
+				column 0: minw=100;
+				column 1: affinity=1;
+
+				label 0, "Process priority";
+				combobox 102 {
+					listitem "Default";
+					listitem "Idle";
+					listitem "Lowest";
+					listitem "Even lower";
+					listitem "Lower";
+					listitem "Normal";
+					listitem "Higher";
+					listitem "Even higher";
+					listitem "Highest";
+				}
+			}
+		}
+
+		group 0, "File options" {
+			checkbox 103, "Automatically add extension to filenames when saving";
+		}
+	}
+}
+
+dialog 1011, "" : fill, child {
+	now align=fill;
+	group 0, "Display options" {
+		set 0 : vertical {
+			now valign=top, align=left;
+			checkbox 100, "Enable dithering for 16-bit displays";
+			checkbox 101, "Use DirectX for display panes";
+			now marginl=20, enable = {@101};
+			checkbox 102, "Use DirectX when Terminal Services is active (may cause display corruption)";
+
+			// it is NOT a good idea to enable both Direct3D and OpenGL
+			checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
+			checkbox 104, "Use OpenGL" : enable={@101 && !@103};
+		}
+	}
+}
+
+dialog 1012, "" : fill, child {
+	now align=fill;
+	group 0, "Scene change thresholds" {
+		grid 0 : spacing=2 {
+			now valign=fill;
+			column 0: affinity=0, minw=80;
+			column 1: affinity=50;
+			column 2: affinity=50;
+			column 3: affinity=0, minw=30;
+			label 0, "Interframe (cut)";
+			trackbar 100 : colspan=2, minh=16;
+			label 101, "val";
+			nextrow;
+			label 0, "Intraframe (fade)";
+			trackbar 200 : colspan=2, minh=16;
+			label 201, "val";
+			nextrow;
+			label 0, "Less sensitive" : align=left, column=1;
+			label 0, "More sensitive" : align=right;
+		}
+	}
+}
+
+dialog 1013, "" : fill, child {
+	now align=fill;
+	group 0, "Performance optimizations" {
+		set 0: vertical {
+			now valign=top, align=fill;
+			option 100, "Enable all available CPU-specific optimizations";
+			option 101, "Use only specific CPU extensions";
+			now marginl=20;
+			grid 102 : enable={@100==1}, vertical {
+				checkbox 200, "FPU";
+				checkbox 201, "MMX";
+				checkbox 202, "Integer SSE";
+				checkbox 203, "SSE";
+				checkbox 204, "SSE2";
+				nextrow;
+				checkbox 205, "3DNow!";
+				checkbox 206, "3DNow! 2";
+			}
+		}
+	}
+}
+
+dialog 1014, "" : fill, child {
+	now align=fill;
+	group 0, "AVI options" {
+		set 0: vertical {
+			now valign=top, align=left;
+			checkbox 100, "Use 1GB instead of 2GB as threshold for OpenDML indexing";
+			checkbox 101, "Disable auto-correction of data rate for MPEG layer III audio streams";
+			checkbox 102, "Directly decode uncompressed YCbCr (YUV) sources";
+		}
+	}
+}
+
+dialog 1015, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Timeline format" {
+			set 0: vertical, spacing=3 {
+				textedit 200, "" : sunken;
+				textarea 0,	"%f: frame\n"
+							"%h, %m, %s, %p, %t: hour, minute, second, picture, tick\n"
+							"%c: frame type\n"
+							"Use capital versions for source values.\n"
+							"\n"
+							"%B, %L: byte position and length of source frame\n"
+							"%D: distance from last key frame\n"
+							: minh=100, readonly;
+			}
+		}
+	}
+}
+
+
+
+// output window for resampler benchmark
+dialog 9000, "Output window" : minw=350, aspect=140, valign=fill+expand {
+	textarea 100, "" : fill;
+}

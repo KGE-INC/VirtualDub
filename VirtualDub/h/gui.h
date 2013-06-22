@@ -24,14 +24,17 @@
 
 #define IDC_CAPTURE_WINDOW		(500)
 #define IDC_STATUS_WINDOW		(501)
-#define IDC_POSITION			(502)
+
+class IVDPositionControl;
+class VDTimeline;
 
 class ModelessDlgNode : public ListNode2<ModelessDlgNode> {
 public:
 	HWND hdlg;
+	HACCEL	mhAccel;
 
 	ModelessDlgNode() {}
-	ModelessDlgNode(HWND _hdlg) : hdlg(_hdlg) {}
+	ModelessDlgNode(HWND _hdlg, HACCEL hAccel = NULL) : hdlg(_hdlg), mhAccel(hAccel) {}
 };
 
 void guiOpenDebug();
@@ -39,19 +42,24 @@ void guiOpenDebug();
 void guiDlgMessageLoop(HWND hDlg);
 bool guiCheckDialogs(LPMSG pMsg);
 void guiAddModelessDialog(ModelessDlgNode *pmdn);
+void VDInstallModelessDialogHookW32();
+void VDDeinstallModelessDialogHookW32();
 
 void guiRedoWindows(HWND hWnd);
 void guiSetStatus(char *format, int nPart, ...);
 void guiSetTitle(HWND hWnd, UINT uID, ...);
+void guiSetTitleW(HWND hWnd, UINT uID, ...);
 void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, UINT *iTranslator);
 void guiOffsetDlgItem(HWND hdlg, UINT id, LONG xDelta, LONG yDelta);
 void guiResizeDlgItem(HWND hdlg, UINT id, LONG x, LONG y, LONG dx, LONG dy);
 void guiSubclassWindow(HWND hwnd, WNDPROC newproc);
 
-void guiPositionInitFromStream(HWND hWndPosition);
-LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam);
-LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam);
-void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w=0, int h=0);
+void guiPositionInitFromStream(IVDPositionControl *pc);
+void VDTranslatePositionCommand(HWND hwnd, WPARAM wParam, LPARAM lParam);
+bool VDHandleTimelineCommand(IVDPositionControl *pc, VDTimeline *pTimeline, UINT cmd);
+VDPosition guiPositionHandleCommand(WPARAM wParam, IVDPositionControl *pc);
+VDPosition guiPositionHandleNotify(LPARAM lParam, IVDPositionControl *pc);
+void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w=0, int h=0);
 
 bool guiChooseColor(HWND hwnd, COLORREF& rgbOld);
 
@@ -93,7 +101,7 @@ public:
 protected:
 	VDAutoLogger		mLogger;
 
-	static BOOL CALLBACK DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+	static INT_PTR CALLBACK DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -102,12 +110,13 @@ class VDDialogBaseW32 {
 public:
 	bool IsActive() { return mhdlg != 0; }
 	LRESULT ActivateDialog(VDGUIHandle hParent);
+	LRESULT ActivateDialogDual(VDGUIHandle hParent);
 	bool CreateModeless(VDGUIHandle hParent);
 	void DestroyModeless();
 protected:
 	VDDialogBaseW32(UINT dlgid);
-	static BOOL CALLBACK StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	virtual BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+	static INT_PTR CALLBACK StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	virtual INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
 	void End(LRESULT res);
 
 	HWND		mhdlg;

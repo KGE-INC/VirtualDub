@@ -24,6 +24,12 @@
 
 extern HINSTANCE g_hInst;
 
+#ifdef _M_AMD64
+	#define VD_PTR_08lx	"%08I64x"
+#else
+	#define VD_PTR_08lx	"%08x"
+#endif
+
 #define MAX_INSTRUCTIONS (1024)
 
 // WARNING: This is called from crash-time conditions!  No malloc() or new!!!
@@ -34,7 +40,7 @@ extern HINSTANCE g_hInst;
 // Also, we keep as much of our initialized data as possible as const.  That way,
 // it is in a write-locked code segment, which can't be overwritten.
 
-char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *source, const unsigned char *pattern, int pattern_len, int bytes, int *sp, char *hp, const unsigned char *&source_end);
+char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *source, const unsigned char *pattern, int pattern_len, int bytes, ptrdiff_t *sp, char *hp, const unsigned char *&source_end);
 
 char *strtack(char *s, const char *t) {
 	while(*s = *t)
@@ -67,6 +73,12 @@ static const char kTarget_lo		= 24;
 static const char kTarget_a			= 25;
 static const char kTarget_ha		= 26;
 static const char kTarget_la		= 27;
+static const char kTarget_r3264		= 28;
+static const char kTarget_r163264	= 29;
+static const char kTarget_ext		= 30;
+
+static const char kTarget_ext_r3264rexX	= 1;
+static const char kTarget_ext_r3264rexB = 2;
 
 static const char kTarget_ap		= (char)224;
 static const char kTarget_p_cs		= (char)225;
@@ -79,6 +91,7 @@ static const char kTarget_p_66		= (char)231;
 static const char kTarget_p_67		= (char)232;
 static const char kTarget_p_F2		= (char)233;
 static const char kTarget_p_F3		= (char)234;
+static const char kTarget_p_rex		= (char)235;
 
 void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
 	const unsigned char *src_limit = src + src_len;
@@ -86,13 +99,13 @@ void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
 
 	// read ruleset count
 	int rulesets = *src++;
-	unsigned char **prstab = (unsigned char **)dst;
+	unsigned *prstab = (unsigned *)dst;
 
-	dst += sizeof(unsigned char *) * (rulesets + 1);
+	dst += sizeof(unsigned) * (rulesets + 1);
 
 	// decompress rulesets sequentially
 	for(int rs=0; rs<rulesets; ++rs) {
-		prstab[rs+1] = dst;
+		prstab[rs+1] = dst - (unsigned char *)_dst;
 
 		const unsigned char *pattern_cache[4][2];
 		const unsigned char *result_cache[4][2];
@@ -176,16 +189,18 @@ void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
 	return dst;
 }
 
-long VDDisasmPack32(const int *src) {
+long VDDisasmPack32(const ptrdiff_t *src) {
 	return src[0] + (src[1]<<8) + (src[2]<<16) + (src[3]<<24);
 }
 
-void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned char *result, const int *sp_base, const unsigned char *source) {
-	static const char *const reg32[8]={"eax","ecx","edx","ebx","esp","ebp","esi","edi"};
-	static const char *const reg16[8]={"ax","cx","dx","bx","sp","bp","si","di"};
-	static const char *const reg8[8]={"al","cl","dl","bl","ah","ch","dh","bh"};
+void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned char *result, const ptrdiff_t *sp_base, const unsigned char *source) {
+	static const char *const reg64[16]={"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8" ,"r9" ,"r10" ,"r11" ,"r12" ,"r13" ,"r14" ,"r15" };
+	static const char *const reg32[16]={"eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"};
+	static const char *const reg16[16]={ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di","r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"};
+	static const char *const reg8a[16]={ "al"," cl", "dl", "bl","spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"};
+	static const char *const reg8 [16]={"al","cl","dl","bl","ah","ch","dh","bh"};
 	static const char *const regmmx[8]={"mm0","mm1","mm2","mm3","mm4","mm5","mm6","mm7"};
-	static const char *const regxmm[8]={"xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7"};
+	static const char *const regxmm[16]={"xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","xmm8","xmm9","xmm10","xmm11","xmm12","xmm13","xmm14","xmm15"};
 	static const char *const regcrn[8]={"cr0","cr1","cr2","cr3","cr4","cr5","cr6","cr7"};
 	static const char *const regdrn[8]={"dr0","dr1","dr2","dr3","dr4","dr5","dr6","dr7"};
 	static const char *const regseg[8]={"es","cs","ss","ds","fs","gs","?6s","?7s"};
@@ -237,7 +252,6 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 				s = strtack(s, sStaticLabels[control_byte-1][arg]);
 			} else {
 				long symoffset = 0;
-				char *s_base = s;
 
 				switch(control_byte) {
 				case kTarget_r1632:
@@ -257,7 +271,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 								);
 					break;
 				case kTarget_x:
-					s += sprintf(s, "%02x", arg);
+					s += sprintf(s, "0%02xh" + ((unsigned char)arg < 0xa0), arg);
 					break;
 				case kTarget_lo:
 					symoffset = VDDisasmPack32(sp_base + c - 1);
@@ -272,7 +286,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					}
 					break;
 				case kTarget_o:
-					s += sprintf(s, "%c%02x", arg&0x80?'-':'+', abs((signed char)arg));
+					s += sprintf(s, "%c%02xh", arg&0x80?'-':'+', abs((signed char)arg));
 					break;
 				case kTarget_la:
 					symoffset = (long)source + VDDisasmPack32(sp_base + c - 1) + pContext->physToVirtOffset;
@@ -289,25 +303,35 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 				case kTarget_s:
 					s = strtack(s, arg_s);
 					break;
+				case kTarget_r3264:
+					s = strtack(s, (pContext->rex & 8 ? reg32 : reg64)[arg + ((pContext->rex & 0x04) << 1)]);
+					break;
+				case kTarget_r163264:
+					s = strtack(s, (pContext->rex & 8 ? reg64 : pContext->bAddressOverride ? reg16 : reg32)[arg + ((pContext->rex & 0x04) << 1)]);
+					break;
+				case kTarget_ext:
+					switch(*result++) {
+					case kTarget_ext_r3264rexX:
+						s = strtack(s, (pContext->bAddressOverride ? reg32 : reg64)[arg + ((pContext->rex & 0x02) << 2)]);
+						break;
+					case kTarget_ext_r3264rexB:
+						s = strtack(s, (pContext->bAddressOverride ? reg32 : reg64)[arg + ((pContext->rex & 0x01) << 3)]);
+						break;
+					}
+					break;
 				}
 
 				if (symoffset && pContext->pSymLookup) {
-					char buf[1024];
-
-					symoffset = pContext->pSymLookup(pContext, (unsigned long)symoffset, buf, sizeof buf - 16);
+					symoffset = pContext->pSymLookup(pContext, (unsigned long)symoffset, s+2, 128);
 
 					if (symoffset >= 0) {
-						int l = strlen(buf);
-						int l2 = s - s_base;
-
+						s[0] = ' ';
+						s[1] = '(';
+						s += 2;
+						while(*s)
+							++s;
 						if (symoffset)
-							l += sprintf(buf+l, "+%02x", symoffset);
-
-						memmove(s_base+l+2, s_base, l2);
-						memcpy(s_base, buf, l);
-						s_base[l] = ' ';
-						s_base[l+1] = '(';
-						s = s_base + l+l2+2;
+							s += sprintf(s, "+%02x", symoffset);
 						*s++ = ')';
 					}
 				}
@@ -330,6 +354,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 			case kTarget_p_67:	pContext->bAddressOverride = true;			break;
 			case kTarget_p_F2:	pContext->bRepnePrefix = true;				break;
 			case kTarget_p_F3:	pContext->bRepePrefix = true;				break;
+			case kTarget_p_rex:	pContext->rex = sp_base[0];					break;
 			}
 		} else
 			*s++ = c;
@@ -338,7 +363,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 	*s = 0;
 }
 
-char *VDDisasmApplyRuleset(VDDisassemblyContext *pContext, const unsigned char *rs, int *sp, char *hp, const unsigned char *source, int bytes, const unsigned char *&source_end) {
+char *VDDisasmApplyRuleset(VDDisassemblyContext *pContext, const unsigned char *rs, ptrdiff_t *sp, char *hp, const unsigned char *source, int bytes, const unsigned char *&source_end) {
 	char *hpr;
 
 	while(rs[0] || rs[1]) {
@@ -361,30 +386,27 @@ char *VDDisasmApplyRuleset(VDDisassemblyContext *pContext, const unsigned char *
 	return NULL;
 }
 
-char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *source, const unsigned char *pattern, int pattern_len, int bytes, int *sp, char *hp, const unsigned char *&source_end) {
-	while(pattern_len) {
+char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *source, const unsigned char *pattern, int pattern_len, int bytes, ptrdiff_t *sp, char *hp, const unsigned char *&source_end) {
+	while(bytes && pattern_len) {
 		if (!pattern[1] && pattern[0]) {
 			if (pattern[0] & 0x80) {
 				int count = pattern[0] & 0x3f;
 
-				if (pattern[0] & 0x40) {
+				if (pattern[0] & 0x40)
 					--source;
-					++bytes;
-				}
 			
 				const unsigned char *src_end;
 
-				hp = VDDisasmApplyRuleset(pContext, pContext->pRuleSystem[count+1], sp, hp, source, bytes, src_end);
+				hp = VDDisasmApplyRuleset(pContext, pContext->pRuleBase + pContext->pRuleSystemOffsets[count+1], sp, hp, source, bytes, src_end);
 
 				if (!hp)
 					return NULL;
 
 				*sp++ = *source;
-				*sp++ = (int)hp;
+				*sp++ = (ptrdiff_t)hp;
 
 				while(*hp++);
 
-				bytes -= (src_end - source);
 				source = src_end;
 			} else if (pattern[0] < 16) {
 				if (pattern[0] > bytes)
@@ -394,7 +416,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 					*sp++ = *source++;
 				}
 
-				bytes -= pattern[0];
+				bytes -= pattern[0]-1;
 			} else {
 				switch(pattern[0]) {
 				case 16:	if (!pContext->bSizeOverride)		return NULL;	break;
@@ -402,14 +424,11 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 				case 18:	if (!pContext->bRepnePrefix)		return NULL;	break;
 				case 19:	if (!pContext->bRepePrefix)			return NULL;	break;
 				case 20:	if (pContext->pszSegmentOverride)	return NULL;	break;
+				case 21:	if (!(pContext->rex & 8))			return NULL;	break;
 				}
 			}
 		} else {
-			if (!bytes)
-				return NULL;
-
 			unsigned char b = *source++;
-			--bytes;
 
 			if ((b & pattern[1]) != pattern[0])
 				return NULL;
@@ -417,6 +436,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 			*sp++ = b;
 		}
 		pattern += 2;
+		--bytes;
 		--pattern_len;
 	}
 
@@ -438,9 +458,10 @@ char *VDDisassemble(VDDisassemblyContext *pvdc, const unsigned char *source, int
 	pvdc->bRepePrefix = false;
 	pvdc->bRepnePrefix = false;
 	pvdc->pszSegmentOverride = NULL;
+	pvdc->rex = 0;
 
 	do {
-		s = VDDisasmApplyRuleset(pvdc, pvdc->pRuleSystem[0], pvdc->stack, pvdc->heap, src2, bytes, src_end);
+		s = VDDisasmApplyRuleset(pvdc, pvdc->pRuleBase + pvdc->pRuleSystemOffsets[0], pvdc->stack, pvdc->heap, src2, bytes, src_end);
 
 		bytes -= (src_end - src2);
 		src2 = src_end;
@@ -497,23 +518,29 @@ bool VDDisasmInit(VDDisassemblyContext *pvdc, const char *pszFilename) {
 	if (src[0] != '[' || src[3] != '|')
 		return false;
 
-	if (memcmp((char *)src + 6, "] VirtualDub disasm module", 26))
+#ifdef _M_AMD64
+	if (memcmp((char *)src + 6, "] VirtualDub disasm module (AMD64:", 34))
 		return false;
+#else
+	if (memcmp((char *)src + 6, "] VirtualDub disasm module (IA32:", 33))
+		return false;
+#endif
 
 	// Check version number
 
-	int write_version = (src[1]-'0')*10 + (src[2] - '0');
+//	int write_version = (src[1]-'0')*10 + (src[2] - '0');
 	int compat_version = (src[4]-'0')*10 + (src[5] - '0');
 
-	if (compat_version > 1)
+	if (compat_version > 2)
 		return false;	// resource is too new for us to load
 
 
 	long packSize = *(long *)((char *)pvdc->pRawBlock + 64);
 	long depackSize = *(long *)((char *)pvdc->pRawBlock + 68);
 
-	pvdc->pRuleSystem = (const unsigned char **)((char *)pvdc->pRawBlock + dwSize);
-	pvdc->stack = (int *)((char *)pvdc->pRuleSystem + depackSize);
+	pvdc->pRuleBase = (const unsigned char *)pvdc->pRawBlock + dwSize;
+	pvdc->pRuleSystemOffsets = (const unsigned *)pvdc->pRuleBase;
+	pvdc->stack = (ptrdiff_t *)((char *)pvdc->pRuleBase + depackSize);
 	pvdc->heap = (char *)(pvdc->stack + 32);
 
 	pvdc->cbExtraData = dwSize - (packSize+72);
@@ -522,7 +549,7 @@ bool VDDisasmInit(VDDisassemblyContext *pvdc, const char *pszFilename) {
 	if (pvdc->cbExtraData)
 		pvdc->pExtraData = (char *)pvdc->pRawBlock + 72 + packSize;
 
-	VDDisasmDecompress(pvdc->pRuleSystem, (unsigned char *)pvdc->pRawBlock + 72, packSize);
+	VDDisasmDecompress((void *)pvdc->pRuleBase, (unsigned char *)pvdc->pRawBlock + 72, packSize);
 
 	return true;
 }
@@ -556,7 +583,7 @@ CodeDisassemblyWindow::CodeDisassemblyWindow(void *_code, long _length, void *_r
 
 	char buf[MAX_PATH];
 
-	vdc.pRuleSystem = NULL;
+	vdc.pRuleBase = NULL;
 	vdc.pSymLookup = NULL;
 	vdc.physToVirtOffset = -(long)_rbaseptr;
 
@@ -564,6 +591,9 @@ CodeDisassemblyWindow::CodeDisassemblyWindow(void *_code, long _length, void *_r
 	if (!VDDisasmInit(&vdc, buf)) {
 #ifdef __INTEL_COMPILER
 		SpliceProgramPath(buf, sizeof buf, "VeedubP4.vdi");
+		VDDisasmInit(&vdc, buf);
+#elif defined(_M_AMD64)
+		SpliceProgramPath(buf, sizeof buf, "Veedub64.vdi");
 		VDDisasmInit(&vdc, buf);
 #else
 		SpliceProgramPath(buf, sizeof buf, "VirtualDub.vdi");
@@ -612,7 +642,7 @@ CodeDisassemblyWindow::~CodeDisassemblyWindow() {
 
 void CodeDisassemblyWindow::parse() {
 	num_ents = 0;
-	if (!vdc.pRuleSystem)
+	if (!vdc.pRuleBase)
 		return;
 
 	unsigned char *ip = (unsigned char *)code;
@@ -659,11 +689,11 @@ long CodeDisassemblyWindow::getInstruction(char *buf, long val) {
 
 	int count;
 
-	unsigned virtAddr = (unsigned)ip - (unsigned)code + (unsigned)abase;
+	uintptr virtAddr = (uintptr)ip - (uintptr)code + (uintptr)abase;
 	int subIndex = val & 0xffff;
 	int left = ipd->len - subIndex * 7;
 
-	buf += sprintf(buf, subIndex ? "          " : "%08lx: ", virtAddr);
+	buf += sprintf(buf, subIndex ? "          " : VD_PTR_08lx": ", virtAddr);
 
 	for(int i=0; i<7; ++i) {
 		if (--left >= 0) {
@@ -681,7 +711,7 @@ long CodeDisassemblyWindow::getInstruction(char *buf, long val) {
 	if (!subIndex) {
 		strcpy(buf, VDDisassemble(&vdc, ip, ipd->len, count));
 
-		if (virtAddr == (unsigned)pFault)
+		if (virtAddr == (uintptr)pFault)
 			strcat(buf, "      <-- FAULT");
 	}
 
@@ -747,7 +777,7 @@ BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 		const unsigned char *src = (const unsigned char *)ipd->ip;
 		int i, left = ipd->len;
 
-		dst += sprintf(dst, "%08lx: ", (long)ipd->ip + vdc.physToVirtOffset);
+		dst += sprintf(dst, VD_PTR_08lx": ", (long)ipd->ip + vdc.physToVirtOffset);
 
 		for(i=0; i<7; ++i)
 			if (--left>=0) {
@@ -783,13 +813,13 @@ BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 	return TRUE;
 }
 
-BOOL CALLBACK CodeDisassemblyWindow::DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CodeDisassemblyWindow *thisPtr = (CodeDisassemblyWindow *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR CALLBACK CodeDisassemblyWindow::DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	CodeDisassemblyWindow *thisPtr = (CodeDisassemblyWindow *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 	switch(msg) {
 
 		case WM_INITDIALOG:
-			SetWindowLong(hDlg, DWL_USER, lParam);
+			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 			thisPtr = (CodeDisassemblyWindow *)lParam;
 
 			{

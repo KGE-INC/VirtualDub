@@ -36,7 +36,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		char buf[256];
 
 		switch(msg) {
@@ -93,9 +93,7 @@ public:
 	}
 
 	uint32 Prepare();
-	void Start();
 	uint32 Run();
-	uint32 Read(unsigned inpin, void *dst, uint32 samples);
 	sint64 Seek(sint64 us);
 
 	void *GetConfigPtr() { return &mConfig; }
@@ -129,33 +127,14 @@ uint32 VDAudioFilterNewRate::Prepare() {
 	return 0;
 }
 
-void VDAudioFilterNewRate::Start() {
-	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
-}
-
 uint32 VDAudioFilterNewRate::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-	const unsigned blocksize = format.mBlockSize;
-	bool bInputRead = false;
-
-	int samples = mpContext->mInputSamples;
 
 	// compute output samples
-	int elems = samples * blocksize;
-	char *dst;
-	
-	samples = 0;
-	if (elems > 0) {
-		dst = mOutputBuffer.LockWrite(elems, elems);
-		samples = elems / blocksize;
-	}
 
+	int samples = mpContext->mCommonSamples;
 	if (!samples) {
-		if (pin.mbEnded && !elems)
+		if (pin.mbEnded && !mpContext->mInputSamples)
 			return kVFARun_Finished;
 
 		return 0;
@@ -163,30 +142,12 @@ uint32 VDAudioFilterNewRate::Run() {
 
 	// read buffer
 
-	unsigned count = blocksize * samples;
-
-	int actual_samples = mpContext->mpInputs[0]->Read(dst, samples, false, kVFARead_Native);
+	int actual_samples = mpContext->mpInputs[0]->Read(mpContext->mpOutputs[0]->mpBuffer, samples, false, kVFARead_Native);
 	VDASSERT(actual_samples == samples);
 
-	mOutputBuffer.UnlockWrite(samples * blocksize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / blocksize;
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
-}
-
-uint32 VDAudioFilterNewRate::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
-	}
-
-	return samples;
 }
 
 sint64 VDAudioFilterNewRate::Seek(sint64 us) {

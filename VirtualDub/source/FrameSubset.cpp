@@ -21,9 +21,10 @@
 #include <vd2/system/error.h>
 
 FrameSubset::FrameSubset() {
+	invalidateCache();
 }
 
-FrameSubset::FrameSubset(int length) {
+FrameSubset::FrameSubset(sint64 length) {
 	addRange(0, length, false);
 }
 
@@ -32,6 +33,7 @@ FrameSubset::~FrameSubset() {
 
 void FrameSubset::clear() {
 	mTimeline.clear();
+	invalidateCache();
 }
 
 void FrameSubset::addFrom(FrameSubset& src) {
@@ -39,11 +41,17 @@ void FrameSubset::addFrom(FrameSubset& src) {
 		addRangeMerge(it->start, it->len, it->bMask);
 }
 
-void FrameSubset::addRange(int start, int len, bool bMask) {
+FrameSubset::iterator FrameSubset::addRange(sint64 start, sint64 len, bool bMask) {
 	mTimeline.push_back(FrameSubsetNode(start, len, bMask));
+	invalidateCache();
+
+	iterator it(mTimeline.end());
+	--it;
+
+	return it;
 }
 
-void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
+void FrameSubset::addRangeMerge(sint64 start, sint64 len, bool bMask) {
 	tTimeline::iterator it(begin()), itEnd(end());
 
 	while(it != itEnd) {
@@ -83,6 +91,7 @@ void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
 					if (len > 0)
 						mTimeline.insert(it, FrameSubsetNode(start, len, bMask));
 
+					invalidateCache();
 					return;
 				} else if (it->start > start) {
 					it->len += (it->start - start);
@@ -91,6 +100,7 @@ void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
 #ifdef _DEBUG
 				goto check_list;
 #else
+				invalidateCache();
 				return;
 #endif
 			}
@@ -102,10 +112,11 @@ void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
 	// List is empty or element falls after last element
 
 	addRange(start, len, bMask);
+	invalidateCache();
 
 #ifdef _DEBUG
 check_list:
-	int lastpt = -1;
+	sint64 lastpt = -1;
 	bool bLastWasMasked;
 
 	for(it = begin(); it!=itEnd; ++it) {
@@ -120,8 +131,8 @@ check_list:
 #endif
 }
 
-int FrameSubset::getTotalFrames() {
-	int iFrames = 0;
+sint64 FrameSubset::getTotalFrames() const {
+	sint64 iFrames = 0;
 
 	for(const_iterator it(mTimeline.begin()), itEnd(mTimeline.end()); it!=itEnd; ++it)
 		iFrames += it->len;
@@ -129,14 +140,14 @@ int FrameSubset::getTotalFrames() {
 	return iFrames;
 }
 
-int FrameSubset::lookupFrame(int frame, bool& bMasked) {
-	int len = 1;
+sint64 FrameSubset::lookupFrame(sint64 frame, bool& bMasked) const {
+	sint64 len = 1;
 
 	return lookupRange(frame, len, bMasked);
 }
 
-int FrameSubset::revLookupFrame(int frame, bool& bMasked) {
-	int iSrcFrame = 0;
+sint64 FrameSubset::revLookupFrame(sint64 frame, bool& bMasked) const {
+	sint64 iSrcFrame = 0;
 
 	for(const_iterator it(begin()), itEnd(end()); it!=itEnd; ++it) {
 		if (frame >= it->start && frame < it->start+it->len) {
@@ -150,8 +161,8 @@ int FrameSubset::revLookupFrame(int frame, bool& bMasked) {
 	return -1;
 }
 
-int FrameSubset::lookupRange(int start, int& len, bool& bMasked) {
-	int offset;
+sint64 FrameSubset::lookupRange(sint64 start, sint64& len, bool& bMasked) const {
+	sint64 offset;
 	const_iterator it = findNode(offset, start);
 
 	if (it == end()) return -1;
@@ -178,7 +189,7 @@ int FrameSubset::lookupRange(int start, int& len, bool& bMasked) {
 	}
 }
 
-void FrameSubset::deleteInputRange(int start, int len) {
+void FrameSubset::deleteInputRange(sint64 start, sint64 len) {
 	for(iterator it(begin()), itEnd(end()); it != itEnd; ++it) {
 		if (it->start >= start+len)
 			break;
@@ -206,10 +217,11 @@ void FrameSubset::deleteInputRange(int start, int len) {
 
 		++it;
 	}
+	invalidateCache();
 }
 
-void FrameSubset::deleteRange(int start, int len) {
-	int offset;
+void FrameSubset::deleteRange(sint64 start, sint64 len) {
+	sint64 offset;
 	iterator it = findNode(offset, start), itEnd = end();
 
 	while(it != itEnd && len>0) {
@@ -237,11 +249,12 @@ void FrameSubset::deleteRange(int start, int len) {
 			}
 		}
 	}
+	invalidateCache();
 	dump();
 }
 
-void FrameSubset::setRange(int start, int len, bool bMask) {
-	int offset;
+void FrameSubset::setRange(sint64 start, sint64 len, bool bMask) {
+	sint64 offset;
 	iterator it = findNode(offset, start), itEnd(end());
 
 	while(it != itEnd && len>0) {
@@ -278,20 +291,23 @@ void FrameSubset::setRange(int start, int len, bool bMask) {
 
 		++it;
 	}
+	invalidateCache();
 }
 
-void FrameSubset::clip(int start, int len) {
+void FrameSubset::clip(sint64 start, sint64 len) {
 	deleteRange(0, start);
 	deleteRange(len, 0x7FFFFFFF - len);
 }
 
-void FrameSubset::offset(int off) {
+void FrameSubset::offset(sint64 off) {
 	for(iterator it = begin(), itEnd = end(); it != itEnd; ++it)
 		it->start += off;
+	invalidateCache();
 }
 
-void FrameSubset::assign(const FrameSubset& src, int start, int len) {
+void FrameSubset::assign(const FrameSubset& src, sint64 start, sint64 len) {
 	mTimeline = src.mTimeline;
+	invalidateCache();
 	clip(start, len);
 }
 
@@ -330,11 +346,12 @@ void FrameSubset::insert(iterator it, const FrameSubset& src) {
 		}
 	}
 
+	invalidateCache();
 	dump();
 }
 
-void FrameSubset::insert(int insertionPoint, const FrameSubset& src) {
-	int offset;
+void FrameSubset::insert(sint64 insertionPoint, const FrameSubset& src) {
+	sint64 offset;
 	FrameSubset::iterator it;
 	
 	if (insertionPoint < 0)
@@ -349,21 +366,38 @@ void FrameSubset::insert(int insertionPoint, const FrameSubset& src) {
 	}
 
 	insert(it, src);
+	invalidateCache();
 }
 
-FrameSubset::iterator FrameSubset::findNode(int& poffset, int iDstFrame) {
+FrameSubset::const_iterator FrameSubset::findNode(sint64& poffset, sint64 iDstFrame) const {
+	return const_cast<FrameSubset *>(this)->findNode(poffset, iDstFrame);
+}
+
+FrameSubset::iterator FrameSubset::findNode(sint64& poffset, sint64 iDstFrame) {
 	if (iDstFrame<0)
 		return end();
 
-	for(iterator it(begin()), itEnd(end()); it!=itEnd && iDstFrame >= 0; ++it) {
+	iterator it(begin()), itEnd(end());
+
+	if (iDstFrame >= mCachedPosition) {
+		iDstFrame -= mCachedPosition;
+		it = mCachedIterator;
+	} else {
+		mCachedPosition = 0;
+	}
+
+	for(; it!=itEnd && iDstFrame >= 0; ++it) {
 		if (iDstFrame < it->len) {
 			poffset = iDstFrame;
+			mCachedIterator = it;
 			return it;
 		}
 
 		iDstFrame -= it->len;
+		mCachedPosition += it->len;
 	}
 
+	mCachedIterator = it;
 	poffset = 0;
 	return end();
 }
@@ -372,7 +406,7 @@ void FrameSubset::dump() {
 #ifdef _DEBUG
 	VDDEBUG("Frame subset dump:\n");
 	for(const_iterator it(begin()), itEnd(end()); it!=itEnd; ++it) {
-		VDDEBUG("   start: %6d   len:%4d   bMask:%d\n", it->start, it->len, it->bMask);
+		VDDEBUG("   start: %6I64d   len:%4I64d   bMask:%d\n", it->start, it->len, it->bMask);
 	}
 #endif
 }

@@ -89,7 +89,7 @@ VDClippingControlOverlay *VDClippingControlOverlay::Create(HWND hwndParent, int 
 	HWND hwnd = CreateWindowEx(WS_EX_TRANSPARENT, szClippingControlOverlayName, "", WS_VISIBLE|WS_CHILD, x, y, cx, cy, hwndParent, (HMENU)id, g_hInst, NULL);
 
 	if (hwnd)
-		return (VDClippingControlOverlay *)GetWindowLong(hwnd, 0);
+		return (VDClippingControlOverlay *)GetWindowLongPtr(hwnd, 0);
 
 	return NULL;
 }
@@ -113,14 +113,14 @@ void VDClippingControlOverlay::SetBounds(int x1, int y1, int x2, int y2) {
 /////////////////////////////////////////////////////////////////////////////
 
 LRESULT CALLBACK VDClippingControlOverlay::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDClippingControlOverlay *pThis = (VDClippingControlOverlay *)GetWindowLong(hwnd, 0);
+	VDClippingControlOverlay *pThis = (VDClippingControlOverlay *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 	case WM_NCCREATE:
 		if (!(pThis = new_nothrow VDClippingControlOverlay(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 		break;
 
 	case WM_NCDESTROY:
@@ -395,6 +395,12 @@ VDClippingControl::~VDClippingControl() {
 		DrawDibClose(hddFrame);
 }
 
+IVDPositionControl *VDGetIPositionControlFromClippingControl(VDGUIHandle h) {
+	HWND hwndPosition = GetDlgItem((HWND)h, 512 /* IDC_POSITION */);
+
+	return VDGetIPositionControl((VDGUIHandle)hwndPosition);
+}
+
 BOOL CALLBACK VDClippingControl::InitChildrenProc(HWND hwnd, LPARAM lParam) {
 	SendMessage(hwnd, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), (LPARAM)MAKELONG(FALSE, 0));
 
@@ -498,7 +504,7 @@ bool VDClippingControl::VerifyParams() {
 }
 
 LRESULT CALLBACK VDClippingControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDClippingControl *pThis = (VDClippingControl *)GetWindowLong(hwnd, 0);
+	VDClippingControl *pThis = (VDClippingControl *)GetWindowLongPtr(hwnd, 0);
 
 	if (msg == WM_NCCREATE) {
 		pThis = new VDClippingControl(hwnd);
@@ -506,7 +512,7 @@ LRESULT CALLBACK VDClippingControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wP
 		if (!pThis)
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 	} else if (msg == WM_NCDESTROY) {
 		delete pThis;
 		return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -566,7 +572,7 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	case WM_ERASEBKGND:
 		{
-			HBRUSH hbrBackground = (HBRUSH)GetClassLong(mhwnd, GCL_HBRBACKGROUND);
+			HBRUSH hbrBackground = (HBRUSH)GetClassLongPtr(mhwnd, GCLP_HBRBACKGROUND);
 			HDC hdc = (HDC)wParam;
 			RECT r, r2;
 

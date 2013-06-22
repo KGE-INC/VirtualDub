@@ -30,7 +30,6 @@
 #include "resource.h"
 #include "gui.h"
 #include "filter.h"
-#include "resample.h"
 #include "vbitmap.h"
 
 extern HINSTANCE g_hInst;
@@ -244,9 +243,11 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////
 
+#ifdef _M_IX86
 extern "C" void asm_chromasmoother_FilterHorizontalMPEG1_MMX(Pixel32 *dst, const Pixel32 *src, int count);
 extern "C" void asm_chromasmoother_FilterHorizontalMPEG2_MMX(Pixel32 *dst, const Pixel32 *src, int count);
 extern "C" void asm_chromasmoother_FilterVerticalMPEG1_MMX(Pixel32 *dst, const Pixel32 *const *src, int count);
+#endif
 
 struct ChromaSmootherFilter {
 	ChromaSmootherFilter() : mMode(0) {}
@@ -283,7 +284,7 @@ int ChromaSmootherFilter::Run(const FilterActivation *fa, const FilterFunctions 
 	void (*pHorizFilt)(Pixel32 *dst, const Pixel32 *src, int count) = FilterHorizontalCopy;
 	void (*pVertFilt)(Pixel32 *dst, const Pixel32 *const *src, int count) = FilterVerticalCopy;
 	
-
+#ifdef _M_IX86
 	switch(mMode) {
 	case kMode420MPEG1:
 		if (w >= 1)
@@ -312,6 +313,36 @@ int ChromaSmootherFilter::Run(const FilterActivation *fa, const FilterFunctions 
 			pHorizFilt = FilterHorizontalMPEG4;
 		break;
 	}
+#else
+	switch(mMode) {
+	case kMode420MPEG1:
+		if (w >= 1)
+			pHorizFilt = FilterHorizontalMPEG1;
+		pVertFilt	= FilterVerticalMPEG1;
+		preroll		= 1;
+		postlen		= 2;
+		break;
+	case kMode420MPEG2:
+		pHorizFilt	= FilterHorizontalMPEG2;
+		pVertFilt	= FilterVerticalMPEG1;
+		preroll		= 1;
+		postlen		= 2;
+		break;
+	case kMode422:
+		pHorizFilt	= FilterHorizontalMPEG2;
+		break;
+	case kMode410:
+		pHorizFilt	= FilterHorizontalMPEG4;
+		pVertFilt	= FilterVerticalMPEG4;
+		preroll		= 1;
+		postlen		= 3;
+		break;
+	case kMode411:
+		if (w >= 2)
+			pHorizFilt = FilterHorizontalMPEG4;
+		break;
+	}
+#endif
 
 	for(int y=0; y<h; ++y) {
 		while(nextsrc < y+postlen) {
@@ -328,8 +359,10 @@ int ChromaSmootherFilter::Run(const FilterActivation *fa, const FilterFunctions 
 		dst += dstpitch;
 	}
 
+#ifndef _M_AMD64
 	if (MMX_enabled)
 		__asm emms
+#endif
 
 	return 0;
 }
@@ -342,7 +375,6 @@ int ChromaSmootherFilter::Param(FilterActivation *fa, const FilterFunctions *ff)
 
 int ChromaSmootherFilter::Start(FilterActivation *fa, const FilterFunctions *ff) {
 	const int w = fa->dst.w;
-	const int h = fa->dst.h;
 
 	mTempRows.resize(w * 5);
 	for(int i=0; i<5; ++i)
@@ -386,7 +418,7 @@ public:
 	}
 
 protected:
-	BOOL DlgProc(UINT message, UINT wParam, LONG lParam) {
+	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		switch (message) {
 			case WM_INITDIALOG:
 				if (mpPreview)

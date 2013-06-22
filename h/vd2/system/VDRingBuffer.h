@@ -41,6 +41,7 @@ public:
 
 	int		 Write(const T *pData, int bytes);
 	T		*LockWrite(int requested, int& actual);
+	T		*LockWriteAll(int& actual);
 	int		 UnlockWrite(int actual);
 };
 
@@ -200,6 +201,18 @@ T *VDRingBuffer<T, Allocator>::LockWrite(int requested, int& actual) {
 
 	if (requested > nLevelNow)
 		requested = nLevelNow;
+
+	if (requested + nWritePoint > nSize)
+		requested = nSize - nWritePoint;
+
+	actual = requested;
+
+	return pBuffer + nWritePoint;
+}
+
+template<class T, class Allocator>
+T *VDRingBuffer<T, Allocator>::LockWriteAll(int& actual) {
+	int requested = nSize - nLevel;
 
 	if (requested + nWritePoint > nSize)
 		requested = nSize - nWritePoint;

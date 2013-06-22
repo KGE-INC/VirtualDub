@@ -1,19 +1,27 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	System library component
+//	Copyright (C) 1998-2004 Avery Lee, All Rights Reserved.
 //
-//	This program is free software; you can redistribute it and/or modify
-//	it under the terms of the GNU General Public License as published by
-//	the Free Software Foundation; either version 2 of the License, or
-//	(at your option) any later version.
+//	Beginning with 1.6.0, the VirtualDub system library is licensed
+//	differently than the remainder of VirtualDub.  This particular file is
+//	thus licensed as follows (the "zlib" license):
 //
-//	This program is distributed in the hope that it will be useful,
-//	but WITHOUT ANY WARRANTY; without even the implied warranty of
-//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//	GNU General Public License for more details.
+//	This software is provided 'as-is', without any express or implied
+//	warranty.  In no event will the authors be held liable for any
+//	damages arising from the use of this software.
 //
-//	You should have received a copy of the GNU General Public License
-//	along with this program; if not, write to the Free Software
-//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//	Permission is granted to anyone to use this software for any purpose,
+//	including commercial applications, and to alter it and redistribute it
+//	freely, subject to the following restrictions:
+//
+//	1.	The origin of this software must not be misrepresented; you must
+//		not claim that you wrote the original software. If you use this
+//		software in a product, an acknowledgment in the product
+//		documentation would be appreciated but is not required.
+//	2.	Altered source versions must be plainly marked as such, and must
+//		not be misrepresented as being the original software.
+//	3.	This notice may not be removed or altered from any source
+//		distribution.
 
 #ifndef f_VD2_SYSTEM_FILE_H
 #define f_VD2_SYSTEM_FILE_H
@@ -21,6 +29,8 @@
 #include <limits.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/vdstl.h>
+#include <vector>
 
 #ifdef WIN32
 	typedef void *VDFileHandle;				// this needs to match wtypes.h definition for HANDLE
@@ -62,8 +72,8 @@ namespace nsVDFile {
 class VDFile {
 protected:
 	VDFileHandle	mhFile;
-	sint64			mFilePosition;
 	vdautoptr2<char>	mpFilename;
+	sint64			mFilePosition;
 
 private:
 	VDFile(const VDFile&);
@@ -86,6 +96,20 @@ public:
 	bool	truncateNT();
 	void	truncate();
 
+	// extendValid() pushes the valid threshold of a file out, so that the system allocates
+	// space for a file without ensuring that it is cleared.  It is mainly useful for
+	// preallocating a file without waiting for the system to clear all of it.  The caveats:
+	//
+	// - only required on NTFS
+	// - requires Windows XP or Windows Server 2003
+	// - does not work on compressed or sparse files
+	//
+	// As such, it shouldn't normally be relied upon, and extendValidNT() should be the call
+	// of choice.
+
+	bool	extendValidNT(sint64 pos);
+	void	extendValid(sint64 pos);
+
 	sint64	size();
 	void	read(void *buffer, long length);
 	long	readData(void *buffer, long length);
@@ -107,6 +131,38 @@ public:
 protected:
 	bool	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags);
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+template<class T>
+class VDFileUnbufferAllocator {
+public:
+	typedef	size_t		size_type;
+	typedef	ptrdiff_t	difference_type;
+	typedef	T*			pointer;
+	typedef	const T*	const_pointer;
+	typedef	T&			reference;
+	typedef	const T&	const_reference;
+	typedef	T			value_type;
+
+	template<class U> struct rebind { typedef VDFileUnbufferAllocator<U> other; };
+
+	pointer			address(reference x) const			{ return &x; }
+	const_pointer	address(const_reference x) const	{ return &x; }
+
+	pointer			allocate(size_type n, void *p = 0)	{ return (pointer)VDFile::AllocUnbuffer(n * sizeof(T)); }
+	void			deallocate(pointer p, size_type n)	{ VDFile::FreeUnbuffer(p); }
+	size_type		max_size() const throw()			{ return MAX_INT; }
+
+	void			construct(pointer p, const T& val)	{ new((void *)p) T(val); }
+	void			destroy(pointer p)					{ ((T*)p)->~T(); }
+
+#if defined(_MSC_VER) && _MSC_VER < 1300
+	char *			_Charalloc(size_type n)				{ return (char *)allocate((n + sizeof(T) - 1) / sizeof(T)); }
+#endif
+};
+
+///////////////////////////////////////////////////////////////////////////
 
 class IVDStream {
 public:
@@ -158,34 +214,43 @@ protected:
 	uint32			mPos;
 };
 
-///////////////////////////////////////////////////////////////////////////
-
-template<class T>
-class VDFileUnbufferAllocator {
+class VDTextStream {
 public:
-	typedef	size_t		size_type;
-	typedef	ptrdiff_t	difference_type;
-	typedef	T*			pointer;
-	typedef	const T*	const_pointer;
-	typedef	T&			reference;
-	typedef	const T&	const_reference;
-	typedef	T			value_type;
+	VDTextStream(IVDStream *pSrc);
+	~VDTextStream();
 
-	template<class U> struct rebind { typedef VDFileUnbufferAllocator<U> other; };
+	const char *GetNextLine();
 
-	pointer			address(reference x) const			{ return &x; }
-	const_pointer	address(const_reference x) const	{ return &x; }
+protected:
+	IVDStream	*mpSrc;
+	uint32		mBufferPos;
+	uint32		mBufferLimit;
+	enum {
+		kFetchLine,
+		kEatNextIfCR,
+		kEatNextIfLF
+	} mState;
 
-	pointer			allocate(size_type n, void *p = 0)	{ return (pointer)VDFile::AllocUnbuffer(n * sizeof(T)); }
-	void			deallocate(pointer p, size_type n)	{ VDFile::FreeUnbuffer(p); }
-	size_type		max_size() const throw()			{ return MAX_INT; }
+	enum {
+		kFileBufferSize = 4096
+	};
 
-	void			construct(pointer p, const T& val)	{ new((void *)p) T(val); }
-	void			destroy(pointer p)					{ ((T*)p)->~T(); }
+	std::vector<char>	mLineBuffer;
+	vdblock<char>		mFileBuffer;
+};
 
-#if defined(_MSC_VER) && _MSC_VER < 1300
-	char *			_Charalloc(size_type n)				{ return (char *)allocate(n); }
-#endif
+class VDTextInputFile {
+public:
+	VDTextInputFile(const wchar_t *filename, uint32 flags = nsVDFile::kOpenExisting);
+	~VDTextInputFile();
+
+	inline const char *GetNextLine() {
+		return mTextStream.GetNextLine();
+	}
+
+protected:
+	VDFileStream	mFileStream;
+	VDTextStream	mTextStream;
 };
 
 #endif

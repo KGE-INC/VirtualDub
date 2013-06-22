@@ -33,7 +33,7 @@ private:
 
 	const char *lpszTitle, *lpszCaption, *lpszValueFormat;
 
-	static BOOL CALLBACK ProgressDlgProc(HWND, UINT, WPARAM, LPARAM);
+	static INT_PTR CALLBACK ProgressDlgProc(HWND, UINT, WPARAM, LPARAM);
 public:
 	ProgressDialog(HWND hwndParent, const char *szTitle, const char *szCaption, long maxval, bool fAbortEnabled);
 	~ProgressDialog();

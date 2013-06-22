@@ -22,7 +22,9 @@
 #include "AVIOutput.h"
 #include "AVIOutputPreview.h"
 
-AVIAudioPreviewOutputStream::AVIAudioPreviewOutputStream(AVIOutput *out) : AVIOutputStream(out) {
+///////////////////////////////////////////////////////////////////////////
+
+AVIAudioPreviewOutputStream::AVIAudioPreviewOutputStream() {
 	initialized = started = FALSE;
 	myAudioOut = NULL;
 	fInitialized = false;
@@ -135,7 +137,12 @@ bool AVIAudioPreviewOutputStream::isFrozen() {
 	return myAudioOut ? myAudioOut->isFrozen() : true;
 }
 
-/////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+class AVIVideoPreviewOutputStream : public AVIOutputStream {
+public:
+	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
+};
 
 void AVIVideoPreviewOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
 }
@@ -150,14 +157,14 @@ AVIOutputPreview::~AVIOutputPreview() {
 
 IVDMediaOutputStream *AVIOutputPreview::createVideoStream() {
 	VDASSERT(!videoOut);
-	if (!(videoOut = new_nothrow AVIVideoPreviewOutputStream(this)))
+	if (!(videoOut = new_nothrow AVIVideoPreviewOutputStream()))
 		throw MyMemoryError();
 	return videoOut;
 }
 
 IVDMediaOutputStream *AVIOutputPreview::createAudioStream() {
 	VDASSERT(!audioOut);
-	if (!(audioOut = new_nothrow AVIAudioPreviewOutputStream(this)))
+	if (!(audioOut = new_nothrow AVIAudioPreviewOutputStream()))
 		throw MyMemoryError();
 	return audioOut;
 }

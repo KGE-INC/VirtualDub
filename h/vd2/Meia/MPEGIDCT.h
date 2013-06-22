@@ -68,6 +68,7 @@ struct VDMPEGIDCTSet {
 	tVDMPEGIDCTTest			pTest;			// just compute - does not leave MMX state active
 	const int				*pPrescaler;	// if non-null, a 64-entry, 8:8 fixed point matrix for AAN-derived
 	const int				*pAltScan;		// if non-null, specifies alternative scanning order
+	tVDMPEGIDCT				pIntra4x2;		// clip & place (4x2 for DV)
 };
 
 // idct_test.cpp
@@ -102,9 +103,12 @@ bool VDTestVideoIDCTCompliance(const VDMPEGIDCTSet& idct, VDIDCTComplianceResult
 // idct_*.cpp
 
 extern const VDMPEGIDCTSet g_VDMPEGIDCT_reference;				// Hou row/column
-extern const VDMPEGIDCTSet g_VDMPEGIDCT_reference_vr;			// Vector-radix
+
+#ifndef _M_AMD64
 extern const VDMPEGIDCTSet g_VDMPEGIDCT_scalar;					// Feig-Winograd (scalar)
 extern const VDMPEGIDCTSet g_VDMPEGIDCT_mmx;					// Intel AP-922 (MMX)
 extern const VDMPEGIDCTSet g_VDMPEGIDCT_isse;					// Intel AP-922 (MMX2) with 4x4 VR pruning
+#endif
+extern const VDMPEGIDCTSet g_VDMPEGIDCT_sse2;					// Intel AP-922 (SSE2) with 4x4 VR pruning
 
 #endif

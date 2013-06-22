@@ -21,6 +21,7 @@
 
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/w32assist.h>
 #include <vector>
 
 #include "DubUtils.h"
@@ -28,87 +29,6 @@
 #include "FrameSubset.h"
 #include "ddrawsup.h"
 #include "vbitmap.h"
-
-///////////////////////////////////////////////////////////////////////////
-
-int VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr) {
-	int size = pHdr->biSize + pHdr->biClrUsed * sizeof(RGBQUAD);
-
-	if (pHdr->biSize < sizeof(BITMAPV4HEADER) && pHdr->biCompression == BI_BITFIELDS)
-		size += sizeof(DWORD) * 3;
-
-	return size;
-}
-
-static void __declspec(naked) MMXcopy(void *dst, void *src, int cnt) {
-	__asm {
-		mov	ecx,[esp+4]
-		mov	edx,[esp+8]
-		mov eax,[esp+12]
-copyloop:
-		movq	mm0,[edx]
-		movq	[ecx],mm0
-		add		edx,8
-		add		ecx,8
-		dec		eax
-		jne		copyloop
-		ret
-	};
-}
-
-static void __declspec(naked) move_to_vidmem(void *dst, void *src, long dstpitch, long srcpitch, int w, int h) {
-	__asm {
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
-
-		mov		ebx,[esp+8+16]
-		mov		edx,[esp+4+16]
-		mov		eax,[esp+20+16]
-		mov		ebp,[esp+24+16]
-		mov		esi,eax
-		and		eax,0ffffffe0h
-		neg		eax
-		mov		[esp+20+16],eax
-		and		esi,31
-		mov		[esp+4+16],esi
-		sub		ebx,eax
-		sub		edx,eax
-
-yloop:
-		mov		eax,[esp+20+16]
-xloop:
-		fild	qword ptr [ebx+eax]		;0
-		fild	qword ptr [ebx+eax+8]	;1 0
-		fild	qword ptr [ebx+eax+16]	;2 1 0
-		fild	qword ptr [ebx+eax+24]	;3 2 1 0
-		fxch	st(3)					;0 2 1 3
-		fistp	qword ptr [edx+eax]		;2 1 3
-		fistp	qword ptr [edx+eax+16]	;1 3
-		fistp	qword ptr [edx+eax+8]	;3
-		fistp	qword ptr [edx+eax+24]
-		add		eax,32
-		jnz		xloop
-
-		mov		ecx,[esp+4+16]
-		mov		esi,ebx
-		mov		edi,edx
-		rep		movsb
-
-		add		ebx,[esp+16+16]
-		add		edx,[esp+12+16]
-
-		dec		ebp
-		jne		yloop
-
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
-		ret
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -139,12 +59,13 @@ void VDStreamInterleaver::Init(int streams) {
 
 void VDStreamInterleaver::SetSegmentFrameLimit(sint64 frames) {
 	mFramesPerSegment	= frames;
-	mSegmentCutFrame	= frames;
+	mSegmentCutFrame	= mBytesPerSegment ? 0 : frames;
 	mSegmentOkFrame		= 0;
 }
 
 void VDStreamInterleaver::SetSegmentByteLimit(sint64 bytes, sint32 nOverheadPerFrame) {
 	mBytesPerSegment	= bytes;
+	mSegmentCutFrame	= 0;
 	mBytesPerFrame		+= nOverheadPerFrame;
 	mSegmentOkFrame		= 0;
 	mPerFrameOverhead	= nOverheadPerFrame;
@@ -162,10 +83,10 @@ void VDStreamInterleaver::InitStream(int stream, uint32 nSampleSize, sint32 nPre
 
 	streaminfo.mSamplesWrittenToSegment = 0;
 	streaminfo.mMaxSampleSize		= nSampleSize;
-	streaminfo.mPreloadMicroFrames	= (sint64)((double)nPreload / nSamplesPerFrame * 65536);
+	streaminfo.mPreloadMicroFrames	= (sint32)((double)nPreload / nSamplesPerFrame * 65536);
 	streaminfo.mSamplesPerFrame		= nSamplesPerFrame;
 	streaminfo.mBytesPerFrame		= (sint64)ceil(nSampleSize * nSamplesPerFrame);
-	streaminfo.mIntervalMicroFrames	= (sint64)(65536.0 / nInterval);
+	streaminfo.mIntervalMicroFrames	= (sint32)(65536.0 / nInterval);
 	streaminfo.mLastSampleWrite		= 0;
 	streaminfo.mbActive				= true;
 	streaminfo.mMaxPush				= nMaxPush;
@@ -314,7 +235,8 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 				// If still above limit, then we must force a segment break.
 				if (iframe > mSegmentOkFrame) {
 					mSegmentCutFrame = mSegmentOkFrame;
-					frame = iframe = mSegmentCutFrame;
+					iframe = mSegmentCutFrame;
+					frame = (double)mSegmentCutFrame;
 				} else
 					frame = microFrameOffset / 65536.0;
 			} else
@@ -350,9 +272,9 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 				continue;
 			} else {
 				mCurrentSize = 0;
-				mSegmentStartFrame += mFrames;
+				mSegmentStartFrame += mSegmentCutFrame;
 				mFrames = 0;
-				if (mFramesPerSegment)
+				if (mFramesPerSegment && !mBytesPerSegment)
 					mSegmentCutFrame = mFramesPerSegment;
 				else
 					mSegmentCutFrame = 0;
@@ -439,7 +361,7 @@ void VDStreamInterleaver::PushLimitFrontier(sint64 targetFrame) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-void VDRenderFrameMap::Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect) {
+void VDRenderFrameMap::Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect) {
 	VDPosition directLast = -1;
 
 	const VDPosition len = pVS->asStream()->getLength();
@@ -449,7 +371,7 @@ void VDRenderFrameMap::Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFractio
 		VDPosition srcFrame = timelineFrame;
 
 		if (pSubset) {
-			srcFrame = pSubset->lookupFrame(srcFrame);
+			srcFrame = pSubset->lookupFrame((int)srcFrame);
 			if (srcFrame < 0)
 				break;
 		} else {
@@ -496,11 +418,11 @@ void VDRenderFrameIterator::Init(IVDVideoSource *pVS, bool bDirect) {
 
 void VDRenderFrameIterator::Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll) {
 	while(!mbFinished) {
-		BOOL b;
-		long f = -1;
+		bool b;
+		VDPosition f = -1;
 
 		if (mSrcDisplayFrame >= 0) {
-			f = mpVideoSource->streamGetNextRequiredFrame(&b);
+			f = mpVideoSource->streamGetNextRequiredFrame(b);
 			bIsPreroll = (b!=0) && !mbDirect;
 		} else {
 			f = -1;
@@ -580,7 +502,7 @@ bool VDRenderFrameIterator::EstimateCutPoint(int stream, sint64 start, sint64 ta
 		} else if (srcFrame < rangeLo || srcFrame >= rangeHi)
 			break;
 
-		LONG lSize;
+		uint32 lSize;
 
 		++framesToNextPoint;
 

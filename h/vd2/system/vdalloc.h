@@ -66,6 +66,23 @@ public:
 	T *release() { T *v = ptr; ptr = NULL; return v; }
 };
 
+template<class T> class vdautoarrayptr {
+protected:
+	T *ptr;
+
+public:
+	explicit vdautoarrayptr(T *p = 0) : ptr(p) {}
+	~vdautoarrayptr() { delete[] ptr; }
+
+	vdautoarrayptr<T>& operator=(T *src) { delete[] ptr; ptr = src; return *this; }
+
+	T& operator[](int offset) const { return ptr[offset]; }
+
+	vdautoarrayptr<T>& from(vdautoarrayptr<T>& src) { delete[] ptr; ptr=src.ptr; src.ptr=0; }
+	T *get() const { return ptr; }
+	T *release() { T *v = ptr; ptr = NULL; return v; }
+};
+
 #pragma warning(pop)
 
 #endif

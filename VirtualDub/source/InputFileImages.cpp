@@ -1,3 +1,20 @@
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2003 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
 #include "stdafx.h"
 
 #include <windows.h>
@@ -16,7 +33,7 @@ InputFileImages::~InputFileImages() {
 }
 
 void InputFileImages::Init(const wchar_t *szFile) {
-	videoSrc = new VideoSourceImages(VDTextWToA(szFile).c_str());
+	videoSrc = new VideoSourceImages(szFile);
 }
 
 void InputFileImages::setOptions(InputFileOptions *_ifo) {
@@ -50,7 +67,7 @@ public:
 	uint32 GetFlags() { return kF_Video; }
 
 	const wchar_t *GetFilenamePattern() {
-		return L"Image sequence (*.bmp,*.tga)\0*.bmp;*.tga\0";
+		return L"Image sequence (*.bmp,*.tga,*.jpg,*.jpeg)\0*.bmp;*.tga;*.jpg;*.jpeg\0";
 	}
 
 	bool DetectByFilename(const wchar_t *pszFilename) {
@@ -68,6 +85,23 @@ public:
 
 			if (buf[0] == 'B' && buf[1] == 'M')
 				return 1;
+
+			if (buf[0] == 0xFF && buf[1] == 0xD8) {
+				
+				if (buf[2] == 0xFF && buf[3] == 0xE0) {		// x'FF' SOI x'FF' APP0
+					// Hmm... might be a JPEG image.  Check for JFIF tag.
+
+					if (buf[6] == 'J' && buf[7] == 'F' && buf[8] == 'I' && buf[9] == 'F')
+						return 1;		// Looks like JPEG to me.
+				}
+
+				// Nope, see if it's an Exif file instead (used by digital cameras).
+
+				if (buf[2] == 0xFF && buf[3] == 0xE1) {		// x'FF' SOI x'FF' APP1
+					if (buf[6] == 'E' && buf[7] == 'x' && buf[8] == 'i' && buf[9] == 'f')
+						return 1;		// Looks like JPEG to me.
+				}
+			}
 		}
 
 		if (nFooterSize > 18) {

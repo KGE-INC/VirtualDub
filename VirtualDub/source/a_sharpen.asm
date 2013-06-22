@@ -271,7 +271,7 @@ rowloop_MMX:
 	push	esi
 	mov	ebp,[esp+12+40]
 
-	movd	mm0,[esi-4]
+	movd	mm0,dword ptr [esi-4]
 	punpcklbw mm0,mm7
 
 	movq	mm1,[esi]
@@ -281,7 +281,7 @@ rowloop_MMX:
 	paddw	mm0,mm1
 	paddw	mm0,mm2
 
-	movd	mm1,[esi+edi*2-4]
+	movd	mm1,dword ptr [esi+edi*2-4]
 	punpcklbw mm1,mm7
 	paddw	mm0,mm1
 
@@ -292,43 +292,43 @@ rowloop_MMX:
 	paddw	mm0,mm1
 	paddw	mm0,mm2
 
-	movd	mm1,[esi+edi-4]
+	movd	mm1,dword ptr [esi+edi-4]
 	punpcklbw mm1,mm7
-	movd	mm2,[esi+edi+4]
+	movd	mm2,dword ptr [esi+edi+4]
 	punpcklbw mm2,mm7
 	paddw	mm1,mm2
 	paddw	mm1,mm0
 	pmullw	mm1,mm5
 
-	movd	mm2,[esi+edi]
+	movd	mm2,dword ptr [esi+edi]
 	punpcklbw mm2,mm7
 	pmullw	mm2,mm6
 	psubusw	mm2,mm1
 	psrlw	mm2,6
 	packuswb mm2,mm2
-	movd	[edx],mm2
+	movd	dword ptr [edx],mm2
 
 	add	esi,4
 	dec	ebp
 
-	movd	mm1,[esi+4]
+	movd	mm1,dword ptr [esi+4]
 	add	edx,4
-	movd	mm4,[esi+edi*2+4]
+	movd	mm4,dword ptr [esi+edi*2+4]
 	punpcklbw mm1,mm7
 	punpcklbw mm4,mm7
 	paddw	mm0,mm1
-	movd	mm1,[esi-8]
-	movd	mm2,[esi+edi*2-8]
+	movd	mm1,dword ptr [esi-8]
+	movd	mm2,dword ptr [esi+edi*2-8]
 	punpcklbw mm1,mm7
 	paddw	mm0,mm4
 
 	jmp	colloop_MMX_entry
 
 colloop_MMX:
-	movd	mm1,[esi+4]
+	movd	mm1,dword ptr [esi+4]
 	add	edx,4
 
-	movd	mm4,[esi+edi*2+4]
+	movd	mm4,dword ptr [esi+edi*2+4]
 	punpcklbw mm1,mm7
 
 	psubusw	mm3,mm2
@@ -337,13 +337,13 @@ colloop_MMX:
 	psrlw	mm3,6
 	paddw	mm0,mm1
 
-	movd	mm1,[esi-8]
+	movd	mm1,dword ptr [esi-8]
 	packuswb mm3,mm3
 
-	movd	mm2,[esi+edi*2-8]
+	movd	mm2,dword ptr [esi+edi*2-8]
 	punpcklbw mm1,mm7
 
-	movd	[edx-4],mm3
+	movd	dword ptr [edx-4],mm3
 	paddw	mm0,mm4
 
 colloop_MMX_entry:
@@ -351,13 +351,13 @@ colloop_MMX_entry:
 	punpcklbw mm2,mm7
 	psubw	mm0,mm1
 
-	movd	mm1,[esi+edi-4]
+	movd	mm1,dword ptr [esi+edi-4]
 	psubw	mm0,mm2
 
-	movd	mm2,[esi+edi+4]
+	movd	mm2,dword ptr [esi+edi+4]
 	punpcklbw mm1,mm7
 
-	movd	mm3,[esi+edi]
+	movd	mm3,dword ptr [esi+edi]
 	punpcklbw mm2,mm7
 
 	punpcklbw mm3,mm7
@@ -375,7 +375,7 @@ colloop_MMX_entry:
 	psubusw	mm3,mm2
 	psrlw	mm3,6
 	packuswb mm3,mm3
-	movd	[edx],mm3
+	movd	dword ptr [edx],mm3
 
 	pop	esi
 	pop	edx

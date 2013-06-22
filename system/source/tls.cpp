@@ -25,10 +25,12 @@ void VDInitThreadData(const char *pszThreadName) {
 
 	pData->pszDebugThreadName = pszThreadName;
 
+#ifndef _M_AMD64
 	__asm {
 		mov		eax,pData
 		mov		dword ptr fs:[14h],eax
 	}
+#endif
 
 	if (g_pInitHook)
 		g_pInitHook(true);

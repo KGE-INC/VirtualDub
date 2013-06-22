@@ -39,4 +39,23 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 
 #include "VirtualDub.h"
 
+
+// Disable some stupid VC++ warnings so we can use warning level 4.  Most of these need
+// to be disabled because of the STL.
+#ifdef _MSC_VER
+#pragma warning(push, 4)				// set to warning level 4
+#pragma warning(disable: 4510)			// warning C4510: default constructor could not be generated
+#pragma warning(disable: 4511)			// warning C4511: copy constructor could not be generated
+#pragma warning(disable: 4512)			// warning C4512: assignment operator could not be generated
+#pragma warning(disable: 4610)			// warning C4610: struct can never be instantiated -- user defined constructor required
+#pragma warning(disable: 4201)			// warning C4201: nonstandard extension used : nameless struct/union
+#pragma warning(disable: 4100)			// warning C4100: unreferenced formal parameter
+#pragma warning(disable: 4663)			// warning C4663: C++ language change: to explicitly specialize class template use the following syntax
+#pragma warning(disable: 4018)			// warning C4018: signed/unsigned mismatch
+										// This one is just too annoying to leave on, and Intel C/C++'s value range warnings are much more useful.
+#pragma warning(disable: 4127)			// warning C4127: conditional expression is constant
+#pragma warning(disable: 4245)			// warning C4145: 'initializing': conversion from '' to '', signed/unsigned mismatch
+#pragma warning(disable: 4310)			// warning C4310: cast truncates constant value
+#endif
+
 #endif

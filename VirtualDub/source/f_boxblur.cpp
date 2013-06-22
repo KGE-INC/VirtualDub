@@ -49,6 +49,10 @@ extern "C" unsigned char YUV_clip_table[];
 
 //#define DO_UNSHARP_FILTER
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4799)		// warning C4799: function has no EMMS instruction
+#endif
+
 ///////////////////////////////////////////////////////////////////////////
 
 int boxInitProc(FilterActivation *fa, const FilterFunctions *ff);
@@ -199,6 +203,7 @@ static void box_filter_row(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, i
 	*dst = ((r*mult)&0xff0000) + (((g*mult)>>8)&0xff00) + ((b*mult)>>16);
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) box_filter_row_MMX(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, int divisor) {
 	__asm {
 		push		ebx
@@ -309,12 +314,14 @@ xloop4:
 		ret
 	}
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
 static void box_filter_mult_row(Pixel16 *dst, Pixel32 *src, int cnt, int mult) {
 	Pixel32 A;
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm {
 			mov			eax,src
@@ -337,12 +344,13 @@ xloop:
 			jne			xloop
 		}
 	else
+#endif
 		do {
 			A = *src++;
 
-			dst[0] = (int)((A>>16) & 255) * mult;
-			dst[1] = (int)((A>> 8) & 255) * mult;
-			dst[2] = (int)((A    ) & 255) * mult;
+			dst[0] = (Pixel16)((int)((A>>16) & 255) * mult);
+			dst[1] = (Pixel16)((int)((A>> 8) & 255) * mult);
+			dst[2] = (Pixel16)((int)((A    ) & 255) * mult);
 
 			dst += 3;
 		} while(--cnt);
@@ -351,6 +359,7 @@ xloop:
 static void box_filter_add_row(Pixel16 *dst, Pixel32 *src, int cnt) {
 	Pixel32 A;
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm {
 			mov			eax,src
@@ -370,12 +379,13 @@ xloop:
 			jne			xloop
 		}
 	else
+#endif
 		do {
 			A = *src++;
 
-			dst[0] += (int)((A>>16) & 255);
-			dst[1] += (int)((A>> 8) & 255);
-			dst[2] += (int)((A    ) & 255);
+			dst[0] += (Pixel16)((A>>16) & 255);
+			dst[1] += (Pixel16)((A>> 8) & 255);
+			dst[2] += (Pixel16)((A    ) & 255);
 
 			dst += 3;
 		} while(--cnt);
@@ -386,6 +396,7 @@ static void box_filter_produce_row(Pixel32 *dst, Pixel16 *tmp, Pixel32 *src_add,
 	Pixel16 r, g, b;
 	int mult = 0x10000 / (2*filter_width+1);
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm {
 			mov			eax,src_add
@@ -423,6 +434,7 @@ xloop:
 			jne			xloop
 		}
 	else
+#endif
 		do {
 			A = *src_add++;
 			B = *src_sub++;
@@ -435,9 +447,9 @@ xloop:
 					+(((g*mult) & 0xff0000) >> 8)
 					+ ((b*mult) >> 16);
 
-			tmp[0] = r + (int)((A>>16)&255) - (int)((B>>16) & 255);
-			tmp[1] = g + (int)((A>> 8)&255) - (int)((B>> 8) & 255);
-			tmp[2] = b + (int)((A    )&255) - (int)((B    ) & 255);
+			tmp[0] = (Pixel16)(r + ((A>>16)&255) - ((B>>16) & 255));
+			tmp[1] = (Pixel16)(g + ((A>> 8)&255) - ((B>> 8) & 255));
+			tmp[2] = (Pixel16)(b + ((A    )&255) - ((B    ) & 255));
 
 			tmp += 3;
 		} while(--cnt);
@@ -447,6 +459,7 @@ static void box_filter_produce_row2(Pixel32 *dst, Pixel16 *tmp, int cnt, int fil
 	Pixel16 r, g, b;
 	int mult = 0x10000 / (2*filter_width+1);
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm {
 			movd		mm6,mult
@@ -469,6 +482,7 @@ xloop:
 			jne			xloop
 		}
 	else
+#endif
 		do {
 			r = tmp[0];
 			g = tmp[1];
@@ -493,6 +507,7 @@ static void box_unsharp_produce_row(Pixel32 *dst, Pixel16 *tmp, Pixel32 *src_add
 	Pixel16 r, g, b;
 	int mult = 0x10000 / (2*filter_width+1);
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm {
 			mov			eax,src_add
@@ -536,7 +551,9 @@ xloop:
 			dec			ecx
 			jne			xloop
 		}
-	else {
+	else
+#endif
+	{
 		unsigned char *dst2 = (unsigned char *)dst;
 
 		do {
@@ -717,7 +734,11 @@ int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 
 	// Horizontal filtering.
 
-	void (*pRowFilt)(Pixel32*, Pixel32*, int, int, int) = MMX_enabled ? box_filter_row_MMX : box_filter_row;
+#ifdef _M_IX86
+	void (*const pRowFilt)(Pixel32*, Pixel32*, int, int, int) = MMX_enabled ? box_filter_row_MMX : box_filter_row;
+#else
+	void (*const pRowFilt)(Pixel32*, Pixel32*, int, int, int) = box_filter_row;
+#endif
 	int mult = 0x10000 / (2*mfd->filter_width+1);
 
 	h = fa->src.h;
@@ -777,8 +798,10 @@ int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 		box_do_vertical_unsharp_pass(dst, dstpitch, src, srcpitch, fa->src.data, fa->src.pitch, mfd->trow, fa->dst.w, fa->dst.h, mfd->filter_width);
 #endif
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		__asm emms
+#endif
 
 	return 0;
 }
@@ -803,14 +826,14 @@ long boxParamProc(FilterActivation *fa, const FilterFunctions *ff) {
 }
 
 
-BOOL CALLBACK boxConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	BoxFilterData *mfd = (BoxFilterData *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK boxConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	BoxFilterData *mfd = (BoxFilterData *)GetWindowLongPtr(hdlg, DWLP_USER);
 	HWND hwndInit;
 	char buf[64];
 
 	switch(msg) {
 		case WM_INITDIALOG:
-			SetWindowLong(hdlg, DWL_USER, lParam);
+			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 			mfd = (BoxFilterData *)lParam;
 
 			hwndInit = GetDlgItem(hdlg, IDC_SLIDER_WIDTH);

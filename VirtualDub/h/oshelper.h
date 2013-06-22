@@ -44,6 +44,7 @@ bool IsFilenameOnFATVolume(const char *pszFilename);
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
 HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);
+VDStringW VDLoadStringW32(UINT uID);
 
 void LaunchURL(const char *pURL);
 

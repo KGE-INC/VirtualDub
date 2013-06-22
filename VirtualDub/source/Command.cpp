@@ -21,6 +21,7 @@
 #include <vd2/system/file.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/vdstl.h>
 
 #include "PositionControl.h"
 
@@ -44,6 +45,7 @@
 #include "prefs.h"
 #include "command.h"
 #include "project.h"
+#include "resource.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -59,10 +61,7 @@ vdrefptr<InputFile>		inputAVI;
 InputFileOptions	*g_pInputOpts			= NULL;
 
 vdrefptr<VideoSource>	inputVideoAVI;
-vdrefptr<AudioSource>	inputAudio;
-vdrefptr<AudioSource>	inputAudioAVI;
-vdrefptr<AudioSource>	inputAudioWAV;
-FrameSubset			*inputSubset			= NULL;
+extern vdrefptr<AudioSource>	inputAudio;
 
 int					 audioInputMode = AUDIOIN_AVI;
 
@@ -82,22 +81,15 @@ bool				g_showStatusWindow		= TRUE;
 
 ///////////////////////////////////////////////////////////////////////////
 
-void SetAudioSource() {
-	switch(audioInputMode) {
-	case AUDIOIN_NONE:		inputAudio = NULL; break;
-	case AUDIOIN_AVI:		inputAudio = inputAudioAVI; break;
-	case AUDIOIN_WAVE:		inputAudio = inputAudioWAV; break;
-	}
-}
-
 void AppendAVI(const wchar_t *pszFile) {
 	if (inputAVI) {
-		long lTail = inputAVI->videoSrc->getEnd();
+		VDPosition lTail = inputAVI->videoSrc->getEnd();
 
 		if (inputAVI->Append(pszFile)) {
-			if (inputSubset)
-				inputSubset->insert(inputSubset->end(), FrameSubsetNode(lTail, inputAVI->videoSrc->getEnd() - lTail, false));
-			RemakePositionSlider();
+			FrameSubset& s = g_project->GetTimeline().GetSubset();
+
+			s.insert(s.end(), FrameSubsetNode(lTail, inputAVI->videoSrc->getEnd() - lTail, false));
+			g_project->EndTimelineUpdate();
 		}
 	}
 }
@@ -158,56 +150,15 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 	guiSetStatus("Appended %d segments (stopped at \"%s\")", 255, count, VDTextWToA(buf).c_str());
 
 	if (count) {
-		if (inputSubset)
-			inputSubset->insert(inputSubset->end(), FrameSubsetNode(originalCount, inputAVI->videoSrc->getEnd() - originalCount, false));
-		RemakePositionSlider();
+		FrameSubset& s = g_project->GetTimeline().GetSubset();
+		s.insert(s.end(), FrameSubsetNode(originalCount, inputAVI->videoSrc->getEnd() - originalCount, false));
+		g_project->EndTimelineUpdate();
 	}
-}
-
-void CloseAVI() {
-	if (g_pInputOpts) {
-		delete g_pInputOpts;
-		g_pInputOpts = NULL;
-	}
-
-	if (inputAudio == inputAudioAVI)
-		inputAudio = NULL;
-
-	inputAudioAVI = NULL;
-	inputVideoAVI = NULL;
-	inputAVI = NULL;
-
-	if (inputSubset) {
-		delete inputSubset;
-		inputSubset = NULL;
-	}
-
-	filters.DeinitFilters();
-	filters.DeallocateBuffers();
-}
-
-void OpenWAV(const wchar_t *szFile) {
-	vdrefptr<AudioSourceWAV> pNewAudio(new AudioSourceWAV(szFile, g_dubOpts.perf.waveBufferSize));
-	if (!pNewAudio->init())
-		throw MyError("The sound file \"%s\" could not be processed. Please check that it is a valid WAV file.", VDTextWToA(szFile).c_str());
-
-	pNewAudio->setDecodeErrorMode(g_audioErrorMode);
-
-	wcscpy(g_szInputWAVFile, szFile);
-
-	audioInputMode = AUDIOIN_WAVE;
-	inputAudioWAV = pNewAudio;
-}
-
-void CloseWAV() {
-	inputAudioWAV = NULL;
 }
 
 void SaveWAV(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts) {
 	if (!inputVideoAVI)
 		throw MyError("No input file to process.");
-
-	SetAudioSource();
 
 	VDAVIOutputWAVSystem wavout(szFilename);
 	g_project->RunOperation(&wavout, TRUE, quick_opts, 0, fProp);
@@ -228,12 +179,6 @@ void SaveAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, bool
 }
 
 void SaveStripedAVI(const wchar_t *szFile) {
-	AVIStripeSystem *stripe_def = NULL;
-
-	///////////////
-
-	SetAudioSource();
-
 	if (!inputVideoAVI)
 		throw MyError("No input video stream to process.");
 
@@ -245,12 +190,6 @@ void SaveStripedAVI(const wchar_t *szFile) {
 }
 
 void SaveStripeMaster(const wchar_t *szFile) {
-	AVIStripeSystem *stripe_def = NULL;
-
-	///////////////
-
-	SetAudioSource();
-
 	if (!inputVideoAVI)
 		throw MyError("No input video stream to process.");
 
@@ -277,11 +216,11 @@ void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_o
 	g_project->RunOperation(&outfile, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp, lSpillThreshold, lSpillFrameThreshold);
 }
 
-void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat) {
+void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat, int quality) {
 	VDAVIOutputImagesSystem outimages;
 
 	outimages.SetFilenamePattern(szPrefix, szSuffix, minDigits);
-	outimages.SetFormat(targetFormat);
+	outimages.SetFormat(targetFormat, quality);
 		
 	g_project->RunOperation(&outimages, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp, 0, 0);
 }
@@ -293,60 +232,24 @@ void SetSelectionStart(long ms) {
 	if (!inputVideoAVI)
 		return;
 
-	g_dubOpts.video.lStartOffsetMS = ms;
-	SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETSELSTART, (WPARAM)TRUE, inputVideoAVI->msToSamples(ms));
+	g_project->SetSelectionStart(inputVideoAVI->msToSamples(ms));
 }
 
 void SetSelectionEnd(long ms) {
 	if (!inputVideoAVI)
 		return;
 
-	g_dubOpts.video.lEndOffsetMS = ms;
-	SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETSELEND, (WPARAM)TRUE,
-		(inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->getLength()) - inputVideoAVI->msToSamples(ms));
-}
-
-void RemakePositionSlider() {
-	if (!inputAVI) return;
-
-	HWND hwndPosition = GetDlgItem(g_hWnd, IDC_POSITION);
-
-	SendMessage(hwndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, 0);
-	SendMessage(hwndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputSubset->getTotalFrames());
-
-	if (g_dubOpts.video.lStartOffsetMS || g_dubOpts.video.lEndOffsetMS) {
-		SendMessage(hwndPosition, PCM_SETSELSTART, (BOOL)FALSE, inputVideoAVI->msToSamples(g_dubOpts.video.lStartOffsetMS));
-		SendMessage(hwndPosition, PCM_SETSELEND, (BOOL)TRUE , inputSubset->getTotalFrames() - inputVideoAVI->msToSamples(g_dubOpts.video.lEndOffsetMS));
-	} else {
-		SendMessage(hwndPosition, PCM_CLEARSEL, (BOOL)TRUE, 0);
-	}
-}
-
-void RecalcPositionTimeConstant() {
-	HWND hwndPosition = GetDlgItem(g_hWnd, IDC_POSITION);
-
-	DubVideoStreamInfo vInfo;
-	DubAudioStreamInfo aInfo;
-
-	if (inputVideoAVI) {
-		try {
-			InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
-			SendMessage(hwndPosition, PCM_SETFRAMERATE, vInfo.frameRateIn.getHi(), vInfo.frameRateIn.getLo());
-		} catch(const MyError&) {
-			// The input stream may throw an error here trying to obtain the nearest key.
-			// If so, bail.
-		}
-	} else {
-		SendMessage(hwndPosition, PCM_SETFRAMERATE, 0, 0);
-	}
+	g_project->SetSelectionEnd(g_project->GetFrameCount() - inputVideoAVI->msToSamples(ms));
 }
 
 void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 	const VDPosition lFirst = pVideoSource->getStart();
 	const VDPosition lLast = pVideoSource->getEnd();
 	VDPosition lFrame = lFirst;
-	void *pBuffer = NULL;
-	int cbBuffer = 0;
+	vdblock<char>	buffer;
+
+	IVDStreamSource::ErrorMode oldErrorMode(pVideoSource->getDecodeErrorMode());
+	pVideoSource->setDecodeErrorMode(IVDStreamSource::kErrorModeReportAll);
 
 	try {
 		ProgressDialog pd(g_hWnd, "Frame scan", "Scanning for unreadable frames", lLast-lFrame, true);
@@ -360,7 +263,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 		pVideoSource->streamBegin(false);
 
 		while(lFrame <= lLast) {
-			LONG lActualBytes, lActualSamples;
+			uint32 lActualBytes, lActualSamples;
 			int err;
 			bool bValid;
 
@@ -379,24 +282,16 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 					if (err)
 						break;
 
-					if (cbBuffer < lActualBytes) {
-						int cbNewBuffer = (lActualBytes + 65535) & ~65535;
-						void *pNewBuffer = realloc(pBuffer, cbNewBuffer);
+					if (buffer.empty() || buffer.size() < lActualBytes)
+						buffer.resize(((lActualBytes + 65535) & ~65535) + !lActualBytes);
 
-						if (!pNewBuffer)
-							throw MyMemoryError();
-
-						cbBuffer = cbNewBuffer;
-						pBuffer = pNewBuffer;
-					}
-
-					err = pVideoSource->read(lFrame, 1, pBuffer, cbBuffer, &lActualBytes, &lActualSamples);
+					err = pVideoSource->read(lFrame, 1, buffer.data(), buffer.size(), &lActualBytes, &lActualSamples);
 
 					if (err)
 						break;
 
 					try {
-						pVideoSource->streamGetFrame(pBuffer, lActualBytes, pVideoSource->isKey(lFrame), FALSE, lFrame);
+						pVideoSource->streamGetFrame(buffer.data(), lActualBytes, FALSE, lFrame);
 					} catch(...) {
 						++lDeadFrames;
 						break;
@@ -426,9 +321,8 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 		guiSetStatus("%ld frames masked (%ld frames bad, %ld frames good but undecodable)", 255, lMaskedFrames, lDeadFrames, lMaskedFrames-lDeadFrames);
 
 	} catch(...) {
-		free(pBuffer);
+		pVideoSource->setDecodeErrorMode(oldErrorMode);
 		throw;
 	}
-
-	free(pBuffer);
+	pVideoSource->setDecodeErrorMode(oldErrorMode);
 }

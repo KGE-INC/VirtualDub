@@ -40,9 +40,9 @@ bool DubSource::isStreaming() {
 	return false;
 }
 
-int DubSource::read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead) {
-	if (lStart < lSampleFirst) return AVIERR_BADPARAM;
-	if (lStart >= lSampleLast) {
+int DubSource::read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
+	if (lStart < mSampleFirst) return AVIERR_BADPARAM;
+	if (lStart >= mSampleLast) {
 		if (lSamplesRead)
 			*lSamplesRead = 0;
 		if (lBytesRead)
@@ -50,7 +50,7 @@ int DubSource::read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LO
 		return 0;
 	}
 
-	if (lCount>0 && lCount > lSampleLast - lStart) lCount = lSampleLast - lStart;
+	if (lCount != (uint32)-1 && lCount > mSampleLast - lStart) lCount = (uint32)(mSampleLast - lStart);
 
 	return _read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
 }

@@ -90,7 +90,7 @@ VDRTProfileDisplay *VDRTProfileDisplay::Create(HWND hwndParent, int x, int y, in
 	HWND hwnd = CreateWindow(g_szRTProfileDisplayControlName, "", WS_VISIBLE|WS_CHILD, x, y, cx, cy, hwndParent, (HMENU)id, g_hInst, NULL);
 
 	if (hwnd)
-		return (VDRTProfileDisplay *)GetWindowLong(hwnd, 0);
+		return (VDRTProfileDisplay *)GetWindowLongPtr(hwnd, 0);
 
 	return NULL;
 }
@@ -113,7 +113,7 @@ ATOM RegisterRTProfileDisplayControl() {
 }
 
 IVDRTProfileDisplay *VDGetIRTProfileDisplayControl(HWND hwnd) {
-	return static_cast<IVDRTProfileDisplay *>(reinterpret_cast<VDRTProfileDisplay *>(GetWindowLong(hwnd, 0)));
+	return static_cast<IVDRTProfileDisplay *>(reinterpret_cast<VDRTProfileDisplay *>(GetWindowLongPtr(hwnd, 0)));
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -132,14 +132,14 @@ void VDRTProfileDisplay::SetProfiler(VDRTProfiler *pProfiler) {
 /////////////////////////////////////////////////////////////////////////////
 
 LRESULT CALLBACK VDRTProfileDisplay::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDRTProfileDisplay *pThis = (VDRTProfileDisplay *)GetWindowLong(hwnd, 0);
+	VDRTProfileDisplay *pThis = (VDRTProfileDisplay *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 	case WM_NCCREATE:
 		if (!(pThis = new_nothrow VDRTProfileDisplay(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (DWORD)pThis);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
 		break;
 
 	case WM_NCDESTROY:
@@ -257,8 +257,8 @@ void VDRTProfileDisplay::OnPaint() {
 					if ((sint64)(ev.mEndTime - startTime) < 0)
 						continue;
 
-					const int x1 = left + std::max<int>(0, (ev.mStartTime - startTime) * width / period);
-					const int x2 = std::max<int>(x1+1, left + (ev.mEndTime - startTime) * width / period);
+					const int x1 = left + std::max<int>(0, (int)((ev.mStartTime - startTime) * width / period));
+					const int x2 = std::max<int>(x1+1, left + (int)((ev.mEndTime - startTime) * width / period));
 
 					SetBkColor(hdc, ev.mColor);
 

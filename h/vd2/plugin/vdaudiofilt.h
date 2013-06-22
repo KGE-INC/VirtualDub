@@ -7,21 +7,25 @@
 
 struct VDAudioFilterDefinition;
 struct VDWaveFormat;
-
+struct VDPluginCallbacks;
 
 enum {
-	kVDPlugin_AudioAPIVersion		= 1
+	kVDPlugin_AudioAPIVersion		= 2
 };
 
 struct VDAudioFilterPin {
 	unsigned			mGranularity;			// Block size a filter reads/writes this pin.
 	unsigned			mDelay;					// Delay in samples on this input.
 	unsigned			mBufferSize;			// The size, in samples, of the buffer.
-	volatile unsigned	mCurrentLevel;			// The number of samples currently in the buffer.
+	unsigned			mCurrentLevel;			// The number of samples currently in the buffer.
 	sint64				mLength;				// Approximate length of this stream in us.
 	const VDWaveFormat *mpFormat;
 	bool				mbVBR;
 	bool				mbEnded;
+	char				_pad[2];
+	void				*mpBuffer;
+	unsigned			mSamplesWritten;		// The number of samples just written to the buffer.
+	unsigned			mAvailSpace;			// Available room pointed to by mpBuffer (output pins only).
 
 	uint32 (VDAPIENTRY *mpReadProc)(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill, int format);
 
@@ -49,6 +53,10 @@ struct VDAudioFilterContext {
 	uint32	mInputSamples;			// Number of input samples available on all pins.
 	uint32	mInputGranules;			// Number of input granules available on all pins.
 	uint32	mInputsEnded;			// Number of inputs that have ended.
+	uint32	mOutputSamples;			// Number of output sample spaces available on all pins.
+	uint32	mOutputGranules;		// Number of output granule spaces available on all pins.
+	uint32	mCommonSamples;			// Number of input samples and output sample spaces.
+	uint32	mCommonGranules;		// Number of input and output granules.
 };
 
 // This structure is intentionally identical to WAVEFORMATEX, with one
@@ -64,28 +72,6 @@ struct VDWaveFormat {
 	uint16		mBlockSize;
 	uint16		mSampleBits;
 	uint16		mExtraSize;
-};
-
-struct VDFilterConfigEntry {
-	enum Type {
-		kTypeInvalid	= 0,
-		kTypeU32		= 1,
-		kTypeS32,
-		kTypeU64,
-		kTypeS64,
-		kTypeDouble,
-		kTypeAStr,
-		kTypeWStr,
-		kTypeBlock
-	};
-
-	const VDFilterConfigEntry *next;
-
-	unsigned	idx;
-	uint32		type;
-	const wchar_t *name;
-	const wchar_t *label;
-	const wchar_t *desc;	
 };
 
 enum {
@@ -117,7 +103,6 @@ typedef void		(VDAPIENTRY *VDAudioFilterResumeProc		)(const VDAudioFilterContext
 typedef unsigned	(VDAPIENTRY *VDAudioFilterGetParamProc		)(const VDAudioFilterContext *pContext, unsigned idx, void *dst, unsigned size);
 typedef void		(VDAPIENTRY *VDAudioFilterSetParamProc		)(const VDAudioFilterContext *pContext, unsigned idx, const void *src, unsigned variant_count);
 typedef bool		(VDAPIENTRY *VDAudioFilterConfigProc		)(const VDAudioFilterContext *pContext, HWND hwnd);
-typedef uint32		(VDAPIENTRY *VDAudioFilterReadProc			)(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples);
 
 enum {
 	kVFAF_Zero				= 0,
@@ -133,7 +118,6 @@ struct VDAudioFilterVtbl {
 	VDAudioFilterStartProc				mpStart;
 	VDAudioFilterStopProc				mpStop;
 	VDAudioFilterRunProc				mpRun;
-	VDAudioFilterReadProc				mpRead;
 	VDAudioFilterSeekProc				mpSeek;
 	VDAudioFilterSuspendProc			mpSuspend;
 	VDAudioFilterResumeProc				mpResume;

@@ -420,7 +420,7 @@ IVDubAnimConnection *CVDubServerLink::FrameServerConnect(char *fs_name) {
 	ranko();
 
 	for(i=0; i<MAXIMUM_FRAMESERVERS; i++) {
-		if (heap->fs_table[i].hwndServer && !stricmp(heap->fs_table[i].name, s))
+		if (heap->fs_table[i].hwndServer && !strnicmp(heap->fs_table[i].name, s, sizeof heap->fs_table[i].name - 1))
 			break;
 	}
 

@@ -176,6 +176,8 @@ BOOL AVIAudioOutput::stop() {
 			return FALSE;
 
 		curState = STATE_OPENED;
+
+		checkBuffers();
 	}
 
 	return TRUE;

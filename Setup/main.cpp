@@ -584,7 +584,7 @@ long max_burst_drop_count;
 BOOL last_was_dropped;
 volatile long captured_frames;
 
-void CALLBACK DiskTestTimerProc(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2) {
+void CALLBACK DiskTestTimerProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2) {
 	if (buffers_in_use >= buffers) {
 		++drop_count;
 

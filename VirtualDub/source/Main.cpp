@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 #include "stdafx.h"
 
 #include <windows.h>
+#include <commctrl.h>
 
 #include "resource.h"
 #include "prefs.h"
@@ -28,6 +29,8 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/memory.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/services.h>
 #include "Dub.h"
 #include "DubOutput.h"
@@ -36,9 +39,10 @@
 #include "project.h"
 #include "projectui.h"
 #include "crash.h"
+#include <vd2/system/strutil.h>
 
-#include "PositionControl.h"
 #include "InputFile.h"
+#include "AVIOutputImages.h"
 #include <vd2/system/error.h>
 
 ///////////////////////////////////////////////////////////////////////////
@@ -67,6 +71,8 @@ wchar_t g_szFile[MAX_PATH];
 
 extern const char g_szError[]="VirtualDub Error";
 extern const char g_szWarning[]="VirtualDub Warning";
+
+static const char g_szRegKeyPersistence[]="Persistence";
 
 ///////////////////////////
 
@@ -143,25 +149,6 @@ wm_quit_detected:
 
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
-
-
-//////////////////////////////////////////////////////////////////////
-
-char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos) {
-	try {
-		if (inputVideoAVI) {
-			bool bMasked;
-			long nFrame = inputSubset->lookupFrame(pos, bMasked);
-
-			return bMasked ? 'M' : inputVideoAVI->getFrameTypeChar(nFrame);
-		} else
-			return 0;
-	} catch(const MyError&) {
-		return 0;
-	}
-}
-
-
 //////////////////////////////////////////////////////////////////////
 
 
@@ -253,7 +240,6 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-static const char g_szRegKeyPersistence[]="Persistence";
 static const char g_szRegKeyRunAsJob[]="Run as job";
 static const char g_szRegKeySegmentFrameCount[]="Segment frame limit";
 static const char g_szRegKeyUseSegmentFrameCount[]="Use segment frame limit";
@@ -418,7 +404,7 @@ void CPUTest() {
 
 	// Enable FPU support...
 
-	long lActualEnabled = CPUEnableExtensions(lEnableFlags);
+	CPUEnableExtensions(lEnableFlags);
 
 	VDFastMemcpyAutodetect();
 }
@@ -430,76 +416,75 @@ public:
 	VDSaveImageSeqDialogW32();
 	~VDSaveImageSeqDialogW32();
 
-	BOOL DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
+	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 	void UpdateFilenames();
+	void UpdateEnables();
+	void UpdateSlider();
 
-	char szPrefix[MAX_PATH];
-	char szPostfix[MAX_PATH];
-	char szDirectory[MAX_PATH];
-	char szFormat[MAX_PATH];
+	VDStringW	mPrefix;
+	VDStringW	mPostfix;
+	VDStringW	mDirectory;
+	VDStringW	mFormatString;
+
 	int digits;
-	long lFirstFrame, lLastFrame;
-	bool bSaveAsTGA;
+	sint64 mFirstFrame, mLastFrame;
+	int mFormat;
+	int mQuality;
 	bool bRunAsJob;
 };
 
 VDSaveImageSeqDialogW32::VDSaveImageSeqDialogW32()
 	: VDDialogBaseW32(IDD_AVIOUTPUTIMAGES_FORMAT)
 	, digits(0)
-	, lFirstFrame(0)
-	, lLastFrame(0)
+	, mFirstFrame(0)
+	, mLastFrame(0)
+	, mFormat(AVIOutputImages::kFormatBMP)
 {
-	szPrefix[0] = 0;
-	szPostfix[0] = 0;
-	szDirectory[0] = 0;
-	szFormat[0] = 0;
 }
 VDSaveImageSeqDialogW32::~VDSaveImageSeqDialogW32() {}
 
 void VDSaveImageSeqDialogW32::UpdateFilenames() {
-	char buf[512], *s;
+	mFormatString = VDMakePath(mDirectory, mPrefix);
+	
+	VDStringW format(mFormatString + L"%0*lld" + mPostfix);
 
-	strcpy(szFormat, szDirectory);
-
-	s = szFormat;
-	while(*s) ++s;
-	if (s>szFormat && s[-1]!=':' && s[-1]!='\\')
-		*s++ = '\\';
-
-	strcpy(s, szPrefix);
-	while(*s) ++s;
-
-	char *pCombinedPrefixPt = s;
-
-	*s++ = '%';
-	*s++ = '0';
-	*s++ = '*';
-	*s++ = 'l';
-	*s++ = 'd';
-
-	strcpy(s, szPostfix);
-
-	sprintf(buf, szFormat, digits, lFirstFrame);
-	SetDlgItemText(mhdlg, IDC_STATIC_FIRSTFRAMENAME, buf);
-	sprintf(buf, szFormat, digits, lLastFrame);
-	SetDlgItemText(mhdlg, IDC_STATIC_LASTFRAMENAME, buf);
-
-	*pCombinedPrefixPt = 0;
+	VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_STATIC_FIRSTFRAMENAME), VDswprintf(format.c_str(), 2, &digits, &mFirstFrame).c_str());
+	VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_STATIC_LASTFRAMENAME), VDswprintf(format.c_str(), 2, &digits, &mLastFrame).c_str());
 }
 
-BOOL VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
+void VDSaveImageSeqDialogW32::UpdateEnables() {
+	bool bIsJPEG = 0!=IsDlgButtonChecked(mhdlg, IDC_FORMAT_JPEG);
+
+	EnableWindow(GetDlgItem(mhdlg, IDC_QUALITY), bIsJPEG);
+	EnableWindow(GetDlgItem(mhdlg, IDC_STATIC_QUALITY), bIsJPEG);
+}
+
+void VDSaveImageSeqDialogW32::UpdateSlider() {
+	mQuality = SendDlgItemMessage(mhdlg, IDC_QUALITY, TBM_GETPOS, 0, 0);
+	SetDlgItemInt(mhdlg, IDC_STATIC_QUALITY, mQuality, FALSE);
+}
+
+INT_PTR VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 	UINT uiTemp;
 	BOOL fSuccess;
 
 	switch(message) {
 	case WM_INITDIALOG:
-		SetDlgItemText(mhdlg, IDC_FILENAME_PREFIX, szPrefix);
-		SetDlgItemText(mhdlg, IDC_FILENAME_SUFFIX, szPostfix);
+		SendDlgItemMessage(mhdlg, IDC_QUALITY, TBM_SETRANGE, TRUE, MAKELONG(0,100));
+		SendDlgItemMessage(mhdlg, IDC_QUALITY, TBM_SETPOS, TRUE, mQuality);
+		VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_FILENAME_PREFIX), mPrefix.c_str());
+		VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_FILENAME_SUFFIX), mPostfix.c_str());
 		SetDlgItemInt(mhdlg, IDC_FILENAME_DIGITS, digits, FALSE);
-		SetDlgItemText(mhdlg, IDC_DIRECTORY, szDirectory);
-		CheckDlgButton(mhdlg, bSaveAsTGA ? IDC_FORMAT_TGA : IDC_FORMAT_BMP, BST_CHECKED);
+		VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_DIRECTORY), mDirectory.c_str());
+		CheckDlgButton(mhdlg, mFormat == AVIOutputImages::kFormatTGA ? IDC_FORMAT_TGA : mFormat == AVIOutputImages::kFormatBMP ? IDC_FORMAT_BMP : IDC_FORMAT_JPEG, BST_CHECKED);
 		UpdateFilenames();
+		UpdateEnables();
+		UpdateSlider();
 
+		return TRUE;
+
+	case WM_HSCROLL:
+		UpdateSlider();
 		return TRUE;
 
 	case WM_COMMAND:
@@ -507,13 +492,13 @@ BOOL VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam
 
 		case IDC_FILENAME_PREFIX:
 			if (HIWORD(wParam) != EN_CHANGE) break;
-			SendMessage((HWND)lParam, WM_GETTEXT, sizeof szPrefix, (LPARAM)szPrefix);
+			mPrefix = VDGetWindowTextW32((HWND)lParam);
 			UpdateFilenames();
 			return TRUE;
 
 		case IDC_FILENAME_SUFFIX:
 			if (HIWORD(wParam) != EN_CHANGE) break;
-			SendMessage((HWND)lParam, WM_GETTEXT, sizeof szPostfix, (LPARAM)szPostfix);
+			mPostfix = VDGetWindowTextW32((HWND)lParam);
 			UpdateFilenames();
 			return TRUE;
 
@@ -532,7 +517,7 @@ BOOL VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam
 
 		case IDC_DIRECTORY:
 			if (HIWORD(wParam) != EN_CHANGE) break;
-			SendMessage((HWND)lParam, WM_GETTEXT, sizeof szDirectory, (LPARAM)szDirectory);
+			mDirectory = VDGetWindowTextW32((HWND)lParam);
 			UpdateFilenames();
 			return TRUE;
 
@@ -541,24 +526,36 @@ BOOL VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam
 				const VDStringW dir(VDGetDirectory(kFileDialog_ImageDst, (VDGUIHandle)mhdlg, L"Select a directory for saved images"));
 
 				if (!dir.empty())
-					SetDlgItemText(mhdlg, IDC_DIRECTORY, VDTextWToA(dir).c_str());
+					VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_DIRECTORY), dir.c_str());
 			}
 			return TRUE;
 
 		case IDC_FORMAT_TGA:
 			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
-				bSaveAsTGA = true;
-				if (!stricmp(szPostfix, ".bmp")) {
-					SetDlgItemText(mhdlg, IDC_FILENAME_SUFFIX, ".tga");
+				UpdateEnables();
+				mFormat = AVIOutputImages::kFormatTGA;
+				if (!wcscmp(mPostfix.c_str(), L".bmp") || !wcscmp(mPostfix.c_str(), L".jpeg")) {
+					VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_FILENAME_SUFFIX), L".tga");
 				}
 			}
 			return TRUE;
 
 		case IDC_FORMAT_BMP:
 			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
-				bSaveAsTGA = false;
-				if (!stricmp(szPostfix, ".tga")) {
-					SetDlgItemText(mhdlg, IDC_FILENAME_SUFFIX, ".bmp");
+				UpdateEnables();
+				mFormat = AVIOutputImages::kFormatBMP;
+				if (!wcscmp(mPostfix.c_str(), L".tga") || !wcscmp(mPostfix.c_str(), L".jpeg")) {
+					VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_FILENAME_SUFFIX), L".bmp");
+				}
+			}
+			return TRUE;
+
+		case IDC_FORMAT_JPEG:
+			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+				UpdateEnables();
+				mFormat = AVIOutputImages::kFormatJPEG;
+				if (!wcscmp(mPostfix.c_str(), L".bmp") || !wcscmp(mPostfix.c_str(), L".tga")) {
+					VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_FILENAME_SUFFIX), L".jpeg");
 				}
 			}
 			return TRUE;
@@ -581,6 +578,14 @@ BOOL VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam
 	return FALSE;
 }
 
+static const char g_szRegKeyImageSequenceFormat[]="Image sequence: format";
+static const char g_szRegKeyImageSequenceRunAsJob[]="Image sequence: run as job";
+static const char g_szRegKeyImageSequenceQuality[]="Image sequence: quality";
+static const char g_szRegKeyImageSequenceDirectory[]="Image sequence: directory";
+static const char g_szRegKeyImageSequencePrefix[]="Image sequence: prefix";
+static const char g_szRegKeyImageSequenceSuffix[]="Image sequence: suffix";
+static const char g_szRegKeyImageSequenceMinDigits[]="Image sequence: min digits";
+
 void SaveImageSeq(HWND hwnd) {
 	VDSaveImageSeqDialogW32 dlg;
 
@@ -589,17 +594,41 @@ void SaveImageSeq(HWND hwnd) {
 		return;
 	}
 
-	dlg.bSaveAsTGA = true;
-	strcpy(dlg.szPostfix,".tga");
-	dlg.lFirstFrame	= 0;
-	dlg.lLastFrame	= inputSubset->getTotalFrames()-1;
-	dlg.bRunAsJob = false;
+	VDRegistryAppKey key(g_szRegKeyPersistence);
 
-	if (dlg.ActivateDialog((VDGUIHandle)hwnd)) {
+	dlg.mFormat = key.getInt(g_szRegKeyImageSequenceFormat, AVIOutputImages::kFormatTGA);
+	if ((unsigned)dlg.mFormat >= AVIOutputImages::kFormatCount)
+		dlg.mFormat = AVIOutputImages::kFormatTGA;
+	dlg.mFirstFrame	= 0;
+	dlg.mLastFrame	= g_project->GetFrameCount() - 1;
+	dlg.bRunAsJob	= key.getBool(g_szRegKeyImageSequenceRunAsJob, false);
+	dlg.mQuality	= key.getInt(g_szRegKeyImageSequenceQuality, 95);
+	dlg.digits		= key.getInt(g_szRegKeyImageSequenceMinDigits, 4);
+
+	dlg.mPostfix = L".tga";
+
+	key.getString(g_szRegKeyImageSequenceDirectory, dlg.mDirectory);
+	key.getString(g_szRegKeyImageSequencePrefix, dlg.mPrefix);
+	key.getString(g_szRegKeyImageSequenceSuffix, dlg.mPostfix);
+
+	if (dlg.mQuality < 0)
+		dlg.mQuality = 0;
+	else if (dlg.mQuality > 100)
+		dlg.mQuality = 100;
+
+	if (dlg.ActivateDialogDual((VDGUIHandle)hwnd)) {
+		key.setInt(g_szRegKeyImageSequenceFormat, dlg.mFormat);
+		key.setBool(g_szRegKeyImageSequenceRunAsJob, dlg.bRunAsJob);
+		key.setInt(g_szRegKeyImageSequenceQuality, dlg.mQuality);
+		key.setInt(g_szRegKeyImageSequenceMinDigits, dlg.digits);
+		key.setString(g_szRegKeyImageSequenceDirectory, dlg.mDirectory.c_str());
+		key.setString(g_szRegKeyImageSequencePrefix, dlg.mPrefix.c_str());
+		key.setString(g_szRegKeyImageSequenceSuffix, dlg.mPostfix.c_str());
+
 		if (dlg.bRunAsJob)
-			JobAddConfigurationImages(&g_dubOpts, g_szInputAVIFile, NULL, VDTextAToW(dlg.szFormat).c_str(), VDTextAToW(dlg.szPostfix).c_str(), dlg.digits, dlg.bSaveAsTGA, &inputAVI->listFiles);
+			JobAddConfigurationImages(&g_dubOpts, g_szInputAVIFile, NULL, dlg.mFormatString.c_str(), dlg.mPostfix.c_str(), dlg.digits, dlg.mFormat, dlg.mQuality, &inputAVI->listFiles);
 		else
-			SaveImageSequence(VDTextAToW(dlg.szFormat).c_str(), VDTextAToW(dlg.szPostfix).c_str(), dlg.digits, false, NULL, dlg.bSaveAsTGA);
+			SaveImageSequence(dlg.mFormatString.c_str(), dlg.mPostfix.c_str(), dlg.digits, false, NULL, dlg.mFormat, dlg.mQuality);
 	}
 }
 
@@ -621,22 +650,10 @@ void SaveConfiguration(HWND hWnd) {
 	if (!filename.empty()) {
 		key.setBool(g_szRegKeySaveSelectionAndEditList, !!optVals[0]);
 
-		FILE *f = NULL;
 		try {
-			f = fopen(VDTextWToA(filename).c_str(), "w");
-
-			if (!f)
-				throw MyError("Cannot open output file: %s.", strerror(errno));
-
-			JobWriteConfiguration(f, &g_dubOpts, !!optVals[0]);
-
-			fclose(f);
-			f = NULL;
+			JobWriteConfiguration(filename.c_str(), &g_dubOpts, !!optVals[0]);
 		} catch(const MyError& e) {
 			e.post(NULL, g_szError);
 		}
-
-		if (f)
-			fclose(f);
 	}
 }

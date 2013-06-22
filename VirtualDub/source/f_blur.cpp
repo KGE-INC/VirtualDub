@@ -16,7 +16,8 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "stdafx.h"
-#include "filter.h"
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdvideofiltold.h>
 
 #include "Effect.h"
 #include "e_blur.h"
@@ -31,7 +32,7 @@ static int blur_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
 
 	if (pfbd->effect)
-		pfbd->effect->run(&fa->dst);
+		pfbd->effect->run((VBitmap *)&fa->dst);
 
 	return 0;
 }
@@ -39,7 +40,7 @@ static int blur_run(const FilterActivation *fa, const FilterFunctions *ff) {
 static int blur_start(FilterActivation *fa, const FilterFunctions *ff) {
 	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
 
-	if (!(pfbd->effect = VCreateEffectBlur(&fa->dst)))
+	if (!(pfbd->effect = VCreateEffectBlur((VBitmap *)&fa->dst)))
 		return 1;
 
 	return 0;
@@ -53,7 +54,7 @@ static long blur_param(FilterActivation *fa, const FilterFunctions *ff) {
 static int blur_start2(FilterActivation *fa, const FilterFunctions *ff) {
 	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
 
-	if (!(pfbd->effect = VCreateEffectBlurHi(&fa->dst)))
+	if (!(pfbd->effect = VCreateEffectBlurHi((VBitmap *)&fa->dst)))
 		return 1;
 
 	return 0;

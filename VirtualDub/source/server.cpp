@@ -38,12 +38,14 @@
 #include "audio.h"
 #include "command.h"
 #include "prefs.h"
-
+#include "project.h"
 #include "server.h"
 #include "resource.h"
 
 extern HINSTANCE g_hInst;
 extern HWND g_hWnd;
+
+extern VDProject *g_project;
 
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 
@@ -120,7 +122,6 @@ private:
 	VDRenderFrameMap	mVideoFrameMap;
 
 	DWORD_PTR			dwUserSave;
-	DWORD_PTR			dwProcSave;
 
 	long			lRequestCount, lFrameCount, lAudioSegCount;
 
@@ -134,7 +135,7 @@ private:
 	char *lpszFsname;
 
 public:
-	Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt);
+	Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& server);
 	~Frameserver();
 
 	void Go(IVDubServerLink *ivdsl, char *name);
@@ -142,8 +143,8 @@ public:
 	static LONG APIENTRY WndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam);
 	LONG APIENTRY WndProc2( HWND hWnd, UINT message, UINT wParam, LONG lParam);
 
-	static BOOL APIENTRY StatusDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam);
-	BOOL APIENTRY StatusDlgProc2( HWND hWnd, UINT message, UINT wParam, LONG lParam);
+	static INT_PTR APIENTRY StatusDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+	INT_PTR APIENTRY StatusDlgProc2( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 	FrameserverSession *SessionLookup(LPARAM lParam);
 	LRESULT SessionOpen(LPARAM mmapID, WPARAM arena_len);
@@ -155,7 +156,7 @@ public:
 	LRESULT SessionAudioInfo(LPARAM lParam, WPARAM lStart);
 };
 
-Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt) {
+Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& subset) {
 	opt				= xopt;
 	hwnd			= hwndParent;
 
@@ -164,14 +165,14 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 
 	lFrameCount = lRequestCount = lAudioSegCount = 0;
 
-	InitStreamValuesStatic(vInfo, aInfo, video, audio, opt);
+	InitStreamValuesStatic(vInfo, aInfo, video, audio, opt, &subset);
 
-	mVideoFrameMap.Init(video, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, inputSubset, vInfo.end_dst, false);
+	mVideoFrameMap.Init(video, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, &subset, vInfo.end_dst, false);
 
 	long lOffsetStart = video->msToSamples(opt->video.lStartOffsetMS);
 	long lOffsetEnd = video->msToSamples(opt->video.lEndOffsetMS);
 
-	FrameSubset			videoset(*inputSubset);
+	FrameSubset			videoset(subset);
 
 	if (opt->audio.fEndAudio)
 		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
@@ -220,18 +221,18 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	// prepare the sources...
 
 	if (vSrc) {
-		if (!vSrc->setDecompressedFormat(16+8*g_dubOpts.video.inputDepth))
-			if (!vSrc->setDecompressedFormat(32))
-				if (!vSrc->setDecompressedFormat(24))
-					if (!vSrc->setDecompressedFormat(16))
-						if (!vSrc->setDecompressedFormat(8))
+		if (!vSrc->setTargetFormat(g_dubOpts.video.mInputFormat))
+			if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB8888))
+				if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_RGB888))
+					if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB1555))
+						if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_Pal8))
 							throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 
 		vSrc->streamBegin(true);
 
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 32 /*bmih->biBitCount*/, 16+8*opt->video.outputDepth);
+		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 24);
 
 		if (filters.getFrameLag())
 			MessageBox(g_hWnd,
@@ -252,10 +253,9 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	// usurp the window
 
-	dwUserSave = GetWindowLongPtr(hwnd, GWL_USERDATA);
-	dwProcSave = GetWindowLongPtr(hwnd, GWL_WNDPROC );
-	SetWindowLongPtr(hwnd, GWL_USERDATA, (DWORD)this);
-	SetWindowLongPtr(hwnd, GWL_WNDPROC	, (DWORD)Frameserver::WndProc);
+	dwUserSave = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+	SetWindowLongPtr(hwnd, GWLP_USERDATA, (DWORD)this);
+	SetWindowLongPtr(hwnd, 0, (LONG_PTR)Frameserver::WndProc);
 	guiSetTitle(hwnd, IDS_TITLE_FRAMESERVER);
 
 	// create dialog box
@@ -301,10 +301,9 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 		ShowWindow(hwnd, SW_SHOW);
 	}
 
-	// restore everything
-
-	SetWindowLongPtr(hwnd, GWL_WNDPROC	, dwProcSave);
-	SetWindowLongPtr(hwnd, GWL_USERDATA, dwUserSave);
+	// unsubclass
+	SetWindowLongPtr(hwnd, 0, 0);
+	SetWindowLongPtr(hwnd, GWLP_USERDATA, dwUserSave);
 
 	if (vSrc) {
 		vSrc->streamEnd();
@@ -314,7 +313,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 }
 
 LONG APIENTRY Frameserver::WndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {
-	return ((Frameserver *)GetWindowLong(hWnd, GWL_USERDATA))->WndProc2(hWnd, message, wParam, lParam);
+	return ((Frameserver *)GetWindowLong(hWnd, GWLP_USERDATA))->WndProc2(hWnd, message, wParam, lParam);
 }
 
 LONG APIENTRY Frameserver::WndProc2( HWND hWnd, UINT message, UINT wParam, LONG lParam)
@@ -390,22 +389,22 @@ LONG APIENTRY Frameserver::WndProc2( HWND hWnd, UINT message, UINT wParam, LONG 
 		return SessionAudioInfo(lParam, wParam);
 
 	default:
-		return (DefWindowProc(hWnd, message, wParam, lParam));
+		return (IsWindowUnicode(hWnd) ? DefWindowProcW : DefWindowProcA)(hWnd, message, wParam, lParam);
     }
     return (0);
 }
 
 ///////////////////////
 
-BOOL APIENTRY Frameserver::StatusDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {
-	return ((Frameserver *)GetWindowLong(hWnd, DWL_USER))->StatusDlgProc2(hWnd, message, wParam, lParam);
+INT_PTR CALLBACK Frameserver::StatusDlgProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+	return ((Frameserver *)GetWindowLongPtr(hWnd, DWLP_USER))->StatusDlgProc2(hWnd, message, wParam, lParam);
 }
 
-BOOL APIENTRY Frameserver::StatusDlgProc2( HWND hWnd, UINT message, UINT wParam, LONG lParam)
+INT_PTR CALLBACK Frameserver::StatusDlgProc2( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message) {
 	case WM_INITDIALOG:
-		SetWindowLong(hWnd, DWL_USER, lParam);
+		SetWindowLongPtr(hWnd, DWLP_USER, lParam);
 		SetDlgItemText(hWnd, IDC_STATIC_FSNAME, ((Frameserver *)lParam)->lpszFsname);
 		SetTimer(hWnd,1,1000,NULL);
 
@@ -572,11 +571,11 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 		return VDSRVERR_BADSESSION;
 
 	try {
-		void *ptr = vSrc->getFrameBuffer();
+		const void *ptr = vSrc->getFrameBuffer();
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 		BITMAPINFOHEADER bmih24;
 		long frame;
-		BOOL is_preroll;
+		bool is_preroll;
 
 		if (fs->arena_size < ((filters.LastBitmap()->w*3+3)&-4)*filters.LastBitmap()->h)
 			return VDSRVERR_TOOBIG;
@@ -588,11 +587,11 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 
 		vSrc->streamSetDesiredFrame(sample);
 
-		frame = vSrc->streamGetNextRequiredFrame(&is_preroll);
+		frame = vSrc->streamGetNextRequiredFrame(is_preroll);
 
 		if (frame >= 0) {
 			do {
-				LONG lSize;
+				uint32 lSize;
 				int hr;
 
 	//			_RPT1(0,"feeding frame %ld\n", frame);
@@ -608,16 +607,16 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, vSrc->isKey(frame), is_preroll, frame);
-			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(&is_preroll)));
+				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, is_preroll, frame);
+			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(is_preroll)));
 
 		} else
-			ptr = vSrc->streamGetFrame(NULL, 0, vSrc->isKey(sample), FALSE, vSrc->displayToStreamOrder(sample));
+			ptr = vSrc->streamGetFrame(NULL, 0, FALSE, vSrc->displayToStreamOrder(sample));
 
 		if (!g_listFA.IsEmpty()) {
-			VBitmap vbm = *filters.OutputBitmap();
+			VBitmap srcbm((void *)vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
 
-			filters.InputBitmap()->BitBlt(0, 0, &VBitmap(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat()), 0, 0, -1, -1);
+			filters.InputBitmap()->BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
 
 			fsi.lCurrentFrame				= original_frame;
 			fsi.lCurrentSourceFrame			= sample;
@@ -626,14 +625,17 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 
 			filters.RunFilters();
 
-			vbm.data = (Pixel *)fs->arena;
+			VBitmap vbm;
+
+			vbm.init(fs->arena, srcbm.w, srcbm.h, 24);
+			vbm.PitchAlign4();
 			vbm.BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1);
 
 		} else
 			if (bmih->biBitCount != 24) {
 				memcpy(&bmih24, bmih, sizeof(BITMAPINFOHEADER));
 				bmih24.biBitCount = 24;
-				DIBconvert(ptr, bmih, fs->arena, &bmih24);
+				DIBconvert((void *)ptr, bmih, fs->arena, &bmih24);
 			} else
 				memcpy(fs->arena, ptr, bmih->biSizeImage);
 
@@ -669,12 +671,12 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 	// Read subsets.
 
 	long lTotalBytes = 0, lTotalSamples = 0;
-	long lActualBytes, lActualSamples = 1;
+	uint32 lActualBytes, lActualSamples = 1;
 	char *pDest = (char *)(fs->arena + 8);
 
 	try {
 		while(lCount>0 && lActualSamples>0) {
-			int start, len;
+			sint64 start, len;
 
 			// Translate range.
 
@@ -770,7 +772,7 @@ static BOOL InitServerDLL() {
 	return FALSE;
 }
 
-BOOL CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
@@ -782,12 +784,12 @@ BOOL CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 			SetDlgItemText(hDlg, IDC_COMPUTER_NAME, buf);
 		}
 		SetDlgItemText(hDlg, IDC_FSNAME, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
-		SetWindowLong(hDlg, DWL_USER, lParam);
+		SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 		return TRUE;
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
 		case IDOK:
-			SendDlgItemMessage(hDlg, IDC_FSNAME, WM_GETTEXT, 128, GetWindowLong(hDlg,DWL_USER));
+			SendDlgItemMessage(hDlg, IDC_FSNAME, WM_GETTEXT, 128, GetWindowLongPtr(hDlg, DWLP_USER));
 			EndDialog(hDlg, TRUE);
 			break;
 		case IDCANCEL:
@@ -813,7 +815,7 @@ void ActivateFrameServerDialog(HWND hwnd) {
 		return;
 
 	try {
-		Frameserver fs(inputVideoAVI, inputAudio, hwnd, &g_dubOpts);
+		Frameserver fs(inputVideoAVI, inputAudio, hwnd, &g_dubOpts, g_project->GetTimeline().GetSubset());
 
 		const VDStringW fname(VDGetSaveFileName(kFileDialog_Signpost, (VDGUIHandle)hwnd, L"Save .VDR signpost for AVIFile handler", fileFilters, g_prefs.main.fAttachExtension ? L"vdr" : NULL, 0, 0));
 

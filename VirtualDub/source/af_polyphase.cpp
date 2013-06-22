@@ -54,18 +54,18 @@ namespace {
 	void AudioMakeResampleFilter(float *dst, int halfpoints, double cutoff, double phase) {
 		const int points = 2*halfpoints;
 		int i;
-		double one_over_M = 0.5 / halfpoints;
-		double sum = 0.0;
+		float one_over_M = 0.5f / halfpoints;
+		float sum = 0.0f;
 
 		for(i=0; i<points; ++i) {
 			double y = (i - halfpoints + 1 - phase)*2.0*pi;
-			double v = sinc(y * cutoff) * blackman(y * one_over_M);
+			float v = (float)(sinc(y * cutoff) * blackman(y * one_over_M));
 
 			sum += v;
 			dst[i] = v;
 		}
 
-		double inv_sum = 1.0/sum;
+		float inv_sum = 1.0f/sum;
 
 		for(i=0; i<points; i++)
 			dst[i] *= inv_sum;
@@ -74,17 +74,17 @@ namespace {
 	void AudioMakeLowpassFilter(float *dst, int halfpoints, double cutoff) {
 		int i;
 		double one_over_M = 0.5 / halfpoints;
-		double sum = 0.0;
+		float sum = 0.0;
 
 		for(i=0; i<=halfpoints; i++) {
 			double y = i*2.0*pi;
-			double v = sinc(y * cutoff) * blackman(y * one_over_M);
+			float v = (float)(sinc(y * cutoff) * blackman(y * one_over_M));
 
 			sum += v;
 			dst[i] = v;
 		}
 
-		double inv_sum = 0.5/(sum - 0.5*dst[0]);
+		float inv_sum = 0.5f/(sum - 0.5f*dst[0]);
 
 		for(i=0; i<=halfpoints; i++)
 			dst[i] *= inv_sum;
@@ -93,17 +93,17 @@ namespace {
 	void AudioMakeHighpassFilter(float *dst, int halfpoints, double cutoff) {
 		int i;
 		double one_over_M = 0.5 / halfpoints;
-		double sum = 0.0;
+		float sum = 0.0;
 
 		for(i=0; i<=halfpoints; i++) {
 			double y = i*2.0*pi;
-			double v = sinc(y * cutoff) * blackman(y * one_over_M);
+			float v = (float)(sinc(y * cutoff) * blackman(y * one_over_M));
 
 			sum += v;
 			dst[i] = v;
 		}
 
-		double inv_sum = -0.5/(sum - 0.5*dst[0]);
+		float inv_sum = -0.5f/(sum - 0.5f*dst[0]);
 
 		for(i=0; i<=halfpoints; i++)
 			dst[i] *= inv_sum;
@@ -132,7 +132,7 @@ uint32 VDAudioFilterSymmetricFIR::Prepare() {
 	GenerateFilter(inFormat.mSamplingRate);
 	mFilterBank.resize((mFilterBank.size() + 3) & ~3, 0);
 
-	mpContext->mpInputs[0]->mDelay			= (sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate;
+	mpContext->mpInputs[0]->mDelay			= (uint32)((sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate);
 
 	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
@@ -142,7 +142,7 @@ uint32 VDAudioFilterSymmetricFIR::Prepare() {
 	mpContext->mpOutputs[0]->mpFormat = pwf;
 
 	pwf->mSampleBits	= 16;
-	pwf->mBlockSize		= 2 * pwf->mChannels;
+	pwf->mBlockSize		= (uint16)(2 * pwf->mChannels);
 	pwf->mDataRate		= pwf->mSamplingRate * pwf->mBlockSize;
 
 	return 0;
@@ -157,7 +157,6 @@ void VDAudioFilterSymmetricFIR::Start() {
 	mFIRBufferLimit = (mFilterSize*2 + format.mSamplingRate + 15) & ~15;
 	mFIRBufferChannelStride = mFIRBufferLimit;
 	mFIRBuffer.resize(mFIRBufferChannelStride * format.mChannels);
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 
 	mMaxQuantum = std::max<int>(format.mSamplingRate / 10, 256);
 }
@@ -191,20 +190,17 @@ uint32 VDAudioFilterSymmetricFIR::Run() {
 	}
 
 	// compute output samples
-	int bytes = (mFIRBufferWritePoint - mFIRBufferReadPoint - 2*mFilterSize) * format.mBlockSize;
-	sint16 *dst;
-	int samples = 0;
-	
-	if (bytes > 0) {
-		dst = (sint16 *)mOutputBuffer.LockWrite(bytes, bytes);
-		samples = bytes / format.mBlockSize;
-	}
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
+	int samples = mFIRBufferWritePoint - mFIRBufferReadPoint - 2*mFilterSize;
 
+	if (samples > mpContext->mOutputSamples)
+		samples = mpContext->mOutputSamples;
+	
 	if (samples > mMaxQuantum)
 		samples = mMaxQuantum;
 
 	if (!samples) {
-		if (!bInputRead && mpContext->mpInputs[0]->mbEnded && bytes<=0)
+		if (!bInputRead && mpContext->mInputsEnded)
 			return kVFARun_Finished;
 
 		return 0;
@@ -230,30 +226,12 @@ uint32 VDAudioFilterSymmetricFIR::Run() {
 		mFIRBufferWritePoint -= newReadPoint;
 	}
 
-	mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
 }
 
-uint32 VDAudioFilterSymmetricFIR::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
 sint64 VDAudioFilterSymmetricFIR::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
 	mFIRBufferReadPoint = 0;
 	mFIRBufferWritePoint = 0;
 	return us;
@@ -285,13 +263,16 @@ uint32 VDAudioFilterPolyphase::Prepare() {
 	pwf->mSamplingRate = GenerateFilterBank(inFormat.mSamplingRate);
 
 	pwf->mSampleBits	= 16;
-	pwf->mBlockSize		= 2 * pwf->mChannels;
+	pwf->mBlockSize		= (uint16)(2 * pwf->mChannels);
 	pwf->mDataRate		= pwf->mSamplingRate * pwf->mBlockSize;
 
 	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay		= (sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate;
+	mpContext->mpInputs[0]->mDelay		= (uint32)((sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate);
 	mpContext->mpOutputs[0]->mGranularity = 1;
 
+	// must set ratios here as they may be overridden by subclasses
+	mRatioSrc = mpContext->mpInputs[0]->mpFormat->mSamplingRate;
+	mRatioDst = mpContext->mpOutputs[0]->mpFormat->mSamplingRate;
 	return 0;
 }
 
@@ -303,18 +284,12 @@ void VDAudioFilterPolyphase::Start() {
 	mFIRBufferLimit = 16384;
 	mFIRBufferChannelStride = 16384;
 	mFIRBuffer.resize(mFIRBufferChannelStride * format.mChannels);
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 	mCurrentPhase = 0;
-
-	mRatioSrc = mpContext->mpInputs[0]->mpFormat->mSamplingRate;
-	mRatioDst = mpContext->mpOutputs[0]->mpFormat->mSamplingRate;
 }
 
 uint32 VDAudioFilterPolyphase::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	VDAudioFilterPin& pinout = *mpContext->mpOutputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
-	const VDWaveFormat& formatOut = *pinout.mpFormat;
 	bool bInputRead = false;
 
 	// fill up FIR buffer
@@ -341,23 +316,23 @@ uint32 VDAudioFilterPolyphase::Run() {
 	}
 
 	// compute output samples
-	int bytes = (((mFIRBufferPoint - mFilterSize + 1)*mRatioDst - mCurrentPhase)/mRatioSrc) * format.mBlockSize;
-	sint16 *dst;
-	int samples = 0;
-	
-	if (bytes > 0) {
-		dst = (sint16 *)mOutputBuffer.LockWrite(bytes, bytes);
-		samples = bytes / format.mBlockSize;
-	}
+	int samples = ((mFIRBufferPoint - mFilterSize + 1)*mRatioDst - mCurrentPhase)/mRatioSrc;
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
+
+	if (samples < 0)
+		samples = 0;
+
+	if (samples > mpContext->mOutputSamples)
+		samples = mpContext->mOutputSamples;
 
 	if (!samples) {
-		if (!bInputRead && pin.mbEnded && !bytes)
+		if (!bInputRead && mpContext->mInputsEnded)
 			return kVFARun_Finished;
 
 		return 0;
 	}
 
-	sint32	phasefixed		= (mCurrentPhase * (sint64)0x10000) / mRatioDst;
+	sint32	phasefixed		= (sint32)((mCurrentPhase * (sint64)0x10000) / mRatioDst);
 	sint32	phaseincfixed	= (sint32)((mRatioSrc*(sint64)0x10000) / mRatioDst);
 
 	sint32	newPhase	= mCurrentPhase + mRatioSrc * samples;
@@ -387,30 +362,11 @@ uint32 VDAudioFilterPolyphase::Run() {
 
 	mFIRBufferPoint -= srcInc;
 
-	mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 	return 0;
 }
 
-uint32 VDAudioFilterPolyphase::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
 sint64 VDAudioFilterPolyphase::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
 	mFIRBufferPoint = 0;
 	return us;
 }
@@ -432,7 +388,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		switch(msg) {
 		case WM_INITDIALOG:
 			SetDlgItemInt(mhdlg, IDC_CUTOFF, mConfig.cutoff, FALSE);
@@ -534,9 +490,8 @@ void VDAudioFilterXpass::GenerateFilter(int freq) {
 
 	mFilterSize = halfsize;
 	mFilterBank.resize(2*mFilterSize+1);
-	for(int i=0; i<=halfsize; ++i) {
-		mFilterBank[mFilterSize+i] = mFilterBank[mFilterSize-i] = (int)floor(0.5 + halfkernel[i]*16384);
-	}
+	for(int i=0; i<=halfsize; ++i)
+		mFilterBank[mFilterSize+i] = mFilterBank[mFilterSize-i] = (short)floor(0.5 + halfkernel[i]*16384);
 }
 
 void __cdecl VDAudioFilterLowpassInitProc(const VDAudioFilterContext *pContext) {
@@ -622,7 +577,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		switch(msg) {
 		case WM_INITDIALOG:
 			SetDlgItemInt(mhdlg, IDC_FREQ, mConfig.newfreq, FALSE);
@@ -721,7 +676,7 @@ int VDAudioFilterResample::GenerateFilterBank(int freq) {
 		AudioMakeResampleFilter(&kernel[0], halfsize, cutoff, phase / 32.0);
 
 		for(i=0; i<fullsize; ++i) {
-			int v = (int)floor(0.5 + kernel[i]*16384);
+			sint16 v = (sint16)floor(0.5 + kernel[i]*16384);
 			*dst++ = v;
 
 			if (v) {
@@ -801,7 +756,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		char buf[256];
 
 		switch(msg) {
@@ -857,13 +812,16 @@ public:
 		return false;
 	}
 
-	void Start() {
-		VDAudioFilterPolyphase::Start();
+	uint32 Prepare() {
+		uint32 rval = VDAudioFilterPolyphase::Prepare();
+
 		mRatioSrc = (sint32)(0.5 + 0x10000 / mConfig.ratio);
 		mRatioDst = 0x10000;
 
 		VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
 		pin.mLength = VDFraction(mRatioSrc, mRatioDst).scale64ir(pin.mLength);
+
+		return rval;
 	}
 
 	void *GetConfigPtr() { return &mConfig; }
@@ -900,7 +858,7 @@ int VDAudioFilterStretch::GenerateFilterBank(int freq) {
 		AudioMakeResampleFilter(&kernel[0], halfsize, cutoff, phase / 32.0);
 
 		for(int i=0; i<mFilterSize; ++i)
-			*dst++ = (int)floor(0.5 + kernel[i]*16384);
+			*dst++ = (sint16)floor(0.5 + kernel[i]*16384);
 	}
 
 	return freq;

@@ -29,7 +29,7 @@ InputFileOptions::~InputFileOptions() {
 
 /////////////////////////////////////////////////////////////////////
 
-InputFilenameNode::InputFilenameNode(const char *_n) : name(strdup(_n)) {
+InputFilenameNode::InputFilenameNode(const wchar_t *_n) : name(wcsdup(_n)) {
 	if (!name)
 		throw MyMemoryError();
 }
@@ -48,7 +48,7 @@ InputFile::~InputFile() {
 }
 
 void InputFile::AddFilename(const wchar_t *lpszFile) {
-	InputFilenameNode *ifn = new InputFilenameNode(VDTextWToA(lpszFile).c_str());
+	InputFilenameNode *ifn = new InputFilenameNode(lpszFile);
 
 	if (ifn)
 		listFiles.AddTail(ifn);
@@ -92,6 +92,7 @@ extern IVDInputDriver *VDCreateInputDriverAVI2();
 extern IVDInputDriver *VDCreateInputDriverMPEG();
 extern IVDInputDriver *VDCreateInputDriverImages();
 extern IVDInputDriver *VDCreateInputDriverASF();
+extern IVDInputDriver *VDCreateInputDriverANIM();
 
 namespace {
 	struct SortByRevPriority {
@@ -110,6 +111,7 @@ void VDInitInputDrivers() {
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMPEG()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverImages()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverASF()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
 
 	std::sort(g_VDInputDrivers.begin(), g_VDInputDrivers.end(), SortByRevPriority());
 }

@@ -18,6 +18,8 @@
 #ifndef f_IMAGE_H
 #define f_IMAGE_H
 
+#include <vd2/system/vdtypes.h>
+
 class VBitmap;
 
 bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
@@ -26,6 +28,7 @@ void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb);
 bool DecodeTGAHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
 void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb);
 
+bool IsJPEGHeader(const void *pv, uint32 len);
 void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha);
 void DecodeImage(const char *pszFile, VBitmap& vb, int desired_depth, bool& bHasAlpha);
 

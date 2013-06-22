@@ -1,12 +1,38 @@
+//	VirtualDub - Video processing and capture application
+//	System library component
+//	Copyright (C) 1998-2004 Avery Lee, All Rights Reserved.
+//
+//	Beginning with 1.6.0, the VirtualDub system library is licensed
+//	differently than the remainder of VirtualDub.  This particular file is
+//	thus licensed as follows (the "zlib" license):
+//
+//	This software is provided 'as-is', without any express or implied
+//	warranty.  In no event will the authors be held liable for any
+//	damages arising from the use of this software.
+//
+//	Permission is granted to anyone to use this software for any purpose,
+//	including commercial applications, and to alter it and redistribute it
+//	freely, subject to the following restrictions:
+//
+//	1.	The origin of this software must not be misrepresented; you must
+//		not claim that you wrote the original software. If you use this
+//		software in a product, an acknowledgment in the product
+//		documentation would be appreciated but is not required.
+//	2.	Altered source versions must be plainly marked as such, and must
+//		not be misrepresented as being the original software.
+//	3.	This notice may not be removed or altered from any source
+//		distribution.
+
 #ifndef f_VD2_SYSTEM_VDTYPES_H
 #define f_VD2_SYSTEM_VDTYPES_H
 
+#include <algorithm>
+#include <stdio.h>
+#include <stdarg.h>
+#include <new>
+
 #ifndef NULL
 #define NULL 0
-#endif
-
-#ifndef M_PI
-#define M_PI 3.1415926535897932
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -34,6 +60,14 @@
 	typedef sint32				int32;
 	typedef sint16				int16;
 	typedef sint8				int8;
+
+	#ifdef _M_AMD64
+		typedef sint64 sintptr;
+		typedef uint64 uintptr;
+	#else
+		typedef sint32 sintptr;
+		typedef uint32 uintptr;
+	#endif
 #endif
 
 #if defined(_MSC_VER)
@@ -57,18 +91,16 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 	#include <ctype.h>
 #endif
 
-#include <algorithm>
-
 ///////////////////////////////////////////////////////////////////////////
 //
 //	allocation
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && (_MSC_VER < 1300 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
 #define new_nothrow new
 #else
-#define new_nothrow new(nothrow)
+#define new_nothrow new(std::nothrow)
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -77,7 +109,14 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#if _MSC_VER < 1300
+#if _MSC_VER < 1300 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207)
+	// The VC6 STL was deliberately borked to avoid conflicting with
+	// Windows min/max macros.  We work around this bogosity here.  Note
+	// that NOMINMAX must be defined for these to compile properly.  Also,
+	// there is a bug in the VC6 compiler that sometimes causes long
+	// lvalues to "promote" to int, causing ambiguous override errors.
+	// To avoid this, always explicitly declare which type you are using,
+	// i.e. min<int>(x,0).  None of this is a problem with VC7 or later.
 	namespace std {
 		template<class T>
 		inline const T& min(const T& x, const T& y) {
@@ -93,33 +132,23 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 
 ///////////////////////////////////////////////////////////////////////////
 //
-//	tracelog support
+//	compiler fixes
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#ifdef _DEBUG
+#if _MSC_VER < 1400 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207)
+	// swprintf() is not Standard, as it turns out. For now we map swprintf()
+	// to _swprintf() under VC8; we'll fix it later when VC8 becomes the
+	// baseline compiler.
+	inline int _swprintf(wchar_t *dst, const wchar_t *format, ...) {
+		va_list val;
 
-	#define VDTRACELOG_SIZE		(2048)
+		va_start(val, format);
+		int r = vswprintf(dst, format, val);
+		va_end(val);
 
-	extern __declspec(thread) volatile struct VDThreadTraceLog {
-		struct {
-			const char *s;
-			long v;
-		} log[VDTRACELOG_SIZE];
-		int idx;
-		const char *desc;
-	} g_tracelog;
-
-	#define VDTRACEDEFINE(str)	(void)(g_tracelog.desc=(str))
-	#define VDTRACELOG(str)		(void)(g_tracelog.log[g_tracelog.idx++ & (VDTRACELOG_SIZE-1)].s=(str))
-	#define VDTRACELOG2(str,vl)	(void)((g_tracelog.log[g_tracelog.idx & (VDTRACELOG_SIZE-1)].s=(str)), (g_tracelog.log[g_tracelog.idx++ & (VDTRACELOG_SIZE-1)].v=(vl)))
-
-#else
-
-	#define VDTRACEDEFINE(str)
-	#define VDTRACELOG(str)
-	#define VDTRACELOG2(str,vl)
-
+		return r;
+	}
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -159,7 +188,11 @@ extern VDAssertResult VDAssertPtr(const char *exp, const char *file, int line);
 extern void VDDebugPrint(const char *format, ...);
 
 #if defined(_MSC_VER)
-	#define VDBREAK		__asm { int 3 }
+	#if _MSC_VER >= 1300
+		#define VDBREAK		__debugbreak()
+	#else
+		#define VDBREAK		__asm { int 3 }
+	#endif
 #elif defined(__GNUC__)
 	#define VDBREAK		__asm__ volatile ("int3" : : )
 #else
@@ -169,12 +202,36 @@ extern void VDDebugPrint(const char *format, ...);
 
 #ifdef _DEBUG
 
-	#define VDASSUME(exp)
+	namespace {
+		template<int line>
+		struct VDAssertHelper {
+			VDAssertHelper(const char *exp, const char *file) {
+				if (!sbAssertDisabled)
+					switch(VDAssert(exp, file, line)) {
+					case kVDAssertBreak:
+						VDBREAK;
+						break;
+					case kVDAssertIgnore:
+						sbAssertDisabled = true;
+						break;
+					}
+			}
+
+			static bool sbAssertDisabled;
+		};
+
+		template<int lineno>
+		bool VDAssertHelper<lineno>::sbAssertDisabled;
+	}
+
 	#define VDASSERT(exp)		if (static bool active = true) if (exp); else switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
 	#define VDASSERTPTR(exp) 	if (static bool active = true) if (exp); else switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
 	#define VDVERIFY(exp)		if (exp); else if (static bool active = true) switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
 	#define VDVERIFYPTR(exp) 	if (exp); else if (static bool active = true) switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
 	#define VDASSERTCT(exp)		(void)sizeof(int[(exp)?1:-1])
+
+	#define VDINLINEASSERT(exp)			((exp)||(VDAssertHelper<__LINE__>(#exp, __FILE__),false))
+	#define VDINLINEASSERTFALSE(exp)	((exp)&&(VDAssertHelper<__LINE__>("!("#exp")", __FILE__),true))
 
 	#define NEVER_HERE			do { if (VDAssert( "[never here]", __FILE__, __LINE__ )) VDBREAK; __assume(false); } while(false)
 	#define	VDNEVERHERE			do { if (VDAssert( "[never here]", __FILE__, __LINE__ )) VDBREAK; __assume(false); } while(false)
@@ -184,16 +241,24 @@ extern void VDDebugPrint(const char *format, ...);
 #else
 
 	#if defined(_MSC_VER)
-		#define VDASSERT(exp)		__assume(exp)
-		#define VDASSERTPTR(exp)	__assume(exp)
+		#ifndef _M_AMD64
+			#define VDASSERT(exp)		__assume(exp)
+			#define VDASSERTPTR(exp)	__assume(exp)
+		#else
+			#define VDASSERT(exp)		__noop(exp)
+			#define VDASSERTPTR(exp)	__noop(exp)
+		#endif
 	#elif defined(__GNUC__)
 		#define VDASSERT(exp)		__builtin_expect(0 != (exp), 1)
 		#define VDASSERTPTR(exp)	__builtin_expect(0 != (exp), 1)
 	#endif
 
-	#define VDVERIFY(exp)
-	#define VDVERIFYPTR(exp)
+	#define VDVERIFY(exp)		(exp)
+	#define VDVERIFYPTR(exp)	(exp)
 	#define VDASSERTCT(exp)
+
+	#define VDINLINEASSERT(exp)	(exp)
+	#define VDINLINEASSERTFALSE(exp)	(exp)
 
 	#define NEVER_HERE			VDASSERT(false)
 	#define	VDNEVERHERE			VDASSERT(false)
@@ -213,12 +278,12 @@ extern void VDDebugPrint(const char *format, ...);
 //		#pragma message(__TODO__ "Fix this.)
 //		#vdpragma_TODO("Fix this.")
 
-#define __TODO1__(x)	#x
-#define __TODO0__(x) __TODO1__(x)
-#define __TODO__ __FILE__ "(" __TODO0__(__LINE__) ") : TODO: "
+#define vdpragma_TODO2(x)	#x
+#define vdpragma_TODO1(x)	vdpragma_TODO2(x)
+#define vdpragma_TODO0		__FILE__ "(" vdpragma_TODO1(__LINE__) ") : TODO: "
 
 #ifdef _MSC_VER
-#define vdpragma_TODO(x)		message(__TODO__ x)
+#define vdpragma_TODO(x)		message(vdpragma_TODO0 x)
 #else
 #define vdpragma_TODO(x)
 #endif
@@ -240,6 +305,8 @@ extern void VDDebugPrint(const char *format, ...);
 // Unfortunately, handy as this macro is, it is also damned good at
 // breaking compilers.  For a start, declaring an object with a non-
 // trivial destructor in a switch() kills both VC6 and VC7 with a C1001.
+// The bug is fixed in VC8 (MSC 14.00).
+//
 // A somewhat safer alternative is the for() statement, along the lines
 // of:
 //
@@ -248,7 +315,7 @@ extern void VDDebugPrint(const char *format, ...);
 // This avoids the conversion operator but unfortunately usually generates
 // an actual loop in the output.
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && (_MSC_VER < 1400 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
 #define vdobjectscope(object_def) if(object_def) VDNEVERHERE; else
 #else
 #define vdobjectscope(object_def) switch(object_def) case 0: default:

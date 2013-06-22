@@ -209,11 +209,6 @@ bool __cdecl VDAudioFilterBase::ConfigProc(const VDAudioFilterContext *pContext,
 	return ((VDAudioFilterBase *)pContext->mpFilterData)->Config(hwnd);
 }
 
-uint32 __cdecl VDAudioFilterBase::ReadProc(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples) {
-	((VDAudioFilterBase *)pContext->mpFilterData)->mpContext = pContext;
-	return ((VDAudioFilterBase *)pContext->mpFilterData)->Read(pin, dst, samples);
-}
-
 ///////////////////////////////////////////////////////////////////////////
 
 const VDAudioFilterVtbl VDAudioFilterBase::sVtbl = {
@@ -223,7 +218,6 @@ const VDAudioFilterVtbl VDAudioFilterBase::sVtbl = {
 	StartProc,
 	StopProc,
 	RunProc,
-	ReadProc,
 	SeekProc,
 	SuspendProc,
 	ResumeProc,

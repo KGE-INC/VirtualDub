@@ -110,6 +110,7 @@ int timesmooth_end(FilterActivation *fa, const FilterFunctions *ff) {
 
 #undef SCALE
 
+#ifdef _M_IX86
 static void __declspec(naked) asm_timesmooth_run_MMX(Pixel32 *dstbuf, Pixel32 *accumbuf, int w, int h, int modulo, int kernel, int noffset, int coffset, int strength) {
 	static const __int64 sixteen = 0x0010001000100010i64;
 	static const __int64 noalpha = 0x0000000000ffffffi64;
@@ -209,6 +210,7 @@ timeloop:
 		ret
 	};
 }
+#endif
 
 static int timesmooth_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	timesmoothFilterData *sfd = (timesmoothFilterData *)fa->filter_data;
@@ -242,9 +244,12 @@ static int timesmooth_run(const FilterActivation *fa, const FilterFunctions *ff)
 		return 0;
 	}
 
+#ifdef _M_IX86
 	if (MMX_enabled)
 		asm_timesmooth_run_MMX(fa->src.data, sfd->accum, fa->src.w, fa->src.h, fa->src.modulo, KERNEL, offset1*4, offset2*4, sfd->strength+32);
-	else {
+	else
+#endif
+	{
 		PixDim w = fa->src.w, x;
 		PixDim y = fa->src.h;
 		Pixel32 *srcdst = fa->src.data;
@@ -310,8 +315,8 @@ static void timesmooth_string(const FilterActivation *fa, const FilterFunctions 
 	wsprintf(buf, " (%d)", mfd->strength);
 }
 
-static BOOL APIENTRY timesmoothDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	timesmoothFilterData *mfd = (timesmoothFilterData *)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR CALLBACK timesmoothDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	timesmoothFilterData *mfd = (timesmoothFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
@@ -321,7 +326,7 @@ static BOOL APIENTRY timesmoothDlgProc( HWND hDlg, UINT message, UINT wParam, LO
 
 				mfd = (timesmoothFilterData *)lParam;
 
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				hwndItem = GetDlgItem(hDlg, IDC_STRENGTH);
 				SendMessage(hwndItem, TBM_SETRANGE, TRUE, MAKELONG(0, 10));

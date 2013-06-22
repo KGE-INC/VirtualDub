@@ -600,7 +600,7 @@ _asm_convert_yuy2_bgr16_MMX:
 yuy2_bgr16_MMX_y:
 	mov		edx,ebp
 yuy2_bgr16_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -659,7 +659,7 @@ yuy2_bgr16_MMX_x:
 
 	packssdw	mm3,mm3
 
-	movd		[edi-4],mm3
+	movd		dword ptr [edi-4],mm3
 
 	dec		edx
 	jne		yuy2_bgr16_MMX_x
@@ -697,7 +697,7 @@ _asm_convert_yuy2_fullscale_bgr16_MMX:
 yuy2_fullscale_bgr16_MMX_y:
 	mov		edx,ebp
 yuy2_fullscale_bgr16_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -755,7 +755,7 @@ yuy2_fullscale_bgr16_MMX_x:
 
 	packssdw	mm3,mm3
 
-	movd		[edi-4],mm3
+	movd		dword ptr [edi-4],mm3
 
 	dec		edx
 	jne		yuy2_fullscale_bgr16_MMX_x
@@ -796,7 +796,7 @@ yuy2_bgr24_MMX_y:
 	dec		edx
 	jz		yuy2_bgr24_MMX_doodd
 yuy2_bgr24_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -846,7 +846,7 @@ yuy2_bgr24_MMX_x:
 
 	;----------------------------------
 
-	movd		mm4,[esi+4]		;mm4 = [V][Y2][U][Y1]
+	movd		mm4,dword ptr [esi+4]		;mm4 = [V][Y2][U][Y1]
 
 	movq		mm1,mm4			;mm1 = [V][Y2][U][Y1]
 	pand		mm4,mm6			;mm4 = [ Y2  ][ Y1  ]
@@ -901,9 +901,9 @@ yuy2_bgr24_MMX_x:
 	por		mm2,mm1			;mm2 = [ 0][ 0][ 0][ 0][R3][G3][B3][R2]
 	psrlq		mm0,32			;mm0 = [ 0][ 0][ 0][ 0][G2][B2][R1][G1]
 
-	movd		[edi],mm3
-	movd		[edi+4],mm0
-	movd		[edi+8],mm2
+	movd		dword ptr [edi],mm3
+	movd		dword ptr [edi+4],mm0
+	movd		dword ptr [edi+8],mm2
 
 	add		edi,12
 	add		esi,8
@@ -914,7 +914,7 @@ yuy2_bgr24_MMX_x:
 	jnz		yuy2_bgr24_MMX_noodd
 
 yuy2_bgr24_MMX_doodd:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -1012,7 +1012,7 @@ yuy2_fullscale_bgr24_MMX_y:
 	dec		edx
 	jz		yuy2_bgr24_MMX_doodd
 yuy2_fullscale_bgr24_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -1061,7 +1061,7 @@ yuy2_fullscale_bgr24_MMX_x:
 
 	;----------------------------------
 
-	movd		mm4,[esi+4]		;mm4 = [V][Y2][U][Y1]
+	movd		mm4,dword ptr [esi+4]		;mm4 = [V][Y2][U][Y1]
 
 	movq		mm1,mm4			;mm1 = [V][Y2][U][Y1]
 	pand		mm4,mm6			;mm4 = [ Y2  ][ Y1  ]
@@ -1115,9 +1115,9 @@ yuy2_fullscale_bgr24_MMX_x:
 	por		mm2,mm1			;mm2 = [ 0][ 0][ 0][ 0][R3][G3][B3][R2]
 	psrlq		mm0,32			;mm0 = [ 0][ 0][ 0][ 0][G2][B2][R1][G1]
 
-	movd		[edi],mm3
-	movd		[edi+4],mm0
-	movd		[edi+8],mm2
+	movd		dword ptr [edi],mm3
+	movd		dword ptr [edi+4],mm0
+	movd		dword ptr [edi+8],mm2
 
 	add		edi,12
 	add		esi,8
@@ -1128,7 +1128,7 @@ yuy2_fullscale_bgr24_MMX_x:
 	jnz		yuy2_fullscale_bgr24_MMX_noodd
 
 yuy2_fullscale_bgr24_MMX_doodd:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -1222,7 +1222,7 @@ _asm_convert_yuy2_bgr32_MMX:
 yuy2_bgr32_MMX_y:
 	mov		edx,ebp
 yuy2_bgr32_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
@@ -1340,7 +1340,7 @@ yuy2_fullscale_bgr32_MMX_y0:
 yuy2_fullscale_bgr32_MMX_y:
 	mov		edx,ebp
 yuy2_fullscale_bgr32_MMX_x:
-	movd		mm0,[esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]

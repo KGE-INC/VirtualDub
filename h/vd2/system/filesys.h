@@ -10,6 +10,17 @@
 // VDFileSplitPath returns a pointer to the first character of the filename,
 // or the beginning of the string if the path only contains one component.
 
+const char *VDFileSplitFirstDir(const char *s);
+const wchar_t *VDFileSplitFirstDir(const wchar_t *s);
+
+static inline char *VDFileSplitFirstDir(char *s) {
+	return const_cast<char *>(VDFileSplitFirstDir(const_cast<const char *>(s)));
+}
+
+static inline wchar_t *VDFileSplitFirstDir(wchar_t *s) {
+	return const_cast<wchar_t *>(VDFileSplitFirstDir(const_cast<const wchar_t *>(s)));
+}
+
 const char *VDFileSplitPath(const char *);
 const wchar_t *VDFileSplitPath(const wchar_t *);
 

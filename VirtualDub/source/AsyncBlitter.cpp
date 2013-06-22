@@ -43,24 +43,6 @@
 #define LOCK_RESET
 #endif
 
-static void __declspec(naked) __stdcall VDInterlockedOr(volatile DWORD& var, DWORD flag) {
-	__asm {
-		mov eax, [esp+8]
-		mov edx, [esp+4]
-		lock or dword ptr [edx], eax
-		ret 8
-	}
-}
-
-static void __declspec(naked) __stdcall VDInterlockedAnd(volatile DWORD& var, DWORD flag) {
-	__asm {
-		mov eax, [esp+8]
-		mov edx, [esp+4]
-		lock and dword ptr [edx], eax
-		ret 8
-	}
-}
-
 
 
 AsyncBlitter::AsyncBlitter() : VDThread("AsyncBlitter") {
@@ -115,7 +97,7 @@ AsyncBlitter::~AsyncBlitter() {
 
 
 
-void AsyncBlitter::enablePulsing(BOOL p) {
+void AsyncBlitter::enablePulsing(bool p) {
 	dwPulseFrame = 0;
 	dwDrawFrame = 0;
 	fPulsed = p;
@@ -126,7 +108,7 @@ void AsyncBlitter::pulse() {
 	mEventDraw.signal();
 }
 
-void AsyncBlitter::setPulseClock(DWORD clk) {
+void AsyncBlitter::setPulseClock(uint32 clk) {
 	if (clk <= dwPulseFrame)
 		return;
 
@@ -134,26 +116,31 @@ void AsyncBlitter::setPulseClock(DWORD clk) {
 	mEventDraw.signal();
 }
 
-void AsyncBlitter::lock(DWORD id) {
-	if (!requests || fAbort) return;
+bool AsyncBlitter::lock(uint32 id, sint32 timeout) {
+	if (!requests)
+		return true;
+	
+	if (fAbort)
+		return false;
 
 	if (dwLockedBuffers & id) {
 		while((dwLockedBuffers & id) && !fAbort) {
 			LOCK_SET(LOCK_LOCK);
-			mEventDrawReturn.wait();
-//			if (WAIT_TIMEOUT == WaitForSingleObject(mEventDrawReturn.getHandle(), 100)) {
-//				VDDEBUG2("AsyncBlitter: waiting too damn long (time=%d)\n", dwPulseFrame);
-//			}
+			DWORD result = WaitForSingleObject(mEventDrawReturn.getHandle(), timeout < 0 ? INFINITE : timeout);
 			LOCK_CLEAR(LOCK_LOCK);
+			if (WAIT_TIMEOUT == result)
+				return false;
 		}
 	}
-	VDInterlockedOr(dwLockedBuffers, id);
+	dwLockedBuffers |= id;
+
+	return true;
 }
 
-void AsyncBlitter::unlock(DWORD id) {
+void AsyncBlitter::unlock(uint32 id) {
 	if (!requests) return;
 
-	VDInterlockedAnd(dwLockedBuffers, ~id);
+	dwLockedBuffers &= ~id;
 }
 
 void AsyncBlitter::setPulseCallback(BOOL (*pc)(void *, DWORD), void *pcd) {
@@ -161,7 +148,7 @@ void AsyncBlitter::setPulseCallback(BOOL (*pc)(void *, DWORD), void *pcd) {
 	pulseCallbackData = pcd;
 }
 
-BOOL AsyncBlitter::waitPulse(DWORD framenum) {
+bool AsyncBlitter::waitPulse(uint32 framenum) {
 	if (fPulsed) {
 		int pcret = PCR_OKAY;
 
@@ -200,7 +187,7 @@ long AsyncBlitter::getFrameDelta() {
 	return dwPulseFrame - dwDrawFrame;
 }
 
-void AsyncBlitter::sendAFC(DWORD id, void (*pFunc)(void *), void *pData) {
+void AsyncBlitter::sendAFC(uint32 id, void (*pFunc)(void *), void *pData) {
 	int i;
 
 	if (fAbort) {
@@ -245,7 +232,7 @@ void AsyncBlitter::sendAFC(DWORD id, void (*pFunc)(void *), void *pData) {
 	unlock(id);
 }
 
-void AsyncBlitter::postAPC(DWORD id, bool (*pFunc)(int, void *, void *), void *pData1, void *pData2) {
+void AsyncBlitter::postAPC(uint32 id, bool (*pFunc)(int, void *, void *), void *pData1, void *pData2) {
 	int i;
 
 	if (fAbort) {
@@ -290,10 +277,10 @@ void AsyncBlitter::postAPC(DWORD id, bool (*pFunc)(int, void *, void *), void *p
 //	VDDEBUG2("AsyncBlitter: posted %d (time=%d)\n", dwDrawFrame, dwPulseFrame);
 }
 
-void AsyncBlitter::release(DWORD id) {
+void AsyncBlitter::release(uint32 id) {
 	if (!requests) return;
 
-	VDInterlockedAnd(dwLockedBuffers, ~id);
+	dwLockedBuffers &= ~id;
 	mEventDrawReturn.signal();
 }
 
@@ -348,16 +335,16 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 
 	for(i=0; i<max_requests && !fAbort; ++i,++req) {
 		if (req->bufferID) {
-			fRequestServiced = true;
-
 			if (!fFlush) {
-				if (req->type == AsyncBlitRequest::REQTYPE_AFC)
+				if (req->type == AsyncBlitRequest::REQTYPE_AFC) {
 					DoRequest(req);
-				else if (!fWait || !waitPulse(req->framenum)) {
+					fRequestServiced = true;
+				} else if (!fWait || !waitPulse(req->framenum)) {
 					if (dwPulseFrame < req->framenum) {
 						continue;
 					}
 
+					fRequestServiced = true;
 					if (mpRTProfiler)
 						mpRTProfiler->BeginEvent(mProfileChannel, 0xe0ffe0, "Blit");
 					bool bMore = DoRequest(req);
@@ -371,6 +358,7 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 				}
 			}
 
+			fRequestServiced = true;
 			release(req->bufferID);
 			req->bufferID = 0;
 		}

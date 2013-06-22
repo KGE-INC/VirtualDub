@@ -30,7 +30,7 @@ extern FilterFunctions g_filterFuncs;
 
 ///////////////////////////////////////////////////////////////////////////
 
-class FilterSystemBitmap : public VFBitmap {
+class FilterSystemBitmap : public VFBitmapInternal {
 public:
 	int				buffer;
 	LONG			lMapOffset;
@@ -57,7 +57,7 @@ FilterSystem::~FilterSystem() {
 
 // prepareLinearChain(): init bitmaps in a linear filtering system
 
-void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int src_depth, int dest_depth) {
+void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth) {
 	FilterInstance *fa;
 	DWORD flags, flags_accum=0;
 	int last_bufferid = 0;
@@ -90,33 +90,33 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 	nFrameLag = 0;
 
 	while(fa->next) {
-		fa->src			= *bmLast;
+		fa->realSrc			= *bmLast;
 
-		fa->origw		= fa->src.w;
-		fa->origh		= fa->src.h;
+		fa->origw		= fa->realSrc.w;
+		fa->origh		= fa->realSrc.h;
 
-		fa->src.w		-= fa->x1 + fa->x2;
-		fa->src.h		-= fa->y1 + fa->y2;
-		fa->src.depth	= 32;
-		fa->src.modulo	= fa->src.Modulo();
-		fa->src.offset	+= fa->y2 * fa->src.pitch + fa->x1*4;
-		fa->src.size	= fa->src.pitch * fa->src.h;
+		fa->realSrc.w		-= fa->x1 + fa->x2;
+		fa->realSrc.h		-= fa->y1 + fa->y2;
+		fa->realSrc.depth	= 32;
+		fa->realSrc.modulo	= fa->realSrc.pitch - 4*fa->realSrc.w;
+		fa->realSrc.offset	+= fa->y2 * fa->realSrc.pitch + fa->x1*4;
+		fa->realSrc.size	= fa->realSrc.pitch * fa->realSrc.h;
 
-		fa->realLast.w		= fa->src.w;
-		fa->realLast.h		= fa->src.h;
+		fa->realLast.w		= fa->realSrc.w;
+		fa->realLast.h		= fa->realSrc.h;
 		fa->realLast.offset	= 0;
 		fa->realLast.depth	= 32;
 		fa->realLast.AlignTo8();
 		fa->realLast.dwFlags= 0;
 
-		fa->dst			= fa->src;
-		fa->dst.offset	= 0;
+		fa->realDst			= fa->realSrc;
+		fa->realDst.offset	= 0;
 
-		fa->src.dwFlags	= 0;
-		fa->src.hdc		= NULL;
+		fa->realSrc.dwFlags	= 0;
+		fa->realSrc.hdc		= NULL;
 
-		fa->dst.dwFlags	= 0;
-		fa->dst.hdc		= NULL;
+		fa->realDst.dwFlags	= 0;
+		fa->realDst.hdc		= NULL;
 
 		fa->srcbuf		= last_bufferid;
 
@@ -138,8 +138,8 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 		flags &= 0x0000ffff;
 		flags_accum |= flags;
 
-		fa->dst.modulo	= fa->dst.Modulo();
-		fa->dst.size	= fa->dst.Size();
+		fa->realDst.modulo	= fa->realDst.pitch - 4*fa->realDst.w;
+		fa->realDst.size	= fa->realDst.pitch * fa->realDst.h;
 		fa->dstbuf		= fa->srcbuf;
 
 		if (flags & FILTERPARAM_SWAP_BUFFERS) {
@@ -151,17 +151,17 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 				fa->dstbuf = 3-fa->srcbuf;
 		}
 
-		if (fa->dst.size+fa->dst.offset > bitmap[fa->dstbuf].size)
-			bitmap[fa->dstbuf].size = fa->dst.size+fa->dst.offset;
+		if (fa->realDst.size+fa->realDst.offset > bitmap[fa->dstbuf].size)
+			bitmap[fa->dstbuf].size = fa->realDst.size+fa->realDst.offset;
 
-		bmLast = &fa->dst;
+		bmLast = (FilterSystemBitmap *)&fa->realDst;
 		last_bufferid = fa->dstbuf;
 
 		// Check if the filter needs a display context.  This requires us to
 		// allocate a shared window instead of a private memory buffer.
 		// Far more hazardous under Windows 95/98.
 
-		if ((fa->src.dwFlags | fa->dst.dwFlags) & VFBitmap::NEEDS_HDC)
+		if ((fa->realSrc.dwFlags | fa->realDst.dwFlags) & VFBitmap::NEEDS_HDC)
 			fSharedWindow = true;
 
 		// Next filter.
@@ -199,7 +199,7 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 
 // initLinearChain(): prepare for a linear filtering system
 
-void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int src_depth, int dest_depth) {
+void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth) {
 	FilterInstance *fa;
 	long lRequiredSize;
 	long lLastBufPtr = 0; 
@@ -223,7 +223,7 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 	// and destination buffers, which may have pitches that are only 4-byte
 	// multiples.
 
-	prepareLinearChain(listFA, src_pal, src_width, src_height, src_depth, dest_depth);
+	prepareLinearChain(listFA, src_pal, src_width, src_height, dest_depth);
 
 	lRequiredSize = lAdditionalBytes;
 
@@ -253,8 +253,8 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 
 	while(fa->next) {
 		_RPT2(0,"src/data: %d/%d\n", fa->srcbuf, fa->dstbuf);
-		fa->src.data		= (Pixel *)((char *)bitmap[fa->srcbuf].data + fa->src.offset);
-		fa->dst.data		= (Pixel *)((char *)bitmap[fa->dstbuf].data + fa->dst.offset);
+		fa->realSrc.data		= (Pixel32 *)((char *)bitmap[fa->srcbuf].data + fa->realSrc.offset);
+		fa->realDst.data		= (Pixel32 *)((char *)bitmap[fa->dstbuf].data + fa->realDst.offset);
 
 //		fa->src.hMapObject	= hFileShared;
 //		fa->src.lMapOffset	= bitmap[fa->src.buffer].lMapOffset + fa->src.offset;
@@ -271,7 +271,7 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 	fa = (FilterInstance *)listFA->tail.next;
 
 	try {
-		if (fa->next && (fa->src.dwFlags & VFBitmap::NEEDS_HDC)) {
+		if (fa->next && (fa->realSrc.dwFlags & VFBitmap::NEEDS_HDC)) {
 			BITMAPINFOHEADER bih;
 			void *mem;
 
@@ -296,7 +296,7 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 
 			hgoSrc = SelectObject(hdcSrc, hbmSrc);
 
-			fa->src.hdc = hdcSrc;
+			fa->realSrc.hdc = hdcSrc;
 		}
 
 		// Check all subsequent filters; copy over display contexts from destinations
@@ -307,10 +307,10 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 		while(fa->next) {
 			FilterInstance *fa_next = (FilterInstance *)fa->next;
 
-			if ((fa->dst.dwFlags & VFBitmap::NEEDS_HDC) || (fa_next->next && (fa_next->src.dwFlags & VFBitmap::NEEDS_HDC))) {
+			if ((fa->realDst.dwFlags & VFBitmap::NEEDS_HDC) || (fa_next->next && (fa_next->realSrc.dwFlags & VFBitmap::NEEDS_HDC))) {
 				BITMAPINFOHEADER bih;
 
-				fa->dst.MakeBitmapHeader(&bih);
+				fa->realDst.MakeBitmapHeader(&bih);
 
 				if (!hdcDisplay) {
 					hdcDisplay = CreateDC("DISPLAY", NULL, NULL, 0);
@@ -319,30 +319,30 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 						throw MyMemoryError();
 				}
 
-				fa->dst.hdc = CreateCompatibleDC(hdcDisplay);
+				fa->realDst.hdc = CreateCompatibleDC(hdcDisplay);
 
-				if (!fa->dst.hdc)
+				if (!fa->realDst.hdc)
 					throw MyMemoryError();
 
-				fa->hbmDst = CreateDIBSection(fa->dst.hdc, (BITMAPINFO *)&bih, DIB_RGB_COLORS, &fa->pvDstView,
-					hFileShared, bitmap[fa->dstbuf].lMapOffset + fa->dst.offset);
+				fa->hbmDst = CreateDIBSection(fa->realDst.hdc, (BITMAPINFO *)&bih, DIB_RGB_COLORS, &fa->pvDstView,
+					hFileShared, bitmap[fa->dstbuf].lMapOffset + fa->realDst.offset);
 
 				if (!fa->hbmDst)
 					throw MyMemoryError();
 
-				fa->hgoDst = SelectObject(fa->dst.hdc, fa->hbmDst);
+				fa->hgoDst = SelectObject(fa->realDst.hdc, fa->hbmDst);
 
-				if (fa_next->next && (fa_next->src.dwFlags & VFBitmap::NEEDS_HDC))
-					fa_next->src.hdc = fa->dst.hdc;
+				if (fa_next->next && (fa_next->realSrc.dwFlags & VFBitmap::NEEDS_HDC))
+					fa_next->realSrc.hdc = fa->realDst.hdc;
 			}
 
 			if (fa->flags & FILTERPARAM_NEEDS_LAST) {
-				fa->last->data		 = (Pixel *)(lpBuffer + lLastBufPtr);
+				fa->last->data		 = (uint32 *)(lpBuffer + lLastBufPtr);
 
 				if (fa->last->dwFlags & VFBitmap::NEEDS_HDC) {
 					BITMAPINFOHEADER bih;
 
-					fa->last->MakeBitmapHeader(&bih);
+					fa->realLast.MakeBitmapHeader(&bih);
 
 					if (!hdcDisplay) {
 						hdcDisplay = CreateDC("DISPLAY", NULL, NULL, 0);
@@ -461,29 +461,29 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 		return -1;
 
 	if (fa->next && fa->srcbuf != 0)
-		fa->src.BitBlt(0, 0, &bitmap[0], fa->x1, fa->y1, -1, -1);
+		fa->realSrc.BitBlt(0, 0, &bitmap[0], fa->x1, fa->y1, -1, -1);
 
 	while(fa->next && fa != pfiStopPoint) {
 
-		if (fa->src.dwFlags & VFBitmap::NEEDS_HDC) {
+		if (fa->realSrc.dwFlags & VFBitmap::NEEDS_HDC) {
 			LONG comp;
 			RECT r;
 
 			r.left		=			  fa->x1; comp  = fa->x1;
-			r.right		= fa->src.w	- fa->x2; comp |= fa->x2;
+			r.right		= fa->realSrc.w	- fa->x2; comp |= fa->x2;
 			r.top		=			  fa->y1; comp |= fa->y1;
-			r.bottom	= fa->src.h	- fa->y2; comp |= fa->y2;
+			r.bottom	= fa->realSrc.h	- fa->y2; comp |= fa->y2;
 
 			if (comp) {
-				IntersectClipRect(fa->src.hdc, r.left, r.top, r.right, r.bottom);
-				SetWindowOrgEx(fa->src.hdc, fa->x1, fa->y1, NULL);
+				IntersectClipRect(fa->realSrc.hdc, r.left, r.top, r.right, r.bottom);
+				SetWindowOrgEx(fa->realSrc.hdc, fa->x1, fa->y1, NULL);
 			}
 		}
 
-		if (fa->dst.dwFlags & VFBitmap::NEEDS_HDC) {
-			SetViewportOrgEx(fa->dst.hdc, 0, 0, NULL);
-			SelectClipRgn(fa->dst.hdc, NULL);
-			IntersectClipRect(fa->dst.hdc, 0, 0, fa->dst.w, fa->dst.h);
+		if (fa->realDst.dwFlags & VFBitmap::NEEDS_HDC) {
+			SetViewportOrgEx(fa->realDst.hdc, 0, 0, NULL);
+			SelectClipRgn(fa->realDst.hdc, NULL);
+			IntersectClipRect(fa->realDst.hdc, 0, 0, fa->realDst.w, fa->realDst.h);
 		}
 
 		// If the filter has a delay ring...
@@ -574,15 +574,15 @@ void FilterSystem::DeinitFilters() {
 	bitmap = NULL;
 }
 
-VFBitmap *FilterSystem::InputBitmap() {
+VBitmap *FilterSystem::InputBitmap() {
 	return &bitmap[0];
 }
 
-VFBitmap *FilterSystem::OutputBitmap() {
+VBitmap *FilterSystem::OutputBitmap() {
 	return &bitmap[3];
 }
 
-VFBitmap *FilterSystem::LastBitmap() {
+VBitmap *FilterSystem::LastBitmap() {
 	return bmLast;
 }
 
@@ -594,9 +594,11 @@ int FilterSystem::getFrameLag() {
 	return nFrameLag;
 }
 
-void FilterSystem::getOutputMappingParams(HANDLE& hr, LONG& lr) {
+bool FilterSystem::getOutputMappingParams(HANDLE& hr, LONG& lr) {
 	hr = hFileShared;
 	lr = bitmap[3].lMapOffset + bitmap[3].offset;
+
+	return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -632,7 +634,7 @@ void FilterSystem::AllocateBuffers(LONG lTotalBufferNeeded) {
 
 	if (fSharedWindow) {
 
-		if (!(hFileShared = CreateFileMapping((HANDLE)0xFFFFFFFF, NULL, PAGE_READWRITE, 0, lTotalBufferNeeded+8, NULL)))
+		if (!(hFileShared = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, lTotalBufferNeeded+8, NULL)))
 			throw MyError("Could not allocate shared memory.");
 
 		if (!(lpBuffer = (unsigned char *)MapViewOfFile(hFileShared, FILE_MAP_ALL_ACCESS, 0, 0, lTotalBufferNeeded+8)))
@@ -655,12 +657,12 @@ void FilterSystem::DeallocateBuffers() {
 		FilterInstance *fa = (FilterInstance *)listFilters->tail.next;
 
 		while(fa->next) {
-			if (fa->dst.hdc) {
-				_RPT2(0,"Deleting dst display context from %p (%s)\n", fa, fa->filter->name);
-				DeleteObject(SelectObject(fa->dst.hdc, fa->hgoDst));
+			if (fa->realDst.hdc) {
+				_RPT2(0,"Deleting realDst display context from %p (%s)\n", fa, fa->filter->name);
+				DeleteObject(SelectObject(fa->realDst.hdc, fa->hgoDst));
 				UnmapViewOfFile(fa->pvDstView);		// avoid NT4 GDI 64K memory leak bug
-				DeleteDC(fa->dst.hdc);
-				fa->dst.hdc = NULL;
+				DeleteDC(fa->realDst.hdc);
+				fa->realDst.hdc = NULL;
 			}
 			if (fa->last->hdc) {
 				_RPT2(0,"Deleting last display context from %p (%s)\n", fa, fa->filter->name);
@@ -689,30 +691,4 @@ void FilterSystem::DeallocateBuffers() {
 		lpBuffer = NULL;
 	}
 	if (hFileShared) { CloseHandle(hFileShared); hFileShared = NULL; }
-}
-
-/////////////
-
-void FilterSystem::ClearBufferLocks() {
-	dwBufferLockFlags = 0;
-}
-
-void FilterSystem::LockBuffer(int buffer) {
-	VDASSERT(buffer>=0 && buffer<iBitmapCount);
-	VDASSERT(!IsBufferLocked(buffer));
-
-	dwBufferLockFlags |= 1L<<buffer;
-}
-
-void FilterSystem::UnlockBuffer(int buffer) {
-	VDASSERT(buffer>=0 && buffer<iBitmapCount);
-	VDASSERT(IsBufferLocked(buffer));
-
-	dwBufferLockFlags &= ~(1L<<buffer);
-}
-
-BOOL FilterSystem::IsBufferLocked(int buffer) {
-	VDASSERT(buffer>=0 && buffer<iBitmapCount);
-
-	return dwBufferLockFlags & (1L<<buffer);
 }

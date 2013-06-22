@@ -62,4 +62,27 @@ struct VDPluginCallbacks {
 	void (VDAPIENTRY *Except)(const char *format, ...);			// ADDED: V6 (VirtualDub 1.4)
 };
 
+struct VDFilterConfigEntry {
+	enum Type {
+		kTypeInvalid	= 0,
+		kTypeU32		= 1,
+		kTypeS32,
+		kTypeU64,
+		kTypeS64,
+		kTypeDouble,
+		kTypeAStr,
+		kTypeWStr,
+		kTypeBlock
+	};
+
+	const VDFilterConfigEntry *next;
+
+	unsigned	idx;
+	uint32		type;
+	const wchar_t *name;
+	const wchar_t *label;
+	const wchar_t *desc;	
+};
+
+
 #endif

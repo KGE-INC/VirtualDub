@@ -72,6 +72,7 @@ static int bright_table_G[256];
 static int bright_table_B[256];
 extern "C" unsigned char YUV_clip_table[];
 
+#ifdef _M_IX86
 static void __declspec(naked) AsmLevelsRunScalar(Pixel32 *dst, PixOffset dstpitch, PixDim w, PixDim h, const int *xtblptr) {
 	__asm {
 			push	ebp
@@ -258,16 +259,45 @@ static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		else
 			AsmLevelsRunScalar(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, mfd->xtblluma);
 	} else
-		fa->dst.BitBltXlat1(0, 0, &fa->src, 0, 0, -1, -1, mfd->xtblmono);
+		((VBitmap&)fa->dst).BitBltXlat1(0, 0, (VBitmap *)&fa->src, 0, 0, -1, -1, mfd->xtblmono);
 
 	return 0;
 }
+#else
+static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
+	const LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
+
+	if (mfd->bLuma) {
+		uint8 *p = (uint8 *)fa->dst.data;
+		ptrdiff_t modulo = fa->dst.pitch - 4*fa->dst.w;
+
+		uint32 h = fa->dst.h;
+		do {
+			uint32 w = fa->dst.w;
+			do {
+				uint32 r = p[2];
+				uint32 g = p[1];
+				uint32 b = p[0];
+				const uint8 *yp = YUV_clip_table + 256 + mfd->xtblluma[(bright_table_R[r] + bright_table_G[g] + bright_table_B[r] + 0x8000) >> 16];
+
+				p[0] = yp[b];
+				p[1] = yp[g];
+				p[2] = yp[r];
+				p += 4;
+			} while(--w);
+
+			p += modulo;
+		} while(--h);
+	} else
+		((VBitmap&)fa->dst).BitBltXlat1(0, 0, (VBitmap *)&fa->src, 0, 0, -1, -1, mfd->xtblmono);
+
+	return 0;
+}
+#endif
 
 /////////////////////////////////////////////////////////////////////
 
 static long levels_param(FilterActivation *fa, const FilterFunctions *ff) {
-	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
-
 	fa->dst.offset = fa->src.offset;
 
 	return 0;
@@ -303,9 +333,9 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 			x = i / 255.0;
 
 			if (x < x_lo)
-				mfd->xtblmono[i] = mfd->iOutputLo >> 8;
+				mfd->xtblmono[i] = (unsigned char)(mfd->iOutputLo >> 8);
 			else if (x > x_hi)
-				mfd->xtblmono[i] = mfd->iOutputHi >> 8;
+				mfd->xtblmono[i] = (unsigned char)(mfd->iOutputHi >> 8);
 			else {
 				y = pow((x - x_lo) / (x_hi - x_lo), 1.0/mfd->rGammaCorr);
 
@@ -327,7 +357,7 @@ static void levelsSampleCallback(VFBitmap *src, long pos, long cnt, void *pv) {
 	LevelsFilterData *mfd = (LevelsFilterData *)pv;
 	long *pHisto = mfd->pHisto;
 
-	src->Histogram(0, 0, -1, -1, pHisto, VFBitmap::HISTO_LUMA);
+	((VBitmap *)src)->Histogram(0, 0, -1, -1, pHisto, VBitmap::HISTO_LUMA);
 }
 
 static void levelsSampleDisplay(LevelsFilterData *mfd, HWND hdlg) {
@@ -347,8 +377,8 @@ static void levelsSampleDisplay(LevelsFilterData *mfd, HWND hdlg) {
 	UpdateWindow(hdlg);
 }
 
-static BOOL APIENTRY levelsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	LevelsFilterData *mfd = (struct LevelsFilterData *)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR APIENTRY levelsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	LevelsFilterData *mfd = (struct LevelsFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 	char buf[32];
 
     switch (message)
@@ -358,7 +388,7 @@ static BOOL APIENTRY levelsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				HWND hwndItem;
 
 				mfd = (struct LevelsFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 				GetWindowRect(GetDlgItem(hDlg, IDC_HISTOGRAM), &mfd->rHisto);
 				ScreenToClient(hDlg, (POINT *)&mfd->rHisto + 0);

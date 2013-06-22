@@ -1,7 +1,7 @@
 #ifndef f_VIDEOSOURCEIMAGES_H
 #define f_VIDEOSOURCEIMAGES_H
 
-#include <windows.h>
+#include <vd2/system/file.h>
 
 #include "VideoSource.h"
 #include "VBitmap.h"
@@ -13,39 +13,35 @@ private:
 	VBitmap	mvbFrameBuffer;
 
 	long	mCachedHandleFrame;
-	HANDLE	mCachedHandle;
+	VDFile	mCachedFile;
 
-	char	mszPathFormat[512];
-
-	void _construct(const char *pszBaseFormat);
-	void _destruct();
+	wchar_t	mszPathFormat[512];
 
 public:
-	VideoSourceImages(const char *pszBaseFormat);
+	VideoSourceImages(const wchar_t *pszBaseFormat);
 	~VideoSourceImages();
 
-	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead);
-	bool _isKey(LONG samp)					{ return true; }
-	LONG nearestKey(LONG lSample)			{ return lSample; }
-	LONG prevKey(LONG lSample)				{ return lSample>0 ? lSample-1 : -1; }
-	LONG nextKey(LONG lSample)				{ return lSample<lSampleLast ? lSample+1 : -1; }
+	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
+	bool _isKey(VDPosition samp)					{ return true; }
+	VDPosition nearestKey(VDPosition lSample)			{ return lSample; }
+	VDPosition prevKey(VDPosition lSample)				{ return lSample>0 ? lSample-1 : -1; }
+	VDPosition nextKey(VDPosition lSample)				{ return lSample<mSampleLast ? lSample+1 : -1; }
 
-	bool setDecompressedFormat(int depth);
-	bool setDecompressedFormat(BITMAPINFOHEADER *pbih);
+	bool setTargetFormat(int depth);
 
 	void invalidateFrameBuffer()			{ mCachedFrame = -1; }
 	bool isFrameBufferValid()				{ return mCachedFrame >= 0; }
 	bool isStreaming()						{ return false; }
 
-	void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
 
-	void *getFrame(LONG frameNum);
+	const void *getFrame(VDPosition frameNum);
 
-	char getFrameTypeChar(long lFrameNum)	{ return 'K'; }
-	eDropType getDropType(long lFrameNum)	{ return kIndependent; }
+	char getFrameTypeChar(VDPosition lFrameNum)	{ return 'K'; }
+	eDropType getDropType(VDPosition lFrameNum)	{ return kIndependent; }
 	bool isKeyframeOnly()					{ return true; }
 	bool isType1()							{ return false; }
-	bool isDecodable(long sample_num)		{ return true; }
+	bool isDecodable(VDPosition sample_num)		{ return true; }
 };
 
 #endif

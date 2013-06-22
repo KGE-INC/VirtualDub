@@ -277,7 +277,7 @@ _asm_brightcont1_run_MMX:
 ;	psrlq	mm7,4
 ;	punpcklbw mm7,mm5
 
-	movd	mm7,[esp+24+28]
+	movd	mm7,dword ptr [esp+24+28]
 	psrlq	mm7,4
 	movq	mm0,mm7
 	psllq	mm0,32
@@ -339,14 +339,14 @@ brightcont1MMX@noby4:
 	and	ebp,3
 	jz	brightcont1MMX@nosingles
 brightcont1MMX@colloopsingle:
-	movd	mm0,[esi]
+	movd	mm0,dword ptr [esi]
 	punpcklbw mm0,mm5
 	pmullw	mm0,mm6
 	add	esi,4
 	psrlw	mm0,4
 	psubusw	mm0,mm7
 	packuswb mm0,mm0
-	movd	[esi-4],mm0
+	movd	dword ptr [esi-4],mm0
 	dec	ebp
 	jne	brightcont1MMX@colloopsingle
 
@@ -399,7 +399,7 @@ _asm_brightcont2_run_MMX:
 ;	psrlq	mm7,4
 ;	punpcklbw mm7,mm5
 
-	movd	mm7,[esp+24+28]
+	movd	mm7,dword ptr [esp+24+28]
 	psrlq	mm7,4
 	movq	mm0,mm7
 	psllq	mm0,32
@@ -461,14 +461,14 @@ brightcont2MMX@noby4:
 	and	ebp,3
 	jz	brightcont2MMX@nosingles
 brightcont2MMX@colloopsingle:
-	movd	mm0,[esi]
+	movd	mm0,dword ptr [esi]
 	punpcklbw mm0,mm5
 	pmullw	mm0,mm6
 	add	esi,4
 	psrlw	mm0,4
 	paddusw	mm0,mm7
 	packuswb mm0,mm0
-	movd	[esi-4],mm0
+	movd	dword ptr [esi-4],mm0
 	dec	ebp
 	jne	brightcont2MMX@colloopsingle
 

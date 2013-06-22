@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vd2/system/vdtypes.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmaputils.h>
 
 #include "VideoDisplay.h"
 #include "VideoDisplayDrivers.h"
@@ -30,7 +32,7 @@
 
 extern HINSTANCE g_hInst;
 
-static const char g_szVideoDisplayControlName[] = "phaeronVideoDisplay";
+extern const char g_szVideoDisplayControlName[] = "phaeronVideoDisplay";
 
 extern void VDMemcpyRect(void *dst, ptrdiff_t dststride, const void *src, ptrdiff_t srcstride, size_t w, size_t h);
 
@@ -69,20 +71,23 @@ protected:
 	~VDVideoDisplayWindow();
 
 	void SetSourcePalette(const uint32 *palette, int count);
-	bool SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
+	bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
+	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
 	void Update(int);
 	void Reset();
 	void Cache();
 	void SetCallback(IVDVideoDisplayCallback *pcb);
 	void LockAcceleration(bool locked);
+	FilterMode GetFilterMode();
+	void SetFilterMode(FilterMode mode);
 
 	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 	void OnPaint();
-	bool SyncSetSource(const VDVideoDisplaySourceInfo& params);
+	bool SyncSetSource(bool bAutoUpdate, const VDVideoDisplaySourceInfo& params);
 	void SyncReset();
-	bool SyncInit();
+	bool SyncInit(bool bAutoRefresh);
 	void SyncUpdate(int);
 	void SyncCache();
 	void SyncDisplayChange();
@@ -111,10 +116,10 @@ protected:
 	IVDVideoDisplayCallback		*mpCB;
 	int		mInhibitRefresh;
 
+	FilterMode	mFilterMode;
 	bool	mbLockAcceleration;
 
-	typedef std::vector<char> tCachedImage;
-	tCachedImage		mCachedImage;
+	VDPixmapBuffer		mCachedImage;
 
 	uint32	mSourcePalette[256];
 
@@ -180,9 +185,10 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd)
 	, mReinitDisplayTimer(0)
 	, mpCB(0)
 	, mInhibitRefresh(0)
+	, mFilterMode(kFilterAnySuitable)
 	, mbLockAcceleration(false)
 {
-	mSource.data = 0;
+	mSource.pixmap.data = 0;
 
 	sDisplayWindows.push_back(this);
 	if (!shwndLookout)
@@ -222,47 +228,38 @@ void VDVideoDisplayWindow::SetSourcePalette(const uint32 *palette, int count) {
 	memcpy(mSourcePalette, palette, 4*std::min<int>(count, 256));
 }
 
-bool VDVideoDisplayWindow::SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pObject, ptrdiff_t offset, bool bAllowConversion, bool bInterlaced) {
+bool VDVideoDisplayWindow::SetSource(bool bAutoUpdate, const VDPixmap& src, void *pObject, ptrdiff_t offset, bool bAllowConversion, bool bInterlaced) {
 	VDVideoDisplaySourceInfo params;
 
-	params.data		= data;
-	params.palette	= mSourcePalette;
-	params.stride	= stride;
-	params.w		= w;
-	params.h		= h;
-	params.format	= format;
+	params.pixmap			= src;
 	params.pSharedObject	= pObject;
 	params.sharedOffset		= offset;
 	params.bAllowConversion	= bAllowConversion;
-	params.bPersistent		= false;
+	params.bPersistent		= pObject != 0;
 	params.bInterlaced		= bInterlaced;
 
-	switch(format) {
-	case kFormatPal8:
-		params.bpp = 1;
-		params.bpr = w;
-		break;
-	case kFormatRGB1555:
-	case kFormatRGB565:
-		params.bpp = 2;
-		params.bpr = 2 * w;
-		break;
-	case kFormatRGB888:
-		params.bpp = 3;
-		params.bpr = 3 * w;
-		break;
-	case kFormatRGB8888:
-		params.bpp = 4;
-		params.bpr = 4 * w;
-		break;
-	case kFormatYUV422_YUYV:
-	case kFormatYUV422_UYVY:
-		params.bpp = 2;
-		params.bpr = 2 * (w + (w&1));
-		break;
-	}
+	const VDPixmapFormatInfo& info = VDPixmapGetInfo(src.format);
+	params.bpp = info.qsize >> info.qhbits;
+	params.bpr = (((src.w-1) >> info.qwbits)+1) * info.qsize;
 
-	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAllowConversion, (LPARAM)&params);
+	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAutoUpdate, (LPARAM)&params);
+}
+
+bool VDVideoDisplayWindow::SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced) {
+	VDVideoDisplaySourceInfo params;
+
+	params.pixmap			= src;
+	params.pSharedObject	= NULL;
+	params.sharedOffset		= 0;
+	params.bAllowConversion	= bAllowConversion;
+	params.bPersistent		= true;
+	params.bInterlaced		= bInterlaced;
+
+	const VDPixmapFormatInfo& info = VDPixmapGetInfo(src.format);
+	params.bpp = info.qsize >> info.qhbits;
+	params.bpr = (((src.w-1) >> info.qwbits)+1) * info.qsize;
+
+	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAutoUpdate, (LPARAM)&params);
 }
 
 void VDVideoDisplayWindow::Update(int fieldmode) {
@@ -283,6 +280,21 @@ void VDVideoDisplayWindow::SetCallback(IVDVideoDisplayCallback *pCB) {
 
 void VDVideoDisplayWindow::LockAcceleration(bool locked) {
 	mbLockAcceleration = locked;
+}
+
+IVDVideoDisplay::FilterMode VDVideoDisplayWindow::GetFilterMode() {
+	return mFilterMode;
+}
+
+void VDVideoDisplayWindow::SetFilterMode(FilterMode mode) {
+	if (mFilterMode != mode) {
+		mFilterMode = mode;
+
+		if (mpMiniDriver) {
+			mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mode);
+			InvalidateRect(mhwnd, NULL, FALSE);
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -325,13 +337,13 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		OnPaint();
 		return 0;
 	case MYWM_SETSOURCE:
-		return SyncSetSource(*(const VDVideoDisplaySourceInfo *)lParam);
+		return SyncSetSource(wParam != 0, *(const VDVideoDisplaySourceInfo *)lParam);
 	case MYWM_UPDATE:
 		SyncUpdate((FieldMode)wParam);
 		return 0;
 	case MYWM_RESET:
 		SyncReset();
-		mSource.data = NULL;
+		mSource.pixmap.data = NULL;
 		return 0;
 	case WM_SIZE:
 		if (mpMiniDriver)
@@ -339,7 +351,7 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	case WM_TIMER:
 		if (wParam == mReinitDisplayTimer) {
-			SyncInit();
+			SyncInit(true);
 			return 0;
 		} else {
 			if (mpMiniDriver)
@@ -347,7 +359,9 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 	case WM_NCHITTEST:
-		return HTTRANSPARENT;
+		if (GetWindowLong(mhwnd, GWL_EXSTYLE) & WS_EX_TRANSPARENT)
+			return HTTRANSPARENT;
+		break;
 	}
 
 	return DefWindowProc(mhwnd, msg, wParam, lParam);
@@ -383,16 +397,25 @@ void VDVideoDisplayWindow::OnPaint() {
 	--mInhibitRefresh;
 }
 
-bool VDVideoDisplayWindow::SyncSetSource(const VDVideoDisplaySourceInfo& params) {
-	tCachedImage().swap(mCachedImage);
+bool VDVideoDisplayWindow::SyncSetSource(bool bAutoUpdate, const VDVideoDisplaySourceInfo& params) {
+	mCachedImage.clear();
 
 	mSource = params;
 
-	if (mpMiniDriver && mpMiniDriver->ModifySource(mSource))
+	if (mpMiniDriver && mpMiniDriver->ModifySource(mSource)) {
+		mSource.bAllowConversion = true;
+
+		if (bAutoUpdate)
+			SyncUpdate(kAllFields);
 		return true;
+	}
 
 	SyncReset();
-	return SyncInit();
+	if (!SyncInit(bAutoUpdate))
+		return false;
+
+	mSource.bAllowConversion = true;
+	return true;
 }
 
 void VDVideoDisplayWindow::SyncReset() {
@@ -403,8 +426,8 @@ void VDVideoDisplayWindow::SyncReset() {
 	}
 }
 
-bool VDVideoDisplayWindow::SyncInit() {
-	if (!mSource.data)
+bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
+	if (!mSource.pixmap.data)
 		return true;
 
 	VDASSERT(!mpMiniDriver);
@@ -413,13 +436,20 @@ bool VDVideoDisplayWindow::SyncInit() {
 
 	do {
 		if ((g_prefs.fDisplay & Preferences::kDisplayUseDXWithTS) || !VDIsTerminalServicesClient()) {
-			if (mbLockAcceleration || bIsForeground) {
-#if 0
-				mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
-				if (mpMiniDriver->Init(mhwnd, mSource))
-					break;
-				SyncReset();
-#endif
+			if (mbLockAcceleration || !mSource.bAllowConversion || bIsForeground) {
+				if (g_prefs.fDisplay & Preferences::kDisplayEnableOpenGL) {
+					mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
+					if (mpMiniDriver->Init(mhwnd, mSource))
+						break;
+					SyncReset();
+				}
+
+				if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
+					mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
+					if (mpMiniDriver->Init(mhwnd, mSource))
+						break;
+					SyncReset();
+				}
 
 				if (!(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
 					mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
@@ -437,11 +467,13 @@ bool VDVideoDisplayWindow::SyncInit() {
 		if (mpMiniDriver->Init(mhwnd, mSource))
 			break;
 
-		VDDEBUG("VideoDisplay: No driver was able to handle the requested format!\n");
+		VDDEBUG("VideoDisplay: No driver was able to handle the requested format! (%d)\n", mSource.pixmap.format);
 		SyncReset();
 	} while(false);
 
 	if (mpMiniDriver) {
+		mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
+
 		if (mReinitDisplayTimer)
 			KillTimer(mhwnd, mReinitDisplayTimer);
 
@@ -450,7 +482,9 @@ bool VDVideoDisplayWindow::SyncInit() {
 				StaticCreatePalette();
 
 			SyncRealizePalette();
-		} else {
+		}
+
+		if (bAutoRefresh) {
 			if (mSource.bPersistent)
 				SyncUpdate(kAllFields);
 			else if (mpCB)
@@ -462,8 +496,10 @@ bool VDVideoDisplayWindow::SyncInit() {
 }
 
 void VDVideoDisplayWindow::SyncUpdate(int mode) {
-	if (mSource.data && !mpMiniDriver)
-		SyncInit();
+	if (mSource.pixmap.data && !mpMiniDriver) {
+		SyncInit(true);
+		return;
+	}
 
 	if (mpMiniDriver) {
 		if (mode & kVisibleOnly) {
@@ -490,20 +526,15 @@ void VDVideoDisplayWindow::SyncUpdate(int mode) {
 }
 
 void VDVideoDisplayWindow::SyncCache() {
-	if (mSource.data) {
-		ptrdiff_t bpr8 = (mSource.bpr + 7) & ~7;
+	if (mSource.pixmap.data && mSource.pixmap.data != mCachedImage.data) {
+		mCachedImage.assign(mSource.pixmap);
 
-		mCachedImage.resize(bpr8 * mSource.h);
-
-		VDMemcpyRect(&mCachedImage[0], bpr8, mSource.data, mSource.stride, mSource.bpr, mSource.h);
-
-		mSource.data		= &mCachedImage[0];
-		mSource.stride		= bpr8;
+		mSource.pixmap		= mCachedImage;
 		mSource.bPersistent	= true;
 	}
 
-	if (mSource.data && !mpMiniDriver)
-		SyncInit();
+	if (mSource.pixmap.data && !mpMiniDriver)
+		SyncInit(true);
 }
 
 void VDVideoDisplayWindow::SyncDisplayChange() {
@@ -522,7 +553,7 @@ void VDVideoDisplayWindow::SyncDisplayChange() {
 	}
 	if (!mReinitDisplayTimer) {
 		SyncReset();
-		if (!SyncInit())
+		if (!SyncInit(true))
 			mReinitDisplayTimer = SetTimer(mhwnd, kReinitDisplayTimerId, 500, NULL);
 	}
 }
@@ -580,15 +611,15 @@ void VDVideoDisplayWindow::StaticRemapPalette() {
 	int i;
 
 	for(i=0; i<216; ++i) {
-		pal[i].peRed	= (i / 36) * 51;
-		pal[i].peGreen	= ((i%36) / 6) * 51;
-		pal[i].peBlue	= (i%6) * 51;
+		pal[i].peRed	= (BYTE)((i / 36) * 51);
+		pal[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
+		pal[i].peBlue	= (BYTE)((i%6) * 51);
 	}
 
 	for(i=0; i<256; ++i) {
 		physpal.hdr.palPalEntry[i].peRed	= 0;
 		physpal.hdr.palPalEntry[i].peGreen	= 0;
-		physpal.hdr.palPalEntry[i].peBlue	= i;
+		physpal.hdr.palPalEntry[i].peBlue	= (BYTE)i;
 		physpal.hdr.palPalEntry[i].peFlags	= PC_EXPLICIT;
 	}
 
@@ -599,7 +630,7 @@ void VDVideoDisplayWindow::StaticRemapPalette() {
 
 	if (HPALETTE hpal = CreatePalette(&physpal.hdr)) {
 		for(i=0; i<252; ++i) {
-			sLogicalPalette[i] = GetNearestPaletteIndex(hpal, RGB(pal[i].peRed, pal[i].peGreen, pal[i].peBlue));
+			sLogicalPalette[i] = (uint8)GetNearestPaletteIndex(hpal, RGB(pal[i].peRed, pal[i].peGreen, pal[i].peBlue));
 #if 0
 			VDDEBUG("[%3d %3d %3d] -> [%3d %3d %3d] : error(%+3d %+3d %+3d)\n"
 					, pal[i].peRed
@@ -640,9 +671,9 @@ void VDVideoDisplayWindow::StaticCreatePalette() {
 	pal.hdr.palNumEntries = 216;
 
 	for(int i=0; i<216; ++i) {
-		pal.hdr.palPalEntry[i].peRed	= (i / 36) * 51;
-		pal.hdr.palPalEntry[i].peGreen	= ((i%36) / 6) * 51;
-		pal.hdr.palPalEntry[i].peBlue	= (i%6) * 51;
+		pal.hdr.palPalEntry[i].peRed	= (BYTE)((i / 36) * 51);
+		pal.hdr.palPalEntry[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
+		pal.hdr.palPalEntry[i].peBlue	= (BYTE)((i%6) * 51);
 		pal.hdr.palPalEntry[i].peFlags	= 0;
 	}
 

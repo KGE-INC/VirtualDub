@@ -24,17 +24,24 @@
 #include <vfw.h>
 
 #include <list>
+#include <vector>
 #include <vd2/system/list.h>
+#include <vd2/system/error.h>
+#include <vd2/system/VDString.h>
 #include "VBitmap.h"
 #include "FilterSystem.h"
 #include "filter.h"
-#include <vd2/system/error.h>
-#include <vd2/system/VDString.h>
+#include "ScriptInterpreter.h"
+#include "ScriptValue.h"
+#include "gui.h"
 
 //////////////////
 
 struct CScriptObject;
 class IVDVideoDisplay;
+class IVDPositionControl;
+struct VDWaveFormat;
+class VDTimeline;
 
 //////////////////
 
@@ -54,11 +61,22 @@ VDWaveFormat *VDCopyWaveFormat(const VDWaveFormat *pFormat);
 
 class FilterDefinitionInstance;
 
+class VFBitmapInternal : public VBitmap {
+public:
+	// Must match layout of VFBitmap!
+	enum {
+		NEEDS_HDC		= 0x00000001L,
+	};
+
+	DWORD	dwFlags;
+	HDC		hdc;
+};
+
 class FilterInstance : public ListNode, public FilterActivation {
 private:
 	FilterInstance& operator=(const FilterInstance&);		// outlaw copy assignment
 public:
-	VFBitmap realSrc, realDst, realLast;
+	VFBitmapInternal realSrc, realDst, realLast;
 	LONG flags;
 	HBITMAP hbmDst, hbmLast;
 	HGDIOBJ hgoDst, hgoLast;
@@ -76,6 +94,9 @@ public:
 
 	VDStringW	mFilterName;
 
+	std::vector<VDScriptFunctionDef>	mScriptFunc;
+	VDScriptObject	mScriptObj;
+
 	///////
 
 	FilterInstance(const FilterInstance& fi);
@@ -87,6 +108,10 @@ public:
 	void ForceNoDeinit();
 
 protected:
+	static void ScriptFunctionThunkVoid(IVDScriptInterpreter *, VDScriptValue *, int);
+	static void ScriptFunctionThunkInt(IVDScriptInterpreter *, VDScriptValue *, int);
+	static void ScriptFunctionThunkVariadic(IVDScriptInterpreter *, VDScriptValue *, int);
+
 	FilterDefinitionInstance *mpFDInst;
 };
 
@@ -95,6 +120,7 @@ private:
 	HWND hdlg, hwndButton;
 	HWND hwndParent;
 	HWND	mhwndPosition;
+	IVDPositionControl	*mpPosition;
 	HWND	mhwndDisplay;
 	IVDVideoDisplay *mpDisplay;
 	HWND	mhwndToolTip;
@@ -103,6 +129,7 @@ private:
 	FilterStateInfo fsi;
 	List *pFilterList;
 	FilterInstance *pfiThisFilter;
+	VDTimeline *mpTimeline;
 
 	FilterPreviewButtonCallback		pButtonCallback;
 	void							*pvButtonCBData;
@@ -111,7 +138,9 @@ private:
 
 	MyError		mFailureReason;
 
-	static BOOL CALLBACK StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam);
+	ModelessDlgNode		mDlgNode;
+
+	static INT_PTR CALLBACK StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam);
 	BOOL DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 	void OnInit();
@@ -119,6 +148,7 @@ private:
 	void OnPaint();
 	void OnVideoResize(bool bInitial);
 	void OnVideoRedraw();
+	bool OnCommand(UINT);
 
 	long FetchFrame();
 	long FetchFrame(long);
@@ -148,10 +178,6 @@ EXTERN List				g_listFA;
 
 EXTERN FilterSystem filters;
 
-int					FilterAutoloadModules(int &fail_count);
-void				FilterLoadModule(const char *szModule);
-void				FilterUnloadModule(FilterModule *fm);
-void				FilterUnloadAllModules();
 FilterDefinition *	FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len);
 void				FilterAddBuiltin(const FilterDefinition *pfd);
 void				FilterRemove(FilterDefinition *fd);

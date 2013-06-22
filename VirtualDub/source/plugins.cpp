@@ -41,6 +41,8 @@ const VDPluginCallbacks g_pluginCallbacks = {
 };
 
 
+extern FilterFunctions g_filterFuncs;
+
 
 namespace {
 	struct VDShadowedPluginDescription : public VDPluginDescription {
@@ -136,29 +138,12 @@ void VDEnumeratePluginDescriptions(std::vector<VDPluginDescription *>& plugins, 
 
 std::list<class VDExternalModule *>		g_pluginModules;
 
-class VDExternalModule {
-public:
-	VDExternalModule(const VDStringW& filename);
-	~VDExternalModule();
-
-	void Lock();
-	void Unlock();
-
-	const VDStringW& GetFilename() const { return mFilename; }
-
-protected:
-	void ReconnectPlugins();
-
-	VDStringW	mFilename;
-	HMODULE		mhModule;
-	int			mModuleRefCount;
-};
-
 VDExternalModule::VDExternalModule(const VDStringW& filename)
 	: mFilename(filename)
 	, mhModule(NULL)
 	, mModuleRefCount(0)
 {
+	memset(&mModuleInfo, 0, sizeof mModuleInfo);
 }
 
 VDExternalModule::~VDExternalModule() {
@@ -178,9 +163,9 @@ void VDExternalModule::Lock() {
 		if (!mhModule)
 			throw MyWin32Error("Cannot load plugin module \"%s\": %%s", GetLastError(), VDTextWToA(mFilename).c_str());
 
+		ReconnectOldPlugins();
 		ReconnectPlugins();
 	}
-
 	++mModuleRefCount;
 }
 
@@ -189,9 +174,81 @@ void VDExternalModule::Unlock() {
 	VDASSERT(mhModule);
 
 	if (!--mModuleRefCount) {
+		DisconnectOldPlugins();
 		VDDisconnectPluginDescriptions(this);
 		FreeLibrary(mhModule);
 		mhModule = 0;
+		VDDEBUG("Plugins: Unloading module \"%s\"\n", VDTextWToA(mFilename).c_str());
+	}
+}
+
+void VDExternalModule::DisconnectOldPlugins() {
+	if (mModuleInfo.hInstModule) {
+		mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
+
+		{
+			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
+			FreeLibrary(mModuleInfo.hInstModule);
+		}
+
+		mModuleInfo.hInstModule = NULL;
+	}
+}
+
+void VDExternalModule::ReconnectOldPlugins() {
+	if (!mModuleInfo.hInstModule) {
+		VDStringA nameA(VDTextWToA(mFilename));
+
+		mModuleInfo.hInstModule = mhModule;
+
+		try {
+			mModuleInfo.initProc   = (FilterModuleInitProc  )GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleInit2");
+			mModuleInfo.deinitProc = (FilterModuleDeinitProc)GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleDeinit");
+
+			if (!mModuleInfo.initProc) {
+				void *fp = GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleInit");
+
+				if (fp)
+					throw MyError(
+						"This filter was created for VirtualDub 1.1 or earlier, and is not compatible with version 1.2 or later. "
+						"Please contact the author for an updated version.");
+
+				fp = GetProcAddress(mModuleInfo.hInstModule, "NinaFilterModuleInit");
+
+				if (fp)
+					throw MyError("This filter will only work with VirtualDub 2.0 or above.");
+			}
+
+			if (!mModuleInfo.initProc || !mModuleInfo.deinitProc)
+				throw MyError("Module \"%s\" does not contain VirtualDub filters.", nameA.c_str());
+
+			int ver_hi = VIRTUALDUB_FILTERDEF_VERSION;
+			int ver_lo = VIRTUALDUB_FILTERDEF_COMPATIBLE;
+
+			if (mModuleInfo.initProc(&mModuleInfo, &g_filterFuncs, ver_hi, ver_lo))
+				throw MyError("Error initializing module \"%s\".",nameA.c_str());
+
+			if (ver_hi < VIRTUALDUB_FILTERDEF_COMPATIBLE) {
+				mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
+
+				throw MyError(
+					"This filter was created for an earlier, incompatible filter interface. As a result, it will not "
+					"run correctly with this version of VirtualDub. Please contact the author for an updated version.");
+			}
+
+			if (ver_lo > VIRTUALDUB_FILTERDEF_VERSION) {
+				mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
+
+				throw MyError(
+					"This filter uses too new of a filter interface!  You'll need to upgrade to a newer version of "
+					"VirtualDub to use this filter."
+					);
+			}
+		} catch(...) {
+			FreeLibrary(mModuleInfo.hInstModule);
+			mModuleInfo.hInstModule = NULL;
+			throw;
+		}
 	}
 }
 
@@ -233,19 +290,38 @@ void VDAddPluginModule(const wchar_t *pFilename) {
 			return;
 	}
 
-	vdautoptr<VDExternalModule> pModule(new VDExternalModule(path));
+	g_pluginModules.push_back(new VDExternalModule(path));
+	VDExternalModule *pModule = g_pluginModules.back();
 
 	// lock the module to bring in the plugin descriptions -- this may bomb
-	// if the plugin doesn't exist or couldn't load (thus the funny autoptr
-	// usage above).
-	pModule->Lock();
-	pModule->Unlock();
+	// if the plugin doesn't exist or couldn't load
 
-	g_pluginModules.push_back(pModule.release());
+	try {
+		pModule->Lock();
+		pModule->Unlock();
+	} catch(...) {
+		g_pluginModules.pop_back();
+		throw;
+	}
+
 }
 
 void VDAddInternalPlugins(const VDPluginInfo *const *ppInfo) {
 	VDConnectPluginDescriptions(ppInfo, NULL);
+}
+
+VDExternalModule *VDGetExternalModuleByFilterModule(const FilterModule *fm) {
+	std::list<class VDExternalModule *>::const_iterator it(g_pluginModules.begin()),
+			itEnd(g_pluginModules.end());
+
+	for(; it!=itEnd; ++it) {
+		VDExternalModule *pModule = *it;
+
+		if (fm == &pModule->GetFilterModuleInfo())
+			return pModule;
+	}
+
+	return NULL;
 }
 
 const VDPluginInfo *VDLockPlugin(VDPluginDescription *pDesc) {
@@ -260,16 +336,20 @@ void VDUnlockPlugin(VDPluginDescription *pDesc) {
 		pDesc->mpModule->Unlock();
 }
 
-void VDLoadPlugins(const VDStringW& path) {
+void VDLoadPlugins(const VDStringW& path, int& succeeded, int& failed) {
 	VDDirectoryIterator it(VDMakePath(path, VDStringW(L"*.vdf")).c_str());
+
+	succeeded = failed = 0;
 
 	while(it.Next()) {
 		VDDEBUG("Plugins: Attempting to load \"%ls\"\n", it.GetFullPath().c_str());
 		VDStringW path(it.GetFullPath());
 		try {
 			VDAddPluginModule(path.c_str());
+			++succeeded;
 		} catch(const MyError& e) {
 			VDDEBUG("Plugins: Failed to load \"%ls\": %s\n", it.GetFullPath().c_str(), e.gets());
+			++failed;
 		}
 	}
 }

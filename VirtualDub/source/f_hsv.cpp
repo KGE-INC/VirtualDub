@@ -357,7 +357,7 @@ xloop_negative_shift:
 		ret			36
 	}
 }
-#else
+#elif 0
 static void __declspec(naked) __stdcall hsv_run_ISSE(Pixel32 *dst, ptrdiff_t dstpitch, unsigned w, unsigned h, int subshift, int sectors, int sat, int val, const unsigned short (*divtab)[4]) {
 	static const __int64 x0000FFFFFFFFFFFF = 0x0000FFFFFFFFFFFF;
 	static const __int64 rangefloor = 0;
@@ -929,7 +929,7 @@ xloop_negative_shift:
 		ret			36
 	}
 }
-#else
+#elif 0
 static void __declspec(naked) __stdcall hsv_run_MMX(Pixel32 *dst, ptrdiff_t dstpitch, unsigned w, unsigned h, int subshift, int sectors, int sat, int val, const unsigned short (*divtab)[4]) {
 	static const __int64 x0000FFFFFFFFFFFF = 0x0000FFFFFFFFFFFF;
 	static const __int64 rangefloor = 0;
@@ -1269,9 +1269,6 @@ static void hsv_run_scalar(Pixel32 *dst, ptrdiff_t dstpitch, unsigned w, unsigne
 ///////////////////////////////////////////////////////////////////////////
 
 void HSVFilterData::RunScalar(Pixel32 *dst, ptrdiff_t dstpitch, unsigned w, unsigned h, int subshift, int sectors) {
-	const int rshift = sectors * 8;
-	const int lshift = 24 - sectors * 8;
-
 	int totalshift = sectors * 510 + subshift;
 
 	if (totalshift < 0)
@@ -1411,8 +1408,6 @@ static int hsv_start(FilterActivation *fa, const FilterFunctions *ff) {
 }
 
 static int hsv_stop(FilterActivation *fa, const FilterFunctions *ff) {
-	HSVFilterData *mfd = (HSVFilterData *)fa->filter_data;
-
 	return 0;
 }
 
@@ -1425,14 +1420,11 @@ int hsv_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	int phase = ((mfd->hue & 0xffff) * 6) >> 8;
 	int sectors = ((phase+256) / 512) % 3;
 	int shift = phase%512;
-	bool bShiftNegative = shift >= 256;
 	if (shift >= 256)
 		shift -= 512;
 
-	int sat = (mfd->sat+128) >> 8;
-	int val = (mfd->val+128) >> 8;
-
-	Pixel32 *dst = fa->dst.data;
+//	int sat = (mfd->sat+128) >> 8;
+//	int val = (mfd->val+128) >> 8;
 
 	mfd->RunScalar(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, shift, sectors);
 //	hsv_run_MMX(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, shift, sectors, sat, val, mfd->divtab);
@@ -1458,8 +1450,8 @@ static int hsv_init(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY hsvDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	HSVFilterData *mfd = (HSVFilterData *)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR CALLBACK hsvDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	HSVFilterData *mfd = (HSVFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
@@ -1467,7 +1459,7 @@ static BOOL APIENTRY hsvDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lPar
 			{
 				HWND hwnd;
 				mfd = (HSVFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				hwnd = GetDlgItem(hDlg, IDC_HUE);
 				SendMessage(hwnd, TBM_SETRANGEMIN, (WPARAM)FALSE, 0);

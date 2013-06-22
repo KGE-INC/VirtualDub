@@ -18,21 +18,7 @@
 #ifndef f_CONVERT_H
 #define f_CONVERT_H
 
-extern "C" void DIBconvert_16_to_16(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_24_to_16(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_32_to_16(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_16_to_24(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_24_to_24(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_32_to_24(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_8_to_16(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height, void *palette);
-extern "C" void DIBconvert_8_to_24(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height, void *palette);
-extern "C" void DIBconvert_8_to_32(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height, void *palette);
-extern "C" void DIBconvert_16_to_32(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_24_to_32(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_32_to_32(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-
 extern "C" void DIBconvert_32_to_16_dithered(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
 extern "C" void DIBconvert_32_to_16_565_dithered(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
-extern "C" void DIBconvert_32_to_16_565(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height);
 
 #endif

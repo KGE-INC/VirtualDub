@@ -41,11 +41,13 @@ MRUList::~MRUList() {
 void MRUList::add(const wchar_t *file) {
 	int index;
 
-	// Does this file already exist?  If not, don't add it!
+	// Does this file already exist?  If not, move it to the top.
 
 	for(index=0; index<mMaxCount; index++)
-		if (!wcsicmp(mFiles[index].c_str(), file))
+		if (!wcsicmp(mFiles[index].c_str(), file)) {
+			move_to_top(index);
 			return;
+		}
 
 	// Add file to list
 	std::rotate(mKey.begin(), mKey.end()-1, mKey.end());
@@ -59,7 +61,7 @@ void MRUList::add(const wchar_t *file) {
 	}
 
 	mFiles[index] = file;
-	mKey.front() = index + 'a';
+	mKey.front() = (char)(index + 'a');
 
 	mbDirty = true;
 }
@@ -114,7 +116,7 @@ void MRUList::load() {
 		if (!key.getString(name, mFiles[i]))
 			break;
 
-		mKey[i] = 'a'+i;
+		mKey[i] = (char)('a'+i);
 	}
 }
 

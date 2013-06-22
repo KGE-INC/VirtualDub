@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "ScriptError.h"
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/file.h>
 #include <vd2/Dita/services.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
@@ -53,10 +54,8 @@ extern VDProject *g_project;
 
 extern HINSTANCE g_hInst;
 
-extern IScriptInterpreter *CreateScriptInterpreter();
-
 extern void FreeCompressor(COMPVARS *pCompVars);
-static CScriptValue RootHandler(IScriptInterpreter *isi, char *szName, void *lpData);
+static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *lpData);
 
 bool InitScriptSystem() {
 	return true;
@@ -68,7 +67,7 @@ void DeinitScriptSystem() {
 ///////////////////////////////////////////////
 
 void RunScript(const wchar_t *name, void *hwnd) {
-	static wchar_t fileFilters[]=
+	static const wchar_t fileFilters[]=
 				L"All scripts (*.vcf,*.syl,*.jobs)\0"		L"*.vcf;*.syl;*.jobs\0"
 				L"VirtualDub configuration file (*.vcf)\0"	L"*.vcf\0"
 				L"Sylia script for VirtualDub (*.syl)\0"	L"*.syl\0"
@@ -76,8 +75,7 @@ void RunScript(const wchar_t *name, void *hwnd) {
 				L"All Files (*.*)\0"						L"*.*\0"
 				;
 
-	IScriptInterpreter *isi = NULL;
-	FILE *f = NULL;
+	IVDScriptInterpreter *isi = NULL;
 	VDStringW filenameW;
 
 	if (!name) {
@@ -89,51 +87,53 @@ void RunScript(const wchar_t *name, void *hwnd) {
 		name = filenameW.c_str();
 	}
 
-	VDStringA filenameA(VDTextWToA(name));
-
 	if (!InitScriptSystem())
 		return;
 
-	try {
-		std::vector<char> linebuffer;
+	const char *line = NULL;
+	int lineno = 1;
 
-		isi = CreateScriptInterpreter();
-		if (!isi) throw MyError("Not enough memory to create script interpreter");
+	VDTextInputFile f(name);
+
+	try {
+		isi = VDCreateScriptInterpreter();
+		if (!isi)
+			throw MyError("Not enough memory to create script interpreter");
 
 		isi->SetRootHandler(RootHandler, NULL);
 
-		if (!(f=fopen(filenameA.c_str(), "r")))
-			throw MyError("Can't open script file");
+		while(line = f.GetNextLine())
+			isi->ExecuteLine(line);
+	} catch(const VDScriptError& cse) {
+		char buf[4096];
+		int pos = isi->GetErrorLocation();
+		int prelen = std::min<int>(pos, 50);
+		const char *s = line ? line : "";
 
-		int c;
+		sprintf(buf, "Error during script execution at line %d, column %d: %s\n\n"
+						"    %.*s<!>%.50s"
+					, lineno
+					, pos+1
+					, isi->TranslateScriptError(cse)
+					, prelen
+					, s + pos - prelen
+					, s + pos);
 
-		do {
-			c = getc(f);
-
-			if (c == '\n' || c == EOF) {
-				linebuffer.push_back(0);
-				isi->ExecuteLine(&linebuffer[0]);
-				linebuffer.clear();
-			} else
-				linebuffer.push_back(c);
-		} while(c != EOF);
-	} catch(CScriptError cse) {
-		MessageBox(NULL, isi->TranslateScriptError(cse), "Sylia script error", MB_OK | MB_TASKMODAL | MB_TOPMOST);
-	} catch(MyUserAbortError e) {
+		MessageBox(NULL, buf, "Sylia script error", MB_OK | MB_TASKMODAL | MB_TOPMOST);
+	} catch(const MyUserAbortError&) {
 		/* do nothing */
 	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
 
 	isi->Destroy();
-	if (f) fclose(f);
 
 	DeinitScriptSystem();
-	RemakePositionSlider();
+	g_project->EndTimelineUpdate();
 }
 
 void RunScriptMemory(char *mem) {
-	IScriptInterpreter *isi = NULL;
+	IVDScriptInterpreter *isi = NULL;
 
 	if (!InitScriptSystem())
 		return;
@@ -142,7 +142,7 @@ void RunScriptMemory(char *mem) {
 		std::vector<char> linebuffer;
 		char *s=mem, *t;
 
-		isi = CreateScriptInterpreter();
+		isi = VDCreateScriptInterpreter();
 		if (!isi) throw MyError("Not enough memory to create script interpreter");
 
 		isi->SetRootHandler(RootHandler, NULL);
@@ -161,7 +161,7 @@ void RunScriptMemory(char *mem) {
 			if (*s=='\n') ++s;
 		}
 
-	} catch(CScriptError cse) {
+	} catch(VDScriptError cse) {
 		MessageBox(NULL, isi->TranslateScriptError(cse), "Sylia script error", MB_OK | MB_TASKMODAL);
 	} catch(MyUserAbortError e) {
 		isi->Destroy();
@@ -194,7 +194,9 @@ static bool strfuzzycompare(const char *s, const char *t) {
 	do {
 		c = *s++;
 
-		if (isalpha(c)) c=toupper(c);
+		if (isalpha(c))
+			c=toupper(c);
+
 		else if (isspace(c)) {
 			c = ' ';
 			while(*s && isspace(*s)) ++s;
@@ -203,7 +205,8 @@ static bool strfuzzycompare(const char *s, const char *t) {
 
 		d = *t++;
 
-		if (isalpha(d)) d=toupper(d);
+		if (isalpha(d))
+			d=toupper(d);
 		else if (isspace(d)) {
 			d = ' ';
 			while(*t && isspace(*t)) ++t;
@@ -311,15 +314,15 @@ void membase64(char *t, const char *s, long l) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static void func_VDVFiltInst_Remove(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)lpVoid;
+static void func_VDVFiltInst_Remove(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *fa = (FilterInstance *)argv[-1].thisPtr;
 
 	fa->Remove();
 	fa->Destroy();
 }
 
-static void func_VDVFiltInst_SetClipping(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)lpVoid;
+static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].thisPtr;
 
 	fa->x1	= argv[0].asInt();
 	fa->y1	= argv[1].asInt();
@@ -327,55 +330,63 @@ static void func_VDVFiltInst_SetClipping(IScriptInterpreter *isi, void *lpVoid, 
 	fa->y2	= argv[3].asInt();
 }
 
-static int func_VDVFiltInst_GetClipping(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)lpVoid;
+static void func_VDVFiltInst_GetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].thisPtr;
 
 	switch(argv[0].asInt()) {
-	case 0:	return fa->x1;
-	case 1: return fa->y1;
-	case 2: return fa->x2;
-	case 3: return fa->y2;
+	case 0:	argv[0] = (int)fa->x1; break;
+	case 1: argv[0] = (int)fa->y1; break;
+	case 2: argv[0] = (int)fa->x2; break;
+	case 3: argv[0] = (int)fa->y2; break;
 	}
 
-	return 0;
+	argv[0] = VDScriptValue(0);
 }
 
-static CScriptValue obj_VDVFiltInst_lookup(IScriptInterpreter *isi, CScriptObject *thisPtr, void *lpVoid, char *szName) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)lpVoid;
+static VDScriptValue obj_VDVFiltInst_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
+	FilterInstance *pfi = static_cast<FilterInstance *>((FilterActivation *)lpVoid);
 
-	if (fa->filter->script_obj)
-		return isi->LookupObjectMember(fa->filter->script_obj, lpVoid, szName);
+	if (pfi->filter->script_obj)
+		return isi->LookupObjectMember(&pfi->mScriptObj, lpVoid, szName);
 
-	return CScriptValue();
+	return VDScriptValue();
 }
 
-static ScriptFunctionDef obj_VDVFiltInst_functbl[]={
-	{ (ScriptFunctionPtr)func_VDVFiltInst_Remove			, "Remove", "0" },
-	{ (ScriptFunctionPtr)func_VDVFiltInst_SetClipping		, "SetClipping", "0iiii" },
-	{ (ScriptFunctionPtr)func_VDVFiltInst_GetClipping		, "GetClipping", "ii" },
+static const VDScriptFunctionDef obj_VDVFiltInst_functbl[]={
+	{ func_VDVFiltInst_Remove			, "Remove", "0" },
+	{ func_VDVFiltInst_SetClipping		, "SetClipping", "0iiii" },
+	{ func_VDVFiltInst_GetClipping		, "GetClipping", "ii" },
 	{ NULL }
 };
 
-static CScriptObject obj_VDVFiltInst={
+extern const VDScriptObject obj_VDVFiltInst={
 	obj_VDVFiltInst_lookup, obj_VDVFiltInst_functbl, NULL	
 };
 
 ///////////////////
 
-static CScriptValue obj_VDVFilters_instance(IScriptInterpreter *isi, void *, int index) {
+static void func_VDVFilters_instance(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	FilterInstance *fa = (FilterInstance *)g_listFA.tail.next, *fa2;
-	CScriptValue t = CScriptValue(&obj_VDVFiltInst);
+	int index = argv[0].asInt();
 
 	while((fa2 = (FilterInstance *)fa->next) && index--)
 		fa = fa2;
 
-	if (index!=-1 || !fa->next) EXT_SCRIPT_ERROR(VAR_NOT_FOUND);
+	if (index!=-1 || !fa->next) VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 
-	t.lpVoid = (FilterActivation *)fa;
-	return t;
+	argv[0] = VDScriptValue(static_cast<FilterActivation *>(fa), &obj_VDVFiltInst);
 }
 
-static void func_VDVFilters_Clear(IScriptInterpreter *, void *, CScriptValue *, int) {
+static const VDScriptFunctionDef obj_VDVFilters_instance_functbl[]={
+	{ func_VDVFilters_instance		, "[]", "vi" },
+	{ NULL }
+};
+
+static const VDScriptObject obj_VDVFilters_instance={
+	NULL, obj_VDVFilters_instance_functbl, NULL	
+};
+
+static void func_VDVFilters_Clear(IVDScriptInterpreter *, VDScriptValue *, int) {
 	FilterInstance *fa;
 
 	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
@@ -383,7 +394,7 @@ static void func_VDVFilters_Clear(IScriptInterpreter *, void *, CScriptValue *, 
 	}
 }
 
-static int func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScriptValue *argv, int argc) {
+static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	std::list<FilterBlurb>	filterList;
 
 	FilterEnumerateFilters(filterList);
@@ -394,7 +405,7 @@ static int func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScript
 		if (strfuzzycompare(fb.name.c_str(), *argv[0].asString())) {
 			FilterInstance *fa = new FilterInstance(fb.key);
 
-			if (!fa) EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+			if (!fa) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
 			fa->x1 = fa->y1 = fa->x2 = fa->y2 = 0;
 
@@ -410,7 +421,8 @@ static int func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScript
 					++count;
 				}
 
-				return count-1;
+				argv[0] = VDScriptValue(count-1);
+				return;
 			}
 		}
 	}
@@ -418,20 +430,20 @@ static int func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScript
 	throw MyError("Cannot add filter '%s': no such filter loaded", *argv[0].asString());
 }
 
-static CScriptValue obj_VDVFilters_lookup(IScriptInterpreter *isi, CScriptObject *thisPtr, void *lpVoid, char *szName) {
+static VDScriptValue obj_VDVFilters_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "instance"))
-		return CScriptValue(thisPtr, &obj_VDVFilters_instance);
+		return VDScriptValue(lpVoid, &obj_VDVFilters_instance);
 
-	EXT_SCRIPT_ERROR(MEMBER_NOT_FOUND);
+	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
 
-static ScriptFunctionDef obj_VDVFilters_functbl[]={
-	{ (ScriptFunctionPtr)func_VDVFilters_Clear			, "Clear", "0" },
-	{ (ScriptFunctionPtr)func_VDVFilters_Add			, "Add", "is", },
+static const VDScriptFunctionDef obj_VDVFilters_functbl[]={
+	{ func_VDVFilters_Clear			, "Clear", "0" },
+	{ func_VDVFilters_Add			, "Add", "is", },
 	{ NULL }
 };
 
-static CScriptObject obj_VDVFilters={
+static const VDScriptObject obj_VDVFilters={
 	obj_VDVFilters_lookup, obj_VDVFilters_functbl, NULL	
 };
 
@@ -441,54 +453,81 @@ static CScriptObject obj_VDVFilters={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static int func_VDVideo_GetDepth(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	return arglist[0].asInt() ? g_dubOpts.video.outputDepth : g_dubOpts.video.inputDepth;
+static void func_VDVideo_GetDepth(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	int format;
+
+	if (arglist[0].asInt())
+		format = g_dubOpts.video.mOutputFormat;
+	else
+		format = g_dubOpts.video.mInputFormat;
+
+	switch(format) {
+		case nsVDPixmap::kPixFormat_XRGB1555:
+		case nsVDPixmap::kPixFormat_RGB565:
+			arglist[0] = VDScriptValue(16);
+			break;
+		default:
+			arglist[0] = VDScriptValue(24);
+			break;
+	}
 }
 
-static void func_VDVideo_SetDepth(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetDepth(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	int new_depth1, new_depth2;
 
 	switch(arglist[0].asInt()) {
-	case 16:	new_depth1 = 0; break;
-	case 24:	new_depth1 = 1; break;
-	case 32:	new_depth1 = 2; break;
+	case 16:	new_depth1 = nsVDPixmap::kPixFormat_XRGB1555; break;
+	case 24:	new_depth1 = nsVDPixmap::kPixFormat_RGB565; break;
+	case 32:	new_depth1 = nsVDPixmap::kPixFormat_XRGB8888; break;
 	default:
 		return;
 	}
 
 	switch(arglist[1].asInt()) {
-	case 16:	new_depth2 = 0; break;
-	case 24:	new_depth2 = 1; break;
-	case 32:	new_depth2 = 2; break;
+	case 16:	new_depth2 = nsVDPixmap::kPixFormat_XRGB1555; break;
+	case 24:	new_depth2 = nsVDPixmap::kPixFormat_RGB565; break;
+	case 32:	new_depth2 = nsVDPixmap::kPixFormat_XRGB8888; break;
 	default:
 		return;
 	}
 
-	g_dubOpts.video.inputDepth = new_depth1;
-	g_dubOpts.video.outputDepth = new_depth2;
+	g_dubOpts.video.mInputFormat = new_depth1;
+	g_dubOpts.video.mOutputFormat = new_depth2;
 }
 
-static int func_VDVideo_GetMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	return g_dubOpts.video.mode;
+static void func_VDVideo_SetInputFormat(IVDScriptInterpreter *, VDScriptValue *argv, int argc) {
+	g_dubOpts.video.mInputFormat = argv[0].asInt();
+	if (g_dubOpts.video.mInputFormat >= nsVDPixmap::kPixFormat_Max_Standard)
+		g_dubOpts.video.mInputFormat = nsVDPixmap::kPixFormat_RGB888;
 }
 
-static void func_VDVideo_SetMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetOutputFormat(IVDScriptInterpreter *, VDScriptValue *argv, int argc) {
+	g_dubOpts.video.mOutputFormat = argv[0].asInt();
+	if (g_dubOpts.video.mOutputFormat >= nsVDPixmap::kPixFormat_Max_Standard)
+		g_dubOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_RGB888;
+}
+
+static void func_VDVideo_GetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	arglist[0] = VDScriptValue(g_dubOpts.video.mode);
+}
+
+static void func_VDVideo_SetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	int new_mode = arglist[0].asInt();
 
 	if (new_mode>=0 && new_mode<4)
 		g_dubOpts.video.mode = new_mode;
 }
 
-static int func_VDVideo_GetFrameRate(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_GetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
-	case 0: return g_dubOpts.video.frameRateDecimation;
-	case 1: return g_dubOpts.video.frameRateNewMicroSecs;
-	case 2: return g_dubOpts.video.fInvTelecine;
+	case 0: arglist[0] = VDScriptValue(g_dubOpts.video.frameRateDecimation); return;
+	case 1: arglist[0] = VDScriptValue(g_dubOpts.video.frameRateNewMicroSecs); return;
+	case 2: arglist[0] = VDScriptValue(g_dubOpts.video.fInvTelecine); return;
 	}
-	return 0;
+	arglist[0] = VDScriptValue(0);
 }
 
-static void func_VDVideo_SetFrameRate(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.frameRateNewMicroSecs = arglist[0].asInt();
 	g_dubOpts.video.frameRateDecimation = arglist[1].asInt();
 	g_dubOpts.video.frameRateTargetLo = 0;
@@ -506,36 +545,35 @@ static void func_VDVideo_SetFrameRate(IScriptInterpreter *, CScriptObject *, CSc
 	}
 }
 
-static void func_VDVideo_SetTargetFrameRate(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetTargetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.frameRateDecimation = 1;
 	g_dubOpts.video.frameRateTargetLo = arglist[1].asInt();
 	g_dubOpts.video.frameRateTargetHi = arglist[0].asInt();
 }
 
-static int func_VDVideo_GetRange(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	return arglist[0].asInt() ? g_dubOpts.video.lEndOffsetMS : g_dubOpts.video.lStartOffsetMS;
+static void func_VDVideo_GetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	arglist[0] = VDScriptValue(arglist[0].asInt() ? g_dubOpts.video.lEndOffsetMS : g_dubOpts.video.lStartOffsetMS);
 }
 
-static void func_VDVideo_SetRange(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	SetSelectionStart(arglist[0].asInt());
 	SetSelectionEnd(arglist[1].asInt());
 }
 
-static int func_VDVideo_GetCompression(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	if (!g_Vcompression.dwFlags & ICMF_COMPVARS_VALID)
-		return 0;
-
-	switch(arglist[0].asInt()) {
-	case 0:	return (int)g_Vcompression.fccHandler;
-	case 1: return g_Vcompression.lKey;
-	case 2: return g_Vcompression.lQ;
-	case 3: return g_Vcompression.lDataRate;
+static void func_VDVideo_GetCompression(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	if (g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) {
+		switch(arglist[0].asInt()) {
+		case 0:	arglist[0] = VDScriptValue((int)g_Vcompression.fccHandler); return;
+		case 1: arglist[0] = VDScriptValue(g_Vcompression.lKey); return;
+		case 2: arglist[0] = VDScriptValue(g_Vcompression.lQ); return;
+		case 3: arglist[0] = VDScriptValue(g_Vcompression.lDataRate); return;
+		}
 	}
 
-	return 0;
+	arglist[0] = VDScriptValue(0);
 }
 
-static void func_VDVideo_SetCompression(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetCompression(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 //	ICCompressorFree(&g_Vcompression);
 	FreeCompressor(&g_Vcompression);
 
@@ -560,7 +598,7 @@ static void func_VDVideo_SetCompression(IScriptInterpreter *, CScriptObject *, C
 	g_Vcompression.hic			= ICOpen(g_Vcompression.fccType, g_Vcompression.fccHandler, ICMODE_COMPRESS);
 }
 
-static void func_VDVideo_SetCompData(IScriptInterpreter *isi, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetCompData(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	void *mem;
 	long l = ((strlen(*arglist[1].asString())+3)/4)*3;
 
@@ -572,7 +610,7 @@ static void func_VDVideo_SetCompData(IScriptInterpreter *isi, CScriptObject *, C
 	l = arglist[0].asInt();
 
 	if (!(mem = allocmem(l)))
-		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+		VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
 	_CrtCheckMemory();
 	memunbase64((char *)mem, *arglist[1].asString(), l);
@@ -583,7 +621,7 @@ static void func_VDVideo_SetCompData(IScriptInterpreter *isi, CScriptObject *, C
 	freemem(mem);
 }
 
-static void func_VDVideo_EnableIndeoQC(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_EnableIndeoQC(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	R4_ENC_SEQ_DATA r4enc;
 
 	if (!(g_Vcompression.dwFlags & ICMF_COMPVARS_VALID))
@@ -603,7 +641,7 @@ static void func_VDVideo_EnableIndeoQC(IScriptInterpreter *, CScriptObject *, CS
 	ICSetState(g_Vcompression.hic, &r4enc, sizeof r4enc);
 }
 
-static void func_VDVideo_SetIVTC(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDVideo_SetIVTC(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.fInvTelecine = !!arglist[0].asInt();
 	g_dubOpts.video.fIVTCMode = !!arglist[1].asInt();
 	g_dubOpts.video.nIVTCOffset = arglist[2].asInt();
@@ -612,42 +650,44 @@ static void func_VDVideo_SetIVTC(IScriptInterpreter *, CScriptObject *, CScriptV
 	g_dubOpts.video.fIVTCPolarity = !!arglist[3].asInt();
 }
 
-static ScriptFunctionDef obj_VDVideo_functbl[]={
-	{ (ScriptFunctionPtr)func_VDVideo_GetDepth			, "GetDepth", "ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetDepth			, "SetDepth", "0ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_GetMode			, "GetMode", "i" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetMode			, "SetMode", "0i" },
-	{ (ScriptFunctionPtr)func_VDVideo_GetFrameRate		, "GetFrameRate", "ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetFrameRate		, "SetFrameRate", "0ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetFrameRate		, NULL, "0iii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetTargetFrameRate, "SetTargetFrameRate", "0ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_GetRange			, "GetRange", "ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetRange			, "SetRange", "0ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_GetCompression	, "GetCompression"	, "ii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetCompression	, "SetCompression"	, "0siii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetCompression	, NULL				, "0iiii" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetCompression	, NULL				, "0" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetCompData		, "SetCompData", "0is" },
-	{ (ScriptFunctionPtr)func_VDVideo_EnableIndeoQC		, "EnableIndeoQC", "0i" },
-	{ (ScriptFunctionPtr)func_VDVideo_SetIVTC			, "SetIVTC", "0iiii" },
+static const VDScriptFunctionDef obj_VDVideo_functbl[]={
+	{ func_VDVideo_GetDepth			, "GetDepth", "ii" },
+	{ func_VDVideo_SetDepth			, "SetDepth", "0ii" },
+	{ func_VDVideo_GetMode			, "GetMode", "i" },
+	{ func_VDVideo_SetMode			, "SetMode", "0i" },
+	{ func_VDVideo_GetFrameRate		, "GetFrameRate", "ii" },
+	{ func_VDVideo_SetFrameRate		, "SetFrameRate", "0ii" },
+	{ func_VDVideo_SetFrameRate		, NULL, "0iii" },
+	{ func_VDVideo_SetTargetFrameRate, "SetTargetFrameRate", "0ii" },
+	{ func_VDVideo_GetRange			, "GetRange", "ii" },
+	{ func_VDVideo_SetRange			, "SetRange", "0ii" },
+	{ func_VDVideo_GetCompression	, "GetCompression"	, "ii" },
+	{ func_VDVideo_SetCompression	, "SetCompression"	, "0siii" },
+	{ func_VDVideo_SetCompression	, NULL				, "0iiii" },
+	{ func_VDVideo_SetCompression	, NULL				, "0" },
+	{ func_VDVideo_SetCompData		, "SetCompData", "0is" },
+	{ func_VDVideo_EnableIndeoQC		, "EnableIndeoQC", "0i" },
+	{ func_VDVideo_SetIVTC			, "SetIVTC", "0iiii" },
+	{ func_VDVideo_SetInputFormat	, "SetInputFormat", "0i" },
+	{ func_VDVideo_SetOutputFormat	, "SetOutputFormat", "0i" },
 	{ NULL }
 };
 
-static ScriptObjectDef obj_VDVideo_objtbl[]={
+static const VDScriptObjectDef obj_VDVideo_objtbl[]={
 	{ "filters", &obj_VDVFilters },
 	{ NULL }
 };
 
-static CScriptValue obj_VirtualDub_video_lookup(IScriptInterpreter *isi, CScriptObject *obj, void *lpVoid, char *szName) {
+static VDScriptValue obj_VirtualDub_video_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "width"))
-		return CScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
+		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
 	else if (!strcmp(szName, "height"))
-		return CScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biHeight : 0);
+		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biHeight : 0);
 
-	EXT_SCRIPT_ERROR(MEMBER_NOT_FOUND);
+	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
 
-static CScriptObject obj_VDVideo={
+static const VDScriptObject obj_VDVideo={
 	obj_VirtualDub_video_lookup, obj_VDVideo_functbl, obj_VDVideo_objtbl
 };
 
@@ -690,16 +730,16 @@ namespace {
 			switch(v.GetType()) {
 			case VDFilterConfigVariant::kTypeU32:	var.SetU32(v.GetU32()); return;
 			case VDFilterConfigVariant::kTypeS32:	var.SetU32(v.GetS32()); return;
-			case VDFilterConfigVariant::kTypeU64:	var.SetU32(v.GetU64()); return;
-			case VDFilterConfigVariant::kTypeS64:	var.SetU32(v.GetS64()); return;
+			case VDFilterConfigVariant::kTypeU64:	var.SetU32((uint32)v.GetU64()); return;
+			case VDFilterConfigVariant::kTypeS64:	var.SetU32((uint32)v.GetS64()); return;
 			}
 			break;
 		case VDFilterConfigEntry::kTypeS32:
 			switch(v.GetType()) {
 			case VDFilterConfigVariant::kTypeU32:	var.SetS32(v.GetU32()); return;
 			case VDFilterConfigVariant::kTypeS32:	var.SetS32(v.GetS32()); return;
-			case VDFilterConfigVariant::kTypeU64:	var.SetS32(v.GetU64()); return;
-			case VDFilterConfigVariant::kTypeS64:	var.SetS32(v.GetS64()); return;
+			case VDFilterConfigVariant::kTypeU64:	var.SetS32((sint32)v.GetU64()); return;
+			case VDFilterConfigVariant::kTypeS64:	var.SetS32((sint32)v.GetS64()); return;
 			}
 			break;
 		case VDFilterConfigEntry::kTypeU64:
@@ -749,50 +789,57 @@ namespace {
 	}
 };
 
-static void func_VDAFiltInst_SetInt(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
+static void func_VDAFiltInst_SetInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDFilterConfigVariant v;
 	
 	v.SetS32(argv[1].asInt());
 
-	SetFilterParam(lpVoid, argv[0].asInt(), v);
+	SetFilterParam(argv[-1].asObjectPtr(), argv[0].asInt(), v);
 }
 
-static void func_VDAFiltInst_SetLong(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
+static void func_VDAFiltInst_SetLong(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDFilterConfigVariant v;
 	
-	v.SetU64((uint32)argv[2].asInt() + ((uint64)(uint32)argv[1].asInt() << 32));
+	if (argc == 2)
+		v.SetU64(argv[1].asLong());
+	else
+		v.SetU64((uint32)argv[2].asInt() + ((uint64)(uint32)argv[1].asInt() << 32));
 
-	SetFilterParam(lpVoid, argv[0].asInt(), v);
+	SetFilterParam(argv[-1].asObjectPtr(), argv[0].asInt(), v);
 }
 
-static void func_VDAFiltInst_SetDouble(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
+static void func_VDAFiltInst_SetDouble(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDFilterConfigVariant v;
 
-	union {
-		struct {
-			uint32 lo;
-			uint32 hi;
-		} bar;
-		double d;
-	} foo;
+	if (argc == 2)
+		v.SetDouble(argv[1].asDouble());
+	else {
+		union {
+			struct {
+				uint32 lo;
+				uint32 hi;
+			} bar;
+			double d;
+		} foo;
 
-	foo.bar.lo = argv[2].asInt();
-	foo.bar.hi = argv[1].asInt();
+		foo.bar.lo = argv[2].asInt();
+		foo.bar.hi = argv[1].asInt();
 	
-	v.SetDouble(foo.d);
+		v.SetDouble(foo.d);
+	}
 
-	SetFilterParam(lpVoid, argv[0].asInt(), v);
+	SetFilterParam(argv[-1].asObjectPtr(), argv[0].asInt(), v);
 }
 
-static void func_VDAFiltInst_SetString(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
+static void func_VDAFiltInst_SetString(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDFilterConfigVariant v;
 	
 	v.SetWStr(VDTextU8ToW(*argv[1].asString(), -1).c_str());
 
-	SetFilterParam(lpVoid, argv[0].asInt(), v);
+	SetFilterParam(argv[-1].asObjectPtr(), argv[0].asInt(), v);
 }
 
-static void func_VDAFiltInst_SetRaw(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
+static void func_VDAFiltInst_SetRaw(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDFilterConfigVariant v;
 
 	int len = argv[1].asInt();
@@ -805,19 +852,21 @@ static void func_VDAFiltInst_SetRaw(IScriptInterpreter *isi, void *lpVoid, CScri
 	memunbase64(&mem[0], *argv[2].asString(), len);
 	v.SetBlock(&mem.front(), len);
 
-	SetFilterParam(lpVoid, argv[0].asInt(), v);
+	SetFilterParam(argv[-1].asObjectPtr(), argv[0].asInt(), v);
 }
 
-static ScriptFunctionDef obj_VDAFiltInst_functbl[]={
-	{ (ScriptFunctionPtr)func_VDAFiltInst_SetInt,		"SetInt",		"0ii" },
-	{ (ScriptFunctionPtr)func_VDAFiltInst_SetLong,		"SetLong",		"0iii" },
-	{ (ScriptFunctionPtr)func_VDAFiltInst_SetDouble,	"SetDouble",	"0iii" },
-	{ (ScriptFunctionPtr)func_VDAFiltInst_SetString,	"SetString",	"0is" },
-	{ (ScriptFunctionPtr)func_VDAFiltInst_SetRaw,		"SetRaw",		"0iis" },
+static const VDScriptFunctionDef obj_VDAFiltInst_functbl[]={
+	{ func_VDAFiltInst_SetInt,			"SetInt",		"0ii" },
+	{ func_VDAFiltInst_SetLong,			"SetLong",		"0iii" },
+	{ func_VDAFiltInst_SetLong,			NULL,			"0il" },
+	{ func_VDAFiltInst_SetDouble,		"SetDouble",	"0iii" },
+	{ func_VDAFiltInst_SetDouble,		NULL,			"0id" },
+	{ func_VDAFiltInst_SetString,		"SetString",	"0is" },
+	{ func_VDAFiltInst_SetRaw,			"SetRaw",		"0iis" },
 	{ NULL }
 };
 
-static CScriptObject obj_VDAFiltInst={
+static const VDScriptObject obj_VDAFiltInst={
 	NULL, obj_VDAFiltInst_functbl, NULL	
 };
 
@@ -827,27 +876,35 @@ static CScriptObject obj_VDAFiltInst={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static CScriptValue obj_VDAFilters_instance(IScriptInterpreter *isi, void *, int index) {
+static void func_VDAFilters_instance(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	int index = argv[0].asInt();
+
 	if (index < 0 || index >= g_audioFilterGraph.mFilters.size()) {
-		EXT_SCRIPT_ERROR(VAR_NOT_FOUND);
+		VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 	}
 
 	VDAudioFilterGraph::FilterList::iterator it(g_audioFilterGraph.mFilters.begin());
 
 	std::advance(it, index);
 
-	CScriptValue val(&obj_VDAFiltInst);
-
-	val.lpVoid = static_cast<VDAudioFilterGraph::FilterEntry *>(&*it);
-	return val;
+	argv[0] = VDScriptValue(static_cast<VDAudioFilterGraph::FilterEntry *>(&*it), &obj_VDAFiltInst);
 }
 
-static void func_VDAFilters_Clear(IScriptInterpreter *, void *, CScriptValue *, int) {
+static const VDScriptFunctionDef obj_VDAFilters_instance_functbl[]={
+	{ func_VDAFilters_instance		, "[]", "vi" },
+	{ NULL }
+};
+
+static const VDScriptObject obj_VDAFilters_instance={
+	NULL, obj_VDAFilters_instance_functbl, NULL	
+};
+
+static void func_VDAFilters_Clear(IVDScriptInterpreter *, VDScriptValue *, int) {
 	g_audioFilterGraph.mFilters.clear();
 	g_audioFilterGraph.mConnections.clear();
 }
 
-static int func_VDAFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScriptValue *argv, int argc) {
+static void func_VDAFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	VDAudioFilterGraph::FilterEntry filt;
 
 	filt.mFilterName = VDTextU8ToW(*argv[0].asString(), -1);
@@ -869,10 +926,10 @@ static int func_VDAFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScript
 	for(unsigned i=0; i<filt.mInputPins; ++i)
 		g_audioFilterGraph.mConnections.push_back(conn);
 
-	return g_audioFilterGraph.mFilters.size()-1;
+	argv[0] = (int)(g_audioFilterGraph.mFilters.size()-1);
 }
 
-static void func_VDAFilters_Connect(IScriptInterpreter *isi, CScriptObject *, CScriptValue *argv, int argc) {
+static void func_VDAFilters_Connect(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	int srcfilt	= argv[0].asInt();
 	int srcpin	= argv[1].asInt();
 	int dstfilt	= argv[2].asInt();
@@ -912,21 +969,21 @@ static void func_VDAFilters_Connect(IScriptInterpreter *isi, CScriptObject *, CS
 	conn.pin = srcpin;
 }
 
-static CScriptValue obj_VDAFilters_lookup(IScriptInterpreter *isi, CScriptObject *thisPtr, void *lpVoid, char *szName) {
+static VDScriptValue obj_VDAFilters_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "instance"))
-		return CScriptValue(thisPtr, &obj_VDAFilters_instance);
+		return VDScriptValue(lpVoid, &obj_VDAFilters_instance);
 
-	EXT_SCRIPT_ERROR(MEMBER_NOT_FOUND);
+	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
 
-static ScriptFunctionDef obj_VDAFilters_functbl[]={
-	{ (ScriptFunctionPtr)func_VDAFilters_Clear			, "Clear", "0" },
-	{ (ScriptFunctionPtr)func_VDAFilters_Add			, "Add", "is", },
-	{ (ScriptFunctionPtr)func_VDAFilters_Connect		, "Connect", "0iiii", },
+static const VDScriptFunctionDef obj_VDAFilters_functbl[]={
+	{ func_VDAFilters_Clear			, "Clear", "0" },
+	{ func_VDAFilters_Add			, "Add", "is", },
+	{ func_VDAFilters_Connect		, "Connect", "0iiii", },
 	{ NULL }
 };
 
-static CScriptObject obj_VDAFilters={
+static const VDScriptObject obj_VDAFilters={
 	obj_VDAFilters_lookup, obj_VDAFilters_functbl, NULL	
 };
 
@@ -936,30 +993,30 @@ static CScriptObject obj_VDAFilters={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static int func_VDAudio_GetMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	return g_dubOpts.audio.mode;
+static void func_VDAudio_GetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	arglist[0] = VDScriptValue(g_dubOpts.audio.mode);
 }
 
-static void func_VDAudio_SetMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	int new_mode = arglist[0].asInt();
 
 	if (new_mode>=0 && new_mode<2)
 		g_dubOpts.audio.mode = new_mode;
 }
 
-static int func_VDAudio_GetInterleave(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_GetInterleave(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
-	case 0:	return g_dubOpts.audio.enabled;
-	case 1:	return g_dubOpts.audio.preload;
-	case 2:	return g_dubOpts.audio.interval;
-	case 3:	return g_dubOpts.audio.is_ms;
-	case 4: return g_dubOpts.audio.offset;
+	case 0:	arglist[0] = VDScriptValue(g_dubOpts.audio.enabled); return;
+	case 1:	arglist[0] = VDScriptValue(g_dubOpts.audio.preload); return;
+	case 2:	arglist[0] = VDScriptValue(g_dubOpts.audio.interval); return;
+	case 3:	arglist[0] = VDScriptValue(g_dubOpts.audio.is_ms); return;
+	case 4: arglist[0] = VDScriptValue(g_dubOpts.audio.offset); return;
 	}
 
-	return 0;
+	arglist[0] = VDScriptValue(0);
 }
 
-static void func_VDAudio_SetInterleave(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetInterleave(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.audio.enabled		= !!arglist[0].asInt();
 	g_dubOpts.audio.preload		= arglist[1].asInt();
 	g_dubOpts.audio.interval	= arglist[2].asInt();
@@ -967,31 +1024,31 @@ static void func_VDAudio_SetInterleave(IScriptInterpreter *, CScriptObject *, CS
 	g_dubOpts.audio.offset		= arglist[4].asInt();
 }
 
-static int func_VDAudio_GetClipMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_GetClipMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
-	case 0:		return g_dubOpts.audio.fStartAudio;
-	case 1:		return g_dubOpts.audio.fEndAudio;
+	case 0:		arglist[0] = VDScriptValue(g_dubOpts.audio.fStartAudio); return;
+	case 1:		arglist[0] = VDScriptValue(g_dubOpts.audio.fEndAudio); return;
 	}
 
-	return 0;
+	arglist[0] = VDScriptValue(0);
 }
 
-static void func_VDAudio_SetClipMode(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetClipMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.audio.fStartAudio	= !!arglist[0].asInt();
 	g_dubOpts.audio.fEndAudio	= !!arglist[1].asInt();
 }
 
-static int func_VDAudio_GetConversion(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_GetConversion(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
-	case 0:		return g_dubOpts.audio.new_rate;
-	case 1:		return g_dubOpts.audio.newPrecision;
-	case 2:		return g_dubOpts.audio.newChannels;
+	case 0:		arglist[0] = VDScriptValue(g_dubOpts.audio.new_rate); return;
+	case 1:		arglist[0] = VDScriptValue(g_dubOpts.audio.newPrecision); return;
+	case 2:		arglist[0] = VDScriptValue(g_dubOpts.audio.newChannels); return;
 	}
 
-	return 0;
+	arglist[0] = VDScriptValue(0);
 }
 
-static void func_VDAudio_SetConversion(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetConversion(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.audio.new_rate		= arglist[0].asInt();
 	g_dubOpts.audio.newPrecision	= arglist[1].asInt();
 	g_dubOpts.audio.newChannels		= arglist[2].asInt();
@@ -1002,19 +1059,19 @@ static void func_VDAudio_SetConversion(IScriptInterpreter *, CScriptObject *, CS
 	}
 }
 
-static void func_VDAudio_SetSource(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetSource(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	if (arglist[0].isInt())
 		audioInputMode = !!arglist[0].asInt();
 	else {
-		OpenWAV(VDTextU8ToW(VDStringA(*arglist[0].asString())).c_str());
+		g_project->OpenWAV(VDTextU8ToW(VDStringA(*arglist[0].asString())).c_str());
 		audioInputMode = AUDIOIN_WAVE;
 	}
 }
 
-static void func_VDAudio_SetCompressionPCM(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetCompressionPCM(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)allocmem(sizeof(PCMWAVEFORMAT));
 
-	if (!pwf) EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+	if (!pwf) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
 	pwf->wf.wFormatTag			= WAVE_FORMAT_PCM;
 	pwf->wf.nSamplesPerSec		= arglist[0].asInt();
@@ -1031,7 +1088,7 @@ static void func_VDAudio_SetCompressionPCM(IScriptInterpreter *isi, void *, CScr
 // VirtualDub.audio.SetCompression(tag, sampling_rate, channels, bits, bytes/sec, blockalign);
 // VirtualDub.audio.SetCompression(tag, sampling_rate, channels, bits, bytes/sec, blockalign, exdatalen, exdata);
 
-static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetCompression(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	WAVEFORMATEX *wfex;
 	long ex_data=0;
 
@@ -1045,7 +1102,7 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 		ex_data = arglist[6].asInt();
 
 	if (!(wfex = (WAVEFORMATEX *)allocmem(sizeof(WAVEFORMATEX) + ex_data)))
-		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+		VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
 	wfex->wFormatTag		= arglist[0].asInt();
 	wfex->nSamplesPerSec	= arglist[1].asInt();
@@ -1081,50 +1138,50 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 	_CrtCheckMemory();
 }
 
-static void func_VDAudio_SetVolume(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_SetVolume(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	if (arg_count)
 		g_dubOpts.audio.volume = arglist[0].asInt();		
 	else
 		g_dubOpts.audio.volume = 0;
 }
 
-static int func_VDAudio_GetVolume(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	return g_dubOpts.audio.volume;
+static void func_VDAudio_GetVolume(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	arglist[-1] = VDScriptValue(g_dubOpts.audio.volume);
 }
 
-static void func_VDAudio_EnableFilterGraph(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDAudio_EnableFilterGraph(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.audio.bUseAudioFilterGraph = (arglist[0].asInt() != 0);
 }
 
-static ScriptFunctionDef obj_VDAudio_functbl[]={
-	{ (ScriptFunctionPtr)func_VDAudio_GetMode			, "GetMode"				, "i"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetMode			, "SetMode"				, "0i"		},
-	{ (ScriptFunctionPtr)func_VDAudio_GetInterleave		, "GetInterleave"		, "ii"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetInterleave		, "SetInterleave"		, "0iiiii"	},
-	{ (ScriptFunctionPtr)func_VDAudio_GetClipMode		, "GetClipMode"			, "ii"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetClipMode		, "SetClipMode"			, "0ii"		},
-	{ (ScriptFunctionPtr)func_VDAudio_GetConversion		, "GetConversion"		, "ii"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetConversion		, "SetConversion"		, "0iii"	},
-	{ (ScriptFunctionPtr)func_VDAudio_SetConversion		, NULL					, "0iiiii"	},
-	{ (ScriptFunctionPtr)func_VDAudio_SetSource			, "SetSource"			, "0i"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetSource			, NULL					, "0s"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetCompressionPCM	, "SetCompressionPCM"	, "0iii"	},
-	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, "SetCompression"		, "0"		},
-	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, NULL					, "0iiiiii" },
-	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, NULL					, "0iiiiiiis" },
-	{ (ScriptFunctionPtr)func_VDAudio_SetVolume			, "SetVolume"			, "0" },
-	{ (ScriptFunctionPtr)func_VDAudio_SetVolume			, NULL					, "0i" },
-	{ (ScriptFunctionPtr)func_VDAudio_GetVolume			, "GetVolume"			, "i" },
-	{ (ScriptFunctionPtr)func_VDAudio_EnableFilterGraph	, "EnableFilterGraph"	, "0i" },
+static VDScriptFunctionDef obj_VDAudio_functbl[]={
+	{ func_VDAudio_GetMode			, "GetMode"				, "i"		},
+	{ func_VDAudio_SetMode			, "SetMode"				, "0i"		},
+	{ func_VDAudio_GetInterleave		, "GetInterleave"		, "ii"		},
+	{ func_VDAudio_SetInterleave		, "SetInterleave"		, "0iiiii"	},
+	{ func_VDAudio_GetClipMode		, "GetClipMode"			, "ii"		},
+	{ func_VDAudio_SetClipMode		, "SetClipMode"			, "0ii"		},
+	{ func_VDAudio_GetConversion		, "GetConversion"		, "ii"		},
+	{ func_VDAudio_SetConversion		, "SetConversion"		, "0iii"	},
+	{ func_VDAudio_SetConversion		, NULL					, "0iiiii"	},
+	{ func_VDAudio_SetSource			, "SetSource"			, "0i"		},
+	{ func_VDAudio_SetSource			, NULL					, "0s"		},
+	{ func_VDAudio_SetCompressionPCM	, "SetCompressionPCM"	, "0iii"	},
+	{ func_VDAudio_SetCompression	, "SetCompression"		, "0"		},
+	{ func_VDAudio_SetCompression	, NULL					, "0iiiiii" },
+	{ func_VDAudio_SetCompression	, NULL					, "0iiiiiiis" },
+	{ func_VDAudio_SetVolume			, "SetVolume"			, "0" },
+	{ func_VDAudio_SetVolume			, NULL					, "0i" },
+	{ func_VDAudio_GetVolume			, "GetVolume"			, "i" },
+	{ func_VDAudio_EnableFilterGraph	, "EnableFilterGraph"	, "0i" },
 	{ NULL }
 };
 
-static ScriptObjectDef obj_VDAudio_objtbl[]={
+static const VDScriptObjectDef obj_VDAudio_objtbl[]={
 	{ "filters", &obj_VDAFilters },
 	{ NULL }
 };
 
-static CScriptObject obj_VDAudio={
+static const VDScriptObject obj_VDAudio={
 	NULL, obj_VDAudio_functbl, obj_VDAudio_objtbl
 };
 
@@ -1134,37 +1191,37 @@ static CScriptObject obj_VDAudio={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static void func_VDSubset_Delete(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDSubset_Delete(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	g_project->ResetTimeline();
 }
 
-static void func_VDSubset_Clear(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+static void func_VDSubset_Clear(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	g_project->ResetTimeline();
-	if (inputSubset)
-		inputSubset->clear();
+	FrameSubset& s = g_project->GetTimeline().GetSubset();
+	s.clear();
 }
 
-static void func_VDSubset_AddRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (inputSubset)
-		inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), false);
+static void func_VDSubset_AddRange(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	FrameSubset& s = g_project->GetTimeline().GetSubset();
+	s.addRange(arglist[0].asLong(), arglist[1].asLong(), false);
 }
 
-static void func_VDSubset_AddMaskedRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (inputSubset)
-		inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), true);
+static void func_VDSubset_AddMaskedRange(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	FrameSubset& s = g_project->GetTimeline().GetSubset();
+	s.addRange(arglist[0].asLong(), arglist[1].asLong(), true);
 }
 
-static ScriptFunctionDef obj_VDSubset_functbl[]={
-	{ (ScriptFunctionPtr)func_VDSubset_Delete			, "Delete"				, "0"		},
-	{ (ScriptFunctionPtr)func_VDSubset_Clear			, "Clear"				, "0"		},
-	{ (ScriptFunctionPtr)func_VDSubset_AddRange			, "AddFrame"			, "0ii"		},	// DEPRECATED
-	{ (ScriptFunctionPtr)func_VDSubset_AddRange			, "AddRange"			, "0ii"		},
-	{ (ScriptFunctionPtr)func_VDSubset_AddMaskedRange	, "AddMaskedRange"		, "0ii"		},
+static const VDScriptFunctionDef obj_VDSubset_functbl[]={
+	{ func_VDSubset_Delete			, "Delete"				, "0"		},
+	{ func_VDSubset_Clear			, "Clear"				, "0"		},
+	{ func_VDSubset_AddRange		, "AddFrame"			, "0ll"		},	// DEPRECATED
+	{ func_VDSubset_AddRange		, "AddRange"			, "0ll"		},
+	{ func_VDSubset_AddMaskedRange	, "AddMaskedRange"		, "0ll"		},
 
 	{ NULL }
 };
 
-static CScriptObject obj_VDSubset={
+static const VDScriptObject obj_VDSubset={
 	NULL, obj_VDSubset_functbl
 };
 
@@ -1175,14 +1232,13 @@ static CScriptObject obj_VDSubset={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-extern void CloseAVI();
 extern void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 
-static void func_VirtualDub_SetStatus(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SetStatus(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	guiSetStatus("%s", 255, *arglist[0].asString());
 }
 
-static void func_VirtualDub_OpenOld(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_OpenOld(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextAToW(*arglist[0].asString()));
 	IVDInputDriver *pDriver = VDGetInputDriverForLegacyIndex(arglist[1].asInt());
 
@@ -1197,7 +1253,7 @@ static void func_VirtualDub_OpenOld(IScriptInterpreter *, CScriptObject *, CScri
 		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
 }
 
-static void func_VirtualDub_Open(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_Open(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 	IVDInputDriver *pDriver = VDGetInputDriverByName(VDTextAToW(*arglist[1].asString()).c_str());
 
@@ -1212,21 +1268,21 @@ static void func_VirtualDub_Open(IScriptInterpreter *, CScriptObject *, CScriptV
 		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
 }
 
-static void func_VirtualDub_Append(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_Append(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
 	AppendAVI(filename.c_str());
 }
 
-static void func_VirtualDub_Close(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_Close(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_project->Close();
 }
 
-static void func_VirtualDub_Preview(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_Preview(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	PreviewAVI(g_hWnd, NULL, g_prefs.main.iPreviewPriority,true);
 }
 
-static void func_VirtualDub_SaveAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SaveAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
 	if (g_fJobMode) {
@@ -1243,7 +1299,7 @@ static void func_VirtualDub_SaveAVI(IScriptInterpreter *, CScriptObject *, CScri
 		SaveAVI(filename.c_str(), true, NULL, false);
 }
 
-static void func_VirtualDub_SaveCompatibleAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SaveCompatibleAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
 	if (g_fJobMode) {
@@ -1260,7 +1316,7 @@ static void func_VirtualDub_SaveCompatibleAVI(IScriptInterpreter *, CScriptObjec
 		SaveAVI(filename.c_str(), true, NULL, true);
 }
 
-static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SaveSegmentedAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
 	if (g_fJobMode) {
@@ -1277,9 +1333,14 @@ static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject
 		SaveSegmentedAVI(filename.c_str(), true, NULL, arglist[1].asInt(), arglist[2].asInt());
 }
 
-static void func_VirtualDub_SaveImageSequence(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SaveImageSequence(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW prefix(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 	const VDStringW suffix(VDTextU8ToW(VDStringA(*arglist[1].asString())));
+
+	int q = 95;
+
+	if (arg_count >= 5)
+		q = arglist[4].asInt();
 
 	if (g_fJobMode) {
 		DubOptions opts(g_dubOpts);
@@ -1290,12 +1351,12 @@ static void func_VirtualDub_SaveImageSequence(IScriptInterpreter *, CScriptObjec
 		opts.video.fShowOutputFrame	= false;
 		opts.video.fShowDecompressedFrame	= false;
 
-		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, &opts, arglist[3].asInt());
+		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, &opts, arglist[3].asInt(), q);
 	} else
-		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, NULL, arglist[3].asInt());
+		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, NULL, arglist[3].asInt(), q);
 }
 
-static void func_VirtualDub_SaveWAV(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_SaveWAV(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
 	SaveWAV(filename.c_str());
@@ -1303,7 +1364,7 @@ static void func_VirtualDub_SaveWAV(IScriptInterpreter *, CScriptObject *, CScri
 
 extern "C" unsigned long version_num;
 
-static CScriptValue obj_VirtualDub_lookup(IScriptInterpreter *isi, CScriptObject *obj, void *lpVoid, char *szName) {
+static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "version")) {
 		char buf1[256], buf[256], **handle;
 
@@ -1321,42 +1382,43 @@ static CScriptValue obj_VirtualDub_lookup(IScriptInterpreter *isi, CScriptObject
 
 		strcpy(*handle, buf1);
 
-		return CScriptValue(handle);
+		return VDScriptValue(handle);
 	} else if (!strcmp(szName, "video"))
-		return &obj_VDVideo;
+		return VDScriptValue(NULL, &obj_VDVideo);
 	else if (!strcmp(szName, "audio"))
-		return &obj_VDAudio;
+		return VDScriptValue(NULL, &obj_VDAudio);
 	else if (!strcmp(szName, "subset"))
-		return &obj_VDSubset;
+		return VDScriptValue(NULL, &obj_VDSubset);
 
-	EXT_SCRIPT_ERROR(MEMBER_NOT_FOUND);
+	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
 
-static ScriptFunctionDef obj_VirtualDub_functbl[]={
-	{ (ScriptFunctionPtr)func_VirtualDub_SetStatus,			"SetStatus",			"0s" },
-	{ (ScriptFunctionPtr)func_VirtualDub_OpenOld,			"Open",					"0sii" },
-	{ (ScriptFunctionPtr)func_VirtualDub_OpenOld,			NULL,					"0siis" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Open,				NULL,					"0ssi" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Open,				NULL,					"0ssis" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Append,			"Append",				"0s" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Close,				"Close",				"0" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Preview,			"Preview",				"0" },
-	{ (ScriptFunctionPtr)func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
-	{ (ScriptFunctionPtr)func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
-	{ (ScriptFunctionPtr)func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
-	{ (ScriptFunctionPtr)func_VirtualDub_SaveImageSequence,	"SaveImageSequence",	"0ssii" },
-	{ (ScriptFunctionPtr)func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
+static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
+	{ func_VirtualDub_SetStatus,			"SetStatus",			"0s" },
+	{ func_VirtualDub_OpenOld,			"Open",					"0sii" },
+	{ func_VirtualDub_OpenOld,			NULL,					"0siis" },
+	{ func_VirtualDub_Open,				NULL,					"0ssi" },
+	{ func_VirtualDub_Open,				NULL,					"0ssis" },
+	{ func_VirtualDub_Append,			"Append",				"0s" },
+	{ func_VirtualDub_Close,				"Close",				"0" },
+	{ func_VirtualDub_Preview,			"Preview",				"0" },
+	{ func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
+	{ func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
+	{ func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
+	{ func_VirtualDub_SaveImageSequence,	"SaveImageSequence",	"0ssii" },
+	{ func_VirtualDub_SaveImageSequence,	NULL,					"0ssiii" },
+	{ func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
 	{ NULL }
 };
 
-static CScriptObject obj_VirtualDub={
+static const VDScriptObject obj_VirtualDub={
 	&obj_VirtualDub_lookup, obj_VirtualDub_functbl
 };
 
-static CScriptValue RootHandler(IScriptInterpreter *isi, char *szName, void *lpData) {
+static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *lpData) {
 	if (!strcmp(szName, "VirtualDub"))
-		return &obj_VirtualDub;
+		return VDScriptValue(NULL, &obj_VirtualDub);
 
-	EXT_SCRIPT_ERROR(VAR_NOT_FOUND);
+	VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 }
 

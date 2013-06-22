@@ -19,6 +19,7 @@
 #define f_POSITIONCONTROL_H
 
 #include <windows.h>
+#include <commctrl.h>
 
 #define POSITIONCONTROLCLASS (szPositionControlName)
 
@@ -27,6 +28,32 @@ extern const char szPositionControlName[];
 #endif
 
 typedef char (*PosCtlFTCallback)(HWND hwnd, void *data, long pos);
+
+class VDFraction;
+
+class IVDPositionControlCallback {
+public:
+	virtual bool		GetFrameString(wchar_t *buf, size_t buflen, VDPosition frame) = 0;
+};
+
+class IVDPositionControl {
+public:
+	virtual int			GetNiceHeight() = 0;
+
+	virtual void		SetFrameTypeCallback(IVDPositionControlCallback *pCB) = 0;
+	virtual void		SetRange(VDPosition lo, VDPosition hi, bool updateNow = true) = 0;
+	virtual VDPosition	GetPosition() = 0;
+	virtual void		SetPosition(VDPosition pos) = 0;
+	virtual void		SetDisplayedPosition(VDPosition pos) = 0;
+	virtual bool		GetSelection(VDPosition& start, VDPosition& end) = 0;
+	virtual void		SetSelection(VDPosition start, VDPosition end, bool updateNow = true) = 0;
+	virtual void		SetFrameRate(const VDFraction& frameRate) = 0;
+	virtual void		SetAutoPositionUpdate(bool autoUpdate) = 0;
+
+	virtual void		ResetShuttle() = 0;
+};
+
+IVDPositionControl *VDGetIPositionControl(VDGUIHandle h);
 
 #define PCS_PLAYBACK			(0x00000001L)
 #define PCS_MARK				(0x00000002L)
@@ -53,21 +80,6 @@ typedef char (*PosCtlFTCallback)(HWND hwnd, void *data, long pos);
 #define	PCN_SCENEREV			(11)
 #define	PCN_SCENEFWD			(12)
 #define	PCN_SCENESTOP			(13)
-
-#define PCM_SETRANGEMIN			(WM_USER+0x100)
-#define PCM_SETRANGEMAX			(WM_USER+0x101)
-#define PCM_GETPOS				(WM_USER+0x102)
-#define PCM_SETPOS				(WM_USER+0x103)
-#define PCM_GETSELSTART			(WM_USER+0x104)
-#define PCM_GETSELEND			(WM_USER+0x105)
-#define PCM_SETSELSTART			(WM_USER+0x106)
-#define PCM_SETSELEND			(WM_USER+0x107)
-#define PCM_SETFRAMERATE		(WM_USER+0x108)
-#define	PCM_RESETSHUTTLE		(WM_USER+0x109)
-#define PCM_CLEARSEL			(WM_USER+0x10A)
-#define PCM_SETFRAMETYPECB		(WM_USER+0x10B)
-#define PCM_CTLAUTOFRAME		(WM_USER+0x10C)
-#define PCM_SETDISPFRAME		(WM_USER+0x10D)
 
 ATOM RegisterPositionControl();
 

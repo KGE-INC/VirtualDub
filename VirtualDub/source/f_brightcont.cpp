@@ -98,7 +98,7 @@ static int brightcont_init(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static BOOL APIENTRY brightcontDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
+static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
@@ -116,13 +116,13 @@ static BOOL APIENTRY brightcontDlgProc( HWND hDlg, UINT message, UINT wParam, LO
 				SendMessage(hWnd, TBM_SETRANGE, (WPARAM)TRUE, MAKELONG(0, 32));
 				SendMessage(hWnd, TBM_SETPOS, (WPARAM)TRUE, mfd->cont);
 
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 			}
             return (TRUE);
 
         case WM_COMMAND:                      
             if (LOWORD(wParam) == IDOK) {
-				MyFilterData *mfd = (struct MyFilterData *)GetWindowLong(hDlg, DWL_USER);
+				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 				mfd->bright = SendMessage(GetDlgItem(hDlg, IDC_BRIGHTNESS), TBM_GETPOS, 0, 0)-256;
 				mfd->cont = SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_GETPOS, 0, 0);

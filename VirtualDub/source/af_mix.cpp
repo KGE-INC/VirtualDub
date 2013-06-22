@@ -36,10 +36,6 @@ public:
 	uint32 Run();
 	void Start();
 
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
-	sint64 Seek(sint64);
-
 	VDRingBuffer<sint16> mOutputBuffer;
 };
 
@@ -71,7 +67,7 @@ uint32 VDAudioFilterMix::Prepare() {
 
 	pwf0->mChannels		= format0.mChannels;
 	pwf0->mSampleBits	= 16;
-	pwf0->mBlockSize	= 2 * pwf0->mChannels;
+	pwf0->mBlockSize	= (uint16)(2 * pwf0->mChannels);
 	pwf0->mDataRate		= pwf0->mBlockSize * pwf0->mSamplingRate;
 
 	return 0;
@@ -88,19 +84,13 @@ uint32 VDAudioFilterMix::Run() {
 	VDAudioFilterPin& pin1 = *mpContext->mpInputs[0];
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
 	const VDWaveFormat& format1 = *pin1.mpFormat;
-	const VDWaveFormat& format2 = *pin2.mpFormat;
 
-	int samples, actual = 0;
+	int samples = mpContext->mCommonSamples, actual = 0;
 
-	sint16 *dst = mOutputBuffer.LockWrite(mOutputBuffer.getSize(), samples);
-
-	samples /= format1.mChannels;
-
-	if (samples > mpContext->mInputSamples)
-		samples = mpContext->mInputSamples;
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 
 	if (!samples && pin1.mbEnded && pin2.mbEnded)
-		return true;
+		return kVFARun_Finished;
 
 	while(samples > 0) {
 		sint16 buf[4096];
@@ -129,31 +119,9 @@ uint32 VDAudioFilterMix::Run() {
 		samples -= tc;
 	}
 
-	mOutputBuffer.UnlockWrite(actual * format1.mChannels);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format1.mChannels;
+	mpContext->mpOutputs[0]->mSamplesWritten = actual;
 
 	return 0;
-}
-
-uint32 VDAudioFilterMix::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mChannels);
-
-	if (dst) {
-		mOutputBuffer.Read((sint16 *)dst, samples*format.mChannels);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format.mChannels;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterMix::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_mix = {

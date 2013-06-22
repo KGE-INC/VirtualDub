@@ -44,4 +44,8 @@ typedef struct ClippingControlBounds {
 
 ATOM RegisterClippingControl();
 
+class IVDPositionControl;
+
+IVDPositionControl *VDGetIPositionControlFromClippingControl(VDGUIHandle h);
+
 #endif

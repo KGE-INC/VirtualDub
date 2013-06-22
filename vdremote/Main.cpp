@@ -41,12 +41,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, ULONG ulReason, LPVOID lpReserved) {
     return TRUE;
 }
 
-// WTF:
-//	LINK : fatal error LNK1000: unknown error; consult documentation for technical support options
-//
-// It turns out:
-//	VC++ 4 (piece of sh*t) won't link this with Debug info enabled
-
 const GUID CDECL CLSID_CAVIFileRemote
 	= {0x894288e0,0x0948,0x11d2,{0x81,0x09,0x00,0x48,0x45,0x00,0x0e,0xb5}};
 const GUID CDECL CLSID_CAVIStreamRemote
@@ -415,6 +409,11 @@ STDMETHODIMP CAVIFileRemote::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNa
 
 	_RPT2(0,"CAVIFileRemote::Open(\"%s\", %08lx)\n", szFile, mode);
 
+	if (pafTunnel) {
+		pafTunnel->Release();
+		pafTunnel = NULL;
+	}
+
 	if (mode & (OF_CREATE|OF_WRITE)) {
 		IPersistFile *ppf;
 
@@ -424,7 +423,11 @@ STDMETHODIMP CAVIFileRemote::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNa
 		if (FAILED(pafTunnel->QueryInterface(IID_IPersistFile, (void **)&ppf)))
 			return (HRESULT)E_FAIL;
 
-		return (HRESULT)ppf->Load(lpszFileName, mode);
+		HRESULT hr = ppf->Load(lpszFileName, mode);
+
+		ppf->Release();
+
+		return hr;
 	}
 
 	if (!(hmmio = mmioOpen((char *)szFile, NULL, MMIO_READ)))
@@ -464,7 +467,11 @@ STDMETHODIMP CAVIFileRemote::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNa
 
 				_RPT0(0,"Attempt avisynth tunnel load\n");
 
-				return (HRESULT)ppf->Load(lpszFileName, mode);
+				HRESULT hr = ppf->Load(lpszFileName, mode);
+
+				ppf->Release();
+
+				return hr;
 			}
 		}
 
@@ -494,7 +501,11 @@ STDMETHODIMP CAVIFileRemote::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNa
 
 			_RPT0(0,"Attempt tunnel load\n");
 
-			return (HRESULT)ppf->Load(lpszFileName, mode);
+			HRESULT hr = ppf->Load(lpszFileName, mode);
+
+			ppf->Release();
+
+			return hr;
 		}
 
 		else if (mmerr != MMSYSERR_NOERROR) throw (HRESULT)E_FAIL;
@@ -692,7 +703,7 @@ void CAVIFileRemote::UnlockPort() {
 //
 ////////////////////////////////////////////////////////////////////////
 
-STDMETHODIMP CAVIStreamRemote::Create(LONG lParam1, LONG lParam2) {
+STDMETHODIMP CAVIStreamRemote::Create(LPARAM lParam1, LPARAM lParam2) {
 	_RPT1(0,"%p->CAVIStreamRemote::Create()\n", this);
 	return AVIERR_READONLY;
 }

@@ -8,7 +8,7 @@ private:
 	void *pHandle;
 
 public:
-	VDRegistryKey(const char *pszKey);
+	VDRegistryKey(const char *pszKey, bool bGlobal = false);
 	~VDRegistryKey();
 
 	bool isReady() const { return pHandle != 0; }

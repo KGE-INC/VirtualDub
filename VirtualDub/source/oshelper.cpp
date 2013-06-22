@@ -226,7 +226,7 @@ void VDUnpackHelp(const VDStringW& path) {
 	{
 		VDFileStream			helpzipfile(VDMakePath(VDGetProgramPath(), VDStringW(L"VirtualDub.vdhelp")).c_str());
 
-		chkvalue = helpzipfile.Length();
+		chkvalue = (uint32)helpzipfile.Length();
 
 		VDZipArchive			helpzip;
 		helpzip.Init(&helpzipfile);
@@ -330,7 +330,6 @@ void VDShowHelp(HWND hwnd, const wchar_t *filename) {
 }
 
 char *MergePath(char *path, const char *fn) {
-	char *slash=NULL, *colon=NULL;
 	char *s = path;
 
 	if (!*s) {
@@ -472,6 +471,33 @@ HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags) {
 	static tpGetAncestor spGetAncestor = local::FindGetAncestor();
 
 	return spGetAncestor(hwnd, gaFlags);
+}
+
+VDStringW VDLoadStringW32(UINT uID) {
+	// Credit for this function goes to Raymond Chen, who described how
+	// to directly access string resources in his blog.
+
+	VDStringW str;
+
+	HRSRC hrsrc = FindResourceEx(NULL, RT_STRING, MAKEINTRESOURCE(1 + (uID >> 4)), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL));
+	if (hrsrc) {
+		HGLOBAL hglob = LoadResource(NULL, hrsrc);
+		if (hglob) {
+			LPCWSTR pTable = (LPCWSTR)LockResource(hglob);
+			if (pTable) {
+				uID &= 15;
+
+				while(uID--)
+					pTable += 1 + (UINT)*pTable;
+
+				str.assign(pTable+1, (UINT)*pTable);
+			}
+			// UnlockResource() is a NOP in Win32.
+		}
+		// FreeResource() is a NOP in Win32.
+	}
+
+	return str;
 }
 
 ///////////////////////////////////////////////////////////////////////////

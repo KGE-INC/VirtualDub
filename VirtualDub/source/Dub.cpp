@@ -41,6 +41,9 @@
 #include <vd2/system/VDRingBuffer.h>
 #include <vd2/system/profile.h>
 #include <vd2/Dita/resources.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include "AudioFilterSystem.h"
 #include "convert.h"
 #include "filters.h"
@@ -94,6 +97,11 @@ namespace {
 		kVDM_ProcessingThreadLivelock,
 		kVDM_CodecDelayedDuringDelayedFlush,
 		kVDM_CodecLoopingDuringDelayedFlush,
+		kVDM_FastRecompressUsingFormat
+	};
+
+	enum {
+		kLiveLockMessageLimit = 5
 	};
 };
 
@@ -119,8 +127,8 @@ DubOptions g_dubOpts = {
 	},
 
 	{
-		DubVideoOptions::D_24BIT,	// input: 24bit
-		DubVideoOptions::D_24BIT,	// output: 24bit
+		0,								// input: autodetect
+		nsVDPixmap::kPixFormat_RGB888,	// output: 24bit
 		DubVideoOptions::M_FULL,	// mode: full
 		TRUE,						// show input video
 		TRUE,						// show output video
@@ -186,7 +194,7 @@ void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, const AVISTREAM
 	dest->rcFrame.right		= (short)src->rcFrame.right;
 	dest->rcFrame.bottom	= (short)src->rcFrame.bottom;
 
-	VDDEBUG("scale %ld, rate %ld, length %ld\n",src->dwScale,src->dwRate, src->dwLength);
+	VDDEBUG("scale %lu, rate %lu, length %lu\n",src->dwScale,src->dwRate, src->dwLength);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -210,6 +218,54 @@ namespace {
 
 		return bIs565;
 	}
+
+	bool CheckFormatSizeCompatibility(int format, int w, int h) {
+		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(format);
+
+		if ((w & ((1<<formatInfo.qwbits)-1))
+			|| (h & ((1<<formatInfo.qhbits)-1))
+			|| (w & ((1<<formatInfo.auxwbits)-1))
+			|| (h & ((1<<formatInfo.auxhbits)-1))
+			)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	int DegradeFormat(int format, int originalFormat) {
+		using namespace nsVDPixmap;
+
+		switch(format) {
+		case kPixFormat_YUV410_Planar:	format = kPixFormat_YUV420_Planar; break;
+		case kPixFormat_YUV411_Planar:	format = kPixFormat_YUV422_YUYV; break;
+		case kPixFormat_YUV420_Planar:	format = kPixFormat_YUV422_YUYV; break;
+		case kPixFormat_YUV422_Planar:	format = kPixFormat_YUV422_YUYV; break;
+		case kPixFormat_YUV422_YUYV:	format = kPixFormat_RGB888; break;
+		case kPixFormat_YUV422_UYVY:	format = kPixFormat_RGB888; break;
+		case kPixFormat_Y8:				format = kPixFormat_RGB888; break;
+
+		// RGB formats are a bit tricky, as we must always be sure to try the
+		// three major formats: 8888, 1555, 888.  The possible chains:
+		//
+		// 8888 -> 888 -> 1555 -> Pal8
+		// 888 -> 8888 -> 1555 -> Pal8
+		// 565 -> 8888 -> 888 -> 1555 -> Pal8
+		// 1555 -> 8888 -> 888 -> Pal8
+
+		case kPixFormat_RGB888:			format = (originalFormat == kPixFormat_RGB888  ) ? kPixFormat_XRGB8888 : (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_Pal8 : kPixFormat_XRGB1555; break;
+		case kPixFormat_XRGB8888:		format = (originalFormat == kPixFormat_RGB888  ) ? kPixFormat_XRGB1555 : kPixFormat_RGB888; break;
+		case kPixFormat_RGB565:			format = kPixFormat_XRGB8888; break;
+		case kPixFormat_XRGB1555:		format = (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_XRGB8888 : kPixFormat_Pal8; break;
+		default:						format = kPixFormat_Null; break;
+		};
+
+		if (format == originalFormat)
+			format = kPixFormat_Null;
+
+		return format;
+	}
 }
 
 
@@ -229,7 +285,7 @@ private:
 		kVideoWriteOK,
 		kVideoWriteDelayed,
 		kVideoWriteBuffered,
-		kVideoWriteDiscarded
+		kVideoWriteDiscarded,
 	};
 
 	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition displayFrame, VDPosition timelineFrame);
@@ -246,7 +302,7 @@ private:
 	AudioSource			*aSrc;
 	IVDVideoSource		*vSrc;
 	InputFile			*pInput;
-	AVIOutput			*AVIout;
+	IVDMediaOutput		*AVIout;
 	IVDMediaOutputStream		*mpAudioOut;			// alias: AVIout->audioOut
 	IVDMediaOutputStream		*mpVideoOut;			// alias: AVIout->videoOut
 	IVDDubberOutputSystem	*mpOutputSystem;
@@ -263,6 +319,8 @@ private:
 	bool				fVDecompressionOk;
 	bool				fFiltersOk;
 	bool				fNoProcessingPriority;
+
+	int					mLiveLockMessages;
 
 	VDCallbackTimer		mFrameTimer;
 	long				mPulseClock;
@@ -285,9 +343,7 @@ private:
 	bool				fShowDecompressedFrame;
 	bool				fDisplay565;
 
-	int					iOutputDepth;
-	VDFormatStruct<BITMAPINFOHEADER>	mpCompressorVideoFormat;
-	VDFormatStruct<BITMAPINFOHEADER>	mpDisplayFormat;
+	vdstructex<BITMAPINFOHEADER>	mpCompressorVideoFormat;
 
 	std::vector<AudioStream *>	mAudioStreams;
 	AudioStream			*audioStream, *audioTimingStream;
@@ -295,12 +351,15 @@ private:
 	AudioStreamL3Corrector	*audioCorrector;
 	vdautoptr<VDAudioFilterGraph> mpAudioFilterGraph;
 
-	FrameSubset				*inputSubsetActive;
+	const FrameSubset		*inputSubsetActive;
 	FrameSubset				*inputSubsetAlloc;
 	VideoTelecineRemover	*pInvTelecine;
 	int					nVideoLagPreload;
 
-	VDFormatStruct<WAVEFORMATEX> mAudioCompressionFormat;
+	vdstructex<WAVEFORMATEX> mAudioCompressionFormat;
+
+	vdblock<char>		mVideoFilterOutput;
+	VDPixmap			mVideoFilterOutputPixmap;
 
 	VDAtomicInt			mRefreshFlag;
 	HWND				hwndStatus;
@@ -327,6 +386,7 @@ private:
 	VDRenderFrameMap		mVideoFrameMap;
 	VDRenderFrameIterator	mVideoFrameIterator;
 
+	const char			*volatile mpCurrentAction;
 	VDAtomicInt			mProcessingThreadCounter;
 	VDRTProfileChannel	mProcessingProfileChannel;
 
@@ -353,16 +413,16 @@ public:
 
 	void InitAudioConversionChain();
 	void InitOutputFile();
-	bool AttemptInputOverlay(BITMAPINFOHEADER *pbih);
+	bool AttemptInputOverlay(int format);
 	bool AttemptInputOverlays();
 
 	void InitDirectDraw();
 	void InitInputDisplay();
 	void InitOutputDisplay();
-	bool NegotiateFastFormat(BITMAPINFOHEADER *pbih);
-	bool NegotiateFastFormat(int depth);
+	bool NegotiateFastFormat(const BITMAPINFOHEADER& bih);
+	bool NegotiateFastFormat(int format);
 	void InitSelectInputFormat();
-	void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *outsys, COMPVARS *videoCompVars);
+	void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *outsys, COMPVARS *videoCompVars, const FrameSubset *);
 	void Go(int iPriority = 0);
 	void Stop();
 
@@ -397,6 +457,7 @@ Dubber::Dubber(DubOptions *xopt)
 	, mpVideoPipe(NULL)
 	, mSegmentByteLimit(0)
 	, mVideoFrameIterator(mVideoFrameMap)
+	, mpCurrentAction("starting up")
 	, mProcessingThreadCounter(0)
 	, mProcessingProfileChannel("Processor")
 	, mLastProcessingThreadCounter(0)
@@ -451,6 +512,8 @@ Dubber::Dubber(DubOptions *xopt)
 	fSyncToAudioEvenClock = false;
 	mbAudioFrozen = false;
 	mbAudioFrozenValid = false;
+
+	mLiveLockMessages = 0;
 }
 
 Dubber::~Dubber() {
@@ -501,10 +564,7 @@ void Dubber::SetAudioFilterGraph(const VDAudioFilterGraph& graph) {
 	mpAudioFilterGraph = new VDAudioFilterGraph(graph);
 }
 
-void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs) {
-	if (!pfs)
-		pfs = inputSubset;
-
+void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, const FrameSubset *pfs) {
 	IVDStreamSource *pVideoStream = 0;
 	
 	if (video) {
@@ -585,8 +645,6 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 		if (video) {
 			const sint64 video_start	= vInfo.start_src - pVideoStream->getStart();
-			const sint64 video_length	= vInfo.end_src - vInfo.start_src;
-
 
 			if (opt->audio.fStartAudio && video && opt->video.lStartOffsetMS) {
 				if (!pfs) {
@@ -601,11 +659,11 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 		if (video && opt->audio.fEndAudio) {
 			const sint64 video_length	= vInfo.end_src - vInfo.start_src;
-			long lMaxLength;
+			sint64 lMaxLength;
 
 			const VDFraction audiorate(audio->getRate());
 
-			lMaxLength = (long)(audiorate / vInfo.frameRateIn).scale64r(video_length);
+			lMaxLength = (audiorate / vInfo.frameRateIn).scale64r(video_length);
 
 			if (aInfo.end_src - aInfo.start_src > lMaxLength)
 				aInfo.end_src = aInfo.start_src + lMaxLength;
@@ -630,7 +688,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 								|| (opt->audio.newChannels==DubAudioOptions::C_NOCHANGE && audio->getWaveFormat()->nChannels>1);
 				aInfo.is_right = (opt->audio.newChannels==DubAudioOptions::C_MONORIGHT);
 				aInfo.single_channel = (opt->audio.newChannels==DubAudioOptions::C_MONOLEFT || opt->audio.newChannels==DubAudioOptions::C_MONORIGHT);
-				aInfo.bytesPerSample = (aInfo.is_16bit ? 2 : 1) * (aInfo.is_stereo ? 2 : 1);
+				aInfo.bytesPerSample = (char)((aInfo.is_16bit ? 2 : 1) * (aInfo.is_stereo ? 2 : 1));
 
 			}
 		}
@@ -642,8 +700,8 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 	vInfo.cur_proc_src = vInfo.cur_src;
 	aInfo.cur_proc_src = aInfo.cur_src;
 
-	VDDEBUG("Dub: Audio is from (%ld,%ld) starting at %ld\n", aInfo.start_src, aInfo.end_src, aInfo.cur_src);
-	VDDEBUG("Dub: Video is from (%ld,%ld) starting at %ld\n", vInfo.start_src, vInfo.end_src, vInfo.cur_src);
+	VDDEBUG("Dub: Audio is from (%I64d,%I64d) starting at %I64d\n", aInfo.start_src, aInfo.end_src, aInfo.cur_src);
+	VDDEBUG("Dub: Video is from (%I64d,%I64d) starting at %I64d\n", vInfo.start_src, vInfo.end_src, vInfo.cur_src);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -732,7 +790,7 @@ void Dubber::InitAudioConversionChain() {
 		const VDFraction audioRate(pAudioFormat->nAvgBytesPerSec, pAudioFormat->nBlockAlign);
 		const VDFraction audioPerVideo(audioRate / vInfo.frameRateIn);
 
-		audioStream->SetLimit((long)audioPerVideo.scale64r(nFrames));
+		audioStream->SetLimit(audioPerVideo.scale64r(nFrames));
 	}
 
 	audioTimingStream = audioStream;
@@ -795,9 +853,11 @@ void Dubber::InitOutputFile() {
 		VBitmap outputBitmap;
 		
 		if (opt->video.mode >= DubVideoOptions::M_FULL)
-			outputBitmap = *filters.OutputBitmap();
+			outputBitmap = *filters.LastBitmap();
 		else
-			outputBitmap.init(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
+			outputBitmap.init((void *)vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
+
+		outputBitmap.AlignTo4();		// This is a lie, but it keeps the MakeBitmapHeader() call below from fouling
 
 		AVIStreamHeader_fixed hdr;
 
@@ -816,7 +876,7 @@ void Dubber::InitOutputFile() {
 
 		hdr.dwRate			= vInfo.frameRate.getHi();
 		hdr.dwScale			= vInfo.frameRate.getLo();
-		hdr.dwLength		= vInfo.end_dst;
+		hdr.dwLength		= vInfo.end_dst ? 0xFFFFFFFFUL : (DWORD)vInfo.end_dst;
 
 		hdr.rcFrame.left	= 0;
 		hdr.rcFrame.top		= 0;
@@ -825,25 +885,46 @@ void Dubber::InitOutputFile() {
 
 		// initialize compression
 
+		int outputFormatID = opt->video.mOutputFormat;
+		int outputVariantID = 0;
+
+		if (!outputFormatID)
+			outputFormatID = vSrc->getTargetFormat().format;
+
 		if (opt->video.mode >= DubVideoOptions::M_FASTREPACK) {
 			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK) {
 				const BITMAPINFOHEADER *pFormat = vSrc->getDecompressedFormat();
 
 				mpCompressorVideoFormat.assign(pFormat, VDGetSizeOfBitmapHeaderW32(pFormat));
 			} else {
-				mpCompressorVideoFormat.resize(sizeof(BITMAPINFOHEADER));
+				vdstructex<BITMAPINFOHEADER> bih;
+				bih.resize(sizeof(BITMAPINFOHEADER));
+				outputBitmap.MakeBitmapHeader(&*bih);
 
-				mpCompressorVideoFormat->biSize				= sizeof(BITMAPINFOHEADER);
-				mpCompressorVideoFormat->biWidth			= outputBitmap.w;
-				mpCompressorVideoFormat->biHeight			= outputBitmap.h;
-				mpCompressorVideoFormat->biPlanes			= 1;
-				mpCompressorVideoFormat->biBitCount			= iOutputDepth;
-				mpCompressorVideoFormat->biCompression		= BI_RGB;
-				mpCompressorVideoFormat->biSizeImage		= outputBitmap.pitch * outputBitmap.h;
-				mpCompressorVideoFormat->biXPelsPerMeter	= 0;
-				mpCompressorVideoFormat->biYPelsPerMeter	= 0;
-				mpCompressorVideoFormat->biClrUsed			= 0;
-				mpCompressorVideoFormat->biClrImportant		= 0;
+				// try to find a variant that works
+				const int variants = VDGetPixmapToBitmapVariants(outputFormatID);
+				DWORD lasterror = 0;
+				int variant;
+
+				for(variant=1; variant <= variants; ++variant) {
+					VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, bih, outputFormatID, variant);
+
+					int result = ICERR_OK;
+					
+					if (fUseVideoCompression)
+						result = ICCompressQuery(compVars->hic, (LPBITMAPINFO)&*mpCompressorVideoFormat, NULL);
+
+					if (ICERR_OK == result) {
+						outputVariantID = variant;
+						break;
+					}
+
+					if (!lasterror || result != ICERR_BADFORMAT)
+						lasterror = result;
+				}
+
+				if (variant > variants)
+					throw MyICError(lasterror, "Cannot initialize video compression due to codec error: %%s");
 			}
 		} else {
 			const BITMAPINFOHEADER *pFormat = vSrc->getImageFormat();
@@ -855,7 +936,7 @@ void Dubber::InitOutputFile() {
 
 		VDDEBUG("Dub: Initializing output compressor.\n");
 
-		VDFormatStruct<BITMAPINFOHEADER>	outputFormat;
+		vdstructex<BITMAPINFOHEADER>	outputFormat;
 
 		if (fUseVideoCompression) {
 			LONG formatSize;
@@ -863,7 +944,7 @@ void Dubber::InitOutputFile() {
 
 			formatSize = ICCompressGetFormatSize(compVars->hic, (LPBITMAPINFO)&*mpCompressorVideoFormat);
 			if (formatSize < ICERR_OK)
-				throw "Error getting compressor output format size.";
+				throw MyICError("Output compressor", formatSize);
 
 			VDDEBUG("Video compression format size: %ld\n",formatSize);
 
@@ -889,7 +970,7 @@ void Dubber::InitOutputFile() {
 
 			// attempt to open output decompressor
 
-			if (opt->video.mode <= DubVideoOptions::M_FASTREPACK)
+			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK)
 				fShowDecompressedFrame = false;
 			else if (fShowDecompressedFrame = !!opt->video.fShowDecompressedFrame) {
 				DWORD err;
@@ -933,22 +1014,17 @@ void Dubber::InitOutputFile() {
 
 				lVideoSizeEstimate = 0;
 				for(VDPosition frame = videoFrameStart; frame < videoFrameEnd; ++frame) {
-					long bytes = 0;
+					uint32 bytes = 0;
 
 					if (!pVideoStream->read(frame, 1, 0, 0, &bytes, 0))
 						if (lVideoSizeEstimate < bytes)
 							lVideoSizeEstimate = bytes;
 				}
 			} else {
-				outputFormat.assign(vSrc->getDecompressedFormat(), sizeof(BITMAPINFOHEADER));
-
 				if (opt->video.mode == DubVideoOptions::M_FULL) {
-					outputFormat->biCompression= BI_RGB;
-					outputFormat->biWidth		= outputBitmap.w;
-					outputFormat->biHeight		= outputBitmap.h;
-					outputFormat->biBitCount	= iOutputDepth;
-					outputFormat->biSizeImage	= outputBitmap.pitch * outputBitmap.h;
-				}
+					VDMakeBitmapFormatFromPixmapFormat(outputFormat, mpCompressorVideoFormat, outputFormatID, outputVariantID);
+				} else
+					outputFormat = mpCompressorVideoFormat;
 
 				lVideoSizeEstimate = outputFormat->biSizeImage;
 				lVideoSizeEstimate = (lVideoSizeEstimate+1) & -2;
@@ -956,6 +1032,16 @@ void Dubber::InitOutputFile() {
 		}
 
 		mpOutputSystem->SetVideo(hdr, &*outputFormat, outputFormat.size());
+
+		if(opt->video.mode >= DubVideoOptions::M_FULL) {
+			const VBitmap& bmout = *filters.LastBitmap();
+
+			VDPixmapLayout layout;
+			uint32 reqsize = VDMakeBitmapCompatiblePixmapLayout(layout, bmout.w, bmout.h, outputFormatID, outputVariantID);
+
+			mVideoFilterOutput.resize(reqsize);
+			mVideoFilterOutputPixmap = VDPixmapFromLayout(layout, mVideoFilterOutput.data());
+		}
 	}
 
 	VDDEBUG("Dub: Creating output file.\n");
@@ -965,79 +1051,22 @@ void Dubber::InitOutputFile() {
 	mpAudioOut = AVIout->getAudioOutput();
 }
 
-bool Dubber::AttemptInputOverlay(BITMAPINFOHEADER *pbih) {
-//	return vSrc->setDecompressedFormat(pbih) && mInputDisplay.InitDirectDrawYUVOverlay(mhwndInputDisplay, pbih, vSrc->getFrameBuffer());
-
-	if (!vSrc->setDecompressedFormat(pbih))
+bool Dubber::AttemptInputOverlay(int format) {
+	if (!vSrc->setTargetFormat(format))
 		return false;
 
-	int format;
-
-	switch(pbih->biCompression) {
-		case 'YVYU':
-			format = IVDVideoDisplay::kFormatYUV422_UYVY;
-			break;
-		case '2YUY':
-			format = IVDVideoDisplay::kFormatYUV422_YUYV;
-			break;
-		default:
-			return false;
-	}
-
-	return mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (pbih->biWidth*2 + 3) & ~3, pbih->biWidth, pbih->biHeight, format, 0, 0, false, opt->video.nPreviewFieldMode>0);
+	return mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), 0, 0, false, opt->video.nPreviewFieldMode>0);
 }
 
 bool Dubber::AttemptInputOverlays() {
-	BITMAPINFOHEADER bih;
-
-	memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
-
-	bih.biSize			= sizeof(BITMAPINFOHEADER);
-	bih.biPlanes		= 1;
-	bih.biBitCount		= 16;
-	bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
-	bih.biXPelsPerMeter	= 0;
-	bih.biYPelsPerMeter	= 0;
-	bih.biClrUsed		= 0;
-	bih.biClrImportant	= 0;
-
-	//---- begin 16-bit YUV negotiation ----
-
-	// Attempt CYUV (YUV 4:2:2, Y?Y? ordering)
-
-//	bih.biCompression = 'VUYC';
-//	if (AttemptInputOverlay(&bih))
-//		break;
-
-	// Attempt UYVY (YUV 4:2:2)
-
-	bih.biCompression = 'YVYU';
-	if (AttemptInputOverlay(&bih))
+	if (AttemptInputOverlay(nsVDPixmap::kPixFormat_YUV420_Planar))
 		return true;
 
-	// Attempt YUYV (YUV 4:2:2)
-//	bih.biCompression = 'VYUY';
-//	if (AttemptInputOverlay(&bih))
-//		break;
-
-	// Attempt YUY2 (YUV 4:2:2, YUYV ordering)
-
-	bih.biCompression = '2YUY';
-
-	if (AttemptInputOverlay(&bih))
+	if (AttemptInputOverlay(nsVDPixmap::kPixFormat_YUV422_UYVY))
 		return true;
 
-	//---- begin 12-bit YUV negotiation ----
-#if 0
-	// Attempt YV12 (YUV 4:2:0)
-
-	bih.biCompression = '21VY';
-	bih.biSizeImage		= (bih.biWidth/2)*(bih.biHeight/2)*6;
-	bih.biBitCount		= 12;
-
-	if (AttemptInputOverlay(&bih))
+	if (AttemptInputOverlay(nsVDPixmap::kPixFormat_YUV422_YUYV))
 		return true;
-#endif
 
 	return false;
 }
@@ -1059,97 +1088,58 @@ void Dubber::InitDirectDraw() {
 void Dubber::InitInputDisplay() {
 	VDDEBUG("Dub: Initializing input window display.\n");
 
-
-	// Check color depth of output device.  If it is 8-bit, we're
-	// stuck with DrawDibDraw().  If it's at least 15 bits, then
-	// we should create a DIBSection, select it into a memory
-	// context, and BltBlt() to the screen instead.  It's about
-	// 5-10% faster under Win95 and about 400x (!) faster under WINE.
-	//
-	// Okay, never mind... WINE still doesn't support DIBSection
-	// windows. :(
-
-	const BITMAPINFOHEADER& hdr = *vSrc->getDecompressedFormat();
-	const void *pFB = vSrc->getFrameBuffer();
-	const ptrdiff_t stride = ((hdr.biWidth * hdr.biBitCount + 31) >> 3) & ~3;
-	int format = 0;
-
-	if (hdr.biCompression == BI_RGB && hdr.biBitCount == 16)
-		format = IVDVideoDisplay::kFormatRGB1555;
-	else if (hdr.biCompression == BI_RGB && hdr.biBitCount == 24)
-		format = IVDVideoDisplay::kFormatRGB888;
-	else if (hdr.biCompression == BI_RGB && hdr.biBitCount == 32)
-		format = IVDVideoDisplay::kFormatRGB8888;
-	else if (hdr.biCompression == BI_BITFIELDS && hdr.biBitCount == 16)
-		format = IVDVideoDisplay::kFormatRGB565;
-
-	mpInputDisplay->SetSource((const char *)pFB + stride * (hdr.biHeight-1), -stride, hdr.biWidth, hdr.biHeight, format, 0, 0, true, opt->video.nPreviewFieldMode>0);
-
-//	mInputDisplay.SetInterlacing(opt->video.nPreviewFieldMode != 0, opt->video.nPreviewFieldMode > 1);
+	mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), NULL, 0, true, opt->video.nPreviewFieldMode>0);
 }
 
 void Dubber::InitOutputDisplay() {
 	VDDEBUG("Dub: Initializing output window display.\n");
 
-	if (opt->video.mode == DubVideoOptions::M_FULL) {
-		mpDisplayFormat = mpCompressorVideoFormat;
+	if (opt->video.mode == DubVideoOptions::M_FULL)
+		mpOutputDisplay->SetSource(false, mVideoFilterOutputPixmap, NULL, 0, true, opt->video.nPreviewFieldMode>0);
+}
 
-		// check to see if DC is 565 16-bit, the only mode that does not support a line
-		// of grays... hmm... is 15 possible for bitsPerPel?
+bool Dubber::NegotiateFastFormat(const BITMAPINFOHEADER& bih) {
+	if (!vSrc->setDecompressedFormat(&bih))
+		return false;
+	
+	const BITMAPINFOHEADER *pbih = vSrc->getDecompressedFormat();
 
-		fDisplay565 = false;
-		if (HDC hdc = GetDC(NULL)) {
-			fDisplay565 = VDIsDC565(hdc);
-			ReleaseDC(NULL, hdc);
-		}
+	if (ICERR_OK == ICCompressQuery(compVars->hic, pbih, NULL)) {
+		char buf[16]={0};
+		const char *s = buf;
 
-		if (fDisplay565 && fPreview && mpDisplayFormat->biBitCount == 16) {
-			mpDisplayFormat.resize(sizeof(BITMAPV4HEADER));
+		if (pbih->biCompression >= 0x20000000)
+			*(uint32 *)buf = pbih->biCompression;
+		else
+			sprintf(buf, "RGB%d", pbih->biBitCount);
 
-			BITMAPV4HEADER *pV4Hdr = (BITMAPV4HEADER *)&*mpDisplayFormat;
-
-			pV4Hdr->bV4Size				= sizeof(BITMAPV4HEADER);
-			pV4Hdr->bV4V4Compression	= BI_BITFIELDS;
-			pV4Hdr->bV4RedMask			= 0xf800;
-			pV4Hdr->bV4GreenMask		= 0x07e0;
-			pV4Hdr->bV4BlueMask			= 0x001f;
-			pV4Hdr->bV4AlphaMask		= 0x0000;
-			pV4Hdr->bV4CSType			= 0;
-		}
-
-		HANDLE hMapObject;
-		LONG lMapOffset;
-
-		filters.getOutputMappingParams(hMapObject, lMapOffset);
-
-		int format = 0;
-		if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 16)
-			format = IVDVideoDisplay::kFormatRGB1555;
-		else if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 24)
-			format = IVDVideoDisplay::kFormatRGB888;
-		else if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 32)
-			format = IVDVideoDisplay::kFormatRGB8888;
-		else if (mpDisplayFormat->biCompression == BI_BITFIELDS && mpDisplayFormat->biBitCount == 16)
-			format = IVDVideoDisplay::kFormatRGB565;
-
-		const VBitmap& vbm = *filters.OutputBitmap();
-
-		mpOutputDisplay->SetSource((const char *)vbm.data + vbm.pitch * (vbm.h - 1), -vbm.pitch, vbm.w, vbm.h, format, hMapObject, lMapOffset, true, opt->video.nPreviewFieldMode>0);
-
-//		mOutputDisplay.InitGDI(mhwndOutputDisplay, &*mpCompressorVideoFormat, hMapObject, lMapOffset);
+		VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_FastRecompressUsingFormat, 1, &s);
+		return true;
 	}
 
-//	mOutputDisplay.SetInterlacing(opt->video.nPreviewFieldMode != 0, opt->video.nPreviewFieldMode > 1);
+	return false;
 }
 
-bool Dubber::NegotiateFastFormat(BITMAPINFOHEADER *pbih) {
-	return vSrc->setDecompressedFormat(pbih) &&
-			ICERR_OK == ICCompressQuery(compVars->hic, pbih, NULL);
-}
+bool Dubber::NegotiateFastFormat(int format) {
+	if (!vSrc->setTargetFormat(format))
+		return false;
+	
+	const BITMAPINFOHEADER *pbih = vSrc->getDecompressedFormat();
 
-bool Dubber::NegotiateFastFormat(int depth) {
-	return vSrc->setDecompressedFormat(depth) &&
-			ICERR_OK == ICCompressQuery(compVars->hic, vSrc->getDecompressedFormat(), NULL);
+	if (ICERR_OK == ICCompressQuery(compVars->hic, pbih, NULL)) {
+		char buf[16]={0};
+		const char *s = buf;
+
+		if (pbih->biCompression >= 0x20000000)
+			*(uint32 *)buf = pbih->biCompression;
+		else
+			sprintf(buf, "RGB%d", pbih->biBitCount);
+
+		VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_FastRecompressUsingFormat, 1, &s);
+		return true;
+	}
+
+	return false;
 }
 
 void Dubber::InitSelectInputFormat() {
@@ -1162,114 +1152,72 @@ void Dubber::InitSelectInputFormat() {
 	if (opt->video.mode == DubVideoOptions::M_NONE)
 		return;
 
+	const BITMAPINFOHEADER& bih = *vSrc->getImageFormat();
+
 	if (opt->video.mode == DubVideoOptions::M_FASTREPACK && fUseVideoCompression) {
-		BITMAPINFOHEADER bih;
-
-		// Begin decompressor to compressor format negotiation.
-		//
-		memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
-
 		// Don't use odd-width YUV formats.  They may technically be allowed, but
 		// a lot of codecs crash.  For instance, Huffyuv in "Convert to YUY2"
 		// mode will accept a 639x360 format for compression, but crashes trying
 		// to decompress it.
 
 		if (!(bih.biWidth & 1)) {
-			// Attempt UYVY.
-			bih.biSize			= sizeof(BITMAPINFOHEADER);
-			bih.biPlanes		= 1;
-			bih.biBitCount		= 16;
-			bih.biCompression	= 'YVYU';
-			bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
-			bih.biXPelsPerMeter	= 0;
-			bih.biYPelsPerMeter	= 0;
-			bih.biClrUsed		= 0;
-			bih.biClrImportant	= 0;
-
-			if (NegotiateFastFormat(&bih)) {
-				mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_UYVY);
-				mbInputDisplayInitialized = true;
-				return;
-			}
-
-			// Attempt YVYU.
-			bih.biCompression	= 'UYVY';
-
-			if (NegotiateFastFormat(&bih)) {
-				mpInputDisplay->Reset();		// No support for YVYU yet
+			if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV422_UYVY)) {
+				mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 				mbInputDisplayInitialized = true;
 				return;
 			}
 
 			// Attempt YUY2.
-
-			bih.biCompression	= '2YUY';
-
-			if (NegotiateFastFormat(&bih)) {
-				mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_YUYV);
+			if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV422_YUYV)) {
+				mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 				mbInputDisplayInitialized = true;
 				return;
 			}
 
-			// Attempt YV12
-
 			if (!(bih.biHeight & 1)) {
-				memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
-
-				bih.biSize			= sizeof(BITMAPINFOHEADER);
-				bih.biPlanes		= 1;
-				bih.biBitCount		= 12;
-				bih.biCompression	= '21VY';
-				bih.biSizeImage		= ((bih.biWidth+1)>>1) * ((bih.biHeight+1)>>1) * 6;
-				bih.biXPelsPerMeter	= 0;
-				bih.biYPelsPerMeter	= 0;
-				bih.biClrUsed		= 0;
-				bih.biClrImportant	= 0;
-
-				if (NegotiateFastFormat(&bih)) {
-					mpInputDisplay->Reset();		// VideoDisplay doesn't handle planar formats (yet).
+				if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV420_Planar)) {
+					mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 					mbInputDisplayInitialized = true;
 					return;
 				}
 			}
 		}
 
-		// Attempt RGB format negotiation.
-
-		if (NegotiateFastFormat(16+8*opt->video.inputDepth))
-			return;
-
-		if (NegotiateFastFormat(24))
-			return;
-		if (NegotiateFastFormat(32))
-			return;
-		if (NegotiateFastFormat(16))
-			return;
-		if (NegotiateFastFormat(8))
-			return;
-
 		// Attempt source format.
-
-		if (NegotiateFastFormat(vSrc->getImageFormat())) {
+		if (NegotiateFastFormat(bih)) {
 			mpInputDisplay->Reset();
 			mbInputDisplayInitialized = true;
 			return;
 		}
+
+		// Attempt RGB format negotiation.
+		int format = opt->video.mInputFormat;
+
+		do {
+			if (NegotiateFastFormat(format))
+				return;
+
+			format = DegradeFormat(format, opt->video.mInputFormat);
+		} while(format);
 
 		throw MyError("Video format negotiation failed: use slow-repack or full mode.");
 	}
 
 	// Negotiate RGB format.
 
-	if (!vSrc->setDecompressedFormat(16+8*opt->video.inputDepth))
-		if (!vSrc->setDecompressedFormat(32))
-			if (!vSrc->setDecompressedFormat(24))
-				if (!vSrc->setDecompressedFormat(16))
-					if (!vSrc->setDecompressedFormat(8))
-						throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
+	int format = opt->video.mInputFormat;
+
+	do {
+		if (vSrc->setTargetFormat(format))
+			return;
+
+		format = DegradeFormat(format, opt->video.mInputFormat);
+	} while(format);
+
+	throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 }
 
-void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *pOutputSystem, COMPVARS *videoCompVars) {
+void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *pOutputSystem, COMPVARS *videoCompVars, const FrameSubset *pfs) {
 
 	aSrc				= audio;
 	vSrc				= video;
@@ -1284,8 +1232,8 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 	// check the mode; if we're using DirectStreamCopy mode, we'll need to
 	// align the subset to keyframe boundaries!
 
-	if (vSrc && inputSubset) {
-		inputSubsetActive = inputSubset;
+	if (vSrc && pfs) {
+		inputSubsetActive = pfs;
 
 		if (opt->video.mode == DubVideoOptions::M_NONE) {
 			if (!(inputSubsetActive = inputSubsetAlloc = new FrameSubset()))
@@ -1295,48 +1243,47 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 
 			const VDPosition videoFrameStart	= pVideoStream->getStart();
 
-			for(FrameSubset::iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it) {
-				long end = it->start + it->len;
-				long start = vSrc->nearestKey(it->start + videoFrameStart) - videoFrameStart;
+			for(FrameSubset::const_iterator it(pfs->begin()), itEnd(pfs->end()); it!=itEnd; ++it) {
+				sint64 start = vSrc->nearestKey(it->start + videoFrameStart) - videoFrameStart;
 
-				VDDEBUG("   subset: %5d[%5d]-%-5d\n", it->start, start, it->start+it->len-1);
-				inputSubsetActive->addRange(it->start, it->len, it->bMask);
+				VDDEBUG("   subset: %5d[%5d]-%-5d\n", (long)it->start, (long)start, (long)(it->start+it->len-1));
+				FrameSubset::iterator itNew(inputSubsetAlloc->addRange(it->start, it->len, it->bMask));
 
 				// Mask ranges never need to be extended backwards, because they don't hold any
 				// data of their own.  If an include range needs to be extended backwards, though,
 				// it may need to extend into a previous merge range.  To avoid this problem,
 				// we do a delete of the range before adding the tail.
 
-				if (!it->bMask) {
-					if (start < it->start) {
-						FrameSubset::iterator it2(it);
+				if (!itNew->bMask) {
+					if (start < itNew->start) {
+						FrameSubset::iterator it2(itNew);
 
-						while(it2 != inputSubset->begin()) {
+						while(it2 != inputSubsetAlloc->begin()) {
 							--it2;
 
-							long prevtail = it2->start + it2->len;
+							sint64 prevtail = it2->start + it2->len;
 
-							if (prevtail < start || prevtail > it->start + it->len)
+							if (prevtail < start || prevtail > itNew->start + itNew->len)
 								break;
 
 							if (it2->start >= start || !it2->bMask) {	// within extension range: absorb
-								it->len += it->start - it2->start;
-								it->start = it2->start;
-								it2 = inputSubset->erase(it2);
+								itNew->len += itNew->start - it2->start;
+								itNew->start = it2->start;
+								it2 = inputSubsetAlloc->erase(it2);
 							} else {									// before extension range and masked: split merge
-								int offset = start - it->start;
+								sint64 offset = start - itNew->start;
 								it2->len -= offset;
-								it->start -= offset;
-								it->len += offset;
+								itNew->start -= offset;
+								itNew->len += offset;
 								break;
 							}
 						}
 
-						int left = it->start - start;
+						sint64 left = itNew->start - start;
 						
 						if (left > 0) {
-							it->start = start;
-							it->len += left;
+							itNew->start = start;
+							itNew->len += left;
 						}
 					}
 				}
@@ -1387,17 +1334,28 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 		vInfo.fAudioOnly = false;
 	}
 
-	iOutputDepth = 16+8*opt->video.outputDepth;
-
 	// Initialize filter system.
 
 	int nVideoLagOutput = 0;		// Frames that will be buffered in the output frame space (video filters)
 	int nVideoLagTimeline = 0;		// Frames that will be buffered in the timeline frame space (IVTC)
 
-	if (vSrc && opt->video.mode >= DubVideoOptions::M_FULL) {
+	if (vSrc && mpOutputSystem->AcceptsVideo() && opt->video.mode >= DubVideoOptions::M_FULL) {
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 32 /*bmih->biBitCount*/, iOutputDepth);
+		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 0);
+		
+		VBitmap *lastBitmap = filters.LastBitmap();
+
+		int outputFormat = opt->video.mOutputFormat;
+
+		if (!outputFormat)
+			outputFormat = vSrc->getTargetFormat().format;
+
+		if (!CheckFormatSizeCompatibility(outputFormat, lastBitmap->w, lastBitmap->h)) {
+			const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(outputFormat);
+
+			throw MyError("The output frame size is not compatible with the selected output format. (%dx%d, %s)", lastBitmap->w, lastBitmap->h, formatInfo.name);
+		}
 
 		fsi.lMicrosecsPerFrame		= vInfo.usPerFrame;
 		fsi.lMicrosecsPerSrcFrame	= vInfo.usPerFrameIn;
@@ -1405,7 +1363,7 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 		fsi.flags					= fPreview ? FilterStateInfo::kStateRealTime | FilterStateInfo::kStatePreview : 0;
 
 		if (filters.ReadyFilters(&fsi))
-			throw "Error readying filters.";
+			throw MyError("Error readying filters.");
 
 		fFiltersOk = true;
 
@@ -1593,8 +1551,6 @@ void Dubber::Go(int iPriority) {
 //////////////////////////////////////////////
 
 void Dubber::Stop() {
-	bool fSkipDXShutdown = false;
-
 	if (mStopLock.xchg(1))
 		return;
 
@@ -1797,7 +1753,7 @@ void Dubber::TimerCallback() {
 ///////////////////////////////////////////////////////////////////
 
 void Dubber::NextSegment() {
-	vdautoptr<AVIOutput> AVIout_new(mpOutputSystem->CreateSegment());
+	vdautoptr<IVDMediaOutput> AVIout_new(mpOutputSystem->CreateSegment());
 	mpOutputSystem->CloseSegment(AVIout, false);
 	AVIout = AVIout_new.release();
 	mpAudioOut = AVIout->getAudioOutput();
@@ -1829,8 +1785,8 @@ namespace {
 Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition display_num, VDPosition timeline_num) {
 	LONG dwBytes;
 	bool isKey;
-	void *frameBuffer;
-	LPVOID lpCompressedData;
+	const void *frameBuffer;
+	const void *lpCompressedData;
 
 	if (timeline_num >= 0)		// exclude injected frames
 		vInfo.cur_proc_src = timeline_num;
@@ -1930,8 +1886,15 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 	// Full:		Decompress, process, filter, convert, send to compressor.
 
 	mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock1");
-	blitter->lock(BUFFERID_INPUT);
+	bool bLockSuccessful;
+
+	do {
+		bLockSuccessful = blitter->lock(BUFFERID_INPUT, fPreview ? 500 : -1);
+	} while(!bLockSuccessful && !fAbort);
 	mProcessingProfileChannel.End();
+
+	if (!bLockSuccessful)
+		return kVideoWriteDiscarded;
 
 	if (exdata & kBufferFlagPreload)
 		mProcessingProfileChannel.Begin(0xfff0f0, "V-Preload");
@@ -1940,7 +1903,10 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 	VDCHECKPOINT;
 	CHECK_FPU_STACK
-	vSrc->streamGetFrame(buffer, lastSize, !(exdata&kBufferFlagDelta), false, sample_num);
+	{
+		VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing video frame");
+		vSrc->streamGetFrame(buffer, lastSize, false, sample_num);
+	}
 	CHECK_FPU_STACK
 
 	VDCHECKPOINT;
@@ -1970,84 +1936,73 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 	if (opt->video.mode == DubVideoOptions::M_FULL) {
 		VBitmap *initialBitmap = filters.InputBitmap();
 		VBitmap *lastBitmap = filters.LastBitmap();
-		VBitmap *outputBitmap = filters.OutputBitmap();
 		VBitmap destbm;
 		long lInputFrameNum, lInputFrameNum2;
 
 		lInputFrameNum = display_num - vSrc->asStream()->getStart();
 
-		if (pInvTelecine) {
-			lInputFrameNum2 = pInvTelecine->ProcessOut(initialBitmap);
-			pInvTelecine->ProcessIn(&VBitmap(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat()), lInputFrameNum);
+		if (!pInvTelecine && filters.isEmpty()) {
+			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+			blitter->lock(BUFFERID_OUTPUT);
+			mProcessingProfileChannel.End();
+			VDPixmapBlt(mVideoFilterOutputPixmap, vSrc->getTargetFormat());
+		} else {
+			if (pInvTelecine) {
+				VBitmap srcbm((void *)vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
+				lInputFrameNum2 = pInvTelecine->ProcessOut(initialBitmap);
+				pInvTelecine->ProcessIn(&srcbm, lInputFrameNum);
 
-			lInputFrameNum = lInputFrameNum2;
+				lInputFrameNum = lInputFrameNum2;
 
-			if (lInputFrameNum < 0) {
+				if (lInputFrameNum < 0) {
+					blitter->unlock(BUFFERID_INPUT);
+					return kVideoWriteBuffered;
+				}
+			} else
+				VDPixmapBlt(VDAsPixmap(*initialBitmap), vSrc->getTargetFormat());
+
+			// process frame
+
+			fsi.lCurrentSourceFrame	= lInputFrameNum;
+			fsi.lSourceFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentSourceFrame * (sint64)1000);
+			fsi.lDestFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentFrame * (sint64)1000);
+
+			mProcessingProfileChannel.Begin(0x008000, "V-Filter");
+			filters.RunFilters();
+			mProcessingProfileChannel.End();
+
+			++fsi.lCurrentFrame;
+
+			if (nVideoLagPreload>0) {
+				--nVideoLagPreload;
 				blitter->unlock(BUFFERID_INPUT);
 				return kVideoWriteBuffered;
 			}
-		} else
-			initialBitmap->BitBlt(0, 0, &VBitmap(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat()), 0, 0, -1, -1);
 
-		// process frame
 
-		fsi.lCurrentSourceFrame	= lInputFrameNum;
-		fsi.lSourceFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentSourceFrame * (sint64)1000);
-		fsi.lDestFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentFrame * (sint64)1000);
+			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+			blitter->lock(BUFFERID_OUTPUT);
+			mProcessingProfileChannel.End();
 
-		mProcessingProfileChannel.Begin(0x008000, "V-Filter");
-		filters.RunFilters();
-		mProcessingProfileChannel.End();
-
-		++fsi.lCurrentFrame;
-
-		if (nVideoLagPreload>0) {
-			--nVideoLagPreload;
-			blitter->unlock(BUFFERID_INPUT);
-			return kVideoWriteBuffered;
+			do {
+	#pragma vdpragma_TODO("FIXME: dither?")
+				VDPixmapBlt(mVideoFilterOutputPixmap, VDAsPixmap(*lastBitmap));
+			} while(false);
 		}
-
-
-		mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
-		blitter->lock(BUFFERID_OUTPUT);
-		mProcessingProfileChannel.End();
-
-//		if (!outputDecompressor)
-//			outputBitmap.data = outputBuffer;
-
-		do {
-//			IDDrawSurface *pds = mOutputDisplay.GetDD();
-//
-//			if (pds) {
-//				if (!pds->LockInverted(&destbm))
-//					break;
-//
-//				outputBitmap = &destbm;
-//			}
-
-			if (fPreview && g_prefs.fDisplay & Preferences::kDisplayDither16)
-				outputBitmap->BitBltDither(0, 0, lastBitmap, 0, 0, -1, -1, fDisplay565);
-			else if (mpDisplayFormat->biCompression == BI_BITFIELDS)
-				outputBitmap->BitBlt565(0, 0, lastBitmap, 0, 0, -1, -1);
-			else
-				outputBitmap->BitBlt(0, 0, lastBitmap, 0, 0, -1, -1);
-
-//			if (pds)
-//				pds->Unlock();
-
-		} while(false);
 	}
 
 	// write it to the file
 	
-	frameBuffer = 		/*(opt->video.mode == DubVideoOptions::M_FASTREPACK ? buffer : */
-						opt->video.mode <= DubVideoOptions::M_SLOWREPACK ? vSrc->getFrameBuffer()
-						:filters.OutputBitmap()->data;
+	frameBuffer = 		opt->video.mode <= DubVideoOptions::M_SLOWREPACK ? vSrc->getFrameBuffer()
+						: mVideoFilterOutput.data();
 
 
 	if (pVideoPacker) {
 		mProcessingProfileChannel.Begin(0x80c080, "V-Compress");
-		lpCompressedData = pVideoPacker->packFrame(frameBuffer, &isKey, &dwBytes);
+		{
+			VDDubAutoThreadLocation loc(mpCurrentAction, "compressing video frame");
+			lpCompressedData = pVideoPacker->packFrame((void *)frameBuffer, &isKey, &dwBytes);
+		}
 		mProcessingProfileChannel.End();
 
 		// Check if codec buffered a frame.
@@ -2058,8 +2013,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 		if (fShowDecompressedFrame && outputDecompressor && dwBytes) {
 			DWORD err;
-			VBitmap *outputBitmap = filters.OutputBitmap();
-			Pixel *outputBuffer = outputBitmap->data;
+			VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing compressed video frame");
 
 			CHECK_FPU_STACK
 
@@ -2071,9 +2025,9 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 			if (ICERR_OK != (err = ICDecompress(outputDecompressor,
 				isKey ? 0 : ICDECOMPRESS_NOTKEYFRAME,
 				(BITMAPINFOHEADER *)mpVideoOut->getFormat(),
-				lpCompressedData,
+				(void *)lpCompressedData,
 				&*mpCompressorVideoFormat,
-				outputBuffer
+				mVideoFilterOutput.data()
 				)))
 
 				fShowDecompressedFrame = false;
@@ -2084,6 +2038,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 			CHECK_FPU_STACK
 		}
 
+		VDDubAutoThreadLocation loc(mpCurrentAction, "writing compressed video frame to disk");
 		mpVideoOut->write(isKey ? AVIIF_KEYFRAME : 0, (char *)lpCompressedData, dwBytes, 1);
 
 	} else {
@@ -2091,7 +2046,10 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		dwBytes = ((const BITMAPINFOHEADER *)mpVideoOut->getFormat())->biSizeImage;
 
 		VDCHECKPOINT;
-		mpVideoOut->write(AVIIF_KEYFRAME, (char *)frameBuffer, dwBytes, 1);
+		{
+			VDDubAutoThreadLocation loc(mpCurrentAction, "writing uncompressed video frame to disk");
+			mpVideoOut->write(AVIIF_KEYFRAME, (char *)frameBuffer, dwBytes, 1);
+		}
 		VDCHECKPOINT;
 
 		isKey = true;
@@ -2153,7 +2111,6 @@ void Dubber::WriteAudio(void *buffer, long lActualBytes, long lActualSamples) {
 }
 
 void Dubber::ThreadRun() {
-	bool quit = false;
 	bool firstPacket = true;
 	bool bVideoEnded = !(vSrc && mpOutputSystem->AcceptsVideo());
 	bool bVideoNonDelayedFrameReceived = false;
@@ -2170,6 +2127,8 @@ void Dubber::ThreadRun() {
 
 	try {
 		DEFINE_SP(sp);
+
+		mpCurrentAction = "running main loop";
 
 		for(;;) {
 			int stream;
@@ -2219,7 +2178,11 @@ void Dubber::ThreadRun() {
 							if (fAbort)
 								goto abort_requested;
 
-							buf = mpVideoPipe->getReadBuffer(len, rawFrame, displayFrame, timelineFrame, &exdata, &droptype, &handle);
+							{
+								VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for video frame from I/O thread");
+								buf = mpVideoPipe->getReadBuffer(len, rawFrame, displayFrame, timelineFrame, &exdata, &droptype, &handle);
+							}
+
 							if (!buf) {
 								if (nVideoFramesDelayed > 0) {
 									--nVideoFramesDelayed;
@@ -2314,6 +2277,7 @@ void Dubber::ThreadRun() {
 								break;
 							}
 
+							VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
 							mAudioPipe.ReadWait();
 						}
 
@@ -2326,7 +2290,7 @@ void Dubber::ThreadRun() {
 					//       is generally under 5% and we don't want the beginning of the stream to go
 					//       nuts.
 					if (audioCorrector && audioCorrector->GetFrameCount() >= 20) {
-						VDFormatStruct<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+						vdstructex<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
 						
 						double bytesPerSec = audioCorrector->ComputeByterateDouble(wfex->nSamplesPerSec);
 
@@ -2336,7 +2300,10 @@ void Dubber::ThreadRun() {
 					mProcessingProfileChannel.End();
 					if (count > 0) {
 						mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
-						WriteAudio(&audioBuffer.front(), bytesread, count);
+						{
+							VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
+							WriteAudio(&audioBuffer.front(), bytesread, count);
+						}
 
 						if (firstPacket && fPreview) {
 							mpAudioOut->flush();
@@ -2387,7 +2354,7 @@ abort_requested:
 			// update audio rate...
 
 			if (audioCorrector) {
-				VDFormatStruct<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+				vdstructex<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
 				
 				wfex->nAvgBytesPerSec = audioCorrector->ComputeByterate(wfex->nSamplesPerSec);
 
@@ -2413,6 +2380,8 @@ abort_requested:
 	}
 
 	VDDEBUG("Dub/Processor: end\n");
+
+	fAbort = true;
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -2443,14 +2412,17 @@ void Dubber::RealizePalette() {
 }
 
 void Dubber::SetPriority(int index) {
-	SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[index][0]);
-	SetThreadPriority(getThreadHandle(), g_iPriorities[index][1]);
+	if (mpIOThread && mpIOThread->isThreadActive())
+		SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[index][0]);
+
+	if (isThreadActive())
+		SetThreadPriority(getThreadHandle(), g_iPriorities[index][1]);
 }
 
 void Dubber::UpdateFrames() {
 	mRefreshFlag = 1;
 
-	if (!mStopLock) {
+	if (mLiveLockMessages < kLiveLockMessageLimit && !mStopLock) {
 		uint32 curTime = VDGetCurrentTick();
 
 		int iocount = mIOThreadCounter;
@@ -2459,10 +2431,12 @@ void Dubber::UpdateFrames() {
 		if (mLastIOThreadCounter != iocount) {
 			mLastIOThreadCounter = iocount;
 			mIOThreadFailCount = curTime;
-		} else if (mLastIOThreadCounter && (curTime - mIOThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
+		} else if (mLastIOThreadCounter && (curTime - mIOThreadFailCount - 30000) < 3600000) {		// 30s to 1hr
 			if (mpIOThread->isThreadActive()) {
-				void *eip = ThreadLocation();
-				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_IOThreadLivelock, 1, &eip);
+				void *eip = mpIOThread->ThreadLocation();
+				const char *action = mpIOThread->GetCurrentAction();
+				VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_IOThreadLivelock, 2, &eip, &action);
+				++mLiveLockMessages;
 			}
 			mLastIOThreadCounter = 0;
 		}
@@ -2470,18 +2444,12 @@ void Dubber::UpdateFrames() {
 		if (mLastProcessingThreadCounter != prcount) {
 			mLastProcessingThreadCounter = prcount;
 			mProcessingThreadFailCount = curTime;
-		} else if (mLastProcessingThreadCounter && (curTime - mProcessingThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
+		} else if (mLastProcessingThreadCounter && (curTime - mProcessingThreadFailCount - 30000) < 3600000) {		// 30s to 1hr
 			if (isThreadActive()) {
 				void *eip = ThreadLocation();
-				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_ProcessingThreadLivelock, 1, &eip);
-
-				HANDLE h = (HANDLE)getThreadHandle();
-
-				CONTEXT ctx;
-				ctx.ContextFlags = CONTEXT_CONTROL;
-				SuspendThread(h);
-				ctx.Eip = 0;
-				ResumeThread(h);
+				const char *action = mpCurrentAction;
+				VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_ProcessingThreadLivelock, 2, &eip, &action);
+				++mLiveLockMessages;
 			}
 			mLastProcessingThreadCounter = 0;
 		}

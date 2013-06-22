@@ -7,93 +7,94 @@
 #include "oshelper.h"
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/vdalloc.h>
 #include "ProgressDialog.h"
 #include "VideoSourceImages.h"
 #include "image.h"
+#include "imagejpegdec.h"
 
 extern HWND g_hWnd;
 
-VideoSourceImages::VideoSourceImages(const char *pszBaseFormat)
-: mCachedHandleFrame(-1)
-, mCachedHandle(INVALID_HANDLE_VALUE)
+VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
+	: mCachedHandleFrame(-1)
 {
-	try {
-		_construct(pszBaseFormat);
-	} catch(...) {
-		_destruct();
-		throw;
-	}
-}
-
-void VideoSourceImages::_construct(const char *pszBaseFormat) {
 	// Attempt to discern path format.
 	//
 	// First, find the start of the filename.  Then skip
 	// backwards until the first period is found, then to the
 	// beginning of the first number.
 
-	const char *pszFileBase = VDFileSplitPath(pszBaseFormat);
-	const char *s = pszFileBase;
-	const char *pszLastDigit = NULL;
+	const wchar_t *pszFileBase = VDFileSplitPath(pszBaseFormat);
+	const wchar_t *s = pszFileBase;
+	const wchar_t *pszLastDigit = NULL;
 
 	while(*s)
 		++s;
 
-	while(s > pszFileBase && s[-1] != '.')
+	while(s > pszFileBase && s[-1] != L'.')
 		--s;
 
 	while(s > pszFileBase) {
 		--s;
 
-		if (isdigit((unsigned char)*s)) {
+		if (iswdigit(*s)) {
 			pszLastDigit = s;
 			break;
 		}
 	}
 
-	if (!pszLastDigit)
-		throw MyError("Cannot load image sequence: unable to find sequence number in base filename:\n\"%s\"", pszBaseFormat);
+//	Explicitly allow no sequence number to open a single image.
+//
+//	if (!pszLastDigit)
+//		throw MyError("Cannot load image sequence: unable to find sequence number in base filename:\n\"%s\"", pszBaseFormat);
 
-	const char *pszFirstDigit = pszLastDigit;
+	if (!pszLastDigit) {
+		mImageBaseNumber = 0;
+		wcscpy(mszPathFormat, pszBaseFormat);
+	} else {
+		const wchar_t *pszFirstDigit = pszLastDigit;
 
-	while(pszFirstDigit > pszBaseFormat && isdigit((unsigned char)pszFirstDigit[-1]))
-		--pszFirstDigit;
+		while(pszFirstDigit > pszBaseFormat && iswdigit(pszFirstDigit[-1]))
+			--pszFirstDigit;
 
-	// Compute # of digits and first number.
+		// Compute # of digits and first number.
 
-	mImageBaseNumber = atoi(pszFirstDigit);
+		mImageBaseNumber = wcstol(pszFirstDigit, NULL, 10);
 
-	sprintf(mszPathFormat, "%.*s%%0%dd%s", pszFirstDigit - pszBaseFormat, pszBaseFormat, pszLastDigit+1 - pszFirstDigit, pszLastDigit+1);
+		swprintf(mszPathFormat, L"%.*s%%0%dd%s", pszFirstDigit - pszBaseFormat, pszBaseFormat, pszLastDigit+1 - pszFirstDigit, pszLastDigit+1);
+	}
 
 	// Continue on.
 
-	lSampleFirst = 0;
+	mSampleFirst = 0;
 
-	bmihDecompressedFormat = new BITMAPINFOHEADER;
+	mpTargetFormatHeader.resize(sizeof(BITMAPINFOHEADER));
 	allocFormat(sizeof(BITMAPINFOHEADER));
 
 	invalidateFrameBuffer();
 
 	// This has to be 1 so that read() doesn't kick away the request.
 
-	lSampleLast = 1;
+	mSampleLast = 1;
 	getFrame(0);
-	lSampleLast = 0;
 
 	// Stat as many files as we can until we get an error.
 
-	try {
-		ProgressDialog pd(g_hWnd, "Image import filter", "Scanning for images", 0x3FFFFFFF, true);
+	if (pszLastDigit) {
+		VDStringA statusFormat(VDTextWToA(mszPathFormat + (pszFileBase - pszBaseFormat)));
+		try {
+			ProgressDialog pd(g_hWnd, "Image import filter", "Scanning for images", 0x3FFFFFFF, true);
 
-		pd.setValueFormat(mszPathFormat + (pszFileBase - pszBaseFormat));
+			pd.setValueFormat(statusFormat.c_str());
 
-		while(!_read(lSampleLast, 1, NULL, 0x7FFFFFFF, NULL, NULL)) {
-			pd.advance(lSampleLast + mImageBaseNumber);
-			pd.check();
-			++lSampleLast;
+			while(!_read(mSampleLast, 1, NULL, 0x7FFFFFFF, NULL, NULL)) {
+				pd.advance(mSampleLast + mImageBaseNumber);
+				pd.check();
+				++mSampleLast;
+			}
+		} catch(const MyError&) {
+			/* nothing */
 		}
-	} catch(const MyError&) {
-		/* nothing */
 	}
 
 	// Fill out streamInfo
@@ -107,7 +108,7 @@ void VideoSourceImages::_construct(const char *pszBaseFormat) {
 	streamInfo.dwScale					= 1001;
 	streamInfo.dwRate					= 30000;
 	streamInfo.dwStart					= 0;
-	streamInfo.dwLength					= lSampleLast;
+	streamInfo.dwLength					= mSampleLast > 0xFFFFFFFF ? 0xFFFFFFFF : (DWORD)mSampleLast;		// don't use min<> -- code misgeneration!
 	streamInfo.dwInitialFrames			= 0;
 	streamInfo.dwSuggestedBufferSize	= 0;
 	streamInfo.dwQuality				= (DWORD)-1;
@@ -118,68 +119,41 @@ void VideoSourceImages::_construct(const char *pszBaseFormat) {
 	streamInfo.rcFrame.bottom			= getImageFormat()->biHeight;
 }
 
-void VideoSourceImages::_destruct() {
-	delete bmihDecompressedFormat;
-	bmihDecompressedFormat = NULL;
-
-	if (mCachedHandle != INVALID_HANDLE_VALUE) {
-		CloseHandle(mCachedHandle);
-		mCachedHandle = INVALID_HANDLE_VALUE;
-	}
-}
-
 VideoSourceImages::~VideoSourceImages() {
-	_destruct();
 }
 
-int VideoSourceImages::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *plBytesRead, LONG *plSamplesRead) {
+int VideoSourceImages::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *plBytesRead, uint32 *plSamplesRead) {
 	if (plBytesRead)
 		*plBytesRead = 0;
 
 	if (plSamplesRead)
 		*plSamplesRead = 0;
 
-	char buf[512];
+	wchar_t buf[512];
 
-	if (_snprintf(buf, sizeof buf, mszPathFormat, lStart + mImageBaseNumber) < 0)
+	if (_snwprintf(buf, sizeof buf / sizeof buf[0], mszPathFormat, lStart + mImageBaseNumber) < 0)
 		return 0;
 
 	// Check if we already have the file handle cached.  If not, open the file.
-
-	HANDLE h;
 	
 	if (lStart == mCachedHandleFrame) {
-		h = mCachedHandle;
-		if (0xFFFFFFFF == SetFilePointer(h, 0, NULL, FILE_BEGIN))
-			goto read_fail;
+		mCachedFile.seek(0);
 	} else{
-		h = CreateFile(buf, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-
-		if (h == INVALID_HANDLE_VALUE)
-			goto read_fail;
-
-		// Close the old cached handle and replace it with the new one.
-
-		if (mCachedHandle != INVALID_HANDLE_VALUE)
-			CloseHandle(mCachedHandle);
-
-		mCachedHandle = h;
+		mCachedFile.closeNT();
+		mCachedFile.open(buf, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
 		mCachedHandleFrame = lStart;
 	}
 
 	// Replace
 
-	DWORD dwSizeHi, dwSizeLo;
-	
-	dwSizeLo = GetFileSize(h, &dwSizeHi);
+	uint32 size = (uint32)mCachedFile.size();
 
-	if (dwSizeLo == 0xFFFFFFFFUL && GetLastError() != NO_ERROR) {
-		goto read_fail;
-	};
+	if (size > 0x3fffffff)
+		throw MyError("VideoSourceImages: File \"%s\" is too large (>1GB).", VDTextWToA(buf).c_str());
 
 	if (!lpBuffer) {
 		if (plBytesRead)
-			*plBytesRead = dwSizeLo;
+			*plBytesRead = size;
 
 		if (plSamplesRead)
 			*plSamplesRead = 1;
@@ -187,54 +161,38 @@ int VideoSourceImages::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbB
 		return 0;
 	}
 
-	if (dwSizeHi || dwSizeLo > cbBuffer) {
-		if (plBytesRead) {
-			if (dwSizeHi || dwSizeLo > 0x7FFFFFFFUL)
-				*plBytesRead = 0x7FFFFFFFUL;		// uh oh....
-			else
-				*plBytesRead = dwSizeLo;
-		}
+	if (size > cbBuffer) {
+		if (plBytesRead)
+			*plBytesRead = size;
 
 		return AVIERR_BUFFERTOOSMALL;
 	}
 
-	DWORD dwActual;
-	BOOL bSucceeded;
+	mCachedFile.read(lpBuffer, size);
 	
-	bSucceeded = ReadFile(h, lpBuffer, dwSizeLo, &dwActual, NULL);
-	
-	if (!bSucceeded)
-		goto read_fail;
-
 	if (plBytesRead)
-		*plBytesRead = (LONG)dwActual;
+		*plBytesRead = size;
 
 	if (plSamplesRead)
 		*plSamplesRead = 1;
 
 	return 0;
-
-read_fail:
-	throw MyWin32Error("Cannot read image file \"%s\":\n%%s", GetLastError(), buf);
 }
 
-bool VideoSourceImages::setDecompressedFormat(int depth) {
-	if (depth == 16 || depth == 24 || depth == 32) {
-		bmihDecompressedFormat->biSize			= sizeof(BITMAPINFOHEADER);
-		bmihDecompressedFormat->biWidth			= getImageFormat()->biWidth;
-		bmihDecompressedFormat->biHeight		= getImageFormat()->biHeight;
-		bmihDecompressedFormat->biPlanes		= 1;
-		bmihDecompressedFormat->biCompression	= BI_RGB;
-		bmihDecompressedFormat->biBitCount		= depth;
-		bmihDecompressedFormat->biSizeImage		= ((getImageFormat()->biWidth*depth+31)>>5)*4 * getImageFormat()->biHeight;
-		bmihDecompressedFormat->biXPelsPerMeter	= 0;
-		bmihDecompressedFormat->biYPelsPerMeter	= 0;
-		bmihDecompressedFormat->biClrUsed		= 0;
-		bmihDecompressedFormat->biClrImportant	= 0;
+bool VideoSourceImages::setTargetFormat(int format) {
+	if (!format)
+		format = nsVDPixmap::kPixFormat_XRGB8888;
+
+	switch(format) {
+	case nsVDPixmap::kPixFormat_XRGB1555:
+	case nsVDPixmap::kPixFormat_RGB888:
+	case nsVDPixmap::kPixFormat_XRGB8888:
+		if (!VideoSource::setTargetFormat(format))
+			return false;
 
 		invalidateFrameBuffer();
 
-		mvbFrameBuffer.init(getFrameBuffer(), bmihDecompressedFormat->biWidth, bmihDecompressedFormat->biHeight, depth);
+		mvbFrameBuffer.init((void *)getFrameBuffer(), mpTargetFormatHeader->biWidth, mpTargetFormatHeader->biHeight, mpTargetFormatHeader->biBitCount);
 		mvbFrameBuffer.AlignTo4();
 
 		return true;
@@ -243,17 +201,9 @@ bool VideoSourceImages::setDecompressedFormat(int depth) {
 	return false;
 }
 
-bool VideoSourceImages::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
-	if (pbih->biCompression == BI_RGB && (pbih->biWidth == getImageFormat()->biWidth) && (pbih->biHeight == getImageFormat()->biHeight) && pbih->biPlanes == 1) {
-		return setDecompressedFormat(pbih->biBitCount);
-	}
-
-	return false;
-}
-
 ///////////////////////////////////////////////////////////////////////////
 
-void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
+const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
 	// We may get a zero-byte frame if we already have the image.
 
 	if (!data_len)
@@ -261,11 +211,21 @@ void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL i
 
 	int w, h;
 	bool bHasAlpha;
-	bool bIsBMP = DecodeBMPHeader(inputBuffer, data_len, w, h, bHasAlpha);
-	bool bIsTGA = !bIsBMP && DecodeTGAHeader(inputBuffer, data_len, w, h, bHasAlpha);
+	bool bIsJPG = IsJPEGHeader(inputBuffer, data_len);
+	bool bIsBMP = !bIsJPG && DecodeBMPHeader(inputBuffer, data_len, w, h, bHasAlpha);
+	bool bIsTGA = !bIsJPG && !bIsBMP && DecodeTGAHeader(inputBuffer, data_len, w, h, bHasAlpha);
 
-	if (!bIsBMP && !bIsTGA)
-		throw MyError("Image file must be in Windows BMP or truecolor TARGA format.");
+	if (!bIsJPG && !bIsBMP && !bIsTGA)
+		throw MyError("Image file must be in Windows BMP, truecolor TARGA, or sequential JPEG format.");
+
+	vdautoptr<IVDJPEGDecoder> pDecoder;
+
+	if (bIsJPG) {
+		pDecoder = VDCreateJPEGDecoder();
+		pDecoder->Begin(inputBuffer, data_len);
+		pDecoder->DecodeHeader(w, h);
+	}
+
 
 	// Check image header.
 
@@ -273,11 +233,11 @@ void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL i
 
 	if (getFrameBuffer()) {
 		if (w != pFormat->biWidth || h != pFormat->biHeight)
-			throw MyError("Image %d (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
-					, frame_num + mImageBaseNumber, w, h, pFormat->biWidth, pFormat->biHeight);
+			throw MyError("Image %lu (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
+					, (unsigned long)(frame_num + mImageBaseNumber), w, h, pFormat->biWidth, pFormat->biHeight);
 
 	} else {
-		void *pFrameBuffer = AllocFrameBuffer(w * h * 4);
+		AllocFrameBuffer(w * h * 4);
 
 		pFormat->biSize				= sizeof(BITMAPINFOHEADER);
 		pFormat->biWidth			= w;
@@ -296,6 +256,19 @@ void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL i
 
 	}
 
+	if (bIsJPG) {
+		int format;
+
+		switch(mvbFrameBuffer.depth) {
+		case 16:	format = IVDJPEGDecoder::kFormatXRGB1555;	break;
+		case 24:	format = IVDJPEGDecoder::kFormatRGB888;		break;
+		case 32:	format = IVDJPEGDecoder::kFormatXRGB8888;	break;
+		}
+
+		pDecoder->DecodeImage((char *)mvbFrameBuffer.data + mvbFrameBuffer.pitch * (mvbFrameBuffer.h - 1), -mvbFrameBuffer.pitch, format);
+		pDecoder->End();
+	}
+
 	if (bIsBMP)
 		DecodeBMP(inputBuffer, data_len, mvbFrameBuffer);
 	if (bIsTGA)
@@ -306,9 +279,9 @@ void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL i
 	return lpvBuffer;
 }
 
-void *VideoSourceImages::getFrame(LONG frameNum) {
-	long lBytes;
-	void *pFrame = NULL;
+const void *VideoSourceImages::getFrame(VDPosition frameNum) {
+	uint32 lBytes;
+	const void *pFrame = NULL;
 
 	if (mCachedFrame == frameNum)
 		return lpvBuffer;
@@ -317,10 +290,10 @@ void *VideoSourceImages::getFrame(LONG frameNum) {
 		char *pBuffer = new char[lBytes];
 
 		try {
-			long lReadBytes;
+			uint32 lReadBytes;
 
 			read(frameNum, 1, pBuffer, lBytes, &lReadBytes, NULL);
-			pFrame = streamGetFrame(pBuffer, lReadBytes, TRUE, FALSE, frameNum);
+			pFrame = streamGetFrame(pBuffer, lReadBytes, FALSE, frameNum);
 		} catch(MyError e) {
 			delete[] pBuffer;
 			throw;

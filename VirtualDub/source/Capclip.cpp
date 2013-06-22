@@ -196,8 +196,8 @@ LRESULT CALLBACK CaptureClippingFrameProc(HWND hWnd, VIDEOHDR *vhdr) {
 	return 0;
 }
 
-BOOL APIENTRY CaptureClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	HWND hwndCapture = (HWND)GetWindowLong(hDlg, DWL_USER);
+INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	HWND hwndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
@@ -210,7 +210,7 @@ BOOL APIENTRY CaptureClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG 
 				HWND hWnd, hWndCancel;
 				hwndCapture = (HWND)lParam;
 
-				SetWindowLong(hDlg, DWL_USER, lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 				g_hwndClippingDisplay = hWnd = GetDlgItem(hDlg, IDC_BORDERS);
 				ccb.x1	= g_rCaptureClip.left;

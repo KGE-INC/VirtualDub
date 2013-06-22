@@ -1246,7 +1246,7 @@ inter_loop:
 	align		16
 
 do_dc_mmx:
-	movd		mm0,[eax]
+	movd		mm0,dword ptr [eax]
 	pxor		mm1,mm1
 	mov		edx,[esp+16]
 	punpcklwd	mm0,mm0
@@ -1305,17 +1305,17 @@ do_dc_isse:
 	ja		do_dc_mjpeg
 	packuswb	mm0,mm0
 
-	movntq		[ecx],mm0		;row 0
+	movq		[ecx],mm0		;row 0
 	lea		edx,[eax+eax*2]
-	movntq		[ecx+eax],mm0		;row 1
+	movq		[ecx+eax],mm0		;row 1
 	add		edx,ecx
-	movntq		[ecx+eax*2],mm0		;row 2
+	movq		[ecx+eax*2],mm0		;row 2
 	lea		ecx,[ecx+eax*2]
-	movntq		[edx],mm0		;row 3
-	movntq		[ecx+eax*2],mm0		;row 4
-	movntq		[edx+eax*2],mm0		;row 5
-	movntq		[ecx+eax*4],mm0		;row 6
-	movntq		[edx+eax*4],mm0		;row 7
+	movq		[edx],mm0		;row 3
+	movq		[ecx+eax*2],mm0		;row 4
+	movq		[edx+eax*2],mm0		;row 5
+	movq		[ecx+eax*4],mm0		;row 6
+	movq		[edx+eax*4],mm0		;row 7
 	ret
 
 	align		16

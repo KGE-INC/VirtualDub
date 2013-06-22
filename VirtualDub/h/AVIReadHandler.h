@@ -32,9 +32,9 @@ public:
 	virtual HRESULT EndStreaming()=0;
 	virtual HRESULT Info(AVISTREAMINFO *pasi, long lSize)=0;
 	virtual bool IsKeyFrame(long lFrame)=0;
-	virtual HRESULT Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples)=0;
-	virtual long Start()=0;
-	virtual long End()=0;
+	virtual HRESULT Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples)=0;
+	virtual VDPosition Start()=0;
+	virtual VDPosition End()=0;
 	virtual long PrevKeyFrame(long lFrame)=0;
 	virtual long NextKeyFrame(long lFrame)=0;
 	virtual long NearestKeyFrame(long lFrame)=0;
@@ -44,6 +44,7 @@ public:
 	virtual bool isKeyframeOnly()=0;
 
 	virtual bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev)=0;
+	virtual sint64		getSampleBytePosition(VDPosition sample_num) = 0;
 };
 
 class IAVIReadHandler {

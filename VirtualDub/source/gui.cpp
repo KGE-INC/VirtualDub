@@ -28,11 +28,14 @@
 #include "VideoSource.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
+#include <vd2/system/w32assist.h>
 #include "VBitmap.h"
+#include "timeline.h"
 
 #include "gui.h"
 #include "resource.h"
 #include "misc.h"
+#include "oshelper.h"
 
 #define MAX_STATUS_PARTS (8)
 
@@ -52,7 +55,7 @@ extern "C" void ycblit(void *, void *);
 
 ////////////////////////////////////////////////////////////////////////////
 
-BOOL CALLBACK DebugDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK DebugDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		SetDlgItemInt(hdlg, IDC_EDIT, g_debugVal, FALSE);
@@ -100,6 +103,8 @@ BOOL CALLBACK DebugDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 void guiOpenDebug() {
 	if (!g_hwndDebugWindow)
 		g_hwndDebugWindow = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_DEBUGVAL), NULL, DebugDlgProc);
+#pragma vdpragma_TODO("improve this")
+#ifndef _M_AMD64
 	else if (GetKeyState(VK_CONTROL)<0) {
 		char *p = new char[16384+128];
 		static const struct {
@@ -118,7 +123,6 @@ void guiOpenDebug() {
 				0x404040,
 			}
 		};
-
 		ycblit(p,0);
 
 		HDC hdc = GetDC(g_hWnd);
@@ -127,6 +131,7 @@ void guiOpenDebug() {
 
 		delete[] p;
 	}
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -153,7 +158,15 @@ bool guiCheckDialogs(LPMSG pMsg) {
 
 	pmdn = g_listModelessDlgs.AtHead();
 
+	HWND hwndAncestor = NULL;
+	if (pMsg->hwnd)
+		hwndAncestor = VDGetAncestorW32(pMsg->hwnd, GA_ROOT);
+
 	while(pmdn_next = pmdn->NextFromHead()) {
+		if (pmdn->mhAccel && hwndAncestor == pmdn->hdlg)
+			if (TranslateAccelerator(pmdn->hdlg, pmdn->mhAccel, pMsg))
+				return true;
+
 		if (IsDialogMessage(pmdn->hdlg, pMsg))
 			return true;
 
@@ -168,10 +181,36 @@ void guiAddModelessDialog(ModelessDlgNode *pmdn) {
 		g_listModelessDlgs.AddTail(pmdn);
 }
 
+HHOOK g_vdModelessDialogHook;
+bool g_vdModelessRecursionFlag;
+
+LRESULT CALLBACK VDModelessDialogHookW32(int code, WPARAM wParam, LPARAM lParam) {
+	if (code == MSGF_DIALOGBOX && !g_vdModelessRecursionFlag) {
+		g_vdModelessRecursionFlag = true;
+		bool taken = guiCheckDialogs((LPMSG)lParam);
+		g_vdModelessRecursionFlag = false;
+		if (taken)
+			return TRUE;
+	}
+
+	return CallNextHookEx(g_vdModelessDialogHook, code, wParam, lParam);
+}
+
+void VDDeinstallModelessDialogHookW32() {
+	if (g_vdModelessDialogHook) {
+		UnhookWindowsHookEx(g_vdModelessDialogHook);
+		g_vdModelessDialogHook = NULL;
+	}
+}
+
+void VDInstallModelessDialogHookW32() {
+	if (!g_vdModelessDialogHook)
+		g_vdModelessDialogHook = SetWindowsHookEx(WH_MSGFILTER, VDModelessDialogHookW32, NULL, GetCurrentThreadId());
+}
+
 void guiRedoWindows(HWND hWnd) {
 	HWND hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 	HWND hWndPosition = GetDlgItem(hWnd, IDC_POSITION);
-	HWND hwndAudio = GetDlgItem(hWnd, 12345);
 	RECT rClient, rStatus, rPosition;
 	INT aWidth[MAX_STATUS_PARTS];
 	int nParts;
@@ -180,6 +219,8 @@ void guiRedoWindows(HWND hWnd) {
 	GetWindowRect(hWndStatus, &rStatus);
 	GetWindowRect(hWndPosition, &rPosition);
 
+#if 0
+	HWND hwndAudio = GetDlgItem(hWnd, 12345);
 	SetWindowPos(hwndAudio,
 				NULL,
 				0,
@@ -187,6 +228,7 @@ void guiRedoWindows(HWND hWnd) {
 				rClient.right,
 				256,
 				SWP_NOACTIVATE|SWP_NOZORDER);
+#endif
 
 	SetWindowPos(hWndPosition,
 				NULL,
@@ -245,6 +287,22 @@ void guiSetTitle(HWND hWnd, UINT uID, ...) {
 	SetWindowText(hWnd, buf2);
 }
 
+void guiSetTitleW(HWND hWnd, UINT uID, ...) {
+	wchar_t buf2[256];
+	va_list val;
+
+	VDStringW s(VDLoadStringW32(uID));
+
+	va_start(val, uID);
+	vswprintf(buf2, s.c_str(), val);
+	va_end(val);
+
+	if (GetVersion() < 0x80000000)
+		SetWindowTextW(hWnd, buf2);
+	else
+		SetWindowText(hWnd, VDTextWToA(buf2).c_str());
+}
+
 void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, UINT *iTranslator) {
 	HWND hwndStatus = GetDlgItem(hwnd, IDC_STATUS_WINDOW);
 	char msgbuf[256];
@@ -300,73 +358,126 @@ void guiResizeDlgItem(HWND hdlg, UINT id, LONG x, LONG y, LONG dx, LONG dy) {
 }
 
 void guiSubclassWindow(HWND hwnd, WNDPROC newproc) {
-	SetWindowLong(hwnd, GWL_USERDATA, GetWindowLong(hwnd, GWL_WNDPROC));
-	SetWindowLong(hwnd, GWL_WNDPROC, (LPARAM)newproc);
+	SetWindowLongPtr(hwnd, GWLP_USERDATA, GetWindowLongPtr(hwnd, GWLP_WNDPROC));
+	SetWindowLongPtr(hwnd, GWLP_WNDPROC, (LPARAM)newproc);
 }
 
 ///////////////////////////////////////
 
 extern vdrefptr<VideoSource> inputVideoAVI;
 
-void guiPositionInitFromStream(HWND hWndPosition) {
+void guiPositionInitFromStream(IVDPositionControl *pc) {
 	if (!inputVideoAVI) return;
 
 	const VDFraction videoRate(inputVideoAVI->getRate());
 
-	SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputVideoAVI->getStart());
-	SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputVideoAVI->getEnd());
-	SendMessage(hWndPosition, PCM_SETFRAMERATE, videoRate.getHi(), videoRate.getLo());
+	pc->SetRange(inputVideoAVI->getStart(), inputVideoAVI->getEnd());
+	pc->SetFrameRate(videoRate);
 }
 
-LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
+void VDTranslatePositionCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
+	switch(HIWORD(wParam)) {
+		case PCN_START:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_START, 0), NULL);
+			break;
+		case PCN_BACKWARD:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_PREV, 0), NULL);
+			break;
+		case PCN_FORWARD:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_NEXT, 0), NULL);
+			break;
+		case PCN_END:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_END, 0), NULL);
+			break;
+		case PCN_KEYPREV:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_KEYPREV, 0), NULL);
+			break;
+		case PCN_KEYNEXT:
+			SendMessage(hwnd, WM_COMMAND, MAKELONG(ID_VIDEO_SEEK_KEYNEXT, 0), NULL);
+			break;
+	}
+}
+
+bool VDHandleTimelineCommand(IVDPositionControl *pc, VDTimeline *pTimeline, UINT cmd) {
+	switch(cmd) {
+		case ID_VIDEO_SEEK_START:		pc->SetPosition(pTimeline->GetStart());			return true;
+		case ID_VIDEO_SEEK_PREV:		pc->SetPosition(pc->GetPosition() - 1);			return true;
+		case ID_VIDEO_SEEK_NEXT:		pc->SetPosition(pc->GetPosition() + 1);			return true;
+		case ID_VIDEO_SEEK_END:			pc->SetPosition(pTimeline->GetEnd());			return true;
+		case ID_VIDEO_SEEK_PREVONESEC:	pc->SetPosition(pc->GetPosition() - 50);		return true;
+		case ID_VIDEO_SEEK_NEXTONESEC:	pc->SetPosition(pc->GetPosition() + 50);		return true;
+
+		case ID_VIDEO_SEEK_KEYPREV:
+			{
+				VDPosition pos = pTimeline->GetPrevKey(pc->GetPosition());
+
+				if (pos < 0) pos = pTimeline->GetStart();
+
+				pc->SetPosition(pos);
+			}
+			return true;
+		case ID_VIDEO_SEEK_KEYNEXT:
+			{
+				VDPosition pos = pTimeline->GetNextKey(pc->GetPosition());
+
+				if (pos < 0) pos = pTimeline->GetEnd();
+
+				pc->SetPosition(pos);
+			}
+			return true;
+	}
+
+	return false;
+}
+
+VDPosition guiPositionHandleCommand(WPARAM wParam, IVDPositionControl *pc) {
 	if (!inputVideoAVI) return -1;
 
 	switch(HIWORD(wParam)) {
 		case PCN_START:
-			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->getStart());
+			pc->SetPosition(inputVideoAVI->getStart());
 			return inputVideoAVI->getStart();
 		case PCN_BACKWARD:
 			{
-				LONG lSample = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
+				VDPosition pos = pc->GetPosition();
 
-				if (lSample > inputVideoAVI->getStart()) {
-					SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample-1);
-					return lSample-1;
+				if (pos > inputVideoAVI->getStart()) {
+					pc->SetPosition(pos - 1);
+					return pos - 1;
 				}
 			}
 			break;
 		case PCN_FORWARD:
 			{
-				LONG lSample = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
+				VDPosition pos = pc->GetPosition();
 
-				if (lSample < inputVideoAVI->getEnd()) {
-					SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample+1);
-					return lSample+1;
+				if (pos < inputVideoAVI->getEnd()) {
+					pc->SetPosition(pos + 1);
+					return pos + 1;
 				}
 			}
 			break;
 		case PCN_END:
-			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->getEnd());
+			pc->SetPosition(inputVideoAVI->getEnd());
 			return inputVideoAVI->getEnd();
-			break;
 
 		case PCN_KEYPREV:
 			{
-				LONG lSample = inputVideoAVI->prevKey(SendMessage((HWND)lParam, PCM_GETPOS, 0, 0));
+				VDPosition lSample = inputVideoAVI->prevKey(pc->GetPosition());
 
 				if (lSample < 0) lSample = inputVideoAVI->getStart();
 
-				SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample);
+				pc->SetPosition(lSample);
 				return lSample;
 			}
 			break;
 		case PCN_KEYNEXT:
 			{
-				LONG lSample = inputVideoAVI->nextKey(SendMessage((HWND)lParam, PCM_GETPOS, 0, 0));
+				VDPosition lSample = inputVideoAVI->nextKey(pc->GetPosition());
 
 				if (lSample < 0) lSample = inputVideoAVI->getEnd();
 
-				SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample);
+				pc->SetPosition(lSample);
 				return lSample;
 			}
 			break;
@@ -375,9 +486,8 @@ LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
 	return -1;
 }
 
-LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam) {
+VDPosition guiPositionHandleNotify(LPARAM lParam, IVDPositionControl *pc) {
 	LPNMHDR nmh = (LPNMHDR)lParam;
-	LONG pos;
 
 	switch(nmh->code) {
 	case PCN_THUMBTRACK:
@@ -385,9 +495,8 @@ LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam) {
 	case PCN_PAGELEFT:
 	case PCN_PAGERIGHT:
 	case CCN_REFRESHFRAME:
-		pos = SendMessage(nmh->hwndFrom, PCM_GETPOS, 0, 0);
-
-		if (inputVideoAVI) return pos;
+		if (inputVideoAVI)
+			return pc->GetPosition();
 
 		break;
 	}
@@ -395,7 +504,7 @@ LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam) {
 	return -1;
 }
 
-void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
+void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 	if (lFrame<0) return;
 	try {
 		BITMAPINFOHEADER *dcf;
@@ -406,14 +515,15 @@ void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
 			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)NULL, (LPARAM)NULL);
       else {
          Pixel32 *tmpmem;
-         void *pFrame = inputVideoAVI->getFrame(lFrame);
+         const void *pFrame = inputVideoAVI->getFrame(lFrame);
 
          if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
             VBitmap vbt(tmpmem, w, h, 32);
             VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
             BITMAPINFOHEADER bih;
 
-			vbs.BitBlt(0, 0, &VBitmap(pFrame, dcf), 0, 0, -1, -1);
+			VBitmap srcbm((void *)pFrame, dcf);
+			vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
             vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
             vbt.MakeBitmapHeader(&bih);
 
@@ -704,7 +814,7 @@ void VDAutoLogDisplay::Post(VDGUIHandle hParent) {
 	}
 }
 
-BOOL CALLBACK VDAutoLogDisplay::DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK VDAutoLogDisplay::DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
@@ -737,11 +847,11 @@ VDDialogBaseW32::VDDialogBaseW32(UINT dlgid)
 {
 }
 
-BOOL CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDDialogBaseW32 *pThis = (VDDialogBaseW32 *)GetWindowLong(hwnd, DWL_USER);
+INT_PTR CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	VDDialogBaseW32 *pThis = (VDDialogBaseW32 *)GetWindowLongPtr(hwnd, DWLP_USER);
 
 	if (msg == WM_INITDIALOG) {
-		SetWindowLong(hwnd, DWL_USER, lParam);
+		SetWindowLongPtr(hwnd, DWLP_USER, lParam);
 		pThis = (VDDialogBaseW32 *)lParam;
 		pThis->mhdlg = hwnd;
 	}
@@ -751,6 +861,13 @@ BOOL CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 LRESULT VDDialogBaseW32::ActivateDialog(VDGUIHandle hParent) {
 	return DialogBoxParam(g_hInst, mpszDialogName, (HWND)hParent, StaticDlgProc, (LPARAM)this);
+}
+
+LRESULT VDDialogBaseW32::ActivateDialogDual(VDGUIHandle hParent) {
+	if (VDIsWindowsNT())
+		return DialogBoxParamW(g_hInst, IS_INTRESOURCE(mpszDialogName) ? (LPCWSTR)mpszDialogName : VDTextAToW(mpszDialogName).c_str(), (HWND)hParent, StaticDlgProc, (LPARAM)this);
+	else
+		return DialogBoxParamA(g_hInst, mpszDialogName, (HWND)hParent, StaticDlgProc, (LPARAM)this);
 }
 
 void VDDialogBaseW32::End(LRESULT res) {

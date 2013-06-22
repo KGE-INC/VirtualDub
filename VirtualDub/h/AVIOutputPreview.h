@@ -29,7 +29,7 @@ private:
 
 	bool initAudio();
 public:
-	AVIAudioPreviewOutputStream(AVIOutput *out);
+	AVIAudioPreviewOutputStream();
 	~AVIAudioPreviewOutputStream();
 
 	bool init();
@@ -42,13 +42,6 @@ public:
 	bool isFrozen();
 	bool isSilent();
 	void stop();
-};
-
-class AVIVideoPreviewOutputStream : public AVIOutputStream {
-public:
-	AVIVideoPreviewOutputStream(AVIOutput *out) : AVIOutputStream(out) { };
-
-	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
 };
 
 class AVIOutputPreview : public AVIOutput {

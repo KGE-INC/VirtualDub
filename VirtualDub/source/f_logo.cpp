@@ -31,7 +31,6 @@
 #include "resource.h"
 #include "gui.h"
 #include "filter.h"
-#include "resample.h"
 #include "vbitmap.h"
 #include "oshelper.h"
 #include "image.h"
@@ -164,6 +163,7 @@ static void ScalePremultipliedAlphaSCALAR(Pixel32 *dst, PixOffset dstoff, PixDim
 	} while(--h);
 }
 
+#ifdef _M_IX86
 static void __declspec(naked) __cdecl AlphaBltMMX(Pixel32 *dst, PixOffset dstoff, const Pixel32 *src, PixOffset srcoff, PixDim w, PixDim h) {
 	static const __int64 x80w = 0x0080008000800080;
 	__asm {
@@ -398,6 +398,7 @@ xloop:
 		ret
 	}
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -418,14 +419,22 @@ static void AlphaBlt(VBitmap& dst, int x1, int y1, const VBitmap& src, int x2, i
 	if (!dualclip(dst, x1, y1, src, x2, y2, w, h))
 		return;
 
+#ifdef _M_IX86
 	(MMX_enabled ? AlphaBltMMX : AlphaBltSCALAR)(dst.Address32(x1, y1+h-1), dst.pitch, src.Address32(x2, y2+h-1), src.pitch, w, h);
+#else
+	AlphaBltSCALAR(dst.Address32(x1, y1+h-1), dst.pitch, src.Address32(x2, y2+h-1), src.pitch, w, h);
+#endif
 }
 
 static void CombineAlphaBlt(VBitmap& dst, int x1, int y1, const VBitmap& src, int x2, int y2, int w, int h) {
 	if (!dualclip(dst, x1, y1, src, x2, y2, w, h))
 		return;
 
+#ifdef _M_IX86
 	(MMX_enabled ? CombineAlphaBltMMX : CombineAlphaBltSCALAR)(dst.Address32(x1, y1+h-1), dst.pitch, src.Address32(x2, y2+h-1), src.pitch, w, h);
+#else
+	CombineAlphaBltSCALAR(dst.Address32(x1, y1+h-1), dst.pitch, src.Address32(x2, y2+h-1), src.pitch, w, h);
+#endif
 }
 
 static void PremultiplyAlpha(VBitmap& dst, int x1, int y1, int w, int h) {
@@ -437,7 +446,11 @@ static void PremultiplyAlpha(VBitmap& dst, int x1, int y1, int w, int h) {
 	if (w<=0 || h<=0)
 		return;
 
+#ifdef _M_IX86
 	(MMX_enabled ? PremultiplyAlphaMMX : PremultiplyAlphaSCALAR)(dst.Address32(x1, y1+h-1), dst.pitch, w, h);
+#else
+	PremultiplyAlphaSCALAR(dst.Address32(x1, y1+h-1), dst.pitch, w, h);
+#endif
 }
 
 static void ScalePremultipliedAlpha(VBitmap& dst, int x1, int y1, int w, int h, unsigned scale8) {
@@ -449,7 +462,11 @@ static void ScalePremultipliedAlpha(VBitmap& dst, int x1, int y1, int w, int h, 
 	if (w<=0 || h<=0)
 		return;
 
+#ifdef _M_IX86
 	(MMX_enabled ? ScalePremultipliedAlphaMMX : ScalePremultipliedAlphaSCALAR)(dst.Address32(x1, y1+h-1), dst.pitch, w, h, scale8);
+#else
+	ScalePremultipliedAlphaSCALAR(dst.Address32(x1, y1+h-1), dst.pitch, w, h, scale8);
+#endif
 }
 
 static void SetAlpha(VBitmap& vbdst, int x1, int y1, int w, int h) {
@@ -502,16 +519,14 @@ static int logo_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	int y = mfd->pos_y + (((fa->dst.h - mfd->vbLogo.h) * mfd->justify_y + 1)>>1);
 
 	if (mfd->bAlphaBlendingRequired) {
-		AlphaBlt(fa->dst, x, y, mfd->vbLogo, 0, 0, fa->dst.w, fa->dst.h);
+		AlphaBlt((VBitmap&)fa->dst, x, y, mfd->vbLogo, 0, 0, fa->dst.w, fa->dst.h);
 	} else
-		fa->dst.BitBlt(x, y, &mfd->vbLogo, 0, 0, -1, -1);
+		((VBitmap&)fa->dst).BitBlt(x, y, &mfd->vbLogo, 0, 0, -1, -1);
 
 	return 0;
 }
 
 static long logo_param(FilterActivation *fa, const FilterFunctions *ff) {
-	LogoFilterData *mfd = (LogoFilterData *)fa->filter_data;
-
 	fa->dst.offset = fa->src.offset;
 	return 0;
 }
@@ -591,7 +606,7 @@ static const char *logoOpenImage(HWND hwnd, const char *oldfn) {
 
 	ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
 	ofn.hwndOwner			= hwnd;
-	ofn.lpstrFilter			= "Image file (*.bmp,*.tga)\0*.bmp;*.tga\0All files (*.*)\0*.*\0";
+	ofn.lpstrFilter			= "Image file (*.bmp,*.tga,*.jpg,*.jpeg)\0*.bmp;*.tga;*.jpg;*.jpeg\0All files (*.*)\0*.*\0";
 	ofn.lpstrCustomFilter	= NULL;
 	ofn.nFilterIndex		= 1;
 	ofn.lpstrFile			= szFile;
@@ -665,15 +680,15 @@ static void LogoUpdateOpacity(HWND hDlg, LogoFilterData *mfd) {
 	}
 }
 
-static BOOL APIENTRY logoDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	LogoFilterData *mfd = (struct LogoFilterData *)GetWindowLong(hDlg, DWL_USER);
+static INT_PTR APIENTRY logoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	LogoFilterData *mfd = (struct LogoFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
     switch (message)
     {
         case WM_INITDIALOG:
 			{
 				mfd = (LogoFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				SetDlgItemText(hDlg, IDC_LOGOFILE, mfd->szLogoPath);
 				SetDlgItemText(hDlg, IDC_ALPHAFILE, mfd->szAlphaPath);

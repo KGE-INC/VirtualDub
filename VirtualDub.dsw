@@ -3,6 +3,22 @@ Microsoft Developer Studio Workspace File, Format Version 6.00
 
 ###############################################################################
 
+Project: "Ami"=.\Ami\Ami.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\ami
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "Dita"=.\Dita\Dita.dsp - Package Owner=<4>
 
 Package=<5>
@@ -26,6 +42,22 @@ Package=<5>
     begin source code control
     Perforce Project
     .\virtualdub\docs
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "Kasumi"=.\Kasumi\Kasumi.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\kasumi
     end source code control
 }}}
 
@@ -128,9 +160,6 @@ Package=<5>
 Package=<4>
 {{{
     Begin Project Dependency
-    Project_Dep_Name vdsvrlnk
-    End Project Dependency
-    Begin Project Dependency
     Project_Dep_Name Sylia
     End Project Dependency
     Begin Project Dependency
@@ -149,19 +178,13 @@ Package=<4>
     Project_Dep_Name Priss
     End Project Dependency
     Begin Project Dependency
-    Project_Dep_Name Setup
-    End Project Dependency
-    Begin Project Dependency
-    Project_Dep_Name vdicmdrv
-    End Project Dependency
-    Begin Project Dependency
-    Project_Dep_Name vdremote
-    End Project Dependency
-    Begin Project Dependency
     Project_Dep_Name Meia
     End Project Dependency
     Begin Project Dependency
-    Project_Dep_Name samplefilter
+    Project_Dep_Name Kasumi
+    End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name Ami
     End Project Dependency
 }}}
 
@@ -174,6 +197,22 @@ Package=<5>
     begin source code control
     Perforce Project
     .\disasm
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "filtsdk2"=.\filtsdk2\filtsdk2.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\filtsdk2
     end source code control
 }}}
 

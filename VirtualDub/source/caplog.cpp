@@ -120,7 +120,7 @@ void CaptureLog::GetDispInfo(NMLVDISPINFO *nldi) {
 	}
 }
 
-BOOL CaptureLog::DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CaptureLog::DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	static char *szColumnNames[]={ "Type","Received","Recorded","Bytes" };
 	static int iColumnWidths[]={ 100,75,75,75 };
 
@@ -274,13 +274,13 @@ BOOL CaptureLog::DlgProc2(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	return FALSE;
 }
 
-BOOL CALLBACK CaptureLog::DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK CaptureLog::DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	if (msg == WM_INITDIALOG) {
-		SetWindowLong(hdlg, DWL_USER, lParam);
+		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 		return ((CaptureLog *)lParam)->DlgProc2(hdlg, msg, wParam, lParam);
 	}
 
-	CaptureLog *thisPtr = (CaptureLog *)GetWindowLong(hdlg, DWL_USER);
+	CaptureLog *thisPtr = (CaptureLog *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 	if (!thisPtr)
 		return FALSE;

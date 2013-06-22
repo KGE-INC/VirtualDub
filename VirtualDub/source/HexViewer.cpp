@@ -623,19 +623,17 @@ LRESULT HexViewer::Handle_WM_CHAR(WPARAM wParam, LPARAM lParam) {
 	if (!isprint(key) || (!bCharMode && !isxdigit(key)))
 		return 0;
 
-	char mask = (char)(bOddHex?0xf0:0x0f);
-
 	if (bCharMode)
-		mpDataSource->ModifyByte(i64Position, key, (char)0);
+		mpDataSource->ModifyByte(i64Position, (char)key, (char)0);
 	else {
 		int v = toupper(key) - '0';
 		if (v > 9)
 			v -= 7;
 
 		if (bOddHex)
-			mpDataSource->ModifyByte(i64Position, v, (char)0xf0);
+			mpDataSource->ModifyByte(i64Position, (char)v, (char)0xf0);
 		else
-			mpDataSource->ModifyByte(i64Position, v<<4, 0x0f);
+			mpDataSource->ModifyByte(i64Position, (char)(v<<4), 0x0f);
 	}	
 
 	// Advance right one char
@@ -845,7 +843,7 @@ LRESULT HexViewer::Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HexViewer *pcd = (HexViewer *)GetWindowLong(hwnd, 0);
+	HexViewer *pcd = (HexViewer *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 
@@ -853,7 +851,7 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 		if (!(pcd = new HexViewer(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (LONG)pcd);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pcd);
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 
 	case WM_CREATE:
@@ -865,7 +863,7 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 	case WM_DESTROY:
 		delete pcd;
-		SetWindowLong(hwnd, 0, 0);
+		SetWindowLongPtr(hwnd, 0, 0);
 		break;
 
 	case WM_MOUSEWHEEL:
@@ -950,9 +948,9 @@ public:
 	HexEditor(HWND);
 	~HexEditor();
 
-	static LRESULT APIENTRY HexEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	static BOOL APIENTRY FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	static BOOL APIENTRY TreeDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK HexEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	static INT_PTR CALLBACK FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	static INT_PTR CALLBACK TreeDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
 	void Init();
@@ -975,7 +973,7 @@ private:
 	LRESULT Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam);
 	LRESULT Handle_WM_SIZE(WPARAM wParam, LPARAM lParam);
 
-	static BOOL CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+	static INT_PTR CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 	bool AskForValues(const char *title, const char *name1, const char *name2, __int64& default1, __int64& default2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2));
 	int JumpVerifier(HWND hdlg, __int64 v1, __int64 v2);
 	int ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2);
@@ -1061,7 +1059,7 @@ void HexEditor::Init() {
 		g_hInst,
 		NULL);
 
-	mpView = (HexViewer *)GetWindowLong(hwndView, 0);
+	mpView = (HexViewer *)GetWindowLongPtr(hwndView, 0);
 }
 
 void HexEditor::Open() {
@@ -1241,7 +1239,7 @@ void HexEditor::ModifyByte(__int64 i64Position, char v, char mask) {
 
 	int offset = (int)i64Position & 15;
 
-	pLine->data[offset] = (pLine->data[offset]&mask) + v;
+	pLine->data[offset] = (char)((pLine->data[offset]&mask) + v);
 	pLine->mod_flags |= 1<<offset;
 
 	// invalidate row cache and display
@@ -1487,7 +1485,7 @@ LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) {
 		{
 			__int64 v1 = mpView->GetPosition(), v2;
 
-			if (AskForValues("Jump to address", "Address (hex):", NULL, v1, v2, JumpVerifier))
+			if (AskForValues("Jump to address", "Address (hex):", NULL, v1, v2, &HexEditor::JumpVerifier))
 				mpView->MoveToByte(v1);
 		}
 		break;
@@ -1495,7 +1493,7 @@ LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) {
 		{
 			__int64 v1 = mpView->GetPosition(), v2;
 
-			if (AskForValues("Truncate file", "Address (hex):", NULL, v1, v2, TruncateVerifier)) {
+			if (AskForValues("Truncate file", "Address (hex):", NULL, v1, v2, &HexEditor::TruncateVerifier)) {
 				if ((0xFFFFFFFF==SetFilePointer(hFile, (LONG)v1, (LONG *)&v1 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
 						|| !SetEndOfFile(hFile))
 					MyWin32Error("Cannot truncate file: %%s", GetLastError()).post(hwnd, "Error");
@@ -1613,14 +1611,14 @@ struct HexEditorAskData {
 	int (HexEditor::*verifier)(HWND, __int64 v1, __int64 v2);
 };
 
-BOOL CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HexEditorAskData *pData = (HexEditorAskData *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HexEditorAskData *pData = (HexEditorAskData *)GetWindowLongPtr(hdlg, DWLP_USER);
 	char buf[32];
 
 	switch(msg) {
 	case WM_INITDIALOG:
 		pData = (HexEditorAskData *)lParam;
-		SetWindowLong(hdlg, DWL_USER, lParam);
+		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 
 		SetWindowText(hdlg, pData->title);
 		sprintf(buf, "%I64X", pData->v1);
@@ -1751,7 +1749,7 @@ int HexEditor::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) {
 void HexEditor::Extract() {
 	__int64 v1 = mpView->GetPosition(), v2=0x1000;
 
-	if (AskForValues("Extract file segment", "Address (hex):", "Length (hex):", v1, v2, ExtractVerifier)) {
+	if (AskForValues("Extract file segment", "Address (hex):", "Length (hex):", v1, v2, &HexEditor::ExtractVerifier)) {
 		char szName[MAX_PATH];
 		OPENFILENAME ofn;
 
@@ -1905,7 +1903,7 @@ void HexEditor::Find(HWND hwndParent) {
 				{
 					DWORD dwActual;
 
-					i = pos & 511;
+					i = (int)pos & 511;
 
 					pos &= ~511i64;
 
@@ -1923,7 +1921,7 @@ void HexEditor::Find(HWND hwndParent) {
 					limit = (int)dwActual;
 
 					if (pos + limit > basepos)
-						limit = basepos - pos;
+						limit = (int)(basepos - pos);
 
 					if (!i) 
 						i = limit;
@@ -1983,7 +1981,7 @@ void HexEditor::Find(HWND hwndParent) {
 					if (bLastPartial)
 						break;
 
-					i = pos & 511;
+					i = (int)pos & 511;
 
 					pos &= ~511i64;
 
@@ -2061,7 +2059,7 @@ xit:
 ////////////////////////////
 
 LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HexEditor *pcd = (HexEditor *)GetWindowLong(hwnd, 0);
+	HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
 
@@ -2069,7 +2067,7 @@ LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 		if (!(pcd = new HexEditor(hwnd)))
 			return FALSE;
 
-		SetWindowLong(hwnd, 0, (LONG)pcd);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pcd);
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 
 	case WM_CREATE:
@@ -2081,7 +2079,7 @@ LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 	case WM_DESTROY:
 		delete pcd;
-		SetWindowLong(hwnd, 0, 0);
+		SetWindowLongPtr(hwnd, 0, 0);
 		break;
 
 	case WM_SETFOCUS:
@@ -2127,12 +2125,12 @@ LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 	return 0;
 }
 
-BOOL APIENTRY HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HexEditor *pcd = (HexEditor *)GetWindowLong(hwnd, DWL_USER);
+INT_PTR CALLBACK HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hwnd, DWLP_USER);
 
 	switch(msg) {
 	case WM_INITDIALOG:
-		SetWindowLong(hwnd, DWL_USER, lParam);
+		SetWindowLongPtr(hwnd, DWLP_USER, lParam);
 		pcd = (HexEditor *)lParam;
 		pcd->hwndFind = hwnd;
 		pcd->mdnFind.hdlg = hwnd;
@@ -2355,12 +2353,12 @@ void HexEditor::RIFFTree(HWND hwndTV) {
 	SendMessage(hwndTV, WM_SETFONT, (WPARAM)hfont, TRUE);
 }
 
-BOOL APIENTRY HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HexEditor *pcd = (HexEditor *)GetWindowLong(hdlg, DWL_USER);
+INT_PTR CALLBACK HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hdlg, DWLP_USER);
 
 	switch(msg) {
 	case WM_INITDIALOG:
-		SetWindowLong(hdlg, DWL_USER, lParam);
+		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 		pcd = (HexEditor *)lParam;
 		pcd->hwndTree = hdlg;
 		pcd->RIFFTree(GetDlgItem(hdlg, IDC_TREE));
@@ -2408,7 +2406,7 @@ BOOL APIENTRY HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 					}
 				}
 
-				SetWindowLong(hdlg, DWL_MSGRESULT, 1);
+				SetWindowLongPtr(hdlg, DWLP_MSGRESULT, 1);
 			}
 			return TRUE;
 		}

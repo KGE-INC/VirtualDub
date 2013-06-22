@@ -37,7 +37,7 @@ public:
 
 	virtual const AVISTREAMINFO& getStreamInfo() = 0;		// DELETE ME I'M STUPID
 
-	virtual int read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead) = 0;
+	virtual int read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) = 0;
 
 	virtual void *getFormat() const = 0;
 	virtual int getFormatLen() const = 0;
@@ -54,13 +54,12 @@ public:
 		kErrorModeCount
 	};
 
+	virtual ErrorMode getDecodeErrorMode() = 0;
 	virtual void setDecodeErrorMode(ErrorMode mode) = 0;
 	virtual bool isDecodeErrorModeSupported(ErrorMode mode) = 0;
 
-	virtual LONG msToSamples(LONG lMs) const = 0;
-	virtual LONG samplesToMs(LONG lSamples) const = 0;
-
-//	virtual LONG samplesToSamples(const DubSource *source, LONG lSamples) const = 0;
+	virtual VDPosition msToSamples(VDTime lMs) const = 0;
+	virtual VDTime samplesToMs(VDPosition lSamples) const = 0;
 };
 
 class DubSource : public vdrefcounted<IVDStreamSource> {
@@ -71,7 +70,8 @@ private:
 protected:
 	void *allocFormat(int format_len);
 
-	LONG lSampleFirst, lSampleLast;
+	VDPosition	mSampleFirst;
+	VDPosition	mSampleLast;
 	AVISTREAMINFO	streamInfo;
 
 	DubSource();
@@ -81,15 +81,15 @@ public:
 	virtual bool init();
 
 	virtual VDPosition getLength() {
-		return lSampleLast - lSampleFirst;
+		return mSampleLast - mSampleFirst;
 	}
 
 	virtual VDPosition getStart() {
-		return lSampleFirst;
+		return mSampleFirst;
 	}
 
 	virtual VDPosition getEnd() {
-		return lSampleLast;
+		return mSampleLast;
 	}
 
 	virtual const VDFraction getRate() {
@@ -100,8 +100,8 @@ public:
 		return streamInfo;
 	}
 
-	virtual int read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead);
-	virtual int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead) = 0;
+	virtual int read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
+	virtual int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) = 0;
 
 	void *getFormat() const { return format; }
 	int getFormatLen() const { return format_len; }
@@ -112,31 +112,17 @@ public:
 	virtual void streamBegin( bool fRealTime);
 	virtual void streamEnd();
 
+	virtual ErrorMode getDecodeErrorMode() { return kErrorModeReportAll; }
 	virtual void setDecodeErrorMode(ErrorMode mode) {}
-	virtual bool isDecodeErrorModeSupported(ErrorMode mode) { return false; }
+	virtual bool isDecodeErrorModeSupported(ErrorMode mode) { return mode != kErrorModeReportAll; }
 
-	LONG msToSamples(LONG lMs) const {
-		return (LONG)(((__int64)lMs * streamInfo.dwRate + (__int64)500 * streamInfo.dwScale) / ((__int64)1000 * streamInfo.dwScale));
-	}
-	LONG samplesToMs(LONG lSamples) const {
-		return (LONG)(
-				(((__int64)lSamples * streamInfo.dwScale) * 1000 + streamInfo.dwRate/2) / streamInfo.dwRate
-			);
+	VDPosition msToSamples(VDTime lMs) const {
+		const sint64 denom = (sint64)1000 * streamInfo.dwScale;
+		return (lMs * streamInfo.dwRate + (denom >> 1)) / denom;
 	}
 
-	// This is more accurate than AVIStreamSampleToSample(), which does a conversion to
-	// milliseconds and back.
-
-	static LONG samplesToSamples(const AVISTREAMINFO *dest, const AVISTREAMINFO *source, LONG lSamples) {
-		__int64 divisor = (__int64)source->dwRate * dest->dwScale;
-
-		return (LONG)((((__int64)lSamples * source->dwScale) * dest->dwRate + divisor/2)
-				/ divisor);
-	}
-
-
-	LONG samplesToSamples(const DubSource *source, LONG lSamples) const {
-		return samplesToSamples(&streamInfo, &source->streamInfo, lSamples);
+	VDTime samplesToMs(VDPosition lSamples) const {
+		return ((lSamples * streamInfo.dwScale) * 1000 + (streamInfo.dwRate >> 1)) / streamInfo.dwRate;
 	}
 };
 

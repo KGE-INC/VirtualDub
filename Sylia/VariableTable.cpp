@@ -1,6 +1,8 @@
 #include <string.h>
+#include <stddef.h>
 
 #include "ScriptError.h"
+#include "StringHeap.h"
 
 #include "VariableTable.h"
 
@@ -20,13 +22,28 @@ VariableTable::~VariableTable() {
 
 
 long VariableTable::Hash(char *szName) {
-	long hc = 0;
+	unsigned hc = 0;
 	char c;
 
 	while(c=*szName++)
-		hc = (hc + 17) * (int)(unsigned char)c;
+		hc = (hc + 17) * (unsigned char)c;
 
-	return hc % lHashTableSize;
+	return (long)(hc % lHashTableSize);
+}
+
+void VariableTable::MarkStrings(VDScriptStringHeap& heap) {
+	for(long hc=0; hc<lHashTableSize; ++hc) {
+		VariableTableEntry *vte = lpHashTable[hc];
+
+		while(vte) {
+			const VDScriptValue& val = vte->v;
+
+			if (val.isString())
+				heap.Mark(*val.asString());
+
+			vte = vte->next;
+		}
+	}
 }
 
 VariableTableEntry *VariableTable::Lookup(char *szName) {
@@ -52,7 +69,7 @@ VariableTableEntry *VariableTable::Declare(char *szName) {
 
 	vte			= Allocate(lNameLen);
 	vte->next	= lpHashTable[lHashVal];
-	vte->v		= CScriptValue();
+	vte->v		= VDScriptValue();
 	strcpy(vte->szName, szName);
 
 	lpHashTable[lHashVal] = vte;
@@ -61,7 +78,7 @@ VariableTableEntry *VariableTable::Declare(char *szName) {
 }
 
 VariableTableEntry *VariableTable::Allocate(long lNameLen) {
-	VariableTableEntry *vte = (VariableTableEntry *)varheap.Allocate(sizeof(VariableTableEntry) + lNameLen);
+	VariableTableEntry *vte = (VariableTableEntry *)varheap.Allocate(offsetof(VariableTableEntry, szName) + lNameLen);
 
 	if (!vte) SCRIPT_ERROR(OUT_OF_MEMORY);
 

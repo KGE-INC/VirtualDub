@@ -63,9 +63,11 @@ public:
 	PreferencesScene scene;
 
 	enum {
-		kDisplayDither16	= 0x01,
-		kDisplayDisableDX	= 0x02,
-		kDisplayUseDXWithTS	= 0x04
+		kDisplayDither16		= 0x01,
+		kDisplayDisableDX		= 0x02,
+		kDisplayUseDXWithTS		= 0x04,
+		kDisplayEnableD3D		= 0x08,
+		kDisplayEnableOpenGL	= 0x10
 	};
 
 	char fDisplay;
@@ -75,7 +77,7 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////
 
-BOOL APIENTRY PreferencesDlgProc		( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+INT_PTR CALLBACK PreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 ///////////////////////////////////////////////////////////////////////////
 

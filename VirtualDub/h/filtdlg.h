@@ -20,7 +20,7 @@
 
 #include <windows.h>
 
-BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
-BOOL APIENTRY AddFilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AddFilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 #endif

@@ -20,8 +20,6 @@
 
 #include "InputFile.h"
 
-class AVIStripeSystem;
-
 class InputFileImages : public InputFile {
 public:
 	InputFileImages();

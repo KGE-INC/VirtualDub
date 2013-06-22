@@ -33,6 +33,26 @@ static inline T splitimp2R(const T& string, const U *s, int offset) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+const char *VDFileSplitFirstDir(const char *s) {
+	const char *start = s;
+
+	while(*s++)
+		if (s[-1] == ':' || s[-1] == '\\' || s[-1] == '/')
+			return s;
+
+	return start;
+}
+
+const wchar_t *VDFileSplitFirstDir(const wchar_t *s) {
+	const wchar_t *start = s;
+
+	while(*s++)
+		if (s[-1] == L':' || s[-1] == L'\\' || s[-1] == L'/')
+			return s;
+
+	return start;
+}
+
 const char *VDFileSplitPath(const char *s) {
 	const char *lastsep = s;
 

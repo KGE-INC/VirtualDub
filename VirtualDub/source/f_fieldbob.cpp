@@ -9,12 +9,12 @@
 
 extern HINSTANCE g_hInst;
 
-int fieldbob_run(const FilterActivation *fa, const FilterFunctions *ff);
-long fieldbob_param(FilterActivation *fa, const FilterFunctions *ff);
-int fieldbob_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd);
-void fieldbob_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf);
-int fieldbob_start(FilterActivation *fa, const FilterFunctions *ff);
-int fieldbob_end(FilterActivation *fa, const FilterFunctions *ff);
+static int fieldbob_run(const FilterActivation *fa, const FilterFunctions *ff);
+static long fieldbob_param(FilterActivation *fa, const FilterFunctions *ff);
+static int fieldbob_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd);
+static void fieldbob_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf);
+static int fieldbob_start(FilterActivation *fa, const FilterFunctions *ff);
+static int fieldbob_end(FilterActivation *fa, const FilterFunctions *ff);
 
 static FilterDefinition *fd_fieldbob;
 
@@ -50,7 +50,7 @@ BOOL APIENTRY fieldbobConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
         case WM_INITDIALOG:
 			{
 				fieldbobFilterData *sfd = (fieldbobFilterData *)lParam;
-				SetWindowLong(hDlg, DWL_USER, lParam);
+				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 				switch(sfd->evenmode) {
 				case 0:		CheckDlgButton(hDlg, IDC_EVEN_NONE, BST_CHECKED); break;
@@ -72,7 +72,7 @@ BOOL APIENTRY fieldbobConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 
             case IDOK:
 				{
-					fieldbobFilterData *sfd = (fieldbobFilterData *)GetWindowLong(hDlg, DWL_USER);
+					fieldbobFilterData *sfd = (fieldbobFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
 					if (IsDlgButtonChecked(hDlg, IDC_EVEN_NONE)) sfd->evenmode = 0;
 					if (IsDlgButtonChecked(hDlg, IDC_EVEN_SMOOTH)) sfd->evenmode = 1;

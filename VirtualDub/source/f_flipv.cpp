@@ -23,7 +23,6 @@ static int flipv_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	Pixel *src = (Pixel *)fa->src.data;
 	Pixel *dst = (Pixel *)((char *)fa->dst.data + fa->dst.pitch*(fa->dst.h-1));
 	unsigned long h;
-	unsigned long pitch = fa->src.pitch;
 
 	h = fa->dst.h;
 	do {
@@ -51,7 +50,6 @@ static int fliph_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	Pixel *src = fa->src.data, *srct;
 	Pixel *dst = fa->dst.data-1;
 	unsigned long h, w;
-	unsigned long pitch = fa->src.pitch;
 
 	h = fa->dst.h;
 	do {

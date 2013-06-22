@@ -21,6 +21,47 @@
 #include <vd2/system/cpuaccel.h>
 #include "polyphase.h"
 
+#ifdef _M_AMD64
+extern "C" void vdasm_mpegaudio_polyphase_dct4x8(float *f);
+extern "C" void vdasm_mpegaudio_polyphase_dctinputbutterflies(float *out, const float *in);
+extern "C" void vdasm_mpegaudio_polyphase_matrixout_stereo(const float (*pSrc)[16], const float *pWinFwd, const float *pWinRev, int inc, const uint32 *pSampleInv, const sint16 *pDst, const float (*pSrcFinal)[16], const uint32 *pFinalMask);
+#endif
+
+extern "C" {
+	extern const float __declspec(align(16)) leecoef1[16]={		// 1/(2 cos (pi/64*(2i+1)))
+		// first eight (forward)
+		0.50060299823520f,
+		0.50547095989754f,
+		0.51544730992262f,
+		0.53104259108978f,
+		0.55310389603444f,
+		0.58293496820613f,
+		0.62250412303566f,
+		0.67480834145501f,
+
+		// last eight (backward)
+		10.19000812354803f,
+		3.40760841846872f,
+		2.05778100995341f,
+		1.48416461631417f,
+		1.16943993343288f,
+		0.97256823786196f,
+		0.83934964541553f,
+		0.74453627100230f,
+	};
+
+	extern const float __declspec(align(16)) leecoef2[8]={		// 1/(2 cos (pi/32*(2i+1)))
+		0.50241928618816f,
+		0.52249861493969f,
+		0.56694403481636f,
+		0.64682178335999f,
+		0.78815462345125f,
+		1.06067768599035f,
+		1.72244709823833f,
+		5.10114861868916f,
+	};
+}
+
 namespace {
 	// Dewindowing coefficients (synthesis filter).
 	//
@@ -229,161 +270,139 @@ void VDMPEGAudioPolyphaseFilter::DCT4x8(float *x) {
 	}
 }
 
-void __declspec(naked) VDMPEGAudioPolyphaseFilterSSE::DCT4x8(float *x) {
-	static const __declspec(align(16)) float c2[4]={0.92387953251128674f,0.92387953251128674f,0.92387953251128674f,0.92387953251128674f};
-	static const __declspec(align(16)) float c4[4]={0.70710678118654757f,0.70710678118654757f,0.70710678118654757f,0.70710678118654757f};
-	static const __declspec(align(16)) float c6[4]={0.38268343236508984f,0.38268343236508984f,0.38268343236508984f,0.38268343236508984f};
-
-	static const __declspec(align(16)) float d[8][4]={		// [1 .5 .5 -.5 .5 .5 .5 .5] ./ cos(pi*[0 5 6 1 4 7 2 3]/16)
-#define TE(x) x,x,x,x
-		TE(1.00000000000000f),
-		TE(0.89997622313642f),
-		TE(1.30656296487638f),
-		TE(-0.50979557910416f),
-		TE(0.70710678118655f),
-		TE(2.56291544774151f),
-		TE(0.54119610014620f),
-		TE(0.60134488693505f),
-#undef TE
-	};
-
-	// See the FPU version to get an idea of the flow of this AAN
-	// implementation.  Note that we do all four DCTs in parallel!
-
-	__asm {
-		mov		ecx, [esp+4]
-
-		;even part - B3 (4a)
-		movaps	xmm0, [ecx+0*16]		;xmm0 = s[0]
-		movaps	xmm1, [ecx+1*16]		;xmm1 = s[1]
-		movaps	xmm2, [ecx+2*16]		;xmm2 = s[2]
-		movaps	xmm3, [ecx+3*16]		;xmm3 = s[3]
-		addps	xmm0, [ecx+7*16]		;xmm0 = s[0]+s[7]
-		addps	xmm1, [ecx+6*16]		;xmm1 = s[1]+s[6]
-		addps	xmm2, [ecx+5*16]		;xmm2 = s[2]+s[5]
-		addps	xmm3, [ecx+4*16]		;xmm3 = s[3]+s[4]
-
-		;even part - B2/~B1a (4a)
-		movaps	xmm4, xmm0
-		addps	xmm0, xmm3				;xmm0 = b2[0] = b3[0]+b3[3]
-		movaps	xmm5, xmm1
-		addps	xmm1, xmm2				;xmm1 = b2[1] = b3[1]+b2[2]
-		subps	xmm4, xmm3				;xmm4 = b2[2] = b3[0]-b3[3]
-		subps	xmm5, xmm2				;xmm5 = b2[3] = b3[1]-b3[2]
-
-		;even part - ~B1b/M (3a1m)
-		movaps	xmm2, xmm0
-		subps	xmm4, xmm5
-		addps	xmm0, xmm1				;xmm0 = m[0] = b2[0] + b2[1]
-		mulps	xmm4, c4				;xmm4 = m[2] = (b2[2] - b2[3])*c4
-		subps	xmm2, xmm1				;xmm2 = m[1] = b2[0] - b2[1]
-
-		;even part - R1 (2a)
-		movaps	xmm3, xmm4
-		subps	xmm4, xmm5				;xmm4 = r1[3] = m[2]-m[3]
-		addps	xmm3, xmm5				;xmm3 = r1[2] = m[2]+m[3]
-
-		;even part - d (4m)
-		mulps	xmm0, [d+0*16]			;xmm0 = out[0] = r1[0]*d[0]
-		mulps	xmm2, [d+4*16]			;xmm2 = out[4] = r1[1]*d[4]
-		mulps	xmm3, [d+2*16]			;xmm3 = out[2] = r1[2]*d[2]
-		mulps	xmm4, [d+6*16]			;xmm4 = out[6] = r1[3]*d[6]
-
-		;odd part - B3 (4a)
-		movaps	xmm1, [ecx+0*16]
-		movaps	xmm5, [ecx+1*16]
-		movaps	xmm6, [ecx+2*16]
-		movaps	xmm7, [ecx+3*16]
-		subps	xmm1, [ecx+7*16]		;xmm1 = b3[4] = s[0]-s[7]
-		subps	xmm5, [ecx+6*16]		;xmm5 = b3[5] = s[1]-s[6]
-		subps	xmm6, [ecx+5*16]		;xmm6 = b3[6] = s[2]-s[5]
-		subps	xmm7, [ecx+4*16]		;xmm7 = b3[7] = s[3]-s[4]
-
-		;even part - writeout
-		movaps	[ecx+0*16], xmm0
-		movaps	[ecx+4*16], xmm2
-		movaps	[ecx+2*16], xmm3
-		movaps	[ecx+6*16], xmm4
-
-		;odd part - B2/~B1a (3a)
-		addps	xmm5, xmm7				;xmm5 = b2[5] = b3[5]+b3[7]
-		subps	xmm7, xmm1				;xmm7 = b2[7] = b3[7]-b3[4]
-		subps	xmm1, xmm6				;xmm1 = b2[4] = b3[4]-b3[6]
-
-		;odd part - ~B1b/M (2a5m)
-		movaps	xmm0, xmm1
-		mulps	xmm7, c4				;xmm7 = m[7] = c4*b2[7]
-		movaps	xmm2, xmm5
-		mulps	xmm0, c6
-		mulps	xmm1, c2
-		mulps	xmm2, c2
-		mulps	xmm5, c6
-		addps	xmm0, xmm2				;xmm0 = m[4] = c6*b2[4] + c2*b2[5]
-		subps	xmm1, xmm5				;xmm1 = m[5] = c2*b2[4] - c6*b2[5]
-
-		;odd part - R1a (2a)
-		movaps	xmm5, xmm6
-		addps	xmm6, xmm7				;xmm6 = r1a[6] = m[6]+m[7]
-		subps	xmm5, xmm7				;xmm5 = r1a[7] = m[6]-m[7]
-
-		;odd part - R1b (4a)
-		movaps	xmm3, xmm5
-		movaps	xmm4, xmm6
-		subps	xmm5, xmm0				;xmm5 = r1b[7] = r1a[7]-r1a[4]
-		subps	xmm6, xmm1				;xmm6 = r1b[6] = r1a[6]-r1a[5]
-		addps	xmm4, xmm1				;xmm4 = r1b[5] = r1a[6]+r1a[5]
-		addps	xmm3, xmm0				;xmm3 = r1b[4] = r1a[7]+r1a[4]
-
-		;odd part - D (4a)
-		mulps	xmm3, [d+1*16]
-		mulps	xmm4, [d+5*16]
-		mulps	xmm6, [d+3*16]
-		mulps	xmm5, [d+7*16]
-
-		;odd part - writeout
-		movaps	[ecx+1*16], xmm3
-		movaps	[ecx+5*16], xmm4
-		movaps	[ecx+3*16], xmm6
-		movaps	[ecx+7*16], xmm5
-
-		ret		4
+#ifdef _M_AMD64
+	void VDMPEGAudioPolyphaseFilterSSE::DCT4x8(float *x) {
+		vdasm_mpegaudio_polyphase_dct4x8(x);
 	}
-}
+#else
+	void __declspec(naked) VDMPEGAudioPolyphaseFilterSSE::DCT4x8(float *x) {
+		static const __declspec(align(16)) float c2[4]={0.92387953251128674f,0.92387953251128674f,0.92387953251128674f,0.92387953251128674f};
+		static const __declspec(align(16)) float c4[4]={0.70710678118654757f,0.70710678118654757f,0.70710678118654757f,0.70710678118654757f};
+		static const __declspec(align(16)) float c6[4]={0.38268343236508984f,0.38268343236508984f,0.38268343236508984f,0.38268343236508984f};
+
+		static const __declspec(align(16)) float d[8][4]={		// [1 .5 .5 -.5 .5 .5 .5 .5] ./ cos(pi*[0 5 6 1 4 7 2 3]/16)
+	#define TE(x) x,x,x,x
+			TE(1.00000000000000f),
+			TE(0.89997622313642f),
+			TE(1.30656296487638f),
+			TE(-0.50979557910416f),
+			TE(0.70710678118655f),
+			TE(2.56291544774151f),
+			TE(0.54119610014620f),
+			TE(0.60134488693505f),
+	#undef TE
+		};
+
+		// See the FPU version to get an idea of the flow of this AAN
+		// implementation.  Note that we do all four DCTs in parallel!
+
+		__asm {
+			mov		ecx, [esp+4]
+
+			;even part - B3 (4a)
+			movaps	xmm0, [ecx+0*16]		;xmm0 = s[0]
+			movaps	xmm1, [ecx+1*16]		;xmm1 = s[1]
+			movaps	xmm2, [ecx+2*16]		;xmm2 = s[2]
+			movaps	xmm3, [ecx+3*16]		;xmm3 = s[3]
+			addps	xmm0, [ecx+7*16]		;xmm0 = s[0]+s[7]
+			addps	xmm1, [ecx+6*16]		;xmm1 = s[1]+s[6]
+			addps	xmm2, [ecx+5*16]		;xmm2 = s[2]+s[5]
+			addps	xmm3, [ecx+4*16]		;xmm3 = s[3]+s[4]
+
+			;even part - B2/~B1a (4a)
+			movaps	xmm4, xmm0
+			addps	xmm0, xmm3				;xmm0 = b2[0] = b3[0]+b3[3]
+			movaps	xmm5, xmm1
+			addps	xmm1, xmm2				;xmm1 = b2[1] = b3[1]+b2[2]
+			subps	xmm4, xmm3				;xmm4 = b2[2] = b3[0]-b3[3]
+			subps	xmm5, xmm2				;xmm5 = b2[3] = b3[1]-b3[2]
+
+			;even part - ~B1b/M (3a1m)
+			movaps	xmm2, xmm0
+			subps	xmm4, xmm5
+			addps	xmm0, xmm1				;xmm0 = m[0] = b2[0] + b2[1]
+			mulps	xmm4, c4				;xmm4 = m[2] = (b2[2] - b2[3])*c4
+			subps	xmm2, xmm1				;xmm2 = m[1] = b2[0] - b2[1]
+
+			;even part - R1 (2a)
+			movaps	xmm3, xmm4
+			subps	xmm4, xmm5				;xmm4 = r1[3] = m[2]-m[3]
+			addps	xmm3, xmm5				;xmm3 = r1[2] = m[2]+m[3]
+
+			;even part - d (4m)
+			mulps	xmm0, [d+0*16]			;xmm0 = out[0] = r1[0]*d[0]
+			mulps	xmm2, [d+4*16]			;xmm2 = out[4] = r1[1]*d[4]
+			mulps	xmm3, [d+2*16]			;xmm3 = out[2] = r1[2]*d[2]
+			mulps	xmm4, [d+6*16]			;xmm4 = out[6] = r1[3]*d[6]
+
+			;odd part - B3 (4a)
+			movaps	xmm1, [ecx+0*16]
+			movaps	xmm5, [ecx+1*16]
+			movaps	xmm6, [ecx+2*16]
+			movaps	xmm7, [ecx+3*16]
+			subps	xmm1, [ecx+7*16]		;xmm1 = b3[4] = s[0]-s[7]
+			subps	xmm5, [ecx+6*16]		;xmm5 = b3[5] = s[1]-s[6]
+			subps	xmm6, [ecx+5*16]		;xmm6 = b3[6] = s[2]-s[5]
+			subps	xmm7, [ecx+4*16]		;xmm7 = b3[7] = s[3]-s[4]
+
+			;even part - writeout
+			movaps	[ecx+0*16], xmm0
+			movaps	[ecx+4*16], xmm2
+			movaps	[ecx+2*16], xmm3
+			movaps	[ecx+6*16], xmm4
+
+			;odd part - B2/~B1a (3a)
+			addps	xmm5, xmm7				;xmm5 = b2[5] = b3[5]+b3[7]
+			subps	xmm7, xmm1				;xmm7 = b2[7] = b3[7]-b3[4]
+			subps	xmm1, xmm6				;xmm1 = b2[4] = b3[4]-b3[6]
+
+			;odd part - ~B1b/M (2a5m)
+			movaps	xmm0, xmm1
+			mulps	xmm7, c4				;xmm7 = m[7] = c4*b2[7]
+			movaps	xmm2, xmm5
+			mulps	xmm0, c6
+			mulps	xmm1, c2
+			mulps	xmm2, c2
+			mulps	xmm5, c6
+			addps	xmm0, xmm2				;xmm0 = m[4] = c6*b2[4] + c2*b2[5]
+			subps	xmm1, xmm5				;xmm1 = m[5] = c2*b2[4] - c6*b2[5]
+
+			;odd part - R1a (2a)
+			movaps	xmm5, xmm6
+			addps	xmm6, xmm7				;xmm6 = r1a[6] = m[6]+m[7]
+			subps	xmm5, xmm7				;xmm5 = r1a[7] = m[6]-m[7]
+
+			;odd part - R1b (4a)
+			movaps	xmm3, xmm5
+			movaps	xmm4, xmm6
+			subps	xmm5, xmm0				;xmm5 = r1b[7] = r1a[7]-r1a[4]
+			subps	xmm6, xmm1				;xmm6 = r1b[6] = r1a[6]-r1a[5]
+			addps	xmm4, xmm1				;xmm4 = r1b[5] = r1a[6]+r1a[5]
+			addps	xmm3, xmm0				;xmm3 = r1b[4] = r1a[7]+r1a[4]
+
+			;odd part - D (4a)
+			mulps	xmm3, [d+1*16]
+			mulps	xmm4, [d+5*16]
+			mulps	xmm6, [d+3*16]
+			mulps	xmm5, [d+7*16]
+
+			;odd part - writeout
+			movaps	[ecx+1*16], xmm3
+			movaps	[ecx+5*16], xmm4
+			movaps	[ecx+3*16], xmm6
+			movaps	[ecx+7*16], xmm5
+
+			ret		4
+		}
+	}
+#endif
 
 namespace {
-	static const float __declspec(align(16)) leecoef1[16]={		// 1/(2 cos (pi/64*(2i+1)))
-		// first eight (forward)
-		0.50060299823520f,
-		0.50547095989754f,
-		0.51544730992262f,
-		0.53104259108978f,
-		0.55310389603444f,
-		0.58293496820613f,
-		0.62250412303566f,
-		0.67480834145501f,
-
-		// last eight (backward)
-		10.19000812354803f,
-		3.40760841846872f,
-		2.05778100995341f,
-		1.48416461631417f,
-		1.16943993343288f,
-		0.97256823786196f,
-		0.83934964541553f,
-		0.74453627100230f,
-	};
-
-	static const float __declspec(align(16)) leecoef2[8]={		// 1/(2 cos (pi/32*(2i+1)))
-		0.50241928618816f,
-		0.52249861493969f,
-		0.56694403481636f,
-		0.64682178335999f,
-		0.78815462345125f,
-		1.06067768599035f,
-		1.72244709823833f,
-		5.10114861868916f,
-	};
-
+#ifdef _M_AMD64
+	static void __stdcall DCTInputButterfliesSSE(float x[32], const float in[32]) {
+		vdasm_mpegaudio_polyphase_dctinputbutterflies(x, in);
+	}
+#else
 	static void __declspec(naked) __stdcall DCTInputButterfliesSSE(float x[32], const float in[32]) {
 		__asm {
 			push	ebx
@@ -446,7 +465,8 @@ xloop:
 			ret		8
 		}
 	}
-};
+#endif
+}
 
 void VDMPEGAudioPolyphaseFilterSSE::DCTInputButterflies(float x[32], const float in[32]) {
 	DCTInputButterfliesSSE(x, in);
@@ -796,6 +816,7 @@ void VDMPEGAudioPolyphaseFilter::SynthesizeStereo(sint16 *dst) {
 }
 
 namespace {
+#ifndef _M_AMD64
 	void __declspec(naked) __stdcall ComputeSamplesStereoSSE(const float (*pSrc)[16], const float *pWinFwd, const float *pWinRev, int inc, const uint32 *pSampleInv, const sint16 *pDst, const float (*pSrcFinal)[16], const uint32 *pFinalMask) {
 		static const __declspec(align(16)) uint32 invother[4]={ 0, 0x80000000, 0, 0x80000000 };
 		static const __declspec(align(16)) uint32 invall[4]={ 0x80000000, 0x80000000, 0x80000000, 0x80000000 };
@@ -1015,6 +1036,7 @@ xloop:
 			ret		32
 		}
 	}
+#endif
 };
 
 void VDMPEGAudioPolyphaseFilterSSE::SynthesizeStereo(sint16 *dst) {
@@ -1026,6 +1048,17 @@ void VDMPEGAudioPolyphaseFilterSSE::SynthesizeStereo(sint16 *dst) {
 	static const __declspec(align(16)) uint32 evenmask[4]={~0,0,~0,0};
 	static const __declspec(align(16)) uint32 oddmask[4]={0,~0,0,~0};
 
+#ifdef _M_AMD64
+	vdasm_mpegaudio_polyphase_matrixout_stereo(
+					mWindow.stereo[16],
+					&mFilter[0][(-mWindowPos)&15],
+					&mFilter[0][mWindowPos&15],
+					odd ? -sizeof(mWindow.stereo[0]) : +sizeof(mWindow.stereo[0]),
+					odd ? invert : noinvert,
+					&dst[2],
+					mWindow.stereo[0],
+					odd ? evenmask : oddmask);
+#else
 	ComputeSamplesStereoSSE(
 					mWindow.stereo[16],
 					&mFilter[0][(-mWindowPos)&15],
@@ -1035,6 +1068,7 @@ void VDMPEGAudioPolyphaseFilterSSE::SynthesizeStereo(sint16 *dst) {
 					&dst[2],
 					mWindow.stereo[0],
 					odd ? evenmask : oddmask);
+#endif
 }
 
 void VDMPEGAudioPolyphaseFilter::Generate(const float left[32], const float right[32], sint16 *dst) {

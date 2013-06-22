@@ -422,16 +422,16 @@ xloop_bilinearMMX:
 
 	;do pixels
 
-	movd	mm0,[esi*4+0]
+	movd	mm0,dword ptr [esi*4+0]
 	pxor	mm3,mm3
 
-	movd	mm1,[esi*4+4]
+	movd	mm1,dword ptr [esi*4+4]
 	punpcklbw mm0,mm3
 
 	pmullw	mm0,mm4
 	punpcklbw mm1,mm3
 
-	movd	mm2,[esi*4+ebp+0]
+	movd	mm2,dword ptr [esi*4+ebp+0]
 	pxor	mm4,mm4
 
 	pmullw	mm1,mm5
@@ -469,7 +469,7 @@ xloop_bilinearMMX:
 	shr	edx,24
 	cmp	edi,[esp+l_destlimit]
 
-	movd	[edi-4],mm0
+	movd	dword ptr [edi-4],mm0
 	jne	xloop_bilinearMMX
 
 	pop	ebp

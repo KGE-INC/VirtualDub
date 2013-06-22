@@ -24,6 +24,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/w32assist.h>
 
 #include "resource.h"
 #include "oshelper.h"
@@ -32,13 +33,9 @@
 
 extern HINSTANCE g_hInst;
 
-static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
 ////////////////////////////
 
 extern const char szPositionControlName[]="birdyPositionControl";
-
-static HICON hIcons[13];
 
 static const UINT uIconIDs[13]={
 	IDI_POS_STOP,
@@ -55,50 +52,6 @@ static const UINT uIconIDs[13]={
 	IDI_POS_MARKIN,
 	IDI_POS_MARKOUT,
 };
-
-////////////////////////////
-
-typedef struct PositionControlData {
-	HFONT				hFont;
-	int					nFrameCtlHeight;
-	VDFraction			mFrameRate;
-	PosCtlFTCallback	pFTCallback;
-	void				*pvFTCData;
-
-	bool fHasPlaybackControls;
-	bool fHasMarkControls;
-	bool fHasSceneControls;
-	bool fTracking;
-	bool fNoAutoFrame;
-} PositionControlData;
-
-////////////////////////////
-
-ATOM RegisterPositionControl() {
-	WNDCLASS wc;
-
-	for(int i=0; i<(sizeof hIcons/sizeof hIcons[0]); i++)
-
-		if (!(hIcons[i] = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(uIconIDs[i]),IMAGE_ICON ,0,0,0))) {
-
-			_RPT1(0,"PositionControl: load failure on icon #%d\n",i+1);
-			return NULL;
-		}
-
-
-	wc.style		= 0;
-	wc.lpfnWndProc	= PositionControlWndProc;
-	wc.cbClsExtra	= 0;
-	wc.cbWndExtra	= sizeof(PositionControlData *);
-	wc.hInstance	= g_hInst;
-	wc.hIcon		= NULL;
-	wc.hCursor		= NULL;
-	wc.hbrBackground= (HBRUSH)(COLOR_3DFACE+1);	//GetStockObject(LTGRAY_BRUSH);
-	wc.lpszMenuName	= NULL;
-	wc.lpszClassName= POSITIONCONTROLCLASS;
-
-	return RegisterClass(&wc);
-}
 
 #undef IDC_START
 enum {
@@ -146,7 +99,299 @@ static const struct {
 	{ IDC_MARKOUT, "[Mark out] Specify the end for processing or of a selection to delete." },
 };
 
-static BOOL CALLBACK PositionControlInitChildrenProc(HWND hWnd, LPARAM lParam) {
+
+///////////////////////////////////////////////////////////////////////////
+
+struct VDPositionControlW32 : public IVDPositionControl {
+public:
+	static ATOM Register();
+
+protected:
+	VDPositionControlW32(HWND hwnd);
+	~VDPositionControlW32();
+
+	int			GetNiceHeight();
+
+	void		SetFrameTypeCallback(IVDPositionControlCallback *pCB);
+
+	void		SetRange(VDPosition lo, VDPosition hi, bool updateNow);
+
+	VDPosition	GetPosition();
+	void		SetPosition(VDPosition pos);
+	void		SetDisplayedPosition(VDPosition pos);
+	void		SetAutoPositionUpdate(bool autoUpdate);
+
+	bool		GetSelection(VDPosition& start, VDPosition& end);
+	void		SetSelection(VDPosition start, VDPosition end, bool updateNow);
+
+	void		SetFrameRate(const VDFraction& frameRate);
+
+	void		ResetShuttle();
+
+protected:
+	static LRESULT APIENTRY VDPositionControlW32::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT CALLBACK WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+
+	static BOOL CALLBACK VDPositionControlW32::InitChildrenProc(HWND hWnd, LPARAM lParam);
+	void OnCreate();
+	void OnSize();
+	void OnPaint();
+	void UpdateString(VDPosition pos=-1);
+	void RecomputeMetrics();
+	void RecalcThumbRect(VDPosition pos, bool update = true);
+	void Notify(UINT code);
+
+	const HWND			mhwnd;
+	HFONT				mFrameFont;
+	int					nFrameCtlHeight;
+	VDFraction			mFrameRate;
+	IVDPositionControlCallback *mpCB;
+	void				*pvFTCData;
+
+	HFONT				mFrameNumberFont;
+	int					mFrameNumberHeight;
+	int					mFrameNumberWidth;
+
+	enum {
+		kBrushCurrentFrame,
+		kBrushTick,
+		kBrushTrack,
+		kBrushSelection,
+		kBrushes
+	};
+
+	HBRUSH				mBrushes[kBrushes];
+
+	VDPosition			mPosition;
+	VDPosition			mRangeStart;
+	VDPosition			mRangeEnd;
+	VDPosition			mSelectionStart;
+	VDPosition			mSelectionEnd;
+
+	RECT				mPositionArea;			// track, ticks, bar, and numbers
+	RECT				mTrackArea;				// track, ticks, and bar
+	RECT				mTrack;					// just the track
+	RECT				mThumbRect;
+	int					mThumbWidth;
+	double				mPixelsPerFrame;
+	double				mFramesPerPixel;
+
+	int					mWheelAccum;
+	int					mDragOffsetX;
+	int					mDragAccum;
+	VDPosition			mDragAnchorPos;
+	enum {
+		kDragNone,
+		kDragThumbFast,
+		kDragThumbSlow
+	} mDragMode;
+
+	bool mbHasPlaybackControls;
+	bool mbHasMarkControls;
+	bool mbHasSceneControls;
+	bool mbAutoFrame;
+
+	static HICON shIcons[13];
+};
+
+HICON VDPositionControlW32::shIcons[13];
+
+ATOM VDPositionControlW32::Register() {
+	WNDCLASS wc;
+
+	for(int i=0; i<(sizeof shIcons/sizeof shIcons[0]); i++)
+		if (!(shIcons[i] = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(uIconIDs[i]),IMAGE_ICON ,0,0,0))) {
+
+			_RPT1(0,"PositionControl: load failure on icon #%d\n",i+1);
+			return NULL;
+		}
+
+	wc.style		= 0;
+	wc.lpfnWndProc	= StaticWndProc;
+	wc.cbClsExtra	= 0;
+	wc.cbWndExtra	= sizeof(VDPositionControlW32 *);
+	wc.hInstance	= g_hInst;
+	wc.hIcon		= NULL;
+	wc.hCursor		= LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground= (HBRUSH)(COLOR_3DFACE+1);	//GetStockObject(LTGRAY_BRUSH);
+	wc.lpszMenuName	= NULL;
+	wc.lpszClassName= POSITIONCONTROLCLASS;
+
+	return RegisterClass(&wc);
+}
+
+ATOM RegisterPositionControl() {
+	return VDPositionControlW32::Register();
+}
+
+IVDPositionControl *VDGetIPositionControl(VDGUIHandle h) {
+	return static_cast<IVDPositionControl *>((VDPositionControlW32 *)GetWindowLongPtr((HWND)h, 0));
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDPositionControlW32::VDPositionControlW32(HWND hwnd)
+	: mhwnd(hwnd)
+	, mFrameFont(NULL)
+	, nFrameCtlHeight(0)
+	, mFrameRate(0,0)
+	, mpCB(NULL)
+	, pvFTCData(NULL)
+	, mFrameNumberFont(NULL)
+	, mFrameNumberHeight(0)
+	, mPosition(0)
+	, mRangeStart(0)
+	, mRangeEnd(0)
+	, mSelectionStart(0)
+	, mSelectionEnd(0)
+	, mPixelsPerFrame(0)
+	, mFramesPerPixel(0)
+	, mWheelAccum(0)
+	, mDragMode(kDragNone)
+	, mbHasPlaybackControls(false)
+	, mbHasMarkControls(false)
+	, mbHasSceneControls(false)
+	, mbAutoFrame(true)
+{
+	mBrushes[kBrushCurrentFrame] = CreateSolidBrush(RGB(255,0,0));
+	mBrushes[kBrushTick] = CreateSolidBrush(RGB(0,0,0));
+	mBrushes[kBrushTrack] = CreateSolidBrush(RGB(128,128,128));
+	mBrushes[kBrushSelection] = CreateSolidBrush(RGB(192,224,255));
+
+	SetRect(&mThumbRect, 0, 0, 0, 0);
+	SetRect(&mTrack, 0, 0, 0, 0);
+	SetRect(&mTrackArea, 0, 0, 0, 0);
+	SetRect(&mPositionArea, 0, 0, 0, 0);
+}
+
+VDPositionControlW32::~VDPositionControlW32() {
+	if (mFrameFont)
+		DeleteObject(mFrameFont);
+	if (mFrameNumberFont)
+		DeleteObject(mFrameNumberFont);
+
+	for(int i=0; i<kBrushes; ++i) {
+		if (mBrushes[i])
+			DeleteObject(mBrushes[i]);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+int VDPositionControlW32::GetNiceHeight() {
+	return 24 + mFrameNumberHeight*11/4;		// Don't ask about the 11/4 constant.  It's tuned to achieve a nice ratio on my system.
+}
+
+void VDPositionControlW32::SetFrameTypeCallback(IVDPositionControlCallback *pCB) {
+	mpCB = pCB;
+}
+
+void VDPositionControlW32::SetRange(VDPosition lo, VDPosition hi, bool updateNow) {
+	if (lo != mRangeStart || hi != mRangeEnd) {
+		mRangeStart = lo;
+		mRangeEnd = hi;
+		if (mPosition < mRangeStart)
+			mPosition = mRangeStart;
+		if (mPosition > mRangeEnd)
+			mPosition = mRangeEnd;
+		if (mSelectionStart < mRangeStart)
+			mSelectionStart = mRangeStart;
+		if (mSelectionEnd > mRangeEnd)
+			mSelectionEnd = mRangeEnd;
+
+		RecomputeMetrics();
+
+		UpdateString();
+	}
+}
+
+VDPosition VDPositionControlW32::GetPosition() {
+	return mPosition;
+}
+
+void VDPositionControlW32::SetPosition(VDPosition pos) {
+	if (pos < mRangeStart)
+		pos = mRangeStart;
+	if (pos > mRangeEnd)
+		pos = mRangeEnd;
+
+	if (pos != mPosition) {
+		mPosition = pos;
+		RecalcThumbRect(pos, true);
+		UpdateString();
+	}
+}
+
+void VDPositionControlW32::SetDisplayedPosition(VDPosition pos) {
+	UpdateString(pos);
+	RecalcThumbRect(pos, true);
+	UpdateWindow(mhwnd);
+}
+
+void VDPositionControlW32::SetAutoPositionUpdate(bool autoUpdate) {
+	if (autoUpdate != mbAutoFrame) {
+		mbAutoFrame = autoUpdate;
+
+		if (autoUpdate)
+			RecalcThumbRect(mPosition, true);
+	}
+}
+
+bool VDPositionControlW32::GetSelection(VDPosition& start, VDPosition& end) {
+	if (mSelectionStart < mSelectionEnd) {
+		start	= mSelectionStart;
+		end		= mSelectionEnd;
+		return true;
+	}
+
+	return false;
+}
+
+void VDPositionControlW32::SetSelection(VDPosition start, VDPosition end, bool updateNow) {
+	// wipe old selection
+	if (mSelectionStart < mSelectionEnd) {
+		int selx1 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionStart);
+		int selx2 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionEnd);
+
+		if (selx2 == selx1)
+			++selx2;
+
+		RECT rOld = { selx1, mTrack.top, selx2, mTrack.bottom };
+
+		InvalidateRect(mhwnd, &rOld, FALSE);
+	}
+
+	// render new selection
+	mSelectionStart	= start;
+	mSelectionEnd	= end;
+
+	if (mSelectionStart < mSelectionEnd) {
+		int selx1 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionStart);
+		int selx2 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionEnd);
+
+		if (selx2 == selx1)
+			++selx2;
+
+		RECT rNew = { selx1, mTrack.top, selx2, mTrack.bottom };
+
+		InvalidateRect(mhwnd, &rNew, FALSE);
+	}
+}
+
+void VDPositionControlW32::SetFrameRate(const VDFraction& frameRate) {
+	mFrameRate = frameRate;
+	UpdateString();
+}
+
+void VDPositionControlW32::ResetShuttle() {
+	CheckDlgButton(mhwnd, IDC_SCENEREV, BST_UNCHECKED);
+	CheckDlgButton(mhwnd, IDC_SCENEFWD, BST_UNCHECKED);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+BOOL CALLBACK VDPositionControlW32::InitChildrenProc(HWND hWnd, LPARAM lParam) {
+	VDPositionControlW32 *pThis = (VDPositionControlW32 *)lParam;
 	UINT id;
 
 	switch(id = GetWindowLong(hWnd, GWL_ID)) {
@@ -163,11 +408,11 @@ static BOOL CALLBACK PositionControlInitChildrenProc(HWND hWnd, LPARAM lParam) {
 	case IDC_SCENEFWD:
 	case IDC_MARKIN:
 	case IDC_MARKOUT:
-		SendMessage(hWnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)hIcons[id - IDC_STOP]);
+		SendMessage(hWnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)shIcons[id - IDC_STOP]);
 		break;
 
 	case IDC_FRAME:
-		SendMessage(hWnd, WM_SETFONT, (WPARAM)lParam, (LPARAM)MAKELONG(FALSE, 0));
+		SendMessage(hWnd, WM_SETFONT, (WPARAM)pThis->mFrameFont, (LPARAM)MAKELONG(FALSE, 0));
 		break;
 
 	}
@@ -175,257 +420,38 @@ static BOOL CALLBACK PositionControlInitChildrenProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
-static void PositionControlRedoTicks(HWND hwndTrackbar) {
-	RECT wndr;
-	DWORD range = SendMessage(hwndTrackbar, TBM_GETRANGEMAX, 0, 0) - SendMessage(hwndTrackbar, TBM_GETRANGEMIN, 0, 0);
-
-	GetClientRect(GetParent(hwndTrackbar), &wndr);
-
-	if (range > wndr.right - wndr.left)
-		SendMessage(hwndTrackbar, TBM_CLEARTICS, 0, 0);
-	else
-		SendMessage(hwndTrackbar, TBM_SETTICFREQ, 1, 0);
-}
-
-static void PositionControlReposChildren(HWND hWnd, PositionControlData *pcd) {
-	RECT wndr;
-	UINT id;
-	int x, y;
-	HWND hwndButton;
-
-	GetClientRect(hWnd, &wndr);
-
-	y = wndr.bottom - 24;
-	x = 0;
-
-	HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
-	PositionControlRedoTicks(hwndTrackbar);
-
-	SetWindowPos(hwndTrackbar, NULL, 0, 0, wndr.right - wndr.left, y-wndr.top, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOZORDER);
-
-	if (pcd->fHasPlaybackControls) {
-		for(id = IDC_STOP; id < IDC_START; id++) {
-			SetWindowPos(GetDlgItem(hWnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
-
-			x += 24;
-		}
-		x+=8;
-	}
-
-	for(id = IDC_START; id < IDC_MARKIN; id++) {
-		if (hwndButton = GetDlgItem(hWnd,id))
-			SetWindowPos(hwndButton, NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
-
-		x += 24;
-	}
-	x+=8;
-
-	if (pcd->fHasMarkControls) {
-		for(id = IDC_MARKIN; id <= IDC_MARKOUT; id++) {
-			SetWindowPos(GetDlgItem(hWnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
-			x += 24;
-		}
-
-		x+=8;
-	}
-
-	SetWindowPos(GetDlgItem(hWnd, IDC_FRAME), NULL, x, y+12-(pcd->nFrameCtlHeight>>1), std::min<int>(wndr.right - x, 320), pcd->nFrameCtlHeight, SWP_NOACTIVATE|SWP_NOZORDER);
-
-}
-
-static void PositionControlUpdateString(HWND hWnd, PositionControlData *pcd, LONG lPos=-1) {
-	char buf[128];
-	int l;
-
-	if (lPos < 0)
-		lPos = SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_GETPOS, 0, 0);
-
-	if (pcd->mFrameRate.getLo()) {
-		int ms, sec, min;
-		long ticks = (long)pcd->mFrameRate.scale64ir(lPos*(sint64)1000);
-
-		ms  = ticks %1000; ticks /= 1000;
-		sec	= ticks %  60; ticks /=  60;
-		min	= ticks %  60; ticks /=  60;
-
-		l = wsprintf(buf, " Frame %ld (%d:%02d:%02d.%03d)", lPos, ticks, min, sec, ms);
-	} else
-		l = wsprintf(buf, " Frame %ld", lPos);
-
-	if (pcd->pFTCallback && l>0) {
-		char c;
-
-		if (c = pcd->pFTCallback(hWnd, pcd->pvFTCData, lPos)) {
-			buf[l+0] = ' ';
-			buf[l+1] = '[';
-			buf[l+2] = c;
-			buf[l+3] = ']';
-			buf[l+4] = 0;
-		}
-	}
-
-	SetDlgItemText(hWnd, IDC_FRAME, buf);
-}
-
-static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	PositionControlData *pcd = (PositionControlData *)GetWindowLong(hWnd, 0);
+LRESULT APIENTRY VDPositionControlW32::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	VDPositionControlW32 *pcd = (VDPositionControlW32 *)GetWindowLongPtr(hwnd, 0);
 
 	switch(msg) {
-
 	case WM_NCCREATE:
-		if (!(pcd = new PositionControlData))
+		if (!(pcd = new VDPositionControlW32(hwnd)))
 			return FALSE;
-		memset(pcd,0,sizeof(PositionControlData));
 
-		SetWindowLong(hWnd, 0, (LONG)pcd);
-		return TRUE;
-
-	case WM_CREATE:
-		{
-			DWORD dwStyles;
-			TOOLINFO ti;
-			HWND hwndTT;
-
-			dwStyles = GetWindowLong(hWnd, GWL_STYLE);
-			pcd->fHasPlaybackControls	= !!(dwStyles & PCS_PLAYBACK);
-			pcd->fHasMarkControls		= !!(dwStyles & PCS_MARK);
-			pcd->fHasSceneControls		= !!(dwStyles & PCS_SCENE);
-
-			pcd->hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-			pcd->nFrameCtlHeight = 18;
-			
-			if (pcd->hFont) {
-				if (HDC hdc = GetDC(hWnd)) {
-					TEXTMETRIC tm;
-					int pad = 2*GetSystemMetrics(SM_CYEDGE);
-					int availHeight = 24 - pad;
-					HGDIOBJ hgoFont = SelectObject(hdc, pcd->hFont);
-
-					if (GetTextMetrics(hdc, &tm)) {
-						LOGFONT lf;
-
-						pcd->nFrameCtlHeight = tm.tmHeight + tm.tmInternalLeading + pad;
-
-						if (tm.tmHeight > availHeight && GetObject(pcd->hFont, sizeof lf, &lf)) {
-							lf.lfHeight = availHeight;
-							pcd->nFrameCtlHeight = 24;
-
-							HFONT hFont = CreateFontIndirect(&lf);
-							if (hFont)
-								pcd->hFont = hFont;		// the old font was a stock object, so it doesn't need to be deleted
-						}
-					}
-
-					pcd->nFrameCtlHeight = (pcd->nFrameCtlHeight+1) & ~1;
-
-					SelectObject(hdc, hgoFont);
-					ReleaseDC(hWnd, hdc);
-				}
-			}
-
-			CreateWindowEx(0,TRACKBAR_CLASS,NULL,WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS|TBS_ENABLESELRANGE,0,0,0,0,hWnd, (HMENU)IDC_TRACKBAR, g_hInst, NULL);
-
-			SendDlgItemMessage(hWnd, IDC_TRACKBAR, TBM_SETPAGESIZE, 0, 50);
-
-			CreateWindowEx(WS_EX_STATICEDGE,"EDIT",NULL,WS_CHILD|WS_VISIBLE|ES_READONLY,0,0,0,24,hWnd,(HMENU)IDC_FRAME,g_hInst,NULL);
-
-			if (pcd->fHasPlaybackControls) {
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_STOP		, g_hInst, NULL);
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_PLAY		, g_hInst, NULL);
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_PLAYPREVIEW	, g_hInst, NULL);
-			}
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_START		, g_hInst, NULL);
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_BACKWARD	, g_hInst, NULL);
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_FORWARD	, g_hInst, NULL);
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_END		, g_hInst, NULL);
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_KEYPREV	, g_hInst, NULL);
-			CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_KEYNEXT	, g_hInst, NULL);
-
-			if (pcd->fHasSceneControls) {
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,hWnd, (HMENU)IDC_SCENEREV, g_hInst, NULL);
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,hWnd, (HMENU)IDC_SCENEFWD, g_hInst, NULL);
-			}
-			if (pcd->fHasMarkControls) {
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_MARKIN	, g_hInst, NULL);
-				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_MARKOUT	, g_hInst, NULL);
-			}
-
-			if (pcd->hFont)
-				EnumChildWindows(hWnd, (WNDENUMPROC)PositionControlInitChildrenProc, (LPARAM)pcd->hFont);
-
-			// Create tooltip control.
-
-			hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
-					CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-					hWnd, NULL, g_hInst, NULL);
-
-			if (hwndTT) {
-
-				SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
-				SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_AUTOMATIC, MAKELONG(2000, 0));
-				SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_RESHOW, MAKELONG(2000, 0));
-
-				ti.cbSize		= sizeof(TOOLINFO);
-				ti.uFlags		= TTF_SUBCLASS | TTF_IDISHWND;
-				ti.hwnd			= hWnd;
-				ti.lpszText		= LPSTR_TEXTCALLBACK;
-
-				for(int i=0; i<sizeof g_posctltips/sizeof g_posctltips[0]; ++i) {
-					ti.uId			= (WPARAM)GetDlgItem(hWnd, g_posctltips[i].id);
-
-					if (ti.uId)
-						SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
-				}
-			}
-		}
-
-	case WM_SIZE:
-		PositionControlReposChildren(hWnd, pcd);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pcd);
 		break;
-
 	case WM_NCDESTROY:
-		if (pcd->hFont)
-			DeleteObject(pcd->hFont);
 		delete pcd;
-		SetWindowLong(hWnd, 0, 0);
+		SetWindowLongPtr(hwnd, 0, 0);
+		pcd = NULL;
+		break;
+	}
+
+	return pcd ? pcd->WndProc(msg, wParam, lParam) : DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_CREATE:
+		OnCreate();
+		// fall through
+	case WM_SIZE:
+		OnSize();
 		break;
 
-	case WM_HSCROLL:
-		{
-			NMHDR nm;
-
-			nm.hwndFrom = hWnd;
-			nm.idFrom	= GetWindowLong(hWnd, GWL_ID);
-
-			switch(LOWORD(wParam)) {
-			case TB_PAGEUP:			nm.code = PCN_PAGELEFT;			break;
-			case TB_PAGEDOWN:		nm.code	= PCN_PAGERIGHT;		break;
-			case TB_THUMBPOSITION:
-				if (pcd->fTracking) {
-					pcd->fTracking = false;
-					nm.code = PCN_ENDTRACK;
-					SendMessage(GetParent(hWnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
-				}
-				nm.code = PCN_THUMBPOSITION;
-				break;
-			case TB_THUMBTRACK:
-				if (!pcd->fTracking) {
-					pcd->fTracking = true;
-					nm.code = PCN_BEGINTRACK;
-					SendMessage(GetParent(hWnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
-				}
-				nm.code = PCN_THUMBTRACK;
-				break;
-			case TB_ENDTRACK:
-				return 0;		// block this message as it can be sent when the trackbar sees the keyup for our accelerators
-			default:				nm.code = PCN_THUMBPOSITION;	break;
-			}
-
-			if (!pcd->fNoAutoFrame)
-				PositionControlUpdateString(hWnd, pcd);
-			SendMessage(GetParent(hWnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
-		}
-		break;
+	case WM_PAINT:
+		OnPaint();
+		return 0;
 
 	case WM_NOTIFY:
 		if (TTN_GETDISPINFO == ((LPNMHDR)lParam)->code) {
@@ -445,119 +471,537 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 		}
 		break;
 
-	case WM_COMMAND: {
-		UINT cmd;
+	case WM_COMMAND:
+		{
+			UINT cmd;
 
-		switch(LOWORD(wParam)) {
-		case IDC_STOP:			cmd = PCN_STOP;			break;
-		case IDC_PLAY:			cmd = PCN_PLAY;			break;
-		case IDC_PLAYPREVIEW:	cmd = PCN_PLAYPREVIEW;	break;
-		case IDC_MARKIN:		cmd = PCN_MARKIN;		break;
-		case IDC_MARKOUT:		cmd = PCN_MARKOUT;		break;
-		case IDC_START:			cmd = PCN_START;		break;
-		case IDC_BACKWARD:		cmd = PCN_BACKWARD;		break;
-		case IDC_FORWARD:		cmd = PCN_FORWARD;		break;
-		case IDC_END:			cmd = PCN_END;			break;
-		case IDC_KEYPREV:		cmd = PCN_KEYPREV;		break;
-		case IDC_KEYNEXT:		cmd = PCN_KEYNEXT;		break;
+			switch(LOWORD(wParam)) {
+			case IDC_STOP:			cmd = PCN_STOP;			break;
+			case IDC_PLAY:			cmd = PCN_PLAY;			break;
+			case IDC_PLAYPREVIEW:	cmd = PCN_PLAYPREVIEW;	break;
+			case IDC_MARKIN:		cmd = PCN_MARKIN;		break;
+			case IDC_MARKOUT:		cmd = PCN_MARKOUT;		break;
+			case IDC_START:			cmd = PCN_START;		break;
+			case IDC_BACKWARD:		cmd = PCN_BACKWARD;		break;
+			case IDC_FORWARD:		cmd = PCN_FORWARD;		break;
+			case IDC_END:			cmd = PCN_END;			break;
+			case IDC_KEYPREV:		cmd = PCN_KEYPREV;		break;
+			case IDC_KEYNEXT:		cmd = PCN_KEYNEXT;		break;
 
-		case IDC_SCENEREV:
-			cmd = PCN_SCENEREV;
-//			SendMessage((HWND)lParam, BM_SETCHECK, (WPARAM)BST_CHECKED, 0);
-			if (BST_UNCHECKED!=SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
-				if (IsDlgButtonChecked(hWnd, IDC_SCENEFWD))
-					CheckDlgButton(hWnd, IDC_SCENEFWD, BST_UNCHECKED);
-			} else
-				cmd = PCN_SCENESTOP;
-			break;
-		case IDC_SCENEFWD:
-			cmd = PCN_SCENEFWD;
-//			SendMessage((HWND)lParam, BM_SETCHECK, (WPARAM)BST_CHECKED, 0);
-			if (BST_UNCHECKED!=SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
-				if (IsDlgButtonChecked(hWnd, IDC_SCENEREV))
-					CheckDlgButton(hWnd, IDC_SCENEREV, BST_UNCHECKED);
-			} else
-				cmd = PCN_SCENESTOP;
-			break;
-		default:
-			return 0;
-		}
-		SendMessage(GetParent(hWnd), WM_COMMAND, MAKELONG(GetWindowLong(hWnd, GWL_ID), cmd), (LPARAM)hWnd);
+			case IDC_SCENEREV:
+				cmd = PCN_SCENEREV;
+				if (BST_UNCHECKED!=SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+					if (IsDlgButtonChecked(mhwnd, IDC_SCENEFWD))
+						CheckDlgButton(mhwnd, IDC_SCENEFWD, BST_UNCHECKED);
+				} else
+					cmd = PCN_SCENESTOP;
+				break;
+			case IDC_SCENEFWD:
+				cmd = PCN_SCENEFWD;
+				if (BST_UNCHECKED!=SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+					if (IsDlgButtonChecked(mhwnd, IDC_SCENEREV))
+						CheckDlgButton(mhwnd, IDC_SCENEREV, BST_UNCHECKED);
+				} else
+					cmd = PCN_SCENESTOP;
+				break;
+			default:
+				return 0;
+			}
+			SendMessage(GetParent(mhwnd), WM_COMMAND, MAKELONG(GetWindowLong(mhwnd, GWL_ID), cmd), (LPARAM)mhwnd);
 		}
 		break;
 
-	case PCM_SETRANGEMIN:
+	case WM_LBUTTONDOWN:
 		{
-			HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
-			SendMessage(hwndTrackbar, TBM_SETRANGEMIN, wParam, lParam);
-			PositionControlUpdateString(hWnd, pcd);
-			PositionControlRedoTicks(hwndTrackbar);
-		}
-		break;
+			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
 
-	case PCM_SETRANGEMAX:
-		{
-			HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
-			if (lParam != SendMessage(hwndTrackbar, TBM_GETRANGEMAX, 0, 0)) {
-				SendMessage(hwndTrackbar, TBM_SETTICFREQ, 10000000, 0);
-				SendMessage(hwndTrackbar, TBM_SETRANGEMAX, wParam, lParam);
-				PositionControlUpdateString(hWnd, pcd);
-				PositionControlRedoTicks(hwndTrackbar);
+			if (PtInRect(&mThumbRect, pt)) {
+				mDragOffsetX = pt.x - mThumbRect.left;
+				mDragMode = kDragThumbFast;
+				SetCapture(mhwnd);
+
+				Notify(PCN_BEGINTRACK);
+				InvalidateRect(mhwnd, &mThumbRect, TRUE);
+			} else if (PtInRect(&mPositionArea, pt)) {
+				mPosition = (sint64)floor((pt.x - mTrack.left) * mFramesPerPixel + 0.5);
+				if (mPosition < mRangeStart)
+					mPosition = mRangeStart;
+				if (mPosition > mRangeEnd)
+					mPosition = mRangeEnd;
+				if (mbAutoFrame)
+					UpdateString();
+				RecalcThumbRect(mPosition);
+				Notify(PCN_THUMBPOSITION);
+				InvalidateRect(mhwnd, &mThumbRect, TRUE);
 			}
 		}
 		break;
 
-	case PCM_GETPOS:
-		return SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_GETPOS, 0, 0);
+	case WM_RBUTTONDOWN:
+		{
+			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
 
-	case PCM_SETPOS:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_SETPOS, (WPARAM)TRUE, lParam);
-		PositionControlUpdateString(hWnd, pcd);
+			if (PtInRect(&mThumbRect, pt)) {
+				mDragOffsetX = pt.x - mThumbRect.left;
+				mDragAnchorPos = mPosition;
+				mDragMode = kDragThumbSlow;
+				mDragAccum = 0;
+				SetCapture(mhwnd);
+
+				Notify(PCN_BEGINTRACK);
+				InvalidateRect(mhwnd, &mThumbRect, TRUE);
+				ShowCursor(FALSE);
+			}
+		}
 		break;
 
-	case PCM_GETSELSTART:
-		return SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_GETSELSTART, 0, 0);
+	case WM_MOUSEMOVE:
+		if (mDragMode == kDragThumbFast) {
+			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
 
-	case PCM_GETSELEND:
-		return SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_GETSELEND, 0, 0);
+			int x = pt.x - mDragOffsetX;
 
-	case PCM_SETSELSTART:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_SETSELSTART, wParam, lParam);
+			if (x < mTrack.left - mThumbWidth)
+				x = mTrack.left - mThumbWidth;
+			if (x > mTrack.right - mThumbWidth)
+				x = mTrack.right - mThumbWidth;
+
+			if (x != mThumbRect.left) {
+				if (mbAutoFrame) {
+					InvalidateRect(mhwnd, &mThumbRect, TRUE);
+					mThumbRect.right = x + (mThumbRect.right - mThumbRect.left);
+					mThumbRect.left = x;
+					InvalidateRect(mhwnd, &mThumbRect, TRUE);
+					UpdateWindow(mhwnd);
+				}
+
+				mPosition = (sint64)floor((x - mTrack.left + mThumbWidth) * mFramesPerPixel + 0.5);
+
+				if (mbAutoFrame)
+					UpdateString();
+
+				Notify(PCN_THUMBTRACK);
+			}
+		} else if (mDragMode == kDragThumbSlow) {
+			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
+
+			mDragAccum += (pt.x - (mThumbRect.left + mDragOffsetX));
+			int delta = mDragAccum / 8;
+			mDragAccum -= delta * 8;
+
+			if (delta) {
+				SetPosition(mDragAnchorPos += delta);
+				Notify(PCN_THUMBTRACK);
+			}
+			
+			pt.x = mThumbRect.left + mDragOffsetX;
+			ClientToScreen(mhwnd, &pt);
+			SetCursorPos(pt.x, pt.y);
+		}
 		break;
 
-	case PCM_SETSELEND:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_SETSELEND, wParam, lParam);
+	case WM_CAPTURECHANGED:
+		if ((HWND)lParam == mhwnd)
+			break;
+	case WM_MOUSELEAVE:
+	case WM_RBUTTONUP:
+	case WM_LBUTTONUP:
+		if (mDragMode) {
+			if (mDragMode == kDragThumbSlow)
+				ShowCursor(TRUE);
+
+			mDragMode = kDragNone;
+			ReleaseCapture();
+
+			Notify(PCN_ENDTRACK);
+			InvalidateRect(mhwnd, &mThumbRect, TRUE);
+		}
 		break;
 
-	case PCM_CLEARSEL:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_CLEARSEL, (BOOL)wParam, 0);
-		break;
+	case WM_MOUSEWHEEL:
+		{
+			mWheelAccum += (SHORT)HIWORD(wParam);
 
-	case PCM_SETFRAMERATE:
-		pcd->mFrameRate = VDFraction((uint32)wParam, (uint32)lParam);
-		PositionControlUpdateString(hWnd, pcd);
-		break;
+			int increments = mWheelAccum / WHEEL_DELTA;
 
-	case PCM_RESETSHUTTLE:
-		CheckDlgButton(hWnd, IDC_SCENEREV, BST_UNCHECKED);
-		CheckDlgButton(hWnd, IDC_SCENEFWD, BST_UNCHECKED);
-		break;
+			if (increments) {
+				mWheelAccum -= WHEEL_DELTA * increments;
 
-	case PCM_SETFRAMETYPECB:
-		pcd->pFTCallback = (PosCtlFTCallback)wParam;
-		pcd->pvFTCData = (void *)lParam;
-		break;
-
-	case PCM_CTLAUTOFRAME:
-		pcd->fNoAutoFrame = !lParam;
-		break;
-
-	case PCM_SETDISPFRAME:
-		PositionControlUpdateString(hWnd, pcd, lParam);
-		break;
+				SetPosition(mPosition + increments);
+				Notify(PCN_THUMBPOSITION);
+			}
+		}
+		return 0;
 
 	default:
-		return DefWindowProc(hWnd, msg, wParam, lParam);
+		return DefWindowProc(mhwnd, msg, wParam, lParam);
 	}
 	return FALSE;
+}
+
+void VDPositionControlW32::OnCreate() {
+	DWORD dwStyles;
+	TOOLINFO ti;
+	HWND hwndTT;
+
+	dwStyles = GetWindowLong(mhwnd, GWL_STYLE);
+	mbHasPlaybackControls	= !!(dwStyles & PCS_PLAYBACK);
+	mbHasMarkControls		= !!(dwStyles & PCS_MARK);
+	mbHasSceneControls		= !!(dwStyles & PCS_SCENE);
+
+	mFrameFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	nFrameCtlHeight = 18;
+	
+	if (mFrameFont) {
+		if (HDC hdc = GetDC(mhwnd)) {
+			TEXTMETRIC tm;
+			int pad = 2*GetSystemMetrics(SM_CYEDGE);
+			int availHeight = 24 - pad;
+			HGDIOBJ hgoFont = SelectObject(hdc, mFrameFont);
+
+			if (GetTextMetrics(hdc, &tm)) {
+				LOGFONT lf;
+
+				nFrameCtlHeight = tm.tmHeight + tm.tmInternalLeading + pad;
+
+				if (tm.tmHeight > availHeight && GetObject(mFrameFont, sizeof lf, &lf)) {
+					lf.lfHeight = availHeight;
+					nFrameCtlHeight = 24;
+
+					HFONT hFont = CreateFontIndirect(&lf);
+					if (hFont)
+						mFrameFont = hFont;		// the old font was a stock object, so it doesn't need to be deleted
+				}
+			}
+
+			nFrameCtlHeight = (nFrameCtlHeight+1) & ~1;
+
+			SelectObject(hdc, hgoFont);
+			ReleaseDC(mhwnd, hdc);
+		}
+	}
+
+	mFrameNumberFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	mFrameNumberHeight = 18;
+	mFrameNumberWidth = 8;
+
+	if (mFrameNumberFont) {
+		if (HDC hdc = GetDC(mhwnd)) {
+			TEXTMETRIC tm;
+			HGDIOBJ hgoFont = SelectObject(hdc, mFrameNumberFont);
+
+			if (GetTextMetrics(hdc, &tm))
+				mFrameNumberHeight = tm.tmHeight + tm.tmInternalLeading;
+
+			SIZE siz;
+			if (GetTextExtentPoint32(hdc, "0123456789", 10, &siz))
+				mFrameNumberWidth = (siz.cx + 9) / 10;
+
+			SelectObject(hdc, hgoFont);
+			ReleaseDC(mhwnd, hdc);
+		}
+	}
+
+	mThumbWidth = mFrameNumberHeight * 5 / 12;
+
+	CreateWindowEx(WS_EX_STATICEDGE,"EDIT",NULL,WS_CHILD|WS_VISIBLE|ES_READONLY,0,0,0,24,mhwnd,(HMENU)IDC_FRAME,g_hInst,NULL);
+
+	if (mbHasPlaybackControls) {
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_STOP		, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_PLAY		, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_PLAYPREVIEW	, g_hInst, NULL);
+	}
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_START		, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_BACKWARD	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_FORWARD	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_END		, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_KEYPREV	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_KEYNEXT	, g_hInst, NULL);
+
+	if (mbHasSceneControls) {
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,mhwnd, (HMENU)IDC_SCENEREV, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,mhwnd, (HMENU)IDC_SCENEFWD, g_hInst, NULL);
+	}
+	if (mbHasMarkControls) {
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_MARKIN	, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_MARKOUT	, g_hInst, NULL);
+	}
+
+	if (mFrameFont)
+		EnumChildWindows(mhwnd, (WNDENUMPROC)InitChildrenProc, (LPARAM)this);
+
+	// Create tooltip control.
+
+	hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
+			CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+			mhwnd, NULL, g_hInst, NULL);
+
+	if (hwndTT) {
+
+		SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+		SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_AUTOMATIC, MAKELONG(2000, 0));
+		SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_RESHOW, MAKELONG(2000, 0));
+
+		ti.cbSize		= sizeof(TOOLINFO);
+		ti.uFlags		= TTF_SUBCLASS | TTF_IDISHWND;
+		ti.hwnd			= mhwnd;
+		ti.lpszText		= LPSTR_TEXTCALLBACK;
+
+		for(int i=0; i<sizeof g_posctltips/sizeof g_posctltips[0]; ++i) {
+			ti.uId			= (WPARAM)GetDlgItem(mhwnd, g_posctltips[i].id);
+
+			if (ti.uId)
+				SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+		}
+	}
+}
+
+void VDPositionControlW32::UpdateString(VDPosition pos) {
+	wchar_t buf[512];
+	int l;
+
+	if (pos < 0)
+		pos = mPosition;
+
+	bool success = false;
+	if (mpCB)
+		success = mpCB->GetFrameString(buf, sizeof buf / sizeof buf[0], pos);
+
+	if (!success) {
+		if (mFrameRate.getLo()) {
+			int ms, sec, min;
+			long ticks = (long)mFrameRate.scale64ir(pos * 1000);
+
+			ms  = ticks %1000; ticks /= 1000;
+			sec	= ticks %  60; ticks /=  60;
+			min	= ticks %  60; ticks /=  60;
+
+			success = (unsigned)swprintf(buf, L" Frame %I64d (%d:%02d:%02d.%03d)", (sint64)pos, ticks, min, sec, ms) < sizeof buf / sizeof buf[0];
+		} else
+			success = (unsigned)swprintf(buf, L" Frame %I64d", (sint64)pos) < sizeof buf / sizeof buf[0];
+	}
+
+	if (success) {
+		HWND hwndFrame = GetDlgItem(mhwnd, IDC_FRAME);
+
+		VDSetWindowTextW32(hwndFrame, buf);
+	}
+}
+
+void VDPositionControlW32::OnSize() {
+	RECT wndr;
+	UINT id;
+	int x, y;
+	HWND hwndButton;
+
+	GetClientRect(mhwnd, &wndr);
+
+	RecomputeMetrics();
+
+	// Reposition controls
+	y = wndr.bottom - 24;
+	x = 0;
+
+	if (mbHasPlaybackControls) {
+		for(id = IDC_STOP; id < IDC_START; id++) {
+			SetWindowPos(GetDlgItem(mhwnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
+
+			x += 24;
+		}
+		x+=8;
+	}
+
+	for(id = IDC_START; id < IDC_MARKIN; id++) {
+		if (hwndButton = GetDlgItem(mhwnd,id)) {
+			SetWindowPos(hwndButton, NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
+			x += 24;
+		}
+	}
+	x+=8;
+
+	if (mbHasMarkControls) {
+		for(id = IDC_MARKIN; id <= IDC_MARKOUT; id++) {
+			SetWindowPos(GetDlgItem(mhwnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
+			x += 24;
+		}
+
+		x+=8;
+	}
+
+	SetWindowPos(GetDlgItem(mhwnd, IDC_FRAME), NULL, x, y+12-(nFrameCtlHeight>>1), std::min<int>(wndr.right - x, 320), nFrameCtlHeight, SWP_NOACTIVATE|SWP_NOZORDER);
+
+}
+
+void VDPositionControlW32::OnPaint() {
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(mhwnd, &ps);
+
+	if (!hdc)		// hrm... this is bad
+		return;
+
+	HGDIOBJ hOldFont = SelectObject(hdc, mFrameNumberFont);
+	SetBkMode(hdc, TRANSPARENT);
+	SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
+	SetTextAlign(hdc, TA_TOP | TA_CENTER);
+
+	char buf[64];
+	RECT rClient;
+
+	VDVERIFY(GetClientRect(mhwnd, &rClient));
+
+	int trackLeft = mTrack.left;
+	int trackRight = mTrack.right;
+	int trackTop = mTrack.top;
+	int trackBottom = mTrack.bottom;
+
+	HGDIOBJ hOldPen = SelectObject(hdc, GetStockObject(BLACK_PEN));
+
+	// Fill the track.  We draw the track borders later so they're always on top.
+	FillRect(hdc, &mTrack, mBrushes[kBrushTrack]);
+
+	if (mSelectionEnd > mSelectionStart) {
+		int selx1 = VDRoundToInt(mTrack.left + mPixelsPerFrame * mSelectionStart);
+		int selx2 = VDRoundToInt(mTrack.left + mPixelsPerFrame * mSelectionEnd);
+		if (selx1 == selx2)
+			++selx2;
+
+		RECT rSel={selx1, mTrack.top, selx2, mTrack.bottom};
+		FillRect(hdc, &rSel, mBrushes[kBrushSelection]);
+	}
+
+	// Determine digit spacing.
+	int labelDigits = mRangeEnd > 0 ? (int)floor(log10((double)mRangeEnd)) + 1 : 1;
+	int labelWidth = (labelDigits + 1) * mFrameNumberWidth;		// Add 1 digit for nice padding.
+	sint64 framesPerLabel = 1;
+
+	if (mRangeEnd > mRangeStart) {
+		while(framesPerLabel * mPixelsPerFrame < labelWidth) {
+			sint64 fpl2 = framesPerLabel + framesPerLabel;
+
+			if (fpl2 * mPixelsPerFrame >= labelWidth) {
+				framesPerLabel = fpl2;
+				break;
+			}
+
+			sint64 fpl5 = framesPerLabel * 5;
+			if (fpl5 * mPixelsPerFrame >= labelWidth) {
+				framesPerLabel = fpl5;
+				break;
+			}
+
+			framesPerLabel *= 10;
+		}
+	}
+
+	sint64 frame = mRangeStart;
+	bool bDrawLabels = ps.rcPaint.bottom >= mTrackArea.bottom;
+
+	while(frame < mRangeEnd) {
+		int x = trackLeft + VDRoundToInt((frame - mRangeStart) * mPixelsPerFrame);
+
+		const RECT rTick = { x, mTrack.bottom, x+1, mTrackArea.bottom };
+		FillRect(hdc, &rTick, mBrushes[kBrushTick]);
+
+		if (x > trackRight - labelWidth)
+			break;		// don't allow labels to encroach last label
+
+		if (bDrawLabels) {
+			sprintf(buf, "%I64d", frame);
+			TextOut(hdc, x, mTrackArea.bottom, buf, strlen(buf));
+		}
+
+		frame += framesPerLabel;
+	}
+
+	const RECT rLastTick = { mTrack.right, mTrack.bottom, mTrack.right+1, mTrackArea.bottom };
+	FillRect(hdc, &rLastTick, mBrushes[kBrushTick]);
+
+	if (bDrawLabels) {
+		sprintf(buf, "%I64d", mRangeEnd);
+		TextOut(hdc, trackRight, mTrackArea.bottom, buf, strlen(buf));
+	}
+
+	// Draw track border.
+	const int xedge = GetSystemMetrics(SM_CXEDGE);
+	const int yedge = GetSystemMetrics(SM_CYEDGE);
+	RECT rEdge = mTrack;
+	InflateRect(&rEdge, xedge, yedge);
+
+	DrawEdge(hdc, &rEdge, EDGE_SUNKEN, BF_RECT);
+
+	// Draw cursor.
+	RECT rThumb = mThumbRect;
+
+	DrawEdge(hdc, &rThumb, EDGE_RAISED, BF_SOFT|BF_RECT|BF_ADJUST);
+	DrawEdge(hdc, &rThumb, EDGE_SUNKEN, BF_SOFT|BF_RECT|BF_ADJUST);
+
+	// All done.
+	SelectObject(hdc, hOldPen);
+	SelectObject(hdc, hOldFont);
+	EndPaint(mhwnd, &ps);
+}
+
+void VDPositionControlW32::RecomputeMetrics() {
+	RECT r;
+
+	VDVERIFY(GetClientRect(mhwnd, &r));
+
+	mPositionArea = r;
+	mPositionArea.bottom -= 24;
+
+	// Compute space we need for the ticks.
+	int labelDigits = mRangeEnd > 0 ? ((int)floor(log10((double)mRangeEnd)) + 1) : 1;
+	int labelSpace = ((labelDigits * mFrameNumberWidth) >> 1) + 8;
+
+	if (labelSpace < 16)
+		labelSpace = 16;
+
+	mTrackArea.left		= mPositionArea.left;
+	mTrackArea.top		= mPositionArea.top;
+	mTrackArea.right	= mPositionArea.right;
+	mTrackArea.bottom	= mPositionArea.bottom - 2 - mFrameNumberHeight;
+
+	int trackRailHeight = (mTrackArea.bottom - mTrackArea.top + 1) / 3;
+
+	mTrack.left			= mTrackArea.left + labelSpace;
+	mTrack.top			= mTrackArea.top + trackRailHeight;
+	mTrack.right		= mTrackArea.right - labelSpace;
+	mTrack.bottom		= mTrackArea.bottom - trackRailHeight;
+
+	if (mRangeEnd > mRangeStart)
+		mPixelsPerFrame = (double)(mTrack.right - mTrack.left) / (double)(mRangeEnd - mRangeStart);
+	else
+		mPixelsPerFrame = 0.0;
+
+	if (mTrack.right > mTrack.left)
+		mFramesPerPixel = (double)(mRangeEnd - mRangeStart) / (double)(mTrack.right - mTrack.left);
+	else
+		mFramesPerPixel = 0.0;
+
+	RecalcThumbRect(mPosition, false);
+
+	RECT rInv = {0,0,r.right,r.bottom-24};
+	InvalidateRect(mhwnd, &rInv, TRUE);
+}
+
+void VDPositionControlW32::RecalcThumbRect(VDPosition pos, bool update) {
+	RECT rOld(mThumbRect);
+
+	mThumbRect.left		= mTrack.left + VDRoundToInt(mPixelsPerFrame * (pos - mRangeStart)) - mThumbWidth;
+	mThumbRect.right	= mThumbRect.left + 2*mThumbWidth;
+	mThumbRect.top		= mTrackArea.top;
+	mThumbRect.bottom	= mTrackArea.bottom;
+
+	if (update && memcmp(&mThumbRect, &rOld, sizeof(RECT))) {
+		InvalidateRect(mhwnd, &rOld, TRUE);
+		InvalidateRect(mhwnd, &mThumbRect, TRUE);
+	}
+}
+
+void VDPositionControlW32::Notify(UINT code) {
+	NMHDR nm;
+	nm.hwndFrom = mhwnd;
+	nm.idFrom	= GetWindowLong(mhwnd, GWL_ID);
+	nm.code		= code;
+	SendMessage(GetParent(mhwnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
 }

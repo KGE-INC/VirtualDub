@@ -15,8 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_FILTER_H
-#define f_FILTER_H
+#ifndef f_VD2_PLUGIN_VDVIDEOFILTOLD_H
+#define f_VD2_PLUGIN_VDVIDEOFILTOLD_H
 
 #include <stddef.h>
 #include <windows.h>
@@ -47,6 +47,16 @@
 //////////////////
 
 struct CScriptObject;
+
+struct FilterVTbls {
+	void *pvtblVBitmap;
+};
+
+#ifdef VDEXT_MAIN
+struct FilterVTbls g_vtbls;
+#elif defined(VDEXT_NOTMAIN)
+extern struct FilterVTbls g_vtbls;
+#endif
 
 //////////////////
 
@@ -104,7 +114,7 @@ public:
 
 //////////
 
-#define VIRTUALDUB_FILTERDEF_VERSION		(9)
+#define VIRTUALDUB_FILTERDEF_VERSION		(10)
 #define	VIRTUALDUB_FILTERDEF_COMPATIBLE		(4)
 
 // v3: added lCurrentSourceFrame to FrameStateInfo
@@ -114,6 +124,7 @@ public:
 // v7 (1.4d): added frame lag, exception handling
 // v8 (1.4.11): added string2 proc
 // v9 (1.4.12): added (working) copy constructor
+// v10 (1.5.10): added preview flag
 
 typedef struct FilterModule {
 	struct FilterModule *next, *prev;
@@ -165,6 +176,15 @@ public:
 	long	lMicrosecsPerSrcFrame;		// microseconds per source frame
 	long	lSourceFrameMS;				// source frame timestamp
 	long	lDestFrameMS;				// output frame timestamp
+
+	enum {
+		kStateNone		= 0x00000000,
+		kStatePreview	= 0x00000001,	// (V1.5.10+) Job output is not being saved to disk.
+		kStateRealTime	= 0x00000002,	// (V1.5.10+) Operation is running in real-time (capture, playback).
+		kStateMax		= 0xFFFFFFFF
+	};
+
+	long	flags;
 };
 
 // VFBitmap: VBitmap extended to hold filter-specific information
@@ -261,41 +281,28 @@ struct FilterFunctions {
 
 ///////////////////////////////////////////////////////////////////////////
 
-#ifndef f_SYLIA_SCRIPTINTERPRETER_H
-#define f_SYLIA_SCRIPTINTERPRETER_H
-
 class CScriptValue;
 class CScriptError;
 struct CScriptObject;
 
 class IScriptInterpreter {
 public:
-	virtual	void Destroy()										=0;
+	virtual	void _placeholder1() {}
+	virtual void _placeholder2(void *, void *) {}
+	virtual void _placeholder3(char *s) {}
 
-	virtual void SetRootHandler(void *, void *)	=0;
+	virtual void ScriptError(int e)=0;
+	virtual void _placeholder4(CScriptError& cse) {}
+	virtual char** AllocTempString(long l)=0;
 
-	virtual void ExecuteLine(char *s)							=0;
-
-	virtual void ScriptError(int e)								=0;
-	virtual const char* TranslateScriptError(CScriptError& cse)	=0;
-	virtual char** AllocTempString(long l)						=0;
-
-	virtual CScriptValue LookupObjectMember(CScriptObject *obj, void *, char *szIdent) = 0;
+	virtual void _placeholder5() {}
 };
 
 #define EXT_SCRIPT_ERROR(x)	(isi->ScriptError((CScriptError::x)))
 
-#endif
-
-#ifndef f_SYLIA_SCRIPTVALUE_H
-#define f_SYLIA_SCRIPTVALUE_H
-
-struct CScriptObject;
-class CScriptValue;
-
-typedef CScriptValue (*ScriptFunctionPtr)(IScriptInterpreter *, void *, CScriptValue *, int);
-typedef void (*ScriptVoidFunctionPtr)(IScriptInterpreter *, void *, CScriptValue *, int);
-typedef int (*ScriptIntFunctionPtr)(IScriptInterpreter *, void *, CScriptValue *, int);
+typedef CScriptValue (*ScriptFunctionPtr)(IScriptInterpreter *, void *, const CScriptValue *, int);
+typedef void (*ScriptVoidFunctionPtr)(IScriptInterpreter *, void *, const CScriptValue *, int);
+typedef int (*ScriptIntFunctionPtr)(IScriptInterpreter *, void *, const CScriptValue *, int);
 
 typedef struct ScriptFunctionDef {
 	ScriptFunctionPtr func_ptr;
@@ -316,27 +323,33 @@ typedef struct CScriptObject {
 
 class CScriptValue {
 public:
-	enum { T_VOID, T_INT, T_PINT, T_STR, T_ARRAY, T_OBJECT, T_FNAME, T_FUNCTION, T_VARLV } type;
+	enum { T_VOID, T_INT, T_PINT, T_STR, T_ARRAY, T_OBJECT, T_FNAME, T_FUNCTION, T_VARLV, T_LONG, T_DOUBLE } type;
 	CScriptObject *thisPtr;
 	union {
 		int i;
 		char **s;
+		sint64 l;
+		double d;
 	} u;
-	void *lpVoid;
 
 	CScriptValue()						{ type = T_VOID; }
 	CScriptValue(int i)					{ type = T_INT;			u.i = i; }
+	CScriptValue(sint64 l)				{ type = T_LONG;		u.l = l; }
+	CScriptValue(double d)				{ type = T_DOUBLE;		u.d = d; }
 	CScriptValue(char **s)				{ type = T_STR;			u.s = s; }
 
-	bool isVoid()			{ return type == T_VOID; }
-	bool isInt()			{ return type == T_INT; }
-	bool isString()			{ return type == T_STR; }
+	bool isVoid() const					{ return type == T_VOID; }
+	bool isInt() const					{ return type == T_INT; }
+	bool isString() const				{ return type == T_STR; }
+	bool isLong() const					{ return type == T_LONG; }
+	bool isDouble() const				{ return type == T_DOUBLE; }
 
-	int					asInt()			{ return u.i; }
-	char **				asString()		{ return u.s; }
+	int		asInt() const				{ return u.i; }
+	sint64	asLong() const				{ return u.l; }
+	double	asDouble() const			{ return u.d; }
+	char **	asString() const 			{ return u.s; }
 };
 
-#endif
 
 
 

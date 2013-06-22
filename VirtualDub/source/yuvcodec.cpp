@@ -131,7 +131,8 @@ LRESULT YUVCodec::DecompressEx(ICDECOMPRESSEX *icdex, DWORD cbSize) {
 	if (w0s <= 0 || h0s <= 0)
 		return ICERR_OK;
 
-	VBitmap(icdex->lpDst, bmihOutput).BitBltFromYUY2(icdex->xDst, icdex->yDst, &VBitmap(icdex->lpSrc, bmihInput), icdex->xSrc, icdex->ySrc, w0s, h0s);
+	VBitmap src(icdex->lpSrc, bmihInput);
+	VBitmap(icdex->lpDst, bmihOutput).BitBltFromYUY2(icdex->xDst, icdex->yDst, &src, icdex->xSrc, icdex->ySrc, w0s, h0s);
 //	VBitmap(icdex->lpDst, bmihOutput).BitBltFromYUY2Fullscale(icdex->xDst, icdex->yDst, &VBitmap(icdex->lpSrc, bmihInput), icdex->xSrc, icdex->ySrc, w0s, h0s);
 
 	return ICERR_OK;

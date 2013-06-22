@@ -241,7 +241,6 @@ static void CaptureVumeterDoAnalyzer(VumeterDlgData *vdd, HDC hDC) {
 	int w = vdd->rect[0].right - vdd->rect[0].left;
 	if (w > 1024) w = 1024;
 
-	unsigned char *src = (unsigned char *)vdd->scrollBuffer + vdd->scrollSize - (vdd->fStereo ? w*2 : w);
 	unsigned char *dst_col = (unsigned char *)vdd->pbm->getBits(), *dst;
 	int hl = vdd->rect[0].bottom - vdd->rect[0].top;
 	int hr = vdd->rect[1].bottom - vdd->rect[1].top;
@@ -444,8 +443,8 @@ static void CaptureVumeterSetupMixer(HWND hdlg, VumeterDlgData *vdd) {
 	_RPT0(0,"CaptureVumeterSetupMixer() end\n");
 }
 
-BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
-	VumeterDlgData *vdd = (VumeterDlgData *)GetWindowLong(hDlg, DWL_USER);
+INT_PTR CALLBACK CaptureVumeterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+	VumeterDlgData *vdd = (VumeterDlgData *)GetWindowLongPtr(hDlg, DWLP_USER);
 	MMRESULT res;
 
 	switch(message) {
@@ -478,7 +477,7 @@ BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 				vdd->scrollBuffer = (char *)vdd->buffer + (vdd->fStereo ? 1024 : 512);
 				vdd->scrollSize = vdd->fStereo ? 2048 : 1024;
 
-				SetWindowLong(hDlg, DWL_USER, (DWORD)vdd);
+				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)vdd);
 
 				GetWindowRect(hWndLeft = GetDlgItem(hDlg, IDC_VOLUME_LEFT), &vdd->rect[0]);
 				GetWindowRect(hWndRight = GetDlgItem(hDlg, IDC_VOLUME_RIGHT), &vdd->rect[1]);
@@ -495,10 +494,10 @@ BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 				ScreenToClient(hDlg, (LPPOINT)&vdd->rect[1] + 1);
 
 				vdd->wfex.wFormatTag		= WAVE_FORMAT_PCM;
-				vdd->wfex.nChannels			= vdd->fStereo?2:1;
+				vdd->wfex.nChannels			= (WORD)(vdd->fStereo?2:1);
 				vdd->wfex.nSamplesPerSec	= 11025;
 				vdd->wfex.nAvgBytesPerSec	= vdd->fStereo?22050:11025;
-				vdd->wfex.nBlockAlign		= vdd->fStereo?2:1;
+				vdd->wfex.nBlockAlign		= (WORD)(vdd->fStereo?2:1);
 				vdd->wfex.wBitsPerSample	= 8;
 				vdd->wfex.cbSize			= 0;
 

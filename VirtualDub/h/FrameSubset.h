@@ -23,11 +23,12 @@
 
 struct FrameSubsetNode {
 public:
-	int start, len;
+	sint64 start;
+	sint64 len;
 	bool bMask;			// if set, all frames map to the previous frame
 
 	FrameSubsetNode() {}
-	FrameSubsetNode(int _s, int _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
+	FrameSubsetNode(sint64 _s, sint64 _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
 };
 
 class FrameSubset {
@@ -40,33 +41,33 @@ public:
 	typedef tTimeline::const_iterator		const_iterator;
 
 	FrameSubset();
-	FrameSubset(int length);
+	FrameSubset(sint64 length);
 	~FrameSubset();
 
 	void clear();
 	void addFrom(FrameSubset&);
 
-	int getTotalFrames();
-	void addRange(int start, int len, bool bMask);
-	void addRangeMerge(int start, int len, bool bMask);
-	int lookupFrame(int frame) {
+	sint64 getTotalFrames() const;
+	iterator addRange(sint64 start, sint64 len, bool bMask);
+	void addRangeMerge(sint64 start, sint64 len, bool bMask);
+	sint64 lookupFrame(sint64 frame) const {
 		bool b;
 
 		return lookupFrame(frame, b);
 	}
-	int lookupFrame(int frame, bool& bMasked);
-	int revLookupFrame(int frame, bool& bMasked);
-	int lookupRange(int start, int& len) {
+	sint64 lookupFrame(sint64 frame, bool& bMasked) const;
+	sint64 revLookupFrame(sint64 frame, bool& bMasked) const;
+	sint64 lookupRange(sint64 start, sint64& len) const {
 		bool b;
 
 		return lookupRange(start, len, b);
 	}
-	int lookupRange(int start, int& len, bool& bMasked);
-	void deleteInputRange(int start, int len);	// in source coordinates
-	void deleteRange(int start, int len);	// in translated coordinates
-	void setRange(int start, int len, bool bMask);	// translated coordinates
-	void clip(int start, int len);
-	void offset(int off);
+	sint64 lookupRange(sint64 start, sint64& len, bool& bMasked) const;
+	void deleteInputRange(sint64 start, sint64 len);	// in source coordinates
+	void deleteRange(sint64 start, sint64 len);	// in translated coordinates
+	void setRange(sint64 start, sint64 len, bool bMask);	// translated coordinates
+	void clip(sint64 start, sint64 len);
+	void offset(sint64 off);
 
 	////////////////////
 
@@ -80,7 +81,7 @@ public:
 	reference				back()				{ return mTimeline.back(); }
 	const_reference			back() const		{ return mTimeline.back(); }
 
-	void assign(const FrameSubset& src, int start, int len);
+	void assign(const FrameSubset& src, sint64 start, sint64 len);
 	iterator erase(iterator it) { return mTimeline.erase(it); }
 	iterator erase(iterator it1, iterator it2) { return mTimeline.erase(it1, it2); }
 	void insert(iterator it, const value_type& v) {
@@ -89,14 +90,22 @@ public:
 		insert(it, tmp);
 	}
 	void insert(iterator it, const FrameSubset& src);
-	void insert(int insertionPoint, const FrameSubset& src);
+	void insert(sint64 insertionPoint, const FrameSubset& src);
 
-	iterator findNode(int& poffset, int iDstFrame);
+	iterator findNode(sint64& poffset, sint64 iDstFrame);
+	const_iterator findNode(sint64& poffset, sint64 iDstFrame) const;
 
 	void dump();
 
 protected:
-	tTimeline mTimeline;
+	void invalidateCache() {
+		mCachedIterator = mTimeline.begin();
+		mCachedPosition = 0;
+	}
+
+	tTimeline				mTimeline;
+	mutable iterator		mCachedIterator;
+	mutable VDPosition		mCachedPosition;
 };
 
 #endif

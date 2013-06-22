@@ -37,7 +37,7 @@ public:
 		return 0 != ActivateDialog(hParent);
 	}
 
-	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		char buf[256];
 
 		switch(msg) {
@@ -84,8 +84,6 @@ public:
 	uint32 Prepare();
 	void Start();
 	uint32 Run();
-	uint32 Read(unsigned inpin, void *dst, uint32 samples);
-	sint64 Seek(sint64 us);
 
 	void *GetConfigPtr() { return &mConfig; }
 
@@ -136,18 +134,13 @@ uint32 VDAudioFilterGain::Prepare() {
 	mpContext->mpOutputs[0]->mpFormat = pwf;
 
 	pwf->mSampleBits	= 16;
-	pwf->mBlockSize		= 2 * pwf->mChannels;
+	pwf->mBlockSize		= (uint16)(2 * pwf->mChannels);
 	pwf->mDataRate		= pwf->mSamplingRate * pwf->mBlockSize;
 
 	return 0;
 }
 
 void VDAudioFilterGain::Start() {
-	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
-
 	mScale8		= (sint32)floor(0.5 + mConfig.ratio * 65536.0);
 	mScale16	= (mScale8 + 128) >> 8;
 }
@@ -155,29 +148,19 @@ void VDAudioFilterGain::Start() {
 uint32 VDAudioFilterGain::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
-	bool bInputRead = false;
-
-	int samples = mpContext->mInputSamples;
 
 	// compute output samples
-	int elems = samples * format.mChannels;
-	sint16 *dst;
+	int samples = mpContext->mCommonSamples;
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 	
-	samples = 0;
-	if (elems > 0) {
-		dst = (sint16 *)mOutputBuffer.LockWrite(elems, elems);
-		samples = elems / format.mChannels;
-	}
-
 	if (!samples) {
-		if (pin.mbEnded && !elems)
+		if (pin.mbEnded && !mpContext->mInputSamples)
 			return kVFARun_Finished;
 
 		return 0;
 	}
 
 	// read buffer
-
 	unsigned count = format.mChannels * samples;
 
 	int actual_samples = mpContext->mpInputs[0]->Read(dst, samples, false, kVFARead_PCM16);
@@ -192,31 +175,9 @@ uint32 VDAudioFilterGain::Run() {
 		dst[i] = (sint16)(v - 0x8000);
 	}
 
-	mOutputBuffer.UnlockWrite(samples * format.mChannels);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mChannels;
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
-}
-
-uint32 VDAudioFilterGain::Read(unsigned inpin, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mChannels);
-
-	if (dst) {
-		mOutputBuffer.Read((sint16 *)dst, samples * format.mChannels);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format.mChannels;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterGain::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_gain = {

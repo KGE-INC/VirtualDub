@@ -931,10 +931,10 @@ colloop_bilinear_start_MMX:
 	mov		ecx,eax
 	shr		ecx,28
 
-	movd		mm0,[esi*4]		;mm0 = top left pixel
-	movd		mm1,[esi*4+4]		;mm1 = top right pixel
-	movd		mm3,[esi*4+edi+4]	;mm3 = bottom right pixel
-	movd		mm2,[esi*4+edi]		;mm2 = bottom left pixel
+	movd		mm0,dword ptr [esi*4]		;mm0 = top left pixel
+	movd		mm1,dword ptr [esi*4+4]		;mm1 = top right pixel
+	movd		mm3,dword ptr [esi*4+edi+4]	;mm3 = bottom right pixel
+	movd		mm2,dword ptr [esi*4+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 	pmullw		mm0,[bilinMMX_tab2 + ecx*8]
 	punpcklbw	mm1,mm5
@@ -946,16 +946,16 @@ colloop_bilinear_start_MMX:
 	align		16
 
 bilinear_colloop_MMX:
-	movd		mm0,[esi*4]		;mm0 = top left pixel
+	movd		mm0,dword ptr [esi*4]		;mm0 = top left pixel
 	paddw		mm4,mm2			;[last]
 
-	movd		mm1,[esi*4+4]		;mm1 = top right pixel
+	movd		mm1,dword ptr [esi*4+4]		;mm1 = top right pixel
 	psrlw		mm4,8			;[last]
 
-	movd		mm3,[esi*4+edi+4]	;mm3 = bottom right pixel
+	movd		mm3,dword ptr [esi*4+edi+4]	;mm3 = bottom right pixel
 	packuswb	mm4,mm4			;[last]
 
-	movd		mm2,[esi*4+edi]		;mm2 = bottom left pixel
+	movd		mm2,dword ptr [esi*4+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 
 	pmullw		mm0,[bilinMMX_tab2 + ecx*8]
@@ -964,7 +964,7 @@ bilinear_colloop_MMX:
 	pmullw		mm1,[bilinMMX_tab1 + ecx*8]
 	punpcklbw	mm2,mm5
 
-	movd		[edx+ebp-4],mm4		;[last]
+	movd		dword ptr [edx+ebp-4],mm4		;[last]
 	punpcklbw	mm3,mm5
 
 bilinear_colloop_MMX_entry:
@@ -994,7 +994,7 @@ bilinear_colloop_MMX_entry:
 	paddw		mm4,mm2			;[last]
 	psrlw		mm4,8			;[last]
 	packuswb	mm4,mm4			;[last]
-	movd		[edx+ebp-4],mm4		;[last]
+	movd		dword ptr [edx+ebp-4],mm4		;[last]
 	mov		ecx,[esp+44+16+32]
 
 
@@ -1061,9 +1061,9 @@ bilinear_no_postcopy_MMX:
 
 	align		16
 bilinear_prepostcopy_MMX:
-	movd		mm0,[esi]		;mm0 = top left pixel
+	movd		mm0,dword ptr [esi]		;mm0 = top left pixel
 
-	movd		mm2,[esi+edi]		;mm2 = bottom left pixel
+	movd		mm2,dword ptr [esi+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 
 	punpcklbw	mm2,mm5
@@ -1078,7 +1078,7 @@ bilinear_prepostcopy_MMX:
 
 	packuswb	mm0,mm0			;[last]
 
-	movd		[edx+ebp-4],mm0		;[last]
+	movd		dword ptr [edx+ebp-4],mm0		;[last]
 	jne		bilinear_prepostcopy_MMX
 
 	ret

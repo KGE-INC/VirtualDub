@@ -1,0 +1,8 @@
+OUTDIR = ..\out\Helpfile
+
+$(OUTDIR)/help.zip: $(SRC)/audiofilters.lina $(SRC)/dialogs.lina $(SRC)/root.lina $(SRC)/videofilters.lina
+	rd /q /s $(OUTDIR)
+	../out/$(BUILD)/Lina $(SRC)/root.lina
+	cd $(OUTDIR)
+	zip -0 -X help0.zip *.html pics/*
+	zip -9 -X -j help.zip help0.zip

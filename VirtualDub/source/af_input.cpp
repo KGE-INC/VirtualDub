@@ -105,7 +105,7 @@ void VDAudioDecompressorW32::Init(const WAVEFORMATEX *pSrcFormat) {
 	if (mpDstFormat->nChannels!=1 && mpDstFormat->nChannels!=2)
 		mpDstFormat->nChannels = 2;
 
-	mpDstFormat->nBlockAlign		= (mpDstFormat->wBitsPerSample/8) * mpDstFormat->nChannels;
+	mpDstFormat->nBlockAlign		= (uint16)((mpDstFormat->wBitsPerSample>>3) * mpDstFormat->nChannels);
 	mpDstFormat->nAvgBytesPerSec	= mpDstFormat->nBlockAlign * mpDstFormat->nSamplesPerSec;
 	mpDstFormat->cbSize				= 0;
 
@@ -249,15 +249,12 @@ public:
 	uint32 Prepare();
 	uint32 Run();
 	void Start();
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
 	sint64 Seek(sint64);
 
-	VDRingBuffer<char> mOutputBuffer;
-
 	AudioSource *mpSrc;
-	unsigned		mPos;
+	VDPosition		mPos;
 	unsigned		mPad;
-	unsigned		mLimit;
+	VDPosition		mLimit;
 	int				mSrcBlockAlign;
 	bool			mbDecompressionActive;
 
@@ -300,24 +297,21 @@ uint32 VDAudioFilterInput::Prepare() {
 	mpContext->mpOutputs[0]->mpFormat		= pwf;
 	mpContext->mpOutputs[0]->mbVBR			= false;
 
-	return 0;
-}
-
-void VDAudioFilterInput::Start() {
 	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
-
-	mPos	= mpSrc->getStart();
-	mLimit	= mpSrc->getEnd();
-	mPad	= 0;
 
 	const WAVEFORMATEX& srcFormat = *mpSrc->getWaveFormat();
 
 	mSrcBlockAlign = srcFormat.nBlockAlign;
 
-	pin.mLength = VDFraction(srcFormat.nAvgBytesPerSec, srcFormat.nBlockAlign).scale64ir((mLimit - mPos) * (sint64)1000000);
+	pin.mLength = VDFraction(srcFormat.nAvgBytesPerSec, srcFormat.nBlockAlign).scale64ir(mpSrc->getLength() * (sint64)1000000);
+
+	return 0;
+}
+
+void VDAudioFilterInput::Start() {
+	mPos	= mpSrc->getStart();
+	mLimit	= mpSrc->getEnd();
+	mPad	= 0;
 }
 
 uint32 VDAudioFilterInput::Run() {
@@ -326,22 +320,17 @@ uint32 VDAudioFilterInput::Run() {
 
 
 	if (mPad > 0) {
-		int count = pin.mBufferSize;
-
-		void *dst = mOutputBuffer.LockWrite(count, count);
-		LONG samples = count / format.mBlockSize;
+		int samples = pin.mAvailSpace;
 
 		if (samples > mPad)
 			samples = mPad;
 
 		if (format.mSampleBits < 16)
-			memset(dst, 0x80, count);
+			memset(pin.mpBuffer, 0x80, samples * format.mBlockSize);
 		else
-			memset(dst, 0x00, count);
+			memset(pin.mpBuffer, 0x00, samples * format.mBlockSize);
 
-		mOutputBuffer.UnlockWrite(count);
-
-		pin.mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
+		pin.mSamplesWritten = samples;
 		mPad -= samples;
 
 		return 0;
@@ -350,21 +339,16 @@ uint32 VDAudioFilterInput::Run() {
 		unsigned bytes = mDecompressor.GetOutputLevel();
 
 		if (bytes > 0) {
-			int count = bytes;
-			void *dst = mOutputBuffer.LockWrite(count, count);
+			int count = mDecompressor.CopyOutput(pin.mpBuffer, pin.mAvailSpace * format.mBlockSize);
 
-			count = mDecompressor.CopyOutput(dst, count);
-			mOutputBuffer.UnlockWrite(count);
-
-			pin.mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
-
+			pin.mSamplesWritten = count / format.mBlockSize;
 			return 0;
 		}
 
 		void *dst = mDecompressor.LockInputBuffer(bytes);
 
-		if (bytes && mPos < mLimit) {
-			LONG actualbytes, samples;
+		if (bytes >= mSrcBlockAlign && mPos < mLimit) {
+			uint32 actualbytes, samples;
 
 			// NOTE: We have to make sure the count passed in is correct, as Avisynth doesn't
 			//       check it properly for audio reads!
@@ -379,7 +363,7 @@ uint32 VDAudioFilterInput::Run() {
 			mPos += samples;
 			mDecompressor.UnlockInputBuffer(actualbytes);
 
-			if (bytes)
+			if (actualbytes)
 				return kVFARun_InternalWork;
 		}
 
@@ -388,24 +372,18 @@ uint32 VDAudioFilterInput::Run() {
 
 		return mPos >= mLimit && !mDecompressor.GetOutputLevel() ? kVFARun_Finished : kVFARun_InternalWork;
 	} else {
-		int count = pin.mBufferSize;
-
-		void *dst = mOutputBuffer.LockWrite(count, count);
-		LONG bytes, samples;
-
-//		VDDEBUG("reading %d x %d\n", mPos, count);
+		uint32 samples = pin.mAvailSpace;
+		uint32 bytes = pin.mAvailSpace * format.mBlockSize;
 
 		// NOTE: We have to make sure the count passed in is correct, as Avisynth doesn't
 		//       check it properly for audio reads!
 
-		int res = mpSrc->read(mPos, count / mSrcBlockAlign, dst, count, &bytes, &samples);
+		int res = mpSrc->read(mPos, samples, pin.mpBuffer, bytes, &bytes, &samples);
 
 		if (res)
 			throw MyError("Read error on audio sample %u. The source may be corrupted.", (unsigned)mPos);
 
-		mOutputBuffer.UnlockWrite(bytes);
-
-		pin.mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
+		pin.mSamplesWritten = samples;
 
 		mPos += samples;
 
@@ -413,24 +391,7 @@ uint32 VDAudioFilterInput::Run() {
 	}
 }
 
-uint32 VDAudioFilterInput::Read(unsigned pinid, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
 sint64 VDAudioFilterInput::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-
 	mPos = 0;
 	mPad = 0;
 
@@ -485,7 +446,7 @@ public:
 	uint32 Run();
 	void Start();
 
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
+	sint64 Seek(sint64 us);
 
 	AVIAudioOutput mAudioOut;
 };
@@ -532,8 +493,10 @@ uint32 VDAudioFilterPlayback::Run() {
 	return 0;
 }
 
-uint32 VDAudioFilterPlayback::Read(unsigned pin, void *dst, uint32 samples) {
-	return 0;
+sint64 VDAudioFilterPlayback::Seek(sint64 us) {
+	mAudioOut.stop();
+	mAudioOut.start();
+	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_playback = {
@@ -575,13 +538,6 @@ public:
 
 	uint32 Prepare();
 	uint32 Run();
-	void Start();
-
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
-	sint64 Seek(sint64);
-
-	VDRingBuffer<char> mOutputBuffer;
 };
 
 VDAudioFilterButterfly::VDAudioFilterButterfly()
@@ -593,32 +549,33 @@ void __cdecl VDAudioFilterButterfly::InitProc(const VDAudioFilterContext *pConte
 }
 
 uint32 VDAudioFilterButterfly::Prepare() {
-	if (!(mpContext->mpOutputs[0]->mpFormat = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	const VDWaveFormat *pFormatIn = mpContext->mpInputs[0]->mpFormat;
+	VDWaveFormat *pFormat;
+
+	if (pFormatIn->mChannels != 2)
+		return kVFAPrepare_BadFormat;
+
+	if (!(pFormat = mpContext->mpAudioCallbacks->CopyWaveFormat(pFormatIn)))
 		mpContext->mpServices->ExceptOutOfMemory();
+
+	mpContext->mpOutputs[0]->mpFormat = pFormat;
+
+	pFormat->mSampleBits = 16;
+	pFormat->mBlockSize = (uint16)(2*pFormat->mChannels);
+
 	return 0;
-}
-
-void VDAudioFilterButterfly::Start() {
-	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 }
 
 uint32 VDAudioFilterButterfly::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
 
-	int samples;
-
-	char *dst = mOutputBuffer.LockWrite(mOutputBuffer.getSize(), samples);
-
-	samples /= format.mBlockSize;
+	int samples = mpContext->mCommonSamples;
+	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 
 	if (!samples)
 		return pin.mbEnded ? kVFARun_Finished : 0;
 
-	samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst, samples, false, kVFARead_PCM16);
+	samples = pin.Read(dst, samples, false, kVFARead_PCM16);
 
 	if (samples) {
 		short *p = (short *)dst;
@@ -627,37 +584,16 @@ uint32 VDAudioFilterButterfly::Run() {
 			const int x = p[0];
 			const int y = p[1];
 
-			p[0] = (x+y)>>1;
-			p[1] = (x-y)>>1;
+			p[0] = (short)((x+y)>>1);
+			p[1] = (short)((x-y)>>1);
 
 			p += 2;
 		}
-
-		mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
 	}
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
+
+	mpContext->mpOutputs[0]->mSamplesWritten = samples;
 
 	return 0;
-}
-
-uint32 VDAudioFilterButterfly::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterButterfly::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_butterfly = {
@@ -700,13 +636,6 @@ public:
 
 	uint32 Prepare();
 	uint32 Run();
-	void Start();
-
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
-	sint64 Seek(sint64);
-
-	VDRingBuffer<char> mOutputBuffer[2];
 };
 
 VDAudioFilterStereoSplit::VDAudioFilterStereoSplit()
@@ -739,37 +668,25 @@ uint32 VDAudioFilterStereoSplit::Prepare() {
 		mpContext->mpServices->ExceptOutOfMemory();
 	pwf0->mChannels = 1;
 	pwf1->mChannels = 1;
-	pwf0->mBlockSize = pwf0->mSampleBits>>3;
-	pwf1->mBlockSize = pwf1->mSampleBits>>3;
+	pwf0->mBlockSize = (uint16)(pwf0->mSampleBits>>3);
+	pwf1->mBlockSize = (uint16)(pwf1->mSampleBits>>3);
 	pwf0->mDataRate	= pwf0->mBlockSize * pwf0->mSamplingRate;
 	pwf1->mDataRate	= pwf1->mBlockSize * pwf1->mSamplingRate;
 	return 0;
-}
-
-void VDAudioFilterStereoSplit::Start() {
-	const VDAudioFilterPin& pin0 = *mpContext->mpOutputs[0];
-	const VDAudioFilterPin& pin1 = *mpContext->mpOutputs[1];
-	const VDWaveFormat& format0 = *pin0.mpFormat;
-	const VDWaveFormat& format1 = *pin1.mpFormat;
-
-	mOutputBuffer[0].Init(format0.mBlockSize * pin0.mBufferSize);
-	mOutputBuffer[1].Init(format1.mBlockSize * pin1.mBufferSize);
 }
 
 uint32 VDAudioFilterStereoSplit::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	int samples, actual = 0;
+	int samples = mpContext->mCommonSamples, actual = 0;
 
-	void *dst1 = (short *)mOutputBuffer[0].LockWrite(mOutputBuffer[0].getSize(), samples);
-	void *dst2 = (short *)mOutputBuffer[1].LockWrite(samples, samples);
-
-	samples /= mpContext->mpOutputs[0]->mpFormat->mBlockSize;
+	void *dst1 = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
+	void *dst2 = (sint16 *)mpContext->mpOutputs[1]->mpBuffer;
 
 	while(samples > 0) {
 		sint16 buf[4096];
-		int tc = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf, std::min<int>(samples, 4096 / format.mChannels), false, kVFARead_PCM16);
+		int tc = mpContext->mpInputs[0]->Read(&buf, std::min<int>(samples, 4096 / format.mChannels), false, kVFARead_PCM16);
 
 		if (tc<=0)
 			break;
@@ -789,35 +706,10 @@ uint32 VDAudioFilterStereoSplit::Run() {
 		samples -= tc;
 	}
 
-	mOutputBuffer[0].UnlockWrite(actual * mpContext->mpOutputs[0]->mpFormat->mBlockSize);
-	mOutputBuffer[1].UnlockWrite(actual * mpContext->mpOutputs[1]->mpFormat->mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer[0].getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	mpContext->mpOutputs[1]->mCurrentLevel = mOutputBuffer[1].getLevel() / mpContext->mpOutputs[1]->mpFormat->mBlockSize;
+	mpContext->mpOutputs[0]->mSamplesWritten = actual;
+	mpContext->mpOutputs[1]->mSamplesWritten = actual;
 
 	return !actual && pin.mbEnded ? kVFARun_Finished : 0;
-}
-
-uint32 VDAudioFilterStereoSplit::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer[pinno].getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer[pinno].Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[pinno]->mCurrentLevel = mOutputBuffer[pinno].getLevel() / mpContext->mpOutputs[pinno]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterStereoSplit::Seek(sint64 us) {
-	mOutputBuffer[0].Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	mOutputBuffer[1].Flush();
-	mpContext->mpOutputs[1]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_stereosplit = {
@@ -859,13 +751,6 @@ public:
 
 	uint32 Prepare();
 	uint32 Run();
-	void Start();
-
-	uint32 Read(unsigned pin, void *dst, uint32 samples);
-
-	sint64 Seek(sint64);
-
-	VDRingBuffer<char> mOutputBuffer;
 };
 
 VDAudioFilterStereoMerge::VDAudioFilterStereoMerge()
@@ -903,17 +788,10 @@ uint32 VDAudioFilterStereoMerge::Prepare() {
 		mpContext->mpServices->ExceptOutOfMemory();
 
 	pwf0->mChannels = 2;
-	pwf0->mBlockSize = pwf0->mSampleBits>>2;
+	pwf0->mBlockSize = (uint16)(pwf0->mSampleBits>>2);
 	pwf0->mDataRate	= pwf0->mBlockSize * pwf0->mSamplingRate;
 
 	return 0;
-}
-
-void VDAudioFilterStereoMerge::Start() {
-	const VDAudioFilterPin& pin0 = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format0 = *pin0.mpFormat;
-
-	mOutputBuffer.Init(format0.mBlockSize * pin0.mBufferSize);
 }
 
 uint32 VDAudioFilterStereoMerge::Run() {
@@ -921,17 +799,12 @@ uint32 VDAudioFilterStereoMerge::Run() {
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	int samples, actual = 0;
+	int samples = mpContext->mCommonSamples, actual = 0;
 
-	void *dst = mOutputBuffer.LockWrite(mOutputBuffer.getSize(), samples);
-
-	samples /= mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-
-	if (samples > mpContext->mInputSamples)
-		samples = mpContext->mInputSamples;
+	void *dst = mpContext->mpOutputs[0]->mpBuffer;
 
 	if (!samples && pin.mbEnded && pin2.mbEnded)
-		return true;
+		return kVFARun_Finished;
 
 	while(samples > 0) {
 		union {
@@ -940,8 +813,8 @@ uint32 VDAudioFilterStereoMerge::Run() {
 		} buf0, buf1;
 		int tc = std::min<int>(samples, sizeof buf0 / format.mBlockSize);
 
-		int tca0 = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf0, tc, false, kVFARead_Native);
-		int tca1 = mpContext->mpInputs[1]->mpReadProc(mpContext->mpInputs[1], &buf1, tc, false, kVFARead_Native);
+		int tca0 = mpContext->mpInputs[0]->Read(&buf0, tc, false, kVFARead_Native);
+		int tca1 = mpContext->mpInputs[1]->Read(&buf1, tc, false, kVFARead_Native);
 
 		VDASSERT(tc == tca0 && tc == tca1);
 
@@ -972,31 +845,8 @@ uint32 VDAudioFilterStereoMerge::Run() {
 		samples -= tc;
 	}
 
-	mOutputBuffer.UnlockWrite(actual * mpContext->mpOutputs[0]->mpFormat->mBlockSize);
-
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-
+	mpContext->mpOutputs[0]->mSamplesWritten = actual;
 	return 0;
-}
-
-uint32 VDAudioFilterStereoMerge::Read(unsigned pinno, void *dst, uint32 samples) {
-	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
-	const VDWaveFormat& format = *pin.mpFormat;
-
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
-
-	if (dst) {
-		mOutputBuffer.Read((char *)dst, samples * format.mBlockSize);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / mpContext->mpOutputs[0]->mpFormat->mBlockSize;
-	}
-
-	return samples;
-}
-
-sint64 VDAudioFilterStereoMerge::Seek(sint64 us) {
-	mOutputBuffer.Flush();
-	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	return us;
 }
 
 extern const struct VDAudioFilterDefinition afilterDef_stereomerge = {

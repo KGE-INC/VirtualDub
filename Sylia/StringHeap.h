@@ -1,29 +1,22 @@
-#ifndef f_STRINGHEAP_H
-#define f_STRINGHEAP_H
+#ifndef f_SYLIA_STRINGHEAP_H
+#define f_SYLIA_STRINGHEAP_H
 
-class CStringHeap {
-private:
-	struct StringDescriptor {
-		char **handle;
-		long len;
-	};
+#include <list>
 
-	StringDescriptor *lpHeap;
-	char **lpHandleTable;
-	long lHandles;
-	long lQuads;
-	long lQuadsFree;
-
-	bool _Allocate(char **, int, bool);
+class VDScriptStringHeap {
+protected:
+	typedef std::list<char *> tStrings;
+	tStrings mStrings;
 
 public:
-	CStringHeap(long, long);
-	~CStringHeap();
+	VDScriptStringHeap();
+	~VDScriptStringHeap();
 
 	void Clear();
-	void Compact();
-	char **Allocate(int, bool);
-	void Free(char **, bool);
+	void BeginGC();
+	void Mark(char *s);
+	void EndGC();
+	char **Allocate(int);
 };
 
 #endif

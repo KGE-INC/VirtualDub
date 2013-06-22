@@ -43,6 +43,8 @@ public:
 	}
 
 private:
+	void PackFrameInternal(DWORD frameSize, DWORD q, void *pBits, DWORD dwFlagsIn, DWORD& dwFlagsOut, sint32& bytes);
+
 	HIC			hic;
 	DWORD		dwFlags;
 	DWORD		mVFWExtensionMessageID;
@@ -54,6 +56,12 @@ private:
 	long		lMaxPackedSize;
 	bool		fCompressionStarted;
 	long		lSlopSpace;
+	long		lKeySlopSpace;
+
+	// crunch emulation
+	sint32		mQualityLo;
+	sint32		mQualityLast;
+	sint32		mQualityHi;
 
 	void		*pConfigData;
 	int			cbConfigData;
