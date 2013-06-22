@@ -287,7 +287,7 @@ public:
 	const void *		VDXAPIENTRY GetFrameBufferBase();
 
 protected:
-	VDPosition	mCurrentFrame;
+	VDPosition	mCurrentSample;
 	VDXPixmap	mFrameBuffer;
 	int			mWidth;
 	int			mHeight;
@@ -297,7 +297,8 @@ protected:
 };
 
 VDVideoDecoderDefault::VDVideoDecoderDefault(IVDVideoDecompressor *decomp, int w, int h)
-	: mpDecompressor(decomp)
+	: mCurrentSample(-1)
+	, mpDecompressor(decomp)
 	, mWidth(w)
 	, mHeight(h)
 	, mpFrameBufferBase(malloc(((w + 3) & ~3) * h * 4))
@@ -311,8 +312,13 @@ VDVideoDecoderDefault::~VDVideoDecoderDefault() {
 }
 
 const void * VDXAPIENTRY VDVideoDecoderDefault::DecodeFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, sint64 sampleNumber, sint64 targetFrame) {
-	if (inputBuffer)
+	if (inputBuffer) {
+		mCurrentSample = -1;
+
 		mpDecompressor->DecompressFrame(mpFrameBufferBase, inputBuffer, data_len, !is_preroll, is_preroll);
+
+		mCurrentSample = sampleNumber;
+	}
 
 	return mpFrameBufferBase;
 }
@@ -322,11 +328,11 @@ uint32 VDXAPIENTRY VDVideoDecoderDefault::GetDecodePadding() {
 }
 
 void VDXAPIENTRY VDVideoDecoderDefault::Reset() {
-	mCurrentFrame = -1;
+	mCurrentSample = -1;
 }
 
 bool VDXAPIENTRY VDVideoDecoderDefault::IsFrameBufferValid() {
-	return mCurrentFrame >= 0;
+	return mCurrentSample >= 0;
 }
 
 const VDXPixmap& VDXAPIENTRY VDVideoDecoderDefault::GetFrameBuffer() {
@@ -365,7 +371,7 @@ bool VDXAPIENTRY VDVideoDecoderDefault::SetDecompressedFormat(const VDXBITMAPINF
 }
 
 bool VDXAPIENTRY VDVideoDecoderDefault::IsDecodable(sint64 sample_num) {
-	return sample_num == mCurrentFrame + 1;
+	return sample_num == mCurrentSample + 1;
 }
 
 const void * VDXAPIENTRY VDVideoDecoderDefault::GetFrameBufferBase() {
