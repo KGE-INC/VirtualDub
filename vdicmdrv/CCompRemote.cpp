@@ -193,7 +193,6 @@ LRESULT CCompRemote::DecompressEx(ICDECOMPRESSEX *icdex, DWORD cbSize) {
 	BITMAPINFOHEADER *bmihInput		= icdex->lpbiSrc;
 	BITMAPINFOHEADER *bmihOutput	= icdex->lpbiDst;
 	LRESULT res;
-	unsigned char c;
 	long w0s, h0s, w0d, h0d;
 
 	/////////////////////

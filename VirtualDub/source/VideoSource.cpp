@@ -1477,7 +1477,7 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 
 			VDCHECKPOINT;
 
-			vdprotected4("decompressing video frame %d with \"%.64s\": %08x -> %08x", unsigned, frame_num, const char *, szCodecName, unsigned, (unsigned)inputBuffer, unsigned, (unsigned)lpvBuffer) {
+			vdprotected3("decompressing video frame %d with \"%.64s\" [biCompression=%08x]", unsigned, frame_num, const char *, szCodecName, unsigned, getImageFormat()->biCompression) {
 				if (use_ICDecompressEx)
 					err = 	ICDecompressEx(
 								hicDecomp,
@@ -1655,7 +1655,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 					if (IsMMXState())
 						throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
 
-					vdprotected4("decompressing video frame %d with \"%.64s\": %08x -> %08x", unsigned, lFrameNum, const char *, szCodecName, unsigned, (unsigned)dataBuffer, unsigned, (unsigned)lpvBuffer) {
+					vdprotected3("decompressing video frame %d with \"%.64s\" [biCompression=%08x]", unsigned, lFrameNum, const char *, szCodecName, unsigned, getImageFormat()->biCompression) {
 						if (ICERR_OK != (err = 	ICDecompress(
 										hicDecomp,
 	//									  (lFrameNum<lFrameDesired ? ICDECOMPRESS_PREROLL : 0) |

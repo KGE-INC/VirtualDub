@@ -72,10 +72,10 @@ DWORD				g_ACompressionFormatSize	= 0;
 VDAudioFilterGraph	g_audioFilterGraph;
 
 
-BOOL				g_drawDecompressedFrame	= FALSE;
-BOOL				g_showStatusWindow		= TRUE;
-BOOL				g_syncroBlit			= FALSE;
-BOOL				g_vertical				= FALSE;
+bool				g_drawDecompressedFrame	= FALSE;
+bool				g_showStatusWindow		= TRUE;
+bool				g_syncroBlit			= FALSE;
+bool				g_vertical				= FALSE;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -477,7 +477,7 @@ void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long
 	outfile.SetBuffer(g_dubOpts.perf.outputBufferSize);
 
 	const VDStringW filename(VDTextAToW(szFilename, -1));
-	outfile.SetFilenamePattern(VDFileSplitExtLeft(filename).c_str(), VDFileSplitExtRight(filename).c_str(), 1);
+	outfile.SetFilenamePattern(VDFileSplitExtLeft(filename).c_str(), VDFileSplitExtRight(filename).c_str(), 2);
 
 	InitDubAVI(&outfile, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp, lSpillThreshold, lSpillFrameThreshold);
 }
@@ -538,12 +538,16 @@ void RecalcPositionTimeConstant() {
 	DubVideoStreamInfo vInfo;
 	DubAudioStreamInfo aInfo;
 
-	try {
-		InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
-		SendMessage(hwndPosition, PCM_SETFRAMERATE, vInfo.frameRate.getHi(), vInfo.frameRate.getLo());
-	} catch(const MyError&) {
-		// The input stream may throw an error here trying to obtain the nearest key.
-		// If so, bail.
+	if (inputVideoAVI) {
+		try {
+			InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
+			SendMessage(hwndPosition, PCM_SETFRAMERATE, vInfo.frameRate.getHi(), vInfo.frameRate.getLo());
+		} catch(const MyError&) {
+			// The input stream may throw an error here trying to obtain the nearest key.
+			// If so, bail.
+		}
+	} else {
+		SendMessage(hwndPosition, PCM_SETFRAMERATE, 0, 0);
 	}
 }
 

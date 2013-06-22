@@ -64,7 +64,7 @@ bool DDrawDetect() {
 
 	if (FAILED(CoInitialize(NULL)))
 //	if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED)))
-//		return false;
+		return false;
 
 	// good, now let's get a IDirectDraw2 object
 

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2003 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <vfw.h>
+#include <shellapi.h>
 
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
@@ -848,19 +849,19 @@ static void CaptureShowParms(HWND hWnd) {
 	HWND hWndCapture = GetDlgItem(hWnd, IDC_CAPTURE_WINDOW);
 	HWND hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 	CAPTUREPARMS cp;
-	char buf[64];
+	char bufv[64], bufa[64];
 	WAVEFORMATEX *wf;
 	BITMAPINFOHEADER *bih;
 	LONG fsize;
 	LONG bandwidth = 0;
 
-	strcpy(buf,"(unknown)");
+	strcpy(bufv,"(unknown)");
+	strcpy(bufa, "(unknown)");
+
 	if (capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS))) {
 		LONG fps100 = (100000000 + cp.dwRequestMicroSecPerFrame/2)/ cp.dwRequestMicroSecPerFrame;
 
-		wsprintf(buf,"%d.%02d fps", fps100/100, fps100%100);
-
-		SendMessage(hWndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)buf);
+		wsprintf(bufv, "%d.%02d fps", fps100/100, fps100%100);
 
 		if (fsize = capGetVideoFormatSize(hWndCapture)) {
 			if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
@@ -878,30 +879,34 @@ static void CaptureShowParms(HWND hWnd) {
 				freemem(bih);
 			}
 		}
-	}
 
-	strcpy(buf,"(unknown)");
-	if (fsize = capGetAudioFormatSize(hWndCapture)) {
-		if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
-			if (capGetAudioFormat(hWndCapture, wf, fsize)) {
-				if (wf->wFormatTag != WAVE_FORMAT_PCM) {
-					wsprintf(buf, "%d.%03dKHz", wf->nSamplesPerSec/1000, wf->nSamplesPerSec%1000);
-				} else {
-					PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)wf;
+		if (!cp.fCaptureAudio) {
+			strcpy(bufa, "No audio");
+		} else {
+			if (fsize = capGetAudioFormatSize(hWndCapture)) {
+				if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
+					if (capGetAudioFormat(hWndCapture, wf, fsize)) {
+						if (wf->wFormatTag != WAVE_FORMAT_PCM) {
+							wsprintf(bufa, "%d.%03dKHz", wf->nSamplesPerSec/1000, wf->nSamplesPerSec%1000);
+						} else {
+							PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)wf;
 
-					wsprintf(buf, "%dK/%d/%c", (pwf->wf.nSamplesPerSec+500)/1000, pwf->wBitsPerSample, pwf->wf.nChannels>1?'s':'m');
+							wsprintf(bufa, "%dK/%d/%c", (pwf->wf.nSamplesPerSec+500)/1000, pwf->wBitsPerSample, pwf->wf.nChannels>1?'s':'m');
+						}
+
+						bandwidth += 8 + wf->nAvgBytesPerSec;
+					}
+					freemem(wf);
 				}
-
-				bandwidth += 8 + wf->nAvgBytesPerSec;
 			}
-			freemem(wf);
 		}
 	}
 
-	SendMessage(hWndStatus, SB_SETTEXT, 1 | SBT_POPOUT, (LPARAM)buf);
+	SendMessage(hWndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)bufv);
+	SendMessage(hWndStatus, SB_SETTEXT, 1 | SBT_POPOUT, (LPARAM)bufa);
 
-	wsprintf(buf, "%ldKB/s", (bandwidth+1023)>>10);
-	SendMessage(hWndStatus, SB_SETTEXT, 3, (LPARAM)buf);
+	wsprintf(bufv, "%ldKB/s", (bandwidth+1023)>>10);
+	SendMessage(hWndStatus, SB_SETTEXT, 3, (LPARAM)bufv);
 }
 
 static void CaptureSetPCMAudioFormat(HWND hWndCapture, LONG sampling_rate, BOOL is_16bit, BOOL is_stereo) {
@@ -918,7 +923,7 @@ static void CaptureSetPCMAudioFormat(HWND hWndCapture, LONG sampling_rate, BOOL 
 	wf.cbSize			= 0;
 
 	if (!capSetAudioFormat(hWndCapture, &wf, sizeof(WAVEFORMATEX)))
-		_RPT0(0,"Couldn't set audio format!\n");
+		VDDEBUG("Couldn't set audio format!\n");
 }
 
 static void CaptureSetFrameTime(HWND hWndCapture, LONG lFrameTime) {
@@ -971,7 +976,7 @@ static void CaptureSetFile(HWND hWnd, HWND hWndCapture) {
 	const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, (VDGUIHandle)hWnd, L"Set Capture File", L"Audio-Video Interleave (*.avi)\0*.avi\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"avi" : NULL));
 
 	if (!capfile.empty()) {
-		VDTextWToA(g_szCaptureFile, sizeof g_szCaptureFile, capfile.data(), capfile.size());
+		VDTextWToA(g_szCaptureFile, sizeof g_szCaptureFile, capfile.c_str(), -1);
 
 		if (g_capStripeSystem) {
 			delete g_capStripeSystem;
@@ -988,7 +993,7 @@ static void CaptureSetStripingSystem(HWND hwnd, HWND hwndCapture) {
 	const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, (VDGUIHandle)hwnd, L"Select Striping System for Internal Capture", L"AVI Stripe System (*.stripe)\0*.stripe\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"stripe" : NULL));
 
 	if (!capfile.empty()) {
-		VDTextWToA(g_szStripeFile, sizeof g_szStripeFile, capfile.data(), capfile.size());
+		VDTextWToA(g_szStripeFile, sizeof g_szStripeFile, capfile.c_str(), -1);
 
 		try {
 			if (g_capStripeSystem) {
@@ -1120,6 +1125,9 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 		break;
 	case ID_AUDIO_VOLUMEMETER:
 		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_AUDIO_VUMETER), hWnd, CaptureVumeterDlgProc, (LPARAM)hWndCapture);
+		break;
+	case ID_AUDIO_WINMIXER:
+		ShellExecute(hWnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
 		break;
 	case ID_VIDEO_OVERLAY:
 		{
@@ -1976,9 +1984,9 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 				i64 = CapSpillGetFreeSpace();
 			else {
 				if (pcd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDStringW(L'.'));
-				else
 					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(pcd->szCaptureRoot)));
+				else
+					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
 			}
 
 			if (i64>=0) {
@@ -3484,9 +3492,9 @@ static LRESULT CALLBACK CaptureAVICapVideoCallbackProc(HWND hWnd, LPVIDEOHDR lpV
 				i64 = CapSpillGetFreeSpace();
 			else {
 				if (icd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDStringW(L'.'));
-				else
 					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(icd->szCaptureRoot)));
+				else
+					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
 			}
 
 			if (i64>=0) {
@@ -3585,12 +3593,16 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 		// get audio format
 
-		wfSize = capGetAudioFormatSize(hWndCapture);
+		bool bCaptureAudio = (0 != cp.fCaptureAudio);
 
-		if (!(wfTemp = wf = (WAVEFORMAT *)allocmem(wfSize))) throw MyMemoryError();
+		if (bCaptureAudio) {
+			wfSize = capGetAudioFormatSize(hWndCapture);
 
-		if (!capGetAudioFormat(hWndCapture, wf, wfSize))
-			throw MyError("Couldn't get audio format");
+			if (!(wfTemp = wf = (WAVEFORMAT *)allocmem(wfSize))) throw MyMemoryError();
+
+			if (!capGetAudioFormat(hWndCapture, wf, wfSize))
+				throw MyError("Couldn't get audio format");
+		}
 
 		// initialize video compression
 
@@ -3604,7 +3616,8 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 		// Setup capture structure
 
-		memcpy(&cd.wfex, wf, std::min<unsigned>(wfSize, sizeof cd.wfex));
+		if (bCaptureAudio)
+			memcpy(&cd.wfex, wf, std::min<unsigned>(wfSize, sizeof cd.wfex));
 
 		cd.hwndStatus	= GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 		cd.hwndPanel	= GetDlgItem(hWnd, IDC_CAPTURE_PANEL);
@@ -3625,7 +3638,7 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 		capSetUserData(hWndCapture, (LPARAM)&cd);
 		capSetCallbackOnVideoStream(hWndCapture, CaptureAVICapVideoCallbackProc);
-		if (cp.fCaptureAudio)
+		if (bCaptureAudio)
 			capSetCallbackOnWaveStream(hWndCapture, CaptureAVICapWaveCallbackProc);
 		capSetCallbackOnCapControl(hWndCapture, CaptureControlCallbackProc);
 
@@ -4281,9 +4294,9 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 				i64 = CapSpillGetFreeSpace();
 			else {
 				if (icd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDStringW(L'.'));
-				else
 					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(icd->szCaptureRoot)));
+				else
+					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
 			}
 
 			if (i64>=0) {
@@ -4604,6 +4617,8 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 		if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
 			throw MyError("Couldn't get capture setup info.");
 
+		const bool bCaptureAudio = (0 != cp.fCaptureAudio);
+
 		// create an output file object
 
 		if (!fTest) {
@@ -4637,13 +4652,15 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		// initialize audio
 
-		wfSize = capGetAudioFormatSize(hWndCapture);
+		if (bCaptureAudio) {
+			wfSize = capGetAudioFormatSize(hWndCapture);
 
-		if (!(wfexInput = (WAVEFORMATEX *)allocmem(wfSize)))
-			throw MyMemoryError();
+			if (!(wfexInput = (WAVEFORMATEX *)allocmem(wfSize)))
+				throw MyMemoryError();
 
-		if (!capGetAudioFormat(hWndCapture, wfexInput, wfSize))
-			throw MyError("Couldn't get audio format");
+			if (!capGetAudioFormat(hWndCapture, wfexInput, wfSize))
+				throw MyError("Couldn't get audio format");
+		}
 
 		// initialize video
 
@@ -4718,7 +4735,7 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 			icd.aoFile->videoOut->setCompressed(bmiToFile->bmiHeader.biCompression!=BI_RGB);
 
-			if (cp.fCaptureAudio) {
+			if (bCaptureAudio) {
 				if (!(wf = (WAVEFORMATEX *)icd.aoFile->audioOut->allocFormat(wfSize)))
 					throw MyMemoryError();
 
@@ -4738,11 +4755,13 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		// Setup capture structure
 
-		memcpy(&icd.wfex, wfexInput, std::min<unsigned>(wfSize, sizeof icd.wfex));
+		if (bCaptureAudio) {
+			memcpy(&icd.wfex, wfexInput, std::min<unsigned>(wfSize, sizeof icd.wfex));
+			icd.blockAlign	= wfexInput->nBlockAlign;
+		}
 
 		icd.hwndStatus	= GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 		icd.hwndPanel	= GetDlgItem(hWnd, IDC_CAPTURE_PANEL);
-		icd.blockAlign	= wfexInput->nBlockAlign;
 		icd.pszPath		= icd.szCaptureRoot;
 
 		icd.fNTSC = ((cp.dwRequestMicroSecPerFrame|1) == 33367);
@@ -4853,7 +4872,8 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 		capCaptureSetSetup(hWndCapture, &cp, sizeof cp);
 		capSetUserData(hWndCapture, (LPARAM)&icd);
 		capSetCallbackOnVideoStream(hWndCapture, CaptureInternalVideoCallbackProc);
-		if (cp.fCaptureAudio) capSetCallbackOnWaveStream(hWndCapture, CaptureInternalWaveCallbackProc);
+		if (bCaptureAudio)
+			capSetCallbackOnWaveStream(hWndCapture, CaptureInternalWaveCallbackProc);
 
 		CaptureShowFile(hWnd, hWndCapture, true);
 		g_fRestricted = true;

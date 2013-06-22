@@ -775,7 +775,11 @@ void VDJob::RunAll() {
 			EnableWindow(g_hwndJobs, TRUE);
 
 		if (do_shutdown) {
-			ExitWindowsExDammit(EWX_POWEROFF|EWX_FORCEIFHUNG, 0);
+			// In theory, this is an illegal combination of flags, but it
+			// seems to be necessary to properly power off both Windows 98
+			// and Windows XP.  In particular, Windows 98 just logs off if
+			// you try EWX_POWEROFF.  Joy.
+			ExitWindowsExDammit(EWX_SHUTDOWN|EWX_POWEROFF|EWX_FORCEIFHUNG, 0);
 			PostQuitMessage(0);
 		}
 	}

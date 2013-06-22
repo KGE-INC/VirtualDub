@@ -309,7 +309,9 @@ void VDAudioFilterInput::Start() {
 	mPos		= 0;
 	mLimit	= mpSrc->lSampleLast;
 
-	pin.mLength = VDFraction(format.mDataRate, format.mBlockSize).scale64ir(mLimit * (sint64)1000000);
+	const WAVEFORMATEX& srcFormat = *mpSrc->getWaveFormat();
+
+	pin.mLength = VDFraction(srcFormat.nAvgBytesPerSec, srcFormat.nBlockAlign).scale64ir(mLimit * (sint64)1000000);
 }
 
 uint32 VDAudioFilterInput::Run() {
@@ -358,15 +360,20 @@ uint32 VDAudioFilterInput::Run() {
 
 		void *dst = mOutputBuffer.LockWrite(count, count);
 		LONG bytes, samples;
+
+//		VDDEBUG("reading %d x %d\n", mPos, count);
+
 		int res = mpSrc->read(mPos, count, dst, count, &bytes, &samples);
 
-		if (!res) {
-			mOutputBuffer.UnlockWrite(bytes);
+		if (res)
+			throw MyError("Read error on audio sample %u. The source may be corrupted.", (unsigned)mPos);
 
-			pin.mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
+		mOutputBuffer.UnlockWrite(bytes);
 
-			mPos += samples;
-		}
+		pin.mCurrentLevel = mOutputBuffer.getLevel() / format.mBlockSize;
+
+		mPos += samples;
+
 		return mPos >= mLimit ? kVFARun_Finished : 0;
 	}
 }
@@ -396,8 +403,9 @@ extern const struct VDAudioFilterDefinition afilterDef_input = {
 	sizeof(VDAudioFilterDefinition),
 	L"input",
 	NULL,
-	L"",
+	L"Produces audio from current audio source.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterInput),	0,	1,
 
@@ -486,6 +494,7 @@ extern const struct VDAudioFilterDefinition afilterDef_playback = {
 	NULL,
 	L"",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterPlayback),	1,	0,
 
@@ -610,6 +619,7 @@ extern const struct VDAudioFilterDefinition afilterDef_butterfly = {
 	L"Computes the half-sum and half-difference between stereo channels. This can be used to "
 		L"split stereo into mid/side signals or recombine mid/side into stereo.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterButterfly),	1,	1,
 
@@ -789,6 +799,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereosplit = {
 	NULL,
 	L"Splits a stereo stream into two mono streams, one per channel.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterStereoSplit),	1,	2,
 
@@ -965,6 +976,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereomerge = {
 	NULL,
 	L"Recombines two mono streams into a single stereo stream.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterStereoMerge),	2, 1,
 

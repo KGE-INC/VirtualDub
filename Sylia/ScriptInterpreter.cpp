@@ -485,7 +485,10 @@ arglist_match:
 				if (v_left.asVarLV()->v.isString())
 					strheap.Free(v_left.asVarLV()->v.asString(), false);
 				
-				v_left.asVarLV()->v = v_right;
+				if (v_right.isString()) {
+					strcpy(*(v_left.asVarLV()->v = strheap.Allocate(strlen(*v_right.asString()), false)).asString(), *v_right.asString());
+				} else
+					v_left.asVarLV()->v = v_right;
 
 				// '=' evaluates to its right member...
 

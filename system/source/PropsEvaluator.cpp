@@ -345,9 +345,6 @@ void PropsEvaluator::reduce() {
 
 	_ASSERT(sp>0);
 
-	if (x.type == PropDef::kString && y.type == PropDef::kString)
-		_RPT2(0,"Merging strings [%s] and [%s]\n", x.v.s, y.v.s);
-
 	if (prec[y.op]<0 || y.parens>x.parens)
 		y.parens = x.parens;
 

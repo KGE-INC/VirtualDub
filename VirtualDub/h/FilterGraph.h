@@ -29,6 +29,7 @@ struct VDFilterGraphConnection {
 
 class IVDFilterGraphControlCallback {
 public:
+	virtual void SelectionChanged(IVDRefCount *pNewSelection) = 0;
 	virtual bool Configure(VDGUIHandle hParent, IVDRefCount *pInstance) = 0;
 };
 
@@ -37,12 +38,15 @@ class IVDFilterGraphControl {
 public:
 	virtual void SetCallback(IVDFilterGraphControlCallback *pCB) = 0;
 	virtual void Arrange() = 0;
+	virtual void ConfigureSelection() = 0;
 	virtual void DeleteSelection() = 0;
 	virtual void EnableAutoArrange(bool) = 0;
 	virtual void EnableAutoConnect(bool) = 0;
 	virtual void AddFilter(const wchar_t *name, int inpins, int outpins, bool bProtected, IVDRefCount *pInstance) = 0;
 	virtual void GetFilterGraph(std::vector<VDFilterGraphNode>& filters, std::vector<VDFilterGraphConnection>& connections) = 0;
 	virtual void SetFilterGraph(const std::vector<VDFilterGraphNode>& filters, const std::vector<VDFilterGraphConnection>& connections) = 0;
+
+	virtual IVDRefCount *GetSelection() = 0;
 };
 
 IVDFilterGraphControl *VDGetIFilterGraphControl(HWND hwnd);

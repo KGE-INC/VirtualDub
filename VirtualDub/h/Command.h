@@ -55,10 +55,10 @@ extern DWORD			g_ACompressionFormatSize;
 
 extern VDAudioFilterGraph	g_audioFilterGraph;
 
-extern BOOL				g_drawDecompressedFrame;
-extern BOOL				g_showStatusWindow;
-extern BOOL				g_syncroBlit;
-extern BOOL				g_vertical;
+extern bool				g_drawDecompressedFrame;
+extern bool				g_showStatusWindow;
+extern bool				g_syncroBlit;
+extern bool				g_vertical;
 
 ///////////////////////////
 

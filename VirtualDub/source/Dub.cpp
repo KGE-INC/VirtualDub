@@ -625,7 +625,7 @@ protected:
 /////////////////////////////////////////////////
 
 extern const char g_szError[];
-extern BOOL g_syncroBlit, g_vertical;
+extern bool g_syncroBlit, g_vertical;
 extern HWND g_hWnd;
 extern HINSTANCE g_hInst;
 extern bool g_fWine;
@@ -1035,7 +1035,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 		if (opt->video.frameRateNewMicroSecs == DubVideoOptions::FR_SAMELENGTH) {
 			if (audio && audio->streamInfo.dwLength) {
-				framerate = VDFraction::reduce64(audio->samplesToMs(audio->streamInfo.dwLength) * (sint64)1000, video->streamInfo.dwLength);
+				framerate = VDFraction::reduce64(video->streamInfo.dwLength * (sint64)1000, audio->samplesToMs(audio->streamInfo.dwLength));
 			}
 		} else if (opt->video.frameRateNewMicroSecs)
 			framerate = VDFraction(1000000, opt->video.frameRateNewMicroSecs);
@@ -2438,7 +2438,6 @@ void Dubber::NextSegment() {
 }
 
 void Dubber::CheckSpill(long videopt, long audiopt) {
-	long lFrame;
 	long lFrame2;
 	long lSample;
 
@@ -2447,87 +2446,144 @@ void Dubber::CheckSpill(long videopt, long audiopt) {
 	if (videopt <= lSpillVideoOk && audiopt <= lSpillAudioOk)
 		return;
 
+	bool bAttemptKeyframeAlignedCut = (!opt->video.mode);
+
 	// Find out how many sync'ed video frames we'd be pushing ahead.
+	//
+	// videopt: The source frame we're looking to start the next segment at.
+	// lFrame: "Relative" source frame to start next segment at (sequential even if decimation is active).
+	//
+	// This code is icky nasty roundoff truncated approximated bad.  Need
+	// to refactor for 1.5.2.
 
 	sint64 nAdditionalBytes;
 
-	lFrame = ((videopt-vInfo.start_src) / opt->video.frameRateDecimation);
+	const long lFrameTarget = ((videopt-vInfo.start_src) / opt->video.frameRateDecimation);
+	long lFrame;
 
-	if (audioStream) {
-		const WAVEFORMATEX *const pFormat = audioTimingStream->GetFormat();
-		const sint32 nBlockAlign	= pFormat->nBlockAlign;
-		const sint32 nDataRate		= pFormat->nAvgBytesPerSec;
-		const VDFraction frAudioPerVideo(VDFraction(nDataRate, nBlockAlign) / vInfo.frameRateNoTelecine);
+	for(;;) {
+		lFrame = lFrameTarget;
 
-		// <audio samples> * <audio bytes per sample> / <audio bytes per second> = <seconds>
-		// <seconds> * 1000000 / <microseconds per frame> = <frames>
-		// (<audio samples> * <audio bytes per sample> * 1000000) / (<audio bytes per second> * <microseconds per frame>) = <frames>
+		if (audioStream) {
+			const WAVEFORMATEX *const pFormat = audioTimingStream->GetFormat();
+			const sint32 nBlockAlign	= pFormat->nBlockAlign;
+			const sint32 nDataRate		= pFormat->nAvgBytesPerSec;
+			const VDFraction frAudioPerVideo(VDFraction(nDataRate, nBlockAlign) / vInfo.frameRateNoTelecine);
 
-		lFrame2 = (long)frAudioPerVideo.scale64ir(audiopt - aInfo.start_src);
+			// <audio samples> * <audio bytes per sample> / <audio bytes per second> = <seconds>
+			// <seconds> * 1000000 / <microseconds per frame> = <frames>
+			// (<audio samples> * <audio bytes per sample> * 1000000) / (<audio bytes per second> * <microseconds per frame>) = <frames>
 
-		if (pInvTelecine)
-			lFrame2 += nVideoLag;
+			lFrame2 = (long)frAudioPerVideo.scale64ir(audiopt - aInfo.start_src);
 
-		if (lFrame2 > lFrame)
-			lFrame = lFrame2;
+			if (pInvTelecine)
+				lFrame2 += nVideoLag;
 
-		// Quantize to 5 frames in inverse telecine mode.
+			if (lFrame2 > lFrame)
+				lFrame = lFrame2;
 
-		lFrame2 = lFrame;
-		if (pInvTelecine) {
-			lFrame += 4;
-			lFrame -= lFrame % 5;
-			lFrame2 = lFrame - 10;
+			if (bAttemptKeyframeAlignedCut) {
+				long nextkey = vInfo.start_src + lFrame * opt->video.frameRateDecimation;
+
+				if (!vSrc->isKey(nextkey)) {	// starting new segment on a keyframe is fine
+					nextkey = vSrc->nextKey(nextkey);
+				
+					// Note: This may count too many frames when frame rate decimation is active.
+					// However, it works in the only case where frd is really useful in copy mode,
+					// which is a stream consisting of only keyframes and drops.
+					if (nextkey >= 0) {
+						if (nextkey > vInfo.end_src)
+							nextkey = vInfo.end_src;
+						lFrame = (nextkey - vInfo.start_src + opt->video.frameRateDecimation - 1) / opt->video.frameRateDecimation;
+					}
+				}
+			} else {
+				// Quantize to 5 frames in inverse telecine mode.
+
+				lFrame2 = lFrame;
+				if (pInvTelecine) {
+					lFrame += 4;
+					lFrame -= lFrame % 5;
+					lFrame2 = lFrame - 10;
+				}
+			}
+
+			// Find equivalent audio point.
+			//
+			// (<audio samples> = (<frames> * <audio bytes per second> * <microseconds per frame>) / (<audio bytes per sample> * 1000000);
+
+			lSample = (long)frAudioPerVideo.scale64r(lFrame2);
+		} else {
+			if (bAttemptKeyframeAlignedCut) {
+				long nextkey = vInfo.start_src + lFrame * opt->video.frameRateDecimation;
+
+				if (!vSrc->isKey(nextkey)) {	// starting new segment on a keyframe is fine
+					nextkey = vSrc->nextKey(nextkey);
+				
+					// Note: This may count too many frames when frame rate decimation is active.
+					// However, it works in the only case where frd is really useful in copy mode,
+					// which is a stream consisting of only keyframes and drops.
+					if (nextkey >= 0) {
+						if (nextkey > vInfo.end_src)
+							nextkey = vInfo.end_src;
+						lFrame = (nextkey - vInfo.start_src + opt->video.frameRateDecimation - 1) / opt->video.frameRateDecimation;
+					}
+				}
+			}
+
+			lFrame2 = lFrame;
 		}
 
-		// Find equivalent audio point.
-		//
-		// (<audio samples> = (<frames> * <audio bytes per second> * <microseconds per frame>) / (<audio bytes per sample> * 1000000);
+		// Figure out how many more bytes it would be.
 
-		lSample = (long)frAudioPerVideo.scale64r(lFrame2);
-	} else
-		lFrame2 = lFrame;
+		if (opt->video.mode)
+			nAdditionalBytes = (sint64)lVideoSizeEstimate * (vInfo.start_src + lFrame2 * opt->video.frameRateDecimation - vInfo.cur_src + nVideoLag);
+		else {
+			HRESULT hr;
+			LONG lSize = 0;
+			long lSamp = vInfo.cur_src;
+			long lSampLimit = vInfo.start_src + lFrame2 * opt->video.frameRateDecimation + nVideoLag;
 
-	// Figure out how many more bytes it would be.
+			nAdditionalBytes = 0;
 
-	if (opt->video.mode)
-		nAdditionalBytes = (sint64)lVideoSizeEstimate * (vInfo.start_src + lFrame2 * opt->video.frameRateDecimation - vInfo.cur_src + nVideoLag);
-	else {
-		HRESULT hr;
-		LONG lSize = 0;
-		long lSamp = vInfo.cur_src;
-		long lSampLimit = vInfo.start_src + lFrame2 * opt->video.frameRateDecimation + nVideoLag;
-
-		nAdditionalBytes = 0;
-
-		while(lSamp < lSampLimit) {
-			hr = vSrc->read(lSamp, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
-			if (!hr)
-				nAdditionalBytes += lSize;
-			lSamp += opt->video.frameRateDecimation;
+			while(lSamp < lSampLimit) {
+				hr = vSrc->read(lSamp, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
+				if (!hr)
+					nAdditionalBytes += lSize;
+				lSamp += opt->video.frameRateDecimation;
+			}
 		}
-	}
 
-	if (audioStream && lSample > aInfo.cur_src)
-		nAdditionalBytes += (lSample - aInfo.cur_src) * audioTimingStream->GetFormat()->nBlockAlign;
+		if (audioStream && lSample > aInfo.cur_src)
+			nAdditionalBytes += (lSample - aInfo.cur_src) * audioTimingStream->GetFormat()->nBlockAlign;
 
-	if (nAdditionalBytes + (i64SegmentSize - i64SegmentCredit) < i64SegmentThreshold && (!lSegmentFrameLimit || lFrame-lSegmentFrameStart<=lSegmentFrameLimit)) {
+		if (nAdditionalBytes + (i64SegmentSize - i64SegmentCredit) < i64SegmentThreshold && (!lSegmentFrameLimit || lFrame-lSegmentFrameStart<=lSegmentFrameLimit)) {
 
-		// We're fine.  Mark down the new thresholds so we don't have to recompute them.
+			// We're fine.  Mark down the new thresholds so we don't have to recompute them.
 
-		lFrame = lFrame * opt->video.frameRateDecimation + vInfo.start_src;
+			lFrame = lFrame * opt->video.frameRateDecimation + vInfo.start_src;
 
-		if (audioStream)
-			lSample += aInfo.start_src;
+			if (audioStream)
+				lSample += aInfo.start_src;
 
-		VDDEBUG("Pushing threshold to %ld, %ld: current position %ld, %ld\n", lFrame, lSample, vInfo.cur_src, aInfo.cur_src);
+			VDDEBUG("Pushing threshold to %ld, %ld: current position %ld, %ld\n", lFrame, lSample, vInfo.cur_src, aInfo.cur_src);
 
-		lSpillVideoOk = lFrame;
+			lSpillVideoOk = lFrame;
 
-		if (audioStream)
-			lSpillAudioOk = lSample;
+			if (audioStream)
+				lSpillAudioOk = lSample;
 
-		return;
+			return;
+		}
+
+		// If we are attempting a 'nice' keyframe-aligned cut, we can't do so, and
+		// we haven't written anything out yet, force a non-aligned cut so we don't
+		// loop infinitely.
+
+		if (lSpillVideoOk <= lSegmentFrameStart && bAttemptKeyframeAlignedCut)
+			bAttemptKeyframeAlignedCut = false;
+		else
+			break;
 	}
 
 	// Doh!  Force a split at the current thresholds.

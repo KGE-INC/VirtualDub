@@ -380,6 +380,7 @@ extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {
 	L"Scales the pitch of audio by a fixed ratio. This filter uses an awful time-domain based algorithm "
 		L"that may result in some clicks.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterPitchShift),	1,	1,
 

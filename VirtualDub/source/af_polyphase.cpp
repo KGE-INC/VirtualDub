@@ -564,6 +564,7 @@ extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	NULL,
 	L"Removes frequency components above a given cutoff using a 129-tap windowed-sinc filter.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterXpass),	1,	1,
 
@@ -590,6 +591,7 @@ extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 	NULL,
 	L"Removes frequency components below a given cutoff using a 129-tap windowed-sinc filter.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterXpass),	1,	1,
 
@@ -721,6 +723,7 @@ extern const struct VDAudioFilterDefinition afilterDef_resample = {
 	NULL,
 	L"Resamples audio to a new sampling frequency using a 32-phase, 129-tap filter bank.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterResample),	1,	1,
 
@@ -868,6 +871,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stretch = {
 	NULL,
 	L"Resamples audio to a different length without changing sampling frequency, using a 32-phase, 129-tap filter bank.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterStretch),	1,	1,
 

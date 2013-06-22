@@ -253,6 +253,7 @@ extern const struct VDAudioFilterDefinition afilterDef_gain = {
 	NULL,
 	L"Adjust signal amplitude (volume) by a fixed factor.",
 	0,
+	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterGain),	1,	1,
 

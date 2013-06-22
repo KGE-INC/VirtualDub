@@ -325,6 +325,7 @@ extern const struct VDAudioFilterDefinition afilterDef_centercut = {
 	NULL,
 	L"Splits a stereo stream into stereo-side and mono-center outputs using phase analysis.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterCenterCut),	1,	2,
 

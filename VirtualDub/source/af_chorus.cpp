@@ -239,6 +239,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereochorus = {
 	NULL,
 	L"Applies feedback to a stream using delays driven from a quadrature-phase LFO to simulate or enhance stereo.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterStereoChorus),	1,	1,
 

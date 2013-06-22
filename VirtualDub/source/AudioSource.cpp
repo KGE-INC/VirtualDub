@@ -26,7 +26,8 @@
 
 extern HWND g_hWnd;		// TODO: Remove in 1.5.0
 
-AudioSourceWAV::AudioSourceWAV(const char *szFile, LONG inputBufferSize) {
+AudioSourceWAV::AudioSourceWAV(const char *szFile, LONG inputBufferSize)
+{
 	MMIOINFO mmi;
 
 	memset(&mmi,0,sizeof mmi);
@@ -63,7 +64,7 @@ BOOL AudioSourceWAV::init() {
 	bytesPerSample	= getWaveFormat()->nBlockAlign; //getWaveFormat()->nAvgBytesPerSec / getWaveFormat()->nSamplesPerSec;
 	lSampleFirst	= 0;
 	lSampleLast		= chunkDATA.cksize / bytesPerSample;
-	lCurrentSample	= 0;
+	lCurrentSample	= -1;
 
 	streamInfo.fccType					= streamtypeAUDIO;
 	streamInfo.fccHandler				= 0;
@@ -87,6 +88,7 @@ int AudioSourceWAV::_read(LONG lStart, LONG lCount, LPVOID buffer, LONG cbBuffer
 
 	if (lBytes > cbBuffer) {
 		lBytes = cbBuffer - cbBuffer % bytesPerSample;
+		lCount = lBytes / bytesPerSample;
 	}
 	
 	if (buffer) {

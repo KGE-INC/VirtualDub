@@ -565,7 +565,7 @@ BOOL DiskTestCreateStruc(HWND hDlg, DiskTestParameters *dtp) {
 		return FALSE;
 	}
 
-	dtp->lMicroSecPerFrame = (1000000.0 / d) + 0.5;
+	dtp->lMicroSecPerFrame = (long)((1000000.0 / d) + 0.5);
 
 	dtp->dwBufferMode = 0;
 	if (IsDlgButtonChecked(hDlg, IDC_DISABLE_BUFFERING))

@@ -43,6 +43,7 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/registry.h>
 #include <vd2/Dita/services.h>
 #include "capture.h"
 #include "auxdlg.h"
@@ -80,7 +81,8 @@
 
 enum {
 	kFileDialog_AVIStripe		= 'stri',
-	kFileDialog_WAVAudio		= 'wave',
+	kFileDialog_WAVAudioIn		= 'wavi',
+	kFileDialog_WAVAudioOut		= 'wavo',
 	kFileDialog_Config			= 'conf'
 };
 
@@ -1579,6 +1581,10 @@ static void DoInitMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu,ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_AVIINFO				, bSourceFileExists);
 
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideoAVI && inputVideoAVI->isFrameBufferValid());
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideoAVI && filters.isRunning());
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_SCANFORERRORS		, inputVideoAVI != 0);
+
 	const bool bAudioProcessingEnabled			= (g_dubOpts.audio.mode == DubAudioOptions::M_FULL);
 	const bool bUseFixedFunctionAudioPipeline	= bAudioProcessingEnabled && !g_dubOpts.audio.bUseAudioFilterGraph;
 	const bool bUseProgrammableAudioPipeline	= bAudioProcessingEnabled && g_dubOpts.audio.bUseAudioFilterGraph;
@@ -2343,6 +2349,10 @@ struct SegmentValues {
 	bool fDefer;
 };
 
+static const char g_szRegKeyPersistence[]="Persistence";
+static const char g_szRegKeySegmentFrameCount[]="Segment frame limit";
+static const char g_szRegKeySegmentSizeLimit[]="Segment size limit";
+
 UINT CALLBACK SaveSegmentedAVIDlgHookProc(  HWND hDlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
 	OFNOTIFY *ofn;
 	BOOL fOk;
@@ -2364,7 +2374,12 @@ UINT CALLBACK SaveSegmentedAVIDlgHookProc(  HWND hDlg, UINT uiMsg, WPARAM wParam
 
 		switch(ofn->hdr.code) {
 		case CDN_INITDONE:
-			SetDlgItemInt(hDlg, IDC_LIMIT, 2000, FALSE);
+			{
+				VDRegistryAppKey key(g_szRegKeyPersistence);
+				
+				SetDlgItemInt(hDlg, IDC_EDIT_FRAMELIMIT, key.getInt(g_szRegKeySegmentFrameCount, 100), FALSE);
+				SetDlgItemInt(hDlg, IDC_LIMIT, key.getInt(g_szRegKeySegmentSizeLimit, 2000), FALSE);
+			}
 			break;
 		case CDN_FILEOK:
 			psv = (SegmentValues *)ofn->lpOFN->lCustData;
@@ -2393,6 +2408,15 @@ UINT CALLBACK SaveSegmentedAVIDlgHookProc(  HWND hDlg, UINT uiMsg, WPARAM wParam
 				psv->lThreshFrames = 0;
 
 			psv->fDefer = !!IsDlgButtonChecked(hDlg, IDC_ADD_AS_JOB);
+
+			{
+				VDRegistryAppKey key(g_szRegKeyPersistence);
+
+				if (psv->lThreshFrames)
+					key.setInt(g_szRegKeySegmentFrameCount, psv->lThreshFrames);
+
+				key.setInt(g_szRegKeySegmentSizeLimit, psv->lThreshMB);
+			}
 
 			return 0;
 		}
@@ -2948,7 +2972,7 @@ void SaveWAV(HWND hWnd) {
 		return;
 	}
 
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_WAVAudio, (VDGUIHandle)hWnd, L"Save WAV File", fileFilters2, g_prefs.main.fAttachExtension ? L"wav" : NULL));
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_WAVAudioOut, (VDGUIHandle)hWnd, L"Save WAV File", fileFilters2, g_prefs.main.fAttachExtension ? L"wav" : NULL));
 
 	if (!filename.empty()) {
 		try {
@@ -2962,7 +2986,7 @@ void SaveWAV(HWND hWnd) {
 ///////////////
 
 void OpenWAV() {
-	const VDStringW filename(VDGetLoadFileName(kFileDialog_WAVAudio, (VDGUIHandle)g_hWnd, L"Open WAV File", fileFilters2, NULL));
+	const VDStringW filename(VDGetLoadFileName(kFileDialog_WAVAudioIn, (VDGUIHandle)g_hWnd, L"Open WAV File", fileFilters2, NULL));
 
 	if (!filename.empty()) {
 		VDStringA filenameA(VDTextWToA(filename));

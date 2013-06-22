@@ -248,6 +248,7 @@ BEGIN
     BEGIN
         MENUITEM "&Compression...\tA",          ID_AUDIO_COMPRESSION
         MENUITEM "&Volume meter...\tV",         ID_AUDIO_VOLUMEMETER
+        MENUITEM "Windows &mixer...",           ID_AUDIO_WINMIXER
     END
     POPUP "&Video"
     BEGIN
@@ -661,7 +662,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.5.0 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.5.1 - Copyright (C) 1998-2003 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -2440,7 +2441,7 @@ END
 IDD_AF_SETUP DIALOGEX 0, 0, 350, 229
 STYLE DS_MODALFRAME | WS_POPUP | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU
 CAPTION "Audio filters"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
     PUSHBUTTON      "OK",IDOK,293,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,24,50,14
@@ -2455,6 +2456,7 @@ BEGIN
     CONTROL         "Auto-c&onnect",IDC_AUTOCONNECT,"Button",BS_AUTOCHECKBOX | 
                     WS_TABSTOP,284,201,59,10
     PUSHBUTTON      "&Clear",IDC_CLEAR,293,49,50,14
+    PUSHBUTTON      "Con&figure",IDC_CONFIGURE,293,134,50,14
 END
 
 IDD_AF_XPASS DIALOG DISCARDABLE  0, 0, 150, 50
@@ -3469,8 +3471,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,5,0,0
- PRODUCTVERSION 1,5,0,0
+ FILEVERSION 1,5,1,0
+ PRODUCTVERSION 1,5,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3488,14 +3490,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.5.0\0"
+            VALUE "FileVersion", "1.5.1\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.5.0\0"
+            VALUE "ProductVersion", "1.5.1\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3581,17 +3583,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.5.0 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.5.0"
-    IDS_TITLE_IDLE          "VirtualDub 1.5.0 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.5.0 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.0"
+    IDS_TITLE_INITIAL       "VirtualDub 1.5.1 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.5.1"
+    IDS_TITLE_IDLE          "VirtualDub 1.5.1 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.5.1 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.1"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.5.0 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.5.0 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.0 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.0 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.5.0 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.5.1 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.5.1 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.1 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.1 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.5.1 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

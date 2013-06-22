@@ -117,6 +117,7 @@ extern const struct VDAudioFilterDefinition afilterDef_sink = {
 	NULL,
 	L"",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterSink),	1,	0,
 
@@ -187,6 +188,7 @@ extern const struct VDAudioFilterDefinition afilterDef_output = {
 	NULL,
 	L"Generic output sink for audio graph representing file output or playback filter.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterOutput),	1,	0,
 
@@ -213,6 +215,7 @@ extern const struct VDAudioFilterDefinition afilterDef_discard = {
 	NULL,
 	L"Discards all input.",
 	0,
+	kVFAF_Zero,
 
 	sizeof(VDAudioFilterOutput),	1,	0,
 

@@ -103,11 +103,14 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 
 	memcpy(pafe->pwfex, pafd->pwfx, sizeof(WAVEFORMATEX) + pafd->pwfx->cbSize);
 
-	if (!pData->pTagSelect && pData->pwfexSelect && pafd->pwfx->wFormatTag == pData->pwfexSelect->wFormatTag
-		&& !memcmp(pafd->pwfx, pData->pwfexSelect, sizeof(WAVEFORMATEX)+pafd->pwfx->cbSize)) {
+	if (!pData->pTagSelect && pData->pwfexSelect && pafd->pwfx->wFormatTag == pData->pwfexSelect->wFormatTag) {
 
-		pData->pTagSelect = pData->pate;
-		pData->pFormatSelect = pafe;
+		if (pafd->pwfx->wFormatTag == WAVE_FORMAT_PCM ||
+			(pafd->pwfx->cbSize == pData->pwfexSelect->cbSize && !memcmp(pafd->pwfx, pData->pwfexSelect, sizeof(WAVEFORMATEX)+pafd->pwfx->cbSize))) {
+
+			pData->pTagSelect = pData->pate;
+			pData->pFormatSelect = pafe;
+		}
 	}
 
 	pafe->fCompatible = true;
@@ -318,7 +321,7 @@ static BOOL CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM w
 
 					if (pTag == aed.pTagSelect) {
 						SendMessage(hwndItem, LB_SETCURSEL, i, 0);
-						AudioChooseShowFormats(hdlg, pTag, false);
+						AudioChooseShowFormats(hdlg, pTag, !!thisPtr->pwfexSrc);
 
 						hwndItem = GetDlgItem(hdlg, IDC_FORMAT);
 						cnt = SendMessage(hwndItem, LB_GETCOUNT, 0, 0);

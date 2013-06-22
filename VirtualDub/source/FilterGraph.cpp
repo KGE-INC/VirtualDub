@@ -116,10 +116,16 @@ protected:	// interface routines
 	void SetCallback(IVDFilterGraphControlCallback *pCB) { mpCB = pCB; }
 	void Arrange();
 	void DeleteSelection();
+	void ConfigureSelection();
 	void EnableAutoArrange(bool aa) { mbAutoArrange = aa; }
 	void EnableAutoConnect(bool ac) { mbAutoConnect = ac; }
 
+	IVDRefCount *GetSelection() {
+		return mpSelectedFilter ? &*mpSelectedFilter->pInstance : NULL;
+	}
+
 protected:	// internal functions
+	void ArrangeSort(std::vector<Filter *>& v, Filter *pf);
 	void Connect(Filter *pSrcFilter, int nSrcPin, Filter *pDstFilter, int nDstPin);
 	void BreakConnection(PinConnection *pc);
 	void RecomputeWorkspace();
@@ -584,10 +590,7 @@ void VDFilterGraphControl::OnLButtonUp(int x, int y) {
 }
 
 void VDFilterGraphControl::OnLButtonDbl(int x, int y) {
-	if (mpSelectedFilter) {
-		if (!mpCB || !mpSelectedFilter->pInstance || !mpCB->Configure((VDGUIHandle)mhwnd, mpSelectedFilter->pInstance))
-			MessageBox(mhwnd, "No options are available for the selected filter.", g_szError, MB_OK|MB_ICONINFORMATION);
-	}
+	ConfigureSelection();
 }
 
 namespace {
@@ -599,41 +602,65 @@ namespace {
 	};
 }
 
+void VDFilterGraphControl::ArrangeSort(std::vector<Filter *>& v, Filter *pf) {
+	int i;
+
+	pf->bMarked = true;
+
+	for(i=0; i<pf->inputs; ++i)
+		if (pf->inpins[i] && !pf->inpins[i]->pSrc->bMarked)
+			ArrangeSort(v, pf->inpins[i]->pSrc);
+
+	v.push_back(pf);
+
+	for(i=0; i<pf->outputs; ++i)
+		if (pf->outpins[i] && !pf->outpins[i]->pDst->bMarked)
+			ArrangeSort(v, pf->outpins[i]->pDst);
+}
+
 void VDFilterGraphControl::Arrange() {
+	// Sort filters by depth.
+
 	vdforeach(tFilterList, mFilters) {
-		(*it).rank = 0;
+		(*it).bMarked = false;
 	}
 
-	int maxrank = 0;
-	bool changed;
-	do {
-		changed = false;
-
-		vdforeach(tFilterList, mFilters) {
-			Filter& f = *it;
-			int rank = f.rank;
-
-			for(int i=0; i<f.inputs; ++i) {
-				if (f.inpins[i]) {
-					int r2 = f.inpins[i]->pSrc->rank+1;
-					if (r2 > rank)
-						rank = r2;
-				}
-			}
-
-			if (rank > f.rank) {
-				f.rank = rank;
-				changed = true;
-				if (rank > maxrank)
-					maxrank = rank;
-			}
-		}
-	} while(changed);
-
-	std::vector<Column> cols(maxrank+1);
+	std::vector<Filter *> sortedFilters;
 
 	vdforeach(tFilterList, mFilters) {
 		Filter& f = *it;
+
+		if (f.inputs && !f.bMarked)		// we deliberately look for a filter that has inputs in the hope of better 'detwist' behavior
+			ArrangeSort(sortedFilters, &f);
+	}
+
+	// The 'rank' of a filter is the depth of the filter in the filter
+	// graph and is computed as max(rank(inputs))+1.  Since the filters
+	// are now sorted we can compute these in one pass by pushing ranks
+	// forward like audio samples.
+
+	int maxrank = 0;
+	vdforeach(std::vector<Filter *>, sortedFilters) {
+		Filter& f = **it;
+		int rank = 0;
+
+		for(int i=0; i<f.inputs; ++i) {
+			if (f.inpins[i]) {
+				int r2 = f.inpins[i]->pSrc->rank+1;
+				if (r2 > rank)
+					rank = r2;
+			}
+		}
+
+		f.rank = rank;
+
+		maxrank = std::max<int>(maxrank, rank);
+	}
+
+	std::vector<Column> cols(maxrank+1);
+
+	vdforeach(std::vector<Filter *>, sortedFilters) {
+		Filter& f = **it;
 		Column& col = cols[f.rank];
 
 		if (col.x < f.w)
@@ -649,8 +676,8 @@ void VDFilterGraphControl::Arrange() {
 		x = x_next;
 	}
 
-	vdforeach(tFilterList, mFilters) {
-		Filter& f = *it;
+	vdforeach(std::vector<Filter *>, sortedFilters) {
+		Filter& f = **it;
 		Column& col = cols[f.rank];
 
 		f.x = col.x;
@@ -711,6 +738,13 @@ void VDFilterGraphControl::DeleteSelection() {
 		BreakConnection(ppc);
 		InvalidateRect(mhwnd, NULL, TRUE);
 		return;
+	}
+}
+
+void VDFilterGraphControl::ConfigureSelection() {
+	if (mpSelectedFilter) {
+		if (!mpCB || !mpSelectedFilter->pInstance || !mpCB->Configure((VDGUIHandle)mhwnd, mpSelectedFilter->pInstance))
+			MessageBox(mhwnd, "No options are available for the selected filter.", g_szError, MB_OK|MB_ICONINFORMATION);
 	}
 }
 
@@ -811,6 +845,10 @@ void VDFilterGraphControl::SelectFilter(Filter *pFilter) {
 			RedrawFilter(pOldSel);
 		if (pFilter)
 			RedrawFilter(pFilter);
+
+		// notify
+		if (mpCB)
+			mpCB->SelectionChanged(pFilter ? &*pFilter->pInstance : NULL);
 	}
 }
 
@@ -847,7 +885,51 @@ void VDFilterGraphControl::AddFilter(const wchar_t *name, int inpins, int outpin
 	if (mbAutoArrange)
 		Arrange();
 
-	SelectFilter(pDstFilter);
+	Filter *pSelect = pDstFilter;
+
+	if (mbAutoConnect) {
+		// Select a new filter.  We cycle around the graph perimeter until we
+		// have either found a filter with an unbound output pin or we make
+		// a full circle.
+
+		int pin = 0;
+
+		do {
+			const int total_pins = pSelect->inputs + pSelect->outputs;
+			if (!total_pins)
+				break;		// hmm... a filter with no inputs or outputs.
+
+			for(;;) {
+				if (pin >= total_pins)
+					pin = 0;
+
+				if (pin < pSelect->outputs) {
+					PinConnection *conn = pSelect->outpins[pin];
+					if (!conn)
+						goto terminate_search;
+
+					pSelect = conn->pDst;
+					pin = pSelect->inputs + pSelect->outputs - conn->dstpin;
+					break;
+				} else {
+					// inputs are reversed so we traverse clockwise the filter
+					PinConnection *conn = pSelect->inpins[pSelect->inputs + pSelect->outputs - 1 - pin];
+
+					if (conn) {
+						pSelect = conn->pSrc;
+						pin = conn->srcpin + 1;
+						break;
+					}
+				}
+
+				++pin;
+			}
+		} while(pSelect != pDstFilter);
+terminate_search:
+		;
+	}
+
+	SelectFilter(pSelect);
 }
 
 VDFilterGraphControl::Filter *VDFilterGraphControl::AddFilter2(const wchar_t *name, int inpins, int outpins, bool bProtected, IVDRefCount *pInstance) {

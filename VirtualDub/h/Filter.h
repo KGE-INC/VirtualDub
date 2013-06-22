@@ -342,12 +342,20 @@ typedef void		(__cdecl *VDAudioFilterSetParamProc		)(const VDAudioFilterContext 
 typedef bool		(__cdecl *VDAudioFilterConfigProc		)(const VDAudioFilterContext *pContext, HWND hwnd);
 typedef uint32		(__cdecl *VDAudioFilterReadProc			)(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples);
 
+enum {
+	kVFAF_Zero				= 0,
+	kVFAF_HasConfig			= 1,				// Filter has a configuration dialog.
+
+	kVFAF_Max				= 0xFFFFFFFF,
+};
+
 struct VDAudioFilterDefinition {
 	uint32							mSize;				// size of this structure in bytes
 	const wchar_t					*pszName;
 	const wchar_t					*pszAuthor;
 	const wchar_t					*pszDescription;
 	uint32							mVersion;			// (major<<24) + (minor<<16) + build.  1.4.1000 would be 0x010403E8.
+	uint32							mFlags;
 
 	uint32							mFilterDataSize;
 	uint32							mInputPins;

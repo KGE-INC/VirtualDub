@@ -151,5 +151,7 @@ struct VDAudioFilterBlurb {
 
 void VDEnumerateAudioFilters(std::list<VDAudioFilterBlurb>& blurbs);
 const VDAudioFilterDefinition *VDLookupAudioFilterByName(const wchar_t *name);
+bool VDLockAudioFilter(const VDAudioFilterDefinition *);		// Lock audio filter module in memory so vtbl is valid.
+void VDUnlockAudioFilter(const VDAudioFilterDefinition *);		// Release audio filter module.
 
 #endif

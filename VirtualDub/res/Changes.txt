@@ -1,6 +1,32 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 15654 (Version 1.5.1):          [February 22, 2003]
+   [features added]
+   * Improved audio filter dialog.
+   * Added "split" and "mix" audio filters.
+   * Capture mode: Added menu item to launch Windows Volume
+     Control in Recording mode.
+   * Save Segmented AVI now attempts to cut before keyframes
+     when the video mode is set to "direct copy."
+
+   [bug fixes]
+   * "Change so durations match" frame rate option was using
+     microsecond periods as frame rates.
+   * Fixed random crash when selecting menu option with no
+     video file loaded.
+   * Fixed broken free space gauge in capture mode.
+   * Fixed trashed filenames when attempting to set capture
+     file.
+   * Save Segmented AVI was using one digit instead of two
+     for the segment number.
+   * Video capture without an audio device now works.
+   * Audio compression dialog no longer shows incompatible
+     compression formats when it first appears.
+   * Added workaround for "shutdown when finished" job
+     control option to work under Windows 98.
+   * Assignments to string variables now work in scripts.
+
 Build 15584 (Version 1.5.0):          [February 16, 2003]
    [features added]
    * Can add a single job to the batch list with syntax:

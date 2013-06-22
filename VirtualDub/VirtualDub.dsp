@@ -26,7 +26,7 @@ CFG=VirtualDub - Win32 Release
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName "VirtualDub"
 # PROP Scc_LocalPath "."
-CPP=cl.exe
+CPP=xicl6.exe
 MTL=midl.exe
 RSC=rc.exe
 
@@ -53,7 +53,7 @@ RSC=rc.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LINK32=link.exe
+LINK32=xilink6.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
 # SUBTRACT LINK32 /pdb:none
@@ -88,7 +88,7 @@ PostBuild_Cmds=..\out\Release\mapconv ..\out\release\VirtualDub.map ..\out\relea
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LINK32=link.exe
+LINK32=xilink6.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /debug /machine:I386
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /subsystem:windows /incremental:no /map:"../out/Debug/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /libpath:"../lib/Debug"
 # SUBTRACT LINK32 /pdb:none
@@ -125,10 +125,10 @@ PostBuild_Cmds=..\out\Debug\mapconv ..\out\debug\VirtualDub.map ..\out\debug\Vir
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LINK32=link.exe
+LINK32=xilink6.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
 # SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VeedubP4.map" /debug /machine:I386 /nodefaultlib:"libc" /out:"..\out\ReleaseICL/VeedubP4.exe" /libpath:"../lib/ReleaseICL" /opt:nowin98 /opt:ref /mapinfo:lines
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/ReleaseICL/VeedubP4.map" /debug /machine:I386 /nodefaultlib:"libc" /out:"..\out\ReleaseICL/VeedubP4.exe" /libpath:"../lib/ReleaseICL" /opt:nowin98 /opt:ref /mapinfo:lines
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\..\obj\ReleaseICL\VirtualDub
@@ -136,7 +136,7 @@ SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
 PreLink_Cmds=..\out\Release\verinc	ml /c /coff /nologo /Fo$(IntDir)\verstub.obj verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Release\mapconv ..\out\release\VeedubP4.map ..\out\releaseicl\VeedubP4.vdi res\ia32.vdi
+PostBuild_Cmds=..\out\Release\mapconv ..\out\ReleaseICL\VeedubP4.map ..\out\ReleaseICL\VeedubP4.vdi res\ia32.vdi
 # End Special Build Tool
 
 !ENDIF 
@@ -2041,7 +2041,7 @@ SOURCE=.\source\VideoSourceImages.cpp
 # PROP Default_Filter ""
 # Begin Source File
 
-SOURCE=.\afiltdlg.h
+SOURCE=.\h\afiltdlg.h
 # End Source File
 # Begin Source File
 
@@ -3309,6 +3309,10 @@ SOURCE=.\source\af_list.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\af_mix.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\af_pitchshift.cpp
 # End Source File
 # Begin Source File
@@ -3317,7 +3321,11 @@ SOURCE=.\source\af_polyphase.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\af_sink.cpp
+SOURCE=.\source\af_sink.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\af_split.cpp
 # End Source File
 # End Group
 # Begin Group "Headers - Audio Filters"

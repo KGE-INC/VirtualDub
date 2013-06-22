@@ -41,6 +41,7 @@ namespace {
 	public:
 		VDStringW			mName;
 		VDFilterConfig		mConfigBlock;
+		bool				mbHasConfigDialog;
 	};
 }
 
@@ -276,7 +277,9 @@ protected:
 			vdrefptr<AudioFilterData> afd(new_nothrow AudioFilterData);
 
 			if (afd) {
-				afd->mName = pDef->pszName;
+				afd->mName				= pDef->pszName;
+				afd->mbHasConfigDialog	= 0 != (pDef->mFlags & kVFAF_HasConfig);
+
 				mpGraphControl->AddFilter(pDef->pszName, pDef->mInputPins, pDef->mOutputPins, false, afd);
 			}
 		}
@@ -285,6 +288,8 @@ protected:
 	void FilterDialogClosed() {
 		EnableWindow(GetDlgItem(mhdlg, IDC_ADD), TRUE);
 	}
+
+	void SelectionChanged(IVDRefCount *pInstance);
 
 	bool Configure(VDGUIHandle hParent, IVDRefCount *pInstance) {
 		try {
@@ -339,6 +344,9 @@ BOOL VDDialogAudioFiltersW32::DlgProc(UINT msg, UINT wParam, LONG lParam) {
 				return TRUE;
 			case IDC_DELETE:
 				mpGraphControl->DeleteSelection();
+				return TRUE;
+			case IDC_CONFIGURE:
+				mpGraphControl->ConfigureSelection();
 				return TRUE;
 			case IDC_CLEAR:
 				if (MessageBox(mhdlg, "Clear filter graph?", g_szWarning, MB_ICONEXCLAMATION|MB_OKCANCEL)==IDOK){
@@ -479,6 +487,13 @@ void VDDialogAudioFiltersW32::SaveGraph(VDAudioFilterGraph& graph, IVDFilterGrap
 	}
 }
 
+void VDDialogAudioFiltersW32::SelectionChanged(IVDRefCount *pInstance) {
+	AudioFilterData *pd = static_cast<AudioFilterData *>(pInstance);
+
+	EnableWindow(GetDlgItem(mhdlg, IDC_DELETE), pd != 0);
+	EnableWindow(GetDlgItem(mhdlg, IDC_CONFIGURE), pd && pd->mbHasConfigDialog);
+}
+
 void VDDialogAudioFiltersW32::InitDialog() {
 	mpGraphControl = VDGetIFilterGraphControl(GetDlgItem(mhdlg, IDC_GRAPH));
 	mpGraphControl->SetCallback(this);
@@ -496,6 +511,8 @@ void VDDialogAudioFiltersW32::InitDialog() {
 	CheckDlgButton(mhdlg, IDC_AUTOCONNECT, bAutoConnect);
 
 	EnableWindow(GetDlgItem(mhdlg, IDC_TEST), inputAudio != 0);
+
+	SelectionChanged(NULL);
 }
 
 void VDDialogAudioFiltersW32::SaveDialogSettings() {

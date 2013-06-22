@@ -455,11 +455,14 @@ const VDMPEGAudioDecoder::L3HuffmanTableDescriptor VDMPEGAudioDecoder::sL3Huffma
 	{ table33, 0, 0, 0 },
 };
 
+#pragma warning(push)
+#pragma warning(disable: 4035)		// warning C4035: 'rdtsc': no return value
 static inline uint64 rdtsc() {
 	__asm {
 		rdtsc
 	}
 }
+#pragma warning(pop)
 
 void VDMPEGAudioDecoder::DecodeHuffmanValues(VDMPEGAudioHuffBitReader& bitreader, sint32 *dst, unsigned tableid, unsigned pairs) {
 #if 0

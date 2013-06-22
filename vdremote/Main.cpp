@@ -513,7 +513,7 @@ STDMETHODIMP CAVIFileRemote::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNa
 
 		_RPT0(0,"Read in path...\n");
 
-		if (mmi.cksize != mmioRead(hmmio, szPath, mmi.cksize))
+		if ((LONG)mmi.cksize != mmioRead(hmmio, szPath, mmi.cksize))
 			throw (HRESULT)E_FAIL;
 
 		_RPT1(0,"File parsed, remote-path: [%s]\n", szPath);
@@ -837,7 +837,7 @@ STDMETHODIMP CAVIStreamRemote::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer,
 		if (!lpBuffer) {
 			if (plSamples) *plSamples = 1;
 			if (plBytes) *plBytes = bmihFormat->biSizeImage;
-		} else if (cbBuffer < bmihFormat->biSizeImage) {
+		} else if (cbBuffer < (long)bmihFormat->biSizeImage) {
 			_RPT1(0,"\tBuffer too small; should be %ld samples\n", bmihFormat->biSizeImage);
 			hres = AVIERR_BUFFERTOOSMALL;
 			if (plSamples) *plSamples = 1;

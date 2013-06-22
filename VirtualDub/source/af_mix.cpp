@@ -25,9 +25,9 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDAudioFilterCenterMix : public VDAudioFilterBase {
+class VDAudioFilterMix : public VDAudioFilterBase {
 public:
-	VDAudioFilterCenterMix();
+	VDAudioFilterMix();
 
 	static void __cdecl InitProc(const VDAudioFilterContext *pContext);
 
@@ -42,26 +42,24 @@ public:
 	VDRingBuffer<sint16> mOutputBuffer;
 };
 
-VDAudioFilterCenterMix::VDAudioFilterCenterMix()
+VDAudioFilterMix::VDAudioFilterMix()
 {
 }
 
-void __cdecl VDAudioFilterCenterMix::InitProc(const VDAudioFilterContext *pContext) {
-	new (pContext->mpFilterData) VDAudioFilterCenterMix;
+void __cdecl VDAudioFilterMix::InitProc(const VDAudioFilterContext *pContext) {
+	new (pContext->mpFilterData) VDAudioFilterMix;
 }
 
-uint32 VDAudioFilterCenterMix::Prepare() {
+uint32 VDAudioFilterMix::Prepare() {
 	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
 	const VDWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
 
 	if (   format0.mTag != VDWaveFormat::kTagPCM
-		|| format0.mChannels != 2
-		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
 		|| format1.mTag != VDWaveFormat::kTagPCM
-		|| format1.mChannels != 1
-		|| (format1.mSampleBits != 8 && format0.mSampleBits != 16)
 		|| format0.mSamplingRate != format1.mSamplingRate
 		|| format0.mSampleBits != format1.mSampleBits
+		|| format0.mChannels != format1.mChannels
+		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
 		)
 		return kVFAPrepare_BadFormat;
 
@@ -76,22 +74,22 @@ uint32 VDAudioFilterCenterMix::Prepare() {
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 
-	pwf0->mChannels		= 2;
+	pwf0->mChannels		= format0.mChannels;
 	pwf0->mSampleBits	= 16;
-	pwf0->mBlockSize	= 4;
-	pwf0->mDataRate		= 4 * pwf0->mSamplingRate;
+	pwf0->mBlockSize	= 2 * pwf0->mChannels;
+	pwf0->mDataRate		= pwf0->mBlockSize * pwf0->mSamplingRate;
 
 	return 0;
 }
 
-void VDAudioFilterCenterMix::Start() {
+void VDAudioFilterMix::Start() {
 	const VDAudioFilterPin& pin0 = *mpContext->mpOutputs[0];
 	const VDWaveFormat& format0 = *pin0.mpFormat;
 
-	mOutputBuffer.Init(2 * pin0.mBufferSize);
+	mOutputBuffer.Init(format0.mChannels * pin0.mBufferSize);
 }
 
-uint32 VDAudioFilterCenterMix::Run() {
+uint32 VDAudioFilterMix::Run() {
 	VDAudioFilterPin& pin1 = *mpContext->mpInputs[0];
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
 	const VDWaveFormat& format1 = *pin1.mpFormat;
@@ -101,7 +99,7 @@ uint32 VDAudioFilterCenterMix::Run() {
 
 	sint16 *dst = mOutputBuffer.LockWrite(mOutputBuffer.getSize(), samples);
 
-	samples >>= 1;
+	samples /= format1.mChannels;
 
 	if (samples > mpContext->mInputSamples)
 		samples = mpContext->mInputSamples;
@@ -114,110 +112,102 @@ uint32 VDAudioFilterCenterMix::Run() {
 			sint16	w[4096];
 			uint8	b[4096];
 		} buf0, buf1;
-		int tc = std::min<int>(samples, 2048);
+		int tc = std::min<int>(samples, 4096 / format1.mChannels);
 
 		int tca0 = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf0, tc, true);
 		int tca1 = mpContext->mpInputs[1]->mpReadProc(mpContext->mpInputs[1], &buf1, tc, true);
 
 		VDASSERT(tc == tca0 && tc == tca1);
 
-		if (format1.mSampleBits==16)
-			memcpy(dst, buf0.w, tc*4);
-		else {
-			for(unsigned i=0; i<tc*2; ++i) {
-				dst[i] = (sint16)(sint8)(buf0.b[i]-0x80) << 8;
-			}
+		int elements = tc * format1.mChannels;
+
+		if (format1.mSampleBits==16) {
+			for(unsigned i=0; i<elements; ++i)
+				dst[i] = buf0.w[i];
+		} else {
+			for(unsigned i=0; i<elements; ++i)
+				dst[i] = (sint32)buf0.b[i] << 8;
 		}
 
 		if (format2.mSampleBits==16) {
-			for(unsigned i=0; i<tc; ++i) {
+			for(unsigned i=0; i<elements; ++i) {
 				const sint32 t = buf1.w[i];
-				sint32 t0 = dst[0] + t + 0x8000;
-				sint32 t1 = dst[1] + t + 0x8000;
+				sint32 t0 = dst[i] + t + 0x8000;
 
 				if ((uint32)t0 >= 0x10000)
 					t0 = ~t0 >> 31;
 
-				if ((uint32)t1 >= 0x10000)
-					t1 = ~t1 >> 31;
-
-				dst[0] = (sint16)(t0 - 0x8000);
-				dst[1] = (sint16)(t1 - 0x8000);
-				dst += 2;
+				dst[i] = (sint16)(t0 - 0x8000);
 			}
 		} else {
-			for(unsigned i=0; i<tc; ++i) {
+			for(unsigned i=0; i<elements; ++i) {
 				const sint32 t = (sint32)buf1.b[i] << 8;
-				sint32 t0 = dst[0] + t;
-				sint32 t1 = dst[1] + t;
+				sint32 t0 = dst[i] + t;
 
 				if ((uint32)t0 >= 0x10000)
 					t0 = ~t0 >> 31;
 
-				if ((uint32)t1 >= 0x10000)
-					t1 = ~t1 >> 31;
-
-				dst[0] = (sint16)(t0 - 0x8000);
-				dst[1] = (sint16)(t1 - 0x8000);
-				dst += 2;
+				dst[i] = (sint16)(t0 - 0x8000);
 			}
 		}
+
+		dst += elements;
 
 		actual += tc;
 		samples -= tc;
 	}
 
-	mOutputBuffer.UnlockWrite(actual * 2);
+	mOutputBuffer.UnlockWrite(actual * format1.mChannels);
 
-	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
+	mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format1.mChannels;
 
 	return 0;
 }
 
-uint32 VDAudioFilterCenterMix::Read(unsigned pinno, void *dst, uint32 samples) {
+uint32 VDAudioFilterMix::Read(unsigned pinno, void *dst, uint32 samples) {
 	VDAudioFilterPin& pin = *mpContext->mpOutputs[pinno];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	samples = std::min<uint32>(samples, mOutputBuffer.getLevel()>>1);
+	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mChannels);
 
 	if (dst) {
-		mOutputBuffer.Read((sint16 *)dst, samples*2);
-		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() >> 1;
+		mOutputBuffer.Read((sint16 *)dst, samples*format.mChannels);
+		mpContext->mpOutputs[0]->mCurrentLevel = mOutputBuffer.getLevel() / format.mChannels;
 	}
 
 	return samples;
 }
 
-sint64 VDAudioFilterCenterMix::Seek(sint64 us) {
+sint64 VDAudioFilterMix::Seek(sint64 us) {
 	mOutputBuffer.Flush();
 	mpContext->mpOutputs[0]->mCurrentLevel = 0;
 	return us;
 }
 
-extern const struct VDAudioFilterDefinition afilterDef_centermix = {
+extern const struct VDAudioFilterDefinition afilterDef_mix = {
 	sizeof(VDAudioFilterDefinition),
-	L"center mix",
+	L"mix",
 	NULL,
-	L"Mixes a stereo stream with a mono stream.",
+	L"Mixes two streams together linearly.",
 	0,
 	kVFAF_Zero,
 
-	sizeof(VDAudioFilterCenterMix),	2, 1,
+	sizeof(VDAudioFilterMix),	2, 1,
 
 	NULL,
 
-	VDAudioFilterCenterMix::InitProc,
-	VDAudioFilterCenterMix::DestroyProc,
-	VDAudioFilterCenterMix::PrepareProc,
-	VDAudioFilterCenterMix::StartProc,
-	VDAudioFilterCenterMix::StopProc,
-	VDAudioFilterCenterMix::RunProc,
-	VDAudioFilterCenterMix::ReadProc,
-	VDAudioFilterCenterMix::SeekProc,
-	VDAudioFilterCenterMix::SerializeProc,
-	VDAudioFilterCenterMix::DeserializeProc,
-	VDAudioFilterCenterMix::GetParamProc,
-	VDAudioFilterCenterMix::SetParamProc,
-	VDAudioFilterCenterMix::ConfigProc,
+	VDAudioFilterMix::InitProc,
+	VDAudioFilterMix::DestroyProc,
+	VDAudioFilterMix::PrepareProc,
+	VDAudioFilterMix::StartProc,
+	VDAudioFilterMix::StopProc,
+	VDAudioFilterMix::RunProc,
+	VDAudioFilterMix::ReadProc,
+	VDAudioFilterMix::SeekProc,
+	VDAudioFilterMix::SerializeProc,
+	VDAudioFilterMix::DeserializeProc,
+	VDAudioFilterMix::GetParamProc,
+	VDAudioFilterMix::SetParamProc,
+	VDAudioFilterMix::ConfigProc,
 };
 
