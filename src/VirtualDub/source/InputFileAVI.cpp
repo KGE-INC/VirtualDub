@@ -136,7 +136,7 @@ public:
 	uint32 GetFlags() { return kF_Video | kF_Audio | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
-		return L"AVIFile input driver (compat.) (*.avs,*.vdr)\0*.avs;*.vdr\0";
+		return L"AVIFile input driver (compat.) (*.avs,*.vdr,*.vpy)\0*.avs;*.vdr;*.vpy\0";
 	}
 
 	bool DetectByFilename(const wchar_t *pszFilename) {
@@ -145,6 +145,8 @@ public:
 			if (!_wcsicmp(pszFilename + l - 4, L".avs"))
 				return true;
 			if (!_wcsicmp(pszFilename + l - 4, L".vdr"))
+				return true;
+			if (!_wcsicmp(pszFilename + l - 4, L".vpy"))
 				return true;
 		}
 
@@ -429,7 +431,10 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 		{
 			VDExternalCodeBracket bracket(L"An AVIFile input handler", __FILE__, __LINE__);
 
-			err = AVIFileOpen(&paf, VDTextWToA(szFile).c_str(), OF_READ, NULL);
+			if (VDIsWindowsNT())
+				err = AVIFileOpenW(&paf, szFile, OF_READ, NULL);
+			else
+				err = AVIFileOpen(&paf, VDTextWToA(szFile).c_str(), OF_READ, NULL);
 		}
 
 		if (err)

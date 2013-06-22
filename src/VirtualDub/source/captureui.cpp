@@ -31,7 +31,7 @@
 #include <vd2/Dita/w32peer.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Riza/bitmap.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include "gui.h"
 #include "prefs.h"
 #include "capture.h"
@@ -2080,7 +2080,7 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 
 		bandwidth += MulDiv(
 						8 + size,
-						1000000,
+						10000000,
 						framePeriod);
 	}
 

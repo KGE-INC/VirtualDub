@@ -342,7 +342,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\audioout.cpp"
+				RelativePath=".\source\audioout.cpp"
 				>
 			</File>
 			<File
@@ -386,292 +386,8 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="source\cap_dshow.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath=".\source\cap_screen.cpp"
-				>
-			</File>
-			<File
-				RelativePath="source\cap_vfw.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\capaudiocomp.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\caplog.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\capreplay.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\capresync.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
 				RelativePath=".\source\direct3d.cpp"
 				>
-			</File>
-			<File
-				RelativePath="source\display.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="source\displayd3dfx.cpp"
@@ -716,46 +432,6 @@
 			<File
 				RelativePath=".\source\displayddraw.cpp"
 				>
-			</File>
-			<File
-				RelativePath="source\displaydrv.cpp"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="source\displaydx9.cpp"
@@ -803,10 +479,6 @@
 			</File>
 			<File
 				RelativePath=".\source\displaygl.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\source\displaymgr.cpp"
 				>
 			</File>
 			<File
@@ -989,54 +661,6 @@
 			Filter="fx"
 			>
 			<File
-				RelativePath=".\source\cap_screen_glshaders.vdfx"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description=""
-						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
-						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
-						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description=""
-						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
-						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
-						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description=""
-						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
-						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
-						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description=""
-						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
-						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
-						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
 				RelativePath=".\source\displaydx9.fx"
 				>
 				<FileConfiguration
@@ -1110,54 +734,18 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="Resource Files"
-			>
-			<File
-				RelativePath=".\res\resource.h"
-				>
-			</File>
-			<File
-				RelativePath=".\res\Riza.rc"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCResourceCompilerTool"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCResourceCompilerTool"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCResourceCompilerTool"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCResourceCompilerTool"
-					/>
-				</FileConfiguration>
-			</File>
-		</Filter>
-		<Filter
 			Name="Autogenerated Header Files"
 			>
 			<File
 				RelativePath=".\h\cap_screen_glshaders.inl"
+				>
+			</File>
+			<File
+				RelativePath=".\h\displayd3d10_pixelshader.inl"
+				>
+			</File>
+			<File
+				RelativePath=".\h\displayd3d10_vertexshader.inl"
 				>
 			</File>
 			<File
@@ -1189,39 +777,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\h\vd2\Riza\cap_dshow.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capaudiocomp.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capdriver.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capdrivers.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\caplog.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capreplay.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capresync.h"
-				>
-			</File>
-			<File
 				RelativePath="..\h\vd2\Riza\direct3d.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\display.h"
 				>
 			</File>
 			<File

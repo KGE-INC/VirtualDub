@@ -1378,9 +1378,15 @@ bool VideoSourceAVI::_construct(int streamIndex) {
 	} else
 		mjpeg_mode = 0;
 
-	// allocate framebuffer
+	// Allocate framebuffer.
+	//
+	// Note that we have to accommodate V210 here, which has an average of 22 bits per pixel
+	// but has a scanline alignment of 128 bytes (!).
 
-	if (!AllocFrameBuffer(bmih->biWidth * 4 * abs((int)bmih->biHeight) + 4))
+	uint32 rgbapitch = bmih->biWidth * 4;
+	uint32 v210pitch = ((bmih->biWidth + 5) / 6 * 16 + 127) & ~127;
+
+	if (!AllocFrameBuffer(std::max(rgbapitch, v210pitch) * abs((int)bmih->biHeight) + 4))
 		throw MyMemoryError();
 
 	uint32 fccHandlerSearch = streamInfo.fccHandler;

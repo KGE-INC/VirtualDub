@@ -104,8 +104,8 @@ protected:
 	VDAudioFilterFormatConvConfig	mConfig;
 };
 
-VDAudioFilterFormatConv::VDAudioFilterFormatConv()
-{
+VDAudioFilterFormatConv::VDAudioFilterFormatConv() {
+	mConfig.precision = 16;
 }
 
 void __cdecl VDAudioFilterFormatConv::InitProc(const VDAudioFilterContext *pContext) {

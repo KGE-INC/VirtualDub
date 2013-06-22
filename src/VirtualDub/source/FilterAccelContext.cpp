@@ -133,11 +133,14 @@ uint32 VDFilterAccelContext::CreateTexture2D(uint32 width, uint32 height, uint32
 		return 0;
 	}
 
+	if (format != kVDXAF_A8R8G8B8)
+		return 0;
+
 	uint32 texWidth = VDCeilToPow2(width);
 	uint32 texHeight = VDCeilToPow2(height);
 
 	vdrefptr<IVDTTexture2D> tex;
-	if (!mpParent->CreateTexture2D(texWidth, texHeight, format, mipCount, kVDTUsage_Default, NULL, ~tex))
+	if (!mpParent->CreateTexture2D(texWidth, texHeight, kVDTF_B8G8R8A8, mipCount, kVDTUsage_Default, NULL, ~tex))
 		return 0;
 
 	if (initData) {
@@ -209,11 +212,14 @@ uint32 VDFilterAccelContext::CreateRenderTexture(uint32 width, uint32 height, ui
 		}
 	}
 
+	if (format != kVDXAF_Unknown && format != kVDXAF_A8R8G8B8)
+		return 0;
+
 	uint32 texWidth = VDCeilToPow2(width);
 	uint32 texHeight = VDCeilToPow2(height);
 
 	vdrefptr<IVDTTexture2D> tex;
-	if (!mpParent->CreateTexture2D(texWidth, texHeight, format, 1, kVDTUsage_Render, NULL, ~tex))
+	if (!mpParent->CreateTexture2D(texWidth, texHeight, kVDTF_B8G8R8A8, 1, kVDTUsage_Render, NULL, ~tex))
 		return 0;
 
 	HandleEntry *ent = AllocHandleEntry(kHTRenderTexture);
@@ -252,7 +258,7 @@ uint32 VDFilterAccelContext::CreateFragmentProgram(VDXAProgramFormat programForm
 	}
 
 	vdrefptr<IVDTFragmentProgram> fp;
-	if (!mpParent->CreateFragmentProgram(kVDTPF_D3D9ByteCode, data, length, ~fp))
+	if (!mpParent->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(data, length), ~fp))
 		return 0;
 
 	uint32 h = AllocHandle(fp, kHTFragmentProgram);
@@ -559,8 +565,8 @@ void VDFilterAccelContext::DrawRect(uint32 renderTargetHandle, uint32 fragmentPr
 		float u = x < 1 ? u0 : u1;
 		float v = y < 1 ? v0 : v1;
 
-		vx.x = (posx[x] * 2.0f - 1.0f) * invW - 1.0f;
-		vx.y = 1.0f - (posy[y] * 2.0f - 1.0f) * invH;
+		vx.x = (posx[x] * 2.0f) * invW - 1.0f;
+		vx.y = 1.0f - (posy[y] * 2.0f) * invH;
 		vx.z = 0.5f;
 
 		for(int j=0; j<8; ++j) {
@@ -576,6 +582,10 @@ void VDFilterAccelContext::DrawRect(uint32 renderTargetHandle, uint32 fragmentPr
 
 
 	mpParent->SetRenderTarget(0, s);
+
+	const VDTViewport vp = { 0, 0, rtdesc.mWidth, rtdesc.mHeight, 0.0f, 1.0f };
+	mpParent->SetViewport(vp);
+
 	mpEngine->DrawQuads(NULL, fp, vxs, 9, sizeof vxs[0], VDFilterAccelEngine::kQuadPattern_3x3);
 }
 
@@ -601,6 +611,12 @@ void VDFilterAccelContext::FillRects(uint32 renderTargetHandle, uint32 rectCount
 	}
 
 	mpParent->SetRenderTarget(0, s);
+
+	VDTSurfaceDesc desc;
+	s->GetDesc(desc);
+	const VDTViewport vp = { 0, 0, desc.mWidth, desc.mHeight, 0.0f, 1.0f };
+	mpParent->SetViewport(vp);
+
 	mpEngine->FillRects(rectCount, rects, colorARGB, sent->mImageW, sent->mImageH, sent->mRenderBorderW, sent->mRenderBorderH);
 }
 

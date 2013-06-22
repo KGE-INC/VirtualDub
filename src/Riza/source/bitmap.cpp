@@ -329,7 +329,7 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, 
 	case kPixFormat_YUV422_V210:
 		dst->biCompression	= VDMAKEFOURCC('v', '2', '1', '0');
 		dst->biBitCount		= 20;
-		dst->biSizeImage	= ((w + 23) / 24) * 64 * h;
+		dst->biSizeImage	= ((w + 47) / 48) * 128 * h;
 		break;
 	case kPixFormat_YUV422_UYVY_709:
 		dst->biCompression	= VDMAKEFOURCC('H', 'D', 'Y', 'C');
@@ -370,8 +370,15 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, 
 
 uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant, const uint32 *palette) {
 	using namespace nsVDPixmap;
+	int alignment = 4;
 
-	uint32 linspace = VDPixmapCreateLinearLayout(layout, format, w, abs(h), VDPixmapGetInfo(format).auxbufs > 1 ? 1 : 4);
+	if (format == kPixFormat_YUV422_V210) {
+		// V210 requires 128 _byte_ (NOT bit!) alignment.
+		alignment = 128;
+	} else if (VDPixmapGetInfo(format).auxbufs > 1)
+		alignment = 1;
+
+	uint32 linspace = VDPixmapCreateLinearLayout(layout, format, w, abs(h), alignment);
 
 	switch(format) {
 	case kPixFormat_Pal8:

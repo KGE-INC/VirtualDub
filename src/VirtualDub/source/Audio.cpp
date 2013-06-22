@@ -1837,7 +1837,11 @@ AudioSubset::AudioSubset(const vdfastvector<AudioStream *>& sources, const Frame
 
 	memcpy(AllocFormat(srcFormatLen), pSrcFormat, srcFormatLen);
 
-	VDTranslateVideoSubsetToAudioSubset(subset, sources, *pfs, videoFrameRate, appendTail);
+	if (!pfs) {
+		if (!sources.empty())
+			subset.addRange(0, sources[0]->GetLength(), false, 0);
+	} else
+		VDTranslateVideoSubsetToAudioSubset(subset, sources, *pfs, videoFrameRate, appendTail);
 
 	if (preskew > 0) {
 		const double preskewSecs = (double)preskew / 1000000.0;

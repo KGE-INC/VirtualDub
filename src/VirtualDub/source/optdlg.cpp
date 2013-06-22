@@ -447,6 +447,14 @@ bool VDDialogSelectVideoFormatW32::OnLoaded() {
 		nsVDPixmap::kPixFormat_YUV420i_Planar_FR,
 		nsVDPixmap::kPixFormat_YUV420i_Planar_709,
 		nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV420it_Planar,
+		nsVDPixmap::kPixFormat_YUV420it_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV420it_Planar_709,
+		nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV420ib_Planar,
+		nsVDPixmap::kPixFormat_YUV420ib_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV420ib_Planar_709,
+		nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR,
 	};
 
 	mFormatItems.resize(sizeof(kFormats)/sizeof(kFormats[0]));
@@ -488,7 +496,7 @@ void VDDialogSelectVideoFormatW32::OnSize() {
 }
 
 bool VDDialogSelectVideoFormatW32::OnErase(VDZHDC hdc) {
-	mResizer.Erase();
+	mResizer.Erase(&hdc);
 	return true;
 }
 
@@ -531,6 +539,10 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
 					s = L"YCbCr (Rec.601)";
 					break;
 
@@ -550,6 +562,10 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
 					s = L"YCbCr (Rec.709)";
 					break;
 			}
@@ -574,6 +590,10 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
 				case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
@@ -597,6 +617,10 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV420_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV411_Planar:
 				case nsVDPixmap::kPixFormat_YUV411_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV410_Planar:
@@ -646,6 +670,14 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
 					s = L"4:2:0";
 					break;
 				case nsVDPixmap::kPixFormat_YUV411_Planar:
@@ -730,6 +762,20 @@ void VDDialogSelectVideoFormatW32::FormatItem::GetText(int subItem, VDStringW& s
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
 					s = L"interlaced";
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+					s = L"interlaced top-field";
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
+					s = L"interlaced bottom-field";
 					break;
 			}
 			break;
@@ -1549,6 +1595,7 @@ INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 			SetDlgItemInt(mhdlg, IDC_END_MS, VDClampToUint32(mOpts.video.mSelectionEnd.ResolveToMS(mFrameCount, mFrameRate, true)), FALSE);
 			CheckDlgButton(mhdlg, IDC_OFFSET_AUDIO, mOpts.audio.fStartAudio);
 			CheckDlgButton(mhdlg, IDC_CLIP_AUDIO, mOpts.audio.fEndAudio);
+			CheckDlgButton(mhdlg, IDC_EDIT_AUDIO, mOpts.audio.mbApplyVideoTimeline);
             return (TRUE);
 
 		case WM_HELP:
@@ -1591,6 +1638,7 @@ INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 				mSelEnd = mFrameCount - GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE);
 				mOpts.audio.fStartAudio		= !!IsDlgButtonChecked(mhdlg, IDC_OFFSET_AUDIO);
 				mOpts.audio.fEndAudio		= !!IsDlgButtonChecked(mhdlg, IDC_CLIP_AUDIO);
+				mOpts.audio.mbApplyVideoTimeline = !!IsDlgButtonChecked(mhdlg, IDC_EDIT_AUDIO);
 				End(true);
 				return TRUE;
 			case IDCANCEL:

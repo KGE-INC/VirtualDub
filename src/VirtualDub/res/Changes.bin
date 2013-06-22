@@ -1,6 +1,34 @@
 VirtualDub change log
 
-Build %build% (1.10.2, experimental): [%date%]
+Build %build% (1.10.3, experimental): [%date%]
+   [features added]
+   * Added option to control whether edits on the timeline are applied to audio.
+   * Capture: Added support for screen capture via DXGI Output Duplication in Windows 8.
+   * Capture: Added support for Core Audio loopback capture in the screen capture driver on Windows Vista and later.
+   * Script: Improved error reporting for script errors during job execution.
+   * UI: Added option for confirmation on exit.
+   * UI: Program is now marked as high-DPI aware.
+   * UI: Added /topmost flag.
+   * AVI: Add .vpy extension to AVIFile path.
+   * AVI: AVIFile mode path now allows Unicode filenames.
+   * Filters: Convert format filter can now target Rec. 709 and full-range YCbCr formats.
+   * GIF: Animated GIF exporter now uses subrects and adaptive local color table sizes.
+   
+   [bugs fixed]
+   * Grayscale/Y8_FR video displays properly with GDI and DirectDraw display back-ends again.
+   * Fixed the main data chunk size in WAVE64 files being 24 bytes too small.
+   * Fixed garbled status message with /F flag on x64 build.
+   * Fixed scanline alignment on V210 format to 128 bytes.
+   * Capture: Fixed regression in the bandwidth indicator from increase in frame rate precision.
+   * Capture: Fixed crash in DirectShow mode when selecting an audio device that has been removed.
+   * Filters: Fixed garbage initial value for format convert audio filter.
+   * Filters: Fixed crash in ELA modes of the bob doubler.
+   * Filters: Fixed degree sign in rotate2 and HSV filter blurbs on non-English systems.
+   * Filters: Fixed inverted images with field swap and deinterlace filters with RGB24 input.
+   * GIF: Clear codes are now forced when the LZW table fills up to work around buggy decoders.
+   * Script: Lifted some line length limitations in script handling.
+
+Build 34807 (1.10.2, experimental): [June 3, 2011]
    [features added]
    * Added option and /[no]useprofile switch to store configuration files under the user profile.
    * Added option for fully buffered write I/O.

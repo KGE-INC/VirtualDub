@@ -25,9 +25,10 @@
 
 #include <vd2/system/w32assist.h>
 #include <vd2/Dita/interface.h>
+#include <vd2/Dita/services.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/fileasync.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 
 #include "resource.h"
 #include "helpfile.h"
@@ -47,6 +48,7 @@ namespace {
 		bool			mbAllowDirectYCbCrDecoding;
 		bool			mbDisplayEnableDebugInfo;
 		bool			mbConfirmRenderAbort;
+		bool			mbConfirmExit;
 		bool			mbRenderWarnNoAudio;
 		bool			mbEnableAVIAlignmentThreshold;
 		bool			mbEnableAVIVBRWarning;
@@ -74,6 +76,7 @@ namespace {
 		bool			mbDisplayAllowDirectXOverlays;
 		bool			mbDisplayEnableHighPrecision;
 		bool			mbDisplayEnableBackgroundFallback;
+		bool			mbDisplayEnable3D;
 
 		enum DisplaySecondaryMode {
 			kDisplaySecondaryMode_Disable,
@@ -99,6 +102,13 @@ namespace {
 
 		bool			mbAutoRecoverEnabled;
 		bool			mbUseUserProfile;
+		int				mMRUSize;
+		int				mHistoryClearCounter;		// NOT saved
+
+		VDPreferences2()
+			: mMRUSize(4)
+		{
+		}
 	} g_prefs2;
 }
 
@@ -183,6 +193,7 @@ public:
 			SetValue(109, mPrefs.mbDisplayEnableHighPrecision);
 			SetValue(110, mPrefs.mbDisplayEnableBackgroundFallback);
 			SetValue(111, (VDPreferences2::kDisplaySecondaryModeCount - 1) - mPrefs.mDisplaySecondaryMode);
+			SetValue(112, mPrefs.mbDisplayEnable3D);
 			SetCaption(300, mPrefs.mD3DFXFile.c_str());
 			pBase->ExecuteAllLinks();
 			return true;
@@ -200,6 +211,7 @@ public:
 			mPrefs.mbDisplayEnableDebugInfo = GetValue(108) != 0;
 			mPrefs.mbDisplayEnableHighPrecision = GetValue(109) != 0;
 			mPrefs.mbDisplayEnableBackgroundFallback = GetValue(110) != 0;
+			mPrefs.mbDisplayEnable3D = GetValue(112) != 0;
 
 			mPrefs.mDisplaySecondaryMode = (VDPreferences2::DisplaySecondaryMode)((VDPreferences2::kDisplaySecondaryModeCount - 1) - GetValue(111));
 
@@ -716,6 +728,66 @@ public:
 	}
 };
 
+class VDDialogPreferencesHistory : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesHistory(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetCaption(100, VDStringW().sprintf(L"%u", mPrefs.mMRUSize).c_str());
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			{
+				unsigned v = 0;
+				
+				swscanf(GetCaption(100).c_str(), L"%u", &v);
+
+				if (v < 0)
+					v = 0;
+				else if (v > 25)
+					v = 25;
+
+				mPrefs.mMRUSize = v;
+			}
+			return true;
+		case kEventSelect:
+			if (id == 101) {
+				VDClearFilespecSystemData();
+				mPrefs.mHistoryClearCounter = ++g_prefs2.mHistoryClearCounter;
+				return true;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+class VDDialogPreferencesExit : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesExit(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbConfirmExit);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbConfirmExit = GetValue(100) != 0;
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -746,6 +818,8 @@ public:
 				case 12:	pSubDialog->SetCallback(new VDDialogPreferencesBatch(mPrefs), true); break;
 				case 13:	pSubDialog->SetCallback(new VDDialogPreferencesAutoRecover(mPrefs), true); break;
 				case 14:	pSubDialog->SetCallback(new VDDialogPreferencesStartup(mPrefs), true); break;
+				case 15:	pSubDialog->SetCallback(new VDDialogPreferencesHistory(mPrefs), true); break;
+				case 16:	pSubDialog->SetCallback(new VDDialogPreferencesExit(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -814,7 +888,10 @@ void LoadPreferences() {
 		g_prefs2.mD3DFXFile = L"display.fx";
 
 	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
+
 	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
+	g_prefs2.mbConfirmExit = key.getBool("Confirm exit", false);
+
 	g_prefs2.mbRenderWarnNoAudio = key.getBool("Render: Warn if no audio", false);
 	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
 	g_prefs2.mbEnableAVIVBRWarning = key.getBool("AVI: VBR warning enabled", true);
@@ -839,6 +916,8 @@ void LoadPreferences() {
 	g_prefs2.mbDisplayEnableDebugInfo = key.getBool("Display: Enable debug info", false);
 	g_prefs2.mbDisplayEnableHighPrecision = key.getBool("Display: Enable high precision", false);
 	g_prefs2.mbDisplayEnableBackgroundFallback = key.getBool("Display: Enable background fallback", true);
+	g_prefs2.mbDisplayEnable3D = key.getBool("Display: Enable unified 3D driver", false);
+
 	g_prefs2.mDisplaySecondaryMode = (VDPreferences2::DisplaySecondaryMode)key.getEnumInt("Display: Secondary monitor mode", VDPreferences2::kDisplaySecondaryMode_AutoSwitch);
 
 	uint32 imageSeqHi = key.getInt("Images: Frame rate numerator", 10);
@@ -861,6 +940,12 @@ void LoadPreferences() {
 	g_prefs2.mbAutoRecoverEnabled = key.getBool("AutoRecover: Enabled", false);
 	g_prefs2.mbUseUserProfile = key.getBool("Use profile-local path", false);
 
+	g_prefs2.mMRUSize = key.getInt("MRU size", g_prefs2.mMRUSize);
+	if (g_prefs2.mMRUSize < 0)
+		g_prefs2.mMRUSize = 0;
+	else if (g_prefs2.mMRUSize > 25)
+		g_prefs2.mMRUSize = 25;
+
 	g_prefs2.mOldPrefs = g_prefs;
 
 	VDPreferencesUpdated();
@@ -873,7 +958,10 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	VDRegistryAppKey key("Preferences");
 	key.setString("Timeline format", prefs.mTimelineFormat.c_str());
 	key.setBool("Allow direct YCbCr decoding", prefs.mbAllowDirectYCbCrDecoding);
+
 	key.setBool("Confirm render abort", prefs.mbConfirmRenderAbort);
+	key.setBool("Confirm exit", g_prefs2.mbConfirmExit);
+
 	key.setBool("Render: Warn if no audio", prefs.mbRenderWarnNoAudio);
 	key.setBool("AVI: Alignment threshold enable", prefs.mbEnableAVIAlignmentThreshold);
 	key.setInt("AVI: Alignment threshold", prefs.mAVIAlignmentThreshold);
@@ -899,7 +987,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setBool("Display: Enable debug info", prefs.mbDisplayEnableDebugInfo);
 	key.setBool("Display: Enable high precision", prefs.mbDisplayEnableHighPrecision);
 	key.setBool("Display: Enable background fallback", prefs.mbDisplayEnableBackgroundFallback);
-	key.setInt("Display: Secondary monitor mode", g_prefs2.mDisplaySecondaryMode);
+	key.setBool("Display: Enable unified 3D driver", prefs.mbDisplayEnable3D);
+	key.setInt("Display: Secondary monitor mode", prefs.mDisplaySecondaryMode);
 
 	key.setInt("Images: Frame rate numerator", prefs.mImageSequenceFrameRate.getHi());
 	key.setInt("Images: Frame rate denominator", prefs.mImageSequenceFrameRate.getLo());
@@ -918,6 +1007,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 
 	key.setBool("AutoRecover: Enabled", prefs.mbAutoRecoverEnabled);
 	key.setBool("Use profile-local path", prefs.mbUseUserProfile);
+
+	key.setInt("MRU size", prefs.mMRUSize);
 }
 
 void VDSavePreferences() {
@@ -1049,6 +1140,22 @@ bool VDPreferencesGetAutoRecoverEnabled() {
 	return g_prefs2.mbAutoRecoverEnabled;
 }
 
+int VDPreferencesGetMRUSize() {
+	return g_prefs2.mMRUSize;
+}
+
+int VDPreferencesGetHistoryClearCounter() {
+	return g_prefs2.mHistoryClearCounter;
+}
+
+bool VDPreferencesIsDisplay3DEnabled() {
+	return g_prefs2.mbDisplayEnable3D;
+}
+
+bool VDPreferencesGetConfirmExit() {
+	return g_prefs2.mbConfirmExit;
+}
+
 void VDPreferencesUpdated() {
 	VDVideoDisplaySetFeatures(
 		!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayDisableDX),
@@ -1060,6 +1167,7 @@ void VDPreferencesUpdated() {
 		g_prefs2.mbDisplayEnableHighPrecision
 		);
 
+	VDVideoDisplaySet3DEnabled(g_prefs2.mbDisplayEnable3D);
 	VDVideoDisplaySetD3DFXFileName(g_prefs2.mD3DFXFile.c_str());
 	VDVideoDisplaySetDebugInfoEnabled(g_prefs2.mbDisplayEnableDebugInfo);
 	VDVideoDisplaySetBackgroundFallbackEnabled(g_prefs2.mbDisplayEnableBackgroundFallback);

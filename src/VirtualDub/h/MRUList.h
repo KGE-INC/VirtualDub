@@ -26,7 +26,7 @@ private:
 	std::vector<char>			mKey;
 	std::vector<VDStringW>		mFiles;
 	const char		*mpKeyName;
-	const int		mMaxCount;
+	int		mMaxCount;
 	bool			mbDirty;
 
 public:
@@ -35,9 +35,12 @@ public:
 
 	VDStringW operator[](int i);
 
+	void set_capacity(int max_files);
+
 	void add(const wchar_t *file);
 	void move_to_top(int index);
 	void clear();
+	void clear_history();
 	void load();
 	void flush();
 };

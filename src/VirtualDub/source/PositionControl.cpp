@@ -185,6 +185,8 @@ protected:
 	RECT				mTrack;					// just the track
 	RECT				mThumbRect;
 	int					mThumbWidth;
+	int					mButtonSize;
+	int					mGapSize;
 	double				mPixelsPerFrame;
 	double				mPixelToFrameBias;
 	double				mFramesPerPixel;
@@ -260,6 +262,8 @@ VDPositionControlW32::VDPositionControlW32(HWND hwnd)
 	, mRangeEnd(0)
 	, mSelectionStart(0)
 	, mSelectionEnd(-1)
+	, mButtonSize(0)
+	, mGapSize(0)
 	, mPixelsPerFrame(0)
 	, mPixelToFrameBias(0)
 	, mFramesPerPixel(0)
@@ -297,7 +301,7 @@ VDPositionControlW32::~VDPositionControlW32() {
 ///////////////////////////////////////////////////////////////////////////
 
 int VDPositionControlW32::GetNiceHeight() {
-	return 24 + mFrameNumberHeight*11/4;		// Don't ask about the 11/4 constant.  It's tuned to achieve a nice ratio on my system.
+	return mButtonSize + mFrameNumberHeight*11/4;		// Don't ask about the 11/4 constant.  It's tuned to achieve a nice ratio on my system.
 }
 
 void VDPositionControlW32::SetFrameTypeCallback(IVDPositionControlCallback *pCB) {
@@ -745,14 +749,21 @@ void VDPositionControlW32::OnCreate() {
 	mbHasMarkControls		= !!(dwStyles & PCS_MARK);
 	mbHasSceneControls		= !!(dwStyles & PCS_SCENE);
 
+	// We use 24px at 96 dpi.
+	int ht = 24;
+	int gap = 8;
+
 	mFrameFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	nFrameCtlHeight = 18;
 	
 	if (mFrameFont) {
 		if (HDC hdc = GetDC(mhwnd)) {
+			ht = MulDiv(GetDeviceCaps(hdc, LOGPIXELSY), ht, 96);
+			gap = MulDiv(GetDeviceCaps(hdc, LOGPIXELSX), gap, 96);
+
 			TEXTMETRIC tm;
 			int pad = 2*GetSystemMetrics(SM_CYEDGE);
-			int availHeight = 24 - pad;
+			int availHeight = ht;
 			HGDIOBJ hgoFont = SelectObject(hdc, mFrameFont);
 
 			if (GetTextMetrics(hdc, &tm)) {
@@ -760,9 +771,9 @@ void VDPositionControlW32::OnCreate() {
 
 				nFrameCtlHeight = tm.tmHeight + tm.tmInternalLeading + pad;
 
-				if (tm.tmHeight > availHeight && GetObject(mFrameFont, sizeof lf, &lf)) {
-					lf.lfHeight = availHeight;
-					nFrameCtlHeight = 24;
+				if (nFrameCtlHeight > availHeight && GetObject(mFrameFont, sizeof lf, &lf)) {
+					lf.lfHeight = availHeight - pad;
+					nFrameCtlHeight = availHeight;
 
 					HFONT hFont = CreateFontIndirect(&lf);
 					if (hFont)
@@ -776,6 +787,9 @@ void VDPositionControlW32::OnCreate() {
 			ReleaseDC(mhwnd, hdc);
 		}
 	}
+
+	mButtonSize = ht;
+	mGapSize = gap;
 
 	mFrameNumberFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	mFrameNumberHeight = 18;
@@ -800,27 +814,27 @@ void VDPositionControlW32::OnCreate() {
 
 	mThumbWidth = mFrameNumberHeight * 5 / 12;
 
-	CreateWindowEx(WS_EX_STATICEDGE,"EDIT",NULL,WS_CHILD|WS_VISIBLE|ES_READONLY,0,0,0,24,mhwnd,(HMENU)IDC_FRAME,g_hInst,NULL);
+	CreateWindowEx(WS_EX_STATICEDGE,"EDIT",NULL,WS_CHILD|WS_VISIBLE|ES_READONLY,0,0,0,ht,mhwnd,(HMENU)IDC_FRAME,g_hInst,NULL);
 
 	if (mbHasPlaybackControls) {
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_STOP		, g_hInst, NULL);
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_PLAY		, g_hInst, NULL);
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_PLAYPREVIEW	, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_STOP		, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_PLAY		, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_PLAYPREVIEW	, g_hInst, NULL);
 	}
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_START		, g_hInst, NULL);
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_BACKWARD	, g_hInst, NULL);
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_FORWARD	, g_hInst, NULL);
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_END		, g_hInst, NULL);
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_KEYPREV	, g_hInst, NULL);
-	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_KEYNEXT	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_START		, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_BACKWARD	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_FORWARD	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_END		, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_KEYPREV	, g_hInst, NULL);
+	CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_KEYNEXT	, g_hInst, NULL);
 
 	if (mbHasSceneControls) {
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,mhwnd, (HMENU)IDC_SCENEREV, g_hInst, NULL);
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,24,24,mhwnd, (HMENU)IDC_SCENEFWD, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,ht,ht,mhwnd, (HMENU)IDC_SCENEREV, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_ICON	,0,0,ht,ht,mhwnd, (HMENU)IDC_SCENEFWD, g_hInst, NULL);
 	}
 	if (mbHasMarkControls) {
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_MARKIN	, g_hInst, NULL);
-		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,mhwnd, (HMENU)IDC_MARKOUT	, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_MARKIN	, g_hInst, NULL);
+		CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,ht,ht,mhwnd, (HMENU)IDC_MARKOUT	, g_hInst, NULL);
 	}
 
 	if (mFrameFont)
@@ -894,36 +908,37 @@ void VDPositionControlW32::OnSize() {
 	RecomputeMetrics();
 
 	// Reposition controls
-	y = wndr.bottom - 24;
+	y = wndr.bottom - mButtonSize;
 	x = 0;
 
 	if (mbHasPlaybackControls) {
 		for(id = IDC_STOP; id < IDC_START; id++) {
 			SetWindowPos(GetDlgItem(mhwnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
 
-			x += 24;
+			x += mButtonSize;
 		}
-		x+=8;
+
+		x+=mGapSize;
 	}
 
 	for(id = IDC_START; id < IDC_MARKIN; id++) {
 		if (hwndButton = GetDlgItem(mhwnd,id)) {
 			SetWindowPos(hwndButton, NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
-			x += 24;
+			x += mButtonSize;
 		}
 	}
-	x+=8;
+	x+=mGapSize;
 
 	if (mbHasMarkControls) {
 		for(id = IDC_MARKIN; id <= IDC_MARKOUT; id++) {
 			SetWindowPos(GetDlgItem(mhwnd, id), NULL, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOSIZE|SWP_NOZORDER);
-			x += 24;
+			x += mButtonSize;
 		}
 
-		x+=8;
+		x+=mGapSize;
 	}
 
-	SetWindowPos(GetDlgItem(mhwnd, IDC_FRAME), NULL, x, y+12-(nFrameCtlHeight>>1), std::min<int>(wndr.right - x, 320), nFrameCtlHeight, SWP_NOACTIVATE|SWP_NOZORDER);
+	SetWindowPos(GetDlgItem(mhwnd, IDC_FRAME), NULL, x, y+((mButtonSize - nFrameCtlHeight)>>1), std::min<int>(wndr.right - x, 320), nFrameCtlHeight, SWP_NOACTIVATE|SWP_NOZORDER);
 
 }
 
@@ -1073,7 +1088,7 @@ void VDPositionControlW32::RecomputeMetrics() {
 	VDVERIFY(GetClientRect(mhwnd, &r));
 
 	mPositionArea = r;
-	mPositionArea.bottom -= 24;
+	mPositionArea.bottom -= mButtonSize;
 
 	// Compute space we need for the ticks.
 	int labelDigits = mRangeEnd > 0 ? ((int)floor(log10((double)mRangeEnd)) + 1) : 1;
@@ -1119,7 +1134,7 @@ void VDPositionControlW32::RecomputeMetrics() {
 
 	RecalcThumbRect(mPosition, false);
 
-	RECT rInv = {0,0,r.right,r.bottom-24};
+	RECT rInv = {0,0,r.right,r.bottom-mButtonSize};
 	InvalidateRect(mhwnd, &rInv, TRUE);
 }
 

@@ -2269,8 +2269,10 @@ bool FilterInstance::ConnectAccelBuffer(VFBitmapInternal *buf, bool bindAsRender
 		IVDTSurface *surf = tex->GetLevelSurface(0);
 
 		buf->mVDXAHandle = mpAccelContext->RegisterRenderTarget(surf, buf->w, buf->h, fbuf->GetBorderWidth(), fbuf->GetBorderHeight());
+		VDASSERT(buf->mVDXAHandle);
 	} else {
 		buf->mVDXAHandle = mpAccelContext->RegisterTexture(tex, buf->w, buf->h);
+		VDASSERT(buf->mVDXAHandle);
 	}
 
 	return true;

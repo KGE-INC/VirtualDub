@@ -47,7 +47,7 @@
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Riza/bitmap.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include <vd2/Riza/videocodec.h>
 #include "AudioFilterSystem.h"
 #include "convert.h"
@@ -140,6 +140,7 @@ DubOptions g_dubOpts = {
 		true,			// audio interleaving enabled
 		true,			// yes, offset audio with video
 		true,			// yes, clip audio to video length
+		true,			// yes, use video timeline
 		false,			// no high quality
 		false,			// use fixed-function audio pipeline
 		DubAudioOptions::P_NOCHANGE,		// no precision change
@@ -239,6 +240,14 @@ VDPosition DubVideoPosition::ResolveToMS(VDPosition frameCount, const VDFraction
 namespace {
 	bool CheckFormatSizeCompatibility(int format, int w, int h) {
 		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(format);
+
+		// We allow a special case for V210, which permits all even sizes.
+		if (format == nsVDPixmap::kPixFormat_YUV422_V210) {
+			if (w & 1)
+				return false;
+
+			return true;
+		}
 
 		if ((w & ((1<<formatInfo.qwbits)-1))
 			|| (h & ((1<<formatInfo.qhbits)-1))
@@ -850,7 +859,7 @@ void Dubber::InitAudioConversionChain() {
 	if (!mOptions.audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vInfo.mTimelineSourceLength))
 		applyTail = true;
 
-	if (!(audioStream = new_nothrow AudioSubset(sourceStreams, inputSubsetActive, vInfo.mFrameRateTimeline, offset, applyTail)))
+	if (!(audioStream = new_nothrow AudioSubset(sourceStreams, mOptions.audio.mbApplyVideoTimeline ? inputSubsetActive : NULL, vInfo.mFrameRateTimeline, offset, applyTail)))
 		throw MyMemoryError();
 
 	mAudioStreams.push_back(audioStream);

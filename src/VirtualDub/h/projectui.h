@@ -22,7 +22,7 @@
 #include <shellapi.h>
 #include <vd2/system/event.h>
 #include <vd2/system/thread.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 
 #include "project.h"
 #include "MRUList.h"

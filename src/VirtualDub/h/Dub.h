@@ -72,6 +72,7 @@ public:
 	bool is_ms;
 	bool enabled;
 	bool fStartAudio, fEndAudio;
+	bool mbApplyVideoTimeline;
 	bool fHighQuality;
 	bool bUseAudioFilterGraph;
 	char newPrecision;

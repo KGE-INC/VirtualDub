@@ -2,6 +2,7 @@
 #include <ddraw.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/refcount.h>
 #include <vd2/system/time.h>
 #include <vd2/system/math.h>
 #include <vd2/system/w32assist.h>
@@ -9,7 +10,9 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
-#include "displaydrv.h"
+#include <vd2/VDDisplay/compositor.h>
+#include <vd2/VDDisplay/displaydrv.h>
+#include <vd2/VDDisplay/renderer.h>
 
 //#define VDDEBUG_DISP (void)sizeof printf
 #define VDDEBUG_DISP VDDEBUG
@@ -32,6 +35,8 @@ public:
 
 class IVDDirectDrawManager {
 public:
+	virtual bool Init(IVDDirectDrawClient *pClient) = 0;
+	virtual bool Shutdown(IVDDirectDrawClient *pClient) = 0;
 	virtual IDirectDraw2 *GetDDraw() = 0;
 	virtual const DDCAPS& GetCaps() = 0;
 	virtual IDirectDrawSurface2 *GetPrimary() = 0;
@@ -482,6 +487,384 @@ void VDShutdownDirectDraw(IVDDirectDrawManager *pIMgr, IVDDirectDrawClient *pCli
 
 ///////////////////////////////////////////////////////////////////////////
 
+class VDDisplayCachedImageDirectDraw : public vdrefcounted<IVDRefUnknown>, public vdlist_node {
+	VDDisplayCachedImageDirectDraw(const VDDisplayCachedImageDirectDraw&);
+	VDDisplayCachedImageDirectDraw& operator=(const VDDisplayCachedImageDirectDraw&);
+public:
+	enum { kTypeID = 'cimD' };
+
+	VDDisplayCachedImageDirectDraw();
+	~VDDisplayCachedImageDirectDraw();
+
+	void *AsInterface(uint32 iid);
+
+	bool Init(IVDDirectDrawManager *mgr, void *owner, const VDDisplayImageView& imageView, int surfaceFormat);
+	void Shutdown();
+
+	void Update(const VDDisplayImageView& imageView);
+
+public:
+	void *mpOwner;
+	vdrefptr<IDirectDrawSurface2> mpSurface;
+	sint32	mWidth;
+	sint32	mHeight;
+	uint32	mUniquenessCounter;
+	int		mSurfaceFormat;
+};
+
+VDDisplayCachedImageDirectDraw::VDDisplayCachedImageDirectDraw() {
+	mListNodePrev = NULL;
+	mListNodeNext = NULL;
+}
+
+VDDisplayCachedImageDirectDraw::~VDDisplayCachedImageDirectDraw() {
+	if (mListNodePrev)
+		vdlist_base::unlink(*this);
+}
+
+void *VDDisplayCachedImageDirectDraw::AsInterface(uint32 iid) {
+	if (iid == kTypeID)
+		return this;
+
+	return NULL;
+}
+
+bool VDDisplayCachedImageDirectDraw::Init(IVDDirectDrawManager *mgr, void *owner, const VDDisplayImageView& imageView, int surfaceFormat) {
+	const VDPixmap& px = imageView.GetImage();
+	int w = px.w;
+	int h = px.h;
+
+	DDSURFACEDESC ddsd = {sizeof(DDSURFACEDESC)};
+
+	ddsd.dwFlags				= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+	ddsd.dwWidth				= w;
+	ddsd.dwHeight				= h;
+	ddsd.ddsCaps.dwCaps			= DDSCAPS_OFFSCREENPLAIN;
+	ddsd.ddpfPixelFormat		= mgr->GetPrimaryDesc().ddpfPixelFormat;
+
+	vdrefptr<IDirectDrawSurface> surf;
+
+	HRESULT hr = mgr->GetDDraw()->CreateSurface(&ddsd, ~surf, NULL);
+	if (FAILED(hr))
+		return false;
+
+	hr = surf->QueryInterface(IID_IDirectDrawSurface2, (void **)~mpSurface);
+	if (FAILED(hr))
+		return false;
+
+	mWidth = px.w;
+	mHeight = px.h;
+	mpOwner = owner;
+	mSurfaceFormat = surfaceFormat;
+
+	Update(imageView);
+	return true;
+}
+
+void VDDisplayCachedImageDirectDraw::Shutdown() {
+	mpSurface.clear();
+	mpOwner = NULL;
+}
+
+void VDDisplayCachedImageDirectDraw::Update(const VDDisplayImageView& imageView) {
+	mUniquenessCounter = imageView.GetUniquenessCounter();
+
+	if (!mpSurface)
+		return;
+
+	HRESULT hr;
+	if (mpSurface->IsLost()) {
+		hr = mpSurface->Restore();
+		if (FAILED(hr))
+			return;
+	}
+
+	const VDPixmap& px = imageView.GetImage();
+
+	static const DWORD dwLockFlags = VDIsWindowsNT() ? DDLOCK_WRITEONLY | DDLOCK_WAIT : DDLOCK_WRITEONLY | DDLOCK_NOSYSLOCK | DDLOCK_WAIT;
+
+	DDSURFACEDESC ddsd = {sizeof(DDSURFACEDESC)};
+	hr = mpSurface->Lock(NULL, &ddsd, dwLockFlags, NULL);
+
+	if (SUCCEEDED(hr)) {
+		VDPixmap dst = {};
+		dst.format = mSurfaceFormat;
+		dst.w = mWidth;
+		dst.h = mHeight;
+		dst.pitch = ddsd.lPitch;
+		dst.data = ddsd.lpSurface;
+
+		VDPixmapBlt(dst, px);
+
+		mpSurface->Unlock(NULL);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDDisplayRendererDirectDraw : public IVDDisplayRenderer, protected IVDDirectDrawClient {
+	VDDisplayRendererDirectDraw(const VDDisplayRendererDirectDraw&);
+	VDDisplayRendererDirectDraw& operator=(const VDDisplayRendererDirectDraw&);
+public:
+	VDDisplayRendererDirectDraw();
+	~VDDisplayRendererDirectDraw();
+
+	void Init(IVDDirectDrawManager *ddman);
+	void Shutdown();
+
+	IDirectDrawSurface2 *GetCompositionSurface() const { return mpddsComposition; }
+
+	bool Begin(uint32 w, uint32 h, nsVDPixmap::VDPixmapFormat format);
+	bool End(sint32 x, sint32 y);
+
+	void SetColorRGB(uint32 color);
+	void FillRect(sint32 x, sint32 y, sint32 w, sint32 h);
+	void Blt(sint32 x, sint32 y, VDDisplayImageView& imageView);
+
+public:
+	void DirectDrawShutdown();
+	void DirectDrawPrimaryRestored();
+
+protected:
+	VDDisplayCachedImageDirectDraw *GetCachedImage(VDDisplayImageView& imageView);
+
+	IVDDirectDrawManager *mpddman;
+	IDirectDrawSurface2 *mpddsComposition;
+	sint32	mWidth;
+	sint32	mHeight;
+
+	uint32	mColor;
+	uint32	mNativeColor;
+	nsVDPixmap::VDPixmapFormat mColorFormat;
+
+	typedef vdlist<VDDisplayCachedImageDirectDraw> CachedImages;
+	
+	CachedImages mCachedImages;
+};
+
+VDDisplayRendererDirectDraw::VDDisplayRendererDirectDraw()
+	: mpddman(NULL)
+	, mpddsComposition(NULL)
+	, mWidth(0)
+	, mHeight(0)
+	, mColor(0)
+	, mNativeColor(0)
+	, mColorFormat(nsVDPixmap::kPixFormat_Null)
+{
+}
+
+VDDisplayRendererDirectDraw::~VDDisplayRendererDirectDraw() {
+}
+
+void VDDisplayRendererDirectDraw::Init(IVDDirectDrawManager *ddman) {
+	mpddman = ddman;
+	VDVERIFY(mpddman->Init(this));
+}
+
+void VDDisplayRendererDirectDraw::Shutdown() {
+	while(!mCachedImages.empty()) {
+		VDDisplayCachedImageDirectDraw *img = mCachedImages.front();
+		mCachedImages.pop_front();
+
+		img->mListNodePrev = NULL;
+		img->mListNodeNext = NULL;
+
+		img->Shutdown();
+	}
+
+	vdsaferelease <<= mpddsComposition;
+
+	if (mpddman) {
+		mpddman->Shutdown(this);
+		mpddman = NULL;
+	}
+}
+
+bool VDDisplayRendererDirectDraw::Begin(uint32 w, uint32 h, nsVDPixmap::VDPixmapFormat format) {
+	if (mpddsComposition) {
+		if (mWidth == w && mHeight == h && mColorFormat == format)
+			return true;
+
+		vdsaferelease <<= mpddsComposition;
+	}
+
+	mWidth = w;
+	mHeight = h;
+	mColorFormat = format;
+
+	DDSURFACEDESC ddsd = {sizeof(DDSURFACEDESC)};
+
+	ddsd.dwFlags				= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+	ddsd.dwWidth				= w;
+	ddsd.dwHeight				= h;
+	ddsd.ddsCaps.dwCaps			= DDSCAPS_OFFSCREENPLAIN;
+	ddsd.ddpfPixelFormat		= mpddman->GetPrimaryDesc().ddpfPixelFormat;
+
+	IDirectDrawSurface *pdds = NULL;
+	HRESULT hr = mpddman->GetDDraw()->CreateSurface(&ddsd, &pdds, NULL);
+	if (FAILED(hr)) {
+		DEBUG_LOG("VideoDriver/DDraw: Couldn't create offscreen composition surface\n");
+		return false;
+	}
+
+	hr = pdds->QueryInterface(IID_IDirectDrawSurface2, (void **)&mpddsComposition);
+	pdds->Release();
+
+	if (FAILED(hr))
+		return false;
+
+	vdrefptr<IDirectDrawClipper> clipper;
+	hr = mpddman->GetDDraw()->CreateClipper(0, ~clipper, NULL);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	struct RegionData {
+		RGNDATAHEADER hdr;
+		RECT r;
+	} regiondata;
+	
+	regiondata.hdr.dwSize = sizeof(RGNDATAHEADER);
+	regiondata.hdr.iType = RDH_RECTANGLES;
+	regiondata.hdr.nCount = 1;
+	regiondata.hdr.nRgnSize = 0;
+	regiondata.hdr.rcBound.left = 0;
+	regiondata.hdr.rcBound.top = 0;
+	regiondata.hdr.rcBound.right = w;
+	regiondata.hdr.rcBound.bottom = h;
+	regiondata.r = regiondata.hdr.rcBound;
+
+	hr = clipper->SetClipList((RGNDATA *)&regiondata, 0);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	hr = mpddsComposition->SetClipper(clipper);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	return true;
+}
+
+bool VDDisplayRendererDirectDraw::End(sint32 x, sint32 y) {
+	if (!mpddsComposition)
+		return false;
+
+	RECT rDst = { x, y, x + mWidth, y + mHeight };
+	HRESULT hr = mpddman->GetPrimary()->Blt(&rDst, mpddsComposition, NULL, DDBLT_ASYNC | DDBLT_WAIT, NULL);
+
+	return SUCCEEDED(hr);
+}
+
+void VDDisplayRendererDirectDraw::SetColorRGB(uint32 color) {
+	if (mColor == color)
+		return;
+
+	mColor = color;
+
+	switch(mColorFormat) {
+		case nsVDPixmap::kPixFormat_XRGB1555:
+			mNativeColor = ((color & 0xf80000) >> 9) + ((color & 0xf800) >> 6) + ((color & 0xf8) >> 3);
+			break;
+
+		case nsVDPixmap::kPixFormat_RGB565:
+			mNativeColor = ((color & 0xf80000) >> 8) + ((color & 0xfc00) >> 5) + ((color & 0xf8) >> 3);
+			break;
+
+		case nsVDPixmap::kPixFormat_RGB888:
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			mNativeColor = color;
+			break;
+	}
+}
+
+void VDDisplayRendererDirectDraw::FillRect(sint32 x, sint32 y, sint32 w, sint32 h) {
+	if (!mpddsComposition)
+		return;
+
+	RECT r = { x, y, x + w, y + h };
+
+	if (r.left < 0)
+		r.left = 0;
+
+	if (r.top < 0)
+		r.top = 0;
+
+	if (r.right > mWidth)
+		r.right = mWidth;
+
+	if (r.bottom > mHeight)
+		r.bottom = mHeight;
+
+	if (r.left >= r.right || r.top >= r.bottom)
+		return;
+
+	DDBLTFX fx = {sizeof(DDBLTFX)};
+	fx.dwFillColor = mNativeColor;
+	mpddsComposition->Blt(&r, NULL, NULL, DDBLT_COLORFILL | DDBLT_ASYNC | DDBLT_WAIT, &fx);
+}
+
+void VDDisplayRendererDirectDraw::Blt(sint32 x, sint32 y, VDDisplayImageView& imageView) {
+	VDDisplayCachedImageDirectDraw *cachedImage = GetCachedImage(imageView);
+
+	if (!cachedImage)
+		return;
+
+	RECT r = { x, y, x + cachedImage->mWidth, y + cachedImage->mHeight };
+	mpddsComposition->Blt(&r, cachedImage->mpSurface, NULL, DDBLT_ASYNC | DDBLT_WAIT, NULL);
+}
+
+void VDDisplayRendererDirectDraw::DirectDrawShutdown() {
+	vdsaferelease <<= mpddsComposition;
+
+	for(CachedImages::iterator it(mCachedImages.begin()), itEnd(mCachedImages.end()); it != itEnd; ++it) {
+		VDDisplayCachedImageDirectDraw *img = *it;
+
+		img->Shutdown();
+	}
+}
+
+void VDDisplayRendererDirectDraw::DirectDrawPrimaryRestored() {
+}
+
+
+VDDisplayCachedImageDirectDraw *VDDisplayRendererDirectDraw::GetCachedImage(VDDisplayImageView& imageView) {
+	VDDisplayCachedImageDirectDraw *cachedImage = vdpoly_cast<VDDisplayCachedImageDirectDraw *>(imageView.GetCachedImage());
+
+	if (cachedImage && cachedImage->mpOwner != this)
+		cachedImage = NULL;
+
+	if (!cachedImage) {
+		cachedImage = new_nothrow VDDisplayCachedImageDirectDraw;
+
+		if (!cachedImage)
+			return NULL;
+		
+		cachedImage->AddRef();
+		if (!cachedImage->Init(mpddman, this, imageView, mColorFormat)) {
+			cachedImage->Release();
+			return NULL;
+		}
+
+		imageView.SetCachedImage(cachedImage);
+		mCachedImages.push_back(cachedImage);
+
+		cachedImage->Release();
+	} else {
+		uint32 c = imageView.GetUniquenessCounter();
+
+		if (cachedImage->mpSurface->IsLost() || cachedImage->mUniquenessCounter != c)
+			cachedImage->Update(imageView);
+	}
+
+	return cachedImage;
+}
+///////////////////////////////////////////////////////////////////////////
+
 class VDVideoDisplayMinidriverDirectDraw : public VDVideoDisplayMinidriver, protected IVDDirectDrawClient {
 public:
 	VDVideoDisplayMinidriverDirectDraw(bool enableOverlays, bool enableOldSecondaryMonitorBehavior);
@@ -523,7 +906,7 @@ protected:
 	void ShutdownDisplay();
 	bool UpdateOverlay(bool force);
 	void InternalRefresh(const RECT& rClient, UpdateMode mode, bool newFrame, bool doNotWait);
-	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing);
+	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing, bool usingCompositorSurface);
 	bool InternalFill(IDirectDrawSurface2 *&pDest, const RECT& rDst, uint32 nativeColor);
 
 	uint32 ConvertToNativeColor(uint32 rgb32) const;
@@ -559,6 +942,8 @@ protected:
 
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
+
+	VDDisplayRendererDirectDraw	mRenderer;
 
 	VDPixmapCachedBlitter	mCachedBlitter;
 
@@ -631,8 +1016,21 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, HMONITOR hmonitor, cons
 	case nsVDPixmap::kPixFormat_YUV410_Planar_709:
 	case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_Y8:
+	case nsVDPixmap::kPixFormat_Y8_FR:
 	case nsVDPixmap::kPixFormat_YUV422_V210:
 	case nsVDPixmap::kPixFormat_YUV420_NV12:
+	case nsVDPixmap::kPixFormat_YUV420i_Planar:
+	case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+	case nsVDPixmap::kPixFormat_YUV420it_Planar:
+	case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+	case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+	case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
 		break;
 	default:
 		return false;
@@ -645,6 +1043,8 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, HMONITOR hmonitor, cons
 		mpddman = VDInitDirectDraw(hmonitor, this);
 		if (!mpddman)
 			break;
+
+		mRenderer.Init(mpddman);
 
 		// The Windows Vista DWM has a bug where it allows you to create an overlay surface even
 		// though you'd never be able to display it -- so we have to detect the DWM and force
@@ -941,6 +1341,8 @@ void VDVideoDisplayMinidriverDirectDraw::ShutdownDisplay() {
 void VDVideoDisplayMinidriverDirectDraw::Shutdown() {
 	ShutdownDisplay();
 	
+	mRenderer.Shutdown();
+
 	if (mpddman) {
 		VDShutdownDirectDraw(mpddman, this);
 		mpddman = NULL;
@@ -1347,52 +1749,10 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 	if (rDst.right <= rDst.left || rDst.bottom <= rDst.top)
 		return;
 
-	MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst, 2);
-
 	IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
 
 	if (!pDest)
 		return;
-
-	if (mColorOverride) {
-		// convert color to primary surface format
-		DDBLTFX fx = {sizeof(DDBLTFX)};
-		fx.dwFillColor = ConvertToNativeColor(mColorOverride);
-
-		pDest->SetClipper(mpddc);
-		for(int i=0; i<5; ++i) {
-			HRESULT hr = pDest->Blt(&rDst, NULL, NULL, DDBLT_WAIT | DDBLT_COLORFILL, &fx);
-
-			if (SUCCEEDED(hr))
-				break;
-
-			if (hr != DDERR_SURFACELOST)
-				break;
-
-			if (FAILED(pDest->IsLost())) {
-				pDest->SetClipper(NULL);
-				pDest = NULL;
-
-				if (!mpddman->Restore())
-					return;
-
-				if (mbReset)
-					return;
-
-				pDest = mpddman->GetPrimary();
-				pDest->SetClipper(mpddc);
-			}
-		}
-
-		pDest->SetClipper(NULL);
-
-		// Workaround for Windows Vista DWM not adding window to composition tree immediately
-		if (mbFirstFrame) {
-			mbFirstFrame = false;
-			SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
-		}
-		return;
-	}
 
 	// DDBLTFX_NOTEARING is ignored by DirectDraw in 2K/XP.
 	if (!(mode & kModeVSync)) {
@@ -1400,22 +1760,32 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 	} else {
 		IDirectDraw2 *pDD = mpddman->GetDDraw();
 
+		RECT rScanArea = rClient;
+		
+		if (!mpCompositor && mbDestRectEnabled) {
+			rScanArea.left = mDrawRect.left;
+			rScanArea.top = mDrawRect.top;
+			rScanArea.right = mDrawRect.right;
+			rScanArea.bottom = mDrawRect.bottom;
+		}
+
+		MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst, 2);
+
 		if (newFrame && !mPresentHistory.mbPresentPending) {
 			const vdrect32& monitorRect = mpddman->GetMonitorRect();
 			int top = monitorRect.top;
 			int bottom = monitorRect.bottom;
 
-			RECT r(rDst);
-			if (r.top < top)
-				r.top = top;
-			if (r.bottom > bottom)
-				r.bottom = bottom;
+			if (rScanArea.top < top)
+				rScanArea.top = top;
+			if (rScanArea.bottom > bottom)
+				rScanArea.bottom = bottom;
 
-			r.top -= top;
-			r.bottom -= top;
+			rScanArea.top -= top;
+			rScanArea.bottom -= top;
 
-			mPresentHistory.mScanTop = r.top;
-			mPresentHistory.mScanBottom = r.bottom;
+			mPresentHistory.mScanTop = rScanArea.top;
+			mPresentHistory.mScanBottom = rScanArea.bottom;
 
 			mPresentHistory.mbPresentPending = true;
 			mPresentHistory.mbPresentBlitStarted = false;
@@ -1481,14 +1851,58 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 
 	pDest->SetClipper(mpddc);
 
+	bool usingCompositorSurface = false;
+
+	if (mpCompositor) {
+		if (mRenderer.Begin(rClient.right, rClient.bottom, (nsVDPixmap::VDPixmapFormat)mPrimaryFormat)) {
+			pDest = mRenderer.GetCompositionSurface();
+			usingCompositorSurface = true;
+		}
+	}
+
+	if (!usingCompositorSurface)
+		MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst, 2);
+
 	bool success = true;
 	bool stillDrawing = false;
-	if (!mSource.bInterlaced) {
+
+	if (mColorOverride) {
+		// convert color to primary surface format
+		DDBLTFX fx = {sizeof(DDBLTFX)};
+		fx.dwFillColor = ConvertToNativeColor(mColorOverride);
+
+		for(int i=0; i<5; ++i) {
+			HRESULT hr = pDest->Blt(&rDst, NULL, NULL, DDBLT_ASYNC | DDBLT_WAIT | DDBLT_COLORFILL, &fx);
+
+			if (SUCCEEDED(hr))
+				break;
+
+			if (hr != DDERR_SURFACELOST)
+				break;
+
+			if (FAILED(pDest->IsLost())) {
+				pDest->SetClipper(NULL);
+				pDest = NULL;
+
+				if (!mpddman->Restore())
+					return;
+
+				if (mbReset || usingCompositorSurface)
+					return;
+
+				pDest = mpddman->GetPrimary();
+				if (!pDest)
+					break;
+
+				pDest->SetClipper(mpddc);
+			}
+		}
+	} else if (!mSource.bInterlaced) {
 		if (mbUseSubrect) {
 			RECT rSrc = { mSubrect.left, mSubrect.top, mSubrect.right, mSubrect.bottom };
-			success = InternalBlt(pDest, &rDst, &rSrc, doNotWait, stillDrawing);
+			success = InternalBlt(pDest, &rDst, &rSrc, doNotWait, stillDrawing, usingCompositorSurface);
 		} else
-			success = InternalBlt(pDest, &rDst, NULL, doNotWait, stillDrawing);
+			success = InternalBlt(pDest, &rDst, NULL, doNotWait, stillDrawing, usingCompositorSurface);
 	} else {
 		const VDPixmap& source = mSource.pixmap;
 		vdrect32 r;
@@ -1527,7 +1941,7 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 			RECT rDstTemp = { rDst.left, rDst.top+y, rDst.right, rDst.top+y+1 };
 			RECT rSrcTemp = { r.left, v, r.width(), v+1 };
 
-			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp, doNotWait || y > fieldbase, stillDrawing)) {
+			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp, doNotWait || y > fieldbase, stillDrawing, usingCompositorSurface)) {
 				success = false;
 				break;
 			}
@@ -1538,9 +1952,23 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 
 	if (doNotWait && stillDrawing)
 		return;
-	
-	if (pDest)
-		pDest->SetClipper(NULL);
+
+	if (usingCompositorSurface) {
+		mpCompositor->Composite(mRenderer);
+
+		IDirectDrawSurface2 *primary = mpddman->GetPrimary();
+		primary->SetClipper(mpddc);
+
+		POINT pt = { rDst.left, rDst.top };
+
+		::ClientToScreen(mhwnd, &pt);
+		mRenderer.End(pt.x, pt.y);
+
+		primary->SetClipper(NULL);
+	} else {
+		if (pDest)
+			pDest->SetClipper(NULL);
+	}
 
 	mbPresentPending = false;
 
@@ -1624,7 +2052,7 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 	return;
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing) {
+bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing, bool usingCompositorSurface) {
 	HRESULT hr;
 	DWORD flags = doNotWait ? DDBLT_ASYNC : DDBLT_ASYNC | DDBLT_WAIT;
 	RECT rdstClip;
@@ -1727,7 +2155,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest
 		if (SUCCEEDED(hr))
 			break;
 
-		if (hr != DDERR_SURFACELOST)
+		if (hr != DDERR_SURFACELOST || usingCompositorSurface)
 			break;
 
 		if (FAILED(mpddsBitmap->IsLost())) {

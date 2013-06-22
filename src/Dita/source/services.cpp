@@ -274,7 +274,7 @@ void VDLoadFilespecSystemData() {
 		VDInitFilespecSystem();
 
 		if (g_pFilespecMap) {
-			VDRegistryAppKey key("Saved filespecs");
+			VDRegistryAppKey key("Saved filespecs", false);
 			VDRegistryValueIterator it(key);
 
 			VDStringW value;
@@ -283,6 +283,23 @@ void VDLoadFilespecSystemData() {
 				if (key.getString(s, value))
 					VDSetLastLoadSavePath(specKey, value.c_str());
 			}
+		}
+	}
+}
+
+void VDClearFilespecSystemData() {
+	vdsynchronized(g_csFilespecMap) {
+		if (g_pFilespecMap) {
+			g_pFilespecMap->clear();
+		}
+
+		VDRegistryAppKey key("Saved filespecs");
+
+		VDRegistryValueIterator it(key);
+
+		VDStringW value;
+		while(const char *s = it.Next()) {
+			key.removeValue(s);
 		}
 	}
 }

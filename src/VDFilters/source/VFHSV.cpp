@@ -1509,7 +1509,7 @@ static INT_PTR CALLBACK hsvDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPAR
 
 				switch(GetWindowLong(hwndSlider, GWL_ID)) {
 				case IDC_HUE:
-					sprintf(buf, "%+.1f\xB0", (val-0x800) * (360.0 / 4096.0));
+					sprintf(buf, "%+.1f%s", (val-0x800) * (360.0 / 4096.0), VDTextWToA(L"\u00B0").c_str());
 					SetDlgItemText(hDlg, IDC_STATIC_HUE, buf);
 					newval = ((val+0x800)<<4) & 0xfff0;
 					if (newval != mfd->hue)
@@ -1563,7 +1563,7 @@ static int hsv_config(VDXFilterActivation *fa, const VDXFilterFunctions *ff, VDX
 static void hsv_string2(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int maxlen) {
 	HSVFilterData *mfd = (HSVFilterData *)fa->filter_data;
 
-	_snprintf(buf, maxlen, " (h%+.0f\xB0, s\xB7%.0f%%, v%+.0f%%)", (short)mfd->hue * (360.0 / 65536.0), mfd->sat * (100.0 / 65536.0), mfd->val * (100.0 / 65536.0));
+	_snprintf(buf, maxlen, " (h%+.0f%s, sx%.0f%%, v%+.0f%%)", (short)mfd->hue * (360.0 / 65536.0), VDTextWToA(L"\u00B0").c_str(), mfd->sat * (100.0 / 65536.0), mfd->val * (100.0 / 65536.0));
 }
 
 static void hsv_script_config(IVDXScriptInterpreter *isi, void *lpVoid, VDXScriptValue *argv, int argc) {

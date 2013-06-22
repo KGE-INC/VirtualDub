@@ -1044,29 +1044,30 @@ BEGIN
     CONTROL         "",IDC_BORDERS,"birdyClippingControl",WS_CLIPCHILDREN | WS_TABSTOP | 0x3,7,7,250,6,WS_EX_CONTROLPARENT
 END
 
-IDD_VIDEO_CLIPPING DIALOGEX 0, 0, 184, 114
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_VIDEO_CLIPPING DIALOGEX 0, 0, 184, 130
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Select range of video to process"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,69,93,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,127,93,50,14
-    LTEXT           "Start offset",IDC_STATIC,7,19,35,8
-    LTEXT           "End offset",IDC_STATIC,7,51,33,8
-    LTEXT           "Length",IDC_STATIC,7,35,23,8
     LTEXT           "Time (ms)",IDC_STATIC,67,7,31,8
     LTEXT           "Frames",IDC_STATIC,129,7,24,8
+    LTEXT           "Start offset",IDC_STATIC,7,19,35,8
     EDITTEXT        IDC_START_MS,60,17,46,12,ES_AUTOHSCROLL
     EDITTEXT        IDC_START_FRAMES,119,17,46,12,ES_AUTOHSCROLL
+    LTEXT           "Length",IDC_STATIC,7,35,23,8
     EDITTEXT        IDC_LENGTH_MS,60,33,46,12,ES_AUTOHSCROLL
     EDITTEXT        IDC_LENGTH_FRAMES,119,33,46,12,ES_AUTOHSCROLL
+    LTEXT           "End offset",IDC_STATIC,7,51,33,8
     EDITTEXT        IDC_END_MS,60,49,46,12,ES_AUTOHSCROLL
     EDITTEXT        IDC_END_FRAMES,119,49,46,12,ES_AUTOHSCROLL
     CONTROL         "Offset audio to maintain a/v sync",IDC_OFFSET_AUDIO,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,66,120,10
     CONTROL         "Cut off audio when video stream ends",IDC_CLIP_AUDIO,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,78,135,10
+    CONTROL         "Apply video edits to audio",IDC_EDIT_AUDIO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,90,170,10
+    DEFPUSHBUTTON   "OK",IDOK,69,109,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,127,109,50,14
 END
 
 IDD_SHOWTEXT DIALOG  0, 0, 350, 199
@@ -1972,9 +1973,9 @@ BEGIN
     PUSHBUTTON      "Save...",IDC_SAVE,314,24,50,14
     PUSHBUTTON      "Advanced...",IDCANCEL,314,41,50,14
     PUSHBUTTON      "Help",IDC_HELP2,314,58,50,14
-    LTEXT           "",IDC_CRASH_HELP,7,7,300,38
-    GROUPBOX        "Crash details (best guess as to cause)",IDC_STATIC,7,49,300,101
-    EDITTEXT        IDC_CRASH_DETAILS,12,59,291,85,ES_MULTILINE | ES_READONLY | NOT WS_BORDER
+    LTEXT           "",IDC_CRASH_HELP,7,7,300,43
+    GROUPBOX        "Crash details (best guess as to cause)",IDC_STATIC,7,54,300,96
+    EDITTEXT        IDC_CRASH_DETAILS,12,64,291,80,ES_MULTILINE | ES_READONLY | NOT WS_BORDER
     PUSHBUTTON      "Debug",IDC_DEBUG,314,138,50,14
 END
 
@@ -2163,7 +2164,7 @@ END
 IDD_FILE_SETTEXTINFO DIALOGEX 0, 0, 290, 181
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Set textual information"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,181,160,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,233,160,50,14
@@ -2634,7 +2635,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 177
         TOPMARGIN, 7
-        BOTTOMMARGIN, 107
+        BOTTOMMARGIN, 123
     END
 
     IDD_SHOWTEXT, DIALOG
@@ -3553,8 +3554,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,2,0
- PRODUCTVERSION 1,10,2,0
+ FILEVERSION 1,10,3,0
+ PRODUCTVERSION 1,10,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3570,12 +3571,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.2"
+            VALUE "FileVersion", "1.10.3"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.2"
+            VALUE "ProductVersion", "1.10.3"
         END
     END
     BLOCK "VarFileInfo"
@@ -3591,8 +3592,8 @@ VS_VERSION_INFO$(_DEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,2,0
- PRODUCTVERSION 1,10,2,0
+ FILEVERSION 1,10,3,0
+ PRODUCTVERSION 1,10,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x21L
@@ -3608,12 +3609,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.2"
+            VALUE "FileVersion", "1.10.3"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1999-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.2"
+            VALUE "ProductVersion", "1.10.3"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)"
         END
     END

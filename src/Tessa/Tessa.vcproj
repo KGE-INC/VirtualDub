@@ -57,7 +57,7 @@
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				Detect64BitPortabilityProblems="true"
-				DebugInformationFormat="4"
+				DebugInformationFormat="3"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -291,6 +291,14 @@
 				RelativePath=".\source\Context.cpp"
 				>
 			</File>
+			<File
+				RelativePath=".\source\Format.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\Program.cpp"
+				>
+			</File>
 			<Filter
 				Name="D3D9"
 				>
@@ -304,14 +312,14 @@
 				</File>
 			</Filter>
 			<Filter
-				Name="D3D10"
+				Name="D3D11"
 				>
 				<File
-					RelativePath=".\source\D3D10\Context_D3D10.cpp"
+					RelativePath=".\source\D3D11\Context_D3D11.cpp"
 					>
 				</File>
 				<File
-					RelativePath=".\source\D3D10\FenceManager_D3D10.cpp"
+					RelativePath=".\source\D3D11\FenceManager_D3D11.cpp"
 					>
 				</File>
 			</Filter>
@@ -342,6 +350,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\Tessa\Format.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\Tessa\Types.h"
 				>
 			</File>
@@ -351,6 +363,10 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File
+				RelativePath=".\h\Program.h"
+				>
+			</File>
 			<Filter
 				Name="D3D9"
 				>
@@ -364,14 +380,14 @@
 				</File>
 			</Filter>
 			<Filter
-				Name="D3D10"
+				Name="D3D11"
 				>
 				<File
-					RelativePath=".\h\D3D10\Context_D3D10.h"
+					RelativePath=".\h\D3D11\Context_D3D11.h"
 					>
 				</File>
 				<File
-					RelativePath=".\h\D3D10\FenceManager_D3D10.h"
+					RelativePath=".\h\D3D11\FenceManager_D3D11.h"
 					>
 				</File>
 			</Filter>

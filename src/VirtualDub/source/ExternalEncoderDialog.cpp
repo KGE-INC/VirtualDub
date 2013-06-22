@@ -657,9 +657,11 @@ void VDUIDialogConfigureExternalEncoders::OnDataExchange(bool write) {
 			}
 		}
 
+		mListView.SetRedraw(false);
 		mListView.AutoSizeColumns();
 
 		ResortList();
+		mListView.SetRedraw(true);
 
 		UpdateButtonEnables();
 	}
@@ -1153,10 +1155,12 @@ void VDUIDialogConfigureExternalEncoders::OnLabelChanged(VDUIProxyListView *send
 		}
 	}
 
+	mListView.SetRedraw(false);
 	mListView.RefreshItem(eventData->mIndex);
 	mListView.AutoSizeColumns();
 
 	ResortList();
+	mListView.SetRedraw(true);
 }
 
 void VDUIDialogConfigureExternalEncoders::UpdateButtonEnables() {

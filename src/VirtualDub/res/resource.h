@@ -394,6 +394,8 @@
 #define IDC_CLIP_AUDIO                  1098
 #define IDC_CHANGES                     1098
 #define IDC_BLACK_LEVEL                 1099
+#define IDC_CLIP_AUDIO2                 1099
+#define IDC_EDIT_AUDIO                  1099
 #define IDC_BORDERS                     1105
 #define IDC_ABORT                       1107
 #define IDC_DISK_SPACE_ALLOCATE         1108

@@ -1138,6 +1138,10 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		mTimeline.SetTimingSource(pTS);
 		mTimeline.SetFromSource();
 
+		// invalidate currently displayed frames
+		mLastDisplayedInputFrame = -1;
+		mLastDisplayedTimelineFrame = -1;
+
 		ClearSelection(false);
 		mpCB->UITimelineUpdated();
 

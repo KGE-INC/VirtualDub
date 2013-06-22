@@ -517,6 +517,7 @@ bool VDD3D9Manager::Init() {
 	DWORD dwFlags = D3DCREATE_FPU_PRESERVE | D3DCREATE_NOWINDOWCHANGES;
 	UINT adapter = D3DADAPTER_DEFAULT;
 	D3DDEVTYPE type = D3DDEVTYPE_HAL;
+	bool perfHudActive = false;
 
 	for(UINT n=0; n<adapters; ++n) {
 		D3DADAPTER_IDENTIFIER9 ident;
@@ -525,6 +526,7 @@ bool VDD3D9Manager::Init() {
 			if (strstr(ident.Description, "PerfHUD")) {
 				adapter = n;
 				type = D3DDEVTYPE_REF;
+				perfHudActive = true;
 				break;
 			}
 		}
@@ -552,8 +554,16 @@ bool VDD3D9Manager::Init() {
 		return false;
 	}
 
-	mPresentParms.BackBufferWidth	= mode.Width;
-	mPresentParms.BackBufferHeight	= mode.Height;
+	if (perfHudActive) {
+		mPresentParms.BackBufferWidth	= mode.Width;
+		mPresentParms.BackBufferHeight	= mode.Height;
+	} else {
+		mPresentParms.BackBufferWidth	= 32;
+		mPresentParms.BackBufferHeight	= 32;
+	}
+
+	if (mpD3DDeviceEx)
+		mPresentParms.Flags |= D3DPRESENTFLAG_UNPRUNEDMODE;
 
 	// Make sure we have at least X8R8G8B8 for a texture format
 	hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, 0, D3DRTYPE_TEXTURE, D3DFMT_X8R8G8B8);
@@ -838,7 +848,7 @@ bool VDD3D9Manager::UpdateCachedDisplayMode() {
 	return true;
 }
 
-void VDD3D9Manager::AdjustFullScreen(bool fs) {
+void VDD3D9Manager::AdjustFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh) {
 	if (fs) {
 		++mFullScreenCount;
 	} else {
@@ -848,51 +858,74 @@ void VDD3D9Manager::AdjustFullScreen(bool fs) {
 
 	bool newState = mFullScreenCount != 0;
 
-	if ((!mPresentParms.Windowed) != newState) {
-		D3DDISPLAYMODE dm;
-		mpD3DDevice->GetDisplayMode(0, &dm);
-		if (newState) {
-			UINT count = mpD3D->GetAdapterModeCount(mAdapter, D3DFMT_X8R8G8B8);
+	if ((!mPresentParms.Windowed) == newState)
+		return;
 
-			D3DDISPLAYMODE dm2;
-			D3DDISPLAYMODE dmbest={0};
-			int bestindex = -1;
-			
-			for(UINT mode=0; mode<count; ++mode) {
-				HRESULT hr = mpD3D->EnumAdapterModes(mAdapter, D3DFMT_X8R8G8B8, mode, &dm2);
-				if (FAILED(hr))
-					break;
+	D3DDISPLAYMODE dm;
+	mpD3DDevice->GetDisplayMode(0, &dm);
+	if (newState) {
+		UINT count = mpD3D->GetAdapterModeCount(mAdapter, D3DFMT_X8R8G8B8);
 
+		D3DDISPLAYMODE dm2;
+		D3DDISPLAYMODE dmbest={0};
+		int bestindex = -1;
+		int bestwidtherr = 0;
+		int bestheighterr = 0;
+		int bestrefresherr = 0;
+		const int targetwidth = w && h ? w : dm.Width;
+		const int targetheight = w && h ? h : dm.Height;
+		const int targetrefresh = w && h && refresh ? refresh : dm.RefreshRate;
+		
+		for(UINT mode=0; mode<count; ++mode) {
+			HRESULT hr = mpD3D->EnumAdapterModes(mAdapter, D3DFMT_X8R8G8B8, mode, &dm2);
+			if (FAILED(hr))
+				break;
 
-				if (dmbest.Width == 0 || abs((int)dm2.Width - (int)dm.Width) + abs((int)dm2.Height - (int)dm.Height) < abs((int)dmbest.Width - (int)dm.Width) + abs((int)dmbest.Height - (int)dm.Height)) {
-					dmbest = dm2;
-					bestindex = (int)mode;
+			const int widtherr = abs((int)dm2.Width - targetwidth);
+			const int heighterr = abs((int)dm2.Height - targetheight);
+			const int refresherr = abs((int)dm2.RefreshRate - targetrefresh);
+
+			if (dmbest.Width != 0) {
+				if (refresherr > bestrefresherr)
+					continue;
+
+				if (refresherr == bestrefresherr) {
+					if (widtherr + heighterr >= bestwidtherr + bestheighterr)
+						continue;
 				}
 			}
 
-			if (bestindex < 0) {
-				mPresentParms.BackBufferWidth = dm.Width;
-				mPresentParms.BackBufferHeight = dm.Height;
-				mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
-			} else {
-				mPresentParms.BackBufferWidth = dmbest.Width;
-				mPresentParms.BackBufferHeight = dmbest.Height;
-				mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
-			}
-		} else {
-			mPresentParms.BackBufferWidth = dm.Width;
-			mPresentParms.BackBufferHeight = dm.Height;
-			mPresentParms.BackBufferFormat = D3DFMT_UNKNOWN;
+			dmbest = dm2;
+			bestindex = (int)mode;
+			bestwidtherr = widtherr;
+			bestheighterr = heighterr;
+			bestrefresherr = refresherr;
 		}
 
-		mPresentParms.Windowed = !newState;
-		mPresentParms.SwapEffect = newState ? D3DSWAPEFFECT_DISCARD : D3DSWAPEFFECT_COPY;
-		mPresentParms.BackBufferCount = newState ? 1 : 1;
-		mPresentParms.PresentationInterval = newState ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
-		mPresentParms.FullScreen_RefreshRateInHz = newState ? 60 : 0;
-
-		Reset();
+		if (bestindex < 0) {
+			mPresentParms.BackBufferWidth = dm.Width;
+			mPresentParms.BackBufferHeight = dm.Height;
+			mPresentParms.FullScreen_RefreshRateInHz = dm.RefreshRate;
+			mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
+		} else {
+			mPresentParms.BackBufferWidth = dmbest.Width;
+			mPresentParms.BackBufferHeight = dmbest.Height;
+			mPresentParms.FullScreen_RefreshRateInHz = dmbest.RefreshRate;
+			mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
+		}
+	} else {
+		mPresentParms.BackBufferWidth = dm.Width;
+		mPresentParms.BackBufferHeight = dm.Height;
+		mPresentParms.BackBufferFormat = D3DFMT_UNKNOWN;
+		mPresentParms.FullScreen_RefreshRateInHz = 0;
 	}
+
+	mPresentParms.Windowed = !newState;
+	mPresentParms.SwapEffect = newState ? D3DSWAPEFFECT_DISCARD : D3DSWAPEFFECT_COPY;
+	mPresentParms.BackBufferCount = newState ? 1 : 1;
+	mPresentParms.PresentationInterval = newState ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
+	
+	Reset();
 }
 
 bool VDD3D9Manager::Reset() {
@@ -921,7 +954,21 @@ bool VDD3D9Manager::Reset() {
 
 	ShutdownVRAMResources();
 
-	HRESULT hr = mpD3DDevice->Reset(&mPresentParms);
+	HRESULT hr;
+	D3DPRESENT_PARAMETERS tmp(mPresentParms);
+	
+	if (mpD3DDeviceEx && !mPresentParms.Windowed) {
+		D3DDISPLAYMODEEX mode;
+		mode.Width = mPresentParms.BackBufferWidth;
+		mode.Height = mPresentParms.BackBufferHeight;
+		mode.Format = D3DFMT_X8R8G8B8;
+		mode.RefreshRate = mPresentParms.FullScreen_RefreshRateInHz;
+		mode.Size = sizeof(D3DDISPLAYMODEEX);
+		mode.ScanLineOrdering = D3DSCANLINEORDERING_PROGRESSIVE;
+		hr = mpD3DDeviceEx->ResetEx(&tmp, &mode);
+	} else
+		hr = mpD3DDevice->Reset(&tmp);
+
 	if (FAILED(hr)) {
 		mbDeviceValid = false;
 		return false;
@@ -1084,13 +1131,8 @@ bool VDD3D9Manager::UploadVertices(unsigned vertices, const Vertex *data) {
 	if (!vx)
 		return false;
 
-	bool success = true;
-	__try {
-		memcpy(vx, data, sizeof(Vertex)*vertices);
-	} _except(1) {
-		// still happens with some video drivers on device loss.. #&$*(#$
-		success = false;
-	}
+	// Default pool resources may return a broken lock on device loss on Windows XP.
+	bool success = VDMemcpyGuarded(vx, data, sizeof(Vertex)*vertices);
 
 	UnlockVertices();
 	return success;
@@ -1503,7 +1545,7 @@ bool VDD3D9Manager::CreateSwapChain(HWND hwnd, int width, int height, bool clipT
 	pparms.BackBufferHeight	= height;
 	pparms.BackBufferFormat	= mPresentParms.BackBufferFormat;
 	pparms.hDeviceWindow = hwnd;
-	pparms.Flags = clipToMonitor ? D3DPRESENTFLAG_DEVICECLIP : 0;
+	pparms.Flags = clipToMonitor && !mpD3DDeviceEx ? D3DPRESENTFLAG_DEVICECLIP : 0;
 
 	vdrefptr<IDirect3DSwapChain9> pD3DSwapChain;
 	HRESULT hr = mpD3DDevice->CreateAdditionalSwapChain(&pparms, ~pD3DSwapChain);

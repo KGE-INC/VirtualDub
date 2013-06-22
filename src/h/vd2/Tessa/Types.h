@@ -4,12 +4,21 @@
 #include <vd2/system/vdtypes.h>
 
 enum VDTProgramFormat {
-	kVDTPF_D3D9ByteCode
+	kVDTPF_MultiTarget,
+	kVDTPF_D3D9ByteCode,
+	kVDTPF_D3D11ByteCode
 };
 
 enum VDTFormat {
 	kVDTF_Unknown,
-	kVDTF_A8R8G8B8
+	kVDTF_R8G8B8A8,
+	kVDTF_B8G8R8A8,
+	kVDTF_U8V8,
+	kVDTF_L8A8,
+	kVDTF_R8G8,
+	kVDTF_B5G6R5,
+	kVDTF_B5G5R5A1,
+	kVDTF_R8
 };
 
 struct VDTInitData2D {
@@ -39,14 +48,14 @@ struct VDTLockData2D {
 struct VDTSurfaceDesc {
 	uint32 mWidth;
 	uint32 mHeight;
-	uint32 mFormat;
+	VDTFormat mFormat;
 };
 
 struct VDTTextureDesc {
 	uint32 mWidth;
 	uint32 mHeight;
 	uint32 mMipCount;
-	uint32 mFormat;
+	VDTFormat mFormat;
 };
 
 enum VDTElementType {
@@ -135,9 +144,48 @@ struct VDTSamplerStateDesc {
 	VDTAddressMode	mAddressW;
 };
 
+struct VDTSwapChainDesc {
+	uint32 mWidth;
+	uint32 mHeight;
+	void *mhWindow;
+};
+
 enum VDTUsage {
 	kVDTUsage_Default,
 	kVDTUsage_Render
+};
+
+struct VDTViewport {
+	sint32 mX;
+	sint32 mY;
+	uint32 mWidth;
+	uint32 mHeight;
+	float mMinZ;
+	float mMaxZ;
+};
+
+struct VDTData {
+	const void *mpData;
+	uint32 mLength;
+};
+
+class VDTDataView : public VDTData {
+public:
+	template<class T, size_t N>
+	VDTDataView(T (&array)[N]) {
+		mpData = array;
+		mLength = N * sizeof(T);
+	}
+
+	VDTDataView(const void *p, uint32 len) {
+		mpData = p;
+		mLength = len;
+	}
+};
+
+struct VDTDeviceCaps {
+	uint32	mMaxTextureWidth;
+	uint32	mMaxTextureHeight;
 };
 
 #endif	// f_VD2_TESSA_TYPES_H

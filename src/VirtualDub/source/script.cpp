@@ -136,6 +136,8 @@ void RunScript(const wchar_t *name, void *hwnd) {
 
 void RunScriptMemory(const char *mem, bool stopAtReloadMarker) {
 	vdautoptr<IVDScriptInterpreter> isi(VDCreateScriptInterpreter());
+	const char *errorLineStart = mem;
+	int errorLine = 1;
 
 	try {
 		vdfastvector<char> linebuffer;
@@ -157,6 +159,8 @@ void RunScriptMemory(const char *mem, bool stopAtReloadMarker) {
 					break;
 			}
 
+			errorLineStart = s;
+
 			linebuffer.resize(t+1-s);
 			memcpy(linebuffer.data(), s, t-s);
 			linebuffer[t-s] = 0;
@@ -165,19 +169,21 @@ void RunScriptMemory(const char *mem, bool stopAtReloadMarker) {
 
 			s = t;
 			if (*s=='\n') ++s;
+			++errorLine;
 		}
 
 	} catch(const VDScriptError& cse) {
 		int pos = isi->GetErrorLocation();
 		int prelen = std::min<int>(pos, 50);
 
-		throw MyError("Error during script execution at column %d: %s\n\n"
+		throw MyError("Error during script execution at line %d, column %d: %s\n\n"
 						"    %.*s<!>%.50s"
+					, errorLine
 					, pos+1
 					, isi->TranslateScriptError(cse)
 					, prelen
-					, mem + pos - prelen
-					, mem + pos);
+					, errorLineStart + pos - prelen
+					, errorLineStart + pos);
 	}
 
 	g_project->UpdateFilterList();
@@ -1430,6 +1436,16 @@ static void func_VDAudio_SetClipMode(IVDScriptInterpreter *, VDScriptValue *argl
 	g_dubOpts.audio.fEndAudio	= !!arglist[1].asInt();
 }
 
+static void func_VDAudio_GetEditMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	arglist[0] = VDScriptValue((int)g_dubOpts.audio.mbApplyVideoTimeline);
+}
+
+static void func_VDAudio_SetEditMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_dubOpts.audio.mbApplyVideoTimeline = !!arglist[0].asInt();
+	g_dubOpts.audio.fStartAudio	= !!arglist[0].asInt();
+	g_dubOpts.audio.fEndAudio	= !!arglist[1].asInt();
+}
+
 static void func_VDAudio_GetConversion(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
 	case 0:		arglist[0] = VDScriptValue(g_dubOpts.audio.new_rate); return;
@@ -1598,6 +1614,8 @@ static VDScriptFunctionDef obj_VDAudio_functbl[]={
 	{ func_VDAudio_SetInterleave		, "SetInterleave"		, "0iiiii"	},
 	{ func_VDAudio_GetClipMode		, "GetClipMode"			, "ii"		},
 	{ func_VDAudio_SetClipMode		, "SetClipMode"			, "0ii"		},
+	{ func_VDAudio_GetEditMode		, "GetEditMode"			, "i"		},
+	{ func_VDAudio_SetEditMode		, "SetEditMode"			, "0i"		},
 	{ func_VDAudio_GetConversion		, "GetConversion"		, "ii"		},
 	{ func_VDAudio_SetConversion		, "SetConversion"		, "0iii"	},
 	{ func_VDAudio_SetConversion		, NULL					, "0iiiii"	},
@@ -1804,11 +1822,11 @@ static void func_VirtualDub_OpenOld(IVDScriptInterpreter *, VDScriptValue *argli
 
 	if (arg_count > 3) {
 		long l = ((strlen(*arglist[3].asString())+3)/4)*3;
-		char buf[64];
+		vdfastvector<char> buf(l);
 
-		memunbase64(buf, *arglist[3].asString(), l);
+		l = memunbase64(buf.data(), *arglist[3].asString(), l);
 
-		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false, buf, l);
+		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false, buf.data(), l);
 	} else
 		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
 }

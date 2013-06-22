@@ -49,7 +49,7 @@ public:
 
 	void *AsInterface(uint32 iid) { return NULL; }
 
-	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format);
+	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format);
 	void Shutdown();
 
 	bool Restore();
@@ -72,7 +72,7 @@ public:
 
 	void *AsInterface(uint32 iid) { return NULL; }
 
-	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, VDTUsage usage);
+	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format, VDTUsage usage);
 	bool Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf, IDirect3DSurface9 *surfsys);
 	void Shutdown();
 
@@ -110,7 +110,7 @@ public:
 
 	void *AsInterface(uint32 id);
 
-	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData);
+	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData);
 	void Shutdown();
 
 	bool Restore();
@@ -129,6 +129,7 @@ protected:
 	uint32	mHeight;
 	uint32	mMipCount;
 	VDTUsage mUsage;
+	VDTFormat mFormat;
 
 	typedef vdfastvector<VDTSurfaceD3D9 *> Mipmaps;
 	Mipmaps mMipmaps;
@@ -313,6 +314,32 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////////
+class VDTSwapChainD3D9 : public vdrefcounted<IVDTSwapChain>, VDTResourceD3D9 {
+public:
+	VDTSwapChainD3D9();
+	~VDTSwapChainD3D9();
+
+	void *AsInterface(uint32 iid) { return NULL; }
+
+	bool Init(VDTContextD3D9 *parent, const VDTSwapChainDesc& desc);
+	void Shutdown();
+
+	virtual void GetDesc(VDTSwapChainDesc& desc);
+	virtual IVDTSurface *GetBackBuffer();
+	virtual void Present();
+
+	virtual bool Restore();
+
+protected:
+	friend class VDTContextD3D9;
+
+	IDirect3DSwapChain9 *mpSwapChain;
+	VDTSurfaceD3D9 *mpBackBuffer;
+
+	VDTSwapChainDesc mDesc;
+};
+
+///////////////////////////////////////////////////////////////////////////////
 class VDTContextD3D9 : public IVDTContext, public IVDTProfiler, public VDTResourceManagerD3D9 {
 public:
 	VDTContextD3D9();
@@ -328,14 +355,18 @@ public:
 	IDirect3DDevice9 *GetDeviceD3D9() const { return mpD3DDevice; }
 	IDirect3DDevice9Ex *GetDeviceD3D9Ex() const { return mpD3DDeviceEx; }
 
-	bool CreateReadbackBuffer(uint32 width, uint32 height, uint32 format, IVDTReadbackBuffer **buffer);
-	bool CreateSurface(uint32 width, uint32 height, uint32 format, VDTUsage usage, IVDTSurface **surface);
-	bool CreateTexture2D(uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex);
-	bool CreateVertexProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTVertexProgram **tex);
-	bool CreateFragmentProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTFragmentProgram **tex);
+	const VDTDeviceCaps& GetDeviceCaps() { return mCaps; }
+	bool IsFormatSupportedTexture2D(VDTFormat format);
+
+	bool CreateReadbackBuffer(uint32 width, uint32 height, VDTFormat format, IVDTReadbackBuffer **buffer);
+	bool CreateSurface(uint32 width, uint32 height, VDTFormat format, VDTUsage usage, IVDTSurface **surface);
+	bool CreateTexture2D(uint32 width, uint32 height, VDTFormat format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex);
+	bool CreateVertexProgram(VDTProgramFormat format, VDTData data, IVDTVertexProgram **tex);
+	bool CreateFragmentProgram(VDTProgramFormat format, VDTData data, IVDTFragmentProgram **tex);
 	bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexProgram *vp, IVDTVertexFormat **format);
 	bool CreateVertexBuffer(uint32 size, bool dynamic, const void *initData, IVDTVertexBuffer **buffer);
 	bool CreateIndexBuffer(uint32 size, bool index32, bool dynamic, const void *initData, IVDTIndexBuffer **buffer);
+	bool CreateSwapChain(const VDTSwapChainDesc& desc, IVDTSwapChain **swapChain);
 
 	bool CreateBlendState(const VDTBlendStateDesc& desc, IVDTBlendState **state);
 	bool CreateRasterizerState(const VDTRasterizerStateDesc& desc, IVDTRasterizerState **state);
@@ -351,9 +382,12 @@ public:
 	void SetRenderTarget(uint32 index, IVDTSurface *surface);
 
 	void SetBlendState(IVDTBlendState *state);
-	void SetRasterizerState(IVDTRasterizerState *state);
 	void SetSamplerStates(uint32 baseIndex, uint32 count, IVDTSamplerState *const *states);
 	void SetTextures(uint32 baseIndex, uint32 count, IVDTTexture *const *textures);
+
+	void SetRasterizerState(IVDTRasterizerState *state);
+	VDTViewport GetViewport();
+	void SetViewport(const VDTViewport& vp);
 
 	void SetVertexProgramConstF(uint32 baseIndex, uint32 count, const float *data);
 	void SetFragmentProgramConstF(uint32 baseIndex, uint32 count, const float *data);
@@ -405,6 +439,7 @@ protected:
 	PrivateData *mpData;
 
 	IVDRefUnknown *mpD3DHolder;
+	IDirect3D9 *mpD3D;
 	IDirect3DDevice9 *mpD3DDevice;
 	IDirect3DDevice9Ex *mpD3DDeviceEx;
 
@@ -413,6 +448,7 @@ protected:
 	bool	mbInScene;
 	bool	mbBSDirty;
 	bool	mbRSDirty;
+	bool	mbVPDirty;
 	uint32	mDirtySamplerStates;
 
 	VDTSurfaceD3D9 *mpCurrentRT;
@@ -431,6 +467,9 @@ protected:
 	VDTBlendStateD3D9 *mpDefaultBS;
 	VDTRasterizerStateD3D9 *mpDefaultRS;
 	VDTSamplerStateD3D9 *mpDefaultSS;
+	
+	VDTViewport mViewport;
+	VDTDeviceCaps mCaps;
 
 	VDTSamplerStateD3D9 *mpCurrentSamplerStates[16];
 	IVDTTexture *mpCurrentTextures[16];

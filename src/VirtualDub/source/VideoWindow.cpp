@@ -26,7 +26,7 @@
 #include <vd2/system/fraction.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/w32assist.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 
 #include "VideoWindow.h"
 #include "prefs.h"			// for display preferences
@@ -34,6 +34,8 @@
 #include "resource.h"
 
 extern HINSTANCE g_hInst;
+
+extern bool VDPreferencesIsDisplay3DEnabled();
 
 static LRESULT APIENTRY VideoWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -152,7 +154,7 @@ ATOM VDVideoWindow::RegisterControl() {
 	wc.hInstance		= g_hInst;
 	wc.hIcon			= NULL;
 	wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground	= NULL; //(HBRUSH)(COLOR_3DFACE+1);
+	wc.hbrBackground	= (HBRUSH)(COLOR_3DFACE+1);
 	wc.lpszMenuName		= NULL;
 	wc.lpszClassName	= g_szVideoWindowClass;
 
@@ -350,13 +352,9 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		{
 			PAINTSTRUCT ps;
 			if (HDC hdc = BeginPaint(mhwnd, &ps)) {
-				NMHDR hdr;
-
-				hdr.hwndFrom = mhwnd;
-				hdr.idFrom = GetWindowLong(mhwnd, GWL_ID);
-				hdr.code = VWN_REQUPDATE;
-
-				SendMessage(GetParent(mhwnd), WM_NOTIFY, (WPARAM)hdr.idFrom, (LPARAM)&hdr);
+				// We used to dispatch a notification that the video window needed to be updated from
+				// here, but that's bad because with composition it's no longer guaranteed that the video
+				// display fully blocks painting of this window.
 				EndPaint(mhwnd, &ps);
 			}
 		}
@@ -642,7 +640,8 @@ void VDVideoWindow::OnContextMenu(int x, int y) {
 
 	DWORD dwEnabled1 = MF_BYCOMMAND | MF_GRAYED;
 	if (mpDisplay && !(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
-		if (g_prefs.fDisplay & (Preferences::kDisplayEnableD3D | Preferences::kDisplayEnableOpenGL))
+		if ((g_prefs.fDisplay & (Preferences::kDisplayEnableD3D | Preferences::kDisplayEnableOpenGL))
+			|| VDPreferencesIsDisplay3DEnabled())
 			dwEnabled1 = MF_BYCOMMAND | MF_ENABLED;
 	}
 	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_POINT, dwEnabled1);

@@ -43,13 +43,32 @@ VDVFilterConvertFormatConfigDialog::VDVFilterConvertFormatConfigDialog(int forma
 
 bool VDVFilterConvertFormatConfigDialog::OnLoaded() {
 	LBAddString(IDC_FORMATS, L"32-bit RGB");
-	LBAddString(IDC_FORMATS, L"4:4:4 planar YCbCr (YV24)");
-	LBAddString(IDC_FORMATS, L"4:2:2 planar YCbCr (YV16)");
-	LBAddString(IDC_FORMATS, L"4:2:0 planar YCbCr (YV12)");
-	LBAddString(IDC_FORMATS, L"4:1:1 planar YCbCr");
-	LBAddString(IDC_FORMATS, L"4:1:0 planar YCbCr (YVU9)");
-	LBAddString(IDC_FORMATS, L"4:2:2 interleaved YCbCr (UYVY)");
-	LBAddString(IDC_FORMATS, L"4:2:2 interleaved YCbCr (YUY2)");
+
+	static const wchar_t *const kYUVFormats[]={
+		L"4:4:4 planar YCbCr (YV24)",
+		L"4:2:2 planar YCbCr (YV16)",
+		L"4:2:0 planar YCbCr (YV12)",
+		L"4:1:1 planar YCbCr",
+		L"4:1:0 planar YCbCr (YVU9)",
+		L"4:2:2 interleaved YCbCr (UYVY)",
+		L"4:2:2 interleaved YCbCr (YUY2)",
+	};
+
+	VDStringW s;
+	for(int i=0; i<4; ++i)
+	{
+		for(size_t j=0; j<sizeof(kYUVFormats)/sizeof(kYUVFormats[0]); ++j) {
+			s = kYUVFormats[j];
+
+			if (i & 1)
+				s += L" (Rec. 709)";
+
+			if (i & 2)
+				s += L" (full range)";
+
+			LBAddString(IDC_FORMATS, s.c_str());
+		}
+	}
 
 	SetFocusToControl(IDC_FORMATS);
 
@@ -58,69 +77,53 @@ bool VDVFilterConvertFormatConfigDialog::OnLoaded() {
 }
 
 void VDVFilterConvertFormatConfigDialog::OnDataExchange(bool write) {
+	static const int kFormats[]={
+		nsVDXPixmap::kPixFormat_XRGB8888,
+		nsVDXPixmap::kPixFormat_YUV444_Planar,
+		nsVDXPixmap::kPixFormat_YUV422_Planar,
+		nsVDXPixmap::kPixFormat_YUV420_Planar,
+		nsVDXPixmap::kPixFormat_YUV411_Planar,
+		nsVDXPixmap::kPixFormat_YUV410_Planar,
+		nsVDXPixmap::kPixFormat_YUV422_UYVY,
+		nsVDXPixmap::kPixFormat_YUV422_YUYV,
+
+		nsVDXPixmap::kPixFormat_YUV444_Planar_709,
+		nsVDXPixmap::kPixFormat_YUV422_Planar_709,
+		nsVDXPixmap::kPixFormat_YUV420_Planar_709,
+		nsVDXPixmap::kPixFormat_YUV411_Planar_709,
+		nsVDXPixmap::kPixFormat_YUV410_Planar_709,
+		nsVDXPixmap::kPixFormat_YUV422_UYVY_709,
+		nsVDXPixmap::kPixFormat_YUV422_YUYV_709,
+
+		nsVDXPixmap::kPixFormat_YUV444_Planar_FR,
+		nsVDXPixmap::kPixFormat_YUV422_Planar_FR,
+		nsVDXPixmap::kPixFormat_YUV420_Planar_FR,
+		nsVDXPixmap::kPixFormat_YUV411_Planar_FR,
+		nsVDXPixmap::kPixFormat_YUV410_Planar_FR,
+		nsVDXPixmap::kPixFormat_YUV422_UYVY_FR,
+		nsVDXPixmap::kPixFormat_YUV422_YUYV_FR,
+
+		nsVDXPixmap::kPixFormat_YUV444_Planar_709_FR,
+		nsVDXPixmap::kPixFormat_YUV422_Planar_709_FR,
+		nsVDXPixmap::kPixFormat_YUV420_Planar_709_FR,
+		nsVDXPixmap::kPixFormat_YUV411_Planar_709_FR,
+		nsVDXPixmap::kPixFormat_YUV410_Planar_709_FR,
+		nsVDXPixmap::kPixFormat_YUV422_UYVY_709_FR,
+		nsVDXPixmap::kPixFormat_YUV422_YUYV_709_FR,
+	};
+
 	if (write) {
-		switch(LBGetSelectedIndex(IDC_FORMATS)) {
-			case 0:
-			default:
-				mFormat = nsVDXPixmap::kPixFormat_XRGB8888;
-				break;
-			case 1:
-				mFormat = nsVDXPixmap::kPixFormat_YUV444_Planar;
-				break;
-			case 2:
-				mFormat = nsVDXPixmap::kPixFormat_YUV422_Planar;
-				break;
-			case 3:
-				mFormat = nsVDXPixmap::kPixFormat_YUV420_Planar;
-				break;
-			case 4:
-				mFormat = nsVDXPixmap::kPixFormat_YUV411_Planar;
-				break;
-			case 5:
-				mFormat = nsVDXPixmap::kPixFormat_YUV410_Planar;
-				break;
-			case 6:
-				mFormat = nsVDXPixmap::kPixFormat_YUV422_UYVY;
-				break;
-			case 7:
-				mFormat = nsVDXPixmap::kPixFormat_YUV422_YUYV;
-				break;
-		}
+		int idx = LBGetSelectedIndex(IDC_FORMATS);
+
+		if ((unsigned)idx < sizeof(kFormats) / sizeof(kFormats[0]))
+			mFormat = kFormats[idx];
 	} else {
-		switch(mFormat) {
-			case nsVDXPixmap::kPixFormat_XRGB8888:
-			default:
-				LBSetSelectedIndex(IDC_FORMATS, 0);
-				break;
+		const int *begin = kFormats;
+		const int *end = kFormats + sizeof(kFormats) / sizeof(kFormats[0]);
+		const int *p = std::find(begin, end, mFormat);
 
-			case nsVDXPixmap::kPixFormat_YUV444_Planar:
-				LBSetSelectedIndex(IDC_FORMATS, 1);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV422_Planar:
-				LBSetSelectedIndex(IDC_FORMATS, 2);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV420_Planar:
-				LBSetSelectedIndex(IDC_FORMATS, 3);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV411_Planar:
-				LBSetSelectedIndex(IDC_FORMATS, 4);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV410_Planar:
-				LBSetSelectedIndex(IDC_FORMATS, 5);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV422_UYVY:
-				LBSetSelectedIndex(IDC_FORMATS, 6);
-				break;
-
-			case nsVDXPixmap::kPixFormat_YUV422_YUYV:
-				LBSetSelectedIndex(IDC_FORMATS, 7);
-				break;
-		}
+		if (p != end)
+			LBSetSelectedIndex(IDC_FORMATS, p - begin);
 	}
 }
 

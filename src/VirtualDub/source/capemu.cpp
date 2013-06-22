@@ -17,7 +17,7 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "stdafx.h"
-#include <vd2/Riza/capdriver.h>
+#include <vd2/VDCapture/capdriver.h>
 #include <vd2/Dita/services.h>
 #include <vd2/system/atomic.h>
 #include <vd2/system/error.h>
@@ -28,7 +28,7 @@
 #include <vd2/system/time.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/VDRingBuffer.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include <vd2/Riza/audioout.h>
 #include "InputFile.h"
 #include "VideoSource.h"

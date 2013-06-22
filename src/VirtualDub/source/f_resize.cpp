@@ -668,6 +668,7 @@ void VDVideoFilterResize::StartAccel(IVDXAContext *vdxa) {
 	mVDXAFP_10Tap = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterResizeFP_10tap, sizeof kVDFilterResizeFP_10tap);
 
 	mVDXART_Temp = vdxa->CreateRenderTexture(mVDXADestCroppedW, pxsrc.h, 0, mVDXAVertTaps >> 1, kVDXAF_Unknown, false);
+	VDASSERT(mVDXART_Temp);
 }
 
 void VDVideoFilterResize::StopAccel(IVDXAContext *vdxa) {

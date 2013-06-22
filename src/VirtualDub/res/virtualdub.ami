@@ -241,6 +241,8 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Batch";
 				listitem "Auto-recover";
 				listitem "Startup";
+				listitem "History";
+				listitem "Exit";
 			}
 
 			pageset 101 : value={@100} {
@@ -259,6 +261,8 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1022;
 				page 1023;
 				page 1024;
+				page 1025;
+				page 1026;
 			}
 		}
 
@@ -356,7 +360,7 @@ dialog 1011, "" : fill, child {
 				checkbox 107, "Use DirectX overlay surfaces";
 
 				// it is NOT a good idea to enable both Direct3D and OpenGL
-				checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
+				checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@103 || (@101 && !@104 && !@112)};
 				set 200: spacing=3, marginl=40, enable={@103}, vertical, align=fill {
 					now valign=center, marginl=0;
 
@@ -369,7 +373,8 @@ dialog 1011, "" : fill, child {
 
 					textarea 0, "Effect file support requires d3dx_25.dll (April 2005 or newer version of DirectX 9.0c runtime)." : minh=20, readonly, fill;
 				}			
-				checkbox 104, "Use OpenGL" : enable={@101 && !@103};
+				checkbox 104, "Use OpenGL" : enable={@104 || (@101 && !@103 && !@112)};
+				checkbox 112, "Use Direct3D 9/11 (EXPERIMENTAL)" : enable={@112 || (@101 && !@103 && !@104)};
 				checkbox 106, "Avoid tearing (enable vsync)";
 				
 				set 0 : align=fill, spacing=3 {
@@ -629,6 +634,33 @@ dialog 1024, "" : fill, child {
 					option 101, "User profile";
 				}
 			}
+		}
+	}
+}
+
+dialog 1025, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "History options" {
+			grid 0 : spacing=5, align=left, valign=top {
+				now valign=center;
+				
+				label 0, "MRU list size" : align=left;
+				textedit 100, "" : sunken, align=fill, minw=50;
+				
+				nextrow;
+					
+				button 101, "Clear history" : minw=50, align=left;
+			}
+		}
+	}
+}
+
+dialog 1026, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Exit options" {
+			checkbox 100, "&Ask for confirmation on close";
 		}
 	}
 }

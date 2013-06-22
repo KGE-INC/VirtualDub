@@ -72,13 +72,23 @@ class IVDTRasterizerState: public IVDTResource {
 class IVDTSamplerState: public IVDTResource {
 };
 
+class IVDTSwapChain: public IVDTResource {
+public:
+	virtual void GetDesc(VDTSwapChainDesc& desc) = 0;
+	virtual IVDTSurface *GetBackBuffer() = 0;
+	virtual void Present() = 0;
+};
+
 class IVDTContext : public IVDRefUnknown {
 public:
-	virtual bool CreateReadbackBuffer(uint32 width, uint32 height, uint32 format, IVDTReadbackBuffer **buffer) = 0;
-	virtual bool CreateSurface(uint32 width, uint32 height, uint32 format, VDTUsage usage, IVDTSurface **surface) = 0;
-	virtual bool CreateTexture2D(uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex) = 0;
-	virtual bool CreateVertexProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTVertexProgram **tex) = 0;
-	virtual bool CreateFragmentProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTFragmentProgram **tex) = 0;
+	virtual const VDTDeviceCaps& GetDeviceCaps() = 0;
+	virtual bool IsFormatSupportedTexture2D(VDTFormat format) = 0;
+
+	virtual bool CreateReadbackBuffer(uint32 width, uint32 height, VDTFormat format, IVDTReadbackBuffer **buffer) = 0;
+	virtual bool CreateSurface(uint32 width, uint32 height, VDTFormat format, VDTUsage usage, IVDTSurface **surface) = 0;
+	virtual bool CreateTexture2D(uint32 width, uint32 height, VDTFormat format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex) = 0;
+	virtual bool CreateVertexProgram(VDTProgramFormat format, VDTData data, IVDTVertexProgram **tex) = 0;
+	virtual bool CreateFragmentProgram(VDTProgramFormat format, VDTData data, IVDTFragmentProgram **tex) = 0;
 	virtual bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexProgram *vp, IVDTVertexFormat **format) = 0;
 	virtual bool CreateVertexBuffer(uint32 size, bool dynamic, const void *initData, IVDTVertexBuffer **buffer) = 0;
 	virtual bool CreateIndexBuffer(uint32 count, bool index32, bool dynamic, const void *initData, IVDTIndexBuffer **buffer) = 0;
@@ -86,6 +96,8 @@ public:
 	virtual bool CreateBlendState(const VDTBlendStateDesc& desc, IVDTBlendState **state) = 0;
 	virtual bool CreateRasterizerState(const VDTRasterizerStateDesc& desc, IVDTRasterizerState **state) = 0;
 	virtual bool CreateSamplerState(const VDTSamplerStateDesc& desc, IVDTSamplerState **state) = 0;
+
+	virtual bool CreateSwapChain(const VDTSwapChainDesc& desc, IVDTSwapChain **swapChain) = 0;
 
 	virtual IVDTSurface *GetRenderTarget(uint32 index) const = 0;
 
@@ -97,9 +109,13 @@ public:
 	virtual void SetRenderTarget(uint32 index, IVDTSurface *surface) = 0;
 
 	virtual void SetBlendState(IVDTBlendState *state) = 0;
-	virtual void SetRasterizerState(IVDTRasterizerState *state) = 0;
 	virtual void SetSamplerStates(uint32 baseIndex, uint32 count, IVDTSamplerState *const *states) = 0;
 	virtual void SetTextures(uint32 baseIndex, uint32 count, IVDTTexture *const *textures) = 0;
+
+	// rasterizer
+	virtual void SetRasterizerState(IVDTRasterizerState *state) = 0;
+	virtual VDTViewport GetViewport() = 0;
+	virtual void SetViewport(const VDTViewport& vp) = 0;
 
 	virtual void SetVertexProgramConstF(uint32 baseIndex, uint32 count, const float *data) = 0;
 	virtual void SetFragmentProgramConstF(uint32 baseIndex, uint32 count, const float *data) = 0;

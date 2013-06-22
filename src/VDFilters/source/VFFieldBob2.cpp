@@ -616,7 +616,7 @@ uint32 VDVideoFilterFieldBob2::GetParams() {
 }
 
 void VDVideoFilterFieldBob2::Start() {
-	const VDXPixmap& pxsrc = *fa->src.mpPixmap;
+	const VDXPixmapLayout& pxsrc = *fa->src.mpPixmapLayout;
 
 	switch(mConfig.mMode) {
 	case VDVideoFilterFieldBob2Config::kModeAdaptiveELA:

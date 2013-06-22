@@ -20,7 +20,7 @@
 #include "stdafx.h"
 
 #include <windows.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include <vd2/system/w32assist.h>
 
 #include "oshelper.h"

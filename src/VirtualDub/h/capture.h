@@ -23,7 +23,7 @@
 #include <vd2/system/vdstring.h>
 #include <vd2/system/vectors.h>
 #include <vd2/system/refcount.h>
-#include <vd2/Riza/capdriver.h>
+#include <vd2/VDCapture/capdriver.h>
 #include <vd2/Riza/avi.h>
 #include <vd2/Riza/audiocodec.h>
 #include <windows.h>

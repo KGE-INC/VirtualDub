@@ -33,7 +33,7 @@
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/w32control.h>
 #include <vd2/Dita/w32accel.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include <vd2/VDLib/Dialog.h>
 #include "projectui.h"
 #include "resource.h"
@@ -155,6 +155,9 @@ extern void SaveConfiguration(HWND);
 extern void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 
 extern const VDStringW& VDPreferencesGetTimelineFormat();
+int VDPreferencesGetMRUSize();
+int VDPreferencesGetHistoryClearCounter();
+bool VDPreferencesGetConfirmExit();
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
@@ -427,8 +430,10 @@ VDProjectUI::VDProjectUI()
 	, mbPaneLayoutBusy(false)
 	, mbAutoSizePanes(false)
 	, mbPanesNeedUpdate(false)
-	, mMRUList(4, "MRU List")
+	, mMRUList(0, "MRU List")
 {
+	mMRUList.set_capacity(VDPreferencesGetMRUSize());
+	mMRUList.load();
 }
 
 VDProjectUI::~VDProjectUI() {
@@ -1928,8 +1933,19 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 		case ID_OPTIONS_PREFERENCES:
 			extern void VDShowPreferencesDialog(VDGUIHandle h);
-			VDShowPreferencesDialog((VDGUIHandle)mhwnd);
-			VDCPUTest();
+			{
+				int clearCount = VDPreferencesGetHistoryClearCounter();
+
+				VDShowPreferencesDialog((VDGUIHandle)mhwnd);
+				VDCPUTest();
+				mMRUList.set_capacity(VDPreferencesGetMRUSize());
+
+				if (clearCount != VDPreferencesGetHistoryClearCounter()) {
+					mMRUList.clear_history();
+				}
+
+				UpdateMRUList();
+			}
 			break;
 
 		case ID_OPTIONS_KEYBOARDSHORTCUTS:
@@ -2452,6 +2468,13 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		// MUST eat the message, which it currently does.
 		return SendMessage(mhwndPosition, WM_MOUSEWHEEL, wParam, lParam);
 
+	case WM_CLOSE:
+		if (VDPreferencesGetConfirmExit()) {
+			if (IDOK != MessageBox((HWND)mhwnd, "Are you sure you want to exit?", "VirtualDub warning", MB_ICONQUESTION | MB_OKCANCEL))
+				return 0;
+		}
+		break;
+
 	case WM_USER+100:		// display update request
 		if (!g_dubber) {
 			IVDVideoDisplay *pDisp = wParam ? mpOutputDisplay : mpInputDisplay;
@@ -2510,6 +2533,11 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_CLOSE:
+		if (VDPreferencesGetConfirmExit()) {
+			if (IDOK != MessageBox((HWND)mhwnd, "Are you sure you want to exit?", "VirtualDub warning", MB_ICONQUESTION | MB_OKCANCEL))
+				return 0;
+		}
+
 		if (g_dubber->IsPreviewing() || g_bEnableVTuneProfiling) {
 			g_dubber->Abort();
 			g_bExit = true;
@@ -3542,6 +3570,7 @@ void VDProjectUI::UIAudioSourceUpdated() {
 }
 
 void VDProjectUI::UIVideoSourceUpdated() {
+	
 	UpdateVideoFrameLayout();
 }
 
@@ -3622,10 +3651,15 @@ void VDProjectUI::UpdateMRUList() {
 		mii.a.fState	= MFS_ENABLED;
 		mii.a.wID		= ID_MRU_FILE0 + index;
 
-		int shortcut = (index+1) % 10;
 		const wchar_t *s = name.c_str();
 
-		VDStringW name2(VDswprintf(L"&%d %s", 2, &shortcut, &s));
+		VDStringW name2;
+		if (index < 10) {
+			int shortcut = (index+1) % 10;
+			name2.sprintf(L"&%d %s", shortcut, s);
+		} else {
+			name2 = s;
+		}
 
 		if (GetVersion() & 0x80000000) {
 			VDStringA name2A(VDTextWToA(name2.c_str()));

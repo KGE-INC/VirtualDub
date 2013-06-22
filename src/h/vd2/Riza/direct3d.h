@@ -166,6 +166,7 @@ public:
 	IDirect3DVertexBuffer9	*GetVertexBuffer() const { return mpD3DVB; }
 	IDirect3DVertexDeclaration9	*GetVertexDeclaration() const { return mpD3DVD; }
 	const D3DPRESENT_PARAMETERS& GetPresentParms() const { return mPresentParms; }
+	const D3DDISPLAYMODE&	GetDisplayMode() const { return mDisplayMode; }
 	UINT					GetAdapter() const { return mAdapter; }
 	D3DDEVTYPE				GetDeviceType() const { return mDevType; }
 	HMONITOR				GetMonitor() const { return mhMonitor; }
@@ -174,7 +175,7 @@ public:
 	int			GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
 	int			GetMainRTHeight() const { return mPresentParms.BackBufferHeight; }
 
-	void		AdjustFullScreen(bool fs);
+	void		AdjustFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh);
 	bool		IsFullScreen() const { return mFullScreenCount != 0; }
 
 	bool		Reset();

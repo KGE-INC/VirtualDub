@@ -33,6 +33,7 @@
 #include <vd2/system/binary.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/math.h>
+#include <vd2/system/seh.h>
 #include <vd2/system/time.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/w32assist.h>
@@ -45,7 +46,9 @@
 
 #include <vd2/Riza/direct3d.h>
 #include <vd2/Riza/displaydrvdx9.h>
-#include "displaydrv.h"
+#include <vd2/VDDisplay/compositor.h>
+#include <vd2/VDDisplay/displaydrv.h>
+#include <vd2/VDDisplay/renderer.h>
 
 namespace {
 	#include "displaydx9_shader.inl"
@@ -623,6 +626,307 @@ void VDFontRendererD3D9::End() {
 
 ///////////////////////////////////////////////////////////////////////////
 
+class VDDisplayCachedImageD3D9 : public vdrefcounted<IVDRefUnknown>, public vdlist_node {
+	VDDisplayCachedImageD3D9(const VDDisplayCachedImageD3D9&);
+	VDDisplayCachedImageD3D9& operator=(const VDDisplayCachedImageD3D9&);
+public:
+	enum { kTypeID = 'cim9' };
+
+	VDDisplayCachedImageD3D9();
+	~VDDisplayCachedImageD3D9();
+
+	void *AsInterface(uint32 iid);
+
+	bool Init(VDD3D9Manager *mgr, void *owner, const VDDisplayImageView& imageView);
+	void Shutdown();
+
+	void Update(const VDDisplayImageView& imageView);
+
+public:
+	void *mpOwner;
+	vdrefptr<IDirect3DTexture9> mpD3DTexture;
+	sint32	mWidth;
+	sint32	mHeight;
+	sint32	mTexWidth;
+	sint32	mTexHeight;
+	uint32	mUniquenessCounter;
+};
+
+VDDisplayCachedImageD3D9::VDDisplayCachedImageD3D9() {
+	mListNodePrev = NULL;
+	mListNodeNext = NULL;
+}
+
+VDDisplayCachedImageD3D9::~VDDisplayCachedImageD3D9() {
+	if (mListNodePrev)
+		vdlist_base::unlink(*this);
+}
+
+void *VDDisplayCachedImageD3D9::AsInterface(uint32 iid) {
+	if (iid == kTypeID)
+		return this;
+
+	return NULL;
+}
+
+bool VDDisplayCachedImageD3D9::Init(VDD3D9Manager *mgr, void *owner, const VDDisplayImageView& imageView) {
+	const VDPixmap& px = imageView.GetImage();
+	int w = px.w;
+	int h = px.h;
+
+	if (!mgr->AdjustTextureSize(w, h, true))
+		return false;
+
+	IDirect3DDevice9 *dev = mgr->GetDevice();
+	HRESULT hr = dev->CreateTexture(w, h, 1, 0, D3DFMT_X8R8G8B8, mgr->GetDeviceEx() ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, ~mpD3DTexture, NULL);
+	if (FAILED(hr))
+		return false;
+
+	mWidth = px.w;
+	mHeight = px.h;
+	mTexWidth = w;
+	mTexHeight = h;
+	mpOwner = owner;
+
+	Update(imageView);
+	return true;
+}
+
+void VDDisplayCachedImageD3D9::Shutdown() {
+	mpD3DTexture.clear();
+	mpOwner = NULL;
+}
+
+void VDDisplayCachedImageD3D9::Update(const VDDisplayImageView& imageView) {
+	mUniquenessCounter = imageView.GetUniquenessCounter();
+
+	if (mpD3DTexture) {
+		const VDPixmap& px = imageView.GetImage();
+
+		D3DLOCKED_RECT lr;
+		if (SUCCEEDED(mpD3DTexture->LockRect(0, &lr, NULL, 0))) {
+			VDPixmap dst = {};
+			dst.format = nsVDPixmap::kPixFormat_XRGB8888;
+			dst.w = mTexWidth;
+			dst.h = mTexHeight;
+			dst.pitch = lr.Pitch;
+			dst.data = lr.pBits;
+
+			VDPixmapBlt(dst, px);
+
+			mpD3DTexture->UnlockRect(0);
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDDisplayRendererD3D9 : public vdrefcounted<IVDDisplayRendererD3D9> {
+public:
+	virtual bool Init(VDD3D9Manager *d3dmgr);
+	virtual void Shutdown();
+
+	virtual bool Begin();
+	virtual void End();
+
+public:
+	virtual void SetColorRGB(uint32 color);
+	virtual void FillRect(sint32 x, sint32 y, sint32 w, sint32 h);
+	virtual void Blt(sint32 x, sint32 y, VDDisplayImageView& imageView);
+
+public:
+	VDDisplayCachedImageD3D9 *GetCachedImage(VDDisplayImageView& imageView);
+
+	VDD3D9Manager *mpD3DManager;
+	vdlist<VDDisplayCachedImageD3D9> mCachedImages;
+
+	uint32 mColor;
+};
+
+bool VDDisplayRendererD3D9::Init(VDD3D9Manager *d3dmgr) {
+	mpD3DManager = d3dmgr;
+	return true;
+}
+
+void VDDisplayRendererD3D9::Shutdown() {
+	while(!mCachedImages.empty()) {
+		VDDisplayCachedImageD3D9 *img = mCachedImages.front();
+		mCachedImages.pop_front();
+
+		img->mListNodePrev = NULL;
+		img->mListNodeNext = NULL;
+
+		img->Shutdown();
+	}
+
+	mpD3DManager = NULL;
+}
+
+bool VDDisplayRendererD3D9::Begin() {
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+
+	D3DVIEWPORT9 vp;
+	HRESULT hr = dev->GetViewport(&vp);
+	if (FAILED(hr))
+		return false;
+
+	const D3DMATRIX ident={
+		1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1
+	};
+
+	dev->SetTransform(D3DTS_WORLD, &ident);
+	dev->SetTransform(D3DTS_VIEW, &ident);
+
+	const D3DMATRIX proj = {
+		2.0f / (float)vp.Width, 0.0f, 0.0f, 0.0f,
+		0.0f, -2.0f / (float)vp.Height, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f,
+		-1.0f - 1.0f / (float)vp.Width, 1.0f + 1.0f / (float)vp.Height, 0.0f, 1.0f
+	};
+
+	dev->SetTransform(D3DTS_PROJECTION, &proj);
+
+	dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_CURRENT);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_CURRENT);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+
+	dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+	dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+
+	dev->SetVertexShader(NULL);
+	dev->SetVertexDeclaration(mpD3DManager->GetVertexDeclaration());
+	dev->SetPixelShader(NULL);
+	dev->SetStreamSource(0, mpD3DManager->GetVertexBuffer(), 0, sizeof(nsVDD3D9::Vertex));
+	dev->SetIndices(mpD3DManager->GetIndexBuffer());
+
+	return true;
+}
+
+void VDDisplayRendererD3D9::End() {
+}
+
+void VDDisplayRendererD3D9::SetColorRGB(uint32 color) {
+	mColor = color | 0xFF000000;
+}
+
+void VDDisplayRendererD3D9::FillRect(sint32 x, sint32 y, sint32 w, sint32 h) {
+
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_CURRENT);
+
+	nsVDD3D9::Vertex *pvx = mpD3DManager->LockVertices(4);
+	bool valid = false;
+	__try {
+		pvx[0].SetFF2((float)x,       (float)y,       mColor, 0, 0, 0, 0);
+		pvx[1].SetFF2((float)x,       (float)(y + h), mColor, 0, 0, 0, 0);
+		pvx[2].SetFF2((float)(x + w), (float)y,       mColor, 0, 0, 0, 0);
+		pvx[3].SetFF2((float)(x + w), (float)(y + h), mColor, 0, 0, 0, 0);
+		valid = true;
+	} __except(1) {
+		// lost device -> invalid dynamic pointer on XP - skip draw below
+	}
+
+	mpD3DManager->UnlockVertices();
+
+	if (valid)
+		mpD3DManager->DrawArrays(D3DPT_TRIANGLESTRIP, 0, 2);
+}
+
+void VDDisplayRendererD3D9::Blt(sint32 x, sint32 y, VDDisplayImageView& imageView) {
+	VDDisplayCachedImageD3D9 *cachedImage = GetCachedImage(imageView);
+
+	if (!cachedImage)
+		return;
+
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	dev->SetTexture(0, cachedImage->mpD3DTexture);
+
+	const sint32 w = cachedImage->mWidth;
+	const sint32 h = cachedImage->mHeight;
+
+	const float u0 = 0.0;
+	const float u1 = (float)w / cachedImage->mTexWidth;
+	const float v0 = 0.0;
+	const float v1 = (float)h / cachedImage->mTexHeight;
+
+	nsVDD3D9::Vertex *pvx = mpD3DManager->LockVertices(4);
+	bool valid = false;
+	__try {
+		pvx[0].SetFF2((float)x,       (float)y,       mColor, u0, v0, 0, 0);
+		pvx[1].SetFF2((float)x,       (float)(y + h), mColor, u0, v1, 0, 0);
+		pvx[2].SetFF2((float)(x + w), (float)y,       mColor, u1, v0, 0, 0);
+		pvx[3].SetFF2((float)(x + w), (float)(y + h), mColor, u1, v1, 0, 0);
+		valid = true;
+	} __except(1) {
+		// lost device -> invalid dynamic pointer on XP - skip draw below
+	}
+
+	mpD3DManager->UnlockVertices();
+
+	if (valid)
+		mpD3DManager->DrawArrays(D3DPT_TRIANGLESTRIP, 0, 2);	
+
+	dev->SetTexture(0, NULL);
+}
+
+VDDisplayCachedImageD3D9 *VDDisplayRendererD3D9::GetCachedImage(VDDisplayImageView& imageView) {
+	VDDisplayCachedImageD3D9 *cachedImage = vdpoly_cast<VDDisplayCachedImageD3D9 *>(imageView.GetCachedImage());
+
+	if (cachedImage && cachedImage->mpOwner != this)
+		cachedImage = NULL;
+
+	if (!cachedImage) {
+		cachedImage = new_nothrow VDDisplayCachedImageD3D9;
+
+		if (!cachedImage)
+			return NULL;
+		
+		cachedImage->AddRef();
+		if (!cachedImage->Init(mpD3DManager, this, imageView)) {
+			cachedImage->Release();
+			return NULL;
+		}
+
+		imageView.SetCachedImage(cachedImage);
+		mCachedImages.push_back(cachedImage);
+
+		cachedImage->Release();
+	} else {
+		uint32 c = imageView.GetUniquenessCounter();
+
+		if (cachedImage->mUniquenessCounter != c)
+			cachedImage->Update(imageView);
+	}
+
+	return cachedImage;
+}
+
+bool VDCreateDisplayRendererD3D9(IVDDisplayRendererD3D9 **pp) {
+	*pp = new VDDisplayRendererD3D9;
+
+	if (!*pp)
+		return false;
+
+	(*pp)->AddRef();
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 #ifdef _MSC_VER
 	#pragma warning(push)
 	#pragma warning(disable: 4584)		// warning C4584: 'VDVideoDisplayDX9Manager' : base-class 'vdlist_node' is already a base-class of 'VDD3D9Client'
@@ -669,6 +973,9 @@ public:
 		float mChromaOffsetU;
 		float mChromaOffsetV;
 
+		float mPixelSharpnessX;
+		float mPixelSharpnessY;
+
 		bool mbHighPrecision;
 	};
 
@@ -689,6 +996,7 @@ public:
 
 	bool IsD3D9ExEnabled() const { return mbUseD3D9Ex; }
 	bool Is16FEnabled() const { return mbIs16FEnabled; }
+	bool IsPS20Enabled() const { return mbIsPS20Enabled; }
 
 	VDThreadID GetThreadId() const { return mThreadId; }
 	HMONITOR GetMonitor() const { return mhMonitor; }
@@ -724,6 +1032,7 @@ protected:
 	int					mCubicRefCount;
 	int					mCubicTempSurfacesRefCount[2];
 	bool				mbIs16FEnabled;
+	bool				mbIsPS20Enabled;
 	bool				mbUseD3D9Ex;
 
 	const VDThreadID	mThreadId;
@@ -790,6 +1099,8 @@ VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager(VDThreadID tid, HMONITOR hmon
 	, mThreadId(tid)
 	, mhMonitor(hmonitor)
 	, mRefCount(0)
+	, mbIs16FEnabled(false)
+	, mbIsPS20Enabled(false)
 	, mbUseD3D9Ex(use9ex)
 {
 	mCubicTempSurfacesRefCount[0] = 0;
@@ -839,6 +1150,8 @@ bool VDVideoDisplayDX9Manager::Init() {
 	if (caps.VertexShaderVersion >= D3DVS_VERSION(2, 0) &&
 		caps.PixelShaderVersion >= D3DPS_VERSION(2, 0))
 	{
+		mbIsPS20Enabled = true;
+
 		if (mpManager->CheckResourceFormat(0, D3DRTYPE_TEXTURE, D3DFMT_A16B16G16R16F) &&
 			mpManager->CheckResourceFormat(D3DUSAGE_QUERY_FILTER, D3DRTYPE_TEXTURE, D3DFMT_A16B16G16R16F))
 		{
@@ -1232,9 +1545,9 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 		ctx.mpInterpFilterV
 	};
 
-	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
-	int clippedWidth = std::min<int>(ctx.mOutputW, pparms.BackBufferWidth);
-	int clippedHeight = std::min<int>(ctx.mOutputH, pparms.BackBufferHeight);
+	const D3DDISPLAYMODE& dmode = mpManager->GetDisplayMode();
+	int clippedWidth = std::min<int>(ctx.mOutputW, dmode.Width);
+	int clippedHeight = std::min<int>(ctx.mOutputH, dmode.Height);
 
 	if (clippedWidth <= 0 || clippedHeight <= 0)
 		return true;
@@ -1259,6 +1572,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 		float fieldinfo[4];			// (field information)		fieldoffset, -fieldoffset/4, und, und
 		float chromauvscale[4];		// (chroma UV scale)		U scale, V scale, und, und
 		float chromauvoffset[4];	// (chroma UV offset)		U offset, V offset, und, und
+		float pixelsharpness[4];	// (pixel sharpness)		X factor, Y factor, ?, ?
 	};
 
 	static const struct StdParam {
@@ -1283,6 +1597,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 		offsetof(StdParamData, fieldinfo),
 		offsetof(StdParamData, chromauvscale),
 		offsetof(StdParamData, chromauvoffset),
+		offsetof(StdParamData, pixelsharpness),
 	};
 
 	StdParamData data;
@@ -1359,6 +1674,10 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 	data.chromauvoffset[1] = ctx.mChromaOffsetV;
 	data.chromauvoffset[2] = 0.0f;
 	data.chromauvoffset[3] = 0.0f;
+	data.pixelsharpness[0] = ctx.mPixelSharpnessX;
+	data.pixelsharpness[1] = ctx.mPixelSharpnessY;
+	data.pixelsharpness[2] = 0.0f;
+	data.pixelsharpness[3] = 0.0f;
 
 	uint32 t = VDGetAccurateTick();
 	data.time[0] = (t % 1000) / 1000.0f;
@@ -1634,12 +1953,12 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
 				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
 
-				__try {
+				vd_seh_guard_try {
 					pvx[0].SetFF2(x0, y0, 0xFFFFFFFF, u0, v0, 0, 0);
 					pvx[1].SetFF2(x1, y0, 0xFFFFFFFF, u1, v0, 1, 0);
 					pvx[2].SetFF2(x0, y1, 0xFFFFFFFF, u0, v1, 0, 1);
 					pvx[3].SetFF2(x1, y1, 0xFFFFFFFF, u1, v1, 1, 1);
-				} __except(1) {
+				} vd_seh_guard_except {
 					validDraw = false;
 				}
 
@@ -1662,7 +1981,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
 				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
 
-				__try {
+				vd_seh_guard_try {
 					pvx[ 0].SetFF2(x0, y1, 0xFFFFFFFF,  0.0f, 0, 0, 1);
 					pvx[ 1].SetFF2(x0, y0, 0xFFFFFFFF,  0.0f, 0, 0, 0);
 					pvx[ 2].SetFF2(x0, y1, 0xFFFFFFFF, +0.5f, 0, 0, 1);
@@ -1675,7 +1994,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 					pvx[ 9].SetFF2(x1, y0, 0xFFFFFFFF, -0.5f, 0, 1, 0);
 					pvx[10].SetFF2(x1, y1, 0xFFFFFFFF,  0.0f, 0, 1, 1);
 					pvx[11].SetFF2(x1, y0, 0xFFFFFFFF,  0.0f, 0, 1, 0);
-				} __except(1) {
+				} vd_seh_guard_except {
 					validDraw = false;
 				}
 
@@ -1698,7 +2017,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
 				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
 
-				__try {
+				vd_seh_guard_try {
 					pvx[ 0].SetFF2(x1, y0, 0xFFFFFFFF, 0,  0.0f, 1, 0);
 					pvx[ 1].SetFF2(x0, y0, 0xFFFFFFFF, 0,  0.0f, 0, 0);
 					pvx[ 2].SetFF2(x1, y0, 0xFFFFFFFF, 0,  0.5f, 1, 0);
@@ -1711,7 +2030,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 					pvx[ 9].SetFF2(x0, y1, 0xFFFFFFFF, 0, -0.5f, 0, 1);
 					pvx[10].SetFF2(x1, y1, 0xFFFFFFFF, 0,  0.0f, 1, 1);
 					pvx[11].SetFF2(x0, y1, 0xFFFFFFFF, 0,  0.0f, 0, 1);
-				} __except(1) {
+				} vd_seh_guard_except {
 					validDraw = false;
 				}
 
@@ -2439,8 +2758,7 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 		VDVERIFY(Unlock(mpD3DPaletteTexture, mpD3DPaletteTextureUpload));
 	}
 	
-	hr = Lock(mpD3DImageTextures[0], mpD3DImageTexturesUpload[0], &lr);
-	if (FAILED(hr))
+	if (!Lock(mpD3DImageTextures[0], mpD3DImageTexturesUpload[0], &lr))
 		return false;
 
 	mTexFmt.data		= lr.pBits;
@@ -2883,6 +3201,16 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 							success = false;
 						break;
 
+					case nsVDPixmap::kPixFormat_Pal8:
+						if (mpVideoManager->IsPS20Enabled()) {
+							if (!mpVideoManager->RunEffect(ctx, g_technique_pal8_to_rgb_2_0, rtsurface))
+								success = false;
+						} else {
+							if (!mpVideoManager->RunEffect(ctx, g_technique_pal8_to_rgb_1_1, rtsurface))
+								success = false;
+						}
+						break;
+
 					default:
 						if (mbHighPrecision) {
 							switch(source.format) {
@@ -2928,11 +3256,6 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 									ctx.mChromaScaleU = 0.25f;
 									ctx.mChromaScaleV = 0.25f;
 									if (!mpVideoManager->RunEffect(ctx, g_technique_ycbcr_601_to_rgb_2_0, rtsurface))
-										success = false;
-									break;
-
-								case nsVDPixmap::kPixFormat_Pal8:
-									if (!mpVideoManager->RunEffect(ctx, g_technique_pal8_to_rgb_1_1, rtsurface))
 										success = false;
 									break;
 
@@ -2985,11 +3308,6 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 									ctx.mChromaScaleU = 0.25f;
 									ctx.mChromaScaleV = 0.25f;
 									if (!mpVideoManager->RunEffect(ctx, g_technique_ycbcr_to_rgb_1_1, rtsurface))
-										success = false;
-									break;
-
-								case nsVDPixmap::kPixFormat_Pal8:
-									if (!mpVideoManager->RunEffect(ctx, g_technique_pal8_to_rgb_1_1, rtsurface))
 										success = false;
 									break;
 
@@ -3087,7 +3405,7 @@ protected:
 	bool IsValid();
 	bool IsFramePending() { return mbSwapChainPresentPending; }
 	void SetFilterMode(FilterMode mode);
-	void SetFullScreen(bool fs);
+	void SetFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh);
 
 	bool Tick(int id);
 	void Poll();
@@ -3126,6 +3444,7 @@ protected:
 
 	vdrefptr<VDVideoUploadContextD3D9>	mpUploadContext;
 	vdrefptr<IVDFontRendererD3D9>	mpFontRenderer;
+	vdrefptr<IVDDisplayRendererD3D9>	mpRenderer;
 
 	vdrefptr<IVDD3D9SwapChain>	mpSwapChain;
 	int					mSwapChainW;
@@ -3136,6 +3455,9 @@ protected:
 	bool				mbFirstPresent;
 	bool				mbFullScreen;
 	bool				mbFullScreenSet;
+	uint32				mFullScreenWidth;
+	uint32				mFullScreenHeight;
+	uint32				mFullScreenRefreshRate;
 	const bool			mbClipToMonitor;
 
 	VDVideoDisplayDX9Manager::CubicMode	mCubicMode;
@@ -3177,6 +3499,9 @@ VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor, boo
 	, mbFirstPresent(true)
 	, mbFullScreen(false)
 	, mbFullScreenSet(false)
+	, mFullScreenWidth(0)
+	, mFullScreenHeight(0)
+	, mFullScreenRefreshRate(0)
 	, mbClipToMonitor(clipToMonitor)
 	, mbCubicInitialized(false)
 	, mbCubicAttempted(false)
@@ -3211,7 +3536,7 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 
 	if (mbFullScreen && !mbFullScreenSet) {
 		mbFullScreenSet = true;
-		mpManager->AdjustFullScreen(true);
+		mpManager->AdjustFullScreen(true, mFullScreenWidth, mFullScreenHeight, mFullScreenRefreshRate);
 	}
 
 	mpD3DDevice = mpManager->GetDevice();
@@ -3225,6 +3550,13 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 
 		mpFontRenderer->Init(mpManager);		// we explicitly allow this to fail
 	}
+
+	if (!VDCreateDisplayRendererD3D9(~mpRenderer)) {
+		Shutdown();
+		return false;
+	}
+
+	mpRenderer->Init(mpManager);
 
 	mpUploadContext = new_nothrow VDVideoUploadContextD3D9;
 	if (!mpUploadContext || !mpUploadContext->Init(hmonitor, mbUseD3D9Ex, info.pixmap, info.bAllowConversion, mbHighPrecision && mpVideoManager->Is16FEnabled(), 1)) {
@@ -3244,6 +3576,7 @@ void VDVideoDisplayMinidriverDX9::OnPreDeviceReset() {
 	mpSwapChain = NULL;
 	mSwapChainW = 0;
 	mSwapChainH = 0;
+	mbSwapChainImageValid = false;
 }
 
 void VDVideoDisplayMinidriverDX9::InitBicubic() {
@@ -3492,7 +3825,12 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 
 	if (mpFontRenderer) {
 		mpFontRenderer->Shutdown();
-		mpFontRenderer = NULL;
+		mpFontRenderer.clear();
+	}
+
+	if (mpRenderer) {
+		mpRenderer->Shutdown();
+		mpRenderer.clear();
 	}
 
 	ShutdownBicubic();
@@ -3507,7 +3845,7 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 	if (mpManager) {
 		if (mbFullScreenSet) {
 			mbFullScreenSet = false;
-			mpManager->AdjustFullScreen(false);
+			mpManager->AdjustFullScreen(false, 0, 0, 0);
 		}
 
 		VDDeinitDirect3D9(mpManager, this);
@@ -3601,14 +3939,17 @@ void VDVideoDisplayMinidriverDX9::SetFilterMode(FilterMode mode) {
 	}
 }
 
-void VDVideoDisplayMinidriverDX9::SetFullScreen(bool fs) {
+void VDVideoDisplayMinidriverDX9::SetFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh) {
 	if (mbFullScreen != fs) {
 		mbFullScreen = fs;
+		mFullScreenWidth = w;
+		mFullScreenHeight = h;
+		mFullScreenRefreshRate = refresh;
 
 		if (mpManager) {
 			if (mbFullScreenSet != fs) {
 				mbFullScreenSet = fs;
-				mpManager->AdjustFullScreen(fs);
+				mpManager->AdjustFullScreen(fs, w, h, refresh);
 			}
 		}
 	}
@@ -3670,8 +4011,9 @@ void VDVideoDisplayMinidriverDX9::SetLogicalPalette(const uint8 *pLogicalPalette
 }
 
 bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateMode updateMode) {
-	int rtw = mpManager->GetMainRTWidth();
-	int rth = mpManager->GetMainRTHeight();
+	const D3DDISPLAYMODE& displayMode = mpManager->GetDisplayMode();
+	int rtw = displayMode.Width;
+	int rth = displayMode.Height;
 	RECT rClient = rClient0;
 	if (mbFullScreen) {
 		rClient.right = rtw;
@@ -3691,6 +4033,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 				mpSwapChain = NULL;
 				mSwapChainW = 0;
 				mSwapChainH = 0;
+				mbSwapChainImageValid = false;
 			}
 
 			if (!mpSwapChain || mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
@@ -3708,6 +4051,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 				mpSwapChain = NULL;
 				mSwapChainW = 0;
 				mSwapChainH = 0;
+				mbSwapChainImageValid = false;
 			}
 
 			if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
@@ -3778,7 +4122,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 
 	bool bSuccess = false;
 
-	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
+	const D3DDISPLAYMODE& dispMode = mpManager->GetDisplayMode();
 	if (mColorOverride) {
 		mpManager->SetSwapChainActive(mpSwapChain);
 
@@ -3914,6 +4258,8 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 			ctx.mChromaScaleV = 1.0f;
 			ctx.mChromaOffsetU = 0.0f;
 			ctx.mChromaOffsetV = 0.0f;
+			ctx.mPixelSharpnessX = mPixelSharpnessX;
+			ctx.mPixelSharpnessY = mPixelSharpnessY;
 			ctx.mbHighPrecision = mbHighPrecision;
 
 			if (updateMode & kModeBobEven)
@@ -3922,10 +4268,10 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 				ctx.mFieldOffset = +1.0f;
 
 			if (mbCubicInitialized &&
-				(uint32)rClient.right <= pparms.BackBufferWidth &&
-				(uint32)rClient.bottom <= pparms.BackBufferHeight &&
-				(uint32)mSource.pixmap.w <= pparms.BackBufferWidth &&
-				(uint32)mSource.pixmap.h <= pparms.BackBufferHeight
+				(uint32)rClient.right <= dispMode.Width &&
+				(uint32)rClient.bottom <= dispMode.Height &&
+				(uint32)mSource.pixmap.w <= dispMode.Width &&
+				(uint32)mSource.pixmap.h <= dispMode.Height
 				)
 			{
 				int cubicMode = mCubicMode;
@@ -3970,6 +4316,8 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 				} else {
 					if (mPreferredFilter == kFilterPoint)
 						bSuccess = mpVideoManager->RunEffect(ctx, g_technique_point, pRTMain);
+					else if ((mPixelSharpnessX > 1 || mPixelSharpnessY > 1) && mpVideoManager->IsPS20Enabled())
+						bSuccess = mpVideoManager->RunEffect(ctx, g_technique_boxlinear_2_0, pRTMain);
 					else
 						bSuccess = mpVideoManager->RunEffect(ctx, g_technique_bilinear, pRTMain);
 				}
@@ -3978,6 +4326,23 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 	}
 
 	pRTMain = NULL;
+
+	if (mpCompositor) {
+		D3DVIEWPORT9 vp;
+
+		vp.X = 0;
+		vp.Y = 0;
+		vp.Width = rClippedClient.right;
+		vp.Height = rClippedClient.bottom;
+		vp.MinZ = 0;
+		vp.MaxZ = 1;
+		mpD3DDevice->SetViewport(&vp);
+
+		if (mpRenderer->Begin()) {
+			mpCompositor->Composite(*mpRenderer);
+			mpRenderer->End();
+		}
+	}
 
 	if (mbDisplayDebugInfo) {
 		D3DVIEWPORT9 vp;

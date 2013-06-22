@@ -22,11 +22,14 @@ public:
 
 	void SetArea(const vdrect32& r);
 
+	void SetRedraw(bool);
+
 	virtual VDZLRESULT On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lParam);
 	virtual VDZLRESULT On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam);
 
 protected:
 	VDZHWND	mhwnd;
+	int mRedrawInhibitCount;
 };
 
 class VDUIProxyMessageDispatcherW32 {
@@ -64,7 +67,7 @@ class VDUIProxyListView : public VDUIProxyControl {
 public:
 	VDUIProxyListView();
 
-	void AutoSizeColumns();
+	void AutoSizeColumns(bool expandlast = false);
 	void Clear();
 	void ClearExtraColumns();
 	void DeleteItem(int index);
@@ -75,12 +78,14 @@ public:
 	IVDUIListViewVirtualItem *GetSelectedItem() const;
 	void GetSelectedIndices(vdfastvector<int>& indices) const;
 	void SetFullRowSelectEnabled(bool enabled);
+	void SetGridLinesEnabled(bool enabled);
 	void SetItemCheckboxesEnabled(bool enabled);
 	void EnsureItemVisible(int index);
 	int GetVisibleTopIndex();
 	void SetVisibleTopIndex(int index);
+	IVDUIListViewVirtualItem *GetSelectedVirtualItem() const;
 	IVDUIListViewVirtualItem *GetVirtualItem(int index) const;
-	void InsertColumn(int index, const wchar_t *label, int width);
+	void InsertColumn(int index, const wchar_t *label, int width, bool rightAligned = false);
 	int InsertItem(int item, const wchar_t *text);
 	int InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvvi);
 	void RefreshItem(int item);
@@ -164,6 +169,8 @@ protected:
 	int			mNextTextIndex;
 	VDStringW	mTextW[3];
 	VDStringA	mTextA[3];
+
+	vdfastvector<int>	mColumnWidthCache;
 
 	VDEvent<VDUIProxyListView, int> mEventColumnClicked;
 	VDEvent<VDUIProxyListView, int> mEventItemSelectionChanged;

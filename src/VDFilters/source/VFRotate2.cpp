@@ -988,11 +988,15 @@ static int rotate2_end(VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
 static void rotate2_string2(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int maxlen) {
 	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 
-	_snprintf(buf, maxlen, " (%.3f\xb0, %s, #%06X%s)",
+	VDStringA degree = VDTextWToA(L"\u00B0");
+
+	_snprintf(buf, maxlen, " (%.3f%s, %s, #%06X%s)",
 			mfd->angle * (360.0 / 4294967296.0),
+			degree.c_str(),
 			szModeStrings[mfd->filtmode],
 			ColorRefToPixel32(mfd->rgbColor),
 			mfd->fExpandBounds ? ", expand" : "");
+	buf[maxlen - 1] = 0;
 }
 
 static void rotate2_script_config(IVDXScriptInterpreter *isi, void *lpVoid, VDXScriptValue *argv, int argc) {

@@ -10,6 +10,7 @@
 
 VDUIProxyControl::VDUIProxyControl()
 	: mhwnd(NULL)
+	, mRedrawInhibitCount(0)
 {
 }
 
@@ -25,6 +26,20 @@ void VDUIProxyControl::Detach() {
 void VDUIProxyControl::SetArea(const vdrect32& r) {
 	if (mhwnd)
 		SetWindowPos(mhwnd, NULL, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void VDUIProxyControl::SetRedraw(bool redraw) {
+	if (redraw) {
+		if (!--mRedrawInhibitCount) {
+			if (mhwnd)
+				SendMessage(mhwnd, WM_SETREDRAW, TRUE, 0);
+		}
+	} else {
+		if (!mRedrawInhibitCount++) {
+			if (mhwnd)
+				SendMessage(mhwnd, WM_SETREDRAW, FALSE, 0);
+		}
+	}
 }
 
 VDZLRESULT VDUIProxyControl::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
@@ -130,18 +145,39 @@ void VDUIProxyListView::Detach() {
 	VDUIProxyControl::Detach();
 }
 
-void VDUIProxyListView::AutoSizeColumns() {
+void VDUIProxyListView::AutoSizeColumns(bool expandlast) {
 	const int colCount = GetColumnCount();
 
+	int colCacheCount = mColumnWidthCache.size();
+	while(colCacheCount < colCount) {
+		SendMessage(mhwnd, LVM_SETCOLUMNWIDTH, colCacheCount, LVSCW_AUTOSIZE_USEHEADER);
+		mColumnWidthCache.push_back(SendMessage(mhwnd, LVM_GETCOLUMNWIDTH, colCacheCount, 0));
+		++colCacheCount;
+	}
+
+	int totalWidth = 0;
 	for(int col=0; col<colCount; ++col) {
-		SendMessage(mhwnd, LVM_SETCOLUMNWIDTH, col, LVSCW_AUTOSIZE_USEHEADER);
-		const int hdrWidth = SendMessage(mhwnd, LVM_GETCOLUMNWIDTH, col, 0);
+		const int hdrWidth = mColumnWidthCache[col];
 
 		SendMessage(mhwnd, LVM_SETCOLUMNWIDTH, col, LVSCW_AUTOSIZE);
-		const int dataWidth = SendMessage(mhwnd, LVM_GETCOLUMNWIDTH, col, 0);
+		int dataWidth = SendMessage(mhwnd, LVM_GETCOLUMNWIDTH, col, 0);
 
 		if (dataWidth < hdrWidth)
-			SendMessage(mhwnd, LVM_SETCOLUMNWIDTH, col, hdrWidth);
+			dataWidth = hdrWidth;
+
+		if (expandlast) {
+			RECT r;
+			if (GetClientRect(mhwnd, &r)) {
+				int extraWidth = r.right - totalWidth;
+
+				if (dataWidth < extraWidth)
+					dataWidth = extraWidth;
+			}
+		}
+
+		SendMessage(mhwnd, LVM_SETCOLUMNWIDTH, col, dataWidth);
+
+		totalWidth += dataWidth;
 	}
 }
 
@@ -157,6 +193,9 @@ void VDUIProxyListView::ClearExtraColumns() {
 	uint32 n = GetColumnCount();
 	for(uint32 i=n; i > 1; --i)
 		ListView_DeleteColumn(mhwnd, i - 1);
+
+	if (!mColumnWidthCache.empty())
+		mColumnWidthCache.resize(1);
 }
 
 void VDUIProxyListView::DeleteItem(int index) {
@@ -209,6 +248,10 @@ void VDUIProxyListView::SetFullRowSelectEnabled(bool enabled) {
 	ListView_SetExtendedListViewStyleEx(mhwnd, LVS_EX_FULLROWSELECT, enabled ? LVS_EX_FULLROWSELECT : 0);
 }
 
+void VDUIProxyListView::SetGridLinesEnabled(bool enabled) {
+	ListView_SetExtendedListViewStyleEx(mhwnd, LVS_EX_GRIDLINES, enabled ? LVS_EX_GRIDLINES : 0);
+}
+
 void VDUIProxyListView::SetItemCheckboxesEnabled(bool enabled) {
 	ListView_SetExtendedListViewStyleEx(mhwnd, LVS_EX_CHECKBOXES, enabled ? LVS_EX_CHECKBOXES : 0);
 }
@@ -227,6 +270,14 @@ void VDUIProxyListView::SetVisibleTopIndex(int index) {
 		ListView_EnsureVisible(mhwnd, n - 1, FALSE);
 		ListView_EnsureVisible(mhwnd, index, FALSE);
 	}
+}
+
+IVDUIListViewVirtualItem *VDUIProxyListView::GetSelectedVirtualItem() const {
+	int index = GetSelectedIndex();
+	if (index < 0)
+		return NULL;
+
+	return GetVirtualItem(index);
 }
 
 IVDUIListViewVirtualItem *VDUIProxyListView::GetVirtualItem(int index) const {
@@ -252,12 +303,14 @@ IVDUIListViewVirtualItem *VDUIProxyListView::GetVirtualItem(int index) const {
 	return NULL;
 }
 
-void VDUIProxyListView::InsertColumn(int index, const wchar_t *label, int width) {
+void VDUIProxyListView::InsertColumn(int index, const wchar_t *label, int width, bool rightAligned) {
+	VDASSERT(index || !rightAligned);
+
 	if (VDIsWindowsNT()) {
 		LVCOLUMNW colw = {};
 
 		colw.mask		= LVCF_FMT | LVCF_TEXT | LVCF_WIDTH;
-		colw.fmt		= LVCFMT_LEFT;
+		colw.fmt		= rightAligned ? LVCFMT_RIGHT : LVCFMT_LEFT;
 		colw.cx			= width;
 		colw.pszText	= (LPWSTR)label;
 
@@ -267,7 +320,7 @@ void VDUIProxyListView::InsertColumn(int index, const wchar_t *label, int width)
 		VDStringA labela(VDTextWToA(label));
 
 		cola.mask		= LVCF_FMT | LVCF_TEXT | LVCF_WIDTH;
-		cola.fmt		= LVCFMT_LEFT;
+		cola.fmt		= rightAligned ? LVCFMT_RIGHT : LVCFMT_LEFT;
 		cola.cx			= width;
 		cola.pszText	= (LPSTR)labela.c_str();
 

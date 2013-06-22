@@ -73,6 +73,13 @@
 #pragma warning(disable: 4127)			// warning C4127: conditional expression is constant
 #pragma warning(disable: 4245)			// warning C4145: 'initializing': conversion from '' to '', signed/unsigned mismatch
 #pragma warning(disable: 4310)			// warning C4310: cast truncates constant value
+
+// Compilation workaround for high char annoyance in the Platform SDK:
+//
+// c:\platsdk5\include\uuids.h : warning C4819: The file contains a character that cannot
+// be represented in the current code page (932). Save the file in Unicode format to
+// prevent data loss
+#pragma warning(disable: 4819)
 #endif
 
 #if defined(_DEBUG) || defined(_M_IX86)

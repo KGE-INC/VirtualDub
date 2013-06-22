@@ -47,12 +47,12 @@
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Riza/bitmap.h>
-#include <vd2/Riza/capdriver.h>
-#include <vd2/Riza/capdrivers.h>
-#include <vd2/Riza/capresync.h>
-#include <vd2/Riza/caplog.h>
-#include <vd2/Riza/capaudiocomp.h>
-#include <vd2/Riza/cap_dshow.h>
+#include <vd2/VDCapture/capdriver.h>
+#include <vd2/VDCapture/capdrivers.h>
+#include <vd2/VDCapture/capresync.h>
+#include <vd2/VDCapture/caplog.h>
+#include <vd2/VDCapture/capaudiocomp.h>
+#include <vd2/VDCapture/cap_dshow.h>
 
 #include "crash.h"
 #include "gui.h"
@@ -2223,6 +2223,7 @@ void VDCaptureProject::ProcessPendingEvents() {
 			if (mpCB) {
 				mpCB->UICaptureVideoFormatUpdated();
 				mpCB->UICaptureVideoPreviewFormatUpdated();
+				mpCB->UICaptureParmsUpdated();
 			}
 			if (mDisplayMode == kDisplayAnalyze)
 				InitVideoAnalysis();

@@ -3271,6 +3271,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\VDCapture\res\resource.h"
+				>
+			</File>
+			<File
 				RelativePath="h\SceneDetector.h"
 				>
 			</File>
@@ -7038,7 +7042,7 @@
 			Name="Imported Files"
 			>
 			<File
-				RelativePath="..\Riza\res\Riza.rc"
+				RelativePath="..\VDCapture\res\VDCapture.rc"
 				>
 			</File>
 			<File

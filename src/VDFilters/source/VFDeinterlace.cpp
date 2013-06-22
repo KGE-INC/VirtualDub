@@ -3082,18 +3082,14 @@ uint32 VDVideoFilterDeinterlace::GetParams() {
 
 	case VDVideoFilterDeinterlaceConfig::kModeELA:
 	case VDVideoFilterDeinterlaceConfig::kModeBob:
-		pxldst.pitch = pxlsrc.pitch;
-		pxldst.pitch2 = pxlsrc.pitch2;
-		pxldst.pitch3 = pxlsrc.pitch3;
+		pxldst = pxlsrc;
 		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_ALIGN_SCANLINES | FILTERPARAM_PURE_TRANSFORM;
 
 	case VDVideoFilterDeinterlaceConfig::kModeBlend:
 		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_ALIGN_SCANLINES | FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM;
 
 	case VDVideoFilterDeinterlaceConfig::kModeDuplicate:
-		pxldst.data = pxlsrc.data;
-		pxldst.data2 = pxlsrc.data2;
-		pxldst.data3 = pxlsrc.data3;
+		pxldst = pxlsrc;
 		break;
 
 	case VDVideoFilterDeinterlaceConfig::kModeDiscard:

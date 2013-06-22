@@ -75,6 +75,7 @@ private:
 	VDPixmapRegion			mTextOutlineBrush;
 	VDPixmapRegion			mTextRegion;
 	VDPixmapRegion			mTextBorderRegion;
+	VDPixmapRegion			mTempRegion;
 
 	struct FormatInfo {
 		int mFormat;
@@ -800,7 +801,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 
 	mTextRasterizer.ScanConvert(mTextRegion);
 
-	VDPixmapConvolveRegion(mTextBorderRegion, mTextRegion, mTextOutlineBrush);
+	VDPixmapConvolveRegion(mTextBorderRegion, mTextRegion, mTextOutlineBrush, &mTempRegion);
 
 	VDPixmapFillRegionAntialiased8x(*dst, mTextBorderRegion, 0, 0, black);
 	VDPixmapFillRegionAntialiased8x(*dst, mTextRegion, 0, 0, textcolor);

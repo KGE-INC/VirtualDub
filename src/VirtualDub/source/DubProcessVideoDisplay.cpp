@@ -18,7 +18,7 @@
 #include "stdafx.h"
 #include <vd2/system/profile.h>
 #include <vd2/Riza/bitmap.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include "Dub.h"
 #include "DubProcessVideoDisplay.h"
 #include "DubUtils.h"

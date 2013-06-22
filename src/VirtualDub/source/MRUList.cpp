@@ -31,14 +31,22 @@ MRUList::MRUList(int max_files, char *key_name)
 	, mpKeyName(key_name)
 	, mbDirty(false)
 {
-	load();
 }
 
 MRUList::~MRUList() {
 	flush();
 }
 
+void MRUList::set_capacity(int max_files) {
+	mMaxCount = max_files;
+	mFiles.resize(max_files);
+	mKey.resize(max_files, 0);
+}
+
 void MRUList::add(const wchar_t *file) {
+	if (!mMaxCount)
+		return;
+
 	int index;
 
 	// Does this file already exist?  If not, move it to the top.
@@ -85,8 +93,10 @@ VDStringW MRUList::operator[](int i) {
 }
 
 void MRUList::move_to_top(int index) {
-	// Move file to top of list
+	if (index >= mMaxCount)
+		return;
 
+	// Move file to top of list
 	if (index)
 		std::rotate(mKey.begin(), mKey.begin()+index, mKey.begin()+index+1);
 }
@@ -98,6 +108,18 @@ void MRUList::clear() {
 	mFiles.resize(mMaxCount);
 
 	mbDirty = true;
+}
+
+void MRUList::clear_history() {
+	VDRegistryAppKey key(mpKeyName);
+
+	VDRegistryKeyIterator it(key);
+
+	while(const char *name = it.Next()) {
+		key.removeValue(name);
+	}
+
+	clear();
 }
 
 void MRUList::load() {

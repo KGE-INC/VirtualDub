@@ -52,7 +52,7 @@ bool VDUIDropFileListW32::GetFileName(int index, VDStringW& fileName) {
 ///////////////////////////////////////////////////////////////////////////////
 
 VDDialogFrameW32::VDDialogFrameW32(uint32 dlgid)
-	: mpDialogResourceName(MAKEINTRESOURCE(dlgid))
+	: mpDialogResourceName(MAKEINTRESOURCEA(dlgid))
 	, mbIsModal(false)
 	, mhdlg(NULL)
 	, mMinWidth(0)
@@ -76,6 +76,11 @@ bool VDDialogFrameW32::Create(VDGUIHandle parent) {
 void VDDialogFrameW32::Destroy() {
 	if (mhdlg)
 		DestroyWindow(mhdlg);
+}
+
+void VDDialogFrameW32::Close() {
+	if (mhdlg)
+		SendMessage(mhdlg, WM_CLOSE, 0, 0);
 }
 
 sintptr VDDialogFrameW32::ShowDialog(VDGUIHandle parent) {
@@ -176,7 +181,7 @@ void VDDialogFrameW32::End(sintptr result) {
 	if (mbIsModal)
 		EndDialog(mhdlg, result);
 	else
-		DestroyWindow(mhdlg);
+		PostMessage(mhdlg, WM_CLOSE, 0, 0);
 }
 
 void VDDialogFrameW32::AddProxy(VDUIProxyControl *proxy, uint32 id) {
@@ -231,6 +236,22 @@ void VDDialogFrameW32::ShowControl(uint32 id, bool visible) {
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
 		ShowWindow(hwnd, visible ? SW_SHOW : SW_HIDE);
+}
+
+vdrect32 VDDialogFrameW32::GetControlPos(uint32 id) {
+	if (mhdlg) {
+		HWND hwnd = GetDlgItem(mhdlg, id);
+		if (hwnd) {
+			RECT r;
+			if (GetWindowRect(hwnd, &r) &&
+				MapWindowPoints(NULL, mhdlg, (LPPOINT)&r, 2))
+			{
+				return vdrect32(r.left, r.top, r.right, r.bottom);
+			}
+		}
+	}
+
+	return vdrect32(0, 0, 0, 0);
 }
 
 vdrect32 VDDialogFrameW32::GetControlScreenPos(uint32 id) {
@@ -661,6 +682,15 @@ bool VDDialogFrameW32::OnCancel() {
 void VDDialogFrameW32::OnSize() {
 }
 
+bool VDDialogFrameW32::OnClose() {
+	if (!mbIsModal) {
+		DestroyWindow(mhdlg);
+		return true;
+	}
+
+	return false;
+}
+
 void VDDialogFrameW32::OnDestroy() {
 	mMsgDispatcher.RemoveAllControls(true);
 }
@@ -766,6 +796,11 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 			SetWindowLongPtr(mhdlg, DWLP_MSGRESULT, mMsgDispatcher.Dispatch_WM_NOTIFY(wParam, lParam));
 			return TRUE;
 
+		case WM_CLOSE:
+			if (OnClose())
+				return TRUE;
+			break;
+
 		case WM_DESTROY:
 			OnDestroy();
 			break;
@@ -848,6 +883,8 @@ void VDDialogResizerW32::Init(HWND hwnd) {
 		mWidth = r.right;
 		mHeight = r.bottom;
 	}
+
+	mControls.clear();
 }
 
 void VDDialogResizerW32::Relayout() {
@@ -930,8 +967,8 @@ void VDDialogResizerW32::Add(uint32 id, int alignment) {
 	ce.mY2			= r.bottom - ((mHeight * ((alignment >> 6) & 3)) >> 1);
 }
 
-void VDDialogResizerW32::Erase(VDZHDC hdc0) {
-	HDC hdc = hdc0 ? hdc0 : GetDC(mhwndBase);
+void VDDialogResizerW32::Erase(const VDZHDC *phdc) {
+	HDC hdc = phdc ? *phdc : GetDC(mhwndBase);
 	if (hdc) {
 		Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
 		for(; it!=itEnd; ++it) {
@@ -951,7 +988,7 @@ void VDDialogResizerW32::Erase(VDZHDC hdc0) {
 		if (GetClientRect(mhwndBase, &rClient))
 			FillRect(hdc, &rClient, (HBRUSH)(COLOR_3DFACE + 1));
 
-		if (!hdc0)
+		if (!phdc)
 			ReleaseDC(mhwndBase, hdc);
 	}
 }

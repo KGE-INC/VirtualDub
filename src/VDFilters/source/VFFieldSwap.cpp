@@ -30,7 +30,10 @@ protected:
 };
 
 uint32 VDVideoFilterFieldSwap::GetParams() {
-	const VDXPixmapLayout& pxldst = *fa->dst.mpPixmapLayout;
+	VDXPixmapLayout& pxldst = *fa->dst.mpPixmapLayout;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+
+	pxldst = pxlsrc;
 
 	fa->dst.offset = fa->src.offset;
 

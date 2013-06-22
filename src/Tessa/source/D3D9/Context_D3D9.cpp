@@ -1,9 +1,70 @@
 #include "stdafx.h"
 #include <d3d9.h>
+#include <vd2/system/bitmath.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Tessa/Context.h>
+#include <vd2/Tessa/Format.h>
+#include "Program.h"
 #include "D3D9/Context_D3D9.h"
 #include "D3D9/FenceManager_D3D9.h"
+
+namespace {
+	D3DFORMAT GetSurfaceFormatD3D9(VDTFormat format) {
+		switch(format) {
+			case kVDTF_B8G8R8A8:
+				return D3DFMT_A8R8G8B8;
+
+			case kVDTF_R8G8B8A8:
+				return D3DFMT_A8B8G8R8;
+
+			case kVDTF_L8A8:
+				return D3DFMT_A8L8;
+
+			case kVDTF_U8V8:
+				return D3DFMT_V8U8;
+
+			case kVDTF_B5G6R5:
+				return D3DFMT_R5G6B5;
+
+			case kVDTF_B5G5R5A1:
+				return D3DFMT_A1R5G5B5;
+
+			case kVDTF_R8:
+				return D3DFMT_L8;
+
+			default:
+				return D3DFMT_UNKNOWN;
+		}
+	}
+
+	VDTFormat GetSurfaceFormatFromD3D9(D3DFORMAT format) {
+		switch(format) {
+			case D3DFMT_A8R8G8B8:
+				return kVDTF_B8G8R8A8;
+
+			case D3DFMT_A8B8G8R8:
+				return kVDTF_R8G8B8A8;
+
+			case D3DFMT_A8L8:
+				return kVDTF_L8A8;
+
+			case D3DFMT_V8U8:
+				return kVDTF_U8V8;
+
+			case D3DFMT_R5G6B5:
+				return kVDTF_B5G6R5;
+
+			case D3DFMT_A1R5G5B5:
+				return kVDTF_B5G5R5A1;
+
+			case D3DFMT_L8:
+				return kVDTF_R8;
+
+			default:
+				return kVDTF_Unknown;
+		}
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -67,9 +128,14 @@ VDTReadbackBufferD3D9::~VDTReadbackBufferD3D9() {
 	Shutdown();
 }
 
-bool VDTReadbackBufferD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format) {
+bool VDTReadbackBufferD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format) {
+	const D3DFORMAT d3dfmt = GetSurfaceFormatD3D9(format);
+
+	if (!d3dfmt)
+		return false;
+
 	IDirect3DDevice9 *dev = parent->GetDeviceD3D9();
-	HRESULT hr = dev->CreateOffscreenPlainSurface(width, height, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &mpSurface, NULL);
+	HRESULT hr = dev->CreateOffscreenPlainSurface(width, height, d3dfmt, D3DPOOL_SYSTEMMEM, &mpSurface, NULL);
 
 	parent->AddResource(this);
 	return SUCCEEDED(hr);
@@ -120,7 +186,7 @@ VDTSurfaceD3D9::~VDTSurfaceD3D9() {
 	Shutdown();
 }
 
-bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, VDTUsage usage) {
+bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format, VDTUsage usage) {
 	IDirect3DDevice9 *dev = parent->GetDeviceD3D9();
 	IDirect3DDevice9 *dev9Ex = parent->GetDeviceD3D9Ex();
 	HRESULT hr;
@@ -130,13 +196,18 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, u
 	mDesc.mFormat = format;
 
 	mbDefaultPool = false;
+
+	D3DFORMAT d3dfmt = GetSurfaceFormatD3D9(format);
+	if (!d3dfmt)
+		return false;
+
 	switch(usage) {
 		case kVDTUsage_Default:
-			hr = dev->CreateOffscreenPlainSurface(width, height, D3DFMT_A8R8G8B8, dev9Ex ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpSurface, NULL);
+			hr = dev->CreateOffscreenPlainSurface(width, height, d3dfmt, dev9Ex ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpSurface, NULL);
 			break;
 
 		case kVDTUsage_Render:
-			hr = dev->CreateRenderTarget(width, height, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &mpSurface, NULL);
+			hr = dev->CreateRenderTarget(width, height, d3dfmt, D3DMULTISAMPLE_NONE, 0, FALSE, &mpSurface, NULL);
 			mbDefaultPool = true;
 			break;
 	}
@@ -158,7 +229,7 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf, IDire
 
 	mDesc.mWidth = desc.Width;
 	mDesc.mHeight = desc.Height;
-	mDesc.mFormat = 0;
+	mDesc.mFormat = GetSurfaceFormatFromD3D9(desc.Format);
 	mbDefaultPool = (desc.Pool == D3DPOOL_DEFAULT);
 
 	parent->AddResource(this);
@@ -175,14 +246,16 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf, IDire
 
 void VDTSurfaceD3D9::Shutdown() {
 	if (mpSurface) {
+		VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
+
+		if (parent)
+			parent->UnsetRenderTarget(this);
+
 		mpSurface->Release();
 		mpSurface = NULL;
 	}
 
-	if (mpSurfaceSys) {
-		mpSurfaceSys->Release();
-		mpSurfaceSys = NULL;
-	}
+	vdsaferelease <<= mpSurfaceSys;
 
 	VDTResourceD3D9::Shutdown();
 }
@@ -218,7 +291,10 @@ void VDTSurfaceD3D9::Load(uint32 dx, uint32 dy, const VDTInitData2D& srcData, ui
 		return;
 	}
 
-	VDMemcpyRect(lr.pBits, lr.Pitch, srcData.mpData, srcData.mPitch, 4*w, h);
+	const uint32 bpr = VDTGetBytesPerBlockRow(mDesc.mFormat, w);
+	const uint32 bh = VDTGetNumBlockRows(mDesc.mFormat, h);
+
+	VDMemcpyRect(lr.pBits, lr.Pitch, srcData.mpData, srcData.mPitch, bpr, bh);
 
 	hr = locksurf->UnlockRect();
 
@@ -333,18 +409,24 @@ void *VDTTexture2DD3D9::AsInterface(uint32 id) {
 	return NULL;
 }
 
-bool VDTTexture2DD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData) {
+bool VDTTexture2DD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, VDTFormat format, uint32 mipCount, VDTUsage usage, const VDTInitData2D *initData) {
 	parent->AddResource(this);
+
+	if (!mipCount) {
+		uint32 mask = (width - 1) | (height - 1);
+
+		mipCount = VDFindHighestSetBit(mask) + 1;
+	}
 
 	mWidth = width;
 	mHeight = height;
-	mMipCount = mipcount;
+	mMipCount = mipCount;
+	mFormat = format;
 	mUsage = usage;
 
 	if (!Restore())
 		return false;
 
-	uint32 mipCount = mpTexture->GetLevelCount();
 	mMipmaps.reserve(mipCount);
 
 	for(uint32 i=0; i<mipCount; ++i) {
@@ -359,7 +441,7 @@ bool VDTTexture2DD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height,
 			return false;
 		}
 
-		if (mpTextureSys) {
+		if (mpTextureSys && !initData) {
 			hr = mpTextureSys->GetSurfaceLevel(i, ~surfd3d9sys);
 			if (FAILED(hr)) {
 				parent->ProcessHRESULT(hr);
@@ -374,12 +456,32 @@ bool VDTTexture2DD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height,
 	}
 
 	if (initData) {
-		D3DLOCKED_RECT lr;
-		HRESULT hr = mpTexture->LockRect(0, &lr, NULL, D3DLOCK_NOSYSLOCK);
-		if (SUCCEEDED(hr)) {
-			VDMemcpyRect(lr.pBits, lr.Pitch, initData->mpData, initData->mPitch, width*4, height);
-			mpTexture->UnlockRect(0);
+		for(uint32 i=0; i<mipCount; ++i) {
+			const uint32 mipbpr = VDTGetBytesPerBlockRow(mFormat, std::max<uint32>(width >> i, 1));
+			const uint32 mipbh = VDTGetNumBlockRows(mFormat, std::max<uint32>(height >> i, 1));
+
+			IDirect3DTexture9 *locktex = mpTextureSys ? mpTextureSys : mpTexture;
+			D3DLOCKED_RECT lr;
+			HRESULT hr = locktex->LockRect(i, &lr, NULL, D3DLOCK_NOSYSLOCK);
+
+			if (FAILED(hr)) {
+				Shutdown();
+				return false;
+			}
+
+			VDMemcpyRect(lr.pBits, lr.Pitch, initData[i].mpData, initData[i].mPitch, mipbpr, mipbh);
+			locktex->UnlockRect(i);
 		}
+
+		if (mpTextureSys) {
+			HRESULT hr = parent->GetDeviceD3D9()->UpdateTexture(mpTextureSys, mpTexture);
+			if (FAILED(hr)) {
+				Shutdown();
+				return false;
+			}
+		}
+
+		vdsaferelease <<= mpTextureSys;
 	}
 
 	return true;
@@ -402,10 +504,7 @@ void VDTTexture2DD3D9::Shutdown() {
 		mpTexture = NULL;
 	}
 
-	if (mpTextureSys) {
-		mpTextureSys->Release();
-		mpTextureSys = NULL;
-	}
+	vdsaferelease <<= mpTextureSys;
 
 	VDTResourceD3D9::Shutdown();
 }
@@ -420,23 +519,27 @@ bool VDTTexture2DD3D9::Restore() {
 		return false;
 
 	IDirect3DDevice9Ex *dev9Ex = parent->GetDeviceD3D9Ex();
+	D3DFORMAT d3dfmt = GetSurfaceFormatD3D9(mFormat);
+
+	if (!d3dfmt)
+		return false;
 
 	HRESULT hr;
 	switch(mUsage) {
 		case kVDTUsage_Default:
 			if (dev9Ex) {
-				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &mpTexture, NULL);
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, d3dfmt, D3DPOOL_DEFAULT, &mpTexture, NULL);
 				if (FAILED(hr))
 					return false;
 
-				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &mpTextureSys, NULL);
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, d3dfmt, D3DPOOL_SYSTEMMEM, &mpTextureSys, NULL);
 			} else {
-				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &mpTexture, NULL);
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, d3dfmt, D3DPOOL_MANAGED, &mpTexture, NULL);
 			}
 			break;
 
 		case kVDTUsage_Render:
-			hr = dev->CreateTexture(mWidth, mHeight, mMipCount, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &mpTexture, NULL);
+			hr = dev->CreateTexture(mWidth, mHeight, mMipCount, D3DUSAGE_RENDERTARGET, d3dfmt, D3DPOOL_DEFAULT, &mpTexture, NULL);
 			break;
 
 		default:
@@ -485,7 +588,7 @@ void VDTTexture2DD3D9::GetDesc(VDTTextureDesc& desc) {
 	desc.mWidth = mWidth;
 	desc.mHeight = mHeight;
 	desc.mMipCount = mMipCount;
-	desc.mFormat = 0;
+	desc.mFormat = mFormat;
 }
 
 void VDTTexture2DD3D9::Load(uint32 mip, uint32 x, uint32 y, const VDTInitData2D& srcData, uint32 w, uint32 h) {
@@ -1053,9 +1156,99 @@ const uint32 VDTSamplerStateD3D9::kSamplerStateIDs[kStateCount] = {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+VDTSwapChainD3D9::VDTSwapChainD3D9()
+	: mpSwapChain(NULL)
+	, mDesc()
+{
+}
+
+VDTSwapChainD3D9::~VDTSwapChainD3D9() {
+	Shutdown();
+}
+
+bool VDTSwapChainD3D9::Init(VDTContextD3D9 *parent, const VDTSwapChainDesc& desc) {
+	mDesc = desc;
+	parent->AddResource(this);
+
+	if (!Restore())
+		return false;
+
+	return true;
+}
+
+void VDTSwapChainD3D9::Shutdown() {
+	vdsaferelease <<= mpBackBuffer, mpSwapChain;
+
+	VDTResourceD3D9::Shutdown();
+}
+
+void VDTSwapChainD3D9::GetDesc(VDTSwapChainDesc& desc) {
+	desc = mDesc;
+}
+
+IVDTSurface *VDTSwapChainD3D9::GetBackBuffer() {
+	return mpBackBuffer;
+}
+
+void VDTSwapChainD3D9::Present() {
+	VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
+
+	if (parent->CloseScene())
+		mpSwapChain->Present(NULL, NULL, NULL, NULL, 0);
+}
+
+bool VDTSwapChainD3D9::Restore() {
+	if (mpSwapChain)
+		return true;
+
+	D3DPRESENT_PARAMETERS pparms = {};
+	pparms.BackBufferWidth = mDesc.mWidth;
+	pparms.BackBufferHeight = mDesc.mHeight;
+	pparms.BackBufferFormat = D3DFMT_A8R8G8B8;
+	pparms.BackBufferCount = 1;
+	pparms.MultiSampleType = D3DMULTISAMPLE_NONE;
+	pparms.MultiSampleQuality = 0;
+	pparms.SwapEffect = D3DSWAPEFFECT_COPY;
+	pparms.hDeviceWindow = (HWND)mDesc.mhWindow;
+	pparms.Windowed = TRUE;
+	pparms.EnableAutoDepthStencil = FALSE;
+	pparms.AutoDepthStencilFormat = D3DFMT_UNKNOWN;
+	pparms.Flags = 0;
+	pparms.FullScreen_RefreshRateInHz = 0;
+	pparms.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+
+	VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
+	HRESULT hr = parent->GetDeviceD3D9()->CreateAdditionalSwapChain(&pparms, &mpSwapChain);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	vdrefptr<IDirect3DSurface9> bb;
+	hr = mpSwapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_LEFT, ~bb);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	mpBackBuffer = new VDTSurfaceD3D9;
+	mpBackBuffer->AddRef();
+
+	if (!mpBackBuffer->Init(parent, bb, NULL)) {
+		Shutdown();
+		return false;
+	}
+
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 struct VDTContextD3D9::PrivateData {
 	D3DPRESENT_PARAMETERS mPresentParms;
 	HMODULE mhmodD3D9;
+	UINT mAdapter;
+	D3DDEVTYPE mDeviceType;
 
 	VDTFenceManagerD3D9 mFenceManager;
 };
@@ -1069,6 +1262,9 @@ VDTContextD3D9::VDTContextD3D9()
 	, mDeviceLossCounter(0)
 	, mbDeviceLost(false)
 	, mbInScene(false)
+	, mbBSDirty(false)
+	, mbRSDirty(false)
+	, mbVPDirty(false)
 	, mpCurrentRT(NULL)
 	, mpCurrentVB(NULL)
 	, mCurrentVBOffset(NULL)
@@ -1088,6 +1284,7 @@ VDTContextD3D9::VDTContextD3D9()
 {
 	memset(mpCurrentSamplerStates, 0, sizeof mpCurrentSamplerStates);
 	memset(mpCurrentTextures, 0, sizeof mpCurrentTextures);
+	memset(&mViewport, 0, sizeof mViewport);
 }
 
 VDTContextD3D9::~VDTContextD3D9() {
@@ -1123,6 +1320,33 @@ bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVD
 		mpEndEvent = GetProcAddress(mpData->mhmodD3D9, "D3DPERF_EndEvent");
 	}
 
+	D3DDEVICE_CREATION_PARAMETERS cparms;
+	HRESULT hr = dev->GetCreationParameters(&cparms);
+
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	mpData->mAdapter = cparms.AdapterOrdinal;
+	mpData->mDeviceType = cparms.DeviceType;
+
+	D3DCAPS9 caps;
+	hr = dev->GetDeviceCaps(&caps);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
+	mCaps.mMaxTextureWidth = caps.MaxTextureWidth;
+	mCaps.mMaxTextureHeight = caps.MaxTextureHeight;
+
+	hr = dev->GetDirect3D(&mpD3D);
+	if (FAILED(hr)) {
+		Shutdown();
+		return false;
+	}
+
 	mpD3DHolder = pD3DHolder;
 	if (mpD3DHolder)
 		mpD3DHolder->AddRef();
@@ -1137,7 +1361,7 @@ bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVD
 	mpData->mFenceManager.Init(mpD3DDevice);
 
 	vdrefptr<IDirect3DSwapChain9> chain;
-	HRESULT hr = mpD3DDevice->GetSwapChain(0, ~chain);
+	hr = mpD3DDevice->GetSwapChain(0, ~chain);
 	if (FAILED(hr)) {
 		Shutdown();
 		return false;
@@ -1173,6 +1397,7 @@ bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVD
 
 	mbBSDirty = true;
 	mbRSDirty = true;
+	mbVPDirty = true;
 	mDirtySamplerStates = 0xffff;
 	memset(mD3DBlendStates, 0xA5, sizeof mD3DBlendStates);
 	memset(mD3DRasterizerStates, 0xA5, sizeof mD3DRasterizerStates);
@@ -1189,42 +1414,17 @@ bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVD
 void VDTContextD3D9::Shutdown() {
 	ShutdownAllResources();
 
-	if (mpDefaultSS) {
-		mpDefaultSS->Release();
-		mpDefaultSS = NULL;
-	}
-
-	if (mpDefaultRS) {
-		mpDefaultRS->Release();
-		mpDefaultRS = NULL;
-	}
-
-	if (mpDefaultBS) {
-		mpDefaultBS->Release();
-		mpDefaultBS = NULL;
-	}
-
-	if (mpDefaultRT) {
-		mpDefaultRT->Release();
-		mpDefaultRT = NULL;
-	}
+	vdsaferelease <<= mpDefaultSS,
+		mpDefaultRS,
+		mpDefaultBS,
+		mpDefaultRT;
 
 	mpData->mFenceManager.Shutdown();
 
-	if (mpD3DDevice) {
-		mpD3DDevice->Release();
-		mpD3DDevice = NULL;
-	}
-
-	if (mpD3DDeviceEx) {
-		mpD3DDeviceEx->Release();
-		mpD3DDeviceEx = NULL;
-	}
-
-	if (mpD3DHolder) {
-		mpD3DHolder->Release();
-		mpD3DHolder = NULL;
-	}
+	vdsaferelease <<= mpD3DDevice,
+		mpD3DDeviceEx,
+		mpD3D,
+		mpD3DHolder;
 
 	if (mpData) {
 		if (mpData->mhmodD3D9)
@@ -1238,7 +1438,21 @@ void VDTContextD3D9::Shutdown() {
 	mpEndEvent = NULL;
 }
 
-bool VDTContextD3D9::CreateReadbackBuffer(uint32 width, uint32 height, uint32 format, IVDTReadbackBuffer **ppbuffer) {
+bool VDTContextD3D9::IsFormatSupportedTexture2D(VDTFormat format) {
+	D3DFORMAT d3dfmt = GetSurfaceFormatD3D9(format);
+	if (!d3dfmt)
+		return false;
+
+	D3DDISPLAYMODE dm;
+	HRESULT hr = mpD3D->GetAdapterDisplayMode(mpData->mAdapter, &dm);
+	if (FAILED(hr))
+		return false;
+
+	hr = mpD3D->CheckDeviceFormat(mpData->mAdapter, mpData->mDeviceType, dm.Format, 0, D3DRTYPE_TEXTURE, d3dfmt);
+	return SUCCEEDED(hr);
+}
+
+bool VDTContextD3D9::CreateReadbackBuffer(uint32 width, uint32 height, VDTFormat format, IVDTReadbackBuffer **ppbuffer) {
 	vdrefptr<VDTReadbackBufferD3D9> surf(new VDTReadbackBufferD3D9);
 
 	if (!surf->Init(this, width, height, format))
@@ -1248,7 +1462,7 @@ bool VDTContextD3D9::CreateReadbackBuffer(uint32 width, uint32 height, uint32 fo
 	return true;
 }
 
-bool VDTContextD3D9::CreateSurface(uint32 width, uint32 height, uint32 format, VDTUsage usage, IVDTSurface **ppsurface) {
+bool VDTContextD3D9::CreateSurface(uint32 width, uint32 height, VDTFormat format, VDTUsage usage, IVDTSurface **ppsurface) {
 	vdrefptr<VDTSurfaceD3D9> surf(new VDTSurfaceD3D9);
 
 	if (!surf->Init(this, width, height, format, usage))
@@ -1258,7 +1472,7 @@ bool VDTContextD3D9::CreateSurface(uint32 width, uint32 height, uint32 format, V
 	return true;
 }
 
-bool VDTContextD3D9::CreateTexture2D(uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **pptex) {
+bool VDTContextD3D9::CreateTexture2D(uint32 width, uint32 height, VDTFormat format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **pptex) {
 	vdrefptr<VDTTexture2DD3D9> tex(new VDTTexture2DD3D9);
 
 	if (!tex->Init(this, width, height, format, mipcount, usage, initData))
@@ -1268,20 +1482,47 @@ bool VDTContextD3D9::CreateTexture2D(uint32 width, uint32 height, uint32 format,
 	return true;
 }
 
-bool VDTContextD3D9::CreateVertexProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTVertexProgram **program) {
+bool VDTContextD3D9::CreateVertexProgram(VDTProgramFormat format, VDTData data, IVDTVertexProgram **program) {
 	vdrefptr<VDTVertexProgramD3D9> vp(new VDTVertexProgramD3D9);
 
-	if (!vp->Init(this, format, data, length))
+	if (format == kVDTPF_MultiTarget) {
+		static const uint32 kVSTargets[]={
+			0x62dfbe78,		// vs_1_1
+			0x62e80d3e,		// vs_2_0
+			0x22e56987,		// vs_3_0
+			0
+		};
+
+		if (!VDTExtractMultiTargetProgram(data, kVSTargets, data))
+			return false;
+	} else if (format != kVDTPF_D3D9ByteCode)
+		return false;
+
+	if (!vp->Init(this, format, data.mpData, data.mLength))
 		return false;
 
 	*program = vp.release();
 	return true;
 }
 
-bool VDTContextD3D9::CreateFragmentProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTFragmentProgram **program) {
+bool VDTContextD3D9::CreateFragmentProgram(VDTProgramFormat format, VDTData data, IVDTFragmentProgram **program) {
 	vdrefptr<VDTFragmentProgramD3D9> fp(new VDTFragmentProgramD3D9);
 
-	if (!fp->Init(this, format, data, length))
+	if (format == kVDTPF_MultiTarget) {
+		static const uint32 kPSTargets[]={
+			0x065fc32e,		// ps_1_1
+			0x065d84b8,		// ps_2_0
+			0x065d84e9,		// ps_2_a
+			0x065d84ea,		// ps_2_b
+			0x465a1781,		// ps_3_0
+			0
+		};
+		if (!VDTExtractMultiTargetProgram(data, kPSTargets, data))
+			return false;
+	} else if (format != kVDTPF_D3D9ByteCode)
+		return false;
+
+	if (!fp->Init(this, format, data.mpData, data.mLength))
 		return false;
 
 	*program = fp.release();
@@ -1315,6 +1556,16 @@ bool VDTContextD3D9::CreateIndexBuffer(uint32 size, bool index32, bool dynamic, 
 		return false;
 
 	*ppbuffer = ib.release();
+	return true;
+}
+
+bool VDTContextD3D9::CreateSwapChain(const VDTSwapChainDesc& desc, IVDTSwapChain **swapChain) {
+	vdrefptr<VDTSwapChainD3D9> sc(new VDTSwapChainD3D9);
+
+	if (!sc->Init(this, desc))
+		return false;
+
+	*swapChain = sc.release();
 	return true;
 }
 
@@ -1430,6 +1681,8 @@ void VDTContextD3D9::SetRenderTarget(uint32 index, IVDTSurface *surface) {
 
 	if (FAILED(hr))
 		ProcessHRESULT(hr);
+
+	mbVPDirty = true;
 }
 
 void VDTContextD3D9::SetBlendState(IVDTBlendState *state) {
@@ -1452,6 +1705,15 @@ void VDTContextD3D9::SetRasterizerState(IVDTRasterizerState *state) {
 
 	mpCurrentRS = static_cast<VDTRasterizerStateD3D9 *>(state);
 	mbRSDirty = true;
+}
+
+VDTViewport VDTContextD3D9::GetViewport() {
+	return mViewport;
+}
+
+void VDTContextD3D9::SetViewport(const VDTViewport& vp) {
+	mViewport = vp;
+	mbVPDirty = true;
 }
 
 void VDTContextD3D9::SetSamplerStates(uint32 baseIndex, uint32 count, IVDTSamplerState *const *states) {
@@ -1780,6 +2042,10 @@ bool VDTContextD3D9::ConnectSurfaces() {
 	bool success = mpDefaultRT->Init(this, surf, NULL);
 	surf->Release();
 
+	// Invalidate viewport as render target size has changed without an explicit
+	// SetRenderTarget().
+	mbVPDirty = true;
+
 	return success;
 }
 
@@ -1794,6 +2060,34 @@ bool VDTContextD3D9::CommitState() {
 		mbRSDirty = false;
 
 		UpdateRenderStates(VDTRasterizerStateD3D9::kRenderStateIDs, VDTRasterizerStateD3D9::kStateCount, mD3DRasterizerStates, mpCurrentRS->mRenderStates);
+	}
+
+	if (mbVPDirty) {
+		mbVPDirty = false;
+
+		VDTSurfaceDesc desc;
+		mpCurrentRT->GetDesc(desc);
+
+		const float invW = 1.0f / (float)desc.mWidth;
+		const float invH = 1.0f / (float)desc.mHeight;
+
+		const float vpc[4] = {
+			(float)mViewport.mWidth  * invW,
+			(float)mViewport.mHeight * invH,
+			(2.0f*mViewport.mX - 1.0f + mViewport.mWidth  - desc.mWidth ) *  invW,
+			(2.0f*mViewport.mY - 1.0f + mViewport.mHeight - desc.mHeight) * -invH,
+		};
+
+		mpD3DDevice->SetVertexShaderConstantF(0, vpc, 1);
+
+		D3DVIEWPORT9 vp;
+		vp.X = 0;
+		vp.Y = 0;
+		vp.Width = desc.mWidth;
+		vp.Height = desc.mHeight;
+		vp.MinZ = mViewport.mMinZ;
+		vp.MaxZ = mViewport.mMaxZ;
+		mpD3DDevice->SetViewport(&vp);
 	}
 
 	if (mDirtySamplerStates) {

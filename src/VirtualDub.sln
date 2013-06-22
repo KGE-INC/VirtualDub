@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 9.00
 # Visual Studio 2005
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub\VirtualDub.vcproj", "{0766DAC1-1BC2-4FC8-BDDA-E083FC2F56F4}"
 	ProjectSection(ProjectDependencies) = postProject
-		{6CC5D826-A36B-40B6-A40B-63733D47C4B5} = {6CC5D826-A36B-40B6-A40B-63733D47C4B5}
-		{146714D9-1D90-4D50-B830-F453484EC2CD} = {146714D9-1D90-4D50-B830-F453484EC2CD}
 		{A8006C9B-E3C0-436D-8046-C3180B939E7A} = {A8006C9B-E3C0-436D-8046-C3180B939E7A}
 		{C2082189-3ECB-4079-91FA-89D3C8A305C0} = {C2082189-3ECB-4079-91FA-89D3C8A305C0}
 		{73619A81-5E8C-48E9-A96A-60A48D8A65C7} = {73619A81-5E8C-48E9-A96A-60A48D8A65C7}
@@ -18,6 +16,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub\Vi
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE} = {81ADB599-84B5-4FF3-B781-FB39D5CC63EE}
 		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1} = {E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE} = {E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC} = {D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}
+		{146714D9-1D90-4D50-B830-F453484EC2CD} = {146714D9-1D90-4D50-B830-F453484EC2CD}
+		{6CC5D826-A36B-40B6-A40B-63733D47C4B5} = {6CC5D826-A36B-40B6-A40B-63733D47C4B5}
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84} = {6638DCCD-01B4-49F8-BC66-696648AA0B84}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kasumi", "Kasumi\Kasumi.vcproj", "{0D252872-7542-4232-8D02-53F9182AEE15}"
@@ -101,9 +103,19 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VDFilters", "VDFilters\VDFi
 		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VDCapture", "VDCapture\VDCapture.vcproj", "{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VDDisplay", "VDDisplay\VDDisplay.vcproj", "{6638DCCD-01B4-49F8-BC66-696648AA0B84}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SourceCodeControl) = preSolution
-		SccNumberOfProjects = 26
+		SccNumberOfProjects = 28
 		SccLocalPath0 = .
 		SccProjectUniqueName1 = VirtualDub\\VirtualDub.vcproj
 		SccLocalPath1 = .
@@ -180,6 +192,12 @@ Global
 		SccProjectUniqueName25 = VDFilters\\VDFilters.vcproj
 		SccLocalPath25 = .
 		SccProjectFilePathRelativizedFromConnection25 = VDFilters\\
+		SccProjectUniqueName26 = VDCapture\\VDCapture.vcproj
+		SccLocalPath26 = .
+		SccProjectFilePathRelativizedFromConnection26 = VDCapture\\
+		SccProjectUniqueName27 = VDDisplay\\VDDisplay.vcproj
+		SccLocalPath27 = .
+		SccProjectFilePathRelativizedFromConnection27 = VDDisplay\\
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -450,6 +468,27 @@ Global
 		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|Win32.Build.0 = Release|Win32
 		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|x64.ActiveCfg = Release|x64
 		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|x64.Build.0 = Release|x64
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Debug|Win32.ActiveCfg = Debug|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Debug|Win32.Build.0 = Debug|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Debug|x64.ActiveCfg = Debug|x64
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Debug|x64.Build.0 = Debug|x64
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Helpfile|Win32.ActiveCfg = Release|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Helpfile|x64.ActiveCfg = Release|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Release|Win32.ActiveCfg = Release|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Release|Win32.Build.0 = Release|Win32
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Release|x64.ActiveCfg = Release|x64
+		{D6C8E0F0-B596-4F62-A5A8-760F425B2BAC}.Release|x64.Build.0 = Release|x64
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Debug|Win32.Build.0 = Debug|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Debug|x64.ActiveCfg = Debug|x64
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Debug|x64.Build.0 = Debug|x64
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Helpfile|Win32.ActiveCfg = Release|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Helpfile|Win32.Build.0 = Release|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Helpfile|x64.ActiveCfg = Release|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Release|Win32.ActiveCfg = Release|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Release|Win32.Build.0 = Release|Win32
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Release|x64.ActiveCfg = Release|x64
+		{6638DCCD-01B4-49F8-BC66-696648AA0B84}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

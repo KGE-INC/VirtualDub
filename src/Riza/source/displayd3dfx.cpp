@@ -29,7 +29,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Riza/direct3d.h>
 #include "d3dxfx.h"
-#include "displaydrv.h"
+#include <vd2/VDDisplay/displaydrv.h>
 #include <vd2/Riza/displaydrvdx9.h>
 
 ///////////////////////////////////////////////////////////////////////////
@@ -37,10 +37,10 @@
 class VDD3D9TextureGeneratorFullSizeRTT : public vdrefcounted<IVDD3D9TextureGenerator> {
 public:
 	bool GenerateTexture(VDD3D9Manager *pManager, IVDD3D9Texture *pTexture) {
-		const D3DPRESENT_PARAMETERS& parms = pManager->GetPresentParms();
+		const D3DDISPLAYMODE& dmode = pManager->GetDisplayMode();
 
-		int w = parms.BackBufferWidth;
-		int h = parms.BackBufferHeight;
+		int w = dmode.Width;
+		int h = dmode.Height;
 
 		pManager->AdjustTextureSize(w, h);
 
@@ -69,10 +69,10 @@ bool VDCreateD3D9TextureGeneratorFullSizeRTT(IVDD3D9TextureGenerator **ppGenerat
 class VDD3D9TextureGeneratorFullSizeRTT16F : public vdrefcounted<IVDD3D9TextureGenerator> {
 public:
 	bool GenerateTexture(VDD3D9Manager *pManager, IVDD3D9Texture *pTexture) {
-		const D3DPRESENT_PARAMETERS& parms = pManager->GetPresentParms();
+		const D3DDISPLAYMODE& dmode = pManager->GetDisplayMode();
 
-		int w = parms.BackBufferWidth;
-		int h = parms.BackBufferHeight;
+		int w = dmode.Width;
+		int h = dmode.Height;
 
 		pManager->AdjustTextureSize(w, h);
 
@@ -259,7 +259,7 @@ protected:
 	bool IsValid();
 	bool IsFramePending() { return mbSwapChainPresentPending; }
 	void SetFilterMode(FilterMode mode);
-	void SetFullScreen(bool fs);
+	void SetFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh);
 
 	bool Tick(int id);
 	void Poll();
@@ -349,6 +349,9 @@ protected:
 	bool				mbSwapChainImageValid;
 	bool				mbFirstPresent;
 	bool				mbFullScreen;
+	uint32				mFullScreenWidth;
+	uint32				mFullScreenHeight;
+	uint32				mFullScreenRefreshRate;
 	bool				mbClipToMonitor;
 
 	VDAtomicInt			mTickPending;
@@ -441,6 +444,9 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX(bool clipToMonitor)
 	, mbSwapChainPresentPolling(false)
 	, mbFirstPresent(false)
 	, mbFullScreen(false)
+	, mFullScreenWidth(0)
+	, mFullScreenHeight(0)
+	, mFullScreenRefreshRate(0)
 	, mbClipToMonitor(clipToMonitor)
 	, mTickPending(0)
 	, mpD3DTempTexture(NULL)
@@ -524,7 +530,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, HMONITOR hmonitor, const VDV
 	}
 
 	if (mbFullScreen)
-		mpManager->AdjustFullScreen(true);
+		mpManager->AdjustFullScreen(true, mFullScreenWidth, mFullScreenHeight, mFullScreenRefreshRate);
 
 	mpD3DDevice = mpManager->GetDevice();
 
@@ -799,7 +805,7 @@ void VDVideoDisplayMinidriverD3DFX::Shutdown() {
 
 	if (mpManager) {
 		if (mbFullScreen)
-			mpManager->AdjustFullScreen(false);
+			mpManager->AdjustFullScreen(false, 0, 0, 0);
 		VDDeinitDirect3D9(mpManager, this);
 		mpManager = NULL;
 	}
@@ -826,12 +832,15 @@ void VDVideoDisplayMinidriverD3DFX::SetFilterMode(FilterMode mode) {
 	mPreferredFilter = mode;
 }
 
-void VDVideoDisplayMinidriverD3DFX::SetFullScreen(bool fs) {
+void VDVideoDisplayMinidriverD3DFX::SetFullScreen(bool fs, uint32 w, uint32 h, uint32 refresh) {
 	if (mbFullScreen != fs) {
 		mbFullScreen = fs;
+		mFullScreenWidth = w;
+		mFullScreenHeight = h;
+		mFullScreenRefreshRate = refresh;
 
 		if (mpManager)
-			mpManager->AdjustFullScreen(fs);
+			mpManager->AdjustFullScreen(fs, w, h, refresh);
 	}
 }
 

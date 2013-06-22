@@ -240,7 +240,7 @@ void AVIOutputWAV::WriteHeader(bool initial) {
 		dwHeader[5] = 0;
 
 		if (!initial)
-			*(uint64 *)&dwHeader[4] = mBytesWritten;
+			*(uint64 *)&dwHeader[4] = mBytesWritten + 24;
 
 		memcpy(buffer.alloc(24), dwHeader, 24);
 	} else {

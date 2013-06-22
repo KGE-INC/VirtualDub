@@ -22,6 +22,7 @@ public:
 
 	bool	Create(VDGUIHandle hwndParent);
 	void	Destroy();
+	void	Close();
 
 	void	Show();
 	void	Hide();
@@ -56,6 +57,7 @@ protected:
 	void EnableControl(uint32 id, bool enabled);
 	void ShowControl(uint32 id, bool visible);
 
+	vdrect32 GetControlPos(uint32 id);
 	vdrect32 GetControlScreenPos(uint32 id);
 
 	void SetCaption(uint32 id, const wchar_t *format);
@@ -125,6 +127,7 @@ protected:
 	virtual bool OnOK();
 	virtual bool OnCancel();
 	virtual void OnSize();
+	virtual bool OnClose();
 	virtual void OnDestroy();
 	virtual bool OnTimer(uint32 id);
 	virtual bool OnErase(VDZHDC hdc);
@@ -199,7 +202,7 @@ public:
 	void Relayout(int width, int height);
 	void Add(uint32 id, int alignment);
 
-	void Erase(VDZHDC hdc = 0);
+	void Erase(const VDZHDC *phdc);
 
 protected:
 	struct ControlEntry {

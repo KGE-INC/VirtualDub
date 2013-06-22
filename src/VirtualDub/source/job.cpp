@@ -133,17 +133,35 @@ void JobScriptOutput::adds(const char *s) {
 }
 
 void JobScriptOutput::addf(const char *fmt, ...) {
-	char buf[8192];
+	char buf[256];
+	char *bufptr = buf;
+
 	va_list val;
-	long l;
-
 	va_start(val, fmt);
-	_vsnprintf(buf, sizeof buf, fmt, val);
-	va_end(val);
-	buf[sizeof buf-1]=0;
 
-	l = strlen(buf);
-	adds(buf);
+	int len = _vsnprintf(buf, (sizeof buf) - 1, fmt, val);
+
+	if ((unsigned)len >= sizeof buf) {
+		len = _vscprintf(fmt, val);
+
+		if (len >= 0) {
+			bufptr = (char *)malloc(len + 1);
+
+			len = _vsnprintf(bufptr, len, fmt, val);
+		}
+	}
+
+	va_end(val);
+
+	if (len < 0)
+		throw MyInternalError("Unable to add formatted line to script.");
+
+	bufptr[len]=0;
+
+	adds(bufptr);
+
+	if (bufptr && bufptr != buf)
+		free(bufptr);
 }
 
 const JobScriptOutput::Script& JobScriptOutput::getscript() {
@@ -162,7 +180,6 @@ namespace {
 
 void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditListMode editListMode = kVDJobEditListMode_Include, bool bIncludeTextInfo = true) {
 	char *mem= NULL;
-	char buf[4096];
 	long l;
 
 	int audioSourceMode = g_project->GetAudioSourceMode();
@@ -177,16 +194,32 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 			// check if we have options to write out
 			const InputFileOptions *opts = g_project->GetAudioSourceOptions();
 			if (opts) {
-				int l;
-				char buf[256];
+				// get raw required length for options
+				const int rawlen = opts->write(NULL, 0);
 
-				l = opts->write(buf, (sizeof buf)/7*3);
+				if (rawlen >= 0) {
+					// compute buffer size to needed for both raw and base64 string
+					const size_t base64len = (((size_t)rawlen + 2) / 3) * 4 + 1;
+					const size_t buflen = (size_t)rawlen + base64len;
 
-				if (l) {
-					membase64(buf+l, (char *)buf, l);
+					char buf[256];
+					char *bufp = buf;
 
-					output.addf("VirtualDub.audio.SetSource(\"%s\", \"%s\", \"%s\");", encodedFileName.c_str(), encodedDriverName.c_str(), buf+l);
-					break;
+					vdblock<char> bufalloc;
+
+					if (buflen > sizeof(buf)) {
+						bufalloc.resize(buflen);
+						bufp = bufalloc.data();
+					}
+
+					int len = opts->write(bufp, rawlen);
+
+					if (len) {
+						membase64(bufp+len, bufp, len);
+
+						output.addf("VirtualDub.audio.SetSource(\"%s\", \"%s\", \"%s\");", encodedFileName.c_str(), encodedDriverName.c_str(), bufp+len);
+						break;
+					}
 				}
 			}
 
@@ -224,6 +257,8 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 	output.addf("VirtualDub.audio.SetClipMode(%d,%d);",
 			opt->audio.fStartAudio,
 			opt->audio.fEndAudio);
+
+	output.addf("VirtualDub.audio.SetEditMode(%d);", opt->audio.mbApplyVideoTimeline);
 
 	output.addf("VirtualDub.audio.SetConversion(%d,%d,%d,0,%d);",
 			opt->audio.new_rate,
@@ -314,9 +349,8 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 			if (mem) {
 				membase64(mem+l, mem, l);
 				// urk... Windows Media 9 VCM uses a very large configuration struct (~7K pre-BASE64).
-				sprintf(buf, "VirtualDub.video.SetCompData(%d,\"", l);
-
-				VDStringA line(buf);
+				VDStringA line;
+				line.sprintf("VirtualDub.video.SetCompData(%d,\"", l);
 				line += (mem+l);
 				line += "\");";
 				output.adds(line.c_str());

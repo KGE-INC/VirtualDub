@@ -49,7 +49,7 @@
 #include <vd2/system/protscope.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/services.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 #include <vd2/Riza/direct3d.h>
 #include <vd2/VDLib/PortableRegistry.h>
 #include <vd2/VDLib/win32/DebugOutputFilter.h>
@@ -110,7 +110,7 @@ extern void DetectDivX();
 void VDDumpChangeLog();
 
 bool InitApplication(HINSTANCE hInstance);
-bool InitInstance( HANDLE hInstance, int nCmdShow);
+bool InitInstance( HANDLE hInstance, int nCmdShow, bool topmost);
 void ParseCommandLine(const wchar_t *lpCmdLine);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -546,7 +546,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 		nCmdShow = SW_SHOWMAXIMIZED;
 	}
 
-    if (!InitInstance(hInstance, nCmdShow))
+	if (!InitInstance(hInstance, nCmdShow, cmdLine.FindAndRemoveSwitch(L"topmost")))
         return (FALSE);
 
 	// Autoload filters.
@@ -679,12 +679,15 @@ bool InitApplication(HINSTANCE hInstance) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool InitInstance( HANDLE hInstance, int nCmdShow) {
+bool InitInstance( HANDLE hInstance, int nCmdShow, bool topmost) {
 	VDStringW versionFormat(VDLoadStringW32(IDS_TITLE_INITIAL, true));
+
+	DWORD dwExStyle = topmost ? WS_EX_TOPMOST : 0;
 
     // Create a main window for this application instance. 
 	if (GetVersion() < 0x80000000) {
-		g_hWnd = CreateWindowW(
+		g_hWnd = CreateWindowExW(
+			dwExStyle,
 			(LPCWSTR)VDUIFrame::Class(),
 			L"",
 			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
@@ -698,7 +701,8 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 			NULL                            // Pointer not needed.
 		);
 	} else {
-		g_hWnd = CreateWindowA(
+		g_hWnd = CreateWindowExA(
+			dwExStyle,
 			(LPCSTR)VDUIFrame::Class(),
 			"",
 			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
@@ -824,6 +828,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /s <script>               Run a script\n"
 						"  /safecpu                  Do not use CPU extensions on startup\n"
 						"  /slave <file>             Join shared job queue in autostart mode\n"
+						"  /topmost                  Create window as always-on-top\n"
 						"  /vdxadebug                Enable filter acceleration debug window\n"
 						"  /x                        Exit when complete\n"
 						);
@@ -995,7 +1000,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					VDAddPluginModule(token);
 					VDInitInputDrivers();
 
-					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token));
+					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token).c_str());
 				}
 				else if (!wcscmp(token, L"h")) {
 					SetUnhandledExceptionFilter(NULL);

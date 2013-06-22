@@ -420,12 +420,12 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 		}
 	}
 
-	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelVP, sizeof kVDFilterAccelVP, &mpVP)) {
+	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelVP), &mpVP)) {
 		ShutdownCallback2();
 		return false;
 	}
 
-	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelVP_Clear, sizeof kVDFilterAccelVP_Clear, &mpVPClear)) {
+	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelVP_Clear), &mpVPClear)) {
 		ShutdownCallback2();
 		return false;
 	}
@@ -456,27 +456,27 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 		return false;
 	}
 
-	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_ExtractPlane, sizeof kVDFilterAccelFP_ExtractPlane, &mpFPExtractPlane)) {
+	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelFP_ExtractPlane), &mpFPExtractPlane)) {
 		ShutdownCallback2();
 		return false;
 	}
 
-	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_RGBToYUV, sizeof kVDFilterAccelFP_RGBToYUV, &mpFPConvertRGBToYUV)) {
+	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelFP_RGBToYUV), &mpFPConvertRGBToYUV)) {
 		ShutdownCallback2();
 		return false;
 	}
 
-	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_YUVToRGB, sizeof kVDFilterAccelFP_YUVToRGB, &mpFPConvertYUVToRGB)) {
+	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelFP_YUVToRGB), &mpFPConvertYUVToRGB)) {
 		ShutdownCallback2();
 		return false;
 	}
 
-	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_Null, sizeof kVDFilterAccelFP_Null, &mpFPNull)) {
+	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelFP_Null), &mpFPNull)) {
 		ShutdownCallback2();
 		return false;
 	}
 
-	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_Clear, sizeof kVDFilterAccelFP_Clear, &mpFPClear)) {
+	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, VDTDataView(kVDFilterAccelFP_Clear), &mpFPClear)) {
 		ShutdownCallback2();
 		return false;
 	}
@@ -587,7 +587,7 @@ bool VDFilterAccelEngine::CommitBuffer(VDFilterFrameBufferAccel *buf, bool rende
 	const uint32 h = VDCeilToPow2(buf->GetHeight());
 
 	vdrefptr<IVDTTexture2D> tex;
-	if (!mpTC->CreateTexture2D(w, h, kVDTF_A8R8G8B8, 1, renderable ? kVDTUsage_Render : kVDTUsage_Default, NULL, ~tex))
+	if (!mpTC->CreateTexture2D(w, h, kVDTF_B8G8R8A8, 1, renderable ? kVDTUsage_Render : kVDTUsage_Default, NULL, ~tex))
 		return false;
 
 	buf->SetTexture(tex);
@@ -893,6 +893,11 @@ void VDFilterAccelEngine::DownloadCallback2a(DownloadMsg& msg) {
 
 		mpTC->SetRenderTarget(0, rt);
 
+		VDTSurfaceDesc desc;
+		rt->GetDesc(desc);
+		const VDTViewport vp = { 0, 0, desc.mWidth, desc.mHeight, 0.0f, 1.0f };
+		mpTC->SetViewport(vp);
+
 		for(uint32 plane = 0; plane < 3; ++plane) {
 			static const float kExtractFPConstants[2][3][8]={
 				// RGB -> YUV
@@ -915,12 +920,12 @@ void VDFilterAccelEngine::DownloadCallback2a(DownloadMsg& msg) {
 			int tilew4 = (w + 3) >> 2;
 			int y = plane * h;
 
-			vxs[0].x = -invRTWidth - 1.0f;
-			vxs[0].y = 1.0f - (float)(2*y - 1)*invRTHeight;
-			vxs[1].x = (float)(2*tilew4 - 1)*invRTWidth - 1.0f;
+			vxs[0].x = -1.0f;
+			vxs[0].y = 1.0f - (float)(2*y)*invRTHeight;
+			vxs[1].x = (float)(2*tilew4)*invRTWidth - 1.0f;
 			vxs[1].y = vxs[0].y;
 			vxs[2].x = vxs[0].x;
-			vxs[2].y = 1.0f - (float)(2*(y+h) - 1)*invRTHeight;
+			vxs[2].y = 1.0f - (float)(2*(y+h))*invRTHeight;
 			vxs[3].x = vxs[1].x;
 			vxs[3].y = vxs[2].y;
 

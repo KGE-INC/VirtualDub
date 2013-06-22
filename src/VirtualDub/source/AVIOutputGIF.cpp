@@ -45,6 +45,8 @@ public:
 	void partialWriteEnd();
 
 private:
+	void FlushFrame();
+
 	IVDFileAsync *mpAsync;
 	vdblock<uint8>	mPrevFrameBuffer;
 	vdblock<uint8>	mCurFrameBuffer;
@@ -53,16 +55,21 @@ private:
 	uint32			mFrameCount;
 	int				mLoopCount;
 
+	uint32			mPrevTimestamp;
+
 	VDPixmapLayout	mSrcLayout;
 	VDPixmapLayout	mDstLayout;
 
 	VDPixmapBuffer	mPreviousFrame;
 	VDPixmapBuffer	mConvertBuffer;
+	VDPixmapBuffer	mPrevConvertBuffer;
+	vdfastvector<uint8> mFrameData;
 };
 
 AVIVideoGIFOutputStream::AVIVideoGIFOutputStream(IVDFileAsync *pAsync)
 	: mpAsync(pAsync)
 	, mFrameCount(0)
+	, mPrevTimestamp(0)
 {
 }
 
@@ -82,8 +89,8 @@ void AVIVideoGIFOutputStream::init(int loopCount) {
 
 	VDMakeBitmapCompatiblePixmapLayout(mSrcLayout, bih->biWidth, bih->biHeight, format, variant);
 
-	if (mSrcLayout.format != nsVDPixmap::kPixFormat_XRGB8888)
-		mConvertBuffer.init(bih->biWidth, bih->biHeight, nsVDPixmap::kPixFormat_XRGB8888);
+	mConvertBuffer.init(bih->biWidth, bih->biHeight, nsVDPixmap::kPixFormat_XRGB8888);
+	mPrevConvertBuffer.init(bih->biWidth, bih->biHeight, nsVDPixmap::kPixFormat_XRGB8888);
 
 	mPreviousFrame.init(bih->biWidth, bih->biHeight, nsVDPixmap::kPixFormat_XRGB8888);
 
@@ -158,6 +165,9 @@ void AVIVideoGIFOutputStream::init(int loopCount) {
 }
 
 void AVIVideoGIFOutputStream::finalize() {
+	// Flush out any remaining frame.
+	FlushFrame();
+
 	// Write GIF terminator byte.
 	static const uint8 kTerminator = 0x3B;
 	mpAsync->FastWrite(&kTerminator, 1);
@@ -187,6 +197,7 @@ namespace {
 		uint8 SearchOctree(uint8 r, uint8 g, uint8 b);
 
 		const uint32 *GetPalette() const { return mPalette; }
+		uint32 GetPaletteSize() const { return mLeafCount; }
 
 	protected:
 		sint16	ReduceNode(sint16 nodeIndex);
@@ -347,6 +358,8 @@ addit:
 	}
 
 	void VDPixmapColorQuantizerOctree::CreatePalette() {
+		memset(mPalette, 0, sizeof mPalette);
+
 		while(mLeafCount > 255)
 			ReduceNode(0);
 
@@ -366,15 +379,19 @@ addit:
 		}
 
 		if (!has_leaves) {
-			uint8 r = (uint8)(((node->mRedTotal*2+1) / node->mColorTotal) >> 1);
-			uint8 g = (uint8)(((node->mGreenTotal*2+1) / node->mColorTotal) >> 1);
-			uint8 b = (uint8)(((node->mBlueTotal*2+1) / node->mColorTotal) >> 1);
+			uint32 n = node->mColorTotal;
 
-			mPalette[palidx] = ((uint32)r << 16) + ((uint32)g << 8) + (uint32)b;
+			if (n) {
+				uint8 r = (uint8)(((node->mRedTotal*2+1) / n) >> 1);
+				uint8 g = (uint8)(((node->mGreenTotal*2+1) / n) >> 1);
+				uint8 b = (uint8)(((node->mBlueTotal*2+1) / n) >> 1);
 
-			node->mColorTotal = palidx;
+				mPalette[palidx] = ((uint32)r << 16) + ((uint32)g << 8) + (uint32)b;
 
-			++palidx;
+				node->mColorTotal = palidx;
+
+				++palidx;
+			}
 		}
 
 		return palidx;
@@ -434,88 +451,73 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 	}
 
 	mPrevFrameBuffer.swap(mCurFrameBuffer);
+	mPrevConvertBuffer.swap(mConvertBuffer);
 
-	VDPixmap pxsrc(VDPixmapFromLayout(mSrcLayout, (void *)pBuffer));
+	if (cbBuffer)
+		VDPixmapBlt(mConvertBuffer, VDPixmapFromLayout(mSrcLayout, (void *)pBuffer));
 
-	if (pxsrc.format != nsVDPixmap::kPixFormat_XRGB8888) {
-		VDPixmapBlt(mConvertBuffer, pxsrc);
-		pxsrc = mConvertBuffer;
-	}
+	VDPixmap pxsrc = mConvertBuffer;
 
 	VDPixmap pxdst(VDPixmapFromLayout(mDstLayout, mCurFrameBuffer.data()));
 
-#if 0
-	// dither
-	for(uint32 y=0; y<pxdst.h; ++y) {
-		const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
-		uint8 *dst = (uint8 *)vdptroffset(pxdst.data, y * pxdst.pitch);
-
-		if (1) {
-			static const sint32 kDitherMatrixR[4][4]={
-				0x0000,0x8000,0x2000,0xA000,
-				0xC000,0x4000,0xE000,0x6000,
-				0x3000,0xB000,0x1000,0x9000,
-				0xF000,0x7000,0xD000,0x5000,
-			};
-			static const sint32 kDitherMatrixGB[4][4]={
-				0x2000,0xA000,0x0000,0x8000,
-				0xE000,0x6000,0xC000,0x4000,
-				0x1000,0x9000,0x3000,0xB000,
-				0xD000,0x5000,0xF000,0x7000,
-			};
-
-			const sint32 *pDitherRowR = kDitherMatrixR[y & 3];
-			const sint32 *pDitherRowG = kDitherMatrixGB[(y+2) & 3];
-			const sint32 *pDitherRowB = kDitherMatrixGB[y & 3];
-			for(uint32 x=0; x<pxdst.w; ++x) {
-				sint32 ditherOffsetR = pDitherRowR[x & 3];
-				sint32 ditherOffsetG = pDitherRowG[x & 3];
-				sint32 ditherOffsetB = pDitherRowB[x & 3];
-				sint32 r = ((sint32)src[2] * 0x506 + ditherOffsetR) >> 16;
-				sint32 g = ((sint32)src[1] * 0x607 + ditherOffsetG) >> 16;
-				sint32 b = ((sint32)src[0] * 0x506 + ditherOffsetB) >> 16;
-				src += 4;
-
-				*dst++ = (uint8)(r*42 + g*6 + b);
-			}
-		} else {
-			for(uint32 x=0; x<pxdst.w; ++x) {
-				sint32 r = ((sint32)src[2] + 25) / 51;
-				sint32 g = ((sint32)src[1]*2 + 42) / 85;
-				sint32 b = ((sint32)src[0] + 25) / 51;
-				src += 4;
-
-				*dst++ = (uint8)(r*42 + g*6 + b);
-			}
-		}
-	}
-#else
 	VDPixmapColorQuantizerOctree quant;
 	quant.Init();
 
-	for(uint32 y=0; y<pxdst.h; ++y) {
-		const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
+	if (!mFrameCount) {
+		for(uint32 y=0; y<pxdst.h; ++y) {
+			const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
 
-		for(uint32 x=0; x<pxdst.w; ++x) {
-			quant.InsertColor(src[2], src[1], src[0]);
-			src += 4;
+			for(uint32 x=0; x<pxdst.w; ++x) {
+				quant.InsertColor(src[2], src[1], src[0]);
+				src += 4;
+			}
 		}
-	}
 
-	quant.CreatePalette();
+		quant.CreatePalette();
 
-	for(uint32 y=0; y<pxdst.h; ++y) {
-		const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
-		uint8 *dst = (uint8 *)vdptroffset(pxdst.data, y * pxdst.pitch);
+		for(uint32 y=0; y<pxdst.h; ++y) {
+			const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
+			uint8 *dst = (uint8 *)vdptroffset(pxdst.data, y * pxdst.pitch);
 
-		for(uint32 x=0; x<pxdst.w; ++x) {
-			*dst++ = quant.SearchOctree(src[2], src[1], src[0]);
-			src += 4;
+			for(uint32 x=0; x<pxdst.w; ++x) {
+				*dst++ = quant.SearchOctree(src[2], src[1], src[0]);
+				src += 4;
+			}
+		}
+	} else {
+		for(uint32 y=0; y<pxdst.h; ++y) {
+			const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
+			const uint8 *prev = (const uint8 *)vdptroffset(mPrevConvertBuffer.data, y * mPrevConvertBuffer.pitch);
+
+			for(uint32 x=0; x<pxdst.w; ++x) {
+				if (src[0] != prev[0] || src[1] != prev[1] || src[2] != prev[2])
+					quant.InsertColor(src[2], src[1], src[0]);
+
+				prev += 4;
+				src += 4;
+			}
+		}
+
+		quant.CreatePalette();
+
+		for(uint32 y=0; y<pxdst.h; ++y) {
+			const uint8 *src = (const uint8 *)vdptroffset(pxsrc.data, y * pxsrc.pitch);
+			const uint8 *prev = (const uint8 *)vdptroffset(mPrevConvertBuffer.data, y * mPrevConvertBuffer.pitch);
+			uint8 *dst = (uint8 *)vdptroffset(pxdst.data, y * pxdst.pitch);
+
+			for(uint32 x=0; x<pxdst.w; ++x) {
+				if (src[0] != prev[0] || src[1] != prev[1] || src[2] != prev[2])
+					*dst++ = quant.SearchOctree(src[2], src[1], src[0]);
+				else
+					*dst++ = 255;
+
+				prev += 4;
+				src += 4;
+			}
 		}
 	}
 
 	const uint32 *pal = quant.GetPalette();
-#endif
 
 	uint32 w = pxdst.w;
 	uint32 h = pxdst.h;
@@ -534,14 +536,16 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 		uint32 *prevp = (uint32 *)mPreviousFrame.data;
 		uint8 *dst = mPackBuffer.data();
 
-		bool topRegion = false;
+		bool topRegion = true;
+		winx1 = w;
+		winx2 = 0;
 
 		for(uint32 y=0; y<h; ++y, (srcc += w), (srcp += w), (dst += w)) {
 			uint32 x;
 
 //			for(x=0; x<w && srcp[x] == srcc[x]; ++x)
 //				dst[x] = 255;
-			for(x=0; x<w && istrans(prevp[x], curp[x], pal[srcc[x]]); ++x)
+			for(x=0; x<w && (curp[x] == 255 || istrans(prevp[x], curp[x], pal[srcc[x]])); ++x)
 				dst[x] = 255;
 
 			if (x >= w) {
@@ -562,21 +566,51 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 //				if (c == srcp[x])
 //					c = 255;
 //				else
-				if (istrans(prevp[x], curp[x], pal[c]))
-					c = 255;
-				else {
-					x2 = x+1;
-					prevp[x] = pal[c];
+				if (c != 255) {
+					if (istrans(prevp[x], curp[x], pal[c]))
+						c = 255;
+					else {
+						x2 = x+1;
+						prevp[x] = pal[c];
+					}
 				}
 
 				dst[x] = c;
 			}
 
+			// determine min/max
+			uint32 xr = w;
+			while(xr && dst[xr-1] == 255)
+				--xr;
+
+			uint32 xl = 0;
+			while(xl < xr && dst[xl] == 255)
+				++xl;
+
+			// widen window as necessary
+			if (winx1 > xl)
+				winx1 = xl;
+
+			if (winx2 < xr)
+				winx2 = xr;
+
 			winy2 = y+1;
 			vdptrstep(prevp, mPreviousFrame.pitch);
 			vdptrstep(curp, pxsrc.pitch);
 		}
+
+		if (topRegion)
+			winx1 = winx2 = winy1 = winy2 = 0;
 	}
+
+	// bail if the frame is empty and we're not on frame 0
+	if (winx1 >= winx2 || winy1 >= winy2) {
+		++mFrameCount;
+		return;
+	}
+
+	// flush previous frame now that we know the delay
+	FlushFrame();
 
 	// Write GIF graphic control extension.
 	struct GraphicControlExtension {
@@ -594,26 +628,26 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 	gconext.mBlockSize = 4;
 	gconext.mFlags = 0x04;		// do not dispose; no user input; no transparent color
 
-	if (mFrameCount > 0) {
-		double frameToTicksFactor = (double)streamInfo.dwScale / (double)streamInfo.dwRate * 100.0;
-		sint32 time0 = VDRoundToInt((sint32)(mFrameCount - 1) * frameToTicksFactor);
-		sint32 time1 = VDRoundToInt((sint32)mFrameCount * frameToTicksFactor);
-
-		VDWriteUnalignedLEU16(&gconext.mDelayTime, (uint16)(time1 - time0));
-	} else {
-		gconext.mDelayTime[0] = 0;
-		gconext.mDelayTime[1] = 0;
-	}
+	// Note that we will update this in FlushFrame() when we know the next non-empty delta frame.
+	gconext.mDelayTime[0] = 0;
+	gconext.mDelayTime[1] = 0;
 
 	gconext.mTransparentIndex = 0;
 	gconext.mBlockTerminator = 0;
 
-	if (mFrameCount) {
-		gconext.mFlags |= 0x01;
-		gconext.mTransparentIndex = 255;
+	uint32 palsize = 2;
+	int palbits = 1;
+	while(palbits < 8 && palsize < quant.GetPaletteSize() + 1) {
+		palsize += palsize;
+		++palbits;
 	}
 
-	mpAsync->FastWrite(&gconext, sizeof gconext);
+	if (mFrameCount) {
+		gconext.mFlags |= 0x01;
+		gconext.mTransparentIndex = (uint8)(palsize - 1);
+	}
+
+	mFrameData.insert(mFrameData.end(), (const uint8 *)&gconext, (const uint8 *)(&gconext + 1));
 
 	// Write GIF image descriptor.
 	struct ImageDescriptor {
@@ -631,12 +665,12 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 	VDWriteUnalignedLEU16(&imgdesc.mWidth, (uint16)(winx2 - winx1));
 	VDWriteUnalignedLEU16(&imgdesc.mHeight, (uint16)(winy2 - winy1));
 //	imgdesc.mFlags = 0x00;		// no local color table, no interlace, unsorted, LCT size=0
-	imgdesc.mFlags = 0x87;		// use local color table, no interlace, unsorted, LCT size=256
+	imgdesc.mFlags = 0x80 + (uint8)(palbits - 1);		// use local color table, no interlace, unsorted, LCT size=2-256
 
-	mpAsync->FastWrite(&imgdesc, sizeof imgdesc);
+	mFrameData.insert(mFrameData.end(), (const uint8 *)&imgdesc, (const uint8 *)(&imgdesc + 1));
 
 	// write local color table
-	for(int i=0; i<256; ++i) {
+	for(int i=0; i<palsize; ++i) {
 		uint32 rgb = pal[i];
 
 		uint8 c[3] = {
@@ -645,11 +679,14 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 			(uint8)rgb,
 		};
 
-		mpAsync->FastWrite(c, 3);
+		mFrameData.push_back(c[0]);
+		mFrameData.push_back(c[1]);
+		mFrameData.push_back(c[2]);
 	}
 
-	const uint8 kMinimumCodeSize = 0x08;
-	mpAsync->FastWrite(&kMinimumCodeSize, 1);
+	// 1-bit images must use 2 bits per GIF89a spec.
+	const uint8 initialCodeSize = palbits > 1 ? (uint8)palbits : 2;
+	mFrameData.push_back(initialCodeSize);
 
 	// LZW compress image
 	struct DictionaryEntry {
@@ -658,19 +695,25 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 	} dict[4096];
 
 	sint32 hash[256];
-	for(int i=0; i<256; ++i) {
+	for(int i=0; i<256; ++i)
 		hash[i] = -1;
-		dict[i].mPrevAndLastChar = (-1 << 16) + i;
-	}
 
-	int nextEntry = 258;
-	uint32 codebits = 9;
-	sint32 nextBump = 512;
+	for(int i=0; i<palsize; ++i)
+		dict[i].mPrevAndLastChar = (-1 << 16) + i;
+
+	for(int i=palsize; i<256; ++i)
+		dict[i].mPrevAndLastChar = -1;
+
+	const uint32 clearCode = 1 << initialCodeSize;
+	int nextEntry = clearCode + 2;
+	uint32 codebits = initialCodeSize + 1;
+	sint32 nextBump = 1 << codebits;
 
 	uint8 buf[260];
 	uint32 dstidx = 1;
-	uint32 accum = 256;		// start with clear code
+	uint32 accum = clearCode;
 	uint32 accbits = codebits;
+	uint8 colorMask = (uint8)(palsize - 1);
 
 	if (winy2 > winy1) {
 		const uint8 *src = &mPackBuffer[winx1 + w*winy1];
@@ -678,7 +721,7 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 		uint32 winw = winx2 - winx1;
 		uint32 winh = winy2 - winy1;
 
-		sint32 code = src[winx] << 16;
+		sint32 code = (src[winx] & colorMask) << 16;
 		if (++winx >= winw) {
 			src += w;
 			winx = 0;
@@ -686,7 +729,7 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 		}
 
 		while(winh) {
-			uint8 c = src[winx];
+			uint8 c = src[winx] & colorMask;
 			if (++winx >= winw) {
 				src += w;
 				winx = 0;
@@ -723,7 +766,7 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 					buf[0] = 255;
 
 					// write block length + data
-					mpAsync->FastWrite(buf, 256);
+					mFrameData.insert(mFrameData.end(), buf, buf + 256);
 
 					// move remaining data down
 					memcpy(buf+1, buf+256, dstidx-256);
@@ -748,11 +791,13 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 					}
 
 					++nextEntry;
-
-#if 0	// reset codes don't seem to help much....
 				} else {
+					// Flush the table. This isn't generally advantageous for compression ratio,
+					// but we have to do it as some buggy decoders overflow their table and crash
+					// otherwise (MS GIF Animator 1.01).
+
 					// emit flush code
-					accum += 256 << accbits;
+					accum += clearCode << accbits;
 					accbits += codebits;
 
 					// flush bytes as necessary
@@ -763,12 +808,11 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 					}
 
 					// reset
-					codebits = 9;
-					nextBump = 512;
-					nextEntry = 258;
+					codebits = initialCodeSize + 1;
+					nextBump = 1 << codebits;
+					nextEntry = clearCode + 2;
 					for(int i=0; i<256; ++i)
 						hash[i] = -1;
-#endif
 				}
 			}
 
@@ -779,8 +823,15 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 		accum += (code >> 16) << accbits;
 		accbits += codebits;
 
+		// flush bytes as necessary
+		while(accbits >= 8) {
+			buf[dstidx++] = (uint8)accum;
+			accum >>= 8;
+			accbits -= 8;
+		}
+
 		// add eos code
-		accum += 257 << accbits;
+		accum += (clearCode + 1) << accbits;
 		accbits += codebits;
 
 		// flush bytes as necessary
@@ -801,7 +852,7 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 			buf[0] = (uint8)(tc - 1);
 
 			// write block length + data
-			mpAsync->FastWrite(buf, tc);
+			mFrameData.insert(mFrameData.end(), buf, buf + tc);
 
 			// move remaining data down
 			if (dstidx <= 256)
@@ -814,7 +865,7 @@ void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cb
 
 	// Write terminator
 	const uint8 kTerminator = 0x00;
-	mpAsync->FastWrite(&kTerminator, 1);
+	mFrameData.push_back(kTerminator);
 
 	++mFrameCount;
 }
@@ -827,6 +878,26 @@ void AVIVideoGIFOutputStream::partialWrite(const void *pBuffer, uint32 cbBuffer)
 }
 
 void AVIVideoGIFOutputStream::partialWriteEnd() {
+}
+
+void AVIVideoGIFOutputStream::FlushFrame() {
+	if (mFrameData.empty())
+		return;
+
+	// compute timestamp for this frame in centiseconds
+	double frameToTicksFactor = (double)streamInfo.dwScale / (double)streamInfo.dwRate * 100.0;
+	uint32 timestamp = VDRoundToInt32((sint32)mFrameCount * frameToTicksFactor);
+
+	// poke delay into graphic control structure of previous frame (offset 4) and write it
+	uint32 delay = timestamp - mPrevTimestamp;
+	mPrevTimestamp = timestamp;
+
+	VDWriteUnalignedLEU16(&mFrameData[4], (uint16)delay);
+
+	mpAsync->FastWrite(mFrameData.data(), (uint32)mFrameData.size());
+
+	// wipe frame data buffer for next frame
+	mFrameData.clear();
 }
 
 //////////////////////////////////

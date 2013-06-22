@@ -407,6 +407,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\fxc10.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\glc.cpp"
 				>
 			</File>
@@ -416,6 +420,10 @@
 			</File>
 			<File
 				RelativePath=".\source\glc_nvrc.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\hash.cpp"
 				>
 			</File>
 			<File

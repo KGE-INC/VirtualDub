@@ -21,12 +21,12 @@ bool VDFilterAccelReadbackBuffer::Init(IVDTContext *ctx, uint32 w, uint32 h, boo
 		rh *= 3;
 	}
 
-	if (!ctx->CreateReadbackBuffer(rw, rh, kVDTF_A8R8G8B8, &mpReadbackBuffer)) {
+	if (!ctx->CreateReadbackBuffer(rw, rh, kVDTF_B8G8R8A8, &mpReadbackBuffer)) {
 		Shutdown();
 		return false;
 	}
 
-	if (!ctx->CreateSurface(rw, rh, kVDTF_A8R8G8B8, kVDTUsage_Render, &mpReadbackRT)) {
+	if (!ctx->CreateSurface(rw, rh, kVDTF_B8G8R8A8, kVDTUsage_Render, &mpReadbackRT)) {
 		Shutdown();
 		return false;
 	}

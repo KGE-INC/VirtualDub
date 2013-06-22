@@ -22,7 +22,7 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/refcount.h>
 #include <vd2/Kasumi/pixmaputils.h>
-#include <vd2/Riza/display.h>
+#include <vd2/VDDisplay/display.h>
 
 class VDRTProfileChannel;
 class IVDVideoCompressor;

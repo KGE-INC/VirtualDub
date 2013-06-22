@@ -6,7 +6,9 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
-#include "displaydrv.h"
+#include <vd2/VDDisplay/compositor.h>
+#include <vd2/VDDisplay/displaydrv.h>
+#include <vd2/VDDisplay/renderer.h>
 
 #define VDDEBUG_DISP (void)sizeof printf
 //#define VDDEBUG_DISP VDDEBUG
@@ -14,7 +16,281 @@
 void VDDitherImage(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal);
 
 ///////////////////////////////////////////////////////////////////////////////
+class VDDisplayCachedImageGDI : public vdrefcounted<IVDRefUnknown>, public vdlist_node {
+	VDDisplayCachedImageGDI(const VDDisplayCachedImageGDI&);
+	VDDisplayCachedImageGDI& operator=(const VDDisplayCachedImageGDI&);
+public:
+	enum { kTypeID = 'cimI' };
 
+	VDDisplayCachedImageGDI();
+	~VDDisplayCachedImageGDI();
+
+	void *AsInterface(uint32 iid);
+
+	bool Init(void *owner, const VDDisplayImageView& imageView);
+	void Shutdown();
+
+	void Update(const VDDisplayImageView& imageView);
+
+public:
+	void *mpOwner;
+	HDC		mhdc;
+	HBITMAP	mhbm;
+	HGDIOBJ	mhbmOld;
+	sint32	mWidth;
+	sint32	mHeight;
+	uint32	mUniquenessCounter;
+};
+
+VDDisplayCachedImageGDI::VDDisplayCachedImageGDI()
+	: mpOwner(NULL)
+	, mhdc(NULL)
+	, mhbm(NULL)
+	, mhbmOld(NULL)
+	, mWidth(0)
+	, mHeight(0)
+{
+	mListNodePrev = NULL;
+	mListNodeNext = NULL;
+}
+
+VDDisplayCachedImageGDI::~VDDisplayCachedImageGDI() {
+	if (mListNodePrev)
+		vdlist_base::unlink(*this);
+}
+
+void *VDDisplayCachedImageGDI::AsInterface(uint32 iid) {
+	if (iid == kTypeID)
+		return this;
+
+	return NULL;
+}
+
+bool VDDisplayCachedImageGDI::Init(void *owner, const VDDisplayImageView& imageView) {
+	const VDPixmap& px = imageView.GetImage();
+	int w = px.w;
+	int h = px.h;
+
+	HDC hdc = GetDC(NULL);
+	if (hdc) {
+		mhdc = CreateCompatibleDC(NULL);
+		mhbm = CreateCompatibleBitmap(hdc, w, h);
+	}
+
+	if (!mhdc || !mhbm) {
+		Shutdown();
+		return false;
+	}
+
+	mhbmOld = SelectObject(mhdc, mhbm);
+
+	mWidth = px.w;
+	mHeight = px.h;
+	mpOwner = owner;
+
+	Update(imageView);
+	return true;
+}
+
+void VDDisplayCachedImageGDI::Shutdown() {
+	if (mhdc) {
+		if (mhbmOld) {
+			SelectObject(mhdc, mhbmOld);
+			mhbmOld = NULL;
+		}
+
+		DeleteDC(mhdc);
+	}
+
+	if (mhbm) {
+		DeleteObject(mhbm);
+		mhbm = NULL;
+	}
+
+	mpOwner = NULL;
+}
+
+void VDDisplayCachedImageGDI::Update(const VDDisplayImageView& imageView) {
+	mUniquenessCounter = imageView.GetUniquenessCounter();
+
+	if (mhbm) {
+		const VDPixmap& px = imageView.GetImage();
+
+		VDPixmapLayout layout;
+		VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, mWidth, mHeight, 4);
+		VDPixmapLayoutFlipV(layout);
+
+		VDPixmapBuffer buf;
+		buf.init(layout);
+
+		VDPixmapBlt(buf, px);
+
+		BITMAPINFO bi = {};
+		bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		bi.bmiHeader.biWidth = mWidth;
+		bi.bmiHeader.biHeight = mHeight;
+		bi.bmiHeader.biPlanes = 1;
+		bi.bmiHeader.biBitCount = 32;
+		bi.bmiHeader.biSizeImage = 0;
+		bi.bmiHeader.biCompression = BI_RGB;
+
+		VDVERIFY(::SetDIBits(mhdc, mhbm, 0, mHeight, buf.base(), &bi, DIB_RGB_COLORS));
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+class VDDisplayRendererGDI : public IVDDisplayRenderer {
+public:
+	VDDisplayRendererGDI();
+	~VDDisplayRendererGDI();
+
+	void Init();
+	void Shutdown();
+
+	bool Begin(HDC hdc);
+	void End();
+
+	void SetColorRGB(uint32 color);
+	void FillRect(sint32 x, sint32 y, sint32 w, sint32 h);
+	void Blt(sint32 x, sint32 y, VDDisplayImageView& imageView);
+
+protected:
+	VDDisplayCachedImageGDI *GetCachedImage(VDDisplayImageView& imageView);
+
+	HDC		mhdc;
+	int		mSavedDC;
+	uint32	mColor;
+	uint32	mPenColor;
+	HPEN	mhPen;
+	uint32	mBrushColor;
+	HBRUSH	mhBrush;
+
+	vdlist<VDDisplayCachedImageGDI> mCachedImages;
+};
+
+VDDisplayRendererGDI::VDDisplayRendererGDI()
+	: mhdc(NULL)
+	, mSavedDC(0)
+	, mPenColor(0)
+	, mhPen((HPEN)::GetStockObject(BLACK_PEN))
+	, mBrushColor(0)
+	, mhBrush((HBRUSH)::GetStockObject(BLACK_BRUSH))
+{
+}
+
+VDDisplayRendererGDI::~VDDisplayRendererGDI() {
+}
+
+void VDDisplayRendererGDI::Init() {
+}
+
+void VDDisplayRendererGDI::Shutdown() {
+	while(!mCachedImages.empty()) {
+		VDDisplayCachedImageGDI *img = mCachedImages.front();
+		mCachedImages.pop_front();
+
+		img->mListNodePrev = NULL;
+		img->mListNodeNext = NULL;
+
+		img->Shutdown();
+	}
+}
+
+bool VDDisplayRendererGDI::Begin(HDC hdc) {
+	mhdc = hdc;
+
+	mSavedDC = SaveDC(mhdc);
+	if (!mSavedDC)
+		return false;
+
+	mhPen = (HPEN)::GetStockObject(BLACK_PEN);
+	mhBrush = (HBRUSH)::GetStockObject(BLACK_BRUSH);
+	mBrushColor = 0;
+
+	return true;
+}
+
+void VDDisplayRendererGDI::End() {
+	if (mSavedDC) {
+		RestoreDC(mhdc, mSavedDC);
+		mSavedDC = 0;
+	}
+
+	if (mhPen) {
+		DeleteObject(mhPen);
+		mhPen = NULL;
+	}
+
+	if (mhBrush) {
+		DeleteObject(mhBrush);
+		mhBrush = NULL;
+	}
+}
+
+void VDDisplayRendererGDI::SetColorRGB(uint32 color) {
+	mColor = color;
+}
+
+void VDDisplayRendererGDI::FillRect(sint32 x, sint32 y, sint32 w, sint32 h) {
+	if (w <= 0 || h <= 0)
+		return;
+
+	if (mBrushColor != mColor) {
+		mBrushColor = mColor;
+
+		HBRUSH hNewBrush = CreateSolidBrush(VDSwizzleU32(mColor) >> 8);
+		if (hNewBrush) {
+			DeleteObject(mhBrush);
+			mhBrush = hNewBrush;
+		}
+	}
+
+	RECT r = { x, y, x + w, y + h };
+	::FillRect(mhdc, &r, mhBrush);
+}
+
+void VDDisplayRendererGDI::Blt(sint32 x, sint32 y, VDDisplayImageView& imageView) {
+	VDDisplayCachedImageGDI *cachedImage = GetCachedImage(imageView);
+
+	if (!cachedImage)
+		return;
+
+	BitBlt(mhdc, x, y, cachedImage->mWidth, cachedImage->mHeight, cachedImage->mhdc, 0, 0, SRCCOPY);
+}
+
+VDDisplayCachedImageGDI *VDDisplayRendererGDI::GetCachedImage(VDDisplayImageView& imageView) {
+	VDDisplayCachedImageGDI *cachedImage = vdpoly_cast<VDDisplayCachedImageGDI *>(imageView.GetCachedImage());
+
+	if (cachedImage && cachedImage->mpOwner != this)
+		cachedImage = NULL;
+
+	if (!cachedImage) {
+		cachedImage = new_nothrow VDDisplayCachedImageGDI;
+
+		if (!cachedImage)
+			return NULL;
+		
+		cachedImage->AddRef();
+		if (!cachedImage->Init(this, imageView)) {
+			cachedImage->Release();
+			return NULL;
+		}
+
+		imageView.SetCachedImage(cachedImage);
+		mCachedImages.push_back(cachedImage);
+
+		cachedImage->Release();
+	} else {
+		uint32 c = imageView.GetUniquenessCounter();
+
+		if (cachedImage->mUniquenessCounter != c)
+			cachedImage->Update(imageView);
+	}
+
+	return cachedImage;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 class VDVideoDisplayMinidriverGDI : public VDVideoDisplayMinidriver {
 public:
 	VDVideoDisplayMinidriverGDI();
@@ -26,6 +302,7 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid() { return mbValid; }
+	void SetDestRect(const vdrect32 *r, uint32 color);
 
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
@@ -34,6 +311,12 @@ public:
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
 
 protected:
+	void InternalRefresh(HDC hdc, const RECT& rClient, UpdateMode mode);
+	static int GetScreenIntermediatePixmapFormat(HDC);
+
+	void InitCompositionBuffer();
+	void ShutdownCompositionBuffer();
+
 	HWND		mhwnd;
 	HDC			mhdc;
 	HBITMAP		mhbm;
@@ -45,6 +328,13 @@ protected:
 	bool		mbPaletted;
 	bool		mbValid;
 	bool		mbUseSubrect;
+
+	uint32		mCompBufferWidth;
+	uint32		mCompBufferHeight;
+	HBITMAP		mhbmCompBuffer;
+	HGDIOBJ		mhbmCompBufferOld;
+	HDC			mhdcCompBuffer;
+
 	bool		mbConvertToScreenFormat;
 	int			mScreenFormat;
 
@@ -53,10 +343,10 @@ protected:
 	uint8		mIdentTab[256];
 
 	VDVideoDisplaySourceInfo	mSource;
-	VDPixmapCachedBlitter mCachedBlitter;
 
-	void InternalRefresh(HDC hdc, const RECT& rClient, UpdateMode mode);
-	static int GetScreenIntermediatePixmapFormat(HDC);
+	VDDisplayRendererGDI mRenderer;
+
+	VDPixmapCachedBlitter mCachedBlitter;
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverGDI() {
@@ -71,6 +361,11 @@ VDVideoDisplayMinidriverGDI::VDVideoDisplayMinidriverGDI()
 	, mpLogicalPalette(NULL)
 	, mbValid(false)
 	, mbUseSubrect(false)
+	, mCompBufferWidth(0)
+	, mCompBufferHeight(0)
+	, mhbmCompBuffer(NULL)
+	, mhbmCompBufferOld(NULL)
+	, mhdcCompBuffer(NULL)
 {
 	memset(&mSource, 0, sizeof mSource);
 }
@@ -130,6 +425,7 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 	case nsVDPixmap::kPixFormat_YUV410_Planar_709:
 	case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_Y8:
+	case nsVDPixmap::kPixFormat_Y8_FR:
 	case nsVDPixmap::kPixFormat_YUV422_V210:
 	case nsVDPixmap::kPixFormat_YUV420_NV12:
 		if (!info.bAllowConversion)
@@ -256,6 +552,7 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 				case nsVDPixmap::kPixFormat_YUV410_Planar_709:
 				case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_Y8:
+				case nsVDPixmap::kPixFormat_Y8_FR:
 				case nsVDPixmap::kPixFormat_YUV422_V210:
 				case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
 				case nsVDPixmap::kPixFormat_YUV420_NV12:
@@ -296,6 +593,8 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 					ReleaseDC(mhwnd, hdc);
 					VDDEBUG_DISP("VideoDisplay: Using GDI for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 					mbValid = (mSource.pSharedObject != 0);
+
+					mRenderer.Init();
 					return true;
 				}
 
@@ -317,6 +616,10 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, HMONITOR hmonitor, const VDVid
 }
 
 void VDVideoDisplayMinidriverGDI::Shutdown() {
+	ShutdownCompositionBuffer();
+
+	mRenderer.Shutdown();
+
 	if (mhbm) {
 		SelectObject(mhdc, mhbmOld);
 		DeleteObject(mhbm);
@@ -395,6 +698,12 @@ bool VDVideoDisplayMinidriverGDI::ModifySource(const VDVideoDisplaySourceInfo& i
 
 	mSource = info;
 	return true;
+}
+
+void VDVideoDisplayMinidriverGDI::SetDestRect(const vdrect32 *r, uint32 color) {
+	VDVideoDisplayMinidriver::SetDestRect(r, color);
+	if (mhwnd)
+		InvalidateRect(mhwnd, NULL, FALSE);
 }
 
 bool VDVideoDisplayMinidriverGDI::Update(UpdateMode mode) {
@@ -528,8 +837,6 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 	if (rClient.right <= 0 || rClient.bottom <= 0)
 		return;
 
-	SetStretchBltMode(hdc, COLORONCOLOR);
-
 	const VDPixmap& source = mSource.pixmap;
 	RECT rDst;
 	rDst.left = mDrawRect.left;
@@ -540,6 +847,22 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 	if (rDst.right <= rDst.left || rDst.bottom <= rDst.top)
 		return;
 
+	HDC hdcComp = hdc;
+	RECT rDstComp = rDst;
+
+	if (mpCompositor) {
+		if (!mhdcCompBuffer || rClient.right != mCompBufferWidth || rClient.bottom != mCompBufferHeight) {
+			ShutdownCompositionBuffer();
+			InitCompositionBuffer();
+		}
+
+		if (mhdcCompBuffer) {
+			hdcComp = mhdcCompBuffer;
+			OffsetRect(&rDstComp, -rDst.left, -rDst.top);
+		}
+	}
+
+	SetStretchBltMode(hdcComp, COLORONCOLOR);
 	vdrect32 r;
 	if (mbUseSubrect)
 		r = mSubrect;
@@ -547,15 +870,12 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 		r.set(0, 0, source.w, source.h);
 
 	if (mColorOverride) {
-		SetBkColor(hdc, VDSwizzleU32(mColorOverride) >> 8);
-		SetBkMode(hdc, OPAQUE);
-		ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rDst, "", 0, NULL);
-		return;
-	}
-
-	if (mSource.bInterlaced) {
-		const int w = rDst.right - rDst.left;
-		const int h = rDst.bottom - rDst.top;
+		SetBkColor(hdcComp, VDSwizzleU32(mColorOverride) >> 8);
+		SetBkMode(hdcComp, OPAQUE);
+		ExtTextOut(hdcComp, 0, 0, ETO_OPAQUE, &rDstComp, "", 0, NULL);
+	} else if (mSource.bInterlaced) {
+		const int w = rDstComp.right - rDstComp.left;
+		const int h = rDstComp.bottom - rDstComp.top;
 
 		int fieldMode = mode & kModeFieldMask;
 		uint32 vinc		= (r.height() << 16) / h;
@@ -583,11 +903,22 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 				v = (vt>>16) & ~1;
 			}
 
-			StretchBlt(hdc, rDst.left, rDst.top + y, w, 1, mhdc, r.left, v, r.width(), 1, SRCCOPY);
+			StretchBlt(hdcComp, rDstComp.left, rDstComp.top + y, w, 1, mhdc, r.left, v, r.width(), 1, SRCCOPY);
 			vaccum += vinc;
 		}
 	} else {
-		StretchBlt(hdc, rDst.left, rDst.top, rDst.right - rDst.left, rDst.bottom - rDst.top, mhdc, r.left, r.top, r.width(), r.height(), SRCCOPY);
+		StretchBlt(hdcComp, rDstComp.left, rDstComp.top, rDstComp.right - rDstComp.left, rDstComp.bottom - rDstComp.top, mhdc, r.left, r.top, r.width(), r.height(), SRCCOPY);
+	}
+
+	if (mpCompositor) {
+		if (mRenderer.Begin(hdcComp)) {
+			mpCompositor->Composite(mRenderer);
+			mRenderer.End();
+		}
+	}
+
+	if (hdcComp != hdc) {
+		BitBlt(hdc, rDst.left, rDst.top, rDst.right - rDst.left, rDst.bottom - rDst.top, hdcComp, rDstComp.left, rDstComp.top, SRCCOPY);
 	}
 }
 
@@ -643,4 +974,55 @@ int VDVideoDisplayMinidriverGDI::GetScreenIntermediatePixmapFormat(HDC hdc) {
 	}
 
 	return pxformat;
+}
+
+void VDVideoDisplayMinidriverGDI::InitCompositionBuffer() {
+	const uint32 w = mClientRect.right;
+	const uint32 h = mClientRect.bottom;
+
+	if (!w || !h)
+		return;
+
+	HDC hdc = GetDC(NULL);
+	if (!hdc)
+		return;
+
+	mhdcCompBuffer = CreateCompatibleDC(hdc);
+	mhbmCompBuffer = CreateCompatibleBitmap(hdc, w, h);
+
+	ReleaseDC(NULL, hdc);
+
+	if (!mhdcCompBuffer || !mhbmCompBuffer) {
+		ShutdownCompositionBuffer();
+		return;
+	}
+
+	mhbmCompBufferOld = SelectObject(mhdcCompBuffer, mhbmCompBuffer);
+	if (!mhbmCompBufferOld) {
+		ShutdownCompositionBuffer();
+		return;
+	}
+
+	mCompBufferWidth = w;
+	mCompBufferHeight = h;
+}
+
+void VDVideoDisplayMinidriverGDI::ShutdownCompositionBuffer() {
+	if (mhbmCompBufferOld) {
+		SelectObject(mhdcCompBuffer, mhbmCompBufferOld);
+		mhbmCompBufferOld = NULL;
+	}
+
+	if (mhbmCompBuffer) {
+		DeleteObject(mhbmCompBuffer);
+		mhbmCompBuffer = NULL;
+	}
+
+	if (mhdcCompBuffer) {
+		DeleteDC(mhdcCompBuffer);
+		mhdcCompBuffer = NULL;
+	}
+
+	mCompBufferWidth = 0;
+	mCompBufferHeight = 0;
 }

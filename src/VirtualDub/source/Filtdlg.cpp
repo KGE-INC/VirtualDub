@@ -412,7 +412,7 @@ void VDVideoFiltersDialog::OnSize() {
 }
 
 bool VDVideoFiltersDialog::OnErase(VDZHDC hdc) {
-	mResizer.Erase(hdc);
+	mResizer.Erase(&hdc);
 	return true;
 }
 
