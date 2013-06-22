@@ -50,7 +50,7 @@ static List2<ModelessDlgNode> g_listModelessDlgs;
 
 int g_debugVal, g_debugVal2;
 
-extern "C" ycblit(void *, void *);
+extern "C" void ycblit(void *, void *);
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -137,7 +137,7 @@ void guiDlgMessageLoop(HWND hDlg) {
 	MSG msg;
 
 	while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-		if (!IsWindow(hDlg) || !IsDialogMessage(hDlg, &msg)) {
+		if (!hDlg || !IsWindow(hDlg) || !IsDialogMessage(hDlg, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}

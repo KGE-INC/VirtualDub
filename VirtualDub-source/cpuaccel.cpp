@@ -23,7 +23,7 @@ static long g_lCPUExtensionsEnabled;
 static long g_lCPUExtensionsAvailable;
 
 extern "C" {
-	bool FPU_enabled, MMX_enabled, ISSE_enabled;
+	bool FPU_enabled, MMX_enabled, ISSE_enabled, SSE2_enabled;
 };
 
 // This is ridiculous.
@@ -146,6 +146,7 @@ long CPUEnableExtensions(long lEnableFlags) {
 	MMX_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_MMX);
 	FPU_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_FPU);
 	ISSE_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_INTEGER_SSE);
+	SSE2_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_SSE2);
 
 	return g_lCPUExtensionsEnabled;
 }

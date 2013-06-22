@@ -39,6 +39,33 @@
 
 extern "C" unsigned char YUV_clip_table[];
 
+#ifdef __INTEL_COMPILER
+
+#error Cannot compile mpeg_idct.cpp with the Intel C/C++ compiler.
+
+// The 6.0 release of the Intel C/C++ compiler miscompiles some inline
+// assembly in this module.  Specifically, instructions of the form:
+//
+//		ADD r32, offset symbol + disp
+//
+// cause jump instructions to branch beyond their intended branch targets.
+// None of the C/C++ code in this module is performance critical, so
+// the Intel compiler should be disabled for mpeg_idct.cpp by placing
+// through a /D_USE_NON_INTEL_COMPILER switch on the command line, or
+// through the Preprocessor section of the C++ tab in Project Settings.
+//
+// Also, if you happen to spot any warnings of this form:
+//
+//     module(x): warning: offset of 174 is too large for a short jmp
+//
+// interrupt the compilation immediately and delete the 'short' modifier
+// from the jump instruction, as the compiler has just generated a short
+// jump to a random target; Microsoft Visual C++ generates a proper
+// long jump instead.  This should really be an error.
+
+#endif
+
+
 ///////////////////////////////////////////////////////////////////////////
 
 // enable this define for CPU profiling
@@ -206,9 +233,6 @@ DC_above_zero:
 		mov		eax,255
 DC_below_255:
 
-		test	MMX_enabled,1
-		jnz		DC_with_MMX
-
 		mov		ebx,eax
 		mov		edx,4
 		shl		eax,8
@@ -225,24 +249,7 @@ DC_loop:
 		lea		edi,[edi+ecx*2]
 		dec		edx
 		jne		DC_loop
-		jmp		short fnexit
-
-
-DC_with_MMX:
-		movd	mm6,eax
-		punpcklbw	mm6,mm6
-		punpcklwd	mm6,mm6
-		mov			edx,4
-		punpckldq	mm6,mm6
-
-DC_loop_MMX:
-		movq		[edi],mm6
-		movq		[edi+ecx],mm6
-		lea			edi,[edi+ecx*2]
-		dec			edx
-		jne			DC_loop_MMX
-		jmp			short fnexit
-
+		jmp		fnexit
 
 		;AC coefficient... we have to scale the table.  Damn.
 		;
@@ -265,9 +272,6 @@ AC_coeff_1:
 		mov		dword ptr [dct_coeff],0
 		shl		ecx,8
 		mov		edx,8
-
-		test	MMX_enabled,1
-		jnz		AC_with_MMX
 
 		shl		ebp,3
 		and		ebp,0e0h
@@ -316,84 +320,6 @@ notsec:
 		pop		edi
 		pop		esi
 		ret
-
-AC_with_MMX:
-		shl		ebp,2
-		and		ebp,0e0h
-		push	ebp
-
-		movd	mm6,ecx
-		pxor	mm7,mm7
-		mov		ebx,eax
-		and		eax,7fff8000h
-		shr		eax,15
-		mov		ebp,ebx
-		sar		ebp,31
-		sub		eax,ebp
-		movd	mm4,eax
-		punpckldq	mm6,mm6
-		mov		eax,ebx
-		and		ebx,80000000h
-		shr		ebx,16
-		and		eax,00007fffh
-		or		eax,ebx
-		punpckldq	mm4,mm4
-		movd	mm5,eax
-		punpckldq	mm5,mm5
-
-		pop		ebp
-		xor		ecx,ecx
-
-AC_loop_vert_MMX:
-		movq	mm0,[esi+ecx]			;AC pattern #0, #1
-		movq	mm2,[esi+ecx+8]			;AC pattern #2, #3
-		movq	mm1,mm0
-		movq	mm3,mm2
-		pmaddwd	mm0,mm4
-		pmaddwd	mm2,mm4
-		pmaddwd	mm1,mm5
-		pmaddwd	mm3,mm5
-		pslld	mm0,15
-		pslld	mm2,15
-		paddd	mm1,mm0
-		paddd	mm3,mm2
-		paddd	mm1,mm6
-		paddd	mm3,mm6
-		psrad	mm1,19
-		psrad	mm3,19
-		packssdw	mm1,mm3
-
-		movq	mm0,[esi+ecx+16]		;AC pattern #4, #5
-		movq	mm2,[esi+ecx+24]		;AC pattern #6, #7
-		movq	mm7,mm0
-		movq	mm3,mm2
-		pmaddwd	mm0,mm4
-		pmaddwd	mm2,mm4
-		pmaddwd	mm7,mm5
-		pmaddwd	mm3,mm5
-		pslld	mm0,15
-		pslld	mm2,15
-		paddd	mm0,mm7
-		paddd	mm2,mm3
-		paddd	mm0,mm6
-		paddd	mm2,mm6
-		psrad	mm0,19
-		psrad	mm2,19
-		packssdw	mm0,mm2
-		packuswb	mm1,mm0
-
-		mov		ebx,[esp+12+16]
-		dec		edx
-
-		add		ecx,ebp
-		and		ecx,0e0h
-
-		movq	[edi],mm1
-
-		lea		edi,[edi+ebx]
-		jne		AC_loop_vert_MMX
-
-		jmp		short fnexit
 	}
 }
 
@@ -421,9 +347,6 @@ void __declspec(naked) IDCT_fast_add(int pos, void *dst, long pitch) {
 
 		sar		eax,11
 		mov		ebp,[esp+12+16]
-
-		test	MMX_enabled,1
-		jnz		DC_with_MMX
 
 		add		eax,offset YUV_clip_table+256
 		mov		esi,8
@@ -465,42 +388,7 @@ DC_loop:
 		dec		esi
 		jne		DC_loop
 		pop		ebp
-		jmp		short fnexit
-
-DC_with_MMX:
-		movd	mm6,eax
-		pxor		mm7,mm7
-		punpcklbw	mm6,mm6
-		punpcklwd	mm6,mm6
-		mov			edx,4
-		punpckldq	mm6,mm6
-		psubb		mm7,mm6
-		or			eax,eax
-		js			DC_loop_MMX_sub
-
-DC_loop_MMX_add:
-		movq		mm0,[edi]
-		movq		mm1,[edi+ebp]
-		paddusb		mm0,mm6
-		paddusb		mm1,mm6
-		movq		[edi],mm0
-		movq		[edi+ebp],mm1
-		lea			edi,[edi+ebp*2]
-		dec			edx
-		jne			DC_loop_MMX_add
-		jmp			short fnexit
-
-DC_loop_MMX_sub:
-		movq		mm0,[edi]
-		movq		mm1,[edi+ebp]
-		psubusb		mm0,mm7
-		psubusb		mm1,mm7
-		movq		[edi],mm0
-		movq		[edi+ebp],mm1
-		lea			edi,[edi+ebp*2]
-		dec			edx
-		jne			DC_loop_MMX_sub
-		jmp			short fnexit
+		jmp		fnexit
 
 		;AC coefficient... we have to scale the table.  Damn.
 		;
@@ -523,9 +411,6 @@ AC_coeff_1:
 		mov		dword ptr [dct_coeff],0
 		shl		ecx,8
 		mov		edx,8
-
-		test	MMX_enabled,1
-		jnz		AC_with_MMX
 
 		shl		ebp,3
 		and		ebp,0e0h
@@ -572,92 +457,129 @@ notsec:
 		pop		edi
 		pop		esi
 		ret
+	}
+}
 
-AC_with_MMX:
-		shl		ebp,2
-		and		ebp,0e0h
+void __declspec(naked) IDCT_fast_put_MMX(int val, void *dst, long pitch) {
+	__asm {
+		push	esi
+		push	edi
 		push	ebp
+		push	ebx
 
-		movd	mm6,ecx
-		pxor	mm7,mm7
-		mov		ebx,eax
-		and		eax,7fff8000h
-		shr		eax,15
-		mov		ebp,ebx
-		sar		ebp,31
-		sub		eax,ebp
-		movd	mm4,eax
-		punpckldq	mm6,mm6
-		mov		eax,ebx
-		and		ebx,80000000h
-		shr		ebx,16
-		and		eax,00007fffh
-		or		eax,ebx
-		punpckldq	mm4,mm4
-		movd	mm5,eax
-		punpckldq	mm5,mm5
+#ifdef PROFILE
+		rdtsc
+		mov		profile_start, eax
+#endif
 
-		pop		ebp
 		xor		ecx,ecx
+		mov		edi,[esp+8+16]				;edi = dest
+		mov		ecx,[esp+12+16]				;esi = pitch
 
+		movd		mm6,[esp+4+16]			;mm6 = coefficient
+		psrad		mm6,3
+		packuswb	mm6,mm6
+		punpcklbw	mm6,mm6
+		punpcklwd	mm6,mm6
+		mov			edx,4
+		punpckldq	mm6,mm6
 
-AC_loop_vert_MMX:
-		movq	mm0,[esi+ecx]			;AC pattern #0, #1
-		movq	mm2,[esi+ecx+8]			;AC pattern #2, #3
-		movq	mm1,mm0
-		movq	mm3,mm2
-		pmaddwd	mm0,mm4
-		pmaddwd	mm2,mm4
-		pmaddwd	mm1,mm5
-		pmaddwd	mm3,mm5
-		pslld	mm0,15
-		pslld	mm2,15
-		paddd	mm0,mm1
-		paddd	mm2,mm3
-		pxor	mm1,mm1
-		movd	mm3,[edi]
-		paddd	mm0,mm6
-		punpcklbw	mm3,mm1
-		paddd	mm2,mm6
-		movq	mm7,[esi+ecx+16]		;AC pattern #0, #1
-		psrad	mm0,19
-		psrad	mm2,19
-		packssdw	mm0,mm2
-		movq	mm2,[esi+ecx+24]			;AC pattern #2, #3
-		paddw		mm0,mm3
+DC_loop_MMX:
+		movq		[edi],mm6
+		movq		[edi+ecx],mm6
+		lea			edi,[edi+ecx*2]
+		dec			edx
+		jne			DC_loop_MMX
 
-		movq	mm1,mm7
-		movq	mm3,mm2
-		pmaddwd	mm7,mm4
-		pmaddwd	mm2,mm4
-		pmaddwd	mm1,mm5
-		pmaddwd	mm3,mm5
-		pslld	mm7,15
-		pslld	mm2,15
-		paddd	mm7,mm1
-		paddd	mm2,mm3
-		pxor	mm1,mm1
-		movd	mm3,[edi+4]
-		paddd	mm7,mm6
-		punpcklbw	mm3,mm1
-		paddd	mm2,mm6
-		psrad	mm7,19
-		psrad	mm2,19
-		packssdw	mm7,mm2
-		paddw		mm7,mm3
-		packuswb	mm0,mm7
+#ifdef PROFILE
+		rdtsc
+		mov		ebx,eax
+		sub		eax,profile_start
+		inc		profile_fastputs
+		add		profile_fastput_cycles,eax
+		sub		ebx,profile_last
+		cmp		ebx,CYCLES_PER_SECOND
+		jb		notsec
+		call	profile_update
+notsec:
+#endif
+		pop		ebx
+		pop		ebp
+		pop		edi
+		pop		esi
+		ret
+	}
+}
 
-		movq	[edi],mm0
+void __declspec(naked) __cdecl IDCT_fast_add_MMX(int val, void *dst, long pitch) {
+	__asm {
+		push	esi
+		push	edi
+		push	ebp
+		push	ebx
+#ifdef PROFILE
+		rdtsc
+		mov		profile_start, eax
+#endif
 
-		add		ecx,ebp
-		and		ecx,0e0h
+		xor		ecx,ecx
+		mov		eax,[esp+4+16]				;eax = coefficient
+		mov		edi,[esp+8+16]				;edi = dest
 
-		mov		ebx,[esp+12+16]
-		dec		edx
-		lea		edi,[edi+ebx]
-		jne		AC_loop_vert_MMX
+		sar		eax,3
+		mov		ebp,[esp+12+16]
 
-		jmp		short fnexit
+		movd		mm6,eax
+		pxor		mm7,mm7
+		punpcklbw	mm6,mm6
+		punpcklwd	mm6,mm6
+		mov			edx,4
+		punpckldq	mm6,mm6
+		psubb		mm7,mm6
+		or			eax,eax
+		js			DC_loop_MMX_sub
+
+DC_loop_MMX_add:
+		movq		mm0,[edi]
+		movq		mm1,[edi+ebp]
+		paddusb		mm0,mm6
+		paddusb		mm1,mm6
+		movq		[edi],mm0
+		movq		[edi+ebp],mm1
+		lea			edi,[edi+ebp*2]
+		dec			edx
+		jne			DC_loop_MMX_add
+		jmp			fnexit
+
+DC_loop_MMX_sub:
+		movq		mm0,[edi]
+		movq		mm1,[edi+ebp]
+		psubusb		mm0,mm7
+		psubusb		mm1,mm7
+		movq		[edi],mm0
+		movq		[edi+ebp],mm1
+		lea			edi,[edi+ebp*2]
+		dec			edx
+		jne			DC_loop_MMX_sub
+
+fnexit:
+#ifdef PROFILE
+		rdtsc
+		mov		ebx,eax
+		sub		eax,profile_start
+		inc		profile_fastadds
+		add		profile_fastadd_cycles,eax
+		sub		ebx,profile_last
+		cmp		ebx,CYCLES_PER_SECOND
+		jb		notsec
+		call	profile_update
+notsec:
+#endif
+		pop		ebx
+		pop		ebp
+		pop		edi
+		pop		esi
+		ret
 	}
 }
 
@@ -1435,7 +1357,7 @@ idct_final_loop_intra:
 		mov		[esp+4+16],eax
 		jnz		idct_final_loop_intra
 
-		jmp		short finish
+		jmp		finish
 	}
 
 

@@ -43,7 +43,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "_USE_INTEL_COMPILER" /YX /FD /GF /c
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -53,7 +53,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98,ref /mapinfo:lines
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98,ref /mapinfo:lines
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\Release
@@ -1427,6 +1427,37 @@ InputName=a_predict_mmx
 # End Source File
 # Begin Source File
 
+SOURCE=.\a_predict_sse2.asm
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Release
+InputPath=.\a_predict_sse2.asm
+InputName=a_predict_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Debug
+InputPath=.\a_predict_sse2.asm
+InputName=a_predict_sse2
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
 SOURCE=.\a_yuv2rgb.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
@@ -1546,6 +1577,7 @@ SOURCE=.\mpeg_decode.cpp
 # Begin Source File
 
 SOURCE=.\mpeg_idct.cpp
+# ADD CPP /D "_USE_NON_INTEL_COMPILER"
 # End Source File
 # Begin Source File
 
@@ -2300,14 +2332,6 @@ SOURCE=.\wrappedMMIO.h
 # Begin Source File
 
 SOURCE=.\hello.txt
-# End Source File
-# Begin Source File
-
-SOURCE=.\dist\readme.doc
-# End Source File
-# Begin Source File
-
-SOURCE=.\dist\source.doc
 # End Source File
 # Begin Source File
 

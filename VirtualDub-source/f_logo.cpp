@@ -18,11 +18,11 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <new>
 #include <crtdbg.h>
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
-#include <new>
 
 #include "ScriptInterpreter.h"
 #include "ScriptValue.h"

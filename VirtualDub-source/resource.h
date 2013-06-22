@@ -681,6 +681,7 @@
 #define IDC_SPIN_YOFFSET                1390
 #define IDC_OPACITY                     1391
 #define IDC_STATIC_OPACITY              1392
+#define IDC_STATIC_VERSION              1393
 #define IDC_PRECISION_NOCHANGE          1400
 #define IDC_PRECISION_8BIT              1401
 #define IDC_PRECISION_16BIT             1402
@@ -991,7 +992,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        244
 #define _APS_NEXT_COMMAND_VALUE         40262
-#define _APS_NEXT_CONTROL_VALUE         1393
+#define _APS_NEXT_CONTROL_VALUE         1394
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

@@ -96,7 +96,7 @@ public:
 
 //////////
 
-#define VIRTUALDUB_FILTERDEF_VERSION		(8)
+#define VIRTUALDUB_FILTERDEF_VERSION		(9)
 #define	VIRTUALDUB_FILTERDEF_COMPATIBLE		(4)
 
 // v3: added lCurrentSourceFrame to FrameStateInfo
@@ -104,7 +104,8 @@ public:
 // v5 (1.3d): lots of bugfixes - stretchblt bilinear, and non-zero startproc
 // v6 (1.4): added error handling functions
 // v7 (1.4d): added frame lag, exception handling
-// v8 (1.4.11):
+// v8 (1.4.11): added string2 proc
+// v9 (1.4.12): added (working) copy constructor
 
 typedef struct FilterModule {
 	struct FilterModule *next, *prev;

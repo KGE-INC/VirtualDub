@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <process.h>
+#include <new>
 #include <crtdbg.h>
 #include <assert.h>
 
@@ -57,9 +58,10 @@
 
 //#define TIME_TRIALS
 
-//#define NO_DECODING
+//////////////////////////////////////////////////////////////
 
-//#define DISPLAY_INTER_COUNT
+extern "C" void __cdecl IDCT_mmx(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
+extern "C" void __cdecl IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
 
 //////////////////////////////////////////////////////////////
 
@@ -147,10 +149,20 @@ BranchPredictor g_predict020("020");
 typedef unsigned char YUVPixel;
 
 static void video_process_picture_start_packet(char *ptr);
-static void video_process_picture_slice(char *ptr, int type);
+
+struct MPEGRGBDecodeWorkspace {
+	long	rgb_pitch;
+	long	y_pitch;
+	long	uv_pitch;
+	long	w;
+	long	h;
+	long	pad_[3];
+	__int64 constants[28];
+};
+
 
 static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h);
-static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h);
+static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h, MPEGRGBDecodeWorkspace *workspace);
 static void YUVToRGB16(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h);
 static void YUVToUYVY16(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h);
 static void YUVToYUY216(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h);
@@ -174,7 +186,7 @@ static const int zigzag[] = {		// the reverse zigzag scan order
 	53, 60, 61, 54, 47, 55, 62, 63,
 };
 
-static const int zigzag_MMX[] = {
+static const int zigzag_MMX[] = {				// the reverse zigzag scan order, interleaved for the MMX/ISSE IDCT
 	 0,  2,  8, 16, 10,  4,  6, 12, 
 	18, 24, 32, 26, 20, 14,  1,  3, 
 	 9, 22, 28, 34, 40, 48, 42, 36, 
@@ -195,6 +207,74 @@ static const int intramatrix_default[64] = {		// the default intramatrix
 	26, 27, 29, 34, 38, 46, 56, 69,
 	27, 29, 35, 38, 46, 56, 69, 83};
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct MPEGDecodeEngine {
+	CMemoryBitInput		mBits;
+
+	__declspec(align(16)) signed short mDCTCoeff[64];
+
+	void (MPEGDecodeEngine::*mpDecodeBlock)(YUVPixel *dst, long modulo, long DC_val);
+
+	virtual void DecodeBlock(YUVPixel *dst, long modulo, long DC_val) = 0;
+
+	MPEGDecodeEngine() {
+		mpDecodeBlock	= DecodeBlock;
+	}
+
+	void decode_mblock_Y(YUVPixel *dst);
+	void decode_mblock_UV(YUVPixel *dst, int& dc_ref);
+	void video_process_picture_slice_I(char *ptr, int type);
+	inline int mpeg_get_motion_component();
+	void video_process_picture_slice_P(char *ptr, int type);
+	void video_process_picture_slice_B(char *ptr, int type);
+	void video_process_picture_slice(char *ptr, int type);
+};
+
+struct MPEGDecodeEngineScalar : public MPEGDecodeEngine {
+	void DecodeBlock(YUVPixel *dst, long modulo, long DC_val);
+};
+
+struct MPEGDecodeEngineMMX : public MPEGDecodeEngine {
+	void (__cdecl *mpIDCTMMX)(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
+
+	MPEGDecodeEngineMMX() {
+		memset(mDCTCoeff, 0, sizeof mDCTCoeff);
+
+		mpIDCTMMX		= ISSE_enabled ? IDCT_isse : IDCT_mmx;
+	}
+
+	void DecodeBlock(YUVPixel *dst, long modulo, long DC_val);
+};
+
+struct MPEGDecodeEngineSSE2 : public MPEGDecodeEngineMMX {
+	__declspec(align(16)) MPEGRGBDecodeWorkspace	mRGBDecodeWorkspace;
+
+	MPEGDecodeEngineSSE2() {
+		static const __int64 decode_constants[28]={
+			0x00080008000800080, 0x00080008000800080,
+			0x00081008100810081, 0x00081008100810081,
+			0x00066006600660066, 0x00066006600660066,
+			0x0FFE7FFE7FFE7FFE7, 0x0FFE7FFE7FFE7FFE7,
+			0x0FFCCFFCCFFCCFFCC, 0x0FFCCFFCCFFCCFFCC,
+			0x000FF00FF00FF00FF, 0x000FF00FF00FF00FF,
+			0x00010001000100010, 0x00010001000100010,
+			0x0004A004A004A004A, 0x0004A004A004A004A,
+			0x000810000FFE70081, 0x0FFE700810000FFE7,
+			0x00000FFE700810000, 0x000810000FFE70081,
+			0x0FFE700810000FFE7, 0x00000FFE700810000,
+			0x000000066FFCC0000, 0x0FFCC00000066FFCC,
+			0x00066FFCC00000066, 0x000000066FFCC0000,
+			0x0FFCC00000066FFCC, 0x00066FFCC00000066,
+		};
+
+		memcpy(mRGBDecodeWorkspace.constants, decode_constants, sizeof mRGBDecodeWorkspace);
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+
 static char *memblock = NULL;
 
 static int intramatrix0[64];
@@ -204,6 +284,7 @@ static int intramatrices[32][64];
 static int nonintramatrices[32][64];
 
 static struct MPEGBuffer {
+	MPEGDecodeEngine	*dec;
 	YUVPixel *Y;
 	YUVPixel *U;
 	YUVPixel *V;
@@ -267,13 +348,13 @@ extern "C" void video_copy_prediction_Y_MMX(YUVPixel *src, YUVPixel *dst, int vx
 extern "C" void video_copy_prediction_C_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 extern "C" void video_add_prediction_Y_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 extern "C" void video_add_prediction_C_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_Y_SSE2(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_Y_SSE2(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 
 static void (*video_copy_prediction_Y)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 static void (*video_copy_prediction_C)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 static void (*video_add_prediction_Y)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
 static void (*video_add_prediction_C)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
-
-//int lpos_stats[64];
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -281,6 +362,11 @@ void mpeg_deinitialize() {
 //	if (memblock) { freemem(memblock); memblock = NULL; }
 	if (memblock) { VirtualFree(memblock, 0, MEM_RELEASE); memblock = NULL; }
 }
+
+namespace {
+	template<int x, int y> struct const_max2 { enum { value = x>y?x:y }; };
+	template<int x, int y, int z> struct const_max3 { enum { value = const_max2<const_max2<x,y>::value,z>::value }; };
+};
 
 void mpeg_initialize(int width, int height, char *imatrix, char *nimatrix, BOOL fullpel_only) {
 	mpeg_deinitialize();
@@ -292,10 +378,10 @@ void mpeg_initialize(int width, int height, char *imatrix, char *nimatrix, BOOL 
 		pelHeight		= height;
 		mbWidth			= (width+15)/16;
 		mbHeight		= (height+15)/16;
-		y_pitch			= mbWidth * 16;
-		uv_pitch		= mbWidth * 8;
-		y_modulo		= 15*16*mbWidth;
-		uv_modulo		= 7*8*mbWidth;
+		y_pitch			= mbWidth * 24;
+		uv_pitch		= mbWidth * 48;
+		y_modulo		= 16*y_pitch - 16*mbWidth;
+		uv_modulo		= 8*uv_pitch - 8*mbWidth;
 
 		vector_limit_x	= (mbWidth-1) * 32;
 		vector_limit_y	= (mbHeight-1) * 32;
@@ -303,20 +389,39 @@ void mpeg_initialize(int width, int height, char *imatrix, char *nimatrix, BOOL 
 //		if (!(memblock = (char *)allocmem(32 + mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (uv_pitch+8)*8)))
 //			throw MyMemoryError();
 
-		if (!(memblock = (char *)VirtualAlloc(NULL, mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (32)*8, MEM_COMMIT, PAGE_READWRITE)))
+		enum {
+			kDecodeStructSize = const_max3<sizeof(MPEGDecodeEngineScalar), sizeof(MPEGDecodeEngineMMX), sizeof(MPEGDecodeEngineSSE2)>::value,
+			kDecodeStructPad = (kDecodeStructSize + 127) & ~127
+		};
+
+		int buffer_size	= (64 * mbWidth * mbHeight)*6 + kDecodeStructPad;
+
+		if (!(memblock = (char *)VirtualAlloc(NULL, 3*buffer_size, MEM_COMMIT, PAGE_READWRITE)))
 			throw MyMemoryError();
 
-		memset(memblock, 0, mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (32)*8);
+		// We organize buffers as follows (320x240):
+		//
+		// repeat 160 {
+		//		Y1 [0...319]		320 bytes
+		//		U  [0...159]		160 bytes
+		//		Y2 [0...319]		320 bytes
+		//		V  [0...159]		160 bytes
+		// }
 
-		buffers[0].Y	= (YUVPixel *)((char *)memblock ); //+ ((32-(long)memblock)&31));
-		buffers[1].Y	= (YUVPixel *)((char *)buffers[0].Y + mbWidth * mbHeight * 256 * sizeof(YUVPixel) + 32);
-		buffers[2].Y	= (YUVPixel *)((char *)buffers[1].Y + mbWidth * mbHeight * 256 * sizeof(YUVPixel) + 32);
-		buffers[0].U	= (YUVPixel *)((char *)buffers[2].Y + mbWidth * mbHeight * 256 * sizeof(YUVPixel) + 32);
-		buffers[1].U	= (YUVPixel *)((char *)buffers[0].U + mbWidth * mbHeight *  64 * sizeof(YUVPixel) + 32);
-		buffers[2].U	= (YUVPixel *)((char *)buffers[1].U + mbWidth * mbHeight *  64 * sizeof(YUVPixel) + 32);
-		buffers[0].V	= (YUVPixel *)((char *)buffers[2].U + mbWidth * mbHeight *  64 * sizeof(YUVPixel) + 32);
-		buffers[1].V	= (YUVPixel *)((char *)buffers[0].V + mbWidth * mbHeight *  64 * sizeof(YUVPixel) + 32);
-		buffers[2].V	= (YUVPixel *)((char *)buffers[1].V + mbWidth * mbHeight *  64 * sizeof(YUVPixel) + 32);
+		buffers[0].dec	= (MPEGDecodeEngine *)memblock;
+		buffers[0].Y	= (YUVPixel *)((char *)buffers[0].dec + kDecodeStructPad);
+		buffers[0].U	= (YUVPixel *)((char *)buffers[0].Y + mbWidth * 16 * sizeof(YUVPixel));
+		buffers[0].V	= (YUVPixel *)((char *)buffers[0].Y + mbWidth * 40 * sizeof(YUVPixel));
+
+		buffers[1].dec	= (MPEGDecodeEngine *)((char *)buffers[0].Y + mbWidth * mbHeight * 384 * sizeof(YUVPixel));
+		buffers[1].Y	= (YUVPixel *)((char *)buffers[1].dec + kDecodeStructPad);
+		buffers[1].U	= (YUVPixel *)((char *)buffers[1].Y + mbWidth * 16 * sizeof(YUVPixel));
+		buffers[1].V	= (YUVPixel *)((char *)buffers[1].Y + mbWidth * 40 * sizeof(YUVPixel));
+
+		buffers[2].dec	= (MPEGDecodeEngine *)((char *)buffers[1].Y + mbWidth * mbHeight * 384 * sizeof(YUVPixel));
+		buffers[2].Y	= (YUVPixel *)((char *)buffers[2].dec + kDecodeStructPad);
+		buffers[2].U	= (YUVPixel *)((char *)buffers[2].Y + mbWidth * 16 * sizeof(YUVPixel));
+		buffers[2].V	= (YUVPixel *)((char *)buffers[2].Y + mbWidth * 40 * sizeof(YUVPixel));
 
 		buffers[0].frame_num = buffers[1].frame_num = buffers[2].frame_num = -1;
 
@@ -352,10 +457,6 @@ void mpeg_reset() {
 void mpeg_convert_frame32(void *output_buffer, int buffer_ID) {
 //	_RPT1(0,"MPEG: converting frame buffer %d\b", buffer_ID);
 
-#ifdef NO_DECODING
-	return;
-#endif
-
 
 #ifdef _DEBUG
 	if (buffer_ID == -1) throw MyError("Invalid source buffer in "__FILE__", line %d",__LINE__);
@@ -370,9 +471,6 @@ void mpeg_convert_frame32(void *output_buffer, int buffer_ID) {
 void mpeg_convert_frame24(void *output_buffer, int buffer_ID) {
 //	_RPT1(0,"MPEG: converting frame buffer %d\b", buffer_ID);
 
-#ifdef NO_DECODING
-	return;
-#endif
 
 #ifdef _DEBUG
 	if (buffer_ID == -1) throw MyError("Invalid source buffer in "__FILE__", line %d",__LINE__);
@@ -380,16 +478,16 @@ void mpeg_convert_frame24(void *output_buffer, int buffer_ID) {
 
 //	memset(buffers[buffer_ID].Y, 0x80, y_pitch*mbHeight*16);
 
+	new(buffers[buffer_ID].dec) MPEGDecodeEngineSSE2;
+	MPEGDecodeEngineSSE2 *pDecoder = (MPEGDecodeEngineSSE2 *)buffers[buffer_ID].dec;
+
 	YUVToRGB24(buffers[buffer_ID].Y, buffers[buffer_ID].U, buffers[buffer_ID].V, (unsigned char *)output_buffer,
-			(mbWidth*16)*3, ((pelWidth+7)&-8)>>1, (pelHeight+1)>>1);
+			(mbWidth*16)*3, ((pelWidth+7)&-8)>>1, (pelHeight+1)>>1, &pDecoder->mRGBDecodeWorkspace);
 }
 
 void mpeg_convert_frame16(void *output_buffer, int buffer_ID) {
 //	_RPT1(0,"MPEG: converting frame buffer %d\b", buffer_ID);
 
-#ifdef NO_DECODING
-	return;
-#endif
 
 #ifdef _DEBUG
 	if (buffer_ID == -1) throw MyError("Invalid source buffer in "__FILE__", line %d",__LINE__);
@@ -404,10 +502,6 @@ void mpeg_convert_frame16(void *output_buffer, int buffer_ID) {
 void mpeg_convert_frameUYVY16(void *output_buffer, int buffer_ID) {
 //	_RPT1(0,"MPEG: converting frame buffer %d\b", buffer_ID);
 
-#ifdef NO_DECODING
-	return;
-#endif
-
 #ifdef _DEBUG
 	if (buffer_ID == -1) throw MyError("Invalid source buffer in "__FILE__", line %d",__LINE__);
 #endif
@@ -419,10 +513,6 @@ void mpeg_convert_frameUYVY16(void *output_buffer, int buffer_ID) {
 void mpeg_convert_frameYUY216(void *output_buffer, int buffer_ID) {
 //	_RPT1(0,"MPEG: converting frame buffer %d\b", buffer_ID);
 
-#ifdef NO_DECODING
-	return;
-#endif
-
 #ifdef _DEBUG
 	if (buffer_ID == -1) throw MyError("Invalid source buffer in "__FILE__", line %d",__LINE__);
 #endif
@@ -431,29 +521,28 @@ void mpeg_convert_frameYUY216(void *output_buffer, int buffer_ID) {
 			(mbWidth*16)*2, (pelWidth+1)>>1, (pelHeight+1)>>1);
 }
 
+static MPEGDecodeEngine *g_pDecoder;
+
 void mpeg_decode_frame(void *input_data, int len, int frame_num) {
-
-
-#ifdef NO_DECODING
-	return;
-#endif
-
 	char *ptr = (char *)input_data;
 	char *limit = ptr + len - 4;
 	int type;
 
-	if (MMX_enabled) {
-		if (ISSE_enabled) {
-			video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
-			video_add_prediction_Y = video_add_prediction_Y_ISSE;
-			video_copy_prediction_C = video_copy_prediction_C_ISSE;
-			video_add_prediction_C = video_add_prediction_C_ISSE;
-		} else {
-			video_copy_prediction_Y = video_copy_prediction_Y_MMX;
-			video_add_prediction_Y = video_add_prediction_Y_MMX;
-			video_copy_prediction_C = video_copy_prediction_C_MMX;
-			video_add_prediction_C = video_add_prediction_C_MMX;
-		}
+	if (SSE2_enabled) {
+		video_copy_prediction_Y = video_copy_prediction_Y_SSE2;
+		video_add_prediction_Y = video_add_prediction_Y_SSE2;
+		video_copy_prediction_C = video_copy_prediction_C_ISSE;
+		video_add_prediction_C = video_add_prediction_C_ISSE;
+	} else if (ISSE_enabled) {
+		video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
+		video_add_prediction_Y = video_add_prediction_Y_ISSE;
+		video_copy_prediction_C = video_copy_prediction_C_ISSE;
+		video_add_prediction_C = video_add_prediction_C_ISSE;
+	} else if (MMX_enabled) {
+		video_copy_prediction_Y = video_copy_prediction_Y_MMX;
+		video_add_prediction_Y = video_add_prediction_Y_MMX;
+		video_copy_prediction_C = video_copy_prediction_C_MMX;
+		video_add_prediction_C = video_add_prediction_C_MMX;
 	} else {
 		video_copy_prediction_Y = video_copy_prediction_Y_scalar;
 		video_add_prediction_Y = video_add_prediction_Y_scalar;
@@ -545,7 +634,7 @@ void mpeg_decode_frame(void *input_data, int len, int frame_num) {
 			break;
 		default:
 			if (type >= VIDPKT_TYPE_SLICE_START_MIN && type <= VIDPKT_TYPE_SLICE_START_MAX)
-				video_process_picture_slice(ptr, type);
+				g_pDecoder->video_process_picture_slice(ptr, type);
 		}
 	}
 
@@ -583,11 +672,6 @@ void mpeg_decode_frame(void *input_data, int len, int frame_num) {
 
 
 advance:
-
-#ifdef DISPLAY_INTER_COUNT
-	memset(U_dest, 0x80, uv_pitch * mbHeight * 8);
-	memset(V_dest, 0x80, uv_pitch * mbHeight * 8);
-#endif
 
 	switch(frame_type) {
 	case I_FRAME:
@@ -658,6 +742,7 @@ static int back_vector_x, back_vector_y;
 /////////////////////////////
 
 static void mpeg_set_destination_buffer(int id) {
+	g_pDecoder	= buffers[id].dec;
 	Y_dest = buffers[id].Y;
 	U_dest = buffers[id].U;
 	V_dest = buffers[id].V;
@@ -710,6 +795,10 @@ static void video_process_picture_start_packet(char *ptr) {
 		throw MyError("Unknown frame type 0x%d", frame_type);
 	}
 
+	if (MMX_enabled)
+		new(g_pDecoder) MPEGDecodeEngineMMX;
+	else
+		new(g_pDecoder) MPEGDecodeEngineScalar;
 
 	bits.get(16);	// VBV_delay
 	if (frame_type == P_FRAME || frame_type == B_FRAME) {
@@ -739,19 +828,13 @@ extern int dct_coeff[64];
 #define MBF_PATTERN			(2)
 #define MBF_INTRA			(1)
 
-static CMemoryBitInput bits;
 static int macro_block_flags;
 
-YUVPixel *dstY, *dstU, *dstV;
+static YUVPixel *dstY, *dstU, *dstV;
 
 //////////////////////
 
-
-extern "C" void IDCT_mmx(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
-extern "C" void IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
-
-
-static void decode_mblock(YUVPixel *dst, long modulo, long DC_val) {
+void MPEGDecodeEngineScalar::DecodeBlock(YUVPixel *dst, long modulo, long DC_val) {
 #ifdef MB_STATS
 
 #ifdef MB_SPLIT_STATS
@@ -786,7 +869,7 @@ MB_DECLARE_STAT(st_first_long);
 
 	dct_coeff[0] = DC_val;
 
-	v = bits.peek(12);
+	v = mBits.peek(12);
 	if (!(macro_block_flags & MBF_INTRA)) {
 		quant_matrix = nonintramatrix;
 		sign = 1;
@@ -803,8 +886,8 @@ MB_DECLARE_STAT(st_first_long);
 			else
 				dct_coeff[0] = (3*quant_matrix[0] + 128) >> 8;
 
-			bits.skip(2);
-			v = bits.peek(12);
+			mBits.skip(2);
+			v = mBits.peek(12);
 
 			MB_STAT_INC(st_first_short);
 		}
@@ -834,7 +917,7 @@ MB_DECLARE_STAT(st_first_long);
 	//		 29281756 (61%)		first long
 	//		 14165596 (29%)		first short
 
-	for(;;v = bits.peek(12)) {
+	for(;;v = mBits.peek(12)) {
 		int level_sign = 0;
 
 		if (v >= 0x080) {				// 080-FFF		(90%)
@@ -848,7 +931,7 @@ MB_DECLARE_STAT(st_first_long);
 
 				_ASSERT(level != 0);
 
-				bits.skip(bcnt);
+				mBits.skip(bcnt);
 
 				if (v & mpeg_dct_coeff_decode0[t*4+3-32])
 					level_sign = -1;
@@ -856,7 +939,7 @@ MB_DECLARE_STAT(st_first_long);
 				MB_STAT_INC(st_vshort);
 
 			} else if (v >= 0x0c00) {	// C00-FFF level1-idx0 (20%)
-				bits.skip(3);
+				mBits.skip(3);
 
 				++idx;
 				level = 1;
@@ -867,13 +950,13 @@ MB_DECLARE_STAT(st_first_long);
 				MB_STAT_INC(st_level1_idx0);
 
 			} else if (v >= 0x800) {	// 800-BFF
-				bits.skip(2);
+				mBits.skip(2);
 
 				MB_STAT_INC(st_exit);
 
 				break;
 			} else {					// 600-7FF
-				bits.skip(4);
+				mBits.skip(4);
 				idx += 2;
 
 				level = 1;
@@ -885,15 +968,15 @@ MB_DECLARE_STAT(st_first_long);
 			}
 		} else {
 			if (v >= 0x040) {
-				bits.skip(6);
-				idx += bits.get(6)+1;
-				level = bits.get_signed(8);
+				mBits.skip(6);
+				idx += mBits.get(6)+1;
+				level = mBits.get_signed(8);
 
 //				_ASSERT(level != 0);
 
 				if (!(level & 0x7f)) {
 					level <<= 1;
-					level |= bits.get(8);
+					level |= mBits.get(8);
 				}
 
 				if (level<0) {
@@ -916,7 +999,7 @@ MB_DECLARE_STAT(st_first_long);
 
 				MB_STAT_INC(st_short);
 
-				bits.skip(11);
+				mBits.skip(11);
 				if (v & 2)
 					level_sign = -1;
 			} else {
@@ -924,8 +1007,8 @@ MB_DECLARE_STAT(st_first_long);
 
 				MB_STAT_INC(st_long);
 
-				bits.skip(7);
-				v = bits.peek(10);
+				mBits.skip(7);
+				v = mBits.peek(10);
 				t = (v>>1)-16;
 
 				if (t<0)
@@ -934,7 +1017,7 @@ MB_DECLARE_STAT(st_first_long);
 				bcnt = mpeg_dct_coeff_decode2[t*4+2];
 				idx += mpeg_dct_coeff_decode2[t*4+0]+1;
 				level = mpeg_dct_coeff_decode2[t*4+1];
-				bits.skip(bcnt);
+				mBits.skip(bcnt);
 
 				_ASSERT(level != 0);
 
@@ -1051,40 +1134,34 @@ conceal_error:
 	}
 }
 
-static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
-
+void MPEGDecodeEngineMMX::DecodeBlock(YUVPixel *dst, long modulo, long DC_val) {
 	const int *idx=zigzag_MMX;
 	int level;
 	int pos=0;
 	const int *quant_matrix = intramatrix;
 	unsigned long v;
 	int sign = 0;
-	signed short coeff0[67];
-	signed short *const coeff = (signed short *)(((long)coeff0 + 7) & 0xfffffff8);
 
-	memset(coeff, 0, 64*sizeof(signed short));
-
-	coeff[0] = (DC_val + 128) >> 8;
+	mDCTCoeff[0] = (DC_val + 128) >> 8;
 
 	if (!(macro_block_flags & MBF_INTRA)) {
 		quant_matrix = nonintramatrix;
 		sign = 1;
 
-		v = bits.peek();
+		v = mBits.peek();
 
 		if (v < 0x80000000) {
-			idx = zigzag_MMX-1;
-			coeff[0]=0;
+			idx = zigzag_MMX-1;				// use AC coeff path to determine DC compensation
 
 			MB_STAT_INC(st_first_long);
 		} else {
 
-			coeff[0] = (((3*quant_matrix[0] + 8) >> 4) - 1) | 1;
+			mDCTCoeff[0] = (((3*quant_matrix[0]) >> 4) - 1) | 1;
 
 			if (v & 0x40000000)
-				coeff[0] = -coeff[0];
+				mDCTCoeff[0] = -mDCTCoeff[0];
 
-			bits.skip(2);
+			mBits.skip(2);
 
 			MB_STAT_INC(st_first_short);
 		}
@@ -1117,7 +1194,7 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 	for(;;) {
 		int level_sign = 0;
 
-		v = bits.peek();
+		v = mBits.peek();
 
 		if (PREDICT(080, v >= 0x08000000)) {				// 080-FFF		(90%)
 			if (PREDICT(600, v < 0x60000000)) {			// 080-5FF very short (40%)
@@ -1130,16 +1207,16 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 				_ASSERT(level != 0);
 
-				bits.skip8(bcnt);
+				mBits.skip8(bcnt);
 
-//				if (v & mpeg_dct_coeff_decode0[t*4+3-32])
-//					level_sign = -1;
-				level_sign = (((signed long)(v>>20) & mpeg_dct_coeff_decode0[t*4+3-32])+0x7FFFFFFF) >> 31;
+				if ((v>>20) & mpeg_dct_coeff_decode0[t*4+3-32])
+					level_sign = -1;
+//				level_sign = (((signed long)(v>>20) & mpeg_dct_coeff_decode0[t*4+3-32])+0x7FFFFFFF) >> 31;
 
 				MB_STAT_INC(st_vshort);
 
 			} else if (PREDICT(C00, v >= 0xc0000000)) {	// C00-FFF level1-idx0 (20%)
-				bits.skipconst(3);
+				mBits.skipconst(3);
 
 				++idx;
 
@@ -1153,13 +1230,13 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 				MB_STAT_INC(st_level1_idx0);
 
 			} else if (PREDICT(800, v >= 0x80000000)) {	// 800-BFF
-				bits.skipconst(2);
+				mBits.skipconst(2);
 
 				MB_STAT_INC(st_exit);
 
 				break;
 			} else {					// 600-7FF
-				bits.skipconst(4);
+				mBits.skipconst(4);
 				idx += 2;
 
 				level = 1;
@@ -1173,15 +1250,15 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 			}
 		} else {
 			if (PREDICT(040, v >= 0x04000000)) {
-				bits.skipconst(6);
-				idx += bits.getconst(6)+1;
-				level = bits.get_signed_const(8);
+				mBits.skipconst(6);
+				idx += mBits.getconst(6)+1;
+				level = mBits.get_signed_const(8);
 
 //				_ASSERT(level != 0);
 
 				if (!(level & 0x7f)) {
 					level <<= 1;
-					level |= bits.getconst(8);
+					level |= mBits.getconst(8);
 				}
 
 				if (level<0) {
@@ -1204,7 +1281,7 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 				MB_STAT_INC(st_short);
 
-				bits.skipconst(11);
+				mBits.skipconst(11);
 //				if (v & 2)
 //					level_sign = -1;
 				level_sign = -((signed long)v&0x00200000)>>31;
@@ -1213,8 +1290,8 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 				MB_STAT_INC(st_long);
 
-				bits.skipconst(7);
-				v = bits.peek(10);
+				mBits.skipconst(7);
+				v = mBits.peek(10);
 				t = (v>>1) - 16;
 
 				if (t<0)
@@ -1223,7 +1300,7 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 				bcnt = mpeg_dct_coeff_decode2[t*4+2];
 				idx += mpeg_dct_coeff_decode2[t*4+0]+1;
 				level = mpeg_dct_coeff_decode2[t*4+1];
-				bits.skip(bcnt);
+				mBits.skip(bcnt);
 
 //				if (v & (0x400>>bcnt))
 //					level_sign = -1;
@@ -1236,7 +1313,7 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 conceal_error:
 			pos = 0;
-			memset(coeff+1, 0, 63*sizeof(coeff[0]));
+			memset(mDCTCoeff+1, 0, 63*sizeof(mDCTCoeff[0]));
 			break;
 		}
 
@@ -1249,63 +1326,53 @@ conceal_error:
 
 		// We need to oddify coefficients down toward zero.
 
-		level = ((((level*2+sign) * quant_matrix[pos] + 8) >> 4) - 1) | 1;
+		level = ((((level*2+sign) * quant_matrix[pos]) >> 4) - 1) | 1;
 
 		// Negate coefficient if necessary.
 
-		coeff[pos] = (level ^ level_sign) - level_sign;
+		mDCTCoeff[pos] = (level ^ level_sign) - level_sign;
 
 	}
 
-//	++lpos_stats[pos];
-
-#ifdef DISPLAY_INTER_COUNT
-	if (macro_block_flags & MBF_INTRA) {
-		dct_coeff[0] = (32<<8)+ROUNDVAL;
-		IDCT_fast_put(pos, dst, modulo);
-	} else {
-		dct_coeff[0] = (128<<8)+ROUNDVAL;
-		IDCT_fast_add(pos, dst, modulo);
-	}
-#else
 	if (!pos) {
-		dct_coeff[0] = (coeff[0]<<8)+ROUNDVAL;
-
 		if (macro_block_flags & MBF_INTRA)
-			IDCT_fast_put(pos, dst, modulo);
+			IDCT_fast_put_MMX(mDCTCoeff[0]+4, dst, modulo);
 		else
-			IDCT_fast_add(pos, dst, modulo);
+			IDCT_fast_add_MMX(mDCTCoeff[0]+4, dst, modulo);
+
+		mDCTCoeff[0] = 0;
 	} else
-		(ISSE_enabled ? IDCT_isse : IDCT_mmx)(coeff, dst, modulo, !!(macro_block_flags & MBF_INTRA), pos);
-#endif
+		mpIDCTMMX(mDCTCoeff, dst, modulo, !!(macro_block_flags & MBF_INTRA), pos);
 }
 
-static void decode_mblock_Y(YUVPixel *dst) {
+void MPEGDecodeEngine::decode_mblock_Y(YUVPixel *dst) {
 //	memset(dct_coeff, 0, sizeof dct_coeff);
 #ifdef DEBUG
 	for(int i=0; i<dct_coeff; i++)
 		_ASSERT(dct_coeff[i] == 0);
 #endif
 
+	int value = 0;
+
 	if ((macro_block_flags & MBF_INTRA)) {
-		int size, value = 0;
+		int size;
 
 		{
-			long v=bits.peek(7)*2;
+			long v=mBits.peek(7)*2;
 
 			if (v < 64*2) {
-				bits.skip8(2);
+				mBits.skip8(2);
 				size = (v>>6)+1;
 			} else {
 				size = mpeg_dct_size_luminance_decode[v - 64*2];
-				bits.skip(mpeg_dct_size_luminance_decode[v+1 - 64*2]);
+				mBits.skip(mpeg_dct_size_luminance_decode[v+1 - 64*2]);
 			}
 		}
 
 		if (size) {
 			int halfval;
 
-			value = bits.get(size);
+			value = mBits.get(size);
 			halfval = 1 << (size-1);
 
 			if (value < halfval)
@@ -1314,37 +1381,40 @@ static void decode_mblock_Y(YUVPixel *dst) {
 			value <<= 11;
 		}
 
-		(MMX_enabled ? decode_mblock_MMX : decode_mblock)(dst, y_pitch, dct_dc_y_past += value);
-	} else
-		(MMX_enabled ? decode_mblock_MMX : decode_mblock)(dst, y_pitch, 0);
+		value = dct_dc_y_past += value;
+	}
+
+	(this->*mpDecodeBlock)(dst, y_pitch, value);
 }
 
-static void decode_mblock_UV(YUVPixel *dst, int& dc_ref) {
+void MPEGDecodeEngine::decode_mblock_UV(YUVPixel *dst, int& dc_ref) {
 //	memset(dct_coeff, 0, sizeof dct_coeff);
 #ifdef DEBUG
 	for(int i=0; i<dct_coeff; i++)
 		_ASSERT(dct_coeff[i] == 0);
 #endif
 
+	int value = 0;
+
 	if ((macro_block_flags & MBF_INTRA)) {
-		int size, value=0;
+		int size;
 
 		{
-			long v=bits.peek(8)*2;
+			long v=mBits.peek(8)*2;
 
 			if (v < 192*2) {
 				size = v>>7;
-				bits.skip8(2);
+				mBits.skip8(2);
 			} else {
 				size = mpeg_dct_size_chrominance_decode[v - 192*2];
-				bits.skip(mpeg_dct_size_chrominance_decode[v+1 - 192*2]);
+				mBits.skip(mpeg_dct_size_chrominance_decode[v+1 - 192*2]);
 			}
 		}
 
 		if (size) {
 			int halfval;
 
-			value = bits.get(size);
+			value = mBits.get(size);
 
 			halfval = 1 << (size-1);
 
@@ -1355,15 +1425,15 @@ static void decode_mblock_UV(YUVPixel *dst, int& dc_ref) {
 
 		}
 
-		(MMX_enabled ? decode_mblock_MMX : decode_mblock)(dst, uv_pitch, dc_ref += value);
+		value = dc_ref += value;
+	}
 
-	} else
-		(MMX_enabled ? decode_mblock_MMX : decode_mblock)(dst, uv_pitch, 0);
+	(this->*mpDecodeBlock)(dst, uv_pitch, value);
 }
 
 ///////////////////////////
 
-static void video_process_picture_slice_I(char *ptr, int type) {
+void MPEGDecodeEngine::video_process_picture_slice_I(char *ptr, int type) {
 	long pos_x, pos_y;
 
 	pos_y = type-1;
@@ -1381,27 +1451,27 @@ static void video_process_picture_slice_I(char *ptr, int type) {
 		// 00000001000 (008) -> skip 33 more
 		// 1 -> skip 1
 
-		i = bits.peek(11);
+		i = mBits.peek(11);
 		while(i == 0xf) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 		}
 		while(i == 0x8) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 			inc += 33;
 			dct_dc_y_past = dct_dc_u_past = dct_dc_v_past = MIDVAL;
 		}
 		
 		if (i&0x400) {
-			bits.skip();
+			mBits.skip();
 			++inc;
 		} else if (i>=96) {
 			i>>=4;
-			bits.skip(mpeg_macro_block_inc_decode2[i*2+1-12]);
+			mBits.skip8(mpeg_macro_block_inc_decode2[i*2+1-12]);
 			inc += mpeg_macro_block_inc_decode2[i*2+0-12];
 		} else {
-			bits.skip(mpeg_macro_block_inc_decode[i*2+1]);
+			mBits.skip(mpeg_macro_block_inc_decode[i*2+1]);
 			inc += mpeg_macro_block_inc_decode[i*2+0];
 		}
 
@@ -1426,11 +1496,11 @@ static void video_process_picture_slice_I(char *ptr, int type) {
 
 		macro_block_flags = MBF_INTRA;
 
-		if (!bits.get_flag()) {
+		if (!mBits.get_flag()) {
 //			macro_block_flags |= MBF_NEW_QUANT;
-			bits.skip();
+			mBits.skip();
 
-			int quant_scale = bits.get8(5);
+			int quant_scale = mBits.get8(5);
 			intramatrix = intramatrices[quant_scale];
 			nonintramatrix = nonintramatrices[quant_scale];
 		}
@@ -1442,27 +1512,27 @@ static void video_process_picture_slice_I(char *ptr, int type) {
 		decode_mblock_UV(dstU, dct_dc_u_past);
 		decode_mblock_UV(dstV, dct_dc_v_past);
 
-	} while(!bits.next(23,0));
+	} while(!mBits.next(23,0));
 }
 
-static int __inline mpeg_get_motion_component() {
+inline int MPEGDecodeEngine::mpeg_get_motion_component() {
 	long v;
 
-	v = bits.peek(11);
+	v = mBits.peek(11);
 	if (v & 0x400) {
-		bits.skip();
+		mBits.skip();
 		return 0;
 	} else if (v >= 96) {
 		v = (v-96)>>4;
-		bits.skip(mpeg_motion_code_decode2[v*2+1]);
+		mBits.skip(mpeg_motion_code_decode2[v*2+1]);
 		return mpeg_motion_code_decode2[v*2+0];
 	} else {
-		bits.skip(mpeg_motion_code_decode[v*2+1]);
+		mBits.skip(mpeg_motion_code_decode[v*2+1]);
 		return mpeg_motion_code_decode[v*2+0];
 	}
 }
 
-static void video_process_picture_slice_P(char *ptr, int type) {
+void MPEGDecodeEngine::video_process_picture_slice_P(char *ptr, int type) {
 	BOOL is_first_block = TRUE;
 	long pos_x, pos_y;
 
@@ -1482,26 +1552,26 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 		// 00000001000 (008) -> skip 33 more
 		// 1 -> skip 1
 
-		i = bits.peek(11);
+		i = mBits.peek(11);
 		while(i == 0xf) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 		}
 		while(i == 0x8) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 			inc += 33;
 		}
 		
 		if (i&0x400) {
-			bits.skip();
+			mBits.skip();
 			++inc;
 		} else if (i>=96) {
 			i >>= 4;
-			bits.skip(mpeg_macro_block_inc_decode2[i*2+1-12]);
+			mBits.skip8(mpeg_macro_block_inc_decode2[i*2+1-12]);
 			inc += mpeg_macro_block_inc_decode2[i*2+0-12];
 		} else {
-			bits.skip(mpeg_macro_block_inc_decode[i*2+1]);
+			mBits.skip(mpeg_macro_block_inc_decode[i*2+1]);
 			inc += mpeg_macro_block_inc_decode[i*2+0];
 		}
 
@@ -1562,14 +1632,14 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 		_ASSERT(dstY <= Y_dest + y_pitch * 16 * (mbHeight-1) + 16*(mbWidth-1));
 
 		{
-			long v=bits.peek(6);
+			long v=mBits.peek(6);
 
 			if (v>=32) {
 				macro_block_flags = MBF_FORWARD | MBF_PATTERN;
-				bits.skip();
+				mBits.skip();
 			} else {
 				macro_block_flags = mpeg_p_type_mb_type_decode[v*2];
-				bits.skip(mpeg_p_type_mb_type_decode[v*2+1]);
+				mBits.skip(mpeg_p_type_mb_type_decode[v*2+1]);
 			}
 		}
 
@@ -1579,7 +1649,7 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 		}
 
 		if (macro_block_flags & MBF_NEW_QUANT) {
-			int quant_scale = bits.get8(5);
+			int quant_scale = mBits.get8(5);
 			intramatrix = intramatrices[quant_scale];
 			nonintramatrix = nonintramatrices[quant_scale];
 		}
@@ -1596,7 +1666,7 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 			if ((signed char)forw_vector_bits<=0 || motion_x_forw_c==0)
 				delta = motion_x_forw_c;
 			else {
-				motion_x_forw_r = bits.get(forw_vector_bits)+1;
+				motion_x_forw_r = mBits.get(forw_vector_bits)+1;
 
 				if (motion_x_forw_c<0)
 					delta = -(((-motion_x_forw_c-1)<<forw_vector_bits) + motion_x_forw_r);
@@ -1610,7 +1680,7 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 			if ((signed char)forw_vector_bits<=0 || motion_y_forw_c==0)
 				delta = motion_y_forw_c;
 			else {
-				motion_y_forw_r = bits.get(forw_vector_bits)+1;
+				motion_y_forw_r = mBits.get(forw_vector_bits)+1;
 
 				if (motion_y_forw_c<0)
 					delta = -(((-motion_y_forw_c-1)<<forw_vector_bits) + motion_y_forw_r);
@@ -1632,20 +1702,20 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 
 		if ((macro_block_flags & MBF_PATTERN)) {
 #if 0
-			long v = bits.peek(9)*2;
+			long v = mBits.peek(9)*2;
 
 			cbp = mpeg_block_pattern_decode[v+0];
-			bits.skip(mpeg_block_pattern_decode[v+1]);
+			mBits.skip(mpeg_block_pattern_decode[v+1]);
 #else
-			long v = bits.peek(9);
+			long v = mBits.peek(9);
 
 			if (v >= 128) {
 				v>>=4;
 				cbp = mpeg_block_pattern_decode0[v*2+0-16];
-				bits.skip(mpeg_block_pattern_decode0[v*2+1-16]);
+				mBits.skip(mpeg_block_pattern_decode0[v*2+1-16]);
 			} else {
 				cbp = mpeg_block_pattern_decode1[v*2+0];
-				bits.skip(mpeg_block_pattern_decode1[v*2+1]);
+				mBits.skip(mpeg_block_pattern_decode1[v*2+1]);
 			}
 #endif
 		}
@@ -1673,10 +1743,10 @@ static void video_process_picture_slice_P(char *ptr, int type) {
 		if (macro_block_flags & MBF_PATTERN)
 			stats.coded_block_pattern++;
 #endif
-	} while(!bits.next(23,0));
+	} while(!mBits.next(23,0));
 }
 
-static void video_process_picture_slice_B(char *ptr, int type) {
+void MPEGDecodeEngine::video_process_picture_slice_B(char *ptr, int type) {
 	BOOL is_first_block = TRUE;
 	long pos_x, pos_y;
 
@@ -1696,26 +1766,26 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 		// 00000001000 (008) -> skip 33 more
 		// 1 -> skip 1
 
-		i = bits.peek(11);
+		i = mBits.peek(11);
 		while(i == 0xf) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 		}
 		while(i == 0x8) {
-			bits.skip(11);
-			i = bits.peek(11);
+			mBits.skip(11);
+			i = mBits.peek(11);
 			inc += 33;
 		}
 		
 		if (i&0x400) {
-			bits.skip();
+			mBits.skip();
 			++inc;
 		} else if (i>=96) {
 			i >>= 4;
-			bits.skip8(mpeg_macro_block_inc_decode2[i*2+1-12]);
+			mBits.skip8(mpeg_macro_block_inc_decode2[i*2+1-12]);
 			inc += mpeg_macro_block_inc_decode2[i*2+0-12];
 		} else {
-			bits.skip8(mpeg_macro_block_inc_decode[i*2+1]);
+			mBits.skip(mpeg_macro_block_inc_decode[i*2+1]);
 			inc += mpeg_macro_block_inc_decode[i*2+0];
 		}
 
@@ -1791,17 +1861,17 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 		_ASSERT(dstY <= Y_dest + y_pitch * 16 * (mbHeight-1) + 16*(mbWidth-1));
 
 		{
-			long v=bits.peek(6);
+			long v=mBits.peek(6);
 
 			if (v>=32) {
 				macro_block_flags = MBF_FORWARD | MBF_BACKWARD;
 				if (v>=48)
 					macro_block_flags = MBF_FORWARD | MBF_BACKWARD | MBF_PATTERN;
 
-				bits.skip8(2);
+				mBits.skip8(2);
 			} else {
 				macro_block_flags = mpeg_b_type_mb_type_decode[v*2];
-				bits.skip8(mpeg_b_type_mb_type_decode[v*2+1]);
+				mBits.skip8(mpeg_b_type_mb_type_decode[v*2+1]);
 			}
 		}
 
@@ -1812,7 +1882,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 		}
 
 		if ((macro_block_flags & MBF_NEW_QUANT)) {
-			int quant_scale = bits.get8(5);
+			int quant_scale = mBits.get8(5);
 			intramatrix = intramatrices[quant_scale];
 			nonintramatrix = nonintramatrices[quant_scale];
 		}
@@ -1829,7 +1899,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			if ((signed char)forw_vector_bits<=0 || motion_x_forw_c==0)
 				delta = motion_x_forw_c;
 			else {
-				motion_x_forw_r = bits.get(forw_vector_bits)+1;
+				motion_x_forw_r = mBits.get(forw_vector_bits)+1;
 
 				if (motion_x_forw_c<0)
 					delta = -(((-motion_x_forw_c-1)<<forw_vector_bits) + motion_x_forw_r);
@@ -1843,7 +1913,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			if ((signed char)forw_vector_bits<=0 || motion_y_forw_c==0)
 				delta = motion_y_forw_c;
 			else {
-				motion_y_forw_r = bits.get(forw_vector_bits)+1;
+				motion_y_forw_r = mBits.get(forw_vector_bits)+1;
 
 				if (motion_y_forw_c<0)
 					delta = -(((-motion_y_forw_c-1)<<forw_vector_bits) + motion_y_forw_r);
@@ -1866,7 +1936,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			if ((signed char)back_vector_bits<=0 || motion_x_back_c==0)
 				delta = motion_x_back_c;
 			else {
-				motion_x_back_r = bits.get(back_vector_bits)+1;
+				motion_x_back_r = mBits.get(back_vector_bits)+1;
 
 				if (motion_x_back_c<0)
 					delta = -(((-motion_x_back_c-1)<<back_vector_bits) + motion_x_back_r);
@@ -1880,7 +1950,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			if ((signed char)back_vector_bits<=0 || motion_y_back_c==0)
 				delta = motion_y_back_c;
 			else {
-				motion_y_back_r = bits.get(back_vector_bits)+1;
+				motion_y_back_r = mBits.get(back_vector_bits)+1;
 
 				if (motion_y_back_c<0)
 					delta = -(((-motion_y_back_c-1)<<back_vector_bits) + motion_y_back_r);
@@ -1892,15 +1962,15 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 		}
 
 		if ((macro_block_flags & MBF_PATTERN)) {
-			long v = bits.peek(9);
+			long v = mBits.peek(9);
 
 			if (v >= 128) {
 				v>>=4;
 				cbp = mpeg_block_pattern_decode0[v*2+0-16];
-				bits.skip8(mpeg_block_pattern_decode0[v*2+1-16]);
+				mBits.skip8(mpeg_block_pattern_decode0[v*2+1-16]);
 			} else {
 				cbp = mpeg_block_pattern_decode1[v*2+0];
-				bits.skip(mpeg_block_pattern_decode1[v*2+1]);
+				mBits.skip(mpeg_block_pattern_decode1[v*2+1]);
 			}
 		}
 
@@ -1938,27 +2008,27 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			stats.coded_block_pattern++;
 #endif
 
-	} while(!bits.next(23,0));
+	} while(!mBits.next(23,0));
 }
 
-static void video_process_picture_slice(char *ptr, int type) {
+void MPEGDecodeEngine::video_process_picture_slice(char *ptr, int type) {
 	int quant_scale;
 
-	bits = CMemoryBitInput(ptr);
+	mBits = CMemoryBitInput(ptr);
 
 	dct_dc_y_past = dct_dc_u_past = dct_dc_v_past = MIDVAL;
 
 	forw_vector_x = forw_vector_y = 0;
 	back_vector_x = back_vector_y = 0;
 
-	quant_scale = bits.get(5);
+	quant_scale = mBits.get(5);
 	intramatrix = intramatrices[quant_scale];
 	nonintramatrix = nonintramatrices[quant_scale];
 
 	memset(dct_coeff, 0, sizeof dct_coeff);
 
-	while(bits.get())
-		bits.skip(8);
+	while(mBits.get())
+		mBits.skip(8);
 
 	if (type > mbHeight)
 		return;
@@ -1972,15 +2042,10 @@ static void video_process_picture_slice(char *ptr, int type) {
 
 //////////////////////////////////////////////////////////////
 
-extern "C" void asm_YUVtoRGB32_row(
-		unsigned long *ARGB1_pointer,
-		unsigned long *ARGB2_pointer,
-		YUVPixel *Y1_pointer,
-		YUVPixel *Y2_pointer,
-		YUVPixel *U_pointer,
-		YUVPixel *V_pointer,
-		long width
-		);
+extern "C" void asm_YUVtoRGB32_row(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB32_row_MMX(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB32_row_ISSE(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB32_row_SSE2(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
 
 extern "C" void asm_YUVtoRGB32hq_row_ISSE(
 		unsigned long *ARGB1_pointer,
@@ -1994,37 +2059,31 @@ extern "C" void asm_YUVtoRGB32hq_row_ISSE(
 		long uv_down
 		);
 
-extern "C" void asm_YUVtoRGB24_row(
-		unsigned long *ARGB1_pointer,
-		unsigned long *ARGB2_pointer,
-		YUVPixel *Y1_pointer,
-		YUVPixel *Y2_pointer,
-		YUVPixel *U_pointer,
-		YUVPixel *V_pointer,
-		long width
-		);
+extern "C" void asm_YUVtoRGB24_row(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB24_row_MMX(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB24_row_ISSE(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
 
-extern "C" void asm_YUVtoRGB16_row(
-		unsigned long *ARGB1_pointer,
-		unsigned long *ARGB2_pointer,
-		YUVPixel *Y1_pointer,
-		YUVPixel *Y2_pointer,
-		YUVPixel *U_pointer,
-		YUVPixel *V_pointer,
-		long width
-		);
+extern "C" void asm_YUVtoRGB24_SSE2(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width, MPEGRGBDecodeWorkspace *workspace);
+
+extern "C" void asm_YUVtoRGB16_row(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB16_row_MMX(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+extern "C" void asm_YUVtoRGB16_row_ISSE(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+
+typedef void (__cdecl *tpYUVtoRGB1)(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
+typedef void (__cdecl *tpYUVtoRGB2)(unsigned long *ARGB1_pointer, unsigned long *ARGB2_pointer, YUVPixel *Y1_pointer, YUVPixel *Y2_pointer, YUVPixel *U_pointer, YUVPixel *V_pointer, long width);
 
 static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
 	dst = dst + bpr * (2*h - 2);
 
 //#pragma warning("don't ship with this!!!!!!");
 
+	tpYUVtoRGB1 rowFunc = SSE2_enabled ? asm_YUVtoRGB32_row_SSE2 : ISSE_enabled ? asm_YUVtoRGB32_row_ISSE : MMX_enabled ? asm_YUVtoRGB32_row_MMX : asm_YUVtoRGB32_row;
+
 	long h0 = h;
 
 	do {
 #if 1
-		asm_YUVtoRGB32_row(
-				(unsigned long *)(dst + bpr),
+		rowFunc((unsigned long *)(dst + bpr),
 				(unsigned long *)dst,
 				Y_ptr,
 				Y_ptr + y_pitch,
@@ -2058,12 +2117,36 @@ static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 		__asm sfence
 }
 
-static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
+static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h, MPEGRGBDecodeWorkspace *workspace) {
 	dst = dst + bpr * (2*h - 2);
 
-	do {
-		asm_YUVtoRGB24_row(
+	if (SSE2_enabled) {
+		workspace->rgb_pitch	= -bpr*2-w*6;
+		workspace->y_pitch		= y_pitch*2;
+		workspace->uv_pitch		= uv_pitch;
+		workspace->w			= w;
+		workspace->h			= h;
+
+		asm_YUVtoRGB24_SSE2(
 				(unsigned long *)(dst + bpr),
+				(unsigned long *)dst,
+				Y_ptr,
+				Y_ptr + y_pitch,
+				U_ptr,
+				V_ptr,
+				w,
+				workspace);
+
+		__asm emms
+		__asm sfence
+
+		return;
+	}
+
+	tpYUVtoRGB2 rowFunc = ISSE_enabled ? asm_YUVtoRGB24_row_ISSE : MMX_enabled ? asm_YUVtoRGB24_row_MMX : asm_YUVtoRGB24_row;
+
+	do {
+		rowFunc((unsigned long *)(dst + bpr),
 				(unsigned long *)dst,
 				Y_ptr,
 				Y_ptr + y_pitch,
@@ -2086,9 +2169,10 @@ static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 static void YUVToRGB16(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
 	dst = dst + bpr * (2*h - 2);
 
+	tpYUVtoRGB1 rowFunc = ISSE_enabled ? asm_YUVtoRGB16_row_ISSE : MMX_enabled ? asm_YUVtoRGB16_row_MMX : asm_YUVtoRGB16_row;
+
 	do {
-		asm_YUVtoRGB16_row(
-				(unsigned long *)(dst + bpr),
+		rowFunc((unsigned long *)(dst + bpr),
 				(unsigned long *)dst,
 				Y_ptr,
 				Y_ptr + y_pitch,
@@ -2176,12 +2260,11 @@ xyloop:
 		test		ebp,1					;update U/V row every other row only
 		jz			oddline
 
-		sub			ebx,edx					;advance U pointer
-		sub			ecx,edx					;advance V pointer
+		add			ebx,uv_pitch			;advance U pointer
+		add			ecx,uv_pitch			;advance V pointer
 
 oddline:
-		sub			eax,edx					;advance Y pointer
-		sub			eax,edx					;advance Y pointer
+		add			eax,y_pitch				;advance Y pointer
 
 		add			edi,esi					;advance dest ptr
 
@@ -2355,12 +2438,11 @@ xyloop:
 		test		ebp,1					;update U/V row every other row only
 		jz			oddline
 
-		sub			ebx,edx					;advance U pointer
-		sub			ecx,edx					;advance V pointer
+		add			ebx,uv_pitch			;advance U pointer
+		add			ecx,uv_pitch			;advance V pointer
 
 oddline:
-		sub			eax,edx					;advance Y pointer
-		sub			eax,edx					;advance Y pointer
+		add			eax,y_pitch				;advance Y pointer
 
 		add			edi,esi					;advance dest ptr
 
@@ -2689,8 +2771,8 @@ static void video_add_backward_prediction(int x_pos, int y_pos, bool fchrom) {
 
 class MPEGDecoderVerifier {
 private:
-	YUVPixel src[32][32], dst[32][32], src2[32][32];
-	int err[2][2][2];
+	__declspec(align(16)) YUVPixel src[32][32], dst[32][32], src2[32][32];
+	__declspec(align(16)) int err[2][2][2];
 
 	void rnd();
 	int checkpred(int vx, int vy, int w, int h, bool);
@@ -2752,25 +2834,27 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 		CPUEnableExtensions(0);
 
 		do {
-			_RPT2(0,"MPEG-1 decoder: testing prediction copy (MMX %s / ISSE %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off");
+			_RPT3(0,"MPEG-1 decoder: testing prediction copy (MMX %s / ISSE %s / SSE2 %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off", SSE2_enabled ? "on" : "off");
 
+			video_copy_prediction_Y = video_copy_prediction_Y_scalar;
+			video_add_prediction_Y = video_add_prediction_Y_scalar;
+			video_copy_prediction_C = video_copy_prediction_C_scalar;
+			video_add_prediction_C = video_add_prediction_C_scalar;
 			if (MMX_enabled) {
-				if (ISSE_enabled) {
-					video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
-					video_add_prediction_Y = video_add_prediction_Y_ISSE;
-					video_copy_prediction_C = video_copy_prediction_C_ISSE;
-					video_add_prediction_C = video_add_prediction_C_ISSE;
-				} else {
-					video_copy_prediction_Y = video_copy_prediction_Y_MMX;
-					video_add_prediction_Y = video_add_prediction_Y_MMX;
-					video_copy_prediction_C = video_copy_prediction_C_MMX;
-					video_add_prediction_C = video_add_prediction_C_MMX;
-				}
-			} else {
-				video_copy_prediction_Y = video_copy_prediction_Y_scalar;
-				video_add_prediction_Y = video_add_prediction_Y_scalar;
-				video_copy_prediction_C = video_copy_prediction_C_scalar;
-				video_add_prediction_C = video_add_prediction_C_scalar;
+				video_copy_prediction_Y = video_copy_prediction_Y_MMX;
+				video_add_prediction_Y = video_add_prediction_Y_MMX;
+				video_copy_prediction_C = video_copy_prediction_C_MMX;
+				video_add_prediction_C = video_add_prediction_C_MMX;
+			}
+			if (ISSE_enabled) {
+				video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
+				video_add_prediction_Y = video_add_prediction_Y_ISSE;
+				video_copy_prediction_C = video_copy_prediction_C_ISSE;
+				video_add_prediction_C = video_add_prediction_C_ISSE;
+			}
+			if (SSE2_enabled) {
+				video_copy_prediction_Y = video_copy_prediction_Y_SSE2;
+				video_add_prediction_Y = video_add_prediction_Y_SSE2;
 			}
 
 			memset(err, 0, sizeof err);
@@ -2791,7 +2875,7 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 			_RPT2(0,"full/half: average error %.4lf, %.4lf\n", (double)err[0][1][0] / (16.0*16.0*256.0), (double)err[1][1][0] / (16.0*16.0*64.0));
 			_RPT2(0,"half/half: average error %.4lf, %.4lf\n", (double)err[0][1][1] / (16.0*16.0*256.0), (double)err[1][1][1] / (16.0*16.0*64.0));
 
-			_RPT2(0,"MPEG-1 decoder: testing prediction add (MMX %s / ISSE %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off");
+			_RPT3(0,"MPEG-1 decoder: testing prediction add (MMX %s / ISSE %s / SSE2 %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off", SSE2_enabled ? "on" : "off");
 
 			memset(err, 0, sizeof err);
 			for(j=0; j<16; j++) {
@@ -2813,8 +2897,8 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 			_RPT2(0,"full/half: average error %.4lf, %.4lf\n", (double)err[0][1][0] / (16.0*16.0*256.0), (double)err[1][1][0] / (16.0*16.0*64.0));
 			_RPT2(0,"half/half: average error %.4lf, %.4lf\n", (double)err[0][1][1] / (16.0*16.0*256.0), (double)err[1][1][1] / (16.0*16.0*64.0));
 
-			CPUEnableExtensions(CPUGetAvailableExtensions() & (MMX_enabled ? ISSE_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX));
-		} while(MMX_enabled || ISSE_enabled);
+			CPUEnableExtensions(CPUGetAvailableExtensions() & (MMX_enabled ? ISSE_enabled ? SSE2_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE|CPUF_SUPPORTS_SSE2 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX));
+		} while(MMX_enabled || ISSE_enabled || SSE2_enabled);
 	} catch(const MyError& e) {
 		e.post(NULL, "MPEG-1 decoder verification error");
 	}

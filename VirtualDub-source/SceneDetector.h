@@ -31,7 +31,7 @@ private:
 	long cut_threshold;
 	double fade_threshold;
 
-	_destruct();
+	void _destruct();
 
 	void BitmapToLummap(Pixel *lummap, VBitmap *vbm);
 	void FlipBuffers();

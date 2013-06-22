@@ -1236,7 +1236,15 @@ void DoSave(const EXCEPTION_POINTERS *pExc) {
 		return;
 
 	Report(NULL, hFile,
-			"VirtualDub crash report -- build %d\r\n"
+			"VirtualDub crash report -- build %d ("
+#ifdef DEBUG
+			"debug"
+#elif defined(__INTEL_COMPILER)
+			"release-P4"
+#else
+			"release"
+#endif
+			")\r\n"
 			"--------------------------------------\r\n"
 			"\r\n"
 			"Disassembly:", version_num);
@@ -1261,7 +1269,7 @@ void DoSave(const EXCEPTION_POINTERS *pExc) {
 			,ovi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS
 			? (ovi.dwMinorVersion>0 ? "98" : "95")
 				: ovi.dwPlatformId == VER_PLATFORM_WIN32_NT
-					? (ovi.dwMajorVersion >= 5 ? "2000" : "NT")
+					? (ovi.dwMajorVersion >= 5 ? ovi.dwMinorVersion>0 ? "XP" : "2000" : "NT")
 					: "?"
 			,ovi.dwBuildNumber & 0xffff
 			,ovi.szCSDVersion);

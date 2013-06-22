@@ -287,6 +287,29 @@ static void CALLBACK AboutTimerProc(UINT uID, UINT, DWORD dwUser, DWORD, DWORD) 
 	PostMessage((HWND)dwUser, WM_APP+0, 0, 0);
 }
 
+static void AboutSetCompilerBuild(HWND hwnd) {
+	char buf[4096];
+#ifdef __INTEL_COMPILER
+	const char *const s = "Intel C/C++ Compiler 6.0";
+#elif _MSC_VER >= 1300
+	const char *const s = "Microsoft Visual Studio .NET";
+#else
+	const char *const s = "Microsoft Visual C++ 6.0 SP5 + Processor Pack";
+#endif
+
+	GetWindowText(hwnd, buf, sizeof buf);
+
+	char *t = strchr(buf, '$');
+
+	if (t) {
+		int l = strlen(s);
+
+		memmove(t+l, t+1, strlen(t)-1);
+		memcpy(t, s, l);
+		SetWindowText(hwnd, buf);
+	}
+}
+
 BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 {
 	static bool bTimerSet;
@@ -311,6 +334,8 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
         case WM_INITDIALOG:
 			{
 				char buf[128];
+
+				AboutSetCompilerBuild(GetDlgItem(hDlg, IDC_STATIC_VERSION));
 
 				wsprintf(buf, "Build %d/"
 #ifdef _DEBUG

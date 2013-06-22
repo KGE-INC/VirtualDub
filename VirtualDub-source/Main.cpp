@@ -2728,6 +2728,8 @@ static void SaveImageSeqShowFilenames(HWND hDlg) {
 	strcpy(s, sisdd->szPrefix);
 	while(*s) ++s;
 
+	char *pCombinedPrefixPt = s;
+
 	*s++ = '%';
 	*s++ = '0';
 	*s++ = '*';
@@ -2740,6 +2742,8 @@ static void SaveImageSeqShowFilenames(HWND hDlg) {
 	SetDlgItemText(hDlg, IDC_STATIC_FIRSTFRAMENAME, buf);
 	sprintf(buf, sisdd->szFormat, sisdd->digits, sisdd->lLastFrame);
 	SetDlgItemText(hDlg, IDC_STATIC_LASTFRAMENAME, buf);
+
+	*pCombinedPrefixPt = 0;
 }
 
 static BOOL CALLBACK SaveImageSeqDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -2878,9 +2882,9 @@ void SaveImageSeq(HWND hwnd) {
 
 		try {
 			if (sisdd.bRunAsJob)
-				JobAddConfigurationImages(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, sisdd.szPrefix, sisdd.szPostfix, sisdd.digits, sisdd.bSaveAsTGA, &inputAVI->listFiles);
+				JobAddConfigurationImages(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, sisdd.szFormat, sisdd.szPostfix, sisdd.digits, sisdd.bSaveAsTGA, &inputAVI->listFiles);
 			else
-				SaveImageSequence(sisdd.szPrefix, sisdd.szPostfix, sisdd.digits, false, NULL, sisdd.bSaveAsTGA);
+				SaveImageSequence(sisdd.szFormat, sisdd.szPostfix, sisdd.digits, false, NULL, sisdd.bSaveAsTGA);
 		} catch(const MyError& e) {
 			e.post(NULL, g_szError);
 		}

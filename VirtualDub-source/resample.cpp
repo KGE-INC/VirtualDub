@@ -127,6 +127,7 @@ extern "C" void asm_resize_interp_col_run(
 extern "C" void asm_resize_ccint(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, long xaccum, long xint, const int *table);
 extern "C" void asm_resize_ccint_col(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
 extern "C" void asm_resize_ccint_col_MMX(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
+extern "C" void asm_resize_ccint_col_SSE2(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
 
 extern "C" long resize_table_col_MMX(Pixel *out, const Pixel *const*in_table, const int *filter, int filter_width, PixDim w, long frac);
 extern "C" long resize_table_col_by2linear_MMX(Pixel *out, const Pixel *const*in_table, PixDim w);
@@ -990,7 +991,8 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 	if (rowcount) {
 		rowpitch = ((int)ceil(dx)+1)&~1;
 
-		rowmem = new Pixel32[rowpitch * rowcount];
+		rowmemalloc = new Pixel32[rowpitch * rowcount+2];
+		rowmem = (Pixel32 *)(((long)rowmemalloc+7)&~7);
 		rows = new Pixel32*[rowcount * 2];
 	}
 
@@ -1001,11 +1003,11 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 void Resampler::Free() {
 	delete[] xtable;
 	delete[] ytable;
-	delete[] rowmem;
+	delete[] rowmemalloc;
 	delete[] rows;
 
 	xtable = ytable = NULL;
-	rowmem = NULL;
+	rowmemalloc = NULL;
 	rows = NULL;
 }
 
@@ -1289,13 +1291,17 @@ bool Resampler::Process(const VBitmap *dst, double _x2, double _y2, const VBitma
 							(unsigned long)yaccum >> 16);
 					break;
 				case eFilter::kCubicInterp:
-					if (MMX_enabled)
+					if (SSE2_enabled)
+						asm_resize_ccint_col_SSE2(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetStandardCubic4Table()+1024+4*((unsigned long)yaccum>>24));
+					else if (MMX_enabled)
 						asm_resize_ccint_col_MMX(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetStandardCubic4Table()+1024+4*((unsigned long)yaccum>>24));
 					else
 						asm_resize_ccint_col(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetStandardCubic4Table()+4*((unsigned long)yaccum>>24));
 					break;
 				case eFilter::kCubicInterp060:
-					if (MMX_enabled)
+					if (SSE2_enabled)
+						asm_resize_ccint_col_SSE2(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetBetterCubic4Table()+1024+4*((unsigned long)yaccum>>24));
+					else if (MMX_enabled)
 						asm_resize_ccint_col_MMX(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetBetterCubic4Table()+1024+4*((unsigned long)yaccum>>24));
 					else
 						asm_resize_ccint_col(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetBetterCubic4Table()+4*((unsigned long)yaccum>>24));

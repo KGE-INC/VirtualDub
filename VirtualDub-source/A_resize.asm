@@ -54,9 +54,10 @@
 ;		FPU:		40-50
 ;		MMX:		10-20
 
-	.586
+	.686
 	.387
 	.mmx
+	.xmm
 	.model	flat
 
 	.const
@@ -699,6 +700,7 @@ pixelloop:
 	ret
 _asm_resize_ccint_col	endp
 
+;--------------------------------------------------------------------------
 ;asm_resize_ccint_col_MMX(dst, src1, src2, src3, src4, count, tbl);
 
 	public	_asm_resize_ccint_col_MMX
@@ -709,76 +711,81 @@ _asm_resize_ccint_col_MMX:
 	push	edi
 	push	ebp
 
-	mov	ebp,[esp + 4 + 16]	;ebx = dest addr
-	mov	ecx,[esp + 24 + 16]	;ecx = count
-	shl	ecx,2			;ecx = count*4
-	add	ecx,ebp			;ecx = dst limit
-	mov	[esp + 24 + 16], ecx
+	mov	ebp,[esp + 4 + 16]	;ebp = dest addr
+	mov	esi,[esp + 24 + 16]	;esi = count
+	add	esi,esi
+	add	esi,esi
 
-	mov	eax,[esp + 8 + 16]
-	mov	ebx,[esp + 12 + 16]
-	mov	ecx,[esp + 16 + 16]
-	mov	edx,[esp + 20 + 16]
-	mov	edi,[esp + 28 + 16]
+	mov	eax,[esp + 8 + 16]	;eax = row 1
+	mov	ebx,[esp + 12 + 16]	;ebx = row 2
+	mov	ecx,[esp + 16 + 16]	;ecx = row 3
+	mov	edx,[esp + 20 + 16]	;edx = row 4
+	mov	edi,[esp + 28 + 16]	;edi = coefficient ptr
+	
+	add	eax,esi
+	add	ebx,esi
+	add	ecx,esi
+	add	edx,esi
+	add	ebp,esi
+	neg	esi
 
+	movq		mm4,[edi]
+	movq		mm5,[edi+8]
 	movq		mm6,x0000200000002000
 	pxor		mm7,mm7
 
-	xor	esi,esi
-
-	movd		mm2,[ecx+esi]
+	movd		mm2,[eax+esi]
+	movd		mm1,[ebx+esi]		;mm1 = pixel1
 	jmp		short ccint_col_loop_MMX@entry
 
+	align		16
 ccint_col_loop_MMX:
-	movd		mm2,[ecx+esi]
-	packuswb	mm0,mm0				;mm0 = [a][r][g][b][a][r][g][b]
+	movd		mm2,[eax+esi]		;mm2 = pixel0
+	packuswb	mm0,mm0
+	
+	movd		mm1,[ebx+esi]		;mm1 = pixel1
+	pxor		mm7,mm7
 
-	movd		[ebp-4],mm0
-
-ccint_col_loop_MMX@entry:
-	movd		mm1,[ebx+esi]
-	punpcklbw	mm2,mm7				;mm2 = [a3][r3][g3][b3]
-
-	movd		mm0,[eax+esi]
-	punpcklbw	mm1,mm7				;mm1 = [a2][r2][g2][b2]
-
-	movd		mm3,[edx+esi]
-	punpcklbw	mm0,mm7				;mm0 = [a1][r1][g1][b1]
-
-	punpcklbw	mm3,mm7				;mm3 = [a4][r4][g4][b4]
-	movq		mm4,mm0				;mm0 = [a1][r1][g1][b1]
-
-	punpcklwd	mm0,mm1				;mm0 = [g2][g1][b2][b1]
-	movq		mm5,mm2				;mm2 = [a3][r3][g3][b3]
-
-	pmaddwd		mm0,[edi]
-	punpcklwd	mm2,mm3				;mm2 = [g4][g3][b4][b3]
-
-	pmaddwd		mm2,[edi+8]
-	punpckhwd	mm4,mm1				;mm4 = [a2][a1][r2][r1]
-
-	pmaddwd		mm4,[edi]
-	punpckhwd	mm5,mm3				;mm5 = [a4][a3][b4][b3]
-
-	pmaddwd		mm5,[edi+8]
-	add		esi,4
-
-	paddd		mm0,mm2				;mm0 = [ g ][ b ]
-	add		ebp,4
-
-	paddd		mm4,mm6
+	movd		[ebp+esi-4],mm0
+	punpcklbw	mm2,mm7
+	
+ccint_col_loop_MMX@entry:	
+	punpcklbw	mm1,mm7
+	movq		mm0,mm2
+	
+	movd		mm3,[edx+esi]		;mm3 = pixel3
+	punpcklwd	mm0,mm1			;mm0 = [g1][g0][b1][b0]
+	
+	pmaddwd		mm0,mm4
+	punpckhwd	mm2,mm1			;mm2 = [a1][a0][r1][r0]
+	
+	movd		mm1,[ecx+esi]		;mm1 = pixel2
+	punpcklbw	mm3,mm7
+		
+	pmaddwd		mm2,mm4
+	punpcklbw	mm1,mm7
+	
+	movq		mm7,mm1
+	punpcklwd	mm1,mm3			;mm1 = [g3][g2][b3][b2]
+	
+	punpckhwd	mm7,mm3			;mm7 = [a3][a2][r3][r2]
+	pmaddwd		mm1,mm5
+	
+	pmaddwd		mm7,mm5
 	paddd		mm0,mm6
-
-	paddd		mm4,mm5				;mm4 = [ a ][ r ]
+	
+	paddd		mm2,mm6
+	paddd		mm0,mm1
+	
+	paddd		mm2,mm7
 	psrad		mm0,14
-
-	psrad		mm4,14
-	cmp		ebp,[esp + 24 + 16]
-
-	packssdw	mm0,mm4				;mm0 = [ a ][ r ][ g ][  b ]
+	
+	psrad		mm2,14
+	add		esi,4
+	
+	packssdw	mm0,mm2
 	jne		ccint_col_loop_MMX
-
-	packuswb	mm0,mm0				;mm0 = [a][r][g][b][a][r][g][b]
+	
 	movd		[ebp-4],mm0
 
 	pop	ebp
@@ -786,12 +793,106 @@ ccint_col_loop_MMX@entry:
 	pop	esi
 	pop	ebx
 	ret
+	
 
+;--------------------------------------------------------------------------
+;asm_resize_ccint_col_SSE2(dst, src1, src2, src3, src4, count, tbl);
 
+	public	_asm_resize_ccint_col_SSE2
 
+_asm_resize_ccint_col_SSE2:
+	push	ebx
+	push	esi
+	push	edi
+	push	ebp
 
+	mov	ebp,[esp + 4 + 16]	;ebp = dest addr
+	mov	esi,[esp + 24 + 16]	;esi = count
+	add	esi,esi
+	add	esi,esi
 
+	mov	eax,[esp + 8 + 16]	;eax = row 1
+	mov	ebx,[esp + 12 + 16]	;ebx = row 2
+	mov	ecx,[esp + 16 + 16]	;ecx = row 3
+	mov	edx,[esp + 20 + 16]	;edx = row 4
+	mov	edi,[esp + 28 + 16]	;edi = coefficient ptr
+	
+	add	eax,esi
+	add	ebx,esi
+	add	ecx,esi
+	add	edx,esi
+	add	ebp,esi
+	neg	esi
 
+	movq		xmm4,[edi]
+	movq		xmm5,[edi+8]
+	punpcklqdq	xmm4,xmm4
+	punpcklqdq	xmm5,xmm5
+	movq		xmm6,x0000200000002000
+	punpcklqdq	xmm6,xmm6
+	pxor		xmm7,xmm7
+
+;	jmp		short ccint_col_loop_SSE2@entry
+
+;	align		16
+ccint_col_loop_SSE2:
+	movq		xmm0,[eax+esi]
+	movq		xmm1,[ebx+esi]
+	movq		xmm2,[ecx+esi]
+	movq		xmm3,[edx+esi]
+	punpcklbw	xmm0,xmm1
+	punpcklbw	xmm2,xmm3
+	movdqa		xmm1,xmm0
+	movdqa		xmm3,xmm2
+	punpcklbw	xmm0,xmm7
+	punpckhbw	xmm1,xmm7
+	punpcklbw	xmm2,xmm7
+	punpckhbw	xmm3,xmm7
+	pmaddwd		xmm0,xmm4
+	pmaddwd		xmm1,xmm4
+	pmaddwd		xmm2,xmm5
+	pmaddwd		xmm3,xmm5
+	paddd		xmm0,xmm6
+	paddd		xmm2,xmm6
+	paddd		xmm0,xmm2
+	paddd		xmm1,xmm3
+	psrad		xmm0,14
+	psrad		xmm1,14
+	packssdw	xmm0,xmm1
+	packuswb	xmm0,xmm0
+	movdq2q		mm0,xmm0
+	add		esi,8
+	
+	movntq		[ebp+esi-8],mm0
+	jne		ccint_col_loop_SSE2
+	
+	pop	ebp
+	pop	edi
+	pop	esi
+	pop	ebx
+	ret
+
+	if 0
+	movd		xmm0,[eax+esi]
+	movd		xmm1,[ebx+esi]
+	movd		xmm2,[ecx+esi]
+	movd		xmm3,[edx+esi]
+	punpcklbw	xmm0,xmm1
+	punpcklbw	xmm2,xmm3
+	punpcklbw	xmm0,xmm7
+	punpcklbw	xmm2,xmm7
+	pmaddwd		xmm0,xmm5
+	pmaddwd		xmm2,xmm5
+	paddd		xmm0,xmm6
+	paddd		xmm0,xmm2
+	packssdw	xmm0,xmm0
+	movdq2q		mm0,xmm0
+	packuswb	mm0,mm0
+	movd		edi,mm0
+	add		esi,4
+	
+	movnti		[ebp+esi-4],edi
+	endif
 
 ; long resize_table_row_by2linear_MMX(Pixel *out, Pixel *in, PixDim w);
 

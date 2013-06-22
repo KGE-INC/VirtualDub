@@ -207,7 +207,7 @@ FilterInstance *FilterInstance::Clone() {
 			throw MyMemoryError();
 
 		if (fi->filter->copyProc)
-			fi->filter->copyProc(fi, &g_filterFuncs, fi->filter_data);
+			fi->filter->copyProc(this, &g_filterFuncs, fi->filter_data);
 		else
 			memcpy(fi->filter_data, filter_data, fi->filter->inst_data_size);
 	}

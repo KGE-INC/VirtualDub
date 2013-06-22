@@ -15,12 +15,14 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
+	.686
 	.mmx
+	.xmm
 	.model	flat
 	.code
 
 	extern _MMX_enabled : byte
+	extern _ISSE_enabled : byte
 
 	public	_DIBconvert_8_to_16
 	public	_DIBconvert_8_to_24
@@ -383,6 +385,8 @@ DIBconvert1632@x3:
 ;	ulong height);		[ESP+24]
 
 _DIBconvert_24_to_32:
+	test	byte ptr _ISSE_enabled,1
+	jne	DIBconvert_24_to_32_ISSE
 	push	ebp
 	push	edi
 	push	esi
@@ -465,6 +469,118 @@ DIBconvert2432@x4:
 	pop	esi
 	pop	edi
 	pop	ebp
+
+	ret
+
+DIBconvert_24_to_32_ISSE:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,[esp+12+16]
+	mov	edi,[esp+4+16]
+
+	mov	ecx,[esp+20+16]
+	lea	eax,[ecx+ecx*2]
+	lea	ebx,[ecx*4]
+	sub	[esp+8+16],ebx
+	sub	[esp+16+16],eax
+
+	mov	edx,[esp+24+16]
+	mov	ebx,[esp+20+16]
+	mov	ecx,[esp+16+16]
+	mov	eax,[esp+ 8+16]
+	
+	;ebx	horizontal count backup
+	;ecx	source modulo
+	;edx	vertical count
+	;esi	source
+	;edi	destination
+	;ebp	horizontal count
+	
+DIBconvert2432ISSE@y:
+	mov	ebp,ebx
+	shr	ebp,3
+	jz	DIBconvert2432ISSE@x2
+DIBconvert2432ISSE@x1:
+	movq		mm0,[esi]		;mm0: g2b2r1g1b1r0g0b0
+	movq		mm1,mm0			;
+	
+	psrlq		mm1,24			;mm1: ------g2b2r1g1b1
+	movq		mm2,mm0			;
+	
+	movq		mm3,[esi+8]		;mm3: b5r4g4b4r3g3b3r2
+	punpckldq	mm0,mm1			;mm0: b2r1g1b1b1r0g0b0	[qword 0 ready]
+	
+	movq		mm4,mm3			;mm4: b5r4g4b4r3g3b3r2
+	psllq		mm3,48			;mm3: b3r2------------
+	
+	movq		mm5,mm4			;mm5: b5r4g4b4r3g3b3r2
+	psrlq		mm2,16			;mm2: ----g2b2--------
+	
+	movq		mm1,[esi+16]		;mm1: r7g7b7r6g6b6r5g5
+	por		mm2,mm3			;mm2: b3r2g2b2--------
+	
+	movntq		[edi],mm0		;
+	psllq		mm4,24			;mm4: b4r3g3b3r2------
+	
+	movq		mm3,mm5			;mm3: b5r4g4b4r3g3b3r2
+	psrlq		mm5,24			;mm5: ------b5r4g4b4r3
+	
+	movq		mm0,mm1			;mm0: r7g7b7r6g6b6r5g5
+	psllq		mm1,40			;mm1: b6r5g5----------
+	
+	punpckhdq	mm2,mm4			;mm2: b4r3g3b3b3r2g2b2 [qword 1 ready]
+	por		mm1,mm5			;mm1: b6r5g5b5r4g4b4r3
+	
+	movq		mm4,mm0			;mm4: r7g7b7r6g6b6r5g5
+	punpckhdq	mm3,mm1			;mm3: b6r5g5b5b5r4g4b4 [qword 2 ready]
+	
+	movntq		[edi+8],mm2
+	psrlq		mm0,16			;mm0: ----r7g7b7r6g6b6
+	
+	movntq		[edi+16],mm3
+	psrlq		mm4,40			;mm4: ----------r7g7b7
+	
+	punpckldq	mm0,mm4			;mm0: --r7g7b7b7r6g6b6 [qword 3 ready]
+	add		esi,24
+	
+	movntq		[edi+24],mm0
+		
+	add	edi,32
+	dec	ebp
+	jne	DIBconvert2432ISSE@x1
+
+DIBconvert2432ISSE@x2:
+	mov	ebp,ebx
+	and	ebp,7
+	jz	DIBconvert2432ISSE@x4
+	movd	mm7,eax
+DIBconvert2432ISSE@x3:
+	mov	ax,[esi]
+	mov	[edi],ax
+	mov	al,[esi+2]
+	mov	[edi+2],al
+	add	esi,3
+	add	edi,4
+	dec	ebp
+	jne	DIBconvert2432ISSE@x3
+	
+	movd	eax,mm7
+DIBconvert2432ISSE@x4:
+	add	esi,ecx
+	add	edi,eax
+
+	dec	edx
+	jne	DIBconvert2432ISSE@y
+	emms
+	sfence
+	pop	ebx
+	pop	esi
+	pop	edi
+	pop	ebp
+
 
 	ret
 

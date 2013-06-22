@@ -43,10 +43,30 @@
 #define LOCK_RESET
 #endif
 
+static void __declspec(naked) __stdcall VDInterlockedOr(volatile DWORD& var, DWORD flag) {
+	__asm {
+		mov eax, [esp+8]
+		mov edx, [esp+4]
+		lock or dword ptr [edx], eax
+		ret 8
+	}
+}
+
+static void __declspec(naked) __stdcall VDInterlockedAnd(volatile DWORD& var, DWORD flag) {
+	__asm {
+		mov eax, [esp+8]
+		mov edx, [esp+4]
+		lock and dword ptr [edx], eax
+		ret 8
+	}
+}
+
+
+
 AsyncBlitter::AsyncBlitter() {
 	max_requests		= 0;
 	requests			= NULL;
-	dwLockedBuffers		= NULL;
+	dwLockedBuffers		= 0;
 	fAbort				= FALSE;
 	fFlush				= false;
 	fPulsed				= FALSE;
@@ -70,7 +90,7 @@ AsyncBlitter::AsyncBlitter(int maxreq) {
 	max_requests		= maxreq;
 	requests			= new AsyncBlitRequest[max_requests];
 	memset(requests,0,sizeof(AsyncBlitRequest)*max_requests);
-	dwLockedBuffers		= NULL;
+	dwLockedBuffers		= 0;
 	fAbort				= FALSE;
 	fFlush				= false;
 	fPulsed				= FALSE;
@@ -155,13 +175,13 @@ void AsyncBlitter::lock(DWORD id) {
 			LOCK_CLEAR(LOCK_LOCK);
 		}
 	}
-	dwLockedBuffers |= id;
+	VDInterlockedOr(dwLockedBuffers, id);
 }
 
 void AsyncBlitter::unlock(DWORD id) {
 	if (!requests) return;
 
-	dwLockedBuffers &= ~id;
+	VDInterlockedAnd(dwLockedBuffers, ~id);
 }
 
 void AsyncBlitter::setPulseCallback(BOOL (*pc)(void *, DWORD), void *pcd) {
@@ -714,7 +734,7 @@ void AsyncBlitter::postAFC(DWORD id, void (*pFunc)(void *), void *pData) {
 void AsyncBlitter::release(DWORD id) {
 	if (!requests) return;
 
-	dwLockedBuffers &= ~id;
+	VDInterlockedAnd(dwLockedBuffers, ~id);
 	SetEvent(hEventDrawReturn);
 }
 

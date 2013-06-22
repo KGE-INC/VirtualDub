@@ -1,6 +1,22 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 14303 (Version 1.4.12):          [November 23, 2002]
+   [features added]
+   * Parts of the MPEG-1 decoder, some color conversion
+     functions, and parts of the resize filter have been
+     optimized for SSE2 (Pentium 4).
+     
+   [bug fixes]
+   * Fixed intermittent deadlock during playback caused
+     by non-atomic thread synchronization. This affects
+     SMP systems as well as CPUs with HyperThreading
+     Technology.
+   * Fixed Save Image Sequence regression in 1.4.11 that
+     caused the directory portion of the dialog to be
+     ignored.
+   * Fixed broken copyProc support.
+
 Build 14279 (Version 1.4.11):          [October 31, 2002]
    [features added]
    * Added support for reading and writing TARGA (.tga)
@@ -35,10 +51,10 @@ Build 14279 (Version 1.4.11):          [October 31, 2002]
      according to screen dpi and fixed font leak.
    * Fixed MIME BASE64 encoding errors at end of codec
      configuration blocks that probably caused some codec
-	 crashes or configuration funniness.
+     crashes or configuration funniness.
    * Calls to video codecs now eat MMX errors rather than
      reporting them, to workaround a bug in the MSMPEG4V3
-	 codec that will probably never be fixed.
+     codec that will probably never be fixed.
    * WAV writer now writes out the required 'fact' chunk
      for compressed WAVs.
    * Filter preview dialog now sanely reports errors in a

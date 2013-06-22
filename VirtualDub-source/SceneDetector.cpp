@@ -45,7 +45,7 @@ SceneDetector::SceneDetector(PixDim width, PixDim height) {
 	}
 }
 
-SceneDetector::_destruct() {
+void SceneDetector::_destruct() {
 	delete[] cur_lummap;
 	delete[] last_lummap;
 }

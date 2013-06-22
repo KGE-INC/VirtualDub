@@ -25,12 +25,7 @@
 
 	align 16
 
-ISSE_01b		dq	00101010101010101h
-ISSE_02b		dq	00202020202020202h
-ISSE_fcb		dq	0fcfcfcfcfcfcfcfch
-ISSE_feb		dq	0fefefefefefefefeh
 ISSE_02w		dq	00002000200020002h
-ISSE_04w		dq	00004000400040004h
 
 predictorsISSE_Y		dd	predict_Y_normal_ISSE
 			dd	predict_Y_halfpelX_ISSE
@@ -196,8 +191,6 @@ predict_Y_quadpel_ISSE@loop_2:
 
 	align 16
 predict_Y_halfpelY_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	mov	edi,8
 	mov	ebx,7
 	and	ebx,ecx
@@ -303,7 +296,6 @@ predict_Y_halfpelX_ISSE:
 	sub	edx,esi
 	add	ebx,offset predict_Y_halfpelX_table
 	movq	mm7,qword ptr [ebx+0]
-	movq	mm6,ISSE_feb
 
 predict_Y_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]			;left
@@ -548,8 +540,6 @@ add_Y_quadpel_ISSE@loop2:
 
 	align 16
 predict_add_Y_halfpelY_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	movq	mm0,[ecx]
 	movq	mm1,[ecx+8]
 	add	ecx,esi
@@ -583,8 +573,6 @@ predict_add_Y_halfpelY_ISSE@loop:
 
 	align 16
 predict_add_Y_halfpelX_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	mov	edi,16
 predict_add_Y_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]
@@ -615,8 +603,6 @@ predict_add_Y_halfpelX_ISSE@loop:
 
 	align 16
 predict_add_Y_normal_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	mov	edi,16
 	mov	ebx,7
 	and	ebx,ecx
@@ -841,8 +827,6 @@ predict_C_halfpelY_ISSE@loop:
 
 	align 16
 predict_C_halfpelX_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	mov	edi,4
 predict_C_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]
@@ -1039,8 +1023,6 @@ add_C_quadpel_ISSE@loop:
 
 	align 16
 predict_add_C_halfpelY_ISSE:
-	movq	mm6,ISSE_01b
-
 	mov	edi,8
 predict_add_C_halfpelY_ISSE@loop:
 	movq	mm0,[ecx]
@@ -1064,8 +1046,6 @@ predict_add_C_halfpelY_ISSE@loop:
 
 	align 16
 predict_add_C_halfpelX_ISSE:
-	movq	mm6,ISSE_01b
-	movq	mm7,ISSE_feb
 	mov	edi,8
 predict_add_C_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]

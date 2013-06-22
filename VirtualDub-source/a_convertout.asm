@@ -15,11 +15,13 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
+	.686
 	.mmx
+	.xmm
 	.model	flat
 
 	extern _MMX_enabled : byte
+	extern _ISSE_enabled : byte
 
 	public	_DIBconvert_32_to_16
 	public	_DIBconvert_32_to_16_dithered
@@ -87,6 +89,9 @@ DIBconvert3232@y:
 ;	ulong height);		[ESP+24]
 
 _DIBconvert_32_to_24:
+	test	byte ptr _ISSE_enabled,1
+	jne	DIBconvert_32_to_24_ISSE
+
 	push	ebp
 	push	edi
 	push	esi
@@ -162,6 +167,130 @@ DIBconvert3224@x3:
 	pop	ebx
 	pop	ecx
 	pop	edx
+	pop	esi
+	pop	edi
+	pop	ebp
+
+	ret
+
+DIBconvert_32_to_24_ISSE:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,[esp+12+16]
+	mov	edi,[esp+4+16]
+
+	mov	ecx,[esp+20+16]
+	lea	eax,[ecx+ecx*2]
+	lea	ebx,[ecx*4]
+	sub	[esp+8+16],eax
+	sub	[esp+16+16],ebx
+	
+	pcmpeqb	mm7,mm7
+	psrld	mm7,8
+	movq	mm6,mm7
+	psllq	mm7,32			;mm7 = high rgb mask
+	psrlq	mm6,32			;mm6 = low rgb mask
+	
+	mov	ebp,[esp+20+16]
+	mov	edx,[esp+24+16]
+	mov	eax,[esp+16+16]
+	mov	ebx,[esp+ 8+16]
+DIBconvert3224ISSE@y:
+	mov	ecx,ebp
+	shr	ecx,3
+	jz	DIBconvert3224ISSE@x2
+DIBconvert3224ISSE@x:	
+	movq	mm0,[esi]		;mm0 = a1r1g1b1a0r0g0b0
+	movq	mm1,mm6
+	
+	movq	mm2,[esi+8]		;mm2 = a3r3g3b3a2r2g2b2
+	pand	mm1,mm0			;mm1 = ----------r0g0b0
+	
+	movq	mm3,mm6
+	pand	mm0,mm7			;mm0 = --r1g1b1--------
+	
+	movq	mm4,mm2
+	pand	mm3,mm2			;mm3 = ----------r2g2b2
+	
+	psrlq	mm0,8			;mm0 = ----r1g1b1------
+	pand	mm2,mm7			;mm2 = --r3g3b3--------
+	
+	movq	mm5,[esi+16]		;mm5 = a5r5g5b5a4r4g4b4
+	psllq	mm4,48			;mm4 = g2b2------------
+	
+	por	mm0,mm1			;mm0 = ----r1g1b1r0g0b0
+	psrlq	mm3,16			;mm3 = --------------r2
+	
+	por	mm0,mm4			;mm0 = g2b2r1g1b1r0g0b0
+	movq	mm1,mm6
+	
+	pand	mm1,mm5			;mm1 = ----------r4g4b4
+	psrlq	mm2,24			;mm2 = --------r3g3b3--
+	
+	movntq	[edi],mm0
+	pand	mm5,mm7			;mm5 = --r5g5b5--------
+	
+	psllq	mm1,32			;mm1 = --r4g4b4--------
+	movq	mm4,mm5			;mm4 = --r5g5b5--------
+	
+	por	mm2,mm3			;mm2 = --------r3g3b3r2
+	psllq	mm5,24			;mm5 = b5--------------
+	
+	movq	mm3,[esi+24]		;mm3 = a7r7g7b7a6r6g6b6
+	por	mm2,mm1			;mm2 = --r4g4b4r3g3b3r2
+	
+	movq	mm1,mm6
+	por	mm2,mm5			;mm2 = b5r4g4b4r3g3b3r2
+	
+	psrlq	mm4,40			;mm4 = ------------r5g5
+	pand	mm1,mm3			;mm1 = ----------r6g6b6
+	
+	psllq	mm1,16			;mm1 = ------r6g6b6----	
+	pand	mm3,mm7			;mm3 = --r7g7b7--------
+	
+	por	mm4,mm1			;mm4 = ------r6g6b6r5g5
+	psllq	mm3,8			;mm3 = r7g7b7----------
+	
+	movntq	[edi+8],mm2
+	por	mm4,mm3			;mm4 = r7g7b7r6g6b6r5g5
+	
+	add	esi,32
+	dec	ecx
+	
+	movntq	[edi+16],mm4		;mm3
+
+	lea	edi,[edi+24]
+	jne	DIBconvert3224ISSE@x
+	
+DIBconvert3224ISSE@x2:
+	mov	ecx,ebp
+	and	ecx,7
+	jz	DIBconvert3224ISSE@x3
+	movd	mm7,eax
+DIBconvert3224ISSE@x4:
+	mov	eax,[esi]
+	add	esi,4
+	mov	[edi],ax
+	shr	eax,16
+	mov	[edi+2],al
+	add	edi,3
+	dec	ecx
+	jnz	DIBconvert3224ISSE@x4
+	movd	eax,mm7
+DIBconvert3224ISSE@x3:
+	add	esi,eax
+	add	edi,ebx
+
+	dec	edx
+	jne	DIBconvert3224ISSE@y
+
+	emms
+	sfence
+
+	pop	ebx
 	pop	esi
 	pop	edi
 	pop	ebp

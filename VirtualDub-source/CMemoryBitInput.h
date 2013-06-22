@@ -18,7 +18,7 @@
 #ifndef f_CMEMORYBITINPUT_H
 #define f_CMEMORYBITINPUT_H
 
-#define FORCEINLINE __inline
+#define XFORCEINLINE inline
 
 #if 1
 
@@ -39,7 +39,7 @@ public:
 		bitheap = cmbi.bitheap;
 	}
 
-	bool FORCEINLINE get_flag() {
+	bool XFORCEINLINE get_flag() {
 		bool rv = (signed long)bitheap < 0;
 
 		bitheap <<= 1;
@@ -51,7 +51,7 @@ public:
 		return rv;
 	}
 
-	long FORCEINLINE get() {
+	long XFORCEINLINE get() {
 		long rv = bitheap>>31;
 
 		bitheap <<= 1;
@@ -63,7 +63,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get(unsigned char bits) {
+	long XFORCEINLINE get(unsigned char bits) {
 		long rv = bitheap >> (32-bits);
 
 		bitcnt += bits;
@@ -74,7 +74,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get8(unsigned char bits) {
+	long XFORCEINLINE get8(unsigned char bits) {
 		long rv = bitheap >> (32-bits);
 
 		bitcnt += bits;
@@ -85,7 +85,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get2(unsigned char bits) {
+	long XFORCEINLINE get2(unsigned char bits) {
 		long rv = bitheap >> (32-bits);
 
 		bitcnt += bits;
@@ -93,7 +93,7 @@ public:
 
 		return rv;
 	}
-	long __forceinline getconst(const unsigned char bits) {
+	long XFORCEINLINE getconst(const unsigned char bits) {
 		long rv = bitheap >> (32-bits);
 
 		bitcnt += bits;
@@ -113,7 +113,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get_signed(unsigned char bits) {
+	long XFORCEINLINE get_signed(unsigned char bits) {
 		long rv = ((signed long)bitheap) >> (32-bits);
 
 		bitcnt += bits;
@@ -123,7 +123,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get_signed2(unsigned char bits) {
+	long XFORCEINLINE get_signed2(unsigned char bits) {
 		long rv = ((signed long)bitheap) >> (32-bits);
 
 		bitcnt += bits;
@@ -131,7 +131,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get_signed_const(unsigned char bits) {
+	long XFORCEINLINE get_signed_const(unsigned char bits) {
 		long rv = (signed long)bitheap >> (32-bits);
 
 		bitcnt += bits;
@@ -156,61 +156,61 @@ public:
 		return rv;
 	}
 
-	unsigned long FORCEINLINE peek() const {
+	unsigned long XFORCEINLINE peek() const {
 		return bitheap;
 	}
 
-	long FORCEINLINE peek(unsigned char bits) const {
+	long XFORCEINLINE peek(unsigned char bits) const {
 		return bitheap >> (32-bits);
 	}
-	long FORCEINLINE peek8(unsigned char bits) const {
+	long XFORCEINLINE peek8(unsigned char bits) const {
 		return bitheap >> (32-bits);
 	}
-	void FORCEINLINE refill() {
+	void XFORCEINLINE refill() {
 		while(bitcnt >= 0) {
 			bitheap += ((unsigned long)*buf++) << bitcnt;
 			bitcnt -= 8;
 		}
 	}
-	void FORCEINLINE refill8() {
+	void XFORCEINLINE refill8() {
 		if(bitcnt >= 0) {
 			bitheap += ((unsigned long)*buf++) << bitcnt;
 			bitcnt -= 8;
 		}
 	}
 
-	long FORCEINLINE next() const {
+	long XFORCEINLINE next() const {
 		return bitheap >> 31;
 	}
 
-	bool FORCEINLINE next(unsigned char bits, long compare) const {
+	bool XFORCEINLINE next(unsigned char bits, long compare) const {
 		return (long)(bitheap >> (32-bits)) == compare;
 	}
 
-	void FORCEINLINE skip() {
+	void XFORCEINLINE skip() {
 		bitheap <<= 1;
 		if (++bitcnt==0) {
 			bitheap += (unsigned long)*buf++;
 			bitcnt = -8;
 		}
 	}
-	void FORCEINLINE skip(unsigned char bits) {
+	void XFORCEINLINE skip(unsigned char bits) {
 		bitcnt += bits;
 		bitheap <<= bits;
 
 		refill();
 	}
-	void FORCEINLINE skip8(unsigned char bits) {
+	void XFORCEINLINE skip8(unsigned char bits) {
 		bitcnt += bits;
 		bitheap <<= bits;
 
 		refill8();
 	}
-	void FORCEINLINE skip2(unsigned char bits) {
+	void XFORCEINLINE skip2(unsigned char bits) {
 		bitcnt += bits;
 		bitheap <<= bits;
 	}
-	void __forceinline skipconst(const unsigned char bits) {
+	void XFORCEINLINE skipconst(const unsigned char bits) {
 		bitcnt += bits;
 		bitheap <<= bits;
 
@@ -262,7 +262,7 @@ public:
 		bitheap = cmbi.bitheap;
 	}
 
-	long FORCEINLINE get_flag() {
+	long XFORCEINLINE get_flag() {
 		if (bitcnt == 24)
 			while(bitcnt >= 0) {
 				bitheap += ((unsigned long)*buf++) << bitcnt;
@@ -277,7 +277,7 @@ public:
 		return (signed long)rv;
 	}
 
-	char FORCEINLINE get() {
+	char XFORCEINLINE get() {
 		char rv;
 		
 		if (bitcnt == 24)
@@ -294,7 +294,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get(unsigned char bits) {
+	long XFORCEINLINE get(unsigned char bits) {
 		long rv;
 
 		if (bitcnt >= 24-(int)bits)
@@ -311,7 +311,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE get_signed(unsigned char bits) {
+	long XFORCEINLINE get_signed(unsigned char bits) {
 		long rv;
 
 		if (bitcnt >= 24-(int)bits)
@@ -328,7 +328,7 @@ public:
 
 		return rv;
 	}
-	long FORCEINLINE peek(unsigned char bits) {
+	long XFORCEINLINE peek(unsigned char bits) {
 		long rv;
 
 		if (bitcnt >= 24-(int)bits)
@@ -339,7 +339,7 @@ public:
 		
 		return bitheap >> (32-bits);
 	}
-	long FORCEINLINE peek8(unsigned char bits) {
+	long XFORCEINLINE peek8(unsigned char bits) {
 		long rv;
 
 		if (bitcnt >= 24-(int)bits)
@@ -351,7 +351,7 @@ public:
 		return bitheap >> (32-bits);
 	}
 
-	long FORCEINLINE next() {
+	long XFORCEINLINE next() {
 		long rv;
 
 		if (bitcnt == 24)
@@ -363,7 +363,7 @@ public:
 		return bitheap >> 31;
 	}
 
-	bool FORCEINLINE next(unsigned char bits, long compare) {
+	bool XFORCEINLINE next(unsigned char bits, long compare) {
 		long rv;
 
 		if (bitcnt >= 24-(int)bits)
@@ -375,7 +375,7 @@ public:
 		return (long)(bitheap >> (32-bits)) == compare;
 	}
 
-	void FORCEINLINE skip(unsigned char bits) {
+	void XFORCEINLINE skip(unsigned char bits) {
 		bitcnt += bits;
 		bitheap <<= bits;
 

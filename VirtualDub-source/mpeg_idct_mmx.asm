@@ -222,14 +222,14 @@ rowstart_tbl2	dd	dorow_7is
 ;		db	1,1,0,0,0,0,0,0
 ;		db	0,0,0,0,0,0,0,0
 
-pos_tab		db	7,3,7,3,5,1,5,1
-		db	6,3,5,1,5,1,3,0
-		db	5,1,5,1,3,0,3,0
-		db	4,1,3,0,3,0,1,0
-		db	3,0,3,0,1,0,1,0
-		db	2,0,1,0,1,0,0,0
-		db	1,0,1,0,0,0,0,0
-		db	0,0,0,0,0,0,0,0
+pos_tab		db	7*4,3*4,7*4,3*4,5*4,1*4,5*4,1*4
+		db	6*4,3*4,5*4,1*4,5*4,1*4,3*4,0*4
+		db	5*4,1*4,5*4,1*4,3*4,0*4,3*4,0*4
+		db	4*4,1*4,3*4,0*4,3*4,0*4,1*4,0*4
+		db	3*4,0*4,3*4,0*4,1*4,0*4,1*4,0*4
+		db	2*4,0*4,1*4,0*4,1*4,0*4,0*4,0*4
+		db	1*4,0*4,1*4,0*4,0*4,0*4,0*4,0*4
+		db	0*4,0*4,0*4,0*4,0*4,0*4,0*4,0*4
 
 ;pos_tab		db	7,5,3,1,7,5,3,1
 ;		db	6,5,3,1,5,3,1,0
@@ -675,7 +675,7 @@ _IDCT_mmx:
 	movzx	ecx,byte ptr [pos_tab+ecx]
 
 	mov	eax,[esp+4]
-	jmp	dword ptr [rowstart_tbl+ecx*4]
+	jmp	dword ptr [rowstart_tbl+ecx]
 
 	align	16
 dorow_7:	DCT_8_INV_ROW_1		eax+7*16, eax+7*16, tab_i_17
@@ -755,6 +755,8 @@ tail_intra:
 intra_loop:
 	movq		mm0,[eax+edx+8*16]
 	movq		mm1,[eax+edx+8*16+8]
+	movq		[eax+edx+8*16],mm7
+	movq		[eax+edx+8*16+8],mm7
 	packuswb	mm0,mm1
 	movq		[ecx],mm0
 	add		ecx,[esp+12]
@@ -772,6 +774,8 @@ inter_loop:
 	movq		mm1,[eax+edx+8*16+8]
 	movq		mm2,[ecx]
 	movq		mm3,mm2
+	movq		[eax+edx+8*16],mm7
+	movq		[eax+edx+8*16+8],mm7
 	punpcklbw	mm2,mm7
 	punpckhbw	mm3,mm7
 	paddw		mm0,mm2
@@ -796,7 +800,7 @@ _IDCT_isse:
 	movzx	ecx,byte ptr [pos_tab+ecx]
 
 	mov	eax,[esp+4]
-	jmp	dword ptr [rowstart_tbl2+ecx*4]
+	jmp	dword ptr [rowstart_tbl2+ecx]
 
 	align	16
 dorow_7is:	prefetcht0	tab_i_26
@@ -898,6 +902,10 @@ intra_loop_isse:
 	packuswb	mm0,[eax+edx+8*16+8]
 	movq		mm1,[eax+edx+8*16+16]
 	packuswb	mm1,[eax+edx+8*16+24]
+	movq		[eax+edx+8*16],mm7
+	movq		[eax+edx+8*16+8],mm7
+	movq		[eax+edx+8*16+16],mm7
+	movq		[eax+edx+8*16+24],mm7
 	add		edx,32
 	movntq		[ecx],mm0
 	movntq		[ecx+ebx],mm1
@@ -916,6 +924,8 @@ inter_loop_isse:
 	movq		mm1,[eax+edx+8*16+8]
 	movq		mm2,[ecx]
 	movq		mm3,mm2
+	movq		[eax+edx+8*16],mm7
+	movq		[eax+edx+8*16+8],mm7
 	punpcklbw	mm2,mm7
 	punpckhbw	mm3,mm7
 	paddw		mm0,mm2

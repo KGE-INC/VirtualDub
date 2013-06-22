@@ -15,11 +15,11 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include <new>
+#include <crtdbg.h>
 #include "VirtualDub.h"
 
-#include <crtdbg.h>
 #include <math.h>
-#include <new>
 
 #include "convert.h"
 #include "VBitmap.h"

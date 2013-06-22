@@ -32,6 +32,6 @@ long CPUGetAvailableExtensions();
 long CPUEnableExtensions(long lEnableFlags);
 long CPUGetEnabledExtensions();
 
-extern "C" bool FPU_enabled, MMX_enabled, ISSE_enabled;
+extern "C" bool FPU_enabled, MMX_enabled, ISSE_enabled, SSE2_enabled;
 
 #endif

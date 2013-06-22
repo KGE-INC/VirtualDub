@@ -1802,7 +1802,7 @@ InputFile *CreateInputFileMPEG() {
 
 void InputFileMPEG::Init(char *szFile) {
 	BOOL finished = FALSE;
-	HWND hWndStatus;
+	HWND hWndStatus = 0;
 
 	AddFilename(szFile);
 

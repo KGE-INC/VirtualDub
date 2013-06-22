@@ -102,7 +102,99 @@ __emit 0x10
 	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
 	}
 }
+#else
+
+void crash() {
+	__try {
+		__asm add byte ptr ds:[0], 0
+	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
+	}
+}
+
 #endif
+
+extern "C" void WinMainCRTStartup();
+
+extern "C" void __declspec(naked) __stdcall VeedubWinMain() {
+#if defined(__INTEL_COMPILER)
+	static const char g_szSSE2Error[]="This build of VirtualDub is optimized for the Pentium 4 processor and will not run on "
+										"CPUs without SSE2 support. Your CPU does not appear to support SSE2, so you will need to run "
+										"the regular VirtualDub build, which runs on all Pentium and higher CPUs.\n\n"
+										"Choose OK if you want to try running this version anyway -- it'll likely crash -- or CANCEL "
+										"to exit."
+										;
+
+	__asm {
+		// The Intel compiler could use P4 instructions anywhere, so let's do this right.
+		// A little assembly never hurt anyone anyway....
+
+		push	ebp
+		push	edi
+		push	esi
+		push	ebx
+
+		;check for CPUID
+		pushfd
+		pop		eax
+		or		eax,00200000h
+		push	eax
+		popfd
+		pushfd
+		pop		eax
+		test	eax,00200000h
+		jz		failed
+
+		;MMX, SSE, and SSE2 bits must be set
+		mov		eax, 1
+		cpuid
+		mov		eax,06800000h
+		and		edx,eax
+		cmp		edx,eax
+		jne		failed
+
+		;test for operating system SSE2 support
+		push	offset exchandler
+		push	dword ptr fs:[0]
+		mov		dword ptr fs:[0],esp	;hook SEH chain
+
+		xor		eax,eax
+		andps	xmm0,xmm0
+
+		pop		ecx						;remove SEH record
+		pop		dword ptr fs:[0]
+
+		or		eax,eax					;eax is set if exception occurred
+		jnz		failed
+appstart:
+		pop		ebx
+		pop		esi
+		pop		edi
+		pop		ebp
+		jmp		WinMainCRTStartup
+
+failed:
+		push	MB_OKCANCEL | MB_ICONERROR
+		push	offset g_szError
+		push	offset g_szSSE2Error
+		push	0
+		call	dword ptr [MessageBoxA]
+		cmp		eax,IDOK
+		je		appstart
+		mov		eax,20
+		jmp		dword ptr [ExitProcess]
+
+exchandler:
+		mov		eax,[esp+12]			;get exception context
+		mov		[eax+176],1				;set EAX in crash zone
+		add		dword ptr [eax+184],3	;bump past SSE2 instruction
+		mov		eax,0					;ExceptionContinueExecution
+		ret
+	}
+
+#else
+	__asm jmp WinMainCRTStartup
+#endif
+}
 
 bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
@@ -332,6 +424,8 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 	wsprintf(buf, g_msgBuf, version_num,
 #ifdef _DEBUG
 		"debug"
+#elif defined(__INTEL_COMPILER)
+		"release-P4"
 #else
 		"release"
 #endif
@@ -510,10 +604,10 @@ void ParseCommandLine(char *lpCmdLine) {
 					g_fWine = true;
 					break;
 
-//				case 'f':
-//					if (!stricmp(token+2, "sck"))
-//						crash();
-//					break;
+				case 'f':
+					if (!stricmp(token+2, "sck"))
+						crash();
+					break;
 
 				}
 			} else

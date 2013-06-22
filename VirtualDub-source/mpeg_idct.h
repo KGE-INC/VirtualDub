@@ -26,6 +26,8 @@ void IDCT_norm(int *m1);
 
 void IDCT_fast_put(int pos, void *dest, long pitch);
 void IDCT_fast_add(int pos, void *dest, long pitch);
+void IDCT_fast_put_MMX(int val, void *dest, long pitch);
+void IDCT_fast_add_MMX(int val, void *dest, long pitch);
 //void IDCT_put(void *dest, long pitch);
 //void IDCT_add(void *dest, long pitch);
 void IDCT(void *dest, long modulo, int intra);

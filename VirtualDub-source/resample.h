@@ -74,7 +74,7 @@ protected:
 	double ubias, vbias;
 
 	int rowpitch;
-	Pixel32 *rowmem, **rows;
+	Pixel32 *rowmem, *rowmemalloc, **rows;
 	int rowcount;
 
 	eFilter	nHorizFilt, nVertFilt;

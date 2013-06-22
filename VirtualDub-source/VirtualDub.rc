@@ -7,7 +7,10 @@
 //
 // Generated from the TEXTINCLUDE 2 resource.
 //
-#include "winres.h"
+#include "winresrc.h"
+#ifndef IDC_STATIC
+#define IDC_STATIC (-1)
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -34,7 +37,10 @@ END
 
 2 TEXTINCLUDE DISCARDABLE 
 BEGIN
-    "#include ""winres.h""\r\n"
+    "#include ""winresrc.h""\r\n"
+    "#ifndef IDC_STATIC\r\n"
+    "#define IDC_STATIC (-1)\r\n"
+    "#endif\r\n"
     "\0"
 END
 
@@ -645,8 +651,8 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.11 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
-                    IDC_STATIC,7,7,326,45
+    LTEXT           "VirtualDub 1.4.12 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+                    IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
     LTEXT           "MPEG audio decoder:",IDC_MP3_DECODER,7,70,326,8
@@ -3253,8 +3259,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,11,0
- PRODUCTVERSION 1,4,11,0
+ FILEVERSION 1,4,12,0
+ PRODUCTVERSION 1,4,12,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3272,14 +3278,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.11\0"
+            VALUE "FileVersion", "1.4.12\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.11\0"
+            VALUE "ProductVersion", "1.4.12\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3365,17 +3371,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.11 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.11"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.11 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.11 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.11"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.12 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.12"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.12 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.12 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.12"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.11 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.11 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.11 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.11 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.11 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.12 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.12 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.12 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.12 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.12 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 
