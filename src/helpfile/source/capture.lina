@@ -223,9 +223,9 @@
 
 		<dt>Video filters</dt>
 		<dd>
-			Any standard video filters execute now; the video is converted to 32-bit RGB before
-			entering the video filter chain. If the video filter chain is not enabled, the conversion
-			to 32-bit RGB is skipped.
+			Any standard video filters execute now; the video may be converted to a different YCbCr
+			format or to 32-bit RGB before entering the video filter chain. If the video filter chain
+			is not enabled, no conversion occurs.
 		</dd>
 
 		<dt>Video display</dt>
@@ -412,8 +412,14 @@
 				is not supported in capture mode.
 			</p>
 			<p>
-				Using normal video filters will force the video to be converted to 32-bit RGB, and consumes a significant
-				amount of CPU power.
+				Normal video filters can consume significant CPU power and should be used carefully. In particular,
+				if the incoming video format is not supported by a filter, VirtualDub may be forced to convert to a
+				different format before running the filter.
+			</p>
+			<p>
+				By default, the output of the filter chain is converted to 24-bit RGB before being written to disk or
+				passed through the video compressor. Enabling the <i>Skip 24-bit Conversion</i> option causes the
+				output of the last filter to be used directly, avoiding this conversion.
 			</p>
 		</dd>
 	</dl>

@@ -59,8 +59,6 @@ struct VDAudioFilterVtable {
 	void (VDAPIENTRY *FilterPCM16SymmetricArray)(sint16 *dst, ptrdiff_t dst_stride, const sint16 *src_center, uint32 count, const sint16 *filter, uint32 filterquadsizeminus1);
 };
 
-const VDAudioFilterVtable *VDGetAudioFilterVtable();
-
-
+const VDAudioFilterVtable *VDGetAudioFilterVtable(uint32 taps = 0);
 
 #endif

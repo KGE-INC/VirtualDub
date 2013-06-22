@@ -34,39 +34,6 @@ struct VDXFraction {
 	uint32 mDenominator;
 };
 
-struct VDXPixmap {
-	void			*data;
-	const uint32	*palette;
-	sint32			w;
-	sint32			h;
-	ptrdiff_t		pitch;
-	sint32			format;
-
-	// Auxiliary planes are always byte-per-pixel.
-	void			*data2;		// Cb (U) for YCbCr
-	ptrdiff_t		pitch2;
-	void			*data3;		// Cr (V) for YCbCr
-	ptrdiff_t		pitch3;
-};
-
-namespace nsVDXPixmap {
-	enum VDXPixmapFormat {
-		kPixFormat_Null				= 0,
-		kPixFormat_XRGB1555			= 5,
-		kPixFormat_RGB565			= 6,
-		kPixFormat_RGB888			= 7,
-		kPixFormat_XRGB8888			= 8,
-		kPixFormat_Y8				= 9,
-		kPixFormat_YUV422_UYVY		= 10,
-		kPixFormat_YUV422_YUYV		= 11,
-		kPixFormat_YUV444_Planar	= 13,
-		kPixFormat_YUV422_Planar	= 14,
-		kPixFormat_YUV420_Planar	= 15,
-		kPixFormat_YUV411_Planar	= 16,
-		kPixFormat_YUV410_Planar	= 17
-	};
-};
-
 typedef struct VDXHWNDStruct *VDXHWND;
 typedef struct VDXBITMAPINFOHEADERStruct {
 	enum { kCompressionRGB = 0 };
@@ -74,6 +41,7 @@ typedef struct VDXBITMAPINFOHEADERStruct {
 	sint32			mWidth;
 	sint32			mHeight;
 	uint16			mPlanes;
+	uint16			mBitCount;
 	uint32			mCompression;
 	uint32			mSizeImage;
 	sint32			mXPelsPerMeter;
@@ -109,6 +77,18 @@ struct VDXStreamSourceInfo {
 	VDXFraction		mPixelAspectRatio;
 };
 
+// V3+ (1.7.X) only
+struct VDXStreamSourceInfoV3 {
+	VDXStreamSourceInfo	mInfo;
+
+	enum {
+		kFlagVariableSizeSamples	= 0x00000001
+	};
+
+	uint32			mFlags;
+	uint32			mfccHandler;	///< If non-zero, specifies the FOURCC of a codec handler that should be preferred.
+};
+
 class IVDXStreamSource : public IVDXUnknown {
 public:
 	enum { kIID = VDXMAKEFOURCC('X', 's', 't', 's') };
@@ -134,6 +114,14 @@ public:
 	virtual bool				VDXAPIENTRY IsVBR() = 0;
 	virtual sint64				VDXAPIENTRY TimeToPositionVBR(sint64 us) = 0;
 	virtual sint64				VDXAPIENTRY PositionToTimeVBR(sint64 samples) = 0;
+};
+
+// V3+ (1.7.X)
+class IVDXStreamSourceV3 : public IVDXUnknown {
+public:
+	enum { kIID = VDXMAKEFOURCC('X', 's', 't', '2') };
+
+	virtual void				VDXAPIENTRY GetStreamSourceInfoV3(VDXStreamSourceInfoV3&) = 0;
 };
 
 class IVDXVideoDecoderModel : public IVDXUnknown {
@@ -261,14 +249,14 @@ public:
 	virtual bool	VDXAPIENTRY CreateInputFile(uint32 flags, IVDXInputFile **ppFile) = 0;
 };
 
-struct VDInputDriverContext {
+struct VDXInputDriverContext {
 	uint32	mAPIVersion;
 	IVDPluginCallbacks *mpCallbacks;
 };
 
-typedef bool (VDXAPIENTRY *VDInputDriverCreateProc)(const VDInputDriverContext *pContext, IVDXInputFileDriver **);
+typedef bool (VDXAPIENTRY *VDXInputDriverCreateProc)(const VDXInputDriverContext *pContext, IVDXInputFileDriver **);
 
-struct VDInputDriverDefinition {
+struct VDXInputDriverDefinition {
 	enum {
 		kFlagNone				= 0x00000000,
 		kFlagSupportsVideo		= 0x00000001,
@@ -285,13 +273,13 @@ struct VDInputDriverDefinition {
 	const wchar_t *mpFilenamePattern;
 	const wchar_t *mpDriverTagName;
 
-	VDInputDriverCreateProc			mpCreate;
+	VDXInputDriverCreateProc		mpCreate;
 };
 
 enum {
 	// V1 (1.7.4.28204): Initial version
 	// V2 (1.7.5): Default I/P frame model fixed.
-	kVDPlugin_InputDriverAPIVersion = 2
+	kVDXPlugin_InputDriverAPIVersion = 2
 };
 
 #endif

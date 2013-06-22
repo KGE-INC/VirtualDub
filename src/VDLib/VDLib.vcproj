@@ -5,10 +5,9 @@
 	Name="VDLib"
 	ProjectGUID="{1D6B560F-064D-401E-AC94-C12B6354429C}"
 	RootNamespace="VDLib"
-	SccProjectName="SAK"
-	SccAuxPath="SAK"
-	SccLocalPath="SAK"
-	SccProvider="SAK"
+	SccProjectName="Perforce Project"
+	SccLocalPath=".."
+	SccProvider="MSSCCI:Perforce SCM"
 	Keyword="Win32Proj"
 	>
 	<Platforms>
@@ -55,7 +54,7 @@
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="2"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -120,7 +119,7 @@
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="2"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -181,7 +180,7 @@
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="2"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -243,7 +242,7 @@
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="2"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -283,6 +282,10 @@
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
+			<File
+				RelativePath=".\source\Dialog.cpp"
+				>
+			</File>
 			<File
 				RelativePath=".\source\fft.cpp"
 				>
@@ -327,6 +330,22 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<Filter
+				Name="win32"
+				>
+				<File
+					RelativePath=".\source\win32\DebugOutputFilter.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\source\win32\DIBSection.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\source\win32\FileMapping.cpp"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Header Files"
@@ -360,6 +379,10 @@
 			Name="Interface Files"
 			>
 			<File
+				RelativePath="..\h\vd2\VDLib\Dialog.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\VDLib\fft.h"
 				>
 			</File>
@@ -367,6 +390,22 @@
 				RelativePath="..\h\vd2\VDLib\ParameterCurve.h"
 				>
 			</File>
+			<Filter
+				Name="win32"
+				>
+				<File
+					RelativePath="..\h\vd2\VDLib\win32\DebugOutputFilter.h"
+					>
+				</File>
+				<File
+					RelativePath="..\h\vd2\VDLib\win32\DIBSection.h"
+					>
+				</File>
+				<File
+					RelativePath="..\h\vd2\VDLib\win32\FileMapping.h"
+					>
+				</File>
+			</Filter>
 		</Filter>
 	</Files>
 	<Globals>

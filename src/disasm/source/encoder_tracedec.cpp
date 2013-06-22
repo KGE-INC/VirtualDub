@@ -17,17 +17,16 @@ void dump_tracedec(std::vector<char>& dst, const tRuleSystem& rulesys) {
 
 		iterate_forward(std::list<rule>, rs.rules, itRule) {
 			const rule& r = *itRule;
-			std::vector<char>::size_type l;
 			int prematch, postmatch;
 			int i, x, ibest;
 			
-			l = r.match_stream.size();
+			int l = (int)r.match_stream.size();
 
 			ibest = 0;
 			prematch = postmatch = 0;
 
 			for(i=0; i<4; ++i) {
-				size_t l2 = last_match[i].size();
+				int l2 = (int)last_match[i].size();
 				if (l2 > l)
 					l2 = l;
 				int tprematch = std::mismatch(last_match[i].begin(), last_match[i].begin() + l2, r.match_stream.begin()).first - last_match[i].begin();

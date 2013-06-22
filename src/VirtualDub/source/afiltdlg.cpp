@@ -62,7 +62,7 @@ public:
 class VDDialogAddAudioFilterW32 : public VDDialogBaseW32 {
 public:
 	VDDialogAddAudioFilterW32(IVDDialogAddAudioFilterCallbackW32 *pParent) : VDDialogBaseW32(IDD_AF_LIST), mpSelectedFilter(NULL), mpParent(pParent) {
-		VDEnumeratePluginDescriptions(mAudioFilters, kVDPluginType_Audio);
+		VDEnumeratePluginDescriptions(mAudioFilters, kVDXPluginType_Audio);
 	}
 
 	const VDPluginDescription *GetFilter() const { return mpSelectedFilter; }
@@ -341,7 +341,7 @@ protected:
 
 			afs.SetScheduler(&sched);
 
-			VDPluginDescription *pDesc = VDGetPluginDescription(pd->mName.c_str(), kVDPluginType_Audio);
+			VDPluginDescription *pDesc = VDGetPluginDescription(pd->mName.c_str(), kVDXPluginType_Audio);
 
 			if (!pDesc)
 				throw MyError("Audio filter \"%s\" is not loaded.", VDTextWToA(pd->mName).c_str());
@@ -630,7 +630,7 @@ bool VDDialogAudioFiltersW32::RequeryFormats() {
 		const int nPins = filt->GetDefinition()->mOutputPins;
 
 		for(int j=0; j<nPins; ++j) {
-			const VDWaveFormat *fmt = filt->GetOutputPinFormat(j);
+			const VDXWaveFormat *fmt = filt->GetOutputPinFormat(j);
 			if (!fmt)
 				continue;
 

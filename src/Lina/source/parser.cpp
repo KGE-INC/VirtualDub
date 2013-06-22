@@ -206,6 +206,14 @@ TreeNode *TreeParser::ParseTag() {
 	if (tag.mName[0] == '/')
 		closed = true;
 
+	// backwards compatibility
+	std::string::size_type pos = 0;
+	if (closed)
+		pos = 1;
+
+	if (!tag.mName.compare(pos, 2, "w:"))
+		tag.mName.replace(pos, 2, "lina:");
+
 	while(c != '>') {
 		if (c == '/' || c=='?') {
 			closed = true;

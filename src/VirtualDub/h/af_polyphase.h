@@ -35,7 +35,7 @@ protected:
 
 	virtual void GenerateFilter(int freq) = 0;
 
-	std::vector<sint16>		mFilterBank;
+	std::vector<sint16, vdaligned_alloc<sint16> >		mFilterBank;
 	int mFilterSize;
 
 	std::vector<sint16>		mFIRBuffer;
@@ -61,9 +61,9 @@ protected:
 
 	virtual int GenerateFilterBank(int freq) = 0;
 
-	std::vector<sint16>		mFilterBank;
+	std::vector<sint16, vdaligned_alloc<sint16> >		mFilterBank;
 	int mFilterSize;
-	sint32 mCurrentPhase;
+	uint32 mCurrentPhase;
 
 	std::vector<sint16>		mFIRBuffer;
 	int mFIRBufferChannelStride;
@@ -72,8 +72,7 @@ protected:
 
 	VDRingBuffer<char>		mOutputBuffer;
 
-	sint32		mRatioDst;		// x target samples...
-	sint32		mRatioSrc;		// for y source samples.
+	uint64		mRatio;		// 32:32
 };
 
 #endif

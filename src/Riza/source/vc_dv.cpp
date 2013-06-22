@@ -70,7 +70,7 @@ bool VDVideoDecompressorDV::QueryTargetFormat(int format) {
 }
 
 bool VDVideoDecompressorDV::QueryTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
 
 	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
 		return false;
@@ -93,7 +93,7 @@ bool VDVideoDecompressorDV::SetTargetFormat(int format) {
 }
 
 bool VDVideoDecompressorDV::SetTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
 
 	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
 		return false;

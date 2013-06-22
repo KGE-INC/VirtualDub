@@ -28,7 +28,7 @@ DEFINE_TEST(BufferedStream) {
 	TEST_ASSERT(!memcmp(tmpbuf, tempstream.data() + 0, 256));
 
 	// random test
-	uint32 pos = 0; 
+	uint32 pos = (uint32)bs.Pos();
 	for(uint32 i=0; i<20; ++i) {
 		for(uint32 j=0; j<50000; ++j) {
 			uint32 len = rand() & 1023;

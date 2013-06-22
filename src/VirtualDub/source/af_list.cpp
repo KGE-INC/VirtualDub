@@ -40,7 +40,8 @@ extern const VDPluginInfo
 	apluginDef_split,
 	apluginDef_mix,
 	apluginDef_newrate,
-	apluginDef_formatconv;
+	apluginDef_formatconv,
+	apluginDef_timestretch;
 
 static const VDPluginInfo *const g_builtin_audio_filters[]={
 	&apluginDef_input,
@@ -65,6 +66,7 @@ static const VDPluginInfo *const g_builtin_audio_filters[]={
 	&apluginDef_mix,
 	&apluginDef_newrate,
 	&apluginDef_formatconv,
+	&apluginDef_timestretch,
 	NULL
 };
 

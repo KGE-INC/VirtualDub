@@ -122,7 +122,7 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				hWnd = GetDlgItem(hDlg, IDC_PREVIEW);
 				if (mfd->ifp) {
 					EnableWindow(hWnd, TRUE);
-					mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+					mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 				}
 			}
             return TRUE;
@@ -144,7 +144,7 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 			} else if (LOWORD(wParam) == IDC_PREVIEW) {
 				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 				if (mfd->ifp)
-					mfd->ifp->Toggle(hDlg);
+					mfd->ifp->Toggle((VDXHWND)hDlg);
 
 				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
 				return TRUE;
@@ -184,13 +184,13 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
     return FALSE;
 }
 
-static int brightcont_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int brightcont_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 	mfd->ifp = fa->ifp;
 
 	MyFilterData tmp(*mfd);
 
-	if (!DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), hWnd, brightcontDlgProc, (LONG)fa->filter_data)) {
+	if (!DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), (HWND)hWnd, brightcontDlgProc, (LPARAM)fa->filter_data)) {
 		*mfd = tmp;
 		return 1;
 	}

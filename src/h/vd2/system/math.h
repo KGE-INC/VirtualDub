@@ -32,8 +32,8 @@
 // Constants
 namespace nsVDMath {
 	static const float	kfPi = 3.1415926535897932384626433832795f;
-	static const float	krPi = 3.1415926535897932384626433832795;
-	static const double	kfTwoPi = 6.283185307179586476925286766559f;
+	static const double	krPi = 3.1415926535897932384626433832795;
+	static const float	kfTwoPi = 6.283185307179586476925286766559f;
 	static const double	krTwoPi = 6.283185307179586476925286766559;
 	static const float	kfLn2 = 0.69314718055994530941723212145818f;
 	static const double	krLn2 = 0.69314718055994530941723212145818;
@@ -65,9 +65,19 @@ namespace nsVDMath {
 	}
 #endif
 
+inline sint32 VDClampToSint32(uint32 v) {
+	return (v | ((sint32)v >> 31)) & 0x7FFFFFFF;
+}
+
 inline sint32 VDClampToSint32(sint64 v) {
 	sint32 r = (sint32)v;
 	return r == v ? r : (sint32)(v >> 63) ^ 0x7FFFFFFF;
+}
+
+inline uint16 VDClampToUint16(uint32 v) {
+	if (v > 0xffff)
+		v = 0xffff;
+	return (uint16)v;
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	Copyright (C) 1998-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -17,8 +17,6 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-
 #include <vd2/system/binary.h>
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
@@ -27,71 +25,11 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include "VideoSource.h"
 #include "VBitmap.h"
-#include "InputFile.h"
+#include "InputFileANIM.h"
 
 extern const char g_szError[];
 
 ///////////////////////////////////////////////////////////////////////////
-
-class VDVideoSourceANIM : public VideoSource {
-public:
-	VDVideoSourceANIM(const wchar_t *pFilename);
-	~VDVideoSourceANIM();
-
-	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
-	bool _isKey(VDPosition samp);
-	VDPosition nearestKey(VDPosition lSample);
-	VDPosition prevKey(VDPosition lSample);
-	VDPosition nextKey(VDPosition lSample);
-
-	bool setTargetFormat(int format);
-
-	void invalidateFrameBuffer()				{ mCachedFrame = -1; }
-	bool isFrameBufferValid()					{ return mCachedFrame >= 0; }
-	bool isStreaming()							{ return false; }
-
-	const void *getFrame(VDPosition lFrameDesired);
-
-	void streamBegin(bool fRealTime, bool bForceReset);
-	void streamEnd();
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
-
-	char getFrameTypeChar(VDPosition lFrameNum)	{ return !lFrameNum ? 'K' : ' '; }
-	eDropType getDropType(VDPosition lFrameNum)	{ return !lFrameNum ? kIndependent : kDependant; }
-	bool isKeyframeOnly()						{ return mFrameCount == 1; }
-	bool isType1()								{ return false; }
-	bool isDecodable(VDPosition sample_num)		{ return !sample_num || mCachedFrame == sample_num-1; }
-
-private:
-	void parse();
-
-	void DecompressMode5(const uint8 *src, uint32 srclen, uint8 *dst, ptrdiff_t planepitch);
-	void DecompressMode7Short(const uint8 *src, uint32 srclen, uint8 *dst, ptrdiff_t planepitch);
-	void DecompressMode7Long(const uint8 *src, uint32 srclen, uint8 *dst, ptrdiff_t planepitch);
-
-	long	mCachedFrame;
-	VBitmap	mvbFrameBuffer;
-	VDFile	mFile;
-	int		mFrameCount;
-	int		mPlanes;
-	uint8	mCompressionMode;
-	uint32	mCompressionOptions;
-	uint32	mAmigaViewportMode;
-	bool	mbDecodeStarted;
-	bool	mbDecodeRealTime;
-
-	struct FrameInfo {
-		sint64	pos;
-		sint32	len;
-		bool	key;
-	};
-
-	std::vector<FrameInfo>	mFrameArray;
-
-	vdfastvector<uint8>	mDeltaPlanes[2];
-	vdfastvector<uint8>	mPalBuffer;
-	uint32	mColorMap[256];
-};
 
 namespace {
 #pragma pack(push, 2)
@@ -176,168 +114,53 @@ namespace {
 	};
 };
 
-VDVideoSourceANIM::VDVideoSourceANIM(const wchar_t *pFilename)
-	: mFile(pFilename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting)
+VDVideoSourceANIM::VDVideoSourceANIM(VDInputFileANIM *parent)
+	: mpParent(parent)
+	, mWidth(parent->GetFrameWidth())
+	, mHeight(parent->GetFrameHeight())
+	, mPlanes(mpParent->GetBitplaneCount())
+	, mFrameCount(parent->GetFrameCount())
 	, mbDecodeStarted(false)
 	, mbDecodeRealTime(false)
 {
 	mpTargetFormatHeader.resize(sizeof(BITMAPINFOHEADER));
-	parse();
-}
 
-VDVideoSourceANIM::~VDVideoSourceANIM() {
-}
-
-void VDVideoSourceANIM::parse() {
-	uint32 hdr[3];
-	sint64 fsize = mFile.size();
-
-	mAmigaViewportMode = 0;
-	
-	while(mFile.readData(hdr, 8) >= 8) {
-		uint32 cksize = VDFromBigEndian32(hdr[1]), tc;
-		uint32 ckround = cksize & 1;
-
-		VDDEBUG("Processing: %08lx - %4.4s %d\n", (long)mFile.tell(), &hdr[0], cksize);
-
-		if (cksize > fsize - mFile.tell())
-			break;
-
-		switch(hdr[0]) {
-		case VDMAKEFOURCC('F', 'O', 'R', 'M'):
-			if (cksize < 4 || mFile.readData(hdr + 2, 4) < 4)
-				goto parse_finish;
-			cksize -= 4;
-
-			switch(hdr[2]) {
-			case VDMAKEFOURCC('A', 'N', 'I', 'M'):
-				cksize = hdr[1] = 0;		// break open FORM ANIM
-				break;
-			case VDMAKEFOURCC('I', 'L', 'B', 'M'):
-				cksize = hdr[1] = 0;		// break open FORM ILBM
-				break;
-			}
-			break;
-
-		case VDMAKEFOURCC('C', 'M', 'A', 'P'):
-			{
-				uint8 pal[256][3];
-
-				tc = std::min<uint32>(cksize, 768);
-
-				mFile.read(pal, tc);
-				cksize -= tc;
-
-				for(int i=0; i<tc/3; ++i) {
-					mColorMap[i] = (uint32)pal[i][2] + ((uint32)pal[i][1] << 8) + ((uint32)pal[i][0]<<16);
-				}
-			}
-			break;
-
-		case VDMAKEFOURCC('C', 'A', 'M', 'G'):
-			if (cksize >= 4) {
-				cksize -= 4;
-				uint32 vpmode;
-				mFile.read(&vpmode, 4);
-				mAmigaViewportMode = VDSwizzleU32(vpmode);
-			}
-			break;
-
-		case VDMAKEFOURCC('A', 'N', 'H', 'D'):
-			{
-				ANIMHeaderOnDisk animdisk={0};
-
-				tc = std::min<uint32>(sizeof animdisk, cksize);
-				mFile.read(&animdisk, tc);
-				cksize -= tc;
-
-				ANIMHeader animhdr;
-				ConvertANIMHeaderToLocalOrder(animhdr, animdisk);
-
-				mCompressionMode = animhdr.operation;
-				mCompressionOptions = animhdr.bits;
-
-				switch(mCompressionMode) {
-				case 0:
-				case 5:
-				case 7:
-					break;
-				default:
-					throw MyError("The file \"%ls\" uses an unsupported compression mode (%d).", mFile.getFilenameForError(), mCompressionMode);
-				}
-			}
-			break;
-
-		case VDMAKEFOURCC('B', 'M', 'H', 'D'):
-			{
-				ILBMHeaderOnDisk ilbmdisk={0};
-
-				tc = std::min<uint32>(sizeof ilbmdisk, cksize);
-				mFile.read(&ilbmdisk, tc);
-				cksize -= tc;
-
-				ILBMHeader ilbmhdr;
-				ConvertILBMHeaderToLocalOrder(ilbmhdr, ilbmdisk);
-
-				BITMAPINFOHEADER *bmih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
-
-				bmih->biSize			= sizeof(BITMAPINFOHEADER);
-				bmih->biWidth			= ilbmhdr.w;
-				bmih->biHeight			= ilbmhdr.h;
-				bmih->biPlanes			= 1;
-				bmih->biBitCount		= 16;
-				bmih->biCompression		= 0xFFFFFFFF;
-				bmih->biSizeImage		= 0;
-				bmih->biXPelsPerMeter	= 0;
-				bmih->biYPelsPerMeter	= 0;
-				bmih->biClrUsed			= 0;
-				bmih->biClrImportant	= 0;
-
-				AllocFrameBuffer(ilbmhdr.w * ilbmhdr.h * 4);
-
-				mPlanes = ilbmhdr.nPlanes;
-
-				mDeltaPlanes[0].resize(((ilbmhdr.w + 1) & ~1) * mPlanes * ilbmhdr.h);
-				mDeltaPlanes[1].resize(((ilbmhdr.w + 1) & ~1) * mPlanes * ilbmhdr.h);
-				mPalBuffer.resize(ilbmhdr.w * ilbmhdr.h);
-			}
-			break;
-
-		case VDMAKEFOURCC('B', 'O', 'D', 'Y'):
-			{
-				FrameInfo fi = { mFile.tell(), cksize, true };
-
-				mFrameArray.push_back(fi);
-			}
-			break;
-
-		case VDMAKEFOURCC('D', 'L', 'T', 'A'):
-			{
-				FrameInfo fi = { mFile.tell(), cksize, false };
-
-				mFrameArray.push_back(fi);
-			}
-			break;
-		}
-
-		mFile.skip(cksize + ckround);
-	}
-parse_finish:
 	mSampleFirst	= 0;
-	mSampleLast		= mFrameArray.size();
+	mSampleLast		= mpParent->GetFrameCount();
 
 	memset(&streamInfo, 0, sizeof streamInfo);
 
+	streamInfo.fccType		= VDAVIStreamInfo::kTypeVideo;
 	streamInfo.dwLength		= (uint32)mSampleLast;
 	streamInfo.dwRate		= 15;
 	streamInfo.dwScale		= 1;
+	streamInfo.rcFrameLeft		= 0;
+	streamInfo.rcFrameTop		= 0;
+	streamInfo.rcFrameRight		= (uint16)mWidth;
+	streamInfo.rcFrameBottom	= (uint16)mHeight;
 
-	// If extra halfbrite mode is enabled, fix up the palette.
-	if (mAmigaViewportMode & kAmigaVPHalfbrite) {
-		for(int i=0; i<32; ++i) {
-			mColorMap[i+32] = (mColorMap[i] >> 1) & 0x7f7f7f;
-		}
-	}
+	BITMAPINFOHEADER *bmih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
+
+	bmih->biSize			= sizeof(BITMAPINFOHEADER);
+	bmih->biWidth			= mWidth;
+	bmih->biHeight			= mHeight;
+	bmih->biPlanes			= 1;
+	bmih->biBitCount		= 16;
+	bmih->biCompression		= 0xFFFFFFFF;
+	bmih->biSizeImage		= 0;
+	bmih->biXPelsPerMeter	= 0;
+	bmih->biYPelsPerMeter	= 0;
+	bmih->biClrUsed			= 0;
+	bmih->biClrImportant	= 0;
+
+	AllocFrameBuffer(mWidth * mHeight * 4);
+
+	mDeltaPlanes[0].resize(((mWidth + 1) & ~1) * mPlanes * mHeight);
+	mDeltaPlanes[1].resize(((mWidth + 1) & ~1) * mPlanes * mHeight);
+	mPalBuffer.resize(mWidth * mHeight);
+}
+
+VDVideoSourceANIM::~VDVideoSourceANIM() {
 }
 
 int VDVideoSourceANIM::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
@@ -348,17 +171,15 @@ int VDVideoSourceANIM::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 	int ret = 0;
 
 	if (lCount > 0) {
-		const FrameInfo& fi = mFrameArray[(int)lStart];
+		const VDInputFileANIM::FrameInfo& fi = mpParent->GetFrameInfo(lStart);
 
 		bytes = fi.len;
 
 		if (lpBuffer) {
 			if (bytes > cbBuffer)
-				ret = AVIERR_BUFFERTOOSMALL;
-			else {
-				mFile.seek(fi.pos);
-				mFile.read(lpBuffer, fi.len);
-			}
+				ret = IVDStreamSource::kBufferTooSmall;
+			else
+				mpParent->ReadSpan(fi.pos, lpBuffer, fi.len);
 		}
 	}
 
@@ -371,7 +192,8 @@ int VDVideoSourceANIM::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 }
 
 bool VDVideoSourceANIM::_isKey(VDPosition samp) {
-	return mFrameArray[(uint32)samp].key;
+	const VDInputFileANIM::FrameInfo& fi = mpParent->GetFrameInfo(samp);
+	return fi.key;
 }
 
 VDPosition VDVideoSourceANIM::nearestKey(VDPosition lSample) {
@@ -404,7 +226,7 @@ bool VDVideoSourceANIM::setTargetFormat(int format) {
 	if (!format)
 		format = nsVDPixmap::kPixFormat_XRGB8888;
 
-	if (mAmigaViewportMode & kAmigaVPHoldAndModify) {
+	if (mpParent->GetAmigaViewportMode() & kAmigaVPHoldAndModify) {
 		switch(format) {
 			case nsVDPixmap::kPixFormat_XRGB8888:
 				return VideoSource::setTargetFormat(format);
@@ -456,11 +278,11 @@ const void *VDVideoSourceANIM::getFrame(VDPosition lFrameDesired64) {
 
 			for(;;) {
 				if (dataBuffer.empty())
-					aviErr = AVIERR_BUFFERTOOSMALL;
+					aviErr = IVDStreamSource::kBufferTooSmall;
 				else
 					aviErr = read(lFrameNum, 1, dataBuffer.data(), dataBuffer.size(), &lBytesRead, &lSamplesRead);
 
-				if (aviErr == AVIERR_BUFFERTOOSMALL) {
+				if (aviErr == IVDStreamSource::kBufferTooSmall) {
 					aviErr = read(lFrameNum, 1, NULL, 0, &lBytesRead, &lSamplesRead);
 
 					if (aviErr)
@@ -483,8 +305,6 @@ const void *VDVideoSourceANIM::getFrame(VDPosition lFrameDesired64) {
 		mCachedFrame = -1;
 		throw;
 	}
-
-	mCachedFrame = lFrameDesired; 
 
 	return getFrameBuffer();
 }
@@ -521,7 +341,7 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 		const uint8 *src = (const uint8 *)inputBuffer;
 		uint8 *dst = &mDeltaPlanes[(int)frame_num & 1][0];
 		const int planepitch = ((w + 15) >> 4) * 2;
-		const FrameInfo& frameInfo = mFrameArray[(uint32)frame_num];
+		const VDInputFileANIM::FrameInfo& frameInfo = mpParent->GetFrameInfo(frame_num);
 
 		if (frameInfo.key) {
 			int needed = planepitch * h * mPlanes;
@@ -550,13 +370,13 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 				memset(dst, 0, planepitch * h * mPlanes);
 
 			try {
-				switch(mCompressionMode) {
+				switch(mpParent->GetCompressionMode()) {
 				case 5:
 					DecompressMode5(src, data_len, dst, planepitch);
 					break;
 
 				case 7:
-					if (mCompressionOptions & 1)
+					if (mpParent->GetCompressionOptions() & 1)
 						DecompressMode7Long(src, data_len, dst, planepitch);
 					else
 						DecompressMode7Short(src, data_len, dst, planepitch);
@@ -584,16 +404,19 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 				}
 			}
 		}
+
+		mCachedFrame = frame_num;
 	}
 
-	if (mAmigaViewportMode & kAmigaVPHoldAndModify) {
+	const uint32 *const VDRESTRICT colorMap = mpParent->GetColorMap();
+	if (mpParent->GetAmigaViewportMode() & kAmigaVPHoldAndModify) {
 		VDASSERT(mTargetFormat.format == nsVDPixmap::kPixFormat_XRGB8888);
 
 		const uint8 *src = mPalBuffer.data();
 		char *dstrow = (char *)mTargetFormat.data;
 		for(int y=0; y<h; ++y) {
 			uint32 *dst = (uint32 *)dstrow;
-			uint32 color = mColorMap[0];
+			uint32 color = colorMap[0];
 
 			if (mPlanes == 8) {				// HAM8
 				for(int x=0; x<w; ++x) {
@@ -601,7 +424,7 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 
 					switch(v & 0xc0) {
 						case 0x00:
-							color = mColorMap[v & 63];
+							color = colorMap[v & 63];
 							break;
 						case 0x40:
 							color = (color & 0xffffff00) + ((((v & 0x3f)*0x00000041) >> 4) & 0xff);
@@ -622,7 +445,7 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 
 					switch(v & 0x30) {
 						case 0x00:
-							color = mColorMap[v & 15];
+							color = colorMap[v & 15];
 							break;
 						case 0x10:
 							color = (color & 0xffffff00) + (v & 0x0f)*0x00000011;
@@ -649,7 +472,7 @@ const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 da
 		srcbm.w			= w;
 		srcbm.h			= h;
 		srcbm.format	= nsVDPixmap::kPixFormat_Pal8;
-		srcbm.palette	= mColorMap;
+		srcbm.palette	= colorMap;
 
 		VDPixmapBlt(mTargetFormat, srcbm);
 	}
@@ -888,18 +711,6 @@ void VDVideoSourceANIM::DecompressMode7Long(const uint8 *src, uint32 srclen, uin
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDInputFileANIM : public InputFile {
-public:
-	VDInputFileANIM();
-	~VDInputFileANIM();
-
-	void Init(const wchar_t *szFile);
-
-	void setAutomated(bool fAuto);
-
-	void InfoDialog(HWND hwndParent);
-};
-
 VDInputFileANIM::VDInputFileANIM()
 {
 }
@@ -907,15 +718,156 @@ VDInputFileANIM::VDInputFileANIM()
 VDInputFileANIM::~VDInputFileANIM() {
 }
 
-void VDInputFileANIM::Init(const wchar_t *szFile) {
-	videoSrc = new VDVideoSourceANIM(szFile);
+void VDInputFileANIM::Init(const wchar_t *filename) {
+	mFile.open(filename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+
+	uint32 hdr[3];
+	sint64 fsize = mFile.size();
+
+	mAmigaViewportMode = 0;
+	
+	while(mFile.readData(hdr, 8) >= 8) {
+		uint32 cksize = VDFromBigEndian32(hdr[1]), tc;
+		uint32 ckround = cksize & 1;
+
+		if (cksize > fsize - mFile.tell())
+			break;
+
+		switch(hdr[0]) {
+		case VDMAKEFOURCC('F', 'O', 'R', 'M'):
+			if (cksize < 4 || mFile.readData(hdr + 2, 4) < 4)
+				goto parse_finish;
+			cksize -= 4;
+
+			switch(hdr[2]) {
+			case VDMAKEFOURCC('A', 'N', 'I', 'M'):
+				cksize = hdr[1] = 0;		// break open FORM ANIM
+				break;
+			case VDMAKEFOURCC('I', 'L', 'B', 'M'):
+				cksize = hdr[1] = 0;		// break open FORM ILBM
+				break;
+			}
+			break;
+
+		case VDMAKEFOURCC('C', 'M', 'A', 'P'):
+			{
+				uint8 pal[256][3];
+
+				tc = std::min<uint32>(cksize, 768);
+
+				mFile.read(pal, tc);
+				cksize -= tc;
+
+				for(int i=0; i<tc/3; ++i) {
+					mColorMap[i] = (uint32)pal[i][2] + ((uint32)pal[i][1] << 8) + ((uint32)pal[i][0]<<16);
+				}
+			}
+			break;
+
+		case VDMAKEFOURCC('C', 'A', 'M', 'G'):
+			if (cksize >= 4) {
+				cksize -= 4;
+				uint32 vpmode;
+				mFile.read(&vpmode, 4);
+				mAmigaViewportMode = VDSwizzleU32(vpmode);
+			}
+			break;
+
+		case VDMAKEFOURCC('A', 'N', 'H', 'D'):
+			{
+				ANIMHeaderOnDisk animdisk={0};
+
+				tc = std::min<uint32>(sizeof animdisk, cksize);
+				mFile.read(&animdisk, tc);
+				cksize -= tc;
+
+				ANIMHeader animhdr;
+				ConvertANIMHeaderToLocalOrder(animhdr, animdisk);
+
+				mCompressionMode = animhdr.operation;
+				mCompressionOptions = animhdr.bits;
+
+				switch(mCompressionMode) {
+				case 0:
+				case 5:
+				case 7:
+					break;
+				default:
+					throw MyError("The file \"%ls\" uses an unsupported compression mode (%d).", mFile.getFilenameForError(), mCompressionMode);
+				}
+			}
+			break;
+
+		case VDMAKEFOURCC('B', 'M', 'H', 'D'):
+			{
+				ILBMHeaderOnDisk ilbmdisk={0};
+
+				tc = std::min<uint32>(sizeof ilbmdisk, cksize);
+				mFile.read(&ilbmdisk, tc);
+				cksize -= tc;
+
+				ILBMHeader ilbmhdr;
+				ConvertILBMHeaderToLocalOrder(ilbmhdr, ilbmdisk);
+
+				mFrameWidth		= ilbmhdr.w;
+				mFrameHeight	= ilbmhdr.h;
+				mPlanes			= ilbmhdr.nPlanes;
+			}
+			break;
+
+		case VDMAKEFOURCC('B', 'O', 'D', 'Y'):
+			{
+				FrameInfo fi = { mFile.tell(), cksize, true };
+
+				mFrameArray.push_back(fi);
+			}
+			break;
+
+		case VDMAKEFOURCC('D', 'L', 'T', 'A'):
+			{
+				FrameInfo fi = { mFile.tell(), cksize, false };
+
+				mFrameArray.push_back(fi);
+			}
+			break;
+		}
+
+		mFile.skip(cksize + ckround);
+	}
+parse_finish:
+	// If extra halfbrite mode is enabled, fix up the palette.
+	if (mAmigaViewportMode & kAmigaVPHalfbrite) {
+		for(int i=0; i<32; ++i) {
+			mColorMap[i+32] = (mColorMap[i] >> 1) & 0x7f7f7f;
+		}
+	}
 }
 
 void VDInputFileANIM::setAutomated(bool fAuto) {
 }
 
-void VDInputFileANIM::InfoDialog(HWND hwndParent) {
-	MessageBox(hwndParent, "No file information is available for ANIM sequences.", g_szError, MB_OK);
+bool VDInputFileANIM::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index)
+		return false;
+
+	*ppSrc = new VDVideoSourceANIM(this);
+	if (!*ppSrc)
+		return false;
+	(*ppSrc)->AddRef();
+	return true;
+}
+
+bool VDInputFileANIM::GetAudioSource(int index, AudioSource **ppSrc) {
+	return false;
+}
+
+const VDInputFileANIM::FrameInfo& VDInputFileANIM::GetFrameInfo(VDPosition pos) const {
+	return mFrameArray[(FrameArray::size_type)pos];
+}
+
+void VDInputFileANIM::ReadSpan(sint64 pos, void *buffer, uint32 len) {
+	mFile.seek(pos);
+	mFile.read(buffer, len);
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -240,25 +240,27 @@ const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) 
 
 			mError.assign(szError, szError + strlen(szError));
 
-			const VDScriptValue *const argv = &*(mStack.end() - mMethodArgumentCount);
+			if (mMethodArgumentCount) {
+				const VDScriptValue *const argv = &*(mStack.end() - mMethodArgumentCount);
 
-			for(i=0; i<mMethodArgumentCount; i++) {
-				if (i) {
-					if (argv[i].isVoid()) break;
+				for(i=0; i<mMethodArgumentCount; i++) {
+					if (i) {
+						if (argv[i].isVoid()) break;
 
-					mError.push_back(',');
-				}
+						mError.push_back(',');
+					}
 
-				switch(argv[i].type) {
-				case VDScriptValue::T_VOID:		strveccat(mError, "void"); break;
-				case VDScriptValue::T_INT:		strveccat(mError, "int"); break;
-				case VDScriptValue::T_LONG:		strveccat(mError, "long"); break;
-				case VDScriptValue::T_DOUBLE:		strveccat(mError, "double"); break;
-				case VDScriptValue::T_STR:		strveccat(mError, "string"); break;
-				case VDScriptValue::T_OBJECT:	strveccat(mError, "object"); break;
-				case VDScriptValue::T_FNAME:		strveccat(mError, "method"); break;
-				case VDScriptValue::T_FUNCTION:	strveccat(mError, "function"); break;
-				case VDScriptValue::T_VARLV:		strveccat(mError, "var"); break;
+					switch(argv[i].type) {
+					case VDScriptValue::T_VOID:		strveccat(mError, "void"); break;
+					case VDScriptValue::T_INT:		strveccat(mError, "int"); break;
+					case VDScriptValue::T_LONG:		strveccat(mError, "long"); break;
+					case VDScriptValue::T_DOUBLE:		strveccat(mError, "double"); break;
+					case VDScriptValue::T_STR:		strveccat(mError, "string"); break;
+					case VDScriptValue::T_OBJECT:	strveccat(mError, "object"); break;
+					case VDScriptValue::T_FNAME:		strveccat(mError, "method"); break;
+					case VDScriptValue::T_FUNCTION:	strveccat(mError, "function"); break;
+					case VDScriptValue::T_VARLV:		strveccat(mError, "var"); break;
+					}
 				}
 			}
 
@@ -375,7 +377,7 @@ void VDScriptInterpreter::ParseExpression() {
 				}
 
 				v = v2;
-			} catch(const VDScriptError& e) {
+			} catch(const VDScriptError&) {
 				mErrorObject = v;
 				throw;
 			}
@@ -744,6 +746,10 @@ arglist_nomatch:
 
 	for(int i=0; i<pcount; ++i) {
 		VDScriptValue& a = argv[i];
+
+		if (argdesc[i] == '.')
+			break;
+
 		switch(argdesc[i]) {
 		case 'i':
 			if (a.isLong())

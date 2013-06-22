@@ -25,6 +25,7 @@
 
 #include "VideoSource.h"
 #include "InputFile.h"
+#include "InputFileTestPhysics.h"
 #include "gui.h"
 
 extern const char g_szError[];
@@ -58,10 +59,19 @@ public:
 	bool isDecodable(VDPosition sample_num)		{ return true; }
 
 private:
+	void DrawPhysFrame(VDPixmap& dst, bool oddField, int frame);
+
 	VDPosition	mCachedFrame;
 	const int	mMode;
 
+	VDPixmapBuffer	mRGB32Buffer;
 	VDPixmapBuffer	m422Buffer;
+	VDTestVidPhysVideo	mVideo;
+
+	VDPixmapPathRasterizer	mTextRasterizer;
+	VDPixmapRegion			mTextOutlineBrush;
+	VDPixmapRegion			mTextRegion;
+	VDPixmapRegion			mTextBorderRegion;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -95,7 +105,7 @@ VDVideoSourceTest::VDVideoSourceTest(int mode)
 
 	// Fill out streamInfo
 
-	streamInfo.fccType					= streamtypeVIDEO;
+	streamInfo.fccType					= VDAVIStreamInfo::kTypeVideo;
 	streamInfo.fccHandler				= NULL;
 	streamInfo.dwFlags					= 0;
 	streamInfo.dwCaps					= 0;
@@ -109,10 +119,23 @@ VDVideoSourceTest::VDVideoSourceTest(int mode)
 	streamInfo.dwSuggestedBufferSize	= 0;
 	streamInfo.dwQuality				= (DWORD)-1;
 	streamInfo.dwSampleSize				= 0;
-	streamInfo.rcFrame.left				= 0;
-	streamInfo.rcFrame.top				= 0;
-	streamInfo.rcFrame.right			= getImageFormat()->biWidth;
-	streamInfo.rcFrame.bottom			= getImageFormat()->biHeight;
+	streamInfo.rcFrameLeft				= 0;
+	streamInfo.rcFrameTop				= 0;
+	streamInfo.rcFrameRight				= (uint16)getImageFormat()->biWidth;
+	streamInfo.rcFrameBottom			= (uint16)getImageFormat()->biHeight;
+
+	if (mMode == 5 || mMode == 6) {
+		VDTestVidPhysSimulator sim;
+
+		for(int i=0; i<800; ++i) {
+			sim.EncodeFrame(mVideo);
+			sim.Step(1001.0f / 24000.0f);
+		}
+
+		mRGB32Buffer.init(w, h, nsVDPixmap::kPixFormat_XRGB8888);
+	}
+
+	VDPixmapCreateRoundRegion(mTextOutlineBrush, 16.0f);
 }
 
 VDVideoSourceTest::~VDVideoSourceTest() {
@@ -139,7 +162,7 @@ int VDVideoSourceTest::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 		if (plBytesRead)
 			*plBytesRead = sizeof(VDPosition);
 
-		return AVIERR_BUFFERTOOSMALL;
+		return IVDStreamSource::kBufferTooSmall;
 	}
 
 	*(VDPosition *)lpBuffer = lStart;
@@ -166,6 +189,7 @@ bool VDVideoSourceTest::setTargetFormat(int format) {
 	case nsVDPixmap::kPixFormat_YUV444_Planar:
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
 	case nsVDPixmap::kPixFormat_YUV420_Planar:
+	case nsVDPixmap::kPixFormat_YUV411_Planar:
 	case nsVDPixmap::kPixFormat_YUV410_Planar:
 		if (!VideoSource::setTargetFormat(format))
 			return false;
@@ -179,6 +203,74 @@ bool VDVideoSourceTest::setTargetFormat(int format) {
 }
 
 ///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	void DrawZonePlateXRGB8888(VDPixmap& dst, int x0, int y0, int w, int h, uint32 multiplier) {
+		uint32 *row = (uint32 *)((char *)dst.data + dst.pitch*y0) + x0;
+
+		float iw = 1.0f / (float)w;
+		float ih = 1.0f / (float)h;
+
+		float tscale = nsVDMath::kfPi * (float)w;
+
+		for(int y = 0; y < h; ++y) {
+			float dy = (float)y * ih - 0.5f;
+			float t2 = dy*dy;
+
+			for(int x = 0; x < w; ++x) {
+				float dx = (float)x * iw - 0.5f;
+				float t = (t2 + dx*dx)*tscale;
+				float v = cosf(t);
+
+				row[x] = (uint32)VDClampedRoundFixedToUint8Fast(0.5f + 0.5f*v) * multiplier;
+			}
+
+			vdptrstep(row, dst.pitch);
+		}
+	}
+
+	void DrawZonePlateA8(VDPixmap& dst, int plane, int x0, int y0, int w, int h, uint8 minval, uint8 maxval) {
+		uint8 *row;
+		ptrdiff_t pitch;
+		
+		switch(plane) {
+		case 0:
+		default:
+			pitch = dst.pitch;
+			row = (uint8 *)((char *)dst.data + dst.pitch*y0) + x0;
+			break;
+		case 1:
+			pitch = dst.pitch2;
+			row = (uint8 *)((char *)dst.data2 + dst.pitch2*y0) + x0;
+			break;
+		case 2:
+			pitch = dst.pitch3;
+			row = (uint8 *)((char *)dst.data3 + dst.pitch3*y0) + x0;
+			break;
+		}
+
+		float bias = ((int)maxval + (int)minval) / 510.0f;
+		float scale = ((int)maxval - (int)minval) / 510.0f;
+
+		float iw = 1.0f / (float)w;
+		float ih = 1.0f / (float)h;
+		float tscale = nsVDMath::kfPi * (float)w;
+		for(int y = 0; y < h; ++y) {
+			float dy = (float)y * ih - 0.5f;
+			float t2 = dy*dy;
+
+			for(int x = 0; x < w; ++x) {
+				float dx = (float)x * iw - 0.5f;
+				float t = (t2 + dx*dx)*tscale;
+				float v = cosf(t);
+
+				row[x] = (uint8)VDClampedRoundFixedToUint8Fast(bias + scale*v);
+			}
+
+			vdptrstep(row, pitch);
+		}
+	}
+}
 
 const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	// We may get a zero-byte frame if we already have the image.
@@ -244,6 +336,15 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 			VDMemset8Rect(dst->data, dst->pitch, 0x47, dst->w, dst->h);
 			VDMemset8Rect(dst->data2, dst->pitch2, 0x80, dst->w >> 1, dst->h >> 1);
 			VDMemset8Rect(dst->data3, dst->pitch3, 0x80, dst->w >> 1, dst->h >> 1);
+			break;
+		case nsVDPixmap::kPixFormat_YUV411_Planar:
+			format = "4:1:1 planar YCbCr";
+			textcolor = 0xFF40EBC0;
+			black = 0xFF801080;
+			isyuv = true;
+			VDMemset8Rect(dst->data, dst->pitch, 0x47, dst->w, dst->h);
+			VDMemset8Rect(dst->data2, dst->pitch2, 0x80, dst->w >> 2, dst->h);
+			VDMemset8Rect(dst->data3, dst->pitch3, 0x80, dst->w >> 2, dst->h);
 			break;
 		case nsVDPixmap::kPixFormat_YUV410_Planar:
 			format = "4:1:0 planar YCbCr";
@@ -465,6 +566,108 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 
 			vdptrstep(dstrow, dst->pitch);
 		}
+	} else if (mMode == 4) {
+		switch(dst->format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			DrawZonePlateXRGB8888(*dst, 112,  16, 192, 192, 0x00010000);
+			DrawZonePlateXRGB8888(*dst, 336,  16, 192, 192, 0x00000100);
+			DrawZonePlateXRGB8888(*dst, 112, 224, 192, 192, 0x00000001);
+			DrawZonePlateXRGB8888(*dst, 336, 224, 192, 192, 0x00010101);
+			break;
+		case nsVDPixmap::kPixFormat_YUV444_Planar:
+			DrawZonePlateA8(*dst, 0, 224,  16, 192, 192, 16, 235);
+			DrawZonePlateA8(*dst, 1, 112, 224, 192, 192, 16, 240);
+			DrawZonePlateA8(*dst, 2, 336, 224, 192, 192, 16, 240);
+			break;
+		case nsVDPixmap::kPixFormat_YUV422_UYVY:
+		case nsVDPixmap::kPixFormat_YUV422_YUYV:
+		case nsVDPixmap::kPixFormat_YUV422_Planar:
+			DrawZonePlateA8(*dst, 0, 224,  16, 192, 192, 16, 235);
+			DrawZonePlateA8(*dst, 1,  56, 224,  96, 192, 16, 240);
+			DrawZonePlateA8(*dst, 2, 168, 224,  96, 192, 16, 240);
+			break;
+		case nsVDPixmap::kPixFormat_YUV420_Planar:
+			DrawZonePlateA8(*dst, 0, 224,  16, 192, 192, 16, 235);
+			DrawZonePlateA8(*dst, 1,  56, 112,  96,  96, 16, 240);
+			DrawZonePlateA8(*dst, 2, 168, 112,  96,  96, 16, 240);
+			break;
+		case nsVDPixmap::kPixFormat_YUV411_Planar:
+			DrawZonePlateA8(*dst, 0, 224,  16, 192, 192, 16, 235);
+			DrawZonePlateA8(*dst, 1,  28, 224,  48, 192, 16, 240);
+			DrawZonePlateA8(*dst, 2,  84, 224,  48, 192, 16, 240);
+			break;
+		case nsVDPixmap::kPixFormat_YUV410_Planar:
+			DrawZonePlateA8(*dst, 0, 224,  16, 192, 192, 16, 235);
+			DrawZonePlateA8(*dst, 1,  28,  56,  48,  48, 16, 240);
+			DrawZonePlateA8(*dst, 2,  84,  56,  48,  48, 16, 240);
+			break;
+		}
+	} else if (mMode == 5) {
+		// A1 A1 B1 C1 D1
+		// A2 B2 C2 C2 D2
+		int frame32 = (int)frame_num;
+		int frameBase = frame32 / 5 * 4;
+
+		VDPixmap pxfield0(VDPixmapExtractField(mRGB32Buffer, false));
+		VDPixmap pxfield1(VDPixmapExtractField(mRGB32Buffer, true));
+
+		switch(frame32 % 5) {
+			case 0:
+				DrawPhysFrame(pxfield0, false, frameBase+0);
+				DrawPhysFrame(pxfield1, true, frameBase+0);
+				break;
+			case 1:
+				DrawPhysFrame(pxfield0, false, frameBase+0);
+				DrawPhysFrame(pxfield1, true, frameBase+1);
+				break;
+			case 2:
+				DrawPhysFrame(pxfield0, false, frameBase+1);
+				DrawPhysFrame(pxfield1, true, frameBase+2);
+				break;
+			case 3:
+				DrawPhysFrame(pxfield0, false, frameBase+2);
+				DrawPhysFrame(pxfield1, true, frameBase+2);
+				break;
+			case 4:
+				DrawPhysFrame(pxfield0, false, frameBase+3);
+				DrawPhysFrame(pxfield1, true, frameBase+3);
+				break;
+		}
+
+		VDPixmapBlt(*dst, mRGB32Buffer);
+	} else if (mMode == 6) {
+		// A1 B1 C1 C1 D1
+		// A2 A2 B2 C2 D2
+		int frame32 = (int)frame_num;
+		int frameBase = frame32 / 5 * 4;
+
+		VDPixmap pxfield0(VDPixmapExtractField(mRGB32Buffer, false));
+		VDPixmap pxfield1(VDPixmapExtractField(mRGB32Buffer, true));
+
+		switch(frame32 % 5) {
+			case 0:
+				DrawPhysFrame(pxfield0, false, frameBase+0);
+				DrawPhysFrame(pxfield1, true, frameBase+0);
+				break;
+			case 1:
+				DrawPhysFrame(pxfield0, false, frameBase+1);
+				DrawPhysFrame(pxfield1, true, frameBase+0);
+				break;
+			case 2:
+				DrawPhysFrame(pxfield0, false, frameBase+2);
+				DrawPhysFrame(pxfield1, true, frameBase+1);
+				break;
+			case 3:
+				DrawPhysFrame(pxfield0, false, frameBase+2);
+				DrawPhysFrame(pxfield1, true, frameBase+2);
+				break;
+			case 4:
+				DrawPhysFrame(pxfield0, false, frameBase+3);
+				DrawPhysFrame(pxfield1, true, frameBase+3);
+				break;
+		}
+
+		VDPixmapBlt(*dst, mRGB32Buffer);
 	}
 
 	// draw text
@@ -472,25 +675,24 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		"RGB color cube",
 		"Chroma subsampling offset",
 		"Channel levels",
-		"Checkerboard"
+		"Checkerboard",
+		"Zone plates",
+		"3:2 pulldown (TFF)",
+		"3:2 pulldown (BFF)"
 	};
 
 	char buf[128];
 	sprintf(buf, "%s - frame %d (%s)", kModeNames[mMode], (int)frame_num, format);
 
-	VDPixmapPathRasterizer rast;
-	VDPixmapConvertTextToPath(rast, NULL, 24.0f * 64.0f, 20.0f * 64.0f, 460.0f * 64.0f, buf);
+	mTextRasterizer.Clear();
+	VDPixmapConvertTextToPath(mTextRasterizer, NULL, 24.0f * 64.0f, 20.0f * 64.0f, 460.0f * 64.0f, buf);
 
-	VDPixmapRegion region;
-	VDPixmapRegion border;
-	VDPixmapRegion brush;
-	rast.ScanConvert(region);
+	mTextRasterizer.ScanConvert(mTextRegion);
 
-	VDPixmapCreateRoundRegion(brush, 16.0f);
-	VDPixmapConvolveRegion(border, region, brush);
+	VDPixmapConvolveRegion(mTextBorderRegion, mTextRegion, mTextOutlineBrush);
 
-	VDPixmapFillRegionAntialiased8x(*dst, border, 0, 0, black);
-	VDPixmapFillRegionAntialiased8x(*dst, region, 0, 0, textcolor);
+	VDPixmapFillRegionAntialiased8x(*dst, mTextBorderRegion, 0, 0, black);
+	VDPixmapFillRegionAntialiased8x(*dst, mTextRegion, 0, 0, textcolor);
 
 	switch(mTargetFormat.format) {
 		case nsVDPixmap::kPixFormat_YUV422_UYVY:
@@ -500,14 +702,61 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 	}
 
 	mCachedFrame = frame_num;
-	return lpvBuffer;
+	return mpFrameBuffer;
 }
 
 const void *VDVideoSourceTest::getFrame(VDPosition frameNum) {
 	if (mCachedFrame == frameNum)
-		return lpvBuffer;
+		return mpFrameBuffer;
 
 	return streamGetFrame(&frameNum, sizeof(VDPosition), FALSE, frameNum, frameNum);
+}
+
+void VDVideoSourceTest::DrawPhysFrame(VDPixmap& dst, bool oddField, int frameIdx) {
+	VDMemset32Rect(dst.data, dst.pitch, 0x00, 640, 240);
+
+	VDTriColorVertex vx[10];
+
+	const VDTestVidPhysFrame& frame = mVideo.mFrames[frameIdx];
+	const VDTestVidPhysPartPos *parts = mVideo.mParticles.data() + frame.mFirstParticle;
+
+	for(int i=0; i<3; ++i) {
+		float t = (float)i * 6.28318f / 3.0f + frame.mTriRotation;
+		vx[i].x = 320.0f + 100.0f*cosf(t);
+		vx[i].y = 240.0f - 100.0f*sinf(t);
+		vx[i].z = 0.0f;
+		vx[i].r = (i == 0) ? 1.0f : 0.0f;
+		vx[i].g = (i == 1) ? 1.0f : 0.0f;
+		vx[i].b = (i == 2) ? 1.0f : 0.0f;
+		vx[i].a = 255;
+	}
+
+	const float xf[16]={
+		2.0f / 640.0f, 0.0f, 0.0f, -1.0f,
+		0.0f, -2.0f / 480.0f, 0.0f, 1.0f + (oddField ? -1.0f / 480.0f : 1.0f / 480.0f),
+		0.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+
+	static const int indices[27]={0,1,2,0,2,3,0,3,4,0,4,5,0,5,6,0,6,7,0,7,8,0,8,9,0,9,1};
+	VDPixmapTriFill(dst, vx, 3, indices, 3, xf);
+
+	for(int i=0; i<frame.mParticleCount; ++i) {
+		const VDTestVidPhysPartPos& par = parts[i];
+
+		for(int j=0; j<10; ++j) {
+			float t = (float)j * 6.28318f / 10.0f;
+			vx[j].x = par.mX * (1.0f/16.0f) + cosf(t)*5.0f;
+			vx[j].y = par.mY * (1.0f/16.0f) - sinf(t)*5.0f;
+			vx[j].z = 0.0f;
+			vx[j].r = 1.0f;
+			vx[j].g = 1.0f;
+			vx[j].b = 1.0f;
+			vx[j].a = 1.0f;
+		}
+
+		VDPixmapTriFill(dst, vx, 10, indices, 27, xf);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -516,7 +765,7 @@ public:
 	VDInputFileTestOptions();
 	~VDInputFileTestOptions();
 	bool read(const char *buf);
-	int write(char *buf, int buflen);
+	int write(char *buf, int buflen) const;
 
 public:
 	int mMode;
@@ -538,7 +787,7 @@ bool VDInputFileTestOptions::read(const char *buf) {
 	return true;
 }
 
-int VDInputFileTestOptions::write(char *buf, int buflen) {
+int VDInputFileTestOptions::write(char *buf, int buflen) const {
 	if (!buf)
 		return 2;
 
@@ -587,11 +836,12 @@ public:
 
 	void setOptions(InputFileOptions *_ifo);
 	InputFileOptions *createOptions(const void *buf, uint32 len);
-	InputFileOptions *promptForOptions(HWND hwnd);
+	InputFileOptions *promptForOptions(VDGUIHandle hwnd);
 
 	void setAutomated(bool fAuto);
 
-	void InfoDialog(HWND hwndParent);
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
 
 protected:
 	VDInputFileTestOptions	mOptions;
@@ -604,7 +854,6 @@ VDInputFileTest::~VDInputFileTest() {
 }
 
 void VDInputFileTest::Init(const wchar_t *) {
-	videoSrc = new VDVideoSourceTest(mOptions.mMode);
 }
 
 void VDInputFileTest::setOptions(InputFileOptions *_ifo) {
@@ -624,7 +873,7 @@ InputFileOptions *VDInputFileTest::createOptions(const void *buf, uint32 len) {
 	return NULL;
 }
 
-InputFileOptions *VDInputFileTest::promptForOptions(HWND hwnd) {
+InputFileOptions *VDInputFileTest::promptForOptions(VDGUIHandle hwnd) {
 	vdautoptr<VDInputFileTestOptions> testopts(new_nothrow VDInputFileTestOptions);
 
 	if (!testopts)
@@ -651,8 +900,18 @@ InputFileOptions *VDInputFileTest::promptForOptions(HWND hwnd) {
 void VDInputFileTest::setAutomated(bool fAuto) {
 }
 
-void VDInputFileTest::InfoDialog(HWND hwndParent) {
-	MessageBox(hwndParent, "No file information is available for test sequences.", g_szError, MB_OK);
+bool VDInputFileTest::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index)
+		return false;
+
+	IVDVideoSource *videoSrc = new VDVideoSourceTest(mOptions.mMode);
+	*ppSrc = videoSrc;
+	videoSrc->AddRef();
+	return true;
+}
+
+bool VDInputFileTest::GetAudioSource(int index, AudioSource **ppSrc) {
+	return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////

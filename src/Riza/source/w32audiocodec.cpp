@@ -20,17 +20,19 @@
 #include <vd2/system/strutil.h>
 #include <vd2/system/Error.h>
 #include <vd2/system/protscope.h>
+#include <vd2/system/vdalloc.h>
 #include <vd2/Riza/w32audiocodec.h>
 
 namespace {
 	// Need to take care of this at some point.
-	void SafeCopyWaveFormat(vdstructex<WAVEFORMATEX>& dst, const WAVEFORMATEX *src) {
-		if (src->wFormatTag == WAVE_FORMAT_PCM) {
-			dst.resize(sizeof(WAVEFORMATEX));
-			dst->cbSize = 0;
+	void SafeCopyWaveFormat(vdstructex<VDWaveFormat>& dst, const VDWaveFormat *src) {
+		VDASSERTCT(sizeof(VDWaveFormat) == sizeof(WAVEFORMATEX));
+		if (src->mTag == WAVE_FORMAT_PCM) {
+			dst.resize(sizeof(VDWaveFormat));
+			dst->mExtraSize = 0;
 			memcpy(dst.data(), src, sizeof(PCMWAVEFORMAT));
 		} else
-			dst.assign(src, sizeof(WAVEFORMATEX) + src->cbSize);
+			dst.assign((const VDWaveFormat *)src, sizeof(VDWaveFormat) + src->mExtraSize);
 	}
 
 	const char *VDGetNameOfMMSYSTEMErrorW32(MMRESULT res) {
@@ -74,6 +76,24 @@ namespace {
 	}
 }
 
+IVDAudioCodec *VDCreateAudioCompressorW32(const VDWaveFormat *srcFormat, const VDWaveFormat *dstFormat, const char *pShortNameDriverHint) {
+	vdautoptr<VDAudioCodecW32> codec(new VDAudioCodecW32);
+
+	if (!codec->Init((const WAVEFORMATEX *)srcFormat, (const WAVEFORMATEX *)dstFormat, true, pShortNameDriverHint))
+		return NULL;
+
+	return codec.release();
+}
+
+IVDAudioCodec *VDCreateAudioDecompressorW32(const VDWaveFormat *srcFormat, const VDWaveFormat *dstFormat, const char *pShortNameDriverHint) {
+	vdautoptr<VDAudioCodecW32> codec(new VDAudioCodecW32);
+
+	if (!codec->Init((const WAVEFORMATEX *)srcFormat, (const WAVEFORMATEX *)dstFormat, false, pShortNameDriverHint))
+		return NULL;
+
+	return codec.release();
+}
+
 VDAudioCodecW32::VDAudioCodecW32()
 	: mhStream(NULL)
 	, mOutputReadPt(0)
@@ -86,13 +106,13 @@ VDAudioCodecW32::~VDAudioCodecW32() {
 	Shutdown();
 }
 
-void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat, bool isCompression, const char *pDriverShortNameHint) {
+bool VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat, bool isCompression, const char *pDriverShortNameHint) {
 	Shutdown();
 
-	SafeCopyWaveFormat(mSrcFormat, pSrcFormat);
+	SafeCopyWaveFormat(mSrcFormat, (const VDWaveFormat *)pSrcFormat);
 
 	if (pDstFormat) {
-		SafeCopyWaveFormat(mDstFormat, pDstFormat);
+		SafeCopyWaveFormat(mDstFormat, (const VDWaveFormat *)pDstFormat);
 	} else {
 		VDASSERT(!isCompression);
 
@@ -101,28 +121,24 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 		VDVERIFY(!acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&dwDstFormatSize));
 
 		mDstFormat.resize(dwDstFormatSize);
-		mDstFormat->wFormatTag	= WAVE_FORMAT_PCM;
+		mDstFormat->mTag = WAVE_FORMAT_PCM;
 
-		if (acmFormatSuggest(NULL, (WAVEFORMATEX *)pSrcFormat, mDstFormat.data(), dwDstFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
+		if (acmFormatSuggest(NULL, (WAVEFORMATEX *)pSrcFormat, (WAVEFORMATEX *)mDstFormat.data(), dwDstFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
 			Shutdown();
-			throw MyError(
-					"No audio decompressor could be found to decompress the source audio format.\n"
-					"(source format tag: %04x)"
-					, (uint16)pSrcFormat->wFormatTag
-				);
+			return false;
 		}
 
 		// sanitize the destination format a bit
 
-		if (mDstFormat->wBitsPerSample!=8 && mDstFormat->wBitsPerSample!=16)
-			mDstFormat->wBitsPerSample=16;
+		if (mDstFormat->mSampleBits != 8 && mDstFormat->mSampleBits != 16)
+			mDstFormat->mSampleBits = 16;
 
-		if (mDstFormat->nChannels!=1 && mDstFormat->nChannels!=2)
-			mDstFormat->nChannels = 2;
+		if (mDstFormat->mChannels != 1 && mDstFormat->mChannels !=2)
+			mDstFormat->mChannels = 2;
 
-		mDstFormat->nBlockAlign		= (uint16)((mDstFormat->wBitsPerSample>>3) * mDstFormat->nChannels);
-		mDstFormat->nAvgBytesPerSec	= mDstFormat->nBlockAlign * mDstFormat->nSamplesPerSec;
-		mDstFormat->cbSize				= 0;
+		mDstFormat->mBlockSize		= (uint16)((mDstFormat->mSampleBits >> 3) * mDstFormat->mChannels);
+		mDstFormat->mDataRate		= mDstFormat->mBlockSize * mDstFormat->mSamplingRate;
+		mDstFormat->mExtraSize		= 0;
 		mDstFormat.resize(sizeof(WAVEFORMATEX));
 	}
 
@@ -158,7 +174,7 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 	memset(&mBufferHdr, 0, sizeof mBufferHdr);	// Do this so we can detect whether the buffer is prepared or not.
 
 	for(;;) {
-		res = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)pSrcFormat, mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
+		res = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)pSrcFormat, (WAVEFORMATEX *)mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
 		if (!res)
 			break;
 
@@ -185,15 +201,15 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 
 				if (wfexex.mGuid == local_KSDATAFORMAT_SUBTYPE_PCM) {
 					// Rewrite the format to be straight PCM and try again.
-					vdstructex<WAVEFORMATEX> srcFormat2(mSrcFormat.data(), sizeof(WAVEFORMATEX));
-					srcFormat2->cbSize = 0;
-					srcFormat2->wFormatTag = WAVE_FORMAT_PCM;
-					MMRESULT res2 = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)srcFormat2.data(), mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
+					vdstructex<VDWaveFormat> srcFormat2(mSrcFormat.data(), sizeof(VDWaveFormat));
+					srcFormat2->mExtraSize	= 0;
+					srcFormat2->mTag		= WAVE_FORMAT_PCM;
+					MMRESULT res2 = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)srcFormat2.data(), (WAVEFORMATEX *)mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
 
 					if (!res2) {
 						res = res2;
 						mSrcFormat = srcFormat2;
-						pSrcFormat = mSrcFormat.data();
+						pSrcFormat = (WAVEFORMATEX *)mSrcFormat.data();
 						break;
 					}
 				}
@@ -238,20 +254,20 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 		}
 	}
 
-	DWORD dwSrcBufferSize = mSrcFormat->nAvgBytesPerSec / 5;
-	DWORD dwDstBufferSize = mDstFormat->nAvgBytesPerSec / 5;
+	DWORD dwSrcBufferSize = mSrcFormat->mDataRate / 5;
+	DWORD dwDstBufferSize = mDstFormat->mDataRate / 5;
 
 	if (!dwSrcBufferSize)
 		dwSrcBufferSize = 1;
 
-	dwSrcBufferSize += mSrcFormat->nBlockAlign - 1;
-	dwSrcBufferSize -= dwSrcBufferSize % mSrcFormat->nBlockAlign;
+	dwSrcBufferSize += mSrcFormat->mBlockSize - 1;
+	dwSrcBufferSize -= dwSrcBufferSize % mSrcFormat->mBlockSize;
 
 	if (!dwDstBufferSize)
 		dwDstBufferSize = 1;
 
-	dwDstBufferSize += mDstFormat->nBlockAlign - 1;
-	dwDstBufferSize -= dwDstBufferSize % mDstFormat->nBlockAlign;
+	dwDstBufferSize += mDstFormat->mBlockSize - 1;
+	dwDstBufferSize -= dwDstBufferSize % mDstFormat->mBlockSize;
 
 	if (acmStreamSize(mhStream, dwSrcBufferSize, &dwDstBufferSize, ACM_STREAMSIZEF_SOURCE)) {
 		memset(&mBufferHdr, 0, sizeof mBufferHdr);
@@ -285,6 +301,8 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 			strncpyz(mDriverFilename, add.szShortName, sizeof mDriverFilename);
 		}
 	}
+
+	return true;
 }
 
 void VDAudioCodecW32::Shutdown() {
@@ -306,6 +324,7 @@ void VDAudioCodecW32::Shutdown() {
 
 void *VDAudioCodecW32::LockInputBuffer(unsigned& bytes) {
 	unsigned space = mInputBuffer.size() - mBufferHdr.cbSrcLength;
+	VDASSERT((int)space >= 0);
 
 	bytes = space;
 	return &mInputBuffer[mBufferHdr.cbSrcLength];
@@ -334,7 +353,7 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 	mBufferHdr.cbSrcLengthUsed = 0;
 	mBufferHdr.cbDstLengthUsed = 0;
 
-	const bool isCompression = mDstFormat->wFormatTag != WAVE_FORMAT_PCM;
+	const bool isCompression = mDstFormat->mTag != WAVE_FORMAT_PCM;
 
 	// Run the message queue and clear out any MM_STREAM_DONE messages. We need to do
 	// this in order to work around a severe bug in the Creative MP3 codec (ctmp3.acm),
@@ -400,8 +419,8 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 			} else if (requireOutput) {
 				// Check for a jam condition to try to trap that damned 9995 frame
 				// hang problem.
-				const WAVEFORMATEX& wfsrc = *mSrcFormat;
-				const WAVEFORMATEX& wfdst = *mDstFormat;
+				const VDWaveFormat& wfsrc = *mSrcFormat;
+				const VDWaveFormat& wfdst = *mDstFormat;
 
 				throw MyError("The operation cannot continue as the target audio codec has jammed and is not %scompressing data.\n"
 								"Codec state for driver \"%.64s\":\n"
@@ -413,8 +432,8 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 								, mDriverName
 								, mBufferHdr.cbSrcLength
 								, mBufferHdr.cbDstLength
-								, wfsrc.wFormatTag, wfsrc.nSamplesPerSec, wfsrc.nChannels, wfsrc.wBitsPerSample, wfsrc.nAvgBytesPerSec
-								, wfdst.wFormatTag, wfdst.nSamplesPerSec, wfdst.nChannels, wfdst.wBitsPerSample, wfdst.nAvgBytesPerSec);
+								, wfsrc.mTag, wfsrc.mSamplingRate, wfsrc.mChannels, wfsrc.mSampleBits, wfsrc.mDataRate
+								, wfdst.mTag, wfdst.mSamplingRate, wfdst.mChannels, wfdst.mSampleBits, wfdst.mDataRate);
 			}
 		}
 	}
@@ -444,10 +463,6 @@ void VDAudioCodecW32::UnlockOutputBuffer(unsigned bytes) {
 	VDASSERT(mOutputReadPt <= mBufferHdr.cbDstLengthUsed);
 }
 
-unsigned VDAudioCodecW32::GetOutputLevel() {
-	return mBufferHdr.cbDstLengthUsed - mOutputReadPt;
-}
-
 unsigned VDAudioCodecW32::CopyOutput(void *dst, unsigned bytes) {
 	bytes = std::min<unsigned>(bytes, mBufferHdr.cbDstLengthUsed - mOutputReadPt);
 
@@ -456,4 +471,32 @@ unsigned VDAudioCodecW32::CopyOutput(void *dst, unsigned bytes) {
 
 	mOutputReadPt += bytes;
 	return bytes;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+IVDAudioCodec *VDLocateAudioDecompressor(const VDWaveFormat *srcFormat, const VDWaveFormat *dstFormat, bool preferInternalCodecs, const char *pShortNameDriverHint) {
+	IVDAudioCodec *codec = NULL;
+
+	if (preferInternalCodecs) {
+		codec = VDCreateAudioDecompressor(srcFormat, dstFormat);
+		if (codec)
+			return codec;
+	}
+
+	codec = VDCreateAudioDecompressorW32(srcFormat, dstFormat, pShortNameDriverHint);
+	if (codec)
+		return codec;
+
+	if (!preferInternalCodecs) {
+		codec = VDCreateAudioDecompressor(srcFormat, dstFormat);
+		if (codec)
+			return codec;
+	}
+
+	throw MyError(
+			"No audio decompressor could be found to decompress the source audio format.\n"
+			"(source format tag: %04x)"
+			, (uint16)srcFormat->mTag
+		);
 }

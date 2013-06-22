@@ -264,7 +264,9 @@ void AVIOutputWAV::WriteHeader(bool initial) {
 			// Compensate for difference between word padding and qword padding in format
 			// chunk.
 			dwHeader[1] += -(sint32)audioFmtLen & 6;
-			memcpy(buffer.alloc(dwHeader[1] + 8), dwHeader, dwHeader[1] + 8);
+			char *dst = buffer.alloc(dwHeader[1] + 8);
+			memcpy(dst, dwHeader, 8);
+			memset(dst + 8, 0, dwHeader[1]);
 		}
 
 		dwHeader[0] = mmioFOURCC('d', 'a', 't', 'a');

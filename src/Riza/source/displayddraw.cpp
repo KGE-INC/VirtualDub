@@ -282,7 +282,7 @@ public:
 
 protected:
 	enum {
-		kOverlayUpdateTimerId = 100
+		kOverlayUpdateTimerId = 200
 	};
 
 	void DirectDrawShutdown() {
@@ -387,7 +387,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 		// The Windows Vista DWM has a bug where it allows you to create an overlay surface even
 		// though you'd never be able to display it -- so we have to detect the DWM and force
 		// overlays off.
-		bool allowOverlay = mbEnableOverlays;
+		bool allowOverlay = mbEnableOverlays && !mbUseSubrect;
 
 		if (mbEnableOverlays) {
 			HMODULE hmodDwmApi = LoadLibraryA("dwmapi");
@@ -774,14 +774,6 @@ bool VDVideoDisplayMinidriverDirectDraw::UpdateOverlay(bool force) {
 		if (mCaps.dwFXCaps & DDFXCAPS_OVERLAYARITHSTRETCHY)
 			ddfx.dwFlags |= DDOVERFX_ARITHSTRETCHY;
 
-		if (force) {
-			static int y = 0;
-
-			rDst.top += (y&1);
-			rDst.bottom += (y&1);
-			++y;
-		}
-
 		IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
 		HRESULT hr = mpddsOverlay->UpdateOverlay(&rSrc, pDest, &rDst, dwFlags, &ddfx);
 
@@ -993,6 +985,9 @@ bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient, Upd
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::SetSubrect(const vdrect32 *r) {
+	if (mpddsOverlay)
+		return false;
+
 	if (r) {
 		mbUseSubrect = true;
 		mSubrect = *r;

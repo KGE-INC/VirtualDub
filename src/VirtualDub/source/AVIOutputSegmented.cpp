@@ -384,7 +384,7 @@ VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedVideoStream::Flush(u
 void VDAVIOutputSegmentedVideoStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
 	if (mPendingRuns.empty())
 		mPendingRuns.push_back(Run());
-	else if (flags & AVIIF_KEYFRAME) {
+	else if (flags & AVIOutputStream::kFlagKeyFrame) {
 		mPendingRuns.back().mbClosed = true;
 		mPendingRuns.push_back(Run());
 	}

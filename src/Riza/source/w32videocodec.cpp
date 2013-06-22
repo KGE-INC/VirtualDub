@@ -58,8 +58,8 @@ protected:
 	bool		mbUseEx;
 	VDStringW	mName;
 	VDStringW	mDriverName;
-	vdstructex<BITMAPINFOHEADER>	mSrcFormat;
-	vdstructex<BITMAPINFOHEADER>	mDstFormat;
+	vdstructex<VDAVIBitmapInfoHeader>	mSrcFormat;
+	vdstructex<VDAVIBitmapInfoHeader>	mDstFormat;
 };
 
 IVDVideoDecompressor *VDCreateVideoDecompressorVCM(const void *srcFormat, const void *pHIC) {
@@ -91,9 +91,9 @@ void VDVideoDecompressorVCM::Init(const void *srcFormat, HIC hic) {
 
 	mhic = hic;
 
-	const BITMAPINFOHEADER *bih = (const BITMAPINFOHEADER *)srcFormat;
+	const VDAVIBitmapInfoHeader *bih = (const VDAVIBitmapInfoHeader *)srcFormat;
 
-	mSrcFormat.assign(bih, VDGetSizeOfBitmapHeaderW32(bih));
+	mSrcFormat.assign(bih, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)bih));
 
 	ICINFO info = {sizeof(ICINFO)};
 	DWORD rv;
@@ -111,7 +111,7 @@ void VDVideoDecompressorVCM::Init(const void *srcFormat, HIC hic) {
 }
 
 bool VDVideoDecompressorVCM::QueryTargetFormat(int format) {
-	vdstructex<BITMAPINFOHEADER> bmformat;
+	vdstructex<VDAVIBitmapInfoHeader> bmformat;
 	const int variants = VDGetPixmapToBitmapVariants(format);
 
 	for(int variant=1; variant<=variants; ++variant) {
@@ -159,7 +159,7 @@ bool VDVideoDecompressorVCM::SetTargetFormat(int format) {
 		return false;
 	}
 
-	vdstructex<BITMAPINFOHEADER> bmformat;
+	vdstructex<VDAVIBitmapInfoHeader> bmformat;
 	const int variants = VDGetPixmapToBitmapVariants(format);
 
 	for(int variant=1; variant<=variants; ++variant) {
@@ -187,7 +187,7 @@ bool VDVideoDecompressorVCM::SetTargetFormat(const void *format) {
 		if (mbActive)
 			Stop();
 
-		mDstFormat.assign((const BITMAPINFOHEADER *)format, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)format));
+		mDstFormat.assign((const VDAVIBitmapInfoHeader *)format, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)format));
 		mFormat = 0;
 		mFormatVariant = 0;
 		return true;
@@ -243,8 +243,8 @@ void VDVideoDecompressorVCM::DecompressFrame(void *dst, const void *src, uint32 
 	if (!mbActive)
 		Start();
 
-	BITMAPINFOHEADER *pSrcFormat = mSrcFormat.data();
-	BITMAPINFOHEADER *pDstFormat = mDstFormat.data();
+	VDAVIBitmapInfoHeader *pSrcFormat = mSrcFormat.data();
+	VDAVIBitmapInfoHeader *pDstFormat = mDstFormat.data();
 
 	DWORD dwFlags = 0;
 
@@ -265,7 +265,7 @@ void VDVideoDecompressorVCM::DecompressFrame(void *dst, const void *src, uint32 
 			BITMAPINFOHEADER *bihDst = (BITMAPINFOHEADER *)pDstFormat;
 			retval = ICDecompressEx(mhic, dwFlags, bihSrc, (LPVOID)src, 0, 0, bihSrc->biWidth, abs(bihSrc->biHeight), bihDst, dst, 0, 0, bihDst->biWidth, abs(bihDst->biHeight));
 		} else
-			retval = ICDecompress(mhic, dwFlags, pSrcFormat, (LPVOID)src, pDstFormat, dst);
+			retval = ICDecompress(mhic, dwFlags, (BITMAPINFOHEADER *)pSrcFormat, (LPVOID)src, (BITMAPINFOHEADER *)pDstFormat, dst);
 	}
 
 	pSrcFormat->biSizeImage = dwOldSize;

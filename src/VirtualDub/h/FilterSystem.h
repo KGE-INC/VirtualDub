@@ -18,20 +18,51 @@
 #ifndef f_VIRTUALDUB_FILTERSYSTEM_H
 #define f_VIRTUALDUB_FILTERSYSTEM_H
 
-#include <windows.h>
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
 #include <vd2/system/list.h>
-#include "vbitmap.h"
+#include <vd2/system/fraction.h>
 #include "filter.h"
 
-class FilterActivation;
 class FilterInstance;
-class FilterStateInfo;
+class VDXFilterStateInfo;
 class FilterSystemBitmap;
+class VFBitmapInternal;
+struct VDPixmap;
+struct VDPixmapLayout;
 
 class FilterSystem {
+public:
+	FilterSystem();
+	~FilterSystem();
+	void prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount);
+	void initLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount);
+	void ReadyFilters();
+	void RestartFilters();
+	bool RunFilters(sint64 outputFrame, sint64 timelineFrame, sint64 sequenceFrame, sint64 sequenceTimeMS, FilterInstance *pfiStopPoint, uint32 flags);
+	void DeinitFilters();
+	void DeallocateBuffers();
+	const VDPixmap& GetInput() const;
+	const VDPixmapLayout& GetInputLayout() const;
+	const VDPixmap& GetOutput() const;
+	const VDPixmapLayout& GetOutputLayout() const;
+	bool isRunning();
+	bool isEmpty() const { return listFilters->IsEmpty(); }
+
+	int getFrameLag();
+
+	bool	IsFiltered(VDPosition frame) const;
+	sint64	GetSourceFrame(sint64 outframe) const;
+	const VDFraction GetOutputFrameRate() const;
+	sint64	GetOutputFrameCount() const;
+
 private:
-	DWORD dwFlags;
+	void AllocateVBitmaps(int count);
+	void AllocateBuffers(uint32 lTotalBufferNeeded);
+
+	uint32 dwFlags;
 	int iBitmapCount;
 
 	enum {
@@ -39,47 +70,27 @@ private:
 		FILTERS_ERROR		= 0x00000002L,
 	};
 
-	FilterStateInfo	mfsi;
+	VDFraction	mOutputFrameRate;
+	sint64		mOutputFrameCount;
 	FilterSystemBitmap *bitmap;
-	FilterSystemBitmap *bmLast;
+	VFBitmapInternal *bmLast;
 	List *listFilters;
 	int nFrameLag;
 	int mFrameDelayLeft;
 	bool mbFirstFrame;
 
-	HBITMAP hbmSrc;
-	HDC		hdcSrc;
-	HGDIOBJ	hgoSrc;
-
-	HANDLE hFileShared;
 	unsigned char *lpBuffer;
 	long lAdditionalBytes;
 	bool fSharedWindow;
 
-	void AllocateVBitmaps(int count);
-	void AllocateBuffers(LONG lTotalBufferNeeded);
+	struct RequestInfo {
+		sint64	mSourceFrame;
+		sint64	mOutputFrame;
+		sint64	mTimelineFrame;
+	};
 
-public:
-	FilterSystem();
-	~FilterSystem();
-	void prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth);
-	void initLinearChain(List *listFA, Pixel *src_pal, PixDim src_width, PixDim src_height, int dest_depth);
-	int ReadyFilters(const FilterStateInfo&);
-	void RestartFilters();
-	bool RunFilters(const FilterStateInfo&, FilterInstance *pfiStopPoint = NULL);
-	void DeinitFilters();
-	void DeallocateBuffers();
-	VBitmap *InputBitmap();
-	VBitmap *OutputBitmap();
-	VBitmap *LastBitmap();
-	bool isRunning();
-	bool isEmpty() const { return listFilters->IsEmpty(); }
+	vdfastvector<RequestInfo>	mRequestStack;
 
-	int getFrameLag();
-
-	bool getOutputMappingParams(HANDLE&, LONG&);
-
-	bool IsFiltered(VDPosition frame) const;
 };
 
 #endif

@@ -25,11 +25,12 @@ struct VDRenderVideoPipeFrameInfo {
 	void		*mpData;
 	uint32		mLength;
 	int			mSrcIndex;
-	VDPosition	mRawFrame;
-	VDPosition	mTargetFrame;
-	VDPosition	mOrigDisplayFrame;
-	VDPosition	mDisplayFrame;
-	VDPosition	mTimelineFrame;
+	VDPosition	mRawFrame;			///< Current sample number from source.
+	VDPosition	mTargetFrame;		///< Target sample number from source.
+	VDPosition	mOrigDisplayFrame;	///< Display frame from source, pre-null-collapse.
+	VDPosition	mDisplayFrame;		///< Display frame from source, post-null-collapse.
+	VDPosition	mTimelineFrame;		///< Frame number in editable timeline.
+	VDPosition	mSequenceFrame;		///< Index of frame being processed.
 	uint32		mFlags;
 	int			mDroptype;
 	bool		mbFinal;	
@@ -89,7 +90,6 @@ public:
 	const VDRenderVideoPipeFrameInfo *getReadBuffer();
 	void releaseBuffer();
 	void finalize();
-	void finalizeAndWait();
 	void finalizeAck();
 	void abort();
 	void getDropDistances(int& dependant, int& independent);

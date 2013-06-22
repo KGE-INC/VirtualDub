@@ -22,29 +22,25 @@
 	#pragma once
 #endif
 
-#include <windows.h>
-#include <vfw.h>
-
 #include <vector>
 #include <list>
 #include <utility>
 #include <vd2/system/list.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/VDString.h>
-#include "AudioSource.h"
-#include "VideoSource.h"
 
 class AVIStripeSystem;
 class IAVIReadHandler;
 class IAVIReadStream;
+class AudioSource;
+class IVDVideoSource;
 
 class VDStringA;
 
 class InputFileOptions {
 public:
-	virtual ~InputFileOptions()=0;
-//	virtual bool read(const char *buf)=0;
-	virtual int write(char *buf, int buflen)=0;
+	virtual ~InputFileOptions();
+	virtual int write(char *buf, int buflen) const = 0;
 };
 
 class InputFilenameNode : public ListNode2<InputFilenameNode> {
@@ -60,23 +56,24 @@ protected:
 	virtual ~InputFile();
 
 public:
-	vdrefptr<AudioSource> audioSrc;
-	vdrefptr<VideoSource> videoSrc;
 	List2<InputFilenameNode> listFiles;
 
 	virtual void Init(const wchar_t *szFile) = 0;
 	virtual bool Append(const wchar_t *szFile);
 
 	virtual void setOptions(InputFileOptions *);
-	virtual InputFileOptions *promptForOptions(HWND);
+	virtual InputFileOptions *promptForOptions(VDGUIHandle hwndParent);
 	virtual InputFileOptions *createOptions(const void *buf, uint32 len);
-	virtual void InfoDialog(HWND hwndParent);
+	virtual void InfoDialog(VDGUIHandle hwndParent);
 
 	typedef std::list<std::pair<uint32, VDStringA> > tFileTextInfo;
 	virtual void GetTextInfo(tFileTextInfo& info);
 
 	virtual bool isOptimizedForRealtime();
 	virtual bool isStreaming();
+
+	virtual bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	virtual bool GetAudioSource(int index, AudioSource **ppSrc);
 
 protected:
 	void AddFilename(const wchar_t *lpszFile);
@@ -88,6 +85,7 @@ public:
 		kF_None				= 0,
 		kF_Video			= 1,
 		kF_Audio			= 2,
+		kF_PromptForOpts	= 4,
 		KF_Max				= 0xFFFFFFFFUL
 	};
 
@@ -115,7 +113,7 @@ IVDInputDriver *VDGetInputDriverByName(const wchar_t *name);
 IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx);
 VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>& xlat);
 
-IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn);
+IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn, uint32 flags);
 void VDOpenMediaFile(const wchar_t *filename, uint32 flags, InputFile **pFile);
 
 #endif

@@ -432,6 +432,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\TestAVIReadIndex.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\TestBufferedStream.cpp"
 				>
 			</File>
@@ -484,6 +488,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\TestPixel.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\TestPixmap.cpp"
 				>
 				<FileConfiguration
@@ -522,6 +530,14 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\TestResampler.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\TestSpanUtils.cpp"
+				>
 			</File>
 			<File
 				RelativePath=".\source\TestString.cpp"

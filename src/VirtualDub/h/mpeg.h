@@ -18,7 +18,9 @@
 #ifndef f_MPEG_H
 #define f_MPEG_H
 
-#include <windows.h>
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
 #include "InputFile.h"
 

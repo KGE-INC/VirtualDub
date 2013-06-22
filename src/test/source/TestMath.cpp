@@ -3,6 +3,33 @@
 #include <vd2/system/fraction.h>
 #include "test.h"
 
+namespace {
+	vduint128 rand128_64(vduint128 v) {
+		return vduint128(v.getLo(), ~(v.getHi() ^ (uint64)(v >> (126 - 64)) ^ (uint64)(v >> (101 - 64)) ^ (uint64)(v >> (99 - 64))));
+	}
+
+	vduint128 rand128(vduint128 v) {
+		return rand128_64(rand128_64(v));
+	}
+
+	vduint128 slowmul(vduint128 x, vduint128 y) {
+		vdint128 shifter;
+		shifter.q[0] = x.getLo();
+		shifter.q[1] = x.getHi();
+		vduint128 result(0);
+		vdint128 zero(0);
+
+		for(int i=0; i<128; ++i) {
+			result += result;
+			if (shifter < zero)
+				result += y;
+			shifter += shifter;
+		}
+
+		return result;
+	}
+}
+
 DEFINE_TEST(Math) {
 	TEST_ASSERT(VDRoundToInt(-2.00f) ==-2);
 	TEST_ASSERT(VDRoundToInt(-1.51f) ==-2);
@@ -60,6 +87,17 @@ DEFINE_TEST(Math) {
 
 	TEST_ASSERT(VDMulDiv64(-10000000000000000, -10000000000000000, -10000000000000000) == -10000000000000000);
 	TEST_ASSERT(VDMulDiv64(-1000000000000, -100000, 17) == 5882352941176471);
+
+	vduint128 seed(0);
+
+	for(int i=0; i<10000; ++i) {
+		vduint128 x(seed);	seed = rand128(seed);
+		vduint128 y(seed);	seed = rand128(seed);
+		vduint128 p(x*y);
+		vduint128 q(slowmul(x, y));
+
+		TEST_ASSERT(p == q);
+	}
 
 	return 0;
 }

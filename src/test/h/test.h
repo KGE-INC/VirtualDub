@@ -9,7 +9,10 @@ extern void AddTest(TestFn, const char *);
 
 #define DEFINE_TEST(name) int Test##name(); namespace { struct TestAutoInit_##name { TestAutoInit_##name() { AddTest(Test##name, #name); } } g_testAutoInit_##name; } int Test##name()
 
-typedef MyError AssertionException;
+class AssertionException : public MyError {
+public:
+	AssertionException(const char *s) : MyError(s) {}
+};
 
 bool ShouldBreak();
 

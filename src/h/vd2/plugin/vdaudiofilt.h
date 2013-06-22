@@ -6,7 +6,7 @@
 //	Audio filter support
 
 struct VDAudioFilterDefinition;
-struct VDWaveFormat;
+struct VDXWaveFormat;
 struct VDPluginCallbacks;
 
 enum {
@@ -19,7 +19,7 @@ struct VDAudioFilterPin {
 	unsigned			mBufferSize;			// The size, in samples, of the buffer.
 	unsigned			mCurrentLevel;			// The number of samples currently in the buffer.
 	sint64				mLength;				// Approximate length of this stream in us.
-	const VDWaveFormat *mpFormat;
+	const VDXWaveFormat *mpFormat;
 	bool				mbVBR;
 	bool				mbEnded;
 	char				_pad[2];
@@ -38,10 +38,10 @@ struct VDAudioFilterPin {
 struct VDAudioFilterContext;
 
 struct VDAudioFilterCallbacks {
-	VDWaveFormat *(VDAPIENTRY *AllocPCMWaveFormat)(unsigned sampling_rate, unsigned channels, unsigned bits, bool bFloat);
-	VDWaveFormat *(VDAPIENTRY *AllocCustomWaveFormat)(unsigned extra_size);
-	VDWaveFormat *(VDAPIENTRY *CopyWaveFormat)(const VDWaveFormat *);
-	void (VDAPIENTRY *FreeWaveFormat)(const VDWaveFormat *);
+	VDXWaveFormat *(VDAPIENTRY *AllocPCMWaveFormat)(unsigned sampling_rate, unsigned channels, unsigned bits, bool bFloat);
+	VDXWaveFormat *(VDAPIENTRY *AllocCustomWaveFormat)(unsigned extra_size);
+	VDXWaveFormat *(VDAPIENTRY *CopyWaveFormat)(const VDXWaveFormat *);
+	void (VDAPIENTRY *FreeWaveFormat)(const VDXWaveFormat *);
 	void (VDAPIENTRY *Wake)(const VDAudioFilterContext *pContext);
 };
 
@@ -65,7 +65,7 @@ struct VDAudioFilterContext {
 // This structure is intentionally identical to WAVEFORMATEX, with one
 // exception -- mExtraSize is *always* present, even for PCM.
 
-struct VDWaveFormat {
+struct VDXWaveFormat {
 	enum { kTagPCM = 1 };
 
 	uint16		mTag;
@@ -139,7 +139,7 @@ struct VDAudioFilterDefinition {
 	uint32							mInputPins;
 	uint32							mOutputPins;
 
-	const VDPluginConfigEntry		*mpConfigInfo;
+	const VDXPluginConfigEntry		*mpConfigInfo;
 
 	VDAudioFilterInitProc			mpInit;
 	const VDAudioFilterVtbl			*mpVtbl;

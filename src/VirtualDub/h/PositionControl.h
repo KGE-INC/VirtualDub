@@ -64,6 +64,8 @@ public:
 
 	virtual void		SetFrameTypeCallback(IVDPositionControlCallback *pCB) = 0;
 	virtual void		SetRange(VDPosition lo, VDPosition hi, bool updateNow = true) = 0;
+	virtual VDPosition	GetRangeBegin() = 0;
+	virtual VDPosition	GetRangeEnd() = 0;
 	virtual VDPosition	GetPosition() = 0;
 	virtual void		SetPosition(VDPosition pos) = 0;
 	virtual void		SetDisplayedPosition(VDPosition pos) = 0;

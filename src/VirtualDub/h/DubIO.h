@@ -34,6 +34,7 @@ class VDAudioPipeline;
 template<class T, class Allocator> class VDRingBuffer;
 class DubAudioStreamInfo;
 class DubVideoStreamInfo;
+class IDubberInternal;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -55,18 +56,21 @@ namespace nsVDDub {
 class VDDubIOThread : public VDThread {
 public:
 	VDDubIOThread(
+		IDubberInternal		*pParent,
 		bool				bPhantom,
 		const vdfastvector<IVDVideoSource *>& videoSources,
 		VDRenderFrameIterator& videoFrameIterator,
 		AudioStream			*pAudio,
 		AVIPipe				*const pVideoPipe,
 		VDAudioPipeline		*const pAudioPipe,
-		volatile bool&		bAbort,
+		VDAtomicInt&		bAbort,
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
 		VDAtomicInt&		threadCounter
 		);
 	~VDDubIOThread();
+
+	bool IsCompleted() const { return mbCompleted; }
 
 	bool GetError(MyError& e) {
 		if (mbError) {
@@ -84,25 +88,29 @@ public:
 
 protected:
 	void ThreadRun();
-	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast);
-	void ReadNullVideoFrame(int sourceIndex, VDPosition orig_display_frame, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast);
+	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, VDPosition sequence_frame, bool preload, bool direct, bool sameAsLast);
+	void ReadNullVideoFrame(int sourceIndex, VDPosition orig_display_frame, VDPosition displayFrame, VDPosition timelineFrame, VDPosition sequence_frame, bool direct, bool sameAsLast);
 	bool MainAddVideoFrame();
 	bool MainAddAudioFrame();
 
+	IDubberInternal		*mpParent;
 	MyError				mError;
 	bool				mbError;
+
+	vdfastvector<char>	mAudioBuffer;
 
 	VDLoopThrottle		mLoopThrottle;
 
 	// config vars (ick)
 
 	bool				mbPhantom;
+	bool				mbCompleted;
 	const vdfastvector<IVDVideoSource *>& mVideoSources;
 	VDRenderFrameIterator& mVideoFrameIterator;
 	AudioStream			*const mpAudio;
 	AVIPipe				*const mpVideoPipe;
 	VDAudioPipeline		*const mpAudioPipe;
-	volatile bool&		mbAbort;
+	VDAtomicInt&		mbAbort;
 	DubAudioStreamInfo&	aInfo;
 	DubVideoStreamInfo& vInfo;
 	VDAtomicInt&		mThreadCounter;

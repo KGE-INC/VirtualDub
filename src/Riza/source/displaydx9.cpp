@@ -43,14 +43,15 @@
 #include <vd2/Kasumi/region.h>
 
 #include <vd2/Riza/direct3d.h>
+#include <vd2/Riza/displaydrvdx9.h>
 #include "displaydrv.h"
-#include "displaydrvdx9.h"
 
 namespace {
 	#include "displaydx9_shader.inl"
 }
 
-#define VDDEBUG_DX9DISP VDDEBUG
+//#define VDDEBUG_DX9DISP VDDEBUG
+#define VDDEBUG_DX9DISP (void)sizeof
 
 #define D3D_DO(x) VDVERIFY(SUCCEEDED(mpD3DDevice->x))
 
@@ -554,7 +555,12 @@ void VDFontRendererD3D9::End() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoDisplayDX9Manager : public IVDVideoDisplayDX9Manager, public VDD3D9Client {
+#ifdef _MSC_VER
+	#pragma warning(push)
+	#pragma warning(disable: 4584)		// warning C4584: 'VDVideoDisplayDX9Manager' : base-class 'vdlist_node' is already a base-class of 'VDD3D9Client'
+#endif
+
+class VDVideoDisplayDX9Manager : public IVDVideoDisplayDX9Manager, public VDD3D9Client, public vdlist_node {
 public:
 	struct EffectContext {
 		IDirect3DTexture9 *mpSourceTexture1;
@@ -572,7 +578,7 @@ public:
 		uint32 mInterpVTexH;
 	};
 
-	VDVideoDisplayDX9Manager();
+	VDVideoDisplayDX9Manager(VDThreadID tid);
 	~VDVideoDisplayDX9Manager();
 
 	int AddRef();
@@ -583,6 +589,8 @@ public:
 
 	CubicMode InitBicubic();
 	void ShutdownBicubic();
+
+	VDThreadID GetThreadId() const { return mThreadId; }
 
 	IVDD3D9Texture	*GetTempRTT(int i) const { return mpRTTs[i]; }
 	IVDD3D9Texture	*GetFilterTexture() const { return mpFilterTexture; }
@@ -613,30 +621,67 @@ protected:
 	CubicMode			mCubicMode;
 	int					mCubicRefCount;
 
+	const VDThreadID	mThreadId;
 	int					mRefCount;
 };
 
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif
+
 ///////////////////////////////////////////////////////////////////////////
 
-static VDVideoDisplayDX9Manager *g_pVDDisplayDX9;
+static VDCriticalSection g_csVDDisplayDX9Managers;
+static vdlist<VDVideoDisplayDX9Manager> g_VDDisplayDX9Managers;
 
 bool VDInitDisplayDX9(VDVideoDisplayDX9Manager **ppManager) {
-	if (!g_pVDDisplayDX9) {
-		g_pVDDisplayDX9 = new VDVideoDisplayDX9Manager;
-		if (!g_pVDDisplayDX9->Init()) {
-			delete g_pVDDisplayDX9;
-			return false;
+	VDVideoDisplayDX9Manager *pMgr = NULL;
+	bool firstClient = false;
+
+	vdsynchronized(g_csVDDisplayDX9Managers) {
+		vdlist<VDVideoDisplayDX9Manager>::iterator it(g_VDDisplayDX9Managers.begin()), itEnd(g_VDDisplayDX9Managers.end());
+
+		VDThreadID tid = VDGetCurrentThreadID();
+
+		for(; it != itEnd; ++it) {
+			VDVideoDisplayDX9Manager *mgr = *it;
+
+			if (mgr->GetThreadId() == tid) {
+				pMgr = mgr;
+				break;
+			}
+		}
+
+		if (!pMgr) {
+			pMgr = new_nothrow VDVideoDisplayDX9Manager(tid);
+			if (!pMgr)
+				return NULL;
+
+			g_VDDisplayDX9Managers.push_back(pMgr);
+			firstClient = true;
+		}
+
+		pMgr->AddRef();
+	}
+
+	if (firstClient) {
+		if (!pMgr->Init()) {
+			vdsynchronized(g_csVDDisplayDX9Managers) {
+				g_VDDisplayDX9Managers.erase(pMgr);
+			}
+			pMgr->Release();
+			return NULL;
 		}
 	}
-		
-	*ppManager = g_pVDDisplayDX9;
-	g_pVDDisplayDX9->AddRef();
+
+	*ppManager = pMgr;
 	return true;
 }
 
-VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager()
+VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager(VDThreadID tid)
 	: mpManager(NULL)
 	, mCubicRefCount(0)
+	, mThreadId(tid)
 	, mRefCount(0)
 {
 }
@@ -645,7 +690,9 @@ VDVideoDisplayDX9Manager::~VDVideoDisplayDX9Manager() {
 	VDASSERT(!mRefCount);
 	VDASSERT(!mCubicRefCount);
 
-	g_pVDDisplayDX9 = NULL;
+	vdsynchronized(g_csVDDisplayDX9Managers) {
+		g_VDDisplayDX9Managers.erase(this);
+	}
 }
 
 int VDVideoDisplayDX9Manager::AddRef() {
@@ -2251,6 +2298,7 @@ bool VDVideoDisplayMinidriverDX9::InitBicubicPS2Filters(int w, int h) {
 		if (newtexw < 0)
 			return false;
 
+		mInterpFilterHSize = w;
 		mInterpFilterHTexSize = newtexw;
 	}
 
@@ -2260,6 +2308,7 @@ bool VDVideoDisplayMinidriverDX9::InitBicubicPS2Filters(int w, int h) {
 		if (newtexw < 0)
 			return false;
 
+		mInterpFilterVSize = h;
 		mInterpFilterVTexSize = newtexw;
 	}
 	return true;
@@ -2418,7 +2467,6 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0) {
 		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
 		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
 
-		VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
 
 		if (!mpManager->CreateSwapChain(scw, sch, ~mpSwapChain))
 			return false;

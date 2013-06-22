@@ -35,7 +35,10 @@ public:
 	virtual bool	IsSilent() = 0;
 	virtual bool	IsFrozen() = 0;
 	virtual uint32	GetAvailSpace() = 0;
+	virtual uint32	GetBufferLevel() = 0;
 	virtual sint32	GetPosition() = 0;
+	virtual sint32	GetPositionBytes() = 0;
+	virtual double	GetPositionTime() = 0;
 
 	virtual bool	Start() = 0;
 	virtual bool	Stop() = 0;

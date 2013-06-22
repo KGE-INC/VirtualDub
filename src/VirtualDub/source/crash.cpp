@@ -75,6 +75,7 @@
 #include <vd2/system/tls.h>
 #include <vd2/system/debugx86.h>
 #include <vd2/system/protscope.h>
+#include <vd2/system/w32assist.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -116,7 +117,15 @@ static VDDebugInfoContext g_debugInfo;
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit);
+namespace {
+	enum VDCrashResponse {
+		kVDCrashResponse_Exit,
+		kVDCrashResponse_Debug,
+		kVDCrashResponse_DisplayAdvancedDialog
+	};
+}
+
+VDCrashResponse VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit);
 bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -191,6 +200,64 @@ ok:
 	}
 }
 #endif
+
+namespace {
+#ifdef _M_AMD64
+	static const uint8 kVDSUEFPatch[]={
+		0x33, 0xC0,				// XOR EAX, EAX
+		0xC3					// RET
+	};
+#else
+	static const uint8 kVDSUEFPatch[]={
+		0x33, 0xC0,				// XOR EAX, EAX
+		0xC2, 0x04, 0x00		// RET 4
+	};
+#endif
+
+	bool g_VDSUEFPatched;
+	uint8 g_VDSUEFPatchSave[sizeof kVDSUEFPatch];
+}
+
+void VDPatchSetUnhandledExceptionFilter() {
+	// Some DLLs, most notably MSCOREE.DLL, steal the UnhandledExceptionFilter hook.
+	// Bad DLL! We patch SetUnhandledExceptionFilter() to prevent this.
+	if (g_VDSUEFPatched)
+		return;
+
+	g_VDSUEFPatched = true;
+
+	// don't attempt to patch system DLLs on Windows 98
+	if (VDIsWindowsNT()) {
+		HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
+		FARPROC fpSUEF = GetProcAddress(hmodKernel32, "SetUnhandledExceptionFilter");
+
+		DWORD oldProtect;
+		if (VirtualProtect(fpSUEF, sizeof kVDSUEFPatch, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+			memcpy(g_VDSUEFPatchSave, fpSUEF, sizeof kVDSUEFPatch);
+			memcpy(fpSUEF, kVDSUEFPatch, sizeof kVDSUEFPatch);
+			VirtualProtect(fpSUEF, sizeof kVDSUEFPatch, oldProtect, &oldProtect);
+		}
+	}
+}
+
+void VDUnpatchSetUnhandledExceptionFilter() {
+	if (!g_VDSUEFPatched)
+		return;
+
+	g_VDSUEFPatched = false;
+
+	HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
+	FARPROC fpSUEF = GetProcAddress(hmodKernel32, "SetUnhandledExceptionFilter");
+
+	DWORD oldProtect;
+	if (VirtualProtect(fpSUEF, sizeof kVDSUEFPatch, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+		if (!memcmp(fpSUEF, kVDSUEFPatch, sizeof kVDSUEFPatch)) {
+			memcpy(fpSUEF, g_VDSUEFPatchSave, sizeof kVDSUEFPatch);
+		}
+
+		VirtualProtect(fpSUEF, sizeof kVDSUEFPatch, oldProtect, &oldProtect);
+	}
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -954,18 +1021,22 @@ protected:
 };
 
 void VDCrashUIThread::ThreadRun() {
-	if (VDDisplayFriendlyCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit)) {
-		if (!mbAllowForcedExit)
-			return;
-		TerminateProcess(GetCurrentProcess(), 0);
+	switch(VDDisplayFriendlyCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit)) {
+		case kVDCrashResponse_Debug:
+			break;
+		case kVDCrashResponse_DisplayAdvancedDialog:
+			VDDisplayAdvancedCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit);
+			break;
+		case kVDCrashResponse_Exit:
+			if (!mbAllowForcedExit)
+				return;
+			TerminateProcess(GetCurrentProcess(), mpExc->ExceptionRecord->ExceptionCode);
+			break;
 	}
-
-	// Display "advanced" crash dialog.
-
-	VDDisplayAdvancedCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit);
 }
 
 LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc, bool allowForcedExit) {
+	VDUnpatchSetUnhandledExceptionFilter();
 	SetUnhandledExceptionFilter(NULL);
 
 	/////////////////////////
@@ -1087,7 +1158,7 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc, bool allowForcedExit) {
 	// invoke normal OS handler
 
 	if (allowForcedExit)
-		UnhandledExceptionFilter(pExc);
+		return UnhandledExceptionFilter(pExc);
 
 	return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -1968,8 +2039,8 @@ public:
 	VDCrashDialogFriendly(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit)
 		: VDCrashDialog(hThread, pExc, pszScopeInfo, allowForcedExit) {}
 
-	bool Display(HWND hwndParent) {
-		return Display2(MAKEINTRESOURCE(IDD_CRASH), hwndParent);
+	VDCrashResponse Display(HWND hwndParent) {
+		return (VDCrashResponse)DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CRASH), hwndParent, StaticDlgProc, (LPARAM)static_cast<VDCrashDialog *>(this));
 	}
 
 protected:
@@ -1998,10 +2069,10 @@ protected:
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDOK:
-				EndDialog(mhdlg, TRUE);
+				EndDialog(mhdlg, kVDCrashResponse_Exit);
 				return TRUE;
 			case IDCANCEL:
-				EndDialog(mhdlg, FALSE);
+				EndDialog(mhdlg, kVDCrashResponse_DisplayAdvancedDialog);
 				return TRUE;
 			case IDC_SAVE:
 				DoSave();
@@ -2009,13 +2080,16 @@ protected:
 			case IDC_HELP2:
 				DoHelp(mhdlg);
 				return TRUE;
+			case IDC_DEBUG:
+				EndDialog(mhdlg, kVDCrashResponse_Debug);
+				return TRUE;
 			}
 		}
 		return FALSE;
 	}
 };
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit) {
+VDCrashResponse VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit) {
 	return VDCrashDialogFriendly(hThread, pExc, pszScopeInfo, allowForcedExit).Display(hwndParent);
 }
 

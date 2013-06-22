@@ -31,7 +31,7 @@ public:
 	virtual IVDMediaOutput *CreateSegment() = 0;
 	virtual void CloseSegment(IVDMediaOutput *pSegment, bool bLast) = 0;
 	virtual void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) = 0;
-	virtual void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) = 0;
+	virtual void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) = 0;
 	virtual bool AcceptsVideo() = 0;
 	virtual bool AcceptsAudio() = 0;
 	virtual bool IsRealTime() = 0;
@@ -54,7 +54,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -90,7 +90,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -115,7 +115,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -137,7 +137,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -161,7 +161,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -187,7 +187,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -207,7 +207,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -230,16 +230,17 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return true; }
 
 private:
 	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
+	vdfastvector<char>		mVideoFormat;
 	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
+	vdfastvector<char>		mAudioFormat;
+	bool					mbAudioVBR;
 };
 
 class VDAVIOutputNullVideoSystem : public IVDDubberOutputSystem {
@@ -250,16 +251,16 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
 
 private:
 	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
+	vdfastvector<char>		mVideoFormat;
 	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
+	vdfastvector<char>		mAudioFormat;
 };
 
 class VDAVIOutputSegmentedSystem : public IVDDubberOutputSystem {
@@ -270,7 +271,7 @@ public:
 	IVDMediaOutput *CreateSegment();
 	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
 	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr);
 	bool AcceptsVideo();
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
@@ -284,9 +285,9 @@ private:
 	sint64					mMaxFrames;
 
 	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
+	vdfastvector<char>		mVideoFormat;
 	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
+	vdfastvector<char>		mAudioFormat;
 };
 
 #endif

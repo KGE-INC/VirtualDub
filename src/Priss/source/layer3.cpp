@@ -783,7 +783,25 @@ namespace {
 				*dst++ = set_bits[set] ? bits.get(set_bits[set]) : 0;
 		}
 	}
-};
+
+	void MidSideButterfly(float *left, float *right, uint32 n) {
+		VDASSERT(!(n & 1));
+
+		static const float invsqrt2 = 0.70710678118654752440084436210485f;
+
+		for(unsigned i=0; i<n; i += 2) {
+			const float x0 = left [i+0] * invsqrt2;
+			const float y0 = right[i+0] * invsqrt2;
+			const float x1 = left [i+1] * invsqrt2;
+			const float y1 = right[i+1] * invsqrt2;
+
+			left [i+0] = (float)(x0+y0);
+			right[i+0] = (float)(x0-y0);
+			left [i+1] = (float)(x1+y1);
+			right[i+1] = (float)(x1-y1);
+		}
+	}
+}
 
 void VDMPEGAudioDecoder::PrereadLayerIII() {
 	const bool is_mpeg2 = mHeader.nMPEGVer > 1;
@@ -801,9 +819,13 @@ void VDMPEGAudioDecoder::PrereadLayerIII() {
 			tc = left;
 		memcpy(mL3Buffer+mL3BufferPos, src, tc);
 		mL3BufferPos = (mL3BufferPos + tc) & (kL3BufferSize-1);
+		mL3BufferLevel += tc;
 		src += tc;
 		left -= tc;
 	}
+
+	if (mL3BufferLevel > kL3BufferSize)
+		mL3BufferLevel = kL3BufferSize;
 }
 
 bool VDMPEGAudioDecoder::DecodeLayerIII() {
@@ -816,14 +838,16 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 	else
 		DecodeSideInfoMPEG1(sideinfo, mFrameBuffer, nch);
 
-//	static int frameno = -1;
-//	++frameno;
-
 	const unsigned sidelen = is_mpeg2 ? (nch>1 ? 17 : 9) : (nch>1 ? 32 : 17);
 
 	profile_set(0);
 
-	VDMPEGAudioHuffBitReader bits(mL3Buffer, mL3BufferPos - sideinfo.main_data_begin - (mFrameDataSize - sidelen));
+	uint32 reservoirOffset = sideinfo.main_data_begin + (mFrameDataSize - sidelen);
+
+	if (mL3BufferLevel < reservoirOffset)
+		return false;
+
+	VDMPEGAudioHuffBitReader bits(mL3Buffer, mL3BufferPos - reservoirOffset);
 
 	uint8 scalefac_l[2][22]={0};
 	uint8 scalefac_s[2][13][3]={0};
@@ -876,7 +900,8 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 	const unsigned *const pShortBands = sShortScalefactorBands[mpegtype][mSamplingRateIndex];
 
 	for(unsigned gr=0; gr<(is_mpeg2 ? 1U : 2U); ++gr) {
-		float recon[2][576] = {0};
+		float (&recon)[2][576] = mL3Data.recon;
+
 		unsigned ch;
 		unsigned ms_bound;
 		unsigned is_band;
@@ -885,6 +910,7 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 		for(ch=0; ch<nch; ++ch) {
 			const LayerIIIRegionSideInfo& rsi = sideinfo.gr[gr][ch];
 			unsigned region_end = bits.pos() + rsi.part2_3_length;
+			float (&reconch)[576] = recon[ch];
 
 			if (is_mpeg2)
 				DecodeScalefactorsMPEG2(sideinfo.gr[gr][ch], bits, &scalefac_l[ch][0], &scalefac_s[ch][0][0], mModeExtension, ch);
@@ -902,6 +928,9 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 			unsigned region2_start;
 			unsigned count1_start	= 2*rsi.big_values;
 
+			if (count1_start > 576)
+				throw (int)ERR_INVALIDDATA;
+
 			if (rsi.window_switching_flag) {
 				const unsigned block_type = rsi.switched.block_type;
 
@@ -913,6 +942,10 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 				region1_start = block_type == 2 ? pShortBands[3]*3 : pLongBands[8];
 				region2_start = count1_start;
 			} else {
+				// check for invalid regions
+				if (rsi.unswitched.region0_count + rsi.unswitched.region1_count + 2 >= 23)
+					throw (int)ERR_INVALIDDATA;
+
 				region1_start = pLongBands[rsi.unswitched.region0_count + 1];
 				region2_start = pLongBands[rsi.unswitched.region0_count + rsi.unswitched.region1_count + 2];
 			}
@@ -922,13 +955,31 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 			if (region2_start > count1_start)
 				region2_start = count1_start;
 
-			VDASSERT(bits.pos() <= region_end);
+			// reject invalid table 14
+			if ((rsi.table_select[0] == 4 || rsi.table_select[0] == 14) && region1_start > 0)
+				throw (int)ERR_INVALIDDATA;
+			if ((rsi.table_select[1] == 4 || rsi.table_select[1] == 14) && region1_start != region2_start)
+				throw (int)ERR_INVALIDDATA;
+			if ((rsi.table_select[2] == 4 || rsi.table_select[2] == 14) && region2_start != count1_start)
+				throw (int)ERR_INVALIDDATA;
+
+			if (bits.pos() > region_end)
+				throw (int)ERR_INVALIDDATA;
+
 			DecodeHuffmanValues(bits, freq, rsi.table_select[0], region1_start >> 1);
-			VDASSERT(bits.pos() <= region_end);
+
+			if (bits.pos() > region_end)
+				throw (int)ERR_INVALIDDATA;
+
 			DecodeHuffmanValues(bits, freq + region1_start, rsi.table_select[1], (region2_start - region1_start) >> 1);
-			VDASSERT(bits.pos() <= region_end);
+
+			if (bits.pos() > region_end)
+				throw (int)ERR_INVALIDDATA;
+
 			DecodeHuffmanValues(bits, freq + region2_start, rsi.table_select[2], (count1_start - region2_start) >> 1);
-			VDASSERT(bits.pos() <= region_end);
+
+			//if (bits.pos() > region_end)
+			//	throw (int)ERR_INVALIDDATA;
 
 			profile_add(p_huffdec);
 
@@ -1034,93 +1085,40 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 
 				bits.seek(region_end);
 			}
-#if 0
-			{
-				unsigned chk = 0;
-				for(unsigned v=0; v<576; ++v) {
-					chk = (chk<<1) + (chk>>31) + freq[v];
-				}
-				VDDEBUG2("frame[%d].gr[%d].ch[%d]: checksum=%x\n", frameno, gr, ch, chk);
-			}
-#endif
 
 			profile_add(p_huffdec1);
 
 			// requantization
 
-			static const float pow43_tab[64]={
-				-101.593667325965f,
-				-97.3828002241332f,
-				-93.2169751786157f,
-				-89.0971879448896f,
-				-85.0244912125185f,
-				-81.0f,
-				-77.0248977785916f,
-				-73.1004434553216f,
-				-69.2279793747556f,
-				-65.408940536586f,
-				-61.6448652744185f,
-				-57.9374077040035f,
-				-54.2883523318981f,
-				-50.6996313257169f,
-				-47.1733450957601f,
-				-43.71178704119f,
-				-40.3174735966359f,
-				-36.993181114957f,
-				-33.7419916984532f,
-				-30.5673509403698f,
-				-27.47314182128f,
-				-24.4637809962625f,
-				-21.5443469003188f,
-				-18.7207544074671f,
-				-16.0f,
-				-13.3905182794067f,
-				-10.9027235569928f,
-				-8.54987973338348f,
-				-6.3496042078728f,
-				-4.32674871092222f,
-				-2.51984209978975f,
-				-1.0f,
-				0.0f,
-				1.0f,
-				2.51984209978975f,
-				4.32674871092222f,
-				6.3496042078728f,
-				8.54987973338348f,
-				10.9027235569928f,
-				13.3905182794067f,
-				16.0f,
-				18.7207544074671f,
-				21.5443469003188f,
-				24.4637809962625f,
-				27.47314182128f,
-				30.5673509403698f,
-				33.7419916984532f,
-				36.993181114957f,
-				40.3174735966359f,
-				43.71178704119f,
-				47.1733450957601f,
-				50.6996313257169f,
-				54.2883523318981f,
-				57.9374077040035f,
-				61.6448652744185f,
-				65.408940536586f,
-				69.2279793747556f,
-				73.1004434553216f,
-				77.0248977785916f,
-				81.0f,
-				85.0244912125185f,
-				89.0971879448896f,
-				93.2169751786157f,
-				97.3828002241332f,
-			};
-
 			{
 				static const uint8 pretab[22]={0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,3,3,3,2};
+				static const float log2 = 0.693147180559945309417232f;
+
+				static const float inv_pow2[36]={
+					1.0f,					0.7071067691f,
+					0.5f,					0.3535533845f,
+					0.25f,					0.1767766923f,
+					0.125f,					0.08838834614f,
+					0.0625f,				0.04419417307f,
+					0.03125f,				0.02209708653f,
+					0.015625f,				0.01104854327f,
+					0.0078125f,				0.005524271633f,
+					0.00390625f,			0.002762135817f,
+					0.001953125f,			0.001381067908f,
+					0.0009765625f,			0.0006905339542f,
+					0.00048828125f,			0.0003452669771f,
+					0.000244140625f,		0.0001726334885f,
+					0.0001220703125f,		8.631674427e-005f,
+					6.103515625e-005f,		4.315837214e-005f,
+					3.051757813e-005f,		2.157918607e-005f,
+					1.525878906e-005f,		1.078959303e-005f,
+					7.629394531e-006f,		5.394796517e-006f,
+				};
 
 				bool short_blocks = rsi.window_switching_flag && rsi.switched.block_type == 2;
 				unsigned long_bands = short_blocks ? rsi.switched.mixed_block_flag ? is_mpeg2 ? 6 : 8 : 0 : 21;
-				float global_gain = (float)pow(2.0, 0.25*(int)(rsi.global_gain - 210));
+				float global_gain = expf(log2 * 0.25f*(float)(int)(rsi.global_gain - 210));
+				int scalefac_shift = rsi.scalefac_scale ? 1 : 0;
 				float scalefac_scale = rsi.scalefac_scale ? -1.0f : -0.5f;
 				float gain;
 
@@ -1133,39 +1131,74 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 					if (band_end > zero_bound)
 						band_end = zero_bound;
 
-					int sf = scalefac_l[ch][sfb];
+					int sf = scalefac_l[ch][sfb];		// 0-15
 
 					if (rsi.preflag)
 						sf += pretab[sfb];
 
-					gain = global_gain * powf(2.0f, scalefac_scale * sf);
+					gain = global_gain * inv_pow2[sf << scalefac_shift];
 
 					if (i >= count1_start) {
+						if (i >= zero_bound)
+							break;
+
 						const float recon_tab[3]={-gain, 0.f, +gain};
 
 						for(; i < band_end; i += 2) {
-							recon[ch][i  ] = recon_tab[freq[i  ]+1];
-							recon[ch][i+1] = recon_tab[freq[i+1]+1];
+							reconch[i  ] = recon_tab[freq[i  ]+1];
+							reconch[i+1] = recon_tab[freq[i+1]+1];
 						}
 					} else {
 						for(; i < band_end; ++i) {
 							VDASSERT(abs(freq[i]) < 8192);
 
 							sint32 x = freq[i];
+							float y;
 
-							if ((unsigned)(x+32) < 64)
-								recon[ch][i] = pow43_tab[x+32] * gain;
+							if ((unsigned)(x+128) < 256)
+								y = mL3Pow43Tab[x+128];
 							else {
-								float y = (float)pow(fabs((double)x), 4.0/3.0) * gain;
+//								y = powf(fabsf((float)x), 4.0f/3.0f);
 
-								if (freq[i]<0)
-									y = -y;
+								// compute c = |x|^4
+								float c = (float)x;
+								c = c*c;
+								c = c*c;
 
-								recon[ch][i] = (float)y;
+								// compute initial approximation to c^(-1/3) = x^(-4^3)
+								union {
+									float f;
+									int i;
+								} conv = { c };
+
+								conv.i = 0x54a21cf0 - conv.i / 3;
+
+								// refine using two Newton-Raphson iterations -- maximum relative error over
+								// [0,8192] is 0.00221%.
+								float x = conv.f;
+								float x2;
+
+								x2 = x*x;
+								x = (4.0f / 3.0f)*x - (c*(1.0f/3.0f))*(x2*x2);
+								x2 = x*x;
+								x = (4.0f / 3.0f)*x - (c*(1.0f/3.0f))*(x2*x2);
+
+								// compute y ~= x^(4/3)
+								y = c * x * x;
+
+								// invert as necessary
+
+								static const float signs[2]={-1,1};
+								y *= signs[(freq[i] >> 31) + 1];
 							}
+
+							reconch[i] = y * gain;
 						}
 					}
 				}
+
+				if (i < 576)
+					memset(reconch + i, 0, sizeof(reconch[0])*(576 - i));
 
 				if (short_blocks) {
 					int sfb;
@@ -1195,24 +1228,13 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 								if (freq[i]<0)
 									y = -y;
 
-								recon[ch][j] = (float)y;
-//								printf("recon[%d][%d] = %g\n", ch, i, y);
+								reconch[j] = (float)y;
 								++i;
 								j += 3;
 							}
 						}
 					}
 				}
-
-#if 0
-			{
-				double chk = 0;
-				for(unsigned v=0; v<576; ++v) {
-					chk += recon[ch][v];
-				}
-				VDDEBUG2("frame[%d].gr[%d].ch[%d]: checksum=%g\n", frameno, gr, ch, chk * 32768.0);
-			}
-#endif
 			}
 
 			profile_add(p_dequan);
@@ -1238,13 +1260,7 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 				if (mModeExtension == 2)
 					ms_bound = 576;
 
-				for(unsigned i=0; i<ms_bound; ++i) {
-					const float x = recon[0][i] * invsqrt2;
-					const float y = recon[1][i] * invsqrt2;
-
-					recon[0][i] = (float)(x+y);
-					recon[1][i] = (float)(x-y);
-				}
+				MidSideButterfly(recon[0], recon[1], ms_bound);
 			}
 
 			if (mModeExtension & 1) {		// intensity stereo mode enabled
@@ -1508,18 +1524,6 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 						local::antialias(p[-6], p[5], cs_tab[5], ca_tab[5]);
 						local::antialias(p[-7], p[6], cs_tab[6], ca_tab[6]);
 						local::antialias(p[-8], p[7], cs_tab[7], ca_tab[7]);
-
-#if 0
-						for(unsigned i=0; i<8; ++i) {
-							const double x = recon[ch][sb*18+17-i];
-							const double y = recon[ch][sb*18+18+i];
-							const double cs = cs_tab[i];
-							const double ca = ca_tab[i];
-
-							recon[ch][sb*18+17-i] = x*cs - y*ca;
-							recon[ch][sb*18+18+i] = x*ca + y*cs;
-						}
-#endif
 					}
 
 					if (sb*18 >= gr_zero_bound+35) {
@@ -1576,5 +1580,5 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 
 	mSamplesDecoded += (is_mpeg2 ? 576 : 1152) * nch;
 
-	return false;
+	return true;
 }

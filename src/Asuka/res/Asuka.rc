@@ -64,6 +64,17 @@ BEGIN
     LTEXT           "Normally this indicates that the version file needs to be checked out from source code control. If you do not have a Perforce depot, just remove the read-only flag.",IDC_STATIC,7,19,327,29
 END
 
+IDD_SETUP DIALOGEX 0, 0, 300, 71
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Project setup"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Counter tag",IDC_STATIC,7,7,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_COUNTER_TAG,55,7,238,12,ES_AUTOHSCROLL
+    LTEXT           "This tag will be used to establish a version counter in the version tracking file.",IDC_STATIC,55,20,238,23
+    DEFPUSHBUTTON   "OK",IDOK,243,50,50,14
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -79,6 +90,15 @@ BEGIN
         RIGHTMARGIN, 334
         TOPMARGIN, 7
         BOTTOMMARGIN, 66
+    END
+
+    IDD_SETUP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 293
+        VERTGUIDE, 55
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 64
     END
 END
 #endif    // APSTUDIO_INVOKED

@@ -339,13 +339,18 @@ bool VDVideoDisplayMinidriverOpenGL::ModifySource(const VDVideoDisplaySourceInfo
 }
 
 void VDVideoDisplayMinidriverOpenGL::SetFilterMode(FilterMode mode) {
-	if (HDC hdc = GetDC(mhwndOGL)) {
-		if (mGL.Begin(hdc)) {
-			mPreferredFilter = mode;
+	if (mPreferredFilter == mode)
+		return;
 
-			mTexPattern[0].ReinitFiltering(&mGL, mode);
-			mTexPattern[1].ReinitFiltering(&mGL, mode);
-			mGL.wglMakeCurrent(NULL, NULL);
+	mPreferredFilter = mode;
+
+	if (mhwndOGL) {
+		if (HDC hdc = GetDC(mhwndOGL)) {
+			if (mGL.Begin(hdc)) {
+				mTexPattern[0].ReinitFiltering(&mGL, mode);
+				mTexPattern[1].ReinitFiltering(&mGL, mode);
+				mGL.wglMakeCurrent(NULL, NULL);
+			}
 		}
 	}
 }

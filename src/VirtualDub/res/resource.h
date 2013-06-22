@@ -22,6 +22,8 @@
 #define IDC_ARRANGE                     4
 #define IDC_ALTOK                       4
 #define IDC_SAVE_AS_DEFAULT             4
+#define IDC_HELP3                       4
+#define IDC_DEBUG                       4
 #define IDC_MOVEUP                      5
 #define IDS_TITLE_DUBBING_MINIMIZED     5
 #define IDC_SAMPLE_MULTIPLE             5
@@ -221,6 +223,11 @@
 #define IDD_FILTER_WARPRESIZE           271
 #define IDC_ADDPOINT1                   272
 #define IDC_MODIFYPOINT                 272
+#define IDD_AF_TIMESTRETCH              272
+#define IDD_FILTER_CONVERTFORMAT        274
+#define IDD_EXTOPENOPTS_MP3             275
+#define IDD_FILTER_PREVIEW_ZOOM         276
+#define IDD_FILTER_BOBDOUBLER           277
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -538,6 +545,7 @@
 #define IDC_AVI_INTERNALDECODER         1184
 #define IDC_QUICK                       1184
 #define IDC_SHOW_GRADIENT               1184
+#define IDC_SHOWIMAGEFORMATS            1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -848,6 +856,22 @@
 #define IDC_STATIC_LIMIT                1429
 #define IDC_ALIGNMENT_16                1430
 #define IDC_SETTING                     1430
+#define IDC_BITRATE_AUTO                1435
+#define IDC_BITRATE_CBR                 1436
+#define IDC_BITRATE_VBR                 1437
+#define IDC_IMAGE                       1437
+#define IDC_RED                         1438
+#define IDC_GREEN                       1439
+#define IDC_BLUE                        1440
+#define IDC_CROP_FAST                   1441
+#define IDC_CROP_PRECISE                1442
+#define IDC_STATIC_YCCCROP              1443
+#define IDC_FIELDORDER_TFF              1444
+#define IDC_FIELDORDER_BFF              1445
+#define IDC_DEINTERLACE_BOB             1446
+#define IDC_DEINTERLACE_ELA             1447
+#define IDC_RADIO5                      1448
+#define IDC_DEINTERLACE_ADAPTIVEELA     1448
 #define IDC_DIR_MIDDLERIGHT             1450
 #define IDC_DIR_TOPRIGHT                1451
 #define IDC_DIR_TOPCENTER               1452
@@ -909,7 +933,6 @@
 #define ID_FILE_SAVEWAV                 40005
 #define ID_FILE_QUIT                    40007
 #define ID_AUDIO_SOURCE_NONE            40010
-#define ID_AUDIO_SOURCE_AVI             40011
 #define ID_AUDIO_SOURCE_WAV             40012
 #define ID_OPTIONS_DISPLAYINPUTVIDEO    40013
 #define ID_OPTIONS_DISPLAYOUTPUTVIDEO   40014
@@ -1278,6 +1301,11 @@
 #define ID_CAPTURE_HWACCEL_NONINTODD    40455
 #define ID_PREVIEWACCELERATION_INTERLACED 40456
 #define ID_CAPTURE_HWACCEL_INTERLACED   40457
+#define ID_AUDIO_SOURCEAUDIO            40458
+#define ID_AUDIO_SOURCE_AVI             40459
+#define ID_VIDEO_FILTERS40465           40465
+#define ID_FILTERCHAIN_SKIP24           40466
+#define ID_VIDEO_SKIPFILTERCONVERSION   40467
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1325,15 +1353,16 @@
 #define ID_MRU_FILE1                    50001
 #define ID_MRU_FILE2                    50002
 #define ID_MRU_FILE3                    50003
+#define ID_AUDIO_SOURCE_AVI_0           50100
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        272
-#define _APS_NEXT_COMMAND_VALUE         40458
-#define _APS_NEXT_CONTROL_VALUE         1431
+#define _APS_NEXT_RESOURCE_VALUE        278
+#define _APS_NEXT_COMMAND_VALUE         40468
+#define _APS_NEXT_CONTROL_VALUE         1448
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

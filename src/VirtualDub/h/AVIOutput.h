@@ -39,6 +39,10 @@ public:
 	virtual void	setStreamInfo(const AVIStreamHeader_fixed& hdr) = 0;
 	virtual void	updateStreamInfo(const AVIStreamHeader_fixed& hdr) = 0;
 
+	enum {
+		kFlagKeyFrame = 0x10		// clone of AVIIF_KEYFRAME
+	};
+
 	virtual void	write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;
 
 	virtual void	partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples) = 0;
@@ -82,7 +86,6 @@ public:
 		streamInfo = hdr;
 	}
 
-	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;
 	virtual void flush() {}
 	virtual void finish() {}
 };

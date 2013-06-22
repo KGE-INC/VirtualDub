@@ -87,6 +87,9 @@ VDPixmapLayout VDPixmapLayoutOffset(const VDPixmapLayout& src, vdpixpos x, vdpix
 void VDPixmapFlipV(VDPixmap& layout);
 void VDPixmapLayoutFlipV(VDPixmapLayout& layout);
 
+uint32 VDPixmapLayoutGetMinSize(const VDPixmapLayout& layout);
+
+VDPixmap VDPixmapExtractField(const VDPixmap& src, bool field2);
 
 #ifndef VDPTRSTEP_DECLARED
 	template<class T>
@@ -98,6 +101,11 @@ void VDPixmapLayoutFlipV(VDPixmapLayout& layout);
 	template<class T>
 	T *vdptroffset(T *p, ptrdiff_t offset) {
 		return (T *)((char *)p + offset);
+	}
+#endif
+#ifndef VDPTRDIFFABS_DECLARED
+	inline ptrdiff_t vdptrdiffabs(ptrdiff_t x) {
+		return x<0 ? -x : x;
 	}
 #endif
 

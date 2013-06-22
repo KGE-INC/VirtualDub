@@ -95,7 +95,7 @@ AVIVideoFLMOutputStream::~AVIVideoFLMOutputStream() {
 }
 
 void AVIVideoFLMOutputStream::init() {
-	const BITMAPINFOHEADER *bih = (const BITMAPINFOHEADER *)getFormat();
+	const VDAVIBitmapInfoHeader *bih = (const VDAVIBitmapInfoHeader *)getFormat();
 	int variant;
 
 	int format = VDBitmapFormatToPixmapFormat(*bih, variant);

@@ -590,6 +590,10 @@ void output_special_tag(Context& ctx, std::string *out, const TreeNode& tag) {
 		new_tag->mbIsText = false;
 		new_tag->mbIsControl = false;
 
+		// compatibility
+		if (!new_tag->mName.compare(0, 2, "w:"))
+			new_tag->mName.replace(0, 2, "lina:");
+
 		output_tag_contents(ctx, NULL, tag);
 
 		ctx.construction_stack.pop_back();

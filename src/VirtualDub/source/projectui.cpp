@@ -18,6 +18,7 @@
 #include <stdafx.h>
 #include <windows.h>
 #include <commctrl.h>
+#include <vfw.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/binary.h>
 #include <vd2/system/filesys.h>
@@ -81,6 +82,9 @@ namespace {
 	};
 }
 
+#define MYWM_DEFERRED_COMMAND (WM_USER + 101)
+#define MYWM_DEFERRED_PREVIEWRESTART (WM_USER + 102)
+
 ///////////////////////////////////////////////////////////////////////////
 
 extern const char g_szError[];
@@ -92,8 +96,7 @@ extern VDProject *g_project;
 extern vdrefptr<VDProjectUI> g_projectui;
 
 extern vdrefptr<AudioSource>	inputAudio;
-extern vdrefptr<AudioSource>	inputAudioWAV;
-extern vdrefptr<AudioSource>	inputAudioAVI;
+extern COMPVARS g_Vcompression;
 
 static bool				g_vertical				= FALSE;
 
@@ -141,6 +144,7 @@ extern void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 
 extern const VDStringW& VDPreferencesGetTimelineFormat();
 
+int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
 ///////////////////////////////////////////////////////////////////////////
 #define MENU_TO_HELP(x) ID_##x, IDS_##x
@@ -193,7 +197,6 @@ UINT iMainMenuHelpTranslator[]={
 	MENU_TO_HELP(AUDIO_INTERLEAVE),
 	MENU_TO_HELP(AUDIO_COMPRESSION),
 	MENU_TO_HELP(AUDIO_SOURCE_NONE),
-	MENU_TO_HELP(AUDIO_SOURCE_AVI),
 	MENU_TO_HELP(AUDIO_SOURCE_WAV),
 	MENU_TO_HELP(AUDIO_MODE_DIRECT),
 	MENU_TO_HELP(AUDIO_MODE_FULL),
@@ -261,6 +264,7 @@ VDProjectUI::VDProjectUI()
 	, mAudioDisplayPosNext(-1)
 	, mbAudioDisplayReadActive(false)
 	, mhMenuNormal(NULL)
+	, mhMenuSourceList(NULL)
 	, mhMenuDub(NULL)
 	, mhMenuDisplay(NULL)
 	, mhAccelDub(NULL)
@@ -269,6 +273,7 @@ VDProjectUI::VDProjectUI()
 	, mbOutputFrameValid(false)
 	, mOldWndProc(NULL)
 	, mbDubActive(false)
+	, mbLockPreviewRestart(false)
 	, mMRUList(4, "MRU List")
 {
 }
@@ -285,6 +290,8 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 		return false;
 	}
 
+	mThreadId = VDGetCurrentThreadID();
+
 	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
 
 	pFrame->Attach(this);
@@ -296,6 +303,25 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 		Detach();
 		return false;
 	}
+
+	mhMenuSourceList = CreatePopupMenu();
+	if (!mhMenuSourceList) {
+		Detach();
+		return false;
+	}
+
+	MENUITEMINFO mii = { sizeof(MENUITEMINFO) };
+	mii.fMask = MIIM_SUBMENU;
+	mii.hSubMenu = mhMenuSourceList;
+	if (!SetMenuItemInfo(mhMenuNormal, ID_AUDIO_SOURCE_AVI, FALSE, &mii)) {
+		DestroyMenu(mhMenuSourceList);
+		mhMenuSourceList = NULL;
+		Detach();
+		return false;
+	}
+
+	UpdateAudioSourceMenu();
+
 	if (!(mhMenuDub		= LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_DUB_MENU     )))) {
 		Detach();
 		return false;
@@ -497,6 +523,8 @@ void VDProjectUI::Detach() {
 		mhMenuDisplay = NULL;
 	}
 
+	mhMenuSourceList = NULL;	// already destroyed via main menu
+
 	if (mhMenuDub) {
 		DestroyMenu(mhMenuDub);
 		mhMenuDub = NULL;
@@ -524,13 +552,13 @@ bool VDProjectUI::Tick() {
 
 		uint32 actualBytes = 0, actualSamples = 0;
 
-		if (!inputAudio || !inputVideoAVI) {
+		if (!inputAudio || !inputVideo) {
 			UpdateAudioDisplay();
 			return false;
 		}
 
-		const WAVEFORMATEX *wfex = inputAudio->getWaveFormat();
-		if (wfex->wFormatTag != WAVE_FORMAT_PCM || (wfex->wBitsPerSample != 8 && wfex->wBitsPerSample != 16)) {
+		const VDWaveFormat *wfex = inputAudio->getWaveFormat();
+		if (wfex->mTag != WAVE_FORMAT_PCM || (wfex->mSampleBits != 8 && wfex->mSampleBits != 16)) {
 			UpdateAudioDisplay();
 			return false;
 		}
@@ -540,7 +568,8 @@ bool VDProjectUI::Tick() {
 
 		const FrameSubset& subset = GetTimeline().GetSubset();
 
-		double audioToVideoFactor = (double)inputVideoAVI->getRate() / (double)inputAudio->getRate();
+		IVDStreamSource *pVSS = inputVideo->asStream();
+		double audioToVideoFactor = pVSS->getRate().asDouble() / pVSS->getRate().asDouble();
 		double vframef = mAudioDisplayPosNext * audioToVideoFactor;
 		sint64 vframe = VDFloorToInt64(vframef);
 		double vframeoff = vframef - vframe;
@@ -551,7 +580,7 @@ bool VDProjectUI::Tick() {
 
 			if (vframesrc < 0) {
 				sint64 vend;
-				if (g_dubOpts.audio.fEndAudio || subset.empty() || (vend = subset.back().end()) != inputVideoAVI->getEnd()) {
+				if (g_dubOpts.audio.fEndAudio || subset.empty() || (vend = subset.back().end()) != pVSS->getEnd()) {
 					mbAudioDisplayReadActive = false;
 					return false;
 				}
@@ -576,7 +605,7 @@ bool VDProjectUI::Tick() {
 		apos -= inputAudio->msToSamples(g_dubOpts.audio.offset);
 
 		// avoid Avisynth buffer overflow bug
-		uint32 nBlockAlign = wfex->nBlockAlign;
+		uint32 nBlockAlign = wfex->mBlockSize;
 		if (nBlockAlign)
 			maxlen = std::min<uint32>(maxlen, sizeof buf / nBlockAlign);
 
@@ -586,13 +615,13 @@ bool VDProjectUI::Tick() {
 			if (apos + count > 0)
 				count = -(sint32)apos;
 
-			if (wfex->wBitsPerSample == 16)
-				VDMemset16(buf, 0, wfex->nChannels * count);
+			if (wfex->mSampleBits == 16)
+				VDMemset16(buf, 0, wfex->mChannels * count);
 			else
-				VDMemset8(buf, 0x80, wfex->nChannels * count);
+				VDMemset8(buf, 0x80, wfex->mChannels * count);
 
 			actualSamples = count;
-			actualBytes = wfex->nBlockAlign * count;
+			actualBytes = wfex->mBlockSize * count;
 		} else {
 			if (inputAudio->read(apos, maxlen, buf, sizeof buf, &actualBytes, &actualSamples) || !actualSamples) {
 				mbAudioDisplayReadActive = false;
@@ -602,15 +631,29 @@ bool VDProjectUI::Tick() {
 		mAudioDisplayPosNext += actualSamples;
 
 		bool needMore;
-		if (wfex->wBitsPerSample == 8)
-			needMore = mpAudioDisplay->ProcessAudio8U((const uint8 *)buf, actualSamples, 1, wfex->nBlockAlign);
+		if (wfex->mSampleBits == 8)
+			needMore = mpAudioDisplay->ProcessAudio8U((const uint8 *)buf, actualSamples, 1, wfex->mBlockSize);
 		else
-			needMore = mpAudioDisplay->ProcessAudio16S((const sint16 *)buf, actualSamples, 2, wfex->nBlockAlign);
+			needMore = mpAudioDisplay->ProcessAudio16S((const sint16 *)buf, actualSamples, 2, wfex->mBlockSize);
 
 		if (needMore)
 			return true;
 
 		mbAudioDisplayReadActive = false;
+	}
+
+	if (!mPendingCommands.empty()) {
+		PendingCommands::const_iterator it(mPendingCommands.begin()), itEnd(mPendingCommands.end());
+		for(; it!=itEnd; ++it) {
+			int id = *it;
+
+			PostMessage((HWND)mhwnd, MYWM_DEFERRED_COMMAND, id, 0);
+		}
+		mPendingCommands.clear();
+	}
+
+	if (mPreviewRestartMode && !mbLockPreviewRestart) {
+		PostMessage((HWND)mhwnd, MYWM_DEFERRED_PREVIEWRESTART, 0, 0);
 	}
 
 	return false;
@@ -621,7 +664,7 @@ void VDProjectUI::SetTitle(int nTitleString, int nArgs, ...) {
 
 	VDASSERT(nArgs < 16);
 
-	VDStringW versionW(VDLoadStringW32(IDS_TITLE_NOFILE));
+	VDStringW versionW(VDLoadStringW32(IDS_TITLE_NOFILE, true));
 	const wchar_t *pVersion = versionW.c_str();
 	args[0] = &pVersion;
 
@@ -676,16 +719,16 @@ void VDProjectUI::AppendAsk() {
 }
 
 void VDProjectUI::SaveAVIAsk() {
-	SaveAVI((HWND)mhwnd, false);
+	::SaveAVI((HWND)mhwnd, false);
 	JobUnlockDubber();
 }
 
 void VDProjectUI::SaveCompatibleAVIAsk() {
-	SaveAVI((HWND)mhwnd, true);
+	::SaveAVI((HWND)mhwnd, true);
 }
 
 void VDProjectUI::SaveStripedAVIAsk() {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	const VDStringW filename(VDGetSaveFileName(kFileDialog_AVIStripe, mhwnd, L"Select AVI stripe definition file", fileFiltersStripe, g_prefs.main.fAttachExtension ? L"stripe" : NULL));
@@ -696,7 +739,7 @@ void VDProjectUI::SaveStripedAVIAsk() {
 }
 
 void VDProjectUI::SaveStripeMasterAsk() {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	const VDStringW filename(VDGetSaveFileName(kFileDialog_AVIStripe, mhwnd, L"Select AVI stripe definition file", fileFiltersStripe, g_prefs.main.fAttachExtension ? L"stripe" : NULL));
@@ -726,7 +769,7 @@ void VDProjectUI::SaveWAVAsk() {
 }
 
 void VDProjectUI::SaveFilmstripAsk() {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	const VDStringW filename(VDGetSaveFileName(kFileDialog_FLMOut, mhwnd, L"Save Filmstrip file", L"Adobe Filmstrip (*.flm)\0*.flm\0", g_prefs.main.fAttachExtension ? L"flm" : NULL));
@@ -801,7 +844,7 @@ namespace {
 }
 
 void VDProjectUI::SaveAnimatedGIFAsk() {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(mhwnd));
@@ -844,27 +887,63 @@ void VDProjectUI::LoadConfigurationAsk() {
 }
 
 void VDProjectUI::SetVideoFiltersAsk() {
-	ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
+	LockFilterChain(true);
+	VDVideoFiltersDialogResult result = VDShowDialogVideoFilters(mhwnd, inputVideo);
+	LockFilterChain(false);
+
+	if (result.mbDialogAccepted && result.mbRescaleRequested) {
+		// rescale everything
+		const VDFraction& oldRate = result.mOldFrameRate;
+		const VDFraction& newRate = result.mNewFrameRate;
+		mTimeline.Rescale(
+				oldRate,
+				result.mOldFrameCount,
+				newRate,
+				result.mNewFrameCount);
+		this->UITimelineUpdated();
+
+		double rateConversion = newRate.asDouble() / oldRate.asDouble();
+
+		if (IsSelectionPresent()) {
+			VDPosition selStart = GetSelectionStartFrame();
+			VDPosition selEnd = GetSelectionEndFrame();
+
+			selStart = VDCeilToInt64(selStart * rateConversion - 0.5);
+			selEnd = VDCeilToInt64(selEnd * rateConversion - 0.5);
+
+			SetSelection(selStart, selEnd);
+		}
+
+		MoveToFrame(VDCeilToInt64(GetCurrentFrame() * rateConversion - 0.5));
+	}
+
 	UpdateFilterList();
+	UpdateDubParameters();
 }
 
 void VDProjectUI::SetVideoFramerateOptionsAsk() {
-	extern bool VDDisplayVideoFrameRateDialog(VDGUIHandle hParent, DubOptions& opts, VideoSource *pVS, AudioSource *pAS);
+	extern bool VDDisplayVideoFrameRateDialog(VDGUIHandle hParent, DubOptions& opts, IVDVideoSource *pVS, AudioSource *pAS);
 
-	if (VDDisplayVideoFrameRateDialog(mhwnd, g_dubOpts, inputVideoAVI, inputAudio))
+	if (VDDisplayVideoFrameRateDialog(mhwnd, g_dubOpts, inputVideo, inputAudio))
 		UpdateDubParameters();
 }
 
 void VDProjectUI::SetVideoDepthOptionsAsk() {
 	extern bool VDDisplayVideoDepthDialog(VDGUIHandle hParent, DubOptions& opts);
 
+	int inputFormatOld = g_dubOpts.video.mInputFormat;
 	VDDisplayVideoDepthDialog(mhwnd, g_dubOpts);
+
+	if (inputFormatOld != g_dubOpts.video.mInputFormat && inputVideo) {
+		VDRenderSetVideoSourceInputFormat(inputVideo, g_dubOpts.video.mInputFormat);
+		DisplayFrame();
+	}
 }
 
 void VDProjectUI::SetVideoRangeOptionsAsk() {
-	extern bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, VideoSource *pVS);
+	extern bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, IVDVideoSource *pVS);
 
-	VDDisplayVideoRangeDialog(mhwnd, g_dubOpts, inputVideoAVI);
+	VDDisplayVideoRangeDialog(mhwnd, g_dubOpts, inputVideo);
 }
 
 void VDProjectUI::SetVideoCompressionAsk() {
@@ -880,11 +959,11 @@ void VDProjectUI::SetVideoCompressionAsk() {
 }
 
 void VDProjectUI::SetVideoErrorModeAsk() {
-	extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::ErrorMode oldMode, const char *pszSettingsKey, DubSource *pSource);
-	g_videoErrorMode = VDDisplayErrorModeDialog(mhwnd, g_videoErrorMode, "Edit: Video error mode", inputVideoAVI);
+	extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, IVDStreamSource::ErrorMode oldMode, const char *pszSettingsKey, IVDStreamSource *pSource);
+	g_videoErrorMode = VDDisplayErrorModeDialog(mhwnd, g_videoErrorMode, "Edit: Video error mode", inputVideo ? inputVideo->asStream() : NULL);
 
-	if (inputVideoAVI)
-		inputVideoAVI->setDecodeErrorMode(g_videoErrorMode);
+	if (inputVideo)
+		inputVideo->asStream()->setDecodeErrorMode(g_videoErrorMode);
 }
 
 void VDProjectUI::SetAudioFiltersAsk() {
@@ -903,7 +982,7 @@ void VDProjectUI::SetAudioInterleaveOptionsAsk() {
 
 void VDProjectUI::SetAudioCompressionAsk() {
 	if (!inputAudio)
-		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, NULL, g_ACompressionFormatHint);
+		g_ACompressionFormat = (VDWaveFormat *)AudioChooseCompressor((HWND)mhwnd, (WAVEFORMATEX *)g_ACompressionFormat, NULL, g_ACompressionFormatHint);
 	else {
 
 		WAVEFORMATEX wfex = {0};
@@ -937,12 +1016,12 @@ void VDProjectUI::SetAudioCompressionAsk() {
 		wfex.nBlockAlign		= (WORD)((wfex.wBitsPerSample+7)/8 * wfex.nChannels);
 		wfex.nAvgBytesPerSec	= wfex.nSamplesPerSec * wfex.nBlockAlign;
 
-		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, &wfex, g_ACompressionFormatHint);
+		g_ACompressionFormat = (VDWaveFormat *)AudioChooseCompressor((HWND)mhwnd, (WAVEFORMATEX *)g_ACompressionFormat, &wfex, g_ACompressionFormatHint);
 
 	}
 
 	if (g_ACompressionFormat) {
-		g_ACompressionFormatSize = sizeof(WAVEFORMATEX) + g_ACompressionFormat->cbSize;
+		g_ACompressionFormatSize = sizeof(VDWaveFormat) + g_ACompressionFormat->mExtraSize;
 	}
 }
 
@@ -953,32 +1032,99 @@ void VDProjectUI::SetAudioVolumeOptionsAsk() {
 }
 
 void VDProjectUI::SetAudioSourceWAVAsk() {
-	const VDStringW filename(VDGetLoadFileName(kFileDialog_WAVAudioIn, mhwnd, L"Open WAV File", g_szWAVFileFilters, NULL));
+	IVDInputDriver *pDriver = 0;
 
-	if (!filename.empty()) {
-		OpenWAV(filename.c_str());
-		wcscpy(g_szInputWAVFile, filename.c_str());
-	}
+	std::vector<int> xlat;
+	tVDInputDrivers inputDrivers;
+
+	VDGetInputDrivers(inputDrivers, IVDInputDriver::kF_Audio);
+
+	VDStringW fileFilters(VDMakeInputDriverFileFilter(inputDrivers, xlat));
+
+	static const VDFileDialogOption sOptions[]={
+		{ VDFileDialogOption::kSelectedFilter, 0, 0, 0, 0 },
+		{0}
+	};
+
+	int optVals[1]={0};
+
+	VDStringW fname(VDGetLoadFileName(kFileDialog_WAVAudioIn, mhwnd, L"Open audio file", fileFilters.c_str(), NULL, sOptions, optVals));
+
+	if (fname.empty())
+		return;
+
+	if (xlat[optVals[0]-1] >= 0)
+		pDriver = inputDrivers[xlat[optVals[0]-1]];
+
+	VDAutoLogDisplay logDisp;
+	OpenWAV(fname.c_str(), pDriver);
+	logDisp.Post(mhwnd);
 }
 
 void VDProjectUI::SetAudioErrorModeAsk() {
-	extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::ErrorMode oldMode, const char *pszSettingsKey, DubSource *pSource);
+	extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, IVDStreamSource::ErrorMode oldMode, const char *pszSettingsKey, IVDStreamSource *pSource);
 	g_audioErrorMode = VDDisplayErrorModeDialog(mhwnd, g_audioErrorMode, "Edit: Audio error mode", inputAudio);
 
-	if (inputAudioAVI)
-		inputAudioAVI->setDecodeErrorMode(g_audioErrorMode);
-	if (inputAudioWAV)
-		inputAudioWAV->setDecodeErrorMode(g_audioErrorMode);
+	SetAudioErrorMode(g_audioErrorMode);
 }
 
 void VDProjectUI::JumpToFrameAsk() {
 	if (inputAVI) {
-		extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS, const VDFraction& trueRate);
+		extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, IVDVideoSource *pVS, const VDFraction& trueRate);
 
-		VDPosition pos = VDDisplayJumpToPositionDialog(mhwnd, GetCurrentFrame(), inputVideoAVI, mVideoInputFrameRate);
+		VDPosition pos = VDDisplayJumpToPositionDialog(mhwnd, GetCurrentFrame(), inputVideo, mVideoInputFrameRate);
 
 		if (pos >= 0)
 			MoveToFrame(pos);
+	}
+}
+
+void VDProjectUI::QueueCommand(int cmd) {
+	if (g_dubber) {
+		if (!g_dubber->IsPreviewing())
+			return;
+
+		g_dubber->Abort(false);
+
+		switch(cmd) {
+		case kVDProjectCmd_GoToStart:
+		case kVDProjectCmd_GoToEnd:
+		case kVDProjectCmd_ScrubBegin:
+		case kVDProjectCmd_ScrubEnd:
+		case kVDProjectCmd_ScrubUpdate:
+			SetPositionCallbackEnabled(false);
+			break;
+		}
+
+		mPendingCommands.push_back(cmd);
+	} else {
+		ExecuteCommand(cmd);
+	}
+}
+
+void VDProjectUI::ExecuteCommand(int cmd) {
+	switch(cmd) {
+		case kVDProjectCmd_GoToStart:
+			MoveToStart();
+			break;
+		case kVDProjectCmd_GoToEnd:
+			MoveToEnd();
+			break;
+		case kVDProjectCmd_ScrubBegin:
+			OnPositionNotify(PCN_BEGINTRACK);
+			break;
+		case kVDProjectCmd_ScrubEnd:
+			OnPositionNotify(PCN_ENDTRACK);
+			break;
+		case kVDProjectCmd_ScrubUpdate:
+			OnPositionNotify(PCN_THUMBPOSITION);
+			break;
+		case kVDProjectCmd_SetSelectionStart:
+			SetSelectionStart();
+			break;
+		case kVDProjectCmd_SetSelectionEnd:
+			SetSelectionEnd();
+			break;
 	}
 }
 
@@ -1102,8 +1248,14 @@ bool VDProjectUI::MenuHit(UINT id) {
 				OpenAudioDisplay();
 			break;
 
-		case ID_VIDEO_SEEK_START:				MoveToStart();				break;
-		case ID_VIDEO_SEEK_END:					MoveToEnd();				break;
+		case ID_VIDEO_SEEK_START:
+			QueueCommand(kVDProjectCmd_GoToStart);
+			break;
+
+		case ID_VIDEO_SEEK_END:
+			QueueCommand(kVDProjectCmd_GoToEnd);
+			break;
+
 		case ID_VIDEO_SEEK_PREV:				MoveToPrevious();			break;
 		case ID_VIDEO_SEEK_NEXT:				MoveToNext();				break;
 		case ID_VIDEO_SEEK_PREVONESEC:			MoveBackSome();			break;
@@ -1148,8 +1300,12 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_VIDEO_ERRORMODE:				SetVideoErrorModeAsk();			break;
 		case ID_EDIT_MASK:						MaskSelection(true);							break;
 		case ID_EDIT_UNMASK:					MaskSelection(false);						break;
-		case ID_EDIT_SETSELSTART:				SetSelectionStart();				break;
-		case ID_EDIT_SETSELEND:					SetSelectionEnd();					break;
+		case ID_EDIT_SETSELSTART:
+			QueueCommand(kVDProjectCmd_SetSelectionStart);
+			break;
+		case ID_EDIT_SETSELEND:
+			QueueCommand(kVDProjectCmd_SetSelectionEnd);
+			break;
 
 		case ID_AUDIO_ADVANCEDFILTERING:
 			g_dubOpts.audio.bUseAudioFilterGraph = !g_dubOpts.audio.bUseAudioFilterGraph;
@@ -1163,8 +1319,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 		case ID_AUDIO_VOLUME:					SetAudioVolumeOptionsAsk();		break;
 
-		case ID_AUDIO_SOURCE_NONE:				SetAudioSourceNone();				break;
-		case ID_AUDIO_SOURCE_AVI:				SetAudioSourceNormal();			break;
+		case ID_AUDIO_SOURCE_NONE:				SetAudioSourceNone();			break;
 		case ID_AUDIO_SOURCE_WAV:				SetAudioSourceWAVAsk();			break;
 
 		case ID_AUDIO_MODE_DIRECT:				SetAudioMode(DubAudioOptions::M_NONE);			break;
@@ -1299,7 +1454,9 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_DUBINPROGRESS_ABORT:			AbortOperation();			break;
 
 		default:
-			if (id >= ID_MRU_FILE0 && id <= ID_MRU_FILE3) {
+			if (id >= ID_AUDIO_SOURCE_AVI_0 && id <= ID_AUDIO_SOURCE_AVI_0+99) {
+				SetAudioSourceNormal(id - ID_AUDIO_SOURCE_AVI_0);
+			} else if (id >= ID_MRU_FILE0 && id <= ID_MRU_FILE3) {
 				const int index = id - ID_MRU_FILE0;
 				VDStringW name(mMRUList[index]);
 
@@ -1364,7 +1521,12 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDCheckMenuItemW32(hMenu, ID_VIEW_CURVEEDITOR, mpCurveEditor != NULL);
 	VDCheckMenuItemW32(hMenu, ID_VIEW_AUDIODISPLAY, mpAudioDisplay != NULL);
 
-	CheckMenuRadioItem(hMenu, ID_AUDIO_SOURCE_NONE, ID_AUDIO_SOURCE_WAV, ID_AUDIO_SOURCE_NONE+audioInputMode, MF_BYCOMMAND);
+	int audioSourceMode = GetAudioSourceMode();
+	VDCheckRadioMenuItemByCommandW32(hMenu, ID_AUDIO_SOURCE_NONE, audioSourceMode == kVDAudioSourceMode_None);
+	VDCheckRadioMenuItemByCommandW32(hMenu, ID_AUDIO_SOURCE_WAV, audioSourceMode == kVDAudioSourceMode_External);
+
+	CheckMenuRadioItem(hMenu, ID_AUDIO_SOURCE_AVI_0, ID_AUDIO_SOURCE_AVI_0+99, ID_AUDIO_SOURCE_AVI_0 + (audioSourceMode - kVDAudioSourceMode_Source), MF_BYCOMMAND);
+
 	CheckMenuRadioItem(hMenu, ID_VIDEO_MODE_DIRECT, ID_VIDEO_MODE_FULL, ID_VIDEO_MODE_DIRECT+g_dubOpts.video.mode, MF_BYCOMMAND);
 	CheckMenuRadioItem(hMenu, ID_AUDIO_MODE_DIRECT, ID_AUDIO_MODE_FULL, ID_AUDIO_MODE_DIRECT+g_dubOpts.audio.mode, MF_BYCOMMAND);
 	CheckMenuRadioItem(hMenu, ID_OPTIONS_PREVIEWPROGRESSIVE, ID_OPTIONS_PREVIEWFIELDB,
@@ -1459,9 +1621,9 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_EDIT_JUMPTO				, bSourceFileExists);
 
 
-	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideoAVI && inputVideoAVI->isFrameBufferValid());
-	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideoAVI && filters.isRunning());
-	VDEnableMenuItemW32(hMenu,ID_VIDEO_SCANFORERRORS		, inputVideoAVI != 0);
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideo && inputVideo->isFrameBufferValid());
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideo && filters.isRunning());
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_SCANFORERRORS		, inputVideo != 0);
 
 	const bool bAudioProcessingEnabled			= (g_dubOpts.audio.mode == DubAudioOptions::M_FULL);
 	const bool bUseFixedFunctionAudioPipeline	= bAudioProcessingEnabled && !g_dubOpts.audio.bUseAudioFilterGraph;
@@ -1481,6 +1643,24 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 
 	const bool bVideoCompressionEnabled = (g_dubOpts.video.mode >= DubVideoOptions::M_FASTREPACK);
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COMPRESSION			, bVideoCompressionEnabled);
+}
+
+void VDProjectUI::UpdateAudioSourceMenu() {
+	for(int i = GetMenuItemCount(mhMenuSourceList)-1; i>=0; --i)
+		DeleteMenu(mhMenuSourceList, i, MF_BYPOSITION);
+
+	int count = GetAudioSourceCount();
+
+	if (!count)
+		VDAppendMenuW32(mhMenuSourceList, MF_GRAYED, 0, L"None");
+	else {
+		VDStringW s;
+
+		for(int i=0; i<count; ++i) {
+			s.sprintf(L"Stream %d", i+1);
+			VDAppendMenuW32(mhMenuSourceList, MF_ENABLED, ID_AUDIO_SOURCE_AVI_0 + i, s.c_str());
+		}
+	}
 }
 
 void VDProjectUI::UpdateDubMenu(HMENU hMenu) {
@@ -1512,7 +1692,7 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		if (lParam) {
 			switch(LOWORD(wParam)) {
 			case IDC_POSITION:
-				if (inputVideoAVI) {
+				if (inputVideo) {
 					try {
 						switch(HIWORD(wParam)) {
 						case PCN_PLAY:				PreviewInput();				break;
@@ -1562,44 +1742,10 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_NOTIFY:
 		{
 			LPNMHDR nmh = (LPNMHDR)lParam;
-			VDPosition pos;
 
 			switch(nmh->idFrom) {
 			case IDC_POSITION:
-				switch(nmh->code) {
-				case PCN_BEGINTRACK:
-					guiSetStatus("Seeking: hold SHIFT to snap to keyframes", 255);
-					mpPosition->SetAutoPositionUpdate(false);
-					break;
-				case PCN_ENDTRACK:
-					guiSetStatus("", 255);
-					mpPosition->SetAutoPositionUpdate(true);
-					break;
-				case PCN_THUMBPOSITION:
-				case PCN_THUMBTRACK:
-				case PCN_PAGELEFT:
-				case PCN_PAGERIGHT:
-					pos = mpPosition->GetPosition();
-
-					if (inputVideoAVI) {
-						if (GetKeyState(VK_SHIFT)<0) {
-							MoveToNearestKey(pos);
-
-							pos = GetCurrentFrame();
-
-							if (nmh->code == PCN_THUMBTRACK)
-								mpPosition->SetDisplayedPosition(pos);
-							else
-								mpPosition->SetPosition(pos);
-						} else if (pos >= 0) {
-							if (nmh->code == PCN_THUMBTRACK)
-								mpPosition->SetDisplayedPosition(pos);
-
-							MoveToFrame(pos);
-						}
-					}
-					break;
-				}
+				OnPositionNotify(nmh->code);
 				break;
 
 			case 1:
@@ -1616,7 +1762,7 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 					break;
 				case VWN_REQUPDATE:
 					if (nmh->idFrom == 1)
-						UIRefreshInputFrame(inputVideoAVI && inputVideoAVI->isFrameBufferValid() && mbInputFrameValid);
+						UIRefreshInputFrame(inputVideo && inputVideo->isFrameBufferValid() && mbInputFrameValid);
 					else
 						UIRefreshOutputFrame(filters.isRunning() && mbOutputFrameValid);
 					break;
@@ -1650,12 +1796,12 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (wParam) {
 				bool bValid = mbOutputFrameValid && filters.isRunning();
 
-				if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideoAVI && inputVideoAVI->isFrameBufferValid() && mbInputFrameValid) {
+				if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideo && inputVideo->isFrameBufferValid() && mbInputFrameValid) {
 					try {
-						VDPosition srcPos = GetCurrentFrame();
-						VDPosition dstPos = mTimeline.TimelineToSourceFrame(srcPos);
+						VDPosition timelinePos = GetCurrentFrame();
+						VDPosition dstPos = mTimeline.TimelineToSourceFrame(timelinePos);
 
-						RefilterFrame(srcPos, dstPos);
+						RefilterFrame(dstPos, timelinePos);
 						bValid = true;
 					} catch(const MyError&) {
 						// eat error
@@ -1664,11 +1810,23 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 
 				UIRefreshOutputFrame(bValid);
 			} else
-				UIRefreshInputFrame(mbInputFrameValid && inputVideoAVI && inputVideoAVI->isFrameBufferValid());
+				UIRefreshInputFrame(mbInputFrameValid && inputVideo && inputVideo->isFrameBufferValid());
 
 			pDisp->Cache();
 		}
 		break;
+
+	case MYWM_DEFERRED_COMMAND:
+		ExecuteCommand((int)wParam);
+		return 0;
+
+	case MYWM_DEFERRED_PREVIEWRESTART:
+		try {
+			PreviewRestart();
+		} catch(const MyError& e) {
+			e.post((HWND)mhwnd, g_szError);
+		}
+		return 0;
 	}
 
 	return VDUIFrame::GetFrame((HWND)mhwnd)->DefProc((HWND)mhwnd, msg, wParam, lParam);
@@ -1726,6 +1884,24 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			LPNMHDR nmh = (LPNMHDR)lParam;
 
 			switch(nmh->idFrom) {
+			case IDC_POSITION:
+				switch(nmh->code) {
+				case PCN_BEGINTRACK:
+					QueueCommand(kVDProjectCmd_ScrubBegin);
+					break;
+				case PCN_ENDTRACK:
+					QueueCommand(kVDProjectCmd_ScrubEnd);
+					break;
+				case PCN_THUMBPOSITION:
+				case PCN_THUMBTRACK:
+				case PCN_PAGELEFT:
+				case PCN_PAGERIGHT:
+					QueueCommand(kVDProjectCmd_ScrubUpdate);
+					break;
+				}
+
+				return 0;
+
 			case 1:
 			case 2:
 				switch(nmh->code) {
@@ -1741,7 +1917,7 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 					// eat it
 					break;
 				}
-				break;
+				return 0;
 			}
 		}
 		break;
@@ -1841,6 +2017,46 @@ void VDProjectUI::OnSize() {
 	}
 }
 
+void VDProjectUI::OnPositionNotify(int code) {
+	VDPosition pos;
+	switch(code) {
+	case PCN_BEGINTRACK:
+		guiSetStatus("Seeking: hold SHIFT to snap to keyframes", 255);
+		mpPosition->SetAutoPositionUpdate(false);
+		mbLockPreviewRestart = true;
+		break;
+	case PCN_ENDTRACK:
+		guiSetStatus("", 255);
+		mpPosition->SetAutoPositionUpdate(true);
+		mbLockPreviewRestart = false;
+		break;
+	case PCN_THUMBPOSITION:
+	case PCN_THUMBTRACK:
+	case PCN_PAGELEFT:
+	case PCN_PAGERIGHT:
+		pos = mpPosition->GetPosition();
+
+		if (inputVideo) {
+			if (GetKeyState(VK_SHIFT)<0) {
+				MoveToNearestKey(pos);
+
+				pos = GetCurrentFrame();
+
+				if (code == PCN_THUMBTRACK)
+					mpPosition->SetDisplayedPosition(pos);
+				else
+					mpPosition->SetPosition(pos);
+			} else if (pos >= 0) {
+				if (code == PCN_THUMBTRACK)
+					mpPosition->SetDisplayedPosition(pos);
+
+				MoveToFrame(pos);
+			}
+		}
+		break;
+	}
+}
+
 void VDProjectUI::RepositionPanes() {
 	HWND hwndPane1 = mhwndInputFrame;
 	HWND hwndPane2 = mhwndOutputFrame;
@@ -1864,11 +2080,11 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 	memset(&mrInputFrame, 0, sizeof(RECT));
 	memset(&mrOutputFrame, 0, sizeof(RECT));
 
-	if (inputVideoAVI) {
-		BITMAPINFOHEADER *formatIn = inputVideoAVI->getImageFormat();
+	if (inputVideo) {
+		const VDAVIBitmapInfoHeader *formatIn = inputVideo->getImageFormat();
 
 		if (formatIn) {
-			const VDPixmap& px = inputVideoAVI->getTargetFormat();
+			const VDPixmap& px = inputVideo->getTargetFormat();
 			int w0 = px.w;
 			int h0 = px.h;
 			int w = w0;
@@ -1887,11 +2103,14 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			int w2 = w0, h2 = h0;
 
 			if (!g_listFA.IsEmpty()) {
-				if (!filters.isRunning())
-					filters.prepareLinearChain(&g_listFA, (Pixel*)px.palette, w0, h0, 0);
+				if (!filters.isRunning()) {
+					IVDStreamSource *pVSS = inputVideo->asStream();
+					filters.prepareLinearChain(&g_listFA, w0, h0, px.format, pVSS->getRate(), pVSS->getLength());
+				}
 
-				w2 = filters.LastBitmap()->w;
-				h2 = filters.LastBitmap()->h;
+				const VDPixmapLayout& output = filters.GetOutputLayout();
+				w2 = output.w;
+				h2 = output.h;
 			}
 
 			VDGetIVideoWindow(mhwndOutputFrame)->SetSourceSize(w2, h2);
@@ -1987,35 +2206,36 @@ void VDProjectUI::UpdateAudioDisplay() {
 
 	// Right now, we can't display the audio display if there is no _video_ track, since we have
 	// frame markers. Besides, there wouldn't be any way for you to move.
-	if (!inputAudio || !inputVideoAVI) {
+	if (!inputAudio || !inputVideo) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because there is no audio track.");
 		mbAudioDisplayReadActive = false;
 		return;
 	}
 
-	const WAVEFORMATEX *wfex = inputAudio->getWaveFormat();
-	if (wfex->wFormatTag != WAVE_FORMAT_PCM) {
+	const VDWaveFormat *wfex = inputAudio->getWaveFormat();
+	if (wfex->mTag != WAVE_FORMAT_PCM) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because the audio track is compressed.");
 		mbAudioDisplayReadActive = false;
 		return;
 	}
 
-	if (wfex->wBitsPerSample != 8 && wfex->wBitsPerSample != 16) {
+	if (wfex->mSampleBits != 8 && wfex->mSampleBits != 16) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because the audio track uses an unsupported PCM format.");
 		mbAudioDisplayReadActive = false;
 		return;
 	}
 
-	mpAudioDisplay->SetFormat((double)wfex->nSamplesPerSec, wfex->nChannels);
+	mpAudioDisplay->SetFormat((double)wfex->mSamplingRate, wfex->mChannels);
 	mpAudioDisplay->ClearFailureMessage();
 }
 
 void VDProjectUI::UpdateAudioDisplayPosition() {
 	if (inputAudio) {
+		IVDStreamSource *pVSS = inputVideo->asStream();
 		VDPosition pos = GetCurrentFrame();
-		VDPosition cenpos = inputAudio->TimeToPositionVBR(inputVideoAVI->PositionToTimeVBR(pos));
+		VDPosition cenpos = inputAudio->TimeToPositionVBR(pVSS->PositionToTimeVBR(pos));
 
-		double audioPerVideoSamples = inputAudio->getRate().asDouble() / inputVideoAVI->getRate().asDouble();
+		double audioPerVideoSamples = inputAudio->getRate().asDouble() / pVSS->getRate().asDouble();
 
 		mpAudioDisplay->SetFrameMarkers(0, VDCeilToInt64(inputAudio->getLength() / audioPerVideoSamples), 0.0, audioPerVideoSamples);
 		mpAudioDisplay->SetHighlightedFrameMarker(pos);
@@ -2139,7 +2359,7 @@ void VDProjectUI::UpdateCurveList() {
 void VDProjectUI::UIRefreshInputFrame(bool bValid) {
 	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
 	if (bValid) {
-		const VDPixmap& pxsrc = inputVideoAVI->getTargetFormat();
+		const VDPixmap& pxsrc = inputVideo->getTargetFormat();
 
 		pDisp->SetSource(true, pxsrc);
 	} else {
@@ -2152,31 +2372,7 @@ void VDProjectUI::UIRefreshInputFrame(bool bValid) {
 void VDProjectUI::UIRefreshOutputFrame(bool bValid) {
 	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
 	if (bValid) {
-		VBitmap *out = filters.LastBitmap();
-
-		VDPixmap srcmap = {0};
-
-		srcmap.data		= (char *)out->data + out->pitch * (out->h - 1);
-		srcmap.pitch	= -out->pitch;
-		srcmap.w		= out->w;
-		srcmap.h		= out->h;
-
-		switch(out->depth) {
-		case 16:
-			srcmap.format = nsVDPixmap::kPixFormat_XRGB1555;
-			pDisp->SetSource(true, srcmap);
-			break;
-		case 24:
-			srcmap.format = nsVDPixmap::kPixFormat_RGB888;
-			pDisp->SetSource(true, srcmap);
-			break;
-		case 32:
-			srcmap.format = nsVDPixmap::kPixFormat_XRGB8888;
-			pDisp->SetSource(true, srcmap);
-			break;
-		}
-
-//		pDisp->Update(IVDVideoDisplay::kAllFields);			not necessary; done by SetSource
+		pDisp->SetSource(true, filters.GetOutput());
 	} else {
 		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_BACKGROUND) & 0xFFFFFF) >> 24));
 	}
@@ -2226,7 +2422,7 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 	}
 }
 
-void VDProjectUI::UIRunDubMessageLoop() {
+bool VDProjectUI::UIRunDubMessageLoop() {
 	MSG msg;
 
 	VDSamplingAutoProfileScope autoProfileScope;
@@ -2234,7 +2430,7 @@ void VDProjectUI::UIRunDubMessageLoop() {
 	while(g_dubber->isRunning()) {
 		// TODO: PerfHUD 5 doesn't hook GetMessage() and doesn't work unless you use PeekMessage().
 		//       Confirm if this is OK to switch.
-#if 1
+#if 0
 		BOOL result = GetMessage(&msg, (HWND) NULL, 0, 0);
 
 		if (result == (BOOL)-1)
@@ -2242,7 +2438,7 @@ void VDProjectUI::UIRunDubMessageLoop() {
 
 		if (!result) {
 			PostQuitMessage(msg.wParam);
-			break;
+			return false;
 		}
 #else
 		if (!PeekMessage(&msg, (HWND) NULL, 0, 0, PM_REMOVE)) {
@@ -2265,6 +2461,12 @@ void VDProjectUI::UIRunDubMessageLoop() {
 		TranslateMessage(&msg); 
 		DispatchMessage(&msg); 
 	}
+
+	return true;
+}
+
+void VDProjectUI::UIAbortDubMessageLoop() {
+	PostThreadMessage(mThreadId, WM_NULL, 0, 0);
 }
 
 void VDProjectUI::UICurrentPositionUpdated() {
@@ -2336,6 +2538,8 @@ void VDProjectUI::UISourceFileUpdated() {
 		SetTitle(kVDM_TitleFileLoaded, 1, &s);
 	} else
 		SetTitle(kVDM_TitleIdle, 0);
+
+	UpdateAudioSourceMenu();
 }
 
 void VDProjectUI::UIAudioSourceUpdated() {
@@ -2346,7 +2550,7 @@ void VDProjectUI::UIAudioSourceUpdated() {
 }
 
 void VDProjectUI::UIVideoSourceUpdated() {
-	if (inputVideoAVI) {
+	if (inputVideo) {
 		UpdateVideoFrameLayout();
 		ShowWindow(mhwndInputFrame, SW_SHOW);
 		ShowWindow(mhwndOutputFrame, SW_SHOW);
@@ -2486,7 +2690,7 @@ void VDProjectUI::DisplayRequestUpdate(IVDVideoDisplay *pDisp) {
 //////////////////////////////////////////////////////////////////////
 
 bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFrame) {
-	if (!inputVideoAVI || !mVideoInputFrameRate.getLo())
+	if (!inputVideo || !mVideoInputFrameRate.getLo())
 		return false;
 
 	const VDStringW& format = VDPreferencesGetTimelineFormat();
@@ -2497,16 +2701,20 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 		bool bMasked;
 		int source;
 		VDPosition srcFrame = mTimeline.GetSubset().lookupFrame(dstFrame, bMasked, source);
+
+		srcFrame = filters.GetSourceFrame(srcFrame);
+
 		VDPosition srcStreamFrame;
 		
+		IVDStreamSource *pVSS = inputVideo->asStream();
 		if (srcFrame < 0)
-			srcFrame = srcStreamFrame = inputVideoAVI->getLength();
+			srcFrame = srcStreamFrame = pVSS->getLength();
 		else
-			srcStreamFrame = inputVideoAVI->displayToStreamOrder(srcFrame);
+			srcStreamFrame = inputVideo->displayToStreamOrder(srcFrame);
 
-		const VDFraction srcRate = inputVideoAVI->getRate();
+		const VDFraction srcRate = pVSS->getRate();
 
-		VDPosition dstTime = mVideoInputFrameRate.scale64ir(dstFrame * 1000);
+		VDPosition dstTime = mVideoTimelineFrameRate.scale64ir(dstFrame * 1000);
 		VDPosition srcTime = srcRate.scale64ir(srcFrame * 1000);
 
 		while(s != end) {
@@ -2579,14 +2787,14 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, formatTime % 1000);
 				break;
 			case 'p':
-				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, ((unsigned)mVideoInputFrameRate.scale64r(formatTime % 1000)+500) / 1000);
+				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, ((unsigned)mVideoTimelineFrameRate.scale64r(formatTime % 1000)+500) / 1000);
 				break;
 			case 'P':
 				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, ((unsigned)srcRate.scale64r(formatTime % 1000)+500) / 1000);
 				break;
 			case 'B':
 				{
-					sint64 bytepos = inputVideoAVI->getSampleBytePosition(srcStreamFrame);
+					sint64 bytepos = inputVideo->getSampleBytePosition(srcStreamFrame);
 
 					if (bytepos >= 0)
 						actual = _snwprintf(buf, buflen, zero_fill ? L"%0*I64x" : L"%*I64x", width, bytepos);
@@ -2600,7 +2808,7 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 
 					// we can't safely call this while a dub is occurring because it would cause I/O on
 					// two threads
-					if (!mbDubActive && !inputVideoAVI->read(srcStreamFrame, 1, NULL, 0, &bytes, NULL))
+					if (!mbDubActive && !pVSS->read(srcStreamFrame, 1, NULL, 0, &bytes, NULL))
 						actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, bytes);
 					else
 						actual = _snwprintf(buf, buflen, L"%*s", width, L"N/A");
@@ -2613,10 +2821,10 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 					// we can't safely call this while a dub is occurring because it would cause I/O on
 					// two threads
 					if (!mbDubActive) {
-						nearestKey = inputVideoAVI->nearestKey(srcFrame);
+						nearestKey = inputVideo->nearestKey(srcFrame);
 
 						if (nearestKey > srcFrame)
-							nearestKey = inputVideoAVI->prevKey(nearestKey);
+							nearestKey = inputVideo->prevKey(nearestKey);
 					}
 
 					if (nearestKey >= 0)
@@ -2632,7 +2840,7 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 					break;
 				}
 			case 'C':
-				*buf = inputVideoAVI->getFrameTypeChar(srcFrame);
+				*buf = inputVideo->getFrameTypeChar(srcFrame);
 				actual = 1;
 				break;
 
@@ -2733,11 +2941,16 @@ bool VDProjectUI::HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, 
 }
 
 void VDProjectUI::OnCurveUpdated(IVDUIParameterCurveControl *source, const int& args) {
-	try {
-		VDPosition srcPos = GetCurrentFrame();
-		VDPosition dstPos = mTimeline.TimelineToSourceFrame(srcPos);
+	if (!inputVideo) {
+		UIRefreshOutputFrame(false);
+		return;
+	}
 
-		RefilterFrame(srcPos, dstPos);
+	try {
+		VDPosition timelinePos = GetCurrentFrame();
+		VDPosition dstPos = mTimeline.TimelineToSourceFrame(timelinePos);
+
+		RefilterFrame(dstPos, timelinePos);
 		UIRefreshOutputFrame(true);
 	} catch(const MyError&) {
 		UIRefreshOutputFrame(false);
@@ -2767,8 +2980,9 @@ void VDProjectUI::OnAudioDisplayUpdateRequired(IVDUIAudioDisplayControl *source,
 }
 
 void VDProjectUI::OnAudioDisplaySetSelect(IVDUIAudioDisplayControl *source, const VDUIAudioDisplaySelectionRange& range) {
-	VDPosition pos1 = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mStart));
-	VDPosition pos2 = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mEnd));
+	IVDStreamSource *pVSS = inputVideo->asStream();
+	VDPosition pos1 = pVSS->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mStart));
+	VDPosition pos2 = pVSS->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mEnd));
 
 	if (pos1 > pos2)
 		std::swap(pos1, pos2);

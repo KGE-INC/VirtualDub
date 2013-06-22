@@ -91,7 +91,6 @@ extern bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine);
 extern void Deinit();
 
 void OpenAVI(int index, bool extended_opt);
-void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 void SaveAVI(HWND, bool);
 void SaveSegmentedAVI(HWND);
 void SaveImageSeq(HWND);
@@ -285,7 +284,7 @@ void OpenAVI(bool ext_opt) {
 ////////////////////////////////////
 
 void SaveAVI(HWND hWnd, bool fUseCompatibility) {
-	if (!inputVideoAVI) {
+	if (!inputVideo) {
 		MessageBox(hWnd, "No input video stream to process.", g_szError, MB_OK);
 		return;
 	}
@@ -301,11 +300,7 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 	if (!fname.empty()) {
 		bool fAddAsJob = !!optVals[0];
 
-		if (fAddAsJob) {
-			JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, NULL, fname.c_str(), fUseCompatibility, &inputAVI->listFiles, 0, 0);
-		} else {
-			SaveAVI(fname.c_str(), false, NULL, fUseCompatibility);
-		}
+		g_project->SaveAVI(fname.c_str(), fUseCompatibility, fAddAsJob);
 	}
 }
 
@@ -319,7 +314,7 @@ static const char g_szRegKeySaveSelectionAndEditList[]="Save edit list";
 static const char g_szRegKeySaveTextInfo[]="Save text info";
   
 void SaveSegmentedAVI(HWND hWnd) {
-	if (!inputVideoAVI) {
+	if (!inputVideo) {
 		MessageBox(hWnd, "No input video stream to process.", g_szError, MB_OK);
 		return;
 	}
@@ -439,22 +434,6 @@ void SaveSegmentedAVI(HWND hWnd) {
 			SaveSegmentedAVI(fname.c_str(), false, NULL, optVals[3], optVals[1] ? optVals[2] : 0);
 		}
 	}
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp) {
-	if (!inputVideoAVI)
-		throw MyError("No input video stream to process.");
-
-	bool bPreview = g_dubOpts.audio.enabled;
-	g_dubOpts.audio.enabled = TRUE;
-
-	VDAVIOutputPreviewSystem outpreview;
-
-	g_project->RunOperation(&outpreview, FALSE, quick_options, iPriority, fProp, 0, 0);
-
-	g_dubOpts.audio.enabled = bPreview;
 }
 
 /////////////////////////////
@@ -668,7 +647,7 @@ static const char g_szRegKeyImageSequenceQuickCompress[]="Image sequence: quick 
 void SaveImageSeq(HWND hwnd) {
 	VDSaveImageSeqDialogW32 dlg;
 
-	if (!inputVideoAVI) {
+	if (!inputVideo) {
 		MessageBox(hwnd, "No input video stream to process.", g_szError, MB_OK);
 		return;
 	}

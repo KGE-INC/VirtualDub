@@ -55,7 +55,8 @@ void VDTestVideoFilters() {
 		vdrefptr<InputFile> pFile1;
 
 		VDOpenMediaFile(L"d:\\anime-dl\\The Melancholy of Suzumiya Haruhi OP.avi", 0, ~pFile1);
-		IVDVideoSource *pSource1 = pFile1->videoSrc;
+		vdrefptr<IVDVideoSource> pSource1;
+		pFile1->GetVideoSource(0, ~pSource1);
 		pSource1->setDecompressedFormat(32);
 
 		VDPosition len1 = pSource1->asStream()->getLength();
@@ -95,8 +96,9 @@ void VDTestVideoFilters() {
 		vars.lQ = 0;
 
 		IVDVideoSource *sources[1]={pSource1};
-		AudioSource *asrc[2]={pFile1->audioSrc};
-		dubber->Init(sources, 1, asrc, 1, os, &vars, &fs);
+		vdrefptr<AudioSource> asrc;
+		pFile1->GetAudioSource(0, ~asrc);
+		dubber->Init(sources, 1, &asrc, 1, os, &vars, &fs);
 		dubber->Go();
 
 		FooThread blah;

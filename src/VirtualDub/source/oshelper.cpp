@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <vd2/system/Error.h>
 #include <vd2/system/w32assist.h>
 #include "oshelper.h"
+#include "version.h"
 
 extern const char g_szError[];
 
@@ -332,7 +333,7 @@ HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags) {
 	return g_pVDGetAncestor(hwnd, gaFlags);
 }
 
-VDStringW VDLoadStringW32(UINT uID) {
+VDStringW VDLoadStringW32(UINT uID, bool doSubstitutions) {
 	// Credit for this function goes to Raymond Chen, who described how
 	// to directly access string resources in his blog.
 
@@ -356,7 +357,86 @@ VDStringW VDLoadStringW32(UINT uID) {
 		// FreeResource() is a NOP in Win32.
 	}
 
+	if (doSubstitutions)
+		VDSubstituteStrings(str);
+
 	return str;
+}
+
+void VDSubstituteStrings(VDStringW& s) {
+	VDStringW::size_type posLast = 0;
+	VDStringW::size_type pos = s.find('$');
+	if (pos == VDStringW::npos)
+		return;
+
+	VDStringW t;
+
+	for(;;) {
+		t.append(s, posLast, pos - posLast);
+
+		if (pos == VDStringW::npos || pos+1 >= s.size())
+			break;
+
+		wchar_t c = s[pos+1];
+		switch(c) {
+			case L'b':
+				t.append_sprintf(L"%d", version_num);
+				break;
+
+			case L'n':
+				t.append(VD_PROGRAM_NAMEW);
+				break;
+
+			case L'v':
+				t.append(VD_PROGRAM_VERSIONW);
+				break;
+
+			case L's':
+				t.append(VD_PROGRAM_SPECIAL_BUILDW);
+				break;
+
+			case L'c':
+				t.append(VD_PROGRAM_CONFIGW);
+				break;
+
+			case L'C':
+				t.append(VD_PROGRAM_GENERIC_CONFIGW);
+				break;
+
+			case L'p':
+				t.append(VD_PROGRAM_PLATFORM_NAMEW);
+				break;
+
+			case L'k':
+				#if VD_COMPILER_MSVC >= 1500
+					#if VD_CPU_AMD64
+						t.append("Microsoft Visual Studio 2008 for AMD64");
+					#else
+						t.append("Microsoft Visual Studio 2008 for X86");
+					#endif
+				#elif VD_COMPILER_MSVC >= 1400
+					#if VD_CPU_AMD64
+						#if VD_COMPILER_MSVC_VC8_DDK
+							t.append("Microsoft Visual C++ 8.0 for AMD64 (DDK version)");
+						#elif VD_COMPILER_MSVC_VC8_PSDK
+							t.append(L"Microsoft Visual C++ 8.0 for AMD64 (PSDK version)");
+						#else
+							t.append(L"Microsoft Visual Studio 2005 for AMD64");
+						#endif
+					#else
+						t.append(L"Microsoft Visual Studio 2005 for X86");
+					#endif
+				#else
+					t.append("Unknown compiler");
+				#endif
+				break;
+		}
+
+		posLast = pos + 2;
+		pos = s.find('$', posLast);
+	}
+
+	s = t;
 }
 
 ///////////////////////////////////////////////////////////////////////////

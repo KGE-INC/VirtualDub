@@ -28,20 +28,23 @@
 using namespace nsVDDub;
 
 VDDubIOThread::VDDubIOThread(
+		IDubberInternal		*pParent,
 		bool				bPhantom,
 		const vdfastvector<IVDVideoSource *>& videoSources,
 		VDRenderFrameIterator& videoFrameIterator,
 		AudioStream			*pAudio,
 		AVIPipe				*const pVideoPipe,
 		VDAudioPipeline		*const pAudioPipe,
-		volatile bool&		bAbort,
+		VDAtomicInt&		bAbort,
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
 		VDAtomicInt&		threadCounter
 							 )
 	: VDThread("Dub-I/O")
+	, mpParent(pParent)
 	, mbError(false)
 	, mbPhantom(bPhantom)
+	, mbCompleted(false)
 	, mVideoSources(videoSources)
 	, mVideoFrameIterator(videoFrameIterator)
 	, mpAudio(pAudio)
@@ -68,8 +71,17 @@ void VDDubIOThread::ThreadRun() {
 	bool bAudioActive = mpAudioPipe && (mpAudio != 0);
 	bool bVideoActive = mpVideoPipe && !mVideoSources.empty();
 
-	double nVideoRate = bVideoActive ? vInfo.frameRateNoTelecine : 0;
-	double nAudioRate = bAudioActive ? mpAudio->GetFormat()->nAvgBytesPerSec : 0;
+	double nVideoRate = bVideoActive ? vInfo.frameRateNoTelecine.asDouble() : 0;
+	double nAudioRate = bAudioActive ? mpAudio->GetFormat()->mDataRate : 0;
+
+	int minAudioBufferSpace = 0;
+	if (bAudioActive) { 
+		const VDWaveFormat *format = mpAudio->GetFormat();
+		minAudioBufferSpace = format->mBlockSize;
+
+		if (mpAudioPipe->IsVBRModeEnabled())
+			minAudioBufferSpace += 4;
+	}
 
 	try {
 		mpCurrentAction = "running main loop";
@@ -83,7 +95,8 @@ void VDDubIOThread::ThreadRun() {
 				continue;
 
 			bool bCanWriteVideo = bVideoActive && !mpVideoPipe->full();
-			bool bCanWriteAudio = bAudioActive && !mpAudioPipe->full();
+			bool bCanWriteAudio = bAudioActive && mpAudioPipe->getSpace() >= minAudioBufferSpace;
+			int preferAudio = 0;
 
 			if (bCanWriteVideo && bCanWriteAudio) {
 				const int nAudioLevel = mpAudioPipe->getLevel();
@@ -91,39 +104,47 @@ void VDDubIOThread::ThreadRun() {
 				mpVideoPipe->getQueueInfo(nVideoTotal, nVideoFinalQueued);
 
 				if (nAudioLevel * nVideoRate < nVideoFinalQueued * nAudioRate)
-					bCanWriteVideo = false;
+					preferAudio = 1;
 			}
 
-			if (bCanWriteVideo) {
-				bBlocked = false;
+			for(int i=0; i<2; ++i) {
+				switch(preferAudio ^ i) {
+					case 0:
+						if (bCanWriteVideo) {
+							bBlocked = false;
 
-				VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
+							VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
 
-				profchan.Begin(0xffe0e0, "Video");
+							profchan.Begin(0xffe0e0, "Video");
 
-				if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
-					bVideoActive = false;
-					mpVideoPipe->finalize();
+							if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
+								bVideoActive = false;
+								mpVideoPipe->finalize();
+							}
+
+							profchan.End();
+							goto restart_service_loop;
+						}
+						break;
+
+					case 1:
+						if (bCanWriteAudio) {
+							bBlocked = false;
+
+							VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
+
+							profchan.Begin(0xe0e0ff, "Audio");
+
+							if (!MainAddAudioFrame() && mpAudio->isEnd()) {
+								bAudioActive = false;
+								mpAudioPipe->CloseInput();
+							}
+
+							profchan.End();
+							goto restart_service_loop;
+						}
+						break;
 				}
-
-				profchan.End();
-				continue;
-			}
-
-			if (bCanWriteAudio) {
-				bBlocked = false;
-
-				VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
-
-				profchan.Begin(0xe0e0ff, "Audio");
-
-				if (!MainAddAudioFrame() && mpAudio->isEnd()) {
-					bAudioActive = false;
-					mpAudioPipe->CloseInput();
-				}
-
-				profchan.End();
-				continue;
 			}
 
 			if (bBlocked) {
@@ -139,7 +160,6 @@ void VDDubIOThread::ThreadRun() {
 
 				VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
 
-//				profchan.Begin(0xe0e0e0, "Idle");
 				if (bAudioActive) {
 					if (bVideoActive)
 						mpVideoPipe->getReadSignal().wait(&mpAudioPipe->getReadSignal());
@@ -147,9 +167,9 @@ void VDDubIOThread::ThreadRun() {
 						mpAudioPipe->getReadSignal().wait();
 				} else if (mpVideoPipe)
 					mpVideoPipe->getReadSignal().wait();
-
-//				profchan.End();
 			}
+restart_service_loop:
+			;
 		}
 	} catch(MyError& e) {
 		if (!mbError) {
@@ -157,16 +177,18 @@ void VDDubIOThread::ThreadRun() {
 			mbError = true;
 		}
 
-		mbAbort = true;
-
-		if (mpAudioPipe)
-			mpAudioPipe->CloseInput();
-		if (mpVideoPipe)
-			mpVideoPipe->finalize();
+		mpParent->InternalSignalStop();
 	}
+
+	mbCompleted = !bAudioActive && !bVideoActive;
+
+	if (mpAudioPipe)
+		mpAudioPipe->CloseInput();
+	if (mpVideoPipe)
+		mpVideoPipe->finalize();
 }
 
-void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
+void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, VDPosition sequence_frame, bool preload, bool direct, bool sameAsLast) {
 	int hr;
 
 	void *buffer;
@@ -181,6 +203,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	frameInfo.mOrigDisplayFrame	= orig_display_frame;
 	frameInfo.mDisplayFrame		= display_frame;
 	frameInfo.mTimelineFrame	= timeline_frame;
+	frameInfo.mSequenceFrame	= sequence_frame;
 	frameInfo.mSrcIndex			= sourceIndex;
 	frameInfo.mFlags			= (vsrc->isKey(display_frame) ? 0 : kBufferFlagDelta) + (preload ? kBufferFlagPreload : 0);
 	frameInfo.mDroptype			= 0;
@@ -211,7 +234,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 		hr = vsrc->asStream()->read(stream_frame, 1, NULL, 0x7FFFFFFF, &size, NULL);
 	}
 	if (hr) {
-		if (hr == AVIERR_FILEREAD)
+		if (hr == DubSource::kFileReadError)
 			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
 		else
 			throw MyAVIError("Dub/IO-Video", hr);
@@ -226,7 +249,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 		hr = vsrc->asStream()->read(stream_frame, 1, buffer, size,	&lActualBytes,NULL); 
 	}
 	if (hr) {
-		if (hr == AVIERR_FILEREAD)
+		if (hr == DubSource::kFileReadError)
 			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
 		else
 			throw MyAVIError("Dub/IO-Video", hr);
@@ -241,7 +264,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	mpVideoPipe->postBuffer(frameInfo);
 }
 
-void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast) {
+void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, VDPosition sequenceFrame, bool direct, bool sameAsLast) {
 	void *buffer;
 	int handle;
 
@@ -255,6 +278,7 @@ void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition origDisplayFr
 	frameInfo.mOrigDisplayFrame	= origDisplayFrame;
 	frameInfo.mDisplayFrame		= displayFrame;
 	frameInfo.mTimelineFrame	= timelineFrame;
+	frameInfo.mSequenceFrame	= sequenceFrame;
 	frameInfo.mTargetFrame		= vsrc->displayToStreamOrder(displayFrame);
 	frameInfo.mSrcIndex			= sourceIndex;
 	frameInfo.mbFinal			= true;
@@ -290,10 +314,12 @@ bool VDDubIOThread::MainAddVideoFrame() {
 	
 	VDRenderFrameStep step(mVideoFrameIterator.Next());
 
+	VDASSERT(step.mSrcIndex >= 0);
+
 	if (step.mSourceFrame < 0)
-		ReadNullVideoFrame(step.mSrcIndex, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbDirect, step.mbSameAsLast);
+		ReadNullVideoFrame(step.mSrcIndex, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mSequenceFrame, step.mbDirect, step.mbSameAsLast);
 	else
-		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mTargetSample, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
+		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mTargetSample, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mSequenceFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
 
 	if (!step.mbIsPreroll)
 		++vInfo.cur_dst;
@@ -302,54 +328,101 @@ bool VDDubIOThread::MainAddVideoFrame() {
 }
 
 bool VDDubIOThread::MainAddAudioFrame() {
-	LONG lActualBytes=0;
-	LONG lActualSamples=0;
+	if (mpAudioPipe->IsVBRModeEnabled()) {
+		int totalSamples = 0;
 
-	const int blocksize = mpAudio->GetFormat()->nBlockAlign;
-	int samples = mpAudioPipe->getSpace();
+		const VDWaveFormat *format = mpAudio->GetFormat();
+		const int blocksize = format->mBlockSize;
+		int samplesLeft = mpAudioPipe->getSpace() / blocksize;
 
-	while(samples > 0) {
-		int len = samples * blocksize;
+		mAudioBuffer.resize(std::max<int>(format->mDataRate / 15, blocksize*4));
+		char *buf = mAudioBuffer.data();
 
-		int tc;
-		void *dst;
-		
-		dst = mpAudioPipe->BeginWrite(len, tc);
+		while(samplesLeft > 0) {
+			if (mbAbort)
+				return false;
 
-		if (!tc)
-			break;
+			if (mpAudioPipe->getSpace() < blocksize + sizeof(int))
+				break;
 
-		if (mbAbort)
-			break;
+			long actualBytes, actualSamples;
+			{
+				VDDubAutoThreadLocation loc(mpCurrentAction, "reading/processing audio data");
+				actualSamples = mpAudio->Read(buf, 1, &actualBytes);
+				VDASSERT(actualBytes <= actualSamples * blocksize);
+			}
 
-		LONG ltActualBytes, ltActualSamples;
-		{
-			VDDubAutoThreadLocation loc(mpCurrentAction, "reading/processing audio data");
-			ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
-			VDASSERT(ltActualBytes <= tc);
+			if (actualSamples <= 0)
+				break;
+
+			VDASSERT(actualSamples == 1);
+
+			int sampleSize = actualBytes;
+			{
+				VDDubAutoThreadLocation loc(mpCurrentAction, "pushing audio data to processing thread");
+
+				if (!mpAudioPipe->Write(&sampleSize, sizeof(int), &mbAbort))
+					return false;
+
+				if (!mpAudioPipe->Write(buf, actualBytes, &mbAbort))
+					return false;
+			}
+
+			aInfo.total_size += actualBytes;
+
+			totalSamples += actualSamples;
+			samplesLeft -= actualSamples;
 		}
 
-		if (ltActualSamples <= 0)
-			break;
+		return totalSamples > 0;
+	} else {
+		long lActualSamples=0;
 
-		int residue = ltActualBytes % blocksize;
+		const int blocksize = mpAudio->GetFormat()->mBlockSize;
+		int samples = mpAudioPipe->getSpace();
 
-		if (residue) {
-			VDASSERT(false);	// This is bad -- it means the input file has partial samples.
+		while(samples > 0) {
+			int len = samples * blocksize;
 
-			ltActualBytes += blocksize - residue;
+			int tc;
+			void *dst;
+			
+			dst = mpAudioPipe->BeginWrite(len, tc);
+
+			if (!tc)
+				break;
+
+			if (mbAbort)
+				break;
+
+			long ltActualBytes, ltActualSamples;
+			{
+				VDDubAutoThreadLocation loc(mpCurrentAction, "reading/processing audio data");
+				ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
+				VDASSERT(ltActualBytes <= tc);
+			}
+
+			if (ltActualSamples <= 0)
+				break;
+
+			int residue = ltActualBytes % blocksize;
+
+			if (residue) {
+				VDASSERT(false);	// This is bad -- it means the input file has partial samples.
+
+				ltActualBytes += blocksize - residue;
+			}
+
+			mpAudioPipe->EndWrite(ltActualBytes);
+
+			aInfo.total_size += ltActualBytes;
+
+			lActualSamples += ltActualSamples;
+
+			samples -= ltActualSamples;
 		}
 
-		mpAudioPipe->EndWrite(ltActualBytes);
-
-		aInfo.total_size += ltActualBytes;
-
-		lActualBytes += ltActualBytes;
-		lActualSamples += ltActualSamples;
-
-		samples -= ltActualSamples;
+		return lActualSamples > 0;
 	}
-
-	return lActualSamples > 0;
 }
 

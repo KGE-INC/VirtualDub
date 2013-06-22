@@ -56,8 +56,13 @@ public:
 	VDFraction operator*(unsigned long b) const;
 	VDFraction operator/(unsigned long b) const;
 
-	VDFraction operator*(int b) const { return operator*((unsigned long)b); }
-	VDFraction operator/(int b) const { return operator/((unsigned long)b); }
+	VDFraction& operator*=(unsigned long b);
+	VDFraction& operator/=(unsigned long b);
+
+	void	Assign(unsigned long n, unsigned long d) {
+		hi = n;
+		lo = d;
+	}
 
 	sint64 scale64t(sint64) const;
 	sint64 scale64r(sint64) const;
@@ -66,11 +71,8 @@ public:
 	sint64 scale64ir(sint64) const;
 	sint64 scale64iu(sint64) const;
 
-	operator long() const;
-	operator unsigned long() const;
-	operator double() const;
-
-	double asDouble() const { return (double)*this; }
+	double asDouble() const;
+	double AsInverseDouble() const;
 
 	unsigned long roundup32ul() const;
 
@@ -85,7 +87,6 @@ public:
 };
 
 inline VDFraction operator*(unsigned long b, const VDFraction f) { return f*b; }
-inline VDFraction operator*(int b, const VDFraction f) { return f*b; }
 
 typedef VDFraction Fraction;
 

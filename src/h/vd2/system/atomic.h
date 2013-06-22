@@ -184,6 +184,11 @@ public:
 		return staticExchange(&n, v);
 	}
 
+	/// Compare/exchange (486+).
+	int compareExchange(int newValue, int oldValue) {
+		return staticCompareExchange(&n, newValue, oldValue);
+	}
+
 	// 486 only, but much nicer.  They return the actual result.
 
 	int inc()			{ return operator++(); }				///< Atomic increment.

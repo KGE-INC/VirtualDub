@@ -27,6 +27,7 @@
 #include <vd2/system/fraction.h>
 #include <vd2/system/math.h>
 #include <vd2/system/protscope.h>
+#include <vd2/Riza/audiocodec.h>
 #include <vd2/Riza/w32audiocodec.h>
 #include "AudioFilterSystem.h"
 #include "AudioSource.h"
@@ -34,7 +35,9 @@
 
 #include "audio.h"
 
-AudioFormatConverter AudioPickConverter(const WAVEFORMATEX *src, bool to_16bit, bool to_stereo);
+bool VDPreferencesIsPreferInternalAudioDecodersEnabled();
+
+AudioFormatConverter AudioPickConverter(const VDWaveFormat *src, bool to_16bit, bool to_stereo);
 
 //////////////// no change converters /////////////////////////////////////
 
@@ -247,40 +250,43 @@ static const AudioFormatConverter acv2[]={
 	convert_audio_dual16_to_mono16,
 };
 
-AudioFormatConverter AudioPickConverter(const WAVEFORMATEX *src, bool to_16bit, bool to_stereo) {
+AudioFormatConverter AudioPickConverter(const VDWaveFormat *src, bool to_16bit, bool to_stereo) {
 	return acv[
-			  (src->nChannels>1 ? 8 : 0)
-			 +(src->wBitsPerSample>8 ? 4 : 0)
+			  (src->mChannels>1 ? 8 : 0)
+			 +(src->mSampleBits>8 ? 4 : 0)
 			 +(to_stereo ? 2 : 0)
 			 +(to_16bit ? 1 : 0)
 		];
 }
 
-AudioFormatConverter AudioPickConverterSingleChannel(const WAVEFORMATEX *src, bool to_16bit) {
+AudioFormatConverter AudioPickConverterSingleChannel(const VDWaveFormat *src, bool to_16bit) {
 	return acv2[
-			  (src->nChannels>1 ? 4 : 0)
-			 +(src->wBitsPerSample>8 ? 2 : 0)
+			  (src->mChannels>1 ? 4 : 0)
+			 +(src->mSampleBits>8 ? 2 : 0)
 			 +(to_16bit ? 1 : 0)
 		];
 }
 
 ///////////////////////////////////
 
-AudioStream::AudioStream() {
-	format = NULL;
-	format_len = 0;
-	samples_read = 0;
-	stream_limit = 0x7FFFFFFFFFFFFFFF;
+AudioStream::AudioStream()
+	: format(NULL)
+	, format_len(0)
+	, source(NULL)
+	, samples_read(0)
+	, stream_len(0)
+	, stream_limit(0x7FFFFFFFFFFFFFFF)
+{
 }
 
 AudioStream::~AudioStream() {
 	freemem(format);
 }
 
-WAVEFORMATEX *AudioStream::AllocFormat(long len) {
+VDWaveFormat *AudioStream::AllocFormat(long len) {
 	if (format) { freemem(format); format = 0; }
 
-	if (!(format = (WAVEFORMATEX *)allocmem(len)))
+	if (!(format = (VDWaveFormat *)allocmem(len)))
 		throw MyError("AudioStream: Out of memory");
 
     format_len = len;
@@ -288,20 +294,24 @@ WAVEFORMATEX *AudioStream::AllocFormat(long len) {
 	return format;
 }
 
-WAVEFORMATEX *AudioStream::GetFormat() {
+VDWaveFormat *AudioStream::GetFormat() const {
 	return format;
 }
 
-long AudioStream::GetFormatLen() {
+long AudioStream::GetFormatLen() const {
 	return format_len;
 }
 
-sint64 AudioStream::GetSampleCount() {
+sint64 AudioStream::GetSampleCount() const {
 	return samples_read;
 }
 
-sint64 AudioStream::GetLength() {
+sint64 AudioStream::GetLength() const {
 	return stream_limit < stream_len ? stream_limit : stream_len;
+}
+
+const VDFraction AudioStream::GetSampleRate() const {
+	return VDFraction(format->mDataRate, format->mBlockSize);
 }
 
 long AudioStream::Read(void *buffer, long max_samples, long *lplBytes) {
@@ -372,8 +382,8 @@ void AudioStream::Seek(VDPosition pos) {
 ////////////////////
 
 AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool allow_decompression, sint64 start_us) : AudioStream() {
-	WAVEFORMATEX *iFormat = src->getWaveFormat();
-	WAVEFORMATEX *oFormat;
+	VDWaveFormat *iFormat = (VDWaveFormat *)src->getWaveFormat();
+	VDWaveFormat *oFormat;
 
 	fZeroRead = false;
 	mPreskip = 0;
@@ -382,7 +392,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 		max_samples = 0;
 
 	struct WaveFormatExtensibleW32 {
-		WAVEFORMATEX mFormat;
+		VDWaveFormat mFormat;
 		union {
 			uint16 mBitDepth;
 			uint16 mSamplesPerBlock;		// may be zero, according to MSDN
@@ -397,9 +407,9 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 
 	bool isPCM = false;
 
-	if (iFormat->wFormatTag == WAVE_FORMAT_PCM)
+	if (iFormat->mTag == WAVE_FORMAT_PCM)
 		isPCM = true;
-	else if (iFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+	else if (iFormat->mTag == WAVE_FORMAT_EXTENSIBLE) {
 		const WaveFormatExtensibleW32& wfexex = *(const WaveFormatExtensibleW32 *)iFormat;
 
 		if (wfexex.mGuid == local_KSDATAFORMAT_SUBTYPE_PCM)
@@ -408,11 +418,11 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 
 
 	if (!isPCM && allow_decompression) {
-		mCodec.Init(iFormat, NULL, false);
+		mpCodec = VDLocateAudioDecompressor((const VDWaveFormat *)iFormat, NULL, VDPreferencesIsPreferInternalAudioDecodersEnabled());
 
-		const unsigned oflen = mCodec.GetOutputFormatSize();
+		const unsigned oflen = mpCodec->GetOutputFormatSize();
 
-		memcpy(AllocFormat(oflen), mCodec.GetOutputFormat(), oflen);
+		memcpy(AllocFormat(oflen), mpCodec->GetOutputFormat(), oflen);
 
 		oFormat = GetFormat();
 	} else {
@@ -421,7 +431,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 		//		to sizeof(PCMWAVEFORMAT).  LSX-MPEG Encoder doesn't like large PCM
 		//		formats!
 
-		if (iFormat->wFormatTag == WAVE_FORMAT_PCM) {
+		if (iFormat->mTag == WAVE_FORMAT_PCM) {
 			oFormat = AllocFormat(sizeof(PCMWAVEFORMAT));
 			memcpy(oFormat, iFormat, sizeof(PCMWAVEFORMAT));
 		} else {
@@ -443,15 +453,15 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 	aSrc = src;
 	stream_len = std::min<sint64>(max_samples, aSrc->getEnd() - first_samp);
 
-	if (mCodec.IsInitialized()) {
-		const WAVEFORMATEX *wfexSrc = aSrc->getWaveFormat();
-		const WAVEFORMATEX *wfexDst = GetFormat();
-		double sampleRatio = (double)wfexDst->nSamplesPerSec * (double)wfexSrc->nBlockAlign / (double)wfexSrc->nAvgBytesPerSec;
+	if (mpCodec) {
+		const VDWaveFormat *wfexSrc = (VDWaveFormat *)aSrc->getWaveFormat();
+		const VDWaveFormat *wfexDst = GetFormat();
+		double sampleRatio = (double)wfexDst->mSamplingRate * (double)wfexSrc->mBlockSize / (double)wfexSrc->mDataRate;
 		double secOffset = (double)start_us / 1000000.0;
 		mPrefill = 0;
 		if (start_us < 0)
-			mPrefill = (sint64)VDRoundToInt64(-secOffset * wfexDst->nSamplesPerSec);
-		mOffset = (sint64)VDRoundToInt64(secOffset * wfexDst->nSamplesPerSec);
+			mPrefill = (sint64)VDRoundToInt64(-secOffset * wfexDst->mSamplingRate);
+		mOffset = (sint64)VDRoundToInt64(secOffset * wfexDst->mSamplingRate);
 		stream_len = (sint64)VDRoundToInt64(stream_len * sampleRatio);
 	}
 
@@ -459,15 +469,25 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool 
 	cur_samp = first_samp;
 	end_samp = first_samp + max_samples;
 
-	mbSourceIsVBR = src->IsVBR();
+	mbSourceIsVBR = !mpCodec && src->GetVBRMode() == IVDStreamSource::kVBRModeVariableFrames;
 }
 
 AudioStreamSource::~AudioStreamSource() {
-	mCodec.Shutdown();
+	if (mpCodec) {
+		mpCodec->Shutdown();
+		mpCodec = NULL;
+	}
 }
 
 bool AudioStreamSource::IsVBR() const {
 	return mbSourceIsVBR;
+}
+
+const VDFraction AudioStreamSource::GetSampleRate() const {
+	if (!mpCodec)
+		return aSrc->getRate();
+
+	return AudioStream::GetSampleRate();
 }
 
 long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
@@ -478,27 +498,27 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 	if (mPrefill > 0) {
 		long tc = max_samples;
-		const int nBlockAlign = GetFormat()->nBlockAlign;
+		const int mBlockSize = GetFormat()->mBlockSize;
 
 		if (tc > mPrefill)
 			tc = (long)mPrefill;
 
-		const WAVEFORMATEX *wfex = GetFormat();
+		const VDWaveFormat *wfex = GetFormat();
 
-		if (wfex->wFormatTag == WAVE_FORMAT_PCM) {
-			if (GetFormat()->wBitsPerSample >= 16)
-				memset(buffer, 0, nBlockAlign*tc);
+		if (wfex->mTag == WAVE_FORMAT_PCM) {
+			if (GetFormat()->mSampleBits >= 16)
+				memset(buffer, 0, mBlockSize*tc);
 			else
-				memset(buffer, 0x80, nBlockAlign*tc);
+				memset(buffer, 0x80, mBlockSize*tc);
 
-			buffer = (char *)buffer + nBlockAlign*tc;
+			buffer = (char *)buffer + mBlockSize*tc;
 		} else {
 			uint32 actualBytes, actualSamples;
 			VDPosition startPos = aSrc->getStart();
 
-			int err = aSrc->read(startPos, 1, buffer, nBlockAlign, &actualBytes, &actualSamples);
+			int err = aSrc->read(startPos, 1, buffer, mBlockSize, &actualBytes, &actualSamples);
 
-			if (err == AVIERR_FILEREAD)
+			if (err == DubSource::kFileReadError)
 				throw MyError("Audio sample %lu could not be read in the source.  The file may be corrupted.", (unsigned long)startPos);
 			else if (err)
 				throw MyAVIError("AudioStreamSource", err);
@@ -507,20 +527,20 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 			if (tc > 1) {
 				char *dst = (char *)buffer;
 
-				for(int count = nBlockAlign*(tc-1); count; --count) {
-					dst[nBlockAlign] = dst[0];
+				for(int count = mBlockSize*(tc-1); count; --count) {
+					dst[mBlockSize] = dst[0];
 					++dst;
 				}
 
-				VDASSERT(dst == (char *)buffer + (tc-1)*nBlockAlign);
+				VDASSERT(dst == (char *)buffer + (tc-1)*mBlockSize);
 				buffer = dst;
 			}
 
-			buffer = (char *)buffer + nBlockAlign;
+			buffer = (char *)buffer + mBlockSize;
 		}
 
 		max_samples -= tc;
-		lAddedBytes = tc*nBlockAlign;
+		lAddedBytes = tc*mBlockSize;
 		lAddedSamples = tc;
 		mPrefill -= tc;
 	}
@@ -529,16 +549,16 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 	// read actual samples
 
-	if (mCodec.IsInitialized()) {
+	if (mpCodec) {
 		uint32 ltActualBytes, ltActualSamples;
-		LONG lBytesLeft = max_samples * GetFormat()->nBlockAlign;
+		LONG lBytesLeft = max_samples * GetFormat()->mBlockSize;
 		LONG lTotalBytes = lBytesLeft;
-		const int nBlockAlign = aSrc->getWaveFormat()->nBlockAlign;
+		const int mBlockSize = ((VDWaveFormat *)aSrc->getWaveFormat())->mBlockSize;
 
 		while(lBytesLeft > 0) {
 			// hmm... data still in the output buffer?
 			if (mPreskip) {
-				unsigned actual = mCodec.CopyOutput(NULL, mPreskip > 0x10000 ? 0x10000 : (uint32)mPreskip);
+				unsigned actual = mpCodec->CopyOutput(NULL, mPreskip > 0x10000 ? 0x10000 : (uint32)mPreskip);
 
 				if (actual) {
 					VDASSERT(actual <= mPreskip);
@@ -546,7 +566,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 					continue;
 				}
 			} else {
-				unsigned actual = mCodec.CopyOutput(buffer, lBytesLeft);
+				unsigned actual = mpCodec->CopyOutput(buffer, lBytesLeft);
 
 				VDASSERT(actual <= lBytesLeft);
 
@@ -558,17 +578,18 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 			}
 
 			// fill the input buffer up... if we haven't gotten a zero yet.
-			if (!fZeroRead) {
+//			if (!fZeroRead)
+			{
 				unsigned totalBytes = 0;
 				unsigned bytes;
-				void *dst = mCodec.LockInputBuffer(bytes);
+				void *dst = mpCodec->LockInputBuffer(bytes);
 
 				bool successfulRead = false;
 
-				if (bytes > 0) {
+				if (bytes >= mBlockSize) {
 					int err;
 					do {
-						long to_read = bytes/nBlockAlign;
+						long to_read = bytes/mBlockSize;
 
 						if (to_read > end_samp - cur_samp)
 							to_read = (long)(end_samp - cur_samp);
@@ -581,12 +602,14 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 							err = aSrc->read(cur_samp, to_read, dst, bytes, &ltActualBytes, &ltActualSamples);
 						}
 
-						if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
-							if (err == AVIERR_FILEREAD)
+						if (err != DubSource::kOK && err != DubSource::kBufferTooSmall) {
+							if (err == DubSource::kFileReadError)
 								throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", (unsigned long)cur_samp, (unsigned long)(cur_samp+to_read-1));
 							else
 								throw MyAVIError("AudioStreamSource", err);
 						}
+
+						VDASSERT(ltActualBytes <= bytes);
 
 						if (!ltActualBytes)
 							break;
@@ -598,23 +621,25 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 						successfulRead = true;
 
-					} while(bytes > 0 && err != AVIERR_BUFFERTOOSMALL && cur_samp < end_samp);
+					} while(bytes >= mBlockSize && err != DubSource::kBufferTooSmall && cur_samp < end_samp);
 				}
 
-				mCodec.UnlockInputBuffer(totalBytes);
+				mpCodec->UnlockInputBuffer(totalBytes);
 
 				if (!successfulRead)
 					fZeroRead = true;
 			}
 
-			if (!mCodec.Convert(fZeroRead, true))
+			if (!mpCodec->Convert(fZeroRead, true))
 				break;
 		};
 
 		long bytes = (lTotalBytes - lBytesLeft); 
 		*lplBytes = bytes + lAddedBytes;
 
-		return bytes / GetFormat()->nBlockAlign + lAddedSamples;
+		long samples = bytes / GetFormat()->mBlockSize + lAddedSamples;
+
+		return samples;
 	} else {
 		uint32 lSamples=0;
 
@@ -630,13 +655,13 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 						, sint64, cur_samp
 						, sint64, aSrc->getLength())
 			{
-				err = aSrc->read(cur_samp, max_samples, buffer, max_samples * GetFormat()->nBlockAlign, &bytes, &lSamples);
+				err = aSrc->read(cur_samp, max_samples, buffer, max_samples * GetFormat()->mBlockSize, &bytes, &lSamples);
 			}
 
 			*lplBytes = bytes;
 
-			if (AVIERR_OK != err) {
-				if (err == AVIERR_FILEREAD)
+			if (DubSource::kOK != err) {
+				if (err == DubSource::kFileReadError)
 					throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", (unsigned long)cur_samp, (unsigned long)(cur_samp+max_samples-1));
 				else
 					throw MyAVIError("AudioStreamSource", err);
@@ -666,16 +691,16 @@ bool AudioStreamSource::Skip(sint64 samples) {
 			return true;
 	}
 
-	// nBlockAlign = bytes per block.
+	// mBlockSize = bytes per block.
 	//
-	// nAvgBytesPerSec / nBlockAlign = blocks per second.
-	// nSamplesPerSec * nBlockAlign / nAvgBytesPerSec = samples per block.
+	// mDataRate / mBlockSize = blocks per second.
+	// mSamplingRate * mBlockSize / mDataRate = samples per block.
 
-	if (mCodec.IsInitialized()) {
-		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
+	if (mpCodec) {
+		const VDWaveFormat *pwfex = (VDWaveFormat *)aSrc->getWaveFormat();
 
-		if (samples < MulDiv(4*pwfex->nBlockAlign, pwfex->nSamplesPerSec, pwfex->nAvgBytesPerSec)) {
-			mPreskip += samples*GetFormat()->nBlockAlign;
+		if (samples < MulDiv(4*pwfex->mBlockSize, pwfex->mSamplingRate, pwfex->mDataRate)) {
+			mPreskip += samples*GetFormat()->mBlockSize;
 			VDASSERT(mPreskip >= 0);
 			return true;
 		}
@@ -692,7 +717,7 @@ bool AudioStreamSource::Skip(sint64 samples) {
 }
 
 bool AudioStreamSource::_isEnd() {
-	return (cur_samp >= end_samp || fZeroRead) && (!mCodec.IsInitialized() || !mCodec.GetOutputLevel());
+	return (cur_samp >= end_samp || fZeroRead) && (!mpCodec || !mpCodec->GetOutputLevel());
 }
 
 void AudioStreamSource::Seek(VDPosition pos) {
@@ -708,13 +733,13 @@ void AudioStreamSource::Seek(VDPosition pos) {
 	mPreskip = 0;
 	samples_read = pos;
 
-	const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
-	if (mCodec.IsInitialized()) {
+	const VDWaveFormat *pwfex = (VDWaveFormat *)aSrc->getWaveFormat();
+	if (mpCodec) {
 		// flush decompression buffers
-		mCodec.Restart();
+		mpCodec->Restart();
 
 		// recompute new position
-		double samplesPerMicroSec = (double)pwfex->nSamplesPerSec * (1.0 / 1000000.0);
+		double samplesPerMicroSec = (double)pwfex->mSamplingRate * (1.0 / 1000000.0);
 		cur_samp = aSrc->TimeToPositionVBR(VDRoundToInt64(pos / samplesPerMicroSec));
 
 		double timeError = pos - aSrc->PositionToTimeVBR(cur_samp)*samplesPerMicroSec;
@@ -726,14 +751,16 @@ void AudioStreamSource::Seek(VDPosition pos) {
 		if (timeError < 0)
 			timeError = 0;
 
-		mPreskip = GetFormat()->nBlockAlign * VDRoundToInt64(timeError);
+		mPreskip = GetFormat()->mBlockSize * VDRoundToInt64(timeError);
 		VDASSERT(mPreskip >= 0);
 
-	} else {
+	} else if (aSrc->GetVBRMode() == IVDStreamSource::kVBRModeTimestamped) {
 		// This is a bit of a hack -- we convert the position to time using linear
 		// conversion and then fix it with the VBR conversion.
-		double samplesToMicrosecondsFactor = (double)pwfex->nBlockAlign / (double)pwfex->nAvgBytesPerSec * 1000000.0;
+		double samplesToMicrosecondsFactor = (double)pwfex->mBlockSize / (double)pwfex->mDataRate * 1000000.0;
 		cur_samp = aSrc->TimeToPositionVBR(VDRoundToInt64(pos * samplesToMicrosecondsFactor));
+	} else {
+		cur_samp = pos;
 	}
 
 	if (cur_samp > end_samp)
@@ -754,23 +781,23 @@ void AudioStreamSource::Seek(VDPosition pos) {
 
 
 AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool to_stereo_or_right, bool single_only) {
-	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat;
+	VDWaveFormat *iFormat = src->GetFormat();
+	VDWaveFormat *oFormat;
 	bool to_stereo = single_only ? false : to_stereo_or_right;
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
-	oFormat->nChannels = (uint16)(to_stereo ? 2 : 1);
-	oFormat->wBitsPerSample = (uint16)(to_16bit ? 16 : 8);
+	oFormat->mChannels = (uint16)(to_stereo ? 2 : 1);
+	oFormat->mSampleBits = (uint16)(to_16bit ? 16 : 8);
 
-	if (iFormat->nChannels != 1 && iFormat->nChannels != 2)
+	if (iFormat->mChannels != 1 && iFormat->mChannels != 2)
 		throw MyError("Cannot convert audio: the source channel count is not supported (must be mono or stereo).");
 
-	if (iFormat->wBitsPerSample != 8 && iFormat->wBitsPerSample != 16)
+	if (iFormat->mSampleBits != 8 && iFormat->mSampleBits != 16)
 		throw MyError("Cannot convert audio: the source audio format is not supported (must be 8-bit or 16-bit PCM).");
 
-	bytesPerInputSample = (iFormat->nChannels>1 ? 2 : 1)
-						* (iFormat->wBitsPerSample>8 ? 2 : 1);
+	bytesPerInputSample = (iFormat->mChannels>1 ? 2 : 1)
+						* (iFormat->mSampleBits>8 ? 2 : 1);
 
 	bytesPerOutputSample = (to_stereo ? 2 : 1)
 						 * (to_16bit ? 2 : 1);
@@ -780,18 +807,18 @@ AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool
 	if (single_only) {
 		convRout = AudioPickConverterSingleChannel(iFormat, to_16bit);
 
-		if (to_stereo_or_right && iFormat->nChannels>1) {
+		if (to_stereo_or_right && iFormat->mChannels>1) {
 			offset = 1;
 
-			if (iFormat->wBitsPerSample>8)
+			if (iFormat->mSampleBits>8)
 				offset = 2;
 		}
 	} else
 		convRout = AudioPickConverter(iFormat, to_16bit, to_stereo);
 	SetSource(src);
 
-	oFormat->nAvgBytesPerSec = oFormat->nSamplesPerSec * bytesPerOutputSample;
-	oFormat->nBlockAlign = (uint16)bytesPerOutputSample;
+	oFormat->mDataRate = oFormat->mSamplingRate * bytesPerOutputSample;
+	oFormat->mBlockSize = (uint16)bytesPerOutputSample;
 
 
 	if (!(cbuffer = allocmem(bytesPerInputSample * BUFFER_SIZE)))
@@ -1131,19 +1158,19 @@ static void make_downsample_filter(long *filter_bank, int filter_width, long sam
 }
 
 AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool hi_quality) : AudioStream() {
-	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat;
+	VDWaveFormat *iFormat = src->GetFormat();
+	VDWaveFormat *oFormat;
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
-	if (iFormat->nChannels != 1 && iFormat->nChannels != 2)
+	if (iFormat->mChannels != 1 && iFormat->mChannels != 2)
 		throw MyError("Cannot resample audio: the source channel count is not supported (must be mono or stereo).");
 
-	if (iFormat->wBitsPerSample != 8 && iFormat->wBitsPerSample != 16)
+	if (iFormat->mSampleBits != 8 && iFormat->mSampleBits != 16)
 		throw MyError("Cannot resample audio: the source audio format is not supported (must be 8-bit or 16-bit PCM).");
 
-	if (oFormat->nChannels>1)
-		if (oFormat->wBitsPerSample>8) {
+	if (oFormat->mChannels>1)
+		if (oFormat->mSampleBits>8) {
 			ptsampleRout = audio_pointsample_32;
 			upsampleRout = audio_upsample_stereo16;
 			dnsampleRout = audio_downsample_stereo16;
@@ -1153,7 +1180,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 			dnsampleRout = audio_downsample_stereo8;
 		}
 	else
-		if (oFormat->wBitsPerSample>8) {
+		if (oFormat->mSampleBits>8) {
 			ptsampleRout = audio_pointsample_16;
 			upsampleRout = audio_upsample_mono16;
 			dnsampleRout = audio_downsample_mono16;
@@ -1165,17 +1192,17 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 	SetSource(src);
 
-	bytesPerSample = (iFormat->nChannels>1 ? 2 : 1)
-						* (iFormat->wBitsPerSample>8 ? 2 : 1);
+	bytesPerSample = (iFormat->mChannels>1 ? 2 : 1)
+						* (iFormat->mSampleBits>8 ? 2 : 1);
 
-	_RPT2(0,"AudioStreamResampler: converting from %ldHz to %ldHz\n", iFormat->nSamplesPerSec, new_rate);
+	_RPT2(0,"AudioStreamResampler: converting from %ldHz to %ldHz\n", iFormat->mSamplingRate, new_rate);
 
-	samp_frac = MulDiv(iFormat->nSamplesPerSec, 0x80000L, new_rate);
+	samp_frac = MulDiv(iFormat->mSamplingRate, 0x80000L, new_rate);
 	stream_len = (sint64)VDUMulDiv64x32(stream_len, 0x80000L, samp_frac);
 
-	oFormat->nSamplesPerSec = MulDiv(iFormat->nSamplesPerSec, 0x80000L, samp_frac);
-	oFormat->nAvgBytesPerSec = oFormat->nSamplesPerSec * bytesPerSample;
-	oFormat->nBlockAlign = (uint16)bytesPerSample;
+	oFormat->mSamplingRate = MulDiv(iFormat->mSamplingRate, 0x80000L, samp_frac);
+	oFormat->mDataRate = oFormat->mSamplingRate * bytesPerSample;
+	oFormat->mBlockSize = (uint16)bytesPerSample;
 
 	holdover = 0;
 	filter_bank = NULL;
@@ -1188,7 +1215,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 	// Initialize the buffer.
 
-	if (oFormat->wBitsPerSample>8)
+	if (oFormat->mSampleBits>8)
 		memset(cbuffer, 0x00, bytesPerSample * BUFFER_SIZE);
 	else
 		memset(cbuffer, 0x80, bytesPerSample * BUFFER_SIZE);
@@ -1211,7 +1238,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 			// Clear lower samples
 
-			if (oFormat->wBitsPerSample>8)
+			if (oFormat->mSampleBits>8)
 				memset(cbuffer, 0, bytesPerSample*filter_width);
 			else
 				memset(cbuffer, 0x80, bytesPerSample*filter_width);
@@ -1425,18 +1452,18 @@ bool AudioStreamResampler::_isEnd() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len, const char *pShortNameHint) : AudioStream() {
-	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat = AllocFormat(dst_format_len);
+AudioCompressor::AudioCompressor(AudioStream *src, const VDWaveFormat *dst_format, long dst_format_len, const char *pShortNameHint) : AudioStream() {
+	VDWaveFormat *iFormat = src->GetFormat();
+	VDWaveFormat *oFormat = AllocFormat(dst_format_len);
 
 	memcpy(oFormat, dst_format, dst_format_len);
 
 	SetSource(src);
 
-	mCodec.Init(iFormat, dst_format, true, pShortNameHint);
+	mpCodec = VDCreateAudioCompressorW32((const VDWaveFormat *)iFormat, dst_format, pShortNameHint);
 
-	bytesPerInputSample = iFormat->nBlockAlign;
-	bytesPerOutputSample = dst_format->nBlockAlign;
+	bytesPerInputSample = iFormat->mBlockSize;
+	bytesPerOutputSample = dst_format->mBlockSize;
 
 	fStreamEnded = FALSE;
 }
@@ -1458,7 +1485,7 @@ void AudioCompressor::CompensateForMP3() {
 	// By coincidence, the MPEGLAYER3WAVEFORMAT struct has a field
 	// called nCodecDelay which is set to this value...
 
-	if (GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
+	if (GetFormat()->mTag == WAVE_FORMAT_MPEGLAYER3) {
 		long samples = ((MPEGLAYER3WAVEFORMAT *)GetFormat())->nCodecDelay;
 
 		// Note: LameACM does not have a codec delay!
@@ -1492,7 +1519,7 @@ long AudioCompressor::_Read(void *buffer, long samples, long *lplBytes) {
 	long space = samples * bytesPerOutputSample;
 
 	while(space > 0) {
-		unsigned actualBytes = mCodec.CopyOutput(buffer, space);
+		unsigned actualBytes = mpCodec->CopyOutput(buffer, space);
 		VDASSERT(!(actualBytes % bytesPerOutputSample));	// should always be true, since we trim runts in Process()
 
 		if (!actualBytes) {
@@ -1514,7 +1541,7 @@ long AudioCompressor::_Read(void *buffer, long samples, long *lplBytes) {
 }
 
 bool AudioCompressor::Process() {
-	if (mCodec.GetOutputLevel())
+	if (mpCodec->GetOutputLevel())
 		return true;
 
 	// fill the input buffer up!
@@ -1522,7 +1549,7 @@ bool AudioCompressor::Process() {
 
 	if (!fStreamEnded) {
 		unsigned inputSpace;
-		char *dst0 = (char *)mCodec.LockInputBuffer(inputSpace);
+		char *dst0 = (char *)mpCodec->LockInputBuffer(inputSpace);
 		if (inputSpace >= bytesPerInputSample) {
 			char *dst = dst0;
 
@@ -1547,17 +1574,17 @@ bool AudioCompressor::Process() {
 			if (dst > dst0) {
 				VDASSERT(dst - dst0 <= inputSpace);
 
-				mCodec.UnlockInputBuffer(dst - dst0);
+				mpCodec->UnlockInputBuffer(dst - dst0);
 				audioRead = true;
 			}
 		}
 	}
 
-	return mCodec.Convert(fStreamEnded, !audioRead);
+	return mpCodec->Convert(fStreamEnded, !audioRead);
 }
 
 bool AudioCompressor::isEnd() {
-	return fStreamEnded && !mCodec.GetOutputLevel();
+	return fStreamEnded && !mpCodec->GetOutputLevel();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1659,20 +1686,20 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 tail, IVDStreamSource *pVBRAudio) {
-	const long nBytesPerSec = pwfex->nAvgBytesPerSec;
-	const int nBlockAlign = pwfex->nBlockAlign;
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, const VDWaveFormat *pwfex, sint64 tail, IVDStreamSource *pVBRAudio) {
+	const long nBytesPerSec = pwfex->mDataRate;
+	const int mBlockSize = pwfex->mBlockSize;
 	sint64 total = 0;
 
 	// I like accuracy, so let's strive for accuracy.  Accumulate errors as we go;
 	// use them to offset the starting points of subsequent segments, never being
 	// more than 1/2 segment off.
 	//
-	// The conversion equation is in units of (1000000*nBlockAlign).
+	// The conversion equation is in units of (1000000*mBlockSize).
 
 	sint64 nError		= 0;
 	sint64 nMultiplier	= (sint64)videoFrameRate.getLo() * nBytesPerSec;
-	sint64 nDivisor		= (sint64)videoFrameRate.getHi() * nBlockAlign;
+	sint64 nDivisor		= (sint64)videoFrameRate.getHi() * mBlockSize;
 	sint64 nRound		= nDivisor/2;
 	sint64 nTotalFramesAccumulated = 0;
 
@@ -1683,7 +1710,7 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 		//
 		// Ideally, we want the audio and video streams to be of the exact length.
 		//
-		// Audiolen = (videolen * usPerFrame * nBytesPerSec) / (1000000*nBlockAlign);
+		// Audiolen = (videolen * usPerFrame * nBytesPerSec) / (1000000*mBlockSize);
 
 		nError = total*nDivisor - (nTotalFramesAccumulated * nMultiplier);
 
@@ -1728,20 +1755,14 @@ namespace {
 }
 
 void VDTranslateVideoSubsetToAudioSubset(FrameSubset& dst, const vdfastvector<AudioStream *>& sources, const FrameSubset& videoSubset, const VDFraction& videoFrameRate, bool appendTail) {
-	const WAVEFORMATEX *pwfex = sources[0]->GetFormat();
-	const long nBytesPerSec = pwfex->nAvgBytesPerSec;
-	const int nBlockAlign = pwfex->nBlockAlign;
 	sint64 total = 0;
 
 	// I like accuracy, so let's strive for accuracy.  Accumulate errors as we go;
 	// use them to offset the starting points of subsequent segments, never being
 	// more than 1/2 segment off.
 	//
-	// The conversion equation is in units of (1000000*nBlockAlign).
-	sint64 nError		= 0;
-	sint64 nMultiplier	= (sint64)videoFrameRate.getLo() * nBytesPerSec;
-	sint64 nDivisor		= (sint64)videoFrameRate.getHi() * nBlockAlign;
-	sint64 nRound		= nDivisor/2;
+	// The conversion equation is in units of (1000000*mBlockSize).
+	double ratio		= sources[0]->GetSampleRate().asDouble() / videoFrameRate.asDouble();
 	sint64 nTotalFramesAccumulated = 0;
 
 	int lastSource = -1;
@@ -1756,20 +1777,22 @@ void VDTranslateVideoSubsetToAudioSubset(FrameSubset& dst, const vdfastvector<Au
 		//
 		// Ideally, we want the audio and video streams to be of the exact length.
 		//
-		// Audiolen = (videolen * usPerFrame * nBytesPerSec) / (1000000*nBlockAlign);
-
-		nError = total*nDivisor - (nTotalFramesAccumulated * nMultiplier);
+		// Audiolen = (videolen * usPerFrame * nBytesPerSec) / (1000000*mBlockSize);
 
 		// Add a block.
 
-		start = ((sint64)it->start * nMultiplier + nRound + nError) / nDivisor;
-		end = ((sint64)(it->start + it->len) * nMultiplier + nRound) / nDivisor;
+		double error = (double)total - (double)nTotalFramesAccumulated * ratio;
+		start = VDRoundToInt64((double)it->start * ratio + error);
+
+		end = VDRoundToInt64((double)(it->start + it->len) * ratio);
 
 		nTotalFramesAccumulated += it->len;
 
 		sint64 addlen = end - start;
-		dst.addRange(start, addlen, false, source);
-		total += addlen;
+		if (addlen > 0) {
+			dst.addRange(start, addlen, false, source);
+			total += addlen;
+		}
 	}
 
 	if (appendTail && lastSource >= 0) {
@@ -1793,7 +1816,7 @@ AudioSubset::AudioSubset(const vdfastvector<AudioStream *>& sources, const Frame
 	, mbLimited(!appendTail)
 	, mbEnded(false)
 {
-	const WAVEFORMATEX *pSrcFormat = sources[0]->GetFormat();
+	const VDWaveFormat *pSrcFormat = sources[0]->GetFormat();
 	uint32 srcFormatLen = sources[0]->GetFormatLen();
 
 	mSources = sources;
@@ -1802,8 +1825,12 @@ AudioSubset::AudioSubset(const vdfastvector<AudioStream *>& sources, const Frame
 
 	VDTranslateVideoSubsetToAudioSubset(subset, sources, *pfs, videoFrameRate, appendTail);
 
-	if (preskew > 0)
-		subset.deleteRange(0, VDRoundToInt64(((double)pSrcFormat->nAvgBytesPerSec * (double)preskew) / ((double)pSrcFormat->nBlockAlign * 1000000.0)));
+	if (preskew > 0) {
+		const double preskewSecs = (double)preskew / 1000000.0;
+		const VDFraction& srcSampleRate = sources[0]->GetSampleRate();
+
+		subset.deleteRange(0, VDRoundToInt64(preskewSecs * srcSampleRate.asDouble()));
+	}
 
 	stream_len = subset.getTotalFrames();
 
@@ -1812,10 +1839,28 @@ AudioSubset::AudioSubset(const vdfastvector<AudioStream *>& sources, const Frame
 	pfsnCur = subset.begin();
 	mOffset = 0;
 	mSrcPos = 0;
-	mSkipSize = kSkipBufferSize / pSrcFormat->nBlockAlign;
+	mSkipSize = kSkipBufferSize / pSrcFormat->mBlockSize;
 }
 
 AudioSubset::~AudioSubset() {
+}
+
+const VDFraction AudioSubset::GetSampleRate() const {
+	if (mSources.empty())
+		return VDFraction(format->mDataRate, format->mBlockSize);
+
+	return mSources.front()->GetSampleRate();
+}
+
+bool AudioSubset::IsVBR() const {
+	for(Sources::const_iterator it(mSources.begin()), itEnd(mSources.end()); it!=itEnd; ++it) {
+		AudioStream *src = *it;
+
+		if (src->IsVBR())
+			return true;
+	}
+
+	return false;
 }
 
 long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
@@ -1927,8 +1972,8 @@ static void amplify16(signed short *dst, int count, long lFactor) {
 AudioStreamAmplifier::AudioStreamAmplifier(AudioStream *src, float factor)
 	: mFactor(VDRoundToInt(256.0f * factor))
 {
-	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat;
+	VDWaveFormat *iFormat = src->GetFormat();
+	VDWaveFormat *oFormat;
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
@@ -1945,7 +1990,7 @@ long AudioStreamAmplifier::_Read(void *buffer, long samples, long *lplBytes) {
 	lActualSamples = source->Read(buffer, samples, &lBytes);
 
 	if (lActualSamples) {
-		if (GetFormat()->wBitsPerSample > 8)
+		if (GetFormat()->mSampleBits > 8)
 			amplify16((signed short *)buffer, lBytes/2, mFactor);
 		else
 			amplify8((unsigned char *)buffer, lBytes, mFactor);
@@ -1972,8 +2017,8 @@ bool AudioStreamAmplifier::Skip(sint64 samples) {
 ///////////////////////////////////////////////////////////////////////////
 
 AudioStreamL3Corrector::AudioStreamL3Corrector(AudioStream *src){
-	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat;
+	VDWaveFormat *iFormat = src->GetFormat();
+	VDWaveFormat *oFormat;
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
@@ -1981,6 +2026,10 @@ AudioStreamL3Corrector::AudioStreamL3Corrector(AudioStream *src){
 }
 
 AudioStreamL3Corrector::~AudioStreamL3Corrector() {
+}
+
+const VDFraction AudioStreamL3Corrector::GetSampleRate() const {
+	return source->GetSampleRate();
 }
 
 long AudioStreamL3Corrector::_Read(void *buffer, long samples, long *lplBytes) {
@@ -2040,14 +2089,14 @@ AudioFilterSystemStream::AudioFilterSystemStream(const VDAudioFilterGraph& graph
 	mFilterSystem.Seek(start_us);
 
 	int len = mpFilterIF->GetFormatLen();
-	const WAVEFORMATEX *pFormat = (const WAVEFORMATEX *)mpFilterIF->GetFormat();
+	const VDWaveFormat *pFormat = (const VDWaveFormat *)mpFilterIF->GetFormat();
 
-	if (pFormat->wFormatTag == WAVE_FORMAT_PCM)
+	if (pFormat->mTag == WAVE_FORMAT_PCM)
 		len = sizeof(PCMWAVEFORMAT);
 
 	memcpy(AllocFormat(len), pFormat, len);
 
-	stream_len = ((mpFilterIF->GetLength() - start_us)*pFormat->nAvgBytesPerSec) / (pFormat->nBlockAlign*(sint64)1000000);
+	stream_len = ((mpFilterIF->GetLength() - start_us)*pFormat->mDataRate) / (pFormat->mBlockSize*(sint64)1000000);
 
 	mStartTime = start_us;
 	mSamplePos = 0;
@@ -2070,8 +2119,8 @@ long AudioFilterSystemStream::_Read(void *buffer, long samples, long *lplBytes) 
 
 			if (actual) {
 				total_samples += actual;
-				total_bytes += format->nBlockAlign*actual;
-				dst += format->nBlockAlign*actual;
+				total_bytes += format->mBlockSize*actual;
+				dst += format->mBlockSize*actual;
 			}
 
 			if (total_samples >= samples)
@@ -2095,26 +2144,26 @@ bool AudioFilterSystemStream::_isEnd() {
 }
 
 bool AudioFilterSystemStream::Skip(sint64 samples) {
-	const WAVEFORMATEX *pFormat = GetFormat();
+	const VDWaveFormat *pFormat = GetFormat();
 
 	// for short skips (<1 sec), just read through
-	if (samples < pFormat->nAvgBytesPerSec / pFormat->nBlockAlign)
+	if (samples < pFormat->mDataRate / pFormat->mBlockSize)
 		return false;
 
 	// reseek
 	mSamplePos += samples;
 
-	mFilterSystem.Seek(mStartTime + (mSamplePos * pFormat->nBlockAlign * 1000000) / pFormat->nAvgBytesPerSec);
+	mFilterSystem.Seek(mStartTime + (mSamplePos * pFormat->mBlockSize * 1000000) / pFormat->mDataRate);
 
 	return true;
 }
 
 void AudioFilterSystemStream::Seek(VDPosition pos) {
-	const WAVEFORMATEX *pFormat = GetFormat();
+	const VDWaveFormat *pFormat = GetFormat();
 
 	// reseek
 	mSamplePos = pos;
 
-	mFilterSystem.Seek(mStartTime + (mSamplePos * pFormat->nBlockAlign * 1000000) / pFormat->nAvgBytesPerSec);
+	mFilterSystem.Seek(mStartTime + (mSamplePos * pFormat->mBlockSize * 1000000) / pFormat->mDataRate);
 }
 

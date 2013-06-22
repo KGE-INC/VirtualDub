@@ -1,6 +1,49 @@
 VirtualDub change log
 
-Build %build% (1.7.8, stable): [%date%]
+Build %build% (1.8.0, experimental): [%date%]
+   [breaking changes]
+   * The old support for reading "striped AVIs" has been removed.
+   
+   [features added]
+   * Alternate audio streams in an AVI file can now be chosen.
+   * Added fallback audio decoders for mu-law, A-law, MP2, and MP3 formats.
+   * Video files with audio tracks can also be used for replacing existing audio.
+   * MP3 files without a WAV header can now be used as input.
+   * Added support for writing AVI files with VBR audio.
+   * The default frame rate for loaded image sequences can now be changed in Preferences.
+   * The time knob can be dragged during a preview.
+   * Mark-in and mark-out commands now work during preview.
+   * Added new "time stretch" audio filter.
+   * Increased precision of ratios for audio stretch filters.
+   * Added "zone plate" test video mode.
+   * Changes to the input color format are now reflected in the preview panes.
+   * Added support for non-standard 15fps MPEG-1 video streams.
+   * VBR warning for AVI audio streams can now be toggled in Preferences.
+   * Filters: Can now be toggled on and off in the filter list.
+   * Filters: Fast YCbCr cropping is now supported.
+   * Filters: Flip vertically, grayscale, and resize now support direct planar YCbCr processing.
+   * Filters: Added "convert format" video filter.
+   * Filters: Redesigned color popup; hold down SHIFT. Now works after stretching video window.
+   * Script: Implemented string+int, string+long, and string+double.
+   * Plugins: Input driver plugins can now delegate video decompression to VirtualDub.
+   * Capture: Added /capfilealloc switch to preallocate capture files from the command line.
+   * Hex editor: Now supports Unicode filenames.
+
+   [bugs fixed]
+   * Cmdline: Ctrl+C/Break when a render is running also aborts a running script.
+   * If a particular input driver is forced when opening a video, that driver is remembered in a job.
+   * Video filter dialog didn't update the indicated frame sizes properly when deleting a filter.
+   * Fixed slight delay when a rendering job stops.
+   * Optimized AVI frame index code to avoid extreme delay when starting a direct stream mode operation on an AVI file with only one key frame.
+   * Progress bar is now lies less when reindexing large AVI files.
+   * Fixed issue in AVI aggressive recovery algorithm that could cause valid chunks to be missed.
+   * Selection was not properly saved in .vcf files, causing it to be invalid on load if edits had occurred.
+   * Fixed crash when dragging curve points with no video loaded.
+   * Video/audio error mode dialogs weren't properly disabling options not supported for the current input file.
+   * Capture: Video filter list now reflects active capture format.
+   * D3D: Fixed slowdown when bicubic mode is enabled.
+
+Build 28346 (1.7.8, stable): [February 12, 2008]
    [bugs fixed]
    * Capture: Fixed crash when starting capture from command line with filters and preview acceleration enabled.
    * Capture: Fixed issues with custom DirectShow filters not reconnecting.

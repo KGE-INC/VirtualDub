@@ -21,6 +21,7 @@
 #include <vd2/Dita/services.h>
 #include <vd2/system/atomic.h>
 #include <vd2/system/error.h>
+#include <vd2/system/vdalloc.h>
 #include <vd2/system/vdstring.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/registry.h>
@@ -30,6 +31,8 @@
 #include <vd2/Riza/display.h>
 #include <vd2/Riza/audioout.h>
 #include "InputFile.h"
+#include "VideoSource.h"
+#include "AudioSource.h"
 
 using namespace nsVDCapture;
 
@@ -147,8 +150,8 @@ protected:
 	VDAtomicInt	mDisplayMode;
 
 	vdrefptr<InputFile>	mpInputFile;
-	IVDVideoSource	*mpVideo;
-	AudioSource		*mpAudio;
+	vdrefptr<IVDVideoSource> mpVideo;
+	vdrefptr<AudioSource> mpAudio;
 	VDPosition		mAudioPos;
 	VDPosition		mLastDisplayedVideoFrame;
 
@@ -329,7 +332,7 @@ bool VDCaptureDriverEmulation::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vfor
 		vformat->biClrImportant = 0;
 		return true;
 	} else {
-		const BITMAPINFOHEADER *format = mpVideo->getDecompressedFormat();
+		const BITMAPINFOHEADER *format = (const BITMAPINFOHEADER *)mpVideo->getDecompressedFormat();
 
 		vformat.assign(format, VDGetSizeOfBitmapHeaderW32(format));
 		return true;
@@ -340,7 +343,7 @@ bool VDCaptureDriverEmulation::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint
 	if (mpVideo) {
 		mpDisplay->Reset();
 		mLastDisplayedVideoFrame = -1;
-		bool success = mpVideo->setDecompressedFormat(pbih);
+		bool success = mpVideo->setDecompressedFormat((const VDAVIBitmapInfoHeader *)pbih);
 		UpdateDisplayMode();
 		if (mpCB)
 			mpCB->CapEvent(kEventVideoFormatChanged, 0);
@@ -443,12 +446,12 @@ void VDCaptureDriverEmulation::GetAvailableAudioFormats(std::list<vdstructex<WAV
 	aformats.clear();
 
 	if (mpAudio)
-		aformats.push_back(vdstructex<WAVEFORMATEX>(mpAudio->getWaveFormat(), mpAudio->getFormatLen()));
+		aformats.push_back(vdstructex<WAVEFORMATEX>((WAVEFORMATEX *)mpAudio->getWaveFormat(), mpAudio->getFormatLen()));
 }
 
 bool VDCaptureDriverEmulation::GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) {
 	if (mpAudio) {
-		aformat.assign(mpAudio->getWaveFormat(), mpAudio->getFormatLen());
+		aformat.assign((WAVEFORMATEX *)mpAudio->getWaveFormat(), mpAudio->getFormatLen());
 		return true;
 	}
 	return false;
@@ -575,34 +578,33 @@ void VDCaptureDriverEmulation::CloseInputFile() {
 }
 
 void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
-	IVDInputDriver *pDriver = VDAutoselectInputDriverForFile(fn);
+	IVDInputDriver *pDriver = VDAutoselectInputDriverForFile(fn, IVDInputDriver::kF_Video);
 
 	mpInputFile = pDriver->CreateInputFile(0);
 	if (!mpInputFile)
 		throw MyMemoryError();
 
 	mpInputFile->Init(fn);
+	mpInputFile->GetVideoSource(0, ~mpVideo);
+	mpInputFile->GetAudioSource(0, ~mpAudio);
 
-	IVDVideoSource *pVideo = mpInputFile->videoSrc;
-	AudioSource *pAudio = mpInputFile->audioSrc;
-
-	if (pVideo) {
+	if (mpVideo) {
 		mFrame = 0;
-		mFrameCount = pVideo->asStream()->getLength();
+		mFrameCount = mpVideo->asStream()->getLength();
 
-		pVideo->setTargetFormat(0);
+		mpVideo->setTargetFormat(0);
 		mLastDisplayedVideoFrame = -1;
 
-		sint32 period = (sint32)pVideo->asStream()->getRate().scale64ir(1000);
+		sint32 period = (sint32)mpVideo->asStream()->getRate().scale64ir(1000);
 
-		if (pAudio)
+		if (mpAudio)
 			period >>= 2;
 
 		mFrameTimer.Init(this, period);
 	}
 
-	if (pAudio) {
-		const WAVEFORMATEX *pwfex = pAudio->getWaveFormat();
+	if (mpAudio) {
+		const WAVEFORMATEX *pwfex = (WAVEFORMATEX *)mpAudio->getWaveFormat();
 
 		if (pwfex->wFormatTag == WAVE_FORMAT_PCM) {
 			sint32 audioSamplesPerBlock = (pwfex->nAvgBytesPerSec / 5 + pwfex->nBlockAlign - 1) / pwfex->nBlockAlign;
@@ -620,11 +622,8 @@ void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
 			mAudioPos = 0;
 			mAudioClientPosition = 0;
 		} else
-			pAudio = NULL;
+			mpAudio = NULL;
 	}
-
-	mpVideo = pVideo;
-	mpAudio = pAudio;
 
 	if (mpVideo)
 		UpdateDisplayMode();
@@ -655,11 +654,13 @@ void VDCaptureDriverEmulation::OnTick() {
 	VDTime clk = (VDTime)(VDGetAccurateTick() - mCaptureStart) * 1000;
 
 	if (mpAudio) {
-		double audioRate = (double)mpAudio->getRate();
+		IVDStreamSource *videoStream = mpVideo->asStream();
+		double audioRate = mpAudio->getRate().asDouble();
+		double videoRate = videoStream->getRate().asDouble();
 		VDPosition samples = (VDPosition)(mpAudioOutput->GetPosition() / 1000.0 * audioRate) % mpAudio->getLength();
-		mFrame = (VDPosition)(samples / audioRate * (double)mpVideo->asStream()->getRate());
+		mFrame = (VDPosition)(samples / audioRate * videoRate);
 
-		VDPosition limit = mpVideo->asStream()->getLength();
+		VDPosition limit = videoStream->getLength();
 
 		if (mFrame >= limit)
 			mFrame = limit - 1;

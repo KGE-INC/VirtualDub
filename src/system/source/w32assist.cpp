@@ -397,3 +397,119 @@ bool VDPatchModuleImportTableW32(HMODULE hmod, const char *srcModule, const char
 
 	return false;
 }
+
+bool VDPatchModuleExportTableW32(HMODULE hmod, const char *name, void *pCompareValue, void *pNewValue, void *volatile *ppOldValue) {
+	char *pBase = (char *)hmod;
+
+	__try {
+		// The PEheader offset is at hmod+0x3c.  Add the size of the optional header
+		// to step to the section headers.
+
+		const uint32 peoffset = ((const long *)pBase)[15];
+		const uint32 signature = *(uint32 *)(pBase + peoffset);
+
+		if (signature != IMAGE_NT_SIGNATURE)
+			return false;
+
+		const IMAGE_FILE_HEADER *pHeader = (const IMAGE_FILE_HEADER *)(pBase + peoffset + 4);
+
+		// Verify the PE optional structure.
+
+		if (pHeader->SizeOfOptionalHeader < 104)
+			return false;
+
+		// Find export directory.
+
+		const IMAGE_EXPORT_DIRECTORY *pExportDir;
+
+		switch(*(short *)((char *)pHeader + IMAGE_SIZEOF_FILE_HEADER)) {
+
+#ifdef _M_AMD64
+		case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+			{
+				const IMAGE_OPTIONAL_HEADER64 *pOpt = (IMAGE_OPTIONAL_HEADER64 *)((const char *)pHeader + sizeof(IMAGE_FILE_HEADER));
+
+				if (pOpt->NumberOfRvaAndSizes < 1)
+					return false;
+
+				DWORD exportDirRVA = pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+
+				if (!exportDirRVA)
+					return false;
+
+				pExportDir = (const IMAGE_EXPORT_DIRECTORY *)(pBase + exportDirRVA);
+			}
+			break;
+#else
+		case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
+			{
+				const IMAGE_OPTIONAL_HEADER32 *pOpt = (IMAGE_OPTIONAL_HEADER32 *)((const char *)pHeader + sizeof(IMAGE_FILE_HEADER));
+
+				if (pOpt->NumberOfRvaAndSizes < 1)
+					return false;
+
+				DWORD exportDirRVA = pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+
+				if (!exportDirRVA)
+					return false;
+
+				pExportDir = (const IMAGE_EXPORT_DIRECTORY *)(pBase + exportDirRVA);
+			}
+			break;
+#endif
+
+		default:		// reject PE32+
+			return false;
+		}
+
+		// Scan for the export name.
+		DWORD nameCount = pExportDir->AddressOfNames;
+		const DWORD *nameRVAs = (const DWORD *)(pBase + pExportDir->AddressOfNames);
+		const WORD *nameOrdinals = (const WORD *)(pBase + pExportDir->AddressOfNameOrdinals);
+		DWORD *functionTable = (DWORD *)(pBase + pExportDir->AddressOfFunctions);
+
+		for(DWORD i=0; i<nameCount; ++i) {
+			DWORD nameRVA = nameRVAs[i];
+			const char *pName = (const char *)(pBase + nameRVA);
+
+			// compare names
+			if (!strcmp(pName, name)) {
+
+				// name matches -- look up the function entry
+				WORD ordinal = nameOrdinals[i];
+				DWORD *pRVA = &functionTable[ordinal];
+				
+				// Reset the protection.
+
+				DWORD newRVA = (DWORD)pNewValue - (DWORD)pBase;
+
+				DWORD dwOldProtect;
+				if (VirtualProtect((void *)pRVA, sizeof(DWORD), PAGE_EXECUTE_READWRITE, &dwOldProtect)) {
+					if (ppOldValue) {
+						for(;;) {
+							DWORD oldRVA = *pRVA;
+							void *old = pBase + oldRVA;
+							if (pCompareValue && pCompareValue != old)
+								return false;
+
+							*ppOldValue = pBase + oldRVA;
+							if (oldRVA == VDAtomicInt::staticCompareExchange((volatile int *)pRVA, newRVA, oldRVA))
+								break;
+						}
+					} else {
+						*pRVA = newRVA;
+					}
+
+					VirtualProtect((void *)pRVA, sizeof(DWORD), dwOldProtect, &dwOldProtect);
+
+					return true;
+				}
+
+				break;
+			}
+		}
+	} __except(1) {
+	}
+
+	return false;
+}

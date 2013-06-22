@@ -18,56 +18,21 @@
 #ifndef f_FILTER_H
 #define f_FILTER_H
 
-#include <windows.h>
-
-#include <vd2/plugin/vdvideofiltold.h>
-
-#include "VBitmap.h"
-
-//////////////////
-
-struct CScriptObject;
-///////////////////
-
-class VFBitmap;
-class FilterActivation;
-struct FilterFunctions;
-
-typedef int  (*FilterInitProc     )(FilterActivation *fa, const FilterFunctions *ff);
-typedef void (*FilterDeinitProc   )(FilterActivation *fa, const FilterFunctions *ff);
-typedef int  (*FilterRunProc      )(const FilterActivation *fa, const FilterFunctions *ff);
-typedef long (*FilterParamProc    )(FilterActivation *fa, const FilterFunctions *ff);
-typedef int  (*FilterConfigProc   )(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd);
-typedef void (*FilterStringProc   )(const FilterActivation *fa, const FilterFunctions *ff, char *buf);
-typedef int  (*FilterStartProc    )(FilterActivation *fa, const FilterFunctions *ff);
-typedef int  (*FilterEndProc      )(FilterActivation *fa, const FilterFunctions *ff);
-typedef bool (*FilterScriptStrProc)(FilterActivation *fa, const FilterFunctions *, char *, int);
-typedef void (*FilterStringProc2  )(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen);
-typedef int  (*FilterSerialize    )(FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxbuf);
-typedef void (*FilterDeserialize  )(FilterActivation *fa, const FilterFunctions *ff, const char *buf, int maxbuf);
-typedef void (*FilterCopy         )(FilterActivation *fa, const FilterFunctions *ff, void *dst);
-
-typedef int (__cdecl *FilterModuleInitProc)(struct FilterModule *fm, const FilterFunctions *ff, int& vdfd_ver, int& vdfd_compat);
-typedef void (__cdecl *FilterModuleDeinitProc)(struct FilterModule *fm, const FilterFunctions *ff);
-
-//////////
-
-typedef void (__cdecl *FilterPreviewButtonCallback)(bool fNewState, void *pData);
-typedef void (__cdecl *FilterPreviewSampleCallback)(VFBitmap *, long lFrame, long lCount, void *pData);
-
-//////////
-
-// These flags must match those in cpuaccel.h!
-
-#ifndef f_VIRTUALDUB_CPUACCEL_H
-#define CPUF_SUPPORTS_CPUID			(0x00000001L)
-#define CPUF_SUPPORTS_FPU			(0x00000002L)
-#define CPUF_SUPPORTS_MMX			(0x00000004L)
-#define CPUF_SUPPORTS_INTEGER_SSE	(0x00000008L)
-#define CPUF_SUPPORTS_SSE			(0x00000010L)
-#define CPUF_SUPPORTS_SSE2			(0x00000020L)
-#define CPUF_SUPPORTS_3DNOW			(0x00000040L)
-#define CPUF_SUPPORTS_3DNOW_EXT		(0x00000080L)
+#ifdef _MSC_VER
+	#pragma once
 #endif
+
+#include <vd2/plugin/vdvideofilt.h>
+
+typedef VDXFilterDefinition		FilterDefinition;
+typedef VDXFilterActivation		FilterActivation;
+typedef VDXFilterFunctions		FilterFunctions;
+typedef IVDXScriptInterpreter	IScriptInterpreter;
+typedef VDXScriptValue			CScriptValue;
+typedef VDXScriptObject			CScriptObject;
+typedef VDXScriptFunctionDef	ScriptFunctionDef;
+typedef VDXScriptFunctionPtr	ScriptFunctionPtr;
+typedef IVDXFilterPreview		IFilterPreview;
+typedef IVDXFilterPreview2		IVDFilterPreview2;
 
 #endif

@@ -27,6 +27,7 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/text.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/filesys.h>
 
 #include "symbols.h"
 #include "utils.h"
@@ -299,7 +300,16 @@ void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<con
 	if (fLock) {
 		fclose(fLock);
 	} else {
-		inc_version();
-		write_version();
+		ProjectSetup ps;
+
+		if (VDDoesPathExist(L"build.cfg")) {
+			ps.Read(L"build.cfg");
+		} else {
+			ps.Query();
+			ps.Write(L"build.cfg");
+		}
+
+		inc_version(ps.mCounterTag.empty() ? NULL : ps.mCounterTag.c_str());
+		write_version(ps.mCounterTag.empty() ? NULL : ps.mCounterTag.c_str());
 	}
 }

@@ -17,30 +17,40 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-#include <commctrl.h>
-
-#include "resource.h"
 #include "filter.h"
 
 int null_run(const FilterActivation *fa, const FilterFunctions *ff) {
-
-	// gee, this is such a *hard* filter... I don't know if I can handle it!
-
 	return 0;
 }
 
 long null_param(FilterActivation *fa, const FilterFunctions *ff) {
+	switch(fa->src.mpPixmapLayout->format) {
+	case nsVDXPixmap::kPixFormat_XRGB1555:
+	case nsVDXPixmap::kPixFormat_RGB565:
+	case nsVDXPixmap::kPixFormat_RGB888:
+	case nsVDXPixmap::kPixFormat_XRGB8888:
+	case nsVDXPixmap::kPixFormat_Y8:
+	case nsVDXPixmap::kPixFormat_YUV422_UYVY:
+	case nsVDXPixmap::kPixFormat_YUV422_YUYV:
+	case nsVDXPixmap::kPixFormat_YUV444_Planar:
+	case nsVDXPixmap::kPixFormat_YUV422_Planar:
+	case nsVDXPixmap::kPixFormat_YUV420_Planar:
+	case nsVDXPixmap::kPixFormat_YUV411_Planar:
+	case nsVDXPixmap::kPixFormat_YUV410_Planar:
+		break;
+
+	default:
+		return FILTERPARAM_NOT_SUPPORTED;
+	}
+
 	fa->dst.offset	= fa->src.offset;
-	fa->dst.modulo	= fa->src.modulo;
-	fa->dst.pitch	= fa->src.pitch;
-	return 0;
+	return FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 FilterDefinition filterDef_null={
 	0,0,NULL,
 	"null transform",
-	"Copies source to destination, allowing for clipping without any real work.\n\n[You expect me to optimize this?]",
+	"Does nothing. Typically used as a placeholder for cropping.",
 	NULL,NULL,
 	0,
 	NULL,NULL,

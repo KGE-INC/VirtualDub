@@ -719,7 +719,7 @@ static INT_PTR APIENTRY logoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPA
 
 				CheckDlgButton(hDlg, idbypos[mfd->justify_y][mfd->justify_x], TRUE);
 
-				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 
 				LogoReenableDlgControls(hDlg);
 			}
@@ -813,7 +813,7 @@ static INT_PTR APIENTRY logoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPA
 			case IDC_DIR_BOTTOMRIGHT:		mfd->justify_x=2; mfd->justify_y=2; mfd->ifp->RedoFrame(); return TRUE;
 
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				return TRUE;
 
             }
@@ -838,14 +838,14 @@ static INT_PTR APIENTRY logoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPA
     return FALSE;
 }
 
-static int logo_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int logo_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	LogoFilterData *mfd = (LogoFilterData *)fa->filter_data;
 	LogoFilterData mfd2 = *mfd;
 	int ret;
 
 	mfd->ifp = fa->ifp;
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_LOGO), hWnd, logoDlgProc, (LONG)mfd);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_LOGO), (HWND)hWnd, logoDlgProc, (LPARAM)mfd);
 
 	if (ret)
 		*mfd = mfd2;

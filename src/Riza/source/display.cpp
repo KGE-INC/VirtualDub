@@ -94,6 +94,7 @@ protected:
 	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
 	void SetSourceSubrect(const vdrect32 *r);
 	void SetSourceSolidColor(uint32 color);
+	void SetReturnFocus(bool fs);
 	void SetFullScreen(bool fs);
 	void PostBuffer(VDVideoDisplayFrame *);
 	bool RevokeBuffer(bool allowFrameSkip, VDVideoDisplayFrame **ppFrame);
@@ -117,6 +118,7 @@ protected:
 	void ReleaseActiveFrame();
 	void RequestNextFrame();
 	void DispatchNextFrame();
+	void DispatchActiveFrame();
 
 protected:
 	static LRESULT CALLBACK StaticChildWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -173,6 +175,7 @@ protected:
 
 	bool		mbIgnoreMouse;
 	bool		mbUseSubrect;
+	bool		mbReturnFocus;
 	bool		mbFullScreen;
 	vdrect32	mSourceSubrect;
 	VDStringW	mMessage;
@@ -279,6 +282,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& create
 	, mAccelMode(kAccelOnlyInForeground)
 	, mbIgnoreMouse(false)
 	, mbUseSubrect(false)
+	, mbReturnFocus(false)
 	, mbFullScreen(false)
 	, mpActiveFrame(NULL)
 	, mpLastFrame(NULL)
@@ -379,6 +383,10 @@ void VDVideoDisplayWindow::SetSourceSubrect(const vdrect32 *r) {
 
 void VDVideoDisplayWindow::SetSourceSolidColor(uint32 color) {
 	SendMessage(mhwnd, MYWM_SETSOLIDCOLOR, 0, (LPARAM)color);
+}
+
+void VDVideoDisplayWindow::SetReturnFocus(bool enable) {
+	mbReturnFocus = enable;
 }
 
 void VDVideoDisplayWindow::SetFullScreen(bool fs) {
@@ -527,8 +535,27 @@ void VDVideoDisplayWindow::DispatchNextFrame() {
 		}
 	}
 
+	DispatchActiveFrame();
+}
+
+void VDVideoDisplayWindow::DispatchActiveFrame() {
 	if (mpActiveFrame) {
-		SetSource(false, mpActiveFrame->mPixmap, NULL, 0, mpActiveFrame->mbAllowConversion, mpActiveFrame->mbInterlaced);
+		VDVideoDisplaySourceInfo params;
+
+		params.pixmap			= mpActiveFrame->mPixmap;
+		params.pSharedObject	= NULL;
+		params.sharedOffset		= 0;
+		params.bAllowConversion	= mpActiveFrame->mbAllowConversion;
+		params.bPersistent		= false;
+		params.bInterlaced		= mpActiveFrame->mbInterlaced;
+
+		const VDPixmapFormatInfo& info = VDPixmapGetInfo(mpActiveFrame->mPixmap.format);
+		params.bpp = info.qsize >> info.qhbits;
+		params.bpr = (((mpActiveFrame->mPixmap.w-1) >> info.qwbits)+1) * info.qsize;
+
+		params.mpCB				= this;
+
+		SyncSetSource(false, params);
 		SyncUpdate(mpActiveFrame->mFlags);
 	}
 }
@@ -563,6 +590,19 @@ LRESULT VDVideoDisplayWindow::ChildWndProc(UINT msg, WPARAM wParam, LPARAM lPara
 		break;
 	case WM_ERASEBKGND:
 		return FALSE;
+
+	case WM_SETFOCUS:
+		if (mbReturnFocus) {
+			HWND hwndParent = GetParent(mhwnd);
+			if (hwndParent)
+				SetFocus(GetParent(mhwnd));
+		}
+		break;
+
+	case WM_TIMER:
+		if (mpMiniDriver)
+			VerifyDriverResult(mpMiniDriver->Tick((int)wParam));
+		break;
 	}
 
 	return DefWindowProc(mhwndChild, msg, wParam, lParam);
@@ -636,6 +676,8 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_DESTROY:
 		SyncReset();
+		ReleaseActiveFrame();
+		FlushBuffers();
 
 		if (mReinitDisplayTimer) {
 			KillTimer(mhwnd, mReinitDisplayTimer);
@@ -652,6 +694,8 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		OnPaint();
 		return 0;
 	case MYWM_SETSOURCE:
+		ReleaseActiveFrame();
+		FlushBuffers();
 		return SyncSetSource(wParam != 0, *(const VDVideoDisplaySourceInfo *)lParam);
 	case MYWM_UPDATE:
 		SyncUpdate((FieldMode)wParam);
@@ -696,9 +740,6 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		if (wParam == mReinitDisplayTimer) {
 			SyncInit(true, false);
 			return 0;
-		} else {
-			if (mpMiniDriver)
-				VerifyDriverResult(mpMiniDriver->Tick((int)wParam));
 		}
 		break;
 	case WM_NCHITTEST:
@@ -708,6 +749,13 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (lr != HTCLIENT)
 				return lr;
 			return HTTRANSPARENT;
+		}
+		break;
+	case WM_SETFOCUS:
+		if (mbReturnFocus) {
+			HWND hwndParent = GetParent(mhwnd);
+			if (hwndParent)
+				SetFocus(GetParent(mhwnd));
 		}
 		break;
 	}
@@ -794,6 +842,8 @@ void VDVideoDisplayWindow::SyncSetSourceMessage(const wchar_t *msg) {
 		return;
 
 	SyncReset();
+	ReleaseActiveFrame();
+	FlushBuffers();
 	mSource.pixmap.format = 0;
 	mMessage = msg;
 	InvalidateRect(mhwnd, NULL, TRUE);
@@ -852,8 +902,6 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh, bool bAllowNonpersistentS
 
 	if (mpMiniDriver) {
 		mpMiniDriver->SetLogicalPalette(GetLogicalPalette());
-		mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
-		mpMiniDriver->SetSubrect(mbUseSubrect ? &mSourceSubrect : NULL);
 
 		if (mReinitDisplayTimer)
 			KillTimer(mhwnd, mReinitDisplayTimer);
@@ -940,6 +988,9 @@ void VDVideoDisplayWindow::SyncSetFilterMode(FilterMode mode) {
 }
 
 void VDVideoDisplayWindow::SyncSetSolidColor(uint32 color) {
+	ReleaseActiveFrame();
+	FlushBuffers();
+
 	mSolidColorBuffer = color;
 
 	VDVideoDisplaySourceInfo info;
@@ -1026,6 +1077,8 @@ bool VDVideoDisplayWindow::InitMiniDriver() {
 	if (!mhwndChild)
 		return false;
 
+	mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
+	mpMiniDriver->SetSubrect(mbUseSubrect ? &mSourceSubrect : NULL);
 	mpMiniDriver->SetDisplayDebugInfo(sbEnableDebugInfo);
 	mpMiniDriver->SetFullScreen(mbFullScreen);
 
@@ -1059,8 +1112,8 @@ void VDVideoDisplayWindow::RequestUpdate() {
 			VDASSERT(!mpMiniDriver || !mpMiniDriver->IsFramePending());
 			mpActiveFrame = mpLastFrame;
 			mpLastFrame = NULL;
-			SetSource(false, mpActiveFrame->mPixmap, NULL, 0, mpActiveFrame->mbAllowConversion, mpActiveFrame->mbInterlaced);
-			SyncUpdate(mpActiveFrame->mFlags);
+
+			DispatchActiveFrame();
 		}
 	} else if (mpCB)
 		mpCB->DisplayRequestUpdate(this);

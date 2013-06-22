@@ -24,8 +24,11 @@
 #include "VideoSource.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
+#include <vd2/system/registry.h>
+#include <vd2/system/strutil.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Kasumi/pixmapops.h>
+#include <vd2/VDLib/Dialog.h>
 
 #include "plugins.h"
 #include "resource.h"
@@ -33,15 +36,16 @@
 #include "PositionControl.h"
 #include "ClippingControl.h"
 #include "gui.h"
+#include "FilterPreview.h"
 
 #include "filtdlg.h"
 #include "filters.h"
 
 extern HINSTANCE g_hInst;
 extern const char g_szError[];
-extern FilterFunctions g_filterFuncs;
+extern VDXFilterFunctions g_filterFuncs;
 
-extern vdrefptr<VideoSource> inputVideoAVI;
+extern vdrefptr<IVDVideoSource> inputVideo;
 
 enum {
 	kFileDialog_LoadPlugin		= 'plug',
@@ -99,6 +103,8 @@ void VDDialogFilterListW32::ReinitDialog() {
 		index = SendMessage(mhwndList, LB_ADDSTRING, 0, (LPARAM)buf);
 		SendMessage(mhwndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)&fb);
 	}
+
+	SendMessage(mhdlg, WM_NEXTDLGCTL, (WPARAM)mhwndList, TRUE);
 }
 
 INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -106,7 +112,7 @@ INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
     {
         case WM_INITDIALOG:
 			ReinitDialog();
-            return TRUE;
+            return FALSE;
 
         case WM_COMMAND:
 			switch(HIWORD(wParam)) {
@@ -162,231 +168,232 @@ INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 //
 ///////////////////////////////////////////////////////////////////////////
 
-void MakeFilterList(List& list, HWND hWndList) {
-	int count;
-	int ind;
-	FilterInstance *fa;
+class VDVideoFiltersDialog : public VDDialogBaseW32 {
+public:
+	VDVideoFiltersDialog();
+	
+	void Init(IVDVideoSource *pVS);
+	void Init(int w, int h, int format, const VDFraction& rate, sint64 length);
 
-	if (LB_ERR == (count = SendMessage(hWndList, LB_GETCOUNT, 0, 0))) return;
+	VDVideoFiltersDialogResult GetResult() const { return mResult; }
 
-	// have to do this since the filter list is intrusive
-	filters.DeinitFilters();
-	filters.DeallocateBuffers();
+protected:
+	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
-	for(ind=count-1; ind>=0; ind--) {
-		fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)ind, 0);
+	void OnInit();
+	void OnLVGetDispInfo(NMLVDISPINFO& dispInfo);
+	void OnLVItemChanged(const NMLISTVIEW& nmlv);
 
-		list.AddTail(fa);
-	}
-}
+	void MakeFilterList(List& list);
+	void EnableConfigureBox(HWND hdlg, int index = -1);
+	void RedoFilters();
+	void RelayoutFilterList();
 
-static void EnableConfigureBox(HWND hdlg, int index = -1) {
-	HWND hwndList = GetDlgItem(hdlg, IDC_FILTER_LIST);
+	VDFraction	mOldFrameRate;
+	sint64		mOldFrameCount;
+	int			mInputWidth;
+	int			mInputHeight;
+	int			mInputFormat;
+	VDFraction	mInputRate;
+	sint64		mInputLength;
+	IVDVideoSource	*mpVS;
 
-	if (index < 0)
-		index = SendMessage(hwndList, LB_GETCURSEL, 0, 0);
+	bool		mbShowFormats;
 
-	if (index != LB_ERR) {
-		FilterInstance *fa = (FilterInstance *)SendMessage(hwndList, LB_GETITEMDATA, (WPARAM)index, 0);
+	HWND		mhwndList;
 
-		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), !!fa->filter->configProc);
-		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), TRUE);
-		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), TRUE);
-	} else {
-		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), FALSE);
-		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), FALSE);
-		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), FALSE);
-	}
-}
+	typedef vdfastvector<FilterInstance *> Filters; 
+	Filters	mFilters;
 
-static void RedoFilters(HWND hWndList) {
-	List listFA;
-	int ind, ind2, l;
-	FilterInstance *fa;
-	int sel;
+	VDVideoFiltersDialogResult mResult;
+};
 
-	sel = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
-
-	MakeFilterList(listFA, hWndList);
-
-	try {
-		if (inputVideoAVI) {
-			BITMAPINFOHEADER *bmih = inputVideoAVI->getImageFormat();
-			filters.prepareLinearChain(&listFA, (Pixel *)(bmih+1), bmih->biWidth, abs(bmih->biHeight), 24);
-		} else {
-			filters.prepareLinearChain(&listFA, NULL, 320, 240, 24);
-		}
-	} catch(const MyError&) {
-		return;
-	}
-
-	ind = 0;
-	fa = (FilterInstance *)listFA.tail.next;
-	while(fa->next) {
-		char buf[2048];
-		l = wsprintf(buf, "%dx%d\t%dx%d\t%s%s"
-				,fa->src.w
-				,fa->src.h
-				,fa->dst.w
-				,fa->dst.h
-				,fa->GetAlphaParameterCurve() ? "[B] " : ""
-				,fa->filter->name);
-
-		if (fa->filter->stringProc2)
-			fa->filter->stringProc2(fa, &g_filterFuncs, buf+l, (sizeof buf) - l);
-		else if (fa->filter->stringProc)
-			fa->filter->stringProc(fa, &g_filterFuncs, buf+l);
-
-		if (LB_ERR == (ind2 = SendMessage(hWndList, LB_INSERTSTRING, (WPARAM)ind, (LPARAM)buf)))
-			return;
-
-		SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)ind2, (LPARAM)fa);
-		SendMessage(hWndList, LB_DELETESTRING, (WPARAM)ind+1, 0);
-
-		fa = (FilterInstance *)fa->next;
-		++ind;
-	}
-
-   if (sel != LB_ERR)
-      SendMessage(hWndList, LB_SETCURSEL, sel, 0);
-}
-
-INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+VDVideoFiltersDialog::VDVideoFiltersDialog()
+	: VDDialogBaseW32(IDD_FILTERS)
+	, mInputWidth(320)
+	, mInputHeight(240)
+	, mInputFormat(nsVDPixmap::kPixFormat_XRGB8888)
+	, mInputRate(30, 1)
+	, mInputLength(100)
+	, mpVS(NULL)
+	, mbShowFormats(false)
 {
-	static const char szPending[]="(pending)";
+	mResult.mbDialogAccepted = false;
+	mResult.mbChangeDetected = false;
+	mResult.mbRescaleRequested = false;
+}
 
-    switch (message)
+void VDVideoFiltersDialog::Init(IVDVideoSource *pVS) {
+	IVDStreamSource *pSS = pVS->asStream();
+	const VDPixmap& px = pVS->getTargetFormat();
+
+	mpVS			= pVS;
+	mInputWidth		= px.w;
+	mInputHeight	= px.h;
+	mInputFormat	= px.format;
+	mInputRate		= pSS->getRate();
+	mInputLength	= pSS->getLength();
+}
+
+void VDVideoFiltersDialog::Init(int w, int h, int format, const VDFraction& rate, sint64 length) {
+	mpVS			= NULL;
+	mInputWidth		= w;
+	mInputHeight	= h;
+	mInputFormat	= format;
+	mInputRate		= rate;
+	mInputLength	= length;
+}
+
+INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg)
     {
         case WM_INITDIALOG:
-			{
-				HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-				FilterInstance *fa_list, *fa;
-				int index;
-
-				fa_list = (FilterInstance *)g_listFA.tail.next;
-
-				while(fa_list->next) {
-					try {
-						fa = fa_list->Clone();
-
-						if (LB_ERR != (index = SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)szPending)))
-							SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)fa);
-						else
-							delete fa;
-
-					} catch(const MyError&) {
-						// bleah!  should really do something...
-					}
-
-					fa_list = (FilterInstance *)fa_list->next;
-				}
-
-				RedoFilters(hWndList);
-
-				SetFocus(hWndList);
-			}
+			OnInit();
             return FALSE;
+
+		case WM_NOTIFY:
+			{
+				const NMHDR& hdr = *(const NMHDR *)lParam;
+				switch(hdr.idFrom) {
+				case IDC_FILTER_LIST:
+					switch(hdr.code) {
+					case LVN_ITEMCHANGED:
+						OnLVItemChanged(*(NMLISTVIEW *)lParam);
+						EnableConfigureBox(mhdlg);
+						return TRUE;
+					case LVN_GETDISPINFO:
+						OnLVGetDispInfo(*(NMLVDISPINFO *)lParam);
+						return TRUE;
+					case NM_DBLCLK:
+						SendMessage(mhdlg, WM_COMMAND, MAKELONG(IDC_CONFIGURE, BN_CLICKED), (LPARAM)GetDlgItem(mhdlg, IDC_CONFIGURE));
+						break;
+					}
+					break;
+				}
+			}
+			break;
 
         case WM_COMMAND:
 			switch(LOWORD(wParam)) {
-			case IDC_FILTER_LIST:
-				switch(HIWORD(wParam)) {
-				case LBN_DBLCLK:
-					SendMessage(hDlg, WM_COMMAND, MAKELONG(IDC_CONFIGURE, BN_CLICKED), (LPARAM)GetDlgItem(hDlg, IDC_CONFIGURE));
-					break;
-				case LBN_SELCHANGE:
-					EnableConfigureBox(hDlg);
-					break;
-				}
-				break;
-
 			case IDC_ADD:
-				if (FilterDefinitionInstance *fdi = VDDialogFilterListW32().Activate((VDGUIHandle)hDlg)) {
-					int index;
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
+				if (FilterDefinitionInstance *fdi = VDDialogFilterListW32().Activate((VDGUIHandle)mhdlg)) {
+					try {
+						FilterInstance *fa = new FilterInstance(fdi);
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)szPending))) {
-						try {
-							FilterInstance *fa = new FilterInstance(fdi);
+						fa->mCropX1 = 0;
+						fa->mCropY1 = 0;
+						fa->mCropX2 = 0;
+						fa->mCropY2 = 0;
 
-							fa->x1 = fa->y1 = fa->x2 = fa->y2 = 0;
+						mFilters.push_back(fa);
 
-							SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)fa);
+						LVITEM item;
+						item.iItem		= mFilters.size();
+						item.iSubItem	= 0;
+						item.mask		= LVIF_TEXT;
+						item.pszText	= LPSTR_TEXTCALLBACK;
 
-							RedoFilters(hWndList);
+						// Note that this call ends up disabling the filter instance (#$()#$).
+						int index = ListView_InsertItem(mhwndList, &item);
 
-							if (fa->filter->configProc) {
-								List list;
-								bool fRemove;
+						item.iItem		= index;
+						item.iSubItem	= 1;
+						item.mask		= LVIF_TEXT;
+						ListView_SetItem(mhwndList, &item);
 
-								MakeFilterList(list, hWndList);
+						item.iSubItem	= 2;
+						ListView_SetItem(mhwndList, &item);
 
-								{
-									FilterPreview fp(inputVideoAVI ? &list : NULL, fa);
+						item.iSubItem	= 3;
+						ListView_SetItem(mhwndList, &item);
 
-									fa->ifp = &fp;
-									fa->ifp2 = &fp;
+						ListView_SetCheckState(mhwndList, index, TRUE);
+						fa->SetEnabled(true);
 
-									fRemove = 0!=fa->filter->configProc(fa, &g_filterFuncs, hDlg);
-								}
+						RedoFilters();
 
-								if (fRemove) {
-									delete fa;
-									SendMessage(hWndList, LB_DELETESTRING, (WPARAM)index, 0);
-									break;
-								}
+						if (fa->filter->configProc) {
+							List list;
+							bool fRemove;
+
+							MakeFilterList(list);
+
+							vdrefptr<IVDVideoFilterPreviewDialog> fp;
+							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
+								fa->ifp = fa->ifp2 = fp->AsIVDXFilterPreview2();
+
+								fRemove = 0!=fa->filter->configProc(fa->AsVDXFilterActivation(), &g_filterFuncs, (VDXHWND)mhdlg);
 							}
 
-							RedoFilters(hWndList);
+							fp = NULL;
 
-							SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index, 0);
-							EnableConfigureBox(hDlg, index);
-						} catch(const MyError& e) {
-							e.post(hDlg, g_szError);
+							if (fRemove) {
+								delete fa;
+								mFilters.pop_back();
+								ListView_DeleteItem(mhwndList, index);
+								break;
+							}
 						}
+
+						RedoFilters();
+
+						ListView_SetItemState(mhwndList, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+						EnableConfigureBox(mhdlg, index);
+					} catch(const MyError& e) {
+						e.post(mhdlg, g_szError);
 					}
 				}
 				break;
 
 			case IDC_DELETE:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						FilterInstance *fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
+					if ((unsigned)index < mFilters.size()) {
+						FilterInstance *fa = mFilters[index];
 
 						delete fa;
+						
+						mFilters.erase(mFilters.begin() + index);
 
-						SendMessage(hWndList, LB_DELETESTRING, (WPARAM)index, 0);
+						ListView_DeleteItem(mhwndList, index);
+
+						if ((unsigned)index < mFilters.size())
+							ListView_SetItemState(mhwndList, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+						RedoFilters();
 					}
 				}
 				break;
 
 			case IDC_CONFIGURE:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						FilterInstance *fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
+					if ((unsigned)index < mFilters.size()) {
+						FilterInstance *fa = mFilters[index];
 
 						if (fa->filter->configProc) {
 							List list;
 
-							RedoFilters(hWndList);
-							MakeFilterList(list, hWndList);
+							RedoFilters();
+							MakeFilterList(list);
 
-							{
-								FilterPreview fp(inputVideoAVI ? &list : NULL, fa);
+							vdrefptr<IVDVideoFilterPreviewDialog> fp;
+							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
+								fa->ifp = fa->ifp2 = fp->AsIVDXFilterPreview2();
 
-								fa->ifp = &fp;
-								fa->ifp2 = &fp;
-								fa->filter->configProc(fa, &g_filterFuncs, hDlg);
+								fa->filter->configProc(fa->AsVDXFilterActivation(), &g_filterFuncs, (VDXHWND)mhdlg);
 							}
-							RedoFilters(hWndList);
-							SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index, 0);
 
+							fp = NULL;
+
+							RedoFilters();
+
+							ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED);
+							if (index >= 0)
+								ListView_SetItemState(mhwndList, index, LVIS_SELECTED, LVIS_SELECTED);
 						}
 					}
 				}
@@ -394,20 +401,21 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 
 			case IDC_CLIPPING:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
-					RedoFilters(hWndList);
-
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						FilterInstance *fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
+					if ((unsigned)index < mFilters.size()) {
+						RedoFilters();
+						FilterInstance *fa = mFilters[index];
 
 						List filterList;
-						MakeFilterList(filterList, hWndList);
+						MakeFilterList(filterList);
 
-						if (VDShowFilterClippingDialog((VDGUIHandle)hDlg, fa, &filterList)) {
-							RedoFilters(hWndList);
-							SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index, 0);
+						if (VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList)) {
+							RedoFilters();
+
+							ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED);
+							if (index >= 0)
+								ListView_SetItemState(mhwndList, index, LVIS_SELECTED, LVIS_SELECTED);
 						}
 					}
 				}
@@ -415,11 +423,10 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 
 			case IDC_BLENDING:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						FilterInstance *fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
+					if ((unsigned)index < mFilters.size()) {
+						FilterInstance *fa = mFilters[index];
 
 						if (fa->GetAlphaParameterCurve()) {
 							fa->SetAlphaParameterCurve(NULL);
@@ -431,47 +438,42 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 							}
 						}
 
-						RedoFilters(hWndList);
+						RedoFilters();
 					}
 				}
 				break;
 
 			case IDC_MOVEUP:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index;
-					LONG lpData;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						if (index == 0) break;
+					if (index > 0 && (unsigned)index < mFilters.size()) {
+						std::swap(mFilters[index - 1], mFilters[index]);
 
-						lpData = SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
-						SendMessage(hWndList, LB_INSERTSTRING, (WPARAM)index-1, (LPARAM)szPending);
-						SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index-1, (LPARAM)lpData);
-						SendMessage(hWndList, LB_DELETESTRING, (WPARAM)index+1, 0);
-						RedoFilters(hWndList);
-						SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index-1, 0);
+						for(int i=-1; i<=0; ++i)
+							ListView_SetCheckState(mhwndList, index + i, mFilters[index + i]->IsEnabled());
+
+						RedoFilters();
+
+						ListView_SetItemState(mhwndList, index - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 					}
 				}
 				break;
 
 			case IDC_MOVEDOWN:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					int index, count;
-					LONG lpData;
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+					int count = mFilters.size();
 
-					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
-						if (LB_ERR != (count = SendMessage(hWndList, LB_GETCOUNT, 0, 0))) {
-							if (index == count-1) break;
+					if (index >= 0 && index < count - 1) {
+						std::swap(mFilters[index], mFilters[index + 1]);
 
-							lpData = SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
-							SendMessage(hWndList, LB_INSERTSTRING, (WPARAM)index+2, (LPARAM)szPending);
-							SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index+2, (LPARAM)lpData);
-							SendMessage(hWndList, LB_DELETESTRING, (WPARAM)index, 0);
-							RedoFilters(hWndList);
-							SendMessage(hWndList, LB_SETCURSEL, (WPARAM)index+1, 0);
-						}
+						for(int i=0; i<=1; ++i)
+							ListView_SetCheckState(mhwndList, index + i, mFilters[index + i]->IsEnabled());
+
+						RedoFilters();
+
+						ListView_SetItemState(mhwndList, index + 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 					}
 				}
 				break;
@@ -482,7 +484,6 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 				filters.DeinitFilters();
 				filters.DeallocateBuffers();
 				{
-					HWND hwndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
 					FilterInstance *fa, *fa2;
 
 					fa = (FilterInstance *)g_listFA.tail.next;
@@ -495,29 +496,57 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 
 					g_listFA.Init();
 
-					MakeFilterList(g_listFA, hwndList);
+					MakeFilterList(g_listFA);
 				}
-				EndDialog(hDlg, TRUE);
+
+				mFilters.clear();
+
+				mResult.mOldFrameRate		= mOldFrameRate;
+				mResult.mOldFrameCount		= mOldFrameCount;
+				mResult.mNewFrameRate		= filters.GetOutputFrameRate();
+				mResult.mNewFrameCount		= filters.GetOutputFrameCount();
+
+				mResult.mbRescaleRequested = false;
+				mResult.mbChangeDetected = false;
+
+				if (mResult.mOldFrameRate != mResult.mNewFrameRate || mResult.mOldFrameCount != mResult.mNewFrameCount) {
+					mResult.mbChangeDetected = true;
+					mResult.mbRescaleRequested = true;
+				}
+
+				mResult.mbDialogAccepted = true;
+				End(true);
 				return TRUE;
 			case IDCANCEL:
 				// We must force filters to stop before we muck with the global list... in case
 				// the pane refresh restarted them.
 				filters.DeinitFilters();
 				filters.DeallocateBuffers();
+
+				while(!mFilters.empty()) {
+					FilterInstance *fa = mFilters.back();
+					mFilters.pop_back();
+
+					delete fa;
+				}
+
+				mResult.mbDialogAccepted = true;
+				End(false);
+				return TRUE;
+
+			case IDC_SHOWIMAGEFORMATS:
 				{
-					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
-					List list;
-					FilterInstance *fa, *fa2;
+					bool selected = 0 != IsDlgButtonChecked(mhdlg, IDC_SHOWIMAGEFORMATS);
 
-					MakeFilterList(list, hWndList);
+					if (mbShowFormats != selected) {
+						mbShowFormats = selected;
 
-					fa = (FilterInstance *)list.tail.next;
-					while(fa2 = (FilterInstance *)fa->next) {
-						delete fa;
-						fa = fa2;
+						VDRegistryAppKey key("Dialogs\\Filters");
+						key.setBool("Show formats", mbShowFormats);
+
+						RelayoutFilterList();
 					}
 				}
-				EndDialog(hDlg, FALSE);
 				return TRUE;
 			}
             break;
@@ -525,6 +554,256 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
+void VDVideoFiltersDialog::OnInit() {
+	{
+		VDRegistryAppKey key("Dialogs\\Filters");
+		mbShowFormats = key.getBool("Show formats", mbShowFormats);
+	}
+
+	CheckDlgButton(mhdlg, IDC_SHOWIMAGEFORMATS, mbShowFormats ? BST_CHECKED : BST_UNCHECKED);
+
+	mhwndList = GetDlgItem(mhdlg, IDC_FILTER_LIST);
+
+	ListView_SetExtendedListViewStyle(mhwndList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+
+	LVCOLUMN col;
+
+	col.mask	= LVCF_TEXT | LVCF_WIDTH;
+	col.cx		= 25;
+	col.pszText	= "";
+	ListView_InsertColumn(mhwndList, 0, &col);
+
+	col.cx		= 50;
+	col.pszText	= "Input";
+	ListView_InsertColumn(mhwndList, 1, &col);
+
+	col.cx		= 50;
+	col.pszText	= "Output";
+	ListView_InsertColumn(mhwndList, 2, &col);
+
+	col.cx		= 200;
+	col.pszText	= "Filter";
+	ListView_InsertColumn(mhwndList, 3, &col);
+
+	FilterInstance *fa_list, *fa;
+
+	fa_list = (FilterInstance *)g_listFA.tail.next;
+
+	while(fa_list->next) {
+		try {
+			fa = fa_list->Clone();
+
+			mFilters.push_back(fa);
+
+			LVITEM item;
+			item.iItem		= mFilters.size();
+			item.iSubItem	= 0;
+			item.mask		= LVIF_TEXT | LVIF_STATE;
+			item.state		= INDEXTOSTATEIMAGEMASK(1);
+			item.pszText	= LPSTR_TEXTCALLBACK;
+			int index = ListView_InsertItem(mhwndList, &item);
+
+			ListView_SetCheckState(mhwndList, index, fa->IsEnabled());
+
+			item.iSubItem	= 1;
+			item.mask		= LVIF_TEXT;
+			item.pszText	= LPSTR_TEXTCALLBACK;
+			ListView_SetItem(mhwndList, &item);
+
+			item.iSubItem	= 2;
+			item.pszText	= LPSTR_TEXTCALLBACK;
+			ListView_SetItem(mhwndList, &item);
+
+			item.iSubItem	= 3;
+			item.pszText	= LPSTR_TEXTCALLBACK;
+			ListView_SetItem(mhwndList, &item);
+
+		} catch(const MyError&) {
+			// bleah!  should really do something...
+		}
+
+		fa_list = (FilterInstance *)fa_list->next;
+	}
+
+	RedoFilters();
+
+	mOldFrameRate	= filters.GetOutputFrameRate();
+	mOldFrameCount	= filters.GetOutputFrameCount();
+
+	SetFocus(mhwndList);
+}
+
+void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
+	LVITEM& item = dispInfo.item;
+
+	if (item.mask & LVIF_TEXT) {
+		if ((unsigned)item.iItem < mFilters.size()) {
+			const FilterInstance *fi = mFilters[item.iItem];
+
+			switch(item.iSubItem) {
+			case 0:
+				if (!fi->IsEnabled())
+					item.pszText[0] = 0;
+				else
+					_snprintf(item.pszText, item.cchTextMax, "%s%s"
+								,fi->GetAlphaParameterCurve() ? "[B] " : ""
+								,fi->IsConversionRequired() ? "[C] " : ""
+						);
+				break;
+			case 1:
+			case 2:
+				{
+					const VDPixmapLayout& layout = (item.iSubItem == 2 ? fi->mRealDst : fi->mRealSrc).mPixmapLayout;
+
+					if (!fi->IsEnabled()) {
+						vdstrlcpy(item.pszText, "-", item.cchTextMax);
+					} else if (mbShowFormats) {
+						const char *const kFormatNames[]={
+							"?",
+							"P1",
+							"P2",
+							"P4",
+							"P8",
+							"RGB15",
+							"RGB16",
+							"RGB24",
+							"RGB32",
+							"Y8",
+							"UYVY",
+							"YUY2",
+							"YUV",
+							"YV24",
+							"YV16",
+							"YV12",
+							"YUV411",
+							"YVU9",
+						};
+
+						VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
+
+						_snprintf(item.pszText, item.cchTextMax, "%dx%d (%s)", layout.w, layout.h, kFormatNames[layout.format]);
+					} else {
+						_snprintf(item.pszText, item.cchTextMax, "%dx%d", layout.w, layout.h);
+					}
+				}
+				break;
+			case 3:
+				{
+					char buf[2048];
+
+					int l = _snprintf(buf, 2048, "%s"
+							,fi->filter->name);
+
+					if ((unsigned)l < 1024) {
+						if (fi->filter->stringProc2)
+							fi->filter->stringProc2(fi->AsVDXFilterActivation(), &g_filterFuncs, buf+l, (sizeof buf) - l);
+						else if (fi->filter->stringProc)
+							fi->filter->stringProc(fi->AsVDXFilterActivation(), &g_filterFuncs, buf+l);
+					}
+
+					buf[2047] = 0;
+					vdstrlcpy(item.pszText, buf, item.cchTextMax);
+				}
+				break;
+			}
+		}
+
+		if (item.cchTextMax)
+			item.pszText[item.cchTextMax - 1] = 0;
+	}
+}
+
+void VDVideoFiltersDialog::OnLVItemChanged(const NMLISTVIEW& nmlv) {
+	if ((unsigned)nmlv.iItem >= mFilters.size())
+		return;
+
+	FilterInstance *fi = mFilters[nmlv.iItem];
+
+	if (nmlv.uChanged & LVIF_STATE) {
+		// We fetch the item state because uNewState seems hosed when ListView_SetItemState() is called
+		// with a partial mask.
+		bool enabled = ListView_GetItemState(mhwndList, nmlv.iItem, LVIS_STATEIMAGEMASK) == INDEXTOSTATEIMAGEMASK(2);
+
+		if (enabled != fi->IsEnabled()) {
+			fi->SetEnabled(enabled);
+			RedoFilters();
+		}
+	}
+}
+
+void VDVideoFiltersDialog::MakeFilterList(List& list) {
+	// have to do this since the filter list is intrusive
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
+	for(Filters::const_iterator it(mFilters.begin()), itEnd(mFilters.end()); it != itEnd; ++it) {
+		FilterInstance *fa = *it;
+
+		list.AddHead(fa);
+	}
+}
+
+void VDVideoFiltersDialog::EnableConfigureBox(HWND hdlg, int index) {
+	if (index < 0)
+		index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+
+	if ((unsigned)index < mFilters.size()) {
+		FilterInstance *fa = mFilters[index];
+
+		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), !!fa->filter->configProc);
+		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), TRUE);
+		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), TRUE);
+	} else {
+		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), FALSE);
+		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), FALSE);
+		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), FALSE);
+	}
+}
+
+void VDVideoFiltersDialog::RedoFilters() {
+	List listFA;
+
+	MakeFilterList(listFA);
+
+	if (mInputFormat) {
+		try {
+			filters.prepareLinearChain(&listFA, mInputWidth, mInputHeight, mInputFormat, mInputRate, mInputLength);
+		} catch(const MyError&) {
+			// eat error
+		}
+	}
+
+	RelayoutFilterList();
+}
+
+void VDVideoFiltersDialog::RelayoutFilterList() {
+	if (!mFilters.empty()) {
+		for(int i=0; i<4; ++i)
+			ListView_SetColumnWidth(mhwndList, i, -2);
+
+		ListView_RedrawItems(mhwndList, 0, mFilters.size() - 1);
+	}
+}
+
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSource *pVS) {
+	VDVideoFiltersDialog dlg;
+
+	if (pVS)
+		dlg.Init(pVS);
+
+	dlg.ActivateDialog(h);
+
+	return dlg.GetResult();
+}
+
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, int h, int format, const VDFraction& rate, sint64 length) {
+	VDVideoFiltersDialog dlg;
+
+	dlg.Init(w, h, format, rate, length);
+	dlg.ActivateDialog(hParent);
+
+	return dlg.GetResult();
+}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -532,130 +811,365 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDFilterClippingDialog : public VDDialogBaseW32 {
+class VDDialogResizerW32 {
 public:
-	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList)
-		: VDDialogBaseW32(IDD_FILTER_CLIPPING)
-		, mpFilterList(pFilterList)
-		, mpFilterInst(pFiltInst)
-	{
-	}
+	VDDialogResizerW32();
+	~VDDialogResizerW32();
+
+	enum {
+		kAnchorX	= 0x01,
+		kAnchorW	= 0x02,
+		kAnchorY	= 0x04,
+		kAnchorH	= 0x08,
+
+		kL		= 0,
+		kC		= kAnchorW,
+		kR		= kAnchorX,
+		kHMask	= 0x03,
+
+		kT		= 0,
+		kM		= kAnchorH,
+		kB		= kAnchorY,
+		kVMask	= 0x0C,
+
+		kTL		= kT | kL,
+		kTR		= kT | kR,
+		kTC		= kT | kC,
+		kML		= kM | kL,
+		kMR		= kM | kR,
+		kMC		= kM | kC,
+		kBL		= kB | kL,
+		kBR		= kB | kR,
+		kBC		= kB | kC,
+	};
+
+	void Init(HWND hwnd);
+	void Relayout();
+	void Relayout(int width, int height);
+	void Add(uint32 id, int alignment);
 
 protected:
+	struct ControlEntry {
+		HWND	mhwnd;
+		int		mAlignment;
+		sint32	mX;
+		sint32	mY;
+		sint32	mW;
+		sint32	mH;
+	};
+
+	HWND	mhwndBase;
+	int		mWidth;
+	int		mHeight;
+
+	typedef vdfastvector<ControlEntry> Controls;
+	Controls mControls;
+};
+
+VDDialogResizerW32::VDDialogResizerW32() {
+}
+
+VDDialogResizerW32::~VDDialogResizerW32() {
+}
+
+void VDDialogResizerW32::Init(HWND hwnd) {
+	mhwndBase = hwnd;
+	mWidth = 1;
+	mHeight = 1;
+
+	RECT r;
+	if (GetClientRect(hwnd, &r)) {
+		mWidth = r.right;
+		mHeight = r.bottom;
+	}
+}
+
+void VDDialogResizerW32::Relayout() {
+	RECT r;
+
+	if (GetClientRect(mhwndBase, &r))
+		Relayout(r.right, r.bottom);
+}
+
+void VDDialogResizerW32::Relayout(int width, int height) {
+	HDWP hdwp = BeginDeferWindowPos(mControls.size());
+
+	mWidth = width;
+	mHeight = height;
+
+	Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
+	for(; it!=itEnd; ++it) {
+		const ControlEntry& ent = *it;
+		uint32 flags = SWP_NOZORDER|SWP_NOACTIVATE;
+
+		if (!(ent.mAlignment & (kAnchorX | kAnchorY)))
+			flags |= SWP_NOMOVE;
+
+		if (!(ent.mAlignment & (kAnchorW | kAnchorH)))
+			flags |= SWP_NOSIZE;
+
+		int x = ent.mX;
+		int y = ent.mY;
+		int w = ent.mW;
+		int h = ent.mH;
+
+		if (ent.mAlignment & kAnchorX)
+			x += mWidth;
+
+		if (ent.mAlignment & kAnchorW)
+			w += mWidth;
+
+		if (ent.mAlignment & kAnchorY)
+			y += mHeight;
+
+		if (ent.mAlignment & kAnchorH)
+			h += mHeight;
+
+		if (hdwp) {
+			HDWP hdwp2 = DeferWindowPos(hdwp, ent.mhwnd, NULL, x, y, w, h, flags);
+
+			if (hdwp2) {
+				hdwp = hdwp2;
+				continue;
+			}
+		}
+
+		SetWindowPos(ent.mhwnd, NULL, x, y, w, h, flags);
+	}
+
+	if (hdwp)
+		EndDeferWindowPos(hdwp);
+}
+
+void VDDialogResizerW32::Add(uint32 id, int alignment) {
+	HWND hwndControl = GetDlgItem(mhwndBase, id);
+	if (!hwndControl)
+		return;
+
+	RECT r;
+	if (!GetWindowRect(hwndControl, &r))
+		return;
+
+	if (!MapWindowPoints(NULL, mhwndBase, (LPPOINT)&r, 2))
+		return;
+
+	ControlEntry& ce = mControls.push_back();
+
+	ce.mhwnd		= hwndControl;
+	ce.mAlignment	= alignment;
+	ce.mX			= r.left;
+	ce.mY			= r.top;
+	ce.mW			= r.right - r.left;
+	ce.mH			= r.bottom - r.top;
+
+	if (alignment & kAnchorX)
+		ce.mX -= mWidth;
+
+	if (alignment & kAnchorW)
+		ce.mW -= mWidth;
+
+	if (alignment & kAnchorY)
+		ce.mY -= mHeight;
+
+	if (alignment & kAnchorH)
+		ce.mH -= mHeight;
+}
+
+
+class VDFilterClippingDialog : public VDDialogFrameW32 {
+public:
+	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList);
+
+protected:
+	void OnDataExchange(bool write);
+	bool OnLoaded();
+
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 	void UpdateFrame(VDPosition pos);
 
 	List			*mpFilterList;
 	FilterInstance	*mpFilterInst;
-	FilterStateInfo	mfsi;
 	FilterSystem	mFilterSys;
 	IVDClippingControl	*mpClipCtrl;
 	IVDPositionControl	*mpPosCtrl;
+
+	double			mFilterFramesToSourceFrames;
+	double			mSourceFramesToFilterFrames;
+
+	VDDialogResizerW32	mResizer;
 };
+
+VDFilterClippingDialog::VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList)
+	: VDDialogFrameW32(IDD_FILTER_CLIPPING)
+	, mpFilterList(pFilterList)
+	, mpFilterInst(pFiltInst)
+{
+}
+
+void VDFilterClippingDialog::OnDataExchange(bool write) {
+	if (write) {
+		vdrect32 r;
+		mpClipCtrl->GetClipBounds(r);
+		mpFilterInst->mCropX1 = r.left;
+		mpFilterInst->mCropY1 = r.top;
+		mpFilterInst->mCropX2 = r.right;
+		mpFilterInst->mCropY2 = r.bottom;
+
+		mpFilterInst->mbPreciseCrop = IsButtonChecked(IDC_CROP_PRECISE);
+	} else {
+		vdrect32 r(mpFilterInst->mCropX1, mpFilterInst->mCropY1, mpFilterInst->mCropX2, mpFilterInst->mCropY2);
+		mpClipCtrl->SetClipBounds(r);
+
+		CheckButton(IDC_CROP_PRECISE, mpFilterInst->mbPreciseCrop);
+		CheckButton(IDC_CROP_FAST, !mpFilterInst->mbPreciseCrop);
+	}
+}
+
+bool VDFilterClippingDialog::OnLoaded()  {
+	RECT rw, rc;
+
+	// try to init filters
+	mFilterFramesToSourceFrames = 1.0;
+	mSourceFramesToFilterFrames = 1.0;
+
+	if (mpFilterList && inputVideo) {
+		IVDStreamSource *pVSS = inputVideo->asStream();
+		const VDAVIBitmapInfoHeader *pbih2 = inputVideo->getDecompressedFormat();
+
+		try {
+			// halt the main filter system
+			filters.DeinitFilters();
+			filters.DeallocateBuffers();
+
+			// start private filter system
+			mFilterSys.initLinearChain(
+					mpFilterList,
+					pbih2->biWidth,
+					abs(pbih2->biHeight),
+					inputVideo->getTargetFormat().format,
+					pVSS->getRate(),
+					pVSS->getLength());
+
+			mFilterSys.ReadyFilters();
+
+			double srcRate = pVSS->getRate().asDouble();
+			double dstRate = (double)mpFilterInst->mRealSrc.mFrameRateHi / (double)mpFilterInst->mRealSrc.mFrameRateLo;
+
+			mFilterFramesToSourceFrames = srcRate / dstRate;
+			mSourceFramesToFilterFrames = dstRate / srcRate;
+		} catch(const MyError&) {
+			// eat the error
+		}
+	}
+
+	HWND hwndClipping = GetDlgItem(mhdlg, IDC_BORDERS);
+	mpClipCtrl = VDGetIClippingControl((VDGUIHandle)hwndClipping);
+
+	mpClipCtrl->SetBitmapSize(mpFilterInst->mOrigW, mpFilterInst->mOrigH);
+
+	mpPosCtrl = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
+	mpPosCtrl->SetAutoStep(true);
+	mpPosCtrl->SetRange(0, mpFilterInst->mRealSrc.mFrameCount < 0 ? 1000 : mpFilterInst->mRealSrc.mFrameCount);
+	mpPosCtrl->SetFrameRate(VDFraction(mpFilterInst->mRealSrc.mFrameRateHi, mpFilterInst->mRealSrc.mFrameRateLo));
+
+	GetWindowRect(mhdlg, &rw);
+	GetWindowRect(hwndClipping, &rc);
+	const int origH = (rw.bottom - rw.top);
+	int padW = (rw.right - rw.left) - (rc.right - rc.left);
+	int padH = origH - (rc.bottom - rc.top);
+
+	mpClipCtrl->AutoSize(padW, padH);
+
+	GetWindowRect(hwndClipping, &rc);
+	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
+
+	const int newH = (rc.bottom - rc.top) + padH;
+
+	mResizer.Init(mhdlg);
+	mResizer.Add(IDOK, VDDialogResizerW32::kBR);
+	mResizer.Add(IDCANCEL, VDDialogResizerW32::kBR);
+	mResizer.Add(IDC_STATIC_YCCCROP, VDDialogResizerW32::kBL);
+	mResizer.Add(IDC_CROP_PRECISE, VDDialogResizerW32::kBL);
+	mResizer.Add(IDC_CROP_FAST, VDDialogResizerW32::kBL);
+
+	SetWindowPos(mhdlg, NULL, 0, 0, (rc.right - rc.left) + padW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+	SendMessage(mhdlg, DM_REPOSITION, 0, 0);
+
+	mResizer.Relayout();
+
+	// render first frame
+	UpdateFrame(mpPosCtrl->GetPosition());
+
+	return VDDialogFrameW32::OnLoaded();
+}
 
 INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
-        case WM_INITDIALOG:
-			{
-				LONG hspace;
-				RECT rw, rc, rcok, rccancel;
-				HWND hWnd, hWndCancel;
-
-				// try to init filters
-				if (mpFilterList && inputVideoAVI) {
-					const BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
-					const BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
-
-					try {
-						// halt the main filter system
-						filters.DeinitFilters();
-						filters.DeallocateBuffers();
-
-						// start private filter system
-						mFilterSys.initLinearChain(
-								mpFilterList,
-								(Pixel *)((const char *)pbih + pbih->biSize),
-								pbih2->biWidth,
-								abs(pbih2->biHeight),
-								0);
-
-						mfsi.lCurrentFrame			= 0;
-						mfsi.lCurrentSourceFrame	= 0;
-						mfsi.lMicrosecsPerFrame		= (long)inputVideoAVI->getRate().scale64ir(1000000);
-						mfsi.lMicrosecsPerSrcFrame	= mfsi.lMicrosecsPerFrame;
-						mfsi.lSourceFrameMS			= 0;
-						mfsi.lDestFrameMS			= 0;
-						mfsi.flags = FilterStateInfo::kStatePreview;
-
-						mFilterSys.ReadyFilters(mfsi);
-					} catch(const MyError&) {
-						// eat the error
-					}
-				}
-
-				HWND hwndClipping = GetDlgItem(mhdlg, IDC_BORDERS);
-				mpClipCtrl = VDGetIClippingControl((VDGUIHandle)hwndClipping);
-
-				mpClipCtrl->SetBitmapSize(mpFilterInst->origw, mpFilterInst->origh);
-				mpClipCtrl->SetClipBounds(vdrect32(mpFilterInst->x1, mpFilterInst->y1, mpFilterInst->x2, mpFilterInst->y2));
-
-				mpPosCtrl = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
-				guiPositionInitFromStream(mpPosCtrl);
-
-				GetWindowRect(mhdlg, &rw);
-				GetWindowRect(hwndClipping, &rc);
-				const int origH = (rw.bottom - rw.top);
-				int padW = (rw.right - rw.left) - (rc.right - rc.left);
-				int padH = origH - (rc.bottom - rc.top);
-
-				mpClipCtrl->AutoSize(padW, padH);
-
-				GetWindowRect(hwndClipping, &rc);
-				MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
-
-				const int newH = (rc.bottom - rc.top) + padH;
-				const int deltaH = newH - origH;
-				SetWindowPos(mhdlg, NULL, 0, 0, (rc.right - rc.left) + padW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
-				SendMessage(mhdlg, DM_REPOSITION, 0, 0);
-
-				hWndCancel = GetDlgItem(mhdlg, IDCANCEL);
-				hWnd = GetDlgItem(mhdlg, IDOK);
-				GetWindowRect(hWnd, &rcok);
-				GetWindowRect(hWndCancel, &rccancel);
-				hspace = rccancel.left - rcok.right;
-				ScreenToClient(mhdlg, (LPPOINT)&rcok.left);
-				ScreenToClient(mhdlg, (LPPOINT)&rcok.right);
-				ScreenToClient(mhdlg, (LPPOINT)&rccancel.left);
-				ScreenToClient(mhdlg, (LPPOINT)&rccancel.right);
-				SetWindowPos(hWndCancel, NULL, rc.right - (rccancel.right-rccancel.left), rccancel.top + deltaH, 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-				SetWindowPos(hWnd, NULL, rc.right - (rccancel.right-rccancel.left) - (rcok.right-rcok.left) - hspace, rcok.top + deltaH, 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-
-				// render first frame
-				UpdateFrame(mpPosCtrl->GetPosition());
-			}
-
-            return (TRUE);
-
         case WM_COMMAND:
 			switch(LOWORD(wParam)) {
-			case IDOK:
-				{
-					vdrect32 r;
-					mpClipCtrl->GetClipBounds(r);
-					mpFilterInst->x1 = r.left;
-					mpFilterInst->y1 = r.top;
-					mpFilterInst->x2 = r.right;
-					mpFilterInst->y2 = r.bottom;
-				}
-				End(TRUE);
-				return TRUE;
-			case IDCANCEL:
-				End(FALSE);
-				return TRUE;
 			case IDC_BORDERS:
-				UpdateFrame(guiPositionHandleCommand(wParam, mpPosCtrl));
+				{
+					sint64 pos = -1;
+
+					if (inputVideo) {
+						switch(HIWORD(wParam)) {
+							case PCN_KEYPREV:
+								{
+									pos = mpPosCtrl->GetPosition();
+									sint64 srcPos = VDFloorToInt64(((double)pos + 0.5) * mFilterFramesToSourceFrames);
+
+									for(;;) {
+										sint64 newSrcPos = inputVideo->prevKey(srcPos);
+
+										if (newSrcPos < 0) {
+											pos = 0;
+											break;
+										}
+
+										sint64 newPos = VDFloorToInt64(((double)newSrcPos + 0.5) * mSourceFramesToFilterFrames);
+										if (pos != newPos) {
+											pos = newPos;
+											break;
+										}
+
+										srcPos = newSrcPos;
+									}
+
+									mpPosCtrl->SetPosition(pos);
+								}
+								break;
+							case PCN_KEYNEXT:
+								{
+									pos = mpPosCtrl->GetPosition();
+									sint64 srcPos = VDFloorToInt64(((double)pos + 0.5) * mFilterFramesToSourceFrames);
+
+									for(;;) {
+										sint64 newSrcPos = inputVideo->nextKey(srcPos);
+
+										if (newSrcPos < 0) {
+											pos = mpPosCtrl->GetRangeEnd();
+											break;
+										}
+
+										sint64 newPos = VDFloorToInt64(((double)newSrcPos + 0.5) * mSourceFramesToFilterFrames);
+										if (pos != newPos) {
+											pos = newPos;
+											break;
+										}
+
+										srcPos = newSrcPos;
+									}
+
+									mpPosCtrl->SetPosition(pos);
+								}
+								break;
+						}
+
+						UpdateFrame(mpPosCtrl->GetPosition());
+					}
+				}
 				return TRUE;
 			}
             break;
@@ -670,29 +1184,31 @@ INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 			break;
 
     }
-    return FALSE;
+
+	return VDDialogFrameW32::DlgProc(message, wParam, lParam);
 }
 
 void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 	if (mFilterSys.isRunning()) {
 		bool success = false;
 
-		if (pos >= inputVideoAVI->getStart() && pos < inputVideoAVI->getEnd()) {
-			mfsi.lCurrentSourceFrame	= (long)pos;
-			mfsi.lCurrentFrame			= (long)pos;
-			mfsi.lSourceFrameMS			= VDRoundToLong(1000000.0 / inputVideoAVI->getRate().asDouble() * pos);
-			mfsi.lDestFrameMS			= mfsi.lSourceFrameMS;
-
+		sint64 frameCount = mFilterSys.GetOutputFrameCount();
+		if (pos >= 0 && pos < frameCount) {
 			try {
-				if (inputVideoAVI->getFrame(pos)) {
-					VDPixmapBlt(VDAsPixmap(*mFilterSys.InputBitmap()), inputVideoAVI->getTargetFormat());
-					mFilterSys.RunFilters(mfsi, mpFilterInst);
+				sint64 pos2 = mFilterSys.GetSourceFrame(pos);
+				if (inputVideo->getFrame(pos2)) {
+					VDPixmapBlt(mFilterSys.GetInput(), inputVideo->getTargetFormat());
 
-					VDPixmap output;
-					if (mpFilterInst->prev->prev)
-						output = VDAsPixmap(static_cast<FilterInstance *>(mpFilterInst->prev)->realDst);
-					else
-						output = VDAsPixmap(*mFilterSys.InputBitmap());
+					sint64 posTime = VDRoundToInt64((double)pos * mFilterSys.GetOutputFrameRate().AsInverseDouble() * 1000.0);
+
+					mFilterSys.RunFilters(pos, pos, pos, posTime, mpFilterInst, VDXFilterStateInfo::kStatePreview);
+
+					VDPixmap output = mFilterSys.GetInput();
+					for(ListNode *prev = mpFilterInst->prev; prev->prev; prev = prev->prev) {
+						FilterInstance *fiPrev = static_cast<FilterInstance *>(prev);
+						if (fiPrev->IsEnabled())
+							output = fiPrev->mRealDst.mPixmap;
+					}
 
 					mpClipCtrl->BlitFrame(&output);
 					success = true;
@@ -705,13 +1221,13 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 		if (!success)
 			mpClipCtrl->BlitFrame(NULL);
 	} else
-		guiPositionBlit(GetDlgItem(mhdlg, IDC_BORDERS), pos, mpFilterInst->origw, mpFilterInst->origh);
+		guiPositionBlit(GetDlgItem(mhdlg, IDC_BORDERS), pos, mpFilterInst->mOrigW, mpFilterInst->mOrigH);
 }
 
 bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList) {
 	VDFilterClippingDialog dlg(pFiltInst, pFilterList);
 
-	return 0 != dlg.ActivateDialog(hParent);
+	return 0 != dlg.ShowDialog(hParent);
 }
 
 ///////////////////////////////////////////////////////////////////////

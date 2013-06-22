@@ -30,7 +30,7 @@
 #include <vd2/Riza/direct3d.h>
 #include "d3dxfx.h"
 #include "displaydrv.h"
-#include "displaydrvdx9.h"
+#include <vd2/Riza/displaydrvdx9.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1197,7 +1197,7 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateScreen(const RECT& rClient, UpdateMode
 		return true;
 	else if (hr == S_OK) {
 		uint64 curTime = VDGetPreciseTick();
-		float ft = (curTime - mLastFrameTime) * VDGetPreciseSecondsPerTick();
+		float ft = (float)((curTime - mLastFrameTime) * VDGetPreciseSecondsPerTick());
 		if (mLastLongestFrameTime < ft)
 			mLastLongestFrameTime = ft;
 		mLastFrameTime = curTime;

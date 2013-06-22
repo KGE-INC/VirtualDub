@@ -331,6 +331,130 @@ xloop:
 	}
 }
 
+sint16 __declspec(naked) VDAPIENTRY VDAudioFilterPCM16_128_MMX(const sint16 *src, const sint16 *filter, uint32 filterquadsize) {
+	static const uint64 roundconst = 0x0000200000002000;
+
+	__asm {
+		mov		eax,[esp+12]
+		mov		ecx,[esp+4]
+		mov		edx,[esp+8]
+
+		movq	mm4,roundconst		;1
+		movq	mm0,[ecx+  0]		;1
+		pmaddwd	mm0,[edx+  0]		;2
+		movq	mm1,[ecx+  8]		;1
+		pmaddwd	mm1,[edx+  8]		;1
+		movq	mm2,[ecx+ 16]		;2
+		pmaddwd	mm2,[edx+ 16]		;1
+		movq	mm3,[ecx+ 24]		;1
+		pmaddwd	mm3,[edx+ 24]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+ 32]		;1
+		pmaddwd	mm4,[edx+ 32]		;2
+		movq	mm5,[ecx+ 40]		;1
+		pmaddwd	mm5,[edx+ 40]		;2
+		movq	mm6,[ecx+ 48]		;1
+		pmaddwd	mm6,[edx+ 48]		;2
+		movq	mm7,[ecx+ 56]		;1
+		pmaddwd	mm7,[edx+ 56]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+ 64]		;1
+		pmaddwd	mm4,[edx+ 64]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+ 72]		;1
+		pmaddwd	mm5,[edx+ 72]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+ 80]		;1
+		pmaddwd	mm6,[edx+ 80]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+ 88]		;1
+		pmaddwd	mm7,[edx+ 88]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+ 96]		;1
+		pmaddwd	mm4,[edx+ 96]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+104]		;1
+		pmaddwd	mm5,[edx+104]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+112]		;1
+		pmaddwd	mm6,[edx+112]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+120]		;1
+		pmaddwd	mm7,[edx+120]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+128]		;1
+		pmaddwd	mm4,[edx+128]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+136]		;1
+		pmaddwd	mm5,[edx+136]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+144]		;1
+		pmaddwd	mm6,[edx+144]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+152]		;1
+		pmaddwd	mm7,[edx+152]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+160]		;1
+		pmaddwd	mm4,[edx+160]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+168]		;1
+		pmaddwd	mm5,[edx+168]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+176]		;1
+		pmaddwd	mm6,[edx+176]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+184]		;1
+		pmaddwd	mm7,[edx+184]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+192]		;1
+		pmaddwd	mm4,[edx+192]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+200]		;1
+		pmaddwd	mm5,[edx+200]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+208]		;1
+		pmaddwd	mm6,[edx+208]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+216]		;1
+		pmaddwd	mm7,[edx+216]		;2
+
+		paddd	mm0,mm4				;1
+		movq	mm4,[ecx+224]		;1
+		pmaddwd	mm4,[edx+224]		;2
+		paddd	mm1,mm5				;1
+		movq	mm5,[ecx+232]		;1
+		pmaddwd	mm5,[edx+232]		;2
+		paddd	mm2,mm6				;1
+		movq	mm6,[ecx+240]		;1
+		pmaddwd	mm6,[edx+240]		;2
+		paddd	mm3,mm7				;1
+		movq	mm7,[ecx+248]		;1
+		pmaddwd	mm7,[edx+248]		;2
+
+		paddd		mm0, mm4		;1
+		paddd		mm1, mm5		;1
+		paddd		mm2, mm6		;1
+		paddd		mm3, mm7		;1
+
+		paddd		mm0, mm2		;1
+		paddd		mm1, mm3		;1
+		paddd		mm0, mm1		;1
+		punpckldq	mm1, mm0		;1
+		paddd		mm0, mm1		;1
+		psrad		mm0, 14			;1
+		packssdw	mm0, mm0		;1
+		psrld		mm0, 16
+		movd		eax, mm0
+		ret
+	}
+}
+
 void VDAPIENTRY VDAudioFilterPCM16End_MMX() {
 	__asm emms
 }
@@ -682,14 +806,25 @@ static const VDAudioFilterVtable g_VDAudioFilterVtable_MMX = {
 	VDAudioFilterPCM16End_MMX,
 	VDAudioFilterPCM16SymmetricArray_MMX
 };
+
+static const VDAudioFilterVtable g_VDAudioFilterVtable_128_MMX = {
+	VDAudioFilterPCM16_128_MMX,
+	VDAudioFilterPCM16End_MMX,
+	VDAudioFilterPCM16SymmetricArray_MMX
+};
 #endif
 
-const VDAudioFilterVtable *VDGetAudioFilterVtable() {
+const VDAudioFilterVtable *VDGetAudioFilterVtable(uint32 taps) {
 #ifdef _M_IX86
 	uint32 exts = CPUGetEnabledExtensions();
 
-	if (exts & CPUF_SUPPORTS_MMX)
+	if (exts & CPUF_SUPPORTS_MMX) {
+		if (taps == 128) {
+			return &g_VDAudioFilterVtable_128_MMX;
+		}
+
 		return &g_VDAudioFilterVtable_MMX;
+	}
 #endif
 
 	return &g_VDAudioFilterVtable_scalar;

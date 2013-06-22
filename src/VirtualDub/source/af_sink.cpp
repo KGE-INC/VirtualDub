@@ -55,14 +55,14 @@ uint32 VDAudioFilterSink::Prepare() {
 
 void VDAudioFilterSink::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
 }
 
 uint32 VDAudioFilterSink::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	int samples;
 
@@ -84,7 +84,7 @@ uint32 VDAudioFilterSink::Run() {
 
 uint32 VDAudioFilterSink::ReadSamples(void *dst, uint32 samples) {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	samples = std::min<uint32>(samples, mOutputBuffer.getLevel() / format.mBlockSize);
 
@@ -102,7 +102,7 @@ const void *VDAudioFilterSink::GetFormat() {
 }
 
 int VDAudioFilterSink::GetFormatLen() {
-	return sizeof(VDWaveFormat) + mpContext->mpInputs[0]->mpFormat->mExtraSize;
+	return sizeof(VDXWaveFormat) + mpContext->mpInputs[0]->mpFormat->mExtraSize;
 }
 
 sint64 VDAudioFilterSink::GetLength() {
@@ -131,11 +131,11 @@ extern const VDPluginInfo apluginDef_sink = {
 	NULL,
 	L"",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -204,11 +204,11 @@ extern const VDPluginInfo apluginDef_output = {
 	NULL,
 	L"Generic output sink for audio graph representing file output or playback filter.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -233,11 +233,11 @@ extern const VDPluginInfo apluginDef_discard = {
 	NULL,
 	L"Discards all input.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

@@ -422,7 +422,7 @@ protected:
 		switch (message) {
 			case WM_INITDIALOG:
 				if (mpPreview)
-					mpPreview->InitButton(GetDlgItem(mhdlg, IDC_PREVIEW));
+					mpPreview->InitButton((VDXHWND)GetDlgItem(mhdlg, IDC_PREVIEW));
 
 				switch(mMode) {
 				case kModeDisable:
@@ -492,7 +492,7 @@ protected:
 					return TRUE;
 				case IDC_PREVIEW:
 					if (mpPreview)
-						mpPreview->Toggle(mhdlg);
+						mpPreview->Toggle((VDXHWND)mhdlg);
 					return TRUE;
 				}
 				break;
@@ -528,9 +528,9 @@ static long chromasmoother_param(FilterActivation *fa, const FilterFunctions *ff
 	return pf->Param(fa, ff);
 }
 
-static int chromasmoother_config(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
+static int chromasmoother_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hwnd) {
 	ChromaSmootherFilter *pf = (ChromaSmootherFilter *)fa->filter_data;
-	return pf->Config(fa, ff, hwnd);
+	return pf->Config(fa, ff, (HWND)hwnd);
 }
 
 static int chromasmoother_start(FilterActivation *fa, const FilterFunctions *ff) {

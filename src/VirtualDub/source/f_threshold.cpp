@@ -24,7 +24,7 @@
 #include "filters.h"
 
 #include <vd2/plugin/vdplugin.h>
-#include <vd2/plugin/vdvideofiltold.h>
+#include <vd2/plugin/vdvideofilt.h>
 
 extern HINSTANCE g_hInst;
 
@@ -65,7 +65,7 @@ long threshold_param(FilterActivation *fa, const FilterFunctions *ff) {
 
 //////////////////
 
-static int threshold_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int threshold_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	if (!fa->filter_data) {
 		if (!(fa->filter_data = (void *)new MyFilterData)) return 0;
 		memset(fa->filter_data, 0, sizeof MyFilterData);
@@ -80,7 +80,7 @@ static int threshold_config(FilterActivation *fa, const FilterFunctions *ff, HWN
 		}
 	};
 
-	mfd->threshold = FilterGetSingleValue(hWnd, mfd->threshold, 0, 256, "threshold", fa->ifp, local::Update, mfd);
+	mfd->threshold = FilterGetSingleValue((HWND)hWnd, mfd->threshold, 0, 256, "threshold", fa->ifp, local::Update, mfd);
 
 	return 0;
 }

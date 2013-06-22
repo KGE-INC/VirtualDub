@@ -1029,7 +1029,7 @@ void AVIOutputFile::partialWriteIndexedChunkBegin(int nStream, uint32 flags, uin
 	ent.offset				= mFilePosition;
 	ent.id					= stream.mChunkID;
 	ent.length_and_flags	= cbBuffer;
-	if (!(flags & AVIIF_KEYFRAME))
+	if (!(flags & AVIOutputStream::kFlagKeyFrame))
 		ent.length_and_flags |= 0x80000000L;
 
 	++stream.mChunkCount;			// Important: This must only be done iff the entry is added or a crash will occur during index write.

@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <vd2/system/VDString.h>
 
 #include "ScriptInterpreter.h"
 #include "ScriptValue.h"
@@ -133,6 +134,30 @@ namespace {
 			SCRIPT_ERROR(ASSERTION_FAILED);
 	}
 
+	FUNC(AssertEqual_int) {
+		int x = argv[0].asInt();
+		int y = argv[1].asInt();
+
+		if (x != y)
+			SCRIPT_ERROR(ASSERTION_FAILED);
+	}
+
+	FUNC(AssertEqual_long) {
+		sint64 x = argv[0].asLong();
+		sint64 y = argv[1].asLong();
+
+		if (x != y)
+			SCRIPT_ERROR(ASSERTION_FAILED);
+	}
+
+	FUNC(AssertEqual_double) {
+		double x = argv[0].asDouble();
+		double y = argv[1].asDouble();
+
+		if (x != y)
+			SCRIPT_ERROR(ASSERTION_FAILED);
+	}
+
 	FUNC(TestOverload1) {argv[0] = 1;}
 	FUNC(TestOverload2) {argv[0] = 2;}
 	FUNC(TestOverload3) {argv[0] = 3;}
@@ -162,6 +187,41 @@ namespace {
 		memcpy(*pp + l1, *argv[1].asString(), l2);
 
 		argv[0] = VDScriptValue(pp);
+	}
+
+	FUNC(add_string_int) {
+		char buf[32];
+		sprintf(buf, "%d", argv[1].asInt());
+		int l1 = strlen(*argv[0].asString());
+		int l2 = strlen(buf);
+
+		char **pp = isi->AllocTempString(l1+l2);
+
+		memcpy(*pp, *argv[0].asString(), l1);
+		memcpy(*pp + l1, buf, l2);
+
+		argv[0] = VDScriptValue(pp);
+	}
+
+	FUNC(add_string_long) {
+		char buf[32];
+		sprintf(buf, "%I64d", argv[1].asLong());
+		int l1 = strlen(*argv[0].asString());
+		int l2 = strlen(buf);
+
+		char **pp = isi->AllocTempString(l1+l2);
+
+		memcpy(*pp, *argv[0].asString(), l1);
+		memcpy(*pp + l1, buf, l2);
+
+		argv[0] = VDScriptValue(pp);
+	}
+
+	FUNC(add_string_double) {
+		VDStringA tmp;
+		tmp.sprintf("%s%g", *argv[0].asString(), argv[1].asDouble());
+
+		argv[0] = isi->DupCString(tmp.c_str());
 	}
 
 	FUNC(upos_int) {}
@@ -278,6 +338,9 @@ static const VDScriptFunctionDef objFL_Sylia[]={
 	{ upos_long,	NULL, "ll" },
 	{ upos_double,	NULL, "dd" },
 	{ add_string,	NULL, "sss" },
+	{ add_string_int,	NULL, "ssi" },
+	{ add_string_long,	NULL, "ssl" },
+	{ add_string_double, NULL, "ssd" },
 	{ sub_int,		"-", "iii" },
 	{ sub_long,		NULL, "lll" },
 	{ sub_double,	NULL, "ddd" },
@@ -330,6 +393,9 @@ static const VDScriptFunctionDef objFL_Sylia[]={
 	{ uinv_long,	NULL, "ll" },
 	{ TypeName,		"TypeName", "s." },
 	{ Assert,		"Assert", "0i" },
+	{ AssertEqual_int,		"AssertEqual", "0ii" },
+	{ AssertEqual_long,		"AssertEqual", "0ll" },
+	{ AssertEqual_double,	"AssertEqual", "0dd" },
 	{ TestOverload1, "TestOverloading", "i" },
 	{ TestOverload2, NULL, "ii" },
 	{ TestOverload3, NULL, "il" },

@@ -24,12 +24,12 @@
 #include <vd2/Dita/resources.h>
 
 #include "gui.h"
-#include "AudioSource.h"
+#include "AudioSourceAVI.h"
 #include "AVIReadHandler.h"
 
 //////////////////////////////////////////////////////////////////////////////
 
-extern HWND g_hWnd;		// TODO: Remove in 1.5.0
+extern bool VDPreferencesIsAVIVBRWarningEnabled();
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -44,237 +44,12 @@ namespace {
 	};
 }
 
-// TODO: Merge this with defs from AVIOutputWAV.cpp.
-namespace
-{
-	static const uint8 kGuidRIFF[16]={
-		// {66666972-912E-11CF-A5D6-28DB04C10000}
-		0x72, 0x69, 0x66, 0x66, 0x2E, 0x91, 0xCF, 0x11, 0xA5, 0xD6, 0x28, 0xDB, 0x04, 0xC1, 0x00, 0x00
-	};
-
-	static const uint8 kGuidLIST[16]={
-		// {7473696C-912E-11CF-A5D6-28DB04C10000}
-		0x6C, 0x69, 0x73, 0x74, 0x2E, 0x91, 0xCF, 0x11, 0xA5, 0xD6, 0x28, 0xDB, 0x04, 0xC1, 0x00, 0x00
-	};
-
-	static const uint8 kGuidWAVE[16]={
-		// {65766177-ACF3-11D3-8CD1-00C04F8EDB8A}
-		0x77, 0x61, 0x76, 0x65, 0xF3, 0xAC, 0xD3, 0x11, 0x8C, 0xD1, 0x00, 0xC0, 0x4F, 0x8E, 0xDB, 0x8A
-	};
-
-	static const uint8 kGuidfmt[16]={
-		// {20746D66-ACF3-11D3-8CD1-00C04F8EDB8A}
-		0x66, 0x6D, 0x74, 0x20, 0xF3, 0xAC, 0xD3, 0x11, 0x8C, 0xD1, 0x00, 0xC0, 0x4F, 0x8E, 0xDB, 0x8A
-	};
-
-	static const uint8 kGuidfact[16]={
-		// {74636166-ACF3-11D3-8CD1-00C04F8EDB8A}
-		0x66, 0x61, 0x63, 0x74, 0xF3, 0xAC, 0xD3, 0x11, 0x8C, 0xD1, 0x00, 0xC0, 0x4F, 0x8E, 0xDB, 0x8A
-	};
-
-	static const uint8 kGuiddata[16]={
-		// {61746164-ACF3-11D3-8CD1-00C04F8EDB8A}
-		0x64, 0x61, 0x74, 0x61, 0xF3, 0xAC, 0xD3, 0x11, 0x8C, 0xD1, 0x00, 0xC0, 0x4F, 0x8E, 0xDB, 0x8A
-	};
-}
-
-//////////////////////////////////////////////////////////////////////////////
-
-class AudioSourceWAV : public AudioSource {
-public:
-	AudioSourceWAV(const wchar_t *fn, uint32 inputBufferSize);
-	~AudioSourceWAV();
-
-	bool init();
-	virtual int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
-
-private:
-	void ParseWAVE();
-	void ParseWAVE64();
-
-	sint64			mDataStart;
-	sint64			mDataLength;
-
-	VDFileStream	mFile;
-	VDBufferedStream	mBufferedFile;
-	VDPosition		mCurrentSample;
-	uint32			mBytesPerSample;
-};
-
-AudioSource *VDCreateAudioSourceWAV(const wchar_t *fn, uint32 inputBufferSize) {
-	return new AudioSourceWAV(fn, inputBufferSize);
-}
-
-AudioSourceWAV::AudioSourceWAV(const wchar_t *szFile, uint32 inputBufferSize)
-	: mBufferedFile(&mFile, inputBufferSize)
-{
-	mFile.open(szFile);
-}
-
-AudioSourceWAV::~AudioSourceWAV() {
-}
-
-bool AudioSourceWAV::init() {
-	// Read the first 12 bytes of the file. They must always be RIFF <size> WAVE for a WAVE
-	// file. We deliberately ignore the length of the RIFF and only use the length of the data
-	// chunk.
-	uint32 ckinfo[10];
-
-	mBufferedFile.Read(ckinfo, 12);
-	if (ckinfo[0] == mmioFOURCC('R', 'I', 'F', 'F') && ckinfo[2] == mmioFOURCC('W', 'A', 'V', 'E')) {
-		ParseWAVE();
-		goto ok;
-	} else if (ckinfo[0] == mmioFOURCC('r', 'i', 'f', 'f')) {
-		mBufferedFile.Read(ckinfo+3, 40 - 12);
-
-		if (!memcmp(ckinfo, kGuidRIFF, 16) && !memcmp(ckinfo + 6, kGuidWAVE, 16)) {
-			ParseWAVE64();
-			goto ok;
-		}
-	}
-
-	throw MyError("\"%ls\" is not a WAVE file.", mBufferedFile.GetNameForError());
-
-ok:
-	mBytesPerSample	= getWaveFormat()->nBlockAlign; //getWaveFormat()->nAvgBytesPerSec / getWaveFormat()->nSamplesPerSec;
-	mSampleFirst	= 0;
-	mSampleLast		= mDataLength / mBytesPerSample;
-	mCurrentSample	= -1;
-
-	streamInfo.fccType					= streamtypeAUDIO;
-	streamInfo.fccHandler				= 0;
-	streamInfo.dwFlags					= 0;
-	streamInfo.wPriority				= 0;
-	streamInfo.wLanguage				= 0;
-	streamInfo.dwInitialFrames			= 0;
-	streamInfo.dwScale					= mBytesPerSample;
-	streamInfo.dwRate					= getWaveFormat()->nAvgBytesPerSec;
-	streamInfo.dwStart					= 0;
-	streamInfo.dwLength					= (DWORD)mSampleLast;
-	streamInfo.dwSuggestedBufferSize	= 0;
-	streamInfo.dwQuality				= 0xffffffff;
-	streamInfo.dwSampleSize				= mBytesPerSample;
-
-	return true;
-}
-
-void AudioSourceWAV::ParseWAVE() {
-	// iteratively open chunks
-	static const uint32 kFoundFormat = 1;
-	static const uint32 kFoundData = 2;
-
-	uint32 notFoundYet = kFoundFormat | kFoundData;
-	while(notFoundYet != 0) {
-		uint32 ckinfo[2];
-
-		// read chunk and chunk id
-		if (8 != mBufferedFile.ReadData(ckinfo, 8))
-			throw MyError("\"%ls\" is incomplete and could not be opened as a WAVE file.", mBufferedFile.GetNameForError());
-
-		uint32 size = ckinfo[1];
-		uint32 sizeToSkip = (size + 1) & ~1;	// RIFF chunks are dword aligned.
-
-		switch(ckinfo[0]) {
-			case mmioFOURCC('f', 'm', 't', ' '):
-				if (size > 0x100000)
-					throw MyError("\"%ls\" contains a format block that is too large (%u bytes).", mBufferedFile.GetNameForError(), size);
-				if (!allocFormat(size))
-					throw MyMemoryError();
-				mBufferedFile.Read((char *)getWaveFormat(), size);
-				sizeToSkip -= size;
-				notFoundYet &= ~kFoundFormat;
-				break;
-
-			case mmioFOURCC('d', 'a', 't', 'a'):
-				mDataStart = mBufferedFile.Pos();
-
-				// truncate length if it extends beyond file
-				mDataLength = std::min<sint64>(size, mBufferedFile.Length() - mDataStart);
-				notFoundYet &= ~kFoundData;
-				break;
-
-			case mmioFOURCC('L', 'I', 'S', 'T'):
-				if (size < 4)
-					throw MyError("\"%ls\" contains a structural error at position %08llx and cannot be loaded.", mBufferedFile.GetNameForError(), mBufferedFile.Pos() - 8);
-				sizeToSkip = 4;
-				break;
-		}
-
-		mBufferedFile.Skip(sizeToSkip);
-	}
-}
-
-void AudioSourceWAV::ParseWAVE64() {
-	// iteratively open chunks
-	static const uint32 kFoundFormat = 1;
-	static const uint32 kFoundData = 2;
-
-	uint32 notFoundYet = kFoundFormat | kFoundData;
-	while(notFoundYet != 0) {
-		struct {
-			uint8 guid[16];
-			uint64 size;
-		} ck;
-
-		// read chunk and chunk id
-		if (24 != mBufferedFile.ReadData(&ck, 24))
-			break;
-
-		// unlike RIFF, WAVE64 includes the chunk header in the chunk size.
-		if (ck.size < 24)
-			throw MyError("\"%ls\" contains a structural error at position %08llx and cannot be loaded.", mBufferedFile.GetNameForError(), mBufferedFile.Pos() - 8);
-
-		sint64 sizeToSkip = (ck.size + 7 - 24) & ~7;		// WAVE64 chunks are 8-byte aligned.
-
-		if (!memcmp(ck.guid, kGuidfmt, 16)) {
-			if (ck.size > 0x100000)
-				throw MyError("\"%ls\" contains a format block that is too large (%llu bytes).", mBufferedFile.GetNameForError(), (unsigned long long)ck.size);
-
-			if (!allocFormat((uint32)ck.size - 24))
-				throw MyMemoryError();
-
-			mBufferedFile.Read((char *)getWaveFormat(), (uint32)ck.size - 24);
-			sizeToSkip -= (uint32)ck.size - 24;
-			notFoundYet &= ~kFoundFormat;
-		} else if (!memcmp(ck.guid, kGuiddata, 16)) {
-			mDataStart = mBufferedFile.Pos();
-
-			// truncate length if it extends beyond file
-			mDataLength = std::min<sint64>(ck.size - 24, mBufferedFile.Length() - mDataStart);
-		} else if (!memcmp(ck.guid, kGuidLIST, 16)) {
-			sizeToSkip = 8;
-		}
-
-		mBufferedFile.Skip(sizeToSkip);
-	}
-}
-
-int AudioSourceWAV::_read(VDPosition lStart, uint32 lCount, void *buffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
-	uint32 bytes = lCount * mBytesPerSample;
-
-	if (bytes > cbBuffer) {
-		bytes = cbBuffer - cbBuffer % mBytesPerSample;
-		lCount = bytes / mBytesPerSample;
-	}
-	
-	if (buffer) {
-		if (lStart != mCurrentSample)
-			mBufferedFile.Seek(mDataStart + mBytesPerSample*lStart);
-
-		mBufferedFile.Read(buffer, bytes);
-
-		mCurrentSample = lStart + lCount;
-	}
-
-	*lSamplesRead = lCount;
-	*lBytesRead = bytes;
-
-	return AVIERR_OK;
-}
-
 ///////////////////////////
 
-AudioSourceAVI::AudioSourceAVI(IAVIReadHandler *pAVI, bool bAutomated) {
+AudioSourceAVI::AudioSourceAVI(InputFileAVI *pParent, IAVIReadHandler *pAVI, int streamIndex, bool bAutomated)
+	: VDAudioSourceAVISourced(pParent)
+	, mStreamIndex(streamIndex)
+{
 	pAVIFile	= pAVI;
 	pAVIStream	= NULL;
 	bQuiet = bAutomated;	// ugh, this needs to go... V1.5.0.
@@ -288,10 +63,10 @@ AudioSourceAVI::~AudioSourceAVI() {
 bool AudioSourceAVI::init() {
 	LONG format_len;
 
-	pAVIStream = pAVIFile->GetStream(streamtypeAUDIO, 0);
+	pAVIStream = pAVIFile->GetStream(streamtypeAUDIO, mStreamIndex);
 	if (!pAVIStream) return FALSE;
 
-	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
+	if (pAVIStream->Info(&streamInfo))
 		return FALSE;
 
 	pAVIStream->FormatSize(0, &format_len);
@@ -305,13 +80,13 @@ bool AudioSourceAVI::init() {
 	mSampleLast = pAVIStream->End();
 
 	// Check for invalid (truncated) MP3 format.
-	WAVEFORMATEX *pwfex = getWaveFormat();
+	VDWaveFormat *pwfex = (VDWaveFormat *)getWaveFormat();
 
-	if (pwfex->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
+	if (pwfex->mTag == WAVE_FORMAT_MPEGLAYER3) {
 		if (format_len < sizeof(MPEGLAYER3WAVEFORMAT)) {
 			MPEGLAYER3WAVEFORMAT wf;
 
-			wf.wfx				= *pwfex;
+			wf.wfx				= *(const WAVEFORMATEX *)pwfex;
 			wf.wfx.cbSize		= MPEGLAYER3_WFX_EXTRA_BYTES;
 
 			wf.wID				= MPEGLAYER3_ID_MPEG;
@@ -353,7 +128,7 @@ bool AudioSourceAVI::init() {
 			if (!allocFormat(sizeof wf))
 				return FALSE;
 
-			pwfex = getWaveFormat();
+			pwfex = (VDWaveFormat *)getWaveFormat();
 			memcpy(pwfex, &wf, sizeof wf);
 
 			const int bad_len = format_len;
@@ -363,8 +138,8 @@ bool AudioSourceAVI::init() {
 
 		// Check if the wBitsPerSample tag is something other than zero, and reset it
 		// if so.
-		if (pwfex->wBitsPerSample != 0) {
-			pwfex->wBitsPerSample = 0;
+		if (pwfex->mSampleBits != 0) {
+			pwfex->mSampleBits = 0;
 
 			VDLogAppMessage(kVDLogWarning, kVDST_AudioSource, kVDM_MP3BitDepthFixed, 0);
 		}
@@ -372,10 +147,10 @@ bool AudioSourceAVI::init() {
 		uint32 cbSize = 0;
 
 		if (format_len >= sizeof(WAVEFORMATEX))
-			cbSize = pwfex->cbSize;
+			cbSize = pwfex->mExtraSize;
 
 		uint32 requiredFormatSize = sizeof(WAVEFORMATEX) + cbSize;
-		if ((uint32)format_len < requiredFormatSize && pwfex->wFormatTag != WAVE_FORMAT_PCM) {
+		if ((uint32)format_len < requiredFormatSize && pwfex->mTag != WAVE_FORMAT_PCM) {
 			vdstructex<WAVEFORMATEX> newFormat(requiredFormatSize);
 			memset(newFormat.data(), 0, requiredFormatSize);
 			memcpy(newFormat.data(), pwfex, format_len);
@@ -383,7 +158,7 @@ bool AudioSourceAVI::init() {
 			if (!allocFormat(requiredFormatSize))
 				return FALSE;
 
-			pwfex = getWaveFormat();
+			pwfex = (VDWaveFormat *)getWaveFormat();
 			memcpy(pwfex, &*newFormat, requiredFormatSize);
 
 			const int bad_len = format_len;
@@ -392,7 +167,8 @@ bool AudioSourceAVI::init() {
 		}
 	}
 
-	if (!bQuiet) {
+	// Check for VBR format.
+	if (!bQuiet && VDPreferencesIsAVIVBRWarningEnabled()) {
 		double mean, stddev, maxdev;
 
 		if (pAVIStream->getVBRInfo(mean, stddev, maxdev)) {
@@ -408,7 +184,8 @@ bool AudioSourceAVI::init() {
 }
 
 void AudioSourceAVI::Reinit() {
-	pAVIStream->Info(&streamInfo, sizeof streamInfo);
+	pAVIStream->Info(&streamInfo);
+
 	mSampleFirst = pAVIStream->Start();
 	mSampleLast = pAVIStream->End();
 }
@@ -485,7 +262,7 @@ int AudioSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 		if (err)
 			return 0;
 
-		if (!lSamples) return AVIERR_OK;
+		if (!lSamples) return IVDStreamSource::kOK;
 
 		if (lSamples > lCount) lSamples = lCount;
 
@@ -502,7 +279,7 @@ int AudioSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 		*lpSamplesRead += lSamples;
 	}
 
-	return AVIERR_OK;
+	return IVDStreamSource::kOK;
 }
 
 VDPosition AudioSourceAVI::TimeToPositionVBR(VDTime us) const {
@@ -513,15 +290,16 @@ VDTime AudioSourceAVI::PositionToTimeVBR(VDPosition samples) const {
 	return pAVIStream->PositionToTime(samples);
 }
 
-bool AudioSourceAVI::IsVBR() const {
+IVDStreamSource::VBRMode AudioSourceAVI::GetVBRMode() const {
 	double bitrate_mean, bitrate_stddev, maxdev;
-	return pAVIStream->getVBRInfo(bitrate_mean, bitrate_stddev, maxdev);
+	return pAVIStream->getVBRInfo(bitrate_mean, bitrate_stddev, maxdev) ? kVBRModeVariableFrames : kVBRModeNone;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-AudioSourceDV::AudioSourceDV(IAVIReadStream *pStream, bool bAutomated)
-	: mpStream(pStream)
+AudioSourceDV::AudioSourceDV(InputFileAVI *pParent, IAVIReadStream *pStream, bool bAutomated)
+	: VDAudioSourceAVISourced(pParent)
+	, mpStream(pStream)
 	, mLastFrame(-1)
 	, mErrorMode(kErrorModeReportAll)
 {
@@ -635,19 +413,23 @@ bool AudioSourceDV::init() {
 		mRightChannelOffset	= 12000*5;	// left channel is first 5 DIF sequences
 	}
 
-	mpStream->Info(&streamInfo, sizeof streamInfo);
+	if (mpStream->Info(&streamInfo))
+		return false;
 
 	// wonk most of the stream values since they're not appropriate for audio
-	streamInfo.fccType		= streamtypeAUDIO;
-	streamInfo.fccHandler	= 0;
-	streamInfo.dwStart		= VDRoundToInt((double)streamInfo.dwScale / streamInfo.dwRate * samplingRate);
-	streamInfo.dwRate		= pwfex->nAvgBytesPerSec;
-	streamInfo.dwScale		= pwfex->nBlockAlign;
-	streamInfo.dwInitialFrames			= 0;
+	streamInfo.fccType			= streamtypeAUDIO;
+	streamInfo.fccHandler		= 0;
+	streamInfo.dwStart			= VDRoundToInt((double)streamInfo.dwScale / streamInfo.dwRate * samplingRate);
+	streamInfo.dwRate			= pwfex->nAvgBytesPerSec;
+	streamInfo.dwScale			= pwfex->nBlockAlign;
+	streamInfo.dwInitialFrames	= 0;
 	streamInfo.dwSuggestedBufferSize	= 0;
-	streamInfo.dwQuality				= (DWORD)-1;
-	streamInfo.dwSampleSize				= pwfex->nBlockAlign;
-	memset(&streamInfo.rcFrame, 0, sizeof streamInfo.rcFrame);
+	streamInfo.dwQuality		= (DWORD)-1;
+	streamInfo.dwSampleSize		= pwfex->nBlockAlign;
+	streamInfo.rcFrameLeft		= 0;
+	streamInfo.rcFrameTop		= 0;
+	streamInfo.rcFrameRight		= 0;
+	streamInfo.rcFrameBottom	= 0;
 
 	Reinit();
 
@@ -689,9 +471,9 @@ bool AudioSourceDV::_isKey(VDPosition lSample) {
 
 int AudioSourceDV::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lpBytesRead, uint32 *lpSamplesRead) {
 	if (lpBuffer && cbBuffer < 4)
-		return AVIERR_BUFFERTOOSMALL;
+		return IVDStreamSource::kBufferTooSmall;
 
-	if (lCount == AVISTREAMREAD_CONVENIENT)
+	if (lCount == IVDStreamSource::kConvenient)
 		lCount = mSamplesPerSet;
 
 	VDPosition baseSet = lStart / mSamplesPerSet;
@@ -706,7 +488,7 @@ int AudioSourceDV::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint3
 	if (lpBuffer) {
 		const CacheLine *pLine = LoadSet(baseSet);
 		if (!pLine)
-			return AVIERR_FILEREAD;
+			throw MyError("Unable to read audio samples starting at %u from the DV stream.", (unsigned)lStart);
 
 		memcpy(lpBuffer, (char *)pLine->mResampledData + offset*4, 4*lCount);
 	}
@@ -716,7 +498,7 @@ int AudioSourceDV::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint3
 	if (lpSamplesRead)
 		*lpSamplesRead = lCount;
 
-	return AVIERR_OK;
+	return IVDStreamSource::kOK;
 }
 
 const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {

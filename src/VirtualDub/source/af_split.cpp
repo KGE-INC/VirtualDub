@@ -43,7 +43,7 @@ void __cdecl VDAudioFilterSplit::InitProc(const VDAudioFilterContext *pContext) 
 }
 
 uint32 VDAudioFilterSplit::Prepare() {
-	VDWaveFormat *pwf0, *pwf1;
+	VDXWaveFormat *pwf0, *pwf1;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -91,11 +91,11 @@ extern const VDPluginInfo apluginDef_split = {
 	NULL,
 	L"Splits an audio stream into two identical outputs.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

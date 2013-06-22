@@ -120,8 +120,29 @@
 			</long>
 		</filter>
 		<filter>
-			<name>ratty pitch shift</name>
+			<name>pitch shift</name>
 			<desc>Modify the pitch of audio without changing speed.</desc>
+			<long>
+				<p>
+					<em>Pitch shift</em> works by stretching or contracting its input, slicing
+					it into small sections, and then overlapping and mixing them. This alters the pitch
+					of the audio without changing its speed; since the frequency spectrum is scaled,
+					harmonics are preserved.  When raising pitch, some portions of audio are duplicated,
+					and when lowering pitch, some audio portions are dropped.  <em>Pitch shift</em>
+					tries to shift the segments around to reduce artifacts, but occasionally you may hear
+					some hiccups, or duplicated/missing beats.  That's why it's ratty, but it's fun to play
+					with.  The filter is most effective within about +/-10%.
+				</p>
+				<p>
+					If you combine <em>pitch shift</em> with <em>stretch</em> and use the same ratios
+					for both, you get a time stretcher, which alters the speed of audio without changing
+					its pitch.
+				</p>
+			</long>
+		</filter>
+		<filter>
+			<name>ratty pitch shift</name>
+			<desc>Modify the pitch of audio without changing speed (old algorithm).</desc>
 			<long>
 				<p>
 					<em>Ratty pitch shift</em> works by stretching or contracting its input, slicing
@@ -200,6 +221,16 @@
 					seeking or the filter graph freezing up.  Be particularly careful of this when
 					creating parallel branches that later merge.
 				</lina:note>
+			</long>
+		</filter>
+		<filter>
+			<name>time stretch</name>
+			<desc>Stretch or contract audio, modifying length without changing pitch.</desc>
+			<long>
+				Use <i>time stretch</i> to make an audio track run slightly faster or slower, without
+				causing chipmuck or ogre effects. Typically this is matched with a corresponding
+				change in video speed, keeping the two in sync. This is equivalent to combining
+				pitch shift and stretch filters, but with slightly higher quality and ease of use.
 			</long>
 		</filter>
 	</audio-filters>

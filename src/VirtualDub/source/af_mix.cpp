@@ -44,11 +44,11 @@ void __cdecl VDAudioFilterMix::InitProc(const VDAudioFilterContext *pContext) {
 }
 
 uint32 VDAudioFilterMix::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
-	const VDWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
-		|| format1.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
+		|| format1.mTag != VDXWaveFormat::kTagPCM
 		|| format0.mSamplingRate != format1.mSamplingRate
 		|| format0.mSampleBits != format1.mSampleBits
 		|| format0.mChannels != format1.mChannels
@@ -56,7 +56,7 @@ uint32 VDAudioFilterMix::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf0;
+	VDXWaveFormat *pwf0;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -74,7 +74,7 @@ uint32 VDAudioFilterMix::Prepare() {
 uint32 VDAudioFilterMix::Run() {
 	VDAudioFilterPin& pin1 = *mpContext->mpInputs[0];
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
-	const VDWaveFormat& format1 = *pin1.mpFormat;
+	const VDXWaveFormat& format1 = *pin1.mpFormat;
 
 	int samples = mpContext->mCommonSamples, actual = 0;
 
@@ -133,11 +133,11 @@ extern const VDPluginInfo apluginDef_mix = {
 	NULL,
 	L"Mixes two streams together linearly.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

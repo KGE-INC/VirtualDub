@@ -97,7 +97,7 @@ static INT_PTR CALLBACK embossDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
 
 static const char translate[]={ 5,2,1,0,3,6,7,8 };
 
-static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 //	static char translate[]={ 3,6,7,8,5,2,1,0 };
 //	static char translate[]={ 5,8,7,6,3,0,1,2 };
 	MyFilterData *mfd;
@@ -111,7 +111,7 @@ static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, HWND h
 		mfd->height = 16;
 	}
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_EMBOSS), hWnd, embossDlgProc, (LPARAM)fa->filter_data);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_EMBOSS), (HWND)hWnd, embossDlgProc, (LPARAM)fa->filter_data);
 
 	memset(mfd->cfd.m, 0, sizeof mfd->cfd.m);
 	mfd->cfd.bias	= 128*256 + 128;

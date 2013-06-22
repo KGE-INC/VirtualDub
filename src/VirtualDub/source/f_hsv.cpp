@@ -25,6 +25,7 @@
 #include "ScriptValue.h"
 #include "ScriptInterpreter.h"
 #include "ScriptError.h"
+#include "VBitmap.h"
 
 extern HINSTANCE g_hInst;
 
@@ -1479,7 +1480,7 @@ static INT_PTR CALLBACK hsvDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPAR
 				SendMessage(hwnd, TBM_SETPOS, (WPARAM)TRUE, ((mfd->val+8)>>4) + 4096);
 				SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hwnd);		// force label update
 
-				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 			}
             return (TRUE);
 
@@ -1494,7 +1495,7 @@ static INT_PTR CALLBACK hsvDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPAR
                 EndDialog(hDlg, 1);
                 return TRUE;
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				return TRUE;
             }
             break;
@@ -1545,14 +1546,14 @@ static INT_PTR CALLBACK hsvDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
-static int hsv_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int hsv_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	HSVFilterData *mfd = (HSVFilterData *)fa->filter_data;
 	HSVFilterData mfd2 = *mfd;
 	int ret;
 
 	mfd->ifp = fa->ifp;
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_HSV), hWnd, hsvDlgProc, (LONG)mfd);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_HSV), (HWND)hWnd, hsvDlgProc, (LPARAM)mfd);
 
 	if (ret)
 		*mfd = mfd2;

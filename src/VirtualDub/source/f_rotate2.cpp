@@ -141,8 +141,8 @@ enum {
 /////////////////////////////////////////////////////////////////////
 
 extern "C" void asm_rotate_point(
-		Pixel *src,
-		Pixel *dst,
+		uint32 *src,
+		uint32 *dst,
 		long width,
 		long Ufrac,
 		long Vfrac,
@@ -152,8 +152,8 @@ extern "C" void asm_rotate_point(
 		long Vstep);
 
 extern "C" void asm_rotate_bilinear(
-		Pixel *src,
-		Pixel *dst,
+		uint32 *src,
+		uint32 *dst,
 		long width,
 		long pitch,
 		long Ufrac,
@@ -165,7 +165,7 @@ extern "C" void asm_rotate_bilinear(
 
 /////////////////////////////////////////////////////////////////////
 
-static Pixel32 bilinear_interp(Pixel32 c1, Pixel32 c2, Pixel32 c3, Pixel32 c4, unsigned long cox, unsigned long coy) {
+static uint32 bilinear_interp(uint32 c1, uint32 c2, uint32 c3, uint32 c4, unsigned long cox, unsigned long coy) {
 	int co1, co2, co3, co4;
 
 	co4 = (cox * coy) >> 8;
@@ -181,11 +181,11 @@ static Pixel32 bilinear_interp(Pixel32 c1, Pixel32 c2, Pixel32 c3, Pixel32 c4, u
 #define GRN(x) ((signed long)((x)>> 8)&255)
 #define BLU(x) ((signed long)(x)&255)
 
-static inline Pixel cc(const Pixel *yptr, const int *tbl) {
-	const Pixel y1 = yptr[0];
-	const Pixel y2 = yptr[1];
-	const Pixel y3 = yptr[2];
-	const Pixel y4 = yptr[3];
+static inline uint32 cc(const uint32 *yptr, const int *tbl) {
+	const uint32 y1 = yptr[0];
+	const uint32 y2 = yptr[1];
+	const uint32 y3 = yptr[2];
+	const uint32 y4 = yptr[3];
 	long red, grn, blu;
 
 	red = RED(y1)*tbl[0] + RED(y2)*tbl[1] + RED(y3)*tbl[2] + RED(y4)*tbl[3];
@@ -204,7 +204,7 @@ static inline Pixel cc(const Pixel *yptr, const int *tbl) {
 #undef BLU
 
 #ifdef _M_IX86
-static Pixel32 __declspec(naked) cc_MMX(const Pixel32 *src, const int *table) {
+static uint32 __declspec(naked) cc_MMX(const uint32 *src, const int *table) {
 
 	static const sint64 x0000200000002000 = 0x0000200000002000i64;
 
@@ -263,48 +263,48 @@ static Pixel32 __declspec(naked) cc_MMX(const Pixel32 *src, const int *table) {
 	}
 }
 
-static inline Pixel32 bicubic_interp_MMX(const Pixel32 *src, PixOffset pitch, unsigned long cox, unsigned long coy, const int *table) {
-	Pixel32 x[4];
+static inline uint32 bicubic_interp_MMX(const uint32 *src, ptrdiff_t pitch, unsigned long cox, unsigned long coy, const int *table) {
+	uint32 x[4];
 
 	cox >>= 24;
 	coy >>= 24;
 
-	src = (Pixel32 *)((char *)src - pitch - 4);
+	src = (uint32 *)((char *)src - pitch - 4);
 
-	x[0] = cc_MMX(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
-	x[1] = cc_MMX(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
-	x[2] = cc_MMX(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
+	x[0] = cc_MMX(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
+	x[1] = cc_MMX(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
+	x[2] = cc_MMX(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
 	x[3] = cc_MMX(src, table+cox*4);
 
 	return cc_MMX(x, table + coy*4);
 }
 #endif
 
-static inline Pixel32 bicubic_interp(const Pixel32 *src, PixOffset pitch, unsigned long cox, unsigned long coy, const int *table) {
-	Pixel32 x[4];
+static inline uint32 bicubic_interp(const uint32 *src, ptrdiff_t pitch, unsigned long cox, unsigned long coy, const int *table) {
+	uint32 x[4];
 
 	cox >>= 24;
 	coy >>= 24;
 
-	src = (Pixel32 *)((char *)src - pitch - 4);
+	src = (uint32 *)((char *)src - pitch - 4);
 
-	x[0] = cc(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
-	x[1] = cc(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
-	x[2] = cc(src, table+cox*4); src = (Pixel32 *)((char *)src + pitch);
+	x[0] = cc(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
+	x[1] = cc(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
+	x[2] = cc(src, table+cox*4); src = (uint32 *)((char *)src + pitch);
 	x[3] = cc(src, table+cox*4);
 
 	return cc(x, table + coy*4);
 }
 
-static Pixel32 ColorRefToPixel32(COLORREF rgb) {
-	return (Pixel32)(((rgb>>16)&0xff) | ((rgb<<16)&0xff0000) | (rgb&0xff00));
+static uint32 ColorRefToPixel32(COLORREF rgb) {
+	return (uint32)(((rgb>>16)&0xff) | ((rgb<<16)&0xff0000) | (rgb&0xff00));
 }
 
 static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	const VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 	sint64 xaccum, yaccum;
-	Pixel32 *src, *dst, pixFill;
-	PixDim w, h;
+	uint32 *src, *dst, pixFill;
+	sint32 w, h;
 	const RotateRow *rr = mfd->rows;
 	const sint64 du = mfd->u_step;
 	const sint64 dv = mfd->v_step;
@@ -342,7 +342,7 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 #ifdef USE_ASM
 				asm_rotate_point(
-					(Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch),
+					(uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch),
 					dst,
 					w,
 					(unsigned long)xaccum,
@@ -356,7 +356,7 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 #else
 				do {
-					*dst++ = *(Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					*dst++ = *(uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
 
 					xaccum += du;
 					yaccum += dv;
@@ -369,8 +369,8 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			w = rr->left;
 			if (w) {
 				do {
-					Pixel32 *src = (Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
-					Pixel32 c1, c2, c3, c4;
+					uint32 *src = (uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					uint32 c1, c2, c3, c4;
 
 					int px = (int)(xaccum >> 32);
 					int py = (int)(yaccum >> 32);
@@ -378,28 +378,28 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c1 = pixFill;
 					else
-						c1 = *(Pixel32 *)((char *)src + 0);
+						c1 = *(uint32 *)((char *)src + 0);
 
 					++px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c2 = pixFill;
 					else
-						c2 = *(Pixel32 *)((char *)src + 4);
+						c2 = *(uint32 *)((char *)src + 4);
 
 					++py;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c4 = pixFill;
 					else
-						c4 = *(Pixel32 *)((char *)src + 4 + fa->src.pitch);
+						c4 = *(uint32 *)((char *)src + 4 + fa->src.pitch);
 
 					--px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c3 = pixFill;
 					else
-						c3 = *(Pixel32 *)((char *)src + 0 + fa->src.pitch);
+						c3 = *(uint32 *)((char *)src + 0 + fa->src.pitch);
 
 					*dst++ = bilinear_interp(c1, c2, c3, c4, (unsigned long)xaccum >> 24, (unsigned long)yaccum >> 24);
 
@@ -412,7 +412,7 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			if (w) {
 #ifdef USE_ASM
 				asm_rotate_bilinear(
-						(Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch),
+						(uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch),
 						dst,
 						w,
 						fa->src.pitch,
@@ -428,14 +428,14 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				dst += w;
 #else
 				do {
-					Pixel32 *src = (Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
-					Pixel32 c1, c2, c3, c4, cY;
+					uint32 *src = (uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					uint32 c1, c2, c3, c4, cY;
 					int co1, co2, co3, co4, cox, coy;
 
-					c1 = *(Pixel32 *)((char *)src + 0);
-					c2 = *(Pixel32 *)((char *)src + 4);
-					c3 = *(Pixel32 *)((char *)src + 0 + fa->src.pitch);
-					c4 = *(Pixel32 *)((char *)src + 4 + fa->src.pitch);
+					c1 = *(uint32 *)((char *)src + 0);
+					c2 = *(uint32 *)((char *)src + 4);
+					c3 = *(uint32 *)((char *)src + 0 + fa->src.pitch);
+					c4 = *(uint32 *)((char *)src + 4 + fa->src.pitch);
 
 					cox = ((unsigned long)xaccum >> 24);
 					coy = ((unsigned long)yaccum >> 24);
@@ -459,8 +459,8 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			w = rr->right;
 			if (w) {
 				do {
-					Pixel32 *src = (Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
-					Pixel32 c1, c2, c3, c4;
+					uint32 *src = (uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					uint32 c1, c2, c3, c4;
 
 					int px = (int)(xaccum >> 32);
 					int py = (int)(yaccum >> 32);
@@ -468,28 +468,28 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c1 = pixFill;
 					else
-						c1 = *(Pixel32 *)((char *)src + 0);
+						c1 = *(uint32 *)((char *)src + 0);
 
 					++px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c2 = pixFill;
 					else
-						c2 = *(Pixel32 *)((char *)src + 4);
+						c2 = *(uint32 *)((char *)src + 4);
 
 					++py;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c4 = pixFill;
 					else
-						c4 = *(Pixel32 *)((char *)src + 4 + fa->src.pitch);
+						c4 = *(uint32 *)((char *)src + 4 + fa->src.pitch);
 
 					--px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c3 = pixFill;
 					else
-						c3 = *(Pixel32 *)((char *)src + 0 + fa->src.pitch);
+						c3 = *(uint32 *)((char *)src + 0 + fa->src.pitch);
 
 					*dst++ = bilinear_interp(c1, c2, c3, c4, (unsigned long)xaccum >> 24, (unsigned long)yaccum >> 24);
 
@@ -503,8 +503,8 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			w = rr->left;
 			if (w) {
 				do {
-					Pixel32 *src = (Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
-					Pixel32 c1, c2, c3, c4;
+					uint32 *src = (uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					uint32 c1, c2, c3, c4;
 
 					int px = (int)(xaccum >> 32);
 					int py = (int)(yaccum >> 32);
@@ -512,28 +512,28 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c1 = pixFill;
 					else
-						c1 = *(Pixel32 *)((char *)src + 0);
+						c1 = *(uint32 *)((char *)src + 0);
 
 					++px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c2 = pixFill;
 					else
-						c2 = *(Pixel32 *)((char *)src + 4);
+						c2 = *(uint32 *)((char *)src + 4);
 
 					++py;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c4 = pixFill;
 					else
-						c4 = *(Pixel32 *)((char *)src + 4 + fa->src.pitch);
+						c4 = *(uint32 *)((char *)src + 4 + fa->src.pitch);
 
 					--px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c3 = pixFill;
 					else
-						c3 = *(Pixel32 *)((char *)src + 0 + fa->src.pitch);
+						c3 = *(uint32 *)((char *)src + 0 + fa->src.pitch);
 
 					*dst++ = bilinear_interp(c1, c2, c3, c4, (unsigned long)xaccum >> 24, (unsigned long)yaccum >> 24);
 
@@ -547,7 +547,7 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				sint64 xa = xaccum;
 				sint64 ya = yaccum;
 
-				src = (Pixel32*)((char *)fa->src.data + (int)(xa>>32)*4 + (int)(ya>>32)*fa->src.pitch);
+				src = (uint32*)((char *)fa->src.data + (int)(xa>>32)*4 + (int)(ya>>32)*fa->src.pitch);
 
 				xaccum += du * w;
 				yaccum += dv * w;
@@ -584,8 +584,8 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			w = rr->right;
 			if (w) {
 				do {
-					Pixel32 *src = (Pixel32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
-					Pixel32 c1, c2, c3, c4;
+					uint32 *src = (uint32*)((char *)fa->src.data + (int)(xaccum>>32)*4 + (int)(yaccum>>32)*fa->src.pitch);
+					uint32 c1, c2, c3, c4;
 
 					int px = (int)(xaccum >> 32);
 					int py = (int)(yaccum >> 32);
@@ -593,28 +593,28 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c1 = pixFill;
 					else
-						c1 = *(Pixel32 *)((char *)src + 0);
+						c1 = *(uint32 *)((char *)src + 0);
 
 					++px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c2 = pixFill;
 					else
-						c2 = *(Pixel32 *)((char *)src + 4);
+						c2 = *(uint32 *)((char *)src + 4);
 
 					++py;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c4 = pixFill;
 					else
-						c4 = *(Pixel32 *)((char *)src + 4 + fa->src.pitch);
+						c4 = *(uint32 *)((char *)src + 4 + fa->src.pitch);
 
 					--px;
 
 					if (px<0 || py<0 || px>=fa->src.w || py>=fa->src.h)
 						c3 = pixFill;
 					else
-						c3 = *(Pixel32 *)((char *)src + 0 + fa->src.pitch);
+						c3 = *(uint32 *)((char *)src + 0 + fa->src.pitch);
 
 					*dst++ = bilinear_interp(c1, c2, c3, c4, (unsigned long)xaccum >> 24, (unsigned long)yaccum >> 24);
 
@@ -630,7 +630,7 @@ static int rotate2_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			*dst++ = pixFill;
 		} while(--w);
 
-		dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+		dst = (uint32 *)((char *)dst + fa->dst.modulo);
 
 		++rr;
 
@@ -710,7 +710,7 @@ static INT_PTR CALLBACK rotate2DlgProc( HWND hDlg, UINT message, WPARAM wParam, 
 
 				mfd->hbrColor = CreateSolidBrush(mfd->rgbColor);
 
-				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 
 			}
             return (TRUE);
@@ -728,7 +728,7 @@ static INT_PTR CALLBACK rotate2DlgProc( HWND hDlg, UINT message, WPARAM wParam, 
                 return TRUE;
 
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				return TRUE;
 
 			case IDC_ANGLE:
@@ -788,7 +788,7 @@ static INT_PTR CALLBACK rotate2DlgProc( HWND hDlg, UINT message, WPARAM wParam, 
     return FALSE;
 }
 
-static int rotate2_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int rotate2_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	VDRotate2FilterData *mfd = (VDRotate2FilterData *)fa->filter_data;
 	VDRotate2FilterData mfd2 = *mfd;
 	int ret;
@@ -796,7 +796,7 @@ static int rotate2_config(FilterActivation *fa, const FilterFunctions *ff, HWND 
 	mfd->hbrColor = NULL;
 	mfd->ifp = fa->ifp;
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_ROTATE2), hWnd, rotate2DlgProc, (LONG)mfd);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_ROTATE2), (HWND)hWnd, rotate2DlgProc, (LPARAM)mfd);
 
 	if (mfd->hbrColor)
 		DeleteObject(mfd->hbrColor);

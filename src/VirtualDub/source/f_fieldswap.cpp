@@ -39,7 +39,7 @@ static void __declspec(naked) asm_fieldswap(void *data, int bytes4, int bytes1, 
 		mov		edi,esi
 		mov		ecx,[esp+12+16]
 		mov		eax,[esp+20+16]
-		shr		eax,1
+		sar		eax,1
 		add		edi,eax
 yloop:
 		mov		ebp,[esp+8+16]

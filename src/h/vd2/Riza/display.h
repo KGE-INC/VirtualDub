@@ -73,6 +73,7 @@ public:
 	virtual void SetSourceSubrect(const vdrect32 *r) = 0;
 	virtual void SetSourceSolidColor(uint32 color) = 0;
 
+	virtual void SetReturnFocus(bool enable) = 0;
 	virtual void SetFullScreen(bool fs) = 0;
 
 	virtual void PostBuffer(VDVideoDisplayFrame *) = 0;

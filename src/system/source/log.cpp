@@ -80,6 +80,16 @@ void VDLog(int severity, const VDStringW& s) {
 	}
 }
 
+void VDLogF(int severity, const wchar_t *format, ...) {
+	va_list val;
+	va_start(val, format);
+	VDStringW s;
+	s.append_vsprintf(format, val);
+	va_end(val);
+
+	VDLog(severity, s);
+}
+
 void VDAttachLogger(IVDLogger *pLogger, bool bThisThreadOnly, bool bReplayLog) {
 	vdsynchronized(g_csLog) {
 		g_loggers.push_back(tVDLoggers::value_type(pLogger, bThisThreadOnly ? VDGetCurrentThreadID() : 0));

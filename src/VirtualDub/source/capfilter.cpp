@@ -609,48 +609,33 @@ public:
 	void Shutdown();
 
 protected:
-	FilterStateInfo	mfsi;
+	sint64	mFrame;
+	double		mFrameToTimeMSFactor;
+	VDFraction	mFrameRate;
 };
 
 void VDCaptureFilterChainAdapter::SetFrameRate(uint32 usPerFrame) {
-	mfsi.lMicrosecsPerFrame		= usPerFrame;
-	mfsi.lMicrosecsPerSrcFrame	= usPerFrame;
+	mFrameRate.Assign(1000000, usPerFrame);
+	mFrameToTimeMSFactor = mFrameRate.AsInverseDouble() * 1000.0;
 }
 
 void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
-	mfsi.lCurrentFrame			= 0;
-	mfsi.lDestFrameMS			= 0;
-	mfsi.lCurrentSourceFrame	= 0;
-	mfsi.lSourceFrameMS			= 0;
-	mfsi.flags					= FilterStateInfo::kStateRealTime;
+	filters.initLinearChain(&g_listFA, layout.w, layout.h, layout.format, mFrameRate, -1);
+	filters.ReadyFilters();
 
-	filters.initLinearChain(&g_listFA, (Pixel *)layout.palette, layout.w, layout.h, 24);
-
-	if (filters.ReadyFilters(mfsi))
-		throw MyError("%sUnable to initialize filters.", g_szCannotFilter);
-
-	const VBitmap& vb = *filters.LastBitmap();
-
-	VDMakeBitmapCompatiblePixmapLayout(layout, vb.w, vb.h, nsVDPixmap::kPixFormat_RGB888, 0);
+	void *p;
+	layout = VDPixmapToLayout(filters.GetOutput(), p);
 }
 
 void VDCaptureFilterChainAdapter::Run(VDPixmap& px) {
-	VDPixmapBlt(VDAsPixmap(*filters.InputBitmap()), px);
+	VDPixmapBlt(filters.GetInput(), px);
 
-	mfsi.lSourceFrameMS				= ((uint64)mfsi.lCurrentSourceFrame * mfsi.lMicrosecsPerSrcFrame + 500) / 1000;
-	mfsi.lDestFrameMS				= ((uint64)mfsi.lCurrentFrame * mfsi.lMicrosecsPerFrame + 500) / 1000;
+	sint64 frameTime = VDRoundToInt64((double)mFrame * mFrameToTimeMSFactor);
 
-	filters.RunFilters(mfsi);
+	filters.RunFilters(mFrame, mFrame, mFrame, frameTime, NULL, VDXFilterStateInfo::kStateRealTime);
+	++mFrame;
 
-	VBitmap& lastbm = *filters.LastBitmap();
-	VBitmap& outbm = *filters.OutputBitmap();
-
-	outbm.BitBlt(0,0, &lastbm, 0, 0, lastbm.w, lastbm.h);
-
-	px = VDAsPixmap(outbm);
-
-	++mfsi.lCurrentFrame;
-	++mfsi.lCurrentSourceFrame;
+	px = filters.GetOutput();
 }
 
 void VDCaptureFilterChainAdapter::Shutdown() {
@@ -674,14 +659,17 @@ public:
 	void SetLumaSquish(bool enableBlack, bool enableWhite);
 	void SetFieldSwap(bool enable);
 	void SetVertSquashMode(FilterMode mode);
-	void SetChainEnable(bool enable);
+	void SetChainEnable(bool enable, bool force24Bit);
 
 	void Init(VDPixmapLayout& layout, uint32 usPerFrame);
-	void Run(VDPixmap& px);
+	void Run(VDPixmap& px, void *&outputData, uint32& outputSize);
 	void Shutdown();
 
 protected:
 	void RebuildFilterChain();
+
+	ptrdiff_t	mBaseOffset;
+	uint32		mOutputSize;
 
 	uint32	mCropX1;
 	uint32	mCropY1;
@@ -693,6 +681,7 @@ protected:
 	bool	mbLumaSquishWhite;
 	bool	mbFieldSwap;
 	bool	mbChainEnable;
+	bool	mbForce24Bit;
 	bool	mbCropEnable;
 	bool	mbInitialized;
 
@@ -727,6 +716,7 @@ VDCaptureFilterSystem::VDCaptureFilterSystem()
 	, mbLumaSquishWhite(false)
 	, mbFieldSwap(false)
 	, mbChainEnable(false)
+	, mbForce24Bit(false)
 	, mbInitialized(false)
 {
 }
@@ -796,8 +786,9 @@ void VDCaptureFilterSystem::SetVertSquashMode(FilterMode mode) {
 	mVertSquashMode = mode;
 }
 
-void VDCaptureFilterSystem::SetChainEnable(bool enable) {
+void VDCaptureFilterSystem::SetChainEnable(bool enable, bool force24Bit) {
 	mbChainEnable = enable;
+	mbForce24Bit = force24Bit;
 }
 
 void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
@@ -837,31 +828,25 @@ void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
 
 	RebuildFilterChain();
 
-	// We need to linearize the bitmap if cropping is enabled but filter chain is not.
-	if (mbCropEnable && !mbChainEnable) {
-		uint32 bytes = VDPixmapCreateLinearLayout(mLinearLayout, pxl.format, pxl.w, pxl.h, VDPixmapGetInfo(pxl.format).auxbufs > 1 ? 1 : 4);
+	// We need to linearize the bitmap if cropping or the filter chain is enabled.
+	if (mbCropEnable || mbChainEnable) {
+		int format = pxl.format;
 
-		// flip only RGB formats
-		using namespace nsVDPixmap;
+		if (mbChainEnable && mbForce24Bit)
+			format = nsVDPixmap::kPixFormat_RGB888;
 
-		switch(pxl.format) {
-		case kPixFormat_Pal1:
-		case kPixFormat_Pal2:
-		case kPixFormat_Pal4:
-		case kPixFormat_Pal8:
-		case kPixFormat_XRGB1555:
-		case kPixFormat_RGB565:
-		case kPixFormat_RGB888:
-		case kPixFormat_XRGB8888:
-			VDPixmapLayoutFlipV(mLinearLayout);
-			break;
-		}
+		uint32 bytes = VDMakeBitmapCompatiblePixmapLayout(mLinearLayout, pxl.w, pxl.h, format, 0);
 
 		mLinearBuffer.resize(bytes);
+
+		pxl = mLinearLayout;
 	}
+
+	mOutputSize = VDPixmapLayoutGetMinSize(pxl);
+	mBaseOffset = pxl.data;
 }
 
-void VDCaptureFilterSystem::Run(VDPixmap& px) {
+void VDCaptureFilterSystem::Run(VDPixmap& px, void*& outputData, uint32& outputSize) {
 	tFilterChain::iterator it(mFilterChain.begin()), itEnd(mFilterChain.end());
 
 	for(; it!=itEnd; ++it) {
@@ -874,12 +859,14 @@ void VDCaptureFilterSystem::Run(VDPixmap& px) {
 	VDAssertValidPixmap(px);
 
 	// Check if we have to linearize the bitmap.
-
-	if (mbCropEnable && !mbChainEnable) {
+	if (mbCropEnable || mbChainEnable) {
 		VDPixmap pxLinear(VDPixmapFromLayout(mLinearLayout, mLinearBuffer.data()));
 		VDPixmapBlt(pxLinear, px);
 		px = pxLinear;
 	}
+
+	outputData = (char *)px.data - mBaseOffset;
+	outputSize = mOutputSize;
 }
 
 #if _MSC_VER < 1400

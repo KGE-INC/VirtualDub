@@ -26,12 +26,14 @@
 #include <vd2/system/refcount.h>
 #include <vd2/system/math.h>
 #include <vd2/system/vdalloc.h>
-#include <vd2/Riza/w32audiocodec.h>
+#include <vd2/Riza/audiocodec.h>
 
 #include "filter.h"
 #include "AudioSource.h"
 #include "af_base.h"
 #include "af_input.h"
+
+bool VDPreferencesIsPreferInternalAudioDecodersEnabled();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -53,10 +55,9 @@ public:
 	unsigned		mPad;
 	VDPosition		mLimit;
 	int				mSrcBlockAlign;
-	bool			mbDecompressionActive;
 	bool			mbDecompressionAllowed;
 
-	VDAudioCodecW32	mDecompressor;
+	vdautoptr<IVDAudioCodec> 	mpDecompressor;
 };
 
 IVDAudioFilterInput *VDGetAudioFilterInputInterface(void *p) {
@@ -80,29 +81,27 @@ uint32 VDAudioFilterInput::Prepare() {
 	if (!mpSrc)
 		throw MyError("No audio source is available for the \"input\" audio filter.");
 
-	const WAVEFORMATEX *pwfex = mpSrc->getWaveFormat();
+	const VDWaveFormat *pwfex = mpSrc->getWaveFormat();
 
-	mDecompressor.Shutdown();
-	mbDecompressionActive = false;
+	mpDecompressor = NULL;
 
 	if (mbDecompressionAllowed) {
-		if (pwfex->wFormatTag != WAVE_FORMAT_PCM) {
-			mDecompressor.Init(pwfex);
-			pwfex = mDecompressor.GetOutputFormat();
-			mbDecompressionActive = true;
+		if (pwfex->mTag != WAVE_FORMAT_PCM) {
+			mpDecompressor = VDLocateAudioDecompressor((const VDWaveFormat *)pwfex, NULL, VDPreferencesIsPreferInternalAudioDecodersEnabled());
+			pwfex = mpDecompressor->GetOutputFormat();
 		}
 
-		VDASSERT(pwfex->wFormatTag == WAVE_FORMAT_PCM);
+		VDASSERT(pwfex->mTag == WAVE_FORMAT_PCM);
 	}
 
-	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->AllocCustomWaveFormat(0);
+	VDXWaveFormat *pwf = mpContext->mpAudioCallbacks->AllocCustomWaveFormat(0);
 
 	if (!pwf) {
 		mpContext->mpServices->SetErrorOutOfMemory();
 		return 0;
 	}
 
-	memcpy(pwf, pwfex, pwfex->wFormatTag == WAVE_FORMAT_PCM ? sizeof(PCMWAVEFORMAT) : sizeof(WAVEFORMATEX) + pwfex->cbSize);
+	memcpy(pwf, pwfex, pwfex->mTag == WAVE_FORMAT_PCM ? sizeof(PCMWAVEFORMAT) : sizeof(WAVEFORMATEX) + pwfex->mExtraSize);
 
 	mpContext->mpOutputs[0]->mGranularity	= 1;
 	mpContext->mpOutputs[0]->mpFormat		= pwf;
@@ -110,11 +109,12 @@ uint32 VDAudioFilterInput::Prepare() {
 
 	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
 
-	const WAVEFORMATEX& srcFormat = *mpSrc->getWaveFormat();
+	const VDWaveFormat& srcFormat = *mpSrc->getWaveFormat();
 
-	mSrcBlockAlign = srcFormat.nBlockAlign;
+	mSrcBlockAlign = srcFormat.mBlockSize;
 
-	pin.mLength = VDFraction(srcFormat.nAvgBytesPerSec, srcFormat.nBlockAlign).scale64ir(mpSrc->getLength() * (sint64)1000000);
+	const VDFraction& sampleRate = mpSrc->getRate();
+	pin.mLength = sampleRate.scale64ir(mpSrc->getLength() * (sint64)1000000);
 
 	return 0;
 }
@@ -127,7 +127,7 @@ void VDAudioFilterInput::Start() {
 
 uint32 VDAudioFilterInput::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 
 	if (mPad > 0) {
@@ -146,17 +146,17 @@ uint32 VDAudioFilterInput::Run() {
 
 		return 0;
 
-	} else if (mbDecompressionActive) {
-			unsigned bytes = mDecompressor.GetOutputLevel();
+	} else if (mpDecompressor) {
+			unsigned bytes = mpDecompressor->GetOutputLevel();
 
 		if (bytes > 0) {
-			int count = mDecompressor.CopyOutput(pin.mpBuffer, pin.mAvailSpace * format.mBlockSize);
+			int count = mpDecompressor->CopyOutput(pin.mpBuffer, pin.mAvailSpace * format.mBlockSize);
 
 			pin.mSamplesWritten = count / format.mBlockSize;
 			return 0;
 		}
 
-		void *dst = mDecompressor.LockInputBuffer(bytes);
+		void *dst = mpDecompressor->LockInputBuffer(bytes);
 
 		if (bytes >= mSrcBlockAlign && mPos < mLimit) {
 			uint32 actualbytes, samples;
@@ -166,13 +166,13 @@ uint32 VDAudioFilterInput::Run() {
 
 			int res = mpSrc->read(mPos, bytes / mSrcBlockAlign, dst, bytes, &actualbytes, &samples);
 
-			VDASSERT(res != AVIERR_BUFFERTOOSMALL);
+			VDASSERT(res != IVDStreamSource::kBufferTooSmall);
 
 			if (res)
 				throw MyError("Read error on audio sample %u. The source may be corrupted.", (unsigned)mPos);
 
 			mPos += samples;
-			mDecompressor.UnlockInputBuffer(actualbytes);
+			mpDecompressor->UnlockInputBuffer(actualbytes);
 
 			if (actualbytes)
 				return kVFARun_InternalWork;
@@ -180,9 +180,9 @@ uint32 VDAudioFilterInput::Run() {
 
 		bool inputEnded = mPos >= mLimit; 
 
-		mDecompressor.Convert(inputEnded, true);
+		mpDecompressor->Convert(inputEnded, true);
 
-		return inputEnded && mDecompressor.IsEnded() ? kVFARun_Finished : kVFARun_InternalWork;
+		return inputEnded && mpDecompressor->IsEnded() ? kVFARun_Finished : kVFARun_InternalWork;
 	} else {
 		uint32 samples = pin.mAvailSpace;
 		uint32 bytes = pin.mAvailSpace * format.mBlockSize;
@@ -208,11 +208,12 @@ sint64 VDAudioFilterInput::Seek(sint64 us) {
 	mPad = 0;
 
 	if (us < 0) {
-		const VDWaveFormat& format = *(const VDWaveFormat *)mpContext->mpOutputs[0]->mpFormat;
+		const VDXWaveFormat& format = *(const VDXWaveFormat *)mpContext->mpOutputs[0]->mpFormat;
 
 		mPad = (unsigned)VDMulDiv64(format.mDataRate, -us, format.mBlockSize * VD64(1000000));
-	} else 
-		mPos = mpSrc->msToSamples(us/1000);
+	} else {
+		mPos = mpSrc->TimeToPositionVBR(us);
+	}
 
 	return us;
 }
@@ -235,11 +236,11 @@ extern const VDPluginInfo apluginDef_input = {
 	NULL,
 	L"Produces audio from current audio source.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -282,7 +283,7 @@ uint32 VDAudioFilterPlayback::Prepare() {
 
 void VDAudioFilterPlayback::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	if (!mpAudioOut->Init(32768, 4, (WAVEFORMATEX *)&format))
 		mpAudioOut->GoSilent();
@@ -291,7 +292,7 @@ void VDAudioFilterPlayback::Start() {
 
 uint32 VDAudioFilterPlayback::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 	char buf[16384];
 
 	for(;;) {
@@ -332,11 +333,11 @@ extern const VDPluginInfo apluginDef_playback = {
 	NULL,
 	L"",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -364,8 +365,8 @@ void __cdecl VDAudioFilterButterfly::InitProc(const VDAudioFilterContext *pConte
 }
 
 uint32 VDAudioFilterButterfly::Prepare() {
-	const VDWaveFormat *pFormatIn = mpContext->mpInputs[0]->mpFormat;
-	VDWaveFormat *pFormat;
+	const VDXWaveFormat *pFormatIn = mpContext->mpInputs[0]->mpFormat;
+	VDXWaveFormat *pFormat;
 
 	if (pFormatIn->mChannels != 2)
 		return kVFAPrepare_BadFormat;
@@ -432,11 +433,11 @@ extern const VDPluginInfo apluginDef_butterfly = {
 	L"Computes the half-sum and half-difference between stereo channels. This can be used to "
 		L"split stereo into mid/side signals or recombine mid/side into stereo.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -464,9 +465,9 @@ void __cdecl VDAudioFilterStereoSplit::InitProc(const VDAudioFilterContext *pCon
 }
 
 uint32 VDAudioFilterStereoSplit::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
 		|| format0.mChannels != 2
 		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
 		)
@@ -477,7 +478,7 @@ uint32 VDAudioFilterStereoSplit::Prepare() {
 	mpContext->mpOutputs[0]->mGranularity = 1;
 	mpContext->mpOutputs[1]->mGranularity = 1;
 
-	VDWaveFormat *pwf0, *pwf1;
+	VDXWaveFormat *pwf0, *pwf1;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -498,7 +499,7 @@ uint32 VDAudioFilterStereoSplit::Prepare() {
 
 uint32 VDAudioFilterStereoSplit::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	int samples = mpContext->mCommonSamples, actual = 0;
 
@@ -551,11 +552,11 @@ extern const VDPluginInfo apluginDef_stereosplit = {
 	NULL,
 	L"Splits a stereo stream into two mono streams, one per channel.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 
@@ -583,13 +584,13 @@ void __cdecl VDAudioFilterStereoMerge::InitProc(const VDAudioFilterContext *pCon
 }
 
 uint32 VDAudioFilterStereoMerge::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
-	const VDWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
 		|| format0.mChannels != 1
 		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
-		|| format1.mTag != VDWaveFormat::kTagPCM
+		|| format1.mTag != VDXWaveFormat::kTagPCM
 		|| format1.mChannels != 1
 		|| (format1.mSampleBits != 8 && format0.mSampleBits != 16)
 		|| format0.mSamplingRate != format1.mSamplingRate
@@ -603,7 +604,7 @@ uint32 VDAudioFilterStereoMerge::Prepare() {
 	mpContext->mpInputs[1]->mDelay			= 0;
 	mpContext->mpOutputs[0]->mGranularity	= 1;
 
-	VDWaveFormat *pwf0;
+	VDXWaveFormat *pwf0;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -620,7 +621,7 @@ uint32 VDAudioFilterStereoMerge::Prepare() {
 uint32 VDAudioFilterStereoMerge::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	VDAudioFilterPin& pin2 = *mpContext->mpInputs[1];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	int samples = mpContext->mCommonSamples, actual = 0;
 
@@ -690,11 +691,11 @@ extern const VDPluginInfo apluginDef_stereomerge = {
 	NULL,
 	L"Recombines two mono streams into a single stereo stream.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

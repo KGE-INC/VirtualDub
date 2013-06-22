@@ -19,8 +19,8 @@
 #ifndef f_VD2_RIZA_BITMAP_H
 #define f_VD2_RIZA_BITMAP_H
 
-#include <windows.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/Riza/avi.h>
 
 struct VDPixmap;
 
@@ -31,17 +31,17 @@ struct VDPixmap;
 //	pixmap format:	describes channel layout, color space, subsampling
 //	variant:		describes variations in layout and FOURCC that may
 //					correspond to the same pixmap format
-//	bitmap format:	Win32 BITMAPINFOHEADER
+//	bitmap format:	Win32 VDAVIBitmapInfoHeader
 //
 struct VDPixmapLayout;
 
 int VDGetPixmapToBitmapVariants(int format);
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr);
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant);
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant);
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h);
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int format, int variant, uint32 w, uint32 h);
+int VDBitmapFormatToPixmapFormat(const VDAVIBitmapInfoHeader& hdr);
+int VDBitmapFormatToPixmapFormat(const VDAVIBitmapInfoHeader& hdr, int& variant);
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, const vdstructex<VDAVIBitmapInfoHeader>& src, int format, int variant);
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, const vdstructex<VDAVIBitmapInfoHeader>& src, int format, int variant, uint32 w, uint32 h);
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, int format, int variant, uint32 w, uint32 h);
 uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant);
-VDPixmap VDGetPixmapForBitmap(const BITMAPINFOHEADER& hdr, const void *data);
+VDPixmap VDGetPixmapForBitmap(const VDAVIBitmapInfoHeader& hdr, const void *data);
 
 #endif

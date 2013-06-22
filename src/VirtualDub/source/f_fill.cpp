@@ -26,6 +26,7 @@
 
 #include "resource.h"
 #include "filter.h"
+#include "VBitmap.h"
 #include "gui.h"
 
 #include "ScriptInterpreter.h"
@@ -33,7 +34,7 @@
 #include "ScriptError.h"
 
 extern HINSTANCE g_hInst;
-extern vdrefptr<VideoSource> inputVideoAVI;
+extern vdrefptr<IVDVideoSource> inputVideo;
 
 ///////////////////////
 
@@ -96,8 +97,8 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 				mfd->color_temp = mfd->color;
 				mfd->hbrColor = CreateSolidBrush(mfd->color);
 
-				if (inputVideoAVI) {
-					BITMAPINFOHEADER *bmi = inputVideoAVI->getImageFormat();
+				if (inputVideo) {
+					VDAVIBitmapInfoHeader *bmi = inputVideo->getImageFormat();
 					pClipCtrl->SetBitmapSize(bmi->biWidth, abs(bmi->biHeight));
 				} else
 					pClipCtrl->SetBitmapSize(320, 240);
@@ -216,8 +217,8 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
-static int fill_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FILL), hWnd, fillDlgProc, (LONG)fa->filter_data);
+static int fill_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FILL), (HWND)hWnd, fillDlgProc, (LPARAM)fa->filter_data);
 }
 
 static void fill_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

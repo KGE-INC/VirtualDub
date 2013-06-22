@@ -22,6 +22,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <vfw.h>
 
 #include "resource.h"
 
@@ -45,6 +46,7 @@
 #include "script.h"
 #include "misc.h"
 #include "project.h"
+#include "filters.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -64,6 +66,7 @@ extern wchar_t g_szInputAVIFile[];
 extern wchar_t g_szInputWAVFile[];
 extern InputFileOptions *g_pInputOpts;
 extern VDProject *g_project;
+extern COMPVARS g_Vcompression;
 
 HWND g_hwndJobs;
 
@@ -291,7 +294,6 @@ void VDJob::Delete(bool force_no_update) {
 
 void VDJob::Refresh() {
 	int index = ListFind(this);
-//	bool fSelected;
 
 	if (index>=0 && g_hwndJobs) {
 		HWND hwndItem = GetDlgItem(g_hwndJobs, IDC_JOBS);
@@ -1561,13 +1563,49 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 	char buf[4096];
 	long l;
 
-	switch(audioInputMode) {
-	case AUDIOIN_WAVE:
-		output.addf("VirtualDub.audio.SetSource(\"%s\");", VDEncodeScriptString(VDStringW(g_szInputWAVFile)).c_str());
+	int audioSourceMode = g_project->GetAudioSourceMode();
+
+	switch(audioSourceMode) {
+
+	case kVDAudioSourceMode_External:
+		{
+			const VDStringA& encodedFileName = VDEncodeScriptString(VDStringW(g_szInputWAVFile));
+			const VDStringA& encodedDriverName = VDEncodeScriptString(VDTextWToU8(g_project->GetAudioSourceDriverName(), -1));
+
+			// check if we have options to write out
+			const InputFileOptions *opts = g_project->GetAudioSourceOptions();
+			if (opts) {
+				int l;
+				char buf[256];
+
+				l = opts->write(buf, (sizeof buf)/7*3);
+
+				if (l) {
+					membase64(buf+l, (char *)buf, l);
+
+					output.addf("VirtualDub.audio.SetSource(\"%s\", \"%s\", \"%s\");", encodedFileName.c_str(), encodedDriverName.c_str(), buf+l);
+					break;
+				}
+			}
+
+			// no options
+			output.addf("VirtualDub.audio.SetSource(\"%s\", \"%s\");", encodedFileName.c_str(), encodedDriverName.c_str());
+		}
 		break;
 
 	default:
-		output.addf("VirtualDub.audio.SetSource(%d);", audioInputMode);
+		if (audioSourceMode >= kVDAudioSourceMode_Source) {
+			int index = audioSourceMode - kVDAudioSourceMode_Source;
+
+			if (!index)
+				output.addf("VirtualDub.audio.SetSource(1);");
+			else
+				output.addf("VirtualDub.audio.SetSource(1,%d);", index);
+			break;
+		}
+		// fall through
+	case kVDAudioSourceMode_None:
+		output.addf("VirtualDub.audio.SetSource(0);");
 		break;
 	
 	}
@@ -1597,19 +1635,19 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 		output.addf("VirtualDub.audio.SetVolume();");
 
 	if (g_ACompressionFormat) {
-		if (g_ACompressionFormat->cbSize) {
-			mem = (char *)allocmem(((g_ACompressionFormat->cbSize+2)/3)*4 + 1);
+		if (g_ACompressionFormat->mExtraSize) {
+			mem = (char *)allocmem(((g_ACompressionFormat->mExtraSize+2)/3)*4 + 1);
 			if (!mem) throw MyMemoryError();
 
-			membase64(mem, (char *)(g_ACompressionFormat+1), g_ACompressionFormat->cbSize);
+			membase64(mem, (char *)(g_ACompressionFormat+1), g_ACompressionFormat->mExtraSize);
 			output.addf("VirtualDub.audio.SetCompressionWithHint(%d,%d,%d,%d,%d,%d,%d,\"%s\",\"%s\");"
-						,g_ACompressionFormat->wFormatTag
-						,g_ACompressionFormat->nSamplesPerSec
-						,g_ACompressionFormat->nChannels
-						,g_ACompressionFormat->wBitsPerSample
-						,g_ACompressionFormat->nAvgBytesPerSec
-						,g_ACompressionFormat->nBlockAlign
-						,g_ACompressionFormat->cbSize
+						,g_ACompressionFormat->mTag
+						,g_ACompressionFormat->mSamplingRate
+						,g_ACompressionFormat->mChannels
+						,g_ACompressionFormat->mSampleBits
+						,g_ACompressionFormat->mDataRate
+						,g_ACompressionFormat->mBlockSize
+						,g_ACompressionFormat->mExtraSize
 						,mem
 						,VDEncodeScriptString(g_ACompressionFormatHint).c_str()
 						);
@@ -1617,12 +1655,12 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 			freemem(mem);
 		} else
 			output.addf("VirtualDub.audio.SetCompressionWithHint(%d,%d,%d,%d,%d,%d,\"%s\");"
-						,g_ACompressionFormat->wFormatTag
-						,g_ACompressionFormat->nSamplesPerSec
-						,g_ACompressionFormat->nChannels
-						,g_ACompressionFormat->wBitsPerSample
-						,g_ACompressionFormat->nAvgBytesPerSec
-						,g_ACompressionFormat->nBlockAlign
+						,g_ACompressionFormat->mTag
+						,g_ACompressionFormat->mSamplingRate
+						,g_ACompressionFormat->mChannels
+						,g_ACompressionFormat->mSampleBits
+						,g_ACompressionFormat->mDataRate
+						,g_ACompressionFormat->mBlockSize
 						,VDEncodeScriptString(g_ACompressionFormatHint).c_str()
 						);
 	} else
@@ -1653,12 +1691,6 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 			opt->video.fIVTCMode,
 			opt->video.nIVTCOffset,
 			opt->video.fIVTCPolarity);
-
-	if (bIncludeEditList) {
-		output.addf("VirtualDub.video.SetRange(%d,%d);",
-				opt->video.lStartOffsetMS,
-				opt->video.lEndOffsetMS);
-	}
 
 	if ((g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) && g_Vcompression.fccHandler) {
 		output.addf("VirtualDub.video.SetCompression(0x%08lx,%d,%d,%d);",
@@ -1707,17 +1739,21 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 	while(fa_next = (FilterInstance *)fa->next) {
 		output.addf("VirtualDub.video.filters.Add(\"%s\");", strCify(fa->filter->name));
 
-		if (fa->x1 || fa->y1 || fa->x2 || fa->y2)
-			output.addf("VirtualDub.video.filters.instance[%d].SetClipping(%d,%d,%d,%d);"
+		if (fa->mCropX1 || fa->mCropY1 || fa->mCropX2 || fa->mCropY2)
+			output.addf("VirtualDub.video.filters.instance[%d].SetClipping(%d,%d,%d,%d%s);"
 						,iFilter
-						,fa->x1
-						,fa->y1
-						,fa->x2
-						,fa->y2
+						,fa->mCropX1
+						,fa->mCropY1
+						,fa->mCropX2
+						,fa->mCropY2
+						,fa->mbPreciseCrop ? "" : ",1"
 						);
 
-		if (fa->filter->fssProc && fa->filter->fssProc(fa, &g_filterFuncs, buf, sizeof buf))
+		if (fa->filter->fssProc && fa->filter->fssProc(fa->AsVDXFilterActivation(), &g_filterFuncs, buf, sizeof buf))
 			output.addf("VirtualDub.video.filters.instance[%d].%s;", iFilter, buf);
+
+		if (!fa->IsEnabled())
+			output.addf("VirtualDub.video.filters.instance[%d].SetEnabled(false);", iFilter);
 
 		VDParameterCurve *pc = fa->GetAlphaParameterCurve();
 		if (pc) {
@@ -1799,6 +1835,11 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 
 		for(FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end()); it!=itEnd; ++it)
 			output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
+
+		// Note that this must be AFTER the subset (we used to place it before, which was a bug).
+		output.addf("VirtualDub.video.SetRange(%d,%d);",
+				opt->video.lStartOffsetMS,
+				opt->video.lEndOffsetMS);
 	}
 
 	// Add text information

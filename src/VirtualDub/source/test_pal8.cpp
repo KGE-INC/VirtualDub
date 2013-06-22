@@ -101,7 +101,7 @@ void VDCreateTestPal8Video(VDGUIHandle h) {
 		IVDInputDriver *pDrv;
 		int filtidx = xlat[optval[0] - 1];
 		if (filtidx < 0)
-			pDrv = VDAutoselectInputDriverForFile(srcfile.c_str());
+			pDrv = VDAutoselectInputDriverForFile(srcfile.c_str(), IVDInputDriver::kF_Video);
 		else {
 			tVDInputDrivers::iterator itDrv(inputDrivers.begin());
 			std::advance(itDrv, filtidx);
@@ -117,7 +117,8 @@ void VDCreateTestPal8Video(VDGUIHandle h) {
 		if (dstfile.empty())
 			return;
 
-		IVDVideoSource *pVS = pIF->videoSrc;
+		vdrefptr<IVDVideoSource> pVS;
+		pIF->GetVideoSource(0, ~pVS);
 		IVDStreamSource *pVSS = pVS->asStream();
 		const VDPosition frames = pVSS->getLength();
 
@@ -214,7 +215,7 @@ void VDCreateTestPal8Video(VDGUIHandle h) {
 					vdptrstep(src, srcpitch - w*4);
 				}
 
-				pVSOut->write(AVIIF_KEYFRAME, outbuf.data(), outbuf.size(), 1);
+				pVSOut->write(AVIOutputStream::kFlagKeyFrame, outbuf.data(), outbuf.size(), 1);
 
 				dlg.advance(frame);
 				dlg.check();

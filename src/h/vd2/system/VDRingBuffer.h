@@ -31,13 +31,29 @@
 
 #include <vd2/system/atomic.h>
 
-template<class T, class Allocator = std::allocator<T> >
-class VDRingBuffer : private Allocator {
+class VDRingBufferBase {
+public:
+	VDRingBufferBase()
+		: nSize(0)
+		, nReadPoint(0)
+		, nWritePoint(0)
+	{
+	}
+
+	int		 getSize() const { return nSize; }
+	int		 getReadOffset() const { return nReadPoint; }
+	int		 getWriteOffset() const { return nWritePoint; }
+
 protected:
-	T				*pBuffer;
 	int				 nSize;
 	int				 nReadPoint;
 	int				 nWritePoint;
+};
+
+template<class T, class Allocator = std::allocator<T> >
+class VDRingBuffer : public VDRingBufferBase, private Allocator {
+protected:
+	T				*pBuffer;
 	VDAtomicInt		 nLevel;
 
 public:
@@ -48,11 +64,8 @@ public:
 	void	 Init(int size);
 	void	 Shutdown();
 
-	int		 getSize() const { return nSize; }
 	int		 getLevel() const { return nLevel; }
 	int		 getSpace() const { return nSize - nLevel; }
-	int		 getReadOffset() const { return nReadPoint; }
-	int		 getWriteOffset() const { return nWritePoint; }
 	int		 getWriteSpace() const;
 	T *		 getWritePtr() const { return pBuffer+nWritePoint; }
 
@@ -63,7 +76,9 @@ public:
 
 	int		 Read(T *pBuffer, int bytes);
 	const T	*LockRead(int requested, int& actual);
+	const T	*LockReadAll(int& actual);
 	const T *LockReadWrapped(int requested, int& actual, int& nReadPoint);
+	const T *LockReadAllWrapped(int& actual, int& nReadPoint);
 	int		 UnlockRead(int actual);
 
 	int		 Write(const T *pData, int bytes);
@@ -74,18 +89,15 @@ public:
 
 template<class T, class Allocator>
 VDRingBuffer<T, Allocator>::VDRingBuffer(int size)
-: pBuffer(0)
+	: pBuffer(NULL)
 {
 	Init(size);
 }
 
 template<class T, class Allocator>
 VDRingBuffer<T, Allocator>::VDRingBuffer()
-: nSize(0)
-, nLevel(0)
-, nReadPoint(0)
-, nWritePoint(0)
-, pBuffer(0)
+	: pBuffer(NULL)
+	, nLevel(0)
 {
 }
 
@@ -167,11 +179,33 @@ const T *VDRingBuffer<T, Allocator>::LockRead(int requested, int& actual) {
 }
 
 template<class T, class Allocator>
+const T *VDRingBuffer<T, Allocator>::LockReadAll(int& actual) {
+	int requested = nLevel;
+
+	if (requested + nReadPoint > nSize)
+		requested = nSize - nReadPoint;
+
+	actual = requested;
+
+	return pBuffer + nReadPoint;
+}
+
+template<class T, class Allocator>
 const T *VDRingBuffer<T, Allocator>::LockReadWrapped(int requested, int& actual, int& readpt) {
 	int nLevelNow = nLevel;
 
 	if (requested > nLevelNow)
 		requested = nLevelNow;
+
+	actual = requested;
+	readpt = nReadPoint;
+
+	return pBuffer;
+}
+
+template<class T, class Allocator>
+const T *VDRingBuffer<T, Allocator>::LockReadAllWrapped(int& actual, int& readpt) {
+	int requested = nLevel;
 
 	actual = requested;
 	readpt = nReadPoint;
@@ -195,27 +229,24 @@ int VDRingBuffer<T, Allocator>::UnlockRead(int actual) {
 }
 
 template<class T, class Allocator>
-int VDRingBuffer<T, Allocator>::Write(const T *pData, int bytes) {
-	VDASSERT(bytes >= 0);
+int VDRingBuffer<T, Allocator>::Write(const T *src, int elements) {
+	VDASSERT(elements >= 0);
 
 	int actual = 0;
-	void *pDst;
-
-	while(bytes) {
+	while(elements) {
 		int tc;
+		void *dst = LockWrite(elements, tc);
 
-		pDst = LockWrite(bytes, tc);
-
-		if (!actual)
+		if (!tc)
 			break;
 
-		memcpy(pDst, pBuffer, tc);
+		memcpy(dst, src, tc*sizeof(T));
 
 		UnlockWrite(tc);
 
 		actual += tc;
-		bytes -= tc;
-		pBuffer = (char *)pBuffer + tc;
+		elements -= tc;
+		src += tc;
 	}
 
 	return actual;

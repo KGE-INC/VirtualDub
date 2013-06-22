@@ -31,11 +31,13 @@
 #include "oshelper.h"
 #include "gui.h"
 #include "misc.h"
+#include <vd2/system/file.h>
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/registry.h>
+#include <vd2/Dita/services.h>
 
 #include "HexViewer.h"
 #include "ProgressDialog.h"
@@ -198,7 +200,7 @@ namespace {
 	struct RIFFScanInfo {
 		ProgressDialog& pd;
 		int count[100];
-		__int64 size[100];
+		sint64 size[100];
 		bool abortPending;
 
 		RIFFScanInfo(ProgressDialog &_pd) : pd(_pd), abortPending(false) {}
@@ -282,15 +284,15 @@ namespace {
 class HVModifiedLine : public ListNode2<HVModifiedLine> {
 public:
 	char			data[16];
-	__int64			address;
+	sint64			address;
 	int				mod_flags;
 private:
 
 public:
-	HVModifiedLine(__int64 addr);
+	HVModifiedLine(sint64 addr);
 };
 
-HVModifiedLine::HVModifiedLine(__int64 addr)
+HVModifiedLine::HVModifiedLine(sint64 addr)
 	: address(addr)
 	, mod_flags(0)
 {}
@@ -299,10 +301,10 @@ HVModifiedLine::HVModifiedLine(__int64 addr)
 
 class IHexViewerDataSource {
 public:
-	virtual const char *GetRow(__int64 start, int& len, long& modified_mask) = 0;		// 16 bytes
-	virtual void UndoByte(__int64 byte) = 0;
-	virtual void ModifyByte(__int64 byte, char v, char mask) = 0;
-	virtual void NewLocation(__int64 pos) = 0;
+	virtual const char *GetRow(sint64 start, int& len, long& modified_mask) = 0;		// 16 bytes
+	virtual void UndoByte(sint64 byte) = 0;
+	virtual void ModifyByte(sint64 byte, char v, char mask) = 0;
+	virtual void NewLocation(sint64 pos) = 0;
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -312,19 +314,19 @@ public:
 	HexViewer(HWND hwnd);
 	~HexViewer();
 
-	inline __int64 GetPosition() const { return i64Position; }
+	inline sint64 GetPosition() const { return i64Position; }
 
 	void SetDataSource(IHexViewerDataSource *pDS);
-	void SetDetails(__int64 total_size, bool bWrite);
-	void SetHighlight(__int64 start, __int64 end);
+	void SetDetails(sint64 total_size, bool bWrite);
+	void SetHighlight(sint64 start, sint64 end);
 	void SetMetaHighlight(int offset, int len);
 
-	void ScrollVisible(__int64 nVisPos);
-	void MoveToByte(__int64 pos);
+	void ScrollVisible(sint64 nVisPos);
+	void MoveToByte(sint64 pos);
 	void ScrollTopTo(long lLine);
 
-	void InvalidateLine(__int64 address);
-	void InvalidateRegion(__int64 start, __int64 end);
+	void InvalidateLine(sint64 address);
+	void InvalidateRegion(sint64 start, sint64 end);
 
 	static LRESULT APIENTRY HexViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 private:
@@ -332,11 +334,11 @@ private:
 
 	HFONT hfont;
 
-	__int64	i64TopOffset;
-	__int64 i64FileSize;
-	__int64	i64Position;
-	__int64	mHighlightStart, mHighlightEnd;
-	__int64	mMetaHiStart, mMetaHiEnd;
+	sint64	i64TopOffset;
+	sint64 i64FileSize;
+	sint64	i64Position;
+	sint64	mHighlightStart, mHighlightEnd;
+	sint64	mMetaHiStart, mMetaHiEnd;
 	int		iMouseWheelDelta;
 	int		nCurrentVisLines;
 	int		nCurrentWholeLines;
@@ -423,7 +425,7 @@ void HexViewer::SetDataSource(IHexViewerDataSource *pDS) {
 	mpDataSource = pDS;
 }
 
-void HexViewer::SetDetails(__int64 total_size, bool bWrite) {
+void HexViewer::SetDetails(sint64 total_size, bool bWrite) {
 	i64FileSize		= total_size;
 	i64TopOffset	= 0;
 	i64Position		= 0;
@@ -441,18 +443,18 @@ void HexViewer::SetDetails(__int64 total_size, bool bWrite) {
 }
 
 static int sorter64(const void *p1, const void *p2) {
-	const __int64 n1 = *(const __int64 *)p1;
-	const __int64 n2 = *(const __int64 *)p2;
+	const sint64 n1 = *(const sint64 *)p1;
+	const sint64 n2 = *(const sint64 *)p2;
 
 	return n1>n2 ? 1 : n1<n2 ? -1 : 0;
 }
 
-void HexViewer::SetHighlight(__int64 start, __int64 end) {
+void HexViewer::SetHighlight(sint64 start, sint64 end) {
 
 	// This is cheesy as hell, but throw all four addresses into an array,
 	// sort it, and invalidate 0-1 and 2-3.
 
-	__int64 array[4] = { start, end, mHighlightStart, mHighlightEnd };
+	sint64 array[4] = { start, end, mHighlightStart, mHighlightEnd };
 
 	qsort(array, 4, sizeof array[0], sorter64);
 
@@ -478,7 +480,7 @@ void HexViewer::SetMetaHighlight(int offset, int len) {
 	if (mHighlightStart+offset+len > mHighlightEnd)
 		len = (int)(mHighlightEnd - offset);
 
-	__int64 array[4] = { mMetaHiStart, mMetaHiEnd, mHighlightStart+offset, mHighlightStart+offset+len };
+	sint64 array[4] = { mMetaHiStart, mMetaHiEnd, mHighlightStart+offset, mHighlightStart+offset+len };
 
 	mMetaHiStart = array[2];
 	mMetaHiEnd = array[3];
@@ -489,9 +491,9 @@ void HexViewer::SetMetaHighlight(int offset, int len) {
 	InvalidateRegion(array[2], array[3]);
 }
 
-void HexViewer::ScrollVisible(__int64 nVisPos) {
-	__int64 nTopLine	= i64TopOffset>>4;
-	__int64 nCaretLine	= i64Position>>4;
+void HexViewer::ScrollVisible(sint64 nVisPos) {
+	sint64 nTopLine	= i64TopOffset>>4;
+	sint64 nCaretLine	= i64Position>>4;
 
 	if (nCaretLine < nTopLine)
 		ScrollTopTo((long)nCaretLine);
@@ -499,7 +501,7 @@ void HexViewer::ScrollVisible(__int64 nVisPos) {
 		ScrollTopTo((long)(nCaretLine - nCurrentWholeLines + 1));
 }
 
-void HexViewer::MoveToByte(__int64 pos) {
+void HexViewer::MoveToByte(sint64 pos) {
 	if (pos < 0) {
 		bOddHex = false;
 		pos = 0;
@@ -533,7 +535,7 @@ void HexViewer::ScrollTopTo(long lLine) {
 	iMouseWheelDelta = 0;
 
 	SetScrollPos(hwnd, SB_VERT, lLine, TRUE);
-	i64TopOffset = (__int64)lLine<<4;
+	i64TopOffset = (sint64)lLine<<4;
 
 	Hide();
 	if (abs(delta) > nCurrentVisLines) {
@@ -549,7 +551,7 @@ void HexViewer::ScrollTopTo(long lLine) {
 	MoveCaret();
 }
 
-void HexViewer::InvalidateRegion(__int64 start, __int64 end) {
+void HexViewer::InvalidateRegion(sint64 start, sint64 end) {
 	if (start >= end || end <= i64TopOffset || start >= (i64TopOffset + nCurrentVisLines*16))
 		return;
 
@@ -566,7 +568,7 @@ void HexViewer::InvalidateRegion(__int64 start, __int64 end) {
 	InvalidateRect(hwnd, &r, FALSE);
 }
 
-void HexViewer::InvalidateLine(__int64 address) {
+void HexViewer::InvalidateLine(sint64 address) {
 	long visidx = (long)((address - i64TopOffset) >> 4);
 	RECT r;
 
@@ -583,8 +585,8 @@ void HexViewer::InvalidateLine(__int64 address) {
 ///////////////////////////////////////////////////////////////////////////
 
 void HexViewer::MoveCaret() {
-	__int64 nTopLine	= i64TopOffset>>4;
-	__int64 nCaretLine	= i64Position>>4;
+	sint64 nTopLine	= i64TopOffset>>4;
+	sint64 nCaretLine	= i64Position>>4;
 
 	if (nCaretLine < nTopLine || nCaretLine >= nTopLine + nCurrentVisLines) {
 		Hide();
@@ -787,7 +789,7 @@ LRESULT HexViewer::Handle_WM_LBUTTONDOWN(WPARAM wParam, LPARAM lParam) {
 	return 0;
 }
 
-static int clip_to_row(__int64 v) {
+static int clip_to_row(sint64 v) {
 	return v<0 ? 0 : v>16 ? 16 : (int)v;
 }
 
@@ -795,7 +797,7 @@ LRESULT HexViewer::Handle_WM_PAINT(WPARAM wParam, LPARAM lParam) {
 	HDC hdc;
 	PAINTSTRUCT ps;
 	char buf[128];
-	__int64 i64Offset;
+	sint64 i64Offset;
 	int y;
 	RECT r;
 	int i;
@@ -1023,18 +1025,18 @@ private:
 	HWND	hwndTree;
 	HWND	mhwndTreeView;
 	HWND	hwndStatus;
-	HANDLE	hFile;
+	VDFile	mFile;
 	HFONT	hfont;
-	__int64 i64FileSize;
+	sint64 i64FileSize;
 
 	HexViewer *mpView;
 	HWND	hwndView;
 
-	__int64	i64FileCacheAddr;
-	__int64 i64FileReadPosition;
+	sint64	i64FileCacheAddr;
+	sint64 i64FileReadPosition;
 
 	char	rowcache[16];
-	__int64	i64RowCacheAddr;
+	sint64	i64RowCacheAddr;
 
 	List2<HVModifiedLine>	listMods;
 
@@ -1061,7 +1063,7 @@ public:
 	HexEditor(HWND);
 	~HexEditor();
 
-	void Open(const char *pszFile, bool bRW);
+	void Open(const wchar_t *pszFile, bool bRW);
 
 	static LRESULT CALLBACK HexEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	static INT_PTR CALLBACK FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -1073,13 +1075,13 @@ private:
 	void Close();
 	void Commit();
 
-	const char *GetRow(__int64 start, int& len, long& modified_mask);
-	void UndoByte(__int64 byte);
-	void ModifyByte(__int64 i64Position, char v, char mask);
-	void NewLocation(__int64 i64Position);
+	const char *GetRow(sint64 start, int& len, long& modified_mask);
+	void UndoByte(sint64 byte);
+	void ModifyByte(sint64 i64Position, char v, char mask);
+	void NewLocation(sint64 i64Position);
 
-	const char *FillRowCache(__int64 line);
-	void InvalidateLine(__int64 line);
+	const char *FillRowCache(sint64 line);
+	void InvalidateLine(sint64 line);
 
 	void SetStatus(const char *format, ...);
 
@@ -1089,17 +1091,17 @@ private:
 	LRESULT Handle_WM_DROPFILES(WPARAM wParam, LPARAM lParam);
 
 	static INT_PTR CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-	bool AskForValues(const char *title, const char *name1, const char *name2, __int64& default1, __int64& default2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2));
-	int JumpVerifier(HWND hdlg, __int64 v1, __int64 v2);
-	int ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2);
-	int TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2);
+	bool AskForValues(const char *title, const char *name1, const char *name2, sint64& default1, sint64& default2, int (HexEditor::*verifier)(HWND hdlg, sint64 v1, sint64 v2));
+	int JumpVerifier(HWND hdlg, sint64 v1, sint64 v2);
+	int ExtractVerifier(HWND hdlg, sint64 v1, sint64 v2);
+	int TruncateVerifier(HWND hdlg, sint64 v1, sint64 v2);
 
 	void Extract();
 	void Find(HWND);
-	TreeNode *RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft);
+	TreeNode *RIFFScan(RIFFScanInfo &rsi, sint64 pos, sint64 sizeleft);
 	void RIFFTree(HWND hwndTV);
 
-	HVModifiedLine *FindModLine(__int64 addr) {
+	HVModifiedLine *FindModLine(sint64 addr) {
 		HVModifiedLine *pLine, *pLineNext;
 
 		pLine = listMods.AtHead();
@@ -1114,7 +1116,7 @@ private:
 		return NULL;
 	}
 
-	bool IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid);
+	bool IsValidHeaderAt(sint64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid);
 };
 
 ////////////////////////////
@@ -1128,8 +1130,6 @@ HexEditor::HexEditor(HWND _hwnd)
 	, bFindReverse(false)
 	, hfont(0)
 {
-	hFile = INVALID_HANDLE_VALUE;
-
 	i64FileSize = 0;
 	i64RowCacheAddr = -1;
 	i64FileCacheAddr = -1;
@@ -1188,61 +1188,49 @@ void HexEditor::Init() {
 }
 
 void HexEditor::Open() {
-	char szName[MAX_PATH];
-	OPENFILENAME ofn;
-
-	szName[0] = 0;
-
-	memset(&ofn, 0, sizeof ofn);
-
 	VDRegistryAppKey appKey;
 
-	ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
-	ofn.hwndOwner			= hwnd;
-	ofn.lpstrFilter			= "All files (*.*)\0*.*\0";
-	ofn.lpstrCustomFilter	= NULL;
-	ofn.nFilterIndex		= 1;
-	ofn.lpstrFile			= szName;
-	ofn.nMaxFile			= sizeof szName;
-	ofn.lpstrFileTitle		= NULL;
-	ofn.lpstrInitialDir		= NULL;
-	ofn.lpstrTitle			= NULL;
-	ofn.Flags				= OFN_EXPLORER | OFN_ENABLESIZING | OFN_FILEMUSTEXIST | (appKey.getBool("HexEdit: Default to read only", false) ? OFN_READONLY : 0);
-	ofn.lpstrDefExt			= NULL;
+	VDFileDialogOption opts[]={
+		{ VDFileDialogOption::kReadOnly, 0, NULL, 0, 0 },
+		{0}
+	};
 
-	if (GetOpenFileName(&ofn)) {
-		bool readOnly = !!(ofn.Flags & OFN_READONLY);
-		Open(szName, !readOnly);
+	int optVals[]={
+		appKey.getBool("HexEdit: Default to read only", false)
+	};
+
+	const VDStringW fn(VDGetLoadFileName('hxed', (VDGUIHandle)hwnd, NULL, L"All files (*.*)\0*.*\0", NULL, opts, optVals));
+
+	if (!fn.empty()) {
+		bool readOnly = (optVals[0] != 0);
+		Open(fn.c_str(), !readOnly);
 
 		appKey.setBool("HexEdit: Default to read only", readOnly);
 	}
 }
 
-void HexEditor::Open(const char *pszFile, bool bRW) {
+void HexEditor::Open(const wchar_t *pszFile, bool bRW) {
 	Close();
 
 	bEnableWrite = bRW;
 
-	if (bRW)
-		hFile = CreateFile(pszFile, GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-	else
-		hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+	try {
+		if (bRW)
+			mFile.open(pszFile, nsVDFile::kReadWrite | nsVDFile::kDenyNone | nsVDFile::kSequential | nsVDFile::kOpenExisting);
+		else
+			mFile.open(pszFile, nsVDFile::kRead | nsVDFile::kDenyNone | nsVDFile::kSequential | nsVDFile::kOpenExisting);
 
-	if (hFile == INVALID_HANDLE_VALUE) {
-		MyWin32Error("Cannot open file: %%s", GetLastError()).post(hwnd, "Hex editor error");
+		i64FileSize = mFile.size();
+	} catch(const MyError& e) {
+		e.post(NULL, "Hex editor error");
 		return;
 	}
 
 	char buf[512];
 
-	wsprintf(buf, "VirtualDub Hex Editor - [%s]%s", pszFile, bRW ? "" : " (read only)");
+	_snprintf(buf, 512, "VirtualDub Hex Editor - [%ls]%s", pszFile, bRW ? "" : " (read only)");
+	buf[511] = 0;
 	SetWindowText(hwnd, buf);
-
-	DWORD dwLow, dwHigh;
-	
-	dwLow = GetFileSize(hFile, &dwHigh);
-
-	i64FileSize = dwLow | ((__int64)dwHigh << 32);
 
 	i64RowCacheAddr	= -1;
 	i64FileCacheAddr	= -1;
@@ -1251,7 +1239,7 @@ void HexEditor::Open(const char *pszFile, bool bRW) {
 	mpView->SetDataSource(this);
 	mpView->SetDetails(i64FileSize, bRW);
 
-	SetStatus("%s: %I64d bytes", pszFile, i64FileSize);
+	SetStatus("%ls: %I64d bytes", pszFile, i64FileSize);
 
 	{
 		int len;
@@ -1269,11 +1257,10 @@ void HexEditor::Close() {
 	while(pLine = listMods.RemoveHead())
 		delete pLine;
 
-	if (hFile == INVALID_HANDLE_VALUE)
+	if (!mFile.isOpen())
 		return;
 
-	CloseHandle(hFile);
-	hFile = INVALID_HANDLE_VALUE;
+	mFile.closeNT();
 
 	mpView->SetDataSource(NULL);
 	mpView->SetDetails(0, false);
@@ -1289,14 +1276,18 @@ void HexEditor::Commit() {
 	HVModifiedLine *pLine;
 
 	while(pLine = listMods.RemoveHead()) {
-		DWORD dwBytes = 16, dwActual;
+		DWORD dwBytes = 16;
 
-		if (((unsigned __int64)pLine->address>>32) == ((unsigned __int64)i64FileSize >> 32))
+		if (((uint64)pLine->address>>32) == ((uint64)i64FileSize >> 32))
 			if (!(((long)pLine->address ^ (long)i64FileSize) & 0xfffffff0))
 				dwBytes = (long)i64FileSize - (long)pLine->address;
 
-		SetFilePointer(hFile, (LONG)pLine->address, (LONG *)&pLine->address + 1, FILE_BEGIN);
-		WriteFile(hFile, pLine->data, dwBytes, &dwActual, NULL);
+		try {
+			mFile.seek(pLine->address);
+			mFile.write(pLine->data, dwBytes);
+		} catch(const MyError&) {
+			// should probably do something with this
+		}
 
 		delete pLine;
 	}
@@ -1305,7 +1296,7 @@ void HexEditor::Commit() {
 	InvalidateRect(hwnd, NULL, TRUE);
 }
 
-const char *HexEditor::GetRow(__int64 start, int& len, long& modified_mask) {
+const char *HexEditor::GetRow(sint64 start, int& len, long& modified_mask) {
 	HVModifiedLine *pModLine = FindModLine(start);
 	const char *pszData;
 	
@@ -1322,9 +1313,9 @@ const char *HexEditor::GetRow(__int64 start, int& len, long& modified_mask) {
 	return pszData;
 }
 
-void HexEditor::UndoByte(__int64 i64Position) {
+void HexEditor::UndoByte(sint64 i64Position) {
 	HVModifiedLine *pLine;
-	__int64 i64Offset;
+	sint64 i64Offset;
 
 	i64Offset = i64Position & -16i64;
 
@@ -1345,10 +1336,10 @@ void HexEditor::UndoByte(__int64 i64Position) {
 	}
 }
 
-void HexEditor::ModifyByte(__int64 i64Position, char v, char mask) {
+void HexEditor::ModifyByte(sint64 i64Position, char v, char mask) {
 	// Fetch the mod line.
 
-	__int64 i64Offset = i64Position & -16i64;
+	sint64 i64Offset = i64Position & -16i64;
 	HVModifiedLine *pLine = FindModLine(i64Offset);
 
 	if (!pLine) {
@@ -1358,8 +1349,12 @@ void HexEditor::ModifyByte(__int64 i64Position, char v, char mask) {
 
 		pLine = new HVModifiedLine(i64Offset);
 
-		SetFilePointer(hFile, (LONG)i64Offset, (LONG *)&i64Offset + 1, FILE_BEGIN);
-		ReadFile(hFile, pLine->data, 16, &dwActual, NULL);
+		try {
+			mFile.seek(i64Offset);
+			dwActual = mFile.readData(pLine->data, 16);
+		} catch(const MyError&) {
+			dwActual = 0;
+		}
 
 		i64FileReadPosition = i64Offset + 16;
 
@@ -1380,7 +1375,7 @@ void HexEditor::ModifyByte(__int64 i64Position, char v, char mask) {
 	mpView->InvalidateLine(i64Position);
 }
 
-bool HexEditor::IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid) {
+bool HexEditor::IsValidHeaderAt(sint64 i64Position, bool bChain, unsigned long& length, unsigned long& ckid) {
 	union {
 		char charbuf[12];
 		unsigned long longbuf[4];
@@ -1416,7 +1411,7 @@ bool HexEditor::IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long&
 
 	// Size must fit in the remainder of file.
 
-	__int64 end = i64Position + 8 + longbuf[1];
+	sint64 end = i64Position + 8 + longbuf[1];
 
 	if (end > i64FileSize)
 		return false;
@@ -1432,15 +1427,15 @@ bool HexEditor::IsValidHeaderAt(__int64 i64Position, bool bChain, unsigned long&
 	return false;
 }
 
-void HexEditor::NewLocation(__int64 i64Position) {
+void HexEditor::NewLocation(sint64 i64Position) {
 	if (bEnableAVIAssist) {
-		__int64 basepos = i64Position;
+		sint64 basepos = i64Position;
 
 		// Step back up to 4K, looking for a valid chunk.
 
 		i64Position &= ~1i64;
 
-		__int64 limit = i64Position - 1024;
+		sint64 limit = i64Position - 1024;
 
 		if (limit < 0)
 			limit = 0;
@@ -1532,11 +1527,11 @@ void HexEditor::NewLocation(__int64 i64Position) {
 	SetStatus("");
 }
 
-const char *HexEditor::FillRowCache(__int64 i64Offset) {
+const char *HexEditor::FillRowCache(sint64 i64Offset) {
 	if (i64Offset == i64RowCacheAddr)
 		return rowcache;
 
-	__int64 i64PageOffset = i64Offset & 0xfffffffffffff000;
+	sint64 i64PageOffset = i64Offset & 0xfffffffffffff000;
 	DWORD dwActual = 0;
 
 	if (i64PageOffset != i64FileCacheAddr) {
@@ -1544,7 +1539,7 @@ const char *HexEditor::FillRowCache(__int64 i64Offset) {
 
 			// if the desired position is less than 128K away, just read through
 
-			__int64 delta = i64PageOffset - i64FileReadPosition;
+			sint64 delta = i64PageOffset - i64FileReadPosition;
 
 			if (i64FileReadPosition >= 0 && delta > 0 && delta <= 131072) {
 				long lDelta = (long)delta;
@@ -1552,20 +1547,28 @@ const char *HexEditor::FillRowCache(__int64 i64Offset) {
 				while(lDelta > 0) {
 					DWORD tc = 4096 - (lDelta & 4095);
 
-					if (!ReadFile(hFile, filecache, tc, &dwActual, NULL) || !dwActual)
+					try {
+						dwActual = mFile.readData(filecache, tc);
+					} catch(const MyError&) {
+						break;
+					}
+
+					if (!dwActual)
 						break;
 
 					lDelta -= tc;
 				}
 
 			} else
-				SetFilePointer(hFile, (LONG)i64PageOffset, (LONG *)&i64PageOffset + 1, FILE_BEGIN);
+				mFile.seek(i64PageOffset);
 		}
 
-		if (ReadFile(hFile, filecache, 4096, &dwActual, NULL)) {
+		dwActual = 0;
+		try {
+			dwActual = mFile.readData(filecache, 4096);
 			i64FileCacheAddr = i64PageOffset;
 			i64FileReadPosition = i64PageOffset + dwActual;
-		} else {
+		} catch(const MyError&) {
 			i64FileCacheAddr = i64FileReadPosition = -1;
 		}
 	}
@@ -1614,7 +1617,7 @@ LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) {
 		break;
 	case ID_EDIT_JUMP:
 		{
-			__int64 v1 = mpView->GetPosition(), v2;
+			sint64 v1 = mpView->GetPosition(), v2;
 
 			if (AskForValues("Jump to address", "Address (hex):", NULL, v1, v2, &HexEditor::JumpVerifier))
 				mpView->MoveToByte(v1);
@@ -1622,14 +1625,18 @@ LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) {
 		break;
 	case ID_EDIT_TRUNCATE:
 		{
-			__int64 v1 = mpView->GetPosition(), v2;
+			sint64 v1 = mpView->GetPosition(), v2;
 
 			if (AskForValues("Truncate file", "Address (hex):", NULL, v1, v2, &HexEditor::TruncateVerifier)) {
-				if ((0xFFFFFFFF==SetFilePointer(hFile, (LONG)v1, (LONG *)&v1 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-						|| !SetEndOfFile(hFile))
-					MyWin32Error("Cannot truncate file: %%s", GetLastError()).post(hwnd, "Error");
+				try {
+					mFile.seek(v1);
+					mFile.truncate();
+				} catch(const MyError& e) {
+					e.post(hwnd, "Error");
+				}
 
-				i64FileReadPosition = i64FileSize = v1;
+				i64FileReadPosition = mFile.tell();
+				i64FileSize = mFile.size();
 
 				mpView->SetDetails(i64FileSize, bEnableWrite);
 			}
@@ -1711,21 +1718,21 @@ LRESULT HexEditor::Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) {
 LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) {
 	switch(wParam) {
 	case VK_F3:
-		if (hFile != INVALID_HANDLE_VALUE)
+		if (mFile.isOpen())
 			Handle_WM_COMMAND(ID_EDIT_FINDNEXT, 0);
 		break;
 	case 'F':
-		if (hFile != INVALID_HANDLE_VALUE)
+		if (mFile.isOpen())
 			if (GetKeyState(VK_CONTROL)<0)
 				Handle_WM_COMMAND(ID_EDIT_FIND, 0);
 		break;
 	case 'G':
-		if (hFile != INVALID_HANDLE_VALUE)
+		if (mFile.isOpen())
 			if (GetKeyState(VK_CONTROL)<0)
 				Handle_WM_COMMAND(ID_EDIT_JUMP, 0);
 		break;
 	case 'R':
-		if (hFile != INVALID_HANDLE_VALUE)
+		if (mFile.isOpen())
 			if (GetKeyState(VK_CONTROL)<0)
 				Handle_WM_COMMAND(ID_EDIT_RIFFTREE, 0);
 		break;
@@ -1734,7 +1741,7 @@ LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) {
 		break;
 
 	case 'S':
-		if (hFile != INVALID_HANDLE_VALUE && bEnableWrite)
+		if (mFile.isOpen() && bEnableWrite)
 			Commit();
 		break;
 	}
@@ -1757,7 +1764,7 @@ LRESULT HexEditor::Handle_WM_DROPFILES(WPARAM wParam, LPARAM lParam) {
 	DragFinish(hdrop);
 
 	if (!s.empty() && s[0])
-		Open(VDTextWToA(s.data()).c_str(), true);
+		Open(s.data(), true);
 
 	return 0;
 }
@@ -1767,8 +1774,8 @@ LRESULT HexEditor::Handle_WM_DROPFILES(WPARAM wParam, LPARAM lParam) {
 struct HexEditorAskData {
 	HexEditor *thisPtr;
 	const char *title, *name1, *name2;
-	__int64 v1, v2;
-	int (HexEditor::*verifier)(HWND, __int64 v1, __int64 v2);
+	sint64 v1, v2;
+	int (HexEditor::*verifier)(HWND, sint64 v1, sint64 v2);
 };
 
 INT_PTR CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1807,7 +1814,7 @@ INT_PTR CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wPar
 			break;
 		case IDOK:
 			{
-				__int64 v1=0, v2=0;
+				sint64 v1=0, v2=0;
 				const char *s, *t;
 				char c;
 				int i;
@@ -1859,7 +1866,7 @@ INT_PTR CALLBACK HexEditor::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wPar
 	return FALSE;
 }
 
-bool HexEditor::AskForValues(const char *title, const char *name1, const char *name2, __int64& v1, __int64& v2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2)) {
+bool HexEditor::AskForValues(const char *title, const char *name1, const char *name2, sint64& v1, sint64& v2, int (HexEditor::*verifier)(HWND hdlg, sint64 v1, sint64 v2)) {
 	HexEditorAskData hvad;
 
 	hvad.thisPtr = this;
@@ -1878,14 +1885,14 @@ bool HexEditor::AskForValues(const char *title, const char *name1, const char *n
 	return false;
 }
 
-int HexEditor::JumpVerifier(HWND hdlg, __int64 v1, __int64 v2) {
+int HexEditor::JumpVerifier(HWND hdlg, sint64 v1, sint64 v2) {
 	if (v1>i64FileSize)
 		return 1;
 
 	return 0;
 }
 
-int HexEditor::ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) {
+int HexEditor::ExtractVerifier(HWND hdlg, sint64 v1, sint64 v2) {
 	if (v1 > i64FileSize)
 		return 1;
 
@@ -1895,7 +1902,7 @@ int HexEditor::ExtractVerifier(HWND hdlg, __int64 v1, __int64 v2) {
 	return 0;
 }
 
-int HexEditor::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) {
+int HexEditor::TruncateVerifier(HWND hdlg, sint64 v1, sint64 v2) {
 	int r = IDYES;
 
 	if (v1 < i64FileSize)
@@ -1907,7 +1914,7 @@ int HexEditor::TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) {
 }
 
 void HexEditor::Extract() {
-	__int64 v1 = mpView->GetPosition(), v2=0x1000;
+	sint64 v1 = mpView->GetPosition(), v2=0x1000;
 
 	if (AskForValues("Extract file segment", "Address (hex):", "Length (hex):", v1, v2, &HexEditor::ExtractVerifier)) {
 		char szName[MAX_PATH];
@@ -1929,34 +1936,27 @@ void HexEditor::Extract() {
 		ofn.lpstrDefExt			= NULL;
 
 		if (GetSaveFileName(&ofn)) {
-			HANDLE hFile2 = INVALID_HANDLE_VALUE;
+			VDFile mFile2;
 			char *pBuf = NULL;
 
 			try {
-				__int64 fpos = 0;
+				sint64 fpos = 0;
 
 				pBuf = new char[65536];
 
 				if (!pBuf)
 					throw MyMemoryError();
 
-				hFile2 = CreateFile(szName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-
-				if (hFile2 == INVALID_HANDLE_VALUE)
-					throw GetLastError();
-
-				if ((0xFFFFFFFF==SetFilePointer(hFile2, (LONG)v2, (LONG *)&v2 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-					|| !SetEndOfFile(hFile2))
-					throw GetLastError();
-
-				if (0xFFFFFFFF==SetFilePointer(hFile2, 0, NULL, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-					throw GetLastError();
+				mFile2.open(szName, nsVDFile::kWrite | nsVDFile::kCreateAlways | nsVDFile::kSequential);
+				mFile2.seek(v2);
+				mFile2.truncate();
+				mFile2.seek(0);
 
 				ProgressDialog pd(hwnd, "Extract segment", "Copying data range", (long)(v2>>10), TRUE);
 				pd.setValueFormat("%dK of %dK");
 
 				while(v2 > 0) {
-					DWORD dwToCopy = (DWORD)v2, dwActual;
+					DWORD dwToCopy = (DWORD)v2;
 
 					if (dwToCopy > 65536)
 						dwToCopy = 65536;
@@ -1969,33 +1969,24 @@ void HexEditor::Extract() {
 					// must reseek before every read as progress indicator can cause main window to
 					// repaint
 					sint64 srcoffset = fpos + v1;
-					if (0xFFFFFFFF==SetFilePointer(hFile, (LONG)srcoffset, (LONG *)&srcoffset + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-						throw GetLastError();
+					mFile.seek(srcoffset);
+					mFile.read(pBuf, dwToCopy);
+					mFile2.write(pBuf, dwToCopy);
 
-					if (!ReadFile(hFile, pBuf, dwToCopy, &dwActual, NULL) || dwActual < dwToCopy)
-						throw GetLastError();
+					v2 -= dwToCopy;
 
-					if (!WriteFile(hFile2, pBuf, dwToCopy, &dwActual, NULL) || dwActual < dwToCopy)
-						throw GetLastError();
-
-					v2 -= dwActual;
-
-					pd.advance((long)((fpos += dwActual)>>10));
+					pd.advance((long)((fpos += dwToCopy)>>10));
 				}
 
-				if (!CloseHandle(hFile2))
-					throw GetLastError();
-
-				hFile2 = INVALID_HANDLE_VALUE;
-			} catch(DWORD dw) {
-				MyWin32Error("Cannot create extract file: %%s", dw).post(hwnd, "Error");
-			} catch(MyUserAbortError e) {
-				SetEndOfFile(hFile2);
+				mFile2.close();
+			} catch(const MyUserAbortError&) {
+				mFile2.truncateNT();
+			} catch(const MyError& e) {
+				e.post(hwnd, "Error");
+				mFile2.truncateNT();
 			}
 
-			if (hFile2 != INVALID_HANDLE_VALUE)
-				CloseHandle(hFile2);
-
+			mFile2.closeNT();
 			delete[] pBuf;
 		}
 	}
@@ -2046,9 +2037,9 @@ void HexEditor::Find(HWND hwndParent) {
 
 	int limit=0;
 	int size = 512;
-	__int64 basepos = mpView->GetPosition();
-	__int64 pos = basepos;
-	__int64 posbase;
+	sint64 basepos = mpView->GetPosition();
+	sint64 pos = basepos;
+	sint64 posbase;
 	bool bLastPartial = false;
 
 	ProgressDialog pd(hwndParent, "Find",
@@ -2071,9 +2062,8 @@ void HexEditor::Find(HWND hwndParent) {
 
 					pos &= ~511i64;
 
-					SetFilePointer(hFile, (LONG)pos, (LONG *)&pos + 1, FILE_BEGIN);
-					if (!ReadFile(hFile, searchbuffer, size, &dwActual, NULL))
-						break;
+					mFile.seek(pos);
+					dwActual = mFile.readData(searchbuffer, size);
 
 					// we're overloading the bLastPartial variable as a 'first' flag....
 
@@ -2149,9 +2139,8 @@ void HexEditor::Find(HWND hwndParent) {
 
 					pos &= ~511i64;
 
-					SetFilePointer(hFile, (LONG)pos, (LONG *)&pos + 1, FILE_BEGIN);
-					if (!ReadFile(hFile, searchbuffer, size, &dwActual, NULL))
-						break;
+					mFile.seek(pos);
+					dwActual = mFile.readData(searchbuffer, size);
 
 					limit = (int)dwActual;
 
@@ -2262,14 +2251,14 @@ LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 	case WM_INITMENU:
 		{
-			DWORD dwEnableFlags = (pcd->hFile != INVALID_HANDLE_VALUE && pcd->bEnableWrite ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+			DWORD dwEnableFlags = (pcd->mFile.isOpen() && pcd->bEnableWrite ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
 			HMENU hMenu = (HMENU)wParam;
 
 			EnableMenuItem(hMenu,ID_FILE_SAVE, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_FILE_REVERT, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_TRUNCATE, dwEnableFlags);
 
-			dwEnableFlags = (pcd->hFile != INVALID_HANDLE_VALUE ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+			dwEnableFlags = (pcd->mFile.isOpen() ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
 
 			EnableMenuItem(hMenu,ID_EDIT_JUMP, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_EXTRACT, dwEnableFlags);
@@ -2419,7 +2408,7 @@ INT_PTR CALLBACK HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 
 ///////////////////////////////////////////////////////////////////////////
 
-TreeNode *HexEditor::RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft) {
+TreeNode *HexEditor::RIFFScan(RIFFScanInfo &rsi, sint64 pos, sint64 sizeleft) {
 	char buf[256];
 	TreeNode *pPrevNode = NULL;
 	TreeNode *pParentNode = NULL;
@@ -2680,7 +2669,7 @@ ATOM RegisterHexEditor() {
 	return RegisterClass(&wc1) && RegisterClass(&wc2);
 
 }
-void HexEdit(HWND hwndParent, const char *filename, bool readonly) {
+void HexEdit(HWND hwndParent, const wchar_t *filename, bool readonly) {
 	HWND hwndEdit = CreateWindow(
 		HEXEDITORCLASS,
 		"VirtualDub Hex Editor",

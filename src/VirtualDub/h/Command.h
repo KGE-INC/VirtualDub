@@ -18,14 +18,17 @@
 #ifndef f_VIRTUALDUB_COMMAND_H
 #define f_VIRTUALDUB_COMMAND_H
 
-#include <windows.h>
-#include <vfw.h>
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
 #include <vd2/system/refcount.h>
 #include <vd2/system/VDString.h>
+#include <vd2/Riza/audiocodec.h>
 
 class InputFile;
 class IVDInputDriver;
+class IVDVideoSource;
 class AVIOutput;
 class VideoSource;
 class AudioSource;
@@ -36,20 +39,12 @@ struct VDAudioFilterGraph;
 
 extern vdrefptr<InputFile>		inputAVI;
 
-extern vdrefptr<VideoSource>	inputVideoAVI;
+extern vdrefptr<IVDVideoSource>	inputVideo;
 
-enum {
-	AUDIOIN_NONE	= 0,
-	AUDIOIN_AVI		= 1,
-	AUDIOIN_WAVE	= 2,
-};
-
-extern int					audioInputMode;
 extern IDubber				*g_dubber;
 
-extern COMPVARS			g_Vcompression;
-extern WAVEFORMATEX		*g_ACompressionFormat;
-extern DWORD			g_ACompressionFormatSize;
+extern VDWaveFormat		*g_ACompressionFormat;
+extern uint32			g_ACompressionFormatSize;
 extern VDStringA		g_ACompressionFormatHint;
 
 extern VDAudioFilterGraph	g_audioFilterGraph;
@@ -70,6 +65,6 @@ void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int min
 void SetSelectionStart(long ms);
 void SetSelectionEnd(long ms);
 void EnsureSubset();
-void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource);
+void ScanForUnreadableFrames(FrameSubset *pSubset, IVDVideoSource *pVideoSource);
 
 #endif

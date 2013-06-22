@@ -27,11 +27,11 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////
 
-VDWaveFormat *VDAllocPCMWaveFormat(unsigned sampling_rate, unsigned channels, unsigned bits, bool bFloat) {
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(sizeof(VDWaveFormat));
+VDXWaveFormat *VDAllocPCMWaveFormat(unsigned sampling_rate, unsigned channels, unsigned bits, bool bFloat) {
+	VDXWaveFormat *pwf = (VDXWaveFormat *)malloc(sizeof(VDXWaveFormat));
 
 	if (pwf) {
-		pwf->mTag			= VDWaveFormat::kTagPCM;
+		pwf->mTag			= VDXWaveFormat::kTagPCM;
 		pwf->mChannels		= (uint16)channels;
 		pwf->mSamplingRate	= sampling_rate;
 		pwf->mDataRate		= sampling_rate * channels * (bits>>3);
@@ -43,8 +43,8 @@ VDWaveFormat *VDAllocPCMWaveFormat(unsigned sampling_rate, unsigned channels, un
 	return pwf;
 }
 
-VDWaveFormat *VDAllocCustomWaveFormat(unsigned extra_size) {
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(sizeof(VDWaveFormat) + extra_size);
+VDXWaveFormat *VDAllocCustomWaveFormat(unsigned extra_size) {
+	VDXWaveFormat *pwf = (VDXWaveFormat *)malloc(sizeof(VDXWaveFormat) + extra_size);
 
 	if (pwf)
 		pwf->mExtraSize = (uint16)extra_size;
@@ -52,17 +52,17 @@ VDWaveFormat *VDAllocCustomWaveFormat(unsigned extra_size) {
 	return pwf;
 }
 
-VDWaveFormat *VDCopyWaveFormat(const VDWaveFormat *pFormat) {
-	const unsigned size = sizeof(VDWaveFormat) + pFormat->mExtraSize;
+VDXWaveFormat *VDXCopyWaveFormat(const VDXWaveFormat *pFormat) {
+	const unsigned size = sizeof(VDXWaveFormat) + pFormat->mExtraSize;
 
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(size);
+	VDXWaveFormat *pwf = (VDXWaveFormat *)malloc(size);
 	if (pwf)
 		memcpy(pwf, pFormat, size);
 
 	return pwf;
 }
 
-void VDFreeWaveFormat(const VDWaveFormat *pFormat) {
+void VDFreeWaveFormat(const VDXWaveFormat *pFormat) {
 	free((void *)pFormat);
 }
 
@@ -71,7 +71,7 @@ void VDAFCallback_Wake(const VDAudioFilterContext *pContext);
 const VDAudioFilterCallbacks g_audioFilterCallbacks = {
 	VDAllocPCMWaveFormat,
 	VDAllocCustomWaveFormat,
-	VDCopyWaveFormat,
+	VDXCopyWaveFormat,
 	VDFreeWaveFormat,
 	VDAFCallback_Wake
 };
@@ -168,7 +168,7 @@ public:
 
 	void Seek(sint64 us);
 
-	const VDWaveFormat *GetOutputPinFormat(int outputPin);
+	const VDXWaveFormat *GetOutputPinFormat(int outputPin);
 	bool GetInputPinConnection(unsigned inputPin, IVDAudioFilterInstance*& pFilt, unsigned& outputPin);
 	bool GetOutputPinConnection(unsigned outputPin, IVDAudioFilterInstance*& pFilt, unsigned& inputPin);
 
@@ -247,7 +247,7 @@ void VDAudioFilterPinImpl::ResetBufferConfiguration() {
 
 void VDAudioFilterPinImpl::PullBufferConfiguration() {
 	free((void *)mpFormat);
-	mpFormat = VDCopyWaveFormat(mpPin->mpFormat);
+	mpFormat = VDXCopyWaveFormat(mpPin->mpFormat);
 	if (!mpFormat)
 		throw MyMemoryError();
 }
@@ -336,7 +336,7 @@ VDAudioFilterInstance::VDAudioFilterInstance(VDPluginDescription *pDesc)
 	mpOutputs			= mPinPtrs.data() + inputPins;
 	mpServices			= this;
 	mpAudioCallbacks	= &g_audioFilterCallbacks;
-	mAPIVersion			= kVDPlugin_APIVersion;
+	mAPIVersion			= kVDXPlugin_APIVersion;
 
 	mpDefinition->mpInit(this);
 }
@@ -439,48 +439,48 @@ bool VDAudioFilterInstance::Configure(VDGUIHandle hParent) {
 void VDAudioFilterInstance::SerializeConfig(VDPluginConfig& config) {
 	config.clear();
 
-	const VDPluginConfigEntry *pEnt = mpDefinition->mpConfigInfo;
+	const VDXPluginConfigEntry *pEnt = mpDefinition->mpConfigInfo;
 
 	if (pEnt) {
 		vdprotected1("retrieving config for audio filter \"%s\"", const char *, mDebugName.c_str()) {
 			for(; pEnt->next; pEnt = pEnt->next) {
 				switch(pEnt->type) {
-				case VDPluginConfigEntry::kTypeU32:
+				case VDXPluginConfigEntry::kTypeU32:
 					{
 						uint32 v;
 						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(uint32));
 						config[pEnt->idx].SetU32(v);
 					}
 					break;
-				case VDPluginConfigEntry::kTypeS32:
+				case VDXPluginConfigEntry::kTypeS32:
 					{
 						uint32 v;
 						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(sint32));
 						config[pEnt->idx].SetS32(v);
 					}
 					break;
-				case VDPluginConfigEntry::kTypeU64:
+				case VDXPluginConfigEntry::kTypeU64:
 					{
 						uint32 v;
 						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(uint64));
 						config[pEnt->idx].SetU64(v);
 					}
 					break;
-				case VDPluginConfigEntry::kTypeS64:
+				case VDXPluginConfigEntry::kTypeS64:
 					{
 						uint32 v;
 						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(sint64));
 						config[pEnt->idx].SetS64(v);
 					}
 					break;
-				case VDPluginConfigEntry::kTypeDouble:
+				case VDXPluginConfigEntry::kTypeDouble:
 					{
 						double v;
 						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(double));
 						config[pEnt->idx].SetDouble(v);
 					}
 					break;
-				case VDPluginConfigEntry::kTypeAStr:
+				case VDXPluginConfigEntry::kTypeAStr:
 					{
 						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
@@ -488,7 +488,7 @@ void VDAudioFilterInstance::SerializeConfig(VDPluginConfig& config) {
 						config[pEnt->idx].SetAStr(&tmp.front());
 					}
 					break;
-				case VDPluginConfigEntry::kTypeWStr:
+				case VDXPluginConfigEntry::kTypeWStr:
 					{
 						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
@@ -496,7 +496,7 @@ void VDAudioFilterInstance::SerializeConfig(VDPluginConfig& config) {
 						config[pEnt->idx].SetWStr((const wchar_t *)&tmp.front());
 					}
 					break;
-				case VDPluginConfigEntry::kTypeBlock:
+				case VDXPluginConfigEntry::kTypeBlock:
 					{
 						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
@@ -527,7 +527,7 @@ void VDAudioFilterInstance::DeserializeConfig(const VDPluginConfig& config) {
 }
 
 void VDAudioFilterInstance::SetConfigVal(unsigned idx, const VDPluginConfigVariant& var) {
-	const VDPluginConfigEntry *pEnt = mpDefinition->mpConfigInfo;
+	const VDXPluginConfigEntry *pEnt = mpDefinition->mpConfigInfo;
 
 	for(; pEnt; pEnt = pEnt->next) {
 		if (pEnt->idx == idx) {
@@ -563,7 +563,7 @@ void *VDAudioFilterInstance::GetObject() {
 }
 
 sint64 VDAudioFilterInstance::GetPosition() {
-	const VDWaveFormat *pFormat = NULL;
+	const VDXWaveFormat *pFormat = NULL;
 
 	if (mpDefinition->mOutputPins)
 		pFormat = mpOutputs[0]->mpFormat;
@@ -599,7 +599,7 @@ uint32 VDAudioFilterInstance::ReadData(unsigned nPin, void *dst, uint32 samples,
 	uint32 actual;
 
 	vdprotected1("reading samples from audio filter \"%s\"", const char *, mDebugName.c_str()) {
-		const VDWaveFormat& format = *pin.mpFormat;
+		const VDXWaveFormat& format = *pin.mpFormat;
 		const int srcFormat = pin.GetFormat();
 
 		if (srcFormat == nFormat || nFormat == kVFARead_Native) {
@@ -654,8 +654,8 @@ uint32 VDAudioFilterInstance::ReadData(unsigned nPin, void *dst, uint32 samples,
 		return 0;
 
 	if (dst) {
-		const VDWaveFormat& format = *mpOutputs[nPin]->mpFormat;
-		VDASSERT(format.mTag == VDWaveFormat::kTagPCM);
+		const VDXWaveFormat& format = *mpOutputs[nPin]->mpFormat;
+		VDASSERT(format.mTag == VDXWaveFormat::kTagPCM);
 
 		unsigned fill = 0;
 		if (format.mSampleBits == 8)
@@ -853,7 +853,7 @@ void VDAudioFilterInstance::Seek(sint64 us) {
 	mInputsEnded = 0;
 }
 
-const VDWaveFormat *VDAudioFilterInstance::GetOutputPinFormat(int outputPin) {
+const VDXWaveFormat *VDAudioFilterInstance::GetOutputPinFormat(int outputPin) {
 	if (!mbPrepared)
 		return NULL;
 
@@ -1056,7 +1056,7 @@ void VDAudioFilterSystem::LoadFromGraph(const VDAudioFilterGraph& graph, std::ve
 	for(std::list<VDAudioFilterGraph::FilterEntry>::const_iterator it(graph.mFilters.begin()), itEnd(graph.mFilters.end()); it!=itEnd; ++it) {
 		const VDAudioFilterGraph::FilterEntry& f = *it;
 
-		VDPluginDescription *pDesc = VDGetPluginDescription(f.mFilterName.c_str(), kVDPluginType_Audio);
+		VDPluginDescription *pDesc = VDGetPluginDescription(f.mFilterName.c_str(), kVDXPluginType_Audio);
 		if (!pDesc)
 			throw MyError("Cannot find audio filter \"%s\" specified in filter graph.", VDTextWToA(f.mFilterName).c_str());
 
@@ -1212,16 +1212,16 @@ void VDAudioFilterSystem::Prepare(VDAudioFilterInstance *pInst, bool mustSucceed
 
 		VDAudioFilterPinImpl& pin = pInst->OutputPin(i);
 
-		const VDWaveFormat& f = *pin.mpFormat;
+		const VDXWaveFormat& f = *pin.mpFormat;
 
-		if (f.mTag == VDWaveFormat::kTagPCM) {
+		if (f.mTag == VDXWaveFormat::kTagPCM) {
 			VDASSERT(!(f.mSampleBits & 7));
 			VDASSERT(f.mChannels > 0);
 			VDASSERT(f.mChannels * (f.mSampleBits>>3) == f.mBlockSize);
 			VDASSERT(f.mBlockSize * f.mSamplingRate == f.mDataRate);
 		}
 
-		if (f.mTag == VDWaveFormat::kTagPCM) {
+		if (f.mTag == VDXWaveFormat::kTagPCM) {
 			switch(f.mSampleBits) {
 			case 8:
 				pin.SetFormat(kVFARead_PCM8);

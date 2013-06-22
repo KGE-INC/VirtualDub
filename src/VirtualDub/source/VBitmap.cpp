@@ -72,7 +72,7 @@ VDPixmap VDAsPixmap565(const VBitmap& bm) {
 	return pxm;
 }
 
-VBitmap VDFromPixmap(const VDPixmap& px) {
+VBitmap VDAsVBitmap(const VDPixmap& px) {
 	VBitmap vbm;
 
 	vbm.data		= (Pixel *)(vdptroffset(px.data, px.pitch * (px.h - 1)));
@@ -81,6 +81,7 @@ VBitmap VDFromPixmap(const VDPixmap& px) {
 	vbm.h			= px.h;
 	vbm.pitch		= -px.pitch;
 	vbm.offset		= px.pitch > 0 ? 0 : px.pitch * (px.h - 1);
+	vbm.size		= vdptrdiffabs(px.pitch) * px.h;
 
 	switch(px.format) {
 		case nsVDPixmap::kPixFormat_Pal8:
@@ -262,12 +263,10 @@ void VBitmap::BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim 
 	// do the blit
 
 #ifdef _M_IX86
-	CHECK_FPU_STACK
 	if (to565)
 		DIBconvert_32_to_16_565_dithered(dstp, pitch, srcp, src->pitch, dx, dy);
 	else
 		DIBconvert_32_to_16_dithered(dstp, pitch, srcp, src->pitch, dx, dy);
-	CHECK_FPU_STACK
 #else
 #pragma vdpragma_TODO("fixme")
 #endif
@@ -565,7 +564,6 @@ bool VBitmap::BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *s
 
 		break;
 	}
-	CHECK_FPU_STACK
 #else
 #pragma vdpragma_TODO("fixme")
 #endif

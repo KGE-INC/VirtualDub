@@ -26,10 +26,6 @@ DubSource::~DubSource() {
 	if (format) delete format;
 }
 
-bool DubSource::init() {
-	return TRUE;
-}
-
 void *DubSource::allocFormat(int format_len) {
 	if (format) delete format;
 
@@ -41,8 +37,7 @@ bool DubSource::isStreaming() {
 }
 
 int DubSource::read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
-	if (lStart < mSampleFirst) return AVIERR_BADPARAM;
-	if (lStart >= mSampleLast) {
+	if (lStart < mSampleFirst || lStart >= mSampleLast) {
 		if (lSamplesRead)
 			*lSamplesRead = 0;
 		if (lBytesRead)

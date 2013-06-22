@@ -226,14 +226,21 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 	#define VDINTERFACE		__declspec(novtable)
 	#define VDNORETURN		__declspec(noreturn)
 	#define VDPUREFUNC
+	#if VD_COMPILER_MSVC >= 1400
+		#define VDRESTRICT __restrict
+	#else
+		#define VDRESTRICT
+	#endif
 #elif defined(__GNUC__)
 	#define VDINTERFACE
 	#define VDNORETURN		__attribute__((noreturn))
 	#define VDPUREFUNC		__attribute__((pure))
+	#define VDRESTRICT
 #else
 	#define VDINTERFACE
 	#define VDNORETURN
 	#define VDPUREFUNC
+	#define VDRESTRICT
 #endif
 
 ///////////////////////////////////////////////////////////////////////////

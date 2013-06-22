@@ -25,22 +25,22 @@
 #include <mmreg.h>
 #include <msacm.h>
 #include <vector>
+#include <vd2/Riza/audiocodec.h>
 
-class VDAudioCodecW32 {
+class VDAudioCodecW32 : public IVDAudioCodec {
 public:
 	VDAudioCodecW32();
 	~VDAudioCodecW32();
 
-	void Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat = NULL, bool isCompression = false, const char *pShortNameDriverHint = NULL);
+	bool Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat = NULL, bool isCompression = false, const char *pShortNameDriverHint = NULL);
 	void Shutdown();
 
-	bool IsInitialized() const { return mhStream != NULL; }
 	bool IsEnded() const { return mbEnded; }
 
 	unsigned	GetInputLevel() const { return mBufferHdr.cbSrcLength; }
 	unsigned	GetInputSpace() const { return mInputBuffer.size() - mBufferHdr.cbSrcLength; }
 	unsigned	GetOutputLevel() const { return mBufferHdr.cbDstLengthUsed - mOutputReadPt; }
-	const WAVEFORMATEX *GetOutputFormat() const { return mDstFormat.data(); }
+	const VDWaveFormat *GetOutputFormat() const { return mDstFormat.data(); }
 	unsigned	GetOutputFormatSize() const { return mDstFormat.size(); }
 
 	void		Restart();
@@ -50,13 +50,12 @@ public:
 	void		UnlockInputBuffer(unsigned bytes);
 	const void	*LockOutputBuffer(unsigned& bytes);
 	void		UnlockOutputBuffer(unsigned bytes);
-	unsigned	GetOutputLevel();
 	unsigned	CopyOutput(void *dst, unsigned bytes);
 
 protected:
 	HACMSTREAM		mhStream;
-	vdstructex<WAVEFORMATEX>	mSrcFormat;
-	vdstructex<WAVEFORMATEX>	mDstFormat;
+	vdstructex<VDWaveFormat>	mSrcFormat;
+	vdstructex<VDWaveFormat>	mDstFormat;
 	ACMSTREAMHEADER mBufferHdr;
 	char mDriverName[64];
 	char mDriverFilename[64];

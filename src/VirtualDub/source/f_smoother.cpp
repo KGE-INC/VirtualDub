@@ -22,6 +22,7 @@
 #include "resource.h"
 
 #include "filter.h"
+#include "VBitmap.h"
 #include <vd2/system/cpuaccel.h>
 #include "ScriptInterpreter.h"
 #include "ScriptValue.h"
@@ -1170,7 +1171,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETPOS, (WPARAM)TRUE, (mfd->grad_threshold+100)/200); 
 			CheckDlgButton(hDlg, IDC_PREFILTER, mfd->fBlurPass?BST_CHECKED:BST_UNCHECKED);
 			SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
-			mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+			mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
             return (TRUE);
 
         case WM_COMMAND:
@@ -1182,7 +1183,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 	            EndDialog(hDlg, 1);  
 		        return TRUE;
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				break;
 			case IDC_PREFILTER:
 				if (HIWORD(wParam) == BN_CLICKED) {
@@ -1206,13 +1207,13 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
     return FALSE;
 }
 
-static int smoother_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int smoother_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 	MyFilterData mfd_old = *mfd;
 
 	mfd->ifp = fa->ifp;
 
-	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SMOOTHER), hWnd, FilterValueDlgProc, (LPARAM)mfd)) {
+	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SMOOTHER), (HWND)hWnd, FilterValueDlgProc, (LPARAM)mfd)) {
 		*mfd = mfd_old;
 		return 1;
 	}

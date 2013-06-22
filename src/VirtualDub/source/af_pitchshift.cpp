@@ -121,14 +121,14 @@ VDAudioFilterPitchShift::~VDAudioFilterPitchShift() {
 }
 
 uint32 VDAudioFilterPitchShift::Prepare() {
-	const VDWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   inFormat.mTag != VDWaveFormat::kTagPCM
+	if (   inFormat.mTag != VDXWaveFormat::kTagPCM
 		|| (inFormat.mSampleBits != 8 && inFormat.mSampleBits != 16)
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
+	VDXWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -146,7 +146,7 @@ uint32 VDAudioFilterPitchShift::Prepare() {
 
 void VDAudioFilterPitchShift::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	mPitchBuffer.resize(2048 * format.mChannels);
 	mScores.resize(32 * format.mChannels);
@@ -158,7 +158,7 @@ void VDAudioFilterPitchShift::Start() {
 
 uint32 VDAudioFilterPitchShift::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	// foo
 	short buf16[4096];
@@ -356,11 +356,11 @@ extern const VDPluginInfo apluginDef_pitchshift = {
 	L"Scales the pitch of audio by a fixed ratio. This filter uses an awful time-domain based algorithm "
 		L"that may result in some clicks.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

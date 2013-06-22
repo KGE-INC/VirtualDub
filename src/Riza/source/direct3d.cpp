@@ -272,7 +272,9 @@ VDD3D9Manager::VDD3D9Manager()
 	, mpD3D(NULL)
 	, mpD3DDevice(NULL)
 	, mpD3DRTMain(NULL)
+	, mDevWndClass(NULL)
 	, mhwndDevice(NULL)
+	, mThreadID(0)
 	, mbDeviceValid(false)
 	, mbInScene(false)
 	, mFullScreenCount(0)
@@ -286,8 +288,6 @@ VDD3D9Manager::VDD3D9Manager()
 	, mFenceQueueHeadIndex(0)
 {
 }
-
-ATOM VDD3D9Manager::sDevWndClass;
 
 VDD3D9Manager::~VDD3D9Manager() {
 	VDASSERT(!mRefCount);
@@ -314,6 +314,7 @@ bool VDD3D9Manager::Attach(VDD3D9Client *pClient) {
 
 bool VDD3D9Manager::Detach(VDD3D9Client *pClient) {
 	VDASSERT(mRefCount > 0);
+	VDASSERT(VDGetCurrentThreadID() == mThreadID);
 
 	VDASSERT(mClients.find(pClient) != mClients.end());
 	mClients.erase(mClients.fast_find(pClient));
@@ -329,7 +330,7 @@ bool VDD3D9Manager::Detach(VDD3D9Client *pClient) {
 bool VDD3D9Manager::Init() {
 	HINSTANCE hInst = VDGetLocalModuleHandleW32();
 
-	if (!sDevWndClass) {
+	if (!mDevWndClass) {
 		WNDCLASS wc;
 
 		wc.cbClsExtra		= 0;
@@ -339,18 +340,21 @@ bool VDD3D9Manager::Init() {
 		wc.hIcon			= NULL;
 		wc.hInstance		= hInst;
 		wc.lpfnWndProc		= StaticDeviceWndProc;
-		wc.lpszClassName	= "RizaD3DDeviceWindow";
+
+		char buf[64];
+		sprintf(buf, "RizaD3DDeviceWindow_%p", this);
+		wc.lpszClassName	= buf;
 		wc.lpszMenuName		= NULL;
 		wc.style			= 0;
 
-		sDevWndClass = RegisterClass(&wc);
-		if (!sDevWndClass)
+		mDevWndClass = RegisterClass(&wc);
+		if (!mDevWndClass)
 			return false;
 	}
 
 	mThreadID = VDGetCurrentThreadID();
 
-	mhwndDevice = CreateWindow((LPCTSTR)sDevWndClass, "", WS_POPUP, 0, 0, 0, 0, NULL, NULL, hInst, NULL);
+	mhwndDevice = CreateWindow(MAKEINTATOM(mDevWndClass), "", WS_POPUP, 0, 0, 0, 0, NULL, NULL, hInst, NULL);
 	if (!mhwndDevice) {
 		Shutdown();
 		return false;
@@ -679,6 +683,11 @@ void VDD3D9Manager::Shutdown() {
 		DestroyWindow(mhwndDevice);
 		mhwndDevice = NULL;
 	}
+
+	if (mDevWndClass) {
+		UnregisterClass(MAKEINTATOM(mDevWndClass), VDGetLocalModuleHandleW32());
+		mDevWndClass = NULL;
+	}
 }
 
 void VDD3D9Manager::AdjustFullScreen(bool fs) {
@@ -804,26 +813,36 @@ bool VDD3D9Manager::CheckDevice() {
 	return InitVRAMResources();
 }
 
-void VDD3D9Manager::AdjustTextureSize(int& texw, int& texh) {
-	// use original texture size if device has no restrictions
-	if (!(mDevCaps.TextureCaps & (D3DPTEXTURECAPS_NONPOW2CONDITIONAL | D3DPTEXTURECAPS_POW2)))
-		return;
+bool VDD3D9Manager::CheckReturn(HRESULT hr) {
+	if (hr == D3DERR_DEVICELOST)
+		mbDeviceValid = false;
 
-	// enforce size limits
-	if ((unsigned)texw > mDevCaps.MaxTextureWidth)
-		texw = mDevCaps.MaxTextureWidth;
+	return SUCCEEDED(hr);
+}
 
-	if ((unsigned)texh > mDevCaps.MaxTextureHeight)
-		texh = mDevCaps.MaxTextureHeight;
+bool VDD3D9Manager::AdjustTextureSize(int& texw, int& texh, bool nonPow2OK) {
+	int origw = texw;
+	int origh = texh;
 
-	// make power of two
-	texw += texw - 1;
-	texh += texh - 1;
+	// check if we need to force a power of two
+	//
+	// flag combos:
+	//
+	//	None					OK
+	//	POW2					Constrain to pow2
+	//	NONPOW2CONDITIONAL		Invalid (but happens with some virtualization software)
+	//	POW2|NONPOW2CONDITIONAL	Constrain unless nonPow2OK is set
 
-	while(int tmp = texw & (texw-1))
-		texw = tmp;
-	while(int tmp = texh & (texh-1))
-		texh = tmp;
+	if ((mDevCaps.TextureCaps & (D3DPTEXTURECAPS_POW2|D3DPTEXTURECAPS_NONPOW2CONDITIONAL)) && (!nonPow2OK || !(mDevCaps.TextureCaps & D3DPTEXTURECAPS_NONPOW2CONDITIONAL))) {
+		// make power of two
+		texw += texw - 1;
+		texh += texh - 1;
+
+		while(int tmp = texw & (texw-1))
+			texw = tmp;
+		while(int tmp = texh & (texh-1))
+			texh = tmp;
+	}
 
 	// enforce aspect ratio
 	if (mDevCaps.MaxTextureAspectRatio) {
@@ -832,6 +851,15 @@ void VDD3D9Manager::AdjustTextureSize(int& texw, int& texh) {
 		while(texh * (int)mDevCaps.MaxTextureAspectRatio < texw)
 			texh += texh;
 	}
+
+	// enforce size limits
+	if ((unsigned)texw > mDevCaps.MaxTextureWidth)
+		texw = mDevCaps.MaxTextureWidth;
+
+	if ((unsigned)texh > mDevCaps.MaxTextureHeight)
+		texh = mDevCaps.MaxTextureHeight;
+
+	return texw >= origw && texh >= origh;
 }
 
 bool VDD3D9Manager::IsTextureFormatAvailable(D3DFORMAT format) {
@@ -869,7 +897,7 @@ Vertex *VDD3D9Manager::LockVertices(unsigned vertices) {
 
 	mVertexBufferLockSize = vertices;
 
-	void *p;
+	void *p = NULL;
 	HRESULT hr;
 	for(;;) {
 		hr = mpD3DVB->Lock(mVertexBufferPt * sizeof(Vertex), mVertexBufferLockSize * sizeof(Vertex), &p, mVertexBufferPt ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD);
@@ -889,6 +917,23 @@ void VDD3D9Manager::UnlockVertices() {
 	mVertexBufferPt += mVertexBufferLockSize;
 
 	VDVERIFY(SUCCEEDED(mpD3DVB->Unlock()));
+}
+
+bool VDD3D9Manager::UploadVertices(unsigned vertices, const Vertex *data) {
+	Vertex *vx = LockVertices(vertices);
+	if (!vx)
+		return false;
+
+	bool success = true;
+	__try {
+		memcpy(vx, data, sizeof(Vertex)*vertices);
+	} _except(1) {
+		// still happens with some video drivers on device loss.. #&$*(#$
+		success = false;
+	}
+
+	UnlockVertices();
+	return success;
 }
 
 uint16 *VDD3D9Manager::LockIndices(unsigned indices) {
@@ -1480,7 +1525,7 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 			history.mVBlankSuccess += (success - history.mVBlankSuccess) * 0.01f;
 		}
 
-		if (!history.mbLastWasVBlank && !rastStatus2.InVBlank && rastStatus2.ScanLine > history.mLastScanline) {
+		if (!history.mbLastWasVBlank && !rastStatus2.InVBlank && (int)rastStatus2.ScanLine > history.mLastScanline) {
 			float delta = (float)(int)(rastStatus2.ScanLine - history.mLastScanline);
 
 			history.mPresentDelay += (delta - history.mPresentDelay) * 0.01f;

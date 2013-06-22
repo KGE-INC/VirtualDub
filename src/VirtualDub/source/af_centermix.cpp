@@ -43,13 +43,13 @@ void __cdecl VDAudioFilterCenterMix::InitProc(const VDAudioFilterContext *pConte
 }
 
 uint32 VDAudioFilterCenterMix::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
-	const VDWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format1 = *mpContext->mpInputs[1]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
 		|| format0.mChannels != 2
 		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
-		|| format1.mTag != VDWaveFormat::kTagPCM
+		|| format1.mTag != VDXWaveFormat::kTagPCM
 		|| format1.mChannels != 1
 		|| (format1.mSampleBits != 8 && format0.mSampleBits != 16)
 		|| format0.mSamplingRate != format1.mSamplingRate
@@ -57,7 +57,7 @@ uint32 VDAudioFilterCenterMix::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf0;
+	VDXWaveFormat *pwf0;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -136,11 +136,11 @@ extern const VDPluginInfo apluginDef_centermix = {
 	NULL,
 	L"Mixes a stereo stream with a mono stream.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

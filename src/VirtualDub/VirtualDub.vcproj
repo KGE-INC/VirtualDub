@@ -261,6 +261,8 @@
 				PreprocessorDefinitions="NDEBUG;_USE_NON_INTEL_COMPILER;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderThrough="stdafx.h"
 				WarningLevel="3"
 				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
@@ -280,7 +282,6 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/mapinfo:lines "
 				AdditionalDependencies="winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -364,6 +365,8 @@
 				PreprocessorDefinitions="NDEBUG;_USE_NON_INTEL_COMPILER;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderThrough="stdafx.h"
 				WarningLevel="3"
 				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
@@ -383,7 +386,6 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/mapinfo:lines "
 				AdditionalDependencies="winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib"
 				OutputFile="$(OutDir)\Veedub64.exe"
 				LinkIncremental="1"
@@ -1032,50 +1034,8 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\source\VideoFilterFrame.cpp"
+				RelativePath=".\source\version.cpp"
 				>
-			</File>
-			<File
-				RelativePath="source\VideoFilterSystem.cpp"
-				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="2"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="2"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="source\VideoTelecineRemover.cpp"
@@ -1165,6 +1125,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\FilterPreview.h"
+				>
+			</File>
+			<File
 				RelativePath="h\Fixes.h"
 				>
 			</File>
@@ -1209,11 +1173,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\Riza\res\resource.h"
+				RelativePath="res\resource.h"
 				>
 			</File>
 			<File
-				RelativePath="res\resource.h"
+				RelativePath="..\Riza\res\resource.h"
 				>
 			</File>
 			<File
@@ -1226,6 +1190,10 @@
 			</File>
 			<File
 				RelativePath="h\VBitmap.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\version.h"
 				>
 			</File>
 			<File
@@ -2242,7 +2210,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2252,7 +2219,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2286,8 +2252,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2297,8 +2261,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2330,7 +2292,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2340,7 +2301,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2374,8 +2334,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2385,8 +2343,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2420,8 +2376,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2431,8 +2385,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2464,7 +2416,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2474,7 +2425,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2512,8 +2462,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2523,8 +2471,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2558,8 +2504,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2569,8 +2513,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						FavorSizeOrSpeed="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2602,7 +2544,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2612,7 +2553,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2644,7 +2584,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2654,7 +2593,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2888,9 +2826,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2900,9 +2835,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2934,9 +2866,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2946,9 +2875,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2980,9 +2906,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -2992,9 +2915,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3026,9 +2946,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3038,9 +2955,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3072,9 +2986,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3084,9 +2995,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3118,9 +3026,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3130,9 +3035,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3164,9 +3066,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3176,9 +3075,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3214,9 +3110,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3226,9 +3119,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3260,9 +3150,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3272,9 +3159,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3306,9 +3190,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3318,9 +3199,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3352,9 +3230,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3364,9 +3239,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3398,9 +3270,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3410,9 +3279,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3444,9 +3310,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3456,9 +3319,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3490,9 +3350,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3502,9 +3359,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3540,9 +3394,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3552,9 +3403,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3586,9 +3434,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3598,9 +3443,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3632,9 +3474,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3644,9 +3483,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3678,9 +3514,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3690,13 +3523,14 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\FilterPreview.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\Filters.cpp"
@@ -3724,9 +3558,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3736,9 +3567,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3770,9 +3598,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3782,9 +3607,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3816,9 +3638,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3828,9 +3647,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3862,9 +3678,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3874,9 +3687,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3908,9 +3718,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3920,9 +3727,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3954,9 +3758,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -3966,9 +3767,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4000,9 +3798,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4012,9 +3807,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4046,9 +3838,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4058,9 +3847,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4092,9 +3878,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4104,9 +3887,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4138,9 +3918,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4150,9 +3927,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4184,9 +3958,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4196,9 +3967,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4230,9 +3998,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4242,9 +4007,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4276,9 +4038,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4288,9 +4047,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4322,9 +4078,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4334,9 +4087,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4368,9 +4118,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4380,9 +4127,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4414,9 +4158,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4426,9 +4167,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4460,9 +4198,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4472,9 +4207,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4506,9 +4238,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4518,9 +4247,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4552,9 +4278,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4564,9 +4287,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4598,9 +4318,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4610,9 +4327,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4644,9 +4358,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4656,9 +4367,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4694,9 +4402,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4706,9 +4411,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4740,9 +4442,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4752,9 +4451,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4786,9 +4482,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4798,9 +4491,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4832,9 +4522,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4844,9 +4531,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4878,9 +4562,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -4890,9 +4571,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="4"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5549,7 +5227,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5559,49 +5236,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\AVIIndex.cpp"
-				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="2"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5633,7 +5267,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5643,7 +5276,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5675,7 +5307,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5685,7 +5316,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5725,7 +5355,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5735,7 +5364,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5767,7 +5395,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5777,7 +5404,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5817,7 +5443,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5827,7 +5452,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5859,7 +5483,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5869,11 +5492,14 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\AVIReadCache.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\AVIReadHandler.cpp"
@@ -5901,7 +5527,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5911,11 +5536,18 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\AVIReadHandlerTunnelW32.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\AVIReadIndex.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\DubSource.cpp"
@@ -5943,10 +5575,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5956,10 +5584,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -5991,10 +5615,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6004,10 +5624,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6039,7 +5655,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6049,7 +5664,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6081,7 +5695,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6091,7 +5704,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6123,7 +5735,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6133,7 +5744,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6173,7 +5783,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6183,11 +5792,14 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\InputFileMP3.cpp"
+				>
 			</File>
 			<File
 				RelativePath=".\source\InputFilePlugin.cpp"
@@ -6195,6 +5807,14 @@
 			</File>
 			<File
 				RelativePath=".\source\InputFileTest.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\InputFileTestPhysics.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\InputFileWAV.cpp"
 				>
 			</File>
 			<File
@@ -6223,7 +5843,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6233,7 +5852,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="2"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6265,10 +5883,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6278,10 +5892,6 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						Optimization="0"
-						InlineFunctionExpansion="1"
-						FavorSizeOrSpeed="2"
-						OmitFramePointers="true"
 						AdditionalIncludeDirectories=""
 						PreprocessorDefinitions=""
 					/>
@@ -6296,7 +5906,7 @@
 				>
 			</File>
 			<File
-				RelativePath="h\AVIIndex.h"
+				RelativePath=".\h\AudioSourceAVI.h"
 				>
 			</File>
 			<File
@@ -6340,7 +5950,15 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\AVIReadCache.h"
+				>
+			</File>
+			<File
 				RelativePath="h\AVIReadHandler.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\AVIReadIndex.h"
 				>
 			</File>
 			<File
@@ -6352,6 +5970,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\InputFileANIM.h"
+				>
+			</File>
+			<File
 				RelativePath="h\InputFileAVI.h"
 				>
 			</File>
@@ -6360,7 +5982,23 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\InputFileMP3.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\InputFileTestPhysics.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\InputFileWAV.h"
+				>
+			</File>
+			<File
 				RelativePath="h\VideoSource.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\VideoSourceAVI.h"
 				>
 			</File>
 			<File
@@ -6374,6 +6012,10 @@
 			<Filter
 				Name="Source - Filters"
 				>
+				<File
+					RelativePath=".\source\f_base.cpp"
+					>
+				</File>
 				<File
 					RelativePath="source\F_blur.cpp"
 					>
@@ -6543,6 +6185,10 @@
 							PreprocessorDefinitions=""
 						/>
 					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\source\f_convertformat.cpp"
+					>
 				</File>
 				<File
 					RelativePath="source\f_convolute.cpp"
@@ -6715,6 +6361,10 @@
 							PreprocessorDefinitions=""
 						/>
 					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\source\f_fieldbob2.cpp"
+					>
 				</File>
 				<File
 					RelativePath="source\f_fieldswap.cpp"
@@ -7664,301 +7314,15 @@
 				</File>
 			</Filter>
 			<Filter
-				Name="Source - Video Filters"
+				Name="Source - Input Drivers"
 				>
 				<File
-					RelativePath="source\vf_adapter.cpp"
+					RelativePath=".\source\if_list.cpp"
 					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
 				</File>
 				<File
-					RelativePath="source\vf_avisynth.cpp"
+					RelativePath=".\source\if_testid.cpp"
 					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="source\vf_base.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="source\vf_fields.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="vf_input.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="source\vf_ivtc.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="source\vf_list.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="2"
-							AdditionalIncludeDirectories=""
-							PreprocessorDefinitions=""
-						/>
-					</FileConfiguration>
 				</File>
 			</Filter>
 			<Filter
@@ -8556,6 +7920,10 @@
 						/>
 					</FileConfiguration>
 				</File>
+				<File
+					RelativePath=".\source\af_timestretch.cpp"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="Headers - Audio Filters"
@@ -9002,7 +8370,7 @@
 				</File>
 			</Filter>
 			<Filter
-				Name="Assembly Files - Filters (A64)"
+				Name="Assembly Files - Filters (x64)"
 				>
 				<File
 					RelativePath="source\a64_resize.asm"
@@ -9046,6 +8414,14 @@
 				</File>
 			</Filter>
 			<Filter
+				Name="Headers - Filters"
+				>
+				<File
+					RelativePath=".\h\f_base.h"
+					>
+				</File>
+			</Filter>
+			<Filter
 				Name="Interface headers - plugins"
 				>
 				<File
@@ -9062,10 +8438,6 @@
 				</File>
 				<File
 					RelativePath="..\h\vd2\plugin\vdvideofilt.h"
-					>
-				</File>
-				<File
-					RelativePath="..\h\vd2\plugin\vdvideofiltold.h"
 					>
 				</File>
 				<File

@@ -17,8 +17,6 @@
 
 #include "stdafx.h"
 
-#include "AVIIndex.h"
-
 #include <vd2/system/error.h>
 #include "AVIOutput.h"
 #include "oshelper.h"

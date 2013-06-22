@@ -39,6 +39,7 @@ enum {
 };
 
 void VDLog(int severity, const VDStringW& s);
+void VDLogF(int severity, const wchar_t *format, ...);
 void VDAttachLogger(IVDLogger *pLogger, bool bThisThreadOnly, bool bReplayLog);
 void VDDetachLogger(IVDLogger *pLogger);
 

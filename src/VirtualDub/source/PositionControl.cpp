@@ -115,6 +115,8 @@ protected:
 	void		SetFrameTypeCallback(IVDPositionControlCallback *pCB);
 
 	void		SetRange(VDPosition lo, VDPosition hi, bool updateNow);
+	VDPosition	GetRangeBegin();
+	VDPosition	GetRangeEnd();
 
 	VDPosition	GetPosition();
 	void		SetPosition(VDPosition pos);
@@ -318,6 +320,14 @@ void VDPositionControlW32::SetRange(VDPosition lo, VDPosition hi, bool updateNow
 		RecomputeMetrics();
 		UpdateString();
 	}
+}
+
+VDPosition VDPositionControlW32::GetRangeBegin() {
+	return mRangeStart;
+}
+
+VDPosition VDPositionControlW32::GetRangeEnd() {
+	return mRangeEnd;
 }
 
 VDPosition VDPositionControlW32::GetPosition() {

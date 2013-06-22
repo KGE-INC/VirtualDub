@@ -18,7 +18,6 @@
 #ifndef f_AVIOUTPUT_IMAGES_H
 #define f_AVIOUTPUT_IMAGES_H
 
-#include <windows.h>
 #include <vd2/system/VDString.h>
 #include "AVIOutput.h"
 

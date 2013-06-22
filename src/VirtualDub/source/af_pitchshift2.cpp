@@ -154,14 +154,14 @@ VDAudioFilterPitchScale::~VDAudioFilterPitchScale() {
 }
 
 uint32 VDAudioFilterPitchScale::Prepare() {
-	const VDWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   inFormat.mTag != VDWaveFormat::kTagPCM
+	if (   inFormat.mTag != VDXWaveFormat::kTagPCM
 		|| (inFormat.mSampleBits != 8 && inFormat.mSampleBits != 16)
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
+	VDXWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -179,7 +179,7 @@ uint32 VDAudioFilterPitchScale::Prepare() {
 
 void VDAudioFilterPitchScale::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 	const uint32 nch = format.mChannels;
 
 	// initialize FFT window and overlap window
@@ -216,7 +216,7 @@ void VDAudioFilterPitchScale::Start() {
 
 uint32 VDAudioFilterPitchScale::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	// foo
 	sint16 buf[4096];
@@ -390,7 +390,7 @@ uint32 VDAudioFilterPitchScale::Run() {
 
 sint64 VDAudioFilterPitchScale::Seek(sint64 microsecs) {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 	const uint32 nch = format.mChannels;
 
 	for(unsigned ch=0; ch<nch; ++ch) {
@@ -425,11 +425,11 @@ extern const VDPluginInfo apluginDef_pitchscale = {
 	NULL,
 	L"Scales the pitch of audio by a fixed ratio.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

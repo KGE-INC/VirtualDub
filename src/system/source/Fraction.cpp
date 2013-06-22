@@ -172,6 +172,14 @@ VDFraction VDFraction::operator/(unsigned long b) const {
 	return reduce(hi, (uint64)lo * b);
 }
 
+VDFraction& VDFraction::operator*=(unsigned long b) {
+	return *this = reduce((uint64)hi * b, lo);
+}
+
+VDFraction& VDFraction::operator/=(unsigned long b) {
+	return *this = reduce(hi, (uint64)lo * b);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 sint64 VDFraction::scale64t(sint64 v) const {
@@ -230,16 +238,12 @@ sint64 VDFraction::scale64iu(sint64 v) const {
 
 ///////////////////////////////////////////////////////////////////////////
 
-VDFraction::operator long() const {
-	return (long)((hi + lo/2) / lo);
-}
-
-VDFraction::operator unsigned long() const {
-	return (hi + lo/2) / lo;
-}
-
-VDFraction::operator double() const {
+double VDFraction::asDouble() const {
 	return (double)hi / (double)lo;
+}
+
+double VDFraction::AsInverseDouble() const {
+	return (double)lo / (double)hi;
 }
 
 unsigned long VDFraction::roundup32ul() const {

@@ -60,16 +60,14 @@ extern DubSource::ErrorMode	g_audioErrorMode;
 vdrefptr<InputFile>		inputAVI;
 InputFileOptions	*g_pInputOpts			= NULL;
 
-vdrefptr<VideoSource>	inputVideoAVI;
+vdrefptr<IVDVideoSource>	inputVideo;
 extern vdrefptr<AudioSource>	inputAudio;
-
-int					 audioInputMode = AUDIOIN_AVI;
 
 IDubber				*g_dubber				= NULL;
 
 COMPVARS			g_Vcompression;
-WAVEFORMATEX		*g_ACompressionFormat		= NULL;
-DWORD				g_ACompressionFormatSize	= 0;
+VDWaveFormat		*g_ACompressionFormat		= NULL;
+uint32				g_ACompressionFormatSize	= 0;
 VDStringA			g_ACompressionFormatHint;
 
 VDAudioFilterGraph	g_audioFilterGraph;
@@ -86,13 +84,14 @@ extern uint32& VDPreferencesGetRenderOutputBufferSize();
 
 void AppendAVI(const wchar_t *pszFile) {
 	if (inputAVI) {
-		VDPosition lTail = inputAVI->videoSrc->getEnd();
+		IVDStreamSource *pVSS = inputVideo->asStream();
+		VDPosition lTail = pVSS->getEnd();
 
 		if (inputAVI->Append(pszFile)) {
 			g_project->BeginTimelineUpdate();
 			FrameSubset& s = g_project->GetTimeline().GetSubset();
 
-			s.insert(s.end(), FrameSubsetNode(lTail, inputAVI->videoSrc->getEnd() - lTail, false, 0));
+			s.insert(s.end(), FrameSubsetNode(lTail, pVSS->getEnd() - lTail, false, 0));
 			g_project->EndTimelineUpdate();
 		}
 	}
@@ -106,7 +105,8 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 	if (!inputAVI)
 		return;
 
-	VDPosition originalCount = inputAVI->videoSrc->getEnd();
+	IVDStreamSource *pVSS = inputVideo->asStream();
+	VDPosition originalCount = pVSS->getEnd();
 
 	wcscpy(buf, pszFile);
 
@@ -156,13 +156,13 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 	if (count) {
 		FrameSubset& s = g_project->GetTimeline().GetSubset();
 		g_project->BeginTimelineUpdate();
-		s.insert(s.end(), FrameSubsetNode(originalCount, inputAVI->videoSrc->getEnd() - originalCount, false, 0));
+		s.insert(s.end(), FrameSubsetNode(originalCount, pVSS->getEnd() - originalCount, false, 0));
 		g_project->EndTimelineUpdate();
 	}
 }
 
 void SaveWAV(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input file to process.");
 
 	if (!inputAudio)
@@ -188,7 +188,7 @@ void SaveAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, bool
 }
 
 void SaveStripedAVI(const wchar_t *szFile) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	VDAVIOutputStripedSystem outstriped(szFile);
@@ -199,7 +199,7 @@ void SaveStripedAVI(const wchar_t *szFile) {
 }
 
 void SaveStripeMaster(const wchar_t *szFile) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input video stream to process.");
 
 	VDAVIOutputStripedSystem outstriped(szFile);
@@ -210,7 +210,7 @@ void SaveStripeMaster(const wchar_t *szFile) {
 }
 
 void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		throw MyError("No input file to process.");
 
 	VDAVIOutputFileSystem outfile;
@@ -238,27 +238,30 @@ void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int min
 
 
 void SetSelectionStart(long ms) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		return;
 
-	g_project->SetSelectionStart(inputVideoAVI->msToSamples(ms));
+	IVDStreamSource *pVSS = inputVideo->asStream();
+	g_project->SetSelectionStart(pVSS->msToSamples(ms));
 }
 
 void SetSelectionEnd(long ms) {
-	if (!inputVideoAVI)
+	if (!inputVideo)
 		return;
 
-	g_project->SetSelectionEnd(g_project->GetFrameCount() - inputVideoAVI->msToSamples(ms));
+	IVDStreamSource *pVSS = inputVideo->asStream();
+	g_project->SetSelectionEnd(g_project->GetFrameCount() - pVSS->msToSamples(ms));
 }
 
-void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
-	const VDPosition lFirst = pVideoSource->getStart();
-	const VDPosition lLast = pVideoSource->getEnd();
+void ScanForUnreadableFrames(FrameSubset *pSubset, IVDVideoSource *pVideoSource) {
+	IVDStreamSource *pVSS = pVideoSource->asStream();
+	const VDPosition lFirst = pVSS->getStart();
+	const VDPosition lLast = pVSS->getEnd();
 	VDPosition lFrame = lFirst;
 	vdblock<char>	buffer;
 
-	IVDStreamSource::ErrorMode oldErrorMode(pVideoSource->getDecodeErrorMode());
-	pVideoSource->setDecodeErrorMode(IVDStreamSource::kErrorModeReportAll);
+	IVDStreamSource::ErrorMode oldErrorMode(pVSS->getDecodeErrorMode());
+	pVSS->setDecodeErrorMode(IVDStreamSource::kErrorModeReportAll);
 
 	try {
 		ProgressDialog pd(g_hWnd, "Frame scan", "Scanning for unreadable frames", lLast-lFrame, true);
@@ -288,7 +291,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 					break;
 
 				if (lFrame < lLast) {
-					err = pVideoSource->read(lFrame, 1, NULL, 0, &lActualBytes, &lActualSamples);
+					err = pVSS->read(lFrame, 1, NULL, 0, &lActualBytes, &lActualSamples);
 
 					if (err)
 						break;
@@ -296,7 +299,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 					if (buffer.empty() || buffer.size() < lActualBytes + padSize)
 						buffer.resize(((lActualBytes + !lActualBytes + padSize + 65535) & ~65535));
 
-					err = pVideoSource->read(lFrame, 1, buffer.data(), buffer.size() - padSize, &lActualBytes, &lActualSamples);
+					err = pVSS->read(lFrame, 1, buffer.data(), buffer.size() - padSize, &lActualBytes, &lActualSamples);
 
 					if (err)
 						break;
@@ -329,16 +332,16 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 			++lFrame;
 		}
 
-		pVideoSource->streamEnd();
+		pVSS->streamEnd();
 
 		guiSetStatus("%ld frames masked (%ld frames bad, %ld frames good but undecodable)", 255, lMaskedFrames, lDeadFrames, lMaskedFrames-lDeadFrames);
 
 	} catch(...) {
-		pVideoSource->setDecodeErrorMode(oldErrorMode);
+		pVSS->setDecodeErrorMode(oldErrorMode);
 		pVideoSource->invalidateFrameBuffer();
 		throw;
 	}
-	pVideoSource->setDecodeErrorMode(oldErrorMode);
+	pVSS->setDecodeErrorMode(oldErrorMode);
 	pVideoSource->invalidateFrameBuffer();
 
 	g_project->DisplayFrame();

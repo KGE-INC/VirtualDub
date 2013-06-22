@@ -424,13 +424,13 @@ const vduint128 vduint128::operator*(const vduint128& x) const {
 			mul		dword ptr [esp+20]		;EDX:EAX = BC
 			add		[ecx+4],eax
 			adc		[ecx+8],edx
-			adc		[ecx+12], 0
+			adc		dword ptr [ecx+12], 0
 
 			mov		eax,[esp+12]
 			mul		dword ptr [esp+16]		;EDX:EAX = AD
 			add		[ecx+4],eax
 			adc		[ecx+8],edx
-			adc		[ecx+12], 0
+			adc		dword ptr [ecx+12], 0
 
 			mov		eax, ecx
 			ret

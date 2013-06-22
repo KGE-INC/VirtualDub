@@ -196,7 +196,7 @@ void VDAVIOutputFileSystem::SetVideo(const AVIStreamHeader_fixed& asi, const voi
 	}
 }
 
-void VDAVIOutputFileSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputFileSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
@@ -252,7 +252,7 @@ void VDAVIOutputStripedSystem::SetVideo(const AVIStreamHeader_fixed& asi, const 
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
 }
 
-void VDAVIOutputStripedSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputStripedSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
@@ -306,7 +306,7 @@ void VDAVIOutputWAVSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 void VDAVIOutputWAVSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
 }
 
-void VDAVIOutputWAVSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputWAVSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
@@ -360,7 +360,7 @@ void VDAVIOutputRawSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
 void VDAVIOutputRawSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
 }
 
-void VDAVIOutputRawSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputRawSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
@@ -423,7 +423,7 @@ void VDAVIOutputImagesSystem::SetVideo(const AVIStreamHeader_fixed& asi, const v
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
 }
 
-void VDAVIOutputImagesSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputImagesSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
@@ -477,7 +477,7 @@ void VDAVIOutputFilmstripSystem::SetVideo(const AVIStreamHeader_fixed& asi, cons
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
 }
 
-void VDAVIOutputFilmstripSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputFilmstripSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 }
 
 bool VDAVIOutputFilmstripSystem::AcceptsVideo() {
@@ -534,7 +534,7 @@ void VDAVIOutputGIFSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
 }
 
-void VDAVIOutputGIFSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputGIFSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 }
 
 bool VDAVIOutputGIFSystem::AcceptsVideo() {
@@ -564,8 +564,13 @@ IVDMediaOutput *VDAVIOutputPreviewSystem::CreateSegment() {
 	if (!mVideoFormat.empty())
 		pOutput->createVideoStream()->setFormat(&mVideoFormat[0], mVideoFormat.size());
 
-	if (!mAudioFormat.empty())
-		pOutput->createAudioStream()->setFormat(&mAudioFormat[0], mAudioFormat.size());
+	if (!mAudioFormat.empty()) {
+		AVIAudioPreviewOutputStream *aout = static_cast<AVIAudioPreviewOutputStream *>(pOutput->createAudioStream());
+
+		aout->setFormat(&mAudioFormat[0], mAudioFormat.size());
+		aout->setStreamInfo(mAudioStreamInfo);
+		aout->SetVBRMode(mbAudioVBR);
+	}
 
 	pOutput->init(NULL);
 
@@ -580,13 +585,14 @@ void VDAVIOutputPreviewSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast
 void VDAVIOutputPreviewSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
 	mVideoStreamInfo = asi;
 	mVideoFormat.resize(cbFormat);
-	memcpy(&mVideoFormat[0], pFormat, cbFormat);
+	memcpy(mVideoFormat.data(), pFormat, cbFormat);
 }
 
-void VDAVIOutputPreviewSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputPreviewSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
-	memcpy(&mAudioFormat[0], pFormat, cbFormat);
+	mbAudioVBR = vbr;
+	memcpy(mAudioFormat.data(), pFormat, cbFormat);
 }
 
 bool VDAVIOutputPreviewSystem::AcceptsVideo() {
@@ -632,7 +638,7 @@ void VDAVIOutputNullVideoSystem::SetVideo(const AVIStreamHeader_fixed& asi, cons
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
 }
 
-void VDAVIOutputNullVideoSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputNullVideoSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 }
 
 bool VDAVIOutputNullVideoSystem::AcceptsVideo() {
@@ -702,11 +708,11 @@ void VDAVIOutputSegmentedSystem::SetVideo(const AVIStreamHeader_fixed& asi, cons
 	mpChildSystem->SetVideo(asi, pFormat, cbFormat);
 }
 
-void VDAVIOutputSegmentedSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+void VDAVIOutputSegmentedSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved, bool vbr) {
 	mAudioStreamInfo = asi;
 	mAudioFormat.resize(cbFormat);
 	memcpy(&mAudioFormat[0], pFormat, cbFormat);
-	mpChildSystem->SetAudio(asi, pFormat, cbFormat, bInterleaved);
+	mpChildSystem->SetAudio(asi, pFormat, cbFormat, bInterleaved, vbr);
 }
 
 bool VDAVIOutputSegmentedSystem::AcceptsVideo() {

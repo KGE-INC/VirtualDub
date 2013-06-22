@@ -191,7 +191,7 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect) {
+void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect, const FilterSystem *pRemapperFS) {
 	VDPosition directLast = -1;
 	int sourceLast = -1;
 	IVDVideoSource *pVS = NULL;
@@ -222,6 +222,10 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 
 		// we need to preserve this so filter timing isn't screwed up across drop frames
 		VDPosition origSrcFrame = srcFrame;
+
+		if (pRemapperFS)
+			srcFrame = pRemapperFS->GetSourceFrame(srcFrame);
+
 		srcFrame = pVS->getRealDisplayFrame(srcFrame);
 
 		if (bDirect) {
@@ -232,11 +236,15 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 			else if (directLast > srcFrame)
 				directLast = key;
 			else {
-				while(directLast < srcFrame) {
-					++directLast;
+				if (directLast < srcFrame) {
+					for(;;) {
+						++directLast;
+						if (directLast >= srcFrame)
+							break;
 
-					if (pVS->getDropType(directLast) != VideoSource::kDroppable)
-						break;
+						if (pVS->getDropType(directLast) != VideoSource::kDroppable)
+							break;
+					}
 				}
 			}
 
@@ -302,11 +310,14 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 		if (f!=-1 || mbFirstSourceFrame) {
 			mbFirstSourceFrame = false;
 
+			VDASSERT(mSrcIndex >= 0);
+
 			step.mSourceFrame	= f;
 			step.mTargetSample	= mSrcTargetSample;
 			step.mOrigDisplayFrame = mSrcOrigDisplayFrame;
 			step.mDisplayFrame	= mSrcDisplayFrame;
 			step.mTimelineFrame	= mSrcTimelineFrame;
+			step.mSequenceFrame	= mDstFrame;
 			step.mSrcIndex		= mSrcIndex;
 			step.mbDirect		= mbDirect;
 			step.mbSameAsLast	= mbSameAsLast;
@@ -329,6 +340,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 	step.mTimelineFrame	= mSrcTimelineFrame;
 	step.mOrigDisplayFrame	= mSrcOrigDisplayFrame;
 	step.mDisplayFrame	= mSrcDisplayFrame;
+	step.mSequenceFrame	= mDstFrame;
 	step.mbIsPreroll	= false;
 	step.mbSameAsLast	= true;
 	step.mbDirect		= mbDirect;
@@ -405,7 +417,8 @@ VDAudioPipeline::VDAudioPipeline() {
 VDAudioPipeline::~VDAudioPipeline() {
 }
 
-void VDAudioPipeline::Init(uint32 bytes, uint32 sampleSize) {
+void VDAudioPipeline::Init(uint32 bytes, uint32 sampleSize, bool vbrModeEnabled) {
+	mbVBRModeEnabled = vbrModeEnabled;
 	mbInputClosed = false;
 	mbOutputClosed = false;
 	mSampleSize = sampleSize;
@@ -417,13 +430,39 @@ void VDAudioPipeline::Shutdown() {
 	mBuffer.Shutdown();
 }
 
-int VDAudioPipeline::Read(void *pBuffer, int bytes) {
+int VDAudioPipeline::ReadPartial(void *pBuffer, int bytes) {
 	int actual = mBuffer.Read((char *)pBuffer, bytes);
 
 	if (actual)
 		msigRead.signal();
 
 	return actual;
+}
+
+bool VDAudioPipeline::Write(const void *data, int bytes, const VDAtomicInt *abortFlag) {
+	int actual;
+	while(bytes > 0) {
+		void *dst = BeginWrite(bytes, actual);
+
+		if (!actual) {
+			if (abortFlag && *abortFlag)
+				return false;
+
+			msigRead.wait();
+			continue;
+		}
+
+		memcpy(dst, data, actual);
+
+		EndWrite(actual);
+
+		data = (const char *)data + actual;
+		bytes -= actual;
+	}
+
+	VDASSERT(bytes == 0);
+
+	return true;
 }
 
 void *VDAudioPipeline::BeginWrite(int requested, int& actual) {

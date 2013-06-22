@@ -221,7 +221,7 @@ namespace {
 		INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 		static void __cdecl ButtonCallback(bool bNewState, void *p);
-		static void __cdecl SampleCallback(VFBitmap *pf, long lFrame, long lCount, void *pData);
+		static void __cdecl SampleCallback(VDXFBitmap *pf, long lFrame, long lCount, void *pData);
 
 		PerspectiveFilterData *const mfd;
 		int dragpip, dragoffsetx, dragoffsety;
@@ -246,7 +246,7 @@ namespace {
 					SendMessage(hwndCombo, CB_SETCURSEL, mfd->filtermode, 0);
 
 					if (mfd->ifp) {
-						mfd->ifp->InitButton(GetDlgItem(mhdlg, IDC_PREVIEW));
+						mfd->ifp->InitButton((VDXHWND)GetDlgItem(mhdlg, IDC_PREVIEW));
 						mfd->ifp->SetButtonCallback(ButtonCallback, this);
 						mfd->ifp->SetSampleCallback(SampleCallback, this);
 					}
@@ -443,7 +443,7 @@ namespace {
 
 				case IDC_PREVIEW:
 					if (mfd->ifp)
-						mfd->ifp->Toggle(mhdlg);
+						mfd->ifp->Toggle((VDXHWND)mhdlg);
 					return TRUE;
 
 				case IDC_SAMPLE:
@@ -462,7 +462,7 @@ namespace {
 		EnableWindow(GetDlgItem(pThis->mhdlg, IDC_SAMPLE), bNewState);
 	}
 
-	void PerspectiveFilterDialog::SampleCallback(VFBitmap *pf, long lFrame, long lCount, void *pData) {
+	void PerspectiveFilterDialog::SampleCallback(VDXFBitmap *pf, long lFrame, long lCount, void *pData) {
 		PerspectiveFilterDialog *const pThis = (PerspectiveFilterDialog *)pData;
 		VDPixmap pxdst;
 
@@ -479,7 +479,7 @@ namespace {
 	}
 };
 
-static int perspective_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int perspective_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	PerspectiveFilterData *mfd = (PerspectiveFilterData *)fa->filter_data;
 	PerspectiveFilterData mfd2 = *mfd;
 
@@ -490,7 +490,7 @@ static int perspective_config(FilterActivation *fa, const FilterFunctions *ff, H
 	if (mfd->new_y < 16)
 		mfd->new_y = 240;
 
-	if (PerspectiveFilterDialog::Activate(hWnd, mfd)) {
+	if (PerspectiveFilterDialog::Activate((HWND)hWnd, mfd)) {
 		*mfd = mfd2;
 		return 1;
 	}

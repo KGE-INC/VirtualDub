@@ -30,6 +30,7 @@
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/w32peer.h>
 #include <vd2/Dita/resources.h>
+#include <vd2/Riza/bitmap.h>
 #include <vd2/Riza/display.h>
 #include "gui.h"
 #include "prefs.h"
@@ -140,6 +141,7 @@ static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish
 static const char g_szFilterEnableLumaSquishWhite	[] = "Enable white luma squish";
 static const char g_szFilterEnableNoiseReduction	[] = "Enable noise reduction";
 static const char g_szFilterEnableFilterChain		[] = "Enable filter chain";
+static const char g_szFilterSkipFilterChainConversion[] = "Skip filter chain conversion";
 static const char g_szFilterCropLeft				[] = "Crop left";
 static const char g_szFilterCropTop					[] = "Crop top";
 static const char g_szFilterCropRight				[] = "Crop right";
@@ -324,6 +326,7 @@ public:
 
 	bool	SetDriver(const wchar_t *s);
 	void	SetCaptureFile(const wchar_t *s);
+	void	PreallocateCaptureFile(sint64 size);
 	bool	SetTunerChannel(int ch);
 	bool	SetTunerExactFrequency(uint32 freq);
 	void	SetTunerInputMode(bool cable);
@@ -801,6 +804,10 @@ void VDCaptureProjectUI::SetCaptureFile(const wchar_t *s) {
 	mpProject->SetCaptureFile(s, false);
 }
 
+void VDCaptureProjectUI::PreallocateCaptureFile(sint64 size) {
+	mpProject->PreallocateCaptureFile(size);
+}
+
 bool VDCaptureProjectUI::SetTunerChannel(int ch) {
 	return mpProject->SetTunerChannel(ch);
 }
@@ -861,15 +868,15 @@ void VDCaptureProjectUI::SetDisplayAccelMode(DisplayAccelMode mode) {
 }
 
 void VDCaptureProjectUI::SetPCMAudioFormat(sint32 sampling_rate, bool is_16bit, bool is_stereo) {
-	WAVEFORMATEX wf;
+	VDWaveFormat wf;
 
-	wf.wFormatTag		= WAVE_FORMAT_PCM;
-	wf.nChannels		= (WORD)(is_stereo ? 2 : 1);
-	wf.nSamplesPerSec	= sampling_rate;
-	wf.wBitsPerSample	= (WORD)(is_16bit ? 16 : 8);
-	wf.nAvgBytesPerSec	= sampling_rate * wf.nChannels * wf.wBitsPerSample/8;
-	wf.nBlockAlign		= (WORD)(wf.nChannels * (wf.wBitsPerSample>>3));
-	wf.cbSize			= 0;
+	wf.mTag				= VDWaveFormat::kTagPCM;
+	wf.mChannels		= (uint16)(is_stereo ? 2 : 1);
+	wf.mSamplingRate	= sampling_rate;
+	wf.mSampleBits		= (uint16)(is_16bit ? 16 : 8);
+	wf.mDataRate		= sampling_rate * wf.mChannels * (wf.mSampleBits >> 3);
+	wf.mBlockSize		= (uint16)(wf.mChannels * (wf.mSampleBits >> 3));
+	wf.mExtraSize		= 0;
 
 	if (!mpProject->SetAudioFormat(wf, sizeof wf))
 		VDDEBUG("Couldn't set audio format!\n");
@@ -1028,7 +1035,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 
 	mpProject->SetTimingSetup(ts);
 
-	mpProject->SetLoggingEnabled(key.getBool(g_szCaptureTimingEnableLog, false));
+	mpProject->SetLogEnabled(key.getBool(g_szCaptureTimingEnableLog, false));
 
 	// load filter settings
 
@@ -1038,7 +1045,8 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	fs.mbEnableLumaSquishBlack = key.getBool(g_szFilterEnableLumaSquishBlack, fs.mbEnableLumaSquishBlack);
 	fs.mbEnableLumaSquishWhite = key.getBool(g_szFilterEnableLumaSquishWhite, fs.mbEnableLumaSquishWhite);
 	fs.mbEnableNoiseReduction = key.getBool(g_szFilterEnableNoiseReduction, fs.mbEnableNoiseReduction);
-	fs.mbEnableRGBFiltering = key.getBool(g_szFilterEnableFilterChain, fs.mbEnableRGBFiltering);
+	fs.mbEnableFilterChain			= key.getBool(g_szFilterEnableFilterChain, fs.mbEnableFilterChain);
+	fs.mbSkipFilterChainConversion	= key.getBool(g_szFilterSkipFilterChainConversion, fs.mbSkipFilterChainConversion);
 	fs.mNRThreshold = key.getInt(g_szFilterNoiseReductionThreshold, fs.mNRThreshold);
 
 	int filterMode = key.getInt(g_szFilterVerticalSquashMode, fs.mVertSquashMode);
@@ -1134,7 +1142,8 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szFilterEnableLumaSquishBlack, fs.mbEnableLumaSquishBlack);
 	key.setBool(g_szFilterEnableLumaSquishWhite, fs.mbEnableLumaSquishWhite);
 	key.setBool(g_szFilterEnableNoiseReduction, fs.mbEnableNoiseReduction);
-	key.setBool(g_szFilterEnableFilterChain, fs.mbEnableRGBFiltering);
+	key.setBool(g_szFilterEnableFilterChain, fs.mbEnableFilterChain);
+	key.setBool(g_szFilterSkipFilterChainConversion, fs.mbSkipFilterChainConversion);
 	key.setInt(g_szFilterCropLeft, fs.mCropRect.left);
 	key.setInt(g_szFilterCropTop, fs.mCropRect.top);
 	key.setInt(g_szFilterCropRight, fs.mCropRect.right);
@@ -1142,7 +1151,7 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setInt(g_szFilterNoiseReductionThreshold, fs.mNRThreshold);
 	key.setInt(g_szFilterVerticalSquashMode, fs.mVertSquashMode);
 
-	key.setBool(g_szCaptureTimingEnableLog, mpProject->IsLoggingEnabled());
+	key.setBool(g_szCaptureTimingEnableLog, mpProject->IsLogEnabled());
 }
 
 void VDCaptureProjectUI::LoadDeviceSettings() {
@@ -1158,7 +1167,7 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 		vdblock<char> buf(len);
 
 		if (devkey.getBinary(g_szVideoFormat, buf.data(), buf.size()))
-			mpProject->SetVideoFormat(*(const BITMAPINFOHEADER *)buf.data(), buf.size());
+			mpProject->SetVideoFormat(*(const VDAVIBitmapInfoHeader *)buf.data(), buf.size());
 	}
 
 	VDCaptureCompressionSpecs cs;
@@ -1251,7 +1260,7 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 		vdblock<char> buf(len);
 
 		if (devkey.getBinary(g_szAudioFormat, buf.data(), buf.size()))
-			mpProject->SetAudioFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
+			mpProject->SetAudioFormat(*(const VDWaveFormat *)buf.data(), buf.size());
 	}
 
 	// reload audio compression format
@@ -1266,7 +1275,7 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 			if (devkey.getString(g_szAudioCompHint, hint))
 				pHint = hint.c_str();
 
-			mpProject->SetAudioCompFormat(*(const WAVEFORMATEX *)buf.data(), buf.size(), pHint);
+			mpProject->SetAudioCompFormat(*(const VDWaveFormat *)buf.data(), buf.size(), pHint);
 		}
 	}
 
@@ -1341,7 +1350,7 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 	VDRegistryCapDeviceKey devkey(mpProject->GetConnectedDriverName());
 
 	if (mask & kSaveDevVideo) {
-		vdstructex<BITMAPINFOHEADER> bih;
+		vdstructex<VDAVIBitmapInfoHeader> bih;
 
 		if (mpProject->GetVideoFormat(bih))
 			devkey.setBinary(g_szVideoFormat, (const char *)&*bih, bih.size());
@@ -1392,14 +1401,14 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 	}
 
 	if (mask & kSaveDevAudio) {
-		vdstructex<WAVEFORMATEX> wfex;
+		vdstructex<VDWaveFormat> wfex;
 
 		if (mpProject->GetAudioFormat(wfex))
 			devkey.setBinary(g_szAudioFormat, (const char *)&*wfex, wfex.size());
 	}
 
 	if (mask & kSaveDevAudioComp) {
-		vdstructex<WAVEFORMATEX> wfex;
+		vdstructex<VDWaveFormat> wfex;
 		VDStringA hint;
 
 		if (mpProject->GetAudioCompFormat(wfex, hint)) {
@@ -1968,15 +1977,13 @@ void VDCaptureProjectUI::UICaptureAudioFormatUpdated() {
 	if (!mpProject->IsAudioCaptureEnabled()) {
 		strcpy(bufa, "No audio");
 	} else {
-		vdstructex<WAVEFORMATEX> wf;
+		vdstructex<VDWaveFormat> wf;
 
 		if (mpProject->GetAudioFormat(wf)) {
-			if (wf->wFormatTag != WAVE_FORMAT_PCM) {
-				wsprintf(bufa, "%d.%03dKHz", wf->nSamplesPerSec/1000, wf->nSamplesPerSec%1000);
+			if (wf->mTag != VDWaveFormat::kTagPCM) {
+				wsprintf(bufa, "%.3fKHz", wf->mSamplingRate / 1000.0);
 			} else {
-				PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)wf.data();
-
-				wsprintf(bufa, "%dK/%d/%c", (pwf->wf.nSamplesPerSec+500)/1000, pwf->wBitsPerSample, pwf->wf.nChannels>1?'s':'m');
+				wsprintf(bufa, "%dK/%d/%c", (wf->mSamplingRate+500)/1000, wf->mSampleBits, wf->mChannels>1?'s':'m');
 			}
 		}
 	}
@@ -2011,7 +2018,7 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 
 	sprintf(bufv, "%.02f fps", fps);
 
-	vdstructex<BITMAPINFOHEADER> bih;
+	vdstructex<VDAVIBitmapInfoHeader> bih;
 
 	if (mpProject->GetVideoFormat(bih)) {
 		DWORD size = bih->biSizeImage;
@@ -2026,42 +2033,16 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 	}
 
 	if (mpProject->IsAudioCaptureEnabled()) {
-		vdstructex<WAVEFORMATEX> wf;
+		vdstructex<VDWaveFormat> wf;
 
 		if (mpProject->GetAudioFormat(wf))
-			bandwidth += 8 + wf->nAvgBytesPerSec;
+			bandwidth += 8 + wf->mDataRate;
 	}
 
 	SendMessage(mhwndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)bufv);
 
 	wsprintf(bufv, "%ldKB/s", (bandwidth+1023)>>10);
 	SendMessage(mhwndStatus, SB_SETTEXT, 4, (LPARAM)bufv);
-}
-
-namespace {
-	VDPixmap VDPixmapExtractField(const VDPixmap& src, bool field2) {
-		VDPixmap px(src);
-
-		if (field2) {
-			const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
-
-			if (px.data) {
-				if (info.qh == 1)
-					vdptrstep(px.data, px.pitch);
-
-				if (!info.auxhbits) {
-					vdptrstep(px.data2, px.pitch2);
-					vdptrstep(px.data3, px.pitch3);
-				}
-			}
-		}
-
-		px.h >>= 1;
-		px.pitch += px.pitch;
-		px.pitch2 += px.pitch2;
-		px.pitch3 += px.pitch3;
-		return px;
-	}
 }
 
 bool VDCaptureProjectUI::UICaptureAnalyzeBegin(const VDPixmap& px) {
@@ -2217,7 +2198,7 @@ void VDCaptureProjectUI::UICaptureStart(bool test) {
 	mVideoUncompressedSize = 0;
 	mAudioUncompressedRate = 0;
 
-	vdstructex<BITMAPINFOHEADER> bih;
+	vdstructex<VDAVIBitmapInfoHeader> bih;
 	if (mpProject->GetVideoFormat(bih)) {
 		if (!bih->biBitCount)
 			mVideoUncompressedSize		= ((bih->biWidth * 2 + 3) & -3) * abs(bih->biHeight);
@@ -2225,9 +2206,9 @@ void VDCaptureProjectUI::UICaptureStart(bool test) {
 			mVideoUncompressedSize		= ((bih->biWidth * ((bih->biBitCount + 7)/8) + 3) & -3) * abs(bih->biHeight);
 	}
 
-	vdstructex<WAVEFORMATEX> wfex;
-	if (mpProject->GetAudioFormat(wfex) && wfex->wFormatTag != WAVE_FORMAT_PCM)
-		mAudioUncompressedRate = wfex->nSamplesPerSec * wfex->nChannels * 2;
+	vdstructex<VDWaveFormat> wfex;
+	if (mpProject->GetAudioFormat(wfex) && wfex->mTag != VDWaveFormat::kTagPCM)
+		mAudioUncompressedRate = wfex->mSamplingRate * wfex->mChannels * 2;
 
 	if (mbDisplayLargeTimer)
 		mhClockFont = CreateFont(200, 0,
@@ -2302,7 +2283,7 @@ void VDCaptureProjectUI::UICaptureEnd(bool success) {
 			mpProject->IncrementFileIDUntilClear();
 		}
 
-		if (mpProject->IsLoggingEnabled() && mpProject->IsLogAvailable()) {
+		if (mpProject->IsLogEnabled() && mpProject->IsLogAvailable()) {
 			const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
 
 			if (!logfile.empty()) {
@@ -2542,7 +2523,8 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_CLIPPING_SET,		filtsetup.mCropRect.width() || filtsetup.mCropRect.height());
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_STRETCH,			mbStretchToWindow);
-	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_ENABLEFILTERING,	filtsetup.mbEnableRGBFiltering);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_ENABLEFILTERING,	filtsetup.mbEnableFilterChain);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SKIPFILTERCONVERSION,	filtsetup.mbSkipFilterChainConversion);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_NOISEREDUCTION,	filtsetup.mbEnableNoiseReduction);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SWAPFIELDS,		filtsetup.mbEnableFieldSwap);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SQUISH_LOWER,		filtsetup.mbEnableLumaSquishBlack);
@@ -2565,7 +2547,7 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_AUTOINCREMENT,	mbAutoIncrementAfterCapture);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_STARTONLEFT,		mbStartOnLeft);
 
-	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLETIMINGLOG,	mpProject->IsLoggingEnabled());
+	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLETIMINGLOG,	mpProject->IsLogEnabled());
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_NONE,	mDisplayAccelMode == kDDP_Off);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_TOP,		mDisplayAccelMode == kDDP_Top);
@@ -3074,19 +3056,19 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			break;
 		case ID_AUDIO_RAWCAPTUREFORMAT:
 			if (mpProject->IsDriverConnected()) {
-				extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel);
+				extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<VDWaveFormat> >& formats, int sel);
 
-				std::list<vdstructex<WAVEFORMATEX> > aformats;
-				vdstructex<WAVEFORMATEX> currentFormat;
+				std::list<vdstructex<VDWaveFormat> > aformats;
+				vdstructex<VDWaveFormat> currentFormat;
 
 				mpProject->GetAudioFormat(currentFormat);
 				mpProject->GetAvailableAudioFormats(aformats);
 
-				std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin()), itEnd(aformats.end());
+				std::list<vdstructex<VDWaveFormat> >::const_iterator it(aformats.begin()), itEnd(aformats.end());
 				int sel = -1;
 
 				for(int idx=0; it!=itEnd; ++it, ++idx) {
-					const vdstructex<WAVEFORMATEX>& wfex = *it;
+					const vdstructex<VDWaveFormat>& wfex = *it;
 
 					if (wfex == currentFormat) {
 						sel = idx;
@@ -3097,26 +3079,26 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 				sel = VDShowCaptureRawAudioFormatDialog(mhwnd, aformats, sel);
 
 				if (sel >= 0) {
-					std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin());
+					std::list<vdstructex<VDWaveFormat> >::const_iterator it(aformats.begin());
 
 					std::advance(it, sel);
 
-					const vdstructex<WAVEFORMATEX>& wfex = *it;
+					const vdstructex<VDWaveFormat>& wfex = *it;
 					mpProject->SetAudioFormat(*wfex, wfex.size());
 				}
 			}
 			break;
 		case ID_AUDIO_COMPRESSION:
 			{
-				vdstructex<WAVEFORMATEX> wfex;
-				vdstructex<WAVEFORMATEX> wfexSrc;
-				WAVEFORMATEX *pwfexSrc = NULL;
-				WAVEFORMATEX *pwfexOld = NULL;
+				vdstructex<VDWaveFormat> wfex;
+				vdstructex<VDWaveFormat> wfexSrc;
+				VDWaveFormat *pwfexSrc = NULL;
+				VDWaveFormat *pwfexOld = NULL;
 				VDStringA hint;
 
 				if (mpProject->GetAudioCompFormat(wfex, hint)) {
 					size_t len = wfex.size();
-					pwfexOld = (WAVEFORMATEX*)malloc(len);
+					pwfexOld = (VDWaveFormat *)malloc(len);
 					memcpy(pwfexOld, wfex.data(), len);
 				}
 				
@@ -3124,12 +3106,12 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 					pwfexSrc = wfexSrc.data();
 
 				// pwfexOld is freed by AudioChooseCompressor
-				WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, pwfexOld, pwfexSrc, hint);
+				WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, (WAVEFORMATEX *)pwfexOld, (WAVEFORMATEX *)pwfexSrc, hint);
 
 				if (!pwfexNew)
 					mpProject->SetAudioCompFormat();
 				else if (pwfexNew) {
-					mpProject->SetAudioCompFormat(*pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize, hint.c_str());
+					mpProject->SetAudioCompFormat(*(VDWaveFormat *)pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize, hint.c_str());
 
 					free(pwfexNew);
 				}
@@ -3214,10 +3196,10 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 				g_compression.cbSize = sizeof(COMPVARS);
 
-				vdstructex<BITMAPINFOHEADER> bih;
+				vdstructex<VDAVIBitmapInfoHeader> bih;
 
 				if (mpProject->GetVideoFormat(bih))
-					ChooseCompressor((HWND)mhwnd, &g_compression, bih.data());
+					ChooseCompressor((HWND)mhwnd, &g_compression, (BITMAPINFOHEADER *)bih.data());
 				else
 					ChooseCompressor((HWND)mhwnd, &g_compression, NULL);
 			}
@@ -3226,14 +3208,33 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		case ID_VIDEO_FILTERS:
 			SuspendDisplay(mbDisplayAccelActive);
-			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
+
+			{
+				vdstructex<VDAVIBitmapInfoHeader> bih;
+
+				if (mpProject->GetVideoFormat(bih)) {
+					int format = VDBitmapFormatToPixmapFormat(*bih);
+					VDShowDialogVideoFilters(mhwnd, bih->biWidth, bih->biHeight, format, VDFraction(10000000, mpProject->GetFrameTime()), 100);
+				} else {
+					VDShowDialogVideoFilters(mhwnd, NULL);
+				}
+			}
+
 			ResumeDisplay();
 			break;
 
 		case ID_VIDEO_ENABLEFILTERING:
 			{
 				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-				filtsetup.mbEnableRGBFiltering = !filtsetup.mbEnableRGBFiltering;
+				filtsetup.mbEnableFilterChain = !filtsetup.mbEnableFilterChain;
+				mpProject->SetFilterSetup(filtsetup);
+			}
+			break;
+
+		case ID_VIDEO_SKIPFILTERCONVERSION:
+			{
+				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+				filtsetup.mbSkipFilterChainConversion = !filtsetup.mbSkipFilterChainConversion;
 				mpProject->SetFilterSetup(filtsetup);
 			}
 			break;
@@ -3405,7 +3406,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			break;
 
 		case ID_CAPTURE_ENABLETIMINGLOG:
-			mpProject->SetLoggingEnabled(!mpProject->IsLoggingEnabled());
+			mpProject->SetLogEnabled(!mpProject->IsLogEnabled());
 			break;
 
 		default:
@@ -4020,7 +4021,7 @@ static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM 
 	switch(msg) {
 	case WM_INITDIALOG:
 		{
-			vdstructex<BITMAPINFOHEADER> pbih;
+			vdstructex<VDAVIBitmapInfoHeader> pbih;
 			int w = 320, h = 240;
 			int found_w = -1, found_h = -1, found_f = -1;
 
@@ -4143,19 +4144,19 @@ static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM 
 				f = SendDlgItemMessage(hdlg, IDC_FORMATS, LB_GETITEMDATA,
 						SendDlgItemMessage(hdlg, IDC_FORMATS, LB_GETCURSEL, 0, 0), 0);
 
-				vdstructex<BITMAPINFOHEADER> pbih;
-				pbih.resize(sizeof(BITMAPINFOHEADER));
+				vdstructex<VDAVIBitmapInfoHeader> pbih;
+				pbih.resize(sizeof(VDAVIBitmapInfoHeader));
 
 				if (!f) {
 					if (!pProject->GetVideoFormat(pbih))
 						break;
 
-					if (pbih.size() < sizeof(BITMAPINFOHEADER))
-						pbih.resize(sizeof(BITMAPINFOHEADER));
+					if (pbih.size() < sizeof(VDAVIBitmapInfoHeader))
+						pbih.resize(sizeof(VDAVIBitmapInfoHeader));
 				} else {
-					pbih->biSize			= sizeof(BITMAPINFOHEADER);
+					pbih->biSize			= sizeof(VDAVIBitmapInfoHeader);
 					pbih->biCompression		= s_formats[f-1].fcc;
-					pbih->biBitCount		= (WORD)s_formats[f-1].bpp;
+					pbih->biBitCount		= (uint16)s_formats[f-1].bpp;
 				}
 
 				pbih->biWidth			= w;

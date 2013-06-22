@@ -52,6 +52,15 @@
 			<desc>Apply a radius-2 Gaussian blur to video.</desc>
 		</filter>
 		<filter>
+			<name>bob doubler</name>
+			<desc>Interpolate interlaced video to field rate.</desc>
+			<long>
+				This filter converts interlaced video at frame rate to progressive video at field rate.
+				For instance, 30 fps interlaced video is converted to 60 fps without interlacing.
+				Field order and interpolation algorithm can be chosen.
+			</long>
+		</filter>
+		<filter>
 			<name>box blur</name>
 			<desc>Apply fast approximated blurs to video.</desc>
 			<long>
@@ -88,6 +97,14 @@
 					choosing the correct setting will produce a result approximating bilinear interpolation. Of course, stronger
 					or weaker options can be picked to taste.
 				</p>
+			</long>
+		</filter>
+		<filter>
+			<name>convert format</name>
+			<desc>Convert video to a different image format.</desc>
+			<long>
+				Use this filter to force video to be converted to a different image format. This is mainly useful for diagnostic
+				purposes, although it is also useful in capture mode to force a specific output format.
 			</long>
 		</filter>
 		<filter>

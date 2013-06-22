@@ -16,25 +16,34 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include <windows.h>
 #include <vd2/Riza/bitmap.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmaputils.h>
 
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr) {
+int VDBitmapFormatToPixmapFormat(const VDAVIBitmapInfoHeader& hdr) {
 	int variant;
 
 	return VDBitmapFormatToPixmapFormat(hdr, variant);
 }
 
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
+int VDBitmapFormatToPixmapFormat(const VDAVIBitmapInfoHeader& hdr, int& variant) {
 	using namespace nsVDPixmap;
 
 	variant = 1;
 
 	switch(hdr.biCompression) {
-	case BI_RGB:
+	case VDAVIBitmapInfoHeader::kCompressionRGB:
 		if (hdr.biPlanes == 1) {
-			if (hdr.biBitCount == 16)
+			if (hdr.biBitCount == 1)
+				return kPixFormat_Pal1;
+			else if (hdr.biBitCount == 2)
+				return kPixFormat_Pal2;
+			else if (hdr.biBitCount == 4)
+				return kPixFormat_Pal4;
+			else if (hdr.biBitCount == 8)
+				return kPixFormat_Pal8;
+			else if (hdr.biBitCount == 16)
 				return kPixFormat_XRGB1555;
 			else if (hdr.biBitCount == 24)
 				return kPixFormat_RGB888;
@@ -42,7 +51,7 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 				return kPixFormat_XRGB8888;
 		}
 		break;
-	case BI_BITFIELDS:
+	case VDAVIBitmapInfoHeader::kCompressionBitfields:
 		{
 			const BITMAPV4HEADER& v4hdr = (const BITMAPV4HEADER&)hdr;
 			const int bits = v4hdr.bV4BitCount;
@@ -54,32 +63,40 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 				return kPixFormat_XRGB1555;
 			else if (bits == 16 && r == 0xf800 && g == 0x07e0 && b == 0x001f)
 				return kPixFormat_RGB565;
-			else if (bits == 24 && r == 0xff0000 && g == 0x00ff00 && b == 0x0000ff)
-				return kPixFormat_RGB888;
 			else if (bits == 32 && r == 0xff0000 && g == 0x00ff00 && b == 0x0000ff)
 				return kPixFormat_XRGB8888;
 		}
 		break;
-	case 'YVYU':
+
+	case VDMAKEFOURCC('U', 'Y', 'V', 'Y'):
 		return kPixFormat_YUV422_UYVY;
-	case '2YUY':
+
+	case VDMAKEFOURCC('Y', 'U', 'Y', 'V'):
+	case VDMAKEFOURCC('Y', 'U', 'Y', '2'):
 		return kPixFormat_YUV422_YUYV;
-	case '42VY':			// Avisynth format
+
+	case VDMAKEFOURCC('Y', 'V', '2', '4'):	// Avisynth format
 		return kPixFormat_YUV444_Planar;
-	case '61VY':
+
+	case VDMAKEFOURCC('Y', 'V', '1', '6'):
 		return kPixFormat_YUV422_Planar;
-	case '21VY':
+
+	case VDMAKEFOURCC('Y', 'V', '1', '2'):
 		return kPixFormat_YUV420_Planar;
-	case '024I':
+
+	case VDMAKEFOURCC('I', '4', '2', '0'):
 		variant = 2;
 		return kPixFormat_YUV420_Planar;
-	case 'VUYI':
+
+	case VDMAKEFOURCC('I', 'Y', 'U', 'V'):
 		variant = 3;
 		return kPixFormat_YUV420_Planar;
-	case '9UVY':
+
+	case VDMAKEFOURCC('Y', 'V', 'U', '9'):
 		return kPixFormat_YUV410_Planar;
-	case '  8Y':
-	case '008Y':
+
+	case VDMAKEFOURCC('Y', '8', ' ', ' '):
+	case VDMAKEFOURCC('Y', '8', '0', '0'):
 		return kPixFormat_Y8;
 	}
 	return 0;
@@ -95,11 +112,11 @@ int VDGetPixmapToBitmapVariants(int format) {
 	return 1;
 }
 
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant) {
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, const vdstructex<VDAVIBitmapInfoHeader>& src, int format, int variant) {
 	return VDMakeBitmapFormatFromPixmapFormat(dst, src, format, variant, src->biWidth, src->biHeight);
 }
 
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h) {
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, const vdstructex<VDAVIBitmapInfoHeader>& src, int format, int variant, uint32 w, uint32 h) {
 	if (format == nsVDPixmap::kPixFormat_Pal8) {
 		if (src->biCompression != BI_RGB && src->biCompression != BI_RLE4 && src->biCompression != BI_RLE8)
 			return false;
@@ -121,8 +138,8 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		if (!clrEntries)
 			clrEntries = 256;
 
-		dst.resize(sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * clrEntries);
-		dst->biSize				= sizeof(BITMAPINFOHEADER);
+		dst.resize(sizeof(VDAVIBitmapInfoHeader) + sizeof(RGBQUAD) * clrEntries);
+		dst->biSize				= sizeof(VDAVIBitmapInfoHeader);
 		dst->biWidth			= w;
 		dst->biHeight			= h;
 		dst->biPlanes			= 1;
@@ -135,7 +152,7 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		dst->biClrImportant		= src->biClrImportant;
 
 		uint32 clrTableSize = sizeof(RGBQUAD)*clrEntries;
-		memcpy((char *)dst.data() + sizeof(BITMAPINFOHEADER), (const char *)src.data() + src->biSize, clrTableSize);
+		memcpy((char *)dst.data() + sizeof(VDAVIBitmapInfoHeader), (const char *)src.data() + src->biSize, clrTableSize);
 
 		return true;
 	}
@@ -149,11 +166,11 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 	return true;
 }
 
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int format, int variant, uint32 w, uint32 h) {
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, int format, int variant, uint32 w, uint32 h) {
 	using namespace nsVDPixmap;
 
-	dst.resize(sizeof(BITMAPINFOHEADER));
-	dst->biSize				= sizeof(BITMAPINFOHEADER);
+	dst.resize(sizeof(VDAVIBitmapInfoHeader));
+	dst->biSize				= sizeof(VDAVIBitmapInfoHeader);
 	dst->biWidth			= w;
 	dst->biHeight			= h;
 	dst->biPlanes			= 1;
@@ -172,7 +189,7 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int f
 		dst->biCompression	= BI_BITFIELDS;
 		dst->biBitCount		= 16;
 		dst->biSizeImage	= ((w*2+3)&~3) * h;
-		dst.resize(sizeof(BITMAPINFOHEADER) + 3*sizeof(DWORD));
+		dst.resize(sizeof(VDAVIBitmapInfoHeader) + 3*sizeof(DWORD));
 		{
 			DWORD *fields = (DWORD *)(dst.data() + 1);
 			fields[0] = 0xf800;
@@ -283,7 +300,7 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint
 	return linspace;
 }
 
-VDPixmap VDGetPixmapForBitmap(const BITMAPINFOHEADER& hdr, const void *data) {
+VDPixmap VDGetPixmapForBitmap(const VDAVIBitmapInfoHeader& hdr, const void *data) {
 	int variant;
 
 	int format = VDBitmapFormatToPixmapFormat(hdr, variant);

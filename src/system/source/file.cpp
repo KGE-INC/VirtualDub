@@ -57,13 +57,13 @@ using namespace nsVDFile;
 VDFile::VDFile(const char *pszFileName, uint32 flags)
 	: mhFile(NULL)
 {
-	open_internal(pszFileName, NULL, flags);
+	open_internal(pszFileName, NULL, flags, true);
 }
 
 VDFile::VDFile(const wchar_t *pwszFileName, uint32 flags)
 	: mhFile(NULL)
 {
-	open_internal(NULL, pwszFileName, flags);
+	open_internal(NULL, pwszFileName, flags, true);
 }
 
 VDFile::VDFile(HANDLE h)
@@ -81,19 +81,26 @@ VDFile::~VDFile() {
 }
 
 void VDFile::open(const char *pszFilename, uint32 flags) {
-	open_internal(pszFilename, NULL, flags);
+	open_internal(pszFilename, NULL, flags, true);
 }
 
 void VDFile::open(const wchar_t *pwszFilename, uint32 flags) {
-	open_internal(NULL, pwszFilename, flags);
+	open_internal(NULL, pwszFilename, flags, true);
 }
 
-void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags) {
+bool VDFile::openNT(const wchar_t *pwszFilename, uint32 flags) {
+	return open_internal(NULL, pwszFilename, flags, false);
+}
+
+bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags, bool throwOnError) {
 	close();
 
 	mpFilename = _wcsdup(VDFileSplitPath(pszFilename ? VDTextAToW(pszFilename).c_str() : pwszFilename));
-	if (!mpFilename)
+	if (!mpFilename) {
+		if (!throwOnError)
+			return false;
 		throw MyMemoryError();
+	}
 
 	// At least one of the read/write flags must be set.
 	VDASSERT(flags & (kRead | kWrite));
@@ -124,7 +131,7 @@ void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	case kTruncateExisting:	dwCreationDisposition = TRUNCATE_EXISTING; break;
 	default:
 		VDNEVERHERE;
-		return;
+		return false;
 	}
 
 	VDASSERT((flags & (kSequential | kRandomAccess)) != (kSequential | kRandomAccess));
@@ -185,10 +192,14 @@ void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	if (mhFile == INVALID_HANDLE_VALUE) {
 		mhFile = NULL;
 
+		if (!throwOnError)
+			return false;
+
 		throw MyWin32Error("Cannot open file \"%ls\":\n%%s", err, mpFilename.get());
 	}
 
 	mFilePosition = 0;
+	return true;
 }
 
 bool VDFile::closeNT() {
@@ -366,7 +377,7 @@ void VDFile::skip(sint64 delta) {
 
 	char buf[1024];
 
-	if (delta <= sizeof buf) {
+	if (delta > 0 && delta <= sizeof buf) {
 		if ((long)delta != readData(buf, (long)delta))
 			throw MyWin32Error("Cannot seek within file \"%ls\": %%s", GetLastError(), mpFilename.get());
 	} else

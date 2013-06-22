@@ -1,8 +1,6 @@
 #ifndef f_DUBUTILS_H
 #define f_DUBUTILS_H
 
-#include <windows.h>
-#include <vfw.h>
 #include <vector>
 
 #include <vd2/system/vdtypes.h>
@@ -15,8 +13,6 @@ class IVDStreamSource;
 class IVDVideoSource;
 class FrameSubset;
 class FilterSystem;
-
-int VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr);
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -113,7 +109,7 @@ public:
 		int			mSrcIndex;
 	};
 
-	void		Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect);
+	void		Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect, const FilterSystem *pRemapperFS);
 
 	VDPosition	size() const { return mFrameMap.size(); }
 
@@ -144,6 +140,7 @@ struct VDRenderFrameStep {
 	VDPosition	mOrigDisplayFrame;
 	VDPosition	mDisplayFrame;
 	VDPosition	mTimelineFrame;
+	VDPosition	mSequenceFrame;
 	bool		mbIsPreroll;
 	bool		mbDirect;
 	bool		mbSameAsLast;
@@ -197,8 +194,12 @@ public:
 	VDAudioPipeline();
 	~VDAudioPipeline();
 
-	void Init(uint32 bytes, uint32 sampleSize);
+	void Init(uint32 bytes, uint32 sampleSize, bool vbrModeEnabled);
 	void Shutdown();
+
+	bool IsVBRModeEnabled() {
+		return mbVBRModeEnabled;
+	}
 
 	void Abort() {
 		msigRead.signal();
@@ -247,11 +248,12 @@ public:
 	VDSignal& getReadSignal() { return msigRead; }
 	VDSignal& getWriteSignal() { return msigWrite; }
 
-	int Read(void *pBuffer, int bytes);
+	int ReadPartial(void *pBuffer, int bytes);
 	void ReadWait() {
 		msigWrite.wait();
 	}
 
+	bool Write(const void *data, int bytes, const VDAtomicInt *abortFlag);
 	void *BeginWrite(int requested, int& actual);
 	void EndWrite(int actual);
 
@@ -260,6 +262,7 @@ protected:
 	VDRingBuffer<char>	mBuffer;
 	VDSignal			msigRead;
 	VDSignal			msigWrite;
+	bool				mbVBRModeEnabled;
 	volatile bool		mbInputClosed;
 	volatile bool		mbOutputClosed;
 };

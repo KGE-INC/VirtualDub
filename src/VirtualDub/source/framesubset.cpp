@@ -493,7 +493,7 @@ void FrameSubset::dump() {
 }
 
 void FrameSubset::rescale(const VDFraction& oldRate, sint64 oldLength, const VDFraction& newRate, sint64 newLength) {
-	double rateFactor = (double)newRate / (double)oldRate;
+	double rateFactor = newRate.asDouble() / oldRate.asDouble();
 
 	tTimeline tmp;
 	mTimeline.swap(tmp);

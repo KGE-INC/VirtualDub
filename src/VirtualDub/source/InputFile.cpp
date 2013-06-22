@@ -25,6 +25,8 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/file.h>
 
+extern const char g_szError[];
+
 /////////////////////////////////////////////////////////////////////
 
 InputFileOptions::~InputFileOptions() {
@@ -64,7 +66,7 @@ bool InputFile::Append(const wchar_t *szFile) {
 void InputFile::setOptions(InputFileOptions *) {
 }
 
-InputFileOptions *InputFile::promptForOptions(HWND) {
+InputFileOptions *InputFile::promptForOptions(VDGUIHandle) {
 	return NULL;
 }
 
@@ -72,7 +74,8 @@ InputFileOptions *InputFile::createOptions(const void *buf, uint32 len) {
 	return NULL;
 }
 
-void InputFile::InfoDialog(HWND hwndParent) {
+void InputFile::InfoDialog(VDGUIHandle hwndParent) {
+	MessageBox((HWND)hwndParent, "No file information is available for the current video file.", g_szError, MB_OK);
 }
 
 void InputFile::GetTextInfo(tFileTextInfo& info) {
@@ -84,6 +87,14 @@ bool InputFile::isOptimizedForRealtime() {
 }
 
 bool InputFile::isStreaming() {
+	return false;
+}
+
+bool InputFile::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	return false;
+}
+
+bool InputFile::GetAudioSource(int index, AudioSource **ppSrc) {
 	return false;
 }
 
@@ -100,6 +111,8 @@ extern IVDInputDriver *VDCreateInputDriverASF();
 extern IVDInputDriver *VDCreateInputDriverANIM();
 extern IVDInputDriver *VDCreateInputDriverFLM();
 extern IVDInputDriver *VDCreateInputDriverGIF();
+extern IVDInputDriver *VDCreateInputDriverWAV();
+extern IVDInputDriver *VDCreateInputDriverMP3();
 extern IVDInputDriver *VDCreateInputDriverPlugin(VDPluginDescription *);
 
 namespace {
@@ -126,9 +139,11 @@ void VDInitInputDrivers() {
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverFLM()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverGIF()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverWAV()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMP3()));
 
 	std::vector<VDPluginDescription *> plugins;
-	VDEnumeratePluginDescriptions(plugins, kVDPluginType_Input);
+	VDEnumeratePluginDescriptions(plugins, kVDXPluginType_Input);
 
 	while(!plugins.empty()) {
 		VDPluginDescription *desc = plugins.back();
@@ -240,7 +255,7 @@ VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>
 	return finalfilter;
 }
 
-IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn) {
+IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn, uint32 flags) {
 	char buf[64];
 	char endbuf[64];
 	DWORD dwActual;
@@ -273,7 +288,7 @@ IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn) {
 	// attempt detection
 
 	tVDInputDrivers inputDrivers;
-	VDGetInputDrivers(inputDrivers, IVDInputDriver::kF_Video);
+	VDGetInputDrivers(inputDrivers, flags);
 
 	tVDInputDrivers::const_iterator it(inputDrivers.begin()), itEnd(inputDrivers.end());
 
@@ -298,13 +313,13 @@ IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn) {
 	}
 
 	if (!pSelectedDriver)
-		throw MyError("Cannot detect file type of \"%ls\".", fn);
+		throw MyError("The file \"%ls\" is of an unknown or unsupported file type.", fn);
 
 	return pSelectedDriver;
 }
 
 void VDOpenMediaFile(const wchar_t *filename, uint32 flags, InputFile **pFile) {
-	IVDInputDriver *driver = VDAutoselectInputDriverForFile(filename);
+	IVDInputDriver *driver = VDAutoselectInputDriverForFile(filename, IVDInputDriver::kF_Video);
 
 	vdrefptr<InputFile> inputFile(driver->CreateInputFile(flags));
 

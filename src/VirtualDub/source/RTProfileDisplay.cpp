@@ -251,7 +251,7 @@ void VDRTProfileDisplay::OnPaint() {
 
 				ExtTextOut(hdc, 0, y + nTextYOffset, ETO_CLIPPED, &rText, chan.mpName, strlen(chan.mpName), NULL);
 
-				for(std::vector<Event>::const_iterator it(chan.mEventList.begin()), itEnd(chan.mEventList.end()); it!=itEnd; ++it) {
+				for(vdfastvector<Event>::const_iterator it(chan.mEventList.begin()), itEnd(chan.mEventList.end()); it!=itEnd; ++it) {
 					const Event& ev = *it;
 
 					if ((sint64)(ev.mEndTime - startTime) < 0)
@@ -267,6 +267,30 @@ void VDRTProfileDisplay::OnPaint() {
 				}
 
 				y += nChannelHt;
+			}
+
+			char buf[1024];
+			uint32 counterCount = mpProfiler->mCounterArray.size();
+			const VDRTProfiler::Counter *ctr = mpProfiler->mCounterArrayToPaint.data();
+
+			int xbreak = rClient.right * 2 / 3;
+			for(uint32 i=0; i<counterCount; ++i, ++ctr) {
+				ExtTextOut(hdc, 0, y, 0, NULL, ctr->mpName, strlen(ctr->mpName), NULL);
+
+				switch(ctr->mType) {
+					case VDRTProfiler::kCounterTypeUint32:
+						sprintf(buf, "%u (%d)", ctr->mData.u32, (sint32)ctr->mData.u32 - (sint32)ctr->mDataLast.u32);
+						break;
+					case VDRTProfiler::kCounterTypeDouble:
+						sprintf(buf, "%g (%g)", ctr->mData.d, ctr->mData.d - ctr->mDataLast.d);
+						break;
+					default:
+						buf[0] = 0;
+				}
+
+				ExtTextOut(hdc, xbreak, y, 0, NULL, buf, strlen(buf), NULL);
+
+				y += mFontHeight;
 			}
 		}
 

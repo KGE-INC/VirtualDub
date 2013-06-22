@@ -1,7 +1,29 @@
+//	VirtualDub - Video processing and capture application
+//	MPEG audio decoding library
+//	Copyright (C) 2003-2007 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
 #ifndef f_VD2_PRISS_DECODER_H
 #define f_VD2_PRISS_DECODER_H
 
-class AMPStreamInfo {
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
+class VDMPEGAudioStreamInfo {
 public:
 	long	lBitrate;			// average bits/second for this stream (0=unconstrained)
 	long	lSamplingFreq;		// sampling frequency (Hz)
@@ -10,14 +32,13 @@ public:
 	char	fStereo;			// true: stereo, false: mono
 };
 
-class IAMPBitsource {
+class IVDMPEGAudioBitsource {
 public:
 	virtual int read(void *buffer, int bytes)=0;
 };
 
-class IAMPDecoder {
+class IVDMPEGAudioDecoder {
 public:
-
 	enum {
 		ERR_NONE			= 0,
 		ERR_EOF				= 1,
@@ -31,22 +52,22 @@ public:
 		ERR_INVALIDDATA		= 9
 	};
 
-	virtual void	Destroy()=0;
+	virtual ~IVDMPEGAudioDecoder() {}
 
-	virtual char *	GetAmpVersionString()				=0;
-	virtual void	Init()								=0;
-	virtual void	setSource(IAMPBitsource *pSource)	=0;
-	virtual void	setDestination(short *psDest)		=0;
-	virtual long	getSampleCount()					=0;
-	virtual void	getStreamInfo(AMPStreamInfo *pasi)	=0;
-	virtual char *	getErrorString(int err)				=0;
-	virtual void	Reset()								=0;
-	virtual void	ReadHeader()						=0;
-	virtual void	PrereadFrame()						=0;
-	virtual bool	DecodeFrame()						=0;
-	virtual void	ConcealFrame()						=0;
+	virtual void	Init()								= 0;
+	virtual void	SetSource(IVDMPEGAudioBitsource *pSource) = 0;
+	virtual void	SetDestination(sint16 *psDest)		= 0;
+	virtual uint32	GetSampleCount()					= 0;
+	virtual uint32	GetFrameDataSize()					= 0;
+	virtual void	GetStreamInfo(VDMPEGAudioStreamInfo *pasi)	= 0;
+	virtual const char *GetErrorString(int err)			= 0;
+	virtual void	Reset()								= 0;
+	virtual void	ReadHeader()						= 0;
+	virtual void	PrereadFrame()						= 0;
+	virtual bool	DecodeFrame()						= 0;
+	virtual void	ConcealFrame()						= 0;
 };
 
-extern IAMPDecoder * __cdecl CreateAMPDecoder();
+IVDMPEGAudioDecoder *VDCreateMPEGAudioDecoder();
 
 #endif

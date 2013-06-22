@@ -19,10 +19,32 @@
 #ifndef f_TIMELINE_H
 #define f_TIMELINE_H
 
-#include "FrameSubset.h"
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
-class IVDVideoSource;
+#ifndef f_VD2_SYSTEM_REFCOUNT_H
+	#include <vd2/system/refcount.h>
+#endif
+
+#ifndef f_FRAMESUBSET_H
+	#include "FrameSubset.h"
+#endif
+
 class VDFraction;
+class IVDVideoSource;
+
+class IVDTimelineTimingSource : public IVDRefCount {
+public:
+	virtual sint64 GetStart() = 0;
+	virtual sint64 GetLength() = 0;
+	virtual const VDFraction GetRate() = 0;
+	virtual sint64 GetPrevKey(sint64 pos) = 0;
+	virtual sint64 GetNextKey(sint64 pos) = 0;
+	virtual sint64 GetNearestKey(sint64 pos) = 0;
+	virtual bool IsKey(sint64 pos) = 0;
+	virtual bool IsNullSample(sint64 pos) = 0;
+};
 
 class VDTimeline {
 public:
@@ -31,7 +53,7 @@ public:
 
 	FrameSubset&	GetSubset() { return mSubset; }
 
-	void SetVideoSource(IVDVideoSource *pVS) { mpVideo = pVS; }
+	void SetTimingSource(IVDTimelineTimingSource *pT) { mpTiming = pT; }
 	void SetFromSource();
 
 	VDPosition		GetStart()			{ return 0; }
@@ -52,7 +74,9 @@ public:
 protected:
 	FrameSubset	mSubset;
 
-	IVDVideoSource *mpVideo;
+	vdrefptr<IVDTimelineTimingSource> mpTiming;
 };
+
+void VDCreateTimelineTimingSourceVS(IVDVideoSource *pVS, IVDTimelineTimingSource **ppTS);
 
 #endif

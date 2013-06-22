@@ -28,6 +28,7 @@
 
 #include "misc.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/Kasumi/pixel.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Kasumi/resample.h>
@@ -371,8 +372,11 @@ struct VDResizeFilterData {
 	COLORREF	rgbColor;
 
 	IVDPixmapResampler *resampler;
+	IVDPixmapResampler *resampler2;
 
 	bool	mbInterlaced;
+
+	vdrect32f	mDstRect;
 
 	VDResizeFilterData()
 		: mImageW(320)
@@ -451,7 +455,7 @@ struct VDResizeFilterData {
 		return NULL;
 	}
 
-	void ComputeSizes(uint32 srcw, uint32 srch, double& imgw, double& imgh, uint32& framew, uint32& frameh, bool useAlignment, bool widthHasPriority) {
+	void ComputeSizes(uint32 srcw, uint32 srch, double& imgw, double& imgh, uint32& framew, uint32& frameh, bool useAlignment, bool widthHasPriority, int format) {
 		if (mbUseRelative) {
 			imgw = srcw * (mImageRelW * (1.0 / 100.0));
 			imgh = srch * (mImageRelH * (1.0 / 100.0));
@@ -519,16 +523,30 @@ struct VDResizeFilterData {
 		if (frameh < 1)
 			frameh = 1;
 
+		int alignmentH = 1;
+		int alignmentW = 1;
+		if (useAlignment) {
+			alignmentH = mAlignment;
+			alignmentW = mAlignment;
+		}
+
+		if (format) {
+			const VDPixmapFormatInfo& info = VDPixmapGetInfo(format);
+
+			alignmentW = 1 << (info.qwbits + info.auxwbits);
+			alignmentH = 1 << (info.qhbits + info.auxhbits);
+		}
+
 		// if alignment is present, round frame sizes down to a multiple of alignment.
-		if (mAlignment > 1 && useAlignment) {
-			framew -= framew % mAlignment;
-			frameh -= frameh % mAlignment;
+		if (alignmentW > 1 || alignmentH > 1) {
+			framew -= framew % alignmentW;
+			frameh -= frameh % alignmentH;
 
 			if (!framew)
-				framew = mAlignment;
+				framew = alignmentW;
 
 			if (!frameh)
-				frameh = mAlignment;
+				frameh = alignmentH;
 
 			// Detect if letterboxing is occurring. If so, we should enlarge the image
 			// to fit alignment requirements. We have to enlarge because it will often
@@ -546,8 +564,8 @@ struct VDResizeFilterData {
 
 						double imginvaspect = imgh / imgw;
 
-						uint32 tmpw = ((uint32)VDRoundToInt(imgw) + mAlignment - 1);
-						tmpw -= tmpw % mAlignment;
+						uint32 tmpw = ((uint32)VDRoundToInt(imgw) + alignmentW - 1);
+						tmpw -= tmpw % alignmentW;
 
 						imgw = tmpw;
 						imgh = imgw * imginvaspect;
@@ -557,8 +575,8 @@ struct VDResizeFilterData {
 
 						double imgaspect = imgw / imgh;
 
-						uint32 tmph = ((uint32)VDRoundToInt(imgh) + mAlignment - 1);
-						tmph -= tmph % mAlignment;
+						uint32 tmph = ((uint32)VDRoundToInt(imgh) + alignmentH - 1);
+						tmph -= tmph % alignmentH;
 
 						imgh = tmph;
 						imgw = imgh * imgaspect;
@@ -571,7 +589,7 @@ struct VDResizeFilterData {
 	void UpdateInformativeFields(uint32 srcw, uint32 srch, bool widthHasPriority) {
 		double imgw, imgh;
 		uint32 framew, frameh;
-		ComputeSizes(srcw, srch, imgw, imgh, framew, frameh, false, widthHasPriority);
+		ComputeSizes(srcw, srch, imgw, imgh, framew, frameh, false, widthHasPriority, 0);
 
 		if (mbUseRelative) {
 			mImageW = imgw;
@@ -620,8 +638,10 @@ struct VDResizeFilterData {
 
 ////////////////////
 
-int revcolor(int c) {
-	return ((c>>16)&0xff) | (c&0xff00) | ((c&0xff)<<16);
+namespace {
+	int revcolor(int c) {
+		return ((c>>16)&0xff) | (c&0xff00) | ((c&0xff)<<16);
+	}
 }
 
 ////////////////////
@@ -636,99 +656,204 @@ static int resize_init(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
+namespace {
+	void VDPixmapRectFillPlane8(void *dst, ptrdiff_t dstpitch, int x, int y, int w, int h, uint8 c) {
+		VDMemset8Rect(vdptroffset(dst, dstpitch*y + x), dstpitch, c, w, h);
+	}
+
+	void VDPixmapRectFillPlane16(void *dst, ptrdiff_t dstpitch, int x, int y, int w, int h, uint16 c) {
+		VDMemset16Rect(vdptroffset(dst, dstpitch*y + x*2), dstpitch, c, w, h);
+	}
+
+	void VDPixmapRectFillPlane24(void *dst, ptrdiff_t dstpitch, int x, int y, int w, int h, uint32 c) {
+		VDMemset24Rect(vdptroffset(dst, dstpitch*y + x*4), dstpitch, c, w, h);
+	}
+
+	void VDPixmapRectFillPlane32(void *dst, ptrdiff_t dstpitch, int x, int y, int w, int h, uint32 c) {
+		VDMemset32Rect(vdptroffset(dst, dstpitch*y + x*4), dstpitch, c, w, h);
+	}
+
+	void VDPixmapRectFillRaw(const VDPixmap& px, const vdrect32f& r0, uint32 c) {
+		vdrect32f r(r0);
+
+		if (r.left < 0.0f)
+			r.left = 0.0f;
+		if (r.top < 0.0f)
+			r.top = 0.0f;
+		if (r.right > (float)px.w)
+			r.right = (float)px.w;
+		if (r.bottom > (float)px.h)
+			r.bottom = (float)px.h;
+
+		if (r.right < r.left || r.bottom < r.top)
+			return;
+
+		int ix = VDCeilToInt(r.left		- 0.5f);
+		int iy = VDCeilToInt(r.top		- 0.5f);
+		int iw = VDCeilToInt(r.right	- 0.5f) - ix;
+		int ih = VDCeilToInt(r.bottom	- 0.5f) - iy;
+
+		switch(px.format) {
+		case nsVDPixmap::kPixFormat_Pal1:
+		case nsVDPixmap::kPixFormat_Pal2:
+		case nsVDPixmap::kPixFormat_Pal4:
+		case nsVDPixmap::kPixFormat_Pal8:
+		case nsVDPixmap::kPixFormat_Y8:
+			VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)c);
+			break;
+		case nsVDPixmap::kPixFormat_XRGB1555:
+		case nsVDPixmap::kPixFormat_RGB565:
+			VDPixmapRectFillPlane16(px.data, px.pitch, ix, iy, iw, ih, (uint16)c);
+			break;
+		case nsVDPixmap::kPixFormat_RGB888:
+			VDPixmapRectFillPlane24(px.data, px.pitch, ix, iy, iw, ih, c);
+			break;
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			VDPixmapRectFillPlane32(px.data, px.pitch, ix, iy, iw, ih, c);
+			break;
+		case nsVDPixmap::kPixFormat_YUV444_Planar:
+			VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
+			VDPixmapRectFillPlane8(px.data2, px.pitch2, ix, iy, iw, ih, (uint8)(c >> 8));
+			VDPixmapRectFillPlane8(px.data3, px.pitch3, ix, iy, iw, ih, (uint8)(c >> 16));
+			break;
+		case nsVDPixmap::kPixFormat_YUV422_Planar:
+			{
+				int isubx = VDCeilToInt(r.left		* 0.5f - 0.25f);
+				int isuby = VDCeilToInt(r.top		* 1.0f - 0.5f );
+				int isubw = VDCeilToInt(r.right		* 0.5f - 0.25f) - isubx;
+				int isubh = VDCeilToInt(r.bottom	* 1.0f - 0.5f ) - isuby;
+
+				VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
+				VDPixmapRectFillPlane8(px.data2, px.pitch2, isubx, isuby, isubw, isubh, (uint8)c);
+				VDPixmapRectFillPlane8(px.data3, px.pitch3, isubx, isuby, isubw, isubh, (uint8)(c >> 16));
+			}
+			break;
+		case nsVDPixmap::kPixFormat_YUV420_Planar:
+			{
+				int isubx = VDCeilToInt(r.left		* 0.5f - 0.25f);
+				int isuby = VDCeilToInt(r.top		* 0.5f - 0.5f );
+				int isubw = VDCeilToInt(r.right		* 0.5f - 0.25f) - isubx;
+				int isubh = VDCeilToInt(r.bottom	* 0.5f - 0.5f ) - isuby;
+
+				VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
+				VDPixmapRectFillPlane8(px.data2, px.pitch2, isubx, isuby, isubw, isubh, (uint8)c);
+				VDPixmapRectFillPlane8(px.data3, px.pitch3, isubx, isuby, isubw, isubh, (uint8)(c >> 16));
+			}
+			break;
+		case nsVDPixmap::kPixFormat_YUV411_Planar:
+			{
+				int isubx = VDCeilToInt(r.left		* 0.25f - 0.125f);
+				int isuby = VDCeilToInt(r.top		* 1.00f - 0.500f);
+				int isubw = VDCeilToInt(r.right		* 0.25f - 0.125f) - isubx;
+				int isubh = VDCeilToInt(r.bottom	* 1.00f - 0.500f) - isuby;
+
+				VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
+				VDPixmapRectFillPlane8(px.data2, px.pitch2, isubx, isuby, isubw, isubh, (uint8)c);
+				VDPixmapRectFillPlane8(px.data3, px.pitch3, isubx, isuby, isubw, isubh, (uint8)(c >> 16));
+			}
+			break;
+		case nsVDPixmap::kPixFormat_YUV410_Planar:
+			{
+				int isubx = VDCeilToInt(r.left		* 0.25f - 0.5f);
+				int isuby = VDCeilToInt(r.top		* 0.25f - 0.5f);
+				int isubw = VDCeilToInt(r.right		* 0.25f - 0.5f) - isubx;
+				int isubh = VDCeilToInt(r.bottom	* 0.25f - 0.5f) - isuby;
+
+				VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
+				VDPixmapRectFillPlane8(px.data2, px.pitch2, isubx, isuby, isubw, isubh, (uint8)c);
+				VDPixmapRectFillPlane8(px.data3, px.pitch3, isubx, isuby, isubw, isubh, (uint8)(c >> 16));
+			}
+			break;
+		}
+	}
+
+	void VDPixmapRectFillRGB32(const VDPixmap& px, const vdrect32f& rDst, uint32 c) {
+		switch(px.format) {
+			case nsVDPixmap::kPixFormat_Pal1:
+			case nsVDPixmap::kPixFormat_Pal2:
+			case nsVDPixmap::kPixFormat_Pal4:
+			case nsVDPixmap::kPixFormat_Pal8:
+				VDASSERT(false);
+				break;
+
+			case nsVDPixmap::kPixFormat_XRGB1555:
+				VDPixmapRectFillRaw(px, rDst, ((c & 0xf80000) >> 9) + ((c & 0xf800) >> 6) + ((c & 0xf8) >> 3));
+				break;
+
+			case nsVDPixmap::kPixFormat_RGB565:
+				VDPixmapRectFillRaw(px, rDst, ((c & 0xf80000) >> 8) + ((c & 0xfc00) >> 5) + ((c & 0xf8) >> 3));
+				break;
+
+			case nsVDPixmap::kPixFormat_RGB888:
+			case nsVDPixmap::kPixFormat_XRGB8888:
+				VDPixmapRectFillRaw(px, rDst, c);
+				break;
+
+			case nsVDPixmap::kPixFormat_Y8:
+			case nsVDPixmap::kPixFormat_YUV444_Planar:
+			case nsVDPixmap::kPixFormat_YUV422_Planar:
+			case nsVDPixmap::kPixFormat_YUV420_Planar:
+			case nsVDPixmap::kPixFormat_YUV411_Planar:
+			case nsVDPixmap::kPixFormat_YUV410_Planar:
+				VDPixmapRectFillRaw(px, rDst, VDConvertRGBToYCbCr(c));
+				break;
+		}
+	}
+}
+
 static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
-	Pixel *dst, *src;
+	const VDXPixmap& pxdst = *fa->dst.mpPixmap;
+	const VDXPixmap& pxsrc = *fa->src.mpPixmap;
 
-	dst = fa->dst.data;
-	src = fa->src.data;
-
-	double dstw, dsth;
-	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true, true);
-
-	double dx = (fa->dst.w - dstw) * 0.5;
-	double dy = (fa->dst.h - dsth) * 0.5;
-
-	int x1 = std::max<int>(0, (int)ceil(dx - 0.5));
-	int y1 = std::max<int>(0, (int)ceil(dy - 0.5));
-
-	if (mfd->mAlignment > 1) {
-		x1 -= x1 % mfd->mAlignment;
-		y1 -= y1 % mfd->mAlignment;
-		dx = x1;
-		dy = y1;
-	}
-
-	int x2 = std::min<int>(fa->dst.w, (int)ceil(dx + dstw - 0.5));
-	int y2 = std::min<int>(fa->dst.h, (int)ceil(dy + dsth - 0.5));
-
-	// Draw letterbox bound
-
-	if (x1 > 0 || y1 > 0 || x2 < fa->dst.w || y2 < fa->dst.h) {
-		Pixel fill = revcolor(mfd->rgbColor);
-
-		char *dstp = (char *)dst;
-		ptrdiff_t dstpitch = fa->dst.pitch;
-
-		// fill bottom
-		if (y2 < fa->dst.h)
-			VDMemset32Rect(dstp, dstpitch, fill, fa->dst.w, fa->dst.h - y2);
-
-
-		// fill left/right
-		if (y2 > y1) {
-			char *dst2 = dstp + dstpitch * (fa->dst.h - y2);
-
-			for(int y = y1; y < y2; ++y) {
-				// fill left
-				if (x1 > 0)
-					VDMemset32(dst2, fill, x1);
-
-				// fill right
-				if (x2 < fa->dst.w)
-					VDMemset32(dst2 + x2*4, fill, fa->dst.w - x2);
-
-				dst2 += dstpitch;
-			}
-		}
-
-		// fill bottom
-		if (y1 > 0)
-			VDMemset32Rect(dstp + dstpitch * (fa->dst.h - y1), dstpitch, fill, fa->dst.w, y1);
-	}
+	const float fx1 = 0.0f;
+	const float fy1 = 0.0f;
+	const float fx2 = mfd->mDstRect.left;
+	const float fy2 = mfd->mDstRect.top;
+	const float fx3 = mfd->mDstRect.right;
+	const float fy3 = mfd->mDstRect.bottom;
+	const float fx4 = (float)pxdst.w;
+	const float fy4 = (float)pxdst.h;
+	
+	uint32 fill = revcolor(mfd->rgbColor);
+	VDPixmapRectFillRGB32((VDPixmap&)pxdst, vdrect32f(fx1, fy1, fx4, fy2), fill);
+	VDPixmapRectFillRGB32((VDPixmap&)pxdst, vdrect32f(fx1, fy2, fx2, fy3), fill);
+	VDPixmapRectFillRGB32((VDPixmap&)pxdst, vdrect32f(fx3, fy2, fx4, fy3), fill);
+	VDPixmapRectFillRGB32((VDPixmap&)pxdst, vdrect32f(fx1, fy3, fx4, fy4), fill);
 
 	if (mfd->mbInterlaced) {
-		VDPixmap vbHalfSrc, vbHalfDst;
+		VDXPixmap pxdst1(pxdst);
+		VDXPixmap pxsrc1(pxsrc);
+		pxdst1.pitch += pxdst1.pitch;
+		pxdst1.pitch2 += pxdst1.pitch2;
+		pxdst1.pitch3 += pxdst1.pitch3;
+		pxdst1.h = (pxdst1.h + 1) >> 1;
+		pxsrc1.pitch += pxsrc1.pitch;
+		pxsrc1.pitch2 += pxsrc1.pitch2;
+		pxsrc1.pitch3 += pxsrc1.pitch3;
+		pxsrc1.h = (pxsrc1.h + 1) >> 1;
 
-		// Top field
+		VDXPixmap pxdst2(pxdst);
+		VDXPixmap pxsrc2(pxsrc);
+		pxdst2.data = (char *)pxdst2.data + pxdst2.pitch;
+		pxdst2.data2 = (char *)pxdst2.data2 + pxdst2.pitch2;
+		pxdst2.data3 = (char *)pxdst2.data3 + pxdst2.pitch3;
+		pxdst2.pitch += pxdst2.pitch;
+		pxdst2.pitch2 += pxdst2.pitch2;
+		pxdst2.pitch3 += pxdst2.pitch3;
+		pxdst2.h = (pxdst2.h + 0) >> 1;
+		pxsrc2.data = (char *)pxsrc2.data + pxsrc2.pitch;
+		pxsrc2.data2 = (char *)pxsrc2.data2 + pxsrc2.pitch2;
+		pxsrc2.data3 = (char *)pxsrc2.data3 + pxsrc2.pitch3;
+		pxsrc2.pitch += pxsrc2.pitch;
+		pxsrc2.pitch2 += pxsrc2.pitch2;
+		pxsrc2.pitch3 += pxsrc2.pitch3;
+		pxsrc2.h = (pxsrc2.h + 0) >> 1;
 
-		vbHalfSrc		= VDAsPixmap((VBitmap&)fa->src);
-		vbHalfSrc.pitch *= 2;
-		vbHalfSrc.h		= (fa->src.h + 1) >> 1;
-
-		vbHalfDst		= VDAsPixmap((VBitmap&)fa->dst);
-		vbHalfDst.pitch *= 2;
-		vbHalfDst.h		= (fa->dst.h + 1) >> 1;
-
-		dy = dy * 0.5 + 0.25;
-
-		mfd->resampler->Process(vbHalfDst, dx, dy, dx + dstw, dy + dsth*0.5, vbHalfSrc, 0, 0.25);
-
-		// Bottom field
-
-		vdptrstep(vbHalfSrc.data, -fa->src.pitch);
-		vbHalfSrc.h		= fa->src.h >> 1;
-		vdptrstep(vbHalfDst.data, -fa->dst.pitch);
-		vbHalfDst.h		= fa->dst.h >> 1;
-
-		dy -= 0.5;
-		mfd->resampler->Process(vbHalfDst, dx, dy, dx + dstw, dy + dsth*0.5, vbHalfSrc, 0, -0.25);
+		mfd->resampler ->Process((VDPixmap&)pxdst1, (VDPixmap&)pxsrc1);
+		mfd->resampler2->Process((VDPixmap&)pxdst2, (VDPixmap&)pxsrc2);
 	} else {
-		VDPixmap pxdst(VDAsPixmap(*(VBitmap *)&fa->dst));
-		VDPixmap pxsrc(VDAsPixmap(*(VBitmap *)&fa->src));
-
-		mfd->resampler->Process(pxdst, dx, dy, dx + dstw, dy + dsth, pxsrc, 0, 0);
+		mfd->resampler->Process((VDPixmap&)pxdst, (VDPixmap&)pxsrc);
 	}
 
 	return 0;
@@ -737,6 +862,24 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 static long resize_param(FilterActivation *fa, const FilterFunctions *ff) {
 	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
+	switch(fa->src.mpPixmapLayout->format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+		case nsVDPixmap::kPixFormat_YUV444_Planar:
+		case nsVDPixmap::kPixFormat_YUV411_Planar:
+			break;
+
+		case nsVDPixmap::kPixFormat_YUV422_Planar:
+		case nsVDPixmap::kPixFormat_YUV420_Planar:
+		case nsVDPixmap::kPixFormat_YUV410_Planar:
+			if (mfd->mbInterlaced)
+				return FILTERPARAM_NOT_SUPPORTED;
+
+			break;
+
+		default:
+			return FILTERPARAM_NOT_SUPPORTED;
+	}
+	
 	if (mfd->Validate()) {
 		// uh oh.
 		return 0;
@@ -744,14 +887,15 @@ static long resize_param(FilterActivation *fa, const FilterFunctions *ff) {
 
 	double imgw, imgh;
 	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, imgw, imgh, framew, frameh, true, true);
+	mfd->ComputeSizes(fa->src.w, fa->src.h, imgw, imgh, framew, frameh, true, true, fa->src.mpPixmapLayout->format);
 
-	fa->dst.w = framew;
-	fa->dst.h = frameh;
+	fa->dst.mpPixmapLayout->format = fa->src.mpPixmapLayout->format;
+	fa->dst.mpPixmapLayout->w = framew;
+	fa->dst.mpPixmapLayout->h = frameh;
+	fa->dst.mpPixmapLayout->pitch = 0;
+	fa->dst.depth = 0;
 
-	fa->dst.AlignTo8();
-
-	return FILTERPARAM_SWAP_BUFFERS;
+	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 namespace {
@@ -840,7 +984,7 @@ INT_PTR VDVF1ResizeDlg::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 							return TRUE;
 					}
 				}
-				mifp->Toggle(mhdlg);
+				mifp->Toggle((VDXHWND)mhdlg);
 				return TRUE;
 
 			case IDOK:
@@ -976,7 +1120,7 @@ void VDVF1ResizeDlg::InitDialog() {
 	UpdateEnables();
 
 	mhbrColor = CreateSolidBrush(mConfig.rgbColor);
-	mifp->InitButton(GetDlgItem(mhdlg, IDC_PREVIEW));
+	mifp->InitButton((VDXHWND)GetDlgItem(mhdlg, IDC_PREVIEW));
 
 	UINT id = IDC_WIDTH;
 	if (mConfig.mbUseRelative)
@@ -1125,7 +1269,7 @@ void VDVF1ResizeDlg::MarkDirty() {
 	}
 }
 
-static int resize_config(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
+static int resize_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hwnd) {
 	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 	VDResizeFilterData mfd2 = *mfd;
 
@@ -1147,54 +1291,102 @@ static void resize_string(const FilterActivation *fa, const FilterFunctions *ff,
 
 static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
 	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
+	const VDXPixmap& pxdst = *fa->dst.mpPixmap;
+	const VDXPixmap& pxsrc = *fa->src.mpPixmap;
 
 	if (const char *error = mfd->Validate())
 		ff->Except("%s", error);
 
 	double dstw, dsth;
 	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true, true);
+	mfd->ComputeSizes(pxsrc.w, pxsrc.h, dstw, dsth, framew, frameh, true, true, fa->src.mpPixmapLayout->format);
+
+	float dx = ((float)pxdst.w - (float)dstw) * 0.5f;
+	float dy = ((float)pxdst.h - (float)dsth) * 0.5f;
+
+	if (mfd->mAlignment > 1) {
+		int x1 = VDCeilToInt(dx - 0.5f);
+		int y1 = VDCeilToInt(dy - 0.5f);
+		x1 -= x1 % mfd->mAlignment;
+		y1 -= y1 % mfd->mAlignment;
+		dx = (float)x1;
+		dy = (float)y1;
+	}
+
+	mfd->mDstRect.set(dx, dy, dx + (float)dstw, dy + (float)dsth);
+
+	mfd->resampler = VDCreatePixmapResampler();
+	if (!mfd->resampler)
+		ff->ExceptOutOfMemory();
 
 	IVDPixmapResampler::FilterMode fmode;
 	bool bInterpolationOnly = true;
-
-	mfd->resampler = VDCreatePixmapResampler();
+	float splineFactor = -0.60f;
 
 	switch(mfd->mFilterMode) {
-	case FILTER_NONE:
-		fmode = IVDPixmapResampler::kFilterPoint;
-		break;
-	case FILTER_TABLEBILINEAR:
-		bInterpolationOnly = false;
-	case FILTER_BILINEAR:
-		fmode = IVDPixmapResampler::kFilterLinear;
-		break;
-	case FILTER_TABLEBICUBIC060:
-		mfd->resampler->SetSplineFactor(-0.60);
-		fmode = IVDPixmapResampler::kFilterCubic;
-		bInterpolationOnly = false;
-		break;
-	case FILTER_TABLEBICUBIC075:
-		bInterpolationOnly = false;
-	case FILTER_BICUBIC:
-		mfd->resampler->SetSplineFactor(-0.75);
-		fmode = IVDPixmapResampler::kFilterCubic;
-		break;
-	case FILTER_TABLEBICUBIC100:
-		bInterpolationOnly = false;
-		mfd->resampler->SetSplineFactor(-1.0);
-		fmode = IVDPixmapResampler::kFilterCubic;
-		break;
-	case FILTER_LANCZOS3:
-		bInterpolationOnly = false;
-		fmode = IVDPixmapResampler::kFilterLanczos3;
-		break;
+		case FILTER_NONE:
+			fmode = IVDPixmapResampler::kFilterPoint;
+			break;
+
+		case FILTER_TABLEBILINEAR:
+			bInterpolationOnly = false;
+		case FILTER_BILINEAR:
+			fmode = IVDPixmapResampler::kFilterLinear;
+			break;
+
+		case FILTER_TABLEBICUBIC060:
+			splineFactor = -0.60;
+			fmode = IVDPixmapResampler::kFilterCubic;
+			bInterpolationOnly = false;
+			break;
+
+		case FILTER_TABLEBICUBIC075:
+			bInterpolationOnly = false;
+		case FILTER_BICUBIC:
+			splineFactor = -0.75;
+			fmode = IVDPixmapResampler::kFilterCubic;
+			break;
+
+		case FILTER_TABLEBICUBIC100:
+			bInterpolationOnly = false;
+			splineFactor = -1.0;
+			fmode = IVDPixmapResampler::kFilterCubic;
+			break;
+
+		case FILTER_LANCZOS3:
+			bInterpolationOnly = false;
+			fmode = IVDPixmapResampler::kFilterLanczos3;
+			break;
 	}
 
-	if (mfd->mbInterlaced)
-		mfd->resampler->Init(dstw, dsth * 0.5f, nsVDPixmap::kPixFormat_XRGB8888, fa->src.w, fa->src.h * 0.5f, nsVDPixmap::kPixFormat_XRGB8888, fmode, fmode, bInterpolationOnly);
-	else
-		mfd->resampler->Init(dstw, dsth, nsVDPixmap::kPixFormat_XRGB8888, fa->src.w, fa->src.h, nsVDPixmap::kPixFormat_XRGB8888, fmode, fmode, bInterpolationOnly);
+	mfd->resampler->SetSplineFactor(splineFactor);
+	mfd->resampler->SetFilters(fmode, fmode, bInterpolationOnly);
+
+	vdrect32f srcrect(0.0f, 0.0f, (float)pxsrc.w, (float)pxsrc.h);
+
+	if (mfd->mbInterlaced) {
+		mfd->resampler2 = VDCreatePixmapResampler();
+		if (!mfd->resampler2)
+			ff->ExceptOutOfMemory();
+
+		mfd->resampler2->SetSplineFactor(splineFactor);
+		mfd->resampler2->SetFilters(fmode, fmode, bInterpolationOnly);
+
+		vdrect32f srcrect1(srcrect);
+		vdrect32f srcrect2(srcrect);
+		vdrect32f dstrect1(mfd->mDstRect);
+		vdrect32f dstrect2(mfd->mDstRect);
+
+		srcrect1.transform(1.0f, 0.5f, 0.0f, 0.25f);
+		dstrect1.transform(1.0f, 0.5f, 0.0f, 0.25f);
+		srcrect2.transform(1.0f, 0.5f, 0.0f, -0.25f);
+		dstrect2.transform(1.0f, 0.5f, 0.0f, -0.25f);
+
+		mfd->resampler ->Init(dstrect1, pxdst.w, (pxdst.h+1) >> 1, pxdst.format, srcrect1, pxsrc.w, (pxsrc.h+1) >> 1, pxsrc.format);
+		mfd->resampler2->Init(dstrect2, pxdst.w, (pxdst.h+0) >> 1, pxdst.format, srcrect2, pxsrc.w, (pxsrc.h+0) >> 1, pxsrc.format);
+	} else {
+		mfd->resampler->Init(mfd->mDstRect, pxdst.w, pxdst.h, pxdst.format, srcrect, pxsrc.w, pxsrc.h, pxsrc.format);
+	}
 
 	return 0;
 }
@@ -1203,6 +1395,7 @@ static int resize_stop(FilterActivation *fa, const FilterFunctions *ff) {
 	VDResizeFilterData *mfd = (VDResizeFilterData *)fa->filter_data;
 
 	delete mfd->resampler;	mfd->resampler = NULL;
+	delete mfd->resampler2;	mfd->resampler2 = NULL;
 
 	return 0;
 }
@@ -1356,7 +1549,7 @@ FilterDefinition filterDef_resize={
 	"resize",
 	"Resizes the image to a new size."
 #ifdef USE_ASM
-			"\n\n[Assembly optimized] [FPU optimized] [MMX optimized]"
+			"\n\n[Assembly/MMX optimized] [YCbCr processing]"
 #endif
 			,
 	NULL,NULL,

@@ -65,9 +65,9 @@ void __cdecl VDAudioFilterCenterCut::InitProc(const VDAudioFilterContext *pConte
 }
 
 uint32 VDAudioFilterCenterCut::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
 		|| format0.mChannels != 2
 		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
 		)
@@ -78,7 +78,7 @@ uint32 VDAudioFilterCenterCut::Prepare() {
 	mpContext->mpOutputs[0]->mGranularity	= kSubWindow;
 	mpContext->mpOutputs[1]->mGranularity	= kSubWindow;
 
-	VDWaveFormat *pwf0, *pwf1;
+	VDXWaveFormat *pwf0, *pwf1;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -119,7 +119,7 @@ void VDAudioFilterCenterCut::Start() {
 
 uint32 VDAudioFilterCenterCut::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	unsigned i;
 
@@ -250,7 +250,7 @@ uint32 VDAudioFilterCenterCut::Run() {
 }
 
 sint64 VDAudioFilterCenterCut::Seek(sint64 us) {
-	const VDWaveFormat& inputFormat = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& inputFormat = *mpContext->mpInputs[0]->mpFormat;
 
 	return us - ((sint64)1000000 * kWindowSize / inputFormat.mSamplingRate);
 }
@@ -273,11 +273,11 @@ extern const VDPluginInfo apluginDef_centercut = {
 	NULL,
 	L"Splits a stereo stream into stereo-side and mono-center outputs using phase analysis.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

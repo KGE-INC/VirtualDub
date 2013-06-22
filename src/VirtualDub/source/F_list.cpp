@@ -19,6 +19,17 @@
 #include "filter.h"
 #include "filters.h"
 
+extern const VDXFilterDefinition
+	filterDef_fieldbob2;
+
+#ifdef _M_IX86
+extern const VDXFilterDefinition
+	filterDef_blur,
+	filterDef_blurhi,
+	filterDef_box,
+	filterDef_tv,
+	filterDef_timesmooth;
+#endif
 
 extern FilterDefinition
 	filterDef_chromasmoother,
@@ -34,7 +45,8 @@ extern FilterDefinition
 	filterDef_deinterlace,
 	filterDef_rotate,
 	filterDef_hsv,
-	filterDef_warpresize
+	filterDef_warpresize,
+	filterDef_convertformat
 
 #ifdef _M_IX86
 	,
@@ -46,22 +58,18 @@ extern FilterDefinition
 	filterDef_grayscale,
 	filterDef_reduce2hq,
 	filterDef_threshold,
-	filterDef_tv,
 	filterDef_smoother,
 	filterDef_rotate2,
 	filterDef_levels,
-	filterDef_blur,
-	filterDef_blurhi,
-	filterDef_box,
-	filterDef_timesmooth,
 	filterDef_logo,
 	filterDef_perspective
 #endif
 	;
 
-static FilterDefinition *const builtin_filters[]={
+static const FilterDefinition *const builtin_filters[]={
 	&filterDef_chromasmoother,
 	&filterDef_fieldbob,
+	&filterDef_fieldbob2,
 	&filterDef_fieldswap,
 	&filterDef_fill,
 	&filterDef_invert,
@@ -74,6 +82,7 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_rotate,
 	&filterDef_hsv,
 	&filterDef_warpresize,
+	&filterDef_convertformat,
 #ifdef _M_IX86
 	&filterDef_reduceby2,
 	&filterDef_convolute,
@@ -98,7 +107,7 @@ static FilterDefinition *const builtin_filters[]={
 };
 
 void InitBuiltinFilters() {
-	FilterDefinition *cur, *const *cpp;
+	const FilterDefinition *cur, *const *cpp;
 
 	cpp = builtin_filters;
 	while(cur = *cpp++)

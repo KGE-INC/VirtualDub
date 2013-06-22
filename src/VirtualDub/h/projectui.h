@@ -21,6 +21,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <vd2/system/event.h>
+#include <vd2/system/thread.h>
 #include <vd2/Riza/display.h>
 
 #include "project.h"
@@ -76,9 +77,13 @@ public:
 	void JumpToFrameAsk();
 
 protected:
+	void QueueCommand(int cmd);
+	void ExecuteCommand(int cmd);
+
 	LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+	void OnPositionNotify(int cmd);
 	void OnSize();
 	void HandleDragDrop(HDROP hdrop);
 	void OnPreferencesChanged();
@@ -87,6 +92,7 @@ protected:
 	void ShowMenuHelp(WPARAM wParam);
 	bool DoFrameRightClick(LPARAM lParam);
 	void UpdateMainMenu(HMENU hMenu);
+	void UpdateAudioSourceMenu();
 	void UpdateDubMenu(HMENU hMenu);
 	void RepositionPanes();
 	void UpdateVideoFrameLayout();
@@ -103,7 +109,8 @@ protected:
 	void UIRefreshInputFrame(bool bValid);
 	void UIRefreshOutputFrame(bool bValid);
 	void UISetDubbingMode(bool bActive, bool bIsPreview);
-	void UIRunDubMessageLoop();
+	bool UIRunDubMessageLoop();
+	void UIAbortDubMessageLoop();
 	void UICurrentPositionUpdated();
 	void UISelectionUpdated(bool notifyUser);
 	void UITimelineUpdated();
@@ -153,6 +160,7 @@ protected:
 	bool		mbAudioDisplayReadActive;
 
 	HMENU		mhMenuNormal;
+	HMENU		mhMenuSourceList;
 	HMENU		mhMenuDub;
 	HMENU		mhMenuDisplay;
 	int			mMRUListPosition;
@@ -169,7 +177,14 @@ protected:
 	bool		mbPositionControlVisible;
 	bool		mbStatusBarVisible;
 
+	bool		mbLockPreviewRestart;
+
+	VDThreadID	mThreadId;
+
 	MRUList		mMRUList;
+
+	typedef vdfastvector<int> PendingCommands;
+	PendingCommands		mPendingCommands;
 
 	vdrefptr<IVDUIWindow>	mpUIPeer;
 	vdrefptr<IVDUIWindow>	mpUIBase;

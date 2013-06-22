@@ -42,6 +42,7 @@
 
 #include "resource.h"
 #include "filter.h"
+#include "VBitmap.h"
 #include <vd2/system/cpuaccel.h>
 
 extern HINSTANCE g_hInst;
@@ -60,7 +61,7 @@ int boxRunProc(const FilterActivation *fa, const FilterFunctions *ff);
 int boxStartProc(FilterActivation *fa, const FilterFunctions *ff);
 int boxEndProc(FilterActivation *fa, const FilterFunctions *ff);
 long boxParamProc(FilterActivation *fa, const FilterFunctions *ff);
-int boxConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd);
+int boxConfigProc(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hwnd);
 void boxStringProc(const FilterActivation *fa, const FilterFunctions *ff, char *str);
 void boxScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc);
 bool boxFssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen);
@@ -86,7 +87,7 @@ CScriptObject box_obj={
 	NULL, box_func_defs
 };
 
-struct FilterDefinition filterDef_box = {
+extern const VDXFilterDefinition filterDef_box = {
 
 	NULL, NULL, NULL,		// next, prev, module
 	"box blur",					// name
@@ -662,7 +663,7 @@ INT_PTR CALLBACK boxConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 			SendMessage(hwndInit, TBM_SETRANGE, TRUE, MAKELONG(1,3));
 			SendMessage(hwndInit, TBM_SETPOS, TRUE, mfd->filter_power);
 
-			mfd->ifp->InitButton(GetDlgItem(hdlg, IDC_PREVIEW));
+			mfd->ifp->InitButton((VDXHWND)GetDlgItem(hdlg, IDC_PREVIEW));
 
 			// cheat to initialize the labels
 
@@ -700,7 +701,7 @@ INT_PTR CALLBACK boxConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 				EndDialog(hdlg, 1);
 				return TRUE;
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hdlg);
+				mfd->ifp->Toggle((VDXHWND)hdlg);
 				return TRUE;
 			}
 			break;
@@ -710,7 +711,7 @@ INT_PTR CALLBACK boxConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 	return FALSE;
 }
 
-int boxConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
+int boxConfigProc(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hwnd) {
 	BoxFilterData *mfd = (BoxFilterData *)fa->filter_data;
 	BoxFilterData mfd_old;
 	int res;
@@ -719,7 +720,7 @@ int boxConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
 	mfd->ifp = fa->ifp;
 
 	res = DialogBoxParam(g_hInst,
-			MAKEINTRESOURCE(IDD_FILTER_BOX), hwnd,
+			MAKEINTRESOURCE(IDD_FILTER_BOX), (HWND)hwnd,
 			boxConfigDlgProc, (LPARAM)mfd);
 
 	if (res)

@@ -209,6 +209,72 @@ void VDPixmapLayoutFlipV(VDPixmapLayout& layout) {
 	}
 }
 
+uint32 VDPixmapLayoutGetMinSize(const VDPixmapLayout& layout) {
+	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(layout.format);
+	sint32		w			= layout.w;
+	sint32		h			= layout.h;
+	sint32		qw			= -(-w >> srcinfo.qwbits);
+	sint32		qh			= -(-h >> srcinfo.qhbits);
+	sint32		subw		= -(-w >> srcinfo.auxwbits);
+	sint32		subh		= -(-h >> srcinfo.auxhbits);
+
+	uint32 limit = layout.data;
+	if (layout.pitch >= 0)
+		limit += layout.pitch * qh;
+	else
+		limit -= layout.pitch;
+
+	if (srcinfo.auxbufs >= 1) {
+		uint32 limit2 = layout.data2;
+
+		if (layout.pitch2 >= 0)
+			limit2 += layout.pitch2 * subh;
+		else
+			limit2 -= layout.pitch2;
+
+		if (limit < limit2)
+			limit = limit2;
+
+		if (srcinfo.auxbufs >= 2) {
+			uint32 limit3 = layout.data3;
+
+			if (layout.pitch3 >= 0)
+				limit3 += layout.pitch3 * subh;
+			else
+				limit3 -= layout.pitch3;
+
+			if (limit < limit3)
+				limit = limit3;
+		}
+	}
+
+	return limit;
+}
+
+VDPixmap VDPixmapExtractField(const VDPixmap& src, bool field2) {
+	VDPixmap px(src);
+
+	if (field2) {
+		const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
+
+		if (px.data) {
+			if (info.qh == 1)
+				vdptrstep(px.data, px.pitch);
+
+			if (!info.auxhbits) {
+				vdptrstep(px.data2, px.pitch2);
+				vdptrstep(px.data3, px.pitch3);
+			}
+		}
+	}
+
+	px.h >>= 1;
+	px.pitch += px.pitch;
+	px.pitch2 += px.pitch2;
+	px.pitch3 += px.pitch3;
+	return px;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 VDPixmapBuffer::VDPixmapBuffer(const VDPixmap& src)

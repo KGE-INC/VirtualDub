@@ -112,8 +112,8 @@ class Frameserver : public vdrefcounted<IVDUIFrameClient> {
 private:
 	DubOptions			*opt;
 	HWND				hwnd;
-	AudioSource			*aSrc;
-	VideoSource			*vSrc;
+	AudioSource			*const aSrc;
+	IVDVideoSource		*const vSrc;
 
 	bool			mbExit;
 
@@ -122,9 +122,9 @@ private:
 	FrameSubset			audioset;
 	long				lVideoSamples;
 	long				lAudioSamples;
-	FilterStateInfo		fsi;
 	VDRenderFrameMap	mVideoFrameMap;
-	VDPixmapLayout	mFrameLayout;
+	VDPixmapLayout		mFrameLayout;
+	uint32				mFrameSize;
 
 	DWORD_PTR			dwUserSave;
 
@@ -142,7 +142,7 @@ private:
 	VDUIFrame		*mpUIFrame;
 
 public:
-	Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& server);
+	Frameserver(IVDVideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& server);
 	~Frameserver();
 
 	void Detach();
@@ -163,24 +163,29 @@ public:
 	LRESULT SessionAudioInfo(LPARAM lParam, WPARAM lStart);
 };
 
-Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& subset) {
+Frameserver::Frameserver(IVDVideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& subset)
+	: aSrc(audio)
+	, vSrc(video)
+{
 	opt				= xopt;
 	hwnd			= hwndParent;
 
-	aSrc			= audio;
-	vSrc			= video;
-
 	lFrameCount = lRequestCount = lAudioSegCount = 0;
 
-	InitStreamValuesStatic(vInfo, aInfo, video, audio, opt, &subset);
+	IVDStreamSource *pVSS = vSrc->asStream();
+	FrameSubset videoset(subset);
+
+	VDPosition startFrame;
+	VDPosition endFrame;
+	VDConvertSelectionTimesToFrames(*opt, subset, pVSS->getRate(), startFrame, endFrame);
+	InitVideoStreamValuesStatic(vInfo, video, audio, opt, &subset, &startFrame, &endFrame);
+	InitAudioStreamValuesStatic(aInfo, audio, opt);
 
 	vdfastvector<IVDVideoSource *> vsrcs(1, video);
-	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, &subset, vInfo.end_dst, false);
+	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, &subset, vInfo.end_dst, false, NULL);
 
-	VDPosition lOffsetStart = video->msToSamples(opt->video.lStartOffsetMS);
-	VDPosition lOffsetEnd = video->msToSamples(opt->video.lEndOffsetMS);
-
-	FrameSubset			videoset(subset);
+	VDPosition lOffsetStart = pVSS->msToSamples(opt->video.lStartOffsetMS);
+	VDPosition lOffsetEnd = pVSS->msToSamples(opt->video.lEndOffsetMS);
 
 	if (opt->audio.fEndAudio)
 		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
@@ -192,18 +197,18 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	videoset.dump();
 
 	if (audio)
-		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == video->getEnd()) ? audio->getEnd() : 0, NULL);
+		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == pVSS->getEnd()) ? audio->getEnd() : 0, NULL);
 
 	VDDEBUG("Audio subset:\n");
 	audioset.dump();
 
 	if (audio) {
 		audioset.offset(audio->msToSamples(-opt->audio.offset));
-		lAudioSamples = audioset.getTotalFrames();
+		lAudioSamples = VDClampToUint32(audioset.getTotalFrames());
 	} else
 		lAudioSamples = 0;
 
-	lVideoSamples = mVideoFrameMap.size();
+	lVideoSamples = VDClampToUint32(mVideoFrameMap.size());
 }
 
 Frameserver::~Frameserver() {
@@ -240,9 +245,10 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		vSrc->streamBegin(true, false);
 
-		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
+		const VDPixmap& px = vSrc->getTargetFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, abs(bmih->biHeight), 24);
+		IVDStreamSource *pVSS = vSrc->asStream();
+		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, pVSS->getRate(), pVSS->getLength());
 
 		if (filters.getFrameLag())
 			MessageBox(g_hWnd,
@@ -250,16 +256,11 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 			"video to lag behind the audio!"
 			, "VirtualDub warning", MB_OK);
 
-		fsi.lMicrosecsPerFrame		= vInfo.usPerFrame;
-		fsi.lMicrosecsPerSrcFrame	= vInfo.usPerFrameIn;
-		fsi.flags					= 0;
+		filters.ReadyFilters();
 
-		if (filters.ReadyFilters(fsi))
-			throw MyError("Error readying filters.");
+		const VDPixmapLayout& outputLayout = filters.GetOutputLayout();
 
-		const VBitmap *pvb = filters.LastBitmap();
-
-		VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, pvb->w, pvb->h, 4);
+		mFrameSize = VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, outputLayout.w, outputLayout.h, 4);
 		VDPixmapLayoutFlipV(mFrameLayout);
 	}
 
@@ -333,7 +334,8 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	pFrame->Detach();
 
 	if (vSrc) {
-		vSrc->streamEnd();
+		IVDStreamSource *pVSS = vSrc->asStream();
+		pVSS->streamEnd();
 	}
 
 	if (server_index<0) throw MyError("Couldn't create frameserver");
@@ -352,25 +354,28 @@ LRESULT Frameserver::WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
 
 	case VDSRVM_BIGGEST:
 		{
-			long size=sizeof(AVISTREAMINFO);
+			uint32 size = sizeof(AVISTREAMINFO);
 
 			if (vSrc) {
 				if (size < sizeof(BITMAPINFOHEADER))
 					size = sizeof(BITMAPINFOHEADER);
 
-				if (size < filters.OutputBitmap()->size)
-					size = filters.OutputBitmap()->size;
+				if (size < mFrameSize)
+					size = mFrameSize;
 			}
 
 			if (aSrc) {
-				if (size < aSrc->getWaveFormat()->nAvgBytesPerSec)
-					size = aSrc->getWaveFormat()->nAvgBytesPerSec;
+				uint32 dataRate = aSrc->getWaveFormat()->mDataRate;
+				if (size < dataRate)
+					size = dataRate;
 
-				if (aSrc->getFormatLen()>size)
-					size=aSrc->getFormatLen();
+				uint32  formatSize = aSrc->getFormatLen();
+				if (size < formatSize)
+					size = aSrc->getFormatLen();
 			}
 
-			if (size < 65536) size=65536;
+			if (size < 65536)
+				size = 65536;
 
 			VDDEBUG("VDSRVM_BIGGEST: allocate a frame of size %ld bytes\n", size);
 			return size;
@@ -521,16 +526,19 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 
 		*(long *)(fs->arena+0) = 0;										//vSrc->lSampleFirst;
 		*(long *)(fs->arena+4) = lVideoSamples;			//vSrc->lSampleLast;
-		memcpy(lpasi, &vSrc->getStreamInfo(), sizeof(AVISTREAMINFO));
+
+		IVDStreamSource *pVSS = vSrc->asStream();
+		memcpy(lpasi, &pVSS->getStreamInfo(), sizeof(AVISTREAMINFO));
 
 		lpasi->fccHandler	= ' BID';
 		lpasi->dwLength		= *(long *)(fs->arena+4);
 		lpasi->dwRate		= vInfo.frameRate.getHi();
 		lpasi->dwScale		= vInfo.frameRate.getLo();
 
-		SetRect(&lpasi->rcFrame, 0, 0, filters.OutputBitmap()->w, filters.OutputBitmap()->h);
+		const VDPixmapLayout& output = filters.GetOutputLayout();
+		SetRect(&lpasi->rcFrame, 0, 0, output.w, output.h);
 
-		lpasi->dwSuggestedBufferSize = filters.OutputBitmap()->size;
+		lpasi->dwSuggestedBufferSize = mFrameSize;
 
 	} else {
 		if (!aSrc) return VDSRVERR_NOSTREAM;
@@ -539,7 +547,7 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 		*(long *)(fs->arena+4) = lAudioSamples;
 		memcpy(fs->arena+8, &aSrc->getStreamInfo(), sizeof(AVISTREAMINFO));
 
-		((AVISTREAMINFO *)(fs->arena+8))->dwLength = audioset.getTotalFrames();
+		((AVISTREAMINFO *)(fs->arena+8))->dwLength = lAudioSamples;
 	}
 
 	return VDSRVERR_OK;
@@ -572,10 +580,11 @@ LRESULT Frameserver::SessionFormat(LPARAM lParam, WPARAM stream) {
 
 		memcpy(fs->arena, vSrc->getDecompressedFormat(), len);
 
+		const VDPixmapLayout& output = filters.GetOutputLayout();
 		bmih = (BITMAPINFOHEADER *)fs->arena;
 //		bmih->biSize		= sizeof(BITMAPINFOHEADER);
-		bmih->biWidth		= filters.LastBitmap()->w;
-		bmih->biHeight		= filters.LastBitmap()->h;
+		bmih->biWidth		= output.w;
+		bmih->biHeight		= output.h;
 		bmih->biPlanes		= 1;
 		bmih->biCompression	= BI_RGB;
 		bmih->biBitCount	= 24;
@@ -595,11 +604,11 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 
 	try {
 		const void *ptr = vSrc->getFrameBuffer();
-		const BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 		VDPosition sample;
 		bool is_preroll;
 
-		if (fs->arena_size < ((filters.LastBitmap()->w*3+3)&-4)*filters.LastBitmap()->h)
+		const VDPixmapLayout& output = filters.GetOutputLayout();
+		if (fs->arena_size < ((output.w*3+3)&-4)*output.h)
 			return VDSRVERR_TOOBIG;
 
 		sample = mVideoFrameMap[original_frame].mDisplayFrame;
@@ -613,13 +622,14 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 		VDPosition frame = vSrc->streamGetNextRequiredFrame(is_preroll);
 
 		if (frame >= 0) {
+			IVDStreamSource *pVSS = vSrc->asStream();
 			do {
 				uint32 lSize;
 				int hr;
 
 	//			_RPT1(0,"feeding frame %ld\n", frame);
 
-				hr = vSrc->read(frame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
+				hr = pVSS->read(frame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
 				if (hr)
 					return VDSRVERR_FAILED;
 
@@ -627,7 +637,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 				if (mInputBuffer.size() < bufSize)
 					mInputBuffer.resize(bufSize);
 
-				hr = vSrc->read(frame, 1, mInputBuffer.data(), lSize, &lSize, NULL); 
+				hr = pVSS->read(frame, 1, mInputBuffer.data(), lSize, &lSize, NULL); 
 				if (hr)
 					return VDSRVERR_FAILED;
 
@@ -641,16 +651,12 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 		VDPixmap pxdst(VDPixmapFromLayout(mFrameLayout, fs->arena));
 
 		if (!g_listFA.IsEmpty()) {
-			VDPixmapBlt(VDAsPixmap(*filters.InputBitmap()), vSrc->getTargetFormat());
+			VDPixmapBlt(filters.GetInput(), vSrc->getTargetFormat());
 
-			fsi.lCurrentFrame				= original_frame;
-			fsi.lCurrentSourceFrame			= sample;
-			fsi.lSourceFrameMS				= MulDiv(fsi.lCurrentSourceFrame, fsi.lMicrosecsPerSrcFrame, 1000);
-			fsi.lDestFrameMS				= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
+			sint64 original_frame_time = VDRoundToInt64(vInfo.frameRate.AsInverseDouble() * 1000.0 * (double)original_frame);
+			filters.RunFilters(sample, original_frame, original_frame, original_frame_time, NULL, 0);
 
-			filters.RunFilters(fsi);
-
-			VDPixmapBlt(pxdst, VDAsPixmap(*filters.LastBitmap()));
+			VDPixmapBlt(pxdst, filters.GetOutput());
 		} else
 			VDPixmapBlt(pxdst, vSrc->getTargetFormat());
 
@@ -712,7 +718,7 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 
 			// Attempt read.
 
-			switch(aSrc->read(start, len, pDest, cbBuffer, &lActualBytes, &lActualSamples)) {
+			switch(aSrc->read(start, VDClampToSint32(len), pDest, cbBuffer, &lActualBytes, &lActualSamples)) {
 			case AVIERR_OK:
 				break;
 			case AVIERR_BUFFERTOOSMALL:
@@ -748,7 +754,7 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 	if (!fs) return VDSRVERR_BADSESSION;
 
 	LONG lCount = *(LONG *)fs->arena;
-	LONG cbBuffer = *(LONG *)(fs->arena+4);
+	//LONG cbBuffer = *(LONG *)(fs->arena+4);	Currently ignored.
 
 	if (lStart < 0)
 		return VDSRVERR_FAILED;
@@ -759,7 +765,7 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 	if (lCount < 0)
 		lCount = 0;
 
-	*(LONG *)(fs->arena + 0) = aSrc->getWaveFormat()->nBlockAlign * lCount;
+	*(LONG *)(fs->arena + 0) = aSrc->getWaveFormat()->mBlockSize * lCount;
 	*(LONG *)(fs->arena + 4) = lCount;
 
 	return VDSRVERR_OK;
@@ -768,7 +774,7 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 //////////////////////////////////////////////////////////////////////////
 
 extern vdrefptr<AudioSource> inputAudio;
-extern vdrefptr<VideoSource> inputVideoAVI;
+extern vdrefptr<IVDVideoSource> inputVideo;
 
 static HMODULE hmodServer;
 static IVDubServerLink *ivdsl;
@@ -840,7 +846,7 @@ void ActivateFrameServerDialog(HWND hwnd) {
 		return;
 
 	try {
-		vdrefptr<Frameserver> fs(new Frameserver(inputVideoAVI, inputAudio, hwnd, &g_dubOpts, g_project->GetTimeline().GetSubset()));
+		vdrefptr<Frameserver> fs(new Frameserver(inputVideo, inputAudio, hwnd, &g_dubOpts, g_project->GetTimeline().GetSubset()));
 
 		const VDStringW fname(VDGetSaveFileName(kFileDialog_Signpost, (VDGUIHandle)hwnd, L"Save .VDR signpost for AVIFile handler", fileFilters, g_prefs.main.fAttachExtension ? L"vdr" : NULL, 0, 0));
 

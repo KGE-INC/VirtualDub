@@ -67,15 +67,17 @@ void VDRTProfiler::EndCollection() {
 }
 
 void VDRTProfiler::Swap() {
-	vdsynchronized(mcsChannels) {
+	vdsynchronized(mLock) {
 		LARGE_INTEGER tim;
 		QueryPerformanceCounter(&tim);
 
 		mSnapshotTime = tim.QuadPart;
 
-		mChannelArrayToPaint.resize(mChannelArray.size());
+		// update channels
+		uint32 channelCount = mChannelArray.size();
+		mChannelArrayToPaint.resize(channelCount);
 
-		for(uint32 i=0; i<mChannelArray.size(); ++i) {
+		for(uint32 i=0; i<channelCount; ++i) {
 			Channel& src = mChannelArray[i];
 			Channel& dst = mChannelArrayToPaint[i];
 
@@ -85,16 +87,35 @@ void VDRTProfiler::Swap() {
 			dst.mEventList.swap(src.mEventList);
 			if (src.mbEventPending) {
 				src.mEventList.push_back(dst.mEventList.back());
-				dst.mEventList.back().mEndTime = mSnapshotTime;
+				src.mEventList.back().mEndTime = mSnapshotTime;
 			}
 		}
+
+		// update counters
+		Counters::iterator itC(mCounterArray.begin()), itCEnd(mCounterArray.end());
+		for(; itC != itCEnd; ++itC) {
+			Counter& ctr = *itC;
+
+			ctr.mDataLast = ctr.mData;
+
+			switch(ctr.mType) {
+				case kCounterTypeUint32:
+					ctr.mData.u32 = *(const uint32 *)ctr.mpData;
+					break;
+				case kCounterTypeDouble:
+					ctr.mData.d = *(const double *)ctr.mpData;
+					break;
+			}
+		}
+
+		mCounterArrayToPaint = mCounterArray;
 	}
 }
 
 int VDRTProfiler::AllocChannel(const char *name) {
 	uint32 i;
 
-	vdsynchronized(mcsChannels) {
+	vdsynchronized(mLock) {
 		const uint32 nChannels = mChannelArray.size();
 
 		for(i=0; i<nChannels; ++i)
@@ -112,7 +133,7 @@ int VDRTProfiler::AllocChannel(const char *name) {
 }
 
 void VDRTProfiler::FreeChannel(int ch) {
-	vdsynchronized(mcsChannels) {
+	vdsynchronized(mLock) {
 		mChannelArray[ch].mpName = 0;
 		mChannelArray[ch].mEventList.clear();
 	}
@@ -122,7 +143,7 @@ void VDRTProfiler::BeginEvent(int channel, uint32 color, const char *name) {
 	if (mbEnableCollection) {
 		LARGE_INTEGER tim;
 		QueryPerformanceCounter(&tim);
-		vdsynchronized(mcsChannels) {
+		vdsynchronized(mLock) {
 			Channel& chan = mChannelArray[channel];
 
 			if (!chan.mbEventPending) {
@@ -143,7 +164,7 @@ void VDRTProfiler::EndEvent(int channel) {
 		LARGE_INTEGER tim;
 
 		QueryPerformanceCounter(&tim);
-		vdsynchronized(mcsChannels) {
+		vdsynchronized(mLock) {
 			Channel& chan = mChannelArray[channel];
 
 			if (chan.mbEventPending) {
@@ -151,5 +172,67 @@ void VDRTProfiler::EndEvent(int channel) {
 				chan.mbEventPending = false;
 			}
 		}
+	}
+}
+
+void VDRTProfiler::RegisterCounterU32(const char *name, const uint32 *val) {
+	RegisterCounter(name, val, kCounterTypeUint32);
+}
+
+void VDRTProfiler::RegisterCounterD(const char *name, const double *val) {
+	RegisterCounter(name, val, kCounterTypeDouble);
+}
+
+struct VDRTProfiler::CounterByNamePred {
+	bool operator()(const char *name1, const char *name2) const {
+		return strcmp(name1, name2) < 0;
+	}
+
+	bool operator()(const char *name1, const Counter& ctr) const {
+		return strcmp(name1, ctr.mpName) < 0;
+	}
+
+	bool operator()(const Counter& ctr, const char *name2) const {
+		return strcmp(ctr.mpName, name2) < 0;
+	}
+
+	bool operator()(const Counter& ctr1, const Counter& ctr2) const {
+		return strcmp(ctr1.mpName, ctr2.mpName) < 0;
+	}
+};
+
+void VDRTProfiler::RegisterCounter(const char *name, const void *val, CounterType type) {
+	VDASSERT(val);
+
+	vdsynchronized(mLock) {
+		Counters::iterator itBegin(mCounterArray.end());
+		Counters::iterator itEnd(mCounterArray.end());
+		Counters::iterator it(std::lower_bound(itBegin, itEnd, name, CounterByNamePred()));
+
+		VDASSERT(it == itEnd || strcmp(it->mpName, name));
+
+		it = mCounterArray.insert(it, Counter());
+		Counter& ctr = *it;
+
+		memset(&ctr.mData, 0, sizeof ctr.mData);
+		memset(&ctr.mDataLast, 0, sizeof ctr.mDataLast);
+		ctr.mpData = val;
+		ctr.mpName = name;
+		ctr.mType = type;
+	}
+}
+
+void VDRTProfiler::UnregisterCounter(void *p) {
+	vdsynchronized(mLock) {
+		Counters::iterator it(mCounterArray.begin()), itEnd(mCounterArray.end());
+		for(; it!=itEnd; ++it) {
+			const Counter& counter = *it;
+			if (counter.mpData == p) {
+				mCounterArray.erase(it);
+				return;
+			}
+		}
+
+		VDASSERT(!"Profiler: Counter not found!");
 	}
 }

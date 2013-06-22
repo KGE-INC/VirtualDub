@@ -1,6 +1,8 @@
 #ifndef f_VD2_KASUMI_RESAMPLE_H
 #define f_VD2_KASUMI_RESAMPLE_H
 
+#include <vd2/system/vectors.h>
+
 struct VDPixmap;
 
 class IVDPixmapResampler {
@@ -15,10 +17,12 @@ public:
 
 	virtual ~IVDPixmapResampler() {}
 	virtual void SetSplineFactor(double A) = 0;
-	virtual bool Init(double dw, double dh, int dstformat, double sw, double sh, int srcformat, FilterMode hfilter, FilterMode vfilter, bool bInterpolationOnly) = 0;
+	virtual void SetFilters(FilterMode h, FilterMode v, bool interpolationOnly) = 0;
+	virtual bool Init(uint32 dw, uint32 dh, int dstformat, uint32 sw, uint32 sh, int srcformat) = 0;
+	virtual bool Init(const vdrect32f& dstrect, uint32 dw, uint32 dh, int dstformat, const vdrect32f& srcrect, uint32 sw, uint32 sh, int srcformat) = 0;
 	virtual void Shutdown() = 0;
 
-	virtual void Process(const VDPixmap& dst, double dx1, double dy1, double dx2, double dy2, const VDPixmap& src, double sx, double sy) = 0;
+	virtual void Process(const VDPixmap& dst, const VDPixmap& src) = 0;
 };
 
 IVDPixmapResampler *VDCreatePixmapResampler();

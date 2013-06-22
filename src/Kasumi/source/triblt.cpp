@@ -1346,15 +1346,22 @@ bool VDPixmapTriFill(VDPixmap& dst, const VDTriColorVertex *pVertices, int nVert
 		return false;
 	}
 
-	vdfastvector<VDTriBltTransformedVertex>	xverts(nVertices);
+	VDTriBltTransformedVertex fastxverts[64];
+	vdfastvector<VDTriBltTransformedVertex>	xverts;
+
+	VDTriBltTransformedVertex *xsrc;
+	if (nVertices <= 64) {
+		xsrc = fastxverts;
+	} else {
+		xverts.resize(nVertices);
+		xsrc = xverts.data();
+	}
 
 	static const float xf_ident[16]={1.f,0.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,0.f,1.f};
 	if (!pTransform)
 		pTransform = xf_ident;
 
-	TransformVerts(xverts.data(), pVertices, nVertices, pTransform, (float)dst.w, (float)dst.h);
-
-	const VDTriBltTransformedVertex *xsrc = xverts.data();
+	TransformVerts(xsrc, pVertices, nVertices, pTransform, (float)dst.w, (float)dst.h);
 
 	VDTriClipWorkspace clipws;
 

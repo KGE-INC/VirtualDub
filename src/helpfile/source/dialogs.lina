@@ -21,8 +21,23 @@
 				resizing the image frame, or applying noise reduction. VirtualDub's video filter
 				system takes chains of filters, which are set up through the Video Filters dialog.
 			</p>
-			<dl>
-				<lina:dt>Frame sizes</lina:dt>
+			<dl class="useitalics">
+				<dt>Filter name and parameters</dt>
+				<dd>
+					Each filter entry has the name of the filter beside the frame sizes, as well as
+					a parameter list for the filter. The parameter list is filter-specific and is
+					only shown to aid in scanning the filter chain.
+				</dd>
+
+				<dt>Enable/disable</dt>
+				<dd>
+					The checkbox at the left side of each entry in the filter list allows individual
+					entries to be toggled on and off. When a filter is disabled, it neither affects
+					the video nor influences other filters in the list. This is useful for quickly
+					switching between different configurations for testing.
+				</dd>
+								
+				<dt>Frame sizes</dt>
 				<dd>
 					Each video filter in the list is shown with the size of the video frame entering
 					the filter and the video frame size produced by that filter. Video filter chains
@@ -33,33 +48,41 @@
 						input were present.
 					</lina:note>
 				</dd>
-
-				<lina:dt>Filter name and parameters</lina:dt>
+				
+				<dt>Frame formats</dt>
 				<dd>
-					Each filter entry has the name of the filter beside the frame sizes, as well as
-					a parameter list for the filter. The parameter list is filter-specific and is
-					only shown to aid in scanning the filter chain.
+					If <i>show formats</i> is checked, the filter list will also show the image formats
+					of the input and output frames of each filter. This clearly shows which portions
+					of the video filter pipeline are running in different RGB or YCbCr color spaces.
 				</dd>
 
-				<lina:dt>Cropping</lina:dt>
+				<dt>Cropping</dt>
 				<dd>
 					Cropping can be applied at the beginning of any filter by selecting the entry
 					and selecting the <em>Cropping...</em> button. Once cropping borders are set,
 					the cropped frame is reflected in the input frame size for that filter entry.
-
-					<lina:note>
-						The post-crop width and height should never be zero or negative.
-					</lina:note>
+				</dd>
+				<dd>
+					The crop dialog gives a choice between <i>precise</i> and <i>fast</i> cropping
+					mode when YCbCr formats are involved. When the crop parameters can't be exactly
+					supported with the given format, the filter pipeline chooses between either
+					converting formats to one that can support the exact requested crop, or adjusting
+					the crop parameters; <i>precise</i> converts, and <i>fast</i> adjusts. For
+					instance, attempting to crop to odd pixel boundaries in 4:2:0 YCbCr (YV12) will
+					cause a conversion to 4:4:4 YCbCr (YV24) in precise mode and rounding to even pixel
+					coordinates in fast mode. The default is precise. The RGB32 and 4:4:4 YCbCr (YV24)
+					formats are the top-level formats that can support any crop for their respective
+					color spaces.
 				</dd>
 
-				<lina:dt>Filter order</lina:dt>
+				<dt>Filter order</dt>
 				<dd>
 					Filters are executed from top to bottom; use the <em>Move Up</em> and <em>Move Down</em>
 					buttons move the currently selected filter up or down one slot. Frame sizes are automatically
 					recomputed as filters are moved.
 				</dd>
 
-				<lina:dt>Loading filters</lina:dt>
+				<dt>Loading filters</dt>
 				<dd>
 					The <em>Add Filters</em> sub-dialog has a <em>Load...</em> button for loading third-party
 					video filters. These video filters need to be written specifically for VirtualDub and
@@ -70,6 +93,28 @@
 						you want filters loaded all the time, move them under <tt>plugins\</tt>
 						in VirtualDub's program directory.
 					</lina:note>
+				</dd>
+				
+				<dt>Conversion marker</dt>
+				<dd>
+					A <tt>[C]</tt> marker appears beside a filter when VirtualDub has to perform a conversion
+					on entry to the filter. The most common conversion needed is a color space conversion.
+					This can happen because the filter does not support the output from the previous filter,
+					or because the cropping parameters for the filter are not possible with the original
+					image format. Reconfiguring the pipeline to avoid conversions can result in slight quality
+					and/or speed boosts.
+				</dd>
+				
+				<dt>Blending</dt>
+				<dd>
+					A <tt>[B]</tt> marker means that a filter is being blended. When blending is active, the
+					<i>Curve Editor</i> in the main view can be used to blend the result of the filter in and out
+					over time.
+				</dd>
+				<dd>
+					Blending is only permitted when the input and output frames on the filter are the same size;
+					otherwise, an error will result. For instance, you can't blend a <i>resize</i> filter that
+					is taking a 320x240 frame and producing 640x480 output.
 				</dd>
 			</dl>
 		</dialog>

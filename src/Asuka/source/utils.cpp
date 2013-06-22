@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/file.h>
 
 #include <windows.h>
 
@@ -38,7 +39,7 @@ string		g_machineName;
 
 
 void help() {
-	puts("VirtualDub Build/Post-Mortem Utility Version 1.7.1 for "
+	puts("VirtualDub Build/Post-Mortem Utility Version 1.7.7 for "
 #if VD_CPU_AMD64
 			"AMD64"
 #else
@@ -78,6 +79,14 @@ void canonicalize_name(string& name) {
 	*it = toupper(*it);
 	++it;
 	transform(it, name.end(), it, name.find('-') != string::npos ? toupper : tolower);
+}
+
+void canonicalize_name(VDStringA& name) {
+	VDStringA::iterator it(name.begin());
+
+	*it = toupper(*it);
+	++it;
+	transform(it, name.end(), it, name.find('-') != VDStringA::npos ? toupper : tolower);
 }
 
 string get_name() {
@@ -132,9 +141,9 @@ bool read_version() {
 	return true;
 }
 
-void inc_version() {
+void inc_version(const char *tag = NULL) {
 	++g_version;
-	++g_versionMap[g_machineName];
+	++g_versionMap[tag ? string(tag) : g_machineName];
 }
 
 INT_PTR CALLBACK VerincErrorDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -152,8 +161,11 @@ INT_PTR CALLBACK VerincErrorDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM l
 	return FALSE;
 }
 
-bool write_version() {
-	printf("    incrementing to build %d (builds on '%s': %d)\n", g_version, g_machineName.c_str(), g_versionMap[g_machineName]);
+bool write_version(const char *tag) {
+	if (!tag)
+		tag = g_machineName.c_str();
+
+	printf("    incrementing to build %d (builds on '%s': %d)\n", g_version, tag, g_versionMap[tag]);
 
 	for(;;) {
 		if (FILE *f = fopen("version2.bin","w")) {
@@ -189,4 +201,65 @@ bool write_version() {
 			return false;
 		}
 	}
+}
+
+ProjectSetup::ProjectSetup()
+	: mCounterTag(get_name().c_str())
+{
+}
+
+ProjectSetup::~ProjectSetup() {
+}
+
+INT_PTR CALLBACK ProjectSetupDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ProjectSetup *ps;
+
+	switch(msg) {
+		case WM_INITDIALOG:
+			SetWindowLongPtr(hwnd, DWLP_USER, lParam);
+			ps = (ProjectSetup *)lParam;
+			SetDlgItemText(hwnd, IDC_COUNTER_TAG, ps->mCounterTag.c_str());
+			return TRUE;
+
+		case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+				case IDOK:
+				case IDCANCEL:
+					ps = (ProjectSetup *)GetWindowLongPtr(hwnd, DWLP_USER);
+					if (ps) {
+						char buf[256];
+						GetDlgItemText(hwnd, IDC_COUNTER_TAG, buf, 256);
+						ps->mCounterTag = buf;
+					}
+					EndDialog(hwnd, 0);
+					return TRUE;
+			}
+			break;
+	}
+
+	return FALSE;
+}
+
+void ProjectSetup::Query() {
+	DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETUP), NULL, ProjectSetupDlgProc, (LPARAM)this);
+}
+
+void ProjectSetup::Read(const wchar_t *filename) {
+	VDFileStream fs(filename);
+	VDTextStream ts(&fs);
+
+	while(const char *s = ts.GetNextLine()) {
+		if (!strncmp(s, "counter-tag:", 12)) {
+			mCounterTag = VDStringSpanA(s + 12).trim(" \t\r\n");
+			canonicalize_name(mCounterTag);
+		}
+	}
+}
+
+void ProjectSetup::Write(const wchar_t *filename) {
+	VDFileStream fs(filename, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
+	VDStringA s;
+
+	s.sprintf("counter-tag: %s\r\n", mCounterTag.c_str());
+	fs.write(s.data(), s.size());
 }

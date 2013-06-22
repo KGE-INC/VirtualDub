@@ -18,17 +18,33 @@
 #ifndef f_INPUTFILEAVI_H
 #define f_INPUTFILEAVI_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
+#include <vd2/system/vdstl.h>
+
 #include "InputFile.h"
+
+class InputFileAVI;
+
+class VDAVIStreamSource : public vdlist_node {
+	VDAVIStreamSource& operator=(const VDAVIStreamSource&);
+public:
+	VDAVIStreamSource(InputFileAVI *pParent);
+	VDAVIStreamSource(const VDAVIStreamSource&);
+	~VDAVIStreamSource();
+
+	virtual void Reinit() {}
+
+protected:
+	vdrefptr<InputFileAVI> mpParent;
+};
 
 class InputFileAVI : public InputFile {
 private:
 	IAVIReadHandler *pAVIFile;
-	IAVIReadStream *pAVIStreamAudio, *pAVIStreamVideo;
 
-	AVIStripeSystem *stripesys;
-	IAVIReadHandler **stripe_files;
-	int stripe_count;
-	bool isASF;
 	bool fAutomated;
 
 	bool fCompatibilityMode, fRedoKeyFlags, fInternalDecoder, fDisableFastIO, fAcceptPartial, fAutoscanSegments;
@@ -36,6 +52,12 @@ private:
 	FOURCC fccForceVideo;
 	FOURCC fccForceVideoHandler;
 	long lForceAudioHz;
+
+	typedef std::vector<vdfastvector<uint32> > NewKeyFlags;
+	NewKeyFlags mNewKeyFlags;
+
+	typedef vdlist<VDAVIStreamSource> Streams; 
+	Streams	mStreams;
 
 	static char szME[];
 
@@ -46,7 +68,6 @@ public:
 	~InputFileAVI();
 
 	void Init(const wchar_t *szFile);
-	void InitStriped(const char *szFile);
 	bool Append(const wchar_t *szFile);
 
 	void GetTextInfo(tFileTextInfo& info);
@@ -54,14 +75,21 @@ public:
 	bool isOptimizedForRealtime();
 	bool isStreaming();
 
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
+
 	void setOptions(InputFileOptions *_ifo);
 	InputFileOptions *createOptions(const void *buf, uint32 len);
-	InputFileOptions *promptForOptions(HWND hwnd);
+	InputFileOptions *promptForOptions(VDGUIHandle hwnd);
 	void EnableSegmentAutoscan();
 	void ForceCompatibility();
 	void setAutomated(bool fAuto);
 
-	void InfoDialog(HWND hwndParent);
+	void InfoDialog(VDGUIHandle hwndParent);
+
+public:
+	void Attach(VDAVIStreamSource *p);
+	void Detach(VDAVIStreamSource *p);
 };
 
 #endif

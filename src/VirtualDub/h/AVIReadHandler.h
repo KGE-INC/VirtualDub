@@ -18,11 +18,22 @@
 #ifndef f_AVIREADHANDLER_H
 #define f_AVIREADHANDLER_H
 
-#include <windows.h>
-#include <vfw.h>
-#include <vector>
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
+#include <utility>
 #include <list>
-#include <vd2/system/VDString.h>
+
+#ifndef f_VD2_RIZA_AVI_H
+	#include <vd2/Riza/avi.h>
+#endif
+
+#ifndef f_VD2_SYSTEM_VDSTRING_H
+	#include <vd2/system/VDString.h>
+#endif
+
+struct IAVIFile;
 
 // These are meant as AVIFile replacements.  They're not quite to AVIFile
 // specs, but they'll do for now.
@@ -31,18 +42,29 @@ class IAVIReadStream {
 public:
 	virtual ~IAVIReadStream();
 
-	virtual HRESULT BeginStreaming(VDPosition lStart, VDPosition lEnd, long lRate)=0;
-	virtual HRESULT EndStreaming()=0;
-	virtual HRESULT Info(AVISTREAMINFO *pasi, long lSize)=0;
+	// Temporary replacements for AVIERR_OK and AVIERR_BUFFERTOOSMALL
+	enum {
+		kOK				= 0,
+		kBufferTooSmall = 0x80044074,
+		kFileReadError	= 0x8004406d
+	};
+
+	enum {
+		kConvenient = -1
+	};
+
+	virtual sint32 BeginStreaming(VDPosition lStart, VDPosition lEnd, long lRate)=0;
+	virtual sint32 EndStreaming()=0;
+	virtual sint32 Info(VDAVIStreamInfo *pasi)=0;
 	virtual bool IsKeyFrame(VDPosition lFrame)=0;
-	virtual HRESULT Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples)=0;
+	virtual sint32 Read(VDPosition lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples)=0;
 	virtual VDPosition Start()=0;
 	virtual VDPosition End()=0;
 	virtual VDPosition PrevKeyFrame(VDPosition lFrame)=0;
 	virtual VDPosition NextKeyFrame(VDPosition lFrame)=0;
 	virtual VDPosition NearestKeyFrame(VDPosition lFrame)=0;
-	virtual HRESULT FormatSize(VDPosition lFrame, long *plSize)=0;
-	virtual HRESULT ReadFormat(VDPosition lFrame, void *pFormat, long *plSize)=0;
+	virtual sint32 FormatSize(VDPosition lFrame, long *plSize)=0;
+	virtual sint32 ReadFormat(VDPosition lFrame, void *pFormat, long *plSize)=0;
 	virtual bool isStreaming()=0;
 	virtual bool isKeyframeOnly()=0;
 
@@ -57,7 +79,7 @@ class IAVIReadHandler {
 public:
 	virtual void AddRef()=0;
 	virtual void Release()=0;
-	virtual IAVIReadStream *GetStream(DWORD fccType, LONG lParam)=0;
+	virtual IAVIReadStream *GetStream(uint32 fccType, int lParam)=0;
 	virtual void EnableFastIO(bool)=0;
 	virtual bool isOptimizedForRealtime()=0;
 	virtual bool isStreaming()=0;
@@ -70,7 +92,7 @@ public:
 	virtual void GetTextInfoEncoding(int& codePage, int& countryCode, int& language, int& dialect) = 0;
 };
 
-IAVIReadHandler *CreateAVIReadHandler(PAVIFILE paf);
+IAVIReadHandler *CreateAVIReadHandler(IAVIFile *paf);
 IAVIReadHandler *CreateAVIReadHandler(const wchar_t *pszFile);
 
 #endif

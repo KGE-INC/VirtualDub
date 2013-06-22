@@ -45,8 +45,11 @@ bool VDIsValidWriteRegion(void *p, size_t bytes);
 
 bool VDCompareRect(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, size_t w, size_t h);
 
+const void *VDMemCheck8(const void *src, uint8 value, size_t count);
+
 void VDMemset8(void *dst, uint8 value, size_t count);
 void VDMemset16(void *dst, uint16 value, size_t count);
+void VDMemset24(void *dst, uint32 value, size_t count);
 void VDMemset32(void *dst, uint32 value, size_t count);
 void VDMemset64(void *dst, uint64 value, size_t count);
 void VDMemset128(void *dst, const void *value, size_t count);
@@ -54,6 +57,7 @@ void VDMemsetPointer(void *dst, const void *value, size_t count);
 
 void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h);
 void VDMemset16Rect(void *dst, ptrdiff_t pitch, uint16 value, size_t w, size_t h);
+void VDMemset24Rect(void *dst, ptrdiff_t pitch, uint32 value, size_t w, size_t h);
 void VDMemset32Rect(void *dst, ptrdiff_t pitch, uint32 value, size_t w, size_t h);
 
 #if defined(_WIN32) && defined(_M_IX86)

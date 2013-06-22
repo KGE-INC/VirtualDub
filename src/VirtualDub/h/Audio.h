@@ -18,11 +18,9 @@
 #ifndef f_AUDIO_H
 #define f_AUDIO_H
 
-#include <vd2/Riza/w32audiocodec.h>
-#include <windows.h>
-#include <mmsystem.h>
-#include <mmreg.h>
-#include <msacm.h>
+#include <vd2/system/vdalloc.h>
+#include <vd2/system/fraction.h>
+#include <vd2/Riza/audiocodec.h>
 #include "AudioFilterSystem.h"
 
 #include "FrameSubset.h"
@@ -43,7 +41,7 @@ class IVDStreamSource;
 
 class AudioStream {
 protected:
-	WAVEFORMATEX *format;
+	VDWaveFormat *format;
 	long format_len;
 
 	AudioStream *source;
@@ -53,14 +51,15 @@ protected:
 
 	AudioStream();
 
-	WAVEFORMATEX *AllocFormat(long len);
+	VDWaveFormat *AllocFormat(long len);
 public:
 	virtual ~AudioStream();
 
-	virtual WAVEFORMATEX *GetFormat();
-	virtual long GetFormatLen();
-	virtual sint64 GetSampleCount();
-	virtual sint64 GetLength();
+	virtual VDWaveFormat *GetFormat() const;
+	virtual long GetFormatLen() const;
+	virtual sint64 GetSampleCount() const;
+	virtual sint64 GetLength() const;
+	virtual const VDFraction GetSampleRate() const;
 	virtual bool IsVBR() const = 0;
 
 	virtual long _Read(void *buffer, long max_samples, long *lplBytes);
@@ -87,11 +86,13 @@ private:
 	bool fStart;
 	bool mbSourceIsVBR;
 
-	VDAudioCodecW32	mCodec;
+	vdautoptr<IVDAudioCodec>	mpCodec;
 
 public:
 	AudioStreamSource(AudioSource *src, sint64 max_sample, bool allow_decompression, sint64 offset);
 	~AudioStreamSource();
+
+	const VDFraction GetSampleRate() const;
 
 	bool IsVBR() const;
 	long _Read(void *buffer, long max_samples, long *lplBytes);
@@ -150,7 +151,7 @@ public:
 
 class AudioCompressor : public AudioStream {
 private:
-	VDAudioCodecW32	mCodec;
+	vdautoptr<IVDAudioCodec>	mpCodec;
 	bool fStreamEnded;
 	long bytesPerInputSample;
 	long bytesPerOutputSample;
@@ -160,7 +161,7 @@ private:
 	enum { INPUT_BUFFER_SIZE = 16384 };
 
 public:
-	AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len, const char *shortNameHint);
+	AudioCompressor(AudioStream *src, const VDWaveFormat *dst_format, long dst_format_len, const char *shortNameHint);
 	~AudioCompressor();
 	void CompensateForMP3();
 	bool IsVBR() const { return false; }
@@ -192,6 +193,8 @@ public:
 	AudioStreamL3Corrector(AudioStream *src);
 	~AudioStreamL3Corrector();
 
+	const VDFraction GetSampleRate() const;
+
 	bool IsVBR() const { return source->IsVBR(); }
 	long _Read(void *buffer, long max_samples, long *lplBytes);
 	bool _isEnd();
@@ -210,7 +213,8 @@ private:
 	bool mbLimited;
 	bool mbEnded;
 
-	vdfastvector<AudioStream *> mSources;
+	typedef vdfastvector<AudioStream *> Sources;
+	Sources mSources;
 
 	enum { kSkipBufferSize = 512 };
 
@@ -218,7 +222,9 @@ public:
 	AudioSubset(const vdfastvector<AudioStream *>& sources, const FrameSubset *pfs, const VDFraction& videoFrameRate, sint64 preskew, bool appendTail);
 	~AudioSubset();
 
-	bool IsVBR() const { return source->IsVBR(); }
+	const VDFraction GetSampleRate() const;
+
+	bool IsVBR() const;
 	long _Read(void *, long, long *);
 	bool _isEnd();
 };
@@ -257,6 +263,6 @@ protected:
 	sint64		mSamplePos;
 };
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 appendTail, IVDStreamSource *pVBRAudio);
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, const VDWaveFormat *pwfex, sint64 appendTail, IVDStreamSource *pVBRAudio);
 
 #endif

@@ -429,6 +429,43 @@ DEFINE_TEST(String) {
 	}
 
 	///////////////////////////////////////////////////////////////////////////
+	// Narrow string ref tests
+	///////////////////////////////////////////////////////////////////////////
+
+	// split
+	{
+		VDStringRefA s;
+		VDStringRefA token;
+
+		s = "";
+		CHECK(s.split(',', token), false);
+		CHECK(s, "");
+
+		s = ",";
+		CHECK(s.split(',', token), true);
+		CHECK(s, "");
+		CHECK(token, "");
+
+		s = ",,";
+		CHECK(s.split(',', token), true);
+		CHECK(s, ",");
+		CHECK(token, "");
+
+		s = "a";
+		CHECK(s.split(',', token), false);
+
+		s = "a,,";
+		CHECK(s.split(',', token), true);
+		CHECK(s, ",");
+		CHECK(token, "a");
+
+		s = "one,two,three";
+		CHECK(s.split(',', token), true);
+		CHECK(s, "two,three");
+		CHECK(token, "one");
+	}
+
+	///////////////////////////////////////////////////////////////////////////
 	// Wide string tests
 	///////////////////////////////////////////////////////////////////////////
 
@@ -852,6 +889,43 @@ DEFINE_TEST(String) {
 		CHECK(VDStringW() + L'x', L"x");
 		CHECK(VDStringW(L"a") + L'x', L"ax");
 		CHECK(VDStringW(L"abcdef") + (wchar_t)0, VDStringW(L"abcdef", 7));
+	}
+
+	///////////////////////////////////////////////////////////////////////////
+	// Wide string ref tests
+	///////////////////////////////////////////////////////////////////////////
+
+	// split
+	{
+		VDStringRefW s;
+		VDStringRefW token;
+
+		s = L"";
+		CHECK(s.split(L',', token), false);
+		CHECK(s, L"");
+
+		s = L",";
+		CHECK(s.split(L',', token), true);
+		CHECK(s, L"");
+		CHECK(token, L"");
+
+		s = L",,";
+		CHECK(s.split(L',', token), true);
+		CHECK(s, L",");
+		CHECK(token, L"");
+
+		s = L"a";
+		CHECK(s.split(L',', token), false);
+
+		s = L"a,,";
+		CHECK(s.split(L',', token), true);
+		CHECK(s, L",");
+		CHECK(token, L"a");
+
+		s = L"one,two,three";
+		CHECK(s.split(L',', token), true);
+		CHECK(s, L"two,three");
+		CHECK(token, L"one");
 	}
 
 	return 0;

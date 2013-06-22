@@ -26,11 +26,14 @@ public:
 	VDDubProcessThread();
 	~VDDubProcessThread();
 
-	void SetAbortSignal(volatile bool *pAbort);
+	bool IsCompleted() const { return mbCompleted; }
+
+	void SetParent(IDubberInternal *pParent);
+	void SetAbortSignal(VDAtomicInt *pAbort);
 	void SetStatusHandler(IDubStatusHandler *pStatusHandler);
 	void SetInputDisplay(IVDVideoDisplay *pVideoDisplay);
 	void SetOutputDisplay(IVDVideoDisplay *pVideoDisplay);
-	void SetVideoFilterOutput(FilterStateInfo *pfsi, void *pBuffer, const VDPixmap& px);
+	void SetVideoFilterOutput(void *pBuffer, const VDPixmap& px);
 	void SetVideoSources(IVDVideoSource *const *pVideoSources, uint32 count);
 	void SetAudioSourcePresent(bool present);
 	void SetAudioCorrector(AudioStreamL3Corrector *pCorrector);
@@ -75,9 +78,9 @@ protected:
 
 	void NextSegment();
 
-	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
+	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, VDPosition sequenceFrame, int srcIndex);
 	void WritePendingEmptyVideoFrame();
-	void WriteAudio(void *buffer, long lActualBytes, long lActualSamples);
+	bool WriteAudio(sint32 count);
 
 	void ThreadRun();
 	void TimerCallback();
@@ -89,6 +92,7 @@ protected:
 
 	VDStreamInterleaver		*mpInterleaver;
 	VDLoopThrottle			mLoopThrottle;
+	IDubberInternal			*mpParent;
 
 	// OUTPUT
 	IVDMediaOutput			*mpAVIOut;
@@ -100,6 +104,8 @@ protected:
 	VDAudioPipeline			*mpAudioPipe;
 	AudioStreamL3Corrector	*mpAudioCorrector;
 	bool				mbAudioPresent;
+	bool				mbAudioEnded;
+	vdfastvector<char>	mAudioBuffer;
 
 	// VIDEO SECTION
 	AVIPipe					*mpVideoPipe;
@@ -109,7 +115,7 @@ protected:
 
 	DubVideoStreamInfo	*mpVInfo;
 	IVDAsyncBlitter		*mpBlitter;
-	FilterStateInfo		mfsi;
+	VDXFilterStateInfo	mfsi;
 	IDubStatusHandler	*mpStatusHandler;
 	IVDVideoCompressor	*mpVideoCompressor;
 	vdblock<char>		mVideoCompressionBuffer;
@@ -123,6 +129,8 @@ protected:
 	uint32				mPendingNullVideoFrames;
 
 	// PREVIEW
+	bool				mbPreview;
+	bool				mbFirstPacket;
 	bool				mbAudioFrozen;
 	bool				mbAudioFrozenValid;
 	bool				mbSyncToAudioEvenClock;
@@ -138,7 +146,8 @@ protected:
 	// ERROR HANDLING
 	MyError				mError;
 	bool				mbError;
-	volatile bool		*mpAbort;
+	bool				mbCompleted;
+	VDAtomicInt			*mpAbort;
 
 	const char			*volatile mpCurrentAction;
 	VDAtomicInt			mActivityCounter;

@@ -19,14 +19,15 @@
 #define f_VIDEOTELECINEREMOVER_H
 
 struct VDPixmap;
+class VBitmap;
 
-class __declspec(novtable) VideoTelecineRemover {
+class VDINTERFACE VideoTelecineRemover {
 public:
 	virtual ~VideoTelecineRemover() = 0;
 	virtual void ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame) = 0;
-	virtual bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame) = 0;
+	virtual bool ProcessOut(const VDPixmap& out, VDPosition& srcFrame, VDPosition& timelineFrame) = 0;
 };
 
-VideoTelecineRemover *CreateVideoTelecineRemover(VBitmap *pFormat, bool fDecomb, int iOffset, bool fInvertedPolarity);
+VideoTelecineRemover *CreateVideoTelecineRemover(int w, int h, bool fDecomb, int iOffset, bool fInvertedPolarity);
 
 #endif

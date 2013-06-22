@@ -25,46 +25,63 @@
 #include <ctype.h>
 #include <vfw.h>
 
-#include "PositionControl.h"
-#include "ProgressDialog.h"
-#include "FrameSubset.h"
+#ifdef _MSC_VER
+	#include <intrin.h>
+#endif
+
 #include "resource.h"
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/w32assist.h>
-#include <vd2/Riza/display.h>
 #include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include "gui.h"
 #include "oshelper.h"
 #include "misc.h"
 #include "plugins.h"
 
-#define f_FILTER_GLOBALS
 #include "filter.h"
 #include "filters.h"
-#include "optdlg.h"
-#include "dub.h"
-#include "project.h"
-#include "timeline.h"
 #include "VideoSource.h"
+#include <vd2/plugin/vdplugin.h>
 
-extern vdrefptr<VideoSource> inputVideoAVI;
+extern vdrefptr<IVDVideoSource> inputVideo;
 
 extern HINSTANCE	g_hInst;
 extern "C" unsigned long version_num;
-extern VDProject *g_project;
 
 extern const VDScriptObject obj_VDVFiltInst;
-
-extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP();
 
 List			g_listFA;
 
 FilterSystem	filters;
+
+/////////////////////////////////////
+
+namespace {
+	void StructCheck() {
+		VDASSERTCT(sizeof(VDPixmap) == sizeof(VDXPixmap));
+		VDASSERTCT(sizeof(VDPixmapLayout) == sizeof(VDXPixmapLayout));
+				
+		VDASSERTCT(offsetof(VDPixmap, data) == offsetof(VDXPixmap, data));
+		VDASSERTCT(offsetof(VDPixmap, pitch) == offsetof(VDXPixmap, pitch));
+		VDASSERTCT(offsetof(VDPixmap, format) == offsetof(VDXPixmap, format));
+		VDASSERTCT(offsetof(VDPixmap, w) == offsetof(VDXPixmap, w));
+		VDASSERTCT(offsetof(VDPixmap, h) == offsetof(VDXPixmap, h));
+				
+		VDASSERTCT(offsetof(VDPixmapLayout, data) == offsetof(VDXPixmapLayout, data));
+		VDASSERTCT(offsetof(VDPixmapLayout, pitch) == offsetof(VDXPixmapLayout, pitch));
+		VDASSERTCT(offsetof(VDPixmapLayout, format) == offsetof(VDXPixmapLayout, format));
+		VDASSERTCT(offsetof(VDPixmapLayout, w) == offsetof(VDXPixmapLayout, w));
+		VDASSERTCT(offsetof(VDPixmapLayout, h) == offsetof(VDXPixmapLayout, h));
+	}
+}
 
 /////////////////////////////////////
 
@@ -94,7 +111,11 @@ static void FilterThrowExceptMemory() {
 
 // This is really disgusting...
 
-static void InitVTables(struct FilterVTbls *pvtbls) {
+struct VDXFilterVTbls {
+	void *pvtblVBitmap;
+};
+
+static void InitVTables(VDXFilterVTbls *pvtbls) {
 	VBitmap tmp;
 	pvtbls->pvtblVBitmap = *(void **)&tmp;
 }
@@ -131,19 +152,164 @@ FilterFunctions g_filterFuncs={
 };
 
 ///////////////////////////////////////////////////////////////////////////
+
+VFBitmapInternal::VFBitmapInternal()
+	: VBitmap()
+	, dwFlags(0)
+	, hdc(NULL)
+	, mFrameRateHi(1)
+	, mFrameRateLo(0)
+	, mFrameCount(0)
+	, mpPixmap(reinterpret_cast<VDXPixmap *>(&mPixmap))
+	, mpPixmapLayout(reinterpret_cast<VDXPixmapLayout *>(&mPixmapLayout))
+{
+	memset(&mPixmap, 0, sizeof mPixmap);
+	memset(&mPixmapLayout, 0, sizeof mPixmapLayout);
+}
+
+VFBitmapInternal::VFBitmapInternal(const VFBitmapInternal& src)
+	: VBitmap(static_cast<const VBitmap&>(src))
+	, dwFlags(src.dwFlags)
+	, hdc(src.hdc)
+	, mFrameRateHi(src.mFrameRateHi)
+	, mFrameRateLo(src.mFrameRateLo)
+	, mFrameCount(src.mFrameCount)
+	, mpPixmap(reinterpret_cast<VDXPixmap *>(&mPixmap))
+	, mpPixmapLayout(reinterpret_cast<VDXPixmapLayout *>(&mPixmapLayout))
+	, mPixmap(src.mPixmap)
+	, mPixmapLayout(src.mPixmapLayout)
+{
+}
+
+VFBitmapInternal::~VFBitmapInternal()
+{
+}
+
+VFBitmapInternal& VFBitmapInternal::operator=(const VFBitmapInternal& src) {
+	if (this != &src) {
+		static_cast<VBitmap&>(*this) = static_cast<const VBitmap&>(src);
+		dwFlags			= src.dwFlags;
+		hdc				= NULL;
+		mFrameRateHi	= src.mFrameRateHi;
+		mFrameRateLo	= src.mFrameRateLo;
+		mFrameCount		= src.mFrameCount;
+		mPixmap			= src.mPixmap;
+		mPixmapLayout	= src.mPixmapLayout;
+
+		mDIBSection.Shutdown();
+	}
+
+	return *this;
+}
+
+void VFBitmapInternal::Fixup(void *base) {
+	mPixmap = VDPixmapFromLayout(mPixmapLayout, base);
+	data = (uint32 *)((pitch < 0 ? (char *)base - pitch*(h-1) : (char *)base) + offset);
+	VDAssertValidPixmap(mPixmap);
+}
+
+void VFBitmapInternal::ConvertBitmapLayoutToPixmapLayout() {
+	mPixmapLayout.w			= w;
+	mPixmapLayout.h			= h;
+	mPixmapLayout.format	= nsVDPixmap::kPixFormat_XRGB8888;
+	mPixmapLayout.palette	= NULL;
+	mPixmapLayout.pitch		= -pitch;
+	mPixmapLayout.data		= pitch<0 ? offset : offset + pitch*(h - 1);
+	mPixmapLayout.data2		= 0;
+	mPixmapLayout.pitch2	= 0;
+	mPixmapLayout.data3		= 0;
+	mPixmapLayout.pitch3	= 0;
+}
+
+void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
+	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mPixmapLayout.format);
+	w = mPixmapLayout.w;
+	h = mPixmapLayout.h;
+
+	switch(mPixmapLayout.format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			depth = 32;
+			break;
+
+		default:
+			depth = 0;
+			break;
+	}
+
+	palette = NULL;
+	pitch	= -mPixmapLayout.pitch;
+	offset	= mPixmapLayout.pitch < 0 ? mPixmapLayout.data + mPixmapLayout.pitch*(h - 1) : mPixmapLayout.data;
+
+	uint32 bpr = formatInfo.qsize * -(-((sint32)w >> formatInfo.qwbits));
+	modulo	= pitch - bpr;
+	size	= VDPixmapLayoutGetMinSize(mPixmapLayout) - offset;
+
+	VDASSERT((sint32)size >= 0);
+}
+
+void VFBitmapInternal::ConvertPixmapToBitmap() {
+	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mPixmapLayout.format);
+	w = mPixmap.w;
+	h = mPixmap.h;
+
+	switch(mPixmap.format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			depth = 32;
+			break;
+
+		default:
+			depth = 0;
+			break;
+	}
+
+	palette = NULL;
+	pitch	= -mPixmap.pitch;
+	data	= (Pixel *)((char *)mPixmap.data + mPixmap.pitch*(h - 1));
+
+	uint32 bpr = formatInfo.qsize * -(-((sint32)w >> formatInfo.qwbits));
+	modulo	= pitch - bpr;
+}
+
+///////////////////////////////////////////////////////////////////////////
 //
-//	FilterActivation
+//	VDFilterActivationImpl
 //
 ///////////////////////////////////////////////////////////////////////////
 
-FilterActivation::FilterActivation(const FilterActivation& fa, VFBitmap& _dst, VFBitmap& _src, VFBitmap *_last) : dst(_dst), src(_src), last(_last) {
-	filter			= fa.filter;
-	filter_data		= fa.filter_data;
-	x1				= fa.x1;
-	y1				= fa.y1;
-	x2				= fa.x2;
-	y2				= fa.y2;
-	pfsi			= fa.pfsi;
+VDFilterActivationImpl::VDFilterActivationImpl(VDXFBitmap& _dst, VDXFBitmap& _src, VDXFBitmap *_last)
+	: filter		(NULL)
+	, filter_data	(NULL)
+	, dst			(_dst)
+	, src			(_src)
+	, _reserved0	(NULL)
+	, last			(_last)
+	, x1			(0)
+	, y1			(0)
+	, x2			(0)
+	, y2			(0)
+	, pfsi			(NULL)
+	, ifp			(NULL)
+	, ifp2			(NULL)
+{
+	VDASSERTCT(sizeof(*this) == sizeof(VDXFilterActivation));
+}
+
+VDFilterActivationImpl::VDFilterActivationImpl(const VDFilterActivationImpl& fa, VDXFBitmap& _dst, VDXFBitmap& _src, VDXFBitmap *_last)
+	: filter		(fa.filter)
+	, filter_data	(fa.filter_data)
+	, dst			(_dst)
+	, src			(_src)
+	, _reserved0	(NULL)
+	, last			(_last)
+	, x1			(0)
+	, y1			(0)
+	, x2			(0)
+	, y2			(0)
+	, pfsi			(fa.pfsi)
+	, ifp			(NULL)
+	, ifp2			(NULL)
+{
+	VDASSERTCT(sizeof(*this) == sizeof(VDXFilterActivation));
 }
 
 
@@ -197,7 +363,7 @@ void FilterDefinitionInstance::Assign(const FilterDefinition& def, int len) {
 	mAuthor			= def.maker ? def.maker : "(internal)";
 	mDescription	= def.desc;
 
-	mDef.module		= const_cast<FilterModule *>(&mpExtModule->GetFilterModuleInfo());
+	mDef._module	= const_cast<VDXFilterModule *>(&mpExtModule->GetFilterModuleInfo());
 }
 
 const FilterDefinition& FilterDefinitionInstance::Attach() {
@@ -230,33 +396,81 @@ class FilterInstanceAutoDeinit : public vdrefcounted<IVDRefCount> {};
 //
 ///////////////////////////////////////////////////////////////////////////
 
+class VDFilterThreadContextSwapper {
+public:
+	VDFilterThreadContextSwapper(void *pNewContext) {
+#ifdef _M_IX86
+		// 0x14: NT_TIB.ArbitraryUserPointer
+		mpOldContext = __readfsdword(0x14);
+		__writefsdword(0x14, (unsigned long)pNewContext);
+#endif
+	}
+
+	~VDFilterThreadContextSwapper() {
+#ifdef _M_IX86
+		__writefsdword(0x14, mpOldContext);
+#endif
+	}
+
+protected:
+	unsigned long	mpOldContext;
+};
+
 FilterInstance::FilterInstance(const FilterInstance& fi)
-	: FilterActivation	(fi, (VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
-	, realSrc			(fi.realSrc)
-	, realDst			(fi.realDst)
-	, realLast			(fi.realLast)
-	, flags				(fi.flags)
-	, hbmDst			(fi.hbmDst)
-	, hgoDst			(fi.hgoDst)
-	, pvDstView			(fi.pvDstView)
-	, pvLastView		(fi.pvLastView)
-	, srcbuf			(fi.srcbuf)
-	, dstbuf			(fi.dstbuf)
-	, pfsiDelayRing		(NULL)
-	, mpFDInst			(fi.mpFDInst)
+	: VDFilterActivationImpl	(fi, (VDXFBitmap&)mRealDst, (VDXFBitmap&)mRealSrc, (VDXFBitmap*)&mRealLast)
+	, mRealSrcUncropped	(fi.mRealSrcUncropped)
+	, mRealSrc			(fi.mRealSrc)
+	, mRealDst			(fi.mRealDst)
+	, mRealLast			(fi.mRealLast)
+	, mbInvalidFormat	(fi.mbInvalidFormat)
+	, mbInvalidFormatHandling(fi.mbInvalidFormatHandling)
+	, mbBlitOnEntry		(fi.mbBlitOnEntry)
+	, mBlendBuffer		(fi.mBlendBuffer)
+	, mSrcBuf			(fi.mSrcBuf)
+	, mDstBuf			(fi.mDstBuf)
+	, mOrigW			(fi.mOrigW)
+	, mOrigH			(fi.mOrigH)
+	, mbPreciseCrop		(fi.mbPreciseCrop)
+	, mCropX1			(fi.mCropX1)
+	, mCropY1			(fi.mCropY1)
+	, mCropX2			(fi.mCropX2)
+	, mCropY2			(fi.mCropY2)
+	, mScriptObj		(fi.mScriptObj)
+	, mFlags			(fi.mFlags)
+	, mbEnabled			(fi.mbEnabled)
+	, mbStarted			(fi.mbStarted)
+	, mFilterName		(fi.mFilterName)
 	, mpAutoDeinit		(fi.mpAutoDeinit)
 	, mScriptFunc		(fi.mScriptFunc)
-	, mScriptObj		(fi.mScriptObj)
+	, mpFDInst			(fi.mpFDInst)
 	, mpAlphaCurve		(fi.mpAlphaCurve)
 {
 	if (mpAutoDeinit)
 		mpAutoDeinit->AddRef();
+	else
+		mbStarted = false;
 
 	filter = const_cast<FilterDefinition *>(&fi.mpFDInst->Attach());
 }
 
 FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
-	: FilterActivation((VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
+	: VDFilterActivationImpl((VDXFBitmap&)mRealDst, (VDXFBitmap&)mRealSrc, (VDXFBitmap*)&mRealLast)
+	, mbInvalidFormat(true)
+	, mbInvalidFormatHandling(false)
+	, mbBlitOnEntry(false)
+	, mBlendBuffer(0)
+	, mSrcBuf(0)
+	, mDstBuf(0)
+	, mOrigW(0)
+	, mOrigH(0)
+	, mbPreciseCrop(true)
+	, mCropX1(0)
+	, mCropY1(0)
+	, mCropX2(0)
+	, mCropY2(0)
+	, mFlags(0)
+	, mbEnabled(true)
+	, mbStarted(false)
 	, mpFDInst(fdi)
 	, mpAutoDeinit(NULL)
 {
@@ -264,7 +478,10 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	src.hdc = NULL;
 	dst.hdc = NULL;
 	last->hdc = NULL;
-	pfsiDelayRing = NULL;
+	x1 = 0;
+	y1 = 0;
+	x2 = 0;
+	y2 = 0;
 
 	if (filter->inst_data_size) {
 		if (!(filter_data = allocmem(filter->inst_data_size)))
@@ -279,9 +496,10 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 				if (!filter->copyProc && filter->deinitProc)
 					autoDeinit = new FilterInstanceAutoDeinit;
 
-				if (filter->initProc(this, &g_filterFuncs)) {
+				VDFilterThreadContextSwapper autoContextSwap(&mThreadContext);
+				if (filter->initProc(AsVDXFilterActivation(), &g_filterFuncs)) {
 					if (filter->deinitProc)
-						filter->deinitProc(this, &g_filterFuncs);
+						filter->deinitProc(AsVDXFilterActivation(), &g_filterFuncs);
 
 					freemem(filter_data);
 					throw MyError("Filter failed to initialize.");
@@ -339,12 +557,14 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 }
 
 FilterInstance::~FilterInstance() {
+	VDFilterThreadContextSwapper autoContextSwap(&mThreadContext);
+
 	if (mpAutoDeinit) {
 		if (!mpAutoDeinit->Release())
-			filter->deinitProc(this, &g_filterFuncs);
+			filter->deinitProc(AsVDXFilterActivation(), &g_filterFuncs);
 		mpAutoDeinit = NULL;
 	} else if (filter->deinitProc) {
-		filter->deinitProc(this, &g_filterFuncs);
+		filter->deinitProc(AsVDXFilterActivation(), &g_filterFuncs);
 	}
 
 	freemem(filter_data);
@@ -365,8 +585,9 @@ FilterInstance *FilterInstance::Clone() {
 			throw MyMemoryError();
 		}
 
+		VDFilterThreadContextSwapper autoContextSwap(&mThreadContext);
 		if (fi->filter->copyProc)
-			fi->filter->copyProc(this, &g_filterFuncs, fi->filter_data);
+			fi->filter->copyProc(AsVDXFilterActivation(), &g_filterFuncs, fi->filter_data);
 		else
 			memcpy(fi->filter_data, filter_data, fi->filter->inst_data_size);
 	}
@@ -376,6 +597,295 @@ FilterInstance *FilterInstance::Clone() {
 
 void FilterInstance::Destroy() {
 	delete this;
+}
+
+uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
+	bool testingInvalidFormat = input.mpPixmapLayout->format == 255;
+	bool invalidCrop = false;
+
+	mOrigW			= input.w;
+	mOrigH			= input.h;
+
+	mRealSrcUncropped	= input;
+	mRealSrc			= input;
+	if (testingInvalidFormat) {
+		mRealSrc.mpPixmapLayout->format = nsVDXPixmap::kPixFormat_XRGB8888;
+	} else {
+		// Clamp the crop rect at this point to avoid going below 1x1.
+		// We will throw an exception later during init.
+		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mRealSrc.mPixmapLayout.format);
+		int xmask = ~((1 << (formatInfo.qwbits + formatInfo.auxwbits)) - 1);
+		int ymask = ~((1 << (formatInfo.qhbits + formatInfo.auxhbits)) - 1);
+
+		if (mbPreciseCrop) {
+			if ((mCropX1 | mCropY1) & ~xmask)
+				invalidCrop = true;
+
+			if ((mCropX2 | mCropY2) & ~ymask)
+				invalidCrop = true;
+		}
+
+		int qx1 = (mCropX1 & xmask) >> formatInfo.qwbits;
+		int qy1 = (mCropY1 & ymask) >> formatInfo.qhbits;
+		int qx2 = (mCropX2 & xmask) >> formatInfo.qwbits;
+		int qy2 = (mCropY2 & ymask) >> formatInfo.qhbits;
+
+		int qw = input.w >> formatInfo.qwbits;
+		int qh = input.h >> formatInfo.qhbits;
+
+		if (qx1 >= qw)
+			qx1 = qw - 1;
+
+		if (qy1 >= qh)
+			qy1 = qh - 1;
+
+		if (qx1 + qx2 >= qw)
+			qx2 = (qw - qx1) - 1;
+
+		if (qy1 + qy2 >= qw)
+			qy2 = (qw - qy1) - 1;
+
+		VDASSERT(qx1 >= 0 && qy1 >= 0 && qx2 >= 0 && qy2 >= 0);
+		VDASSERT(qx1 + qx2 < qw);
+		VDASSERT(qy1 + qy2 < qh);
+
+		mRealSrc.mPixmapLayout = VDPixmapLayoutOffset(mRealSrc.mPixmapLayout, qx1, qy1);
+		mRealSrc.mPixmapLayout.w -= qx1+qx2;
+		mRealSrc.mPixmapLayout.h -= qy1+qy2;
+	}
+
+	mRealSrc.ConvertPixmapLayoutToBitmapLayout();
+
+	mRealSrc.dwFlags	= 0;
+	mRealSrc.hdc		= NULL;
+
+	mRealLast			= mRealSrc;
+	mRealLast.dwFlags	= 0;
+	mRealLast.hdc		= NULL;
+
+	mRealDst			= mRealSrc;
+	mRealDst.dwFlags	= 0;
+	mRealDst.hdc		= NULL;
+
+	if (testingInvalidFormat) {
+		mRealSrc.mPixmapLayout.format = 255;
+		mRealDst.mPixmapLayout.format = 255;
+	}
+
+	pfsi	= &mfsi;
+
+	uint32 flags = FILTERPARAM_SWAP_BUFFERS;
+	if (filter->paramProc) {
+		VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+
+		vdprotected1("preparing filter \"%s\"", const char *, filter->name) {
+			VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+			flags = filter->paramProc(AsVDXFilterActivation(), &g_filterFuncs);
+		}
+	}
+
+	if (testingInvalidFormat) {
+		mRealSrc.mPixmapLayout.format = nsVDXPixmap::kPixFormat_XRGB8888;
+		mRealDst.mPixmapLayout.format = nsVDXPixmap::kPixFormat_XRGB8888;
+	}
+
+	mFlags = flags;
+
+	if (mRealDst.depth) {
+		mRealDst.modulo	= mRealDst.pitch - 4*mRealDst.w;
+		mRealDst.size	= mRealDst.offset + vdptrdiffabs(mRealDst.pitch) * mRealDst.h;
+		VDASSERT((sint32)mRealDst.size >= 0);
+
+		mRealDst.ConvertBitmapLayoutToPixmapLayout();
+	} else {
+		if (!mRealDst.mPixmapLayout.pitch) {
+			VDPixmapCreateLinearLayout(mRealDst.mPixmapLayout, mRealDst.mPixmapLayout.format, mRealDst.mPixmapLayout.w, mRealDst.mPixmapLayout.h, 16);
+
+			if (mRealDst.mPixmapLayout.format == nsVDPixmap::kPixFormat_XRGB8888)
+				VDPixmapLayoutFlipV(mRealDst.mPixmapLayout);
+		}
+
+		mRealDst.ConvertPixmapLayoutToBitmapLayout();
+	}
+
+	*mRealLast.mpPixmapLayout = *mRealSrc.mpPixmapLayout;
+	mRealLast.ConvertPixmapLayoutToBitmapLayout();
+
+	mfsi.lMicrosecsPerSrcFrame	= VDRoundToInt((double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0);
+	mfsi.lMicrosecsPerFrame		= VDRoundToInt((double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0);
+
+	if (invalidCrop)
+		flags |= FILTERPARAM_NOT_SUPPORTED;
+
+	return flags;
+}
+
+void FilterInstance::Start(int accumulatedDelay) {
+	if (!mbStarted) {
+		mFsiDelayRing.resize(accumulatedDelay);
+		mDelayRingPos = 0;
+
+		// Note that we set this immediately so we can Stop() the filter, even if
+		// it fails.
+		mbStarted = true;
+		if (filter->startProc) {
+			int rcode;
+			try {
+				VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+
+				vdprotected1("starting filter \"%s\"", const char *, filter->name) {
+					VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+					rcode = filter->startProc(AsVDXFilterActivation(), &g_filterFuncs);
+				}
+			} catch(const MyError& e) {
+				Stop();
+				throw MyError("Cannot start filter '%s': %s", filter->name, e.gets());
+			}
+
+			if (rcode) {
+				Stop();
+				throw MyError("Cannot start filter '%s': Unknown failure.", filter->name);
+			}
+		}
+	}
+}
+
+void FilterInstance::Stop() {
+	if (mbStarted) {
+		mbStarted = false;
+
+		if (filter->endProc) {
+			VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+			vdprotected1("stopping filter \"%s\"", const char *, filter->name) {
+				VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+				filter->endProc(AsVDXFilterActivation(), &g_filterFuncs);
+			}
+		}
+
+		mFsiDelayRing.clear();
+
+		mRealLast.mDIBSection.Shutdown();
+		mRealDst.mDIBSection.Shutdown();
+		mRealSrc.mDIBSection.Shutdown();
+		mFileMapping.Shutdown();
+	}
+}
+
+void FilterInstance::Run(bool firstFrame, sint64 sourceFrame, sint64 outputFrame, sint64 timelineFrame, sint64 sequenceFrame, sint64 sequenceTimeMS, uint32 flags) {
+	if (mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC)
+		VDPixmapBlt(mRealSrc.mPixmap, mExternalSrc);
+
+	if (mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC) {
+		SetViewportOrgEx(mRealDst.hdc, 0, 0, NULL);
+		SelectClipRgn(mRealDst.hdc, NULL);
+
+		VDPixmapBlt(mRealDst.mPixmap, mExternalDst);
+	}
+
+	// If the filter has a delay ring...
+	DelayInfo di;
+
+	di.mSourceFrame		= sourceFrame;
+	di.mOutputFrame		= outputFrame;
+	di.mTimelineFrame	= timelineFrame;
+
+	if (!mFsiDelayRing.empty()) {
+		if (firstFrame)
+			std::fill(mFsiDelayRing.begin(), mFsiDelayRing.end(), di);
+
+		DelayInfo diOut = mFsiDelayRing[mDelayRingPos];
+		mFsiDelayRing[mDelayRingPos] = di;
+
+		if (++mDelayRingPos >= mFsiDelayRing.size())
+			mDelayRingPos = 0;
+
+		sourceFrame		= diOut.mSourceFrame;
+		outputFrame		= diOut.mOutputFrame;
+		timelineFrame	= diOut.mTimelineFrame;
+	}
+
+	// Update FilterStateInfo structure.
+	mfsi.lCurrentSourceFrame	= VDClampToSint32(di.mSourceFrame);
+	mfsi.lCurrentFrame			= VDClampToSint32(sequenceFrame);
+	mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * (double)di.mSourceFrame * 1000.0));
+	mfsi.lDestFrameMS			= VDClampToSint32(sequenceTimeMS);
+	mfsi.flags					= flags;
+
+	// Compute alpha blending value.
+	float alpha = 1.0f;
+
+	VDParameterCurve *pAlphaCurve = GetAlphaParameterCurve();
+	if (pAlphaCurve)
+		alpha = (float)(*pAlphaCurve)((double)timelineFrame).mY;
+
+	// If this is an in-place filter with an alpha curve, save off the old image.
+	bool skipFilter = false;
+	bool skipBlit = false;
+
+	if (alpha < 254.5f / 255.0f) {
+		if (mFlags & FILTERPARAM_SWAP_BUFFERS) {
+			if (alpha < 0.5f / 255.0f)
+				skipFilter = true;
+		} else {
+			if (alpha < 0.5f / 255.0f) {
+				skipFilter = true;
+
+				if (mRealSrc.data == mRealDst.data && mRealSrc.pitch == mRealDst.pitch)
+					skipBlit = true;
+			}
+
+			if (!skipBlit)
+				VDPixmapBlt(mBlendPixmap, mRealSrc.mPixmap);
+		}
+	}
+
+	if (!skipFilter) {
+		try {
+			VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+			vdprotected1("running filter \"%s\"", const char *, filter->name) {
+				VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+				// Deliberately ignore the return code. It was supposed to be an error value,
+				// but earlier versions didn't check it and logoaway returns true in some cases.
+				filter->runProc(AsVDXFilterActivation(), &g_filterFuncs);
+			}
+		} catch(const MyError& e) {
+			throw MyError("Error running filter '%s': %s", filter->name, e.gets());
+		}
+
+		if (mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC) {
+			::GdiFlush();
+			VDPixmapBlt(mExternalDst, mRealDst.mPixmap);
+		}
+	}
+
+	if (!skipBlit && alpha < 254.5f / 255.0f) {
+		if (alpha > 0.5f / 255.0f)
+			VDPixmapBltAlphaConst(mRealDst.mPixmap, mBlendPixmap, 1.0f - alpha);
+		else
+			VDPixmapBlt(mRealDst.mPixmap, mBlendPixmap);
+	}
+
+	if (mFlags & FILTERPARAM_NEEDS_LAST)
+		VDPixmapBlt(mRealLast.mPixmap, mRealSrc.mPixmap);
+}
+
+sint64 FilterInstance::GetSourceFrame(sint64 frame) const {
+	if (filter->prefetchProc) {
+		VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+		vdprotected1("prefetching filter \"%s\"", const char *, filter->name) {
+			frame = filter->prefetchProc(AsVDXFilterActivation(), &g_filterFuncs, frame);
+		}
+
+		return frame;
+	} else {
+		double factor = ((double)mRealSrc.mFrameRateHi * (double)mRealDst.mFrameRateLo) / ((double)mRealSrc.mFrameRateLo * (double)mRealDst.mFrameRateHi);
+
+		return VDFloorToInt64((frame + 0.5f) * factor);
+	}
 }
 
 void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc) {
@@ -449,39 +959,39 @@ namespace {
 }
 
 void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
-	ScriptVoidFunctionPtr pf = (ScriptVoidFunctionPtr)fd.func_ptr;
+	VDXScriptVoidFunctionPtr pf = (VDXScriptVoidFunctionPtr)fd.func_ptr;
 
 	std::vector<CScriptValue> params(argc ? argc : 1);
 
 	ConvertParameters(&params[0], argv, argc);
 
 	VDScriptInterpreterAdapter adapt(isi);
-	pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
+	pf(&adapt, thisPtr->AsVDXFilterActivation(), &params[0], argc);
 }
 
 void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
-	ScriptIntFunctionPtr pf = (ScriptIntFunctionPtr)fd.func_ptr;
+	VDXScriptIntFunctionPtr pf = (VDXScriptIntFunctionPtr)fd.func_ptr;
 
 	std::vector<CScriptValue> params(argc ? argc : 1);
 
 	ConvertParameters(&params[0], argv, argc);
 
 	VDScriptInterpreterAdapter adapt(isi);
-	int rval = pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
+	int rval = pf(&adapt, thisPtr->AsVDXFilterActivation(), &params[0], argc);
 
 	argv[0] = rval;
 }
 
 void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
+	FilterInstance *const thisPtr = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
@@ -492,7 +1002,7 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 	ConvertParameters(&params[0], argv, argc);
 
 	VDScriptInterpreterAdapter adapt(isi);
-	CScriptValue v(pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc));
+	CScriptValue v(pf(&adapt, thisPtr->AsVDXFilterActivation(), &params[0], argc));
 
 	ConvertValue(argv[0], v);
 }
@@ -505,7 +1015,7 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 
 static ListAlloc<FilterDefinitionInstance>	g_filterDefs;
 
-FilterDefinition *FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len) {
+FilterDefinition *FilterAdd(VDXFilterModule *fm, FilterDefinition *pfd, int fd_len) {
 	VDExternalModule *pExtModule = VDGetExternalModuleByFilterModule(fm);
 
 	if (pExtModule) {
@@ -598,7 +1108,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 			if (fvi->ifp) {
 				HWND hwndPreviewButton = GetDlgItem(hDlg, IDC_PREVIEW);
 				EnableWindow(hwndPreviewButton, TRUE);
-				fvi->ifp->InitButton(hwndPreviewButton);
+				fvi->ifp->InitButton((VDXHWND)hwndPreviewButton);
 			}
             return (TRUE);
 
@@ -615,7 +1125,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 			case IDC_PREVIEW:
 				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
 				if (fvi->ifp)
-					fvi->ifp->Toggle(hDlg);
+					fvi->ifp->Toggle((VDXHWND)hDlg);
 				break;
 			default:
 				return FALSE;
@@ -660,617 +1170,4 @@ LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *titl
 		return fvi.cVal;
 
 	return cVal;
-}
-
-///////////////////////////////////////////////////////////////////////
-
-#define IDC_FILTDLG_POSITION		(500)
-
-INT_PTR CALLBACK FilterPreview::StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	FilterPreview *fpd = (FilterPreview *)GetWindowLongPtr(hdlg, DWLP_USER);
-
-	if (message == WM_INITDIALOG) {
-		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
-		fpd = (FilterPreview *)lParam;
-		fpd->hdlg = hdlg;
-	}
-
-	return fpd && fpd->DlgProc(message, wParam, lParam);
-}
-
-BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
-	switch(message) {
-	case WM_INITDIALOG:
-		OnInit();
-		OnVideoResize(true);
-		return TRUE;
-
-	case WM_DESTROY:
-		if (mpDisplay) {
-			mpDisplay->Destroy();
-			mpDisplay = NULL;
-			mhwndDisplay = NULL;
-		}
-		mDlgNode.Remove();
-		return TRUE;
-
-	case WM_USER+1:		// handle new size
-		OnVideoResize(false);
-		return TRUE;
-
-	case WM_SIZE:
-		OnResize();
-		return TRUE;
-
-	case WM_PAINT:
-		OnPaint();
-		return TRUE;
-
-	case WM_NOTIFY:
-		if (((NMHDR *)lParam)->hwndFrom == mhwndToolTip) {
-			TOOLTIPTEXT *pttt = (TOOLTIPTEXT *)lParam;
-			POINT pt;
-
-			if (pttt->hdr.code == TTN_NEEDTEXT) {
-				VBitmap *vbm = filtsys.LastBitmap();
-
-				GetCursorPos(&pt);
-				ScreenToClient(hdlg, &pt);
-
-				if (filtsys.isRunning() && pt.x>=4 && pt.y>=4 && pt.x < vbm->w+4 && pt.y < vbm->h+4) {
-					pttt->lpszText = pttt->szText;
-					wsprintf(pttt->szText, "pixel(%d,%d) = #%06lx", pt.x-4, pt.y-4, 0xffffff&*vbm->Address32(pt.x-4,pt.y-4));
-				} else
-					pttt->lpszText = "Preview image";
-			}
-		} else if (((NMHDR *)lParam)->idFrom == IDC_FILTDLG_POSITION) {
-			OnVideoRedraw();
-		}
-		return TRUE;
-
-	case WM_COMMAND:
-		if (LOWORD(wParam) == IDC_FILTDLG_POSITION) {
-			VDTranslatePositionCommand(hdlg, wParam, lParam);
-			return TRUE;
-		}
-		return OnCommand(LOWORD(wParam));
-
-	case WM_USER+0:		// redraw modified frame
-		OnVideoRedraw();
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
-void FilterPreview::OnInit() {
-	mpTimeline = &g_project->GetTimeline();
-
-	bih.biWidth = bih.biHeight = 0;
-
-	mhwndPosition = CreateWindow(POSITIONCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 64, hdlg, (HMENU)IDC_FILTDLG_POSITION, g_hInst, NULL);
-	mpPosition = VDGetIPositionControl((VDGUIHandle)mhwndPosition);
-
-	mpPosition->SetRange(0, mpTimeline->GetLength());
-	mpPosition->SetFrameTypeCallback(VDGetPositionControlCallbackTEMP());
-
-	inputVideoAVI->setTargetFormat(0);
-
-	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)hdlg);
-	if (mhwndDisplay)
-		mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndDisplay);
-
-	mhwndToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
-			CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-			hdlg, NULL, g_hInst, NULL);
-
-	SetWindowPos(mhwndToolTip, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
-
-	TOOLINFO ti;
-
-	ti.cbSize		= sizeof(TOOLINFO);
-	ti.uFlags		= TTF_SUBCLASS;
-	ti.hwnd			= hdlg;
-	ti.uId			= 0;
-	ti.rect.left	= 0;
-	ti.rect.top		= 0;
-	ti.rect.right	= 0;
-	ti.rect.left	= 0;
-	ti.hinst		= g_hInst;
-	ti.lpszText		= LPSTR_TEXTCALLBACK;
-
-	SendMessage(mhwndToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
-
-	mDlgNode.hdlg = hdlg;
-	mDlgNode.mhAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_PREVIEW_KEYS));
-	guiAddModelessDialog(&mDlgNode);
-}
-
-void FilterPreview::OnResize() {
-	RECT r;
-
-	GetClientRect(hdlg, &r);
-
-	SetWindowPos(mhwndPosition, NULL, 0, r.bottom - 64, r.right, 64, SWP_NOZORDER|SWP_NOACTIVATE);
-	SetWindowPos(mhwndDisplay, NULL, 4, 4, r.right - 8, r.bottom - 72, SWP_NOZORDER|SWP_NOACTIVATE);
-
-	InvalidateRect(hdlg, NULL, TRUE);
-}
-
-void FilterPreview::OnPaint() {
-	PAINTSTRUCT ps;
-
-	HDC hdc = BeginPaint(hdlg, &ps);
-
-	if (!hdc)
-		return;
-
-	if (filtsys.isRunning()) {
-		RECT r;
-
-		GetClientRect(hdlg, &r);
-
-		Draw3DRect(hdc,	0, 0, r.right, r.bottom - 64, FALSE);
-		Draw3DRect(hdc,	3, 3, r.right - 6, r.bottom - 70, TRUE);
-	} else {
-		RECT r;
-
-		GetWindowRect(mhwndDisplay, &r);
-		MapWindowPoints(NULL, hdlg, (LPPOINT)&r, 2);
-
-		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
-		SetBkMode(hdc, TRANSPARENT);
-		SetTextColor(hdc, 0);
-
-		HGDIOBJ hgoFont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
-		char buf[1024];
-		const char *s = mFailureReason.gets();
-		_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
-
-		RECT r2 = r;
-		DrawText(hdc, buf, -1, &r2, DT_CENTER|DT_WORDBREAK|DT_NOPREFIX|DT_CALCRECT);
-
-		int text_h = r2.bottom - r2.top;
-		int space_h = r.bottom - r.top;
-		if (text_h < space_h)
-			r.top += (space_h - text_h) >> 1;
-
-		DrawText(hdc, buf, -1, &r, DT_CENTER|DT_WORDBREAK|DT_NOPREFIX);
-		SelectObject(hdc, hgoFont);
-	}
-
-	EndPaint(hdlg, &ps);
-}
-
-void FilterPreview::OnVideoResize(bool bInitial) {
-	RECT r;
-	long w = 320, h = 240;
-	bool fResize;
-	TOOLINFO ti;
-	long oldw = bih.biWidth;
-	long oldh = bih.biHeight;
-
-	VBitmap(NULL, 320, 240, 32).MakeBitmapHeader(&bih);
-
-	try {
-		BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
-		BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
-
-		filtsys.initLinearChain(
-				pFilterList,
-				(Pixel *)((char *)pbih + pbih->biSize),
-				pbih2->biWidth,
-				abs(pbih2->biHeight),
-				0);
-
-		if (!filtsys.ReadyFilters(fsi)) {
-			VBitmap *vbm = filtsys.OutputBitmap();
-			w = vbm->w;
-			h = vbm->h;
-			vbm->MakeBitmapHeader(&bih);
-		}
-	} catch(const MyError& e) {
-		mpDisplay->Reset();
-		ShowWindow(mhwndDisplay, SW_HIDE);
-		mFailureReason.assign(e);
-		InvalidateRect(hdlg, NULL, TRUE);
-	}
-
-	fResize = oldw != w || oldh != h;
-
-	// if necessary, resize window
-
-	if (fResize) {
-		r.left = r.top = 0;
-		r.right = w + 8;
-		r.bottom = h + 8 + 64;
-
-		AdjustWindowRect(&r, GetWindowLong(hdlg, GWL_STYLE), FALSE);
-
-		if (bInitial) {
-			RECT rParent;
-			UINT uiFlags = SWP_NOZORDER|SWP_NOACTIVATE;
-
-			GetWindowRect(hwndParent, &rParent);
-
-			if (rParent.right + 32 >= GetSystemMetrics(SM_CXSCREEN))
-				uiFlags |= SWP_NOMOVE;
-
-			SetWindowPos(hdlg, NULL,
-					rParent.right + 16,
-					rParent.top,
-					r.right-r.left, r.bottom-r.top,
-					uiFlags);
-		} else
-			SetWindowPos(hdlg, NULL, 0, 0, r.right-r.left, r.bottom-r.top, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-
-		ti.cbSize		= sizeof(TOOLINFO);
-		ti.uFlags		= 0;
-		ti.hwnd			= hdlg;
-		ti.uId			= 0;
-		ti.rect.left	= 4;
-		ti.rect.top		= 4;
-		ti.rect.right	= 4 + w;
-		ti.rect.bottom	= 4 + h;
-
-		SendMessage(mhwndToolTip, TTM_NEWTOOLRECT, 0, (LPARAM)&ti);
-
-	}
-
-	OnVideoRedraw();
-}
-
-void FilterPreview::OnVideoRedraw() {
-	if (!filtsys.isRunning())
-		return;
-
-	bool bSuccessful = FetchFrame() >= 0;
-
-	try {
-		if (bSuccessful)
-			filtsys.RunFilters(fsi);
-		else {
-			const VBitmap& vb = *filtsys.LastBitmap();
-			uint32 color = GetSysColor(COLOR_3DFACE);
-
-			vb.RectFill(0, 0, vb.w, vb.h, ((color>>16)&0xff) + (color&0xff00) + ((color&0xff)<<16));
-		}
-
-		if (mpDisplay) {
-			ShowWindow(mhwndDisplay, SW_SHOW);
-			mpDisplay->SetSourcePersistent(false, VDAsPixmap(*filtsys.LastBitmap()));
-			mpDisplay->Update(IVDVideoDisplay::kAllFields);
-		}
-	} catch(const MyError& e) {
-		mpDisplay->Reset();
-		ShowWindow(mhwndDisplay, SW_HIDE);
-		mFailureReason.assign(e);
-		InvalidateRect(hdlg, NULL, TRUE);
-		UndoSystem();
-	}
-}
-
-bool FilterPreview::OnCommand(UINT cmd) {
-	switch(cmd) {
-	case IDCANCEL:
-		if (pButtonCallback)
-			pButtonCallback(false, pvButtonCBData);
-
-		DestroyWindow(hdlg);
-		hdlg = NULL;
-
-		UpdateButton();
-		return true;
-
-	case ID_EDIT_JUMPTO:
-		{
-			extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS, const VDFraction& realRate);
-
-			VDPosition pos = VDDisplayJumpToPositionDialog((VDGUIHandle)hdlg, mpPosition->GetPosition(), inputVideoAVI, g_project->GetInputFrameRate());
-
-			mpPosition->SetPosition(pos);
-			OnVideoRedraw();
-		}
-		return true;
-
-	default:
-		if (VDHandleTimelineCommand(mpPosition, mpTimeline, cmd)) {
-			OnVideoRedraw();
-			return true;
-		}
-	}
-
-	return false;
-}
-
-FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
-	: mhwndPosition(NULL)
-	, mhwndDisplay(NULL)
-	, mpDisplay(NULL)
-{
-	hdlg					= NULL;
-	this->pFilterList		= pFilterList;
-	this->pfiThisFilter		= pfiThisFilter;
-	hwndButton				= NULL;
-	pButtonCallback			= NULL;
-	pSampleCallback			= NULL;
-
-	if (pFilterList) {
-		fsi.lMicrosecsPerFrame = VDRoundToInt(1000000.0 / inputVideoAVI->getRate().asDouble());
-
-		if (g_dubOpts.video.mFrameRateAdjustLo > 0)
-			fsi.lMicrosecsPerFrame = VDRoundToInt(1000000.0 / g_dubOpts.video.mFrameRateAdjustHi * g_dubOpts.video.mFrameRateAdjustLo);
-
-		fsi.lMicrosecsPerSrcFrame = fsi.lMicrosecsPerFrame;
-		fsi.flags = FilterStateInfo::kStatePreview;
-	}
-}
-
-FilterPreview::~FilterPreview() {
-	if (hdlg)
-		DestroyWindow(hdlg);
-}
-
-VDPosition FilterPreview::FetchFrame() {
-	return FetchFrame(mpPosition->GetPosition());
-}
-
-VDPosition FilterPreview::FetchFrame(VDPosition pos) {
-	try {
-		const VDFraction frameRate(inputVideoAVI->getRate());
-
-		fsi.lCurrentFrame			= (long)pos;
-		fsi.lCurrentSourceFrame		= (long)mpTimeline->TimelineToSourceFrame(pos);
-		fsi.lSourceFrameMS			= (long)frameRate.scale64ir(fsi.lCurrentSourceFrame * (sint64)1000);
-		fsi.lDestFrameMS			= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
-
-		if (!inputVideoAVI->getFrame(fsi.lCurrentSourceFrame))
-			return -1;
-
-	} catch(const MyError&) {
-		return -1;
-	}
-
-	VDPixmapBlt(VDAsPixmap(*filtsys.InputBitmap()), inputVideoAVI->getTargetFormat());
-
-	return pos;
-}
-
-bool FilterPreview::isPreviewEnabled() {
-	return !!pFilterList;
-}
-
-bool FilterPreview::IsPreviewDisplayed() {
-	return hdlg != NULL;
-}
-
-void FilterPreview::SetButtonCallback(FilterPreviewButtonCallback pfpbc, void *pvData) {
-	this->pButtonCallback	= pfpbc;
-	this->pvButtonCBData	= pvData;
-}
-
-void FilterPreview::SetSampleCallback(FilterPreviewSampleCallback pfpsc, void *pvData) {
-	this->pSampleCallback	= pfpsc;
-	this->pvSampleCBData	= pvData;
-}
-
-void FilterPreview::InitButton(HWND hwnd) {
-	hwndButton = hwnd;
-
-	if (hwnd) {
-		const VDStringW wintext(VDGetWindowTextW32(hwnd));
-
-		// look for an accelerator
-		mButtonAccelerator = 0;
-
-		if (pFilterList) {
-			int pos = wintext.find(L'&');
-			if (pos != wintext.npos) {
-				++pos;
-				if (pos < wintext.size()) {
-					wchar_t c = wintext[pos];
-
-					if (iswalpha(c))
-						mButtonAccelerator = towlower(c);
-				}
-			}
-		}
-
-		EnableWindow(hwnd, pFilterList ? TRUE : FALSE);
-	}
-}
-
-void FilterPreview::Toggle(HWND hwndParent) {
-	Display(hwndParent, !hdlg);
-}
-
-void FilterPreview::Display(HWND hwndParent, bool fDisplay) {
-	if (fDisplay == !!hdlg)
-		return;
-
-	if (hdlg) {
-		DestroyWindow(hdlg);
-		hdlg = NULL;
-		UndoSystem();
-	} else if (pFilterList) {
-		this->hwndParent = hwndParent;
-		hdlg = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_PREVIEW), hwndParent, StaticDlgProc, (LPARAM)this);
-	}
-
-	UpdateButton();
-
-	if (pButtonCallback)
-		pButtonCallback(!!hdlg, pvButtonCBData);
-}
-
-void FilterPreview::RedoFrame() {
-	if (hdlg)
-		SendMessage(hdlg, WM_USER+0, 0, 0);
-}
-
-void FilterPreview::RedoSystem() {
-	if (hdlg)
-		SendMessage(hdlg, WM_USER+1, 0, 0);
-}
-
-void FilterPreview::UndoSystem() {
-	if (mpDisplay)
-		mpDisplay->Reset();
-	filtsys.DeinitFilters();
-	filtsys.DeallocateBuffers();
-}
-
-void FilterPreview::Close() {
-	InitButton(NULL);
-	if (hdlg)
-		Toggle(NULL);
-	UndoSystem();
-}
-
-bool FilterPreview::SampleCurrentFrame() {
-	if (!pFilterList || !hdlg || !pSampleCallback)
-		return false;
-
-	if (!filtsys.isRunning()) {
-		RedoSystem();
-
-		if (!filtsys.isRunning())
-			return false;
-	}
-
-	VDPosition pos = FetchFrame();
-
-	if (pos >= 0) {
-		try {
-			filtsys.RunFilters(fsi, pfiThisFilter);
-			pSampleCallback(&pfiThisFilter->src, (long)pos, (long)mpTimeline->GetLength(), pvSampleCBData);
-		} catch(const MyError& e) {
-			e.post(hdlg, "Video sampling error");
-		}
-	}
-
-	RedoFrame();
-
-	return true;
-}
-
-void FilterPreview::UpdateButton() {
-	if (hwndButton) {
-		VDStringW text(hdlg ? L"Hide preview" : L"Show preview");
-
-		if (mButtonAccelerator) {
-			VDStringW::size_type pos = text.find(mButtonAccelerator);
-
-			if (pos == VDStringW::npos)
-				pos = text.find(towupper(mButtonAccelerator));
-
-			if (pos != VDStringW::npos)
-				text.insert(text.begin() + pos, L'&');
-		}
-
-		VDSetWindowTextW32(hwndButton, text.c_str());
-	}
-}
-
-///////////////////////
-
-#define FPSAMP_KEYONESEC		(1)
-#define	FPSAMP_KEYALL			(2)
-#define	FPSAMP_ALL				(3)
-
-static INT_PTR CALLBACK SampleFramesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			if (IsDlgButtonChecked(hdlg, IDC_ONEKEYPERSEC))
-				EndDialog(hdlg, FPSAMP_KEYONESEC);
-			else if (IsDlgButtonChecked(hdlg, IDC_ALLKEYS))
-				EndDialog(hdlg, FPSAMP_KEYALL);
-			else
-				EndDialog(hdlg, FPSAMP_ALL);
-			return TRUE;
-		case IDCANCEL:
-			EndDialog(hdlg, 0);
-			return TRUE;
-		}
-		break;
-	}
-	return FALSE;
-}
-
-long FilterPreview::SampleFrames() {
-	static const char *const szCaptions[]={
-		"Sampling one keyframe per second",
-		"Sampling keyframes only",
-		"Sampling all frames",
-	};
-
-	int iMode;
-	long lCount = 0;
-
-	if (!pFilterList || !hdlg || !pSampleCallback)
-		return -1;
-
-	if (!filtsys.isRunning()) {
-		RedoSystem();
-
-		if (!filtsys.isRunning())
-			return -1;
-	}
-
-	iMode = DialogBox(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SAMPLE), hdlg, SampleFramesDlgProc);
-
-	if (!iMode)
-		return -1;
-
-	// Time to do the actual sampling.
-
-	VDPosition first, last;
-
-	first = mpTimeline->GetStart();
-	last = mpTimeline->GetEnd();
-
-	try {
-		ProgressDialog pd(hdlg, "Sampling input video", szCaptions[iMode-1], (long)(last-first), true);
-		VDPosition lSample = first;
-		VDPosition lSecondIncrement = inputVideoAVI->msToSamples(1000)-1;
-
-		pd.setValueFormat("Sampling frame %ld of %ld");
-
-		if (lSecondIncrement<0)
-			lSecondIncrement = 0;
-
-		while(lSample>=0 && lSample < last) {
-			pd.advance((long)(lSample - first));
-			pd.check();
-
-			if (FetchFrame(lSample)>=0) {
-				filtsys.RunFilters(fsi, pfiThisFilter);
-				pSampleCallback(&pfiThisFilter->src, (long)(lSample-first), (long)(last-first), pvSampleCBData);
-				++lCount;
-			}
-
-			switch(iMode) {
-			case FPSAMP_KEYONESEC:
-				lSample += lSecondIncrement;
-			case FPSAMP_KEYALL:
-				lSample = mpTimeline->GetNextKey(lSample);
-				break;
-			case FPSAMP_ALL:
-				++lSample;
-				break;
-			}
-		}
-	} catch(MyUserAbortError e) {
-
-		/* so what? */
-
-	} catch(const MyError& e) {
-		e.post(hdlg, "Video sampling error");
-	}
-
-	RedoFrame();
-
-	return lCount;
 }

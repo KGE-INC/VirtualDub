@@ -49,6 +49,7 @@
 #include <vd2/Dita/services.h>
 #include <vd2/Riza/display.h>
 #include <vd2/Riza/direct3d.h>
+#include <vd2/VDLib/win32/DebugOutputFilter.h>
 #include "crash.h"
 #include "DubSource.h"
 
@@ -67,41 +68,13 @@
 #include "projectui.h"
 #include "capture.h"
 #include "captureui.h"
-
-#ifdef _DEBUG
-	#define VD_GENERIC_BUILD_NAMEW	L"debug"
-	#define VD_BUILD_NAMEW			L"debug"
-#else
-	#define VD_GENERIC_BUILD_NAMEW	L"release"
-
-	#if defined(_M_AMD64)
-		#define VD_BUILD_NAMEW		L"release-AMD64"
-	#elif defined(__INTEL_COMPILER)
-		#define VD_BUILD_NAMEW		L"release-P4"
-	#else
-		#define VD_BUILD_NAMEW		L"release"
-	#endif
-#endif
-
-#if defined(_M_AMD64)
-	#define VD_COMPILE_TARGETW		L"AMD64"
-	#define VD_EXEFILE_NAMEA		"Veedub64.exe"
-	#define VD_CLIEXE_NAMEA			"vdub64.exe"
-#elif defined(__INTEL_COMPILER)
-	#define VD_COMPILE_TARGETW		L"Pentium 4"
-	#define VD_EXEFILE_NAMEA		"VeedubP4.exe"
-	#define VD_CLIEXE_NAMEA			"vdubp4.exe"
-#else
-	#define VD_COMPILE_TARGETW		L"80x86"
-	#define VD_EXEFILE_NAMEA		"VirtualDub.exe"
-	#define VD_CLIEXE_NAMEA			"vdub.exe"
-#endif
+#include "version.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
 extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
-extern void VDInitBuiltinVideoFilters();
+extern void VDInitBuiltinInputDrivers();
 extern void VDInitInputDrivers();
 extern void VDShutdownInputDrivers();
 extern void VDInitExternalCallTrap();
@@ -124,7 +97,7 @@ void ParseCommandLine(const wchar_t *lpCmdLine);
 
 static BOOL compInstalled;	// yuck
 
-extern "C" unsigned long version_num;
+extern COMPVARS		g_Vcompression;
 
 extern HINSTANCE	g_hInst;
 extern HWND			g_hWnd;
@@ -346,36 +319,8 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	if (!cmdLine.FindAndRemoveSwitch(L"h")) {
 		SetUnhandledExceptionFilter(CrashHandlerHook);
 
-		// Some DLLs, most notably MSCOREE.DLL, steal the UnhandledExceptionFilter hook.
-		// Bad DLL! We patch SetUnhandledExceptionFilter() to prevent this.
-
-		// don't attempt to patch system DLLs on Windows 98
-		if (VDIsWindowsNT()) {
-			HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
-			FARPROC fpSUEF = GetProcAddress(hmodKernel32, "SetUnhandledExceptionFilter");
-
-#ifdef _M_AMD64
-			DWORD oldProtect;
-			if (VirtualProtect(fpSUEF, 3, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-				static const uint8 patch[]={
-					0x33, 0xC0,				// XOR EAX, EAX
-					0xC3					// RET
-				};
-				memcpy(fpSUEF, patch, 3);
-				VirtualProtect(fpSUEF, 3, oldProtect, &oldProtect);
-			}
-#else
-			DWORD oldProtect;
-			if (VirtualProtect(fpSUEF, 5, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-				static const uint8 patch[]={
-					0x33, 0xC0,				// XOR EAX, EAX
-					0xC2, 0x04, 0x00		// RET 4
-				};
-				memcpy(fpSUEF, patch, 5);
-				VirtualProtect(fpSUEF, 5, oldProtect, &oldProtect);
-			}
-#endif
-		}
+		extern void VDPatchSetUnhandledExceptionFilter();
+		VDPatchSetUnhandledExceptionFilter();
 	}
 
 	set_terminate(VDterminate);
@@ -402,10 +347,10 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 		VDAttachLogger(&g_VDConsoleLogger, false, true);
 
 		// announce startup
-		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.8 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
-				,1
-				,&version_num));
+		VDStringW s(L"VirtualDub CLI Video Processor Version $v$s (build $b/$c) for $p");
+		VDSubstituteStrings(s);
+
+		VDLog(kVDLogInfo, s);
 		VDLog(kVDLogInfo, VDswprintf(
 				L"Copyright (C) Avery Lee 1998-2008. Licensed under GNU General Public License\n"
 				,1
@@ -461,7 +406,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 	InitBuiltinFilters();
 	VDInitBuiltinAudioFilters();
-	VDInitBuiltinVideoFilters();
+	VDInitBuiltinInputDrivers();
 	VDInitInputDrivers();
 
 	if (!InitJobSystem())
@@ -604,21 +549,7 @@ bool InitApplication(HINSTANCE hInstance) {
 ///////////////////////////////////////////////////////////////////////////
 
 bool InitInstance( HANDLE hInstance, int nCmdShow) {
-	wchar_t buf[256];
-
-	VDStringW versionFormat(VDLoadStringW32(IDS_TITLE_INITIAL));
-
-	swprintf(buf, sizeof buf / sizeof buf[0], versionFormat.c_str(), version_num,
-#ifdef _DEBUG
-		L"debug"
-#elif defined(_M_AMD64)
-		L"release-AMD64"
-#elif defined(__INTEL_COMPILER)
-		L"release-P4"
-#else
-		L"release"
-#endif
-		);
+	VDStringW versionFormat(VDLoadStringW32(IDS_TITLE_INITIAL, true));
 
     // Create a main window for this application instance. 
 	if (GetVersion() < 0x80000000) {
@@ -667,7 +598,7 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
     ShowWindow(g_hWnd, nCmdShow);  
     UpdateWindow(g_hWnd);          
 
-	VDSetWindowTextW32(g_hWnd, buf);
+	VDSetWindowTextW32(g_hWnd, versionFormat.c_str());
 
     return (TRUE);               
 
@@ -722,6 +653,8 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"Command-line flags:\n"
 						"\n"
 						"  /b <src-dir> <dst-dir>    Add batch entries for a directory\n"
+						"  /blockDebugOutput         Block debug output from specific DLLs\n"
+						"         [+/-dllname,...]\n"
 						"  /c                        Clear job list\n"
 						"  /capture                  Switch to capture mode\n"
 						"  /capchannel <ch> [<freq>] Set capture channel (opt. frequency in MHz)\n"
@@ -729,6 +662,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /capdevice <devname>      Set capture device\n"
 						"  /capfile <filename>       Set capture filename\n"
 						"  /capfileinc <filename>    Set capture filename and bump until clear\n"
+						"  /capfilealloc <size>      Preallocate capture file in megabytes\n"
 						"  /capstart [<time>[s]]     Capture with optional time limit\n"
 						"                            (default is minutes, use 's' for seconds)\n"
 						"  /cmd <command>            Run quick script command\n"
@@ -753,6 +687,12 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						throw MyError("Command line error: syntax is /b <src_dir> <dst_dir>");
 
 					JobAddBatchDirectory(token, path2);
+				}
+				else if (!wcscmp(token, L"blockDebugOutput")) {
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
+						throw MyError("Command line error: syntax is /blockDebugOutput <filter>");
+					
+					VDInitDebugOutputFilterW32(VDTextWToA(token).c_str());
 				}
 				else if (!wcscmp(token, L"c")) {
 					JobClearList();
@@ -810,6 +750,20 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					g_capProjectUI->SetCaptureFile(token);
 					g_capProject->IncrementFileIDUntilClear();
 				}
+				else if (!wcscmp(token, L"capfilealloc")) {
+					if (!g_capProjectUI)
+						throw MyError("Command line error: not in capture mode");
+
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
+						throw MyError("Command line error: syntax is /capfileinc <filename>");
+
+					unsigned long mbsize = wcstoul(token, NULL, 0);
+
+					if (!mbsize)
+						throw MyError("Command line error: invalid size '%ls' for preallocating capture file.", token);
+
+					g_capProject->PreallocateCaptureFile((sint64)mbsize << 20);
+				}
 				else if (!wcscmp(token, L"capstart")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
@@ -855,13 +809,13 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				}
 				else if (!wcscmp(token, L"hexedit")) {
 					if (cmdLine.GetNextNonSwitchArgument(it, token))
-						HexEdit(NULL, VDTextWToA(token).c_str(), false);
+						HexEdit(NULL, token, false);
 					else
 						HexEdit(NULL, NULL, false);
 				}
 				else if (!wcscmp(token, L"hexview")) {
 					if (cmdLine.GetNextNonSwitchArgument(it, token))
-						HexEdit(NULL, VDTextWToA(token).c_str(), true);
+						HexEdit(NULL, token, true);
 					else
 						HexEdit(NULL, NULL, true);
 				}
@@ -959,10 +913,10 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 		if (!argsFound && g_consoleMode)
 			throw MyError(
 				"This application allows usage of VirtualDub from the command line. To use\n"
-				"the program interactively, launch "VD_EXEFILE_NAMEA" directly.\n"
+				"the program interactively, launch "VD_PROGRAM_EXEFILE_NAMEA" directly.\n"
 				"\n"
-				"Usage: "VD_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
-				"       "VD_CLIEXE_NAMEA" /? for help\n");
+				"Usage: "VD_PROGRAM_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
+				"       "VD_PROGRAM_CLIEXE_NAMEA" /? for help\n");
 
 		if (!g_consoleMode)
 			disp.Post((VDGUIHandle)g_hWnd);

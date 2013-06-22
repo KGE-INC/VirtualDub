@@ -218,7 +218,7 @@ void parse_ia(tRuleSystem& rsys, FILE *f) {
 					} else {
 						unsigned long id = strtoul(s, &s, 10);
 
-						if (!id || id > r.argcount)
+						if (!id || (int)id > r.argcount)
 							oops("macro argument $%lu out of range\n", id);
 
 						if (!r.result.empty() && *r.result.rbegin() == ' ')

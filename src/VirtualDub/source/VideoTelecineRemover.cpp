@@ -21,16 +21,21 @@
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 
 #include "VideoTelecineRemover.h"
 
+#if defined(_MSC_VER) && defined(_M_IX86)
+	#pragma warning(disable: 4799)	// warning C4799: function 'computeScanImprovementMMX' has no EMMS instruction
+#endif
+
 class CVideoTelecineRemover: public VideoTelecineRemover {
 public:
-	CVideoTelecineRemover(VBitmap *pInFormat, bool, int, bool);
+	CVideoTelecineRemover(int w, int h, bool decomb, int offset, bool invertedPolarity);
 	~CVideoTelecineRemover();
 
 	void ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame);
-	bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame);
+	bool ProcessOut(const VDPixmap& out, VDPosition& srcFrame, VDPosition& timelineFrame);
 
 private:
 	char *	pMemBlock;
@@ -44,17 +49,18 @@ private:
 	int		nLag;
 	bool	fInvertPolarity, fNewPolarity, fDropMode, fNewDropMode,
 			fDecomb, fOffsetLocked;
+
+	VDPixmapBuffer	mTempBuffer;
+	VDPixmapBuffer	mTempBuffer2;
 };
 
-VideoTelecineRemover *CreateVideoTelecineRemover(VBitmap *pInFormat, bool fDecomb, int iOffset, bool fInvertedPolarity) {
-	return new CVideoTelecineRemover(pInFormat, fDecomb, iOffset, fInvertedPolarity);
+VideoTelecineRemover *CreateVideoTelecineRemover(int w, int h, bool fDecomb, int iOffset, bool fInvertedPolarity) {
+	return new CVideoTelecineRemover(w, h, fDecomb, iOffset, fInvertedPolarity);
 }
 
 
-CVideoTelecineRemover::CVideoTelecineRemover(VBitmap *pFormat, bool fDecomb, int iOffset, bool fInvertedPolarity) {
-//	vb = *pFormat;
-
-	vb = VBitmap(NULL, pFormat->w, pFormat->h, 24);
+CVideoTelecineRemover::CVideoTelecineRemover(int w, int h, bool fDecomb, int iOffset, bool fInvertedPolarity) {
+	vb = VBitmap(NULL, w, h, 24);
 
 	if (!(pMemBlock = new char[vb.size * 10]))
 		throw MyMemoryError();
@@ -263,7 +269,7 @@ static long computeScanImprovement(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, 
 void CVideoTelecineRemover::ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame) {
 	Pixel8 *src1, *src2;
 	PixDim h;
-	__int64 field1=0, field2=0;
+	sint64 field1=0, field2=0;
 
 	vb.data = (Pixel *)(pMemBlock + vb.pitch*vb.h * nCurrentIn);
 
@@ -348,7 +354,7 @@ void CVideoTelecineRemover::ProcessIn(const VDPixmap& in, VDPosition srcFrame, V
 			}
 		}
 
-		_RPT4(0,"----------- %d %d [%d %d]\n", best_offset, best_polarity, nNewCombOffset1, fNewPolarity);
+//		VDDEBUG("----------- %d %d [%d %d]\n", best_offset, best_polarity, nNewCombOffset1, fNewPolarity);
 
 		fDropMode = fNewDropMode;
 		nCombOffset1 = nNewCombOffset1;
@@ -370,7 +376,7 @@ void CVideoTelecineRemover::ProcessIn(const VDPixmap& in, VDPosition srcFrame, V
 
 #ifdef _M_IX86
 static void __declspec(naked) DeBlendMMX_32_24(void *dst, void *src1, void *src2, void *src3, void *src4, long w3, long h, long spitch, long dmodulo) {
-	static const __int64 one = 0x0001000100010001i64;
+	static const sint64 one = 0x0001000100010001i64;
 	__asm {
 		push		ebp
 		push		edi
@@ -480,7 +486,7 @@ xloop:
 }
 #endif
 
-bool CVideoTelecineRemover::ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame) {
+bool CVideoTelecineRemover::ProcessOut(const VDPixmap& out, VDPosition& srcFrame, VDPosition& timelineFrame) {
 
 	if (++nCurrentOut >= 10)
 		nCurrentOut = 0;
@@ -497,40 +503,77 @@ bool CVideoTelecineRemover::ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPo
 		// First combed frame; reconstruct.
 
 		if (fDecomb) {
-			VBitmap vb_in, vb_out;
+			VDPixmap pxin, pxout;
+
+			const VDPixmap *temp = &out;
+
+			switch(out.format) {
+				case nsVDPixmap::kPixFormat_XRGB1555:
+				case nsVDPixmap::kPixFormat_RGB565:
+				case nsVDPixmap::kPixFormat_RGB888:
+				case nsVDPixmap::kPixFormat_XRGB8888:
+				case nsVDPixmap::kPixFormat_Y8:
+				case nsVDPixmap::kPixFormat_YUV422_UYVY:
+				case nsVDPixmap::kPixFormat_YUV422_YUYV:
+				case nsVDPixmap::kPixFormat_YUV444_Planar:
+				case nsVDPixmap::kPixFormat_YUV422_Planar:
+				case nsVDPixmap::kPixFormat_YUV411_Planar:
+					break;
+
+				default:
+					mTempBuffer.init(vb.w, vb.h, nsVDPixmap::kPixFormat_YUV444_Planar);
+					temp = &mTempBuffer;
+			}
 
 			// Copy bottom field.
+			int bottomFieldFrame = (nCurrentOut + (fInvertPolarity?1:0))%10;
+			pxin.data		= pMemBlock + vb.pitch * (vb.h*bottomFieldFrame + (vb.h - 2));
+			pxin.pitch		= -vb.pitch * 2;
+			pxin.w			= vb.w;
+			pxin.h			= vb.h >> 1;
+			pxin.format		= nsVDPixmap::kPixFormat_RGB888;
 
-			vb_in			= vb;
-			vb_in.data		= (Pixel *)(pMemBlock + vb.pitch * (vb.h*((nCurrentOut+(fInvertPolarity?1:0))%10) + (vb.h & 1)));
-			vb_in.modulo	+= vb.pitch;
-			vb_in.pitch		*= 2;
-			vb_in.h			= (vb_in.h + 1)/2;
+			pxout = *temp;
+			pxout.data		= vdptroffset(temp->data, temp->pitch);
+			pxout.data2		= vdptroffset(temp->data2, temp->pitch2);
+			pxout.data3		= vdptroffset(temp->data3, temp->pitch3);
+			pxout.pitch		= temp->pitch * 2;
+			pxout.pitch2	= temp->pitch2 * 2;
+			pxout.pitch3	= temp->pitch3 * 2;
+			pxout.h			= temp->h >> 1;
 
-			vb_out			= *pOut;
-			vb_out.modulo	+= vb_out.pitch;
-			vb_out.pitch	*= 2;
-			vb_out.h		= (vb_out.h + 1)/2;
-
-			vb_out.BitBlt(0, 0, &vb_in, 0, 0, -1, -1);
-	//		vb_out.RectFill(0, 0, -1, -1, 0x00ff00);
+			VDPixmapBlt(pxout, pxin);
 
 			// Copy top field.
+			int topFieldFrame = (nCurrentOut+(fInvertPolarity?0:1))%10;
+			pxin.data		= pMemBlock + vb.pitch * (vb.h*topFieldFrame + (vb.h - 1));
+			pxin.h			= (vb.h + 1) >> 1;
 
-			vb_in.data		= (Pixel *)(pMemBlock + vb.pitch * (vb.h*((nCurrentOut+(fInvertPolarity?0:1))%10) + 1 - (vb.h & 1)));
-			vb_in.h			= vb.h/2;
+			pxout.data		= temp->data;
+			pxout.data2		= temp->data2;
+			pxout.data3		= temp->data3;
+			pxout.h			= (temp->h + 1) >> 1;
 
-			vb_out.data		= (Pixel *)((char *)pOut->data + pOut->pitch*(1-(pOut->h & 1)));
-			vb_out.h		= pOut->h/2;
+			VDPixmapBlt(pxout, pxin);
 
-			vb_out.BitBlt(0, 0, &vb_in, 0, 0, -1, -1);
-	//		vb_out.RectFill(0, 0, -1, -1, 0xff0000);
+			if (temp != &out)
+				VDPixmapBlt(out, *temp);
 		} else {
-			_RPT2(0,"Recon: %d %d\n", nCurrentIn, nCurrentOut);
+//			VDDEBUG("Recon: %d %d\n", nCurrentIn, nCurrentOut);
 
 #ifdef _M_IX86
+			const VDPixmap *pxsrc;
+
+			if (out.format != nsVDPixmap::kPixFormat_XRGB8888) {
+				mTempBuffer2.init(vb.w, vb.h, nsVDPixmap::kPixFormat_XRGB8888);
+				pxsrc = &mTempBuffer2;
+			} else
+				pxsrc = &out;
+
+			VBitmap vbout(VDAsVBitmap(*pxsrc));
+
 			DeBlendMMX_32_24(
-					pOut->data,
+					vbout.data,
 					pMemBlock + vb.pitch * (vb.h * ((nCurrentOut+9)%10)),
 					pMemBlock + vb.pitch * (vb.h *   nCurrentOut       ),
 					pMemBlock + vb.pitch * (vb.h * ((nCurrentOut+1)%10)),
@@ -538,7 +581,10 @@ bool CVideoTelecineRemover::ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPo
 					-vb.w*3,
 					vb.h,
 					vb.pitch,
-					pOut->modulo);
+					vbout.pitch - vb.w * 4);
+
+			if (out.format != nsVDPixmap::kPixFormat_XRGB8888)
+				VDPixmapBlt(out, *pxsrc);
 #endif
 
 #pragma vdpragma_TODO("Need scalar version of this for AMD64")
@@ -556,7 +602,7 @@ bool CVideoTelecineRemover::ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPo
 
 		vb.data = (Pixel *)(pMemBlock + vb.pitch*vb.h * nCurrentOut);
 
-		pOut->BitBlt(0, 0, &vb, 0, 0, -1, -1);
+		VDPixmapBlt(out, VDAsPixmap(vb));
 
 		srcFrame = mSourceFrameNums[nCurrentOut];
 		timelineFrame = mTimelineFrameNums[nCurrentOut];

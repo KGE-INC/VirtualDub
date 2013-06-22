@@ -94,8 +94,11 @@ public:
 	// The "NT" functions are non-throwing and return success/failure; the regular functions throw exceptions
 	// when something bad happens.
 
-	void	open(const char *pszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
-	void	open(const wchar_t *pwszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
+	void	open(const char *pszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+	void	open(const wchar_t *pwszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+
+	bool	openNT(const wchar_t *pwszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+
 	bool	closeNT();
 	void	close();
 	bool	truncateNT();
@@ -140,7 +143,7 @@ public:
 	static void FreeUnbuffer(void *p);
 
 protected:
-	void	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags);
+	bool	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags, bool throwOnError);
 };
 
 ///////////////////////////////////////////////////////////////////////////

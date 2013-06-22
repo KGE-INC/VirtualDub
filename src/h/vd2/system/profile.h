@@ -28,6 +28,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/thread.h>
+#include <vd2/system/vdstl.h>
 #include <vector>
 
 class VDRTProfiler;
@@ -63,6 +64,12 @@ VDRTProfiler *VDGetRTProfiler();
 //
 class VDRTProfiler {
 public:
+	enum CounterType {
+		kCounterTypeUint32,
+		kCounterTypeDouble
+	};
+
+public:
 	VDRTProfiler();
 	~VDRTProfiler();
 
@@ -77,6 +84,11 @@ public:
 	void BeginEvent(int channel, uint32 color, const char *name);
 	void EndEvent(int channel);
 
+	void RegisterCounterD(const char *name, const double *val);
+	void RegisterCounterU32(const char *name, const uint32 *val);
+	void RegisterCounter(const char *name, const void *val, CounterType type);
+	void UnregisterCounter(void *p);
+
 public:
 	struct Event {
 		uint64		mStartTime;
@@ -88,14 +100,29 @@ public:
 	struct Channel {
 		const char			*mpName;
 		bool				mbEventPending;
-		std::vector<Event>	mEventList;
+		vdfastvector<Event>	mEventList;
 	};
 
-	typedef std::vector<Channel> tChannels;
+	struct Counter {
+		const char			*mpName;
+		const void			*mpData;
+		CounterType			mType;
+		union {
+			uint32 u32;
+			double d;
+		} mData, mDataLast;
+	};
 
-	VDCriticalSection		mcsChannels;
+	struct CounterByNamePred;
+
+	typedef std::vector<Channel> tChannels;
+	typedef vdfastvector<Counter> Counters;
+
+	VDCriticalSection		mLock;
 	tChannels				mChannelArray;
 	tChannels				mChannelArrayToPaint;
+	Counters				mCounterArray;
+	Counters				mCounterArrayToPaint;
 	uint64					mPerfFreq;
 	uint64					mSnapshotTime;
 

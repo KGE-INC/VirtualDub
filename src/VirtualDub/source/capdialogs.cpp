@@ -778,35 +778,35 @@ void VDCaptureLoadPreferences(VDCapturePreferences& prefs) {
 
 class VDDialogCaptureRawAudioFormat : public VDDialogBase {
 public:
-	const std::list<vdstructex<WAVEFORMATEX> >& mFormats;
+	const std::list<vdstructex<VDWaveFormat> >& mFormats;
 	int mSelected;
 
-	VDDialogCaptureRawAudioFormat(const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) : mFormats(formats), mSelected(sel) {}
+	VDDialogCaptureRawAudioFormat(const std::list<vdstructex<VDWaveFormat> >& formats, int sel) : mFormats(formats), mSelected(sel) {}
 
 	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
 		if (type == kEventAttach) {
 			mpBase = pBase;
 
-			std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(mFormats.begin()), itEnd(mFormats.end());
+			std::list<vdstructex<VDWaveFormat> >::const_iterator it(mFormats.begin()), itEnd(mFormats.end());
 
 			IVDUIList *pList = vdpoly_cast<IVDUIList *>(mpBase->GetControl(100));
 			for(; it!=itEnd; ++it) {
-				const WAVEFORMATEX& wfex = **it;
+				const VDWaveFormat& wfex = **it;
 
-				const unsigned samprate = wfex.nSamplesPerSec;
-				const unsigned channels = wfex.nChannels;
-				const unsigned depth	= wfex.wBitsPerSample;
-				const unsigned kbps		= wfex.nAvgBytesPerSec / 125;
-				const wchar_t *chstr	= wfex.nChannels == 2 ? L"stereo" : L"mono";
+				const unsigned samprate = wfex.mSamplingRate;
+				const unsigned channels = wfex.mChannels;
+				const unsigned depth	= wfex.mSampleBits;
+				const unsigned kbps		= wfex.mDataRate / 125;
+				const wchar_t *chstr	= wfex.mChannels == 2 ? L"stereo" : L"mono";
 				const wchar_t *lineformat;
 
-				if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
-					if (wfex.nChannels > 2)
+				if (wfex.mTag == VDWaveFormat::kTagPCM) {
+					if (wfex.mChannels > 2)
 						lineformat = L"PCM: %uHz, %uch, %[3]u-bit";
 					else
 						lineformat = L"PCM: %uHz, %[2]ls, %[3]u-bit";
 				} else {
-					if (wfex.nChannels > 2)
+					if (wfex.mChannels > 2)
 						lineformat = L"Compressed: %uHz, %uch, %[4]uKbps";
 					else
 						lineformat = L"Compressed: %uHz, %[2]ls, %[4]uKbps";
@@ -832,7 +832,7 @@ public:
 	}
 };
 
-int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) {
+int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<VDWaveFormat> >& formats, int sel) {
 	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
 
 	IVDUIWindow *pWin = VDCreateDialogFromResource(2100, peer);

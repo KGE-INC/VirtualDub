@@ -3,7 +3,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>
-#include <vd2/plugin/vdvideofiltold.h>
+#include <vd2/plugin/vdvideofilt.h>
 #include <vector>
 #include <map>
 
@@ -22,6 +22,13 @@ struct VDPluginDescription {
 	const VDPluginInfo	*mpShadowedInfo;
 };
 
+struct VDXFilterModule {		// formerly FilterModule
+	struct VDXFilterModule *next, *prev;
+	VDXHINSTANCE			hInstModule;
+	VDXFilterModuleInitProc	initProc;
+	VDXFilterModuleDeinitProc	deinitProc;
+};
+
 class VDExternalModule {
 public:
 	VDExternalModule(const VDStringW& filename);
@@ -31,7 +38,7 @@ public:
 	void Unlock();
 
 	const VDStringW& GetFilename() const { return mFilename; }
-	FilterModule& GetFilterModuleInfo() { return mModuleInfo; }
+	VDXFilterModule& GetFilterModuleInfo() { return mModuleInfo; }
 
 protected:
 	void DisconnectOldPlugins();
@@ -41,7 +48,7 @@ protected:
 	VDStringW		mFilename;
 	HMODULE			mhModule;
 	int				mModuleRefCount;
-	FilterModule	mModuleInfo;
+	VDXFilterModule	mModuleInfo;
 };
 
 void					VDDeinitPluginSystem();
@@ -49,7 +56,7 @@ void					VDDeinitPluginSystem();
 void					VDAddPluginModule(const wchar_t *pFilename);
 void					VDAddInternalPlugins(const VDPluginInfo *const *ppInfo);
 
-VDExternalModule *		VDGetExternalModuleByFilterModule(const FilterModule *);
+VDExternalModule *		VDGetExternalModuleByFilterModule(const VDXFilterModule *);
 
 VDPluginDescription *	VDGetPluginDescription(const wchar_t *pName, uint32 mType);
 void					VDEnumeratePluginDescriptions(std::vector<VDPluginDescription *>& plugins, uint32 type);

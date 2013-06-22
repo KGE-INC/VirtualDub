@@ -97,8 +97,8 @@ BOOL APIENTRY fieldbobConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
-int fieldbob_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FIELDBOB), hWnd, (DLGPROC)fieldbobConfigDlgProc, (LPARAM)fa->filter_data);
+int fieldbob_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FIELDBOB), (HWND)hWnd, (DLGPROC)fieldbobConfigDlgProc, (LPARAM)fa->filter_data);
 
 	return 0;
 }
@@ -119,16 +119,16 @@ int fieldbob_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	if (!sfd) return 1;
 
 	int mode = fa->pfsi->lCurrentSourceFrame & 1 ? sfd->oddmode : sfd->evenmode;
-	PixDim w = fa->dst.w, h = fa->dst.h, w2;
-	Pixel32 *src = fa->src.data, *dst = fa->dst.data;
+	uint32 w = fa->dst.w, h = fa->dst.h, w2;
+	uint32 *src = fa->src.data, *dst = fa->dst.data;
 
 	switch(mode) {
 	case 0:
 		do {
 			memcpy(dst, src, w*4);
 
-			src = (Pixel32 *)((char *)src + fa->src.pitch);
-			dst = (Pixel32 *)((char *)dst + fa->dst.pitch);
+			src = (uint32 *)((char *)src + fa->src.pitch);
+			dst = (uint32 *)((char *)dst + fa->dst.pitch);
 		} while(--h);
 		break;
 
@@ -139,49 +139,49 @@ int fieldbob_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		memcpy((char *)dst + fa->dst.pitch*(h-1), (char *)src + fa->src.pitch*(h-1), w*4);
 
 		if ((h-=2) > 0) {
-			Pixel32 *src2 = (Pixel32 *)((char *)src + fa->src.pitch);
-			Pixel32 *src3 = (Pixel32 *)((char *)src + fa->src.pitch*2);
+			uint32 *src2 = (uint32 *)((char *)src + fa->src.pitch);
+			uint32 *src3 = (uint32 *)((char *)src + fa->src.pitch*2);
 
-			dst = (Pixel32 *)((char *)dst + fa->dst.pitch);
+			dst = (uint32 *)((char *)dst + fa->dst.pitch);
 
 			do {
 				w2 = w;
 
 				do {
-					Pixel32 a = *src++;
-					Pixel32 b = *src2++;
-					Pixel32 c = *src3++;
+					uint32 a = *src++;
+					uint32 b = *src2++;
+					uint32 c = *src3++;
 
 					*dst++	= (((((a>>1)&0x7f7f7f) + ((c&0xfefefe)>>1) + (a&b&0x010101))>>1)&0x7f7f7f)
 							+ ((b&0xfefefe)>>1);
 				} while(--w2);
 
-				src = (Pixel32 *)((char *)src + fa->src.modulo);
-				src2 = (Pixel32 *)((char *)src2 + fa->src.modulo);
-				src3 = (Pixel32 *)((char *)src3 + fa->src.modulo);
-				dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+				src = (uint32 *)((char *)src + fa->src.modulo);
+				src2 = (uint32 *)((char *)src2 + fa->src.modulo);
+				src3 = (uint32 *)((char *)src3 + fa->src.modulo);
+				dst = (uint32 *)((char *)dst + fa->dst.modulo);
 			} while(--h);
 		}
 		break;
 
 	case 2:
 		memcpy(dst, src, w*4);
-		dst = (Pixel32 *)((char *)dst + fa->dst.pitch);
+		dst = (uint32 *)((char *)dst + fa->dst.pitch);
 		if (--h > 0) {
-			Pixel32 *src2 = (Pixel32 *)((char *)src + fa->src.pitch);
+			uint32 *src2 = (uint32 *)((char *)src + fa->src.pitch);
 			do {
 				w2 = w;
 
 				do {
-					Pixel32 a = *src++;
-					Pixel32 b = *src2++;
+					uint32 a = *src++;
+					uint32 b = *src2++;
 
 					*dst++ = ((a>>2)&0x3f3f3f) + ((b&0xfcfcfc)>>2)*3 + ((((a&0x030303) + (b&0x030303)*3)>>2)&0x030303);
 				} while(--w2);
 
-				src = (Pixel32 *)((char *)src + fa->src.modulo);
-				src2 = (Pixel32 *)((char *)src2 + fa->src.modulo);
-				dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+				src = (uint32 *)((char *)src + fa->src.modulo);
+				src2 = (uint32 *)((char *)src2 + fa->src.modulo);
+				dst = (uint32 *)((char *)dst + fa->dst.modulo);
 			} while(--h);
 		}
 		break;
@@ -189,20 +189,20 @@ int fieldbob_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	case 3:
 		memcpy((char *)dst + fa->dst.pitch*(h-1), (char *)src + fa->src.pitch*(h-1), w*4);
 		if (--h > 0) {
-			Pixel32 *src2 = (Pixel32 *)((char *)src + fa->src.pitch);
+			uint32 *src2 = (uint32 *)((char *)src + fa->src.pitch);
 			do {
 				w2 = w;
 
 				do {
-					Pixel32 a = *src++;
-					Pixel32 b = *src2++;
+					uint32 a = *src++;
+					uint32 b = *src2++;
 
 					*dst++ = ((a>>2)&0x3f3f3f)*3 + ((b&0xfcfcfc)>>2) + ((((a&0x030303)*3 + (b&0x030303))>>2)&0x030303);
 				} while(--w2);
 
-				src = (Pixel32 *)((char *)src + fa->src.modulo);
-				src2 = (Pixel32 *)((char *)src2 + fa->src.modulo);
-				dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+				src = (uint32 *)((char *)src + fa->src.modulo);
+				src2 = (uint32 *)((char *)src2 + fa->src.modulo);
+				dst = (uint32 *)((char *)dst + fa->dst.modulo);
 			} while(--h);
 		}
 		break;
@@ -246,7 +246,7 @@ static bool fieldbob_script_line(FilterActivation *fa, const FilterFunctions *ff
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern struct FilterDefinition filterDef_fieldbob={
+extern FilterDefinition filterDef_fieldbob={
 	0,0,NULL,
 	"field bob",
 	"Compensates for field jumping in field-split video by applying bob-deinterlacing techniques.",

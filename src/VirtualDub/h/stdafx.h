@@ -16,6 +16,11 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #ifndef f_STDAFX_H
+#define f_STDAFX_H
+
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
 #include <wchar.h>
 
@@ -28,14 +33,23 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/math.h>
+#include <vd2/system/atomic.h>
+#include <vd2/system/refcount.h>
+#include <vd2/system/vdalloc.h>
+#include <vd2/system/error.h>
+#include <vd2/system/text.h>
+#include <vd2/system/VDString.h>
+#include <vd2/system/VDRingBuffer.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <vector>
+#include <list>
+#include <algorithm>
 
 #define _WIN32_WINNT 0x0500
-
 #include <windows.h>
 
 #include "VirtualDub.h"
@@ -60,10 +74,7 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 #endif
 
 #if defined(_DEBUG) || defined(_M_IX86)
-	#include <vd2/system/atomic.h>
 	#include <vd2/system/thread.h>
-	#include <vd2/system/refcount.h>
-	#include <vd2/system/vdalloc.h>
 	#include <vd2/system/w32assist.h>
 	#include <vd2/system/protscope.h>
 	#include <vd2/Dita/interface.h>

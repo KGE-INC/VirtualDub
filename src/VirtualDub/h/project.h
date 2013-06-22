@@ -4,25 +4,37 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDScheduler.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/event.h>
 #include "FrameSubset.h"
 #include "filter.h"
 #include "timeline.h"
 #include <list>
 #include <utility>
+#include <vector>
 
 class SceneDetector;
 class IVDDubberOutputSystem;
 class IVDInputDriver;
 class IDubStatusHandler;
 class DubOptions;
+class InputFileOptions;
 class VDProjectSchedulerThread;
+class AudioSource;
+class IDubber;
+
+enum VDAudioSourceMode {
+	kVDAudioSourceMode_None		= 0,
+	kVDAudioSourceMode_External	= 1,
+	kVDAudioSourceMode_Source	= 2
+};
 
 class IVDProjectUICallback {
 public:
 	virtual void UIRefreshInputFrame(bool bValid) = 0;
 	virtual void UIRefreshOutputFrame(bool bValid) = 0;
 	virtual void UISetDubbingMode(bool bActive, bool bIsPreview) = 0;
-	virtual void UIRunDubMessageLoop() = 0;
+	virtual bool UIRunDubMessageLoop() = 0;
+	virtual void UIAbortDubMessageLoop() = 0;		// Note: multithreaded
 	virtual void UICurrentPositionUpdated() = 0;
 	virtual void UISelectionUpdated(bool notifyUser) = 0;
 	virtual void UITimelineUpdated() = 0;
@@ -32,6 +44,17 @@ public:
 	virtual void UIVideoSourceUpdated() = 0;
 	virtual void UIVideoFiltersUpdated() = 0;
 	virtual void UIDubParametersUpdated() = 0;
+};
+
+enum {
+	kVDProjectCmd_Null,
+	kVDProjectCmd_GoToStart,
+	kVDProjectCmd_GoToEnd,
+	kVDProjectCmd_ScrubBegin,
+	kVDProjectCmd_ScrubEnd,
+	kVDProjectCmd_ScrubUpdate,
+	kVDProjectCmd_SetSelectionStart,
+	kVDProjectCmd_SetSelectionEnd
 };
 
 class VDProject {
@@ -78,6 +101,8 @@ public:
 	bool IsClipboardEmpty();
 	bool IsSceneShuttleRunning();
 
+	void SetPositionCallbackEnabled(bool enable);
+
 	void Cut();
 	void Copy();
 	void Paste();
@@ -94,15 +119,18 @@ public:
 	void Quit();
 	void Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = 0, bool fExtendedOpen = false, bool fQuiet = false, bool fAutoscan = false, const char *pInputOpts = 0, uint32 inputOptsLen = 0);
 	void Reopen();
-	void OpenWAV(const wchar_t *pFilename);
+	void OpenWAV(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = NULL, bool automated = false, bool extOpts = false, const void *optdata = NULL, int optlen = 0);
 	void CloseWAV();
 	void PreviewInput();
 	void PreviewOutput();
 	void PreviewAll();
+	void Preview(DubOptions *options);
+	void PreviewRestart();
 	void RunNullVideoPass();
 	void CloseAVI();			// to be removed later....
 	void Close();
 
+	void SaveAVI(const wchar_t *filename, bool compat, bool addAsJob);
 	void SaveFilmstrip(const wchar_t *pFilename);
 	void SaveAnimatedGIF(const wchar_t *pFilename, int loopCount);
 	void SaveRawAudio(const wchar_t *pFilename);
@@ -112,9 +140,16 @@ public:
 	void SetVideoMode(int mode);
 	void CopySourceFrameToClipboard();
 	void CopyOutputFrameToClipboard();
+
+	const wchar_t *GetAudioSourceDriverName() const { return mAudioInputDriverName.c_str(); }
+	const InputFileOptions *GetAudioSourceOptions() const { return mpAudioInputOptions; }
+	int GetAudioSourceCount() const;
+	int GetAudioSourceMode() const;
 	void SetAudioSourceNone();
-	void SetAudioSourceNormal();
+	void SetAudioSourceNormal(int index);
+
 	void SetAudioMode(int mode);
+	void SetAudioErrorMode(int errorMode);
 	void MoveToFrame(VDPosition pos);
 	void MoveToStart();
 	void MoveToPrevious();
@@ -139,6 +174,9 @@ public:
 	void AbortOperation();
 
 	// hack
+	void StopFilters();
+	void PrepareFilters();
+	void StartFilters();
 	void UpdateFilterList();
 
 	void SceneShuttleStop();
@@ -146,11 +184,15 @@ public:
 protected:
 	void SceneShuttleStep();
 	bool UpdateFrame();
-	void RefilterFrame(VDPosition srcPos, VDPosition dstPos);
+	void RefilterFrame(VDPosition outPos, VDPosition timelinePos);
+	void LockFilterChain(bool enableLock);
 
 	static void StaticPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);
 
 	void UpdateDubParameters();
+	void SetAudioSource();
+
+	void OnDubAbort(IDubber *src, const bool& userAbort);
 
 	VDGUIHandle		mhwnd;
 
@@ -181,35 +223,52 @@ protected:
 	VDPosition	mposCurrentFrame;
 	VDPosition	mposSelectionStart;
 	VDPosition	mposSelectionEnd;
+	bool		mbPositionCallbackEnabled;
 
-	FilterStateInfo mfsi;
+	bool		mbFilterChainLocked;
+
+	VDXFilterStateInfo mfsi;
 	VDPosition		mDesiredInputFrame;
 	VDPosition		mDesiredInputSample;
 	VDPosition		mDesiredOutputFrame;
+	VDPosition		mDesiredTimelineFrame;
 	VDPosition		mDesiredNextInputFrame;
 	VDPosition		mDesiredNextInputSample;
 	VDPosition		mDesiredNextOutputFrame;
+	VDPosition		mDesiredNextTimelineFrame;
 	VDPosition		mLastDisplayedInputFrame;
-	VDPosition		mLastDisplayedOutputFrame;
+	VDPosition		mLastDisplayedTimelineFrame;
 	bool			mbUpdateInputFrame;
 	bool			mbUpdateOutputFrame;
 	bool			mbUpdateLong;
 	int				mFramesDecoded;
 	uint32			mLastDecodeUpdate;
 
+	enum PreviewRestartMode {
+		kPreviewRestart_None,
+		kPreviewRestart_Input,
+		kPreviewRestart_Output,
+		kPreviewRestart_All
+	} mPreviewRestartMode;
+
 	vdblock<char>	mVideoSampleBuffer;
 
 	VDFraction		mVideoInputFrameRate;
 	VDFraction		mVideoOutputFrameRate;
+	VDFraction		mVideoTimelineFrameRate;
 
 	std::list<std::pair<uint32, VDStringA> >	mTextInfo;
 
-#if 0		// We don't need this yet.
-	VDScheduler					mScheduler;
-	VDSignal					mSchedulerSignal;
-	VDProjectSchedulerThread	*mpSchedulerThreads;
-	int							mThreadCount;
-#endif
+	int				mAudioSourceMode;
+	typedef std::vector<vdrefptr<AudioSource> > AudioSources;
+	AudioSources 			mInputAudioSources;
+	vdrefptr<AudioSource>	mpInputAudioExt;
+
+	VDStringW		mInputDriverName;
+	VDStringW		mAudioInputDriverName;
+	vdautoptr<InputFileOptions>	mpAudioInputOptions;
+
+	VDDelegate		mStoppedDelegate;
 };
 
 #endif

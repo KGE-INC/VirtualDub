@@ -52,12 +52,12 @@ typedef struct YIQFilterData {
 } YIQFilterData;
 
 #if 0
-static void iq_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
-	Pixel *src = _src;
+static void iq_average_row3(uint32 *_src, IQPixel *_dst, int _count) {
+	uint32 *src = _src;
 	IQPixel *dst = _dst;
 	int count = 1-_count;
 
-	Pixel c;
+	uint32 c;
 	long r, g, b;
 	long	i1, q1,
 			i2=0, q2=0,
@@ -97,12 +97,12 @@ static void iq_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
 }
 #endif
 
-static void iq_average_row5(Pixel *_src, IQPixel *_dst, int _count) {
-	Pixel *src = _src;
+static void iq_average_row5(uint32 *_src, IQPixel *_dst, int _count) {
+	uint32 *src = _src;
 	IQPixel *dst = _dst;
 	int count = 2-_count;
 
-	Pixel c;
+	uint32 c;
 	long r, g, b;
 	long	i1, q1,
 			i2=0, q2=0,
@@ -176,8 +176,8 @@ static void iq_average_row5(Pixel *_src, IQPixel *_dst, int _count) {
 //	G = Y - 0.50847(R-Y) - 0.18644(B-Y)
 //	B = Y + (B-Y)
 
-static void rb_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
-	Pixel *src = _src;
+static void rb_average_row3(uint32 *_src, IQPixel *_dst, int _count) {
+	uint32 *src = _src;
 	IQPixel *dst = _dst;
 	int count = 2-_count;
 
@@ -201,8 +201,8 @@ static void rb_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
 			| ((((src[-1]&0x0000ff00) + (src[0]&0x0000ff00)*3)>>2)&0x0000ff00);
 }
 
-static void rb_average_row5(Pixel *_src, IQPixel *_dst, int _count) {
-	Pixel *src = _src;
+static void rb_average_row5(uint32 *_src, IQPixel *_dst, int _count) {
+	uint32 *src = _src;
 	IQPixel *dst = _dst;
 	int count = 4-_count;
 
@@ -239,20 +239,20 @@ static void rb_average_row5(Pixel *_src, IQPixel *_dst, int _count) {
 
 //#define USE_YIQ_SPACE
 
-extern "C" void asm_tv_average5row(Pixel *src, IQPixel *dst, int count);
-extern "C" void asm_tv_average5col(Pixel *, IQPixel *, IQPixel *, IQPixel *, IQPixel *, IQPixel *, long);
+extern "C" void asm_tv_average5row(uint32 *src, IQPixel *dst, int count);
+extern "C" void asm_tv_average5col(uint32 *, IQPixel *, IQPixel *, IQPixel *, IQPixel *, IQPixel *, long);
 
-static void ChromaShift(Pixel32 *dst0, Pixel32 *src0, PixOffset dstpitch, PixOffset srcpitch, PixDim w, PixDim h) {
-	PixDim wt;
+static void ChromaShift(uint32 *dst0, uint32 *src0, ptrdiff_t dstpitch, ptrdiff_t srcpitch, sint32 w, sint32 h) {
+	sint32 wt;
 
 	do {
-		Pixel32 *src = src0;
-		Pixel32 *dst = dst0;
+		uint32 *src = src0;
+		uint32 *dst = dst0;
 
 		wt = w;
 		do {
-			Pixel32 cs = *src;
-			Pixel32 cd = *dst;
+			uint32 cs = *src;
+			uint32 cd = *dst;
 			int ydiff;
 			int r, g, b;
 
@@ -275,16 +275,16 @@ static void ChromaShift(Pixel32 *dst0, Pixel32 *src0, PixOffset dstpitch, PixOff
 			++src, ++dst;
 		} while(--wt);
 
-		src0 = (Pixel32 *)((char *)src0 + srcpitch);
-		dst0 = (Pixel32 *)((char *)dst0 + dstpitch);
+		src0 = (uint32 *)((char *)src0 + srcpitch);
+		dst0 = (uint32 *)((char *)dst0 + dstpitch);
 	} while(--h);
 }
 
 static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	YIQFilterData *mfd = (YIQFilterData *)fa->filter_data;
-	Pixel *dst = (Pixel *)fa->dst.data;
+	uint32 *dst = (uint32 *)fa->dst.data;
 	long w, h;
-	Pixel c;
+	uint32 c;
 
 	if (mfd->mode == YIQMODE_IQAVERAGE3) {
 		IQPixel *row_p = mfd->rows,
@@ -301,7 +301,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		h = fa->dst.h;
 		do {
 			if (h>1)
-				rb_average_row3((Pixel *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
+				rb_average_row3((uint32 *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
 			else
 				row_n = row_c;
 
@@ -311,7 +311,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			w = fa->dst.w;
 			do {
-				Pixel c, d;
+				uint32 c, d;
 				long y, r, g, b;
 	
 				c = *dst;
@@ -342,7 +342,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			row_t = row_p; row_p = row_c; row_c = row_n; row_n = row_t;
 
-			dst = (Pixel *)((char *)dst + fa->dst.modulo);
+			dst = (uint32 *)((char *)dst + fa->dst.modulo);
 		} while(--h);
 	} else if (mfd->mode == YIQMODE_IQAVERAGE5) {
 		IQPixel *row_f = mfd->rows,
@@ -359,12 +359,12 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		memcpy(row_p, row_f, sizeof(IQPixel) * 2 * fa->dst.w);
 		memcpy(row_c, row_f, sizeof(IQPixel) * 2 * fa->dst.w);
 
-		asm_tv_average5row/*rb_average_row5*/((Pixel *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
+		asm_tv_average5row/*rb_average_row5*/((uint32 *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
 
 		h = fa->dst.h;
 		do {
 			if (h>2)
-				asm_tv_average5row/*/rb_average_row5*/((Pixel *)((char *)dst + fa->dst.pitch*2), row_l, fa->dst.w);
+				asm_tv_average5row/*/rb_average_row5*/((uint32 *)((char *)dst + fa->dst.pitch*2), row_l, fa->dst.w);
 			else
 				row_l = row_n;
 
@@ -381,7 +381,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 #else
 			w = fa->dst.w;
 			do {
-				Pixel c, d;
+				uint32 c, d;
 				long y, r, g, b;
 	
 				c = *dst;
@@ -425,7 +425,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			row_n = row_l;
 			row_l = row_t;
 
-			dst = (Pixel *)((char *)dst + fa->dst.modulo);
+			dst = (uint32 *)((char *)dst + fa->dst.modulo);
 		} while(--h);
 	} else if (mfd->mode == YIQMODE_IQAV5TMP) {
 		IQPixel *row_f = mfd->rows,
@@ -443,12 +443,12 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		memcpy(row_p, row_f, sizeof(IQPixel) * 2 * fa->dst.w);
 		memcpy(row_c, row_f, sizeof(IQPixel) * 2 * fa->dst.w);
 
-		iq_average_row5((Pixel *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
+		iq_average_row5((uint32 *)((char *)dst + fa->dst.pitch), row_n, fa->dst.w);
 
 		h = fa->dst.h;
 		do {
 			if (h>2)
-				iq_average_row5((Pixel *)((char *)dst + fa->dst.pitch*2), row_l, fa->dst.w);
+				iq_average_row5((uint32 *)((char *)dst + fa->dst.pitch*2), row_l, fa->dst.w);
 			else
 				row_l = row_n;
 
@@ -460,7 +460,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			w = fa->dst.w;
 			do {
-				Pixel c;
+				uint32 c;
 				long y, i, q, r, g, b;
 				long m;
 	
@@ -506,7 +506,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			row_n = row_l;
 			row_l = row_t;
 
-			dst = (Pixel *)((char *)dst + fa->dst.modulo);
+			dst = (uint32 *)((char *)dst + fa->dst.modulo);
 		} while(--h);
 	} else if (mfd->mode == YIQMODE_CHROMAUP) {
 		ChromaShift(fa->src.Address32(0,0), fa->src.Address32(0,1), -fa->src.pitch, -fa->src.pitch, fa->src.w, fa->src.h-1);
@@ -552,7 +552,7 @@ static int yiq_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				*dst++ = v + (v<<8) + (v<<16);
 			} while(--w);
 
-			dst = (Pixel *)((char *)dst + fa->dst.modulo);
+			dst = (uint32 *)((char *)dst + fa->dst.modulo);
 		} while(--h);
 	}
 
@@ -610,8 +610,8 @@ static INT_PTR CALLBACK YIQConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam,
     return FALSE;
 }
 
-static int yiq_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_YIQ_CONFIG), hWnd, YIQConfigDlgProc, (LPARAM)fa->filter_data);
+static int yiq_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_YIQ_CONFIG), (HWND)hWnd, YIQConfigDlgProc, (LPARAM)fa->filter_data);
 }
 
 /////////////////////////////////////////////////////////////
@@ -713,7 +713,7 @@ static bool yiq_script_line(FilterActivation *fa, const FilterFunctions *ff, cha
 	return true;
 }
 
-struct FilterDefinition filterDef_tv={
+extern const VDXFilterDefinition filterDef_tv={
 	0,0,NULL,
 	"TV",
 	"Processes video data in NTSC native YIQ format.",

@@ -53,15 +53,15 @@ VDAudioFilterStereoChorus::~VDAudioFilterStereoChorus() {
 }
 
 uint32 VDAudioFilterStereoChorus::Prepare() {
-	const VDWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   inFormat.mTag != VDWaveFormat::kTagPCM
+	if (   inFormat.mTag != VDXWaveFormat::kTagPCM
 		|| (inFormat.mSampleBits != 8 && inFormat.mSampleBits != 16)
 		|| (inFormat.mChannels > 2)
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
+	VDXWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -80,7 +80,7 @@ uint32 VDAudioFilterStereoChorus::Prepare() {
 
 void VDAudioFilterStereoChorus::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	// Allocate two 30ms buffers
 
@@ -100,7 +100,7 @@ void VDAudioFilterStereoChorus::Start() {
 
 uint32 VDAudioFilterStereoChorus::Run() {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
-	const VDWaveFormat& format = *pin.mpFormat;
+	const VDXWaveFormat& format = *pin.mpFormat;
 
 	// foo
 	sint16 buf16[4096];
@@ -194,11 +194,11 @@ extern const VDPluginInfo apluginDef_stereochorus = {
 	NULL,
 	L"Applies feedback to a stream using delays driven from a quadrature-phase LFO to simulate or enhance stereo.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

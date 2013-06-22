@@ -787,7 +787,7 @@ void VDCaptureDriverScreen::DisplayDriverDialog(DriverDialog dlg) {
 		break;
 	case kDialogVideoSource:
 		ShutdownVideoBuffer();
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SCREENCAP_OPTS), mhwnd, VideoSourceDlgProc, (LONG_PTR)this);
+		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SCREENCAP_OPTS), mhwnd, VideoSourceDlgProc, (LPARAM)this);
 
 		SaveSettings();
 

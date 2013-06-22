@@ -53,7 +53,8 @@ void VDTestVideoFilters() {
 
 	InputFile *pFile = pInputDriver->CreateInputFile(0);
 	pFile->Init(L"e:\\anime\\Vandread OP - Trust.mpg");
-	IVDVideoSource *pSource = pFile->videoSrc;
+	vdrefptr<IVDVideoSource> pSource;
+	pFile->GetVideoSource(0, ~pSource);
 	pSource->setDecompressedFormat(32);
 
 //	VBitmap src(pSource->getFrameBuffer(), pSource->getDecompressedFormat());

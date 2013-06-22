@@ -20,7 +20,7 @@
 #include <windows.h>
 
 #include <vd2/plugin/vdplugin.h>
-#include <vd2/plugin/vdvideofiltold.h>
+#include <vd2/plugin/vdvideofilt.h>
 
 #include "resource.h"
 #include "filter.h"
@@ -261,8 +261,8 @@ static INT_PTR CALLBACK convoluteDlgProc( HWND hDlg, UINT message, WPARAM wParam
     return FALSE;
 }
 
-static int convolute_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_CONVOLUTE), hWnd, convoluteDlgProc, (LONG)fa->filter_data);
+static int convolute_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_CONVOLUTE), (HWND)hWnd, convoluteDlgProc, (LPARAM)fa->filter_data);
 }
 
 static void convolute_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {

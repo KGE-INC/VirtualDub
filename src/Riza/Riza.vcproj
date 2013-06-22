@@ -311,6 +311,18 @@
 			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 			>
 			<File
+				RelativePath=".\source\ac_mpeg.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\ac_xlaw.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\audiocodec.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\audioformat.cpp"
 				>
 			</File>
@@ -924,10 +936,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\h\displaydrvdx9.h"
-				>
-			</File>
-			<File
 				RelativePath=".\h\displaymgr.h"
 				>
 			</File>
@@ -1140,11 +1148,19 @@
 			Name="Interface Files"
 			>
 			<File
+				RelativePath="..\h\vd2\Riza\audiocodec.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\Riza\audioformat.h"
 				>
 			</File>
 			<File
 				RelativePath="..\h\vd2\Riza\audioout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\avi.h"
 				>
 			</File>
 			<File
@@ -1185,6 +1201,10 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\Riza\display.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\displaydrvdx9.h"
 				>
 			</File>
 			<File

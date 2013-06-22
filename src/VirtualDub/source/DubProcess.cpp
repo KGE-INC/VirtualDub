@@ -19,6 +19,7 @@
 #include "VideoTelecineRemover.h"
 #include "VideoSequenceCompressor.h"
 #include "prefs.h"
+#include "filters.h"
 #include "AsyncBlitter.h"
 
 /// HACK!!!!
@@ -140,6 +141,7 @@ VDDubProcessThread::VDDubProcessThread()
 	, lDropFrames(0)
 	, mbSyncToAudioEvenClock(false)
 	, mbError(false)
+	, mbCompleted(false)
 	, mpCurrentAction("starting up")
 	, mActivityCounter(0)
 	, mRefreshFlag(1)
@@ -156,7 +158,11 @@ VDDubProcessThread::VDDubProcessThread()
 VDDubProcessThread::~VDDubProcessThread() {
 }
 
-void VDDubProcessThread::SetAbortSignal(volatile bool *pAbort) {
+void VDDubProcessThread::SetParent(IDubberInternal *pParent) {
+	mpParent = pParent;
+}
+
+void VDDubProcessThread::SetAbortSignal(VDAtomicInt *pAbort) {
 	mpAbort = pAbort;
 }
 
@@ -172,8 +178,7 @@ void VDDubProcessThread::SetOutputDisplay(IVDVideoDisplay *pVideoDisplay) {
 	mpOutputDisplay = pVideoDisplay;
 }
 
-void VDDubProcessThread::SetVideoFilterOutput(FilterStateInfo *pfsi, void *pBuffer, const VDPixmap& px) {
-	mfsi = *pfsi;
+void VDDubProcessThread::SetVideoFilterOutput(void *pBuffer, const VDPixmap& px) {
 	mpVideoFilterOutputBuffer = pBuffer;
 	mVideoFilterOutputPixmap = px;
 }
@@ -220,7 +225,7 @@ void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, 
 
 	// Init playback timer.
 	if (mpOutputSystem->IsRealTime()) {
-		int timerInterval = mpVInfo->usPerFrame / 1000;
+		int timerInterval = VDClampToSint32(mpVInfo->frameRate.scale64ir(1000));
 
 		if (opt->video.fSyncToAudio || opt->video.nPreviewFieldMode) {
 			timerInterval /= 2;
@@ -282,17 +287,16 @@ void VDDubProcessThread::NextSegment() {
 }
 
 void VDDubProcessThread::ThreadRun() {
-	bool firstPacket = true;
 	bool bVideoEnded = !(vSrc && mpOutputSystem->AcceptsVideo());
 	bool bVideoNonDelayedFrameReceived = false;
-	bool bAudioEnded = !(mbAudioPresent && mpOutputSystem->AcceptsAudio());
 	uint32	nVideoFramesDelayed = 0;
 
 	lDropFrames = 0;
 	mpVInfo->processed = 0;
 
-	vdfastvector<char>	audioBuffer;
-	const bool fPreview = mpOutputSystem->IsRealTime();
+	mbAudioEnded = !(mbAudioPresent && mpOutputSystem->AcceptsAudio());
+	mbFirstPacket = false;
+	mbPreview = mpOutputSystem->IsRealTime();
 
 	int lastVideoSourceIndex = 0;
 
@@ -302,8 +306,6 @@ void VDDubProcessThread::ThreadRun() {
 		mpInterleaver = NULL;
 
 	try {
-		DEFINE_SP(sp);
-
 		mpCurrentAction = "running main loop";
 
 		for(;;) {
@@ -322,7 +324,7 @@ void VDDubProcessThread::ThreadRun() {
 			if (mpInterleaver)
 				nextAction = mpInterleaver->GetNextAction(stream, count);
 			else {
-				if (bAudioEnded && bVideoEnded)
+				if (mbAudioEnded && bVideoEnded)
 					break;
 
 				nextAction = VDStreamInterleaver::kActionWrite;
@@ -336,7 +338,7 @@ void VDDubProcessThread::ThreadRun() {
 			else if (nextAction == VDStreamInterleaver::kActionWrite) {
 				if (stream == 0) {
 					if (mpVInfo->cur_proc_dst >= mpVInfo->end_proc_dst) {
-						if (fPreview && mbAudioPresent) {
+						if (mbPreview && mbAudioPresent) {
 							static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->start();
 							mbAudioFrozenValid = true;
 						}
@@ -418,9 +420,9 @@ void VDDubProcessThread::ThreadRun() {
 								}
 							}
 
-							if (firstPacket && fPreview && !mbAudioPresent) {
+							if (mbFirstPacket && mbPreview && !mbAudioPresent) {
 								mpBlitter->enablePulsing(true);
-								firstPacket = false;
+								mbFirstPacket = false;
 							}
 
 							VideoWriteResult result = WriteVideoFrame(
@@ -433,6 +435,7 @@ void VDDubProcessThread::ThreadRun() {
 								pFrameInfo->mOrigDisplayFrame,
 								pFrameInfo->mDisplayFrame,
 								pFrameInfo->mTimelineFrame,
+								pFrameInfo->mSequenceFrame,
 								pFrameInfo->mSrcIndex);
 
 							// If we pushed an empty frame that was pending, we didn't actually process a real frame in
@@ -475,7 +478,7 @@ void VDDubProcessThread::ThreadRun() {
 
 							bVideoNonDelayedFrameReceived = true;
 
-							if (fPreview && mbAudioPresent) {
+							if (mbPreview && mbAudioPresent) {
 								static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->start();
 								mbAudioFrozenValid = true;
 							}
@@ -489,85 +492,17 @@ void VDDubProcessThread::ThreadRun() {
 						++mpVInfo->cur_proc_dst;
 					}
 				} else if (stream == 1) {
-					mProcessingProfileChannel.Begin(0xe0e0ff, "Audio");
-
-					const int nBlockAlign = mpAudioPipe->GetSampleSize();
-					int bytes = count * nBlockAlign;
-					int bytesread = 0;
-
-					if (audioBuffer.size() < bytes)
-						audioBuffer.resize(bytes);
-
-					while(bytesread < bytes) {
-						int tc = mpAudioPipe->Read(&audioBuffer[bytesread], bytes-bytesread);
-
-						if (*mpAbort)
-							goto abort_requested;
-
-						if (!tc) {
-							if (mpAudioPipe->isInputClosed()) {
-								mpAudioPipe->CloseOutput();
-								bytesread -= bytesread % nBlockAlign;
-								count = bytesread / nBlockAlign;
-								if (mpInterleaver)
-									mpInterleaver->EndStream(1);
-								mpAudioOut->finish();
-								bAudioEnded = true;
-								break;
-							}
-
-							VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
-							mLoopThrottle.BeginWait();
-							mpAudioPipe->ReadWait();
-							mLoopThrottle.EndWait();
-						}
-
-						bytesread += tc;
-					}
-
-					// apply audio correction on the fly if we are doing L3
-					//
-					// NOTE: Don't begin correction until we have at least 20 MPEG frames.  The error
-					//       is generally under 5% and we don't want the beginning of the stream to go
-					//       nuts.
-					if (mpAudioCorrector && mpAudioCorrector->GetFrameCount() >= 20) {
-						vdstructex<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
-						
-						double bytesPerSec = mpAudioCorrector->ComputeByterateDouble(wfex->nSamplesPerSec);
-
-						if (mpInterleaver)
-							mpInterleaver->AdjustStreamRate(1, bytesPerSec / (double)mpVInfo->frameRate);
-						UpdateAudioStreamRate();
-					}
-
-					mProcessingProfileChannel.End();
-					if (count > 0) {
-						mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
-						{
-							VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
-							WriteAudio(&audioBuffer.front(), bytesread, count);
-						}
-
-						if (firstPacket && fPreview) {
-							mpAudioOut->flush();
-							mpBlitter->enablePulsing(true);
-							firstPacket = false;
-							mbAudioFrozen = false;
-						}
-						mProcessingProfileChannel.End();
-					}
-
+					if (!WriteAudio(count))
+						goto abort_requested;
 				} else {
 					VDNEVERHERE;
 				}
 			}
 
-			CHECK_STACK(sp);
-
 			if (*mpAbort)
 				break;
 
-			if (bVideoEnded && bAudioEnded)
+			if (bVideoEnded && mbAudioEnded)
 				break;
 
 			// check for video decompressor switch
@@ -620,8 +555,8 @@ void VDDubProcessThread::ThreadRun() {
 						mpBlitter->unlock(BUFFERID_OUTPUT);
 						mpVideoDecompressor->Stop();
 						mpVideoDecompressor = NULL;
-						mpBlitter->postAPC(0, AsyncReinitDisplayCallback, this, NULL);
 					}
+					mpBlitter->postAPC(0, AsyncReinitDisplayCallback, this, NULL);
 				}
 			}
 		}
@@ -633,9 +568,12 @@ abort_requested:
 			mError.TransferFrom(e);
 			mbError = true;
 		}
+
 		mpVideoPipe->abort();
-		*mpAbort = true;
+		mpParent->InternalSignalStop();
 	}
+
+	mbCompleted = mbAudioEnded && bVideoEnded;
 
 	mpVideoPipe->finalizeAck();
 	mpAudioPipe->CloseOutput();
@@ -669,10 +607,10 @@ abort_requested:
 		}
 	}
 
-	*mpAbort = true;
+	mpParent->InternalSignalStop();
 }
 
-VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition orig_display_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
+VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition orig_display_num, VDPosition display_num, VDPosition timeline_num, VDPosition sequence_num, int srcIndex) {
 	uint32 dwBytes;
 	bool isKey;
 	const void *frameBuffer;
@@ -747,7 +685,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 			if (!(exdata&kBufferFlagPreload)) {
 				mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 			}
-			++mfsi.lCurrentFrame;
+
 			if (lDropFrames)
 				--lDropFrames;
 
@@ -810,7 +748,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	// ...write it directly to the output and skip the rest.
 
 	if ((exdata & kBufferFlagDirectWrite) || preservingEmptyFrame) {
-		uint32 flags = (exdata & kBufferFlagDelta) || !(exdata & kBufferFlagDirectWrite) ? 0 : AVIIF_KEYFRAME;
+		uint32 flags = (exdata & kBufferFlagDelta) || !(exdata & kBufferFlagDirectWrite) ? 0 : AVIOutputStream::kFlagKeyFrame;
 		mpVideoOut->write(flags, (char *)buffer, lastSize, 1);
 
 		mpVInfo->total_size += lastSize + 24;
@@ -838,10 +776,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock1");
 	bool bLockSuccessful;
 
-	const bool fPreview = mpOutputSystem->IsRealTime();
 	mLoopThrottle.BeginWait();
 	do {
-		bLockSuccessful = mpBlitter->lock(BUFFERID_INPUT, fPreview ? 500 : -1);
+		bLockSuccessful = mpBlitter->lock(BUFFERID_INPUT, mbPreview ? 500 : -1);
 	} while(!bLockSuccessful && !*mpAbort);
 	mLoopThrottle.EndWait();
 	mProcessingProfileChannel.End();
@@ -854,15 +791,10 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	else
 		mProcessingProfileChannel.Begin(0xffe0e0, "V-Decode");
 
-	VDCHECKPOINT;
-	CHECK_FPU_STACK
 	if (!(exdata & kBufferFlagFlushCodec)) {
 		VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing video frame");
 		vsrc->streamGetFrame(buffer, lastSize, 0 != (exdata & kBufferFlagPreload), sample_num, target_num);
 	}
-	CHECK_FPU_STACK
-
-	VDCHECKPOINT;
 
 	mProcessingProfileChannel.End();
 
@@ -871,10 +803,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		return kVideoWriteBuffered;
 	}
 
-	if (lDropFrames && fPreview) {
+	if (lDropFrames && mbPreview) {
 		mpBlitter->unlock(BUFFERID_INPUT);
 		mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
-		++mfsi.lCurrentFrame;
 
 		--lDropFrames;
 
@@ -887,10 +818,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	// Process frame to backbuffer for Full video mode.  Do not process if we are
 	// running in Repack mode only!
 	if (opt->video.mode == DubVideoOptions::M_FULL) {
-		VBitmap *initialBitmap = filters.InputBitmap();
-		VBitmap *lastBitmap = filters.LastBitmap();
+		const VDPixmap& input = filters.GetInput();
+		const VDPixmap& output = filters.GetOutput();
 		VBitmap destbm;
-		VDPosition startOffset = vsrc->asStream()->getStart();
 
 		if (exdata & kBufferFlagFlushCodec) {
 			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
@@ -909,7 +839,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		} else {
 			if (mpInvTelecine) {
 				VDPosition timelineFrameOut, srcFrameOut;
-				bool valid = mpInvTelecine->ProcessOut(initialBitmap, srcFrameOut, timelineFrameOut);
+				bool valid = mpInvTelecine->ProcessOut(input, srcFrameOut, timelineFrameOut);
 
 				mpInvTelecine->ProcessIn(vsrc->getTargetFormat(), display_num, timeline_num);
 
@@ -921,20 +851,14 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 				timeline_num = timelineFrameOut;
 				display_num = srcFrameOut;
 			} else
-				VDPixmapBlt(VDAsPixmap(*initialBitmap), vsrc->getTargetFormat());
+				VDPixmapBlt(input, vsrc->getTargetFormat());
 
 			// process frame
-
-			mfsi.lCurrentSourceFrame	= (long)(orig_display_num - startOffset);
-			mfsi.lCurrentFrame			= (long)timeline_num;
-			mfsi.lSourceFrameMS			= (long)mpVInfo->frameRateIn.scale64ir(mfsi.lCurrentSourceFrame * (sint64)1000);
-			mfsi.lDestFrameMS			= (long)mpVInfo->frameRateIn.scale64ir(mfsi.lCurrentFrame * (sint64)1000);
+			sint64 sequenceTime = VDRoundToInt64(mpVInfo->frameRate.AsInverseDouble() * 1000.0 * sequence_num);
 
 			mProcessingProfileChannel.Begin(0x008000, "V-Filter");
-			bool frameOutput = filters.RunFilters(mfsi);
+			bool frameOutput = filters.RunFilters(orig_display_num, timeline_num, sequence_num, sequenceTime, NULL, mbPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0);
 			mProcessingProfileChannel.End();
-
-			++mfsi.lCurrentFrame;
 
 			if (!frameOutput) {
 				mpBlitter->unlock(BUFFERID_INPUT);
@@ -947,7 +871,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 			mLoopThrottle.EndWait();
 			mProcessingProfileChannel.End();
 
-			VDPixmapBlt(mVideoFilterOutputPixmap, VDAsPixmap(*lastBitmap));
+			VDPixmapBlt(mVideoFilterOutputPixmap, output);
 		}
 	}
 
@@ -996,7 +920,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		}
 
 		VDDubAutoThreadLocation loc(mpCurrentAction, "writing compressed video frame to disk");
-		mpVideoOut->write(isKey ? AVIIF_KEYFRAME : 0, mVideoCompressionBuffer.data(), dwBytes, 1);
+		mpVideoOut->write(isKey ? AVIOutputStream::kFlagKeyFrame : 0, mVideoCompressionBuffer.data(), dwBytes, 1);
 
 		if (opt->video.mbPreserveEmptyFrames) {
 			if (!mVideoNullFrameDelayQueue.empty()) {
@@ -1013,7 +937,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		VDCHECKPOINT;
 		{
 			VDDubAutoThreadLocation loc(mpCurrentAction, "writing uncompressed video frame to disk");
-			mpVideoOut->write(AVIIF_KEYFRAME, (char *)frameBuffer, dwBytes, 1);
+			mpVideoOut->write(AVIOutputStream::kFlagKeyFrame, (char *)frameBuffer, dwBytes, 1);
 		}
 		VDCHECKPOINT;
 
@@ -1024,7 +948,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 	VDCHECKPOINT;
 
-	bool renderFrame = fPreview || mRefreshFlag.xchg(0);
+	bool renderFrame = mbPreview || mRefreshFlag.xchg(0);
 	bool renderInputFrame = renderFrame && mpInputDisplay && opt->video.fShowInputFrame;
 	bool renderOutputFrame = (renderFrame || mbVideoDecompressorEnabled) && mpOutputDisplay && opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && dwBytes;
 
@@ -1045,7 +969,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	} else
 		mpBlitter->unlock(BUFFERID_OUTPUT);
 
-	if (opt->perf.fDropFrames && fPreview) {
+	if (opt->perf.fDropFrames && mbPreview) {
 		long lFrameDelta;
 
 		lFrameDelta = mpBlitter->getFrameDelta();
@@ -1081,33 +1005,180 @@ void VDDubProcessThread::WritePendingEmptyVideoFrame() {
 	++mpVInfo->processed;
 }
 
-void VDDubProcessThread::WriteAudio(void *buffer, long lActualBytes, long lActualSamples) {
-	if (!lActualBytes) return;
+bool VDDubProcessThread::WriteAudio(sint32 count) {
+	if (count <= 0)
+		return true;
 
-	mpAudioOut->write(AVIIF_KEYFRAME, (char *)buffer, lActualBytes, lActualSamples);
+	const int nBlockAlign = mpAudioPipe->GetSampleSize();
+
+	int totalBytes = 0;
+	int totalSamples = 0;
+
+	if (mpAudioPipe->IsVBRModeEnabled()) {
+		mAudioBuffer.resize(nBlockAlign);
+		char *buf = mAudioBuffer.data();
+
+		mProcessingProfileChannel.Begin(0xe0e0ff, "Audio");
+		while(totalSamples < count) {
+			while(mpAudioPipe->getLevel() < sizeof(int)) {
+				if (mpAudioPipe->isInputClosed()) {
+					mpAudioPipe->CloseOutput();
+					if (mpInterleaver)
+						mpInterleaver->EndStream(1);
+					mpAudioOut->finish();
+					mbAudioEnded = true;
+					goto ended;
+				}
+
+				VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
+				mLoopThrottle.BeginWait();
+				mpAudioPipe->ReadWait();
+				mLoopThrottle.EndWait();
+			}
+
+			int sampleSize;
+			int tc = mpAudioPipe->ReadPartial(&sampleSize, sizeof(int));
+			VDASSERT(tc == sizeof(int));
+
+			VDASSERT(sampleSize <= nBlockAlign);
+
+			int pos = 0;
+
+			while(pos < sampleSize) {
+				if (*mpAbort)
+					return false;
+
+				tc = mpAudioPipe->ReadPartial(buf + pos, sampleSize - pos);
+				if (!tc) {
+					if (mpAudioPipe->isInputClosed()) {
+						mpAudioPipe->CloseOutput();
+						if (mpInterleaver)
+							mpInterleaver->EndStream(1);
+						mpAudioOut->finish();
+						mbAudioEnded = true;
+						break;
+					}
+
+					VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
+					mLoopThrottle.BeginWait();
+					mpAudioPipe->ReadWait();
+					mLoopThrottle.EndWait();
+				}
+
+				pos += tc;
+				VDASSERT(pos <= sampleSize);
+			}
+
+			mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
+			{
+				VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
+
+				mpAudioOut->write(AVIOutputStream::kFlagKeyFrame, buf, sampleSize, 1);
+			}
+			mProcessingProfileChannel.End();
+
+			totalBytes += sampleSize;
+			++totalSamples;
+		}
+ended:
+		mProcessingProfileChannel.End();
+
+		if (!totalSamples)
+			return true;
+	} else {
+		int bytes = count * nBlockAlign;
+
+		if (mAudioBuffer.size() < bytes)
+			mAudioBuffer.resize(bytes);
+
+		mProcessingProfileChannel.Begin(0xe0e0ff, "Audio");
+		while(totalBytes < bytes) {
+			int tc = mpAudioPipe->ReadPartial(&mAudioBuffer[totalBytes], bytes-totalBytes);
+
+			if (*mpAbort)
+				return false;
+
+			if (!tc) {
+				if (mpAudioPipe->isInputClosed()) {
+					mpAudioPipe->CloseOutput();
+					totalBytes -= totalBytes % nBlockAlign;
+					count = totalBytes / nBlockAlign;
+					if (mpInterleaver)
+						mpInterleaver->EndStream(1);
+					mpAudioOut->finish();
+					mbAudioEnded = true;
+					break;
+				}
+
+				VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
+				mLoopThrottle.BeginWait();
+				mpAudioPipe->ReadWait();
+				mLoopThrottle.EndWait();
+			}
+
+			totalBytes += tc;
+		}
+		mProcessingProfileChannel.End();
+
+		if (totalBytes <= 0)
+			return true;
+
+		totalSamples = totalBytes / nBlockAlign;
+
+		mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
+		{
+			VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
+
+			mpAudioOut->write(AVIOutputStream::kFlagKeyFrame, mAudioBuffer.data(), totalBytes, totalSamples);
+		}
+		mProcessingProfileChannel.End();
+	}
+
+	// if audio and video are ready, start preview
+	if (mbFirstPacket && mbPreview) {
+		mpAudioOut->flush();
+		mpBlitter->enablePulsing(true);
+		mbFirstPacket = false;
+		mbAudioFrozen = false;
+	}
+
+	// apply audio correction on the fly if we are doing L3
+	//
+	// NOTE: Don't begin correction until we have at least 20 MPEG frames.  The error
+	//       is generally under 5% and we don't want the beginning of the stream to go
+	//       nuts.
+	if (mpAudioCorrector && mpAudioCorrector->GetFrameCount() >= 20) {
+		vdstructex<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+		
+		double bytesPerSec = mpAudioCorrector->ComputeByterateDouble(wfex->nSamplesPerSec);
+
+		if (mpInterleaver)
+			mpInterleaver->AdjustStreamRate(1, bytesPerSec / mpVInfo->frameRate.asDouble());
+		UpdateAudioStreamRate();
+	}
+
+	return true;
 }
 
 void VDDubProcessThread::TimerCallback() {
 	if (opt->video.fSyncToAudio) {
 		if (mpAudioOut) {
-			long lActualPoint;
 			AVIAudioPreviewOutputStream *pAudioOut = static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut);
 
-			lActualPoint = pAudioOut->getPosition();
+			double audioTime = pAudioOut->GetPosition();
 
 			if (!pAudioOut->isFrozen()) {
-				long mPulseClock;
+				int mPulseClock;
 
-				if (opt->video.nPreviewFieldMode) {
-					mPulseClock = MulDiv(lActualPoint, 2000, mpVInfo->usPerFrame);
-				} else {
-					mPulseClock = MulDiv(lActualPoint, 1000, mpVInfo->usPerFrame);
-				}
+				if (opt->video.nPreviewFieldMode)
+					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble() * 2.0);
+				else
+					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble());
 
-				if (mPulseClock<0)
+				if (mPulseClock < 0)
 					mPulseClock = 0;
 
-				if (lActualPoint != -1) {
+				if (audioTime >= 0) {
 					mpBlitter->setPulseClock(mPulseClock);
 					mbSyncToAudioEvenClock = false;
 					mbAudioFrozen = false;

@@ -20,7 +20,7 @@
 
 #include "engine.h"
 
-extern IAMPDecoder * __cdecl CreateAMPDecoder() {
+IVDMPEGAudioDecoder *VDCreateMPEGAudioDecoder() {
 	return new VDMPEGAudioDecoder;
 }
 
@@ -28,18 +28,11 @@ VDMPEGAudioDecoder::VDMPEGAudioDecoder()
 	: mpSource(NULL)
 	, mpPolyphaseFilter(NULL)
 {
+	Reset();
 }
 
 VDMPEGAudioDecoder::~VDMPEGAudioDecoder() {
 	delete mpPolyphaseFilter;
-}
-
-void VDMPEGAudioDecoder::Destroy() {
-	delete this;
-}
-
-char *VDMPEGAudioDecoder::GetAmpVersionString() {
-	return "NekoAmp 2.0 (Priss)";
 }
 
 void VDMPEGAudioDecoder::Init() {
@@ -80,27 +73,26 @@ void VDMPEGAudioDecoder::Init() {
 		mL3Windows[2][i] = (float)sin((3.1415926535897932/12.0)*(i+0.5));
 	}
 
-#if 1
-		static const float coeff_idct_to_imdct[18]={		// 1/[2 cos (pi/72)(2i+1)]
-			0.50047634258166f,
-			0.50431448029008f,
-			0.51213975715725f,
-			0.52426456257041f,
-			0.54119610014620f,
-			0.56369097343317f,
-			0.59284452371708f,
-			0.63023620700513f,
-			0.67817085245463f,
-			0.74009361646113f,
-			0.82133981585229f,
-			0.93057949835179f,
-			1.08284028510010f,
-			1.30656296487638f,
-			1.66275476171152f,
-			2.31011315767265f,
-			3.83064878777019f,
-			11.46279281302667f,
-		};
+	static const float coeff_idct_to_imdct[18]={		// 1/[2 cos (pi/72)(2i+1)]
+		0.50047634258166f,
+		0.50431448029008f,
+		0.51213975715725f,
+		0.52426456257041f,
+		0.54119610014620f,
+		0.56369097343317f,
+		0.59284452371708f,
+		0.63023620700513f,
+		0.67817085245463f,
+		0.74009361646113f,
+		0.82133981585229f,
+		0.93057949835179f,
+		1.08284028510010f,
+		1.30656296487638f,
+		1.66275476171152f,
+		2.31011315767265f,
+		3.83064878777019f,
+		11.46279281302667f,
+	};
 
 	for(j=0; j<4; ++j) {
 		if (j==2)
@@ -112,26 +104,38 @@ void VDMPEGAudioDecoder::Init() {
 			mL3Windows[j][i+27] *= -coeff_idct_to_imdct[i];
 		}
 	}
-#endif
+
+	for(i=0; i<256; ++i) {
+		float x = powf(fabsf(i - 128.0f), 4.0f/3.0f);
+
+		if (i < 128)
+			x = -x;
+
+		mL3Pow43Tab[i] = x;
+	}
 }
 
-void VDMPEGAudioDecoder::setSource(IAMPBitsource *pSource) {
+void VDMPEGAudioDecoder::SetSource(IVDMPEGAudioBitsource *pSource) {
 	mpSource = pSource;
 }
 
-void VDMPEGAudioDecoder::setDestination(short *psDest) {
+void VDMPEGAudioDecoder::SetDestination(sint16 *psDest) {
 	mpSampleDst = psDest;
 }
 
-long VDMPEGAudioDecoder::getSampleCount() {
+uint32 VDMPEGAudioDecoder::GetSampleCount() {
 	return mSamplesDecoded;
 }
 
-void VDMPEGAudioDecoder::getStreamInfo(AMPStreamInfo *pasi) {
+uint32 VDMPEGAudioDecoder::GetFrameDataSize() {
+	return mFrameDataSize;
+}
+
+void VDMPEGAudioDecoder::GetStreamInfo(VDMPEGAudioStreamInfo *pasi) {
 	*pasi = mHeader;
 }
 
-char *VDMPEGAudioDecoder::getErrorString(int err) {
+const char *VDMPEGAudioDecoder::GetErrorString(int err) {
 	switch(err) {
 	case ERR_NONE:				return "no error";
 	case ERR_EOF:				return "end of file";
@@ -155,6 +159,7 @@ void VDMPEGAudioDecoder::Reset() {
 	mpPolyphaseFilter->Reset();
 
 	mL3BufferPos = 0;
+	mL3BufferLevel = 0;
 
 	memset(mL3OverlapBuffer, 0, sizeof mL3OverlapBuffer);
 }
@@ -237,13 +242,13 @@ void VDMPEGAudioDecoder::ReadHeader() {
 	if (!bitrate_idx)
 		throw (int)ERR_FREEFORM;
 
-	if (!freq)
+	if (!freq || !bitrate)
 		throw (int)ERR_INVALIDDATA;
 
 	if (layer == 1)
 		mFrameDataSize = 4*(12000*bitrate/freq + padding);
 	else {
-		if (is_mpeg2)
+		if (is_mpeg2 && layer == 3)
 			mFrameDataSize = (72000*bitrate/freq + padding);
 		else
 			mFrameDataSize = (144000*bitrate/freq + padding);
@@ -272,6 +277,7 @@ void VDMPEGAudioDecoder::ReadHeader() {
 }
 
 void VDMPEGAudioDecoder::PrereadFrame() {
+	VDASSERT(mFrameDataSize < sizeof mFrameBuffer);
 	int r = mpSource->read(mFrameBuffer, mFrameDataSize);
 
 	if (r < (int)mFrameDataSize) {
@@ -283,10 +289,12 @@ void VDMPEGAudioDecoder::PrereadFrame() {
 
 	if (mHeader.nLayer == 3)
 		PrereadLayerIII();
+	else
+		mL3BufferLevel = 0;
 }
 
 bool VDMPEGAudioDecoder::DecodeFrame() {
-	mSamplesDecoded = NULL;
+	mSamplesDecoded = 0;
 
 	PrereadFrame();
 

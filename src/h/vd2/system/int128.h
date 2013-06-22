@@ -88,6 +88,11 @@ public:
 		q[1] = 0;
 	}
 
+	vdint128(sint64 hi, uint64 lo) {
+		q[0] = lo;
+		q[1] = hi;
+	}
+
 	sint64 getHi() const { return q[1]; }
 	uint64 getLo() const { return q[0]; }
 

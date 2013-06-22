@@ -72,7 +72,7 @@ AVIVideoGIFOutputStream::~AVIVideoGIFOutputStream() {
 void AVIVideoGIFOutputStream::init(int loopCount) {
 	mLoopCount = loopCount;
 
-	const BITMAPINFOHEADER *bih = (const BITMAPINFOHEADER *)getFormat();
+	const VDAVIBitmapInfoHeader *bih = (const VDAVIBitmapInfoHeader *)getFormat();
 	int variant;
 
 	int format = VDBitmapFormatToPixmapFormat(*bih, variant);

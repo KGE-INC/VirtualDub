@@ -18,9 +18,27 @@
 #ifndef f_FILTDLG_H
 #define f_FILTDLG_H
 
-#include <windows.h>
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
-INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK AddFilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+#include <vd2/system/vdtypes.h>
+#include <vd2/system/fraction.h>
+
+class IVDVideoSource;
+
+struct VDVideoFiltersDialogResult {
+	bool	mbDialogAccepted;
+	bool	mbChangeDetected;
+	bool	mbRescaleRequested;
+
+	VDFraction	mOldFrameRate;
+	sint64		mOldFrameCount;
+	VDFraction	mNewFrameRate;
+	sint64		mNewFrameCount;
+};
+
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSource *pVS);
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, int h, int format, const VDFraction& rate, sint64 length);
 
 #endif

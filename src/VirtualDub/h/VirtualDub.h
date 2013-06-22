@@ -18,40 +18,9 @@
 #ifndef f_VIRTUALDUB_H
 #define f_VIRTUALDUB_H
 
-#include <vd2/system/vdtypes.h>
-
-#include <crtdbg.h>
-
-#ifdef _DEBUG
-
-	#define new_track new(_NORMAL_BLOCK, __FILE__, __LINE__)
-
-	#define CHECK_FPU_STACK checkfpustack(__FILE__, __LINE__);
-	extern void checkfpustack(const char *, const int) throw();
-
-
-#else
-
-	#define new_track new
-	#define CHECK_FPU_STACK
-
-#endif
-
-#if 0
-	#define DEFINE_SP(var) void *var=0
-	#define CHECK_STACK(var) stackcheck(var)
-#else
-	#define DEFINE_SP(var)
-	#define CHECK_STACK(var)
-#endif
-
-	extern void stackcheck(void *&);
-
-	void *allocmem(size_t);
-	void freemem(void *);
-	void *reallocmem(void *, size_t);
-	void *callocmem(size_t, size_t);
-
-#define ENABLE_DIRECTDRAW_SUPPORT
+void *allocmem(size_t);
+void freemem(void *);
+void *reallocmem(void *, size_t);
+void *callocmem(size_t, size_t);
 
 #endif

@@ -58,7 +58,7 @@ void VDVideoFilterInput::Prefetch(sint64 frame) {
 
 sint32 VDVideoFilterInput::Prepare() {
 	VDPixmap& outformat = *mpContext->mpOutput->mpFormat;
-	const BITMAPINFOHEADER& srcformat = *mpSource->getDecompressedFormat();
+	const VDAVIBitmapInfoHeader& srcformat = *mpSource->getDecompressedFormat();
 
 	outformat.w			= srcformat.biWidth;
 	outformat.h			= srcformat.biHeight;

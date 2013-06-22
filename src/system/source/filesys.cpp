@@ -31,6 +31,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/Error.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/w32assist.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -501,29 +502,39 @@ void VDFileFixDirPath(VDStringW& path) {
 	}
 }
 
-VDStringW VDGetProgramPath() {
-	union {
-		wchar_t w[MAX_PATH];
-		char a[MAX_PATH];
-	} buf;
+namespace {
+	VDStringW VDGetModulePathW32(HINSTANCE hInst) {
+		union {
+			wchar_t w[MAX_PATH];
+			char a[MAX_PATH];
+		} buf;
 
-	VDStringW wstr;
+		VDStringW wstr;
 
-	if (VDIsWindowsNT()) {
-		wcscpy(buf.w, L".");
-		if (GetModuleFileNameW(NULL, buf.w, MAX_PATH))
-			*VDFileSplitPath(buf.w) = 0;
-		wstr = buf.w;
-	} else {
-		strcpy(buf.a, ".");
-		if (GetModuleFileNameA(NULL, buf.a, MAX_PATH))
-			*VDFileSplitPath(buf.a) = 0;
-		wstr = VDTextAToW(buf.a, -1);
+		if (VDIsWindowsNT()) {
+			wcscpy(buf.w, L".");
+			if (GetModuleFileNameW(hInst, buf.w, MAX_PATH))
+				*VDFileSplitPath(buf.w) = 0;
+			wstr = buf.w;
+		} else {
+			strcpy(buf.a, ".");
+			if (GetModuleFileNameA(hInst, buf.a, MAX_PATH))
+				*VDFileSplitPath(buf.a) = 0;
+			wstr = VDTextAToW(buf.a, -1);
+		}
+
+		VDStringW wstr2(VDGetFullPath(wstr.c_str()));
+
+		return wstr2;
 	}
+}
 
-	VDStringW wstr2(VDGetFullPath(wstr.c_str()));
+VDStringW VDGetLocalModulePath() {
+	return VDGetModulePathW32(VDGetLocalModuleHandleW32());
+}
 
-	return wstr2;
+VDStringW VDGetProgramPath() {
+	return VDGetModulePathW32(NULL);
 }
 
 ///////////////////////////////////////////////////////////////////////////

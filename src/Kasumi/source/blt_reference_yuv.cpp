@@ -7,6 +7,10 @@
 
 #include "blt_spanutils.h"
 
+#ifdef _M_IX86
+	#include "blt_spanutils_x86.h"
+#endif
+
 using namespace nsVDPixmapSpanUtils;
 
 namespace {
@@ -986,6 +990,11 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 	uint32 cpuflags = CPUGetEnabledExtensions();
 
 	if (cpuflags & CPUF_SUPPORTS_MMX) {
+		if (cpuflags & CPUF_SUPPORTS_INTEGER_SSE) {
+			if (vfunc == vert_expand2x_centered)
+				vfunc = vert_expand2x_centered_ISSE;
+		}
+
 		switch(dst.format) {
 		case nsVDPixmap::kPixFormat_XRGB1555:	dfunc = vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX;	break;
 		case nsVDPixmap::kPixFormat_RGB565:		dfunc = vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX;	break;
@@ -1049,6 +1058,13 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 		VDNEVERHERE;
 		return;
 	}
+
+#ifdef _M_IX86
+	if (cpuflags & CPUF_SUPPORTS_INTEGER_SSE) {
+		if (hfunc == horiz_expand2x_coaligned)
+			hfunc = horiz_expand2x_coaligned_ISSE;
+	}
+#endif
 
 	uint32 chroma_srcwidth = -(-w >> srcinfo.auxwbits);
 	horiz_buffer_size = (horiz_buffer_size + 15) & ~15;
@@ -1169,6 +1185,15 @@ namespace {
 			return;
 		}
 
+#ifdef _M_IX86
+		uint32 cpuflags = CPUGetEnabledExtensions();
+
+		if (cpuflags & CPUF_SUPPORTS_INTEGER_SSE) {
+			if (hfunc == horiz_expand2x_coaligned)
+				hfunc = horiz_expand2x_coaligned_ISSE;
+		}
+#endif
+
 		int winsize, winposnext, winstep;
 
 		switch(yshift) {
@@ -1205,6 +1230,13 @@ namespace {
 			VDNEVERHERE;
 			return;
 		}
+
+#ifdef _M_IX86
+		if (cpuflags & CPUF_SUPPORTS_INTEGER_SSE) {
+			if (vfunc == vert_expand2x_centered)
+				vfunc = vert_expand2x_centered_ISSE;
+		}
+#endif
 
 		int dsth = -(-h >> dstinfo.auxhbits);
 		int srch = -(-h >> srcinfo.auxhbits);
@@ -1243,7 +1275,13 @@ namespace {
 			winposnext += winstep;
 			vdptrstep(dst, dstpitch);
 		} while(--dsth);
-	 }
+
+#ifdef _M_IX86
+		if (cpuflags & CPUF_SUPPORTS_MMX) {
+			__asm emms
+		}
+#endif
+	}
 }
 
 void VDPixmapBlt_YUVPlanar_convert_reference(const VDPixmap& dstpm, const VDPixmap& srcpm, vdpixsize w, vdpixsize h) {

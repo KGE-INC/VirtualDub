@@ -21,24 +21,30 @@
 
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
+#include <vd2/system/fraction.h>
 #include <vd2/system/binary.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include "InputFile.h"
+#include "VideoSource.h"
 
 extern const char g_szError[];
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoSourceGIF : public VideoSource {
-private:
-	VDPosition	mCachedFrame;
+class VDInputFileGIFSharedData : public vdrefcounted<IVDRefCount> {
+public:
+	VDInputFileGIFSharedData();
+	~VDInputFileGIFSharedData();
+
+	void Parse(const wchar_t *filename);
+
+	vdblock<uint8>	mImage;
 	uint32		mWidth;
 	uint32		mHeight;
 	uint32		mBackgroundColor;
 	bool		mbKeyframeOnly;
-
-	vdblock<uint8>	mImage;
+	VDFraction	mFrameRate;
 
 	enum {
 		kRestoreNone,
@@ -54,87 +60,25 @@ private:
 
 	typedef vdfastvector<ImageInfo> Images;
 	Images		mImages;
-
-	vdfastvector<uint8> mUnpackBuffer;
-	vdfastvector<uint32> mFrameBuffer;
-	vdfastvector<uint32> mRestoreBuffer;
 	uint32		mGlobalColorTable[256];
-
-public:
-	VDVideoSourceGIF(const wchar_t *pFilename);
-	~VDVideoSourceGIF();
-
-	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
-
-	bool setTargetFormat(int format);
-
-	void invalidateFrameBuffer()				{ mCachedFrame = -1; }
-	bool isFrameBufferValid()					{ return mCachedFrame >= 0; }
-	bool isStreaming()							{ return false; }
-
-	const void *getFrame(VDPosition lFrameDesired);
-	void streamBegin(bool, bool bForceReset) {
-		if (bForceReset)
-			streamRestart();
-	}
-
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
-
-	char getFrameTypeChar(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? 'K' : ' '; }
-	eDropType getDropType(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? kDependant : kIndependent; }
-	bool isKey(VDPosition lSample)				{ return lSample >= 0 && lSample < (VDPosition)mImages.size() && (0x80000000 & mImages[(uint32)lSample].mOffsetAndKey) != 0; }
-
-	VDPosition nearestKey(VDPosition lSample) {
-		return isKey(lSample) ? lSample : prevKey(lSample);
-	}
-
-	VDPosition prevKey(VDPosition lSample) {
-		if (lSample < 0)
-			return -1;
-
-		VDPosition limit = (VDPosition)mImages.size();
-		if (lSample > limit)
-			lSample = limit;
-
-		uint32 i = (uint32)lSample;
-		while(i) {
-			if (mImages[--i].mOffsetAndKey & 0x80000000)
-				return i;
-		}
-
-		return -1;
-	}
-
-	VDPosition nextKey(VDPosition lSample) {
-		if (lSample < 0)
-			lSample = 0;
-
-		VDPosition limit = (VDPosition)mImages.size();
-		if (lSample >= limit)
-			return -1;
-
-		uint32 i = (uint32)lSample;
-		while(++i < limit) {
-			if (mImages[i].mOffsetAndKey & 0x80000000)
-				return i;
-		}
-
-		return -1;
-	}
-
-	bool isKeyframeOnly()						{ return mbKeyframeOnly; }
-	bool isDecodable(VDPosition sample_num)		{ return (mCachedFrame >= 0 && (mCachedFrame == sample_num || mCachedFrame == sample_num - 1)) || isKey(sample_num); }
 };
 
-VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
-	: mCachedFrame(-1)
+VDInputFileGIFSharedData::VDInputFileGIFSharedData()
+	: mWidth(0)
+	, mHeight(0)
 {
-	VDFile file(pFilename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+}
+
+VDInputFileGIFSharedData::~VDInputFileGIFSharedData() {
+}
+
+void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
+	VDFile file(filename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
 
 	sint64 len64 = file.size();
 
 	if (len64 > 0x3FFFFFFF)
-		throw MyError("The GIF image \"%ls\" is too large to read.", pFilename);
+		throw MyError("The GIF image \"%ls\" is too large to read.", filename);
 
 	uint32 len = (uint32)len64;
 
@@ -145,44 +89,17 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 	const uint8 *src = mImage.data();
 	uint32 pos = 0;
 	if (len - pos < 6 || src[0] != 'G' || src[1] != 'I' || src[2] != 'F')
-		throw MyError("File \"%ls\" is not a GIF file.", pFilename);
+		throw MyError("File \"%ls\" is not a GIF file.", filename);
 	pos += 6;
 
 	// read logical screen descriptor
 	if (len - pos < 7)
-		throw MyError("File \"%ls\" is an invalid GIF file.", pFilename);
+		throw MyError("File \"%ls\" is an invalid GIF file.", filename);
 
 	mWidth = VDReadUnalignedLEU16(&src[pos]);
 	mHeight = VDReadUnalignedLEU16(&src[pos + 2]);
 
 	uint8 backgroundColorIndex = src[pos + 5];
-
-	BITMAPINFOHEADER *bih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
-	bih->biSize = sizeof(BITMAPINFOHEADER);
-	bih->biWidth = mWidth;
-	bih->biHeight = mHeight;
-	bih->biPlanes = 1;
-	bih->biCompression = BI_RGB;
-	bih->biSizeImage = mWidth * mHeight * 4;
-	bih->biBitCount = 32;
-	bih->biXPelsPerMeter = 0;
-	bih->biYPelsPerMeter = 0;
-	bih->biClrUsed = 0;
-	bih->biClrImportant = 0;
-
-	mSampleFirst	= 0;
-	mSampleLast		= 1;
-
-	memset(&streamInfo, 0, sizeof streamInfo);
-	streamInfo.fccType		= streamtypeVIDEO;
-	streamInfo.dwLength		= (DWORD)mSampleLast;
-	streamInfo.dwRate		= 10;
-	streamInfo.dwScale		= 1;
-
-	mFrameBuffer.resize(mWidth * mHeight);
-	mRestoreBuffer.resize(mWidth * mHeight);
-	mUnpackBuffer.resize(mWidth * mHeight);
-	AllocFrameBuffer(bih->biSizeImage);
 
 	bool hasGlobalColorTable = (src[pos + 4] & 0x80) != 0;
 	uint32 globalColorTableBits = (src[pos + 4] & 7) + 1;
@@ -195,7 +112,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 		uint32 globalColorTableSize = 1 << globalColorTableBits;
 
 		if (len - pos < 3 * globalColorTableSize)
-			throw MyError("File \"%ls\" is an invalid GIF file. (Unable to read global color table at position %x)", pFilename, pos);
+			throw MyError("File \"%ls\" is an invalid GIF file. (Unable to read global color table at position %x)", filename, pos);
 
 		for(uint32 i=0; i < globalColorTableSize; ++i) {
 			mGlobalColorTable[i] = 0xFF000000 + ((uint32)src[pos+0] << 16) + ((uint32)src[pos+1] << 8) + (uint32)src[pos+2];
@@ -239,7 +156,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 
 			if (extensionCode == 0xF9) {
 				if (length != 4)
-					throw MyError("File \"%ls\" is an invalid GIF file. (Graphic Control Extension header size is not 4 bytes)", pFilename, pos);
+					throw MyError("File \"%ls\" is an invalid GIF file. (Graphic Control Extension header size is not 4 bytes)", filename, pos);
 
 				uint16 delay = VDReadUnalignedLEU16(&src[pos + 1]);
 				if (!delay)
@@ -320,7 +237,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 			uint32 localColorTableSize = 1 << localColorTableBits;
 
 			if (len - pos < 3 * localColorTableSize)
-				throw MyError("File \"%ls\" is an invalid GIF file. (Unable to read local color table at position %x)", pFilename, pos);
+				throw MyError("File \"%ls\" is an invalid GIF file. (Unable to read local color table at position %x)", filename, pos);
 
 			pos += 3*localColorTableSize;
 		}
@@ -360,11 +277,10 @@ finish:
 
 	uint32 numFrames = mImages.size();
 
+	mFrameRate.Assign(10, 1);
 	if (numFrames < 3) {
-		if (numFrames == 2) {
-			streamInfo.dwRate = 100;
-			streamInfo.dwScale = presentationTimes.back() - presentationTimes.front();
-		}
+		if (numFrames == 2)
+			mFrameRate.Assign(100, presentationTimes.back() - presentationTimes.front());
 	} else {
 		vdfastvector<ImageInfo> images;
 
@@ -388,8 +304,7 @@ finish:
 		mImages.swap(images);
 
 		VDFraction frac(timeToFrameFactor * 100.0);
-		streamInfo.dwRate = frac.getHi();
-		streamInfo.dwScale = frac.getLo();
+		mFrameRate = frac;
 	}
 
 	mbKeyframeOnly = true;
@@ -397,8 +312,121 @@ finish:
 		if (!(it->mOffsetAndKey & 0x80000000))
 			mbKeyframeOnly = false;
 	}
+}
 
-	mSampleLast = mSampleFirst + mImages.size();
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoSourceGIF : public VideoSource {
+private:
+	vdrefptr<VDInputFileGIFSharedData> mpSharedData;
+	VDPosition	mCachedFrame;
+	uint32		mWidth;
+	uint32		mHeight;
+
+	vdfastvector<uint8> mUnpackBuffer;
+	vdfastvector<uint32> mFrameBuffer;
+	vdfastvector<uint32> mRestoreBuffer;
+
+public:
+	VDVideoSourceGIF(VDInputFileGIFSharedData *sharedData);
+	~VDVideoSourceGIF();
+
+	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
+
+	bool setTargetFormat(int format);
+
+	void invalidateFrameBuffer()				{ mCachedFrame = -1; }
+	bool isFrameBufferValid()					{ return mCachedFrame >= 0; }
+	bool isStreaming()							{ return false; }
+
+	const void *getFrame(VDPosition lFrameDesired);
+	void streamBegin(bool, bool bForceReset) {
+		if (bForceReset)
+			streamRestart();
+	}
+
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
+
+	char getFrameTypeChar(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? 'K' : ' '; }
+	eDropType getDropType(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? kDependant : kIndependent; }
+	bool isKey(VDPosition lSample)				{ return lSample >= 0 && lSample < (VDPosition)mpSharedData->mImages.size() && (0x80000000 & mpSharedData->mImages[(uint32)lSample].mOffsetAndKey) != 0; }
+
+	VDPosition nearestKey(VDPosition lSample) {
+		return isKey(lSample) ? lSample : prevKey(lSample);
+	}
+
+	VDPosition prevKey(VDPosition lSample) {
+		if (lSample < 0)
+			return -1;
+
+		VDPosition limit = (VDPosition)mpSharedData->mImages.size();
+		if (lSample > limit)
+			lSample = limit;
+
+		uint32 i = (uint32)lSample;
+		while(i) {
+			if (mpSharedData->mImages[--i].mOffsetAndKey & 0x80000000)
+				return i;
+		}
+
+		return -1;
+	}
+
+	VDPosition nextKey(VDPosition lSample) {
+		if (lSample < 0)
+			lSample = 0;
+
+		VDPosition limit = (VDPosition)mpSharedData->mImages.size();
+		if (lSample >= limit)
+			return -1;
+
+		uint32 i = (uint32)lSample;
+		while(++i < limit) {
+			if (mpSharedData->mImages[i].mOffsetAndKey & 0x80000000)
+				return i;
+		}
+
+		return -1;
+	}
+
+	bool isKeyframeOnly()						{ return mpSharedData->mbKeyframeOnly; }
+	bool isDecodable(VDPosition sample_num)		{ return (mCachedFrame >= 0 && (mCachedFrame == sample_num || mCachedFrame == sample_num - 1)) || isKey(sample_num); }
+};
+
+VDVideoSourceGIF::VDVideoSourceGIF(VDInputFileGIFSharedData *sharedData)
+	: mpSharedData(sharedData)
+	, mCachedFrame(-1)
+	, mWidth(mpSharedData->mWidth)
+	, mHeight(mpSharedData->mHeight)
+{
+	BITMAPINFOHEADER *bih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
+	bih->biSize = sizeof(BITMAPINFOHEADER);
+	bih->biWidth = mWidth;
+	bih->biHeight = mHeight;
+	bih->biPlanes = 1;
+	bih->biCompression = BI_RGB;
+	bih->biSizeImage = mWidth * mHeight * 4;
+	bih->biBitCount = 32;
+	bih->biXPelsPerMeter = 0;
+	bih->biYPelsPerMeter = 0;
+	bih->biClrUsed = 0;
+	bih->biClrImportant = 0;
+
+	mSampleFirst	= 0;
+	mSampleLast		= 1;
+
+	memset(&streamInfo, 0, sizeof streamInfo);
+	streamInfo.fccType		= VDAVIStreamInfo::kTypeVideo;
+	streamInfo.dwLength		= (DWORD)mSampleLast;
+	streamInfo.dwRate		= mpSharedData->mFrameRate.getHi();
+	streamInfo.dwScale		= mpSharedData->mFrameRate.getLo();
+
+	mFrameBuffer.resize(mWidth * mHeight);
+	mRestoreBuffer.resize(mWidth * mHeight);
+	mUnpackBuffer.resize(mWidth * mHeight);
+	AllocFrameBuffer(bih->biSizeImage);
+
+	mSampleLast = mSampleFirst + mpSharedData->mImages.size();
 }
 
 VDVideoSourceGIF::~VDVideoSourceGIF() {
@@ -412,12 +440,12 @@ int VDVideoSourceGIF::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, ui
 	uint32 bytes = 0;
 
 	if (lCount > 0) {
-		if (mImages[(uint32)lStart].mOffsetAndKey)
+		if (mpSharedData->mImages[(uint32)lStart].mOffsetAndKey)
 			bytes = sizeof(VDPosition);
 
 		if (lpBuffer) {
 			if (cbBuffer < bytes)
-				ret = AVIERR_BUFFERTOOSMALL;
+				ret = IVDStreamSource::kBufferTooSmall;
 			else if (bytes)
 				*(VDPosition *)lpBuffer = lStart;
 		}
@@ -433,10 +461,9 @@ int VDVideoSourceGIF::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, ui
 
 const void *VDVideoSourceGIF::getFrame(VDPosition frameNum) {
 	uint32 lBytes;
-	const void *pFrame = NULL;
 
 	if (mCachedFrame == frameNum)
-		return lpvBuffer;
+		return mpFrameBuffer;
 
 	VDPosition current = mCachedFrame + 1;
 	if (current < 0 || current > frameNum)
@@ -464,7 +491,7 @@ const void *VDVideoSourceGIF::getFrame(VDPosition frameNum) {
 const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	if (frame_num < 0)
 		frame_num = target_sample;
-	const ImageInfo& imageinfo = mImages[(uint32)frame_num];
+	const VDInputFileGIFSharedData::ImageInfo& imageinfo = mpSharedData->mImages[(uint32)frame_num];
 	uint32 pos = imageinfo.mOffsetAndKey & 0x7FFFFFFF;
 	sint16 transpColor = imageinfo.mTranspColor;
 
@@ -472,10 +499,10 @@ const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 dat
 		return getFrameBuffer();
 
 	if (imageinfo.mOffsetAndKey & 0x80000000)
-		VDMemset32Rect(mFrameBuffer.data(), mWidth * sizeof(uint32), mBackgroundColor, mWidth, mHeight);
+		VDMemset32Rect(mFrameBuffer.data(), mWidth * sizeof(uint32), mpSharedData->mBackgroundColor, mWidth, mHeight);
 
 	// decompress lines
-	const uint8 *src = mImage.data();
+	const uint8 *src = mpSharedData->mImage.data();
 
 	struct DictionaryEntry {
 		sint32	mPrev;
@@ -499,7 +526,7 @@ const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 dat
 	if ((uint32)(y+h) >= mHeight)
 		h = mHeight - y;
 
-	if (imageinfo.mRestoreMode == kRestoreToPrevious)
+	if (imageinfo.mRestoreMode == VDInputFileGIFSharedData::kRestoreToPrevious)
 		VDMemcpyRect(mRestoreBuffer.data(), w * sizeof(uint32), &mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), w*sizeof(uint32), h);
 
 	bool hasLocalColorTable = (src[pos + 8] & 0x80) != 0;
@@ -533,7 +560,7 @@ const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 dat
 		dict[i].mLength = 1;
 	}
 
-	const uint32 *palette = hasLocalColorTable ? localColorTable : mGlobalColorTable;
+	const uint32 *palette = hasLocalColorTable ? localColorTable : mpSharedData->mGlobalColorTable;
 
 	uint32 bytesLeft = mWidth * mHeight;
 	uint32 bytesLeftInBlock = 0;
@@ -676,10 +703,10 @@ xit:
 		VDPixmapBlt(mTargetFormat, srcbm);
 	}
 
-	if (imageinfo.mRestoreMode == kRestoreToPrevious)
+	if (imageinfo.mRestoreMode == VDInputFileGIFSharedData::kRestoreToPrevious)
 		VDMemcpyRect(&mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), mRestoreBuffer.data(), w * sizeof(uint32), w*sizeof(uint32), h);
-	else if (imageinfo.mRestoreMode == kRestoreToColor)
-		VDMemset32Rect(&mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), mBackgroundColor, w, h);
+	else if (imageinfo.mRestoreMode == VDInputFileGIFSharedData::kRestoreToColor)
+		VDMemset32Rect(&mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), mpSharedData->mBackgroundColor, w, h);
 
 	mCachedFrame = frame_num;
 
@@ -717,10 +744,15 @@ public:
 
 	void setAutomated(bool fAuto);
 
-	void InfoDialog(HWND hwndParent);
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
+
+protected:
+	vdrefptr<VDInputFileGIFSharedData> mpSharedData;
 };
 
 VDInputFileGIF::VDInputFileGIF()
+	: mpSharedData(new VDInputFileGIFSharedData)
 {
 }
 
@@ -728,14 +760,23 @@ VDInputFileGIF::~VDInputFileGIF() {
 }
 
 void VDInputFileGIF::Init(const wchar_t *szFile) {
-	videoSrc = new VDVideoSourceGIF(szFile);
+	mpSharedData->Parse(szFile);
 }
 
 void VDInputFileGIF::setAutomated(bool fAuto) {
 }
 
-void VDInputFileGIF::InfoDialog(HWND hwndParent) {
-	MessageBox(hwndParent, "No file information is available for animated GIF sequences.", g_szError, MB_OK);
+bool VDInputFileGIF::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index)
+		return false;
+
+	*ppSrc = new VDVideoSourceGIF(mpSharedData);
+	(*ppSrc)->AddRef();
+	return true;
+}
+
+bool VDInputFileGIF::GetAudioSource(int index, AudioSource **ppSrc) {
+	return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////

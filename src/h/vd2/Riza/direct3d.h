@@ -46,6 +46,7 @@ namespace nsVDD3D9 {
 		uint32 diffuse;
 		float u0, v0, u1, v1;
 
+		Vertex() {}
 		Vertex(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_=0.f, float v1_=0.f) : x(x_), y(y_), z(0), diffuse(c_), u0(u0_), v0(v0_), u1(u1_), v1(v1_) {}
 
 		inline void SetFF2(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_, float v1_) {
@@ -162,8 +163,9 @@ public:
 
 	bool		Reset();
 	bool		CheckDevice();
+	bool		CheckReturn(HRESULT hr);
 
-	void		AdjustTextureSize(int& w, int& h);
+	bool		AdjustTextureSize(int& w, int& h, bool nonPow2OK = false);
 	bool		IsTextureFormatAvailable(D3DFORMAT format);
 
 	void		ClearRenderTarget(IDirect3DTexture9 *pTexture);
@@ -171,6 +173,7 @@ public:
 	void		ResetBuffers();
 	nsVDD3D9::Vertex *	LockVertices(unsigned vertices);
 	void		UnlockVertices();
+	bool		UploadVertices(unsigned vertices, const nsVDD3D9::Vertex *data);
 	uint16 *	LockIndices(unsigned indices);
 	void		UnlockIndices();
 	bool		BeginScene();
@@ -219,7 +222,7 @@ protected:
 	UINT				mAdapter;
 	D3DDEVTYPE			mDevType;
 
-	static ATOM			sDevWndClass;
+	ATOM				mDevWndClass;
 	HWND				mhwndDevice;
 	VDThreadID			mThreadID;
 

@@ -20,6 +20,7 @@
 #include <commctrl.h>
 
 #include "filter.h"
+#include "VBitmap.h"
 #include <vd2/system/cpuaccel.h>
 #include "resource.h"
 #include "ScriptInterpreter.h"
@@ -332,7 +333,7 @@ static INT_PTR CALLBACK timesmoothDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				SendMessage(hwndItem, TBM_SETRANGE, TRUE, MAKELONG(0, 10));
 				SendMessage(hwndItem, TBM_SETPOS, TRUE, mfd->strength);
 
-				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 			}
             return (TRUE);
 
@@ -349,7 +350,7 @@ static INT_PTR CALLBACK timesmoothDlgProc( HWND hDlg, UINT message, WPARAM wPara
                 return TRUE;
 
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				return TRUE;
 			}
 			break;
@@ -363,14 +364,14 @@ static INT_PTR CALLBACK timesmoothDlgProc( HWND hDlg, UINT message, WPARAM wPara
     return FALSE;
 }
 
-static int timesmooth_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int timesmooth_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	timesmoothFilterData *mfd = (timesmoothFilterData *)fa->filter_data;
 	timesmoothFilterData mfd2 = *mfd;
 	int ret;
 
 	mfd->ifp = fa->ifp;
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_TIMESMOOTH), hWnd, timesmoothDlgProc, (LONG)mfd);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_TIMESMOOTH), (HWND)hWnd, timesmoothDlgProc, (LPARAM)mfd);
 
 	if (ret)
 		*mfd = mfd2;
@@ -407,7 +408,7 @@ static bool timesmooth_script_line(FilterActivation *fa, const FilterFunctions *
 
 /////////////////////////////////////////////////////////////
 
-struct FilterDefinition filterDef_timesmooth={
+extern const VDXFilterDefinition filterDef_timesmooth={
 	0,0,NULL,
 	"temporal smoother",
 	"Performs an adaptive smooth along the time axis.\n\n[Assembly optimized][MMX optimized][Lag: 4]",

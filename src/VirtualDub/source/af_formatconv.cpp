@@ -113,9 +113,9 @@ void __cdecl VDAudioFilterFormatConv::InitProc(const VDAudioFilterContext *pCont
 }
 
 uint32 VDAudioFilterFormatConv::Prepare() {
-	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
 
-	if (   format0.mTag != VDWaveFormat::kTagPCM
+	if (   format0.mTag != VDXWaveFormat::kTagPCM
 		|| (format0.mSampleBits != 8 && format0.mSampleBits != 16)
 		)
 		return kVFAPrepare_BadFormat;
@@ -125,7 +125,7 @@ uint32 VDAudioFilterFormatConv::Prepare() {
 		return 0;
 	}
 
-	VDWaveFormat *pwf0;
+	VDXWaveFormat *pwf0;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat))) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -173,11 +173,11 @@ extern const VDPluginInfo apluginDef_formatconv = {
 	NULL,
 	L"Converts an audio stream to a different sample precision.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

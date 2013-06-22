@@ -28,6 +28,7 @@
 #include "resource.h"
 #include "filter.h"
 #include "gui.h"
+#include "VBitmap.h"
 #include <vd2/system/cpuaccel.h>
 
 /////////////////////////////////////////////////////////////////////
@@ -73,7 +74,7 @@ static int bright_table_B[256];
 extern "C" unsigned char YUV_clip_table[];
 
 #ifdef _M_IX86
-static void __declspec(naked) AsmLevelsRunScalar(Pixel32 *dst, PixOffset dstpitch, PixDim w, PixDim h, const int *xtblptr) {
+static void __declspec(naked) AsmLevelsRunScalar(uint32 *dst, ptrdiff_t dstpitch, sint32 w, sint32 h, const int *xtblptr) {
 	__asm {
 			push	ebp
 			push	edi
@@ -137,7 +138,7 @@ xloop:
 	}
 }
 
-static void __declspec(naked) AsmLevelsRunMMX(Pixel32 *dst, PixOffset dstpitch, PixDim w, PixDim h, const int *xtblptr) {
+static void __declspec(naked) AsmLevelsRunMMX(uint32 *dst, ptrdiff_t dstpitch, sint32 w, sint32 h, const int *xtblptr) {
 	static const __int64 bright_coeff=0x000026464b220e98i64;
 	static const __int64 round = 0x0000000000004000i64;
 	__asm {
@@ -353,7 +354,7 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 	}
 }
 
-static void levelsSampleCallback(VFBitmap *src, long pos, long cnt, void *pv) {
+static void levelsSampleCallback(VDXFBitmap *src, long pos, long cnt, void *pv) {
 	LevelsFilterData *mfd = (LevelsFilterData *)pv;
 	long *pHisto = mfd->pHisto;
 
@@ -420,7 +421,7 @@ static INT_PTR APIENTRY levelsDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
 
 				mfd->ifp->SetButtonCallback(levelsButtonCallback, (void *)hDlg);
 				mfd->ifp->SetSampleCallback(levelsSampleCallback, (void *)mfd);
-				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				mfd->ifp->InitButton((VDXHWND)GetDlgItem(hDlg, IDC_PREVIEW));
 
 			}
             return (TRUE);
@@ -441,7 +442,7 @@ static INT_PTR APIENTRY levelsDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
                 return TRUE;
 
 			case IDC_PREVIEW:
-				mfd->ifp->Toggle(hDlg);
+				mfd->ifp->Toggle((VDXHWND)hDlg);
 				return TRUE;
 
 			case IDC_SAMPLE:
@@ -738,7 +739,7 @@ static INT_PTR APIENTRY levelsDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
     return FALSE;
 }
 
-static int levels_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+static int levels_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 	LevelsFilterData mfd2 = *mfd;
 	int ret;
@@ -748,7 +749,7 @@ static int levels_config(FilterActivation *fa, const FilterFunctions *ff, HWND h
 	mfd->pHisto = histo;
 	mfd->lHistoMax = -1;
 
-	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_LEVELS), hWnd, levelsDlgProc, (LONG)mfd);
+	ret = DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_LEVELS), (HWND)hWnd, levelsDlgProc, (LPARAM)mfd);
 
 	if (ret)
 		*mfd = mfd2;

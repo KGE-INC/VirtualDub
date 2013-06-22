@@ -107,12 +107,12 @@ public:
 
 
 uint32 VDAudioFilterNewRate::Prepare() {
-	const VDWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
+	const VDXWaveFormat& inFormat = *mpContext->mpInputs[0]->mpFormat;
 
-	if (inFormat.mTag != VDWaveFormat::kTagPCM)
+	if (inFormat.mTag != VDXWaveFormat::kTagPCM)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
+	VDXWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf) {
 		mpContext->mpServices->SetErrorOutOfMemory();
@@ -182,11 +182,11 @@ extern const VDPluginInfo apluginDef_newrate = {
 	NULL,
 	L"Changes the sampling rate on an audio stream without actually changing the audio data.",
 	0,
-	kVDPluginType_Audio,
+	kVDXPluginType_Audio,
 	0,
 
-	kVDPlugin_APIVersion,
-	kVDPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
+	kVDXPlugin_APIVersion,
 	kVDPlugin_AudioAPIVersion,
 	kVDPlugin_AudioAPIVersion,
 

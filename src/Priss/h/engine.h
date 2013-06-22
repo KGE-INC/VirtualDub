@@ -25,19 +25,18 @@
 
 class VDMPEGAudioHuffBitReader;
 
-class VDMPEGAudioDecoder : public IAMPDecoder {
+class VDMPEGAudioDecoder : public IVDMPEGAudioDecoder {
 public:
 	VDMPEGAudioDecoder();
 	~VDMPEGAudioDecoder();
 
-	void	Destroy();
-	char *	GetAmpVersionString();
 	void	Init();
-	void	setSource(IAMPBitsource *pSource);
-	void	setDestination(short *psDest);
-	long	getSampleCount();
-	void	getStreamInfo(AMPStreamInfo *pasi);
-	char *	getErrorString(int err);
+	void	SetSource(IVDMPEGAudioBitsource *pSource);
+	void	SetDestination(sint16 *psDest);
+	uint32	GetSampleCount();
+	uint32	GetFrameDataSize();
+	void	GetStreamInfo(VDMPEGAudioStreamInfo *pasi);
+	const char *GetErrorString(int err);
 	void	Reset();
 	void	ReadHeader();
 	void	PrereadFrame();
@@ -52,8 +51,8 @@ protected:
 
 	static void DecodeHuffmanValues(VDMPEGAudioHuffBitReader& bitreader, sint32 *dst, unsigned table, unsigned pairs);
 
-	IAMPBitsource *mpSource;
-	AMPStreamInfo	mHeader;
+	IVDMPEGAudioBitsource *mpSource;
+	VDMPEGAudioStreamInfo mHeader;
 	uint32			mFrameDataSize;
 	short			*mpSampleDst;
 	uint32			mSamplesDecoded;
@@ -71,10 +70,19 @@ protected:
 	enum { kL3BufferSize = 2048 };
 	uint8			mL3Buffer[2048];			// Only needs to be 960, but we make it 1024 for address masking
 	uint32			mL3BufferPos;				// Tail for layer III circular buffer operation
+	uint32			mL3BufferLevel;				// Number of bits in layer III bit reservoir
 
 	float			mL3OverlapBuffer[2][32][18];	// used for overlapping tails of IMDCT output
 
 	float			mL3Windows[4][36];			// IMDCT windows
+
+	union {
+		struct {
+			float recon[2][576];
+		} mL3Data;
+	};
+
+	float			mL3Pow43Tab[256];			// [-128,127] ^ (4/3)
 
 	VDMPEGAudioPolyphaseFilter	*mpPolyphaseFilter;
 

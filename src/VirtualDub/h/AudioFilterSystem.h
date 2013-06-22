@@ -30,7 +30,7 @@ public:
 	virtual sint64 GetPosition() = 0;
 	virtual sint64 GetLength() = 0;
 
-	virtual const VDWaveFormat *GetOutputPinFormat(int outputPin) = 0;
+	virtual const VDXWaveFormat *GetOutputPinFormat(int outputPin) = 0;
 	virtual bool GetInputPinConnection(unsigned inputPin, IVDAudioFilterInstance*& pFilt, unsigned& outputPin) = 0;
 	virtual bool GetOutputPinConnection(unsigned outputPin, IVDAudioFilterInstance*& pFilt, unsigned& inputPin) = 0;
 };

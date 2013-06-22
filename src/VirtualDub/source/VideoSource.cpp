@@ -17,10 +17,6 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-#include <vfw.h>
-#include <vector>
-
 #include "VideoSource.h"
 #include "VBitmap.h"
 #include "AVIStripeSystem.h"
@@ -28,6 +24,7 @@
 #include "MJPEGDecoder.h"
 #include "crash.h"
 
+#include <vd2/system/bitmath.h>
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/text.h>
@@ -45,6 +42,7 @@
 #include "oshelper.h"
 #include "helpfile.h"
 #include "resource.h"
+#include "VideoSourceAVI.h"
 
 #if defined(_M_AMD64)
 	#define VDPROT_PTR	"%p"
@@ -54,10 +52,7 @@
 
 ///////////////////////////
 
-extern const char *LookupVideoCodec(FOURCC);
-
-extern HINSTANCE g_hInst;
-extern HWND g_hWnd;
+extern const char *LookupVideoCodec(uint32);
 
 ///////////////////////////
 
@@ -134,7 +129,7 @@ bool VDVideoDecompressorMJPEG::QueryTargetFormat(int format) {
 }
 
 bool VDVideoDecompressorMJPEG::QueryTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
 
 	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
 		return false;
@@ -157,7 +152,7 @@ bool VDVideoDecompressorMJPEG::SetTargetFormat(int format) {
 }
 
 bool VDVideoDecompressorMJPEG::SetTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
 
 	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
 		return false;
@@ -209,11 +204,638 @@ const wchar_t *VDVideoDecompressorMJPEG::GetName() {
 
 ///////////////////////////////////////////////////////////////////////////
 
+class VDVideoDecompressorDIBBitfields : public IVDVideoDecompressor {
+public:
+	VDVideoDecompressorDIBBitfields();
+	~VDVideoDecompressorDIBBitfields();
+
+	void Init(int w, int h, bool source32, const uint32 bitmasks[3]);
+
+	bool QueryTargetFormat(int format);
+	bool QueryTargetFormat(const void *format);
+	bool SetTargetFormat(int format);
+	bool SetTargetFormat(const void *format);
+	int GetTargetFormat() { return mFormat; }
+	int GetTargetFormatVariant() { return 0; }
+	void Start();
+	void Stop();
+	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
+	const void *GetRawCodecHandlePtr();
+	const wchar_t *GetName();
+
+protected:
+	void Decode16To16(void *dst0, const void *src0);
+	void Decode16To24(void *dst0, const void *src0);
+	void Decode16To32(void *dst0, const void *src0);
+	void Decode32To16(void *dst0, const void *src0);
+	void Decode32To24(void *dst0, const void *src0);
+	void Decode32To32(void *dst0, const void *src0);
+
+	int		mWidth, mHeight;
+	int		mFormat;
+	bool	mbSource32;
+	ptrdiff_t	mSrcOffset;
+	ptrdiff_t	mSrcModulo;
+	ptrdiff_t	mDstModulo;
+	uint32	mRedMask;
+	uint32	mGreenMask;
+	uint32	mBlueMask;
+	int		mRedShift;
+	int		mGreenShift;
+	int		mBlueShift;
+	int		mRedWidth;
+	int		mGreenWidth;
+	int		mBlueWidth;
+	uint32	mRedRepeat;
+	uint32	mGreenRepeat;
+	uint32	mBlueRepeat;
+
+	union {
+		uint32	mDecodeTables32[4][256];
+		uint16	mDecodeTables16[4][256];
+	};
+};
+
+VDVideoDecompressorDIBBitfields::VDVideoDecompressorDIBBitfields()
+	: mFormat(0)
+{
+}
+
+VDVideoDecompressorDIBBitfields::~VDVideoDecompressorDIBBitfields() {
+}
+
+void VDVideoDecompressorDIBBitfields::Init(int w, int h, bool source32, const uint32 bitmasks[3]) {
+	h = -h;
+	mWidth = w;
+	mHeight = abs(h);
+	mbSource32 = source32;
+	mSrcOffset = 0;
+	mSrcModulo = 0;
+	if (!source32 && (mWidth & 1))
+		mSrcModulo = 2;
+
+	if (h < 0) {
+		ptrdiff_t pitch = mbSource32 ? (w << 2) : w + w + mSrcModulo;
+		mSrcOffset += pitch * (mHeight - 1);
+		mSrcModulo = -pitch*2 + mSrcModulo;
+	}
+
+	mRedMask = bitmasks[0];
+	mGreenMask = bitmasks[1];
+	mBlueMask = bitmasks[2];
+
+	mRedRepeat = 0;
+	mGreenRepeat = 0;
+	mBlueRepeat = 0;
+
+	mRedWidth = 0;
+	mGreenWidth = 0;
+	mBlueWidth = 0;
+
+	if (mRedMask) {
+		mRedShift = VDFindLowestSetBit(mRedMask);
+		mRedWidth = VDCountBits(mRedMask);
+		mRedRepeat = (0x7FFFFFFF / (mRedMask >> mRedShift)) << mRedWidth;
+	}
+
+	if (mGreenMask) {
+		mGreenShift = VDFindLowestSetBit(mGreenMask);
+		mGreenWidth = VDCountBits(mGreenMask);
+		mGreenRepeat = (0x7FFFFFFF / (mGreenMask >> mGreenShift)) << mGreenWidth;
+	}
+
+	if (mBlueMask) {
+		mBlueShift = VDFindLowestSetBit(mBlueMask);
+		mBlueWidth = VDCountBits(mBlueMask);
+		mBlueRepeat = (0x7FFFFFFF / (mBlueMask >> mBlueShift)) << mBlueWidth;
+	}
+}
+
+bool VDVideoDecompressorDIBBitfields::QueryTargetFormat(int format) {
+	return format == nsVDPixmap::kPixFormat_XRGB1555
+		|| format == nsVDPixmap::kPixFormat_RGB565
+		|| format == nsVDPixmap::kPixFormat_RGB888
+		|| format == nsVDPixmap::kPixFormat_XRGB8888;
+}
+
+bool VDVideoDecompressorDIBBitfields::QueryTargetFormat(const void *format) {
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
+
+	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
+		return false;
+
+	int pxformat = VDBitmapFormatToPixmapFormat(hdr);
+
+	return QueryTargetFormat(pxformat);
+}
+
+bool VDVideoDecompressorDIBBitfields::SetTargetFormat(int format) {
+	if (!format)
+		format = nsVDPixmap::kPixFormat_XRGB8888;
+
+	if (!QueryTargetFormat(format))
+		return false;
+
+	mFormat = format;
+
+	uint32 rmask;
+	uint32 gmask;
+	uint32 bmask;
+	int rshift;
+	int gshift;
+	int bshift;
+	int rbits;
+	int gbits;
+	int bbits;
+	bool dest32 = false;
+
+	switch(format) {
+		case nsVDPixmap::kPixFormat_XRGB1555:
+			rmask = 0x7C00;
+			gmask = 0x03E0;
+			bmask = 0x001F;
+			rshift = 17;
+			gshift = 22;
+			bshift = 27;
+			rbits = 5;
+			gbits = 5;
+			bbits = 5;
+			mDstModulo = 2*(mWidth & 1);
+			break;
+		case nsVDPixmap::kPixFormat_RGB565:
+			rmask = 0xF800;
+			gmask = 0x07E0;
+			bmask = 0x001F;
+			rshift = 16;
+			gshift = 21;
+			bshift = 27;
+			rbits = 5;
+			gbits = 6;
+			bbits = 5;
+			mDstModulo = 2*(mWidth & 1);
+			break;
+		case nsVDPixmap::kPixFormat_RGB888:
+			rmask = 0x00FF0000;
+			gmask = 0x0000FF00;
+			bmask = 0x000000FF;
+			rshift = 8;
+			gshift = 16;
+			bshift = 24;
+			rbits = 8;
+			gbits = 8;
+			bbits = 8;
+			mDstModulo = (mWidth & 3);
+			dest32 = true;
+			break;
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			rmask = 0x00FF0000;
+			gmask = 0x0000FF00;
+			bmask = 0x000000FF;
+			rshift = 8;
+			gshift = 16;
+			bshift = 24;
+			rbits = 8;
+			gbits = 8;
+			bbits = 8;
+			mDstModulo = 0;
+			dest32 = true;
+			break;
+	}
+
+	// construct conversion masks
+	uint32	bitExpansions[32]={0};
+
+	if (rbits > mRedWidth)
+		rbits = mRedWidth;
+	if (gbits > mGreenWidth)
+		gbits = mGreenWidth;
+	if (bbits > mBlueWidth)
+		bbits = mBlueWidth;
+
+	for(int i=0; i<rbits; ++i)
+		bitExpansions[mRedShift + mRedWidth - 1 - i] = (mRedRepeat >> (rshift + i)) & rmask;
+
+	for(int i=0; i<gbits; ++i)
+		bitExpansions[mGreenShift + mGreenWidth - 1 - i] = (mGreenRepeat >> (gshift + i)) & gmask;
+
+	for(int i=0; i<bbits; ++i)
+		bitExpansions[mBlueShift + mBlueWidth - 1 - i] = (mBlueRepeat >> (bshift + i)) & bmask;
+
+	if (dest32) {
+		for(int i=0; i<4; ++i) {
+			uint32 *dst = mDecodeTables32[i];
+			const uint32 *VDRESTRICT bitexp = bitExpansions + i*8;
+			for(int j=0; j<256; ++j) {
+				uint32 v = 0;
+
+				if (j & 0x01) v += bitexp[0];
+				if (j & 0x02) v += bitexp[1];
+				if (j & 0x04) v += bitexp[2];
+				if (j & 0x08) v += bitexp[3];
+				if (j & 0x10) v += bitexp[4];
+				if (j & 0x20) v += bitexp[5];
+				if (j & 0x40) v += bitexp[6];
+				if (j & 0x80) v += bitexp[7];
+
+				dst[j] = v;
+			}
+		}
+	} else {
+		for(int i=0; i<4; ++i) {
+			uint16 *dst = mDecodeTables16[i];
+			const uint32 *VDRESTRICT bitexp = bitExpansions + i*8;
+			for(int j=0; j<256; ++j) {
+				uint32 v = 0;
+
+				if (j & 0x01) v += bitexp[0];
+				if (j & 0x02) v += bitexp[1];
+				if (j & 0x04) v += bitexp[2];
+				if (j & 0x08) v += bitexp[3];
+				if (j & 0x10) v += bitexp[4];
+				if (j & 0x20) v += bitexp[5];
+				if (j & 0x40) v += bitexp[6];
+				if (j & 0x80) v += bitexp[7];
+
+				dst[j] = (uint16)v;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool VDVideoDecompressorDIBBitfields::SetTargetFormat(const void *format) {
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
+
+	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
+		return false;
+
+	int pxformat = VDBitmapFormatToPixmapFormat(hdr);
+	if (!pxformat)
+		return false;
+
+	return SetTargetFormat(pxformat);
+}
+
+void VDVideoDecompressorDIBBitfields::Start() {
+	if (!mFormat)
+		throw MyError("Cannot find compatible target format for video decompression.");
+}
+
+void VDVideoDecompressorDIBBitfields::Stop() {
+}
+
+void VDVideoDecompressorDIBBitfields::DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) {
+	if (mbSource32) {
+		switch(mFormat) {
+			case nsVDPixmap::kPixFormat_XRGB1555:
+			case nsVDPixmap::kPixFormat_RGB565:
+				Decode32To16(dst, src);
+				break;
+			case nsVDPixmap::kPixFormat_RGB888:
+				Decode32To24(dst, src);
+				break;
+			case nsVDPixmap::kPixFormat_XRGB8888:
+				Decode32To32(dst, src);
+				break;
+		}
+	} else {
+		switch(mFormat) {
+			case nsVDPixmap::kPixFormat_XRGB1555:
+			case nsVDPixmap::kPixFormat_RGB565:
+				Decode16To16(dst, src);
+				break;
+			case nsVDPixmap::kPixFormat_RGB888:
+				Decode16To24(dst, src);
+				break;
+			case nsVDPixmap::kPixFormat_XRGB8888:
+				Decode16To32(dst, src);
+				break;
+		}
+	}
+}
+
+const void *VDVideoDecompressorDIBBitfields::GetRawCodecHandlePtr() {
+	return NULL;
+}
+
+const wchar_t *VDVideoDecompressorDIBBitfields::GetName() {
+	return L"Internal DIB BI_BITFIELDS decoder";
+}
+
+void VDVideoDecompressorDIBBitfields::Decode16To16(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint16 *dst = (uint16 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			*dst++ = mDecodeTables16[0][src[0]] + mDecodeTables16[1][src[1]];
+			src += 2;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+void VDVideoDecompressorDIBBitfields::Decode16To24(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint8 *dst = (uint8 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			uint32 v = mDecodeTables32[0][src[0]] + mDecodeTables32[1][src[1]];
+			*(uint16 *)dst = (uint16)v;
+			*(uint8 *)(dst + 2) = (uint8)(v >> 16);
+			dst += 3;
+			src += 2;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+void VDVideoDecompressorDIBBitfields::Decode16To32(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint32 *dst = (uint32 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			*dst++ = mDecodeTables32[0][src[0]] + mDecodeTables32[1][src[1]];
+			src += 2;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+void VDVideoDecompressorDIBBitfields::Decode32To16(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint16 *dst = (uint16 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			*dst++ = mDecodeTables16[0][src[0]] + mDecodeTables16[1][src[1]] + mDecodeTables16[2][src[2]] + mDecodeTables16[3][src[3]];
+			src += 4;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+void VDVideoDecompressorDIBBitfields::Decode32To24(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint8 *dst = (uint8 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			uint32 v = mDecodeTables32[0][src[0]] + mDecodeTables32[1][src[1]] + mDecodeTables32[2][src[2]] + mDecodeTables32[3][src[3]];
+			*(uint16 *)dst = (uint16)v;
+			*(uint8 *)(dst + 2) = (uint8)(v >> 16);
+			dst += 3;
+			src += 4;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+void VDVideoDecompressorDIBBitfields::Decode32To32(void *dst0, const void *src0) {
+	const uint32 w = mWidth;
+	const uint32 h = mHeight;
+	const uint8 *src = (const uint8 *)src0 + mSrcOffset;
+	uint32 *dst = (uint32 *)dst0;
+
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x) {
+			*dst++ = mDecodeTables32[0][src[0]] + mDecodeTables32[1][src[1]] + mDecodeTables32[2][src[2]] + mDecodeTables32[3][src[3]];
+			src += 4;
+		}
+
+		vdptrstep(src, mSrcModulo);
+		vdptrstep(dst, mDstModulo);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoDecompressorDIB : public IVDVideoDecompressor {
+public:
+	VDVideoDecompressorDIB();
+	~VDVideoDecompressorDIB();
+
+	void Init(const VDPixmapLayout& srcLayout, const uint32 *palette);
+
+	bool QueryTargetFormat(int format);
+	bool QueryTargetFormat(const void *format);
+	bool SetTargetFormat(int format);
+	bool SetTargetFormat(const void *format);
+	int GetTargetFormat() { return mDstFormat; }
+	int GetTargetFormatVariant() { return mDstFormatVariant; }
+	void Start();
+	void Stop();
+	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
+	const void *GetRawCodecHandlePtr();
+	const wchar_t *GetName();
+
+protected:
+	int		mWidth, mHeight;
+	uint32	mSrcLinSize;
+	int		mDstFormat;
+	int		mDstFormatVariant;
+	VDPixmapLayout	mSrcLayout;
+	VDPixmapLayout	mDstLayout;
+};
+
+VDVideoDecompressorDIB::VDVideoDecompressorDIB()
+	: mWidth(0)
+	, mHeight(0)
+	, mSrcLinSize(0)
+	, mDstFormat(0)
+	, mDstFormatVariant(0)
+	, mSrcLayout()
+	, mDstLayout()
+{
+}
+
+VDVideoDecompressorDIB::~VDVideoDecompressorDIB() {
+}
+
+void VDVideoDecompressorDIB::Init(const VDPixmapLayout& srcLayout, const uint32 *palette) {
+	mWidth = srcLayout.w;
+	mHeight = srcLayout.h;
+	mSrcLayout = srcLayout;
+	mSrcLinSize = VDPixmapLayoutGetMinSize(mSrcLayout);
+}
+
+bool VDVideoDecompressorDIB::QueryTargetFormat(int format) {
+	return format >= nsVDPixmap::kPixFormat_XRGB1555;
+}
+
+bool VDVideoDecompressorDIB::QueryTargetFormat(const void *format) {
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
+
+	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
+		return false;
+
+	int pxformat = VDBitmapFormatToPixmapFormat(hdr);
+
+	return QueryTargetFormat(pxformat);
+}
+
+bool VDVideoDecompressorDIB::SetTargetFormat(int format) {
+	if (!format)
+		format = mSrcLayout.format;
+
+	VDMakeBitmapCompatiblePixmapLayout(mDstLayout, mWidth, mHeight, format, 0);
+	mDstFormat = format;
+	mDstFormatVariant = 1;
+	return true;
+}
+
+bool VDVideoDecompressorDIB::SetTargetFormat(const void *format) {
+	const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
+
+	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
+		return false;
+
+	int variant;
+	int pxformat = VDBitmapFormatToPixmapFormat(hdr, variant);
+	if (!pxformat)
+		return false;
+
+	VDMakeBitmapCompatiblePixmapLayout(mDstLayout, mWidth, mHeight, pxformat, variant);
+	mDstFormat = pxformat;
+	mDstFormatVariant = variant;
+	return true;
+}
+
+void VDVideoDecompressorDIB::Start() {
+}
+
+void VDVideoDecompressorDIB::Stop() {
+}
+
+void VDVideoDecompressorDIB::DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) {
+	if (srcSize < mSrcLinSize)
+		throw MyError("Cannot decompress video frame: the video data is too short (%u bytes, should be %u).", srcSize, mSrcLinSize);
+
+	VDPixmap pxdst(VDPixmapFromLayout(mDstLayout, dst));
+	VDPixmap pxsrc(VDPixmapFromLayout(mSrcLayout, (void *)src));
+
+	VDPixmapBlt(pxdst, pxsrc);
+}
+
+const void *VDVideoDecompressorDIB::GetRawCodecHandlePtr() {
+	return NULL;
+}
+
+const wchar_t *VDVideoDecompressorDIB::GetName() {
+	return L"Internal DIB decoder";
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, bool preferInternal) {
+	IVDVideoDecompressor *dec;
+
+	// get a decompressor
+	//
+	// 'DIB ' is the official value for uncompressed AVIs, but some stupid
+	// programs also use (null) and 'RAW '
+	//
+	// NOTE: Don't handle RLE4/RLE8 here.  RLE is slightly different in AVI files!
+
+	int variant;
+	int format = VDBitmapFormatToPixmapFormat(hdr, variant);
+
+	bool is_dib = (format != 0);
+	if (is_dib) {
+		dec = new VDVideoDecompressorDIB;
+		if (dec) {
+			VDPixmapLayout layout;
+			VDMakeBitmapCompatiblePixmapLayout(layout, hdr.biWidth, hdr.biHeight, format, variant);
+
+			static_cast<VDVideoDecompressorDIB *>(dec)->Init(layout, (const uint32 *)(&hdr + 1));
+			return dec;
+		}
+	}
+
+	if (hdr.biCompression == VDAVIBitmapInfoHeader::kCompressionBitfields && (hdr.biBitCount == 16 || hdr.biBitCount == 32)) {
+		dec = new VDVideoDecompressorDIBBitfields;
+		if (dec) {
+			static_cast<VDVideoDecompressorDIBBitfields *>(dec)->Init(hdr.biWidth, hdr.biHeight, hdr.biBitCount == 32, (const uint32 *)(&hdr + 1));
+
+			return dec;
+		}
+
+	}
+
+	// If we aren't preferring internal decoders, look for an external decoder.
+	if (!preferInternal) {
+		dec = VDFindVideoDecompressor(fccHandler, &hdr);
+		if (dec)
+			return dec;
+	}
+
+	const int w = hdr.biWidth;
+	const int h = abs((int)hdr.biHeight);
+
+	// If it's Motion JPEG, use the internal decoder.
+	// TODO: AMD64 currently does not have a working MJPEG decoder.
+#ifndef _M_AMD64
+	bool is_mjpeg	 = isEqualFOURCC(hdr.biCompression, 'GPJM')
+					|| isEqualFOURCC(hdr.biCompression, '1bmd');
+	if (is_mjpeg) {
+		vdautoptr<VDVideoDecompressorMJPEG> pDecoder(new_nothrow VDVideoDecompressorMJPEG);
+		if (pDecoder) {
+			pDecoder->Init(w, h);
+
+			return pDecoder.release();
+		}
+	}
+#endif
+
+	// If it's DV, use the internal decoder.
+	bool is_dv = isEqualFOURCC(hdr.biCompression, 'dsvd');
+	if (is_dv && w==720 && (h == 480 || h == 576)) {
+		dec = VDCreateVideoDecompressorDV(w, h);
+		if (dec)
+			return dec;
+	}
+
+	// if we were asked to use an internal decoder and failed, try external decoders
+	// now
+	if (preferInternal) {
+		dec = VDFindVideoDecompressor(fccHandler, &hdr);
+		if (dec)
+			return dec;
+	}
+
+	return NULL;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 VideoSource::VideoSource()
 	: stream_current_frame(-1)
+	, mpFrameBuffer(NULL)
+	, mFrameBufferSize(0)
 {
-	lpvBuffer = NULL;
-	hBufferObject = NULL;
 }
 
 VideoSource::~VideoSource() {
@@ -221,39 +843,19 @@ VideoSource::~VideoSource() {
 }
 
 void *VideoSource::AllocFrameBuffer(long size) {
-	hBufferObject = CreateFileMapping(
-			INVALID_HANDLE_VALUE,
-			NULL,
-			PAGE_READWRITE,
-			0,
-			size,
-			NULL);
+	FreeFrameBuffer();
 
-	if (!hBufferObject) return NULL;
-
-	lBufferOffset = 0;
-
-	lpvBuffer = MapViewOfFile(hBufferObject, FILE_MAP_ALL_ACCESS, 0, lBufferOffset, size);
+	mpFrameBuffer = VDAlignedMalloc(size, 128);
 	mFrameBufferSize = size;
 
-	if (!lpvBuffer) {
-		CloseHandle(hBufferObject);
-		hBufferObject = NULL;
-	}
-
-	return lpvBuffer;
+	return mpFrameBuffer;
 }
 
 void VideoSource::FreeFrameBuffer() {
-	if (hBufferObject) {
-		if (lpvBuffer)
-			UnmapViewOfFile(lpvBuffer);
-		CloseHandle(hBufferObject);
-	} else
-		freemem(lpvBuffer);
-
-	lpvBuffer = NULL;
-	hBufferObject = NULL;
+	if (mpFrameBuffer) {
+		VDAlignedFree(mpFrameBuffer);
+		mpFrameBuffer = NULL;
+	}
 }
 
 bool VideoSource::setTargetFormat(int format) {
@@ -266,46 +868,46 @@ bool VideoSource::setTargetFormatVariant(int format, int variant) {
 	if (!format)
 		format = kPixFormat_XRGB8888;
 
-	const BITMAPINFOHEADER *bih = getImageFormat();
+	const VDAVIBitmapInfoHeader *bih = getImageFormat();
 	const sint32 w = bih->biWidth;
 	const sint32 h = abs(bih->biHeight);			// we don't want inverted output....
 	VDPixmapLayout layout;
 
 	VDMakeBitmapCompatiblePixmapLayout(layout, w, h, format, variant);
 
-	mTargetFormat = VDPixmapFromLayout(layout, lpvBuffer);
+	mTargetFormat = VDPixmapFromLayout(layout, mpFrameBuffer);
 	mTargetFormatVariant = variant;
 
 	if(format == nsVDPixmap::kPixFormat_Pal8) {
 		int maxBytes = getFormatLen();
 		int colors = bih->biClrUsed;
-		if (!colors && (bih->biCompression == BI_RGB || bih->biCompression == BI_RLE4 || bih->biCompression == BI_RLE8) && bih->biBitCount <= 8)
+		if (!colors && (bih->biCompression == VDAVIBitmapInfoHeader::kCompressionRGB || bih->biCompression == VDAVIBitmapInfoHeader::kCompressionRLE4 || bih->biCompression == VDAVIBitmapInfoHeader::kCompressionRLE8) && bih->biBitCount <= 8)
 			colors = 1 << bih->biBitCount;
 		if (colors > 256)
 			colors = 256;
 
-		mpTargetFormatHeader.assign(getImageFormat(), sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * colors);
-		mpTargetFormatHeader->biSize			= sizeof(BITMAPINFOHEADER);
+		mpTargetFormatHeader.assign(getImageFormat(), sizeof(VDAVIBitmapInfoHeader) + sizeof(VDAVIRGBQuad) * colors);
+		mpTargetFormatHeader->biSize			= sizeof(VDAVIBitmapInfoHeader);
 		mpTargetFormatHeader->biPlanes			= 1;
 		mpTargetFormatHeader->biBitCount		= 8;
-		mpTargetFormatHeader->biCompression		= BI_RGB;
+		mpTargetFormatHeader->biCompression		= VDAVIBitmapInfoHeader::kCompressionRGB;
 		mpTargetFormatHeader->biSizeImage		= ((w+3)&~3)*h;
-		RGBQUAD *palette = (RGBQUAD *)(&*mpTargetFormatHeader + 1);
+		VDAVIRGBQuad *palette = (VDAVIRGBQuad *)(&*mpTargetFormatHeader + 1);
 
 		if (colors > 0) {
-			int maxColors = (maxBytes - bih->biSize) / sizeof(RGBQUAD);
+			int maxColors = (maxBytes - bih->biSize) / sizeof(VDAVIRGBQuad);
 
-			memset(palette, 0, sizeof(RGBQUAD)*colors);
+			memset(palette, 0, sizeof(VDAVIRGBQuad)*colors);
 
 			if (colors > maxColors)
 				colors = maxColors;
 
-			memcpy(palette, (char *)bih + bih->biSize, sizeof(RGBQUAD)*colors);
+			memcpy(palette, (char *)bih + bih->biSize, sizeof(VDAVIRGBQuad)*colors);
 		}
 
 		mTargetFormat.palette = mPalette;
 	} else {
-		const vdstructex<BITMAPINFOHEADER> src(bih, getFormatLen());
+		const vdstructex<VDAVIBitmapInfoHeader> src(bih, getFormatLen());
 		if (!VDMakeBitmapFormatFromPixmapFormat(mpTargetFormatHeader, src, format, variant))
 			return false;
 	}
@@ -326,8 +928,8 @@ bool VideoSource::setDecompressedFormat(int depth) {
 	return false;
 }
 
-bool VideoSource::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
-	const BITMAPINFOHEADER *bih = getImageFormat();
+bool VideoSource::setDecompressedFormat(const VDAVIBitmapInfoHeader *pbih) {
+	const VDAVIBitmapInfoHeader *bih = getImageFormat();
 
 	if (pbih->biWidth == bih->biWidth && pbih->biHeight == bih->biHeight) {
 		int variant;
@@ -388,7 +990,7 @@ int VideoSource::streamGetRequiredCount(uint32 *totalsize) {
 	while(current <= stream_desired_frame) {
 		uint32 onesize = 0;
 
-		if (AVIERR_OK == read(current, 1, NULL, NULL, &onesize, &samp))
+		if (IVDStreamSource::kOK == read(current, 1, NULL, NULL, &onesize, &samp))
 			size += onesize;
 
 		if (onesize)
@@ -442,8 +1044,10 @@ bool VideoSource::isType1() {
 
 ///////////////////////////
 
-VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys, IAVIReadHandler **stripe_files, bool use_internal, int mjpeg_mode, FOURCC fccForceVideo, FOURCC fccForceVideoHandler)
-	: mErrorMode(kErrorModeReportAll)
+VideoSourceAVI::VideoSourceAVI(InputFileAVI *pParent, IAVIReadHandler *pAVI, AVIStripeSystem *stripesys, IAVIReadHandler **stripe_files, bool use_internal, int mjpeg_mode, uint32 fccForceVideo, uint32 fccForceVideoHandler, const uint32 *key_flags)
+	: VDAVIStreamSource(pParent)
+	, mpKeyFlags(key_flags)
+	, mErrorMode(kErrorModeReportAll)
 	, mbMMXBrokenCodecDetected(false)
 	, mbConcealingErrors(false)
 	, mbDecodeStarted(false)
@@ -451,168 +1055,83 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 {
 	pAVIFile	= pAVI;
 	pAVIStream	= NULL;
-	lpvBuffer	= NULL;
-	key_flags	= NULL;
 	mjpeg_reorder_buffer = NULL;
 	mjpeg_reorder_buffer_size = 0;
 	mjpeg_splits = NULL;
 	mjpeg_last = -1;
 	this->fccForceVideo = fccForceVideo;
 	this->fccForceVideoHandler = fccForceVideoHandler;
-	hbmLame = NULL;
-	fUseGDI = false;
 	bDirectDecompress = false;
 	bInvertFrames = false;
 	lLastFrame = -1;
 
-	// striping...
-
-	stripe_streams	= NULL;
-	stripe_index	= NULL;
-	this->stripesys = stripesys;
-	this->stripe_files = stripe_files;
 	this->use_internal = use_internal;
 	this->mjpeg_mode	= mjpeg_mode;
-
-	try {
-		_construct();
-	} catch(const MyError&) {
-		_destruct();
-		throw;
-	}
 }
 
 void VideoSourceAVI::_destruct() {
-	delete stripe_index;
-
-	if (stripe_streams) {
-		int i;
-
-		for(i=0; i<stripe_count; i++)
-			if (stripe_streams[i])
-				delete stripe_streams[i];
-
-		delete stripe_streams;
-	}
-
 	mpDecompressor = NULL;
 
-	if (pAVIStream) delete pAVIStream;
+	if (pAVIStream) {
+		delete pAVIStream;
+		pAVIStream = NULL;
+	}
 
 	freemem(mjpeg_reorder_buffer);
 	mjpeg_reorder_buffer = NULL;
 	delete[] mjpeg_splits;
 	mjpeg_splits = NULL;
-
-	delete[] key_flags; key_flags = NULL;
-
-	if (hbmLame) {
-		DeleteObject(hbmLame);
-		hbmLame = NULL;
-	}
 }
 
 VideoSourceAVI::~VideoSourceAVI() {
 	_destruct();
 }
 
-void VideoSourceAVI::_construct() {
+bool VideoSourceAVI::Init(int streamIndex) {
+	bool found;
+	try {
+		found = _construct(streamIndex);
+	} catch(const MyError&) {
+		_destruct();
+		throw;
+	}
+	return found;
+}
+
+bool VideoSourceAVI::_construct(int streamIndex) {
 	LONG format_len;
-	BITMAPINFOHEADER *bmih;
-	bool is_mjpeg, is_dv, is_dib;
+	VDAVIBitmapInfoHeader *bmih;
 
 	// Look for a standard vids stream
 
 	bIsType1 = false;
-	pAVIStream = pAVIFile->GetStream(streamtypeVIDEO, 0);
+	pAVIStream = pAVIFile->GetStream(streamtypeVIDEO, streamIndex);
 	if (!pAVIStream) {
-		pAVIStream = pAVIFile->GetStream('svai', 0);
+		pAVIStream = pAVIFile->GetStream('svai', streamIndex);
 
 		if (!pAVIStream)
-			throw MyError("No video stream found.");
+			return false;
 
 		bIsType1 = true;
 	}
 
-	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
+	if (pAVIStream->Info(&streamInfo))
 		throw MyError("Error obtaining video stream info.");
 
 	// Force the video type to be 'vids', in case it was type-1 coming in.
 
 	streamInfo.fccType = 'sdiv';
 
-	// ADDITION FOR STRIPED AVI SUPPORT:
-	//
-	// If this is an index for a stripe system, then the video stream will have
-	// 'VDST' as its fccHandler and video compression.  This will probably
-	// correspond to the "VDub Frameserver" compressor, but since VirtualDub can
-	// connect to its own frameservers more efficiently though the AVIFile
-	// interface, it makes sense to open striped files in native mode.
-	//
-	// For this to work, we must have been sent the striping specs beforehand,
-	// or else we won't be able to open the stripes.
-
-	if (streamInfo.fccHandler == 'TSDV') {
-		int i;
-
-		if (!stripesys)
-			throw MyError("AVI file is striped - must be opened with stripe definition file.");
-
-		// allocate memory for stripe stream table
-
-		stripe_count = stripesys->getStripeCount();
-
-		if (!(stripe_streams = new IAVIReadStream *[stripe_count]))
-			throw MyMemoryError();
-
-		for(i=0; i<stripe_count; i++)
-			stripe_streams[i] = NULL;
-
-		// attempt to open a video stream for every stripe that has one
-
-		format_stream = NULL;
-
-		for(i=0; i<stripe_count; i++) {
-			if (stripesys->getStripeInfo(i)->isVideo()) {
-				stripe_streams[i] = stripe_files[i]->GetStream(streamtypeVIDEO, 0);
-				if (!stripe_streams[i])
-					throw MyError("Striping: cannot open video stream for stripe #%d", i+1);
-
-				if (!format_stream) format_stream = stripe_streams[i];
-			}
-		}
-
-		if (!format_stream)
-			throw MyError("Striping: No video stripes found!");
-
-		// Reread the streamInfo structure from first video stripe,
-		// because ours is fake.
-
-		if (format_stream->Info(&streamInfo, sizeof streamInfo))
-			throw MyError("Error obtaining video stream info from first video stripe.");
-
-		// Initialize the index.
-
-		if (!(stripe_index = new AVIStripeIndexLookup(pAVIStream)))
-			throw MyMemoryError();
-		
-	} else {
-		if (stripesys)
-			throw MyError("This is not a striped AVI file.");
-
-		format_stream = pAVIStream;
-	}
-
 	// Read video format.  If we're striping, the index stripe has a fake
 	// format, so we have to grab the format from a video stripe.  If it's a
 	// type-1 DV, we're going to have to fake it.
 
 	if (bIsType1) {
-		format_len = sizeof(BITMAPINFOHEADER);
+		format_len = sizeof(VDAVIBitmapInfoHeader);
 
-		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
+		if (!(bmih = (VDAVIBitmapInfoHeader *)allocFormat(format_len))) throw MyMemoryError();
 
-		bmih->biSize			= sizeof(BITMAPINFOHEADER);
+		bmih->biSize			= sizeof(VDAVIBitmapInfoHeader);
 		bmih->biWidth			= 720;
 
 		if (streamInfo.dwRate > streamInfo.dwScale*26i64)
@@ -629,24 +1148,24 @@ void VideoSourceAVI::_construct() {
 		bmih->biClrUsed			= 0;
 		bmih->biClrImportant	= 0;
 	} else {
-		format_stream->FormatSize(0, &format_len);
+		pAVIStream->FormatSize(0, &format_len);
 
-		std::vector<char> format(format_len);
+		vdfastvector<char> format(format_len);
 
-		if (format_stream->ReadFormat(0, &format.front(), &format_len))
+		if (pAVIStream->ReadFormat(0, &format.front(), &format_len))
 			throw MyError("Error obtaining video stream format.");
 
 		// check for a very large BITMAPINFOHEADER -- structs as large as 153K
 		// can be written out by some ePSXe video plugins
 
-		const BITMAPINFOHEADER *pFormat = (const BITMAPINFOHEADER *)&format.front();
+		const VDAVIBitmapInfoHeader *pFormat = (const VDAVIBitmapInfoHeader *)&format.front();
 
 		if (format.size() >= 16384 && format.size() > pFormat->biSize) {
 			int badsize = format.size();
 			int realsize = pFormat->biSize;
 
-			if (realsize >= sizeof(BITMAPINFOHEADER)) {
-				realsize = VDGetSizeOfBitmapHeaderW32(pFormat);
+			if (realsize >= sizeof(VDAVIBitmapInfoHeader)) {
+				realsize = VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pFormat);
 
 				if (realsize < format.size()) {
 					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FixingHugeVideoFormat, 2, &badsize, &realsize);
@@ -659,7 +1178,7 @@ void VideoSourceAVI::_construct() {
 
 		// copy format to official video stream format
 
-		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len)))
+		if (!(bmih = (VDAVIBitmapInfoHeader *)allocFormat(format_len)))
 			throw MyMemoryError();
 
 		memcpy(getFormat(), pFormat, format.size());
@@ -686,7 +1205,7 @@ void VideoSourceAVI::_construct() {
 	// Some Dazzle drivers apparently do not set biSizeImage correctly.  Also,
 	// zero is a valid value for BI_RGB, but it's annoying!
 
-	if (bmih->biCompression == BI_RGB || bmih->biCompression == BI_BITFIELDS) {
+	if (bmih->biCompression == VDAVIBitmapInfoHeader::kCompressionRGB || bmih->biCompression == VDAVIBitmapInfoHeader::kCompressionBitfields) {
 		// Check for an inverted DIB.  If so, silently flip it around.
 
 		if ((long)bmih->biHeight < 0) {
@@ -709,14 +1228,6 @@ void VideoSourceAVI::_construct() {
 	if (fccForceVideoHandler)
 		streamInfo.fccHandler = fccForceVideoHandler;
 
-	is_mjpeg = isEqualFOURCC(bmih->biCompression, 'GPJM')
-			|| isEqualFOURCC(fccForceVideo, 'GPJM')
-			|| isEqualFOURCC(bmih->biCompression, '1bmd')
-			|| isEqualFOURCC(fccForceVideo, '1bmd');
-
-	is_dv = isEqualFOURCC(bmih->biCompression, 'dsvd')
-		 || isEqualFOURCC(fccForceVideo, 'dsvd');
-
 	// Check if we can handle the format directly; if so, convert bitmap format to Kasumi format
 	mSourceLayout.data		= 0;
 	mSourceLayout.data2		= 0;
@@ -730,94 +1241,38 @@ void VideoSourceAVI::_construct() {
 	mSourceLayout.h			= abs(bmih->biHeight);
 	mSourceVariant			= 1;
 
-	switch(bmih->biCompression) {
-	case BI_RGB:
-		switch(bmih->biBitCount) {
-		case 8:
-			mSourceLayout.format = nsVDPixmap::kPixFormat_Pal8;
-			break;
-		case 16:
-			mSourceLayout.format = nsVDPixmap::kPixFormat_XRGB1555;
-			break;
-		case 24:
-			mSourceLayout.format = nsVDPixmap::kPixFormat_RGB888;
-			break;
-		case 32:
-			mSourceLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
-			break;
-		}
-		break;
-	case BI_BITFIELDS:
-		if (getFormatLen() >= sizeof(BITMAPINFOHEADER) + sizeof(DWORD)*3) {
-			BITMAPV4HEADER& hdr4 = *(BITMAPV4HEADER *)bmih;		// Only the rgb masks are guaranteed to be valid
-			const DWORD red		= hdr4.bV4RedMask;
-			const DWORD grn		= hdr4.bV4GreenMask;
-			const DWORD blu		= hdr4.bV4BlueMask;
-			const DWORD count	= bmih->biBitCount;
+	mSourceLayout.format = VDBitmapFormatToPixmapFormat(*(const VDAVIBitmapInfoHeader *)bmih);
 
-			if (red == 0x00007c00 && grn == 0x000003e0 && blu == 0x0000001f && count == 16)
-				mSourceLayout.format = nsVDPixmap::kPixFormat_XRGB1555;
-			else if (red == 0x0000f800 && grn == 0x000007e0 && blu == 0x0000001f && count == 16)
-				mSourceLayout.format = nsVDPixmap::kPixFormat_RGB565;
-			else if (red == 0x00ff0000 && grn == 0x0000ff00 && blu == 0x000000ff && count == 24)
-				mSourceLayout.format = nsVDPixmap::kPixFormat_RGB888;
-			else if (red == 0x00ff0000 && grn == 0x0000ff00 && blu == 0x000000ff && count == 32)
-				mSourceLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
+	extern bool VDPreferencesIsDirectYCbCrInputEnabled();
+	if (!VDPreferencesIsDirectYCbCrInputEnabled()) {
+		switch(mSourceLayout.format) {
+			case nsVDPixmap::kPixFormat_Pal1:
+			case nsVDPixmap::kPixFormat_Pal2:
+			case nsVDPixmap::kPixFormat_Pal4:
+			case nsVDPixmap::kPixFormat_Pal8:
+			case nsVDPixmap::kPixFormat_XRGB1555:
+			case nsVDPixmap::kPixFormat_RGB565:
+			case nsVDPixmap::kPixFormat_RGB888:
+			case nsVDPixmap::kPixFormat_XRGB8888:
+				mSourceLayout.format = 0;
+				break;
 		}
-		break;
-	default:
-		extern bool VDPreferencesIsDirectYCbCrInputEnabled();
-		if (VDPreferencesIsDirectYCbCrInputEnabled()) {
-			switch(bmih->biCompression) {
-			case 'VYUY':		// YUYV
-			case '2YUY':		// YUY2
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV422_YUYV;
-				break;
-			case 'YVYU':		// UYVY
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV422_UYVY;
-				break;
-			case '21VY':		// YV12
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
-				break;
-			case 'VUYI':		// IYUV
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
-				mSourceVariant = 3;
-				break;
-			case '024I':		// I420
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
-				mSourceVariant = 2;
-				break;
-			case '61VY':		// YV16
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV422_Planar;
-				break;
-			case '9UVY':		// YVU9
-				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV410_Planar;
-				break;
-			case '  8Y':		// Y8
-			case '008Y':		// Y800
-				mSourceLayout.format = nsVDPixmap::kPixFormat_Y8;
-				break;
-			}
-		}
-		break;
 	}
-
-	is_dib = (mSourceLayout.format != 0);
 
 	if (mSourceLayout.format) {
 		mSourceFrameSize = VDMakeBitmapCompatiblePixmapLayout(mSourceLayout, mSourceLayout.w, mSourceLayout.h, mSourceLayout.format, mSourceVariant);
 
-		vdstructex<BITMAPINFOHEADER> format;
-		VDMakeBitmapFormatFromPixmapFormat(format, vdstructex<BITMAPINFOHEADER>(getImageFormat(), getFormatLen()), mSourceLayout.format, mSourceVariant);
+		vdstructex<VDAVIBitmapInfoHeader> format;
+		VDMakeBitmapFormatFromPixmapFormat(format, vdstructex<VDAVIBitmapInfoHeader>(getImageFormat(), getFormatLen()), mSourceLayout.format, mSourceVariant);
 	}
 
 	// init target format to something sane
-	mTargetFormat = VDPixmapFromLayout(mSourceLayout, lpvBuffer);
-	mpTargetFormatHeader.assign(getImageFormat(), sizeof(BITMAPINFOHEADER));
-	mpTargetFormatHeader->biSize			= sizeof(BITMAPINFOHEADER);
+	mTargetFormat = VDPixmapFromLayout(mSourceLayout, mpFrameBuffer);
+	mpTargetFormatHeader.assign(getImageFormat(), sizeof(VDAVIBitmapInfoHeader));
+	mpTargetFormatHeader->biSize			= sizeof(VDAVIBitmapInfoHeader);
 	mpTargetFormatHeader->biPlanes			= 1;
 	mpTargetFormatHeader->biBitCount		= 32;
-	mpTargetFormatHeader->biCompression		= BI_RGB;
+	mpTargetFormatHeader->biCompression		= VDAVIBitmapInfoHeader::kCompressionRGB;
 	mpTargetFormatHeader->biSizeImage		= mpTargetFormatHeader->biWidth*abs(mpTargetFormatHeader->biHeight)*4;
 
 	// If this is MJPEG, check to see if we should modify the output format and/or stream info
@@ -825,8 +1280,11 @@ void VideoSourceAVI::_construct() {
 	mSampleFirst = pAVIStream->Start();
 	mSampleLast = pAVIStream->End();
 
+	bool is_mjpeg	 = isEqualFOURCC(bmih->biCompression, 'GPJM')
+					|| isEqualFOURCC(bmih->biCompression, '1bmd');
+
 	if (is_mjpeg) {
-		BITMAPINFOHEADER *pbih = getImageFormat();
+		VDAVIBitmapInfoHeader *pbih = getImageFormat();
 
 		if (mjpeg_mode && mjpeg_mode != IFMODE_SWAP && abs(pbih->biHeight) > 288) {
 			pbih->biHeight /= 2;
@@ -857,79 +1315,24 @@ void VideoSourceAVI::_construct() {
 	if (!AllocFrameBuffer(bmih->biWidth * 4 * abs((int)bmih->biHeight) + 4))
 		throw MyMemoryError();
 
-	// get a decompressor
-	//
-	// 'DIB ' is the official value for uncompressed AVIs, but some stupid
-	// programs also use (null) and 'RAW '
-	//
-	// NOTE: Don't handle RLE4/RLE8 here.  RLE is slightly different in AVI files!
+	mpDecompressor = VDFindVideoDecompressorEx(streamInfo.fccHandler, *bmih, use_internal);
 
-	if (bmih->biCompression == BI_BITFIELDS
-		|| (bmih->biCompression == BI_RGB && bmih->biBitCount<16 && bmih->biBitCount != 8)) {
+	if (!mpDecompressor) {
+		const char *s = LookupVideoCodec(bmih->biCompression);
 
-		// Ugh.  It's one of them weirdo formats.  Let GDI handle it!
-
-		fUseGDI = true;
-
-	} else if (!is_dib) {
-		FOURCC fccOriginalCodec = bmih->biCompression;
-
-		// If it's a hacked MPEG-4 driver, try all of the known hacks. #*$&@#(&$)(#$
-		// They're all the same driver, so they're mutually compatible.
-
-		bool bFailed = false;
-
-		if (use_internal) {
-			bFailed = true;
-		} else {
-			mpDecompressor = VDFindVideoDecompressor(streamInfo.fccHandler, bmih);
-			bFailed = !mpDecompressor;
-		}
-
-		if (bFailed) {
-			// Is it MJPEG or DV?  Maybe we can do it ourselves.
-
-			const BITMAPINFOHEADER *bihSrc = getImageFormat();
-			const int w = bihSrc->biWidth;
-			const int h = abs((int)bihSrc->biHeight);
-
-			// AMD64 currently does not have a working MJPEG decoder. Should fix this.
-#ifndef _M_AMD64
-			if (is_mjpeg) {
-				vdautoptr<VDVideoDecompressorMJPEG> pDecoder(new_nothrow VDVideoDecompressorMJPEG);
-				pDecoder->Init(w, h);
-
-				mpDecompressor = pDecoder.release();
-			} else
-#endif
-			if (is_dv && w==720 && (h == 480 || h == 576)) {
-				mpDecompressor = VDCreateVideoDecompressorDV(w, h);
-			} else {
-
-				// if we were asked to use an internal decoder and failed, try external decoders
-				// now
-				if (use_internal) {
-					mpDecompressor = VDFindVideoDecompressor(streamInfo.fccHandler, bmih);
-					bFailed = !mpDecompressor;
-				}
-
-				if (bFailed) {
-					const char *s = LookupVideoCodec(fccOriginalCodec);
-
-					throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)\n"
-									"\n"
-									"VirtualDub requires a Video for Windows (VFW) compatible codec to decompress "
-									"video. DirectShow codecs, such as those used by Windows Media Player, are not "
-									"suitable."
-								,(fccOriginalCodec    ) & 0xff
-								,(fccOriginalCodec>> 8) & 0xff
-								,(fccOriginalCodec>>16) & 0xff
-								,(fccOriginalCodec>>24) & 0xff
-								,s ? s : "unknown");
-				}
-			}
-		}
+		throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)\n"
+						"\n"
+						"VirtualDub requires a Video for Windows (VFW) compatible codec to decompress "
+						"video. DirectShow codecs, such as those used by Windows Media Player, are not "
+						"suitable."
+					,(bmih->biCompression    ) & 0xff
+					,(bmih->biCompression>> 8) & 0xff
+					,(bmih->biCompression>>16) & 0xff
+					,(bmih->biCompression>>24) & 0xff
+					,s ? s : "unknown");
 	}
+
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -964,7 +1367,7 @@ void VideoSourceAVI::Reinit() {
 		mjpeg_splits = pNewSplits;
 	}
 
-	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
+	if (pAVIStream->Info(&streamInfo))
 		throw MyError("Error obtaining video stream info.");
 
 	streamInfo.fccType = 'sdiv';
@@ -985,35 +1388,27 @@ void VideoSourceAVI::Reinit() {
 	streamInfo.dwLength		= (DWORD)std::min<VDPosition>(0xFFFFFFFF, mSampleLast - mSampleFirst);
 }
 
-void VideoSourceAVI::redoKeyFlags() {
+void VideoSourceAVI::redoKeyFlags(vdfastvector<uint32>& newFlags) {
 	VDPosition lSample;
 	long lMaxFrame=0;
 	uint32 lActualBytes, lActualSamples;
 	int err;
 	void *lpInputBuffer = NULL;
-	BOOL fStreamBegun = FALSE;
-	int iBytes;
+	bool fStreamBegun = false;
 	long *pFrameSums;
 
-	if (!mpDecompressor)
-		return;
-
-	iBytes = (mSampleLast+7-mSampleFirst)>>3;
-
-	if (!(key_flags = new char[iBytes]))
-		throw MyMemoryError();
-
-	memset(key_flags, 0, iBytes);
+	uint32 maskWords = (mSampleLast-mSampleFirst+31) >> 5;
+	newFlags.resize(maskWords, 0);
 
 	// Find maximum frame
 
 	lSample = mSampleFirst;
 	while(lSample < mSampleLast) {
 		err = _read(lSample, 1, NULL, 0, &lActualBytes, &lActualSamples);
-		if (err == AVIERR_OK)
-//			throw MyAVIError("VideoSource", err);
-
-			if (lActualBytes > lMaxFrame) lMaxFrame = lActualBytes;
+		if (err == IVDStreamSource::kOK) {
+			if (lActualBytes > lMaxFrame)
+				lMaxFrame = lActualBytes;
+		}
 
 		++lSample;
 	}
@@ -1037,7 +1432,7 @@ void VideoSourceAVI::redoKeyFlags() {
 		pd.setValueFormat("Frame %ld of %ld");
 
 		streamBegin(true, false);
-		fStreamBegun = TRUE;
+		fStreamBegun = true;
 
 		lSample = mSampleFirst;
 		while(lSample < mSampleLast) {
@@ -1051,14 +1446,13 @@ void VideoSourceAVI::redoKeyFlags() {
 			_RPT1(0,"Rekeying frame %ld\n", lSample);
 
 			err = _read(lSample, 1, lpInputBuffer, lMaxFrame, &lActualBytes, &lActualSamples);
-			if (err != AVIERR_OK)
-//				throw MyAVIError("VideoSourceAVI", err);
+			if (err != IVDStreamSource::kOK)
 				goto rekey_error;
 
 
-			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample, lSample);
+			streamGetFrame(lpInputBuffer, lActualBytes, false, lSample, lSample);
 
-			ptr = (unsigned char *)lpvBuffer;
+			ptr = (unsigned char *)mpFrameBuffer;
 			y = lHeight;
 			do {
 				x = lWidth;
@@ -1093,16 +1487,13 @@ rekey_error:
 			const long lHeight	= abs(mpTargetFormatHeader->biHeight);
 			unsigned char *ptr;
 
-			_RPT1(0,"Rekeying frame %ld\n", lSample);
-
 			err = _read(lSample, 1, lpInputBuffer, lMaxFrame, &lActualBytes, &lActualSamples);
-			if (err != AVIERR_OK)
-//				throw MyAVIError("VideoSourceAVI", err);
+			if (err != IVDStreamSource::kOK)
 				goto rekey_error2;
 
-			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample, lSample);
+			streamGetFrame(lpInputBuffer, lActualBytes, false, lSample, lSample);
 
-			ptr = (unsigned char *)lpvBuffer;
+			ptr = (unsigned char *)mpFrameBuffer;
 			y = lHeight;
 			do {
 				x = lWidth;
@@ -1116,7 +1507,7 @@ rekey_error:
 
 
 			if (lWhiteTotal == pFrameSums[lSample - mSampleFirst])
-				key_flags[(lSample - mSampleFirst)>>3] |= 1<<((lSample-mSampleFirst)&7);
+				newFlags[(lSample - mSampleFirst)>>5] |= 1<<((lSample-mSampleFirst)&31);
 
 rekey_error2:
 			if (lSample == mSampleFirst)
@@ -1147,27 +1538,6 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 	if (mjpeg_mode == IFMODE_SPLIT1 || mjpeg_mode == IFMODE_SPLIT2)
 		lStart = mSampleFirst + (lStart - mSampleFirst)/2;
 
-	// If we're striping, then we have to lookup the correct stripe for this sample.
-
-	if (stripesys) {
-		AVIStripeIndexEntry *asie;
-		VDPosition offset;
-
-		if (!(asie = stripe_index->lookup(lStart)))
-			return AVIERR_FILEREAD;
-
-		offset = lStart - asie->lSampleFirst;
-
-		if (lCount > asie->lSampleCount-offset)
-			lCount = asie->lSampleCount-offset;
-
-		if (!stripe_streams[asie->lStripe])
-			return AVIERR_FILEREAD;
-
-		pSource = stripe_streams[asie->lStripe];
-		lStart = asie->lStripeSample + offset;
-	}
-
 	// MJPEG modification mode?
 
 	if (mjpeg_mode) {
@@ -1179,7 +1549,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 
 		if (lStart == mjpeg_last) {
 			lBytes = mjpeg_last_size;
-			res = AVIERR_OK;
+			res = IVDStreamSource::kOK;
 		} else {
 
 			// Read the sample into memory.  If we don't have a lpBuffer *and* already know
@@ -1192,22 +1562,22 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 				if (mjpeg_reorder_buffer_size)
 					res = pSource->Read(lStart, 1, mjpeg_reorder_buffer, mjpeg_reorder_buffer_size, &lBytes, &lSamples);
 
-				if (res == AVIERR_BUFFERTOOSMALL || !mjpeg_reorder_buffer_size) {
+				if (res == IVDStreamSource::kBufferTooSmall || !mjpeg_reorder_buffer_size) {
 					void *new_buffer;
 					int new_size;
 
 					res = pSource->Read(lStart, 1, NULL, 0, &lBytes, &lSamples);
 
-					if (res == AVIERR_OK) {
+					if (res == IVDStreamSource::kOK) {
 
-						_ASSERT(lBytes != 0);
+						VDASSERT(lBytes != 0);
 
 						new_size = (lBytes + 4095) & -4096;
 //						new_size = lBytes;
 						new_buffer = reallocmem(mjpeg_reorder_buffer, new_size);
 
 						if (!new_buffer)
-							return AVIERR_MEMORY;
+							throw MyMemoryError();
 
 						mjpeg_reorder_buffer = new_buffer;
 						mjpeg_reorder_buffer_size = new_size;
@@ -1216,7 +1586,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 					}
 				}
 
-				if (res == AVIERR_OK) {
+				if (res == IVDStreamSource::kOK) {
 					mjpeg_last = lStart;
 					mjpeg_last_size = lBytes;
 				}
@@ -1225,7 +1595,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 		}
 
 
-		if (res != AVIERR_OK) {
+		if (res != IVDStreamSource::kOK) {
 			if (lBytesRead)
 				*lBytesRead = 0;
 			if (lSamplesRead)
@@ -1236,7 +1606,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 				*lBytesRead = 0;
 			if (lSamplesRead)
 				*lSamplesRead = 1;
-			return AVIERR_OK;
+			return IVDStreamSource::kOK;
 		}
 
 		// Attempt to find SOI tag in sample
@@ -1293,7 +1663,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 				*lBytesRead = lLength;
 
 			if (cbBuffer < lLength)
-				return AVIERR_BUFFERTOOSMALL;
+				return IVDStreamSource::kBufferTooSmall;
 
 			if (mjpeg_mode == IFMODE_SWAP) {
 				char *pp1 = (char *)lpBuffer;
@@ -1323,14 +1693,14 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 					((char *)lpBuffer)[10] = 0;
 			}
 
-			return AVIERR_OK;
+			return IVDStreamSource::kOK;
 		} else {
 			if (lSamplesRead)
 				*lSamplesRead = 1;
 			if (lBytesRead)
 				*lBytesRead = lLength;
 
-			return AVIERR_OK;
+			return IVDStreamSource::kOK;
 		}
 
 	} else {
@@ -1344,7 +1714,7 @@ int VideoSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 			*lBytesRead = bytesRead;
 
 		if (lpBuffer && bInvertFrames && !rv && samplesRead) {
-			const BITMAPINFOHEADER& hdr = *getImageFormat();
+			const VDAVIBitmapInfoHeader& hdr = *getImageFormat();
 			const long dpr = ((hdr.biWidth * hdr.biBitCount + 31)>>5);
 
 			if (bytesRead >= dpr * 4 * hdr.biHeight) {		// safety check
@@ -1388,24 +1758,6 @@ sint64 VideoSourceAVI::getSampleBytePosition(VDPosition pos) {
 	if (mjpeg_mode == IFMODE_SPLIT1 || mjpeg_mode == IFMODE_SPLIT2)
 		pos = mSampleFirst + (pos - mSampleFirst)/2;
 
-	// If we're striping, then we have to lookup the correct stripe for this sample.
-
-	if (stripesys) {
-		AVIStripeIndexEntry *asie;
-		VDPosition offset;
-
-		if (!(asie = stripe_index->lookup(pos)))
-			return -1;
-
-		offset = pos - asie->lSampleFirst;
-
-		if (!stripe_streams[asie->lStripe])
-			return -1;
-
-		pSource = stripe_streams[asie->lStripe];
-		pos = asie->lStripeSample + offset;
-	}
-
 	return pSource->getSampleBytePosition(pos);
 }
 
@@ -1413,16 +1765,16 @@ bool VideoSourceAVI::_isKey(VDPosition samp) {
 	if ((mjpeg_mode & -2) == IFMODE_SPLIT1)
 		samp = mSampleFirst + (samp - mSampleFirst)/2;
 
-	if (key_flags) {
+	if (mpKeyFlags) {
 		samp -= mSampleFirst;
 
-		return !!(key_flags[samp>>3] & (1<<(samp&7)));
+		return !!(mpKeyFlags[samp>>5] & (1<<(samp&31)));
 	} else
 		return pAVIStream->IsKeyFrame(samp);
 }
 
 VDPosition VideoSourceAVI::nearestKey(VDPosition lSample) {
-	if (key_flags) {
+	if (mpKeyFlags) {
 		if (lSample < mSampleFirst || lSample >= mSampleLast)
 			return -1;
 
@@ -1445,7 +1797,7 @@ VDPosition VideoSourceAVI::prevKey(VDPosition lSample) {
 	if ((mjpeg_mode & -2) == IFMODE_SPLIT1) {
 		lSample = mSampleFirst + (lSample - mSampleFirst)/2;
 
-		if (key_flags) {
+		if (mpKeyFlags) {
 			if (lSample >= mSampleLast) return -1;
 
 			while(--lSample >= mSampleFirst)
@@ -1455,7 +1807,7 @@ VDPosition VideoSourceAVI::prevKey(VDPosition lSample) {
 		} else
 			return pAVIStream->PrevKeyFrame(lSample)*2-mSampleFirst;
 	} else {
-		if (key_flags) {
+		if (mpKeyFlags) {
 			if (lSample >= mSampleLast) return -1;
 
 			while(--lSample >= mSampleFirst)
@@ -1471,7 +1823,7 @@ VDPosition VideoSourceAVI::nextKey(VDPosition lSample) {
 	if ((mjpeg_mode & -2) == IFMODE_SPLIT1) {
 		lSample = mSampleFirst + (lSample - mSampleFirst)/2;
 
-		if (key_flags) {
+		if (mpKeyFlags) {
 			if (lSample < mSampleFirst) return -1;
 
 			while(++lSample < mSampleLast)
@@ -1483,7 +1835,7 @@ VDPosition VideoSourceAVI::nextKey(VDPosition lSample) {
 
 	} else {
 
-		if (key_flags) {
+		if (mpKeyFlags) {
 			if (lSample < mSampleFirst) return -1;
 
 			while(++lSample < mSampleLast)
@@ -1503,9 +1855,6 @@ bool VideoSourceAVI::setTargetFormat(int format) {
 
 	bDirectDecompress = false;
 
-	if (!format && mSourceLayout.format)
-		format = mSourceLayout.format;
-
 	if (format && format == mSourceLayout.format) {
 		if (VideoSource::setTargetFormatVariant(format, mSourceVariant)) {
 			if (format == kPixFormat_Pal8)
@@ -1517,101 +1866,65 @@ bool VideoSourceAVI::setTargetFormat(int format) {
 		return false;
 	}
 
-	if (fUseGDI) {
-		void *pv;
-		HDC hdc;
+	// attempt direct decompression
+	if (format) {
+		vdstructex<VDAVIBitmapInfoHeader> desiredFormat;
+		vdstructex<VDAVIBitmapInfoHeader> srcFormat(getImageFormat(), getFormatLen());
 
-		if (!format)
-			format = kPixFormat_XRGB8888;
+		const int variants = VDGetPixmapToBitmapVariants(format);
 
-		if (format != kPixFormat_XRGB1555 && format != kPixFormat_RGB888 && format != kPixFormat_XRGB8888)
-			return false;
+		for(int variant=1; variant<=variants; ++variant) {
+			if (VDMakeBitmapFormatFromPixmapFormat(desiredFormat, srcFormat, format, variant)) {
+				if (srcFormat->biCompression == desiredFormat->biCompression
+					&& srcFormat->biCompression != VDAVIBitmapInfoHeader::kCompressionBitfields
+					&& srcFormat->biBitCount == desiredFormat->biBitCount
+					&& srcFormat->biSizeImage == desiredFormat->biSizeImage
+					&& srcFormat->biWidth == desiredFormat->biWidth
+					&& srcFormat->biHeight == desiredFormat->biHeight
+					&& srcFormat->biPlanes == desiredFormat->biPlanes) {
 
-		if (!VideoSource::setTargetFormat(format))
-			return false;
+					mpTargetFormatHeader = srcFormat;
 
-		if (hbmLame)
-			DeleteObject(hbmLame);
+					VDVERIFY(VideoSource::setTargetFormatVariant(format, variant));
 
-		hbmLame = NULL;
+					if (format == kPixFormat_Pal8)
+						mTargetFormat.palette = mPalette;
 
-		if (hdc = CreateCompatibleDC(NULL)) {
-			hbmLame = CreateDIBSection(hdc, (BITMAPINFO *)mpTargetFormatHeader.data(), DIB_RGB_COLORS, &pv, hBufferObject, 0);
-			DeleteDC(hdc);
-		}
+					bDirectDecompress = true;
 
-		return true;
-	} else if (mpDecompressor) {
-		// attempt direct decompression
-		if (format) {
-			vdstructex<BITMAPINFOHEADER> desiredFormat;
-			vdstructex<BITMAPINFOHEADER> srcFormat(getImageFormat(), getFormatLen());
-
-			const int variants = VDGetPixmapToBitmapVariants(format);
-
-			for(int variant=1; variant<=variants; ++variant) {
-				if (VDMakeBitmapFormatFromPixmapFormat(desiredFormat, srcFormat, format, variant)) {
-					if (srcFormat->biCompression == desiredFormat->biCompression
-						&& srcFormat->biBitCount == desiredFormat->biBitCount
-						&& srcFormat->biSizeImage == desiredFormat->biSizeImage
-						&& srcFormat->biWidth == desiredFormat->biWidth
-						&& srcFormat->biHeight == desiredFormat->biHeight
-						&& srcFormat->biPlanes == desiredFormat->biPlanes) {
-
-						mpTargetFormatHeader = srcFormat;
-
-						VDVERIFY(VideoSource::setTargetFormatVariant(format, variant));
-
-						if (format == kPixFormat_Pal8)
-							mTargetFormat.palette = mPalette;
-
-						bDirectDecompress = true;
-
-						invalidateFrameBuffer();
-						return true;
-					}
+					invalidateFrameBuffer();
+					return true;
 				}
 			}
-
-			// no variants were an exact match
 		}
 
-		if (mpDecompressor->SetTargetFormat(format)) {
-			VDVERIFY(VideoSource::setTargetFormatVariant(mpDecompressor->GetTargetFormat(), mpDecompressor->GetTargetFormatVariant()));
-			return true;
-		}
-		return false;
-	} else {
-		if (format != mSourceLayout.format && !VDPixmapIsBltPossible(format, mSourceLayout.format))
-			return false;
+		// no variants were an exact match
+	}
 
-		if (!VideoSource::setTargetFormat(format))
-			return false;
-
+	if (mpDecompressor->SetTargetFormat(format)) {
+		VDVERIFY(VideoSource::setTargetFormatVariant(mpDecompressor->GetTargetFormat(), mpDecompressor->GetTargetFormatVariant()));
 		return true;
 	}
+	return false;
 }
 
-bool VideoSourceAVI::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
+bool VideoSourceAVI::setDecompressedFormat(const VDAVIBitmapInfoHeader *pbih) {
 	streamEnd();
 
-	if (pbih->biCompression == BI_RGB && pbih->biBitCount > 8)
+	if (pbih->biCompression == VDAVIBitmapInfoHeader::kCompressionRGB && pbih->biBitCount > 8)
 		return setDecompressedFormat(pbih->biBitCount);
 
 	if (pbih->biCompression == getImageFormat()->biCompression) {
-		const BITMAPINFOHEADER *pbihSrc = getImageFormat();
+		const VDAVIBitmapInfoHeader *pbihSrc = getImageFormat();
 		if (pbih->biBitCount == pbihSrc->biBitCount
 			&& pbih->biSizeImage == pbihSrc->biSizeImage
 			&& pbih->biWidth == pbihSrc->biWidth
 			&& pbih->biHeight == pbihSrc->biHeight
 			&& pbih->biPlanes == pbihSrc->biPlanes) {
 
-			mpTargetFormatHeader.assign(pbih, sizeof(BITMAPINFOHEADER));
-			if (mSourceLayout.format)
-				mTargetFormat = VDPixmapFromLayout(mSourceLayout, lpvBuffer);
-			else
-				mTargetFormat.format = 0;
+			mpTargetFormatHeader.assign(pbih, sizeof(VDAVIBitmapInfoHeader));
 
+			mTargetFormat.format = VDBitmapFormatToPixmapFormat(*mpTargetFormatHeader);
 			mTargetFormat.palette = mPalette;
 
 			bDirectDecompress = true;
@@ -1623,8 +1936,8 @@ bool VideoSourceAVI::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 
 	mTargetFormat.format = 0;
 
-	if (mpDecompressor && mpDecompressor->SetTargetFormat(pbih)) {
-		mpTargetFormatHeader.assign(pbih, sizeof(BITMAPINFOHEADER));
+	if (mpDecompressor->SetTargetFormat(pbih)) {
+		mpTargetFormatHeader.assign(pbih, sizeof(VDAVIBitmapInfoHeader));
 
 		invalidateFrameBuffer();
 		bDirectDecompress = false;
@@ -1636,20 +1949,8 @@ bool VideoSourceAVI::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 
 ////////////////////////////////////////////////
 
-void VideoSourceAVI::DecompressFrame(const void *pSrc) {
-	if (!VDINLINEASSERT(mTargetFormat.format))
-		return;
-
-	VDPixmap src(VDPixmapFromLayout(mSourceLayout, (void *)pSrc));
-	src.palette = mPalette;
-
-	VDPixmapBlt(mTargetFormat, src);
-}
-
-////////////////////////////////////////////////
-
 void VideoSourceAVI::invalidateFrameBuffer() {
-	if (lLastFrame != -1 && mpDecompressor)
+	if (lLastFrame != -1)
 		mpDecompressor->Stop();
 
 	lLastFrame = -1;
@@ -1675,7 +1976,7 @@ char VideoSourceAVI::getFrameTypeChar(VDPosition lFrameNum) {
 	uint32 lBytes, lSamples;
 	int err = _read(lFrameNum, 1, NULL, 0, &lBytes, &lSamples);
 
-	if (err != AVIERR_OK)
+	if (err != IVDStreamSource::kOK)
 		return ' ';
 
 	return lBytes ? ' ' : 'D';
@@ -1691,7 +1992,7 @@ VideoSource::eDropType VideoSourceAVI::getDropType(VDPosition lFrameNum) {
 	uint32 lBytes, lSamples;
 	int err = _read(lFrameNum, 1, NULL, 0, &lBytes, &lSamples);
 
-	if (err != AVIERR_OK)
+	if (err != IVDStreamSource::kOK)
 		return kDependant;
 
 	return lBytes ? kDependant : kDroppable;
@@ -1727,7 +2028,7 @@ void VideoSourceAVI::streamBegin(bool fRealTime, bool bForceReset) {
 
 	pAVIStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 
-	if (mpDecompressor && !bDirectDecompress)
+	if (!bDirectDecompress)
 		mpDecompressor->Start();
 
 	mbDecodeStarted = true;
@@ -1762,24 +2063,15 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 		}
 		
 		memcpy((void *)getFrameBuffer(), inputBuffer, to_copy);
-	} else if (fUseGDI) {
-		if (!hbmLame)
-			throw MyError("Insufficient GDI resources to convert frame.");
-
-		// Windows 95/98 need a DC for this.
-		HDC hdc = GetDC(0);
-		SetDIBits(hdc, hbmLame, 0, getDecompressedFormat()->biHeight, inputBuffer, (BITMAPINFO *)getFormat(), DIB_RGB_COLORS);
-		ReleaseDC(0,hdc);
-		GdiFlush();
-	} else if (mpDecompressor) {
+	} else {
 		// Asus ASV1 crashes with zero byte frames!!!
 
 		if (data_len) {
 			try {
-				vdprotected2("using output buffer at "VDPROT_PTR"-"VDPROT_PTR, void *, lpvBuffer, void *, (char *)lpvBuffer + mFrameBufferSize - 1) {
+				vdprotected2("using output buffer at "VDPROT_PTR"-"VDPROT_PTR, void *, mpFrameBuffer, void *, (char *)mpFrameBuffer + mFrameBufferSize - 1) {
 					vdprotected2("using input buffer at "VDPROT_PTR"-"VDPROT_PTR, const void *, inputBuffer, const void *, (const char *)inputBuffer + data_len - 1) {
 						vdprotected1("decompressing video frame %lu", unsigned long, (unsigned long)frame_num) {
-							mpDecompressor->DecompressFrame(lpvBuffer, inputBuffer, data_len, _isKey(frame_num), is_preroll);
+							mpDecompressor->DecompressFrame(mpFrameBuffer, inputBuffer, data_len, _isKey(frame_num), is_preroll);
 						}
 					}
 				}
@@ -1795,32 +2087,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 				}
 			}
 		}
-	} else {
-		void *tmpBuffer = NULL;
-
-		if (data_len < mSourceFrameSize) {
-			if (mErrorMode != kErrorModeReportAll) {
-				const unsigned frame = (unsigned)frame_num;
-				const unsigned actual = data_len;
-				const unsigned expected = mSourceFrameSize;
-				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
-
-				tmpBuffer = malloc(mSourceFrameSize);
-				if (!tmpBuffer)
-					throw MyMemoryError();
-
-				memcpy(tmpBuffer, inputBuffer, data_len);
-
-				inputBuffer = tmpBuffer;
-			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", (unsigned)frame_num, mSourceFrameSize, data_len);
-		}
-
-		DecompressFrame(inputBuffer);
-
-		free(tmpBuffer);
 	}
-//		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
 
 	lLastFrame = frame_num;
 
@@ -1837,7 +2104,7 @@ void VideoSourceAVI::streamEnd() {
 	// If an error occurs, but no one is there to hear it, was
 	// there ever really an error?
 
-	if (mpDecompressor && !bDirectDecompress)
+	if (!bDirectDecompress)
 		mpDecompressor->Stop();
 
 	pAVIStream->EndStreaming();
@@ -1865,8 +2132,7 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 	if (lLastFrame > lFrameKey && lLastFrame < lFrameDesired)
 		lFrameNum = lLastFrame+1;
 
-	if (mpDecompressor)
-		mpDecompressor->Start();
+	mpDecompressor->Start();
 
 	lLastFrame = -1;		// In case we encounter an exception.
 	stream_current_frame	= -1;	// invalidate streaming frame
@@ -1878,11 +2144,11 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 
 		for(;;) {
 			if (dataBuffer.size() <= decodePadding)
-				aviErr = AVIERR_BUFFERTOOSMALL;
+				aviErr = IVDStreamSource::kBufferTooSmall;
 			else
 				aviErr = read(lFrameNum, 1, dataBuffer.data(), dataBuffer.size() - decodePadding, &lBytesRead, &lSamplesRead);
 
-			if (aviErr == AVIERR_BUFFERTOOSMALL) {
+			if (aviErr == IVDStreamSource::kBufferTooSmall) {
 				aviErr = read(lFrameNum, 1, NULL, 0, &lBytesRead, &lSamplesRead);
 
 				if (aviErr)

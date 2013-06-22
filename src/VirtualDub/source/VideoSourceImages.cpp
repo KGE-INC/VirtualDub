@@ -1,9 +1,6 @@
 #include "stdafx.h"
 #include <ctype.h>
 
-#include <windows.h>
-#include <vfw.h>
-
 #include "oshelper.h"
 #include <vd2/system/file.h>
 #include <vd2/system/vdstl.h>
@@ -14,13 +11,12 @@
 #include <vd2/Meia/decode_png.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include "ProgressDialog.h"
+#include "InputFileImages.h"
 #include "VideoSourceImages.h"
 #include "image.h"
 #include "imagejpegdec.h"
 #include "imageiff.h"
 #include "VBitmap.h"
-
-extern HWND g_hWnd;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -32,7 +28,7 @@ namespace {
 
 class VideoSourceImages : public VideoSource {
 public:
-	VideoSourceImages(const wchar_t *pszBaseFormat);
+	VideoSourceImages(VDInputFileImages *parent);
 	~VideoSourceImages();
 
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
@@ -58,10 +54,8 @@ public:
 	bool isDecodable(VDPosition sample_num)		{ return true; }
 
 private:
-	const wchar_t *ComputeFilename(vdfastvector<wchar_t>& buf, VDPosition pos);
-
+	vdrefptr<VDInputFileImages> mpParent;
 	vdfastvector<wchar_t> mPathBuf;
-	int		mLastDigitPos;
 
 	VDPosition	mCachedFrame;
 	VBitmap	mvbFrameBuffer;
@@ -69,51 +63,21 @@ private:
 	VDPosition	mCachedHandleFrame;
 	VDFile	mCachedFile;
 
-	VDStringW	mBaseName;
-
 	vdautoptr<IVDJPEGDecoder> mpJPEGDecoder;
 	vdautoptr<IVDImageDecoderIFF> mpIFFDecoder;
 	vdautoptr<IVDImageDecoderPNG> mpPNGDecoder;
 };
 
-VideoSource *VDCreateVideoSourceImages(const wchar_t *pszBaseFormat) {
-	return new VideoSourceImages(pszBaseFormat);
+IVDVideoSource *VDCreateVideoSourceImages(VDInputFileImages *parent) {
+	return new VideoSourceImages(parent);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
-	: mCachedHandleFrame(-1)
+VideoSourceImages::VideoSourceImages(VDInputFileImages *parent)
+	: mpParent(parent)
+	, mCachedHandleFrame(-1)
 {
-	// Attempt to discern path format.
-	//
-	// First, find the start of the filename.  Then skip
-	// backwards until the first period is found, then to the
-	// beginning of the first number.
-
-	mBaseName = pszBaseFormat;
-	pszBaseFormat = mBaseName.c_str();
-
-	const wchar_t *pszFileBase = VDFileSplitPath(pszBaseFormat);
-	const wchar_t *s = pszFileBase;
-
-	mLastDigitPos = -1;
-
-	while(*s)
-		++s;
-
-	while(s > pszFileBase && s[-1] != L'.')
-		--s;
-
-	while(s > pszFileBase) {
-		--s;
-
-		if (iswdigit(*s)) {
-			mLastDigitPos = s - pszBaseFormat;
-			break;
-		}
-	}
-
 	mSampleFirst = 0;
 
 	mpTargetFormatHeader.resize(sizeof(BITMAPINFOHEADER));
@@ -123,48 +87,31 @@ VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
 
 	// This has to be 1 so that read() doesn't kick away the request.
 
-	mSampleLast = 1;
+	mSampleLast = mpParent->GetFrameCount();
 	getFrame(0);
 
-	// Stat as many files as we can until we get an error.
-
-	if (mLastDigitPos >= 0) {
-		VDStringA statusFormat("Scanning frame %lu");
-		try {
-			ProgressDialog pd(g_hWnd, "Image import filter", "Scanning for images", 0x3FFFFFFF, true);
-
-			pd.setValueFormat(statusFormat.c_str());
-
-			while(!_read(mSampleLast, 1, NULL, 0x7FFFFFFF, NULL, NULL)) {
-				pd.advance((long)mSampleLast);
-				pd.check();
-				++mSampleLast;
-			}
-		} catch(const MyError&) {
-			/* nothing */
-		}
-	}
-
 	// Fill out streamInfo
+	extern const VDFraction& VDPreferencesGetImageSequenceFrameRate();
+	const VDFraction& fr = VDPreferencesGetImageSequenceFrameRate();
 
-	streamInfo.fccType					= streamtypeVIDEO;
+	streamInfo.fccType					= VDAVIStreamInfo::kTypeVideo;
 	streamInfo.fccHandler				= NULL;
 	streamInfo.dwFlags					= 0;
 	streamInfo.dwCaps					= 0;
 	streamInfo.wPriority				= 0;
 	streamInfo.wLanguage				= 0;
-	streamInfo.dwScale					= 1001;
-	streamInfo.dwRate					= 30000;
+	streamInfo.dwScale					= fr.getLo();
+	streamInfo.dwRate					= fr.getHi();
 	streamInfo.dwStart					= 0;
-	streamInfo.dwLength					= mSampleLast > 0xFFFFFFFF ? 0xFFFFFFFF : (DWORD)mSampleLast;		// don't use min<> -- code misgeneration!
+	streamInfo.dwLength					= VDClampToUint32(mSampleLast);
 	streamInfo.dwInitialFrames			= 0;
 	streamInfo.dwSuggestedBufferSize	= 0;
 	streamInfo.dwQuality				= (DWORD)-1;
 	streamInfo.dwSampleSize				= 0;
-	streamInfo.rcFrame.left				= 0;
-	streamInfo.rcFrame.top				= 0;
-	streamInfo.rcFrame.right			= getImageFormat()->biWidth;
-	streamInfo.rcFrame.bottom			= getImageFormat()->biHeight;
+	streamInfo.rcFrameLeft				= 0;
+	streamInfo.rcFrameTop				= 0;
+	streamInfo.rcFrameRight				= (uint16)getImageFormat()->biWidth;
+	streamInfo.rcFrameBottom			= (uint16)getImageFormat()->biHeight;
 }
 
 VideoSourceImages::~VideoSourceImages() {
@@ -177,7 +124,7 @@ int VideoSourceImages::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 	if (plSamplesRead)
 		*plSamplesRead = 0;
 
-	const wchar_t *buf = ComputeFilename(mPathBuf, lStart);
+	const wchar_t *buf = mpParent->ComputeFilename(mPathBuf, lStart);
 
 	// Check if we already have the file handle cached.  If not, open the file.
 	
@@ -211,7 +158,7 @@ int VideoSourceImages::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 		if (plBytesRead)
 			*plBytesRead = size;
 
-		return AVIERR_BUFFERTOOSMALL;
+		return IVDStreamSource::kBufferTooSmall;
 	}
 
 	mCachedFile.read(lpBuffer, size);
@@ -298,14 +245,14 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 
 	// Check image header.
 
-	BITMAPINFOHEADER *pFormat = getImageFormat();
+	VDAVIBitmapInfoHeader *pFormat = getImageFormat();
 
 	if (getFrameBuffer()) {
 		if (w != pFormat->biWidth || h != pFormat->biHeight) {
 			vdfastvector<wchar_t> errBuf;
 
 			throw MyError("Image \"%ls\" (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
-					, ComputeFilename(errBuf, frame_num), w, h, pFormat->biWidth, pFormat->biHeight);
+					, mpParent->ComputeFilename(errBuf, frame_num), w, h, pFormat->biWidth, pFormat->biHeight);
 		}
 
 	} else {
@@ -361,7 +308,7 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 
 			vdfastvector<wchar_t> errBuf;
 
-			throw MyError("Error decoding \"%ls\": %ls\n", ComputeFilename(errBuf, frame_num), VDLoadString(0, kVDST_PNGDecodeErrors, err));
+			throw MyError("Error decoding \"%ls\": %ls\n", mpParent->ComputeFilename(errBuf, frame_num), VDLoadString(0, kVDST_PNGDecodeErrors, err));
 		}
 
 		VDPixmapBlt(VDAsPixmap(mvbFrameBuffer), mpPNGDecoder->GetFrameBuffer());
@@ -369,7 +316,7 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 
 	mCachedFrame = frame_num;
 
-	return lpvBuffer;
+	return mpFrameBuffer;
 }
 
 const void *VideoSourceImages::getFrame(VDPosition frameNum) {
@@ -377,7 +324,7 @@ const void *VideoSourceImages::getFrame(VDPosition frameNum) {
 	const void *pFrame = NULL;
 
 	if (mCachedFrame == frameNum)
-		return lpvBuffer;
+		return mpFrameBuffer;
 
 	if (!read(frameNum, 1, NULL, 0x7FFFFFFF, &lBytes, NULL) && lBytes) {
 		char *pBuffer = new char[lBytes];
@@ -396,45 +343,4 @@ const void *VideoSourceImages::getFrame(VDPosition frameNum) {
 	}
 
 	return pFrame;
-}
-
-const wchar_t *VideoSourceImages::ComputeFilename(vdfastvector<wchar_t>& pathBuf, VDPosition pos) {
-	const wchar_t *fn = mBaseName.c_str();
-
-	if (mLastDigitPos < 0)
-		return fn;
-
-	pathBuf.assign(fn, fn + mBaseName.size() + 1);
-
-	char buf[32];
-
-	sprintf(buf, "%I64d", pos);
-
-	int srcidx = strlen(buf) - 1;
-	int dstidx = mLastDigitPos;
-	int v = 0;
-
-	do {
-		if (srcidx >= 0)
-			v += buf[srcidx--] - '0';
-
-		if (dstidx < 0 || (unsigned)(pathBuf[dstidx] - '0') >= 10) {
-			pathBuf.insert(pathBuf.begin() + (dstidx + 1), '0');
-			++dstidx;
-		}
-
-		wchar_t& c = pathBuf[dstidx--];
-
-		int result = v + (c - L'0');
-		v = 0;
-
-		if (result >= 10) {
-			result -= 10;
-			v = 1;
-		}
-
-		c = (wchar_t)(L'0' + result);
-	} while(v || srcidx >= 0);
-
-	return pathBuf.data();
 }

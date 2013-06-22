@@ -95,6 +95,8 @@ inline uint32 VDReadUnalignedU32(const void *p) { return *(uint32 *)p; }
 inline sint32 VDReadUnalignedS32(const void *p) { return *(sint32 *)p; }
 inline uint64 VDReadUnalignedU64(const void *p) { return *(uint64 *)p; }
 inline sint64 VDReadUnalignedS64(const void *p) { return *(sint64 *)p; }
+inline float VDReadUnalignedF(const void *p) { return *(float *)p; }
+inline double VDReadUnalignedD(const void *p) { return *(double *)p; }
 
 inline uint16 VDReadUnalignedLEU16(const void *p) { return *(uint16 *)p; }
 inline sint16 VDReadUnalignedLES16(const void *p) { return *(sint16 *)p; }
@@ -102,6 +104,8 @@ inline uint32 VDReadUnalignedLEU32(const void *p) { return *(uint32 *)p; }
 inline sint32 VDReadUnalignedLES32(const void *p) { return *(sint32 *)p; }
 inline uint64 VDReadUnalignedLEU64(const void *p) { return *(uint64 *)p; }
 inline sint64 VDReadUnalignedLES64(const void *p) { return *(sint64 *)p; }
+inline float VDReadUnalignedLEF(const void *p) { return *(float *)p; }
+inline double VDReadUnalignedLED(const void *p) { return *(double *)p; }
 
 inline uint16 VDReadUnalignedBEU16(const void *p) { return VDSwizzleU16(*(uint16 *)p); }
 inline sint16 VDReadUnalignedBES16(const void *p) { return VDSwizzleS16(*(sint16 *)p); }
@@ -109,6 +113,20 @@ inline uint32 VDReadUnalignedBEU32(const void *p) { return VDSwizzleU32(*(uint32
 inline sint32 VDReadUnalignedBES32(const void *p) { return VDSwizzleS32(*(sint32 *)p); }
 inline uint64 VDReadUnalignedBEU64(const void *p) { return VDSwizzleU64(*(uint64 *)p); }
 inline sint64 VDReadUnalignedBES64(const void *p) { return VDSwizzleS64(*(sint64 *)p); }
+inline float VDReadUnalignedBEF(const void *p) {
+	union {
+		uint32 i;
+		float f;
+	} conv = {VDSwizzleU32(*(const uint32 *)p)};
+	return conv.f;
+}
+inline double VDReadUnalignedBED(const void *p) {
+	union {
+		uint64 i;
+		double d;
+	} conv = {VDSwizzleU64(*(const uint32 *)p)};
+	return conv.d;
+}
 
 inline void VDWriteUnalignedU16  (void *p, uint16 v) { *(uint16 *)p = v; }
 inline void VDWriteUnalignedS16  (void *p, sint16 v) { *(sint16 *)p = v; }
@@ -116,6 +134,8 @@ inline void VDWriteUnalignedU32  (void *p, uint32 v) { *(uint32 *)p = v; }
 inline void VDWriteUnalignedS32  (void *p, sint32 v) { *(sint32 *)p = v; }
 inline void VDWriteUnalignedU64  (void *p, uint64 v) { *(uint64 *)p = v; }
 inline void VDWriteUnalignedS64  (void *p, sint64 v) { *(sint64 *)p = v; }
+inline void VDWriteUnalignedF    (void *p, float  v) { *(float  *)p = v; }
+inline void VDWriteUnalignedD    (void *p, double v) { *(double *)p = v; }
 
 inline void VDWriteUnalignedLEU16(void *p, uint16 v) { *(uint16 *)p = v; }
 inline void VDWriteUnalignedLES16(void *p, sint16 v) { *(sint16 *)p = v; }
@@ -123,6 +143,8 @@ inline void VDWriteUnalignedLEU32(void *p, uint32 v) { *(uint32 *)p = v; }
 inline void VDWriteUnalignedLES32(void *p, sint32 v) { *(sint32 *)p = v; }
 inline void VDWriteUnalignedLEU64(void *p, uint64 v) { *(uint64 *)p = v; }
 inline void VDWriteUnalignedLES64(void *p, sint64 v) { *(sint64 *)p = v; }
+inline void VDWriteUnalignedLEF  (void *p, float  v) { *(float  *)p = v; }
+inline void VDWriteUnalignedLED  (void *p, double v) { *(double *)p = v; }
 
 inline void VDWriteUnalignedBEU16(void *p, uint16 v) { *(uint16 *)p = VDSwizzleU16(v); }
 inline void VDWriteUnalignedBES16(void *p, sint16 v) { *(sint16 *)p = VDSwizzleS16(v); }
@@ -130,10 +152,31 @@ inline void VDWriteUnalignedBEU32(void *p, uint32 v) { *(uint32 *)p = VDSwizzleU
 inline void VDWriteUnalignedBES32(void *p, sint32 v) { *(sint32 *)p = VDSwizzleS32(v); }
 inline void VDWriteUnalignedBEU64(void *p, uint64 v) { *(uint64 *)p = VDSwizzleU64(v); }
 inline void VDWriteUnalignedBES64(void *p, sint64 v) { *(sint64 *)p = VDSwizzleS64(v); }
+inline void VDReadUnalignedBEF(void *p, float v) {
+	union {
+		float f;
+		uint32 i;
+	} conv = {v};
+	*(uint32 *)p = VDSwizzleU32(conv.i);
+}
+inline double VDReadUnalignedBED(void *p, double v) {
+	union {
+		double f;
+		uint64 i;
+	} conv = {v};
+	*(uint64 *)p = VDSwizzleU64(conv.i);
+}
 
-#define VDToLE8(x)		VDSwizzleU8(x)
-#define VDToLE16(x)		VDSwizzleU16(x)
-#define VDToLE32(x)		VDSwizzleU32(x)
+#define VDFromLE8(x)	(x)
+#define VDFromLE16(x)	(x)
+#define VDFromLE32(x)	(x)
+#define VDFromBE8(x)	VDSwizzleU8(x)
+#define VDFromBE16(x)	VDSwizzleU16(x)
+#define VDFromBE32(x)	VDSwizzleU32(x)
+
+#define VDToLE8(x)		(x)
+#define VDToLE16(x)		(x)
+#define VDToLE32(x)		(x)
 #define VDToBE8(x)		VDSwizzleU8(x)
 #define VDToBE16(x)		VDSwizzleU16(x)
 #define VDToBE32(x)		VDSwizzleU32(x)

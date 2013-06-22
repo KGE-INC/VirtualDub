@@ -39,8 +39,9 @@ void VDBenchmarkResampler(VDGUIHandle h) {
 
 		for(unsigned attempt=0; attempt<5; ++attempt) {
 			uint64 start = VDGetPreciseTick();
-			resampler->Init(dst.w, dst.h, dst.format, src.w, src.h, src.format, mode, mode, false);
-			resampler->Process(dst, 0, 0, dst.w, dst.h, src, 0, 0);
+			resampler->SetFilters(mode, mode, false);
+			resampler->Init(dst.w, dst.h, dst.format, src.w, src.h, src.format);
+			resampler->Process(dst, src);
 			uint64 time = VDGetPreciseTick() - start;
 
 			if (time < fastest)

@@ -44,11 +44,82 @@ protected:
 	VDDelegateNode mAnchor;
 };
 
+// Because Visual C++ uses different pointer-to-member representations for
+// different inheritance regimes, we have to include a whole lot of stupid
+// logic to detect and switch code paths based on the inheritance used.
+// We detect the inheritance by the size of the member function pointer.
+//
+// Some have managed to make faster and more compact delegates by hacking
+// into the PMT representation and pre-folding the this pointer adjustment.
+// I'm avoiding this for now because (a) it's even less portable than what
+// we have here, and (b) that fails if the object undergoes a change in
+// virtual table status while the delegate is alive (which is possible
+// during construction/destruction).
+//
+// Note: We can't handle virtual inheritance here because on X64, MSVC uses
+// 16 bytes for both multiple and virtual inheritance cases.
+
+#ifdef _MSC_VER
+	class __single_inheritance VDDelegateHolderS;
+	class __multiple_inheritance VDDelegateHolderM;
+#else
+	class VDDelegateHolderS;
+#endif
+
 template<class Source, class ArgType>
 class VDDelegateBinding {
 public:
 	VDDelegate *mpBoundDelegate;
 };
+
+template<class T, class Source, class ArgType>
+struct VDDelegateAdapterS {
+	typedef void (T::*T_Fn)(Source *, const ArgType&);
+
+	static void Init(VDDelegate& dst, T_Fn fn) {
+		dst.mpCallback = Fn;
+		dst.mpFnS = reinterpret_cast<void(VDDelegateHolderS::*)()>(fn);
+	}
+
+	static void Fn(void *src, const void *info, VDDelegate& del) {
+		return (((T *)del.mpObj)->*reinterpret_cast<T_Fn>(del.mpFnS))(static_cast<Source *>(src), *static_cast<const ArgType *>(info));
+	}
+};
+
+template<int size>
+class VDDelegateAdapter {
+public:
+	template<class T, class Source, class ArgType>
+	struct AdapterLookup {
+		typedef VDDelegateAdapterS<T, Source, ArgType> result;
+	};
+};
+
+#ifdef _MSC_VER
+template<class T, class Source, class ArgType>
+struct VDDelegateAdapterM {
+	typedef void (T::*T_Fn)(Source *, const ArgType&);
+
+	static void Init(VDDelegate& dst, T_Fn fn) {
+		dst.mpCallback = Fn;
+		dst.mpFnM = reinterpret_cast<void(VDDelegateHolderM::*)()>(fn);
+	}
+
+	static void Fn(void *src, const void *info, VDDelegate& del) {
+		return (((T *)del.mpObj)->*reinterpret_cast<T_Fn>(del.mpFnM))(static_cast<Source *>(src), *static_cast<const ArgType *>(info));
+	}
+};
+
+
+template<>
+class VDDelegateAdapter<sizeof(void (VDDelegateHolderM::*)())> {
+public:
+	template<class T, class Source, class ArgType>
+	struct AdapterLookup {
+		typedef VDDelegateAdapterM<T, Source, ArgType> result;
+	};
+};
+#endif
 
 class VDDelegate : public VDDelegateNode {
 	friend class VDEventBase;
@@ -58,29 +129,31 @@ public:
 
 	template<class T, class Source, class ArgType>
 	VDDelegateBinding<Source, ArgType> operator()(T *obj, void (T::*fn)(Source *, const ArgType&)) {
-		mpCallback = Adapter<T, Source, ArgType, void (T::*)(Source *, const ArgType&)>;
 		mpObj = obj;
-		mpFn = reinterpret_cast<void(Holder::*)()>(fn);
+
+		VDDelegateAdapter<sizeof fn>::AdapterLookup<T, Source, ArgType>::result::Init(*this, fn);
+
 		VDDelegateBinding<Source, ArgType> binding = {this};
 		return binding;
 	}
 
 protected:
-	template<class T, class Source, class ArgType, typename T_Fn>
-	static void Adapter(void *src, const void *info, VDDelegate& del) {
-		return (((T *)del.mpObj)->*reinterpret_cast<T_Fn>(del.mpFn))(static_cast<Source *>(src), *static_cast<const ArgType *>(info));
+	template<int size, class T, class Source, class ArgType> void Set(void (T::*fn)(Source *, const ArgType&)) {
 	}
 
+public:
 	void (*mpCallback)(void *src, const void *info, VDDelegate&);
 	void *mpObj;
 
 #ifdef _MSC_VER
-	class __multiple_inheritance Holder;
+	union {
+		void (VDDelegateHolderS::*mpFnS)();
+		void (VDDelegateHolderM::*mpFnM)();
+	};
 #else
-	class Holder;
+	class VDDelegateHolderS;
+	void (VDDelegateHolderS::*mpFnS)();
 #endif
-
-	void (Holder::*mpFn)();
 };
 
 template<class Source, class ArgType>

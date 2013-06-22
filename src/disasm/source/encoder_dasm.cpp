@@ -17,17 +17,17 @@ void dump_ia(std::vector<char>& dst, const tRuleSystem& rulesys) {
 
 		iterate_forward(std::list<rule>, rs.rules, itRule) {
 			const rule& r = *itRule;
-			std::vector<char>::size_type s, l;
+			std::vector<char>::size_type s;
 			int prematch, postmatch;
 			int i, x, ibest;
 			
-			l = r.match_stream.size();
+			int l = (int)r.match_stream.size();
 
 			ibest = 0;
 			prematch = postmatch = 0;
 
 			for(i=0; i<4; ++i) {
-				size_t l2 = last_match[i].size();
+				int l2 = (int)last_match[i].size();
 				if (l2 > l)
 					l2 = l;
 				int tprematch = std::mismatch(last_match[i].begin(), last_match[i].begin() + l2, r.match_stream.begin()).first - last_match[i].begin();
@@ -73,8 +73,8 @@ void dump_ia(std::vector<char>& dst, const tRuleSystem& rulesys) {
 
 			for(i=0; i<4; ++i) {
 				const char *last = last_result[i].data();
-				const size_t lastsize = last_result[i].size();
-				const size_t maxmatch = l<lastsize?l:lastsize;
+				const int lastsize = (int)last_result[i].size();
+				const int maxmatch = l < lastsize ? l : lastsize;
 
 				int tprematch = 0;
 				int tpostmatch = 0;

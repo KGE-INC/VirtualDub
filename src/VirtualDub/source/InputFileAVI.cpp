@@ -25,7 +25,9 @@
 #include "InputFile.h"
 #include "InputFileAVI.h"
 #include "AudioSource.h"
+#include "AudioSourceAVI.h"
 #include "VideoSource.h"
+#include "VideoSourceAVI.h"
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
@@ -46,7 +48,7 @@ extern HINSTANCE g_hInst;
 extern const wchar_t fileFiltersAppend[];
 extern HWND g_hWnd;
 
-bool VDPreferencesIsPreferInternalDecodersEnabled();
+bool VDPreferencesIsPreferInternalVideoDecodersEnabled();
 
 namespace {
 	enum { kVDST_InputFileAVI = 4 };
@@ -57,6 +59,24 @@ namespace {
 		kVDM_Type1DVNoSound,		// AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.
 		kVDM_InvalidBlockAlign		// AVI: An invalid nBlockAlign value of zero in the audio stream format was fixed.
 	};
+}
+
+/////////////////////////////////////////////////////////////////////
+
+VDAVIStreamSource::VDAVIStreamSource(InputFileAVI *pParent)
+	: mpParent(pParent)
+{
+	mpParent->Attach(this);
+}
+
+VDAVIStreamSource::VDAVIStreamSource(const VDAVIStreamSource& src)
+	: mpParent(src.mpParent)
+{
+	mpParent->Attach(this);
+}
+
+VDAVIStreamSource::~VDAVIStreamSource() {
+	mpParent->Detach(this);
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -165,12 +185,10 @@ extern IVDInputDriver *VDCreateInputDriverAVI2() { return new VDInputDriverAVI2;
 char InputFileAVI::szME[]="AVI Import Filter";
 
 InputFileAVI::InputFileAVI() {
-	stripesys = NULL;
-	stripe_files = NULL;
 	fAutomated	= false;
 
 	fAcceptPartial = false;
-	fInternalDecoder = VDPreferencesIsPreferInternalDecodersEnabled();
+	fInternalDecoder = VDPreferencesIsPreferInternalVideoDecodersEnabled();
 	fDisableFastIO = false;
 	iMJPEGMode = 0;
 	fccForceVideo = 0;
@@ -185,20 +203,6 @@ InputFileAVI::InputFileAVI() {
 }
 
 InputFileAVI::~InputFileAVI() {
-	audioSrc = NULL;
-	videoSrc = NULL;
-
-	if (stripe_files) {
-		int i;
-
-		for(i=0; i<stripe_count; i++)
-			if (stripe_files[i])
-				stripe_files[i]->Release();
-
-		delete stripe_files;
-	}
-	delete stripesys;
-
 	if (pAVIFile)
 		pAVIFile->Release();
 }
@@ -224,7 +228,7 @@ public:
 	~InputFileAVIOptions();
 
 	bool read(const char *buf);
-	int write(char *buf, int buflen);
+	int write(char *buf, int buflen) const;
 
 	static INT_PTR APIENTRY SetupDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 };
@@ -243,14 +247,14 @@ bool InputFileAVIOptions::read(const char *buf) {
 	return true;
 }
 
-int InputFileAVIOptions::write(char *buf, int buflen) {
+int InputFileAVIOptions::write(char *buf, int buflen) const {
 	InputFileAVIOpts *pp = (InputFileAVIOpts *)buf;
 
 	if (buflen<sizeof(InputFileAVIOpts))
 		return 0;
 
-	opts.len = sizeof(InputFileAVIOpts);
 	*pp = opts;
+	pp->len = sizeof(InputFileAVIOpts);
 
 	return sizeof(InputFileAVIOpts);
 }
@@ -380,13 +384,13 @@ InputFileOptions *InputFileAVI::createOptions(const void *buf, uint32 len) {
 	return ifo;
 }
 
-InputFileOptions *InputFileAVI::promptForOptions(HWND hwnd) {
+InputFileOptions *InputFileAVI::promptForOptions(VDGUIHandle hwnd) {
 	InputFileAVIOptions *ifo = new InputFileAVIOptions();
 
 	if (!ifo) throw MyMemoryError();
 
 	DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_EXTOPENOPTS_AVI),
-			hwnd, InputFileAVIOptions::SetupDlgProc, (LPARAM)ifo);
+			(HWND)hwnd, InputFileAVIOptions::SetupDlgProc, (LPARAM)ifo);
 
 	// if we were forced to AVIFile mode (possibly due to an Avisynth script),
 	// propagate that condition to the options
@@ -439,42 +443,6 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 
 	if (fDisableFastIO)
 		pAVIFile->EnableFastIO(false);
-
-	if (!(videoSrc = new VideoSourceAVI(pAVIFile, NULL, NULL, fInternalDecoder, iMJPEGMode, fccForceVideo, fccForceVideoHandler)))
-		throw MyMemoryError();
-
-	if (!videoSrc->init())
-		throw MyError("%s: problem opening video stream", szME);
-
-	if (fRedoKeyFlags)
-		static_cast<VideoSourceAVI *>(&*videoSrc)->redoKeyFlags();
-	else if (pAVIFile->isIndexFabricated() && !videoSrc->isKeyframeOnly()) {
-		VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_RekeyNotSpecified);
-	}
-
-	audioSrc = new AudioSourceAVI(pAVIFile, fAutomated);
-	if (!audioSrc->init()) {
-		audioSrc = NULL;
-	} else {
-		WAVEFORMATEX *pwfex = (WAVEFORMATEX *)audioSrc->getFormat();
-
-		if (pwfex->wFormatTag == WAVE_FORMAT_MPEGLAYER3 && pwfex->nBlockAlign == 0) {
-			VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_InvalidBlockAlign);
-			pwfex->nBlockAlign = 1;
-		}
-
-		if (lForceAudioHz) {
-			pwfex->nAvgBytesPerSec = MulDiv(pwfex->nAvgBytesPerSec, lForceAudioHz, pwfex->nSamplesPerSec);
-			pwfex->nSamplesPerSec = lForceAudioHz;
-			static_cast<AudioSourceAVI *>(&*audioSrc)->setRate(VDFraction(pwfex->nAvgBytesPerSec, pwfex->nBlockAlign));
-		}
-	}
-
-	if (!audioSrc && videoSrc->isType1()) {
-		audioSrc = new AudioSourceDV(pAVIFile->GetStream('svai', 0), fAutomated);
-		if (!audioSrc->init())
-			audioSrc = NULL;
-	}
 
 	if (fAutoscanSegments) {
 		const wchar_t *pszName = VDFileSplitPath(szFile);
@@ -533,20 +501,33 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 			}
 		}
 	}
+
+	if (fRedoKeyFlags) {
+		vdrefptr<IVDVideoSource> vs;
+		vdfastvector<uint32> keyflags;
+		for(int index=0; GetVideoSource(index, ~vs); ++index) {
+			keyflags.clear();
+			static_cast<VideoSourceAVI *>(&*vs)->redoKeyFlags(keyflags);
+			mNewKeyFlags.push_back(keyflags);
+		}
+	} else if (pAVIFile->isIndexFabricated()) {
+		VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_RekeyNotSpecified);
+	}
 }
 
 bool InputFileAVI::Append(const wchar_t *szFile) {
-	if (fCompatibilityMode || stripesys)
+	if (fCompatibilityMode)
 		return false;
 
 	if (!szFile)
 		return true;
 
 	if (pAVIFile->AppendFile(szFile)) {
-		if (videoSrc)
-			static_cast<VideoSourceAVI *>(&*videoSrc)->Reinit();
-		if (audioSrc)
-			static_cast<VDAudioSourceAVISourced *>(&*audioSrc)->Reinit();
+		for(Streams::iterator it(mStreams.begin()), itEnd(mStreams.end()); it!=itEnd; ++it) {
+			VDAVIStreamSource *p = *it;
+
+			p->Reinit();
+		}
 
 		AddFilename(szFile);
 
@@ -554,58 +535,6 @@ bool InputFileAVI::Append(const wchar_t *szFile) {
 	}
 
 	return false;
-}
-
-void InputFileAVI::InitStriped(const char *szFile) {
-	int i;
-	HRESULT err;
-	PAVIFILE paf;
-	IAVIReadHandler *index_file;
-
-	if (!(stripesys = new AVIStripeSystem(szFile)))
-		throw MyMemoryError();
-
-	stripe_count = stripesys->getStripeCount();
-
-	if (!(stripe_files = new IAVIReadHandler *[stripe_count]))
-		throw MyMemoryError();
-
-	for(i=0; i<stripe_count; i++)
-		stripe_files[i]=NULL;
-
-	for(i=0; i<stripe_count; i++) {
-		AVIStripe *asdef = stripesys->getStripeInfo(i);
-
-		// Ordinarily, OF_SHARE_DENY_WRITE would be better, but XingMPEG
-		// Encoder requires write access to AVI files... *sigh*
-
-		if (err = AVIFileOpen(&paf, asdef->szName, OF_READ | OF_SHARE_DENY_NONE, NULL))
-			throw MyAVIError("AVI Striped Import Filter", err);
-
-		if (!(stripe_files[i] = CreateAVIReadHandler(paf))) {
-			AVIFileRelease(paf);
-			throw MyMemoryError();
-		}
-
-		if (asdef->isIndex())
-			index_file = stripe_files[i];
-	}
-
-	if (!(videoSrc = new VideoSourceAVI(index_file, stripesys, stripe_files, fInternalDecoder, iMJPEGMode, fccForceVideo)))
-		throw MyMemoryError();
-
-	if (!videoSrc->init())
-		throw MyError("%s: problem opening video stream", szME);
-
-	if (fRedoKeyFlags)
-		static_cast<VideoSourceAVI *>(&*videoSrc)->redoKeyFlags();
-
-	if (!(audioSrc = new AudioSourceAVI(index_file, fAutomated)))
-		throw MyMemoryError();
-
-	if (!audioSrc->init()) {
-		audioSrc = NULL;
-	}
 }
 
 void InputFileAVI::GetTextInfo(tFileTextInfo& info) {
@@ -620,38 +549,96 @@ bool InputFileAVI::isStreaming() {
 	return pAVIFile->isStreaming();
 }
 
+bool InputFileAVI::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index < 0)
+		return false;
+
+	vdrefptr<VideoSourceAVI> videoSrc;
+	const uint32 *key_flags = NULL;
+
+	if ((uint32)index < mNewKeyFlags.size())
+		key_flags = mNewKeyFlags[index].data();
+
+	if (!(videoSrc = new VideoSourceAVI(this, pAVIFile, NULL, NULL, fInternalDecoder, iMJPEGMode, fccForceVideo, fccForceVideoHandler, key_flags)))
+		throw MyMemoryError();
+
+	if (!videoSrc->Init(index))
+		return false;
+
+	*ppSrc = videoSrc.release();
+	return true;
+}
+
+bool InputFileAVI::GetAudioSource(int index, AudioSource **ppSrc) {
+	vdrefptr<AudioSource> as;
+
+	as = new AudioSourceAVI(this, pAVIFile, index, fAutomated);
+	if (static_cast<AudioSourceAVI *>(&*as)->init()) {
+		WAVEFORMATEX *pwfex = (WAVEFORMATEX *)as->getFormat();
+
+		if (pwfex->wFormatTag == WAVE_FORMAT_MPEGLAYER3 && pwfex->nBlockAlign == 0) {
+			VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_InvalidBlockAlign);
+			pwfex->nBlockAlign = 1;
+		}
+
+		if (lForceAudioHz) {
+			pwfex->nAvgBytesPerSec = MulDiv(pwfex->nAvgBytesPerSec, lForceAudioHz, pwfex->nSamplesPerSec);
+			pwfex->nSamplesPerSec = lForceAudioHz;
+			static_cast<AudioSourceAVI *>(&*as)->setRate(VDFraction(pwfex->nAvgBytesPerSec, pwfex->nBlockAlign));
+		}
+		*ppSrc = as.release();
+		return true;
+	}
+	as = NULL;
+
+	IAVIReadStream *pDVStream = pAVIFile->GetStream('svai', index);
+	if (pDVStream) {
+		as = new AudioSourceDV(this, pDVStream, fAutomated);
+		if (static_cast<AudioSourceDV *>(&*as)->init()) {
+			*ppSrc = as.release();
+			return false;
+		}
+	}
+
+	return false;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
-typedef struct MyFileInfo {
-	InputFileAVI *thisPtr;
+namespace {
+	struct MyFileInfo {
+		InputFileAVI *thisPtr;
+		vdrefptr<IVDVideoSource> mpVideo;
+		vdrefptr<AudioSource> mpAudio;
 
-	volatile HWND hWndAbort;
-	UINT statTimer;
-	long	lVideoKFrames;
-	long	lVideoKMinSize;
-	sint64 i64VideoKTotalSize;
-	long	lVideoKMaxSize;
-	long	lVideoCFrames;
-	long	lVideoCMinSize;
-	sint64	i64VideoCTotalSize;
-	long	lVideoCMaxSize;
+		volatile HWND hWndAbort;
+		UINT statTimer;
+		long	lVideoKFrames;
+		long	lVideoKMinSize;
+		sint64 i64VideoKTotalSize;
+		long	lVideoKMaxSize;
+		long	lVideoCFrames;
+		long	lVideoCMinSize;
+		sint64	i64VideoCTotalSize;
+		long	lVideoCMaxSize;
 
-	long	lAudioFrames;
-	long	lAudioMinSize;
-	sint64	i64AudioTotalSize;
-	long	lAudioMaxSize;
+		long	lAudioFrames;
+		long	lAudioMinSize;
+		sint64	i64AudioTotalSize;
+		long	lAudioMaxSize;
 
-	long	lAudioPreload;
+		long	lAudioPreload;
 
-	bool	bAudioFramesIndeterminate;
-} MyFileInfo;
+		bool	bAudioFramesIndeterminate;
+	};
+}
 
 void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 	MyFileInfo *pInfo = (MyFileInfo *)pvInfo;
 	VDPosition i;
 	uint32 lActualBytes, lActualSamples;
-	VideoSourceAVI *inputVideoAVI = static_cast<VideoSourceAVI *>(&*pInfo->thisPtr->videoSrc);
-	AudioSource *inputAudioAVI = pInfo->thisPtr->audioSrc;
+	VideoSourceAVI *inputVideoAVI = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
+	AudioSource *inputAudioAVI = pInfo->mpAudio;
 
 	pInfo->lVideoCMinSize = 0x7FFFFFFF;
 	pInfo->lVideoKMinSize = 0x7FFFFFFF;
@@ -736,20 +723,20 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 				pInfo = (MyFileInfo *)lParam;
 				thisPtr = pInfo->thisPtr;
 
-				if (thisPtr->videoSrc) {
+				if (pInfo->mpVideo) {
 					char *s;
-					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*thisPtr->videoSrc);
+					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
 
 					sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
-								thisPtr->videoSrc->getImageFormat()->biWidth,
-								thisPtr->videoSrc->getImageFormat()->biHeight,
-								thisPtr->videoSrc->getRate().asDouble(),
-								VDRoundToLong(1000000.0 / thisPtr->videoSrc->getRate().asDouble()));
+								pvs->getImageFormat()->biWidth,
+								pvs->getImageFormat()->biHeight,
+								pvs->getRate().asDouble(),
+								VDRoundToLong(1000000.0 / pvs->getRate().asDouble()));
 					SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
 
-					const sint64 length = thisPtr->videoSrc->getLength();
+					const sint64 length = pvs->getLength();
 					s = buf + sprintf(buf, "%I64d frames (", length);
-					DWORD ticks = VDRoundToInt(1000.0*length/thisPtr->videoSrc->getRate().asDouble());
+					DWORD ticks = VDRoundToInt(1000.0*length/pvs->getRate().asDouble());
 					ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, ticks);
 					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
 					SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, buf);
@@ -794,8 +781,9 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 					SetDlgItemText(hDlg, IDC_VIDEO_COMPRESSION, buf);
 				}
-				if (thisPtr->audioSrc) {
-					WAVEFORMATEX *fmt = thisPtr->audioSrc->getWaveFormat();
+				if (pInfo->mpAudio) {
+					AudioSourceAVI *pAS = static_cast<AudioSourceAVI *>(&*pInfo->mpAudio);
+					const VDWaveFormat *fmt = pAS->getWaveFormat();
 					DWORD cbwfxTemp;
 					WAVEFORMATEX *pwfxTemp;
 					HACMSTREAM has;
@@ -803,37 +791,36 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					ACMDRIVERDETAILS add;
 					bool fSuccessful = false;
 
-					sprintf(buf, "%ldHz", fmt->nSamplesPerSec);
+					sprintf(buf, "%ldHz", fmt->mSamplingRate);
 					SetDlgItemText(hDlg, IDC_AUDIO_SAMPLINGRATE, buf);
 
-					if (fmt->nChannels == 8)
+					if (fmt->mChannels == 8)
 						strcpy(buf, "7.1");
-					else if (fmt->nChannels == 6)
+					else if (fmt->mChannels == 6)
 						strcpy(buf, "5.1");
-					else if (fmt->nChannels > 2)
-						sprintf(buf, "%d", fmt->nChannels);
+					else if (fmt->mChannels > 2)
+						sprintf(buf, "%d", fmt->mChannels);
 					else
-						sprintf(buf, "%d (%s)", fmt->nChannels, fmt->nChannels>1 ? "Stereo" : "Mono");
+						sprintf(buf, "%d (%s)", fmt->mChannels, fmt->mChannels>1 ? "Stereo" : "Mono");
 					SetDlgItemText(hDlg, IDC_AUDIO_CHANNELS, buf);
 
-					if (fmt->wFormatTag == WAVE_FORMAT_PCM) {
-						sprintf(buf, "%d-bit", fmt->wBitsPerSample);
+					if (fmt->mTag == WAVE_FORMAT_PCM) {
+						sprintf(buf, "%d-bit", fmt->mSampleBits);
 						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, buf);
 					} else
 						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, "N/A");
 
-					sint64 len = thisPtr->audioSrc->getLength();
-					const WAVEFORMATEX *pWaveFormat = thisPtr->audioSrc->getWaveFormat();
+					sint64 len = pAS->getLength();
 
 					char *s = buf + sprintf(buf, "%I64d samples (", len);
-					DWORD ticks = VDRoundToInt(1000.0*len*pWaveFormat->nBlockAlign/pWaveFormat->nAvgBytesPerSec);
+					DWORD ticks = VDRoundToInt(1000.0*len*fmt->mBlockSize/fmt->mDataRate);
 					ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, ticks);
 					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
 					SetDlgItemText(hDlg, IDC_AUDIO_LENGTH, buf);
 
 					////////// Attempt to detect audio compression //////////
 
-					if (fmt->wFormatTag == nsVDWinFormats::kWAVE_FORMAT_EXTENSIBLE) {
+					if (fmt->mTag == nsVDWinFormats::kWAVE_FORMAT_EXTENSIBLE) {
 						const nsVDWinFormats::WaveFormatExtensible& wfe = *(const nsVDWinFormats::WaveFormatExtensible *)fmt;
 
 						if (wfe.mGuid == nsVDWinFormats::kKSDATAFORMAT_SUBTYPE_PCM) {
@@ -842,7 +829,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 						} else {
 							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, "Unknown extended format");
 						}
-					} else if (fmt->wFormatTag != WAVE_FORMAT_PCM) {
+					} else if (fmt->mTag != WAVE_FORMAT_PCM) {
 						// Retrieve maximum format size.
 
 						acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&cbwfxTemp);
@@ -854,8 +841,8 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 							// Ask ACM to fill out the details.
 
-							if (!acmFormatSuggest(NULL, fmt, pwfxTemp, cbwfxTemp, ACM_FORMATSUGGESTF_WFORMATTAG)) {
-								if (!acmStreamOpen(&has, NULL, fmt, pwfxTemp, NULL, NULL, NULL, ACM_STREAMOPENF_NONREALTIME)) {
+							if (!acmFormatSuggest(NULL, (WAVEFORMATEX *)fmt, (WAVEFORMATEX *)pwfxTemp, cbwfxTemp, ACM_FORMATSUGGESTF_WFORMATTAG)) {
+								if (!acmStreamOpen(&has, NULL, (WAVEFORMATEX *)fmt, pwfxTemp, NULL, NULL, NULL, ACM_STREAMOPENF_NONREALTIME)) {
 									if (!acmDriverID((HACMOBJ)has, &hadid, 0)) {
 										memset(&add, 0, sizeof add);
 
@@ -878,7 +865,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 						if (!fSuccessful) {
 							char buf[32];
 
-							wsprintf(buf, "Unknown (tag %04X)", fmt->wFormatTag);
+							wsprintf(buf, "Unknown (tag %04X)", fmt->mTag);
 							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
 						}
 					} else {
@@ -937,7 +924,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					strcpy(buf,"(no delta frames)");
 				SetDlgItemText(hDlg, IDC_VIDEO_NONKEYFRAMESIZES, buf);
 
-				if (thisPtr->audioSrc) {
+				if (pInfo->mpAudio) {
 					if (pInfo->bAudioFramesIndeterminate) {
 						SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, "(indeterminate)");
 						SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, "(indeterminate)");
@@ -954,14 +941,14 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 							strcpy(buf,"(no audio frames)");
 						SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, buf);
 
-						const WAVEFORMATEX *pWaveFormat = thisPtr->audioSrc->getWaveFormat();
+						const VDWaveFormat *pWaveFormat = pInfo->mpAudio->getWaveFormat();
 
 						sprintf(buf, "%ld chunks (%.2fs preload)", pInfo->lAudioFrames,
-								(double)pInfo->lAudioPreload * pWaveFormat->nBlockAlign / pWaveFormat->nAvgBytesPerSec
+							(double)pInfo->lAudioPreload * pInfo->mpAudio->getRate().AsInverseDouble()
 								);
 						SetDlgItemText(hDlg, IDC_AUDIO_LAYOUT, buf);
 
-						const double audioRate = (double)pWaveFormat->nAvgBytesPerSec * (1.0 / 125.0);
+						const double audioRate = (double)pWaveFormat->mDataRate * (1.0 / 125.0);
 						const double rawOverhead = 24.0 * pInfo->lAudioFrames;
 						const double audioOverhead = 100.0 * rawOverhead / (rawOverhead + pInfo->i64AudioTotalSize);
 						sprintf(buf, "%.0f kbps (%.2f%% overhead)", audioRate, audioOverhead);
@@ -971,7 +958,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 				double totalVideoFrames = (double)pInfo->lVideoKFrames + (sint64)pInfo->lVideoCFrames;
 				if (totalVideoFrames > 0) {
-					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*thisPtr->videoSrc);
+					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
 					const double seconds = (double)pvs->getLength() / (double)pvs->getRate().asDouble();
 					const double rawOverhead = (24.0 * totalVideoFrames);
 					const double totalSize = (double)(pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
@@ -998,11 +985,22 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
     return FALSE;
 }
 
-void InputFileAVI::InfoDialog(HWND hwndParent) {
+void InputFileAVI::InfoDialog(VDGUIHandle hwndParent) {
 	MyFileInfo mai;
 
 	memset(&mai, 0, sizeof mai);
 	mai.thisPtr = this;
 
-	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_AVI_INFO), hwndParent, _InfoDlgProc, (LPARAM)&mai);
+	GetVideoSource(0, ~mai.mpVideo);
+	GetAudioSource(0, ~mai.mpAudio);
+
+	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_AVI_INFO), (HWND)hwndParent, _InfoDlgProc, (LPARAM)&mai);
+}
+
+void InputFileAVI::Attach(VDAVIStreamSource *p) {
+	mStreams.push_back(p);
+}
+
+void InputFileAVI::Detach(VDAVIStreamSource *p) {
+	mStreams.erase(p);
 }

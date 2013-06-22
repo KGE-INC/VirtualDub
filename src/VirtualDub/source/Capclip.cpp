@@ -123,7 +123,7 @@ void VDDialogCaptureCropping::OnInit() {
 	mFilterSetup = mpProject->GetFilterSetup();
 
 	IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_BORDERS));
-	vdstructex<BITMAPINFOHEADER> bih;
+	vdstructex<VDAVIBitmapInfoHeader> bih;
 
 	mLastFrameWidth = 320;
 	mLastFrameHeight = 240;

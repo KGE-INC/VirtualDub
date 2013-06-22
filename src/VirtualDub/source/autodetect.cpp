@@ -18,6 +18,7 @@
 #include "stdafx.h"
 
 #include <windows.h>
+#include <vfw.h>
 
 #include "command.h"
 
@@ -64,7 +65,7 @@ const struct CodecEntry {
 
 #undef R
 
-const char *LookupVideoCodec(FOURCC fccType) {
+const char *LookupVideoCodec(uint32 fccType) {
 	int i;
 
 	for(i=0; i<3; i++) {

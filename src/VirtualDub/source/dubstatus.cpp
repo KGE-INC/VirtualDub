@@ -303,10 +303,15 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	size_to_str(buf, sizeof buf / sizeof buf[0], pvinfo->total_size);
 
 	if (pvinfo->processed) {
-		__int64 divisor = pvinfo->processed*(__int64)pvinfo->usPerFrame;
+		s = buf;
+		while(*s)
+			++s;
 
-		s=buf; while(*s) ++s;
-		sprintf(s, " (%3ldKB/s)", (long)((((pvinfo->total_size+1023)/1024)*1000000i64 + divisor - 1) / divisor));
+		sint64 kilobytes = (pvinfo->total_size + 512) >> 10;
+		double kbPerFrame = (double)kilobytes / (double)pvinfo->processed;
+		double framesPerSecond = pvinfo->frameRate.asDouble();
+
+		sprintf(s, " (%3ldKB/s)", VDRoundToInt(kbPerFrame / framesPerSecond));
 	}
 
 	SetDlgItemText(hWnd, IDC_CURRENT_VSIZE, buf);

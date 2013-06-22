@@ -22,6 +22,7 @@
 #include "resource.h"
 #include "filter.h"
 #include "gui.h"
+#include "VBitmap.h"
 #include <vd2/system/cpuaccel.h>
 
 #include "ScriptInterpreter.h"
@@ -429,8 +430,8 @@ static INT_PTR CALLBACK DeinterlaceDlgProc(HWND hDlg, UINT message, WPARAM wPara
     return FALSE;
 }
 
-static int deinterlace_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_DEINTERLACE), hWnd, DeinterlaceDlgProc, (LONG)fa->filter_data);
+static int deinterlace_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_DEINTERLACE), (HWND)hWnd, DeinterlaceDlgProc, (LPARAM)fa->filter_data);
 }
 
 static void deinterlace_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

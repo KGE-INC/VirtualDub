@@ -346,7 +346,7 @@ void guiSetTitleW(HWND hWnd, UINT uID, ...) {
 	wchar_t buf2[256];
 	va_list val;
 
-	VDStringW s(VDLoadStringW32(uID));
+	VDStringW s(VDLoadStringW32(uID, true));
 
 	va_start(val, uID);
 	vswprintf(buf2, 256, s.c_str(), val);
@@ -419,14 +419,15 @@ void guiSubclassWindow(HWND hwnd, WNDPROC newproc) {
 
 ///////////////////////////////////////
 
-extern vdrefptr<VideoSource> inputVideoAVI;
+extern vdrefptr<IVDVideoSource> inputVideo;
 
 void guiPositionInitFromStream(IVDPositionControl *pc) {
-	if (!inputVideoAVI) return;
+	if (!inputVideo) return;
 
-	const VDFraction videoRate(inputVideoAVI->getRate());
+	IVDStreamSource *pVSS = inputVideo->asStream();
+	const VDFraction videoRate(pVSS->getRate());
 
-	pc->SetRange(inputVideoAVI->getStart(), inputVideoAVI->getEnd());
+	pc->SetRange(pVSS->getStart(), pVSS->getEnd());
 	pc->SetFrameRate(videoRate);
 }
 
@@ -486,17 +487,19 @@ bool VDHandleTimelineCommand(IVDPositionControl *pc, VDTimeline *pTimeline, UINT
 }
 
 VDPosition guiPositionHandleCommand(WPARAM wParam, IVDPositionControl *pc) {
-	if (!inputVideoAVI) return -1;
+	if (!inputVideo)
+		return -1;
 
+	IVDStreamSource *pVSS = inputVideo->asStream();
 	switch(HIWORD(wParam)) {
 		case PCN_START:
-			pc->SetPosition(inputVideoAVI->getStart());
-			return inputVideoAVI->getStart();
+			pc->SetPosition(pVSS->getStart());
+			return pVSS->getStart();
 		case PCN_BACKWARD:
 			{
 				VDPosition pos = pc->GetPosition();
 
-				if (pos > inputVideoAVI->getStart()) {
+				if (pos > pVSS->getStart()) {
 					pc->SetPosition(pos - 1);
 					return pos - 1;
 				}
@@ -506,21 +509,21 @@ VDPosition guiPositionHandleCommand(WPARAM wParam, IVDPositionControl *pc) {
 			{
 				VDPosition pos = pc->GetPosition();
 
-				if (pos < inputVideoAVI->getEnd()) {
+				if (pos < pVSS->getEnd()) {
 					pc->SetPosition(pos + 1);
 					return pos + 1;
 				}
 			}
 			break;
 		case PCN_END:
-			pc->SetPosition(inputVideoAVI->getEnd());
-			return inputVideoAVI->getEnd();
+			pc->SetPosition(pVSS->getEnd());
+			return pVSS->getEnd();
 
 		case PCN_KEYPREV:
 			{
-				VDPosition lSample = inputVideoAVI->prevKey(pc->GetPosition());
+				VDPosition lSample = inputVideo->prevKey(pc->GetPosition());
 
-				if (lSample < 0) lSample = inputVideoAVI->getStart();
+				if (lSample < 0) lSample = pVSS->getStart();
 
 				pc->SetPosition(lSample);
 				return lSample;
@@ -528,9 +531,9 @@ VDPosition guiPositionHandleCommand(WPARAM wParam, IVDPositionControl *pc) {
 			break;
 		case PCN_KEYNEXT:
 			{
-				VDPosition lSample = inputVideoAVI->nextKey(pc->GetPosition());
+				VDPosition lSample = inputVideo->nextKey(pc->GetPosition());
 
-				if (lSample < 0) lSample = inputVideoAVI->getEnd();
+				if (lSample < 0) lSample = pVSS->getEnd();
 
 				pc->SetPosition(lSample);
 				return lSample;
@@ -550,7 +553,7 @@ VDPosition guiPositionHandleNotify(LPARAM lParam, IVDPositionControl *pc) {
 	case PCN_PAGELEFT:
 	case PCN_PAGERIGHT:
 	case CCN_REFRESHFRAME:
-		if (inputVideoAVI)
+		if (inputVideo)
 			return pc->GetPosition();
 
 		break;
@@ -564,16 +567,17 @@ void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 	try {
 		BITMAPINFOHEADER *dcf;
 
-		if (!inputVideoAVI)
+		if (!inputVideo)
 			SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)NULL);
 		else {
-			dcf = inputVideoAVI->getDecompressedFormat();
+			dcf = (BITMAPINFOHEADER *)inputVideo->getDecompressedFormat();
 
-			if (lFrame < inputVideoAVI->getStart() || lFrame >= inputVideoAVI->getEnd())
+			IVDStreamSource *pVSS = inputVideo->asStream();
+			if (lFrame < pVSS->getStart() || lFrame >= pVSS->getEnd())
 				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)NULL);
 			else {
 				Pixel32 *tmpmem;
-				const void *pFrame = inputVideoAVI->getFrame(lFrame);
+				const void *pFrame = inputVideo->getFrame(lFrame);
 
 				int dch = abs(dcf->biHeight);
 
@@ -591,7 +595,7 @@ void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 
 					delete[] tmpmem;
 				} else
-					SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&inputVideoAVI->getTargetFormat());
+					SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&inputVideo->getTargetFormat());
 			}
 		}
 

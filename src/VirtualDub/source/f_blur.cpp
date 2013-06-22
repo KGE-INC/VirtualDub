@@ -16,86 +16,75 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "stdafx.h"
+#include <vd2/system/vdalloc.h>
 #include <vd2/plugin/vdplugin.h>
-#include <vd2/plugin/vdvideofiltold.h>
+#include <vd2/plugin/vdvideofilt.h>
+#include <vd2/VDXFrame/VideoFilter.h>
 
 #include "Effect.h"
 #include "e_blur.h"
 
-//#define USE_ASM
+class VDVFilterBlurBase : public VDXVideoFilter {
+public:
+	uint32 GetParams();
+	void End();
+	void Run();
 
-struct FilterBlurData {
-	VEffect *effect;
+protected:
+	vdautoptr<VEffect> mpEffect;
 };
 
-static int blur_run(const FilterActivation *fa, const FilterFunctions *ff) {
-	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
-
-	if (pfbd->effect)
-		pfbd->effect->run((VBitmap *)&fa->dst);
-
-	return 0;
-}
-
-static int blur_start(FilterActivation *fa, const FilterFunctions *ff) {
-	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
-
-	if (!(pfbd->effect = VCreateEffectBlur((VBitmap *)&fa->dst)))
-		return 1;
-
-	return 0;
-}
-
-static long blur_param(FilterActivation *fa, const FilterFunctions *ff) {
+uint32 VDVFilterBlurBase::GetParams() {
 	fa->dst.offset = fa->src.offset;
 	return 0;
 }
 
-static int blur_start2(FilterActivation *fa, const FilterFunctions *ff) {
-	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
-
-	if (!(pfbd->effect = VCreateEffectBlurHi((VBitmap *)&fa->dst)))
-		return 1;
-
-	return 0;
+void VDVFilterBlurBase::End() {
+	mpEffect = NULL;
 }
 
-static int blur_stop(FilterActivation *fa, const FilterFunctions *ff) {
-	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
-
-	delete pfbd->effect;
-	pfbd->effect = NULL;
-
-	return 0;
+void VDVFilterBlurBase::Run() {
+	if (mpEffect)
+		mpEffect->run((VBitmap *)&fa->dst);
 }
 
+///////////////////////////////////////////////////////////////////////////////
 
-extern FilterDefinition filterDef_blur={
-	0,0,NULL,
-	"blur",
-	"Applies a radius-1 gaussian blur to the image.",
-	NULL,NULL,
-	sizeof(FilterBlurData),
-	NULL,NULL,
-	blur_run,
-	blur_param,
-	NULL,
-	NULL,
-	blur_start,
-	blur_stop
+class VDVFilterBlur : public VDVFilterBlurBase {
+public:
+	void Start();
 };
 
-extern FilterDefinition filterDef_blurhi={
-	0,0,NULL,
-	"blur more",
-	"Applies a radius-2 gaussian blur to the image.",
-	NULL,NULL,
-	sizeof(FilterBlurData),
-	NULL,NULL,
-	blur_run,
-	blur_param,
-	NULL,
-	NULL,
-	blur_start2,
-	blur_stop
+void VDVFilterBlur::Start() {
+	mpEffect = VCreateEffectBlur((VBitmap *)&fa->dst);
+	if (!mpEffect)
+		ff->ExceptOutOfMemory();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+class VDVFilterBlurHi : public VDVFilterBlurBase {
+public:
+	void Start();
 };
+
+void VDVFilterBlurHi::Start() {
+	mpEffect = VCreateEffectBlurHi((VBitmap *)&fa->dst);
+	if (!mpEffect)
+		ff->ExceptOutOfMemory();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+extern const VDXFilterDefinition filterDef_blur = VDXVideoFilterDefinition<VDVFilterBlur>(
+		NULL,
+		"blur",
+		"Applies a radius-1 gaussian blur to the image.");
+
+extern const VDXFilterDefinition filterDef_blurhi = VDXVideoFilterDefinition<VDVFilterBlurHi>(
+		NULL,
+		"blur more",
+		"Applies a radius-2 gaussian blur to the image.");
+
+// warning C4505: 'VDXVideoFilter::[thunk]: __thiscall VDXVideoFilter::`vcall'{24,{flat}}' }'' : unreferenced local function has been removed
+#pragma warning(disable: 4505)

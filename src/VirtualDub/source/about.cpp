@@ -25,7 +25,7 @@
 #include "auxdlg.h"
 #include "oshelper.h"
 
-#include <vd2/Priss/decoder.h>
+#include <vd2/system/w32assist.h>
 
 extern "C" unsigned long version_num;
 extern "C" char version_time[];
@@ -286,46 +286,9 @@ static void CALLBACK AboutTimerProc(UINT uID, UINT, DWORD_PTR dwUser, DWORD_PTR,
 }
 
 static void AboutSetCompilerBuild(HWND hwnd) {
-	char buf[4096];
-#ifdef __INTEL_COMPILER
-	const char *const s = "Intel C/C++ Compiler 6.0";
-#elif VD_COMPILER_MSVC >= 1500
-	#if VD_CPU_AMD64
-		const char *const s = "Microsoft Visual Studio 2008 for AMD64";
-	#else
-		const char *const s = "Microsoft Visual Studio 2008 for X86";
-	#endif
-#elif VD_COMPILER_MSVC >= 1400
-	#if VD_CPU_AMD64
-		#if VD_COMPILER_MSVC_VC8_DDK
-			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (DDK version)";
-		#elif VD_COMPILER_MSVC_VC8_PSDK
-			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (PSDK version)";
-		#else
-			const char *const s = "Microsoft Visual Studio 2005 for AMD64";
-		#endif
-	#else
-		const char *const s = "Microsoft Visual Studio 2005 for X86";
-	#endif
-#elif VD_COMPILER_MSVC >= 1310
-	const char *const s = "Microsoft Visual Studio .NET (2003)";
-#elif VD_COMPILER_MSVC >= 1300
-	const char *const s = "Microsoft Visual Studio .NET (2002)";
-#else
-	const char *const s = "Microsoft Visual C++ 6.0 SP5 + Processor Pack";
-#endif
-
-	GetWindowText(hwnd, buf, sizeof buf);
-
-	char *t = strchr(buf, '$');
-
-	if (t) {
-		int l = strlen(s);
-
-		memmove(t+l, t+1, strlen(t));
-		memcpy(t, s, l);
-		SetWindowText(hwnd, buf);
-	}
+	VDStringW s(VDGetWindowTextW32(hwnd));
+	VDSubstituteStrings(s);
+	VDSetWindowTextW32(hwnd, s.c_str());
 }
 
 INT_PTR APIENTRY AboutDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -401,14 +364,6 @@ INT_PTR APIENTRY AboutDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 						}
 						FreeResource(hGlobal);
 					}
-				}
-
-				IAMPDecoder *iad = CreateAMPDecoder();
-
-				if (iad) {
-					wsprintf(buf, "MPEG audio decoder: %s", iad->GetAmpVersionString());
-					delete iad;
-					SetDlgItemText(hDlg, IDC_MP3_DECODER, buf);
 				}
 
 				// Showtime!  Invalidate the entire window, force an update, and show the window.

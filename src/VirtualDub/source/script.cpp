@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <mmsystem.h>
+#include <vfw.h>
 
 #include "indeo_if.h"
 
@@ -34,10 +35,13 @@
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
 #include <vd2/plugin/vdvideofilt.h>
+#include <vd2/VDLib/ParameterCurve.h>
+#include "AudioSource.h"
 #include "VideoSource.h"
 #include "AudioFilterSystem.h"
 #include "InputFile.h"
 #include "project.h"
+#include "filters.h"
 
 #include "command.h"
 #include "dub.h"
@@ -46,6 +50,7 @@
 #include "resource.h"
 #include "script.h"
 #include "plugins.h"
+#include "oshelper.h"
 
 extern DubOptions g_dubOpts;
 extern HWND g_hWnd;
@@ -58,7 +63,9 @@ extern VDProject *g_project;
 
 extern HINSTANCE g_hInst;
 
+extern vdrefptr<IVDVideoSource>	inputVideo;
 extern vdrefptr<AudioSource> inputAudio;
+extern COMPVARS g_Vcompression;
 
 extern const char *VDGetStartupArgument(int index);
 
@@ -331,29 +338,34 @@ static void func_VDVFiltInst_Remove(IVDScriptInterpreter *isi, VDScriptValue *ar
 }
 
 static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].asObjectPtr();
+	FilterInstance *fa = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 
-	fa->x1	= argv[0].asInt();
-	fa->y1	= argv[1].asInt();
-	fa->x2	= argv[2].asInt();
-	fa->y2	= argv[3].asInt();
+	fa->mCropX1	= argv[0].asInt();
+	fa->mCropY1	= argv[1].asInt();
+	fa->mCropX2	= argv[2].asInt();
+	fa->mCropY2	= argv[3].asInt();
+
+	fa->mbPreciseCrop = true;
+	if (argc >= 4)
+		fa->mbPreciseCrop = (0 != argv[4].asInt());
 }
 
 static void func_VDVFiltInst_GetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].asObjectPtr();
+	FilterInstance *fa = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 
 	switch(argv[0].asInt()) {
-	case 0:	argv[0] = (int)fa->x1; break;
-	case 1: argv[0] = (int)fa->y1; break;
-	case 2: argv[0] = (int)fa->x2; break;
-	case 3: argv[0] = (int)fa->y2; break;
+	case 0:	argv[0] = (int)fa->mCropX1; break;
+	case 1: argv[0] = (int)fa->mCropY1; break;
+	case 2: argv[0] = (int)fa->mCropX2; break;
+	case 3: argv[0] = (int)fa->mCropY2; break;
+	case 4: argv[0] = (int)fa->mbPreciseCrop; break;
+	default:
+		argv[0] = VDScriptValue(0);
 	}
-
-	argv[0] = VDScriptValue(0);
 }
 
 static void func_VDVFiltInst_AddOpacityCurve(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].asObjectPtr();
+	FilterInstance *fa = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 
 	VDParameterCurve *curve = new VDParameterCurve;
 	curve->SetYRange(0, 1);
@@ -362,8 +374,53 @@ static void func_VDVFiltInst_AddOpacityCurve(IVDScriptInterpreter *isi, VDScript
 	argv[0] = VDScriptValue(curve, &obj_VDParameterCurve);
 }
 
+static void func_VDVFiltInst_SetEnabled(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *fa = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
+
+	fa->SetEnabled(argv[0].asInt() != 0);
+}
+
 static VDScriptValue obj_VDVFiltInst_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
-	FilterInstance *pfi = static_cast<FilterInstance *>((FilterActivation *)lpVoid);
+	FilterInstance *pfi = static_cast<FilterInstance *>((VDFilterActivationImpl *)lpVoid);
+	if (!(strcmp(szName, "__srcwidth"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((int)pfi->GetSourceFrameWidth());
+	}
+
+	if (!(strcmp(szName, "__srcheight"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((int)pfi->GetSourceFrameHeight());
+	}
+
+	if (!(strcmp(szName, "__srcrate"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue(pfi->GetSourceFrameRate().asDouble());
+	}
+
+	if (!(strcmp(szName, "__srcframes"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((sint64)pfi->GetSourceFrameCount());
+	}
+
+	if (!(strcmp(szName, "__dstwidth"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((int)pfi->GetOutputFrameWidth());
+	}
+
+	if (!(strcmp(szName, "__dstheight"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((int)pfi->GetOutputFrameHeight());
+	}
+
+	if (!(strcmp(szName, "__dstrate"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue(pfi->GetOutputFrameRate().asDouble());
+	}
+
+	if (!(strcmp(szName, "__dstframes"))) {
+		g_project->PrepareFilters();
+		return VDScriptValue((sint64)pfi->GetOutputFrameCount());
+	}
 
 	if (pfi->filter->script_obj)
 		return isi->LookupObjectMember(&pfi->mScriptObj, lpVoid, szName);
@@ -374,8 +431,10 @@ static VDScriptValue obj_VDVFiltInst_lookup(IVDScriptInterpreter *isi, const VDS
 static const VDScriptFunctionDef obj_VDVFiltInst_functbl[]={
 	{ func_VDVFiltInst_Remove			, "Remove", "0" },
 	{ func_VDVFiltInst_SetClipping		, "SetClipping", "0iiii" },
+	{ func_VDVFiltInst_SetClipping		, NULL, "0iiiii" },
 	{ func_VDVFiltInst_GetClipping		, "GetClipping", "ii" },
 	{ func_VDVFiltInst_AddOpacityCurve	, "AddOpacityCurve", "v" },
+	{ func_VDVFiltInst_SetEnabled		, "SetEnabled", "0i" },
 	{ NULL }
 };
 
@@ -394,7 +453,7 @@ static void func_VDVFilters_instance(IVDScriptInterpreter *isi, VDScriptValue *a
 
 	if (index!=-1 || !fa->next) VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 
-	argv[0] = VDScriptValue(static_cast<FilterActivation *>(fa), &obj_VDVFiltInst);
+	argv[0] = VDScriptValue(static_cast<VDFilterActivationImpl *>(fa), &obj_VDVFiltInst);
 }
 
 static const VDScriptFunctionDef obj_VDVFilters_instance_functbl[]={
@@ -409,8 +468,7 @@ static const VDScriptObject obj_VDVFilters_instance={
 static void func_VDVFilters_Clear(IVDScriptInterpreter *, VDScriptValue *, int) {
 	FilterInstance *fa;
 
-	filters.DeinitFilters();
-	filters.DeallocateBuffers();
+	g_project->StopFilters();
 
 	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
 		fa->Destroy();
@@ -422,6 +480,8 @@ static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, 
 
 	FilterEnumerateFilters(filterList);
 
+	g_project->StopFilters();
+
 	for(std::list<FilterBlurb>::const_iterator it(filterList.begin()), itEnd(filterList.end()); it!=itEnd; ++it) {
 		const FilterBlurb& fb = *it;
 
@@ -429,11 +489,6 @@ static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, 
 			FilterInstance *fa = new FilterInstance(fb.key);
 
 			if (!fa) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
-
-			fa->x1 = fa->y1 = fa->x2 = fa->y2 = 0;
-
-			filters.DeinitFilters();
-			filters.DeallocateBuffers();
 
 			g_listFA.AddHead(fa);
 
@@ -588,7 +643,7 @@ static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arg
 		g_dubOpts.video.mFrameRateAdjustLo = 0;
 	}
 
-	g_dubOpts.video.frameRateDecimation = arglist[1].asInt();
+	g_dubOpts.video.frameRateDecimation = std::max<int>(1, arglist[1].asInt());
 	g_dubOpts.video.frameRateTargetLo = 0;
 	g_dubOpts.video.frameRateTargetHi = 0;
 
@@ -607,7 +662,7 @@ static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arg
 static void func_VDVideo_SetFrameRate2(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.mFrameRateAdjustHi = (uint32)arglist[0].asLong();
 	g_dubOpts.video.mFrameRateAdjustLo = (uint32)arglist[1].asLong();
-	g_dubOpts.video.frameRateDecimation = arglist[2].asInt();
+	g_dubOpts.video.frameRateDecimation = std::max<int>(1, arglist[2].asInt());
 	g_dubOpts.video.frameRateTargetLo = 0;
 	g_dubOpts.video.frameRateTargetHi = 0;
 }
@@ -721,6 +776,103 @@ static void func_VDVideo_SetIVTC(IVDScriptInterpreter *, VDScriptValue *arglist,
 	g_dubOpts.video.fIVTCPolarity = !!arglist[3].asInt();
 }
 
+static void func_VDVideo_intGetFramePrefix(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	VDPosition pos = argv[0].asInt();
+	vdfastvector<uint8> buf;
+	IVDStreamSource *stream = inputVideo->asStream();
+	uint32 bytes, samples;
+	stream->read(pos, 1, NULL, 0, &bytes, &samples);
+
+	buf.resize(bytes);
+	stream->read(pos, 1, buf.data(), buf.size(), &bytes, &samples);
+
+	char c[4] = {0};
+	memcpy(c, buf.data(), std::min<size_t>(buf.size(), 4));
+
+	argv[0] = (int)VDReadUnalignedLEU32(c);
+}
+
+static void func_VDVideo_intIsKeyFrame(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	VDPosition pos = argv[0].asInt();
+
+	argv[0] = (int)inputVideo->isKey(pos);
+}
+
+namespace {
+	int GetFrameId(VDPosition pos) {
+		vdfastvector<uint8> buf;
+		IVDStreamSource *stream = inputVideo->asStream();
+
+		if (pos < 0 || pos >= stream->getLength())
+			return -1;
+
+		uint32 bytes, samples;
+		stream->read(pos, 1, NULL, 0, &bytes, &samples);
+
+		buf.resize(bytes);
+		stream->read(pos, 1, buf.data(), buf.size(), &bytes, &samples);
+
+		char c[4] = {0};
+		memcpy(c, buf.data(), std::min<size_t>(buf.size(), 4));
+
+		uint32 id = VDReadUnalignedLEU32(c);
+		int decframe = ((id & 0x1e) >> 1) + ((id & 0x3c0) >> 2);
+
+		if (decframe >= 100 || (id & 0xfc00) != 0x8800)
+			return -1;
+
+		uint32 lo = id & 0xffff;
+		uint32 hi = id >> 16;
+
+		if (lo == hi) {
+			if (!inputVideo->isKey(pos))
+				decframe = -1;
+		} else if (hi == 0x8400) {
+			if (inputVideo->isKey(pos))
+				decframe = -1;
+		} else {
+			decframe = -1;
+		}
+
+		return decframe;
+	}
+}
+
+static void func_VDVideo_intDetectIdFrame(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	VDPosition pos = argv[0].asInt();
+
+	argv[0] = GetFrameId(pos);
+}
+
+static void func_VDVideo_intValidateFrames(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	for(int i=0; i<argc; ++i) {
+		if (!argv[i].isInt())
+			VDSCRIPT_EXT_ERROR(TYPE_INT_REQUIRED);
+
+		int frame = argv[i].asInt();
+		int id = GetFrameId(i);
+
+		if (id != frame)
+			throw MyError("Frame mismatch: frame[%d] has id %d, expected %d", i, id, frame);
+	}
+
+	VDPosition len = inputVideo->asStream()->getLength();
+	if (argc != len)
+		throw MyError("Length mismatch: expected %d frames, found %d frames", argc, (int)len);
+}
+
 static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_GetDepth			, "GetDepth",		"ii" },
 	{ func_VDVideo_SetDepth			, "SetDepth",		"0ii" },
@@ -747,6 +899,10 @@ static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_SetSmartRendering, "SetSmartRendering", "0i" },
 	{ func_VDVideo_GetPreserveEmptyFrames, "GetPreserveEmptyFrames", "i" },
 	{ func_VDVideo_SetPreserveEmptyFrames, "SetPreserveEmptyFrames", "0i" },
+	{ func_VDVideo_intGetFramePrefix, "__GetFramePrefix", "ii" },
+	{ func_VDVideo_intIsKeyFrame, "__IsKeyFrame", "ii" },
+	{ func_VDVideo_intDetectIdFrame, "__DetectIdFrame", "ii" },
+	{ func_VDVideo_intValidateFrames, "__ValidateFrames", "0." },
 	{ NULL }
 };
 
@@ -757,13 +913,13 @@ static const VDScriptObjectDef obj_VDVideo_objtbl[]={
 
 static VDScriptValue obj_VirtualDub_video_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "width"))
-		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
+		return VDScriptValue(inputVideo ? inputVideo->getImageFormat()->biWidth : 0);
 	else if (!strcmp(szName, "height"))
-		return VDScriptValue(inputVideoAVI ? abs(inputVideoAVI->getImageFormat()->biHeight) : 0);
+		return VDScriptValue(inputVideo ? abs(inputVideo->getImageFormat()->biHeight) : 0);
 	else if (!strcmp(szName, "length"))
-		return VDScriptValue(inputVideoAVI ? inputVideoAVI->asStream()->getLength() : 0);
+		return VDScriptValue(inputVideo ? inputVideo->asStream()->getLength() : 0);
 	else if (!strcmp(szName, "framerate"))
-		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getRate().asDouble() : 0.0);
+		return VDScriptValue(inputVideo ? inputVideo->asStream()->getRate().asDouble() : 0.0);
 
 	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
@@ -779,7 +935,7 @@ static const VDScriptObject obj_VDVideo={
 ///////////////////////////////////////////////////////////////////////////
 
 namespace {
-	const VDPluginConfigEntry *GetFilterParamEntry(const VDPluginConfigEntry *pEnt, const unsigned idx) {
+	const VDXPluginConfigEntry *GetFilterParamEntry(const VDXPluginConfigEntry *pEnt, const unsigned idx) {
 		if (pEnt)
 			for(; pEnt->next; pEnt=pEnt->next) {
 				if (pEnt->idx == idx)
@@ -792,14 +948,14 @@ namespace {
 	void SetFilterParam(void *lpVoid, unsigned idx, const VDPluginConfigVariant& v) {
 		VDAudioFilterGraph::FilterEntry *pFilt = (VDAudioFilterGraph::FilterEntry *)lpVoid;
 
-		VDPluginDescription *pDesc = VDGetPluginDescription(pFilt->mFilterName.c_str(), kVDPluginType_Audio);
+		VDPluginDescription *pDesc = VDGetPluginDescription(pFilt->mFilterName.c_str(), kVDXPluginType_Audio);
 
 		if (!pDesc)
 			throw MyError("VDAFiltInst: Unknown audio filter: \"%s\"", VDTextWToA(pFilt->mFilterName).c_str());
 
 		VDPluginPtr lock(pDesc);
 
-		const VDPluginConfigEntry *pEnt = GetFilterParamEntry(((VDAudioFilterDefinition *)lock->mpInfo->mpTypeSpecificInfo)->mpConfigInfo, idx);
+		const VDXPluginConfigEntry *pEnt = GetFilterParamEntry(((VDAudioFilterDefinition *)lock->mpInfo->mpTypeSpecificInfo)->mpConfigInfo, idx);
 
 		if (!pEnt)
 			throw MyError("VDAFiltInst: Audio filter \"%s\" does not have a parameter with id %d", VDTextWToA(pFilt->mFilterName).c_str(), idx);
@@ -807,7 +963,7 @@ namespace {
 		VDPluginConfigVariant& var = pFilt->mConfig[idx];
 
 		switch(pEnt->type) {
-		case VDPluginConfigEntry::kTypeU32:
+		case VDXPluginConfigEntry::kTypeU32:
 			switch(v.GetType()) {
 			case VDPluginConfigVariant::kTypeU32:	var.SetU32(v.GetU32()); return;
 			case VDPluginConfigVariant::kTypeS32:	var.SetU32(v.GetS32()); return;
@@ -815,7 +971,7 @@ namespace {
 			case VDPluginConfigVariant::kTypeS64:	var.SetU32((uint32)v.GetS64()); return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeS32:
+		case VDXPluginConfigEntry::kTypeS32:
 			switch(v.GetType()) {
 			case VDPluginConfigVariant::kTypeU32:	var.SetS32(v.GetU32()); return;
 			case VDPluginConfigVariant::kTypeS32:	var.SetS32(v.GetS32()); return;
@@ -823,7 +979,7 @@ namespace {
 			case VDPluginConfigVariant::kTypeS64:	var.SetS32((sint32)v.GetS64()); return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeU64:
+		case VDXPluginConfigEntry::kTypeU64:
 			switch(v.GetType()) {
 			case VDPluginConfigVariant::kTypeU32:	var.SetU64(v.GetU32()); return;
 			case VDPluginConfigVariant::kTypeS32:	var.SetU64(v.GetS32()); return;
@@ -831,7 +987,7 @@ namespace {
 			case VDPluginConfigVariant::kTypeS64:	var.SetU64(v.GetS64()); return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeS64:
+		case VDXPluginConfigEntry::kTypeS64:
 			switch(v.GetType()) {
 			case VDPluginConfigVariant::kTypeU32:	var.SetS64(v.GetU32()); return;
 			case VDPluginConfigVariant::kTypeS32:	var.SetS64(v.GetS32()); return;
@@ -839,26 +995,26 @@ namespace {
 			case VDPluginConfigVariant::kTypeS64:	var.SetS64(v.GetS64()); return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeDouble:
-			if (v.GetType() == VDPluginConfigEntry::kTypeDouble) {
+		case VDXPluginConfigEntry::kTypeDouble:
+			if (v.GetType() == VDXPluginConfigEntry::kTypeDouble) {
 				var = v;
 				return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeAStr:
-			if (v.GetType() == VDPluginConfigEntry::kTypeWStr) {
+		case VDXPluginConfigEntry::kTypeAStr:
+			if (v.GetType() == VDXPluginConfigEntry::kTypeWStr) {
 				var.SetAStr(VDTextWToA(v.GetWStr()).c_str());
 				return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeWStr:
-			if (v.GetType() == VDPluginConfigEntry::kTypeWStr) {
+		case VDXPluginConfigEntry::kTypeWStr:
+			if (v.GetType() == VDXPluginConfigEntry::kTypeWStr) {
 				var = v;
 				return;
 			}
 			break;
-		case VDPluginConfigEntry::kTypeBlock:
-			if (v.GetType() == VDPluginConfigEntry::kTypeBlock) {
+		case VDXPluginConfigEntry::kTypeBlock:
+			if (v.GetType() == VDXPluginConfigEntry::kTypeBlock) {
 				var = v;
 				return;
 			}
@@ -990,7 +1146,7 @@ static void func_VDAFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, 
 
 	filt.mFilterName = VDTextU8ToW(*argv[0].asString(), -1);
 
-	VDPluginDescription *pDesc = VDGetPluginDescription(filt.mFilterName.c_str(), kVDPluginType_Audio);
+	VDPluginDescription *pDesc = VDGetPluginDescription(filt.mFilterName.c_str(), kVDXPluginType_Audio);
 
 	if (!pDesc)
 		throw MyError("VDAFilters.Add(): Unknown audio filter: \"%s\"", VDTextWToA(filt.mFilterName).c_str());
@@ -1142,13 +1298,44 @@ static void func_VDAudio_SetConversion(IVDScriptInterpreter *, VDScriptValue *ar
 }
 
 static void func_VDAudio_SetSource(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	if (arglist[0].isInt()) {
-		if (arglist[0].asInt())
-			g_project->SetAudioSourceNormal();
+	int baseMode = arglist[0].asInt();
+
+	if (baseMode) {
+		int streamIndex = 0;
+
+		if (arg_count >= 2)
+			streamIndex = arglist[1].asInt();
+
+		g_project->SetAudioSourceNormal(streamIndex);
+	} else
+		g_project->SetAudioSourceNone();
+}
+
+static void func_VDAudio_SetSourceExternal(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	IVDInputDriver *pDriver = NULL;
+	VDStringW fileName(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
+	if (arg_count >= 2) {
+		const VDStringW driverName(VDTextU8ToW(*arglist[1].asString(), -1));
+
+		if (driverName.empty())
+			pDriver = VDAutoselectInputDriverForFile(fileName.c_str(), IVDInputDriver::kF_Audio);
 		else
-			g_project->SetAudioSourceNone();
+			pDriver = VDGetInputDriverByName(driverName.c_str());
+
+		if (!pDriver)
+			throw MyError("Unable to find input driver with name: %ls", driverName.c_str());
+	}
+
+	if (arg_count >= 3) {
+		long l = ((strlen(*arglist[2].asString())+3)/4)*3;
+		vdfastvector<char> buf(l);
+
+		memunbase64(buf.data(), *arglist[2].asString(), l);
+
+		g_project->OpenWAV(fileName.c_str(), pDriver, true, false, buf.data(), l);
 	} else {
-		g_project->OpenWAV(VDTextU8ToW(VDStringA(*arglist[0].asString())).c_str());
+		g_project->OpenWAV(fileName.c_str(), pDriver, true, false, NULL, 0);
 	}
 }
 
@@ -1165,7 +1352,7 @@ static void func_VDAudio_SetCompressionPCM(IVDScriptInterpreter *isi, VDScriptVa
 	pwf->wf.nAvgBytesPerSec		= pwf->wf.nSamplesPerSec * pwf->wf.nBlockAlign;
 	g_ACompressionFormatSize	= sizeof(PCMWAVEFORMAT);
 	freemem(g_ACompressionFormat);
-	g_ACompressionFormat = (WAVEFORMATEX *)pwf;
+	g_ACompressionFormat = (VDWaveFormat *)pwf;
 }
 
 // VirtualDub.audio.SetCompression();
@@ -1212,7 +1399,7 @@ static void func_VDAudio_SetCompression(IVDScriptInterpreter *isi, VDScriptValue
 	if (g_ACompressionFormat)
 		freemem(g_ACompressionFormat);
 
-	g_ACompressionFormat = wfex;
+	g_ACompressionFormat = (VDWaveFormat *)wfex;
 
 	if (wfex->wFormatTag == WAVE_FORMAT_PCM)
 		g_ACompressionFormatSize = sizeof(PCMWAVEFORMAT);
@@ -1260,7 +1447,10 @@ static VDScriptFunctionDef obj_VDAudio_functbl[]={
 	{ func_VDAudio_SetConversion		, "SetConversion"		, "0iii"	},
 	{ func_VDAudio_SetConversion		, NULL					, "0iiiii"	},
 	{ func_VDAudio_SetSource			, "SetSource"			, "0i"		},
-	{ func_VDAudio_SetSource			, NULL					, "0s"		},
+	{ func_VDAudio_SetSource			, NULL					, "0ii"		},
+	{ func_VDAudio_SetSourceExternal	, NULL					, "0s"		},
+	{ func_VDAudio_SetSourceExternal	, NULL					, "0ss"		},
+	{ func_VDAudio_SetSourceExternal	, NULL					, "0sss"	},
 	{ func_VDAudio_SetCompressionPCM	, "SetCompressionPCM"	, "0iii"	},
 	{ func_VDAudio_SetCompression	, "SetCompression"		, "0"		},
 	{ func_VDAudio_SetCompression	, NULL					, "0iiiiii" },
@@ -1281,13 +1471,13 @@ static const VDScriptObjectDef obj_VDAudio_objtbl[]={
 
 static VDScriptValue obj_VirtualDub_audio_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "samplerate"))
-		return VDScriptValue(inputAudio ? (int)inputAudio->getWaveFormat()->nSamplesPerSec : 0);
+		return VDScriptValue(inputAudio ? (int)inputAudio->getWaveFormat()->mSamplingRate : 0);
 	else if (!strcmp(szName, "blockrate")) {
 		if (!inputAudio)
 			return VDScriptValue(0);
 
-		const WAVEFORMATEX& wfex = *inputAudio->getWaveFormat();
-		return VDScriptValue((double)wfex.nAvgBytesPerSec / (double)wfex.nBlockAlign);
+		const VDWaveFormat& wfex = *inputAudio->getWaveFormat();
+		return VDScriptValue((double)wfex.mDataRate / (double)wfex.mBlockSize);
 	} else if (!strcmp(szName, "length"))
 		return VDScriptValue(inputAudio ? (int)inputAudio->getLength() : 0);
 
@@ -1416,8 +1606,6 @@ static const VDScriptObject obj_VDProject={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-extern void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
-
 static void func_VirtualDub_SetStatus(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	guiSetStatus("%s", 255, *arglist[0].asString());
 }
@@ -1460,6 +1648,14 @@ static void func_VirtualDub_Open(IVDScriptInterpreter *, VDScriptValue *arglist,
 		g_project->Open(filename.c_str(), pDriver, extopen, true, false);
 }
 
+static void func_VirtualDub_intOpenTest(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	extern IVDInputDriver *VDCreateInputDriverTest();
+
+	vdrefptr<IVDInputDriver> pDriver(VDCreateInputDriverTest());
+
+	g_project->Open(L"", pDriver, false);
+}
+
 static void func_VirtualDub_Append(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
@@ -1473,7 +1669,7 @@ static void func_VirtualDub_Close(IVDScriptInterpreter *, VDScriptValue *arglist
 static void func_VirtualDub_Preview(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	DubOptions opts(g_dubOpts);
 	opts.fShowStatus			= false;
-	PreviewAVI(g_hWnd, &opts, g_prefs.main.iPreviewPriority,true);
+	g_project->Preview(&opts);
 }
 
 static void func_VirtualDub_RunNullVideoPass(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1573,23 +1769,9 @@ extern "C" unsigned long version_num;
 
 static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
 	if (!strcmp(szName, "version")) {
-		char buf1[256], buf[256], **handle;
+		const VDStringA& s = VDTextWToA(VDLoadStringW32(IDS_TITLE_INITIAL, true));
 
-		LoadString(g_hInst, IDS_TITLE_INITIAL, buf, sizeof buf);
-
-		_snprintf(buf1, sizeof buf1, buf, version_num,
-#ifdef _DEBUG
-			"debug"
-#else
-			"release"
-#endif
-			);
-
-		handle = isi->AllocTempString(strlen(buf1));
-
-		strcpy(*handle, buf1);
-
-		return VDScriptValue(handle);
+		return isi->DupCString(s.c_str());
 	} else if (!strcmp(szName, "video"))
 		return VDScriptValue(NULL, &obj_VDVideo);
 	else if (!strcmp(szName, "audio"))
@@ -1611,6 +1793,7 @@ static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ func_VirtualDub_Open,				NULL,					"0s" },
 	{ func_VirtualDub_Open,				NULL,					"0ssi" },
 	{ func_VirtualDub_Open,				NULL,					"0ssis" },
+	{ func_VirtualDub_intOpenTest,		"__OpenTest",			"0i" },
 	{ func_VirtualDub_Append,			"Append",				"0s" },
 	{ func_VirtualDub_Close,				"Close",				"0" },
 	{ func_VirtualDub_Preview,			"Preview",				"0" },

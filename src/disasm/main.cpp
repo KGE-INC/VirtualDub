@@ -79,6 +79,9 @@ static const char test1[]={
 	0x5f,
 };
 #else
+#ifdef _MSC_VER
+	#pragma warning(disable: 4730)		// warning C4730: 'test1' : mixing _m64 and floating point expressions may result in incorrect code
+#endif
 void __declspec(naked) test1() {
 	__asm {
 		__emit 0x83

@@ -39,7 +39,8 @@ void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
 HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);
-VDStringW VDLoadStringW32(UINT uID);
+VDStringW VDLoadStringW32(UINT uID, bool doSubstitutions);
+void VDSubstituteStrings(VDStringW& s);
 
 void LaunchURL(const char *pURL);
 

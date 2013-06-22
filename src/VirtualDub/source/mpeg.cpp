@@ -209,7 +209,7 @@ public:
 	~InputFileMPEGOptions();
 
 	bool read(const char *buf);
-	int write(char *buf, int buflen);
+	int write(char *buf, int buflen) const;
 
 	static INT_PTR APIENTRY SetupDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 };
@@ -228,14 +228,14 @@ bool InputFileMPEGOptions::read(const char *buf) {
 	return true;
 }
 
-int InputFileMPEGOptions::write(char *buf, int buflen) {
+int InputFileMPEGOptions::write(char *buf, int buflen) const {
 	InputFileMPEGOpts *pp = (InputFileMPEGOpts *)buf;
 
 	if (buflen<sizeof(InputFileMPEGOpts))
 		return 0;
 
-	opts.len = sizeof(InputFileMPEGOpts);
 	*pp = opts;
+	pp->len = sizeof(InputFileMPEGOpts);
 
 	return sizeof(InputFileMPEGOpts);
 }
@@ -484,6 +484,13 @@ private:
 	sint64	i64ScanCpos;
 	InputFileMPEGPrefetcher		*mpScanPrefetcher;
 
+	bool	mbCustomIntraQuantMatrix;
+	bool	mbCustomNonintraQuantMatrix;
+
+	uint8	mIntraQuantMatrix[64];
+	uint8	mNonintraQuantMatrix[64];
+
+private:
 	void	StartScan();
 	bool	NextStartCode();
 	void	Skip(int bytes);
@@ -508,7 +515,7 @@ private:
 
 	void setOptions(InputFileOptions *);
 	InputFileOptions *createOptions(const void *buf, uint32 len);
-	InputFileOptions *promptForOptions(HWND);
+	InputFileOptions *promptForOptions(VDGUIHandle);
 public:
 	InputFileMPEG();
 	~InputFileMPEG();
@@ -516,7 +523,10 @@ public:
 	void Init(const wchar_t *szFile);
 	static void _InfoDlgThread(void *pvInfo);
 	static INT_PTR CALLBACK _InfoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-	void InfoDialog(HWND hwndParent);
+	void InfoDialog(VDGUIHandle hwndParent);
+
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
 };
 
 
@@ -530,7 +540,7 @@ public:
 
 class VideoSourceMPEG : public VideoSource {
 private:
-	InputFileMPEG *parentPtr;
+	vdrefptr<InputFileMPEG> parentPtr;
 
 	long frame_forw, frame_back, frame_bidir;
 	long frame_type;
@@ -550,10 +560,10 @@ private:
 	void UpdateAcceleration();
 
 public:
-	VideoSourceMPEG(InputFileMPEG *, IVDMPEGDecoder *mpDecoder);
+	VideoSourceMPEG(InputFileMPEG *);
 	~VideoSourceMPEG();
 
-	bool init();
+	void init();
 	char getFrameTypeChar(VDPosition lFrameNum);
 	bool _isKey(VDPosition lSample);
 	virtual VDPosition nearestKey(VDPosition lSample);
@@ -597,14 +607,14 @@ public:
 	bool isDecodable(VDPosition sample_num);
 };
 
-VideoSourceMPEG::VideoSourceMPEG(InputFileMPEG *parent, IVDMPEGDecoder *pDecoder)
-	: mpDecoder(pDecoder)
+VideoSourceMPEG::VideoSourceMPEG(InputFileMPEG *parent)
+	: mpDecoder(CreateVDMPEGDecoder())
 	, mAccelerationFlags((uint32)-1)
 {
 	parentPtr = parent;
 }
 
-bool VideoSourceMPEG::init() {
+void VideoSourceMPEG::init() {
 	BITMAPINFOHEADER *bmih;
 	int w, h;
 
@@ -616,6 +626,10 @@ bool VideoSourceMPEG::init() {
 
 	w = (parentPtr->width+15) & -16;
 	h = parentPtr->height;
+
+	mpDecoder->Init(parentPtr->width, parentPtr->height);
+	mpDecoder->SetIntraQuantizers(parentPtr->mbCustomIntraQuantMatrix ? parentPtr->mIntraQuantMatrix : NULL);
+	mpDecoder->SetNonintraQuantizers(parentPtr->mbCustomNonintraQuantMatrix ? parentPtr->mNonintraQuantMatrix : NULL);
 
 	if (!AllocFrameBuffer(w * h * 4 + 4))
 		throw MyMemoryError();
@@ -637,7 +651,7 @@ bool VideoSourceMPEG::init() {
 	bmih->biClrUsed		= 0;
 	bmih->biClrImportant	= 0;
 
-	streamInfo.fccType					= streamtypeVIDEO;
+	streamInfo.fccType					= VDAVIStreamInfo::kTypeVideo;
 	streamInfo.fccHandler				= 0;
 	streamInfo.dwFlags					= 0;
 	streamInfo.wPriority				= 0;
@@ -650,12 +664,10 @@ bool VideoSourceMPEG::init() {
 	streamInfo.dwSuggestedBufferSize	= 0;
 	streamInfo.dwQuality				= 0xffffffffL;
 	streamInfo.dwSampleSize				= 0;
-	streamInfo.rcFrame.left				= 0;
-	streamInfo.rcFrame.top				= 0;
-	streamInfo.rcFrame.right			= w;
-	streamInfo.rcFrame.bottom			= h;
-
-	return TRUE;
+	streamInfo.rcFrameLeft				= 0;
+	streamInfo.rcFrameTop				= 0;
+	streamInfo.rcFrameRight				= (uint16)w;
+	streamInfo.rcFrameBottom			= (uint16)h;
 }
 
 VideoSourceMPEG::~VideoSourceMPEG() {
@@ -1012,7 +1024,7 @@ const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data
 
 		// the "read" function gave us the extra 3 bytes we need
 		if (data_len<=3)
-			return lpvBuffer;	// HACK
+			return mpFrameBuffer;	// HACK
 
 		const int type = parentPtr->video_sample_list[frame_num].frame_type;
 
@@ -1073,7 +1085,7 @@ const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data
 		__asm emms
 #endif
 
-	return lpvBuffer;
+	return mpFrameBuffer;
 }
 
 const void *VideoSourceMPEG::getFrame(VDPosition frameNum64) {
@@ -1095,7 +1107,7 @@ const void *VideoSourceMPEG::getFrame(VDPosition frameNum64) {
 		DecodeFrameBuffer(buffer);
 		mbFBValid = true;
 
-		return lpvBuffer;
+		return mpFrameBuffer;
 	}
 
 	// I-frames have no prediction, so all we have to do there is decode the I-frame.
@@ -1260,7 +1272,7 @@ const void *VideoSourceMPEG::getFrame(VDPosition frameNum64) {
 }
 
 void VideoSourceMPEG::DecodeFrameBuffer(int buffer) {
-	char *pBuffer = (char *)lpvBuffer;
+	char *pBuffer = (char *)mpFrameBuffer;
 	const long w = getImageFormat()->biWidth;
 	const long h = getImageFormat()->biHeight;
 
@@ -1324,14 +1336,14 @@ int VideoSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 			if (parentPtr->iDecodeMode & InputFileMPEGOptions::DECODE_NO_P) {
 				*lBytesRead = 1;
 				*lSamplesRead = 1;
-				return AVIERR_OK;
+				return IVDStreamSource::kOK;
 			}
 			break;
 		case MPEG_FRAME_TYPE_B:
 			if (parentPtr->iDecodeMode & InputFileMPEGOptions::DECODE_NO_B) {
 				*lBytesRead = 1;
 				*lSamplesRead = 1;
-				return AVIERR_OK;
+				return IVDStreamSource::kOK;
 			}
 			break;
 	}
@@ -1341,13 +1353,13 @@ int VideoSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 	if (!lpBuffer) {
 		if (lSamplesRead) *lSamplesRead = 1;
 		if (lBytesRead) *lBytesRead = len+4;
-		return AVIERR_OK;
+		return IVDStreamSource::kOK;
 	}
 
 	if (len+4 > cbBuffer) {
 		if (lSamplesRead) *lSamplesRead = 0;
 		if (lBytesRead) *lBytesRead = 0;
-		return AVIERR_BUFFERTOOSMALL;
+		return IVDStreamSource::kBufferTooSmall;
 	}
 
 	parentPtr->ReadStream(lpBuffer, msi->stream_pos, len, FALSE);
@@ -1362,7 +1374,7 @@ int VideoSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 	if (lSamplesRead) *lSamplesRead = 1;
 	if (lBytesRead) *lBytesRead = len+4;
 
-	return AVIERR_OK;
+	return IVDStreamSource::kOK;
 }
 
 sint64 VideoSourceMPEG::getSampleBytePosition(VDPosition lStart64) {
@@ -1624,7 +1636,7 @@ unsigned MPEGAudioHeader::GetFrameSize() const {
 	if (GetLayer() == 1)
 		return 4*(12000*bitrate/freq + padding);
 	else {
-		if (is_mpeg2)
+		if (is_mpeg2 && GetLayer() == 3)
 			return (72000*bitrate/freq + padding);
 		else
 			return (144000*bitrate/freq + padding);
@@ -1646,10 +1658,10 @@ unsigned MPEGAudioHeader::GetPayloadSizeL3() const {
 	return size;
 }
 
-class AudioSourceMPEG : public AudioSource, IAMPBitsource {
+class AudioSourceMPEG : public AudioSource, IVDMPEGAudioBitsource {
 private:
-	InputFileMPEG *parentPtr;
-	IAMPDecoder *iad;
+	vdrefptr<InputFileMPEG> parentPtr;
+	IVDMPEGAudioDecoder *mpDecoder;
 	void *pkt_buffer;
 	short sample_buffer[1152*2][2];
 	char *pDecoderPoint;
@@ -1670,7 +1682,7 @@ public:
 
 	// AudioSource methods
 
-	bool init();
+	void init();
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
 
 	ErrorMode getDecodeErrorMode() { return mErrorMode; }
@@ -1692,7 +1704,8 @@ AudioSourceMPEG::AudioSourceMPEG(InputFileMPEG *pp)
 	if (!(pkt_buffer = new char[8192]))
 		throw MyMemoryError();
 
-	if (!(iad = CreateAMPDecoder())) {
+	mpDecoder = VDCreateMPEGAudioDecoder();
+	if (!mpDecoder) {
 		delete pkt_buffer;
 		throw MyMemoryError();
 	}
@@ -1702,14 +1715,14 @@ AudioSourceMPEG::AudioSourceMPEG(InputFileMPEG *pp)
 
 AudioSourceMPEG::~AudioSourceMPEG() {
 	delete pkt_buffer;
-	iad->Destroy();
+	delete mpDecoder;
 }
 
 BOOL AudioSourceMPEG::_isKey(LONG lSample) {
 	return TRUE;
 }
 
-bool AudioSourceMPEG::init() {
+void AudioSourceMPEG::init() {
 	WAVEFORMATEX *wfex;
 
 	MPEGAudioHeader	header(parentPtr->audio_first_header);
@@ -1722,7 +1735,7 @@ bool AudioSourceMPEG::init() {
 	mSampleLast = parentPtr->aframes * mSamplesPerFrame;
 
 	if (!(wfex = (WAVEFORMATEX*)allocFormat(sizeof(PCMWAVEFORMAT))))
-		return FALSE;
+		throw MyMemoryError();
 
 	// [?] * [bits/sec] / [samples/sec] = [bytes/frame]
 	// [?] * [bits/sample] = [bytes/frame]
@@ -1737,7 +1750,7 @@ bool AudioSourceMPEG::init() {
 	wfex->nAvgBytesPerSec	= wfex->nSamplesPerSec * wfex->nBlockAlign;
 	wfex->wBitsPerSample	= 16;
 
-	streamInfo.fccType					= streamtypeAUDIO;
+	streamInfo.fccType					= VDAVIStreamInfo::kTypeAudio;
 	streamInfo.fccHandler				= 0;
 	streamInfo.dwCaps					= 0;
 	streamInfo.wPriority				= 0;
@@ -1751,19 +1764,17 @@ bool AudioSourceMPEG::init() {
 	streamInfo.dwSuggestedBufferSize	= 0;
 	streamInfo.dwQuality				= 0xffffffffL;
 	streamInfo.dwSampleSize				= wfex->nBlockAlign;
-	streamInfo.rcFrame.left				= 0;
-	streamInfo.rcFrame.top				= 0;
-	streamInfo.rcFrame.right			= 0;
-	streamInfo.rcFrame.bottom			= 0;
+	streamInfo.rcFrameLeft				= 0;
+	streamInfo.rcFrameTop				= 0;
+	streamInfo.rcFrameRight				= 0;
+	streamInfo.rcFrameBottom			= 0;
 
 	try {
-		iad->Init();
-		iad->setSource(this);
+		mpDecoder->Init();
+		mpDecoder->SetSource(this);
 	} catch(int i) {
-		throw MyError(iad->getErrorString(i));
+		throw MyError(mpDecoder->GetErrorString(i));
 	}
-
-	return TRUE;
 }
 
 int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
@@ -1771,36 +1782,28 @@ int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 	long lAudioPacket;
 	MPEGSampleInfo *msi;
 	long len;
-	long samples, ba = getWaveFormat()->nBlockAlign;
+	long samples, ba = getWaveFormat()->mBlockSize;
 
 	lAudioPacket = lStart/mSamplesPerFrame;
 	samples = mSamplesPerFrame - (lStart % mSamplesPerFrame);
 
-	if (lCount != AVISTREAMREAD_CONVENIENT)
+	if (lCount != IVDStreamSource::kConvenient)
 		if (samples > lCount) samples = lCount;
 
-#if 0
-	if (samples*ba > cbBuffer) {
-		if (lSamplesRead) *lSamplesRead = 0;
-		if (lBytesRead) *lBytesRead = 0;
-		return AVIERR_BUFFERTOOSMALL;
-	}
-#else
 	if (samples*ba > cbBuffer && lpBuffer) {
 		samples = cbBuffer / ba;
 
 		if (samples <= 0) {
 			if (lSamplesRead) *lSamplesRead = 0;
 			if (lBytesRead) *lBytesRead = 0;
-			return AVIERR_BUFFERTOOSMALL;
+			return IVDStreamSource::kBufferTooSmall;
 		}
 	}
-#endif
 
 	if (!lpBuffer) {
 		if (lSamplesRead) *lSamplesRead = samples;
 		if (lBytesRead) *lBytesRead = samples * ba;
-		return AVIERR_OK;
+		return IVDStreamSource::kOK;
 	}
 
 	// Because of the overlap from the subband synthesis window, we must
@@ -1816,7 +1819,7 @@ int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 
 			if (layer!=3 || lCurrentPacket<0 || lCurrentPacket+1 != lAudioPacket) {
 //				_RPT0(0,"Resetting...\n");
-				iad->Reset();
+				mpDecoder->Reset();
 
 				lCurrentPacket = lAudioPacket;
 				--lCurrentPacket;
@@ -1854,23 +1857,23 @@ int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 				if ((unsigned char)pDecoderPoint[0] != 0xff || ((unsigned char)pDecoderPoint[1]&0xe0)!=0xe0)
 					throw MyInternalError("MPEG audio header in sample list has bad sync mark.\n(%s:%d)", __FILE__, __LINE__);
 
-				iad->setDestination((short *)sample_buffer);
-				iad->ReadHeader();
+				mpDecoder->SetDestination((sint16 *)sample_buffer);
+				mpDecoder->ReadHeader();
 
 				try {
 					if (lCurrentPacket < nDecodeStart)
-						iad->PrereadFrame();
+						mpDecoder->PrereadFrame();
 					else
-						iad->DecodeFrame();
+						mpDecoder->DecodeFrame();
 				} catch(int i) {
 					if (mErrorMode != kErrorModeReportAll) {
-						const char *pszError = iad->getErrorString(i);
+						const char *pszError = mpDecoder->GetErrorString(i);
 						VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_AudioConcealingError, 2, &lAudioPacket, &pszError);
 
 						if (lCurrentPacket >= nDecodeStart)
 							memset(sample_buffer, 0, sizeof sample_buffer);
 
-						iad->ConcealFrame();
+						mpDecoder->ConcealFrame();
 					} else
 						throw;
 				}
@@ -1881,12 +1884,12 @@ int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 			char buf[64];
 			long badpacket = lCurrentPacket;
 
-			uint32 ticks = (uint32)(0.5 + (badpacket * 1000.0 * mSamplesPerFrame) / getWaveFormat()->nSamplesPerSec);
+			uint32 ticks = (uint32)(0.5 + (badpacket * 1000.0 * mSamplesPerFrame) / getWaveFormat()->mSamplingRate);
 			ticks_to_str(buf, sizeof buf / sizeof buf[0], ticks);
 
 			lCurrentPacket = -1;
 
-			throw MyError("Error decoding MPEG audio frame %lu (%s): %s", (unsigned long)badpacket, buf, iad->getErrorString(i));
+			throw MyError("Error decoding MPEG audio frame %lu (%s): %s", (unsigned long)badpacket, buf, mpDecoder->GetErrorString(i));
 		}
 	}
 
@@ -1895,7 +1898,7 @@ int AudioSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 	if (lSamplesRead) *lSamplesRead = samples;
 	if (lBytesRead) *lBytesRead = samples*ba;
 
-	return AVIERR_OK;
+	return IVDStreamSource::kOK;
 }
 
 int AudioSourceMPEG::read(void *buffer, int bytes) {
@@ -2039,21 +2042,21 @@ private:
 	bool mbBrokenLink;
 	bool mbIPFoundInGroup;
 
-	IVDMPEGDecoder *const mpDecoder;
-
 public:
 	VDFraction mFrameRate;
 	int width, height;
 
-	MPEGVideoParser(IVDMPEGDecoder *pDecoder);
+	MPEGVideoParser();
 
 	void setPos(__int64);
 	void Parse(const void *, int, DataVector *);
+
+	const uint8 *GetIntraQuantMatrix() const { return fCustomIntra ? intramatrix : NULL; }
+	const uint8 *GetNonintraQuantMatrix() const { return fCustomNonintra ? nonintramatrix : NULL; }
 };
 
-MPEGVideoParser::MPEGVideoParser(IVDMPEGDecoder *pDecoder)
-	: mpDecoder(pDecoder)
-	, mbFirstGOP(true)
+MPEGVideoParser::MPEGVideoParser()
+	: mbFirstGOP(true)
 	, mbBrokenLink(false)
 	, mbIPFoundInGroup(false)
 {
@@ -2135,6 +2138,7 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 							case 6:		mFrameRate = VDFraction(50   , 1   );	break;		// 6 (50.000) - PAL progressive
 							case 7:		mFrameRate = VDFraction(60000, 1001);	break;		// 7 (59.940) - NTSC color progressive
 							case 8:		mFrameRate = VDFraction(60   , 1   );	break;		// 8 (60.000) - NTSC b&w progressive
+							case 9:		mFrameRate = VDFraction(15   , 1   );	break;		// 9 (15.000) - Xing 15fps extension
 							default:
 								throw MyError("MPEG-1 video stream contains an invalid frame rate (%d).", buf[3] & 15);
 							}
@@ -2168,10 +2172,6 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 						}
 
 						// Initialize MPEG-1 video decoder.
-
-						mpDecoder->Init(width, height);
-						mpDecoder->SetIntraQuantizers(fCustomIntra ? intramatrix : NULL);
-						mpDecoder->SetNonintraQuantizers(fCustomNonintra ? nonintramatrix : NULL);
 						header = 0xFFFFFFFF;
 						break;
 
@@ -2288,9 +2288,6 @@ InputFileMPEG::InputFileMPEG()
 	audio_sample_list = NULL;
 	audio_first_header = 0;
 
-	audioSrc = NULL;
-	videoSrc = NULL;
-
 	fInterleaved = fHasAudio = FALSE;
 
 	iDecodeMode = 0;
@@ -2344,13 +2341,11 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 
 	StartScan();
 
-	vdrefptr<IVDMPEGDecoder> pVideoDecoder(CreateVDMPEGDecoder());
-
 	try {
 		DataVector video_stream_blocks(sizeof MPEGPacketInfo);
 		DataVector video_stream_samples(sizeof MPEGSampleInfo);
 		__int64 video_stream_pos = 0;
-		MPEGVideoParser videoParser(pVideoDecoder);
+		MPEGVideoParser videoParser;
 
 
 		DataVector audio_stream_blocks(sizeof MPEGPacketInfo);
@@ -2707,6 +2702,22 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 				cached_IP->subframe_num = (uint16)sf;
 		}
 
+		const uint8 *intraquant = videoParser.GetIntraQuantMatrix();
+		const uint8 *nonintraquant = videoParser.GetNonintraQuantMatrix();
+
+		mbCustomIntraQuantMatrix = false;
+		mbCustomNonintraQuantMatrix = false;
+
+		if (intraquant) {
+			memcpy(mIntraQuantMatrix, intraquant, sizeof mIntraQuantMatrix);
+			mbCustomIntraQuantMatrix = true;
+		}
+
+		if (nonintraquant) {
+			memcpy(mNonintraQuantMatrix, nonintraquant, sizeof mNonintraQuantMatrix);
+			mbCustomNonintraQuantMatrix = true;
+		}
+
 	} catch(const MyError&) {
 		if (hWndStatus) {
 			EnableWindow(GetParent(hWndStatus), TRUE);
@@ -2723,22 +2734,10 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 	EnableWindow(GetParent(hWndStatus), TRUE);
 	DestroyWindow(hWndStatus);
 	hWndStatus = NULL;
-
-	// initialize DubSource pointers
-
-	audioSrc = fHasAudio ? new AudioSourceMPEG(this) : NULL;
-	if (audioSrc)
-		audioSrc->init();
-
-	videoSrc = new VideoSourceMPEG(this, pVideoDecoder);
-	videoSrc->init();
 }
 
 InputFileMPEG::~InputFileMPEG() {
 	EndScan();
-
-	videoSrc = NULL;
-	audioSrc = NULL;
 
 	delete video_packet_buffer;
 	delete audio_packet_buffer;
@@ -3112,12 +3111,12 @@ InputFileOptions *InputFileMPEG::createOptions(const void *buf, uint32 len) {
 	return ifo;
 }
 
-InputFileOptions *InputFileMPEG::promptForOptions(HWND hwnd) {
+InputFileOptions *InputFileMPEG::promptForOptions(VDGUIHandle hwnd) {
 	InputFileMPEGOptions *ifo = new InputFileMPEGOptions();
 
 	if (!ifo) throw MyMemoryError();
 
-	DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_EXTOPENOPTS_MPEG), hwnd, InputFileMPEGOptions::SetupDlgProc, (LPARAM)ifo);
+	DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_EXTOPENOPTS_MPEG), (HWND)hwnd, InputFileMPEGOptions::SetupDlgProc, (LPARAM)ifo);
 
 	return ifo;
 }
@@ -3140,14 +3139,16 @@ typedef struct MyFileInfo {
 	long lAudioAvgBitrate;
 	const char *lpszAudioMode;
 
+	vdrefptr<IVDVideoSource>	mpVideo;
+	vdrefptr<AudioSource>		mpAudio;
 } MyFileInfo;
 
 void InputFileMPEG::_InfoDlgThread(void *pvInfo) {
 	MyFileInfo *pInfo = (MyFileInfo *)pvInfo;
 	InputFileMPEG *thisPtr = pInfo->thisPtr;
 	VDPosition i;
-	VideoSourceMPEG *vSrc = (VideoSourceMPEG *)&*pInfo->thisPtr->videoSrc;
-	AudioSourceMPEG *aSrc = (AudioSourceMPEG *)&*pInfo->thisPtr->audioSrc;
+	VideoSourceMPEG *vSrc = static_cast<VideoSourceMPEG *>(&*pInfo->mpVideo);
+	AudioSourceMPEG *aSrc = static_cast<AudioSourceMPEG *>(&*pInfo->mpAudio);
 	MPEGSampleInfo *msi;
 
 	for(i=0; i<3; i++)
@@ -3245,27 +3246,29 @@ INT_PTR APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wP
 			pInfo = (MyFileInfo *)lParam;
 			thisPtr = pInfo->thisPtr;
 
-			if (thisPtr->videoSrc) {
+			if (pInfo->mpVideo) {
 				char *s;
 				char buf[128];
+				IVDStreamSource *pVSS = pInfo->mpVideo->asStream();
 
 				sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
 							thisPtr->width,
 							thisPtr->height,
-							thisPtr->videoSrc->getRate().asDouble(),
-							VDRoundToLong(1000000.0 / thisPtr->videoSrc->getRate().asDouble()));
+							pVSS->getRate().asDouble(),
+							VDRoundToLong(1000000.0 / pVSS->getRate().asDouble()));
 				SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
 
-				s = buf + sprintf(buf, "%lu (", (unsigned)thisPtr->videoSrc->getLength());
-				ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, VDRoundToLong(1000.0*thisPtr->videoSrc->getLength()/thisPtr->videoSrc->getRate().asDouble()));
+				s = buf + sprintf(buf, "%lu (", (unsigned)pVSS->getLength());
+				ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, VDRoundToLong(1000.0*pVSS->getLength()/pVSS->getRate().asDouble()));
 				strcat(s,")");
 				SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, buf);
 			}
-			if (thisPtr->audioSrc) {
-				WAVEFORMATEX *fmt = thisPtr->audioSrc->getWaveFormat();
+
+			if (pInfo->mpAudio) {
+				const VDWaveFormat *fmt = pInfo->mpAudio->getWaveFormat();
 				char buf[128];
 
-				sprintf(buf, "%ldHz, %s", fmt->nSamplesPerSec, fmt->nChannels>1 ? "Stereo" : "Mono");
+				sprintf(buf, "%ldHz, %s", fmt->mSamplingRate, fmt->mChannels>1 ? "Stereo" : "Mono");
 				SetDlgItemText(hDlg, IDC_AUDIO_FORMAT, buf);
 
 				sprintf(buf, "%ld", thisPtr->aframes);
@@ -3324,17 +3327,17 @@ INT_PTR APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wP
 
 					// bits * (frames/sec) / frames = bits/sec
 
-					lBytesPerSec = VDRoundToLong((pInfo->lTotalSize * thisPtr->videoSrc->getRate().asDouble()) / pInfo->lFrames);
+					lBytesPerSec = VDRoundToLong((pInfo->lTotalSize * pInfo->mpVideo->asStream()->getRate().asDouble()) / pInfo->lFrames);
 
 					sprintf(buf, "%ld Kbps (%ldKB/s)", (lBytesPerSec+124)/125, (lBytesPerSec+1023)/1024);
 					SetDlgItemText(hDlg, IDC_VIDEO_AVGBITRATE, buf);
 				}
 
-				if (pInfo->lpszAudioMode && thisPtr->audioSrc) {
+				if (pInfo->lpszAudioMode && pInfo->mpAudio) {
 					static const char *szLayers[]={"I","II","III"};
-					WAVEFORMATEX *fmt = thisPtr->audioSrc->getWaveFormat();
+					const VDWaveFormat *fmt = pInfo->mpAudio->getWaveFormat();
 
-					sprintf(buf, "%ldKHz %s, %ldKbps layer %s", fmt->nSamplesPerSec/1000, pInfo->lpszAudioMode, pInfo->lAudioAvgBitrate, szLayers[3-((thisPtr->audio_first_header>>9)&3)]);
+					sprintf(buf, "%ldKHz %s, %ldKbps layer %s", fmt->mSamplingRate/1000, pInfo->lpszAudioMode, pInfo->lAudioAvgBitrate, szLayers[3-((thisPtr->audio_first_header>>9)&3)]);
 					SetDlgItemText(hDlg, IDC_AUDIO_FORMAT, buf);
 
 					sprintf(buf, "%ldK", (pInfo->lAudioSize + 1023) / 1024);
@@ -3358,13 +3361,38 @@ INT_PTR APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wP
     return FALSE;
 }
 
-void InputFileMPEG::InfoDialog(HWND hwndParent) {
+void InputFileMPEG::InfoDialog(VDGUIHandle hwndParent) {
 	MyFileInfo mai;
 
 	memset(&mai, 0, sizeof mai);
 	mai.thisPtr = this;
 
-	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_MPEG_INFO), hwndParent, _InfoDlgProc, (LPARAM)&mai);
+	GetVideoSource(0, ~mai.mpVideo);
+	GetAudioSource(0, ~mai.mpAudio);
+
+	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_MPEG_INFO), (HWND)hwndParent, _InfoDlgProc, (LPARAM)&mai);
+}
+
+bool InputFileMPEG::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index)
+		return false;
+
+	vdrefptr<VideoSourceMPEG> videoSrc(new VideoSourceMPEG(this));
+	videoSrc->init();
+
+	*ppSrc = videoSrc.release();
+	return true;
+}
+
+bool InputFileMPEG::GetAudioSource(int index, AudioSource **ppSrc) {
+	if (index || !fHasAudio)
+		return false;
+
+	vdrefptr<AudioSourceMPEG> audioSrc(new AudioSourceMPEG(this));
+	audioSrc->init();
+
+	*ppSrc = audioSrc.release();
+	return true;
 }
 
 /////////////////////////////////////////////////////////////////////

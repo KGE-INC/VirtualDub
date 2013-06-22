@@ -28,27 +28,6 @@
 
 #include <ctype.h>
 
-class IProgress;
-class VDAtomicInt;
-class VDSignalPersistent;
-
-struct VirtualDubTLSData {
-	int					tmp[16];
-	void				*ESPsave;
-	IProgress			*pProgress;
-	VDAtomicInt			*pbAbort;
-	VDSignalPersistent	*pAbortSignal;
-	const char			*pszDebugThreadName;
-
-	// Fast text conversion area
-
-	union {
-		char	fastBufA[2048];
-		wchar_t	fastBufW[2048 / sizeof(wchar_t)];
-	};
-	void		*pFastBufAlloc;
-};
-
 void VDInitThreadData(const char *pszThreadName);
 void VDDeinitThreadData();
 

@@ -26,6 +26,7 @@
 
 #include "resource.h"
 #include "filter.h"
+#include "VBitmap.h"
 
 extern HINSTANCE g_hInst;
 
@@ -177,8 +178,8 @@ static INT_PTR APIENTRY rotateDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
     return FALSE;
 }
 
-static int rotate_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_ROTATE), hWnd, rotateDlgProc, (LONG)fa->filter_data);
+static int rotate_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_ROTATE), (HWND)hWnd, rotateDlgProc, (LPARAM)fa->filter_data);
 }
 
 static void rotate_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

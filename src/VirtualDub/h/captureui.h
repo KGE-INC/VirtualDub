@@ -27,6 +27,7 @@ public:
 
 	virtual bool	SetDriver(const wchar_t *s) = 0;
 	virtual void	SetCaptureFile(const wchar_t *s) = 0;
+	virtual void	PreallocateCaptureFile(sint64 size) = 0;
 	virtual bool	SetTunerChannel(int ch) = 0;
 	virtual bool	SetTunerExactFrequency(uint32 freq) = 0;
 	virtual void	SetTunerInputMode(bool cable) = 0;

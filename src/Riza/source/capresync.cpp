@@ -985,7 +985,7 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 						double videoTime;
 						
 						if (mbEnableAudioClock && timestamp >= 0)
-							videoTime = timestamp;
+							videoTime = (double)timestamp;
 						else
 							videoTime = videoYIntercept + videoRate * global_clock;
 

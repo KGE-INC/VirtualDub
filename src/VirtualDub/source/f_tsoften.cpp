@@ -22,6 +22,7 @@
 
 #include "resource.h"
 #include "filter.h"
+#include "VBitmap.h"
 
 extern HINSTANCE g_hInst;
 

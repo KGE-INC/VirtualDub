@@ -24,6 +24,7 @@ stringset 2 {		// kVDST_AVIReadHandler
 	message 6, "AVI: Palette changes detected. These are not currently supported -- color palette errors may appear in the output.";
 	message 7, "AVI: The text information chunk of type '%hs' at %llx was not not fully read because it was too long (%u bytes).";
 	message 8, "AVI: Stream %u (%hs) has a non-zero start position of %u samples (%+lld ms). VirtualDub does not currently support a non-zero start time and the stream will be interpreted as starting from zero.";
+	message 9, "AVI: Indexing was aborted at byte location %llx.";
 }
 
 stringset 3 {		// kVDST_VideoSource
@@ -58,7 +59,7 @@ stringset 5 {		// kVDST_Mpeg
 stringset 6 {		// kVDST_AudioSource
 	message 0, "AVI: Truncated or invalid MP3 audio format detected (%d bytes, should be %d). Attempting to fix.";
 	message 1, "AVI: Variable bitrate (VBR) audio detected. VBR audio in AVI is non-standard and you may encounter sync errors up to %.0lfms when attempting to extract WAV files "
-		"or processing the audio in Direct Stream Copy mode. Full Processing mode is recommended to decompress or recompress the audio. (bitrate: %.1lf ± %.1lf kbps)";
+		"or playing in some players. If this is a problem, use Full Processing mode is recommended to decompress or recompress the audio. (This warning can be disabled in Options, Preferences, AVI. bitrate: %.1lf ± %.1lf kbps)";
 	message 2, "AVI: A non-zero wBitsPerSample value was detected in the MP3 audio format structure. This has been corrected in-memory to zero for better compatibility "
 		"with commonly installed MP3 audio codecs.";
 	message 3, "AVI: Truncated or invalid compressed audio format detected (%d bytes, should be %d). Attempting to fix.";
@@ -191,6 +192,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Timeline";
 				listitem "Render";
 				listitem "Disk I/O";
+				listitem "Images";
 			}
 
 			pageset 101 : value={@100} {
@@ -202,6 +204,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1015;
 				page 1016;
 				page 1017;
+				page 1018;
 			}
 		}
 
@@ -373,7 +376,8 @@ dialog 1014, "" : fill, child {
 				label 0, "Byte &threshold:";
 				textedit 200, "" : minw=60, sunken;
 			}
-			checkbox 104, "Prefer internal decoders over installed third-party codecs (MJPEG and DV)" : marginb = 5;
+			checkbox 104, "Prefer internal video decoders over installed third-party codecs (MJPEG and DV)";
+			checkbox 105, "Prefer internal audio decoders over installed third-party codecs" : marginb = 5;
 			
 			grid 0 : spacing=2, fill {
 				now valign = center;
@@ -384,8 +388,10 @@ dialog 1014, "" : fill, child {
 				textedit 202, "" : minw=60, sunken;
 				
 				nextrow;
-				textarea 0, "For AVI files larger than 2GB, approximately one superindex entry is needed for every 2GB block of file, and 1-2 entries for every video frame. The default settings of 256/8192 are good for about 0.5TB and nine hours. Each additional superindex entry adds 16 bytes per stream to the header." : margint=5, colspan=2, fill, readonly, minh=50;
+				textarea 0, "For AVI files larger than 2GB, approximately one superindex entry is needed for every 2GB block of file, and 1-2 entries for every video frame. The default settings of 256/8192 are good for about 0.5TB and nine hours. Each additional superindex entry adds 16 bytes per stream to the header." : margint=5, colspan=2, fill, readonly, minh=40;
 			}
+			
+			checkbox 106, "Warn when VBR audio is detected";
 		}
 	}
 }
@@ -430,6 +436,19 @@ dialog 1017, "" : fill, child {
 					option 101, "Unbuffered - faster";
 					option 102, "Asynchronous unbuffered - fastest (Windows NT only)";
 				}
+			}
+		}
+	}
+}
+
+dialog 1018, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Image sequence defaults" {
+			grid 0 : spacing=2, fill {
+				now valign = center;
+				label 0, "Default frame rate";
+				textedit 100, "" : minw=60, sunken;
 			}
 		}
 	}
@@ -570,6 +589,9 @@ dialog 3000, "Create test video" : aspect=140, maxw=350 {
 				listitem "Chroma subsampling offset";
 				listitem "Channel levels";
 				listitem "Checkerboard";
+				listitem "Zone plates";
+				listitem "3:2 pulldown (TFF)";
+				listitem "3:2 pulldown (BFF)";
 			}
 		}
 

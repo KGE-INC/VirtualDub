@@ -44,7 +44,7 @@ void VDAudioFilterBase::Resume(const void *src, unsigned size) {
 }
 
 const nsVDAudioFilterBase::ConfigEntryExt *VDAudioFilterBase::GetParamEntry(const unsigned idx) {
-	const VDPluginConfigEntry *pEnt = mpContext->mpDefinition->mpConfigInfo;
+	const VDXPluginConfigEntry *pEnt = mpContext->mpDefinition->mpConfigInfo;
 
 	if (pEnt)
 		for(; pEnt->next; pEnt=pEnt->next) {
@@ -65,27 +65,27 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 		unsigned l;
 
 		switch(pEnt->info.type) {
-		case VDPluginConfigEntry::kTypeU32:
+		case VDXPluginConfigEntry::kTypeU32:
 			if (size >= sizeof(uint32))
 				*(Type_U32 *)dst = *(Type_U32 *)ptr;
 			return sizeof(uint32);
-		case VDPluginConfigEntry::kTypeS32:
+		case VDXPluginConfigEntry::kTypeS32:
 			if (size >= sizeof(sint32))
 				*(Type_S32 *)dst = *(Type_S32 *)ptr;
 			return sizeof(sint32);
-		case VDPluginConfigEntry::kTypeU64:
+		case VDXPluginConfigEntry::kTypeU64:
 			if (size >= sizeof(uint64))
 				*(Type_U64 *)dst = *(Type_U64 *)ptr;
 			return sizeof(uint64);
-		case VDPluginConfigEntry::kTypeS64:
+		case VDXPluginConfigEntry::kTypeS64:
 			if (size >= sizeof(sint64))
 				*(Type_S64 *)dst = *(Type_S64 *)ptr;
 			return sizeof(sint64);
-		case VDPluginConfigEntry::kTypeDouble:
+		case VDXPluginConfigEntry::kTypeDouble:
 			if (size >= sizeof(double))
 				*(Type_Double *)dst = *(Type_Double *)ptr;
 			return sizeof(double);
-		case VDPluginConfigEntry::kTypeAStr:
+		case VDXPluginConfigEntry::kTypeAStr:
 			{
 				Type_AStr& str = *(Type_AStr *)ptr;
 				l = str.size() + 1;
@@ -94,7 +94,7 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 				return l;
 			}
 
-		case VDPluginConfigEntry::kTypeWStr:
+		case VDXPluginConfigEntry::kTypeWStr:
 			{
 				Type_WStr& str = *(Type_WStr *)ptr;
 				l = (str.size() + 1) * sizeof(wchar_t);
@@ -103,7 +103,7 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 				return l;
 			}
 
-		case VDPluginConfigEntry::kTypeBlock:
+		case VDXPluginConfigEntry::kTypeBlock:
 			{
 				Type_Block& blk = *(Type_Block *)ptr;
 				if (size >= blk.size())
@@ -126,14 +126,14 @@ void VDAudioFilterBase::SetParam(unsigned idx, const void *src, unsigned size) {
 		using namespace nsVDAudioFilterBase;
 
 		switch(pEnt->info.type) {
-		case VDPluginConfigEntry::kTypeU32:		*(Type_U32 *)ptr = *(Type_U32 *)src; break;
-		case VDPluginConfigEntry::kTypeS32:		*(Type_S32 *)ptr = *(Type_S32 *)src; break;
-		case VDPluginConfigEntry::kTypeU64:		*(Type_U64 *)ptr = *(Type_U64 *)src; break;
-		case VDPluginConfigEntry::kTypeS64:		*(Type_S64 *)ptr = *(Type_S64 *)src; break;
-		case VDPluginConfigEntry::kTypeDouble:	*(Type_Double *)ptr = *(Type_Double *)src; break;
-		case VDPluginConfigEntry::kTypeAStr: 	*(Type_AStr *)ptr = (const char *)src; break;
-		case VDPluginConfigEntry::kTypeWStr: 	*(Type_WStr *)ptr = (const wchar_t *)src; break;
-		case VDPluginConfigEntry::kTypeBlock:
+		case VDXPluginConfigEntry::kTypeU32:		*(Type_U32 *)ptr = *(Type_U32 *)src; break;
+		case VDXPluginConfigEntry::kTypeS32:		*(Type_S32 *)ptr = *(Type_S32 *)src; break;
+		case VDXPluginConfigEntry::kTypeU64:		*(Type_U64 *)ptr = *(Type_U64 *)src; break;
+		case VDXPluginConfigEntry::kTypeS64:		*(Type_S64 *)ptr = *(Type_S64 *)src; break;
+		case VDXPluginConfigEntry::kTypeDouble:	*(Type_Double *)ptr = *(Type_Double *)src; break;
+		case VDXPluginConfigEntry::kTypeAStr: 	*(Type_AStr *)ptr = (const char *)src; break;
+		case VDXPluginConfigEntry::kTypeWStr: 	*(Type_WStr *)ptr = (const wchar_t *)src; break;
+		case VDXPluginConfigEntry::kTypeBlock:
 			{
 				Type_Block& blk = *(Type_Block *)ptr;
 				blk.resize(size);

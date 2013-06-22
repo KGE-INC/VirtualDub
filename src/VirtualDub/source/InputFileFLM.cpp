@@ -17,14 +17,12 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
-#include "VideoSourceImages.h"
-#include "InputFileImages.h"
+#include "VideoSource.h"
+#include "InputFile.h"
 
 extern const char g_szError[];
 
@@ -92,20 +90,23 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoSourceFLM : public VideoSource {
-private:
-	VDPosition	mCachedFrame;
-	uint32		mFrameSize;
-	uint32		mVisibleFrameSize;
-
-	VDFile		mFile;
-
-	FilmstripHeader	mHeader;
-
-	void parse();
-
+class IVDInputFileFLM : public IVDRefCount {
 public:
-	VDVideoSourceFLM(const wchar_t *pFilename);
+	virtual uint32		GetFrameSize() = 0;
+	virtual uint32		GetVisibleFrameSize() = 0;
+	virtual uint32		GetFrameWidth() = 0;
+	virtual uint32		GetFrameHeight() = 0;
+	virtual VDPosition	GetFrameCount() = 0;
+	virtual VDFraction	GetFrameRate() = 0;
+
+	virtual void		ReadSpan(sint64 pos, void *data, uint32 len) = 0;
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoSourceFLM : public VideoSource {
+public:
+	VDVideoSourceFLM(IVDInputFileFLM *parent);
 	~VDVideoSourceFLM();
 
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);
@@ -123,58 +124,47 @@ public:
 	eDropType getDropType(VDPosition lFrameNum)	{ return kIndependent; }
 	bool isKeyframeOnly()						{ return true; }
 	bool isDecodable(VDPosition sample_num)		{ return true; }
+
+protected:
+	VDPosition	mCachedFrame;
+	uint32		mFrameSize;
+	uint32		mVisibleFrameSize;
+	uint32		mWidth;
+	uint32		mHeight;
+
+	vdrefptr<IVDInputFileFLM>	mpParent;
 };
 
-VDVideoSourceFLM::VDVideoSourceFLM(const wchar_t *pFilename)
-	: mFile(pFilename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting)
+VDVideoSourceFLM::VDVideoSourceFLM(IVDInputFileFLM *parent)
+	: mpParent(parent)
+	, mFrameSize(parent->GetFrameSize())
+	, mVisibleFrameSize(parent->GetVisibleFrameSize())
+	, mWidth(parent->GetFrameWidth())
+	, mHeight(parent->GetFrameHeight())
 {
 	mpTargetFormatHeader.resize(sizeof(BITMAPINFOHEADER));
-	parse();
-}
-
-VDVideoSourceFLM::~VDVideoSourceFLM() {
-}
-
-void VDVideoSourceFLM::parse() {
-	bool valid = false;
-
-	sint64 fsize = mFile.size();
-	if (fsize >= 36) {
-		mFile.seek(fsize - 36);
-		
-		char hdrbuf[36];
-		mFile.read(hdrbuf, 36);
-
-		mHeader.Read(hdrbuf);
-
-		if (mHeader.Validate()) {
-			mFrameSize	= (uint32)mHeader.width * ((uint32)mHeader.height + (uint32)mHeader.leading) * 4;
-
-			if ((uint64)mFrameSize * (uint16)mHeader.numFrames + 36 <= fsize)
-				valid = true;
-		}
-	}
-
-	if (!valid)
-		throw MyError("%ls does not appear to be a valid Adobe filmstrip file.", mFile.getFilenameForError());
-
-	mVisibleFrameSize = (uint32)mHeader.width * (uint32)mHeader.height * 4;
 
 	mSampleFirst	= 0;
-	mSampleLast		= (uint32)mHeader.numFrames;
+	mSampleLast		= mpParent->GetFrameCount();
 
 	memset(&streamInfo, 0, sizeof streamInfo);
 
-	streamInfo.fccType		= streamtypeVIDEO;
+	streamInfo.fccType		= VDAVIStreamInfo::kTypeVideo;
 	streamInfo.dwLength		= (DWORD)mSampleLast;
-	streamInfo.dwRate		= (uint32)mHeader.framesPerSec;
-	streamInfo.dwScale		= 1;
+
+	const VDFraction& rate = mpParent->GetFrameRate();
+	streamInfo.dwRate		= rate.getHi();
+	streamInfo.dwScale		= rate.getLo();
+	streamInfo.rcFrameLeft		= 0;
+	streamInfo.rcFrameTop		= 0;
+	streamInfo.rcFrameRight		= (uint16)mWidth;
+	streamInfo.rcFrameBottom	= (uint16)mHeight;
 
 	BITMAPINFOHEADER& bih = *(BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
 
 	bih.biSize			= sizeof(BITMAPINFOHEADER);
-	bih.biWidth			= mHeader.width;
-	bih.biHeight		= mHeader.height;
+	bih.biWidth			= mpParent->GetFrameWidth();
+	bih.biHeight		= mpParent->GetFrameHeight();
 	bih.biPlanes		= 1;
 	bih.biCompression	= (uint32)0xFFFFFFFF;
 	bih.biBitCount		= 32;
@@ -187,6 +177,9 @@ void VDVideoSourceFLM::parse() {
 	AllocFrameBuffer(mVisibleFrameSize);
 }
 
+VDVideoSourceFLM::~VDVideoSourceFLM() {
+}
+
 int VDVideoSourceFLM::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead) {
 	if (lCount > 1)
 		lCount = 1;
@@ -196,10 +189,9 @@ int VDVideoSourceFLM::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, ui
 	if (lCount > 0) {
 		if (lpBuffer) {
 			if (mVisibleFrameSize > cbBuffer)
-				ret = AVIERR_BUFFERTOOSMALL;
+				ret = IVDStreamSource::kBufferTooSmall;
 			else {
-				mFile.seek((uint64)mFrameSize * lStart);
-				mFile.read(lpBuffer, mVisibleFrameSize);
+				mpParent->ReadSpan((uint64)mFrameSize * lStart, lpBuffer, mVisibleFrameSize);
 
 				// Swizzle the frame now. Easier this way. We need to go from RGBA to BGRA.
 				uint8 *p = (uint8 *)lpBuffer;
@@ -230,7 +222,7 @@ const void *VDVideoSourceFLM::getFrame(VDPosition frameNum) {
 	const void *pFrame = NULL;
 
 	if (mCachedFrame == frameNum)
-		return lpvBuffer;
+		return mpFrameBuffer;
 
 	if (!read(frameNum, 1, NULL, 0x7FFFFFFF, &lBytes, NULL) && lBytes) {
 		vdblock<char> buffer(lBytes);
@@ -245,13 +237,11 @@ const void *VDVideoSourceFLM::getFrame(VDPosition frameNum) {
 
 const void *VDVideoSourceFLM::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	VDPixmap srcbm = {0};
-	const uint32 w = (uint32)mHeader.width;
-	const uint32 h = (uint32)mHeader.height;
 
 	srcbm.data		= (void *)inputBuffer;
-	srcbm.pitch		= (uint32)mHeader.width * 4;
-	srcbm.w			= w;
-	srcbm.h			= h;
+	srcbm.pitch		= mWidth * 4;
+	srcbm.w			= mWidth;
+	srcbm.h			= mHeight;
 	srcbm.format	= nsVDPixmap::kPixFormat_XRGB8888;
 
 	VDPixmapBlt(mTargetFormat, srcbm);
@@ -281,16 +271,39 @@ bool VDVideoSourceFLM::setTargetFormat(int format) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDInputFileFLM : public InputFile {
+class VDInputFileFLM : public InputFile, public IVDInputFileFLM {
 public:
 	VDInputFileFLM();
 	~VDInputFileFLM();
+
+	int AddRef();
+	int Release();
 
 	void Init(const wchar_t *szFile);
 
 	void setAutomated(bool fAuto);
 
-	void InfoDialog(HWND hwndParent);
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
+
+public:
+	uint32		GetFrameSize() { return mFrameSize; }
+	uint32		GetVisibleFrameSize() { return mVisibleFrameSize; }
+	uint32		GetFrameWidth() { return mFrameWidth; }
+	uint32		GetFrameHeight() { return mFrameHeight; }
+	VDPosition	GetFrameCount() { return mFrameCount; }
+	VDFraction	GetFrameRate() { return mFrameRate; }
+
+	void		ReadSpan(sint64 pos, void *data, uint32 len);
+
+protected:
+	VDFile		mFile;
+	uint32		mFrameSize;
+	uint32		mVisibleFrameSize;
+	uint32		mFrameWidth;
+	uint32		mFrameHeight;
+	uint32		mFrameCount;
+	VDFraction	mFrameRate;
 };
 
 VDInputFileFLM::VDInputFileFLM()
@@ -300,15 +313,67 @@ VDInputFileFLM::VDInputFileFLM()
 VDInputFileFLM::~VDInputFileFLM() {
 }
 
-void VDInputFileFLM::Init(const wchar_t *szFile) {
-	videoSrc = new VDVideoSourceFLM(szFile);
+int VDInputFileFLM::AddRef() {
+	return InputFile::AddRef();
+}
+
+int VDInputFileFLM::Release() {
+	return InputFile::Release();
+}
+
+void VDInputFileFLM::Init(const wchar_t *filename) {
+	bool valid = false;
+
+	mFile.open(filename, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
+	sint64 fsize = mFile.size();
+	FilmstripHeader	mHeader;
+	if (fsize >= 36) {
+		mFile.seek(fsize - 36);
+		
+		char hdrbuf[36];
+		mFile.read(hdrbuf, 36);
+
+		mHeader.Read(hdrbuf);
+
+		if (mHeader.Validate()) {
+			mFrameSize	= (uint32)mHeader.width * ((uint32)mHeader.height + (uint32)mHeader.leading) * 4;
+
+			if ((uint64)mFrameSize * (uint16)mHeader.numFrames + 36 <= fsize)
+				valid = true;
+		}
+	}
+
+	if (!valid)
+		throw MyError("%ls does not appear to be a valid Adobe filmstrip file.", mFile.getFilenameForError());
+
+	mVisibleFrameSize	= (uint32)mHeader.width * (uint32)mHeader.height * 4;
+	mFrameWidth			= (uint32)mHeader.width;
+	mFrameHeight		= (uint32)mHeader.height;
+	mFrameCount			= (uint32)mHeader.numFrames;
+	mFrameRate.Assign((uint32)mHeader.framesPerSec, 1);
 }
 
 void VDInputFileFLM::setAutomated(bool fAuto) {
 }
 
-void VDInputFileFLM::InfoDialog(HWND hwndParent) {
-	MessageBox(hwndParent, "No file information is available for FLM sequences.", g_szError, MB_OK);
+bool VDInputFileFLM::GetVideoSource(int index, IVDVideoSource **ppSrc) {
+	if (index)
+		return false;
+
+	*ppSrc = new VDVideoSourceFLM(this);
+	if (!*ppSrc)
+		return false;
+	(*ppSrc)->AddRef();
+	return true;
+}
+
+bool VDInputFileFLM::GetAudioSource(int index, AudioSource **ppSrc) {
+	return false;
+}
+
+void VDInputFileFLM::ReadSpan(sint64 pos, void *data, uint32 len) {
+	mFile.seek(pos);
+	mFile.read(data, len);
 }
 
 ///////////////////////////////////////////////////////////////////////////

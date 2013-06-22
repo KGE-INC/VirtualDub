@@ -18,18 +18,30 @@
 #ifndef f_INPUTFILEIMAGES_H
 #define f_INPUTFILEIMAGES_H
 
+#include <vd2/system/VDString.h>
 #include "InputFile.h"
+#include "VideoSourceImages.h"
 
-class InputFileImages : public InputFile {
+class VDInputFileImages : public InputFile {
 public:
-	InputFileImages();
-	~InputFileImages();
+	VDInputFileImages();
+	~VDInputFileImages();
 
 	void Init(const wchar_t *szFile);
 
 	void setAutomated(bool fAuto);
 
-	void InfoDialog(HWND hwndParent);
+	bool GetVideoSource(int index, IVDVideoSource **ppSrc);
+	bool GetAudioSource(int index, AudioSource **ppSrc);
+
+public:
+	VDPosition	GetFrameCount() const { return mFrames; }
+	const wchar_t *ComputeFilename(vdfastvector<wchar_t>& pathBuf, VDPosition pos);
+
+protected:
+	VDStringW	mBaseName;
+	int			mLastDigitPos;
+	VDPosition	mFrames;
 };
 
 #endif
