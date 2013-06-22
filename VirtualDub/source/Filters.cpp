@@ -861,6 +861,7 @@ void FilterPreview::OnVideoRedraw() {
 		ShowWindow(mhwndDisplay, SW_HIDE);
 		mFailureReason.assign(e);
 		InvalidateRect(hdlg, NULL, TRUE);
+		UndoSystem();
 	}
 }
 
@@ -1035,8 +1036,12 @@ bool FilterPreview::SampleCurrentFrame() {
 	pos = FetchFrame();
 
 	if (pos >= 0) {
-		filtsys.RunFilters(pfiThisFilter);
-		pSampleCallback(&pfiThisFilter->src, pos, mpTimeline->GetLength(), pvSampleCBData);
+		try {
+			filtsys.RunFilters(pfiThisFilter);
+			pSampleCallback(&pfiThisFilter->src, pos, mpTimeline->GetLength(), pvSampleCBData);
+		} catch(const MyError& e) {
+			e.post(hdlg, "Video sampling error");
+		}
 	}
 
 	RedoFrame();

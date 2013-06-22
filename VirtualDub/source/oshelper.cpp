@@ -215,115 +215,45 @@ VDStringW VDGetProgramPath() {
 }
 
 VDStringW VDGetHelpPath() {
-	return VDMakePath(VDGetProgramPath().c_str(), L"help");
-}
-
-void VDUnpackHelp(const VDStringW& path) {
-	std::vector<char> innerzipdata;
-	uint32 chkvalue;		// value used to identify whether help directory is up to date
-
-	// Decompress the first file in the outer zip to make the inner zip archive.
-	{
-		VDFileStream			helpzipfile(VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.vdhelp").c_str());
-
-		chkvalue = (uint32)helpzipfile.Length();
-
-		VDZipArchive			helpzip;
-		helpzip.Init(&helpzipfile);
-		const VDZipArchive::FileInfo& fi = helpzip.GetFileInfo(0);
-		VDZipStream				zipstream(helpzip.OpenRawStream(0), fi.mCompressedSize, !fi.mbPacked);
-
-		innerzipdata.resize(fi.mUncompressedSize);
-
-		zipstream.Read(&innerzipdata.front(), innerzipdata.size());
-	}
-
-	// Decompress the inner zip archive.
-
-	VDMemoryStream	innerzipstream(&innerzipdata[0], innerzipdata.size());
-	VDZipArchive	innerzip;
-	
-	innerzip.Init(&innerzipstream);
-
-	if (!VDDoesPathExist(path.c_str()))
-		VDCreateDirectory(path.c_str());
-
-	const sint32 entries = innerzip.GetFileCount();
-
-	for(sint32 idx=0; idx<entries; ++idx) {
-		const VDZipArchive::FileInfo& fi = innerzip.GetFileInfo(idx);
-
-		// skip directories -- Zip paths always use forward slashes.
-		if (!fi.mFileName.empty() && fi.mFileName[fi.mFileName.size()-1] == '/')
-			continue;
-
-		// create partial paths as necessary
-		const VDStringW name(VDTextAToW(fi.mFileName));
-		const wchar_t *base = name.c_str(), *s = base;
-
-		while(const wchar_t *t = wcschr(s, L'/')) {
-			VDStringW dirPath(VDMakePath(path.c_str(), VDStringW(base, t - base).c_str()));
-
-			if (!VDDoesPathExist(dirPath.c_str()))
-				VDCreateDirectory(dirPath.c_str());
-
-			s = t+1;
-		}
-
-		VDStringW filePath(VDMakePath(path.c_str(), name.c_str()));
-
-		VDDEBUG("file: %-40S %10d <- %10d\n", filePath.c_str(), fi.mCompressedSize, fi.mUncompressedSize);
-
-		// unpack the file
-
-		VDZipStream unpackstream(innerzip.OpenRawStream(idx), fi.mCompressedSize, !fi.mbPacked);
-
-		std::vector<char> fileData(fi.mUncompressedSize);
-		unpackstream.Read(&fileData.front(), fileData.size());
-
-		VDFile outfile(filePath.c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
-		outfile.write(&fileData[0], fileData.size());
-	}
-
-	// write help identifier
-	VDFile chkfile(VDMakePath(path.c_str(), L"helpfile.id").c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
-
-	chkfile.write(&chkvalue, 4);
-	chkfile.close();
-}
-
-bool VDIsHelpUpToDate(const VDStringW& helpPath) {
-	if (!VDDoesPathExist(helpPath.c_str()))
-		return false;
-
-	bool bUpToDate = false;
-
-	try {
-		VDFile helpzipfile(VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.vdhelp").c_str());
-		VDFile chkfile(VDMakePath(helpPath.c_str(), L"helpfile.id").c_str(), nsVDFile::kRead | nsVDFile::kOpenExisting);
-		uint32 chk;
-
-		chkfile.read(&chk, 4);
-
-		if (helpzipfile.size() == chk)
-			bUpToDate = true;
-	} catch(const MyError&) {
-		// eat errors
-	}
-
-	return bUpToDate;
+	return VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.chm");
 }
 
 void VDShowHelp(HWND hwnd, const wchar_t *filename) {
 	try {
-		VDStringW helpPath(VDGetHelpPath());
+		VDStringW helpFile(VDGetHelpPath());
 
-		if (!VDIsHelpUpToDate(helpPath)) {
-			VDUnpackHelp(helpPath);
+		if (!VDDoesPathExist(helpFile.c_str()))
+			throw MyError("Cannot find help file: %ls", helpFile.c_str());
+
+		if (filename) {
+			helpFile.append(L"::/");
+			helpFile.append(filename);
 		}
 
-		LaunchURL(VDTextWToA(VDMakePath(helpPath.c_str(), filename?filename:L"index.html")).c_str());
-//	WinHelp(hwnd, g_szHelpPath, HELP_FINDER, 0);
+		VDStringW helpCommand(VDStringW(L"\"hh.exe\" \"") + helpFile + L'"');
+
+		PROCESS_INFORMATION pi;
+		BOOL retval;
+
+		// CreateProcess will actually modify the string that it gets, soo....
+		if (VDIsWindowsNT()) {
+			STARTUPINFOW si = {sizeof(STARTUPINFOW)};
+			std::vector<wchar_t> tempbufW(helpCommand.size() + 1, 0);
+			helpCommand.copy(&tempbufW[0], tempbufW.size());
+			retval = CreateProcessW(NULL, &tempbufW[0], NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE, NULL, NULL, &si, &pi);
+		} else {
+			STARTUPINFOA si = {sizeof(STARTUPINFOA)};
+			VDStringA strA(VDTextWToA(helpCommand));
+			std::vector<char> tempbufA(strA.size() + 1, 0);
+			strA.copy(&tempbufA[0], tempbufA.size());
+			retval = CreateProcessA(NULL, &tempbufA[0], NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE, NULL, NULL, &si, &pi);
+		}
+
+		if (retval) {
+			CloseHandle(pi.hThread);
+			CloseHandle(pi.hProcess);
+		} else
+			throw MyWin32Error("Cannot launch HTML Help: %%s", GetLastError());
 	} catch(const MyError& e) {
 		e.post(hwnd, g_szError);
 	}

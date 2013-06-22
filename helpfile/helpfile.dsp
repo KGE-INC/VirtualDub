@@ -90,6 +90,10 @@ SOURCE=.\source\audiofilters.lina
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\avi.lina
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\capture.lina
 # End Source File
 # Begin Source File

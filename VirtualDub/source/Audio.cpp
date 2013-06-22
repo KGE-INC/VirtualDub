@@ -380,8 +380,34 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 	if (max_samples < 0)
 		max_samples = 0;
 
-	if (iFormat->wFormatTag != WAVE_FORMAT_PCM && allow_decompression) {
-		mCodec.Init(iFormat, NULL);
+	struct WaveFormatExtensibleW32 {
+		WAVEFORMATEX mFormat;
+		union {
+			uint16 mBitDepth;
+			uint16 mSamplesPerBlock;		// may be zero, according to MSDN
+		};
+		uint32	mChannelMask;
+		GUID	mGuid;
+	};
+
+	static const GUID local_KSDATAFORMAT_SUBTYPE_PCM={	// so we don't have to bring in ksmedia.h
+		WAVE_FORMAT_PCM, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71
+	};
+
+	bool isPCM = false;
+
+	if (iFormat->wFormatTag == WAVE_FORMAT_PCM)
+		isPCM = true;
+	else if (iFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+		const WaveFormatExtensibleW32& wfexex = *(const WaveFormatExtensibleW32 *)iFormat;
+
+		if (wfexex.mGuid == local_KSDATAFORMAT_SUBTYPE_PCM)
+			isPCM = true;
+	}
+
+
+	if (!isPCM && allow_decompression) {
+		mCodec.Init(iFormat, NULL, false);
 
 		const unsigned oflen = mCodec.GetOutputFormatSize();
 
@@ -585,7 +611,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 						, sint64, cur_samp
 						, sint64, aSrc->getLength())
 			{
-				err = aSrc->read(cur_samp, max_samples, buffer, 0x7FFFFFFFL, &bytes, &lSamples);
+				err = aSrc->read(cur_samp, max_samples, buffer, max_samples * GetFormat()->nBlockAlign, &bytes, &lSamples);
 			}
 
 			*lplBytes = bytes;
@@ -714,6 +740,12 @@ AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool
 
 	oFormat->nChannels = (uint16)(to_stereo ? 2 : 1);
 	oFormat->wBitsPerSample = (uint16)(to_16bit ? 16 : 8);
+
+	if (iFormat->nChannels != 1 && iFormat->nChannels != 2)
+		throw MyError("Cannot convert audio: the source channel count is not supported (must be mono or stereo).");
+
+	if (iFormat->wBitsPerSample != 8 && iFormat->wBitsPerSample != 16)
+		throw MyError("Cannot convert audio: the source audio format is not supported (must be 8-bit or 16-bit PCM).");
 
 	bytesPerInputSample = (iFormat->nChannels>1 ? 2 : 1)
 						* (iFormat->wBitsPerSample>8 ? 2 : 1);
@@ -1082,6 +1114,12 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
+	if (iFormat->nChannels != 1 && iFormat->nChannels != 2)
+		throw MyError("Cannot resample audio: the source channel count is not supported (must be mono or stereo).");
+
+	if (iFormat->wBitsPerSample != 8 && iFormat->wBitsPerSample != 16)
+		throw MyError("Cannot resample audio: the source audio format is not supported (must be 8-bit or 16-bit PCM).");
+
 	if (oFormat->nChannels>1)
 		if (oFormat->wBitsPerSample>8) {
 			ptsampleRout = audio_pointsample_32;
@@ -1373,7 +1411,7 @@ bool AudioStreamResampler::_isEnd() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len) : AudioStream() {
+AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len, const char *pShortNameHint) : AudioStream() {
 	WAVEFORMATEX *iFormat = src->GetFormat();
 	WAVEFORMATEX *oFormat = AllocFormat(dst_format_len);
 
@@ -1381,7 +1419,7 @@ AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, lon
 
 	SetSource(src);
 
-	mCodec.Init(iFormat, dst_format);
+	mCodec.Init(iFormat, dst_format, true, pShortNameHint);
 
 	bytesPerInputSample = iFormat->nBlockAlign;
 	bytesPerOutputSample = dst_format->nBlockAlign;
@@ -1559,7 +1597,16 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 				long samp_rate, framelen;
 
 				if ((hdr & 0xE0FF) != 0xE0FF)
-					throw MyError("MPEG audio sync error: try disabling MPEG audio time correction");
+					throw MyError(
+						"VirtualDub was unable to scan the compressed MP3 stream for time correction purposes. "
+						"If not needed, MP3 time correction can be disabled in Options, Preferences, AVI.\n"
+						"\n"
+						"(A sync mark was expected at byte location %lu, but word %02x%02x%02x%02x was found instead.)"
+						, (unsigned long)frame_bytes
+						, 0xff & hdr_buffer[0]
+						, 0xff & hdr_buffer[1]
+						, 0xff & hdr_buffer[2]
+						, 0xff & hdr_buffer[3]);
 
 				samp_rate = samp_freq[(hdr>>18)&3];
 
@@ -1598,7 +1645,7 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 tail) {
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 tail, IVDStreamSource *pVBRAudio) {
 	const long nBytesPerSec = pwfex->nAvgBytesPerSec;
 	const int nBlockAlign = pwfex->nBlockAlign;
 	sint64 total = 0;
@@ -1630,8 +1677,12 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 
 		// Add a block.
 
-		start = ((__int64)it->start * nMultiplier + nRound + nError) / nDivisor;
-		end = ((__int64)(it->start + it->len) * nMultiplier + nRound) / nDivisor;
+		if (pVBRAudio)
+			start = pVBRAudio->TimeToPositionVBR(VDRoundToInt64(it->start / videoFrameRate.asDouble() * 1000000.0));
+		else
+			start = ((__int64)it->start * nMultiplier + nRound + nError) / nDivisor;
+
+		end = start + ((__int64)it->len * nMultiplier + nRound) / nDivisor;
 
 		nTotalFramesAccumulated += it->len;
 
@@ -1641,8 +1692,6 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 	}
 
 	if (tail) {
-		sint64 end = 0;
-
 		if (dst.empty()) {
 			dst.addRange(0, tail, false);
 			total += tail;
@@ -1660,7 +1709,7 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 	return total;
 }
 
-AudioSubset::AudioSubset(AudioStream *src, const FrameSubset *pfs, const VDFraction& videoFrameRate, sint64 preskew, bool appendTail)
+AudioSubset::AudioSubset(AudioStream *src, const FrameSubset *pfs, const VDFraction& videoFrameRate, sint64 preskew, bool appendTail, IVDStreamSource *pVBRAudio)
 	: AudioStream()
 	, mbLimited(!appendTail)
 	, mbEnded(false)
@@ -1669,11 +1718,38 @@ AudioSubset::AudioSubset(AudioStream *src, const FrameSubset *pfs, const VDFract
 
 	SetSource(src);
 
-	sint64 total = AudioTranslateVideoSubset(subset, *pfs, videoFrameRate, src->GetFormat(), appendTail ? src->GetLength() : 0);
-
 	const WAVEFORMATEX *pSrcFormat = src->GetFormat();
+	sint64 total;
+	if (pVBRAudio) {
+		WAVEFORMATEX wfexFake;
 
-	subset.deleteRange(0, (preskew*pSrcFormat->nAvgBytesPerSec) / ((sint64)1000000*pSrcFormat->nBlockAlign));
+		wfexFake.wFormatTag			= WAVE_FORMAT_PCM;
+		wfexFake.nChannels			= 1;
+		wfexFake.nSamplesPerSec		= 1000000;
+		wfexFake.nAvgBytesPerSec	= 1000000;
+		wfexFake.nBlockAlign		= 1;
+		wfexFake.wBitsPerSample		= 8;
+		wfexFake.cbSize				= 0;
+
+		// convert to a microsecond-based subset
+		FrameSubset usBasedSubset;
+		AudioTranslateVideoSubset(usBasedSubset, *pfs, videoFrameRate, &wfexFake, 0, NULL);
+
+		// trim off unwanted part
+		usBasedSubset.deleteRange(0, preskew);
+
+		// convert to sample-based
+		FrameSubset sampleBasedSubset;
+		const WAVEFORMATEX *streamFormat = (const WAVEFORMATEX *)pVBRAudio->getFormat();
+		AudioTranslateVideoSubset(sampleBasedSubset, usBasedSubset, VDFraction(1000000, 1), (WAVEFORMATEX *)streamFormat, 0, pVBRAudio);
+
+		// convert to raw (hack!!)
+		total = AudioTranslateVideoSubset(subset, sampleBasedSubset, VDFraction(streamFormat->nAvgBytesPerSec, streamFormat->nBlockAlign), (WAVEFORMATEX *)pSrcFormat, appendTail ? src->GetLength() : 0, NULL);
+	} else {
+		total = AudioTranslateVideoSubset(subset, *pfs, videoFrameRate, src->GetFormat(), appendTail ? src->GetLength() : 0, pVBRAudio);
+
+		subset.deleteRange(0, (preskew*pSrcFormat->nAvgBytesPerSec) / ((sint64)1000000*pSrcFormat->nBlockAlign));
+	}
 
 	stream_len = total;
 

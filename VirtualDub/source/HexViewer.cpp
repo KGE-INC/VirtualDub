@@ -33,6 +33,7 @@
 #include <vd2/system/list.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/registry.h>
 
 #include "HexViewer.h"
 #include "ProgressDialog.h"
@@ -200,8 +201,9 @@ namespace {
 		ProgressDialog& pd;
 		int count[100];
 		__int64 size[100];
+		bool abortPending;
 
-		RIFFScanInfo(ProgressDialog &_pd) : pd(_pd) {}
+		RIFFScanInfo(ProgressDialog &_pd) : pd(_pd), abortPending(false) {}
 	};
 
 
@@ -1061,6 +1063,8 @@ public:
 	HexEditor(HWND);
 	~HexEditor();
 
+	void Open(const char *pszFile, bool bRW);
+
 	static LRESULT CALLBACK HexEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	static INT_PTR CALLBACK FindDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	static INT_PTR CALLBACK TreeDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -1068,7 +1072,6 @@ public:
 private:
 	void Init();
 	void Open();
-	void Open(const char *pszFile, bool bRW);
 	void Close();
 	void Commit();
 
@@ -1191,6 +1194,8 @@ void HexEditor::Open() {
 
 	memset(&ofn, 0, sizeof ofn);
 
+	VDRegistryAppKey appKey;
+
 	ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
 	ofn.hwndOwner			= hwnd;
 	ofn.lpstrFilter			= "All files (*.*)\0*.*\0";
@@ -1201,11 +1206,15 @@ void HexEditor::Open() {
 	ofn.lpstrFileTitle		= NULL;
 	ofn.lpstrInitialDir		= NULL;
 	ofn.lpstrTitle			= NULL;
-	ofn.Flags				= OFN_EXPLORER | OFN_ENABLESIZING | OFN_FILEMUSTEXIST | OFN_READONLY;
+	ofn.Flags				= OFN_EXPLORER | OFN_ENABLESIZING | OFN_FILEMUSTEXIST | (appKey.getBool("HexEdit: Default to read only", false) ? OFN_READONLY : 0);
 	ofn.lpstrDefExt			= NULL;
 
-	if (GetOpenFileName(&ofn))
-		Open(szName, !(ofn.Flags & OFN_READONLY));
+	if (GetOpenFileName(&ofn)) {
+		bool readOnly = !!(ofn.Flags & OFN_READONLY);
+		Open(szName, !readOnly);
+
+		appKey.setBool("HexEdit: Default to read only", readOnly);
+	}
 }
 
 void HexEditor::Open(const char *pszFile, bool bRW) {
@@ -1718,6 +1727,15 @@ LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) {
 		if (hFile != INVALID_HANDLE_VALUE)
 			if (GetKeyState(VK_CONTROL)<0)
 				Handle_WM_COMMAND(ID_EDIT_RIFFTREE, 0);
+		break;
+	case 'O':
+		Open();
+		break;
+
+	case 'S':
+		if (hFile != INVALID_HANDLE_VALUE && bEnableWrite)
+			Commit();
+		break;
 	}
 
 	return 0;
@@ -2386,7 +2404,7 @@ TreeNode *HexEditor::RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft) 
 	int nodeBase = 0;
 	sint64 startPos = pos;
 
-	for(;;) {
+	while(!rsi.abortPending) {
 		if ((sizeleft < 8 && pParentNode) || nodes-nodeBase >= 1000) {
 			sprintf(buf, "Chunks %u-%u (%08I64X-%08I64X)\n", nodeBase, nodes-1, startPos, pos-1);
 			size_t len = strlen(buf);
@@ -2412,8 +2430,13 @@ TreeNode *HexEditor::RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft) 
 		} chunk;
 		bool bExpand = false;
 
-		rsi.pd.advance((long)(pos >> 10));
-		rsi.pd.check();
+		try {
+			rsi.pd.advance((long)(pos >> 10));
+			rsi.pd.check();
+		} catch(const MyUserAbortError&) {
+			rsi.abortPending = true;
+			break;
+		}
 
 		// Try to read 12 bytes at the current position.
 
@@ -2634,8 +2657,8 @@ ATOM RegisterHexEditor() {
 	return RegisterClass(&wc1) && RegisterClass(&wc2);
 
 }
-void HexEdit(HWND hwndParent) {
-	CreateWindow(
+void HexEdit(HWND hwndParent, const char *filename) {
+	HWND hwndEdit = CreateWindow(
 		HEXEDITORCLASS,
 		"VirtualDub Hex Editor",
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
@@ -2647,4 +2670,10 @@ void HexEdit(HWND hwndParent) {
 		NULL,
 		g_hInst,
 		NULL);
+
+	if (filename && hwndEdit) {
+		HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hwndEdit, 0);
+
+		pcd->Open(filename, true);
+	}
 }

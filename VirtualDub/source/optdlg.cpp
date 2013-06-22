@@ -185,11 +185,17 @@ void VDDialogAudioConversionW32::ReinitDialog() {
 	if (mpSource) {
 		char buf[128];
 
-		wsprintf(buf, "No change (%ldHz)", mpSource->getWaveFormat()->nSamplesPerSec);
+		const WAVEFORMATEX *pwfex = mpSource->getWaveFormat();
+		wsprintf(buf, "No change (%ldHz)", pwfex->nSamplesPerSec);
 		SetDlgItemText(mhdlg, IDC_SAMPLINGRATE_NOCHANGE, buf);
-		wsprintf(buf, "No change (%ld-bit)", mpSource->getWaveFormat()->wBitsPerSample>8 ? 16 : 8);
+
+		wsprintf(buf, "No change (%ld-bit)", pwfex->wBitsPerSample>8 ? 16 : 8);
 		SetDlgItemText(mhdlg, IDC_PRECISION_NOCHANGE, buf);
-		wsprintf(buf, "No change (%s)", mpSource->getWaveFormat()->nChannels>1 ? "stereo" : "mono");
+
+		if (pwfex->nChannels > 2)
+			wsprintf(buf, "No change (%dch.)", pwfex->nChannels);
+		else
+			wsprintf(buf, "No change (%s)", pwfex->nChannels>1 ? "stereo" : "mono");
 		SetDlgItemText(mhdlg, IDC_CHANNELS_NOCHANGE, buf);
 	}
 
@@ -320,7 +326,7 @@ INT_PTR VDDialogVideoDepthW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					VDShowHelp(mhdlg, L"d-videodepth.html");
+					VDShowHelp(mhdlg, L"d-videocolordepth.html");
 			}
 			return TRUE;
 

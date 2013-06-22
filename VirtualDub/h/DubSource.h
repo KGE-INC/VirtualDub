@@ -60,6 +60,9 @@ public:
 
 	virtual VDPosition msToSamples(VDTime lMs) const = 0;
 	virtual VDTime samplesToMs(VDPosition lSamples) const = 0;
+
+	virtual VDPosition TimeToPositionVBR(VDTime us) const = 0;
+	virtual VDTime PositionToTimeVBR(VDPosition samples) const = 0;
 };
 
 class DubSource : public vdrefcounted<IVDStreamSource> {
@@ -116,13 +119,21 @@ public:
 	virtual void setDecodeErrorMode(ErrorMode mode) {}
 	virtual bool isDecodeErrorModeSupported(ErrorMode mode) { return mode != kErrorModeReportAll; }
 
-	VDPosition msToSamples(VDTime lMs) const {
+	virtual VDPosition msToSamples(VDTime lMs) const {
 		const sint64 denom = (sint64)1000 * streamInfo.dwScale;
 		return (lMs * streamInfo.dwRate + (denom >> 1)) / denom;
 	}
 
-	VDTime samplesToMs(VDPosition lSamples) const {
+	virtual VDTime samplesToMs(VDPosition lSamples) const {
 		return ((lSamples * streamInfo.dwScale) * 1000 + (streamInfo.dwRate >> 1)) / streamInfo.dwRate;
+	}
+
+	virtual VDPosition TimeToPositionVBR(VDTime us) const {
+		return VDRoundToInt64(us * (double)streamInfo.dwRate / (double)streamInfo.dwScale * (1.0 / 1000000.0));
+	}
+
+	virtual VDTime PositionToTimeVBR(VDPosition samples) const {
+		return VDRoundToInt64(samples * (double)streamInfo.dwScale / (double)streamInfo.dwRate * 1000000.0);
 	}
 };
 

@@ -35,7 +35,7 @@ public:
 	virtual void SetChildCallback(IVDCaptureDriverCallback *pChild) = 0;
 	virtual void SetSourceSplit(bool enable) = 0;
 
-	virtual void Init(const WAVEFORMATEX *srcFormat, const WAVEFORMATEX *dstFormat) = 0;
+	virtual void Init(const WAVEFORMATEX *srcFormat, const WAVEFORMATEX *dstFormat, const char *pShortNameHint) = 0;
 
 	virtual void GetStatus(VDCaptureAudioCompStatus&) = 0;
 };

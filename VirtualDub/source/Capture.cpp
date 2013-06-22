@@ -439,6 +439,7 @@ void VDCaptureProjectBaseCallback::UICaptureAudioInputChanged(int input) {}
 void VDCaptureProjectBaseCallback::UICaptureFileUpdated() {}
 void VDCaptureProjectBaseCallback::UICaptureAudioFormatUpdated() {}
 void VDCaptureProjectBaseCallback::UICaptureVideoFormatUpdated() {}
+void VDCaptureProjectBaseCallback::UICaptureVideoPreviewFormatUpdated() {}
 void VDCaptureProjectBaseCallback::UICaptureVideoSourceChanged(int input) {}
 void VDCaptureProjectBaseCallback::UICaptureTunerChannelChanged(int ch, bool init) {}
 void VDCaptureProjectBaseCallback::UICaptureParmsUpdated() {}
@@ -506,6 +507,9 @@ public:
 	bool	SetTunerChannel(int channel);
 	int		GetTunerChannel();
 	bool	GetTunerChannelRange(int& minChannel, int& maxChannel);
+	uint32	GetTunerFrequencyPrecision();
+	uint32	GetTunerExactFrequency();
+	bool	SetTunerExactFrequency(uint32 freq);
 
 	int		GetAudioDeviceCount();
 	const wchar_t *GetAudioDeviceName(int idx);
@@ -572,8 +576,8 @@ public:
 	bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex);
 
 	void	SetAudioCompFormat();
-	void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex);
-	bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex);
+	void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex, const char *pShortNameHint);
+	bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex, VDStringA& hint);
 
 	void		SetCaptureFile(const wchar_t *filename, bool bIsStripeSystem);
 	VDStringW	GetCaptureFile();
@@ -667,6 +671,7 @@ protected:
 	tDrivers	mDrivers;
 
 	vdstructex<WAVEFORMATEX>	mAudioCompFormat;
+	VDStringA					mAudioCompFormatHint;
 	WAVEFORMATEX	mAudioAnalysisFormat;
 
 	vdautoptr<IVDCaptureVideoHistogram>	mpVideoHistogram;
@@ -708,7 +713,7 @@ VDCaptureProject::VDCaptureProject()
 	mTimingSetup.mSyncMode				= VDCaptureTimingSetup::kSyncAudioToVideo;
 	mTimingSetup.mbAllowEarlyDrops		= true;
 	mTimingSetup.mbAllowLateInserts		= true;
-	mTimingSetup.mbCorrectVideoTiming	= false;
+	mTimingSetup.mbCorrectVideoTiming	= true;
 	mTimingSetup.mbResyncWithIntegratedAudio	= true;
 	mTimingSetup.mInsertLimit			= 10;
 
@@ -956,6 +961,18 @@ bool VDCaptureProject::GetTunerChannelRange(int& minChannel, int& maxChannel) {
 	return mpDriver && mpDriver->GetTunerChannelRange(minChannel, maxChannel);
 }
 
+uint32 VDCaptureProject::GetTunerFrequencyPrecision() {
+	return mpDriver ? mpDriver->GetTunerFrequencyPrecision() : 0;
+}
+
+uint32 VDCaptureProject::GetTunerExactFrequency() {
+	return mpDriver ? mpDriver->GetTunerExactFrequency() : 0;
+}
+
+bool VDCaptureProject::SetTunerExactFrequency(uint32 freq) {
+	return mpDriver && mpDriver->SetTunerExactFrequency(freq);
+}
+
 int VDCaptureProject::GetAudioDeviceCount() {
 	return mpDriver ? mpDriver->GetAudioDeviceCount() : 0;
 }
@@ -1172,13 +1189,18 @@ void VDCaptureProject::DisplayDriverDialog(DriverDialog dlg) {
 }
 
 void VDCaptureProject::GetPreviewImageSize(sint32& w, sint32& h) {
-	w = 320;
-	h = 240;
+	if (mpFilterSys) {
+		w = mFilterOutputLayout.w;
+		h = mFilterOutputLayout.h;
+	} else {
+		w = 320;
+		h = 240;
 
-	vdstructex<BITMAPINFOHEADER> vformat;
-	if (GetVideoFormat(vformat)) {
-		w = vformat->biWidth;
-		h = vformat->biHeight;
+		vdstructex<BITMAPINFOHEADER> vformat;
+		if (GetVideoFormat(vformat)) {
+			w = vformat->biWidth;
+			h = vformat->biHeight;
+		}
 	}
 }
 
@@ -1315,17 +1337,25 @@ bool VDCaptureProject::GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex) {
 
 void VDCaptureProject::SetAudioCompFormat() {
 	mAudioCompFormat.clear();
+	mAudioCompFormatHint.clear();
 }
 
-void VDCaptureProject::SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex) {
-	if (wfex.wFormatTag == WAVE_FORMAT_PCM)
+void VDCaptureProject::SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex, const char *pHint) {
+	if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
 		mAudioCompFormat.clear();
-	else
+		mAudioCompFormatHint.clear();
+	} else {
 		mAudioCompFormat.assign(&wfex, cbwfex);
+		if (pHint)
+			mAudioCompFormatHint = pHint;
+		else
+			mAudioCompFormatHint.clear();
+	}
 }
 
-bool VDCaptureProject::GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex) {
+bool VDCaptureProject::GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex, VDStringA& hint) {
 	wfex = mAudioCompFormat;
+	hint = mAudioCompFormatHint;
 	return !wfex.empty();
 }
 
@@ -1511,6 +1541,7 @@ bool VDCaptureProject::SelectDriver(int nDriver) {
 		mpCB->UICaptureParmsUpdated();
 		mpCB->UICaptureAudioFormatUpdated();
 		mpCB->UICaptureVideoFormatUpdated();
+		mpCB->UICaptureVideoPreviewFormatUpdated();
 		mpCB->UICaptureVideoSourceChanged(mpDriver->GetVideoSourceIndex());
 	}
 
@@ -1725,7 +1756,7 @@ unknown_PCM_format:
 				throw MyMemoryError();
 
 			icd.mpVideoCompressor->init(g_compression.hic, (BITMAPINFO *)bmiToFile, (BITMAPINFO *)bmiOutput.data(), g_compression.lQ, g_compression.lKey);
-			icd.mpVideoCompressor->setDataRate(g_compression.lDataRate*1024, GetFrameTime(), 0x0FFFFFFF);
+			icd.mpVideoCompressor->setDataRate(g_compression.lDataRate*1024, (GetFrameTime() + 5) / 10, 0x0FFFFFFF);
 			icd.mpVideoCompressor->start();
 
 			bmiToFile = bmiOutput.data();
@@ -1792,7 +1823,7 @@ unknown_PCM_format:
 			icd.mpAudioCompFilter = pAudioCompFilter;
 			pAudioCompFilter->SetChildCallback(this);
 			pAudioCompFilter->SetSourceSplit(mAudioAnalysisFormat.wFormatTag != 0);
-			pAudioCompFilter->Init(wfexInput.data(), wfexOutput.data());
+			pAudioCompFilter->Init(wfexInput.data(), wfexOutput.data(), mAudioCompFormatHint.c_str());
 			pResyncFilter->SetChildCallback(pAudioCompFilter);
 		} else {
 			icd.mpAudioCompFilter = NULL;
@@ -1873,7 +1904,9 @@ unknown_PCM_format:
 		{
 			VDCaptureTimingAccuracyBooster timingBooster;
 
-			if (mpDriver->CaptureStart()) {
+			if (!mpDriver->CaptureStart()) {
+				icd.mpError = new MyError("Unable to start video capture.");
+			} else {
 				VDSamplingAutoProfileScope autoVTProfile;
 
 				MSG msg;
@@ -2063,8 +2096,10 @@ bool VDCaptureProject::CapEvent(DriverEvent event, int data) {
 	case kEventVideoFormatChanged:
 		if (mDisplayMode == kDisplayAnalyze)
 			ShutdownVideoAnalysis();
-		if (mpCB)
+		if (mpCB) {
 			mpCB->UICaptureVideoFormatUpdated();
+			mpCB->UICaptureVideoPreviewFormatUpdated();
+		}
 		if (mDisplayMode == kDisplayAnalyze)
 			InitVideoAnalysis();
 		break;
@@ -2231,6 +2266,9 @@ void VDCaptureProject::InitVideoAnalysis() {
 
 	if (mbEnableVideoFrameTransfer)
 		InitVideoFrameTransfer();
+
+	if (mpCB)
+		mpCB->UICaptureVideoPreviewFormatUpdated();
 }
 
 void VDCaptureProject::ShutdownVideoAnalysis() {
@@ -2239,6 +2277,9 @@ void VDCaptureProject::ShutdownVideoAnalysis() {
 	ShutdownVideoFrameTransfer();
 	ShutdownVideoHistogram();
 	ShutdownFilter();
+
+	if (mpCB)
+		mpCB->UICaptureVideoPreviewFormatUpdated();
 }
 
 bool VDCaptureProject::AreFiltersEnabled(const VDCaptureFilterSetup& filtsetup) {
@@ -2326,7 +2367,7 @@ bool VDCaptureProject::InitFilter() {
 	pFilterSys->SetChainEnable(mFilterSetup.mbEnableRGBFiltering);
 
 	mFilterOutputLayout = mFilterInputLayout;
-	pFilterSys->Init(mFilterOutputLayout, GetFrameTime());
+	pFilterSys->Init(mFilterOutputLayout, (GetFrameTime() + 5) / 10);
 
 	vdsynchronized(mVideoFilterLock) {
 		// This could be atomic, but it's not that critical.

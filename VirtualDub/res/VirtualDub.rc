@@ -304,6 +304,10 @@ BEGIN
 
             MENUITEM "Previous channel\tDown",      ID_DEVICE_TUNER_PREVIOUSCHANNEL
 
+            MENUITEM "Fine-tune frequency upward\tShift+Up", 
+                                                    ID_DEVICE_TUNER_FINEUP
+            MENUITEM "Fine-tune frequency downaward\tShift+Down", 
+                                                    ID_DEVICE_TUNER_FINEDOWN
         END
         MENUITEM SEPARATOR
         MENUITEM "Disconnect",                  ID_VIDEO_DISCONNECT
@@ -556,8 +560,8 @@ IDR_HEXVIEWER_MENU MENU DISCARDABLE
 BEGIN
     POPUP "&File"
     BEGIN
-        MENUITEM "&Open...",                    ID_FILE_OPEN
-        MENUITEM "&Save",                       ID_FILE_SAVE
+        MENUITEM "&Open...\tCtrl+O",            ID_FILE_OPEN
+        MENUITEM "&Save\tCtrl+S",               ID_FILE_SAVE
         MENUITEM "&Revert",                     ID_FILE_REVERT
         MENUITEM "&Close",                      ID_FILE_CLOSE
         MENUITEM SEPARATOR
@@ -835,7 +839,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.12 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.13 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1110,31 +1114,21 @@ BEGIN
                     ES_NUMBER
 END
 
-IDD_CAPTURE_SETTINGS DIALOGEX 0, 0, 336, 143
+IDD_CAPTURE_SETTINGS DIALOGEX 0, 0, 336, 63
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Capture Settings"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
     CONTROL         "&Wait for OK to capture",IDC_CAPTURE_ON_OK,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,14,29,87,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,14,16,87,10
     LTEXT           "&Frame rate:",IDC_STATIC,128,17,36,8
     EDITTEXT        IDC_CAPTURE_FRAMERATE,170,15,40,12,ES_AUTOHSCROLL
     PUSHBUTTON      "round to nearest &millisecond",IDC_ROUND_FRAMERATE,214,
                     15,94,13
-    LTEXT           "Video buffer limit:",IDC_STATIC,147,94,54,8
-    EDITTEXT        IDC_CAPTURE_VIDEO_BUFFERS,206,92,54,12,ES_AUTOHSCROLL | 
-                    WS_DISABLED
-    LTEXT           "Audio buffer limit:",IDC_STATIC,147,107,54,8
-    EDITTEXT        IDC_CAPTURE_AUDIO_BUFFERS,206,105,54,12,ES_AUTOHSCROLL | 
-                    WS_DISABLED
-    LTEXT           "Audio buffer size:",IDC_STATIC,147,120,55,8
-    EDITTEXT        IDC_CAPTURE_AUDIO_BUFFERSIZE,206,118,54,12,
-                    ES_AUTOHSCROLL | WS_DISABLED
-    DEFPUSHBUTTON   "OK",IDOK,279,105,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,279,122,50,14
-    GROUPBOX        "Capture options",IDC_STATIC,7,7,322,37
-    GROUPBOX        "Advanced",IDC_STATIC,7,84,259,52
+    DEFPUSHBUTTON   "OK",IDOK,225,42,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,279,42,50,14
+    GROUPBOX        "Capture options",IDC_STATIC,7,7,322,28
 END
 
 IDD_CAPTURE_AUDIO_VUMETER DIALOGEX 0, 0, 233, 135
@@ -2929,7 +2923,7 @@ BEGIN
         RIGHTMARGIN, 329
         VERTGUIDE, 14
         TOPMARGIN, 7
-        BOTTOMMARGIN, 136
+        BOTTOMMARGIN, 56
     END
 
     IDD_CAPTURE_AUDIO_VUMETER, DIALOG
@@ -3737,6 +3731,7 @@ BEGIN
     "S",            ID_VIDEO_SOURCE,        VIRTKEY, NOINVERT
     "V",            ID_AUDIO_PEAKMETER,     VIRTKEY, NOINVERT
     VK_DOWN,        ID_DEVICE_TUNER_PREVIOUSCHANNEL, VIRTKEY, NOINVERT
+    VK_DOWN,        ID_DEVICE_TUNER_FINEDOWN, VIRTKEY, SHIFT, NOINVERT
     VK_ESCAPE,      ID_CAPTURE_STOP,        VIRTKEY, NOINVERT
     VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
     VK_F10,         ID_CAPTURE_PREFERENCES, VIRTKEY, NOINVERT
@@ -3746,6 +3741,7 @@ BEGIN
     VK_F7,          ID_CAPTURE_TEST,        VIRTKEY, NOINVERT
     VK_F9,          ID_CAPTURE_SETTINGS,    VIRTKEY, NOINVERT
     VK_UP,          ID_DEVICE_TUNER_NEXTCHANNEL, VIRTKEY, NOINVERT
+    VK_UP,          ID_DEVICE_TUNER_FINEUP, VIRTKEY, SHIFT, NOINVERT
     "[",            ID_FILE_DECREMENT,      ASCII,  NOINVERT
     "]",            ID_FILE_INCREMENT,      ASCII,  NOINVERT
 END
@@ -3790,8 +3786,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,12,0
- PRODUCTVERSION 1,6,12,0
+ FILEVERSION 1,6,13,0
+ PRODUCTVERSION 1,6,13,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3809,14 +3805,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.12\0"
+            VALUE "FileVersion", "1.6.13\0"
             VALUE "InternalName", "VirtualDub\0"
-            VALUE "LegalCopyright", "Copyright © 1998-2005 by Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1998-2006 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.12\0"
+            VALUE "ProductVersion", "1.6.13\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3902,17 +3898,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.12 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.12"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.12 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.12 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.12"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.13 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.13"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.13 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.13 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.13"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.12 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.12 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.12 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.12 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.12 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.13 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.13 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.13 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.13 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.13 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

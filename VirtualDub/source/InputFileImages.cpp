@@ -106,6 +106,12 @@ public:
 					if (buf[6] == 'E' && buf[7] == 'x' && buf[8] == 'i' && buf[9] == 'f')
 						return 1;		// Looks like JPEG to me.
 				}
+
+				// Look for a bare JPEG (start of second marker and x'FF' EOI at the end
+				const uint8 *footer = (const uint8 *)pFooter;
+
+				if (buf[2] == 0xFF && nFooterSize >= 2 && footer[nFooterSize - 2] == 0xFF && footer[nFooterSize - 1] == 0xD9)
+					return 1;
 			}
 		}
 

@@ -408,6 +408,9 @@ public:
 	sint64					bytes;
 	bool					keyframe_only;
 	bool					was_VBR;
+	uint32					original_rate_VBR;
+	uint32					original_scale_VBR;
+	uint32					original_block_size_VBR;
 	double					bitrate_mean;
 	double					bitrate_stddev;
 	double					max_deviation;		// seconds
@@ -447,6 +450,10 @@ AVIStreamNode::~AVIStreamNode() {
 
 void AVIStreamNode::FixVBRAudio() {
 	WAVEFORMATEX *pWaveFormat = (WAVEFORMATEX *)pFormat;
+
+	original_block_size_VBR = pWaveFormat->nBlockAlign;
+	original_rate_VBR = hdr.dwRate;
+	original_scale_VBR = hdr.dwScale;
 
 	// If this is an MP3 stream, undo the Nandub 1152 value.
 
@@ -782,6 +789,9 @@ public:
 
 	sint64		getSampleBytePosition(VDPosition sample_num) { return -1; }
 
+	VDPosition	TimeToPosition(VDTime timeInMicroseconds);
+	VDTime		PositionToTime(VDPosition pos);
+
 private:
 	IAvisynthClipInfo *const pAvisynthClipInfo;
 	AVIReadHandler *const parent;
@@ -870,7 +880,23 @@ bool AVIReadTunnelStream::isStreaming() {
 }
 
 bool AVIReadTunnelStream::isKeyframeOnly() {
-   return false;
+	return false;
+}
+
+VDPosition AVIReadTunnelStream::TimeToPosition(VDTime timeInUs) {
+	AVISTREAMINFO asi;
+	if (AVIStreamInfo(pas, &asi, sizeof asi))
+		return 0;
+
+	return VDRoundToInt64(timeInUs * (double)asi.dwRate / (double)asi.dwScale * (1.0 / 1000000.0));
+}
+
+VDTime AVIReadTunnelStream::PositionToTime(VDPosition pos) {
+	AVISTREAMINFO asi;
+	if (AVIStreamInfo(pas, &asi, sizeof asi))
+		return 0;
+
+	return VDRoundToInt64(pos * (double)asi.dwScale / (double)asi.dwRate * 1000000.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -899,6 +925,9 @@ public:
 	void Reinit();
 	bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev);
 	sint64		getSampleBytePosition(VDPosition sample_num);
+
+	VDPosition	TimeToPosition(VDTime timeInMicroseconds);
+	VDTime		PositionToTime(VDPosition pos);
 
 private:
 	AVIReadHandler *parent;
@@ -943,8 +972,15 @@ AVIReadStream::AVIReadStream(AVIReadHandler *parent, AVIStreamNode *psnData, int
 	// Hack to imitate Microsoft's parser.  It seems to ignore this value
 	// for audio streams.
 
-	if (psnData->hdr.fccType == streamtypeAUDIO)
+	if (psnData->hdr.fccType == streamtypeAUDIO) {
 		sampsize = ((WAVEFORMATEX *)psnData->pFormat)->nBlockAlign;
+
+		// wtf....
+		if (!sampsize)
+			sampsize = 1;
+
+		length = psnData->bytes / sampsize;
+	}
 
 	if (sampsize) {
 		i64CachedPosition = 0;
@@ -1469,6 +1505,55 @@ bool AVIReadStream::getVBRInfo(double& bitrate_mean, double& bitrate_stddev, dou
 	return false;
 }
 
+VDPosition AVIReadStream::TimeToPosition(VDTime timeInUs) {
+	if (!sampsize || !psnData->was_VBR) {
+		return VDRoundToInt64(timeInUs * (double)psnData->hdr.dwRate / (double)psnData->hdr.dwScale * (1.0 / 1000000.0));
+	}
+
+	VDPosition blocks = VDRoundToInt64(timeInUs * (double)psnData->original_rate_VBR / (double)psnData->original_scale_VBR * (1.0 / 1000000.0));
+
+	AVIIndexEntry2 *avie2 = pIndex, *avie2_limit = pIndex+frames;
+
+	// find the frame that has the starting sample -- try and work from our last position to save time
+	VDPosition bytes = 0;
+	while(blocks > 0 && avie2 != avie2_limit) {
+		uint32 bytesInChunk = (avie2->size & 0x7FFFFFFF);
+		uint32 blocksInChunk = (bytesInChunk - 1) / psnData->original_block_size_VBR + 1;
+
+		if (blocks < blocksInChunk)
+			break;
+
+		blocks -= blocksInChunk;
+
+		bytes += bytesInChunk;
+		++avie2;
+	}
+
+	return bytes / sampsize;
+}
+
+VDTime AVIReadStream::PositionToTime(VDPosition sample) {
+	if (!sampsize || !psnData->was_VBR)
+		return VDRoundToInt64(sample * (double)psnData->hdr.dwScale / (double)psnData->hdr.dwRate * 1000000.0);
+
+	VDPosition blocks = sample;
+	AVIIndexEntry2 *avie2 = pIndex, *avie2_limit = pIndex+frames;
+	VDPosition bytes = sample * sampsize;
+
+	blocks = 0;
+	while(bytes > 0 && avie2 != avie2_limit) {
+		uint32 bytesInChunk = (avie2->size & 0x7FFFFFFF);
+		if (bytes < bytesInChunk)
+			break;
+
+		blocks += (bytesInChunk - 1) / psnData->original_block_size_VBR + 1;
+
+		++avie2;
+	}
+
+	return VDRoundToInt64(blocks * (double)psnData->original_scale_VBR / (double)psnData->original_rate_VBR * 1000000.0);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 AVIReadHandler::AVIReadHandler(const wchar_t *s)
@@ -1632,10 +1717,17 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 				// A/B ?= C/D ==> AD ?= BC
 
 				if ((sint64)pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != (sint64)pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
-					throw MyError("Cannot append segment \"%ls\": The %s streams have different sampling rates (%.5f vs. %.5f)"
+					throw MyError("Cannot append segment \"%ls\": The %s streams do not share a common sampling rate.\n"
+							"\n"
+							"First stream: %08x / %08x = %.5f samples/sec\n"
+							"Second stream: %08x / %08x = %.5f samples/sec"
 							,pszFile
 							,szStreamType
+							,pasn_old->hdr.dwRate
+							,pasn_old->hdr.dwScale
 							,(double)pasn_old->hdr.dwRate / pasn_old->hdr.dwScale
+							,pasn_new->hdr.dwRate
+							,pasn_new->hdr.dwScale
 							,(double)pasn_new->hdr.dwRate / pasn_new->hdr.dwScale
 							);
 
@@ -1644,15 +1736,58 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 
 				// I hate PCMWAVEFORMAT.
 
-				bool fOk = pasn_old->lFormatLen == pasn_new->lFormatLen && !memcmp(pasn_old->pFormat, pasn_new->pFormat, pasn_old->lFormatLen);
+				uint32 oldFormatLen = pasn_old->lFormatLen;
+				uint32 newFormatLen = pasn_new->lFormatLen;
+				uint32 basicFormatLen = 0;
 
-				if (pasn_old->hdr.fccType == streamtypeAUDIO)
-					if (((WAVEFORMATEX *)pasn_old->pFormat)->wFormatTag == WAVE_FORMAT_PCM
-						&& ((WAVEFORMATEX *)pasn_new->pFormat)->wFormatTag == WAVE_FORMAT_PCM)
-							fOk = !memcmp(pasn_old->pFormat, pasn_new->pFormat, sizeof(PCMWAVEFORMAT));
+				if (pasn_old->hdr.fccType == streamtypeAUDIO) {
+					const WAVEFORMATEX& wfex1 = *(const WAVEFORMATEX *)pasn_old->pFormat;
+					const WAVEFORMATEX& wfex2 = *(const WAVEFORMATEX *)pasn_new->pFormat;
+
+					if (wfex1.wFormatTag != wfex2.wFormatTag)
+						throw MyError("Cannot append segment \"%ls\": The audio streams use different compression formats.", pszFile);
+
+					if (wfex1.nSamplesPerSec != wfex2.nSamplesPerSec)
+						throw MyError("Cannot append segment \"%ls\": The audio streams use different sampling rates (%u vs. %u)", pszFile, wfex1.nSamplesPerSec, wfex2.nSamplesPerSec);
+
+					if (wfex1.nAvgBytesPerSec != wfex2.nAvgBytesPerSec)
+						throw MyError("Cannot append segment \"%ls\": The audio streams use different data rates (%u bytes/sec vs. %u bytes/sec)", pszFile, wfex1.nAvgBytesPerSec, wfex2.nAvgBytesPerSec);
+
+					if (wfex1.wFormatTag == WAVE_FORMAT_PCM
+						&& wfex2.wFormatTag == WAVE_FORMAT_PCM)
+					{
+						oldFormatLen = sizeof(PCMWAVEFORMAT);
+						newFormatLen = sizeof(PCMWAVEFORMAT);
+						basicFormatLen = sizeof(PCMWAVEFORMAT);
+					} else {
+						basicFormatLen = sizeof(WAVEFORMATEX);
+					}
+
+				} else if (pasn_new->hdr.fccType == streamtypeVIDEO) {
+					basicFormatLen = sizeof(BITMAPINFOHEADER);
+
+					const BITMAPINFOHEADER& hdr1 = *(const BITMAPINFOHEADER *)pasn_old->pFormat;
+					const BITMAPINFOHEADER& hdr2 = *(const BITMAPINFOHEADER *)pasn_new->pFormat;
+
+					if (hdr1.biWidth != hdr2.biWidth || hdr1.biHeight != hdr2.biHeight)
+						throw MyError("Cannot append segment \"%ls\": The video streams are of different sizes (%dx%d vs. %dx%d)", pszFile, hdr1.biWidth, hdr1.biHeight, hdr2.biWidth, hdr2.biHeight);
+
+					if (hdr1.biCompression != hdr2.biCompression)
+						throw MyError("Cannot append segment \"%ls\": The video streams use different compression schemes.", pszFile);
+				}
+
+				uint32 minFormatLen = std::min<uint32>(oldFormatLen, newFormatLen);
+				uint32 i = 0;
+
+				for(; i<minFormatLen; ++i) {
+					if (((const char *)pasn_old->pFormat)[i] != ((const char *)pasn_new->pFormat)[i])
+						break;
+				}
+
+				bool fOk = (i == oldFormatLen && i == newFormatLen);
 
 				if (!fOk)
-					throw MyError("Cannot append segment \"%ls\": The %s streams have different data formats.", pszFile, szStreamType);
+					throw MyError("Cannot append segment \"%ls\": The %s streams have incompatible data formats.\n\n(Mismatch detected in opaque codec data at byte %u of the format data.)", pszFile, szStreamType, i);
 			}
 
 			pasn_old = pasn_old_next;

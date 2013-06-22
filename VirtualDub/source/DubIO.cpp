@@ -303,6 +303,7 @@ bool VDDubIOThread::MainAddAudioFrame() {
 		{
 			VDDubAutoThreadLocation loc(mpCurrentAction, "reading/processing audio data");
 			ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
+			VDASSERT(ltActualBytes <= tc);
 		}
 
 		if (ltActualSamples <= 0)

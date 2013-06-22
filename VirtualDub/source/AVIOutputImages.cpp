@@ -184,7 +184,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 			rlesrc += pelsize;
 
-			while(rlesrc < rlesrcend) {
+			do {
 				while(rlesrc < rlesrcend && *rlecompare != *rlesrc) {
 					++rlecompare;
 					++rlesrc;
@@ -254,7 +254,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 				}
 
 				VDASSERT(rlesrc<rlesrcend || literalbytes <= 0);
-			}
+			} while(rlesrc < rlesrcend);
 
 			if (dst >= dstlimit) {
 				hdr.ImgType = 2;

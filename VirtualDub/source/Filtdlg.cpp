@@ -540,10 +540,10 @@ INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 				HWND hWnd, hWndCancel;
 
 				// try to init filters
-				const BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
-				const BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
-
 				if (mpFilterList && inputVideoAVI) {
+					const BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
+					const BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
+
 					try {
 						// halt the main filter system
 						filters.DeinitFilters();
@@ -664,7 +664,12 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 					VDPixmapBlt(VDAsPixmap(*mFilterSys.InputBitmap()), inputVideoAVI->getTargetFormat());
 					mFilterSys.RunFilters(mpFilterInst);
 
-					const VDPixmap output(VDAsPixmap(mpFilterInst->realSrc));
+					VDPixmap output;
+					if (mpFilterInst->prev->prev)
+						output = VDAsPixmap(static_cast<FilterInstance *>(mpFilterInst->prev)->realDst);
+					else
+						output = VDAsPixmap(*mFilterSys.InputBitmap());
+
 					mpClipCtrl->BlitFrame(&output);
 					success = true;
 				}

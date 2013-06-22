@@ -70,6 +70,7 @@ namespace {
 #ifdef _M_IX86
 		if (MMX_enabled) {
 			vdasm_capture_resample16_MMX(d, stride, s, count, accum, inc);
+			return accum + inc*count;
 		}
 #endif
 

@@ -70,6 +70,7 @@ IDubber				*g_dubber				= NULL;
 COMPVARS			g_Vcompression;
 WAVEFORMATEX		*g_ACompressionFormat		= NULL;
 DWORD				g_ACompressionFormatSize	= 0;
+VDStringA			g_ACompressionFormatHint;
 
 VDAudioFilterGraph	g_audioFilterGraph;
 

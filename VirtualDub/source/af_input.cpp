@@ -262,7 +262,8 @@ void VDAudioFilterPlayback::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	mAudioOut.init((WAVEFORMATEX *)&format);
+	if (!mAudioOut.init((WAVEFORMATEX *)&format))
+		mAudioOut.go_silent();
 	mAudioOut.start();
 }
 

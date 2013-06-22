@@ -228,7 +228,6 @@ void VDClippingControlOverlay::OnPaint() {
 void VDClippingControlOverlay::OnMouseMove(int x, int y) {
 	if (mDragPoleX>=0 || mDragPoleY>=0) {
 
-		VDDEBUG("(%d,%d)\n", x, y);
 		if (mDragPoleX>=0) {
 			double v = std::min<double>(std::max<double>(0.0, (x-mX+1) / (double)(mWidth + 1)), 1.0);
 			int i;
@@ -445,6 +444,14 @@ ATOM RegisterClippingControl() {
 
 VDClippingControl::VDClippingControl(HWND hwnd)
 	: mhwnd(hwnd)
+	, mDisplayWidth(0)
+	, mDisplayHeight(0)
+	, mOverlayX(0)
+	, mOverlayY(0)
+	, mSourceWidth(0)
+	, mSourceHeight(0)
+	, mInvSourceWidth(0)
+	, mInvSourceHeight(0)
 	, x1(0)
 	, y1(0)
 	, x2(0)
@@ -699,6 +706,8 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			if (GetWindowLong(mhwnd, GWL_STYLE) & CCS_POSITION)
 				CreateWindowEx(0,POSITIONCONTROLCLASS,NULL,WS_CHILD									,0,0,0,64,mhwnd,(HMENU)IDC_POSITION,g_hInst,NULL);
+
+			SetWindowLong(mhwnd, GWL_EXSTYLE, GetWindowLong(mhwnd, GWL_EXSTYLE) | WS_EX_CONTROLPARENT);
 
 			EnumChildWindows(mhwnd, InitChildrenProc, 0);
 

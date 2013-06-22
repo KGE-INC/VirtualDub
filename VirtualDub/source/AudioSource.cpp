@@ -37,6 +37,7 @@ namespace {
 
 	enum {
 		kVDM_TruncatedMP3FormatFixed,
+		kVDM_VBRAudioDetected
 	};
 }
 
@@ -230,13 +231,11 @@ bool AudioSourceAVI::init() {
 		double mean, stddev, maxdev;
 
 		if (pAVIStream->getVBRInfo(mean, stddev, maxdev)) {
-			guiMessageBoxF(g_hWnd, "VBR audio stream detected", MB_OK|MB_TASKMODAL|MB_SETFOREGROUND,
-				"VirtualDub has detected an improper VBR audio encoding in the source AVI file and will rewrite the audio header "
-				"with standard CBR values during processing for better compatibility. This may introduce up to %.0lf ms of skew "
-				"from the video stream. If this is unacceptable, decompress the *entire* audio stream to an uncompressed WAV file "
-				"and recompress with a constant bitrate encoder. "
-				"(bitrate: %.1lf ± %.1lf kbps)"
-				,maxdev*1000.0,mean*0.001, stddev*0.001);
+			double meanOut = mean*0.001;
+			double stddevOut = stddev*0.001;
+			double maxdevOut = maxdev*1000.0;
+
+			VDLogAppMessage(kVDLogWarning, kVDST_AudioSource, kVDM_VBRAudioDetected, 3, &maxdevOut, &meanOut, &stddevOut);
 		}
 	}
 
@@ -341,6 +340,13 @@ int AudioSourceAVI::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint
 	return AVIERR_OK;
 }
 
+VDPosition AudioSourceAVI::TimeToPositionVBR(VDTime us) const {
+	return pAVIStream->TimeToPosition(us);
+}
+
+VDTime AudioSourceAVI::PositionToTimeVBR(VDPosition samples) const {
+	return pAVIStream->PositionToTime(samples);
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -407,17 +413,14 @@ bool AudioSourceDV::init() {
 	case 0x00:
 		samplingRate = 48000;
 		mSamplesPerSet		= isPAL ? 19200 : 16016;
-		mMinimumFrameSize	= isPAL ? 1896 : 1580;
 		break;
 	case 0x08:
 		samplingRate = 44100;
 		mSamplesPerSet		= isPAL ? 17640 : 14715;
-		mMinimumFrameSize	= isPAL ? 1742 : 1452;
 		break;
 	case 0x10:
 		samplingRate = 32000;
 		mSamplesPerSet		= isPAL ? 12800 : 10677;
-		mMinimumFrameSize	= isPAL ? 1264 : 1053;
 		break;
 	default:
 		return false;
@@ -592,7 +595,27 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 
 				const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];
 
-				const uint32 n = mMinimumFrameSize + (pAAUX[1] & 0x3f);
+				uint8 vaux_vs_pc3 = mTempBuffer[80*(1*150 + 3) + 6];		// DIF sequence 1, block 3, VAUX pack 0
+
+				bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
+
+				uint32 minimumFrameSize;
+
+				switch(pAAUX[4] & 0x38) {
+				case 0x00:
+					minimumFrameSize	= isPAL ? 1896 : 1580;
+					break;
+				case 0x08:
+					minimumFrameSize	= isPAL ? 1742 : 1452;
+					break;
+				case 0x10:
+					minimumFrameSize	= isPAL ? 1264 : 1053;
+					break;
+				default:
+					return NULL;
+				}
+
+				const uint32 n = minimumFrameSize + (pAAUX[1] & 0x3f);
 
 				if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
 					VDDEBUG("AudioSourceDV: Sample count overflow!\n");
@@ -692,7 +715,7 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 
 			VDASSERT((sint32)u >= 0);
 
-			unsigned n = mSamplesPerSet-2;
+			unsigned n = setSize-2;
 			do {
 				const sint16 *src2 = src + (u>>16)*2;
 				sint32 f = (u>>4)&0xfff;
@@ -709,12 +732,14 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 				dst += 2;
 			} while(--n);
 
+			VDASSERT(((u - dudx) >> 16) < cline.mRawSamples);
+
 			// copy last sample
 			dst[0] = src[cline.mRawSamples*2-2];
 			dst[1] = src[cline.mRawSamples*2-1];
 		}
 
-		VDDEBUG("AudioSourceDV: Loaded cache line %u for %u raw samples (%u samples expected)\n", (unsigned)setpos*10, cline.mRawSamples, mSamplesPerSet);
+		VDDEBUG("AudioSourceDV: Loaded cache line %u for %u raw samples (%u samples expected)\n", (unsigned)setpos*10, cline.mRawSamples, setSize);
 
 		mCacheLinePositions[line] = setpos;
 	}

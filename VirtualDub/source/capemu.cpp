@@ -72,6 +72,9 @@ public:
 	bool	SetTunerChannel(int channel) { return false; }
 	int		GetTunerChannel() { return -1; }
 	bool	GetTunerChannelRange(int& minChannel, int& maxChannel) { return false; }
+	uint32	GetTunerFrequencyPrecision() { return 0; }
+	uint32	GetTunerExactFrequency() { return 0; }
+	bool	SetTunerExactFrequency(uint32 freq) { return false; }
 
 	int		GetAudioDeviceCount();
 	const wchar_t *GetAudioDeviceName(int idx);
@@ -231,11 +234,13 @@ bool VDCaptureDriverEmulation::Init(VDGUIHandle hParent) {
 	VDRegistryAppKey key("Capture");
 	VDStringW filename;
 
-	if (key.getString("Emulation file", filename)) {
-		try {
-			OpenInputFile(filename.c_str());
-		} catch(const MyError&) {
-			// silently eat the error
+	if (GetAsyncKeyState(VK_SHIFT) >= 0) {
+		if (key.getString("Emulation file", filename)) {
+			try {
+				OpenInputFile(filename.c_str());
+			} catch(const MyError&) {
+				// silently eat the error
+			}
 		}
 	}
 
@@ -708,16 +713,20 @@ LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT 
 
 		while(long availbytes = pThis->mAudioOutput.avail()) {
 			char buf[8192];
-			uint32 bytes, samples;
+			uint32 bytes = 0, samples = 0;
 
 			if (availbytes > 8192)
 				availbytes = 8192;
 
+			uint32 availsamples = (uint32)availbytes / pThis->mAudioSampleSize;
+
 			int err = 0;
-			try {
-				err = pThis->mpAudio->read(pThis->mAudioPos, availbytes, buf, availbytes, &bytes, &samples);
-			} catch(const MyError&) {
-				samples = 0;
+			if (availsamples > 0) {
+				try {
+					err = pThis->mpAudio->read(pThis->mAudioPos, availsamples, buf, availbytes, &bytes, &samples);
+				} catch(const MyError&) {
+					samples = 0;
+				}
 			}
 			
 			if (err || !samples) {

@@ -292,9 +292,6 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				sprintf(buf, "%.4f", 10000000.0 / mParms.mFramePeriod);
 				SendMessage(GetDlgItem(mhdlg, IDC_CAPTURE_FRAMERATE), WM_SETTEXT, 0, (LPARAM)buf);
 
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, mParms.mVideoBufferCount, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS, mParms.mAudioBufferCount, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, mParms.mAudioBufferSize, FALSE);
 				CheckDlgButton(mhdlg, IDC_CAPTURE_ON_OK, mParms.mbDisplayPrerollDialog ? 1 : 0);
 			}	
 			return TRUE;
@@ -333,30 +330,6 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						return TRUE;
 					}
 					mParms.mFramePeriod = (DWORD)(10000000.0 / dFrameRate);
-
-					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS));
-						return TRUE;
-					}
-					mParms.mVideoBufferCount = lV;
-
-					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS));
-						return TRUE;
-					}
-					mParms.mAudioBufferCount = lV;
-
-					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE));
-						return TRUE;
-					}
-					mParms.mAudioBufferSize = lV;
 
 					mParms.mbDisplayPrerollDialog = !!IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ON_OK);
 				}

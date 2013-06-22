@@ -22,6 +22,7 @@
 #include <vfw.h>
 
 #include <vd2/system/refcount.h>
+#include <vd2/system/VDString.h>
 
 class InputFile;
 class IVDInputDriver;
@@ -49,6 +50,7 @@ extern IDubber				*g_dubber;
 extern COMPVARS			g_Vcompression;
 extern WAVEFORMATEX		*g_ACompressionFormat;
 extern DWORD			g_ACompressionFormatSize;
+extern VDStringA		g_ACompressionFormatHint;
 
 extern VDAudioFilterGraph	g_audioFilterGraph;
 

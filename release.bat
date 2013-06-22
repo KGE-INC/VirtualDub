@@ -38,6 +38,11 @@ set _use_vc71=false
 set _use_vc8=false
 set _vc8_flags=/D_CRT_SECURE_NO_DEPRECATE /wd4018 /wd4571
 
+rem ---echo banner
+echo VirtualDub Build Release Utility Version 1.6.13
+echo Copyright (C) Avery Lee 2003-2006. Licensed under GNU General Public License
+
+
 rem ---parse command line arguments
 
 :arglist
@@ -76,14 +81,14 @@ if "%1"=="/inc" (
 	)
 ) else (
 	echo.
-	echo syntax: release [switches]
+	echo Syntax: release [switches]
 	echo     /inc          do incremental build
-	echo     /full         do full build
+	echo     /full         do full build ^(default^)
 	echo     /check        do check build [allow version increment]
 	echo     /debug        build debug build
         echo     /release      build release build
-	echo     /debugamd64   build debug AMD64 build [requires PSDK]
-	echo     /amd64        build AMD64 build [requires PSDK]
+	echo     /debugamd64   build debug AMD64 build [requires Platform SDK with AMD64 support]
+	echo     /amd64        build AMD64 build [requires Platform SDK with AMD64 support]
 	echo     /helpfile     build helpfile
 	echo     /packonly     skip builds and only package
 	echo     /vc71         use Visual Studio .NET 2003 compiler for x86 build
@@ -116,6 +121,7 @@ echo --- Starting build
 
 if "%_build_help%"=="true" (
 	echo --- Building helpfile
+	msdev VirtualDub.dsw /make "Lina - Win32 Release" %_project_switches%
 	msdev VirtualDub.dsw /make "Helpfile - Win32 Release" %_project_switches%
 )
 
@@ -155,15 +161,15 @@ if "%_check%"=="false" (
 	copy out\Release\vdsvrlnk.dll out\Distribution\bindist
 	copy out\Release\vdremote.dll out\Distribution\bindist
 	copy out\Release\auxsetup.exe out\Distribution\bindist
-	copy out\Release\VirtualDub.vdhelp out\Distribution\bindist
 	upx -9 out\Distribution\bindist\*.exe out\Distribution\bindist\*.dll
 	copy out\ReleaseAMD64\Veedub64.exe out\Distribution\bindist
 	copy out\ReleaseAMD64\Veedub64.vdi out\Distribution\bindist
 	copy out\ReleaseAMD64\vdub64.exe out\Distribution\bindist
 	xcopy VirtualDub\dist\* out\Distribution\bindist /s/e/i
 	copy copying out\Distribution\bindist
+	copy out\Helpfile\VirtualDub.chm out\Distribution\bindist
 	cd out\Distribution\bindist
-	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.vdhelp vdub.exe *.dll auxsetup.exe aviproxy\* plugins\* copying
+	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.chm vdub.exe *.dll auxsetup.exe aviproxy\* plugins\* copying
 	zip -9 -X ..\bin-amd64.zip Veedub64.* vdub64.exe copying
 	cd ..\..\..
 	zip -9 -X -j out\Distribution\linkmaps.zip out\Release\VirtualDub.map out\ReleaseAMD64\Veedub64.map
@@ -221,7 +227,7 @@ if "%3"=="AMD64" (
 	set include=%_dx9%\include;!include!
 	set lib=%_dx9%\lib\x64;!lib!
 	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /useenv
-	msdev VirtualDub.dsw /make "test - Win32 %~1" /useenv
+	if not errorlevel 1 msdev VirtualDub.dsw /make "test - Win32 %~1" /useenv
 	endlocal
 	if errorlevel 1 set _build_abort=true
 ) else (
@@ -244,11 +250,11 @@ if "%3"=="AMD64" (
 		set lib=!_dx9!\lib;!lib!
 	)
 	msdev VirtualDub.dsw /make "vdsvrlnk - Win32 %~1" !_project_switches!
-	msdev VirtualDub.dsw /make "vdicmdrv - Win32 %~1" !_project_switches!
-	msdev VirtualDub.dsw /make "vdremote - Win32 %~1" !_project_switches!
-	msdev VirtualDub.dsw /make "Setup - Win32 %~1" !_project_switches!
-	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" !_project_switches!
-	msdev VirtualDub.dsw /make "test - Win32 %~1" !_project_switches!
+	if not errorlevel 1 msdev VirtualDub.dsw /make "vdicmdrv - Win32 %~1" !_project_switches!
+	if not errorlevel 1 msdev VirtualDub.dsw /make "vdremote - Win32 %~1" !_project_switches!
+	if not errorlevel 1 msdev VirtualDub.dsw /make "Setup - Win32 %~1" !_project_switches!
+	if not errorlevel 1 msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" !_project_switches!
+	if not errorlevel 1 msdev VirtualDub.dsw /make "test - Win32 %~1" !_project_switches!
 	endlocal
 	if errorlevel 1 set _build_abort=true
 )

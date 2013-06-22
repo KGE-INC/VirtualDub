@@ -159,6 +159,7 @@ public:
 	virtual void UICaptureFileUpdated() = 0;
 	virtual void UICaptureAudioFormatUpdated() = 0;
 	virtual void UICaptureVideoFormatUpdated() = 0;
+	virtual void UICaptureVideoPreviewFormatUpdated() = 0;
 	virtual void UICaptureVideoSourceChanged(int source) = 0;
 	virtual void UICaptureTunerChannelChanged(int ch, bool init) = 0;
 	virtual void UICaptureParmsUpdated() = 0;
@@ -188,6 +189,7 @@ public:
 	virtual void UICaptureFileUpdated();
 	virtual void UICaptureAudioFormatUpdated();
 	virtual void UICaptureVideoFormatUpdated();
+	virtual void UICaptureVideoPreviewFormatUpdated();
 	virtual void UICaptureVideoSourceChanged(int source);
 	virtual void UICaptureTunerChannelChanged(int ch, bool init);
 	virtual void UICaptureParmsUpdated();
@@ -245,6 +247,9 @@ public:
 	virtual bool	SetTunerChannel(int channel) = 0;
 	virtual int		GetTunerChannel() = 0;
 	virtual bool	GetTunerChannelRange(int& minChannel, int& maxChannel) = 0;
+	virtual uint32	GetTunerFrequencyPrecision() = 0;			///< Minimum frequency change in Hz. Returns 0 if not available.
+	virtual uint32	GetTunerExactFrequency() = 0;
+	virtual bool	SetTunerExactFrequency(uint32 freq) = 0;
 
 	virtual int		GetAudioDeviceCount() = 0;
 	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;
@@ -311,8 +316,8 @@ public:
 	virtual bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex) = 0;
 
 	virtual void	SetAudioCompFormat() = 0;
-	virtual void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex) = 0;
-	virtual bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex) = 0;
+	virtual void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex, const char *shortNameHint) = 0;
+	virtual bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex, VDStringA& shortNameHint) = 0;
 
 	virtual void		SetCaptureFile(const wchar_t *filename, bool isStripeSystem) = 0;
 	virtual VDStringW	GetCaptureFile() = 0;

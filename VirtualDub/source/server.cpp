@@ -191,7 +191,7 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	videoset.dump();
 
 	if (audio)
-		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == video->getEnd()) ? audio->getEnd() : 0);
+		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == video->getEnd()) ? audio->getEnd() : 0, NULL);
 
 	VDDEBUG("Audio subset:\n");
 	audioset.dump();

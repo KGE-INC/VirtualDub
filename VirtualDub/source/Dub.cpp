@@ -358,6 +358,7 @@ private:
 	int					nVideoLagPreload;
 
 	vdstructex<WAVEFORMATEX> mAudioCompressionFormat;
+	VDStringA			mAudioCompressionFormatHint;
 
 	vdblock<char>		mVideoFilterOutput;
 	VDPixmap			mVideoFilterOutputPixmap;
@@ -404,7 +405,7 @@ public:
 	Dubber(DubOptions *);
 	~Dubber();
 
-	void SetAudioCompression(WAVEFORMATEX *wf, LONG cb);
+	void SetAudioCompression(const WAVEFORMATEX *wf, uint32 cb, const char *pShortNameHint);
 	void SetPhantomVideoMode();
 	void SetInputDisplay(IVDVideoDisplay *);
 	void SetOutputDisplay(IVDVideoDisplay *);
@@ -525,8 +526,12 @@ Dubber::~Dubber() {
 
 /////////////////////////////////////////////////
 
-void Dubber::SetAudioCompression(WAVEFORMATEX *wf, LONG cb) {
+void Dubber::SetAudioCompression(const WAVEFORMATEX *wf, uint32 cb, const char *pShortNameHint) {
 	mAudioCompressionFormat.assign(wf, cb);
+	if (pShortNameHint)
+		mAudioCompressionFormatHint = pShortNameHint;
+	else
+		mAudioCompressionFormatHint.clear();
 }
 
 void Dubber::SetPhantomVideoMode() {
@@ -654,7 +659,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 			}
 		}
 
-		aInfo.start_src += audio->msToSamples((long)(aInfo.start_us / 1000));
+		aInfo.start_src += audio->TimeToPositionVBR(aInfo.start_us);
 
 		// clip the end of the audio if supposed to...
 
@@ -748,7 +753,7 @@ void Dubber::InitAudioConversionChain() {
 		if (!opt->audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vSrc->asStream()->getEnd()))
 			applyTail = true;
 
-		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset, applyTail)))
+		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset, applyTail, aSrc)))
 			throw MyMemoryError();
 
 		mAudioStreams.push_back(audioStream);
@@ -813,7 +818,7 @@ void Dubber::InitAudioConversionChain() {
 	AudioCompressor *pCompressor = NULL;
 
 	if (opt->audio.mode > DubAudioOptions::M_NONE && !mAudioCompressionFormat.empty()) {
-		if (!(pCompressor = new_nothrow AudioCompressor(audioStream, &*mAudioCompressionFormat, mAudioCompressionFormat.size())))
+		if (!(pCompressor = new_nothrow AudioCompressor(audioStream, &*mAudioCompressionFormat, mAudioCompressionFormat.size(), mAudioCompressionFormatHint.c_str())))
 			throw MyMemoryError();
 
 		audioStream = pCompressor;

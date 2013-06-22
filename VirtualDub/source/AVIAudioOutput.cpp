@@ -310,7 +310,7 @@ bool AVIAudioOutput::finalize(DWORD timeout) {
 	flush();
 
 	while(checkBuffers(), active)
-		if (hEventBuffersFree != INVALID_HANDLE_VALUE)
+		if (hEventBuffersFree)
 			if (WAIT_OBJECT_0 != WaitForSingleObject(hEventBuffersFree, timeout))
 				return false;
 

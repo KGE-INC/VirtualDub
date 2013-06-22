@@ -130,6 +130,9 @@ public:
 	virtual bool	SetTunerChannel(int channel) = 0;
 	virtual int		GetTunerChannel() = 0;
 	virtual bool	GetTunerChannelRange(int& minChannel, int& maxChannel) = 0;
+	virtual uint32	GetTunerFrequencyPrecision() = 0;
+	virtual uint32	GetTunerExactFrequency() = 0;
+	virtual bool	SetTunerExactFrequency(uint32 freq) = 0;
 
 	virtual int		GetAudioDeviceCount() = 0;
 	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;

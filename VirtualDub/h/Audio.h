@@ -37,6 +37,7 @@ class AudioSource;
 class VDAudioFilterSystem;
 class IVDAudioFilterInstance;
 class IVDAudioFilterSink;
+class IVDStreamSource;
 
 ///////
 
@@ -152,7 +153,7 @@ private:
 	enum { INPUT_BUFFER_SIZE = 16384 };
 
 public:
-	AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len);
+	AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len, const char *shortNameHint);
 	~AudioCompressor();
 	void CompensateForMP3();
 	long _Read(void *buffer, long samples, long *lplBytes);
@@ -201,7 +202,7 @@ private:
 	enum { kSkipBufferSize = 512 };
 
 public:
-	AudioSubset(AudioStream *, const FrameSubset *, const VDFraction& frameRate, sint64 offset, bool appendTail);
+	AudioSubset(AudioStream *, const FrameSubset *, const VDFraction& frameRate, sint64 offset, bool appendTail, IVDStreamSource *pVBRAudio);
 	~AudioSubset();
 	long _Read(void *, long, long *);
 	bool _isEnd();
@@ -238,6 +239,6 @@ protected:
 	sint64		mSamplePos;
 };
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 appendTail);
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 appendTail, IVDStreamSource *pVBRAudio);
 
 #endif

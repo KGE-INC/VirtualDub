@@ -1513,7 +1513,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 			if (!mem) throw MyMemoryError();
 
 			membase64(mem, (char *)(g_ACompressionFormat+1), g_ACompressionFormat->cbSize);
-			output.addf("VirtualDub.audio.SetCompression(%d,%d,%d,%d,%d,%d,%d,\"%s\");"
+			output.addf("VirtualDub.audio.SetCompressionWithHint(%d,%d,%d,%d,%d,%d,%d,\"%s\",\"%s\");"
 						,g_ACompressionFormat->wFormatTag
 						,g_ACompressionFormat->nSamplesPerSec
 						,g_ACompressionFormat->nChannels
@@ -1522,17 +1522,19 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 						,g_ACompressionFormat->nBlockAlign
 						,g_ACompressionFormat->cbSize
 						,mem
+						,VDEncodeScriptString(g_ACompressionFormatHint).c_str()
 						);
 
 			freemem(mem);
 		} else
-			output.addf("VirtualDub.audio.SetCompression(%d,%d,%d,%d,%d,%d);"
+			output.addf("VirtualDub.audio.SetCompressionWithHint(%d,%d,%d,%d,%d,%d,\"%s\");"
 						,g_ACompressionFormat->wFormatTag
 						,g_ACompressionFormat->nSamplesPerSec
 						,g_ACompressionFormat->nChannels
 						,g_ACompressionFormat->wBitsPerSample
 						,g_ACompressionFormat->nAvgBytesPerSec
 						,g_ACompressionFormat->nBlockAlign
+						,VDEncodeScriptString(g_ACompressionFormatHint).c_str()
 						);
 	} else
 		output.addf("VirtualDub.audio.SetCompression();");

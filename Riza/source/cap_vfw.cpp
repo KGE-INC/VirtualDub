@@ -93,6 +93,9 @@ public:
 	bool	SetTunerChannel(int channel) { return false; }
 	int		GetTunerChannel() { return -1; }
 	bool	GetTunerChannelRange(int& minChannel, int& maxChannel) { return false; }
+	uint32	GetTunerFrequencyPrecision() { return 0; }
+	uint32	GetTunerExactFrequency() { return 0; }
+	bool	SetTunerExactFrequency(uint32 freq) { return false; }
 
 	int		GetAudioDeviceCount();
 	const wchar_t *GetAudioDeviceName(int idx);

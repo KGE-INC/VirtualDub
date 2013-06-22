@@ -409,6 +409,10 @@ bool IsJPEGHeader(const void *pv, uint32 len) {
 			if (buf[6] == 'E' && buf[7] == 'x' && buf[8] == 'i' && buf[9] == 'f')
 				return true;
 		}
+
+		// Might be a bare JPEG. Look for the start of a second marker and xFFD9 at the end.
+		if (buf[2] == 0xFF && buf[len - 2] == 0xFF && buf[len - 1] == 0xD9)
+			return true;
 	}
 	return false;
 }

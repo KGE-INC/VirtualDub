@@ -82,6 +82,9 @@ public:
 
 	bool init();
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
+
+	virtual VDPosition TimeToPositionVBR(VDTime us) const;
+	virtual VDTime PositionToTimeVBR(VDPosition samples) const;
 };
 
 class AudioSourceDV : public VDAudioSourceAVISourced {
@@ -112,7 +115,6 @@ protected:
 	IAVIReadStream *mpStream;
 	bool bQuiet;
 	sint32	mSamplesPerSet;
-	sint32	mMinimumFrameSize;
 	sint32	mRightChannelOffset;
 	VDPosition mLastFrame;
 	VDPosition	mRawFrames;

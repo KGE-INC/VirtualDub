@@ -52,7 +52,7 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 
 			if (bits == 16 && r == 0x7c00 && g == 0x03e0 && b == 0x001f)
 				return kPixFormat_XRGB1555;
-			else if (bits == 16 && r == 0xf800 && g == 0x07c0 && b == 0x001f)
+			else if (bits == 16 && r == 0xf800 && g == 0x07e0 && b == 0x001f)
 				return kPixFormat_RGB565;
 			else if (bits == 24 && r == 0xff0000 && g == 0x00ff00 && b == 0x0000ff)
 				return kPixFormat_RGB888;
@@ -130,7 +130,7 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		{
 			DWORD *fields = (DWORD *)(dst.data() + 1);
 			fields[0] = 0xf800;
-			fields[1] = 0x07c0;
+			fields[1] = 0x07e0;
 			fields[2] = 0x001f;
 		}
 		break;

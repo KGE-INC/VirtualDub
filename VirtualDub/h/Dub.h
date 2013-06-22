@@ -175,7 +175,7 @@ class IDubber {
 public:
 	virtual ~IDubber()					=0;
 
-	virtual void SetAudioCompression(WAVEFORMATEX *wf, LONG cb)	=0;
+	virtual void SetAudioCompression(const WAVEFORMATEX *wf, uint32 cb, const char *pShortNameHint) = 0;
 	virtual void SetInputFile(InputFile *)=0;
 	virtual void SetPhantomVideoMode()=0;
 	virtual void SetInputDisplay(IVDVideoDisplay *pDisplay) = 0;

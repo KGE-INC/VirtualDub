@@ -166,6 +166,10 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	// create Ctrl+C handler
 	SetConsoleCtrlHandler(CtrlHandler, TRUE);
 
+	// kill error dialogs
+	UINT dwOldErrorMode = SetErrorMode(0);
+	SetErrorMode(dwOldErrorMode | SEM_FAILCRITICALERRORS);
+
 	// launch main VirtualDub exe
 	STARTUPINFO si = {sizeof(STARTUPINFO)};
 	si.wShowWindow	= SW_SHOWMINNOACTIVE;

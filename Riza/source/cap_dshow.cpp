@@ -31,6 +31,8 @@
 #include <qedit.h>
 #include <guiddef.h>
 #include <dvdmedia.h>		// VIDEOINFOHEADER2
+#include <ks.h>
+#include <ksmedia.h>
 #include <vector>
 
 using namespace nsVDCapture;
@@ -45,6 +47,64 @@ extern HINSTANCE g_hInst;
 
 
 #define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDDEBUG("Failed: " msg " [%08lx : %s]\n", hr, GetDXErrorName(hr)); return false; } else
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	fast semaphore
+//
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	class VDFastSemaphore {
+	public:
+		VDFastSemaphore(int initial);
+		~VDFastSemaphore();
+
+		void Wait() {
+			if (mValue.postdec() <= 0)
+				SlowWait();
+		}
+
+		bool TryWait() {
+			if (mValue.postinc() < 0) {
+				++mValue;
+				return false;
+			}
+
+			return true;
+		}
+
+		void Post() {
+			if (mValue.postinc() < 0)
+				SlowPost();
+		}
+
+	private:
+		void SlowWait();
+		void SlowPost();
+
+		VDAtomicInt mValue;
+		HANDLE mKernelSema;
+	};
+
+	VDFastSemaphore::VDFastSemaphore(int initial)
+		: mValue(initial)
+		, mKernelSema(CreateSemaphore(NULL, 1, 1, NULL))
+	{
+	}
+
+	VDFastSemaphore::~VDFastSemaphore()
+	{
+	}
+
+	void VDFastSemaphore::SlowWait() {
+		WaitForSingleObject(mKernelSema, INFINITE);
+	}
+
+	void VDFastSemaphore::SlowPost() {
+		ReleaseSemaphore(mKernelSema, 1, NULL);
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -182,6 +242,7 @@ namespace {
 	I_HATE(ISampleGrabber);
 	I_HATE(ISpecifyPropertyPages);
 	I_HATE(IVideoWindow);
+	I_HATE(IKsPropertySet);
 
 	#undef I_HATE
 }
@@ -862,7 +923,9 @@ namespace {
 
 class IVDCaptureDSCallback {
 public:
+	virtual bool CapTryEnterCriticalSection() = 0;
 	virtual void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key) = 0;
+	virtual void CapLeaveCriticalSection() = 0;
 };
 
 class VDCapDevDSCallback : public ISampleGrabberCB {
@@ -929,31 +992,21 @@ public:
 		BYTE *pData;
 		HRESULT hr;
 
-		// retrieve sample pointer
+		if (mpCallback->CapTryEnterCriticalSection()) {
+			// retrieve sample pointer
+			if (FAILED(hr = pSample->GetPointer(&pData)))
+				return hr;
 
-		if (FAILED(hr = pSample->GetPointer(&pData)))
-			return hr;
+			// retrieve times
+			__int64 t1, t2;
+			if (FAILED(hr = pSample->GetTime(&t1, &t2)))
+				return hr;
 
-		// retrieve times
-		__int64 t1, t2;
-		if (FAILED(hr = pSample->GetTime(&t1, &t2)))
-			return hr;
+			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+			++mFrameCount;
 
-#if 0
-		// create buffer -- must be in heap!!
-
-		VDCaptureBufferDS *pBuffer = new VDCaptureBufferDS(pSample, pData, pSample->GetActualDataLength(), S_OK == pSample->IsSyncPoint(), (t1+5)/10);
-
-		// invoke callback
-
-		if (pBuffer) {
-			pBuffer->AddRef();
-			mpCallback->PostVideo(pBuffer);
+			mpCallback->CapLeaveCriticalSection();
 		}
-#endif
-
-		mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
-		++mFrameCount;
 
 		return S_OK;
 	}
@@ -977,27 +1030,20 @@ public:
 		BYTE *pData;
 		HRESULT hr;
 
-		// retrieve sample pointer
-		if (FAILED(hr = pSample->GetPointer(&pData)))
-			return hr;
+		if (mpCallback->CapTryEnterCriticalSection()) {
+			// retrieve sample pointer
+			if (FAILED(hr = pSample->GetPointer(&pData)))
+				return hr;
 
-		// retrieve times
-		__int64 t1, t2;
-		if (FAILED(hr = pSample->GetTime(&t1, &t2)))
-			return hr;
+			// retrieve times
+			__int64 t1, t2;
+			if (FAILED(hr = pSample->GetTime(&t1, &t2)))
+				return hr;
 
-		// create buffer -- must be in heap!!
-#if 0
-		VDCaptureBufferDS *pBuffer = new VDCaptureBufferDS(pSample, pData, pSample->GetActualDataLength(), true, -1);
-
-		// invoke callback
-
-		if (pBuffer) {
-			pBuffer->AddRef();
-			mpCallback->PostAudio(pBuffer);
+			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+			mpCallback->CapLeaveCriticalSection();
 		}
-#endif
-		mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+
 		return S_OK;
 	}
 
@@ -1046,6 +1092,9 @@ public:
 	bool	SetTunerChannel(int channel);
 	int		GetTunerChannel();
 	bool	GetTunerChannelRange(int& minChannel, int& maxChannel);
+	uint32	GetTunerFrequencyPrecision();
+	uint32	GetTunerExactFrequency();
+	bool	SetTunerExactFrequency(uint32 freq);
 
 	int		GetAudioDeviceCount();
 	const wchar_t *GetAudioDeviceName(int idx);
@@ -1110,7 +1159,9 @@ protected:
 	static LRESULT CALLBACK StaticMessageSinkWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT MessageSinkWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+	bool CapTryEnterCriticalSection();
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key);
+	void CapLeaveCriticalSection();
 
 	IVDCaptureDriverCallback	*mpCB;
 	DisplayMode			mDisplayMode;
@@ -1193,7 +1244,7 @@ protected:
 	// Callbacks
 	VDCapDevDSVideoCallback		mVideoCallback;
 	VDCapDevDSAudioCallback		mAudioCallback;
-//	IVDCaptureEventCallback *mpEventCallback;
+	VDFastSemaphore				mGraphStateLock;
 
 	// Misc flags & state
 	DWORD mdwRegisterGraph;				// Used to register filter graph in ROT for graphedit
@@ -1231,7 +1282,7 @@ ATOM VDCaptureDriverDS::sMsgSinkClass;
 
 VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	: mpCB(NULL)
-	, mDisplayMode(kDisplayHardware)
+	, mDisplayMode(kDisplayNone)
 	, mVideoDeviceMoniker(pVideoDevice)
 	, mAudioDeviceIndex(0)
 	, mpVideoQualProp(NULL)
@@ -1247,7 +1298,7 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	, mpVideoCrossbar(NULL)
 	, mVideoCallback(this)
 	, mAudioCallback(this)
-//	, mpEventCallback(NULL)
+	, mGraphStateLock(1)
 	, mhwndParent(NULL)
 	, mhwndEventSink(NULL)
 	, mDisplayRect(0,0,0,0)
@@ -1765,7 +1816,7 @@ bool VDCaptureDriverDS::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size
 	vhdr->rcSource.right	= 0;
 	vhdr->rcSource.bottom	= 0;
 	vhdr->rcTarget			= vhdr->rcSource;
-	vhdr->AvgTimePerFrame	= GetFramePeriod() * 10;
+	vhdr->AvgTimePerFrame	= GetFramePeriod();
 	vhdr->dwBitRate			= VDRoundToInt(pbih->biSizeImage * 80000000.0 / vhdr->AvgTimePerFrame);
 	vhdr->dwBitErrorRate	= 0;
 
@@ -1961,6 +2012,87 @@ bool VDCaptureDriverDS::GetTunerChannelRange(int& minChannel, int& maxChannel) {
 	}
 
 	return false;
+}
+
+namespace
+{
+	struct TunerInfo {
+		bool Init(IUnknown *pTuner) {
+			if (!pTuner)
+				return false;
+
+			if (FAILED(pTuner->QueryInterface(IID_IKsPropertySet, (void **)~mpPropSet)))
+				return false;
+
+			DWORD dwSupport;
+			if (FAILED(mpPropSet->QuerySupported(PROPSETID_TUNER, KSPROPERTY_TUNER_MODE_CAPS, &dwSupport)))
+				return false;
+
+			if (!(dwSupport & KSPROPERTY_SUPPORT_GET))
+				return false;
+
+			DWORD actual;
+
+			// uselessness of IKsPropertySet::Get() docs is astounding... InstanceData is supposed
+			// to be the portion of the struct after sizeof(KSPROPERTY).
+			memset(&mTunerModeCaps, 0, sizeof mTunerModeCaps);
+			mTunerModeCaps.Mode = KSPROPERTY_TUNER_MODE_TV;
+			if (FAILED(mpPropSet->Get(PROPSETID_TUNER, KSPROPERTY_TUNER_MODE_CAPS, (KSPROPERTY *)&mTunerModeCaps + 1, sizeof mTunerModeCaps - sizeof(KSPROPERTY), &mTunerModeCaps, sizeof mTunerModeCaps, &actual)))
+				return false;
+
+			return true;
+		}
+
+		IKsPropertySetPtr mpPropSet;
+		KSPROPERTY_TUNER_MODE_CAPS_S mTunerModeCaps;
+	};
+}
+
+uint32 VDCaptureDriverDS::GetTunerFrequencyPrecision() {
+	TunerInfo info;
+
+	if (!info.Init(mpTuner))
+		return 0;
+
+	return info.mTunerModeCaps.TuningGranularity;
+}
+
+uint32 VDCaptureDriverDS::GetTunerExactFrequency() {
+	TunerInfo info;
+
+	if (!info.Init(mpTuner))
+		return 0;
+
+	KSPROPERTY_TUNER_FREQUENCY_S freq = {0};
+	DWORD actual;
+
+	if (FAILED(info.mpPropSet->Get(PROPSETID_TUNER, KSPROPERTY_TUNER_FREQUENCY, (KSPROPERTY *)&freq + 1, sizeof freq - sizeof(KSPROPERTY), &freq, sizeof freq, &actual)))
+		return 0;
+
+	return freq.Frequency;
+}
+
+bool VDCaptureDriverDS::SetTunerExactFrequency(uint32 freq) {
+	TunerInfo info;
+
+	if (!info.Init(mpTuner))
+		return 0;
+
+	if (freq < info.mTunerModeCaps.MinFrequency || freq > info.mTunerModeCaps.MaxFrequency)
+		return 0;
+
+	KSPROPERTY_TUNER_FREQUENCY_S freqData = {0};
+	DWORD actual;
+
+	if (FAILED(info.mpPropSet->Get(PROPSETID_TUNER, KSPROPERTY_TUNER_FREQUENCY, (KSPROPERTY *)&freq + 1, sizeof freqData - sizeof(KSPROPERTY), &freqData, sizeof freqData, &actual)))
+		return 0;
+
+	freqData.Frequency = freq;
+	freqData.TuningFlags = KS_TUNER_TUNING_EXACT;
+
+	HRESULT hr = info.mpPropSet->Set(PROPSETID_TUNER, KSPROPERTY_TUNER_FREQUENCY, (KSPROPERTY *)&freqData + 1, sizeof freqData - sizeof(KSPROPERTY), &freqData, sizeof freqData);
+
+	return SUCCEEDED(hr);
 }
 
 int VDCaptureDriverDS::GetAudioDeviceCount() {
@@ -2504,7 +2636,9 @@ bool VDCaptureDriverDS::CaptureStart() {
 				return true;
 		}
 
+		mGraphStateLock.Wait();
 		mpGraphControl->Stop();		// Have to do this because our graph state flag doesn't track PAUSED. Okay to fail.
+		mGraphStateLock.Post();
 
 		if (mpCB)
 			mpCB->CapEnd(mpCaptureError ? mpCaptureError : NULL);
@@ -2578,7 +2712,9 @@ bool VDCaptureDriverDS::StopGraph() {
 	VDDEBUG("Riza/CapDShow: Filter graph stopping...\n");
 #endif
 
+	mGraphStateLock.Wait();
 	HRESULT hr = mpGraphControl->Stop();
+	mGraphStateLock.Post();
 
 #ifdef _DEBUG
 	VDDEBUG("Riza/CapDShow: Filter graph stopped in %d ms.\n", VDGetAccurateTick() - startTime);
@@ -2764,6 +2900,11 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		// In software mode we force the rendering path to use the same format that
 		// would be used for capture. This is already done for us above, so we
 		// simply add the renderer.
+		//
+		// Note that while it might seem like a good idea to use a Smart Tee to rip off the
+		// timestamps, this doesn't work since it causes the video to play at maximum speed,
+		// causing horrible stuttering on the PX-M402U.
+		//
 		DS_VERIFY(mpGraphBuilder->Render(pCapturePin), "render capture pin (hardware display)");
 		pCapturePin = NULL;
 		break;
@@ -3236,6 +3377,10 @@ LRESULT VDCaptureDriverDS::MessageSinkWndProc(HWND hwnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+bool VDCaptureDriverDS::CapTryEnterCriticalSection() {
+	return mGraphStateLock.TryWait();
+}
+
 void VDCaptureDriverDS::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key) {
 	if (mpCaptureError)
 		return;
@@ -3267,6 +3412,10 @@ skip_processing:
 				PostMessage(mhwndEventSink, WM_APP+1, 0, 0);
 		}
 	}
+}
+
+void VDCaptureDriverDS::CapLeaveCriticalSection() {
+	mGraphStateLock.Post();
 }
 
 ///////////////////////////////////////////////////////////////////////////

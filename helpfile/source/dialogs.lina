@@ -232,6 +232,10 @@
 					pixel with similar perceptual quality to 24-bit RGB by only storing color information at half
 					horizontal resolution, producing slight color bleeding but only taking two-thirds as much space.
 					<p>
+						This format, as do all other YCbCr formats listed below, encodes luminance (Y) with
+						a range of [16, 235] and chroma (Cb/Cr, or U/V), with a range of [16, 240].
+					</p>
+					<p>
 					UYVY is accepted directly by many video codecs. Since many video codecs internally use color
 					spaces similar to YCbCr, using this format with video codecs can speed up rendering.
 					</p>
@@ -252,6 +256,10 @@
 						formats. However, it should be avoided for interlaced video, where the loss of vertical color
 						resolution can cause motion artifacts between fields.
 					</p>
+					<lina:note>
+						Although 4:2:0 YCbCr formats exist that accommodate interlacing, the YV12 four-character code (FOURCC)
+						denotes a specific 4:2:0 encoding that is non-interlaced.
+					</lina:note>
 				</dd>
 
 				<dt>4:2:2 planar YCbCr (YV16)</dt>
@@ -715,9 +723,6 @@
 			</p>
 
 			<dl>
-				<dt>Capture audio</dt>
-				<dd>Controls whether audio and video are captured, or just video alone.</dd>
-
 				<dt>Wait for OK to capture</dt>
 				<dd>If checked, a dialog is displayed after capture is initialized.  This minimizes click-to-capture delay.</dd>
 
@@ -732,56 +737,30 @@
 					With such a driver, for instance, the two closest rates to 15 fps are 14.925 fps (67 ms) and 15.152 fps (66 ms).
 					This button allows you to see the actual rate that would occur.
 				</dd>
-
-				<dt>Abort hotkey and button</dt>
-				<dd>
-					Controls which key and/or mouse button stops video capture.
-
-					<lina:note>Abort keys and buttons are system-wide and work no matter what application is selected.</lina:note>
-				</dd>
-
-				<dt>Audio and video buffer limits</dt>
-				<dd>
-					Sets the number of desired buffers to use to temporarily hold data while waiting for the hard
-					disk.  Typically, about 10 video buffers and 4 audio buffers are adequate.
-
-					<lina:note>
-						The actual number of buffers is limited by available, contiguous free physical memory.
-						Only a portion of total memory can be allocated to buffers.  The maximum number of audio
-						buffers is 10.
-					</lina:note>
-				</dd>
-
-				<dt>Audio buffer size</dt>
-				<dd>
-					Controls how much audio is accumulated at a time, in bytes; this also controls the size of audio blocks
-					that are written to disk.  To small of a buffer can increase CPU load; too large of a buffer can push
-					audio too far apart from corresponding video frames on disk and can make the capture file play back
-					poorly.  Zero selects 0.5 seconds or 10K, whichever is smaller.
-				</dd>
 			</dl>
 
+			<h2>Obsolete settings</h2>
 			<p>
-				The following options only work for compatibility mode capture:
+				Many settings that used to be in this dialog have been obsoleted or moved:
 			</p>
 
 			<dl>
-				<dt>Drop % limit</dt>
+				<dt>Capture audio</dt>
+				<dd>Now an option on the Audio menu.</dd>
+
+				<dt>Abort hotkey and button</dt>
 				<dd>
-					The threshold of dropped frames at which the capture is automatically stopped.
+					The abort hotkey is now always Esc. Also, it is program-local (VirtualDub must have focus for it to work).
 				</dd>
 
-				<dt>Maximum index entries</dt>
+				<dt>Audio and video buffer limits, audio buffer size</dt>
 				<dd>
-					Limits the total number of audio and video frames that can be written to the AVI file.  One index entry
-					is used per video frame and block of audio.
+					Set automatically.
 				</dd>
 
-				<dt>Lock video stream to audio</dt>
+				<dt>Drop % limit, maximum index entries, lock video stream to audio</dt>
 				<dd>
-					Controls whether the video framerate is adjusted in the AVI file to compensate for error in the
-					sound capture rate.  This can improve audio synchronization, but will make it difficult to edit
-					afterward as two clips captured at the same rate will have different frame rates on disk.
+					These options applied only to AVICap (compatibility mode) capture, which is no longer supported.
 				</dd>
 			</dl>
 

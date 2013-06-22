@@ -31,7 +31,7 @@ public:
 	VDAudioCodecW32();
 	~VDAudioCodecW32();
 
-	void Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat = NULL);
+	void Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat = NULL, bool isCompression = false, const char *pShortNameDriverHint = NULL);
 	void Shutdown();
 
 	bool IsInitialized() const { return mhStream != NULL; }

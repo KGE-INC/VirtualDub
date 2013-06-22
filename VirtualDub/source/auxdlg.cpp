@@ -236,10 +236,10 @@ void AnnounceExperimental() {
 #if 1
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.12", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.13", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.6.12", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.13", 1);
 	}
 #endif
 }

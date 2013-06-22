@@ -725,6 +725,17 @@
 		These formats are thus very friendly to direct-mode editing and are good choices for capture or intermediate
 		video files.
 	</p>
+	<h2>Limitations on direct-mode imposed by source format</h2>
+	<p>
+		MPEG-1 video streams cannot be copied in direct mode, because MPEG-1 video compression is incompatible with the
+		AVI file format. Also, MPEG-1 audio streams are always decompressed to raw PCM regardless of the audio mode setting.
+	</p>
+	<p>
+		DV files that use interleaved storage (type-1 DV AVI) may have their audio streams slightly modified when
+		processing the audio stream in direct mode, because VirtualDub has to resample the audio stream in some cases
+		to force a consistent audio sample rate. This is not a problem for AVIs that have the DV data split into
+		traditional audio and video streams (type-2).
+	</p>
 	<h2>Limitations on editing imposed by audio compression</h2>
 	<p>
 		Audio compression works by processing blocks of audio as individual units. In direct mode, VirtualDub copies these

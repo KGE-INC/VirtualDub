@@ -346,11 +346,11 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
-			L"VirtualDub CLI Video Processor Version 1.6.12 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+			L"VirtualDub CLI Video Processor Version 1.6.13 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 			,1
 			,&version_num));
 	VDLog(kVDLogInfo, VDswprintf(
-			L"Copyright (C) Avery Lee 1998-2005. Licensed under GNU General Public License\n"
+			L"Copyright (C) Avery Lee 1998-2006. Licensed under GNU General Public License\n"
 			,1
 			,&version_num));
 
@@ -748,18 +748,21 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 
 				if (*s == L'?')
 					throw MyError(
+					//   12345678901234567890123456789012345678901234567890123456789012345678901234567890
 						"Command-line flags:\n"
 						"\n"
 						"  /b <src-dir> <dst-dir>    Add batch entries for a directory\n"
 						"  /c                        Clear job list\n"
 						"  /capture                  Switch to capture mode\n"
-						"  /capchannel <ch>          Set capture channel\n"
+						"  /capchannel <ch> [<freq>] Set capture channel (opt. frequency in MHz)\n"
 						"  /capdevice <devname>      Set capture device\n"
 						"  /capfile <filename>       Set capture filename\n"
-						"  /capstart [<timelimit>]   Capture (w/opt timelimit in minutes)\n"
-						"  /cmd <command>			 Run quick script command\n"
+						"  /capstart [<time>[s]]     Capture with optional time limit\n"
+						"                            (default is minutes, use 's' for seconds)\n"
+						"  /cmd <command>            Run quick script command\n"
 						"  /F <filter>               Load filter\n"
 						"  /h                        Disable exception filter\n"
+						"  /hexedit [<filename>]     Open hex editor\n"
 						"  /i <script> [<args...>]   Invoke script with arguments\n"
 						"  /p <src> <dst>            Add a batch entry for a file\n"
 						"  /queryVersion             Return build number\n"
@@ -798,6 +801,9 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						throw MyError("Command line error: syntax is /capchannel <channel>");
 
 					g_capProjectUI->SetTunerChannel(_wtoi(token.c_str()));
+
+					if (ParseArgument(s, token))
+						g_capProjectUI->SetTunerExactFrequency(VDRoundToInt(wcstod(token.c_str(), NULL) * 1000000));
 				}
 				else if (token == L"capdevice") {
 					if (!g_capProjectUI)
@@ -806,7 +812,8 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					if (!ParseArgument(s, token))
 						throw MyError("Command line error: syntax is /capdevice <device>");
 
-					g_capProjectUI->SetDriver(token.c_str());
+					if (!g_capProjectUI->SetDriver(token.c_str()))
+						throw MyError("Unable to initialize capture device: %ls\n", token.c_str());
 				}
 				else if (token == L"capfile") {
 					if (!g_capProjectUI)
@@ -822,7 +829,14 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						throw MyError("Command line error: not in capture mode");
 
 					if (ParseArgument(s, token)) {
-						int limit = 60*_wtoi(token.c_str());
+						int multiplier = 60;
+
+						if (!token.empty() && token[token.size()-1] == 's') {
+							token.resize(token.size()-1);
+							multiplier = 1;
+						}
+
+						int limit = multiplier*_wtoi(token.c_str());
 
 						g_capProjectUI->SetTimeLimit(limit);
 					}
@@ -858,6 +872,12 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				}
 				else if (token == L"h") {
 					SetUnhandledExceptionFilter(NULL);
+				}
+				else if (token == L"hexedit") {
+					if (ParseArgument(s, token))
+						HexEdit(NULL, VDTextWToA(token).c_str());
+					else
+						HexEdit(NULL, NULL);
 				}
 				else if (token == L"i") {
 					VDStringW filename;
@@ -913,9 +933,12 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					++s;
 
 			} else {
-				if (ParseArgument(s, token))
-					g_project->Open(token.c_str());
-				else
+				if (ParseArgument(s, token)) {
+					if (g_capProjectUI)
+						g_capProjectUI->SetCaptureFile(token.c_str());
+					else
+						g_project->Open(token.c_str());
+				} else
 					++s;
 			}
 		}

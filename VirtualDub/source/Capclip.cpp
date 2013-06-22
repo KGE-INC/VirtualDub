@@ -44,6 +44,7 @@ protected:
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 	void OnInit();
 	void OnCleanup();
+	void Layout();
 
 	void UICaptureAnalyzeFrame(const VDPixmap& format);
 
@@ -55,6 +56,11 @@ protected:
 
 	VDCriticalSection	mDisplayBufferLock;
 	VDPixmapBuffer		mDisplayBuffer;
+
+	int		mLastFrameWidth;
+	int		mLastFrameHeight;
+
+	bool	mbOldVideoFrameTransferEnabled;
 };
 
 INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -84,28 +90,27 @@ INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				OnCleanup();
 				End(FALSE);
 				return TRUE;
-			case IDC_BORDERS:
-//				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam));
-				return TRUE;
 			}
             break;
 
 		case WM_TIMER:
 			break;
 
-		case WM_NOTIFY:
-			{
-//				const VBitmap *vbm = g_pClippingDecoder->getFrameBuffer();
-
-//				vbm->MakeBitmapHeader(&bih);
-
-//				SendMessage(g_hwndClippingDisplay, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)vbm->data);
-			}
-			break;
-
 		case WM_USER+100:
 			vdsynchronized(mDisplayBufferLock) {
 				IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_BORDERS));
+
+				if (mLastFrameWidth != mDisplayBuffer.w || mLastFrameHeight != mDisplayBuffer.h) {
+					mLastFrameWidth = mDisplayBuffer.w;
+					mLastFrameHeight = mDisplayBuffer.h;
+
+					vdrect32 r;
+					pCC->GetClipBounds(r);
+					pCC->SetBitmapSize(mDisplayBuffer.w, mDisplayBuffer.h);
+					Layout();
+					pCC->SetClipBounds(r);
+				}
+
 				pCC->BlitFrame(&mDisplayBuffer);
 			}
 			break;
@@ -117,47 +122,22 @@ INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 void VDDialogCaptureCropping::OnInit() {
 	mFilterSetup = mpProject->GetFilterSetup();
 
-	ClippingControlBounds ccb;
-	LONG hborder, hspace;
-	RECT rw, rc, rcok, rccancel;
-	HWND hWnd, hWndCancel;
-
-	hWnd = GetDlgItem(mhdlg, IDC_BORDERS);
-	ccb.x1	= mFilterSetup.mCropRect.left;
-	ccb.x2	= mFilterSetup.mCropRect.right;
-	ccb.y1	= mFilterSetup.mCropRect.top;
-	ccb.y2	= mFilterSetup.mCropRect.bottom;
-
-//	capGetStatus(hwndCapture, &cs, sizeof cs);
-
+	IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_BORDERS));
 	vdstructex<BITMAPINFOHEADER> bih;
 
-	if (mpProject->GetVideoFormat(bih))
-		SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(bih->biWidth, bih->biHeight));
-	else
-		SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));
+	mLastFrameWidth = 320;
+	mLastFrameHeight = 240;
 
-	SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
+	if (mpProject->GetVideoFormat(bih)) {
+		mLastFrameWidth = bih->biWidth;
+		mLastFrameHeight = bih->biHeight;
 
-	GetWindowRect(mhdlg, &rw);
-	GetWindowRect(hWnd, &rc);
-	hborder = rc.left - rw.left;
-	ScreenToClient(mhdlg, (LPPOINT)&rc.left);
-	ScreenToClient(mhdlg, (LPPOINT)&rc.right);
+		pCC->SetBitmapSize(mLastFrameWidth, mLastFrameHeight);
+	} else
+		pCC->SetBitmapSize(320, 240);
 
-	SetWindowPos(mhdlg, NULL, 0, 0, (rc.right - rc.left) + hborder*2, (rw.bottom-rw.top)+(rc.bottom-rc.top), SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
-
-	hWndCancel = GetDlgItem(mhdlg, IDCANCEL);
-	hWnd = GetDlgItem(mhdlg, IDOK);
-	GetWindowRect(hWnd, &rcok);
-	GetWindowRect(hWndCancel, &rccancel);
-	hspace = rccancel.left - rcok.right;
-	ScreenToClient(mhdlg, (LPPOINT)&rcok.left);
-	ScreenToClient(mhdlg, (LPPOINT)&rcok.right);
-	ScreenToClient(mhdlg, (LPPOINT)&rccancel.left);
-	ScreenToClient(mhdlg, (LPPOINT)&rccancel.right);
-	SetWindowPos(hWndCancel, NULL, rc.right - (rccancel.right-rccancel.left), rccancel.top + (rc.bottom-rc.top), 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-	SetWindowPos(hWnd, NULL, rc.right - (rccancel.right-rccancel.left) - (rcok.right-rcok.left) - hspace, rcok.top + (rc.bottom-rc.top), 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
+	Layout();
+	pCC->SetClipBounds(mFilterSetup.mCropRect);
 
 	SetTimer(mhdlg, 1, 500, NULL);
 
@@ -176,16 +156,58 @@ void VDDialogCaptureCropping::OnInit() {
 
 	// jump to analysis mode
 	mpProject->SetDisplayMode(nsVDCapture::kDisplayAnalyze);
+	mbOldVideoFrameTransferEnabled = mpProject->IsVideoFrameTransferEnabled();
+	mpProject->SetVideoFrameTransferEnabled(true);
 }
 
 void VDDialogCaptureCropping::OnCleanup() {
 	// restore old display mode
+	mpProject->SetVideoFrameTransferEnabled(mbOldVideoFrameTransferEnabled);
 	mpProject->SetDisplayMode(nsVDCapture::kDisplayNone);
 	mpProject->SetFilterSetup(mFilterSetup);
 	mpProject->SetDisplayMode(mOldDisplayMode);
 
 	// restore old callback
 	mpProject->SetCallback(mpOldCallback);
+}
+
+void VDDialogCaptureCropping::Layout() {
+	RECT rw, rc, rcok, rccancel;
+	HWND hwnd, hwndCancel;
+	LONG hborder, hspace;
+
+	hwnd = GetDlgItem(mhdlg, IDC_BORDERS);
+	IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)hwnd);
+	GetWindowRect(mhdlg, &rw);
+	GetWindowRect(hwnd, &rc);
+	hborder = rc.left - rw.left;
+
+	pCC->AutoSize((rw.right - rw.left) - (rc.right - rc.left), (rw.bottom - rw.top) - (rc.bottom - rc.top));
+	GetWindowRect(hwnd, &rc);
+
+	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
+
+	RECT rPad = {0,0,7,7};
+	MapDialogRect(mhdlg, &rPad);
+
+	hwndCancel = GetDlgItem(mhdlg, IDCANCEL);
+	hwnd = GetDlgItem(mhdlg, IDOK);
+	GetWindowRect(hwnd, &rcok);
+	GetWindowRect(hwndCancel, &rccancel);
+	hspace = rccancel.left - rcok.right;
+	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rcok, 2);
+	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rccancel, 2);
+
+	int yPad = rPad.bottom - rPad.top;
+	int y = yPad + rc.bottom;
+
+	RECT rNew = { 0, 0, (rc.right - rc.left) + hborder*2, y + (rccancel.bottom - rccancel.top) + yPad };
+
+	AdjustWindowRect(&rNew, GetWindowLong(mhdlg, GWL_STYLE), FALSE);
+
+	SetWindowPos(mhdlg, NULL, 0, 0, rNew.right - rNew.left, rNew.bottom - rNew.top, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+	SetWindowPos(hwndCancel, NULL, rc.right - (rccancel.right-rccancel.left), y, 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
+	SetWindowPos(hwnd, NULL, rc.right - (rccancel.right-rccancel.left) - (rcok.right-rcok.left) - hspace, y, 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
 }
 
 void VDDialogCaptureCropping::UICaptureAnalyzeFrame(const VDPixmap& format) {

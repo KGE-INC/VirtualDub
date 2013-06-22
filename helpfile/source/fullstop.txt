@@ -1,0 +1,7 @@
+VirtualDub
+video
+audio
+1
+2
+320
+240

@@ -284,8 +284,8 @@ INT_PTR CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, 
 					g_dTVDriver.memoryWriteBYTE(0xA0, (hscale-4096)>>8);
 					g_dTVDriver.memoryWriteBYTE(0x24, hscale&0xff);
 					g_dTVDriver.memoryWriteBYTE(0xA4, hscale&0xff);
-					g_dTVDriver.memoryWriteBYTE(0x18, hdelay&0xfe);
-					g_dTVDriver.memoryWriteBYTE(0x98, hdelay&0xfe);
+					g_dTVDriver.memoryWriteBYTE(0x18, (hdelay&0xfe) + (g_dTVDriver.memoryReadBYTE(0x18) & 0x01));
+					g_dTVDriver.memoryWriteBYTE(0x98, (hdelay&0xfe) + (g_dTVDriver.memoryReadBYTE(0x98) & 0x01));
 					g_dTVDriver.memoryWriteBYTE(0x0C, (g_dTVDriver.memoryReadBYTE(0x0C) & 0xf3) + ((hdelay&0x300)>>6));
 					g_dTVDriver.memoryWriteBYTE(0x8C, (g_dTVDriver.memoryReadBYTE(0x8C) & 0xf3) + ((hdelay&0x300)>>6));
 				}

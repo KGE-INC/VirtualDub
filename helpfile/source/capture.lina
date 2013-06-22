@@ -4,6 +4,18 @@
 		it into a form that can be used on a computer. VirtualDub allows use of several classes of video capture hardware to do
 		this conversion, depositing the result as an <tt>.avi</tt> file on disk.
 	</p>
+	<h2>What you need to use capture mode</h2>
+	<p>
+		In order to use VirtualDub's video capture mode, you need:
+	</p>
+	<ul>
+		<li>A video capture device.</li>
+		<li>An external video source.</li>
+	</ul>
+	<p>
+		Video capture mode cannot be used to capture streaming video over a network or graphics on your own local machine (unless
+		you loop-back TV out into a video capture device).
+	</p>
 </lina:create>
 
 <lina:create file="c-spillmode.html" title="Capture: Multi-segment mode">
@@ -635,6 +647,11 @@
 		the better it can keep audio and video streams in synchronization.
 	</p>
 
+	<lina:note>
+		When in capture mode, VirtualDub temporarily sets its process priority to High and disables both the screensaver
+		and power saving mode on the display device. It isn't necessary to change these manually.
+	</lina:note>
+
 	<h2>
 		Keep the disk clean
 	</h2>
@@ -1078,6 +1095,19 @@
 		Check the video standard in use. Attempting to capture an NTSC stream as PAL, PAL as SECAM, etc. will
 		result in scrambled color. The video standard is normally controlled in <em>Video settings</em> for
 		VFW drivers and <em>Capture filter</em> for WDM drivers, although the location may vary.
+	</p>
+
+	<h2>Video capture mysteriously stops</h2>
+	<p>
+		Check <em>Capture &gt; Stop Conditions</em> and make sure no conditions have been inadvertently enabled.
+	</p>
+	<p>
+		Interruptions in video sources, causing a loss of video signal, can occasionally cause this problem.
+	</p>
+	<p>
+		On Windows NT-based platforms, locking the workstation with Ctrl+Alt+Del can cause a capture operation
+		to stop. In general, it is best to avoid doing anything that might change desktops or the video
+		display mode.
 	</p>
 </lina:create>
 

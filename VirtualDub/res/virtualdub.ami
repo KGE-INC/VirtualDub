@@ -44,6 +44,7 @@ stringset 4 {		// kVDST_InputFileAVI
 	message 1, "AVI: Keyframe flag reconstruction was not specified in open options and the video stream "
 						"is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.";
 	message 2, "AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.";
+	message 3, "AVI: An invalid nBlockAlign value of zero in the audio stream format was fixed.";
 }
 
 stringset 5 {		// kVDST_Mpeg
@@ -55,6 +56,8 @@ stringset 5 {		// kVDST_Mpeg
 
 stringset 6 {		// kVDST_AudioSource
 	message 0, "AVI: Truncated or invalid MP3 audio format detected (%d bytes, should be %d). Attempting to fix.";
+	message 1, "AVI: Variable bitrate (VBR) audio detected. VBR audio in AVI is non-standard and you may encounter sync errors up to %.0lfms when attempting to extract WAV files "
+		"or processing the audio in Direct Stream Copy mode. Full Processing mode is recommended to decompress or recompress the audio. (bitrate: %.1lf ± %.1lf kbps)";
 }
 
 stringset 7 {		// kVDST_ProjectUI

@@ -41,9 +41,12 @@ void CopyWaveFormat(WAVEFORMATEX *pDst, const WAVEFORMATEX *pSrc) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+class ACMTagEntry;
+
 class ACMFormatEntry : public ListNode2<ACMFormatEntry> {
 public:
 	ACMFORMATDETAILS afd;
+	ACMTagEntry *pFormatTag;
 	WAVEFORMATEX *pwfex;
 	bool fCompatible;
 
@@ -58,9 +61,16 @@ class ACMTagEntry {
 public:
 	List2<ACMFormatEntry> formats;
 	ACMFORMATTAGDETAILS aftd;
+	ACMDRIVERDETAILS add;
 
+	ACMTagEntry();
 	~ACMTagEntry();
 };
+
+ACMTagEntry::ACMTagEntry() {
+	memset(&add, 0, sizeof add);
+	add.cbStruct = sizeof add;
+}
 
 ACMTagEntry::~ACMTagEntry() {
 	ACMFormatEntry *pafe;
@@ -79,11 +89,21 @@ struct ACMEnumeratorData {
 	DWORD cbwfex;
 	ACMFormatEntry *pFormatSelect;
 	ACMTagEntry *pTagSelect;
+	const char *pHintSelect;
 	bool fAttemptedWeird;
+
+	bool mbCurrentFormatTagMatchesHint;
+	bool mbCurrentSelectedFormatMatchesHint;
+
+	ACMEnumeratorData()
+		: mbCurrentSelectedFormatMatchesHint(false)
+	{
+	}
 };
 
 struct ACMChooserData {
 	WAVEFORMATEX *pwfex, *pwfexSrc;
+	VDStringA *pHint;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -108,8 +128,12 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 		if (pafd->pwfx->wFormatTag == WAVE_FORMAT_PCM ||
 			(pafd->pwfx->cbSize == pData->pwfexSelect->cbSize && !memcmp(pafd->pwfx, pData->pwfexSelect, sizeof(WAVEFORMATEX)+pafd->pwfx->cbSize))) {
 
-			pData->pTagSelect = pData->pate;
-			pData->pFormatSelect = pafe;
+			// Mark this one as selected only if no format has been found yet or
+			// this one is a better match (matches hint).
+			if (pData->mbCurrentFormatTagMatchesHint || !pData->mbCurrentSelectedFormatMatchesHint) {
+				pData->pTagSelect = pData->pate;
+				pData->pFormatSelect = pafe;
+			}
 		}
 	}
 
@@ -126,6 +150,7 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 	}
 
 	pData->pate->formats.AddTail(pafe);
+	pafe->pFormatTag = pData->pate;
 
 	return TRUE;
 }
@@ -144,6 +169,14 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 
 			pate->aftd = *paftd;
 			pData->pate = pate;
+			pData->mbCurrentFormatTagMatchesHint = false;
+
+			if (acmDriverDetails(hadid, &pate->add, 0))
+				pate->add.cbStruct = 0;
+			else {
+				if (pData->pHintSelect && !_stricmp(pData->pHintSelect, pate->add.szShortName))
+					pData->mbCurrentFormatTagMatchesHint = true;
+			}
 
 			memset(&afd, 0, sizeof afd);
 			afd.cbStruct = sizeof(ACMFORMATDETAILS);
@@ -284,6 +317,7 @@ static INT_PTR CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARA
 			aed.pwfexSrc = thisPtr->pwfexSrc;
 			aed.pTagSelect = NULL;
 			aed.pFormatSelect = NULL;
+			aed.pHintSelect = thisPtr->pHint->empty() ? NULL : thisPtr->pHint->c_str();
 
 			if (!aed.pwfex) {
 				EndDialog(hdlg, 0);
@@ -375,6 +409,11 @@ static INT_PTR CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARA
 
 					thisPtr->pwfex = pFormat->pwfex;
 					pFormat->pwfex = NULL;
+
+					if (pFormat->pFormatTag->add.cbStruct > 0)
+						thisPtr->pHint->assign(pFormat->pFormatTag->add.szShortName);
+					else
+						thisPtr->pHint->clear();
 				}
 			}
 			EndDialog(hdlg, 1);
@@ -441,11 +480,12 @@ redisplay_formats:
 	return FALSE;
 }
 
-WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *pwfexOld, WAVEFORMATEX *pwfexSrc) {
+WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *pwfexOld, WAVEFORMATEX *pwfexSrc, VDStringA& shortNameHint) {
 	ACMChooserData data;
 
 	data.pwfex = pwfexOld;
 	data.pwfexSrc = pwfexSrc;
+	data.pHint = &shortNameHint;
 
 	if (!DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_AUDIOCOMPRESSION), hwndParent, AudioChooseCompressionDlgProc, (LPARAM)&data))
 		return pwfexOld;

@@ -232,7 +232,7 @@ IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn) {
 
 	dwActual = file.readData(buf, 64);
 
-	if (dwActual <= 64)
+	if (dwActual < 64)
 		memcpy(endbuf, buf, dwActual);
 	else {
 		file.seek(-64, nsVDFile::kSeekEnd);

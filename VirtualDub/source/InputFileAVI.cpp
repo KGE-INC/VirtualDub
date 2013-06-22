@@ -54,6 +54,7 @@ namespace {
 		kVDM_OpeningFile,			// AVI: Opening file "%ls"
 		kVDM_RekeyNotSpecified,		// AVI: Keyframe flag reconstruction was not specified in open options and the video stream is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.
 		kVDM_Type1DVNoSound,		// AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.
+		kVDM_InvalidBlockAlign		// AVI: An invalid nBlockAlign value of zero in the audio stream format was fixed.
 	};
 }
 
@@ -453,12 +454,19 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 	audioSrc = new AudioSourceAVI(pAVIFile, fAutomated);
 	if (!audioSrc->init()) {
 		audioSrc = NULL;
-	} else if (lForceAudioHz) {
+	} else {
 		WAVEFORMATEX *pwfex = (WAVEFORMATEX *)audioSrc->getFormat();
 
-		pwfex->nAvgBytesPerSec = MulDiv(pwfex->nAvgBytesPerSec, lForceAudioHz, pwfex->nSamplesPerSec);
-		pwfex->nSamplesPerSec = lForceAudioHz;
-		static_cast<AudioSourceAVI *>(&*audioSrc)->setRate(VDFraction(pwfex->nAvgBytesPerSec, pwfex->nBlockAlign));
+		if (pwfex->wFormatTag == WAVE_FORMAT_MPEGLAYER3 && pwfex->nBlockAlign == 0) {
+			VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_InvalidBlockAlign);
+			pwfex->nBlockAlign = 1;
+		}
+
+		if (lForceAudioHz) {
+			pwfex->nAvgBytesPerSec = MulDiv(pwfex->nAvgBytesPerSec, lForceAudioHz, pwfex->nSamplesPerSec);
+			pwfex->nSamplesPerSec = lForceAudioHz;
+			static_cast<AudioSourceAVI *>(&*audioSrc)->setRate(VDFraction(pwfex->nAvgBytesPerSec, pwfex->nBlockAlign));
+		}
 	}
 
 	if (!audioSrc && videoSrc->isType1()) {
@@ -786,7 +794,14 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					sprintf(buf, "%ldHz", fmt->nSamplesPerSec);
 					SetDlgItemText(hDlg, IDC_AUDIO_SAMPLINGRATE, buf);
 
-					sprintf(buf, "%d (%s)", fmt->nChannels, fmt->nChannels>1 ? "Stereo" : "Mono");
+					if (fmt->nChannels == 8)
+						strcpy(buf, "7.1");
+					else if (fmt->nChannels == 6)
+						strcpy(buf, "5.1");
+					else if (fmt->nChannels > 2)
+						sprintf(buf, "%d", fmt->nChannels);
+					else
+						sprintf(buf, "%d (%s)", fmt->nChannels, fmt->nChannels>1 ? "Stereo" : "Mono");
 					SetDlgItemText(hDlg, IDC_AUDIO_CHANNELS, buf);
 
 					if (fmt->wFormatTag == WAVE_FORMAT_PCM) {

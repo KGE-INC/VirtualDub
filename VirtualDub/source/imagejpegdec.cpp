@@ -580,7 +580,7 @@ void VDJPEGDecoder::Parse() {
 		case kSOF13:
 		case kSOF14:
 		case kSOF15:
-			throw MyError("JPEGDecoder: Unsupported encoding.");
+			throw MyError("JPEGDecoder: Unsupported encoding (SOF%d marker found).", c  - kSOF0);
 			break;
 		case kSOS:
 			ParseScanHeader();

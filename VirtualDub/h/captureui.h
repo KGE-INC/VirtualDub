@@ -28,6 +28,7 @@ public:
 	virtual bool	SetDriver(const wchar_t *s) = 0;
 	virtual void	SetCaptureFile(const wchar_t *s) = 0;
 	virtual bool	SetTunerChannel(int ch) = 0;
+	virtual bool	SetTunerExactFrequency(uint32 freq) = 0;
 	virtual void	SetTimeLimit(int limitsecs) = 0;
 	virtual void	Capture() = 0;
 };

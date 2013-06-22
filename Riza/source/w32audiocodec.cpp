@@ -85,7 +85,7 @@ VDAudioCodecW32::~VDAudioCodecW32() {
 	Shutdown();
 }
 
-void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat) {
+void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat, bool isCompression, const char *pDriverShortNameHint) {
 	Shutdown();
 
 	SafeCopyWaveFormat(mSrcFormat, pSrcFormat);
@@ -93,6 +93,8 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 	if (pDstFormat) {
 		SafeCopyWaveFormat(mDstFormat, pDstFormat);
 	} else {
+		VDASSERT(!isCompression);
+
 		DWORD dwDstFormatSize;
 
 		VDVERIFY(!acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&dwDstFormatSize));
@@ -122,18 +124,94 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 		mDstFormat->cbSize				= 0;
 	}
 
+	// try to find the hinted driver, if a hint is provided
+	struct ACMDriverFinder {
+		ACMDriverFinder(const char *hint) : mpHint(hint), mhDriver(NULL) {}
+
+		static BOOL CALLBACK Callback(HACMDRIVERID hadid, DWORD_PTR dwInstance, DWORD fdwSupport) {
+			ACMDriverFinder *pThis = (ACMDriverFinder *)dwInstance;
+
+			ACMDRIVERDETAILS add = {sizeof(ACMDRIVERDETAILS)};
+			if (!pThis->mhDriver && !acmDriverDetails(hadid, &add, 0) && !_stricmp(add.szShortName, pThis->mpHint)) {
+				if (!acmDriverOpen(&pThis->mhDriver, hadid, 0))
+					return FALSE;
+			}
+
+			return TRUE;
+		}
+
+		const char *const mpHint;
+		HACMDRIVER mhDriver;
+	};
+
+	ACMDriverFinder drvFinder(pDriverShortNameHint);
+
+	if (pDriverShortNameHint)
+		acmDriverEnum(ACMDriverFinder::Callback, (DWORD_PTR)&drvFinder, 0);
+
 	// open conversion stream
 
 	MMRESULT res;
 
 	memset(&mBufferHdr, 0, sizeof mBufferHdr);	// Do this so we can detect whether the buffer is prepared or not.
 
-	res = acmStreamOpen(&mhStream, NULL, (WAVEFORMATEX *)pSrcFormat, mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
+	for(;;) {
+		res = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)pSrcFormat, mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
+		if (!res)
+			break;
+
+		// Aud-X accepts PCM/6ch but not WAVE_FORMAT_EXTENSIBLE/PCM/6ch. Argh. We attempt to work
+		// around this by trying a PCM version if WFE doesn't work.
+		if (isCompression) {
+			// Need to put this somewhere.
+			struct WaveFormatExtensibleW32 {
+				WAVEFORMATEX mFormat;
+				union {
+					uint16 mBitDepth;
+					uint16 mSamplesPerBlock;		// may be zero, according to MSDN
+				};
+				uint32	mChannelMask;
+				GUID	mGuid;
+			};
+
+			static const GUID local_KSDATAFORMAT_SUBTYPE_PCM={	// so we don't have to bring in ksmedia.h
+				WAVE_FORMAT_PCM, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71
+			};
+
+			if (pSrcFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE && pSrcFormat->cbSize >= sizeof(WaveFormatExtensibleW32) - sizeof(WAVEFORMATEX)) {
+				const WaveFormatExtensibleW32& wfexex = *(const WaveFormatExtensibleW32 *)pSrcFormat;
+
+				if (wfexex.mGuid == local_KSDATAFORMAT_SUBTYPE_PCM) {
+					// Rewrite the format to be straight PCM and try again.
+					vdstructex<WAVEFORMATEX> srcFormat2(mSrcFormat.data(), sizeof(WAVEFORMATEX));
+					srcFormat2->cbSize = 0;
+					srcFormat2->wFormatTag = WAVE_FORMAT_PCM;
+					MMRESULT res2 = acmStreamOpen(&mhStream, drvFinder.mhDriver, (WAVEFORMATEX *)srcFormat2.data(), mDstFormat.data(), NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
+
+					if (!res2) {
+						res = res2;
+						mSrcFormat = srcFormat2;
+						pSrcFormat = mSrcFormat.data();
+						break;
+					}
+				}
+			}
+		}
+
+		if (!drvFinder.mhDriver)
+			break;
+
+		acmDriverClose(drvFinder.mhDriver, 0);
+		drvFinder.mhDriver = NULL;
+	}
+
+	if (drvFinder.mhDriver)
+		acmDriverClose(drvFinder.mhDriver, 0);
 
 	if (res) {
 		Shutdown();
 
-		if (pSrcFormat->wFormatTag == WAVE_FORMAT_PCM) {
+		if (isCompression) {
 			if (res == ACMERR_NOTPOSSIBLE) {
 				throw MyError(
 							"Error initializing audio stream compression:\n"
@@ -255,6 +333,39 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 	mBufferHdr.cbDstLengthUsed = 0;
 
 	const bool isCompression = mDstFormat->wFormatTag != WAVE_FORMAT_PCM;
+
+	// Run the message queue and clear out any MM_STREAM_DONE messages. We need to do
+	// this in order to work around a severe bug in the Creative MP3 codec (ctmp3.acm),
+	// which has a loop like this:
+	//
+	//	do {
+	//		Sleep(10);
+	//	} while(!PostThreadMessage(GetCurrentThreadId(), MM_STREAM_DONE, id, 0));
+	//
+	// Since we're not required to run a message pump to use ACM without a window handle,
+	// this causes the window message queue to fill up.
+
+	MSG msg;
+	int messageCount = 0;
+	for(; messageCount < 500; ++messageCount) {
+		if (!PeekMessage(&msg, (HWND)-1, MM_STREAM_DONE, MM_STREAM_DONE, PM_REMOVE | PM_NOYIELD))
+			break;
+	}
+
+	if (messageCount > 0) {
+		static bool wtf = false;
+
+		if (!wtf) {
+			wtf = true;
+
+			VDDEBUG("AudioCodec: MM_STREAM_DONE thread messages found in message queue!\n");
+		}
+
+		if (messageCount >= 500) {
+			VDDEBUG("AudioCodec: Too many messages found!\n");
+		}
+	}
+
 
 	if (mBufferHdr.cbSrcLength || flush) {
 		vdprotected2(isCompression ? "compressing audio" : "decompressing audio", const char *, mDriverName, const char *, mDriverFilename) {

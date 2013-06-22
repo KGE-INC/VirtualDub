@@ -48,6 +48,9 @@ public:
 
 	virtual bool getVBRInfo(double& bitrate_mean, double& bitrate_stddev, double& maxdev)=0;
 	virtual sint64		getSampleBytePosition(VDPosition sample_num) = 0;
+
+	virtual VDPosition TimeToPosition(VDTime timeInMicroseconds) = 0;
+	virtual VDTime PositionToTime(VDPosition pos) = 0;
 };
 
 class IAVIReadHandler {

@@ -1,6 +1,48 @@
 VirtualDub change log
 
-Build %build% (1.6.12, experimental): [%date%]
+Build %build% (1.6.13, experimental): [%date%]
+   [features added]
+   * Added support for pass-through of PCM audio that has more than 2 channels.
+   * Added limited support for correct seeking when reading AVI files with VBR audio. The VBR audio still cannot be written as such in Direct mode, however.
+   * Added /hexedit command-line switch.
+   * Converted help file to HTML Help (.chm) format.
+   * Hex editor: Open dialog now persists its "open as read-only" setting.
+   * Hex editor: Added keyboard shortcuts for open and save.
+   * Hex editor: Stopping a RIFF scan still shows partial info.
+   * Capture: Increased speed of audio resampler.
+   * Capture: Added ability to fine-tune channel tuning.
+   * Capture: The command-line /capstart option can now trigger a capture for shorter than one minute using an "s" prefix, i.e. 10s.
+   * Capture: The "hide on capture" setting is now auto-saved.
+
+   [bugs fixed]
+   * JPEG files lacking a JFIF or Exim header were not recognized.
+   * Error dialogs from Windows on disk or DLL load errors are now suppressed for command-line invocations.
+   * TARGA files with a width of 1 were not written correctly.
+   * Previewing an advanced audio filter graph using a format that the sound card could not play led to a deadlock.
+   * Attempting to use audio conversion or resampling with an input PCM format that was not mono/stereo 8/16-bit led to a crash. For now, attempting to do this now throws an error.
+   * Fixed redraw problems when adjusting the cropping settings of a video filter that is already being cropped on input.
+   * Added workaround for broken AVI files that have MP3 audio streams with nBlockAlign=0.
+   * Fixed audio stream sometimes being truncated when the audio stream's nBlockAlign doesn't match its dwSampleSize value.
+   * Tabbing now works within the border fields of the cropping dialogs.
+   * 16-bit (565) format was using a bogus bit mask for the green channel.
+   * Added workaround for livelock when using Creative MP3 codec caused by strange PostThreadMessage() call within that codec.
+   * When a video filter failed with an error during filter preview, the error was not displayed.
+   * Fixed clicking in DV type-1 audio decoding when switches in audio sampling rate are encountered.
+   * Added code to prevent confusion when multiple MP3 audio codecs are installed.
+   * Capture: Video timing adjustment now defaults to enabled.
+   * Capture: Cropping dialog did not always display live video properly if preview acceleration wasn't enabled.
+   * Capture: Fixed intermittent crash when disabling filtering with a DirectShow driver.
+   * Capture: An error is now displayed when DirectShow filter graph construction fails when starting capture.
+   * Capture: The default display mode for DirectShow drivers couldn't be set to None.
+   * Capture: BT8x8 Tweaker could cause U and V to swap on some cards.
+
+   [regressions fixed]
+   * Filter cropping dialog crashed when no video file was loaded.
+   * Redraw requests could cause the output frame to be updated even if the output frame was disabled.
+   * Capture: Frame rate went crazy when using Set Custom Format with DirectShow drivers.
+   * Capture: Video codecs received a frame rate that was 1/10th that of the correct value (messed up bitrate values accordingly).
+
+Build 24259 (1.6.12, experimental): [January 4, 2006]
    [features added]
    * Performance settings are now auto-saved.
    * Cropping dialogs now auto-scale video that is too large to display and use a dashed crop border for better visibility.

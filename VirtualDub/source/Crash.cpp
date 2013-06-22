@@ -1334,8 +1334,8 @@ static void VDDebugCrashDumpPointers(VDDebugCrashTextOutput& out, const EXCEPTIO
 	VDDebugCrashDumpMemoryRegion(out, pContext->Ebx, "EBX", 8);
 	VDDebugCrashDumpMemoryRegion(out, pContext->Ecx, "ECX", 8);
 	VDDebugCrashDumpMemoryRegion(out, pContext->Edx, "EDX", 8);
-	VDDebugCrashDumpMemoryRegion(out, pContext->Ecx, "ESI", 8);
-	VDDebugCrashDumpMemoryRegion(out, pContext->Edx, "EDI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Esi, "ESI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Edi, "EDI", 8);
 	VDDebugCrashDumpMemoryRegion(out, pContext->Esp, "ESP", 32);
 	VDDebugCrashDumpMemoryRegion(out, pContext->Ebp, "EBP", 32);
 #elif defined(_M_AMD64)

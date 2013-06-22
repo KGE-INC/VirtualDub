@@ -1,11 +1,10 @@
 OUTDIR = ..\out\Helpfile
+LINA = ..\out\$(BUILD)\Lina
+HHC = "C:\Program Files\HTML Help Workshop\hhc.exe"
 
 ..\$(BUILD)\VirtualDub.vdhelp: $(SRC)/*.lina $(SRC)\pics\*
 	-rd /q /s $(OUTDIR)
 	md $(OUTDIR)
-	..\out\$(BUILD)\Lina $(SRC)/root.lina
+	$(LINA) $(SRC)/root.lina
 	cd $(OUTDIR)
-	zip -0 -X help0.zip *.html *.css pics/*
-	-del ..\$(BUILD)\VirtualDub.vdhelp
-	zip -9 -X -j ..\$(BUILD)\VirtualDub.vdhelp help0.zip
-	del help0.zip
+	cmd /v:on /c $(HHC) help.hhp ^& set /a x = 1-!errorlevel! ^> nul ^& exit !x!

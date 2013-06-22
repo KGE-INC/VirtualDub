@@ -1117,6 +1117,15 @@ static void func_VDAudio_SetCompression(IVDScriptInterpreter *isi, VDScriptValue
 	_CrtCheckMemory();
 }
 
+static void func_VDAudio_SetCompressionWithHint(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	VDASSERT(arg_count > 0);
+
+	func_VDAudio_SetCompression(isi, arglist, arg_count - 1);
+
+	if (g_ACompressionFormat)
+		g_ACompressionFormatHint.assign(*arglist[arg_count - 1].asString());
+}
+
 static void func_VDAudio_SetVolume(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
 	if (arg_count)
 		g_dubOpts.audio.volume = arglist[0].asInt();		
@@ -1148,6 +1157,8 @@ static VDScriptFunctionDef obj_VDAudio_functbl[]={
 	{ func_VDAudio_SetCompression	, "SetCompression"		, "0"		},
 	{ func_VDAudio_SetCompression	, NULL					, "0iiiiii" },
 	{ func_VDAudio_SetCompression	, NULL					, "0iiiiiiis" },
+	{ func_VDAudio_SetCompressionWithHint	, "SetCompressionWithHint"					, "0iiiiiis" },
+	{ func_VDAudio_SetCompressionWithHint	, NULL					, "0iiiiiiiss" },
 	{ func_VDAudio_SetVolume			, "SetVolume"			, "0" },
 	{ func_VDAudio_SetVolume			, NULL					, "0i" },
 	{ func_VDAudio_GetVolume			, "GetVolume"			, "i" },

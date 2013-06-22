@@ -122,7 +122,7 @@ extern void CPUTest();
 
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
-extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *, WAVEFORMATEX *);
+extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *, WAVEFORMATEX *, VDString& shortNameHint);
 extern void DisplayLicense(HWND hwndParent);
 
 extern void OpenAVI(bool extended_opt);
@@ -626,7 +626,7 @@ void VDProjectUI::SetAudioInterleaveOptionsAsk() {
 
 void VDProjectUI::SetAudioCompressionAsk() {
 	if (!inputAudio)
-		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, NULL);
+		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, NULL, g_ACompressionFormatHint);
 	else {
 
 		WAVEFORMATEX wfex = {0};
@@ -666,7 +666,7 @@ void VDProjectUI::SetAudioCompressionAsk() {
 		wfex.nBlockAlign		= (WORD)((wfex.wBitsPerSample+7)/8 * wfex.nChannels);
 		wfex.nAvgBytesPerSec	= wfex.nSamplesPerSec * wfex.nBlockAlign;
 
-		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, &wfex);
+		g_ACompressionFormat = AudioChooseCompressor((HWND)mhwnd, g_ACompressionFormat, &wfex, g_ACompressionFormatHint);
 
 	}
 
@@ -929,7 +929,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 
 		case ID_TOOLS_HEXVIEWER:
-			HexEdit(NULL);
+			HexEdit(NULL, NULL);
 			break;
 
 		case ID_TOOLS_CREATESPARSEAVI:
@@ -1798,7 +1798,7 @@ void VDProjectUI::DisplayRequestUpdate(IVDVideoDisplay *pDisp) {
 		if (pDisp == mpOutputDisplay) {
 			bool bValid = filters.isRunning();
 
-			if (!bValid && inputVideoAVI && inputVideoAVI->isFrameBufferValid()) {
+			if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideoAVI && inputVideoAVI->isFrameBufferValid()) {
 				try {
 					RefilterFrame();
 					bValid = true;

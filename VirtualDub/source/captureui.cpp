@@ -82,6 +82,7 @@ static const char g_szCompression			[]="Compression";
 static const char g_szCompressorData		[]="Compressor Data";
 static const char g_szAudioFormat			[]="Audio Format";
 static const char g_szAudioCompFormat		[]="Audio Comp Format";
+static const char g_szAudioCompHint			[]="Audio Comp Hint";
 static const char g_szVideoFormat			[]="Video Format";
 static const char g_szVideoCompFormat		[]="Video Comp Format";
 static const char g_szVideoCompFormatData	[]="Video Comp Format Data";
@@ -94,6 +95,7 @@ static const char g_szMultisegment			[]="Multisegment";
 static const char g_szAutoIncrement			[]="Auto-increment";
 static const char g_szStartOnLeft			[]="Start on left";
 static const char g_szDisplayPrerollDialog	[]="Display preroll dialog";
+static const char g_szHideOnCapture			[]="Hide on capture";
 extern const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szCapSettings			[]="Settings";
 static const char g_szStartupDriver			[]="Startup Driver";
@@ -143,7 +145,7 @@ extern COMPVARS g_compression;
 
 extern void CPUTest();
 
-extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *pwfexOld, WAVEFORMATEX *pwfexSrc);
+extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *pwfexOld, WAVEFORMATEX *pwfexSrc, VDStringA& shortNameHint);
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
 
@@ -295,6 +297,7 @@ public:
 	bool	SetDriver(const wchar_t *s);
 	void	SetCaptureFile(const wchar_t *s);
 	bool	SetTunerChannel(int ch);
+	bool	SetTunerExactFrequency(uint32 freq);
 	void	SetTimeLimit(int limitsecs);
 	void	Capture();
 
@@ -367,6 +370,7 @@ protected:
 	void	UICaptureFileUpdated();
 	void	UICaptureAudioFormatUpdated();
 	void	UICaptureVideoFormatUpdated();
+	void	UICaptureVideoPreviewFormatUpdated();
 	void	UICaptureVideoSourceChanged(int source);
 	void	UICaptureTunerChannelChanged(int ch, bool init);
 	void	UICaptureParmsUpdated();
@@ -725,6 +729,10 @@ bool VDCaptureProjectUI::SetTunerChannel(int ch) {
 	return mpProject->SetTunerChannel(ch);
 }
 
+bool VDCaptureProjectUI::SetTunerExactFrequency(uint32 freq) {
+	return mpProject->SetTunerExactFrequency(freq);
+}
+
 void VDCaptureProjectUI::SetTimeLimit(int limitsecs) {
 	VDCaptureStopPrefs prefs = mpProject->GetStopPrefs();
 
@@ -829,7 +837,6 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 				memset(cp, 0, dwSizeAlloc);
 
 				if (QueryConfigBinary(g_szCapture, g_szCapSettings, (char *)cp, dwSize)) {
-					mpProject->SetHardwareBuffering(cp->wNumVideoRequested, cp->wNumAudioRequested, cp->dwAudioBufferSize);
 					mpProject->SetFrameTime(cp->dwRequestMicroSecPerFrame);
 					mpProject->SetAudioCaptureEnabled(cp->fCaptureAudio != 0);
 				}
@@ -876,6 +883,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	mbAutoIncrementAfterCapture = key.getBool(g_szAutoIncrement, mbAutoIncrementAfterCapture);
 	mbStartOnLeft = key.getBool(g_szStartOnLeft, mbStartOnLeft);
 	mbDisplayPrerollDialog = key.getBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
+	mbHideOnCapture = key.getBool(g_szHideOnCapture, mbHideOnCapture);
 
 	// load timing settings
 
@@ -975,6 +983,7 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szAutoIncrement, mbAutoIncrementAfterCapture);
 	key.setBool(g_szStartOnLeft, mbStartOnLeft);
 	key.setBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
+	key.setBool(g_szHideOnCapture, mbHideOnCapture);
 
 	VDCaptureTimingSetup ts(mpProject->GetTimingSetup());
 
@@ -1120,8 +1129,15 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	if (len >= 0) {
 		vdblock<char> buf(len);
 
-		if (devkey.getBinary(g_szAudioCompFormat, buf.data(), buf.size()))
-			mpProject->SetAudioCompFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
+		if (devkey.getBinary(g_szAudioCompFormat, buf.data(), buf.size())) {
+			const char *pHint = NULL;
+			VDStringA hint;
+
+			if (devkey.getString(g_szAudioCompHint, hint))
+				pHint = hint.c_str();
+
+			mpProject->SetAudioCompFormat(*(const WAVEFORMATEX *)buf.data(), buf.size(), pHint);
+		}
 	}
 
 	// reload inputs, sources, and channel
@@ -1230,11 +1246,15 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 
 	if (mask & kSaveDevAudioComp) {
 		vdstructex<WAVEFORMATEX> wfex;
+		VDStringA hint;
 
-		if (mpProject->GetAudioCompFormat(wfex))
+		if (mpProject->GetAudioCompFormat(wfex, hint)) {
 			devkey.setBinary(g_szAudioCompFormat, (const char *)&*wfex, wfex.size());
-		else
+			devkey.setString(g_szAudioCompHint, hint.c_str());
+		} else {
 			devkey.removeValue(g_szAudioCompFormat);
+			devkey.removeValue(g_szAudioCompHint);
+		}
 	}
 
 	if (mask & kSaveDevFrameRate) {
@@ -1668,7 +1688,9 @@ void VDCaptureProjectUI::UICaptureDriverChanged(int driver) {
 			mpProject->SetDisplayMode(kDisplayNone);
 		}
 
-		SetStatusImmediateF("Connected to capture device: %ls", mpProject->GetDriverName(driver));
+		const wchar_t *s = mpProject->GetDriverName(driver);
+		SetStatusImmediateF("Connected to capture device: %ls", s);
+		VDLog(kVDLogInfo, VDswprintf(L"Connected to capture device: %ls", 1, &s));
 	} else
 		SetStatusImmediate("Disconnected");
 
@@ -1778,6 +1800,9 @@ void VDCaptureProjectUI::UICaptureAudioFormatUpdated() {
 }
 
 void VDCaptureProjectUI::UICaptureVideoFormatUpdated() {
+}
+
+void VDCaptureProjectUI::UICaptureVideoPreviewFormatUpdated() {
 	UpdateDisplayPos();
 }
 
@@ -1954,6 +1979,10 @@ void VDCaptureProjectUI::UICaptureStart() {
 
 	// reset preview rate status
 	SendMessage(mhwndStatus, SB_SETTEXT, 3, (LPARAM)L"");
+
+	const VDStringW& s = mpProject->GetCaptureFile();
+	const wchar_t *t = s.c_str();
+	VDLog(kVDLogInfo, VDswprintf(L"Starting capture to: %ls", 1, &t));
 }
 
 bool VDCaptureProjectUI::UICapturePreroll() {
@@ -1971,6 +2000,12 @@ void VDCaptureProjectUI::UICaptureStatusUpdated(VDCaptureStatus& status) {
 }
 
 void VDCaptureProjectUI::UICaptureEnd(bool success) {
+	if (success) {
+		const VDStringW& s = mpProject->GetCaptureFile();
+		const wchar_t *t = s.c_str();
+		VDLog(kVDLogInfo, VDStringW(L"Capture was completed successfully."));
+	}
+
 	mCPUReader.Shutdown();
 
 	if (mbHideOnCapture) {
@@ -2197,6 +2232,7 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_PREVIEW,			mDisplayModeShadow == kDisplaySoftware);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_HISTOGRAM,			mpProject->IsVideoHistogramEnabled());
 
+	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_CLIPPING_SET,		filtsetup.mCropRect.width() || filtsetup.mCropRect.height());
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_STRETCH,			mbStretchToWindow);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_ENABLEFILTERING,	filtsetup.mbEnableRGBFiltering);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_NOISEREDUCTION,	filtsetup.mbEnableNoiseReduction);
@@ -2466,6 +2502,38 @@ bool VDCaptureProjectUI::OnCaptureSafeCommand(UINT id) {
 			}
 		}
 		break;
+	case ID_DEVICE_TUNER_FINEDOWN:
+		{
+			uint32 frequency, precision;
+
+			precision = mpProject->GetTunerFrequencyPrecision();
+
+			if (precision) {
+				frequency = mpProject->GetTunerExactFrequency();
+
+				if (frequency) {
+					if (mpProject->SetTunerExactFrequency(frequency - precision))
+						SetStatusF("Adjusted tuner frequency to %.6fMHz", mpProject->GetTunerExactFrequency());
+				}
+			}
+		}
+		break;
+	case ID_DEVICE_TUNER_FINEUP:
+		{
+			uint32 frequency, precision;
+
+			precision = mpProject->GetTunerFrequencyPrecision();
+
+			if (precision) {
+				frequency = mpProject->GetTunerExactFrequency();
+
+				if (frequency) {
+					if (mpProject->SetTunerExactFrequency(frequency + precision))
+						SetStatusF("Adjusted tuner frequency to %.6fMHz", mpProject->GetTunerExactFrequency());
+				}
+			}
+		}
+		break;
 	case ID_VIDEO_STRETCH:
 		mbStretchToWindow = !mbStretchToWindow;
 		UpdateDisplayPos();
@@ -2700,8 +2768,9 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 				vdstructex<WAVEFORMATEX> wfexSrc;
 				WAVEFORMATEX *pwfexSrc = NULL;
 				WAVEFORMATEX *pwfexOld = NULL;
+				VDStringA hint;
 
-				if (mpProject->GetAudioCompFormat(wfex)) {
+				if (mpProject->GetAudioCompFormat(wfex, hint)) {
 					size_t len = wfex.size();
 					pwfexOld = (WAVEFORMATEX*)malloc(len);
 					memcpy(pwfexOld, wfex.data(), len);
@@ -2711,12 +2780,12 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 					pwfexSrc = wfexSrc.data();
 
 				// pwfexOld is freed by AudioChooseCompressor
-				WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, pwfexOld, pwfexSrc);
+				WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, pwfexOld, pwfexSrc, hint);
 
 				if (!pwfexNew)
 					mpProject->SetAudioCompFormat();
 				else if (pwfexNew) {
-					mpProject->SetAudioCompFormat(*pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize);
+					mpProject->SetAudioCompFormat(*pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize, hint.c_str());
 
 					free(pwfexNew);
 				}
@@ -2859,16 +2928,10 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 				VDCaptureSettings cs;
 				int videoCount=0, audioCount=0, audioSize=0;
 
-				mpProject->GetHardwareBuffering(videoCount, audioCount, audioSize);
-
 				cs.mFramePeriod = mpProject->GetFrameTime();
-				cs.mVideoBufferCount = videoCount;
-				cs.mAudioBufferCount = audioCount;
-				cs.mAudioBufferSize = audioSize;
 				cs.mbDisplayPrerollDialog = mbDisplayPrerollDialog;
 
 				if (VDShowCaptureSettingsDialog(mhwnd, cs)) {
-					mpProject->SetHardwareBuffering(cs.mVideoBufferCount, cs.mAudioBufferCount, cs.mAudioBufferSize);
 					mpProject->SetFrameTime(cs.mFramePeriod);
 					mbDisplayPrerollDialog = !!cs.mbDisplayPrerollDialog;
 				}
