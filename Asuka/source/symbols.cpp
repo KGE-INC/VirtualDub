@@ -1,7 +1,11 @@
+#pragma warning(disable: 4786)		// STFU
+
 #include <vd2/system/file.h>
 #include <vd2/system/zip.h>
 #include "symbols.h"
 #include <string>
+#include <list>
+#include <map>
 
 class VDSymbolSourceLinkMap : public IVDSymbolSource {
 public:
@@ -14,6 +18,7 @@ public:
 	uint32 GetCodeGroupMask();
 	int GetSectionCount();
 	const VDSection *GetSection(int sec);
+	bool LookupLine(uint32 addr, const char *& filename, int& lineno);
 
 protected:
 	void Init(IVDStream *pStream);
@@ -24,6 +29,13 @@ protected:
 	tSymbols	mSymbols;
 	typedef std::vector<VDSection> tSections;
 	tSections mSections;
+
+	typedef std::list<std::string> tLineStrings;
+	tLineStrings mLineStrings;
+
+	typedef std::pair<const char *, int> tLineInfo;
+	typedef std::map<unsigned, tLineInfo> tLineMap;
+	tLineMap mLineMap;
 };
 
 IVDSymbolSource *VDCreateSymbolSourceLinkMap() {
@@ -177,6 +189,58 @@ void VDSymbolSourceLinkMap::Init(IVDStream *pStream) {
 		}
 	}
 
+	// parse line number information
+	const char *linefn = NULL;
+	int blanklines = 0;
+
+	while(const char *line = textStream.GetNextLine()) {
+		if (!line[0] && linefn) {
+			if (!--blanklines)
+				linefn = NULL;
+		}
+
+		if (line[0] == 'L') {
+			if (!strncmp(line, "Line numbers for ", 17)) {
+				const char *fnstart = line + 17;
+				const char *fnend = fnstart;
+
+				while(const char c = *fnend) {
+					if (c == '/' || c == '\\' || c == ':')
+						fnstart = fnend+1;
+
+					if (c == '(')
+						break;
+
+					++fnend;
+				}
+
+				mLineStrings.push_back(std::string(fnstart, fnend));
+				linefn = mLineStrings.back().c_str();
+
+				// one blank line after the Line numbers header, one after the line numbers
+				// themselves... so kill line number collection on the second blank line
+				blanklines = 2;
+			}
+			continue;
+		}
+
+		if (linefn && line[0] == ' ') {
+			int lineno[4], grp[4], offset[4];
+
+			int count = sscanf(line, "%d %x:%x %d %x:%x %d %x:%x %d %x:%x"
+				, &lineno[0], &grp[0], &offset[0]
+				, &lineno[1], &grp[1], &offset[1]
+				, &lineno[2], &grp[2], &offset[2]
+				, &lineno[3], &grp[3], &offset[3]);
+
+			if (count > 0) {
+				count /= 3;
+				for(int i=0; i<count; ++i)
+					mLineMap.insert(tLineMap::value_type(groups[grp[i]] + offset[i], tLineInfo(linefn, lineno[i])));
+			}
+		}
+	}
+
 	// rebias sections with group offsets
 	tSections::iterator it(mSections.begin()), itEnd(mSections.end());
 	for(; it!=itEnd; ++it) {
@@ -225,3 +289,16 @@ const VDSection *VDSymbolSourceLinkMap::GetSection(int sec) {
 	return &mSections[sec];
 }
 
+bool VDSymbolSourceLinkMap::LookupLine(uint32 addr, const char *& filename, int& lineno) {
+	tLineMap::iterator it(mLineMap.upper_bound(addr));
+
+	if (it != mLineMap.begin()) {
+		--it;
+
+		filename = (*it).second.first;
+		lineno = (*it).second.second;
+		return true;
+	}
+
+	return false;
+}

@@ -31,6 +31,46 @@ namespace {
 		} else
 			dst.assign(src, sizeof(WAVEFORMATEX) + src->cbSize);
 	}
+
+	const char *VDGetNameOfMMSYSTEMErrorW32(MMRESULT res) {
+		switch(res) {
+		case MMSYSERR_NOERROR:		return "MMSYSERR_NOERROR";
+		case MMSYSERR_ERROR:		return "MMSYSERR_ERROR";
+		case MMSYSERR_BADDEVICEID:	return "MMSYSERR_BADDEVICEID";
+		case MMSYSERR_NOTENABLED:	return "MMSYSERR_NOTENABLED";
+		case MMSYSERR_ALLOCATED:	return "MMSYSERR_ALLOCATED";
+		case MMSYSERR_INVALHANDLE:	return "MMSYSERR_INVALHANDLE";
+		case MMSYSERR_NODRIVER:		return "MMSYSERR_NODRIVER";
+		case MMSYSERR_NOMEM:		return "MMSYSERR_NOMEM";
+		case MMSYSERR_NOTSUPPORTED:	return "MMSYSERR_NOTSUPPORTED";
+		case MMSYSERR_BADERRNUM:	return "MMSYSERR_BADERRNUM";
+		case MMSYSERR_INVALFLAG:	return "MMSYSERR_INVALFLAG";
+		case MMSYSERR_INVALPARAM:	return "MMSYSERR_INVALPARAM";
+		case MMSYSERR_HANDLEBUSY:	return "MMSYSERR_HANDLEBUSY";
+		case MMSYSERR_INVALIDALIAS:	return "MMSYSERR_INVALIDALIAS";
+		case MMSYSERR_BADDB:		return "MMSYSERR_BADDB";
+		case MMSYSERR_KEYNOTFOUND:	return "MMSYSERR_KEYNOTFOUND";
+		case MMSYSERR_READERROR:	return "MMSYSERR_READERROR";
+		case MMSYSERR_WRITEERROR:	return "MMSYSERR_WRITEERROR";
+		case MMSYSERR_DELETEERROR:	return "MMSYSERR_DELETEERROR";
+		case MMSYSERR_VALNOTFOUND:	return "MMSYSERR_VALNOTFOUND";
+		case MMSYSERR_NODRIVERCB:	return "MMSYSERR_NODRIVERCB";
+		case MMSYSERR_MOREDATA:		return "MMSYSERR_MOREDATA";
+		default:
+			return "unknown";
+		}
+	}
+
+	const char *VDGetNameOfACMErrorW32(MMRESULT res) {
+		switch(res) {
+			case ACMERR_NOTPOSSIBLE:	return "ACMERR_NOTPOSSIBLE";
+			case ACMERR_BUSY:			return "ACMERR_BUSY";
+			case ACMERR_UNPREPARED:		return "ACMERR_UNPREPARED";
+			case ACMERR_CANCELED:		return "ACMERR_CANCELED";
+			default:
+				return VDGetNameOfMMSYSTEMErrorW32(res);
+		}
+	}
 }
 
 VDAudioCodecW32::VDAudioCodecW32()
@@ -202,10 +242,10 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 	mBufferHdr.cbSrcLengthUsed = 0;
 	mBufferHdr.cbDstLengthUsed = 0;
 
-	const bool isCompression = mDstFormat->wFormatTag == WAVE_FORMAT_PCM;
+	const bool isCompression = mDstFormat->wFormatTag != WAVE_FORMAT_PCM;
 
 	if (mBufferHdr.cbSrcLength || flush) {
-		vdprotected2(isCompression ? "decompressing audio" : "compressing audio", const char *, mDriverName, const char *, mDriverFilename) {
+		vdprotected2(isCompression ? "compressing audio" : "decompressing audio", const char *, mDriverName, const char *, mDriverFilename) {
 			DWORD flags = ACM_STREAMCONVERTF_BLOCKALIGN;
 
 			if (mbFlushing)
@@ -217,9 +257,10 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 			if (MMRESULT res = acmStreamConvert(mhStream, &mBufferHdr, flags))
 				throw MyError(
 					isCompression
-						? "ACM reported error on audio compress (%lx)"
-						: "ACM reported error on audio decompress (%lx)"
-					, res);
+						? "The audio codec reported an error while compressing audio data.\n\nError code: %d (%s)"
+						: "The audio codec reported an error while decompressing audio data.\n\nError code: %d (%s)"
+					, res
+					, VDGetNameOfACMErrorW32(res));
 
 			mbFirst = false;
 		}

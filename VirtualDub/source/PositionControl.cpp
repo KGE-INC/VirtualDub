@@ -629,7 +629,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 
 	case WM_MOUSEWHEEL:
 		{
-			mWheelAccum += (SHORT)HIWORD(wParam);
+			mWheelAccum -= (SHORT)HIWORD(wParam);
 
 			int increments = mWheelAccum / WHEEL_DELTA;
 

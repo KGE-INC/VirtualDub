@@ -509,7 +509,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 						if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
 							if (err == AVIERR_FILEREAD)
-								throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+to_read-1);
+								throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", (unsigned long)cur_samp, (unsigned long)(cur_samp+to_read-1));
 							else
 								throw MyAVIError("AudioStreamSource", err);
 						}
@@ -562,7 +562,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 			if (AVIERR_OK != err) {
 				if (err == AVIERR_FILEREAD)
-					throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+max_samples-1);
+					throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", (unsigned long)cur_samp, (unsigned long)(cur_samp+max_samples-1));
 				else
 					throw MyAVIError("AudioStreamSource", err);
 			}

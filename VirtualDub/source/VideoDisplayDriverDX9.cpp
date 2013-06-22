@@ -383,7 +383,7 @@ bool VDVideoDisplayDX9Manager::Init() {
 	// create device
 	memset(&mPresentParms, 0, sizeof mPresentParms);
 	mPresentParms.Windowed			= TRUE;
-	mPresentParms.SwapEffect		= D3DSWAPEFFECT_DISCARD;
+	mPresentParms.SwapEffect		= D3DSWAPEFFECT_COPY;
 	mPresentParms.BackBufferFormat	= D3DFMT_UNKNOWN;
 	mPresentParms.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
 
@@ -627,8 +627,7 @@ VDVideoDisplayDX9Manager::CubicMode VDVideoDisplayDX9Manager::InitBicubic() {
 		return mCubicMode = kCubicNotPossible;
 	}
 
-//	mCubicMode = kMaxCubicMode;
-	mCubicMode = kCubicUseFF3Path;
+	mCubicMode = kMaxCubicMode;
 	while(mCubicMode > kCubicNotPossible) {
 		if (ValidateBicubicShader(mCubicMode))
 			break;
@@ -1519,6 +1518,7 @@ bool VDVideoDisplayMinidriverDX9::Update(FieldMode) {
 
 void VDVideoDisplayMinidriverDX9::Refresh(FieldMode) {
 	InvalidateRect(mhwnd, NULL, FALSE);
+	UpdateWindow(mhwnd);
 }
 
 bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
@@ -1715,6 +1715,8 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 
 	if (bSuccess)
 		hr = mpD3DDevice->Present(&rClient, NULL, mhwnd, NULL);
+
+	VDDEBUG("w00t hr=%08x\n", hr);
 
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");

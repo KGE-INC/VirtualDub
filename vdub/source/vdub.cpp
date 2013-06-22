@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <malloc.h>
 #include <tchar.h>
+#include <stdio.h>
 
 #ifdef _M_AMD64
 	#define APPNAME "Veedub64.exe"
@@ -62,21 +63,15 @@ BOOL WINAPI SilentCtrlHandler(DWORD dwCtrlType) {
 }
 
 bool WereWeRunFromExplorer() {
-	// try to guess whether we were run from Explorer by two characteristics:
+	// try to guess whether we were run from Explorer:
 	//
-	// 1) our filename is in the title bar
-	// 2) cursor starts at top-left
+	// 1) cursor starts at top-left
 	//
 	CONSOLE_SCREEN_BUFFER_INFO conInfo;
 	if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &conInfo))
 		return false;
 
 	if (conInfo.dwCursorPosition.X || conInfo.dwCursorPosition.Y)
-		return false;
-
-	TCHAR conName[MAX_PATH];
-
-	if (!GetConsoleTitle(conName, MAX_PATH))
 		return false;
 
 	return true;
@@ -139,6 +134,19 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		++cmdLine;
 	}
+
+	// check if we have anything worthy after the command line; if so, don't do
+	// the pause-when-run-from-Explorer, as we may have been launched from a batch
+	// file or something else with an empty screen
+	LPCTSTR tailEnd = cmdLine;
+	while(const TCHAR c = *tailEnd) {
+		if (c != ' ' && c != '\t')
+			break;
+		++tailEnd;
+	}
+
+	if (*tailEnd)
+		bRunFromExplorer = false;
 
 	static const TCHAR magicSwitch[] = _T(" /console /x");
 	static const size_t magicSwitchLen = sizeof magicSwitch / sizeof magicSwitch[0] - 1;

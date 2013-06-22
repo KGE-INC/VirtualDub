@@ -1688,7 +1688,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 			try {
 				vdprotected2("using output buffer at "VDPROT_PTR"-"VDPROT_PTR, void *, lpvBuffer, void *, (char *)lpvBuffer + mFrameBufferSize - 1) {
 					vdprotected2("using input buffer at "VDPROT_PTR"-"VDPROT_PTR, const void *, inputBuffer, const void *, (const char *)inputBuffer + data_len - 1) {
-						vdprotected1("decompressing video frame %I64d", uint64, frame_num) {
+						vdprotected1("decompressing video frame %lu", unsigned long, (unsigned long)frame_num) {
 							mpDecompressor->DecompressFrame(lpvBuffer, inputBuffer, data_len, _isKey(frame_num), is_preroll);
 						}
 					}

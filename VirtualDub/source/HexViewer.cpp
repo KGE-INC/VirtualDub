@@ -1896,9 +1896,6 @@ void HexEditor::Extract() {
 			try {
 				__int64 fpos = 0;
 
-				if (0xFFFFFFFF==SetFilePointer(hFile, (LONG)v1, (LONG *)&v1 + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
-					throw GetLastError();
-
 				pBuf = new char[65536];
 
 				if (!pBuf)
@@ -1927,6 +1924,15 @@ void HexEditor::Extract() {
 
 					pd.check();
 
+					// invalidate cached read position as we're about to seek the read file directly
+					i64FileReadPosition = -1;
+
+					// must reseek before every read as progress indicator can cause main window to
+					// repaint
+					sint64 srcoffset = fpos + v1;
+					if (0xFFFFFFFF==SetFilePointer(hFile, (LONG)srcoffset, (LONG *)&srcoffset + 1, FILE_BEGIN) && GetLastError()!=NO_ERROR)
+						throw GetLastError();
+
 					if (!ReadFile(hFile, pBuf, dwToCopy, &dwActual, NULL) || dwActual < dwToCopy)
 						throw GetLastError();
 
@@ -1954,8 +1960,6 @@ void HexEditor::Extract() {
 			delete[] pBuf;
 		}
 	}
-
-	i64FileReadPosition = -1;
 }
 
 void HexEditor::Find(HWND hwndParent) {

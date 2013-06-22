@@ -198,6 +198,9 @@ static void RedoFilters(HWND hWndList) {
 	FilterInstance *fa;
 	int sel;
 
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
 	sel = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
 
 	MakeFilterList(listFA, hWndList);

@@ -507,23 +507,23 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 		if ((g_prefs.fDisplay & Preferences::kDisplayUseDXWithTS) || !VDIsTerminalServicesClient()) {
 			if (mbLockAcceleration || !mSource.bAllowConversion || bIsForeground) {
 				// The 3D drivers don't currently support subrects.
-				if (!mbUseSubrect) {
-					if (g_prefs.fDisplay & Preferences::kDisplayEnableOpenGL) {
-						mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
-						if (mpMiniDriver->Init(mhwnd, mSource))
-							break;
-						SyncReset();
-					}
-
-					if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
-						mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
-						if (mpMiniDriver->Init(mhwnd, mSource))
-							break;
-						SyncReset();
-					}
-				}
-
 				if (!(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
+					if (!mbUseSubrect) {
+						if (g_prefs.fDisplay & Preferences::kDisplayEnableOpenGL) {
+							mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
+							if (mpMiniDriver->Init(mhwnd, mSource))
+								break;
+							SyncReset();
+						}
+
+						if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
+							mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
+							if (mpMiniDriver->Init(mhwnd, mSource))
+								break;
+							SyncReset();
+						}
+					}
+
 					mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
 					if (mpMiniDriver->Init(mhwnd, mSource))
 						break;

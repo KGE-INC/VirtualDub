@@ -1,6 +1,23 @@
 VirtualDub change log
 
-Build %build% (1.6.7, experimental): [%date%]
+Build %build% (1.6.8, stable): [%date%]
+   [bugs fixed]
+   * Fixed occasional crash if display panes are refreshed while editing the filter list.
+   * Fixed hang if VirtualDub is the active application and attempts to refresh the display panes when a display mode switch occurs.
+   * Display panes did not always update properly when seeking if Direct3D mode was enabled and updating the frame took a lot of CPU time.
+   * Direct3D display mode could be activated if checked even if the option was grayed due to DirectX support being disabled.
+   * Capture: Fixed crash if capture is attempted with audio enabled but audio isn't present or is in an incompatible format.
+   * Reversed direction of mouse wheel action to be consistent with Windows.
+   * Hex editor's Extract Segment command would sometimes extract the wrong segment due to repainting the main pane during the extract.
+   * CLI interface app didn't exit if console was empty prior to invocation due to overzealous Explorer detection. This is now only done if no arguments are supplied.
+   * Fixed crash in MPEG-1 parser when encountering a pack with a too-short length, such as zero.
+   * Audio codec errors sometimes reported the wrong source of the error (i.e. decompressor vs. compressor).
+
+   [regressions fixed]
+   * Pixel shaders were disabled in Direct3D bicubic mode due to debug code mistakenly left in.
+   * MRU list sometimes didn't resort properly when reopening a recently opened file.
+
+Build 23538 (1.6.7, experimental): [%date%]
    [features added]
    * Script: Added support for cast expressions to int/long/double.
    * Video direct-stream path now treats zero-byte (drop) frames as non-essential. A video stream that has been spaced with drop frames to a higher frame rate can now be cleanly converted down as well.

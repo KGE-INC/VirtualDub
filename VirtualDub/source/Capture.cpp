@@ -1539,7 +1539,7 @@ void VDCaptureProject::Capture(bool fTest) {
 
 		// get capture parms
 
-		const bool bCaptureAudio = IsAudioCaptureEnabled();
+		bool bCaptureAudio = IsAudioCaptureEnabled();
 
 		// create an output file object
 
@@ -1587,34 +1587,37 @@ void VDCaptureProject::Capture(bool fTest) {
 		pResyncFilter->EnableVideoTimingCorrection(mTimingSetup.mbCorrectVideoTiming);
 
 		if (bCaptureAudio) {
-			GetAudioFormat(wfexInput);
+			if (!GetAudioFormat(wfexInput)) {
+#pragma vdpragma_TODO("Should probably give user feedback when audio capture isn't available.");
+				bCaptureAudio = false;
+			} else {
+				pResyncFilter->SetAudioRate(wfexInput->nAvgBytesPerSec);
+				pResyncFilter->SetAudioChannels(wfexInput->nChannels);
 
-			pResyncFilter->SetAudioRate(wfexInput->nAvgBytesPerSec);
-			pResyncFilter->SetAudioChannels(wfexInput->nChannels);
+				if (mTimingSetup.mbResyncWithIntegratedAudio || !mpDriver->IsAudioDeviceIntegrated(mpDriver->GetAudioDeviceIndex())) {
+					switch(mTimingSetup.mSyncMode) {
+					case VDCaptureTimingSetup::kSyncAudioToVideo:
+						if (wfexInput->wFormatTag == WAVE_FORMAT_PCM) {
+							switch(wfexInput->wBitsPerSample) {
+							case 8:
+								pResyncFilter->SetAudioFormat(kVDAudioSampleType8U);
+								break;
+							case 16:
+								pResyncFilter->SetAudioFormat(kVDAudioSampleType16S);
+								break;
+							default:
+								goto unknown_PCM_format;
+							}
 
-			if (mTimingSetup.mbResyncWithIntegratedAudio || !mpDriver->IsAudioDeviceIntegrated(mpDriver->GetAudioDeviceIndex())) {
-				switch(mTimingSetup.mSyncMode) {
-				case VDCaptureTimingSetup::kSyncAudioToVideo:
-					if (wfexInput->wFormatTag == WAVE_FORMAT_PCM) {
-						switch(wfexInput->wBitsPerSample) {
-						case 8:
-							pResyncFilter->SetAudioFormat(kVDAudioSampleType8U);
+							pResyncFilter->SetResyncMode(IVDCaptureResyncFilter::kModeResampleAudio);
 							break;
-						case 16:
-							pResyncFilter->SetAudioFormat(kVDAudioSampleType16S);
-							break;
-						default:
-							goto unknown_PCM_format;
 						}
-
-						pResyncFilter->SetResyncMode(IVDCaptureResyncFilter::kModeResampleAudio);
+						// fall through -- format isn't PCM so we can't resample it
+					case VDCaptureTimingSetup::kSyncVideoToAudio:
+unknown_PCM_format:
+						pResyncFilter->SetResyncMode(IVDCaptureResyncFilter::kModeResampleVideo);
 						break;
 					}
-					// fall through -- format isn't PCM so we can't resample it
-				case VDCaptureTimingSetup::kSyncVideoToAudio:
-unknown_PCM_format:
-					pResyncFilter->SetResyncMode(IVDCaptureResyncFilter::kModeResampleVideo);
-					break;
 				}
 			}
 		} else {

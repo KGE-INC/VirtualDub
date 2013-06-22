@@ -233,7 +233,7 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
-#if 1		// 1.6.3 is experimental
+#if 0
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {
@@ -246,7 +246,7 @@ void AnnounceExperimental() {
 
 
 void AnnounceCaptureExperimental(VDGUIHandle h) {
-#if 0		// 1.6.3 capture is experimental
+#if 0
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {

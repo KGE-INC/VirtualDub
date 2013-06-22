@@ -130,6 +130,8 @@ public:
 	void *MakeArray();
 
 	int Length() { return count; }
+
+	bool empty() const { return !count; }
 };
 
 DataVector::DataVector(int _item_size) : item_size(_item_size) {
@@ -2456,7 +2458,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 
 					case 0xba:		// new pack
 						if ((Read() & 0xf0) != 0x20)
-							throw MyError("%s: pack synchronization error", szME);
+							throw MyError("%s: invalid pack at position %I64u: marker bit not set; possibly MPEG-2 stream", szME, file_cpos);
 						Skip(7);
 						break;
 
@@ -2507,12 +2509,12 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 									Read(buf+1, 9, false);
 									bPTSPresent = bDTSPresent = true;
 								} else if (c != 0x0f)
-									throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+									throw MyError("%s: packet sync error on packet stream at position %I64u (timestamp marker bits not set)", szME, tagpos);
 
 								if (bPTSPresent) {
 									// Validate PTS marker bits.  Force resync on failure.
 									if (!(buf[0]&buf[2]&buf[4]&1))
-										throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+										throw MyError("%s: packet sync error on packet stream at position %I64u (PTS marker bits not set)", szME, tagpos);
 
 									sint64 pts	= ((sint64)(buf[0]&0x0e) << 29)
 												+ ((sint64) buf[1]       << 22)
@@ -2526,7 +2528,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 									if (bDTSPresent) {
 										// Validate DTS marker bits.  Force resync on failure.
 										if ((buf[5]&0xf1)!=0x11 || (buf[7]&buf[9]&1)!=1)
-											throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+											throw MyError("%s: packet sync error on packet stream at position %I64u (DTS marker bits not set)", szME, tagpos);
 
 										dts	= ((sint64)(buf[5]&0x0e) << 29)
 											+ ((sint64) buf[6]       << 22)
@@ -2551,6 +2553,9 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 							stream_id = 0xe0;
 							pack_length = 65536; //VIDEO_PACKET_BUFFER_SIZE;
 						}
+
+						if (pack_length < 0)
+							throw MyError("%s: Packet at position %I64u has an invalid length value.", szME, file_cpos);
 
 						// check packet type
 
@@ -2603,6 +2608,13 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 			fTrimLastOff = true;
 		} catch(const MyError&) {
 			fTrimLastOff = true;
+
+			// check if we actually got any video frames; if we didn't, rethrow the
+			// parsing error instead
+			if (video_stream_blocks.empty()) {
+				delete mpScanPrefetcher;
+				throw;
+			}
 
 			sint64 pos = Tell();
 			VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_Incomplete, 1, &pos);

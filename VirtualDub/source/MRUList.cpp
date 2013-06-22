@@ -43,11 +43,19 @@ void MRUList::add(const wchar_t *file) {
 
 	// Does this file already exist?  If not, move it to the top.
 
-	for(index=0; index<mMaxCount; index++)
-		if (!wcsicmp(mFiles[index].c_str(), file)) {
+	for(index=0; index<mMaxCount; index++) {
+		int i = mKey[index];
+
+		if (!i)
+			continue;
+
+		i -= 'a';
+
+		if (!wcsicmp(mFiles[i].c_str(), file)) {
 			move_to_top(index);
 			return;
 		}
+	}
 
 	// Add file to list
 	std::rotate(mKey.begin(), mKey.end()-1, mKey.end());

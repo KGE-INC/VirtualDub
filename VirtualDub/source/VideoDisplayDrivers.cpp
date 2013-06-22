@@ -1929,18 +1929,27 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 	if (!pTarget)
 		return false;
 
-	while(FAILED(hr = pTarget->Lock(NULL, &ddsd, dwLockFlags, 0))) {
-		if (hr == DDERR_SURFACELOST) {
-			mbValid = false;
-			memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
+	// When NView reverts between dual-display modes, we can get a DDERR_SURFACELOST on which
+	// Restore() succeeds, but the next lock still fails. We insert a safety counter here to
+	// prevent a hang.
+	for(int retries=0; retries<5; ++retries) {
+		hr = pTarget->Lock(NULL, &ddsd, dwLockFlags, 0);
 
-			if (!mpddman->Restore())
-				break;
+		if (SUCCEEDED(hr))
+			break;
 
-			hr = pTarget->Restore();
-			if (FAILED(hr))
-				break;
-		}
+		if (hr != DDERR_SURFACELOST)
+			break;
+
+		mbValid = false;
+		memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
+
+		if (!mpddman->Restore())
+			break;
+
+		hr = pTarget->Restore();
+		if (FAILED(hr))
+			break;
 	}
 
 	if (FAILED(hr)) {

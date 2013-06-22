@@ -824,7 +824,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.7 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.8 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -3795,8 +3795,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,7,0
- PRODUCTVERSION 1,6,7,0
+ FILEVERSION 1,6,8,0
+ PRODUCTVERSION 1,6,8,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3814,14 +3814,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.7\0"
+            VALUE "FileVersion", "1.6.8\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2005 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.7\0"
+            VALUE "ProductVersion", "1.6.8\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3907,17 +3907,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.7 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.7"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.7 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.7 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.7"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.8 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.8"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.8 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.8 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.8"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.7 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.7 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.7 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.7 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.7 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.8 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.8 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.8 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.8 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.8 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 
@@ -4043,10 +4043,7 @@ BEGIN
     IDS_CAP_CAPTURE_SETTINGS "Specify parameters for video capture."
     IDS_CAP_CAPTURE_PREFERENCES 
                             "Commit often-used configuration parameters to disk for future use."
-    IDS_CAP_CAPTURE_CAPTUREVIDEO 
-                            "Begin capturing to disk using AVICap's I/O system (compatibility mode)."
-    IDS_CAP_CAPTURE_CAPTUREVIDEOINTERNAL 
-                            "Begin capturing to disk using VirtualDub's high-performance I/O system."
+    IDS_CAP_CAPTURE_CAPTUREVIDEO "Begin video capture."
     IDS_CAP_CAPTURE_HIDEONCAPTURE 
                             "Enables/disables display of incoming video during video capture to save PCI bandwidth."
 END
