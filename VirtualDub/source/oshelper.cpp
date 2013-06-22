@@ -313,25 +313,41 @@ HWND APIENTRY VDGetAncestorW95(HWND hwnd, UINT gaFlags) {
 	}
 }
 
+HWND APIENTRY VDGetAncestorW98(HWND hwnd, UINT gaFlags);
+
 namespace {
+	HWND APIENTRY VDGetAncestorAutodetect(HWND hwnd, UINT gaFlags);
+
 	typedef HWND (APIENTRY *tpGetAncestor)(HWND, UINT);
+	tpGetAncestor g_pVDGetAncestor = VDGetAncestorAutodetect;
+	tpGetAncestor g_pVDGetAncestorRaw = VDGetAncestorW95;
+
+	HWND APIENTRY VDGetAncestorAutodetect(HWND hwnd, UINT gaFlags) {
+		tpGetAncestor ga = (tpGetAncestor)GetProcAddress(GetModuleHandle("user32"), "GetAncestor");
+
+		if (!ga)
+			ga = VDGetAncestorW95;
+		else if (!VDIsWindowsNT()) {
+			g_pVDGetAncestorRaw = ga;
+			ga = VDGetAncestorW98;
+		}
+
+		g_pVDGetAncestor = ga;
+		return ga(hwnd, gaFlags);
+	}
+}
+
+HWND APIENTRY VDGetAncestorW98(HWND hwnd, UINT gaFlags) {
+	// Believe it or not, HWND_MESSAGE works under Windows 98 -- and if you call GetAncestor()
+	// on such a window, user32 crashes in 16-bit code. :(
+	if (gaFlags == GA_ROOT && GetParent(hwnd) == NULL)
+		return hwnd;
+
+	return g_pVDGetAncestorRaw(hwnd, gaFlags);
 }
 
 HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags) {
-	struct local {
-		static tpGetAncestor FindGetAncestor() {
-			tpGetAncestor ga = (tpGetAncestor)GetProcAddress(GetModuleHandle("user32"), "GetAncestor");
-
-			if (!ga)
-				ga = VDGetAncestorW95;
-
-			return ga;
-		}
-	};
-
-	static tpGetAncestor spGetAncestor = local::FindGetAncestor();
-
-	return spGetAncestor(hwnd, gaFlags);
+	return g_pVDGetAncestor(hwnd, gaFlags);
 }
 
 VDStringW VDLoadStringW32(UINT uID) {

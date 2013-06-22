@@ -1,6 +1,12 @@
 VirtualDub change log
 
-Build %build% (1.6.18, stable): [%date%]
+Build %build% (1.6.19, stable): [%date%]
+   [bugs fixed]
+   * Fixed crash when creating batch jobs with certain Pinnacle video codecs.
+   * Fixed crash when reading top-down BMP files.
+   * Added workaround for crash on startup on some Windows 98/ME machines.
+
+Build 24473 (1.6.18, stable): [May 19, 2007]
    [bugs fixed]
    * Improved compatibility of AVI files written in capture mode or with the "sector alignment" option. (NOTE: Affected files can be fixed by re-running them through VirtualDub in Direct mode.)
    * Fixed crash when selecting Cancel after removing certain video filters from the video filter chain.
