@@ -399,6 +399,10 @@ bool VDProject::IsClipboardEmpty() {
 	return mClipboard.empty();
 }
 
+bool VDProject::IsSceneShuttleRunning() {
+	return mSceneShuttleMode != 0;
+}
+
 void VDProject::Cut() {
 	Copy();
 	DeleteInternal(true, false);
@@ -617,8 +621,14 @@ bool VDProject::UpdateFrame() {
 				if (err != AVIERR_OK)
 					throw MyAVIError("Display", err);
 
-				if (samples > 0)
-					inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame);
+				if (samples > 0) {
+					const void *p = inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame);
+
+#if 0
+					unsigned prerolli = preroll;
+					VDLog(kVDLogInfo, VDswprintf(L"DEBUG: Decoding frame %lld, preroll=%d, ptr=%p", 3, &mDesiredInputFrame, &prerolli, &p));
+#endif
+				}
 
 				++mFramesDecoded;
 
@@ -637,8 +647,11 @@ bool VDProject::UpdateFrame() {
 				}
 
 			} else {
-				if (!mFramesDecoded)
-					inputVideoAVI->streamGetFrame(NULL, 0, preroll, inputVideoAVI->displayToStreamOrder(mDesiredInputFrame));
+				if (!mFramesDecoded) {
+					const void *p = inputVideoAVI->streamGetFrame(NULL, 0, preroll, inputVideoAVI->displayToStreamOrder(mDesiredInputFrame));
+
+//					VDLog(kVDLogInfo, VDswprintf(L"DEBUG: Decoding final frame %lld, ptr=%p", 2, &mDesiredInputFrame, &p));
+				}
 
 				if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
 					mpCB->UIRefreshInputFrame(true);
@@ -1041,6 +1054,12 @@ void VDProject::RunNullVideoPass() {
 }
 
 void VDProject::CloseAVI() {
+	// kill current seek
+	mDesiredInputFrame = -1;
+	mDesiredOutputFrame = -1;
+	mDesiredNextInputFrame = -1;
+	mDesiredNextOutputFrame = -1;
+
 	if (g_pInputOpts) {
 		delete g_pInputOpts;
 		g_pInputOpts = NULL;

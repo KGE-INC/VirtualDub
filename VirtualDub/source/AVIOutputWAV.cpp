@@ -110,6 +110,8 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 
 	write(dwHeader, 8);
 
+	mBytesWritten = 0;
+
 	fHeaderOpen = true;
 
 	return TRUE;

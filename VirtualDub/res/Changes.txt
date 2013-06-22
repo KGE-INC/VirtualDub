@@ -1,6 +1,32 @@
 VirtualDub change log
 
-Build %build% (1.6.10, stable): [%date%]
+Build %build% (1.6.11, stable): [%date%]
+   [features fixed]
+   * Added support for using D3D .fx files for hardware-assisted display. This requires d3dx_25.dll (DirectX 9.0c April 2005) to work.
+   * Added keyboard shortcuts for scene forward/backward.
+
+   [bugs fixed]
+   * The current frame could not be copied after a "scan for errors" command.
+   * Fixed crash in DV type-1 audio resampling code at end of stream.
+   * Fixed audio read errors on DV type-1 files with drop frames.
+   * Fixed a couple of crash bugs related to using positive audio displacements.
+   * Fixed a rare filter crash triggered by a previously failing filter suddenly becoming able to start while the filter list is being edited.
+   * Fixed bad write length in .wav writer.
+   * If precision was set to "no change" but channel conversion was enabled, the audio was converted to 8-bit.
+   * Error descriptions for failed jobs were often truncated after exiting and restarting the app.
+   * JPEG decoder sometimes reported false parsing errors due to not parsing over comment blocks.
+   * Filter load and AVI append functions could report "operation completed successfully" rather than the proper error.
+   * AVI File Information reported an incorrect preload value for AVIs that started with a video chunk.
+   * Capture: Stop conditions were being saved even if Accept was pressed.
+   * Capture: Emulation test driver crashed on activation if the last used video file couldn't be found.
+   * (AMD64 only) Disassembler was not decoding base registers properly.
+   * (AMD64 only) Cropping was incorrect or outright broken with some video filters.
+
+   [regressions fixed]
+   * "Split" audio filter was broken.
+   * Frameserver exposed too much audio when range to be served was set through range selection, rather than the tail being deleted.
+
+Build 23645 (1.6.10, stable): [August 7, 2005]
    [features added]
    * The Y800 FOURCC has been added as a supported synonym for the monochrome Y8 format.
 

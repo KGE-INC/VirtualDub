@@ -429,19 +429,46 @@ static void strgetarg(char *buf, long bufsiz, const char *s) {
 	buf[l]=0;
 }
 
-static void strgetarg(VDStringA& str, const char *s) {
-	const char *t = s;
-	long l;
+static void strgetarg2(VDStringA& str, const char *s) {
+	static char hexdig[]="0123456789ABCDEF";
+	std::vector<char> buf;
+	char stopchar = 0;
 
-	if (*t == '"') {
-		s = ++t;
-		while(*s && *s!='"') ++s;
-	} else
-		while(*s && !isspace(*s)) ++s;
+	if (*s == '"') {
+		++s;
+		stopchar = '"';
+	}
 
-	l = s-t;
+	buf.reserve(strlen(s));
 
-	str.assign(t, l);
+	while(char c = *s++) {
+		if (c == stopchar)
+			break;
+
+		if (c=='\\') {
+			switch(c=*s++) {
+			case 'a': c='\a'; break;
+			case 'b': c='\b'; break;
+			case 'f': c='\f'; break;
+			case 'n': c='\n'; break;
+			case 'r': c='\r'; break;
+			case 't': c='\t'; break;
+			case 'v': c='\v'; break;
+			case 'x':
+				c = (char)(strchr(hexdig,toupper(s[0]))-hexdig);
+				c = (char)((c<<4) | (strchr(hexdig,toupper(s[1]))-hexdig));
+				s += 2;
+				break;
+			}
+		}
+
+		if (!c)
+			break;
+
+		buf.push_back(c);
+	}
+
+	str.assign(&buf[0], buf.size());
 }
 
 void VDJob::ListLoad(const char *lpszName) {
@@ -517,7 +544,7 @@ void VDJob::ListLoad(const char *lpszName) {
 
 				} else if (!stricmp(s, "error")) {
 
-					strgetarg(job->mError, t);
+					strgetarg2(job->mError, t);
 
 				} else if (!stricmp(s, "state")) {
 
@@ -688,7 +715,7 @@ void VDJob::Flush(const char *lpszFileName) {
 			}
 
 			if (vdj->iState == ERR)
-				if (fprintf(f,"// $error \"%s\"\n", vdj->mError.c_str())<0) throw errno;
+				if (fprintf(f,"// $error \"%s\"\n", VDEncodeScriptString(vdj->mError).c_str())<0) throw errno;
 
 			if (fprintf(f,"// $script\n\n")<0) throw errno;
 
@@ -799,6 +826,35 @@ void VDJob::RunAllStop() {
 
 ///////////////////////////////////////////////////////////////////////////
 
+namespace {
+	void SetDlgItemTextFixCR(HWND hwnd, UINT id, const char *text) {
+		size_t len = strlen(text);
+
+		vdblock<char> buf2(len*2+1);
+
+		char *dst = buf2.data();
+
+		while(char c = *text++) {
+			if (c == '\r' || c == '\n') {
+				if (*text == (c ^ ('\r' ^ '\n')))
+					++text;
+				else {
+					dst[0] = '\r';
+					dst[1] = '\n';
+					dst += 2;
+					continue;
+				}
+			}
+
+			*dst++ = c;
+		}
+
+		*dst = 0;
+
+		SetDlgItemText(hwnd, id, buf2.data());
+	}
+}
+
 static INT_PTR CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
 
 	switch(uiMsg) {
@@ -810,7 +866,7 @@ static INT_PTR CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LP
 			_snprintf(buf, sizeof buf, "VirtualDub - Job \"%s\"", vdj->szName);
 			SetWindowText(hdlg, buf);
 
-			SetDlgItemText(hdlg, IDC_ERROR, vdj->mError.c_str());
+			SetDlgItemTextFixCR(hdlg, IDC_ERROR, vdj->mError.c_str());
 		}
 		return TRUE;
 

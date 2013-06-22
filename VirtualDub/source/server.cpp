@@ -191,7 +191,7 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	videoset.dump();
 
 	if (audio)
-		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), subset.empty() || subset.back().end() == video->getEnd() ? audio->getEnd() : 0);
+		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == video->getEnd()) ? audio->getEnd() : 0);
 
 	VDDEBUG("Audio subset:\n");
 	audioset.dump();
@@ -703,7 +703,12 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 				len = 1;
 			}
 
-			// Attempt read;
+			if (start >= aSrc->getEnd()) {
+				start = aSrc->getEnd() - 1;
+				len = 1;
+			}
+
+			// Attempt read.
 
 			switch(aSrc->read(start, len, pDest, cbBuffer, &lActualBytes, &lActualSamples)) {
 			case AVIERR_OK:

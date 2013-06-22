@@ -83,6 +83,7 @@ protected:
 		kDRI	= 0xdd,		// define restart interval
 		kAPP0	= 0xe0,
 		kAPPF	= 0xef,
+		kCOM	= 0xfe
 	};
 
 	uint32 mBitHeap;
@@ -593,7 +594,7 @@ void VDJPEGDecoder::Parse() {
 			}
 			break;
 		default:
-			if (c >= kAPP0 && c <= kAPPF) {
+			if (c >= kAPP0 && c <= kAPPF || c == kCOM) {
 				int len = ParseLength();
 
 				mpSrc += len;

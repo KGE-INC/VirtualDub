@@ -1134,6 +1134,8 @@
 #define ID_EDIT_UNDO                    40338
 #define ID_EDIT_REDO                    40339
 #define ID_FILE_RUNVIDEOANALYSISPASS    40340
+#define ID_VIDEO_SEEK_PREVSCENE         40341
+#define ID_VIDEO_SEEK_NEXTSCENE         40342
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1180,7 +1182,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        269
-#define _APS_NEXT_COMMAND_VALUE         40341
+#define _APS_NEXT_COMMAND_VALUE         40343
 #define _APS_NEXT_CONTROL_VALUE         1413
 #define _APS_NEXT_SYMED_VALUE           111
 #endif

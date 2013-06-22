@@ -55,6 +55,7 @@ public:
 class VDAudioSourceAVISourced : public AudioSource{
 public:
 	virtual void Reinit() = 0;
+	virtual int GetPreloadSamples() = 0;
 };
 
 class AudioSourceAVI : public VDAudioSourceAVISourced {
@@ -73,6 +74,7 @@ public:
 	void setRate(const VDFraction& f) { streamInfo.dwRate = f.getHi(); streamInfo.dwScale = f.getLo(); }
 
 	void Reinit();
+	int GetPreloadSamples();
 	bool isStreaming();
 
 	void streamBegin(bool fRealTime, bool bForceReset);
@@ -87,6 +89,7 @@ public:
 	AudioSourceDV(IAVIReadStream *pAVIStream, bool bAutomated);
 
 	void Reinit();
+	int GetPreloadSamples() { return 0; }
 	bool isStreaming();
 
 	void streamBegin(bool fRealTime, bool bForceReset);

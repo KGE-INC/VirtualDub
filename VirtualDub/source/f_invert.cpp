@@ -88,6 +88,8 @@ namespace {
 				*data = ~*data;
 				++data;
 			} while(--wt);
+
+			data = (Pixel32 *)((char *)data + pitch);
 		} while(--h);
 	}
 #endif

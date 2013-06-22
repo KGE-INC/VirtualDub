@@ -90,11 +90,23 @@ SOURCE=.\source\audiofilters.lina
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\capture.lina
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\crash.lina
 # End Source File
 # Begin Source File
 
 SOURCE=.\source\dialogs.lina
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\fxvideo.lina
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\render.lina
 # End Source File
 # Begin Source File
 

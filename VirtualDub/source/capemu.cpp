@@ -231,8 +231,13 @@ bool VDCaptureDriverEmulation::Init(VDGUIHandle hParent) {
 	VDRegistryAppKey key("Capture");
 	VDStringW filename;
 
-	if (key.getString("Emulation file", filename))
-		OpenInputFile(filename.c_str());
+	if (key.getString("Emulation file", filename)) {
+		try {
+			OpenInputFile(filename.c_str());
+		} catch(const MyError&) {
+			// silently eat the error
+		}
+	}
 
 	return true;
 }

@@ -39,6 +39,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 
 #include "VideoDisplayDrivers.h"
+#include "VideoDisplayDriverDX9.h"
 
 // enable if using NVIDIA's NVPerfHUD to profile (set coolbits in Registry, then
 // enable via driver config)
@@ -50,74 +51,9 @@
 extern HWND g_hWnd;
 
 
+using namespace nsVDVideoDisplayDriverDX9;
+
 namespace {
-	enum {
-		kVertexBufferSize	= 256,						// in vertices
-		kIndexBufferSize	= kVertexBufferSize*3/2		// in indices
-	};
-
-	struct Vertex {
-		float x, y, z;
-		uint32 diffuse;
-		float u0, v0, u1, v1, u2, v2, u3, v3, u4, v4;
-
-		Vertex(float x_, float y_, float z_, uint32 c_, uint32 d_, float u0_, float v0_, float u1_=0.f, float v1_=0.f) : x(x_), y(y_), z(z_), diffuse(c_), u0(u0_), v0(v0_), u1(u1_), v1(v1_)
-			, u2(0), v2(0), u3(0), v3(0), u4(0), v4(0) {}
-
-		inline void SetFF1(float x_, float y_, float u0_, float v0_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = v1 = u2 = v2 = u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetFF2(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_, float v1_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = c_;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = v2 = u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetFF3(float x_, float y_, float u0_, float v0_, float u1_, float v1_, float u2_, float v2_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = u2_;
-			v2 = v2_;
-			u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetPS1_4(float x_, float y_, float u0_, float v0_, float u1_, float v1_, float u2_, float v2_,
-								float u3_, float v3_, float u4_, float v4_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = u2_;
-			v2 = v2_;
-			u3 = u3_;
-			v3 = v3_;
-			u4 = u4_;
-			v4 = v4_;
-		}
-	};
 
 
 	///////////////////////////////////////////////////////////////////////
@@ -191,115 +127,6 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoDisplayDX9Client : public vdlist<VDVideoDisplayDX9Client>::node {
-public:
-	virtual void OnPreDeviceReset() = 0;
-};
-
-class VDVideoDisplayDX9Manager {
-public:
-	enum CubicMode {
-		kCubicNotInitialized,
-		kCubicNotPossible,		// Your card is LAME
-		kCubicUseFF2Path,		// Use fixed-function, 2 stage path (GeForce2/GeForce4MX - 8 passes)
-		kCubicUseFF3Path,		// Use fixed-function, 3 stage path (RADEON 7xxx - 4 passes)
-		kCubicUsePS1_1Path,		// Use programmable, 3 stage path (GeForce3/GeForce4 - 4 passes)
-		kCubicUsePS1_4Path,		// Use programmable, 5 stage path (RADEON 85xx+/GeForceFX+ - 2 passes)
-		kMaxCubicMode = kCubicUsePS1_4Path
-	};
-
-	VDVideoDisplayDX9Manager();
-	~VDVideoDisplayDX9Manager();
-
-	bool Attach(VDVideoDisplayDX9Client *pClient);
-	void Detach(VDVideoDisplayDX9Client *pClient);
-
-	CubicMode InitBicubic();
-	void ShutdownBicubic();
-
-	const D3DCAPS9& GetCaps() const { return mDevCaps; }
-	IDirect3D9 *GetD3D() const { return mpD3D; }
-	IDirect3DDevice9 *GetDevice() const { return mpD3DDevice; }
-	IDirect3DIndexBuffer9 *GetIndexBuffer() const { return mpD3DIB; }
-	IDirect3DVertexBuffer9 *GetVertexBuffer() const { return mpD3DVB; }
-	const D3DPRESENT_PARAMETERS& GetPresentParms() const { return mPresentParms; }
-
-	IDirect3DSurface9	*GetRenderTarget() const { return mpD3DRTMain; }
-	IDirect3DTexture9	*GetVertRenderTexture() const { return mpD3DRTVert; }
-	int GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
-	int GetMainRTHeight() const { return mPresentParms.BackBufferHeight; }
-	float GetVertUScale() const { return mRTVertUScale; }
-	float GetVertVScale() const { return mRTVertVScale; }
-	int GetVertUSize() const { return mRTVertUSize; }
-	int GetVertVSize() const { return mRTVertVSize; }
-	IDirect3DTexture9	*GetFilterTexture() const { return mpD3DFilterTexture; }
-
-	IDirect3DPixelShader9	*GetHPixelShader() const { return mpD3DPixelShader1; }
-	IDirect3DPixelShader9	*GetVPixelShader() const { return mpD3DPixelShader2; }
-
-	bool		Reset();
-	bool		CheckDevice();
-
-	void		AdjustTextureSize(int& w, int& h);
-	void		ClearRenderTarget(IDirect3DTexture9 *pTexture);
-
-	void		ResetBuffers();
-	Vertex *	LockVertices(unsigned vertices);
-	void		UnlockVertices();
-	uint16 *	LockIndices(unsigned indices);
-	void		UnlockIndices();
-	HRESULT		DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount);
-	HRESULT		DrawElements(D3DPRIMITIVETYPE type, UINT vertStart, UINT vertCount, UINT idxStart, UINT primCount);
-
-	HRESULT DisableTextureStage(UINT stage);
-	HRESULT SetTextureStageOp(UINT stage, DWORD color1, DWORD colorop, DWORD color2, DWORD alpha1, DWORD alphaop, DWORD alpha2, DWORD output = D3DTA_CURRENT);
-
-	int GetBicubicShaderStages(CubicMode mode);
-	bool Is3DCardLame();
-	bool ValidateBicubicShader(CubicMode mode);
-	HRESULT SetBicubicShader(CubicMode mode, int stage);
-
-	void MakeCubic4Texture(uint32 *texture, ptrdiff_t pitch, double A, CubicMode mode);
-protected:
-	bool Init();
-	bool InitVRAMResources();
-	void ShutdownVRAMResources();
-	void Shutdown();
-
-	HMODULE				mhmodDX9;
-	IDirect3D9			*mpD3D;
-	IDirect3DDevice9	*mpD3DDevice;
-	IDirect3DTexture9	*mpD3DFilterTexture;
-	IDirect3DSurface9	*mpD3DRTMain;
-	IDirect3DTexture9	*mpD3DRTVert;
-	int					mRTVertUSize;
-	int					mRTVertVSize;
-	float				mRTVertUScale;
-	float				mRTVertVScale;
-
-	bool				mbDeviceValid;
-
-	IDirect3DVertexBuffer9	*mpD3DVB;
-	IDirect3DIndexBuffer9	*mpD3DIB;
-	uint32					mVertexBufferPt;
-	uint32					mVertexBufferLockSize;
-	uint32					mIndexBufferPt;
-	uint32					mIndexBufferLockSize;
-
-	IDirect3DPixelShader9	*mpD3DPixelShader1;
-	IDirect3DPixelShader9	*mpD3DPixelShader2;
-
-	D3DCAPS9				mDevCaps;
-	D3DPRESENT_PARAMETERS	mPresentParms;
-
-	CubicMode			mCubicMode;
-	int					mCubicRefCount;
-
-	int					mRefCount;
-
-	vdlist<VDVideoDisplayDX9Client>	mClients;
-};
-
 static VDVideoDisplayDX9Manager g_VDDisplayDX9;
 
 VDVideoDisplayDX9Manager *VDInitDisplayDX9(VDVideoDisplayDX9Client *pClient) {
@@ -318,15 +145,23 @@ VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager()
 	, mpD3DDevice(NULL)
 	, mpD3DFilterTexture(NULL)
 	, mpD3DRTMain(NULL)
-	, mpD3DRTVert(NULL)
 	, mbDeviceValid(false)
 	, mpD3DVB(NULL)
 	, mpD3DIB(NULL)
 	, mpD3DPixelShader1(NULL)
 	, mpD3DPixelShader2(NULL)
 	, mCubicRefCount(0)
+	, mbCubicTempRTTAllocated(false)
 	, mRefCount(0)
 {
+	for(int i=0; i<2; ++i) {
+		mRTTRefCounts[i] = 0;
+		mpD3DRTTs[i] = NULL;
+		mRTTSurfaceInfo[i].mWidth = 1;
+		mRTTSurfaceInfo[i].mHeight = 1;
+		mRTTSurfaceInfo[i].mInvWidth = 1;
+		mRTTSurfaceInfo[i].mInvHeight = 1;
+	}
 }
 
 VDVideoDisplayDX9Manager::~VDVideoDisplayDX9Manager() {
@@ -415,6 +250,9 @@ bool VDVideoDisplayDX9Manager::Init() {
 			}
 		}
 	}
+
+	mAdapter = adapter;
+	mDevType = type;
 
 	hr = mpD3D->CreateDevice(adapter, type, g_hWnd, dwFlags, &mPresentParms, &mpD3DDevice);
 	if (FAILED(hr)) {
@@ -613,6 +451,46 @@ void VDVideoDisplayDX9Manager::MakeCubic4Texture(uint32 *texture, ptrdiff_t pitc
 	}
 }
 
+bool VDVideoDisplayDX9Manager::InitTempRTT(int index) {
+	if (++mRTTRefCounts[index] > 1)
+		return true;
+
+	int texw = mPresentParms.BackBufferWidth;
+	int texh = mPresentParms.BackBufferHeight;
+
+	AdjustTextureSize(texw, texh);
+
+	mRTTSurfaceInfo[index].mWidth		= texw;
+	mRTTSurfaceInfo[index].mHeight		= texh;
+	mRTTSurfaceInfo[index].mInvWidth	= 1.0f / texw;
+	mRTTSurfaceInfo[index].mInvHeight	= 1.0f / texh;
+
+	HRESULT hr = mpD3DDevice->CreateTexture(texw, texh, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &mpD3DRTTs[index], NULL);
+	if (FAILED(hr)) {
+		ShutdownTempRTT(index);
+		return false;
+	}
+
+	ClearRenderTarget(mpD3DRTTs[index]);
+	return true;
+}
+
+void VDVideoDisplayDX9Manager::ShutdownTempRTT(int index) {
+	VDASSERT(mRTTRefCounts[index] > 0);
+	if (--mRTTRefCounts[index])
+		return;
+
+	if (mpD3DRTTs[index]) {
+		mpD3DRTTs[index]->Release();
+		mpD3DRTTs[index] = NULL;
+	}
+
+	mRTTSurfaceInfo[index].mWidth		= 1;
+	mRTTSurfaceInfo[index].mHeight		= 1;
+	mRTTSurfaceInfo[index].mInvWidth	= 1;
+	mRTTSurfaceInfo[index].mInvHeight	= 1;
+}
+
 VDVideoDisplayDX9Manager::CubicMode VDVideoDisplayDX9Manager::InitBicubic() {
 	VDASSERT(mRefCount > 0);
 
@@ -641,28 +519,13 @@ VDVideoDisplayDX9Manager::CubicMode VDVideoDisplayDX9Manager::InitBicubic() {
 
 	// create vertical resampling texture
 	if (mCubicMode < kCubicUsePS1_4Path) {
-		int texw = mPresentParms.BackBufferWidth;
-		int texh = mPresentParms.BackBufferHeight;
-
-		AdjustTextureSize(texw, texh);
-		
-		mRTVertUSize = texw;
-		mRTVertVSize = texh;
-
-		hr = mpD3DDevice->CreateTexture(texw, texh, 1, D3DUSAGE_RENDERTARGET, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &mpD3DRTVert, NULL);
-		if (FAILED(hr)) {
+		if (!InitTempRTT(0)) {
 			ShutdownBicubic();
 			return kCubicNotPossible;
 		}
 
-		ClearRenderTarget(mpD3DRTVert);
-	} else {
-		// plug in sensible values so the matrix code doesn't blow up
-		mRTVertUSize = 1;
-		mRTVertVSize = 1;
+		mbCubicTempRTTAllocated = true;
 	}
-	mRTVertUScale = 1.0f / mRTVertUSize;
-	mRTVertVScale = 1.0f / mRTVertVSize;
 
 	// create filter texture
 	hr = mpD3DDevice->CreateTexture(256, 4, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &mpD3DFilterTexture, NULL);
@@ -726,9 +589,9 @@ void VDVideoDisplayDX9Manager::ShutdownBicubic() {
 		mpD3DFilterTexture = NULL;
 	}
 
-	if (mpD3DRTVert) {
-		mpD3DRTVert->Release();
-		mpD3DRTVert = NULL;
+	if (mbCubicTempRTTAllocated) {
+		ShutdownTempRTT(0);
+		mbCubicTempRTTAllocated = false;
 	}
 }
 
@@ -1553,50 +1416,6 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTransform(D3DTS_WORLD, &ident));
 	D3D_DO(SetTransform(D3DTS_VIEW, &ident));
 
-	const D3DMATRIX proj1={
-		1.0f,
-		0.0f,
-		0.0f,
-		0.0f,
-
-		0.0f,
-		1.0f,
-		0.0f,
-		0.0f,
-
-		0.0f,
-		0.0f,
-		1.0f,
-		0.0f,
-
-		-1.00f / mRTHorizUSize,
-		+1.00f / mRTHorizVSize,
-		0.0f,
-		1.0f,
-	};
-
-	const D3DMATRIX proj2={
-		1.0f,
-		0.0f,
-		0.0f,
-		0.0f,
-
-		0.0f,
-		1.0f,
-		0.0f,
-		0.0f,
-
-		0.0f,
-		0.0f,
-		1.0f,
-		0.0f,
-
-		-1.00f / mpManager->GetVertUSize(),
-		+1.00f / mpManager->GetVertVSize(),
-		0.0f,
-		1.0f,
-	};
-
 	const D3DMATRIX proj3={
 		1.0f,
 		0.0f,
@@ -1619,8 +1438,6 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 		1.0f,
 	};
 
-	mHorizProjection = proj1;
-	mVertProjection = proj2;
 	mWholeProjection = proj3;
 
 	D3D_DO(SetStreamSource(0, mpManager->GetVertexBuffer(), 0, sizeof(Vertex)));
@@ -1632,6 +1449,55 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 	bool bSuccess;
 
 	if (mbCubicInitialized) {
+		const VDVideoDisplayDX9Manager::SurfaceInfo& vertInfo = mpManager->GetTempRTTInfo(0);
+
+		const D3DMATRIX proj1={
+			1.0f,
+			0.0f,
+			0.0f,
+			0.0f,
+
+			0.0f,
+			1.0f,
+			0.0f,
+			0.0f,
+
+			0.0f,
+			0.0f,
+			1.0f,
+			0.0f,
+
+			-1.00f / mRTHorizUSize,
+			+1.00f / mRTHorizVSize,
+			0.0f,
+			1.0f,
+		};
+
+		const D3DMATRIX proj2={
+			1.0f,
+			0.0f,
+			0.0f,
+			0.0f,
+
+			0.0f,
+			1.0f,
+			0.0f,
+			0.0f,
+
+			0.0f,
+			0.0f,
+			1.0f,
+			0.0f,
+
+			-1.0f * vertInfo.mInvWidth,
+			+1.0f * vertInfo.mInvHeight,
+			0.0f,
+			1.0f,
+		};
+
+		mHorizProjection = proj1;
+		mVertProjection = proj2;
+
 		switch(mCubicMode) {
 		case VDVideoDisplayDX9Manager::kCubicUsePS1_4Path:
 			bSuccess = Paint_PS1_4(hdc, rClient);
@@ -1715,8 +1581,6 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 
 	if (bSuccess)
 		hr = mpD3DDevice->Present(&rClient, NULL, mhwnd, NULL);
-
-	VDDEBUG("w00t hr=%08x\n", hr);
 
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");
@@ -1808,7 +1672,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 
 	// PASS 2: Vertical filtering
 
-	VDVERIFY(SUCCEEDED(mpManager->GetVertRenderTexture()->GetSurfaceLevel(0, &pRTSurface)));
+	VDVERIFY(SUCCEEDED(mpManager->GetTempRTT(0)->GetSurfaceLevel(0, &pRTSurface)));
 	D3D_DO(SetRenderTarget(0, pRTSurface));
 	pRTSurface->Release();
 
@@ -1887,8 +1751,9 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vpmain)));
 
 	if (Vertex *pvx = mpManager->LockVertices(3)) {
-		const float ustep = mpManager->GetVertUScale();
-		const float vstep = mpManager->GetVertVScale();
+		const VDVideoDisplayDX9Manager::SurfaceInfo& rttInfo = mpManager->GetTempRTTInfo(0);
+		const float ustep = rttInfo.mInvWidth;
+		const float vstep = rttInfo.mInvHeight;
 		const float u0 = 0.0f;
 		const float v0 = -rClient.bottom * vstep;
 		const float u1 = rClient.right * ustep * 2;
@@ -1901,7 +1766,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 		mpManager->UnlockVertices();
 	}
 
-	D3D_DO(SetTexture(0, mpManager->GetVertRenderTexture()));
+	D3D_DO(SetTexture(0, mpManager->GetTempRTT(0)));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 6);
 	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 0, 1);
@@ -1996,7 +1861,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF3(HDC hdc, const RECT& rClient) {
 
 	// PASS 2: Vertical filtering
 
-	VDVERIFY(SUCCEEDED(mpManager->GetVertRenderTexture()->GetSurfaceLevel(0, &pRTSurface)));
+	VDVERIFY(SUCCEEDED(mpManager->GetTempRTT(0)->GetSurfaceLevel(0, &pRTSurface)));
 	D3D_DO(SetRenderTarget(0, pRTSurface));
 	pRTSurface->Release();
 
@@ -2072,8 +1937,9 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF3(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTransform(D3DTS_PROJECTION, &mWholeProjection));
 
 	if (Vertex *pvx = mpManager->LockVertices(4)) {
-		const float ustep = mpManager->GetVertUScale();
-		const float vstep = mpManager->GetVertVScale();
+		const VDVideoDisplayDX9Manager::SurfaceInfo& rttInfo = mpManager->GetTempRTTInfo(0);
+		const float ustep = rttInfo.mInvWidth;
+		const float vstep = rttInfo.mInvHeight;
 		const float u0 = 0.0f;
 		const float v0 = 0.0f;
 		const float u1 = u0 + rClient.right * ustep;
@@ -2087,7 +1953,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF3(HDC hdc, const RECT& rClient) {
 		mpManager->UnlockVertices();
 	}
 
-	D3D_DO(SetTexture(0, mpManager->GetVertRenderTexture()));
+	D3D_DO(SetTexture(0, mpManager->GetTempRTT(0)));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF3Path, 4);
 	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
@@ -2209,7 +2075,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_PS1_1(HDC hdc, const RECT& rClient) {
 		mpManager->UnlockVertices();
 	}
 
-	VDVERIFY(SUCCEEDED(mpManager->GetVertRenderTexture()->GetSurfaceLevel(0, &pRTSurface)));
+	VDVERIFY(SUCCEEDED(mpManager->GetTempRTT(0)->GetSurfaceLevel(0, &pRTSurface)));
 	D3D_DO(SetRenderTarget(0, pRTSurface));
 	pRTSurface->Release();
 
@@ -2260,8 +2126,9 @@ bool VDVideoDisplayMinidriverDX9::Paint_PS1_1(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetPixelShader(NULL));
 
 	if (Vertex *pvx = mpManager->LockVertices(4)) {
-		const float ustep = mpManager->GetVertUScale();
-		const float vstep = mpManager->GetVertVScale();
+		const VDVideoDisplayDX9Manager::SurfaceInfo& rttInfo = mpManager->GetTempRTTInfo(0);
+		const float ustep = rttInfo.mInvWidth;
+		const float vstep = rttInfo.mInvHeight;
 		const float u0 = 0.0f;
 		const float v0 = 0.0f;
 		const float u1 = u0 + rClient.right * ustep;
@@ -2275,7 +2142,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_PS1_1(HDC hdc, const RECT& rClient) {
 		mpManager->UnlockVertices();
 	}
 
-	D3D_DO(SetTexture(0, mpManager->GetVertRenderTexture()));
+	D3D_DO(SetTexture(0, mpManager->GetTempRTT(0)));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUsePS1_1Path, 4);
 	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);

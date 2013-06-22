@@ -57,7 +57,7 @@ uint32 VDAudioFilterSplit::Run() {
 
 	int samples = mpContext->mCommonSamples, actual = 0;
 	void *dst1 = mpContext->mpOutputs[0]->mpBuffer;
-	void *dst2 = mpContext->mpOutputs[0]->mpBuffer;
+	void *dst2 = mpContext->mpOutputs[1]->mpBuffer;
 
 	actual = mpContext->mpInputs[0]->Read(dst1, samples, false, kVFARead_Native);
 

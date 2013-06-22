@@ -67,7 +67,8 @@ public:
 		kDisplayDisableDX		= 0x02,
 		kDisplayUseDXWithTS		= 0x04,
 		kDisplayEnableD3D		= 0x08,
-		kDisplayEnableOpenGL	= 0x10
+		kDisplayEnableOpenGL	= 0x10,
+		kDisplayEnableD3DFX		= 0x20
 	};
 
 	char fDisplay;

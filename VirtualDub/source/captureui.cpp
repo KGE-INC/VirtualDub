@@ -91,7 +91,7 @@ static const char g_szMultisegment			[]="Multisegment";
 static const char g_szAutoIncrement			[]="Auto-increment";
 static const char g_szStartOnLeft			[]="Start on left";
 static const char g_szDisplayPrerollDialog	[]="Display preroll dialog";
-static const char g_szStopConditions		[]="Stop Conditions";
+extern const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szCapSettings			[]="Settings";
 static const char g_szStartupDriver			[]="Startup Driver";
 static const char g_szDisplaySlowModes		[]="Display slow modes";
@@ -2384,10 +2384,8 @@ bool VDCaptureProjectUI::OnCaptureSafeCommand(UINT id) {
 			VDCaptureStopPrefs stopPrefs(mpProject->GetStopPrefs());
 
 			SuspendDisplay();
-			if (VDShowCaptureStopPrefsDialog(mhwnd, stopPrefs)) {
+			if (VDShowCaptureStopPrefsDialog(mhwnd, stopPrefs))
 				mpProject->SetStopPrefs(stopPrefs);
-				SetConfigBinary(g_szCapture, g_szStopConditions, (char *)&stopPrefs, sizeof stopPrefs);
-			}
 			ResumeDisplay();
 		}
 		break;

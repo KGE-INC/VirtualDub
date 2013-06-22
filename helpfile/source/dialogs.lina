@@ -149,39 +149,134 @@
 			</blockquote>
 
 			<p>
-				Selects the desired RGB bit depth for video decompression and video compression.	
+				Selects the desired image formats for video decompression and video compression.	
 			</p>
 
 			<dl>
-				<dt>Input color depth</dt>
+				<dt>Decompression format</dt>
 				<dd>
-					Selects either 16-bit RGB (555) or 24-bit RGB (888) for decompression. Usually, you will
-					want 24-bit RGB for better color quality; select 16-bit RGB for speed when quality is not
-					important (i.e. previewing or quick checks), to diagnose a video decompression problem
-					with a video codec, or 24-bit RGB otherwise doesn't work.
-
-					<lina:note>
+					<p>
+						Selects a color format to target when decompressing the input video.
+					</p>
+					<p>
+						For a compressed source, this format is requested directly from the video codec. "Autoselect"
+						will choose a common, safe RGB format, such as 24-bit, 32-bit, or 15-bit RGB.
+					</p>
+					<p>
+						For an uncompressed source (or Avisynth script), the desired format is produced through image
+						conversion if it is not the same as the source. YCbCr-to-YCbCr conversions do not round-trip
+						through RGB. "Autoselect" chooses the source format so that no conversion is necessary.
+					</p>
+					<p>
 						If the video codec cannot produce the format you have selected, VirtualDub will automatically
-						choose the highest quality RGB format the codec can output.
-					</lina:note>
+						attempt to degrade the video format to a similar format that is supported. For instance, if
+						16-bit RGB fails, 24-bit RGB will be tried. The fallback code avoids color space conversions
+						if possible; if a YCbCr format fails, other YCbCr formats will be tested before resorting
+						to RGB.
+					</p>
 				</dd>
 
-				<dt>Output color depth</dt>
+				<dt>Output format</dt>
 				<dd>
-					Selects 16-bit RGB (555), 24-bit RGB (888), or 32-bit RGB (8888) for output. When video compression
-					is active, this selects the format received by the video compressor. 24-bit and 32-bit have the same
-					quality and both are usually preferable over 16-bit.
+					<p>
+						Selects a color format for output. During preview, this is the format sent to the display panes.
+						When video compression is active, this selects the format received by the video compressor.
+					</p>
+
+					<p>
+						The output format is produced by conversion from the input format. When video filters are in
+						use, the input format is converted to 32-bit RGB, processed, and the result converted to
+						the output format. If video filters are not being used, the input format is converted directly
+						to the output format.
+					</p>
 
 					<lina:note>
-						As with GDI, when 32-bit is selected, the contents of the upper 8 bits of each pixel are undefined.
+						As is standard in GDI bitmaps, the 32-bit format has a dummy alpha channel, used only for
+						padding. VirtualDub cannot currently target a 32-bit format with meaningful alpha.
 					</lina:note>
 
 					<lina:note>
-						Nearly all modern video codecs perform conversion to a codec-specific color space as part of
-						their compression process and do not benefit size-wise from 16-bit input. In fact, choosing 16-bit
-						will usually lower the performance of a video codec due to the noise amplification and edge
-						thresholding effects from the lower color precision.
+						The size of the output format doesn't necessarily relate to how well the output compresses
+						through a video codec. For instance, converting from 24-bit RGB to 16-bit RGB can hinder
+						compression, because it increases quantization noise (banding) in the image.
 					</lina:note>
+				</dd>
+			</dl>
+
+			<h2>Format descriptions</h2>
+			<dl>
+				<dt>16-bit RGB (555)</dt>
+				<dd>This is a format with five bits per channel (32 levels) for each of red, green, and blue. It is
+					a relatively low-precision format that is prone to some banding artifacts but is common on older
+					video display hardware, as it is faster and consumes less memory than 24-bit RGB. This format
+					is sometimes known as HiColor.</dd>
+
+				<dt>16-bit RGB (565)</dt>
+				<dd>This is a slightly improved version of 16-bit RGB (555), as it uses the unused bit to improve
+					precision in green.</dd>
+
+				<dt>24-bit RGB (888)</dt>
+				<dd>This is a format with eight bits per channel (256 levels) for each of red, green, and blue. It
+					is common for photographic images and is often known as TrueColor. This is the safest and most
+					reliable format to use for video interchange.</dd>
+
+				<dt>32-bit RGB (8888) (dummy alpha channel)</dt>
+				<dd>This is similar to 24-bit RGB, except that it has an additional unused eight bits per pixel.
+					Picture quality is identical to 24-bit, but the additional padding makes the pixels a more
+					convenient size for computation. This format is sometimes slightly faster than 24-bit for
+					processing, but should be avoided for storage as it wastes one-third more space.</dd>
+
+				<dt>4:2:2 YCbCr (UYVY)</dt>
+				<dd>This is a format which uses the YCbCr color space (luma, chroma-blue, chroma-red), which is
+					closer to the way color images are perceived by the human brain. It averages only 16 bits per
+					pixel with similar perceptual quality to 24-bit RGB by only storing color information at half
+					horizontal resolution, producing slight color bleeding but only taking two-thirds as much space.
+					<p>
+					UYVY is accepted directly by many video codecs. Since many video codecs internally use color
+					spaces similar to YCbCr, using this format with video codecs can speed up rendering.
+					</p>
+				</dd>
+
+				<dt>4:2:2 YCbCr (YUY2)</dt>
+				<dd>This is the same as 4:2:2 YCbCr (UYVY), except for a shuffling of data bytes. It has the same
+					quality and performance advantages as UYVY.
+				</dd>
+
+				<dt>4:2:0 planar YCbCr (YV12)</dt>
+				<dd>This is a YCbCr format with an average of 12 bits per pixel and half resolution both horizontally
+					and vertically in color information. It thus takes 25% less space than UYVY or YUY2, but with some
+					vertical bleeding. "Planar" refers to the organization of data in the format, where luma, chroma-blue,
+					and chroma-red are stored separately.
+					<p>
+						Some codecs accept this format directly for further increases in performance over the 4:2:2
+						formats. However, it should be avoided for interlaced video, where the loss of vertical color
+						resolution can cause motion artifacts between fields.
+					</p>
+				</dd>
+
+				<dt>4:2:2 planar YCbCr (YV16)</dt>
+				<dd>This is a YCbCr format with an average of 16 bits per pixel and half horizontal resolution in
+					color information.
+					<p>
+						The YV16 format is rare and not well supported by video codecs and playback applications,
+						but is supported here for completeness.
+					</p>
+				</dd>
+
+				<dt>4:1:0 planar YCbCr (YVU9)</dt>
+				<dd>This is a YCbCr format with an average of 9 bits per pixel and quarter resolution both horizontally
+					and vertically in color information. YVU9 thus takes 43% less space than UYVY/YUY2 and 62% less
+					space than 24-bit RGB, but at the cost of significant color bleeding.
+				</dd>
+
+				<dt>Luminance only (Y8)</dt>
+				<dd>Y8 is a monochrome format, and thus selecting it will cause video to be converted to grayscale.
+					However, it only requires half of the space of UYVY or YUY2 at 8 bits per pixel.
+					<p>
+					Y8 uses the same luma scale as YCbCr, 16-240, so there is a very slight loss of luma precision
+					compared to 24-bit RGB. However, conversion between Y8 and YCbCr formats is lossless in luma and
+					extremely fast.
+					</p>
 				</dd>
 			</dl>
 
@@ -692,89 +787,6 @@
 
 		</dialog>
 
-		<dialog name="Capture preferences" filename="d-capturepreferences.html">
-			<blockquote>
-				<lina:image src="pics/d-capturepreferences.png"/>
-			</blockquote>
-
-			<p>
-				Controls basic video capture settings.
-			</p>
-
-			<dl>
-				<dt>Default capture driver</dt>
-				<dd>Selects which capture driver VirtualDub will select when entering capture mode.
-					If the specified driver cannot be found, the first available one is used.
-				</dd>
-
-				<dt>Default capture file</dt>
-				<dd>
-					Sets the default capture filename used by VirtualDub when entering capture mode.
-				</dd>
-
-				<dt>Save current capture settings, audio format, video format, video compression settings as default</dt>
-				<dd>
-					Saves a group of settings as the default on startup.  Due to a limitation in Video for Windows,
-					video compression settings cannot be saved for compatibility mode.
-				</dd>
-
-				<dt>Per-driver settings</dt>
-				<dd>
-					Select a startup display mode for video capture, and possibly disable display when menus or
-					dialogs are displayed which overlap the video display.  This may help if you experience performance
-					problems with one or more of the video display modes.
-				</dd>
-			</dl>
-		</dialog>
-
-		<dialog name="Capture volume meter" filename="d-capturevumeter.html">
-			<blockquote>
-				<lina:image src="pics/d-capturevumeter.png"/>
-			</blockquote>
-
-			<p>
-				Displays input audio volume and allows for volume level control.
-			</p>
-
-			<dl>
-				<dt>Left/right volume bars (VUMeter mode)</dt>
-				<dd>
-					Shows the average amplitude of incoming audio (blue) and peak levels (red).  You want
-					volume as high as possible without having the audio clip (full red bars).  Too low volume
-					increases quantization noise, while too high volume is even worse and introduces clip
-					distortion.  Note that the audio bars are linear, not logarithmic (dB).
-				</dd>
-
-				<dt>Waveform (oscilloscope mode)</dt>
-				<dd>
-					Shows snapshots of the incoming audio waveform.
-				</dd>
-
-				<dt>Frequency graph (analyzer mode)</dt>
-				<dd>
-					Shows a breakdown of incoming audio by frequency.  This is useful for spotting constant spikes,
-					which indicate unwanted signals coming down your input (like 60Hz power hum).
-				</dd>
-
-				<dt>Volume and balance</dt>
-				<dd>
-					Controls input volume and left/right channel balance.  These are tied to the line-in of your
-					sound card, and may not be correct if your input recording controls are set to use Aux, Mic-In,
-					or another input.  If these controls don't work, try using Windows Volume Control in Recording
-					mode to adjust inputs (this is available from the Audio menu).
-
-					<lina:note>
-						VirtualDub only records input from the currently selected inputs your sound card and can't
-						detect which input you have actually physically connected.  Many programs that support voice
-						communication automatically switch your recording input to Mic-In, so if you are having
-						sound capture problems double-check that the recording input selection in Windows corresponds
-						to the input you are using for captures.
-					</lina:note>
-				</dd>
-			</dl>
-
-		</dialog>
-
 		<dialog name="Preferences" filename="d-preferences.html">
 			<blockquote>
 				<lina:image src="pics/d-preferences.png"/>
@@ -805,12 +817,52 @@
 				</dd>
 			</dl>
 
-			<p>Display tab:</p>
+			<p>Display tab (none of these options affect file output):</p>
 			<dl>
 				<dt>Enable 16-bit dithering</dt>
 				<dd>
 					If enabled, 24-bit images are dithered when displaying in 16-bit to reduce banding, at the cost
-					of a little speed.  This does not affect file output.
+					of a little speed.
+				</dd>
+				
+				<dt>Use DirectX for display panes</dt>
+				<dd>
+					Enables accelerated video display for the display panes. This usually results in
+					much better display performance as well as a better looking, smoother (interpolated) image.
+					Disabling this option forces use of the safest but slowest display mechanism, which uses
+					Windows GDI to render video images.
+				</dd>
+
+				<dt>Use DirectX when Terminal Services is active</dt>
+				<dd>
+					Enables accelerated video display over a remote session using Windows Terminal Services or
+					Remote Desktop. Due to apparent bugs in the Terminal Server implementation, allowing DirectX
+					acceleration in this mode can cause video to always display in the upper-left corner of the
+					desktop, so by default VirtualDub disables acceleration when it detects a remote session.
+					This is often faster anyway.
+				</dd>
+
+				<dt>Use Direct3D</dt>
+				<dd>
+					Enables use of the Direct3D 9.0c accelerated 3D graphics API to display video. This enables
+					use of the filtering options in the display panes to select between point sampling and
+					bilinear filtering, and if the 3D device is powerful enough, bicubic filtering.
+				</dd>
+
+				<dt>Use effect file</dt>
+				<dd>
+					Enables use of a D3DX effect file (<tt>.fx</tt>) to specify custom Direct3D vertex and pixel shaders
+					to display video. This requires an additional DirectX system DLL to be installed and knowledge
+					of the effect file format to create the appropriate effects. Consult the <a href="fxvideo.html">video
+					shader reference</a> for details.
+				</dd>
+
+				<dt>Use OpenGL</dt>
+				<dd>
+					Enables use of the OpenGL accelerated 3D graphics API to display video. This enables use of
+					the filtering options in the display panes to select between point sampling and bilinear
+					filtering. Note that use of OpenGL when an accelerated 3D device is not present may result
+					in substantial performance degredation.
 				</dd>
 			</dl>
 
@@ -860,6 +912,46 @@
 					corrects the audio header when MP3 compression is active.  This option allows you to disable
 					correction if it is causing problems, such as an MP3 stream being generated in a format that
 					VirtualDub cannot parse correctly.
+				</dd>
+
+				<dt>Directly decode YCbCr (YUV) sources</dt>
+				<dd>
+					By default, VirtualDub will directly decode AVI video streams with uncompressed YCbCr
+					formats that it recognizes, including UYVY, YUY2, YV16, YV12, I420, IYUV, Y41P, YVU9,
+					Y8, and Y800, even if an external video codec would otherwise be used. This can result
+					in better quality as VirtualDub uses bilinear interpolation when upsampling chroma.
+					Disabling this option will disable YCbCr decode support and allow use of video codecs
+					to handle such data.
+				</dd>
+
+				<dt>Align large uncompressed frames to sector boundary</dt>
+				<dd>
+					Some self-contained, professional-level hardware playback devices attain higher performance when working with AVIs that
+					have video frames aligned to sector boundaries on the disk rather than the simple
+					two-byte alignment required by AVI. Enabling this option causes sector alignment to
+					be used, at the cost of slightly larger AVI files. The additional alignment is
+					only in effect when a recognized uncompressed video format is used and the size of
+					the video frame exceeds the specified threshold size.
+				</dd>
+			</dl>
+
+			<p>Timeline page:</p>
+			<dl>
+				<dt>Timeline format</dt>
+				<dd>
+					This option allows customization of the timestamp indicator on VirtualDub's main UI.
+					Formatting specifiers &mdash; a percent sign followed by a letter &mdash; cause
+					various pieces of information to be substituted into the given string. The permitted
+					formatting specifiers are listed below the editable string.
+				</dd>
+			</dl>
+
+			<p>Render options:</p>
+			<dl>
+				<dt>Confirm when abort button is pressed</dt>
+				<dd>
+					When enabled, attempts to abort a preview or save operation will cause a confirmation
+					dialog to be displayed before actually aborting.
 				</dd>
 			</dl>
 

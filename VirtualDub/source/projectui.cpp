@@ -22,6 +22,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/resources.h>
 #include "projectui.h"
@@ -805,6 +806,18 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_VIDEO_SEEK_SELEND:				MoveToSelectionEnd();		break;
 		case ID_VIDEO_SEEK_PREVDROP:			MoveToPreviousDrop();		break;
 		case ID_VIDEO_SEEK_NEXTDROP:			MoveToNextDrop();			break;
+		case ID_VIDEO_SEEK_PREVSCENE:
+			if (IsSceneShuttleRunning())
+				SceneShuttleStop();
+			else
+				StartSceneShuttleReverse();
+			break;
+		case ID_VIDEO_SEEK_NEXTSCENE:
+			if (IsSceneShuttleRunning())
+				SceneShuttleStop();
+			else
+				StartSceneShuttleForward();
+			break;
 		case ID_VIDEO_SCANFORERRORS:			ScanForErrors();			break;
 		case ID_EDIT_JUMPTO:					JumpToFrameAsk();			break;
 		case ID_EDIT_RESET:						ResetTimelineWithConfirmation();		break;
@@ -1483,10 +1496,17 @@ void VDProjectUI::UIRefreshInputFrame(bool bValid) {
 		const VDPixmap& pxsrc = inputVideoAVI->getTargetFormat();
 		IVDVideoDisplay *pDisp = VDGetIVideoDisplay(mhwndInputDisplay);
 
-		pDisp->SetSource(true, pxsrc);
+		bool result = pDisp->SetSource(true, pxsrc);
 
-//		pDisp->Update(IVDVideoDisplay::kAllFields);		not necessary; done by SetSource
+#if 0
+		const char *formatName = VDPixmapGetInfo(pxsrc.format).name;
+		const char *resultString = result ? "success" : "failure";
+		VDLog(kVDLogInfo, VDswprintf(L"DEBUG: Tried to update input frame: %dx%d, format=%hs, result=%hs", 4, &pxsrc.w, &pxsrc.h, &formatName, &resultString));
+#endif
+
 	} else {
+//		VDLog(kVDLogInfo, VDStringW(L"DEBUG: Tried to update input frame, but failed because the input frame is not valid."));
+
 		if (HDC hdc = GetDC(mhwndInputFrame)) {
 			FillRect(hdc, &mrInputFrame, (HBRUSH)GetClassLongPtr((HWND)mhwnd, GCLP_HBRBACKGROUND));
 			ReleaseDC(mhwndInputFrame, hdc);

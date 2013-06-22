@@ -73,6 +73,24 @@
 			</long>
 		</filter>
 		<filter>
+			<name>chroma smoother</name>
+			<desc>Re-interpolate color information in an image without affecting brightness.</desc>
+			<long>
+				<p>
+					Video compression algorithms often store color (chroma) information at a lower resolution than grayscale
+					brightness information, since the eye is less sensitive to detail in color; however, some video codecs don't
+					interpolate chroma well on decompression, resulting in blockiness around sharp color transitions. The
+					<em>chroma smoother</em> filter attempts to apply a blur solely in the color channels to correct this situation.
+				</p>
+				<p>
+					Each chroma option in <em>chroma smoother</em>'s configuration corresponds to a blur that is tuned for
+					a particular type of chroma subsampling; assuming that the video decoder did not interpolate chroma at all,
+					choosing the correct setting will produce a result approximating bilinear interpolation. Of course, stronger
+					or weaker options can be picked to taste.
+				</p>
+			</long>
+		</filter>
+		<filter>
 			<name>deinterlace</name>
 			<desc>Split, unsplit, discard, and duplicate fields.</desc>
 			<long>
@@ -88,9 +106,15 @@
 			<name>emboss</name>
 			<desc>Apply psuedo-3D edge detection matrices.</desc>
 			<long>
-				<em>Emboss</em> gives a 3D-like effect by &quot;lighting&quot; the video from a particular direction.
-				This highlights edges in the image. It can also be used to amplify a video in order to look for low-level
-				noise.
+				<p>
+					<em>Emboss</em> gives a 3D-like effect by &quot;lighting&quot; the video from a particular direction.
+					This highlights edges in the image. It can also be used to amplify a video in order to look for low-level
+					noise.
+				</p>
+				<p>
+					All forms of the <em>emboss</em> filter can also be done manually by the <a href="#general convolution">general
+					convolution</a> filter.
+				</p>
 			</long>
 		</filter>
 		<filter>
@@ -120,6 +144,52 @@
 		<filter>
 			<name>general convolution</name>
 			<desc>Apply an arbitrary 3x3 filtering matrix.</desc>
+			<long>
+				<p>
+					A <em>convolution filter</em> is a filter that uses a local area of pixels to compute a new pixel. It can be
+					thought of as either taking a weighted sum of an area of source pixels, or adding a weighted area to the output
+					scaled by the source pixel (the two are equivalent). Filters that can be performed using convolution include
+					blurs, sharpens, and edge detectors.
+				</p>
+				<p>
+					The <em>general convolution</em> filter allows a 3x3 filter to be specified. Each value in the filter is
+					specified as a value from a scale to 0-256, where 256 means a value of 1.0 (yes, this is a programmerism).
+					Values can be specified outside this somewhat, including negative numbers, although large values like 10,000
+					are inadvisable. Each value then specifies either the amount of source to include in the result, or the amount
+					of result to produce from the center source pixel (again, depending on your perspective).
+				</p>
+				<p>
+					The <em>clipping</em> option should almost always be enabled; if it is not, the result will be incorrect when
+					the result of the filter is below black or above white.
+				</p>
+				<p>
+					<em>Bias</em> is a value to add to the result, again in the range 0-255. It is useful when both positive and
+					negative values need to be visualized, such as error values. It acts much like a <em>brightness</em> adjustment.
+				</p>
+				<p>
+					Some hints regarding design of convolution filters:
+				</p>
+				<ul>
+					<li>The sum of all of the values in the matrix is the <em>gain</em> of the filter, which determines the change
+						in contrast produced by the filter. A sum of 256 results in unity gain, i.e. no change. Higher sums amplify
+						the image and lower sums mute it. A zero sum completely removes the image, and a negative sum inverts it.
+					</li>
+					<li>
+						Filter matrices that consist of all positive elements are blurs. For instance, here is a blur matrix:
+<blockquote><pre>
+28 28 28
+28 32 28
+28 28 28
+</pre></blockquote>
+					</li>
+					<li>
+						Matrices that aren't symmetrical &mdash; those that are lopsided in a direction &mdash; will have edge detection effects.
+					</li>
+					<li>
+						A bright pixel in the image will take on the shape of the filter matrix.
+					</li>
+				</ul>
+			</long>
 		</filter>
 		<filter>
 			<name>grayscale</name>
@@ -169,6 +239,49 @@
 		<filter>
 			<name>logo</name>
 			<desc>Plop your very own bug into the frame.</desc>
+			<long>
+				<dl>
+					<dt>Enable per-pixel blending using the alpha channel</dt>
+					<dd>
+						An image can be augmented using an additional monochrome map called an <em>alpha channel</em>.
+						This map contains a single value per pixel indicating how opaque or translucent that pixel should be;
+						it allows logos to be created that have shaded areas. Most photographic image editing packages have
+						options to edit an alpha, mask, or opacity layer on an image for this purpose. For use with this
+						filter, it is best to save such images in TARGA (<tt>.tga</tt>) format with 32-bit pixels.
+					</dd>
+
+					<dt>Use premultiplied alpha</dt>
+					<dd>
+						Affects the interpretation of the alpha channel. Normally alpha channels simply control blending of
+						an image, but when creating an image from scratch that has soft edges, creating such an alpha channel
+						may be difficult. Premultiplied alpha refers to a method of blending where the image itself is expected
+						to be pre-darkened where it is not fully opaque, to the point of being black where alpha indicates
+						transparent areas. In a painting package, you may find this more convenient to create, as you can
+						simply draw on top of "transparent black."
+					</dd>
+
+					<dt>Use gray channel of secondary image for alpha channel</dt>
+					<dd>
+						When it is inconvenient to create a single image with an alpha channel, enabling this option will
+						allow the alpha to be supplied using the brightness of a second image. This image should have the
+						same size as the main logo image, although it need not be of the same format.
+					</dd>
+
+					<dt>Opacity</dt>
+					<dd>
+						Global translucency control; 0% will hide the logo, 100% shows the logo at full opacity, and intermediate
+						values will fade it out somewhat. When per-pixel blending is enabled, this option will scale down all
+						of the alpha values.
+					</dd>
+
+					<dt>Justification, X/Y offset</dt>
+					<dd>
+						Specifies the position of the image. If justification is something other than TL (top-left), the positioning
+						will be relative to another point within the image, which is useful for consistently placing logos in
+						the bottom-right corner when working with videos of different sizes.
+					</dd>
+				</dl>
+			</long>
 		</filter>
 		<filter>
 			<name>motion blur</name>
@@ -234,10 +347,18 @@
 						very small and you should consider using <em>precise bicubic</em> instead.
 					</dd>
 				</dl>
+
 				The <em>resize</em> filter uses OpenGL conventions for pixel mapping, mapping the entire source texture onto the entire
 				destination rect. Areas in the image are proportionally enlarged or shrunk with the picture frame: enlarging the frame
 				2x results in all features in the image being twice as large. This means that high enlargement ratios will result in
 				some duplicated pixels around the border of the destination image (U/V clamping).
+
+				<lina:note>
+					The <em>new width</em> and <em>new height</em> fields do not have to be integers &mdash; they can be fractional.
+					VirtualDub will resize the video to that fractional size and then extend the borders to hit the next highest
+					integer size in pixels. The means that exact aspect ratios can be maintained in the image content of a video even
+					though the frame size is slightly off due to integral rounding.
+				</lina:note>
 			</long>
 		</filter>
 		<filter>

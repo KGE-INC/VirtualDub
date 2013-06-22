@@ -2,50 +2,67 @@
 	<lina:set-option name="output-dir" target="../out/Helpfile"/>
 	<lina:set-option name="link-truncate" baseurl="" notruncate/>
 
+	<lina:fireball src="source/layout.css" dst="layout.css"/>
+
 	<lina:macro name="create">
 		<lina:tag name="lina:write">
 			<lina:attrib name="file"><lina:arg name="file"/></lina:attrib>
 			<html>
 				<head>
-					<style>
-						body { background: #fff; text-color: #000; font-size: 12pt; padding: 0; margin: 0 }
-						h1 { font-family: Arial, Helvetica; font-size: 20pt; background: #c0e0ff; padding: 0 4px }
-						h2 { font-family: Arial, Helvetica; font-size: 14pt; background: #c0ffe0; padding: 0 4px }
-						td { vertical-align: top }
-						td.pageleft { padding: 4px; background: #e0e0e0 }
-						td.pagetop { font-family: Arial, Helvetica; padding: 0 4px; background: #e0e0e0 }
-						dt { color: #246; margin: 16px 0 6px 4px }
-						.dtitle { font-style: italic }
-						em { font-weight: normal; color: #800 }
-					</style>
+					<link rel="stylesheet" href="layout.css" type="text/css"/>
 					<title>
 						VirtualDub help<lina:if-arg name="title"> - <lina:arg name="title"/></lina:if-arg>
 					</title>
 				</head>
 				<body>
-					<table width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
+					<table width="100%" height="100%" border="0" cellpadding="0" cellspacing="0" class="toc">
 						<tr height="1">
 							<td colspan="2" class="pagetop">
-								<div style="font-size: 20pt; font-weight: normal; font-decoration: none">
 									VirtualDub help<lina:if-arg name="title"> - <lina:arg name="title"/></lina:if-arg>
-								</div>
 							</td>
 						</tr>
 						<tr height="*">
 							<td width="20%" class="pageleft">
+								Processing:<br/>
+								<div class="tocindent">
+									<a href="p-mainui.html">Main UI</a><br/>
+									<a href="p-edit.html">Editing</a><br/>
+									<a href="p-filtering.html">Filtering</a><br/>
+									<a href="p-render.html">Rendering/saving</a><br/>
+									<a href="p-artifacts.html">Artifacts</a><br/>
+									<a href="p-pipeline.html">The pipeline</a><br/>
+									<a href="p-direct.html">Direct mode</a><br/>
+									<a href="p-displays.html">Display panes</a><br/>
+									<a href="frameserver.html">Frameserver</a><br/>
+									<a href="video-filters.html">Video filter reference</a><br/>
+									<a href="fxvideo.html">Video shader reference</a><br/>
+								</div>
+								<a href="capture.html">Video capture</a><br/>
+								<div class="tocindent">
+									<a href="c-hardwaresetup.html">Hardware setup</a><br/>
+									<a href="c-driverselect.html">Driver selection</a><br/>
+									<a href="c-audiosetup.html">Audio setup</a><br/>
+									<a href="c-pipeline.html">Pipeline</a><br/>
+									<a href="c-filtering.html">Filtering</a><br/>
+									<a href="c-infopanel.html">Info panel</a><br/>
+									<a href="c-spillmode.html">Multi-segment mode</a><br/>
+									<a href="c-timing.html">Timing dialog</a><br/>
+									<a href="c-performance.html">Performance</a><br/>
+									<a href="c-troubleshooting.html">Troubleshooting</a><br/>
+								</div>
+								Dialogs:<br/>
+								<div class="tocindent">
+									<lina:for-each name="/dialog-docs/dialog">
+										<lina:tag name="a">
+											<lina:attrib name="href"><lina:arg name="filename"/></lina:attrib>
+											<lina:arg name="name"/>
+										</lina:tag>
+										<br/>
+									</lina:for-each>
+								</div>
 								<a href="crash.html">On a crash...</a><br/>
-								<p>
-								Dialogs:
-								</p>
-								<lina:for-each name="/dialog-docs/dialog">
-									<lina:tag name="a">
-										<lina:attrib name="href"><lina:arg name="filename"/></lina:attrib>
-										<lina:arg name="name"/>
-									</lina:tag>
-									<br/>
-								</lina:for-each>
 							</td>
-							<td style="padding: 8px">
+							<td class="body">
 								<lina:body/>
 							</td>
 						</tr>
@@ -89,6 +106,8 @@
 		</lina:tag>
 		<lina:tag name="img">
 			<lina:attrib name="src"><lina:arg name="src"/></lina:attrib>
+			<lina:if-arg name="width"><lina:attrib name="width"><lina:arg name="width"/></lina:attrib></lina:if-arg>
+			<lina:if-arg name="height"><lina:attrib name="height"><lina:arg name="height"/></lina:attrib></lina:if-arg>
 		</lina:tag>
 	</lina:macro>
 
@@ -97,6 +116,9 @@
 	<lina:include file="source/videofilters.lina"/>
 	<lina:include file="source/audiofilters.lina"/>
 	<lina:include file="source/crash.lina"/>
+	<lina:include file="source/capture.lina"/>
+	<lina:include file="source/render.lina"/>
+	<lina:include file="source/fxvideo.lina"/>
 
 
 	<lina:create file="capwarn.html">

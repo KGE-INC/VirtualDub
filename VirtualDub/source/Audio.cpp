@@ -325,7 +325,7 @@ long AudioStream::Read(void *buffer, long max_samples, long *lplBytes) {
 
 	actual = _Read(buffer, max_samples, lplBytes);
 
-	_ASSERT(actual >= 0 && actual <= max_samples);
+	VDASSERT(actual >= 0 && actual <= max_samples);
 
 	samples_read += actual;
 
@@ -433,17 +433,46 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 	if (mPrefill > 0) {
 		long tc = max_samples;
-		const int nBlockAlign = aSrc->getWaveFormat()->nBlockAlign;
+		const int nBlockAlign = GetFormat()->nBlockAlign;
 
 		if (tc > mPrefill)
 			tc = (long)mPrefill;
 
-		if (GetFormat()->nChannels > 1)
-			memset(buffer, 0, nBlockAlign*tc);
-		else
-			memset(buffer, 0x80, nBlockAlign*tc);
+		const WAVEFORMATEX *wfex = GetFormat();
 
-		buffer = (char *)buffer + nBlockAlign*tc;
+		if (wfex->wFormatTag == WAVE_FORMAT_PCM) {
+			if (GetFormat()->wBitsPerSample >= 16)
+				memset(buffer, 0, nBlockAlign*tc);
+			else
+				memset(buffer, 0x80, nBlockAlign*tc);
+
+			buffer = (char *)buffer + nBlockAlign*tc;
+		} else {
+			uint32 actualBytes, actualSamples;
+			VDPosition startPos = aSrc->getStart();
+
+			int err = aSrc->read(startPos, 1, buffer, nBlockAlign, &actualBytes, &actualSamples);
+
+			if (err == AVIERR_FILEREAD)
+				throw MyError("Audio sample %lu could not be read in the source.  The file may be corrupted.", (unsigned long)startPos);
+			else if (err)
+				throw MyAVIError("AudioStreamSource", err);
+
+			// replicate sample
+			if (tc > 1) {
+				char *dst = (char *)buffer;
+
+				for(int count = nBlockAlign*(tc-1); count; --count) {
+					dst[nBlockAlign] = dst[0];
+					++dst;
+				}
+
+				VDASSERT(dst == (char *)buffer + (tc-1)*nBlockAlign);
+				buffer = dst;
+			}
+
+			buffer = (char *)buffer + nBlockAlign;
+		}
 
 		max_samples -= tc;
 		lAddedBytes = tc*nBlockAlign;
@@ -537,9 +566,10 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 				break;
 		};
 
-		*lplBytes = (lTotalBytes - lBytesLeft) + lAddedBytes;
+		long bytes = (lTotalBytes - lBytesLeft); 
+		*lplBytes = bytes + lAddedBytes;
 
-		return *lplBytes / GetFormat()->nBlockAlign + lAddedSamples;
+		return bytes / GetFormat()->nBlockAlign + lAddedSamples;
 	} else {
 		uint32 lSamples=0;
 

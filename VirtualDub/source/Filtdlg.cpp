@@ -450,6 +450,10 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 				break;
 
 			case IDOK:
+				// We must force filters to stop before we muck with the global list... in case
+				// the pane refresh restarted them.
+				filters.DeinitFilters();
+				filters.DeallocateBuffers();
 				{
 					HWND hwndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
 					FilterInstance *fa, *fa2;
@@ -472,6 +476,10 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 				EndDialog(hDlg, TRUE);
 				return TRUE;
 			case IDCANCEL:
+				// We must force filters to stop before we muck with the global list... in case
+				// the pane refresh restarted them.
+				filters.DeinitFilters();
+				filters.DeallocateBuffers();
 				{
 					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
 					List list;

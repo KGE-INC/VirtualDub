@@ -761,10 +761,16 @@ void Dubber::InitAudioConversionChain() {
 		// Attach a converter if we need to...
 
 		if (aInfo.converting) {
+			bool is_16bit = aInfo.is_16bit;
+
+			// fix precision guess based on actual stream output if we are not changing it
+			if (opt->audio.newPrecision == DubAudioOptions::P_NOCHANGE)
+				is_16bit = audioStream->GetFormat()->wBitsPerSample > 8;
+
 			if (aInfo.single_channel)
-				audioStream = new_nothrow AudioStreamConverter(audioStream, aInfo.is_16bit, aInfo.is_right, true);
+				audioStream = new_nothrow AudioStreamConverter(audioStream, is_16bit, aInfo.is_right, true);
 			else
-				audioStream = new_nothrow AudioStreamConverter(audioStream, aInfo.is_16bit, aInfo.is_stereo, false);
+				audioStream = new_nothrow AudioStreamConverter(audioStream, is_16bit, aInfo.is_stereo, false);
 
 			if (!audioStream)
 				throw MyMemoryError();

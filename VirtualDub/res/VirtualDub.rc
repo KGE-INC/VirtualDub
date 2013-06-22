@@ -130,6 +130,8 @@ BEGIN
         MENUITEM "Next range\t>",               ID_EDIT_NEXTRANGE
         MENUITEM "Selection start\t[",          ID_VIDEO_SEEK_SELSTART
         MENUITEM "Selection end\t]",            ID_VIDEO_SEEK_SELEND
+        MENUITEM "Prev scene\tCtrl+Shift+Left", ID_VIDEO_SEEK_PREVSCENE
+        MENUITEM "Next scene\tCtrl+Shift+Right", ID_VIDEO_SEEK_NEXTSCENE
         MENUITEM SEPARATOR
         MENUITEM "Go To Frame...\tCtrl+G",      ID_EDIT_JUMPTO
     END
@@ -824,7 +826,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.10 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.11 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1529,16 +1531,17 @@ BEGIN
                     WS_DISABLED
 END
 
-IDD_JOBERROR DIALOG DISCARDABLE  0, 0, 186, 82
+IDD_JOBERROR DIALOG DISCARDABLE  0, 0, 240, 117
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
     WS_CAPTION | WS_SYSMENU
 CAPTION "VirtualDub - Job ""butz"""
 FONT 8, "MS Shell Dlg"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,68,61,50,14
-    LTEXT           "",IDC_ERROR,7,18,172,40,SS_SUNKEN
+    DEFPUSHBUTTON   "OK",IDOK,94,96,50,14
     LTEXT           "Job stopped with the following error:",IDC_STATIC,7,7,
                     114,8
+    EDITTEXT        IDC_ERROR,7,17,226,75,ES_MULTILINE | ES_AUTOVSCROLL | 
+                    ES_AUTOHSCROLL | ES_READONLY
 END
 
 IDD_PREFS_DISPLAY DIALOG DISCARDABLE  0, 0, 250, 150
@@ -3111,9 +3114,9 @@ BEGIN
     IDD_JOBERROR, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 179
+        RIGHTMARGIN, 233
         TOPMARGIN, 7
-        BOTTOMMARGIN, 75
+        BOTTOMMARGIN, 110
     END
 
     IDD_PREFS_DISPLAY, DIALOG
@@ -3709,6 +3712,8 @@ BEGIN
     VK_LEFT,        ID_VIDEO_SEEK_START,    VIRTKEY, CONTROL, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, ALT, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_KEYPREV,  VIRTKEY, SHIFT, NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_PREVSCENE, VIRTKEY, SHIFT, CONTROL, 
+                                                    NOINVERT
     VK_NEXT,        ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, NOINVERT
     VK_PRIOR,       ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, NOINVERT
     VK_RETURN,      ID_FILE_PREVIEWOUTPUT,  VIRTKEY, NOINVERT
@@ -3716,6 +3721,8 @@ BEGIN
     VK_RIGHT,       ID_VIDEO_SEEK_END,      VIRTKEY, CONTROL, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, ALT, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_KEYNEXT,  VIRTKEY, SHIFT, NOINVERT
+    VK_RIGHT,       ID_VIDEO_SEEK_NEXTSCENE, VIRTKEY, SHIFT, CONTROL, 
+                                                    NOINVERT
     VK_SPACE,       ID_FILE_PREVIEWINPUT,   VIRTKEY, NOINVERT
     "W",            ID_FILE_CLOSEAVI,       VIRTKEY, CONTROL, NOINVERT
     "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL, NOINVERT
@@ -3795,8 +3802,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,10,0
- PRODUCTVERSION 1,6,10,0
+ FILEVERSION 1,6,11,0
+ PRODUCTVERSION 1,6,11,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3814,14 +3821,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.10\0"
+            VALUE "FileVersion", "1.6.11\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1998-2005 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.10\0"
+            VALUE "ProductVersion", "1.6.11\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3907,17 +3914,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.10 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.10"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.10 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.10 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.10"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.11 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.11"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.11 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.11 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.11"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.10 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.10 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.10 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.10 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.10 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.11 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.11 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.11 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.11 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.11 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

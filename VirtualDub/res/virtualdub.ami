@@ -241,6 +241,16 @@ dialog 1011, "" : fill, child {
 
 			// it is NOT a good idea to enable both Direct3D and OpenGL
 			checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
+			set 200: spacing=3, marginl=40, enable={@103}, vertical, align=fill {
+				now valign=center, marginl=0;
+
+				set 0 : align=fill {
+					checkbox 105, "Use effect file:";
+					textedit 300, "" : minw=60, sunken, align=fill, enable={@105};
+				}
+
+				textarea 0, "Effect file support requires d3dx_25.dll (April 2005 or newer version of DirectX 9.0c runtime)." : minh=20, readonly, fill;
+			}			
 			checkbox 104, "Use OpenGL" : enable={@101 && !@103};
 		}
 	}

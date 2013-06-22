@@ -44,6 +44,7 @@ namespace {
 		bool			mbConfirmRenderAbort;
 		bool			mbEnableAVIAlignmentThreshold;
 		uint32			mAVIAlignmentThreshold;
+		VDStringW		mD3DFXFile;
 	} g_prefs2;
 }
 
@@ -97,6 +98,8 @@ public:
 			SetValue(102, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayUseDXWithTS));
 			SetValue(103, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3D));
 			SetValue(104, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableOpenGL));
+			SetValue(105, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3DFX));
+			SetCaption(300, mPrefs.mD3DFXFile);
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
@@ -107,6 +110,8 @@ public:
 			if ( GetValue(102)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayUseDXWithTS;
 			if ( GetValue(103)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3D;
 			if ( GetValue(104)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableOpenGL;
+			if ( GetValue(105)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3DFX;
+			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
 		return false;
@@ -330,6 +335,7 @@ public:
 				key.setBool("Allow direct YCbCr decoding", mPrefs.mbAllowDirectYCbCrDecoding);
 				key.setBool("AVI: Alignment threshold enable", mPrefs.mbEnableAVIAlignmentThreshold);
 				key.setInt("AVI: Alignment threshold", mPrefs.mAVIAlignmentThreshold);
+				key.setString("Direct3D FX file", mPrefs.mD3DFXFile.c_str());
 			}
 		}
 		return false;
@@ -373,6 +379,9 @@ void LoadPreferences() {
 	if (!key.getString("Timeline format", g_prefs2.mTimelineFormat))
 		g_prefs2.mTimelineFormat = L"Frame %f (%h:%02m:%02s.%03t) [%c]";
 
+	if (!key.getString("Direct3D FX file", g_prefs2.mD3DFXFile))
+		g_prefs2.mD3DFXFile = L"display.fx";
+
 	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
 	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
 	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
@@ -395,4 +404,8 @@ bool VDPreferencesIsRenderAbortConfirmEnabled() {
 
 uint32 VDPreferencesGetAVIAlignmentThreshold() {
 	return g_prefs2.mbEnableAVIAlignmentThreshold ? g_prefs2.mAVIAlignmentThreshold : 0;
+}
+
+const VDStringW& VDPreferencesGetD3DFXFile() {
+	return g_prefs2.mD3DFXFile;
 }

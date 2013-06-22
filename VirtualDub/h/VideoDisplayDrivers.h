@@ -47,6 +47,7 @@ public:
 		kFilterPoint,
 		kFilterBilinear,
 		kFilterBicubic,
+		kFilterModeCount
 	};
 
 	virtual ~IVDVideoDisplayMinidriver() {}

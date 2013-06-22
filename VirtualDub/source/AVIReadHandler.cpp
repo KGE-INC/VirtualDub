@@ -71,7 +71,9 @@ namespace {
 
 	bool isValidFOURCCChar(uint8 c) {
 		// FOURCCs must consist of a sequence of alphanumerics, padded at the end by spaces.
-		return (uint8)(c-0x30)<10 || (uint8)(c-0x41)<26 || (uint8)(c-0x61)<26 || c==0x20;
+		// 
+		// Change: Underscores spotted out of DirectShow DV mux filter. *sigh*
+		return (uint8)(c-0x30)<10 || (uint8)(c-0x41)<26 || (uint8)(c-0x61)<26 || c==0x20 || c==(uint8)'_';
 	}
 }
 
@@ -1588,8 +1590,10 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 	else
 		hFile = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 
-	if (INVALID_HANDLE_VALUE == hFile)
-		throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), VDTextWToA(pszFile).c_str());
+	if (INVALID_HANDLE_VALUE == hFile) {
+		DWORD err = GetLastError();
+		throw MyWin32Error("Couldn't append %s: %%s", err, VDTextWToA(pszFile).c_str());
+	}
 
 	if (GetVersion() < 0x80000000)
 		hFileUnbuffered = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);

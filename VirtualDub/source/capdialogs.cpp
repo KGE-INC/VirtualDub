@@ -38,6 +38,7 @@ extern const char g_szAdjustVideoTiming[];
 extern const char g_szChunkSize[];
 extern const char g_szChunkCount[];
 extern const char g_szDisableBuffering[];
+extern const char g_szStopConditions[];
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -561,6 +562,12 @@ INT_PTR VDDialogCaptureStopPrefs::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam
 
 			if (IsDlgButtonChecked(mhdlg, IDC_DROPLIMIT))
 				mPrefs.fEnableFlags |= CAPSTOP_DROPRATE;
+
+			if (LOWORD(wParam) == IDOK) {
+				VDRegistryAppKey key(g_szCapture);
+
+				key.setBinary(g_szStopConditions, (char *)&mPrefs, sizeof mPrefs);
+			}
 
 			End(1);
 			return TRUE;

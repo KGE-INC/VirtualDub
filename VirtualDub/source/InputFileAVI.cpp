@@ -679,6 +679,7 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 
 		pInfo->lAudioMinSize = 0x7FFFFFFF;
 		pInfo->bAudioFramesIndeterminate = false;
+		pInfo->lAudioPreload = static_cast<VDAudioSourceAVISourced *>(inputAudioAVI)->GetPreloadSamples();
 
 		i = audioFrameStart;
 		while(i < audioFrameEnd) {
@@ -692,9 +693,6 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 
 			++pInfo->lAudioFrames;
 			i += lActualSamples;
-
-			if (inputAudioAVI->getStreamInfo().dwInitialFrames == pInfo->lAudioFrames)
-				pInfo->lAudioPreload = (long)(i - audioFrameStart);
 
 			pInfo->i64AudioTotalSize += lActualBytes;
 			if (lActualBytes < pInfo->lAudioMinSize) pInfo->lAudioMinSize = lActualBytes;
@@ -940,7 +938,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					const double rawOverhead = (24.0 * totalVideoFrames);
 					const double totalSize = (double)(pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
 					const double videoRate = (1.0 / 125.0) * totalSize / seconds;
-					const double videoOverhead = 100.0 * rawOverhead / (rawOverhead + totalSize);
+					const double videoOverhead = totalSize > 0 ? 100.0 * rawOverhead / (rawOverhead + totalSize) : 0;
 					sprintf(buf, "%.0f kbps (%.2f%% overhead)", videoRate, videoOverhead);
 					SetDlgItemText(hDlg, IDC_VIDEO_DATARATE, buf);
 				}

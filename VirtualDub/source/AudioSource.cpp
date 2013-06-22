@@ -249,6 +249,29 @@ void AudioSourceAVI::Reinit() {
 	mSampleLast = pAVIStream->End();
 }
 
+int AudioSourceAVI::GetPreloadSamples() {
+	long bytes, samples;
+	if (pAVIStream->Read(mSampleFirst, AVISTREAMREAD_CONVENIENT, NULL, 0, &bytes, &samples))
+		return 0;
+
+	sint64 astart = pAVIStream->getSampleBytePosition(mSampleFirst);
+
+	if (astart < 0)
+		return (int)samples;
+
+	IAVIReadStream *pVS = pAVIFile->GetStream(streamtypeVIDEO, 0);
+	if (!pVS)
+		return (int)samples;
+
+	sint64 vstart = pVS->getSampleBytePosition(pVS->Start());
+	delete pVS;
+
+	if (vstart >= 0 && vstart < astart)
+		return 0;
+
+	return (int)samples;
+}
+
 bool AudioSourceAVI::isStreaming() {
 	return pAVIStream->isStreaming();
 }
@@ -531,10 +554,14 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 		mCacheLinePositions[line] = -1;
 
 		// load up to 10 frames and linearize the raw data
+		sint32 setSize = mSamplesPerSet;
 		VDPosition pos = mRawStart + 10 * setpos;
 		VDPosition limit = pos + 10;
-		if (limit > mRawEnd)
+		if (limit > mRawEnd) {
 			limit = mRawEnd;
+
+			setSize = mSamplesPerSet * ((sint32)limit - (sint32)pos) / 10;
+		}
 		cline.mRawSamples = 0;
 
 		uint8 *dst = (uint8 *)cline.mRawData;
@@ -546,95 +573,110 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 			if (err)
 				return NULL;
 
-			if (bytes != mTempBuffer.size())
-				return NULL;
+			if (!bytes) {
+				uint32 n = mSamplesPerSet / 10;
 
-			const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];
-
-			const uint32 n = mMinimumFrameSize + (pAAUX[1] & 0x3f);
-
-			if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
-				VDDEBUG("AudioSourceDV: Sample count overflow!\n");
-				VDASSERT(false);
-				break;
-			}
-
-			cline.mRawSamples += n;
-
-			if ((pAAUX[4] & 7) == 1) {	// 1: 12-bit nonlinear
-				const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
-				const ptrdiff_t rightOffset = mRightChannelOffset;
-				sint32 *pOffsets = mGatherTab.data();
-
-				uint16 *dst16 = (uint16 *)dst;
-				dst += 4*n;
-
-				for(int i=0; i<n; ++i) {
-					const ptrdiff_t pos = *pOffsets++;
-					const uint8 *srcF = src0 + pos;
-					const uint8 *srcR = srcF + rightOffset;
-
-					// Convert 12-bit nonlinear (one's complement floating-point) sample to 16-bit linear.
-					// This value is a 1.3.8 floating-point value similar to IEEE style, except that the
-					// sign is represented via 1's-c rather than sign-magnitude.
-					//
-					// Thus, 0000..00FF are positive denormals, 8000 is the largest negative value, etc.
-
-					sint32 vL = ((sint32)srcF[0]<<4) + (srcF[2]>>4);		// reconstitute left 12-bit value
-					sint32 vR = ((sint32)srcF[1]<<4) + (srcF[2] & 15);		// reconstitute right 12-bit value
-
-					static const sint32 addend[16]={
-						-0x0000 << 0,
-						-0x0000 << 0,
-						-0x0100 << 1,
-						-0x0200 << 2,
-						-0x0300 << 3,
-						-0x0400 << 4,
-						-0x0500 << 5,
-						-0x0600 << 6,
-
-						-0x09ff << 6,
-						-0x0aff << 5,
-						-0x0bff << 4,
-						-0x0cff << 3,
-						-0x0dff << 2,
-						-0x0eff << 1,
-						-0x0fff << 0,
-						-0x0fff << 0,
-					};
-					static const int	shift [16]={0,0,1,2,3,4,5,6,6,5,4,3,2,1,0,0};
-
-					int expL = vL >> 8;
-					int expR = vR >> 8;
-
-					dst16[0] = (vL << shift[expL]) + addend[expL];
-					dst16[1] = (vR << shift[expR]) + addend[expR];
-					dst16 += 2;
+				if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
+					VDDEBUG("AudioSourceDV: Sample count overflow!\n");
+					VDASSERT(false);
+					break;
 				}
-			} else {					// 0: 16-bit linear
-				const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
-				const ptrdiff_t rightOffset = mRightChannelOffset;
-				sint32 *pOffsets = mGatherTab.data();
 
-				for(int i=0; i<n; ++i) {
-					const ptrdiff_t pos = *pOffsets++;
-					const uint8 *srcL = src0 + pos;
-					const uint8 *srcR = srcL + rightOffset;
+				cline.mRawSamples += n;
 
-					// convert big-endian sample to little-endian
-					dst[0] = srcL[1];
-					dst[1] = srcL[0];
-					dst[2] = srcR[1];
-					dst[3] = srcR[0];
-					dst += 4;
+				memset(dst, 0, n*4);
+				dst += n*4;
+			} else {
+				if (bytes != mTempBuffer.size())
+					return NULL;
+
+				const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];
+
+				const uint32 n = mMinimumFrameSize + (pAAUX[1] & 0x3f);
+
+				if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
+					VDDEBUG("AudioSourceDV: Sample count overflow!\n");
+					VDASSERT(false);
+					break;
+				}
+
+				cline.mRawSamples += n;
+
+				if ((pAAUX[4] & 7) == 1) {	// 1: 12-bit nonlinear
+					const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
+					const ptrdiff_t rightOffset = mRightChannelOffset;
+					sint32 *pOffsets = mGatherTab.data();
+
+					uint16 *dst16 = (uint16 *)dst;
+					dst += 4*n;
+
+					for(int i=0; i<n; ++i) {
+						const ptrdiff_t pos = *pOffsets++;
+						const uint8 *srcF = src0 + pos;
+						const uint8 *srcR = srcF + rightOffset;
+
+						// Convert 12-bit nonlinear (one's complement floating-point) sample to 16-bit linear.
+						// This value is a 1.3.8 floating-point value similar to IEEE style, except that the
+						// sign is represented via 1's-c rather than sign-magnitude.
+						//
+						// Thus, 0000..00FF are positive denormals, 8000 is the largest negative value, etc.
+
+						sint32 vL = ((sint32)srcF[0]<<4) + (srcF[2]>>4);		// reconstitute left 12-bit value
+						sint32 vR = ((sint32)srcF[1]<<4) + (srcF[2] & 15);		// reconstitute right 12-bit value
+
+						static const sint32 addend[16]={
+							-0x0000 << 0,
+							-0x0000 << 0,
+							-0x0100 << 1,
+							-0x0200 << 2,
+							-0x0300 << 3,
+							-0x0400 << 4,
+							-0x0500 << 5,
+							-0x0600 << 6,
+
+							-0x09ff << 6,
+							-0x0aff << 5,
+							-0x0bff << 4,
+							-0x0cff << 3,
+							-0x0dff << 2,
+							-0x0eff << 1,
+							-0x0fff << 0,
+							-0x0fff << 0,
+						};
+						static const int	shift [16]={0,0,1,2,3,4,5,6,6,5,4,3,2,1,0,0};
+
+						int expL = vL >> 8;
+						int expR = vR >> 8;
+
+						dst16[0] = (vL << shift[expL]) + addend[expL];
+						dst16[1] = (vR << shift[expR]) + addend[expR];
+						dst16 += 2;
+					}
+				} else {					// 0: 16-bit linear
+					const uint8 *src0 = (const uint8 *)&mTempBuffer[0];
+					const ptrdiff_t rightOffset = mRightChannelOffset;
+					sint32 *pOffsets = mGatherTab.data();
+
+					for(int i=0; i<n; ++i) {
+						const ptrdiff_t pos = *pOffsets++;
+						const uint8 *srcL = src0 + pos;
+						const uint8 *srcR = srcL + rightOffset;
+
+						// convert big-endian sample to little-endian
+						dst[0] = srcL[1];
+						dst[1] = srcL[0];
+						dst[2] = srcR[1];
+						dst[3] = srcR[0];
+						dst += 4;
+					}
 				}
 			}
 		}
 
 		// resample if required
-		if (cline.mRawSamples == mSamplesPerSet) {
+		if (cline.mRawSamples == setSize) {
 			// no resampling required -- straight copy
-			memcpy(cline.mResampledData, cline.mRawData, 4*mSamplesPerSet);
+			memcpy(cline.mResampledData, cline.mRawData, 4*setSize);
 		} else {
 			const sint16 *src = &cline.mRawData[0][0];
 			      sint16 *dst = &cline.mResampledData[0][0];
@@ -645,8 +687,10 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 			dst += 2;
 
 			// linearly interpolate middle samples
-			uint32 dudx = ((cline.mRawSamples-1) << 16) / (mSamplesPerSet-1);
+			uint32 dudx = ((cline.mRawSamples-1) << 16) / (setSize-1);
 			uint32 u = dudx + (dudx >> 1) - 0x8000;
+
+			VDASSERT((sint32)u >= 0);
 
 			unsigned n = mSamplesPerSet-2;
 			do {

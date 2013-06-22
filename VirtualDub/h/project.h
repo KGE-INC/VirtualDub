@@ -74,6 +74,7 @@ public:
 	VDPosition GetSelectionEndFrame();
 
 	bool IsClipboardEmpty();
+	bool IsSceneShuttleRunning();
 
 	void Cut();
 	void Copy();

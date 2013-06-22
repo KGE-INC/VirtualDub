@@ -166,7 +166,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/Debug/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /libpath:"../lib/Debug"
 # SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib  bufferoverflowU.lib /nologo /subsystem:windows /map:"../out/DebugAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /out:"..\out\DebugAMD64/Veedub64.exe" /libpath:"../lib/DebugAMD64" /machine:AMD64
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib bufferoverflowU.lib /nologo /subsystem:windows /map:"../out/DebugAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /out:"..\out\DebugAMD64/Veedub64.exe" /libpath:"../lib/DebugAMD64" /machine:AMD64
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\..\obj\DebugAMD64\VirtualDub
@@ -387,6 +387,10 @@ SOURCE=.\h\VBitmap.h
 # Begin Source File
 
 SOURCE=.\h\vf_base.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\VideoDisplayDriverDX9.h
 # End Source File
 # Begin Source File
 
@@ -2553,6 +2557,10 @@ SOURCE=.\source\uiframe.cpp
 # Begin Source File
 
 SOURCE=.\source\VideoDisplay.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\VideoDisplayDriverD3DFX.cpp
 # End Source File
 # Begin Source File
 

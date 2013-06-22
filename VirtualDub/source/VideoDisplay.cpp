@@ -38,6 +38,8 @@ extern const char g_szVideoDisplayControlName[] = "phaeronVideoDisplay";
 
 extern void VDMemcpyRect(void *dst, ptrdiff_t dststride, const void *src, ptrdiff_t srcstride, size_t w, size_t h);
 
+extern IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverD3DFX();
+
 ///////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -517,7 +519,10 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 						}
 
 						if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
-							mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
+							if (g_prefs.fDisplay & Preferences::kDisplayEnableD3DFX)
+								mpMiniDriver = VDCreateVideoDisplayMinidriverD3DFX();
+							else
+								mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
 							if (mpMiniDriver->Init(mhwnd, mSource))
 								break;
 							SyncReset();

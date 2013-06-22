@@ -198,8 +198,8 @@ public:
 	sint32			w, h;
 	ptrdiff_t		pitch;
 	ptrdiff_t		modulo;
-	uint32			size;
-	uint32			offset;
+	ptrdiff_t		size;
+	ptrdiff_t		offset;
 
 	enum {
 		NEEDS_HDC		= 0x00000001L,

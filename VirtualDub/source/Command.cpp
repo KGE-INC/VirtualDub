@@ -328,7 +328,11 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 
 	} catch(...) {
 		pVideoSource->setDecodeErrorMode(oldErrorMode);
+		pVideoSource->invalidateFrameBuffer();
 		throw;
 	}
 	pVideoSource->setDecodeErrorMode(oldErrorMode);
+	pVideoSource->invalidateFrameBuffer();
+
+	g_project->DisplayFrame();
 }

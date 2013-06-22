@@ -406,7 +406,7 @@ void parse_ia(FILE *f) {
 							ext_byte = kTarget_ext_r3264rexX;
 						} else if (!stricmp(s, "r3264rexB")) {
 							control_byte = kTarget_ext;
-							ext_byte = kTarget_ext_r3264rexX;
+							ext_byte = kTarget_ext_r3264rexB;
 						} else {
 							oops("unknown macro expansion mode: '%s'\n", s);
 						}
@@ -1017,8 +1017,9 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 ///////////////////////////////////////////////////////////////////////////
 
 #ifdef _M_AMD64
-void test1() {
-}
+static const char test1[]={
+	0x66,0x41,0x83,0x39,0x01
+};
 #else
 void __declspec(naked) test1() {
 	__asm {
@@ -1159,8 +1160,8 @@ int main(int argc, char **argv) {
 	vdc.pSymLookup = symLookup;
 	vdc.physToVirtOffset = 0;
 
-//	VDDisassemble(&vdc, (const byte *)&test1, 1024);
-	VDDisassemble(&vdc, (const byte *)&VDDisassemble, 1024);
+	VDDisassemble(&vdc, (const byte *)test1, 1024);
+//	VDDisassemble(&vdc, (const byte *)&VDDisassemble, 1024);
 
 	getch();
 

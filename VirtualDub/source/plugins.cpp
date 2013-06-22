@@ -162,7 +162,7 @@ void VDExternalModule::Lock() {
 		}
 
 		if (!mhModule)
-			throw MyWin32Error("Cannot load plugin module \"%s\": %%s", GetLastError(), VDTextWToA(mFilename).c_str());
+			throw MyWin32Error("Cannot load plugin module \"%ls\": %%s", GetLastError(), mFilename.c_str());
 
 		ReconnectOldPlugins();
 		ReconnectPlugins();
