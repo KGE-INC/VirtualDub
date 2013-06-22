@@ -4,6 +4,7 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Riza/bitmap.h>
 #include "capfilter.h"
 #include "filters.h"
 
@@ -229,14 +230,18 @@ namespace {
 	//
 	// The bIsUYVY value MUST be either 0 (false) or 1 (true) ....
 
-	static void __declspec(naked) __cdecl lumasquish_MMX(void *dst, ptrdiff_t pitch, long w2, long h, int bIsUYVY) {
-		static const __int64 scalers[2] = {
-			0x400036f7400036f7i64,		// YUY2
-			0x36f7400036f74000i64,		// UYVY
+	static void __declspec(naked) __cdecl lumasquish_MMX(void *dst, ptrdiff_t pitch, long w2, long h, int mode) {
+		static const __int64 scalers[12] = {
+			// YUY2					UYVY					Packed
+			0x40003ba240003ba2i64,	0x3ba240003ba24000i64,	0x3ba23ba23ba23ba2i64,	// black only (0->16, 235->235)
+			0x40003aa540003aa5i64,	0x3aa540003aa54000i64,	0x3aa53aa53aa53aa5i64,	// white only (16->16, 255->235)
+			0x400036f7400036f7i64,	0x36f7400036f74000i64,	0x36f736f736f736f7i64,	// black & white
 		};
-		static const __int64 biases[2] = {
-			0x0000004d0000004di64,		// YUY2
-			0x004d0000004d0000i64,		// UYVY
+		static const __int64 biases[12] = {
+			// YUY2					UYVY					Packed
+			0x0000004700000047i64,	0x0047000000470000i64,	0x0047004700470047i64,	// black only (16.5 / ratio)
+			0x0000000800000008i64,	0x0000000800000008i64,	0x0008000800080008i64,	// white only (16.5 / ratio - 16*prescale)
+			0x0000004d0000004di64,	0x004d0000004d0000i64,	0x004d004d004d004di64,	// black & white
 		};
 
 		__asm {
@@ -363,12 +368,59 @@ namespace {
 
 class VDCaptureFilterLumaSquish : public VDCaptureFilter {
 public:
-	void Init(VDPixmapLayout& layout) {}
+	void SetBounds(bool black, bool white);
+	void Init(VDPixmapLayout& layout);
 	void Run(VDPixmap& px);
+
+protected:
+	int mBaseMode;
+	int	mMode;
 };
 
+void VDCaptureFilterLumaSquish::SetBounds(bool black, bool white) {
+	mMode = -1;
+
+	if (!black && !white)
+		return;
+
+	mMode = -3;
+
+	if (black)
+		mMode += 3;
+
+	if (white)
+		mMode += 6;
+}
+
+void VDCaptureFilterLumaSquish::Init(VDPixmapLayout& layout) {
+	mBaseMode = -1;
+
+	switch(layout.format) {
+	case nsVDPixmap::kPixFormat_YUV422_YUYV:
+		mBaseMode = 0;
+		break;
+	case nsVDPixmap::kPixFormat_YUV422_UYVY:
+		mBaseMode = 1;
+		break;
+	case nsVDPixmap::kPixFormat_YUV444_Planar:
+	case nsVDPixmap::kPixFormat_YUV422_Planar:
+	case nsVDPixmap::kPixFormat_YUV420_Planar:
+	case nsVDPixmap::kPixFormat_YUV411_Planar:
+	case nsVDPixmap::kPixFormat_YUV410_Planar:
+		mBaseMode = 2;
+		break;
+	default:
+		return;
+	}
+}
+
 void VDCaptureFilterLumaSquish::Run(VDPixmap& px) {
-	lumasquish_MMX(px.data, px.pitch, (px.w+1)>>1, px.h, px.format == nsVDPixmap::kPixFormat_YUV422_UYVY);
+	if ((mMode|mBaseMode) >= 0) {
+		if (px.format == nsVDPixmap::kPixFormat_YUV422_YUYV || px.format == nsVDPixmap::kPixFormat_YUV422_UYVY)
+			lumasquish_MMX(px.data, px.pitch, (px.w+1)>>1, px.h, mMode + mBaseMode);
+		else
+			lumasquish_MMX(px.data, px.pitch, (px.w+3)>>2, px.h, mMode + mBaseMode);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -572,10 +624,14 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 	mfsi.lSourceFrameMS			= 0;
 	mfsi.flags					= FilterStateInfo::kStateRealTime;
 
-	filters.initLinearChain(&g_listFA, (Pixel *)layout.palette, layout.w, layout.h, 0);
+	filters.initLinearChain(&g_listFA, (Pixel *)layout.palette, layout.w, layout.h, 24);
 
 	if (filters.ReadyFilters(&mfsi))
 		throw MyError("%sUnable to initialize filters.", g_szCannotFilter);
+
+	const VBitmap& vb = *filters.LastBitmap();
+
+	VDMakeBitmapCompatiblePixmapLayout(layout, vb.w, vb.h, nsVDPixmap::kPixFormat_RGB888, 0);
 }
 
 void VDCaptureFilterChainAdapter::Run(VDPixmap& px) {
@@ -586,7 +642,12 @@ void VDCaptureFilterChainAdapter::Run(VDPixmap& px) {
 
 	filters.RunFilters();
 
-	px = VDAsPixmap(*filters.LastBitmap());
+	VBitmap& lastbm = *filters.LastBitmap();
+	VBitmap& outbm = *filters.OutputBitmap();
+
+	outbm.BitBlt(0,0, &lastbm, 0, 0, lastbm.w, lastbm.h);
+
+	px = VDAsPixmap(outbm);
 
 	++mfsi.lCurrentFrame;
 	++mfsi.lCurrentSourceFrame;
@@ -610,7 +671,7 @@ public:
 
 	void SetCrop(uint32 x1, uint32 y1, uint32 x2, uint32 y2);
 	void SetNoiseReduction(uint32 threshold);
-	void SetLumaSquish(bool enable);
+	void SetLumaSquish(bool enableBlack, bool enableWhite);
 	void SetFieldSwap(bool enable);
 	void SetVertSquashMode(FilterMode mode);
 	void SetChainEnable(bool enable);
@@ -628,7 +689,8 @@ protected:
 	uint32	mCropY2;
 	uint32	mNoiseReductionThreshold;
 	FilterMode	mVertSquashMode;
-	bool	mbLumaSquish;
+	bool	mbLumaSquishBlack;
+	bool	mbLumaSquishWhite;
 	bool	mbFieldSwap;
 	bool	mbChainEnable;
 	bool	mbCropEnable;
@@ -661,7 +723,8 @@ VDCaptureFilterSystem::VDCaptureFilterSystem()
 	, mCropY2(0)
 	, mNoiseReductionThreshold(0)
 	, mVertSquashMode(kFilterDisable)
-	, mbLumaSquish(false)
+	, mbLumaSquishBlack(false)
+	, mbLumaSquishWhite(false)
 	, mbFieldSwap(false)
 	, mbChainEnable(false)
 	, mbInitialized(false)
@@ -706,14 +769,17 @@ void VDCaptureFilterSystem::SetNoiseReduction(uint32 threshold) {
 		RebuildFilterChain();
 }
 
-void VDCaptureFilterSystem::SetLumaSquish(bool enable) {
-	if (mbLumaSquish == enable)
+void VDCaptureFilterSystem::SetLumaSquish(bool enableBlack, bool enableWhite) {
+	if (mbLumaSquishBlack == enableBlack && mbLumaSquishWhite == enableWhite)
 		return;
 
-	mbLumaSquish = enable;
+	mbLumaSquishBlack = enableBlack;
+	mbLumaSquishWhite = enableWhite;
 
-	if (mbInitialized)
+	if (mbInitialized) {
+		mFilterLumaSquish.SetBounds(enableBlack, enableWhite);
 		RebuildFilterChain();
+	}
 }
 
 void VDCaptureFilterSystem::SetFieldSwap(bool enable) {
@@ -750,7 +816,8 @@ void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
 		mFilterNoiseReduction.Init(pxl);
 	}
 
-	if (mbLumaSquish) {
+	if (mbLumaSquishBlack || mbLumaSquishWhite) {
+		mFilterLumaSquish.SetBounds(mbLumaSquishBlack, mbLumaSquishWhite);
 		mFilterLumaSquish.Init(pxl);
 	}
 
@@ -774,7 +841,21 @@ void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
 	if (mbCropEnable && !mbChainEnable) {
 		uint32 bytes = VDPixmapCreateLinearLayout(mLinearLayout, pxl.format, pxl.w, pxl.h, VDPixmapGetInfo(pxl.format).auxbufs > 1 ? 1 : 4);
 
-		VDPixmapLayoutFlipV(mLinearLayout);
+		// flip only RGB formats
+		using namespace nsVDPixmap;
+
+		switch(pxl.format) {
+		case kPixFormat_Pal1:
+		case kPixFormat_Pal2:
+		case kPixFormat_Pal4:
+		case kPixFormat_Pal8:
+		case kPixFormat_XRGB1555:
+		case kPixFormat_RGB565:
+		case kPixFormat_RGB888:
+		case kPixFormat_XRGB8888:
+			VDPixmapLayoutFlipV(mLinearLayout);
+			break;
+		}
 
 		mLinearBuffer.resize(bytes);
 	}
@@ -829,7 +910,7 @@ void VDCaptureFilterSystem::RebuildFilterChain() {
 	if (mNoiseReductionThreshold)
 		mFilterChain.push_back(&mFilterNoiseReduction);
 
-	if (mbLumaSquish)
+	if (mbLumaSquishBlack || mbLumaSquishWhite)
 		mFilterChain.push_back(&mFilterLumaSquish);
 
 	if (mbFieldSwap)

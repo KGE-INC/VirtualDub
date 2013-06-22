@@ -199,6 +199,7 @@ public:
 	void SetAudioChannels(int chans);
 	void SetAudioFormat(VDAudioSampleType type);
 	void SetResyncMode(Mode mode);
+	void EnableVideoTimingCorrection(bool en);
 
 	void GetStatus(VDCaptureResyncStatus&);
 
@@ -213,7 +214,7 @@ protected:
 
 	IVDCaptureDriverCallback *mpCB;
 
-	bool		mbCapturing;
+	bool		mbAdjustVideoTime;
 	Mode		mMode;
 
 	sint64		mGlobalClockBase;
@@ -226,6 +227,7 @@ protected:
 	double		mVideoTimeLastAudioBlock;
 	double		mInvAudioRate;
 	double		mVideoRate;
+	double		mVideoRateScale;
 	double		mAudioRate;
 	double		mAudioResamplingRate;
 	double		mAudioTrackingRate;
@@ -248,7 +250,7 @@ protected:
 };
 
 VDCaptureResyncFilter::VDCaptureResyncFilter()
-	: mbCapturing(false)
+	: mbAdjustVideoTime(true)
 	, mMode(kModeNone)
 	, mVideoLastTime(0)
 	, mVideoLastRawTime(0)
@@ -296,13 +298,18 @@ void VDCaptureResyncFilter::SetResyncMode(Mode mode) {
 	mMode = mode;
 }
 
+void VDCaptureResyncFilter::EnableVideoTimingCorrection(bool en) {
+	mbAdjustVideoTime = en;
+}
+
 void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
 	vdsynchronized(mcsLock) {
 		double rate, latency;
-		status.mVideoTimingAdjust = mVideoTimingAdjust;
-		status.mAudioResamplingRate = (float)mAudioResamplingRate;
-		status.mCurrentLatency = -mCurrentLatencyAverage();
-		status.mMeasuredLatency = 0.f;
+		status.mVideoTimingAdjust	= mVideoTimingAdjust;
+		status.mVideoRateScale		= mVideoRateScale;
+		status.mAudioResamplingRate	= (float)mAudioResamplingRate;
+		status.mCurrentLatency		= -mCurrentLatencyAverage();
+		status.mMeasuredLatency		= 0.f;
 
 		if (mAudioRelativeRateEstimator.GetSlope(rate) && mAudioRelativeRateEstimator.GetXIntercept(rate, latency)) {
 			status.mMeasuredLatency = -latency;
@@ -316,6 +323,7 @@ void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
 	mAudioResamplingRate = 1.0;
 	mAudioTrackingRate = 1.0;
 	mAudioWrittenBytes = 0;
+	mVideoRateScale		= 1.0;
 	mVideoTimeLastAudioBlock = 0;
 
 	mInputBuffer.resize(4096 * mChannels);
@@ -365,20 +373,79 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 
 	vdsynchronized(mcsLock) {
 		if (stream == 0) {
+			int vcount = mVideoRealRateEstimator.GetCount();
+
+			// update video-to-real-time regression
+			mVideoRealRateEstimator.AddSample(global_clock, timestamp);
+
+			// apply video timing correction
+			if (mbAdjustVideoTime) {
+				timestamp = VDRoundToInt64((double)timestamp * mVideoRateScale);
+
+				double estimatedVideoToRealTimeSlope;
+				if (vcount > 8 && mVideoRealRateEstimator.GetSlope(estimatedVideoToRealTimeSlope)) {
+					double desiredVideoScale = 1.0 / estimatedVideoToRealTimeSlope;
+
+					// gradually lerp correction up over first 100 samples
+					if (vcount < 108)
+						desiredVideoScale += (1.0 - desiredVideoScale) * ((108-vcount) * (1.0 / 100.0));
+
+					// apply low-pass to damp correction (error decays to 10% in 229 samples)
+					double correctionDelta = (desiredVideoScale - mVideoRateScale) * 0.01;
+
+					// clamp change to 0.5ms per frame
+					double maxDelta = 500.0 / timestamp;
+
+					if (fabs(correctionDelta) > maxDelta)
+						correctionDelta = (correctionDelta < 0) ? -maxDelta : maxDelta;
+
+					// apply delta
+					mVideoRateScale += correctionDelta;
+
+					// clamp delta to within 20%
+					if (mVideoRateScale < 0.8)
+						mVideoRateScale = 0.8;
+					else if (mVideoRateScale > 1.2)
+						mVideoRateScale = 1.2;
+				}
+			}
+
+			// apply video timing adjustment (AV sync by video time bump)
 			mVideoLastTime = timestamp;
 			timestamp += mVideoTimingAdjust;
 
-			mVideoRealRateEstimator.AddSample(global_clock, timestamp);
 		} else if (stream == 1 && mMode) {
 			mAudioBytes += size;
-			mAudioRelativeRateEstimator.AddSample(mVideoLastTime, mAudioBytes);
+
+			if (mbAdjustVideoTime)
+				mAudioRelativeRateEstimator.AddSample(global_clock, mAudioBytes);
+			else
+				mAudioRelativeRateEstimator.AddSample(mVideoLastTime, mAudioBytes);
 
 			double estimatedVideoTimeSlope, estimatedVideoTimeIntercept;
+			double estimatedVideoTime;
 
-			if (mVideoRealRateEstimator.GetSlope(estimatedVideoTimeSlope) && mVideoRealRateEstimator.GetYIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept)) {
-				// estimate video clock from RT clock
-				double estimatedVideoTime = global_clock * estimatedVideoTimeSlope + estimatedVideoTimeIntercept;
+			bool videoTimingOK = mVideoRealRateEstimator.GetSlope(estimatedVideoTimeSlope);
 
+			if (videoTimingOK) {
+				// Are we using the video clock or global clock as the time base?
+				if (mbAdjustVideoTime) {
+					// Project the video trend back to video time zero to get the global time start.
+					videoTimingOK = mVideoRealRateEstimator.GetXIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept);
+
+					if (videoTimingOK)
+						estimatedVideoTime = global_clock;
+				} else {
+					// Project the video trend back to global time zero to get the video time start.
+					videoTimingOK = mVideoRealRateEstimator.GetYIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept);
+
+					// Estimate interpolated video clock from global clock.
+					if (videoTimingOK)
+						estimatedVideoTime = global_clock * estimatedVideoTimeSlope + estimatedVideoTimeIntercept;
+				}
+			}
+
+			if (videoTimingOK) {
 				double rate, latency;
 
 				int count = mAudioRelativeRateEstimator.GetCount();

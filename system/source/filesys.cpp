@@ -23,12 +23,14 @@
 //	3.	This notice may not be removed or altered from any source
 //		distribution.
 
+#define _WIN32_WINNT 0x0500
 #include <ctype.h>
 #include <string.h>
 
 #include <vd2/system/VDString.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/Error.h>
+#include <vd2/system/vdstl.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -92,6 +94,19 @@ VDString  VDFileSplitPathRight(const VDString&  s) { return splitimpR(s, VDFileS
 VDStringW VDFileSplitPathRight(const VDStringW& s) { return splitimpR(s, VDFileSplitPath(s.c_str())); }
 
 const char *VDFileSplitRoot(const char *s) {
+	// Test for a UNC path.
+	if (s[0] == '\\' && s[1] == '\\') {
+		// For these, we scan for the fourth backslash.
+		s += 2;
+		for(int i=0; i<2; ++i) {
+			while(*s && *s != '\\')
+				++s;
+			if (*s == '\\')
+				++s;
+		}
+		return s;
+	}
+
 	const char *const t = s;
 
 	while(*s && *s != ':' && *s != '/' && *s != '\\')
@@ -101,6 +116,19 @@ const char *VDFileSplitRoot(const char *s) {
 }
 
 const wchar_t *VDFileSplitRoot(const wchar_t *s) {
+	// Test for a UNC path.
+	if (s[0] == '\\' && s[1] == '\\') {
+		// For these, we scan for the fourth backslash.
+		s += 2;
+		for(int i=0; i<2; ++i) {
+			while(*s && *s != '\\')
+				++s;
+			if (*s == '\\')
+				++s;
+		}
+		return s;
+	}
+
 	const wchar_t *const t = s;
 
 	while(*s && *s != L':' && *s != L'/' && *s != L'\\')
@@ -201,7 +229,7 @@ sint64 VDGetDiskFreeSpace(const wchar_t *path) {
 		DWORD sectorsPerCluster, bytesPerSector, freeClusters, totalClusters;
 		BOOL success;
 
-		VDStringW rootPath(VDFileSplitRoot(path));
+		VDStringW rootPath(VDFileGetRootPath(path));
 
 		if ((LONG)GetVersion() < 0)
 			success = GetDiskFreeSpaceA(rootPath.empty() ? NULL : VDTextWToA(rootPath).c_str(), &sectorsPerCluster, &bytesPerSector, &freeClusters, &totalClusters);
@@ -251,9 +279,33 @@ void VDCreateDirectory(const wchar_t *path) {
 		throw MyWin32Error("Cannot create directory: %%s", GetLastError());
 }
 
-VDStringW VDGetFullPath(const wchar_t *partialPath) {
+namespace {
+	typedef BOOL (WINAPI *tpGetVolumePathNameW)(LPCWSTR lpszPathName, LPWSTR lpszVolumePathName, DWORD cchBufferLength);
 	typedef BOOL (WINAPI *tpGetFullPathNameW)(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart);
+}
 
+VDStringW VDFileGetRootPath(const wchar_t *path) {
+	static tpGetVolumePathNameW spGetVolumePathNameW = (tpGetVolumePathNameW)GetProcAddress(GetModuleHandle("kernel32.dll"), "GetVolumePathNameW");
+	static tpGetFullPathNameW spGetFullPathNameW = (tpGetFullPathNameW)GetProcAddress(GetModuleHandle("kernel32.dll"), "GetFullPathNameW");
+
+	VDStringW fullPath(VDGetFullPath(path));
+
+	// Windows 2000/XP path
+	if (spGetVolumePathNameW) {
+		vdblock<wchar_t> buf(std::max<size_t>(fullPath.size() + 1, MAX_PATH));
+
+		if (spGetVolumePathNameW(path, buf.data(), buf.size()))
+			return VDStringW(buf.data());
+	}
+
+	// Windows 95/98/ME/NT4 path
+	const wchar_t *s = fullPath.c_str();
+	VDStringW root(s, VDFileSplitRoot(s) - s);
+	VDFileFixDirPath(root);
+	return root;
+}
+
+VDStringW VDGetFullPath(const wchar_t *partialPath) {
 	static tpGetFullPathNameW spGetFullPathNameW = (tpGetFullPathNameW)GetProcAddress(GetModuleHandle("kernel32.dll"), "GetFullPathNameW");
 
 	union {
@@ -265,19 +317,35 @@ VDStringW VDGetFullPath(const wchar_t *partialPath) {
 		LPWSTR p;
 
 		tmpBuf.w[0] = 0;
-		spGetFullPathNameW(partialPath, MAX_PATH, tmpBuf.w, &p);
+		DWORD count = spGetFullPathNameW(partialPath, MAX_PATH, tmpBuf.w, &p);
 
-		VDStringW pathw(tmpBuf.w);
-		return pathw;
+		if (count < MAX_PATH)
+			return VDStringW(tmpBuf.w);
 
+		VDStringW tmp(count);
+
+		DWORD newCount = spGetFullPathNameW(partialPath, count, (wchar_t *)tmp.data(), &p);
+		if (newCount < count)
+			return tmp;
+
+		return VDStringW(partialPath);
 	} else {
 		LPSTR p;
+		VDStringA pathA(VDTextWToA(partialPath));
 
 		tmpBuf.a[0] = 0;
-		GetFullPathNameA(VDTextWToA(partialPath).c_str(), MAX_PATH, tmpBuf.a, &p);
+		DWORD count = GetFullPathNameA(pathA.c_str(), MAX_PATH, tmpBuf.a, &p);
 
-		VDStringW patha(VDTextAToW(tmpBuf.a));
-		return patha;
+		if (count < MAX_PATH)
+			return VDStringW(VDTextAToW(tmpBuf.a));
+
+		VDStringA tmpA(count);
+
+		DWORD newCount = GetFullPathNameA(pathA.c_str(), count, (char *)tmpA.data(), &p);
+		if (newCount < count)
+			return VDTextAToW(tmpA);
+
+		return VDStringW(partialPath);
 	}
 }
 
@@ -398,6 +466,11 @@ struct VDSystemFilesysTestObject {
 		TEST(VDFileSplitRoot, "\\x", "\\", "x");
 		TEST(VDFileSplitRoot, "\\x\\", "\\", "x\\");
 		TEST(VDFileSplitRoot, "\\x\\y", "\\", "x\\y");
+		TEST(VDFileSplitRoot, "\\\\server\\share", "\\\\server\\share", "");
+		TEST(VDFileSplitRoot, "\\\\server\\share\\", "\\\\server\\share\\", "");
+		TEST(VDFileSplitRoot, "\\\\server\\share\\x", "\\\\server\\share\\", "x");
+		TEST(VDFileSplitRoot, "\\\\server\\share\\x\\", "\\\\server\\share\\", "x\\");
+		TEST(VDFileSplitRoot, "\\\\server\\share\\x\\y", "\\\\server\\share\\", "x\\y");
 #undef TEST
 	}
 } g_VDSystemFilesysTestObject;

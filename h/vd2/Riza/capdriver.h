@@ -105,6 +105,7 @@ public:
 	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;
 	virtual bool	SetAudioDevice(int idx) = 0;
 	virtual int		GetAudioDeviceIndex() = 0;
+	virtual bool	IsAudioDeviceIntegrated(int idx) = 0;
 
 	virtual int		GetVideoSourceCount() = 0;
 	virtual const wchar_t *GetVideoSourceName(int idx) = 0;

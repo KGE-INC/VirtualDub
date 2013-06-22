@@ -67,4 +67,6 @@ EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags);
 bool		VDSetFilePointerW32(HANDLE h, sint64 pos, DWORD dwMoveMethod);
 bool		VDGetFileSizeW32(HANDLE h, sint64& size);
 
+bool		VDDrawTextW32(HDC hdc, const wchar_t *s, int nCount, LPRECT lpRect, UINT uFormat);
+
 #endif

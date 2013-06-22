@@ -86,6 +86,13 @@ void VDUIFrame::Destroy() {
 		DetachNow(mhwnd, true, true);
 }
 
+void VDUIFrame::SetNextMode(int nextMode) {
+	mNextMode = nextMode;
+
+	if (!mNestCount)
+		DetachNow(mhwnd, true, true);
+}
+
 void VDUIFrame::SetAccelTable(HACCEL hAccel) {
 	mhAccel = hAccel;
 }
@@ -258,6 +265,7 @@ void VDUIFrame::DetachNow(HWND hwnd, bool bClient, bool bEngine) {
 	}
 
 	if (const int nextMode = mNextMode) {
+		mNextMode = 0;		// prevents recursion
 		// HACK
 		extern void VDSwitchUIFrameMode(HWND hwnd, int nextMode);
 		VDSwitchUIFrameMode(hwnd, nextMode);

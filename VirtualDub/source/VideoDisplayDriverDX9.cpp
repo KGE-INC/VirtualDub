@@ -383,6 +383,7 @@ bool VDVideoDisplayDX9Manager::Init() {
 	mPresentParms.Windowed			= TRUE;
 	mPresentParms.SwapEffect		= D3DSWAPEFFECT_DISCARD;
 	mPresentParms.BackBufferFormat	= D3DFMT_UNKNOWN;
+	mPresentParms.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
 
 #ifdef PROFILE_NVPERFHUD
 	mPresentParms.BackBufferWidth	= 1024;//GetSystemMetrics(SM_CXMAXIMIZED);

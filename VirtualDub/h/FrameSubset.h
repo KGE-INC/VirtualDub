@@ -29,6 +29,10 @@ public:
 
 	FrameSubsetNode() {}
 	FrameSubsetNode(sint64 _s, sint64 _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
+
+	bool CanMergeBefore(const FrameSubsetNode& fsn) const {
+		return start+len == fsn.start && bMask == fsn.bMask;
+	}
 };
 
 class FrameSubset {
@@ -71,6 +75,7 @@ public:
 	void setRange(sint64 start, sint64 len, bool bMask);	// translated coordinates
 	void clip(sint64 start, sint64 len);
 	void offset(sint64 off);
+	void trimInputRange(sint64 limit);
 
 	////////////////////
 

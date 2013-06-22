@@ -113,7 +113,6 @@ namespace {
 
 	struct DialogTemplateBuilder {
 		std::vector<uint8> data;
-		HANDLE mhTemplate;
 
 		DialogTemplateBuilder();
 		~DialogTemplateBuilder();
@@ -129,13 +128,9 @@ namespace {
 		void AddLabel(int id, int x, int y, int cx, int cy, const wchar_t *text);
 		void AddCheckbox(int id, int x, int y, int cx, int cy, const wchar_t *text);
 		void AddNumericEdit(int id, int x, int y, int cx, int cy);
-
-		HANDLE MakeObject();
 	};
 
-	DialogTemplateBuilder::DialogTemplateBuilder()
-		: mhTemplate(0)
-	{
+	DialogTemplateBuilder::DialogTemplateBuilder() {
 		static const DialogTemplateHeader hdr = {
 			1,
 			0xFFFF,
@@ -158,7 +153,6 @@ namespace {
 	}
 
 	DialogTemplateBuilder::~DialogTemplateBuilder() {
-		GlobalFree(mhTemplate);
 	}
 
 	void DialogTemplateBuilder::SetRect(int x, int y, int cx, int cy) {
@@ -225,23 +219,6 @@ namespace {
 
 		const WORD extradata = 0;
 		push(&extradata, sizeof(WORD));
-	}
-
-	HANDLE DialogTemplateBuilder::MakeObject() {
-		if (!mhTemplate) {
-			mhTemplate = GlobalAlloc(GMEM_MOVEABLE, data.size());
-			if (mhTemplate) {
-				if (void *p = GlobalLock(mhTemplate)) {
-					memcpy(p, &data.front(), data.size());
-					GlobalUnlock(mhTemplate);
-					return mhTemplate;
-				}
-				GlobalFree(mhTemplate);
-				mhTemplate = 0;
-			}
-		}
-
-		return mhTemplate;
 	}
 }
 

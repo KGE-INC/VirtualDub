@@ -352,22 +352,6 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					mParms.dwRequestMicroSecPerFrame = (DWORD)(1000000.0 / dFrameRate);
 
-					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_DROP_LIMIT, &fOkay, FALSE);
-					if (!fOkay || lV<0 || lV>100) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_DROP_LIMIT));
-						return TRUE;
-					}
-					mParms.wPercentDropForError = lV;
-
-					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_MAX_INDEX, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_MAX_INDEX));
-						return TRUE;
-					}
-					mParms.dwIndexSize = lV;
-
 					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, &fOkay, FALSE);
 					if (!fOkay || lV<0) {
 						MessageBeep(MB_ICONQUESTION);
@@ -394,18 +378,6 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 					mParms.fCaptureAudio				= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_AUDIO);
 					mParms.fMakeUserHitOKToCapture		= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ON_OK);
-					mParms.fAbortLeftMouse				= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ABORT_ON_LEFT);
-					mParms.fAbortRightMouse				= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ABORT_ON_RIGHT);
-					mParms.AVStreamMaster				= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_LOCK_TO_AUDIO) ? AVSTREAMMASTER_AUDIO : AVSTREAMMASTER_NONE;
-
-					if (IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ABORT_NONE))
-						mParms.vKeyAbort = 0;
-					else if (IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ABORT_ESCAPE))
-						mParms.vKeyAbort = VK_ESCAPE;
-					else if (IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ABORT_SPACE))
-						mParms.vKeyAbort = VK_SPACE;
-
-					mParms.fMCIControl = false;
 				}
 				End(true);
 				break;
@@ -829,7 +801,8 @@ public:
 
 			SetValue(100, mTimingSetup.mbAllowEarlyDrops);
 			SetValue(101, mTimingSetup.mbAllowLateInserts);
-			SetValue(102, mTimingSetup.mbResyncWithIntegratedAudio);
+			SetValue(102, mTimingSetup.mbCorrectVideoTiming);
+			SetValue(103, !mTimingSetup.mbResyncWithIntegratedAudio);
 
 			SetValue(200, mTimingSetup.mSyncMode);
 
@@ -839,7 +812,8 @@ public:
 				mTimingSetup.mSyncMode = (VDCaptureTimingSetup::SyncMode)GetValue(200);
 				mTimingSetup.mbAllowEarlyDrops = GetValue(100) != 0;
 				mTimingSetup.mbAllowLateInserts = GetValue(101) != 0;
-				mTimingSetup.mbResyncWithIntegratedAudio = GetValue(102) != 0;
+				mTimingSetup.mbCorrectVideoTiming = GetValue(102) != 0;
+				mTimingSetup.mbResyncWithIntegratedAudio = !GetValue(103);
 
 				pBase->EndModal(true);
 				return true;

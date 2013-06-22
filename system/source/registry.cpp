@@ -114,6 +114,15 @@ int VDRegistryKey::getInt(const char *pszName, int def) const {
 	return (int)v;
 }
 
+int VDRegistryKey::getEnumInt(const char *pszName, int maxVal, int def) const {
+	int v = getInt(pszName, def);
+
+	if (v<0 || v>=maxVal)
+		v = def;
+
+	return v;
+}
+
 bool VDRegistryKey::getString(const char *pszName, VDStringA& str) const {
 	DWORD type, s = sizeof(DWORD);
 

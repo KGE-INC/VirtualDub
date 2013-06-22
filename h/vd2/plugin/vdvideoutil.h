@@ -76,9 +76,9 @@ inline void vd_pixunpack(uint32 px, int& r, int& g, int& b) {
 }
 
 inline uint32 vd_pixpack(int r, int g, int b) {
-	if ((unsigned)r >= 256) r = ~(r>>31);
-	if ((unsigned)g >= 256) g = ~(r>>31);
-	if ((unsigned)b >= 256) b = ~(r>>31);
+	if ((unsigned)r >= 256) r = ~(r>>31) & 255;
+	if ((unsigned)g >= 256) g = ~(g>>31) & 255;
+	if ((unsigned)b >= 256) b = ~(b>>31) & 255;
 
 	return (r<<16) + (g<<8) + b;
 }

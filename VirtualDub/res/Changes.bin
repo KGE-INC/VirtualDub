@@ -1,6 +1,46 @@
 VirtualDub change log
 
-Build %build% (1.6.3, experimental): [%date%]
+Build %build% (1.6.4, experimental): [%date%]
+   [features added]
+   * Capture: Added support for detecting and correcting discrepancies in the video time base. This can reduce frame drops if the incoming frame rate is unexpectedly and regularly too high or too low.
+   * Capture: Added command-line support.
+   * Capture: Timing settings are now saved.
+   * Capture: Stop conditions can now be modified during capture.
+   * Capture: Luma squish can now be separately enabled for the black and white ends of the luma spectrum.
+   * Capture: Luma squish now works with planar YCbCr formats.
+   * Capture: Frame timing is now exportable as a comma-separated-value file for analysis.
+   * Added an option to reopen the input file while preserving the edit list.
+
+   [workarounds]
+   * Added detection of video codecs that improperly modify their input framebuffer during compression.
+
+   [bugs fixed]
+   * Capture: Audio devices were appearing on the wrong menu.
+   * Capture: Settings dialog sometimes didn't allow OK to be pressed due to validating hidden settings.
+   * Capture: Exiting the crop dialog caused device settings to reset.
+   * Capture: Fixed time wrap at 35min with the DirectShow driver.
+   * Capture: Fixed crash when using filter chains where the input and output of the chain have different frame sizes.
+   * Capture: Added workaround for freezing with SAA713x-based capture devices -- the system clock is always used for the reference clock rather than any capture filter clock.
+   * Capture: A warning is now appropriately displayed when VirtualDub cannot analyze incoming video (preview acceleration, live filter preview).
+   * Fixed massive slowdown in hex editor when scanning RIFF tree for an AVI file with a lot of video frames.
+   * Fixed bug with the "last frame" facility in the video filter system that was causing the motion blur filter to fail if it was first and another filter followed it.
+   * Fixed intermittent crash under Windows 98 when repainting draggable video frame.
+   * Fixed path handling around UNC network shares and Windows 2000/XP volume mount points, which could sometimes result in incorrect 4GB FAT errors.
+   * Fixed some cases where the mask/unmask code didn't mask the right frames.
+   * PNG decoder failed if the compressed data contained a stored chunk.
+   * PNG decoder crashed if an error occurred during decoding.
+   * Fixed GDI handle leak.
+   * Display panes did not react properly to the mouse cursor when positioned over a secondary monitor with a negative position.
+
+   [regressions fixed]
+   * Source Audio had to be selected twice if WAV audio was the previously selected option.
+   * Motion JPEG code was crashing instead of throwing errors on unsupported MJPEG formats.
+   * Capture: Cropping caused YCbCr formats to vertically flip.
+   * Capture: VFW driver was not properly reporting failure when setting unsupported video formats.
+   * Capture: "Wait for OK on capture" has been reimplemented.
+   * Fixed the prev/next range commands always saying "no prev/next range."
+
+Build 22945 (1.6.3, experimental): [January 11, 2005]
    [features added]
    * Capture: DirectShow driver now supports audio passthrough (Audio > Enable Audio Playback) for devices with integrated audio capture.
    * Capture: DirectShow driver supports capture from sound cards.

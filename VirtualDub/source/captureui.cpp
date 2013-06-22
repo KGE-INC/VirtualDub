@@ -28,9 +28,11 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/w32peer.h>
+#include <vd2/Dita/resources.h>
 #include "gui.h"
 #include "prefs.h"
 #include "capture.h"
+#include "captureui.h"
 #include "capfilter.h"
 #include "capspill.h"
 #include "caputils.h"
@@ -61,6 +63,14 @@ namespace {
 	};
 }
 
+namespace {
+	enum { kVDST_CaptureUI = 8 };
+
+	enum {
+		kVDM_CannotDisplayFormat
+	};
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 extern const char g_szCapture				[];
@@ -80,6 +90,7 @@ static const char g_szHideInfoPanel			[]="Hide InfoPanel";
 static const char g_szMultisegment			[]="Multisegment";
 static const char g_szAutoIncrement			[]="Auto-increment";
 static const char g_szStartOnLeft			[]="Start on left";
+static const char g_szDisplayPrerollDialog	[]="Display preroll dialog";
 static const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szCapSettings			[]="Settings";
 static const char g_szStartupDriver			[]="Startup Driver";
@@ -95,8 +106,16 @@ static const char g_szCapAudioSource		[]="Audio source";
 static const char g_szCapAudioInput			[]="Audio input";
 static const char g_szCapChannel			[]="Channel";
 
+static const char g_szCaptureTimingMode							[] = "Timing: Resync mode";
+static const char g_szCaptureTimingAllowEarlyDrops				[] = "Timing: Allow early drops";
+static const char g_szCaptureTimingAllowLateInserts				[] = "Timing: Allow late inserts";
+static const char g_szCaptureTimingCorrectVideoTiming			[] = "Timing: Correct video clock";
+static const char g_szCaptureTimingResyncWithIntegratedAudio	[] = "Timing: Resync with integrated audio";
+static const char g_szCaptureTimingEnableLog					[] = "Timing: Enable log";
+
 static const char g_szFilterEnableFieldSwap			[] = "Enable field swap";
-static const char g_szFilterEnableLumaSquish		[] = "Enable luma squish";
+static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish";
+static const char g_szFilterEnableLumaSquishWhite	[] = "Enable white luma squish";
 static const char g_szFilterEnableNoiseReduction	[] = "Enable noise reduction";
 static const char g_szFilterEnableFilterChain		[] = "Enable filter chain";
 static const char g_szFilterCropLeft				[] = "Crop left";
@@ -264,6 +283,12 @@ public:
 	bool Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject);
 	void Detach();
 
+	bool	SetDriver(const wchar_t *s);
+	void	SetCaptureFile(const wchar_t *s);
+	bool	SetTunerChannel(int ch);
+	void	SetTimeLimit(int limitsecs);
+	void	Capture();
+
 protected:
 	void	SetDisplayMode(DisplayMode mode);
 	DisplayMode	GetDisplayMode();
@@ -309,6 +334,7 @@ protected:
 	bool	InitVideoHistogram();
 	void	ShutdownVideoHistogram();
 
+	// callbacks
 	void	UICaptureDriversUpdated();
 	void	UICaptureDriverDisconnecting(int driver);
 	void	UICaptureDriverChanging(int driver);
@@ -394,6 +420,7 @@ protected:
 	bool	mbDisplayLargeTimer;
 	bool	mbHideOnCapture;
 	bool	mbAutoIncrementAfterCapture;
+	bool	mbDisplayPrerollDialog;
 
 	// Video display
 	HWND	mhwndDisplay;
@@ -448,6 +475,7 @@ VDCaptureProjectUI::VDCaptureProjectUI()
 	, mbDisplayLargeTimer(false)
 	, mbHideOnCapture(false)
 	, mbAutoIncrementAfterCapture(false)
+	, mbDisplayPrerollDialog(false)
 	, mhwndDisplay(NULL)
 	, mpDisplay(NULL)
 	, mNextChannel(-1)
@@ -550,9 +578,21 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 
 	mpProject->SetCallback(this);
 
-	SetStatusImmediate("Scanning for capture drivers....");
-	mpProject->ScanForDrivers();
-	CaptureWarnCheckDrivers((HWND)mhwnd);
+	UICaptureFileUpdated();
+	UICaptureDriverChanged(mpProject->GetConnectedDriverIndex());
+	if (mpProject->IsDriverConnected()) {
+		UICaptureAudioDriversUpdated();
+		UICaptureAudioDriverChanged(mpProject->GetAudioDeviceIndex());
+		UICaptureAudioSourceChanged(mpProject->GetAudioSourceIndex());
+		UICaptureAudioInputChanged(mpProject->GetAudioInputIndex());
+		UICaptureVideoFormatUpdated();
+		UICaptureVideoSourceChanged(mpProject->GetVideoSourceIndex());
+		UICaptureTunerChannelChanged(mpProject->GetTunerChannel(), false);
+	} else {
+		SetStatusImmediate("Scanning for capture drivers....");
+		mpProject->ScanForDrivers();
+		CaptureWarnCheckDrivers((HWND)mhwnd);
+	}
 
 	SetStatusImmediate("Loading local settings....");
 	LoadLocalSettings();
@@ -635,6 +675,39 @@ void VDCaptureProjectUI::Detach() {
 	mhwnd = NULL;
 }
 
+bool VDCaptureProjectUI::SetDriver(const wchar_t *s) {
+	int dev = mpProject->GetDriverByName(s);
+	if (dev<0)
+		return false;
+	return mpProject->SelectDriver(dev);
+}
+
+void VDCaptureProjectUI::SetCaptureFile(const wchar_t *s) {
+	mpProject->SetCaptureFile(s, false);
+}
+
+bool VDCaptureProjectUI::SetTunerChannel(int ch) {
+	return mpProject->SetTunerChannel(ch);
+}
+
+void VDCaptureProjectUI::SetTimeLimit(int limitsecs) {
+	VDCaptureStopPrefs prefs = mpProject->GetStopPrefs();
+
+	prefs.fEnableFlags &= ~CAPSTOP_TIME;
+
+	if (limitsecs) {
+		prefs.fEnableFlags |= CAPSTOP_TIME;
+
+		prefs.lTimeLimit = limitsecs;
+	}
+
+	mpProject->SetStopPrefs(prefs);
+}
+
+void VDCaptureProjectUI::Capture() {
+	mpProject->Capture(false);
+}
+
 void VDCaptureProjectUI::SetDisplayMode(DisplayMode mode) {
 	if (mDisplayModeShadow != mode) {
 		mDisplayModeShadow = mode;
@@ -705,14 +778,14 @@ void VDCaptureProjectUI::SetStatusImmediateF(const char *format, ...) {
 
 void VDCaptureProjectUI::LoadLocalSettings() {
 	// If the user has selected a default capture file, use it; if not, 
+	VDRegistryAppKey key(g_szCapture);
 
-	char fn[MAX_PATH];
-	if (QueryConfigString(g_szCapture, g_szDefaultCaptureFile, fn, sizeof fn) && fn[0])
-		mpProject->SetCaptureFile(VDTextAToW(fn), false);
+	VDStringW fn;
+	if (key.getString(g_szDefaultCaptureFile, fn)) {
+		mpProject->SetCaptureFile(fn.c_str(), false);
+	}
 
 	// How about default capture settings?
-
-	VDRegistryAppKey key(g_szCapture);
 
 	{
 		CAPTUREPARMS *cp;
@@ -764,26 +837,37 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 
 	mpProject->SetDiskSettings(diskSettings);
 
+	// load UI settings
 	mbInfoPanel = key.getBool(g_szHideInfoPanel, mbInfoPanel);
 	mbStretchToWindow = key.getBool(g_szCapStretchToWindow, mbStretchToWindow);
-
-#if 0
-#pragma vdpragma_TODO("FIXME")
-		if (QueryConfigDword(g_szCapture, g_szAdjustVideoTiming, &dw))
-			mpProject->SetSyncMode(dw ? IVDCaptureProject::kSyncToAudio : IVDCaptureProject::kSyncNone);
-#endif
 
 	mpProject->SetSpillSystem(key.getBool(g_szMultisegment, mpProject->IsSpillEnabled()));
 
 	mbAutoIncrementAfterCapture = key.getBool(g_szAutoIncrement, mbAutoIncrementAfterCapture);
 	mbStartOnLeft = key.getBool(g_szStartOnLeft, mbStartOnLeft);
+	mbDisplayPrerollDialog = key.getBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
+
+	// load timing settings
+
+	VDCaptureTimingSetup ts(mpProject->GetTimingSetup());
+
+	ts.mSyncMode = (VDCaptureTimingSetup::SyncMode)key.getEnumInt(g_szCaptureTimingMode, VDCaptureTimingSetup::kSyncModeCount, ts.mSyncMode);
+	ts.mbAllowEarlyDrops	= key.getBool(g_szCaptureTimingAllowEarlyDrops, ts.mbAllowEarlyDrops);
+	ts.mbAllowLateInserts	= key.getBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
+	ts.mbCorrectVideoTiming	= key.getBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
+	ts.mbResyncWithIntegratedAudio	= key.getBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
+
+	mpProject->SetTimingSetup(ts);
+
+	mpProject->SetLoggingEnabled(key.getBool(g_szCaptureTimingEnableLog, false));
 
 	// load filter settings
 
 	VDCaptureFilterSetup fs(mpProject->GetFilterSetup());
 
 	fs.mbEnableFieldSwap = key.getBool(g_szFilterEnableFieldSwap, fs.mbEnableFieldSwap);
-	fs.mbEnableLumaSquish = key.getBool(g_szFilterEnableLumaSquish, fs.mbEnableLumaSquish);
+	fs.mbEnableLumaSquishBlack = key.getBool(g_szFilterEnableLumaSquishBlack, fs.mbEnableLumaSquishBlack);
+	fs.mbEnableLumaSquishWhite = key.getBool(g_szFilterEnableLumaSquishWhite, fs.mbEnableLumaSquishWhite);
 	fs.mbEnableNoiseReduction = key.getBool(g_szFilterEnableNoiseReduction, fs.mbEnableNoiseReduction);
 	fs.mbEnableRGBFiltering = key.getBool(g_szFilterEnableFilterChain, fs.mbEnableRGBFiltering);
 	fs.mNRThreshold = key.getInt(g_szFilterEnableFieldSwap, fs.mNRThreshold);
@@ -833,11 +917,21 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szMultisegment, mpProject->IsSpillEnabled());
 	key.setBool(g_szAutoIncrement, mbAutoIncrementAfterCapture);
 	key.setBool(g_szStartOnLeft, mbStartOnLeft);
+	key.setBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
+
+	VDCaptureTimingSetup ts(mpProject->GetTimingSetup());
+
+	key.setInt(g_szCaptureTimingMode, ts.mSyncMode);
+	key.setBool(g_szCaptureTimingAllowEarlyDrops, ts.mbAllowEarlyDrops);
+	key.setBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
+	key.setBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
+	key.setBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
 
 	const VDCaptureFilterSetup& fs = mpProject->GetFilterSetup();
 
 	key.setBool(g_szFilterEnableFieldSwap, fs.mbEnableFieldSwap);
-	key.setBool(g_szFilterEnableLumaSquish, fs.mbEnableLumaSquish);
+	key.setBool(g_szFilterEnableLumaSquishBlack, fs.mbEnableLumaSquishBlack);
+	key.setBool(g_szFilterEnableLumaSquishWhite, fs.mbEnableLumaSquishWhite);
 	key.setBool(g_szFilterEnableNoiseReduction, fs.mbEnableNoiseReduction);
 	key.setBool(g_szFilterEnableFilterChain, fs.mbEnableRGBFiltering);
 	key.setInt(g_szFilterCropLeft, fs.mCropRect.left);
@@ -846,6 +940,8 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setInt(g_szFilterCropBottom, fs.mCropRect.bottom);
 	key.setInt(g_szFilterNoiseReductionThreshold, fs.mNRThreshold);
 	key.setInt(g_szFilterVerticalSquashMode, fs.mVertSquashMode);
+
+	key.setBool(g_szCaptureTimingEnableLog, mpProject->IsLoggingEnabled());
 }
 
 void VDCaptureProjectUI::LoadDeviceSettings() {
@@ -1297,7 +1393,7 @@ void VDCaptureProjectUI::UICaptureAudioDriversUpdated() {
 		;
 
 	// get drivers
-	HMENU hmenu = GetSubMenu(mhMenuCapture, 2);
+	HMENU hmenu = GetSubMenu(mhMenuCapture, kAudioDriverMenuPos);
 	const int n = mpProject->GetAudioDeviceCount();
 	int driversFound = 0;
 
@@ -1611,11 +1707,12 @@ bool VDCaptureProjectUI::UICaptureAnalyzeBegin(const VDPixmap& px) {
 
 	// Try showing the window.  We may not be able to if the
 	// overlay is already in use (ATI with integrated capture).
-	if (mpDisplay->SetSource(false, px)) {
+	ShowWindow(mhwndDisplay, SW_SHOWNA);
+	if (px.format && mpDisplay->SetSource(false, px)) {
 		success = true;
-		ShowWindow(mhwndDisplay, SW_SHOWNA);
 		mbDisplayAccelActive = true;
 	} else {
+		mpDisplay->SetSourceMessage(VDLoadString(0, kVDST_CaptureUI, kVDM_CannotDisplayFormat));
 		VDDEBUG("CaptureUI: Unable to initialize video display acceleration!\n");
 	}
 
@@ -1718,12 +1815,11 @@ void VDCaptureProjectUI::UICaptureStart() {
 }
 
 bool VDCaptureProjectUI::UICapturePreroll() {
-#if 0
+	if (!mbDisplayPrerollDialog)
+		return true;
+
 	// Don't have an option to flip this yet.
-	return IDOK == MessageBox((HWND)mhwnd, "VirtualDub notice", "Ready to capture.", MB_OKCANCEL);
-#else
-	return true;
-#endif
+	return IDOK == MessageBox((HWND)mhwnd, "Select OK to begin capture.", "VirtualDub notice", MB_OKCANCEL);
 }
 
 void VDCaptureProjectUI::UICaptureStatusUpdated(VDCaptureStatus& status) {
@@ -1943,7 +2039,8 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_ENABLEFILTERING,	filtsetup.mbEnableRGBFiltering);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_NOISEREDUCTION,	filtsetup.mbEnableNoiseReduction);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SWAPFIELDS,		filtsetup.mbEnableFieldSwap);
-	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SQUISH_RANGE,		filtsetup.mbEnableLumaSquish);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SQUISH_LOWER,		filtsetup.mbEnableLumaSquishBlack);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_SQUISH_UPPER,		filtsetup.mbEnableLumaSquishWhite);
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_VRNONE,			filtsetup.mVertSquashMode == IVDCaptureFilterSystem::kFilterDisable);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_VIDEO_VR2LINEAR,			filtsetup.mVertSquashMode == IVDCaptureFilterSystem::kFilterLinear);
@@ -1959,6 +2056,9 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLESPILL,		mpProject->IsSpillEnabled());
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_AUTOINCREMENT,	mbAutoIncrementAfterCapture);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_STARTONLEFT,		mbStartOnLeft);
+
+	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLETIMINGLOG,	mpProject->IsLoggingEnabled());
+	VDEnableMenuItemByCommandW32(hMenu, ID_CAPTURE_SAVETIMINGLOG,	mpProject->IsLogAvailable());
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_NONE,	mDisplayAccelMode == kDDP_Off);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_TOP,		mDisplayAccelMode == kDDP_Top);
@@ -2204,16 +2304,37 @@ bool VDCaptureProjectUI::OnCaptureSafeCommand(UINT id) {
 			mpProject->SetFilterSetup(filtsetup);
 		}
 		break;
-	case ID_VIDEO_SQUISH_RANGE:
+	case ID_VIDEO_SQUISH_LOWER:
 		{
 			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-			filtsetup.mbEnableLumaSquish = !filtsetup.mbEnableLumaSquish;
+			filtsetup.mbEnableLumaSquishBlack = !filtsetup.mbEnableLumaSquishBlack;
+			mpProject->SetFilterSetup(filtsetup);
+		}
+		break;
+	case ID_VIDEO_SQUISH_UPPER:
+		{
+			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+			filtsetup.mbEnableLumaSquishWhite = !filtsetup.mbEnableLumaSquishWhite;
 			mpProject->SetFilterSetup(filtsetup);
 		}
 		break;
 	case ID_CAPTURE_STOP:
 		mpProject->CaptureStop();
 		return 0;
+	case ID_CAPTURE_STOPCONDITIONS:
+		{
+			bool VDShowCaptureStopPrefsDialog(VDGUIHandle hwndParent, VDCaptureStopPrefs& prefs);
+
+			VDCaptureStopPrefs stopPrefs(mpProject->GetStopPrefs());
+
+			SuspendDisplay();
+			if (VDShowCaptureStopPrefsDialog(mhwnd, stopPrefs)) {
+				mpProject->SetStopPrefs(stopPrefs);
+				SetConfigBinary(g_szCapture, g_szStopConditions, (char *)&stopPrefs, sizeof stopPrefs);
+			}
+			ResumeDisplay();
+		}
+		break;
 	case ID_CAPTURE_INFOPANEL:
 		mbInfoPanel = !mbInfoPanel;
 		OnSize();
@@ -2248,7 +2369,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Set Capture File", L"Audio-Video Interleave (*.avi)\0*.avi\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"avi" : NULL, opts, optvals));
 
 			if (!capfile.empty()) {
-				mpProject->SetCaptureFile(capfile, false);
+				mpProject->SetCaptureFile(capfile.c_str(), false);
 
 				if (optvals[0]) {
 					VDRegistryAppKey key("Capture");
@@ -2266,7 +2387,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 			if (!capfile.empty()) {
 				try {
-					mpProject->SetCaptureFile(capfile, true);
+					mpProject->SetCaptureFile(capfile.c_str(), true);
 
 					UICaptureFileUpdated();
 				} catch(const MyError& e) {
@@ -2554,7 +2675,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			SuspendDisplay(mbDisplayAccelActive);
 
 			CAPTUREPARMS cp={0};
-			int videoCount, audioCount, audioSize;
+			int videoCount=0, audioCount=0, audioSize=0;
 
 			mpProject->GetHardwareBuffering(videoCount, audioCount, audioSize);
 
@@ -2562,10 +2683,12 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			cp.wNumVideoRequested = videoCount;
 			cp.wNumAudioRequested = audioCount;
 			cp.dwAudioBufferSize = audioSize;
+			cp.fMakeUserHitOKToCapture = mbDisplayPrerollDialog;
 
 			if (VDShowCaptureSettingsDialog(mhwnd, cp)) {
 				mpProject->SetHardwareBuffering(cp.wNumVideoRequested, cp.wNumAudioRequested, cp.dwAudioBufferSize);
 				mpProject->SetFrameTime(cp.dwRequestMicroSecPerFrame);
+				mbDisplayPrerollDialog = !!cp.fMakeUserHitOKToCapture;
 			}
 
 			ResumeDisplay();
@@ -2580,21 +2703,6 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		VDShowCapturePreferencesDialog(mhwnd);
 		ResumeDisplay();
-		break;
-
-	case ID_CAPTURE_STOPCONDITIONS:
-		{
-			bool VDShowCaptureStopPrefsDialog(VDGUIHandle hwndParent, VDCaptureStopPrefs& prefs);
-
-			VDCaptureStopPrefs stopPrefs(mpProject->GetStopPrefs());
-
-			SuspendDisplay();
-			if (VDShowCaptureStopPrefsDialog(mhwnd, stopPrefs)) {
-				mpProject->SetStopPrefs(stopPrefs);
-				SetConfigBinary(g_szCapture, g_szStopConditions, (char *)&stopPrefs, sizeof stopPrefs);
-			}
-			ResumeDisplay();
-		}
 		break;
 
 	case ID_CAPTURE_TIMING:
@@ -2664,6 +2772,24 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 	case ID_CAPTURE_HWACCEL_BOTH:
 		SetDisplayAccelMode(kDDP_Both);
+		break;
+
+	case ID_CAPTURE_ENABLETIMINGLOG:
+		mpProject->SetLoggingEnabled(!mpProject->IsLoggingEnabled());
+		break;
+
+	case ID_CAPTURE_SAVETIMINGLOG:
+		if (mpProject->IsLogAvailable()) {
+			const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
+
+			if (!logfile.empty()) {
+				try {
+					mpProject->SaveLog(logfile.c_str());
+				} catch(const MyError& e) {
+					e.post((HWND)mhwnd, g_szError);
+				}
+			}
+		}
 		break;
 
 	default:
@@ -2748,7 +2874,7 @@ void VDCaptureProjectUI::OnUpdateStatus() {
 	char buf[1024];
 
 	if (mbInfoPanel) {
-		sprintf(buf, "%ld frames (%ld dropped), %.3fs, %ldms jitter, %ldms disp, %ld frame size, %ldK total"
+		sprintf(buf, "%ld frames (%ld dropped), %.3fs, %ldms jitter, %ldms disp, %ld frame size, %ldK total : %.7f"
 					, mCurStatus.mFramesCaptured
 					, mCurStatus.mFramesDropped
 					, mCurStatus.mElapsedTimeMS / 1000.0
@@ -2756,6 +2882,7 @@ void VDCaptureProjectUI::OnUpdateStatus() {
 					, disp
 					, (long)(mCurStatus.mTotalVideoSize / mCurStatus.mFramesCaptured)
 					, totalSizeK
+					, mCurStatus.mVideoRateScale
 					);
 	} else {
 		sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d"

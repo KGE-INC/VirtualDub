@@ -270,38 +270,79 @@ void FrameSubset::setRange(sint64 start, sint64 len, bool bMask) {
 	iterator it = findNode(offset, start), itEnd(end());
 
 	while(it != itEnd && len>0) {
-		if (len+offset < it->len) {
-			if (it->bMask != bMask) {
+		FrameSubsetNode& fsn = *it;
+
+		// Check if the operation ends before the end of this segment.
+		if (len+offset < fsn.len) {
+			if (fsn.bMask != bMask) {
+				// insert pre-segment
 				if (offset)
-					mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
+					mTimeline.insert(it, FrameSubsetNode(fsn.start, offset, fsn.bMask));
 
-				mTimeline.insert(it, FrameSubsetNode(it->start + offset, len, bMask));
+				// insert changed segment
+				FrameSubsetNode temp(fsn.start + offset, len, bMask);
 
-				it->start += (offset+len);
-				it->len -= (offset+len);
+				if (it != mTimeline.begin()) {
+					iterator it2(it);
+					--it2;
+
+					if (it2->CanMergeBefore(temp)) {
+						it2->len += len;
+						goto no_insert_required;
+					}
+				}
+
+				mTimeline.insert(it, temp);
+
+no_insert_required:
+				// adjust post-segment
+				fsn.start += (offset+len);
+				fsn.len -= (offset+len);
 			}
 
 			break;
+		}
+
+		if (offset) {
+			len -= (fsn.len-offset);
+
+			if (fsn.bMask != bMask) {
+				mTimeline.insert(it, FrameSubsetNode(fsn.start, offset, fsn.bMask));
+
+				fsn.start += offset;
+				fsn.len -= offset;
+				fsn.bMask = bMask;
+			}
+
+			offset = 0;
 		} else {
-			if (offset) {
-				if (it->bMask != bMask) {
-					mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
+			fsn.bMask = bMask;
+			len -= fsn.len;
 
-					it->start += offset;
-					it->len -= offset;
-					it->bMask = bMask;
+			// check for a possible merge beforehand
+			if (it != mTimeline.begin()) {
+				iterator it2(it);
+				--it2;
+
+				if (it2->CanMergeBefore(fsn)) {
+					fsn.len += it2->len;
+					fsn.start -= it2->len;
+					mTimeline.erase(it2);
 				}
-
-				len -= it->len;
-				offset = 0;
-			} else {
-				it->bMask = bMask;
-				len -= it->len;
-				it = mTimeline.erase(it);
 			}
 		}
 
-		++it;
+		// check for a possible merge after
+		if (++it == itEnd)
+			break;
+
+		if (fsn.CanMergeBefore(*it)) {
+			fsn.len += it->len;
+			len -= it->len;				// Note: may cause len<0. That's OK because the mask type is already correct for the second node.
+			it = mTimeline.erase(it);
+		}
+
+		continue;
 	}
 	invalidateCache();
 }
@@ -314,6 +355,27 @@ void FrameSubset::clip(sint64 start, sint64 len) {
 void FrameSubset::offset(sint64 off) {
 	for(iterator it = begin(), itEnd = end(); it != itEnd; ++it)
 		it->start += off;
+	invalidateCache();
+}
+
+void FrameSubset::trimInputRange(sint64 limit) {
+	iterator it(mTimeline.begin()), itEnd(mTimeline.end());
+	
+	while(it != itEnd) {
+		FrameSubsetNode& fsn = *it;
+
+		// check if this range is entirely off the end
+		if (fsn.start >= limit)
+			it = mTimeline.erase(it);
+		else {
+			// check if this range is partially beyond the end
+			if (fsn.start + fsn.len > limit)
+				fsn.len = limit - fsn.start;
+
+			++it;
+		}
+	}
+
 	invalidateCache();
 }
 
@@ -434,15 +496,21 @@ public:
 
 		va_start(val, test);
 		while(pfsn != fs.end()) {
-			if (pfsn->start != va_arg(val, int))
+			if (pfsn->start != va_arg(val, int)) {
+				fs.dump();
 				throw MyError("fail test #%dA", test);
-			if (pfsn->len != va_arg(val, int))
+			}
+			if (pfsn->len != va_arg(val, int)) {
+				fs.dump();
 				throw MyError("fail test #%dB", test);
+			}
 
 			++pfsn;
 		}
-		if (va_arg(val, int) != -1)
+		if (va_arg(val, int) != -1) {
+			fs.dump();
 			throw MyError("fail test #%dC", test);
+		}
 
 		va_end(val);
 
@@ -532,9 +600,53 @@ public:
 				check(fs, 9, 8, 100, -1);
 			}
 
+			{
+				FrameSubset fs;
+
+				fs.addRange(110, 20, false);
+				fs.addRange(100, 20, false);
+				fs.trimInputRange(130);
+				check(fs, 10, 110, 20, 100, 20, -1);
+				fs.trimInputRange(120);
+				check(fs, 11, 110, 10, 100, 20, -1);
+				fs.trimInputRange(110);
+				check(fs, 12, 100, 10, -1);
+				fs.trimInputRange(100);
+				check(fs, 13, -1);
+			}
+
+			// addRange() tests
+			{
+				FrameSubset fs;
+
+				fs.addRange(100, 30, false);
+
+				fs.setRange(10, 10, true);
+				check(fs, __LINE__, 100, 10, 110, 10, 120, 10, -1);
+			}
+			{
+				FrameSubset fs;
+
+				fs.addRange(100, 10, false);
+				fs.addRange(120, 10, false);
+
+				fs.setRange(5, 10, true);
+				check(fs, __LINE__, 100, 5, 105, 5, 120, 5, 125, 5, -1);
+			}
+			{
+				FrameSubset fs;
+
+				fs.addRange(100, 10, false);
+				fs.addRange(110, 10, true);
+				fs.addRange(120, 10, false);
+
+				fs.setRange(10, 10, false);
+				check(fs, __LINE__, 100, 30, -1);
+			}
 
 		} catch(const MyError& e) {
-			e.post(NULL, "Class verify failed: FrameSubset");
+			VDDEBUG("%s", e.gets());
+			VDBREAK;
 		}
 	}
 } g_ClassVerifyFrameSubset;

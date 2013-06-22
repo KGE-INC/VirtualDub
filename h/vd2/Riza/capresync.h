@@ -49,6 +49,7 @@ protected:
 
 struct VDCaptureResyncStatus {
 	sint32		mVideoTimingAdjust;
+	float		mVideoRateScale;
 	float		mAudioResamplingRate;
 	float		mMeasuredLatency;
 	float		mCurrentLatency;
@@ -72,6 +73,7 @@ public:
 	virtual void SetAudioChannels(int chans) = 0;
 	virtual void SetAudioFormat(VDAudioSampleType sampleType) = 0;
 	virtual void SetResyncMode(Mode mode) = 0;
+	virtual void EnableVideoTimingCorrection(bool en) = 0;
 
 	virtual void GetStatus(VDCaptureResyncStatus&) = 0;
 };

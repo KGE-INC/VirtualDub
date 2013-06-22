@@ -236,23 +236,23 @@ void AnnounceExperimental() {
 #if 1		// 1.6.3 is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.3", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.6.3", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.4", 1);
 	}
 #endif
 }
 
 
 void AnnounceCaptureExperimental(VDGUIHandle h) {
-#if 1		// 1.6.3 capture is experimental
+#if 0		// 1.6.3 capture is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.3", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BROKEN), (HWND)h, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.3", 1);
+		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.4", 1);
 	}
 #endif
 }

@@ -20,6 +20,7 @@
 #define f_HEXVIEWER_CPP
 
 #include <ctype.h>
+#include <new>
 
 #include <windows.h>
 #include <commctrl.h>
@@ -30,6 +31,8 @@
 #include "gui.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
+#include <vd2/system/strutil.h>
+#include <vd2/system/vdalloc.h>
 
 #include "HexViewer.h"
 #include "ProgressDialog.h"
@@ -140,6 +143,8 @@ static const struct RIFFChunkInfo {
 	{ 'hlmd', "AVI2 extended header" },
 	{ '1xdi', "AVI legacy index" },
 	{ 'mges', "VirtualDub next segment pointer" },
+	{ 'atad', "Waveform data" },
+	{ ' tmf', "Wave format", g_Fields_strf_audio },
 	0
 },
 g_Chunk_strf_audio={ 'strf', "AVI stream format (audio)", g_Fields_strf_audio },
@@ -167,6 +172,109 @@ static const RIFFChunkInfo *LookupRIFFChunk(unsigned long ckid) {
 	}
 
 	return NULL;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+namespace {
+	struct TreeNode {
+		TreeNode *mpNext;
+		TreeNode *mpChildren;
+		const char *mpName;
+		sint64	mPos;
+
+		TreeNode(const char *s, sint64 pos);
+	};
+
+	TreeNode::TreeNode(const char *s, sint64 pos)
+		: mpNext(NULL)
+		, mpChildren(NULL)
+		, mpName(s)
+		, mPos(pos)
+	{
+		if (!mpName)
+			throw MyMemoryError();
+	}
+
+	struct RIFFScanInfo {
+		ProgressDialog& pd;
+		int count[100];
+		__int64 size[100];
+
+		RIFFScanInfo(ProgressDialog &_pd) : pd(_pd) {}
+	};
+
+
+	class VDChunkAllocator {
+	public:
+		VDChunkAllocator(int chunkSize) : mpHead(NULL), mOffset(chunkSize), mChunkSize(chunkSize) {}
+		~VDChunkAllocator();
+
+		void Shutdown();
+
+		void *Allocate(size_t bytes);
+
+	protected:
+		void *AllocateOverflow(size_t bytes);
+
+		struct ChunkHeader {
+			ChunkHeader *mpNext;
+		};
+
+		ptrdiff_t	mOffset;
+		ChunkHeader *mpHead;
+		const int mChunkSize;
+	};
+
+	VDChunkAllocator::~VDChunkAllocator() {
+	}
+
+	void VDChunkAllocator::Shutdown() {
+		ChunkHeader *p = mpHead;
+		while(p) {
+			ChunkHeader *next = p->mpNext;
+			free(p);
+			p = next;
+		}
+		mpHead = NULL;
+		mOffset = mChunkSize;
+	}
+
+	void *VDChunkAllocator::Allocate(size_t bytes) {
+		ptrdiff_t size = (bytes + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+		ptrdiff_t offsetNew = mOffset + size;
+
+		if (offsetNew >= mChunkSize)
+			return AllocateOverflow(size);
+
+		void *data = (char *)(mpHead+1) + mOffset;
+		mOffset += size;
+		return data;
+	}
+
+	void *VDChunkAllocator::AllocateOverflow(size_t size) {
+		if (size > mChunkSize) {
+			ChunkHeader *p = (ChunkHeader *)malloc(sizeof(ChunkHeader) + size);
+
+			if (mpHead) {
+				p->mpNext = mpHead->mpNext;
+				mpHead->mpNext = p;
+			} else {
+				mpHead = p;
+				p->mpNext = NULL;
+			}
+
+			return p+1;
+		}
+
+		ChunkHeader *p = (ChunkHeader *)malloc(sizeof(ChunkHeader) + mChunkSize);
+
+		p->mpNext = mpHead;
+		mpHead = p;
+		mOffset = size;
+
+		return p+1;
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -911,6 +1019,7 @@ private:
 	const HWND	hwnd;
 	HWND	hwndFind;
 	HWND	hwndTree;
+	HWND	mhwndTreeView;
 	HWND	hwndStatus;
 	HANDLE	hFile;
 	HFONT	hfont;
@@ -926,6 +1035,8 @@ private:
 	__int64	i64RowCacheAddr;
 
 	List2<HVModifiedLine>	listMods;
+
+	VDChunkAllocator	mChunkAllocator;
 
 	ModelessDlgNode	mdnFind;
 	char	*pszFindString;
@@ -981,7 +1092,7 @@ private:
 
 	void Extract();
 	void Find(HWND);
-	void _RIFFScan(struct RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft);
+	TreeNode *RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft);
 	void RIFFTree(HWND hwndTV);
 
 	HVModifiedLine *FindModLine(__int64 addr) {
@@ -1004,7 +1115,15 @@ private:
 
 ////////////////////////////
 
-HexEditor::HexEditor(HWND _hwnd) : hwnd(_hwnd), hwndFind(0), hwndTree(0), pszFindString(NULL), bFindReverse(false), hfont(0) {
+HexEditor::HexEditor(HWND _hwnd)
+	: hwnd(_hwnd)
+	, hwndFind(0)
+	, hwndTree(0)
+	, mChunkAllocator(65536)
+	, pszFindString(NULL)
+	, bFindReverse(false)
+	, hfont(0)
+{
 	hFile = INVALID_HANDLE_VALUE;
 
 	i64FileSize = 0;
@@ -1566,11 +1685,12 @@ LRESULT HexEditor::Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) {
 
 	GetClientRect(hwnd, &r);
 	GetWindowRect(hwndStatus, &rstatus);
-	MapWindowPoints(NULL, hwnd, (LPPOINT)&rstatus, 2);
+
+	const int statusH = rstatus.bottom - rstatus.top;
 
 	hdwp = BeginDeferWindowPos(2);
-	DeferWindowPos(hdwp, hwndStatus, NULL, 0, r.bottom-rstatus.bottom, r.right, rstatus.bottom-rstatus.top, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-	DeferWindowPos(hdwp, hwndView, NULL, 0, 0, r.right, r.bottom - (rstatus.bottom-rstatus.top), SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOMOVE);
+	DeferWindowPos(hdwp, hwndStatus, NULL, 0, r.bottom-statusH, r.right, statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+	DeferWindowPos(hdwp, hwndView, NULL, 0, 0, r.right, r.bottom - statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOMOVE);
 	EndDeferWindowPos(hdwp);
 
 	return 0;
@@ -2252,18 +2372,34 @@ INT_PTR CALLBACK HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 
 ///////////////////////////////////////////////////////////////////////////
 
-struct RIFFScanInfo {
-	ProgressDialog& pd;
-	int count[100];
-	__int64 size[100];
+TreeNode *HexEditor::RIFFScan(RIFFScanInfo &rsi, __int64 pos, __int64 sizeleft) {
+	char buf[256];
+	TreeNode *pPrevNode = NULL;
+	TreeNode *pParentNode = NULL;
+	int nodes = 0;
+	int nodeBase = 0;
+	sint64 startPos = pos;
 
-	RIFFScanInfo(ProgressDialog &_pd) : pd(_pd) {}
-};
+	for(;;) {
+		if ((sizeleft < 8 && pParentNode) || nodes-nodeBase >= 1000) {
+			sprintf(buf, "Chunks %u-%u (%08I64X-%08I64X)\n", nodeBase, nodes-1, startPos, pos-1);
+			size_t len = strlen(buf);
+			char *s = (char *)mChunkAllocator.Allocate(len+1);
+			memcpy(s, buf, len+1);
+			TreeNode *ppn = new(mChunkAllocator.Allocate(sizeof(TreeNode))) TreeNode(s, pos);
 
-void HexEditor::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft) {
-	char buf[128];
+			ppn->mpNext = pParentNode;
+			ppn->mpChildren = pPrevNode;
+			pPrevNode = NULL;
+			pParentNode = ppn;
 
-	while(sizeleft > 8) {
+			nodeBase += 1000;
+			startPos = pos;
+		}
+
+		if (sizeleft < 8)
+			break;
+
 		const char *cl;
 		struct {
 			unsigned long ckid, size, listid;
@@ -2314,25 +2450,42 @@ void HexEditor::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64
 				strcpy(dst, LookupRIFFChunk(g_JustChunks, chunk.ckid));
 		}
 
-		TVINSERTSTRUCT tvis;
+		const size_t len = strlen(buf);
+		char *s = (char *)mChunkAllocator.Allocate(len+1);
+		memcpy(s, buf, len+1);
+		TreeNode *pn = new(mChunkAllocator.Allocate(sizeof(TreeNode))) TreeNode(s, pos);
 
-		tvis.hParent		= hti;
-		tvis.hInsertAfter	= TVI_LAST;
-		tvis.item.mask		= TVIF_TEXT | TVIF_PARAM | TVIF_STATE;
-		tvis.item.lParam	= 1;
-		tvis.item.pszText	= buf;
-		tvis.item.state		= TVIS_EXPANDED;
-		tvis.item.stateMask	= TVIS_EXPANDED;
+		pn->mpNext = pPrevNode;
+		pPrevNode = pn;
 
-		HTREEITEM htiNew = TreeView_InsertItem(hwndTV, &tvis);
+		++nodes;
 
 		if (bExpand)
-			_RIFFScan(rsi, hwndTV, htiNew, pos+12, chunk.size-4);
+			pn->mpChildren = RIFFScan(rsi, pos+12, chunk.size-4);
 
 		chunk.size = (chunk.size+1)&~1;
 
 		pos += chunk.size + 8;
 		sizeleft -= chunk.size + 8;
+	}
+
+	return pParentNode ? pParentNode : pPrevNode;
+}
+
+namespace {
+	void CreateTreeNode(HWND hwndTV, HTREEITEM htiParent, TreeNode *ptn) {
+		TVINSERTSTRUCT tvis;
+
+		tvis.hParent		= htiParent;
+		tvis.hInsertAfter	= TVI_FIRST;
+		tvis.item.mask		= TVIF_TEXT | TVIF_PARAM | TVIF_STATE | TVIF_CHILDREN;
+		tvis.item.lParam	= (LPARAM)ptn;
+		tvis.item.pszText	= LPSTR_TEXTCALLBACK;
+		tvis.item.state		= 0;
+		tvis.item.stateMask	= TVIS_EXPANDED;
+		tvis.item.cChildren	= I_CHILDRENCALLBACK;
+
+		TreeView_InsertItem(hwndTV, &tvis);
 	}
 }
 
@@ -2346,7 +2499,9 @@ void HexEditor::RIFFTree(HWND hwndTV) {
 	memset(&rsi.size, 0, sizeof rsi.size);
 
 	try {
-		_RIFFScan(rsi, hwndTV, TVI_ROOT, 0, i64FileSize);
+		TreeNode *p = RIFFScan(rsi, 0, i64FileSize);
+		for(; p; p = p->mpNext)
+			CreateTreeNode(hwndTV, TVI_ROOT, p);
 	} catch(MyUserAbortError) {
 	}
 
@@ -2361,7 +2516,8 @@ INT_PTR CALLBACK HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPAR
 		SetWindowLongPtr(hdlg, DWLP_USER, lParam);
 		pcd = (HexEditor *)lParam;
 		pcd->hwndTree = hdlg;
-		pcd->RIFFTree(GetDlgItem(hdlg, IDC_TREE));
+		pcd->mhwndTreeView = GetDlgItem(hdlg, IDC_TREE);
+		pcd->RIFFTree(pcd->mhwndTreeView);
 		return TRUE;
 
 	case WM_SIZE:
@@ -2378,35 +2534,56 @@ INT_PTR CALLBACK HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPAR
 		break;
 
 	case WM_DESTROY:
+		TreeView_DeleteAllItems(pcd->mhwndTreeView);
+		pcd->mChunkAllocator.Shutdown();
 		pcd->hwndTree = NULL;
 		break;
 
 	case WM_NOTIFY:
-		if (GetWindowLong(((NMHDR *)lParam)->hwndFrom, GWL_ID) == IDC_TREE) {
+		if (((NMHDR *)lParam)->hwndFrom == pcd->mhwndTreeView) {
 			const NMHDR *pnmh = (NMHDR *)lParam;
 
 			if (pnmh->code == NM_DBLCLK || (pnmh->code == TVN_KEYDOWN && ((LPNMTVKEYDOWN)lParam)->wVKey == VK_RETURN)) {
 				HTREEITEM hti = TreeView_GetSelection(pnmh->hwndFrom);
 
 				if (hti) {
-					char buf[128];
 					TVITEM tvi;
-					__int64 seekpos;
-
-					tvi.mask		= TVIF_TEXT | TVIF_PARAM;
+					tvi.mask		= TVIF_PARAM;
 					tvi.hItem		= hti;
-					tvi.pszText		= buf;
-					tvi.cchTextMax	= sizeof buf;
-
 					TreeView_GetItem(pnmh->hwndFrom, &tvi);
 
-					if (tvi.lParam && 1==sscanf(buf, "%I64x", &seekpos)) {
-						pcd->mpView->MoveToByte(seekpos);
+					if (tvi.lParam) {
+						const TreeNode *ptn = (const TreeNode *)tvi.lParam;
+
+						pcd->mpView->MoveToByte(ptn->mPos);
 						PostMessage(hdlg, WM_APP, 0, 0);
 					}
 				}
 
 				SetWindowLongPtr(hdlg, DWLP_MSGRESULT, 1);
+			} else if (pnmh->code == TVN_ITEMEXPANDING) {
+				const NMTREEVIEW& ntv = *(const NMTREEVIEW *)lParam;
+
+				if (ntv.action & TVE_EXPAND) {
+					TreeNode *ptn = ((TreeNode *)ntv.itemNew.lParam)->mpChildren;
+
+					for(; ptn; ptn = ptn->mpNext)
+						CreateTreeNode(pcd->mhwndTreeView, ntv.itemNew.hItem, ptn);
+				}
+			} else if (pnmh->code == TVN_ITEMEXPANDED) {
+				const NMTREEVIEW& ntv = *(const NMTREEVIEW *)lParam;
+
+				if (ntv.action & TVE_COLLAPSE)
+					TreeView_Expand(pcd->mhwndTreeView, ntv.itemNew.hItem, TVE_COLLAPSE | TVE_COLLAPSERESET);
+			} else if (pnmh->code == TVN_GETDISPINFO) {
+				NMTVDISPINFO& ndi = *(NMTVDISPINFO *)lParam;
+				const TreeNode *ptn = (const TreeNode *)ndi.item.lParam;
+
+				if (ndi.item.mask & TVIF_TEXT)
+					strncpyz(ndi.item.pszText, ptn->mpName, ndi.item.cchTextMax);
+
+				if (ndi.item.mask & TVIF_CHILDREN)
+					ndi.item.cChildren = ptn->mpChildren != NULL;
 			}
 			return TRUE;
 		}

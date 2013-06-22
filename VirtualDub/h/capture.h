@@ -50,7 +50,8 @@ struct VDCaptureFilterSetup {
 
 	bool		mbEnableRGBFiltering;
 	bool		mbEnableNoiseReduction;
-	bool		mbEnableLumaSquish;
+	bool		mbEnableLumaSquishBlack;
+	bool		mbEnableLumaSquishWhite;
 	bool		mbEnableFieldSwap;
 };
 
@@ -69,6 +70,7 @@ struct VDCaptureTimingSetup {
 	};
 
 	SyncMode	mSyncMode;
+	bool		mbCorrectVideoTiming;
 	bool		mbResyncWithIntegratedAudio;
 	bool		mbAllowEarlyDrops;
 	bool		mbAllowLateInserts;
@@ -86,6 +88,7 @@ struct VDCaptureStatus {
 	sint64		mDiskFreeSpace;
 
 	sint32		mVideoTimingAdjustMS;
+	float		mVideoRateScale;
 	float		mAudioResamplingRate;
 	float		mAudioLatency;
 
@@ -190,6 +193,11 @@ public:
 	virtual void	SetTimingSetup(const VDCaptureTimingSetup& syncSetup) = 0;
 	virtual const VDCaptureTimingSetup&	GetTimingSetup() = 0;
 
+	virtual void	SetLoggingEnabled(bool ena) = 0;
+	virtual bool	IsLoggingEnabled() = 0;
+	virtual bool	IsLogAvailable() = 0;
+	virtual void	SaveLog(const wchar_t *path) = 0;
+
 	virtual bool	SetTunerChannel(int channel) = 0;
 	virtual int		GetTunerChannel() = 0;
 	virtual bool	GetTunerChannelRange(int& minChannel, int& maxChannel) = 0;
@@ -198,6 +206,7 @@ public:
 	virtual const wchar_t *GetAudioDeviceName(int idx) = 0;
 	virtual void	SetAudioDevice(int idx) = 0;
 	virtual int		GetAudioDeviceIndex() = 0;
+	virtual int		GetAudioDeviceByName(const wchar_t *name) = 0;
 
 	virtual int		GetVideoSourceCount() = 0;
 	virtual const wchar_t *GetVideoSourceName(int idx) = 0;
@@ -261,7 +270,7 @@ public:
 	virtual void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex) = 0;
 	virtual bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex) = 0;
 
-	virtual void		SetCaptureFile(const VDStringW& filename, bool isStripeSystem) = 0;
+	virtual void		SetCaptureFile(const wchar_t *filename, bool isStripeSystem) = 0;
 	virtual VDStringW	GetCaptureFile() = 0;
 	virtual bool		IsStripingEnabled() = 0;
 
@@ -274,6 +283,7 @@ public:
 	virtual void	ScanForDrivers() = 0;
 	virtual int		GetDriverCount() = 0;
 	virtual const wchar_t *GetDriverName(int i) = 0;
+	virtual int		GetDriverByName(const wchar_t *s) = 0;
 	virtual bool	SelectDriver(int nDriver) = 0;
 	virtual bool	IsDriverConnected() = 0;
 	virtual int		GetConnectedDriverIndex() = 0;
@@ -283,13 +293,6 @@ public:
 	virtual void	CaptureStop() = 0;
 };
 
-class VDINTERFACE IVDCaptureProjectUI : public IVDRefCount {
-public:
-	virtual bool	Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) = 0;
-	virtual void	Detach() = 0;
-};
-
 IVDCaptureProject *VDCreateCaptureProject();
-IVDCaptureProjectUI *VDCreateCaptureProjectUI();
 
 #endif

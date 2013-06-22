@@ -17,7 +17,8 @@ std::vector<char> cnambuf;
 
 ///////////////////////////////////////////////////////////////////////////
 
-void parsename(long rva, char *buf) {
+void parsename(long rva, char *buf0) {
+	char *buf = buf0;
 	char *func_name = NULL;
 	char *class_name = NULL;
 	char c;
@@ -53,8 +54,10 @@ void parsename(long rva, char *buf) {
 			func_name = buf;
 
 			while(*buf != '@') {
-				if (!*buf)
+				if (!*buf) {
+					printf("    unrecognizable name: %s\n", buf0);
 					throw "bad decorated name";
+				}
 
 				++buf;
 			}
@@ -68,8 +71,10 @@ void parsename(long rva, char *buf) {
 		// Look for a class name.
 
 		if (*buf != '@') {
-			if (!*buf)
+			if (!*buf) {
+				printf("    unrecognizable name: %s\n", buf0);
 				throw "bad decorated name";
+			}
 
 			class_name = buf;
 

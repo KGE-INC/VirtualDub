@@ -38,9 +38,6 @@ VDStringW VDGetProgramPath();
 
 void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
 
-char *SplitPathRoot(char *dst, const char *path);
-char *MergePath(char *path, const char *fn);
-bool IsFilenameOnFATVolume(const char *pszFilename);
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
 HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);

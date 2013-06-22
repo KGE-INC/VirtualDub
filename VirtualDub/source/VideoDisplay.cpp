@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/VDString.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmaputils.h>
 
@@ -70,6 +72,7 @@ protected:
 	VDVideoDisplayWindow(HWND hwnd);
 	~VDVideoDisplayWindow();
 
+	void SetSourceMessage(const wchar_t *msg);
 	void SetSourcePalette(const uint32 *palette, int count);
 	bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
 	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
@@ -87,6 +90,7 @@ protected:
 	LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 	void OnPaint();
+	void SyncSetSourceMessage(const wchar_t *);
 	bool SyncSetSource(bool bAutoUpdate, const VDVideoDisplaySourceInfo& params);
 	void SyncReset();
 	bool SyncInit(bool bAutoRefresh);
@@ -123,6 +127,7 @@ protected:
 
 	bool		mbUseSubrect;
 	vdrect32	mSourceSubrect;
+	VDStringW	mMessage;
 
 	VDPixmapBuffer		mCachedImage;
 
@@ -229,6 +234,11 @@ VDVideoDisplayWindow::~VDVideoDisplayWindow() {
 #define MYWM_UPDATE			(WM_USER + 0x101)
 #define MYWM_CACHE			(WM_USER + 0x102)
 #define MYWM_RESET			(WM_USER + 0x103)
+#define MYWM_SETSOURCEMSG	(WM_USER + 0x104)
+
+void VDVideoDisplayWindow::SetSourceMessage(const wchar_t *msg) {
+	SendMessage(mhwnd, MYWM_SETSOURCEMSG, 0, (LPARAM)msg);
+}
 
 void VDVideoDisplayWindow::SetSourcePalette(const uint32 *palette, int count) {
 	memcpy(mSourcePalette, palette, 4*std::min<int>(count, 256));
@@ -376,6 +386,9 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		SyncReset();
 		mSource.pixmap.data = NULL;
 		return 0;
+	case MYWM_SETSOURCEMSG:
+		SyncSetSourceMessage((const wchar_t *)lParam);
+		return 0;
 	case WM_SIZE:
 		if (mpMiniDriver)
 			VerifyDriverResult(mpMiniDriver->Resize());
@@ -417,8 +430,15 @@ void VDVideoDisplayWindow::OnPaint() {
 
 		if (mpMiniDriver && mpMiniDriver->IsValid())
 			VerifyDriverResult(mpMiniDriver->Paint(hdc, r));
-		else
+		else {
 			FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE + 1));
+			if (!mMessage.empty()) {
+				HGDIOBJ hgo = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
+				SetBkMode(hdc, TRANSPARENT);
+				VDDrawTextW32(hdc, mMessage.data(), mMessage.size(), &r, DT_CENTER | DT_VCENTER | DT_NOPREFIX | DT_WORDBREAK);
+				SelectObject(hdc, hgo);
+			}
+		}
 
 		EndPaint(mhwnd, &ps);
 	}
@@ -430,6 +450,7 @@ bool VDVideoDisplayWindow::SyncSetSource(bool bAutoUpdate, const VDVideoDisplayS
 	mCachedImage.clear();
 
 	mSource = params;
+	mMessage.clear();
 
 	if (mpMiniDriver && mpMiniDriver->ModifySource(mSource)) {
 		mSource.bAllowConversion = true;
@@ -455,8 +476,18 @@ void VDVideoDisplayWindow::SyncReset() {
 	}
 }
 
+void VDVideoDisplayWindow::SyncSetSourceMessage(const wchar_t *msg) {
+	if (!mpMiniDriver && mMessage == msg)
+		return;
+
+	SyncReset();
+	mSource.pixmap.format = 0;
+	mMessage = msg;
+	InvalidateRect(mhwnd, NULL, TRUE);
+}
+
 bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
-	if (!mSource.pixmap.data)
+	if (!mSource.pixmap.data || !mSource.pixmap.format)
 		return true;
 
 	VDASSERT(!mpMiniDriver);

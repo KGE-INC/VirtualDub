@@ -247,10 +247,6 @@ SOURCE=.\source\timeline.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\source\uiframe.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\source\VBitmap.cpp
 # End Source File
 # Begin Source File
@@ -384,10 +380,6 @@ SOURCE=.\h\SceneDetector.h
 # Begin Source File
 
 SOURCE=.\h\timeline.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\h\uiframe.h
 # End Source File
 # Begin Source File
 
@@ -633,6 +625,10 @@ SOURCE=.\h\capture.h
 # Begin Source File
 
 SOURCE=.\source\captureui.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\captureui.h
 # End Source File
 # Begin Source File
 
@@ -2605,6 +2601,10 @@ SOURCE=.\source\test_videofilt.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\uiframe.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\VideoDisplay.cpp
 # End Source File
 # Begin Source File
@@ -2766,6 +2766,10 @@ SOURCE=.\h\script.h
 # Begin Source File
 
 SOURCE=.\h\server.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\uiframe.h
 # End Source File
 # Begin Source File
 

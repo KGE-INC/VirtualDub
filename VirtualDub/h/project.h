@@ -64,6 +64,7 @@ public:
 
 	void Quit();
 	void Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = 0, bool fExtendedOpen = false, bool fQuiet = false, bool fAutoscan = false, const char *pInputOpts = 0);
+	void Reopen();
 	void OpenWAV(const wchar_t *pFilename);
 	void CloseWAV();
 	void PreviewInput();

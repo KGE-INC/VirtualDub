@@ -37,31 +37,11 @@ namespace {
 	}
 
 	bool IsHardDrivePath(const wchar_t *path) {
-		wchar_t tmppath1[MAX_PATH], tmppath2[MAX_PATH];
-		wchar_t *fn;
+		const VDStringW rootPath(VDFileGetRootPath(path));
 
-		if (GetFullPathNameW(path, sizeof tmppath1 / sizeof tmppath1[0], tmppath1, &fn)) {
-			typedef BOOL (__stdcall * tpGetVolumePathNameW)(LPCWSTR lpszFileName, LPWSTR lpszVolumePathName, DWORD cchBufferLength);
-			static const tpGetVolumePathNameW pGetVolumePathNameW = (tpGetVolumePathNameW)GetProcAddress(GetModuleHandle("kernel32"), "GetVolumePathNameW");
+		UINT type = GetDriveTypeW(rootPath.c_str());
 
-			*fn = 0;
-
-			bool success = false;
-
-			if (pGetVolumePathNameW)		// requires Windows 2000 or above
-				success = 0!=pGetVolumePathNameW(tmppath1, tmppath2, sizeof tmppath2 / sizeof tmppath2[0]);
-
-			if (!success) {
-				wcscpy(tmppath2, tmppath1);
-				*VDFileSplitRoot(tmppath2) = NULL;
-			}
-
-			UINT type = GetDriveTypeW(tmppath2);
-
-			return type == DRIVE_FIXED || type == DRIVE_UNKNOWN || type == DRIVE_REMOVABLE;
-		}
-
-		return true;
+		return type == DRIVE_FIXED || type == DRIVE_UNKNOWN || type == DRIVE_REMOVABLE;
 	}
 };
 
@@ -579,4 +559,81 @@ VDTextInputFile::VDTextInputFile(const wchar_t *filename, uint32 flags)
 }
 
 VDTextInputFile::~VDTextInputFile() {
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDTextOutputFile::VDTextOutputFile(const wchar_t *filename, uint32 flags)
+	: mFile(filename, flags | nsVDFile::kWrite)
+	, mLevel(0)
+{
+}
+
+VDTextOutputFile::~VDTextOutputFile() {
+	try { 
+		Close();
+	} catch(const MyError&) {
+		// ignore errors in destructor
+	}
+}
+
+void VDTextOutputFile::Close() {
+	if (mFile.isOpen()) {
+		if (mLevel)
+			mFile.write(mBuf, mLevel);
+		mFile.close();
+	}
+}
+
+void VDTextOutputFile::PutLine(const char *s) {
+	PutData(s, strlen(s));
+	PutData("\r\n", 2);
+}
+
+void VDTextOutputFile::FormatLine(const char *format, ...) {
+	va_list val;
+
+	va_start(val, format);
+
+	int rv = -1;
+	if (mLevel < kBufSize-4)
+		rv = _vsnprintf(mBuf+mLevel, kBufSize-mLevel, format, val);
+
+	if (rv >= 0)
+		mLevel += rv;
+	else
+		FormatLine2(format, val);
+
+	PutData("\r\n", 2);
+	va_end(val);
+}
+
+void VDTextOutputFile::FormatLine2(const char *format, va_list val) {
+	char buf[3072];
+
+	int rv = _vsnprintf(buf, 3072, format, val);
+	if (rv > 0)
+		PutData(buf, rv);
+}
+
+void VDTextOutputFile::PutData(const char *s, int len) {
+	while(len > 0) {
+		int left = kBufSize - mLevel;
+		if (!left) {
+			mFile.write(mBuf, kBufSize);
+			mLevel = 0;
+			left = kBufSize;
+		}
+
+		int tc = len;
+
+		if (tc > left)
+			tc = left;
+
+		memcpy(mBuf + mLevel, s, tc);
+
+		s += tc;
+		len -= tc;
+		mLevel += tc;
+	}
 }

@@ -60,6 +60,7 @@
 
 #include "project.h"
 #include "projectui.h"
+#include "captureui.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -91,6 +92,8 @@ extern HWND			g_hWnd;
 
 extern VDProject *g_project;
 vdrefptr<VDProjectUI> g_projectui;
+
+extern vdrefptr<IVDCaptureProjectUI> g_capProjectUI;
 
 extern DubSource::ErrorMode	g_videoErrorMode;
 extern DubSource::ErrorMode	g_audioErrorMode;
@@ -283,7 +286,7 @@ void VDInitAppResources() {
 	VDLoadResources(0, lpData, SizeofResource(NULL, hResource));
 }
 
-bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
+bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 //#ifdef _DEBUG
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
@@ -394,39 +397,6 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 	// Detect DivX.
 
 	DetectDivX();
-
-	while(iswspace(*lpCmdLine))
-		++lpCmdLine;
-
-#if 0
-	if (*lpCmdLine=='&') {
-		ICRemove(ICTYPE_VIDEO, 'TSDV', 0);
-		compInstalled = ICInstall(ICTYPE_VIDEO, 'TSDV', (LPARAM)(lpCmdLine+1), 0, ICINSTALL_DRIVER);
-
-		if (!compInstalled)
-//			MessageBox(NULL, "Warning: Unable to load compressor.", szError, MB_OK);
-			MyICError("External compressor", compInstalled).post(NULL, g_szError);
-		else
-			MessageBox(NULL, "External compressor loaded.", "Cool!", MB_OK);
-	} else if (*lpCmdLine == ':') {
-		if (lpCmdLine[1] && lpCmdLine[2] && lpCmdLine[3] && lpCmdLine[4]) {
-			DWORD fccHandler = *(DWORD *)(lpCmdLine+1);
-			HMODULE hmodVC = LoadLibrary(lpCmdLine+5);
-
-			if (hmodVC) {
-				DWORD pEntry = (DWORD)GetProcAddress(hmodVC, "DriverProc");
-
-				if (pEntry) {
-					BOOL b = ICInstall(ICTYPE_VIDEO, fccHandler, (LPARAM)pEntry, 0, ICINSTALL_FUNCTION);
-
-					if (b)
-						MessageBox(NULL, "External compressor loaded as function.", "Cool!", MB_OK);
-				}
-			}
-		}
-	} else
-#endif
-	ParseCommandLine(lpCmdLine);
 
 	// All done!
 
@@ -598,8 +568,8 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 ///////////////////////////////////////////////////////////////////////////
 
 namespace {
-	bool ParseArgument(const wchar_t *&s, VDStringW& parm, bool bTightParse) {
-		while(*s == L' ')
+	bool ParseArgument(const wchar_t *&s, VDStringW& parm) {
+		while(iswspace(*s))
 			++s;
 
 		if (!*s || *s == L'/')
@@ -608,27 +578,36 @@ namespace {
 		const wchar_t *start;
 		const wchar_t *end;
 
-		if (*s == L'"') {
-			start = ++s;
+		parm.clear();
 
-			while(*s && *s != L'"')
-				++s;
+		start = s;
+		while(*s && *s != L' ' && *s != L'/' && *s != L',') {			
+			if (*s == L'"') {
+				if (s != start)
+					parm.append(start, s-start);
 
-			end = s;
+				start = ++s;
+				while(*s && *s != L'"')
+					++s;
+				end = s;
 
-			if (*s)
+				if (end != start)
+					parm.append(start, end-start);
+
+				if (*s)
+					++s;
+
+				start = s;
+			} else
 				++s;
-		} else {
-			start = s;
-			while(*s && *s != L' ' && *s != L'/' && (!bTightParse || *s != L','))
-				++s;
-			end = s;
 		}
+
+		if (s != start)
+			parm.append(start, s-start);
 
 		if (*s == L',')
 			++s;
 
-		parm.assign(start, end);
 		return true;
 	}
 
@@ -648,17 +627,7 @@ namespace {
 	}
 }
 
-void ParseCommandLine(const wchar_t *lpCmdLine) {
-
-	// skip program name
-	if (*lpCmdLine == L'"') {
-		++lpCmdLine;
-		while(*lpCmdLine && *lpCmdLine++ != '"')
-			;
-	} else
-		while(*lpCmdLine && !iswspace(*lpCmdLine))
-			++lpCmdLine;
-
+int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 	const wchar_t *const cmdline = lpCmdLine;
 
 	const wchar_t *s;
@@ -682,6 +651,9 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 
 	VDStringW token;
 
+	VDStringW progName;
+	ParseArgument(s, token);
+
 	try {
 		while(*s) {
 			while(iswspace(*s))
@@ -689,107 +661,138 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 
 			if (!*s) break;
 
-			if (*s == L'-' || *s == L'/') {
+			if (*s == L'/') {
 				++s;
 
-				const wchar_t c = *s;
+				// parse out the switch name
+				const wchar_t *switchStart = s;
+				while(*s && iswalnum(*s))
+					++s;
 
-				if (!c)
-					break;
+				token.assign(switchStart, s-switchStart);
 
-				++s;
+				if (token == L"b") {
+					VDStringW path2;
 
-				bool tight = (*s != L' ' && *s != L'/');
+					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
+						throw "Command line error: syntax is /b <src_dir> <dst_dir>";
 
-				switch(c) {
-				case 's':
-
-					if (!ParseArgument(s, token, tight))
-						throw "Command line error: syntax is /s <script>";
-
-					JobLockDubber();
-					RunScript(token.c_str());
-					JobUnlockDubber();
-					break;
-				case 'c':
+					JobAddBatchDirectory(token.c_str(), path2.c_str());
+				}
+				else if (token == L"c") {
 					JobClearList();
-					break;
-				case 'r':
-					JobRunList();
-					break;
-				case 'x':
-					fExitOnDone = true;
-					break;
-				case 'h':
-					SetUnhandledExceptionFilter(NULL);
-					break;
-				case 'p':
-					{
-						VDStringW path2;
+				}
+				else if (token == L"capture") {
+					VDUIFrame *pFrame = VDUIFrame::GetFrame(g_hWnd);
+					pFrame->SetNextMode(1);
+				}
+				else if (token == L"capchannel") {
+					if (!g_capProjectUI)
+						throw "Command line error: not in capture mode";
 
-						if (!ParseArgument(s, token, tight) || !ParseArgument(s, path2, tight))
-							throw "Command line error: syntax is /p <src_file> <dst_file>";
+					if (!ParseArgument(s, token))
+						throw "Command line error: syntax is /capchannel <channel>";
 
-						JobAddBatchFile(token.c_str(), path2.c_str());
+					g_capProjectUI->SetTunerChannel(_wtoi(token.c_str()));
+				}
+				else if (token == L"capdevice") {
+					if (!g_capProjectUI)
+						throw "Command line error: not in capture mode";
+
+					if (!ParseArgument(s, token))
+						throw "Command line error: syntax is /capdevice <device>";
+
+					g_capProjectUI->SetDriver(token.c_str());
+				}
+				else if (token == L"capfile") {
+					if (!g_capProjectUI)
+						throw "Command line error: not in capture mode";
+
+					if (!ParseArgument(s, token))
+						throw "Command line error: syntax is /capfile <filename>";
+
+					g_capProjectUI->SetCaptureFile(token.c_str());
+				}
+				else if (token == L"capstart") {
+					if (!g_capProjectUI)
+						throw "Command line error: not in capture mode";
+
+					if (ParseArgument(s, token)) {
+						int limit = 60*_wtoi(token.c_str());
+
+						g_capProjectUI->SetTimeLimit(limit);
 					}
-					break;
-				case 'b':
-					{
-						VDStringW path2;
 
-						if (!ParseArgument(s, token, tight) || !ParseArgument(s, path2, tight))
-							throw "Command line error: syntax is /b <src_dir> <dst_dir>";
-
-						JobAddBatchDirectory(token.c_str(), path2.c_str());
-					}
-					break;
-				case 'w':
-					g_fWine = true;
-					break;
-
-				case 'f':
-					if (CheckForSwitch(s, L"sck"))
-						crash();
-					break;
-
-				case 'F':
-					if (!ParseArgument(s, token, tight))
+					g_capProjectUI->Capture();
+				}
+				else if (token == L"fsck") {
+					crash();
+				}
+				else if (token == L"F") {
+					if (!ParseArgument(s, token))
 						throw "Command line error: syntax is /F <filter>";
 
 					VDAddPluginModule(token.c_str());
 
 					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token).c_str());
 					break;
-
-				case L'v':
-					if (CheckForSwitch(s, L"tprofile"))
-						g_bEnableVTuneProfiling = true;
-					break;
-
-				case L'i':
-					{
-						VDStringW filename;
-
-						if (!ParseArgument(s, filename, false))
-							throw "Command line error: syntax is /i <script> [<args>...]";
-
-						g_VDStartupArguments.clear();
-						while(ParseArgument(s, token, false))
-							g_VDStartupArguments.push_back(VDTextWToA(token));
-
-						JobLockDubber();
-						RunScript(filename.c_str());
-						JobUnlockDubber();
-					}
-					break;
 				}
+				else if (token == L"h") {
+					SetUnhandledExceptionFilter(NULL);
+				}
+				else if (token == L"i") {
+					VDStringW filename;
+
+					if (!ParseArgument(s, filename))
+						throw "Command line error: syntax is /i <script> [<args>...]";
+
+					g_VDStartupArguments.clear();
+					while(ParseArgument(s, token))
+						g_VDStartupArguments.push_back(VDTextWToA(token));
+
+					JobLockDubber();
+					RunScript(filename.c_str());
+					JobUnlockDubber();
+				}
+				else if (token == L"p") {
+					VDStringW path2;
+
+					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
+						throw "Command line error: syntax is /p <src_file> <dst_file>";
+
+					JobAddBatchFile(token.c_str(), path2.c_str());
+				}
+				else if (token == L"queryVersion") {
+					return version_num;
+				}
+				else if (token == L"r") {
+					JobRunList();
+				}
+				else if (token == L"s") {
+					if (!ParseArgument(s, token))
+						throw "Command line error: syntax is /s <script>";
+
+					JobLockDubber();
+					RunScript(token.c_str());
+					JobUnlockDubber();
+				}
+				else if (token == L"vtprofile") {
+					g_bEnableVTuneProfiling = true;
+				}
+				else if (token == L"w") {
+					g_fWine = true;
+				}
+				else if (token == L"x") {
+					fExitOnDone = true;
+				} else
+					throw "???";
 
 				// Toss remaining garbage.
 				while(*s && *s != L' ' && *s != '/' && *s != '-')
 					++s;
 
 			} else {
-				if (ParseArgument(s, token, false))
+				if (ParseArgument(s, token))
 					g_project->Open(token.c_str());
 				else
 					++s;
@@ -801,8 +804,8 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 		e.post(g_hWnd, g_szError);
 	}
 
-	if (fExitOnDone) {
-		Deinit();
-		ExitProcess(0);
-	}
+	if (fExitOnDone)
+		return 0;
+
+	return -1;
 }

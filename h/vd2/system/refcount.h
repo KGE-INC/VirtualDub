@@ -148,6 +148,14 @@ public:
 	T& operator*() const { return *ptr; }
 	T *operator->() const { return ptr; }
 
+	T** operator~() {
+		if (ptr) {
+			ptr->Release();
+			ptr = NULL;
+		}
+		return &ptr;
+	}
+
 	inline void clear() {			// release held object and zero out
 		if (ptr)
 			ptr->Release();

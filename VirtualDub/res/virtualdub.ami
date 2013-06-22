@@ -60,6 +60,32 @@ stringset 7 {		// kVDST_ProjectUI
 	message 2, "%s - [%s] (render in progress)";
 }
 
+stringset 8 {		// kVDST_CaptureUI
+	message 0, "VirtualDub cannot display the incoming video, as it is in an unsupported format for display/analysis.";
+}
+
+stringset 9 {		// kVDST_Project
+	message 0, "The new video file has fewer video frames than the current file (%lld < %lld). Switching to it will result in changes to the edit list. Do you want to continue?";
+}
+
+stringset 10 {		// kVDST_VideoSequenceCompressor
+	message 0, "Video codec \"%.128hs\" modified its input image buffer and appears to have a bug. Check with the vendor "
+		"for an updated version of the codec.";
+}
+
+stringset 100 {		// kVDST_PNGDecodeErrors
+	message 1, "The file is not a PNG image.";
+	message 2, "The image file is incomplete.";
+	message 3, "The PNG header is bad.";
+	message 4, "The image uses an unsupported compression algorithm.";
+	message 5, "The image uses an unsupported interlacing algorithm.";
+	message 6, "The image uses an unsupported filter algorithm.";
+	message 7, "The palette in the image is bad.";
+	message 8, "The compressed image data is bad.";
+	message 9, "The compressed image data contains an unrecognized filter mode.";
+	message 10, "The image file contains an unrecognized PNG chunk that is marked as 'must understand or else.'";
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 stringset 1000 {
@@ -350,7 +376,8 @@ dialog 2101, "Capture sync options" : aspect=140, maxw=350 {
 			option 201, "Sync &video to audio by adjusting video timing";
 			option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
 		}
-		checkbox 102, "Automatically disable resync when integrated audio/video capture is detected" : margint=5, marginb=5;
+		checkbox 102, "&Correct video timing if it is off from real-time";
+		checkbox 103, "Automatically disable resync when integrated audio/video capture is detected" : margint=5, marginb=5;
 		include template kTemplateOKCancel;
 	}
 }

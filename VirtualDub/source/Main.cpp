@@ -40,6 +40,7 @@
 #include "projectui.h"
 #include "crash.h"
 #include "capture.h"
+#include "captureui.h"
 #include "server.h"
 #include "uiframe.h"
 #include <vd2/system/strutil.h>
@@ -81,7 +82,7 @@ static const char g_szRegKeyPersistence[]="Persistence";
 
 ///////////////////////////
 
-extern bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow);
+extern bool Init(HINSTANCE hInstance, int nCmdShow);
 extern void Deinit();
 
 void OpenAVI(int index, bool extended_opt);
@@ -91,6 +92,8 @@ void SaveSegmentedAVI(HWND);
 void CPUTest();
 void SaveImageSeq(HWND);
 void SaveConfiguration(HWND);
+
+extern int VDProcessCommandLine(const wchar_t *s);
 
 //
 //  FUNCTION: WinMain(HANDLE, HANDLE, LPSTR, int)
@@ -108,12 +111,14 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 {
 	MSG msg;
 
-	if (!Init(hInstance, GetCommandLineW(), nCmdShow))
+	if (!Init(hInstance, nCmdShow))
 		return 10;
 
     // Acquire and dispatch messages until a WM_QUIT message is received.
 
 	PostThreadMessage(GetCurrentThreadId(), WM_NULL, 0, 0);
+
+	bool bCommandLineProcessed = false;
 
 	for(;;) {
 		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
@@ -128,6 +133,17 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
+		}
+
+		if (!bCommandLineProcessed) {
+			bCommandLineProcessed = true;
+			int rc = VDProcessCommandLine(GetCommandLineW());
+
+			if (rc >= 0) {
+				VDUIFrame::DestroyAll();
+				msg.wParam = rc;
+				break;
+			}
 		}
 
 		if (!g_project->Tick())

@@ -97,6 +97,7 @@ public:
 	const wchar_t *GetAudioDeviceName(int idx);
 	bool	SetAudioDevice(int idx);
 	int		GetAudioDeviceIndex();
+	bool	IsAudioDeviceIntegrated(int idx) { return false; }
 
 	int		GetVideoSourceCount();
 	const wchar_t *GetVideoSourceName(int idx);
@@ -421,13 +422,16 @@ bool VDCaptureDriverVFW::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat) {
 }
 
 bool VDCaptureDriverVFW::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size) {
+	bool success = false;
+
 	mbBlockVideoFrames = true;
 	if (capSetVideoFormat(mhwnd, (BITMAPINFOHEADER *)pbih, size)) {
 		if (mpCB)
 			mpCB->CapEvent(kEventVideoFormatChanged);
+		success = true;
 	}
 	mbBlockVideoFrames = false;
-	return true;
+	return success;
 }
 
 int VDCaptureDriverVFW::GetAudioDeviceCount() {

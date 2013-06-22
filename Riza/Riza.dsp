@@ -151,6 +151,10 @@ SOURCE=.\source\capaudiocomp.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\caplog.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\capresync.cpp
 # End Source File
 # Begin Source File
@@ -184,6 +188,10 @@ SOURCE=..\h\vd2\Riza\capdriver.h
 # Begin Source File
 
 SOURCE=..\h\vd2\Riza\capdrivers.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\caplog.h
 # End Source File
 # Begin Source File
 

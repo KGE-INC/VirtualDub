@@ -145,6 +145,53 @@ bool VDGetFileSizeW32(HANDLE h, sint64& size) {
 	return true;
 }
 
+bool VDDrawTextW32(HDC hdc, const wchar_t *s, int nCount, LPRECT lpRect, UINT uFormat) {
+	RECT r;
+	if (VDIsWindowsNT()) {
+		// If multiline and vcentered (not normally supported...)
+		if (!((uFormat ^ DT_VCENTER) & (DT_VCENTER|DT_SINGLELINE))) {
+			uFormat &= ~DT_VCENTER;
+
+			r = *lpRect;
+			if (!DrawTextW(hdc, s, nCount, &r, uFormat | DT_CALCRECT))
+				return false;
+
+			int dx = ((lpRect->right - lpRect->left) - (r.right - r.left)) >> 1;
+			int dy = ((lpRect->bottom - lpRect->top) - (r.bottom - r.top)) >> 1;
+
+			r.left += dx;
+			r.right += dx;
+			r.top += dy;
+			r.bottom += dy;
+			lpRect = &r;
+		}
+
+		return !!DrawTextW(hdc, s, nCount, lpRect, uFormat);
+	} else {
+		VDStringA strA(VDTextWToA(s, nCount));
+
+		// If multiline and vcentered (not normally supported...)
+		if (!((uFormat ^ DT_VCENTER) & (DT_VCENTER|DT_SINGLELINE))) {
+			uFormat &= ~DT_VCENTER;
+
+			r = *lpRect;
+			if (!DrawTextA(hdc, strA.data(), strA.size(), &r, uFormat | DT_CALCRECT))
+				return false;
+
+			int dx = ((lpRect->right - lpRect->left) - (r.right - r.left)) >> 1;
+			int dy = ((lpRect->bottom - lpRect->top) - (r.bottom - r.top)) >> 1;
+
+			r.left += dx;
+			r.right += dx;
+			r.top += dy;
+			r.bottom += dy;
+			lpRect = &r;
+		}
+
+		return !!DrawTextA(hdc, strA.data(), strA.size(), lpRect, uFormat);
+	}
+}
+
 bool VDPatchModuleImportTableW32(HMODULE hmod, const char *srcModule, const char *name, void *pCompareValue, void *pNewValue, void *volatile *ppOldValue) {
 	char *pBase = (char *)hmod;
 

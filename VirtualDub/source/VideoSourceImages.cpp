@@ -8,6 +8,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/Dita/resources.h>
 #include <vd2/Meia/decode_png.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include "ProgressDialog.h"
@@ -16,6 +17,14 @@
 #include "imagejpegdec.h"
 
 extern HWND g_hWnd;
+
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	enum { kVDST_PNGDecodeErrors = 100 };
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
 	: mCachedHandleFrame(-1)
@@ -273,7 +282,16 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 	if (bIsPNG) {
 		vdautoptr<IVDImageDecoderPNG> pPNGDecoder(VDCreateImageDecoderPNG());
 
-		pPNGDecoder->Decode(inputBuffer, data_len);
+		PNGDecodeError err = pPNGDecoder->Decode(inputBuffer, data_len);
+
+		if (err) {
+			if (err == kPNGDecodeOutOfMemory)
+				throw MyMemoryError();
+
+			std::vector<wchar_t> errBuf;
+
+			throw MyError("Error decoding \"%ls\": %ls\n", ComputeFilename(errBuf, frame_num), VDLoadString(0, kVDST_PNGDecodeErrors, err));
+		}
 
 		VDPixmapBlt(VDAsPixmap(mvbFrameBuffer), pPNGDecoder->GetFrameBuffer());
 	}

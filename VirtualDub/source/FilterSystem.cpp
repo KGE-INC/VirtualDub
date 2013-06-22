@@ -189,13 +189,6 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 	bitmap[3].AlignTo4();
 
 	fa = (FilterInstance *)listFA->tail.next;
-
-	if (flags_accum & FILTERPARAM_NEEDS_LAST)
-		if (!(fa->flags & FILTERPARAM_SWAP_BUFFERS)) {
-			fa->srcbuf=2;
-			fa->dstbuf=2;
-			if (bitmap[2].size < bitmap[0].size) bitmap[2].size=bitmap[0].size;
-		}
 }
 
 // initLinearChain(): prepare for a linear filtering system

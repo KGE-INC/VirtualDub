@@ -17,7 +17,7 @@ public:
 
 	virtual void SetCrop(uint32 x1, uint32 y1, uint32 x2, uint32 y2) = 0;
 	virtual void SetNoiseReduction(uint32 threshold) = 0;
-	virtual void SetLumaSquish(bool enable) = 0;
+	virtual void SetLumaSquish(bool blackEnable, bool whiteEnable) = 0;
 	virtual void SetFieldSwap(bool enable) = 0;
 	virtual void SetVertSquashMode(FilterMode mode) = 0;
 	virtual void SetChainEnable(bool enable) = 0;

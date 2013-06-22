@@ -327,10 +327,15 @@ bool VDZipStream::ParseBlockHeader() {
 	case 0:		// stored
 		{
 			mBits.align();
-			if (mBits.avail() < 16)
+			if (mBits.avail() < 32)
 				return false;
 
 			mStoredBytesLeft = mBits.getbits(16);
+
+			uint32 invCount = mBits.getbits(16);
+
+			if ((uint16)~invCount != mStoredBytesLeft)
+				return false;
 
 			if (mBits.bytesleft() < mStoredBytesLeft)
 				return false;

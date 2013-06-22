@@ -222,8 +222,15 @@ VDPosition VDTimeline::GetPrevEdit(VDPosition pos) {
 
 	FrameSubset::iterator pfsn = mSubset.findNode(offset, pos);
 
-	if (pfsn == mSubset.end())
+	if (pfsn == mSubset.end()) {
+		if (pos >= 0) {
+			if (pfsn != mSubset.begin()) {
+				--pfsn;
+				return mSubset.getTotalFrames() - pfsn->len;
+			}
+		}
 		return -1;
+	}
 	
 	if (offset)
 		return pos - offset;

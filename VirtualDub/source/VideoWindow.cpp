@@ -227,9 +227,8 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
-
 	case WM_NCHITTEST:
-		return mLastHitTest = HitTest(LOWORD(lParam), HIWORD(lParam));
+		return mLastHitTest = HitTest((SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam));
 	case WM_NCCALCSIZE:
 		if (wParam)
 			return RecalcClientArea(*(NCCALCSIZE_PARAMS *)lParam);
@@ -239,7 +238,6 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_NCPAINT:
 		NCPaint((HRGN)wParam);
 		return 0;
-
 	case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
@@ -342,16 +340,22 @@ void VDVideoWindow::NCPaint(HRGN hrgn) {
 	// a cleaner solution than using DCX_CACHE, which also works but overrides
 	// CS_OWNDC and CS_PARENTDC.  I'm not going to argue with years of reverse
 	// engineering.
+	//
+	// NOTE: Using DCX_INTERSECTRGN as recommended by MSDN causes Windows 98
+	//       GDI to intermittently crash!
 
-	if ((UINT)hrgn == 1)		// wParam==1 means "paint all", but Win95/98 want NULL and not 1 for hrgn
-		hdc = GetDCEx(mhwnd, NULL, DCX_WINDOW|DCX_CLIPSIBLINGS|0x10000);
-	else
-		hdc = GetDCEx(mhwnd, hrgn, DCX_WINDOW|DCX_INTERSECTRGN|DCX_CLIPSIBLINGS|0x10000);
+	hdc = GetDCEx(mhwnd, NULL, DCX_WINDOW|0x10000);
 
 	if (hdc) {
 		RECT rc;
-
 		GetWindowRect(mhwnd, &rc);
+
+		if ((WPARAM)hrgn > 1) {
+			OffsetClipRgn(hdc, rc.left, rc.top);
+			ExtSelectClipRgn(hdc, hrgn, RGN_AND);
+			OffsetClipRgn(hdc, -rc.left, -rc.top);
+		}
+
 		OffsetRect(&rc, -rc.left, -rc.top);
 
 		DrawEdge(hdc, &rc, BDR_RAISEDOUTER|BDR_RAISEDINNER, BF_RECT);

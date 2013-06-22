@@ -22,8 +22,18 @@
 #include "VideoSequenceCompressor.h"
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
+#include <vd2/system/log.h>
+#include <vd2/Dita/resources.h>
 #include "crash.h"
 #include "misc.h"
+
+namespace {
+	enum { kVDST_VideoSequenceCompressor = 10 };
+
+	enum {
+		kVDM_CodecModifiesInput
+	};
+}
 
 // XviD VFW extensions
 
@@ -377,6 +387,13 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 			lAllowableFrameSize = lMaxFrameSize>>1;
 	}
 
+	// Save the first byte of the framebuffer, to detect when a codec is
+	// incorrectly modifying its input buffer. VFW itself relies on this,
+	// such as when it emulates crunch using quality. The MSU lossless
+	// codec 0.5.2 is known to do this.
+	
+	const uint8 firstInputByte = *(const uint8 *)pBits;
+
 	// A couple of notes:
 	//
 	//	o  ICSeqCompressFrame() passes 0x7FFFFFFF when data rate control
@@ -506,6 +523,12 @@ crunch_complete:
 		PackFrameInternal(lAllowableFrameSize, lQuality, pBits, dwFlagsIn, dwFlagsOut, bytes);
 
 //		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize);
+	}
+
+	// Flag a warning if the codec is improperly modifying its input buffer.
+	if (!lFrameNum && *(const uint8 *)pBits != firstInputByte) {
+		const char *pName = mCodecName.c_str();
+		VDLogAppMessage(kVDLogWarning, kVDST_VideoSequenceCompressor, kVDM_CodecModifiesInput, 1, &pName);
 	}
 
 	// Special handling for DivX 5 and XviD codecs:

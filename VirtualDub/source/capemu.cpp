@@ -77,6 +77,7 @@ public:
 	const wchar_t *GetAudioDeviceName(int idx);
 	bool	SetAudioDevice(int idx);
 	int		GetAudioDeviceIndex();
+	bool	IsAudioDeviceIntegrated(int idx) { return false; }
 
 	int		GetVideoSourceCount();
 	const wchar_t *GetVideoSourceName(int idx);
@@ -324,6 +325,8 @@ bool VDCaptureDriverEmulation::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint
 		mLastDisplayedVideoFrame = -1;
 		bool success = mpVideo->setDecompressedFormat(pbih);
 		UpdateDisplayMode();
+		if (mpCB)
+			mpCB->CapEvent(kEventVideoFormatChanged);
 		return success;
 	}
 	return false;
@@ -471,14 +474,14 @@ void VDCaptureDriverEmulation::DisplayDriverDialog(DriverDialog dlg) {
 
 bool VDCaptureDriverEmulation::CaptureStart() {
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
+		if (mpCB && !mpCB->CapEvent(kEventPreroll)) {
+			mbCapturing = false;
+			return false;
+		}
+
 		mbCapturing = true;
 
 		if (mpCB) {
-			if (!mpCB->CapEvent(kEventPreroll)) {
-				mbCapturing = false;
-				return false;
-			}
-
 			try {
 				mpCB->CapBegin(0);
 			} catch(MyError& e) {

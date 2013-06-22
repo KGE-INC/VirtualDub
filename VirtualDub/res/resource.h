@@ -1031,6 +1031,7 @@
 #define ID_FILE_SAVE                    40223
 #define ID_FILE_REVERT                  40224
 #define ID_VIDEO_SQUISH_RANGE           40225
+#define ID_VIDEO_SQUISH_LOWER           40225
 #define ID_VIDEO_BT8X8TWEAKER           40226
 #define ID_HELP_KEYS                    40227
 #define ID_EDIT_FIND                    40228
@@ -1126,6 +1127,10 @@
 #define ID_VIDEO_VIDEOSOURCE_NOVIDEOSOURCE 40330
 #define ID_DEVICE_TUNER_NEXTCHANNEL     40331
 #define ID_DEVICE_TUNER_PREVIOUSCHANNEL 40332
+#define ID_CAPTURE_ENABLETIMINGLOG      40333
+#define ID_CAPTURE_SAVETIMINGLOG        40334
+#define ID_VIDEO_SQUISH_UPPER           40335
+#define ID_FILE_REOPEN                  40336
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1172,7 +1177,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        269
-#define _APS_NEXT_COMMAND_VALUE         40333
+#define _APS_NEXT_COMMAND_VALUE         40338
 #define _APS_NEXT_CONTROL_VALUE         1413
 #define _APS_NEXT_SYMED_VALUE           111
 #endif

@@ -24,6 +24,7 @@
 #include <vd2/system/time.h>
 #include <vd2/system/VDScheduler.h>
 #include <vd2/Dita/services.h>
+#include <vd2/Dita/resources.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include "project.h"
@@ -44,6 +45,18 @@
 #include "oshelper.h"
 #include "resource.h"
 #include "uiframe.h"
+
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	enum {
+		kVDST_Project = 9
+	};
+
+	enum {
+		kVDM_ReopenChangesImminent			// The new video file has fewer video frames than the current file. Switching to it will result in changes to the edit list. Do you want to continue?
+	};
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -384,7 +397,7 @@ void VDProject::DisplayFrame(bool bDispInput) {
 					inputVideoAVI->streamSetDesiredFrame(mDesiredInputFrame);
 					int to_current = inputVideoAVI->streamGetRequiredCount(NULL);
 
-					if (to_current < to_new)
+					if (to_current <= to_new)
 						replace = false;
 				}
 
@@ -480,17 +493,19 @@ bool VDProject::UpdateFrame() {
 
 				++mFramesDecoded;
 
-				uint32 nCurrentTime = VDGetCurrentTick();
+				if (preroll) {
+					uint32 nCurrentTime = VDGetCurrentTick();
 
-				if (nCurrentTime - mLastDecodeUpdate > 500) {
-					mLastDecodeUpdate = nCurrentTime;
-					mbUpdateLong = true;
+					if (nCurrentTime - mLastDecodeUpdate > 500) {
+						mLastDecodeUpdate = nCurrentTime;
+						mbUpdateLong = true;
 
-					guiSetStatus("Decoding frame %lu: preloading frame %lu", 255, (unsigned long)mDesiredInputFrame, (unsigned long)inputVideoAVI->streamToDisplayOrder(frame));
+						guiSetStatus("Decoding frame %lu: preloading frame %lu", 255, (unsigned long)mDesiredInputFrame, (unsigned long)inputVideoAVI->streamToDisplayOrder(frame));
+					}
+
+					if (nCurrentTime - startTime > 100)
+						break;
 				}
-
-				if (nCurrentTime - startTime > 100)
-					break;
 
 			} else {
 				if (!mFramesDecoded)
@@ -512,6 +527,7 @@ bool VDProject::UpdateFrame() {
 				mDesiredOutputFrame = mDesiredNextOutputFrame;
 				mDesiredNextInputFrame = -1;
 				mDesiredNextOutputFrame = -1;
+				mFramesDecoded = 0;
 
 				if (mDesiredInputFrame >= 0)
 					inputVideoAVI->streamSetDesiredFrame(mDesiredInputFrame);
@@ -656,6 +672,111 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		Close();
 		throw;
 	}
+}
+
+void VDProject::Reopen() {
+	if (!inputAVI)
+		return;
+
+	// attempt to determine input file type
+
+	VDStringW filename(VDGetFullPath(g_szInputAVIFile));
+
+	IVDInputDriver *pSelectedDriver = pSelectedDriver = VDAutoselectInputDriverForFile(filename.c_str());
+
+	// open file
+
+	vdrefptr<InputFile> newInput(pSelectedDriver->CreateInputFile(0));
+	if (!newInput)
+		throw MyMemoryError();
+
+	// Extended open?
+
+	if (g_pInputOpts)
+		newInput->setOptions(g_pInputOpts);
+
+	// Open new source
+
+	newInput->Init(filename.c_str());
+
+	VideoSource *pVS = newInput->videoSrc;
+	AudioSource *pAS = newInput->audioSrc;
+
+	if (!pVS->setDecompressedFormat(24))
+		if (!pVS->setDecompressedFormat(32))
+			if (!pVS->setDecompressedFormat(16))
+				pVS->setDecompressedFormat(8);
+
+	pVS->setDecodeErrorMode(g_videoErrorMode);
+
+	if (pAS)
+		pAS->setDecodeErrorMode(g_audioErrorMode);
+
+	// Check for an irrevocable change to the edit list. Irrevocable changes will occur if
+	// there are any ranges other than the last that extend beyond the new length.
+
+	const VDPosition oldFrameCount = inputVideoAVI->getLength();
+	const VDPosition newFrameCount = pVS->getLength();
+
+	FrameSubset& fs = mTimeline.GetSubset();
+
+	if (newFrameCount < oldFrameCount) {
+		FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end());
+
+		if (it != itEnd) {
+			--itEnd;
+
+			for(; it!=itEnd; ++it) {
+				const FrameSubsetNode& fsn = *it;
+
+				if (fsn.start + fsn.len > newFrameCount) {
+					sint64 oldCount = oldFrameCount;
+					sint64 newCount = newFrameCount;
+
+					VDStringA msg(VDTextWToA(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_ReopenChangesImminent), 2, &newCount, &oldCount)));
+
+					if (IDCANCEL == MessageBox((HWND)mhwnd, msg.c_str(), g_szError, MB_OKCANCEL))
+						return;
+
+					break;
+				}
+			}
+		}
+	}
+
+	// Swap the sources.
+
+	inputAudio = NULL;
+	inputAVI = newInput;
+	inputVideoAVI = pVS;
+	inputAudioAVI = pAS;
+
+	wcscpy(g_szInputAVIFile, filename.c_str());
+
+	// Update vars.
+
+	mTimeline.SetVideoSource(inputVideoAVI);
+
+	if (oldFrameCount > newFrameCount)
+		fs.trimInputRange(newFrameCount);
+	else if (oldFrameCount < newFrameCount)
+		fs.addRange(oldFrameCount, newFrameCount - oldFrameCount, false);
+
+	UITimelineUpdated();
+	SetAudioSource();
+	UpdateDubParameters();
+	UISourceFileUpdated();
+	UIVideoSourceUpdated();
+
+	if (newFrameCount < oldFrameCount) {
+		if (!IsSelectionEmpty() && mposSelectionEnd > newFrameCount)
+			SetSelectionEnd(newFrameCount);
+
+		if (mposCurrentFrame > newFrameCount)
+			MoveToFrame(newFrameCount);
+	}
+
+	guiSetStatus("Reloaded \"%ls\" (%I64d frames).", 255, filename.c_str(), newFrameCount);
 }
 
 void VDProject::OpenWAV(const wchar_t *szFile) {
@@ -841,8 +962,8 @@ void VDProject::SetAudioSourceNone() {
 }
 
 void VDProject::SetAudioSourceNormal() {
-	audioInputMode = AUDIOIN_AVI;
 	CloseWAV();
+	audioInputMode = AUDIOIN_AVI;
 	SetAudioSource();
 }
 
@@ -999,9 +1120,17 @@ void VDProject::MoveToPreviousRange() {
 	if (inputAVI) {
 		VDPosition pos = mTimeline.GetPrevEdit(GetCurrentFrame());
 
-		if (pos >= 0)
+		if (pos >= 0) {
 			MoveToFrame(pos);
+
+			sint64 len;
+			bool masked;
+			sint64 start = mTimeline.GetSubset().lookupRange(pos, len, masked);
+			guiSetStatus("Previous output frame %I64d-%I64d: included source range %I64d-%I64d%s", 255, pos, pos+len-1, start, start+len-1, masked ? " (masked)" : "");
+			return;
+		}
 	}
+	MoveToFrame(0);
 	guiSetStatus("No previous edit.", 255);
 }
 
@@ -1009,9 +1138,17 @@ void VDProject::MoveToNextRange() {
 	if (inputAVI) {
 		VDPosition pos = mTimeline.GetNextEdit(GetCurrentFrame());
 
-		if (pos >= 0)
+		if (pos >= 0) {
 			MoveToFrame(pos);
+
+			sint64 len;
+			bool masked;
+			sint64 start = mTimeline.GetSubset().lookupRange(pos, len, masked);
+			guiSetStatus("Next output frame %I64d-%I64d: included source range %I64d-%I64d%s", 255, pos, pos+len-1, start, start+len-1, masked ? " (masked)" : "");
+			return;
+		}
 	}
+	MoveToFrame(GetFrameCount());
 	guiSetStatus("No next edit.", 255);
 }
 

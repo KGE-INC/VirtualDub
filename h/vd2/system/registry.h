@@ -46,6 +46,7 @@ public:
 
 	bool getBool(const char *pszName, bool def=false) const;
 	int getInt(const char *pszName, int def=0) const;
+	int getEnumInt(const char *pszName, int maxVal, int def=0) const;
 	bool getString(const char *pszName, VDStringA& s) const;
 	bool getString(const char *pszName, VDStringW& s) const;
 

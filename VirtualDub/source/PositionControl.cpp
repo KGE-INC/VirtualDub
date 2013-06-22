@@ -923,29 +923,30 @@ void VDPositionControlW32::OnPaint() {
 		FillRect(hdc, &rSel, mBrushes[kBrushSelection]);
 
 		if (HPEN hNullPen = CreatePen(PS_NULL, 0, 0)) {
-			SelectObject(hdc, hNullPen);
+			if (HGDIOBJ hLastPen = SelectObject(hdc, hNullPen)) {
+				if (HGDIOBJ hOldBrush = SelectObject(hdc, GetStockObject(BLACK_BRUSH))) {
+					const int tickHeight = mTickArea.bottom - mTickArea.top;
 
-			if (HGDIOBJ hOldBrush = SelectObject(hdc, GetStockObject(BLACK_BRUSH))) {
-				const int tickHeight = mTickArea.bottom - mTickArea.top;
+					const POINT pts1[3]={
+						{ selx1+1, mTickArea.top },
+						{ selx1+1, mTickArea.bottom },
+						{ selx1+1-tickHeight, mTickArea.top },
+					};
 
-				const POINT pts1[3]={
-					{ selx1+1, mTickArea.top },
-					{ selx1+1, mTickArea.bottom },
-					{ selx1+1-tickHeight, mTickArea.top },
-				};
+					const POINT pts2[3]={
+						{ selx2, mTickArea.top },
+						{ selx2, mTickArea.bottom },
+						{ selx2+tickHeight, mTickArea.top },
+					};
 
-				const POINT pts2[3]={
-					{ selx2, mTickArea.top },
-					{ selx2, mTickArea.bottom },
-					{ selx2+tickHeight, mTickArea.top },
-				};
+					Polygon(hdc, pts1, 3);
+					Polygon(hdc, pts2, 3);
 
-				Polygon(hdc, pts1, 3);
-				Polygon(hdc, pts2, 3);
+					SelectObject(hdc, hOldBrush);
+				}
 
-				SelectObject(hdc, hOldBrush);
+				SelectObject(hdc, hLastPen);
 			}
-
 			DeleteObject(hNullPen);
 		}
 	}

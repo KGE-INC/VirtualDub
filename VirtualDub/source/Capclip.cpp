@@ -23,6 +23,9 @@
 #include "vbitmap.h"
 #include "helpfile.h"
 #include <vd2/system/error.h>
+#include <vd2/system/thread.h>
+#include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include "ClippingControl.h"
 
 #include "capture.h"
@@ -49,6 +52,9 @@ protected:
 
 	IVDCaptureProjectCallback	*mpOldCallback;
 	VDCaptureFilterSetup	mFilterSetup;
+
+	VDCriticalSection	mDisplayBufferLock;
+	VDPixmapBuffer		mDisplayBuffer;
 };
 
 INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -64,13 +70,13 @@ INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				{
 					ClippingControlBounds ccb;
 
-					OnCleanup();
 					SendMessage(GetDlgItem(mhdlg, IDC_BORDERS), CCM_GETCLIPBOUNDS, 0, (LPARAM)&ccb);
 					mFilterSetup.mCropRect.left = ccb.x1;
 					mFilterSetup.mCropRect.top = ccb.y1;
 					mFilterSetup.mCropRect.right = ccb.x2;
 					mFilterSetup.mCropRect.bottom = ccb.y2;
-					mpProject->SetFilterSetup(mFilterSetup);
+
+					OnCleanup();
 					End(TRUE);
 				}
 				return TRUE;
@@ -94,6 +100,13 @@ INT_PTR VDDialogCaptureCropping::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 //				vbm->MakeBitmapHeader(&bih);
 
 //				SendMessage(g_hwndClippingDisplay, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)vbm->data);
+			}
+			break;
+
+		case WM_USER+100:
+			vdsynchronized(mDisplayBufferLock) {
+				IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_BORDERS));
+				pCC->BlitFrame(&mDisplayBuffer);
 			}
 			break;
 
@@ -152,15 +165,23 @@ void VDDialogCaptureCropping::OnInit() {
 	mpOldCallback = mpProject->GetCallback();
 	mpProject->SetCallback(this);
 
-	// save old display mode and jump to analysis mode
+	// save old display mode
 	mOldDisplayMode = mpProject->GetDisplayMode();
 	mpProject->SetDisplayMode(nsVDCapture::kDisplayNone);
+
+	// clear existing crop rect
+	VDCaptureFilterSetup filtSetupNoCrop(mFilterSetup);
+	filtSetupNoCrop.mCropRect.set(0, 0, 0, 0);
+	mpProject->SetFilterSetup(filtSetupNoCrop);
+
+	// jump to analysis mode
 	mpProject->SetDisplayMode(nsVDCapture::kDisplayAnalyze);
 }
 
 void VDDialogCaptureCropping::OnCleanup() {
 	// restore old display mode
 	mpProject->SetDisplayMode(nsVDCapture::kDisplayNone);
+	mpProject->SetFilterSetup(mFilterSetup);
 	mpProject->SetDisplayMode(mOldDisplayMode);
 
 	// restore old callback
@@ -168,9 +189,11 @@ void VDDialogCaptureCropping::OnCleanup() {
 }
 
 void VDDialogCaptureCropping::UICaptureAnalyzeFrame(const VDPixmap& format) {
-	IVDClippingControl *pCC = VDGetIClippingControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_BORDERS));
+	vdsynchronized(mDisplayBufferLock) {
+		mDisplayBuffer.assign(format);
+	}
 
-	pCC->BlitFrame(&format);
+	PostMessage(mhdlg, WM_USER+100, 0, 0);
 }
 
 void VDShowCaptureCroppingDialog(VDGUIHandle hParent, IVDCaptureProject *pProject) {

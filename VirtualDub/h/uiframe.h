@@ -53,7 +53,7 @@ public:
 
 	void Destroy();
 
-	void SetNextMode(int nextMode) { mNextMode = nextMode; }
+	void SetNextMode(int nextMode);
 	void SetAccelTable(HACCEL hAccel);
 
 	LPARAM DefProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

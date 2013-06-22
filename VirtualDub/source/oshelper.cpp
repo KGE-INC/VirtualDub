@@ -329,109 +329,40 @@ void VDShowHelp(HWND hwnd, const wchar_t *filename) {
 	}
 }
 
-char *MergePath(char *path, const char *fn) {
-	char *s = path;
-
-	if (!*s) {
-		strcpy(path, fn);
-		return path;
-	}
-
-	while(*s)
-		++s;
-
-	if (s[-1]!='\\' && s[-1]!=':')
-		*s++ = '\\';
-
-	strcpy(s, fn);
-
-	return path;
-}
-
-char *SplitPathRoot(char *dst, const char *path) {
-
-	if (!path)
-		return NULL;
-
-	// C:
-
-	if (isalpha(path[0]) && path[1]==':') {
-		dst[0] = path[0];
-		dst[1] = ':';
-		dst[2] = '\\';
-		dst[3] = 0;
-
-		return dst;
-	}
-
-	// UNC path?
-
-	if (path[0] == '\\' && path[1] == '\\') {
-		const char *s = path+2;
-		char *t = dst;
-
-		*t++ = '\\';
-		*t++ = '\\';
-
-		while(*s && *s != '\\')
-			*t++ = *s++;
-
-		if (*s)
-			*t++ = *s++;
-
-		while(*s && *s != '\\')
-			*t++ = *s++;
-
-		*t++ = '\\';
-		*t = 0;
-
-		return dst;
-	}
-
-	return NULL;
-}
-
-bool IsFilenameOnFATVolume(const char *pszFilename) {
-	char szFileRoot[MAX_PATH];
-	DWORD dwMaxComponentLength;
-	DWORD dwFSFlags;
-	char szFilesystem[MAX_PATH];
-
-	if (!GetVolumeInformationA(SplitPathRoot(szFileRoot, pszFilename),
-			NULL, 0,		// Volume name buffer
-			NULL,			// Serial number buffer
-			&dwMaxComponentLength,
-			&dwFSFlags,
-			szFilesystem,
-			sizeof szFilesystem))
-		return false;
-
-	return !strnicmp(szFilesystem, "FAT", 3);
-}
-
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename) {
-	if (GetVersion() & 0x80000000)
-		return IsFilenameOnFATVolume(VDTextWToA(pszFilename).c_str());
+	VDStringW rootPath(VDFileGetRootPath(pszFilename));
 
-	wchar_t szFileRoot[MAX_PATH];
-	DWORD dwMaxComponentLength;
-	DWORD dwFSFlags;
-	wchar_t szFilesystem[MAX_PATH];
+	if (VDIsWindowsNT()) {
+		DWORD dwMaxComponentLength;
+		DWORD dwFSFlags;
+		wchar_t szFilesystem[MAX_PATH];
 
-	wcscpy(szFileRoot, pszFilename);
-	*const_cast<wchar_t *>(VDFileSplitRoot(szFileRoot)) = 0;
+		if (!GetVolumeInformationW(rootPath.c_str(),
+				NULL, 0,		// Volume name buffer
+				NULL,			// Serial number buffer
+				&dwMaxComponentLength,
+				&dwFSFlags,
+				szFilesystem,
+				MAX_PATH))
+			return false;
 
-	if (!GetVolumeInformationW(*szFileRoot ? szFileRoot : NULL,
-			NULL, 0,		// Volume name buffer
-			NULL,			// Serial number buffer
-			&dwMaxComponentLength,
-			&dwFSFlags,
-			szFilesystem,
-			MAX_PATH))
-		return false;
+		return !wcsnicmp(szFilesystem, L"FAT", 3);
+	} else {
+		DWORD dwMaxComponentLength;
+		DWORD dwFSFlags;
+		char szFilesystem[MAX_PATH];
 
-	return !wcsnicmp(szFilesystem, L"FAT", 3);
+		if (!GetVolumeInformationA(VDTextWToA(rootPath).c_str(),
+				NULL, 0,		// Volume name buffer
+				NULL,			// Serial number buffer
+				&dwMaxComponentLength,
+				&dwFSFlags,
+				szFilesystem,
+				sizeof szFilesystem))
+			return false;
 
+		return !strnicmp(szFilesystem, "FAT", 3);
+	}
 }
 
 HWND APIENTRY VDGetAncestorW95(HWND hwnd, UINT gaFlags) {

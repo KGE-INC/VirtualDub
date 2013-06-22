@@ -175,6 +175,8 @@ int VDTextWToA(char *dst, int max_dst, const wchar_t *src, int max_src) {
 
 	int len = WideCharToMultiByte(CP_ACP, 0, src, max_src, dst, max_dst, NULL, NULL);
 
+	// remove null terminator if source was null-terminated (source
+	// length was provided)
 	return max_src<0 && len>0 ? len-1 : len;
 }
 
@@ -187,7 +189,9 @@ int VDTextAToW(wchar_t *dst, int max_dst, const char *src, int max_src) {
 
 	int len = MultiByteToWideChar(CP_ACP, 0, src, max_src, dst, max_dst);
 
-	return max_src<0 && len>0 ? len-1 : 0;
+	// remove null terminator if source was null-terminated (source
+	// length was provided)
+	return max_src<0 && len>0 ? len-1 : len;
 }
 
 VDStringA VDTextWToA(const VDStringW& sw) {
@@ -604,11 +608,16 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 
 			case L's':
 				if (size == kShort) {
-					int maxlen;
+					const char *s = *(const char *const *)*argv++;
+					int maxdst;
+					int maxsrc = strlen(s);
 
-					pbuf0 = VDGetFastTextBufferW(maxlen);
+					if (precision >= 0 && precision < maxsrc)
+						maxsrc = precision;
 
-					pbuf = pbuf0 + VDTextAToW(pbuf0, maxlen, *(const char *const *)*argv++, precision);
+					pbuf0 = VDGetFastTextBufferW(maxdst);
+
+					pbuf = pbuf0 + VDTextAToW(pbuf0, maxdst, s, maxsrc);
 				} else {
 					pbuf = pbuf0 = *(wchar_t *const *)*argv++;
 

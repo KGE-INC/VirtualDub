@@ -104,6 +104,7 @@ sint64 VDGetDiskFreeSpace(const wchar_t *path);
 void VDCreateDirectory(const wchar_t *path);
 bool VDDoesPathExist(const wchar_t *fileName);
 
+VDStringW VDFileGetRootPath(const wchar_t *partialPath);
 VDStringW VDGetFullPath(const wchar_t *partialPath);
 
 VDStringW VDMakePath(const wchar_t *base, const wchar_t *file);

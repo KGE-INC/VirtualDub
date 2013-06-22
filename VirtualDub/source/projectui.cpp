@@ -48,7 +48,7 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define MRU_LIST_POSITION		(25)
+#define MRU_LIST_POSITION		(26)
 
 namespace {
 	enum {
@@ -727,6 +727,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 		switch(id) {
 		case ID_FILE_QUIT:						Quit();						break;
 		case ID_FILE_OPENAVI:					OpenAsk();						break;
+		case ID_FILE_REOPEN:					Reopen();					break;
 		case ID_FILE_APPENDSEGMENT:				AppendAsk();					break;
 		case ID_FILE_PREVIEWINPUT:				PreviewInput();				break;
 		case ID_FILE_PREVIEWOUTPUT:				PreviewOutput();				break;
@@ -1022,6 +1023,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu,ID_FILE_APPENDSEGMENT			, bAVISourceExists);
 
 	const bool bSourceFileExists = (inputAVI != 0);
+	VDEnableMenuItemW32(hMenu,ID_FILE_REOPEN				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWAVI			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWINPUT			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWOUTPUT			, bSourceFileExists);
@@ -1883,6 +1885,7 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 			case 'c':
 				if (bMasked) {
 					*buf = 'M';
+					actual = 1;
 					break;
 				}
 			case 'C':

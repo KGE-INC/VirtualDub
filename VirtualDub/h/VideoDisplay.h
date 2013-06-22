@@ -45,6 +45,7 @@ public:
 	};
 
 	virtual void Reset() = 0;
+	virtual void SetSourceMessage(const wchar_t *msg) = 0;
 	virtual bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject = 0, ptrdiff_t sharedOffset = 0, bool bAllowConversion = true, bool bInterlaced = false) = 0;
 	virtual bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion = true, bool bInterlaced = false) = 0;
 	virtual void SetSourceSubrect(const vdrect32 *r) = 0;

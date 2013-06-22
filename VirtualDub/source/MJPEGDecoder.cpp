@@ -570,7 +570,7 @@ byte *MJPEGDecoder::decodeQuantTables(byte *psrc) {
 	while(*psrc != 0xff) {
 		n = psrc[0] & 15;
 		if (n>3)
-			throw "Error: Illegal quantization table # in DQT chunk";
+			throw MyError("Error: Illegal quantization table # in DQT chunk");
 
 		dst = quant[n];
 		++psrc;
@@ -603,33 +603,24 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 	int i, n;
 
 	if (psrc[2] != 8)
-		throw "Can only decode 8-bit images";
+		throw MyError("Can only decode 8-bit images");
 
 	raw_height = getshort(psrc + 3);
 	raw_width = getshort(psrc + 5);
 
 	if (psrc[7] != 3)
-		throw "Error: picture must be 3 component (YCC)";
+		throw MyError("Error: picture must be 3 component (YCC)");
 
 	// parse component data
 
-//	if (psrc[8] != 0)
-//		throw "Error: first component must be 0";
-
-//	if (psrc[11] != 1)
-//		throw "Error: second component must be 1";
-
-//	if (psrc[14] != 2)
-//		throw "Error: third component must be 2";
-
 	if (psrc[12] != psrc[15])
-		throw "Error: chrominance subsampling factors must be the same";
+		throw MyError("Error: chrominance subsampling factors must be the same");
 
 	mcu_length = 0;
 	for(i=0; i<3; i++) {
 		n = psrc[10 + 3*i];
 		if (n>3)
-			throw "Error: component specifies quantization table other than 0-3";
+			throw MyError("Error: component specifies quantization table other than 0-3");
 
 //		_RPT2(0,"Component %d uses quant %d\n", i, n);
 
@@ -644,12 +635,12 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 	}
 
 	if (mcu_length > 10)
-		throw "Error: macroblocks per MCU > 10";
+		throw MyError("Error: macroblocks per MCU > 10");
 
 	// check subsampling format
 
 	if (comp_mcu_x[1] != 1 || comp_mcu_y[1] != 1)
-		throw "Error: multiple chroma blocks not supported";
+		throw MyError("Error: multiple chroma blocks not supported");
 
 	do {
 
@@ -661,8 +652,8 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mcu_height	= (raw_height + 7)/8;
 
 			if (raw_width & 7)
-				throw	"VirtualDub cannot decode 4:4:4 Motion JPEG frames with image widths that are not "
-						"multiples of 8.  Please install a third-party Motion-JPEG codec.";
+				throw	MyError("VirtualDub cannot decode 4:4:4 Motion JPEG frames with image widths that are not "
+						"multiples of 8.  Please install a third-party Motion-JPEG codec.");
 			break;
 		}
 
@@ -674,8 +665,8 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mcu_height	= (raw_height + 7)/8;
 
 			if (raw_width & 15)
-				throw	"VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths that are not "
-						"multiples of 16.  Please install a third-party Motion-JPEG codec.";
+				throw	MyError("VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths that are not "
+						"multiples of 16.  Please install a third-party Motion-JPEG codec.");
 
 			break;
 		}
@@ -688,13 +679,13 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mcu_height	= (raw_height + 15)/16;
 
 			if ((raw_width|raw_height) & 15)
-				throw	"VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths or heights that are not "
-						"multiples of 16.  Please install a third-party Motion-JPEG codec.";
+				throw	MyError("VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths or heights that are not "
+						"multiples of 16.  Please install a third-party Motion-JPEG codec.");
 
 			break;
 		}
 
-		throw "Error: Chroma subsampling mode not supported (must be 4:4:4, 4:2:2, or 4:2:0)";
+		throw MyError("Error: Chroma subsampling mode not supported (must be 4:4:4, 4:2:2, or 4:2:0)");
 	} while(false);
 
 	mcu_count = mcu_width * mcu_height;
@@ -711,25 +702,15 @@ byte *MJPEGDecoder::decodeScan(byte *ptr, bool odd_field) {
 	// Ns (components in scan) must be 3
 
 	if (ptr[2] != 3)
-		throw "Error: scan must have 3 interleaved components";
+		throw MyError("Error: scan must have 3 interleaved components");
 
 	if (ptr[9] != 0 || ptr[10] != 63)
-		throw "Error: DCT coefficients must run from 0-63";
+		throw MyError("Error: DCT coefficients must run from 0-63");
 
 	if (ptr[11] != 0)
-		throw "Error: Successive approximation not allowed";
+		throw MyError("Error: Successive approximation not allowed");
 
 	// decode component order (indices 3, 5, 7)
-
-//	if (ptr[3] != 0)
-//		throw "Error: component 0 must be Y";
-
-//	if (ptr[5] != 1)
-//		throw "Error: component 0 must be Cr";
-
-//	if (ptr[7] != 2)
-//		throw "Error: component 0 must be Cb";
-
 
 	// select entropy (Huffman) coders (indices 4, 6, 8)
 
@@ -739,7 +720,7 @@ byte *MJPEGDecoder::decodeScan(byte *ptr, bool odd_field) {
 				break;
 
 		if (j>=3)
-			throw "Error: MJPEG scan has mislabeled component";
+			throw MyError("Error: MJPEG scan has mislabeled component");
 
 		mb = comp_start[j];
 

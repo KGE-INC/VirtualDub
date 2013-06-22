@@ -27,6 +27,7 @@
 #define f_VD2_SYSTEM_FILE_H
 
 #include <limits.h>
+#include <stdarg.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/vdstl.h>
@@ -255,6 +256,27 @@ public:
 protected:
 	VDFileStream	mFileStream;
 	VDTextStream	mTextStream;
+};
+
+class VDTextOutputFile {
+public:
+	VDTextOutputFile(const wchar_t *filename, uint32 flags = nsVDFile::kCreateAlways);
+	~VDTextOutputFile();
+
+	void Close();
+
+	void PutLine(const char *s);
+	void FormatLine(const char *format, ...);
+
+protected:
+	void FormatLine2(const char *format, va_list val);
+	void PutData(const char *s, int len);
+
+	enum { kBufSize = 4096 };
+
+	int			mLevel;
+	VDFile		mFile;
+	char		mBuf[kBufSize];
 };
 
 #endif

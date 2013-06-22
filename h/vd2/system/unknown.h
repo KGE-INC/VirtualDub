@@ -39,8 +39,8 @@ public:
 
 class IVDRefUnknown : public IVDUnknown {
 public:
-	virtual uint32 AddRef() = 0;
-	virtual uint32 Release() = 0;
+	virtual int AddRef() = 0;
+	virtual int Release() = 0;
 };
 
 template<class T>

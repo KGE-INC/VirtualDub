@@ -780,6 +780,9 @@ namespace {
 
 			// Prestep right edge.
 			xr2 = pr->x + dxr2 * yf;
+
+			// Step left edge.
+			xl2 = xl + dxl1 * (y1 - y);
 		} else {					// Right edge is long side
 			dxr2 = dxr1;
 

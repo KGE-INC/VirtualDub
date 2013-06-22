@@ -160,6 +160,7 @@ namespace {
 	I_HATE(IAMAudioInputMixer);
 	I_HATE(IAMCrossbar);
 	I_HATE(IAMStreamConfig);
+	I_HATE(IAMStreamControl);
 	I_HATE(IAMTuner);
 	I_HATE(IAMTVTuner);
 	I_HATE(IAMVfwCaptureDialogs);
@@ -168,6 +169,7 @@ namespace {
 	I_HATE(IEnumFilters);
 	I_HATE(IEnumMediaTypes);
 	I_HATE(IEnumPins);
+	I_HATE(IFilterGraph);
 	I_HATE(IGraphBuilder);
 	I_HATE(IMediaControl);
 	I_HATE(IMediaEventEx);
@@ -175,6 +177,7 @@ namespace {
 	I_HATE(IMediaSample);
 	I_HATE(IMoniker);
 	I_HATE(IPin);
+	I_HATE(IReferenceClock);
 	I_HATE(ISampleGrabber);
 	I_HATE(ISpecifyPropertyPages);
 	I_HATE(IVideoWindow);
@@ -775,6 +778,31 @@ namespace {
 		}
 
 		VDDEBUG("Filter graph %p:\n", &*pGraph);
+
+		IMediaFilterPtr pGraphMF;
+		if (SUCCEEDED(pGraph->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
+			IReferenceClockPtr pRefClock;
+
+			if (SUCCEEDED(pGraphMF->GetSyncSource(~pRefClock))) {
+				IBaseFilterPtr pRefFilter;
+				if (!pRefClock)
+					VDDEBUG("  Reference clock: none\n");
+				else if (SUCCEEDED(pRefClock->QueryInterface(IID_IFilterGraph, (void **)~IFilterGraphPtr())))
+					VDDEBUG("  Reference clock: filter graph\n");
+				else if (SUCCEEDED(pRefClock->QueryInterface(IID_IBaseFilter, (void **)~pRefFilter))) {
+					FILTER_INFO fi;
+
+					if (SUCCEEDED(pRefFilter->QueryFilterInfo(&fi))) {
+						if (fi.pGraph)
+							fi.pGraph->Release();
+
+						VDDEBUG("  Reference clock: filter \"%s\"\n", fi.achName);
+					}
+				} else if (pRefClock)
+					VDDEBUG("  Reference clock: unknown\n");
+			}
+		}
+
 		while(!filters.empty()) {
 			IBaseFilterPtr pFilter;
 
@@ -1019,6 +1047,7 @@ public:
 	const wchar_t *GetAudioDeviceName(int idx);
 	bool	SetAudioDevice(int idx);
 	int		GetAudioDeviceIndex();
+	bool	IsAudioDeviceIntegrated(int idx);
 
 	int		GetVideoSourceCount();
 	const wchar_t *GetVideoSourceName(int idx);
@@ -1089,8 +1118,9 @@ protected:
 	int					mAudioDeviceIndex;
 
 	// Some essentials for the filter graph.
-	IGraphBuilderPtr			mpGraph;
-	ICaptureGraphBuilder2Ptr	mpGraphBuilder;
+	IFilterGraphPtr				mpGraph;
+	IGraphBuilderPtr			mpGraphBuilder;
+	ICaptureGraphBuilder2Ptr	mpCapGraphBuilder2;
 	IMediaControlPtr			mpGraphControl;
 	IMediaEventExPtr			mpMediaEventEx;
 
@@ -1254,21 +1284,21 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 		return false;
 
 	// Create a filter graph manager.
-
 	DS_VERIFY(mpGraph.CreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER), "create filter graph manager");
+	DS_VERIFY(mpGraph->QueryInterface(IID_IGraphBuilder, (void **)~mpGraphBuilder), "find graph builder if");
 
 	// Create a capture filter graph builder (we're lazy).
 
-	DS_VERIFY(mpGraphBuilder.CreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER), "create filter graph builder");
+	DS_VERIFY(mpCapGraphBuilder2.CreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER), "create filter graph builder");
 
-	mpGraphBuilder->SetFiltergraph(mpGraph);
+	mpCapGraphBuilder2->SetFiltergraph(mpGraphBuilder);
 
-	AddToRot(mpGraph, &mdwRegisterGraph);
+	AddToRot(mpGraphBuilder, &mdwRegisterGraph);
 
 	VDDEBUG("ROT entry: %x   PID: %x\n", mdwRegisterGraph, GetCurrentProcessId());
 
 	// Try to find the event sink interface.
-	if (SUCCEEDED(mpGraph->QueryInterface(IID_IMediaEventEx,(void **)~mpMediaEventEx))) {
+	if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaEventEx,(void **)~mpMediaEventEx))) {
 		mpMediaEventEx->SetNotifyWindow((OAHWND)mhwndEventSink, WM_APP, 0);
 		mpMediaEventEx->CancelDefaultHandling(EC_VIDEO_SIZE_CHANGED);
 	}
@@ -1276,18 +1306,18 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 	// Attempt to instantiate the capture filter.
 
 	DS_VERIFY(mVideoDeviceMoniker->BindToObject(NULL, NULL, IID_IBaseFilter, (void **)~mpCapFilt), "create capture filter");
-	DS_VERIFY(mpGraph->AddFilter(mpCapFilt, L"Capture device"), "add capture filter");
+	DS_VERIFY(mpGraphBuilder->AddFilter(mpCapFilt, L"Capture device"), "add capture filter");
 
 	// Find the capture pin first.  If we don't have one of these, we
 	// might as well give up.
 
-	DS_VERIFY(mpGraphBuilder->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 0, ~mpRealCapturePin), "find capture pin");
+	DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 0, ~mpRealCapturePin), "find capture pin");
 
 	// Look for a preview pin.  It's actually likely that we won't get
 	// one if someone has a USB webcam, so we have to be prepared for
 	// it.
 
-	hr = mpGraphBuilder->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, TRUE, 0, ~mpRealPreviewPin);
+	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, TRUE, 0, ~mpRealPreviewPin);
 	mbGraphHasPreview = SUCCEEDED(hr);
 
 	// Enumerate video formats from the capture pin.
@@ -1319,44 +1349,44 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 
 	// Look for an audio pin. We may need to attach a null renderer to
 	// it for smooth previews.
-	hr = mpGraphBuilder->FindPin(mpCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpRealAudioPin);
+	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpRealAudioPin);
 
 	// Get video format configurator
 
-	hr = mpGraphBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Interleaved, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigCap);
+	hr = mpCapGraphBuilder2->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Interleaved, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigCap);
 
 	if (FAILED(hr))
-		hr = mpGraphBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigCap);
+		hr = mpCapGraphBuilder2->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigCap);
 
 	DS_VERIFY(hr, "find video format config if");
 
-	hr = mpGraphBuilder->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Interleaved, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigPrv);
+	hr = mpCapGraphBuilder2->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Interleaved, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigPrv);
 
 	if (FAILED(hr))
-		hr = mpGraphBuilder->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigPrv);
+		hr = mpCapGraphBuilder2->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, mpCapFilt, IID_IAMStreamConfig, (void **)~mpVideoConfigPrv);
 
 	// Look for a video port pin. We _HAVE_ to render this if it exists; otherwise,
 	// the ATI All-in-Wonder driver can lock on a wait in kernel mode and zombie
 	// our process. And no, a Null Renderer doesn't work. It's OK for this to fail.
 
-	hr = mpGraphBuilder->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_VIDEOPORT, NULL, FALSE, 0, ~mpCapFiltVideoPortPin);
+	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_VIDEOPORT, NULL, FALSE, 0, ~mpCapFiltVideoPortPin);
 
 	// Check for VFW capture dialogs, TV tuner, and crossbar
 
-	mpGraphBuilder->FindInterface(NULL, NULL, mpCapFilt, IID_IAMVfwCaptureDialogs, (void **)~mpVFWDialogs);
-	mpGraphBuilder->FindInterface(NULL, NULL, mpCapFilt, IID_IAMCrossbar, (void **)~mpCrossbar);
+	mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMVfwCaptureDialogs, (void **)~mpVFWDialogs);
+	mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMCrossbar, (void **)~mpCrossbar);
 	if (mpCrossbar) {
 		IBaseFilterPtr pXFilt;
 
 		if (SUCCEEDED(mpCrossbar->QueryInterface(IID_IBaseFilter, (void **)~pXFilt)))
-			mpGraphBuilder->FindInterface(&LOOK_UPSTREAM_ONLY, NULL, pXFilt, IID_IAMCrossbar, (void **)~mpCrossbar2);
+			mpCapGraphBuilder2->FindInterface(&LOOK_UPSTREAM_ONLY, NULL, pXFilt, IID_IAMCrossbar, (void **)~mpCrossbar2);
 	}
 
 	// Search for tuner interfaces. Note that IAMTVTuner inherits from IAMTuner.
-	if (SUCCEEDED(mpGraphBuilder->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTVTuner, (void **)~mpTVTuner)))
+	if (SUCCEEDED(mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTVTuner, (void **)~mpTVTuner)))
 		mpTuner = mpTVTuner;
 	else
-		mpGraphBuilder->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTuner, (void **)~mpTuner);
+		mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTuner, (void **)~mpTuner);
 
 	// If there is at least one crossbar, examine the crossbars to see if we can spot
 	// an audio input switch.
@@ -1411,7 +1441,7 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 	if (mpVideoCrossbar)
 		mCurrentVideoSource = EnumerateCrossbarSources(mVideoSources, mpVideoCrossbar, mVideoCrossbarOutput);
 
-	DS_VERIFY(mpGraph->QueryInterface(IID_IMediaControl, (void **)~mpGraphControl), "find graph control interface");
+	DS_VERIFY(mpGraphBuilder->QueryInterface(IID_IMediaControl, (void **)~mpGraphControl), "find graph control interface");
 
 	// Enumerate audio drivers. If the capture filter supports audio, make it audio
 	// device zero.
@@ -1451,7 +1481,7 @@ void VDCaptureDriverDS::Shutdown() {
 
 	mVideoWindows.clear();
 
-	if (mpGraph)
+	if (mpGraphBuilder)
 		TearDownGraph();
 
 	// FIXME:	We need to tear down the filter graph manager, but to do so we
@@ -1478,8 +1508,8 @@ void VDCaptureDriverDS::Shutdown() {
 	mpVideoConfigCap	= NULL;
 	mpVideoConfigPrv	= NULL;
 	mpMediaEventEx		= NULL;
-	mpGraph				= NULL;
-	mpGraphBuilder		= NULL;
+	mpGraphBuilder				= NULL;
+	mpCapGraphBuilder2		= NULL;
 	mpGraphControl		= NULL;
 
 	mpAudioCrossbar		= NULL;
@@ -1887,8 +1917,8 @@ bool VDCaptureDriverDS::SetAudioDevice(int idx) {
 
 	// Kill an existing device.
 	if (mpAudioCapFilt) {
-		DestroySubgraph(mpGraph, mpAudioCapFilt);
-		VDVERIFY(SUCCEEDED(mpGraph->RemoveFilter(mpAudioCapFilt)));
+		DestroySubgraph(mpGraphBuilder, mpAudioCapFilt);
+		VDVERIFY(SUCCEEDED(mpGraphBuilder->RemoveFilter(mpAudioCapFilt)));
 		mpAudioCapFilt = NULL;
 	}
 
@@ -1918,7 +1948,7 @@ bool VDCaptureDriverDS::SetAudioDevice(int idx) {
 			// point. See BuildGraph() for an explanation of why.
 
 			if (SUCCEEDED(hr)) {
-				hr = mpGraphBuilder->FindPin(mpAudioCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpAudioPin);
+				hr = mpCapGraphBuilder2->FindPin(mpAudioCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpAudioPin);
 
 				if (FAILED(hr))
 					VDDEBUG("Couldn't find audio output pin: %s\n", GetDXErrorName(hr));
@@ -1995,6 +2025,10 @@ bool VDCaptureDriverDS::SetAudioDevice(int idx) {
 
 int VDCaptureDriverDS::GetAudioDeviceIndex() {
 	return mAudioDeviceIndex;
+}
+
+bool VDCaptureDriverDS::IsAudioDeviceIntegrated(int idx) {
+	return (unsigned)idx < mAudioDevices.size() && !mAudioDevices[idx].first;
 }
 
 int VDCaptureDriverDS::GetVideoSourceCount() {
@@ -2570,7 +2604,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 	if (mpAudioCapFilt) {
 		if (VDIsFilterInGraphDShow(mpAudioCapFilt))
-			mpGraph->RemoveFilter(mpAudioCapFilt);
+			mpGraphBuilder->RemoveFilter(mpAudioCapFilt);
 	}
 
 	///////////////////////////////////////////////////////////////////////
@@ -2585,7 +2619,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		IBaseFilterPtr pVideoPullFilt;
 
 		DS_VERIFY(pVideoPullFilt.CreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER), "create sample grabber");
-		DS_VERIFY(mpGraph->AddFilter(pVideoPullFilt, L"Video pulldown"), "add sample grabber");
+		DS_VERIFY(mpGraphBuilder->AddFilter(pVideoPullFilt, L"Video pulldown"), "add sample grabber");
 
 		// Set the sample grabber to continuous mode.
 		//
@@ -2614,9 +2648,9 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 		IPinPtr pPinSGIn, pPinSGOut;
 
-		DS_VERIFY(mpGraphBuilder->FindPin(pVideoPullFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinSGIn), "find sample grabber input");
-		DS_VERIFY(mpGraphBuilder->FindPin(pVideoPullFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinSGOut), "find sample grabber output");
-		DS_VERIFY(pCapturePin->Connect(pPinSGIn, NULL), "connect capture -> grabber");
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(pVideoPullFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinSGIn), "find sample grabber input");
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(pVideoPullFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinSGOut), "find sample grabber output");
+		DS_VERIFY(mpGraphBuilder->Connect(pCapturePin, pPinSGIn), "connect capture -> grabber");
 
 		pCapturePin = pPinSGOut;
 	}
@@ -2654,7 +2688,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			// No need to handle this here, as we always render the VP pin below.
 			break;
 		} else if (pPreviewPin) {
-			DS_VERIFY(mpGraph->Render(pPreviewPin), "render preview pin (hardware display)");
+			DS_VERIFY(mpGraphBuilder->Render(pPreviewPin), "render preview pin (hardware display)");
 			pPreviewPin = NULL;
 			break;
 		}
@@ -2662,7 +2696,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		// In software mode we force the rendering path to use the same format that
 		// would be used for capture. This is already done for us above, so we
 		// simply add the renderer.
-		DS_VERIFY(mpGraph->Render(pCapturePin), "render capture pin (hardware display)");
+		DS_VERIFY(mpGraphBuilder->Render(pCapturePin), "render capture pin (hardware display)");
 		pCapturePin = NULL;
 		break;
 	}
@@ -2674,13 +2708,13 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	// our process.
 
 	if (pVideoPortPin) {
-		DS_VERIFY(mpGraph->Render(pVideoPortPin), "render video port pin");
+		DS_VERIFY(mpGraphBuilder->Render(pVideoPortPin), "render video port pin");
 		pVideoPortPin = NULL;
 	}
 
 	// Add the audio filter back into the graph, if it exists.
 	if (mpAudioCapFilt) {
-		DS_VERIFY(mpGraph->AddFilter(mpAudioCapFilt, L"Audio capture"), "add audio capture filter to graph");
+		DS_VERIFY(mpGraphBuilder->AddFilter(mpAudioCapFilt, L"Audio capture"), "add audio capture filter to graph");
 	}
 
 	VDASSERT(!mpAudioPin || !VDIsPinConnectedDShow(mpAudioPin));
@@ -2697,9 +2731,9 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		IPinPtr pPinNRIn;
 
 		DS_VERIFY(pNullRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create null renderer");
-		DS_VERIFY(mpGraph->AddFilter(pNullRenderer, L"Video sink"), "add null renderer");
-		DS_VERIFY(mpGraphBuilder->FindPin(pNullRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinNRIn), "find null renderer input");
-		DS_VERIFY(pCapturePin->Connect(pPinNRIn, NULL), "connect grabber -> sink");
+		DS_VERIFY(mpGraphBuilder->AddFilter(pNullRenderer, L"Video sink"), "add null renderer");
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(pNullRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinNRIn), "find null renderer input");
+		DS_VERIFY(mpGraphBuilder->Connect(pCapturePin, pPinNRIn), "connect grabber -> sink");
 		pCapturePin = NULL;
 	}
 
@@ -2720,7 +2754,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			IBaseFilterPtr pAudioPullFilt;
 
 			DS_VERIFY(pAudioPullFilt.CreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER), "create sample grabber");
-			DS_VERIFY(mpGraph->AddFilter(pAudioPullFilt, L"Audio pulldown"), "add sample grabber");
+			DS_VERIFY(mpGraphBuilder->AddFilter(pAudioPullFilt, L"Audio pulldown"), "add sample grabber");
 
 			// Set the sample grabber to continuous mode.
 
@@ -2736,8 +2770,8 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 			// Attach the grabber to the capture pin.
 
-			DS_VERIFY(mpGraphBuilder->FindPin(pAudioPullFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinSGIn), "find sample grabber input");
-			DS_VERIFY(mpGraphBuilder->FindPin(pAudioPullFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinSGOut), "find sample grabber output");
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(pAudioPullFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinSGIn), "find sample grabber input");
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(pAudioPullFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinSGOut), "find sample grabber output");
 
 			// If audio analysis is enabled, try to keep the latency down to at least 1/20th of a second.
 			if (mbAudioAnalysisEnabled) {
@@ -2769,7 +2803,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 				}
 			}
 
-			DS_VERIFY(pAudioPin->Connect(pPinSGIn, NULL), "connect capture -> grabber");
+			DS_VERIFY(mpGraphBuilder->Connect(pAudioPin, pPinSGIn), "connect capture -> grabber");
 			pAudioPin = pPinSGOut;
 			VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 		}
@@ -2778,24 +2812,27 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	// Terminate the audio path with a null renderer or a sound output. We do this
 	// even if we are just previewing, because the Plextor PX-M402U doesn't output
 	// frames reliably otherwise.
+	bool bUseDefaultClock = true;
+
 	if (pAudioPin) {
 		VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 
 		if (mbAudioPlaybackEnabled) {
-			HRESULT hrRender = mpGraph->Render(pAudioPin);
+			HRESULT hrRender = mpGraphBuilder->Render(pAudioPin);
 
 			// Reset the filter graph clock. We have to do this because when we
 			// create a capture graph a different filter may end up being the
-			// clock.
+			// clock. For some reason the DirectSound Renderer refuses to play
+			// if we try using the system clock.
 			IMediaFilterPtr pGraphMF;
 
-			if (SUCCEEDED(mpGraph->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
+			if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
 				IPinPtr pAudioPinConnect;
 				if (SUCCEEDED(pAudioPin->ConnectedTo(~pAudioPinConnect))) {
 					PIN_INFO pi;
 
 					if (SUCCEEDED(pAudioPinConnect->QueryPinInfo(&pi))) {
-						SetClockFromDownstream(pi.pFilter, pGraphMF);
+						bUseDefaultClock = !SetClockFromDownstream(pi.pFilter, pGraphMF);
 						pi.pFilter->Release();
 					}
 				}
@@ -2810,9 +2847,9 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			IBaseFilterPtr pRenderer;
 			VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 			DS_VERIFY(pRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create audio null renderer");
-			DS_VERIFY(mpGraph->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
-			DS_VERIFY(mpGraphBuilder->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
-			DS_VERIFY(pAudioPin->Connect(pPinRIn, NULL), "connect audio null renderer");
+			DS_VERIFY(mpGraphBuilder->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
+			DS_VERIFY(mpGraphBuilder->Connect(pAudioPin, pPinRIn), "connect audio null renderer");
 		}
 	}
 
@@ -2821,11 +2858,25 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		IPinPtr pPinRIn;
 		IBaseFilterPtr pRenderer;
 		DS_VERIFY(pRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create audio null renderer");
-		DS_VERIFY(mpGraph->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
-		DS_VERIFY(mpGraphBuilder->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
-		DS_VERIFY(mpRealAudioPin->Connect(pPinRIn, NULL), "connect audio null renderer to real audio cap pin");
+		DS_VERIFY(mpGraphBuilder->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
+		DS_VERIFY(mpGraphBuilder->Connect(mpRealAudioPin, pPinRIn), "connect audio null renderer to real audio cap pin");
 	}
-	VDDumpFilterGraphDShow(mpGraph);
+
+	// Set the graph clock
+	if (bUseDefaultClock) {
+		IMediaFilterPtr pGraphMF;
+
+		if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
+			IReferenceClockPtr pGraphClock;
+
+			if (SUCCEEDED(pGraphClock.CreateInstance(CLSID_SystemClock, NULL, CLSCTX_INPROC_SERVER)))
+				pGraphMF->SetSyncSource(pGraphClock);
+		}
+	}
+
+	// Dump the graph to stdout.
+	VDDumpFilterGraphDShow(mpGraphBuilder);
 
 	// Check for a window and return.
 	CheckForWindow();
@@ -2844,6 +2895,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 void VDCaptureDriverDS::TearDownGraph() {
 	StopGraph();
 
+	// drop pointers to graph components
 	if (mpAudioGrabber)
 		mpAudioGrabber->SetCallback(NULL, 0);
 
@@ -2857,8 +2909,16 @@ void VDCaptureDriverDS::TearDownGraph() {
 
 	mpAudioGrabber = NULL;
 
-	DestroySubgraph(mpGraph, mpCapFilt);
-	DestroySubgraph(mpGraph, mpAudioCapFilt);
+	// reset capture clock
+	IMediaFilterPtr pGraphMF;
+
+	if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
+		pGraphMF->SetSyncSource(NULL);
+	}
+
+	// destroy downstreams
+	DestroySubgraph(mpGraphBuilder, mpCapFilt);
+	DestroySubgraph(mpGraphBuilder, mpAudioCapFilt);
 
 	VDASSERT(!mpRealAudioPin || !VDIsPinConnectedDShow(mpRealAudioPin));
 	VDASSERT(!mpAudioPin || !VDIsPinConnectedDShow(mpAudioPin));
@@ -2881,7 +2941,7 @@ void VDCaptureDriverDS::CheckForWindow() {
 	IEnumFiltersPtr pEnumFilters;
 
 	mVideoWindows.clear();
-	if (SUCCEEDED(mpGraph->EnumFilters(~pEnumFilters))) {
+	if (SUCCEEDED(mpGraphBuilder->EnumFilters(~pEnumFilters))) {
 		IBaseFilterPtr pFilter;
 
 		while(S_OK == pEnumFilters->Next(1, ~pFilter, NULL)) {
@@ -2918,7 +2978,7 @@ void VDCaptureDriverDS::CheckForWindow() {
 	if (mpRealCapturePin) {
 		success = VDGetFilterConnectedToPinDShow(mpRealCapturePin, ~pFilter);
 		if (success) {
-			HRESULT hr = mpGraphBuilder->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
+			HRESULT hr = mpCapGraphBuilder2->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
 			success = SUCCEEDED(hr);
 		}
 	}
@@ -2927,7 +2987,7 @@ void VDCaptureDriverDS::CheckForWindow() {
 	if (!success && mpRealPreviewPin) {
 		success = VDGetFilterConnectedToPinDShow(mpRealPreviewPin, ~pFilter);
 		if (success) {
-			HRESULT hr = mpGraphBuilder->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
+			HRESULT hr = mpCapGraphBuilder2->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
 			success = SUCCEEDED(hr);
 		}
 	}
@@ -2936,7 +2996,7 @@ void VDCaptureDriverDS::CheckForWindow() {
 	if (!success && mpCapFiltVideoPortPin) {
 		success = VDGetFilterConnectedToPinDShow(mpCapFiltVideoPortPin, ~pFilter);
 		if (success) {
-			HRESULT hr = mpGraphBuilder->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
+			HRESULT hr = mpCapGraphBuilder2->FindInterface(&LOOK_DOWNSTREAM_ONLY, NULL, pFilter, IID_IVideoWindow, (void **)~mpVideoWindow);
 			success = SUCCEEDED(hr);
 		}
 	}
@@ -3069,6 +3129,15 @@ void VDCaptureDriverDS::DoEvents() {
 				break;
 			}
 #endif
+		switch(evCode) {
+		case EC_ERRORABORT:
+			VDDEBUG("Cap/DShow: Error abort detected: hr=%08x (%s)\n", (int)param1, GetDXErrorName((HRESULT)param1));
+			break;
+		default:
+			VDDEBUG("Cap/DShow: Unknown event %08x detected\n", (int)evCode);
+			break;
+		}
+
 		mpMediaEventEx->FreeEventParams(evCode, param1, param2);
 	}
 }
@@ -3104,7 +3173,7 @@ void VDCaptureDriverDS::CapProcessData(int stream, const void *data, uint32 size
 		return;
 
 	if (mpCB) {
-		sint32 reltime = (sint64)((sint64)(VDGetPreciseTick() - mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
+		sint64 reltime = (sint64)((sint64)(VDGetPreciseTick() - mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
 
 		try {
 			if (!mCaptureStopQueued) {
