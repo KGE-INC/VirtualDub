@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "List.h"
 #include "Fixes.h"
 #include "File64.h"
+#include "Avisynth.h"
 
 //#define STREAMING_DEBUG
 
@@ -233,14 +234,14 @@ private:
 	enum { STREAM_RT_SIZE = 65536 };
 	enum { STREAM_BLOCK_SIZE = 4096 };
 
+	IAvisynthClipInfo *pAvisynthClipInfo;
 	PAVIFILE paf;
 	int ref_count;
-	__int64 i64StreamPosition;
+	__int64		i64StreamPosition;
 	int			streams;
 	char		*streamBuffer;
 	int			sbPosition;
 	int			sbSize;
-	bool		hyperindexed;
 	long		fStreamsActive;
 	int			nRealTime;
 	int			nActiveStreamers;
@@ -452,7 +453,7 @@ long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
 
 class AVIReadTunnelStream : public IAVIReadStream {
 public:
-	AVIReadTunnelStream(AVIReadHandler *, PAVISTREAM);
+	AVIReadTunnelStream(AVIReadHandler *, PAVISTREAM, IAvisynthClipInfo *pClipInfo);
 	~AVIReadTunnelStream();
 
 	HRESULT BeginStreaming(long lStart, long lEnd, long lRate);
@@ -468,18 +469,21 @@ public:
 	HRESULT FormatSize(long lFrame, long *plSize);
 	HRESULT ReadFormat(long lFrame, void *pFormat, long *plSize);
 	bool isStreaming();
+	bool isKeyframeOnly();
 
 private:
-	AVIReadHandler *parent;
-	PAVISTREAM pas;
+	IAvisynthClipInfo *const pAvisynthClipInfo;
+	AVIReadHandler *const parent;
+	const PAVISTREAM pas;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-AVIReadTunnelStream::AVIReadTunnelStream(AVIReadHandler *parent, PAVISTREAM pas) {
-	this->parent = parent;
-	this->pas = pas;
-
+AVIReadTunnelStream::AVIReadTunnelStream(AVIReadHandler *_parent, PAVISTREAM _pas, IAvisynthClipInfo *pClipInfo)
+: pAvisynthClipInfo(pClipInfo)
+, parent(_parent)
+, pas(_pas)
+{
 	parent->AddRef();
 }
 
@@ -505,7 +509,18 @@ bool AVIReadTunnelStream::IsKeyFrame(long lFrame) {
 }
 
 HRESULT AVIReadTunnelStream::Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
-	return AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+	HRESULT hr;
+
+	hr = AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+
+	if (pAvisynthClipInfo) {
+		const char *pszErr;
+
+		if (pAvisynthClipInfo->GetError(&pszErr))
+			throw MyError("Avisynth read error:\n%s", pszErr);
+	}
+
+	return hr;
 }
 
 long AVIReadTunnelStream::Start() {
@@ -540,6 +555,10 @@ bool AVIReadTunnelStream::isStreaming() {
 	return false;
 }
 
+bool AVIReadTunnelStream::isKeyframeOnly() {
+   return false;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 class AVIReadStream : public IAVIReadStream, public ListNode2<AVIReadStream> {
@@ -562,6 +581,7 @@ public:
 	HRESULT FormatSize(long lFrame, long *plSize);
 	HRESULT ReadFormat(long lFrame, void *pFormat, long *plSize);
 	bool isStreaming();
+	bool isKeyframeOnly();
 	void Reinit();
 
 private:
@@ -603,6 +623,12 @@ AVIReadStream::AVIReadStream(AVIReadHandler *parent, AVIStreamNode *psnData, int
 
 	pIndex = psnData->index.index2Ptr();
 	sampsize = psnData->hdr.dwSampleSize;
+
+	// Hack to imitate Microsoft's parser.  It seems to ignore this value
+	// for audio streams.
+
+	if (psnData->hdr.fccType == streamtypeAUDIO)
+		sampsize = ((WAVEFORMATEX *)psnData->pFormat)->nBlockAlign;
 
 	if (sampsize) {
 		i64CachedPosition = 0;
@@ -745,8 +771,8 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 		// too small to hold a sample?
 
 		if (lpBuffer && cbBuffer < sampsize) {
-			if (*plBytes) *plBytes = sampsize * lSamples;
-			if (*plSamples) *plSamples = lSamples;
+			if (plBytes) *plBytes = sampsize * lSamples;
+			if (plSamples) *plSamples = lSamples;
 
 			return AVIERR_BUFFERTOOSMALL;
 		}
@@ -895,8 +921,8 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 		AVIIndexEntry2 *avie2 = &pIndex[lStart];
 
 		if (lpBuffer && (avie2->size & 0x7FFFFFFF) > cbBuffer) {
-			if (*plBytes) *plBytes = avie2->size & 0x7FFFFFFF;
-			if (*plSamples) *plSamples = 1;
+			if (plBytes) *plBytes = avie2->size & 0x7FFFFFFF;
+			if (plSamples) *plSamples = 1;
 
 			return AVIERR_BUFFERTOOSMALL;
 		}
@@ -1078,15 +1104,20 @@ bool AVIReadStream::isStreaming() {
 	return psnData->cache && fStreamingActive;
 }
 
+bool AVIReadStream::isKeyframeOnly() {
+   return psnData->keyframe_only;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
-AVIReadHandler::AVIReadHandler(const char *s) {
+AVIReadHandler::AVIReadHandler(const char *s)
+: pAvisynthClipInfo(0)
+{
 	this->hFile = INVALID_HANDLE_VALUE;
 	this->hFileUnbuffered = INVALID_HANDLE_VALUE;
 	this->paf = NULL;
 	ref_count = 1;
 	streams=0;
-	hyperindexed = false;
 	fStreamsActive = 0;
 	fDisableFastIO = false;
 	streamBuffer = NULL;
@@ -1114,6 +1145,19 @@ AVIReadHandler::AVIReadHandler(PAVIFILE paf) {
 	streamBuffer = NULL;
 	pSegmentHint = NULL;
 	fFakeIndex = false;
+
+	if (FAILED(paf->QueryInterface(IID_IAvisynthClipInfo, (void **)&pAvisynthClipInfo)))
+		pAvisynthClipInfo = NULL;
+	else {
+		const char *s;
+
+		if (pAvisynthClipInfo->GetError(&s)) {
+			MyError e("Avisynth open failure:\n%s", s);
+			pAvisynthClipInfo->Release();
+			paf->Release();
+			throw e;
+		}
+	}
 }
 
 AVIReadHandler::~AVIReadHandler() {
@@ -1215,8 +1259,8 @@ bool AVIReadHandler::AppendFile(const char *pszFile) {
 
 				// A/B ?= C/D ==> AD ?= BC
 
-				if (pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
-					throw MyError("%shave different sampling rates (%.2f vs. %.2f)"
+				if ((__int64)pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != (__int64)pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
+					throw MyError("%shave different sampling rates (%.5f vs. %.5f)"
 							,szPrefix
 							,(double)pasn_old->hdr.dwRate / pasn_old->hdr.dwScale
 							,(double)pasn_new->hdr.dwRate / pasn_new->hdr.dwScale
@@ -1334,6 +1378,7 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 	bool index_found = false;
 	bool size_invalid = false;
 	bool fAcceptIndexOnly = true;
+	bool hyperindexed = false;
 	AVIStreamNode *pasn, *pasn_next;
 
 	__int64	i64ChunkMoviPos = 0;
@@ -1412,6 +1457,8 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 			case listtypeSTREAMHEADER:
 				if (!_parseStreamHeader(streamlist, dwLength))
 					fAcceptIndexOnly = false;
+				else
+					hyperindexed = true;
 
 				++streams;
 				dwLength = 0;
@@ -1555,6 +1602,7 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 	AVIStreamNode *pasn;
 	FOURCC fccType;
 	DWORD dwLength;
+	bool hyperindexed = false;
 	
 	if (!(pasn = new AVIStreamNode()))
 		throw MyMemoryError();
@@ -1612,6 +1660,7 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 						case '024I':
 						case 'P14Y':
 						case 'vuyc':
+						case 'UYFH':
 							pasn->keyframe_only = true;
 					}
 				}
@@ -1812,6 +1861,9 @@ void AVIReadHandler::_destruct() {
 	AVIStreamNode *pasn;
 	AVIFileDesc *pDesc;
 
+	if (pAvisynthClipInfo)
+		pAvisynthClipInfo->Release();
+
 	if (paf)
 		AVIFileRelease(paf);
 
@@ -1856,7 +1908,7 @@ IAVIReadStream *AVIReadHandler::GetStream(DWORD fccType, LONG lParam) {
 		if (hr)
 			return NULL;
 
-		return new AVIReadTunnelStream(this, pas);
+		return new AVIReadTunnelStream(this, pas, pAvisynthClipInfo);
 	} else {
 		AVIStreamNode *pasn, *pasn_next;
 		int streamno = 0;

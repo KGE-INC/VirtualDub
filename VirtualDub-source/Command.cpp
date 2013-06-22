@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -93,6 +93,8 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 			char buf[64];
 			DWORD dwActual;
 
+			memset(buf, 0, sizeof buf);
+
 			hFile = CreateFile(szFile, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 
 			if (INVALID_HANDLE_VALUE == hFile)
@@ -101,8 +103,14 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 			if (!ReadFile(hFile, buf, 64, &dwActual, NULL))
 				throw MyWin32Error("Error reading \"%s\": %%s", GetLastError(), szFile);
 
-			if (dwActual<12)
-				throw MyError("Can't read \"%s\": The file is too short (<12 bytes).", szFile);
+			// The Avisynth script:
+			//
+			//	Version
+			//
+			// is only 9 bytes...
+
+			if (!dwActual)
+				throw MyError("Can't read \"%s\": The file is empty).", szFile);
 
 			CloseHandle(hFile);
 
@@ -167,7 +175,12 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 			inputAVI = CreateInputFileMPEG();
 			break;
 		case FILETYPE_ASF:
-			throw MyError("ASF file support has been removed at the request of Microsoft.");
+//			throw MyError("ASF file support has been removed at the request of Microsoft.");
+			throw MyError("Not supported: Microsoft owns US patent #6,041,345 on the ASF file format, preventing "
+						"third-party applications from extracting data from ASF files. ASF file format support "
+						"was removed as of V1.3d at the request of Microsoft and to avoid patent "
+						"infringement claims, and as such VirtualDub no longer supports ASF. Please "
+						"do not ask for versions that do.");
 			break;
 		}
 
@@ -335,6 +348,11 @@ void CloseWAV() {
 }
 
 void SaveWAV(char *szFilename, bool fProp, DubOptions *quick_opts) {
+	if (!inputVideoAVI)
+		throw MyError("No input file to process.");
+
+	SetAudioSource();
+
 	try {
 		if (!(outputAVI = new AVIOutputWAV())) throw MyMemoryError();
 
@@ -437,6 +455,9 @@ void SaveStripeMaster(char *szFile) {
 }
 
 void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold) {
+	if (!inputVideoAVI)
+		throw MyError("No input file to process.");
+
 	try {
 		if (!(outputAVI = new AVIOutputFile()))
 			throw MyMemoryError();

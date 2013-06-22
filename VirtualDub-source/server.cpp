@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@
 #include "resource.h"
 
 extern HINSTANCE g_hInst;
+extern HWND g_hWnd;
 extern char g_szInputAVIFileTitle[MAX_PATH];
 
 // VideoSource.cpp
@@ -243,6 +244,12 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 32 /*bmih->biBitCount*/, 16+8*opt->video.outputDepth);
 
+		if (filters.getFrameLag())
+			MessageBox(g_hWnd,
+			"One or more filters in the filter chain has a non-zero lag. This will cause the served "
+			"video to lag behind the audio!"
+			, "VirtualDub warning", MB_OK);
+
 		fsi.lMicrosecsPerFrame		= vInfo.usPerFrame;
 		fsi.lMicrosecsPerSrcFrame	= vInfo.usPerFrameIn;
 
@@ -266,6 +273,10 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	// create dialog box
 
 	if (hwndStatus = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_SERVER), hwnd, Frameserver::StatusDlgProc, (LPARAM)this)) {
+
+		// hide the main window
+
+		ShowWindow(hwnd, SW_HIDE);
 
 		// create the frameserver
 
@@ -296,6 +307,10 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 		}
 
 		if (IsWindow(hwndStatus)) DestroyWindow(hwndStatus);
+
+		// show the main window
+
+		ShowWindow(hwnd, SW_SHOW);
 	}
 
 	// restore everything
@@ -307,7 +322,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 		vSrc->streamEnd();
 	}
 
-	if (server_index<0) throw MyError("Couldn't create frameserver\n");
+	if (server_index<0) throw MyError("Couldn't create frameserver");
 }
 
 LONG APIENTRY Frameserver::WndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -29,13 +29,20 @@ const struct CodecEntry {
 	FOURCC fcc;
 	const char *name;
 } codec_entries[]={
-	{ R('CVID'), "Radius Cinepak" },
+	{ R('VCR1'), "ATI video 1" },
+	{ R('VCR2'), "ATI video 2" },
+	{ R('TR20'), "Duck TrueMotion 2.0" },
+	{ R('dvsd'), "DV" },
+	{ R('HFYU'), "Huffyuv" },
 	{ R('I263'), "Intel H.263" },
-	{ R('IR21'), "Intel Indeo Video 2.1" },
-	{ R('IV31'), "Intel Indeo Video 3.1" },
-	{ R('IV32'), "Intel Indeo Video 3.2" },
-	{ R('IV41'), "Intel Indeo Video 4.1" },
-	{ R('IV50'), "Intel Indeo Video 5.x" },
+	{ R('I420'), "LifeView YUV12 codec" },
+	{ R('IR21'), "Indeo Video 2.1" },
+	{ R('IV31'), "Indeo Video 3.1" },
+	{ R('IV32'), "Indeo Video 3.2" },
+	{ R('IV41'), "Indeo Video 4.1" },
+	{ R('IV50'), "Indeo Video 5.x" },
+	{ R('UCOD'), "Iterated Systems' ClearVideo" },
+	{ R('mjpg'), "Motion JPEG" },
 	{ R('MJPG'), "Motion JPEG" },
 	{ R('dmb1'), "Motion JPEG (Matrox)" },
 	{ R('MPG4'), "Microsoft High-Speed MPEG-4 " },
@@ -47,12 +54,9 @@ const struct CodecEntry {
 	{ R('MRLE'), "Microsoft RLE" },
 	{ R('MSVC'), "Microsoft Video 1" },
 	{ R('CRAM'), "Microsoft Video 1" },
-	{ R('TR20'), "Duck TrueMotion 2.0" },
-	{ R('UCOD'), "Iterated Systems' ClearVideo" },
-	{ R('VCR1'), "ATI video" },
+	{ R('DIVX'), "OpenDIVX" },
+	{ R('CVID'), "Radius Cinepak" },
 	{ R('VIVO'), "VivoActive" },
-
-	{ R('I420'), "LifeView YUV12 codec" },
 
 	{ R('VDST'), "VirtualDub frameclient driver" },
 };

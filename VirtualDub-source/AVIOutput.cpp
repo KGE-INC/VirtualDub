@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -1014,6 +1014,8 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 
 			_write(pp, (offset & 1) + (((offset+1)&7) ? 8+buf[2] : 0));
 		}
+
+		iPadOffset = 0;
 
 	} else {
 

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -1409,6 +1409,11 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 			opt->audio.newChannels,
 			opt->audio.integral_rate,
 			opt->audio.fHighQuality);
+
+	if (opt->audio.volume)
+		output.addf("VirtualDub.audio.SetVolume(%d);", opt->audio.volume);
+	else
+		output.addf("VirtualDub.audio.SetVolume();");
 
 	if (g_ACompressionFormat) {
 		if (g_ACompressionFormat->cbSize) {

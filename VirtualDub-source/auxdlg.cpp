@@ -1,3 +1,20 @@
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2001 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
 #include <windows.h>
 #include <vfw.h>
 
@@ -56,82 +73,6 @@ BOOL APIENTRY ShowTextDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam
     return FALSE;
 }
 
-BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
-{
-    switch (message)
-    {
-        case WM_INITDIALOG:
-			{
-				char buf[128];
-
-				wsprintf(buf, "Build %d/"
-#ifdef _DEBUG
-					"debug"
-#else
-					"release"
-#endif
-					" (%s)", version_num, version_time);
-
-				SetDlgItemText(hDlg, IDC_FINALS_SUCK, buf);
-
-				HRSRC hrsrc;
-
-				if (hrsrc = FindResource(NULL, MAKEINTRESOURCE(IDR_CREDITS), "STUFF")) {
-					HGLOBAL hGlobal;
-					if (hGlobal = LoadResource(NULL, hrsrc)) {
-						const char *pData, *pLimit;
-
-						if (pData = (const char *)LockResource(hGlobal)) {
-							HWND hwndItem = GetDlgItem(hDlg, IDC_CREDITS);
-							const INT tab = 80;
-
-							pLimit = pData + SizeofResource(NULL, hrsrc);
-
-							SendMessage(hwndItem, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(TRUE, 0));
-							SendMessage(hwndItem, LB_SETTABSTOPS, 1, (LPARAM)&tab);
-
-							while(pData < pLimit) {
-								char *t = buf;
-
-								while(pData < pLimit && *pData!='\r' && *pData!='\n')
-									*t++ = *pData++;
-
-								while(pData < pLimit && (*pData=='\r' || *pData=='\n'))
-									++pData;
-
-								*t = 0;
-
-								if (t > buf)
-									SendMessage(GetDlgItem(hDlg, IDC_CREDITS), LB_ADDSTRING, 0, (LPARAM)buf);
-							}
-
-							FreeResource(hGlobal);
-						}
-						FreeResource(hGlobal);
-					}
-				}
-
-				IAMPDecoder *iad = CreateAMPDecoder();
-
-				if (iad) {
-					wsprintf(buf, "MPEG audio decoder: %s", iad->GetAmpVersionString());
-					delete iad;
-					SetDlgItemText(hDlg, IDC_MP3_DECODER, buf);
-				}
-			}
-            return (TRUE);
-
-        case WM_COMMAND:                      
-            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) 
-            {
-                EndDialog(hDlg, TRUE);  
-                return TRUE;
-            }
-            break;
-    }
-    return FALSE;
-}
-
 BOOL APIENTRY WelcomeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 {
     switch (message)
@@ -161,6 +102,7 @@ void Welcome() {
 }
 
 static const char g_szDivXWarning[]=
+	"\"DivX\" codec detected\0"
 	"One or more of the \"DivX\" drivers have been detected on your system. These drivers are illegal binary hacks "
 	"of legitimate drivers:\r\n"
 	"\r\n"
@@ -174,12 +116,36 @@ static const char g_szDivXWarning[]=
 	"forward crash dumps involving these drivers, as the author has no control "
 	"of the original third-party drivers or the binary hacks applied to them.";
 
+static const char g_szAPWarning[]=
+	"\"AngelPotion Definitive\" codec detected\0"
+	"The \"AngelPotion Definitive\" codec has been detected on your system. This driver is an illegal binary hack "
+	"of the following legitimate drivers:\r\n"
+	"\r\n"
+	"* Microsoft MPEG-4 V3 video\r\n"
+	"\r\n"
+	"The AngelPotion codec is a particularly poor hack of the MS MPEG-4 V3 codec and is known "
+	"to cause a number of serious conflicts, including but not limited to:\r\n"
+	"* Excessive disk usage on temporary drive\r\n"
+	"* Incorrectly responding to compressed formats of other codecs, even uncompressed RGB\r\n"
+	"* Preventing some applications from loading AVI files at all\r\n"
+	"* Inhibiting Windows Media Player automatic codec download\r\n"
+	"\r\n"
+	"The author cannot guarantee the stability of VirtualDub in any way when AngelPotion is loaded, "
+	"even if the codec is not in use. All crash dumps indicating AP is loaded will be promptly discarded. "
+	"It is HIGHLY suggested that you uninstall AngelPotion immediately."
+	;
+
 BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam)
 {
+	const char *s;
+
     switch (message)
     {
 		case WM_INITDIALOG:
-			SendDlgItemMessage(hdlg, IDC_WARNING, WM_SETTEXT, 0, (LPARAM)g_szDivXWarning);
+			s = (const char *)lParam;
+			SetWindowText(hdlg, s);
+			while(*s++);
+			SendDlgItemMessage(hdlg, IDC_WARNING, WM_SETTEXT, 0, (LPARAM)s);
 			return TRUE;
 
         case WM_COMMAND:
@@ -193,18 +159,36 @@ BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lPa
     return FALSE;
 }
 
+static bool DetectDriver(const char *pszName) {
+	char szDriverANSI[256];
+	ICINFO info;
+
+	for(int i=0; ICInfo(ICTYPE_VIDEO, i, &info); ++i) {
+		if (WideCharToMultiByte(CP_ACP, 0, info.szDriver, -1, szDriverANSI, sizeof szDriverANSI, NULL, NULL)
+			&& !stricmp(szDriverANSI, pszName))
+
+			return true;
+	}
+
+	return false;
+}
+
 void DetectDivX() {
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenDivXWarning", &dwSeenIt) || !dwSeenIt) {
-		HIC hic;
-
-		if (hic = ICOpen('CDIV', '3VID', ICMODE_QUERY)) {
-			ICClose(hic);
-
-			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc);
+		if (DetectDriver("divxc32.dll") || DetectDriver("divxc32f.dll")) {
+			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc, (LPARAM)g_szDivXWarning);
 
 			SetConfigDword(NULL, "SeenDivXWarning", 1);
+		}
+	}
+	if (!QueryConfigDword(NULL, "SeenAngelPotionWarning", &dwSeenIt) || !dwSeenIt) {
+		if (DetectDriver("APmpg4v1.dll")) {
+
+			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc, (LPARAM)g_szAPWarning);
+
+			SetConfigDword(NULL, "SeenAngelPotionWarning", 1);
 		}
 	}
 }

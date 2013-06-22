@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 #include "ddrawsup.h"
 #include "script.h"
 #include "tls.h"
+#include "crash.h"
 
 #include "ClippingControl.h"
 #include "PositionControl.h"
@@ -107,9 +108,11 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	// initialize TLS for main thread
 
-	InitThreadData();
+	InitThreadData("Main thread");
 
 	// prep system stuff
+
+	VDCHECKPOINT;
 
 	AVIFileInit();
 
@@ -128,6 +131,8 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	// initialize interface
 
+	VDCHECKPOINT;
+
     if (!InitApplication(hInstance))
             return (FALSE);              
 
@@ -144,6 +149,7 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	// Autoload filters.
 
+	VDCHECKPOINT;
 	{
 		int f, s;
 
@@ -176,6 +182,22 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 			MyICError("External compressor", compInstalled).post(NULL, g_szError);
 		else
 			MessageBox(NULL, "External compressor loaded.", "Cool!", MB_OK);
+	} else if (*lpCmdLine == ':') {
+		if (lpCmdLine[1] && lpCmdLine[2] && lpCmdLine[3] && lpCmdLine[4]) {
+			DWORD fccHandler = *(DWORD *)(lpCmdLine+1);
+			HMODULE hmodVC = LoadLibrary(lpCmdLine+5);
+
+			if (hmodVC) {
+				DWORD pEntry = (DWORD)GetProcAddress(hmodVC, "DriverProc");
+
+				if (pEntry) {
+					BOOL b = ICInstall(ICTYPE_VIDEO, fccHandler, (LPARAM)pEntry, 0, ICINSTALL_FUNCTION);
+
+					if (b)
+						MessageBox(NULL, "External compressor loaded as function.", "Cool!", MB_OK);
+				}
+			}
+		}
 	} else if (*lpCmdLine == '!') {
 		try {
 			FilterLoadModule(lpCmdLine+1);
@@ -189,6 +211,8 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	// All done!
 
+	VDCHECKPOINT;
+
 	return true;
 }
 
@@ -197,21 +221,33 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 void Deinit() {
 	FilterInstance *fa;
 
+	VDCHECKPOINT;
+
 	DragAcceptFiles(g_hWnd, FALSE);
 
 	filters.DeinitFilters();
+
+	VDCHECKPOINT;
 
 	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
 		fa->Destroy();
 	}
 
+	VDCHECKPOINT;
+
 	FilterUnloadAllModules();
+
+	VDCHECKPOINT;
 
 	CloseAVI();
 	CloseWAV();
 
+	VDCHECKPOINT;
+
 	CloseJobWindow();
 	DeinitJobSystem();
+
+	VDCHECKPOINT;
 
 	if (g_Vcompression.dwFlags & ICMF_COMPVARS_VALID)
 		FreeCompressor(&g_Vcompression);
@@ -222,6 +258,7 @@ void Deinit() {
 
 	// deinitialize DirectDraw2
 
+	VDCHECKPOINT;
 	DDrawDeinitialize();
 
 	AVIFileExit();
@@ -231,6 +268,8 @@ void Deinit() {
 	_CrtCheckMemory();
 
 	_CrtDumpMemoryLeaks();
+
+	VDCHECKPOINT;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -399,7 +438,7 @@ void ParseCommandLine(char *lpCmdLine) {
 				case 'c':
 					JobClearList();
 					break;
-					case 'r':
+				case 'r':
 					JobRunList();
 					break;
 				case 'x':
@@ -458,6 +497,12 @@ void ParseCommandLine(char *lpCmdLine) {
 				case 'w':
 					g_fWine = true;
 					break;
+
+            case 'f':
+               if (!stricmp(token+2, "sck"))
+                  __asm int 3;
+               break;
+
 				}
 			} else
 				strcpy(g_szFile, token);

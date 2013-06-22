@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -164,7 +164,11 @@ static BOOL APIENTRY PreferencesSceneDlgProc( HWND hDlg, UINT message, UINT wPar
 
 			hwndItem = GetDlgItem(hDlg, IDC_INTERFRAME_SLIDER);
 			SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0,255));
-			SendMessage(hwndItem, TBM_SETPOS, TRUE, 256 - ((pdd->prefs.scene.iCutThreshold+8)>>4));
+			SendMessage(hwndItem, TBM_SETPOS, TRUE,
+					pdd->prefs.scene.iCutThreshold
+						? 256 - ((pdd->prefs.scene.iCutThreshold+8)>>4)
+						: 0
+					);
 			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hwndItem);
 
 			hwndItem = GetDlgItem(hDlg, IDC_INTRAFRAME_SLIDER);
@@ -194,8 +198,12 @@ static BOOL APIENTRY PreferencesSceneDlgProc( HWND hDlg, UINT message, UINT wPar
 			break;
 
 		case WM_DESTROY:
-			pdd->prefs.scene.iCutThreshold = (256-SendDlgItemMessage(hDlg, IDC_INTERFRAME_SLIDER, TBM_GETPOS, 0, 0))<<4;
-			pdd->prefs.scene.iFadeThreshold = SendDlgItemMessage(hDlg, IDC_INTRAFRAME_SLIDER, TBM_GETPOS, 0, 0);
+			{
+				int x = SendDlgItemMessage(hDlg, IDC_INTERFRAME_SLIDER, TBM_GETPOS, 0, 0);
+
+				pdd->prefs.scene.iCutThreshold = x?(256-x)<<4:0;
+				pdd->prefs.scene.iFadeThreshold = SendDlgItemMessage(hDlg, IDC_INTRAFRAME_SLIDER, TBM_GETPOS, 0, 0);
+			}
 			return TRUE;
 	}
 

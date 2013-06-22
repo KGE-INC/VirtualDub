@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 	.586
 	.mmx
 	.model	flat
-
 
 	.const
 
@@ -61,12 +60,39 @@ predict_Y_halfpelX_table	dq	 0,64
 
 	.code
 
-	public	video_copy_prediction_Y@MMX
+src	equ	[esp+4+16]
+dst	equ	[esp+8+16]
+vx	equ	[esp+12+16]
+vy	equ	[esp+16+16]
+pitch	equ	[esp+20+16]
 
-	align 16
+	public	_video_copy_prediction_Y_MMX
 
-video_copy_prediction_Y@MMX:
+	align	16
+_video_copy_prediction_Y_MMX:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,pitch
+	mov	ecx,src
+	mov	eax,vx
+	mov	ebx,vy
+
+	mov	edi,eax			;edi = vx
+	mov	ebp,ebx			;ebp = vy
+	sar	edi,1			;edi = x
+	and	eax,1			;eax = x half-pel
+	sar	ebp,1			;ebp = y
+	add	ecx,edi			;ecx = src + x
+	imul	ebp,esi			;ebp = y*pitch
+	add	ecx,ebp			;ecx = src + x + y*pitch
+	and	ebx,1			;ebx = y half-pel
+	shl	eax,2
+	mov	edx,dst
 	call	dword ptr [predictorsMMX_Y+eax+ebx*8]
+
 	pop	ebx
 	pop	esi
 	pop	edi
@@ -453,10 +479,33 @@ predict_Y_normal_MMX@loop_aligned:
 ;*
 ;**************************************************************************
 
-	public	video_add_prediction_Y@MMX
+	public	_video_add_prediction_Y_MMX
+
 	align	16
-video_add_prediction_Y@MMX:
+_video_add_prediction_Y_MMX:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,pitch
+	mov	ecx,src
+	mov	eax,vx
+	mov	ebx,vy
+
+	mov	edi,eax			;edi = vx
+	mov	ebp,ebx			;ebp = vy
+	sar	edi,1			;edi = x
+	and	eax,1			;eax = x half-pel
+	sar	ebp,1			;ebp = y
+	add	ecx,edi			;ecx = src + x
+	imul	ebp,esi			;ebp = y*pitch
+	add	ecx,ebp			;ecx = src + x + y*pitch
+	and	ebx,1			;ebx = y half-pel
+	shl	eax,2
+	mov	edx,dst
 	call	dword ptr [addersMMX_Y+eax+ebx*8]
+
 	pop	ebx
 	pop	esi
 	pop	edi
@@ -877,10 +926,33 @@ add_Y_normal_MMX@loop_aligned:
 
 ;**************************************************************************
 
-	public	video_copy_prediction_C@MMX
+	public	_video_copy_prediction_C_MMX
 
-video_copy_prediction_C@MMX:
+	align	16
+_video_copy_prediction_C_MMX:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,pitch
+	mov	ecx,src
+	mov	eax,vx
+	mov	ebx,vy
+
+	mov	edi,eax			;edi = vx
+	mov	ebp,ebx			;ebp = vy
+	sar	edi,1			;edi = x
+	and	eax,1			;eax = x half-pel
+	sar	ebp,1			;ebp = y
+	add	ecx,edi			;ecx = src + x
+	imul	ebp,esi			;ebp = y*pitch
+	add	ecx,ebp			;ecx = src + x + y*pitch
+	and	ebx,1			;ebx = y half-pel
+	shl	eax,2
+	mov	edx,dst
 	call	dword ptr [predictorsMMX_C+eax+ebx*8]
+
 	pop	ebx
 	pop	esi
 	pop	edi
@@ -1113,10 +1185,33 @@ predict_C_normal_MMX:
 ;*
 ;**************************************************************************
 
-	public	video_add_prediction_C@MMX
-	align 16
-video_add_prediction_C@MMX:
+	public	_video_add_prediction_C_MMX
+
+	align	16
+_video_add_prediction_C_MMX:
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
+
+	mov	esi,pitch
+	mov	ecx,src
+	mov	eax,vx
+	mov	ebx,vy
+
+	mov	edi,eax			;edi = vx
+	mov	ebp,ebx			;ebp = vy
+	sar	edi,1			;edi = x
+	and	eax,1			;eax = x half-pel
+	sar	ebp,1			;ebp = y
+	add	ecx,edi			;ecx = src + x
+	imul	ebp,esi			;ebp = y*pitch
+	add	ecx,ebp			;ecx = src + x + y*pitch
+	and	ebx,1			;ebx = y half-pel
+	shl	eax,2
+	mov	edx,dst
 	call	dword ptr [addersMMX_C+eax+ebx*8]
+
 	pop	ebx
 	pop	esi
 	pop	edi

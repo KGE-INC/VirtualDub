@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 
 #include "VirtualDub.h"
 
+#include <stdio.h>
 #include <stdarg.h>
 #include <malloc.h>
 #include <crtdbg.h>
@@ -45,6 +46,7 @@ extern VideoSource *inputVideoAVI;
 extern FrameSubset *inputSubset;
 
 extern HINSTANCE	g_hInst;
+extern "C" unsigned long version_num;
 
 extern char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos);
 
@@ -84,8 +86,31 @@ static long FilterGetCPUFlags() {
 	return CPUGetEnabledExtensions();
 }
 
+static long FilterGetHostVersionInfo(char *buf, int len) {
+	char tbuf[256];
+
+	LoadString(g_hInst, IDS_TITLE_INITIAL, tbuf, sizeof tbuf);
+	_snprintf(buf, len, tbuf, version_num,
+#ifdef _DEBUG
+		"debug"
+#else
+		"release"
+#endif
+		);
+
+	return version_num;
+}
+
 FilterFunctions g_filterFuncs={
-	FilterAdd, FilterRemove, isFPUEnabled, isMMXEnabled, InitVTables, FilterThrowExceptMemory, FilterThrowExcept, FilterGetCPUFlags
+	FilterAdd,
+	FilterRemove,
+	isFPUEnabled,
+	isMMXEnabled,
+	InitVTables,
+	FilterThrowExceptMemory,
+	FilterThrowExcept,
+	FilterGetCPUFlags,
+	FilterGetHostVersionInfo,
 };
 
 /////////////////////////////////////
@@ -396,9 +421,10 @@ LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *titl
 
 ///////////////////////////////////////////////////////////////////////
 
-#define IDC_POSITION (500)
+#define IDC_POSITION		(500)
 
 BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG lParam) {
+	static HWND hwndTT;
 	FilterPreview *fpd = (FilterPreview *)GetWindowLong(hdlg, DWL_USER);
 	HDC hdc;
 	HWND hwndItem;
@@ -426,11 +452,35 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 				if (!inputVideoAVI->setDecompressedFormat(16))
 					inputVideoAVI->setDecompressedFormat(8);
 
+		hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
+				CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+				hdlg, NULL, g_hInst, NULL);
+
+		SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+
+		{
+			TOOLINFO ti;
+
+			ti.cbSize		= sizeof(TOOLINFO);
+			ti.uFlags		= TTF_SUBCLASS;
+			ti.hwnd			= hdlg;
+			ti.uId			= 0;
+			ti.rect.left	= 0;
+			ti.rect.top		= 0;
+			ti.rect.right	= 0;
+			ti.rect.left	= 0;
+			ti.hinst		= g_hInst;
+			ti.lpszText		= LPSTR_TEXTCALLBACK;
+
+			SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+		}
+
 	case WM_USER+1:		// handle new size
 		{
 			RECT r;
 			long w, h;
 			bool fResize;
+			TOOLINFO ti;
 
 			try {
 				BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
@@ -491,6 +541,17 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 
 				InvalidateRect(hdlg, NULL, TRUE);
 
+				ti.cbSize		= sizeof(TOOLINFO);
+				ti.uFlags		= 0;
+				ti.hwnd			= hdlg;
+				ti.uId			= 0;
+				ti.rect.left	= 4;
+				ti.rect.top		= 4;
+				ti.rect.right	= 4 + w;
+				ti.rect.bottom	= 4 + h;
+
+				SendMessage(hwndTT, TTM_NEWTOOLRECT, 0, (LPARAM)&ti);
+
 			}
 
 			goto draw_new_frame;
@@ -546,7 +607,23 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 		return TRUE;
 
 	case WM_NOTIFY:
-		if (((NMHDR *)lParam)->idFrom == IDC_POSITION) {
+		if (((NMHDR *)lParam)->hwndFrom == hwndTT) {
+			TOOLTIPTEXT *pttt = (TOOLTIPTEXT *)lParam;
+			POINT pt;
+
+			if (pttt->hdr.code == TTN_NEEDTEXT) {
+				VBitmap *vbm = fpd->filtsys.LastBitmap();
+
+				GetCursorPos(&pt);
+				ScreenToClient(hdlg, &pt);
+
+				if (fpd->filtsys.isRunning() && pt.x>=4 && pt.y>=4 && pt.x < vbm->w+4 && pt.y < vbm->h+4) {
+					pttt->lpszText = pttt->szText;
+					wsprintf(pttt->szText, "pixel(%d,%d) = #%06lx", pt.x-4, pt.y-4, 0xffffff&*vbm->Address32(pt.x-4,pt.y-4));
+				} else
+					pttt->lpszText = "Preview image";
+			}
+		} else if (((NMHDR *)lParam)->idFrom == IDC_POSITION) {
 			goto draw_new_frame;
 		}
 		return TRUE;

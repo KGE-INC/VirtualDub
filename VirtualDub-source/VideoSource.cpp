@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include "AVIStripeSystem.h"
 #include "ProgressDialog.h"
 #include "MJPEGDecoder.h"
+#include "crash.h"
 
 #include "error.h"
 #include "misc.h"
@@ -254,6 +255,14 @@ int VideoSource::streamGetRequiredCount(long *pSize) {
 void VideoSource::invalidateFrameBuffer() {
 }
 
+bool VideoSource::isKeyframeOnly() {
+   return false;
+}
+
+bool VideoSource::isType1() {
+   return false;
+}
+
 ///////////////////////////
 
 VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys, IAVIReadHandler **stripe_files, bool use_internal, int mjpeg_mode, FOURCC fccForceVideo, FOURCC fccForceVideoHandler) {
@@ -334,14 +343,20 @@ void VideoSourceAVI::_construct() {
 
 	// Look for a standard vids stream
 
+	bIsType1 = false;
 	pAVIStream = pAVIFile->GetStream(streamtypeVIDEO, 0);
 	if (!pAVIStream) {
-		pAVIStream = pAVIFile->GetStream('dsvd', 0);
-		if (pAVIStream) {
+		pAVIStream = pAVIFile->GetStream('svai', 0);
+/*		if (pAVIStream) {
 			delete pAVIStream;
+			pAVIStream = NULL;
 			throw MyError("Type-1 DV files are not currently supported by VirtualDub.");
-		}
-		throw MyError("No video stream found.");
+		}*/
+
+		if (!pAVIStream)
+			throw MyError("No video stream found.");
+
+		bIsType1 = true;
 	}
 
 	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
@@ -410,16 +425,40 @@ void VideoSourceAVI::_construct() {
 	}
 
 	// Read video format.  If we're striping, the index stripe has a fake
-	// format, so we have to grab the format from a video stripe.
+	// format, so we have to grab the format from a video stripe.  If it's a
+	// type-1 DV, we're going to have to fake it.
 
-	format_stream->FormatSize(0, &format_len);
+	if (bIsType1) {
+		format_len = sizeof(BITMAPINFOHEADER);
 
-	if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
+		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
+
+		bmih->biSize			= sizeof(BITMAPINFOHEADER);
+		bmih->biWidth			= 720;
+
+		if (streamInfo.dwRate > streamInfo.dwScale*26i64)
+			bmih->biHeight			= 480;
+		else
+			bmih->biHeight			= 576;
+
+		bmih->biPlanes			= 1;
+		bmih->biBitCount		= 24;
+		bmih->biCompression		= 'dsvd';
+		bmih->biSizeImage		= streamInfo.dwSuggestedBufferSize;
+		bmih->biXPelsPerMeter	= 0;
+		bmih->biYPelsPerMeter	= 0;
+		bmih->biClrUsed			= 0;
+		bmih->biClrImportant	= 0;
+	} else {
+		format_stream->FormatSize(0, &format_len);
+
+		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
+
+		if (format_stream->ReadFormat(0, getFormat(), &format_len))
+			throw MyError("Error obtaining video stream format.");
+	}
 	if (!(bmihTemp = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
 	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
-
-	if (format_stream->ReadFormat(0, getFormat(), &format_len))
-		throw MyError("Error obtaining video stream format.");
 
 	// We can handle RGB8/16/24/32 and YUY2.
 
@@ -493,6 +532,7 @@ void VideoSourceAVI::_construct() {
 		// If it's a hacked MPEG-4 driver, try all of the known hacks. #*$&@#(&$)(#$
 		// They're all the same driver, so they're mutually compatible.
 
+		VDCHECKPOINT;
 		switch(bmih->biCompression) {
 		case '34PM':		// Microsoft MPEG-4 V3
 		case '3VID':		// "DivX Low-Motion" (4.10.0.3917)
@@ -510,10 +550,15 @@ void VideoSourceAVI::_construct() {
 			if (AttemptCodecNegotiation(bmih, is_mjpeg)) return;
 			break;
 		}
+		VDCHECKPOINT;
 
 		const char *s = LookupVideoCodec(fccOriginalCodec);
 
-		throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)"
+		throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)\n"
+						"\n"
+						"VirtualDub requires a Video for Windows (VFW) compatible codec to decompress "
+						"video. DirectShow codecs, such as those used by Windows Media Player, are not "
+						"suitable."
 					,(fccOriginalCodec    ) & 0xff
 					,(fccOriginalCodec>> 8) & 0xff
 					,(fccOriginalCodec>>16) & 0xff
@@ -534,7 +579,7 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 		if (streamInfo.fccHandler)
 			hicDecomp = ICOpen(ICTYPE_VIDEO, streamInfo.fccHandler, ICMODE_DECOMPRESS);
 
-		if (!hicDecomp || ICERR_OK!=ICDecompressQuery(hicDecomp, getImageFormat(), NULL)) {
+		if (!hicDecomp || ICERR_OK!=ICDecompressQuery(hicDecomp, bmih, NULL)) {
 			if (hicDecomp)
 				ICClose(hicDecomp);
 
@@ -542,13 +587,30 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 
 			hicDecomp = ICOpen(ICTYPE_VIDEO, bmih->biCompression, ICMODE_DECOMPRESS);
 
-			if (!hicDecomp || ICERR_OK!=ICDecompressQuery(hicDecomp, getImageFormat(), NULL)) {
+			if (!hicDecomp || ICERR_OK!=ICDecompressQuery(hicDecomp, bmih, NULL)) {
 				if (hicDecomp)
 					ICClose(hicDecomp);
 
-				// This never seems to work...
+				// AngelPotion f*cks us over here and overwrites our format if we keep this in.
+				// So let's write protect the format.  You'll see a nice C0000005 error when
+				// the AP DLL tries to modify it.
 
-				hicDecomp = ICLocate(ICTYPE_VIDEO, NULL, getImageFormat(), NULL, ICMODE_DECOMPRESS);
+//				hicDecomp = ICLocate(ICTYPE_VIDEO, NULL, getImageFormat(), NULL, ICMODE_DECOMPRESS);
+
+				int siz = getFormatLen();
+
+				BITMAPINFOHEADER *pbih_protected = (BITMAPINFOHEADER *)VirtualAlloc(NULL, siz, MEM_COMMIT, PAGE_READWRITE);
+
+				if (pbih_protected) {
+					DWORD dwOldProtect;
+
+					memcpy(pbih_protected, bmih, siz);
+					VirtualProtect(pbih_protected, siz, PAGE_READONLY, &dwOldProtect);
+
+					hicDecomp = ICLocate(ICTYPE_VIDEO, NULL, pbih_protected, NULL, ICMODE_DECOMPRESS);
+
+					VirtualFree(pbih_protected, 0, MEM_RELEASE);
+				}
 			}
 		}
 	}
@@ -585,6 +647,10 @@ void VideoSourceAVI::Reinit() {
 
 	nOldFrames = lSampleLast - lSampleFirst;
 	nNewFrames = pAVIStream->End() - pAVIStream->Start();
+
+	if (mjpeg_splits) {
+		nOldFrames >>= 1;
+	}
 
 	if (nOldFrames != nNewFrames && (mjpeg_mode==IFMODE_SPLIT1 || mjpeg_mode==IFMODE_SPLIT2)) {
 		// We have to resize the mjpeg_splits array.
@@ -1187,6 +1253,14 @@ bool VideoSourceAVI::isStreaming() {
 	return pAVIStream->isStreaming();
 }
 
+bool VideoSourceAVI::isKeyframeOnly() {
+   return pAVIStream->isKeyframeOnly();
+}
+
+bool VideoSourceAVI::isType1() {
+   return bIsType1;
+}
+
 void VideoSourceAVI::streamBegin(bool fRealTime) {
 	DWORD err;
 
@@ -1243,41 +1317,47 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 		GdiFlush();
 
 	} else if (hicDecomp) {
-		BITMAPINFOHEADER *bih_src = bmihTemp;
-		BITMAPINFOHEADER *bih_dst = getDecompressedFormat();
+		// Asus ASV1 crashes with zero byte frames!!!
 
-		bmihTemp->biSizeImage = data_len;
+		if (data_len) {
+			BITMAPINFOHEADER *bih_src = bmihTemp;
+			BITMAPINFOHEADER *bih_dst = getDecompressedFormat();
 
-		if (use_ICDecompressEx)
-			err = 	ICDecompressEx(
-						hicDecomp,
-//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
-//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
-						  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
-						bih_src,
-						inputBuffer,
-						0,0,
-						bih_src->biWidth, bih_src->biHeight,
-						bih_dst,
-						lpvBuffer,
-						0,0,
-						bih_dst->biWidth, bih_dst->biHeight
-						);
+			bmihTemp->biSizeImage = data_len;
 
-		else
-			err = 	ICDecompress(
-						hicDecomp,
-//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
-//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
-						  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
-						bih_src,
-						inputBuffer,
-						bih_dst,
-						lpvBuffer
-						);
+			VDCHECKPOINT;
+			if (use_ICDecompressEx)
+				err = 	ICDecompressEx(
+							hicDecomp,
+	//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
+	//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
+							  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
+							bih_src,
+							inputBuffer,
+							0,0,
+							bih_src->biWidth, bih_src->biHeight,
+							bih_dst,
+							lpvBuffer,
+							0,0,
+							bih_dst->biWidth, bih_dst->biHeight
+							);
 
-		if (ICERR_OK != err)
-			throw MyICError(use_ICDecompressEx ? "VideoSourceAVI [ICDecompressEx]" : "VideoSourceAVI [ICDecompress]", err);
+			else
+				err = 	ICDecompress(
+							hicDecomp,
+	//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
+	//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
+							  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
+							bih_src,
+							inputBuffer,
+							bih_dst,
+							lpvBuffer
+							);
+			VDCHECKPOINT;
+
+			if (ICERR_OK != err)
+				throw MyICError(use_ICDecompressEx ? "VideoSourceAVI [ICDecompressEx]" : "VideoSourceAVI [ICDecompress]", err);
+		}
 
 	} else if (mdec) {
 
@@ -1290,7 +1370,12 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 			throw MyError(s);
 		}
 
-	} else DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+   } else {
+      if (data_len < getImageFormat()->biSizeImage)
+         throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, data_len);
+
+      DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+   }
 //		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
 
 	return getFrameBuffer();
@@ -1394,6 +1479,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 				bmihTemp->biSizeImage = lBytesRead;
 
 				if (lBytesRead) {
+					VDCHECKPOINT;
 					if (ICERR_OK != (err = 	ICDecompress(
 									hicDecomp,
 //									  (lFrameNum<lFrameDesired ? ICDECOMPRESS_PREROLL : 0) |
@@ -1405,6 +1491,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 									lpvBuffer)))
 
 						throw MyICError("VideoSourceAVI", err);
+					VDCHECKPOINT;
 				}
 			} else if (mdec) {
 				try {
@@ -1415,7 +1502,12 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 				} catch(char *s) {
 					throw MyError(s);
 				}
-			} else DIBconvert(dataBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+         } else {
+            if (lBytesRead < getImageFormat()->biSizeImage)
+               throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, lBytesRead);
+
+            DIBconvert(dataBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+         }
 //			} else memcpy(getFrameBuffer(), dataBuffer, getDecompressedFormat()->biSizeImage);
 
 		} while(++lFrameNum <= lFrameDesired);

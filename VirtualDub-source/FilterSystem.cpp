@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include "Error.h"
 #include "VBitmap.h"
+#include "crash.h"
 
 #include "filters.h"
 
@@ -88,6 +89,7 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 //	fSharedWindow = false;		CAN'T - NEED FOR OUTPUT DISPLAY
 	fSharedWindow = true;
 	lAdditionalBytes = 0;
+	nFrameLag = 0;
 
 	while(fa->next) {
 		fa->src			= *bmLast;
@@ -118,13 +120,18 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 		fa->srcbuf		= last_bufferid;
 
 		if (fa->filter->paramProc) {
+			VDCHECKPOINT;
 			flags = fa->filter->paramProc(fa, &g_filterFuncs);
+			VDCHECKPOINT;
 
 			if (flags & FILTERPARAM_NEEDS_LAST) {
 				lAdditionalBytes += fa->realLast.size;
 			}
 		} else
 			flags = FILTERPARAM_SWAP_BUFFERS;
+
+		nFrameLag += (flags>>16);
+		flags &= 0x0000ffff;
 
 		flags_accum |= flags;
 
@@ -385,6 +392,8 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 		while(fa->next) {
 			fa->pfsi = pfsi;
 
+			VDCHECKPOINT;
+
 			if (fa->filter->startProc)
 				try {
 					if (rcode = fa->filter->startProc(fa, &g_filterFuncs))
@@ -395,6 +404,8 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 
 			fa = (FilterInstance *)fa->next;
 		}
+
+		VDCHECKPOINT;
 	} catch(MyError) {
 		DeinitFilters();
 		throw;
@@ -452,6 +463,8 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 			IntersectClipRect(fa->dst.hdc, 0, 0, fa->dst.w, fa->dst.h);
 		}
 
+		VDCHECKPOINT;
+
 		try {
 			if (rcode = fa->filter->runProc(fa, &g_filterFuncs))
 				break;
@@ -459,6 +472,7 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 			dwFlags |= FILTERS_ERROR;
 			throw MyError("Error running filter '%s': %s", fa->filter->name, e.gets());
 		}
+		VDCHECKPOINT;
 
 		if (fa->flags & FILTERPARAM_NEEDS_LAST)
 			fa->realLast.BitBlt(0, 0, &fa->realSrc, 0, 0, -1, -1);
@@ -481,11 +495,13 @@ void FilterSystem::DeinitFilters() {
 	// send all filters a 'stop'
 
 	while(fa->next) {
+		VDCHECKPOINT;
 		if (fa->filter->endProc)
 			fa->filter->endProc(fa, &g_filterFuncs);
 
 		fa = (FilterInstance *)fa->next;
 	}
+	VDCHECKPOINT;
 
 	dwFlags &= ~FILTERS_INITIALIZED;
 
@@ -507,6 +523,10 @@ VFBitmap *FilterSystem::LastBitmap() {
 
 bool FilterSystem::isRunning() {
 	return !!(dwFlags & FILTERS_INITIALIZED);
+}
+
+int FilterSystem::getFrameLag() {
+	return nFrameLag;
 }
 
 void FilterSystem::getOutputMappingParams(HANDLE& hr, LONG& lr) {

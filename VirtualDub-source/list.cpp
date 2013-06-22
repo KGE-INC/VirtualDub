@@ -1,5 +1,5 @@
-//	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	VirtualDub 2.x (Nina) - Video processing and capture application
+//	Copyright (C) 1998-2001 Avery Lee, All Rights Reserved.
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -55,4 +55,16 @@ ListNode *List::RemoveTail() {
 	}
 
 	return 0;
+}
+
+void List::Take(List &from) {
+	if (from.IsEmpty())
+		return;
+
+	head.prev = from.head.prev;
+	tail.next = from.tail.next;
+	head.prev->next = &head;
+	tail.next->prev = &tail;
+
+	from.Init();
 }

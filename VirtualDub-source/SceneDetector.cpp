@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -67,7 +67,7 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 	double lum_sq_total = 0.0;
 	long len = tile_w * tile_h;
 
-	if (vbm->w > tile_w*8 || vbm->h > tile_h*8)
+	if (vbm->w > tile_w*8 || vbm->h > tile_h*8 || !cut_threshold || !fade_threshold)
 		return FALSE;
 
 	FlipBuffers();
@@ -101,24 +101,26 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 
 //	_RPT3(0,"Last frame diffs=%ld, lum(linear)=%ld, lum(rms)=%f\n",last_frame_diffs,lum_total,sqrt(lum_sq_total));
 
-	is_fade = fabs(sqrt(lum_sq_total) - (double)lum_total) < fade_threshold;
+	if (fade_threshold) {
+		is_fade = fabs(sqrt(lum_sq_total) - (double)lum_total) < fade_threshold;
 
-	if (first_diff) {
-		last_fade_state = is_fade;
-	} else {
-		// If we've encountered a new fade, return 'scene changed'
+		if (first_diff) {
+			last_fade_state = is_fade;
+		} else {
+			// If we've encountered a new fade, return 'scene changed'
 
-		if (!last_fade_state && is_fade) return TRUE;
+			if (!last_fade_state && is_fade) return TRUE;
 
-		// Hit the end of an initial fade?
+			// Hit the end of an initial fade?
 
-		if (last_fade_state && !is_fade)
-			last_fade_state = FALSE;
+			if (last_fade_state && !is_fade)
+				last_fade_state = FALSE;
+		}
 	}
 
 	// Cut/dissolve detection
 
-	return last_frame_diffs > cut_threshold;
+	return cut_threshold ? last_frame_diffs > cut_threshold : FALSE;
 }
 
 void SceneDetector::Reset() {

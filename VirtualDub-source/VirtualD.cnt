@@ -29,28 +29,6 @@
 2 Video filters
 3 Processing video the powerful way=filt_intro
 3 The Filter dialog box=filt_dialog
-3 Filter reference
-4 2:1 reduce (normal and high quality)=filter_2_1_reduce
-4 3x3 Average=filter_3_3_average
-4 Brightness/contrast=filter_brightness_contrast
-4 Deinterlace=filter_deinterlace
-4 Emboss=filter_emboss
-4 Fill=filter_fill
-4 Flip horizontally=filter_flip_horizontally
-4 Flip vertically=filter_flip_vertically
-4 General convolution=filter_general_convolution
-4 Grayscale=filter_grayscale
-4 Invert=filter_invert
-4 Levels=filter_levels
-4 Null transform=filter_null_transform
-4 Resize=filter_resize
-4 Rotate=filter_rotate
-4 Rotate2=filter_rotate2
-4 Sharpen=filter_sharpen
-4 Smoother=filter_smoother
-4 Temporal softener=filter_temporal_softener
-4 Threshold=filter_threshold
-4 TV=filter_tv
 1 Video capture
 2 The video capture window=vidcap_mainwindow
 2 AVICap vs. Internal capture=vidcap_avicapvinternal
@@ -106,3 +84,29 @@
 2 Video files play in ActiveMovie applications only=misctbl_video_files_activemovie_only
 1 Reference
 2 Glossary=gloss
+2 Filter reference
+3 2:1 reduce (normal and high quality)=filter_2_1_reduce
+3 3x3 Average=filter_3_3_average
+3 Blur=filter_blur
+3 Blur more=filter_blur_more
+3 Box blur=filter_box_blur
+3 Brightness/contrast=filter_brightness_contrast
+3 Deinterlace=filter_deinterlace
+3 Emboss=filter_emboss
+3 Fill=filter_fill
+3 Flip horizontally=filter_flip_horizontally
+3 Flip vertically=filter_flip_vertically
+3 General convolution=filter_general_convolution
+3 Grayscale=filter_grayscale
+3 Invert=filter_invert
+3 Levels=filter_levels
+3 Motion blur=filter_motion_blur
+3 Null transform=filter_null_transform
+3 Resize=filter_resize
+3 Rotate=filter_rotate
+3 Rotate2=filter_rotate2
+3 Sharpen=filter_sharpen
+3 Smoother=filter_smoother
+3 Temporal smoother=filter_temporal_smoother
+3 Threshold=filter_threshold
+3 TV=filter_tv

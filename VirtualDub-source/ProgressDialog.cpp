@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -45,8 +45,7 @@ ProgressDialog::ProgressDialog(HWND hwndParent, const char *szTitle, const char 
 }
 
 ProgressDialog::~ProgressDialog() {
-	if (hwndDialog)
-		DestroyWindow(hwndDialog);
+	close();
 }
 
 void ProgressDialog::setValueFormat(const char *sz) {
@@ -78,6 +77,11 @@ void ProgressDialog::check() {
 
 	if (fAbort)
 		throw MyUserAbortError();
+}
+
+void ProgressDialog::close() {
+	if (hwndDialog)
+		DestroyWindow(hwndDialog);
 }
 
 BOOL CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {

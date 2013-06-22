@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 
 	.686
 	.mmx
+	.xmm
 	.model flat
 
 	.data
@@ -204,6 +205,15 @@ rowstart_tbl	dd	dorow_0
 		dd	dorow_0
 		ENDIF
 
+rowstart_tbl2	dd	dorow_7is
+		dd	dorow_6is
+		dd	dorow_5is
+		dd	dorow_4is
+		dd	dorow_3is
+		dd	dorow_2is
+		dd	dorow_1is
+		dd	dorow_0is
+
 ;pos_tab		db	7,7,5,5,3,3,1,1
 ;		db	6,5,5,3,3,1,1,0
 ;		db	5,5,3,3,1,1,0,0
@@ -304,6 +314,72 @@ DCT_8_INV_ROW_1 MACRO INP:REQ, OUT:REQ, TABLE:REQ
 		por		mm7, mm4		; 4	; y7 y6 y5 y4
 
 		movq		mptr [OUT+8], mm7	; 7	; save y7 y6 y5 y4
+ENDM
+
+
+DCT_8_INV_ROW_1_ISSE MACRO INP:REQ, OUT:REQ, TABLE:REQ
+
+		movq		mm0, mptr [INP+0]		; x5 x1 x4 x0
+
+		movq		mm3, mptr [TABLE]	; 3	; w06 w04 w02 w00
+		pshufw		mm5, mm0, 11101110b	; 5	; x5 x1 x5 x1
+
+		movq		mm4, mptr [TABLE+8]	; 4	; w07 w05 w03 w01
+		punpckldq	mm0, mm0			; x4 x0 x4 x0
+
+		movq		mm2, mptr [INP+8]	; 1	; x7 x3 x6 x2
+		pmaddwd		mm3, mm0			; x4*w06+x0*w04 x4*w02+x0*w00
+
+		movq		mm1, mptr [TABLE+32]	; 1	; w22 w20 w18 w16
+		pshufw		mm6, mm2, 11101110b	; 6	; x7 x3 x7 x3
+
+		pmaddwd		mm0, mptr [TABLE+16]		; x4*w14+x0*w12 x4*w10+x0*w08
+		punpckldq	mm2, mm2			; x6 x2 x6 x2
+
+		pmaddwd		mm4, mm2			; x6*w07+x2*w05 x6*w03+x2*w01
+
+		movq		mm7, mptr [TABLE+40]	; 7	; w23 w21 w19 w17
+		pmaddwd		mm1, mm5			; x5*w22+x1*w20 x5*w18+x1*w16
+
+		paddd		mm3, mptr round_inv_row		; +rounder
+		pmaddwd		mm7, mm6			; x7*w23+x3*w21 x7*w19+x3*w17
+
+		pmaddwd		mm2, mptr [TABLE+24]		; x6*w15+x2*w13 x6*w11+x2*w09
+		paddd		mm3, mm4		; 4	; a1=sum(even1) a0=sum(even0)
+
+		pmaddwd		mm5, mptr [TABLE+48]		; x5*w30+x1*w28 x5*w26+x1*w24
+		movq		mm4, mm3		; 4	; a1 a0
+
+		pmaddwd		mm6, mptr [TABLE+56]		; x7*w31+x3*w29 x7*w27+x3*w25
+		paddd		mm1, mm7		; 7	; b1=sum(odd1) b0=sum(odd0)
+
+		paddd		mm0, mptr round_inv_row		; +rounder
+		psubd		mm3, mm1			; a1-b1 a0-b0
+
+		psrad		mm3, SHIFT_INV_ROW		; y6=a1-b1 y7=a0-b0
+		paddd		mm1, mm4		; 4	; a1+b1 a0+b0
+
+		paddd		mm0, mm2		; 2	; a3=sum(even3) a2=sum(even2)
+		psrad		mm1, SHIFT_INV_ROW		; y1=a1+b1 y0=a0+b0
+
+		paddd		mm5, mm6		; 6	; b3=sum(odd3) b2=sum(odd2)
+		movq		mm4, mm0		; 4	; a3 a2
+
+		paddd		mm0, mm5			; a3+b3 a2+b2
+		psubd		mm4, mm5		; 5	; a3-b3 a2-b2
+
+		psrad		mm0, SHIFT_INV_ROW		; y3=a3+b3 y2=a2+b2
+
+		psrad		mm4, SHIFT_INV_ROW		; y4=a3-b3 y5=a2-b2
+
+		packssdw	mm1, mm0		; 0	; y3 y2 y1 y0
+
+		packssdw	mm4, mm3		; 3	; y6 y7 y4 y5
+
+		movq		mptr [OUT], mm1		; 1	; save y3 y2 y1 y0
+		pshufw		mm4, mm4, 10110001b		; y7 y6 y5 y4
+
+		movq		mptr [OUT+8], mm4	; 7	; save y7 y6 y5 y4
 ENDM
 
 
@@ -588,6 +664,7 @@ ENDM
 	.code
 
 	public _IDCT_mmx
+	public _IDCT_isse
 
 _IDCT_mmx:
 	IF PROFILE
@@ -610,6 +687,7 @@ dorow_3:	DCT_8_INV_ROW_1		eax+3*16, eax+3*16, tab_i_35
 dorow_2:	DCT_8_INV_ROW_1		eax+2*16, eax+2*16, tab_i_26
 dorow_1:	DCT_8_INV_ROW_1		eax+1*16, eax+1*16, tab_i_17
 dorow_0:	DCT_8_INV_ROW_1		eax+0*16, eax+0*16, tab_i_04
+
 
 	IF PROFILE
 	rdtsc
@@ -670,10 +748,120 @@ nodump:
 	mov	ecx,[esp+8]
 	jmp	dword ptr [jump_tab + edx*4]
 
+
+
+
+
+_IDCT_isse:
+	IF PROFILE
+	rdtsc
+	mov	dword ptr last_tick,eax
+	ENDIF
+
+	mov	ecx,[esp+20]
+	movzx	ecx,byte ptr [pos_tab+ecx]
+
+	mov	eax,[esp+4]
+	jmp	dword ptr [rowstart_tbl2+ecx*4]
+
+	align	16
+dorow_7is:	prefetcht0	tab_i_26
+		prefetcht0	tab_i_26+63
+		prefetcht0	[eax+6*16]
+		DCT_8_INV_ROW_1_ISSE	eax+7*16, eax+7*16, tab_i_17
+dorow_6is:	prefetcht0	tab_i_35
+		prefetcht0	tab_i_35+63
+		prefetcht0	[eax+5*16]
+		DCT_8_INV_ROW_1_ISSE	eax+6*16, eax+6*16, tab_i_26
+dorow_5is:	prefetcht0	tab_i_04
+		prefetcht0	tab_i_04+63
+		prefetcht0	[eax+4*16]
+		DCT_8_INV_ROW_1_ISSE	eax+5*16, eax+5*16, tab_i_35
+dorow_4is:	prefetcht0	tab_i_35
+		prefetcht0	tab_i_35+63
+		prefetcht0	[eax+3*16]
+		DCT_8_INV_ROW_1_ISSE	eax+4*16, eax+4*16, tab_i_04
+dorow_3is:	prefetcht0	tab_i_26
+		prefetcht0	tab_i_26+63
+		prefetcht0	[eax+2*16]
+		DCT_8_INV_ROW_1_ISSE	eax+3*16, eax+3*16, tab_i_35
+dorow_2is:	prefetcht0	tab_i_17
+		prefetcht0	tab_i_17+63
+		prefetcht0	[eax+1*16]
+		DCT_8_INV_ROW_1_ISSE	eax+2*16, eax+2*16, tab_i_26
+dorow_1is:	prefetcht0	tab_i_04
+		prefetcht0	tab_i_04+63
+		prefetcht0	[eax+0*16]
+		DCT_8_INV_ROW_1_ISSE	eax+1*16, eax+1*16, tab_i_17
+dorow_0is:	DCT_8_INV_ROW_1_ISSE	eax+0*16, eax+0*16, tab_i_04
+
+	IF PROFILE
+	rdtsc
+	sub	eax,dword ptr last_tick
+	mov	edx,dword ptr total_tick2
+	cmp	eax,edx
+	cmovl	edx,eax
+	mov	dword ptr total_tick2,edx
+	rdtsc
+	mov	dword ptr last_tick,eax
+	mov	eax,[esp+4]
+	ENDIF
+
+	mov	ecx,2
+lup2:
+	DCT_8_INV_COL_4		eax, eax
+	add	eax,8
+	dec	ecx
+	jne	lup2
+
+	IF PROFILE
+	rdtsc
+	sub	eax,dword ptr last_tick
+	mov	edx,dword ptr total_tick
+	cmp	eax,edx
+	cmovl	edx,eax
+	mov	dword ptr total_tick,edx
+
+	pushad
+	dec	dword ptr total_cnt
+	jnz	nodump2
+	mov	dword ptr total_cnt,65536*16
+
+	mov	dword ptr total_tick,07fffffffh
+
+	sub	esp,256
+	push	edx
+
+	mov	eax,dword ptr total_tick2
+	mov	dword ptr total_tick2,07fffffffh
+
+	push	eax
+
+	push	offset profile_str
+	lea	eax,[esp+20]
+	push	eax
+	call	_sprintf
+	lea	eax,[esp+24]
+	push	eax
+	call	_OutputDebugStringA@4
+	add	esp,256+16
+nodump2:
+	popad
+	ENDIF
+
+	mov	edx,[esp+16]
+	mov	eax,[esp+4]
+	mov	ecx,[esp+8]
+	jmp	dword ptr [jump_tab + edx*4]
+
+
+
+
 	align 16
 
 tail_intra:
 	mov		edx,-8*16
+	pxor		mm7,mm7
 intra_loop:
 	movq		mm0,[eax+edx+8*16]
 	movq		mm1,[eax+edx+8*16+8]

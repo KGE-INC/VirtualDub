@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -91,6 +91,9 @@ public:
 	virtual void *getFrame(LONG frameNum) = NULL;
 
 	virtual char getFrameTypeChar(long lFrameNum) = 0;
+
+	virtual bool isKeyframeOnly();
+	virtual bool isType1();
 };
 
 class VideoSourceAVI : public VideoSource {
@@ -112,6 +115,7 @@ private:
 	HBITMAP		hbmLame;
 	bool		fUseGDI;
 	bool		fAllKeyFrames;
+	bool		bIsType1;
 
 	IAVIReadStream *format_stream;
 
@@ -160,6 +164,8 @@ public:
 	bool isUsingInternalMJPEG() const { return !!mdec; }
 
 	char getFrameTypeChar(long lFrameNum);
+	bool isKeyframeOnly();
+	bool isType1();
 };
 
 #endif

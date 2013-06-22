@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -55,10 +55,10 @@ void MyError::setf(const char *f, ...) {
 }
 
 void MyError::vsetf(const char *f, va_list val) {
-	buf = new char[256];
+	buf = new char[1024];
 	if (buf) {
-		buf[255] = 0;
-		_vsnprintf(buf, 255, f, val);
+		buf[1023] = 0;
+		_vsnprintf(buf, 1023, f, val);
 	}
 }
 

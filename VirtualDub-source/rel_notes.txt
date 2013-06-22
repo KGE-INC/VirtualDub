@@ -4,5 +4,9 @@ See "readme.doc" for further information.
 * MJPEG field operations do not work with output from PICVideo
   when it doesn't write out interlaced fields.
 
+* Audio will not be loaded from type-1 DV files.
+
+* MPEG-2 (VOBs) are not supported.
+
 For more information, please visit the VirtualDub web page:
-http://www186.pair.com/vdub/
+http://www.virtualdub.org/

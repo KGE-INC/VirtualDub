@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -742,7 +742,8 @@ int VideoSourceMPEG::streamGetRequiredCount(long *pSize) {
 void *VideoSourceMPEG::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
 	int buffer;
 
-	if (data_len<=1) frame_num = translate_frame(renumber_frame(frame_num));
+	if (data_len<=1 && frame_num < lSampleLast)
+		frame_num = translate_frame(renumber_frame(frame_num));
 
 	_RPT2(0,"Attempting to fetch frame %d [%c].\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type]);
 

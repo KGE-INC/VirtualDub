@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@ struct VirtualDubTLSData {
 
 extern __declspec(thread) VirtualDubTLSData g_tlsdata;
 
-void InitThreadData();
+void InitThreadData(const char *pszName);
+void DeinitThreadData();
 
 #endif

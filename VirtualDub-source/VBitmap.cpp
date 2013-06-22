@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -19,11 +19,13 @@
 
 #include <crtdbg.h>
 #include <math.h>
+#include <new>
 
 #include "convert.h"
 #include "VBitmap.h"
 #include "Histogram.h"
 #include "cpuaccel.h"
+#include "resample.h"
 
 #define FP_EPSILON (1e-30)
 
@@ -39,7 +41,11 @@ extern "C" void __cdecl asm_resize_nearest(
 		unsigned long xfrac,
 		unsigned long yfrac,
 		long xistep,
-		PixOffset yistep);
+		PixOffset yistep,
+		Pixel32 *precopysrc,
+		unsigned long precopy,
+		Pixel32 *postcopysrc,
+		unsigned long postcopy);
 
 extern "C" void __cdecl asm_resize_bilinear(
 		void *dst,
@@ -54,9 +60,10 @@ extern "C" void __cdecl asm_resize_bilinear(
 		unsigned long yfrac,
 		long xistep,
 		PixOffset yistep,
-		long precopy,
-		long postcopy,
-		void *srclimit);
+		Pixel32 *precopysrc,
+		unsigned long precopy,
+		Pixel32 *postcopysrc,
+		unsigned long postcopy);
 
 extern "C" void __cdecl asm_bitmap_xlat1(Pixel32 *dst, Pixel32 *src,
 		PixOffset dpitch, PixOffset spitch,
@@ -330,22 +337,6 @@ bool VBitmap::BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord
 
 ///////////////////////////////////////////////////////////////////////////
 
-static __int64 sbnf_correct(double x, double y) {
-	__int64 v;
-
-	x = x * 4294967296.0;
-
-	if (x < 0.0)
-		v = (__int64)(x - 0.5);
-	else
-		v = (__int64)(x + 0.5);
-
-	if (y<0.0 && v) ++v;
-	if (y>0.0 && v) --v;
-
-	return v;
-}
-
 bool VBitmap::StretchBltNearestFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim dy,
 						const VBitmap *src, double x1, double y1, double dx1, double dy1) const throw() {
 
@@ -359,77 +350,75 @@ bool VBitmap::StretchBltNearestFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim 
 	if (depth != 32)
 		return false;
 
-	// Funny values?
-	
-	if (dx == 0 || dy == 0)
+	// Compute clipping parameters.
+
+	ResampleInfo horiz, vert;
+
+	if (!horiz.init(x2, dx, x1+0.5, dx1, w, src->w, 1, false, false))
 		return false;
 
-	// Check for destination flips.
-
-	if (dx < 0) {
-		x2 += dx;
-		dx = -dx;
-		x1 += dx1;
-		dx1 = -dx1;
-	}
-	if (dy < 0) {
-		y2 += dy;
-		dy = -dy;
-		y1 += dy1;
-		dy1 = -dy1;
-	}
-
-	// Check for destination clipping and abort if so.
-
-	if (x2 < 0 || y2 < 0 || x2+dx > w || y2+dy > h)
+	if (!vert.init(y2, dy, y1+0.5, dy1, h, src->h, 1, false, false))
 		return false;
-
-	// Check for source clipping.  Trickier, since we permit source flips.
-
-	if (x1 < 0.0 || y1 < 0.0 || x1+dx1 < 0.0 || y1+dy1 < 0.0)
-		return false;
-
-	if (x1 > src->w || y1 > src->h || x1+dx1 > src->w || y1+dy1 > src->h)
-		return false;
-
-	// Compute step values.
-
-	__int64 xfrac64, yfrac64, xaccum64, yaccum64;
-	unsigned long xfrac, yfrac;
-	int xistep;
-	PixOffset yistep;
-
-/*	xfrac64 = sbnf_correct(dx1, dx1) / dx;	// round toward zero to avoid exceeding buffer
-	yfrac64 = sbnf_correct(dy1, dy1) / dy;*/
-	xfrac64 = dx1*4294967296.0 / dx;	// round toward zero to avoid exceeding buffer
-	yfrac64 = dy1*4294967296.0 / dy;
-
-	xfrac = (unsigned long)xfrac64;
-	yfrac = (unsigned long)yfrac64;
-
-	xistep = (long)(xfrac64 >> 32);			// round toward -oo
-	yistep = (long)(yfrac64 >> 32) * src->pitch;
-
-	xaccum64 = sbnf_correct(x1, -dx1) + xfrac64/2;
-	yaccum64 = sbnf_correct(y1, -dy1) + yfrac64/2;
 
 	// Call texturing routine.
 
-	yaccum64 += (dy-1)*yfrac64;
+	if (vert.clip.precopy)
+		asm_resize_nearest(
+				Address32(horiz.x1_int + horiz.clip.precopy + horiz.clip.unclipped, vert.x1_int),			// destination pointer, right side
+				src->Address32(horiz.u0_int.hi, 0),
+				-horiz.clip.unclipped*4,	// -width*4
+				vert.clip.precopy,			// height
+				-pitch,						// dstpitch
+				0,							// srcpitch
+				horiz.u0_int.lo,			// xaccum
+				0,							// yaccum
+				horiz.dudx_int.lo,			// xfrac
+				0,							// yfrac
+				horiz.dudx_int.hi,			// xinc
+				0,							// yinc
+				src->Address32(0, 0),			// precopysrc
+				horiz.clip.precopy,				// precopy
+				src->Address32(src->w-1, 0),	// postcopysrc
+				horiz.clip.postcopy			// postcopy
+				);
 
 	asm_resize_nearest(
-			Address32i(x2, y2) + dx,			// destination pointer, right side
-			src->Address32i((long)(xaccum64>>32), (src->h-1) - (long)(yaccum64>>32)),
-			-dx*4,
-			dy,
-			pitch,
-			src->pitch,
-			(unsigned long)xaccum64,
-			~(unsigned long)yaccum64,
-			xfrac,
-			yfrac,
-			xistep,
-			yistep);
+			Address32(horiz.x1_int + horiz.clip.precopy + horiz.clip.unclipped, vert.x1_int + vert.clip.precopy),			// destination pointer, right side
+			src->Address32(horiz.u0_int.hi, vert.u0_int.hi),
+			-horiz.clip.unclipped*4,		// -width*4
+			vert.clip.unclipped,			// height
+			-pitch,							// dstpitch
+			-src->pitch,					// srcpitch
+			horiz.u0_int.lo,				// xaccum
+			vert.u0_int.lo,					// yaccum
+			horiz.dudx_int.lo,				// xfrac
+			vert.dudx_int.lo,				// yfrac
+			horiz.dudx_int.hi,				// xinc
+			-vert.dudx_int.hi * src->pitch,	// yinc
+			src->Address32(0, vert.u0_int.hi),
+			horiz.clip.precopy,				// precopy
+			src->Address32(src->w-1, vert.u0_int.hi),
+			horiz.clip.postcopy				// postcopy
+			);
+
+	if (vert.clip.postcopy)
+		asm_resize_nearest(
+				Address32(horiz.x1_int + horiz.clip.precopy + horiz.clip.unclipped, vert.x1_int + vert.clip.precopy + vert.clip.unclipped),			// destination pointer, right side
+				src->Address32(horiz.u0_int.hi, src->h - 1),
+				-horiz.clip.unclipped*4,	// -width*4
+				vert.clip.postcopy,			// height
+				-pitch,						// dstpitch
+				0,							// srcpitch
+				horiz.u0_int.lo,			// xaccum
+				0,							// yaccum
+				horiz.dudx_int.lo,			// xfrac
+				0,							// yfrac
+				horiz.dudx_int.hi,			// xinc
+				0,							// yinc
+				src->Address32(0, src->h - 1),
+				horiz.clip.precopy,			// precopy
+				src->Address32(src->w - 1, src->h - 1),
+				horiz.clip.postcopy);		// postcopy
 
 	return true;
 }
@@ -447,116 +436,80 @@ bool VBitmap::StretchBltBilinearFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim
 	if (depth != 32)
 		return false;
 
-	// Funny values?
-	
-	if (dx == 0 || dy == 0)
+	// Compute clipping parameters.
+
+	ResampleInfo horiz, vert;
+
+	if (!horiz.init(x2, dx, x1 + (1.0 / 32.0), dx1, w, src->w, 2, false, false))
 		return false;
 
-	// Check for destination flips.
-
-	if (dx < 0) {
-		x2 += dx;
-		dx = -dx;
-		x1 += dx1;
-		dx1 = -dx1;
-	}
-	if (dy < 0) {
-		y2 += dy;
-		dy = -dy;
-		y1 += dy1;
-		dy1 = -dy1;
-	}
-
-	// Check for destination clipping and abort if so.
-
-	if (x2 < 0 || y2 < 0 || x2+dx > w || y2+dy > h)
+	if (!vert.init(y2, dy, y1 + (1.0 / 32.0), dy1, h, src->h, 2, false, false))
 		return false;
-
-	// Check for source clipping.  Trickier, since we permit source flips.
-
-	if (x1 < 0.0 || y1 < 0.0 || x1+dx1 < 0.0 || y1+dy1 < 0.0)
-		return false;
-
-	if (x1 > src->w || y1 > src->h || x1+dx1 > src->w || y1+dy1 > src->h)
-		return false;
-
-	// Compute step values.
-
-	__int64 xfrac64, yfrac64, xaccum64, yaccum64;
-	unsigned long xfrac, yfrac;
-	int xistep;
-	PixOffset yistep;
-
-	xfrac64 = (fabs(dx1)<1.0 ? 0.0 : dx1<0.0 ? dx1+1.0 : dx1-1.0)*4294967296.0 / (dx-1);	// round toward zero to avoid exceeding buffer
-	yfrac64 = (fabs(dy1)<1.0 ? 0.0 : dy1<0.0 ? dy1+1.0 : dy1-1.0)*4294967296.0 / (dy-1);
-
-	xfrac = (unsigned long)xfrac64;
-	yfrac = (unsigned long)yfrac64;
-
-	xistep = (long)(xfrac64 >> 32);			// round toward -oo
-	yistep = (long)(yfrac64 >> 32) * src->pitch;
-
-	xaccum64 = (__int64)floor(x1*4294967296.0 + 0.5);
-	yaccum64 = (__int64)floor(y1*4294967296.0 + 0.5);
-
-	if (dx1<0)
-		xaccum64 -= 0x100000000i64;
-
-	if (dy1<0)
-		yaccum64 -= 0x100000000i64;
-	else
-		yaccum64 += 0x0ffffffffi64;
-
-	// Determine border sizes.  We have to copy pixels when xaccum >= (w-1)<<32
-	// or yaccum >= (h-1)<<32;
-
-	int xprecopy=0, xpostcopy=0;
-	__int64 xborderval, yborderval;
-
-	xborderval = ((__int64)(src->w-1)<<32);
-	yborderval = ((__int64)(src->h-1)<<32);
-
-	if (xfrac64 < 0) {
-		if (xaccum64 >= xborderval) {
-			xprecopy = (xaccum64 - (xborderval-1) + xfrac64 - 1) / xfrac64 + 1;
-		}
-
-		if (xprecopy > dx)
-			xprecopy = dx;
-
-	} else {
-		if (xaccum64 + xfrac64*(dx-1) >= xborderval) {
-			xpostcopy = dx - ((xborderval - xaccum64 - 1)/xfrac64 + 1);
-		}
-
-		if (xpostcopy > dx)
-			xpostcopy = dx;
-	}
 
 	// Call texturing routine.
 
-	if (dy) {
-		dx -= xprecopy + xpostcopy;
+	int xprecopy = horiz.clip.preclip + horiz.clip.precopy;
+	int xpostcopy = horiz.clip.postclip + horiz.clip.postcopy;
+	int yprecopy = vert.clip.preclip + vert.clip.precopy;
+	int ypostcopy = vert.clip.postclip + vert.clip.postcopy;
 
-		yaccum64 += (dy-1)*yfrac64;
-
+	if (yprecopy)
 		asm_resize_bilinear(
-				Address32i(x2, y2) + (dx+xprecopy),			// destination pointer, right side
-				src->Address32i((long)(xaccum64>>32), (src->h - 1) - (long)(yaccum64>>32)),
-				-dx*4,
-				dy,
-				pitch,
-				src->pitch,
-				(unsigned long)xaccum64,
-				~(unsigned long)yaccum64,
-				xfrac,
-				yfrac,
-				xistep,
-				yistep,
-				-xprecopy*4,
-				-xpostcopy*4,
-				src->Address32i(0, src->h-1));
-	}
+				Address32(horiz.x1_int + xprecopy + horiz.clip.unclipped, vert.x1_int),			// destination pointer, right side
+				src->Address32(horiz.u0_int.hi, 0),
+				-horiz.clip.unclipped*4,	// -width*4
+				yprecopy,					// height
+				-pitch,						// dstpitch
+				0,							// srcpitch
+				horiz.u0_int.lo,			// xaccum
+				0,							// yaccum
+				horiz.dudx_int.lo,			// xfrac
+				0,							// yfrac
+				horiz.dudx_int.hi,			// xinc
+				0,							// yinc
+				src->Address32(0, 0),			// precopysrc
+				-xprecopy*4,				// precopy
+				src->Address32(src->w-1, 0),	// postcopysrc
+				-xpostcopy*4			// postcopy
+				);
+
+	asm_resize_bilinear(
+			Address32(horiz.x1_int + xprecopy + horiz.clip.unclipped, vert.x1_int + yprecopy),			// destination pointer, right side
+			src->Address32(horiz.u0_int.hi, vert.u0_int.hi),
+			-horiz.clip.unclipped*4,		// -width*4
+			vert.clip.unclipped,			// height
+			-pitch,							// dstpitch
+			-src->pitch,					// srcpitch
+			horiz.u0_int.lo,				// xaccum
+			vert.u0_int.lo,					// yaccum
+			horiz.dudx_int.lo,				// xfrac
+			vert.dudx_int.lo,				// yfrac
+			horiz.dudx_int.hi,				// xinc
+			-vert.dudx_int.hi * src->pitch,	// yinc
+			src->Address32(0, vert.u0_int.hi),
+			-xprecopy*4,				// precopy
+			src->Address32(src->w-1, vert.u0_int.hi),
+			-xpostcopy*4			// postcopy
+			);
+
+	if (ypostcopy)
+		asm_resize_bilinear(
+				Address32(horiz.x1_int + xprecopy + horiz.clip.unclipped, vert.x1_int + yprecopy + vert.clip.unclipped),			// destination pointer, right side
+				src->Address32(horiz.u0_int.hi, src->h - 1),
+				-horiz.clip.unclipped*4,	// -width*4
+				ypostcopy,					// height
+				-pitch,						// dstpitch
+				0,							// srcpitch
+				horiz.u0_int.lo,			// xaccum
+				0,							// yaccum
+				horiz.dudx_int.lo,			// xfrac
+				0,							// yfrac
+				horiz.dudx_int.hi,			// xinc
+				0,							// yinc
+				src->Address32(0, src->h - 1),
+				-xprecopy*4,			// precopy
+				src->Address32(src->w - 1, src->h - 1),
+				-xpostcopy*4);		// postcopy
 
 	return true;
 }
@@ -692,6 +645,9 @@ bool VBitmap::Histogram(PixCoord x, PixCoord y, PixCoord dx, PixCoord dy, long *
 extern "C" unsigned long YUV_Y_table[];
 extern "C" unsigned long YUV_U_table[];
 extern "C" unsigned long YUV_V_table[];
+extern "C" unsigned long YUV_Y2_table[];
+extern "C" unsigned long YUV_U2_table[];
+extern "C" unsigned long YUV_V2_table[];
 extern "C" unsigned char YUV_clip_table[];
 extern "C" unsigned char YUV_clip_table16[];
 
@@ -701,6 +657,13 @@ extern "C" void asm_convert_yuy2_bgr24(void *dst, void *src, int w, int h, long 
 extern "C" void asm_convert_yuy2_bgr24_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
 extern "C" void asm_convert_yuy2_bgr32(void *dst, void *src, int w, int h, long dstmod, long srcmod);
 extern "C" void asm_convert_yuy2_bgr32_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+
+extern "C" void asm_convert_yuy2_fullscale_bgr16(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+extern "C" void asm_convert_yuy2_fullscale_bgr16_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+extern "C" void asm_convert_yuy2_fullscale_bgr24(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+extern "C" void asm_convert_yuy2_fullscale_bgr24_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+extern "C" void asm_convert_yuy2_fullscale_bgr32(void *dst, void *src, int w, int h, long dstmod, long srcmod);
+extern "C" void asm_convert_yuy2_fullscale_bgr32_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
 
 
 bool VBitmap::BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw() {
@@ -878,6 +841,77 @@ bool VBitmap::BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCo
 	return true;
 }
 
+bool VBitmap::BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw() {
+	unsigned char *srcp, *dstp;
+
+	if (depth != 32 && depth != 24 && depth != 16)
+		return false;
+
+	if (!dualrectclip(x2, y2, src, x1, y1, dx, dy))
+		return false;
+
+	// We only support even widths.
+
+	if (x2 & 1) {
+		++x2;
+		--dx;
+	}
+
+	if (dx & 1)
+		--dx;
+
+	if (dx<=0)
+		return false;
+
+	// compute coordinates
+
+	srcp = (unsigned char *)src->Address16i(x1, y1+dy-1);
+	dstp = (unsigned char *)Address(x2, y2+dy-1);
+
+	// Do blit
+
+	PixOffset srcmod = -src->pitch;
+	PixOffset dstmod = pitch;
+
+	dx >>= 1;
+
+	switch(depth) {
+	case 16:
+		srcmod -= 4*dx;
+		dstmod -= 4*dx;
+
+		if (MMX_enabled)
+			asm_convert_yuy2_fullscale_bgr16_MMX(dstp, srcp, dx, dy, dstmod, srcmod);
+		else
+			asm_convert_yuy2_fullscale_bgr16(dstp, srcp, dx, dy, dstmod, srcmod);
+
+		break;
+	case 24:
+		srcmod -= 4*dx;
+		dstmod -= 6*dx;
+
+		if (MMX_enabled)
+			asm_convert_yuy2_fullscale_bgr24_MMX(dstp, srcp, dx, dy, dstmod, srcmod);
+		else
+			asm_convert_yuy2_fullscale_bgr24(dstp, srcp, dx, dy, dstmod, srcmod);
+
+		break;
+	case 32:
+		srcmod -= 4*dx;
+		dstmod -= 8*dx;
+
+		if (MMX_enabled)
+			asm_convert_yuy2_fullscale_bgr32_MMX(dstp, srcp, dx, dy, dstmod, srcmod);
+		else
+			asm_convert_yuy2_fullscale_bgr32(dstp, srcp, dx, dy, dstmod, srcmod);
+
+		break;
+	}
+
+	CHECK_FPU_STACK
+	return true;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 typedef unsigned char YUVPixel;
@@ -992,6 +1026,9 @@ bool VBitmap::BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCo
 
 	if (MMX_enabled)
 		__asm emms
+
+	if (ISSE_enabled)
+		__asm sfence
 
 	CHECK_FPU_STACK
 	return true;

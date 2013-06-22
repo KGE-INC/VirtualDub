@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -94,14 +94,12 @@ private:
 	AudioFormatConverter convRout;
 	void *cbuffer;
 	int bytesPerInputSample, bytesPerOutputSample;
-	long samp_frac;
-	long accum;
-	void *holdover_ptr;
+	int offset;
 
-	enum { BUFFER_SIZE=512 };
+	enum { BUFFER_SIZE=4096 };
 
 public:
-	AudioStreamConverter(AudioStream *source, bool to_16bit, bool to_stereo);
+	AudioStreamConverter(AudioStream *src, bool to_16bit, bool to_stereo_or_right, bool single_only);
 	~AudioStreamConverter();
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
@@ -190,6 +188,18 @@ public:
 	AudioSubset(AudioStream *, FrameSubset *, long, long);
 	~AudioSubset();
 	long _Read(void *, long, long *);
+	BOOL _isEnd();
+};
+
+class AudioStreamAmplifier : public AudioStream {
+private:
+	long lFactor;
+
+public:
+	AudioStreamAmplifier(AudioStream *src, long lFactor);
+	~AudioStreamAmplifier();
+
+	long _Read(void *buffer, long max_samples, long *lplBytes);
 	BOOL _isEnd();
 };
 

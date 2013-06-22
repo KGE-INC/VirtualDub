@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@ private:
 
 	void *code, *rbase, *abase;
 	long length;
+	void *pFault;
 
 	class lbent {
 	public:
@@ -50,6 +51,10 @@ public:
 	BOOL DoDrawItem(LPARAM lParam);
 	BOOL post(HWND);
 	long getInstruction(char *buf, long val);
+
+	void setFaultAddress(void *_pFault) {
+		pFault = _pFault;
+	}
 };
 
 #endif

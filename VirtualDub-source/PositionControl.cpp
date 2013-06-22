@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -113,6 +113,33 @@ enum {
 	IDC_SCENEFWD	= 512,
 	IDC_MARKIN		= 513,
 	IDC_MARKOUT		= 514,
+};
+
+static const struct {
+	UINT id;
+	const char *tip;
+} g_posctltips[]={
+	{ IDC_TRACKBAR, "[Trackbar]\r\n\r\nDrag this to seek to any frame in the movie. Hold down SHIFT to snap to keyframes/I-frames." },
+	{ IDC_FRAME, "[Frame indicator]\r\n\r\nDisplays the current frame number, timestamp, and frame type.\r\n\r\n"
+					"[ ] AVI delta frame\r\n"
+					"[D] AVI dropped frame\r\n"
+					"[K] AVI key frame\r\n"
+					"[I] MPEG-1 intra frame\r\n"
+					"[P] MPEG-1 forward predicted frame\r\n"
+					"[B] MPEG-1 bidirectionally predicted frame" },
+	{ IDC_STOP, "[Stop] Stops playback or the current dub operation." },
+	{ IDC_PLAY, "[Input playback] Starts playback of the input file." },
+	{ IDC_PLAYPREVIEW, "[Output playback] Starts preview of processed output." },
+	{ IDC_START, "[Start] Move to the first frame." },
+	{ IDC_BACKWARD, "[Backward] Back up by one frame." },
+	{ IDC_FORWARD, "[Forward] Advance by one frame." },
+	{ IDC_END, "[End] Move to the last frame." },
+	{ IDC_KEYPREV, "[Key previous] Move to the previous key frame or I-frame." },
+	{ IDC_KEYNEXT, "[Key next] Move to the next key frame or I-frame." },
+	{ IDC_SCENEREV, "[Scene reverse] Scan backward for the last scene change." },
+	{ IDC_SCENEFWD, "[Scene forward] Scan forward for the next scene change." },
+	{ IDC_MARKIN, "[Mark in] Specify the start for processing or of a selection to delete." },
+	{ IDC_MARKOUT, "[Mark out] Specify the end for processing or of a selection to delete." },
 };
 
 static BOOL CALLBACK PositionControlInitChildrenProc(HWND hWnd, LPARAM lParam) {
@@ -238,6 +265,8 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 	case WM_CREATE:
 		{
 			DWORD dwStyles;
+			TOOLINFO ti;
+			HWND hwndTT;
 
 			dwStyles = GetWindowLong(hWnd, GWL_STYLE);
 			pcd->fHasPlaybackControls	= !!(dwStyles & PCS_PLAYBACK);
@@ -248,7 +277,9 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 
 			CreateWindowEx(0,TRACKBAR_CLASS,NULL,WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS|TBS_ENABLESELRANGE,0,0,0,0,hWnd, (HMENU)IDC_TRACKBAR, g_hInst, NULL);
 
-			CreateWindowEx(0,"STATIC",NULL,WS_CHILD|WS_VISIBLE|SS_SUNKEN,0,0,0,24,hWnd,(HMENU)IDC_FRAME,g_hInst,NULL);
+			SendDlgItemMessage(hWnd, IDC_TRACKBAR, TBM_SETPAGESIZE, 0, 50);
+
+			CreateWindowEx(WS_EX_STATICEDGE,"EDIT",NULL,WS_CHILD|WS_VISIBLE|ES_READONLY,0,0,0,24,hWnd,(HMENU)IDC_FRAME,g_hInst,NULL);
 
 			if (pcd->fHasPlaybackControls) {
 				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_STOP		, g_hInst, NULL);
@@ -272,6 +303,31 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 			}
 
 			EnumChildWindows(hWnd, (WNDENUMPROC)PositionControlInitChildrenProc, (LPARAM)pcd->hFont);
+
+			// Create tooltip control.
+
+			hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
+					CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+					hWnd, NULL, g_hInst, NULL);
+
+			if (hwndTT) {
+
+				SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+				SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_AUTOMATIC, MAKELONG(2000, 0));
+				SendMessage(hwndTT, TTM_SETDELAYTIME, TTDT_RESHOW, MAKELONG(2000, 0));
+
+				ti.cbSize		= sizeof(TOOLINFO);
+				ti.uFlags		= TTF_SUBCLASS | TTF_IDISHWND;
+				ti.hwnd			= hWnd;
+				ti.lpszText		= LPSTR_TEXTCALLBACK;
+
+				for(int i=0; i<sizeof g_posctltips/sizeof g_posctltips[0]; ++i) {
+					ti.uId			= (WPARAM)GetDlgItem(hWnd, g_posctltips[i].id);
+
+					if (ti.uId)
+						SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+				}
+			}
 		}
 
 	case WM_SIZE:
@@ -315,6 +371,24 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 			if (!pcd->fNoAutoFrame)
 				PositionControlUpdateString(hWnd, pcd);
 			SendMessage(GetParent(hWnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
+		}
+		break;
+
+	case WM_NOTIFY:
+		if (TTN_GETDISPINFO == ((LPNMHDR)lParam)->code) {
+			NMTTDISPINFO *lphdr = (NMTTDISPINFO *)lParam;
+			UINT id = (lphdr->uFlags & TTF_IDISHWND) ? GetWindowLong((HWND)lphdr->hdr.idFrom, GWL_ID) : lphdr->hdr.idFrom;
+
+			*lphdr->lpszText = 0;
+
+			SendMessage(lphdr->hdr.hwndFrom, TTM_SETMAXTIPWIDTH, 0, 5000);
+
+			for(int i=0; i<sizeof g_posctltips/sizeof g_posctltips[0]; ++i) {
+				if (id == g_posctltips[i].id)
+					lphdr->lpszText = const_cast<char *>(g_posctltips[i].tip);
+			}
+
+			return TRUE;
 		}
 		break;
 

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -65,6 +65,8 @@ public:
 	void	*data;
 	BITMAPINFOHEADER *pbih;
 	IDDrawSurface *pDest;
+	bool	bFirst;
+	bool	bFieldBDominant;
 };
 
 class AsyncBlitRequestDirectDrawBlit {
@@ -72,6 +74,8 @@ public:
 	IDDrawSurface *pSrc;
 	IDirectDrawSurface *pDest;
 	RECT r;
+	bool bFieldBDominant;
+	bool bFirst;
 };
 
 class AsyncBlitRequestICDraw {
@@ -100,6 +104,9 @@ public:
 		REQTYPE_ICDRAW,
 		REQTYPE_STRETCHDIBITS,
 		REQTYPE_AFC,
+		REQTYPE_BITBLTLACED,
+		REQTYPE_DIRECTDRAWCOPYLACED,
+		REQTYPE_DIRECTDRAWBLITLACED,
 	} type;
 	DWORD	bufferID;
 	DWORD	framenum;
@@ -137,8 +144,9 @@ private:
 	void release(DWORD);
 	BOOL waitPulse(DWORD);
 	static void drawThread(void *);
-	void DoRequest(AsyncBlitRequest *req);
+	bool DoRequest(AsyncBlitRequest *req);
 	void drawThread2();
+	HRGN CreateLacedRegion(int w, int h, int yo);
 
 public:
 	AsyncBlitter();
@@ -173,10 +181,13 @@ public:
 	void nextFrame(long adv=1);
 	long getFrameDelta();
 	void post(DWORD, HDRAWDIB, HDC, int, int, int, int, LPBITMAPINFOHEADER, LPVOID, int, int, int, int, UINT);
+	void postBitBltLaced(DWORD id, HDC hdcDest, int xDst, int yDst, int dxDst, int dyDst, HDC hdcSrc, int xSrc, int ySrc, bool bFieldBDominant);
 	void postStretchBlt(DWORD id, HDC hdcDest, int xDst, int yDst, int dxDst, int dyDst, HDC hdcSrc, int xSrc, int ySrc, int dxSrc, int dySrc);
 	void postStretchDIBits(DWORD id, HDC hdc, int xDst, int yDst, int dxDst, int dyDst, int xSrc, int ySrc, int dxSrc, int dySrc, const void *pBits, const BITMAPINFO *pBitsInfo, UINT iUsage, DWORD dwRop);
 	void postDirectDrawCopy(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest);
+	void postDirectDrawCopyLaced(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest, bool bFieldBDominant);
 	void postDirectDrawBlit(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst);
+	void postDirectDrawBlitLaced(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst, bool bFieldBDominant);
 	void postICDraw(DWORD id, HIC hic, DWORD dwFlags, LPVOID pFormat, LPVOID pData, DWORD cbData, LONG lTime);
 	void postAFC(DWORD id, void (*pFunc)(void *), void *pData);
 	void abort();

@@ -1,6 +1,85 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 12667 (Version 1.4d):
+   [features added]
+   * Added HFYU (Huffyuv) to list of codecs that do not
+     have delta frames.
+   * Added code to prevent AngelPotion from improperly
+     accepting all formats for which there is no valid
+     codec in the system.
+   * You can now tweak some choice BT848/878 registers
+     (i.e. full luma range!!) if you copy the dTV drivers
+     into the VirtualDub program directory.
+   * Hex viewer now has limited editing capability.
+   * Added option to squish luma range for YUY2 captures
+     on the fly to alleviate "white out" problems.
+   * Filters can now lag behind, like IVTC.
+   * Resize filter now supports interlaced resampling.
+   * You can now also select one channel rather than
+     mix both channels when converting stereo to mono.
+   * Frameserver mode hides the main window now.
+   * One word: amplify.
+   * Avisynth 1.0b+ errors are detected as errors, so
+     VirtualDub won't produce processed errors anymore.
+   * Type-1 DV files are supported.  VIDEO ONLY!
+   * New "temporal smoother" filter.
+   * Some more keyboard shortcuts added, and tooltips
+     for the main screen for all you wimps. :)
+   * Alt-Left and Alt-Right scan by 50 frames, and the
+     default step value for paging in the position
+     trackbar is also now 50 frames instead of two
+     inches.
+   * Additional values and methods are exported to
+     scripts.
+   * Preview mode can now do interlaced display as well
+     as progressive display.  (Requires very fast CPU!)
+
+   [bug fixes]
+   * Fixed problem where capture mode wasn't adequately
+     correcting for sound card error.
+   * Audio section of File Information no longer counts
+     up indefinitely on Avisynth scripts.
+   * Avisynth scripts shorter than 12 bytes can be
+     opened.
+   * Spill drive thresholds are properly treated as
+     megabytes and not kilobytes.
+   * Fixed a couple of issues in the crash handler that
+     were causing useless double-crash dumps.
+   * Fixed dwSampleSize=0 incompatibility with audio
+     streams from Canopus utilities.
+   * Hex viewer now works in Windows 95.
+   * Rekey warning no longer appears in batch mode.
+   * IVTC settings are now saved properly in scripts.
+   * Added workaround for codecs that crash on zero byte
+     frames (ASV1, VCR2).
+   * Filter crop dialog now shows the right size input
+     frame (the image is still approximated, however).
+   * Added checking for uncompressed frames to avoid
+     crashing on short frames.
+   * "Rekeying not specified" warning no longer appears
+     for video formats known to have no keyframes.
+   * Fixed 24-bit MMX YUY2-to-RGB conversion.
+   * Subpixel accuracy problems and the occasional line
+     of garbage on the right border from the resize filter
+     have been fixed.
+   * MRU list is no longer case sensitive.
+   * Fixed precision issue when doing high upsampling,
+     such as 8KHz to 44KHz.
+   * Fixed video codec handle leak in video compression
+     dialog.
+   * Loading an OpenDML segment no longer keeps legacy
+     files from appending after it.
+   * Fixed crash during multisegment video capture under
+     high CPU load.
+   * Added workaround for disk drivers that do not support
+     unbuffered I/O.
+   * MJPEG split was causing some crashes if you sourced
+     a multisegment AVI clip.
+   * AVI output function wasn't padding frames to quadword
+     boundaries properly in capture mode.
+   * Hex viewer (editor) no longer locks files.
+
 Build 11759 (Version 1.4c):
    [features added]
    * New filter: box blur.

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -24,9 +24,11 @@
 #include <tlhelp32.h>
 
 #include "resource.h"
+#include "crash.h"
 #include "disasm.h"
 #include "oshelper.h"
 #include "helpfile.h"
+#include "list.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -121,6 +123,62 @@ ok:
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
+//
+//	Nina's per-thread debug logs are really handy, so I back-ported
+//	them to 1.x.  These are lightweight in comparison, however.
+//
+
+VirtualDubThreadState __declspec(thread) g_PerThreadState;
+__declspec(thread)
+struct {
+	ListNode node;
+	VirtualDubThreadState *pState;
+} g_PerThreadStateNode;
+
+class VirtualDubThreadStateNode : public ListNode2<VirtualDubThreadStateNode> {
+public:
+	VirtualDubThreadState *pState;
+};
+
+static CRITICAL_SECTION g_csPerThreadState;
+static List2<VirtualDubThreadStateNode> g_listPerThreadState;
+static LONG g_nThreadsTrackedMinusOne = -1;
+
+void VirtualDubInitializeThread(const char *pszName) {
+	DWORD dwThreadId = GetCurrentThreadId();
+
+	if (!InterlockedIncrement(&g_nThreadsTrackedMinusOne)) {
+		InitializeCriticalSection(&g_csPerThreadState);
+	}
+
+	EnterCriticalSection(&g_csPerThreadState);
+
+	if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), (HANDLE *)&g_PerThreadState.hThread, NULL, FALSE, DUPLICATE_SAME_ACCESS)) {
+
+		g_PerThreadState.pszThreadName = pszName;
+		g_PerThreadState.dwThreadId = dwThreadId;
+
+		g_PerThreadStateNode.pState = &g_PerThreadState;
+		g_listPerThreadState.AddTail((ListNode2<VirtualDubThreadStateNode> *)&g_PerThreadStateNode);
+	}
+
+	LeaveCriticalSection(&g_csPerThreadState);
+}
+
+void VirtualDubDeinitializeThread() {
+	EnterCriticalSection(&g_csPerThreadState);
+
+	((ListNode2<VirtualDubThreadStateNode> *)&g_PerThreadStateNode)->Remove();
+
+	LeaveCriticalSection(&g_csPerThreadState);
+
+	if (g_PerThreadState.pszThreadName)
+		CloseHandle((HANDLE)g_PerThreadState.hThread);
+
+	InterlockedDecrement(&g_nThreadsTrackedMinusOne);
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 static const struct ExceptionLookup {
 	DWORD	code;
@@ -147,6 +205,29 @@ static const struct ExceptionLookup {
 LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 	SetUnhandledExceptionFilter(NULL);
 
+	/////////////////////////
+	//
+	// QUICKLY: SUSPEND ALL THREADS THAT AREN'T US.
+
+	EnterCriticalSection(&g_csPerThreadState);
+
+	try {
+		DWORD dwCurrentThread = GetCurrentThreadId();
+
+		for(List2<VirtualDubThreadStateNode>::fwit it = g_listPerThreadState.begin(); it; ++it) {
+			const VirtualDubThreadState *pState = it->pState;
+
+			if (pState->dwThreadId && pState->dwThreadId != dwCurrentThread) {
+				SuspendThread((HANDLE)pState->hThread);
+			}
+		}
+	} catch(...) {
+	}
+
+	LeaveCriticalSection(&g_csPerThreadState);
+
+	/////////////////////////
+
 	static char buf[CODE_WINDOW+16];
 	HANDLE hprMe = GetCurrentProcess();
 	void *lpBaseAddress = pExc->ExceptionRecord->ExceptionAddress;
@@ -154,7 +235,7 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 	memset(buf, 0, sizeof buf);
 
-	if ((long)lpAddr > CODE_WINDOW/2)
+	if ((unsigned long)lpAddr > CODE_WINDOW/2)
 		lpAddr -= CODE_WINDOW/2;
 	else
 		lpAddr = NULL;
@@ -164,12 +245,14 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 		for(i=0; i<CODE_WINDOW; i+=32)
 			if (!ReadProcessMemory(hprMe, lpAddr+i, buf+i, 32, NULL))
-				memset(lpAddr+i, 0, 32);
+				memset(buf+i, 0, 32);
 	}
 
 	CodeDisassemblyWindow cdw(buf, CODE_WINDOW, (char *)(buf-lpAddr), lpAddr);
 
 	g_pcdw = &cdw;
+
+	cdw.setFaultAddress(lpBaseAddress);
 
 	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DISASM_CRASH), NULL, CrashDlgProc, (LPARAM)pExc);
 
@@ -268,6 +351,31 @@ static void ReportCrashData(HWND hwnd, HWND hwndReason, HANDLE hFile, const EXCE
 			Report(NULL, hFile, "Crash reason: %s", pel->name);
 	}
 
+	// Dump thread stacks
+
+	Report(NULL, hFile, "");
+
+	EnterCriticalSection(&g_csPerThreadState);
+
+	try {
+		for(List2<VirtualDubThreadStateNode>::fwit it = g_listPerThreadState.begin(); it; ++it) {
+			const VirtualDubThreadState *pState = it->pState;
+
+			Report(NULL, hFile, "Thread %08lx (%s)", pState->dwThreadId, pState->pszThreadName?pState->pszThreadName:"unknown");
+
+			for(int i=0; i<CHECKPOINT_COUNT; ++i) {
+				const VirtualDubCheckpoint& cp = pState->cp[(pState->nNextCP+i) & (CHECKPOINT_COUNT-1)];
+
+				if (cp.file)
+					Report(NULL, hFile, "\t%s(%d)", cp.file, cp.line);
+			}
+		}
+	} catch(...) {
+	}
+
+	LeaveCriticalSection(&g_csPerThreadState);
+
+	Report(NULL, hFile, "");
 }
 
 static const char *GetNameFromHeap(const char *heap, int idx) {
@@ -800,12 +908,19 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 
 		SpliceProgramPath(szPath, sizeof szPath, "VirtualDub.dbg");
 
-		HANDLE hFile2 = CreateFile(szPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		HANDLE hFile2;
 		bool fSuccessful = false;
 		LONG lFileSize;
 		DWORD dwActual;
 
 		do {
+			hFile2 = CreateFile(szPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+			if (INVALID_HANDLE_VALUE == hFile2) {
+				SpliceProgramPath(szPath, sizeof szPath, "VirtualD.dbg");
+				hFile2 = CreateFile(szPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			}
+
 			if (INVALID_HANDLE_VALUE == hFile2)
 				break;
 
@@ -1076,7 +1191,7 @@ void DoSave(const EXCEPTION_POINTERS *pExc, bool fSaveExtra) {
 
 	ReportCrashCallStack(NULL, hFile, pExc, fSaveExtra);
 
-	Report(NULL, hFile, "\n-- End of report");
+	Report(NULL, hFile, "\r\n-- End of report");
 
 	CloseHandle(hFile);
 }

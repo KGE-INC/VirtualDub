@@ -7,6 +7,10 @@ Project: "Setup"=.\Setup\Setup.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    Setup
+    .\setup
+    end source code control
 }}}
 
 Package=<4>
@@ -19,6 +23,10 @@ Project: "VirtualDub"=.\VirtualDub.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    VirtualDub
+    .
+    end source code control
 }}}
 
 Package=<4>
@@ -31,6 +39,10 @@ Project: "vdicmdrv"=.\vdicmdrv\vdicmdrv.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    vdicmdrv
+    .\vdicmdrv
+    end source code control
 }}}
 
 Package=<4>
@@ -46,6 +58,10 @@ Project: "vdremote"=.\vdremote\vdremote.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    vdremote
+    .\vdremote
+    end source code control
 }}}
 
 Package=<4>
@@ -58,6 +74,10 @@ Project: "vdsvrlnk"=.\vdsvrlnk\vdsvrlnk.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    vdsvrlnk
+    .\vdsvrlnk
+    end source code control
 }}}
 
 Package=<4>

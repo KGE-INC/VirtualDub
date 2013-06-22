@@ -34,5 +34,5 @@ can get around this by installing the Debug and Release OBJ files from
 the auxiliary source archive and killing the custom build rules from
 the ASM files in the project.
 
---Avery <uleea05@umail.ucsb.edu>
+--Avery <phaeron@virtualdub.org>
 

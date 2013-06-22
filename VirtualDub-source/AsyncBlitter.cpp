@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -48,6 +48,7 @@ AsyncBlitter::AsyncBlitter() {
 	requests			= NULL;
 	dwLockedBuffers		= NULL;
 	fAbort				= FALSE;
+	fFlush				= false;
 	fPulsed				= FALSE;
 	pulseCallback		= NULL;
 
@@ -69,6 +70,7 @@ AsyncBlitter::AsyncBlitter(int maxreq) {
 	memset(requests,0,sizeof(AsyncBlitRequest)*max_requests);
 	dwLockedBuffers		= NULL;
 	fAbort				= FALSE;
+	fFlush				= false;
 	fPulsed				= FALSE;
 	pulseCallback		= NULL;
 
@@ -258,6 +260,69 @@ void AsyncBlitter::postDirectDrawCopy(DWORD id, void *data, BITMAPINFOHEADER *pb
 	SetEvent(hEventDraw);	
 }
 
+void AsyncBlitter::postDirectDrawCopyLaced(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest, bool bFieldBDominant) {
+	int i;
+
+	if (fAbort) {
+		unlock(id);
+		return;
+	}
+
+	if (!requests) {
+		VBitmap vbm;
+
+		if (pDest->Lock(&vbm)) {
+			int h = vbm.h;
+			int w = vbm.w;
+			unsigned char *dst = (unsigned char *)vbm.data;
+			unsigned char *src = (unsigned char *)data;
+			long lBytes;
+
+			lBytes = (w*pbih->biBitCount)/8;
+
+			do {
+				memcpy(dst, src, lBytes);
+
+				src += lBytes;
+				dst += vbm.pitch;
+			} while(--h);
+
+			pDest->Unlock();
+		}
+		unlock(id);
+		return;
+	}
+
+	for(;;) {
+		for(i=0; i<max_requests; i++)
+			if (!requests[i].bufferID) break;
+
+		if (i < max_requests) break;
+
+		LOCK_SET(LOCK_POST);
+		WaitForSingleObject(hEventDrawReturn, INFINITE);
+		LOCK_CLEAR(LOCK_POST);
+
+		if (fAbort) {
+			unlock(id);
+			return;
+		}
+	}
+
+	requests[i].type		= AsyncBlitRequest::REQTYPE_DIRECTDRAWCOPYLACED;
+
+	requests[i].ddcopy.data	= data;
+	requests[i].ddcopy.pbih = pbih;
+	requests[i].ddcopy.pDest = pDest;
+	requests[i].ddcopy.bFirst = true;
+	requests[i].ddcopy.bFieldBDominant = bFieldBDominant;
+
+	requests[i].framenum	= dwDrawFrame;
+	requests[i].bufferID	= id;		// must be last!!!!
+
+	SetEvent(hEventDraw);	
+}
+
 void AsyncBlitter::postDirectDrawBlit(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst) {
 	int i;
 
@@ -292,6 +357,49 @@ void AsyncBlitter::postDirectDrawBlit(DWORD id, IDirectDrawSurface *pDst, IDDraw
 	requests[i].ddblit.r.top	= yDst;
 	requests[i].ddblit.r.right	= xDst + dxDst;
 	requests[i].ddblit.r.bottom	= yDst + dyDst;
+
+	requests[i].framenum	= dwDrawFrame;
+	requests[i].bufferID	= id;		// must be last!!!!
+
+	SetEvent(hEventDraw);	
+}
+
+void AsyncBlitter::postDirectDrawBlitLaced(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst, bool bFieldBDominant) {
+	int i;
+
+	if (fAbort) {
+		unlock(id);
+		return;
+	}
+
+	if (!requests) return;
+
+	for(;;) {
+		for(i=0; i<max_requests; i++)
+			if (!requests[i].bufferID) break;
+
+		if (i < max_requests) break;
+
+		LOCK_SET(LOCK_POST);
+		WaitForSingleObject(hEventDrawReturn, INFINITE);
+		LOCK_CLEAR(LOCK_POST);
+
+		if (fAbort) {
+			unlock(id);
+			return;
+		}
+	}
+
+	requests[i].type		= AsyncBlitRequest::REQTYPE_DIRECTDRAWBLITLACED;
+
+	requests[i].ddblit.pSrc		= pSrc;
+	requests[i].ddblit.pDest	= pDst;
+	requests[i].ddblit.r.left	= xDst;
+	requests[i].ddblit.r.top	= yDst;
+	requests[i].ddblit.r.right	= xDst + dxDst;
+	requests[i].ddblit.r.bottom	= yDst + dyDst;
+	requests[i].ddblit.bFieldBDominant	= bFieldBDominant;
+	requests[i].ddblit.bFirst	= true;
 
 	requests[i].framenum	= dwDrawFrame;
 	requests[i].bufferID	= id;		// must be last!!!!
@@ -400,6 +508,57 @@ void AsyncBlitter::postStretchBlt(DWORD id, HDC hdcDst, int xDst, int yDst, int 
 	requests[i].stretchblt.ySrc		= ySrc;
 	requests[i].stretchblt.dxSrc	= dxSrc;
 	requests[i].stretchblt.dySrc	= dySrc;
+
+	requests[i].framenum	= dwDrawFrame;
+	requests[i].bufferID	= id;		// must be last!!!!
+
+	SetEvent(hEventDraw);
+}
+
+void AsyncBlitter::postBitBltLaced(DWORD id, HDC hdcDst, int xDst, int yDst, int dxDst, int dyDst,
+			HDC hdcSrc, int xSrc, int ySrc, bool bFieldBDominant) {
+
+	int i;
+
+	if (fAbort) {
+		unlock(id);
+		return;
+	}
+
+	if (!requests) {
+		if (!waitPulse(dwDrawFrame))
+			BitBlt(hdcDst, xDst, yDst, dxDst, dyDst, hdcSrc, xSrc, ySrc, SRCCOPY);
+
+		return;
+	}
+
+	for(;;) {
+		for(i=0; i<max_requests; i++)
+			if (!requests[i].bufferID) break;
+
+		if (i < max_requests) break;
+
+		LOCK_SET(LOCK_POST);
+		WaitForSingleObject(hEventDrawReturn, INFINITE);
+		LOCK_CLEAR(LOCK_POST);
+
+		if (fAbort) {
+			unlock(id);
+			return;
+		}
+	}
+
+	requests[i].type				= AsyncBlitRequest::REQTYPE_BITBLTLACED;
+	requests[i].stretchblt.hdcDst	= hdcDst;
+	requests[i].stretchblt.xDst		= xDst;
+	requests[i].stretchblt.yDst		= yDst;
+	requests[i].stretchblt.dxDst	= dxDst;
+	requests[i].stretchblt.dyDst	= dyDst;
+	requests[i].stretchblt.hdcSrc	= hdcSrc;
+	requests[i].stretchblt.xSrc		= xSrc;
+	requests[i].stretchblt.ySrc		= ySrc;
+	requests[i].stretchblt.dxSrc	= bFieldBDominant ? 1 : 0;
+	requests[i].stretchblt.dySrc	= 0;
 
 	requests[i].framenum	= dwDrawFrame;
 	requests[i].bufferID	= id;		// must be last!!!!
@@ -571,8 +730,9 @@ void AsyncBlitter::flush() {
 }
 
 void AsyncBlitter::drawThread(void *param) {
-	InitThreadData();
+	InitThreadData("AsyncBlitter");
 	((AsyncBlitter *)param)->drawThread2();
+	DeinitThreadData();
 }
 
 static void __declspec(naked) MMXcopy(void *dst, void *src, int cnt) {
@@ -645,7 +805,7 @@ xloop:
 	}
 }
 
-void AsyncBlitter::DoRequest(AsyncBlitRequest *req) {
+bool AsyncBlitter::DoRequest(AsyncBlitRequest *req) {
 	// DrawDibDraw(), StretchDIBits(), and SetDIBitsToDevice() are about the same...
 
 	switch(req->type) {
@@ -655,6 +815,23 @@ void AsyncBlitter::DoRequest(AsyncBlitRequest *req) {
 			req->drawdib.lpbi, req->drawdib.lpBits, req->drawdib.xSrc, req->drawdib.ySrc, req->drawdib.dxSrc, req->drawdib.dySrc, req->drawdib.wFlags);
 
 		GdiFlush();
+		break;
+
+	case AsyncBlitRequest::REQTYPE_BITBLTLACED:
+		{
+			// It's actually four times faster to do 240 bitblts than to blit through
+			// an interlaced clip region.
+
+			for(int y=req->stretchblt.dxSrc; y<req->stretchblt.dyDst; y+=2) {
+				BitBlt(req->stretchblt.hdcDst, req->stretchblt.xDst, req->stretchblt.yDst+y, req->stretchblt.dxDst, 1,
+						req->stretchblt.hdcSrc, req->stretchblt.xSrc, req->stretchblt.ySrc+y, SRCCOPY);
+			}
+
+			GdiFlush();
+
+			req->stretchblt.dxSrc ^= 1;
+			return ++req->stretchblt.dySrc<2;
+		}
 		break;
 
 	case AsyncBlitRequest::REQTYPE_STRETCHBLT:
@@ -731,10 +908,94 @@ void AsyncBlitter::DoRequest(AsyncBlitRequest *req) {
 
 		break;
 
+	case AsyncBlitRequest::REQTYPE_DIRECTDRAWCOPYLACED:
+
+		{
+			VBitmap vbm;
+
+			if (req->ddcopy.pDest->Lock(&vbm)) {
+				int h = vbm.h;
+				int w = vbm.w;
+				unsigned char *dst = (unsigned char *)vbm.data;
+				unsigned char *src = (unsigned char *)req->ddcopy.data;
+				long lBytes;
+
+				lBytes = (w*req->ddcopy.pbih->biBitCount)/8;
+
+				if (!(req->ddcopy.bFirst ^ req->ddcopy.bFieldBDominant)) {
+					src += lBytes;
+					dst += vbm.pitch;
+				}
+
+				h >>= 1;
+
+				if (MMX_enabled && !(((long)dst | (long)src)&7) && !(lBytes&7)) {
+					do {
+						MMXcopy(dst, src, lBytes/8);
+
+						src += lBytes*2;
+						dst += vbm.pitch*2;
+					} while(--h);
+					__asm emms
+				} else
+					do {
+						memcpy(dst, src, lBytes);
+
+						src += lBytes*2;
+						dst += vbm.pitch*2;
+					} while(--h);
+
+				req->ddcopy.pDest->Unlock();
+			}
+
+			return !(req->ddcopy.bFirst = !req->ddcopy.bFirst);
+		}
+
+		break;
+
 	case AsyncBlitRequest::REQTYPE_DIRECTDRAWBLIT:
 		req->ddblit.pDest->Blt(&req->ddblit.r, req->ddblit.pSrc->getSurface(), NULL, DDBLT_WAIT, NULL);
 
 		break;
+
+	case AsyncBlitRequest::REQTYPE_DIRECTDRAWBLITLACED:
+		{
+			int y = req->ddblit.bFieldBDominant?1:0;
+			int h = req->ddblit.r.bottom - req->ddblit.r.top;
+			RECT rSrc;
+			int xo = req->ddblit.r.left;
+			int yo = req->ddblit.r.top;
+			IDirectDrawSurface *pDDS = req->ddblit.pSrc->getSurface();
+			IDirectDrawSurface3 *pDDS3;
+			bool bPageLocked = false;
+
+			rSrc.left = 0;
+			rSrc.right = req->ddblit.r.right - req->ddblit.r.left;
+
+			if (SUCCEEDED(pDDS->QueryInterface(IID_IDirectDrawSurface3, (void **)&pDDS3))) {
+				if (SUCCEEDED(pDDS3->PageLock(0)))
+					bPageLocked = true;
+			} else
+				pDDS3 = NULL;
+
+			for(; y<h; y+=2) {
+				rSrc.top	= y;
+				rSrc.bottom	= y+1;
+
+				req->ddblit.pDest->BltFast(xo, yo+y, pDDS, &rSrc,
+					DDBLTFAST_WAIT|DDBLTFAST_NOCOLORKEY);
+			}
+
+			if (bPageLocked) {
+				pDDS3->PageUnlock(0);
+			}
+
+			if (pDDS3)
+				pDDS3->Release();
+
+			req->ddblit.bFieldBDominant = !req->ddblit.bFieldBDominant;
+		}
+		return !(req->ddblit.bFirst = !req->ddblit.bFirst);
 
 	case AsyncBlitRequest::REQTYPE_ICDRAW:
 		ICDraw(req->icdraw.hic, req->icdraw.dwFlags, req->icdraw.pFormat, req->icdraw.pData, req->icdraw.cbData, req->icdraw.lTime);
@@ -744,6 +1005,8 @@ void AsyncBlitter::DoRequest(AsyncBlitRequest *req) {
 		req->afc.pFunc(req->afc.pData);
 		break;
 	}
+
+	return false;
 }
 
 bool AsyncBlitter::ServiceRequests(bool fWait) {
@@ -779,7 +1042,10 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 				if (dwPulseFrame < req->framenum)
 					continue;
 
-				DoRequest(req);
+				if (DoRequest(req)) {
+					++req->framenum;
+					continue;
+				}
 			}
 
 			release(req->bufferID);

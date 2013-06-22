@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ void guiSubclassWindow(HWND hwnd, WNDPROC newproc);
 void guiPositionInitFromStream(HWND hWndPosition);
 LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam);
 LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam);
-void guiPositionBlit(HWND hWndClipping, LONG lFrame);
+void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w=0, int h=0);
 
 bool guiChooseColor(HWND hwnd, COLORREF& rgbOld);
 

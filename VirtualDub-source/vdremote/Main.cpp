@@ -206,11 +206,10 @@ STDMETHODIMP_(ULONG) CAVIFileRemote::AddRef() {
 STDMETHODIMP_(ULONG) CAVIFileRemote::Release() {
 	_RPT1(0,"%p->CAVIFileRemote::Release()\n", this);
 
-	--gRefCnt;
-	if (!--m_refs) {
+	if (!--m_refs)
 		delete this;
-		return 0;
-	}
+
+	--gRefCnt;
 
 	_RPT0(0,"CAVIFileRemote::Release() exit\n");
 
@@ -309,11 +308,10 @@ STDMETHODIMP_(ULONG) CAVIStreamRemote::AddRef() {
 STDMETHODIMP_(ULONG) CAVIStreamRemote::Release() {
 	_RPT0(0,"CAVIStreamRemote::Release()\n");
 
-	--gRefCnt;
-	if (!--m_refs) {
+	if (!--m_refs)
 		delete this;
-		return 0;
-	}
+
+	--gRefCnt;
 
 	_RPT0(0,"CAVIStreamRemote::Release() exit\n");
 

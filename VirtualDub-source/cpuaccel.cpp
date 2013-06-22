@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ static long g_lCPUExtensionsEnabled;
 static long g_lCPUExtensionsAvailable;
 
 extern "C" {
-	bool FPU_enabled, MMX_enabled;
+	bool FPU_enabled, MMX_enabled, ISSE_enabled;
 };
 
 // This is ridiculous.
@@ -141,7 +141,13 @@ nocheck:
 }
 
 long CPUEnableExtensions(long lEnableFlags) {
-	return g_lCPUExtensionsEnabled = g_lCPUExtensionsAvailable & lEnableFlags;
+	g_lCPUExtensionsEnabled = lEnableFlags;
+
+	MMX_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_MMX);
+	FPU_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_FPU);
+	ISSE_enabled = !!(g_lCPUExtensionsEnabled & CPUF_SUPPORTS_INTEGER_SSE);
+
+	return g_lCPUExtensionsEnabled;
 }
 
 long CPUGetEnabledExtensions() {

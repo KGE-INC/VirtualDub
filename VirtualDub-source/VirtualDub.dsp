@@ -23,8 +23,8 @@ CFG=VirtualDub - Win32 Release
 
 # Begin Project
 # PROP AllowPerConfigDependencies 0
-# PROP Scc_ProjName ""
-# PROP Scc_LocalPath ""
+# PROP Scc_ProjName "VirtualDub"
+# PROP Scc_LocalPath "."
 CPP=cl.exe
 MTL=midl.exe
 RSC=rc.exe
@@ -43,7 +43,8 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Ow /Og /Oi /I ".\vdsvrlnk" /I "..\amplib" /I "..\sylia" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /Zm1000 /c
+# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\amplib" /I "..\sylia" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /Zm1000 /c
+# SUBTRACT CPP /Ow
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -296,6 +297,10 @@ InputName=a_yuv422torgb
 # End Source File
 # Begin Source File
 
+SOURCE=.\about.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\AsyncBlitter.cpp
 # End Source File
 # Begin Source File
@@ -352,15 +357,15 @@ SOURCE=.\ddrawsup.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\Dub.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\DubSource.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\DubStatus.cpp
+SOURCE=.\dynacomp.inc
+# End Source File
+# Begin Source File
+
+SOURCE=.\DynamicCode.cpp
 # End Source File
 # Begin Source File
 
@@ -384,10 +389,6 @@ SOURCE=.\File64.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\filters.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\FilterSystem.cpp
 # End Source File
 # Begin Source File
@@ -408,10 +409,6 @@ SOURCE=.\int128.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\license.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\list.cpp
 # End Source File
 # Begin Source File
@@ -424,31 +421,11 @@ SOURCE=.\MonoBitmap.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\MRUList.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\oshelper.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\SceneDetector.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\server.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\tls.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\VBitmap.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\VideoSequenceCompressor.cpp
 # End Source File
 # Begin Source File
 
@@ -461,10 +438,6 @@ SOURCE=.\VideoTelecineRemover.cpp
 # Begin Source File
 
 SOURCE=.\VirtualDub.rc
-# End Source File
-# Begin Source File
-
-SOURCE=.\wrappedMMIO.cpp
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -481,10 +454,6 @@ SOURCE=.\Audio.h
 # Begin Source File
 
 SOURCE=.\AudioSource.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\auxdlg.h
 # End Source File
 # Begin Source File
 
@@ -528,6 +497,10 @@ SOURCE=.\AVIStripeSystem.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\Avisynth.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\capture.h
 # End Source File
 # Begin Source File
@@ -540,15 +513,11 @@ SOURCE=.\ddrawsup.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\Dub.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\DubSource.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\DubStatus.h
+SOURCE=.\DynamicCode.h
 # End Source File
 # Begin Source File
 
@@ -585,10 +554,6 @@ SOURCE=.\filtdlg.h
 # Begin Source File
 
 SOURCE=.\filter.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\filters.h
 # End Source File
 # Begin Source File
 
@@ -636,18 +601,6 @@ SOURCE=.\MonoBitmap.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\MRUList.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\optdlg.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\oshelper.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\resource.h
 # End Source File
 # Begin Source File
@@ -656,19 +609,7 @@ SOURCE=.\SceneDetector.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\server.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\tls.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\VBitmap.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\VideoSequenceCompressor.h
 # End Source File
 # Begin Source File
 
@@ -681,10 +622,6 @@ SOURCE=.\VideoTelecineRemover.h
 # Begin Source File
 
 SOURCE=.\VirtualDub.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\wrappedMMIO.h
 # End Source File
 # End Group
 # Begin Group "Resource Files"
@@ -786,6 +723,10 @@ SOURCE=.\virtuald.ico
 # Begin Group "Source - Capture"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\capbt848.cpp
+# End Source File
 # Begin Source File
 
 SOURCE=.\capclip.cpp
@@ -1278,6 +1219,10 @@ SOURCE=.\f_threshold.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\f_timesmooth.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\f_tsoften.cpp
 # End Source File
 # Begin Source File
@@ -1380,6 +1325,37 @@ InputName=a_predict
 IntDir=.\Debug
 InputPath=.\a_predict.asm
 InputName=a_predict
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\a_predict_isse.asm
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Release
+InputPath=.\a_predict_isse.asm
+InputName=a_predict_isse
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Debug
+InputPath=.\a_predict_isse.asm
+InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
@@ -1686,8 +1662,8 @@ SOURCE=.\HexViewer.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Oi /Os /Oy-
+# SUBTRACT CPP /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1793,7 +1769,7 @@ SOURCE=.\yuvcodec.cpp
 SOURCE=.\yuvcodec.h
 # End Source File
 # End Group
-# Begin Group "Source - Not time critical"
+# Begin Group "Source - Really not time critical"
 
 # PROP Default_Filter ""
 # Begin Source File
@@ -1802,8 +1778,8 @@ SOURCE=.\acompchoose.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1816,8 +1792,8 @@ SOURCE=.\autodetect.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1830,8 +1806,8 @@ SOURCE=.\auxdlg.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1844,8 +1820,8 @@ SOURCE=.\Command.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1858,8 +1834,8 @@ SOURCE=.\compchoose.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1872,8 +1848,8 @@ SOURCE=.\cpuaccel.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1886,8 +1862,8 @@ SOURCE=.\Crash.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1900,8 +1876,8 @@ SOURCE=.\Disasm.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1914,8 +1890,8 @@ SOURCE=.\Error.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1928,8 +1904,8 @@ SOURCE=.\Filtdlg.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1942,8 +1918,8 @@ SOURCE=.\gui.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1956,8 +1932,8 @@ SOURCE=.\Init.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1970,8 +1946,22 @@ SOURCE=.\Job.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\license.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1984,8 +1974,8 @@ SOURCE=.\Main.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -1998,8 +1988,22 @@ SOURCE=.\misc.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\MRUList.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -2012,8 +2016,8 @@ SOURCE=.\optdlg.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -2026,8 +2030,8 @@ SOURCE=.\prefs.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -2040,8 +2044,22 @@ SOURCE=.\Script.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# ADD CPP /Os /Oy-
-# SUBTRACT CPP /Ot
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\tls.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Oa /Os /Oy- /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
@@ -2049,7 +2067,7 @@ SOURCE=.\Script.cpp
 
 # End Source File
 # End Group
-# Begin Group "Headers - Not time critical"
+# Begin Group "Headers - Really not time critical"
 
 # PROP Default_Filter ""
 # Begin Source File
@@ -2058,11 +2076,19 @@ SOURCE=.\autodetect.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\auxdlg.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\command.h
 # End Source File
 # Begin Source File
 
 SOURCE=.\cpuaccel.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\crash.h
 # End Source File
 # Begin Source File
 
@@ -2086,11 +2112,125 @@ SOURCE=.\misc.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\MRUList.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\optdlg.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\prefs.h
 # End Source File
 # Begin Source File
 
 SOURCE=.\script.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\tls.h
+# End Source File
+# End Group
+# Begin Group "dTV headers"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\dTVdrv.h
+# End Source File
+# End Group
+# Begin Group "Source - Not time critical"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\Dub.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\DubStatus.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\Filters.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\oshelper.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\server.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\VideoSequenceCompressor.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /Ob1
+# SUBTRACT CPP /Ox /Ot /Ow
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\wrappedMMIO.cpp
+# End Source File
+# End Group
+# Begin Group "Headers - Not time critical"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\Dub.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\DubStatus.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\filters.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\oshelper.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\server.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\VideoSequenceCompressor.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\wrappedMMIO.h
 # End Source File
 # End Group
 # Begin Source File

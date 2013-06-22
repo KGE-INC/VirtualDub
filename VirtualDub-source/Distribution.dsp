@@ -22,8 +22,8 @@ CFG=Distribution - Win32 Release
 
 # Begin Project
 # PROP AllowPerConfigDependencies 0
-# PROP Scc_ProjName ""
-# PROP Scc_LocalPath ""
+# PROP Scc_ProjName "Distribution"
+# PROP Scc_LocalPath "."
 MTL=midl.exe
 # PROP BASE Use_MFC 0
 # PROP BASE Use_Debug_Libraries 0
@@ -42,7 +42,7 @@ MTL=midl.exe
 
 SOURCE=.\binary.lst
 # PROP Ignore_Default_Tool 1
-USERDEP__BINAR="i:\projwin\virtualdub\release\virtualdub.exe"	
+USERDEP__BINAR="i:\projwin\virtualdub_old\release\virtualdub.exe"	
 # Begin Custom Build - Constructing binary archive...
 InputPath=.\binary.lst
 

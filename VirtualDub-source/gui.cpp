@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "VideoSource.h"
 #include "Error.h"
 #include "List.h"
+#include "VBitmap.h"
 
 #include "gui.h"
 #include "resource.h"
@@ -47,6 +48,8 @@ static HWND g_hwndDebugWindow=NULL;
 static List2<ModelessDlgNode> g_listModelessDlgs;
 
 int g_debugVal, g_debugVal2;
+
+extern "C" ycblit(void *, void *);
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -82,6 +85,9 @@ BOOL CALLBACK DebugDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 					g_debugVal2 = v;
 			}
 			break;
+		case IDCANCEL:
+			DestroyWindow(hdlg);
+			break;
 		}
 		return TRUE;
 
@@ -95,6 +101,33 @@ BOOL CALLBACK DebugDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 void guiOpenDebug() {
 	if (!g_hwndDebugWindow)
 		g_hwndDebugWindow = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_DEBUGVAL), NULL, DebugDlgProc);
+	else if (GetKeyState(VK_CONTROL)<0) {
+		char *p = new char[16384+128];
+		static const struct {
+			BITMAPINFOHEADER bih;
+			unsigned long p[8];
+		} f={
+			{sizeof(BITMAPINFOHEADER),128,128,1,8,BI_RGB,128*128,0,0,0,0},
+			{
+				0xffffff,
+				0xf1f1f1,
+				0xdfdfdf,
+				0xc9c9c9,
+				0xafafaf,
+				0x919191,
+				0x6d6d6d,
+				0x404040,
+			}
+		};
+
+		ycblit(p,0);
+
+		HDC hdc = GetDC(g_hWnd);
+		SetDIBitsToDevice(hdc, 0, 0, 128, 128, 0, 0, 0, 128, p, (const BITMAPINFO *)&f.bih, DIB_RGB_COLORS);
+		ReleaseDC(g_hWnd, hdc);
+
+		delete[] p;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -352,7 +385,7 @@ LONG guiPositionHandleNotify(WPARAM wParam, LPARAM lParam) {
 	return -1;
 }
 
-void guiPositionBlit(HWND hWndClipping, LONG lFrame) {
+void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
 	if (lFrame<0) return;
 	try {
 		BITMAPINFOHEADER *dcf;
@@ -361,8 +394,23 @@ void guiPositionBlit(HWND hWndClipping, LONG lFrame) {
 
 		if (lFrame < inputVideoAVI->lSampleFirst || lFrame >= inputVideoAVI->lSampleLast)
 			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)NULL, (LPARAM)NULL);
-		else
-			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)dcf, (LPARAM)inputVideoAVI->getFrame(lFrame));
+      else {
+         Pixel32 *tmpmem;
+         void *pFrame = inputVideoAVI->getFrame(lFrame);
+
+         if (w>0 && h>0 && (tmpmem = new Pixel32[((w+1)&~1)*h])) {
+            VBitmap vbt(tmpmem, w, h, 32);
+            BITMAPINFOHEADER bih;
+
+            vbt.StretchBltBilinearFast(0, 0, w, h, &VBitmap(pFrame, dcf), 0, 0, dcf->biWidth, dcf->biHeight);
+            vbt.MakeBitmapHeader(&bih);
+
+   			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)tmpmem);
+
+            delete[] tmpmem;
+         } else
+   			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)dcf, (LPARAM)pFrame);
+      }
 
 	} catch(MyError e) {
 		_RPT0(0,"Exception!!!\n");

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -241,30 +241,18 @@ static long computeScanImprovement(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, 
 	w = -w;
 	do {
 		int rA = src1[0];
-		int gA = src1[1];
-		int bA = src1[2];
-		int rB = src1[0+pitch];
-		int gB = src1[1+pitch];
-		int bB = src1[2+pitch];
-		int rC = src1[0+pitch*2];
-		int gC = src1[1+pitch*2];
-		int bC = src1[2+pitch*2];
+		int rB = src1[pitch];
+		int rC = src1[pitch*2];
 		int rD = src2[0];
-		int gD = src2[1];
-		int bD = src2[2];
-		int rE = src2[0+pitch];
-		int gE = src2[1+pitch];
-		int bE = src2[2+pitch];
-		int rF = src2[0+pitch*2];
-		int gF = src2[1+pitch*2];
-		int bF = src2[2+pitch*2];
+		int rE = src2[pitch];
+		int rF = src2[pitch*2];
 
-		imp += sq(rA + rC - 2*rB) + sq(gA + gC - 2*gB) + sq(bA + bC - 2*bB)
-            + sq(rD + rF - 2*rE) + sq(gD + gF - 2*gE) + sq(bD + bF - 2*bE)
-			- sq(rA + rC - 2*rE) - sq(gA + gC - 2*gE) - sq(bA + bC - 2*bE);
+		imp += sq(rA + rC - 2*rB)		// combing in current frame
+            + sq(rD + rF - 2*rE)		// combing in second frame
+			- sq(rA + rC - 2*rE);		// combing in merged frame
 
-		src1 += 4;
-		src2 += 4;
+		src1++;
+		src2++;
 	} while(++w);
 
 	return imp;
@@ -287,12 +275,14 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 		return;
 	}
 
-	{
-		long longs = (vb.w*3+3)/4;
+	// We skip the top and bottom 8 lines -- they're usually full of head noise.
 
-		h = (vb.h-2)/2;
-		src1 = (Pixel8 *)(pMemBlock + vb.pitch*vb.h * nCurrentIn);
-		src2 = (Pixel8 *)(pMemBlock + vb.pitch*vb.h * ((nCurrentIn+9)%10));
+	{
+		long longs = (vb.w*3)/4;
+
+		h = (vb.h-2)/2 - 8;
+		src1 = (Pixel8 *)(pMemBlock + vb.pitch*(vb.h * nCurrentIn + 8));
+		src2 = (Pixel8 *)(pMemBlock + vb.pitch*(vb.h * ((nCurrentIn+9)%10) + 8));
 
 		if (MMX_enabled) {
 			do {
@@ -306,8 +296,8 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 			__asm emms
 		} else {
 			do {
-				field1 += computeScanImprovement(src1, src2, vb.pitch, longs);
-				field2 += computeScanImprovement(src1+vb.pitch, src2+vb.pitch, vb.pitch, longs);
+				field1 += computeScanImprovement(src1, src2, vb.pitch, longs*4);
+				field2 += computeScanImprovement(src1+vb.pitch, src2+vb.pitch, vb.pitch, longs*4);
 
 				src1 += vb.pitch*2;
 				src2 += vb.pitch*2;

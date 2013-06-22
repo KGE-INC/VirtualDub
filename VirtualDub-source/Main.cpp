@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -53,6 +53,7 @@
 #include "command.h"
 #include "job.h"
 #include "autodetect.h"
+#include "crash.h"
 
 #include "AudioSource.h"
 #include "VideoSource.h"
@@ -92,6 +93,8 @@ MRUList				*mru_list				= NULL;
 SceneDetector		*g_sceneDetector		= NULL;
 
 int					g_sceneShuttleMode		= 0;
+int					g_sceneShuttleAdvance	= 0;
+int					g_sceneShuttleCounter	= 0;
 
 bool				g_fDropFrames			= false;
 bool				g_fSwapPanes			= false;
@@ -172,6 +175,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	// Load a file on the command line.
 
+	VDCHECKPOINT;
+
 	if (*g_szFile)
 		try {
 			char szFileTmp[MAX_PATH];
@@ -191,10 +196,20 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		}
 
     // Acquire and dispatch messages until a WM_QUIT message is received.
+	VDCHECKPOINT;
+
     while (GetMessage(&msg,NULL,0,0)) {
+
 		if (guiCheckDialogs(&msg)) continue;
 
-		if (!g_dubber && TranslateAccelerator(g_hWnd, g_hAccelMain, &msg)) continue;
+		if (!g_dubber) {
+			HWND hwnd = msg.hwnd, hwndParent;
+
+			while(hwndParent = GetParent(hwnd))
+				hwnd = hwndParent;
+
+			if (hwnd == g_hWnd && TranslateAccelerator(g_hWnd, g_hAccelMain, &msg)) continue;
+		}
 
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
@@ -228,6 +243,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 wm_quit_detected:
 
 	Deinit();
+
+	VDCHECKPOINT;
 
     return (msg.wParam);           // Returns the value from PostQuitMessage.
 
@@ -311,16 +328,20 @@ UINT iMainMenuHelpTranslator[]={
 //////////////////////////////////////////////////////////////////////
 
 char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos) {
-	if (inputVideoAVI)
-		if (inputSubset)
-			return inputVideoAVI->getFrameTypeChar(inputSubset->lookupFrame(pos));
+	try {
+		if (inputVideoAVI)
+			if (inputSubset)
+				return inputVideoAVI->getFrameTypeChar(inputSubset->lookupFrame(pos));
+			else
+				return inputVideoAVI->getFrameTypeChar(pos);
 		else
-			return inputVideoAVI->getFrameTypeChar(pos);
-	else
+			return 0;
+	} catch(MyError e) {
 		return 0;
+	}
 }
 
-void DisplayFrame(HWND hWnd, LONG pos) {
+void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 	static FilterStateInfo fsi;
 	long original_pos = pos;
 
@@ -349,12 +370,16 @@ void DisplayFrame(HWND hWnd, LONG pos) {
 			BITMAPINFOHEADER bihOutput;
 			VBitmap *out;
 
+			VDCHECKPOINT;
+
 			lpBits = inputVideoAVI->getFrame(pos);
+
+			VDCHECKPOINT;
 
 			if (!lpBits)
 				return;
 
-			if (g_dubOpts.video.fShowInputFrame)
+			if (g_dubOpts.video.fShowInputFrame && bDispInput)
 				DrawDibDraw(
 						hDDWindow,
 						hDCWindow,
@@ -365,6 +390,8 @@ void DisplayFrame(HWND hWnd, LONG pos) {
 						0, 0, 
 						dcf->biWidth, dcf->biHeight,
 						0);
+
+			VDCHECKPOINT;
 
 			if (!g_sceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame) {
 				if (!filters.isRunning()) {
@@ -400,6 +427,7 @@ void DisplayFrame(HWND hWnd, LONG pos) {
 						out->w, out->h,
 						0);
 			}
+			VDCHECKPOINT;
 		}
 
 	} catch(MyError e) {
@@ -416,6 +444,8 @@ void SceneShuttleStop() {
 
 		SendMessage(hwndPosition, PCM_RESETSHUTTLE, 0, 0);
 		g_sceneShuttleMode = 0;
+		g_sceneShuttleAdvance = 0;
+		g_sceneShuttleCounter = 0;
 		DisplayFrame(g_hWnd, lSample);
 	}
 }
@@ -430,11 +460,22 @@ void SceneShuttleStep() {
 		return;
 	}
 
-	SendMessage(hwndPosition, PCM_SETPOS, 0, (LPARAM)lSample);
-	DisplayFrame(g_hWnd, lSample);
+	if (g_sceneShuttleAdvance < 1280)
+		++g_sceneShuttleAdvance;
 
-	if (g_sceneDetector->Submit(&VBitmap(inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat())))
+	g_sceneShuttleCounter += 32;
+
+	if (g_sceneShuttleCounter >= g_sceneShuttleAdvance) {
+		g_sceneShuttleCounter = 0;
+		DisplayFrame(g_hWnd, lSample, true);
+	} else
+		DisplayFrame(g_hWnd, lSample, false);
+
+	SendMessage(hwndPosition, PCM_SETPOS, 0, (LPARAM)lSample);
+
+	if (g_sceneDetector->Submit(&VBitmap(inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat()))) {
 		SceneShuttleStop();
+	}
 }
 
 void MenuMRUListUpdate(HWND hwnd) {
@@ -660,7 +701,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 	case ID_FILE_LOADCONFIGURATION:
 	case ID_FILE_RUNSCRIPT:
 		JobLockDubber();
-		RunScript(NULL);
+		RunScript(NULL, (void *)hWnd);
 		JobUnlockDubber();
 		break;
 	case ID_FILE_JOBCONTROL:
@@ -896,6 +937,10 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 #endif
 		break;
 
+	case ID_AUDIO_VOLUME:
+		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_AUDIO_VOLUME), hWnd, AudioVolumeDlgProc);
+		break;
+
 	case ID_AUDIO_SOURCE_NONE:
 		audioInputMode = AUDIOIN_NONE;
 		CloseWAV();
@@ -969,6 +1014,10 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		InvalidateRect(hWnd, NULL, TRUE);
 		break;
 
+	case ID_OPTIONS_PREVIEWPROGRESSIVE:	g_dubOpts.video.nPreviewFieldMode = 0; break;
+	case ID_OPTIONS_PREVIEWFIELDA:		g_dubOpts.video.nPreviewFieldMode = 1; break;
+	case ID_OPTIONS_PREVIEWFIELDB:		g_dubOpts.video.nPreviewFieldMode = 2; break;
+
 
 	case ID_TOOLS_HEXVIEWER:
 		HexView(NULL);
@@ -992,10 +1041,10 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUT), hWnd, AboutDlgProc);
 		break;
 
-	case ID_HELP_ONLINE_HOME:	LaunchURL("http://www186.pair.com/vdub/index.html"); break;
-	case ID_HELP_ONLINE_FAQ:	LaunchURL("http://www186.pair.com/vdub/virtualdub_faq.html"); break;
-	case ID_HELP_ONLINE_NEWS:	LaunchURL("http://www186.pair.com/vdub/virtualdub_news.html"); break;
-	case ID_HELP_ONLINE_KB:		LaunchURL("http://www186.pair.com/vdub/virtualdub_kb.html"); break;
+	case ID_HELP_ONLINE_HOME:	LaunchURL("http://www.virtualdub.org/index"); break;
+	case ID_HELP_ONLINE_FAQ:	LaunchURL("http://www.virtualdub.org/virtualdub_faq"); break;
+	case ID_HELP_ONLINE_NEWS:	LaunchURL("http://www.virtualdub.org/virtualdub_news"); break;
+	case ID_HELP_ONLINE_KB:		LaunchURL("http://www.virtualdub.org/virtualdub_kb"); break;
 
 	case ID_DUBINPROGRESS_ABORT:
 		if (g_dubber) g_dubber->Abort();
@@ -1013,6 +1062,29 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		break;
 	case ID_VIDEO_SEEK_NEXT:
 		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_FORWARD), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
+		break;
+	case ID_VIDEO_SEEK_PREVONESEC:
+		{
+			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) - 50;
+
+			if (lSample < 0)
+				lSample = 0;
+
+			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
+			DisplayFrame(hWnd, lSample);
+		}
+		break;
+	case ID_VIDEO_SEEK_NEXTONESEC:
+		{
+			LONG lSample = SendDlgItemMessage(hWnd, IDC_POSITION, PCM_GETPOS, 0, 0) + 50;
+			LONG lMax = (inputSubset ? inputSubset->getTotalFrames() : inputVideoAVI->lSampleLast);
+
+			if (lSample > lMax)
+				lSample = lMax;
+
+			SendDlgItemMessage(hWnd, IDC_POSITION, PCM_SETPOS, (WPARAM)TRUE, lSample);
+			DisplayFrame(hWnd, lSample);
+		}
 		break;
 	case ID_VIDEO_SEEK_KEYPREV:
 		PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_POSITION, PCN_KEYPREV), (LPARAM)GetDlgItem(hWnd, IDC_POSITION));
@@ -1212,18 +1284,18 @@ void RepaintMainWindow(HWND hWnd) {
 void MainMenuHelp(HWND hwnd, WPARAM wParam) {
 	if (LOWORD(wParam) >= ID_MRU_FILE0 && LOWORD(wParam) <= ID_MRU_FILE3) {
 		HWND hwndStatus = GetDlgItem(hwnd, IDC_STATUS_WINDOW);
-		char name[512];
+		char name[1024];
 
 		if ((HIWORD(wParam) & MF_POPUP) || (HIWORD(wParam) & MF_SYSMENU)) {
 			SendMessage(hwndStatus, SB_SETTEXT, 0, (LPARAM)"");
 			return;
 		}
 
-		strcpy(name, "Load file ");
+		strcpy(name, "[SHIFT for options] Load file ");
 
-		if (!mru_list->get(LOWORD(wParam) - ID_MRU_FILE0, name+10, sizeof name - 10))
+		if (!mru_list->get(LOWORD(wParam) - ID_MRU_FILE0, name+30, sizeof name - 30)) {
 			SendMessage(hwndStatus, SB_SETTEXT, 255, (LPARAM)name);
-		else
+		} else
 			SendMessage(hwndStatus, SB_SETTEXT, 255, (LPARAM)"");
 	} else
 		guiMenuHelp(hwnd, wParam, 255, iMainMenuHelpTranslator);
@@ -1310,6 +1382,8 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 			CheckMenuRadioItem(hMenu, ID_AUDIO_SOURCE_NONE, ID_AUDIO_SOURCE_WAV, ID_AUDIO_SOURCE_NONE+audioInputMode, MF_BYCOMMAND);
 			CheckMenuRadioItem(hMenu, ID_VIDEO_MODE_DIRECT, ID_VIDEO_MODE_FULL, ID_VIDEO_MODE_DIRECT+g_dubOpts.video.mode, MF_BYCOMMAND);
 			CheckMenuRadioItem(hMenu, ID_AUDIO_MODE_DIRECT, ID_AUDIO_MODE_FULL, ID_AUDIO_MODE_DIRECT+g_dubOpts.audio.mode, MF_BYCOMMAND);
+			CheckMenuRadioItem(hMenu, ID_OPTIONS_PREVIEWPROGRESSIVE, ID_OPTIONS_PREVIEWFIELDB,
+				ID_OPTIONS_PREVIEWPROGRESSIVE+g_dubOpts.video.nPreviewFieldMode, MF_BYCOMMAND);
 
 			CheckMenuItem(hMenu, ID_OPTIONS_DISPLAYINPUTVIDEO	, MF_BYCOMMAND | (g_dubOpts.video.fShowInputFrame	? MF_CHECKED : MF_UNCHECKED));
 			CheckMenuItem(hMenu, ID_OPTIONS_DISPLAYOUTPUTVIDEO	, MF_BYCOMMAND | (g_dubOpts.video.fShowOutputFrame	? MF_CHECKED : MF_UNCHECKED));
@@ -1340,6 +1414,19 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 			EnableMenuItem(hMenu,ID_FILE_CLOSEAVI				, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_FILE_STARTSERVER			, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_FILE_AVIINFO				, dwEnableFlags);
+
+			dwEnableFlags = ((g_dubOpts.audio.mode == DubAudioOptions::M_FULL) ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+
+			EnableMenuItem(hMenu,ID_AUDIO_COMPRESSION			, dwEnableFlags);
+			EnableMenuItem(hMenu,ID_AUDIO_CONVERSION			, dwEnableFlags);
+			EnableMenuItem(hMenu,ID_AUDIO_VOLUME				, dwEnableFlags);
+
+			dwEnableFlags = ((g_dubOpts.video.mode >= DubVideoOptions::M_FULL) ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+			EnableMenuItem(hMenu,ID_VIDEO_FILTERS				, dwEnableFlags);
+			dwEnableFlags = ((g_dubOpts.video.mode >= DubVideoOptions::M_SLOWREPACK) ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+			EnableMenuItem(hMenu,ID_VIDEO_COLORDEPTH			, dwEnableFlags);
+			dwEnableFlags = ((g_dubOpts.video.mode >= DubVideoOptions::M_FASTREPACK) ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
+			EnableMenuItem(hMenu,ID_VIDEO_COMPRESSION			, dwEnableFlags);
 		}
 		break;
 
@@ -2373,9 +2460,6 @@ void CPUTest() {
 	// Enable FPU support...
 
 	long lActualEnabled = CPUEnableExtensions(lEnableFlags);
-
-	MMX_enabled = !!(lActualEnabled & CPUF_SUPPORTS_MMX);
-	FPU_enabled = !!(lActualEnabled & CPUF_SUPPORTS_FPU);
 }
 
 void InitDubAVI(char *szFile, BOOL fAudioOnly, DubOptions *quick_options, int iPriority, bool fPropagateErrors, long lSpillThreshold, long lSpillFrameThreshold) {

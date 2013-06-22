@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -159,7 +159,12 @@ sixteen	dq	0010001000100010h
 ;	[esp+36] ulong xfrac,
 ;	[esp+40] ulong yfrac,
 ;	[esp+44] ulong xistep,
-;	[esp+48] ulong yistep);
+;	[esp+48] ulong yistep,
+;	[esp+52] Pixel32 *precopysrc,
+;	[esp+56] ulong precopy,
+;	[esp+60] Pixel32 *postcopysrc,
+;	[esp+64] ulong postcopy,
+;	);
 ;
 ;**************************************************************************
 
@@ -171,12 +176,19 @@ _asm_resize_nearest:
 	push	esi
 	push	ebx
 
-	mov	esi,[esp+ 8+16]
 	mov	edi,[esp+ 4+16]
-
 rowloop_nearest:
-	shr	esi,2
-	mov	ebp,[esp+12+16]
+	mov	ecx,[esp+56+16]		;ecx = precopy count
+	mov	esi,[esp+52+16]		;esi = precopy ptr
+	or	ecx,ecx
+	jz	rowloop_no_precopy
+	add	edi,[esp+12+16]
+	mov	eax,[esi]		;load precopy pixel
+	std
+	sub	edi,4
+	rep	stosd			;do precopy
+	cld
+rowloop_no_precopy:
 
 	;EAX
 	;EBX	accumulator
@@ -186,9 +198,13 @@ rowloop_nearest:
 	;EDI	destination
 	;EBP	loop counter
 
+	mov	esi,[esp+ 8+16]
+	mov	ebp,[esp+12+16]
+	shr	esi,2
 	mov	edx,[esp+44+16]
 	mov	ecx,[esp+36+16]
 	mov	ebx,[esp+28+16]
+	mov	edi,[esp+ 4+16]
 colloop_nearest:
 	mov	eax,[esi*4]		;1u
 	add	ebx,ecx			;1v
@@ -197,10 +213,26 @@ colloop_nearest:
 	add	ebp,4			;3u
 	jne	colloop_nearest		;3v
 
-	mov	esi,[esp+ 8+16]		;reload source pointer
+	mov	ecx,[esp+64+16]		;ecx = postcopy count
+	mov	esi,[esp+60+16]		;esi = postcopy ptr
+	or	ecx,ecx
+	jz	rowloop_no_postcopy
+	mov	eax,[esi]		;load precopy pixel
+	rep	stosd			;do precopy
+rowloop_no_postcopy:
+
+	mov	edi,[esp+ 4+16]
+
+	mov	esi,[esp+ 8+16]		;esi = source pointer
+	mov	ecx,[esp+52+16]		;ecx = precopy pointer
+
+	mov	edx,[esp+60+16]		;edx = postcopy pointer
 	mov	eax,[esp+32+16]		;get y accumulator
 
 	add	esi,[esp+48+16]		;add integer source bump
+	add	ecx,[esp+48+16]		;add integer source bump
+
+	add	edx,[esp+48+16]		;add integer source bump
 	add	eax,[esp+40+16]		;add y fraction
 
 	sbb	ebx,ebx			;ebx = -1 if need fractional step
@@ -210,12 +242,20 @@ colloop_nearest:
 	add	edi,[esp+20+16]		;advance dest to next row
 
 	add	esi,ebx			;add y fractional step
+	add	ecx,ebx			;add y fractional step
+
+	add	edx,ebx			;add y fractional step
 	mov	ebp,[esp+16+16]		;get y counter
 
 	mov	[esp+ 8+16],esi		;store new source ptr
+	mov	[esp+52+16],ecx		;store new source ptr
+
+	mov	[esp+60+16],edx		;store new source ptr
 	dec	ebp			;decrement y counter
 
 	mov	[esp+16+16],ebp		;store y counter
+	mov	[esp+ 4+16],edi		;store dest pointer
+
 	jne	rowloop_nearest		;continue until all rows done
 
 	pop	ebx
@@ -241,9 +281,10 @@ colloop_nearest:
 ;	[esp+40] ulong yfrac,
 ;	[esp+44] long xint,
 ;	[esp+48] long yint,
-;	[esp+52] ulong xprecopy,
-;	[esp+56] ulong xpostcopy,
-;	[esp+60] void *srclimit);
+;	[esp+52] void *srcprecopy,
+;	[esp+56] ulong xprecopy,
+;	[esp+60] void *srcpostcopy,
+;	[esp+64] ulong xpostcopy);
 ;
 ;**************************************************************************
 
@@ -252,7 +293,7 @@ _asm_resize_bilinear:
 	test	_MMX_enabled,1
 	jnz	asm_resize_bilinear_MMX
 
-        test	_FPU_enabled,1
+	test	_FPU_enabled,1
 	jnz	asm_resize_bilinear_FPU
 
 	push	ebp
@@ -292,28 +333,26 @@ rowloop_bilinear:
 	mov	[esp+4],ebx			;x_frac2 = 16-x_frac
 
 	mov	esi,[esp+ 8+16+32]		;load source ptr
-	mov	edi,[esp+24+16+32]		;load source pitch
-
 	mov	edx,[esp+4+16+32]		;load dest pointer
-	cmp	esi,[esp+60+16+32]		;src >= srclimit bound for 2lines?
 
-	sbb	ecx,ecx				;ecx=-1 if not
-	mov	[esp+20],edx			;store in temporary
-
-	and	edi,ecx
+	mov	edi,[esp+24+16+32]		;load source pitch
+	mov	[esp+20],edx			;store dst ptr in temporary
 
 	shr	esi,2
-	mov	ecx,[esp+52+16+32]		;load precopy value
+	mov	ecx,[esp+56+16+32]		;load precopy value
 	or	ecx,ecx
 	jz	colloop_bilinear_start
 
 	;do precopy
 
+	push	esi
+	mov	esi,[esp+52+16+32+4]
 	add	edx,ebp
-	mov	[esp+20],edx
+	mov	[esp+20+4],edx
 	mov	ebp,ecx
 
 	call	bilinear_prepostcopy
+	pop	esi
 
 	mov	ebp,[esp+12+16+32]
 	mov	edx,[esp+4+16+32]
@@ -390,14 +429,17 @@ colloop_bilinear:
 	jne	colloop_bilinear
 
 bilinear_check_postcopy:
-	mov	ebp,[esp+56+16+32]		;check for postcopy
+	mov	ebp,[esp+64+16+32]		;check for postcopy
 	or	ebp,ebp
 	jz	bilinear_no_postcopy
 
+	push	esi
+	mov	esi,[esp+60+16+36]
 	sub	edx,ebp
-	mov	[esp+20],edx
+	mov	[esp+20+4],edx
 
 	call	bilinear_prepostcopy
+	pop	esi
 
 bilinear_no_postcopy:
 	mov	eax,[esp+32+16+32]		;load yaccum
@@ -409,12 +451,21 @@ bilinear_no_postcopy:
 	sbb	ebx,ebx				;ebx=-1 if need fractional src increment
 	mov	esi,[esp+ 8+16+32]		;reload source ptr
 
+	mov	ecx,[esp+52+16+32]		;load precopy source ptr
+	mov	ebp,[esp+60+16+32]		;load postcopy source ptr
+
 	add	esi,[esp+48+16+32]		;add integral source increment
+	add	ecx,[esp+48+16+32]		;add integral source increment
+	add	ebp,[esp+48+16+32]		;add integral source increment
 	and	ebx,[esp+24+16+32]		;ebx = fractional src delta
 
 	add	esi,ebx				;add fractional source increment
+	add	ecx,ebx				;add fractional source increment
+	add	ebp,ebx				;add fractional source increment
 	mov	[esp+ 4+16+32],edx		;store destination ptr
 	mov	[esp+ 8+16+32],esi		;store source ptr
+	mov	[esp+52+16+32],ecx		;store source ptr
+	mov	[esp+60+16+32],ebp		;store source ptr
 	mov	[esp+32+16+32],eax		;store yaccum
 	shr	eax,28
 	mov	ebx,16
@@ -434,18 +485,18 @@ bilinear_no_postcopy:
 	ret
 
 bilinear_prepostcopy:
-	mov	eax,[esi*4]
-	mov	ecx,[esi*4+edi]
+	mov	eax,[esi]
+	mov	ecx,[esi+edi]
 	mov	ebx,eax
 	mov	edx,ecx
 	and	eax,00ff00ffh
 	and	ebx,0000ff00h
 	and	ecx,00ff00ffh
 	and	edx,0000ff00h
-	imul	eax,[esp+28+4]		;y_frac2
-	imul	ebx,[esp+28+4]		;y_frac2
-	imul	ecx,[esp+24+4]		;y_frac
-	imul	edx,[esp+24+4]		;y_frac
+	imul	eax,[esp+28+8]		;y_frac2
+	imul	ebx,[esp+28+8]		;y_frac2
+	imul	ecx,[esp+24+8]		;y_frac
+	imul	edx,[esp+24+8]		;y_frac
 	add	eax,ecx
 	add	ebx,edx
 
@@ -455,24 +506,9 @@ bilinear_prepostcopy:
 	and	eax,00ff00ffh
 
 	or	eax,ebx			;[data write ] u
-	mov	edx,[esp+20+4]		;[data write ] v
-
-	mov	ebx,[esp+8+4]		;[frac update] u x_accum
-	mov	ecx,[esp+36+16+36]	;[frac update] v xfrac
+	mov	edx,[esp+20+8]		;[data write ] v
 
 	mov	[edx+ebp],eax		;[data write ] u
-	add	ebx,ecx			;[frac update] v: update x_accum
-
-	adc	esi,[esp+44+16+36]	;[frac update] v: update source pointer [2 cycles]
-	mov	[esp+8+4],ebx		;[frac update] u: store x_accum
-
-	shr	ebx,28			;[frac update] u: x_frac = x_accum>>28
-	mov	eax,16			;[frac update] v:
-
-	sub	eax,ebx			;[frac update] u: x_frac2 = 16 - x_frac
-	mov	[esp+4],ebx		;[frac update] v: store x_frac
-
-	mov	[esp+8],eax		;[frac update] u: store x_frac2
 
 	add	ebp,4
 	jne	bilinear_prepostcopy
@@ -502,23 +538,22 @@ asm_resize_bilinear_FPU:
 	mov	eax,esp
 	and	esp,-32
 
-LOCALS=92
+LOCALS=96
 
 	sub	esp,LOCALS
 	mov	[esp+LOCALS-4],eax
 
         ;copy down parameters.
 
-	mov	esi,eax
+	lea	esi,[eax+20]
 	lea	edi,[esp+24]
-	add	esi,20
-	mov	ecx,15
+	mov	ecx,16
 	rep	movsd
 
 	;flip the FPU into 80-bit, round-down mode.
 
-	fstcw	[esp+84]
-	mov	eax,[esp+84]
+	fstcw	[esp+LOCALS-8]
+	mov	eax,[esp+LOCALS-8]
 	and	eax,0fffff0ffh
 	or	eax,000000700h
 	mov	[esp],eax
@@ -530,11 +565,12 @@ LOCALS=92
 
 ;******************************************************
 ;
-;	[esp+ 88] original esp
-;	[esp+ 84] old FP control word
-;	[esp+ 80] srclimit
-;	[esp+ 76] xpostcopy
-;	[esp+ 72] xprecopy
+;	[esp+ 92] original esp
+;	[esp+ 88] old FP control word
+;	[esp+ 84] xpostcopy
+;	[esp+ 80] srcpostcopy
+;	[esp+ 76] xprecopy
+;	[esp+ 72] srcprecopy
 ;	[esp+ 68] yint
 ;	[esp+ 64] xint
 ;	[esp+ 60] yfrac
@@ -559,40 +595,42 @@ rowloop_bilinear_FPU:
 	mov	eax,[esp+48]		;copy xaccum
 	mov	[esp+20],eax		;xaccum' = xaccum
 
-	mov	esi,[esp+28]		;load source pointer
 	mov	edi,[esp+44]		;load source stride
-	cmp	esi,[esp+80]		;can we access the next scanline?
 
-	sbb	ebx,ebx			;ebx=-1 if yes
-	shr	esi,2			;divide source ptr by 4 (!)
-	and	edi,ebx			;kill source stride if there's no next scanline
 	mov	eax,[esp+52]		;eax = yaccum
 	and	eax,0f0000000h
 	shr	eax,20
-	add	eax,bilinFPU_tbl
+	add	eax,offset bilinFPU_tbl
 	mov	[esp+16],eax
 
 	;check for precopy
 
-	mov	ecx,[esp+72]
+	mov	ecx,[esp+76]
 	or	ecx,ecx
 	jz	colloop_bilinear_start_FPU
 
 	;do precopy
 
-	add	edx,ebp
+	mov	edx,[esp+24]
+	add	edx,ecx
 	mov	ebp,ecx
+	mov	[esp+24],edx
+	mov	esi,[esp+72]
 
 	call	bilinear_prepostcopy_FPU
 
-	mov	ebp,[esp+32]
+	mov	ebp,[esp+76]
 	sub	edx,ebp
+	mov	[esp+24],edx
+	mov	ebp,[esp+32]
 
 colloop_bilinear_start_FPU:
 	or	ebp,ebp
 	jz	bilinear_check_postcopy_FPU
 
+	mov	esi,[esp+28]		;load source pointer
 	mov	bl,[esp+23]		;cl = xaccum>>24
+	shr	esi,2			;divide source ptr by 4 (!)
 	mov	edx,[esp+16]		;edx = rowbase
 	and	ebx,000000f0h		;ecx = x-offset in rowbase
 	add	edx,ebx
@@ -692,13 +730,19 @@ colloop_bilinear_FPU:
 
 bilinear_check_postcopy_FPU:
 
-	mov	ebp,[esp+76]
+	mov	ebp,[esp+84]
 	or	ebp,ebp
 	jz	bilinear_no_postcopy_FPU
 
-	sub	edx,ebp
+	mov	eax,[esp+24]
+	sub	eax,ebp
+	mov	esi,[esp+80]
+	mov	[esp+24],eax
 
 	call	bilinear_prepostcopy_FPU
+
+	add	edx,[esp+84]
+	mov	[esp+24],edx
 
 	;******************
 
@@ -712,13 +756,24 @@ bilinear_no_postcopy_FPU:
 	sbb	ebx,ebx			;ebx = -1 if fraction overflowed
 	mov	esi,[esp+28]		;reload source ptr
 
+	mov	ecx,[esp+72]		;reload source ptr
+	mov	ebp,[esp+80]		;reload source ptr
+
 	add	esi,[esp+68]		;add integer increment to source ptr
+	add	ecx,[esp+68]		;add integer increment to source ptr
+
+	add	ebp,[esp+68]		;add integer increment to source ptr
 	and	ebx,[esp+44]		;ebx = fractional y bump
 
 	add	esi,ebx			;bump source ptr if fraction overflowed
+	add	ecx,ebx			;bump source ptr if fraction overflowed
+	add	ebp,ebx			;bump source ptr if fraction overflowed
 	mov	[esp+52],eax		;store yaccum
 
 	mov	[esp+28],esi		;store source ptr
+	mov	[esp+72],ecx		;store source ptr
+
+	mov	[esp+80],ebp		;store source ptr
 	mov	[esp+24],edx
 
 	dec	dword ptr [esp+36]
@@ -730,7 +785,7 @@ bilinear_no_postcopy_FPU:
 
 	;restore FPU rounding and precision
 
-	fldcw	[esp+84]
+	fldcw	[esp+LOCALS-8]
 
 	mov	esp,[esp+LOCALS-4]
 
@@ -743,44 +798,35 @@ bilinear_no_postcopy_FPU:
 bilinear_prepostcopy_FPU:
 
 colloop_bilinear_prepostcopy_FPU:
-	mov	edx,[esp+16]		;edx = rowbase
-	mov	eax,[esi*4]
-	mov	ecx,[esi*4+edi]
+	mov	edx,[esp+16+4]		;edx = rowbase
+	mov	eax,[esi]
+	mov	ecx,[esi+edi]
 
 	mov	ebx,eax
 	and	eax,00ff00ffh
 
 	and	ebx,0000ff00h
-	mov	[esp+0],eax
+	mov	[esp+0+4],eax
 
-	mov	[esp+4],ebx
+	mov	[esp+4+4],ebx
 	mov	ebx,ecx
 
-	fild	qword ptr [esp+0]	;stack: x1 cv
+	fild	qword ptr [esp+0+4]	;stack: x1 cv
 
 	and	ecx,00ff00ffh
 	and	ebx,0000ff00h
 
-	mov	[esp+8],ecx
-	mov	[esp+12],ebx
+	mov	[esp+8+4],ecx
+	mov	[esp+12+4],ebx
 
 	fmul	real4 ptr [edx+0]	;stack: y1 cv
-	fild	qword ptr [esp+8]	;stack: x2 y1 cv
-
-	mov	ebx,[esp+20]		;[frac update] u x_accum
-	mov	ecx,[esp+56]		;[frac update] v x_inc
-
-	mov	eax,[esp+64]		;[frac update] u xint
-	add	ebx,ecx			;[frac update] v
+	fild	qword ptr [esp+8+4]	;stack: x2 y1 cv
 
 	fmul	real4 ptr [edx+8]	;stack: y2 y1 cv
 	fxch	st(1)			;stack: y1 y2 cv
 	fadd	st,st(2)		;stack: (y1+cv) y2 cv
 
-	adc	esi,eax			;[frac update] u: update source pointer
-	mov	[esp+20],ebx		;[frac update] v
-
-	mov	edx,[esp+24]		;[data write] u
+	mov	edx,[esp+24+4]		;[data write] u
 	;<<v-stall>>
 
 	fadd				;stack: (y1+y2+cv) cv
@@ -791,10 +837,10 @@ colloop_bilinear_prepostcopy_FPU:
 	;<<u-stall>>
 	;<<v-stall>>
 
-	fstp	real10 ptr [esp+0]	;stack: cv
+	fstp	real10 ptr [esp+0+4]	;stack: cv
 
-	mov	eax,[esp+0]		;[data merge ] u
-	mov	ecx,[esp+4]		;[data merge ] v
+	mov	eax,[esp+0+4]		;[data merge ] u
+	mov	ecx,[esp+4+4]		;[data merge ] v
 
 	and	eax,00ff00ffh
 	and	ecx,0000ff00h
@@ -841,48 +887,43 @@ bilinear_rowloop_MMX:
 	mov		esi,[esp+ 8+16+32]		;esi = source
 	mov		edi,[esp+24+16+32]		;edi = source pitch
 
-	cmp		esi,[esp+60+16+32]		;past two-line limit?
-	sbb		ebx,ebx
-	and		edi,ebx				;set pitch=0 if so
-
 	mov		edx,[esp+4+16+32]		;edx = destination
 	mov		ebx,[esp+36+16+32]		;ebx = fractional x increment
 	mov		ecx,[esp+44+16+32]		;ecx = integer x increment
 
 	mov		eax,[esp+32+16+32]
 	shr		eax,28
-	movd		mm5,eax
-	punpcklwd	mm5,mm5
-	movq		mm4,sixteen
-	punpckldq	mm5,mm5
-	psubw		mm4,mm5
-	movq		[esp+8],mm5
-	movq		[esp+16],mm4
+	movd		mm7,eax
+	punpcklwd	mm7,mm7
+	movq		mm6,sixteen
+	punpckldq	mm7,mm7
+	psubw		mm6,mm7
 	pxor		mm5,mm5
 
 	shr		esi,2
 	mov		eax,[esp+28+16+32]		;eax = x accumulator
 
 
-	mov	ebp,[esp+52+16+32]		;load precopy value
+	mov	ebp,[esp+56+16+32]		;load precopy value
 	or	ebp,ebp
 	jz	colloop_bilinear_start_MMX
 
 	;do precopy
 
 	add	edx,[esp+12+16+32]
+	mov	esi,[esp+52+16+32]
 
 	call	bilinear_prepostcopy_MMX
 
 	mov	edx,[esp+4+16+32]
+	mov	esi,[esp+8+16+32]
+
+	shr	esi,2
 
 colloop_bilinear_start_MMX:
 	mov	ebp,[esp+12+16+32]
 	or	ebp,ebp
 	jz	bilinear_check_postcopy_MMX
-
-	movq		mm6,[esp+16]
-	movq		mm7,[esp+8]
 
 	;<------------- begin pre-entry phase ------------->
 
@@ -934,20 +975,18 @@ bilinear_colloop_MMX_entry:
 	paddw		mm4,mm1
 
 	add		eax,ebx			;update x accumulator
-	pmullw		mm4,mm6
-
 	mov		ecx,[esp+44+16+32]
-	paddw		mm2,mm3
 
 	adc		esi,ecx			;update source address
-	pmullw		mm2,mm7
+	pmullw		mm4,mm6
 
+	paddw		mm2,mm3
 	mov		ecx,eax
-	;stall
 
 	shr		ecx,28
-	add		ebp,4
+	pmullw		mm2,mm7
 
+	add		ebp,4
 	jnz		bilinear_colloop_MMX
 
 	;<-------------- begin exit phase -------------->
@@ -960,11 +999,12 @@ bilinear_colloop_MMX_entry:
 
 
 bilinear_check_postcopy_MMX:
-	mov	ebp,[esp+56+16+32]		;check for postcopy
+	mov	ebp,[esp+64+16+32]		;check for postcopy
 	or	ebp,ebp
 	jz	bilinear_no_postcopy_MMX
 
 	sub	edx,ebp
+	mov	esi,[esp+60+16+32]
 
 	call	bilinear_prepostcopy_MMX
 
@@ -980,13 +1020,23 @@ bilinear_no_postcopy_MMX:
 	sbb	ebx,ebx				;ebx = -1 if we have a fractional increment
 	mov	esi,[esp+ 8+16+32]		;reload source pointer
 
+	mov	ecx,[esp+52+16+32]		;reload source pointer
+	mov	ebp,[esp+60+16+32]		;reload source pointer
+
 	add	esi,[esp+48+16+32]		;add y integer increment
+	add	ecx,[esp+48+16+32]		;add y integer increment
+
+	add	ebp,[esp+48+16+32]		;add y integer increment
 	and	ebx,[esp+24+16+32]		;ebx = y fractional increment
 
 	add	esi,ebx				;add y fractional increment
+	add	ecx,ebx				;add y fractional increment
+	add	ebp,ebx				;add y fractional increment
 	mov	[esp+ 4+16+32],edx		;store destination pointer
 
 	mov	[esp+ 8+16+32],esi		;store source pointer
+	mov	[esp+52+16+32],ecx		;store source pointer
+	mov	[esp+60+16+32],ebp		;store source pointer
 	mov	[esp+32+16+32],eax		;store new y accumulator
 
 	shr	eax,28				;eax = y_frac
@@ -1011,31 +1061,16 @@ bilinear_no_postcopy_MMX:
 
 	align		16
 bilinear_prepostcopy_MMX:
-	movd		mm7,eax
+	movd		mm0,[esi]		;mm0 = top left pixel
 
-	movq		mm6,[esp+4]
-
-	psrld		mm7,28
-
-	movd		mm0,[esi*4]		;mm0 = top left pixel
-	punpcklwd	mm7,mm7
-
-	movd		mm2,[esi*4+edi]		;mm2 = bottom left pixel
-	punpckldq	mm7,mm7
-
+	movd		mm2,[esi+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
-	psubw		mm6,mm7
 
 	punpcklbw	mm2,mm5
+	pmullw		mm0,mm6
 
-	add		eax,ebx			;update x accumulator
-
-	adc		esi,ecx			;update source address
-
-	pmullw		mm0,[esp+16+4]
+	pmullw		mm2,mm7			;[last]
 	add		ebp,4
-
-	pmullw		mm2,[esp+8+4]		;[last]
 
 	paddw		mm0,mm2			;[last]
 

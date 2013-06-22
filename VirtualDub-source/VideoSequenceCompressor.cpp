@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include "VideoSequenceCompressor.h"
 #include "Error.h"
+#include "crash.h"
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -299,6 +300,8 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	if (dwFlagsIn)
 		dwFlags = AVIIF_KEYFRAME;
 
+	VDCHECKPOINT;
+
 	res = ICCompress(hic, dwFlagsIn,
 			(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
 			(LPBITMAPINFOHEADER)pbiInput, pBits,
@@ -310,6 +313,8 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 			dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
 			dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
 
+	VDCHECKPOINT;
+
 	_RPT2(0,"Compressed frame %d: %d bytes\n", lFrameNum, pbiOutput->bmiHeader.biSizeImage);
 
 	++lFrameNum;
@@ -320,11 +325,16 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	// we have to decompress the frame again to compress the next one....
 
 	if (res==ICERR_OK && pPrevBuffer && (!lKeyRate || lKeyRateCounter>1)) {
+
+		VDCHECKPOINT;
+
 		res = ICDecompress(hic, dwFlags & AVIIF_KEYFRAME ? 0 : ICDECOMPRESS_NOTKEYFRAME
 				,(LPBITMAPINFOHEADER)pbiOutput
 				,pOutputBuffer
 				,(LPBITMAPINFOHEADER)pbiInput
 				,pPrevBuffer);
+
+		VDCHECKPOINT;
 	}
 
 	pbiOutput->bmiHeader.biSizeImage = sizeImage;

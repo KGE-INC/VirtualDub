@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -48,9 +48,13 @@ public:
 		C_NOCHANGE=0,
 		C_MONO=1,
 		C_STEREO=2,
+		C_MONOLEFT=3,
+		C_MONORIGHT=4,
 		M_NONE			= 0,
 		M_FULL			= 1,
 	};
+
+	long volume;		// 0, or 8-bit fixed point fraction
 
 	long preload;
 	long interval;
@@ -97,23 +101,16 @@ public:
 	bool	fIVTCMode;
 	int		nIVTCOffset;
 	bool	fIVTCPolarity;
+
+	int		nPreviewFieldMode;
 };
 
 class DubPerfOptions {
 public:
-	enum {
-		DT_80386	= 0,
-		DT_80486	= 1,
-		DT_Pentium	= 2,
-		DT_PPro		= 3,
-		DT_AMD_K6	= 4
-	};
-
 	long	outputBufferSize;
 	long	waveBufferSize;
 	long	pipeBufferCount;
 
-	char	dynamicTarget;
 	bool	dynamicEnable;
 	bool	dynamicShowDisassembly;
 	bool	useDirectDraw;
@@ -148,6 +145,8 @@ public:
 	bool	converting, resampling;
 	bool	is_16bit;
 	bool	is_stereo;
+	bool	is_right;
+	bool	single_channel;
 	char	bytesPerSample;
 
 	long	lPreloadSamples;

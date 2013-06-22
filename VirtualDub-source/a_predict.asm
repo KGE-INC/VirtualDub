@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -53,8 +53,6 @@
 	.586
 	.model	flat
 
-	extern _MMX_enabled: byte
-
 
 	.const
 
@@ -94,11 +92,10 @@ vx	equ	[esp+12+16]
 vy	equ	[esp+16+16]
 pitch	equ	[esp+20+16]
 
-	public	_video_copy_prediction_Y
-	extern	video_copy_prediction_Y@MMX:near
+	public	_video_copy_prediction_Y_scalar
 
 	align	16
-_video_copy_prediction_Y:
+_video_copy_prediction_Y_scalar:
 	push	ebp
 	push	edi
 	push	esi
@@ -120,8 +117,6 @@ _video_copy_prediction_Y:
 	and	ebx,1			;ebx = y half-pel
 	shl	eax,2
 	mov	edx,dst
-	test	_MMX_enabled,1
-	jnz	video_copy_prediction_Y@MMX
 	call	dword ptr [predictors_Y+eax+ebx*8]
 
 	pop	ebx
@@ -444,10 +439,9 @@ loop_Y:
 ;*
 ;**************************************************************************
 
-	public	_video_add_prediction_Y
-	extern	video_add_prediction_Y@MMX:near
+	public	_video_add_prediction_Y_scalar
 	align	16
-_video_add_prediction_Y:
+_video_add_prediction_Y_scalar:
 	push	ebp
 	push	edi
 	push	esi
@@ -470,8 +464,6 @@ _video_add_prediction_Y:
 	shl	eax,2
 	mov	edx,dst
 
-	test	_MMX_enabled,1
-	jnz	video_add_prediction_Y@MMX
 	call	dword ptr [adders_Y+eax+ebx*8]
 
 	pop	ebx
@@ -978,11 +970,10 @@ vx	equ	[esp+12+16]
 vy	equ	[esp+16+16]
 pitch	equ	[esp+20+16]
 
-	public	_video_copy_prediction_C
-	extern	video_copy_prediction_C@MMX:near
+	public	_video_copy_prediction_C_scalar
 
 	align	16
-_video_copy_prediction_C:
+_video_copy_prediction_C_scalar:
 	push	ebp
 	push	edi
 	push	esi
@@ -1004,8 +995,6 @@ _video_copy_prediction_C:
 	and	ebx,1			;ebx = y half-pel
 	shl	eax,2
 	mov	edx,dst
-	test	_MMX_enabled,1
-	jnz	video_copy_prediction_C@MMX
 	call	dword ptr [predictors_C+eax+ebx*8]
 	pop	ebx
 	pop	esi
@@ -1246,11 +1235,10 @@ loop_C:
 ;*
 ;**************************************************************************
 
-	public	_video_add_prediction_C
-	extern	video_add_prediction_C@MMX:near
+	public	_video_add_prediction_C_scalar
 
 	align	16
-_video_add_prediction_C:
+_video_add_prediction_C_scalar:
 	push	ebp
 	push	edi
 	push	esi
@@ -1273,8 +1261,6 @@ _video_add_prediction_C:
 	shl	eax,2
 	mov	edx,dst
 
-	test	_MMX_enabled,1
-	jnz	video_add_prediction_C@MMX
 	call	dword ptr [adders_C+eax+ebx*8]
 
 	pop	ebx

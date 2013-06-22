@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -45,7 +45,6 @@
 #include "mpeg_idct.h"
 #include "mpeg_tables.h"
 #include "mpeg_decode.h"
-#include "mpeg_dcttbl.h"
 
 //////////////////////////////////////////////////////////////
 
@@ -61,6 +60,8 @@
 //#define TIME_TRIALS
 
 //#define NO_DECODING
+
+//#define DISPLAY_INTER_COUNT
 
 //////////////////////////////////////////////////////////////
 
@@ -256,6 +257,24 @@ static enum {
 		MPEG_READY_MMX
 } mpeg_ready_state;
 
+extern "C" void video_copy_prediction_Y_ISSE(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_C_ISSE(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_Y_ISSE(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_C_ISSE(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_Y_scalar(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_C_scalar(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_Y_scalar(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_C_scalar(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_Y_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_copy_prediction_C_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_Y_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+extern "C" void video_add_prediction_C_MMX(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+
+static void (*video_copy_prediction_Y)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+static void (*video_copy_prediction_C)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+static void (*video_add_prediction_Y)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+static void (*video_add_prediction_C)(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
+
 //int lpos_stats[64];
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -426,6 +445,25 @@ void mpeg_decode_frame(void *input_data, int len, int frame_num) {
 	char *limit = ptr + len - 4;
 	int type;
 
+	if (MMX_enabled) {
+		if (ISSE_enabled) {
+			video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
+			video_add_prediction_Y = video_add_prediction_Y_ISSE;
+			video_copy_prediction_C = video_copy_prediction_C_ISSE;
+			video_add_prediction_C = video_add_prediction_C_ISSE;
+		} else {
+			video_copy_prediction_Y = video_copy_prediction_Y_MMX;
+			video_add_prediction_Y = video_add_prediction_Y_MMX;
+			video_copy_prediction_C = video_copy_prediction_C_MMX;
+			video_add_prediction_C = video_add_prediction_C_MMX;
+		}
+	} else {
+		video_copy_prediction_Y = video_copy_prediction_Y_scalar;
+		video_add_prediction_Y = video_add_prediction_Y_scalar;
+		video_copy_prediction_C = video_copy_prediction_C_scalar;
+		video_add_prediction_C = video_add_prediction_C_scalar;
+	}
+
 	if (MMX_enabled && mpeg_ready_state != MPEG_READY_MMX) {
 		int i,j;
 
@@ -548,6 +586,12 @@ void mpeg_decode_frame(void *input_data, int len, int frame_num) {
 
 
 advance:
+
+#ifdef DISPLAY_INTER_COUNT
+	memset(U_dest, 0x80, uv_pitch * mbHeight * 8);
+	memset(V_dest, 0x80, uv_pitch * mbHeight * 8);
+#endif
+
 	switch(frame_type) {
 	case I_FRAME:
 		mpeg_swap_buffers(MPEG_BUFFER_FORWARD, MPEG_BUFFER_BACKWARD);
@@ -707,6 +751,7 @@ YUVPixel *dstY, *dstU, *dstV;
 
 
 extern "C" void IDCT_mmx(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
+extern "C" void IDCT_isse(signed short *dct_coeff, void *dst, long pitch, int intra_flag, int pos);
 
 
 static void decode_mblock(YUVPixel *dst, long modulo, long DC_val) {
@@ -1203,6 +1248,15 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 //	++lpos_stats[pos];
 
+#ifdef DISPLAY_INTER_COUNT
+	if (macro_block_flags & MBF_INTRA) {
+		dct_coeff[0] = (32<<8)+ROUNDVAL;
+		IDCT_fast_put(pos, dst, modulo);
+	} else {
+		dct_coeff[0] = (128<<8)+ROUNDVAL;
+		IDCT_fast_add(pos, dst, modulo);
+	}
+#else
 	if (!pos) {
 		dct_coeff[0] = (coeff[0]<<8)+ROUNDVAL;
 
@@ -1211,7 +1265,8 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 		else
 			IDCT_fast_add(pos, dst, modulo);
 	} else
-		IDCT_mmx(coeff, dst, modulo, !!(macro_block_flags & MBF_INTRA), pos);
+		(ISSE_enabled ? IDCT_isse : IDCT_mmx)(coeff, dst, modulo, !!(macro_block_flags & MBF_INTRA), pos);
+#endif
 }
 
 static void decode_mblock_Y(YUVPixel *dst) {
@@ -1842,7 +1897,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			video_copy_forward_prediction(pos_x, pos_y, false);
 			if (macro_block_flags & MBF_BACKWARD)
 				video_add_backward_prediction(pos_x, pos_y, false);
-		} else
+		} else if (macro_block_flags & MBF_BACKWARD)
 			video_copy_backward_prediction(pos_x, pos_y, false);
 
 		if (cbp & 0x20) decode_mblock_Y(dstY);
@@ -1854,7 +1909,7 @@ static void video_process_picture_slice_B(char *ptr, int type) {
 			video_copy_forward_prediction(pos_x, pos_y, true);
 			if (macro_block_flags & MBF_BACKWARD)
 				video_add_backward_prediction(pos_x, pos_y, true);
-		} else
+		} else if (macro_block_flags & MBF_BACKWARD)
 			video_copy_backward_prediction(pos_x, pos_y, true);
 
 		if (cbp & 0x02) decode_mblock_UV(dstU, dct_dc_u_past);
@@ -1957,6 +2012,9 @@ static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 
 	if (MMX_enabled)
 		__asm emms
+
+	if (ISSE_enabled)
+		__asm sfence
 }
 
 static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
@@ -1980,6 +2038,9 @@ static void YUVToRGB24(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 
 	if (MMX_enabled)
 		__asm emms
+
+	if (ISSE_enabled)
+		__asm sfence
 }
 static void YUVToRGB16(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
 	dst = dst + bpr * (2*h - 2);
@@ -2002,6 +2063,9 @@ static void YUVToRGB16(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 
 	if (MMX_enabled)
 		__asm emms
+
+	if (ISSE_enabled)
+		__asm sfence
 }
 
 static void __declspec(naked) YUVtoUYVY16_MMX(
@@ -2498,12 +2562,6 @@ void video_copy_forward(int x_pos, int y_pos) {
 
 #pragma warning(pop)
 
-
-extern "C" video_copy_prediction_Y(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
-extern "C" video_copy_prediction_C(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
-extern "C" video_add_prediction_Y(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
-extern "C" video_add_prediction_C(YUVPixel *src, YUVPixel *dst, int vx, int vy, long pitch);
-
 static void video_copy_forward_prediction(int x_pos, int y_pos, bool fchrom) {
 	long vx = forw_vector_x;
 	long vy = forw_vector_y;
@@ -2585,6 +2643,7 @@ static void video_add_backward_prediction(int x_pos, int y_pos, bool fchrom) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+#if 0
 #ifdef _DEBUG
 
 class MPEGDecoderVerifier {
@@ -2652,7 +2711,7 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 		CPUEnableExtensions(0);
 
 		do {
-			_RPT1(0,"MPEG-1 decoder: testing prediction copy (MMX %s)\n", MMX_enabled ? "on" : "off");
+			_RPT2(0,"MPEG-1 decoder: testing prediction copy (MMX %s / ISSE %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off");
 
 			memset(err, 0, sizeof err);
 			for(j=0; j<16; j++) {
@@ -2672,7 +2731,7 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 			_RPT2(0,"full/half: average error %.4lf, %.4lf\n", (double)err[0][1][0] / (16.0*16.0*256.0), (double)err[1][1][0] / (16.0*16.0*64.0));
 			_RPT2(0,"half/half: average error %.4lf, %.4lf\n", (double)err[0][1][1] / (16.0*16.0*256.0), (double)err[1][1][1] / (16.0*16.0*64.0));
 
-			_RPT1(0,"MPEG-1 decoder: testing prediction add (MMX %s)\n", MMX_enabled ? "on" : "off");
+			_RPT2(0,"MPEG-1 decoder: testing prediction add (MMX %s / ISSE %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off");
 
 			memset(err, 0, sizeof err);
 			for(j=0; j<16; j++) {
@@ -2694,12 +2753,12 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 			_RPT2(0,"full/half: average error %.4lf, %.4lf\n", (double)err[0][1][0] / (16.0*16.0*256.0), (double)err[1][1][0] / (16.0*16.0*64.0));
 			_RPT2(0,"half/half: average error %.4lf, %.4lf\n", (double)err[0][1][1] / (16.0*16.0*256.0), (double)err[1][1][1] / (16.0*16.0*64.0));
 
-			CPUEnableExtensions(MMX_enabled ? 0 : CPUF_SUPPORTS_MMX);
-		} while(MMX_enabled);
+			CPUEnableExtensions(MMX_enabled ? ISSE_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX);
+		} while(MMX_enabled || ISSE_enabled);
 	} catch(MyError e) {
 		e.post(NULL, "MPEG-1 decoder verification error");
 	}
 }
 
 #endif
-
+#endif

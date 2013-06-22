@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -107,8 +107,6 @@ LRESULT YUVCodec::DecompressEx(ICDECOMPRESSEX *icdex, DWORD cbSize) {
 	BITMAPINFOHEADER *bmihInput		= icdex->lpbiSrc;
 	BITMAPINFOHEADER *bmihOutput	= icdex->lpbiDst;
 	LRESULT res;
-	unsigned char *src;
-	long smodulo;
 	long w0s, h0s, w0d, h0d;
 
 	/////////////////////
@@ -133,10 +131,8 @@ LRESULT YUVCodec::DecompressEx(ICDECOMPRESSEX *icdex, DWORD cbSize) {
 	if (w0s <= 0 || h0s <= 0)
 		return ICERR_OK;
 
-	src = (unsigned char *)icdex->lpSrc + icdex->xSrc + icdex->ySrc*bmihInput->biWidth;
-	smodulo = bmihInput->biWidth - w0s;
-
 	VBitmap(icdex->lpDst, bmihOutput).BitBltFromYUY2(icdex->xDst, icdex->yDst, &VBitmap(icdex->lpSrc, bmihInput), icdex->xSrc, icdex->ySrc, w0s, h0s);
+//	VBitmap(icdex->lpDst, bmihOutput).BitBltFromYUY2Fullscale(icdex->xDst, icdex->yDst, &VBitmap(icdex->lpSrc, bmihInput), icdex->xSrc, icdex->ySrc, w0s, h0s);
 
 	return ICERR_OK;
 }

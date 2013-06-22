@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "Error.h"
 
 #include "FastWriteStream.h"
+#include "tls.h"
 
 extern CRITICAL_SECTION g_diskcs;
 extern bool g_disklockinited;
@@ -42,7 +43,23 @@ FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lC
 			NULL
 		);
 
-	if (INVALID_HANDLE_VALUE == hFile) throw MyError("FastWriteStream: open failed");
+	if (INVALID_HANDLE_VALUE == hFile) {
+
+		// ARGH.  Attempt open without FILE_FLAG_NO_BUFFERING
+
+		hFile = hFileClose = CreateFile(
+				lpszFile,
+				GENERIC_READ | GENERIC_WRITE,
+				FILE_SHARE_WRITE,
+				NULL,
+				OPEN_ALWAYS,
+				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_SEQUENTIAL_SCAN,
+				NULL
+			);
+
+		if (INVALID_HANDLE_VALUE == hFile)
+			throw MyError("FastWriteStream: open failed");
+	}
 
 	this->lBufferSize		= lBufferSize;
 	this->lChunkSize		= lChunkSize;
@@ -306,6 +323,8 @@ void FastWriteStream::putError(DWORD dwErrorRet) {
 unsigned __stdcall FastWriteStream::BackgroundThreadStart(void *lpThisPtr) {
 	FastWriteStream *thisPtr = (FastWriteStream *)lpThisPtr;
 
+	InitThreadData("FastWriteStream");
+
 	_RPT2(0,"FastWriteStream thread start: thread=%p, this=%p\n", GetCurrentThreadId(), thisPtr);
 
 	try {
@@ -321,6 +340,8 @@ unsigned __stdcall FastWriteStream::BackgroundThreadStart(void *lpThisPtr) {
 
 		SetEvent(thisPtr->hEventOkWrite);
 	}
+
+	DeinitThreadData();
 
 	return 0;
 }

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -87,6 +87,9 @@ static void RedoFilters(HWND hWndList) {
 	List listFA;
 	int ind, ind2, l;
 	FilterInstance *fa;
+   int sel;
+
+   sel = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
 
 	MakeFilterList(listFA, hWndList);
 
@@ -122,6 +125,9 @@ static void RedoFilters(HWND hWndList) {
 		fa = (FilterInstance *)fa->next;
 		++ind;
 	}
+
+   if (sel != LB_ERR)
+      SendMessage(hWndList, LB_SETCURSEL, sel, 0);
 }
 
 BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
@@ -264,6 +270,8 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 				{
 					HWND hWndList = GetDlgItem(hDlg, IDC_FILTER_LIST);
 					int index;
+
+               RedoFilters(hWndList);
 
 					if (LB_ERR != (index = SendMessage(hWndList, LB_GETCURSEL, 0, 0))) {
 						FilterInstance *fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)index, 0);
@@ -464,12 +472,13 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				ccb.y1	= fa->y1;
 				ccb.y2	= fa->y2;
 
-				if (inputVideoAVI) {
+/*				if (inputVideoAVI) {
 					BITMAPINFOHEADER *bmi = inputVideoAVI->getImageFormat();
 					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(bmi->biWidth,bmi->biHeight));
 				} else
-					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));
+					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));*/
 
+				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->src.w,fa->src.h));
 				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
 				guiPositionInitFromStream(hWnd);
@@ -516,7 +525,8 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				EndDialog(hDlg, FALSE);
 				return TRUE;
 			case IDC_BORDERS:
-				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam));
+				fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
+				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam), fa->src.w, fa->src.h);
 				return TRUE;
 			}
             break;

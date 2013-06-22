@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include <stdio.h>
+#include <math.h>
 
 #include <windows.h>
 #include <commctrl.h>
@@ -161,6 +162,8 @@ BOOL APIENTRY AudioConversionDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 			case IDC_CHANNELS_NOCHANGE:
 			case IDC_CHANNELS_MONO:
 			case IDC_CHANNELS_STEREO:
+			case IDC_CHANNELS_LEFT:
+			case IDC_CHANNELS_RIGHT:
 			case IDC_SAMPLINGRATE_CUSTOM_VAL:
 				AudioConversionDlgComputeBandwidth(hDlg);
 				break;
@@ -188,6 +191,8 @@ BOOL APIENTRY AudioConversionDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 				if		(IsDlgButtonChecked(hDlg, IDC_CHANNELS_NOCHANGE)) dopt->audio.newChannels = DubAudioOptions::C_NOCHANGE;
 				else if	(IsDlgButtonChecked(hDlg, IDC_CHANNELS_MONO    )) dopt->audio.newChannels = DubAudioOptions::C_MONO;
 				else if	(IsDlgButtonChecked(hDlg, IDC_CHANNELS_STEREO  )) dopt->audio.newChannels = DubAudioOptions::C_STEREO;
+				else if	(IsDlgButtonChecked(hDlg, IDC_CHANNELS_LEFT    )) dopt->audio.newChannels = DubAudioOptions::C_MONOLEFT;
+				else if	(IsDlgButtonChecked(hDlg, IDC_CHANNELS_RIGHT   )) dopt->audio.newChannels = DubAudioOptions::C_MONORIGHT;
 
 				dopt->audio.integral_rate = !!IsDlgButtonChecked(hDlg, IDC_SAMPLINGRATE_INTEGRAL);
 				dopt->audio.fHighQuality = !!IsDlgButtonChecked(hDlg, IDC_SAMPLINGRATE_HQ);
@@ -492,17 +497,7 @@ BOOL APIENTRY PerformanceOptionsDlgProc( HWND hDlg, UINT message, UINT wParam, L
 
 BOOL APIENTRY DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 {
-	static char *szProcessors[]={
-		"80386 (Minimize code size)",
-		"80486 (1-cycle AGI)",
-		"Pentium (pair, 1-cycle AGI)",
-		"Pentium Pro/II (interleave)",
-		"AMD K6 (interleave, use IMUL)",
-	};
-
 	DubOptions *dopt = (DubOptions *)GetWindowLong(hDlg, DWL_USER);
-	HWND hWndItem;
-	int i;
 
     switch (message)
     {
@@ -510,12 +505,6 @@ BOOL APIENTRY DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, UINT wParam
 			SetWindowLong(hDlg, DWL_USER, lParam);
 			dopt = (DubOptions *)lParam;
 
-			hWndItem = GetDlgItem(hDlg, IDC_PROCESSOR);
-			SendMessage(hWndItem, CB_RESETCONTENT,0,0);
-			for(i=0; i<(sizeof szProcessors / sizeof szProcessors[0]); i++)
-				SendMessage(hWndItem, CB_ADDSTRING, 0, (LPARAM)szProcessors[i]);
-
-			SendMessage(hWndItem, CB_SETCURSEL, dopt->perf.dynamicTarget, 0);
 			CheckDlgButton(hDlg, IDC_ENABLE, dopt->perf.dynamicEnable);
 			CheckDlgButton(hDlg, IDC_DISPLAY_CODE, dopt->perf.dynamicShowDisassembly);
 
@@ -524,15 +513,8 @@ BOOL APIENTRY DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, UINT wParam
         case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDOK:
-				{
-					int index;
-
-					if (CB_ERR != (index = SendMessage(GetDlgItem(hDlg, IDC_PROCESSOR), CB_GETCURSEL, 0, 0)))
-						dopt->perf.dynamicTarget = index;
-
-					dopt->perf.dynamicEnable = !!IsDlgButtonChecked(hDlg, IDC_ENABLE);
-					dopt->perf.dynamicShowDisassembly = !!IsDlgButtonChecked(hDlg, IDC_DISPLAY_CODE);
-				}
+				dopt->perf.dynamicEnable = !!IsDlgButtonChecked(hDlg, IDC_ENABLE);
+				dopt->perf.dynamicShowDisassembly = !!IsDlgButtonChecked(hDlg, IDC_DISPLAY_CODE);
 				EndDialog(hDlg, TRUE);
 				return TRUE;
 			case IDCANCEL:
@@ -944,6 +926,84 @@ BOOL APIENTRY VideoClippingDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
     return FALSE;
 }
 
+BOOL APIENTRY AudioVolumeDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam)
+{
+	DubOptions *dopt = (DubOptions *)GetWindowLong(hdlg, DWL_USER);
+	static const double log2 = 0.69314718055994530941723212145818;
+
+    switch (message)
+    {
+        case WM_INITDIALOG:
+			SetWindowLong(hdlg, DWL_USER, lParam);
+			dopt = (DubOptions *)lParam;
+
+			{
+				HWND hwndSlider = GetDlgItem(hdlg, IDC_SLIDER_VOLUME);
+
+				SendMessage(hwndSlider, TBM_SETRANGE, TRUE, MAKELONG(0, 65));
+
+				if (dopt->audio.volume) {
+					CheckDlgButton(hdlg, IDC_ADJUSTVOL, BST_CHECKED);
+
+					SendMessage(hwndSlider, TBM_SETPOS, TRUE, (int)(32.5 - 80.0 + log(dopt->audio.volume)/(log2/10.0)));
+
+					AudioVolumeDlgProc(hdlg, WM_HSCROLL, 0, (LPARAM)hwndSlider);
+				} else {
+					SendMessage(hwndSlider, TBM_SETPOS, TRUE, 32);
+					EnableWindow(GetDlgItem(hdlg, IDC_SLIDER_VOLUME), FALSE);
+					EnableWindow(GetDlgItem(hdlg, IDC_STATIC_VOLUME), FALSE);
+				}
+			}
+            return (TRUE);
+
+		case WM_HELP:
+			{
+				HELPINFO *lphi = (HELPINFO *)lParam;
+
+				if (lphi->iContextType == HELPINFO_WINDOW)
+					HelpPopupByID(hdlg, lphi->iCtrlId, dwVideoClippingHelpLookup);
+			}
+			return TRUE;
+
+        case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+			case IDOK:
+				if (IsDlgButtonChecked(hdlg, IDC_ADJUSTVOL)) {
+					int pos = SendDlgItemMessage(hdlg, IDC_SLIDER_VOLUME, TBM_GETPOS, 0, 0);
+
+					dopt->audio.volume = (int)(0.5 + 256.0 * pow(2.0, (pos-32)/10.0));
+				} else
+					dopt->audio.volume = 0;
+
+				EndDialog(hdlg, TRUE);
+				return TRUE;
+			case IDCANCEL:
+				EndDialog(hdlg, FALSE);
+				return TRUE;
+
+			case IDC_ADJUSTVOL:
+				if (HIWORD(wParam)==BN_CLICKED) {
+					BOOL f = !!IsDlgButtonChecked(hdlg, IDC_ADJUSTVOL);
+
+					EnableWindow(GetDlgItem(hdlg, IDC_SLIDER_VOLUME), f);
+					EnableWindow(GetDlgItem(hdlg, IDC_STATIC_VOLUME), f);
+				}
+				return TRUE;
+			}
+            break;
+
+		case WM_HSCROLL:
+			if (lParam) {
+				char buf[64];
+				int pos = SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
+
+				sprintf(buf, "%d%%", (int)(0.5 + 100.0*pow(2.0, (pos-32)/10.0)));
+				SetDlgItemText(hdlg, IDC_STATIC_VOLUME, buf);
+			}
+			break;
+    }
+    return FALSE;
+}
 
 BOOL CALLBACK VideoJumpDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	char buf[32];

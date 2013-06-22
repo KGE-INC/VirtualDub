@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "ScriptValue.h"
 #include "ScriptError.h"
 #include "Error.h"
+#include "VideoSource.h"
 
 #include "command.h"
 #include "dub.h"
@@ -90,7 +91,7 @@ void DeinitScriptSystem() {
 }
 
 
-void RunScript(char *name) {
+void RunScript(char *name, void *hwnd) {
 	static char fileFilters[]=
 				"All scripts (*.vcf,*.syl,*.jobs)\0"		"*.vcf;*.syl;*.jobs\0"
 				"VirtualDub configuration file (*.vcf)\0"	"*.vcf\0"
@@ -104,7 +105,7 @@ void RunScript(char *name) {
 
 	if (!name) {
 		ofn.lStructSize			= sizeof(OPENFILENAME);
-		ofn.hwndOwner			= NULL;
+		ofn.hwndOwner			= (HWND)hwnd;
 		ofn.lpstrFilter			= fileFilters;
 		ofn.lpstrCustomFilter	= NULL;
 		ofn.nFilterIndex		= 1;
@@ -404,7 +405,7 @@ static void func_VDVFilters_Clear(IScriptInterpreter *, void *, CScriptValue *, 
 	}
 }
 
-static void func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScriptValue *argv, int argc) {
+static int func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScriptValue *argv, int argc) {
 	FilterDefinition *fm = filter_list;
 
 	while(fm) {
@@ -416,7 +417,19 @@ static void func_VDVFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScrip
 			fa->x1 = fa->y1 = fa->x2 = fa->y2 = 0;
 
 			g_listFA.AddHead(fa);
-			return;
+
+			{
+				int count = 0;
+
+				FilterInstance *fa = (FilterInstance *)g_listFA.tail.next, *fa2;
+
+				while(fa2 = (FilterInstance *)fa->next) {
+					fa = fa2;
+					++count;
+				}
+
+				return count-1;
+			}
 		}
 
 		fm = fm->next;
@@ -434,7 +447,7 @@ static CScriptValue obj_VDVFilters_lookup(IScriptInterpreter *isi, CScriptObject
 
 static ScriptFunctionDef obj_VDVFilters_functbl[]={
 	{ (ScriptFunctionPtr)func_VDVFilters_Clear			, "Clear", "0" },
-	{ (ScriptFunctionPtr)func_VDVFilters_Add			, "Add", "0s", },
+	{ (ScriptFunctionPtr)func_VDVFilters_Add			, "Add", "is", },
 	{ NULL }
 };
 
@@ -607,7 +620,7 @@ static void func_VDVideo_SetIVTC(IScriptInterpreter *, CScriptObject *, CScriptV
 
 	g_dubOpts.video.fInvTelecine = !!arglist[0].asInt();
 	g_dubOpts.video.fIVTCMode = !!arglist[1].asInt();
-	g_dubOpts.video.nIVTCOffset = !!arglist[2].asInt();
+	g_dubOpts.video.nIVTCOffset = arglist[2].asInt();
 	if (g_dubOpts.video.nIVTCOffset >= 0)
 		g_dubOpts.video.nIVTCOffset %= 5;
 	g_dubOpts.video.fIVTCPolarity = !!arglist[3].asInt();
@@ -638,8 +651,17 @@ static ScriptObjectDef obj_VDVideo_objtbl[]={
 	{ NULL }
 };
 
+static CScriptValue obj_VirtualDub_video_lookup(IScriptInterpreter *isi, CScriptObject *obj, void *lpVoid, char *szName) {
+	if (!strcmp(szName, "width"))
+		return CScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
+	else if (!strcmp(szName, "height"))
+		return CScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biHeight : 0);
+
+	EXT_SCRIPT_ERROR(MEMBER_NOT_FOUND);
+}
+
 static CScriptObject obj_VDVideo={
-	NULL, obj_VDVideo_functbl, obj_VDVideo_objtbl
+	obj_VirtualDub_video_lookup, obj_VDVideo_functbl, obj_VDVideo_objtbl
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -793,6 +815,17 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 	_CrtCheckMemory();
 }
 
+static void func_VDAudio_SetVolume(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
+	if (arg_count)
+		g_dubOpts.audio.volume = arglist[0].asInt();		
+	else
+		g_dubOpts.audio.volume = 0;
+}
+
+static int func_VDAudio_GetVolume(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	return g_dubOpts.audio.volume;
+}
+
 static ScriptFunctionDef obj_VDAudio_functbl[]={
 	{ (ScriptFunctionPtr)func_VDAudio_GetMode			, "GetMode"				, "i"		},
 	{ (ScriptFunctionPtr)func_VDAudio_SetMode			, "SetMode"				, "0i"		},
@@ -809,6 +842,9 @@ static ScriptFunctionDef obj_VDAudio_functbl[]={
 	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, "SetCompression"		, "0"		},
 	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, NULL					, "0iiiiii" },
 	{ (ScriptFunctionPtr)func_VDAudio_SetCompression	, NULL					, "0iiiiiiis" },
+	{ (ScriptFunctionPtr)func_VDAudio_SetVolume			, "SetVolume"			, "0" },
+	{ (ScriptFunctionPtr)func_VDAudio_SetVolume			, NULL					, "0i" },
+	{ (ScriptFunctionPtr)func_VDAudio_GetVolume			, "GetVolume"			, "i" },
 	{ NULL }
 };
 
@@ -941,6 +977,10 @@ static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject
 		SaveSegmentedAVI(*arglist[0].asString(), true, NULL, arglist[1].asInt(), arglist[2].asInt());
 }
 
+static void func_VirtualDub_SaveWAV(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	SaveWAV(*arglist[0].asString());
+}
+
 extern "C" unsigned long version_num;
 
 static CScriptValue obj_VirtualDub_lookup(IScriptInterpreter *isi, CScriptObject *obj, void *lpVoid, char *szName) {
@@ -983,6 +1023,7 @@ static ScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
+	{ (ScriptFunctionPtr)func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
 	{ NULL }
 };
 

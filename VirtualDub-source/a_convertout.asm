@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -394,6 +394,7 @@ DIBconvert3216565@x3:
 
 ;***********************************************************************************
 
+	.const
 	align	8
 
 DIBconvert3216MMX@red_blue_mask		dq	00f800f800f800f8h
@@ -402,6 +403,9 @@ DIBconvert3216MMX@red_blue_mult		dq	2000000820000008h
 DIBconvert3216MMX@565_green_mask	dq	0000fc000000f800h
 DIBconvert3216MMX@565_red_blue_mult	dq	2000000420000004h
 
+	.code
+
+	align	16
 _DIBconvert_32_to_16MMX:
 	push	ebp
 	push	edi
@@ -1008,8 +1012,9 @@ DIBconvert3216dithered@even:
 
 ;******************************************************
 
-	align	8
+	.const
 
+	align	8
 DIBconvert3216ditheredMMX@mult			dq	00f100f100f100f1h
 DIBconvert3216ditheredMMX@horizstep1mask	dq	0400040004000400h
 DIBconvert3216ditheredMMX@horizstep2mask	dq	0100010001000100h
@@ -1021,6 +1026,9 @@ DIBconvert3216ditheredMMX@565horizstep2mask	dq	0100010000800100h
 DIBconvert3216ditheredMMX@565vertstep1mask	dq	0600060003000600h
 DIBconvert3216ditheredMMX@565vertstep2mask	dq	0780078003c00780h
 
+	.code
+
+	align	16
 _DIBconvert_32_to_16_ditheredMMX:
 	push	ebp
 	push	edi

@@ -1,5 +1,5 @@
 ;	VirtualDub - Video processing and capture application
-;	Copyright (C) 1998-2000 Avery Lee
+;	Copyright (C) 1998-2001 Avery Lee
 ;
 ;	This program is free software; you can redistribute it and/or modify
 ;	it under the terms of the GNU General Public License as published by
@@ -58,6 +58,13 @@
 	.387
 	.mmx
 	.model	flat
+
+	.const
+
+x0002000200020002	dq	0002000200020002h
+x0004000400040004	dq	0004000400040004h
+x0008000800080008	dq	0008000800080008h
+
 	.code
 
 	extern _MMX_enabled : byte
@@ -72,8 +79,8 @@
 ;	[esp+ 4] void *dst,
 ;	[esp+ 8] void *src,
 ;	[esp+12] ulong width,
-;	[esp+16] ulong xaccum,
-;	[esp+20] ulong x_inc);
+;	[esp+16] __int64 xaccum,
+;	[esp+24] __int64 x_inc);
 
 
 _asm_resize_interp_row_run:
@@ -83,16 +90,13 @@ _asm_resize_interp_row_run:
 	push	ebp
 	push	edi
 	push	esi
-	push	edx
-	push	ecx
 	push	ebx
-	push	eax
 
 	sub	esp,8
 
-	mov	ebp,[esp+12+28+8]
-	mov	edi,[esp+4+28+8]
-	mov	esi,[esp+8+28+8]
+	mov	ebp,[esp+12+16+8]
+	mov	edi,[esp+4+16+8]
+	mov	esi,[esp+8+16+8]
 
 	lea	edi,[edi+ebp*4]
 	neg	ebp
@@ -102,17 +106,19 @@ _asm_resize_interp_row_run:
 ;	[esp+ 4] x_frac2
 ;	[esp+ 0] x_frac
 
-	mov	eax,[esp+16+28+8]
-	shr	eax,8
-	and	eax,255
+	mov	eax,[esp+16+16+8]
+	mov	ebx,256
+	shr	eax,24
+	sub	ebx,eax
 	mov	[esp],eax
-	xor	eax,255
-	inc	eax
-	mov	[esp+4],eax
+	mov	[esp+4],ebx
+	shr	esi,2
+	mov	ecx,[esp+20+16+8]
+	add	esi,ecx
 
 colloop_interp_row:
-	mov	eax,[esi]
-	mov	ecx,[esi+4]
+	mov	eax,[esi*4]
+	mov	ecx,[esi*4+4]
 	mov	ebx,eax
 	mov	edx,ecx
 	and	eax,00ff00ffh
@@ -132,125 +138,113 @@ colloop_interp_row:
 	and	eax,00ff00ffh
 
 	or	eax,ebx			;[data write ] u
+	mov	edx,[esp+28+16+8]	;[frac update] v x_inc high
 
-	mov	ebx,[esp+16+28+8]	;[frac update] u x_accum
-	mov	ecx,[esp+20+28+8]	;[frac update] v x_inc
+	mov	ebx,[esp+16+16+8]	;[frac update] u x_accum low
+	mov	ecx,[esp+24+16+8]	;[frac update] v x_inc low
 
 	mov	[edi+ebp*4],eax		;[data write ] u
 	add	ebx,ecx			;[frac update] v
 
-	mov	eax,ebx			;[frac update] u
-	and	ebx,0000ffffh		;[frac update] v
+	adc	esi,edx			;[frac update] u
+	mov	[esp+16+16+8],ebx	;[frac update] v x_accum low
 
-	shr	eax,14			;[frac update] u
-	mov	[esp+16+28+8],ebx	;[frac update] v x_accum
+	shr	ebx,24			;[frac update] u
+	mov	eax,256			;[frac update] v
 
-	shr	ebx,8			;[frac update] u
-	and	eax,0fffffffch		;[frac update] v
+	mov	[esp],ebx		;[frac update] u
+	sub	eax,ebx			;[frac update] v
 
-	mov	[esp],ebx		;[frac update] u x_frac
-	add	esi,eax			;[frac update] v
-
-	xor	ebx,255			;[frac update] u
-
-	inc	ebx			;[frac update] u
+	mov	[esp+4],eax		;[frac update] u
 	inc	ebp
 
-	mov	[esp+4],ebx		;[frac update] u x_frac2
 	jne	colloop_interp_row
 
 	add	esp,8
 
-	pop	eax
 	pop	ebx
-	pop	ecx
-	pop	edx
 	pop	esi
 	pop	edi
 	pop	ebp
 	ret
 
-	align 16
+	.const
 
 x0000FFFF0000FFFF	dq	0000FFFF0000FFFFh
 x0000010100000101	dq	0000010100000101h
+x0100010001000100	dq	0100010001000100h
 
+	.code
+
+	align 16
 _asm_resize_interp_row_run_MMX:
 	push	ebp
 	push	edi
 	push	esi
-	push	edx
-	push	ecx
 	push	ebx
-	push	eax
 
-	mov	esi,[esp+8+28]
-	mov	edi,[esp+4+28]
-	mov	ebp,[esp+12+28]
+	mov	esi,[esp+8+16]
+	mov	edi,[esp+4+16]
+	mov	ebp,[esp+12+16]
 
-	movd	mm4,[esp+16+28]
+	movd	mm4,[esp+16+16]
 	pxor	mm7,mm7
-	movd	mm6,[esp+20+28]
-	punpcklwd mm4,mm4
+	movd	mm6,[esp+24+16]
 	punpckldq mm4,mm4
-	punpcklwd mm6,mm6
 	punpckldq mm6,mm6
 
-	mov	eax,[esp+16+28]
-	mov	ebx,eax
-	shr	ebx,16
-	shl	eax,16
-	add	esi,ebx
+	shr	esi,2
 
-	mov	ebx,[esp+20+28]
-	mov	ecx,ebx
-	shl	ebx,16
-	shr	ecx,16
+	mov	eax,[esp+16+16]
+	mov	ebx,[esp+20+16]
+	add	esi,ebx
+	mov	ebx,[esp+24+16]
+	mov	ecx,[esp+28+16]
 
 	shl	ebp,2
 	add	edi,ebp
 	neg	ebp
-	shr	esi,2
 
 
 colloop_interp_row_MMX:
-	movd	mm0,[esi*4]
-	movd	mm2,[esi*4+4]
+	movd		mm1,[esi*4+4]
+	movq		mm5,mm4
 
-	punpcklbw mm0,mm7
-	punpcklbw mm2,mm7
+	movd		mm0,[esi*4]
+	punpcklbw	mm1,mm7
 
-	movq	mm1,mm0
-	punpcklwd mm0,mm2
-	punpckhwd mm1,mm2
+	punpcklbw	mm0,mm7
+	psrld		mm5,24
 
-	movq	mm5,mm4
-	paddw	mm4,mm6
-	psrlw	mm5,8
-	pxor	mm5,x0000FFFF0000FFFF
-	paddw	mm5,x0000010100000101
+	movq		mm3,x0100010001000100
+	packssdw	mm5,mm5
 
-	pmaddwd	mm0,mm5
-	pmaddwd	mm1,mm5
+	pmullw		mm1,mm5
+	psubw		mm3,mm5
 
-	add	eax,ebx
-	adc	esi,ecx
+	pmullw		mm0,mm3
+	paddd		mm4,mm6
 
-	psrad	mm0,8
-	psrad	mm1,8
+	;stall
+	;stall
 
-	packssdw mm0,mm1
-	packuswb mm0,mm0
+	;stall
+	;stall
 
-	movd	[edi+ebp],mm0
+	paddw		mm0,mm1
 
-	add	ebp,4
-	jnz	colloop_interp_row_MMX
+	psrlw		mm0,8
+	add		eax,ebx
 
-	pop	eax
+	adc		esi,ecx
+	packuswb	mm0,mm0
+
+	movd		[edi+ebp],mm0
+
+	add		ebp,4
+	jnz		colloop_interp_row_MMX
+
 	pop	ebx
-	pop	ecx
-	pop	edx
 	pop	esi
 	pop	edi
 	pop	ebp
@@ -516,14 +510,200 @@ ccint_loop_MMX:
 	pop	edi
 	pop	esi
 	pop	ebx
-	emms
 	ret
 
-;asm_resize_ccint_col(dst, src1, src2, src3, src4, count, tbl);
+;------------------------------------------------------
+;
+; void asm_resize_ccint_col(
+;	[esp+ 4] Pixel32 *dst,
+;	[esp+ 8] Pixel32 *src1,
+;	[esp+12] Pixel32 *src2,
+;	[esp+16] Pixel32 *src3,
+;	[esp+20] Pixel32 *src4,
+;	[esp+24] unsigned long count,
+;	[esp+28] int *tbl);
+;
 
-	public	_asm_resize_ccint_col
+_asm_resize_ccint_col	proc	near public
+	push	ebp
+	push	edi
+	push	esi
+	push	ebx
 
-_asm_resize_ccint_col:
+	mov	eax,[esp+4+16]
+	mov	edx,[esp+24+16]
+	shl	edx,2
+	neg	edx
+	sub	eax,edx
+	mov	[esp+24+16],edx
+	mov	[esp+4+16],eax
+
+	mov	eax,[esp+20+16]
+	mov	ebx,[esp+16+16]
+	mov	ecx,[esp+12+16]
+	mov	edx,[esp+8+16]
+
+	push	eax
+	push	ebx
+	push	ecx
+	push	edx
+
+	mov	edx,[esp+28+32]	;eax = coefficient pointer
+	push	[edx+12]
+	push	[edx+8]
+	push	[edx+4]
+	push	[edx+0]
+
+pixelloop:
+	mov	esi,00002000h	;red accum = rounder
+	mov	edx,[esp+16]	;load pointer to row 1
+	mov	edi,00002000h	;green accum = rounder
+	mov	ebp,00002000h	;blue accum = rounder
+
+	mov	eax,[edx]	;fetch pixel 1
+	mov	ebx,0000ff00h
+	add	edx,4
+	and	ebx,eax
+	mov	[esp+16],edx
+	mov	ecx,eax
+	shr	ebx,8
+	mov	edx,[esp+20]	;load pointer to row 2
+	imul	ebx,[esp+0]	;scale green
+	shr	eax,16
+	and	ecx,000000ffh
+	imul	ecx,[esp+0]	;scale blue
+	add	edi,ebx
+	and	eax,000000ffh
+	imul	eax,[esp+0]	;scale red
+	add	esi,eax
+	add	ebp,ecx
+
+	mov	eax,[edx]	;fetch pixel 2
+	mov	ebx,0000ff00h
+	add	edx,4
+	and	ebx,eax
+	mov	[esp+20],edx
+	mov	ecx,eax
+	shr	ebx,8
+	mov	edx,[esp+24]	;load pointer to row 3
+	imul	ebx,[esp+4]	;scale green
+	shr	eax,16
+	and	ecx,000000ffh
+	imul	ecx,[esp+4]	;scale blue
+	add	edi,ebx
+	and	eax,000000ffh
+	imul	eax,[esp+4]	;scale red
+	add	esi,eax
+	add	ebp,ecx
+
+	mov	eax,[edx]	;fetch pixel 3
+	mov	ebx,0000ff00h
+	add	edx,4
+	and	ebx,eax
+	mov	[esp+24],edx
+	mov	ecx,eax
+	shr	ebx,8
+	mov	edx,[esp+28]	;load pointer to row 4
+	imul	ebx,[esp+8]	;scale green
+	shr	eax,16
+	and	ecx,000000ffh
+	imul	ecx,[esp+8]	;scale blue
+	add	edi,ebx
+	and	eax,000000ffh
+	imul	eax,[esp+8]	;scale red
+	add	esi,eax
+	add	ebp,ecx
+
+	mov	eax,[edx]	;fetch pixel 4
+	mov	ebx,0000ff00h
+	add	edx,4
+	and	ebx,eax
+	mov	[esp+28],edx
+	mov	ecx,eax
+	shr	ebx,8
+	mov	edx,003fffffh
+	imul	ebx,[esp+12]	;scale green
+	shr	eax,16
+	and	ecx,000000ffh
+	imul	ecx,[esp+12]	;scale blue
+	add	edi,ebx
+	and	eax,000000ffh
+	imul	eax,[esp+12]	;scale red
+	add	esi,eax
+	add	ebp,ecx
+
+	;channels are done, let's clip them!
+	;
+	;esi = R
+	;edi = G
+	;ebp = B
+
+	mov	ecx,[esp+4+48]	;fetch destination pointer
+	cmp	esi,80000000h
+
+	sbb	eax,eax		;eax=-1 if r>=0
+	cmp	edi,80000000h
+
+	sbb	ebx,ebx		;ebx=-1 if g>=0
+	and	esi,eax		;clip low red
+
+	and	edi,ebx		;clip low green
+	cmp	ebp,80000000h
+
+	sbb	eax,eax		;eax=-1 if b>=0
+	cmp	edx,esi
+
+	sbb	ebx,ebx		;eax=-1 if r<3fffffh
+	and	ebp,eax		;clip low blue
+
+	or	esi,ebx		;clip high red
+	cmp	edx,edi
+
+	sbb	eax,eax		;ebx=-1 if g<3fffffh
+	cmp	edx,ebp
+
+	sbb	ebx,ebx		;ecx=-1 if b<ffh
+	or	edi,eax		;clip high green
+
+	;combine channels into a pixel
+
+	shl	esi,2
+	or	ebp,ebx		;clip high blue
+
+	shr	edi,6
+	and	esi,00ff0000h
+
+	shr	ebp,14
+	and	edi,0000ff00h
+
+	and	ebp,0ffh
+	add	esi,edi
+
+	mov	eax,[esp+24+48]	;fetch row counter
+	add	esi,ebp
+
+	add	eax,4
+	nop
+
+	mov	[esp+24+48],eax
+	mov	[ecx+eax-4],esi	;write pixel
+
+	jne	pixelloop
+
+	add	esp,32
+
+	pop	ebx
+	pop	esi
+	pop	edi
+	pop	ebp
+	ret
+_asm_resize_ccint_col	endp
+
+;asm_resize_ccint_col_MMX(dst, src1, src2, src3, src4, count, tbl);
+
+	public	_asm_resize_ccint_col_MMX
+
+_asm_resize_ccint_col_MMX:
 	push	ebx
 	push	esi
 	push	edi
@@ -581,13 +761,13 @@ ccint_col_loop_MMX@entry:
 	punpckhwd	mm5,mm3				;mm5 = [a4][a3][b4][b3]
 
 	pmaddwd		mm5,[edi+8]
-	paddd		mm0,mm2				;mm0 = [ g ][ b ]
-
-	paddd		mm0,mm6
 	add		esi,4
 
-	paddd		mm4,mm6
+	paddd		mm0,mm2				;mm0 = [ g ][ b ]
 	add		ebp,4
+
+	paddd		mm4,mm6
+	paddd		mm0,mm6
 
 	paddd		mm4,mm5				;mm4 = [ a ][ r ]
 	psrad		mm0,14
@@ -605,7 +785,852 @@ ccint_col_loop_MMX@entry:
 	pop	edi
 	pop	esi
 	pop	ebx
-	emms
 	ret
+
+
+
+
+
+
+
+; long resize_table_row_by2linear_MMX(Pixel *out, Pixel *in, PixDim w);
+
+	public	_resize_table_row_by2linear_MMX
+
+_resize_table_row_by2linear_MMX	proc near
+	push		ebp
+	push		esi
+	push		edi
+	push		ebx
+
+	mov		ebp,[esp + 12 + 16]		;ebp = pixel counter
+	mov		eax,[esp + 16 + 16]		;eax = accumulator
+	shl		ebp,2
+	neg		ebp
+	mov		edi,[esp +  4 + 16]		;edi = destination pointer
+	mov		esi,[esp + 8 + 16]		;esi = source
+	movq		mm6,x0002000200020002
+	pxor		mm7,mm7
+
+	;load row pointers!
+
+	and		ebp,0fffffff8h
+	jz		oddpixeltest
+
+	sub		esi,ebp
+	sub		edi,ebp
+	sub		esi,ebp
+
+	test		dword ptr [esp+8+16],4
+	jnz		pixelloop_unaligned
+
+pixelloop:
+	movd		mm0,[esi+ebp*2+4]
+
+	movq		mm1,[esi+ebp*2+8]
+	punpcklbw	mm0,mm7
+
+	movq		mm2,mm1
+	punpcklbw	mm1,mm7
+
+	movq		mm3,[esi+ebp*2+16]
+	punpckhbw	mm2,mm7
+
+	movq		mm4,mm3
+	punpcklbw	mm3,mm7
+
+	punpckhbw	mm4,mm7
+	paddw		mm1,mm1
+
+	paddw		mm3,mm3
+	paddw		mm0,mm2
+
+	paddw		mm2,mm4
+	paddw		mm0,mm1
+
+	paddw		mm2,mm3
+	paddw		mm0,mm6
+
+	paddw		mm2,mm6
+	psraw		mm0,2
+
+	psraw		mm2,2
+	packuswb	mm0,mm0
+
+	packuswb	mm2,mm2
+	add		ebp,8
+
+	movd		[edi+ebp-8],mm0
+
+	movd		[edi+ebp-4],mm2
+	jne		pixelloop
+	jmp		short oddpixeltest
+
+pixelloop_unaligned:
+	movq		mm0,[esi+ebp*2+4]
+
+	movq		mm1,mm0
+	punpcklbw	mm0,mm7
+
+	movq		mm2,[esi+ebp*2+12]
+	punpckhbw	mm1,mm7
+
+	movq		mm3,mm2
+	punpcklbw	mm2,mm7
+
+	movd		mm4,[esi+ebp*2+20]
+	punpckhbw	mm3,mm7
+
+	punpcklbw	mm4,mm7
+	paddw		mm1,mm1
+
+	paddw		mm3,mm3
+	paddw		mm0,mm2
+
+	paddw		mm2,mm4
+	paddw		mm0,mm1
+
+	paddw		mm2,mm3
+	paddw		mm0,mm6
+
+	paddw		mm2,mm6
+	psraw		mm0,2
+
+	psraw		mm2,2
+	packuswb	mm0,mm0
+
+	packuswb	mm2,mm2
+	add			ebp,8
+
+	movd		[edi+ebp-8],mm0
+
+	movd		[edi+ebp-4],mm2
+	jne			pixelloop_unaligned
+
+	;odd pixel?
+
+oddpixeltest:
+	test		dword ptr [esp+12+16],1
+	jz			xit
+
+	movd		mm0,[esi+4]
+
+	movd		mm1,[esi+8]
+	punpcklbw	mm0,mm7
+	movd		mm2,[esi+12]
+	punpcklbw	mm1,mm7
+
+	punpcklbw	mm2,mm7
+	paddw		mm1,mm1
+
+	paddw		mm0,mm2
+	paddw		mm1,mm6
+
+	paddw		mm1,mm0
+
+	psraw		mm1,2
+
+	packuswb	mm1,mm1
+
+	movd		[edi],mm1
+
+xit:
+	pop		ebx
+	pop		edi
+	pop		esi
+	pop		ebp
+	ret
+_resize_table_row_by2linear_MMX	endp
+
+; long resize_table_row_by2cubic_MMX(Pixel *out, Pixel *in, PixDim w, unsigned long accum, unsigned long fstep, unsigned long istep);
+
+_resize_table_row_by2cubic_MMX	proc	near
+	push	ebp
+	push	esi
+	push	edi
+	push	edx
+	push	ecx
+	push	ebx
+
+	mov	ebp,[esp + 12 + 24]		;ebp = pixel counter
+	mov	eax,[esp + 16 + 24]		;eax = accumulator
+	shl	ebp,2
+	mov	ebx,[esp + 20 + 24]		;ebx = fractional step
+	neg	ebp
+	mov	edi,[esp + 4 + 24]		;edi = destination pointer
+	mov	ecx,[esp + 24 + 24]		;ecx = integer step
+
+	;load row pointers!
+
+	mov	esi,[esp + 8 + 24]		;esi = row pointer table
+
+	sub	esi,ebp
+	sub	esi,ebp
+
+	sub	edi,ebp
+	movq	mm6,x0004000400040004
+	pxor	mm7,mm7
+
+pixelloop:
+	movd		mm0,[esi+ebp*2+4]
+
+	movd		mm1,[esi+ebp*2+12]
+	punpcklbw	mm0,mm7
+	movd		mm2,[esi+ebp*2+16]
+	punpcklbw	mm1,mm7
+	movd		mm3,[esi+ebp*2+20]
+	punpcklbw	mm2,mm7
+	movd		mm4,[esi+ebp*2+28]
+	punpcklbw	mm3,mm7
+
+	punpcklbw	mm4,mm7
+	psllw		mm2,3
+
+	paddw		mm1,mm3
+	paddw		mm0,mm4
+
+	movq		mm3,mm1
+	paddw		mm2,mm6
+
+	psllw		mm1,2
+	psubw		mm2,mm0
+
+	paddw		mm1,mm3
+	add			ebp,4
+
+	paddw		mm2,mm1
+
+	psraw		mm2,4
+
+	packuswb	mm2,mm2
+
+	movd		[edi+ebp-4],mm2
+	jne		pixelloop
+
+	pop	ebx
+	pop	ecx
+	pop	edx
+	pop	edi
+	pop	esi
+	pop	ebp
+
+	ret
+_resize_table_row_by2cubic_MMX	endp
+
+
+;-------------------------------------------------------------------------
+;
+;	long resize_table_row_protected_MMX(
+;		[esp+ 4]  Pixel *out,
+;		[esp+ 8]  Pixel *in,
+;		[esp+12]  int *filter,
+;		[esp+16]  int filter_width,
+;		[esp+20]  PixDim w,
+;		[esp+24]  long accum,
+;		[esp+28]  long frac,
+;		[esp+32]  long limit);
+
+_resize_table_row_protected_MMX	proc	near
+	push	ebp
+	push	esi
+	push	edi
+	push	ebx
+
+	mov	ecx,[esp + 20 + 16]
+	mov	eax,[esp + 24 + 16]
+	shl	ecx,2
+	mov	edi,[esp + 8 + 16]
+	xor	ecx,-1
+	mov	ebp,[esp + 32 + 16]
+	inc	ecx
+	mov	esi,eax
+	mov	[esp + 20 + 16],ecx
+	mov	edx,eax
+	lea	edi,[edi+ebp*4]
+	mov	ebx,[esp + 4 + 16]
+	sub	ebx,ecx
+	sub	ebx,4
+	mov	[esp + 4 + 16],ebx
+
+pixelloop:
+	sar	esi,16
+	and	edx,0000ff00h
+	mov	ecx,[esp + 16 + 16]		;filter width
+
+	shr	ecx,1
+	shr	edx,5
+
+	imul	edx,ecx
+
+	add	eax,[esp + 28 + 16]
+	add	edx,[esp + 12 + 16]
+
+	movq	mm6,MMX_roundval
+	pxor	mm0,mm0
+	movq	mm7,mm6
+	pxor	mm1,mm1
+	mov	[esp + 24 + 16],eax
+
+
+coeff_loop:
+	mov		eax,esi
+	cmp		esi,80000000h
+	sbb		ebx,ebx
+	inc		esi
+	and		eax,ebx
+	paddd		mm7,mm0			;alpha/red from last iteration
+	sub		eax,ebp
+	paddd		mm6,mm1			;green/blue from last iteration
+	sbb		ebx,ebx
+	and		eax,ebx
+	movd		mm0, [edi+eax*4]
+	mov		eax,esi
+	cmp		esi,80000000h
+	sbb		ebx,ebx
+	inc		esi
+	and		eax,ebx
+	sub		eax,ebp
+	sbb		ebx,ebx
+	and		eax,ebx
+	movd		mm1, [edi+eax*4]
+	pxor		mm5,mm5
+	punpcklbw	mm0,mm1		;[a0][a1][r0][r1][g0][g1][b0][b1]
+	movq		mm1,mm0
+	punpckhbw	mm0,mm5		;[ a0 ][ a1 ][ r0 ][ r1 ]
+	punpcklbw	mm1,mm5		;[ g0 ][ g1 ][ b0 ][ b1 ]
+	pmaddwd		mm0,[edx]
+	pmaddwd		mm1,[edx]
+	add		edx,8
+	dec		ecx
+	jne		coeff_loop
+
+	paddd		mm7,mm0			;accumulate alpha/red (pixels 2/3)
+
+	paddd		mm6,mm1			;accumulate green/blue (pixels 2/3)
+	mov		ecx,[esp+20+16]
+
+	psrad		mm7,14
+	mov		eax,[esp+24+16]
+
+	psrad		mm6,14
+	mov		ebx,[esp+4+16]
+
+	packssdw	mm6,mm7
+	add		ecx,4
+
+	packuswb	mm6,mm6
+	mov		[esp+20+16],ecx
+
+	mov		esi,eax
+	mov		edx,eax
+
+	movd		[ebx+ecx],mm6
+	jne		pixelloop
+
+	pop	ebx
+	pop	edi
+	pop	esi
+	pop	ebp
+
+	ret
+_resize_table_row_protected_MMX	endp
+
+;-------------------------------------------------------------------------
+;
+;	long resize_table_row_MMX(Pixel *out, Pixel *in, int *filter, int filter_width, PixDim w, long accum, long frac);
+
+	.const
+MMX_roundval	dq	0000200000002000h
+
+	.code
+
+_resize_table_row_MMX	proc	near
+	push	ebp
+	push	esi
+	push	edi
+	push	ebx
+
+	mov	eax,[esp + 24 + 16]
+	mov	ebp,[esp + 20 + 16]
+	mov	ebx,[esp + 8 + 16]
+	mov	edi,[esp + 4 + 16]
+
+	mov	esi,eax
+	mov	edx,eax
+
+	mov	ecx,[esp + 16 + 16]
+	shr	ecx,1
+	mov	[esp+16+16],ecx
+	test	ecx,1
+	jnz	pixelloop_odd_pairs
+
+pixelloop_even_pairs:
+	shr	esi,14
+	and	edx,0000ff00h
+	and	esi,0fffffffch
+
+	mov	ecx,[esp + 16 + 16]
+	shr	edx,5
+	add	esi,ebx
+	imul	edx,ecx
+	add	eax,[esp + 28 + 16]
+	add	edx,[esp + 12 + 16]
+
+	movq	mm6,MMX_roundval
+	pxor	mm3,mm3
+	shr	ecx,1
+	movq	mm7,mm6
+	pxor	mm2,mm2
+
+coeffloop_unaligned_even_pairs:
+	movd		mm0,[esi+0]
+	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
+
+	movd		mm1,[esi+4]
+	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
+
+	movd		mm2,[esi+8]
+	punpcklbw	mm0,mm1			;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
+
+	movq		mm1,mm0			;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
+	pxor		mm5,mm5
+
+	movd		mm3,[esi+12]
+	punpckhbw	mm0,mm5			;mm0=[ a0 ][ a1 ][ r0 ][ r1 ]
+
+	pmaddwd		mm0,[edx]		;mm0=[a0*f0+a1*f1][r0*f0+r1*f1]
+	punpcklbw	mm2,mm3			;mm2=[a2][a3][r2][r3][g2][g3][b2][b3]
+
+	movq		mm3,mm2			;mm3=[a2][a3][r2][r3][g2][g3][b2][b3]
+	punpcklbw	mm1,mm5			;mm1=[ g0 ][ g1 ][ b0 ][ b1 ]
+
+	pmaddwd		mm1,[edx]		;mm1=[g0*f0+g1*f1][b0*f0+b1*f1]
+	punpckhbw	mm2,mm5			;mm2=[ a2 ][ a3 ][ r0 ][ r1 ]
+
+	pmaddwd		mm2,[edx+8]		;mm2=[a2*f2+a3*f3][r2*f2+r3*f3]
+	punpcklbw	mm3,mm5			;mm3=[ g2 ][ g3 ][ b2 ][ b3 ]
+
+	pmaddwd		mm3,[edx+8]		;mm3=[g2*f2+g3*f3][b2*f2+b3*f3]
+	paddd		mm7,mm0			;accumulate alpha/red (pixels 0/1)
+
+	paddd		mm6,mm1			;accumulate green/blue (pixels 0/1)
+	add		edx,16
+
+	add		esi,16
+	dec		ecx
+
+	jne		coeffloop_unaligned_even_pairs
+
+	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
+	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
+
+	psrad		mm7,14
+	psrad		mm6,14
+
+	packssdw	mm6,mm7
+	add		edi,4
+
+	packuswb	mm6,mm6
+	dec		ebp
+
+	mov	esi,eax
+	mov	edx,eax
+
+	movd	[edi-4],mm6
+	jne	pixelloop_even_pairs
+
+	pop	ebx
+	pop	edi
+	pop	esi
+	pop	ebp
+
+	ret
+
+;----------------------------------------------------------------
+
+pixelloop_odd_pairs:
+	shr	esi,14
+	and	edx,0000ff00h
+	and	esi,0fffffffch
+
+	mov	ecx,[esp + 16 + 16]
+	shr	edx,5
+	add	esi,ebx
+	imul	edx,ecx
+	add	eax,[esp + 28 + 16]
+	add	edx,[esp + 12 + 16]
+
+	movq	mm6,MMX_roundval
+	pxor	mm3,mm3
+	shr	ecx,1
+	pxor	mm2,mm2
+	movq	mm7,mm6
+
+coeffloop_unaligned_odd_pairs:
+	movd		mm0,[esi+0]
+	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
+
+	movd		mm1,[esi+4]
+	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
+
+	movd		mm2,[esi+8]
+	punpcklbw	mm0,mm1			;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
+
+	movq		mm1,mm0			;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
+	pxor		mm5,mm5
+
+	movd		mm3,[esi+12]
+	punpckhbw	mm0,mm5			;mm0=[ a0 ][ a1 ][ r0 ][ r1 ]
+
+	pmaddwd		mm0,[edx]		;mm0=[a0*f0+a1*f1][r0*f0+r1*f1]
+	punpcklbw	mm2,mm3			;mm2=[a2][a3][r2][r3][g2][g3][b2][b3]
+
+	movq		mm3,mm2			;mm3=[a2][a3][r2][r3][g2][g3][b2][b3]
+	punpcklbw	mm1,mm5			;mm1=[ g0 ][ g1 ][ b0 ][ b1 ]
+
+	pmaddwd		mm1,[edx]		;mm1=[g0*f0+g1*f1][b0*f0+b1*f1]
+	punpckhbw	mm2,mm5			;mm2=[ a2 ][ a3 ][ r0 ][ r1 ]
+
+	pmaddwd		mm2,[edx+8]		;mm2=[a2*f2+a3*f3][r2*f2+r3*f3]
+	punpcklbw	mm3,mm5			;mm3=[ g2 ][ g3 ][ b2 ][ b3 ]
+
+	pmaddwd		mm3,[edx+8]		;mm3=[g2*f2+g3*f3][b2*f2+b3*f3]
+	paddd		mm7,mm0			;accumulate alpha/red (pixels 0/1)
+
+	paddd		mm6,mm1			;accumulate green/blue (pixels 0/1)
+	add		edx,16
+
+	add		esi,16
+	dec		ecx
+
+	jne		coeffloop_unaligned_odd_pairs
+
+	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
+	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
+
+	;finish up odd pair
+
+	movd		mm2,[esi+4]		;mm2 = [x0][r0][g0][b0]
+	pxor		mm5,mm5
+	movd		mm0,[esi]		;mm0 = [x1][r1][g1][b1]
+	punpcklbw	mm0,mm2			;mm2 = [x0][x1][r0][r1][g0][g1][b0][b1]
+	movq		mm1,mm0
+	punpcklbw	mm0,mm5			;mm0 = [g0][g1][b0][b1]
+	punpckhbw	mm1,mm5			;mm1 = [x0][x1][r0][r1]
+
+	pmaddwd		mm0,[edx]
+	pmaddwd		mm1,[edx]
+
+	paddd		mm6,mm0
+	paddd		mm7,mm1
+
+	;combine into pixel
+
+	psrad		mm6,14
+
+	psrad		mm7,14
+
+	packssdw	mm6,mm7
+	add		edi,4
+
+	packuswb	mm6,mm6
+	dec		ebp
+
+	mov		esi,eax
+	mov		edx,eax
+
+	movd		[edi-4],mm6
+	jne		pixelloop_odd_pairs
+
+	pop	ebx
+	pop	edi
+	pop	esi
+	pop	ebp
+
+	ret
+_resize_table_row_MMX	endp
+
+
+
+
+
+
+;-------------------------------------------------------------------------
+;
+;	long resize_table_col_MMX(Pixel *out, Pixel **in_table, int *filter, int filter_width, PixDim w, long frac);
+
+_resize_table_col_MMX	proc	near
+	push		ebp
+	push		esi
+	push		edi
+	push		edx
+	push		ecx
+	push		ebx
+
+	mov		ebp,[esp + 20 + 24]		;ebp = pixel counter
+	mov		edi,[esp + 4 + 24]		;edi = destination pointer
+
+	mov		edx,[esp + 12 + 24]
+	mov		eax,[esp + 24 + 24]
+	shl		eax,2
+	imul		eax,[esp + 16 + 24]
+	add		edx,eax
+	mov		[esp + 12 + 24], edx	;[esp+12+28] = filter pointer
+
+	mov		ecx,[esp + 16 + 24]
+	shr		ecx,1
+	mov		[esp + 16 + 24],ecx		;ecx = filter pair count
+
+	xor		ebx,ebx					;ebx = source offset 
+
+	mov		ecx,[esp + 16 + 24]		;ecx = filter width counter
+	mov		edx,[esp + 12 + 24]		;edx = filter bank pointer
+pixelloop:
+	mov		eax,[esp + 8 + 24]		;esi = row pointer table
+	movq		mm6,MMX_roundval
+	pxor		mm5,mm5
+	movq		mm7,mm6
+	pxor		mm0,mm0
+	pxor		mm1,mm1
+coeffloop:
+	mov		esi,[eax]
+	paddd		mm6,mm0
+
+	movd		mm0,[esi+ebx]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+	paddd		mm7,mm1
+
+	mov		esi,[eax+4]
+	add		eax,8
+
+	movd		mm1,[esi+ebx]	;mm1 = [0][0][0][0][x1][r1][g1][b1]
+	punpcklbw	mm0,mm1			;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
+
+	movq		mm1,mm0
+	punpcklbw	mm0,mm5			;mm0 = [g1][g0][b1][b0]
+
+	pmaddwd		mm0,[edx]
+	punpckhbw	mm1,mm5			;mm1 = [x1][x0][r1][r0]
+
+	pmaddwd		mm1,[edx]
+	add		edx,8
+
+	dec		ecx
+	jne		coeffloop
+
+	paddd		mm6,mm0
+	paddd		mm7,mm1
+
+	psrad		mm6,14
+	psrad		mm7,14
+	add		edi,4
+	packssdw	mm6,mm7
+	add		ebx,4
+	packuswb	mm6,mm6
+	dec		ebp
+
+	mov		ecx,[esp + 16 + 24]		;ecx = filter width counter
+	mov		edx,[esp + 12 + 24]		;edx = filter bank pointer
+
+	movd		[edi-4],mm6
+	jne		pixelloop
+
+	pop		ebx
+	pop		ecx
+	pop		edx
+	pop		edi
+	pop		esi
+	pop		ebp
+
+	ret
+_resize_table_col_MMX	endp
+
+
+;	long resize_table_col_by2linear_MMX(Pixel *out, Pixel **in_table, PixDim w);
+
+	public	_resize_table_col_by2linear_MMX
+
+_resize_table_col_by2linear_MMX	proc	near
+	push		ebp
+	push		esi
+	push		edi
+	push		ebx
+
+	mov		ebp,[esp + 12 + 16]		;ebp = pixel counter
+	shl		ebp,2
+	neg		ebp
+	mov		edi,[esp + 4 + 16]		;edi = destination pointer
+
+	;load row pointers!
+
+	mov		esi,[esp + 8 + 16]		;esi = row pointer table
+
+	mov		eax,[esi+4]
+	mov		ebx,[esi+8]
+	mov		ecx,[esi+12]
+
+	and		ebp,0fffffff8h
+	jz		oddpixelcheck
+
+	sub		eax,ebp
+	sub		ebx,ebp
+	sub		ecx,ebp
+	sub		edi,ebp
+	movq		mm6,x0002000200020002
+	pxor		mm7,mm7
+
+pixelloop:
+	movq		mm0,[eax+ebp]
+
+	movq		mm1,[ebx+ebp]
+	movq		mm3,mm0
+
+	movq		mm2,[ecx+ebp]
+	punpcklbw	mm0,mm7
+
+	movq		mm4,mm1
+	punpckhbw	mm3,mm7
+
+	movq		mm5,mm2
+	punpcklbw	mm1,mm7
+
+	punpckhbw	mm4,mm7
+	paddw		mm1,mm1
+
+	punpcklbw	mm2,mm7
+	paddw		mm4,mm4
+
+	punpckhbw	mm5,mm7
+	paddw		mm0,mm2
+
+	paddw		mm3,mm5
+	paddw		mm1,mm6
+
+	paddw		mm4,mm6
+	paddw		mm1,mm0
+
+	paddw		mm4,mm3
+	psraw		mm1,2
+
+	psraw		mm4,2
+	add		ebp,8
+
+	packuswb	mm1,mm4
+
+	movq		[edi+ebp-8],mm1
+	jne		pixelloop
+
+oddpixelcheck:
+	test		dword ptr [esp+12+16],1
+	jz		xit
+
+	movd		mm0,[eax]
+
+	movd		mm1,[ebx]
+	punpcklbw	mm0,mm7
+	movd		mm2,[ecx]
+	punpcklbw	mm1,mm7
+
+	punpcklbw	mm2,mm7
+	paddw		mm1,mm1
+
+	paddw		mm0,mm2
+	paddw		mm1,mm6
+
+	paddw		mm1,mm0
+
+	psraw		mm1,2
+
+	packuswb	mm1,mm1
+
+	movd		[edi],mm1
+
+xit:
+	pop		ebx
+	pop		edi
+	pop		esi
+	pop		ebp
+
+	ret
+_resize_table_col_by2linear_MMX	endp
+
+;	long resize_table_col_by2cubic_MMX(Pixel *out, Pixel **in_table, PixDim w);
+
+	public	_resize_table_col_by2cubic_MMX
+
+_resize_table_col_by2cubic_MMX	proc	near
+	push	ebp
+	push	esi
+	push	edi
+	push	edx
+	push	ecx
+	push	ebx
+
+	mov	ebp,[esp + 12 + 24]		;ebp = pixel counter
+	shl	ebp,2
+	neg	ebp
+	mov	edi,[esp + 4 + 24]		;edi = destination pointer
+
+	;load row pointers!
+
+	mov	esi,[esp + 8 + 24]		;esi = row pointer table
+
+	mov	eax,[esi+4]
+	mov	ebx,[esi+12]
+	mov	ecx,[esi+16]
+	mov	edx,[esi+20]
+	mov	esi,[esi+28]
+
+	sub	eax,ebp
+	sub	ebx,ebp
+	sub	ecx,ebp
+	sub	edx,ebp
+	sub	esi,ebp
+	sub	edi,ebp
+	movq	mm6,x0008000800080008
+	pxor	mm7,mm7
+
+pixelloop:
+	movd		mm0,[eax+ebp]
+
+	movd		mm1,[ebx+ebp]
+	punpcklbw	mm0,mm7
+	movd		mm2,[ecx+ebp]
+	punpcklbw	mm1,mm7
+	movd		mm3,[edx+ebp]
+	punpcklbw	mm2,mm7
+	movd		mm4,[esi+ebp]
+	punpcklbw	mm3,mm7
+
+	punpcklbw	mm4,mm7
+	paddw		mm1,mm3
+
+	movq		mm3,mm1
+	psllw		mm1,2
+
+	paddw		mm0,mm4
+	psllw		mm2,3
+
+	paddw		mm1,mm3
+	paddw		mm2,mm6
+
+	psubw		mm2,mm0
+	paddw		mm2,mm1
+
+	psraw		mm2,4
+
+	packuswb	mm2,mm2
+	add		ebp,4
+	movd		[edi+ebp-4],mm2
+	jne		pixelloop
+
+	pop		ebx
+	pop		ecx
+	pop		edx
+	pop		edi
+	pop		esi
+	pop		ebp
+
+	ret
+_resize_table_col_by2cubic_MMX	endp
 
 	end

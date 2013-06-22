@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@
 #include "VideoSequenceCompressor.h"
 #include "int128.h"
 
+#include "crash.h"
 #include "tls.h"
 #include "gui.h"
 #include "oshelper.h"
@@ -75,6 +76,8 @@ extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHE
 extern void FreeCompressor(COMPVARS *pCompVars);
 
 extern LRESULT CALLBACK VCMDriverProc(DWORD dwDriverID, HDRVR hDriver, UINT uiMessage, LPARAM lParam1, LPARAM lParam2);
+
+extern void CaptureDisplayBT848Tweaker(HWND hwndParent);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -302,6 +305,7 @@ RECT				g_rCaptureClip;
 
 static bool			g_fEnableRGBFiltering = false;
 static bool			g_fEnableNoiseReduction = false;
+static bool			g_fEnableLumaSquish = false;
 static bool			g_fAdjustVideoTimer	= true;
 static bool			g_fSwapFields		= false;
 static enum {
@@ -502,7 +506,7 @@ static void CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
 
 		nDriver = 0;
 		while(nDriver < 10) {
-			if (capDriverConnect(hWndCapture, nDriver))
+			if (capGetDriverDescription(nDriver, NULL, 0, NULL, 0) && capDriverConnect(hWndCapture, nDriver))
 				break;
 
 			++nDriver;
@@ -878,6 +882,7 @@ static void CaptureInitMenu(HWND hWnd, HMENU hMenu) {
 	CheckMenuItem(hMenu, ID_VIDEO_ENABLEFILTERING, g_fEnableRGBFiltering ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_VIDEO_NOISEREDUCTION, g_fEnableNoiseReduction ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_VIDEO_SWAPFIELDS, g_fSwapFields ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_VIDEO_SQUISH_RANGE, g_fEnableLumaSquish ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 
 	CheckMenuItem(hMenu, ID_VIDEO_VRNONE, g_iVertSquash == VERTSQUASH_NONE ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_VIDEO_VR2LINEAR, g_iVertSquash == VERTSQUASH_BY2LINEAR ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
@@ -1013,6 +1018,10 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 		g_fSwapFields = !g_fSwapFields;
 		break;
 
+	case ID_VIDEO_SQUISH_RANGE:
+		g_fEnableLumaSquish = !g_fEnableLumaSquish;
+		break;
+
 	case ID_VIDEO_VRNONE:		g_iVertSquash = VERTSQUASH_NONE;		break;
 	case ID_VIDEO_VR2LINEAR:	g_iVertSquash = VERTSQUASH_BY2LINEAR;	break;
 	case ID_VIDEO_VR2CUBIC:		g_iVertSquash = VERTSQUASH_BY2CUBIC;	break;
@@ -1033,6 +1042,10 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 
 	case ID_VIDEO_HISTOGRAM:
 		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_HISTOGRAM), hWnd, CaptureHistogramDlgProc, (LPARAM)hWndCapture);
+		break;
+
+	case ID_VIDEO_BT8X8TWEAKER:
+		CaptureDisplayBT848Tweaker(hWnd);
 		break;
 
 	case ID_CAPTURE_SETTINGS:
@@ -1727,12 +1740,15 @@ void Capture(HWND hWnd) {
 
 	// ICInstall() is a stupid function.  Really, it's a moron.
 
+	VDCHECKPOINT;
+
 	fCodecInstalled = !!ICInstall(ICTYPE_VIDEO, 'BUDV', (LPARAM)VCMDriverProc, NULL, ICINSTALL_FUNCTION);
 
 	try {
 		hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
 
 		SendMessage(hWndStatus, SB_SETTEXT, 0, (LPARAM)"Initializing Capture Mode...");
+		UpdateWindow(hWndStatus);
 
 		// load menus & accelerators
 
@@ -1746,6 +1762,8 @@ void Capture(HWND hWnd) {
 
 		// ferret out drivers
 
+		VDCHECKPOINT;
+
 		if ((nDriver = CaptureAddDrivers(hWnd, GetSubMenu(hMenuCapture,2))) < 0)
 			throw MyError("No capture driver available.");
 
@@ -1754,12 +1772,16 @@ void Capture(HWND hWnd) {
 		hMenuOld = GetMenu(hWnd);
 		SetMenu(hWnd, hMenuCapture);
 
+		VDCHECKPOINT;
+
 		if (!(hWndCapture = capCreateCaptureWindow((LPSTR)"Capture window", WS_VISIBLE|WS_CHILD, xedge, yedge, 160, 120, hWnd, IDC_CAPTURE_WINDOW)))
 			throw MyError("Can't create capture window.");
 
 		capSetCallbackOnError(hWndCapture, (LPVOID)CaptureErrorCallback);
 		capSetCallbackOnStatus(hWndCapture, (LPVOID)CaptureStatusCallback);
 		capSetCallbackOnYield(hWndCapture, (LPVOID)CaptureYieldCallback);
+
+		VDCHECKPOINT;
 
 		CaptureSelectDriver(hWnd, hWndCapture, nDriver);
 		capCaptureSetSetup(hWndCapture, &g_defaultCaptureParms, sizeof(CAPTUREPARMS));
@@ -1772,6 +1794,8 @@ void Capture(HWND hWnd) {
 			capFileGetCaptureFile(hWndCapture, g_szCaptureFile, sizeof g_szCaptureFile);
 
 		// How about default capture settings?
+
+		VDCHECKPOINT;
 
 		CaptureInternalLoadFromRegistry();
 
@@ -1872,6 +1896,8 @@ void Capture(HWND hWnd) {
 
 		// Hide the position window
 
+		VDCHECKPOINT;
+
 		ShowWindow(GetDlgItem(hWnd, IDC_POSITION), SW_HIDE); 
 
 		// Setup the status window.
@@ -1888,11 +1914,15 @@ void Capture(HWND hWnd) {
 
 		// Update status
 
+		VDCHECKPOINT;
+
 		CaptureResizeWindow(hWndCapture);
 		CaptureShowParms(hWnd);
 		CaptureShowFile(hWnd, hWndCapture, false);
 
 		// Create capture panel
+
+		VDCHECKPOINT;
 
 		hwndItem = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PANEL), hWnd, CapturePanelDlgProc);
 		if (hwndItem) {
@@ -1907,11 +1937,17 @@ void Capture(HWND hWnd) {
 		dwOldWndProc = GetWindowLong(hWnd, GWL_WNDPROC);
 		SetWindowLong(hWnd, GWL_WNDPROC, (DWORD)CaptureWndProc);
 
+		VDCHECKPOINT;
+
 		CaptureRedoWindows(hWnd);
 
 		SendMessage(hWndStatus, SB_SETTEXT, 0, (LPARAM)"Capture mode ready.");
 
+		VDCHECKPOINT;
+
 		if (!CaptureMsgPump(hWnd)) PostQuitMessage(0);
+
+		VDCHECKPOINT;
 
 		// save settings
 
@@ -1928,6 +1964,8 @@ void Capture(HWND hWnd) {
 
 	// close up shop
 
+	VDCHECKPOINT;
+
 	if (g_pHistogram)
 		CaptureEnablePreviewHistogram(hWndCapture, false);
 
@@ -1940,6 +1978,8 @@ void Capture(HWND hWnd) {
 
 	if (dwOldWndProc)	SetWindowLong(hWnd, GWL_WNDPROC, dwOldWndProc);
 	if (dwOldStatusWndProc)	SetWindowLong(hWndStatus, GWL_WNDPROC, dwOldStatusWndProc);
+
+	VDCHECKPOINT;
 
 	if (hWndCapture) {
 		capOverlay(hWndCapture, FALSE);
@@ -1960,6 +2000,8 @@ void Capture(HWND hWnd) {
 		ICRemove(ICTYPE_VIDEO, 'BUDV', 0);
 
 	g_capLog.Dispose();
+
+	VDCHECKPOINT;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2401,6 +2443,14 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 			throw MyMemoryError();
 	}
 
+	if (g_fEnableLumaSquish) {
+
+		// Right now, only YUY2 is supported.
+
+		if (bihInput->biCompression != '2YUY')
+			throw MyError("Luma squishing is only supported for YUY2.");
+	}
+
 	if (g_fSwapFields) {
 
 		// We can swap all RGB formats and some YUV ones.
@@ -2604,8 +2654,126 @@ xloop:
 }
 
 
-extern long resize_table_col_by2linear_MMX(Pixel *out, Pixel **in_table, PixDim w);
-extern long resize_table_col_by2cubic_MMX(Pixel *out, Pixel **in_table, PixDim w);
+// Squish 0...255 range to 16...235.
+
+static void __declspec(naked) lumasquishYUY2_MMX(void *dst, ptrdiff_t pitch, long w2, long h) {
+	static const __int64 scaler = 0x40003b0040003b00i64;
+	static const __int64 bias   = 0x0000000500000005i64;
+
+	__asm {
+		push		ebp
+		push		edi
+		push		esi
+		push		ebx
+
+		mov			ecx,[esp+12+16]
+		mov			esi,[esp+4+16]
+		mov			ebx,[esp+16+16]
+		mov			eax,[esp+8+16]
+		mov			edx,ecx
+		shl			edx,2
+		sub			eax,edx
+
+		movq		mm6,scaler
+		movq		mm5,bias
+
+yloop:
+		mov			edx,ecx
+		test		esi,4
+		jz			xloop_aligned_start
+
+		movd		mm0,[esi]
+		pxor		mm7,mm7
+		punpcklbw	mm0,mm7
+		add			esi,4
+		psllw		mm0,2
+		dec			edx
+		paddw		mm0,mm5
+		pmulhw		mm0,mm6
+		packuswb	mm0,mm0
+		movd		[esi-4],mm0
+		jz			xloop_done
+
+xloop_aligned_start:
+		sub			edx,3
+		jbe			xloop_done
+xloop_aligned:
+		movq		mm0,[esi]
+		pxor		mm7,mm7
+
+		movq		mm2,[esi+8]
+		movq		mm1,mm0
+
+		punpcklbw	mm0,mm7
+		movq		mm3,mm2
+
+		psllw		mm0,2
+		add			esi,16
+
+		paddw		mm0,mm5
+		punpckhbw	mm1,mm7
+
+		psllw		mm1,2
+		pmulhw		mm0,mm6
+
+		paddw		mm1,mm5
+		punpcklbw	mm2,mm7
+
+		pmulhw		mm1,mm6
+		psllw		mm2,2
+
+		punpckhbw	mm3,mm7
+		paddw		mm2,mm5
+
+		psllw		mm3,2
+		pmulhw		mm2,mm6
+
+		paddw		mm3,mm5
+		packuswb	mm0,mm1
+
+		pmulhw		mm3,mm6
+		sub			edx,4
+
+		movq		[esi-16],mm0
+
+		packuswb	mm2,mm3
+
+		movq		[esi-8],mm2
+		ja			xloop_aligned
+
+		add			edx,3
+		jz			xloop_done
+
+xloop_tail:
+		movd		mm0,[esi]
+		pxor		mm7,mm7
+		punpcklbw	mm0,mm7
+		add			esi,4
+		psllw		mm0,2
+		dec			edx
+		paddw		mm0,mm5
+		pmulhw		mm0,mm6
+		packuswb	mm0,mm0
+		movd		[esi-4],mm0
+		jne			xloop_tail
+
+xloop_done:
+		add			esi,eax
+
+		dec			ebx
+		jne			yloop
+
+		pop			ebx
+		pop			esi
+		pop			edi
+		pop			ebp
+		emms
+		ret
+	}
+}
+
+extern "C" long resize_table_col_by2linear_MMX(Pixel *out, Pixel **in_table, PixDim w);
+extern "C" long resize_table_col_by2cubic_MMX(Pixel *out, Pixel **in_table, PixDim w);
 
 
 static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlace, DWORD& dwFrameSize) {
@@ -2629,6 +2797,9 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 			thresh1,
 			thresh2);
 	}
+
+	if (g_fEnableLumaSquish)
+		lumasquishYUY2_MMX(pSrc, bpr, ((icd->bihClipFormat.biWidth+1) & ~1)/2, icd->bihClipFormat.biHeight);
 
 	if (g_fSwapFields) {
 		swaprows(pSrc, (char *)pSrc + bpr, bpr*2, bpr*2, bpr/4, icd->bihClipFormat.biHeight/2);
@@ -3205,8 +3376,10 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 	HANDLE hActive[2];
 	MSG msg;
 	bool fSwitch = false;
+	DWORD dwTimer = GetTickCount(), dwNewTime;
+	bool fTimerActive = true;
 
-	InitThreadData();
+	InitThreadData("Capture spill");
 
 	for(;;) {
 		bool fSuccess = false;
@@ -3232,27 +3405,47 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 			if (msg.message == VDCM_EXIT)
 				return 0;
-			else if (msg.message == VDCM_SWITCH_FIN)
+			else if (msg.message == VDCM_SWITCH_FIN) {
 				fSwitch = true;
+				if (!fTimerActive) {
+					fTimerActive = true;
+					dwTimer = GetTickCount();
+				}
+			}
 
 			if (msg.message)
 				fSuccess = true;
 		}
 
-		if (!fSuccess) {
+		// We'd like to do this stuff while the system is idle, but it's
+		// possible the system is so busy that it's never idle -- so force
+		// processing to take place if the timeout expires.  Right now,
+		// we set it to 10 seconds.
+
+		if (!fSuccess || (fTimerActive && (GetTickCount()-dwTimer) > 10000) ) {
+
+			// Kill timer.
+
+			fTimerActive = false;
 
 			// Time to initialize new output file?
 
 			if (!icd->fatal_error_2) try {
 
-				if (icd->aoFile && !icd->aoFilePending && !icd->fAllFull)
+				if (icd->aoFile && !icd->aoFilePending && !icd->fAllFull) {
 					CaptureInternalSpillNewFile(icd);
+				}
 
 				// Finalize old output?
 
 				if (fSwitch) {
 					CaptureInternalSpillFinalizeOld(icd);
 					fSwitch = false;
+
+					// Restart timer for new file to open.
+
+					dwTimer = GetTickCount();
+					fTimerActive = true;
 				}
 			} catch(MyError e) {
 				icd->fatal_error_2 = new MyError(e);
@@ -3261,6 +3454,8 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 			MsgWaitForMultipleObjects(icd->aoFilePending?2:1, hActive, FALSE, INFINITE, QS_ALLEVENTS);
 		}
 	}
+
+	DeinitThreadData();
 }
 
 static void CaptureInternalDoSpill(InternalCapData *icd) {
@@ -3573,7 +3768,7 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 	if (capStatus.dwCurrentTimeElapsedMS - icd->lastMessage > 500)
 	{
 
-		if (icd->aoFile && !icd->nAudioSwitchPt && !icd->nVideoSwitchPt && g_fEnableSpill) {
+		if (icd->aoFilePending && !icd->nAudioSwitchPt && !icd->nVideoSwitchPt && g_fEnableSpill) {
 			if (icd->segment_video_size + icd->segment_audio_size >= ((__int64)g_lSpillMaxSize<<20)
 				|| MyGetDiskFreeSpace(icd->pszPath) < ((__int64)icd->lDiskThresh << 20))
 
@@ -3691,11 +3886,11 @@ static LRESULT CaptureInternalWaveCallbackProc2(InternalCapData *icd, HWND hWnd,
 		lDelta = (long)icd->lastFrame - lDesiredVideoFrame;
 
 		if (lDelta > 1) {
-			--icd->lVideoAdjust;
+			icd->lVideoAdjust -= lDelta-1;
 //			icd->lVideoAdjust -= icd->interval/1000;
 _RPT2(0,"Timing reverse at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
 		} else if (lDelta < 0) {
-			++icd->lVideoAdjust;
+			icd->lVideoAdjust -= lDelta;
 //			icd->lVideoAdjust += icd->interval/1000;
 _RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
 		}
@@ -4277,9 +4472,9 @@ _RPT0(0,"Capture has stopped.\n");
 		if (!QueryConfigDword(g_szCapture, g_szWarnTiming1, &dw) || !dw) {
 			if (IDYES != MessageBox(hWnd,
 					"VirtualDub has detected, and compensated for, a possible bug in your video capture drivers that is causing "
-					"its timing information to wrap around at 71 minutes.  Check with your capture device manufacturer "
-					"for newer drivers, and if you are using the newest driver, please email <uleea05@umail.ucsb.edu> "
-					"with the name of your card and the version of your drivers.\n"
+					"its timing information to wrap around at 71 minutes.  Your capture should be okay, but you may want "
+					"to try upgrading your video capture drivers anyway, since this can cause video capture to halt in "
+					"other applications.\n"
 					"\n"
 					"Do you want VirtualDub to warn you the next time this happens?"
 					, "VirtualDub Warning", MB_YESNO))

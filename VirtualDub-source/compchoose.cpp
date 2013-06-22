@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -564,6 +564,8 @@ BOOL CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 					if (pcci->hic)
 						ICSendMessage(pcci->hic, ICM_SETQUALITY, (DWORD)&pcci->pCV->lQ, 0);
 
+					if (pcci->pCV->hic)
+						ICClose(pcci->pCV->hic);
 					pcci->pCV->hic = pcci->hic;
 					pcci->hic = NULL;
 

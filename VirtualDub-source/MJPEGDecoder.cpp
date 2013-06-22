@@ -579,7 +579,7 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 		if (mcu_height*16 > field_height) {
 			mcu_height	= (field_height + 15)/16;
 			clip_row = field_height >> 4;
-			clip_lines = field_height & 15;
+			clip_lines = (field_height>>1) & 7;
 		}
 	} else {
 		if (mcu_height*8 > field_height) {
@@ -700,6 +700,8 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 			modulo0 = 2*bpr + (decode16 ? 32 : 64);
 			modulo1 = bpr;
 		}
+
+		modulo2 = modulo3 = 4;
 	} else {
 		modulo0 = (decode16 ? 1 : 2) * (mcu_width*(interlaced ? 64 : 32) + 16);
 		modulo1 = (decode16 ? 1 : 2) * (mcu_width*(interlaced ? 512 : 256) + 16);
@@ -783,7 +785,6 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 					mov			eax,dct_coeffs
 					mov			edx,dword ptr pixptr
 
-					push		lines
 					push		modulo3
 					push		modulo2
 					push		modulo1
@@ -796,8 +797,9 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 
 					mov			ebp,2
 	zloop420:
-					mov			edi,[esp + 16]
-					shr			edi,1
+					mov			edi,[esp + 4 + ebp*4]
+					or			edi,edi
+					jz			fastexit32
 	yloop420:
 					mov			esi,4
 	xloop420:
@@ -880,12 +882,12 @@ noblockskip32:
 					dec			edi
 					jne			yloop420
 
-					add			ecx,16*8
+					add			ecx,8*16
 
 					dec			ebp
 					jne			zloop420
-
-					add			esp,20
+fastexit32:
+					add			esp,16
 
 					pop			esi
 					pop			edi
@@ -900,7 +902,6 @@ noblockskip32:
 					mov			eax,dct_coeffs
 					mov			edx,dword ptr pixptr
 
-					push		lines
 					push		modulo3
 					push		modulo2
 					push		modulo1
@@ -913,8 +914,9 @@ noblockskip32:
 
 					mov			ebp,2
 	zloop2420:
-					mov			edi,[esp + 16]
-					shr			edi,1
+					mov			edi,[esp + 4 + ebp*4]
+					or			edi,edi
+					jz			fastexit16
 	yloop2420:
 					mov			esi,4
 	xloop2420:
@@ -991,10 +993,10 @@ noblockskip32:
 					add			edx,8
 
 					test		esi,1
-					jz			noblockskip232
+					jz			noblockskip16
 
 					add			ecx,7*16
-noblockskip232:
+noblockskip16:
 
 					dec			esi
 					jne			xloop2420
@@ -1005,12 +1007,12 @@ noblockskip232:
 					dec			edi
 					jne			yloop2420
 
-					add			ecx,16*8
+					add			ecx,8*16
 
 					dec			ebp
 					jne			zloop2420
-
-					add			esp,20
+fastexit16:
+					add			esp,16
 
 					pop			esi
 					pop			edi
@@ -1246,6 +1248,9 @@ noblockskip232:
 				}
 			}
 
+			if (lines < 8)
+				memset(dct_coeffs, 0, mcu_length * 64 * sizeof(short));
+
 			pixptr += decode16 ? 8 : 16;
 			if (++mb_x >= mcu_width) {
 				long bpr = mcu_width * (decode16 ? 8 : 16);
@@ -1253,24 +1258,37 @@ noblockskip232:
 
 				if (vc_half) {
 					if (interlaced)
-						pixptr -= bpr * 33;
+						pixptr -= bpr * (4*lines+1);
 					else
-						pixptr -= bpr * 17;
+						pixptr -= bpr * (2*lines+1);
 				} else {
 					if (interlaced)
-						pixptr -= bpr * 17;
+						pixptr -= bpr * (2*lines+1);
 					else
-						pixptr -= bpr * 9;
+						pixptr -= bpr * (lines+1);
 				}
 
 				if (++mb_y == clip_row) {
-					if (decode16)
-						modulo1 = mcu_width*8*4*clip_lines*(interlaced?2:1) + 16;
-					else
-						modulo1 = mcu_width*16*4*clip_lines*(interlaced?2:1) + 32;
-					modulo2 = 16*clip_lines - 16;
-					modulo3 = 32*(8-clip_lines);
-					lines = clip_lines;
+					int cl = clip_lines;
+
+					if (!vc_half) {
+						if (decode16)
+							modulo1 = mcu_width*16*2*cl + 16;
+						else
+							modulo1 = mcu_width*16*4*cl + 32;
+						modulo2 = 16*cl - 16;
+						modulo3 = 32*(8-cl);
+					} else {
+						modulo3 = cl;
+						modulo2 = cl-4;
+
+						if (modulo3>4)
+							modulo3=4;
+
+						if (modulo2<0)
+							modulo2=0;
+					}
+					lines = cl;
 				}
 			}
 		}

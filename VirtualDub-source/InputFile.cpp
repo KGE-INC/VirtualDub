@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -354,6 +354,10 @@ void InputFileAVI::ForceCompatibility() {
 	fCompatibilityMode = true;
 }
 
+void InputFileAVI::setAutomated(bool fAuto) {
+	fAutomated = fAuto;
+}
+
 void InputFileAVI::Init(char *szFile) {
 	HRESULT err;
 	PAVIFILE paf;
@@ -384,12 +388,20 @@ void InputFileAVI::Init(char *szFile) {
 
 	if (fRedoKeyFlags)
 		((VideoSourceAVI *)videoSrc)->redoKeyFlags();
-	else if (pAVIFile->isIndexFabricated() && !fAutomated)
+	else if (pAVIFile->isIndexFabricated() && !fAutomated && !videoSrc->isKeyframeOnly())
 		MessageBox(NULL,
 			"Warning: VirtualDub has reconstructed the index for this file, but you have not specified "
 			"rekeying in the extended open options dialog.  Seeking in this file may be slow.",
 			"AVI Import Filter Warning",
-			MB_OK);
+			MB_OK|MB_ICONEXCLAMATION);
+
+	if (videoSrc->isType1() && !fAutomated)
+		MessageBox(NULL,
+			"Warning: Type-1 DV file detected. Type-1 DV files have video and audio combined into one stream, "
+			"and VirtualDub currently cannot extract the audio. Only the video stream will be available."
+			,
+			"AVI Import Filter Warning",
+			MB_OK|MB_ICONEXCLAMATION);
 
 
 	audioSrc = new AudioSourceAVI(pAVIFile);
@@ -591,6 +603,8 @@ typedef struct MyFileInfo {
 	long	lAudioMaxSize;
 
 	long	lAudioPreload;
+
+	bool	bAudioFramesIndeterminate;
 } MyFileInfo;
 
 void InputFileAVI::_InfoDlgThread(void *pvInfo) {
@@ -630,11 +644,17 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 
 	if (inputAudioAVI) {
 		pInfo->lAudioMinSize = 0x7FFFFFFF;
+		pInfo->bAudioFramesIndeterminate = false;
 
 		i = inputAudioAVI->lSampleFirst;
 		while(i < inputAudioAVI->lSampleLast) {
 			if (inputAudioAVI->read(i, AVISTREAMREAD_CONVENIENT, NULL, 0, &lActualBytes, &lActualSamples))
 				break;
+
+			if (!lActualSamples) {
+				pInfo->bAudioFramesIndeterminate = true;
+				break;
+			}
 
 			++pInfo->lAudioFrames;
 			i += lActualSamples;
@@ -820,21 +840,27 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 			SetDlgItemText(hDlg, IDC_VIDEO_NONKEYFRAMESIZES, g_msgBuf);
 
 			if (thisPtr->audioSrc) {
-				sprintf(g_msgBuf,"%ld",pInfo->lAudioFrames);
-				SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, g_msgBuf);
+				if (pInfo->bAudioFramesIndeterminate) {
+					SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, "(indeterminate)");
+					SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, "(indeterminate)");
+					SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, "(indeterminate)");
+				} else {
+					sprintf(g_msgBuf,"%ld",pInfo->lAudioFrames);
+					SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, g_msgBuf);
 
-				if (pInfo->lAudioFrames)
-					sprintf(g_msgBuf, "%ld/%I64d/%ld (%I64dK)"
+					if (pInfo->lAudioFrames)
+						sprintf(g_msgBuf, "%ld/%I64d/%ld (%I64dK)"
 								,pInfo->lAudioMinSize
 								,pInfo->i64AudioTotalSize/pInfo->lAudioFrames
 								,pInfo->lAudioMaxSize
 								,(pInfo->i64AudioTotalSize+1023)>>10);
-				else
-					strcpy(g_msgBuf,"(no audio frames)");
-				SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, g_msgBuf);
+					else
+						strcpy(g_msgBuf,"(no audio frames)");
+					SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, g_msgBuf);
 
-				sprintf(g_msgBuf, "%ld samples (%.2fs)",pInfo->lAudioPreload,(double)pInfo->lAudioPreload/thisPtr->audioSrc->getWaveFormat()->nSamplesPerSec);
-				SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, g_msgBuf);
+					sprintf(g_msgBuf, "%ld samples (%.2fs)",pInfo->lAudioPreload,(double)pInfo->lAudioPreload/thisPtr->audioSrc->getWaveFormat()->nSamplesPerSec);
+					SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, g_msgBuf);
+				}
 			}
 
 			/////////

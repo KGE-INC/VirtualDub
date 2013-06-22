@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -47,6 +47,8 @@ enum {
 	FILTERPARAM_NEEDS_LAST		= 0x00000002L,
 };
 
+#define FILTERPARAM_HAS_LAG(frames) ((int)(frames) << 16)
+
 ///////////////////
 
 class VFBitmap;
@@ -90,13 +92,14 @@ public:
 
 //////////
 
-#define VIRTUALDUB_FILTERDEF_VERSION		(6)
+#define VIRTUALDUB_FILTERDEF_VERSION		(7)
 #define	VIRTUALDUB_FILTERDEF_COMPATIBLE		(4)
 
 // v3: added lCurrentSourceFrame to FrameStateInfo
 // v4 (1.2): lots of additions (VirtualDub 1.2)
 // v5 (1.3d): lots of bugfixes - stretchblt bilinear, and non-zero startproc
 // v6 (1.4): added error handling functions
+// v7 (1.4d): added frame lag, 
 
 typedef struct FilterModule {
 	struct FilterModule *next, *prev;
@@ -197,10 +200,13 @@ struct FilterFunctions {
 	// These functions permit you to throw MyError exceptions from a filter.
 	// YOU MUST ONLY CALL THESE IN runProc, initProc, and startProc.
 
-	void (*ExceptOutOfMemory)();				// ADDED: V6 (VirtualDub 1.4)
-	void (*Except)(const char *format, ...);	// ADDED: V6 (VirtualDub 1.4)
+	void (*ExceptOutOfMemory)();						// ADDED: V6 (VirtualDub 1.4)
+	void (*Except)(const char *format, ...);			// ADDED: V6 (VirtualDub 1.4)
 
-	long (*getCPUFlags)();						// ADDED: V6 (VirtualDub 1.4)
+	// These functions are callable at any time.
+
+	long (*getCPUFlags)();								// ADDED: V6 (VirtualDub 1.4)
+	long (*getHostVersionInfo)(char *buffer, int len);	// ADDED: V7 (VirtualDub 1.4d)
 };
 
 #endif

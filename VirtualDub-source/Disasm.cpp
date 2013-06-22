@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -29,18 +29,22 @@ extern HINSTANCE g_hInst;
 #define MAX_INSTRUCTIONS (1024)
 
 // WARNING: This is called from crash-time conditions!  No malloc() or new!!!
-//
+
+#define malloc not_allowed_here
+#define new not_allowed_here
+
 // Also, we keep as much of our initialized data as possible as const.  That way,
 // it is in a write-locked code segment, which can't be overwritten.
 
-CodeDisassemblyWindow::CodeDisassemblyWindow(void *code, long length, void *rbaseptr, void *abaseptr) {
+CodeDisassemblyWindow::CodeDisassemblyWindow(void *_code, long _length, void *_rbaseptr, void *_abaseptr)
+: code(_code)
+, rbase(_rbaseptr)
+, abase(_abaseptr)
+, length(_length)
+, pFault(0)
+{
 //	lbents = new lbent[MAX_INSTRUCTIONS];
 	lbents = (lbent *)VirtualAlloc(NULL, sizeof(lbent)*MAX_INSTRUCTIONS, MEM_COMMIT, PAGE_READWRITE);
-
-	this->code = code;
-	this->rbase = rbaseptr;
-	this->abase = abaseptr;
-	this->length = length;
 
 	parse();
 
@@ -218,6 +222,7 @@ static const char op_cmp		[]="cmp";
 static const char op_cmpsb		[]="cmpsb";
 static const char op_cmpsd		[]="cmpsd";
 static const char op_cmpxchg	[]="cmpxchg";
+static const char op_cmpxchg8b	[]="cmpxchg8b";
 static const char op_cpuid		[]="cpuid";
 static const char op_daa		[]="daa";
 static const char op_das		[]="das";
@@ -292,6 +297,7 @@ static const char op_insb		[]="insb";
 static const char op_insd		[]="insd";
 static const char op_invalid	[]="invalid";
 static const char op_invd		[]="invd";
+static const char op_invlpg		[]="invlpg";
 static const char op_iret		[]="iret";
 
 static const char op_jc			[]="jc";
@@ -320,7 +326,11 @@ static const char op_lea		[]="lea";
 static const char op_leave		[]="leave";
 static const char op_les		[]="les";
 static const char op_lfs		[]="lfs";
+static const char op_lgdt		[]="lgdt";
 static const char op_lgs		[]="lgs";
+static const char op_lidt		[]="lidt";
+static const char op_lldt		[]="lldt";
+static const char op_lmsw		[]="lmsw";
 static const char op_lock		[]="lock";
 static const char op_lodsb		[]="lodsb";
 static const char op_lodsd		[]="lodsd";
@@ -329,6 +339,7 @@ static const char op_loope		[]="loope";
 static const char op_loopn		[]="loopn";
 static const char op_lsl		[]="lsl";
 static const char op_lss		[]="lss";
+static const char op_ltr		[]="ltr";
 static const char op_mov		[]="mov";
 static const char op_movd		[]="movd";
 static const char op_movq		[]="movq";
@@ -439,14 +450,21 @@ static const char op_shl	[]="shl";
 static const char op_shld	[]="shld";
 static const char op_shr	[]="shr";
 static const char op_shrd	[]="shrd";
+static const char op_sgdt	[]="sgdt";
+static const char op_sidt	[]="sidt";
+static const char op_sldt	[]="sldt";
+static const char op_smsw	[]="smsw";
 static const char op_stc	[]="stc";
 static const char op_std	[]="std";
 static const char op_sti	[]="sti";
+static const char op_str	[]="str";
 static const char op_stosb	[]="stosb";
 static const char op_stosd	[]="stosd";
 static const char op_sub	[]="sub";
 static const char op_test	[]="test";
 static const char op_ud2	[]="ud2";
+static const char op_verr	[]="verr";
+static const char op_verw	[]="verw";
 static const char op_wait	[]="wait";
 static const char op_wbinvd	[]="wbinvd";
 static const char op_wrmsr	[]="wrmsr";
@@ -1057,6 +1075,50 @@ static const struct x86op group5_ops[]={
 /* 111 */	NULL,			0,
 };
 
+static const struct x86op group6_ops[]={
+/* 000 */	op_sldt,		ADDR_Ew,
+/* 001 */	op_str,			ADDR_Ew,
+/* 010 */	op_lldt,		ADDR_Ew,
+/* 011 */	op_ltr,			ADDR_Ew,
+/* 100 */	op_verr,		ADDR_Ew,
+/* 101 */	op_verw,		ADDR_Ew,
+/* 110 */	NULL,			0,
+/* 111 */	NULL,			0,
+};
+
+static const struct x86op group7_ops[]={
+/* 000 */	op_sgdt,		ADDR_M,
+/* 001 */	op_sidt,		ADDR_M,
+/* 010 */	op_lgdt,		ADDR_M,
+/* 011 */	op_lidt,		ADDR_M,
+/* 100 */	op_smsw,		ADDR_Ew,
+/* 101 */	NULL,			0,
+/* 110 */	op_lmsw,		ADDR_Ew,
+/* 111 */	op_invlpg,		0,
+};
+
+static const struct x86op group8_ops[]={
+/* 000 */	NULL,			0,
+/* 001 */	NULL,			0,
+/* 010 */	NULL,			0,
+/* 011 */	NULL,			0,
+/* 100 */	op_bt,			ADDR2(ADDR_Gv, ADDR_Ib),
+/* 101 */	op_bts,			ADDR2(ADDR_Gv, ADDR_Ib),
+/* 110 */	op_btr,			ADDR2(ADDR_Gv, ADDR_Ib),
+/* 111 */	op_btc,			ADDR2(ADDR_Gv, ADDR_Ib),
+};
+
+static const struct x86op group9_ops[]={
+/* 000 */	NULL,			0,
+/* 001 */	op_cmpxchg8b,	ADDR_M,
+/* 010 */	NULL,			0,
+/* 011 */	NULL,			0,
+/* 100 */	NULL,			0,
+/* 101 */	NULL,			0,
+/* 110 */	NULL,			0,
+/* 111 */	NULL,			0,
+};
+
 static const struct x86op group10w_ops[]={
 /* 000 */	NULL,			0,
 /* 001 */	NULL,			0,
@@ -1195,10 +1257,10 @@ static const struct x86op * const groups[]={
 	group3_ops,
 	group4_ops,
 	group5_ops,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
+	group6_ops,
+	group7_ops,
+	group8_ops,
+	group9_ops,
 	group10w_ops,
 	group10d_ops,
 	group10q_ops,
@@ -1830,6 +1892,9 @@ long CodeDisassemblyWindow::getInstruction(char *buf, long val) {
 
 	wsprintf(buf, "%08lx: ", ip - (unsigned char *)code + (unsigned char *)abase);
 	disasm_inst(ip, (unsigned char *)rbase, buf+10, TRUE);
+
+	if (ip - (unsigned char *)code + (unsigned char *)abase == pFault)
+		strcat(buf, "      <-- FAULT");
 
 	++val;
 

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2000 Avery Lee
+//	Copyright (C) 1998-2001 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -108,7 +108,7 @@ CapSpillDrive *CapSpillPickDrive(bool fAudio) {
 
 		i64Free = MyGetDiskFreeSpace(pcsd->path);
 
-		if ((i64Free>>10) > pcsd->threshold + g_lSpillMinSize &&
+		if ((i64Free>>20) > pcsd->threshold + g_lSpillMinSize &&
 			(!pcsd_best || pcsd->priority > pcsd_best->priority
 			|| (pcsd->priority == pcsd_best->priority && i64Free > i64FreeBest))) {
 
