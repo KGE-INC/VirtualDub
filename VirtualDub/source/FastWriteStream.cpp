@@ -63,7 +63,7 @@ FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lC
 			);
 
 		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyWin32Error("FastWriteStream: couldn't open \"%s\": %%s.", GetLastError());
+			throw MyWin32Error("FastWriteStream: couldn't open \"%s\": %%s.", GetLastError(), lpszFile);
 	}
 
 	this->lBufferSize		= lBufferSize;

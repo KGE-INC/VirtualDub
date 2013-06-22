@@ -1136,6 +1136,8 @@ static void VDDebugCrashDumpRegisters(VDDebugCrashTextOutput& out, const EXCEPTI
 	out.WriteF("FS = %04x\n", pContext->SegFs);
 	out.WriteF("GS = %04x\n", pContext->SegGs);
 	out.WriteF("EFLAGS = %08lx\n", pContext->EFlags);
+	out.WriteF("FPUCW = %04x\n", pContext->FloatSave.ControlWord);
+	out.WriteF("FPUTW = %04x\n", pContext->FloatSave.TagWord);
 	out.Write("\n");
 
 	// extract out MMX registers

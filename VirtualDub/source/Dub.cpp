@@ -92,6 +92,8 @@ namespace {
 		kVDM_BeginningNextSegment,
 		kVDM_IOThreadLivelock,
 		kVDM_ProcessingThreadLivelock,
+		kVDM_CodecDelayedDuringDelayedFlush,
+		kVDM_CodecLoopingDuringDelayedFlush,
 	};
 };
 
@@ -733,6 +735,7 @@ protected:
 
 	VDPosition	mSrcTimelineFrame;
 	VDPosition	mSrcDisplayFrame;
+	VDPosition	mLastSrcDisplayFrame;
 	VDPosition	mDstFrame;
 	VDPosition	mDstFrameQueueNext;
 
@@ -747,8 +750,8 @@ void VDRenderFrameIterator::Init(VideoSource *pVS, bool bDirect) {
 	mpVideoSource	= pVS;
 	mbDirect		= bDirect;
 	mDstFrame		= 0;
-	mSrcDisplayFrame	= 0;
-	mSrcTimelineFrame	= 0;
+	mSrcDisplayFrame	= -1;
+	mLastSrcDisplayFrame = -1;
 	mbFinished		= false;
 
 	Reload();
@@ -757,19 +760,26 @@ void VDRenderFrameIterator::Init(VideoSource *pVS, bool bDirect) {
 void VDRenderFrameIterator::Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll) {
 	while(!mbFinished) {
 		BOOL b;
-		long f = mpVideoSource->streamGetNextRequiredFrame(&b);
+		long f = -1;
 
-		bIsPreroll = (b!=0) && !mbDirect;
+		if (mSrcDisplayFrame >= 0) {
+			f = mpVideoSource->streamGetNextRequiredFrame(&b);
+			bIsPreroll = (b!=0) && !mbDirect;
+		} else {
+			f = -1;
+			bIsPreroll = false;
+		}
 
 		if (f!=-1 || mbFirstSourceFrame) {
 			mbFirstSourceFrame = false;
-			if (mbDirect)
-				if (!Reload())
-					break;
 
 			srcFrame = f;
 			displayFrame = mSrcDisplayFrame;
 			timelineFrame = mSrcTimelineFrame;
+
+			if (mbDirect)
+				if (!Reload())
+					mbFinished = true;
 //			VDDEBUG("Dub/RenderFrameIterator: Issuing %lu\n", (unsigned long)displayFrame);
 			return;
 		}
@@ -789,10 +799,18 @@ bool VDRenderFrameIterator::Reload() {
 	mSrcTimelineFrame	= mFrameMap.TimelineFrame(mDstFrame);
 	if (mSrcTimelineFrame < 0)
 		return false;
-	mSrcDisplayFrame	= mFrameMap.DisplayFrame(mDstFrame);
+	VDPosition nextDisplay = mFrameMap.DisplayFrame(mDstFrame);
+
+	if (mbDirect && nextDisplay == mLastSrcDisplayFrame)
+		nextDisplay = -1;
+	else {
+		mpVideoSource->streamSetDesiredFrame((LONG)nextDisplay);
+		mLastSrcDisplayFrame = nextDisplay;
+	}
+
+	mSrcDisplayFrame = nextDisplay;
 	++mDstFrame;
 
-	mpVideoSource->streamSetDesiredFrame((LONG)mSrcDisplayFrame);
 	mbFirstSourceFrame = true;
 	return true;
 }
@@ -874,6 +892,7 @@ public:
 		VDSignal&			sigAudioPipeWrite,
 		AudioL3Corrector	*const pAudioStreamCorrector,
 		volatile bool&		bAudioPipeFinalized,
+		volatile bool&		bAudioPipeFinalizeAcked,
 		volatile bool&		bAbort,
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
@@ -912,6 +931,7 @@ protected:
 	VDSignal&			msigAudioPipeWrite;
 	AudioL3Corrector	*const mpAudioStreamCorrector;
 	volatile bool&		mbAudioPipeFinalized;
+	volatile bool&		mbAudioPipeFinalizeAcked;
 	volatile bool&		mbAbort;
 	DubAudioStreamInfo&	aInfo;
 	DubVideoStreamInfo& vInfo;
@@ -930,6 +950,7 @@ VDDubIOThread::VDDubIOThread(
 		VDSignal&			sigAudioPipeWrite,
 		AudioL3Corrector	*const pAudioStreamCorrector,
 		volatile bool&		bAudioPipeFinalized,
+		volatile bool&		bAudioPipeFinalizeAcked,
 		volatile bool&		bAbort,
 		DubAudioStreamInfo&	_aInfo,
 		DubVideoStreamInfo& _vInfo,
@@ -948,6 +969,7 @@ VDDubIOThread::VDDubIOThread(
 	, msigAudioPipeWrite(sigAudioPipeWrite)
 	, mpAudioStreamCorrector(pAudioStreamCorrector)
 	, mbAudioPipeFinalized(bAudioPipeFinalized)
+	, mbAudioPipeFinalizeAcked(bAudioPipeFinalizeAcked)
 	, mbAbort(bAbort)
 	, aInfo(_aInfo)
 	, vInfo(_vInfo)
@@ -1004,6 +1026,16 @@ void VDDubIOThread::ThreadRun() {
 				}
 
 				if (bBlocked) {
+					if (bAudioActive && mbAudioPipeFinalizeAcked) {
+						bAudioActive = false;
+						continue;
+					}
+
+					if (bVideoActive && mpVideoPipe->isFinalizeAcked()) {
+						bVideoActive = false;
+						continue;
+					}
+
 					mpVideoPipe->getReadSignal().wait(&msigAudioPipeRead);
 				}
 			}
@@ -1021,7 +1053,7 @@ void VDDubIOThread::ThreadRun() {
 			mbAudioPipeFinalized = true;
 			msigAudioPipeWrite.signal();
 			mpVideoPipe->finalizeAndWait();
-			while(!mpAudioPipe->empty())
+			while(!mbAudioPipeFinalizeAcked)
 				msigAudioPipeRead.wait();
 		}
 
@@ -1111,13 +1143,16 @@ void VDDubIOThread::ReadNullVideoFrame(VDPosition displayFrame, VDPosition timel
 	if (!buffer) return;	// hmm, aborted...
 
 	if (displayFrame >= 0) {
-		mpVideoPipe->postBuffer(0, mpVideo->displayToStreamOrder((long)displayFrame), displayFrame, timelineFrame,
-			(mpVideo->isKey((long)displayFrame) ? 0 : kBufferFlagDelta),
+		VDPosition streamFrame = mpVideo->displayToStreamOrder((long)displayFrame);
+		bool bIsKey = mpVideo->isKey((long)displayFrame);
+
+		mpVideoPipe->postBuffer(0, streamFrame, displayFrame, timelineFrame,
+			(bIsKey ? 0 : kBufferFlagDelta),
 			mpVideo->getDropType((long)displayFrame),
 			handle);
 	} else {
 		mpVideoPipe->postBuffer(0, displayFrame, displayFrame, timelineFrame,
-			0,
+			kBufferFlagDelta,
 			AVIPipe::kDroppable,
 			handle);
 	}
@@ -1264,6 +1299,7 @@ private:
 	VDSignal			msigAudioPipeWrite;
 
 	volatile bool		mbAudioPipeFinalized;
+	volatile bool		mbAudioPipeFinalizeAcked;
 
 	AsyncBlitter *		blitter;
 
@@ -1397,6 +1433,7 @@ Dubber::Dubber(DubOptions *xopt)
 	, mStopLock(0)
 	, mpVideoPipe(NULL)
 	, mbAudioPipeFinalized(false)
+	, mbAudioPipeFinalizeAcked(false)
 	, mSegmentByteLimit(0)
 	, mVideoFrameIterator(mVideoFrameMap)
 	, mProcessingThreadCounter(0)
@@ -2663,6 +2700,7 @@ void Dubber::Go(int iPriority) {
 				msigAudioPipeWrite,
 				audioCorrector,
 				mbAudioPipeFinalized,
+				mbAudioPipeFinalizeAcked,
 				fAbort,
 				aInfo,
 				vInfo,
@@ -3377,8 +3415,9 @@ void Dubber::WriteAudio(void *buffer, long lActualBytes, long lActualSamples) {
 void Dubber::ThreadRun() {
 	bool quit = false;
 	bool firstPacket = true;
-	bool bVideoEnded = (vSrc && mpOutputSystem->AcceptsVideo());
-	bool bAudioEnded = (aSrc && mpOutputSystem->AcceptsAudio());
+	bool bVideoEnded = !(vSrc && mpOutputSystem->AcceptsVideo());
+	bool bVideoNonDelayedFrameReceived = false;
+	bool bAudioEnded = !(aSrc && mpOutputSystem->AcceptsAudio());
 	bool bOverflowReportedThisSegment = false;
 	uint32	nVideoFramesDelayed = 0;
 
@@ -3424,6 +3463,8 @@ void Dubber::ThreadRun() {
 						// We cannot wrap the entire loop with a profiling event because typically
 						// involves a nice wait in preview mode.
 
+						uint32 nFramesPushedTryingToFlushCodec = 0;
+
 						for(;;) {
 							void *buf;
 							long len;
@@ -3433,6 +3474,10 @@ void Dubber::ThreadRun() {
 							int exdata;
 							int handle;
 							int droptype;
+							bool bAttemptingToFlushCodecBuffer = false;
+
+							if (fAbort)
+								goto abort_requested;
 
 							buf = mpVideoPipe->getReadBuffer(len, rawFrame, displayFrame, timelineFrame, &exdata, &droptype, &handle);
 							if (!buf) {
@@ -3447,6 +3492,7 @@ void Dubber::ThreadRun() {
 									exdata		= 0;
 									droptype	= AVIPipe::kDroppable;
 									handle		= -1;
+									bAttemptingToFlushCodecBuffer = true;
 								} else {
 									mInterleaver.EndStream(0);
 									bVideoEnded = true;
@@ -3461,8 +3507,32 @@ void Dubber::ThreadRun() {
 
 							VideoWriteResult result = WriteVideoFrame(buf, exdata, droptype, len, rawFrame, displayFrame, timelineFrame);
 
-							if (result == kVideoWriteDelayed)
+							if (result == kVideoWriteDelayed) {
+								if (bAttemptingToFlushCodecBuffer) {
+									const int kReasonableBFrameBufferLimit = 100;
+
+									++nFramesPushedTryingToFlushCodec;
+
+									// DivX 5.0.5 seems to have a bug where in the second pass of a multipass operation
+									// it outputs an endless number of delay frames at the end!  This causes us to loop
+									// infinitely trying to flush a codec delay that never ends.  Unfortunately, there is
+									// one case where such a string of delay frames is valid: when the length of video
+									// being compressed is shorter than the B-frame delay.  We attempt to detect when
+									// this situation occurs and avert the loop.
+
+									if (bVideoNonDelayedFrameReceived) {
+										VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_CodecDelayedDuringDelayedFlush);
+										--nVideoFramesDelayed;	// cancel increment below (might underflow but that's OK)
+									} else if (nFramesPushedTryingToFlushCodec > kReasonableBFrameBufferLimit) {
+										VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_CodecLoopingDuringDelayedFlush, 1, &kReasonableBFrameBufferLimit);
+										nVideoFramesDelayed = 0;
+										continue;
+									}
+								}
 								++nVideoFramesDelayed;
+							}
+
+							bVideoNonDelayedFrameReceived = true;
 
 							if (fPreview && aSrc) {
 								((AVIAudioPreviewOutputStream *)AVIout->audioOut)->start();
@@ -3499,6 +3569,7 @@ void Dubber::ThreadRun() {
 								count = bytesread / nBlockAlign;
 								mInterleaver.AddCBRCorrection(1, count);
 								mInterleaver.EndStream(1);
+								mbAudioPipeFinalizeAcked = true;
 								bAudioEnded = true;
 								break;
 							}
@@ -3532,8 +3603,8 @@ void Dubber::ThreadRun() {
 			if (fAbort)
 				break;
 
-			if (!bVideoEnded || !bAudioEnded)
-				continue;
+			if (bVideoEnded && bAudioEnded)
+				break;
 		}
 abort_requested:
 		;
@@ -3547,7 +3618,9 @@ abort_requested:
 		fAbort = true;
 	}
 
-	mpVideoPipe->isFinalized();
+	mpVideoPipe->finalizeAck();
+	mbAudioPipeFinalizeAcked = true;
+	msigAudioPipeRead.signal();
 
 	// if preview mode, choke the audio
 
@@ -3582,6 +3655,9 @@ abort_requested:
 void Dubber::Abort() {
 	fUserAbort = true;
 	fAbort = true;
+	msigAudioPipeRead.signal();
+	msigAudioPipeWrite.signal();
+	mpVideoPipe->abort();
 	PostMessage(g_hWnd, WM_USER, 0, 0);
 }
 
@@ -3633,7 +3709,8 @@ void Dubber::UpdateFrames() {
 			mLastIOThreadCounter = iocount;
 			mIOThreadFailCount = curTime;
 		} else if (mLastIOThreadCounter && (curTime - mIOThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
-			VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_IOThreadLivelock);
+			if (mpIOThread->isThreadActive())
+				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_IOThreadLivelock);
 			mLastIOThreadCounter = 0;
 		}
 
@@ -3641,7 +3718,8 @@ void Dubber::UpdateFrames() {
 			mLastProcessingThreadCounter = prcount;
 			mProcessingThreadFailCount = curTime;
 		} else if (mLastProcessingThreadCounter && (curTime - mProcessingThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
-			VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_ProcessingThreadLivelock);
+			if (isThreadActive())
+				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_ProcessingThreadLivelock);
 			mLastProcessingThreadCounter = 0;
 		}
 	}

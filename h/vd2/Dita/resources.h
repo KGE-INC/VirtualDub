@@ -17,5 +17,6 @@ const unsigned char *VDLoadTemplate(int moduleID, int id);
 
 void VDLogAppMessage(int loglevel, int table, int id);
 void VDLogAppMessage(int loglevel, int table, int id, int args, ...);
+void VDLogAppMessageLimited(int& count, int loglevel, int table, int id, int args, ...);
 
 #endif

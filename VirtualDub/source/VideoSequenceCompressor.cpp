@@ -213,7 +213,7 @@ void VideoSequenceCompressor::setDataRate(long lDataRate, long lUsPerFrame, long
 
 	ICGetInfo(hic, &ici, sizeof ici);
 
-	{
+	vdprotected("passing operation parameters to the video codec") {
 		ICCOMPRESSFRAMES icf;
 
 		memset(&icf, 0, sizeof icf);
@@ -250,21 +250,23 @@ void VideoSequenceCompressor::start() {
 	}
 #endif
 
-	// Start compression process
+	vdprotected("passing start message to video compressor") {
+		// Start compression process
 
-	res = ICCompressBegin(hic, pbiInput, pbiOutput);
+		res = ICCompressBegin(hic, pbiInput, pbiOutput);
 
-	if (res != ICERR_OK)
-		throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
-
-	// Start decompression process if necessary
-
-	if (pPrevBuffer) {
-		res = ICDecompressBegin(hic, pbiOutput, pbiInput);
-
-		if (res != ICERR_OK) {
-			ICCompressEnd(hic);
+		if (res != ICERR_OK)
 			throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
+
+		// Start decompression process if necessary
+
+		if (pPrevBuffer) {
+			res = ICDecompressBegin(hic, pbiOutput, pbiInput);
+
+			if (res != ICERR_OK) {
+				ICCompressEnd(hic);
+				throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
+			}
 		}
 	}
 

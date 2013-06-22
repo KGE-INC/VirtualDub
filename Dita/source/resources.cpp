@@ -396,3 +396,14 @@ void VDLogAppMessage(int loglevel, int table, int id, int args, ...) {
 	va_end(val);
 }
 
+void VDLogAppMessageLimited(int& count, int loglevel, int table, int id, int args, ...) {
+	++count;
+	if (count == 100) {
+		VDLog(loglevel, VDStringW(L"(More than 100 warnings detected for this operation; ignoring remainder in interest of speed.)"));
+	} else if (count < 100) {
+		va_list val;
+		va_start(val, args);
+		VDLog(loglevel, VDvswprintf(VDLoadString(0, table, id), args, val));
+		va_end(val);
+	}
+}

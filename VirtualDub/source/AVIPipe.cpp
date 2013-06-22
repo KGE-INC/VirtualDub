@@ -58,13 +58,15 @@ AVIPipe::~AVIPipe() {
 
 bool AVIPipe::isFinalized() {
 	if (mState & kFlagFinalizeTriggered) {
-		mState |= kFlagFinalizeAcknowledged;
-		msigRead.signal();
-
-		return TRUE;
+		finalizeAck();
+		return true;
 	}
 
-	return FALSE;
+	return false;
+}
+
+bool AVIPipe::isFinalizeAcked() {
+	return 0 != (mState & kFlagFinalizeAcknowledged);
 }
 
 bool AVIPipe::full() {
@@ -281,6 +283,11 @@ void AVIPipe::finalizeAndWait() {
 	while(!(mState & kFlagFinalizeAcknowledged)) {
 		msigRead.wait();
 	}
+}
+
+void AVIPipe::finalizeAck() {
+	mState |= kFlagFinalizeAcknowledged;
+	msigRead.signal();
 }
 
 void AVIPipe::abort() {

@@ -43,6 +43,8 @@ public:
 	void ThreadDetach();						// detach thread (wait() won't be called)
 	void ThreadWait();							// wait for thread to finish
 
+	bool isThreadActive();
+
 	bool isThreadAttached() const {				// NOTE: Will return true if thread started, even if thread has since exited
 		return mhThread != 0;
 	}

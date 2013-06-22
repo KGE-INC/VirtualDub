@@ -1929,6 +1929,8 @@ void InputFileMPEG::Init(const char *szFile) {
 
 	// Begin file parsing!  This is a royal bitch!
 
+	int warning_count = 0;
+
 	StartScan();
 
 	try {
@@ -2125,11 +2127,11 @@ void InputFileMPEG::Init(const char *szFile) {
 									sint64& last_stream_dts = last_dts[stream_id - 0xc0];
 									sint64 dts_delta = (dts - last_stream_dts) & 0x1FFFFFFFF;		// timestamps are 33 bits long.
 
-									if (dts_delta > 56000) {					// decoding timestamps should never run backwards and must be occur at least every 0.7s (90KHz clock)
+									if (dts_delta > 63000) {					// decoding timestamps should never run backwards and must be occur at least every 0.7s (90KHz clock)
 										const wchar_t *pStreamType = stream_id < 0xe0 ? L"audio" : L"video";
 										const int nStream = (stream_id - 0xc0) & 0x1f;
 										const sint64 nPos = tagpos;
-										VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_OOOTimestamp, 3, &pStreamType, &nStream, &tagpos);
+										VDLogAppMessageLimited(warning_count, kVDLogWarning, kVDST_Mpeg, kVDM_OOOTimestamp, 3, &pStreamType, &nStream, &tagpos);
 									}
 
 									last_stream_dts = dts;

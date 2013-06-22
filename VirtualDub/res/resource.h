@@ -294,6 +294,7 @@
 #define IDC_VIDEO_NONKEYFRAMESIZES      1063
 #define IDC_AUDIO_FRAMESIZES            1064
 #define IDC_AUDIO_PRELOAD               1065
+#define IDC_AUDIO_LAYOUT                1065
 #define IDC_SLIDER                      1066
 #define IDC_AUDIO_COMPRESSION           1066
 #define IDC_BRIGHTNESS                  1068
@@ -723,6 +724,7 @@
 #define IDC_ERROR_CONCEAL               1403
 #define IDC_PROFILE                     1403
 #define IDC_ERROR_DECODE                1404
+#define IDC_AUDIO_LENGTH                1404
 #define IDS_OPTIONS_PERFORMANCE         1408
 #define IDS_OPTIONS_DYNAMICCOMPILATION  1409
 #define IDS_OPTIONS_DISPLAYINPUTVIDEO   1410
@@ -1039,7 +1041,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        257
 #define _APS_NEXT_COMMAND_VALUE         40273
-#define _APS_NEXT_CONTROL_VALUE         1404
+#define _APS_NEXT_CONTROL_VALUE         1405
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

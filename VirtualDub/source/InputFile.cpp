@@ -605,16 +605,16 @@ typedef struct MyFileInfo {
 	UINT statTimer;
 	long	lVideoKFrames;
 	long	lVideoKMinSize;
-	__int64 i64VideoKTotalSize;
+	sint64 i64VideoKTotalSize;
 	long	lVideoKMaxSize;
 	long	lVideoCFrames;
 	long	lVideoCMinSize;
-	__int64	i64VideoCTotalSize;
+	sint64	i64VideoCTotalSize;
 	long	lVideoCMaxSize;
 
 	long	lAudioFrames;
 	long	lAudioMinSize;
-	__int64	i64AudioTotalSize;
+	sint64	i64AudioTotalSize;
 	long	lAudioMaxSize;
 
 	long	lAudioPreload;
@@ -721,9 +721,11 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 								MulDivUnsigned(thisPtr->videoSrc->streamInfo.dwScale, 1000000U, thisPtr->videoSrc->streamInfo.dwRate));
 					SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
 
-					s = buf + sprintf(buf, "%ld (", thisPtr->videoSrc->streamInfo.dwLength);
-					ticks_to_str(s, MulDivUnsigned(1000*thisPtr->videoSrc->streamInfo.dwLength, thisPtr->videoSrc->streamInfo.dwScale, thisPtr->videoSrc->streamInfo.dwRate));
-					strcat(s,")");
+					const sint32 length = thisPtr->videoSrc->lSampleLast - thisPtr->videoSrc->lSampleFirst;
+					s = buf + sprintf(buf, "%ld frames (", length);
+					DWORD ticks = VDRoundToInt(1000.0*length*thisPtr->videoSrc->streamInfo.dwScale/thisPtr->videoSrc->streamInfo.dwRate);
+					ticks_to_str(s, ticks);
+					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
 					SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, buf);
 
 					strcpy(buf, "Unknown");
@@ -757,11 +759,20 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 					sprintf(buf, "%d (%s)", fmt->nChannels, fmt->nChannels>1 ? "Stereo" : "Mono");
 					SetDlgItemText(hDlg, IDC_AUDIO_CHANNELS, buf);
 
-					sprintf(buf, "%d-bit", fmt->wBitsPerSample);
-					SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, buf);
+					if (fmt->wFormatTag == WAVE_FORMAT_PCM) {
+						sprintf(buf, "%d-bit", fmt->wBitsPerSample);
+						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, buf);
+					} else
+						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, "N/A");
 
-					sprintf(buf, "%ld", thisPtr->audioSrc->lSampleLast - thisPtr->audioSrc->lSampleFirst);
-					SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, buf);
+					long len = thisPtr->audioSrc->lSampleLast - thisPtr->audioSrc->lSampleFirst;
+					const WAVEFORMATEX *pWaveFormat = thisPtr->audioSrc->getWaveFormat();
+
+					char *s = buf + sprintf(buf, "%ld samples (", len);
+					DWORD ticks = VDRoundToInt(1000.0*len*pWaveFormat->nBlockAlign/pWaveFormat->nAvgBytesPerSec);
+					ticks_to_str(s, ticks);
+					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
+					SetDlgItemText(hDlg, IDC_AUDIO_LENGTH, buf);
 
 					////////// Attempt to detect audio compression //////////
 
@@ -866,8 +877,6 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 						SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, "(indeterminate)");
 						SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, "(indeterminate)");
 					} else {
-						sprintf(buf,"%ld",pInfo->lAudioFrames);
-						SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, buf);
 
 						if (pInfo->lAudioFrames)
 							sprintf(buf, "%ld/%I64d/%ld (%I64dK)"
@@ -881,11 +890,29 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 
 						const WAVEFORMATEX *pWaveFormat = thisPtr->audioSrc->getWaveFormat();
 
-						sprintf(buf, "%ld samples (%.2fs)", pInfo->lAudioPreload,
+						sprintf(buf, "%ld chunks (%.2fs preload)", pInfo->lAudioFrames,
 								(double)pInfo->lAudioPreload * pWaveFormat->nBlockAlign / pWaveFormat->nAvgBytesPerSec
 								);
-						SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, buf);
+						SetDlgItemText(hDlg, IDC_AUDIO_LAYOUT, buf);
+
+						const double audioRate = (double)pWaveFormat->nAvgBytesPerSec * (1.0 / 125.0);
+						const double rawOverhead = 24.0 * pInfo->lAudioFrames;
+						const double audioOverhead = 100.0 * rawOverhead / (rawOverhead + pInfo->i64AudioTotalSize);
+						sprintf(buf, "%.0f kbps (%.2f%% overhead)", audioRate, audioOverhead);
+						SetDlgItemText(hDlg, IDC_AUDIO_DATARATE, buf);
 					}
+				}
+
+				double totalVideoFrames = (double)pInfo->lVideoKFrames + (sint64)pInfo->lVideoCFrames;
+				if (totalVideoFrames > 0) {
+					const VideoSourceAVI *pvs = (const VideoSourceAVI *)thisPtr->videoSrc;
+					const double seconds = (double)(pvs->lSampleLast - pvs->lSampleFirst) / (double)pvs->streamInfo.dwRate * (double)pvs->streamInfo.dwScale;
+					const double rawOverhead = (24.0 * totalVideoFrames);
+					const double totalSize = (pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
+					const double videoRate = (1.0 / 125.0) * totalSize / seconds;
+					const double videoOverhead = 100.0 * rawOverhead / (rawOverhead + totalSize);
+					sprintf(buf, "%.0f kbps (%.2f%% overhead)", videoRate, videoOverhead);
+					SetDlgItemText(hDlg, IDC_VIDEO_DATARATE, buf);
 				}
 			}
 

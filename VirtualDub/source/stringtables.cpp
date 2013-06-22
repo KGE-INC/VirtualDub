@@ -13,6 +13,8 @@ namespace {
 		"Dub: Switching to new segment.",
 		"Dub: I/O thread has not cycled for ten seconds -- possible livelock.",
 		"Dub: Processing thread has not cycled for ten seconds -- possible livelock.",
+		"Dub: Video codec produced delay frame while trying to flush codec B-frame delay! Ignoring to avert possible infinite loop.",
+		"Dub: Video codec is requesting B-frame delay %d frames longer than end of video! Stopping video stream to avert possible infinite loop.",
 		0
 	};
 

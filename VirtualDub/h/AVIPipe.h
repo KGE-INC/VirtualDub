@@ -75,6 +75,7 @@ public:
 
 	bool isOkay();
 	bool isFinalized();
+	bool isFinalizeAcked();
 
 	bool full();
 
@@ -84,6 +85,7 @@ public:
 	void releaseBuffer(int handle);
 	void finalize();
 	void finalizeAndWait();
+	void finalizeAck();
 	void abort();
 	bool sync();
 	void syncack();

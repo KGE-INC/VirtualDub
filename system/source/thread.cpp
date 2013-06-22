@@ -47,6 +47,17 @@ void VDThread::ThreadWait() {
 	}
 }
 
+bool VDThread::isThreadActive() {
+	if (isThreadAttached()) {
+		if (WAIT_TIMEOUT == WaitForSingleObject((HANDLE)mhThread, 0))
+			return true;
+
+		ThreadDetach();
+		mThreadID = 0;
+	}
+	return false;
+}
+
 void VDThread::ThreadFinish() {
 	_endthreadex(0);
 }

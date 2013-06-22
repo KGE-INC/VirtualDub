@@ -775,42 +775,46 @@ BEGIN
                     10,0,WS_EX_STATICEDGE
 END
 
-IDD_AVI_INFO DIALOG DISCARDABLE  0, 0, 290, 201
+IDD_AVI_INFO DIALOG DISCARDABLE  0, 0, 290, 218
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "AVI Information"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,233,179,50,14
+    DEFPUSHBUTTON   "OK",IDOK,233,197,50,14
     LTEXT           "Frame size, fps (µs per frame)",IDC_STATIC,15,17,92,8
-    LTEXT           "# of frames (time):",IDC_STATIC,15,27,57,8
+    LTEXT           "Length:",IDC_STATIC,15,27,25,8
     LTEXT           "Min/avg/max/total key frame size:",IDC_STATIC,15,57,109,
                     8
     LTEXT           "Min/avg/max/total delta frame size:",IDC_STATIC,15,67,
                     113,8
-    LTEXT           "Sampling rate:",IDC_STATIC,15,97,46,8
-    LTEXT           "Channels:",IDC_STATIC,15,107,32,8
-    LTEXT           "Sample precision:",IDC_STATIC,15,117,56,8
-    GROUPBOX        "Audio stream",IDC_STATIC,7,87,276,87
-    GROUPBOX        "Video stream",IDC_STATIC,7,7,276,77
-    LTEXT           "# of frames:",IDC_STATIC,15,147,38,8
-    LTEXT           "Min/avg/max/total frame size:",IDC_STATIC,15,157,100,8
+    LTEXT           "Sampling rate:",IDC_STATIC,15,106,46,8
+    LTEXT           "Channels:",IDC_STATIC,15,116,32,8
+    LTEXT           "Sample precision:",IDC_STATIC,15,126,56,8
+    GROUPBOX        "Audio stream",IDC_STATIC,7,96,276,96
+    GROUPBOX        "Video stream",IDC_STATIC,7,7,276,88
+    LTEXT           "Length:",IDC_STATIC,15,156,25,8
+    LTEXT           "Min/avg/max/total frame size:",IDC_STATIC,15,166,100,8
     LTEXT           "Decompressor:",IDC_STATIC,15,37,48,8
-    LTEXT           "Preload skew:",IDC_STATIC,15,137,46,8
-    RTEXT           "",IDC_VIDEO_FORMAT,155,17,120,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NUMFRAMES,155,27,120,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_COMPRESSION,155,37,120,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,155,57,120,9,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,155,67,120,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,155,47,120,10,SS_SUNKEN
+    LTEXT           "Layout:",IDC_STATIC,15,146,24,8
+    RTEXT           "",IDC_VIDEO_FORMAT,142,17,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NUMFRAMES,142,27,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_COMPRESSION,142,37,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,142,57,133,9,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,142,67,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,142,47,133,10,SS_SUNKEN
     LTEXT           "Number of key frames:",IDC_STATIC,15,47,72,8
-    RTEXT           "",IDC_AUDIO_SAMPLINGRATE,155,97,120,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_CHANNELS,155,107,120,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_PRECISION,155,117,120,9,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_PRELOAD,155,137,120,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_NUMFRAMES,155,147,120,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_FRAMESIZES,155,157,120,10,SS_SUNKEN
-    LTEXT           "Compression:",IDC_STATIC,15,127,43,8
-    RTEXT           "",IDC_AUDIO_COMPRESSION,155,127,120,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_SAMPLINGRATE,142,106,133,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_CHANNELS,142,116,133,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_PRECISION,142,126,133,9,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_LAYOUT,142,146,133,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_LENGTH,142,156,133,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_FRAMESIZES,142,166,133,10,SS_SUNKEN
+    LTEXT           "Compression:",IDC_STATIC,15,136,43,8
+    RTEXT           "",IDC_AUDIO_COMPRESSION,142,136,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_DATARATE,142,77,133,10,SS_SUNKEN
+    LTEXT           "Data rate:",IDC_STATIC,15,77,32,8
+    LTEXT           "Data rate:",IDC_STATIC,15,176,100,8
+    RTEXT           "",IDC_AUDIO_DATARATE,142,176,133,10,SS_SUNKEN
 END
 
 IDD_FILTER_SINGVAR DIALOG DISCARDABLE  0, 0, 190, 62
@@ -1697,17 +1701,17 @@ IDD_VIDEOCOMPRESSION DIALOGEX 0, 0, 350, 172
 STYLE DS_MODALFRAME | DS_CONTEXTHELP | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Select video compression"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,241,151,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,151,50,14
     LISTBOX         IDC_COMP_LIST,7,7,180,102,LBS_SORT | 
                     LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Use target data rate of",IDC_USE_DATARATE,"Button",
+    CONTROL         "Use target &data rate of",IDC_USE_DATARATE,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,7,136,87,10
     EDITTEXT        IDC_DATARATE,97,134,46,13,ES_AUTOHSCROLL | ES_NUMBER
     LTEXT           "kilobytes/second",IDC_STATIC_DATARATE,148,138,55,8
-    CONTROL         "Force keyframes every",IDC_USE_KEYFRAMES,"Button",
+    CONTROL         "Force &keyframes every",IDC_USE_KEYFRAMES,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,7,153,87,10
     EDITTEXT        IDC_KEYRATE,97,152,46,13,ES_AUTOHSCROLL
     LTEXT           "frames",IDC_STATIC_KEYFRAMES,148,154,22,8
@@ -1718,12 +1722,12 @@ BEGIN
     LTEXT           "Format restrictions:",IDC_STATIC,198,62,60,8
     LISTBOX         IDC_SIZE_RESTRICTIONS,198,70,140,35,LBS_NOINTEGRALHEIGHT | 
                     WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Configure",IDC_CONFIGURE,241,114,50,14
-    PUSHBUTTON      "About",IDC_ABOUT,293,114,50,14
+    PUSHBUTTON      "&Configure",IDC_CONFIGURE,241,114,50,14
+    PUSHBUTTON      "&About",IDC_ABOUT,293,114,50,14
     LTEXT           "",IDC_STATIC_DELTA,275,19,63,8
     LTEXT           "",IDC_STATIC_FOURCC,275,29,63,8
     LTEXT           "",IDC_STATIC_DRIVER,275,39,63,8
-    LTEXT           "Quality",IDC_STATIC_QUALITY_LABEL,7,114,22,14,
+    LTEXT           "&Quality",IDC_STATIC_QUALITY_LABEL,7,114,22,14,
                     SS_CENTERIMAGE
     CONTROL         "Slider1",IDC_QUALITY_SLIDER,"msctls_trackbar32",
                     TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,38,114,130,14
@@ -2723,10 +2727,10 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 283
         VERTGUIDE, 15
-        VERTGUIDE, 155
+        VERTGUIDE, 142
         VERTGUIDE, 275
         TOPMARGIN, 7
-        BOTTOMMARGIN, 194
+        BOTTOMMARGIN, 211
     END
 
     IDD_FILTER_SINGVAR, DIALOG
@@ -3611,8 +3615,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,5,3,0
- PRODUCTVERSION 1,5,3,0
+ FILEVERSION 1,5,4,0
+ PRODUCTVERSION 1,5,4,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3630,14 +3634,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.5.3\0"
+            VALUE "FileVersion", "1.5.4\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.5.3\0"
+            VALUE "ProductVersion", "1.5.4\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3723,17 +3727,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.5.3 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.5.3"
-    IDS_TITLE_IDLE          "VirtualDub 1.5.3 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.5.3 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.3"
+    IDS_TITLE_INITIAL       "VirtualDub 1.5.4 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.5.4"
+    IDS_TITLE_IDLE          "VirtualDub 1.5.4 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.5.4 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.4"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.5.3 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.5.3 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.3 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.3 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.5.3 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.5.4 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.5.4 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.4 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.4 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.5.4 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

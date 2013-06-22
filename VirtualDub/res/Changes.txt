@@ -1,6 +1,26 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 16296 (Version 1.5.4):
+   [features added]
+   * Added workaround for infinite B-frame delay
+     interaction with DivX 5.0.5 Pro.
+   * File information for AVI files now shows estimated
+     bitrate.
+
+   [bugs fixed]
+   * Fixed race condition in processing pipeline shutdown
+     that was more likely to occur in Windows 95/98.
+   * Key frame markers were getting written on some drop
+     frames when upsampling the video stream.
+   * MPEG code was issuing warnings whenever decode time-
+     stamps were more than 0.62s apart; this has been
+     fixed to use the actual spec limit of 0.7s.
+   * Operation couldn't be aborted while B-frame lag
+     frames were being flushed at the end.
+   * Fixed a bad error message that displayed a bogus
+     filename.
+
 Build 16250 (Version 1.5.3):          [May 19, 2003]
    [features added]
    * Added preview input/output commands to menu and
