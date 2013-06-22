@@ -18,31 +18,33 @@
 #ifndef f_SCENEDETECTOR_H
 #define f_SCENEDETECTOR_H
 
-#include "VBitmap.h"
+#include <vd2/system/vdstl.h>
+
+struct VDPixmap;
 
 class SceneDetector {
+public:
+	SceneDetector(uint32 width, uint32 height);
+	~SceneDetector();
+
+	void SetThresholds(int cut_threshold, int fade_threshold);
+	bool Submit(const VDPixmap& src);
+	void Reset();
+
 private:
-	Pixel *cur_lummap, *last_lummap;
-	long tile_w, tile_h;
-	BOOL last_valid;
-	BOOL first_diff;
-	BOOL last_fade_state;
+	vdfastvector<uint32>	mCurrentLummap;
+	vdfastvector<uint32>	mPrevLummap;
+	uint32 tile_w, tile_h;
+	bool last_valid;
+	bool first_diff;
+	bool last_fade_state;
 
 	long cut_threshold;
 	double fade_threshold;
 
-	void _destruct();
-
-	void BitmapToLummap(Pixel *lummap, VBitmap *vbm);
+	void BitmapToLummap(uint32 *lummap, const VDPixmap& src);
 	void FlipBuffers();
 
-public:
-	SceneDetector(PixDim width, PixDim height);
-	~SceneDetector();
-
-	void SetThresholds(int cut_threshold, int fade_threshold);
-	BOOL Submit(VBitmap *vbm);
-	void Reset();
 };
 
 #endif

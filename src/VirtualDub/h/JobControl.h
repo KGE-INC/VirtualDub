@@ -88,6 +88,9 @@ public:
 
 	uint64 GetUniqueId();
 
+	const char *GetRunnerName() const;
+	uint64 GetRunnerId() const;
+
 	bool IsAutoUpdateEnabled() const;
 	void SetAutoUpdateEnabled(bool enabled);
 

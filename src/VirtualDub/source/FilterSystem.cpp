@@ -561,16 +561,21 @@ bool FilterSystem::RunFilters(sint64 outputFrame, sint64 timelineFrame, sint64 s
 
 	const VFBitmapInternal *last = &bitmap[0];
 
-	while(fa->next && fa != pfiStopPoint) {
+	while(fa->next) {
 		// Run the filter.
 
 		if (fa->IsEnabled()) {
 			try {
 				const RequestInfo& ri = mRequestStack.back();
 
+				// We need to make sure that the entry blit happens on the stop filter for filter preview
+				// and cropping to work.
 				if (fa->mbBlitOnEntry) {
 					VDPixmapBlt(fa->mRealSrcUncropped.mPixmap, last->mPixmap);
 				}
+
+				if (fa == pfiStopPoint)
+					break;
 
 				fa->Run(mbFirstFrame, ri.mSourceFrame, ri.mOutputFrame, ri.mTimelineFrame, sequenceFrame, sequenceTimeMS, flags);
 
@@ -580,6 +585,9 @@ bool FilterSystem::RunFilters(sint64 outputFrame, sint64 timelineFrame, sint64 s
 				dwFlags |= FILTERS_ERROR;
 				throw;
 			}
+		} else {
+			if (fa == pfiStopPoint)
+				break;
 		}
 
 		fa = (FilterInstance *)fa->next;

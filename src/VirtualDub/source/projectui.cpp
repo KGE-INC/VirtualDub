@@ -90,6 +90,7 @@ namespace {
 extern const char g_szError[];
 
 extern bool g_bEnableVTuneProfiling;
+extern bool g_bAutoTest;
 
 extern HINSTANCE g_hInst;
 extern VDProject *g_project;
@@ -2551,7 +2552,7 @@ void VDProjectUI::UIShuttleModeUpdated() {
 
 void VDProjectUI::UISourceFileUpdated() {
 	if (inputAVI) {
-		if (g_szInputAVIFile[0])
+		if (g_szInputAVIFile[0] && !g_bAutoTest)
 			mMRUList.add(g_szInputAVIFile);
 
 		UpdateMRUList();
@@ -2816,10 +2817,12 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, formatTime % 1000);
 				break;
 			case 'p':
-				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, ((unsigned)mVideoTimelineFrameRate.scale64r(formatTime % 1000)+500) / 1000);
+				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width,
+					(unsigned)formatFrame - (unsigned)VDCeilToInt64(mVideoTimelineFrameRate.asDouble() * (double)(formatTime - formatTime % 1000) / 1000.0));
 				break;
 			case 'P':
-				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, ((unsigned)srcRate.scale64r(formatTime % 1000)+500) / 1000);
+				actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width,
+					(unsigned)srcFrame - (unsigned)VDCeilToInt64(srcRate.asDouble() * (double)(srcTime - srcTime % 1000) / 1000.0));
 				break;
 			case 'B':
 				{

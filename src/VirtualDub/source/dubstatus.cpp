@@ -309,7 +309,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 
 		sint64 kilobytes = (pvinfo->total_size + 512) >> 10;
 		double kbPerFrame = (double)kilobytes / (double)pvinfo->processed;
-		double framesPerSecond = pvinfo->frameRate.asDouble();
+		double framesPerSecond = pvinfo->mFrameRate.asDouble();
 
 		sprintf(s, " (%3ldKB/s)", VDRoundToInt(kbPerFrame * framesPerSecond));
 	}

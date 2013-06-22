@@ -597,7 +597,7 @@ void VDVideoFilterFieldBob2::End() {
 }
 
 void VDVideoFilterFieldBob2::Run() {
-	bool second = (fa->pfsi->lCurrentFrame & 1) != 0;
+	bool second = (fa->pfsi->mOutputFrame & 1) != 0;
 	bool odd = second;
 
 	if (mConfig.mbOddFieldFirst)

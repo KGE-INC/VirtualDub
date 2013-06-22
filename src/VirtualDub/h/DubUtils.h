@@ -168,6 +168,7 @@ protected:
 	VDPosition	mSrcDisplayFrame;
 	VDPosition	mSrcTargetSample;
 	VDPosition	mLastSrcDisplayFrame;
+	VDPosition	mSequenceFrame;
 	VDPosition	mDstFrame;
 	VDPosition	mDstFrameQueueNext;
 

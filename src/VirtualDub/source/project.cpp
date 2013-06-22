@@ -273,6 +273,7 @@ VDProject::VDProject()
 	, mposSelectionEnd(0)
 	, mbPositionCallbackEnabled(false)
 	, mbFilterChainLocked(false)
+	, mbTimelineRateDirty(true)
 	, mDesiredInputFrame(-1)
 	, mDesiredInputSample(-1)
 	, mDesiredOutputFrame(-1)
@@ -305,6 +306,11 @@ bool VDProject::Attach(VDGUIHandle hwnd) {
 }
 
 void VDProject::Detach() {
+	if (mpSceneDetector) {
+		delete mpSceneDetector;
+		mpSceneDetector = NULL;
+	}
+
 	mhwnd = NULL;
 }
 
@@ -396,8 +402,10 @@ bool VDProject::Tick() {
 	bool active = false;
 
 	if (inputVideo && mSceneShuttleMode) {
-		if (!mpSceneDetector)
-			mpSceneDetector = new_nothrow SceneDetector(inputVideo->getImageFormat()->biWidth, abs(inputVideo->getImageFormat()->biHeight));
+		if (!mpSceneDetector) {
+			const VDPixmap& px = inputVideo->getTargetFormat();
+			mpSceneDetector = new_nothrow SceneDetector(px.w, px.h);
+		}
 
 		if (mpSceneDetector) {
 			mpSceneDetector->SetThresholds(g_prefs.scene.iCutThreshold, g_prefs.scene.iFadeThreshold);
@@ -429,6 +437,11 @@ VDPosition VDProject::GetFrameCount() {
 
 VDFraction VDProject::GetInputFrameRate() {
 	return mVideoInputFrameRate;
+}
+
+VDFraction VDProject::GetTimelineFrameRate() {
+	VDASSERT(!mbTimelineRateDirty);
+	return mVideoTimelineFrameRate;
 }
 
 void VDProject::ClearSelection(bool notifyUser) {
@@ -789,6 +802,8 @@ bool VDProject::RefilterFrame(VDPosition outPos, VDPosition timelinePos) {
 	if (!inputVideo)
         return false;
 
+	UpdateTimelineRate();
+
 	if (!filters.isRunning()) {
 		StartFilters();
 		if (!filters.isRunning())
@@ -942,15 +957,11 @@ void VDProject::Reopen() {
 	vdrefptr<IVDVideoSource> pVS;
 	vdrefptr<AudioSource> pAS;
 	newInput->GetVideoSource(0, ~pVS);
-	newInput->GetAudioSource(0, ~pAS);
 
 	VDRenderSetVideoSourceInputFormat(pVS, g_dubOpts.video.mInputFormat);
 
 	IVDStreamSource *pVSS = pVS->asStream();
 	pVSS->setDecodeErrorMode(g_videoErrorMode);
-
-	if (pAS)
-		pAS->setDecodeErrorMode(g_audioErrorMode);
 
 	// Check for an irrevocable change to the edit list. Irrevocable changes will occur if
 	// there are any ranges other than the last that extend beyond the new length.
@@ -989,9 +1000,16 @@ void VDProject::Reopen() {
 	inputAudio = NULL;
 	inputAVI = newInput;
 	inputVideo = pVS;
+
 	mInputAudioSources.clear();
-	if (pAS)
-		mInputAudioSources.push_back(vdrefptr<AudioSource>(pAS));
+
+	{
+		vdrefptr<AudioSource> pTempAS;
+		for(int i=0; inputAVI->GetAudioSource(i, ~pTempAS); ++i) {
+			mInputAudioSources.push_back(pTempAS);
+			pTempAS->setDecodeErrorMode(g_audioErrorMode);
+		}
+	}
 
 	wcscpy(g_szInputAVIFile, filename.c_str());
 
@@ -1092,6 +1110,8 @@ void VDProject::CloseWAV() {
 }
 
 void VDProject::PreviewInput() {
+	UpdateTimelineRate();
+
 	VDPosition start = GetCurrentFrame();
 	DubOptions dubOpt(g_dubOpts);
 
@@ -1100,11 +1120,10 @@ void VDProject::PreviewInput() {
 	if (dubOpt.audio.preload > preload)
 		dubOpt.audio.preload = preload;
 
-	IVDStreamSource *pVSS = inputVideo->asStream();
 	dubOpt.audio.enabled				= TRUE;
 	dubOpt.audio.interval				= 1;
 	dubOpt.audio.is_ms					= FALSE;
-	dubOpt.video.lStartOffsetMS			= (long)pVSS->samplesToMs(start);
+	dubOpt.video.lStartOffsetMS			= (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
 
 	dubOpt.audio.fStartAudio			= TRUE;
 	dubOpt.audio.new_rate				= 0;
@@ -1168,6 +1187,8 @@ void VDProject::PreviewInput() {
 }
 
 void VDProject::PreviewOutput() {
+	UpdateTimelineRate();
+
 	VDPosition start = GetCurrentFrame();
 	DubOptions dubOpt(g_dubOpts);
 
@@ -1176,11 +1197,10 @@ void VDProject::PreviewOutput() {
 	if (dubOpt.audio.preload > preload)
 		dubOpt.audio.preload = preload;
 
-	IVDStreamSource *pVSS = inputVideo->asStream();
 	dubOpt.audio.enabled				= TRUE;
 	dubOpt.audio.interval				= 1;
 	dubOpt.audio.is_ms					= FALSE;
-	dubOpt.video.lStartOffsetMS			= (long)pVSS->samplesToMs(start);
+	dubOpt.video.lStartOffsetMS			= (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
 	dubOpt.video.mbUseSmartRendering	= false;
 
 	dubOpt.fShowStatus = false;
@@ -1399,7 +1419,7 @@ void VDProject::SetSelectionStart() {
 
 void VDProject::SetSelectionStart(VDPosition pos, bool notifyUser) {
 	if (inputAVI) {
-		IVDStreamSource *pVSS = inputVideo->asStream();
+		UpdateTimelineRate();
 
 		if (pos < 0)
 			pos = 0;
@@ -1408,10 +1428,10 @@ void VDProject::SetSelectionStart(VDPosition pos, bool notifyUser) {
 		mposSelectionStart = pos;
 		if (mposSelectionEnd < mposSelectionStart) {
 			mposSelectionEnd = mposSelectionStart;
-			g_dubOpts.video.lEndOffsetMS = (long)pVSS->samplesToMs(GetFrameCount() - pos);
+			g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - pos) * 1000.0);
 		}
 
-		g_dubOpts.video.lStartOffsetMS = (long)pVSS->samplesToMs(pos);
+		g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * pos * 1000.0);
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1425,7 +1445,7 @@ void VDProject::SetSelectionEnd() {
 
 void VDProject::SetSelectionEnd(VDPosition pos, bool notifyUser) {
 	if (inputAVI) {
-		IVDStreamSource *pVSS = inputVideo->asStream();
+		UpdateTimelineRate();
 
 		if (pos < 0)
 			pos = 0;
@@ -1435,9 +1455,9 @@ void VDProject::SetSelectionEnd(VDPosition pos, bool notifyUser) {
 		mposSelectionEnd = pos;
 		if (mposSelectionStart > mposSelectionEnd) {
 			mposSelectionStart = mposSelectionEnd;
-			g_dubOpts.video.lStartOffsetMS = (long)pVSS->samplesToMs(pos);
+			g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * pos * 1000.0);
 		}
-		g_dubOpts.video.lEndOffsetMS = (long)pVSS->samplesToMs(GetFrameCount() - pos);
+		g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - pos) * 1000.0);
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1448,7 +1468,8 @@ void VDProject::SetSelection(VDPosition start, VDPosition end, bool notifyUser) 
 	if (end < start)
 		ClearSelection(notifyUser);
 	else {
-		IVDStreamSource *pVSS = inputVideo->asStream();
+		UpdateTimelineRate();
+
 		const VDPosition count = GetFrameCount();
 		if (start < 0)
 			start = 0;
@@ -1462,8 +1483,8 @@ void VDProject::SetSelection(VDPosition start, VDPosition end, bool notifyUser) 
 		mposSelectionStart = start;
 		mposSelectionEnd = end;
 
-		g_dubOpts.video.lStartOffsetMS = (long)pVSS->samplesToMs(start);
-		g_dubOpts.video.lEndOffsetMS = (long)pVSS->samplesToMs(GetFrameCount() - end);
+		g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
+		g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - end) * 1000.0);
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1698,6 +1719,7 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 	try {
 		VDAutoLogDisplay disp;
 
+		UpdateDubParameters(true);
 		StopFilters();
 
 		// Create a dubber.
@@ -1741,12 +1763,12 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 		if (lSpillThreshold) {
 			segmentedOutput = new VDAVIOutputSegmentedSystem(pOutputSystem, opts->audio.is_ms, opts->audio.is_ms ? opts->audio.interval * 0.001 : opts->audio.interval, (double)opts->audio.preload / 500.0, (sint64)lSpillThreshold << 20, lSpillFrameThreshold);
-			g_dubber->Init(&vsrc, 1, &asrc, asrc ? 1 : 0, segmentedOutput, &g_Vcompression, &mTimeline.GetSubset());
+			g_dubber->Init(&vsrc, 1, &asrc, asrc ? 1 : 0, segmentedOutput, &g_Vcompression, &mTimeline.GetSubset(), mVideoTimelineFrameRate);
 		} else {
 			if (fAudioOnly == 2)
 				g_dubber->SetPhantomVideoMode();
 
-			g_dubber->Init(&vsrc, 1, &asrc, asrc ? 1 : 0, pOutputSystem, &g_Vcompression, &mTimeline.GetSubset());
+			g_dubber->Init(&vsrc, 1, &asrc, asrc ? 1 : 0, pOutputSystem, &g_Vcompression, &mTimeline.GetSubset(), mVideoTimelineFrameRate);
 		}
 
 		if (!pOptions && mhwnd)
@@ -1928,8 +1950,7 @@ void VDProject::SceneShuttleStep() {
 	if (mpCB)
 		mpCB->UICurrentPositionUpdated();
 
-	VBitmap framebm((void *)inputVideo->getFrameBuffer(), (BITMAPINFOHEADER *)inputVideo->getDecompressedFormat());
-	if (mpSceneDetector->Submit(&framebm)) {
+	if (mpSceneDetector->Submit(inputVideo->getTargetFormat())) {
 		SceneShuttleStop();
 	}
 }
@@ -1946,34 +1967,51 @@ void VDProject::StaticPositionCallback(VDPosition start, VDPosition cur, VDPosit
 	}
 }
 
-void VDProject::UpdateDubParameters() {
-	if (!inputVideo)
-		return;
+void VDProject::UpdateTimelineRate() {
+	if (mbTimelineRateDirty)
+		UpdateDubParameters(false);
+}
 
-	mVideoInputFrameRate	= VDFraction(0,0);
-	mVideoOutputFrameRate	= VDFraction(0,0);
-	mVideoTimelineFrameRate	= VDFraction(0,0);
+void VDProject::UpdateDubParameters(bool forceUpdate) {
+	if (!inputVideo) {
+		if (forceUpdate)
+			throw MyError("Cannot initialize rendering parameters: there is no video stream.");
+
+		return;
+	}
+
+	// work around fraction ==(0,0) bug for now
+	mVideoInputFrameRate	= VDFraction(0,1);
+	mVideoOutputFrameRate	= VDFraction(0,1);
+	mVideoTimelineFrameRate	= VDFraction(0,1);
 
 	DubVideoStreamInfo vInfo;
 
 	if (inputVideo) {
 		try {
-			InitVideoStreamValuesStatic(vInfo, inputVideo, inputAudio, &g_dubOpts, &GetTimeline().GetSubset(), NULL, NULL);
+			// For now we temporarily disable IVTC while computing the timeline rate.
+			DubOptions tempOpts(g_dubOpts);
+			tempOpts.video.fInvTelecine = false;
 
-			if (mVideoOutputFrameRate != vInfo.frameRate)
+			InitVideoStreamValuesStatic(vInfo, inputVideo, inputAudio, &tempOpts, &GetTimeline().GetSubset(), NULL, NULL);
+
+			if (mVideoOutputFrameRate != vInfo.mFrameRatePreFilter)
 				StopFilters();
 
-			mVideoInputFrameRate	= vInfo.frameRateIn;
-			mVideoOutputFrameRate	= vInfo.frameRate;
-			mVideoTimelineFrameRate	= vInfo.frameRate;
+			mVideoInputFrameRate	= vInfo.mFrameRateIn;
+			mVideoOutputFrameRate	= vInfo.mFrameRatePreFilter;
 
 			StartFilters();
 
-			if (filters.isRunning())
-				mVideoTimelineFrameRate	= filters.GetOutputFrameRate();
-		} catch(const MyError&) {
+			InitVideoStreamValuesStatic2(vInfo, &tempOpts, filters.isRunning() ? &filters : NULL, VDFraction(0, 0));
+
+			mVideoTimelineFrameRate	= vInfo.mFrameRatePostFilter;
+			mbTimelineRateDirty = false;
+		} catch(const MyError& e) {
 			// The input stream may throw an error here trying to obtain the nearest key.
 			// If so, bail.
+			if (forceUpdate)
+				throw MyError("Cannot initialize rendering parameters: %s", e.c_str());
 		}
 	}
 

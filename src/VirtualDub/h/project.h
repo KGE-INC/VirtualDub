@@ -73,6 +73,12 @@ public:
 	void BeginTimelineUpdate(const wchar_t *undostr = 0);
 	void EndTimelineUpdate();
 
+	// This is a workaround for the way that script can change options. We don't want
+	// to handle it fully automagically as that will cause the filter system to get
+	// hit a lot.
+	void MarkTimelineRateDirty() { mbTimelineRateDirty = true; }
+	void UpdateTimelineRate();
+
 	bool Undo();
 	bool Redo();
 	void ClearUndoStack();
@@ -84,6 +90,7 @@ public:
 	VDPosition GetCurrentFrame();
 	VDPosition GetFrameCount();
 	VDFraction GetInputFrameRate();
+	VDFraction GetTimelineFrameRate();
 
 	typedef std::list<std::pair<uint32, VDStringA> > tTextInfo;
 	tTextInfo& GetTextInfo() { return mTextInfo; }
@@ -192,7 +199,7 @@ protected:
 
 	static void StaticPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);
 
-	void UpdateDubParameters();
+	void UpdateDubParameters(bool forceUpdate = false);
 	void SetAudioSource();
 
 	void OnDubAbort(IDubber *src, const bool& userAbort);
@@ -229,6 +236,7 @@ protected:
 	bool		mbPositionCallbackEnabled;
 
 	bool		mbFilterChainLocked;
+	bool		mbTimelineRateDirty;
 
 	VDXFilterStateInfo mfsi;
 	VDPosition		mDesiredInputFrame;

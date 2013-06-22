@@ -598,7 +598,7 @@ bool InputFileAVI::GetAudioSource(int index, AudioSource **ppSrc) {
 		as = new AudioSourceDV(this, pDVStream, fAutomated);
 		if (static_cast<AudioSourceDV *>(&*as)->init()) {
 			*ppSrc = as.release();
-			return false;
+			return true;
 		}
 	}
 

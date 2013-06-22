@@ -71,7 +71,11 @@ void VDDubIOThread::ThreadRun() {
 	bool bAudioActive = mpAudioPipe && (mpAudio != 0);
 	bool bVideoActive = mpVideoPipe && !mVideoSources.empty();
 
-	double nVideoRate = bVideoActive ? vInfo.frameRateNoTelecine.asDouble() : 0;
+	double nVideoRate = 0;
+
+	if (bVideoActive)
+		nVideoRate = vInfo.mFrameRateIn.asDouble() * vInfo.mFrameRate.asDouble() / vInfo.mFrameRatePostFilter.asDouble();
+
 	double nAudioRate = bAudioActive ? mpAudio->GetFormat()->mDataRate : 0;
 
 	int minAudioBufferSpace = 0;

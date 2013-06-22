@@ -812,14 +812,16 @@ bool VDCaptureDriverScreen::CaptureStart() {
 	ShutdownWaveAnalysis();
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
-		HDC hdc = GetDC(mhwndGL);
-		if (hdc) {
-			if (mGL.Begin(hdc)) {
-				FlushFrameQueue();
-				mGL.End();
-			}
+		if (mbOpenGLMode) {
+			HDC hdc = GetDC(mhwndGL);
+			if (hdc) {
+				if (mGL.Begin(hdc)) {
+					FlushFrameQueue();
+					mGL.End();
+				}
 
-			ReleaseDC(mhwndGL, hdc);
+				ReleaseDC(mhwndGL, hdc);
+			}
 		}
 
 		if (mpCB->CapEvent(kEventPreroll, 0)) {

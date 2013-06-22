@@ -17,40 +17,30 @@
 
 #include "stdafx.h"
 
-#include "VBitmap.h"
 #include <vd2/system/error.h>
+#include <vd2/Kasumi/pixel.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmaputils.h>
 
 #include "SceneDetector.h"
 
-SceneDetector::SceneDetector(PixDim width, PixDim height) {
-	cur_lummap = last_lummap = NULL;
-	last_valid = FALSE;
-	first_diff = TRUE;
+SceneDetector::SceneDetector(uint32 width, uint32 height) {
+	last_valid = false;
+	first_diff = true;
 
 	cut_threshold = 50 * tile_w * tile_h;
 	fade_threshold = 4 * tile_w * tile_h;
 
-	try {
-		tile_w = (width + 7)/8;
-		tile_h = (height + 7)/8;
+	tile_w = (width + 7)/8;
+	tile_h = (height + 7)/8;
 
-		if (	!(cur_lummap  = new Pixel[tile_h * tile_w])
-			||	!(last_lummap = new Pixel[tile_h * tile_w]))
+	uint32 tileCount = tile_w * tile_h;
 
-			throw MyMemoryError();
-	} catch(...) {
-		_destruct();
-		throw;
-	}
-}
-
-void SceneDetector::_destruct() {
-	delete[] cur_lummap;
-	delete[] last_lummap;
+	mCurrentLummap.resize(tileCount);
+	mPrevLummap.resize(tileCount);
 }
 
 SceneDetector::~SceneDetector() {
-	_destruct();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -60,30 +50,30 @@ void SceneDetector::SetThresholds(int cut_threshold, int fade_threshold) {
 	this->fade_threshold	= (fade_threshold * tile_w * tile_h)/16.0f;
 }
 
-BOOL SceneDetector::Submit(VBitmap *vbm) {
+bool SceneDetector::Submit(const VDPixmap& src) {
 	long last_frame_diffs = 0;
 	long lum_total = 0;
 	double lum_sq_total = 0.0;
 	long len = tile_w * tile_h;
 
-	if (vbm->w > tile_w*8 || vbm->h > tile_h*8 || (!cut_threshold && !fade_threshold))
-		return FALSE;
+	if (src.w > tile_w*8 || src.h > tile_h*8 || (!cut_threshold && !fade_threshold) || !src.format)
+		return false;
 
 	FlipBuffers();
-	BitmapToLummap(cur_lummap, vbm);
+	BitmapToLummap(mCurrentLummap.data(), src);
 
 	if (!last_valid) {
-		last_valid = TRUE;
-		return FALSE;
+		last_valid = true;
+		return false;
 	}
 
 /////////////
 
-	const Pixel *t1 = cur_lummap, *t2 = last_lummap;
+	const uint32 *t1 = mCurrentLummap.data(), *t2 = mPrevLummap.data();
 
 	do {
-		Pixel c1 = *t1++;
-		Pixel c2 = *t2++;
+		uint32 c1 = *t1++;
+		uint32 c2 = *t2++;
 
 		last_frame_diffs +=(   54*abs((int)(c2>>16)-(int)(c1>>16))
 							+ 183*abs((int)((c2>>8)&255) -(int)((c1>>8)&255))
@@ -126,17 +116,17 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 
 	// Cut/dissolve detection
 
-	return cut_threshold ? last_frame_diffs > cut_threshold : FALSE;
+	return cut_threshold ? last_frame_diffs > cut_threshold : false;
 }
 
 void SceneDetector::Reset() {
-	last_valid = FALSE;
+	last_valid = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 namespace {
-	Pixel scene_lumtile32(void *src0, long w, long h, ptrdiff_t pitch) {
+	uint32 scene_lumtile32(const void *src0, long w, long h, ptrdiff_t pitch) {
 		w <<= 2;
 
 		const char *src = (const char *)src0 + w;
@@ -160,7 +150,7 @@ namespace {
 		return (((rb_total + 0x00200020) & 0x3fc03fc0) + ((g_total + 0x00002000) & 0x003fc000)) >> 6;
 	}
 
-	Pixel scene_lumtile24(void *src0, long w, long h, ptrdiff_t pitch) {
+	uint32 scene_lumtile24(const void *src0, long w, long h, ptrdiff_t pitch) {
 		const uint8 *src = (const uint8 *)src0;
 		pitch -= 3*w;
 		uint32 r_total = 0;
@@ -185,7 +175,7 @@ namespace {
 		return (r_total << 16) + (g_total << 8) + b_total;
 	}
 
-	Pixel scene_lumtile16(void *src0, long w, long h, ptrdiff_t pitch) {
+	uint32 scene_lumtile16(const void *src0, long w, long h, ptrdiff_t pitch) {
 		w += w;
 
 		const char *src = (const char *)src0 + w;
@@ -213,81 +203,384 @@ namespace {
 		b_total = (b_total + 0x0004) >> 3;
 		return (r_total & 0xff0000) + (g_total & 0x00ff00) + (b_total & 0x0000ff);
 	}
+
+	uint32 scene_lumtile565(const void *src0, long w, long h, ptrdiff_t pitch) {
+		w += w;
+
+		const char *src = (const char *)src0 + w;
+		uint32 r_total = 0;
+		uint32 g_total = 0;
+		uint32 b_total = 0;
+
+		w = -w;
+		do {
+			long x = w;
+
+			do {
+				const uint32 px = *(uint16 *)(src + x);
+
+				r_total += px & 0xf800;
+				g_total += px & 0x07e0;
+				b_total += px & 0x001f;
+			} while(x += 2);
+
+			src += pitch;
+		} while(--h);
+
+		r_total = (r_total + 0x2000) << 2;
+		g_total = (g_total + 0x0100) >> 1;
+		b_total = (b_total + 0x0004) >> 3;
+		return (r_total & 0xff0000) + (g_total & 0x00ff00) + (b_total & 0x0000ff);
+	}
+
+	uint32 scene_lumtileUYVY(const void *src0, long w, long h, ptrdiff_t pitch) {
+		const uint8 *src = (const uint8 *)src0;
+		uint32 y_total = 0;
+		uint32 cb_total = 0;
+		uint32 cr_total = 0;
+
+		sint32 y_bias = (w * h) * 0x10;
+		sint32 c_bias = (w * h) * 0x40;		// 0x80 * (w*h)/2
+
+		do {
+			long x = w;
+
+			const uint8 *src2 = src;
+			do {
+				y_total += src2[1] + src2[3];
+				cb_total += src2[0];
+				cr_total += src2[2];
+				src2 += 4;
+			} while(x -= 2);
+
+			src += pitch;
+		} while(--h);
+
+		y_total = ((sint32)(y_total + 32 - y_bias) >> 6) + 0x10;
+		cb_total = ((sint32)(cb_total + 16 - c_bias) >> 5) + 0x80;
+		cr_total = ((sint32)(cr_total + 16 - c_bias) >> 5) + 0x80;
+
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+	}
+
+	uint32 scene_lumtileYUY2(const void *src0, long w, long h, ptrdiff_t pitch) {
+		const uint8 *src = (const uint8 *)src0;
+		uint32 y_total = 0;
+		uint32 cb_total = 0;
+		uint32 cr_total = 0;
+
+		sint32 y_bias = (w * h) * 0x10;
+		sint32 c_bias = (w * h) * 0x40;		// 0x80 * (w*h)/2
+
+		do {
+			long x = w;
+
+			const uint8 *src2 = src;
+			do {
+				y_total += src2[0] + src2[2];
+				cb_total += src2[1];
+				cr_total += src2[3];
+				src2 += 4;
+			} while(x -= 2);
+
+			src += pitch;
+		} while(--h);
+
+		y_total = ((sint32)(y_total + 32 - y_bias) >> 6) + 0x10;
+		cb_total = ((sint32)(cb_total + 16 - c_bias) >> 5) + 0x80;
+		cr_total = ((sint32)(cr_total + 16 - c_bias) >> 5) + 0x80;
+
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+	}
+
+	uint32 scene_lumtileY8(const void *src0, long w, long h, ptrdiff_t pitch) {
+		const uint8 *src = (const uint8 *)src0;
+		uint32 y_total = 0;
+		sint32 y_bias = (w * h) * 0x10;
+
+		do {
+			long x = w;
+
+			const uint8 *src2 = src;
+			do {
+				y_total += *src2++;
+			} while(--x);
+
+			src += pitch;
+		} while(--h);
+
+		y_total = ((sint32)(y_total + 32 - y_bias) >> 6) + 0x10;
+
+		return VDConvertYCbCrToRGB((uint8)y_total, 0x80, 0x80);
+	}
+
+	template<int kXShift, int kYShift>
+	uint32 scene_lumtileYCbCrPlanar(const uint8 *y, ptrdiff_t ypitch, const uint8 *cb, ptrdiff_t cbpitch, const uint8 *cr, ptrdiff_t crpitch, uint32 w, uint32 h) {
+		uint32 y_total = 0;
+		uint32 cb_total = 0;
+		uint32 cr_total = 0;
+
+		sint32 y_bias = (w * h) * 0x10;
+
+		uint32 w2 = w >> kXShift;
+		uint32 h2 = h >> kYShift;
+		sint32 c_bias = (w2 * h2) * 0x80;
+
+		for(uint32 i=0; i<h; ++i) {
+			switch(w) {
+				case 8:		y_total += y[7];
+				case 7:		y_total += y[6];
+				case 6:		y_total += y[5];
+				case 5:		y_total += y[4];
+				case 4:		y_total += y[3];
+				case 3:		y_total += y[2];
+				case 2:		y_total += y[1];
+				case 1:		y_total += y[0];
+			}
+
+			y += ypitch;
+		}
+
+		for(uint32 i=0; i<h2; ++i) {
+			switch(w2) {
+				case 8:		cb_total += cb[7];
+							cr_total += cr[7];
+				case 7:		cb_total += cb[6];
+							cr_total += cr[6];
+				case 6:		cb_total += cb[5];
+							cr_total += cr[5];
+				case 5:		cb_total += cb[4];
+							cr_total += cr[4];
+				case 4:		cb_total += cb[3];
+							cr_total += cr[3];
+				case 3:		cb_total += cb[2];
+							cr_total += cr[2];
+				case 2:		cb_total += cb[1];
+							cr_total += cr[1];
+				case 1:		cb_total += cb[0];
+							cr_total += cr[0];
+			}
+
+			cb += cbpitch;
+			cr += crpitch;
+		}
+
+		enum {
+			kCShiftDown = 6 - (kXShift + kYShift),
+			kCRound = 1 << (kCShiftDown - 1)
+		};
+
+		y_total = ((sint32)(y_total + 32 - y_bias) >> 6) + 0x10;
+		cb_total = ((sint32)(cb_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
+		cr_total = ((sint32)(cr_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
+
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+	}
 }
 
 #ifdef _M_IX86
-	extern "C" Pixel __cdecl asm_scene_lumtile32(void *src, long w, long h, long pitch);
-	extern "C" Pixel __cdecl asm_scene_lumtile24(void *src, long w, long h, long pitch);
-	extern "C" Pixel __cdecl asm_scene_lumtile16(void *src, long w, long h, long pitch);
+	extern "C" uint32 __cdecl asm_scene_lumtile32(const void *src, long w, long h, long pitch);
+	extern "C" uint32 __cdecl asm_scene_lumtile24(const void *src, long w, long h, long pitch);
+	extern "C" uint32 __cdecl asm_scene_lumtile16(const void *src, long w, long h, long pitch);
 #else
 	#define asm_scene_lumtile32 scene_lumtile32
 	#define asm_scene_lumtile24 scene_lumtile24
 	#define asm_scene_lumtile16 scene_lumtile16
 #endif
 
-void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
-	char *src, *src_row = (char *)vbm->data;
+void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 	int mh = 8;
-	long w,h;
+	uint32 w, h;
 
-	h = (vbm->h+7)/8;
+	h = (pxsrc.h+7) >> 3;
 
-	switch(vbm->depth) {
-	case 32:
+	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(pxsrc.format);
+
+	if (formatInfo.auxbufs == 0) {
+		const char *src_row = (const char *)pxsrc.data;
+
 		do {
-			if (h<=1 && (vbm->h&7)) mh = vbm->h&7;
+			if (h<=1 && (pxsrc.h&7))
+				mh = pxsrc.h&7;
 
-			src = src_row; src_row += vbm->pitch*8;
-			w = vbm->w/8;
-			do {
-				*lummap++ = asm_scene_lumtile32(src, 8, mh, vbm->pitch);
-				src += 32;
-			} while(--w);
+			const char *src = src_row;
+			src_row += pxsrc.pitch*8;
 
-			if (vbm->w & 7) {
-				*lummap++ = asm_scene_lumtile32(src, vbm->w&7, mh, vbm->pitch);
+			w = pxsrc.w >> 3;
+
+			switch(pxsrc.format) {
+				case nsVDPixmap::kPixFormat_XRGB1555:
+					do {
+						*lummap++ = asm_scene_lumtile16(src, 8, mh, pxsrc.pitch);
+						src += 16;
+					} while(--w);
+
+					if (pxsrc.w & 6) {
+						*lummap++ = asm_scene_lumtile16(src, pxsrc.w&6, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_RGB565:
+					do {
+						*lummap++ = scene_lumtile565(src, 8, mh, pxsrc.pitch);
+						src += 16;
+					} while(--w);
+
+					if (pxsrc.w & 6) {
+						*lummap++ = scene_lumtile565(src, pxsrc.w&6, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_RGB888:
+					do {
+						*lummap++ = asm_scene_lumtile24(src, 8, mh, pxsrc.pitch);
+						src += 24;
+					} while(--w);
+
+					if (pxsrc.w & 7) {
+						*lummap++ = asm_scene_lumtile24(src, pxsrc.w&7, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_XRGB8888:
+					do {
+						*lummap++ = asm_scene_lumtile32(src, 8, mh, pxsrc.pitch);
+						src += 32;
+					} while(--w);
+
+					if (pxsrc.w & 7) {
+						*lummap++ = asm_scene_lumtile32(src, pxsrc.w&7, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV422_UYVY:
+					do {
+						*lummap++ = scene_lumtileUYVY(src, 8, mh, pxsrc.pitch);
+						src += 32;
+					} while(--w);
+
+					if (pxsrc.w & 6) {
+						*lummap++ = scene_lumtileUYVY(src, pxsrc.w&6, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV422_YUYV:
+					do {
+						*lummap++ = scene_lumtileYUY2(src, 8, mh, pxsrc.pitch);
+						src += 32;
+					} while(--w);
+
+					if (pxsrc.w & 6) {
+						*lummap++ = scene_lumtileYUY2(src, pxsrc.w&6, mh, pxsrc.pitch);
+					}
+					break;
+
+				case nsVDPixmap::kPixFormat_Y8:
+					do {
+						*lummap++ = scene_lumtileY8(src, 8, mh, pxsrc.pitch);
+						src += 8;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileY8(src, pxsrc.w&7, mh, pxsrc.pitch);
+					break;
+
+				default:
+					VDASSERTCT(nsVDPixmap::kPixFormat_Max_Standard == nsVDPixmap::kPixFormat_YUV410_Planar + 1);
+					VDASSERT(false);
 			}
 		} while(--h);
-		break;
-	case 24:
+	} else {
+		const uint8 *srcRowY = (const uint8 *)pxsrc.data;
+		const uint8 *srcRowCb = (const uint8 *)pxsrc.data2;
+		const uint8 *srcRowCr = (const uint8 *)pxsrc.data3;
+		const ptrdiff_t pitchY = pxsrc.pitch;
+		const ptrdiff_t pitchCb = pxsrc.pitch2;
+		const ptrdiff_t pitchCr = pxsrc.pitch3;
+		const ptrdiff_t pitchRowY = pitchY * 8;
+		const ptrdiff_t pitchRowCb = pitchCr << (3 - formatInfo.auxhbits);
+		const ptrdiff_t pitchRowCr = pitchCb << (3 - formatInfo.auxhbits);
+
 		do {
-			if (h<=1 && (vbm->h&7)) mh = vbm->h&7;
+			if (h<=1 && (pxsrc.h&7))
+				mh = pxsrc.h&7;
 
-			src = src_row; src_row += vbm->pitch*8;
-			w = vbm->w/8;
-			do {
-				*lummap++ = asm_scene_lumtile24(src, 8, mh, vbm->pitch);
-				src += 24;
-			} while(--w);
+			const uint8 *srcY = srcRowY;
+			const uint8 *srcCb = srcRowCb;
+			const uint8 *srcCr = srcRowCr;
 
-			if (vbm->w & 7) {
-				*lummap++ = asm_scene_lumtile24(src, vbm->w&7, mh, vbm->pitch);
+			srcRowY += pitchRowY;
+			srcRowCb += pitchRowCb;
+			srcRowCr += pitchRowCr;
+
+			w = pxsrc.w >> 3;
+
+			switch(pxsrc.format) {
+				case nsVDPixmap::kPixFormat_YUV444_Planar:
+					do {
+						*lummap++ = scene_lumtileYCbCrPlanar<0, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
+						srcY += 8;
+						srcCb += 8;
+						srcCr += 8;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileYCbCrPlanar<0, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, pxsrc.w & 7, mh);
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV422_Planar:
+					do {
+						*lummap++ = scene_lumtileYCbCrPlanar<1, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
+						srcY += 8;
+						srcCb += 4;
+						srcCr += 4;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileYCbCrPlanar<1, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, pxsrc.w & 7, mh);
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV411_Planar:
+					do {
+						*lummap++ = scene_lumtileYCbCrPlanar<2, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
+						srcY += 8;
+						srcCb += 2;
+						srcCr += 2;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileYCbCrPlanar<2, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, pxsrc.w & 7, mh);
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV420_Planar:
+					do {
+						*lummap++ = scene_lumtileYCbCrPlanar<1, 1>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
+						srcY += 8;
+						srcCb += 4;
+						srcCr += 4;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileYCbCrPlanar<1, 1>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, pxsrc.w & 7, mh);
+					break;
+
+				case nsVDPixmap::kPixFormat_YUV410_Planar:
+					do {
+						*lummap++ = scene_lumtileYCbCrPlanar<2, 2>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
+						srcY += 8;
+						srcCb += 2;
+						srcCr += 2;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileYCbCrPlanar<2, 2>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, pxsrc.w & 7, mh);
+					break;
+
 			}
 		} while(--h);
-		break;
-	case 16:
-		do {
-			if (h<=1 && (vbm->h&7)) mh = vbm->h&7;
-
-			src = src_row; src_row += vbm->pitch*8;
-			w = vbm->w/8;
-			do {
-				*lummap++ = asm_scene_lumtile16(src, 8, mh, vbm->pitch);
-				src += 16;
-			} while(--w);
-
-			if (vbm->w & 6) {
-				*lummap++ = asm_scene_lumtile16(src, vbm->w&6, mh, vbm->pitch);
-			}
-		} while(--h);
-		break;
 	}
 }
 
 void SceneDetector::FlipBuffers() {
-	Pixel *t;
-
-	t = cur_lummap;
-	cur_lummap = last_lummap;
-	last_lummap = t;
+	mCurrentLummap.swap(mPrevLummap);
 }

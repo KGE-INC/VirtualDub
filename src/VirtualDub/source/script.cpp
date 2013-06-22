@@ -31,6 +31,8 @@
 #include <vd2/system/file.h>
 #include <vd2/system/log.h>
 #include <vd2/system/VDString.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Dita/services.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
@@ -580,18 +582,21 @@ static void func_VDVideo_SetDepth(IVDScriptInterpreter *, VDScriptValue *arglist
 
 	g_dubOpts.video.mInputFormat = new_depth1;
 	g_dubOpts.video.mOutputFormat = new_depth2;
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_SetInputFormat(IVDScriptInterpreter *, VDScriptValue *argv, int argc) {
 	g_dubOpts.video.mInputFormat = argv[0].asInt();
 	if (g_dubOpts.video.mInputFormat >= nsVDPixmap::kPixFormat_Max_Standard)
 		g_dubOpts.video.mInputFormat = nsVDPixmap::kPixFormat_RGB888;
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_SetOutputFormat(IVDScriptInterpreter *, VDScriptValue *argv, int argc) {
 	g_dubOpts.video.mOutputFormat = argv[0].asInt();
 	if (g_dubOpts.video.mOutputFormat >= nsVDPixmap::kPixFormat_Max_Standard)
 		g_dubOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_RGB888;
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_GetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -601,8 +606,10 @@ static void func_VDVideo_GetMode(IVDScriptInterpreter *, VDScriptValue *arglist,
 static void func_VDVideo_SetMode(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	int new_mode = arglist[0].asInt();
 
-	if (new_mode>=0 && new_mode<4)
+	if (new_mode>=0 && new_mode<4) {
 		g_dubOpts.video.mode = (char)new_mode;
+		g_project->MarkTimelineRateDirty();
+	}
 }
 
 static void func_VDVideo_SetSmartRendering(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -664,6 +671,8 @@ static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arg
 			g_dubOpts.video.fInvTelecine = false;
 		}
 	}
+
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_SetFrameRate2(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -672,12 +681,14 @@ static void func_VDVideo_SetFrameRate2(IVDScriptInterpreter *, VDScriptValue *ar
 	g_dubOpts.video.frameRateDecimation = std::max<int>(1, arglist[2].asInt());
 	g_dubOpts.video.frameRateTargetLo = 0;
 	g_dubOpts.video.frameRateTargetHi = 0;
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_SetTargetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.frameRateDecimation = 1;
 	g_dubOpts.video.frameRateTargetLo = arglist[1].asInt();
 	g_dubOpts.video.frameRateTargetHi = arglist[0].asInt();
+	g_project->MarkTimelineRateDirty();
 }
 
 static void func_VDVideo_GetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -689,8 +700,32 @@ static void func_VDVideo_SetRangeEmpty(IVDScriptInterpreter *, VDScriptValue *ar
 }
 
 static void func_VDVideo_SetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	SetSelectionStart(arglist[0].asInt());
-	SetSelectionEnd(arglist[1].asInt());
+	if (!inputVideo)
+		return;
+
+	// Note that these must be in SOURCE units for compatibility with 1.7.x. In particular, frame
+	// rate adjustment must NOT be applied.
+	int startOffset = arglist[0].asInt();
+	int endOffset = arglist[1].asInt();
+	double msToFrames = inputVideo->asStream()->getRate().asDouble() / 1000.0;
+
+	g_project->UpdateTimelineRate();
+	g_project->SetSelectionStart(VDRoundToInt64((double)startOffset * msToFrames));
+	g_project->SetSelectionEnd(g_project->GetFrameCount() - VDRoundToInt64((double)endOffset * msToFrames));
+}
+
+static void func_VDVideo_SetRangeFrames(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	if (!inputVideo)
+		return;
+
+	// Note that these must be in SOURCE units for compatibility with 1.7.x. In particular, frame
+	// rate adjustment must NOT be applied.
+	VDPosition startOffset = arglist[0].asLong();
+	VDPosition endOffset = arglist[1].asLong();
+
+	g_project->UpdateTimelineRate();
+	g_project->SetSelectionStart(startOffset);
+	g_project->SetSelectionEnd(endOffset);
 }
 
 static void func_VDVideo_GetCompression(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -849,6 +884,40 @@ namespace {
 
 		return decframe;
 	}
+
+	int GetFrameId2(VDPosition pos) {
+		IVDStreamSource *stream = inputVideo->asStream();
+
+		if (pos < 0 || pos >= stream->getLength())
+			return -1;
+
+		const VDPixmap& px = inputVideo->getTargetFormat();
+		if (px.w != 8 || px.h != 4 || !px.format)
+			return -1;
+
+		if (!inputVideo->getFrame(pos))
+			return -1;
+
+		uint16 tex[4][8];
+		VDPixmap pxdst={};
+		pxdst.w = 8;
+		pxdst.h = 4;
+		pxdst.pitch = sizeof tex[0];
+		pxdst.data = tex;
+		pxdst.format = nsVDPixmap::kPixFormat_XRGB1555;
+
+		if (!VDPixmapBlt(pxdst, px))
+			return -1;
+
+		uint32 id = tex[0][0];
+//		throw MyError("%x\n", id);
+		int decframe = ((id & 0x1e) >> 1) + ((id & 0x3c0) >> 2);
+
+		if (decframe >= 100)
+			return -1;
+
+		return decframe;
+	}
 }
 
 static void func_VDVideo_intDetectIdFrame(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
@@ -858,6 +927,15 @@ static void func_VDVideo_intDetectIdFrame(IVDScriptInterpreter *isi, VDScriptVal
 	VDPosition pos = argv[0].asInt();
 
 	argv[0] = GetFrameId(pos);
+}
+
+static void func_VDVideo_intDetectIdFrame2(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	VDPosition pos = argv[0].asInt();
+
+	argv[0] = GetFrameId2(pos);
 }
 
 static void func_VDVideo_intValidateFrames(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
@@ -870,6 +948,26 @@ static void func_VDVideo_intValidateFrames(IVDScriptInterpreter *isi, VDScriptVa
 
 		int frame = argv[i].asInt();
 		int id = GetFrameId(i);
+
+		if (id != frame)
+			throw MyError("Frame mismatch: frame[%d] has id %d, expected %d", i, id, frame);
+	}
+
+	VDPosition len = inputVideo->asStream()->getLength();
+	if (argc != len)
+		throw MyError("Length mismatch: expected %d frames, found %d frames", argc, (int)len);
+}
+
+static void func_VDVideo_intValidateFrames2(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	for(int i=0; i<argc; ++i) {
+		if (!argv[i].isInt())
+			VDSCRIPT_EXT_ERROR(TYPE_INT_REQUIRED);
+
+		int frame = argv[i].asInt();
+		int id = GetFrameId2(i);
 
 		if (id != frame)
 			throw MyError("Frame mismatch: frame[%d] has id %d, expected %d", i, id, frame);
@@ -893,6 +991,7 @@ static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_GetRange			, "GetRange",		"ii" },
 	{ func_VDVideo_SetRangeEmpty	, "SetRange",		"0" },
 	{ func_VDVideo_SetRange			, NULL,				"0ii" },
+	{ func_VDVideo_SetRangeFrames	, "SetRangeFrames",	"0ll" },
 	{ func_VDVideo_GetCompression	, "GetCompression",	"ii" },
 	{ func_VDVideo_SetCompression	, "SetCompression",	"0siii" },
 	{ func_VDVideo_SetCompression	, NULL,				"0iiii" },
@@ -909,7 +1008,9 @@ static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_intGetFramePrefix, "__GetFramePrefix", "ii" },
 	{ func_VDVideo_intIsKeyFrame, "__IsKeyFrame", "ii" },
 	{ func_VDVideo_intDetectIdFrame, "__DetectIdFrame", "ii" },
+	{ func_VDVideo_intDetectIdFrame2, "__DetectIdFrame2", "ii" },
 	{ func_VDVideo_intValidateFrames, "__ValidateFrames", "0." },
+	{ func_VDVideo_intValidateFrames2, "__ValidateFrames2", "0." },
 	{ NULL }
 };
 

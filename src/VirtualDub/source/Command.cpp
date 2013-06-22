@@ -238,19 +238,9 @@ void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int min
 
 
 void SetSelectionStart(long ms) {
-	if (!inputVideo)
-		return;
-
-	IVDStreamSource *pVSS = inputVideo->asStream();
-	g_project->SetSelectionStart(pVSS->msToSamples(ms));
 }
 
 void SetSelectionEnd(long ms) {
-	if (!inputVideo)
-		return;
-
-	IVDStreamSource *pVSS = inputVideo->asStream();
-	g_project->SetSelectionEnd(g_project->GetFrameCount() - pVSS->msToSamples(ms));
 }
 
 void ScanForUnreadableFrames(FrameSubset *pSubset, IVDVideoSource *pVideoSource) {

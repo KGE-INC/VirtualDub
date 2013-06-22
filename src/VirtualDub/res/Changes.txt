@@ -1,6 +1,30 @@
 VirtualDub change log
 
-Build %build% (1.8.1, stable): [%date%]
+Build %build% (1.8.2, stable): [%date%]
+   [features added]
+   * JobControl: Job control dialog now shows machine name and PID.
+   * Filters: Added mOutputFrame field to VDXFilterStateInfo for reliable frame rate change operations.
+
+   [bugs fixed]
+   * The window maximized state is also saved in addition to position/size.
+   * Reopening a video file that has multiple audio streams no longer loses secondary streams.
+   * Scene detection now works again when RGB565 or a YCbCr format is selected as the input format.
+   * Input preview didn't start in the correct place if a frame rate changing filter was present.
+   * The picture format tokens (p/P) in the timestamp UI options sometimes started from 1 instead of 0 due to rounding errors.
+   * Fixed stall at frame 0 when attempting to render with a VBR audio stream that has an extremely low data rate.
+   * Filters: Fixed field order swapping in bob doubler.
+   * JobControl: Fixed distributed list sync errors due to mixing up revision numbers when switching job files.
+   * Capture: Process and thread priority are now restored after capture rather than being unilaterally reset to normal/normal.
+   
+   [regressions fixed]
+   * Fixed audio desyncs with frame rate conversion.
+   * Type-1 DV audio works again.
+   * The video.SetRange() command works in unadjusted source milliseconds again.
+   * Fixed read errors with AVI files that have frames out of order in the index. (Note: This is rare, and often actually a sign of a corrupt index.)
+   * Filters: Filter sampling didn't work correctly if there was a conversion required at the start of the filter.
+   * Capture: Fixed crash in screencap driver with OpenGL capture disabled.
+
+Build 29808 (1.8.1, stable): [June 15, 2008]
    [features added]
    * The 'run as job' setting is now saved in the Save AVI dialog.
    * Added distributed job queue mode.

@@ -282,6 +282,7 @@ void VDRenderFrameIterator::Init(const vdfastvector<IVDVideoSource *>& videoSour
 	mSrcOrigDisplayFrame	= -1;
 	mSrcDisplayFrame	= -1;
 	mSrcTargetSample	= -1;
+	mSequenceFrame = 0;
 	mLastSrcDisplayFrame = -1;
 	mSrcIndex = -1;
 	mLastSrcIndex = -1;
@@ -317,7 +318,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 			step.mOrigDisplayFrame = mSrcOrigDisplayFrame;
 			step.mDisplayFrame	= mSrcDisplayFrame;
 			step.mTimelineFrame	= mSrcTimelineFrame;
-			step.mSequenceFrame	= mDstFrame;
+			step.mSequenceFrame	= mSequenceFrame;
 			step.mSrcIndex		= mSrcIndex;
 			step.mbDirect		= mbDirect;
 			step.mbSameAsLast	= mbSameAsLast;
@@ -340,7 +341,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 	step.mTimelineFrame	= mSrcTimelineFrame;
 	step.mOrigDisplayFrame	= mSrcOrigDisplayFrame;
 	step.mDisplayFrame	= mSrcDisplayFrame;
-	step.mSequenceFrame	= mDstFrame;
+	step.mSequenceFrame	= mSequenceFrame;
 	step.mbIsPreroll	= false;
 	step.mbSameAsLast	= true;
 	step.mbDirect		= mbDirect;
@@ -399,6 +400,7 @@ bool VDRenderFrameIterator::Reload() {
 	mSrcOrigDisplayFrame = nextOrigDisplay;
 	mSrcDisplayFrame = nextDisplay;
 	mSrcTargetSample = mpVideoSource->displayToStreamOrder(nextDisplay);
+	mSequenceFrame = mDstFrame;
 	++mDstFrame;
 
 	mbFirstSourceFrame = true;

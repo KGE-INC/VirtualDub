@@ -19,13 +19,25 @@ VDCaptureAutoPriority::VDCaptureAutoPriority() {
 	SystemParametersInfo(SPI_SETLOWPOWERACTIVE, FALSE, NULL, FALSE);
 	SystemParametersInfo(SPI_SETSCREENSAVEACTIVE, FALSE, NULL, FALSE);
 
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+	HANDLE hProcess = GetCurrentProcess();
+	HANDLE hThread = GetCurrentThread();
+
+	mPreviousPriorityClass = GetPriorityClass(hProcess);
+	mPreviousThreadPriority = GetThreadPriority(hThread);
+
+	SetPriorityClass(hProcess, HIGH_PRIORITY_CLASS);
+	SetThreadPriority(hThread, THREAD_PRIORITY_ABOVE_NORMAL);
 }
 
 VDCaptureAutoPriority::~VDCaptureAutoPriority() {
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
-	SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
+	HANDLE hProcess = GetCurrentProcess();
+	HANDLE hThread = GetCurrentThread();
+	
+	if (GetThreadPriority(hThread) == THREAD_PRIORITY_ABOVE_NORMAL)
+		SetThreadPriority(hThread, mPreviousThreadPriority);
+
+	if (GetPriorityClass(hProcess) == HIGH_PRIORITY_CLASS)
+		SetPriorityClass(hProcess, mPreviousPriorityClass);
 
 	SystemParametersInfo(SPI_SETPOWEROFFACTIVE, mbPowerOffState, NULL, FALSE);
 	SystemParametersInfo(SPI_SETLOWPOWERACTIVE, mbLowPowerState, NULL, FALSE);

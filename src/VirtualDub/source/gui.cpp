@@ -214,28 +214,58 @@ void VDInstallModelessDialogHookW32() {
 		g_vdModelessDialogHook = SetWindowsHookEx(WH_MSGFILTER, VDModelessDialogHookW32, NULL, GetCurrentThreadId());
 }
 
+namespace {
+	struct VDUISavedWindowPlacement {
+		sint32 mLeft;
+		sint32 mTop;
+		sint32 mRight;
+		sint32 mBottom;
+		uint8 mbMaximized;
+		uint8 mPad[3];
+	};
+}
+
 void VDUISaveWindowPlacementW32(HWND hwnd, const char *name) {
 	VDRegistryAppKey key("Window Placement");
 
 	WINDOWPLACEMENT wp = {sizeof(WINDOWPLACEMENT)};
 
-	if (GetWindowPlacement(hwnd, &wp))
-		key.setBinary(name, (const char *)&wp.rcNormalPosition, sizeof(RECT));
+	if (GetWindowPlacement(hwnd, &wp)) {
+		VDUISavedWindowPlacement sp = {0};
+		sp.mLeft	= wp.rcNormalPosition.left;
+		sp.mTop		= wp.rcNormalPosition.top;
+		sp.mRight	= wp.rcNormalPosition.right;
+		sp.mBottom	= wp.rcNormalPosition.bottom;
+		sp.mbMaximized = (wp.showCmd == SW_MAXIMIZE);
+		key.setBinary(name, (const char *)&sp, sizeof sp);
+	}
 }
 
 void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name, int nCmdShow) {
 	if (!IsZoomed(hwnd) && !IsIconic(hwnd)) {
 		VDRegistryAppKey key("Window Placement");
-		RECT r;
+		VDUISavedWindowPlacement sp = {0};
 
-		if (key.getBinaryLength(name) == sizeof(r) && key.getBinary(name, (char *)&r, sizeof r)) {
+		// Earlier versions only saved a RECT.
+		int len = key.getBinaryLength(name);
+
+		if (len > (int)sizeof(VDUISavedWindowPlacement))
+			len = sizeof(VDUISavedWindowPlacement);
+
+		if (len >= offsetof(VDUISavedWindowPlacement, mbMaximized) && key.getBinary(name, (char *)&sp, len)) {
 			WINDOWPLACEMENT wp = {sizeof(WINDOWPLACEMENT)};
 
 			if (GetWindowPlacement(hwnd, &wp)) {
 				wp.length			= sizeof(WINDOWPLACEMENT);
 				wp.flags			= 0;
 				wp.showCmd			= nCmdShow;
-				wp.rcNormalPosition	= r;
+				wp.rcNormalPosition.left = sp.mLeft;
+				wp.rcNormalPosition.top = sp.mTop;
+				wp.rcNormalPosition.right = sp.mRight;
+				wp.rcNormalPosition.bottom = sp.mBottom;
+
+				if ((wp.showCmd == SW_SHOW || wp.showCmd == SW_SHOWNORMAL) && sp.mbMaximized)
+					wp.showCmd = SW_SHOWMAXIMIZED;
 
 				SetWindowPlacement(hwnd, &wp);
 			}

@@ -12,6 +12,9 @@ protected:
 	bool		mbPowerOffState;
 	bool		mbLowPowerState;
 	bool		mbScreenSaverState;
+
+	uint32		mPreviousPriorityClass;
+	uint32		mPreviousThreadPriority;
 };
 
 int VDCaptureIsCatchableException(uint32 ec);

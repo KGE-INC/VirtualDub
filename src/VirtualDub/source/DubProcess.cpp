@@ -850,7 +850,7 @@ void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, 
 
 	// Init playback timer.
 	if (mpOutputSystem->IsRealTime()) {
-		int timerInterval = VDClampToSint32(mpVInfo->frameRate.scale64ir(1000));
+		int timerInterval = VDClampToSint32(mpVInfo->mFrameRate.scale64ir(1000));
 
 		if (opt->video.fSyncToAudio || opt->video.previewFieldMode) {
 			timerInterval /= 2;
@@ -1562,7 +1562,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(const V
 			}
 
 			// process frame
-			sint64 sequenceTime = VDRoundToInt64(mpVInfo->frameRate.AsInverseDouble() * 1000.0 * sequence_num);
+			sint64 sequenceTime = VDRoundToInt64(mpVInfo->mFrameRate.AsInverseDouble() * 1000.0 * sequence_num);
 
 			mProcessingProfileChannel.Begin(0x008000, "V-Filter");
 			bool frameOutput = filters.RunFilters(orig_display_num, timeline_num, sequence_num, sequenceTime, NULL, mbPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0);
@@ -1855,7 +1855,7 @@ ended:
 		double bytesPerSec = mpAudioCorrector->ComputeByterateDouble(wfex->nSamplesPerSec);
 
 		if (mpInterleaver)
-			mpInterleaver->AdjustStreamRate(1, bytesPerSec / mpVInfo->frameRate.asDouble());
+			mpInterleaver->AdjustStreamRate(1, bytesPerSec / mpVInfo->mFrameRate.asDouble());
 		UpdateAudioStreamRate();
 	}
 
@@ -1873,9 +1873,9 @@ void VDDubProcessThread::TimerCallback() {
 				int mPulseClock;
 
 				if (opt->video.previewFieldMode)
-					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble() * 2.0);
+					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->mFrameRate.asDouble() * 2.0);
 				else
-					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble());
+					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->mFrameRate.asDouble());
 
 				if (mPulseClock < 0)
 					mPulseClock = 0;

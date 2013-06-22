@@ -790,7 +790,7 @@ void VDUIJobControlDialog::OnJobQueueStatusChanged(VDJobQueueStatus status) {
 		title.append_sprintf(L" (%d remaining)", g_VDJobQueue.GetPendingJobCount());
 
 	if (g_VDJobQueue.IsAutoUpdateEnabled())
-		title.append_sprintf(L" [%s]", g_VDJobQueue.GetJobFilePath());
+		title.append_sprintf(L" [%s] (%hs:%d)", g_VDJobQueue.GetJobFilePath(), g_VDJobQueue.GetRunnerName(), (uint32)g_VDJobQueue.GetRunnerId());
 
 	switch(status) {
 		case kVDJQS_Idle:

@@ -223,7 +223,10 @@ void VDAVIReadIndex::Clear() {
 void VDAVIReadIndex::AddChunk(sint64 bytePos, uint32 sizeAndKeyFrameFlag) {
 	SectorEntry *sec = &mSectors.back();
 
-	if (bytePos - sec->mByteOffset >= 0x100000000 || mSampleCount - sec->mChunkOffset >= 0x10000) {
+	// Note: Some (perhaps broken) AVI files have chunks out of order in the index. In
+	// that case, we must force a new sector.
+
+	if ((uint64)(bytePos - sec->mByteOffset) >= (uint64)0x100000000 || mSampleCount - sec->mChunkOffset >= 0x10000) {
 		sec = &mSectors.push_back();
 		sec->mByteOffset	= bytePos;
 		sec->mSampleOffset	= mSampleCount;

@@ -813,6 +813,7 @@ void FilterInstance::Run(bool firstFrame, sint64 sourceFrame, sint64 outputFrame
 	mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * (double)di.mSourceFrame * 1000.0));
 	mfsi.lDestFrameMS			= VDClampToSint32(sequenceTimeMS);
 	mfsi.flags					= flags;
+	mfsi.mOutputFrame			= outputFrame;
 
 	// Compute alpha blending value.
 	float alpha = 1.0f;

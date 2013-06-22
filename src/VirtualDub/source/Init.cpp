@@ -117,6 +117,7 @@ extern wchar_t g_szFile[MAX_PATH];
 
 extern const char g_szError[];
 
+bool g_bAutoTest = false;
 bool g_fWine = false;
 bool g_bEnableVTuneProfiling;
 
@@ -597,14 +598,13 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 	VDUIFrame *pFrame = VDUIFrame::GetFrame(g_hWnd);
 	pFrame->SetRegistryName("Main window");
-	pFrame->RestorePlacement(SW_HIDE);
 
 	g_projectui = new VDProjectUI;
 	g_project = &*g_projectui;
 	g_projectui->Attach((VDGUIHandle)g_hWnd);
 
     // Make the window visible; update its client area; and return "success".
-    ShowWindow(g_hWnd, nCmdShow);  
+	pFrame->RestorePlacement(nCmdShow);
     UpdateWindow(g_hWnd);          
 
 	VDSetWindowTextW32(g_hWnd, versionFormat.c_str());
@@ -695,6 +695,9 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /slave <file>             Join shared job queue in autostart mode\n"
 						"  /x                        Exit when complete\n"
 						);
+				}
+				else if (!wcscmp(token, L"autotest")) {
+					g_bAutoTest = true;
 				}
 				else if (!wcscmp(token, L"b")) {
 					const wchar_t *path2;

@@ -43,6 +43,7 @@ class InputFile;
 class IDubStatusHandler;
 class IVDDubberOutputSystem;
 struct VDAudioFilterGraph;
+class FilterSystem;
 
 ////////////////////////
 
@@ -174,9 +175,20 @@ public:
 	sint64	cur_dst;			// current render map index for fetch
 	sint64	end_dst;			// total number of timeline frames to fetch
 
-	VDFraction	frameRate;
-	VDFraction	frameRateIn;
-	VDFraction	frameRateNoTelecine;
+	// Frame rate cascade:
+	//
+	//	video source
+	//	frame rate adjust		=> frameRateIn
+	//	IVTC					=> frameRatePreFilter
+	//	filters					=> frameRatePostFilter, frameRateTimeline
+	//	conversion				=> frameRate
+
+	VDFraction	mFrameRateIn;
+	VDFraction	mFrameRatePreFilter;
+	VDFraction	mFrameRatePostFilter;
+	VDFraction	mFrameRateTimeline;
+	VDFraction	mFrameRate;
+	VDFraction	mFrameRateIVTCFactor;
 	long	processed;
 	uint32	lastProcessedTimestamp;
 	bool	fAudioOnly;
@@ -191,7 +203,7 @@ public:
 	virtual void SetInputDisplay(IVDVideoDisplay *pDisplay) = 0;
 	virtual void SetOutputDisplay(IVDVideoDisplay *pDisplay) = 0;
 	virtual void SetAudioFilterGraph(const VDAudioFilterGraph& graph)=0;
-	virtual void Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, AudioSource *const *pAudioSources, uint32 nAudioSources, IVDDubberOutputSystem *out, void *videoCompVars, const FrameSubset *pfs) = 0;
+	virtual void Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, AudioSource *const *pAudioSources, uint32 nAudioSources, IVDDubberOutputSystem *out, void *videoCompVars, const FrameSubset *pfs, const VDFraction& frameRateTimeline) = 0;
 	virtual void Go(int iPriority = 0) = 0;
 	virtual void Stop() = 0;
 
@@ -218,6 +230,7 @@ public:
 IDubber *CreateDubber(DubOptions *xopt);
 void VDConvertSelectionTimesToFrames(const DubOptions& opt, const FrameSubset& subset, const VDFraction& subsetRate, VDPosition& startFrame, VDPosition& endFrame);
 void InitVideoStreamValuesStatic(DubVideoStreamInfo& vInfo, IVDVideoSource *video, AudioSource *audio, const DubOptions *opt, const FrameSubset *pfs, const VDPosition *pSelectionStartFrame, const VDPosition *pSelectionEndFrame);
+void InitVideoStreamValuesStatic2(DubVideoStreamInfo& vInfo, const DubOptions *opt, const FilterSystem *filtsys, const VDFraction& frameRateTimeline);
 void InitAudioStreamValuesStatic(DubAudioStreamInfo& aInfo, AudioSource *audio, const DubOptions *opt);
 
 #ifndef f_DUB_CPP

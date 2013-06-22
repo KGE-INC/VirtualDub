@@ -109,6 +109,8 @@ void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode)
 		mJobFilePath = mDefaultJobFilePath;
 
 	SetAutoUpdateEnabled(enableDistributedMode);
+	mLastSignature = 0;
+	mLastRevision = 0;
 
 	ListLoad(NULL, false);
 
@@ -1062,6 +1064,14 @@ uint64 VDJobQueue::GetUniqueId() {
 		--id;
 
 	return id;
+}
+
+const char *VDJobQueue::GetRunnerName() const {
+	return mComputerName.c_str();
+}
+
+uint64 VDJobQueue::GetRunnerId() const {
+	return mRunnerId;
 }
 
 bool VDJobQueue::IsAutoUpdateEnabled() const {

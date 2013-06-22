@@ -425,9 +425,13 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 			output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
 
 		// Note that this must be AFTER the subset (we used to place it before, which was a bug).
-		output.addf("VirtualDub.video.SetRange(%d,%d);",
-				opt->video.lStartOffsetMS,
-				opt->video.lEndOffsetMS);
+		if (g_project->IsSelectionPresent()) {
+			output.addf("VirtualDub.video.SetRangeFrames(%I64d,%I64d);",
+				g_project->GetSelectionStartFrame(),
+				g_project->GetSelectionEndFrame());
+		} else {
+			output.addf("VirtualDub.video.SetRange();");
+		}
 	}
 
 	// Add text information

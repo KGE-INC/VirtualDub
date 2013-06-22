@@ -102,7 +102,7 @@ public:
 
 enum {
 	// This is the highest API version supported by this header file.
-	VIRTUALDUB_FILTERDEF_VERSION		= 12,
+	VIRTUALDUB_FILTERDEF_VERSION		= 13,
 
 	// This is the absolute lowest API version supported by this header file.
 	// Note that V4 is rather old, corresponding to VirtualDub 1.2.
@@ -127,6 +127,7 @@ enum {
 // v10 (1.5.10): added preview flag
 // v11 (1.7.0): guaranteed src structure setup before configProc; added IVDFilterPreview2
 // v12 (1.7.4): support for frame alteration
+// v13 (1.8.2): added mOutputFrame field to VDXFilterStateInfo
 
 struct VDXFilterDefinition {
 	void *_next;		// deprecated - set to NULL
@@ -167,8 +168,8 @@ struct VDXFilterDefinition {
 
 class VDXFilterStateInfo {
 public:
-	sint32	lCurrentFrame;				// current output frame
-	sint32	lMicrosecsPerFrame;			// microseconds per output frame
+	sint32	lCurrentFrame;				// current sequence frame (previously called output frame)
+	sint32	lMicrosecsPerFrame;			// microseconds per sequence frame
 	sint32	lCurrentSourceFrame;		// current source frame
 	sint32	lMicrosecsPerSrcFrame;		// microseconds per source frame
 	sint32	lSourceFrameMS;				// source frame timestamp
@@ -182,6 +183,8 @@ public:
 	};
 
 	uint32	flags;
+
+	sint32	mOutputFrame;				// (V13/V1.8.2+) current output frame
 };
 
 // VDXFBitmap: VBitmap extended to hold filter-specific information

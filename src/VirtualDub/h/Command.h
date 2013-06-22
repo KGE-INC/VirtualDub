@@ -62,8 +62,6 @@ void SaveStripedAVI(const wchar_t *szFile);
 void SaveStripeMaster(const wchar_t *szFile);
 void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
 void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat, int quality);
-void SetSelectionStart(long ms);
-void SetSelectionEnd(long ms);
 void EnsureSubset();
 void ScanForUnreadableFrames(FrameSubset *pSubset, IVDVideoSource *pVideoSource);
 

@@ -141,6 +141,8 @@ private:
 
 	VDUIFrame		*mpUIFrame;
 
+	FrameSubset		mSubset;
+
 public:
 	Frameserver(IVDVideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& server);
 	~Frameserver();
@@ -166,49 +168,12 @@ public:
 Frameserver::Frameserver(IVDVideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt, const FrameSubset& subset)
 	: aSrc(audio)
 	, vSrc(video)
+	, mSubset(subset)
 {
 	opt				= xopt;
 	hwnd			= hwndParent;
 
 	lFrameCount = lRequestCount = lAudioSegCount = 0;
-
-	IVDStreamSource *pVSS = vSrc->asStream();
-	FrameSubset videoset(subset);
-
-	VDPosition startFrame;
-	VDPosition endFrame;
-	VDConvertSelectionTimesToFrames(*opt, subset, pVSS->getRate(), startFrame, endFrame);
-	InitVideoStreamValuesStatic(vInfo, video, audio, opt, &subset, &startFrame, &endFrame);
-	InitAudioStreamValuesStatic(aInfo, audio, opt);
-
-	vdfastvector<IVDVideoSource *> vsrcs(1, video);
-	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, &subset, vInfo.end_dst, false, NULL);
-
-	VDPosition lOffsetStart = pVSS->msToSamples(opt->video.lStartOffsetMS);
-	VDPosition lOffsetEnd = pVSS->msToSamples(opt->video.lEndOffsetMS);
-
-	if (opt->audio.fEndAudio)
-		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
-
-	if (opt->audio.fStartAudio)
-		videoset.deleteRange(0, lOffsetStart);
-
-	VDDEBUG("Video subset:\n");
-	videoset.dump();
-
-	if (audio)
-		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == pVSS->getEnd()) ? audio->getEnd() : 0, NULL);
-
-	VDDEBUG("Audio subset:\n");
-	audioset.dump();
-
-	if (audio) {
-		audioset.offset(audio->msToSamples(-opt->audio.offset));
-		lAudioSamples = VDClampToUint32(audioset.getTotalFrames());
-	} else
-		lAudioSamples = 0;
-
-	lVideoSamples = VDClampToUint32(mVideoFrameMap.size());
 }
 
 Frameserver::~Frameserver() {
@@ -234,35 +199,76 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	lpszFsname = name;
 	
 	// prepare the sources...
+	if (!vSrc->setTargetFormat(g_dubOpts.video.mInputFormat))
+		if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB8888))
+			if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_RGB888))
+				if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB1555))
+					if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_Pal8))
+						throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 
-	if (vSrc) {
-		if (!vSrc->setTargetFormat(g_dubOpts.video.mInputFormat))
-			if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB8888))
-				if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_RGB888))
-					if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_XRGB1555))
-						if (!vSrc->setTargetFormat(nsVDPixmap::kPixFormat_Pal8))
-							throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
+	IVDStreamSource *pVSS = vSrc->asStream();
+	FrameSubset videoset(mSubset);
 
-		vSrc->streamBegin(true, false);
+	const VDFraction frameRateTimeline(g_project->GetTimelineFrameRate());
+	VDPosition startFrame;
+	VDPosition endFrame;
+	VDConvertSelectionTimesToFrames(*opt, mSubset, frameRateTimeline, startFrame, endFrame);
+	InitVideoStreamValuesStatic(vInfo, vSrc, aSrc, opt, &mSubset, &startFrame, &endFrame);
 
-		const VDPixmap& px = vSrc->getTargetFormat();
+	const VDPixmap& px = vSrc->getTargetFormat();
 
-		IVDStreamSource *pVSS = vSrc->asStream();
-		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, pVSS->getRate(), pVSS->getLength());
+	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, pVSS->getRate(), pVSS->getLength());
 
-		if (filters.getFrameLag())
-			MessageBox(g_hWnd,
-			"One or more filters in the filter chain has a non-zero lag. This will cause the served "
-			"video to lag behind the audio!"
-			, "VirtualDub warning", MB_OK);
+	if (filters.getFrameLag())
+		MessageBox(g_hWnd,
+		"One or more filters in the filter chain has a non-zero lag. This will cause the served "
+		"video to lag behind the audio!"
+		, "VirtualDub warning", MB_OK);
 
-		filters.ReadyFilters();
+	filters.ReadyFilters();
 
-		const VDPixmapLayout& outputLayout = filters.GetOutputLayout();
+	InitVideoStreamValuesStatic2(vInfo, opt, &filters, frameRateTimeline);
 
-		mFrameSize = VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, outputLayout.w, outputLayout.h, 4);
-		VDPixmapLayoutFlipV(mFrameLayout);
-	}
+	InitAudioStreamValuesStatic(aInfo, aSrc, opt);
+
+	vdfastvector<IVDVideoSource *> vsrcs(1, vSrc);
+	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.mFrameRateTimeline / vInfo.mFrameRate, &mSubset, vInfo.end_dst, false, &filters);
+
+	double msToTimelineFramesFactor = frameRateTimeline.asDouble() / 1000.0;
+	VDPosition lOffsetStart = VDRoundToInt32(opt->video.lStartOffsetMS * msToTimelineFramesFactor);
+	VDPosition lOffsetEnd = VDRoundToInt32(opt->video.lEndOffsetMS * msToTimelineFramesFactor);
+
+	if (opt->audio.fEndAudio)
+		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
+
+	if (opt->audio.fStartAudio)
+		videoset.deleteRange(0, lOffsetStart);
+
+	VDDEBUG("Video subset:\n");
+	videoset.dump();
+
+	if (aSrc)
+		AudioTranslateVideoSubset(audioset, videoset, vInfo.mFrameRateTimeline, aSrc->getWaveFormat(), !opt->audio.fEndAudio && (videoset.empty() || videoset.back().end() == pVSS->getEnd()) ? aSrc->getEnd() : 0, NULL);
+
+	VDDEBUG("Audio subset:\n");
+	audioset.dump();
+
+	if (aSrc) {
+		audioset.offset(aSrc->msToSamples(-opt->audio.offset));
+		lAudioSamples = VDClampToUint32(audioset.getTotalFrames());
+	} else
+		lAudioSamples = 0;
+
+	lVideoSamples = VDClampToUint32(mVideoFrameMap.size());
+
+	vSrc->streamBegin(true, false);
+
+	filters.ReadyFilters();
+
+	const VDPixmapLayout& outputLayout = filters.GetOutputLayout();
+
+	mFrameSize = VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, outputLayout.w, outputLayout.h, 4);
+	VDPixmapLayoutFlipV(mFrameLayout);
 
 	if (aSrc)
 		aSrc->streamBegin(true, false);
@@ -532,8 +538,8 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 
 		lpasi->fccHandler	= ' BID';
 		lpasi->dwLength		= *(long *)(fs->arena+4);
-		lpasi->dwRate		= vInfo.frameRate.getHi();
-		lpasi->dwScale		= vInfo.frameRate.getLo();
+		lpasi->dwRate		= vInfo.mFrameRate.getHi();
+		lpasi->dwScale		= vInfo.mFrameRate.getLo();
 
 		const VDPixmapLayout& output = filters.GetOutputLayout();
 		SetRect(&lpasi->rcFrame, 0, 0, output.w, output.h);
@@ -653,7 +659,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 		if (!g_listFA.IsEmpty()) {
 			VDPixmapBlt(filters.GetInput(), vSrc->getTargetFormat());
 
-			sint64 original_frame_time = VDRoundToInt64(vInfo.frameRate.AsInverseDouble() * 1000.0 * (double)original_frame);
+			sint64 original_frame_time = VDRoundToInt64(vInfo.mFrameRate.AsInverseDouble() * 1000.0 * (double)original_frame);
 			filters.RunFilters(sample, original_frame, original_frame, original_frame_time, NULL, 0);
 
 			VDPixmapBlt(pxdst, filters.GetOutput());
