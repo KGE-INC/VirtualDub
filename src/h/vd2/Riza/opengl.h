@@ -82,7 +82,6 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glTexEnvi)(GLenum target, GLenum pname, GLint param);
 	void	(APIENTRY *glTexImage1D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
-	void	(APIENTRY *glTexImage3D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glTexParameterfv)(GLenum target, GLenum pname, const GLfloat *params);
 	void	(APIENTRY *glTexParameteri)(GLenum target, GLenum pname, GLint param);
 	void	(APIENTRY *glTexSubImage2D)(GLenum target, GLint level, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);

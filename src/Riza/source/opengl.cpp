@@ -76,7 +76,6 @@ namespace {
 		"glTexEnvi",
 		"glTexImage1D",
 		"glTexImage2D",
-		"glTexImage3D",
 		"glTexParameterfv",
 		"glTexParameteri",
 		"glTexSubImage2D",
@@ -259,6 +258,11 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, int mi
 
 	for(int i=0; i<sizeof(kGLFunctions)/sizeof(kGLFunctions[0]); ++i) {
 		void *p = (void *)GetProcAddress(mhmodOGL, kGLFunctions[i]);
+
+		if (!p) {
+			Detach();
+			return false;
+		}
 
 		((void **)static_cast<VDAPITableOpenGL *>(this))[i] = p;
 	}

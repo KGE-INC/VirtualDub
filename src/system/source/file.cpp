@@ -536,14 +536,16 @@ sint32 VDBufferedStream::ReadData(void *buffer, sint32 bytes) {
 
 			if (!bytes)
 				break;
+		}
+
+		// At this point, the buffer is empty.
+		if (mBufferValidSize) {
+			VDASSERT(mBufferOffset >= mBufferValidSize);
 
 			mBasePosition += mBufferValidSize;
 			mBufferOffset = 0;
 			mBufferValidSize = 0;
 		}
-
-		// At this point, the buffer is empty.
-		VDASSERT(mBufferOffset >= mBufferValidSize);
 
 		// If the remaining read is large, issue it directly to the underlying stream.
 		if (buffer && (uint32)bytes >= mBuffer.size() * 2) {

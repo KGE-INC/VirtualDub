@@ -288,6 +288,10 @@ struct VDInputDriverDefinition {
 	VDInputDriverCreateProc			mpCreate;
 };
 
-enum { kVDPlugin_InputDriverAPIVersion = 1 };
+enum {
+	// V1 (1.7.4.28204): Initial version
+	// V2 (1.7.5): Default I/P frame model fixed.
+	kVDPlugin_InputDriverAPIVersion = 2
+};
 
 #endif

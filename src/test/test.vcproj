@@ -428,6 +428,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\TestBufferedStream.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\TestFilesys.cpp"
 				>
 			</File>

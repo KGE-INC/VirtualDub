@@ -240,7 +240,7 @@ sint64 VDXAPIENTRY VDVideoDecoderModelDefaultIP::GetNextRequiredSample(bool& is_
 		is_preroll = false;
 	}
 
-	return true;
+	return frame;
 }
 
 int VDXAPIENTRY VDVideoDecoderModelDefaultIP::GetRequiredCount() {

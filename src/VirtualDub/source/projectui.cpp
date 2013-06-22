@@ -1906,7 +1906,7 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 }
 
 void VDProjectUI::OpenAudioDisplay() {
-	if (mpCurveEditor)
+	if (mpAudioDisplay)
 		return;
 
 	mpUIAudioSplitBar = VDCreateUISplitBar();

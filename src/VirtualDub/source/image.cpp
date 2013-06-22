@@ -98,7 +98,7 @@ bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 			throw MyError("Bitmap file is incomplete.");
 
 		w = pbih->biWidth;
-		h = pbih->biHeight;
+		h = abs(pbih->biHeight);
 		bHasAlpha = false;
 
 		return true;

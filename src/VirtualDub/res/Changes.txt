@@ -1,11 +1,19 @@
 VirtualDub change log
 
-Build %build% (1.7.4, stable): [%date%]
+Build %build% (1.7.5, stable): [%date%]
+   [bugs fixed]
+   * Audio display couldn't be opened if the curve editor was open.
+   * Temporal smoother filter crashed in out of memory conditions.
+   * Fixed rare cases where WAV reader returned the wrong data.
+   * Capture: Fixed crash in screen capture driver with video cards that only support OpenGL 1.0.
+   * Capture: Screen capture driver sometimes drew garbage cursor before first cursor change.
+   * PluginAPI: Default I/P frame model wasn't working.
+
+Build 28204 (1.7.4, stable): [September 22, 2007]
    [bugs fixed]
    * Fixed bug where frame regions were shifted instead of extended to fix key frame violations in direct video mode.
    * If a video filter errored out during start phase, already initialized filters didn't receive end calls.
    * Toggling the "show decompressed video" setting in Fast/Normal Recompress modes could result in a crash.
-   * 
 
 Build 28191 (1.7.3, experimental): [August 31, 2007]
    [features added]
@@ -177,6 +185,12 @@ Build 25854 (1.7.0, experimental): [November 5, 2006]
    * Capture: Duplicate raw wave formats are no longer shown with DirectShow-based drivers.
    * Capture: The UI now reflects changes to audio and video sources made through the driver dialogs.
    * Capture: Possible fix for crash when changing formats with DirectShow-based devices due to threading issue.
+
+Build 24478 (1.6.19, stable): [June 3, 2007]
+   [bugs fixed]
+   * Fixed crash when creating batch jobs with certain Pinnacle video codecs.
+   * Fixed crash when reading top-down BMP files.
+   * Added workaround for crash on startup on some Windows 98/ME machines.
 
 Build 24473 (1.6.18, stable): [May 19, 2007]
    * Improved compatibility of AVI files written in capture mode or with the "sector alignment" option. (NOTE: Affected files can be fixed by re-running them through VirtualDub in Direct mode.)

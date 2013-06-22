@@ -309,7 +309,8 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 		}
 
 	} else {
-		AllocFrameBuffer(w * h * 4);
+		if (!AllocFrameBuffer(w * h * 4))
+			throw MyMemoryError();
 
 		pFormat->biSize				= sizeof(BITMAPINFOHEADER);
 		pFormat->biWidth			= w;
@@ -317,6 +318,7 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 		pFormat->biPlanes			= 1;
 		pFormat->biCompression		= 0xFFFFFFFFUL;
 		pFormat->biBitCount			= 0;
+		pFormat->biSizeImage		= 0;
 		pFormat->biXPelsPerMeter	= 0;
 		pFormat->biYPelsPerMeter	= 0;
 		pFormat->biClrUsed			= 0;

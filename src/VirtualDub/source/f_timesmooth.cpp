@@ -50,11 +50,11 @@ int timesmooth_start(FilterActivation *fa, const FilterFunctions *ff) {
 	timesmoothFilterData *mfd = (timesmoothFilterData *)fa->filter_data;
 	int i;
 
-	mfd->accum = new Pixel32[fa->src.w * fa->src.h * KERNEL];
-	mfd->square_table = new int[255*2+1];
+	mfd->accum = new_nothrow Pixel32[fa->src.w * fa->src.h * KERNEL];
+	mfd->square_table = new_nothrow int[255*2+1];
 
 	if (!mfd->accum || !mfd->square_table)
-		return 1;
+		ff->ExceptOutOfMemory();
 
 	memset(mfd->accum, 0, fa->src.w*fa->src.h*KERNEL*4);
 

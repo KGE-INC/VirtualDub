@@ -1072,22 +1072,29 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 
 		mOffscreenSize = mVideoFormat->biSizeImage;
 	} else {
-		mGL.Init();
+		if (!mGL.Init()) {
+			mbOpenGLMode = false;
+			return InitVideoBuffer();
+		}
 
 		if (!(mhwndGL = CreateWindow((LPCTSTR)sWndClassGL, "VirtualDub OpenGL support", WS_POPUP, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), NULL, NULL, g_hInst, this))) {
-			ShutdownVideoBuffer();
-			return false;
+			mbOpenGLMode = false;
+			return InitVideoBuffer();
 		}
 
 		RECT r;
 		GetClientRect(mhwnd, &r);
 		if (!(mhwndGLDraw = CreateWindow((LPCTSTR)sWndClassGL, "VirtualDub OpenGL support", WS_CHILD|WS_VISIBLE, 0, 0, r.right, r.bottom, mhwnd, NULL, g_hInst, this))) {
-			ShutdownVideoBuffer();
-			return false;
+			mbOpenGLMode = false;
+			return InitVideoBuffer();
 		}
 
 		HDC hdc = GetDC(mhwndGL);
-		mGL.Attach(hdc, 24, 8, 0, 0, true);
+		if (!mGL.Attach(hdc, 24, 8, 0, 0, true)) {
+			ReleaseDC(mhwndGL, hdc);
+			mbOpenGLMode = false;
+			return InitVideoBuffer();
+		}
 
 		HDC hdc2 = GetDC(mhwndGLDraw);
 		mGL.AttachAux(hdc2, 24, 8, 0, 0, true);
@@ -1175,6 +1182,7 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 		while(int t = cycursor & (cycursor - 1))
 			cycursor = t;
 
+		mCachedCursor = NULL;
 		mGLCursorCacheTextureInvW = 1.0f / (float)cxcursor;
 		mGLCursorCacheTextureInvH = 1.0f / (float)cycursor;
 
@@ -1182,7 +1190,7 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 		mGL.glBindTexture(GL_TEXTURE_2D, mGLCursorCacheTexture);
 		mGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, cxcursor, cycursor, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
 
-		if (mGL.NV_occlusion_query && mbRemoveDuplicates)
+		if (mGL.NV_occlusion_query && mGL.ARB_multitexture && mbRemoveDuplicates)
 			mGL.glGenOcclusionQueriesNV(2, mGLOcclusionQueries);
 
 		// initialize shaders
@@ -1202,7 +1210,7 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 		mTimestampDelay = 0;
 		if (mGL.EXT_pixel_buffer_object)
 			++mTimestampDelay;
-		if (mGL.NV_occlusion_query)
+		if (mGL.NV_occlusion_query && mGL.ARB_multitexture && mbRemoveDuplicates)
 			++mTimestampDelay;
 	}
 
@@ -1491,7 +1499,8 @@ void VDCaptureDriverScreen::DoFrame() {
 					}
 
 					// read screen into texture
-					mGL.glActiveTextureARB(GL_TEXTURE0_ARB);
+					if (mGL.ARB_multitexture)
+						mGL.glActiveTextureARB(GL_TEXTURE0_ARB);
 					mGL.glBindTexture(GL_TEXTURE_2D, mGLTextures[0]);
 
 					int srcx = mTrackX - r.left;
@@ -1656,7 +1665,7 @@ void VDCaptureDriverScreen::DoFrame() {
 					float u = (float)w / (float)mGLTextureW;
 					float v = (float)h / (float)mGLTextureH;
 
-					bool removeDuplicates = mGL.NV_occlusion_query && mbRemoveDuplicates;
+					bool removeDuplicates = mGL.NV_occlusion_query && mGL.ARB_multitexture && mbRemoveDuplicates;
 					if (mVideoFormat->biCompression || removeDuplicates || mDisplayMode == kDisplaySoftware || mDisplayMode == kDisplayHardware) {
 						mGL.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
 
