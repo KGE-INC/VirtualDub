@@ -237,7 +237,7 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
-#if 1
+#if 0
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenExperimental 1.9.X", &dwSeenIt) || !dwSeenIt) {
@@ -602,7 +602,12 @@ void VDDumpChangeLog() {
 
 	while(*s!='\r') ++s;
 
-	s+=2;
+	while(*s == '\r' || *s == '\n') {
+		const char other = (*s++ ^ ('\r' ^ '\n'));
+
+		if (*s == other)
+			++s;
+	}
 
 	tTextStream lineBuffer;
 	VDStringA breakLineBuffer;

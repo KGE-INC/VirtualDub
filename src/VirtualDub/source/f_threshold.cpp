@@ -104,8 +104,13 @@ static int threshold_config(FilterActivation *fa, const FilterFunctions *ff, VDX
 		}
 	};
 
-	mfd->threshold = FilterGetSingleValue((HWND)hWnd, mfd->threshold, 0, 256, "threshold", fa->ifp2, local::Update, mfd);
+	sint32 result;
+	if (!VDFilterGetSingleValue((HWND)hWnd, mfd->threshold, &result, 0, 256, "threshold", fa->ifp2, local::Update, mfd)) {
+		mfd->threshold = result;
+		return 1;
+	}
 
+	mfd->threshold = result;
 	return 0;
 }
 

@@ -505,14 +505,16 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 						VDPixmapLayout layout;
 						VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, fa->mExternalSrcCropped.w, fa->mExternalSrcCropped.h, 16);
 
-						if (srcFormat == nsVDXPixmap::kPixFormat_XRGB8888)
+						bool isRGB = false;
+						if (srcFormat == nsVDXPixmap::kPixFormat_XRGB8888) {
 							layout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
-						else
+							isRGB = true;
+						} else
 							layout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
 
 						VDPixmapLayout srcLayout(src->GetOutputLayout());
 
-						srcLayout.data += srcCrop.top * srcLayout.pitch + srcCrop.left;
+						srcLayout.data += srcCrop.top * srcLayout.pitch + (isRGB ? srcCrop.left << 2 : srcCrop.left);
 						srcLayout.data2 += srcCrop.top * srcLayout.pitch2 + srcCrop.left;
 						srcLayout.data3 += srcCrop.top * srcLayout.pitch3 + srcCrop.left;
 						srcLayout.w -= srcCrop.left + srcCrop.right;

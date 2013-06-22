@@ -186,6 +186,7 @@ VDStringW VDGetMenuItemTextByCommandW32(HMENU hmenu, UINT cmd) {
 		mmiW.fMask		= MIIM_TYPE;
 		mmiW.fType		= MFT_STRING;
 		mmiW.dwTypeData	= NULL;
+		mmiW.cch		= 0;		// required to avoid crash on NT4
 
 		if (GetMenuItemInfoW(hmenu, cmd, FALSE, &mmiW)) {
 			bufW.resize(mmiW.cch + 1, 0);

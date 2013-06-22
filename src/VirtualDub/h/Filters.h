@@ -105,6 +105,6 @@ struct FilterBlurb {
 void				FilterEnumerateFilters(std::list<FilterBlurb>& blurbs);
 
 
-LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData);
+bool VDFilterGetSingleValue(HWND hWnd, sint32 cVal, sint32 *result, sint32 lMin, sint32 lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData);
 
 #endif

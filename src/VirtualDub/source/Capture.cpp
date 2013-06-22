@@ -1719,6 +1719,12 @@ void VDCaptureProject::Capture(bool fTest) {
 		// flush any currently pending events
 		ProcessPendingEvents();
 
+		// validate frame rate first
+		VDFraction inputFrameRate(GetFrameRate());
+
+		if (!inputFrameRate.getLo())
+			throw MyError("Cannot begin capture because the capture device has no associated frame rate (variable frame rate). This is not currently supported.");
+
 		// get the input filename
 		icd.mpszFilename = VDFileSplitPath(mFilename.c_str());
 
@@ -1772,8 +1778,6 @@ void VDCaptureProject::Capture(bool fTest) {
 		// initialize audio
 		vdstructex<VDWaveFormat> wfexInput;
 		vdstructex<VDWaveFormat>& wfexOutput = mAudioCompFormat.empty() ? wfexInput : mAudioCompFormat;
-
-		VDFraction inputFrameRate(GetFrameRate());
 
 		pResyncFilter->SetVideoRate(inputFrameRate.asDouble());
 		pResyncFilter->EnableVideoDrops(mTimingSetup.mbAllowEarlyDrops);

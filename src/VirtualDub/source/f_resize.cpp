@@ -520,19 +520,19 @@ void VDVideoFilterResize::End() {
 }
 
 namespace {
-	void CreateFilterTexture(uint32 *dst0, ptrdiff_t dstpitch, sint32 x, sint32 idx, double dx, double sx, int tapcount, IVDResamplerFilter& filter) {
+	void CreateFilterTexture(uint32 *dst0, ptrdiff_t dstpitch, float x0, float xr0, sint32 idx, double dx, double sx, int tapcount, IVDResamplerFilter& filter) {
 		VDASSERT(tapcount <= 10);
 
 		double step = sx / dx;
-		double accum = step * 0.5 + (ceil(dx) - dx) * 0.5;
+
+		// prestep from left/top of uncropped destination to first pixel center
+		double accum = step * ((ceil(xr0 - 0.5) + 0.5) - x0);
 
 		uint32 *dst1 = (uint32 *)((char *)dst0 + dstpitch);
 		uint32 *dst2 = (uint32 *)((char *)dst1 + dstpitch);
 		double kernoffset = (double)-((tapcount >> 1) - 1);
 		double taps[12];
 		int itaps[12] = {0};
-
-		accum += step * x;
 
 		for(sint32 i=0; i<idx; ++i) {
 			// compute coordinate of pixel center used by texture sampler
@@ -602,10 +602,10 @@ void VDVideoFilterResize::StartAccel(IVDXAContext *vdxa) {
 	const int x2 = VDCeilToInt(mConfig.mDstRect.right  - 0.5f);
 	const int y2 = VDCeilToInt(mConfig.mDstRect.bottom - 0.5f);
 
-	mVDXADestRect.left = x1;
-	mVDXADestRect.top = y1;
-	mVDXADestRect.right = x2;
-	mVDXADestRect.bottom = y2;
+	mVDXADestRect.left = std::max<sint32>(x1, 0);
+	mVDXADestRect.top = std::max<sint32>(y1, 0);
+	mVDXADestRect.right = std::min<sint32>(x2, fa->dst.w);
+	mVDXADestRect.bottom = std::min<sint32>(y2, fa->dst.h);
 	mVDXADestW = x2 - x1;
 	mVDXADestH = y2 - y1;
 	mVDXADestCroppedW = std::min<int>(mVDXADestW, pxdst.w);
@@ -654,11 +654,11 @@ void VDVideoFilterResize::StartAccel(IVDXAContext *vdxa) {
 	initData.mpData = filt.data();
 	initData.mPitch = sizeof(uint32) * mVDXADestCroppedW;
 
-	CreateFilterTexture(filt.data(), initData.mPitch, mVDXADestRect.left < 0 ? -mVDXADestRect.left : 0, mVDXADestCroppedW, dstw, fa->src.w, mVDXAHorizTaps, *horizFilter);
+	CreateFilterTexture(filt.data(), initData.mPitch, mConfig.mDstRect.left, (float)mVDXADestRect.left, mVDXADestCroppedW, dstw, fa->src.w, mVDXAHorizTaps, *horizFilter);
 	mVDXATex_HorizFilt = vdxa->CreateTexture2D(mVDXADestCroppedW, 3, 1, kVDXAF_A8R8G8B8, false, &initData);
 
 	initData.mPitch = sizeof(uint32) * mVDXADestCroppedH;
-	CreateFilterTexture(filt.data(), initData.mPitch, mVDXADestRect.top < 0 ? -mVDXADestRect.top : 0, mVDXADestCroppedH, dsth, fa->src.h, mVDXAVertTaps, *vertFilter);
+	CreateFilterTexture(filt.data(), initData.mPitch, mConfig.mDstRect.top, (float)mVDXADestRect.top, mVDXADestCroppedH, dsth, fa->src.h, mVDXAVertTaps, *vertFilter);
 	mVDXATex_VertFilt = vdxa->CreateTexture2D(mVDXADestCroppedH, 3, 1, kVDXAF_A8R8G8B8, false, &initData);
 
 	mVDXAFP_2Tap = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterResizeFP_2tap, sizeof kVDFilterResizeFP_2tap);
@@ -752,10 +752,26 @@ void VDVideoFilterResize::RunAccel(IVDXAContext *vdxa) {
 	srcm[5] = srcdesc.mInvTexHeight * fa->src.h;
 	srcm[6] = srcm[5];
 	srcm[7] = 0.0f;
-	srcm[8] = ((dstw - (float)mVDXAImageW) * 0.5f * ((float)fa->src.w / (float)mVDXAImageW) - ((float)(mVDXAHorizTaps >> 1) - 0.0f)) * srcdesc.mInvTexWidth;
 
-	if (mVDXADestRect.left < 0)
-		srcm[8] += dudx * -mVDXADestRect.left;
+	// Terms included here:
+	//
+	//	- Prestep from uncropped left/top edge to cropped left/top edge. This handles
+	//	  both the cases where the dest rect has been cropped to the frame and when
+	//	  a fractional dest size has introduced a fractional crop.
+	//
+	//	- Compensation for tap count (-(floor(taps/2)-1)). This only kicks in if we have
+	//	  taps to the left/top of the center pair, so a 2-tap filter has no compensation
+	//	  and a 4-tap filter has a one-texel offset.
+	//
+	//	- A -0.5 texel offset so that the point sampler steps exactly when the filter
+	//	  window steps.
+	//
+	//	- Another -0.5 texel offset to compensate for us putting a signed correction
+	//	  into the filter texture, which is an unsigned texture.
+	//
+	// The two -0.5 offsets cancel the -(-1) offset in the tap count shift.
+	//
+	srcm[8] = ((float)mVDXADestRect.left - mConfig.mDstRect.left) * dudx - (float)(mVDXAHorizTaps >> 1) * srcdesc.mInvTexWidth;
 
 	srcm[9] = 0.0f;
 	srcm[10] = 0.0f;
@@ -841,10 +857,7 @@ void VDVideoFilterResize::RunAccel(IVDXAContext *vdxa) {
 	srcm[6] = srcm[5];
 	srcm[7] = 0.0f;
 	srcm[8] = 0.0f;
-	srcm[9] = ((dsth - (float)mVDXAImageH) * 0.5f * ((float)fa->src.h / (float)mVDXAImageH) - ((float)(mVDXAVertTaps >> 1) - 0.0f)) * srcdesc.mInvTexHeight;
-
-	if (mVDXADestRect.top < 0)
-		srcm[9] += dvdy * -mVDXADestRect.top;
+	srcm[9] = ((float)mVDXADestRect.top - mConfig.mDstRect.top) * dvdy - (float)(mVDXAVertTaps >> 1) * srcdesc.mInvTexHeight;
 
 	srcm[10] = srcm[9] + coordOffset * srcdesc.mInvTexHeight;
 	srcm[11] = 0.0f;
@@ -872,11 +885,7 @@ void VDVideoFilterResize::RunAccel(IVDXAContext *vdxa) {
 	vdxa->SetSampler(0, mVDXART_Temp, kVDXAFilt_Point);
 	vdxa->SetSampler(1, mVDXATex_VertFilt, kVDXAFilt_Point);
 
-	VDXRect dstRect;
-	dstRect.left = std::max<sint32>(mVDXADestRect.left, 0);
-	dstRect.top = std::max<sint32>(mVDXADestRect.top, 0);
-	dstRect.right = std::min<sint32>(mVDXADestRect.right, fa->dst.w);
-	dstRect.bottom = std::min<sint32>(mVDXADestRect.bottom, fa->dst.h);
+	VDXRect dstRect(mVDXADestRect);
 
 	switch(mVDXAVertTaps) {
 		case 2:

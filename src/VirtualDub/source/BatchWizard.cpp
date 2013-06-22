@@ -100,6 +100,7 @@ protected:
 
 VDUIBatchWizard::VDUIBatchWizard()
 	: VDDialogFrameW32(IDD_BATCH_WIZARD)
+	, mbOutputRelative(false)
 	, mhmenuPopups(LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_BATCHWIZARD_MENU)))
 {
 }
@@ -135,6 +136,11 @@ bool VDUIBatchWizard::OnLoaded() {
 
 	mList.InsertColumn(0, L"Source file", 100);
 	mList.InsertColumn(1, L"Output name", 100);
+
+	if (mbOutputRelative)
+		CheckButton(IDC_OUTPUT_RELATIVE, true);
+	else
+		CheckButton(IDC_OUTPUT_ABSOLUTE, true);
 
 	return false;
 }
@@ -379,9 +385,9 @@ bool VDUIBatchWizard::OnCommand(uint32 id, uint32 extcode) {
 						const wchar_t *outputName = item->GetOutputName();
 
 						if (mbOutputRelative)
-							outputFileName = VDMakePath(outputPath.c_str(), outputName);
-						else
 							outputFileName = VDMakePath(VDFileSplitPathLeft(VDStringW(item->GetFileName())).c_str(), outputName);
+						else
+							outputFileName = VDMakePath(outputPath.c_str(), outputName);
 
 						JobAddBatchFile(item->GetFileName(), outputFileName.c_str());
 					}
@@ -409,9 +415,9 @@ bool VDUIBatchWizard::OnCommand(uint32 id, uint32 extcode) {
 						const wchar_t *outputName = item->GetOutputName();
 
 						if (mbOutputRelative)
-							outputFileName = VDMakePath(outputPath.c_str(), outputName);
-						else
 							outputFileName = VDMakePath(VDFileSplitPathLeft(VDStringW(item->GetFileName())).c_str(), outputName);
+						else
+							outputFileName = VDMakePath(outputPath.c_str(), outputName);
 
 						JobAddConfigurationSaveAudio(&g_dubOpts, item->GetFileName(), NULL, NULL, outputFileName.c_str(), raw, false);
 					}

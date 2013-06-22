@@ -591,7 +591,7 @@ void VDProject::MaskSelection(bool bNewMode) {
 	}
 }
 
-void VDProject::DisplayFrame(bool bDispInput) {
+void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput, bool forceOutput) {
 	VDPosition pos = mposCurrentFrame;
 	VDPosition timeline_pos = pos;
 
@@ -604,7 +604,9 @@ void VDProject::DisplayFrame(bool bDispInput) {
 	if (g_dubber)
 		return;
 
-	if (!g_dubOpts.video.fShowInputFrame && !g_dubOpts.video.fShowOutputFrame)
+	const bool showInputFrame = bDispInput && (g_dubOpts.video.fShowInputFrame || forceInput);
+	const bool showOutputFrame = bDispOutput && (g_dubOpts.video.fShowOutputFrame || forceOutput);
+	if (!showInputFrame && !showOutputFrame)
 		return;
 
 	try {
@@ -624,15 +626,19 @@ void VDProject::DisplayFrame(bool bDispInput) {
 		if (pos < 0)
 			pos = pVSS->getEnd();
 
-		bool bShowInput = bDispInput && g_dubOpts.video.fShowInputFrame;
-		bool bShowOutput = !mSceneShuttleMode && g_dubOpts.video.fShowOutputFrame;
+		bool updateRequired = false;
 
-		if (mLastDisplayedInputFrame != pos || mLastDisplayedTimelineFrame != timeline_pos || !inputVideo->isFrameBufferValid() || (bShowOutput && !filters.isRunning())) {
-			if (bDispInput)
-				mLastDisplayedInputFrame = pos;
+		if (showInputFrame && mLastDisplayedInputFrame != pos) {
+			mLastDisplayedInputFrame = pos;
+			updateRequired = true;
+		}
 
+		if (showOutputFrame && mLastDisplayedTimelineFrame != timeline_pos) {
 			mLastDisplayedTimelineFrame = timeline_pos;
+			updateRequired = true;
+		}
 
+		if (updateRequired) {
 			if (pos >= pVSS->getEnd()) {
 				mDesiredOutputFrame = -1;
 				mDesiredNextInputFrame = -1;
@@ -645,9 +651,9 @@ void VDProject::DisplayFrame(bool bDispInput) {
 				mbPendingInputFrameValid = false;
 				mbPendingOutputFrameValid = false;
 
-				if (g_dubOpts.video.fShowInputFrame && bDispInput)
+				if (showInputFrame)
 					mpCB->UIRefreshInputFrame(NULL);
-				if (bShowOutput)
+				if (showOutputFrame)
 					mpCB->UIRefreshOutputFrame(NULL);
 			} else {
 				mDesiredOutputFrame = outpos;
@@ -661,25 +667,23 @@ void VDProject::DisplayFrame(bool bDispInput) {
 				mFramesDecoded		= 0;
 				mLastDecodeUpdate	= VDGetCurrentTick();
 
-				if (bShowInput || bShowOutput) {
-					UpdateTimelineRate();
+				UpdateTimelineRate();
 
-					if (!filters.isRunning())
-						StartFilters();
+				if (!filters.isRunning())
+					StartFilters();
 
-					if (filters.isRunning()) {
-						if (bShowInput)
-							mpVideoFrameSource->CreateRequest(pos, false, ~mpPendingInputFrame);
+				if (filters.isRunning()) {
+					if (showInputFrame)
+						mpVideoFrameSource->CreateRequest(pos, false, ~mpPendingInputFrame);
 
-						if (bShowOutput) {
-							if (mDesiredOutputFrame >= 0) {
-								filters.RequestFrame(mDesiredOutputFrame, ~mpPendingOutputFrame);
-							} else {
-								mpPendingOutputFrame = NULL;
-							}
-
-							mbPendingOutputFrameValid = true;
+					if (showOutputFrame) {
+						if (mDesiredOutputFrame >= 0) {
+							filters.RequestFrame(mDesiredOutputFrame, ~mpPendingOutputFrame);
+						} else {
+							mpPendingOutputFrame = NULL;
 						}
+
+						mbPendingOutputFrameValid = true;
 					}
 				}
 
@@ -1080,6 +1084,10 @@ void VDProject::Reopen() {
 	mpCB->UISourceFileUpdated();
 	mpCB->UIAudioSourceUpdated();
 	mpCB->UIVideoSourceUpdated();
+
+	// Invalidate currently displayed frames.
+	mLastDisplayedInputFrame = -1;
+	mLastDisplayedTimelineFrame = -1;
 
 	if (newFrameCount < oldFrameCount) {
 		if (!IsSelectionEmpty() && mposSelectionEnd > newFrameCount)
@@ -2030,9 +2038,9 @@ void VDProject::SceneShuttleStep() {
 
 	if (mSceneShuttleCounter >= mSceneShuttleAdvance) {
 		mSceneShuttleCounter = 0;
-		DisplayFrame(true);
+		DisplayFrame(true, true, true, false);
 	} else
-		DisplayFrame(false);
+		DisplayFrame(false, true, true, false);
 
 	while(UpdateFrame())
 		;
@@ -2040,9 +2048,29 @@ void VDProject::SceneShuttleStep() {
 	if (mpCB)
 		mpCB->UICurrentPositionUpdated();
 
-	if (mpSceneDetector->Submit(inputVideo->getTargetFormat())) {
+	if (!mpCurrentInputFrame) {
 		SceneShuttleStop();
+		return;
 	}
+
+	VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
+	if (!buf) {
+		SceneShuttleStop();
+		return;
+	}
+
+	const void *p = buf->LockRead();
+	if (!p) {
+		SceneShuttleStop();
+		return;
+	}
+
+	const VDPixmap px(VDPixmapFromLayout(mpVideoFrameSource->GetOutputLayout(), (void *)p));
+	const bool sceneBreak = mpSceneDetector->Submit(px);
+
+	buf->Unlock();
+	if (sceneBreak)
+		SceneShuttleStop();
 }
 
 void VDProject::StaticPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie) {

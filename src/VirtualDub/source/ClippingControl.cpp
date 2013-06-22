@@ -752,8 +752,8 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,""  ,WS_CHILD | UDS_NOTHOUSANDS | UDS_AUTOBUDDY | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT, 0, 0,	 ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_Y1_SPIN	, g_hInst, NULL);
 
 			// size
-			CreateWindowEx(0, "STATIC", "Size", WS_CHILD | SS_LEFT, 0, (26*duY)/8, (47*duX)/8, duY, mhwnd, (HMENU)kIDC_SIZE_LABEL, g_hInst, NULL);
-			CreateWindowEx(0, "STATIC", "320x240", WS_CHILD | SS_LEFT, 0, (34*duY)/8, (47*duX)/8, (10*duY)/8, mhwnd, (HMENU)kIDC_SIZE, g_hInst, NULL);
+			CreateWindowEx(0, "STATIC", "Size", WS_CHILD | SS_LEFT, 0, (26*duY)/8, (47*duX)/4, duY, mhwnd, (HMENU)kIDC_SIZE_LABEL, g_hInst, NULL);
+			CreateWindowEx(0, "STATIC", "320x240", WS_CHILD | SS_LEFT, 0, (34*duY)/8, (47*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_SIZE, g_hInst, NULL);
 						
 			// y2
 			CreateWindowEx(0				,"STATIC"		,"Y2 offset"  ,WS_CHILD | SS_LEFT							,0         , 0         , (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)kIDC_Y2_STATIC	, g_hInst, NULL);

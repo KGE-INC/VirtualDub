@@ -375,7 +375,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		DrawRotatingCubeFrame(*dst, true, false, frameBase + 1, isyuv);
 		DrawRotatingCubeFrame(*dst, true, true,  frameBase + 0, isyuv);
 	} else if (mMode == 3) {
-		static const int kIndices[6]={0,1,2,3,5,4};
+		static const int kIndices[6]={0,2,1,3,4,5};
 		VDTriColorVertex triv[6];
 
 		triv[0].x = 320.0f;

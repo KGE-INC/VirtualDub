@@ -128,7 +128,12 @@ bool VDDirectDrawManager::Init(IVDDirectDrawClient *pClient) {
 	}
 
 	POINT pt = {0,0};
-	mhMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+	HMODULE hmodUser32 = GetModuleHandleA("user32");
+	typedef HMONITOR (WINAPI *tpMonitorFromPoint)(POINT, DWORD);
+	tpMonitorFromPoint pMonitorFromPoint = (tpMonitorFromPoint)GetProcAddress(hmodUser32, "MonitorFromPoint");
+	mhMonitor = NULL;
+	if (pMonitorFromPoint)
+		mhMonitor = pMonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
 
 	mhmodDD = LoadLibrary("ddraw");
 	if (!mhmodDD)
@@ -1176,9 +1181,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 			int top = 0;
 			int bottom = GetSystemMetrics(SM_CYSCREEN);
 
-			// GetMonitorInfo() requires Windows 98. We might never fail on this because
-			// I think DirectX 9.0c requires 98+, but we have to dynamically link anyway
-			// to avoid a startup link failure on 95.
+			// GetMonitorInfo() requires Windows 98/2000.
 			typedef BOOL (APIENTRY *tpGetMonitorInfo)(HMONITOR mon, LPMONITORINFO lpmi);
 			static tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandle("user32"), "GetMonitorInfo");
 

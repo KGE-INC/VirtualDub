@@ -199,6 +199,8 @@ void VDFilterAccelEngineDispatchQueue::Send(Message *msg, VDFilterAccelEngineDis
 
 VDFilterAccelEngine::VDFilterAccelEngine()
 	: VDThread("3D accel worker")
+	, mpTC(NULL)
+	, mpTP(NULL)
 	, mpFPConvertRGBToYUV(NULL)
 	, mpFPConvertYUVToRGB(NULL)
 	, mpFPNull(NULL)
@@ -304,7 +306,7 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	};
 
 	if (!mpTC->CreateVertexFormat(els, 9, &mpVF)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -314,12 +316,12 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	};
 
 	if (!mpTC->CreateVertexFormat(kEls2, 2, &mpVFC)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateVertexBuffer(kVBSize, true, NULL, &mpVB)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -340,7 +342,7 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	};
 
 	if (!mpTC->CreateIndexBuffer(54 + 24 + 6*16, false, false, kIndices, &mpIB)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -360,19 +362,19 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 			ssdesc.mFilterMode = kFilterModes[j];
 
 			if (!mpTC->CreateSamplerState(ssdesc, &mpSamplerStates[i][j])) {
-				Shutdown();
+				ShutdownCallback2();
 				return false;
 			}
 		}
 	}
 
 	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelVP, sizeof kVDFilterAccelVP, &mpVP)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelVP_Clear, sizeof kVDFilterAccelVP_Clear, &mpVPClear)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -380,7 +382,7 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	rsdesc.mCullMode = kVDTCull_None;
 
 	if (!mpTC->CreateRasterizerState(rsdesc, &mpRS)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -388,32 +390,32 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	bsdesc.mbEnable = false;
 
 	if (!mpTC->CreateBlendState(bsdesc, &mpBS)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_ExtractPlane, sizeof kVDFilterAccelFP_ExtractPlane, &mpFPExtractPlane)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_RGBToYUV, sizeof kVDFilterAccelFP_RGBToYUV, &mpFPConvertRGBToYUV)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_YUVToRGB, sizeof kVDFilterAccelFP_YUVToRGB, &mpFPConvertYUVToRGB)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_Null, sizeof kVDFilterAccelFP_Null, &mpFPNull)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
 	if (!mpTC->CreateFragmentProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelFP_Clear, sizeof kVDFilterAccelFP_Clear, &mpFPClear)) {
-		Shutdown();
+		ShutdownCallback2();
 		return false;
 	}
 
@@ -456,8 +458,7 @@ void VDFilterAccelEngine::ShutdownCallback2() {
 		mpBS,
 		mpRS,
 		mpVP,
-		mpVPClear,
-		mpTC;
+		mpVPClear;
 
 	for(int j=0; j<2; ++j) {
 		for(int i=0; i<kVDXAFiltCount; ++i) {
@@ -467,6 +468,8 @@ void VDFilterAccelEngine::ShutdownCallback2() {
 			}
 		}
 	}
+
+	vdsaferelease <<= mpTC;
 
 	if (mhwnd) {
 		DestroyWindow(mhwnd);
@@ -569,7 +572,7 @@ void VDFilterAccelEngine::UploadCallback(VDFilterAccelEngineDispatchQueue *queue
 	IVDTProfiler *p = msg.mpThis->mpTP;
 
 	if (p)
-		p->BeginScope(0xffe0e0, "Frame upload");
+		p->BeginScope(0xffe0e0, msg.mbYUV ? "Frame upload (YUV)" : "Frame upload (RGB)");
 
 	if (msg.mpThis->CommitBuffer(msg.mpDst, false)) {
 		IVDTTexture2D *dsttex = msg.mpDst->GetTexture();
@@ -727,8 +730,12 @@ void VDFilterAccelEngine::DownloadCallback2a(DownloadMsg& msg) {
 	VDFilterAccelReadbackBuffer& rbo = *msg.mpRB;
 	IVDTProfiler *p = mpTP;
 
-	if (p)
-		p->BeginScope(0x8080f0, "RB-Blit");
+	if (p) {
+		if (msg.mbSrcYUV)
+			p->BeginScope(0x8080f0, msg.mbDstYUV ? "RB-Blit (YUV->YUV)" : "RB-Blit (YUV->RGB");
+		else
+			p->BeginScope(0x8080f0, msg.mbDstYUV ? "RB-Blit (RGB->YUV)" : "RB-Blit (RGB->RGB)");
+	}
 
 	IVDTTexture2D *srctex = msg.mpSrc->GetTexture();
 	vdrefptr<IVDTSurface> srcsurf(srctex->GetLevelSurface(0));

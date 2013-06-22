@@ -1,5 +1,22 @@
 VirtualDub change log
-Build %build% (1.9.3, experimental): [%date%]
+
+Build %build% (1.9.4, stable): [%date%]
+   [bugs fixed]
+   * Fixed chroma subsampling and 4:1:0 chroma positioning in test videos.
+   * Scene stepping works with panes disabled.
+   * Fixed crash in scene stepping with certain frame sizes and 24-bit RGB selected as the input format.
+   * Path options were reversed in the batch wizard.
+   * Filters: Fixed crash when VDXA is enabled and 3D acceleration initialization fails.
+   * Filters: Corrected several positioning errors in resize filter in 3D accelerated mode.
+   * Filters: Fixed bad offset and channel swapping when cropping on a filter that triggers a switch to 3D accelerated operation in RGB mode.
+   * Filters: Fixed cut off size text in cropping dialog.
+   * Filters: Field bob, threshold, and sharpen filters were added to the list even if the configuration dialog was cancelled.
+   * Capture: Devices that don't declare a frame rate now cause an error rather than a crash.
+   
+   [regressions fixed]
+   * Fixed compatibility problems with Windows NT 4.0.
+
+Build 32507 (1.9.3, experimental): [July 5, 2009]
    [features added]
    * UI: Added options to display only one of the panes and to autosize them.
    * Filters: Added support for 3D hardware acceleration.

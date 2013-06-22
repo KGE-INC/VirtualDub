@@ -255,14 +255,17 @@ void VDUIDialogFilterSingleValue::UpdateSettingsString() {
 	SetControlTextF(IDC_SETTING, L"%d", mValue);
 }
 
-LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData) {
+bool VDFilterGetSingleValue(HWND hWnd, sint32 cVal, sint32 *result, sint32 lMin, sint32 lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData) {
 	VDStringW tbuf;
 	tbuf.sprintf(L"Filter: %hs", title);
 
 	VDUIDialogFilterSingleValue dlg(cVal, lMin, lMax, ifp2, tbuf.c_str(), pUpdateFunction, pUpdateFunctionData);
 
-	if (dlg.ShowDialog((VDGUIHandle)hWnd))
-		return dlg.GetValue();
+	if (dlg.ShowDialog((VDGUIHandle)hWnd)) {
+		*result = dlg.GetValue();
+		return true;
+	}
 
-	return cVal;
+	*result = cVal;
+	return false;
 }

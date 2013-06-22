@@ -69,47 +69,54 @@ asm_scene_lumtile32_col:
 
 _asm_scene_lumtile24:
 	push	ebx
-	push	ecx
-	push	edx
 	push	esi
 	push	edi
 	push	ebp
-	mov	esi,[esp+4+24]
-	mov	edi,[esp+12+24]
-	xor	eax,eax
-	xor	ebx,ebx
+	mov		esi, [esp+4+16]
+	mov		edi, [esp+12+16]
+	xor		eax, eax
+	xor		ebx, ebx
+	xor		ecx, ecx
 asm_scene_lumtile24_row:
-	mov	ebp,[esp+8+24]
+	mov	ebp,[esp+8+16]
 	push	esi
+	
+	; edx	temp
+	; eax	red sum
+	; ebx	green sum
+	; ecx	blue sum
+	xor		edx, edx
 asm_scene_lumtile24_col:
-	mov	ecx,[esi]
-	mov	edx,0000ff00h
-	and	edx,ecx
-	and	ecx,00ff00ffh
-	add	eax,ecx
-	add	ebx,edx
-	add	esi,3
-	dec	ebp
-	jne	asm_scene_lumtile24_col
-	pop	esi
-	add	esi,[esp+16+24]
-	dec	edi
-	jne	asm_scene_lumtile24_row
+	mov		dl, [esi]
+	add		ecx, edx
+	mov		dl, [esi+1]
+	add		ebx, edx
+	mov		dl, [esi+2]
+	add		eax, edx
+	add		esi, 3
+	dec		ebp
+	jne		asm_scene_lumtile24_col
 
-	add	eax,00200020h
-	add	ebx,00002000h
-	shr	eax,6
-	and	ebx,003fc000h
-	shr	ebx,6
-	and	eax,00ff00ffh
-	add	eax,ebx
+	pop		esi
+	add		esi,[esp+16+16]
+	dec		edi
+	jne		asm_scene_lumtile24_row
+	
+	add		ebx, 20h
+	add		eax, 20h
+	shl		eax, 16-6
+	and		ebx, 00003fc0h
+	shl		ebx, 8-6
+	add		ecx, 20h
+	shr		ecx, 6
+	and		eax, 00ff0000h
+	add		eax, ebx
+	add		eax, ecx
 
-	pop	ebp
-	pop	edi
-	pop	esi
-	pop	edx
-	pop	ecx
-	pop	ebx
+	pop		ebp
+	pop		edi
+	pop		esi
+	pop		ebx
 	ret
 
 

@@ -2031,14 +2031,19 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 
 	strcpy(bufv,"(unknown)");
 
-	long framePeriod = mpProject->GetFrameTime();
-	double fps = 10000000.0f / (double)framePeriod;
-	sint32 bandwidth = 0;
+	sint32 framePeriod = mpProject->GetFrameTime();
 
-	sprintf(bufv, "%.02f fps", fps);
+	if (framePeriod) {
+		double fps = 10000000.0f / (double)framePeriod;
+		sprintf(bufv, "%.02f fps", fps);
+		SendMessage(mhwndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)bufv);
+	} else {
+		SendMessage(mhwndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)"VFR");
+	}
 
 	vdstructex<VDAVIBitmapInfoHeader> bih;
 
+	sint32 bandwidth = 0;
 	if (mpProject->GetVideoFormat(bih)) {
 		DWORD size = bih->biSizeImage;
 
@@ -2057,8 +2062,6 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 		if (mpProject->GetAudioFormat(wf))
 			bandwidth += 8 + wf->mDataRate;
 	}
-
-	SendMessage(mhwndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)bufv);
 
 	wsprintf(bufv, "%ldKB/s", (bandwidth+1023)>>10);
 	SendMessage(mhwndStatus, SB_SETTEXT, 4, (LPARAM)bufv);

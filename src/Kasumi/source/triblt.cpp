@@ -1463,6 +1463,7 @@ bool VDPixmapTriFill(VDPixmap& dst, const VDTriColorVertex *pVertices, int nVert
 		if (dst.format == nsVDPixmap::kPixFormat_YUV410_Planar) {
 			pxCr.w = pxCb.w = dst.w >> 2;
 			pxCr.h = pxCb.h = dst.h >> 2;
+			ycbcr_xoffset = 0.75f / (float)pxCr.w;
 		} else if (dst.format == nsVDPixmap::kPixFormat_YUV420_Planar) {
 			pxCr.w = pxCb.w = dst.w >> 1;
 			pxCr.h = pxCb.h = dst.h >> 1;
