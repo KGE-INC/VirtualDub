@@ -63,8 +63,15 @@ void MyError::clear() {
 }
 
 void MyError::assign(const MyError& e) {
-	free(buf);
+	if (buf)
+		free(buf);
 	buf = _strdup(e.buf);
+}
+
+void MyError::assign(const char *s) {
+	if (buf)
+		free(buf);
+	buf = _strdup(s);
 }
 
 void MyError::setf(const char *f, ...) {
@@ -105,6 +112,12 @@ void MyError::post(HWND hWndParent, const char *title) const {
 void MyError::discard() {
 	free(buf);
 	buf = NULL;
+}
+
+void MyError::swap(MyError& err) {
+	char *s = err.buf;
+	err.buf = buf;
+	buf = s;
 }
 
 void MyError::TransferFrom(MyError& err) {

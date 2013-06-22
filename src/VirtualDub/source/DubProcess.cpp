@@ -1141,6 +1141,9 @@ bool VDDubProcessThread::AsyncReinitDisplayCallback(int pass, void *pThisAsVoid,
 		return false;
 
 	VDDubProcessThread *pThis = (VDDubProcessThread *)pThisAsVoid;
-	pThis->mpOutputDisplay->SetSource(false, pThis->mVideoFilterOutputPixmap, NULL, 0, true, pThis->opt->video.nPreviewFieldMode>0);
+	if (pThis->opt->video.mode == DubVideoOptions::M_FULL)
+		pThis->mpOutputDisplay->SetSource(false, pThis->mVideoFilterOutputPixmap, NULL, 0, true, pThis->opt->video.nPreviewFieldMode>0);
+	else
+		pThis->mpOutputDisplay->Reset();
 	return false;
 }

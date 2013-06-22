@@ -221,7 +221,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 
 	uint32 lActualBytes;
 	{
-		VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
+		VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data from disk");
 		hr = vsrc->asStream()->read(stream_frame, 1, buffer, size,	&lActualBytes,NULL); 
 	}
 	if (hr) {

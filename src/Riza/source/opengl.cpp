@@ -50,10 +50,13 @@ namespace {
 		"glEnable",
 		"glEnd",
 		"glEndList",
+		"glFeedbackBuffer",
 		"glFinish",
 		"glFlush",
 		"glGetError",
+		"glGetFloatv",
 		"glGetIntegerv",
+		"glGetTexLevelParameteriv",
 		"glGenLists",
 		"glGetString",
 		"glGenTextures",
@@ -63,12 +66,17 @@ namespace {
 		"glNewList",
 		"glOrtho",
 		"glPixelStorei",
+		"glPopAttrib",
+		"glPushAttrib",
 		"glReadBuffer",
 		"glReadPixels",
+		"glRenderMode",
 		"glTexCoord2d",
 		"glTexCoord2f",
 		"glTexEnvi",
+		"glTexImage1D",
 		"glTexImage2D",
+		"glTexImage3D",
 		"glTexParameterfv",
 		"glTexParameteri",
 		"glTexSubImage2D",
@@ -139,6 +147,25 @@ namespace {
 		"glGetOcclusionQueryivNV",
 		"glGetOcclusionQueryuivNV",
 
+		// EXT_framebuffer_object
+		"glIsRenderbufferEXT",
+		"glBindRenderbufferEXT",
+		"glDeleteRenderbuffersEXT",
+		"glGenRenderbuffersEXT",
+		"glRenderbufferStorageEXT",
+		"glGetRenderbufferParameterivEXT",
+		"glIsFramebufferEXT",
+		"glBindFramebufferEXT",
+		"glDeleteFramebuffersEXT",
+		"glGenFramebuffersEXT",
+		"glCheckFramebufferStatusEXT",
+		"glFramebufferTexture1DEXT",
+		"glFramebufferTexture2DEXT",
+		"glFramebufferTexture3DEXT",
+		"glFramebufferRenderbufferEXT",
+		"glGetFramebufferAttachmentParameterivEXT",
+		"glGenerateMipmapEXT",
+
 		// WGL_ARB_extensions_string
 		"wglGetExtensionsStringARB",
 
@@ -195,7 +222,7 @@ void VDOpenGLBinding::Shutdown() {
 	}
 }
 
-bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool minDepthBits, bool minStencilBits, bool doubleBuffer) {
+bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, int minDepthBits, int minStencilBits, bool doubleBuffer) {
 	PIXELFORMATDESCRIPTOR pfd={};
 
 	pfd.nSize			= sizeof(PIXELFORMATDESCRIPTOR);
@@ -288,6 +315,8 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool m
 			case 25:
 				if (!memcmp(start, "GL_NV_register_combiners2", 25))
 					NV_register_combiners2 = true;
+				else if (!memcmp(start, "GL_EXT_framebuffer_object", 25))
+					EXT_framebuffer_object = true;
 				break;
 			case 26:
 				if (!memcmp(start, "GL_EXT_pixel_buffer_object", 26))
@@ -343,7 +372,7 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool m
 	return true;
 }
 
-bool VDOpenGLBinding::AttachAux(HDC hdc, int minColorBits, int minAlphaBits, bool minDepthBits, bool minStencilBits, bool doubleBuffer) {
+bool VDOpenGLBinding::AttachAux(HDC hdc, int minColorBits, int minAlphaBits, int minDepthBits, int minStencilBits, bool doubleBuffer) {
 	PIXELFORMATDESCRIPTOR pfd={};
 
 	pfd.nSize			= sizeof(PIXELFORMATDESCRIPTOR);

@@ -391,7 +391,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 		// announce startup
 		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.3 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				L"VirtualDub CLI Video Processor Version 1.7.4 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 				,1
 				,&version_num));
 		VDLog(kVDLogInfo, VDswprintf(

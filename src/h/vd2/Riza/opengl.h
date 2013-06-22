@@ -22,6 +22,10 @@
 #include <windows.h>
 #include <gl/gl.h>
 
+#ifndef f_VD2_SYSTEM_VDTYPES_H
+	#include <vd2/system/vdtypes.h>
+#endif
+
 struct VDAPITableWGL {
 	HGLRC 	(APIENTRY *wglCreateContext)(HDC hdc);
 	BOOL	(APIENTRY *wglDeleteContext)(HGLRC hglrc);
@@ -52,10 +56,13 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glEnable)(GLenum cap);
 	void	(APIENTRY *glEnd)();
 	void	(APIENTRY *glEndList)();
+	void	(APIENTRY *glFeedbackBuffer)(GLsizei n, GLenum type, GLfloat *buffer);
 	void	(APIENTRY *glFinish)();
 	void	(APIENTRY *glFlush)();
 	GLenum	(APIENTRY *glGetError)();
+	void	(APIENTRY *glGetFloatv)(GLenum pname, GLfloat *params);
 	void	(APIENTRY *glGetIntegerv)(GLenum pname, GLint *params);
+	void	(APIENTRY *glGetTexLevelParameteriv)(GLenum target, GLint level, GLenum pname, GLint *params);
 	GLuint	(APIENTRY *glGenLists)(GLsizei range);
 	const GLubyte *(APIENTRY *glGetString)(GLenum);
 	void	(APIENTRY *glGenTextures)(GLsizei n, GLuint *textures);
@@ -65,12 +72,17 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glNewList)(GLuint list, GLenum mode);
 	void	(APIENTRY *glOrtho)(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar);
 	void	(APIENTRY *glPixelStorei)(GLenum pname, GLint param);
+	void	(APIENTRY *glPopAttrib)();
+	void	(APIENTRY *glPushAttrib)(GLbitfield mask);
 	void	(APIENTRY *glReadBuffer)(GLenum mode);
 	void	(APIENTRY *glReadPixels)(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels);
+	GLint	(APIENTRY *glRenderMode)(GLenum);
 	void	(APIENTRY *glTexCoord2d)(GLdouble s, GLdouble t);
 	void	(APIENTRY *glTexCoord2f)(GLfloat s, GLfloat t);
 	void	(APIENTRY *glTexEnvi)(GLenum target, GLenum pname, GLint param);
+	void	(APIENTRY *glTexImage1D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
+	void	(APIENTRY *glTexImage3D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glTexParameterfv)(GLenum target, GLenum pname, const GLfloat *params);
 	void	(APIENTRY *glTexParameteri)(GLenum target, GLenum pname, GLint param);
 	void	(APIENTRY *glTexSubImage2D)(GLenum target, GLint level, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);
@@ -80,8 +92,50 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glViewport)(GLint x, GLint y, GLsizei width, GLsizei height);
 };
 
+#define		GL_INVALID_FRAMEBUFFER_OPERATION_EXT	0x0506
+
+#define		WGL_FLOAT_COMPONENTS_NV				0x20B0
+#define		WGL_BIND_TO_TEXTURE_RECTANGLE_FLOAT_R_NV		0x20B1
+#define		WGL_BIND_TO_TEXTURE_RECTANGLE_FLOAT_RG_NV		0x20B2
+#define		WGL_BIND_TO_TEXTURE_RECTANGLE_FLOAT_RGB_NV		0x20B3
+#define		WGL_BIND_TO_TEXTURE_RECTANGLE_FLOAT_RGBA_NV		0x20B4
+#define		WGL_TEXTURE_FLOAT_R_NV				0x20B5
+#define		WGL_TEXTURE_FLOAT_RG_NV				0x20B6
+#define		WGL_TEXTURE_FLOAT_RGB_NV			0x20B7
+#define		WGL_TEXTURE_FLOAT_RGBA_NV			0x20B8
+
+#define		GL_PACK_SKIP_IMAGES_EXT				0x806B
+#define		GL_PACK_IMAGE_HEIGHT_EXT			0x806C
+#define		GL_UNPACK_SKIP_IMAGES_EXT			0x806D
+#define		GL_UNPACK_IMAGE_HEIGHT_EXT			0x806E
+#define		GL_TEXTURE_3D_EXT					0x806F
+#define		GL_PROXY_TEXTURE_3D_EXT				0x8070
+#define		GL_TEXTURE_DEPTH_EXT				0x8071
+#define		GL_TEXTURE_WRAP_R_EXT				0x8072
+#define		GL_MAX_3D_TEXTURE_SIZE_EXT			0x8073
+
+#define		GL_CLAMP_TO_EDGE_EXT				0x812F
+
+#define		GL_TEXTURE_MIN_LOD					0x813A
+#define		GL_TEXTURE_MIN_LOD_SGIS				0x813A
+#define		GL_TEXTURE_MAX_LOD					0x813B
+#define		GL_TEXTURE_MAX_LOD_SGIS				0x813B
+#define		GL_TEXTURE_BASE_LEVEL				0x813C
+#define		GL_TEXTURE_BASE_LEVEL_SGIS			0x813C
+#define		GL_TEXTURE_MAX_LEVEL				0x813D
+#define		GL_TEXTURE_MAX_LEVEL_SGIS			0x813D
+
 #define		GL_OCCLUSION_TEST_HP				0x8165
 #define		GL_OCCLUSION_TEST_RESULT_HP			0x8166
+
+#define		GL_DEPTH_COMPONENT16_ARB			0x81A5
+#define		GL_DEPTH_COMPONENT24_ARB			0x81A6
+#define		GL_DEPTH_COMPONENT32_ARB			0x81A7
+
+#define		GL_COMPRESSED_RGB_S3TC_DXT1_EXT		0x83F0
+#define		GL_COMPRESSED_RGBA_S3TC_DXT1_EXT	0x83F1
+#define		GL_COMPRESSED_RGBA_S3TC_DXT3_EXT	0x83F2
+#define		GL_COMPRESSED_RGBA_S3TC_DXT5_EXT	0x83F3
 
 #define		GL_TEXTURE0_ARB						0x84C0
 #define		GL_TEXTURE1_ARB						0x84C1
@@ -91,6 +145,30 @@ struct VDAPITableOpenGL {
 #define		GL_TEXTURE5_ARB						0x84C5
 #define		GL_TEXTURE6_ARB						0x84C6
 #define		GL_TEXTURE7_ARB						0x84C7
+
+#define		MAX_RENDERBUFFER_SIZE_EXT			0x84E8
+
+#define		GL_TEXTURE_RECTANGLE_NV				0x84F5
+#define		GL_TEXTURE_RECTANGLE_ARB			0x84F5
+#define		GL_TEXTURE_BINDING_RECTANGLE_NV		0x84F6
+#define		GL_TEXTURE_BINDING_RECTANGLE_ARB	0x84F6
+#define		GL_PROXY_TEXTURE_RECTANGLE_NV		0x84F7
+#define		GL_PROXY_TEXTURE_RECTANGLE_ARB		0x84F7
+#define		GL_MAX_RECTANGLE_TEXTURE_SIZE_NV	0x84F8
+#define		GL_MAX_RECTANGLE_TEXTURE_SIZE_ARB	0x84F8
+
+#define		GL_NORMAL_MAP_ARB					0x8511
+#define		GL_REFLECTION_MAP_ARB				0x8512
+#define		GL_TEXTURE_CUBE_MAP_ARB				0x8513
+#define		GL_TEXTURE_BINDING_CUBE_MAP_ARB		0x8514
+#define		GL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB	0x8515
+#define		GL_TEXTURE_CUBE_MAP_NEGATIVE_X_ARB	0x8516
+#define		GL_TEXTURE_CUBE_MAP_POSITIVE_Y_ARB	0x8517
+#define		GL_TEXTURE_CUBE_MAP_NEGATIVE_Y_ARB	0x8518
+#define		GL_TEXTURE_CUBE_MAP_POSITIVE_Z_ARB	0x8519
+#define		GL_TEXTURE_CUBE_MAP_NEGATIVE_Z_ARB	0x851A
+#define		GL_PROXY_TEXTURE_CUBE_MAP_ARB		0x851B
+#define		GL_MAX_CUBE_MAP_TEXTURE_SIZE_ARB	0x851C
 
 #define		GL_REGISTER_COMBINERS_NV			0x8522
 #define		GL_VARIABLE_A_NV					0x8523
@@ -168,10 +246,73 @@ struct VDAPITableOpenGL {
 #define		GL_OPERAND1_ALPHA_EXT				0x8599
 #define		GL_OPERAND2_ALPHA_EXT				0x859A
 
+#define		GL_UNSIGNED_INT_S8_S8_8_8_NV		0x86DA
+#define		GL_UNSIGNED_INT_8_8_S8_S8_REV_NV	0x86DB
+#define		GL_DSDT_MAG_INTENSITY_NV			0x86DC
+
+#define		GL_DOT_PRODUCT_TEXTURE_3D_NV		0x86EF
+
+#define		GL_HILO_NV							0x86F4
+#define		GL_DSDT_NV							0x86F5
+#define		GL_DSDT_MAG_NV						0x86F6
+#define		GL_DSDT_MAG_VIB_NV					0x86F7
+#define		GL_HILO16_NV						0x86F8
+#define		GL_SIGNED_HILO_NV					0x86F9
+#define		GL_SIGNED_HILO16_NV					0x86FA
+#define		GL_SIGNED_RGBA_NV					0x86FB
+#define		GL_SIGNED_RGBA8_NV					0x86FC
+#define		GL_SIGNED_RGB_NV					0x86FE
+#define		GL_SIGNED_RGB8_NV					0x86FF
+#define		GL_SIGNED_LUMINANCE_NV				0x8701
+#define		GL_SIGNED_LUMINANCE8_NV				0x8702
+#define		GL_SIGNED_LUMINANCE_ALPHA_NV		0x8703
+#define		GL_SIGNED_LUMINANCE8_ALPHA8_NV		0x8704
+#define		GL_SIGNED_ALPHA_NV					0x8705
+#define		GL_SIGNED_ALPHA8_NV					0x8706
+#define		GL_SIGNED_INTENSITY_NV				0x8707
+#define		GL_SIGNED_INTENSITY8_NV				0x8708
+#define		GL_DSDT8_NV							0x8709
+#define		GL_DSDT8_MAG8_NV					0x870A
+#define		GL_SIGNED_RGB_UNSIGNED_ALPHA_NV		0x870C
+#define		GL_SIGNED_RGB8_UNSIGNED_ALPHA8_NV	0x870D
+#define		GL_DSDT8_MAG8_INTENSITY8_NV			0x870B
+
+#define		GL_RGBA_FLOAT32_ATI					0x8814
+#define		GL_RGB_FLOAT32_ATI					0x8815
+#define		GL_ALPHA_FLOAT32_ATI				0x8816
+#define		GL_INTENSITY_FLOAT32_ATI			0x8817
+#define		GL_LUMINANCE_FLOAT32_ATI			0x8818
+#define		GL_LUMINANCE_ALPHA_FLOAT32_ATI		0x8819
+#define		GL_RGBA_FLOAT16_ATI					0x881A
+#define		GL_RGB_FLOAT16_ATI					0x881B
+#define		GL_ALPHA_FLOAT16_ATI				0x881C
+#define		GL_INTENSITY_FLOAT16_ATI			0x881D
+#define		GL_LUMINANCE_FLOAT16_ATI			0x881E
+#define		GL_LUMINANCE_ALPHA_FLOAT16_ATI		0x881F
+
+#define		GL_TEXTURE_DEPTH_SIZE_ARB			0x884A
+#define		GL_DEPTH_TEXTURE_MODE_ARB			0x884B
+
 #define		GL_PIXEL_COUNTER_BITS_NV			0x8864
 #define		GL_CURRENT_OCCLUSION_QUERY_ID_NV	0x8865
 #define		GL_PIXEL_COUNT_NV					0x8866
 #define		GL_PIXEL_COUNT_AVAILABLE_NV			0x8867
+
+#define		GL_FLOAT_R_NV						0x8880
+#define		GL_FLOAT_RG_NV						0x8881
+#define		GL_FLOAT_RGB_NV						0x8882
+#define		GL_FLOAT_RGBA_NV					0x8883
+#define		GL_FLOAT_R16_NV						0x8884
+#define		GL_FLOAT_R32_NV						0x8885
+#define		GL_FLOAT_RG16_NV					0x8886
+#define		GL_FLOAT_RG32_NV					0x8887
+#define		GL_FLOAT_RGB16_NV					0x8888
+#define		GL_FLOAT_RGB32_NV					0x8889
+#define		GL_FLOAT_RGBA16_NV					0x888A
+#define		GL_FLOAT_RGBA32_NV					0x888B
+#define		GL_TEXTURE_FLOAT_COMPONENTS_NV		0x888C
+#define		GL_FLOAT_CLEAR_COLOR_VALUE_NV		0x888D
+#define		GL_FLOAT_RGBA_MODE_NV				0x888E
 
 #define		GL_READ_ONLY_ARB					0x88B8
 #define		GL_WRITE_ONLY_ARB					0x88B9
@@ -190,6 +331,9 @@ struct VDAPITableOpenGL {
 #define		GL_PIXEL_UNPACK_BUFFER_ARB			0x88EC
 #define		GL_PIXEL_PACK_BUFFER_BINDING_ARB	0x88ED
 #define		GL_PIXEL_UNPACK_BUFFER_BINDING_ARB	0x88EF
+
+#define		GL_DEPTH24_STENCIL8_EXT				0x88F0
+#define		GL_TEXTURE_STENCIL_SIZE_EXT			0x88F1
 
 #define		GL_FRAGMENT_SHADER_ATI	0x8920
     
@@ -223,10 +367,77 @@ struct VDAPITableOpenGL {
 
 #define		GL_SECONDARY_INTERPOLATOR_ATI	0x896D
 
-#define		GL_SWIZZLE_STR_ATI		0x8976
-#define		GL_SWIZZLE_STQ_ATI		0x8977
-#define		GL_SWIZZLE_STR_DR_ATI	0x8978
-#define		GL_SWIZZLE_STQ_DQ_ATI	0x8979
+#define		GL_SWIZZLE_STR_ATI					0x8976
+#define		GL_SWIZZLE_STQ_ATI					0x8977
+#define		GL_SWIZZLE_STR_DR_ATI				0x8978
+#define		GL_SWIZZLE_STQ_DQ_ATI				0x8979
+
+#define		GL_SAMPLER_2D_RECT_ARB				0x8B63
+#define		GL_SAMPLER_2D_RECT_SHADOW_ARB		0x8B64
+
+#define		GL_FRAMEBUFFER_BINDING_EXT			0x8CA6
+#define		GL_RENDERBUFFER_BINDING_EXT			0x8CA7
+
+#define		GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE_EXT	0x8CD0
+#define		GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME_EXT	0x8CD1
+#define		GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL_EXT	0x8CD2
+#define		GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE_EXT	0x8CD3
+#define		GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_3D_ZOFFSET_EXT	0x8CD4
+#define		GL_FRAMEBUFFER_COMPLETE_EXT			0x8CD5
+#define		GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT	0x8CD6
+#define		GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT	0x8CD7
+#define		GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT	0x8CD9
+#define		GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT	0x8CDA
+#define		GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT	0x8CDB
+#define		GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT	0x8CDC
+#define		GL_FRAMEBUFFER_UNSUPPORTED_EXT		0x8CDD
+#define		MAX_COLOR_ATTACHMENTS_EXT			0x8CDF
+
+#define		GL_COLOR_ATTACHMENT0_EXT			0x8CE0
+#define		GL_COLOR_ATTACHMENT1_EXT			0x8CE1
+#define		GL_COLOR_ATTACHMENT2_EXT			0x8CE2
+#define		GL_COLOR_ATTACHMENT3_EXT			0x8CE3
+#define		GL_COLOR_ATTACHMENT4_EXT			0x8CE4
+#define		GL_COLOR_ATTACHMENT5_EXT			0x8CE5
+#define		GL_COLOR_ATTACHMENT6_EXT			0x8CE6
+#define		GL_COLOR_ATTACHMENT7_EXT			0x8CE7
+#define		GL_COLOR_ATTACHMENT8_EXT			0x8CE8
+#define		GL_COLOR_ATTACHMENT9_EXT			0x8CE9
+#define		GL_COLOR_ATTACHMENT10_EXT			0x8CEA
+#define		GL_COLOR_ATTACHMENT11_EXT			0x8CEB
+#define		GL_COLOR_ATTACHMENT12_EXT			0x8CEC
+#define		GL_COLOR_ATTACHMENT13_EXT			0x8CED
+#define		GL_COLOR_ATTACHMENT14_EXT			0x8CEE
+#define		GL_COLOR_ATTACHMENT15_EXT			0x8CEF
+
+#define		GL_DEPTH_ATTACHMENT_EXT				0x8D00
+
+#define		GL_STENCIL_ATTACHMENT_EXT			0x8D20
+
+#define		GL_FRAMEBUFFER_EXT					0x8D40
+#define		GL_RENDERBUFFER_EXT					0x8D41
+#define		GL_STENCIL_INDEX1_EXT				0x8D46
+#define		GL_STENCIL_INDEX4_EXT				0x8D47
+#define		GL_STENCIL_INDEX8_EXT				0x8D48
+#define		GL_STENCIL_INDEX16_EXT				0x8D49
+#define		GL_RENDERBUFFER_WIDTH_EXT			0x8D42
+#define		GL_RENDERBUFFER_HEIGHT_EXT			0x8D43
+#define		GL_RENDERBUFFER_INTERNAL_FORMAT_EXT	0x8D44
+
+#define		GL_RENDERBUFFER_RED_SIZE_EXT		0x8D50
+#define		GL_RENDERBUFFER_GREEN_SIZE_EXT		0x8D51
+#define		GL_RENDERBUFFER_BLUE_SIZE_EXT		0x8D52
+#define		GL_RENDERBUFFER_ALPHA_SIZE_EXT		0x8D53
+#define		GL_RENDERBUFFER_DEPTH_SIZE_EXT		0x8D54
+#define		GL_RENDERBUFFER_STENCIL_SIZE_EXT	0x8D55
+
+#define		GL_DEPTH_COMPONENT32F_NV			0x8DAB
+#define		GL_DEPTH32F_STENCIL8_NV				0x8DAC
+#define		GL_FLOAT_32_UNSIGNED_INT_24_8_REV_NV	0x8DAD
+#define		GL_DEPTH_BUFFER_FLOAT_MODE_NV		0x8DAF
+
+#define		GL_DEPTH_STENCIL_EXT				0x8F49
+#define		GL_UNSIGNED_INT_24_8_EXT			0x8F4A
 
 #define		GL_RED_BIT_ATI			0x00000001
 #define		GL_GREEN_BIT_ATI		0x00000002
@@ -308,6 +519,25 @@ struct VDAPITableOpenGLEXT {
 	void (APIENTRY *glGetOcclusionQueryivNV)(GLuint id, GLenum pname, GLint *params);
 	void (APIENTRY *glGetOcclusionQueryuivNV)(GLuint id, GLenum pname, GLuint *params);
 
+	// EXT_framebuffer_object
+	GLboolean (APIENTRY *glIsRenderbufferEXT)(GLuint renderbuffer);
+	void (APIENTRY *glBindRenderbufferEXT)(GLenum target, GLuint renderbuffer);
+	void (APIENTRY *glDeleteRenderbuffersEXT)(GLsizei n, const GLuint *renderbuffers);
+	void (APIENTRY *glGenRenderbuffersEXT)(GLsizei n, GLuint *renderbuffers);
+	void (APIENTRY *glRenderbufferStorageEXT)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+	void (APIENTRY *glGetRenderbufferParameterivEXT)(GLenum target, GLenum pname, GLint *params);
+	GLboolean (APIENTRY *glIsFramebufferEXT)(GLuint framebuffer);
+	void (APIENTRY *glBindFramebufferEXT)(GLenum target, GLuint framebuffer);
+	void (APIENTRY *glDeleteFramebuffersEXT)(GLsizei n, const GLuint *framebuffers);
+	void (APIENTRY *glGenFramebuffersEXT)(GLsizei n, GLuint *framebuffers);
+	GLenum (APIENTRY *glCheckFramebufferStatusEXT)(GLenum target);
+	void (APIENTRY *glFramebufferTexture1DEXT)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+	void (APIENTRY *glFramebufferTexture2DEXT)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+	void (APIENTRY *glFramebufferTexture3DEXT)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset);
+	void (APIENTRY *glFramebufferRenderbufferEXT)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+	void (APIENTRY *glGetFramebufferAttachmentParameterivEXT)(GLenum target, GLenum attachment, GLenum pname, GLint *params);
+	void (APIENTRY *glGenerateMipmapEXT)(GLenum target);
+
 	// WGL_ARB_extensions_string
 	const char *(APIENTRY *wglGetExtensionsStringARB)(HDC hdc);
 
@@ -353,10 +583,10 @@ public:
 	bool Init();
 	void Shutdown();
 
-	bool Attach(HDC hdc, int minColorBits, int minAlphaBits, bool minDepthBits, bool minStencilBits, bool doubleBuffer);
+	bool Attach(HDC hdc, int minColorBits, int minAlphaBits, int minDepthBits, int minStencilBits, bool doubleBuffer);
 	void Detach();
 
-	bool AttachAux(HDC hdc, int minColorBits, int minAlphaBits, bool minDepthBits, bool minStencilBits, bool doubleBuffer);
+	bool AttachAux(HDC hdc, int minColorBits, int minAlphaBits, int minDepthBits, int minStencilBits, bool doubleBuffer);
 
 	bool Begin(HDC hdc);
 	void End();
@@ -374,6 +604,7 @@ public:
 	bool ARB_pixel_buffer_object;
 	bool ATI_fragment_shader;
 	bool EXT_texture_env_combine;
+	bool EXT_framebuffer_object;
 
 	// WGL extension flags
 	bool ARB_make_current_read;

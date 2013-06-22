@@ -237,6 +237,9 @@ void VDMPEGAudioDecoder::ReadHeader() {
 	if (!bitrate_idx)
 		throw (int)ERR_FREEFORM;
 
+	if (!freq)
+		throw (int)ERR_INVALIDDATA;
+
 	if (layer == 1)
 		mFrameDataSize = 4*(12000*bitrate/freq + padding);
 	else {

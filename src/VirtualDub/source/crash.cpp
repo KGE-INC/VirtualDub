@@ -689,7 +689,7 @@ static bool IsExecutableProtection(DWORD dwProtect) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-VDProtectedAutoScope *__declspec(thread) volatile g_pVDProtectedScopeLink;
+__declspec(thread) VDProtectedAutoScope *volatile g_pVDProtectedScopeLink;
 
 VDProtectedAutoScope *VDGetProtectedScopeLink() {
 	return g_pVDProtectedScopeLink;

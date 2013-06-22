@@ -234,6 +234,7 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
+#if 0
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenExperimental 1.7.0", &dwSeenIt) || !dwSeenIt) {
@@ -241,6 +242,7 @@ void AnnounceExperimental() {
 
 		SetConfigDword(NULL, "SeenExperimental 1.7.0", 1);
 	}
+#endif
 }
 
 

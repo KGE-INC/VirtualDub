@@ -42,6 +42,7 @@ uint32 VDGetCurrentTick();
 // can run at 1/2 speed when CPU throttling is enabled, and on some older buggy
 // chipsets it can skip around occasionally.
 uint64 VDGetPreciseTick();
+uint64 VDGetPreciseTicksPerSecondI();
 double VDGetPreciseTicksPerSecond();
 double VDGetPreciseSecondsPerTick();
 

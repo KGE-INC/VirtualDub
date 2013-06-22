@@ -18,6 +18,9 @@
 		/>
 	</Platforms>
 	<ToolFiles>
+		<DefaultToolFile
+			FileName="masm.rules"
+		/>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
@@ -34,6 +37,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="MASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -105,6 +111,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="MASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -179,6 +188,9 @@
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
+				Name="MASM"
+			/>
+			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
@@ -248,6 +260,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="MASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -1127,6 +1142,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\thunk.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\time.cpp"
 				>
 				<FileConfiguration
@@ -1556,6 +1575,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\thunk.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\system\time.h"
 				>
 			</File>
@@ -1666,6 +1689,34 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<File
+				RelativePath=".\source\a_thunk.asm"
+				>
+				<FileConfiguration
+					Name="Release|x64"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="MASM"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="MASM"
+						UseSafeExceptionHandlers="false"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|x64"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="MASM"
+					/>
+				</FileConfiguration>
+			</File>
 		</Filter>
 		<Filter
 			Name="Assembly Files (AMD64)"
@@ -1712,6 +1763,46 @@
 			</File>
 			<File
 				RelativePath="source\a64_int128.asm"
+				>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|x64"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="ml64 /c /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
+						Outputs="$(IntDir)\$(InputName).obj"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|x64"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="ml64 /c /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
+						Outputs="$(IntDir)\$(InputName).obj"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\a64_thunk.asm"
 				>
 				<FileConfiguration
 					Name="Release|Win32"

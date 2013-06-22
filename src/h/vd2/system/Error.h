@@ -59,13 +59,19 @@ public:
 	~MyError();
 	void clear();
 	void assign(const MyError& e);
+	void assign(const char *s);
 	void setf(const char *f, ...);
 	void vsetf(const char *f, va_list val);
 	void post(struct HWND__ *hWndParent, const char *title) const;
 	char *gets() const {
 		return buf;
 	}
+	char *c_str() const {
+		return buf;
+	}
+	bool empty() const { return !buf; }
 	void discard();
+	void swap(MyError& err);
 	void TransferFrom(MyError& err);
 };
 

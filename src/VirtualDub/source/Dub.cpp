@@ -56,6 +56,7 @@
 #include "prefs.h"
 #include "command.h"
 #include "misc.h"
+#include "timeline.h"
 
 #include <vd2/system/error.h>
 #include "AsyncBlitter.h"
@@ -532,6 +533,17 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 		vInfo.usPerFrameIn	= (long)vInfo.frameRateIn.scale64ir(1000000);
 		vInfo.usPerFrame	= (long)vInfo.frameRate.scale64ir(1000000);
+
+		if (opt->video.mode == DubVideoOptions::M_NONE) {
+			if (pfs) {
+				vInfo.start_src	= video->nearestKey(vInfo.start_src);
+			} else {
+				VDTimeline temptl;
+
+				temptl.GetSubset() = *pfs;
+				vInfo.start_src = temptl.GetNearestKey(vInfo.start_src);
+			}
+		}
 
 		if (vInfo.end_src <= vInfo.start_src)
 			vInfo.end_dst = 0;

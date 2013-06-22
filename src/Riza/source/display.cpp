@@ -661,6 +661,8 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		DestroyWindow(mhwnd);
 		return 0;
 	case MYWM_RESET:
+		mMessage.clear();
+		InvalidateRect(mhwnd, NULL, TRUE);
 		SyncReset();
 		mSource.pixmap.data = NULL;
 		return 0;

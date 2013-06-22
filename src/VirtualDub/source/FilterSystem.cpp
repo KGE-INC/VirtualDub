@@ -451,7 +451,24 @@ int FilterSystem::ReadyFilters(const FilterStateInfo& fsi) {
 
 		VDCHECKPOINT;
 	} catch(const MyError&) {
-		DeinitFilters();
+		// roll back previously initialized filters (similar to deinit)
+		while(fa->prev) {
+			if (fa->filter->endProc) {
+				VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
+				vdprotected1("stopping filter \"%s\"", const char *, fa->filter->name) {
+					fa->filter->endProc(fa, &g_filterFuncs);
+				}
+			}
+
+			delete[] fa->pfsiDelayRing;
+			fa->pfsiDelayRing = NULL;
+
+			fa = (FilterInstance *)fa->prev;
+		}
+
+		delete[] bitmap;
+		bitmap = NULL;
+
 		throw;
 	}
 

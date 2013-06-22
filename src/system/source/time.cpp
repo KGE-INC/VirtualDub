@@ -47,11 +47,23 @@ uint64 VDGetPreciseTick() {
 }
 
 namespace {
+	uint64 VDGetPreciseTicksPerSecondNowI() {
+		LARGE_INTEGER freq;
+		QueryPerformanceFrequency(&freq);
+		return freq.QuadPart;
+	}
+
 	double VDGetPreciseTicksPerSecondNow() {
 		LARGE_INTEGER freq;
 		QueryPerformanceFrequency(&freq);
 		return (double)freq.QuadPart;
 	}
+}
+
+uint64 VDGetPreciseTicksPerSecondI() {
+	static uint64 ticksPerSecond = VDGetPreciseTicksPerSecondNowI();
+
+	return ticksPerSecond;
 }
 
 double VDGetPreciseTicksPerSecond() {

@@ -211,11 +211,15 @@ public:
 };
 
 class VDSignal : public VDSignalBase {
+	VDSignal(const VDSignal&);
+	VDSignal& operator=(const VDSignal&);
 public:
 	VDSignal();
 };
 
 class VDSignalPersistent : public VDSignalBase {
+	VDSignalPersistent(const VDSignalPersistent&);
+	VDSignalPersistent& operator=(const VDSignalPersistent&);
 public:
 	VDSignalPersistent();
 

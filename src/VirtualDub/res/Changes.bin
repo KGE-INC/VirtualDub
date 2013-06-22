@@ -1,6 +1,13 @@
 VirtualDub change log
 
-Build %build% (1.7.3, experimental): [%date%]
+Build %build% (1.7.4, stable): [%date%]
+   [bugs fixed]
+   * Fixed bug where frame regions were shifted instead of extended to fix key frame violations in direct video mode.
+   * If a video filter errored out during start phase, already initialized filters didn't receive end calls.
+   * Toggling the "show decompressed video" setting in Fast/Normal Recompress modes could result in a crash.
+   * 
+
+Build 28191 (1.7.3, experimental): [August 31, 2007]
    [features added]
    * Added display option for showing display debugging info.
    * Frame rate adjustment can now be entered exactly, including as a rational fraction.
