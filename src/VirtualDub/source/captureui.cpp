@@ -1163,7 +1163,7 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	mpProject->LockUpdates();
 
 	len = devkey.getBinaryLength(g_szVideoFormat);
-	if (len >= sizeof(VDAVIBitmapInfoHeader)) {
+	if (len >= 0 && len >= sizeof(VDAVIBitmapInfoHeader)) {
 		vdblock<char> buf(len);
 
 		if (devkey.getBinary(g_szVideoFormat, buf.data(), buf.size())) {

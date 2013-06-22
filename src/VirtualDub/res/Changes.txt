@@ -1,6 +1,13 @@
 VirtualDub change log
 
-Build %build% (1.8.4, stable): [%date%]
+Build %build% (1.8.5, stable): [%date%]
+   [bugs fixed]
+   * Capture: Fixed a possible crash when loading device settings.
+
+   [regressions fixed]
+   * Video filters which used GDI rendering in in-place mode but only requested a DC for one buffer now work.
+
+Build 29958 (1.8.4, stable): [August 9, 2008]
    [features added]
    * Export > Raw Audio defaults to .mp3 extension when the audio track is in MPEG layer III format.
    * Capture: Optimized display code slightly when main window is minimized.

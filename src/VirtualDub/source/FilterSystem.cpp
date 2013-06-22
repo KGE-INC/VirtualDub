@@ -429,7 +429,7 @@ void FilterSystem::initLinearChain(List *listFA, uint32 src_width, uint32 src_he
 		fa->mRealSrc.hdc = NULL;
 		fa->mExternalSrc = fa->mRealSrc.mPixmap;
 
-		if (fa->mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC) {
+		if (mapping || (fa->mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC)) {
 			fa->mRealSrc.mDIBSection.Init(VDAbsPtrdiff(fa->mRealSrc.pitch) >> 2, fa->mRealSrc.h, 32, mapping, fa->mRealSrc.offset);
 			fa->mRealSrc.hdc = fa->mRealSrc.mDIBSection.GetHDC();
 
@@ -441,7 +441,7 @@ void FilterSystem::initLinearChain(List *listFA, uint32 src_width, uint32 src_he
 
 		fa->mRealDst.hdc = NULL;
 		fa->mExternalDst = fa->mRealDst.mPixmap;
-		if (fa->mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC) {
+		if (mapping || (fa->mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC)) {
 			fa->mRealDst.mDIBSection.Init(VDAbsPtrdiff(fa->mRealDst.pitch) >> 2, fa->mRealDst.h, 32, mapping, fa->mRealDst.offset);
 			fa->mRealDst.hdc = fa->mRealDst.mDIBSection.GetHDC();
 

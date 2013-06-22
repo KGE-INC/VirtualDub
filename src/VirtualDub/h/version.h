@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2007 Avery Lee
+//	Copyright (C) 1998-2008 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ uint32 VDGetBuildNumber();
 #define VD_PROGRAM_NAMEA		"VirtualDub"
 #define VD_PROGRAM_NAMEW		VD_WIDE_STRING_CONST(VD_PROGRAM_NAMEA)
 
-#define VD_PROGRAM_VERSIONA		"1.8.4"
+#define VD_PROGRAM_VERSIONA		"1.8.5"
 #define VD_PROGRAM_VERSIONW		VD_WIDE_STRING_CONST(VD_PROGRAM_VERSIONA)
 
 #define VD_PROGRAM_SPECIAL_BUILDA	""
