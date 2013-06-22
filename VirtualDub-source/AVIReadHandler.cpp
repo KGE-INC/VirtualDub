@@ -1596,6 +1596,7 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 						case '1bmd':
 						case 'gpjm':
 						case 'GPJM':
+						case 'YUYV':
 						case '2YUY':
 						case 'YVYU':
 						case 'UYVY':

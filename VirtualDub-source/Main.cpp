@@ -648,6 +648,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		break;
 	case ID_FILE_CAPTUREAVI:
 		JobLockDubber();
+		CPUTest();
 		Capture(hWnd);
 		MenuMRUListUpdate(hWnd);
 		JobUnlockDubber();

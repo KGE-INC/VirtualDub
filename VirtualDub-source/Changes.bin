@@ -1,6 +1,23 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 11617 (Version 1.4a):
+   [features added]
+   * Trying an alternate capture audio synchronization
+     method.  Let me know how it works.  Hopefully, it'll
+     drop fewer frames.
+   * Added ATI 'VYUY' as a synonym for YUY2 in capture
+     mode.
+
+   [bug fixes]
+   * Fixed stupid video rate dialog bug that always forces
+     the video frame rate mode to 'correct'.  (Thanks to
+     'MsManiac')
+   * Fixed internal MJPEG driver not being able to open
+     anything.
+   * Fixed noise reduction in capture mode (thanks to Eric
+     Warnke).
+
 Build 11583 (Version 1.4):
    [features added]
    * Hold down SHIFT when scanning through frames to snap

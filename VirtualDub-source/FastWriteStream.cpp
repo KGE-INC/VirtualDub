@@ -435,6 +435,8 @@ bool FastWriteStream::BackgroundCheck() {
 }
 
 void FastWriteStream::BackgroundThread() {
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
+
 	while(!fDie) {
 		if (!BackgroundCheck())
 			WaitForSingleObject(hEventOkRead, INFINITE);

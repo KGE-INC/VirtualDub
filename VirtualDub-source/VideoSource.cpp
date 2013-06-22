@@ -421,15 +421,6 @@ void VideoSourceAVI::_construct() {
 	if (format_stream->ReadFormat(0, getFormat(), &format_len))
 		throw MyError("Error obtaining video stream format.");
 
-	// STUPID VIDEOMATRIX!!!
-	//
-	// VideoMatrix sets streamInfo.fccHandler to NULL.  DAMN IT!!
-
-	is_mjpeg = isEqualFOURCC(bmih->biCompression, 'GPJM')
-			|| isEqualFOURCC(fccForceVideo, 'GPJM')
-			|| isEqualFOURCC(bmih->biCompression, '1bmd')
-			|| isEqualFOURCC(fccForceVideo, '1bmd');
-
 	// We can handle RGB8/16/24/32 and YUY2.
 
 	is_dib = (bmih->biCompression == BI_RGB) || (bmih->biCompression == '2YUY');
@@ -441,6 +432,11 @@ void VideoSourceAVI::_construct() {
 
 	if (fccForceVideoHandler)
 		streamInfo.fccHandler = fccForceVideoHandler;
+
+	is_mjpeg = isEqualFOURCC(bmih->biCompression, 'GPJM')
+			|| isEqualFOURCC(fccForceVideo, 'GPJM')
+			|| isEqualFOURCC(bmih->biCompression, '1bmd')
+			|| isEqualFOURCC(fccForceVideo, '1bmd');
 
 	// If this is MJPEG, check to see if we should modify the output format and/or stream info
 
@@ -527,6 +523,9 @@ void VideoSourceAVI::_construct() {
 }
 
 bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjpeg) {
+
+	// VideoMatrix sets streamInfo.fccHandler to NULL.  Danger, Will Robinson.
+
 	if (!use_internal) {
 
 		// Try the handler specified in the file first.  In some cases, it'll
@@ -561,6 +560,8 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 		if (is_mjpeg) {
 			if (!(mdec = CreateMJPEGDecoder(getImageFormat()->biWidth, getImageFormat()->biHeight)))
 				throw MyMemoryError();
+
+			return true;
 		} else {
 			return false;
 		}

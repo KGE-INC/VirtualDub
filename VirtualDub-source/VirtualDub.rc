@@ -521,11 +521,11 @@ BEGIN
                     BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,17,114,10
     CONTROL         "Change to",IDC_FRAMERATE_CHANGE,"Button",
                     BS_AUTORADIOBUTTON,15,28,46,10
-    EDITTEXT        IDC_FRAMERATE,63,27,48,12,ES_AUTOHSCROLL
-    LTEXT           "frames per second",IDC_STATIC,113,28,59,8
     CONTROL         "Change so video and audio durations match",
                     IDC_FRAMERATE_SAMELENGTH,"Button",BS_AUTORADIOBUTTON,15,
                     39,155,11
+    EDITTEXT        IDC_FRAMERATE,63,27,48,12,ES_AUTOHSCROLL
+    LTEXT           "frames per second",IDC_STATIC,113,28,59,8
     LTEXT           "",IDC_FRAMERATE_SAMELENGTH_VALUE,173,40,79,8
     LTEXT           "Note: Changing the framerate will cause audio/video desynchronization.",
                     IDC_STATIC,13,52,227,8
@@ -2834,8 +2834,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,0,11583
- PRODUCTVERSION 1,4,0,11583
+ FILEVERSION 1,4,0,11617
+ PRODUCTVERSION 1,4,0,11617
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -2853,14 +2853,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this program:\r\n\r\n""Fly Away"" from Idol Project\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\nOpening theme to Natsuki Crisis\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub  MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4\0"
+            VALUE "FileVersion", "1.4a\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999, 2000 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4\0"
+            VALUE "ProductVersion", "1.4a\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -2958,17 +2958,17 @@ IDB_TOOLBAR_SETTINGS    BITMAP  DISCARDABLE     "bmp00004.bmp"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4"
-    IDS_TITLE_IDLE          "VirtualDub 1.4 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4a (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4a"
+    IDS_TITLE_IDLE          "VirtualDub 1.4a - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4a - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4a"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4 - Frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4a - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4a - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4a - Frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4a - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4a - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

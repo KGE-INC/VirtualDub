@@ -393,8 +393,6 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 	bool odd_field = true;
 	int field_count = 0;
 
-	pixdst = output;
-
 	do {
 //		_RPT1(0,"Decoding %s field\n", odd_field ? "odd" : "even");
 
@@ -409,7 +407,8 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 						++ptr;
 				else {
 //					_RPT0(0,"Error: markers found before SOI tag\n");
-					return;
+//					return;
+					break;		// happens with dmb1
 				}
 
 		if (ptr >= limit) {
@@ -430,8 +429,15 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 					break;
 				case MARKER_SOF0:
 					ptr = decodeFrameInfo(ptr);
+
+					// dmb1 thinks it's interlaced all the time...
+
+					if (raw_height*2 > height)
+						interlaced = false;
+
 					break;
 				case MARKER_SOS:
+					pixdst = output;
 					ptr = decodeScan(ptr, odd_field);
 //					_RPT1(0,"scan decode finished at %p\n", ptr);
 					break;
