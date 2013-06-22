@@ -334,7 +334,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 						,fa->mCropY1
 						,fa->mCropX2
 						,fa->mCropY2
-						,fa->mbPreciseCrop ? "" : ",1"
+						,fa->mbPreciseCrop ? "" : ",0"
 						);
 
 		if (fa->filter->fssProc && fa->filter->fssProc(fa->AsVDXFilterActivation(), &g_filterFuncs, buf, sizeof buf))

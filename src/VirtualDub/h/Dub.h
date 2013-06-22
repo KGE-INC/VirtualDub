@@ -78,6 +78,14 @@ public:
 	char mode;
 };
 
+class DubVideoPosition {
+public:
+	VDPosition	mOffset;		// in frames from start; -1 means end
+
+	VDPosition ResolveToFrames(VDPosition frameCount) const;
+	VDPosition ResolveToMS(VDPosition frameCount, const VDFraction& resultTimeBase, bool fromEnd) const;
+};
+
 class DubVideoOptions {
 public:
 	enum {
@@ -101,7 +109,7 @@ public:
 		kPreviewFieldsNonIntTFF,
 		kPreviewFieldsNonIntBFF
 	};
-
+	
 	int		mInputFormat;
 	int		mOutputFormat;
 	char	mode;
@@ -116,8 +124,8 @@ public:
 	uint32	mFrameRateAdjustHi;
 	uint32	mFrameRateAdjustLo;
 
-	long	lStartOffsetMS;		// Note that this is always interpreted via unmodified video source 0 timing.
-	long	lEndOffsetMS;		// Note that this is always interpreted via unmodified video source 0 timing.
+	DubVideoPosition mSelectionStart;
+	DubVideoPosition mSelectionEnd;
 
 	bool	fInvTelecine;
 	bool	fIVTCMode;

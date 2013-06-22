@@ -513,8 +513,12 @@ bool VDThreadedVideoCompressor::ExchangeBuffer(VDRenderOutputBuffer *buffer, VDR
 			if (!mbFlushInProgress)
 				++mFramesSubmitted;
 
-			if (!ProcessFrame(buffer, mpBaseCompressor, NULL))
+			if (!ProcessFrame(buffer, mpBaseCompressor, NULL)) {
+				if (mbInErrorState)
+					throw mError;
+
 				return false;
+			}
 		}
 
 		if (ppOutBuffer) {
@@ -1580,7 +1584,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(const V
 	}
 
 	// write it to the file	
-	frameBuffer = pBuffer->mBuffer.base();
+	frameBuffer = pBuffer->mpBase;
 
 	vdrefptr<VDRenderPostCompressionBuffer> pNewBuffer;
 	if (mpVideoCompressor) {

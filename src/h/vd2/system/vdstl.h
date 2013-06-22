@@ -985,6 +985,105 @@ protected:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+template<class T>
+struct vdfastdeque_block {
+	enum {
+		kBlockSize = 32,
+		kBlockSizeBits = 5
+	};
+
+	T data[kBlockSize];
+};
+
+template<class T, class T_Base>
+class vdfastdeque_iterator {
+public:
+	vdfastdeque_iterator(const vdfastdeque_iterator<T_Base, T_Base>&);
+	vdfastdeque_iterator(vdfastdeque_block<T_Base> **pMapEntry, uint32 index);
+
+	T& operator *() const;
+	T& operator ->() const;
+	vdfastdeque_iterator& operator++();
+	vdfastdeque_iterator operator++(int);
+	vdfastdeque_iterator& operator--();
+	vdfastdeque_iterator operator--(int);
+
+public:
+	vdfastdeque_block<T_Base> **mpMap;
+	vdfastdeque_block<T_Base> *mpBlock;
+	uint32 mIndex;
+};
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base>::vdfastdeque_iterator(const vdfastdeque_iterator<T_Base, T_Base>& x)
+	: mpMap(x.mpMap)
+	, mpBlock(x.mpBlock)
+	, mIndex(x.mIndex)
+{
+}
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base>::vdfastdeque_iterator(vdfastdeque_block<T_Base> **pMapEntry, uint32 index)
+	: mpMap(pMapEntry)
+	, mpBlock(*mpMap)
+	, mIndex(index)
+{
+}
+
+template<class T, class T_Base>
+T& vdfastdeque_iterator<T, T_Base>::operator *() const {
+	return mpBlock->data[mIndex];
+}
+
+template<class T, class T_Base>
+T& vdfastdeque_iterator<T, T_Base>::operator ->() const {
+	return mpBlock->data[mIndex];
+}
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base>& vdfastdeque_iterator<T, T_Base>::operator++() {
+	if (++mIndex >= vdfastdeque_block<T>::kBlockSize) {
+		mIndex = 0;
+		mpBlock = *++mpMap;
+	}
+	return *this;
+}
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base> vdfastdeque_iterator<T, T_Base>::operator++(int) {
+	vdfastdeque_iterator r(*this);
+	operator++();
+	return r;
+}
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base>& vdfastdeque_iterator<T, T_Base>::operator--() {
+	if (mIndex-- == 0) {
+		mIndex = vdfastdeque_block<T, T_Base>::kBlockSize - 1;
+		mpBlock = *--mpMap;
+	}
+	return *this;
+}
+
+template<class T, class T_Base>
+vdfastdeque_iterator<T, T_Base> vdfastdeque_iterator<T, T_Base>::operator--(int) {
+	vdfastdeque_iterator r(*this);
+	operator--();
+	return r;
+}
+
+template<class T, class U, class T_Base>
+bool operator==(const vdfastdeque_iterator<T, T_Base>& x,const vdfastdeque_iterator<U, T_Base>& y) {
+	return x.mpBlock == y.mpBlock && x.mIndex == y.mIndex;
+}
+
+template<class T, class U, class T_Base>
+bool operator!=(const vdfastdeque_iterator<T, T_Base>& x,const vdfastdeque_iterator<U, T_Base>& y) {
+	return x.mpBlock != y.mpBlock || x.mIndex != y.mIndex;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 template<class T, class A = std::allocator<T> >
 class vdfastdeque {
 public:
@@ -996,8 +1095,8 @@ public:
 	typedef A					allocator_type;
 	typedef	size_t				size_type;
 	typedef	ptrdiff_t			difference_type;
-	typedef	pointer				iterator;
-	typedef const_pointer		const_iterator;
+	typedef	vdfastdeque_iterator<T, T>			iterator;
+	typedef vdfastdeque_iterator<const T, T>	const_iterator;
 	typedef typename vdreverse_iterator<iterator, T>::type			reverse_iterator;
 	typedef typename vdreverse_iterator<const_iterator, const T>::type	const_reverse_iterator;
 
@@ -1012,22 +1111,33 @@ public:
 	reference			back();
 	const_reference		back() const;
 
+	iterator			begin();
+	const_iterator		begin() const;
+	iterator			end();
+	const_iterator		end() const;
+
+	reference			operator[](size_type n);
+	const_reference		operator[](size_type n) const;
+
+	void				clear();
+
 	reference			push_back();
 	void				push_back(const_reference x);
 
 	void				pop_front();
 	void				pop_back();
 
+	void				swap(vdfastdeque& x);
+
 protected:
 	void				push_back_extend();
 	void				validate();
 
-	enum {
-		kBlockSize = 32
-	};
+	typedef vdfastdeque_block<T> Block;
 
-	struct Block {
-		T data[kBlockSize];
+	enum {
+		kBlockSize = Block::kBlockSize,
+		kBlockSizeBits = Block::kBlockSizeBits
 	};
 
 	struct M1 : public A::rebind<Block *>::other {
@@ -1099,13 +1209,58 @@ typename vdfastdeque<T,A>::const_reference vdfastdeque<T,A>::front() const {
 template<class T, class A>
 typename vdfastdeque<T,A>::reference vdfastdeque<T,A>::back() {
 	VDASSERT(m.mapStart != m.mapEnd);
-	return m.mapEnd[-1].data[mTails.endIndex];
+	return m.mapEnd[-1]->data[mTails.endIndex];
 }
 
 template<class T, class A>
 typename vdfastdeque<T,A>::const_reference vdfastdeque<T,A>::back() const {
 	VDASSERT(m.mapStart != m.mapEnd);
-	return m.mapEnd[-1].data[mTails.endIndex];
+	return m.mapEnd[-1]->data[mTails.endIndex];
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::iterator vdfastdeque<T,A>::begin() {
+	return iterator(m.mapStart, mTails.startIndex);
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::const_iterator vdfastdeque<T,A>::begin() const {
+	return const_iterator(m.mapStart, mTails.startIndex);
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::iterator vdfastdeque<T,A>::end() {
+	if (mTails.endIndex == kBlockSize - 1)
+		return iterator(m.mapEnd, 0);
+	else
+		return iterator(m.mapEnd - 1, mTails.endIndex + 1);
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::const_iterator vdfastdeque<T,A>::end() const {
+	if (mTails.endIndex == kBlockSize - 1)
+		return const_iterator(m.mapEnd, 0);
+	else
+		return const_iterator(m.mapEnd - 1, mTails.endIndex + 1);
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::reference vdfastdeque<T,A>::operator[](size_type n) {
+	n += mTails.startIndex;
+	return m.mapStart[n >> kBlockSizeBits]->data[n & (kBlockSize - 1)];
+}
+
+template<class T, class A>
+typename vdfastdeque<T,A>::const_reference vdfastdeque<T,A>::operator[](size_type n) const {
+	n += mTails.startIndex;
+	return m.mapStart[n >> kBlockSizeBits]->data[n & (kBlockSize - 1)];
+}
+
+template<class T, class A>
+void vdfastdeque<T,A>::clear() {
+	m.mapEnd			= m.mapStart;
+	mTails.startIndex	= 0;
+	mTails.endIndex		= kBlockSize - 1;
 }
 
 template<class T, class A>
@@ -1145,6 +1300,18 @@ void vdfastdeque<T,A>::pop_back() {
 		mTails.endIndex = kBlockSize - 1;
 		--m.mapEnd;
 	}
+}
+
+template<class T, class A>
+void vdfastdeque<T,A>::swap(vdfastdeque& x) {
+	std::swap(m.mapStartAlloc, x.m.mapStartAlloc);
+	std::swap(m.mapStartCommit, x.m.mapStartCommit);
+	std::swap(m.mapStart, x.m.mapStart);
+	std::swap(m.mapEnd, x.m.mapEnd);
+	std::swap(m.mapEndCommit, x.m.mapEndCommit);
+	std::swap(m.mapEndAlloc, x.m.mapEndAlloc);
+	std::swap(mTails.startIndex, x.mTails.startIndex);
+	std::swap(mTails.endIndex, x.mTails.endIndex);
 }
 
 /////////////////////////////////

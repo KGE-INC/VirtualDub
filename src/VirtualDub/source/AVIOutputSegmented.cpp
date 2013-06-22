@@ -20,6 +20,7 @@
 #include <vd2/system/file.h>
 #include <vd2/system/error.h>
 #include <vd2/system/math.h>
+#include <vd2/Riza/audiocodec.h>
 #include "DubOutput.h"
 #include "DubUtils.h"
 #include "AVIOutput.h"
@@ -31,6 +32,8 @@ public:
 	VDChunkedBuffer();
 	~VDChunkedBuffer();
 
+	uint32 GetLevel() const;
+
 	void Write(const void *data, uint32 size);
 	const void *LockRead(uint32 size, uint32& actual);
 	void UnlockRead(uint32 size);
@@ -41,7 +44,6 @@ protected:
 
 	struct ChunkInfo {
 		void	*mpChunk;
-		uint32	mChunkSize;
 	};
 
 	uint32	mChunkHead;
@@ -69,6 +71,15 @@ VDChunkedBuffer::~VDChunkedBuffer() {
 	}
 }
 
+uint32 VDChunkedBuffer::GetLevel() const {
+	if (mActiveChunks.empty())
+		return 0;
+
+	uint32 chunkCount = mActiveChunks.size();
+	VDASSERT(chunkCount > 1 || mChunkTail >= mChunkHead);
+	return (chunkCount - 1) * mChunkSize + (mChunkTail - mChunkHead);
+}
+
 void VDChunkedBuffer::Write(const void *data, uint32 size) {
 	if (!size)
 		return;
@@ -78,20 +89,20 @@ void VDChunkedBuffer::Write(const void *data, uint32 size) {
 			AllocChunk();
 
 		ChunkInfo& ci = mActiveChunks.back();
-		uint32 tc = ci.mChunkSize - mChunkHead;
+		uint32 tc = mChunkSize - mChunkTail;
 		if (tc > size)
 			tc = size;
 
 		if (!tc) {
 			AllocChunk();
-			mChunkHead = 0;
+			mChunkTail = 0;
 			continue;
 		}
 
-		memcpy((char *)ci.mpChunk + mChunkHead, data, tc);
+		memcpy((char *)ci.mpChunk + mChunkTail, data, tc);
 		data = (const char *)data + tc;
 		size -= tc;
-		mChunkHead += tc;
+		mChunkTail += tc;
 	}
 }
 
@@ -102,23 +113,21 @@ const void *VDChunkedBuffer::LockRead(uint32 size, uint32& actual) {
 	}
 
 	ChunkInfo& ci = mActiveChunks.front();
-	uint32 avail = ci.mChunkSize - mChunkTail;
+	uint32 avail = mChunkSize - mChunkHead;
 	if (size > avail)
 		size = avail;
 
 	actual = size;
-	return (const char *)ci.mpChunk + mChunkTail;
+	return (const char *)ci.mpChunk + mChunkHead;
 }
 
 void VDChunkedBuffer::UnlockRead(uint32 size) {
 	if (!size)
 		return;
 
-	ChunkInfo& ci = mActiveChunks.front();
-
-	mChunkTail += size;
-	if (mChunkTail >= ci.mChunkSize) {
-		mChunkTail = 0;
+	mChunkHead += size;
+	if (mChunkHead >= mChunkSize) {
+		mChunkHead = 0;
 		FreeChunk();
 	}
 }
@@ -131,7 +140,6 @@ void VDChunkedBuffer::AllocChunk() {
 		ci.mpChunk		= VDFile::AllocUnbuffer(mChunkSize);
 		if (!ci.mpChunk)
 			throw MyMemoryError();
-		ci.mChunkSize	= mChunkSize;
 	}
 
 	mActiveChunks.splice(mActiveChunks.end(), mFreeChunks, mFreeChunks.begin());
@@ -205,6 +213,8 @@ public:
 		kFlushEnded
 	};
 
+	void setStreamInfo(const AVIStreamHeader_fixed& hdr);
+
 	virtual bool IsEnded() = 0;
 	virtual void CloseSegmentStream() = 0;
 	virtual void OpenSegmentStream(IVDMediaOutputStream *pOutput) = 0;
@@ -212,7 +222,19 @@ public:
 	virtual bool GetPendingInfo(VDTime endTime, uint32& samples, uint32& bytes) = 0;
 	virtual void ScheduleSamples(uint32 samples) = 0;
 	virtual FlushResult Flush(uint32 samples, bool force) = 0;
+
+protected:
+	double	mSampleRate;
+	double	mInvSampleRate;
 };
+
+void VDAVIOutputSegmentedStream::setStreamInfo(const AVIStreamHeader_fixed& hdr) {
+	AVIOutputStream::setStreamInfo(hdr);
+
+	mSampleRate = (double)hdr.dwRate / (double)hdr.dwScale;
+	mInvSampleRate = (double)hdr.dwScale / (double)hdr.dwRate;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -317,7 +339,7 @@ bool VDAVIOutputSegmentedVideoStream::GetPendingInfo(VDTime endTime, uint32& sam
 }
 
 VDTime VDAVIOutputSegmentedVideoStream::GetPendingLevel() {
-	return VDRoundToInt64(mBufferedSamples * (1000000.0 * (double)streamInfo.dwScale / (double)streamInfo.dwRate));
+	return VDRoundToInt64(mBufferedSamples * 1000000.0 * mInvSampleRate);
 }
 
 void VDAVIOutputSegmentedVideoStream::ScheduleSamples(uint32 samples) {
@@ -403,7 +425,7 @@ void VDAVIOutputSegmentedVideoStream::write(uint32 flags, const void *pBuffer, u
 	++mSamplesWritten;
 	++mBufferedSamples;
 
-	run.mEndTime = VDRoundToInt64(mSamplesWritten * (1000000.0 * (double)streamInfo.dwScale / (double)streamInfo.dwRate));
+	run.mEndTime = VDRoundToInt64(mSamplesWritten * 1000000.0 * mInvSampleRate);
 
 	mpParent->Update();
 }
@@ -439,6 +461,7 @@ public:
 	void ScheduleSamples(uint32 samples);
 	FlushResult Flush(uint32 samples, bool force);
 
+	void setFormat(const void *pFormat, int len);
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
 	void partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples);
 	void partialWrite(const void *pBuffer, uint32 cbBuffer);
@@ -446,21 +469,35 @@ public:
 	void finish();
 
 protected:
+	uint64 RemoveSamples(uint32& samples, uint32 vbrSizeThreshold);
+	uint64 GetBytesForSamples(uint32 samples) const;
+	void ValidateChunkList();
+
 	VDAVIOutputSegmented *const mpParent;
 	IVDMediaOutputStream *mpOutputStream;
 
 	bool	mbEnded;
+	uint32	mBlockSize;
 	uint32	mBufferedSamples;
 	uint32	mScheduledSamples;
 	uint32	mExtraSamples;
 	VDPosition	mTotalBufferedSamples;
 	VDPosition	mTotalScheduledSamples;
 	VDChunkedBuffer	mBuffer;
+
+	struct ChunkEntry {
+		uint32	mSampleSize;
+		uint32	mSampleCount;
+	};
+
+	typedef vdfastdeque<ChunkEntry> Chunks;
+	Chunks mChunks;
 };
 
 VDAVIOutputSegmentedAudioStream::VDAVIOutputSegmentedAudioStream(VDAVIOutputSegmented *pParent)
 	: mpParent(pParent)
 	, mbEnded(false)
+	, mBlockSize(0)
 	, mBufferedSamples(0)
 	, mScheduledSamples(0)
 	, mExtraSamples(0)
@@ -482,8 +519,8 @@ bool VDAVIOutputSegmentedAudioStream::GetNextPendingRun(uint32& samples, uint32&
 		return false;
 
 	samples = mBufferedSamples;
-	bytes = samples * ((const WAVEFORMATEX *)getFormat())->nBlockAlign;
-	endTime = VDRoundToInt64(mTotalBufferedSamples * (1000000.0 * (double)streamInfo.dwScale / (double)streamInfo.dwRate));
+	bytes = (uint32)GetBytesForSamples(samples);
+	endTime = VDRoundToInt64(mTotalBufferedSamples * 1000000.0 * mInvSampleRate);
 	return true;
 }
 
@@ -493,7 +530,7 @@ bool VDAVIOutputSegmentedAudioStream::GetPendingInfo(VDTime endTime, uint32& sam
 	if (endTime < 0)
 		samples = mBufferedSamples;
 	else {
-		samples = (uint32)(VDRoundToInt64(endTime * 1.0 / 1000000.0 * (double)streamInfo.dwRate / (double)streamInfo.dwScale) - mTotalScheduledSamples);
+		samples = (uint32)(VDRoundToInt64(endTime * 1.0 / 1000000.0 * mSampleRate) - mTotalScheduledSamples);
 
 		if (samples > mBufferedSamples) {
 			samples = mBufferedSamples;
@@ -502,14 +539,14 @@ bool VDAVIOutputSegmentedAudioStream::GetPendingInfo(VDTime endTime, uint32& sam
 		}
 	}
 
-	bytes = samples * ((const WAVEFORMATEX *)getFormat())->nBlockAlign;
+	bytes = (uint32)GetBytesForSamples(samples);
 
 	bytes = (bytes + 1) & ~1;		// evenify for AVI
 	return ok;
 }
 
 VDTime VDAVIOutputSegmentedAudioStream::GetPendingLevel() {
-	return VDRoundToInt64(mTotalBufferedSamples * (1000000.0 * (double)streamInfo.dwScale / (double)streamInfo.dwRate));
+	return VDRoundToInt64(mTotalBufferedSamples * 1000000.0 * mInvSampleRate);
 }
 
 void VDAVIOutputSegmentedAudioStream::ScheduleSamples(uint32 samples) {
@@ -545,38 +582,68 @@ VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedAudioStream::Flush(u
 
 	mBufferedSamples -= samples;
 
-	uint32 bytes = samples * ((const WAVEFORMATEX *)getFormat())->nBlockAlign;
+	while(samples) {
+		uint32 samplesToCopy = samples;
+		uint32 bytes = (uint32)RemoveSamples(samplesToCopy, mBlockSize);
 
-	mpOutputStream->partialWriteBegin(0, bytes, samples);
+		VDASSERT(samplesToCopy <= samples);
+		samples -= samplesToCopy;
 
-	while(bytes > 0) {
-		uint32 avail = 0;
-		const void *src = mBuffer.LockRead(bytes, avail);
-		VDASSERT(avail > 0 && avail <= bytes);
-		if (!avail)
-			break;
-		mpOutputStream->partialWrite(src, avail);
-		mBuffer.UnlockRead(avail);
-		bytes -= avail;
+		mpOutputStream->partialWriteBegin(0, bytes, samplesToCopy);
+
+		while(bytes > 0) {
+			uint32 avail = 0;
+			const void *src = mBuffer.LockRead(bytes, avail);
+			VDASSERT(avail > 0 && avail <= bytes);
+			if (!avail)
+				break;
+			mpOutputStream->partialWrite(src, avail);
+			mBuffer.UnlockRead(avail);
+			bytes -= avail;
+		}
+
+		mpOutputStream->partialWriteEnd();
 	}
 
-	mpOutputStream->partialWriteEnd();
 	return kFlushOK;
 }
 
+void VDAVIOutputSegmentedAudioStream::setFormat(const void *pFormat, int len) {
+	VDAVIOutputSegmentedStream::setFormat(pFormat, len);
+
+	mBlockSize = ((const VDWaveFormat *)pFormat)->mBlockSize;
+}
+
 void VDAVIOutputSegmentedAudioStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
-	if (!samples)
-		return;
-
-	mBufferedSamples += samples;
-	mTotalBufferedSamples += samples;
-	mBuffer.Write(pBuffer, cbBuffer);
-
-	mpParent->Update();
+	partialWriteBegin(flags, cbBuffer, samples);
+	partialWrite(pBuffer, cbBuffer);
+	partialWriteEnd();
 }
 
 void VDAVIOutputSegmentedAudioStream::partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples) {
+	if (!samples)
+		return;
+
+	uint32 sampleSize = bytes / samples;
+	VDASSERT(bytes % samples == 0);
+
+	if (mChunks.empty()) {
+		ChunkEntry& ent = mChunks.push_back();
+		ent.mSampleCount = samples;
+		ent.mSampleSize = sampleSize;
+	} else {
+		ChunkEntry& ent = mChunks.back();
+		if (ent.mSampleSize != sampleSize) {
+			ChunkEntry& ent2 = mChunks.push_back();
+			ent2.mSampleCount = samples;
+			ent2.mSampleSize = sampleSize;
+		} else {
+			ent.mSampleCount += samples;
+		}
+	}
+
 	mBufferedSamples += samples;
+	mTotalBufferedSamples += samples;
 }
 
 void VDAVIOutputSegmentedAudioStream::partialWrite(const void *pBuffer, uint32 cbBuffer) {
@@ -584,10 +651,78 @@ void VDAVIOutputSegmentedAudioStream::partialWrite(const void *pBuffer, uint32 c
 }
 
 void VDAVIOutputSegmentedAudioStream::partialWriteEnd() {
+#ifdef _DEBUG
+	ValidateChunkList();
+#endif
+	mpParent->Update();
 }
 
 void VDAVIOutputSegmentedAudioStream::finish() {
 	mbEnded = true;
+}
+
+uint64 VDAVIOutputSegmentedAudioStream::RemoveSamples(uint32& samples, uint32 vbrSizeThreshold) {
+	uint64 bytes = 0;
+	uint32 samplesLeft = samples;
+
+	samples = 0;
+	while(!mChunks.empty() && samplesLeft) {
+		ChunkEntry& ent = mChunks.front();
+
+		uint32 tc = samplesLeft;
+		if (tc > ent.mSampleCount)
+			tc = ent.mSampleCount;
+
+		if (vbrSizeThreshold && ent.mSampleSize < vbrSizeThreshold) {
+			tc = 1;
+			samplesLeft = 1;
+		}
+
+		bytes += (uint64)ent.mSampleSize * tc;
+		samples += tc;
+		samplesLeft -= tc;
+		ent.mSampleCount -= tc;
+		if (!ent.mSampleCount)
+			mChunks.pop_front();
+	}
+
+	VDASSERT(!samplesLeft);
+	return bytes;
+}
+
+uint64 VDAVIOutputSegmentedAudioStream::GetBytesForSamples(uint32 samples) const {
+	Chunks::const_iterator it(mChunks.begin()), itEnd(mChunks.end());
+	uint64 bytes = 0;
+
+	for(; it != itEnd && samples; ++it) {
+		const ChunkEntry& ent = *it;
+
+		uint32 tc = samples;
+		if (tc > ent.mSampleCount)
+			tc = ent.mSampleCount;
+
+		bytes += (uint64)ent.mSampleSize * tc;
+		samples -= tc;
+	}
+
+	VDASSERT(!samples);
+	return bytes;
+}
+
+void VDAVIOutputSegmentedAudioStream::ValidateChunkList() {
+	Chunks::const_iterator it(mChunks.begin()), itEnd(mChunks.end());
+	uint64 bytes = 0;
+	uint32 samples = 0;
+
+	for(; it != itEnd; ++it) {
+		const ChunkEntry& ent = *it;
+
+		bytes += (uint64)ent.mSampleSize * ent.mSampleCount;
+		samples += ent.mSampleCount;
+	}
+
+	VDASSERT(mBufferedSamples == samples);
+	VDASSERT(mBuffer.GetLevel() == bytes);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -728,13 +863,14 @@ void VDAVIOutputSegmented::ReinitInterleaver() {
 		mStreamInterleaver.Init(2);
 		mStreamInterleaver.EnableInterleaving(true);
 		mStreamInterleaver.InitStream(0, 0, 0, 1, 1, 1);
-		const WAVEFORMATEX& wfex = *(const WAVEFORMATEX *)mpFirstAudioStream->getFormat();
+		const VDWaveFormat& wfex = *(const VDWaveFormat *)mpFirstAudioStream->getFormat();
 		const AVIStreamHeader_fixed& hdr = mpFirstVideoStream->getStreamInfo();
-		double samplesPerSecond = (double)wfex.nAvgBytesPerSec / (double)wfex.nBlockAlign;
+		const AVIStreamHeader_fixed& hdra = mpFirstAudioStream->getStreamInfo();
+		double samplesPerSecond = (double)hdra.dwRate / (double)hdra.dwScale;
 		double invFrameRate = (double)hdr.dwScale / (double)hdr.dwRate;
 		sint32 preloadSamples = VDRoundToInt32(mAudioPreload * samplesPerSecond);
 		double samplesPerFrame = invFrameRate * samplesPerSecond;
-		mStreamInterleaver.InitStream(1, wfex.nBlockAlign, preloadSamples, samplesPerFrame, mAudioInterval, 0x7FFFFFFF / wfex.nBlockAlign);
+		mStreamInterleaver.InitStream(1, wfex.mBlockSize, preloadSamples, samplesPerFrame, mAudioInterval, 0x7FFFFFFF / wfex.mBlockSize);
 	} else {
 		mStreamInterleaver.Init(1);
 		mStreamInterleaver.InitStream(0, 0, 0, 1, 1, 1);

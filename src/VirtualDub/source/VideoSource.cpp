@@ -53,6 +53,7 @@
 ///////////////////////////
 
 extern const char *LookupVideoCodec(uint32);
+extern bool VDPreferencesIsDirectYCbCrInputEnabled();
 
 ///////////////////////////
 
@@ -768,6 +769,24 @@ const wchar_t *VDVideoDecompressorDIB::GetName() {
 
 ///////////////////////////////////////////////////////////////////////////
 
+bool VDPixmapIsYCbCrFormat(int format) {
+	switch(format) {
+		case 0:
+		case nsVDPixmap::kPixFormat_Pal1:
+		case nsVDPixmap::kPixFormat_Pal2:
+		case nsVDPixmap::kPixFormat_Pal4:
+		case nsVDPixmap::kPixFormat_Pal8:
+		case nsVDPixmap::kPixFormat_XRGB1555:
+		case nsVDPixmap::kPixFormat_RGB565:
+		case nsVDPixmap::kPixFormat_RGB888:
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			return false;
+
+		default:
+			return true;
+	}
+}
+
 IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, uint32 hdrSize, bool preferInternal) {
 	IVDVideoDecompressor *dec;
 
@@ -780,6 +799,11 @@ IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBi
 
 	int variant;
 	int format = VDBitmapFormatToPixmapFormat(hdr, variant);
+
+	if (!VDPreferencesIsDirectYCbCrInputEnabled()) {
+		if (VDPixmapIsYCbCrFormat(format))
+			format = 0;
+	}
 
 	bool is_dib = (format != 0);
 	if (is_dib) {
@@ -1262,20 +1286,9 @@ bool VideoSourceAVI::_construct(int streamIndex) {
 
 	mSourceLayout.format = VDBitmapFormatToPixmapFormat(*(const VDAVIBitmapInfoHeader *)bmih);
 
-	extern bool VDPreferencesIsDirectYCbCrInputEnabled();
 	if (!VDPreferencesIsDirectYCbCrInputEnabled()) {
-		switch(mSourceLayout.format) {
-			case nsVDPixmap::kPixFormat_Pal1:
-			case nsVDPixmap::kPixFormat_Pal2:
-			case nsVDPixmap::kPixFormat_Pal4:
-			case nsVDPixmap::kPixFormat_Pal8:
-			case nsVDPixmap::kPixFormat_XRGB1555:
-			case nsVDPixmap::kPixFormat_RGB565:
-			case nsVDPixmap::kPixFormat_RGB888:
-			case nsVDPixmap::kPixFormat_XRGB8888:
-				mSourceLayout.format = 0;
-				break;
-		}
+		if (VDPixmapIsYCbCrFormat(mSourceLayout.format))
+			mSourceLayout.format = 0;
 	}
 
 	if (mSourceLayout.format) {

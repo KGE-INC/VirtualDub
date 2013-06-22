@@ -443,7 +443,7 @@ bool VDUIJobControlDialog::OnMenuHit(uint32 id) {
 				break;
 
 			case ID_EDIT_DELETEDONEJOBS:
-				for(uint32 i=0; i<g_VDJobQueue.ListSize(); ++i) {
+				for(uint32 i=0; i<g_VDJobQueue.ListSize();) {
 					VDJob *vdj = g_VDJobQueue.ListGet(i);
 
 					if (vdj->GetState() == VDJob::kStateCompleted) {
@@ -495,6 +495,26 @@ VDZINT_PTR VDUIJobControlDialog::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARA
 	int index;
 
 	switch(msg) {
+	case WM_COMMAND:
+		// we have to filter out WM_COMMAND messages from the list view edit control
+		// because some moron on the Windows team used IDOK as the edit control identifier
+		if (lParam) {
+			switch(HIWORD(wParam)) {
+				case EN_SETFOCUS:
+				case EN_KILLFOCUS:
+				case EN_CHANGE:
+				case EN_UPDATE:
+				case EN_ERRSPACE:
+				case EN_MAXTEXT:
+				case EN_HSCROLL:
+				case EN_VSCROLL:
+					return FALSE;
+			}
+		}
+
+		// fall through to default handler
+		break;
+
 	case WM_NOTIFY:
 		{
 			NMHDR *nm = (NMHDR *)lParam;

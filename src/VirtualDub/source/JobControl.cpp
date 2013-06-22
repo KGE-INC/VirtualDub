@@ -49,6 +49,7 @@ VDJobQueue::VDJobQueue()
 	, mbBlocked(false)
 	, mbOrderModified(false)
 	, mbAutoRun(false)
+	, mbDistributedMode(false)
 	, mLastSignature(0)
 	, mLastRevision(0)
 {
@@ -111,6 +112,7 @@ void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode)
 	SetAutoUpdateEnabled(enableDistributedMode);
 	mLastSignature = 0;
 	mLastRevision = 0;
+	mbDistributedMode = enableDistributedMode;
 
 	ListLoad(NULL, false);
 
@@ -254,9 +256,14 @@ void VDJobQueue::Run(VDJob *job) {
 	job->SetRunner(mRunnerId, mComputerName.c_str());
 
 	job->Refresh();
+
+	uint64 id = job->mId;
+
 	Flush();
 
-	if (!job->IsRunning() || !job->IsLocal())
+	job = GetJobById(id);
+
+	if (!job || !job->IsRunning() || !job->IsLocal())
 		return;
 
 	mpRunningJob = job;
@@ -847,7 +854,7 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 		fileName = mJobFilePath.c_str();
 	}
 
-	if (usingGlobalFile) {
+	if (usingGlobalFile && mbDistributedMode) {
 		try {
 			VDFileStream outputStream(fileName, nsVDFile::kReadWrite | nsVDFile::kDenyAll | nsVDFile::kOpenAlways);
 

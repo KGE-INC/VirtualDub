@@ -1,6 +1,30 @@
 VirtualDub change log
 
-Build %build% (1.8.5, stable): [%date%]
+Build %build% (1.8.6, stable): [%date%]
+   [bugs fixed]
+   * Wheel scrolling in the Set Text Information dialog closes the edit control.
+   * Save Segmented AVI now works with VBR audio.
+   * Animated GIF export now fails with an error if the current output format is compressed or otherwise not supported.
+   * JobControl: Fixed crash when one machine attempts to run a job in distributed mode right when another machine deletes it.
+   * JobControl: The filter crop mode saved in jobs was opposite from selected. (This only affected YCbCr cropping.)
+   * Capture: Fixed crash when capture driver sends audio samples when DirectShow graph is not running.
+   * D3D: Fixed sporadic crash on lost device.
+   * D3D: Fixed Direct3D errors when display debug information is enabled and a video filter fails to initialize.
+   * Frameserver: Frame rate adjustments weren't always propagated correctly.
+
+   [regressions fixed]
+   * Fixed crash when using fast/normal recompress mode without a video codec.
+   * Fixed divide by zero crash when loading video and a video filter in the list is unable to initialize.
+   * Changing the "source rate adjustment" option no longer invalidates the current selection.
+   * Rendering would loop endlessly if an error occurred during video compression and threaded compression was disabled.
+   * Disabling the "directly decode YCbCr formats" option works again.
+   * Filters: lMicrosecsPerFrame and lMicrosecsPerSrcFrame were reporting milliseconds (broken since 1.8.0).
+   * JobControl: Fixed case where a non-distributed "load job list" command can fail due to erroneously running distributed-mode code.
+   * JobControl: Fixed problem where dialog would suddenly close when editing job names.
+   * Script: Fixed crash when removing video filter from filter chain.
+   * DV: Audio decoding works again with NTSC DV files (broken since 1.8.4).
+
+Build 29963 (1.8.5, stable): [August 15, 2008]
    [bugs fixed]
    * Capture: Fixed a possible crash when loading device settings.
 

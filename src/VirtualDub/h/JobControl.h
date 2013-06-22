@@ -122,6 +122,7 @@ protected:
 	bool	mbBlocked;
 	bool	mbOrderModified;
 	bool	mbAutoRun;
+	bool	mbDistributedMode;
 
 	VDStringA	mComputerName;
 	uint64	mBaseSignature;

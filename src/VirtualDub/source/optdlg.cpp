@@ -1027,17 +1027,13 @@ VDDialogVideoRangeW32::VDDialogVideoRangeW32(DubOptions& opts, const VDFraction&
 	, mTotalTimeMS(0)
 	, mbReentry(false)
 {
-	if (mFrameRate.getLo())
-		mTotalTimeMS = VDRoundToInt64(mFrameCount * mFrameRate.AsInverseDouble() * 1000.0);
+	mTotalTimeMS = VDRoundToInt64(mFrameCount * mFrameRate.AsInverseDouble() * 1000.0);
 }
 
 void VDDialogVideoRangeW32::MSToFrames(UINT idFrames, UINT idMS) {
 	VDPosition frames;
 	VDTime ms;
 	BOOL ok;
-
-	if (!mFrameRate.getLo())
-		return;
 
 	ms = GetDlgItemInt(mhdlg, idMS, &ok, FALSE);
 	if (!ok)
@@ -1062,9 +1058,6 @@ void VDDialogVideoRangeW32::FramesToMS(UINT idMS, UINT idFrames) {
 	VDTime ms;
 	BOOL ok;
 
-	if (!mFrameRate.getLo())
-		return;
-
 	frames = GetDlgItemInt(mhdlg, idFrames, &ok, FALSE);
 	if (!ok) return;
 	mbReentry = true;
@@ -1086,8 +1079,6 @@ void VDDialogVideoRangeW32::LengthFrames() {
 	VDPosition frames;
 	VDTime ms;
 	BOOL ok;
-
-	if (!mFrameRate.getLo()) return;
 
 	frames = GetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, &ok, TRUE);
 	if (!ok) return;
@@ -1111,8 +1102,6 @@ void VDDialogVideoRangeW32::LengthMS() {
 	VDTime ms;
 	BOOL ok;
 
-	if (!mFrameRate.getLo()) return;
-
 	ms = GetDlgItemInt(mhdlg, IDC_LENGTH_MS, &ok, TRUE);
 	if (!ok) return;
 	mbReentry = TRUE;
@@ -1133,15 +1122,8 @@ void VDDialogVideoRangeW32::LengthMS() {
 INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_INITDIALOG:
-			{
-				bool videoPresent = mFrameRate.getLo() != 0;
-				EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_MS), videoPresent);
-				EnableWindow(GetDlgItem(mhdlg, IDC_START_FRAMES), videoPresent);
-				EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_FRAMES), videoPresent);
-				EnableWindow(GetDlgItem(mhdlg, IDC_END_FRAMES), videoPresent);
-			}
-			SetDlgItemInt(mhdlg, IDC_START_MS, mOpts.video.lStartOffsetMS, FALSE);
-			SetDlgItemInt(mhdlg, IDC_END_MS, mOpts.video.lEndOffsetMS, FALSE);
+			SetDlgItemInt(mhdlg, IDC_START_MS, VDClampToUint32(mOpts.video.mSelectionStart.ResolveToMS(mFrameCount, mFrameRate, false)), FALSE);
+			SetDlgItemInt(mhdlg, IDC_END_MS, VDClampToUint32(mOpts.video.mSelectionEnd.ResolveToMS(mFrameCount, mFrameRate, true)), FALSE);
 			CheckDlgButton(mhdlg, IDC_OFFSET_AUDIO, mOpts.audio.fStartAudio);
 			CheckDlgButton(mhdlg, IDC_CLIP_AUDIO, mOpts.audio.fEndAudio);
             return (TRUE);
@@ -1936,6 +1918,11 @@ LRESULT VDDialogFileTextInfoW32::LVWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 			EndEdit(true);
 		}
 		return 0;
+
+	case WM_VSCROLL:
+	case WM_MOUSEWHEEL:
+		EndEdit(true);
+		break;
 	}
 	return VDDualCallWindowProcW32(mOldLVProc, hwnd, msg, wParam, lParam);
 }

@@ -340,7 +340,7 @@ static const VDScriptObject obj_VDParameterCurve={
 ///////////////////////////////////////////////////////////////////////////
 
 static void func_VDVFiltInst_Remove(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	FilterInstance *fa = static_cast<FilterInstance *>((VDFilterActivationImpl *)argv[-1].asObjectPtr());
 
 	fa->Remove();
 	fa->Destroy();
@@ -355,7 +355,7 @@ static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValu
 	fa->mCropY2	= argv[3].asInt();
 
 	fa->mbPreciseCrop = true;
-	if (argc >= 4)
+	if (argc >= 5)
 		fa->mbPreciseCrop = (0 != argv[4].asInt());
 }
 
@@ -691,8 +691,14 @@ static void func_VDVideo_SetTargetFrameRate(IVDScriptInterpreter *, VDScriptValu
 	g_project->MarkTimelineRateDirty();
 }
 
-static void func_VDVideo_GetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	arglist[0] = VDScriptValue(arglist[0].asInt() ? g_dubOpts.video.lEndOffsetMS : g_dubOpts.video.lStartOffsetMS);
+static void func_VDVideo_GetRange(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	if (!inputVideo)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	const VDPosition timelineLen = g_project->GetTimeline().GetLength();
+	const VDFraction& frameRate = inputVideo->asStream()->getRate();
+
+	arglist[0] = VDScriptValue(arglist[0].asInt() ? g_dubOpts.video.mSelectionEnd.ResolveToMS(timelineLen, frameRate, true) : g_dubOpts.video.mSelectionStart.ResolveToMS(timelineLen, frameRate, false));
 }
 
 static void func_VDVideo_SetRangeEmpty(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -718,8 +724,6 @@ static void func_VDVideo_SetRangeFrames(IVDScriptInterpreter *, VDScriptValue *a
 	if (!inputVideo)
 		return;
 
-	// Note that these must be in SOURCE units for compatibility with 1.7.x. In particular, frame
-	// rate adjustment must NOT be applied.
 	VDPosition startOffset = arglist[0].asLong();
 	VDPosition endOffset = arglist[1].asLong();
 

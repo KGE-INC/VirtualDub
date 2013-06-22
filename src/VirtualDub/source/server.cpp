@@ -217,7 +217,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	const VDPixmap& px = vSrc->getTargetFormat();
 
-	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, pVSS->getRate(), pVSS->getLength());
+	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1);
 
 	if (filters.getFrameLag())
 		MessageBox(g_hWnd,
@@ -234,15 +234,11 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	vdfastvector<IVDVideoSource *> vsrcs(1, vSrc);
 	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.mFrameRateTimeline / vInfo.mFrameRate, &mSubset, vInfo.end_dst, false, &filters);
 
-	double msToTimelineFramesFactor = frameRateTimeline.asDouble() / 1000.0;
-	VDPosition lOffsetStart = VDRoundToInt32(opt->video.lStartOffsetMS * msToTimelineFramesFactor);
-	VDPosition lOffsetEnd = VDRoundToInt32(opt->video.lEndOffsetMS * msToTimelineFramesFactor);
-
 	if (opt->audio.fEndAudio)
-		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
+		videoset.deleteRange(endFrame, videoset.getTotalFrames());
 
 	if (opt->audio.fStartAudio)
-		videoset.deleteRange(0, lOffsetStart);
+		videoset.deleteRange(0, startFrame);
 
 	VDDEBUG("Video subset:\n");
 	videoset.dump();

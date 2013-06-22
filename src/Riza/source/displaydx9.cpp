@@ -445,7 +445,8 @@ bool VDFontRendererD3D9::Begin() {
 	dev->SetStreamSource(0, mpD3DManager->GetVertexBuffer(), 0, sizeof(nsVDD3D9::Vertex));
 	dev->SetIndices(mpD3DManager->GetIndexBuffer());
 	dev->SetTexture(0, mpD3DFontTexture);
-	return true;
+
+	return mpD3DManager->BeginScene();
 }
 
 void VDFontRendererD3D9::DrawTextLine(int x, int y, uint32 textColor, uint32 outlineColor, const char *s) {
@@ -1426,6 +1427,8 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		}
 
 		// render!
+		bool validDraw = true;
+
 		if (Vertex *pvx = mpManager->LockVertices(4)) {
 			const float ustep = 1.0f / (float)(int)ctx.mSourceTexW;
 			const float vstep = 1.0f / (float)(int)ctx.mSourceTexH;
@@ -1442,12 +1445,21 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 			const float x1 = pi.mbClipPosition ? x0 + rClient.right * 2.0f * invVpW : 1.f - invVpW;
 			const float y1 = pi.mbClipPosition ? y0 - rClient.bottom * 2.0f * invVpH : -1.f + invVpH;
 
-			pvx[0].SetFF2(x0, y0, 0xFFFFFFFF, u0, v0, 0, 0);
-			pvx[1].SetFF2(x1, y0, 0xFFFFFFFF, u1, v0, 1, 0);
-			pvx[2].SetFF2(x0, y1, 0xFFFFFFFF, u0, v1, 0, 1);
-			pvx[3].SetFF2(x1, y1, 0xFFFFFFFF, u1, v1, 1, 1);
+			__try {
+				pvx[0].SetFF2(x0, y0, 0xFFFFFFFF, u0, v0, 0, 0);
+				pvx[1].SetFF2(x1, y0, 0xFFFFFFFF, u1, v0, 1, 0);
+				pvx[2].SetFF2(x0, y1, 0xFFFFFFFF, u0, v1, 0, 1);
+				pvx[3].SetFF2(x1, y1, 0xFFFFFFFF, u1, v1, 1, 1);
+			} __except(1) {
+				validDraw = false;
+			}
 
 			mpManager->UnlockVertices();
+		}
+
+		if (!validDraw) {
+			VDDEBUG_DX9DISP("VideoDisplay/DX9: Invalid vertex buffer lock detected -- bailing.\n");
+			return false;
 		}
 
 		if (!mpManager->BeginScene())

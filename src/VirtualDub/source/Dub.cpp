@@ -151,7 +151,7 @@ DubOptions g_dubOpts = {
 		0,0,						// no target
 		0,0,						// no change in frame rate
 		0,							// start offset: 0ms
-		0,							// end offset: 0ms
+		-1,							// end offset: 0ms
 		false,						// No inverse telecine
 		false,						// (IVTC mode)
 		-1,							// (IVTC offset)
@@ -203,6 +203,27 @@ void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, const VDAVIStre
 	dest->rcFrame.top		= (short)src->rcFrameTop;
 	dest->rcFrame.right		= (short)src->rcFrameRight;
 	dest->rcFrame.bottom	= (short)src->rcFrameBottom;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDPosition DubVideoPosition::ResolveToFrames(VDPosition length) const {
+	return mOffset < 0 ? length : mOffset;
+}
+
+VDPosition DubVideoPosition::ResolveToMS(VDPosition frameCount, const VDFraction& timeBase, bool fromEnd) const {
+	VDPosition t = mOffset;
+
+	if (t < 0)
+		t = frameCount;
+
+	if (fromEnd)
+		t = frameCount - t;
+
+	if (t > frameCount)
+		t = frameCount;
+
+	return VDRoundToInt64((double)t * timeBase.AsInverseDouble() * 1000.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -524,16 +545,10 @@ void Dubber::SetAudioFilterGraph(const VDAudioFilterGraph& graph) {
 }
 
 void VDConvertSelectionTimesToFrames(const DubOptions& opt, const FrameSubset& subset, const VDFraction& subsetRate, VDPosition& startFrame, VDPosition& endFrame) {
-	startFrame = 0;
-	if (opt.video.lStartOffsetMS)
-		startFrame = VDRoundToInt64(subsetRate.asDouble() * (double)opt.video.lStartOffsetMS / 1000.0);
+	VDPosition subsetLength = subset.getTotalFrames();
 
-	endFrame = subset.getTotalFrames();;
-	if (opt.video.lEndOffsetMS) {
-		endFrame -= VDRoundToInt64(subsetRate.asDouble() * (double)opt.video.lEndOffsetMS / 1000.0);
-		if (endFrame < 0)
-			endFrame = 0;
-	}
+	startFrame = opt.video.mSelectionStart.ResolveToFrames(subsetLength);
+	endFrame = opt.video.mSelectionEnd.ResolveToFrames(subsetLength);
 }
 
 void VDTranslateSubsetDirectMode(FrameSubset& dst, const FrameSubset& src, IVDVideoSource *const *pVideoSources, VDPosition& selectionStart, VDPosition& selectionEnd) {

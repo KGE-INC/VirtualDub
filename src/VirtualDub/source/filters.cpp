@@ -712,8 +712,8 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 	*mRealLast.mpPixmapLayout = *mRealSrc.mpPixmapLayout;
 	mRealLast.ConvertPixmapLayoutToBitmapLayout();
 
-	mfsi.lMicrosecsPerSrcFrame	= VDRoundToInt((double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0);
-	mfsi.lMicrosecsPerFrame		= VDRoundToInt((double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0);
+	mfsi.lMicrosecsPerSrcFrame	= VDRoundToInt((double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000000.0);
+	mfsi.lMicrosecsPerFrame		= VDRoundToInt((double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000000.0);
 
 	if (invalidCrop)
 		flags |= FILTERPARAM_NOT_SUPPORTED;

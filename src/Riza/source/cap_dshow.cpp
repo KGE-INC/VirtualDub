@@ -921,10 +921,19 @@ protected:
 
 	VDAtomicInt mRefCount;
 	IVDCaptureDSCallback *mpCallback;
+	VDAtomicInt mBlockSamples;
 
 public:
 
-	VDCapDevDSCallback(IVDCaptureDSCallback *pCB) : mRefCount(1), mpCallback(pCB) {
+	VDCapDevDSCallback(IVDCaptureDSCallback *pCB)
+		: mRefCount(1)
+		, mpCallback(pCB)
+		, mBlockSamples(true)
+	{
+	}
+
+	void SetBlockSamples(bool block) {
+		mBlockSamples = block;
 	}
 
 	// IUnknown
@@ -981,6 +990,9 @@ public:
 		BYTE *pData;
 		HRESULT hr;
 
+		if (mBlockSamples)
+			return S_OK;
+
 		mVCallback.Begin(0xe0e0e0, "VC");
 		if (mpCallback->CapTryEnterCriticalSection()) {
 			// retrieve sample pointer
@@ -1029,6 +1041,9 @@ public:
 	HRESULT __stdcall SampleCB(double SampleTime, IMediaSample *pSample) {
 		BYTE *pData;
 		HRESULT hr;
+
+		if (mBlockSamples)
+			return S_OK;
 
 		mACallback.Begin(0xe0e0e0, "AC");
 		if (mpCallback->CapTryEnterCriticalSection()) {
@@ -3108,6 +3123,9 @@ bool VDCaptureDriverDS::StopGraph() {
 	mbGraphActive = false;
 	mbStartPending = false;
 
+	mVideoCallback.SetBlockSamples(true);
+	mAudioCallback.SetBlockSamples(true);
+
 #ifdef _DEBUG
 	uint32 startTime = VDGetAccurateTick();
 	VDDEBUG("Riza/CapDShow: Filter graph stopping...\n");
@@ -3156,6 +3174,9 @@ bool VDCaptureDriverDS::StartGraph() {
 
 	mbStartPending = false;
 
+	mVideoCallback.SetBlockSamples(false);
+	mAudioCallback.SetBlockSamples(false);
+
 	mbGraphActive = false;
 	HRESULT hr = mpGraphControl->Run();
 
@@ -3174,6 +3195,9 @@ bool VDCaptureDriverDS::StartGraph() {
 	if (FAILED(hr)) {
 		const char *err = GetDXErrorName(hr);
 		VDLog(kVDLogWarning, VDswprintf(L"CapDShow: Unable to transition filter graph to run state: hr = %08x (%hs)\n", 2, &hr, &err));
+
+		mVideoCallback.SetBlockSamples(true);
+		mAudioCallback.SetBlockSamples(true);
 	} else {
 		mbGraphActive = true;
 	}

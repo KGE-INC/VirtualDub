@@ -43,6 +43,9 @@
 			</lina:tag>
 		</lina:for-each>
 	</tocnode>
+	<tocnode name="Batch operation">
+		<tocnode target="b-distributed.html" name="Distributed mode"/>
+	</tocnode>
 	<tocnode name="Advanced operation">
 		<tocnode target="amd64.html" name="AMD64 version"/>
 		<tocnode target="cmdline.html" name="Command-line operation"/>

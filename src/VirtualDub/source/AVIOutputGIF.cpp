@@ -76,6 +76,10 @@ void AVIVideoGIFOutputStream::init(int loopCount) {
 	int variant;
 
 	int format = VDBitmapFormatToPixmapFormat(*bih, variant);
+
+	if (!format)
+		throw MyError("The current output format is not an uncompressed format that can be converted to an animated GIF.");
+
 	VDMakeBitmapCompatiblePixmapLayout(mSrcLayout, bih->biWidth, bih->biHeight, format, variant);
 
 	if (mSrcLayout.format != nsVDPixmap::kPixFormat_XRGB8888)
@@ -424,6 +428,11 @@ addit:
 }
 
 void AVIVideoGIFOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
+	if (!cbBuffer) {
+		++mFrameCount;
+		return;
+	}
+
 	mPrevFrameBuffer.swap(mCurFrameBuffer);
 
 	VDPixmap pxsrc(VDPixmapFromLayout(mSrcLayout, (void *)pBuffer));

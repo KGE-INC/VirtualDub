@@ -447,8 +447,8 @@ VDFraction VDProject::GetTimelineFrameRate() {
 void VDProject::ClearSelection(bool notifyUser) {
 	mposSelectionStart = 0;
 	mposSelectionEnd = -1;
-	g_dubOpts.video.lStartOffsetMS = 0;
-	g_dubOpts.video.lEndOffsetMS = 0;
+	g_dubOpts.video.mSelectionStart.mOffset = 0;
+	g_dubOpts.video.mSelectionEnd.mOffset = -1;
 	if (mpCB)
 		mpCB->UISelectionUpdated(notifyUser);
 }
@@ -1123,7 +1123,7 @@ void VDProject::PreviewInput() {
 	dubOpt.audio.enabled				= TRUE;
 	dubOpt.audio.interval				= 1;
 	dubOpt.audio.is_ms					= FALSE;
-	dubOpt.video.lStartOffsetMS			= (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
+	dubOpt.video.mSelectionStart.mOffset = start;
 
 	dubOpt.audio.fStartAudio			= TRUE;
 	dubOpt.audio.new_rate				= 0;
@@ -1172,7 +1172,7 @@ void VDProject::PreviewInput() {
 	dubOpt.video.fShowInputFrame		= TRUE;
 	dubOpt.video.fShowOutputFrame		= FALSE;
 	dubOpt.video.frameRateDecimation	= 1;
-	dubOpt.video.lEndOffsetMS			= 0;
+	dubOpt.video.mSelectionEnd.mOffset	= -1;
 	dubOpt.video.mbUseSmartRendering	= false;
 
 	dubOpt.audio.mode					= DubAudioOptions::M_FULL;
@@ -1200,7 +1200,7 @@ void VDProject::PreviewOutput() {
 	dubOpt.audio.enabled				= TRUE;
 	dubOpt.audio.interval				= 1;
 	dubOpt.audio.is_ms					= FALSE;
-	dubOpt.video.lStartOffsetMS			= (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
+	dubOpt.video.mSelectionStart.mOffset = start;
 	dubOpt.video.mbUseSmartRendering	= false;
 
 	dubOpt.fShowStatus = false;
@@ -1428,10 +1428,10 @@ void VDProject::SetSelectionStart(VDPosition pos, bool notifyUser) {
 		mposSelectionStart = pos;
 		if (mposSelectionEnd < mposSelectionStart) {
 			mposSelectionEnd = mposSelectionStart;
-			g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - pos) * 1000.0);
+			g_dubOpts.video.mSelectionEnd.mOffset = pos;
 		}
 
-		g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * pos * 1000.0);
+		g_dubOpts.video.mSelectionStart.mOffset = pos;
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1455,9 +1455,10 @@ void VDProject::SetSelectionEnd(VDPosition pos, bool notifyUser) {
 		mposSelectionEnd = pos;
 		if (mposSelectionStart > mposSelectionEnd) {
 			mposSelectionStart = mposSelectionEnd;
-			g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * pos * 1000.0);
+			g_dubOpts.video.mSelectionStart.mOffset = pos;
 		}
-		g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - pos) * 1000.0);
+
+		g_dubOpts.video.mSelectionEnd.mOffset = pos;
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1483,8 +1484,8 @@ void VDProject::SetSelection(VDPosition start, VDPosition end, bool notifyUser) 
 		mposSelectionStart = start;
 		mposSelectionEnd = end;
 
-		g_dubOpts.video.lStartOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * start * 1000.0);
-		g_dubOpts.video.lEndOffsetMS = (long)VDRoundToInt32(mVideoTimelineFrameRate.AsInverseDouble() * (GetFrameCount() - end) * 1000.0);
+		g_dubOpts.video.mSelectionStart.mOffset = start;
+		g_dubOpts.video.mSelectionEnd.mOffset = end;
 
 		if (mpCB)
 			mpCB->UISelectionUpdated(notifyUser);
@@ -1981,9 +1982,9 @@ void VDProject::UpdateDubParameters(bool forceUpdate) {
 	}
 
 	// work around fraction ==(0,0) bug for now
-	mVideoInputFrameRate	= VDFraction(0,1);
-	mVideoOutputFrameRate	= VDFraction(0,1);
-	mVideoTimelineFrameRate	= VDFraction(0,1);
+	mVideoInputFrameRate	= VDFraction(1,1);
+	mVideoOutputFrameRate	= VDFraction(1,1);
+	mVideoTimelineFrameRate	= VDFraction(1,1);
 
 	DubVideoStreamInfo vInfo;
 
@@ -2000,6 +2001,7 @@ void VDProject::UpdateDubParameters(bool forceUpdate) {
 
 			mVideoInputFrameRate	= vInfo.mFrameRateIn;
 			mVideoOutputFrameRate	= vInfo.mFrameRatePreFilter;
+			mVideoTimelineFrameRate = vInfo.mFrameRatePreFilter;
 
 			StartFilters();
 

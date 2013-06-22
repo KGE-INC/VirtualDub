@@ -525,7 +525,7 @@ zero_fill:
 				memset(dst, 0, n*4);
 				dst += n*4;
 			} else {
-				if ((uint32)bytes != mTempBuffer.size())
+				if (bytes != 120000 && bytes != 144000)
 					return NULL;
 
 				const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];
@@ -533,6 +533,9 @@ zero_fill:
 				uint8 vaux_vs_pc3 = mTempBuffer[80*(1*150 + 3) + 6];		// DIF sequence 1, block 3, VAUX pack 0
 
 				bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
+
+				if (bytes != (isPAL ? 144000 : 120000))
+					return NULL;
 
 				uint32 minimumFrameSize;
 

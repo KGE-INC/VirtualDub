@@ -25,6 +25,7 @@ class VideoSource;
 
 class IVDAVIOutputGIF {
 public:
+	virtual ~IVDAVIOutputGIF() {}
 	virtual AVIOutput *AsAVIOutput() = 0;
 	virtual void SetLoopCount(int loopCount) = 0;
 };
