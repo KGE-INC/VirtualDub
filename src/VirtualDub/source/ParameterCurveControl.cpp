@@ -296,9 +296,6 @@ LRESULT CALLBACK VDParameterCurveControlW32::WndProc(UINT msg, WPARAM wParam, LP
 		OnMouseMove((SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam));
 		break;
 
-	case WM_MOUSEWHEEL:
-		return 0;
-
 	case WM_MOUSELEAVE:
 		OnMouseLeave();
 		break;

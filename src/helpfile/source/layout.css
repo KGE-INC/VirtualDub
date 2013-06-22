@@ -17,6 +17,13 @@ h2 {
 	border-bottom: 2px solid #5a8;
 	border-right: 2px solid #5a8;
 }
+
+h3 {
+	font-size: 12pt;
+	font-weight: normal;
+	border-bottom: 1px solid #000;
+}
+
 td {
 	vertical-align: top;
 	font-size: 10pt;

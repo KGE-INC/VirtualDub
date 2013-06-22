@@ -60,7 +60,7 @@ void SaveWAV(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_op
 void SaveAVI(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_opts=NULL, bool fCompatibility=false);
 void SaveStripedAVI(const wchar_t *szFile);
 void SaveStripeMaster(const wchar_t *szFile);
-void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
+void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold, int digits);
 void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat, int quality);
 void EnsureSubset();
 void ScanForUnreadableFrames(FrameSubset *pSubset, IVDVideoSource *pVideoSource);

@@ -22,6 +22,7 @@
 #include "FilterFrameRequest.h"
 
 class VDFilterFrameRequest;
+class VDTextOutputStream;
 
 class VDFilterFrameQueue {
 	VDFilterFrameQueue(const VDFilterFrameQueue&);
@@ -36,11 +37,13 @@ public:
 	void CompleteRequests(sint64 frame, VDFilterFrameBuffer *buf);
 
 	void CreateRequest(VDFilterFrameRequest **req);
-	bool PeekNextRequest(VDFilterFrameRequest **req);
-	bool GetNextRequest(VDFilterFrameRequest **req);
+	bool PeekNextRequest(const uint32 *batchNumberLimit, VDFilterFrameRequest **req);
+	bool GetNextRequest(const uint32 *batchNumberLimit, VDFilterFrameRequest **req);
 
 	void Add(VDFilterFrameRequest *req);
 	bool Remove(VDFilterFrameRequest *req);
+
+	void DumpStatus(VDTextOutputStream& os);
 
 #ifdef _DEBUG
 	void ValidateState();

@@ -3447,13 +3447,13 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 12) {
 			if (!memcmp(pHeader, "RIFF", 4) && !memcmp((char*)pHeader+8, "CDXA", 4))
-				return 1;
+				return kDC_High;
 
 			if (*(const uint32 *)pHeader == 0xba010000 || *(const uint32 *)pHeader==0xb3010000)
-				return 1;
+				return kDC_High;
 
 			// Second pass for MPEG.  This time, scan the first 64 bytes for 00 00 01 BA.
 
@@ -3468,11 +3468,11 @@ public:
 					break;
 
 			if (i < limit)
-				return 0;
+				return kDC_Moderate;
 
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

@@ -36,6 +36,8 @@ struct VDPixmapLayout;
 class IVDFilterFrameSource;
 class IVDFilterFrameClientRequest;
 class VDFilterFrameRequest;
+class VDFilterSystemProcessNode;
+class VDTextOutputStream;
 
 class IVDFilterSystemScheduler : public IVDRefCount {
 public:
@@ -53,21 +55,28 @@ public:
 	void SetAccelEnabled(bool enable);
 	void SetVisualAccelDebugEnabled(bool enable);
 
+	/// Set the number of async threads to use. -1 disables, 0 is auto.
+	void SetAsyncThreadCount(sint32 threadsToUse);
+
 	void prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
 	void initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, List *listFA, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
 	void ReadyFilters();
 
-	bool RequestFrame(sint64 outputFrame, IVDFilterFrameClientRequest **creq);
+	bool RequestFrame(sint64 outputFrame, uint32 batchNumber, IVDFilterFrameClientRequest **creq);
 
 	enum RunResult {
 		kRunResult_Idle,		// All filters are idle.
 		kRunResult_Running,		// There are still filters to run, and some can be run on this thread.
-		kRunResult_Blocked		// There are still filters to run, but all are waiting for asynchronous operation.
+		kRunResult_Blocked,		// There are still filters to run, but all are waiting for asynchronous operation.
+		kRunResult_BatchLimited	// There are still filters to run, but all ready ones are blocked due to the specified batch limit.
 	};
 
-	RunResult Run(bool runToCompletion);
+	RunResult Run(const uint32 *batchNumberLimit, bool runToCompletion);
+	void Block();
 
 	void InvalidateCachedFrames(FilterInstance *startingFilter);
+	
+	void DumpStatus(VDTextOutputStream& os);
 
 	void DeinitFilters();
 	void DeallocateBuffers();
@@ -75,6 +84,8 @@ public:
 	const VDPixmapLayout& GetOutputLayout() const;
 	bool isRunning() const;
 	bool isEmpty() const;
+	bool IsThreadingActive() const;
+	uint32 GetThreadCount() const;
 
 	bool GetDirectFrameMapping(VDPosition outputFrame, VDPosition& sourceFrame, int& sourceIndex) const;
 	sint64	GetSourceFrame(sint64 outframe) const;
@@ -96,6 +107,7 @@ private:
 	bool	mbFiltersUseAcceleration;
 	bool	mbAccelDebugVisual;
 	bool	mbAccelEnabled;
+	sint32	mThreadsRequested;
 
 	VDFraction	mOutputFrameRate;
 	VDFraction	mOutputPixelAspect;
@@ -109,7 +121,14 @@ private:
 
 	typedef vdfastvector<IVDFilterFrameSource *> Filters;
 	Filters mFilters;
-	Filters mActiveFilters;
+
+	struct ActiveFilterEntry {
+		IVDFilterFrameSource *mpFrameSource;
+		VDFilterSystemProcessNode *mpProcessNode;
+	};
+
+	typedef vdfastvector<ActiveFilterEntry> ActiveFilters;
+	ActiveFilters mActiveFilters;
 
 	uint32	mPalette[256];
 };

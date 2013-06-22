@@ -22,6 +22,8 @@ class InputFileOptions;
 class VDProjectSchedulerThread;
 class AudioSource;
 class IDubber;
+struct VDAVIOutputRawVideoFormat;
+struct VDAVIOutputCLITemplate;
 
 enum VDAudioSourceMode {
 	kVDAudioSourceMode_None		= 0,
@@ -153,15 +155,19 @@ public:
 	void Close();
 
 	void SaveAVI(const wchar_t *filename, bool compat, bool addAsJob);
-	void SaveFilmstrip(const wchar_t *pFilename);
-	void SaveAnimatedGIF(const wchar_t *pFilename, int loopCount);
-	void SaveRawAudio(const wchar_t *pFilename);
+	void SaveFilmstrip(const wchar_t *pFilename, bool propagateErrors);
+	void SaveAnimatedGIF(const wchar_t *pFilename, int loopCount, bool propagateErrors, DubOptions *optsOverride = NULL);
+	void SaveRawAudio(const wchar_t *pFilename, bool propagateErrors, DubOptions *optsOverride = NULL);
+	void SaveRawVideo(const wchar_t *pFilename, const VDAVIOutputRawVideoFormat& format, bool propagateErrors, DubOptions *optsOverride = NULL);
+	void ExportViaEncoder(const wchar_t *filename, const wchar_t *encSetName, bool propagateErrors, DubOptions *optsOverride = NULL);
 
 	void StartServer(const char *name = NULL);
 	void ShowInputInfo();
 	void SetVideoMode(int mode);
 	void CopySourceFrameToClipboard();
 	void CopyOutputFrameToClipboard();
+	void CopySourceFrameNumberToClipboard();
+	void CopyOutputFrameNumberToClipboard();
 
 	const wchar_t *GetAudioSourceDriverName() const { return mAudioInputDriverName.c_str(); }
 	const InputFileOptions *GetAudioSourceOptions() const { return mpAudioInputOptions; }

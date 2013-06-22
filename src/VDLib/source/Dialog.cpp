@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include <windows.h>
 #include <commctrl.h>
+#include <shellapi.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/VDLib/Dialog.h>
 
@@ -54,6 +55,8 @@ VDDialogFrameW32::VDDialogFrameW32(uint32 dlgid)
 	: mpDialogResourceName(MAKEINTRESOURCE(dlgid))
 	, mbIsModal(false)
 	, mhdlg(NULL)
+	, mMinWidth(0)
+	, mMinHeight(0)
 {
 }
 
@@ -93,6 +96,54 @@ void VDDialogFrameW32::Hide() {
 		ShowWindow(mhdlg, SW_HIDE);
 }
 
+void VDDialogFrameW32::Sync(bool write) {
+	if (mhdlg)
+		OnDataExchange(write);
+}
+
+vdsize32 VDDialogFrameW32::GetSize() const {
+	if (!mhdlg)
+		return vdsize32(0, 0);
+
+	RECT r;
+	if (!GetWindowRect(mhdlg, &r))
+		return vdsize32(0, 0);
+
+	return vdsize32(r.right - r.left, r.bottom - r.top);
+}
+
+void VDDialogFrameW32::BringToFront() {
+	if (!mhdlg)
+		return;
+
+	SetWindowPos(mhdlg, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);	
+}
+
+void VDDialogFrameW32::SetSize(const vdsize32& sz) {
+	if (!mhdlg)
+		return;
+
+	SetWindowPos(mhdlg, NULL, 0, 0, sz.w, sz.h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+vdrect32 VDDialogFrameW32::GetArea() const {
+	if (!mhdlg)
+		return vdrect32(0, 0, 0, 0);
+
+	RECT r;
+	if (!GetClientRect(mhdlg, &r))
+		return vdrect32(0, 0, 0, 0);
+
+	return vdrect32(r.left, r.top, r.right, r.bottom);
+}
+
+void VDDialogFrameW32::SetPosition(const vdpoint32& pt) {
+	if (!mhdlg)
+		return;
+
+	SetWindowPos(mhdlg, NULL, pt.x, pt.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void VDDialogFrameW32::End(sintptr result) {
 	if (!mhdlg)
 		return;
@@ -109,6 +160,17 @@ void VDDialogFrameW32::AddProxy(VDUIProxyControl *proxy, uint32 id) {
 	if (hwnd) {
 		proxy->Attach(hwnd);
 		mMsgDispatcher.AddControl(proxy);
+	}
+}
+
+void VDDialogFrameW32::SetCurrentSizeAsMinSize() {
+	RECT r;
+	if (GetWindowRect(mhdlg, &r)) {
+		if (r.right > r.left)
+			mMinWidth = r.right - r.left;
+
+		if (r.bottom > r.top)
+			mMinHeight = r.bottom - r.top;
 	}
 }
 
@@ -131,10 +193,18 @@ void VDDialogFrameW32::SetFocusToControl(uint32 id) {
 void VDDialogFrameW32::EnableControl(uint32 id, bool enabled) {
 	if (!mhdlg)
 		return;
-
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
 		EnableWindow(hwnd, enabled);
+}
+
+bool VDDialogFrameW32::GetControlText(uint32 id, VDStringW& s) {
+	HWND hwnd = GetDlgItem(mhdlg, id);
+	if (!hwnd)
+		return false;
+
+	s = VDGetWindowTextW32(hwnd);
+	return true;
 }
 
 void VDDialogFrameW32::SetCaption(uint32 id, const wchar_t *format) {
@@ -237,6 +307,16 @@ void VDDialogFrameW32::ExchangeControlValueBoolCheckbox(bool write, uint32 id, b
 	}
 }
 
+void VDDialogFrameW32::ExchangeControlValueUint32(bool write, uint32 id, uint32& val, uint32 minVal, uint32 maxVal) {
+	if (write) {
+		val = GetControlValueUint32(id);
+		if (val < minVal || val > maxVal)
+			FailValidation(id);
+	} else {
+		SetControlTextF(id, L"%u", (unsigned)val);
+	}
+}
+
 void VDDialogFrameW32::ExchangeControlValueDouble(bool write, uint32 id, const wchar_t *format, double& val, double minVal, double maxVal) {
 	if (write) {
 		val = GetControlValueDouble(id);
@@ -291,6 +371,28 @@ void VDDialogFrameW32::SignalFailedValidation(uint32 id) {
 		SetFocus(hwnd);
 }
 
+void VDDialogFrameW32::SetPeriodicTimer(uint32 id, uint32 msperiod) {
+	::SetTimer(mhdlg, id, msperiod, NULL);
+}
+
+void VDDialogFrameW32::ShowError(const wchar_t *message, const wchar_t *caption) {
+	if (VDIsWindowsNT())
+		::MessageBoxW(mhdlg, message, caption, MB_OK | MB_ICONERROR);
+	else
+		::MessageBoxA(mhdlg, VDTextWToA(message).c_str(), VDTextWToA(caption).c_str(), MB_OK | MB_ICONERROR);
+}
+
+bool VDDialogFrameW32::Confirm(const wchar_t *message, const wchar_t *caption) {
+	int result;
+	
+	if (VDIsWindowsNT())
+		result = ::MessageBoxW(mhdlg, message, caption, MB_OKCANCEL | MB_ICONEXCLAMATION);
+	else
+		result = ::MessageBoxA(mhdlg, VDTextWToA(message).c_str(), VDTextWToA(caption).c_str(), MB_OKCANCEL | MB_ICONEXCLAMATION);
+
+	return result == IDOK;
+}
+
 void VDDialogFrameW32::LBClear(uint32 id) {
 	SendDlgItemMessage(mhdlg, id, LB_RESETCONTENT, 0, 0);
 }
@@ -320,6 +422,26 @@ void VDDialogFrameW32::LBAddStringF(uint32 id, const wchar_t *format, ...) {
 	va_end(val);
 
 	LBAddString(id, s.c_str());
+}
+
+void VDDialogFrameW32::CBClear(uint32 id) {
+	SendDlgItemMessage(mhdlg, id, CB_RESETCONTENT, 0, 0);
+}
+
+sint32 VDDialogFrameW32::CBGetSelectedIndex(uint32 id) {
+	return SendDlgItemMessage(mhdlg, id, CB_GETCURSEL, 0, 0);
+}
+
+void VDDialogFrameW32::CBSetSelectedIndex(uint32 id, sint32 idx) {
+	SendDlgItemMessage(mhdlg, id, CB_SETCURSEL, idx, 0);
+}
+
+void VDDialogFrameW32::CBAddString(uint32 id, const wchar_t *s) {
+	if (VDIsWindowsNT()) {
+		SendDlgItemMessageW(mhdlg, id, CB_ADDSTRING, 0, (LPARAM)s);
+	} else {
+		SendDlgItemMessageA(mhdlg, id, CB_ADDSTRING, 0, (LPARAM)VDTextWToA(s).c_str());		
+	}
 }
 
 sint32 VDDialogFrameW32::TBGetValue(uint32 id) {
@@ -360,12 +482,22 @@ void VDDialogFrameW32::OnDestroy() {
 	mMsgDispatcher.RemoveAllControls();
 }
 
+bool VDDialogFrameW32::OnErase(VDZHDC hdc) {
+	return false;
+}
+
 bool VDDialogFrameW32::OnTimer(uint32 id) {
 	return false;
 }
 
 bool VDDialogFrameW32::OnCommand(uint32 id, uint32 extcode) {
 	return false;
+}
+
+void VDDialogFrameW32::OnHScroll(uint32 code, int id) {
+}
+
+void VDDialogFrameW32::OnVScroll(uint32 code, int id) {
 }
 
 void VDDialogFrameW32::OnDropFiles(VDZHDROP hdrop) {
@@ -376,12 +508,6 @@ void VDDialogFrameW32::OnDropFiles(VDZHDROP hdrop) {
 }
 
 void VDDialogFrameW32::OnDropFiles(IVDUIDropFileList *dropFileList) {
-}
-
-void VDDialogFrameW32::OnHScroll(uint32 code, int id) {
-}
-
-void VDDialogFrameW32::OnVScroll(uint32 code, int id) {
 }
 
 bool VDDialogFrameW32::PreNCDestroy() {
@@ -423,15 +549,21 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 				uint32 id = LOWORD(wParam);
 
 				if (id == IDOK) {
-					if (!OnOK())
-						End(true);
+					// needed to work around ListView label editing stupidity
+					if (HIWORD(wParam) == BN_CLICKED) {
+						if (!OnOK())
+							End(true);
 
-					return TRUE;
+						return TRUE;
+					}
 				} else if (id == IDCANCEL) {
-					if (!OnCancel())
-						End(false);
+					// needed to work around ListView label editing stupidity
+					if (HIWORD(wParam) == BN_CLICKED) {
+						if (!OnCancel())
+							End(false);
 
-					return TRUE;
+						return TRUE;
+					}
 				} else {
 					if (OnCommand(id, HIWORD(wParam)))
 						return TRUE;
@@ -466,6 +598,25 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 
 		case WM_VSCROLL:
 			OnVScroll(lParam ? GetWindowLong((HWND)lParam, GWL_ID) : 0, LOWORD(wParam));
+			return 0;
+
+		case WM_ERASEBKGND:
+			if (OnErase((HDC)wParam)) {
+				SetWindowLongPtr(mhdlg, DWLP_MSGRESULT, TRUE);
+				return TRUE;
+			}
+			break;
+
+		case WM_GETMINMAXINFO:
+			{
+				MINMAXINFO& mmi = *(MINMAXINFO *)lParam;
+
+				if (mmi.ptMinTrackSize.x < mMinWidth)
+					mmi.ptMinTrackSize.x = mMinWidth;
+
+				if (mmi.ptMinTrackSize.y < mMinHeight)
+					mmi.ptMinTrackSize.y = mMinHeight;
+			}
 			return 0;
 	}
 
@@ -570,4 +721,29 @@ void VDDialogResizerW32::Add(uint32 id, int alignment) {
 	ce.mY1			= r.top    - ((mHeight * ((alignment >> 4) & 3)) >> 1);
 	ce.mX2			= r.right  - ((mWidth  * ((alignment >> 2) & 3)) >> 1);
 	ce.mY2			= r.bottom - ((mHeight * ((alignment >> 6) & 3)) >> 1);
+}
+
+void VDDialogResizerW32::Erase() {
+	HDC hdc = GetDC(mhwndBase);
+	if (hdc) {
+		Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
+		for(; it!=itEnd; ++it) {
+			const ControlEntry& ce = *it;
+
+			if (ce.mAlignment & kAvoidFlicker) {
+				RECT rChild;
+
+				if (GetWindowRect(ce.mhwnd, &rChild)) {
+					MapWindowPoints(NULL, mhwndBase, (LPPOINT)&rChild, 2);
+					ExcludeClipRect(hdc, rChild.left, rChild.top, rChild.right, rChild.bottom);
+				}
+			}
+		}
+
+		RECT rClient;
+		if (GetClientRect(mhwndBase, &rClient))
+			FillRect(hdc, &rClient, (HBRUSH)(COLOR_3DFACE + 1));
+
+		ReleaseDC(mhwndBase, hdc);
+	}
 }

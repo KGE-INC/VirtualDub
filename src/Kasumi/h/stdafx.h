@@ -1,5 +1,6 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2006 Avery Lee
+//	Graphics support library
+//	Copyright (C) 1998-2009 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,37 +16,6 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_AVIOUTPUTRAW_H
-#define f_AVIOUTPUTRAW_H
-
-#include <vd2/system/fileasync.h>
-#include <vd2/system/vdalloc.h>
-
-#include "AVIOutput.h"
-
-class AVIOutputRaw : public AVIOutput {
-public:
-	AVIOutputRaw();
-	~AVIOutputRaw();
-
-	IVDMediaOutputStream *createVideoStream();
-	IVDMediaOutputStream *createAudioStream();
-
-	void setBufferSize(sint32 nBytes) {
-		mBufferSize = nBytes;
-	}
-
-	bool init(const wchar_t *szFile);
-	void finalize();
-
-	void write(const void *pBuffer, uint32 cbBuffer);
-
-private:
-	void WriteHeader(bool initial);
-
-	vdautoptr<IVDFileAsync>	mpFileAsync;
-	uint64		mBytesWritten;
-	sint32		mBufferSize;
-};
-
-#endif
+#include <vd2/system/vdtypes.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <uberblit.h>

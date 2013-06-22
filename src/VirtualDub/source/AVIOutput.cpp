@@ -30,6 +30,13 @@ AVIOutputStream::AVIOutputStream() {
 AVIOutputStream::~AVIOutputStream() {
 }
 
+void *AVIOutputStream::AsInterface(uint32 id) {
+	if (id == IVDMediaOutputStream::kTypeID)
+		return static_cast<IVDMediaOutputStream *>(this);
+
+	return NULL;
+}
+
 ////////////////////////////////////
 
 AVIOutput::AVIOutput() {

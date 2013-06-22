@@ -56,6 +56,7 @@ extern VDProject *g_project;
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 
 extern bool VDPreferencesGetFilterAccelEnabled();
+extern sint32 VDPreferencesGetFilterThreadCount();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -222,6 +223,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	filters.SetVisualAccelDebugEnabled(false);
 	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+	filters.SetAsyncThreadCount(VDPreferencesGetFilterThreadCount());
 	filters.initLinearChain(NULL, 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, srcFAR);
 
 	filters.ReadyFilters();
@@ -231,7 +233,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	InitAudioStreamValuesStatic(aInfo, aSrc, opt);
 
 	vdfastvector<IVDVideoSource *> vsrcs(1, vSrc);
-	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.mFrameRateTimeline / vInfo.mFrameRate, &mSubset, vInfo.end_dst, opt->video.mbUseSmartRendering, opt->video.mode == DubVideoOptions::M_NONE, opt->video.mbPreserveEmptyFrames, &filters);
+	mVideoFrameMap.Init(vsrcs, vInfo.start_src, vInfo.mFrameRateTimeline / vInfo.mFrameRate, &mSubset, vInfo.end_dst, opt->video.mbUseSmartRendering, opt->video.mode == DubVideoOptions::M_NONE, opt->video.mbPreserveEmptyFrames, &filters, false, false);
 
 	if (opt->audio.fEndAudio)
 		videoset.deleteRange(endFrame, videoset.getTotalFrames());
@@ -614,11 +616,20 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 			return VDSRVERR_FAILED;
 
 		vdrefptr<IVDFilterFrameClientRequest> creq;
-		filters.RequestFrame(pos, ~creq);
+		filters.RequestFrame(pos, 0, ~creq);
 
 		while(!creq->IsCompleted()) {
-			mpVideoFrameSource->RunRequests();
-			filters.Run(false);
+			if (filters.Run(NULL, false) == FilterSystem::kRunResult_Running)
+				continue;
+
+			switch(mpVideoFrameSource->RunRequests(NULL)) {
+				case IVDFilterFrameSource::kRunResult_Running:
+				case IVDFilterFrameSource::kRunResult_IdleWasActive:
+				case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+					continue;
+			}
+
+			filters.Block();
 		}
 
 		VDPixmap pxdst(VDPixmapFromLayout(mFrameLayout, fs->arena));

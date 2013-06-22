@@ -88,12 +88,19 @@ VDDubProcessThread::VDDubProcessThread()
 	, mpAbort(NULL)
 	, mpCurrentAction("starting up")
 	, mActivityCounter(0)
-	, mProcessingProfileChannel("Processor")
 {
 }
 
 VDDubProcessThread::~VDDubProcessThread() {
 	Shutdown();
+}
+
+IVDFilterSystemScheduler *VDDubProcessThread::GetVideoFilterScheduler() {
+	return &mVideoProcessor;
+}
+
+void VDDubProcessThread::PreInit() {
+	mVideoProcessor.PreInit();
 }
 
 void VDDubProcessThread::SetParent(IDubberInternal *pParent) {
@@ -103,7 +110,7 @@ void VDDubProcessThread::SetParent(IDubberInternal *pParent) {
 void VDDubProcessThread::SetAbortSignal(VDAtomicInt *pAbort) {
 	mpAbort = pAbort;
 
-	mVideoProcessor.SetThreadSignals(pAbort, &mpCurrentAction, &mProcessingProfileChannel, &mLoopThrottle);
+	mVideoProcessor.SetThreadSignals(&mpCurrentAction, &mLoopThrottle);
 }
 
 void VDDubProcessThread::SetStatusHandler(IDubStatusHandler *pStatusHandler) {
@@ -193,6 +200,9 @@ void VDDubProcessThread::Init(const DubOptions& opts, const VDRenderFrameMap *fr
 			frameMultiplier = 1.0;
 		}
 
+		// This MUST happen before the clock is inited.
+		mVideoProcessor.SetPreviewClock(&mPreviewClock);
+
 		if (opt->video.fSyncToAudio)
 			mPreviewClock.Init(static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut), mpBlitter, frameRate, frameMultiplier);
 		else
@@ -201,8 +211,8 @@ void VDDubProcessThread::Init(const DubOptions& opts, const VDRenderFrameMap *fr
 }
 
 void VDDubProcessThread::Shutdown() {
-	mVideoProcessor.Shutdown();
 	mPreviewClock.Shutdown();
+	mVideoProcessor.Shutdown();
 
 	if (mpBlitter) {
 		mpBlitter->abort();
@@ -215,13 +225,17 @@ void VDDubProcessThread::Shutdown() {
 		mpAVIOut = NULL;
 		mpAudioOut = NULL;
 		mpVideoOut = NULL;
-		mVideoProcessor.SetVideoOutput(NULL);
+		mVideoProcessor.SetVideoOutput(NULL, false);
 	}
 }
 
 void VDDubProcessThread::Abort() {
+	// NOTE: This function is asynchronous.
+
 	if (mpBlitter)
 		mpBlitter->beginFlush();
+
+	mVideoProcessor.Abort();
 }
 
 void VDDubProcessThread::UpdateFrames() {
@@ -236,20 +250,42 @@ void VDDubProcessThread::SetThrottle(float f) {
 	mLoopThrottle.SetThrottleFactor(f);
 }
 
+void VDDubProcessThread::DumpStatus(VDTextOutputStream& os) {
+	os.PutLine("=================");
+	os.PutLine("Processing thread");
+	os.PutLine("=================");
+	os.PutLine();
+
+	os.FormatLine("Completed:         %s", mbCompleted ? "Yes" : "No");
+	os.FormatLine("Error encountered: %s", mbError ? "Yes" : "No");
+
+	mLoopThrottle.BeginSuspend();
+	mVideoProcessor.PreDumpStatus(os);
+
+	if (mLoopThrottle.TryWaitSuspend(3000)) {
+		mVideoProcessor.DumpStatus(os);
+	} else {
+		os.PutLine();
+		os.PutLine("The processing thread is busy and could not be suspended.");
+	}
+
+	mLoopThrottle.EndSuspend();
+}
+
 void VDDubProcessThread::NextSegment() {
 	if (mpAVIOut) {
 		IVDMediaOutput *temp = mpAVIOut;
 		mpAVIOut = NULL;
 		mpAudioOut = NULL;
 		mpVideoOut = NULL;
-		mVideoProcessor.SetVideoOutput(NULL);
+		mVideoProcessor.SetVideoOutput(NULL, false);
 		mpOutputSystem->CloseSegment(temp, false);
 	}
 
 	mpAVIOut = mpOutputSystem->CreateSegment();
 	mpAudioOut = mpAVIOut->getAudioOutput();
 	mpVideoOut = mpAVIOut->getVideoOutput();
-	mVideoProcessor.SetVideoOutput(mpVideoOut);
+	mVideoProcessor.SetVideoOutput(mpVideoOut, mpOutputSystem->IsVideoImageOutputEnabled());
 }
 
 void VDDubProcessThread::ThreadRun() {
@@ -365,10 +401,10 @@ abort_requested:
 			// finalize avi
 			mpAudioOut = NULL;
 			mpVideoOut = NULL;
-			mVideoProcessor.SetVideoOutput(NULL);
+			mVideoProcessor.SetVideoOutput(NULL, false);
 			IVDMediaOutput *temp = mpAVIOut;
 			mpAVIOut = NULL;
-			mpOutputSystem->CloseSegment(temp, true);
+			mpOutputSystem->CloseSegment(temp, true, mbCompleted);
 		}
 	} catch(MyError& e) {
 		if (!mbError) {
@@ -397,7 +433,7 @@ bool VDDubProcessThread::WriteAudio(sint32 count) {
 		mAudioBuffer.resize(nBlockAlign);
 		char *buf = mAudioBuffer.data();
 
-		mProcessingProfileChannel.Begin(0xe0e0ff, "Audio");
+		VDPROFILEBEGIN("Audio");
 		while(totalSamples < count) {
 			while(mpAudioPipe->getLevel() < sizeof(int)) {
 				if (mpAudioPipe->isInputClosed()) {
@@ -450,19 +486,19 @@ bool VDDubProcessThread::WriteAudio(sint32 count) {
 
 			++mAudioSamplesWritten;
 
-			mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
+			VDPROFILEBEGIN("A-Write");
 			{
 				VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
 
 				mpAudioOut->write(AVIOutputStream::kFlagKeyFrame, buf, sampleSize, 1);
 			}
-			mProcessingProfileChannel.End();
+			VDPROFILEEND();
 
 			totalBytes += sampleSize;
 			++totalSamples;
 		}
 ended:
-		mProcessingProfileChannel.End();
+		VDPROFILEEND();
 
 		if (!totalSamples)
 			return true;
@@ -472,7 +508,7 @@ ended:
 		if (mAudioBuffer.size() < bytes)
 			mAudioBuffer.resize(bytes);
 
-		mProcessingProfileChannel.Begin(0xe0e0ff, "Audio");
+		VDPROFILEBEGIN("Audio");
 		while(totalBytes < bytes) {
 			int tc = mpAudioPipe->ReadPartial(&mAudioBuffer[totalBytes], bytes-totalBytes);
 
@@ -504,20 +540,20 @@ ended:
 			mAudioSamplesWritten += tc;
 			totalBytes += tc;
 		}
-		mProcessingProfileChannel.End();
+		VDPROFILEEND();
 
 		if (totalBytes <= 0)
 			return true;
 
 		totalSamples = totalBytes / nBlockAlign;
 
-		mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
+		VDPROFILEBEGIN("A-Write");
 		{
 			VDDubAutoThreadLocation loc(mpCurrentAction, "writing audio data to disk");
 
 			mpAudioOut->write(AVIOutputStream::kFlagKeyFrame, mAudioBuffer.data(), totalBytes, totalSamples);
 		}
-		mProcessingProfileChannel.End();
+		VDPROFILEEND();
 	}
 
 	// if audio and video are ready, start preview

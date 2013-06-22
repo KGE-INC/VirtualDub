@@ -77,8 +77,6 @@ void VDDubIOThread::Abort() {
 }
 
 void VDDubIOThread::ThreadRun() {
-	VDRTProfileChannel profchan("I/O");
-
 	bool bAudioActive = mpAudioPipe && (mpAudio != 0);
 	bool bVideoActive = mpVideoPipe && !mVideoSources.empty();
 
@@ -135,11 +133,11 @@ void VDDubIOThread::ThreadRun() {
 
 							VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
 
-							profchan.Begin(0xffe0e0, "Video");
+							VDPROFILEBEGIN("Video");
 
 							MainAddVideoFrame();
 
-							profchan.End();
+							VDPROFILEEND();
 							goto restart_service_loop;
 						}
 						break;
@@ -158,7 +156,7 @@ void VDDubIOThread::ThreadRun() {
 
 							VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
 
-							profchan.Begin(0xe0e0ff, "Audio");
+							VDPROFILEBEGIN("Audio");
 
 							if (!MainAddAudioFrame() && mpAudio->isEnd()) {
 								if (!mbPreview && !mAudioSamplesWritten && VDPreferencesIsRenderNoAudioWarningEnabled()) {
@@ -169,7 +167,7 @@ void VDDubIOThread::ThreadRun() {
 								mpAudioPipe->CloseInput();
 							}
 
-							profchan.End();
+							VDPROFILEEND();
 							goto restart_service_loop;
 						}
 						break;

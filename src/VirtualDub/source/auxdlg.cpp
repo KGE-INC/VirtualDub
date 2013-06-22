@@ -116,7 +116,6 @@ public:
 		switch(msg) {
 		case WM_INITDIALOG:
 			g_hwndProfileWindow = hdlg;
-			VDGetIRTProfileDisplayControl(GetDlgItem(hdlg, IDC_PROFILE))->SetProfiler(VDGetRTProfiler());
 			VDSetDialogDefaultIcons(hdlg);
 		case WM_SIZE:
 			{

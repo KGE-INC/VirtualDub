@@ -137,7 +137,7 @@ BEGIN
             VALUE "OriginalFilename", "vdub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.9.10\0"
+            VALUE "ProductVersion", "1.9.11\0"
             VALUE "SpecialBuild", "Debug build\0"
         END
     END

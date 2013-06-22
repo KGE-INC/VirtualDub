@@ -30,22 +30,33 @@ public:
 	~VDFilterFrameConverter();
 
 	void Init(IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const VDPixmapLayout *sourceLayoutOverride);
+	void Start(IVDFilterFrameEngine *frameEngine);
+	void Stop();
 
 	bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex);
 	sint64 GetSourceFrame(sint64 outputFrame);
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 
-	RunResult RunRequests();
+	RunResult RunRequests(const uint32 *batchNumberLimit);
+	RunResult RunProcess();
 
 protected:
-	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);
+	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber);
+	void EndFrame(bool success);
 
+	IVDFilterFrameEngine *mpEngine;
 	IVDFilterFrameSource *mpSource;
 	VDPixmapLayout		mSourceLayout;
 
 	vdautoptr<IVDPixmapBlitter> mpBlitter;
 	vdrefptr<VDFilterFrameRequest> mpRequest;
+
+	VDPixmap	mPixmapSrc;
+	VDPixmap	mPixmapDst;
+
+	VDAtomicInt	mbRequestPending;
+	VDAtomicInt	mbRequestSuccess;
 };
 
 #endif

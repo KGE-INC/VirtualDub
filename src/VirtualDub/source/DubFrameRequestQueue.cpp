@@ -62,6 +62,8 @@ bool VDDubFrameRequestQueue::RemoveRequest(VDDubFrameRequest& request) {
 
 		request = mQueue.front();
 		mQueue.pop_front();
+
+		mLowWatermarkEvent.Raise(this, false);
 		return true;
 	}
 }

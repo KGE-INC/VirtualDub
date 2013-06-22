@@ -33,6 +33,7 @@
 #define IDC_APPLY                       5
 #define IDC_FILTEROUTPUTNAMES           5
 #define IDC_RESET                       5
+#define IDC_DUPLICATE                   5
 #define IDC_MOVEDOWN                    6
 #define IDS_TITLE_STATUS                6
 #define IDC_POSTPONE                    6
@@ -240,6 +241,18 @@
 #define IDD_FILTER_FIELDDELAY           287
 #define IDD_DIALOG1                     288
 #define IDD_FILTER_OPTIONS              288
+#define IDD_DUMPSTATUS                  289
+#define IDD_FILTER_GAMMACORRECT         290
+#define IDD_OUTPUT_RAWVIDEO             291
+#define IDD_EXTOPENOPTS_RAWVIDEO        292
+#define IDD_SELECT_VIDEO_FORMAT         293
+#define IDD_FILTER_ALIASFORMAT          294
+#define IDD_OUTPUT_CLI                  295
+#define IDD_EXTENC_EDIT_MAIN            296
+#define IDD_EXTENC_EDIT_AUDIO           297
+#define IDD_EXTENC_EDIT                 298
+#define IDD_EXTENC_SETS                 299
+#define IDD_EXTENC_EDIT_SET             300
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -356,8 +369,12 @@
 #define IDC_INPUT_YUV420_NV12           1043
 #define IDC_SAMPLINGRATE_CUSTOM         1044
 #define IDC_OUTPUT_YUV420_NV12          1044
+#define IDC_INPUT_I8                    1045
+#define IDC_OUTPUT_I8                   1046
 #define IDC_SAMPLINGRATE_22KHZ          1047
+#define IDC_INPUT_OTHER                 1047
 #define IDC_SAMPLINGRATE_44KHZ          1048
+#define IDC_OUTPUT_OTHER                1048
 #define IDC_SAMPLINGRATE_INTEGRAL       1049
 #define IDC_BANDWIDTH_REQD              1050
 #define IDC_FRAMERATE_NOCHANGE          1051
@@ -440,6 +457,7 @@
 #define IDC_DISPLAY_CODE                1136
 #define IDC_WIDTH                       1136
 #define IDC_FRAMEWIDTH                  1137
+#define IDC_WIDTH2                      1137
 #define IDC_LINEAR_INTERPOLATION        1138
 #define IDC_FRAME_ASPECT1               1138
 #define IDC_FRAMERATE_SAMELENGTH        1139
@@ -483,6 +501,8 @@
 #define IDC_OUTPUTFOLDER                1152
 #define IDC_EDIT_SCALE                  1152
 #define IDC_PHASE                       1152
+#define IDC_ALIGNMENT                   1152
+#define IDC_FILEDESC                    1152
 #define IDS_VIDEO_FRAMERATE             1153
 #define IDC_DEFAULT_DRIVER              1153
 #define IDC_FILELIMIT_SETTING           1153
@@ -500,6 +520,8 @@
 #define IDC_INPUTHI                     1154
 #define IDC_FOURCC2                     1154
 #define IDC_YPOS                        1154
+#define IDC_PADDING_INITIAL             1154
+#define IDC_EXPORT                      1154
 #define IDS_VIDEO_COMPRESSION           1155
 #define IDC_USE_CURRENT_FILE            1155
 #define IDC_DROPLIMIT_SETTING           1155
@@ -576,6 +598,8 @@
 #define IDC_AUTOSTART                   1184
 #define IDC_MATCHCASE                   1184
 #define IDC_SINGLE_FB                   1184
+#define IDC_CHECKRETCODE                1184
+#define IDC_MUXPARTIAL                  1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -585,6 +609,8 @@
 #define IDC_AUTOCONNECT                 1185
 #define IDC_ENABLE_DIRECTX              1185
 #define IDC_SHOWASPECTRATIOS            1185
+#define IDC_MUXPARTIAL2                 1185
+#define IDC_USEOUTPUTASTEMP             1185
 #define IDC_PERFOPT_SSE                 1186
 #define IDC_CHROMAAGCENEVEN             1186
 #define IDC_FORCE_DXWITHTS              1186
@@ -692,6 +718,8 @@
 #define IDC_PICKCOLOR                   1282
 #define IDC_LOGOFILE_BROWSE             1282
 #define IDC_BROWSEOUTPUTFOLDER          1282
+#define IDC_DUMPSTATUS                  1282
+#define IDC_BROWSE                      1282
 #define IDS_AUDIO_SOURCE_AVI            1283
 #define IDC_REGDUMP                     1283
 #define IDC_ALPHAFILE_BROWSE            1283
@@ -829,6 +857,8 @@
 #define IDC_FORMAT_PNG                  1385
 #define IDC_ODD_HALFDOWN                1386
 #define IDC_HUE                         1386
+#define IDC_FORMAT_TGA2                 1386
+#define IDC_FORMAT_TGAUNCOMPRESSED      1386
 #define IDC_SATURATION                  1387
 #define IDC_STATIC_HUE                  1388
 #define IDC_STATIC_SATURATION           1389
@@ -923,9 +953,13 @@
 #define IDC_RADIO5                      1448
 #define IDC_DEINTERLACE_ADAPTIVEELA     1448
 #define IDC_BLUR                        1448
+#define IDC_VORIENT_BOTTOMUP            1448
+#define IDC_FIELDORDER_BLURRED          1448
 #define IDC_STATIC_DEPTH                1449
 #define IDC_DEINTERLACE_NONE            1449
 #define IDC_DEINTERLACE_NONEHALF        1449
+#define IDC_FIELDORDER_BLURRED2         1449
+#define IDC_FIELDORDER_DUPLICATED       1449
 #define IDC_DIR_MIDDLERIGHT             1450
 #define IDC_STATIC_BLUR                 1450
 #define IDC_DEINTERLACE_NONE2           1450
@@ -967,6 +1001,40 @@
 #define IDC_DEST_HDC                    1479
 #define IDC_FIELDMODE_TFFTOBFF          1480
 #define IDC_FIELDMODE_BFFTOTFF          1481
+#define IDC_LINEARTOSRGB                1482
+#define IDC_RADIO2                      1483
+#define IDC_SRGBTOLINEAR                1483
+#define IDC_VORIENT_TOPDOWN             1483
+#define IDC_INPUT_WAV                   1483
+#define IDC_OUTPUT_FORMAT               1484
+#define IDC_PLANEORDER_CBCR             1486
+#define IDC_PLANEORDER_CRCB             1487
+#define IDC_PADDING_FRAME               1489
+#define IDC_INPUT_FORMAT                1490
+#define IDC_CS_NONE                     1492
+#define IDC_CS_601                      1493
+#define IDC_CS_709                      1494
+#define IDC_CR_NONE                     1495
+#define IDC_CR_LIMITED                  1496
+#define IDC_CR_FULL                     1497
+#define IDC_STATIC_COLORSPACE           1498
+#define IDC_INPUT_RAW                   1504
+#define IDC_LOG_STDOUT                  1505
+#define IDC_LOG_STDERR                  1506
+#define IDC_TYPE                        1507
+#define IDC_CMDLINE                     1508
+#define IDC_PROGRAM                     1508
+#define IDC_OUTPUTFILENAME              1509
+#define IDC_ARGUMENTS                   1510
+#define IDC_PREDELETE_OUTPUTFILE        1511
+#define IDC_VIDEO_ENCODER               1514
+#define IDC_AUDIO_ENCODER               1515
+#define IDC_MULTIPLEXER                 1516
+#define IDC_FILEEXT                     1517
+#define IDC_FORCEPCM                    1520
+#define IDC_BYPASSCOMPRESSION           1520
+#define IDC_IMPORT                      1521
+#define IDC_BLEND_WEIGHTING             1522
 #define IDS_HELP_CONTENTS               1536
 #define IDS_HELP_CHANGELOG              1537
 #define IDS_HELP_RELEASENOTES           1538
@@ -1412,6 +1480,17 @@
 #define ID_PANELAYOUT_BOTHPANES         40515
 #define ID_PANELAYOUT_AUTO              40516
 #define ID_PANELAYOUT_AUTOSIZE          40517
+#define ID_EXPORT_RAWVIDEO              40518
+#define ID_QUEUEBATCHOPERATION_EXPORTRAWVIDEO 40519
+#define ID_FILE_SAVERAWVIDEO            40520
+#define ID_EXPORT_USINGEXTERNALENCODER  40521
+#define ID_FILE_EXPORTEXTERNALENCODER   40522
+#define ID_OPTIONS_EXTERNALENCODERS     40523
+#define ID_QUEUEBATCHOPERATION_EXPORTUSINGEXTERNALENCODER 40524
+#define ID_VIDEO_COPYSOURCEFRAMENUMBERTOCLIPBOARD 40525
+#define ID_VIDEO_COPYOUTPUTFRAMENUMBERTOCLIPBOARD 40526
+#define ID_VIDEO_COPYSOURCEFRAMENUMBER  40527
+#define ID_VIDEO_COPYOUTPUTFRAMENUMBER  40528
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1466,9 +1545,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        289
-#define _APS_NEXT_COMMAND_VALUE         40518
-#define _APS_NEXT_CONTROL_VALUE         1482
+#define _APS_NEXT_RESOURCE_VALUE        301
+#define _APS_NEXT_COMMAND_VALUE         40529
+#define _APS_NEXT_CONTROL_VALUE         1523
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

@@ -37,13 +37,23 @@ void VDFilterAccelEngineDispatchQueue::SetProfilingChannel(VDRTProfileChannel *c
 	mpProfChan = chan;
 }
 
-void VDFilterAccelEngineDispatchQueue::Run() {
-	HANDLE h = mMessagesReady.getHandle();
+void VDFilterAccelEngineDispatchQueue::Run(VDScheduler *sch) {
+	HANDLE h[2];
+	int n = 0;
+	h[n++] = mMessagesReady.getHandle();
+	if (sch)
+		h[n++] = sch->getSignal()->getHandle();
+
 	bool pollQueueEmpty = false;
 	bool checkingPollQueue = false;
 	bool pollScopeOpen = false;
 
 	while(mbActive) {
+		if (sch) {
+			while(sch->Run())
+				;
+		}
+
 		Message *msg = NULL;
 		mMutex.Lock();
 		
@@ -81,8 +91,15 @@ void VDFilterAccelEngineDispatchQueue::Run() {
 			DWORD waitResult;
 			
 			for(;;) {
-				waitResult = ::MsgWaitForMultipleObjects(1, &h, FALSE, pollQueueEmpty ? INFINITE : 1, QS_ALLEVENTS);
-				if (waitResult != WAIT_OBJECT_0 + 1)
+				if (pollQueueEmpty) {
+					waitResult = ::MsgWaitForMultipleObjects(n, h, FALSE, INFINITE, QS_ALLEVENTS);
+				} else {
+					VDPROFILEBEGIN("Poll");
+					waitResult = ::MsgWaitForMultipleObjects(n, h, FALSE, 1, QS_ALLEVENTS);
+					VDPROFILEEND();
+				}
+
+				if (waitResult != WAIT_OBJECT_0 + n)
 					break;
 
 				MSG msg;
@@ -124,11 +141,13 @@ void VDFilterAccelEngineDispatchQueue::Run() {
 
 		VDFilterAccelEngineMessage::CleanupFn cleanup = msg->mpCleanup;
 
-		if (msg->mpCompleteSignal)
-			msg->mpCompleteSignal->signal();
+		VDSignal *sig = msg->mpCompleteSignal;
 
 		if (cleanup)
 			cleanup(this, msg);
+
+		if (sig)
+			sig->signal();
 	}
 
 	if (pollScopeOpen)
@@ -166,7 +185,12 @@ void VDFilterAccelEngineDispatchQueue::Post(Message *msg) {
 	mMessagesReady.signal();
 }
 
+static VDAtomicInt sThread = 0;
+static VDAtomicInt sThread2 = 0;
+
 void VDFilterAccelEngineDispatchQueue::Wait(Message *msg, VDFilterAccelEngineDispatchQueue& localQueue) {
+	VDASSERT(!sThread2.xchg(VDGetCurrentThreadID()));
+
 	HANDLE h[2];
 	int n = 1;
 
@@ -188,13 +212,18 @@ void VDFilterAccelEngineDispatchQueue::Wait(Message *msg, VDFilterAccelEngineDis
 			continue;
 		}
 	}
+	VDASSERT(sThread2.xchg(0) == VDGetCurrentThreadID());
 }
 
 void VDFilterAccelEngineDispatchQueue::Send(Message *msg, VDFilterAccelEngineDispatchQueue& localQueue) {
+
+	VDASSERT(!sThread.xchg(VDGetCurrentThreadID()));
 	msg->mpCompleteSignal = &localQueue.mSyncMessageCompleted;
 
 	Post(msg);
 	Wait(msg, localQueue);
+
+	VDASSERT(sThread.xchg(0) == VDGetCurrentThreadID());
 }
 
 VDFilterAccelEngine::VDFilterAccelEngine()
@@ -229,6 +258,8 @@ struct VDFilterAccelEngine::InitMsg : public VDFilterAccelEngineMessage {
 };
 
 bool VDFilterAccelEngine::Init(bool visualDebugging) {
+	mScheduler.setSignal(&mSchedulerSignal);
+
 	if (!ThreadStart())
 		return false;
 
@@ -237,7 +268,7 @@ bool VDFilterAccelEngine::Init(bool visualDebugging) {
 	initMsg.mpThis		= this;
 	initMsg.mbVisDebug	= visualDebugging;
 	initMsg.mbSuccess	= false;
-	mWorkerQueue.Send(&initMsg, mCallbackQueue);
+	SyncCall(&initMsg);
 	return initMsg.mbSuccess;
 }
 
@@ -431,7 +462,7 @@ void VDFilterAccelEngine::Shutdown() {
 		InitMsg shutdownMsg;
 		shutdownMsg.mpCallback	= ShutdownCallback;
 		shutdownMsg.mpThis		= this;
-		mWorkerQueue.Send(&shutdownMsg, mCallbackQueue);
+		SyncCall(&shutdownMsg);
 
 		mWorkerQueue.Shutdown();
 		ThreadWait();
@@ -483,7 +514,28 @@ void VDFilterAccelEngine::ShutdownCallback2() {
 }
 
 void VDFilterAccelEngine::SyncCall(VDFilterAccelEngineMessage *message) {
-	mWorkerQueue.Send(message, mCallbackQueue);
+	if (VDGetCurrentThreadID() == getThreadID()) {
+		if (!message->mbCompleted) {
+			do {
+				message->mbRePoll = false;
+				message->mpCallback(&mWorkerQueue, message);
+			} while(message->mbRePoll);
+
+			message->mbCompleted = true;
+
+			VDFilterAccelEngineMessage::CleanupFn cleanup = message->mpCleanup;
+
+			VDSignal *sig = message->mpCompleteSignal;
+
+			if (cleanup)
+				cleanup(&mWorkerQueue, message);
+
+			if (sig)
+				sig->signal();
+		}
+	} else {
+		mWorkerQueue.Send(message, mCallbackQueue);
+	}
 }
 
 void VDFilterAccelEngine::PostCall(VDFilterAccelEngineMessage *message) {
@@ -518,7 +570,7 @@ void VDFilterAccelEngine::DecommitBuffer(VDFilterFrameBufferAccel *buf) {
 	msg.mpCallback = DecommitCallback;
 	msg.mpBuf = buf;
 
-	mWorkerQueue.Send(&msg, mCallbackQueue);
+	SyncCall(&msg);
 }
 
 void VDFilterAccelEngine::DecommitCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
@@ -547,6 +599,12 @@ void VDFilterAccelEngine::Upload(VDFilterFrameBufferAccel *dst, VDFilterFrameBuf
 	if (!srcp)
 		return;
 
+	Upload(dst, srcp, srcLayout);
+
+	src->Unlock();
+}
+
+void VDFilterAccelEngine::Upload(VDFilterFrameBufferAccel *dst, const void *srcp, const VDPixmapLayout& srcLayout) {
 	UploadMsg msg;
 	msg.mpCallback = UploadCallback;
 	msg.mpThis = this;
@@ -562,17 +620,23 @@ void VDFilterAccelEngine::Upload(VDFilterFrameBufferAccel *dst, VDFilterFrameBuf
 	msg.mbYUV = srcLayout.format == nsVDXPixmap::kPixFormat_YUV444_Planar;
 	msg.mbSuccess = false;
 
-	mWorkerQueue.Send(&msg, mCallbackQueue);
-
-	src->Unlock();
+	SyncCall(&msg);
 }
 
 void VDFilterAccelEngine::UploadCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
 	UploadMsg& msg = *static_cast<UploadMsg *>(message);
 	IVDTProfiler *p = msg.mpThis->mpTP;
 
-	if (p)
-		p->BeginScope(0xffe0e0, msg.mbYUV ? "Frame upload (YUV)" : "Frame upload (RGB)");
+	if (msg.mbYUV) {
+		if (p)
+			p->BeginScope(0xffe0e0, "Frame upload (YUV)");
+
+		VDPROFILEBEGIN("Upload-YUV");
+	} else {
+		if (p)
+			p->BeginScope(0xffe0e0, "Frame upload (RGB)");
+		VDPROFILEBEGIN("Upload-RGB");
+	}
 
 	if (msg.mpThis->CommitBuffer(msg.mpDst, false)) {
 		IVDTTexture2D *dsttex = msg.mpDst->GetTexture();
@@ -654,6 +718,7 @@ void VDFilterAccelEngine::UploadCallback(VDFilterAccelEngineDispatchQueue *queue
 		}
 	}
 
+	VDPROFILEEND();
 	if (p)
 		p->EndScope();
 }
@@ -712,7 +777,7 @@ bool VDFilterAccelEngine::Download(VDFilterFrameBuffer *dst, const VDPixmapLayou
 	DownloadMsg msg;
 
 	BeginDownload(&msg, dst, dstLayout, src, srcYUV, rb);
-	mWorkerQueue.Send(&msg, mCallbackQueue);
+	SyncCall(&msg);
 	EndDownload(&msg);
 
 	return msg.mbSuccess;
@@ -731,11 +796,26 @@ void VDFilterAccelEngine::DownloadCallback2a(DownloadMsg& msg) {
 	VDFilterAccelReadbackBuffer& rbo = *msg.mpRB;
 	IVDTProfiler *p = mpTP;
 
-	if (p) {
-		if (msg.mbSrcYUV)
-			p->BeginScope(0x8080f0, msg.mbDstYUV ? "RB-Blit (YUV->YUV)" : "RB-Blit (YUV->RGB");
-		else
-			p->BeginScope(0x8080f0, msg.mbDstYUV ? "RB-Blit (RGB->YUV)" : "RB-Blit (RGB->RGB)");
+	if (msg.mbSrcYUV) {
+		if (msg.mbDstYUV) {
+			if (p)
+				p->BeginScope(0x8080f0, "RB-Blit (YUV->YUV)");
+			VDPROFILEBEGIN("RB-Blit (YUV->YUV)");
+		} else {
+			if (p)
+				p->BeginScope(0x8080f0, "RB-Blit (YUV->RGB)");
+			VDPROFILEBEGIN("RB-Blit (YUV->RGB)");
+		}
+	} else {
+		if (msg.mbDstYUV) {
+			if (p)
+				p->BeginScope(0x8080f0, "RB-Blit (RGB->YUV)");
+			VDPROFILEBEGIN("RB-Blit (RGB->YUV)");
+		} else {
+			if (p)
+				p->BeginScope(0x8080f0, "RB-Blit (RGB->RGB)");
+			VDPROFILEBEGIN("RB-Blit (RGB->RGB)");
+		}
 	}
 
 	IVDTTexture2D *srctex = msg.mpSrc->GetTexture();
@@ -844,6 +924,8 @@ void VDFilterAccelEngine::DownloadCallback2a(DownloadMsg& msg) {
 
 	if (p)
 		p->EndScope();
+
+	VDPROFILEEND();
 }
 
 void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
@@ -862,7 +944,9 @@ void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
 	if (p)
 		p->BeginScope(0x8040c0, "Readback");
 
+	VDPROFILEBEGIN("Readback");
 	bool rbsuccess = rt->Readback(rb);
+	VDPROFILEEND();
 
 	if (p)
 		p->EndScope();
@@ -874,8 +958,12 @@ void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
 	if (p)
 		p->BeginScope(0x4080c0, "RB-Lock");
 
+	VDPROFILEBEGIN("RB-Lock");
+
 	VDTLockData2D lockData;
 	bool lksuccess = rb->Lock(lockData);
+
+	VDPROFILEEND();
 
 	if (p)
 		p->EndScope();
@@ -886,6 +974,7 @@ void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
 	if (p)
 		p->BeginScope(0x8080f0, "RB-Copy");
 
+	VDPROFILEBEGIN("RB-Copy");
 	if (!msg.mbDstYUV) {
 		// RGB destination case
 		VDMemcpyRect(msg.mpDst[0], msg.mDstPitch[0], lockData.mpData, lockData.mPitch, 4*msg.mWidth, msg.mHeight);
@@ -900,6 +989,7 @@ void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
 	}
 
 	rb->Unlock();
+	VDPROFILEEND();
 
 	if (p)
 		p->EndScope();
@@ -932,7 +1022,7 @@ bool VDFilterAccelEngine::Convert(VDFilterFrameBufferAccel *dst, const VDPixmapL
 	msg.mSrcRect = srcRect;
 	msg.mbSuccess = false;
 
-	mWorkerQueue.Send(&msg, mCallbackQueue);
+	SyncCall(&msg);
 
 	return msg.mbSuccess;
 }
@@ -1206,7 +1296,7 @@ void VDFilterAccelEngine::ThreadRun() {
 			precision = tc.wPeriodMin;
 	}
 
-	mWorkerQueue.Run();
+	mWorkerQueue.Run(&mScheduler);
 	ShutdownCallback2();
 
 	if (precision)

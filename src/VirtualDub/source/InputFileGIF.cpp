@@ -804,15 +804,15 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 3) {
-			const uint8 *buf = (const uint8 *)pFooter;
+			const uint8 *buf = (const uint8 *)pHeader;
 
 			if (buf[0] == 'G' && buf[1] == 'I' && buf[2] == 'F')
-				return 1;
+				return kDC_High;
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

@@ -96,12 +96,19 @@ public:
 		kOF_Max				= 0xFFFFFFFFUL
 	};
 
+	enum DetectionConfidence {
+		kDC_None,
+		kDC_Low,
+		kDC_Moderate,
+		kDC_High
+	};
+
 	virtual int				GetDefaultPriority() = 0;
 	virtual const wchar_t *	GetSignatureName() = 0;
 	virtual uint32			GetFlags() = 0;
 	virtual const wchar_t *	GetFilenamePattern() = 0;
 	virtual bool			DetectByFilename(const wchar_t *pszFilename) = 0;
-	virtual int				DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) = 0;
+	virtual DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) = 0;
 	virtual InputFile *		CreateInputFile(uint32 flags) = 0;
 };
 

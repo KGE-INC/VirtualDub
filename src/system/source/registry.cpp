@@ -41,6 +41,23 @@ VDRegistryKey::VDRegistryKey(const char *keyName, bool global, bool write) {
 	}
 }
 
+VDRegistryKey::VDRegistryKey(VDRegistryKey& baseKey, const char *keyName, bool write)
+	: pHandle(NULL)
+{
+	const HKEY rootKey = (HKEY)baseKey.pHandle;
+
+	if (rootKey) {
+		if (write) {
+			if (RegCreateKeyEx(rootKey, keyName, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, (PHKEY)&pHandle, NULL))
+				pHandle = NULL;
+		} else {
+			if (RegOpenKeyEx(rootKey, keyName, 0, KEY_READ, (PHKEY)&pHandle))
+				pHandle = NULL;
+
+		}
+	}
+}
+
 VDRegistryKey::~VDRegistryKey() {
 	if (pHandle)
 		RegCloseKey((HKEY)pHandle);
@@ -207,6 +224,13 @@ bool VDRegistryKey::removeValue(const char *name) {
 	return true;
 }
 
+bool VDRegistryKey::removeKey(const char *name) {
+	if (!pHandle || RegDeleteKey((HKEY)pHandle, name))
+		return false;
+
+	return true;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 VDRegistryValueIterator::VDRegistryValueIterator(const VDRegistryKey& key)
@@ -218,6 +242,26 @@ VDRegistryValueIterator::VDRegistryValueIterator(const VDRegistryKey& key)
 const char *VDRegistryValueIterator::Next() {
 	DWORD len = sizeof(mName)/sizeof(mName[0]);
 	LONG error = RegEnumValueA((HKEY)mpHandle, mIndex, mName, &len, NULL, NULL, NULL, NULL);
+
+	if (error)
+		return NULL;
+
+	++mIndex;
+	return mName;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDRegistryKeyIterator::VDRegistryKeyIterator(const VDRegistryKey& key)
+	: mpHandle(key.getRawHandle())
+	, mIndex(0)
+{
+}
+
+const char *VDRegistryKeyIterator::Next() {
+	DWORD len = sizeof(mName)/sizeof(mName[0]);
+	FILETIME ft;
+	LONG error = RegEnumKeyExA((HKEY)mpHandle, mIndex, mName, &len, NULL, NULL, NULL, &ft);
 
 	if (error)
 		return NULL;

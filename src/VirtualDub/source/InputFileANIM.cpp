@@ -900,15 +900,15 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 32) {
 			const uint8 *buf = (const uint8 *)pHeader;
 
 			if (!memcmp(buf, "FORM", 4) && !memcmp(buf+8, "ANIM", 4))
-				return 1;
+				return kDC_High;
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

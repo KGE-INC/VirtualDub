@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include <vd2/system/debug.h>
+#include <vd2/system/file.h>
 #include <vd2/system/int128.h>
 #include <vd2/system/protscope.h>
 #include <vd2/Kasumi/pixmapops.h>
@@ -551,6 +552,9 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, mScriptFunc		(fi.mScriptFunc)
 	, mpFDInst			(fi.mpFDInst)
 	, mpAlphaCurve		(fi.mpAlphaCurve)
+	, mpRequestInProgress(NULL)
+	, mbRequestFramePending(false)
+	, mbRequestFrameBeingProcessed(false)
 	, mpAccelEngine		(NULL)
 	, mpAccelContext	(NULL)
 {
@@ -586,6 +590,10 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	, mpFDInst(fdi)
 	, mpAutoDeinit(NULL)
 	, mpLogicError(NULL)
+	, mpRequestInProgress(NULL)
+	, mbRequestFramePending(false)
+	, mbRequestFrameCompleted(false)
+	, mbRequestFrameBeingProcessed(false)
 	, mpAccelEngine(NULL)
 	, mpAccelContext(NULL)
 {
@@ -673,6 +681,8 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 }
 
 FilterInstance::~FilterInstance() {
+	VDASSERT(!mpRequestInProgress);
+
 	VDFilterThreadContextSwapper autoContextSwap(&mThreadContext);
 
 	if (mpAutoDeinit) {
@@ -1009,9 +1019,15 @@ struct FilterInstance::StopStartMessage : public VDFilterAccelEngineMessage {
 	MyError mError;
 };
 
-void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterSystemScheduler *scheduler, VDFilterAccelEngine *accelEngine) {
+void FilterInstance::Start(IVDFilterFrameEngine *engine) {
+	throw MyError("This function is not supported.");
+}
+
+void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine) {
 	if (mbStarted)
 		return;
+
+	mProfileCacheFilterName = 0;
 
 	if (mbAccelerated && accelEngine)
 		mpAccelEngine = accelEngine;
@@ -1083,17 +1099,28 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 		}
 	}
 
-	if (mbAccelerated) {
-		StopStartMessage msg;
-		msg.mpCallback = StartFilterCallback;
-		msg.mpThis = this;
+	try {
+		if (mbAccelerated) {
+			StopStartMessage msg;
+			msg.mpCallback = StartFilterCallback;
+			msg.mpThis = this;
 
-		mpAccelEngine->SyncCall(&msg);
+			mpAccelEngine->SyncCall(&msg);
 
-		if (msg.mError.gets())
-			throw MyError(msg.mError);
-	} else {
-		StartInner();
+			if (msg.mError.gets())
+				throw MyError(msg.mError);
+		} else {
+			StartInner();
+		}
+	} catch(const MyError&) {
+		if (!mRealSrc.hdc)
+			mRealSrc.Unbind();
+
+		if (!mRealDst.hdc)
+			mRealDst.Unbind();
+
+		Stop();
+		throw;
 	}
 
 	if (!mRealSrc.hdc && !mbForceSingleFB)
@@ -1110,6 +1137,15 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 		throw MyError("Cannot start filter '%s': %s", mpLogicError->mError.c_str());
 
 	VDASSERT(mRealDst.mBorderWidth < 10000000 && mRealDst.mBorderHeight < 10000000);
+
+	mbRequestFramePending = false;
+	mbRequestFrameCompleted = false;
+	mbRequestFrameBeingProcessed = false;
+
+	mpEngine = engine;
+
+	VDASSERT(!mRealDst.GetBuffer());
+	VDASSERT(!mExternalDst.GetBuffer());
 }
 
 void FilterInstance::StartFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
@@ -1141,14 +1177,11 @@ void FilterInstance::StartInner() {
 				rcode = filter->startProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
 			}
 		} catch(const MyError& e) {
-			Stop();
 			throw MyError("Cannot start filter '%s': %s", filter->name, e.gets());
 		}
 
-		if (rcode) {
-			Stop();
+		if (rcode)
 			throw MyError("Cannot start filter '%s': Unknown failure.", filter->name);
-		}
 
 		mbFirstFrame = true;
 	}
@@ -1159,6 +1192,19 @@ void FilterInstance::Stop() {
 		return;
 
 	mbStarted = false;
+
+	if (mbRequestFramePending || mbRequestFrameCompleted) {
+		EndFrame();
+
+		mbRequestFramePending = false;
+		mbRequestFrameCompleted = false;
+	} else {
+		VDASSERT(!mRealDst.GetBuffer());
+		VDASSERT(!mExternalDst.GetBuffer());
+	}
+
+	if (mpRequestInProgress)
+		CloseRequest(false);
 
 	if (mbAccelerated) {
 		StopStartMessage msg;
@@ -1196,6 +1242,10 @@ void FilterInstance::Stop() {
 	mpSourceConversionBlitter = NULL;
 
 	mpAccelEngine = NULL;
+	mpEngine = NULL;
+
+	VDASSERT(!mRealDst.GetBuffer());
+	VDASSERT(!mExternalDst.GetBuffer());
 }
 
 void FilterInstance::StopFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
@@ -1225,6 +1275,10 @@ void FilterInstance::StopInner() {
 	}
 }
 
+const char *FilterInstance::GetDebugDesc() const {
+	return filter->name;
+}
+
 VDFilterFrameAllocatorProxy *FilterInstance::GetOutputAllocatorProxy() {
 	return &mResultAllocator;
 }
@@ -1251,7 +1305,7 @@ void FilterInstance::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr
 	mgr->AddAllocatorProxy(&mResultAllocator);
 }
 
-bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req) {
+bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req) {
 	VDASSERT(mbStarted);
 
 	if (outputFrame < 0)
@@ -1275,6 +1329,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, IVDFilterF
 		timing.mSourceFrame = GetSourceFrame(outputFrame);
 		timing.mOutputFrame = outputFrame;
 		r->SetTiming(timing);
+		r->SetBatchNumber(batchNumber);
 
 		vdrefptr<VDFilterFrameBuffer> buf;
 
@@ -1301,7 +1356,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, IVDFilterF
 					r->SetSourceCount(1);
 
 					vdrefptr<IVDFilterFrameClientRequest> srcreq;
-					mpSource->CreateRequest(vp.mDirectFrame, false, ~srcreq);
+					mpSource->CreateRequest(vp.mDirectFrame, false, batchNumber, ~srcreq);
 
 					srcreq->Start(NULL, 0);
 
@@ -1315,7 +1370,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, IVDFilterF
 						bool writable = (idx == 0) && IsInPlace();
 
 						vdrefptr<IVDFilterFrameClientRequest> srcreq;
-						mpSource->CreateRequest(prefetchInfo.mFrame, writable, ~srcreq);
+						mpSource->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
 
 						srcreq->Start(NULL, prefetchInfo.mCookie);
 
@@ -1341,7 +1396,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, IVDFilterF
 	return true;
 }
 
-bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, IVDFilterFrameClientRequest **req) {
+bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, uint32 batchNumber, IVDFilterFrameClientRequest **req) {
 	VDASSERT(mbStarted);
 
 	if (outputFrame < 0)
@@ -1380,7 +1435,7 @@ bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewS
 			bool writable = (idx == 0) && IsInPlace();
 
 			vdrefptr<IVDFilterFrameClientRequest> srcreq;
-			mpSource->CreateRequest(prefetchInfo.mFrame, writable, ~srcreq);
+			mpSource->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
 
 			srcreq->Start(NULL, prefetchInfo.mCookie);
 
@@ -1397,25 +1452,62 @@ bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewS
 	return true;
 }
 
-FilterInstance::RunResult FilterInstance::RunRequests() {
-	vdrefptr<VDFilterFrameRequest> req;
-	if (!mFrameQueueWaiting.GetNextRequest(~req))
-		return kRunResult_Idle;
+FilterInstance::RunResult FilterInstance::RunRequests(const uint32 *batchNumberLimit) {
+	if (mbRequestFramePending)
+		return kRunResult_Blocked;
 
-	mFrameQueueInProgress.Add(req);
-	req->MarkComplete(RunRequest(*req));
-	mFrameQueueInProgress.Remove(req);
+	bool activity = false;
+	while(!mpRequestInProgress) {
+		if (!mFrameQueueWaiting.GetNextRequest(batchNumberLimit, &mpRequestInProgress))
+			return activity ? kRunResult_IdleWasActive : kRunResult_Idle;
+
+		mFrameQueueInProgress.Add(mpRequestInProgress);
+		OpenRequest();
+		activity = true;
+
+		// OpenRequest() will initiate a frame immediately when sampling is enabled.
+		if (mbRequestFramePending)
+			return kRunResult_Blocked;
+	}
+
+	AdvanceRequest();
 	return kRunResult_Running;
 }
 
-bool FilterInstance::RunRequest(VDFilterFrameRequest& req) {
+FilterInstance::RunResult FilterInstance::RunProcess() {
+	if (mbRequestFramePending) {
+		VDPROFILEBEGINDYNAMICEX(mProfileCacheFilterName, filter->name, (uint32)mRequestCurrentFrame);
+		RunFilter();
+		VDPROFILEEND();
+
+		mpEngine->Schedule();
+		return kRunResult_BlockedWasActive;
+	}
+
+	return kRunResult_Blocked;
+}
+
+bool FilterInstance::OpenRequest() {
+	VDFilterFrameRequest& req = *mpRequestInProgress;
+
 	const SamplingInfo *samplingInfo = static_cast<const SamplingInfo *>(req.GetExtraInfo());
 
 	if (samplingInfo) {
-		if (!AllocateResultBuffer(req, 0))
+		if (!AllocateResultBuffer(req, 0)) {
+			CloseRequest(false);
 			return false;
+		}
 
-		return Run(req, 0, 0xffff, NULL);
+		if (!BeginFrame(req, 0, 0xffff, NULL)) {
+			CloseRequest(false);
+			return false;
+		}
+
+		mRequestStartFrame = 0;
+		mRequestCurrentFrame = 1;
+		mRequestEndFrame = 0;
+		mbRequestFrameCompleted = false;
+		return true;
 	}
 
 	const VDPosition targetFrame = req.GetTiming().mOutputFrame;
@@ -1430,45 +1522,98 @@ bool FilterInstance::RunRequest(VDFilterFrameRequest& req) {
 		mbFirstFrame = true;
 	}
 
-	for(VDPosition currentFrame = startFrame; currentFrame <= endFrame; ++currentFrame) {
-		const uint32 sourceOffset = (uint32)currentFrame - (uint32)targetFrame;
-		if (!AllocateResultBuffer(req, sourceOffset))
-			return false;
+	mRequestStartFrame = startFrame;
+	mRequestEndFrame = endFrame;
+	mRequestTargetFrame = targetFrame;
+	mbRequestCacheIntermediateFrames = enableIntermediateFrameCaching;
+	mRequestCurrentFrame = mRequestStartFrame;
+	mbRequestFrameCompleted = false;
 
-		if (mLag) {
-			VDPosition sourceFrame = req.GetSourceRequest(sourceOffset)->GetFrameNumber();
-			VDPosition clampedOutputFrame = currentFrame;
+	return true;
+}
 
-			if (clampedOutputFrame >= mRealDst.mFrameCount && mRealDst.mFrameCount > 0)
-				clampedOutputFrame = mRealDst.mFrameCount - 1;
+void FilterInstance::CloseRequest(bool success) {
+	if (!mpRequestInProgress)
+		return;
 
-			VDFilterFrameRequestTiming overrideTiming;
-			overrideTiming.mSourceFrame = sourceFrame;
-			overrideTiming.mOutputFrame = clampedOutputFrame;
+	VDASSERT(!mRealDst.GetBuffer());
+	VDASSERT(!mExternalDst.GetBuffer());
 
-			if (!Run(req, sourceOffset, 1, &overrideTiming))
+	mpRequestInProgress->MarkComplete(success);
+	mFrameQueueInProgress.Remove(mpRequestInProgress);
+	mpRequestInProgress->Release();
+	mpRequestInProgress = NULL;
+}
+
+bool FilterInstance::AdvanceRequest() {
+	VDFilterFrameRequest& req = *mpRequestInProgress;
+
+	VDASSERT(!mbRequestFramePending);
+
+	for(;;) {
+		if (!mbRequestFrameCompleted) {
+			if (mRequestCurrentFrame > mRequestEndFrame)
+				break;
+
+			const uint32 sourceOffset = (uint32)mRequestCurrentFrame - (uint32)mRequestTargetFrame;
+			if (!AllocateResultBuffer(req, sourceOffset))
 				return false;
 
-			// We need to correct this due to the clamping.
-			mLastResultFrame = currentFrame;
-		} else {
-			if (!Run(req, 0, 0xffff, NULL))
-				return false;
-		}
+			if (mLag) {
+				VDPosition sourceFrame = req.GetSourceRequest(sourceOffset)->GetFrameNumber();
+				VDPosition clampedOutputFrame = mRequestCurrentFrame;
 
-		VDPosition resultFrameUnlagged = currentFrame - mLag;
-		if (currentFrame != endFrame) {
-			if (enableIntermediateFrameCaching && resultFrameUnlagged >= 0) {
-				VDFilterFrameBuffer *buf = req.GetResultBuffer();
-				mFrameCache.Add(buf, resultFrameUnlagged);
-				mFrameQueueWaiting.CompleteRequests(resultFrameUnlagged, buf);
+				if (clampedOutputFrame >= mRealDst.mFrameCount && mRealDst.mFrameCount > 0)
+					clampedOutputFrame = mRealDst.mFrameCount - 1;
+
+				VDFilterFrameRequestTiming overrideTiming;
+				overrideTiming.mSourceFrame = sourceFrame;
+				overrideTiming.mOutputFrame = clampedOutputFrame;
+
+				if (!BeginFrame(req, sourceOffset, 1, &overrideTiming)) {
+					CloseRequest(false);
+					return false;
+				}
+
+				return true;
 			} else {
-				req.SetResultBuffer(NULL);
+				if (!BeginFrame(req, 0, 0xffff, NULL)) {
+					CloseRequest(false);
+					return false;
+				}
+				return true;
 			}
+		} else {
+			EndFrame();
+
+			if (!mbRequestFrameSuccess) {
+				CloseRequest(false);
+				return false;
+			}
+
+			VDPosition resultFrameUnlagged = mRequestCurrentFrame - mLag;
+			if (mRequestCurrentFrame != mRequestEndFrame) {
+				if (mbRequestCacheIntermediateFrames && resultFrameUnlagged >= 0) {
+					VDFilterFrameBuffer *buf = req.GetResultBuffer();
+					mFrameCache.Add(buf, resultFrameUnlagged);
+					mFrameQueueWaiting.CompleteRequests(resultFrameUnlagged, buf);
+				} else {
+					req.SetResultBuffer(NULL);
+				}
+			}
+
+			++mRequestCurrentFrame;
+			mbRequestFrameCompleted = false;
 		}
 	}
 
-	mFrameCache.Add(req.GetResultBuffer(), targetFrame);
+	if (!mpRequestInProgress->GetExtraInfo())
+		mFrameCache.Add(req.GetResultBuffer(), mRequestTargetFrame);
+
+	CloseRequest(true);
+
+	VDASSERT(!mRealDst.GetBuffer());
+	VDASSERT(!mExternalDst.GetBuffer());
 
 	return true;
 }
@@ -1502,28 +1647,19 @@ bool FilterInstance::AllocateResultBuffer(VDFilterFrameRequest& req, int srcInde
 	return true;
 }
 
-bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming) {
-	bool result = BeginRequest(request, sourceOffset, sourceCountLimit, overrideTiming);
-	EndRequest();
-
-	return result;
-}
-
 struct FilterInstance::RunMessage : public VDFilterAccelEngineMessage {
 	FilterInstance *mpThis;
-	VDPosition mSourceFrame;
-	VDPosition mOutputFrame;
-	MyError mError;
 };
 
-bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming) {
+bool FilterInstance::BeginFrame(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming) {
+	VDASSERT(!mbRequestFramePending);
+
 	VDFilterFrameRequestError *logicError = mpLogicError;
 	if (logicError) {
 		request.SetError(logicError);
 		return false;
 	}
 
-	bool success = true;
 	const VDFilterFrameRequestTiming& timing = overrideTiming ? *overrideTiming : request.GetTiming();
 
 	VDASSERT(request.GetSourceCount() > 0);
@@ -1590,9 +1726,8 @@ bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOf
 		VDFilterFrameRequestError *localError = creqsrc->GetError();
 
 		if (localError) {
-			err = localError;
-			success = false;
-			break;
+			request.SetError(localError);
+			return false;
 		}
 
 		VFBitmapInternal& bm = mSourceFrames[i];
@@ -1608,76 +1743,73 @@ bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOf
 		bm.mCookie = creqsrc->GetCookie();
 	}
 
-	const SamplingInfo *sampInfo = (const SamplingInfo *)request.GetExtraInfo();
-
 	mLastResultFrame = -1;
 	VDPosition sourceFrame = timing.mSourceFrame;
 	VDPosition outputFrame = timing.mOutputFrame;
 
-	try {
+	// If the filter has a delay ring...
+	DelayInfo di;
 
-		// If the filter has a delay ring...
-		DelayInfo di;
+	di.mSourceFrame		= sourceFrame;
+	di.mOutputFrame		= outputFrame;
 
-		di.mSourceFrame		= sourceFrame;
-		di.mOutputFrame		= outputFrame;
+	if (!mFsiDelayRing.empty()) {
+		if (mbFirstFrame)
+			std::fill(mFsiDelayRing.begin(), mFsiDelayRing.end(), di);
 
-		if (!mFsiDelayRing.empty()) {
-			if (mbFirstFrame)
-				std::fill(mFsiDelayRing.begin(), mFsiDelayRing.end(), di);
+		DelayInfo diOut = mFsiDelayRing[mDelayRingPos];
+		mFsiDelayRing[mDelayRingPos] = di;
 
-			DelayInfo diOut = mFsiDelayRing[mDelayRingPos];
-			mFsiDelayRing[mDelayRingPos] = di;
+		if (++mDelayRingPos >= mFsiDelayRing.size())
+			mDelayRingPos = 0;
 
-			if (++mDelayRingPos >= mFsiDelayRing.size())
-				mDelayRingPos = 0;
-
-			sourceFrame		= diOut.mSourceFrame;
-			outputFrame		= diOut.mOutputFrame;
-		}
-
-		// Update FilterStateInfo structure.
-		mfsi.lCurrentSourceFrame	= VDClampToSint32(di.mSourceFrame);
-		mfsi.lCurrentFrame			= VDClampToSint32(di.mOutputFrame);
-		mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mSourceFrame * (double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0));
-		mfsi.lDestFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mOutputFrame * (double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0));
-		mfsi.mOutputFrame			= VDClampToSint32(outputFrame);
-
-		if (mpVDXA) {
-			RunMessage msg;
-			msg.mpCallback = RunFilterCallback;
-			msg.mpThis = this;
-			msg.mSourceFrame = sourceFrame;
-			msg.mOutputFrame = outputFrame;
-
-			mpAccelEngine->SyncCall(&msg);
-
-			if (msg.mError.gets())
-				throw MyError(msg.mError);
-		} else {
-			RunFilter(sourceFrame,
-				outputFrame,
-				sampInfo ? sampInfo->mpCB : NULL,
-				sampInfo ? sampInfo->mpCBData : NULL,
-				bltSrcOnEntry);
-		}
-	} catch(const MyError& e) {
-		err = new_nothrow VDFilterFrameRequestError;
-
-		if (err)
-			err->mError.sprintf("Error processing frame %lld with filter '%s': %s", outputFrame, filter->name, e.gets());
-
-		success = false;
+		sourceFrame		= diOut.mSourceFrame;
+		outputFrame		= diOut.mOutputFrame;
 	}
 
-	if (success)
-		mLastResultFrame = timing.mOutputFrame;
+	// Update FilterStateInfo structure.
+	mfsi.lCurrentSourceFrame	= VDClampToSint32(di.mSourceFrame);
+	mfsi.lCurrentFrame			= VDClampToSint32(di.mOutputFrame);
+	mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mSourceFrame * (double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0));
+	mfsi.lDestFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mOutputFrame * (double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0));
+	mfsi.mOutputFrame			= VDClampToSint32(outputFrame);
 
-	request.SetError(err);
-	return success;
+	mRequestSourceFrame = sourceFrame;
+	mRequestOutputFrame = outputFrame;
+
+	if (mpVDXA)
+		mbRequestBltSrcOnEntry = false;
+	else
+		mbRequestBltSrcOnEntry = bltSrcOnEntry;
+
+	mbRequestFrameCompleted = false;
+	mbRequestFramePending = true;
+	mpEngine->ScheduleProcess();
+	return true;
 }
 
-void FilterInstance::EndRequest() {
+void FilterInstance::EndFrame() {
+	if (!mbRequestFrameCompleted)
+		return;
+
+	VDASSERT(mpRequestInProgress);
+
+	mbRequestFrameCompleted = false;
+
+	if (mRequestError.gets()) {
+		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
+
+		if (err)
+			err->mError.sprintf("Error processing frame %lld with filter '%s': %s", mRequestOutputFrame, filter->name, mRequestError.gets());
+
+		mpRequestInProgress->SetError(err);
+
+		mRequestError.clear();
+	}
+
+	if (mbRequestFrameSuccess)
+		mLastResultFrame = mRequestCurrentFrame;
+
 	uint32 sourceCount = mSourceFrames.size();
 	for(uint32 i=1; i<sourceCount; ++i) {
 		mSourceFrames[i].Unbind();
@@ -1694,48 +1826,81 @@ void FilterInstance::EndRequest() {
 	mExternalDst.Unbind();
 }
 
-void FilterInstance::RunFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
-	RunMessage& msg = *static_cast<RunMessage *>(message);
-	IVDTContext *tc = msg.mpThis->mpAccelEngine->GetContext();
-	const uint32 counter = tc->GetDeviceLossCounter();
-	bool deviceLost = false;
+void FilterInstance::RunFilter() {
+	if (!mbRequestFramePending)
+		return;
 
-	if (tc->IsDeviceLost()) {
-		deviceLost = true;
-	} else {
-		if (!msg.mpThis->ConnectAccelBuffers()) {
-			msg.mError.assign("One or more source frames are no longer available.");
-			return;
-		}
+	mbRequestFrameSuccess = false;
 
-		IVDTProfiler *vdtc = vdpoly_cast<IVDTProfiler *>(tc);
-		if (vdtc)
-			VDTBeginScopeF(vdtc, 0xe0ffe0, "Run filter '%ls'", msg.mpThis->mFilterName.c_str());
-		
-		try {
-			msg.mpThis->RunFilter(msg.mSourceFrame, msg.mOutputFrame, NULL, NULL, false);
-		} catch(MyError& err) {
-			msg.mError.swap(err);
-		}
-
-		if (vdtc)
-			vdtc->EndScope();
-
-		msg.mpThis->DisconnectAccelBuffers();
-		msg.mpThis->mpAccelEngine->UpdateProfilingDisplay();
-
-		if (tc->IsDeviceLost() || counter != tc->GetDeviceLossCounter())
-			deviceLost = true;
+	if (mbRequestFrameBeingProcessed.xchg(true)) {
+#ifdef _DEBUG
+		VDBREAK;
+#endif
+		return;
 	}
 
-	if (deviceLost)
-		msg.mError.assign("The 3D accelerator is no longer available.");
+	if (mpVDXA) {
+		IVDTContext *tc = mpAccelEngine->GetContext();
+		const uint32 counter = tc->GetDeviceLossCounter();
+		bool deviceLost = false;
+
+		if (tc->IsDeviceLost()) {
+			deviceLost = true;
+		} else {
+			if (!ConnectAccelBuffers()) {
+				mRequestError.assign("One or more source frames are no longer available.");
+				return;
+			} else {
+				IVDTProfiler *vdtc = vdpoly_cast<IVDTProfiler *>(tc);
+				if (vdtc)
+					VDTBeginScopeF(vdtc, 0xe0ffe0, "Run filter '%ls'", mFilterName.c_str());
+				
+				try {
+					RunFilterInner();
+					mbRequestFrameSuccess = true;
+				} catch(MyError& err) {
+					mRequestError.TransferFrom(err);
+				}
+
+				if (vdtc)
+					vdtc->EndScope();
+
+				DisconnectAccelBuffers();
+				mpAccelEngine->UpdateProfilingDisplay();
+
+				if (tc->IsDeviceLost() || counter != tc->GetDeviceLossCounter())
+					deviceLost = true;
+			}
+		}
+
+		if (deviceLost)
+			mRequestError.assign("The 3D accelerator is no longer available.");
+	} else {
+		try {
+			RunFilterInner();
+			mbRequestFrameSuccess = true;
+		} catch(MyError& e) {
+			mRequestError.TransferFrom(e);
+		}
+	}
+
+	mbRequestFrameBeingProcessed = false;
+
+	mbRequestFramePending = false;
+	mbRequestFrameCompleted = true;
+
+	mpEngine->Schedule();
 }
 
-void FilterInstance::RunFilter(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, bool bltSrcOnEntry) {
+void FilterInstance::RunFilterInner() {
+	const SamplingInfo *sampInfo = (const SamplingInfo *)mpRequestInProgress->GetExtraInfo();
+	VDXFilterPreviewSampleCallback const sampleCB = sampInfo ? sampInfo->mpCB : NULL;
+	void *const sampleCBData = sampInfo ? sampInfo->mpCBData : NULL;
+
+	sint64 outputFrame = mRequestOutputFrame;
 	VDASSERT(outputFrame >= 0);
 
-	if (bltSrcOnEntry) {
+	if (mbRequestBltSrcOnEntry) {
 		if (!mpSourceConversionBlitter)
 			mpSourceConversionBlitter = VDPixmapCreateBlitter(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
 
@@ -1886,6 +2051,13 @@ void FilterInstance::InvalidateAllCachedFrames() {
 			filter->eventProc(AsVDXFilterActivation(), &g_VDFilterCallbacks, kVDXVFEvent_InvalidateCaches, NULL);
 		}
 	}
+}
+
+void FilterInstance::DumpStatus(VDTextOutputStream& os) {
+	os.FormatLine("Filter \"%s\":", filter->name);
+	os.PutLine("  Pending queue:");
+	mFrameQueueWaiting.DumpStatus(os);
+	os.PutLine();
 }
 
 bool FilterInstance::GetScriptString(VDStringA& buf) {

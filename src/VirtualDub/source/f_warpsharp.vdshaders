@@ -24,7 +24,7 @@ kVDFilterWarpSharpPS_GradientRGB:
 
 kVDFilterWarpSharpPS_GradientYUV:
 	ps_2_0
-	def c0, 0.25, 0, 0, 0
+	def c0, 4.0, 0, 0, 0
 	dcl_2d s0
 	dcl t0.xy
 	dcl t1.xy

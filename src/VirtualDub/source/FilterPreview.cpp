@@ -384,6 +384,11 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		}
 		return 0;
 
+	case WM_MOUSEWHEEL:
+		if (mhwndPosition)
+			return SendMessage(mhwndPosition, WM_MOUSEWHEEL, wParam, lParam);
+		break;
+
 	case WM_MOUSELEAVE:
 		mZoomPopup.Destroy();
 		break;
@@ -672,10 +677,19 @@ void FilterPreview::OnVideoRedraw() {
 		}
 
 		vdrefptr<IVDFilterFrameClientRequest> req;
-		if (mFiltSys.RequestFrame(mLastOutputFrame, ~req)) {
+		if (mFiltSys.RequestFrame(mLastOutputFrame, 0, ~req)) {
 			while(!req->IsCompleted()) {
-				mpVideoFrameSource->RunRequests();
-				mFiltSys.Run(true);
+				if (mFiltSys.Run(NULL, false) == FilterSystem::kRunResult_Running)
+					continue;
+
+				switch(mpVideoFrameSource->RunRequests(NULL)) {
+					case IVDFilterFrameSource::kRunResult_Running:
+					case IVDFilterFrameSource::kRunResult_IdleWasActive:
+					case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+						continue;
+				}
+
+				mFiltSys.Block();
 			}
 
 			success = req->IsSuccessful();
@@ -904,10 +918,19 @@ bool FilterPreview::SampleCurrentFrame() {
 
 			if (frame >= 0) {
 				vdrefptr<IVDFilterFrameClientRequest> req;
-				if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
+				if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, 0, ~req)) {
 					while(!req->IsCompleted()) {
-						mFiltSys.Run(true);
-						mpVideoFrameSource->RunRequests();
+						if (mFiltSys.Run(NULL, false) == FilterSystem::kRunResult_Running)
+							continue;
+
+						switch(mpVideoFrameSource->RunRequests(NULL)) {
+							case IVDFilterFrameSource::kRunResult_Running:
+							case IVDFilterFrameSource::kRunResult_IdleWasActive:
+							case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+								continue;
+						}
+
+						mFiltSys.Block();
 					}
 				}
 			}
@@ -1023,10 +1046,19 @@ long FilterPreview::SampleFrames() {
 				lastFrame = frame;
 			}
 
-			if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
+			if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, 0, ~req)) {
 				while(!req->IsCompleted()) {
-					mFiltSys.Run(true);
-					mpVideoFrameSource->RunRequests();
+					if (mFiltSys.Run(NULL, false) == FilterSystem::kRunResult_Running)
+						continue;
+
+					switch(mpVideoFrameSource->RunRequests(NULL)) {
+						case IVDFilterFrameSource::kRunResult_Running:
+						case IVDFilterFrameSource::kRunResult_IdleWasActive:
+						case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+							continue;
+					}
+
+					mFiltSys.Block();
 				}
 
 				++lCount;

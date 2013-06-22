@@ -34,6 +34,7 @@ private:
 
 public:
 	VDRegistryKey(const char *pszKey, bool global = false, bool write = true);
+	VDRegistryKey(VDRegistryKey& baseKey, const char *name, bool write = true);
 	~VDRegistryKey();
 
 	void *getRawHandle() const { return pHandle; }
@@ -56,11 +57,24 @@ public:
 	bool getBinary(const char *pszName, char *buf, int maxlen) const;
 
 	bool removeValue(const char *);
+	bool removeKey(const char *);
 };
 
 class VDRegistryValueIterator {
 public:
 	VDRegistryValueIterator(const VDRegistryKey& key);
+
+	const char *Next();
+
+protected:
+	void *mpHandle;
+	uint32 mIndex;
+	char mName[256];
+};
+
+class VDRegistryKeyIterator {
+public:
+	VDRegistryKeyIterator(const VDRegistryKey& key);
 
 	const char *Next();
 

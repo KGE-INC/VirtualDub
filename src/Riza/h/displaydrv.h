@@ -80,10 +80,11 @@ public:
 	virtual void SetDisplayDebugInfo(bool enable) = 0;
 	virtual void SetColorOverride(uint32 color) = 0;
 	virtual void SetHighPrecision(bool enable) = 0;
+	virtual void SetDestRect(const vdrect32 *r, uint32 color) = 0;
 
 	virtual bool Tick(int id) = 0;
 	virtual void Poll() = 0;
-	virtual bool Resize() = 0;
+	virtual bool Resize(int w, int h) = 0;
 	virtual bool Update(UpdateMode) = 0;
 	virtual void Refresh(UpdateMode) = 0;
 	virtual bool Paint(HDC hdc, const RECT& rClient, UpdateMode lastUpdateMode) = 0;
@@ -104,10 +105,11 @@ public:
 	virtual void SetDisplayDebugInfo(bool enable);
 	virtual void SetColorOverride(uint32 color);
 	virtual void SetHighPrecision(bool enable);
+	virtual void SetDestRect(const vdrect32 *r, uint32 color);
 
 	virtual bool Tick(int id);
 	virtual void Poll();
-	virtual bool Resize();
+	virtual bool Resize(int w, int h);
 
 	virtual bool SetSubrect(const vdrect32 *r);
 	virtual void SetLogicalPalette(const uint8 *pLogicalPalette);
@@ -116,10 +118,19 @@ public:
 
 protected:
 	static void GetFormatString(const VDVideoDisplaySourceInfo& info, VDStringA& s);
+	void UpdateDrawRect();
 
 	bool	mbDisplayDebugInfo;
 	bool	mbHighPrecision;
+	bool	mbDestRectEnabled;
+	vdrect32	mClientRect;		// (0,0)-(w,h)
+	vdrect32	mDrawRect;			// DestRect clipped against ClientRect
+	vdrect32	mDestRect;
+	uint32	mBackgroundColor;
 	uint32	mColorOverride;
+
+	vdrect32	mBorderRects[4];
+	int			mBorderRectCount;
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverOpenGL();

@@ -307,18 +307,18 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 12) {
 			if (!memcmp(pHeader, "RIFF", 4) && !memcmp((char*)pHeader+8, "WAV ", 4))
-				return 1;
+				return kDC_High;
 
 			if (nHeaderSize >= 40) {
 				if (!memcmp(pHeader, kGuidRIFF, 16) && !memcmp((const char *)pHeader + 24, kGuidWAVE, 16))
-					return 1;
+					return kDC_High;
 			}
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

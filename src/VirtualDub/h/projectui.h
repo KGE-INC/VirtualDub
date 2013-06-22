@@ -67,6 +67,8 @@ public:
 	void SaveFilmstripAsk();
 	void SaveAnimatedGIFAsk();
 	void SaveRawAudioAsk(bool batchMode);
+	void SaveRawVideoAsk(bool batchMode);
+	void ExportViaEncoderAsk(bool batchMode);
 	void SaveConfigurationAsk();
 	void LoadConfigurationAsk();
 	void SetVideoFiltersAsk();
@@ -91,6 +93,7 @@ protected:
 	LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+	void OnGetMinMaxInfo(MINMAXINFO& mmi);
 	void OnPositionNotify(int cmd);
 	void OnSize();
 	void HandleDragDrop(HDROP hdrop);

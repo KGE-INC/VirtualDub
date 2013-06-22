@@ -94,6 +94,7 @@ extern HWND g_hWnd;
 extern uint32& VDPreferencesGetRenderVideoBufferCount();
 extern bool VDPreferencesGetFilterAccelVisualDebugEnabled();
 extern bool VDPreferencesGetFilterAccelEnabled();
+extern sint32 VDPreferencesGetFilterThreadCount();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -165,6 +166,7 @@ DubOptions g_dubOpts = {
 	},
 
 	true,			// show status
+	false,			// force show status
 	false,			// move slider
 	100,			// run at 100%
 };
@@ -330,7 +332,7 @@ private:
 
 	VDAtomicInt			mStopLock;
 
-	DubOptions			*opt;
+	DubOptions			mOptions;
 
 	typedef vdfastvector<AudioSource *> AudioSources;
 	AudioSources		mAudioSources;
@@ -444,6 +446,8 @@ public:
 	void SetThrottleFactor(float throttleFactor);
 	void GetPerfStatus(VDDubPerfStatus& status);
 
+	void DumpStatus(VDTextOutputStream& os);
+
 	VDEvent<IDubber, bool>& Stopped() { return mStoppedEvent; }
 };
 
@@ -469,7 +473,7 @@ Dubber::Dubber(DubOptions *xopt)
 	, mLastIOThreadCounter(0)
 	, mIOThreadFailCount(0)
 {
-	opt				= xopt;
+	mOptions			= *xopt;
 
 	// clear the workin' variables...
 
@@ -751,8 +755,15 @@ void InitAudioStreamValuesStatic(DubAudioStreamInfo& aInfo, AudioSource *audio, 
 		if (opt->audio.newPrecision != DubAudioOptions::P_NOCHANGE || opt->audio.newChannels != DubAudioOptions::C_NOCHANGE) {
 			aInfo.converting = true;
 
-			aInfo.is_16bit = opt->audio.newPrecision==DubAudioOptions::P_16BIT
-							|| (opt->audio.newPrecision==DubAudioOptions::P_NOCHANGE && audio->getWaveFormat()->mSampleBits>8);
+			aInfo.is_16bit = (opt->audio.newPrecision==DubAudioOptions::P_16BIT);
+
+			if (opt->audio.newPrecision == DubAudioOptions::P_NOCHANGE) {
+				const VDWaveFormat *fmt = audio->getWaveFormat();
+
+				if (fmt->mTag != VDWaveFormat::kTagPCM || fmt->mSampleBits > 8)
+					aInfo.is_16bit = true;
+			}
+
 			aInfo.is_stereo = opt->audio.newChannels==DubAudioOptions::C_STEREO
 							|| (opt->audio.newChannels==DubAudioOptions::C_NOCHANGE && audio->getWaveFormat()->mChannels>1);
 			aInfo.is_right = (opt->audio.newChannels==DubAudioOptions::C_MONORIGHT);
@@ -774,7 +785,7 @@ void Dubber::InitAudioConversionChain() {
 
 	// Initialize audio conversion chain
 
-	bool bUseAudioFilterGraph = (opt->audio.mode > DubAudioOptions::M_NONE && mpAudioFilterGraph);
+	bool bUseAudioFilterGraph = (mOptions.audio.mode > DubAudioOptions::M_NONE && mpAudioFilterGraph);
 
 	uint32 audioSourceCount = mAudioSources.size();
 	vdfastvector<AudioStream *> sourceStreams(audioSourceCount);
@@ -791,7 +802,7 @@ void Dubber::InitAudioConversionChain() {
 		} else {
 			// First, create a source.
 
-			if (!(audioStream = new_nothrow AudioStreamSource(asrc, asrc->getEnd() - aInfo.start_src, opt->audio.mode > DubAudioOptions::M_NONE, aInfo.start_us)))
+			if (!(audioStream = new_nothrow AudioStreamSource(asrc, asrc->getEnd() - aInfo.start_src, mOptions.audio.mode > DubAudioOptions::M_NONE, aInfo.start_us)))
 				throw MyMemoryError();
 
 			mAudioStreams.push_back(audioStream);
@@ -819,12 +830,12 @@ void Dubber::InitAudioConversionChain() {
 	// Tack on a subset filter as well...
 	sint64 offset = 0;
 	
-	if (opt->audio.fStartAudio)
+	if (mOptions.audio.fStartAudio)
 		offset = vInfo.mFrameRateTimeline.scale64ir((sint64)1000000 * vInfo.start_src);
 
 	bool applyTail = false;
 
-	if (!opt->audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vInfo.mTimelineSourceLength))
+	if (!mOptions.audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vInfo.mTimelineSourceLength))
 		applyTail = true;
 
 	if (!(audioStream = new_nothrow AudioSubset(sourceStreams, inputSubsetActive, vInfo.mFrameRateTimeline, offset, applyTail)))
@@ -839,7 +850,7 @@ void Dubber::InitAudioConversionChain() {
 			bool is_16bit = aInfo.is_16bit;
 
 			// fix precision guess based on actual stream output if we are not changing it
-			if (opt->audio.newPrecision == DubAudioOptions::P_NOCHANGE)
+			if (mOptions.audio.newPrecision == DubAudioOptions::P_NOCHANGE)
 				is_16bit = audioStream->GetFormat()->mSampleBits > 8;
 
 			if (aInfo.single_channel)
@@ -856,7 +867,7 @@ void Dubber::InitAudioConversionChain() {
 		// Attach a converter if we need to...
 
 		if (aInfo.resampling) {
-			if (!(audioStream = new_nothrow AudioStreamResampler(audioStream, opt->audio.new_rate ? opt->audio.new_rate : aSrc->getWaveFormat()->mSamplingRate, opt->audio.fHighQuality)))
+			if (!(audioStream = new_nothrow AudioStreamResampler(audioStream, mOptions.audio.new_rate ? mOptions.audio.new_rate : aSrc->getWaveFormat()->mSamplingRate, mOptions.audio.fHighQuality)))
 				throw MyMemoryError();
 
 			mAudioStreams.push_back(audioStream);
@@ -864,8 +875,8 @@ void Dubber::InitAudioConversionChain() {
 
 		// Attach an amplifier if needed...
 
-		if (opt->audio.mode > DubAudioOptions::M_NONE && opt->audio.mVolume >= 0) {
-			if (!(audioStream = new_nothrow AudioStreamAmplifier(audioStream, opt->audio.mVolume)))
+		if (mOptions.audio.mode > DubAudioOptions::M_NONE && mOptions.audio.mVolume >= 0) {
+			if (!(audioStream = new_nothrow AudioStreamAmplifier(audioStream, mOptions.audio.mVolume)))
 				throw MyMemoryError();
 
 			mAudioStreams.push_back(audioStream);
@@ -874,7 +885,7 @@ void Dubber::InitAudioConversionChain() {
 
 	// Make sure we only get what we want...
 
-	if (!mVideoSources.empty() && opt->audio.fEndAudio) {
+	if (!mVideoSources.empty() && mOptions.audio.fEndAudio) {
 		const sint64 nFrames = (sint64)(vInfo.end_src - vInfo.start_src);
 		const VDFraction& audioRate = audioStream->GetSampleRate();
 		const VDFraction audioPerVideo(audioRate / vInfo.mFrameRateTimeline);
@@ -888,7 +899,7 @@ void Dubber::InitAudioConversionChain() {
 
 	AudioCompressor *pCompressor = NULL;
 
-	if (opt->audio.mode > DubAudioOptions::M_NONE && !mAudioCompressionFormat.empty()) {
+	if (mOptions.audio.mode > DubAudioOptions::M_NONE && !mAudioCompressionFormat.empty()) {
 		if (!(pCompressor = new_nothrow AudioCompressor(audioStream, (const VDWaveFormat *)&*mAudioCompressionFormat, mAudioCompressionFormat.size(), mAudioCompressionFormatHint.c_str())))
 			throw MyMemoryError();
 
@@ -923,7 +934,7 @@ void Dubber::InitOutputFile() {
 		AVISTREAMINFOtoAVIStreamHeader(&hdr, &aSrc->getStreamInfo());
 		hdr.dwStart			= 0;
 
-		if (opt->audio.mode > DubAudioOptions::M_NONE) {
+		if (mOptions.audio.mode > DubAudioOptions::M_NONE) {
 			const VDWaveFormat *outputAudioFormat = audioStream->GetFormat();
 			hdr.dwSampleSize	= outputAudioFormat->mBlockSize;
 			hdr.dwRate			= outputAudioFormat->mDataRate;
@@ -931,7 +942,7 @@ void Dubber::InitOutputFile() {
 			hdr.dwLength		= MulDiv(hdr.dwLength, outputAudioFormat->mSamplingRate, aSrc->getWaveFormat()->mSamplingRate);
 		}
 
-		mpOutputSystem->SetAudio(hdr, audioStream->GetFormat(), audioStream->GetFormatLen(), opt->audio.enabled, audioStream->IsVBR());
+		mpOutputSystem->SetAudio(hdr, audioStream->GetFormat(), audioStream->GetFormatLen(), mOptions.audio.enabled, audioStream->IsVBR());
 	}
 
 	// Do video.
@@ -940,7 +951,7 @@ void Dubber::InitOutputFile() {
 		int outputWidth;
 		int outputHeight;
 		
-		if (opt->video.mode >= DubVideoOptions::M_FULL) {
+		if (mOptions.video.mode >= DubVideoOptions::M_FULL) {
 			const VDPixmapLayout& outputLayout = filters.GetOutputLayout();
 
 			outputWidth = outputLayout.w;
@@ -959,7 +970,7 @@ void Dubber::InitOutputFile() {
 		hdr.dwSampleSize = 0;
 
 		bool selectFcchandlerBasedOnFormat = false;
-		if (opt->video.mode > DubVideoOptions::M_NONE && !opt->video.mbUseSmartRendering) {
+		if (mOptions.video.mode > DubVideoOptions::M_NONE && !mOptions.video.mbUseSmartRendering) {
 			if (mpVideoCompressor) {
 				hdr.fccHandler	= compVars->fccHandler;
 				hdr.dwQuality	= compVars->lQ;
@@ -980,28 +991,54 @@ void Dubber::InitOutputFile() {
 
 		// initialize compression
 
-		int outputFormatID = opt->video.mOutputFormat;
+		int outputFormatID = 0;
 		int outputVariantID = 0;
 
-		if (!outputFormatID)
-			outputFormatID = vSrc->getTargetFormat().format;
+		if (mpOutputSystem)
+			outputFormatID = mpOutputSystem->GetVideoOutputFormatOverride();
 
-		if (opt->video.mode >= DubVideoOptions::M_FASTREPACK) {
+		if (!outputFormatID) {
+			outputFormatID = mOptions.video.mOutputFormat;
+
+			if (!outputFormatID)
+				outputFormatID = vSrc->getTargetFormat().format;
+		}
+
+		if (mOptions.video.mode >= DubVideoOptions::M_FASTREPACK) {
 			const VDAVIBitmapInfoHeader *pSrcFormat = vSrc->getDecompressedFormat();
+			const uint32 srcFormatLen = vSrc->getDecompressedFormatLen();
 
-			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK) {
-				mpCompressorVideoFormat.assign(pSrcFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pSrcFormat));
+			if (mOptions.video.mode <= DubVideoOptions::M_SLOWREPACK) {
+				// For slow recompress mode, we use the format produced by the source.
+				mpCompressorVideoFormat.assign(pSrcFormat, srcFormatLen);
 			} else {
-				// try to find a variant that works
+				// For full recompression mode, we allow any format variant that the codec can accept.
+				// Try to find a variant that works.
 				const int variants = VDGetPixmapToBitmapVariants(outputFormatID);
 				int variant;
 
 				vdstructex<VDAVIBitmapInfoHeader> srcFormat;
-				srcFormat.assign(pSrcFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pSrcFormat));
+				srcFormat.assign(pSrcFormat, srcFormatLen);
 
+				bool foundDibCompatibleFormat = false;
 				for(variant=1; variant <= variants; ++variant) {
-					if (!VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, srcFormat, outputFormatID, variant, outputWidth, outputHeight))
-						continue;
+					bool dibCompatible;
+					if (srcFormat.empty()) {
+						dibCompatible = VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, outputFormatID, variant, outputWidth, outputHeight);
+					} else {
+						dibCompatible = VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, srcFormat, outputFormatID, variant, outputWidth, outputHeight);
+					}
+
+					if (!dibCompatible) {
+						// If we have a video compressor, then we need a format that is DIB compatible. Otherwise,
+						// we can go ahead and use a pixmap-only format.
+						if (mpVideoCompressor)
+							continue;
+
+						mpCompressorVideoFormat.clear();
+					} else {
+						foundDibCompatibleFormat = true;
+					}
 
 					bool result = true;
 					
@@ -1014,8 +1051,13 @@ void Dubber::InitOutputFile() {
 					}
 				}
 
-				if (variant > variants)
-					throw MyError("Unable to initialize the output video codec. Check that the video codec is compatible with the output video frame size and that the settings are correct, or try a different one.");
+				if (variant > variants) {
+					if (foundDibCompatibleFormat) {
+						throw MyError("Unable to initialize video compression. Check that the video codec is compatible with the output video frame size and that the settings are correct, or try a different one.");
+					} else {
+						throw MyError("Unable to initialize video compression: The selected output format is not compatible with the Windows video codec API. Choose a different format in Video > Color Depth.");
+					}
+				}
 			}
 		} else {
 			const VDAVIBitmapInfoHeader *pFormat = vSrc->getImageFormat();
@@ -1032,7 +1074,7 @@ void Dubber::InitOutputFile() {
 			outputFormat.assign((const VDAVIBitmapInfoHeader *)outputFormatW32.data(), outputFormatW32.size());
 
 			// If we are using smart rendering, we have no choice but to match the source format.
-			if (opt->video.mbUseSmartRendering) {
+			if (mOptions.video.mbUseSmartRendering) {
 				IVDStreamSource *vsrcStream = vSrc->asStream();
 				const VDAVIBitmapInfoHeader *srcFormat = vSrc->getImageFormat();
 
@@ -1046,7 +1088,7 @@ void Dubber::InitOutputFile() {
 
 			lVideoSizeEstimate = mpVideoCompressor->GetMaxOutputSize();
 		} else {
-			if (opt->video.mode < DubVideoOptions::M_FASTREPACK) {
+			if (mOptions.video.mode < DubVideoOptions::M_FASTREPACK) {
 
 				if (vSrc->getImageFormat()->biCompression == 0xFFFFFFFF)
 					throw MyError("The source video stream uses a compression algorithm which is not compatible with AVI files. "
@@ -1069,32 +1111,50 @@ void Dubber::InitOutputFile() {
 							lVideoSizeEstimate = bytes;
 				}
 			} else {
-				if (opt->video.mbUseSmartRendering) {
+				if (mOptions.video.mbUseSmartRendering) {
 					throw MyError("Cannot initialize smart rendering: No video codec is selected for compression.");
 				}
 
-				if (opt->video.mode == DubVideoOptions::M_FULL) {
+				if (mOptions.video.mode == DubVideoOptions::M_FULL && !mpCompressorVideoFormat.empty()) {
 					VDMakeBitmapFormatFromPixmapFormat(outputFormat, mpCompressorVideoFormat, outputFormatID, outputVariantID);
 				} else
 					outputFormat = mpCompressorVideoFormat;
 
-				lVideoSizeEstimate = outputFormat->biSizeImage;
+				if (outputFormat.empty()) {
+					VDPixmapLayout tempLayout;
+					lVideoSizeEstimate = VDPixmapCreateLinearLayout(tempLayout, outputFormatID, outputWidth, outputHeight, 4);
+				} else
+					lVideoSizeEstimate = outputFormat->biSizeImage;
 				lVideoSizeEstimate = (lVideoSizeEstimate+1) & -2;
 			}
+		}
+
+		VDPixmapLayout outputLayout = {};
+		if (mpCompressorVideoFormat.empty()) {
+			VDPixmapCreateLinearLayout(outputLayout, outputFormatID, outputWidth, outputHeight, 16);
+		} else {
+			VDGetPixmapLayoutForBitmapFormat(*mpCompressorVideoFormat, mpCompressorVideoFormat.size(), outputLayout);
 		}
 
 		if (selectFcchandlerBasedOnFormat) {
 			// It's been reported that Cinemacraft HDe does not like YCbCr formats whose
 			// fccHandler is set to DIB, but it does accept the FOURCC code.
 
-			if (outputFormat->biCompression >= 0x20000000) {
+			if (!outputFormat.empty() && outputFormat->biCompression >= 0x20000000) {
 				hdr.fccHandler = outputFormat->biCompression;
 			}
 		}
 
-		mpOutputSystem->SetVideo(hdr, &*outputFormat, outputFormat.size());
+		if (outputLayout.format && mpOutputSystem->IsVideoImageOutputEnabled()) {
+			mpOutputSystem->SetVideoImageLayout(hdr, outputLayout);
+		} else {
+			if (mpOutputSystem->IsVideoImageOutputRequired() || outputFormat.empty())
+				throw MyError("The current output video format is not supported by the selected output path.");
 
-		if(opt->video.mode >= DubVideoOptions::M_FULL) {
+			mpOutputSystem->SetVideo(hdr, &*outputFormat, outputFormat.size());
+		}
+
+		if(mOptions.video.mode >= DubVideoOptions::M_FULL) {
 			const VDPixmapLayout& bmout = filters.GetOutputLayout();
 
 			VDMakeBitmapCompatiblePixmapLayout(mVideoFilterOutputPixmapLayout, bmout.w, bmout.h, outputFormatID, outputVariantID, bmout.palette);
@@ -1107,12 +1167,12 @@ void Dubber::InitOutputFile() {
 }
 
 void Dubber::InitDirectDraw() {
-	if (!opt->perf.useDirectDraw || !mpInputDisplay)
+	if (!mOptions.perf.useDirectDraw || !mpInputDisplay)
 		return;
 
 	// Should we try and establish a DirectDraw overlay?
 
-	if (opt->video.mode == DubVideoOptions::M_SLOWREPACK) {
+	if (mOptions.video.mode == DubVideoOptions::M_SLOWREPACK) {
 		static const int kFormats[]={
 			nsVDPixmap::kPixFormat_YUV420_Planar,
 			nsVDPixmap::kPixFormat_YUV422_UYVY,
@@ -1131,7 +1191,7 @@ void Dubber::InitDirectDraw() {
 			}
 
 			if (it == itEnd) {
-				if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, opt->video.previewFieldMode>0)) {
+				if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, mOptions.video.previewFieldMode>0)) {
 					mbInputDisplayInitialized = true;
 					break;
 				}
@@ -1201,12 +1261,12 @@ void Dubber::InitSelectInputFormat() {
 	//					[Preview]	Negotiate with display driver.
 	//	FULL:			Use selected format.
 
-	if (opt->video.mode == DubVideoOptions::M_NONE)
+	if (mOptions.video.mode == DubVideoOptions::M_NONE)
 		return;
 
 	const BITMAPINFOHEADER& bih = *(const BITMAPINFOHEADER *)vSrc->getImageFormat();
 
-	if (opt->video.mode == DubVideoOptions::M_FASTREPACK && mpVideoCompressor) {
+	if (mOptions.video.mode == DubVideoOptions::M_FASTREPACK && mpVideoCompressor) {
 		// Attempt source format.
 		if (NegotiateFastFormat(bih)) {
 			if (mpInputDisplay)
@@ -1248,7 +1308,7 @@ void Dubber::InitSelectInputFormat() {
 		}
 
 		// Attempt RGB format negotiation.
-		int format = opt->video.mInputFormat;
+		int format = mOptions.video.mInputFormat;
 		uint32 rgbTrackMask = 0;
 
 		do {
@@ -1263,18 +1323,38 @@ void Dubber::InitSelectInputFormat() {
 
 	// Negotiate RGB format.
 
-	int format = opt->video.mInputFormat;
+	int format = mOptions.video.mInputFormat;
 
 	format = VDRenderSetVideoSourceInputFormat(vSrc, format);
 	if (!format)
-		throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
+		throw MyError(
+			"The video decompressor cannot decompress to the selected input format. "
+			"Check for a \"Force YUY2\" setting in the codec's properties or select a different "
+			"input video format under Video > Color Depth.");
 
 	const char *s = VDPixmapGetInfo(vSrc->getTargetFormat().format).name;
 
-	VDLogAppMessage(kVDLogInfo, kVDST_Dub, (opt->video.mode == DubVideoOptions::M_FULL) ? kVDM_FullUsingInputFormat : kVDM_SlowRecompressUsingFormat, 1, &s);
+	VDLogAppMessage(kVDLogInfo, kVDST_Dub, (mOptions.video.mode == DubVideoOptions::M_FULL) ? kVDM_FullUsingInputFormat : kVDM_SlowRecompressUsingFormat, 1, &s);
 }
 
 void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, AudioSource *const *pAudioSources, uint32 nAudioSources, IVDDubberOutputSystem *pOutputSystem, void *videoCompVars, const FrameSubset *pfs, const VDFraction& frameRateTimeline) {
+	// do some quick sanity checks
+	if (pOutputSystem->IsVideoImageOutputRequired()) {
+		if (mOptions.video.mbUseSmartRendering)
+			throw MyError("The currently selected output plugin cannot be used in smart rendering mode.");
+
+		if (mOptions.video.mode == DubVideoOptions::M_NONE)
+			throw MyError("The currently selected output plugin cannot be used in direct stream copy mode.");
+	}
+
+	// modify options according to input system
+	if (!pOutputSystem->IsCompressedAudioAllowed()) {
+		mOptions.audio.mode = DubAudioOptions::M_FULL;
+		mAudioCompressionFormat.clear();
+		mAudioCompressionFormatHint.clear();
+	}
+
+	// begin init
 	mAudioSources.assign(pAudioSources, pAudioSources + nAudioSources);
 	mVideoSources.assign(pVideoSources, pVideoSources + nVideoSources);
 
@@ -1287,19 +1367,19 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	inputSubsetActive	= pfs;
 	compVars			= (COMPVARS *)videoCompVars;
 
-	if (!fPreview && pOutputSystem->AcceptsVideo() && opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic)
-		mpVideoCompressor = VDCreateVideoCompressorVCM(compVars->hic, compVars->lDataRate*1024, compVars->lQ, compVars->lKey);
+	if (pOutputSystem->IsVideoCompressionEnabled() && pOutputSystem->AcceptsVideo() && mOptions.video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic)
+		mpVideoCompressor = VDCreateVideoCompressorVCM(compVars->hic, compVars->lDataRate*1024, compVars->lQ, compVars->lKey, false);
 
 	if (!(inputSubsetActive = inputSubsetAlloc = new_nothrow FrameSubset(*pfs)))
 		throw MyMemoryError();
 
 	VDPosition selectionStartFrame;
 	VDPosition selectionEndFrame;
-	VDConvertSelectionTimesToFrames(*opt, *inputSubsetActive, frameRateTimeline, selectionStartFrame, selectionEndFrame);
+	VDConvertSelectionTimesToFrames(mOptions, *inputSubsetActive, frameRateTimeline, selectionStartFrame, selectionEndFrame);
 
 	// check the mode; if we're using DirectStreamCopy mode, we'll need to
 	// align the subset to keyframe boundaries!
-	if (!mVideoSources.empty() && opt->video.mode == DubVideoOptions::M_NONE) {
+	if (!mVideoSources.empty() && mOptions.video.mode == DubVideoOptions::M_NONE) {
 		vdautoptr<FrameSubset> newSubset(new_nothrow FrameSubset());
 		if (!newSubset)
 			throw MyMemoryError();
@@ -1313,8 +1393,8 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	// initialize stream values
 	AudioSource *audioSrc = mAudioSources.empty() ? NULL : mAudioSources.front();
-	InitVideoStreamValuesStatic(vInfo, vSrc, audioSrc, opt, inputSubsetActive, &selectionStartFrame, &selectionEndFrame);
-	InitAudioStreamValuesStatic(aInfo, audioSrc, opt);
+	InitVideoStreamValuesStatic(vInfo, vSrc, audioSrc, &mOptions, inputSubsetActive, &selectionStartFrame, &selectionEndFrame);
+	InitAudioStreamValuesStatic(aInfo, audioSrc, &mOptions);
 
 	// initialize directdraw display if in preview
 
@@ -1342,17 +1422,25 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	filters.SetVisualAccelDebugEnabled(VDPreferencesGetFilterAccelVisualDebugEnabled());
 	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
 
-	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
-		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
+	if (mbDoVideo && mOptions.video.mode >= DubVideoOptions::M_FULL) {
+		filters.SetAsyncThreadCount(VDPreferencesGetFilterThreadCount());
+		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 
-		InitVideoStreamValuesStatic2(vInfo, opt, &filters, frameRateTimeline);
+		InitVideoStreamValuesStatic2(vInfo, &mOptions, &filters, frameRateTimeline);
 		
 		const VDPixmapLayout& output = filters.GetOutputLayout();
 
-		int outputFormat = opt->video.mOutputFormat;
+		int outputFormat = 0;
+		
+		if (pOutputSystem)
+			outputFormat = pOutputSystem->GetVideoOutputFormatOverride();
 
-		if (!outputFormat)
-			outputFormat = vSrc->getTargetFormat().format;
+		if (!outputFormat) {
+			outputFormat = mOptions.video.mOutputFormat;
+
+			if (!outputFormat)
+				outputFormat = vSrc->getTargetFormat().format;
+		}
 
 		if (!CheckFormatSizeCompatibility(outputFormat, output.w, output.h)) {
 			const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(outputFormat);
@@ -1363,9 +1451,10 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 		filters.ReadyFilters();
 	} else {
 		// We need this to correctly create the video frame map.
-		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
+		filters.SetAsyncThreadCount(-1);
+		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 		filters.ReadyFilters();
-		InitVideoStreamValuesStatic2(vInfo, opt, NULL, frameRateTimeline);
+		InitVideoStreamValuesStatic2(vInfo, &mOptions, NULL, frameRateTimeline);
 	}
 
 	vInfo.mTimelineSourceLength = filters.GetOutputFrameCount();
@@ -1380,7 +1469,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 		for(; it!=itEnd; ++it) {
 			IVDVideoSource *vs = *it;
 
-			vs->streamBegin(fPreview, opt->video.mode == DubVideoOptions::M_NONE);
+			vs->streamBegin(fPreview, mOptions.video.mode == DubVideoOptions::M_NONE);
 		}
 		fVDecompressionOk = true;
 
@@ -1394,7 +1483,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	if (!mbInputDisplayInitialized && mpInputDisplay) {
 		if (mbDoVideo)
-			mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), NULL, 0, true, opt->video.previewFieldMode>0);
+			mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), NULL, 0, true, mOptions.video.previewFieldMode>0);
 	}
 
 	// initialize output parameters and output file
@@ -1404,7 +1493,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	// Initialize output window display.
 
 	if (mpOutputDisplay && mbDoVideo) {
-		if (opt->video.mode == DubVideoOptions::M_FULL) {
+		if (mOptions.video.mode == DubVideoOptions::M_FULL) {
 			VDPixmap px;
 			px.w = mVideoFilterOutputPixmapLayout.w;
 			px.h = mVideoFilterOutputPixmapLayout.h;
@@ -1416,7 +1505,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 			px.data = NULL;
 			px.data2 = NULL;
 			px.data3 = NULL;
-			mpOutputDisplay->SetSource(false, px, NULL, 0, true, opt->video.previewFieldMode>0);
+			mpOutputDisplay->SetSource(false, px, NULL, 0, true, mOptions.video.previewFieldMode>0);
 		}
 	}
 
@@ -1425,23 +1514,23 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	bool bAudio = mbDoAudio;
 
 	mInterleaver.Init(bAudio ? 2 : 1);
-	mInterleaver.EnableInterleaving(opt->audio.enabled);
+	mInterleaver.EnableInterleaving(mOptions.audio.enabled);
 	mInterleaver.InitStream(0, lVideoSizeEstimate, 0, 1, 1, 1);
 
 	if (bAudio) {
 		double audioBlocksPerVideoFrame;
 
-		if (!opt->audio.interval)
+		if (!mOptions.audio.interval)
 			audioBlocksPerVideoFrame = 1.0;
-		else if (opt->audio.is_ms) {
+		else if (mOptions.audio.is_ms) {
 			// blocks / frame = (ms / frame) / (ms / block)
-			audioBlocksPerVideoFrame = vInfo.mFrameRate.AsInverseDouble() * 1000.0 / (double)opt->audio.interval;
+			audioBlocksPerVideoFrame = vInfo.mFrameRate.AsInverseDouble() * 1000.0 / (double)mOptions.audio.interval;
 		} else
-			audioBlocksPerVideoFrame = 1.0 / (double)opt->audio.interval;
+			audioBlocksPerVideoFrame = 1.0 / (double)mOptions.audio.interval;
 
 		const VDWaveFormat *pwfex = audioStream->GetFormat();
 		const VDFraction& samplesPerSec = audioStream->GetSampleRate();
-		sint32 preload = (sint32)(samplesPerSec * Fraction(opt->audio.preload, 1000)).roundup32ul();
+		sint32 preload = (sint32)(samplesPerSec * Fraction(mOptions.audio.preload, 1000)).roundup32ul();
 
 		double samplesPerFrame = samplesPerSec.asDouble() / vInfo.mFrameRate.asDouble();
 
@@ -1451,11 +1540,22 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	// initialize frame iterator
 
 	if (mbDoVideo) {
-		mVideoFrameMap.Init(mVideoSources, vInfo.start_src, vInfo.mFrameRateTimeline / vInfo.mFrameRate * vInfo.mFrameRateIVTCFactor, inputSubsetActive, vInfo.end_dst, opt->video.mbUseSmartRendering, opt->video.mode == DubVideoOptions::M_NONE, opt->video.mbPreserveEmptyFrames, &filters);
+		mVideoFrameMap.Init(mVideoSources,
+			vInfo.start_src,
+			vInfo.mFrameRateTimeline / vInfo.mFrameRate * vInfo.mFrameRateIVTCFactor,
+			inputSubsetActive,
+			vInfo.end_dst,
+			mOptions.video.mbUseSmartRendering,
+			mOptions.video.mode == DubVideoOptions::M_NONE,
+			mOptions.video.mbPreserveEmptyFrames,
+			&filters,
+			mpOutputSystem->AreNullFramesAllowed(),
+			mOptions.video.mode == DubVideoOptions::M_SLOWREPACK || mOptions.video.mode == DubVideoOptions::M_FASTREPACK
+			);
 
 		FilterSystem *filtsysToCheck = NULL;
 
-		if (opt->video.mode >= DubVideoOptions::M_FULL && !filters.isEmpty() && opt->video.mbUseSmartRendering) {
+		if (mOptions.video.mode >= DubVideoOptions::M_FULL && !filters.isEmpty() && mOptions.video.mbUseSmartRendering) {
 			filtsysToCheck = &filters;
 		}
 	} else {
@@ -1492,6 +1592,7 @@ void Dubber::Go(int iPriority) {
 		iPriority = fNoProcessingPriority || !mpOutputSystem->IsRealTime() ? 5 : 6;
 
 	// Initialize threads.
+	mProcessThread.PreInit();
 	mProcessThread.SetParent(this);
 	mProcessThread.SetAbortSignal(&mbAbort);
 	mProcessThread.SetStatusHandler(pStatusHandler);
@@ -1499,9 +1600,9 @@ void Dubber::Go(int iPriority) {
 	if (mbDoVideo) {
 		mProcessThread.SetInputDisplay(mpInputDisplay);
 		mProcessThread.SetOutputDisplay(mpOutputDisplay);
-		mProcessThread.SetVideoCompressor(mpVideoCompressor, opt->video.mMaxVideoCompressionThreads);
+		mProcessThread.SetVideoCompressor(mpVideoCompressor, mOptions.video.mMaxVideoCompressionThreads);
 
-		if(opt->video.mode >= DubVideoOptions::M_FULL)
+		if(mOptions.video.mode >= DubVideoOptions::M_FULL)
 			mProcessThread.SetVideoFilterOutput(mVideoFilterOutputPixmapLayout);
 	}
 
@@ -1513,7 +1614,7 @@ void Dubber::Go(int iPriority) {
 	mProcessThread.SetAudioCorrector(audioCorrector);
 	mProcessThread.SetVideoRequestQueue(mpVideoRequestQueue);
 	mProcessThread.SetVideoFilterSystem(&filters);
-	mProcessThread.Init(*opt, &mVideoFrameMap, &vInfo, mpOutputSystem, mpVideoPipe, &mAudioPipe, &mInterleaver);
+	mProcessThread.Init(mOptions, &mVideoFrameMap, &vInfo, mpOutputSystem, mpVideoPipe, &mAudioPipe, &mInterleaver);
 	mProcessThread.ThreadStart();
 
 	SetThreadPriority(mProcessThread.getThreadHandle(), g_iPriorities[iPriority-1][0]);
@@ -1539,11 +1640,11 @@ void Dubber::Go(int iPriority) {
 	SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[iPriority-1][1]);
 
 	// We need to make sure that 100% actually means 100%.
-	SetThrottleFactor((float)(opt->mThrottlePercent * 65536 / 100) / 65536.0f);
+	SetThrottleFactor((float)(mOptions.mThrottlePercent * 65536 / 100) / 65536.0f);
 
 	// Create status window during the dub.
 	if (pStatusHandler) {
-		pStatusHandler->InitLinks(&aInfo, &vInfo, audioStatusStream, this, opt);
+		pStatusHandler->InitLinks(&aInfo, &vInfo, audioStatusStream, this, &mOptions);
 		pStatusHandler->Display(NULL, iPriority);
 	}
 }
@@ -1679,6 +1780,8 @@ void Dubber::InternalSignalStop() {
 		if (mpIOThread)
 			mpIOThread->Abort();
 
+		mProcessThread.Abort();
+
 		mStoppedEvent.Raise(this, false);
 	}
 }
@@ -1687,6 +1790,8 @@ void Dubber::Abort(bool userAbort) {
 	if (!mbAbort.compareExchange(true, false) && !mStopLock) {
 		if (mpIOThread)
 			mpIOThread->Abort();
+
+		mProcessThread.Abort();
 
 		mbUserAbort = userAbort;
 		mAudioPipe.Abort();
@@ -1791,4 +1896,8 @@ void Dubber::GetPerfStatus(VDDubPerfStatus& status) {
 		status.mIOActivityRatio = mpIOThread->GetActivityRatio();
 
 	status.mProcActivityRatio = mProcessThread.GetActivityRatio();
+}
+
+void Dubber::DumpStatus(VDTextOutputStream& os) {
+	mProcessThread.DumpStatus(os);
 }

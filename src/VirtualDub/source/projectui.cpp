@@ -23,6 +23,7 @@
 #include <vd2/system/binary.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/strutil.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Dita/basetypes.h>
@@ -32,6 +33,7 @@
 #include <vd2/Dita/w32control.h>
 #include <vd2/Dita/w32accel.h>
 #include <vd2/Riza/display.h>
+#include <vd2/VDLib/Dialog.h>
 #include "projectui.h"
 #include "resource.h"
 #include "PositionControl.h"
@@ -43,6 +45,7 @@
 #include "AudioSource.h"
 #include "HexViewer.h"
 #include "Dub.h"
+#include "DubOutput.h"
 #include "DubStatus.h"
 #include "job.h"
 #include "script.h"
@@ -55,6 +58,7 @@
 #include "InputFile.h"
 #include "VideoWindow.h"
 #include "AccelEditDialog.h"
+#include "ExternalEncoderProfile.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -63,12 +67,15 @@ namespace {
 		kFileDialog_WAVAudioIn		= 'wavi',
 		kFileDialog_WAVAudioOut		= 'wavo',
 		kFileDialog_RawAudioOut		= 'rwao',
+		kFileDialog_RawVideoOut		= 'rwvo',
 		kFileDialog_FLMOut			= 'flmo',
 		kFileDialog_GIFOut			= 'gifo',
+		kFileDialog_ExtOut			= 'exto',
 	};
 
 	enum {
-		kVDST_ProjectUI = 7
+		kVDST_ProjectUI = 7,
+		kVDST_RawVideoFormats = 11
 	};
 
 	enum {
@@ -120,7 +127,7 @@ extern const wchar_t fileFiltersAppend[];
 extern void VDCPUTest();
 
 // need to do this directly in Dita....
-static const char g_szRegKeyPersistence[]="Persistence";
+extern const char g_szRegKeyPersistence[]="Persistence";
 static const char g_szRegKeyAutoAppendByName[]="Auto-append by name";
 
 ///////////////////////////////////////////////////////////////////////////
@@ -148,6 +155,8 @@ extern void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 extern const VDStringW& VDPreferencesGetTimelineFormat();
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
+
+void VDUIDisplayDialogConfigureExternalEncoders(VDGUIHandle h);
 
 ///////////////////////////////////////////////////////////////////////////
 #define MENU_TO_HELP(x) ID_##x, IDS_##x
@@ -242,6 +251,8 @@ namespace {
 		{ ID_FILE_SAVEFILMSTRIP,		"File.SaveFilmstrip" },
 		{ ID_FILE_SAVEANIMATEDGIF,		"File.SaveAnimatedGIF" },
 		{ ID_FILE_SAVERAWAUDIO,			"File.SaveRawAudio" },
+		{ ID_FILE_SAVERAWVIDEO,			"File.SaveRawVideo" },
+		{ ID_FILE_EXPORTEXTERNALENCODER,	"File.ExportViaEncoder" },
 		{ ID_FILE_SAVEWAV,				"File.SaveWAV" },
 		{ ID_FILE_CLOSEAVI,				"File.Close" },
 		{ ID_FILE_STARTSERVER,			"App.SwitchToServerMode" },
@@ -256,9 +267,11 @@ namespace {
 		{ ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI,	"Jobs.SaveAsOldAVI" },
 		{ ID_QUEUEBATCHOPERATION_SAVESEGMENTEDAVI,	"Jobs.SaveSegmentedAVI" },
 		{ ID_QUEUEBATCHOPERATION_SAVEIMAGESEQUENCE,	"Jobs.SaveImageSequence" },
+		{ ID_QUEUEBATCHOPERATION_EXPORTUSINGEXTERNALENCODER,	"Jobs.ExportViaEncoder" },
 		{ ID_QUEUEBATCHOPERATION_RUNVIDEOANALYSISPASS,	"Jobs.RunVideoAnalysisPass" },
 		{ ID_QUEUEBATCHOPERATION_SAVEWAV,	"Jobs.SaveWAV" },
 		{ ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO,	"Jobs.SaveRawAudio" },
+		{ ID_QUEUEBATCHOPERATION_EXPORTRAWVIDEO,	"Jobs.SaveRawVideo" },
 		{ ID_FILE_BATCHWIZARD,			"Jobs.ShowBatchWizardDialog" },
 		{ ID_EDIT_UNDO,					"Edit.Undo" },
 		{ ID_EDIT_REDO,					"Edit.Redo" },
@@ -315,6 +328,8 @@ namespace {
 		{ ID_VIDEO_PRESERVEEMPTYFRAMES,	"Video.TogglePreserveEmptyFrames" },
 		{ ID_VIDEO_COPYSOURCEFRAME,		"Video.CopySourceFrameImage" },
 		{ ID_VIDEO_COPYOUTPUTFRAME,		"Video.CopyOutputFrameImage" },
+		{ ID_VIDEO_COPYSOURCEFRAMENUMBER,			"Video.CopySourceFrameNumber" },
+		{ ID_VIDEO_COPYOUTPUTFRAMENUMBER,			"Video.CopyOutputFrameNumber" },
 		{ ID_VIDEO_ERRORMODE,			"Video.ShowErrorModeDialog" },
 		{ ID_AUDIO_ADVANCEDFILTERING,	"Audio.ToggleAdvancedFiltering" },
 		{ ID_AUDIO_FILTERS,				"Audio.ShowFiltersDialog" },
@@ -850,7 +865,7 @@ void VDProjectUI::SaveFilmstripAsk() {
 
 	const VDStringW filename(VDGetSaveFileName(kFileDialog_FLMOut, mhwnd, L"Save Filmstrip file", L"Adobe Filmstrip (*.flm)\0*.flm\0", g_prefs.main.fAttachExtension ? L"flm" : NULL));
 	if (!filename.empty()) {
-		SaveFilmstrip(filename.c_str());
+		SaveFilmstrip(filename.c_str(), false);
 	}
 }
 
@@ -936,7 +951,7 @@ void VDProjectUI::SaveAnimatedGIFAsk() {
 	peer->Shutdown();
 
 	if (result) {
-		SaveAnimatedGIF(dlg.mFileName.c_str(), dlg.mLoopCount);
+		SaveAnimatedGIF(dlg.mFileName.c_str(), dlg.mLoopCount, false);
 	}
 }
 
@@ -949,7 +964,262 @@ void VDProjectUI::SaveRawAudioAsk(bool batchMode) {
 		if (batchMode)
 			JobAddConfigurationSaveAudio(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), &inputAVI->listFiles, filename.c_str(), true, true);
 		else
-			SaveRawAudio(filename.c_str());
+			SaveRawAudio(filename.c_str(), false);
+	}
+}
+
+class VDUIDialogSaveRawVideoFormat : public VDDialogFrameW32 {
+public:
+	VDUIDialogSaveRawVideoFormat(VDAVIOutputRawVideoFormat& format);
+
+protected:
+	virtual bool OnLoaded();
+	virtual void OnDataExchange(bool write);
+
+	VDAVIOutputRawVideoFormat& mFormat;
+
+	static const int kFormats[];
+};
+
+const int VDUIDialogSaveRawVideoFormat::kFormats[] = {
+	nsVDPixmap::kPixFormat_XRGB1555,
+	nsVDPixmap::kPixFormat_RGB565,
+	nsVDPixmap::kPixFormat_RGB888,
+	nsVDPixmap::kPixFormat_XRGB8888,
+	nsVDPixmap::kPixFormat_Y8,
+	nsVDPixmap::kPixFormat_Y8_FR,
+	nsVDPixmap::kPixFormat_YUV422_UYVY,
+	nsVDPixmap::kPixFormat_YUV422_UYVY_709,
+	nsVDPixmap::kPixFormat_YUV422_UYVY_FR,
+	nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR,
+	nsVDPixmap::kPixFormat_YUV422_YUYV,
+	nsVDPixmap::kPixFormat_YUV422_YUYV_709,
+	nsVDPixmap::kPixFormat_YUV422_YUYV_FR,
+	nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR,
+	nsVDPixmap::kPixFormat_YUV444_Planar,
+	nsVDPixmap::kPixFormat_YUV444_Planar_FR,
+	nsVDPixmap::kPixFormat_YUV444_Planar_709,
+	nsVDPixmap::kPixFormat_YUV444_Planar_709_FR,
+	nsVDPixmap::kPixFormat_YUV422_Planar,
+	nsVDPixmap::kPixFormat_YUV422_Planar_FR,
+	nsVDPixmap::kPixFormat_YUV422_Planar_709,
+	nsVDPixmap::kPixFormat_YUV422_Planar_709_FR,
+	nsVDPixmap::kPixFormat_YUV422_Planar_Centered,
+	nsVDPixmap::kPixFormat_YUV420_Planar,
+	nsVDPixmap::kPixFormat_YUV420_Planar_FR,
+	nsVDPixmap::kPixFormat_YUV420_Planar_709,
+	nsVDPixmap::kPixFormat_YUV420_Planar_709_FR,
+	nsVDPixmap::kPixFormat_YUV420_Planar_Centered,
+	nsVDPixmap::kPixFormat_YUV411_Planar,
+	nsVDPixmap::kPixFormat_YUV411_Planar_FR,
+	nsVDPixmap::kPixFormat_YUV411_Planar_709,
+	nsVDPixmap::kPixFormat_YUV411_Planar_709_FR,
+	nsVDPixmap::kPixFormat_YUV410_Planar,
+	nsVDPixmap::kPixFormat_YUV410_Planar_FR,
+	nsVDPixmap::kPixFormat_YUV410_Planar_709,
+	nsVDPixmap::kPixFormat_YUV410_Planar_709_FR
+};
+
+VDUIDialogSaveRawVideoFormat::VDUIDialogSaveRawVideoFormat(VDAVIOutputRawVideoFormat& format)
+	: VDDialogFrameW32(IDD_OUTPUT_RAWVIDEO)
+	, mFormat(format)
+{
+}
+
+bool VDUIDialogSaveRawVideoFormat::OnLoaded() {
+	for(size_t i=0; i<sizeof(kFormats)/sizeof(kFormats[0]); ++i) {
+		int format = kFormats[i];
+
+		CBAddString(IDC_OUTPUT_FORMAT, VDLoadString(0, kVDST_RawVideoFormats, format));
+	}
+
+	SetFocusToControl(IDC_OUTPUT_FORMAT);
+	VDDialogFrameW32::OnLoaded();
+	return true;
+}
+
+void VDUIDialogSaveRawVideoFormat::OnDataExchange(bool write) {
+	if (write) {
+		uint32 c = GetControlValueUint32(IDC_ALIGNMENT);
+		if (!c || c > 64 || (c & (c-1)) || mbValidationFailed) {
+			FailValidation(IDC_ALIGNMENT);
+			return;
+		}
+
+		mFormat.mScanlineAlignment = c;
+		mFormat.mOutputFormat = kFormats[CBGetSelectedIndex(IDC_OUTPUT_FORMAT)];
+		mFormat.mbSwapChromaPlanes = IsButtonChecked(IDC_PLANEORDER_CRCB);
+		mFormat.mbBottomUp = IsButtonChecked(IDC_VORIENT_BOTTOMUP);
+	} else {
+		const int *p = std::find(kFormats, kFormats + sizeof(kFormats)/sizeof(kFormats[0]), mFormat.mOutputFormat);
+		if (p == kFormats + sizeof(kFormats)/sizeof(kFormats[0]))
+			CBSetSelectedIndex(IDC_OUTPUT_FORMAT, 0);
+		else
+			CBSetSelectedIndex(IDC_OUTPUT_FORMAT, p - kFormats);
+
+		CheckButton(IDC_PLANEORDER_CBCR, !mFormat.mbSwapChromaPlanes);
+		CheckButton(IDC_PLANEORDER_CRCB, mFormat.mbSwapChromaPlanes);
+
+		SetControlTextF(IDC_ALIGNMENT, L"%u", mFormat.mScanlineAlignment);
+
+		CheckButton(IDC_VORIENT_TOPDOWN, !mFormat.mbBottomUp);
+		CheckButton(IDC_VORIENT_BOTTOMUP, mFormat.mbBottomUp);
+	}
+}
+
+void VDProjectUI::SaveRawVideoAsk(bool batchMode) {
+	if (!inputVideo)
+		throw MyError("No video stream to export.");
+
+	VDRegistryAppKey key(g_szRegKeyPersistence);
+	VDAVIOutputRawVideoFormat format = {};
+	format.mOutputFormat = key.getInt("Export raw video: Output format", nsVDPixmap::kPixFormat_YUV420_Planar);
+	format.mScanlineAlignment = key.getInt("Export raw video: Scanline alignment", 4);
+	format.mbSwapChromaPlanes = key.getBool("Export raw video: Swap chroma planes", true);
+	format.mbBottomUp = key.getBool("Export raw video: Use bottom-up orientation", false);
+
+	VDUIDialogSaveRawVideoFormat dlg(format);
+	if (!dlg.ShowDialog((VDGUIHandle)mhwnd))
+		return;
+
+	key.setInt("Export raw video: Output format", format.mOutputFormat);
+	key.setInt("Export raw video: Scanline alignment", format.mScanlineAlignment);
+	key.setBool("Export raw video: Swap chroma planes", format.mbSwapChromaPlanes);
+	key.setBool("Export raw video: Use bottom-up orientation", format.mbBottomUp);
+
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_RawVideoOut, mhwnd, L"Save raw video", L"All types\0*.bin\0Raw YUV (*.yuv)\0*.yuv\0", NULL));
+	if (!filename.empty()) {
+		if (batchMode)
+			JobAddConfigurationSaveVideo(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), &inputAVI->listFiles, filename.c_str(), true, format);
+		else
+			SaveRawVideo(filename.c_str(), format, false);
+	}
+}
+
+class VDUIDialogExportViaEncoder : public VDDialogFrameW32 {
+public:
+	VDUIDialogExportViaEncoder();
+
+	void SetSelectedSet(VDExtEncSet *eset) { mpSelectedSet = eset; }
+	VDExtEncSet *GetSelectedSet() const { return mpSelectedSet; }
+
+protected:
+	bool OnLoaded();
+	void OnDestroy();
+	void OnDataExchange(bool write);
+
+	vdrefptr<VDExtEncSet> mpSelectedSet;
+	typedef vdfastvector<VDExtEncSet *> Sets;
+	Sets mSets;
+
+	struct SetSortByName {
+		bool operator()(const VDExtEncSet *x, const VDExtEncSet *y) const {
+			return vdwcsicmp(x->mName.c_str(), y->mName.c_str()) < 0;
+		}
+	};
+};
+
+VDUIDialogExportViaEncoder::VDUIDialogExportViaEncoder()
+	: VDDialogFrameW32(IDD_OUTPUT_CLI)
+{
+}
+
+bool VDUIDialogExportViaEncoder::OnLoaded() {
+	uint32 n = VDGetExternalEncoderSetCount();
+	for(uint32 i=0; i<n; ++i) {
+		vdrefptr<VDExtEncSet> eset;
+		if (VDGetExternalEncoderSetByIndex(i, ~eset)) {
+			mSets.push_back(eset);
+			eset.release();
+		}
+	}
+
+	std::sort(mSets.begin(), mSets.end(), SetSortByName());
+
+	for(uint32 i=0; i<n; ++i) {
+		VDExtEncSet *eset = mSets[i];
+
+		LBAddString(IDC_LIST, eset->mName.c_str());
+	}
+
+	OnDataExchange(false);
+	SetFocusToControl(IDC_LIST);
+	return true;
+}
+
+void VDUIDialogExportViaEncoder::OnDestroy() {
+	while(!mSets.empty()) {
+		mSets.back()->Release();
+		mSets.pop_back();
+	}
+}
+
+void VDUIDialogExportViaEncoder::OnDataExchange(bool write) {
+	if (write) {
+		int idx = LBGetSelectedIndex(IDC_LIST);
+
+		if ((unsigned)idx < mSets.size())
+			mpSelectedSet = mSets[idx];
+		else
+			mpSelectedSet = NULL;
+	} else {
+		Sets::iterator it(std::find(mSets.begin(), mSets.end(), mpSelectedSet));
+		if (it != mSets.end())
+			LBSetSelectedIndex(IDC_LIST, it - mSets.begin());
+		else
+			LBSetSelectedIndex(IDC_LIST, -1);
+	}
+}
+
+void VDProjectUI::ExportViaEncoderAsk(bool batch) {
+	if (!inputVideo)
+		throw MyError("No input video stream to process.");
+
+	VDRegistryAppKey key(g_szRegKeyPersistence);
+	
+	VDUIDialogExportViaEncoder dlg;
+
+	VDStringW encName;
+	if (key.getString("CLI Export: Encoder set", encName)) {
+		vdrefptr<VDExtEncSet> eset;
+
+		if (VDGetExternalEncoderSetByName(encName.c_str(), ~eset))
+			dlg.SetSelectedSet(eset);
+	}
+
+	if (!dlg.ShowDialog(mhwnd))
+		return;
+
+	vdrefptr<VDExtEncSet> eset(dlg.GetSelectedSet());
+
+	if (eset) {
+		key.setString("CLI Export: Encoder set", eset->mName.c_str());
+		VDStringW filterSpec;
+		const wchar_t *ext = NULL;
+
+		if (!eset->mFileDesc.empty())
+			filterSpec += eset->mFileDesc;
+		else
+			filterSpec += L"Output file (*.*)";
+
+		filterSpec += (wchar_t)0;
+
+		filterSpec += L"*.";
+		if (!eset->mFileExt.empty()) {
+			filterSpec += eset->mFileExt;
+			ext = eset->mFileExt.c_str();
+		} else
+			filterSpec += L"*";
+
+		filterSpec += (wchar_t)0;
+		
+		const VDStringW filename(VDGetSaveFileName(kFileDialog_ExtOut, mhwnd, L"Export via external encoder", filterSpec.c_str(), ext));
+		if (!filename.empty()) {
+			if (batch)
+				JobAddConfigurationExportViaEncoder(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), &inputAVI->listFiles, filename.c_str(), true, eset->mName.c_str());
+			else
+				ExportViaEncoder(filename.c_str(), eset->mName.c_str(), false);
+		}
 	}
 }
 
@@ -1287,6 +1557,8 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_EDIT_JUMPTO:
 		case ID_VIDEO_COPYSOURCEFRAME:
 		case ID_VIDEO_COPYOUTPUTFRAME:
+		case ID_VIDEO_COPYSOURCEFRAMENUMBER:
+		case ID_VIDEO_COPYOUTPUTFRAMENUMBER:
 		case ID_PANELAYOUT_INPUTPANEONLY:
 		case ID_PANELAYOUT_OUTPUTPANEONLY:
 		case ID_PANELAYOUT_BOTHPANES:
@@ -1320,7 +1592,9 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_FILE_SAVEFILMSTRIP:				SaveFilmstripAsk();				break;
 		case ID_FILE_SAVEANIMATEDGIF:			SaveAnimatedGIFAsk();			break;
 		case ID_FILE_SAVERAWAUDIO:				SaveRawAudioAsk(false);			break;
+		case ID_FILE_SAVERAWVIDEO:				SaveRawVideoAsk(false);			break;
 		case ID_FILE_SAVEWAV:					SaveWAVAsk(false);				break;
+		case ID_FILE_EXPORTEXTERNALENCODER:		ExportViaEncoderAsk(false);		break;
 		case ID_FILE_CLOSEAVI:					Close();						break;
 		case ID_FILE_STARTSERVER:				StartServer();					break;
 		case ID_FILE_CAPTUREAVI:
@@ -1370,6 +1644,14 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 		case ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO:
 			SaveRawAudioAsk(true);
+			break;
+
+		case ID_QUEUEBATCHOPERATION_EXPORTRAWVIDEO:
+			SaveRawVideoAsk(true);
+			break;
+
+		case ID_QUEUEBATCHOPERATION_EXPORTUSINGEXTERNALENCODER:
+			ExportViaEncoderAsk(true);
 			break;
 
 		case ID_FILE_BATCHWIZARD:
@@ -1487,6 +1769,8 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_VIDEO_PRESERVEEMPTYFRAMES:		g_dubOpts.video.mbPreserveEmptyFrames = !g_dubOpts.video.mbPreserveEmptyFrames; break;
 		case ID_VIDEO_COPYSOURCEFRAME:			CopySourceFrameToClipboard();		break;
 		case ID_VIDEO_COPYOUTPUTFRAME:			CopyOutputFrameToClipboard();		break;
+		case ID_VIDEO_COPYSOURCEFRAMENUMBER:	CopySourceFrameNumberToClipboard();		break;
+		case ID_VIDEO_COPYOUTPUTFRAMENUMBER:	CopyOutputFrameNumberToClipboard();		break;
 		case ID_VIDEO_ERRORMODE:				SetVideoErrorModeAsk();			break;
 		case ID_EDIT_MASK:						MaskSelection(true);							break;
 		case ID_EDIT_UNMASK:					MaskSelection(false);						break;
@@ -1534,6 +1818,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 		case ID_OPTIONS_DYNAMICCOMPILATION:
 			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERF_DYNAMIC), (HWND)mhwnd, DynamicCompileOptionsDlgProc);
+			break;
+
+		case ID_OPTIONS_EXTERNALENCODERS:
+			VDUIDisplayDialogConfigureExternalEncoders((VDGUIHandle)mhwnd);
 			break;
 
 		case ID_OPTIONS_PREFERENCES:
@@ -1794,6 +2082,9 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEFILMSTRIP		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEANIMATEDGIF		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVERAWAUDIO			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_FILE_SAVERAWVIDEO			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_FILE_SAVESTRIPEDAVI       , bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_FILE_SAVESTRIPEMASTER     , bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_CLOSEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_AVIINFO				, bSourceFileExists);
@@ -1806,6 +2097,8 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_RUNVIDEOANALYSISPASS	, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_SAVEWAV				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_EXPORTRAWVIDEO        , bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_EXPORTUSINGEXTERNALENCODER, bSourceFileExists);
 
 	const bool bSelectionExists = bSourceFileExists && IsSelectionPresent();
 
@@ -1869,9 +2162,12 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_NEXTSCENE		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_EDIT_JUMPTO				, bSourceFileExists);
 
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_CLIPPING			, inputVideo != 0);
 
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideo && inputVideo->isFrameBufferValid());
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideo && filters.isRunning());
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAMENUMBER		, inputVideo != 0);
+	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAMENUMBER		, inputVideo != 0);
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_SCANFORERRORS		, inputVideo != 0);
 
 	const bool bAudioProcessingEnabled			= (g_dubOpts.audio.mode == DubAudioOptions::M_FULL);
@@ -1935,6 +2231,13 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
  
 	case WM_INITMENU:
 		UpdateMainMenu((HMENU)wParam);
+		break;
+
+	case WM_GETMINMAXINFO:
+		if (lParam) {
+			OnGetMinMaxInfo(*(MINMAXINFO *)lParam);
+			return 0;
+		}
 		break;
 
 	case WM_COMMAND:           // message: command from application menu
@@ -2033,6 +2336,7 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	case WM_DROPFILES:
 		HandleDragDrop((HDROP)wParam);
+		DragFinish((HDROP)wParam);
 		return 0;
 
 	case WM_MOUSEWHEEL:
@@ -2075,6 +2379,13 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     switch (msg) {
 	case WM_INITMENU:
 		UpdateDubMenu((HMENU)wParam);
+		break;
+
+	case WM_GETMINMAXINFO:
+		if (lParam) {
+			OnGetMinMaxInfo(*(MINMAXINFO *)lParam);
+			return 0;
+		}
 		break;
 
 	case WM_COMMAND:
@@ -2181,39 +2492,92 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 void VDProjectUI::HandleDragDrop(HDROP hdrop) {
-	if (DragQueryFile(hdrop, -1, NULL, 0) < 1)
+	UINT fileCount = DragQueryFile(hdrop, 0xFFFFFFFF, NULL, 0);
+
+	if (fileCount < 1)
 		return;
 
-	VDStringW filename;
+	bool isAppend = (GetKeyState(VK_CONTROL) < 0);
 
-	if (GetVersion() & 0x80000000) {
-		char szName[MAX_PATH];
-		DragQueryFile(hdrop, 0, szName, sizeof szName);
-		filename = VDTextAToW(szName);
-	} else {
-		wchar_t szNameW[MAX_PATH];
-		typedef UINT (APIENTRY *tpDragQueryFileW)(HDROP, UINT, LPWSTR, UINT);
-
-		if (HMODULE hmod = GetModuleHandle("shell32"))
-			if (const tpDragQueryFileW pDragQueryFileW = (tpDragQueryFileW)GetProcAddress(hmod, "DragQueryFileW")) {
-				pDragQueryFileW(hdrop, 0, szNameW, sizeof szNameW / sizeof szNameW[0]);
-				filename = szNameW;
-			}
-
+	if (!isAppend && fileCount > 1) {
+		MyError("You have dropped %u files. Multiple files are not allowed except for appending (when holding Control).", fileCount).post((HWND)mhwnd, g_szError);
+		return;
 	}
-	DragFinish(hdrop);
 
-	if (!filename.empty()) {
+	typedef vdvector<VDStringW> Filenames;
+	Filenames filenames;
+
+	for(UINT i=0; i<fileCount; ++i) {
+		if (!VDIsWindowsNT()) {
+			char szName[MAX_PATH];
+			if (DragQueryFile(hdrop, i, szName, sizeof szName)) {
+				const VDStringW s(VDTextAToW(szName));
+
+				if (!s.empty())
+					filenames.push_back_as(s);
+			}
+		} else {
+			wchar_t szNameW[MAX_PATH];
+			typedef UINT (APIENTRY *tpDragQueryFileW)(HDROP, UINT, LPWSTR, UINT);
+
+			if (HMODULE hmod = GetModuleHandle("shell32"))
+				if (const tpDragQueryFileW pDragQueryFileW = (tpDragQueryFileW)GetProcAddress(hmod, "DragQueryFileW")) {
+					if (pDragQueryFileW(hdrop, i, szNameW, sizeof szNameW / sizeof szNameW[0])) {
+						if (szNameW[0])
+							filenames.push_back_as(szNameW);
+					}
+				}
+
+		}
+	}
+
+	if (!filenames.empty()) {
 		try {
 			VDAutoLogDisplay logDisp;
 
-			Open(filename.c_str(), NULL, false);
+			if (isAppend) {
+				for(Filenames::const_iterator it(filenames.begin()), itEnd(filenames.end()); it != itEnd; ++it) {
+					const VDStringW& filename = *it;
+
+					AppendAVI(filename.c_str());
+				}
+			} else {
+				Open(filenames.front().c_str(), NULL, false);
+			}
 
 			logDisp.Post(mhwnd);
 		} catch(const MyError& e) {
 			e.post((HWND)mhwnd, g_szError);
 		}
 	}
+}
+
+void VDProjectUI::OnGetMinMaxInfo(MINMAXINFO& mmi) {
+	int minHeight = 0;
+
+	if (mbStatusBarVisible && mhwndStatus) {
+		RECT r;
+		if (GetWindowRect(mhwndStatus, &r))
+			minHeight += r.bottom - r.top;
+	}
+
+	if (mbPositionControlVisible && mhwndPosition) {
+		RECT r;
+		if (GetWindowRect(mhwndPosition, &r))
+			minHeight += r.bottom - r.top;
+	}
+
+	RECT r2;
+	r2.left = 0;
+	r2.right = 0;
+	r2.top = 0;
+	r2.bottom = minHeight;
+	AdjustWindowRect(&r2, ::GetWindowLong((HWND)mhwnd, GWL_STYLE), ::GetMenu((HWND)mhwnd) != NULL);
+
+	minHeight = r2.bottom - r2.top;
+
+	if (mmi.ptMinTrackSize.y < minHeight)
+		mmi.ptMinTrackSize.y = minHeight;
 }
 
 void VDProjectUI::OnSize() {
@@ -2407,7 +2771,8 @@ void VDProjectUI::RepositionPanes() {
 		RECT r;
 		GetWindowRect(hwndPane, &r);
 
-		SetWindowPos(hwndPane, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+		IVDVideoWindow *w = VDGetIVideoWindow(hwndPane);
+		w->Move(x, y);
 
 		if (g_vertical)
 			y += r.bottom - r.top;

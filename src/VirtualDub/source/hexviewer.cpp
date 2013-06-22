@@ -2564,6 +2564,7 @@ INT_PTR CALLBACK HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPAR
 		pcd->hwndTree = hdlg;
 		pcd->mhwndTreeView = GetDlgItem(hdlg, IDC_TREE);
 		pcd->RIFFTree(pcd->mhwndTreeView);
+		VDSetDialogDefaultIcons(hdlg);
 		return TRUE;
 
 	case WM_SIZE:

@@ -1240,8 +1240,10 @@ HRESULT VDD3D9Manager::PresentFullScreen(bool wait) {
 		if (SUCCEEDED(hr) || hr != D3DERR_WASSTILLDRAWING)
 			break;
 
-		if (!wait)
+		if (!wait) {
+			pSwapChain->Release();
 			return S_FALSE;
+		}
 
 		::Sleep(1);
 	}

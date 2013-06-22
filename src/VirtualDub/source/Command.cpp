@@ -209,9 +209,12 @@ void SaveStripeMaster(const wchar_t *szFile) {
 	g_project->RunOperation(&outstriped, 2, NULL, g_prefs.main.iDubPriority, false, 0, 0);
 }
 
-void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold) {
+void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold, int digits) {
 	if (!inputVideo)
 		throw MyError("No input file to process.");
+
+	if (digits < 1 || digits > 10)
+		throw MyError("Invalid digit count: %d", digits);
 
 	VDAVIOutputFileSystem outfile;
 
@@ -220,7 +223,7 @@ void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_o
 	outfile.SetBuffer(VDPreferencesGetRenderOutputBufferSize());
 
 	const VDStringW filename(szFilename);
-	outfile.SetFilenamePattern(VDFileSplitExtLeft(filename).c_str(), VDFileSplitExtRight(filename).c_str(), 2);
+	outfile.SetFilenamePattern(VDFileSplitExtLeft(filename).c_str(), VDFileSplitExtRight(filename).c_str(), digits);
 
 	g_project->RunOperation(&outfile, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp, lSpillThreshold, lSpillFrameThreshold);
 }

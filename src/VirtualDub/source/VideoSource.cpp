@@ -54,6 +54,7 @@
 
 extern const char *LookupVideoCodec(uint32);
 extern bool VDPreferencesIsDirectYCbCrInputEnabled();
+extern bool VDPreferencesIsUseVideoFccHandlerEnabled();
 
 ///////////////////////////
 
@@ -961,8 +962,10 @@ bool VideoSource::setTargetFormatVariant(int format, int variant) {
 		mTargetFormat.palette = mPalette;
 	} else {
 		const vdstructex<VDAVIBitmapInfoHeader> src(bih, getFormatLen());
-		if (!VDMakeBitmapFormatFromPixmapFormat(mpTargetFormatHeader, src, format, variant))
-			return false;
+
+		if (!VDMakeBitmapFormatFromPixmapFormat(mpTargetFormatHeader, src, format, variant)) {
+			mpTargetFormatHeader.clear();
+		}
 	}
 
 	invalidateFrameBuffer();
@@ -1380,7 +1383,12 @@ bool VideoSourceAVI::_construct(int streamIndex) {
 	if (!AllocFrameBuffer(bmih->biWidth * 4 * abs((int)bmih->biHeight) + 4))
 		throw MyMemoryError();
 
-	mpDecompressor = VDFindVideoDecompressorEx(streamInfo.fccHandler, bmih, format_len, use_internal);
+	uint32 fccHandlerSearch = streamInfo.fccHandler;
+
+	if (!VDPreferencesIsUseVideoFccHandlerEnabled())
+		fccHandlerSearch = 0;
+
+	mpDecompressor = VDFindVideoDecompressorEx(fccHandlerSearch, bmih, format_len, use_internal);
 
 	if (!mpDecompressor) {
 		const char *s = LookupVideoCodec(bmih->biCompression);

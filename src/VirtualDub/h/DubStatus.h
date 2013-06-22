@@ -38,7 +38,7 @@ public:
 
 		IDubber				*pDubber,
 		DubOptions			*opt)=0;
-	virtual void NotifyNewFrame(long lSize)=0;
+	virtual void NotifyNewFrame(uint32 size, bool isKey)=0;
 	virtual HWND Display(HWND hwndParent, int iInitialPriority)=0;
 	virtual void Destroy()=0;
 	virtual void SetPositionCallback(DubPositionCallback dpc, void *cookie)=0;

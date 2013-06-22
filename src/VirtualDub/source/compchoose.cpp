@@ -577,6 +577,9 @@ INT_PTR CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, L
 			if (!pcci->fccSelect) {
 				SendMessage(hwndItem, LB_SETCURSEL, 0, 0);
 				SelectCompressor(NULL, hdlg, pcci);
+			} else {
+				// force selection to be visible with sorting
+				SendMessage(hwndItem, LB_SETCURSEL, SendMessage(hwndItem, LB_GETCURSEL, 0, 0), 0);
 			}
 
 			SendDlgItemMessage(hdlg, IDC_QUALITY_SLIDER, TBM_SETRANGE, TRUE, MAKELONG(0, 100));

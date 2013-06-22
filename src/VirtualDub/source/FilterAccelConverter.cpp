@@ -44,6 +44,18 @@ void VDFilterAccelConverter::Init(VDFilterAccelEngine *engine, IVDFilterFrameSou
 	mAllocator.SetAccelerationRequirement(VDFilterFrameAllocatorProxy::kAccelModeRender);
 }
 
+void VDFilterAccelConverter::Start(IVDFilterFrameEngine *frameEngine) {
+	mpFrameEngine = frameEngine;
+}
+
+void VDFilterAccelConverter::Stop() {
+	if (mpRequest) {
+		mpRequest->MarkComplete(false);
+		CompleteRequest(mpRequest, false);
+		mpRequest.clear();
+	}
+}
+
 bool VDFilterAccelConverter::GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) {
 	return mpSource->GetDirectMapping(outputFrame, sourceFrame, sourceIndex);
 }
@@ -63,10 +75,22 @@ sint64 VDFilterAccelConverter::GetNearestUniqueFrame(sint64 outputFrame) {
 	return mpSource->GetNearestUniqueFrame(outputFrame);
 }
 
-VDFilterAccelConverter::RunResult VDFilterAccelConverter::RunRequests() {
-	vdrefptr<VDFilterFrameRequest> req;
+VDFilterAccelConverter::RunResult VDFilterAccelConverter::RunRequests(const uint32 *batchNumberLimit) {
+	if (mpRequest) {
+		if (mProcessStatus == kProcess_Pending)
+			return kRunResult_Blocked;
 
-	if (!GetNextRequest(~req))
+		bool succeeded = (mProcessStatus == kProcess_Succeeded);
+		mpRequest->MarkComplete(succeeded);
+		CompleteRequest(mpRequest, succeeded);
+		mpRequest.clear();
+		return kRunResult_Running;
+	} else {
+		VDASSERT(mProcessStatus != kProcess_Pending);
+	}
+
+	vdrefptr<VDFilterFrameRequest> req;
+	if (!GetNextRequest(batchNumberLimit, ~req))
 		return kRunResult_Idle;
 
 	VDFilterFrameBufferAccel *srcbuf = vdpoly_cast<VDFilterFrameBufferAccel *>(req->GetSource(0));
@@ -95,16 +119,29 @@ VDFilterAccelConverter::RunResult VDFilterAccelConverter::RunRequests() {
 	}
 
 	VDFilterFrameBufferAccel *dstbuf = static_cast<VDFilterFrameBufferAccel *>(req->GetResultBuffer());
-	mpEngine->Convert(dstbuf, mLayout, srcbuf, mSourceLayout, mSourceRect);
+	mpLockedSrc = srcbuf;
+	mpLockedDst = dstbuf;
+	mProcessStatus = kProcess_Pending;
 
-	req->MarkComplete(true);
-	CompleteRequest(req, true);
-	return kRunResult_Running;
+	mpFrameEngine->ScheduleProcess();
+	mpRequest.swap(req);
+	return kRunResult_Blocked;
 }
 
-bool VDFilterAccelConverter::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {
+VDFilterAccelConverter::RunResult VDFilterAccelConverter::RunProcess() {
+	if (mProcessStatus != kProcess_Pending)
+		return kRunResult_Idle;
+
+	mpEngine->Convert(mpLockedDst, mLayout, mpLockedSrc, mSourceLayout, mSourceRect);
+	mProcessStatus = kProcess_Succeeded;
+
+	mpFrameEngine->Schedule();
+	return kRunResult_IdleWasActive;
+}
+
+bool VDFilterAccelConverter::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber) {
 	vdrefptr<IVDFilterFrameClientRequest> creq;
-	if (!mpSource->CreateRequest(outputFrame, false, ~creq))
+	if (!mpSource->CreateRequest(outputFrame, false, batchNumber, ~creq))
 		return false;
 
 	req->SetSourceCount(1);

@@ -47,9 +47,8 @@ VDFilterAccelDownloader::~VDFilterAccelDownloader() {
 	}
 }
 
-void VDFilterAccelDownloader::Init(VDFilterAccelEngine *engine, IVDFilterSystemScheduler *scheduler, IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const VDPixmapLayout *sourceLayoutOverride) {
+void VDFilterAccelDownloader::Init(VDFilterAccelEngine *engine, IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const VDPixmapLayout *sourceLayoutOverride) {
 	mpEngine = engine;
-	mpScheduler = scheduler;
 	mpSource = source;
 	mSourceLayout = sourceLayoutOverride ? *sourceLayoutOverride : source->GetOutputLayout();
 	SetOutputLayout(outputLayout);
@@ -61,6 +60,19 @@ void VDFilterAccelDownloader::Init(VDFilterAccelEngine *engine, IVDFilterSystemS
 
 	if (!mpReadbackBuffer)
 		throw MyError("Unable to allocate 3D acceleration readback buffer for frame size: %ux%u", outputLayout.w, outputLayout.h);
+}
+
+void VDFilterAccelDownloader::Start(IVDFilterFrameEngine *frameEngine) {
+	mpFrameEngine = frameEngine;
+}
+
+void VDFilterAccelDownloader::Stop() {
+	if (mpRequest) {
+		bool succeeded = mpEngine->EndDownload(&mDownloadMsg);
+		mpRequest->MarkComplete(succeeded);
+		CompleteRequest(mpRequest, true);
+		mpRequest = NULL;
+	}
 }
 
 bool VDFilterAccelDownloader::GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) {
@@ -82,8 +94,7 @@ sint64 VDFilterAccelDownloader::GetNearestUniqueFrame(sint64 outputFrame) {
 	return mpSource->GetNearestUniqueFrame(outputFrame);
 }
 
-VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
-#ifdef USE_ASYNCHRONOUS_DOWNLOAD
+VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests(const uint32 *batchNumberLimit) {
 	if (mpRequest) {
 		if (!mDownloadMsg.mbCompleted)
 			return kRunResult_Blocked;
@@ -92,11 +103,13 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
 
 		mpRequest->MarkComplete(succeeded);
 		CompleteRequest(mpRequest, true);
-		// fall through
-	}
-#endif
+		mpRequest.clear();
 
-	if (!GetNextRequest(~mpRequest))
+		// We need to exit to give the filter system a chance to schedule downstreamm filters.
+		return kRunResult_Running;
+	}
+
+	if (!GetNextRequest(batchNumberLimit, ~mpRequest))
 		return kRunResult_Idle;
 
 	VDFilterFrameBufferAccel *srcbuf = static_cast<VDFilterFrameBufferAccel *>(mpRequest->GetSource(0));
@@ -134,31 +147,12 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
 	mDownloadMsg.mpDownloader = this;
 	mpEngine->PostCall(&mDownloadMsg);
 
-#ifndef USE_ASYNCHRONOUS_DOWNLOAD
-	mpEngine->WaitForCall(&mDownloadMsg);
-
-	bool succeeded = mpEngine->EndDownload(&mDownloadMsg);
-
-	if (!succeeded && mDownloadMsg.mbDeviceLost) {
-		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
-
-		if (err) {
-			err->mError = "The 3D accelerator is no longer available.";
-			mpRequest->SetError(err);
-		}
-	}
-
-	mpRequest->MarkComplete(succeeded);
-	CompleteRequest(mpRequest, true);
-	// fall through
-#endif
-
-	return kRunResult_Running;
+	return kRunResult_Blocked;
 }
 
-bool VDFilterAccelDownloader::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {
+bool VDFilterAccelDownloader::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber) {
 	vdrefptr<IVDFilterFrameClientRequest> creq;
-	if (!mpSource->CreateRequest(outputFrame, false, ~creq))
+	if (!mpSource->CreateRequest(outputFrame, false, batchNumber, ~creq))
 		return false;
 
 	req->SetSourceCount(1);
@@ -184,5 +178,5 @@ void VDFilterAccelDownloader::StaticShutdownCallback(VDFilterAccelEngineDispatch
 void VDFilterAccelDownloader::StaticCleanupCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
 	DownloadMsg& msg = *static_cast<DownloadMsg *>(message);
 
-	msg.mpDownloader->mpScheduler->Reschedule();
+	msg.mpDownloader->mpFrameEngine->Schedule();
 }

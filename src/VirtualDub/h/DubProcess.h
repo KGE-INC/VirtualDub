@@ -44,6 +44,7 @@ class FilterSystem;
 class VDFilterFrameRequest;
 class IVDFilterFrameClientRequest;
 class VDFilterFrameManualSource;
+class VDTextOutputStream;
 
 class VDDubProcessThread : public VDThread, public IVDDubVideoProcessorCallback {
 public:
@@ -51,6 +52,10 @@ public:
 	~VDDubProcessThread();
 
 	bool IsCompleted() const { return mbCompleted; }
+
+	IVDFilterSystemScheduler *GetVideoFilterScheduler();
+
+	void PreInit();
 
 	void SetParent(IDubberInternal *pParent);
 	void SetAbortSignal(VDAtomicInt *pAbort);
@@ -92,6 +97,8 @@ public:
 
 	void SetThrottle(float f);
 	float GetActivityRatio() const { return mLoopThrottle.GetActivityRatio(); }
+
+	void DumpStatus(VDTextOutputStream& os);
 
 protected:
 	void NextSegment();
@@ -149,7 +156,6 @@ protected:
 	const char			*volatile mpCurrentAction;
 	VDAtomicInt			mActivityCounter;
 
-	VDRTProfileChannel	mProcessingProfileChannel;
 	VDDubPreviewClock	mPreviewClock;
 
 	VDDubVideoProcessor	mVideoProcessor;

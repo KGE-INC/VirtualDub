@@ -45,22 +45,26 @@ void VDFilterFrameVideoSource::Init(IVDVideoSource *vs, const VDPixmapLayout& la
 	SetOutputLayout(layout);
 }
 
-VDFilterFrameVideoSource::RunResult VDFilterFrameVideoSource::RunRequests() {
+VDFilterFrameVideoSource::RunResult VDFilterFrameVideoSource::RunRequests(const uint32 *batchNumberLimit) {
 	if (!mpVS->streamOwn(this)) {
 		mpVS->streamBegin(false, true);
 	}
 
 	try {
+		bool activity = false;
+
 		if (mpRequest && !mpRequest->IsActive()) {
 			mpRequest->MarkComplete(false);
 			CompleteRequest(mpRequest, false);
 			mpRequest->Release();
 			mpRequest = NULL;
+
+			activity = true;
 		}
 
 		if (!mpRequest) {
-			if (!GetNextRequest(&mpRequest))
-				return kRunResult_Idle;
+			if (!GetNextRequest(batchNumberLimit, &mpRequest))
+				return activity ? kRunResult_IdleWasActive : kRunResult_Idle;
 
 			VDVERIFY(AllocateRequestBuffer(mpRequest));
 

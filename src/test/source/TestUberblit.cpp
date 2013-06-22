@@ -20,13 +20,14 @@ namespace {
 				int y2 = ((p2 & 0xff00ff)*0x130036 + (p2 & 0xff00)*0xb700) >> 16;
 
 				if (abs(y1 - y2) > 512) {
-					printf("Bitmap comparison failed at (%d, %d) with formats %s and %s: #%06x != #%06x"
+					printf("Bitmap comparison failed at (%d, %d) with formats %s and %s: #%06x != #%06x (diff=%d)"
 						, x
 						, y
 						, VDPixmapGetInfo(src.format).name
 						, VDPixmapGetInfo(dst.format).name
 						, p1 & 0xffffff
 						, p2 & 0xffffff
+						, abs(y1 - y2)
 						);
 
 					VDASSERT(false);
@@ -79,7 +80,7 @@ DEFINE_TEST(Uberblit) {
 		vdautoptr<IVDPixmapBlitter> blit1;
 				const VDPixmapFormatInfo& fiIn = VDPixmapGetInfo(in[0].format);
 
-		const int maxsrctest = srcformat == kPixFormat_Y8 ? 2 : 8;
+		const int maxsrctest = (srcformat == kPixFormat_Y8 || srcformat == kPixFormat_Y8_FR) ? 2 : 8;
 
 		for(int v=0; v<maxsrctest; ++v) {
 			in[v].init(size, size, srcformat);
@@ -98,9 +99,14 @@ DEFINE_TEST(Uberblit) {
 			if (dstformat == kPixFormat_YUV444_XVYU)
 				continue;
 
+
 			VDPixmapBuffer out(size, size, dstformat);
 
-			int maxtest = (srcformat == kPixFormat_Y8 || dstformat == kPixFormat_Y8) ? 2 : 8;
+			int maxtest = (srcformat == kPixFormat_Y8 ||
+				srcformat == kPixFormat_Y8_FR ||
+				dstformat == kPixFormat_Y8 ||
+				dstformat == kPixFormat_Y8_FR
+				) ? 2 : 8;
 
 			vdautoptr<IVDPixmapBlitter> blit2(VDPixmapCreateBlitter(out, in[0]));
 			vdautoptr<IVDPixmapBlitter> blit3(VDPixmapCreateBlitter(output, out));
@@ -146,7 +152,7 @@ DEFINE_TEST(Uberblit) {
 							const int ge = (int)((spx>> 8)&0xff) - (int)((dpx>> 8)&0xff);
 							const int be = (int)((spx    )&0xff) - (int)((dpx    )&0xff);
 
-							if (abs(re) > 1 || abs(ge) > 1 || abs(be) > 1) {
+							if (abs(re) > 3 || abs(ge) > 3 || abs(be) > 3) {
 								printf("        Failed: %s -> %s\n", VDPixmapGetInfo(srcformat).name, VDPixmapGetInfo(dstformat).name);
 								printf("            (%d,%d) %08lx != %08lx\n", x, y, spx, dpx);
 								VDASSERT(false);

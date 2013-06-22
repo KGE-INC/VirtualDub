@@ -18,6 +18,7 @@ public:
 	virtual void GetSourceSize(int& w, int& h) = 0;
 	virtual void SetSourceSize(int w, int h) = 0;
 	virtual void GetFrameSize(int& w, int& h) = 0;
+	virtual void Move(int x, int y) = 0;
 	virtual void Resize() = 0;
 	virtual void SetChild(HWND hwnd) = 0;
 	virtual void SetDisplay(IVDVideoDisplay *) = 0;

@@ -54,8 +54,12 @@ void VDDubPreviewClock::Shutdown() {
 }
 
 void VDDubPreviewClock::TimerCallback() {
+	const uint32 clock = ReadClock();
+
 	if (mpBlitter)
-		mpBlitter->setPulseClock(ReadClock());
+		mpBlitter->setPulseClock(clock);
+
+	mEventClockUpdated.Raise(this, clock);
 }
 
 uint32 VDDubPreviewClock::ReadClock() const {

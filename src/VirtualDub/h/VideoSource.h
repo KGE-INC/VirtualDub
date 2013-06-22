@@ -48,6 +48,7 @@ public:
 	virtual bool		setDecompressedFormat(const VDAVIBitmapInfoHeader *pbih) = 0;
 
 	virtual VDAVIBitmapInfoHeader *getDecompressedFormat() = 0;
+	virtual uint32		getDecompressedFormatLen() = 0;
 
 	virtual void		streamSetDesiredFrame(VDPosition frame_num) = 0;
 	virtual VDPosition	streamGetNextRequiredFrame(bool& is_preroll) = 0;
@@ -149,7 +150,11 @@ public:
 	virtual bool setDecompressedFormat(const VDAVIBitmapInfoHeader *pbih);
 
 	VDAVIBitmapInfoHeader *getDecompressedFormat() {
-		return mpTargetFormatHeader.data();
+		return mpTargetFormatHeader.empty() ? NULL : mpTargetFormatHeader.data();
+	}
+
+	uint32 getDecompressedFormatLen() {
+		return mpTargetFormatHeader.size();
 	}
 
 	virtual void streamSetDesiredFrame(VDPosition frame_num);

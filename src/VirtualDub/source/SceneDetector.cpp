@@ -260,7 +260,7 @@ namespace {
 		cb_total = ((sint32)(cb_total + 16 - c_bias) >> 5) + 0x80;
 		cr_total = ((sint32)(cr_total + 16 - c_bias) >> 5) + 0x80;
 
-		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total, false, false);
 	}
 
 	uint32 scene_lumtileYUY2(const void *src0, long w, long h, ptrdiff_t pitch) {
@@ -290,7 +290,7 @@ namespace {
 		cb_total = ((sint32)(cb_total + 16 - c_bias) >> 5) + 0x80;
 		cr_total = ((sint32)(cr_total + 16 - c_bias) >> 5) + 0x80;
 
-		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total, false, false);
 	}
 
 	uint32 scene_lumtileY8(const void *src0, long w, long h, ptrdiff_t pitch) {
@@ -311,7 +311,25 @@ namespace {
 
 		y_total = ((sint32)(y_total + 32 - y_bias) >> 6) + 0x10;
 
-		return VDConvertYCbCrToRGB((uint8)y_total, 0x80, 0x80);
+		return VDConvertYCbCrToRGB((uint8)y_total, 0x80, 0x80, false, false);
+	}
+
+	uint32 scene_lumtileI8(const void *src0, long w, long h, ptrdiff_t pitch) {
+		const uint8 *src = (const uint8 *)src0;
+		uint32 y_total = 0;
+
+		do {
+			long x = w;
+
+			const uint8 *src2 = src;
+			do {
+				y_total += *src2++;
+			} while(--x);
+
+			src += pitch;
+		} while(--h);
+
+		return ((sint32)(y_total + 0x20) >> 6) * 0x010101;
 	}
 
 	template<int kXShift, int kYShift>
@@ -374,7 +392,7 @@ namespace {
 		cb_total = ((sint32)(cb_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
 		cr_total = ((sint32)(cr_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
 
-		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total, false, false);
 	}
 
 	uint32 scene_lumtileNV12(const uint8 *y, ptrdiff_t ypitch, const uint8 *c, ptrdiff_t cpitch, uint32 w, uint32 h) {
@@ -435,7 +453,7 @@ namespace {
 		cb_total = ((sint32)(cb_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
 		cr_total = ((sint32)(cr_total + kCRound - c_bias) >> kCShiftDown) + 0x80;
 
-		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total);
+		return VDConvertYCbCrToRGB((uint8)y_total, (uint8)cb_total, (uint8)cr_total, false, false);
 	}
 }
 
@@ -516,6 +534,8 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 
 				case nsVDPixmap::kPixFormat_YUV422_UYVY:
 				case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
+				case nsVDPixmap::kPixFormat_YUV422_UYVY_FR:
+				case nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR:
 					do {
 						*lummap++ = scene_lumtileUYVY(src, 8, mh, pxsrc.pitch);
 						src += 16;
@@ -527,6 +547,9 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 					break;
 
 				case nsVDPixmap::kPixFormat_YUV422_YUYV:
+				case nsVDPixmap::kPixFormat_YUV422_YUYV_709:
+				case nsVDPixmap::kPixFormat_YUV422_YUYV_FR:
+				case nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR:
 					do {
 						*lummap++ = scene_lumtileYUY2(src, 8, mh, pxsrc.pitch);
 						src += 16;
@@ -547,8 +570,18 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 						*lummap++ = scene_lumtileY8(src, pxsrc.w&7, mh, pxsrc.pitch);
 					break;
 
+				case nsVDPixmap::kPixFormat_Y8_FR:
+					do {
+						*lummap++ = scene_lumtileI8(src, 8, mh, pxsrc.pitch);
+						src += 8;
+					} while(--w);
+
+					if (pxsrc.w & 7)
+						*lummap++ = scene_lumtileI8(src, pxsrc.w&7, mh, pxsrc.pitch);
+					break;
+
 				default:
-					VDASSERTCT(nsVDPixmap::kPixFormat_Max_Standard == nsVDPixmap::kPixFormat_YUV420_NV12 + 1);
+					VDASSERTCT(nsVDPixmap::kPixFormat_Max_Standard == nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR + 1);
 					VDASSERT(false);
 			}
 		} while(--h);
@@ -612,6 +645,9 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 
 			switch(pxsrc.format) {
 				case nsVDPixmap::kPixFormat_YUV444_Planar:
+				case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
 					do {
 						*lummap++ = scene_lumtileYCbCrPlanar<0, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
 						srcY += 8;
@@ -624,6 +660,9 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 					break;
 
 				case nsVDPixmap::kPixFormat_YUV422_Planar:
+				case nsVDPixmap::kPixFormat_YUV422_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV422_Planar_Centered:
 					do {
 						*lummap++ = scene_lumtileYCbCrPlanar<1, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
@@ -637,6 +676,9 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 					break;
 
 				case nsVDPixmap::kPixFormat_YUV411_Planar:
+				case nsVDPixmap::kPixFormat_YUV411_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
 					do {
 						*lummap++ = scene_lumtileYCbCrPlanar<2, 0>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
 						srcY += 8;
@@ -649,7 +691,22 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 					break;
 
 				case nsVDPixmap::kPixFormat_YUV420_Planar:
+				case nsVDPixmap::kPixFormat_YUV420_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
 				case nsVDPixmap::kPixFormat_YUV420_Planar_Centered:
+				case nsVDPixmap::kPixFormat_YUV420i_Planar:
+				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
 					do {
 						*lummap++ = scene_lumtileYCbCrPlanar<1, 1>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
 						srcY += 8;
@@ -662,6 +719,9 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 					break;
 
 				case nsVDPixmap::kPixFormat_YUV410_Planar:
+				case nsVDPixmap::kPixFormat_YUV410_Planar_709:
+				case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
+				case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 					do {
 						*lummap++ = scene_lumtileYCbCrPlanar<2, 2>(srcY, pitchY, srcCb, pitchCb, srcCr, pitchCr, 8, mh);
 						srcY += 8;

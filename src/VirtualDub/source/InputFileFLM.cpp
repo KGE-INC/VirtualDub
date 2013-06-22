@@ -401,17 +401,17 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nFooterSize >= 36) {
 			const uint8 *buf = (const uint8 *)pFooter;
 			FilmstripHeader hdr;
 
 			hdr.Read(buf + nFooterSize - 36);
 			if (hdr.Validate())
-				return 1;
+				return kDC_High;
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

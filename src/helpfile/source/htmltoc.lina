@@ -20,6 +20,7 @@
 		<tocnode target="p-displays.html" name="Display panes"/>
 		<tocnode target="p-audiodisplay.html" name="Audio display"/>
 		<tocnode target="frameserver.html" name="Frameserver"/>
+		<tocnode target="p-externalencoder.html" name="Using external encoders"/>
 		<tocnode target="fxvideo.html" name="Video shader reference"/>
 	</tocnode>
 	<tocnode target="capture.html" name="Video capture">

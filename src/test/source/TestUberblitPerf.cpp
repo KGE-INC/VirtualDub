@@ -44,7 +44,27 @@ DEFINE_TEST_NONAUTO(UberblitPerf) {
 		nsVDPixmap::kPixFormat_YUV410_Planar,
 		nsVDPixmap::kPixFormat_YUV422_V210,
 		nsVDPixmap::kPixFormat_YUV422_UYVY_709,
-		nsVDPixmap::kPixFormat_YUV420_NV12
+		nsVDPixmap::kPixFormat_YUV420_NV12,
+		nsVDPixmap::kPixFormat_YUV422_YUYV_709,
+		nsVDPixmap::kPixFormat_YUV444_Planar_709,
+		nsVDPixmap::kPixFormat_YUV422_Planar_709,
+		nsVDPixmap::kPixFormat_YUV420_Planar_709,
+		nsVDPixmap::kPixFormat_YUV411_Planar_709,
+		nsVDPixmap::kPixFormat_YUV410_Planar_709,
+		nsVDPixmap::kPixFormat_YUV422_UYVY_FR,
+		nsVDPixmap::kPixFormat_YUV422_YUYV_FR,
+		nsVDPixmap::kPixFormat_YUV444_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV422_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV420_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV411_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV410_Planar_FR,
+		nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR,
+		nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR,
+		nsVDPixmap::kPixFormat_YUV444_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV422_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV420_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV411_Planar_709_FR,
+		nsVDPixmap::kPixFormat_YUV410_Planar_709_FR,
 	};
 
 	enum {
@@ -64,6 +84,8 @@ DEFINE_TEST_NONAUTO(UberblitPerf) {
 	vdautoarrayptr<char> srcbuf(new char[kSize*kSize*4]);
 	uint32 palette[256]={0};
 
+	memset(srcbuf.get(), 0, kSize*kSize*4);
+
 	VDPixmap srcPixmaps[kFormatCount];
 
 	for(int srcformat = kSrcStart; srcformat < kFormatCount; ++srcformat) {
@@ -79,7 +101,7 @@ DEFINE_TEST_NONAUTO(UberblitPerf) {
 
 		VDPixmapLayout layout;
 		VDPixmapCreateLinearLayout(layout, kFormats[dstformat], kSize, kSize, 16);
-		VDPixmap dstPixmap = VDPixmapFromLayout(layout, srcbuf.get());
+		VDPixmap dstPixmap = VDPixmapFromLayout(layout, dstbuf.get());
 		dstPixmap.palette = palette;
 
 		const char *dstName = VDPixmapGetInfo(kFormats[dstformat]).name;

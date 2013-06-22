@@ -195,7 +195,7 @@ public:
 	bool IsValid() { return mbValid; }
 	void SetFilterMode(FilterMode mode);
 
-	bool Resize();
+	bool Resize(int w, int h);
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode) { return true; }
@@ -395,13 +395,9 @@ void VDVideoDisplayMinidriverOpenGL::SetFilterMode(FilterMode mode) {
 	}
 }
 
-bool VDVideoDisplayMinidriverOpenGL::Resize() {
-	if (mhwndOGL) {
-		RECT r;
-
-		GetClientRect(mhwnd, &r);
-		SetWindowPos(mhwndOGL, 0, 0, 0, r.right, r.bottom, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-	}
+bool VDVideoDisplayMinidriverOpenGL::Resize(int w, int h) {
+	if (mhwndOGL)
+		SetWindowPos(mhwndOGL, 0, 0, 0, w, h, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
 
 	return true;
 }
@@ -685,6 +681,8 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 	RECT r;
 	GetClientRect(mhwndOGL, &r);
 
+	const int vph = r.bottom;
+
 	FilterMode mode = mPreferredFilter;
 
 	if (mode == kFilterAnySuitable)
@@ -706,16 +704,46 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 			UpdateCubicTextures(r.right, r.bottom);
 
 		mGL.glViewport(0, 0, r.right, r.bottom);
+		mGL.glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		if (mbDestRectEnabled) {
+			mGL.glClearColor(
+				(float)(mBackgroundColor & 0x00ff0000) / (float)0x00ff0000,
+				(float)(mBackgroundColor & 0x0000ff00) / (float)0x0000ff00,
+				(float)(mBackgroundColor & 0x000000ff) / (float)0x000000ff,
+				0.0f);
+
+			mGL.glClear(GL_COLOR_BUFFER_BIT);
+
+			if (r.left < mDestRect.left)
+				r.left = mDestRect.left;
+
+			if (r.top < mDestRect.top)
+				r.top = mDestRect.top;
+
+			if (r.right > mDestRect.right)
+				r.right = mDestRect.right;
+
+			if (r.bottom > mDestRect.bottom)
+				r.bottom = mDestRect.bottom;
+
+			if (r.right < r.left)
+				r.right = r.left;
+
+			if (r.bottom < r.top)
+				r.bottom = r.top;
+
+			mGL.glViewport(r.left, vph - r.bottom, r.right - r.left, r.bottom - r.top);
+		}
 
 		if (mColorOverride) {
-			mGL.glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 			mGL.glClearColor(
 				(float)(mColorOverride & 0x00ff0000) / (float)0x00ff0000,
 				(float)(mColorOverride & 0x0000ff00) / (float)0x0000ff00,
 				(float)(mColorOverride & 0x000000ff) / (float)0x000000ff,
 				0.0f);
 			mGL.glClear(GL_COLOR_BUFFER_BIT);
-		} else {
+		} else if (r.right > r.left && r.bottom > r.top) {
 			mGL.glMatrixMode(GL_PROJECTION);
 			mGL.glLoadIdentity();
 			mGL.glMatrixMode(GL_MODELVIEW);
@@ -875,7 +903,7 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 					mGL.glLoadIdentity();
 					mGL.glOrtho(0, r.right, mbVerticalFlip ? 0 : r.bottom, mbVerticalFlip ? r.bottom : 0, -1, 1);
 
-					mGL.glViewport(0, 0, r.right, r.bottom);
+					mGL.glViewport(r.left, vph - r.bottom, r.right - r.left, r.bottom - r.top);
 					mGL.glClear(GL_COLOR_BUFFER_BIT);
 					mGL.glProgramLocalParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 0, 0, ih2*0.5f, 0, 0);
 

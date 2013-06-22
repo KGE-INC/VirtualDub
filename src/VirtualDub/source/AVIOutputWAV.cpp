@@ -130,8 +130,26 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 	mBytesWritten = 0;
 
 	mbHeaderOpen = true;
+	mbPipeMode = false;
 
-	return TRUE;
+	return true;
+}
+
+bool AVIOutputWAV::init(VDFileHandle h, bool pipeMode) {
+	if (!audioOut) return false;
+
+	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
+	mpFileAsync->Open(h, 2, mBufferSize >> 1);
+
+	WriteHeader(true);
+
+	mBytesWritten = 0;
+
+	mbHeaderOpen = true;
+	mbPipeMode = pipeMode;
+	mbAutoWriteWAVE64 = false;
+
+	return true;
 }
 
 void AVIOutputWAV::finalize() {
@@ -143,7 +161,7 @@ void AVIOutputWAV::finalize() {
 	if (mbAutoWriteWAVE64 && mBytesWritten > 0x7FFFFFFF)
 		mbWriteWAVE64 = true;
 
-	if (mbHeaderOpen) {
+	if (mbHeaderOpen && !mbPipeMode) {
 		WriteHeader(false);
 		mbHeaderOpen = false;
 		mpFileAsync->Truncate(mBytesWritten + mHeaderSize);

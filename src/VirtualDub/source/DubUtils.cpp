@@ -191,7 +191,7 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool allowDirect, bool forceDirect, bool preserveEmptyFrames, const FilterSystem *pRemapperFS) {
+void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool allowDirect, bool forceDirect, bool preserveEmptyFrames, const FilterSystem *pRemapperFS, bool allowNullFrames, bool useSourceFrames) {
 	VDPosition directLast = -1;
 	VDPosition sourceLast = -1;
 	int sourceIndexLast = -1;
@@ -299,6 +299,12 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 				srcFrame = directLast;
 			}
 		}
+		
+		// If we want only source frames, we must backtranslate output frames.
+		if (!useDirect && useSourceFrames) {
+			if (pRemapperFS)
+				srcFrame = pRemapperFS->GetSourceFrame(srcFrame);
+		}
 
 		// If we switched direct modes, we need to invalidate the last frame counter.
 		if (lastUseDirect != useDirect) {
@@ -322,7 +328,7 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 			}
 		}
 		
-		if (sameAsLast) {
+		if (sameAsLast && allowNullFrames) {
 			srcFrame = -1;
 			useDirect = true;
 		} else
@@ -458,6 +464,8 @@ VDLoopThrottle::VDLoopThrottle()
 	, mWindowIndex(0)
 	, mWaitTimeWindowSum(0)
 	, mActiveTimeWindowSum(0)
+	, mSuspendState(false)
+	, mSuspendRequested(false)
 {
 	memset(mWaitTimeWindow, 0, sizeof mWaitTimeWindow);
 	memset(mActiveTimeWindow, 0, sizeof mActiveTimeWindow);
@@ -506,6 +514,8 @@ bool VDLoopThrottle::Delay() {
 }
 
 void VDLoopThrottle::BeginWait() {
+	CheckForSuspend();
+
 	if (!mWaitDepth++) {	// transitioning active -> wait
 		uint32 currentTime = VDGetAccurateTick();
 
@@ -528,6 +538,8 @@ void VDLoopThrottle::BeginWait() {
 }
 
 void VDLoopThrottle::EndWait() {
+	CheckForSuspend();
+
 	if (!--mWaitDepth) {	// transitioning wait -> active
 		uint32 currentTime = VDGetAccurateTick();
 
@@ -551,4 +563,33 @@ void VDLoopThrottle::EndWait() {
 	}
 
 	VDASSERT(mWaitDepth >= 0);
+}
+
+void VDLoopThrottle::CheckForSuspend() {
+	if (mSuspendRequested) {
+		mSuspendState = true;
+		mStateChange.signal();
+		while(mSuspendRequested)
+			mRequestChange.wait();
+		mSuspendState = false;
+	}
+}
+
+void VDLoopThrottle::BeginSuspend() {
+	mSuspendRequested = true;
+	mRequestChange.signal();
+}
+
+bool VDLoopThrottle::TryWaitSuspend(uint32 timeout) {
+	while(!mSuspendState) {
+		if (!mStateChange.tryWait(timeout))
+			return false;
+	}
+
+	return true;
+}
+
+void VDLoopThrottle::EndSuspend() {
+	mSuspendRequested = false;
+	mRequestChange.signal();
 }

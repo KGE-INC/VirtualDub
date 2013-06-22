@@ -575,6 +575,10 @@
 				RelativePath=".\source\TestVector.cpp"
 				>
 			</File>
+			<File
+				RelativePath=".\source\TestVector2.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Header Files"

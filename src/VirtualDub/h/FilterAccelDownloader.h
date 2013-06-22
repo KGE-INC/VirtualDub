@@ -25,6 +25,8 @@
 #include "FilterAccelEngine.h"
 #include "FilterFrameRequest.h"
 
+class IVDFilterSystemScheduler;
+
 class VDFilterAccelDownloader : public VDFilterFrameManualSource {
 	VDFilterAccelDownloader(const VDFilterAccelDownloader&);
 	VDFilterAccelDownloader& operator=(const VDFilterAccelDownloader&);
@@ -32,19 +34,21 @@ public:
 	VDFilterAccelDownloader();
 	~VDFilterAccelDownloader();
 
-	void Init(VDFilterAccelEngine *engine, IVDFilterSystemScheduler *scheduler, IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const VDPixmapLayout *sourceLayoutOverride);
+	void Init(VDFilterAccelEngine *engine, IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const VDPixmapLayout *sourceLayoutOverride);
+	void Start(IVDFilterFrameEngine *frameEngine);
+	void Stop();
 
 	bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex);
 	sint64 GetSourceFrame(sint64 outputFrame);
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 
-	RunResult RunRequests();
+	RunResult RunRequests(const uint32 *batchNumberLimit);
 
 protected:
 	struct CallbackMsg;
 
-	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);
+	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber);
 
 	static void StaticInitCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
 	static void StaticShutdownCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
@@ -52,7 +56,7 @@ protected:
 
 	VDFilterAccelEngine *mpEngine;
 	IVDFilterFrameSource *mpSource;
-	IVDFilterSystemScheduler *mpScheduler;
+	IVDFilterFrameEngine *mpFrameEngine;
 	VDFilterAccelReadbackBuffer *mpReadbackBuffer;
 	vdrefptr<VDFilterFrameRequest> mpRequest;
 

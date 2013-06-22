@@ -20,6 +20,7 @@
 
 #include <vd2/system/thread.h>
 #include <vd2/system/atomic.h>
+#include <vd2/system/event.h>
 
 struct VDRenderVideoPipeFrameInfo {
 	void		*mpData;
@@ -61,9 +62,10 @@ private:
 		kFlagAborted				= 4
 	};
 
-	// These are the same as in VideoSourceAVI
+	VDEvent<AVIPipe, bool> mEventBufferAdded;
 
 public:
+	// These are the same as in VideoSourceAVI
 	enum {
 		kDroppable=0,
 		kDependant,
@@ -85,6 +87,7 @@ public:
 
 	void *getWriteBuffer(long len, int *handle_ptr);
 	void postBuffer(const VDRenderVideoPipeFrameInfo& frameInfo);
+	const VDRenderVideoPipeFrameInfo *TryReadBuffer();
 	const VDRenderVideoPipeFrameInfo *getReadBuffer();
 	void releaseBuffer();
 	void finalize();
@@ -92,6 +95,10 @@ public:
 	void abort();
 	void getDropDistances(int& dependant, int& independent);
 	void getQueueInfo(int& total, int& finals, int& allocated);
+
+	VDEvent<AVIPipe, bool>& OnBufferAdded() {
+		return mEventBufferAdded;
+	}
 };
 
 #endif

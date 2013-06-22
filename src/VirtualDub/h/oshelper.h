@@ -51,6 +51,7 @@ enum VDSystemShutdownMode
 	kVDSystemShutdownMode_Sleep
 };
 
+bool VDInitiateSystemShutdownWithUITimeout(VDSystemShutdownMode mode, const wchar_t *reason, uint32 timeout);
 bool VDInitiateSystemShutdown(VDSystemShutdownMode mode);
 
 class VDCPUUsageReader {

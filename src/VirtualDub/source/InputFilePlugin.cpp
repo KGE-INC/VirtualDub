@@ -1292,7 +1292,7 @@ public:
 	uint32			GetFlags();
 	const wchar_t *	GetFilenamePattern();
 	bool			DetectByFilename(const wchar_t *pszFilename);
-	int				DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize);
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize);
 	InputFile *		CreateInputFile(uint32 flags);
 
 protected:
@@ -1384,12 +1384,12 @@ bool VDInputDriverPlugin::DetectByFilename(const wchar_t *pszFilename) {
 	return VDFileWildMatch(sig, pszFilename);
 }
 
-int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+VDInputDriverPlugin::DetectionConfidence VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 	const uint8 *sig = (const uint8 *)mpShadowedDef->mpSignature;
 
 	if (sig) {
 		if (nHeaderSize < (mpShadowedDef->mSignatureLength >> 1))
-			return -1;
+			return kDC_None;
 
 		const uint8 *data = (const uint8 *)pHeader;
 		for(uint32 i=0; i<mpShadowedDef->mSignatureLength; i+=2) {
@@ -1397,7 +1397,7 @@ int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSi
 			uint8 mask = sig[1];
 
 			if ((*data ^ byte) & mask)
-				return -1;
+				return kDC_None;
 
 			sig += 2;
 			++data;
@@ -1405,7 +1405,7 @@ int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSi
 	}
 
 	if (!(mpShadowedDef->mFlags & VDXInputDriverDefinition::kFlagCustomSignature))
-		return 1;
+		return kDC_High;
 
 	LoadPlugin();
 
@@ -1418,7 +1418,7 @@ int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSi
 
 	UnloadPlugin();
 
-	return retval;
+	return retval < 0 ? kDC_None : retval > 0 ? kDC_High : kDC_Moderate;
 }
 
 InputFile *VDInputDriverPlugin::CreateInputFile(uint32 flags) {

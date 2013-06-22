@@ -40,15 +40,6 @@
 //
 ///////////////////////////////////////////////////////////////////////////
 
-template<class Category, class T, class Distance = ptrdiff_t, class Pointer = T*, class Reference = T&>
-struct vditerator {
-#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1310 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
-	typedef std::iterator<Category, T, Distance> type;
-#else
-	typedef std::iterator<Category, T, Distance, Pointer, Reference> type;
-#endif
-};
-
 template<class Iterator, class T>
 struct vdreverse_iterator {
 #if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1310 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
@@ -57,6 +48,32 @@ struct vdreverse_iterator {
 	typedef std::reverse_iterator<Iterator> type;
 #endif
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+template<class T>
+T *vdmove_forward(T *src1, T *src2, T *dst) {
+	T *p = src1;
+	while(p != src2) {
+		*dst = *p;
+		++dst;
+		++p;
+	}
+
+	return dst;
+}
+
+template<class T>
+T *vdmove_backward(T *src1, T *src2, T *dst) {
+	T *p = src2;
+	while(p != src1) {
+		--dst;
+		--p;
+		*dst = *p;
+	}
+
+	return dst;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 class vdallocator_base {
@@ -394,8 +411,14 @@ struct vdlist_node {
 };
 
 template<class T, class T_Nonconst>
-class vdlist_iterator : public vditerator<std::bidirectional_iterator_tag, T, ptrdiff_t>::type {
+class vdlist_iterator {
 public:
+	typedef ptrdiff_t difference_type;
+	typedef T value_type;
+	typedef T *pointer_type;
+	typedef T& reference_type;
+	typedef std::bidirectional_iterator_tag iterator_category;
+
 	vdlist_iterator() {}
 	vdlist_iterator(T *p) : mp(p) {}
 	vdlist_iterator(const vdlist_iterator<T_Nonconst, T_Nonconst>& src) : mp(src.mp) {}
@@ -773,10 +796,10 @@ template<class T> VDTINLINE typename vdspan<T>::iterator				vdspan<T>::begin() {
 template<class T> VDTINLINE typename vdspan<T>::const_iterator		vdspan<T>::begin() const { return mpBegin; }
 template<class T> VDTINLINE typename vdspan<T>::iterator				vdspan<T>::end() { return mpEnd; }
 template<class T> VDTINLINE typename vdspan<T>::const_iterator		vdspan<T>::end() const { return mpEnd; }
-template<class T> VDTINLINE typename vdspan<T>::reverse_iterator		vdspan<T>::rbegin() { return reverse_iterator(mpBegin); }
-template<class T> VDTINLINE typename vdspan<T>::const_reverse_iterator vdspan<T>::rbegin() const { return const_reverse_iterator(mpBegin); }
-template<class T> VDTINLINE typename vdspan<T>::reverse_iterator		vdspan<T>::rend() { return reverse_iterator(mpEnd); }
-template<class T> VDTINLINE typename vdspan<T>::const_reverse_iterator vdspan<T>::rend() const { return const_reverse_iterator(mpEnd); }
+template<class T> VDTINLINE typename vdspan<T>::reverse_iterator		vdspan<T>::rbegin() { return reverse_iterator(mpEnd); }
+template<class T> VDTINLINE typename vdspan<T>::const_reverse_iterator vdspan<T>::rbegin() const { return const_reverse_iterator(mpEnd); }
+template<class T> VDTINLINE typename vdspan<T>::reverse_iterator		vdspan<T>::rend() { return reverse_iterator(mpBegin); }
+template<class T> VDTINLINE typename vdspan<T>::const_reverse_iterator vdspan<T>::rend() const { return const_reverse_iterator(mpBegin); }
 template<class T> VDTINLINE typename vdspan<T>::reference			vdspan<T>::front() { return *mpBegin; }
 template<class T> VDTINLINE typename vdspan<T>::const_reference		vdspan<T>::front() const { return *mpBegin; }
 template<class T> VDTINLINE typename vdspan<T>::reference			vdspan<T>::back() { VDASSERT(mpBegin != mpEnd); return mpEnd[-1]; }
@@ -1201,6 +1224,12 @@ struct vdfastdeque_block {
 template<class T, class T_Base>
 class vdfastdeque_iterator {
 public:
+	typedef T value_type;
+	typedef T* pointer;
+	typedef T& reference;
+	typedef ptrdiff_t difference_type;
+	typedef std::bidirectional_iterator_tag iterator_category;
+
 	vdfastdeque_iterator(const vdfastdeque_iterator<T_Base, T_Base>&);
 	vdfastdeque_iterator(vdfastdeque_block<T_Base> **pMapEntry, uint32 index);
 
@@ -1262,7 +1291,7 @@ vdfastdeque_iterator<T, T_Base> vdfastdeque_iterator<T, T_Base>::operator++(int)
 template<class T, class T_Base>
 vdfastdeque_iterator<T, T_Base>& vdfastdeque_iterator<T, T_Base>::operator--() {
 	if (mIndex-- == 0) {
-		mIndex = vdfastdeque_block<T, T_Base>::kBlockSize - 1;
+		mIndex = vdfastdeque_block<T>::kBlockSize - 1;
 		mpBlock = *--mpMap;
 	}
 	return *this;
@@ -1606,5 +1635,9 @@ void vdfastdeque<T,A>::validate() {
 	VDASSERT(m.mapStart == m.mapEnd || (m.mapStart[0] && m.mapEnd[-1]));
 	VDASSERT(m.mapEndCommit == m.mapEndAlloc || !m.mapEndCommit[0]);
 }
+
+#include <vd2/system/vdstl_vector.h>
+#include <vd2/system/vdstl_hash.h>
+#include <vd2/system/vdstl_hashmap.h>
 
 #endif

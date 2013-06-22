@@ -98,6 +98,7 @@ protected:
 	void SetSourceSolidColor(uint32 color);
 	void SetReturnFocus(bool fs);
 	void SetFullScreen(bool fs);
+	void SetDestRect(const vdrect32 *r, uint32 backgroundColor);
 	void PostBuffer(VDVideoDisplayFrame *);
 	bool RevokeBuffer(bool allowFrameSkip, VDVideoDisplayFrame **ppFrame);
 	void FlushBuffers();
@@ -184,7 +185,10 @@ protected:
 	bool		mbUseSubrect;
 	bool		mbReturnFocus;
 	bool		mbFullScreen;
+	bool		mbDestRectEnabled;
 	vdrect32	mSourceSubrect;
+	vdrect32	mDestRect;
+	uint32		mBackgroundColor;
 	VDStringW	mMessage;
 
 	uint32				mSolidColorBuffer;
@@ -311,6 +315,9 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& create
 	, mbUseSubrect(false)
 	, mbReturnFocus(false)
 	, mbFullScreen(false)
+	, mbDestRectEnabled(false)
+	, mDestRect(0, 0, 0, 0)
+	, mBackgroundColor(0)
 	, mpActiveFrame(NULL)
 	, mpLastFrame(NULL)
 {
@@ -425,6 +432,20 @@ void VDVideoDisplayWindow::SetFullScreen(bool fs) {
 	SetRequiresFullScreen(fs);
 }
 
+void VDVideoDisplayWindow::SetDestRect(const vdrect32 *r, uint32 backgroundColor) {
+	mbDestRectEnabled = false;
+
+	if (r) {
+		mbDestRectEnabled = true;
+		mDestRect = *r;
+	}
+
+	mBackgroundColor = backgroundColor;
+
+	if (mpMiniDriver)
+		mpMiniDriver->SetDestRect(r, backgroundColor);
+}
+
 void VDVideoDisplayWindow::PostBuffer(VDVideoDisplayFrame *p) {
 	p->AddRef();
 
@@ -439,7 +460,7 @@ void VDVideoDisplayWindow::PostBuffer(VDVideoDisplayFrame *p) {
 	}
 
 	if (wasIdle)
-		PostMessage(mhwnd, MYWM_PROCESSNEXTFRAME, 0, 0);
+		RequestNextFrame();
 }
 
 bool VDVideoDisplayWindow::RevokeBuffer(bool allowFrameSkip, VDVideoDisplayFrame **ppFrame) {
@@ -540,8 +561,9 @@ void VDVideoDisplayWindow::ReleaseActiveFrame() {
 			if (mpLastFrame) {
 				if (mpLastFrame->mFlags & kDoNotCache)
 					pFrameToDiscard = mpLastFrame;
-				else
+				else {
 					mIdleFrames.push_front(mpLastFrame);
+				}
 				mpLastFrame = NULL;
 			}
 
@@ -670,6 +692,11 @@ LRESULT VDVideoDisplayWindow::ChildWndProc(UINT msg, WPARAM wParam, LPARAM lPara
 		}
 		break;
 
+	case WM_SIZE:
+		if (mpMiniDriver)
+			VerifyDriverResult(mpMiniDriver->Resize(LOWORD(lParam), HIWORD(lParam)));
+		break;
+
 	case WM_TIMER:
 		if (mpMiniDriver)
 			VerifyDriverResult(mpMiniDriver->Tick((int)wParam));
@@ -794,6 +821,7 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (newframe)
 				DispatchNextFrame();
 		}
+
 		return 0;
 	case MYWM_SETFILTERMODE:
 		SyncSetFilterMode((FilterMode)lParam);
@@ -804,8 +832,6 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_SIZE:
 		if (mhwndChild)
 			SetWindowPos(mhwndChild, NULL, 0, 0, LOWORD(lParam), HIWORD(lParam), SWP_NOMOVE|SWP_NOCOPYBITS|SWP_NOZORDER|SWP_NOACTIVATE);
-		if (mpMiniDriver)
-			VerifyDriverResult(mpMiniDriver->Resize());
 		break;
 	case WM_TIMER:
 		if (wParam == mReinitDisplayTimer) {
@@ -1170,6 +1196,8 @@ bool VDVideoDisplayWindow::InitMiniDriver() {
 	mpMiniDriver->SetDisplayDebugInfo(sbEnableDebugInfo);
 	mpMiniDriver->SetFullScreen(mbFullScreen);
 	mpMiniDriver->SetHighPrecision(sbEnableHighPrecision);
+	mpMiniDriver->SetDestRect(mbDestRectEnabled ? &mDestRect : NULL, mBackgroundColor);
+	mpMiniDriver->Resize(r.right, r.bottom);
 
 	if (!mpMiniDriver->Init(mhwndChild, mSource)) {
 		DestroyWindow(mhwndChild);

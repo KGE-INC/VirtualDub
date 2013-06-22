@@ -6,6 +6,7 @@
 #endif
 
 #include <vd2/system/vdstl.h>
+#include <vd2/system/vectors.h>
 #include <vd2/system/win32/miniwindows.h>
 #include <vd2/VDLib/UIProxies.h>
 
@@ -16,6 +17,7 @@ public:
 
 class VDDialogFrameW32 {
 public:
+	bool IsCreated() const { return mhdlg != NULL; }
 	VDZHWND GetWindowHandle() const { return mhdlg; }
 
 	bool	Create(VDGUIHandle hwndParent);
@@ -23,6 +25,16 @@ public:
 
 	void	Show();
 	void	Hide();
+
+	void Sync(bool writeToDataStore);
+
+	void BringToFront();
+
+	vdsize32 GetSize() const;
+	void SetSize(const vdsize32& sz);
+
+	vdrect32 GetArea() const;
+	void SetPosition(const vdpoint32& pt);
 
 	sintptr ShowDialog(VDGUIHandle hwndParent);
 
@@ -33,6 +45,8 @@ protected:
 
 	void AddProxy(VDUIProxyControl *proxy, uint32 id);
 
+	void SetCurrentSizeAsMinSize();
+
 	VDZHWND GetControl(uint32 id);
 
 	void SetFocusToControl(uint32 id);
@@ -40,6 +54,7 @@ protected:
 
 	void SetCaption(uint32 id, const wchar_t *format);
 
+	bool GetControlText(uint32 id, VDStringW& s);
 	void SetControlText(uint32 id, const wchar_t *s);
 	void SetControlTextF(uint32 id, const wchar_t *format, ...);
 
@@ -48,6 +63,7 @@ protected:
 	VDStringW GetControlValueString(uint32 id);
 
 	void ExchangeControlValueBoolCheckbox(bool write, uint32 id, bool& val);
+	void ExchangeControlValueUint32(bool write, uint32 id, uint32& val, uint32 minVal, uint32 maxVal);
 	void ExchangeControlValueDouble(bool write, uint32 id, const wchar_t *format, double& val, double minVal, double maxVal);
 	void ExchangeControlValueString(bool write, uint32 id, VDStringW& s);
 
@@ -60,12 +76,23 @@ protected:
 	void FailValidation(uint32 id);
 	void SignalFailedValidation(uint32 id);
 
+	void SetPeriodicTimer(uint32 id, uint32 msperiod);
+
+	void ShowError(const wchar_t *message, const wchar_t *caption);
+	bool Confirm(const wchar_t *message, const wchar_t *caption);
+
 	// listbox
 	void LBClear(uint32 id);
 	sint32 LBGetSelectedIndex(uint32 id);
 	void LBSetSelectedIndex(uint32 id, sint32 idx);
 	void LBAddString(uint32 id, const wchar_t *s);
 	void LBAddStringF(uint32 id, const wchar_t *format, ...);
+
+	// combobox
+	void CBClear(uint32 id);
+	sint32 CBGetSelectedIndex(uint32 id);
+	void CBSetSelectedIndex(uint32 id, sint32 idx);
+	void CBAddString(uint32 id, const wchar_t *s);
 
 	// trackbar
 	sint32 TBGetValue(uint32 id);
@@ -81,6 +108,7 @@ protected:
 	virtual void OnSize();
 	virtual void OnDestroy();
 	virtual bool OnTimer(uint32 id);
+	virtual bool OnErase(VDZHDC hdc);
 	virtual bool OnCommand(uint32 id, uint32 extcode);
 	virtual void OnDropFiles(VDZHDROP hDrop);
 	virtual void OnDropFiles(IVDUIDropFileList *dropFileList);
@@ -91,6 +119,8 @@ protected:
 	bool	mbValidationFailed;
 	bool	mbIsModal;
 	VDZHWND	mhdlg;
+	int		mMinWidth;
+	int		mMinHeight;
 
 private:
 	static VDZINT_PTR VDZCALLBACK StaticDlgProc(VDZHWND hwnd, VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lParam);
@@ -139,12 +169,16 @@ public:
 		kBL		= kB | kL,
 		kBR		= kB | kR,
 		kBC		= kB | kC,
+
+		kAvoidFlicker = 0x100
 	};
 
 	void Init(VDZHWND hwnd);
 	void Relayout();
 	void Relayout(int width, int height);
 	void Add(uint32 id, int alignment);
+
+	void Erase();
 
 protected:
 	struct ControlEntry {

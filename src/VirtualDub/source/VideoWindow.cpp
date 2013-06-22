@@ -54,6 +54,7 @@ public:
 	void GetSourceSize(int& w, int& h);
 	void SetSourceSize(int w, int h);
 	void GetFrameSize(int& w, int& h);
+	void Move(int x, int y);
 	void Resize();
 	void SetChild(HWND hwnd);
 	void SetDisplay(IVDVideoDisplay *pDisplay);
@@ -245,6 +246,12 @@ double VDVideoWindow::GetMaxZoomForArea(int w, int h) {
 	}
 
 	return std::min<double>((double)w / ((double)mSourceHeight * frameAspect), (double)h / (double)mSourceHeight);
+}
+
+void VDVideoWindow::Move(int x, int y) {
+	++mInhibitParamUpdateLocks;
+	SetWindowPos(mhwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+	--mInhibitParamUpdateLocks;
 }
 
 void VDVideoWindow::Resize() {

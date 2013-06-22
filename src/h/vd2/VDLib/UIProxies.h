@@ -4,6 +4,7 @@
 #include <vd2/system/event.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/vectors.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/win32/miniwindows.h>
 
@@ -18,11 +19,13 @@ public:
 	virtual void Attach(VDZHWND hwnd);
 	virtual void Detach();
 
+	void SetArea(const vdrect32& r);
+
 	virtual VDZLRESULT On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lParam);
 	virtual VDZLRESULT On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam);
 
 protected:
-	HWND	mhwnd;
+	VDZHWND	mhwnd;
 };
 
 class VDUIProxyMessageDispatcherW32 {
@@ -44,9 +47,16 @@ protected:
 	HashChain mHashTable[kHashTableSize];
 };
 
+/////////////////////////////////////////////////////////////////////////////
+
 class IVDUIListViewVirtualItem : public IVDRefCount {
 public:
 	virtual void GetText(int subItem, VDStringW& s) const = 0;
+};
+
+class IVDUIListViewVirtualComparer {
+public:
+	virtual int Compare(IVDUIListViewVirtualItem *x, IVDUIListViewVirtualItem *y) = 0;
 };
 
 class VDUIProxyListView : public VDUIProxyControl {
@@ -55,12 +65,14 @@ public:
 
 	void AutoSizeColumns();
 	void Clear();
+	void ClearExtraColumns();
 	void DeleteItem(int index);
 	int GetColumnCount() const;
 	int GetItemCount() const;
 	int GetSelectedIndex() const;
 	void SetSelectedIndex(int index);
 	void SetFullRowSelectEnabled(bool enabled);
+	void SetItemCheckboxesEnabled(bool enabled);
 	void EnsureItemVisible(int index);
 	int GetVisibleTopIndex();
 	void SetVisibleTopIndex(int index);
@@ -69,7 +81,14 @@ public:
 	int InsertItem(int item, const wchar_t *text);
 	int InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvvi);
 	void RefreshItem(int item);
+	void EditItemLabel(int item);
+	void GetItemText(int item, VDStringW& s) const;
 	void SetItemText(int item, int subitem, const wchar_t *text);
+
+	bool IsItemChecked(int item);
+	void SetItemChecked(int item, bool checked);
+
+	void Sort(IVDUIListViewVirtualComparer& comparer);
 
 	VDEvent<VDUIProxyListView, int>& OnColumnClicked() {
 		return mEventColumnClicked;
@@ -79,16 +98,40 @@ public:
 		return mEventItemSelectionChanged;
 	}
 
+	VDEvent<VDUIProxyListView, int>& OnItemDoubleClicked() {
+		return mEventItemDoubleClicked;
+	}
+
+	VDEvent<VDUIProxyListView, int>& OnItemCheckedChanged() {
+		return mEventItemCheckedChanged;
+	}
+
+	struct LabelEventData {
+		int mIndex;
+		const wchar_t *mpNewLabel;
+	};
+
+	VDEvent<VDUIProxyListView, LabelEventData>& OnItemLabelChanged() {
+		return mEventItemLabelEdited;
+	}
+
 protected:
+	static int VDZCALLBACK SortAdapter(VDZLPARAM x, VDZLPARAM y, VDZLPARAM cookie);
 	VDZLRESULT On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam);
 
+	int			mChangeNotificationLocks;
 	int			mNextTextIndex;
 	VDStringW	mTextW[3];
 	VDStringA	mTextA[3];
 
 	VDEvent<VDUIProxyListView, int> mEventColumnClicked;
 	VDEvent<VDUIProxyListView, int> mEventItemSelectionChanged;
+	VDEvent<VDUIProxyListView, int> mEventItemDoubleClicked;
+	VDEvent<VDUIProxyListView, int> mEventItemCheckedChanged;
+	VDEvent<VDUIProxyListView, LabelEventData> mEventItemLabelEdited;
 };
+
+/////////////////////////////////////////////////////////////////////////////
 
 class VDUIProxyHotKeyControl : public VDUIProxyControl {
 public:
@@ -106,6 +149,54 @@ protected:
 	VDZLRESULT On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lParam);
 
 	VDEvent<VDUIProxyHotKeyControl, VDUIAccelerator> mEventHotKeyChanged;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUIProxyTabControl : public VDUIProxyControl {
+public:
+	VDUIProxyTabControl();
+	~VDUIProxyTabControl();
+
+	void AddItem(const wchar_t *s);
+	void DeleteItem(int index);
+
+	vdsize32 GetControlSizeForContent(const vdsize32&) const;
+	vdrect32 GetContentArea() const;
+
+	int GetSelection() const;
+	void SetSelection(int index);
+
+	VDEvent<VDUIProxyTabControl, int>& OnSelectionChanged() {
+		return mSelectionChanged;
+	}
+
+protected:
+	VDZLRESULT On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam);
+
+	VDEvent<VDUIProxyTabControl, int> mSelectionChanged;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUIProxyComboBoxControl : public VDUIProxyControl {
+public:
+	VDUIProxyComboBoxControl();
+	~VDUIProxyComboBoxControl();
+
+	void AddItem(const wchar_t *s);
+
+	int GetSelection() const;
+	void SetSelection(int index);
+
+	VDEvent<VDUIProxyComboBoxControl, int>& OnSelectionChanged() {
+		return mSelectionChanged;
+	}
+
+protected:
+	VDZLRESULT On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lParam);
+
+	VDEvent<VDUIProxyComboBoxControl, int> mSelectionChanged;
 };
 
 #endif

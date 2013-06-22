@@ -37,6 +37,7 @@ public:
 		kFormatTGA,
 		kFormatJPEG,
 		kFormatPNG,
+		kFormatTGAUncompressed,
 		kFormatCount
 	};
 

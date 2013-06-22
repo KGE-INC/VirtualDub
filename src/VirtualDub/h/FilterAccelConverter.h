@@ -23,6 +23,7 @@
 #include "FilterFrameManualSource.h"
 
 class VDFilterAccelEngine;
+class VDFilterFrameBufferAccel;
 
 class VDFilterAccelConverter : public VDFilterFrameManualSource {
 	VDFilterAccelConverter(const VDFilterAccelConverter&);
@@ -32,23 +33,38 @@ public:
 	~VDFilterAccelConverter();
 
 	void Init(VDFilterAccelEngine *engine, IVDFilterFrameSource *source, const VDPixmapLayout& outputLayout, const vdrect32 *srcRect);
+	void Start(IVDFilterFrameEngine *frameEngine);
+	void Stop();
 
 	bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex);
 	sint64 GetSourceFrame(sint64 outputFrame);
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 
-	RunResult RunRequests();
+	RunResult RunRequests(const uint32 *batchNumberLimit);
+	RunResult RunProcess();
 
 protected:
-	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);
+	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber);
 
 	VDFilterAccelEngine	*mpEngine;
 	IVDFilterFrameSource *mpSource;
+	IVDFilterFrameEngine *mpFrameEngine;
 	VDPixmapLayout		mSourceLayout;
 	vdrect32			mSourceRect;
 
 	vdrefptr<VDFilterFrameRequest> mpRequest;
+
+	enum ProcessStatus {
+		kProcess_Idle,
+		kProcess_Pending,
+		kProcess_Succeeded,
+		kProcess_Failed
+	};
+
+	VDAtomicInt mProcessStatus;
+	VDFilterFrameBufferAccel *mpLockedDst;
+	VDFilterFrameBufferAccel *mpLockedSrc;
 };
 
 #endif

@@ -17,10 +17,13 @@
 
 #include "stdafx.h"
 
+#include <bitset>
 #include <vd2/system/bitmath.h>
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
+#include <vd2/system/profile.h>
 #include <vd2/system/protscope.h>
+#include <vd2/system/VDScheduler.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include "VBitmap.h"
@@ -40,6 +43,9 @@
 #include "FilterAccelUploader.h"
 #include "FilterAccelDownloader.h"
 #include "FilterAccelConverter.h"
+
+#define VDDEBUG_FILTERSYS_DETAIL (void)sizeof
+//#define VDDEBUG_FILTERSYS_DETAIL VDDEBUG
 
 extern FilterFunctions g_filterFuncs;
 
@@ -71,6 +77,103 @@ bool VDFilterSystemDefaultScheduler::Block() {
 
 ///////////////////////////////////////////////////////////////////////////
 
+class VDFilterSystemProcessNode : public VDSchedulerNode, public IVDFilterFrameEngine {
+public:
+	VDFilterSystemProcessNode(IVDFilterFrameSource *src, IVDFilterSystemScheduler *rootScheduler);
+
+	void Unblock();
+
+	bool Service();
+	bool ServiceSync();
+
+	virtual void Schedule();
+	virtual void ScheduleProcess();
+
+protected:
+	IVDFilterFrameSource *const mpSource;
+	IVDFilterSystemScheduler *const mpRootScheduler;
+
+	VDAtomicInt mbActive;
+	VDAtomicInt mbBlocked;
+	VDAtomicInt mbBlockedPending;
+	const bool mbAccelerated;
+};
+
+VDFilterSystemProcessNode::VDFilterSystemProcessNode(IVDFilterFrameSource *src, IVDFilterSystemScheduler *rootScheduler)
+	: mpSource(src)
+	, mpRootScheduler(rootScheduler)
+	, mbActive(false)
+	, mbBlocked(true)
+	, mbAccelerated(src->IsAccelerated())
+{
+}
+
+void VDFilterSystemProcessNode::Unblock() {
+	mbBlocked = false;
+
+	if (mpScheduler)
+		Reschedule();
+}
+
+bool VDFilterSystemProcessNode::Service() {
+	if (mbBlocked)
+		return false;
+
+	VDPROFILEBEGIN("Run filter");
+	bool activity = false;
+	switch(mpSource->RunProcess()) {
+		case IVDFilterFrameSource::kRunResult_Running:
+		case IVDFilterFrameSource::kRunResult_IdleWasActive:
+		case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+			activity = true;
+			break;
+	}
+	VDPROFILEEND();
+
+	return activity;
+}
+
+bool VDFilterSystemProcessNode::ServiceSync() {
+	if (mbAccelerated || !mbActive.xchg(false))
+		return false;
+
+	bool activity = false;
+	switch(mpSource->RunProcess()) {
+		case IVDFilterFrameSource::kRunResult_Running:
+		case IVDFilterFrameSource::kRunResult_IdleWasActive:
+		case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+			activity = true;
+			VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Processing produced activity.\n", mpSource->GetDebugDesc());
+			break;
+
+		default:
+			VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Processing was idle.\n", mpSource->GetDebugDesc());
+			break;
+	}
+
+	if (activity)
+		mbActive = true;
+
+	return activity;
+}
+
+void VDFilterSystemProcessNode::Schedule() {
+	mpRootScheduler->Reschedule();
+}
+
+void VDFilterSystemProcessNode::ScheduleProcess() {
+	VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Process rescheduling request.\n", mpSource->GetDebugDesc());
+	if (mpScheduler) {
+		if (!mbBlocked)
+			Reschedule();
+	} else {
+		mbActive = true;
+		Schedule();
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 struct FilterSystem::Bitmaps {
 	vdrefptr<IVDFilterFrameSource> mpSource;
 	vdrefptr<IVDFilterSystemScheduler> mpScheduler;
@@ -82,6 +185,10 @@ struct FilterSystem::Bitmaps {
 	VDFilterFrameAllocatorManager	mAllocatorManager;
 
 	vdrefptr<VDFilterAccelEngine>	mpAccelEngine;
+
+	vdautoptr<VDScheduler> mpProcessScheduler;
+	vdautoptr<VDSchedulerThreadPool> mpProcessSchedulerThreadPool;
+	VDSignal			mProcessSchedulerSignal;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -91,6 +198,7 @@ FilterSystem::FilterSystem()
 	, mbFiltersError(false)
 	, mbAccelEnabled(false)
 	, mbAccelDebugVisual(false)
+	, mThreadsRequested(-1)
 	, mOutputFrameRate(0, 0)
 	, mOutputFrameCount(0)
 	, mpBitmaps(new Bitmaps)
@@ -113,6 +221,10 @@ void FilterSystem::SetAccelEnabled(bool enable) {
 
 void FilterSystem::SetVisualAccelDebugEnabled(bool enable) {
 	mbAccelDebugVisual = enable;
+}
+
+void FilterSystem::SetAsyncThreadCount(sint32 threadsToUse) {
+	mThreadsRequested = threadsToUse;
 }
 
 // prepareLinearChain(): init bitmaps in a linear filtering system
@@ -178,20 +290,57 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 		if (flags == FILTERPARAM_NOT_SUPPORTED || (flags & FILTERPARAM_SUPPORTS_ALTFORMATS)) {
 			using namespace nsVDPixmap;
-			VDASSERTCT(kPixFormat_Max_Standard < 32);
-			VDASSERTCT(kPixFormat_Max_Standard == kPixFormat_YUV420_NV12 + 1);
-			uint32 formatMask	= (1 << kPixFormat_XRGB1555)
-								| (1 << kPixFormat_RGB565)
-								| (1 << kPixFormat_RGB888)
-								| (1 << kPixFormat_XRGB8888)
-								| (1 << kPixFormat_Y8)
-								| (1 << kPixFormat_YUV422_UYVY)
-								| (1 << kPixFormat_YUV422_YUYV)
-								| (1 << kPixFormat_YUV444_Planar)
-								| (1 << kPixFormat_YUV422_Planar)
-								| (1 << kPixFormat_YUV420_Planar)
-								| (1 << kPixFormat_YUV411_Planar)
-								| (1 << kPixFormat_YUV410_Planar);
+
+			VDASSERTCT(kPixFormat_Max_Standard == kPixFormat_YUV420ib_Planar_709_FR + 1);
+
+			std::bitset<nsVDPixmap::kPixFormat_Max_Standard> formatMask;
+
+			formatMask.set(kPixFormat_XRGB1555);
+			formatMask.set(kPixFormat_RGB565);
+			formatMask.set(kPixFormat_RGB888);
+			formatMask.set(kPixFormat_XRGB8888);
+			formatMask.set(kPixFormat_Y8);
+			formatMask.set(kPixFormat_Y8_FR);
+			formatMask.set(kPixFormat_YUV422_UYVY);
+			formatMask.set(kPixFormat_YUV422_YUYV);
+			formatMask.set(kPixFormat_YUV444_Planar);
+			formatMask.set(kPixFormat_YUV422_Planar);
+			formatMask.set(kPixFormat_YUV420_Planar);
+			formatMask.set(kPixFormat_YUV420i_Planar);
+			formatMask.set(kPixFormat_YUV420it_Planar);
+			formatMask.set(kPixFormat_YUV420ib_Planar);
+			formatMask.set(kPixFormat_YUV411_Planar);
+			formatMask.set(kPixFormat_YUV410_Planar);
+			formatMask.set(kPixFormat_YUV422_UYVY_709);
+			formatMask.set(kPixFormat_YUV422_YUYV_709);
+			formatMask.set(kPixFormat_YUV444_Planar_709);
+			formatMask.set(kPixFormat_YUV422_Planar_709);
+			formatMask.set(kPixFormat_YUV420_Planar_709);
+			formatMask.set(kPixFormat_YUV420i_Planar_709);
+			formatMask.set(kPixFormat_YUV420it_Planar_709);
+			formatMask.set(kPixFormat_YUV420ib_Planar_709);
+			formatMask.set(kPixFormat_YUV411_Planar_709);
+			formatMask.set(kPixFormat_YUV410_Planar_709);
+			formatMask.set(kPixFormat_YUV422_UYVY_FR);
+			formatMask.set(kPixFormat_YUV422_YUYV_FR);
+			formatMask.set(kPixFormat_YUV444_Planar_FR);
+			formatMask.set(kPixFormat_YUV422_Planar_FR);
+			formatMask.set(kPixFormat_YUV420_Planar_FR);
+			formatMask.set(kPixFormat_YUV420i_Planar_FR);
+			formatMask.set(kPixFormat_YUV420it_Planar_FR);
+			formatMask.set(kPixFormat_YUV420ib_Planar_FR);
+			formatMask.set(kPixFormat_YUV411_Planar_FR);
+			formatMask.set(kPixFormat_YUV410_Planar_FR);
+			formatMask.set(kPixFormat_YUV422_UYVY_709_FR);
+			formatMask.set(kPixFormat_YUV422_YUYV_709_FR);
+			formatMask.set(kPixFormat_YUV444_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV422_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV420_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV420i_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV420it_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV420ib_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV411_Planar_709_FR);
+			formatMask.set(kPixFormat_YUV410_Planar_709_FR);
 
 			static const int kStaticOrder[]={
 				kPixFormat_YUV444_Planar,
@@ -214,7 +363,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 			int originalFormat = bmLast->mPixmapLayout.format;
 			int format = originalFormat;
 			if (flags != FILTERPARAM_NOT_SUPPORTED) {
-				formatMask = 0;
+				formatMask.reset();
 				VDASSERT(fa->GetInvalidFormatHandlingState());
 			} else {
 				if (mbAccelEnabled && fa->IsAcceleratable()) {
@@ -247,12 +396,12 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 						if (flags != FILTERPARAM_NOT_SUPPORTED) {
 							// clear the format mask so we don't try any more formats
-							formatMask = 0;
+							formatMask.reset();
 							break;
 						}
 					}
 
-					if (formatMask) {
+					if (formatMask.any()) {
 						// failed - restore original first format to try
 						format = originalFormat;
 					}
@@ -260,7 +409,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 				// check if the incoming format is VDXA and we haven't already handled the situation --
 				// if so we must convert it to the equivalent.
-				if (formatMask) {
+				if (formatMask.any()) {
 					switch(originalFormat) {
 						case nsVDXPixmap::kPixFormat_VDXA_RGB:
 							format = nsVDXPixmap::kPixFormat_XRGB8888;
@@ -271,8 +420,8 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 					}
 				}
 
-				while(format && formatMask) {
-					if (formatMask & (1 << format)) {
+				while(format && formatMask.any()) {
+					if (formatMask.test(format)) {
 						if (format == originalFormat)
 							flags = fa->Prepare(*bmLast);
 						else {
@@ -287,19 +436,19 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 						if (flags != FILTERPARAM_NOT_SUPPORTED)
 							break;
 
-						formatMask &= ~(1 << format);
+						formatMask.reset(format);
 					}
 
 					switch(format) {
 					case kPixFormat_YUV422_UYVY:
-						if (formatMask & (1 << kPixFormat_YUV422_YUYV))
+						if (formatMask.test(kPixFormat_YUV422_YUYV))
 							format = kPixFormat_YUV422_YUYV;
 						else
 							format = kPixFormat_YUV422_Planar;
 						break;
 
 					case kPixFormat_YUV422_YUYV:
-						if (formatMask & (1 << kPixFormat_YUV422_UYVY))
+						if (formatMask.test(kPixFormat_YUV422_UYVY))
 							format = kPixFormat_YUV422_UYVY;
 						else
 							format = kPixFormat_YUV422_Planar;
@@ -331,7 +480,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 					case kPixFormat_XRGB1555:
 					case kPixFormat_RGB565:
 					case kPixFormat_RGB888:
-						if (formatMask & (1 << kPixFormat_XRGB8888)) {
+						if (formatMask.test(kPixFormat_XRGB8888)) {
 							format = kPixFormat_XRGB8888;
 							break;
 						}
@@ -341,10 +490,16 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 					default:
 						if (staticOrderIndex < sizeof(kStaticOrder)/sizeof(kStaticOrder[0]))
 							format = kStaticOrder[staticOrderIndex++];
-						else if (formatMask & (1 << kPixFormat_XRGB8888))
+						else if (formatMask.test(kPixFormat_XRGB8888))
 							format = kPixFormat_XRGB8888;
-						else
-							format = VDFindLowestSetBit(formatMask);
+						else {
+							for(size_t i=1; i<nsVDPixmap::kPixFormat_Max_Standard; ++i) {
+								if (formatMask.test(i)) {
+									format = i;
+									break;
+								}
+							}
+						}
 						break;
 					}
 				}
@@ -454,6 +609,9 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 			fa = fa_next;
 			continue;
 		}
+
+		VDASSERT(!fa->mRealDst.GetBuffer());
+		VDASSERT(!fa->mExternalDst.GetBuffer());
 
 		if (fa->GetInvalidFormatHandlingState())
 			throw MyError("Cannot start filters: Filter \"%s\" is not handling image formats correctly.",
@@ -590,7 +748,7 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 						VDPixmapCreateLinearLayout(layout, targetFormat, finalLayout.w, finalLayout.h, 16);
 
 					vdrefptr<VDFilterAccelDownloader> conv(new VDFilterAccelDownloader);
-					conv->Init(mpBitmaps->mpAccelEngine, mpBitmaps->mpScheduler, src, layout, NULL);
+					conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
 					conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
 					src = conv;
 					prevProxy = src->GetOutputAllocatorProxy();
@@ -670,7 +828,7 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 		VDPixmapLayout layout;
 		VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, finalLayout.w, finalLayout.h, 16);
 
-		conv->Init(mpBitmaps->mpAccelEngine, mpBitmaps->mpScheduler, src, layout, NULL);
+		conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
 		conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
 		mFilters.push_back(conv.release());
 	} else if (finalLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
@@ -679,7 +837,7 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 		VDPixmapLayout layout;
 		VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_YUV444_Planar, finalLayout.w, finalLayout.h, 16);
 
-		conv->Init(mpBitmaps->mpAccelEngine, mpBitmaps->mpScheduler, src, layout, NULL);
+		conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
 		conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
 		mFilters.push_back(conv.release());
 	}
@@ -691,6 +849,26 @@ void FilterSystem::ReadyFilters() {
 
 	mbFiltersError = false;
 
+	if (mThreadsRequested >= 0) {
+		mpBitmaps->mpProcessScheduler = new VDScheduler;
+		mpBitmaps->mpProcessScheduler->setSignal(&mpBitmaps->mProcessSchedulerSignal);
+
+		uint32 threadsToUse = VDGetLogicalProcessorCount();
+
+		if (mThreadsRequested > 0) {
+			threadsToUse = mThreadsRequested;
+
+			if (threadsToUse > 32)
+				threadsToUse = 32;
+		} else {
+			if (threadsToUse > 4)
+				threadsToUse = 4;
+		}
+
+		mpBitmaps->mpProcessSchedulerThreadPool = new VDSchedulerThreadPool;
+		mpBitmaps->mpProcessSchedulerThreadPool->Start(mpBitmaps->mpProcessScheduler, threadsToUse);
+	}
+
 	mpBitmaps->mAllocatorManager.AssignAllocators(mpBitmaps->mpAccelEngine);
 
 	IVDFilterFrameSource *pLastSource = mpBitmaps->mpSource;
@@ -698,24 +876,60 @@ void FilterSystem::ReadyFilters() {
 	mActiveFilters.clear();
 	mActiveFilters.reserve(mFilters.size());
 
+	VDScheduler *accelScheduler = NULL;
+	if (mpBitmaps->mpAccelEngine)
+		accelScheduler = mpBitmaps->mpAccelEngine->GetScheduler();
+
 	try {
 		for(Filters::const_iterator it(mFilters.begin()), itEnd(mFilters.end()); it != itEnd; ++it) {
 			IVDFilterFrameSource *src = *it;
-			mActiveFilters.push_back(src);
+
+			ActiveFilterEntry& afe = mActiveFilters.push_back();
+
+			afe.mpFrameSource = src;
+			afe.mpProcessNode = new_nothrow VDFilterSystemProcessNode(src, mpBitmaps->mpScheduler);
+			if (!afe.mpProcessNode)
+				throw MyMemoryError();
+
+			if (src->IsAccelerated())
+				accelScheduler->Add(afe.mpProcessNode);
+			else if (mpBitmaps->mpProcessScheduler)
+				mpBitmaps->mpProcessScheduler->Add(afe.mpProcessNode);
 
 			FilterInstance *fa = vdpoly_cast<FilterInstance *>(src);
 			if (fa)
-				fa->Start(mFilterStateFlags, pLastSource, mpBitmaps->mpScheduler, mpBitmaps->mpAccelEngine);
+				fa->Start(mFilterStateFlags, pLastSource, afe.mpProcessNode, mpBitmaps->mpAccelEngine);
+			else
+				src->Start(afe.mpProcessNode);
+
+			afe.mpProcessNode->Unblock();
 
 			pLastSource = src;
 		}
 	} catch(const MyError&) {
 		// roll back previously initialized filters (similar to deinit)
 		while(!mActiveFilters.empty()) {
-			IVDFilterFrameSource *fs = mActiveFilters.back();
+			ActiveFilterEntry& afe = mActiveFilters.back();
+
+			// Remove the process node from the scheduler first so that we know RunProcess() isn't
+			// being called.
+			if (afe.mpProcessNode) {
+				if (afe.mpFrameSource->IsAccelerated())
+					accelScheduler->Remove(afe.mpProcessNode);
+				else if (mpBitmaps->mpProcessScheduler)
+					mpBitmaps->mpProcessScheduler->Remove(afe.mpProcessNode);
+			}
+
+			// Stop the frame source.
+			afe.mpFrameSource->Stop();
+
+			if (afe.mpProcessNode) {
+				delete afe.mpProcessNode;
+				afe.mpProcessNode = NULL;
+			}
+
 			mActiveFilters.pop_back();
 
-			fs->Stop();
 		}
 
 		throw;
@@ -725,14 +939,17 @@ void FilterSystem::ReadyFilters() {
 	mpBitmaps->mpTailSource = pLastSource;
 }
 
-bool FilterSystem::RequestFrame(sint64 outputFrame, IVDFilterFrameClientRequest **creq) {
+bool FilterSystem::RequestFrame(sint64 outputFrame, uint32 batchNumber, IVDFilterFrameClientRequest **creq) {
 	if (!mpBitmaps->mpTailSource)
 		return false;
 
-	return mpBitmaps->mpTailSource->CreateRequest(outputFrame, false, creq);
+	return mpBitmaps->mpTailSource->CreateRequest(outputFrame, false, batchNumber, creq);
 }
 
-FilterSystem::RunResult FilterSystem::Run(bool runToCompletion) {
+FilterSystem::RunResult FilterSystem::Run(const uint32 *batchNumberLimit, bool runToCompletion) {
+	if (runToCompletion)
+		batchNumberLimit = NULL;
+
 	if (mbFiltersError)
 		return kRunResult_Idle;
 
@@ -740,33 +957,100 @@ FilterSystem::RunResult FilterSystem::Run(bool runToCompletion) {
 		return kRunResult_Idle;
 
 	bool activity = false;
+	bool batchLimited;
 	for(;;) {
 		bool didSomething = false;
+		bool blocked = false;
 
-		Filters::const_iterator it(mActiveFilters.end()), itEnd(mActiveFilters.begin());
+		batchLimited = false;
+
+		ActiveFilters::const_iterator it(mActiveFilters.end()), itEnd(mActiveFilters.begin());
 		while(it != itEnd) {
-			IVDFilterFrameSource *fa = *--it;
+			const ActiveFilterEntry& afe = *--it;
 
 			try {
-				IVDFilterFrameSource::RunResult rr = fa->RunRequests();
-				if (rr == IVDFilterFrameSource::kRunResult_Blocked && runToCompletion) {
-					mpBitmaps->mpScheduler->Block();
-					++it;
-					continue;
+				IVDFilterFrameSource::RunResult rr;
+				bool processed = false;
+				
+				if (!mpBitmaps->mpProcessScheduler)
+					processed = afe.mpProcessNode->ServiceSync();
+
+				if (processed) {
+					rr = IVDFilterFrameSource::kRunResult_Running;
+					VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Sync processing occurred.\n", afe.mpFrameSource->GetDebugDesc());
+				} else {
+					rr = afe.mpFrameSource->RunRequests(batchNumberLimit);
+
+					switch(rr) {
+						case IVDFilterFrameSource::kRunResult_BatchLimited:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> BatchLimited.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_BatchLimitedWasActive:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> BatchLimited+Activity.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_Blocked:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> Blocked.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> Blocked+Activity.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_Idle:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%d/%s]: Run -> Idle.\n", it - mActiveFilters.begin(), afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_IdleWasActive:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> Idle+Activity.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+
+						case IVDFilterFrameSource::kRunResult_Running:
+							VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Run -> Running.\n", afe.mpFrameSource->GetDebugDesc());
+							break;
+					}
 				}
 
-				if (rr == IVDFilterFrameSource::kRunResult_Running) {
+				switch(rr) {
+					case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+						rr = IVDFilterFrameSource::kRunResult_Blocked;
+						++it;
+						didSomething = true;
+						break;
+
+					case IVDFilterFrameSource::kRunResult_IdleWasActive:
+						rr = IVDFilterFrameSource::kRunResult_Idle;
+						++it;
+						didSomething = true;
+						break;
+				}
+
+				if (rr == IVDFilterFrameSource::kRunResult_Blocked) {
+					if (runToCompletion) {
+						blocked = true;
+						continue;
+					}
+				} else if (rr == IVDFilterFrameSource::kRunResult_Running) {
 					++it;
 
 					if (!runToCompletion)
 						return kRunResult_Running;
 
 					didSomething = true;
+				} else if (rr == IVDFilterFrameSource::kRunResult_BatchLimited) {
+					VDASSERT(batchNumberLimit);
+					batchLimited = true;
 				}
 			} catch(const MyError&) {
 				mbFiltersError = true;
 				throw;
 			}
+		}
+
+		if (blocked && !didSomething) {
+			mpBitmaps->mpScheduler->Block();
+			continue;
 		}
 
 		if (!didSomething)
@@ -775,15 +1059,20 @@ FilterSystem::RunResult FilterSystem::Run(bool runToCompletion) {
 		activity = true;
 	}
 
-	return activity ? kRunResult_Running : kRunResult_Idle;
+	VDDEBUG_FILTERSYS_DETAIL("FilterSystem: Exiting (%s)\n", activity ? "running" : batchLimited ? "batch limited" : "idle");
+	return activity ? kRunResult_Running : batchLimited ? kRunResult_BatchLimited : kRunResult_Idle;
+}
+
+void FilterSystem::Block() {
+	mpBitmaps->mpScheduler->Block();
 }
 
 void FilterSystem::InvalidateCachedFrames(FilterInstance *startingFilter) {
-	Filters::const_iterator it(mActiveFilters.begin()), itEnd(mActiveFilters.end());
+	ActiveFilters::const_iterator it(mActiveFilters.begin()), itEnd(mActiveFilters.end());
 	bool invalidating = !startingFilter;
 
 	for(; it != itEnd; ++it) {
-		IVDFilterFrameSource *fi = *it;
+		IVDFilterFrameSource *fi = it->mpFrameSource;
 
 		if (fi == startingFilter)
 			invalidating = true;
@@ -793,14 +1082,38 @@ void FilterSystem::InvalidateCachedFrames(FilterInstance *startingFilter) {
 	}
 }
 
+void FilterSystem::DumpStatus(VDTextOutputStream& os) {
+	ActiveFilters::const_iterator it(mActiveFilters.begin()), itEnd(mActiveFilters.end());
+	for(; it != itEnd; ++it) {
+		IVDFilterFrameSource *fi = it->mpFrameSource;
+
+		fi->DumpStatus(os);
+	}
+}
+
 void FilterSystem::DeinitFilters() {
 	// send all filters a 'stop'
+	VDScheduler *accelScheduler = NULL;
+	if (mpBitmaps->mpAccelEngine)
+		accelScheduler = mpBitmaps->mpAccelEngine->GetScheduler();
 
 	while(!mActiveFilters.empty()) {
-		IVDFilterFrameSource *fi = mActiveFilters.back();
-		mActiveFilters.pop_back();
+		ActiveFilterEntry& afe = mActiveFilters.back();
+
+		IVDFilterFrameSource *fi = afe.mpFrameSource;
+		if (fi->IsAccelerated())
+			accelScheduler->Remove(afe.mpProcessNode);
+		else if (afe.mpProcessNode && mpBitmaps->mpProcessScheduler)
+			mpBitmaps->mpProcessScheduler->Remove(afe.mpProcessNode);
 
 		fi->Stop();
+
+		if (afe.mpProcessNode) {
+			delete afe.mpProcessNode;
+			afe.mpProcessNode = NULL;
+		}
+
+		mActiveFilters.pop_back();
 	}
 
 	while(!mFilters.empty()) {
@@ -809,6 +1122,14 @@ void FilterSystem::DeinitFilters() {
 
 		fi->Release();
 	}
+
+	if (mpBitmaps->mpProcessScheduler) {
+		mpBitmaps->mpProcessScheduler->BeginShutdown();
+
+		mpBitmaps->mpProcessSchedulerThreadPool = NULL;
+		mpBitmaps->mpProcessScheduler = NULL;
+	}
+
 
 	mpBitmaps->mAllocatorManager.Shutdown();
 	mpBitmaps->mpTailSource = NULL;
@@ -838,6 +1159,14 @@ bool FilterSystem::isEmpty() const {
 	return mActiveFilters.empty();
 }
 
+bool FilterSystem::IsThreadingActive() const {
+	return mpBitmaps->mpProcessScheduler != 0;
+}
+
+uint32 FilterSystem::GetThreadCount() const {
+	return mpBitmaps->mpProcessSchedulerThreadPool->GetThreadCount();
+}
+
 bool FilterSystem::GetDirectFrameMapping(VDPosition outputFrame, VDPosition& sourceFrame, int& sourceIndex) const {
 	if (mbFiltersError)
 		return false;
@@ -849,9 +1178,9 @@ bool FilterSystem::GetDirectFrameMapping(VDPosition outputFrame, VDPosition& sou
 }
 
 sint64 FilterSystem::GetSourceFrame(sint64 frame) const {
-	Filters::const_iterator it(mActiveFilters.end()), itEnd(mActiveFilters.begin());
+	ActiveFilters::const_iterator it(mActiveFilters.end()), itEnd(mActiveFilters.begin());
 	while(it != itEnd) {
-		IVDFilterFrameSource *fa = *--it;
+		IVDFilterFrameSource *fa = (--it)->mpFrameSource;
 
 		frame = fa->GetSourceFrame(frame);
 	}

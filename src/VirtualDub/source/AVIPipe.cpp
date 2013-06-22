@@ -169,6 +169,8 @@ void AVIPipe::postBuffer(const VDRenderVideoPipeFrameInfo& frameInfo) {
 
 	msigWrite.signal();
 
+	mEventBufferAdded.Raise(this, false);
+
 	//	_RPT2(0,"Posted buffer %ld (ID %08lx)\n",handle,cur_write-1);
 }
 
@@ -206,7 +208,7 @@ void AVIPipe::getQueueInfo(int& total, int& finals, int& allocated) {
 	for(int cnt = mLevel; cnt>0; --cnt) {
 		if (pBuffers[h].mbInUse) {
 			++total;
-			++finals;
+
 			if (pBuffers[h].mFrameInfo.mbFinal)
 				++finals;
 		}
@@ -215,6 +217,24 @@ void AVIPipe::getQueueInfo(int& total, int& finals, int& allocated) {
 	}
 
 	--mcsQueue;
+}
+
+const VDRenderVideoPipeFrameInfo *AVIPipe::TryReadBuffer() {
+	vdsynchronized(mcsQueue) {
+		if (mState & kFlagAborted)
+			return NULL;
+
+		if (mLevel)
+			return &pBuffers[mReadPt].mFrameInfo;
+	}
+
+	if (mState & kFlagFinalizeTriggered) {
+		mState |= kFlagFinalizeAcknowledged;
+
+		msigRead.signal();
+	}
+
+	return NULL;
 }
 
 const VDRenderVideoPipeFrameInfo *AVIPipe::getReadBuffer() {

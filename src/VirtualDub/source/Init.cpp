@@ -69,6 +69,7 @@
 #include "capture.h"
 #include "captureui.h"
 #include "version.h"
+#include "ExternalEncoderProfile.h"
 #include "FilterInstance.h"
 
 ///////////////////////////////////////////////////////////////////////////
@@ -84,6 +85,10 @@ extern void VDInitProtectedScopeHook();
 
 extern uint32 VDPreferencesGetEnabledCPUFeatures();
 extern void VDPreferencesSetFilterAccelVisualDebugEnabled(bool);
+
+extern bool VDRegisterRTProfileDisplayControl2();
+
+extern void VDShutdownEventProfiler();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -198,13 +203,13 @@ bool g_consoleMode;
 
 class VDConsoleLogger : public IVDLogger {
 public:
-	void AddLogEntry(int severity, const VDStringW& s);
+	void AddLogEntry(int severity, const wchar_t *s);
 	void Write(const wchar_t *s, size_t len);
 } g_VDConsoleLogger;
 
-void VDConsoleLogger::AddLogEntry(int severity, const VDStringW& s) {
-	const size_t len = s.length();
-	const wchar_t *text = s.data();
+void VDConsoleLogger::AddLogEntry(int severity, const wchar_t *s) {
+	const size_t len = wcslen(s);
+	const wchar_t *text = s;
 	const wchar_t *end = text + len;
 
 	// Don't annotate lines in this routine. We print some 'errors' in
@@ -416,6 +421,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	VDInitBuiltinAudioFilters();
 	VDInitBuiltinInputDrivers();
 	VDInitInputDrivers();
+	VDLoadExternalEncoderProfiles();
 
 	if (!InitJobSystem())
 		return FALSE;
@@ -525,8 +531,10 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
+	VDShutdownExternalEncoderProfiles();
 	VDSaveFilespecSystemData();
 	VDDeinitResourceSystem();
+	VDShutdownEventProfiler();
 	VDDeinitProfilingSystem();
 
 	VDCHECKPOINT;
@@ -551,6 +559,7 @@ bool InitApplication(HINSTANCE hInstance) {
 	if (!RegisterFilterGraphControl()) return false;
 	if (!RegisterLogWindowControl()) return false;
 	if (!RegisterRTProfileDisplayControl()) return false;
+	if (!VDRegisterRTProfileDisplayControl2()) return false;
 	if (!RegisterVideoWindow()) return false;
 
 	extern bool VDRegisterUIFrameWindow();

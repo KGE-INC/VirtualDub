@@ -44,6 +44,7 @@ class IDubStatusHandler;
 class IVDDubberOutputSystem;
 struct VDAudioFilterGraph;
 class FilterSystem;
+class VDTextOutputStream;
 
 ////////////////////////
 
@@ -144,7 +145,9 @@ public:
 	DubVideoOptions video;
 	DubPerfOptions perf;
 
-	bool	fShowStatus, fMoveSlider;
+	bool	fShowStatus;
+	bool	mbForceShowStatus;
+	bool	fMoveSlider;
 
 	uint32	mThrottlePercent;
 };
@@ -234,6 +237,8 @@ public:
 	virtual void SetThrottleFactor(float throttleFactor) = 0;
 
 	virtual void GetPerfStatus(VDDubPerfStatus& status) = 0;
+
+	virtual void DumpStatus(VDTextOutputStream& os) = 0;
 
 	virtual VDEvent<IDubber, bool>& Stopped() = 0;
 };

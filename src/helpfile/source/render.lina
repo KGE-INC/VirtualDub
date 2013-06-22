@@ -1,4 +1,5 @@
 <lina:include file="source/render/compression.lina" />
+<lina:include file="source/render/externalencoder.lina"/>
 
 <lina:create file="p-mainui.html" title="Processing: Main UI">
 	<blockquote>

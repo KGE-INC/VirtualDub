@@ -16,11 +16,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#define DIRECTDRAW_VERSION 0x0300
-#define INITGUID
 #include <vector>
-#include <ddraw.h>
-#include <mmsystem.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/memory.h>
 #include <vd2/system/log.h>
@@ -103,7 +99,7 @@ struct VDDitherUtils {
 		case 2:	p = &palette[4*srcp[2]]; dstp[w2+2] = pLogPal[rdithertab8[rb2+p[2]] + gdithertab8[g2+p[1]] + bdithertab8[rb2+p[0]]];
 		case 3:	p = &palette[4*srcp[3]]; dstp[w2+3] = pLogPal[rdithertab8[rb3+p[2]] + gdithertab8[g3+p[1]] + bdithertab8[rb3+p[0]]];
 
-				srcp += 16;
+				srcp += 4;
 			} while((w2 += 4) < 0);
 		}
 	}
@@ -330,6 +326,11 @@ void VDDitherImage(VDPixmap& dst, const VDPixmap& src, const uint8 *pLogPal) {
 VDVideoDisplayMinidriver::VDVideoDisplayMinidriver()
 	: mbDisplayDebugInfo(false)
 	, mbHighPrecision(false)
+	, mbDestRectEnabled(false)
+	, mClientRect(0, 0, 0, 0)
+	, mDestRect(0, 0, 0, 0)
+	, mDrawRect(0, 0, 0, 0)
+	, mBackgroundColor(0)
 	, mColorOverride(0)
 {
 }
@@ -356,6 +357,25 @@ void VDVideoDisplayMinidriver::SetHighPrecision(bool enable) {
 	mbHighPrecision = enable;
 }
 
+void VDVideoDisplayMinidriver::SetDestRect(const vdrect32 *r, uint32 color) {
+	if (r) {
+		mDestRect = *r;
+
+		if (mDestRect.right < mDestRect.left)
+			mDestRect.right = mDestRect.left;
+
+		if (mDestRect.bottom < mDestRect.top)
+			mDestRect.bottom = mDestRect.top;
+
+		mbDestRectEnabled = true;
+	} else {
+		mbDestRectEnabled = false;
+	}
+
+	mBackgroundColor = color;
+	UpdateDrawRect();
+}
+
 bool VDVideoDisplayMinidriver::Tick(int id) {
 	return true;
 }
@@ -363,7 +383,9 @@ bool VDVideoDisplayMinidriver::Tick(int id) {
 void VDVideoDisplayMinidriver::Poll() {
 }
 
-bool VDVideoDisplayMinidriver::Resize() {
+bool VDVideoDisplayMinidriver::Resize(int width, int height) {
+	mClientRect.set(0, 0, width, height);
+	UpdateDrawRect();
 	return true;
 }
 
@@ -385,4 +407,64 @@ void VDVideoDisplayMinidriver::GetFormatString(const VDVideoDisplaySourceInfo& i
 		, VDPixmapGetInfo(info.pixmap.format).name
 		, info.bInterlaced ? " (interlaced)" : ""
 		);
+}
+
+void VDVideoDisplayMinidriver::UpdateDrawRect() {
+	mDrawRect = mClientRect;
+	mBorderRectCount = 0;
+
+	if (mbDestRectEnabled) {
+		mDrawRect = mDestRect;
+
+		if (mDrawRect.left < mClientRect.left)
+			mDrawRect.left = mClientRect.left;
+
+		if (mDrawRect.top < mClientRect.top)
+			mDrawRect.top = mClientRect.top;
+
+		if (mDrawRect.right > mClientRect.right)
+			mDrawRect.right = mClientRect.right;
+
+		if (mDrawRect.bottom > mClientRect.bottom)
+			mDrawRect.bottom = mClientRect.bottom;
+
+		vdrect32 *r = mBorderRects;
+		if (mDrawRect.empty()) {
+			*r++ = mClientRect;
+		} else {
+			if (mDrawRect.top > mClientRect.top) {
+				r->left = mClientRect.left;
+				r->top = mClientRect.top;
+				r->right = mClientRect.right;
+				r->bottom = mDrawRect.top;
+				++r;
+			}
+
+			if (mDrawRect.left > mClientRect.left) {
+				r->left = mClientRect.left;
+				r->top = mDrawRect.top;
+				r->right = mDrawRect.left;
+				r->bottom = mDrawRect.bottom;
+				++r;
+			}
+
+			if (mDrawRect.right < mClientRect.right) {
+				r->left = mDrawRect.right;
+				r->top = mDrawRect.top;
+				r->right = mClientRect.right;
+				r->bottom = mDrawRect.bottom;
+				++r;
+			}
+
+			if (mDrawRect.bottom < mClientRect.bottom) {
+				r->left = mClientRect.left;
+				r->top = mDrawRect.bottom;
+				r->right = mClientRect.right;
+				r->bottom = mClientRect.bottom;
+				++r;
+			}
+		}
+
+		mBorderRectCount = r - mBorderRects;
+	}
 }

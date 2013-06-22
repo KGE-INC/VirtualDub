@@ -4,6 +4,7 @@
 #include <vd2/system/vdstl.h>
 #include <vd2/system/time.h>
 #include <vd2/system/math.h>
+#include <vd2/Kasumi/blitter.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
@@ -354,7 +355,7 @@ public:
 
 	bool Tick(int id);
 	void Poll();
-	bool Resize();
+	bool Resize(int w, int h);
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
@@ -379,8 +380,11 @@ protected:
 	bool InitOffscreen();
 	void ShutdownDisplay();
 	bool UpdateOverlay(bool force);
-	bool InternalRefresh(const RECT& rClient, UpdateMode mode, bool newFrame, bool doNotWait);
+	void InternalRefresh(const RECT& rClient, UpdateMode mode, bool newFrame, bool doNotWait);
 	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing);
+	bool InternalFill(IDirectDrawSurface2 *&pDest, const RECT& rDst, uint32 nativeColor);
+
+	uint32 ConvertToNativeColor(uint32 rgb32) const;
 
 	HWND		mhwnd;
 	IVDDirectDrawManager	*mpddman;
@@ -392,7 +396,6 @@ protected:
 	int			mPrimaryH;
 	const uint8 *mpLogicalPalette;
 
-	RECT		mrClient;
 	RECT		mLastDisplayRect;
 	UINT		mOverlayUpdateTimer;
 
@@ -414,6 +417,8 @@ protected:
 
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
+
+	VDPixmapCachedBlitter	mCachedBlitter;
 
 	VDDDrawPresentHistory	mPresentHistory;
 };
@@ -441,13 +446,14 @@ VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw(bool enab
 	, mbEnableSecondaryDraw(enableOldSecondaryMonitorBehavior)
 {
 	memset(&mSource, 0, sizeof mSource);
-	mrClient.top = mrClient.left = mrClient.right = mrClient.bottom = 0;
 }
 
 VDVideoDisplayMinidriverDirectDraw::~VDVideoDisplayMinidriverDirectDraw() {
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+	mCachedBlitter.Invalidate();
+
 	switch(info.pixmap.format) {
 	case nsVDPixmap::kPixFormat_Pal8:
 	case nsVDPixmap::kPixFormat_XRGB1555:
@@ -455,15 +461,35 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 	case nsVDPixmap::kPixFormat_RGB888:
 	case nsVDPixmap::kPixFormat_XRGB8888:
 	case nsVDPixmap::kPixFormat_YUV422_YUYV:
+	case nsVDPixmap::kPixFormat_YUV422_YUYV_FR:
+	case nsVDPixmap::kPixFormat_YUV422_YUYV_709:
+	case nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR:
 	case nsVDPixmap::kPixFormat_YUV422_UYVY:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY_FR:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
+	case nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR:
 	case nsVDPixmap::kPixFormat_YUV444_Planar:
+	case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
+	case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV422_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_YUV420_Planar:
+	case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV420_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_YUV411_Planar:
+	case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV411_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_YUV410_Planar:
+	case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
+	case nsVDPixmap::kPixFormat_YUV410_Planar_709:
+	case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 	case nsVDPixmap::kPixFormat_Y8:
 	case nsVDPixmap::kPixFormat_YUV422_V210:
-	case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
 	case nsVDPixmap::kPixFormat_YUV420_NV12:
 		break;
 	default:
@@ -472,7 +498,6 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 
 	mhwnd	= hwnd;
 	mSource	= info;
-	GetClientRect(hwnd, &mrClient);
 
 	do {
 		mpddman = VDInitDirectDraw(this);
@@ -585,6 +610,13 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 	}
 
 	do {
+		// attempt to create clipper (we need this for chromakey fills)
+		if (FAILED(mpddman->GetDDraw()->CreateClipper(0, &mpddc, 0)))
+			break;
+
+		if (FAILED(mpddc->SetHWnd(0, mhwnd)))
+			break;
+
 		// create overlay surface
 		DDSURFACEDESC ddsdOff = {sizeof(DDSURFACEDESC)};
 
@@ -796,19 +828,23 @@ bool VDVideoDisplayMinidriverDirectDraw::Tick(int id) {
 		MapWindowPoints(mhwnd, NULL, (LPPOINT)&r, 2);
 
 		if (memcmp(&r, &mLastDisplayRect, sizeof(RECT)))
-			Resize();
+			Resize(r.right - r.left, r.bottom - r.top);
 	}
 
 	return !mbReset;
 }
 
 void VDVideoDisplayMinidriverDirectDraw::Poll() {
-	if (mbPresentPending)
-		InternalRefresh(mrClient, (UpdateMode)mPresentPendingFlags, false, true);
+	if (mbPresentPending) {
+		RECT rClient = { mClientRect.left, mClientRect.top, mClientRect.right, mClientRect.bottom };
+
+		InternalRefresh(rClient, (UpdateMode)mPresentPendingFlags, false, true);
+	}
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::Resize() {
-	GetClientRect(mhwnd, &mrClient);
+bool VDVideoDisplayMinidriverDirectDraw::Resize(int w, int h) {
+	if (!VDVideoDisplayMinidriver::Resize(w, h))
+		return false;
 
 	if (mpddsOverlay)
 		UpdateOverlay(false);
@@ -1042,8 +1078,9 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(UpdateMode mode) {
 	}
 
 	bool dither = false;
-	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8 && dstbm.format != source.format) {
+	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8) {
 		switch(source.format) {
+			case nsVDPixmap::kPixFormat_Pal8:
 			case nsVDPixmap::kPixFormat_XRGB1555:
 			case nsVDPixmap::kPixFormat_RGB565:
 			case nsVDPixmap::kPixFormat_RGB888:
@@ -1056,7 +1093,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(UpdateMode mode) {
 	if (dither)
 		VDDitherImage(dstbm, source, mpLogicalPalette);
 	else
-		VDPixmapBlt(dstbm, source);
+		mCachedBlitter.Blit(dstbm, source);
 	
 	hr = pTarget->Unlock(0);
 
@@ -1090,10 +1127,43 @@ void VDVideoDisplayMinidriverDirectDraw::Refresh(UpdateMode mode) {
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient, UpdateMode mode) {
+	if (mBorderRectCount) {
+		const uint32 backgroundNativeColor = ConvertToNativeColor(mBackgroundColor);
+
+		IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
+		if (pDest) {
+			pDest->SetClipper(mpddc);
+
+			for(int i=0; i<mBorderRectCount; ++i) {
+				const vdrect32& rFill = mBorderRects[i];
+				RECT rFill2 = { rFill.left, rFill.top, rFill.right, rFill.bottom };
+
+				MapWindowPoints(mhwnd, NULL, (LPPOINT)&rFill2, 2);
+				InternalFill(pDest, rFill2, backgroundNativeColor);
+
+				if (!pDest)
+					break;
+			}
+
+			if (pDest)
+				pDest->SetClipper(NULL);
+		}
+	}
+
 	if (mpddsOverlay) {
 		if (mChromaKey) {
-			SetBkColor(hdc, mChromaKey);
-			ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rClient, "", 0, NULL);
+			IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
+
+			if (pDest) {
+				pDest->SetClipper(mpddc);
+
+				RECT rFill = rClient;
+				MapWindowPoints(mhwnd, NULL, (LPPOINT)&rFill, 2);
+				InternalFill(pDest, rFill, mRawChromaKey);
+
+				if (pDest)
+					pDest->SetClipper(NULL);
+			}
 		}
 	} else {
 		InternalRefresh(rClient, mode, true, false);
@@ -1121,41 +1191,31 @@ bool VDVideoDisplayMinidriverDirectDraw::SetSubrect(const vdrect32 *r) {
 	return true;
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, UpdateMode mode, bool newFrame, bool doNotWait) {
+void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, UpdateMode mode, bool newFrame, bool doNotWait) {
 	RECT rDst = rClient;
+
+	if (mbDestRectEnabled) {
+		rDst.left = mDrawRect.left;
+		rDst.top = mDrawRect.top;
+		rDst.right = mDrawRect.right;
+		rDst.bottom = mDrawRect.bottom;
+	}
 
 	// DirectX doesn't like null rects.
 	if (rDst.right <= rDst.left || rDst.bottom <= rDst.top)
-		return true;
+		return;
 
 	MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst, 2);
 
 	IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
 
 	if (!pDest)
-		return true;
+		return;
 
 	if (mColorOverride) {
 		// convert color to primary surface format
-		VDPixmap srcpx;
-		srcpx.data = &mColorOverride;
-		srcpx.pitch = 0;
-		srcpx.w = 1;
-		srcpx.h = 1;
-		srcpx.format = nsVDPixmap::kPixFormat_XRGB8888;
-
-		VDPixmap dstpx;
-		uint32 tmpbuf;
-		dstpx.data = &tmpbuf;
-		dstpx.pitch = 0;
-		dstpx.w = 1;
-		dstpx.h = 1;
-		dstpx.format = mPrimaryFormat;
-
-		VDPixmapBlt(dstpx, srcpx);
-
 		DDBLTFX fx = {sizeof(DDBLTFX)};
-		fx.dwFillColor = tmpbuf;
+		fx.dwFillColor = ConvertToNativeColor(mColorOverride);
 
 		pDest->SetClipper(mpddc);
 		for(int i=0; i<5; ++i) {
@@ -1172,10 +1232,10 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 				pDest = NULL;
 
 				if (!mpddman->Restore())
-					return true;
+					return;
 
 				if (mbReset)
-					return true;
+					return;
 
 				pDest = mpddman->GetPrimary();
 				pDest->SetClipper(mpddc);
@@ -1189,7 +1249,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 			mbFirstFrame = false;
 			SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
 		}
-		return true;
+		return;
 	}
 
 	// DDBLTFX_NOTEARING is ignored by DirectDraw in 2K/XP.
@@ -1223,7 +1283,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 		}
 
 		if (!mPresentHistory.mbPresentPending)
-			return S_OK;
+			return;
 
 		// Poll raster status, and wait until we can safely blit. We assume that the
 		// blit can outrace the beam. 
@@ -1269,7 +1329,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 			}
 
 			if (doNotWait)
-				return false;
+				return;
 
 			::Sleep(1);
 		}
@@ -1335,7 +1395,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 	}
 
 	if (doNotWait && stillDrawing)
-		return false;
+		return;
 	
 	if (pDest)
 		pDest->SetClipper(NULL);
@@ -1346,7 +1406,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 		mPresentHistory.mbPresentPending = false;
 
 		if (!success)
-			return true;
+			return;
 
 		mPresentHistory.mAverageEndScanline += ((float)mPresentHistory.mLastScanline - mPresentHistory.mAverageEndScanline) * 0.01f;
 		mPresentHistory.mAveragePresentTime += ((VDGetPreciseTick() - mPresentHistory.mPresentStartTime)*VDGetPreciseSecondsPerTick() - mPresentHistory.mAveragePresentTime) * 0.01f;
@@ -1419,7 +1479,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 
 	mSource.mpCB->RequestNextFrame();
 
-	return true;
+	return;
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing) {
@@ -1537,4 +1597,76 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest
 	}
 
 	return SUCCEEDED(hr);
+}
+
+bool VDVideoDisplayMinidriverDirectDraw::InternalFill(IDirectDrawSurface2 *&pDest, const RECT& rDst, uint32 nativeColor) {
+	if (rDst.right <= rDst.left || rDst.bottom <= rDst.top)
+		return true;
+
+	DDBLTFX fx = {sizeof(DDBLTFX)};
+	fx.dwFillColor = nativeColor;
+
+	RECT rDst2 = rDst;
+	HRESULT hr = pDest->Blt(&rDst2, NULL, NULL, DDBLT_ASYNC | DDBLT_WAIT | DDBLT_COLORFILL, &fx);
+	if (SUCCEEDED(hr))
+		return true;
+
+	if (hr != DDERR_SURFACELOST)
+		return false;
+
+	if (FAILED(pDest->IsLost())) {
+		pDest->SetClipper(NULL);
+		pDest = NULL;
+
+		if (!mpddman->Restore())
+			return false;
+
+		if (mbReset)
+			return false;
+
+		pDest = mpddman->GetPrimary();
+		pDest->SetClipper(mpddc);
+	}
+
+	return true;
+}
+
+uint32 VDVideoDisplayMinidriverDirectDraw::ConvertToNativeColor(uint32 rgb32) const {
+	switch(mPrimaryFormat) {
+		case nsVDPixmap::kPixFormat_Pal8:
+			{
+				const int red = (rgb32 >> 16) & 0xff;
+				const int grn = (rgb32 >>  8) & 0xff;
+				const int blu = (rgb32 >>  0) & 0xff;
+				const int ridx = (red * 5 + 128) >> 8;
+				const int gidx = (grn * 5 + 128) >> 8;
+				const int bidx = (blu * 5 + 128) >> 8;
+				uint8 idx = ridx * 36 + gidx * 6 + bidx;
+
+				if (mpLogicalPalette)
+					idx = mpLogicalPalette[idx];
+
+				return idx;
+			}
+			break;
+
+		case nsVDPixmap::kPixFormat_XRGB1555:
+			return ((rgb32 & 0xf80000) >> 9)
+				 + ((rgb32 & 0x00f800) >> 6)
+				 + ((rgb32 & 0x0000f8) >> 3);
+			break;
+
+		case nsVDPixmap::kPixFormat_RGB565:
+			return ((rgb32 & 0xf80000) >> 8)
+				 + ((rgb32 & 0x00fc00) >> 5)
+				 + ((rgb32 & 0x0000f8) >> 3);
+
+		case nsVDPixmap::kPixFormat_RGB888:
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			return rgb32;
+
+		default:
+			VDASSERT(!"Unsupported pixel type.");
+			return 0;
+	}
 }

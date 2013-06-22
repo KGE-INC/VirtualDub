@@ -36,6 +36,7 @@ public:
 	}
 
 	bool init(const wchar_t *szFile);
+	bool init(VDFileHandle h, bool pipeMode);
 	void finalize();
 
 	void write(const void *pBuffer, uint32 cbBuffer);
@@ -47,6 +48,7 @@ private:
 	bool		mbHeaderOpen;
 	bool		mbWriteWAVE64;
 	bool		mbAutoWriteWAVE64;
+	bool		mbPipeMode;
 	uint64		mBytesWritten;
 	uint32		mHeaderSize;
 	sint32		mBufferSize;

@@ -44,6 +44,8 @@
 	#pragma warning(disable: 4200)		// warning C4200: nonstandard extension used : zero-sized array in struct/union
 #endif
 
+extern bool VDPreferencesIsAVINonZeroStartWarningEnabled();
+
 ///////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -1637,7 +1639,10 @@ terminate_scan:
 			unsigned badstream = nStream;
 			uint32 offsetInSamples = pasn->hdr.dwStart;
 			sint64 offsetInTime = VDMulDiv64(pasn->hdr.dwStart, pasn->hdr.dwScale * VD64(1000), pasn->hdr.dwRate);
-			VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_NonZeroStart, 4, &badstream, &badstreamtype, &offsetInSamples, &offsetInTime);
+
+			VDLogAppMessage(
+				VDPreferencesIsAVINonZeroStartWarningEnabled() ? kVDLogWarning : kVDLogInfo,
+				kVDST_AVIReadHandler, kVDM_NonZeroStart, 4, &badstream, &badstreamtype, &offsetInSamples, &offsetInTime);
 		}
 
 		pasn->length = pasn->mIndex.GetSampleCount();

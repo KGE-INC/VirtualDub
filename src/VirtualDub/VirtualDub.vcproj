@@ -1172,6 +1172,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\DubProcessVideoDisplay.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\DubStatus.cpp"
 				>
 				<FileConfiguration
@@ -1330,6 +1334,14 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\ExternalEncoderDialog.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\ExternalEncoderProfile.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\FastReadStream.cpp"
@@ -3029,6 +3041,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\DubProcessVideoDisplay.h"
+				>
+			</File>
+			<File
 				RelativePath="h\DubStatus.h"
 				>
 			</File>
@@ -3046,6 +3062,10 @@
 			</File>
 			<File
 				RelativePath="h\effect.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\ExternalEncoderProfile.h"
 				>
 			</File>
 			<File
@@ -4581,6 +4601,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\RTProfileDisplay2.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\VideoWindow.cpp"
 				>
 				<FileConfiguration
@@ -5208,6 +5232,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\AVIOutputCLI.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\AVIOutputFile.cpp"
 				>
 				<FileConfiguration
@@ -5336,7 +5364,11 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\source\AVIOutputRaw.cpp"
+				RelativePath=".\source\AVIOutputRawAudio.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\AVIOutputRawVideo.cpp"
 				>
 			</File>
 			<File
@@ -5732,6 +5764,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\InputFileRawVideo.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\InputFileTest.cpp"
 				>
 			</File>
@@ -5840,6 +5876,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\AVIOutputCLI.h"
+				>
+			</File>
+			<File
 				RelativePath="h\AVIOutputFile.h"
 				>
 			</File>
@@ -5860,7 +5900,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\h\AVIOutputRaw.h"
+				RelativePath=".\h\AVIOutputRawAudio.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\AVIOutputRawVideo.h"
 				>
 			</File>
 			<File
@@ -5938,6 +5982,10 @@
 			<Filter
 				Name="Source - Filters"
 				>
+				<File
+					RelativePath=".\source\f_aliasformat.cpp"
+					>
+				</File>
 				<File
 					RelativePath="source\F_blur.cpp"
 					>
@@ -6405,6 +6453,10 @@
 							PreprocessorDefinitions=""
 						/>
 					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\source\f_gammacorrect.cpp"
+					>
 				</File>
 				<File
 					RelativePath="source\f_grayscale.cpp"

@@ -26,6 +26,7 @@
 #include "FilterFrameQueue.h"
 
 class VDFilterFrameRequest;
+class VDTextOutputStream;
 
 class VDFilterFrameManualSource : public vdrefcounted<IVDFilterFrameSource> {
 	VDFilterFrameManualSource(const VDFilterFrameManualSource&);
@@ -37,28 +38,37 @@ public:
 
 	void *AsInterface(uint32 id);
 
+	const char *GetDebugDesc() const { return ""; }
+
 	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
 
 	void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev);
 	void SetOutputLayout(const VDPixmapLayout& layout);
 
-	bool CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req);
+	bool IsAccelerated() const { return false; }
+
+	bool CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req);
 	bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex);
 	sint64 GetSourceFrame(sint64 outputFrame);
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 	const VDPixmapLayout& GetOutputLayout() { return mLayout; }
 	void InvalidateAllCachedFrames();
+
+	void DumpStatus(VDTextOutputStream&) {}
+
+	void Start(IVDFilterFrameEngine *frameEngine) {}
 	void Stop() {}
-	RunResult RunRequests() { return kRunResult_Idle; }
+	RunResult RunRequests(const uint32 *batchNumberLimit) { return kRunResult_Idle; }
+	RunResult RunProcess() { return kRunResult_Idle; }
 
 	bool PeekNextRequestFrame(VDPosition& pos);
-	bool GetNextRequest(VDFilterFrameRequest **ppReq);
+	bool GetNextRequest(const uint32 *batchLimit, VDFilterFrameRequest **ppReq);
 	bool AllocateRequestBuffer(VDFilterFrameRequest *req);
 	void CompleteRequest(VDFilterFrameRequest *req, bool cache);
 
 protected:
-	virtual bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);
+	virtual bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber);
 
 	VDFilterFrameQueue mFrameQueueWaiting;
 	VDFilterFrameQueue mFrameQueueInProgress;

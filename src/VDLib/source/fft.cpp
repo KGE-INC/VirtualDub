@@ -309,7 +309,10 @@ VDRealFFT::VDRealFFT()
 {
 }
 
-VDRealFFT::VDRealFFT(unsigned bits) {
+VDRealFFT::VDRealFFT(unsigned bits)
+	: mpPermuteTable(NULL)
+	, mpWeightTable(NULL)
+{
 	Init(bits);
 }
 

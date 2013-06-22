@@ -155,15 +155,24 @@ namespace {
 		if (w & 1)
 			*dst = (*src >> 4) & 15;
 	}
+
+	void PNGUnpackIndices16Bit(uint8 *dst, const uint8 *src, int w) {
+		while(w--) {
+			*dst++ = *src;
+			src += 2;
+		}
+	}
 }
 
 class VDImageDecoderPNG : public IVDImageDecoderPNG {
 public:
 	PNGDecodeError Decode(const void *src0, uint32 size);
 	const VDPixmap& GetFrameBuffer() { return mFrameBuffer; }
+	bool IsAlphaPresent() const { return mbAlphaPresent; }
 
 protected:
 	VDPixmapBuffer	mFrameBuffer;
+	bool mbAlphaPresent;
 };
 
 IVDImageDecoderPNG *VDCreateImageDecoderPNG() {
@@ -264,18 +273,25 @@ PNGDecodeError VDImageDecoderPNG::Decode(const void *src0, uint32 size) {
 	}
 
 	unsigned bitsperpixel = hdr.depth;
+	bool hasAlpha = false;
 
 	switch(hdr.colortype) {
 	case 2:		// RGB
 		bitsperpixel *= 3;
 		break;
+	case 3:		// Paletted
+		break;
 	case 4:		// IA
-		bitsperpixel += 8;
+		bitsperpixel *= 2;
+		hasAlpha = true;
 		break;
 	case 6:		// RGBA
-		bitsperpixel = (bitsperpixel * 3) + 8;
+		bitsperpixel *= 4;
+		hasAlpha = true;
 		break;
 	}
+
+	mbAlphaPresent = hasAlpha;
 
 	unsigned pitch = (hdr.width*3+3)&~3;
 	unsigned pngrowbytes	= (hdr.width * bitsperpixel + 7) >> 3;
@@ -298,7 +314,7 @@ PNGDecodeError VDImageDecoderPNG::Decode(const void *src0, uint32 size) {
 	if (adler32 != VDAdler32Checker::Adler32(dstbuf.data(), dstbuf.size()))
 		return kPNGDecodeChecksumFailed;
 
-	mFrameBuffer.init(hdr.width, hdr.height, nsVDPixmap::kPixFormat_RGB888);
+	mFrameBuffer.init(hdr.width, hdr.height, hasAlpha ? nsVDPixmap::kPixFormat_XRGB8888 : nsVDPixmap::kPixFormat_RGB888);
 
 	uint8 *srcp = &dstbuf[0];
 	int x, y;
@@ -335,30 +351,40 @@ PNGDecodeError VDImageDecoderPNG::Decode(const void *src0, uint32 size) {
 					rowdst[x*3+1] = rowsrc[x*6+2];
 					rowdst[x*3+2] = rowsrc[x*6+0];
 				}
+			} else {
+				return kPNGDecodeUnsupported;
 			}
 		} else if (hdr.colortype == 6) {			// RGBA: depths 8, 16
 			if (hdr.depth == 8) {
 				for(x=0; (uint32)x<hdr.width; ++x) {
-					rowdst[x*3+0] = rowsrc[x*4+2];
-					rowdst[x*3+1] = rowsrc[x*4+1];
-					rowdst[x*3+2] = rowsrc[x*4+0];
+					rowdst[x*4+0] = rowsrc[x*4+2];
+					rowdst[x*4+1] = rowsrc[x*4+1];
+					rowdst[x*4+2] = rowsrc[x*4+0];
+					rowdst[x*4+3] = rowsrc[x*4+3];
 				}
 			} else if (hdr.depth == 16) {
 				for(x=0; (uint32)x<hdr.width; ++x) {
-					rowdst[x*3+0] = rowsrc[x*8+4];
-					rowdst[x*3+1] = rowsrc[x*8+2];
-					rowdst[x*3+2] = rowsrc[x*8+0];
+					rowdst[x*4+0] = rowsrc[x*8+4];
+					rowdst[x*4+1] = rowsrc[x*8+2];
+					rowdst[x*4+2] = rowsrc[x*8+0];
+					rowdst[x*4+3] = rowsrc[x*8+6];
 				}
+			} else {
+				return kPNGDecodeUnsupported;
 			}
 		} else if (hdr.colortype == 4) {			// grayscale with alpha: depths 8, 16
 			if (hdr.depth == 8) {
 				for(x=0; (uint32)x<hdr.width; ++x) {
-					rowdst[x*3+0] = rowdst[x*3+1] = rowdst[x*3+2] = rowsrc[x*2];
+					rowdst[x*4+0] = rowdst[x*4+1] = rowdst[x*4+2] = rowsrc[x*2];
+					rowdst[x*4+3] = rowsrc[x*2+1];
 				}
 			} else if (hdr.depth == 16) {
 				for(x=0; (uint32)x<hdr.width; ++x) {
-					rowdst[x*3+0] =	rowdst[x*3+1] =	rowdst[x*3+2] = rowsrc[x*3];
+					rowdst[x*4+0] =	rowdst[x*4+1] =	rowdst[x*4+2] = rowsrc[x*4];
+					rowdst[x*4+3] = rowsrc[x*4+2];
 				}
+			} else {
+				return kPNGDecodeUnsupported;
 			}
 		} else if (hdr.colortype == 3) {			// paletted: depths 1, 2, 4, 8
 			if (hdr.depth != 8) {
@@ -366,10 +392,14 @@ PNGDecodeError VDImageDecoderPNG::Decode(const void *src0, uint32 size) {
 				case 1:		PNGUnpackIndices1Bit(tempindices.data(), rowsrc, hdr.width);	break;
 				case 2:		PNGUnpackIndices2Bit(tempindices.data(), rowsrc, hdr.width);	break;
 				case 4:		PNGUnpackIndices4Bit(tempindices.data(), rowsrc, hdr.width);	break;
+				case 16:	PNGUnpackIndices16Bit(tempindices.data(), rowsrc, hdr.width);	break;
+				default:
+					return kPNGDecodeUnsupported;
 				}
 
 				rowsrc = tempindices.data();
 			}
+
 			for(x=0; (uint32)x<hdr.width; ++x) {
 				unsigned idx = rowsrc[x];
 				rowdst[x*3+0] = pal[idx*3+2];
@@ -399,6 +429,7 @@ const char *PNGGetErrorString(PNGDecodeError err) {
 	case kPNGDecodeBadFilterMode:						return "The image data specifies an unknown PNG filtering mode.";
 	case kPNGDecodeUnknownRequiredChunk:				return "The PNG file contains data that is required to decode the image but which this decoder does not support.";
 	case kPNGDecodeChecksumFailed:						return "A chunk in the PNG file is corrupted (bad checksum).";
+	case kPNGDecodeUnsupported:							return "The PNG file appears to be valid, but uses an encoding mode that is not supported.";
 	default:											return "?";
 	}
 }
@@ -432,7 +463,19 @@ bool VDDecodePNGHeader(const void *src0, uint32 len, int& w, int& h, bool& hasal
 	hdr.filter		= src[27];
 	hdr.interlacing	= src[28];
 
-	hasalpha = false;
+	switch(hdr.colortype) {
+		case 2:		// RGB
+		case 3:		// Paletted
+		default:
+			hasalpha = false;
+			break;
+
+		case 4:		// IA
+		case 6:		// RGBA
+			hasalpha = true;
+			break;
+	}
+
 	w = hdr.width;
 	h = hdr.height;
 

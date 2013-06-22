@@ -305,6 +305,7 @@ static const char g_szRegKeyUseSegmentFrameCount[]="Use segment frame limit";
 static const char g_szRegKeySegmentSizeLimit[]="Segment size limit";
 static const char g_szRegKeySaveSelectionAndEditList[]="Save edit list";
 static const char g_szRegKeySaveTextInfo[]="Save text info";
+static const char g_szRegKeySegmentDigitCount[]="Segment digit count";
   
 void SaveSegmentedAVI(HWND hWnd, bool queueAsJob) {
 	if (!inputVideo) {
@@ -315,15 +316,17 @@ void SaveSegmentedAVI(HWND hWnd, bool queueAsJob) {
 	static const VDFileDialogOption sOptions[]={
 		{ VDFileDialogOption::kEnabledInt, 1, L"&Limit number of video frames per segment:", 1, 0x7fffffff },
 		{ VDFileDialogOption::kInt, 3, L"File segment &size limit in MB (50-2048):", 50, 2048 },
+		{ VDFileDialogOption::kInt, 4, L"Minimum digit count (1-10):", 1, 10 },
 		{0}
 	};
 
 	VDRegistryAppKey key(g_szRegKeyPersistence);
-	int optVals[4]={
+	int optVals[5]={
 		0,
 		key.getBool(g_szRegKeyUseSegmentFrameCount, false),
 		key.getInt(g_szRegKeySegmentFrameCount, 100),
 		key.getInt(g_szRegKeySegmentSizeLimit, 2000),
+		key.getInt(g_szRegKeySegmentDigitCount, 2),
 	};
 
 	VDStringW fname(VDGetSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, (VDGUIHandle)hWnd, L"Save segmented AVI", fileFiltersAppend, L"avi", sOptions, optVals));
@@ -333,6 +336,16 @@ void SaveSegmentedAVI(HWND hWnd, bool queueAsJob) {
 		if (optVals[1])
 			key.setInt(g_szRegKeySegmentFrameCount, optVals[2]);
 		key.setInt(g_szRegKeySegmentSizeLimit, optVals[3]);
+
+		int digits = optVals[4];
+
+		if (digits < 1)
+			digits = 1;
+
+		if (digits > 10)
+			digits = 10;
+
+		key.setInt(g_szRegKeySegmentDigitCount, digits);
 
 		char szFile[MAX_PATH];
 
@@ -420,9 +433,9 @@ void SaveSegmentedAVI(HWND hWnd, bool queueAsJob) {
 		}
 
 		if (queueAsJob) {
-			JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, NULL, fname.c_str(), true, &inputAVI->listFiles, optVals[3], optVals[1] ? optVals[2] : 0);
+			JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, NULL, fname.c_str(), true, &inputAVI->listFiles, optVals[3], optVals[1] ? optVals[2] : 0, true, digits);
 		} else {
-			SaveSegmentedAVI(fname.c_str(), false, NULL, optVals[3], optVals[1] ? optVals[2] : 0);
+			SaveSegmentedAVI(fname.c_str(), false, NULL, optVals[3], optVals[1] ? optVals[2] : 0, digits);
 		}
 	}
 }
@@ -509,6 +522,7 @@ INT_PTR VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPa
 		SetDlgItemInt(mhdlg, IDC_FILENAME_DIGITS, digits, FALSE);
 		VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_DIRECTORY), mDirectory.c_str());
 		CheckDlgButton(mhdlg, mFormat == AVIOutputImages::kFormatTGA ? IDC_FORMAT_TGA
+							: mFormat == AVIOutputImages::kFormatTGAUncompressed ? IDC_FORMAT_TGAUNCOMPRESSED
 							: mFormat == AVIOutputImages::kFormatBMP ? IDC_FORMAT_BMP
 							: mFormat == AVIOutputImages::kFormatJPEG ? IDC_FORMAT_JPEG
 							: IDC_FORMAT_PNG
@@ -574,6 +588,14 @@ INT_PTR VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPa
 			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
 				UpdateEnables();
 				mFormat = AVIOutputImages::kFormatTGA;
+				ChangeExtension(L".tga");
+			}
+			return TRUE;
+
+		case IDC_FORMAT_TGAUNCOMPRESSED:
+			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+				UpdateEnables();
+				mFormat = AVIOutputImages::kFormatTGAUncompressed;
 				ChangeExtension(L".tga");
 			}
 			return TRUE;

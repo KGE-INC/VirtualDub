@@ -37,7 +37,7 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		const static unsigned char asf_sig[]={
 			0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11,
 			0xa6, 0xd9, 0x00, 0xaa, 0x00, 0x62, 0xce, 0x6c
@@ -45,10 +45,10 @@ public:
 
 		if (nHeaderSize >= 16) {
 			if (!memcmp(pHeader, asf_sig, 16))
-				return 1;
+				return kDC_Low;
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

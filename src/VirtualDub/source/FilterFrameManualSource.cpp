@@ -57,7 +57,7 @@ void VDFilterFrameManualSource::RegisterAllocatorProxies(VDFilterFrameAllocatorM
 	mgr->AddAllocatorProxy(&mAllocator);
 }
 
-bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req) {
+bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req) {
 	vdrefptr<VDFilterFrameRequest> r;
 	bool cached = false;
 	bool newRequest = false;
@@ -70,6 +70,7 @@ bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable,
 		timing.mSourceFrame = outputFrame;
 		timing.mOutputFrame = outputFrame;
 		r->SetTiming(timing);
+		r->SetBatchNumber(batchNumber);
 
 		vdrefptr<VDFilterFrameBuffer> buf;
 
@@ -77,7 +78,7 @@ bool VDFilterFrameManualSource::CreateRequest(sint64 outputFrame, bool writable,
 			r->SetResultBuffer(buf);
 			cached = true;
 		} else {
-			if (!InitNewRequest(r, outputFrame, writable))
+			if (!InitNewRequest(r, outputFrame, writable, batchNumber))
 				return false;
 		}
 	}
@@ -118,17 +119,17 @@ void VDFilterFrameManualSource::InvalidateAllCachedFrames() {
 
 bool VDFilterFrameManualSource::PeekNextRequestFrame(VDPosition& pos) {
 	vdrefptr<VDFilterFrameRequest> req;
-	if (!mFrameQueueWaiting.PeekNextRequest(~req))
+	if (!mFrameQueueWaiting.PeekNextRequest(NULL, ~req))
 		return false;
 
 	pos = req->GetTiming().mOutputFrame;
 	return true;
 }
 
-bool VDFilterFrameManualSource::GetNextRequest(VDFilterFrameRequest **ppReq) {
+bool VDFilterFrameManualSource::GetNextRequest(const uint32 *batchLimit, VDFilterFrameRequest **ppReq) {
 	vdrefptr<VDFilterFrameRequest> req;
 	for(;;) {
-		if (!mFrameQueueWaiting.GetNextRequest(~req))
+		if (!mFrameQueueWaiting.GetNextRequest(batchLimit, ~req))
 			return false;
 
 		if (req->IsActive())
@@ -162,7 +163,7 @@ void VDFilterFrameManualSource::CompleteRequest(VDFilterFrameRequest *req, bool 
 	VDVERIFY(mFrameQueueInProgress.Remove(req));
 }
 
-bool VDFilterFrameManualSource::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {
+bool VDFilterFrameManualSource::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber) {
 	return true;
 }
 

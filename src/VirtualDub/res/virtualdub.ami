@@ -11,6 +11,7 @@ stringset 1 {		// kVDST_Dub
 	message 7, "Dub: Recompressing using format: %hs.";
 	message 8, "Dub: Input (decompression) format is: %hs.";
 	message 9, "Dub: Output (compression) format is: %hs.";
+	message 10, "Dub: Reducing video compression thread count to one because video compressor is using delta frame compression and the key frame interval is longer than one frame.";
 }
 
 stringset 2 {		// kVDST_AVIReadHandler
@@ -134,6 +135,45 @@ stringset 10 {		// kVDST_VideoSequenceCompressor
 		"for an updated version of the codec.";
 }
 
+stringset 11 {		// kVDST_RawVideoFormats
+	message 5, "BGR, 16-bit (555), little endian";
+	message 6, "BGR, 16-bit (565), little endian";
+	message 7, "BGR, 24-bit, 0-255";
+	message 8, "BGR, 32-bit, 0-255";
+	message 9, "Grayscale, 8-bit, 16-235 range";
+	message 10, "4:2:2 YCbCr (UYVY), R.601, 8-bit, Y:16-235, coaligned";
+	message 11, "4:2:2 YCbCr (YUYV), R.601, 8-bit, Y:16-235, coaligned";
+	message 13, "4:4:4 YCbCr planar, R.601, 8-bit, Y:16-235";
+	message 14, "4:2:2 YCbCr planar, R.601, 8-bit, Y:16-235, coaligned";
+	message 15, "4:2:0 YCbCr planar, R.601, 8-bit, Y:16-235, coaligned";
+	message 16, "4:1:1 YCbCr planar, R.601, 8-bit, Y:16-235, coaligned";
+	message 17, "4:1:0 YCbCr planar, R.601, 8-bit, Y:16-235, coaligned";
+	message 18, "4:2:2 YCbCr planar, R.601, 8-bit, Y:16-235, centered";
+	message 19, "4:2:0 YCbCr planar, R.601, 8-bit, Y:16-235, centered";
+	message 22, "4:2:2 YCbCr (UYVY), R.709, 8-bit, Y:16-235, coaligned";
+	message 24, "Grayscale, 8-bit, 0-255 range";
+	message 25, "4:2:2 YCbCr (YUYV), R.709, 8-bit, Y:16-235, coaligned";
+	message 26, "4:4:4 YCbCr planar, R.709, 8-bit, Y:16-235, coaligned";
+	message 27, "4:2:2 YCbCr planar, R.709, 8-bit, Y:16-235, coaligned";
+	message 28, "4:2:0 YCbCr planar, R.709, 8-bit, Y:16-235, coaligned";
+	message 29, "4:1:1 YCbCr planar, R.709, 8-bit, Y:16-235, coaligned";
+	message 30, "4:1:0 YCbCr planar, R.709, 8-bit, Y:16-235, coaligned";
+	message 31, "4:2:2 YCbCr (UYVY), R.601, 8-bit, Y:0-255, coaligned";
+	message 32, "4:2:2 YCbCr (YUYV), R.601, 8-bit, Y:0-255, coaligned";
+	message 33, "4:4:4 YCbCr planar, R.601, 8-bit, Y:0-255";
+	message 34, "4:2:2 YCbCr planar, R.601, 8-bit, Y:0-255, coaligned";
+	message 35, "4:2:0 YCbCr planar, R.601, 8-bit, Y:0-255, coaligned";
+	message 36, "4:1:1 YCbCr planar, R.601, 8-bit, Y:0-255, coaligned";
+	message 37, "4:1:0 YCbCr planar, R.601, 8-bit, Y:0-255, coaligned";
+	message 38, "4:2:2 YCbCr (UYVY), R.709, 8-bit, Y:0-255, coaligned";
+	message 39, "4:2:2 YCbCr (YUYV), R.709, 8-bit, Y:0-255, coaligned";
+	message 40, "4:4:4 YCbCr planar, R.709, 8-bit, Y:0-255";
+	message 41, "4:2:2 YCbCr planar, R.709, 8-bit, Y:0-255, coaligned";
+	message 42, "4:2:0 YCbCr planar, R.709, 8-bit, Y:0-255, coaligned";
+	message 43, "4:1:1 YCbCr planar, R.709, 8-bit, Y:0-255, coaligned";
+	message 44, "4:1:0 YCbCr planar, R.709, 8-bit, Y:0-255, coaligned";
+}
+
 stringset 100 {		// kVDST_PNGDecodeErrors
 	message 1, "The file is not a PNG image.";
 	message 2, "The image file is incomplete.";
@@ -145,7 +185,9 @@ stringset 100 {		// kVDST_PNGDecodeErrors
 	message 8, "The compressed image data is bad.";
 	message 9, "The compressed image data contains an unrecognized filter mode.";
 	message 10, "The PNG file contains data that is required to decode the image but which this decoder does not support.";
+	// 11 is out of memory
 	message 12, "A chunk in the PNG file is corrupted (bad checksum).";
+	message 13, "The PNG file appears to be valid, but uses an encoding mode that is not supported.";
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -196,6 +238,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Threading";
 				listitem "Playback";
 				listitem "3D accel";
+				listitem "Batch";
 			}
 
 			pageset 101 : value={@100} {
@@ -211,6 +254,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1019;
 				page 1020;
 				page 1021;
+				page 1022;
 			}
 		}
 
@@ -405,6 +449,8 @@ dialog 1014, "" : fill, child {
 			}
 			
 			checkbox 106, "Warn when VBR audio is detected";
+			checkbox 108, "Warn when non-zero starting offset is detected";
+			checkbox 107, "Use video stream fccHandler in codec search";
 		}
 	}
 }
@@ -481,6 +527,34 @@ dialog 1019, "" : fill, child {
 			nextrow;
 			textarea 0, "Zero disables video compressor multithreading; '1' causes the compressor to run in a separate thread for better performance on dual-core and SMP systems. Values greater than 1 are not yet supported." : margint=5, colspan=2, fill, readonly, minh=40;
 			
+			nextrow;
+			label 0, "&Video filter threading";
+			combobox 101 {
+				listitem "Disabled";
+				listitem "Auto";
+				listitem "1 thread";
+				listitem "2 threads";
+				listitem "3 threads";
+				listitem "4 threads";
+				listitem "5 threads";
+				listitem "6 threads";
+				listitem "7 threads";
+				listitem "8 threads";
+			}
+			
+			nextrow;
+			label 0, "&Video filter process-ahead";
+			combobox 102 {
+				listitem "Auto";
+				listitem "1 frame";
+				listitem "2 frames";
+				listitem "3 frames";
+				listitem "4 frames";
+				listitem "5 frames";
+				listitem "6 frames";
+				listitem "7 frames";
+				listitem "8 frames";
+			}
 		}
 	}
 }
@@ -498,6 +572,15 @@ dialog 1021, "" : fill, child {
 	set 0: vertical {
 		group 0, "3D hardware acceleration options" {
 			checkbox 100, "Enable 3D video &filter acceleration (VDXA)";
+		}
+	}
+}
+
+dialog 1022, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Batch mode options" {
+			checkbox 100, "Show &status window for batch operations";
 		}
 	}
 }

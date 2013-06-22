@@ -56,7 +56,7 @@ enum {
 
 //////////////////////////////
 
-bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList);
+bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS);
 void FilterLoadFilter(HWND hWnd);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -443,10 +443,6 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 							fp = NULL;
 
 							RedoFilters();
-
-							ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED);
-							if (index >= 0)
-								ListView_SetItemState(mhwndList, index, LVIS_SELECTED, LVIS_SELECTED);
 						}
 					}
 				}
@@ -466,12 +462,8 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 							List filterList;
 							MakeFilterList(filterList);
 
-							VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList);
+							VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList, mInitialTimeUS);
 							RedoFilters();
-
-							ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED);
-							if (index >= 0)
-								ListView_SetItemState(mhwndList, index, LVIS_SELECTED, LVIS_SELECTED);
 						}
 					}
 				}
@@ -776,19 +768,52 @@ void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
 								"RGB32",
 								"Y8",
 								"UYVY",
-								"YUY2",
+								"YUYV",
 								"YUV",
-								"YV24",
-								"YV16",
-								"YV12",
+								"YUV444",
+								"YUV422",
+								"YUV420",
 								"YUV411",
-								"YVU9",
-								"YV16C",
-								"YV12C",
+								"YUV410",
+								"YUV422C",
+								"YUV420C",
 								"YUV422-16F",
 								"V210",
-								"HDYC",
+								"UYVY-709",
 								"NV12",
+								"I8",
+								"YUYV-709",
+								"YUV444-709",
+								"YUV422-709",
+								"YUV420-709",
+								"YUV411-709",
+								"YUV410-709",
+								"UYVY-FR",
+								"YUYV-FR",
+								"YUV444-FR",
+								"YUV422-FR",
+								"YUV420-FR",
+								"YUV411-FR",
+								"YUV410-FR",
+								"UYVY-709-FR",
+								"YUYV-709-FR",
+								"YUV444-709-FR",
+								"YUV422-709-FR",
+								"YUV420-709-FR",
+								"YUV411-709-FR",
+								"YUV410-709-FR",
+								"YUV420i",
+								"YUV420i-FR",
+								"YUV420i-709",
+								"YUV420i-709-FR",
+								"YUV420it",
+								"YUV420it-FR",
+								"YUV420it-709",
+								"YUV420it-709-FR",
+								"YUV420ib",
+								"YUV420ib-FR",
+								"YUV420ib-709",
+								"YUV420ib-709-FR",
 							};
 
 							VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
@@ -946,9 +971,10 @@ VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, 
 //
 ///////////////////////////////////////////////////////////////////////////
 
+
 class VDFilterClippingDialog : public VDDialogFrameW32 {
 public:
-	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList);
+	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS);
 
 protected:
 	void OnDataExchange(bool write);
@@ -967,6 +993,8 @@ protected:
 	int mMinSizeW;
 	int mMinSizeH;
 
+	sint64			mInitialTimeUS;
+
 	double			mFilterFramesToSourceFrames;
 	double			mSourceFramesToFilterFrames;
 
@@ -975,12 +1003,13 @@ protected:
 	VDDialogResizerW32	mResizer;
 };
 
-VDFilterClippingDialog::VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList)
+VDFilterClippingDialog::VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS)
 	: VDDialogFrameW32(IDD_FILTER_CLIPPING)
 	, mpFilterList(pFilterList)
 	, mpFilterInst(pFiltInst)
 	, mMinSizeW(0)
 	, mMinSizeH(0)
+	, mInitialTimeUS(initialTimeUS)
 {
 }
 
@@ -1066,6 +1095,19 @@ bool VDFilterClippingDialog::OnLoaded()  {
 	mpPosCtrl->SetAutoStep(true);
 	mpPosCtrl->SetRange(0, mpFilterInst->mRealSrc.mFrameCount < 0 ? 1000 : mpFilterInst->mRealSrc.mFrameCount);
 	mpPosCtrl->SetFrameRate(VDFraction(mpFilterInst->mRealSrc.mFrameRateHi, mpFilterInst->mRealSrc.mFrameRateLo));
+
+	if (mFilterSys.isRunning()) {
+		const VDFraction& dstfr = mFilterSys.GetOutputFrameRate();
+		VDPosition timelineFrame = VDRoundToInt64(dstfr.asDouble() * (double)mInitialTimeUS * (1.0 / 1000000.0));
+
+		IVDFilterFrameSource *src = mpFilterInst->GetSource();
+		if (src) {
+			VDPosition localFrame = mFilterSys.GetSymbolicFrame(timelineFrame, src);
+
+			if (localFrame >= 0)
+				mpPosCtrl->SetPosition(localFrame);
+		}
+	}
 
 	GetWindowRect(mhdlg, &rw);
 	GetWindowRect(hwndClipping, &rc);
@@ -1228,10 +1270,24 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 				IVDFilterFrameSource *src = mpFilterInst->GetSource();
 				const VDPixmapLayout& srcLayout = src->GetOutputLayout();
 
-				if (src->CreateRequest(pos, false, ~req)) {
+				if (src->CreateRequest(pos, false, 0, ~req)) {
+					bool canBlock = false;
 					do {
-						mpFrameSource->RunRequests();
-						mFilterSys.Run(true);
+						if (IVDFilterFrameSource::kRunResult_Running == mpFrameSource->RunRequests(NULL)) {
+							canBlock = false;
+							continue;
+						}
+
+						if (FilterSystem::kRunResult_Running == mFilterSys.Run(NULL, false)) {
+							canBlock = false;
+						} else {
+							if (canBlock) {
+								mFilterSys.Block();
+								canBlock = false;
+							} else {
+								canBlock = true;
+							}
+						}
 					} while(!req->IsCompleted());
 
 					if (req->IsSuccessful()) {
@@ -1256,8 +1312,8 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 		guiPositionBlit(GetDlgItem(mhdlg, IDC_BORDERS), pos, mpFilterInst->GetPreCropWidth(), mpFilterInst->GetPreCropHeight());
 }
 
-bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList) {
-	VDFilterClippingDialog dlg(pFiltInst, pFilterList);
+bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS) {
+	VDFilterClippingDialog dlg(pFiltInst, pFilterList, initialTimeUS);
 
 	return 0 != dlg.ShowDialog(hParent);
 }

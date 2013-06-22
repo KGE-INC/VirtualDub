@@ -4,6 +4,7 @@
 #include <vd2/system/refcount.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/VDScheduler.h>
 #include <vd2/system/vectors.h>
 #include <vd2/system/win32/miniwindows.h>
 #include <vd2/plugin/vdvideoaccel.h>
@@ -82,7 +83,7 @@ public:
 
 	void SetProfilingChannel(VDRTProfileChannel *chan);
 
-	void Run();
+	void Run(VDScheduler *scheduler);
 	void Post(Message *msg);
 	void Wait(Message *msg, VDFilterAccelEngineDispatchQueue& localQueue);
 	void Send(Message *msg, VDFilterAccelEngineDispatchQueue& localQueue);
@@ -106,6 +107,7 @@ public:
 	~VDFilterAccelEngine();
 
 	IVDTContext *GetContext() const { return mpTC; }
+	VDScheduler *GetScheduler() { return &mScheduler; }
 
 	bool Init(bool visibleDebugWindow);
 	void Shutdown();
@@ -117,6 +119,7 @@ public:
 	bool CommitBuffer(VDFilterFrameBufferAccel *buf, bool renderable);
 	void DecommitBuffer(VDFilterFrameBufferAccel *buf);
 	void Upload(VDFilterFrameBufferAccel *dst, VDFilterFrameBuffer *src, const VDPixmapLayout& srcLayout);
+	void Upload(VDFilterFrameBufferAccel *dst, const void *srcp, const VDPixmapLayout& srcLayout);
 
 	VDFilterAccelReadbackBuffer *CreateReadbackBuffer(uint32 width, uint32 height, int format);
 	void DestroyReadbackBuffer(VDFilterAccelReadbackBuffer *rb);
@@ -189,6 +192,9 @@ protected:
 	VDZATOM		mWndClass;
 	VDZHWND		mhwnd;
 	bool		mbVisualDebugEnabled;
+
+	VDScheduler	mScheduler;
+	VDSignal	mSchedulerSignal;
 };
 
 #endif

@@ -19,7 +19,9 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include "FilterFrameConverter.h"
 
-VDFilterFrameConverter::VDFilterFrameConverter() {
+VDFilterFrameConverter::VDFilterFrameConverter()
+	: mbRequestPending(false)
+{
 }
 
 VDFilterFrameConverter::~VDFilterFrameConverter() {
@@ -30,6 +32,15 @@ void VDFilterFrameConverter::Init(IVDFilterFrameSource *source, const VDPixmapLa
 	mSourceLayout = sourceLayoutOverride ? *sourceLayoutOverride : source->GetOutputLayout();
 	SetOutputLayout(outputLayout);
 	mpBlitter = VDPixmapCreateBlitter(mLayout, mSourceLayout);
+}
+
+void VDFilterFrameConverter::Start(IVDFilterFrameEngine *engine) {
+	mpEngine = engine;
+}
+
+void VDFilterFrameConverter::Stop() {
+	mbRequestPending = false;
+	EndFrame(false);
 }
 
 bool VDFilterFrameConverter::GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) {
@@ -51,17 +62,20 @@ sint64 VDFilterFrameConverter::GetNearestUniqueFrame(sint64 outputFrame) {
 	return mpSource->GetNearestUniqueFrame(outputFrame);
 }
 
-VDFilterFrameConverter::RunResult VDFilterFrameConverter::RunRequests() {
+VDFilterFrameConverter::RunResult VDFilterFrameConverter::RunRequests(const uint32 *batchNumberLimit) {
+	bool activity = false;
+
+	if (mpRequest) {
+		if (mbRequestPending)
+			return kRunResult_Blocked;
+
+		EndFrame(mbRequestSuccess != 0);
+		activity = true;
+	}
+
 	if (!mpRequest) {
-		if (!GetNextRequest(~mpRequest))
-			return kRunResult_Idle;
-	} else {
-		if (!mpRequest->IsActive()) {
-			mpRequest->MarkComplete(false);
-			CompleteRequest(mpRequest, false);
-			mpRequest = NULL;
-			return kRunResult_Running;
-		}
+		if (!GetNextRequest(batchNumberLimit, ~mpRequest))
+			return activity ? kRunResult_IdleWasActive : kRunResult_Idle;
 	}
 
 	VDFilterFrameBuffer *srcbuf = mpRequest->GetSource(0);
@@ -80,26 +94,49 @@ VDFilterFrameConverter::RunResult VDFilterFrameConverter::RunRequests() {
 	}
 
 	VDFilterFrameBuffer *dstbuf = mpRequest->GetResultBuffer();
-	const VDPixmap& pxsrc = VDPixmapFromLayout(mSourceLayout, (void *)srcbuf->LockRead());
-	const VDPixmap& pxdst = VDPixmapFromLayout(mLayout, dstbuf->LockWrite());
+	mPixmapSrc = VDPixmapFromLayout(mSourceLayout, (void *)srcbuf->LockRead());
+	mPixmapDst = VDPixmapFromLayout(mLayout, dstbuf->LockWrite());
 
-	mpBlitter->Blit(pxdst, pxsrc);
+	mbRequestPending = true;
+	mpEngine->ScheduleProcess();
 
-	dstbuf->Unlock();
-	srcbuf->Unlock();
-
-	mpRequest->MarkComplete(true);
-	CompleteRequest(mpRequest, true);
-	mpRequest = NULL;
-	return kRunResult_Running;
+	return activity ? kRunResult_BlockedWasActive : kRunResult_Blocked;
 }
 
-bool VDFilterFrameConverter::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {
+bool VDFilterFrameConverter::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable, uint32 batchNumber) {
 	vdrefptr<IVDFilterFrameClientRequest> creq;
-	if (!mpSource->CreateRequest(outputFrame, false, ~creq))
+	if (!mpSource->CreateRequest(outputFrame, false, batchNumber, ~creq))
 		return false;
 
 	req->SetSourceCount(1);
 	req->SetSourceRequest(0, creq);
 	return true;
+}
+
+VDFilterFrameConverter::RunResult VDFilterFrameConverter::RunProcess() {
+	if (!mbRequestPending)
+		return kRunResult_Idle;
+
+	VDPROFILEBEGINEX("Convert", (uint32)mpRequest->GetTiming().mOutputFrame);
+	mpBlitter->Blit(mPixmapDst, mPixmapSrc);
+	VDPROFILEEND();
+
+	mbRequestSuccess = true;
+	mbRequestPending = false;
+	mpEngine->Schedule();
+	return kRunResult_IdleWasActive;
+}
+
+void VDFilterFrameConverter::EndFrame(bool success) {
+	VDASSERT(!mbRequestPending);
+
+	if (mpRequest) {
+		VDFilterFrameBuffer *srcbuf = mpRequest->GetSource(0);
+		VDFilterFrameBuffer *dstbuf = mpRequest->GetResultBuffer();
+		dstbuf->Unlock();
+		srcbuf->Unlock();
+		mpRequest->MarkComplete(success);
+		CompleteRequest(mpRequest, success);
+		mpRequest = NULL;
+	}
 }

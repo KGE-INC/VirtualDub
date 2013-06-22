@@ -453,10 +453,9 @@ void LaunchURL(const char *pURL) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-static void ExitWindowsExDammit(UINT uFlags, DWORD dwReserved) {
-	if (!(GetVersion()&0x80000000)) {
+namespace {
+	void EnableShutdownPrivilegesNT() {
 		HANDLE h;
-
 		if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY, &h)) {
 			LUID luid;
 
@@ -472,8 +471,42 @@ static void ExitWindowsExDammit(UINT uFlags, DWORD dwReserved) {
 			CloseHandle(h);
 		}
 	}
+}
+
+static void ExitWindowsExDammit(UINT uFlags, DWORD dwReserved) {
+	if (VDIsWindowsNT())
+		EnableShutdownPrivilegesNT();
 
 	ExitWindowsEx(uFlags, dwReserved);
+}
+
+bool VDInitiateSystemShutdownWithUITimeout(VDSystemShutdownMode mode, const wchar_t *reason, uint32 timeout) {
+	if (mode != kVDSystemShutdownMode_Shutdown)
+		return false;
+
+	if (!VDIsWindowsNT())
+		return false;
+
+	HMODULE hmodK32 = GetModuleHandleA("advapi32");
+	if (!hmodK32)
+		return false;
+
+	EnableShutdownPrivilegesNT();
+
+	typedef BOOL (WINAPI *tpInitiateSystemShutdownExW)(
+		LPWSTR lpMachineName,
+		LPWSTR lpMessage,
+		DWORD dwTimeout,
+		BOOL bForceAppsClosed,
+		BOOL bRebootAfterShutdown,
+		DWORD dwReason
+	);
+
+	tpInitiateSystemShutdownExW pInitiateSystemShutdownExW = (tpInitiateSystemShutdownExW)GetProcAddress(hmodK32, "InitiateSystemShutdownExW");
+	if (!pInitiateSystemShutdownExW)
+		return false;
+
+	return 0 != pInitiateSystemShutdownExW(NULL, (LPWSTR)reason, timeout, TRUE, FALSE, SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED);
 }
 
 bool VDInitiateSystemShutdown(VDSystemShutdownMode mode) {

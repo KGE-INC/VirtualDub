@@ -22,7 +22,7 @@
 
 #include <vd2/system/error.h>
 
-#include "AVIOutputRaw.h"
+#include "AVIOutputRawAudio.h"
 
 extern uint32 VDPreferencesGetFileAsyncDefaultMode();
 
@@ -34,7 +34,7 @@ extern uint32 VDPreferencesGetFileAsyncDefaultMode();
 
 class AVIAudioOutputStreamRaw : public AVIOutputStream {
 public:
-	AVIAudioOutputStreamRaw(AVIOutputRaw *pParent);
+	AVIAudioOutputStreamRaw(AVIOutputRawAudio *pParent);
 
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
 	void partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples);
@@ -42,10 +42,10 @@ public:
 	void partialWriteEnd();
 
 protected:
-	AVIOutputRaw *const mpParent;
+	AVIOutputRawAudio *const mpParent;
 };
 
-AVIAudioOutputStreamRaw::AVIAudioOutputStreamRaw(AVIOutputRaw *pParent) : mpParent(pParent) {
+AVIAudioOutputStreamRaw::AVIAudioOutputStreamRaw(AVIOutputRawAudio *pParent) : mpParent(pParent) {
 }
 
 void AVIAudioOutputStreamRaw::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
@@ -65,47 +65,60 @@ void AVIAudioOutputStreamRaw::partialWriteEnd() {
 
 //////////////////////////////////////////////////////////////////////
 //
-// AVIOutputRaw
+// AVIOutputRawAudio
 //
 //////////////////////////////////////////////////////////////////////
 
-AVIOutputRaw::AVIOutputRaw() {
+AVIOutputRawAudio::AVIOutputRawAudio() {
 	mBytesWritten		= 0;
 	mBufferSize			= 65536;
 }
 
-AVIOutputRaw::~AVIOutputRaw() {
+AVIOutputRawAudio::~AVIOutputRawAudio() {
 }
 
-IVDMediaOutputStream *AVIOutputRaw::createVideoStream() {
+IVDMediaOutputStream *AVIOutputRawAudio::createVideoStream() {
 	return NULL;
 }
 
-IVDMediaOutputStream *AVIOutputRaw::createAudioStream() {
+IVDMediaOutputStream *AVIOutputRawAudio::createAudioStream() {
 	VDASSERT(!audioOut);
 	if (!(audioOut = new_nothrow AVIAudioOutputStreamRaw(this)))
 		throw MyMemoryError();
 	return audioOut;
 }
 
-bool AVIOutputRaw::init(const wchar_t *pwszFile) {
+bool AVIOutputRawAudio::init(const wchar_t *pwszFile) {
 	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
 	mpFileAsync->Open(pwszFile, 2, mBufferSize >> 1);
+	mbPipeMode = false;
 
 	mBytesWritten = 0;
 	return true;
 }
 
-void AVIOutputRaw::finalize() {
+bool AVIOutputRawAudio::init(VDFileHandle h, bool pipeMode) {
+	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
+	mpFileAsync->Open(h, 2, mBufferSize >> 1);
+	mbPipeMode = pipeMode;
+
+	mBytesWritten = 0;
+	return true;
+}
+
+void AVIOutputRawAudio::finalize() {
 	if (!mpFileAsync->IsOpen())
 		return;
 
 	mpFileAsync->FastWriteEnd();
-	mpFileAsync->Truncate(mBytesWritten);
+
+	if (!mbPipeMode)
+		mpFileAsync->Truncate(mBytesWritten);
+
 	mpFileAsync->Close();
 }
 
-void AVIOutputRaw::write(const void *pBuffer, uint32 cbBuffer) {
+void AVIOutputRawAudio::write(const void *pBuffer, uint32 cbBuffer) {
 	mpFileAsync->FastWrite(pBuffer, cbBuffer);
 	mBytesWritten += cbBuffer;
 }

@@ -109,7 +109,18 @@ public:
 		bool		mbHoldFrame;		///< Set if this frame is not followed by a processed frame.
 	};
 
-	void Init(const vdfastvector<IVDVideoSource *>& videoSources, VDPosition nSrcStart, VDFraction srcStep, const FrameSubset *pSubset, VDPosition nFrameCount, bool allowDirect, bool forceDirect, bool preserveEmptyFrames, const FilterSystem *pRemapperFS);
+	void Init(const vdfastvector<IVDVideoSource *>& videoSources,
+		VDPosition nSrcStart,
+		VDFraction srcStep,
+		const FrameSubset *pSubset,
+		VDPosition nFrameCount,
+		bool allowDirect,
+		bool forceDirect,
+		bool preserveEmptyFrames,
+		const FilterSystem *pRemapperFS,
+		bool allowNullFrames,
+		bool useSourceFrames
+		);
 
 	VDPosition	size() const { return mFrameMap.size(); }
 
@@ -237,6 +248,11 @@ public:
 
 	void BeginWait();
 	void EndWait();
+	
+	void CheckForSuspend();
+	void BeginSuspend();
+	bool TryWaitSuspend(uint32 timeout);
+	void EndSuspend();
 
 protected:
 	VDAtomicFloat	mThrottleFactor;
@@ -251,6 +267,11 @@ protected:
 	uint32	mActiveTimeWindow[16];
 	uint32	mWaitTimeWindowSum;
 	uint32	mActiveTimeWindowSum;
+
+	VDAtomicInt	mSuspendState;
+	VDAtomicInt	mSuspendRequested;
+	VDSignal	mRequestChange;
+	VDSignal	mStateChange;
 };
 
 #endif

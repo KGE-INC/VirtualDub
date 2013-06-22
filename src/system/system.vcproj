@@ -1330,6 +1330,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\vdstl_hash.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\vdstl_hashtable.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\VDString.cpp"
 				>
 				<FileConfiguration
@@ -1652,6 +1660,22 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\system\vdstl.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vdstl_hash.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vdstl_hashmap.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vdstl_hashtable.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vdstl_vector.h"
 				>
 			</File>
 			<File

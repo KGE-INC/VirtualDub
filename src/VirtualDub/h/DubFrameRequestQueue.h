@@ -19,6 +19,7 @@
 #define f_VD2_DUBFRAMEREQUESTQUEUE_H
 
 #include <vd2/system/thread.h>
+#include <vd2/system/event.h>
 
 struct VDDubFrameRequest {
 	sint64	mSrcFrame;
@@ -41,12 +42,18 @@ public:
 	void AddRequest(const VDDubFrameRequest& request);
 	bool RemoveRequest(VDDubFrameRequest& request);
 
+	VDEvent<VDDubFrameRequestQueue, bool>& OnLowWatermark() {
+		return mLowWatermarkEvent;
+	}
+
 protected:
 	typedef vdfastdeque<VDDubFrameRequest> Queue;
 	Queue mQueue;
 
 	VDSignal mNotEmpty;
 	VDCriticalSection mMutex;
+
+	VDEvent<VDDubFrameRequestQueue, bool> mLowWatermarkEvent;
 };
 
 #endif

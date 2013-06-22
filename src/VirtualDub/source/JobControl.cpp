@@ -725,7 +725,7 @@ bool VDJobQueue::Load(IVDStream *stream, bool merge) {
 					if (2 != sscanf(t, "%d%c%n", &severity, &dummyspace, &pos))
 						throw MyError("invalid log entry");
 
-					job->mLogEntries.push_back(VDJob::tLogEntries::value_type(severity, VDTextAToW(t + pos, -1)));
+					job->mLogEntries.push_back(VDJob::tLogEntries::value_type(severity, VDTextAToW(t + pos, -1).c_str()));
 				}
 			} else if (script_capture) {
 				// kill starting spaces
@@ -1119,13 +1119,21 @@ bool VDJobQueue::RunAllNext() {
 		if (g_hwndJobs)
 			EnableWindow(g_hwndJobs, FALSE);
 
+		VDSystemShutdownMode shutdownMode = (VDSystemShutdownMode)key.getInt(g_szRegKeyShutdownMode);
+
 		bool do_shutdown = VDUIRequestSystemShutdown((VDGUIHandle)g_hWnd);
 
 		if (g_hwndJobs)
 			EnableWindow(g_hwndJobs, TRUE);
 
 		if (do_shutdown) {
-			VDInitiateSystemShutdown((VDSystemShutdownMode)key.getInt(g_szRegKeyShutdownMode));
+			if (!VDInitiateSystemShutdownWithUITimeout(shutdownMode,
+				L"VirtualDub is shutting down the system after finishing the job queue at the user's request.",
+				0))
+			{
+				VDInitiateSystemShutdown((VDSystemShutdownMode)key.getInt(g_szRegKeyShutdownMode));
+			}
+
 			PostQuitMessage(0);
 		}
 	}

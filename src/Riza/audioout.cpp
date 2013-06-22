@@ -248,20 +248,23 @@ bool VDAudioOutputWaveOutW32::Stop() {
 bool VDAudioOutputWaveOutW32::CheckBuffers() {
 	if (mCurState == kStateSilent) return true;
 
-	if (!mBlocksPending)
-		return false;
+	bool found = false;
+	for(;;) {
+		if (!mBlocksPending)
+			return found;
 
-	WAVEHDR& hdr = mHeaders[mBlockHead];
+		WAVEHDR& hdr = mHeaders[mBlockHead];
 
-	if (!(hdr.dwFlags & WHDR_DONE))
-		return false;
+		if (!(hdr.dwFlags & WHDR_DONE))
+			return found;
 
-	++mBlockHead;
-	if (mBlockHead >= mBlockCount)
-		mBlockHead = 0;
-	--mBlocksPending;
-	VDASSERT(mBlocksPending >= 0);
-	return true;
+		++mBlockHead;
+		if (mBlockHead >= mBlockCount)
+			mBlockHead = 0;
+		--mBlocksPending;
+		VDASSERT(mBlocksPending >= 0);
+		found = true;
+	}
 }
 
 bool VDAudioOutputWaveOutW32::WaitBuffers(uint32 timeout) {

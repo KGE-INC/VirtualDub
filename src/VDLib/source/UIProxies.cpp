@@ -22,6 +22,11 @@ void VDUIProxyControl::Detach() {
 	mhwnd = NULL;
 }
 
+void VDUIProxyControl::SetArea(const vdrect32& r) {
+	if (mhwnd)
+		SetWindowPos(mhwnd, NULL, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 VDZLRESULT VDUIProxyControl::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
 	return 0;
 }
@@ -103,7 +108,8 @@ VDUIProxyControl *VDUIProxyMessageDispatcherW32::GetControl(VDZHWND hwnd) {
 ///////////////////////////////////////////////////////////////////////////////
 
 VDUIProxyListView::VDUIProxyListView()
-	: mNextTextIndex(0)
+	: mChangeNotificationLocks(0)
+	, mNextTextIndex(0)
 {
 }
 
@@ -125,6 +131,15 @@ void VDUIProxyListView::AutoSizeColumns() {
 void VDUIProxyListView::Clear() {
 	if (mhwnd)
 		SendMessage(mhwnd, LVM_DELETEALLITEMS, 0, 0);
+}
+
+void VDUIProxyListView::ClearExtraColumns() {
+	if (!mhwnd)
+		return;
+
+	uint32 n = GetColumnCount();
+	for(uint32 i=n; i > 1; --i)
+		ListView_DeleteColumn(mhwnd, i - 1);
 }
 
 void VDUIProxyListView::DeleteItem(int index) {
@@ -153,6 +168,10 @@ void VDUIProxyListView::SetSelectedIndex(int index) {
 
 void VDUIProxyListView::SetFullRowSelectEnabled(bool enabled) {
 	ListView_SetExtendedListViewStyleEx(mhwnd, LVS_EX_FULLROWSELECT, enabled ? LVS_EX_FULLROWSELECT : 0);
+}
+
+void VDUIProxyListView::SetItemCheckboxesEnabled(bool enabled) {
+	ListView_SetExtendedListViewStyleEx(mhwnd, LVS_EX_CHECKBOXES, enabled ? LVS_EX_CHECKBOXES : 0);
 }
 
 void VDUIProxyListView::EnsureItemVisible(int index) {
@@ -247,6 +266,7 @@ int VDUIProxyListView::InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvv
 	if (item < 0)
 		item = 0x7FFFFFFF;
 
+	++mChangeNotificationLocks;
 	if (VDIsWindowsNT()) {
 		LVITEMW itemw = {};
 
@@ -266,6 +286,7 @@ int VDUIProxyListView::InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvv
 
 		index = (int)SendMessageA(mhwnd, LVM_INSERTITEMA, 0, (LPARAM)&itema);
 	}
+	--mChangeNotificationLocks;
 
 	if (index >= 0)
 		lvvi->AddRef();
@@ -275,6 +296,36 @@ int VDUIProxyListView::InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvv
 
 void VDUIProxyListView::RefreshItem(int item) {
 	SendMessage(mhwnd, LVM_REDRAWITEMS, item, item);
+}
+
+void VDUIProxyListView::EditItemLabel(int item) {
+	ListView_EditLabel(mhwnd, item);
+}
+
+void VDUIProxyListView::GetItemText(int item, VDStringW& s) const {
+	if (VDIsWindowsNT()) {
+		LVITEMW itemw;
+		wchar_t buf[512];
+
+		itemw.iSubItem = 0;
+		itemw.cchTextMax = 511;
+		itemw.pszText = buf;
+		buf[0] = 0;
+		SendMessageW(mhwnd, LVM_GETITEMTEXTW, item, (LPARAM)&itemw);
+
+		s = buf;
+	} else {
+		LVITEMA itema;
+		char buf[512];
+
+		itema.iSubItem = 0;
+		itema.cchTextMax = 511;
+		itema.pszText = buf;
+		buf[0] = 0;
+		SendMessageW(mhwnd, LVM_GETITEMTEXTA, item, (LPARAM)&itema);
+
+		s = VDTextAToW(buf);
+	}
 }
 
 void VDUIProxyListView::SetItemText(int item, int subitem, const wchar_t *text) {
@@ -298,6 +349,22 @@ void VDUIProxyListView::SetItemText(int item, int subitem, const wchar_t *text) 
 
 		SendMessageA(mhwnd, LVM_SETITEMA, 0, (LPARAM)&itema);
 	}
+}
+
+bool VDUIProxyListView::IsItemChecked(int item) {
+	return ListView_GetCheckState(mhwnd, item) != 0;
+}
+
+void VDUIProxyListView::SetItemChecked(int item, bool checked) {
+	ListView_SetCheckState(mhwnd, item, checked);
+}
+
+void VDUIProxyListView::Sort(IVDUIListViewVirtualComparer& comparer) {
+	ListView_SortItems(mhwnd, SortAdapter, (LPARAM)&comparer);
+}
+
+int VDZCALLBACK VDUIProxyListView::SortAdapter(LPARAM x, LPARAM y, LPARAM cookie) {
+	return ((IVDUIListViewVirtualComparer *)cookie)->Compare((IVDUIListViewVirtualItem *)x, (IVDUIListViewVirtualItem *)y);
 }
 
 VDZLRESULT VDUIProxyListView::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
@@ -352,16 +419,64 @@ VDZLRESULT VDUIProxyListView::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
 			break;
 
 		case LVN_ITEMCHANGED:
-			{
+			if (!mChangeNotificationLocks) {
 				const NMLISTVIEW *nmlv = (const NMLISTVIEW *)hdr;
 
 				if (nmlv->uChanged & LVIF_STATE) {
-					int selIndex = ListView_GetNextItem(mhwnd, -1, LVNI_ALL | LVNI_SELECTED);
+					uint32 deltaState = nmlv->uOldState ^ nmlv->uNewState;
 
-					mEventItemSelectionChanged.Raise(this, selIndex);
+					if (deltaState & LVIS_SELECTED) {
+						int selIndex = ListView_GetNextItem(mhwnd, -1, LVNI_ALL | LVNI_SELECTED);
+
+						mEventItemSelectionChanged.Raise(this, selIndex);
+					}
+
+					if (deltaState & LVIS_STATEIMAGEMASK) {
+						VDASSERT(nmlv->iItem >= 0);
+						mEventItemCheckedChanged.Raise(this, nmlv->iItem);
+					}
 				}
 			}
 			break;
+
+		case LVN_ENDLABELEDITA:
+			{
+				const NMLVDISPINFOA *di = (const NMLVDISPINFOA *)hdr;
+				if (di->item.pszText) {
+					const VDStringW label(VDTextAToW(di->item.pszText));
+					LabelEventData data = {
+						di->item.iItem,
+						label.c_str()
+					};
+
+					mEventItemLabelEdited.Raise(this, data);
+				}
+			}
+			return TRUE;
+
+		case LVN_ENDLABELEDITW:
+			{
+				const NMLVDISPINFOW *di = (const NMLVDISPINFOW *)hdr;
+
+				if (di->item.pszText) {
+					LabelEventData data = {
+						di->item.iItem,
+						di->item.pszText
+					};
+
+					mEventItemLabelEdited.Raise(this, data);
+				}
+			}
+			return TRUE;
+
+		case NM_DBLCLK:
+			{
+				int selIndex = ListView_GetNextItem(mhwnd, -1, LVNI_ALL | LVNI_SELECTED);
+
+				mEventItemDoubleClicked.Raise(this, selIndex);
+			}
+			return 0;
+
 	}
 
 	return 0;
@@ -423,6 +538,124 @@ VDZLRESULT VDUIProxyHotKeyControl::On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lPa
 		VDUIAccelerator accel;
 		GetAccelerator(accel);
 		mEventHotKeyChanged.Raise(this, accel);
+	}
+
+	return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDUIProxyTabControl::VDUIProxyTabControl() {
+}
+
+VDUIProxyTabControl::~VDUIProxyTabControl() {
+}
+
+void VDUIProxyTabControl::AddItem(const wchar_t *s) {
+	if (!mhwnd)
+		return;
+
+	int n = TabCtrl_GetItemCount(mhwnd);
+	if (VDIsWindowsNT()) {
+		TCITEMW tciw = { TCIF_TEXT };
+
+		tciw.pszText = (LPWSTR)s;
+
+		SendMessageW(mhwnd, TCM_INSERTITEMW, n, (LPARAM)&tciw);
+	} else {
+		TCITEMA tcia = { TCIF_TEXT };
+		VDStringA sa(VDTextWToA(s));
+
+		tcia.pszText = (LPSTR)sa.c_str();
+
+		SendMessageA(mhwnd, TCM_INSERTITEMA, n, (LPARAM)&tcia);
+	}
+}
+
+void VDUIProxyTabControl::DeleteItem(int index) {
+	if (mhwnd)
+		SendMessage(mhwnd, TCM_DELETEITEM, index, 0);
+}
+
+vdsize32 VDUIProxyTabControl::GetControlSizeForContent(const vdsize32& sz) const {
+	if (!mhwnd)
+		return vdsize32(0, 0);
+
+	RECT r = { 0, 0, sz.w, sz.h };
+	TabCtrl_AdjustRect(mhwnd, TRUE, &r);
+
+	return vdsize32(r.right - r.left, r.bottom - r.top);
+}
+
+vdrect32 VDUIProxyTabControl::GetContentArea() const {
+	if (!mhwnd)
+		return vdrect32(0, 0, 0, 0);
+
+	RECT r = {0};
+	GetWindowRect(mhwnd, &r);
+
+	HWND hwndParent = GetParent(mhwnd);
+	if (hwndParent)
+		MapWindowPoints(NULL, hwndParent, (LPPOINT)&r, 2);
+
+	TabCtrl_AdjustRect(mhwnd, FALSE, &r);
+
+	return vdrect32(r.left, r.top, r.right, r.bottom);
+}
+
+int VDUIProxyTabControl::GetSelection() const {
+	if (!mhwnd)
+		return -1;
+
+	return (int)SendMessage(mhwnd, TCM_GETCURSEL, 0, 0);
+}
+
+void VDUIProxyTabControl::SetSelection(int index) {
+	if (mhwnd)
+		SendMessage(mhwnd, TCM_SETCURSEL, index, 0);
+}
+
+VDZLRESULT VDUIProxyTabControl::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
+	if (((const NMHDR *)lParam)->code == TCN_SELCHANGE) {
+		mSelectionChanged.Raise(this, GetSelection());
+	}
+
+	return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDUIProxyComboBoxControl::VDUIProxyComboBoxControl() {
+}
+
+VDUIProxyComboBoxControl::~VDUIProxyComboBoxControl() {
+}
+
+void VDUIProxyComboBoxControl::AddItem(const wchar_t *s) {
+	if (!mhwnd)
+		return;
+
+	if (VDIsWindowsNT())
+		SendMessageW(mhwnd, CB_ADDSTRING, 0, (LPARAM)s);
+	else
+		SendMessageA(mhwnd, CB_ADDSTRING, 0, (LPARAM)VDTextWToA(s).c_str());
+}
+
+int VDUIProxyComboBoxControl::GetSelection() const {
+	if (!mhwnd)
+		return -1;
+
+	return (int)SendMessage(mhwnd, CB_GETCURSEL, 0, 0);
+}
+
+void VDUIProxyComboBoxControl::SetSelection(int index) {
+	if (mhwnd)
+		SendMessage(mhwnd, CB_SETCURSEL, index, 0);
+}
+
+VDZLRESULT VDUIProxyComboBoxControl::On_WM_COMMAND(VDZWPARAM wParam, VDZLPARAM lParam) {
+	if (HIWORD(wParam) == CBN_SELCHANGE) {
+		mSelectionChanged.Raise(this, GetSelection());
 	}
 
 	return 0;

@@ -22,6 +22,7 @@
 #include <vfw.h>
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/file.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/time.h>
 #include <vd2/system/w32assist.h>
@@ -68,7 +69,7 @@ private:
 
 	enum { MAX_FRAME_SIZES = 512 };
 
-	DWORD		dwFrameSizes[MAX_FRAME_SIZES];
+	uint32		mFrameSizes[MAX_FRAME_SIZES];
 	long		lFrameFirstIndex, lFrameLastIndex;
 	long		lFrameLobound, lFrameHibound;
 	RECT				rStatusChild;
@@ -112,9 +113,10 @@ public:
 		DubOptions			*opt);
 	HWND Display(HWND hwndParent, int iInitialPriority);
 	void Destroy();
+	void DumpStatus();
 	bool ToggleStatus();
 	void SetPositionCallback(DubPositionCallback dpc, void *cookie);
-	void NotifyNewFrame(long f);
+	void NotifyNewFrame(uint32 size, bool isKey);
 	void SetLastPosition(VDPosition pos);
 	void Freeze();
 	bool isVisible();
@@ -201,7 +203,7 @@ DubStatus::DubStatus()
 	, mpPositionCallback(NULL)
 	, mProgress(0)
 {
-	memset(dwFrameSizes, 0, sizeof dwFrameSizes);
+	memset(mFrameSizes, 0, sizeof mFrameSizes);
 	memset(mSamplePoints, 0, sizeof mSamplePoints);
 }
 
@@ -234,16 +236,30 @@ HWND DubStatus::Display(HWND hwndParent, int iInitialPriority) {
 		hwndStatus = CreateDialogParamW(g_hInst, MAKEINTRESOURCEW(IDD_DUBBING), hwndParent, StatusDlgProc, (LPARAM)this);
 
 	if (hwndStatus) {
-		if (fShowStatusWindow = opt->fShowStatus) {
+		fShowStatusWindow = opt->fShowStatus || opt->mbForceShowStatus;
+
+		if (fShowStatusWindow) {
 			SetWindowLong(hwndStatus, GWL_STYLE, GetWindowLong(hwndStatus, GWL_STYLE) & ~WS_POPUP);
 
 			// Check the status of the main window. If it is minimized, minimize the status
 			// window too. This is a bit of an illegal tunnel but it is useful for now.
 
-			if (IsIconic(g_hWnd))
+			if (IsIconic(g_hWnd) && !opt->mbForceShowStatus)
 				ShowWindow(hwndStatus, SW_SHOWMINNOACTIVE);
-			else
-				ShowWindow(hwndStatus, SW_SHOW);
+			else {
+				// app in front
+				HWND hwndForeground = ::GetForegroundWindow();
+				bool foreground = false;
+
+				if (hwndForeground) {
+					DWORD pid;
+					::GetWindowThreadProcessId(hwndForeground, &pid);
+
+					foreground = (pid == ::GetCurrentProcessId());
+				}
+
+				ShowWindow(hwndStatus, foreground ? SW_SHOW : SW_SHOWNOACTIVATE);
+			}
 
 			SetFocus(GetDlgItem(hwndStatus, IDC_DRAW_INPUT));
 		}
@@ -479,7 +495,7 @@ INT_PTR CALLBACK DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, WPARAM 
 
 					for(i=r.left - r.right; i<0; i++) {
 						if (thisPtr->lFrameFirstIndex + i >= 0) {
-							long size = thisPtr->dwFrameSizes[(thisPtr->lFrameFirstIndex+i) & (MAX_FRAME_SIZES-1)] & 0x7FFFFFFF;
+							long size = thisPtr->mFrameSizes[(thisPtr->lFrameFirstIndex+i) & (MAX_FRAME_SIZES-1)] & 0x7FFFFFFF;
 
 							if (size < lo)
 								lo = size;
@@ -583,7 +599,7 @@ INT_PTR CALLBACK DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, WPARAM 
 					int y;
 
 					if (thisPtr->lFrameFirstIndex+x-r.right >= 0) {
-						dwSize = thisPtr->dwFrameSizes[(thisPtr->lFrameFirstIndex+x-r.right) & (MAX_FRAME_SIZES-1)];
+						dwSize = thisPtr->mFrameSizes[(thisPtr->lFrameFirstIndex+x-r.right) & (MAX_FRAME_SIZES-1)];
 
 						y = (((dwSize & 0x7FFFFFFF) - thisPtr->lFrameLobound)*height + range - 1)/range;
 						if (y > height)
@@ -638,6 +654,13 @@ INT_PTR CALLBACK DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, WPARAM w
 				VDSetWindowTextFW32(GetDlgItem(hdlg, IDC_STATIC_PROCTIME), L"%.0f%%", status.mProcActivityRatio * 100.0f);
 			}
 			return TRUE;
+
+		case WM_COMMAND:
+			if (wParam == IDC_DUMPSTATUS) {
+				thisPtr->DumpStatus();
+				return TRUE;
+			}
+			break;
 
     }
     return FALSE;
@@ -933,6 +956,100 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
     return FALSE;
 }
 
+namespace {
+	class VectorStream : public IVDStream {
+	public:
+		void Finalize();
+		const char *GetText() const { return mBuffer.data(); }
+		uint32 GetLength() const { return mBuffer.size(); }
+
+		virtual const wchar_t *GetNameForError();
+		virtual sint64 Pos();
+		virtual void Read(void *buffer, sint32 bytes);
+		virtual sint32 ReadData(void *buffer, sint32 bytes);
+		virtual void Write(const void *buffer, sint32 bytes);
+
+	protected:
+		uint32 mPos;
+
+		vdfastvector<char> mBuffer;
+	};
+
+	void VectorStream::Finalize() {
+		mBuffer.push_back(0);
+	}
+
+	const wchar_t *VectorStream::GetNameForError() {
+		return L"";
+	}
+
+	sint64 VectorStream::Pos() {
+		return mBuffer.size();
+	}
+
+	void VectorStream::Read(void *buffer, sint32 bytes) {
+	}
+
+	sint32 VectorStream::ReadData(void *buffer, sint32 bytes) {
+		return 0;
+	}
+
+	void VectorStream::Write(const void *buffer, sint32 bytes) {
+		if (bytes > 0)
+			mBuffer.insert(mBuffer.end(), (const char *)buffer, (const char *)buffer + bytes);
+	}
+
+	INT_PTR CALLBACK DumpStatusDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+		switch(msg) {
+			case WM_INITDIALOG:
+				{
+					HWND hwndEdit = GetDlgItem(hdlg, IDC_EDIT);
+
+					if (hwndEdit) {
+						::SetFocus(hwndEdit);
+						::SetWindowTextA(hwndEdit, (const char *)lParam);
+						::SendMessage(hwndEdit, EM_SETSEL, 0, 0);
+					}
+				}
+				return FALSE;
+
+			case WM_SIZE:
+				{
+					int w = (int)LOWORD(lParam);
+					int h = (int)HIWORD(lParam);
+
+					HWND hwndEdit = GetDlgItem(hdlg, IDC_EDIT);
+
+					if (hwndEdit)
+						::SetWindowPos(hwndEdit, NULL, 0, 0, w, h, SWP_NOZORDER|SWP_NOACTIVATE);
+				}
+				return 0;
+
+			case WM_COMMAND:
+				switch(wParam) {
+					case IDCANCEL:
+					case IDOK:
+						EndDialog(hdlg, 0);
+						return TRUE;
+				}
+				break;
+		}
+
+		return FALSE;
+	}
+}
+
+void DubStatus::DumpStatus() {
+	VectorStream vs;
+	VDTextOutputStream out(&vs);
+
+	pDubber->DumpStatus(out);
+	out.Flush();
+
+	vs.Finalize();
+
+	DialogBoxParamA(g_hInst, MAKEINTRESOURCE(IDD_DUMPSTATUS), hwndStatus, DumpStatusDlgProc, (LPARAM)vs.GetText());
+}
 
 bool DubStatus::ToggleStatus() {
 
@@ -956,8 +1073,8 @@ void DubStatus::SetPositionCallback(DubPositionCallback dpc, void *cookie) {
 	mpPositionCallbackCookie	= cookie;
 }
 
-void DubStatus::NotifyNewFrame(long f) {
-	dwFrameSizes[(lFrameLastIndex++)&(MAX_FRAME_SIZES-1)] = (DWORD)f;
+void DubStatus::NotifyNewFrame(uint32 size, bool isKey) {
+	mFrameSizes[(lFrameLastIndex++)&(MAX_FRAME_SIZES-1)] = size | (isKey ? 0 : 0x80000000);
 }
 
 void DubStatus::SetLastPosition(VDPosition pos) {

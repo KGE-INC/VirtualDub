@@ -27,8 +27,12 @@
 
 #include "Fixes.h"
 
-class IVDMediaOutputStream {
+struct VDPixmap;
+
+class IVDMediaOutputStream : public IVDUnknown {
 public:
+	enum { kTypeID = 'mots' };
+
 	virtual ~IVDMediaOutputStream() {}		// shouldn't be here but need to get rid of common delete in root destructor
 
 	virtual void *	getFormat() = 0;
@@ -53,6 +57,13 @@ public:
 	virtual void	finish() = 0;
 };
 
+class IVDVideoImageOutputStream : public IVDUnknown {
+public:
+	enum { kTypeID = 'vots' };
+
+	virtual void WriteVideoImage(const VDPixmap *px) = 0;
+};
+
 class AVIOutputStream : public IVDMediaOutputStream {
 private:
 	vdfastvector<char>	mFormat;
@@ -63,6 +74,8 @@ protected:
 public:
 	AVIOutputStream();
 	virtual ~AVIOutputStream();
+
+	virtual void *AsInterface(uint32 id);
 
 	virtual void setFormat(const void *pFormat, int len) {
 		mFormat.resize(len);

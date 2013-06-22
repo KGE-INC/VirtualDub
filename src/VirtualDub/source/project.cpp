@@ -24,6 +24,7 @@
 #include <vd2/system/time.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/VDScheduler.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Kasumi/pixmap.h>
@@ -146,6 +147,90 @@ namespace {
 			CloseClipboard();
 		}
 	}
+
+	void CopyTextToClipboardA(const char *s) {
+		if (!OpenClipboard(NULL))
+			return;
+
+		if (EmptyClipboard()) {
+			HANDLE hMem;
+			size_t len = strlen(s) + 1;
+			if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
+				void *lpvMem;
+				if (lpvMem = GlobalLock(hMem)) {
+					memcpy(lpvMem, s, len);
+
+					GlobalUnlock(lpvMem);
+					SetClipboardData(CF_TEXT, hMem);
+					CloseClipboard();
+					return;
+				}
+				GlobalFree(hMem);
+			}
+		}
+
+		CloseClipboard();
+	}
+
+	void CopyTextToClipboardW(const wchar_t *s) {
+		if (!OpenClipboard(NULL))
+			return;
+
+		if (EmptyClipboard()) {
+			HANDLE hMem;
+			size_t len = sizeof(wchar_t) * (wcslen(s) + 1);
+			if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
+				void *lpvMem;
+				if (lpvMem = GlobalLock(hMem)) {
+					memcpy(lpvMem, s, len);
+
+					GlobalUnlock(lpvMem);
+					SetClipboardData(CF_UNICODETEXT, hMem);
+					CloseClipboard();
+					return;
+				}
+				GlobalFree(hMem);
+			}
+		}
+
+		CloseClipboard();
+	}
+
+	void CopyTextToClipboard(const wchar_t *s) {
+		if (VDIsWindowsNT())
+			CopyTextToClipboardW(s);
+		else {
+			VDStringA sa(VDTextWToA(s));
+
+			CopyTextToClipboardA(sa.c_str());
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDFilterSystemMessageLoopScheduler : public vdrefcounted<IVDFilterSystemScheduler> {
+public:
+	VDFilterSystemMessageLoopScheduler();
+
+	void Reschedule();
+	bool Block();
+
+protected:
+	DWORD		mThreadId;
+};
+
+VDFilterSystemMessageLoopScheduler::VDFilterSystemMessageLoopScheduler()
+	: mThreadId(::GetCurrentThreadId())
+{
+}
+
+void VDFilterSystemMessageLoopScheduler::Reschedule() {
+	PostThreadMessage(mThreadId, WM_NULL, 0, 0);
+}
+
+bool VDFilterSystemMessageLoopScheduler::Block() {
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -676,11 +761,11 @@ void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput,
 
 				if (filters.isRunning()) {
 					if (showInputFrame)
-						mpVideoFrameSource->CreateRequest(pos, false, ~mpPendingInputFrame);
+						mpVideoFrameSource->CreateRequest(pos, false, 0, ~mpPendingInputFrame);
 
 					if (showOutputFrame) {
 						if (mDesiredOutputFrame >= 0) {
-							filters.RequestFrame(mDesiredOutputFrame, ~mpPendingOutputFrame);
+							filters.RequestFrame(mDesiredOutputFrame, 0, ~mpPendingOutputFrame);
 						} else {
 							mpPendingOutputFrame = NULL;
 						}
@@ -755,7 +840,7 @@ bool VDProject::UpdateFrame(bool updateInputFrame) {
 
 			if (mbPendingOutputFrameValid) {
 				if (mpPendingOutputFrame)
-					workCompleted = (filters.Run(false) != FilterSystem::kRunResult_Idle);
+					workCompleted = (filters.Run(NULL, false) != FilterSystem::kRunResult_Idle);
 
 				if (!mpPendingOutputFrame || mpPendingOutputFrame->IsCompleted()) {
 					mpCurrentOutputFrame = mpPendingOutputFrame;
@@ -793,8 +878,13 @@ bool VDProject::UpdateFrame(bool updateInputFrame) {
 			}
 
 			if (mpVideoFrameSource) {
-				if (mpVideoFrameSource->RunRequests() == IVDFilterFrameSource::kRunResult_Running)
-					workCompleted = true;
+				switch(mpVideoFrameSource->RunRequests(NULL)) {
+					case IVDFilterFrameSource::kRunResult_Running:
+					case IVDFilterFrameSource::kRunResult_IdleWasActive:
+					case IVDFilterFrameSource::kRunResult_BlockedWasActive:
+						workCompleted = true;
+						break;
+				}
 			}
 
 			if (!workCompleted)
@@ -845,7 +935,7 @@ bool VDProject::RefilterFrame(VDPosition timelinePos) {
 	if (outputFrame >= 0) {
 		filters.InvalidateCachedFrames(NULL);
 
-		filters.RequestFrame(outputFrame, ~mpPendingOutputFrame);
+		filters.RequestFrame(outputFrame, 0, ~mpPendingOutputFrame);
 		mbPendingOutputFrameValid = true;
 
 		while(UpdateFrame())
@@ -905,10 +995,11 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		if (!inputAVI) throw MyMemoryError();
 
 		// Extended open?
-
-		if (fExtendedOpen)
+		if (fExtendedOpen || (pSelectedDriver->GetFlags() & IVDInputDriver::kF_PromptForOpts)) {
 			g_pInputOpts = inputAVI->promptForOptions(mhwnd);
-		else if (pInputOpts)
+			if (!g_pInputOpts)
+				throw MyUserAbortError();
+		} else if (pInputOpts)
 			g_pInputOpts = inputAVI->createOptions(pInputOpts, inputOptsLen);
 
 		if (g_pInputOpts)
@@ -1125,13 +1216,14 @@ void VDProject::OpenWAV(const wchar_t *szFile, IVDInputDriver *pSelectedDriver, 
 
 	if (!automated && extOpts) {
 		mpAudioInputOptions = ifile->promptForOptions((VDGUIHandle)mhwnd);
-		if (mpAudioInputOptions) {
-			ifile->setOptions(mpAudioInputOptions);
+		if (!mpAudioInputOptions)
+			throw MyUserAbortError();
 
-			// force input driver name if we have options, since they have to match
-			if (mAudioInputDriverName.empty())
-				mAudioInputDriverName = pSelectedDriver->GetSignatureName();
-		}
+		ifile->setOptions(mpAudioInputOptions);
+
+		// force input driver name if we have options, since they have to match
+		if (mAudioInputDriverName.empty())
+			mAudioInputDriverName = pSelectedDriver->GetSignatureName();
 	} else if (optdata) {
 		mpAudioInputOptions = ifile->createOptions(optdata, optlen);
 		if (mpAudioInputOptions)
@@ -1370,29 +1462,29 @@ void VDProject::SaveAVI(const wchar_t *filename, bool compat, bool addAsJob) {
 		throw MyError("No input file to process.");
 
 	if (addAsJob)
-		JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), filename, compat, &inputAVI->listFiles, 0, 0);
+		JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), filename, compat, &inputAVI->listFiles, 0, 0, true, 0);
 	else
 		::SaveAVI(filename, false, NULL, compat);
 }
 
-void VDProject::SaveFilmstrip(const wchar_t *pFilename) {
+void VDProject::SaveFilmstrip(const wchar_t *pFilename, bool propagateErrors) {
 	if (!inputVideo)
 		throw MyError("No input file to process.");
 
 	VDAVIOutputFilmstripSystem out(pFilename);
-	RunOperation(&out, TRUE, NULL, 0, false);
+	RunOperation(&out, TRUE, NULL, 0, propagateErrors);
 }
 
-void VDProject::SaveAnimatedGIF(const wchar_t *pFilename, int loopCount) {
+void VDProject::SaveAnimatedGIF(const wchar_t *pFilename, int loopCount, bool propagateErrors, DubOptions *optsOverride) {
 	if (!inputVideo)
 		throw MyError("No input file to process.");
 
 	VDAVIOutputGIFSystem out(pFilename);
 	out.SetLoopCount(loopCount);
-	RunOperation(&out, TRUE, NULL, 0, false);
+	RunOperation(&out, TRUE, optsOverride, 0, propagateErrors);
 }
 
-void VDProject::SaveRawAudio(const wchar_t *pFilename) {
+void VDProject::SaveRawAudio(const wchar_t *pFilename, bool propagateErrors, DubOptions *optsOverride) {
 	if (!inputVideo)
 		throw MyError("No input file to process.");
 
@@ -1400,7 +1492,23 @@ void VDProject::SaveRawAudio(const wchar_t *pFilename) {
 		throw MyError("No audio stream to process.");
 
 	VDAVIOutputRawSystem out(pFilename);
-	RunOperation(&out, TRUE, NULL, 0, false);
+	RunOperation(&out, TRUE, optsOverride, 0, propagateErrors);
+}
+
+void VDProject::SaveRawVideo(const wchar_t *pFilename, const VDAVIOutputRawVideoFormat& format, bool propagateErrors, DubOptions *optsOverride) {
+	if (!inputVideo)
+		throw MyError("No input file to process.");
+
+	VDAVIOutputRawVideoSystem out(pFilename, format);
+	RunOperation(&out, TRUE, optsOverride, 0, propagateErrors);
+}
+
+void VDProject::ExportViaEncoder(const wchar_t *filename, const wchar_t *setName, bool propagateErrors, DubOptions *optsOverride) {
+	if (!inputVideo)
+		throw MyError("No input file to process.");
+
+	VDAVIOutputCLISystem out(filename, setName);
+	RunOperation(&out, TRUE, optsOverride, 0, propagateErrors);
 }
 
 void VDProject::StartServer(const char *serverName) {
@@ -1445,6 +1553,23 @@ void VDProject::CopyOutputFrameToClipboard() {
 	VDFilterFrameBuffer *buf = mpCurrentOutputFrame->GetResultBuffer();
 	CopyFrameToClipboard((HWND)mhwnd, VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead()));
 	buf->Unlock();
+}
+
+void VDProject::CopySourceFrameNumberToClipboard() {
+	if (!filters.isRunning())
+		StartFilters();
+
+	sint64 pos = filters.GetSourceFrame(mTimeline.TimelineToSourceFrame(GetCurrentFrame()));
+
+	VDStringW s;
+	s.sprintf(L"%lld", pos);
+	CopyTextToClipboard(s.c_str());
+}
+
+void VDProject::CopyOutputFrameNumberToClipboard() {
+	VDStringW s;
+	s.sprintf(L"%lld", GetCurrentFrame());
+	CopyTextToClipboard(s.c_str());
 }
 
 int VDProject::GetAudioSourceCount() const {
@@ -1987,9 +2112,12 @@ void VDProject::StartFilters() {
 
 		filters.SetVisualAccelDebugEnabled(false);
 		filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+		filters.SetAsyncThreadCount(-1);
 
 		// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
-		filters.initLinearChain(NULL, VDXFilterStateInfo::kStatePreview, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
+		vdrefptr<IVDFilterSystemScheduler> fss(new VDFilterSystemMessageLoopScheduler);
+
+		filters.initLinearChain(fss, VDXFilterStateInfo::kStatePreview, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
 
 		filters.ReadyFilters();
 	}

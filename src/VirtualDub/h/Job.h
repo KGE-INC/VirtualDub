@@ -21,6 +21,7 @@
 class DubOptions;
 class InputFilenameNode;
 template<class T> class List2;
+struct VDAVIOutputRawVideoFormat;
 
 void OpenJobWindow();
 void CloseJobWindow();
@@ -28,9 +29,11 @@ bool InitJobSystem();
 void DeinitJobSystem();
 bool JobPollAutoRun();
 void JobSetQueueFile(const wchar_t *filename, bool distributed, bool autorun);
-void JobAddConfiguration(const DubOptions *, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fUseCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold, bool bIncludeEditList = true);
+void JobAddConfiguration(const DubOptions *, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fUseCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold, bool bIncludeEditList, int digits);
 void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutputPrefix, const wchar_t *szFileOutputSuffix, int minDigits, int imageFormat, int quality, List2<InputFilenameNode> *pListAppended);
 void JobAddConfigurationSaveAudio(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool raw, bool includeEditList);
+void JobAddConfigurationSaveVideo(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool includeEditList, const VDAVIOutputRawVideoFormat& format);
+void JobAddConfigurationExportViaEncoder(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool includeEditList, const wchar_t *encSetName);
 void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, bool includeEditList);
 void JobWriteConfiguration(const wchar_t *filename, DubOptions *, bool bIncludeEditList = true, bool bIncludeTextInfo = true);
 void JobLockDubber();

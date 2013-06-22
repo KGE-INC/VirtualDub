@@ -113,6 +113,7 @@ extern IVDInputDriver *VDCreateInputDriverFLM();
 extern IVDInputDriver *VDCreateInputDriverGIF();
 extern IVDInputDriver *VDCreateInputDriverWAV();
 extern IVDInputDriver *VDCreateInputDriverMP3();
+extern IVDInputDriver *VDCreateInputDriverRawVideo();
 extern IVDInputDriver *VDCreateInputDriverPlugin(VDPluginDescription *);
 
 namespace {
@@ -141,6 +142,7 @@ void VDInitInputDrivers() {
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverGIF()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverWAV()));
 	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMP3()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverRawVideo()));
 
 	std::vector<VDPluginDescription *> plugins;
 	VDEnumeratePluginDescriptions(plugins, kVDXPluginType_Input);
@@ -294,23 +296,20 @@ IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn, uint32 flags) 
 
 	tVDInputDrivers::const_iterator it(inputDrivers.begin()), itEnd(inputDrivers.end());
 
-	int fitquality = -1000;
+	IVDInputDriver::DetectionConfidence fitquality = IVDInputDriver::kDC_None;
 	IVDInputDriver *pSelectedDriver = NULL;
 
 	for(; it!=itEnd; ++it) {
 		IVDInputDriver *pDriver = *it;
 
-		int result = pDriver->DetectBySignature(buf, dwActual, endbuf, dwActual, fileSize);
+		IVDInputDriver::DetectionConfidence result = pDriver->DetectBySignature(buf, dwActual, endbuf, dwActual, fileSize);
 
-		if (result > 0 && fitquality < 1) {
+		if (result == IVDInputDriver::kDC_None && pDriver->DetectByFilename(fn))
+			result = IVDInputDriver::kDC_Low;
+
+		if (result > fitquality) {
 			pSelectedDriver = pDriver;
-			fitquality = 1;
-		} else if (!result && fitquality < 0) {
-			pSelectedDriver = pDriver;
-			fitquality = 0;
-		} else if (fitquality < -1 && pDriver->DetectByFilename(fn)) {
-			pSelectedDriver = pDriver;
-			fitquality = -1;
+			fitquality = result;
 		}
 	}
 

@@ -187,13 +187,23 @@ bool AVIAudioPreviewOutputStream::isFrozen() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class AVIVideoPreviewOutputStream : public AVIOutputStream {
+class AVIVideoPreviewOutputStream : public AVIOutputStream, public IVDVideoImageOutputStream {
 public:
+	void *AsInterface(uint32 id);
+
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {}
 	void partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples) {}
 	void partialWrite(const void *pBuffer, uint32 cbBuffer) {}
 	void partialWriteEnd() {}
+	void WriteVideoImage(const VDPixmap *px) {}
 };
+
+void *AVIVideoPreviewOutputStream::AsInterface(uint32 id) {
+	if (id == IVDVideoImageOutputStream::kTypeID)
+		return static_cast<IVDVideoImageOutputStream *>(this);
+
+	return AVIOutputStream::AsInterface(id);
+}
 
 /////////////////////////////
 

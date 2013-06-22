@@ -38,6 +38,7 @@
 #include <vd2/plugin/vdaudiofilt.h>
 #include <vd2/plugin/vdvideofilt.h>
 #include <vd2/VDLib/ParameterCurve.h>
+#include "AVIOutputCLI.h"
 #include "AudioSource.h"
 #include "VideoSource.h"
 #include "AudioFilterSystem.h"
@@ -48,6 +49,7 @@
 
 #include "command.h"
 #include "dub.h"
+#include "DubOutput.h"
 #include "gui.h"
 #include "prefs.h"
 #include "resource.h"
@@ -74,6 +76,8 @@ extern const char *VDGetStartupArgument(int index);
 
 extern void FreeCompressor(COMPVARS *pCompVars);
 static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *lpData);
+
+extern bool VDPreferencesGetBatchShowStatusWindow();
 
 ///////////////////////////////////////////////
 
@@ -828,6 +832,13 @@ static void func_VDVideo_SetIVTC(IVDScriptInterpreter *, VDScriptValue *arglist,
 		throw MyError("Inverse telecine (IVTC) is no longer supported as a pipeline parameter and has been moved to a video filter.");
 }
 
+static void func_VDVideo_ScanForErrors(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	if (!inputVideo || !g_project)
+		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
+
+	g_project->ScanForErrors();
+}
+
 static void func_VDVideo_intGetFramePrefix(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	if (!inputVideo)
 		VDSCRIPT_EXT_ERROR(FCALL_OUT_OF_RANGE);
@@ -1015,6 +1026,7 @@ static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_SetSmartRendering, "SetSmartRendering", "0i" },
 	{ func_VDVideo_GetPreserveEmptyFrames, "GetPreserveEmptyFrames", "i" },
 	{ func_VDVideo_SetPreserveEmptyFrames, "SetPreserveEmptyFrames", "0i" },
+	{ func_VDVideo_ScanForErrors	, "ScanForErrors", "0" },
 	{ func_VDVideo_intGetFramePrefix, "__GetFramePrefix", "ii" },
 	{ func_VDVideo_intIsKeyFrame, "__IsKeyFrame", "ii" },
 	{ func_VDVideo_intDetectIdFrame, "__DetectIdFrame", "ii" },
@@ -1825,31 +1837,32 @@ static void func_VirtualDub_RunNullVideoPass(IVDScriptInterpreter *, VDScriptVal
 	g_project->RunNullVideoPass();
 }
 
+namespace {
+	void InitBatchOptions(DubOptions& opts) {
+		opts.fShowStatus			= false;
+		opts.mbForceShowStatus		= VDPreferencesGetBatchShowStatusWindow();
+
+		if (g_fJobMode) {
+			opts.fMoveSlider			= true;
+			opts.video.fShowInputFrame	= false;
+			opts.video.fShowOutputFrame	= false;
+			opts.video.fShowDecompressedFrame	= false;
+		}
+	}
+}
+
 static void func_VirtualDub_SaveAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 	DubOptions opts(g_dubOpts);
-	opts.fShowStatus			= false;
+	InitBatchOptions(opts);
 
-	if (g_fJobMode) {
-		opts.fMoveSlider			= true;
-		opts.video.fShowInputFrame	= false;
-		opts.video.fShowOutputFrame	= false;
-		opts.video.fShowDecompressedFrame	= false;
-	}
 	SaveAVI(filename.c_str(), true, &opts, false);
 }
 
 static void func_VirtualDub_SaveCompatibleAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 	DubOptions opts(g_dubOpts);
-	opts.fShowStatus			= false;
-
-	if (g_fJobMode) {
-		opts.fMoveSlider			= true;
-		opts.video.fShowInputFrame	= false;
-		opts.video.fShowOutputFrame	= false;
-		opts.video.fShowDecompressedFrame	= false;
-	}
+	InitBatchOptions(opts);
 
 	SaveAVI(filename.c_str(), true, &opts, true);
 }
@@ -1857,16 +1870,13 @@ static void func_VirtualDub_SaveCompatibleAVI(IVDScriptInterpreter *, VDScriptVa
 static void func_VirtualDub_SaveSegmentedAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 	DubOptions opts(g_dubOpts);
-	opts.fShowStatus			= false;
+	InitBatchOptions(opts);
 
-	if (g_fJobMode) {
-		opts.fMoveSlider			= true;
-		opts.video.fShowInputFrame	= false;
-		opts.video.fShowOutputFrame	= false;
-		opts.video.fShowDecompressedFrame	= false;
-	}
+	int digits = 2;
+	if (arg_count >= 4)
+		digits = arglist[3].asInt();
 
-	SaveSegmentedAVI(filename.c_str(), true, &opts, arglist[1].asInt(), arglist[2].asInt());
+	SaveSegmentedAVI(filename.c_str(), true, &opts, arglist[1].asInt(), arglist[2].asInt(), digits);
 }
 
 static void func_VirtualDub_SaveImageSequence(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1879,28 +1889,67 @@ static void func_VirtualDub_SaveImageSequence(IVDScriptInterpreter *, VDScriptVa
 		q = arglist[4].asInt();
 
 	DubOptions opts(g_dubOpts);
-	opts.fShowStatus			= false;
-
-	if (g_fJobMode) {
-		opts.fMoveSlider			= true;
-		opts.video.fShowInputFrame	= false;
-		opts.video.fShowOutputFrame	= false;
-		opts.video.fShowDecompressedFrame	= false;
-	}
+	InitBatchOptions(opts);
 
 	SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, &opts, arglist[3].asInt(), q);
 }
 
 static void func_VirtualDub_SaveWAV(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	DubOptions opts(g_dubOpts);
+	InitBatchOptions(opts);
 
-	SaveWAV(filename.c_str(), true);
+	SaveWAV(filename.c_str(), true, &opts);
 }
 
 static void func_VirtualDub_SaveRawAudio(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	DubOptions opts(g_dubOpts);
+	InitBatchOptions(opts);
 
-	g_project->SaveRawAudio(filename.c_str());
+	g_project->SaveRawAudio(filename.c_str(), true, &opts);
+}
+
+static void func_VirtualDub_SaveRawVideo(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
+	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	DubOptions opts(g_dubOpts);
+	InitBatchOptions(opts);
+
+	VDAVIOutputRawVideoFormat format;
+	format.mOutputFormat = arglist[1].asInt();
+
+	if (!format.mOutputFormat || format.mOutputFormat >= nsVDPixmap::kPixFormat_Max_Standard
+		|| format.mOutputFormat <= nsVDPixmap::kPixFormat_Pal8)
+	{
+		EXT_SCRIPT_ERROR(FCALL_OUT_OF_RANGE);
+	}
+
+	format.mScanlineAlignment = arglist[2].asInt();
+	if (format.mScanlineAlignment == 0 || format.mScanlineAlignment > 1024) {
+		EXT_SCRIPT_ERROR(FCALL_OUT_OF_RANGE);
+	}
+
+	format.mbSwapChromaPlanes = arglist[3].asInt() != 0;
+	format.mbBottomUp = arglist[4].asInt() != 0;
+
+	g_project->SaveRawVideo(filename.c_str(), format, true, &opts);
+}
+
+static void func_VirtualDub_SaveAnimatedGIF(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	DubOptions opts(g_dubOpts);
+	InitBatchOptions(opts);
+
+	g_project->SaveAnimatedGIF(filename.c_str(), arglist[1].asInt(), true, &opts);
+}
+
+static void func_VirtualDub_ExportViaEncoderSet(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	const VDStringW encSetName(VDTextU8ToW(VDStringA(*arglist[1].asString())));
+	DubOptions opts(g_dubOpts);
+	InitBatchOptions(opts);
+
+	g_project->ExportViaEncoder(filename.c_str(), encSetName.c_str(), true, &opts);
 }
 
 static void func_VirtualDub_Log(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1954,10 +2003,14 @@ static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
 	{ func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
 	{ func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
+	{ func_VirtualDub_SaveSegmentedAVI,	NULL,					"0siii" },
 	{ func_VirtualDub_SaveImageSequence,	"SaveImageSequence",	"0ssii" },
 	{ func_VirtualDub_SaveImageSequence,	NULL,					"0ssiii" },
 	{ func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
 	{ func_VirtualDub_SaveRawAudio,		"SaveRawAudio",			"0s" },
+	{ func_VirtualDub_SaveRawVideo,		"SaveRawVideo",			"0siiii" },
+	{ func_VirtualDub_SaveAnimatedGIF,	"SaveAnimatedGIF",		"0si" },
+	{ func_VirtualDub_ExportViaEncoderSet,	"ExportViaEncoderSet",	"0ss" },
 	{ func_VirtualDub_Log,				"Log",					"0s" },
 	{ func_VirtualDub_Exit,				"Exit",					"0i" },
 	{ func_VirtualDub_StartServer,		"StartServer",			"0s" },

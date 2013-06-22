@@ -263,7 +263,7 @@ protected:
 
 	bool Tick(int id);
 	void Poll();
-	bool Resize();
+	bool Resize(int width, int height);
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
@@ -845,14 +845,17 @@ void VDVideoDisplayMinidriverD3DFX::Poll() {
 	}
 }
 
-bool VDVideoDisplayMinidriverD3DFX::Resize() {
+bool VDVideoDisplayMinidriverD3DFX::Resize(int width, int height) {
 	mbSwapChainImageValid = false;
 	mbSwapChainPresentPending = false;
 	mbSwapChainPresentPolling = false;
-	if (GetClientRect(mhwnd, &mrClient)) {
-		if (mhwndError)
-			SetWindowPos(mhwndError, NULL, 0, 0, mrClient.right, mrClient.bottom, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-	}
+
+	mrClient.right = width;
+	mrClient.bottom = height;
+
+	if (mhwndError)
+		SetWindowPos(mhwndError, NULL, 0, 0, width, height, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+
 	return true;
 }
 
@@ -975,6 +978,9 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 //	mLatencyFenceNext = mpManager->InsertFence();
 //	mLatencyFence = mpManager->InsertFence();
 
+	D3D_AUTOBREAK(SetRenderState(D3DRS_COLORWRITEENABLE, 15));
+	D3D_AUTOBREAK(SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE));
+
 	if (mColorOverride) {
 		mpManager->SetSwapChainActive(mpSwapChain);
 
@@ -1001,190 +1007,277 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 		D3D_AUTOBREAK(SetRenderState(D3DRS_STENCILENABLE, FALSE));
 		D3D_AUTOBREAK(SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD));
 
-		vdrefptr<IDirect3DSurface9> pRTMain;
+		D3DRECT rects[4];
+		D3DRECT *nextRect = rects;
+		RECT rDest = rClippedClient;
 
-		if (mpSwapChain) {
-			IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
-			hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+		if (mbDestRectEnabled) {
+			// clip client rect to dest rect
+			if (rDest.left < mDestRect.left)
+				rDest.left = mDestRect.left;
+
+			if (rDest.top < mDestRect.top)
+				rDest.top = mDestRect.top;
+
+			if (rDest.right > mDestRect.right)
+				rDest.right = mDestRect.right;
+
+			if (rDest.bottom > mDestRect.bottom)
+				rDest.bottom = mDestRect.bottom;
+
+			// fix rect in case dest rect lies entirely outside of client rect
+			if (rDest.left > rClippedClient.right)
+				rDest.left = rClippedClient.right;
+
+			if (rDest.top > rClippedClient.bottom)
+				rDest.top = rClippedClient.bottom;
+
+			if (rDest.right < rDest.left)
+				rDest.right = rDest.left;
+
+			if (rDest.bottom < rDest.top)
+				rDest.bottom = rDest.top;
+		}
+
+		if (rDest.right <= rDest.left || rDest.bottom <= rDest.top) {
+			mpManager->SetSwapChainActive(mpSwapChain);
+
+			D3DRECT r;
+			r.x1 = rClippedClient.left;
+			r.y1 = rClippedClient.top;
+			r.x2 = rClippedClient.right;
+			r.y2 = rClippedClient.bottom;
+
+			HRESULT hr = mpD3DDevice->Clear(1, &r, D3DCLEAR_TARGET, mBackgroundColor, 0.0f, 0);
 			if (FAILED(hr))
 				return false;
 		} else {
-			mpManager->SetSwapChainActive(NULL);
-			mpD3DDevice->GetRenderTarget(0, ~pRTMain);
-		}
-
-		mbSwapChainImageValid = false;
-
-		D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
-		D3D_AUTOBREAK(BeginScene());
-
-		D3DVIEWPORT9 vp = {
-			0,
-			0,
-			rClippedClient.right,
-			rClippedClient.bottom,
-			0.f,
-			1.f
-		};
-
-		D3D_AUTOBREAK(SetViewport(&vp));
-
-		// fill vertex/index buffers
-		if (Vertex *pvx = mpManager->LockVertices(4)) {
-			float umax = (float)mSource.pixmap.w / (float)(int)texdesc.Width;
-			float vmax = (float)mSource.pixmap.h / (float)(int)texdesc.Height;
-			float x0 = -1.f - 1.f/rClippedClient.right;
-			float x1 = x0 + 2.0f*(rClient.right / rClippedClient.right);
-			float y0 = 1.f + 1.f/rClippedClient.bottom;
-			float y1 = y0 - 2.0f*(rClient.bottom / rClippedClient.bottom);
-
-			pvx[0].SetFF2(x0, y0, 0, 0, 0, 0, 0);
-			pvx[1].SetFF2(x0, y1, 0, 0, vmax, 0, 1);
-			pvx[2].SetFF2(x1, y0, 0, umax, 0, 1, 0);
-			pvx[3].SetFF2(x1, y1, 0, umax, vmax, 1, 1);
-
-			mpManager->UnlockVertices();
-		}
-
-		if (uint16 *dst = mpManager->LockIndices(6)) {
-			dst[0] = 0;
-			dst[1] = 1;
-			dst[2] = 2;
-			dst[3] = 2;
-			dst[4] = 1;
-			dst[5] = 3;
-
-			mpManager->UnlockIndices();
-		}
-
-		UpdateEffectParameters(vp, texdesc);
-
-		UINT passes;
-		D3DXHANDLE hTechnique = mhTechniques[mode - 1];
-		D3D_AUTOBREAK_2(mpEffect->SetTechnique(hTechnique));
-		D3D_AUTOBREAK_2(mpEffect->Begin(&passes, 0));
-
-		IDirect3DSurface9 *pLastRT = pRTMain;
-
-		for(UINT pass=0; pass<passes; ++pass) {
-			D3DXHANDLE hPass = mpEffect->GetPass(hTechnique, pass);
-
-			D3DXHANDLE hFieldAnno = mpEffect->GetAnnotationByName(hPass, "vd_fieldmask");
-			if (hFieldAnno) {
-				INT fieldMask;
-
-				if (SUCCEEDED(mpEffect->GetInt(hFieldAnno, &fieldMask))) {
-					const uint32 fieldMode = updateMode & kModeFieldMask;
-
-					if (!(fieldMode & fieldMask))
-						continue;
-				}
+			if (rDest.top > rClippedClient.top) {
+				nextRect->x1 = rClippedClient.left;
+				nextRect->y1 = rClippedClient.top;
+				nextRect->x2 = rClippedClient.right;
+				nextRect->y2 = rDest.top;
+				++nextRect;
 			}
 
-			vdrefptr<IDirect3DSurface9> pNewRTRef;
-			IDirect3DSurface9 *pNewRT = NULL;
+			if (rDest.left > rClippedClient.left) {
+				nextRect->x1 = rClippedClient.left;
+				nextRect->y1 = rDest.top;
+				nextRect->x2 = rDest.left;
+				nextRect->y2 = rDest.bottom;
+				++nextRect;
+			}
 
-			if (D3DXHANDLE hTarget = mpEffect->GetAnnotationByName(hPass, "vd_target")) {
-				const char *s;
+			if (rDest.right < rClippedClient.right) {
+				nextRect->x1 = rDest.right;
+				nextRect->y1 = rDest.top;
+				nextRect->x2 = rClippedClient.right;
+				nextRect->y2 = rDest.bottom;
+				++nextRect;
+			}
 
-				if (SUCCEEDED(mpEffect->GetString(hTarget, &s)) && s) {
-					if (!strcmp(s, "temp"))
-						pNewRT = mpD3DTempSurface;
-					else if (!strcmp(s, "temp2"))
-						pNewRT = mpD3DTempSurface2;
-					else if (!*s)
-						pNewRT = pRTMain;
-					else {
-						D3DXHANDLE hTextureParam = mpEffect->GetParameterByName(NULL, s);
-						if (SUCCEEDED(hr)) {
-							vdrefptr<IDirect3DBaseTexture9> pBaseTex;
-							hr = mpEffect->GetTexture(hTextureParam, ~pBaseTex);
-							if (SUCCEEDED(hr) && pBaseTex) {
-								switch(pBaseTex->GetType()) {
-									case D3DRTYPE_TEXTURE:
-										{
-											vdrefptr<IDirect3DTexture9> pTex;
-											hr = pBaseTex->QueryInterface(IID_IDirect3DTexture9, (void **)~pTex);
-											if (SUCCEEDED(hr))
-												hr = pTex->GetSurfaceLevel(0, ~pNewRTRef);
-										}
-										break;
-									case D3DRTYPE_CUBETEXTURE:
-										{
-											vdrefptr<IDirect3DCubeTexture9> pTex;
-											hr = pBaseTex->QueryInterface(IID_IDirect3DCubeTexture9, (void **)~pTex);
-											if (SUCCEEDED(hr))
-												hr = pTex->GetCubeMapSurface(D3DCUBEMAP_FACE_POSITIVE_X, 0, ~pNewRTRef);
-										}
-										break;
+			if (rDest.bottom < rClippedClient.bottom) {
+				nextRect->x1 = rClippedClient.left;
+				nextRect->y1 = rDest.bottom;
+				nextRect->x2 = rClippedClient.right;
+				nextRect->y2 = rClippedClient.bottom;
+				++nextRect;
+			}
+
+			HRESULT hr;
+			if (nextRect > rects) {
+				mpManager->SetSwapChainActive(mpSwapChain);
+
+				hr = mpD3DDevice->Clear(nextRect - rects, rects, D3DCLEAR_TARGET, mBackgroundColor, 0.0f, 0);
+				if (FAILED(hr))
+					return false;
+			}
+
+			vdrefptr<IDirect3DSurface9> pRTMain;
+
+			if (mpSwapChain) {
+				IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
+				hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+				if (FAILED(hr))
+					return false;
+			} else {
+				mpManager->SetSwapChainActive(NULL);
+				mpD3DDevice->GetRenderTarget(0, ~pRTMain);
+			}
+
+			mbSwapChainImageValid = false;
+
+			D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
+			D3D_AUTOBREAK(BeginScene());
+
+			D3DVIEWPORT9 vp = {
+				rDest.left,
+				rDest.top,
+				rDest.right - rDest.left,
+				rDest.bottom - rDest.top,
+				0.f,
+				1.f
+			};
+
+			D3D_AUTOBREAK(SetViewport(&vp));
+
+			// fill vertex/index buffers
+			if (Vertex *pvx = mpManager->LockVertices(4)) {
+				float umax = (float)mSource.pixmap.w / (float)(int)texdesc.Width;
+				float vmax = (float)mSource.pixmap.h / (float)(int)texdesc.Height;
+				float x0 = -1.f - 1.f/rClippedClient.right;
+				float x1 = x0 + 2.0f*(rClient.right / rClippedClient.right);
+				float y0 = 1.f + 1.f/rClippedClient.bottom;
+				float y1 = y0 - 2.0f*(rClient.bottom / rClippedClient.bottom);
+
+				pvx[0].SetFF2(x0, y0, 0, 0, 0, 0, 0);
+				pvx[1].SetFF2(x0, y1, 0, 0, vmax, 0, 1);
+				pvx[2].SetFF2(x1, y0, 0, umax, 0, 1, 0);
+				pvx[3].SetFF2(x1, y1, 0, umax, vmax, 1, 1);
+
+				mpManager->UnlockVertices();
+			}
+
+			if (uint16 *dst = mpManager->LockIndices(6)) {
+				dst[0] = 0;
+				dst[1] = 1;
+				dst[2] = 2;
+				dst[3] = 2;
+				dst[4] = 1;
+				dst[5] = 3;
+
+				mpManager->UnlockIndices();
+			}
+
+			UpdateEffectParameters(vp, texdesc);
+
+			UINT passes;
+			D3DXHANDLE hTechnique = mhTechniques[mode - 1];
+			D3D_AUTOBREAK_2(mpEffect->SetTechnique(hTechnique));
+			D3D_AUTOBREAK_2(mpEffect->Begin(&passes, 0));
+
+			IDirect3DSurface9 *pLastRT = pRTMain;
+
+			for(UINT pass=0; pass<passes; ++pass) {
+				D3DXHANDLE hPass = mpEffect->GetPass(hTechnique, pass);
+
+				D3DXHANDLE hFieldAnno = mpEffect->GetAnnotationByName(hPass, "vd_fieldmask");
+				if (hFieldAnno) {
+					INT fieldMask;
+
+					if (SUCCEEDED(mpEffect->GetInt(hFieldAnno, &fieldMask))) {
+						const uint32 fieldMode = updateMode & kModeFieldMask;
+
+						if (!(fieldMode & fieldMask))
+							continue;
+					}
+				}
+
+				vdrefptr<IDirect3DSurface9> pNewRTRef;
+				IDirect3DSurface9 *pNewRT = NULL;
+
+				if (D3DXHANDLE hTarget = mpEffect->GetAnnotationByName(hPass, "vd_target")) {
+					const char *s;
+
+					if (SUCCEEDED(mpEffect->GetString(hTarget, &s)) && s) {
+						if (!strcmp(s, "temp"))
+							pNewRT = mpD3DTempSurface;
+						else if (!strcmp(s, "temp2"))
+							pNewRT = mpD3DTempSurface2;
+						else if (!*s)
+							pNewRT = pRTMain;
+						else {
+							D3DXHANDLE hTextureParam = mpEffect->GetParameterByName(NULL, s);
+							if (SUCCEEDED(hr)) {
+								vdrefptr<IDirect3DBaseTexture9> pBaseTex;
+								hr = mpEffect->GetTexture(hTextureParam, ~pBaseTex);
+								if (SUCCEEDED(hr) && pBaseTex) {
+									switch(pBaseTex->GetType()) {
+										case D3DRTYPE_TEXTURE:
+											{
+												vdrefptr<IDirect3DTexture9> pTex;
+												hr = pBaseTex->QueryInterface(IID_IDirect3DTexture9, (void **)~pTex);
+												if (SUCCEEDED(hr))
+													hr = pTex->GetSurfaceLevel(0, ~pNewRTRef);
+											}
+											break;
+										case D3DRTYPE_CUBETEXTURE:
+											{
+												vdrefptr<IDirect3DCubeTexture9> pTex;
+												hr = pBaseTex->QueryInterface(IID_IDirect3DCubeTexture9, (void **)~pTex);
+												if (SUCCEEDED(hr))
+													hr = pTex->GetCubeMapSurface(D3DCUBEMAP_FACE_POSITIVE_X, 0, ~pNewRTRef);
+											}
+											break;
+									}
+
+									pNewRT = pNewRTRef;
 								}
-
-								pNewRT = pNewRTRef;
 							}
 						}
 					}
 				}
+
+				if (pNewRT && pLastRT != pNewRT) {
+					pLastRT = pNewRT;
+
+					D3D_AUTOBREAK(SetRenderTarget(0, pNewRT));
+
+					if (pNewRT == pRTMain)
+						D3D_AUTOBREAK(SetViewport(&vp));
+				}
+
+				if (D3DXHANDLE hClear = mpEffect->GetAnnotationByName(hPass, "vd_clear")) {
+					float clearColor[4];
+
+					if (SUCCEEDED(mpEffect->GetVector(hClear, (D3DXVECTOR4 *)clearColor))) {
+						int r = VDRoundToInt(clearColor[0]);
+						int g = VDRoundToInt(clearColor[1]);
+						int b = VDRoundToInt(clearColor[2]);
+						int a = VDRoundToInt(clearColor[3]);
+
+						if ((unsigned)r >= 256) r = (~r >> 31) & 255;
+						if ((unsigned)g >= 256) g = (~g >> 31) & 255;
+						if ((unsigned)b >= 256) b = (~b >> 31) & 255;
+						if ((unsigned)a >= 256) a = (~a >> 31) & 255;
+
+						D3DCOLOR clearColor = (a<<24) + (r<<16) + (g<<8) + b;
+
+						D3D_AUTOBREAK(Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.f, 0));
+					}
+				}
+
+				D3D_AUTOBREAK_2(mpEffect->BeginPass(pass));
+
+				mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
+
+				D3D_AUTOBREAK_2(mpEffect->EndPass());
 			}
 
-			if (pNewRT && pLastRT != pNewRT) {
-				pLastRT = pNewRT;
+			D3D_AUTOBREAK_2(mpEffect->End());
 
-				D3D_AUTOBREAK(SetRenderTarget(0, pNewRT));
+			if (mbDisplayDebugInfo && mpFontRenderer) {
+				if (!(++mTimingStringCounter & 63)) {
+					mTimingString.sprintf("Longest present: %4.2fms  Longest frame: %4.2fms", mLastLongestPresentTime * 1000.0f, mLastLongestFrameTime * 1000.0f);
+					mLastLongestPresentTime = 0.0f;
+					mLastLongestFrameTime = 0.0f;
+				}
 
-				if (pNewRT == pRTMain)
-					D3D_AUTOBREAK(SetViewport(&vp));
-			}
+				if (mpFontRenderer->Begin()) {
+					VDStringA s;
 
-			if (D3DXHANDLE hClear = mpEffect->GetAnnotationByName(hPass, "vd_clear")) {
-				float clearColor[4];
+					VDStringA desc;
+					GetFormatString(mSource, desc);
+					s.sprintf("D3DFX minidriver - %s", desc.c_str());
+					mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, s.c_str());
 
-				if (SUCCEEDED(mpEffect->GetVector(hClear, (D3DXVECTOR4 *)clearColor))) {
-					int r = VDRoundToInt(clearColor[0]);
-					int g = VDRoundToInt(clearColor[1]);
-					int b = VDRoundToInt(clearColor[2]);
-					int a = VDRoundToInt(clearColor[3]);
-
-					if ((unsigned)r >= 256) r = (~r >> 31) & 255;
-					if ((unsigned)g >= 256) g = (~g >> 31) & 255;
-					if ((unsigned)b >= 256) b = (~b >> 31) & 255;
-					if ((unsigned)a >= 256) a = (~a >> 31) & 255;
-
-					D3DCOLOR clearColor = (a<<24) + (r<<16) + (g<<8) + b;
-
-					D3D_AUTOBREAK(Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.f, 0));
+					mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, mTimingString.c_str());
+					mpFontRenderer->End();
 				}
 			}
 
-			D3D_AUTOBREAK_2(mpEffect->BeginPass(pass));
-
-			mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
-
-			D3D_AUTOBREAK_2(mpEffect->EndPass());
-		}
-
-		D3D_AUTOBREAK_2(mpEffect->End());
-
-		if (mbDisplayDebugInfo && mpFontRenderer) {
-			if (!(++mTimingStringCounter & 63)) {
-				mTimingString.sprintf("Longest present: %4.2fms  Longest frame: %4.2fms", mLastLongestPresentTime * 1000.0f, mLastLongestFrameTime * 1000.0f);
-				mLastLongestPresentTime = 0.0f;
-				mLastLongestFrameTime = 0.0f;
-			}
-
-			if (mpFontRenderer->Begin()) {
-				VDStringA s;
-
-				VDStringA desc;
-				GetFormatString(mSource, desc);
-				s.sprintf("D3DFX minidriver - %s", desc.c_str());
-				mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, s.c_str());
-
-				mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, mTimingString.c_str());
-				mpFontRenderer->End();
-			}
-		}
-
-		D3D_AUTOBREAK(EndScene());
+			D3D_AUTOBREAK(EndScene());
+		}	
 	}
 
 	mpManager->Flush();

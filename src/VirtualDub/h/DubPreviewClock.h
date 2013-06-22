@@ -18,6 +18,7 @@
 #ifndef f_VD2_DUBPREVIEWCLOCK_H
 #define f_VD2_DUBPREVIEWCLOCK_H
 
+#include <vd2/system/event.h>
 #include <vd2/system/time.h>
 
 class IVDAsyncBlitter;
@@ -36,6 +37,10 @@ public:
 	void Init(IVDDubPreviewTimer *timer, IVDAsyncBlitter *blitter, double frameRate, double frameMultiplicationFactor);
 	void Shutdown();
 
+	VDEvent<VDDubPreviewClock, uint32>& OnClockUpdated() {
+		return mEventClockUpdated;
+	}
+
 protected:
 	void TimerCallback();
 
@@ -46,6 +51,8 @@ protected:
 	uint32	mBaseTime;
 	double	mTicksToFrames;
 	VDCallbackTimer		mFrameTimer;
+
+	VDEvent<VDDubPreviewClock, uint32> mEventClockUpdated;
 };
 
 #endif	// f_VD2_DUBPREVIEWCLOCK_H

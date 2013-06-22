@@ -175,7 +175,7 @@ public:
 		return false;
 	}
 
-	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
+	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 32) {
 			const uint8 *buf = (const uint8 *)pHeader;
 
@@ -183,15 +183,15 @@ public:
 
 			// Check for PNG
 			if (!memcmp(buf, kPNGSignature, 8))
-				return 1;
+				return kDC_High;
 
 			// Check for BMP
 			if (buf[0] == 'B' && buf[1] == 'M')
-				return 1;
+				return kDC_High;
 
 			// Check for MayaIFF (FOR4....CIMG)
 			if (VDIsMayaIFFHeader(pHeader, nHeaderSize))
-				return 1;
+				return kDC_High;
 
 			if (buf[0] == 0xFF && buf[1] == 0xD8) {
 				
@@ -199,30 +199,30 @@ public:
 					// Hmm... might be a JPEG image.  Check for JFIF tag.
 
 					if (buf[6] == 'J' && buf[7] == 'F' && buf[8] == 'I' && buf[9] == 'F')
-						return 1;		// Looks like JPEG to me.
+						return kDC_High;		// Looks like JPEG to me.
 				}
 
 				// Nope, see if it's an Exif file instead (used by digital cameras).
 
 				if (buf[2] == 0xFF && buf[3] == 0xE1) {		// x'FF' SOI x'FF' APP1
 					if (buf[6] == 'E' && buf[7] == 'x' && buf[8] == 'i' && buf[9] == 'f')
-						return 1;		// Looks like JPEG to me.
+						return kDC_High;		// Looks like JPEG to me.
 				}
 
 				// Look for a bare JPEG (start of second marker and x'FF' EOI at the end
 				const uint8 *footer = (const uint8 *)pFooter;
 
 				if (buf[2] == 0xFF && nFooterSize >= 2 && footer[nFooterSize - 2] == 0xFF && footer[nFooterSize - 1] == 0xD9)
-					return 1;
+					return kDC_High;
 			}
 		}
 
 		if (nFooterSize > 18) {
 			if (!memcmp((const uint8 *)pFooter + nFooterSize - 18, "TRUEVISION-XFILE.", 18))
-				return 1;
+				return kDC_High;
 		}
 
-		return -1;
+		return kDC_None;
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {

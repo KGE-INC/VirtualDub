@@ -1,5 +1,46 @@
 VirtualDub change log
 
+Build %build% (1.10.0, experimental): [%date%]
+   [features added]
+   * Holding the Ctrl key during drag-and-drop appends instead of replaces.
+   * "Scan for errors" command is now scriptable (VirtualDub.video.ScanForErrors).
+   * Save Animated GIF command is now scriptable (VirtualDub.video.SaveAnimatedGIF).
+   * Added ability to import and export raw video.
+   * Added ability to export through command-line encoders.
+   * Added support for 0-255 paletted grayscale.
+   * Added support for Rec. 709 and full range formats.
+   * Added command to copy source and output frame numbers to the clipboard.
+   * Render: Added option to show the status window for batch operations.
+   * Render: Video compressor threading is now allowed for two or more threads when operating with only key frames.
+   * Filters: Added multithreading support.
+   * Filters: Added "gamma correct" filter.
+   * Filters: Added "alias format" filter.
+   * Filters: Re-added deblurring mode to IVTC filter and added preview support.
+   * Filters: Added frame drop mode to IVTC filter.
+   * Images: TGA RLE compression can now be disabled.
+   * Images: Added support for PNG alpha channel.
+   * Capture: Multiple capture devices with the same name now appear with a distinguishing counter.
+   * AVI: The non-zero start warning can now be disabled in preferences.
+   * AVI: The number of filename counter digits used when saving segment sequences is now configurable.
+
+   [bugs fixed]
+   * Reduced priority of ASF pseudo-handler to avoid interfering with input handlers that detect by filename.
+   * AVI: The preferred handler (fccHandler) field in the video stream is now ignored by default for consistency (unless re-enabled in preferences).
+   * UI: Limit minimum window size to avoid caption redraw artifacts.
+   * UI: Fixed bug where aspect ratio of panes in unconstrained aspect mode would drift when auto-sizing was enabled.
+   * UI: Select Range command is now disabled when no video is loaded.
+   * UI: Audio conversion dialog no longer occasionally says "No change (8-bit)" for compressed formats; this was sometimes incorrect as when that option was selected the pipeline actually used what the codec produced, which was usually 16-bit.
+   * UI: Video codec dialog now scrolls the list on open to always show the last selected codec.
+   * UI: The Configure and Cropping buttons in the filter list dialog no longer lose focus when clicked.
+   * UI: Mouse wheel scrolling now works in the filter preview and curve control windows.
+   * JobControl: Auto-shutdown now works over remote desktop and records a planned shutdown on server versions of Windows.
+   * Images: PNG images with 16-bit/channel grayscale or RGBA format now load properly.
+   * Images: Fixed GIF autodetect code checking the footer instead of the header.
+   * Hex editor: Fixed icon in RIFF tree window.
+   * Filters: Switched the frame that the IVTC filter drops in reduce frame rate mode to match the old pre-filter algorithm.
+   * Filters: Cropping dialog now opens at the currently selected frame.
+   * Filters: Fixed warp sharp filter in 3D acceleration mode.
+
 Build %build% (1.9.11, stable): [%date%]
    [bugs fixed]
    * Filters: Added compatibility option for filters that rely on constant buffer addresses.
@@ -22,7 +63,7 @@ Build 32817 (1.9.9, stable): [April 9, 2010]
    [bugs fixed]
    * UI: Fixed a case where the output pane could change aspect ratio when auto pane sizing was enabled and the main frame window was resized.
    * UI: The output pane now has the correct pixel aspect ratio when an input plugin indicates non-square pixels and no filters are used.
-   * UI: 6% and 12% zoom menu items didn't display checkmarks properly.
+   * UI: 6%% and 12%% zoom menu items didn't display checkmarks properly.
    * AVI: Fixed incorrect decoding of paletted video files when biClrUsed=0 in the header and the input color mode is set to Autoselect.
    * AMD64: Fixed incorrect disassembler module in crash handler.
    * Render: Fixed sporadic hang when using smart rendering with fast recompress mode.

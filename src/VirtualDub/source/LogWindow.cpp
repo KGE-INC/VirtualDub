@@ -59,7 +59,7 @@ public:
 	void AddEntry(int severity, const wchar_t *);
 	void AddEntry(int severity, const VDStringW&);
 
-	void AddLogEntry(int severity, const VDStringW& s) {
+	void AddLogEntry(int severity, const wchar_t *s) {
 		AddEntry(severity, s);
 	}
 

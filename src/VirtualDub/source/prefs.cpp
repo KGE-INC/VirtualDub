@@ -49,8 +49,11 @@ namespace {
 		bool			mbRenderWarnNoAudio;
 		bool			mbEnableAVIAlignmentThreshold;
 		bool			mbEnableAVIVBRWarning;
+		bool			mbEnableAVINonZeroStartWarning;
 		bool			mbPreferInternalVideoDecoders;
 		bool			mbPreferInternalAudioDecoders;
+		bool			mbUseVideoFccHandler;
+
 		uint32			mAVIAlignmentThreshold;
 		uint32			mRenderOutputBufferSize;
 		uint32			mRenderWaveBufferSize;
@@ -77,6 +80,10 @@ namespace {
 
 		bool			mbFilterAccelEnabled;
 		bool			mbFilterAccelDebugEnabled;		// NOT saved
+		uint32			mFilterProcessAhead;
+		sint32			mFilterThreads;
+
+		bool			mbBatchStatusWindowEnabled;
 	} g_prefs2;
 }
 
@@ -308,6 +315,8 @@ public:
 			SetValue(104, mPrefs.mbPreferInternalVideoDecoders);
 			SetValue(105, mPrefs.mbPreferInternalAudioDecoders);
 			SetValue(106, mPrefs.mbEnableAVIVBRWarning);
+			SetValue(108, mPrefs.mbEnableAVINonZeroStartWarning);
+			SetValue(107, mPrefs.mbUseVideoFccHandler);
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventDetach:
@@ -326,6 +335,8 @@ public:
 			if (mPrefs.mAVISubindexLimit < 1)
 				mPrefs.mAVISubindexLimit = 1;
 			mPrefs.mbEnableAVIVBRWarning = 0!=GetValue(106);
+			mPrefs.mbEnableAVINonZeroStartWarning = 0 != GetValue(108);
+			mPrefs.mbUseVideoFccHandler = 0 != GetValue(107);
 			return true;
 		}
 		return false;
@@ -465,10 +476,19 @@ public:
 				SetCaption(100, VDswprintf(L"%u", 1, &i).c_str());
 			}
 
+			if (mPrefs.mFilterThreads < 0)
+				SetValue(101, 0);
+			else
+				SetValue(101, mPrefs.mFilterThreads + 1);
+
+			SetValue(102, mPrefs.mFilterProcessAhead);
+
 			return true;
 		case kEventDetach:
 		case kEventSync:
 			mPrefs.mVideoCompressionThreads = std::min<uint32>(wcstoul(GetCaption(100).c_str(), 0, 10), 32);
+			mPrefs.mFilterThreads = GetValue(101) - 1;
+			mPrefs.mFilterProcessAhead = VDClampToUint32(GetValue(102));
 			return true;
 		}
 		return false;
@@ -574,6 +594,30 @@ protected:
 	PlaybackDeviceKeys mPlaybackDeviceKeys;
 };
 
+class VDDialogPreferencesBatch : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesBatch(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbBatchStatusWindowEnabled);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbBatchStatusWindowEnabled = GetValue(100) != 0;
+			return true;
+		}
+		return false;
+	}
+
+protected:
+	typedef std::vector<VDStringW> PlaybackDeviceKeys;
+	PlaybackDeviceKeys mPlaybackDeviceKeys;
+};
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -601,6 +645,7 @@ public:
 				case 9:	pSubDialog->SetCallback(new VDDialogPreferencesThreading(mPrefs), true); break;
 				case 10:	pSubDialog->SetCallback(new VDDialogPreferencesPlayback(mPrefs), true); break;
 				case 11:	pSubDialog->SetCallback(new VDDialogPreferencesAccel(mPrefs), true); break;
+				case 12:	pSubDialog->SetCallback(new VDDialogPreferencesBatch(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -670,9 +715,12 @@ void LoadPreferences() {
 	g_prefs2.mbRenderWarnNoAudio = key.getBool("Render: Warn if no audio", false);
 	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
 	g_prefs2.mbEnableAVIVBRWarning = key.getBool("AVI: VBR warning enabled", true);
+	g_prefs2.mbEnableAVINonZeroStartWarning = key.getBool("AVI: Non-zero start warning enabled", true);
 	g_prefs2.mAVIAlignmentThreshold = key.getInt("AVI: Alignment threshold", 524288);
 	g_prefs2.mbPreferInternalVideoDecoders = key.getBool("AVI: Prefer internal decoders", false);
 	g_prefs2.mbPreferInternalAudioDecoders = key.getBool("AVI: Prefer internal audio decoders", false);
+	g_prefs2.mbUseVideoFccHandler = key.getBool("AVI: Use video stream fccHandler in codec search", false);
+
 	g_prefs2.mRenderOutputBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Output buffer size", 2097152)));
 	g_prefs2.mRenderWaveBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Wave buffer size", 65536)));
 	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
@@ -694,12 +742,16 @@ void LoadPreferences() {
 	g_prefs2.mImageSequenceFrameRate.Assign(imageSeqHi, imageSeqLo);
 
 	g_prefs2.mVideoCompressionThreads = key.getInt("Threading: Video compression threads", 0);
+	g_prefs2.mFilterThreads = key.getInt("Threading: Video filter threads", -1);
 
 	key.getString("Playback: Default audio device", g_prefs2.mAudioPlaybackDeviceKey);
 
 	g_prefs2.mbFilterAccelEnabled = key.getBool("Filters: Enable 3D hardware acceleration", false);
+	g_prefs2.mFilterProcessAhead = key.getInt("Filters: Process-ahead frame count", 0);
 
 	g_prefs2.mEnabledCPUFeatures = key.getInt("CPU: Enabled extensions", 0);
+
+	g_prefs2.mbBatchStatusWindowEnabled = key.getBool("Batch: Show status window", false);
 
 	g_prefs2.mOldPrefs = g_prefs;
 
@@ -717,8 +769,11 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setBool("AVI: Alignment threshold enable", prefs.mbEnableAVIAlignmentThreshold);
 	key.setInt("AVI: Alignment threshold", prefs.mAVIAlignmentThreshold);
 	key.setBool("AVI: VBR warning enabled", prefs.mbEnableAVIVBRWarning);
+	key.setBool("AVI: Non-zero start warning enabled", prefs.mbEnableAVINonZeroStartWarning);
 	key.setBool("AVI: Prefer internal decoders", prefs.mbPreferInternalVideoDecoders);
 	key.setBool("AVI: Prefer internal audio decoders", prefs.mbPreferInternalAudioDecoders);
+	key.setBool("AVI: Use video stream fccHandler in codec search", prefs.mbUseVideoFccHandler);
+
 	key.setString("Direct3D FX file", prefs.mD3DFXFile.c_str());
 	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
 	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
@@ -739,12 +794,16 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Images: Frame rate denominator", prefs.mImageSequenceFrameRate.getLo());
 
 	key.setInt("Threading: Video compression threads", prefs.mVideoCompressionThreads);
+	key.setInt("Threading: Video filter threads", prefs.mFilterThreads);
 
 	key.setString("Playback: Default audio device", prefs.mAudioPlaybackDeviceKey.c_str());
 
 	key.setBool("Filters: Enable 3D hardware acceleration", prefs.mbFilterAccelEnabled);
+	key.setInt("Filters: Process-ahead frame count", prefs.mFilterProcessAhead);
 
 	key.setInt("CPU: Enabled extensions", prefs.mEnabledCPUFeatures);
+
+	key.setBool("Batch: Show status window", prefs.mbBatchStatusWindowEnabled);
 }
 
 void VDSavePreferences() {
@@ -780,12 +839,20 @@ bool VDPreferencesIsAVIVBRWarningEnabled() {
 	return g_prefs2.mbEnableAVIVBRWarning;
 }
 
+bool VDPreferencesIsAVINonZeroStartWarningEnabled() {
+	return g_prefs2.mbEnableAVINonZeroStartWarning;
+}
+
 bool VDPreferencesIsPreferInternalVideoDecodersEnabled() {
 	return g_prefs2.mbPreferInternalVideoDecoders;
 }
 
 bool VDPreferencesIsPreferInternalAudioDecodersEnabled() {
 	return g_prefs2.mbPreferInternalAudioDecoders;
+}
+
+bool VDPreferencesIsUseVideoFccHandlerEnabled() {
+	return g_prefs2.mbUseVideoFccHandler;
 }
 
 const VDStringW& VDPreferencesGetD3DFXFile() {
@@ -842,6 +909,18 @@ void VDPreferencesSetFilterAccelVisualDebugEnabled(bool enabled) {
 
 bool VDPreferencesGetFilterAccelVisualDebugEnabled() {
 	return g_prefs2.mbFilterAccelDebugEnabled;
+}
+
+sint32 VDPreferencesGetFilterThreadCount() {
+	return g_prefs2.mFilterThreads;
+}
+
+sint32 VDPreferencesGetVideoFilterProcessAheadCount() {
+	return g_prefs2.mFilterProcessAhead;
+}
+
+bool VDPreferencesGetBatchShowStatusWindow() {
+	return g_prefs2.mbBatchStatusWindowEnabled;
 }
 
 void VDPreferencesUpdated() {

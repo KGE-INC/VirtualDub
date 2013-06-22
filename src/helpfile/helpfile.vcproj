@@ -101,6 +101,10 @@
 					RelativePath=".\source\render\compression.lina"
 					>
 				</File>
+				<File
+					RelativePath=".\source\render\externalencoder.lina"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="batch"

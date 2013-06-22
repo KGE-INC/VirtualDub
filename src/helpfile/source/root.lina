@@ -79,7 +79,7 @@
 	<lina:include file="source/avi.lina"/>
 
 	<lina:include file="source/batch/distributed.lina" />
-
+	
 	<lina:create file="capwarn.html">
 		Below are listed some issues you may have with video capture drivers.  VirtualDub detects these
 		drivers by name and/or filename, and the particular version you have installed may not have

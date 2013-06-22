@@ -18,6 +18,7 @@
 #ifndef f_VD2_THREADEDVIDEOCOMPRESSOR_H
 #define f_VD2_THREADEDVIDEOCOMPRESSOR_H
 
+#include <vd2/system/event.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/refcount.h>
 #include <vd2/Kasumi/pixmaputils.h>
@@ -38,7 +39,7 @@ public:
 	VDRenderBufferAllocator();
 	~VDRenderBufferAllocator();
 
-	void Init();
+	void Init(int count);
 	void Shutdown();
 
 	bool AllocFrame(int timeout, T **ppFrame);
@@ -67,9 +68,10 @@ VDRenderBufferAllocator<T>::~VDRenderBufferAllocator() {
 }
 
 template<class T>
-void VDRenderBufferAllocator<T>::Init() {
+void VDRenderBufferAllocator<T>::Init(int count) {
 	vdsynchronized(mMutex) {
 		mBufferCount.Reset(0);
+		mOutstandingBufferCount = count;
 		mbActive = true;
 	}
 }
@@ -200,22 +202,31 @@ public:
 
 	FlushStatus GetFlushStatus();
 
+	bool IsAsynchronous() const { return mThreadCount > 0; }
+
 	void Init(int threads, IVDVideoCompressor *pBaseCompressor);
 	void Shutdown();
 
-	void SetFlush(bool flush);
+	void SetFlush(bool flush, VDRenderOutputBuffer *holdBuffer);
 
 	void SkipFrame();
 	void Restart();
 
 	bool ExchangeBuffer(VDRenderOutputBuffer *buffer, VDRenderPostCompressionBuffer **ppOutBuffer);
 
+	VDEvent<VDThreadedVideoCompressor, bool>& OnFrameComplete() {
+		return mEventFrameComplete;
+	}
+
 public:
 	void RunSlave(IVDVideoCompressor *compressor);
 
 protected:
-	bool ProcessFrame(VDRenderOutputBuffer *pBuffer, IVDVideoCompressor *pCompressor, VDRTProfileChannel *pProfileChannel);
-	void FlushQueues();
+	typedef vdfastdeque<uint32> FrameTrackingQueue;
+
+	bool ProcessFrame(VDRenderOutputBuffer *pBuffer, IVDVideoCompressor *pCompressor, VDRTProfileChannel *pProfileChannel, sint32 frameNumber, FrameTrackingQueue *frameTrackingQueue);
+	void FlushInputQueue();
+	void FlushOutputQueue();
 
 	VDThreadedVideoCompressorSlave *mpThreads;
 	int mThreadCount;
@@ -224,6 +235,7 @@ protected:
 	IVDVideoCompressor *mpBaseCompressor;
 
 	vdrefptr<VDRenderPostCompressionBufferAllocator> mpAllocator;
+	vdrefptr<VDRenderOutputBuffer> mpFlushBuffer;
 
 	VDSemaphore mBarrier;
 
@@ -235,13 +247,26 @@ protected:
 	int mFramesBufferedInFlush;
 	bool mbFlushInProgress;
 	bool mbLoopDetectedDuringFlush;
+	uint32	mNextInputFrameNumber;
+	uint32	mNextOutputFrameNumber;
+	uint32	mNextOutputAllocIndex;
 
 	bool mbInErrorState;
 	vdfastdeque<VDRenderOutputBuffer *> mInputBuffer;
-	vdfastdeque<VDRenderPostCompressionBuffer *> mOutputBuffer;
+
+	struct OutputEntry {
+		VDRenderPostCompressionBuffer *mpBuffer;
+		bool mbCompleted;
+	};
+
+	vdfastdeque<OutputEntry> mOutputBuffer;
 	VDSemaphore mInputBufferCount;
 
 	MyError mError;
+
+	VDEvent<VDThreadedVideoCompressor, bool> mEventFrameComplete;
+
+	vdfastvector<IVDVideoCompressor *> mClonedCodecs;
 };
 
 #endif

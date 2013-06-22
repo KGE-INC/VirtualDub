@@ -148,6 +148,9 @@ public:
 	void *GetExtraInfo() const;
 	void SetExtraInfo(IVDRefCount *extraData);
 
+	uint32 GetBatchNumber() const { return mBatchNumber; }
+	void SetBatchNumber(uint32 batch) { mBatchNumber = batch; }
+
 	uint32 GetSourceCount() const;
 	VDFilterFrameBuffer *GetSource(uint32 index);
 	IVDFilterFrameClientRequest *GetSourceRequest(uint32 index);
@@ -183,6 +186,8 @@ protected:
 	bool		mbSuccessful;
 	bool		mbCacheable;
 	bool		mbStealable;
+
+	uint32		mBatchNumber;
 
 	VDFilterFrameRequestError *mpError;
 	VDFilterFrameBuffer *mpResultBuffer;

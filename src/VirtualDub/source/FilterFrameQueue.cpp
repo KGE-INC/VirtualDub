@@ -16,6 +16,7 @@
 //	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "stdafx.h"
+#include <vd2/system/file.h>
 #include "FilterFrameQueue.h"
 #include "FilterFrameRequest.h"
 
@@ -73,11 +74,38 @@ void VDFilterFrameQueue::CreateRequest(VDFilterFrameRequest **req) {
 }
 
 void VDFilterFrameQueue::Add(VDFilterFrameRequest *req) {
-	mRequests.push_back(req);
+	Requests::iterator it(mRequests.end()), itBegin(mRequests.begin());
+	uint32 batchNum = req->GetBatchNumber();
+
+	bool motionRequired = false;
+	while(it != itBegin) {
+		Requests::iterator itTest(it);
+		--itTest;
+
+		VDFilterFrameRequest *other = *itTest;
+		uint32 otherBatchNum = other->GetBatchNumber();
+
+		if ((sint32)(batchNum - otherBatchNum) >= 0)
+			break;
+
+		it = itTest;
+		motionRequired = true;
+	}
+
+	if (motionRequired) {
+		mRequests.push_back(NULL);
+
+		Requests::iterator itCopyEnd(mRequests.end());
+		--itCopyEnd;
+		std::copy_backward(it, itCopyEnd, mRequests.end());
+		*it = req;
+	} else {
+		mRequests.push_back(req);
+	}
 	req->AddRef();
 }
 
-bool VDFilterFrameQueue::PeekNextRequest(VDFilterFrameRequest **req) {
+bool VDFilterFrameQueue::PeekNextRequest(const uint32 *batchNumberLimit, VDFilterFrameRequest **req) {
 	VDFilterFrameRequest *r;
 	for(;;) {
 		if (mRequests.empty())
@@ -94,6 +122,9 @@ bool VDFilterFrameQueue::PeekNextRequest(VDFilterFrameRequest **req) {
 			r->Release();
 			continue;
 		}
+
+		if (batchNumberLimit && (sint32)(r->GetBatchNumber() - *batchNumberLimit) >= 0)
+			return false;
 
 		bool anyFailed;
 		VDFilterFrameRequestError *error;
@@ -113,7 +144,7 @@ bool VDFilterFrameQueue::PeekNextRequest(VDFilterFrameRequest **req) {
 	}
 }
 
-bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
+bool VDFilterFrameQueue::GetNextRequest(const uint32 *batchNumberLimit, VDFilterFrameRequest **req) {
 	VDFilterFrameRequest *r;
 	for(;;) {
 		if (mRequests.empty())
@@ -130,6 +161,9 @@ bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
 			r->Release();
 			continue;
 		}
+
+		if (batchNumberLimit && (sint32)(r->GetBatchNumber() - *batchNumberLimit) >= 0)
+			return false;
 
 		bool anyFailed;
 		VDFilterFrameRequestError *error;
@@ -166,6 +200,29 @@ bool VDFilterFrameQueue::Remove(VDFilterFrameRequest *req) {
 	}
 
 	return false;
+}
+
+void VDFilterFrameQueue::DumpStatus(VDTextOutputStream& os) {
+	Requests::iterator it(mRequests.begin()), itEnd(mRequests.end());
+	for(; it != itEnd; ++it) {
+		VDFilterFrameRequest *r = *it;
+		const VDFilterFrameRequestTiming& t =  r->GetTiming();
+
+		os.FormatLine("    Source frame %u | Output frame %u"
+			, (unsigned)t.mSourceFrame
+			, (unsigned)t.mOutputFrame
+			);
+
+		uint32 srcCount = r->GetSourceCount();
+		for(uint32 srcIdx = 0; srcIdx < srcCount; ++srcIdx) {
+			IVDFilterFrameClientRequest *cr = r->GetSourceRequest(srcIdx);
+
+			os.FormatLine("      Source frame %u | %s"
+				, (unsigned)cr->GetFrameNumber()
+				, cr->IsCompleted() ? cr->IsSuccessful() ? "Succeeded" : "Failed" : "Pending"
+				);
+		}
+	}
 }
 
 #ifdef _DEBUG

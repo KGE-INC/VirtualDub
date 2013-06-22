@@ -27,6 +27,7 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/unknown.h>
+#include <vd2/system/profile.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/blitter.h>
 #include <vd2/VDLib/win32/DIBSection.h>
@@ -57,7 +58,6 @@ class FilterDefinitionInstance;
 class VDFilterFrameBuffer;
 class VDFilterFrameRequest;
 class IVDFilterFrameClientRequest;
-class IVDFilterSystemScheduler;
 
 class VDFilterFrameAllocatorManager;
 
@@ -65,6 +65,8 @@ class VDFilterAccelContext;
 class VDFilterAccelEngine;
 class VDFilterAccelEngineDispatchQueue;
 class VDFilterAccelEngineMessage;
+
+class VDTextOutputStream;
 
 ///////////////////
 
@@ -171,12 +173,22 @@ private:
 	VDXFBitmap *mOutputFrameArray[1];
 };
 
+class IVDFilterFrameEngine {
+public:
+	virtual void Schedule() = 0;
+	virtual void ScheduleProcess() = 0;
+};
+
 class IVDFilterFrameSource : public IVDRefUnknown {
 public:
+	virtual const char *GetDebugDesc() const = 0;
+
 	virtual void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev) = 0;
 	virtual VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy() = 0;
 
-	virtual bool CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req) = 0;
+	virtual bool IsAccelerated() const = 0;
+
+	virtual bool CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req) = 0;
 	virtual bool GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) = 0;
 	virtual sint64 GetSourceFrame(sint64 outputFrame) = 0;
 	virtual sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source) = 0;
@@ -185,15 +197,23 @@ public:
 
 	virtual void InvalidateAllCachedFrames() = 0;
 
+	virtual void DumpStatus(VDTextOutputStream& os) = 0;
+
+	virtual void Start(IVDFilterFrameEngine *engine) = 0;
 	virtual void Stop() = 0;
 
 	enum RunResult {
 		kRunResult_Idle,
+		kRunResult_IdleWasActive,
 		kRunResult_Running,
-		kRunResult_Blocked
+		kRunResult_Blocked,
+		kRunResult_BlockedWasActive,
+		kRunResult_BatchLimited,
+		kRunResult_BatchLimitedWasActive
 	};
 
-	virtual RunResult RunRequests() = 0;
+	virtual RunResult RunRequests(const uint32 *batchNumberLimit) = 0;
+	virtual RunResult RunProcess() = 0;
 };
 
 class FilterInstance : public ListNode, protected VDFilterActivationImpl, public vdrefcounted<IVDFilterFrameSource> {
@@ -238,16 +258,23 @@ public:
 
 	uint32	Prepare(const VFBitmapInternal& input);
 
-	void	Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterSystemScheduler *scheduler, VDFilterAccelEngine *accelEngine);
+	void	SetEngine(IVDFilterFrameEngine *engine);
+	void	Start(IVDFilterFrameEngine *engine);
+	void	Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine);
 	void	Stop();
+
+	const char *GetDebugDesc() const;
 
 	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
 	void	RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev);
-	bool	CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req);
-	bool	CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, IVDFilterFrameClientRequest **req);
-	RunResult RunRequests();
+	bool	CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req);
+	bool	CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, uint32 batchNumber, IVDFilterFrameClientRequest **req);
+	RunResult RunRequests(const uint32 *batchNumberLimit);
+	RunResult RunProcess();
 
 	void	InvalidateAllCachedFrames();
+
+	void	DumpStatus(VDTextOutputStream& os);
 
 	bool	GetScriptString(VDStringA& buf);
 	bool	GetSettingsString(VDStringA& buf) const;
@@ -304,10 +331,11 @@ protected:
 	static void ScriptFunctionThunkInt(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkVariadic(IVDScriptInterpreter *, VDScriptValue *, int);
 
-	bool	RunRequest(VDFilterFrameRequest& request);
-	bool	Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
-	bool	BeginRequest(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
-	void	EndRequest();
+	bool	OpenRequest();
+	void	CloseRequest(bool success);
+	bool	AdvanceRequest();
+	bool	BeginFrame(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
+	void	EndFrame();
 
 	bool	AllocateResultBuffer(VDFilterFrameRequest& request, int srcIndex);
 
@@ -319,8 +347,8 @@ protected:
 	static void StopFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
 	void StopInner();
 
-	static void RunFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
-	void	RunFilter(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, bool bltSrcOnEntry);
+	void	RunFilter();
+	void	RunFilterInner();
 	bool	ConnectAccelBuffers();
 	void	DisconnectAccelBuffers();
 	bool	ConnectAccelBuffer(VFBitmapInternal *buf, bool bindAsRenderTarget);
@@ -388,6 +416,7 @@ protected:
 	vdfastvector<VDXFBitmap *> mSourceFrameArray;
 
 	FilterDefinitionInstance *mpFDInst;
+	IVDFilterFrameEngine *mpEngine;
 
 	vdrefptr<VDParameterCurve> mpAlphaCurve;
 
@@ -402,10 +431,28 @@ protected:
 
 	vdautoptr<IVDPixmapBlitter>	mpSourceConversionBlitter;
 
+	VDFilterFrameRequest	*mpRequestInProgress;
+	sint64					mRequestStartFrame;
+	sint64					mRequestEndFrame;
+	sint64					mRequestTargetFrame;
+	sint64					mRequestCurrentFrame;
+	bool					mbRequestCacheIntermediateFrames;
+
+	VDAtomicInt				mbRequestFramePending;
+	VDAtomicInt				mbRequestFrameBeingProcessed;
+	VDAtomicInt				mbRequestFrameCompleted;
+	bool					mbRequestFrameSuccess;
+	sint64					mRequestSourceFrame;
+	sint64					mRequestOutputFrame;
+	bool					mbRequestBltSrcOnEntry;
+	MyError					mRequestError;
+
 	VDFilterAccelEngine		*mpAccelEngine;
 	VDFilterAccelContext	*mpAccelContext;
 
 	VDFilterThreadContext	mThreadContext;
+
+	VDProfileEventCache		mProfileCacheFilterName;
 };
 
 #endif

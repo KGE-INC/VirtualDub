@@ -36,7 +36,8 @@ enum PNGDecodeError {
 	kPNGDecodeBadFilterMode,
 	kPNGDecodeUnknownRequiredChunk,
 	kPNGDecodeOutOfMemory,
-	kPNGDecodeChecksumFailed
+	kPNGDecodeChecksumFailed,
+	kPNGDecodeUnsupported
 };
 
 class VDINTERFACE IVDImageDecoderPNG {
@@ -44,6 +45,7 @@ public:
 	virtual ~IVDImageDecoderPNG() {}
 	virtual PNGDecodeError Decode(const void *src, uint32 size) = 0;
 	virtual const VDPixmap& GetFrameBuffer() = 0;
+	virtual bool IsAlphaPresent() const = 0;
 };
 
 IVDImageDecoderPNG *VDCreateImageDecoderPNG();

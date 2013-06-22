@@ -276,6 +276,10 @@ public:
 	vector_type m[3];
 };
 
+inline vdfloat3 operator*(const vdfloat3& v, const vdfloat3x3& m) {
+	return v.x * m.m[0] + v.y * m.m[1] + v.z * m.m[2];
+}
+
 class vdfloat4x4 {
 public:
 	enum zero_type { zero };
@@ -419,6 +423,26 @@ struct VDSize {
 };
 
 template<class T>
+class VDPoint {
+public:
+	VDPoint();
+	VDPoint(T x_, T y_);
+
+	T x;
+	T y;
+};
+
+template<class T>
+VDPoint<T>::VDPoint() {
+}
+
+template<class T>
+VDPoint<T>::VDPoint(T x_, T y_)
+	: x(x_), y(y_)
+{
+}
+
+template<class T>
 class VDRect {
 public:
 	typedef T value_type;
@@ -560,6 +584,7 @@ template<class T>
 VDSize<T> VDRect<T>::size() const { return VDSize<T>(right-left, bottom-top); }
 
 ///////////////////////////////////////////////////////////////////////////////
+typedef VDPoint<sint32>	vdpoint32;
 typedef VDSize<sint32>	vdsize32;
 typedef VDSize<float>	vdsize32f;
 typedef	VDRect<sint32>	vdrect32;

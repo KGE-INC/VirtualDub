@@ -39,7 +39,9 @@ extern const VDXFilterDefinition
 	filterDef_fielddelay,
 	filterDef_invert,
 	filterDef_resize,
-	filterDef_test;
+	filterDef_test,
+	filterDef_gammacorrect,
+	filterDef_aliasformat;
 
 #ifdef _M_IX86
 extern const VDXFilterDefinition
@@ -108,6 +110,8 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_ivtc,
 	&filterDef_interpolate,
 	&filterDef_fielddelay,
+	&filterDef_gammacorrect,
+	&filterDef_aliasformat,
 //	&filterDef_curves,
 
 #ifdef _DEBUG

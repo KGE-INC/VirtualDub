@@ -735,7 +735,7 @@ bool VDCaptureFilterChainFrameSource::Run() {
 		if (frameWindowIndex >= mWindowSize)
 			frameWindowIndex -= mWindowSize;
 
-		VDVERIFY(GetNextRequest(~req));
+		VDVERIFY(GetNextRequest(NULL, ~req));
 		req->SetResultBuffer(mFrameQueue[frameWindowIndex]);
 		req->MarkComplete(true);
 		CompleteRequest(req, false);
@@ -778,6 +778,7 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 
 	filters.SetVisualAccelDebugEnabled(false);
 	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+	filters.SetAsyncThreadCount(-1);
 	filters.initLinearChain(NULL, VDXFilterStateInfo::kStateRealTime, &g_listFA, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
 	filters.ReadyFilters();
 
@@ -808,15 +809,21 @@ bool VDCaptureFilterChainAdapter::ProcessOut(VDPixmap& px) {
 	}
 
 	if (!mpRequest) {
-		filters.RequestFrame(mFrame, ~mpRequest);
+		filters.RequestFrame(mFrame, 0, ~mpRequest);
 		++mFrame;
 	}
 
 	while(!mpRequest->IsCompleted()) {
-		mpFrameSource->Run();
+		if (mpFrameSource->Run())
+			continue;
 
-		if (filters.Run(false) != FilterSystem::kRunResult_Running)
-			return false;
+		switch(filters.Run(NULL, false)) {
+			case FilterSystem::kRunResult_Idle:
+				return false;
+			case FilterSystem::kRunResult_Blocked:
+				filters.Block();
+				break;
+		}
 	}
 	
 	if (!mpRequest->IsSuccessful()) {

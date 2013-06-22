@@ -79,6 +79,7 @@ public:
 
 	virtual void SetReturnFocus(bool enable) = 0;
 	virtual void SetFullScreen(bool fs) = 0;
+	virtual void SetDestRect(const vdrect32 *r, uint32 backgroundColor) = 0;
 
 	virtual void PostBuffer(VDVideoDisplayFrame *) = 0;
 	virtual bool RevokeBuffer(bool allowFrameSkip, VDVideoDisplayFrame **ppFrame) = 0;

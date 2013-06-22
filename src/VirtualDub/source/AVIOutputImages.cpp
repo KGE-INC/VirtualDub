@@ -28,7 +28,25 @@
 
 class AVIOutputImages;
 
-////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+	void CopyRowSetAlpha_X1R15(void *dst0, const void *src0, size_t n) {
+		uint16 *dst = (uint16 *)dst0;
+		const uint16 *src = (const uint16 *)src0;
+		for(size_t i=0; i<n; ++i)
+			dst[i] = src[i] | 0x8000;
+	}
+
+	void CopyRowSetAlpha_X8R24(void *dst0, const void *src0, size_t n) {
+		uint32 *dst = (uint32 *)dst0;
+		const uint32 *src = (const uint32 *)src0;
+		for(size_t i=0; i<n; ++i)
+			dst[i] = src[i] | 0xFF000000;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 class AVIVideoImageOutputStream : public AVIOutputStream {
 private:
@@ -131,7 +149,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 		mpPNGEncoder->Encode(VDPixmapFromLayout(pxl, (void *)pBuffer), p, len, mQuality < 50);
 
 		mFile.write(p, len);
-	} else if (mFormat == AVIOutputImages::kFormatTGA) {
+	} else if (mFormat == AVIOutputImages::kFormatTGA || mFormat == AVIOutputImages::kFormatTGAUncompressed) {
 		struct TGAHeader {
 			unsigned char	IDLength;
 			unsigned char	CoMapType;
@@ -149,7 +167,12 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 		hdr.IDLength	= 0;
 		hdr.CoMapType	= 0;		// no color map
-		hdr.ImgType		= 10;		// run-length, true-color image
+
+		if (mFormat == AVIOutputImages::kFormatTGA)
+			hdr.ImgType		= 10;		// run-length, true-color image
+		else
+			hdr.ImgType		= 2;		// run-length, true-color image
+
 		hdr.IndexLo		= 0;		// color map start = 0
 		hdr.IndexHi		= 0;
 		hdr.LengthLo	= 0;		// color map length = 0
@@ -177,130 +200,142 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 		}
 
 		// Begin RLE packing.
-
+		char *dstbase = (char *)mpPackBuffer + packrowsize;
+		char *dst = dstbase;
 		const int pelsize = bih.biBitCount >> 3;
-		const char *src = (const char *)pBuffer;
 		int srcpitch = (pelsize * bih.biWidth+3)&~3;
-		char *dstbase = (char *)mpPackBuffer + packrowsize, *dst=dstbase, *dstlimit = dstbase + pelsize * bih.biWidth * bih.biHeight;
-		int x, y;
 
-		for(y=0; y<bih.biHeight; ++y) {
-			const char *rlesrc = src;
+		if (mFormat == AVIOutputImages::kFormatTGA) {
+			const char *src = (const char *)pBuffer;
+			char *dstlimit = dstbase + pelsize * bih.biWidth * bih.biHeight;
+			int y;
 
-			// copy row into scan buffer and perform necessary masking
-			if (pelsize == 2) {
-				short *maskdst = (short *)mpPackBuffer;
-				const short *masksrc = (const short *)src;
+			for(y=0; y<bih.biHeight; ++y) {
+				const char *rlesrc = src;
 
-				for(x=0; x<bih.biWidth; ++x) {
-					maskdst[x] = (short)(masksrc[x] | 0x8000);
-				}
-				rlesrc = (const char *)mpPackBuffer;
-			} else if (pelsize == 4) {
-				int *maskdst = (int *)mpPackBuffer;
-				const int *masksrc = (const int *)src;
+				// copy row into scan buffer and perform necessary masking
+				if (pelsize == 2) {
+					CopyRowSetAlpha_X1R15(mpPackBuffer, src, bih.biWidth);
 
-				for(x=0; x<bih.biWidth; ++x) {
-					maskdst[x] = masksrc[x] | 0xff000000;
-				}
-				rlesrc = (const char *)mpPackBuffer;
-			}
+					rlesrc = (const char *)mpPackBuffer;
+				} else if (pelsize == 4) {
+					CopyRowSetAlpha_X8R24(mpPackBuffer, src, bih.biWidth);
 
-			// RLE pack row
-			const char *rlesrcend = rlesrc + pelsize * bih.biWidth;
-			const char *rlecompare = rlesrc;
-			int literalbytes = pelsize;
-			const char *literalstart = rlesrc;
-
-			rlesrc += pelsize;
-
-			do {
-				while(rlesrc < rlesrcend && *rlecompare != *rlesrc) {
-					++rlecompare;
-					++rlesrc;
-					++literalbytes;
+					rlesrc = (const char *)mpPackBuffer;
 				}
 
-				int runbytes = 0;
-				while(rlesrc < rlesrcend && *rlecompare == *rlesrc) {
-					++rlecompare;
-					++rlesrc;
-					++runbytes;
-				}
+				// RLE pack row
+				const char *rlesrcend = rlesrc + pelsize * bih.biWidth;
+				const char *rlecompare = rlesrc;
+				int literalbytes = pelsize;
+				const char *literalstart = rlesrc;
 
-				int round;
-				
-				if (pelsize == 3) {
-					round = 3 - literalbytes % 3;
-					if (round == 3)
-						round = 0;
-				} else
-					round = -literalbytes & (pelsize-1);
+				rlesrc += pelsize;
 
-				if (runbytes < round) {
-					literalbytes += runbytes;
-				} else {
-					literalbytes += round;
-					runbytes -= round;
-
-					int q = runbytes / pelsize;
-
-					if (q > 2 || rlesrc >= rlesrcend) {
-						int lq = literalbytes / pelsize;
-
-						while(lq > 128) {
-							*dst++ = 0x7f;
-							memcpy(dst, literalstart, 128*pelsize);
-							dst += 128*pelsize;
-							literalstart += 128*pelsize;
-							lq -= 128;
-						}
-
-						if (lq) {
-							*dst++ = (char)(lq-1);
-							memcpy(dst, literalstart, lq*pelsize);
-							dst += lq*pelsize;
-						}
-
-						literalbytes = runbytes - q*pelsize;
-						literalstart = rlesrc - literalbytes;
-
-						while (q > 128) {
-							*dst++ = (char)0xff;
-							for(int i=0; i<pelsize; ++i)
-								*dst++ = rlesrc[i-runbytes];
-							q -= 128;
-						}
-
-						if (q) {
-							*dst++ = (char)(0x7f + q);
-							for(int i=0; i<pelsize; ++i)
-								*dst++ = rlesrc[i-runbytes];
-						}
-
-					} else {
-						literalbytes += runbytes;
+				do {
+					while(rlesrc < rlesrcend && *rlecompare != *rlesrc) {
+						++rlecompare;
+						++rlesrc;
+						++literalbytes;
 					}
+
+					int runbytes = 0;
+					while(rlesrc < rlesrcend && *rlecompare == *rlesrc) {
+						++rlecompare;
+						++rlesrc;
+						++runbytes;
+					}
+
+					int round;
+					
+					if (pelsize == 3) {
+						round = 3 - literalbytes % 3;
+						if (round == 3)
+							round = 0;
+					} else
+						round = -literalbytes & (pelsize-1);
+
+					if (runbytes < round) {
+						literalbytes += runbytes;
+					} else {
+						literalbytes += round;
+						runbytes -= round;
+
+						int q = runbytes / pelsize;
+
+						if (q > 2 || rlesrc >= rlesrcend) {
+							int lq = literalbytes / pelsize;
+
+							while(lq > 128) {
+								*dst++ = 0x7f;
+								memcpy(dst, literalstart, 128*pelsize);
+								dst += 128*pelsize;
+								literalstart += 128*pelsize;
+								lq -= 128;
+							}
+
+							if (lq) {
+								*dst++ = (char)(lq-1);
+								memcpy(dst, literalstart, lq*pelsize);
+								dst += lq*pelsize;
+							}
+
+							literalbytes = runbytes - q*pelsize;
+							literalstart = rlesrc - literalbytes;
+
+							while (q > 128) {
+								*dst++ = (char)0xff;
+								for(int i=0; i<pelsize; ++i)
+									*dst++ = rlesrc[i-runbytes];
+								q -= 128;
+							}
+
+							if (q) {
+								*dst++ = (char)(0x7f + q);
+								for(int i=0; i<pelsize; ++i)
+									*dst++ = rlesrc[i-runbytes];
+							}
+
+						} else {
+							literalbytes += runbytes;
+						}
+					}
+
+					VDASSERT(rlesrc<rlesrcend || literalbytes <= 0);
+				} while(rlesrc < rlesrcend);
+
+				if (dst >= dstlimit) {
+					hdr.ImgType = 2;
+					break;
 				}
 
-				VDASSERT(rlesrc<rlesrcend || literalbytes <= 0);
-			} while(rlesrc < rlesrcend);
-
-			if (dst >= dstlimit) {
-				hdr.ImgType = 2;
-				break;
+				src += srcpitch;
 			}
-
-			src += srcpitch;
 		}
 
 		mFile.write(&hdr, 18);
 
 		if (hdr.ImgType == 10) {		// RLE
 			mFile.write(dstbase, dst-dstbase);
+		} else if (pelsize == 2) {
+			const char *src = (const char *)pBuffer;
+			for(LONG y=0; y<bih.biHeight; ++y) {
+				CopyRowSetAlpha_X1R15(mpPackBuffer, src, bih.biWidth);
+				mFile.write(mpPackBuffer, pelsize*bih.biWidth);
+
+				src += srcpitch;
+			}
+		} else if (pelsize == 4) {
+			const char *src = (const char *)pBuffer;
+			for(LONG y=0; y<bih.biHeight; ++y) {
+				CopyRowSetAlpha_X8R24(mpPackBuffer, src, bih.biWidth);
+				mFile.write(mpPackBuffer, pelsize*bih.biWidth);
+
+				src += srcpitch;
+			}
 		} else {
-			src = (const char *)pBuffer;
-			for(y=0; y<bih.biHeight; ++y) {
+			const char *src = (const char *)pBuffer;
+			for(LONG y=0; y<bih.biHeight; ++y) {
 				mFile.write(src, pelsize*bih.biWidth);
 
 				src += srcpitch;
@@ -337,7 +372,7 @@ AVIOutputImages::AVIOutputImages(const wchar_t *szFilePrefix, const wchar_t *szF
 	, mFormat(format)
 	, mQuality(quality)
 {
-	VDASSERT(format == kFormatBMP || format == kFormatTGA || format == kFormatJPEG || format == kFormatPNG);
+	VDASSERT(format == kFormatBMP || format == kFormatTGA || format == kFormatTGAUncompressed || format == kFormatJPEG || format == kFormatPNG);
 }
 
 AVIOutputImages::~AVIOutputImages() {
