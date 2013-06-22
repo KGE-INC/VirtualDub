@@ -93,6 +93,7 @@ public:
 	bool SetTargetFormat(const void *format);
 	int GetTargetFormat() { return mFormat; }
 	int GetTargetFormatVariant() { return 0; }
+	const uint32 *GetTargetFormatPalette() { return NULL; }
 	void Start();
 	void Stop();
 	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
@@ -217,6 +218,7 @@ public:
 	bool SetTargetFormat(const void *format);
 	int GetTargetFormat() { return mFormat; }
 	int GetTargetFormatVariant() { return 0; }
+	const uint32 *GetTargetFormatPalette() { return NULL; }
 	void Start();
 	void Stop();
 	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
@@ -646,6 +648,7 @@ public:
 	bool SetTargetFormat(const void *format);
 	int GetTargetFormat() { return mDstFormat; }
 	int GetTargetFormatVariant() { return mDstFormatVariant; }
+	const uint32 *GetTargetFormatPalette() { return NULL; }
 	void Start();
 	void Stop();
 	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
@@ -750,7 +753,7 @@ const wchar_t *VDVideoDecompressorDIB::GetName() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, bool preferInternal) {
+IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, uint32 hdrSize, bool preferInternal) {
 	IVDVideoDecompressor *dec;
 
 	// get a decompressor
@@ -787,7 +790,7 @@ IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBi
 
 	// If we aren't preferring internal decoders, look for an external decoder.
 	if (!preferInternal) {
-		dec = VDFindVideoDecompressor(fccHandler, &hdr);
+		dec = VDFindVideoDecompressor(fccHandler, &hdr, hdrSize);
 		if (dec)
 			return dec;
 	}
@@ -821,7 +824,7 @@ IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBi
 	// if we were asked to use an internal decoder and failed, try external decoders
 	// now
 	if (preferInternal) {
-		dec = VDFindVideoDecompressor(fccHandler, &hdr);
+		dec = VDFindVideoDecompressor(fccHandler, &hdr, hdrSize);
 		if (dec)
 			return dec;
 	}
@@ -1315,7 +1318,7 @@ bool VideoSourceAVI::_construct(int streamIndex) {
 	if (!AllocFrameBuffer(bmih->biWidth * 4 * abs((int)bmih->biHeight) + 4))
 		throw MyMemoryError();
 
-	mpDecompressor = VDFindVideoDecompressorEx(streamInfo.fccHandler, *bmih, use_internal);
+	mpDecompressor = VDFindVideoDecompressorEx(streamInfo.fccHandler, *bmih, format_len, use_internal);
 
 	if (!mpDecompressor) {
 		const char *s = LookupVideoCodec(bmih->biCompression);

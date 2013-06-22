@@ -75,6 +75,9 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 	VDPixmapCreateLinearLayout(bitmap[0].mPixmapLayout, src_format, src_width, src_height, 16);
 
+	if (VDPixmapGetInfo(src_format).palsize > 0)
+		bitmap[0].mPixmapLayout.palette = mPalette;
+
 	if (src_format == nsVDPixmap::kPixFormat_XRGB8888)
 		VDPixmapLayoutFlipV(bitmap[0].mPixmapLayout);
 
@@ -109,7 +112,8 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 		fa->mbInvalidFormatHandling = false;
 
 		// check if we need to blit
-		if (bmLast->mPixmapLayout.format != nsVDPixmap::kPixFormat_XRGB8888 || bmLast->mPixmapLayout.pitch > 0) {
+		if (bmLast->mPixmapLayout.format != nsVDPixmap::kPixFormat_XRGB8888 || bmLast->mPixmapLayout.pitch > 0
+			|| VDPixmapGetInfo(bmLast->mPixmapLayout.format).palsize) {
 			bmTemp = *bmLast;
 			VDPixmapCreateLinearLayout(bmTemp.mPixmapLayout, nsVDPixmap::kPixFormat_XRGB8888, bmLast->w, bmLast->h, 4);
 			VDPixmapLayoutFlipV(bmTemp.mPixmapLayout);
@@ -310,7 +314,7 @@ namespace {
 	}
 }
 
-void FilterSystem::initLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount) {
+void FilterSystem::initLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount) {
 	FilterInstance *fa;
 	long lLastBufPtr = 0;
 	long lRequiredSize;
@@ -331,6 +335,10 @@ void FilterSystem::initLinearChain(List *listFA, uint32 src_width, uint32 src_he
 	// pitches must be a multiple of 8 bytes.  The exceptions are the source
 	// and destination buffers, which may have pitches that are only 4-byte
 	// multiples.
+
+	int palSize = VDPixmapGetInfo(src_format).palsize;
+	if (palette && palSize)
+		memcpy(mPalette, palette, palSize*sizeof(uint32));
 
 	prepareLinearChain(listFA, src_width, src_height, src_format, sourceFrameRate, sourceFrameCount);
 

@@ -1,10 +1,21 @@
 #include <numeric>
+#include "blt_spanutils_x86.h"
 #include "resample_stages_x86.h"
 #include "resample_kernels.h"
 
 #ifdef _MSC_VER
 	#pragma warning(disable: 4799)		// warning C4799: function 'vdasm_resize_table_row_8_k8_4x_MMX' has no EMMS instruction
 #endif
+
+///////////////////////////////////////////////////////////////////////////////
+
+extern "C" void vdasm_resize_table_row_8_k8_4x_SSE41(void *dst, const void *src, uint32 width, const void *kernel);
+extern "C" void vdasm_resize_table_row_8_k16_4x_SSE41(void *dst, const void *src, uint32 width, const void *kernel);
+extern "C" void vdasm_resize_table_row_8_SSE41(void *dst, const void *src, uint32 width, const void *kernel, uint32 kwidth);
+extern "C" void vdasm_resize_table_col_8_k2_SSE41(void *dst, const void *const *srcs, uint32 width, const void *kernel);
+extern "C" void vdasm_resize_table_col_8_k4_SSE41(void *dst, const void *const *srcs, uint32 width, const void *kernel);
+
+///////////////////////////////////////////////////////////////////////////////
 
 namespace {
 	struct ScaleInfo {
@@ -32,6 +43,17 @@ void VDResamplerSeparablePointRowStageX86::Process(void *dst, const void *src, u
 
 	vdasm_resize_point32(&info);
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+void VDResamplerRowStageSeparableLinear8_phaseZeroStepHalf_ISSE::Process(void *dst0, const void *src0, uint32 w, uint32 u, uint32 dudx) {
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *src = (const uint8 *)src0;
+
+	nsVDPixmapSpanUtils::horiz_expand2x_coaligned_ISSE(dst, src, w);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 extern "C" void vdasm_resize_point32_MMX(const ScaleInfo *);
 extern "C" void vdasm_resize_interp_row_run_MMX(void *dst, const void *src, uint32 width, sint64 xaccum, sint64 x_inc);
@@ -564,10 +586,12 @@ void VDResamplerSeparableTableRowStage8MMX::Process(void *dst, const void *src, 
 #else
 	int ksize = mKernelSizeByOffset[byteOffset];
 	if (mbQuadOptimizationEnabled[byteOffset]) {
-		if (ksize == 12)
-			vdasm_resize_table_row_8_k12_4x_MMX(dst, src, w >> 2, ksrc);
-		else
-			vdasm_resize_table_row_8_k8_4x_MMX(dst, src, w >> 2, ksrc);
+		if (w >= 4) {
+			if (ksize == 12)
+				vdasm_resize_table_row_8_k12_4x_MMX(dst, src, w >> 2, ksrc);
+			else
+				vdasm_resize_table_row_8_k8_4x_MMX(dst, src, w >> 2, ksrc);
+		}
 
 		if (w & 3)
 			vdasm_resize_table_row_8_MMX((char *)dst + (w & ~3), src, w & 3, ksrc + mTailOffset[byteOffset], ksize);
@@ -891,4 +915,260 @@ VDResamplerSeparableTableColStageSSE2::VDResamplerSeparableTableColStageSSE2(con
 
 void VDResamplerSeparableTableColStageSSE2::Process(void *dst, const void *const *src, uint32 w, sint32 phase) {
 	vdasm_resize_table_col_SSE2((uint32*)dst, (const uint32 *const *)src, (const int *)mFilterBank.data(), (int)mFilterBank.size() >> 8, w, (phase >> 8) & 0xff);
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+// resampler stages (SSE4.1, x86)
+//
+///////////////////////////////////////////////////////////////////////////
+
+VDResamplerSeparableTableRowStage8SSE41::VDResamplerSeparableTableRowStage8SSE41(const IVDResamplerFilter& filter)
+	: VDResamplerRowStageSeparableTable32(filter)
+	, mLastSrcWidth(0)
+	, mLastDstWidth(0)
+	, mLastU(0)
+	, mLastDUDX(0)
+{
+	mAlignedKernelWidth = (GetWindowSize() + 15) & ~7;
+	mAlignedKernelSize = mAlignedKernelWidth + 16;
+}
+
+void VDResamplerSeparableTableRowStage8SSE41::Init(const VDResamplerAxis& axis, uint32 srcw) {
+	uint32 w = axis.dx_preclip + axis.dx_active + axis.dx_postclip + axis.dx_dualclip;
+
+	if (mLastSrcWidth != srcw || mLastDstWidth != w || mLastU != axis.u || mLastDUDX != axis.dudx) {
+		mLastSrcWidth	= srcw;
+		mLastDstWidth	= w;
+		mLastU			= axis.u;
+		mLastDUDX		= axis.dudx;
+
+		RedoRowFilters(axis, w, srcw);
+	}
+}
+
+void VDResamplerSeparableTableRowStage8SSE41::RedoRowFilters(const VDResamplerAxis& axis, uint32 w, uint32 srcw) {
+	int kstride = mFilterBank.size() >> 8;
+	int ksize = mAlignedKernelWidth;
+	int kesize = mAlignedKernelSize;
+
+	mRowKernels.clear();
+	mRowKernelSize = w * kesize;
+
+	mRowKernels.resize(mRowKernelSize * 8, 0);
+
+	for(int byteOffset = 0; byteOffset < 8; ++byteOffset) {
+		sint16 *dst = mRowKernels.data() + mRowKernelSize * byteOffset;
+		int ksizeThisOffset = std::min<int>(ksize, (byteOffset + srcw + 7) & ~7);
+
+		mKernelSizeByOffset[byteOffset] = ksizeThisOffset;
+
+		sint32 u = axis.u;
+		sint32 uoffmin = -byteOffset;
+		sint32 uoffmax = ((srcw - 1 + byteOffset) & ~7) - byteOffset;
+		for(uint32 i=0; i<w; ++i) {
+			sint32 uoffset = u >> 16;
+			sint32 uoffset2 = ((uoffset + byteOffset) & ~7) - byteOffset;
+
+			if (uoffset2 < uoffmin)
+				uoffset2 = uoffmin;
+
+			if (uoffset2 > uoffmax)
+				uoffset2 = uoffmax;
+
+			*(sint32 *)dst = uoffset2;
+			dst += 2;
+			*dst++ = 0;
+			*dst++ = 0;
+			*dst++ = 0;
+			*dst++ = 0;
+			*dst++ = 0;
+			*dst++ = 0;
+
+			uint32 phase = (u >> 8) & 255;
+			const sint32 *src = &mFilterBank[kstride * phase];
+
+			sint32 start = 0;
+			sint32 end = kstride;
+
+			int dstoffset = uoffset - uoffset2;
+
+			// check for filter kernel overlapping left source boundary
+			if (uoffset < 0)
+				start = -uoffset;
+
+			// check for filter kernel overlapping right source boundary
+			if (uoffset + end > (sint32)srcw)
+				end = srcw - uoffset;
+
+			VDASSERT(dstoffset + start >= 0);
+			VDASSERT(dstoffset + end <= ksizeThisOffset);
+
+			sint16 *dst2 = dst + dstoffset;
+			dst += ksizeThisOffset;
+
+			for(int j=start; j<end; ++j)
+				dst2[j] = src[j];
+
+			if (start > 0)
+				dst2[start] = std::accumulate(src, src+start, dst2[start]);
+
+			if (end < kstride)
+				dst2[end - 1] = std::accumulate(src+end, src+kstride, dst2[end - 1]);
+
+			u += axis.dudx;
+		}
+	}
+
+	// swizzle rows where optimization is possible
+	vdfastvector<sint16> temp;
+
+	int quads = w >> 2;
+	int quadRemainder = w & 3;
+
+	for(int byteOffset = 0; byteOffset < 8; ++byteOffset) {
+		int ksizeThisOffset = mKernelSizeByOffset[byteOffset];
+		int kpairs = ksizeThisOffset >> 3;
+
+		if (ksizeThisOffset < 8 || ksizeThisOffset > 16) {
+			mbQuadOptimizationEnabled[byteOffset] = false;
+		} else {
+			ptrdiff_t unswizzledStride = (ksizeThisOffset >> 1) + 4;
+
+			mbQuadOptimizationEnabled[byteOffset] = true;
+			mTailOffset[byteOffset] = quads * (8 + ksizeThisOffset*4);
+
+			uint32 *dst = (uint32 *)&mRowKernels[mRowKernelSize * byteOffset];
+			temp.resize(mRowKernelSize);
+			memcpy(temp.data(), dst, mRowKernelSize*2);
+
+			const uint32 *src0 = (const uint32 *)temp.data();
+			const uint32 *src1 = src0 + unswizzledStride;
+			const uint32 *src2 = src1 + unswizzledStride;
+			const uint32 *src3 = src2 + unswizzledStride;
+			ptrdiff_t srcskip = unswizzledStride * 3;
+
+			for(int q = 0; q < quads; ++q) {
+				dst[0] = src0[0];
+				dst[1] = src1[0];
+				dst[2] = src2[0];
+				dst[3] = src3[0];
+				src0 += 4;
+				src1 += 4;
+				src2 += 4;
+				src3 += 4;
+				dst += 4;
+
+				for(int p = 0; p < kpairs; ++p) {
+					dst[ 0] = src0[0];
+					dst[ 1] = src0[1];
+					dst[ 2] = src0[2];
+					dst[ 3] = src0[3];
+					dst[ 4] = src1[0];
+					dst[ 5] = src1[1];
+					dst[ 6] = src1[2];
+					dst[ 7] = src1[3];
+					dst[ 8] = src2[0];
+					dst[ 9] = src2[1];
+					dst[10] = src2[2];
+					dst[11] = src2[3];
+					dst[12] = src3[0];
+					dst[13] = src3[1];
+					dst[14] = src3[2];
+					dst[15] = src3[3];
+					dst += 16;
+					src0 += 4;
+					src1 += 4;
+					src2 += 4;
+					src3 += 4;
+				}
+
+				src0 += srcskip;
+				src1 += srcskip;
+				src2 += srcskip;
+				src3 += srcskip;
+			}
+
+			memcpy(dst, src0, unswizzledStride * 4 * quadRemainder);
+		}
+	}
+}
+
+void VDResamplerSeparableTableRowStage8SSE41::Process(void *dst, const void *src, uint32 w) {
+	int byteOffset = (int)(ptrdiff_t)src & 7;
+	const sint16 *ksrc = &mRowKernels[mRowKernelSize * byteOffset];
+
+	int ksize = mKernelSizeByOffset[byteOffset];
+	if (mbQuadOptimizationEnabled[byteOffset]) {
+		if (w >= 4) {
+			if (ksize == 16)
+				vdasm_resize_table_row_8_k16_4x_SSE41(dst, src, w >> 2, ksrc);
+			else
+				vdasm_resize_table_row_8_k8_4x_SSE41(dst, src, w >> 2, ksrc);
+		}
+
+		if (w & 3)
+			vdasm_resize_table_row_8_SSE41((char *)dst + (w & ~3), src, w & 3, ksrc + mTailOffset[byteOffset], ksize);
+	} else {
+		vdasm_resize_table_row_8_SSE41(dst, src, w, ksrc, ksize);
+	}
+}
+
+void VDResamplerSeparableTableRowStage8SSE41::Process(void *dst, const void *src, uint32 w, uint32 u, uint32 dudx) {
+	vdasm_resize_table_row_MMX((uint32 *)dst, (const uint32 *)src, (const int *)mFilterBank.data(), (int)mFilterBank.size() >> 8, w, u, dudx);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDResamplerSeparableTableColStage8SSE41::VDResamplerSeparableTableColStage8SSE41(const IVDResamplerFilter& filter)
+	: VDResamplerColStageSeparableTable8(filter)
+{
+	VDResamplerSwizzleTable(mFilterBank.data(), (unsigned)mFilterBank.size() >> 1);
+}
+
+void VDResamplerSeparableTableColStage8SSE41::Process(void *dst0, const void *const *src0, uint32 w, sint32 phase) {
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *const *src = (const uint8 *const *)src0;
+	const unsigned ksize = (unsigned)mFilterBank.size() >> 8;
+	const sint16 *filter = (const sint16 *)&mFilterBank[((phase>>8)&0xff) * ksize];
+
+	int w4 = w & ~3;
+
+	switch(ksize) {
+		case 2:
+			vdasm_resize_table_col_8_k2_SSE41(dst, (const void *const *)src, w4, filter);
+			break;
+
+		case 4:
+			vdasm_resize_table_col_8_k4_SSE41(dst, (const void *const *)src, w4, filter);
+			break;
+
+		default:
+			vdasm_resize_table_col_8_MMX(dst, (const void *const *)src, w4, filter, ksize);
+			break;
+	}
+
+	for(uint32 i=w4; i<w; ++i) {
+		int b = 0x2000;
+		const sint16 *filter2 = filter;
+		const uint8 *const *src2 = src;
+
+		for(unsigned j = ksize; j; j -= 2) {
+			sint32 p0 = (*src2++)[i];
+			sint32 p1 = (*src2++)[i];
+			sint32 coeff0 = filter2[0];
+			sint32 coeff1 = filter2[1];
+			filter2 += 4;
+
+			b += p0*coeff0;
+			b += p1*coeff1;
+		}
+
+		b >>= 14;
+
+		if ((uint32)b >= 0x00000100)
+			b = ~b >> 31;
+
+		dst[i] = (uint8)b;
+	}
 }

@@ -6,6 +6,66 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //
+//	16-bit crossconverters
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+class VDPixmapGen_X1R5G5B5_To_R5G6B5 : public VDPixmapGenWindowBasedOneSourceSimple {
+public:
+	void Start() {
+		StartWindow(mWidth * 2);
+	}
+
+	uint32 GetType(uint32 output) const {
+		return (mpSrc->GetType(mSrcIndex) & ~kVDPixType_Mask) | kVDPixType_565_LE;
+	}
+
+protected:
+	virtual void Compute(void *dst0, sint32 y) {
+		uint16 *dst = (uint16 *)dst0;
+		const uint16 *src = (const uint16 *)mpSrc->GetRow(y, mSrcIndex);
+		sint32 w = mWidth;
+
+		for(sint32 i=0; i<w; ++i) {
+			uint32 px = src[i];
+
+			px += (px & 0x7fe0);
+			px += (px & 0x400) >> 5;
+
+			dst[i] = (uint16)px;
+		}
+	}
+};
+
+class VDPixmapGen_R5G6B5_To_X1R5G5B5 : public VDPixmapGenWindowBasedOneSourceSimple {
+public:
+	void Start() {
+		StartWindow(mWidth * 2);
+	}
+
+	uint32 GetType(uint32 output) const {
+		return (mpSrc->GetType(mSrcIndex) & ~kVDPixType_Mask) | kVDPixType_8888;
+	}
+
+protected:
+	void Compute(void *dst0, sint32 y) {
+		uint16 *dst = (uint16 *)dst0;
+		const uint16 *src = (const uint16 *)mpSrc->GetRow(y, mSrcIndex);
+		sint32 w = mWidth;
+
+		for(sint32 i=0; i<w; ++i) {
+			uint32 px = src[i];
+
+			px &= 0xffdf;
+			px -= (px & 0xffc0) >> 1;
+
+			dst[i] = (uint16)px;
+		}
+	}
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
 //	32-bit upconverters
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -21,7 +81,7 @@ public:
 	}
 
 protected:
-	void Compute(void *dst0, sint32 y) {
+	virtual void Compute(void *dst0, sint32 y) {
 		uint32 *dst = (uint32 *)dst0;
 		const uint16 *src = (const uint16 *)mpSrc->GetRow(y, mSrcIndex);
 		sint32 w = mWidth;
@@ -506,6 +566,44 @@ protected:
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //
+//	generic converters
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+class VDPixmapGen_Swap8In16 : public VDPixmapGenWindowBasedOneSource {
+public:
+	void Init(IVDPixmapGen *gen, int srcIndex, uint32 w, uint32 h, uint32 bpr) {
+		InitSource(gen, srcIndex);
+		mRowLength = bpr;
+		SetOutputSize(w, h);
+		gen->AddWindowRequest(0, 0);
+	}
+
+	void Start() {
+		StartWindow(mRowLength);
+	}
+
+	uint32 GetType(uint32 index) const {
+		return mpSrc->GetType(mSrcIndex);
+	}
+
+protected:
+	void Compute(void *dst0, sint32 y) {
+		const uint8 *src = (const uint8 *)mpSrc->GetRow(y, mSrcIndex);
+		uint8 *dst = (uint8 *)dst0;
+		sint32 w = mRowLength;
+		for(sint32 x=0; x < w-1; x += 2) {
+			dst[0] = src[1];
+			dst[1] = src[0];
+			src += 2;
+			dst += 2;
+		}
+	}
+
+	uint32 mRowLength;
+};
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
 //	32F upconverters
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -522,11 +620,11 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		float *dst = (float *)dst0;
 		const uint8 *src = (const uint8 *)mpSrc->GetRow(y, mSrcIndex);
 		sint32 w = mWidth;
+
+		VDCPUCleanupExtensions();
 
 		for(sint32 i=0; i<w; ++i)
 			*dst++ = (float)*src++ * (1.0f / 255.0f);
@@ -545,11 +643,11 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		float *dst = (float *)dst0;
 		const uint8 *src = (const uint8 *)mpSrc->GetRow(y, mSrcIndex);
 		sint32 w = mWidth;
+
+		VDCPUCleanupExtensions();
 
 		for(sint32 i=0; i<w; ++i) {
 			dst[0] = (float)src[2] * (1.0f / 255.0f);
@@ -580,11 +678,11 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		uint8 *dst = (uint8 *)dst0;
 		const float *src = (const float *)mpSrc->GetRow(y, mSrcIndex);
 		sint32 w = mWidth;
+
+		VDCPUCleanupExtensions();
 
 		for(sint32 i=0; i<w; ++i) {
 			float b = *src++;
@@ -608,10 +706,10 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		uint8 *dst = (uint8 *)dst0;
 		const float *src = (const float *)mpSrc->GetRow(y, mSrcIndex);
+		VDCPUCleanupExtensions();
+
 		sint32 w = mWidth;
 
 #define X(v) ((v) - 0x49400000)
@@ -658,10 +756,11 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		uint32 *dst = (uint32 *)dst0;
 		const float *src = (const float *)mpSrc->GetRow(y, mSrcIndex);
+
+		VDCPUCleanupExtensions();
+
 		sint32 w = mWidth;
 
 		for(sint32 i=0; i<w; ++i) {
@@ -691,10 +790,11 @@ public:
 
 protected:
 	void Compute(void *dst0, sint32 y) {
-		VDCPUCleanupExtensions();
-
 		uint32 *dst = (uint32 *)dst0;
 		const float *src = (const float *)mpSrc->GetRow(y, mSrcIndex);
+
+		VDCPUCleanupExtensions();
+
 		sint32 w = mWidth;
 
 #define X(v) ((v) - 0x49400000)

@@ -5,22 +5,8 @@
 #pragma once
 #endif
 
-#define VDZCALLBACK __stdcall
-
-#ifndef _WIN64
-	typedef __w64 int		VDZINT_PTR;
-	typedef __w64 unsigned	VDZUINT_PTR;
-	typedef __w64 long		VDZLONG_PTR;
-#else
-	typedef __int64				VDZINT_PTR;
-	typedef unsigned __int64	VDZUINT_PTR;
-	typedef __int64				VDZLONG_PTR;
-#endif
-
-typedef struct HWND__	*VDZHWND;
-typedef unsigned		VDZUINT;
-typedef VDZUINT_PTR		VDZWPARAM;
-typedef VDZLONG_PTR		VDZLPARAM;
+#include <vd2/system/vdstl.h>
+#include <vd2/system/win32/miniwindows.h>
 
 class VDDialogFrameW32 {
 public:
@@ -71,10 +57,14 @@ protected:
 	virtual bool OnLoaded();
 	virtual bool OnOK();
 	virtual bool OnCancel();
+	virtual void OnSize();
+	virtual void OnDestroy();
+	virtual bool OnTimer(uint32 id);
 	virtual bool OnCommand(uint32 id, uint32 extcode);
 	virtual bool PreNCDestroy();
 
 	bool	mbValidationFailed;
+	bool	mbIsModal;
 	VDZHWND	mhdlg;
 
 private:
@@ -82,6 +72,61 @@ private:
 
 	const char *mpDialogResourceName;
 	uint32	mFailedId;
+};
+
+class VDDialogResizerW32 {
+public:
+	VDDialogResizerW32();
+	~VDDialogResizerW32();
+
+	enum {
+		kAnchorX	= 0x01,
+		kAnchorW	= 0x02,
+		kAnchorY	= 0x04,
+		kAnchorH	= 0x08,
+
+		kL		= 0,
+		kC		= kAnchorW,
+		kR		= kAnchorX,
+		kHMask	= 0x03,
+
+		kT		= 0,
+		kM		= kAnchorH,
+		kB		= kAnchorY,
+		kVMask	= 0x0C,
+
+		kTL		= kT | kL,
+		kTR		= kT | kR,
+		kTC		= kT | kC,
+		kML		= kM | kL,
+		kMR		= kM | kR,
+		kMC		= kM | kC,
+		kBL		= kB | kL,
+		kBR		= kB | kR,
+		kBC		= kB | kC,
+	};
+
+	void Init(VDZHWND hwnd);
+	void Relayout();
+	void Relayout(int width, int height);
+	void Add(uint32 id, int alignment);
+
+protected:
+	struct ControlEntry {
+		VDZHWND	mhwnd;
+		int		mAlignment;
+		sint32	mX;
+		sint32	mY;
+		sint32	mW;
+		sint32	mH;
+	};
+
+	VDZHWND	mhwndBase;
+	int		mWidth;
+	int		mHeight;
+
+	typedef vdfastvector<ControlEntry> Controls;
+	Controls mControls;
 };
 
 #endif

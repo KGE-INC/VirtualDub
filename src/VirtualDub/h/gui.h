@@ -47,7 +47,7 @@ void VDInstallModelessDialogHookW32();
 void VDDeinstallModelessDialogHookW32();
 
 void VDUISaveWindowPlacementW32(HWND hwnd, const char *name);
-void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name);
+void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name, int nCmdShow);
 void VDUISaveListViewColumnsW32(HWND hwnd, const char *name);
 void VDUIRestoreListViewColumnsW32(HWND hwnd, const char *name);
 

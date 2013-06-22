@@ -461,6 +461,8 @@ INT_PTR VDDialogAudioFiltersW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						}
 						break;
 					case PCN_THUMBPOSITION:
+					case PCN_THUMBPOSITIONPREV:
+					case PCN_THUMBPOSITIONNEXT:
 						if (mbPreviewActive)
 							mPreview.Seek(mpPosition->GetPosition() * 1000);
 						break;

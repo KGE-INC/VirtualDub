@@ -544,6 +544,18 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\TestSynchronization.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\TestUberblit.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\TestUberblitPerf.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\TestVector.cpp"
 				>
 			</File>

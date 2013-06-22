@@ -560,7 +560,9 @@ void VDFontRendererD3D9::End() {
 	#pragma warning(disable: 4584)		// warning C4584: 'VDVideoDisplayDX9Manager' : base-class 'vdlist_node' is already a base-class of 'VDD3D9Client'
 #endif
 
-class VDVideoDisplayDX9Manager : public IVDVideoDisplayDX9Manager, public VDD3D9Client, public vdlist_node {
+struct VDVideoDisplayDX9ManagerNode : public vdlist_node {};
+
+class VDVideoDisplayDX9Manager : public IVDVideoDisplayDX9Manager, public VDD3D9Client, public VDVideoDisplayDX9ManagerNode {
 public:
 	struct EffectContext {
 		IDirect3DTexture9 *mpSourceTexture1;
@@ -576,6 +578,7 @@ public:
 		uint32 mInterpHTexH;
 		uint32 mInterpVTexW;
 		uint32 mInterpVTexH;
+		float mFieldOffset;
 	};
 
 	VDVideoDisplayDX9Manager(VDThreadID tid);
@@ -632,19 +635,19 @@ protected:
 ///////////////////////////////////////////////////////////////////////////
 
 static VDCriticalSection g_csVDDisplayDX9Managers;
-static vdlist<VDVideoDisplayDX9Manager> g_VDDisplayDX9Managers;
+static vdlist<VDVideoDisplayDX9ManagerNode> g_VDDisplayDX9Managers;
 
 bool VDInitDisplayDX9(VDVideoDisplayDX9Manager **ppManager) {
 	VDVideoDisplayDX9Manager *pMgr = NULL;
 	bool firstClient = false;
 
 	vdsynchronized(g_csVDDisplayDX9Managers) {
-		vdlist<VDVideoDisplayDX9Manager>::iterator it(g_VDDisplayDX9Managers.begin()), itEnd(g_VDDisplayDX9Managers.end());
+		vdlist<VDVideoDisplayDX9ManagerNode>::iterator it(g_VDDisplayDX9Managers.begin()), itEnd(g_VDDisplayDX9Managers.end());
 
 		VDThreadID tid = VDGetCurrentThreadID();
 
 		for(; it != itEnd; ++it) {
-			VDVideoDisplayDX9Manager *mgr = *it;
+			VDVideoDisplayDX9Manager *mgr = static_cast<VDVideoDisplayDX9Manager *>(*it);
 
 			if (mgr->GetThreadId() == tid) {
 				pMgr = mgr;
@@ -1086,8 +1089,9 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		float t2vpcorrect[4];		// (temp2 vp correction)	2/tvpwidth, 2/tvpheight, -1/tvpheight, 1/tvpwidth
 		float t2vpcorrect2[4];		// (temp2 vp correction)	2/tvpwidth, -2/tvpheight, 1+1/tvpheight, -1-1/tvpwidth
 		float time[4];				// (time)
-		float interphtexsize[4];	// (time)
-		float interpvtexsize[4];	// (time)
+		float interphtexsize[4];	// (cubic htex interp info)
+		float interpvtexsize[4];	// (cubic vtex interp info)
+		float fieldinfo[4];			// (field information)		fieldoffset, -fieldoffset/4, und, und
 	};
 
 	static const struct StdParam {
@@ -1109,6 +1113,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		offsetof(StdParamData, time),
 		offsetof(StdParamData, interphtexsize),
 		offsetof(StdParamData, interpvtexsize),
+		offsetof(StdParamData, fieldinfo),
 	};
 
 	StdParamData data;
@@ -1173,6 +1178,10 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 	data.interpvtexsize[1] = (float)ctx.mInterpVTexH;
 	data.interpvtexsize[2] = ctx.mInterpVTexH ? 1.0f / (float)ctx.mInterpVTexH : 0.0f;
 	data.interpvtexsize[3] = ctx.mInterpVTexW ? 1.0f / (float)ctx.mInterpVTexW : 0.0f;
+	data.fieldinfo[0] = ctx.mFieldOffset;
+	data.fieldinfo[1] = ctx.mFieldOffset * -0.25f;
+	data.fieldinfo[2] = 0.0f;
+	data.fieldinfo[3] = 0.0f;
 
 	uint32 t = VDGetAccurateTick();
 	data.time[0] = (t % 1000) / 1000.0f;
@@ -1421,7 +1430,7 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 			const float ustep = 1.0f / (float)(int)ctx.mSourceTexW;
 			const float vstep = 1.0f / (float)(int)ctx.mSourceTexH;
 			const float u0 = 0.0f;
-			const float v0 = 0.0f;
+			const float v0 = pi.mbClipPosition ? ctx.mFieldOffset * vstep * -0.25f : 0.0f;
 			const float u1 = u0 + (int)ctx.mSourceW * ustep;
 			const float v1 = v0 + (int)ctx.mSourceH * vstep;
 
@@ -1971,7 +1980,7 @@ protected:
 	bool InitBicubicPS2Filters(int w, int h);
 	void ShutdownBicubicPS2Filters();
 
-	bool UpdateBackbuffer(const RECT& rClient);
+	bool UpdateBackbuffer(const RECT& rClient, UpdateMode updateMode);
 	bool UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling);
 
 	HWND				mhwnd;
@@ -2435,13 +2444,13 @@ void VDVideoDisplayMinidriverDX9::Refresh(UpdateMode mode) {
 }
 
 bool VDVideoDisplayMinidriverDX9::Paint(HDC, const RECT& rClient, UpdateMode updateMode) {
-	return (mbSwapChainImageValid || UpdateBackbuffer(rClient)) && UpdateScreen(rClient, updateMode, 0 != (updateMode & kModeVSync));
+	return (mbSwapChainImageValid || UpdateBackbuffer(rClient, updateMode)) && UpdateScreen(rClient, updateMode, 0 != (updateMode & kModeVSync));
 }
 
 void VDVideoDisplayMinidriverDX9::SetLogicalPalette(const uint8 *pLogicalPalette) {
 }
 
-bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0) {
+bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateMode updateMode) {
 	int rtw = mpManager->GetMainRTWidth();
 	int rth = mpManager->GetMainRTHeight();
 	RECT rClient = rClient0;
@@ -2536,6 +2545,12 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0) {
 	ctx.mInterpHTexH = 1;
 	ctx.mInterpVTexW = 1;
 	ctx.mInterpVTexH = 1;
+	ctx.mFieldOffset = 0.0f;
+
+	if (updateMode & kModeBobEven)
+		ctx.mFieldOffset = -1.0f;
+	else if (updateMode & kModeBobOdd)
+		ctx.mFieldOffset = +1.0f;
 
 	vdrefptr<IDirect3DSurface9> pRTMain;
 

@@ -36,7 +36,8 @@
 #define CPUF_SUPPORTS_3DNOW_EXT		(0x00000080L)
 #define CPUF_SUPPORTS_SSE3			(0x00000100L)
 #define CPUF_SUPPORTS_SSSE3			(0x00000200L)
-#define CPUF_SUPPORTS_MASK			(0x000003FFL)
+#define CPUF_SUPPORTS_SSE41			(0x00000400L)
+#define CPUF_SUPPORTS_MASK			(0x000007FFL)
 
 long CPUCheckForExtensions();
 long CPUEnableExtensions(long lEnableFlags);

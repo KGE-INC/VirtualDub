@@ -1,18 +1,31 @@
-		.686
-		.mmx
-		.model	flat
+;	VirtualDub - Video processing and capture application
+;	A/V interface library	
+;	Copyright (C) 1998-2008 Avery Lee
+;
+;	This program is free software; you can redistribute it and/or modify
+;	it under the terms of the GNU General Public License as published by
+;	the Free Software Foundation; either version 2 of the License, or
+;	(at your option) any later version.
+;
+;	This program is distributed in the hope that it will be useful,
+;	but WITHOUT ANY WARRANTY; without even the implied warranty of
+;	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;	GNU General Public License for more details.
+;
+;	You should have received a copy of the GNU General Public License
+;	along with this program; if not, write to the Free Software
+;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 		extern		_gVDCaptureAudioResamplingKernel : near
 
-		assume		fs:_DATA
-
-		.const
+	segment	.rdata, align=16
 
 rounder	dd			00002000h
 
-		.code
+	segment	.text
 
-_vdasm_capture_resample16_MMX	proc	near public
+	global	_vdasm_capture_resample16_MMX
+_vdasm_capture_resample16_MMX:
 
 		push		ebp
 		push		edi
@@ -30,12 +43,12 @@ _vdasm_capture_resample16_MMX	proc	near public
 		mov			ebx, [esp+32+16]	;ebx = integer increment
 
 		push		0
-		push		fs:dword ptr [0]
-		mov			fs:dword ptr [0], esp
+		push		dword [fs:0]
+		mov			dword [fs:0], esp
 
 		mov			esp, [esp+28+24]	;esp = fractional increment
 
-		movd		mm6, rounder
+		movd		mm6, [rounder]
 
 		;eax		loop counter
 		;ebx		integer increment
@@ -49,7 +62,7 @@ _vdasm_capture_resample16_MMX	proc	near public
 		mov			edi, esi
 		shr			edi, 23
 		and			edi, 1f0h
-		add			edi, offset _gVDCaptureAudioResamplingKernel
+		add			edi, _gVDCaptureAudioResamplingKernel
 
 xloop:
 		movq		mm0, [ecx+ecx]
@@ -72,13 +85,13 @@ xloop:
 		shr			edi, 23
 		add			edx, ebp
 		and			edi, 1f0h
-		add			edi, offset _gVDCaptureAudioResamplingKernel
+		add			edi, _gVDCaptureAudioResamplingKernel
 
 		sub			eax, 1
 		jne			xloop
 
-		mov			esp, fs:dword ptr [0]
-		pop			fs:dword ptr [0]
+		mov			esp, dword [fs:0]
+		pop			dword [fs:0]
 		pop			eax
 
 		emms
@@ -88,6 +101,5 @@ xloop:
 		pop			ebp
 		ret
 
-_vdasm_capture_resample16_MMX	endp
 
 		end

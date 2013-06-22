@@ -311,7 +311,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 		double kbPerFrame = (double)kilobytes / (double)pvinfo->processed;
 		double framesPerSecond = pvinfo->frameRate.asDouble();
 
-		sprintf(s, " (%3ldKB/s)", VDRoundToInt(kbPerFrame / framesPerSecond));
+		sprintf(s, " (%3ldKB/s)", VDRoundToInt(kbPerFrame * framesPerSecond));
 	}
 
 	SetDlgItemText(hWnd, IDC_CURRENT_VSIZE, buf);

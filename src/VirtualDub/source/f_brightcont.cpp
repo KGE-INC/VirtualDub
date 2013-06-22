@@ -51,14 +51,55 @@ extern "C" void asm_brightcont2_run(
 ///////////////////////////////////
 
 struct MyFilterData {
-	LONG bright;
-	LONG cont;
+	sint32 bright;
+	sint32 cont;
 	IFilterPreview *ifp;
+
+	uint8	mLookup[256];
+
+	void RedoTables();
 };
+
+void MyFilterData::RedoTables() {
+	for(int i=0; i<256; ++i) {
+		int y = ((i * cont) >> 4) + bright;
+
+		if (y < 0)
+			y = 0;
+		else if (y > 255)
+			y = 255;
+
+		mLookup[i] = (uint8)y;
+	}
+}
+
+#ifndef _M_IX86
+static void brightcont_run_trans(
+		void *dst,
+		uint32 width,
+		uint32 height,
+		ptrdiff_t pitch,
+		const uint8 tab[256])
+{
+	do {
+		uint8 *p = (uint8 *)dst;
+
+		for(uint32 x=0; x<width; ++x) {
+			p[0] = tab[p[0]];
+			p[1] = tab[p[1]];
+			p[2] = tab[p[2]];
+			p += 4;
+		}
+
+		dst = (char *)dst + pitch;
+	} while(--height);
+}
+#endif
 
 int brightcont_run(const FilterActivation *fa, const FilterFunctions *ff) {	
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
+#if _M_IX86
 	if (mfd->bright>=0)
 		asm_brightcont2_run(
 				fa->src.data,
@@ -79,6 +120,22 @@ int brightcont_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				(-mfd->bright)*0x00100010L,
 				(-mfd->bright)*0x00001000L
 				);
+#else
+	brightcont_run_trans(
+			fa->src.data,
+			fa->src.w,
+			fa->src.h,
+			fa->src.pitch,
+			mfd->mLookup);
+#endif
+
+	return 0;
+}
+
+static int brightcont_start(FilterActivation *fa, const FilterFunctions *ff) {
+	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+
+	mfd->RedoTables();
 
 	return 0;
 }
@@ -135,18 +192,18 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				mfd->cont = SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_GETPOS, 0, 0);
 
 				EndDialog(hDlg, true);
-				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				SetWindowLong(hDlg, DWLP_MSGRESULT, 0);
 				return TRUE;
 			} else if (LOWORD(wParam) == IDCANCEL) {
                 EndDialog(hDlg, false);
-				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				SetWindowLong(hDlg, DWLP_MSGRESULT, 0);
                 return TRUE;
 			} else if (LOWORD(wParam) == IDC_PREVIEW) {
 				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 				if (mfd->ifp)
 					mfd->ifp->Toggle((VDXHWND)hDlg);
 
-				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				SetWindowLong(hDlg, DWLP_MSGRESULT, 0);
 				return TRUE;
             }
             break;
@@ -162,21 +219,25 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 					if (mfd->bright != bright) {
 						mfd->bright = bright;
 
-						if (mfd->ifp)
+						if (mfd->ifp) {
+							mfd->RedoTables();
 							mfd->ifp->RedoFrame();
+						}
 					}
 				} else if (id == IDC_CONTRAST) {
 					int cont = SendMessage(hwndScroll, TBM_GETPOS, 0, 0);
 					if (mfd->cont != cont) {
 						mfd->cont = cont;
 
-						if (mfd->ifp)
+						if (mfd->ifp) {
+							mfd->RedoTables();
 							mfd->ifp->RedoFrame();
+						}
 					}
 				}
 					
 
-				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				SetWindowLong(hDlg, DWLP_MSGRESULT, 0);
 				return TRUE;
 			}
 			break;
@@ -241,7 +302,7 @@ FilterDefinition filterDef_brightcont={
 	brightcont_param,
 	brightcont_config,
 	brightcont_string,
-	NULL,
+	brightcont_start,
 	NULL,
 	&brightcont_obj,
 	brightcont_script_line,

@@ -82,6 +82,28 @@ void VDSetWindowTextW32(HWND hwnd, const wchar_t *s) {
 	}
 }
 
+void VDSetWindowTextFW32(HWND hwnd, const wchar_t *format, ...) {
+	va_list val;
+
+	va_start(val, format);
+	{
+		wchar_t buf[512];
+		int r = vswprintf(buf, 512, format, val);
+
+		if ((unsigned)r < 512) {
+			VDSetWindowTextW32(hwnd, buf);
+			va_end(val);
+			return;
+		}
+	}
+
+	VDStringW s;
+	s.append_vsprintf(format, val);
+	VDSetWindowTextW32(hwnd, s.c_str());
+
+	va_end(val);
+}
+
 VDStringW VDGetWindowTextW32(HWND hwnd) {
 	union {
 		wchar_t w[256];

@@ -248,13 +248,15 @@ bool InputFileAVIOptions::read(const char *buf) {
 }
 
 int InputFileAVIOptions::write(char *buf, int buflen) const {
-	InputFileAVIOpts *pp = (InputFileAVIOpts *)buf;
+	if (buf) {
+		InputFileAVIOpts *pp = (InputFileAVIOpts *)buf;
 
-	if (buflen<sizeof(InputFileAVIOpts))
-		return 0;
+		if (buflen<sizeof(InputFileAVIOpts))
+			return 0;
 
-	*pp = opts;
-	pp->len = sizeof(InputFileAVIOpts);
+		*pp = opts;
+		pp->len = sizeof(InputFileAVIOpts);
+	}
 
 	return sizeof(InputFileAVIOpts);
 }

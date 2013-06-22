@@ -127,12 +127,12 @@ void RunScript(const wchar_t *name, void *hwnd) {
 	g_project->UpdateFilterList();
 }
 
-void RunScriptMemory(char *mem, bool stopAtReloadMarker) {
+void RunScriptMemory(const char *mem, bool stopAtReloadMarker) {
 	vdautoptr<IVDScriptInterpreter> isi(VDCreateScriptInterpreter());
 
 	try {
 		vdfastvector<char> linebuffer;
-		char *s=mem, *t;
+		const char *s = mem, *t;
 
 		isi->SetRootHandler(RootHandler, NULL);
 
@@ -213,8 +213,8 @@ static char base64[]=
 	"wxyz0123456789+/"
 	"=";
 
-void memunbase64(char *t, const char *s, long cnt) {
-
+long memunbase64(char *t, const char *s, long cnt) {
+	char *t0 = t;
 	char c1, c2, c3, c4, *ind, *limit = t+cnt;
 	long v;
 
@@ -245,20 +245,27 @@ void memunbase64(char *t, const char *s, long cnt) {
 		if (c1!=64 && c2!=64) {
 			*t++ = (char)(v >> 16);
 
-			if (t >= limit) return;
+			if (t >= limit)
+				break;
 
 			if (c3!=64) {
 				*t++ = (char)(v >> 8);
-				if (t >= limit) return;
+				if (t >= limit)
+					break;
+
 				if (c4!=64) {
 					*t++ = (char)v;
-					if (t >= limit) return;
+					if (t >= limit)
+						break;
+
 					continue;
 				}
 			}
 		}
 		break;
 	}
+
+	return t-t0;
 }
 
 void membase64(char *t, const char *s, long l) {
@@ -1331,7 +1338,7 @@ static void func_VDAudio_SetSourceExternal(IVDScriptInterpreter *, VDScriptValue
 		long l = ((strlen(*arglist[2].asString())+3)/4)*3;
 		vdfastvector<char> buf(l);
 
-		memunbase64(buf.data(), *arglist[2].asString(), l);
+		l = memunbase64(buf.data(), *arglist[2].asString(), l);
 
 		g_project->OpenWAV(fileName.c_str(), pDriver, true, false, buf.data(), l);
 	} else {
@@ -1639,11 +1646,11 @@ static void func_VirtualDub_Open(IVDScriptInterpreter *, VDScriptValue *arglist,
 
 	if (arg_count > 3) {
 		long l = ((strlen(*arglist[3].asString())+3)/4)*3;
-		char buf[64];
+		vdfastvector<char> buf(l);
 
-		memunbase64(buf, *arglist[3].asString(), l);
+		l = memunbase64(buf.data(), *arglist[3].asString(), l);
 
-		g_project->Open(filename.c_str(), pDriver, extopen, true, false, buf, l);
+		g_project->Open(filename.c_str(), pDriver, extopen, true, false, buf.data(), l);
 	} else
 		g_project->Open(filename.c_str(), pDriver, extopen, true, false);
 }

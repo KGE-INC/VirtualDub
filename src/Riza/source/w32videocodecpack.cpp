@@ -84,7 +84,8 @@ public:
 	bool Query(const void *inputFormat, const void *outputFormat);
 	void GetOutputFormat(const void *inputFormat, vdstructex<tagBITMAPINFOHEADER>& outputFormat);
 	const void *GetOutputFormat();
-	void Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount);
+	uint32 GetOutputFormatSize();
+	void Start(const void *inputFormat, uint32 inputFormatSize, const void *outputFormat, uint32 outputFormatSize, const VDFraction& frameRate, VDPosition frameCount);
 	void Restart();
 	void SkipFrame();
 	void DropFrame();
@@ -184,13 +185,17 @@ const void *VDVideoCompressorVCM::GetOutputFormat() {
 	return mOutputFormat.data();
 }
 
-void VDVideoCompressorVCM::Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount) {
+uint32 VDVideoCompressorVCM::GetOutputFormatSize() {
+	return mOutputFormat.size();
+}
+
+void VDVideoCompressorVCM::Start(const void *inputFormat, uint32 inputFormatSize, const void *outputFormat, uint32 outputFormatSize, const VDFraction& frameRate, VDPosition frameCount) {
 	this->hic		= hic;
 
 	const BITMAPINFOHEADER *pbihInput = (const BITMAPINFOHEADER *)inputFormat;
 	const BITMAPINFOHEADER *pbihOutput = (const BITMAPINFOHEADER *)outputFormat;
-	mInputFormat.assign(pbihInput, VDGetSizeOfBitmapHeaderW32(pbihInput));
-	mOutputFormat.assign(pbihOutput, VDGetSizeOfBitmapHeaderW32(pbihOutput));
+	mInputFormat.assign(pbihInput, inputFormatSize);
+	mOutputFormat.assign(pbihOutput, outputFormatSize);
 
 	lKeyRateCounter = 1;
 

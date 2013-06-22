@@ -441,7 +441,7 @@ namespace {
 	class DVDCTBlockDecoder {
 	public:
 		void Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& bitsource, int qno, bool split, const int zigzag[2][64], short weights_prescaled[2][13][64]);
-		bool Decode(DVBitSource& bitsource, const DVDecoderContext& context);
+		bool Decode(DVBitSource& bitsource, const DVDecoderContext& context, bool final);
 
 	protected:
 		uint32		mBitHeap;
@@ -504,12 +504,15 @@ namespace {
 	#pragma auto_inline(on)
 #endif
 
-	bool DVDCTBlockDecoder::Decode(DVBitSource& bitsource, const DVDecoderContext& context) {
+	bool DVDCTBlockDecoder::Decode(DVBitSource& bitsource, const DVDecoderContext& context, bool final) {
 		if (!mpWeights)
 			return true;
 
-		if (bitsource.src >= bitsource.srclimit)
+		if (bitsource.src >= bitsource.srclimit) {
+			if (final)
+				goto output;
 			return false;
+		}
 
 		VDASSERT(mBitCount < 24);
 
@@ -532,13 +535,16 @@ namespace {
 
 			int tmpcnt = mBitCount - acdec->len;
 
-			if (tmpcnt < 0)
+			if (tmpcnt < 0) {
+				if (final)
+					break;
 				return false;
+			}
 
 			mBitCount = tmpcnt;
 			mBitHeap <<= acdec->len;
 
-			if (acdec->run > 64)
+			if (acdec->run >= 64)
 				break;
 
 			int tmpidx = mIdx + acdec->run;
@@ -563,6 +569,7 @@ namespace {
 			bitsource.bitpos = 8 - (mBitCount & 7);
 		}
 
+output:
 		mpWeights = NULL;
 
 #pragma vdpragma_TODO("optimize interlaced 8x4x2 IDCT")
@@ -784,13 +791,13 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 				int i;
 
 				for(i=0; i<6; ++i)
-					mDecoders[blk+i].Decode(mSources[blk+i], context);
+					mDecoders[blk+i].Decode(mSources[blk+i], context, false);
 
 				int source = 0;
 
 				i = 0;
 				while(i < 6 && source < 6) {
-					if (!mDecoders[blk+i].Decode(mSources[blk+source], context))
+					if (!mDecoders[blk+i].Decode(mSources[blk+source], context, false))
 						++source;
 					else
 						++i;
@@ -809,10 +816,14 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 			blk = 0;
 
 			while(blk < 30 && source < 30) {
-				if (!mDecoders[blk].Decode(mSources[source], context))
+				if (!mDecoders[blk].Decode(mSources[source], context, false))
 					++source;
 				else
 					++blk;
+			}
+
+			while(blk < 30) {
+				mDecoders[blk++].Decode(mSources[29], context, true);
 			}
 		}
 

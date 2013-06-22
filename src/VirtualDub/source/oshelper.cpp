@@ -447,6 +447,39 @@ void LaunchURL(const char *pURL) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+static void ExitWindowsExDammit(UINT uFlags, DWORD dwReserved) {
+	if (!(GetVersion()&0x80000000)) {
+		HANDLE h;
+
+		if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY, &h)) {
+			LUID luid;
+
+			if (LookupPrivilegeValue(NULL, "SeShutdownPrivilege", &luid)) {
+				TOKEN_PRIVILEGES tp;
+				tp.PrivilegeCount = 1;
+				tp.Privileges[0].Luid = luid;
+				tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+				AdjustTokenPrivileges(h, FALSE, &tp, 0, NULL, NULL);
+			}
+
+			CloseHandle(h);
+		}
+	}
+
+	ExitWindowsEx(uFlags, dwReserved);
+}
+
+void VDInitiateSystemShutdown() {
+	// In theory, this is an illegal combination of flags, but it
+	// seems to be necessary to properly power off both Windows 98
+	// and Windows XP.  In particular, Windows 98 just logs off if
+	// you try EWX_POWEROFF.  Joy.
+	ExitWindowsExDammit(EWX_SHUTDOWN|EWX_POWEROFF|EWX_FORCEIFHUNG, 0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 bool VDEnableCPUTracking() {
 	HKEY hOpen;
 	DWORD cbData;

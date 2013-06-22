@@ -15,22 +15,18 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-	
-DCTLEN_PROFILE = 0
+%define DCTLEN_PROFILE 0
 
 
-	IF	DCTLEN_PROFILE
+	%if	DCTLEN_PROFILE
 
 	extern _short_coeffs: dword
 	extern _med_coeffs: dword
 	extern _long_coeffs: dword
 
-	ENDIF
+	%endif
 
-	.code
+	segment	.text
 __start:
 
 
@@ -38,13 +34,11 @@ __start:
 ;	ESI	bit source
 ;	CL	24 - bits in bucket
 
-FILLBITS	macro
-	local	noneed, notmarker, loop
-
+%macro FILLBITS 0
 	cmp	dl,-8
-	jl	noneed
-loop:
-	movzx	eax,byte ptr [esi]
+	jl	.noneed
+.loop:
+	movzx	eax,byte [esi]
 	mov	ecx,000000101h
 	add	ecx,eax
 	shr	ecx,8
@@ -55,17 +49,15 @@ loop:
 	shl	eax,cl
 	or	ebp,eax
 	sub	dl,8
-	jns	loop
-noneed:
-	endm
+	jns	.loop
+.noneed:
+%endmacro
 
-NEEDBITS	macro at		;EAX, EDX, EBX available
-	local	done,short_ok,ick
+%macro NEEDBITS	1		;EAX, EDX, EBX available
+	cmp	dl,16-%1
+	jle	.done
 
-	cmp	dl,16-at
-	jle	done
-
-	movzx	eax,word ptr [esi]
+	movzx	eax,word [esi]
 	bswap	eax
 	shr	eax,16
 	add	esi,2
@@ -75,26 +67,24 @@ NEEDBITS	macro at		;EAX, EDX, EBX available
 	and	ecx,80808080h
 	not	ebx
 	and	ebx,ecx
-	jz	short_ok
-ick:
+	jz	.short_ok
+.ick:
 	call	sucks2
-short_ok:
+.short_ok:
 	mov	cl,dl
 	shl	eax,cl
 	sub	dl,16
 	or	ebp,eax
-done:
-	endm
+.done:
+%endmacro
 
-NEEDBITS2	macro at		;EAX, EDX available
-	local	done,short_ok,ick
-
-;	cmp	dl,16-at
+%macro NEEDBITS2 1		;EAX, EDX available
+;	cmp	dl,16-%1
 ;	jle	done
 	or	dl,dl
-	js	done
+	js	.done
 
-	movzx	eax,word ptr [esi]
+	movzx	eax,word [esi]
 	bswap	eax
 	shr	eax,16
 	add	esi,2
@@ -103,56 +93,52 @@ NEEDBITS2	macro at		;EAX, EDX available
 	not	ecx
 	and	ecx,eax
 	test	ecx,80808080h
-	jz	short_ok
-ick:
+	jz	.short_ok
+.ick:
 	call	sucks2
-short_ok:
+.short_ok:
 	mov	cl,dl
 	shl	eax,cl
 	sub	dl,16
 	or	ebp,eax
-done:
-	endm
+.done:
+%endmacro
 
-ALIGN16	macro
-	local	x
-x = ((__start - $) and 15)
-	rept	x
-	nop
-	endm
-	endm
+%macro ALIGN16 0
+	align	16
+%endmacro
 
 ; decode_mbs(dword& bitbuf, int& bitcnt, byte *& ptr, int mcu_length, MJPEGBlockDef *pmbd, int **dctptrarray);
 
-l_size		= 32
-l_mb		= 0
-l_huffac	= 4
-l_dctptr	= 8
-l_quantptr	= 12
-l_quantlimit	= 16
-l_acquick	= 20
-l_acquick2	= 24
-l_bitcnt	= 28
-l_save		= 29
+l_size			equ 32
+l_mb			equ 0
+l_huffac		equ 4
+l_dctptr		equ 8
+l_quantptr		equ 12
+l_quantlimit	equ 16
+l_acquick		equ 20
+l_acquick2		equ 24
+l_bitcnt		equ 28
+l_save			equ 29
 
-p_bitbuf	= l_size + 4 + 16
-p_bitcnt	= l_size + 8 + 16
-p_ptr		= l_size + 12 + 16
-p_mb_count	= l_size + 16 + 16
-p_blocks	= l_size + 20 + 16
-p_dctptrarray	= l_size + 24 + 16
+p_bitbuf	equ l_size + 4 + 16
+p_bitcnt	equ l_size + 8 + 16
+p_ptr		equ l_size + 12 + 16
+p_mb_count	equ l_size + 16 + 16
+p_blocks	equ l_size + 20 + 16
+p_dctptrarray	equ l_size + 24 + 16
 
-block		struct
-huff_dc		dd	?
-huff_ac		dd	?
-huff_ac_quick	dd	?
-huff_ac_quick2	dd	?
-quant		dd	?
-dc_ptr		dd	?
-ac_last		dd	?
-block		ends
+		struc	block
+.huff_dc		resd	1
+.huff_ac		resd	1
+.huff_ac_quick	resd	1
+.huff_ac_quick2	resd	1
+.quant			resd	1
+.dc_ptr			resd	1
+.ac_last		resd	1
+		endstruc
 
-	public _asm_mb_decode
+	global _asm_mb_decode
 
 _asm_mb_decode:
 	push	ebp
@@ -162,7 +148,7 @@ _asm_mb_decode:
 
 	sub	esp,l_size
 
-	mov	dword ptr [esp + l_mb],0
+	mov	dword [esp + l_mb],0
 	mov	ebp, [esp + p_bitbuf]
 	mov	ecx, [esp + p_bitcnt]
 	mov	esi, [esp + p_ptr]
@@ -174,14 +160,14 @@ _asm_mb_decode:
 mb_loop:
 	mov	eax,[esp + p_blocks]
 
-	mov	ebx,[eax].block.quant
+	mov	ebx,[eax + block.quant]
 	add	ebx,8
 	mov	[esp + l_quantptr],ebx
-	mov	ecx,[eax].block.huff_ac_quick
+	mov	ecx,[eax+block.huff_ac_quick]
 	mov	[esp + l_acquick],ecx
-	mov	ecx,[eax].block.huff_ac_quick2
+	mov	ecx,[eax+block.huff_ac_quick2]
 	mov	[esp + l_acquick2],ecx
-	mov	ebx,[eax].block.huff_ac
+	mov	ebx,[eax+block.huff_ac]
 	mov	[esp + l_huffac],ebx
 
 	push	eax
@@ -209,10 +195,10 @@ mb_loop:
 	xor	eax,eax
 	xor	ebx,ebx
 	mov	edi,[esp + p_blocks]
-	mov	edi,[edi].block.huff_dc
+	mov	edi,[edi+block.huff_dc]
 
 DC_decode_loop:
-	movzx	edx,byte ptr [edi + eax + 1]
+	movzx	edx,byte [edi + eax + 1]
 	sub	ecx,edx
 	jc	DC_decode_loop_term
 	add	ebp,ebp
@@ -247,7 +233,7 @@ DC_decode_loop_term:
 
 no_DC_difference:
 	mov	ebx,[esp + p_blocks]
-	mov	ebx,[ebx].block.dc_ptr
+	mov	ebx,[ebx+block.dc_ptr]
 	mov	edi,[esp + l_quantptr]
 	imul	eax,[edi-8]
 	add	eax,[ebx]
@@ -282,15 +268,15 @@ AC_reload_done:
 
 	;table-based decode for short AC coefficients
 
-	IF	DCTLEN_PROFILE
-	inc	dword ptr [_short_coeffs]
-	ENDIF
+	%if	DCTLEN_PROFILE
+	inc	dword [_short_coeffs]
+	%endif
 
 	mov	eax,ebp
 	mov	edi,[esp + l_acquick]
 	shr	eax,25
 	mov	cl,[edi + eax*2 + 1]
-	movsx	eax,byte ptr [edi + eax*2]
+	movsx	eax,byte [edi + eax*2]
 
 	shl	ebp,cl
 	add	dl,cl
@@ -315,7 +301,7 @@ AC_decode_coefficient:
 
 	ALIGN16
 AC_reload:
-	movzx	eax,word ptr [esi]
+	movzx	eax,word [esi]
 	bswap	eax
 	shr	eax,16
 	add	esi,2
@@ -343,15 +329,15 @@ ick:
 
 	ALIGN16
 AC_medium_decode:
-	IF	DCTLEN_PROFILE
-	inc	dword ptr [_med_coeffs]
-	ENDIF
+	%if	DCTLEN_PROFILE
+	inc	dword [_med_coeffs]
+	%endif
 
 	mov	eax,ebp
 	mov	edi,[esp + l_acquick2]
 	shr	eax,20
 	mov	cl,[edi+eax*2 + 1 - 1600h]
-	movzx	edi,byte ptr [edi+eax*2 - 1600h]
+	movzx	edi,byte [edi+eax*2 - 1600h]
 
 	shl	ebp,cl
 	add	dl,cl
@@ -399,7 +385,7 @@ AC_exit_clamp:
 	ALIGN16
 AC_exit:
 	mov	eax,[esp + p_blocks]
-	sub ebx, [eax].block.quant		;compute offset from start of zigzag/quant table
+	sub ebx, [eax+block.quant]		;compute offset from start of zigzag/quant table
 	shr ebx, 3						;convert offset to index
 	sub ebx, 1						;compensate for ebx being just after last coeff
 	and	ebx,63						;just in case
@@ -408,8 +394,8 @@ AC_exit_nocomputelast:
 	;all done with this macroblock!
 
 	mov	eax,[esp + p_blocks]
-	mov	[eax].block.ac_last,ebx
-	add	eax,sizeof block
+	mov	[eax+block.ac_last],ebx
+	add	eax, block_size
 	mov	[esp + p_blocks],eax
 
 	mov	eax,[esp + l_mb]
@@ -451,15 +437,15 @@ fastexit:
 
 	ALIGN16
 AC_long_decode:
-	IF	DCTLEN_PROFILE
-	inc	dword ptr [_long_coeffs]
-	ENDIF
+	%if	DCTLEN_PROFILE
+	inc	dword [_long_coeffs]
+	%endif
 	mov	eax,ebp
 	mov	[esp+l_quantptr],ebx
 	shr	eax,32-16
 	mov	ebx,[esp + l_huffac]
-	movzx	edi,byte ptr [ebx+eax*2-0FF80h*2]
-	mov	cl,byte ptr [ebx+eax*2-0FF80h*2+1]
+	movzx	edi,byte [ebx+eax*2-0FF80h*2]
+	mov	cl,byte [ebx+eax*2-0FF80h*2+1]
 	shl	ebp,cl
 	add	dl,cl
 
@@ -472,13 +458,13 @@ AC_long_decode:
 
 	ALIGN16
 sucks2:
-	movzx	eax,byte ptr [esi-2]
+	movzx	eax,byte [esi-2]
 	lea	ecx,[eax+1]
 	shr	ecx,8
 	add	esi,ecx
 
 	shl	eax,8
-	movzx	ecx,byte ptr [esi-1]
+	movzx	ecx,byte [esi-1]
 
 	add	eax,ecx
 	inc	ecx

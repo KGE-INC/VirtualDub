@@ -142,6 +142,7 @@ DubOptions g_dubOpts = {
 		DubVideoOptions::M_FULL,	// mode: full
 		false,						// use smart encoding
 		false,						// preserve empty frames
+		0,							// max video compression threads
 		true,						// show input video
 		true,						// show output video
 		false,						// decompress output video before display
@@ -155,7 +156,7 @@ DubOptions g_dubOpts = {
 		false,						// (IVTC mode)
 		-1,							// (IVTC offset)
 		false,						// (IVTC polarity)
-		0,							// progressive preview
+		DubVideoOptions::kPreviewFieldsProgressive,	// progressive preview
 	},
 
 	{
@@ -222,8 +223,10 @@ namespace {
 		return true;
 	}
 
-	int DegradeFormat(int format, int originalFormat) {
+	int DegradeFormat(int format, uint32& rgbMask) {
 		using namespace nsVDPixmap;
+
+		rgbMask |= (1 << format);
 
 		switch(format) {
 		case kPixFormat_YUV410_Planar:	format = kPixFormat_YUV420_Planar; break;
@@ -243,14 +246,39 @@ namespace {
 		// 565 -> 8888 -> 888 -> 1555 -> Pal8
 		// 1555 -> 8888 -> 888 -> Pal8
 
-		case kPixFormat_RGB888:			format = (originalFormat == kPixFormat_RGB565  ) ? kPixFormat_XRGB1555 : (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_Pal8 : kPixFormat_XRGB8888; break;
-		case kPixFormat_XRGB8888:		format = (originalFormat == kPixFormat_RGB888  ) ? kPixFormat_XRGB1555 : kPixFormat_RGB888; break;
-		case kPixFormat_RGB565:			format = kPixFormat_XRGB8888; break;
-		case kPixFormat_XRGB1555:		format = (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_XRGB8888 : kPixFormat_Pal8; break;
-		default:						format = kPixFormat_Null; break;
+		case kPixFormat_RGB888:
+			if (!(rgbMask & (1 << kPixFormat_XRGB8888)))
+				format = kPixFormat_XRGB8888;
+			else if (!(rgbMask & (1 << kPixFormat_XRGB1555)))
+				format = kPixFormat_XRGB1555;
+			else
+				format = kPixFormat_Pal8;
+			break;
+
+		case kPixFormat_XRGB8888:
+			if (rgbMask & (1 << kPixFormat_RGB888))
+				format = kPixFormat_XRGB1555;
+			else
+				format = kPixFormat_RGB888;
+			break;
+
+		case kPixFormat_RGB565:
+			format = kPixFormat_XRGB8888;
+			break;
+
+		case kPixFormat_XRGB1555:
+			if (!(rgbMask & (1 << kPixFormat_XRGB8888)))
+				format = kPixFormat_XRGB8888;
+			else
+				format = kPixFormat_Pal8;
+			break;
+
+		default:
+			format = kPixFormat_Null;
+			break;
 		};
 
-		if (format == originalFormat)
+		if (rgbMask & (1 << format))
 			format = kPixFormat_Null;
 
 		return format;
@@ -258,13 +286,13 @@ namespace {
 }
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format) {
-	int format0 = format;
+	uint32 rgbTrackMask = 0;
 
 	do {
 		if (vsrc->setTargetFormat(format))
 			return vsrc->getTargetFormat().format;
 
-		format = DegradeFormat(format, format0);
+		format = DegradeFormat(format, rgbTrackMask);
 	} while(format);
 
 	return format;
@@ -336,8 +364,7 @@ private:
 	vdstructex<WAVEFORMATEX> mAudioCompressionFormat;
 	VDStringA			mAudioCompressionFormatHint;
 
-	vdblock<char>		mVideoFilterOutput;
-	VDPixmap			mVideoFilterOutputPixmap;
+	VDPixmapLayout		mVideoFilterOutputPixmapLayout;
 
 	bool				fPhantom;
 
@@ -917,17 +944,21 @@ void Dubber::InitOutputFile() {
 			outputFormatID = vSrc->getTargetFormat().format;
 
 		if (opt->video.mode >= DubVideoOptions::M_FASTREPACK) {
-			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK) {
-				const VDAVIBitmapInfoHeader *pFormat = vSrc->getDecompressedFormat();
+			const VDAVIBitmapInfoHeader *pSrcFormat = vSrc->getDecompressedFormat();
 
-				mpCompressorVideoFormat.assign(pFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pFormat));
+			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK) {
+				mpCompressorVideoFormat.assign(pSrcFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pSrcFormat));
 			} else {
 				// try to find a variant that works
 				const int variants = VDGetPixmapToBitmapVariants(outputFormatID);
 				int variant;
 
+				vdstructex<VDAVIBitmapInfoHeader> srcFormat;
+				srcFormat.assign(pSrcFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)pSrcFormat));
+
 				for(variant=1; variant <= variants; ++variant) {
-					VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, outputFormatID, variant, output.w, output.h);
+					if (!VDMakeBitmapFormatFromPixmapFormat(mpCompressorVideoFormat, srcFormat, outputFormatID, variant, output.w, output.h))
+						continue;
 
 					bool result = true;
 					
@@ -968,7 +999,7 @@ void Dubber::InitOutputFile() {
 				outputFormat.assign(srcFormat, vsrcStream->getFormatLen());
 			}
 
-			mpVideoCompressor->Start(&*mpCompressorVideoFormat, &*outputFormat, vInfo.frameRate, vInfo.end_proc_dst);
+			mpVideoCompressor->Start(&*mpCompressorVideoFormat, mpCompressorVideoFormat.size(), &*outputFormat, outputFormat.size(), vInfo.frameRate, vInfo.end_proc_dst);
 
 			lVideoSizeEstimate = mpVideoCompressor->GetMaxOutputSize();
 		} else {
@@ -1014,13 +1045,9 @@ void Dubber::InitOutputFile() {
 		if(opt->video.mode >= DubVideoOptions::M_FULL) {
 			const VDPixmapLayout& bmout = filters.GetOutputLayout();
 
-			VDPixmapLayout layout;
-			uint32 reqsize = VDMakeBitmapCompatiblePixmapLayout(layout, bmout.w, bmout.h, outputFormatID, outputVariantID);
+			VDMakeBitmapCompatiblePixmapLayout(mVideoFilterOutputPixmapLayout, bmout.w, bmout.h, outputFormatID, outputVariantID, bmout.palette);
 
-			mVideoFilterOutput.resize(reqsize);
-			mVideoFilterOutputPixmap = VDPixmapFromLayout(layout, mVideoFilterOutput.data());
-
-			const char *s = VDPixmapGetInfo(mVideoFilterOutputPixmap.format).name;
+			const char *s = VDPixmapGetInfo(mVideoFilterOutputPixmapLayout.format).name;
 
 			VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_FullUsingOutputFormat, 1, &s);
 		}
@@ -1046,7 +1073,7 @@ bool Dubber::AttemptInputOverlays() {
 		}
 
 		if (it == itEnd) {
-			if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, opt->video.nPreviewFieldMode>0))
+			if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, opt->video.previewFieldMode>0))
 				return true;
 		}
 	}
@@ -1171,12 +1198,13 @@ void Dubber::InitSelectInputFormat() {
 
 		// Attempt RGB format negotiation.
 		int format = opt->video.mInputFormat;
+		uint32 rgbTrackMask = 0;
 
 		do {
 			if (NegotiateFastFormat(format))
 				return;
 
-			format = DegradeFormat(format, opt->video.mInputFormat);
+			format = DegradeFormat(format, rgbTrackMask);
 		} while(format);
 
 		throw MyError("Video format negotiation failed: use slow-repack or full mode.");
@@ -1269,7 +1297,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
 		const VDPixmap& px = vSrc->getTargetFormat();
 
-		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.frameRate, -1);
+		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, vInfo.frameRate, -1);
 
 		vInfo.frameRate = filters.GetOutputFrameRate();
 		
@@ -1328,7 +1356,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	if (!mbInputDisplayInitialized && mpInputDisplay) {
 		if (mbDoVideo)
-			mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), NULL, 0, true, opt->video.nPreviewFieldMode>0);
+			mpInputDisplay->SetSource(false, vSrc->getTargetFormat(), NULL, 0, true, opt->video.previewFieldMode>0);
 	}
 
 	// initialize output parameters and output file
@@ -1338,8 +1366,20 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	// Initialize output window display.
 
 	if (mpOutputDisplay && mbDoVideo) {
-		if (opt->video.mode == DubVideoOptions::M_FULL)
-			mpOutputDisplay->SetSource(false, mVideoFilterOutputPixmap, NULL, 0, true, opt->video.nPreviewFieldMode>0);
+		if (opt->video.mode == DubVideoOptions::M_FULL) {
+			VDPixmap px;
+			px.w = mVideoFilterOutputPixmapLayout.w;
+			px.h = mVideoFilterOutputPixmapLayout.h;
+			px.format = mVideoFilterOutputPixmapLayout.format;
+			px.pitch = mVideoFilterOutputPixmapLayout.pitch;
+			px.pitch2 = mVideoFilterOutputPixmapLayout.pitch2;
+			px.pitch3 = mVideoFilterOutputPixmapLayout.pitch3;
+			px.palette = mVideoFilterOutputPixmapLayout.palette;
+			px.data = NULL;
+			px.data2 = NULL;
+			px.data3 = NULL;
+			mpOutputDisplay->SetSource(false, px, NULL, 0, true, opt->video.previewFieldMode>0);
+		}
 	}
 
 	// initialize interleaver
@@ -1411,13 +1451,16 @@ void Dubber::Go(int iPriority) {
 	mProcessThread.SetParent(this);
 	mProcessThread.SetAbortSignal(&mbAbort);
 	mProcessThread.SetStatusHandler(pStatusHandler);
-	mProcessThread.SetInputDisplay(mpInputDisplay);
-	mProcessThread.SetOutputDisplay(mpOutputDisplay);
-	mProcessThread.SetVideoIVTC(pInvTelecine);
-	mProcessThread.SetVideoCompressor(mpVideoCompressor);
 
-	if (!mVideoFilterOutput.empty())
-		mProcessThread.SetVideoFilterOutput(mVideoFilterOutput.data(), mVideoFilterOutputPixmap);
+	if (mbDoVideo) {
+		mProcessThread.SetInputDisplay(mpInputDisplay);
+		mProcessThread.SetOutputDisplay(mpOutputDisplay);
+		mProcessThread.SetVideoIVTC(pInvTelecine);
+		mProcessThread.SetVideoCompressor(mpVideoCompressor, opt->video.mMaxVideoCompressionThreads);
+
+		if(opt->video.mode >= DubVideoOptions::M_FULL)
+			mProcessThread.SetVideoFilterOutput(mVideoFilterOutputPixmapLayout);
+	}
 
 	mProcessThread.SetAudioSourcePresent(!mAudioSources.empty() && mAudioSources[0]);
 	mProcessThread.SetVideoSources(mVideoSources.data(), mVideoSources.size());

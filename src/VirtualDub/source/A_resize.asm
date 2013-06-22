@@ -54,15 +54,7 @@
 ;		FPU:		40-50
 ;		MMX:		10-20
 
-	.686
-	.387
-	.mmx
-	.xmm
-	.model	flat
-
-	assume fs:_DATA
-
-	.const
+	segment	.rdata, align=16
 
 x0002000200020002	dq	0002000200020002h
 x0004000400040004	dq	0004000400040004h
@@ -73,7 +65,7 @@ x0000200000002000	dq	0000200000002000h
 MMX_roundval		dq	0000200000002000h, 0000200000002000h
 
 
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 	extern _FPU_enabled : byte
@@ -81,7 +73,7 @@ MMX_roundval		dq	0000200000002000h, 0000200000002000h
 
 ;**************************************************************************
 
-	public	_asm_resize_interp_row_run
+	global	_asm_resize_interp_row_run	
 
 ;asm_resize_interp_row_run(
 ;	[esp+ 4] void *dst,
@@ -92,7 +84,7 @@ MMX_roundval		dq	0000200000002000h, 0000200000002000h
 
 
 _asm_resize_interp_row_run:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_resize_interp_row_run_MMX
 
 	push	ebp
@@ -176,13 +168,13 @@ colloop_interp_row:
 	pop	ebp
 	ret
 
-	.const
+	segment	.rdata
 
 x0000FFFF0000FFFF	dq	0000FFFF0000FFFFh
 x0000010100000101	dq	0000010100000101h
 x0100010001000100	dq	0100010001000100h
 
-	.code
+	segment	.text
 
 	align 16
 _asm_resize_interp_row_run_MMX:
@@ -195,9 +187,9 @@ _asm_resize_interp_row_run_MMX:
 	mov	edi,[esp+4+16]
 	mov	ebp,[esp+12+16]
 
-	movd	mm4,dword ptr [esp+16+16]
+	movd	mm4,dword [esp+16+16]
 	pxor	mm7,mm7
-	movd	mm6,dword ptr [esp+24+16]
+	movd	mm6,dword [esp+24+16]
 	punpckldq mm4,mm4
 	punpckldq mm6,mm6
 
@@ -215,16 +207,16 @@ _asm_resize_interp_row_run_MMX:
 
 
 colloop_interp_row_MMX:
-	movd		mm1,dword ptr [esi*4+4]
+	movd		mm1,dword [esi*4+4]
 	movq		mm5,mm4
 
-	movd		mm0,dword ptr [esi*4]
+	movd		mm0,dword [esi*4]
 	punpcklbw	mm1,mm7
 
 	punpcklbw	mm0,mm7
 	psrld		mm5,24
 
-	movq		mm3,x0100010001000100
+	movq		mm3,[x0100010001000100]
 	packssdw	mm5,mm5
 
 	pmullw		mm1,mm5
@@ -247,7 +239,7 @@ colloop_interp_row_MMX:
 	adc		esi,ecx
 	packuswb	mm0,mm0
 
-	movd		dword ptr [edi+ebp],mm0
+	movd		dword [edi+ebp],mm0
 
 	add		ebp,4
 	jnz		colloop_interp_row_MMX
@@ -260,7 +252,7 @@ colloop_interp_row_MMX:
 
 ;**************************************************************************
 
-	public	_asm_resize_interp_col_run
+	global	_asm_resize_interp_col_run	
 
 ;asm_resize_interp_col_run(
 ;	[esp+ 4] void *dst,
@@ -271,7 +263,7 @@ colloop_interp_row_MMX:
 
 
 _asm_resize_interp_col_run:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_resize_interp_col_run_MMX
 
 	push	ebp
@@ -360,13 +352,13 @@ _asm_resize_interp_col_run_MMX:
 	mov	edi,[esp+4+28]
 	mov	ebp,[esp+16+28]
 
-	movd	mm4,dword ptr [esp+20+28]
+	movd	mm4,dword [esp+20+28]
 	pxor	mm7,mm7
 	punpcklwd mm4,mm4
 	punpckldq mm4,mm4
 	psrlw	mm4,8
-	pxor	mm4,x0000FFFF0000FFFF
-	paddw	mm4,x0000010100000101
+	pxor	mm4,[x0000FFFF0000FFFF]
+	paddw	mm4,[x0000010100000101]
 
 	shl	ebp,2
 	add	edi,ebp
@@ -375,8 +367,8 @@ _asm_resize_interp_col_run_MMX:
 	neg	ebp
 
 colloop_interp_col_MMX:
-	movd	mm0,dword ptr [esi+ebp]
-	movd	mm2,dword ptr [edx+ebp]
+	movd	mm0,dword [esi+ebp]
+	movd	mm2,dword [edx+ebp]
 
 	punpcklbw mm0,mm7
 	punpcklbw mm2,mm7
@@ -394,7 +386,7 @@ colloop_interp_col_MMX:
 	packssdw mm0,mm1
 	packuswb mm0,mm0
 
-	movd	dword ptr [edi+ebp],mm0
+	movd	dword [edi+ebp],mm0
 
 	add	ebp,4
 	jnz	colloop_interp_col_MMX
@@ -410,7 +402,7 @@ colloop_interp_col_MMX:
 
 ;--------------------------------------------------------------------------
 
-	public	_asm_resize_ccint_MMX
+	global	_asm_resize_ccint_MMX	
 
 ;asm_resize_ccint_MMX(dst, src1, src2, src3, src4, count, xaccum, xinc, tbl);
 
@@ -448,7 +440,7 @@ _asm_resize_ccint_MMX:
 	lea	ebp, [ebp+ecx-4]
 	neg	ecx			;ecx = -count*4
 
-	movq		mm6,x0000200000002000
+	movq		mm6,[x0000200000002000]
 	pxor		mm7,mm7
 
 	mov		edx,[esp+28+16]		;edx = fractional accumulator
@@ -456,13 +448,13 @@ _asm_resize_ccint_MMX:
 
 	mov			ebx,[esp+36+16]		;ebx = coefficient pointer
 
-	movd		mm1,dword ptr [eax*4+4]
+	movd		mm1,dword [eax*4+4]
 	punpcklbw	mm0,mm7				;mm0 = [a1][r1][g1][b1]
 
 	;borrow stack pointer
 	push		0				;don't crash
-	push		fs:dword ptr [0]
-	mov			fs:dword ptr [0], esp
+	push		dword [fs:0]
+	mov			dword [fs:0], esp
 	mov			esp,[esp+20+16+8]	;esp = integer increment
 	jmp			short ccint_loop_MMX_start
 
@@ -477,20 +469,20 @@ _asm_resize_ccint_MMX:
 
 	align		16
 ccint_loop_MMX:
-	movd		mm0,dword ptr [eax*4]
+	movd		mm0,dword [eax*4]
 	packuswb	mm2,mm2				;mm0 = [a][r][g][b][a][r][g][b]
 
-	movd		mm1,dword ptr [eax*4+4]
+	movd		mm1,dword [eax*4+4]
 	punpcklbw	mm0,mm7				;mm0 = [a1][r1][g1][b1]
 
-	movd		dword ptr [ebp+ecx],mm2
+	movd		dword [ebp+ecx],mm2
 ccint_loop_MMX_start:
 	movq		mm4,mm0				;mm0 = [a1][r1][g1][b1]
 
-	movd		mm2,dword ptr [eax*4+8]
+	movd		mm2,dword [eax*4+8]
 	punpcklbw	mm1,mm7				;mm1 = [a2][r2][g2][b2]
 
-	movd		mm3,dword ptr [eax*4+12]
+	movd		mm3,dword [eax*4+12]
 	punpcklbw	mm2,mm7				;mm2 = [a3][r3][g3][b3]
 
 	punpcklbw	mm3,mm7				;mm3 = [a4][r4][g4][b4]
@@ -530,10 +522,10 @@ ccint_loop_MMX_start:
 	jnc		ccint_loop_MMX
 
 	packuswb	mm2,mm2				;mm0 = [a][r][g][b][a][r][g][b]
-	movd		dword ptr [ebp],mm2
+	movd		dword [ebp],mm2
 
-	mov		esp, fs:dword ptr [0]
-	pop		fs:dword ptr [0]
+	mov		esp, dword [fs:0]
+	pop		dword [fs:0]
 	pop		eax
 
 	pop		ebp
@@ -554,7 +546,8 @@ ccint_loop_MMX_start:
 ;	[esp+28] int *tbl);
 ;
 
-_asm_resize_ccint_col	proc	near public
+	global	_asm_resize_ccint_col
+_asm_resize_ccint_col:
 	push	ebp
 	push	edi
 	push	esi
@@ -579,12 +572,12 @@ _asm_resize_ccint_col	proc	near public
 	push	edx
 
 	mov	edx,[esp+28+32]	;eax = coefficient pointer
-	push	[edx+12]
-	push	[edx+8]
-	push	[edx+4]
-	push	[edx+0]
+	push	dword [edx+12]
+	push	dword [edx+8]
+	push	dword [edx+4]
+	push	dword [edx+0]
 
-pixelloop:
+.pixelloop:
 	mov	esi,00002000h	;red accum = rounder
 	mov	edx,[esp+16]	;load pointer to row 1
 	mov	edi,00002000h	;green accum = rounder
@@ -718,7 +711,7 @@ pixelloop:
 	mov	[esp+24+48],eax
 	mov	[ecx+eax-4],esi	;write pixel
 
-	jne	pixelloop
+	jne	.pixelloop
 
 	add	esp,32
 
@@ -727,12 +720,11 @@ pixelloop:
 	pop	edi
 	pop	ebp
 	ret
-_asm_resize_ccint_col	endp
 
 ;--------------------------------------------------------------------------
 ;asm_resize_ccint_col_MMX(dst, src1, src2, src3, src4, count, tbl);
 
-	public	_asm_resize_ccint_col_MMX
+	global	_asm_resize_ccint_col_MMX	
 
 _asm_resize_ccint_col_MMX:
 	push	ebx
@@ -760,36 +752,36 @@ _asm_resize_ccint_col_MMX:
 
 	movq		mm4,[edi]
 	movq		mm5,[edi+8]
-	movq		mm6,x0000200000002000
+	movq		mm6,[x0000200000002000]
 	pxor		mm7,mm7
 
-	movd		mm2,dword ptr [eax+esi]
-	movd		mm1,dword ptr [ebx+esi]		;mm1 = pixel1
+	movd		mm2,dword [eax+esi]
+	movd		mm1,dword [ebx+esi]		;mm1 = pixel1
 	punpcklbw	mm2,mm7
-	jmp		short ccint_col_loop_MMX@entry
+	jmp		short ccint_col_loop_MMX.entry
 
 	align		16
 ccint_col_loop_MMX:
-	movd		mm2,dword ptr [eax+esi]		;mm2 = pixel0
+	movd		mm2,dword [eax+esi]		;mm2 = pixel0
 	packuswb	mm0,mm0
 	
-	movd		mm1,dword ptr [ebx+esi]		;mm1 = pixel1
+	movd		mm1,dword [ebx+esi]		;mm1 = pixel1
 	pxor		mm7,mm7
 
-	movd		dword ptr [ebp+esi-4],mm0
+	movd		dword [ebp+esi-4],mm0
 	punpcklbw	mm2,mm7
 	
-ccint_col_loop_MMX@entry:	
+ccint_col_loop_MMX.entry:	
 	punpcklbw	mm1,mm7
 	movq		mm0,mm2
 	
-	movd		mm3,dword ptr [edx+esi]		;mm3 = pixel3
+	movd		mm3,dword [edx+esi]		;mm3 = pixel3
 	punpcklwd	mm0,mm1			;mm0 = [g1][g0][b1][b0]
 	
 	pmaddwd		mm0,mm4
 	punpckhwd	mm2,mm1			;mm2 = [a1][a0][r1][r0]
 	
-	movd		mm1,dword ptr [ecx+esi]		;mm1 = pixel2
+	movd		mm1,dword [ecx+esi]		;mm1 = pixel2
 	punpcklbw	mm3,mm7
 		
 	pmaddwd		mm2,mm4
@@ -817,7 +809,7 @@ ccint_col_loop_MMX@entry:
 	jne		ccint_col_loop_MMX
 	
 	packuswb	mm0,mm0
-	movd		dword ptr [ebp-4],mm0
+	movd		dword [ebp-4],mm0
 
 	pop	ebp
 	pop	edi
@@ -829,7 +821,7 @@ ccint_col_loop_MMX@entry:
 ;--------------------------------------------------------------------------
 ;asm_resize_ccint_col_SSE2(dst, src1, src2, src3, src4, count, tbl);
 
-	public	_asm_resize_ccint_col_SSE2
+	global	_asm_resize_ccint_col_SSE2	
 
 _asm_resize_ccint_col_SSE2:
 	push	ebx
@@ -858,25 +850,25 @@ _asm_resize_ccint_col_SSE2:
 	add	esi,4
 	jz	ccint_col_SSE2_odd
 
-	movq		xmm4,qword ptr [edi]
-	movq		xmm5,qword ptr [edi+8]
+	movq		xmm4,qword [edi]
+	movq		xmm5,qword [edi+8]
 	punpcklqdq	xmm4,xmm4
 	punpcklqdq	xmm5,xmm5
-	movq		xmm6,x0000200000002000
+	movq		xmm6,[x0000200000002000]
 	punpcklqdq	xmm6,xmm6
 	pxor		xmm7,xmm7
 
-;	jmp		short ccint_col_loop_SSE2@entry
+;	jmp		short ccint_col_loop_SSE2.entry
 
 ;	align		16
 ccint_col_loop_SSE2:
-	movq		xmm0, qword ptr [eax]
+	movq		xmm0, qword [eax]
 	add			eax, 8
-	movq		xmm1, qword ptr [ebx]
+	movq		xmm1, qword [ebx]
 	add			ebx, 8
-	movq		xmm2, qword ptr [ecx]
+	movq		xmm2, qword [ecx]
 	add			ecx, 8
-	movq		xmm3, qword ptr[edx]
+	movq		xmm3, qword [edx]
 	add			edx, 8
 	punpcklbw	xmm0,xmm1
 	punpcklbw	xmm2,xmm3
@@ -905,13 +897,13 @@ ccint_col_loop_SSE2:
 	jnc		ccint_col_loop_SSE2
 	jnz		ccint_col_SSE2_noodd
 ccint_col_SSE2_odd:
-	movd		mm0, dword ptr [eax]
+	movd		mm0, dword [eax]
 	pxor		mm7,mm7
-	movd		mm1, dword ptr [ebx]
+	movd		mm1, dword [ebx]
 	movdq2q		mm4,xmm4
-	movd		mm2, dword ptr [ecx]
+	movd		mm2, dword [ecx]
 	movdq2q		mm5,xmm5
-	movd		mm3, dword ptr [edx]
+	movd		mm3, dword [edx]
 	movdq2q		mm6,xmm6
 	punpcklbw	mm0,mm1
 	punpcklbw	mm2,mm3
@@ -946,9 +938,9 @@ ccint_col_SSE2_noodd:
 
 ; long resize_table_row_by2linear_MMX(Pixel *out, Pixel *in, PixDim w);
 
-	public	_resize_table_row_by2linear_MMX
+	global	_resize_table_row_by2linear_MMX	
 
-_resize_table_row_by2linear_MMX	proc near
+_resize_table_row_by2linear_MMX:
 	push		ebp
 	push		esi
 	push		edi
@@ -960,31 +952,31 @@ _resize_table_row_by2linear_MMX	proc near
 	neg		ebp
 	mov		edi,[esp +  4 + 16]		;edi = destination pointer
 	mov		esi,[esp + 8 + 16]		;esi = source
-	movq		mm6,x0002000200020002
+	movq		mm6,[x0002000200020002]
 	pxor		mm7,mm7
 
 	;load row pointers!
 
 	and		ebp,0fffffff8h
-	jz		oddpixeltest
+	jz		.oddpixeltest
 
 	sub		esi,ebp
 	sub		edi,ebp
 	sub		esi,ebp
 
-	test		dword ptr [esp+8+16],4
-	jnz		pixelloop_unaligned
+	test		dword [esp+8+16],4
+	jnz		.pixelloop_unaligned
 
-pixelloop:
-	movd		mm0,dword ptr [esi+ebp*2+4]
+.pixelloop:
+	movd		mm0,dword [esi+ebp*2+4]
 
-	movq		mm1,qword ptr [esi+ebp*2+8]
+	movq		mm1,qword [esi+ebp*2+8]
 	punpcklbw	mm0,mm7
 
 	movq		mm2,mm1
 	punpcklbw	mm1,mm7
 
-	movq		mm3,qword ptr [esi+ebp*2+16]
+	movq		mm3,qword [esi+ebp*2+16]
 	punpckhbw	mm2,mm7
 
 	movq		mm4,mm3
@@ -1011,13 +1003,13 @@ pixelloop:
 	packuswb	mm2,mm2
 	add		ebp,8
 
-	movd		dword ptr [edi+ebp-8],mm0
+	movd		dword [edi+ebp-8],mm0
 
-	movd		dword ptr [edi+ebp-4],mm2
-	jne		pixelloop
-	jmp		short oddpixeltest
+	movd		dword [edi+ebp-4],mm2
+	jne		.pixelloop
+	jmp		short .oddpixeltest
 
-pixelloop_unaligned:
+.pixelloop_unaligned:
 	movq		mm0,[esi+ebp*2+4]
 
 	movq		mm1,mm0
@@ -1029,7 +1021,7 @@ pixelloop_unaligned:
 	movq		mm3,mm2
 	punpcklbw	mm2,mm7
 
-	movd		mm4,dword ptr [esi+ebp*2+20]
+	movd		mm4,dword [esi+ebp*2+20]
 	punpckhbw	mm3,mm7
 
 	punpcklbw	mm4,mm7
@@ -1053,22 +1045,22 @@ pixelloop_unaligned:
 	packuswb	mm2,mm2
 	add			ebp,8
 
-	movd		dword ptr [edi+ebp-8],mm0
+	movd		dword [edi+ebp-8],mm0
 
-	movd		dword ptr [edi+ebp-4],mm2
-	jne			pixelloop_unaligned
+	movd		dword [edi+ebp-4],mm2
+	jne			.pixelloop_unaligned
 
 	;odd pixel?
 
-oddpixeltest:
-	test		dword ptr [esp+12+16],1
-	jz			xit
+.oddpixeltest:
+	test		dword [esp+12+16],1
+	jz			.xit
 
-	movd		mm0,dword ptr [esi+4]
+	movd		mm0,dword [esi+4]
 
-	movd		mm1,dword ptr [esi+8]
+	movd		mm1,dword [esi+8]
 	punpcklbw	mm0,mm7
-	movd		mm2,dword ptr [esi+12]
+	movd		mm2,dword [esi+12]
 	punpcklbw	mm1,mm7
 
 	punpcklbw	mm2,mm7
@@ -1083,19 +1075,18 @@ oddpixeltest:
 
 	packuswb	mm1,mm1
 
-	movd		dword ptr [edi],mm1
+	movd		dword [edi],mm1
 
-xit:
+.xit:
 	pop		ebx
 	pop		edi
 	pop		esi
 	pop		ebp
 	ret
-_resize_table_row_by2linear_MMX	endp
 
 ; long resize_table_row_by2cubic_MMX(Pixel *out, Pixel *in, PixDim w, unsigned long accum, unsigned long fstep, unsigned long istep);
 
-_resize_table_row_by2cubic_MMX	proc	near
+_resize_table_row_by2cubic_MMX:
 	push	ebp
 	push	esi
 	push	edi
@@ -1119,19 +1110,19 @@ _resize_table_row_by2cubic_MMX	proc	near
 	sub	esi,ebp
 
 	sub	edi,ebp
-	movq	mm6,x0004000400040004
+	movq	mm6,[x0004000400040004]
 	pxor	mm7,mm7
 
-pixelloop:
-	movd		mm0,dword ptr [esi+ebp*2+4]
+.pixelloop:
+	movd		mm0,dword [esi+ebp*2+4]
 
-	movd		mm1,dword ptr [esi+ebp*2+12]
+	movd		mm1,dword [esi+ebp*2+12]
 	punpcklbw	mm0,mm7
-	movd		mm2,dword ptr [esi+ebp*2+16]
+	movd		mm2,dword [esi+ebp*2+16]
 	punpcklbw	mm1,mm7
-	movd		mm3,dword ptr [esi+ebp*2+20]
+	movd		mm3,dword [esi+ebp*2+20]
 	punpcklbw	mm2,mm7
-	movd		mm4,dword ptr [esi+ebp*2+28]
+	movd		mm4,dword [esi+ebp*2+28]
 	punpcklbw	mm3,mm7
 
 	punpcklbw	mm4,mm7
@@ -1155,8 +1146,8 @@ pixelloop:
 
 	packuswb	mm2,mm2
 
-	movd		dword ptr [edi+ebp-4],mm2
-	jne		pixelloop
+	movd		dword [edi+ebp-4],mm2
+	jne		.pixelloop
 
 	pop	ebx
 	pop	ecx
@@ -1166,7 +1157,6 @@ pixelloop:
 	pop	ebp
 
 	ret
-_resize_table_row_by2cubic_MMX	endp
 
 
 ;-------------------------------------------------------------------------
@@ -1181,7 +1171,7 @@ _resize_table_row_by2cubic_MMX	endp
 ;		[esp+28]  long frac,
 ;		[esp+32]  long limit);
 
-_resize_table_row_protected_MMX	proc	near
+_resize_table_row_protected_MMX:
 	push	ebp
 	push	esi
 	push	edi
@@ -1203,7 +1193,7 @@ _resize_table_row_protected_MMX	proc	near
 	sub	ebx,4
 	mov	[esp + 4 + 16],ebx
 
-pixelloop:
+.pixelloop:
 	sar	esi,16
 	and	edx,0000ff00h
 	mov	ecx,[esp + 16 + 16]		;filter width
@@ -1216,14 +1206,14 @@ pixelloop:
 	add	eax,[esp + 28 + 16]
 	add	edx,[esp + 12 + 16]
 
-	movq	mm6,MMX_roundval
+	movq	mm6,[MMX_roundval]
 	pxor	mm0,mm0
 	movq	mm7,mm6
 	pxor	mm1,mm1
 	mov	[esp + 24 + 16],eax
 
 
-coeff_loop:
+.coeff_loop:
 	mov		eax,esi
 	cmp		esi,80000000h
 	sbb		ebx,ebx
@@ -1234,7 +1224,7 @@ coeff_loop:
 	paddd		mm6,mm1			;green/blue from last iteration
 	sbb		ebx,ebx
 	and		eax,ebx
-	movd		mm0, dword ptr [edi+eax*4]
+	movd		mm0, dword [edi+eax*4]
 	mov		eax,esi
 	cmp		esi,80000000h
 	sbb		ebx,ebx
@@ -1243,7 +1233,7 @@ coeff_loop:
 	sub		eax,ebp
 	sbb		ebx,ebx
 	and		eax,ebx
-	movd		mm1, dword ptr [edi+eax*4]
+	movd		mm1, dword [edi+eax*4]
 	pxor		mm5,mm5
 	punpcklbw	mm0,mm1		;[a0][a1][r0][r1][g0][g1][b0][b1]
 	movq		mm1,mm0
@@ -1253,7 +1243,7 @@ coeff_loop:
 	pmaddwd		mm1,[edx]
 	add		edx,8
 	sub		ecx,1
-	jne		coeff_loop
+	jne		.coeff_loop
 
 	paddd		mm7,mm0			;accumulate alpha/red (pixels 2/3)
 
@@ -1275,8 +1265,8 @@ coeff_loop:
 	mov		esi,eax
 	mov		edx,eax
 
-	movd		dword ptr [ebx+ecx],mm6
-	jne		pixelloop
+	movd		dword [ebx+ecx],mm6
+	jne		.pixelloop
 
 	pop	ebx
 	pop	edi
@@ -1284,26 +1274,25 @@ coeff_loop:
 	pop	ebp
 
 	ret
-_resize_table_row_protected_MMX	endp
 
 ;-------------------------------------------------------------------------
 ;
 ;	long resize_table_row_MMX(Pixel *out, Pixel *in, int *filter, int filter_width, PixDim w, long accum, long frac);
 
-	.code
+	segment	.text
 
-_resize_table_row_MMX	proc	near
+_resize_table_row_MMX:
 	push	ebp
 	push	esi
 	push	edi
 	push	ebx
 
-	cmp		dword ptr [esp+16+16], 4
-	jz		@accel_4coeff
-	cmp		dword ptr [esp+16+16], 6
-	jz		@accel_6coeff
-	cmp		dword ptr [esp+16+16], 8
-	jz		@accel_8coeff
+	cmp		dword [esp+16+16], 4
+	jz		.accel_4coeff
+	cmp		dword [esp+16+16], 6
+	jz		.accel_6coeff
+	cmp		dword [esp+16+16], 8
+	jz		.accel_8coeff
 
 	mov	eax,[esp + 24 + 16]
 	mov	ebp,[esp + 20 + 16]
@@ -1319,9 +1308,9 @@ _resize_table_row_MMX	proc	near
 	shr		ecx,1
 	mov		[esp+16+16],ecx
 	test	ecx,1
-	jnz		pixelloop_odd_pairs
+	jnz		.pixelloop_odd_pairs
 
-pixelloop_even_pairs:
+.pixelloop_even_pairs:
 	shr		esi,14
 	and		edx,0000ff00h
 	and		esi,0fffffffch
@@ -1333,19 +1322,19 @@ pixelloop_even_pairs:
 	add		eax,[esp + 28 + 16]
 	add		edx,[esp + 12 + 16]
 
-	movq	mm6,MMX_roundval
+	movq	mm6,[MMX_roundval]
 	pxor	mm3,mm3
 	movq	mm7,mm6
 	pxor	mm2,mm2
 
-coeffloop_unaligned_even_pairs:
-	movd		mm0,dword ptr [esi+0]
+.coeffloop_unaligned_even_pairs:
+	movd		mm0,dword [esi+0]
 	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
 
 	punpcklbw	mm0,[esi+4]		;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
 	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
 
-	movd		mm2,dword ptr [esi+8]
+	movd		mm2,dword [esi+8]
 	movq		mm1,mm0			;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
 
 	punpcklbw	mm2,[esi+12]	;mm2=[a2][a3][r2][r3][g2][g3][b2][b3]
@@ -1371,7 +1360,7 @@ coeffloop_unaligned_even_pairs:
 	add		esi,16
 	sub		ecx,2
 
-	jne		coeffloop_unaligned_even_pairs
+	jne		.coeffloop_unaligned_even_pairs
 
 	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
 	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
@@ -1388,8 +1377,8 @@ coeffloop_unaligned_even_pairs:
 	mov	esi,eax
 	mov	edx,eax
 
-	movd	dword ptr [edi-4],mm6
-	jne	pixelloop_even_pairs
+	movd	dword [edi-4],mm6
+	jne	.pixelloop_even_pairs
 
 	pop	ebx
 	pop	edi
@@ -1400,7 +1389,7 @@ coeffloop_unaligned_even_pairs:
 
 ;----------------------------------------------------------------
 
-pixelloop_odd_pairs:
+.pixelloop_odd_pairs:
 	shr		esi,14
 	and		edx,0000ff00h
 	and		esi,0fffffffch
@@ -1413,19 +1402,19 @@ pixelloop_odd_pairs:
 	sub		ecx,1
 	add		edx,[esp + 12 + 16]
 
-	movq	mm6,MMX_roundval
+	movq	mm6,[MMX_roundval]
 	pxor	mm3,mm3
 	pxor	mm2,mm2
 	movq	mm7,mm6
 
-coeffloop_unaligned_odd_pairs:
-	movd		mm0,dword ptr [esi+0]
+.coeffloop_unaligned_odd_pairs:
+	movd		mm0,dword [esi+0]
 	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
 
 	punpcklbw	mm0,[esi+4]		;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
 	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
 
-	movd		mm2,dword ptr [esi+8]
+	movd		mm2,dword [esi+8]
 	movq		mm1,mm0			;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
 
 	punpcklbw	mm2,[esi+12]	;mm2=[a2][a3][r2][r3][g2][g3][b2][b3]
@@ -1451,14 +1440,14 @@ coeffloop_unaligned_odd_pairs:
 	add		esi,16
 	sub		ecx,2
 
-	jne		coeffloop_unaligned_odd_pairs
+	jne		.coeffloop_unaligned_odd_pairs
 
 	paddd		mm7,mm2			;accumulate alpha/red (pixels 2/3)
 	paddd		mm6,mm3			;accumulate green/blue (pixels 2/3)
 
 	;finish up odd pair
 
-	movd		mm0,dword ptr [esi]		;mm0 = [x1][r1][g1][b1]
+	movd		mm0,dword [esi]		;mm0 = [x1][r1][g1][b1]
 	punpcklbw	mm0,[esi+4]		;mm2 = [x0][x1][r0][r1][g0][g1][b0][b1]
 	movq		mm1,mm0
 	punpcklbw	mm0,mm5			;mm0 = [g0][g1][b0][b1]
@@ -1485,8 +1474,8 @@ coeffloop_unaligned_odd_pairs:
 	mov		esi,eax
 	mov		edx,eax
 
-	movd		dword ptr [edi-4],mm6
-	jne		pixelloop_odd_pairs
+	movd		dword [edi-4],mm6
+	jne		.pixelloop_odd_pairs
 
 	pop	ebx
 	pop	edi
@@ -1497,7 +1486,7 @@ coeffloop_unaligned_odd_pairs:
 
 ;----------------------------------------------------------------
 
-@accel_4coeff:
+.accel_4coeff:
 	mov	eax,[esp + 24 + 16]
 	mov	ebp,[esp + 20 + 16]
 	add	ebp,ebp
@@ -1510,12 +1499,12 @@ coeffloop_unaligned_odd_pairs:
 	mov	esi,eax
 	mov	edx,eax
 
-	movq		mm4,MMX_roundval
+	movq		mm4,[MMX_roundval]
 	pxor		mm5,mm5
 
 	mov		ecx,[esp+12+16]
 
-@pixelloop_4coeff:
+.pixelloop_4coeff:
 	shr		esi,14
 	and		edx,0000ff00h
 	and		esi,0fffffffch
@@ -1525,8 +1514,8 @@ coeffloop_unaligned_odd_pairs:
 	add		eax,[esp+28+16]
 	add		edx,ecx
 
-	movd		mm0,dword ptr [esi+0]
-	movd		mm2,dword ptr [esi+8]
+	movd		mm0,dword [esi+0]
+	movd		mm2,dword [esi+8]
 	punpcklbw	mm0,[esi+4]		;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
 
 	movq		mm1,mm0			;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
@@ -1562,9 +1551,9 @@ coeffloop_unaligned_odd_pairs:
 	packuswb	mm1,mm1
 	mov	edx,eax
 
-	movd	dword ptr [edi+ebp],mm1
+	movd	dword [edi+ebp],mm1
 	add		ebp,4
-	jne		@pixelloop_4coeff
+	jne		.pixelloop_4coeff
 
 	pop	ebx
 	pop	edi
@@ -1576,7 +1565,7 @@ coeffloop_unaligned_odd_pairs:
 
 ;----------------------------------------------------------------
 
-@accel_6coeff:
+.accel_6coeff:
 	mov	eax,[esp + 24 + 16]
 	mov	ebp,[esp + 20 + 16]
 	add	ebp,ebp
@@ -1589,12 +1578,12 @@ coeffloop_unaligned_odd_pairs:
 	mov	esi,eax
 	mov	edx,eax
 
-	movq		mm4,MMX_roundval
+	movq		mm4,[MMX_roundval]
 	pxor		mm5,mm5
 
 	mov		ecx,[esp+12+16]
 
-@pixelloop_6coeff:
+.pixelloop_6coeff:
 	shr		esi,14
 	and		edx,0000ff00h
 	and		esi,0fffffffch
@@ -1605,8 +1594,8 @@ coeffloop_unaligned_odd_pairs:
 	add		eax,[esp+28+16]
 	add		edx,ecx
 
-	movd		mm0,dword ptr [esi+0]
-	movd		mm2,dword ptr [esi+8]
+	movd		mm0,dword [esi+0]
+	movd		mm2,dword [esi+8]
 	punpcklbw	mm0,[esi+4]		;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
 
 	movq		mm1,mm0			;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
@@ -1633,7 +1622,7 @@ coeffloop_unaligned_odd_pairs:
 	paddd		mm0,mm2			;accumulate alpha/red (pixels 2/3)
 	paddd		mm1,mm3			;accumulate green/blue (pixels 2/3)
 
-	movd		mm6,dword ptr [esi+16]
+	movd		mm6,dword [esi+16]
 
 	punpcklbw	mm6,[esi+20]	;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
 
@@ -1659,9 +1648,9 @@ coeffloop_unaligned_odd_pairs:
 	packuswb	mm1,mm1
 	mov	edx,eax
 
-	movd	dword ptr [edi+ebp],mm1
+	movd	dword [edi+ebp],mm1
 	add		ebp,4
-	jne		@pixelloop_6coeff
+	jne		.pixelloop_6coeff
 
 	pop	ebx
 	pop	edi
@@ -1672,7 +1661,7 @@ coeffloop_unaligned_odd_pairs:
 
 ;----------------------------------------------------------------
 
-@accel_8coeff:
+.accel_8coeff:
 	mov	eax,[esp + 24 + 16]
 	mov	ebp,[esp + 20 + 16]
 	add	ebp,ebp
@@ -1685,12 +1674,12 @@ coeffloop_unaligned_odd_pairs:
 	mov	esi,eax
 	mov	edx,eax
 
-	movq		mm4,MMX_roundval
+	movq		mm4,[MMX_roundval]
 	pxor		mm5,mm5
 
 	mov		ecx,[esp+12+16]
 
-@pixelloop_8coeff:
+.pixelloop_8coeff:
 	shr		esi,14
 	and		edx,0000ff00h
 	and		esi,0fffffffch
@@ -1700,8 +1689,8 @@ coeffloop_unaligned_odd_pairs:
 	add		eax,[esp+28+16]
 	add		edx,ecx
 
-	movd		mm0,dword ptr [esi+0]
-	movd		mm2,dword ptr [esi+8]
+	movd		mm0,dword [esi+0]
+	movd		mm2,dword [esi+8]
 	punpcklbw	mm0,[esi+4]		;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
 
 	movq		mm1,mm0			;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
@@ -1729,11 +1718,11 @@ coeffloop_unaligned_odd_pairs:
 	paddd		mm1,mm3			;accumulate green/blue (pixels 2/3)
 
 
-	movd		mm6,dword ptr [esi+16]
+	movd		mm6,dword [esi+16]
 
 	punpcklbw	mm6,[esi+20]	;mm1=[a0][a1][r0][r1][g0][g1][b0][b1]
 
-	movd		mm2,dword ptr [esi+24]
+	movd		mm2,dword [esi+24]
 
 	punpcklbw	mm2,[esi+28]	;mm2=[a2][a3][r2][r3][g2][g3][b2][b3]
 	movq		mm7,mm6			;mm0=[a0][a1][r0][r1][g0][g1][b0][b1]
@@ -1768,9 +1757,9 @@ coeffloop_unaligned_odd_pairs:
 	packuswb	mm1,mm1
 	mov	edx,eax
 
-	movd	dword ptr [edi+ebp],mm1
+	movd	dword [edi+ebp],mm1
 	add		ebp,4
-	jne		@pixelloop_8coeff
+	jne		.pixelloop_8coeff
 
 	pop	ebx
 	pop	edi
@@ -1779,7 +1768,6 @@ coeffloop_unaligned_odd_pairs:
 
 	ret
 
-_resize_table_row_MMX	endp
 
 
 
@@ -1790,7 +1778,7 @@ _resize_table_row_MMX	endp
 ;
 ;	long resize_table_col_MMX(Pixel *out, Pixel **in_table, int *filter, int filter_width, PixDim w, long frac);
 
-_resize_table_col_MMX	proc	near
+_resize_table_col_MMX:
 	push		ebp
 	push		esi
 	push		edi
@@ -1808,10 +1796,10 @@ _resize_table_col_MMX	proc	near
 
 	pxor		mm5,mm5
 
-	cmp			dword ptr [esp+16+16], 4
-	jz			@accel_4coeff
-	cmp			dword ptr [esp+16+16], 6
-	jz			@accel_6coeff
+	cmp			dword [esp+16+16], 4
+	jz			.accel_4coeff
+	cmp			dword [esp+16+16], 6
+	jz			.accel_6coeff
 
 	mov			ecx,[esp + 16 + 16]
 	shr			ecx,1
@@ -1820,23 +1808,23 @@ _resize_table_col_MMX	proc	near
 	xor			ebx,ebx					;ebx = source offset 
 
 	mov			ecx,[esp + 16 + 16]		;ecx = filter width counter
-@pixelloop:
+.pixelloop:
 	mov			eax,[esp + 8 + 16]		;esi = row pointer table
-	movq		mm6,MMX_roundval
+	movq		mm6,[MMX_roundval]
 	movq		mm7,mm6
 	pxor		mm0,mm0
 	pxor		mm1,mm1
-@coeffloop:
+.coeffloop:
 	mov			esi,[eax]
 	paddd		mm6,mm0
 
-	movd		mm0,dword ptr [esi+ebx]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+	movd		mm0,dword [esi+ebx]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 	paddd		mm7,mm1
 
 	mov			esi,[eax+4]
 	add			eax,8
 
-	movd		mm1,dword ptr [esi+ebx]	;mm1 = [0][0][0][0][x1][r1][g1][b1]
+	movd		mm1,dword [esi+ebx]	;mm1 = [0][0][0][0][x1][r1][g1][b1]
 	punpcklbw	mm0,mm1			;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
 
 	movq		mm1,mm0
@@ -1849,7 +1837,7 @@ _resize_table_col_MMX	proc	near
 	add			edx,8
 
 	sub			ecx,1
-	jne			@coeffloop
+	jne			.coeffloop
 
 	paddd		mm6,mm0
 	paddd		mm7,mm1
@@ -1865,10 +1853,10 @@ _resize_table_col_MMX	proc	near
 	mov			ecx,[esp + 16 + 16]		;ecx = filter width counter
 	mov			edx,[esp + 12 + 16]		;edx = filter bank pointer
 
-	movd		dword ptr [edi-4],mm6
-	jne			@pixelloop
+	movd		dword [edi-4],mm6
+	jne			.pixelloop
 
-@xit:
+.xit:
 	pop		ebx
 	pop		edi
 	pop		esi
@@ -1877,7 +1865,7 @@ _resize_table_col_MMX	proc	near
 
 
 
-@accel_4coeff:
+.accel_4coeff:
 	movq		mm2,[edx]
 	movq		mm3,[edx+8]
 
@@ -1902,10 +1890,10 @@ _resize_table_col_MMX	proc	near
 	;EDI	destination
 	;EBP	counter
 
-	movq		mm4,MMX_roundval
+	movq		mm4,[MMX_roundval]
 
-@pixelloop4:
-	movd		mm6,dword ptr [eax+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+.pixelloop4:
+	movd		mm6,dword [eax+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 
 	punpcklbw	mm6,[ebx+ebp]	;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
 
@@ -1915,7 +1903,7 @@ _resize_table_col_MMX	proc	near
 	pmaddwd		mm6,mm2
 	punpckhbw	mm7,mm5			;mm1 = [x1][x0][r1][r0]
 
-	movd		mm0,dword ptr [ecx+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+	movd		mm0,dword [ecx+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 	pmaddwd		mm7,mm2
 
 	punpcklbw	mm0,[esi+ebp]	;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
@@ -1938,20 +1926,20 @@ _resize_table_col_MMX	proc	near
 	packssdw	mm6,mm7
 	packuswb	mm6,mm6
 
-	movd		dword ptr [edi+ebp],mm6
+	movd		dword [edi+ebp],mm6
 
 	add			ebp,4
-	jne			@pixelloop4
-	jmp			@xit
+	jne			.pixelloop4
+	jmp			.xit
 
-@accel_6coeff:
+.accel_6coeff:
 	movq		mm2,[edx]
 	movq		mm3,[edx+8]
 	movq		mm4,[edx+16]
 
 	push		0
-	push		fs:dword ptr [0]
-	mov			fs:dword ptr [0],esp
+	push		dword [fs:0]
+	mov			dword [fs:0],esp
 
 	mov			esp,[esp+8+24]			;esp = row pointer table
 	mov			eax,[esp]
@@ -1980,15 +1968,15 @@ _resize_table_col_MMX	proc	near
 	;ESP	source 5
 	;EBP	counter
 
-@pixelloop6:
-	movd		mm6,dword ptr [eax+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+.pixelloop6:
+	movd		mm6,dword [eax+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 
 	punpcklbw	mm6,[ebx+ebp]	;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
 
 	movq		mm7,mm6
 	punpcklbw	mm6,mm5			;mm0 = [g1][g0][b1][b0]
 
-	movd		mm0,dword ptr [ecx+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+	movd		mm0,dword [ecx+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 	punpckhbw	mm7,mm5			;mm1 = [x1][x0][r1][r0]
 
 	punpcklbw	mm0,[edx+ebp]	;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
@@ -2000,15 +1988,15 @@ _resize_table_col_MMX	proc	near
 	pmaddwd		mm7,mm2
 	punpckhbw	mm1,mm5			;mm1 = [x1][x0][r1][r0]
 
-	paddd		mm6,MMX_roundval
+	paddd		mm6,[MMX_roundval]
 	pmaddwd		mm0,mm3
 
-	paddd		mm7,MMX_roundval
+	paddd		mm7,[MMX_roundval]
 	pmaddwd		mm1,mm3
 
 	paddd		mm6,mm0
 
-	movd		mm0,dword ptr [esi+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
+	movd		mm0,dword [esi+ebp]	;mm0 = [0][0][0][0][x0][r0][g0][b0]
 	paddd		mm7,mm1
 
 	punpcklbw	mm0,[esp+ebp]	;mm0 = [x0][x1][r0][r1][g0][g1][b0][b1]
@@ -2025,20 +2013,19 @@ _resize_table_col_MMX	proc	near
 	packssdw	mm6,mm7
 	packuswb	mm6,mm6
 
-	movd		dword ptr [edi+ebp],mm6
+	movd		dword [edi+ebp],mm6
 
 	add			ebp,4
-	jne			@pixelloop6
+	jne			.pixelloop6
 
-	mov			esp,fs:dword ptr [0]
-	pop			fs:dword ptr [0]
+	mov			esp,dword [fs:0]
+	pop			dword [fs:0]
 	pop			eax
 
-	jmp			@xit
+	jmp			.xit
 
-_resize_table_col_MMX	endp
 
-_resize_table_col_SSE2	proc	near
+_resize_table_col_SSE2:
 	push		ebp
 	push		esi
 	push		edi
@@ -2055,12 +2042,12 @@ _resize_table_col_SSE2	proc	near
 	mov			edi,[esp+4+16]		;edi = destination pointer
 
 	pxor		xmm7, xmm7
-	movdqa		xmm6, xmmword ptr MMX_roundval
+	movdqa		xmm6, oword [MMX_roundval]
 
-	cmp			dword ptr [esp+16+16], 4
-	jz			@accel_4coeff
-	cmp			dword ptr [esp+16+16], 6
-	jz			@accel_6coeff
+	cmp			dword [esp+16+16], 4
+	jz			.accel_4coeff
+	cmp			dword [esp+16+16], 6
+	jz			.accel_6coeff
 
 	mov			ecx,[esp+16+16]
 	shr			ecx,1
@@ -2069,23 +2056,23 @@ _resize_table_col_SSE2	proc	near
 	xor			ebx,ebx					;ebx = source offset 
 
 	mov			ecx,[esp+16+16]		;ecx = filter width counter
-@pixelloop:
+.pixelloop:
 	mov			eax, [esp+8+16]		;esi = row pointer table
 	movdqa		xmm4, xmm6
-@coeffloop:
+.coeffloop:
 	mov			esi,[eax]
 
-	movd		xmm0, dword ptr [esi+ebx]
+	movd		xmm0, dword [esi+ebx]
 
 	mov			esi,[eax+4]
 	add			eax,8
 
-	movd		xmm1, dword ptr [esi+ebx]
+	movd		xmm1, dword [esi+ebx]
 	punpcklbw	xmm0, xmm1
 
 	punpcklbw	xmm0, xmm7
 
-	movq		xmm2, qword ptr [edx]
+	movq		xmm2, qword [edx]
 	pshufd		xmm2, xmm2, 01000100b
 
 	pmaddwd		xmm0, xmm2
@@ -2095,7 +2082,7 @@ _resize_table_col_SSE2	proc	near
 	add			edx,8
 
 	sub			ecx,1
-	jne			@coeffloop
+	jne			.coeffloop
 
 	psrad		xmm4,14
 	add			edi,4
@@ -2107,17 +2094,17 @@ _resize_table_col_SSE2	proc	near
 	mov			ecx,[esp+16+16]		;ecx = filter width counter
 	mov			edx,[esp+12+16]		;edx = filter bank pointer
 
-	movd		dword ptr [edi-4],xmm4
-	jne			@pixelloop
+	movd		dword [edi-4],xmm4
+	jne			.pixelloop
 
-@xit:
+.xit:
 	pop		ebx
 	pop		edi
 	pop		esi
 	pop		ebp
 	ret
 
-@accel_4coeff:
+.accel_4coeff:
 	shl			ebp, 2
 	mov			eax, [esp+8+16]			;eax = row pointer table
 	mov			esi, [eax+12]
@@ -2136,19 +2123,19 @@ _resize_table_col_SSE2	proc	near
 	;EDI	destination
 	;EBP	counter
 	;
-	movq		xmm4, qword ptr [edx]				;xmm4 = coeff 0/1
-	movq		xmm5, qword ptr [edx+8]			;xmm5 = coeff 2/3
+	movq		xmm4, qword [edx]				;xmm4 = coeff 0/1
+	movq		xmm5, qword [edx+8]			;xmm5 = coeff 2/3
 	punpcklqdq	xmm4, xmm4
 	punpcklqdq	xmm5, xmm5
 
 	add			ebp, 4
-	jz			@oddpixel_4coeff
+	jz			.oddpixel_4coeff
 
-@pixelloop_4coeff_dualpel:
-	movq		xmm0, qword ptr [eax]
-	movq		xmm1, qword ptr [ebx]
-	movq		xmm2, qword ptr [ecx]
-	movq		xmm3, qword ptr [edx]
+.pixelloop_4coeff_dualpel:
+	movq		xmm0, qword [eax]
+	movq		xmm1, qword [ebx]
+	movq		xmm2, qword [ecx]
+	movq		xmm3, qword [edx]
 	add			eax,8
 	add			ebx,8
 	add			ecx,8
@@ -2173,16 +2160,16 @@ _resize_table_col_SSE2	proc	near
 	psrad		xmm1, 14
 	packssdw	xmm0, xmm1
 	packuswb	xmm0, xmm0
-	movq		qword ptr [edi+ebp],xmm0
+	movq		qword [edi+ebp],xmm0
 	add			ebp, 8
-	jae			@pixelloop_4coeff_dualpel
-	jnz			@xit
+	jae			.pixelloop_4coeff_dualpel
+	jnz			.xit
 
-@oddpixel_4coeff:
-	movd		xmm0, dword ptr [eax]
-	movd		xmm1, dword ptr [ebx]
-	movd		xmm2, dword ptr [ecx]
-	movd		xmm3, dword ptr [esi]
+.oddpixel_4coeff:
+	movd		xmm0, dword [eax]
+	movd		xmm1, dword [ebx]
+	movd		xmm2, dword [ecx]
+	movd		xmm3, dword [esi]
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
 	punpcklbw	xmm0, xmm7
@@ -2194,21 +2181,21 @@ _resize_table_col_SSE2	proc	near
 	psrad		xmm0, 14
 	packssdw	xmm0, xmm0
 	packuswb	xmm0, xmm0
-	movd		dword ptr [edi],xmm0
-	jmp			@xit
+	movd		dword [edi],xmm0
+	jmp			.xit
 
 
-@accel_6coeff:
-	movq		xmm4, qword ptr [edx]				;xmm4 = coeff 0/1
-	movq		xmm5, qword ptr [edx+8]			;xmm5 = coeff 2/3
-	movq		xmm6, qword ptr [edx+16]			;xmm5 = coeff 4/5
+.accel_6coeff:
+	movq		xmm4, qword [edx]				;xmm4 = coeff 0/1
+	movq		xmm5, qword [edx+8]			;xmm5 = coeff 2/3
+	movq		xmm6, qword [edx+16]			;xmm5 = coeff 4/5
 	punpcklqdq	xmm4, xmm4
 	punpcklqdq	xmm5, xmm5
 	punpcklqdq	xmm6, xmm6
 
 	push		0
-	push		fs:dword ptr [0]
-	mov			fs:dword ptr [0],esp
+	push		dword [fs:0]
+	mov			dword [fs:0],esp
 
 	shl			ebp, 2
 	mov			eax, [esp+8+24]			;eax = row pointer table
@@ -2234,13 +2221,13 @@ _resize_table_col_SSE2	proc	near
 	;
 
 	add			ebp, 4
-	jz			@oddpixel_6coeff
+	jz			.oddpixel_6coeff
 
-@pixelloop_6coeff_dualpel:
-	movq		xmm0, qword ptr [eax]
-	movq		xmm1, qword ptr [ebx]
-	movq		xmm2, qword ptr [ecx]
-	movq		xmm3, qword ptr [edx]
+.pixelloop_6coeff_dualpel:
+	movq		xmm0, qword [eax]
+	movq		xmm1, qword [ebx]
+	movq		xmm2, qword [ecx]
+	movq		xmm3, qword [edx]
 	add			eax,8
 	add			ebx,8
 	add			ecx,8
@@ -2260,8 +2247,8 @@ _resize_table_col_SSE2	proc	near
 	paddd		xmm0, xmm2
 	paddd		xmm1, xmm3
 
-	movq		xmm2, qword ptr [esi]
-	movq		xmm3, qword ptr [esp]
+	movq		xmm2, qword [esi]
+	movq		xmm3, qword [esp]
 	add			esi, 8
 	add			esp, 8
 	punpcklbw	xmm2, xmm3
@@ -2272,26 +2259,26 @@ _resize_table_col_SSE2	proc	near
 	pmaddwd		xmm3, xmm6
 	paddd		xmm0, xmm2
 	paddd		xmm1, xmm3
-	paddd		xmm0, xmmword ptr MMX_roundval
-	paddd		xmm1, xmmword ptr MMX_roundval
+	paddd		xmm0, oword [MMX_roundval]
+	paddd		xmm1, oword [MMX_roundval]
 	psrad		xmm0, 14
 	psrad		xmm1, 14
 	packssdw	xmm0, xmm1
 	packuswb	xmm0, xmm0
-	movq		qword ptr [edi+ebp],xmm0
+	movq		qword [edi+ebp],xmm0
 	add			ebp, 8
-	jae			@pixelloop_6coeff_dualpel
-	jnz			@xit_6coeff
+	jae			.pixelloop_6coeff_dualpel
+	jnz			.xit_6coeff
 
-@oddpixel_6coeff:
-	movd		xmm0, dword ptr [eax]
-	movd		xmm1, dword ptr [ebx]
-	movd		xmm2, dword ptr [ecx]
-	movd		xmm3, dword ptr [edx]
+.oddpixel_6coeff:
+	movd		xmm0, dword [eax]
+	movd		xmm1, dword [ebx]
+	movd		xmm2, dword [ecx]
+	movd		xmm3, dword [edx]
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
-	movd		xmm1, dword ptr [esi]
-	movd		xmm3, dword ptr [esp]
+	movd		xmm1, dword [esi]
+	movd		xmm3, dword [esp]
 	punpcklbw	xmm0, xmm7
 	punpcklbw	xmm2, xmm7
 	pmaddwd		xmm0, xmm4
@@ -2300,26 +2287,25 @@ _resize_table_col_SSE2	proc	near
 	punpcklbw	xmm1, xmm7
 	pmaddwd		xmm1, xmm6
 	paddd		xmm0, xmm2
-	paddd		xmm1, xmmword ptr MMX_roundval
+	paddd		xmm1, oword [MMX_roundval]
 	paddd		xmm0, xmm1
 	psrad		xmm0, 14
 	packssdw	xmm0, xmm0
 	packuswb	xmm0, xmm0
-	movd		dword ptr [edi],xmm0
+	movd		dword [edi],xmm0
 
-@xit_6coeff:
-	mov			esp,fs:dword ptr [0]
-	pop			fs:dword ptr [0]
+.xit_6coeff:
+	mov			esp, dword [fs:0]
+	pop			dword [fs:0]
 	pop			eax
-	jmp			@xit
+	jmp			.xit
 
-_resize_table_col_SSE2	endp
 
 ;	long resize_table_col_by2linear_MMX(Pixel *out, Pixel **in_table, PixDim w);
 
-	public	_resize_table_col_by2linear_MMX
+	global	_resize_table_col_by2linear_MMX	
 
-_resize_table_col_by2linear_MMX	proc	near
+_resize_table_col_by2linear_MMX:
 	push		ebp
 	push		esi
 	push		edi
@@ -2345,10 +2331,10 @@ _resize_table_col_by2linear_MMX	proc	near
 	sub		ebx,ebp
 	sub		ecx,ebp
 	sub		edi,ebp
-	movq		mm6,x0002000200020002
+	movq		mm6,[x0002000200020002]
 	pxor		mm7,mm7
 
-pixelloop:
+.pixelloop:
 	movq		mm0,[eax+ebp]
 
 	movq		mm1,[ebx+ebp]
@@ -2387,17 +2373,17 @@ pixelloop:
 	packuswb	mm1,mm4
 
 	movq		[edi+ebp-8],mm1
-	jne		pixelloop
+	jne		.pixelloop
 
 oddpixelcheck:
-	test		dword ptr [esp+12+16],1
+	test		dword [esp+12+16],1
 	jz		xit
 
-	movd		mm0,dword ptr [eax]
+	movd		mm0,dword [eax]
 
-	movd		mm1,dword ptr [ebx]
+	movd		mm1,dword [ebx]
 	punpcklbw	mm0,mm7
-	movd		mm2,dword ptr [ecx]
+	movd		mm2,dword [ecx]
 	punpcklbw	mm1,mm7
 
 	punpcklbw	mm2,mm7
@@ -2412,7 +2398,7 @@ oddpixelcheck:
 
 	packuswb	mm1,mm1
 
-	movd		dword ptr [edi],mm1
+	movd		dword [edi],mm1
 
 xit:
 	pop		ebx
@@ -2421,13 +2407,12 @@ xit:
 	pop		ebp
 
 	ret
-_resize_table_col_by2linear_MMX	endp
 
 ;	long resize_table_col_by2cubic_MMX(Pixel *out, Pixel **in_table, PixDim w);
 
-	public	_resize_table_col_by2cubic_MMX
+	global	_resize_table_col_by2cubic_MMX	
 
-_resize_table_col_by2cubic_MMX	proc	near
+_resize_table_col_by2cubic_MMX:
 	push	ebp
 	push	esi
 	push	edi
@@ -2456,19 +2441,19 @@ _resize_table_col_by2cubic_MMX	proc	near
 	sub	edx,ebp
 	sub	esi,ebp
 	sub	edi,ebp
-	movq	mm6,x0008000800080008
+	movq	mm6,[x0008000800080008]
 	pxor	mm7,mm7
 
-pixelloop:
-	movd		mm0,dword ptr [eax+ebp]
+.pixelloop:
+	movd		mm0,dword [eax+ebp]
 
-	movd		mm1,dword ptr [ebx+ebp]
+	movd		mm1,dword [ebx+ebp]
 	punpcklbw	mm0,mm7
-	movd		mm2,dword ptr [ecx+ebp]
+	movd		mm2,dword [ecx+ebp]
 	punpcklbw	mm1,mm7
-	movd		mm3,dword ptr [edx+ebp]
+	movd		mm3,dword [edx+ebp]
 	punpcklbw	mm2,mm7
-	movd		mm4,dword ptr [esi+ebp]
+	movd		mm4,dword [esi+ebp]
 	punpcklbw	mm3,mm7
 
 	punpcklbw	mm4,mm7
@@ -2490,8 +2475,8 @@ pixelloop:
 
 	packuswb	mm2,mm2
 	add		ebp,4
-	movd		dword ptr [edi+ebp-4],mm2
-	jne		pixelloop
+	movd		dword [edi+ebp-4],mm2
+	jne		.pixelloop
 
 	pop		ebx
 	pop		ecx
@@ -2501,6 +2486,5 @@ pixelloop:
 	pop		ebp
 
 	ret
-_resize_table_col_by2cubic_MMX	endp
 
 	end

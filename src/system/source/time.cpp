@@ -31,6 +31,7 @@
 
 #include <vd2/system/time.h>
 #include <vd2/system/thread.h>
+#include <vd2/system/thunk.h>
 
 #ifdef _MSC_VER
 	#pragma comment(lib, "winmm")
@@ -205,4 +206,48 @@ void VDCallbackTimer::ThreadRun() {
 			periodLo = (timerPeriod+perdelta) % 10000;
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDLazyTimer::VDLazyTimer()
+	: mTimerId(NULL)
+	, mpCB(NULL)
+{
+	if (!VDInitThunkAllocator())
+		throw MyError("Unable to initialize thunk allocator.");
+
+	mpThunk = VDCreateFunctionThunkFromMethod(this, &VDLazyTimer::StaticTimeCallback, true);
+	if (!mpThunk) {
+		VDShutdownThunkAllocator();
+		throw MyError("Unable to create timer thunk.");
+	}
+}
+
+VDLazyTimer::~VDLazyTimer() {
+	Stop();
+
+	VDDestroyFunctionThunk(mpThunk);
+	VDShutdownThunkAllocator();
+}
+
+void VDLazyTimer::SetOneShot(IVDTimerCallback *pCB, uint32 delay) {
+	Stop();
+
+	mpCB = pCB;
+	mTimerId = SetTimer(NULL, 0, delay, (TIMERPROC)mpThunk);
+}
+
+void VDLazyTimer::Stop() {
+	if (mTimerId) {
+		KillTimer(NULL, mTimerId);
+		mTimerId = 0;
+	}
+}
+
+void VDLazyTimer::StaticTimeCallback(VDZHWND hwnd, VDZUINT msg, VDZUINT_PTR id, VDZDWORD time) {
+	Stop();
+
+	if (mpCB)
+		mpCB->TimerCallback();
 }

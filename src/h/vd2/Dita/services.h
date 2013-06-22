@@ -33,7 +33,8 @@ struct VDFileDialogOption {
 		kInt,
 		kEnabledInt,
 		kReadOnly,
-		kSelectedFilter
+		kSelectedFilter,
+		kConfirmFile
 	};
 
 	int				mType;

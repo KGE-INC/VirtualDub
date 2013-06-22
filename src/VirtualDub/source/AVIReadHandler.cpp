@@ -437,18 +437,14 @@ AVIReadStream::AVIReadStream(AVIReadHandler *parent, AVIStreamNode *psnData, int
 	// Hack to imitate Microsoft's parser.  It seems to ignore this value
 	// for audio streams.
 
-	if (psnData->hdr.fccType == kAVIStreamTypeAudio) {
-#if 0
+	if (psnData->hdr.fccType == kAVIStreamTypeAudio && !psnData->is_VBR) {
 		sampsize = ((WAVEFORMATEX *)psnData->pFormat)->nBlockAlign;
 
 		// wtf....
 		if (!sampsize)
 			sampsize = 1;
 
-		length = psnData->bytes / sampsize;
-#else
 		length = mpIndex->GetSampleCount();
-#endif
 	}
 
 	psnData->listHandlers.AddTail(this);
@@ -1792,7 +1788,8 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, uint32
 }
 
 bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int count, sint64 movi_offset) {
-	AVIIndexEntry avie[32];
+	enum { kIndicesPerLoop = 4096};
+	AVIIndexEntry avie[kIndicesPerLoop];		// Note: 64K
 	AVIStreamNode *pasn, *pasn_next;
 	bool absolute_addr = true;
 	bool first_chunk = true;
@@ -1807,7 +1804,8 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 		int tc = count;
 		int i;
 
-		if (tc>32) tc=32;
+		if (tc > kIndicesPerLoop)
+			tc = kIndicesPerLoop;
 		count -= tc;
 
 		if (tc*sizeof(AVIIndexEntry) != (size_t)mpCurrentFile->mFile.readData(avie, tc*sizeof(AVIIndexEntry))) {
@@ -1897,8 +1895,8 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 #pragma warning(pop)
 
 	union {
-		struct	_avisuperindex_entry		superent[64];
-		uint32	dwHeap[256];
+		struct	_avisuperindex_entry		superent[4096];
+		uint32	dwHeap[16384];		// 64K
 	};
 
 	int entries, tp;
@@ -1907,89 +1905,92 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 
 	if (fpos>=0)
 		mpCurrentFile->mFile.seek(fpos);
-	mpCurrentFile->mFile.read((char *)&idxsuper + 8, sizeof(AVISUPERINDEX) - 8);
 
-	switch(idxsuper.bIndexType) {
-	case AVI_INDEX_OF_INDEXES:
-		// sanity check
+	try {
+		mpCurrentFile->mFile.read((char *)&idxsuper + 8, sizeof(AVISUPERINDEX) - 8);
 
-		if (idxsuper.wLongsPerEntry != 4)
-			throw MyError("Invalid superindex block in stream");
+		switch(idxsuper.bIndexType) {
+		case AVI_INDEX_OF_INDEXES:
+			// sanity check
 
-//		if (idxsuper.bIndexSubType != 0)
-//			throw MyError("Field indexes not supported");
+			if (idxsuper.wLongsPerEntry != 4)
+				throw MyError("Invalid superindex block in stream");
 
-		entries = idxsuper.nEntriesInUse;
-
-		while(entries > 0) {
-			tp = sizeof superent / sizeof superent[0];
-			if (tp>entries) tp=entries;
-
-			mpCurrentFile->mFile.read(superent, tp*sizeof superent[0]);
-
-			for(i=0; i<tp; i++)
-				_parseExtendedIndexBlock(streamlist, pasn, superent[i].qwOffset+8, superent[i].dwSize-8);
-
-			entries -= tp;
-		}
-
-		break;
-
-	case AVI_INDEX_OF_CHUNKS:
-
-//		if (idxstd.bIndexSubType != 0)
-//			throw MyError("Frame indexes not supported");
-
-		entries = idxstd.nEntriesInUse;
-
-		// In theory, if bIndexSubType==AVI_INDEX_2FIELD it's supposed to have
-		// wLongsPerEntry=3, and bIndexSubType==0 gives wLongsPerEntry=2.
-		// Matrox's MPEG-2 stuff generates bIndexSubType=16 and wLongsPerEntry=6.
-		// *sigh*
-		//
-		// For wLongsPerEntry==2 and ==3, dwOffset is at 0 and dwLength at 1;
-		// for wLongsPerEntry==6, dwOffset is at 2 and all are keyframes.
-
-		{
-			if (idxstd.wLongsPerEntry!=2 && idxstd.wLongsPerEntry!=3 && idxstd.wLongsPerEntry!=6)
-				throw MyError("Invalid OpenDML index block in stream (wLongsPerEntry=%d)", idxstd.wLongsPerEntry);
+			entries = idxsuper.nEntriesInUse;
 
 			while(entries > 0) {
-				tp = (sizeof dwHeap / sizeof dwHeap[0]) / idxstd.wLongsPerEntry;
+				tp = sizeof superent / sizeof superent[0];
 				if (tp>entries) tp=entries;
 
-				mpCurrentFile->mFile.read(dwHeap, tp*idxstd.wLongsPerEntry*sizeof(uint32));
+				mpCurrentFile->mFile.read(superent, tp*sizeof superent[0]);
 
-				if (idxstd.wLongsPerEntry == 6)
-					for(i=0; i<tp; i++) {
-						uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
-						uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 2];
-
-						pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize | 0x80000000);
-
-						pasn->bytes += dwSize;
-					}
-				else
-					for(i=0; i<tp; i++) {
-						uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
-						uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 1];
-
-						pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize ^ 0x80000000);
-
-						pasn->bytes += dwSize & 0x7FFFFFFF;
-					}
+				for(i=0; i<tp; i++)
+					_parseExtendedIndexBlock(streamlist, pasn, superent[i].qwOffset+8, superent[i].dwSize-8);
 
 				entries -= tp;
 			}
+
+			break;
+
+		case AVI_INDEX_OF_CHUNKS:
+
+	//		if (idxstd.bIndexSubType != 0)
+	//			throw MyError("Frame indexes not supported");
+
+			entries = idxstd.nEntriesInUse;
+
+			// In theory, if bIndexSubType==AVI_INDEX_2FIELD it's supposed to have
+			// wLongsPerEntry=3, and bIndexSubType==0 gives wLongsPerEntry=2.
+			// Matrox's MPEG-2 stuff generates bIndexSubType=16 and wLongsPerEntry=6.
+			// *sigh*
+			//
+			// For wLongsPerEntry==2 and ==3, dwOffset is at 0 and dwLength at 1;
+			// for wLongsPerEntry==6, dwOffset is at 2 and all are keyframes.
+
+			{
+				if (idxstd.wLongsPerEntry!=2 && idxstd.wLongsPerEntry!=3 && idxstd.wLongsPerEntry!=6)
+					throw MyError("Invalid OpenDML index block in stream (wLongsPerEntry=%d)", idxstd.wLongsPerEntry);
+
+				while(entries > 0) {
+					tp = (sizeof dwHeap / sizeof dwHeap[0]) / idxstd.wLongsPerEntry;
+					if (tp>entries) tp=entries;
+
+					mpCurrentFile->mFile.read(dwHeap, tp*idxstd.wLongsPerEntry*sizeof(uint32));
+
+					if (idxstd.wLongsPerEntry == 6)
+						for(i=0; i<tp; i++) {
+							uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
+							uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 2];
+
+							pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize | 0x80000000);
+
+							pasn->bytes += dwSize;
+						}
+					else
+						for(i=0; i<tp; i++) {
+							uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
+							uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 1];
+
+							pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize ^ 0x80000000);
+
+							pasn->bytes += dwSize & 0x7FFFFFFF;
+						}
+
+					entries -= tp;
+				}
+			}
+
+			break;
+
+		default:
+			throw MyError("Unknown hyperindex type");
 		}
 
-		break;
-
-	default:
-		throw MyError("Unknown hyperindex type");
+		mpCurrentFile->mFile.seek(i64FPSave);
+	} catch(const MyError&) {
+		mpCurrentFile->mFile.seekNT(i64FPSave);
+		throw;
 	}
-
-	mpCurrentFile->mFile.seek(i64FPSave);
 }
 
 void AVIReadHandler::_destruct() {

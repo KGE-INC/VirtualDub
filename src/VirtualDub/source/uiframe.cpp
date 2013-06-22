@@ -109,9 +109,9 @@ void VDUIFrame::SavePlacement() {
 		VDUISaveWindowPlacementW32(mhwnd, mpRegistryName);
 }
 
-void VDUIFrame::RestorePlacement() {
+void VDUIFrame::RestorePlacement(int nCmdShow) {
 	if (mpRegistryName)
-		VDUIRestoreWindowPlacementW32(mhwnd, mpRegistryName);
+		VDUIRestoreWindowPlacementW32(mhwnd, mpRegistryName, nCmdShow);
 }
 
 LPARAM VDUIFrame::DefProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

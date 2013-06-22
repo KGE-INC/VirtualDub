@@ -1,24 +1,24 @@
-span	struct
-u		dd		?
-v		dd		?
-span	ends
+		struc	span
+.u		resd	1
+.v		resd	1
+		endstruc
 
-mipspan	struct
-u		dd		?
-v		dd		?
-lambda	dd		?
-mipspan	ends
+		struc	mipspan
+.u		resd	1
+.v		resd	1
+.lambda	resd	1
+		endstruc
 
-mipmap	struct
-bits	dd		?
-pitch	dd		?
-uvmul	dd		?
-		dd		?
-mipmap	ends
+		struc	mipmap
+.bits	resd	1
+.pitch	resd	1
+.uvmul	resd	1
+		resd	1
+		endstruc
 
-texinfo	struct
-mips	mipmap	16 dup (<?,?>)
-dst		dd		?
-src		dd		?
-w		dd		?
-texinfo	ends
+		struc	texinfo
+.mips	resd	16*4
+.dst	resd	1
+.src	resd	1
+.w		resd	1
+		endstruc

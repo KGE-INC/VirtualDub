@@ -23,9 +23,10 @@
 ;	3.	This notice may not be removed or altered from any source
 ;		distribution.
 
-		.code
+		segment	.text
 
-vdasm_uint128_add	proc public
+		global	vdasm_uint128_add
+vdasm_uint128_add:
 		mov		rax, [rdx]
 		add		rax, [r8]
 		mov		[rcx], rax
@@ -33,9 +34,9 @@ vdasm_uint128_add	proc public
 		adc		rax, [r8+8]
 		mov		[rcx+8], rax
 		ret
-vdasm_uint128_add	endp
 
-vdasm_uint128_sub	proc public
+		global	vdasm_uint128_sub
+vdasm_uint128_sub:
 		mov		rax, [rdx]
 		sub		rax, [r8]
 		mov		[rcx], rax
@@ -43,14 +44,13 @@ vdasm_uint128_sub	proc public
 		sbb		rax, [r8+8]
 		mov		[rcx+8], rax
 		ret
-vdasm_uint128_sub	endp
 
-vdasm_uint128_mul	proc public frame
+proc_frame vdasm_uint128_mul
 		mov		[esp+8], rbx
-		.savereg	rbx, 8
+		[savereg	rbx, 8]
 		mov		[esp+16], rsi
-		.savereg	rsi, 16
-		.endprolog
+		[savereg	rsi, 16]
+end_prolog
 
 		mov		rbx, rdx			;rbx = src1
 		mov		rax, [rdx]			;rax = src1a
@@ -62,12 +62,12 @@ vdasm_uint128_mul	proc public frame
 		mul		rsi					;rdx:rax = src1b*src2a
 		add		r9, rax				;r9 = (src1a*src2a).hi + (src1b*src2a).lo
 		mov		rax, [rbx]			;rax = src1a
-		mul		qword ptr [r8+8]	;rdx:rax = src1a*src2b
+		mul		qword [r8+8]	;rdx:rax = src1a*src2b
 		add		rax, r9				;rax = (src1a*src2b).lo + (src1b*src2a).lo + (src1a*src2a).hi
 		mov		[rcx+8], rax		;write high result
 		mov		rsi, [esp+16]
 		mov		rbx, [esp+8]
 		ret
-vdasm_uint128_mul	endp
+endproc_frame
 
 		end

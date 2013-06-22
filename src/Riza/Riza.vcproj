@@ -18,6 +18,9 @@
 		/>
 	</Platforms>
 	<ToolFiles>
+		<ToolFile
+			RelativePath="..\YASM.rules"
+		/>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
@@ -34,6 +37,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="YASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -104,6 +110,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="YASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -177,6 +186,9 @@
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
@@ -245,6 +257,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="YASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -951,9 +966,7 @@
 					Name="Release|Win32"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /coff /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -961,18 +974,14 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /coff /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
 					Name="Debug|Win32"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /coff /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -980,9 +989,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /coff /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>

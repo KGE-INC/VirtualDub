@@ -248,7 +248,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 		const VDPixmap& px = vSrc->getTargetFormat();
 
 		IVDStreamSource *pVSS = vSrc->asStream();
-		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, pVSS->getRate(), pVSS->getLength());
+		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, pVSS->getRate(), pVSS->getLength());
 
 		if (filters.getFrameLag())
 			MessageBox(g_hWnd,

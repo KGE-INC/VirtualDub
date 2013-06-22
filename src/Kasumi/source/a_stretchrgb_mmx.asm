@@ -1,8 +1,4 @@
-		.686
-		.mmx
-		.xmm
-		.model	flat
-		.const
+		segment	.rdata, align=16
 
 x0020w			dq	00020002000200020h
 rb_mask_555		dq	07c1f7c1f7c1f7c1fh
@@ -10,25 +6,26 @@ g_mask_555		dq	003e003e003e003e0h
 rb_mask_888		dq	000ff00ff00ff00ffh
 g_mask_888		dq	00000ff000000ff00h
 
-		.code
+		segment	.text
 
-VDPixmapReferenceStretchBltBilinearParameters	struct
-dst			dword		?
-src			dword		?
-u			dword		?
-uinc		dword		?
-dudx		dword		?
+		struc	VDPixmapReferenceStretchBltBilinearParameters
+.dst		resd	1
+.src		resd	1
+.u			resd	1
+.uinc		resd	1
+.dudx		resd	1
 
-xprepos		dword		?
-xpostpos	dword		?
-xprecopy	dword		?
-xpostcopy	dword		?
-xmidsize	dword		?
-VDPixmapReferenceStretchBltBilinearParameters	ends
+.xprepos	resd	1
+.xpostpos	resd	1
+.xprecopy	resd	1
+.xpostcopy	resd	1
+.xmidsize	resd	1
+		endstruc
 
 
 
-_vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
+		global	_vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX
+_vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX:
 		push		ebp
 		push		edi
 		push		esi
@@ -38,12 +35,12 @@ _vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
 		and			eax, 0f8000000h
 		mov			ebx, [esp+8+16]
 		mov			ecx, [esp+12+16]
-		jz			@noreverse
+		jz			.noreverse
 		xchg		ebx, ecx
-		js			@noreverse
+		js			.noreverse
 		neg			eax
 		xchg		ebx, ecx
-@noreverse:
+.noreverse:
 		shr			eax, 16
 		mov			[esp+20+16], eax
 		mov			edx, [esp+4+16]
@@ -54,17 +51,17 @@ _vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
 		lea			edx, [edx+eax-6]
 		neg			eax
 
-		movd		mm4, dword ptr [esp+20+16]
+		movd		mm4, dword [esp+20+16]
 		punpcklwd	mm4, mm4
 		punpckldq	mm4, mm4
 
-		movq		mm6, rb_mask_555
-		movq		mm7, g_mask_555
+		movq		mm6, [rb_mask_555]
+		movq		mm7, [g_mask_555]
 
-@xstart:
+.xstart:
 		add			eax, 6
-		jbe			@doodd
-@xloop:
+		jbe			.doodd
+.xloop:
 		movq		mm0, [ebx+eax]
 		movq		mm1, [ecx+eax]
 		movq		mm2, mm7
@@ -91,15 +88,15 @@ _vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
 
 		movq		[edx+eax], mm0
 		add			eax, 8
-		jnc			@xloop
+		jnc			.xloop
 
-@doodd:
+.doodd:
 		sub			eax, 6
-		jz			@noodd
-@odd:
-		movzx		esi, word ptr [ebx+eax+6]
+		jz			.noodd
+.odd:
+		movzx		esi, word [ebx+eax+6]
 		movd		mm0, esi
-		movzx		esi, word ptr [ecx+eax+6]
+		movzx		esi, word [ecx+eax+6]
 		movd		mm1, esi
 		movq		mm2, mm7
 		movq		mm3, mm7
@@ -126,9 +123,9 @@ _vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
 		movd		esi, mm0
 		mov			[edx+eax+6], si
 		add			eax,2
-		jne			@odd
+		jne			.odd
 
-@noodd:
+.noodd:
 		emms
 		pop			ebx
 		pop			esi
@@ -136,9 +133,9 @@ _vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	proc near public
 		pop			ebp
 		ret
 
-_vdasm_stretchbltV_XRGB1555_to_XRGB1555_MMX	endp
 
-_vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
+	global	_vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX
+_vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX:
 		push		ebp
 		push		edi
 		push		esi
@@ -146,29 +143,27 @@ _vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
 
 		mov			edx, [esp+4+16]
 
-		assume		edx: near ptr VDPixmapReferenceStretchBltBilinearParameters
+		mov			ebx, [edx+VDPixmapReferenceStretchBltBilinearParameters.src]
+		mov			edi, [edx+VDPixmapReferenceStretchBltBilinearParameters.dst]
 
-		mov			ebx, [edx].src
-		mov			edi, [edx].dst
-
-		mov			ecx, [edx].xprecopy
+		mov			ecx, [edx+VDPixmapReferenceStretchBltBilinearParameters.xprecopy]
 		or			ecx, ecx
-		jz			@noprecopy
-		mov			eax, [edx].xprepos
+		jz			.noprecopy
+		mov			eax, [edx+VDPixmapReferenceStretchBltBilinearParameters.xprepos]
 		mov			eax, [ebx+eax]
 		lea			ebp, [ecx*4]
 		sub			edi, ebp
 		rep			stosd
-@noprecopy:
-		mov			ebp, [edx].xmidsize
+.noprecopy:
+		mov			ebp, [edx+VDPixmapReferenceStretchBltBilinearParameters.xmidsize]
 		add			ebp, ebp
 		add			ebp, ebp
 		add			edi, ebp
 		neg			ebp
 
-		mov			esi, [edx].u
-		mov			eax, [edx].dudx
-		mov			edx, [edx].uinc
+		mov			esi, [edx+VDPixmapReferenceStretchBltBilinearParameters.u]
+		mov			eax, [edx+VDPixmapReferenceStretchBltBilinearParameters.dudx]
+		mov			edx, [edx+VDPixmapReferenceStretchBltBilinearParameters.uinc]
 		movd		mm2, esi
 		movd		mm3, eax
 		shr			ebx, 2
@@ -179,10 +174,10 @@ _vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
 		movq		mm4, mm5
 		psraw		mm4, 15
 
-@xloop:
-		movd		mm0, dword ptr [ebx*4]
+.xloop:
+		movd		mm0, dword [ebx*4]
 		pxor		mm7, mm7
-		movd		mm1, dword ptr [ebx*4+4]
+		movd		mm1, dword [ebx*4+4]
 		punpcklbw	mm0, mm7
 		punpcklbw	mm1, mm7
 		psubw		mm1, mm0
@@ -191,7 +186,7 @@ _vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
 		paddw		mm1, mm4
 		paddw		mm0, mm1
 		packuswb	mm0, mm0
-		movd		dword ptr [edi+ebp], mm0
+		movd		dword [edi+ebp], mm0
 
 		add			esi, eax
 		adc			ebx, edx
@@ -203,17 +198,17 @@ _vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
 		movq		mm4, mm5
 		psraw		mm4, 15
 		add			ebp, 4
-		jnz			@xloop
+		jnz			.xloop
 
 		mov			edx, [esp+4+16]
-		mov			ecx, [edx].xpostcopy
+		mov			ecx, [edx+VDPixmapReferenceStretchBltBilinearParameters.xpostcopy]
 		or			ecx, ecx
-		jz			@nopostcopy
-		mov			eax, [edx].xpostpos
-		add			eax, [edx].src
+		jz			.nopostcopy
+		mov			eax, [edx+VDPixmapReferenceStretchBltBilinearParameters.xpostpos]
+		add			eax, [edx+VDPixmapReferenceStretchBltBilinearParameters.src]
 		mov			eax, [eax]
 		rep			stosd
-@nopostcopy:
+.nopostcopy:
 
 		emms
 		pop			ebx
@@ -221,9 +216,9 @@ _vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	proc near public
 		pop			edi
 		pop			ebp
 		ret
-_vdasm_stretchbltH_XRGB8888_to_XRGB8888_MMX	endp
 
-_vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
+	global	_vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX
+_vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX:
 		push		ebp
 		push		edi
 		push		esi
@@ -233,12 +228,12 @@ _vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
 		and			eax, 0ff000000h
 		mov			ebx, [esp+8+16]
 		mov			ecx, [esp+12+16]
-		jz			@noreverse
+		jz			.noreverse
 		xchg		ebx, ecx
-		js			@noreverse
+		js			.noreverse
 		neg			eax
 		xchg		ebx, ecx
-@noreverse:
+.noreverse:
 		shr			eax, 16
 		mov			[esp+20+16], eax
 		mov			edx, [esp+4+16]
@@ -250,17 +245,17 @@ _vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
 		lea			edx, [edx+eax-4]
 		neg			eax
 
-		movd		mm4, dword ptr [esp+20+16]
+		movd		mm4, dword [esp+20+16]
 		punpcklwd	mm4, mm4
 		punpckldq	mm4, mm4
 
-		movq		mm6, rb_mask_888
-		movq		mm7, g_mask_888
+		movq		mm6, [rb_mask_888]
+		movq		mm7, [g_mask_888]
 
-@xstart:
+.xstart:
 		add			eax, 4
-		jbe			@doodd
-@xloop:
+		jbe			.doodd
+.xloop:
 		movq		mm0, [ebx+eax]
 		movq		mm1, [ecx+eax]
 		movq		mm2, mm0
@@ -285,16 +280,16 @@ _vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
 
 		paddw		mm0, mm2
 
-		movq		qword ptr [edx+eax], mm0
+		movq		qword [edx+eax], mm0
 		add			eax, 8
-		jnc			@xloop
+		jnc			.xloop
 
-@doodd:
+.doodd:
 		sub			eax, 4
-		jz			@noodd
-@odd:
-		movd		mm0, dword ptr [ebx]
-		movd		mm1, dword ptr [ecx]
+		jz			.noodd
+.odd:
+		movd		mm0, dword [ebx]
+		movd		mm1, dword [ecx]
 		movq		mm2, mm0
 		movq		mm3, mm1
 		psrlw		mm2, 8
@@ -317,9 +312,9 @@ _vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
 
 		paddw		mm0, mm2
 
-		movd		dword ptr [edx], mm0
+		movd		dword [edx], mm0
 
-@noodd:
+.noodd:
 		emms
 		pop			ebx
 		pop			esi
@@ -327,6 +322,5 @@ _vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	proc near public
 		pop			ebp
 		ret
 
-_vdasm_stretchbltV_XRGB8888_to_XRGB8888_MMX	endp
 
 		end

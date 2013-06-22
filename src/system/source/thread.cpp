@@ -66,6 +66,13 @@ void VDSetThreadDebugName(VDThreadID tid, const char *name) {
 	}
 }
 
+void VDThreadSleep(int milliseconds) {
+	if (milliseconds > 0)
+		::Sleep(milliseconds);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 VDThread::VDThread(const char *pszDebugName)
 	: mpszDebugName(pszDebugName)
 	, mhThread(0)
@@ -220,4 +227,23 @@ int VDSignalBase::wait(VDSignalBase *second, VDSignalBase *third) {
 
 void VDSignalPersistent::unsignal() {
 	ResetEvent(hEvent);
+}
+
+VDSemaphore::VDSemaphore(int initial)
+	: mKernelSema(CreateSemaphore(NULL, initial, 0x0fffffff, NULL))
+{
+}
+
+VDSemaphore::~VDSemaphore() {
+	if (mKernelSema)
+		CloseHandle(mKernelSema);
+}
+
+void VDSemaphore::Reset(int count) {
+	// reset semaphore to zero
+	while(WAIT_OBJECT_0 == WaitForSingleObject(mKernelSema, 0))
+		;
+
+	if (count)
+		ReleaseSemaphore(mKernelSema, count, NULL);
 }

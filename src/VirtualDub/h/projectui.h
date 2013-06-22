@@ -99,6 +99,7 @@ protected:
 
 	void OpenAudioDisplay();
 	void CloseAudioDisplay();
+	bool TickAudioDisplay();
 	void UpdateAudioDisplay();
 	void UpdateAudioDisplayPosition();
 

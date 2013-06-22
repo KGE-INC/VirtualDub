@@ -11,26 +11,27 @@
 ;	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;	GNU General Public License for more details.
 ;
-;	You should have received a copy of the GNU General Public License
+;	You should have received a copy of the GNU General Public License	
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-		.const
+	default	rel
+	segment	.rdata, align=16
 
 		align 16
-c2		real4	0.92387953251128674,0.92387953251128674,0.92387953251128674,0.92387953251128674
-c4		real4	0.70710678118654757,0.70710678118654757,0.70710678118654757,0.70710678118654757
-c6		real4	0.38268343236508984,0.38268343236508984,0.38268343236508984,0.38268343236508984
+c2		dd	0.92387953251128674,0.92387953251128674,0.92387953251128674,0.92387953251128674
+c4		dd	0.70710678118654757,0.70710678118654757,0.70710678118654757,0.70710678118654757
+c6		dd	0.38268343236508984,0.38268343236508984,0.38268343236508984,0.38268343236508984
 
 ; [1 .5 .5 -.5 .5 .5 .5 .5] ./ cos(pi*[0 5 6 1 4 7 2 3]/16)
-d		real4	+1.00000000000000,+1.00000000000000,+1.00000000000000,+1.00000000000000
-		real4	+0.89997622313642,+0.89997622313642,+0.89997622313642,+0.89997622313642
-		real4	+1.30656296487638,+1.30656296487638,+1.30656296487638,+1.30656296487638
-		real4	-0.50979557910416,-0.50979557910416,-0.50979557910416,-0.50979557910416
-		real4	+0.70710678118655,+0.70710678118655,+0.70710678118655,+0.70710678118655
-		real4	+2.56291544774151,+2.56291544774151,+2.56291544774151,+2.56291544774151
-		real4	+0.54119610014620,+0.54119610014620,+0.54119610014620,+0.54119610014620
-		real4	+0.60134488693505,+0.60134488693505,+0.60134488693505,+0.60134488693505
+d		dd	+1.00000000000000,+1.00000000000000,+1.00000000000000,+1.00000000000000
+		dd	+0.89997622313642,+0.89997622313642,+0.89997622313642,+0.89997622313642
+		dd	+1.30656296487638,+1.30656296487638,+1.30656296487638,+1.30656296487638
+		dd	-0.50979557910416,-0.50979557910416,-0.50979557910416,-0.50979557910416
+		dd	+0.70710678118655,+0.70710678118655,+0.70710678118655,+0.70710678118655
+		dd	+2.56291544774151,+2.56291544774151,+2.56291544774151,+2.56291544774151
+		dd	+0.54119610014620,+0.54119610014620,+0.54119610014620,+0.54119610014620
+		dd	+0.60134488693505,+0.60134488693505,+0.60134488693505,+0.60134488693505
 
 invother	dd	0, 80000000h, 0, 80000000h
 invall		dd	80000000h, 80000000h, 80000000h, 80000000h
@@ -38,14 +39,15 @@ invall		dd	80000000h, 80000000h, 80000000h, 80000000h
 		extern	leecoef1 : far
 		extern	leecoef2 : far
 
-		.code
+	segment	.text
 
-vdasm_mpegaudio_polyphase_dctinputbutterflies	proc public
+	global	vdasm_mpegaudio_polyphase_dctinputbutterflies
+vdasm_mpegaudio_polyphase_dctinputbutterflies:
 		xor		r9, r9
 		mov		r8, 48
-		lea		r10, leecoef1
-		lea		r11, leecoef2
-xloop:
+		lea		r10, [leecoef1]
+		lea		r11, [leecoef2]
+.xloop:
 		movups	xmm0, [rdx+r9]			;xmm0 = in[i]
 		movups	xmm1, [rdx+r8]			;xmm1 = in[15-i]
 		movups	xmm2, [rdx+r9+64]		;xmm2 = in[i+16]
@@ -81,25 +83,25 @@ xloop:
 		unpcklps	xmm2, xmm4			;xmm2 = z3B | z1B | z3A | z1A
 		unpckhps	xmm3, xmm4			;xmm3 = z3D | z1D | z3C | z1C
 
-		movlps	qword ptr [rcx   ], xmm0
-		movlps	qword ptr [rcx+ 8], xmm2
-		movhps	qword ptr [rcx+16], xmm0
-		movhps	qword ptr [rcx+24], xmm2
-		movlps	qword ptr [rcx+32], xmm1
-		movlps	qword ptr [rcx+40], xmm3
-		movhps	qword ptr [rcx+48], xmm1
-		movhps	qword ptr [rcx+56], xmm3
+		movlps	qword [rcx   ], xmm0
+		movlps	qword [rcx+ 8], xmm2
+		movhps	qword [rcx+16], xmm0
+		movhps	qword [rcx+24], xmm2
+		movlps	qword [rcx+32], xmm1
+		movlps	qword [rcx+40], xmm3
+		movhps	qword [rcx+48], xmm1
+		movhps	qword [rcx+56], xmm3
 
 		add		rcx, 64
 		add		r9, 16
 		sub		r8, 16
 		cmp		r9, r8
-		jb		xloop
+		jb		.xloop
 		ret
-vdasm_mpegaudio_polyphase_dctinputbutterflies	endp
 
 
-vdasm_mpegaudio_polyphase_dct4x8	proc public
+	global	vdasm_mpegaudio_polyphase_dct4x8
+vdasm_mpegaudio_polyphase_dct4x8:
 ;	See the FPU version to get an idea of the flow of this AAN
 ;	implementation.  Note that we do all four DCTs in parallel!
 
@@ -128,7 +130,7 @@ vdasm_mpegaudio_polyphase_dct4x8	proc public
 		movaps	xmm2, xmm0
 		subps	xmm4, xmm5
 		addps	xmm0, xmm1				;xmm0 = m[0] = b2[0] + b2[1]
-		mulps	xmm4, c4				;xmm4 = m[2] = (b2[2] - b2[3])*c4
+		mulps	xmm4, [c4]				;xmm4 = m[2] = (b2[2] - b2[3])*c4
 		subps	xmm2, xmm1				;xmm2 = m[1] = b2[0] - b2[1]
 
 		;even part - R1 (2a)
@@ -165,12 +167,12 @@ vdasm_mpegaudio_polyphase_dct4x8	proc public
 
 		;odd part - ~B1b/M (2a5m)
 		movaps	xmm0, xmm1
-		mulps	xmm7, c4				;xmm7 = m[7] = c4*b2[7]
+		mulps	xmm7, [c4]				;xmm7 = m[7] = c4*b2[7]
 		movaps	xmm2, xmm5
-		mulps	xmm0, c6
-		mulps	xmm1, c2
-		mulps	xmm2, c2
-		mulps	xmm5, c6
+		mulps	xmm0, [c6]
+		mulps	xmm1, [c2]
+		mulps	xmm2, [c2]
+		mulps	xmm5, [c6]
 		addps	xmm0, xmm2				;xmm0 = m[4] = c6*b2[4] + c2*b2[5]
 		subps	xmm1, xmm5				;xmm1 = m[5] = c2*b2[4] - c6*b2[5]
 
@@ -202,11 +204,11 @@ vdasm_mpegaudio_polyphase_dct4x8	proc public
 		movhlps	xmm6, xmm14
 		movhlps	xmm7, xmm15
 		ret
-vdasm_mpegaudio_polyphase_dct4x8	endp
 
 ;void vdasm_mpegaudio_polyphase_matrixout_stereo(const float (*pSrc)[16], const float *pWinFwd, const float *pWinRev, int inc, const uint32 *pSampleInv, const sint16 *pDst, const float (*pSrcFinal)[16], const uint32 *pFinalMask);
 
-vdasm_mpegaudio_polyphase_matrixout_stereo	proc public
+	global	vdasm_mpegaudio_polyphase_matrixout_stereo
+vdasm_mpegaudio_polyphase_matrixout_stereo:
 		;rcx = pointer to subband samples
 		;rdx = pointer to forward window
 		;r8 = pointer to reverse window
@@ -222,7 +224,7 @@ vdasm_mpegaudio_polyphase_matrixout_stereo	proc public
 
 		;compute first sample (0)
 
-		movaps	xmm5, xmmword ptr invother
+		movaps	xmm5, oword [invother]
 		movups	xmm0, [rdx]				;load window samples 0-3
 		xorps	xmm0, xmm5				;toggle signs on odd window samples
 		movaps	xmm1, xmm0
@@ -262,18 +264,18 @@ vdasm_mpegaudio_polyphase_matrixout_stereo	proc public
 		xorps	xmm0, xmm4
 		cvtps2dq	xmm0, xmm0
 		packssdw	xmm0, xmm0
-		movd	dword ptr [r11-4], xmm0
+		movd	dword [r11-4], xmm0
 
 		add		rdx, 128
 		add		r8, 128
 		add		rcx, r9
 
 		;compute reflected samples (1-15, 17-31)
-xloop:
+.xloop:
 		movups	xmm2, [r8+48]
 		shufps	xmm2, xmm2, 00011011b	;xmm2 = reverse window
 		movups	xmm3, [rdx]				;xmm3 = forward window
-		xorps	xmm3, invother			;negate every other sample in forward window
+		xorps	xmm3, [invother]		;negate every other sample in forward window
 		movaps	xmm0, [rcx]				;xmm0 = left source
 		movaps	xmm1, xmm0
 		mulps	xmm0, xmm2
@@ -290,7 +292,7 @@ xloop:
 		movups	xmm2, [r8+32]
 		shufps	xmm2, xmm2, 00011011b	;xmm2 = reverse window
 		movups	xmm3, [rdx+16]			;xmm3 = forward window
-		xorps	xmm3, invother			;negate every other sample in forward window
+		xorps	xmm3, [invother]		;negate every other sample in forward window
 		movaps	xmm0, [rcx+16]			;xmm0 = left source
 		movaps	xmm1, xmm0
 		mulps	xmm0, xmm2
@@ -307,7 +309,7 @@ xloop:
 		movups	xmm2, [r8+16]
 		shufps	xmm2, xmm2, 00011011b	;xmm2 = reverse window
 		movups	xmm3, [rdx+32]			;xmm3 = forward window
-		xorps	xmm3, invother			;negate every other sample in forward window
+		xorps	xmm3, [invother]		;negate every other sample in forward window
 		movaps	xmm0, [rcx+32]			;xmm0 = left source
 		movaps	xmm1, xmm0
 		mulps	xmm0, xmm2
@@ -324,7 +326,7 @@ xloop:
 		movups	xmm2, [r8]
 		shufps	xmm2, xmm2, 00011011b	;xmm2 = reverse window
 		movups	xmm3, [rdx+48]			;xmm3 = forward window
-		xorps	xmm3, invother			;negate every other sample in forward window
+		xorps	xmm3, [invother]		;negate every other sample in forward window
 		movaps	xmm0, [rcx+48]			;xmm0 = left source
 		movaps	xmm1, xmm0
 		mulps	xmm0, xmm2
@@ -356,9 +358,9 @@ xloop:
 		xorps	xmm0, [r10]
 		cvtps2dq	xmm0, xmm0
 		packssdw	xmm0, xmm0
-		movd	dword ptr [rax], xmm0
+		movd	dword [rax], xmm0
 		psrldq	xmm0, 4
-		movd	dword ptr [r11], xmm0
+		movd	dword [r11], xmm0
 
 		add		r11,4
 		sub		rax,4
@@ -366,7 +368,7 @@ xloop:
 		add		rdx,128
 		add		r8,128
 		cmp		r11,rax
-		jne		xloop
+		jne		.xloop
 
 		;do last sample (16)
 		mov		rcx, [rsp+56]
@@ -407,14 +409,13 @@ xloop:
 		shufps	xmm0, xmm0, 11011000b	;xmm0 = r1+r3 | l1+l3 | r0+r2 | l0+l2
 		movhlps	xmm3, xmm0				;xmm3 =   ?   |   ?   | r1+r3 | l1+l3
 		addps	xmm0, xmm3				;xmm0 = ? | ? | r | l
-		xorps	xmm0, invall
+		xorps	xmm0, [invall]
 		cvtps2dq	xmm0, xmm0
 		packssdw	xmm0, xmm0
-		movd	dword ptr [r11], xmm0
+		movd	dword [r11], xmm0
 
 		movhlps	xmm6, xmm15
 		movhlps	xmm7, xmm14
 		ret
-vdasm_mpegaudio_polyphase_matrixout_stereo	endp
 
 		end

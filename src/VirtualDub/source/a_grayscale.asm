@@ -15,11 +15,9 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.386
-	.model	flat
-	.code
+	segment	.text
 
-	public _asm_grayscale_run
+	global _asm_grayscale_run	
 
 ;asm_grayscale_run(
 ;	[esp+ 4] void *dst,
@@ -63,7 +61,7 @@ _asm_grayscale_run:
 	mov	esi,[esp+ 4+28]
 	mov	ebp,[esp+12+28]
 
-grayscale@rowloop:
+grayscale.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
@@ -73,9 +71,9 @@ grayscale@rowloop:
 	;me: 19 cycles (once the stupid loop-initial AGI is removed)
 	;him: 15 cycles (doh!)
 
-	IF 1
+	%if 1
 	push	esi
-grayscale@colloop:
+grayscale.colloop:
 	mov     eax,[esi]		;1u EAX=?.R.G.B
         xor     ebx,ebx			;1v EBX=0
         mov     edx,eax			;2u EDX=?.R.G.B
@@ -105,12 +103,12 @@ grayscale@colloop:
 	or	eax,ecx			;14u
 	dec	ebp			;14v
 	mov	[esi-4],eax		;15u
-	jne	grayscale@colloop	;15v
+	jne	grayscale.colloop	;15v
 	pop	esi
 
-	ELSE
+	%else
 
-grayscale@colloop:
+grayscale.colloop:
 	mov	eax,[esi+ebp*4-4]	;u
 	nop				;v
 	mov	ecx,eax			;u
@@ -145,14 +143,14 @@ grayscale@colloop:
 	or	eax,ecx			;u
 	mov	[esi+ebp*4-4],eax	;u
 	dec	ebp			;u
-	jne	grayscale@colloop	;v
-	ENDIF
+	jne	grayscale.colloop	;v
+	%endif
 
 	pop	ebp
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	grayscale@rowloop
+	jne	grayscale.rowloop
 
 	pop	eax
 	pop	ebx

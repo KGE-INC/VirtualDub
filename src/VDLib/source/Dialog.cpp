@@ -7,12 +7,15 @@ extern HINSTANCE g_hInst;
 
 VDDialogFrameW32::VDDialogFrameW32(uint32 dlgid)
 	: mpDialogResourceName(MAKEINTRESOURCE(dlgid))
+	, mbIsModal(false)
 	, mhdlg(NULL)
 {
 }
 
 bool VDDialogFrameW32::Create(VDGUIHandle parent) {
 	if (!mhdlg) {
+		mbIsModal = false;
+
 		if (VDIsWindowsNT())
 			CreateDialogParamW(g_hInst, IS_INTRESOURCE(mpDialogResourceName) ? (LPCWSTR)mpDialogResourceName : VDTextAToW(mpDialogResourceName).c_str(), (HWND)parent, StaticDlgProc, (LPARAM)this);
 		else
@@ -28,6 +31,7 @@ void VDDialogFrameW32::Destroy() {
 }
 
 sintptr VDDialogFrameW32::ShowDialog(VDGUIHandle parent) {
+	mbIsModal = true;
 	if (VDIsWindowsNT())
 		return DialogBoxParamW(g_hInst, IS_INTRESOURCE(mpDialogResourceName) ? (LPCWSTR)mpDialogResourceName : VDTextAToW(mpDialogResourceName).c_str(), (HWND)parent, StaticDlgProc, (LPARAM)this);
 	else
@@ -45,29 +49,46 @@ void VDDialogFrameW32::Hide() {
 }
 
 void VDDialogFrameW32::End(sintptr result) {
-	EndDialog(mhdlg, result);
-	mhdlg = NULL;
+	if (!mhdlg)
+		return;
+
+	if (mbIsModal)
+		EndDialog(mhdlg, result);
+	else
+		DestroyWindow(mhdlg);
 }
 
 void VDDialogFrameW32::SetFocusToControl(uint32 id) {
+	if (!mhdlg)
+		return;
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
 		SendMessage(mhdlg, WM_NEXTDLGCTL, (WPARAM)hwnd, TRUE);
 }
 
 void VDDialogFrameW32::EnableControl(uint32 id, bool enabled) {
+	if (!mhdlg)
+		return;
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
-		EnableWindow(mhdlg, enabled);
+		EnableWindow(hwnd, enabled);
 }
 
 void VDDialogFrameW32::SetControlText(uint32 id, const wchar_t *s) {
+	if (!mhdlg)
+		return;
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
 		VDSetWindowTextW32(hwnd, s);
 }
 
 void VDDialogFrameW32::SetControlTextF(uint32 id, const wchar_t *format, ...) {
+	if (!mhdlg)
+		return;
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd) {
 		VDStringW s;
@@ -82,6 +103,11 @@ void VDDialogFrameW32::SetControlTextF(uint32 id, const wchar_t *format, ...) {
 }
 
 uint32 VDDialogFrameW32::GetControlValueUint32(uint32 id) {
+	if (!mhdlg) {
+		FailValidation(id);
+		return 0;
+	}
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (!hwnd) {
 		FailValidation(id);
@@ -100,6 +126,11 @@ uint32 VDDialogFrameW32::GetControlValueUint32(uint32 id) {
 }
 
 double VDDialogFrameW32::GetControlValueDouble(uint32 id) {
+	if (!mhdlg) {
+		FailValidation(id);
+		return 0;
+	}
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (!hwnd) {
 		FailValidation(id);
@@ -154,6 +185,9 @@ void VDDialogFrameW32::FailValidation(uint32 id) {
 }
 
 void VDDialogFrameW32::SignalFailedValidation(uint32 id) {
+	if (!mhdlg)
+		return;
+
 	HWND hwnd = GetDlgItem(mhdlg, id);
 
 	MessageBeep(MB_ICONEXCLAMATION);
@@ -203,6 +237,16 @@ bool VDDialogFrameW32::OnOK() {
 }
 
 bool VDDialogFrameW32::OnCancel() {
+	return false;
+}
+
+void VDDialogFrameW32::OnSize() {
+}
+
+void VDDialogFrameW32::OnDestroy() {
+}
+
+bool VDDialogFrameW32::OnTimer(uint32 id) {
 	return false;
 }
 
@@ -265,7 +309,129 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 			}
 
 			break;
+
+		case WM_DESTROY:
+			OnDestroy();
+			break;
+
+		case WM_SIZE:
+			OnSize();
+			return FALSE;
+
+		case WM_TIMER:
+			return OnTimer((uint32)wParam);
 	}
 
 	return FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDDialogResizerW32::VDDialogResizerW32() {
+}
+
+VDDialogResizerW32::~VDDialogResizerW32() {
+}
+
+void VDDialogResizerW32::Init(HWND hwnd) {
+	mhwndBase = hwnd;
+	mWidth = 1;
+	mHeight = 1;
+
+	RECT r;
+	if (GetClientRect(hwnd, &r)) {
+		mWidth = r.right;
+		mHeight = r.bottom;
+	}
+}
+
+void VDDialogResizerW32::Relayout() {
+	RECT r;
+
+	if (GetClientRect(mhwndBase, &r))
+		Relayout(r.right, r.bottom);
+}
+
+void VDDialogResizerW32::Relayout(int width, int height) {
+	HDWP hdwp = BeginDeferWindowPos(mControls.size());
+
+	mWidth = width;
+	mHeight = height;
+
+	Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
+	for(; it!=itEnd; ++it) {
+		const ControlEntry& ent = *it;
+		uint32 flags = SWP_NOZORDER|SWP_NOACTIVATE;
+
+		if (!(ent.mAlignment & (kAnchorX | kAnchorY)))
+			flags |= SWP_NOMOVE;
+
+		if (!(ent.mAlignment & (kAnchorW | kAnchorH)))
+			flags |= SWP_NOSIZE;
+
+		int x = ent.mX;
+		int y = ent.mY;
+		int w = ent.mW;
+		int h = ent.mH;
+
+		if (ent.mAlignment & kAnchorX)
+			x += mWidth;
+
+		if (ent.mAlignment & kAnchorW)
+			w += mWidth;
+
+		if (ent.mAlignment & kAnchorY)
+			y += mHeight;
+
+		if (ent.mAlignment & kAnchorH)
+			h += mHeight;
+
+		if (hdwp) {
+			HDWP hdwp2 = DeferWindowPos(hdwp, ent.mhwnd, NULL, x, y, w, h, flags);
+
+			if (hdwp2) {
+				hdwp = hdwp2;
+				continue;
+			}
+		}
+
+		SetWindowPos(ent.mhwnd, NULL, x, y, w, h, flags);
+	}
+
+	if (hdwp)
+		EndDeferWindowPos(hdwp);
+}
+
+void VDDialogResizerW32::Add(uint32 id, int alignment) {
+	HWND hwndControl = GetDlgItem(mhwndBase, id);
+	if (!hwndControl)
+		return;
+
+	RECT r;
+	if (!GetWindowRect(hwndControl, &r))
+		return;
+
+	if (!MapWindowPoints(NULL, mhwndBase, (LPPOINT)&r, 2))
+		return;
+
+	ControlEntry& ce = mControls.push_back();
+
+	ce.mhwnd		= hwndControl;
+	ce.mAlignment	= alignment;
+	ce.mX			= r.left;
+	ce.mY			= r.top;
+	ce.mW			= r.right - r.left;
+	ce.mH			= r.bottom - r.top;
+
+	if (alignment & kAnchorX)
+		ce.mX -= mWidth;
+
+	if (alignment & kAnchorW)
+		ce.mW -= mWidth;
+
+	if (alignment & kAnchorY)
+		ce.mY -= mHeight;
+
+	if (alignment & kAnchorH)
+		ce.mH -= mHeight;
 }

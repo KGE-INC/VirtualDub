@@ -43,6 +43,7 @@ float4 vd_tempsize;
 float4 vd_temp2size;
 float4 vd_interphtexsize;
 float4 vd_interpvtexsize;
+float4 vd_fieldinfo;
 
 texture vd_srctexture;
 texture vd_src2atexture;
@@ -106,7 +107,7 @@ VertexOutputBicubicFF2 VertexShaderBicubicFF2A(VertexInput IN, uniform float src
 	OUT.diffuse = float4(0.5f, 0.5f, 0.5f, 0.25f);
 	OUT.uvfilt.x = -0.125f + IN.uv2.x * vd_srcsize.x * 0.25f;
 	OUT.uvfilt.y = filtv;
-	OUT.uvsrc = IN.uv + float2(srcu, 0)*vd_texsize.wz;
+	OUT.uvsrc = IN.uv + float2(srcu, vd_fieldinfo.y)*vd_texsize.wz;
 
 	return OUT;
 }
@@ -256,8 +257,8 @@ VertexOutputBicubicFF3 VertexShaderBicubicFF3A(VertexInput IN) {
 	OUT.pos = IN.pos;
 	OUT.uvfilt.x = -0.125f + IN.uv2.x * vd_srcsize.x * 0.25f;
 	OUT.uvfilt.y = 0.625f;
-	OUT.uvsrc0 = IN.uv + float2(-1.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2(+1.5f, 0)*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + float2(-1.5f, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2(+1.5f, vd_fieldinfo.y)*vd_texsize.wz;
 
 	return OUT;
 }
@@ -268,8 +269,8 @@ VertexOutputBicubicFF3 VertexShaderBicubicFF3B(VertexInput IN) {
 	OUT.pos = IN.pos;
 	OUT.uvfilt.x = -0.125f + IN.uv2.x * vd_srcsize.x * 0.25f;
 	OUT.uvfilt.y = 0.875f;
-	OUT.uvsrc0 = IN.uv + float2(-0.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2(+0.5f, 0)*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + float2(-0.5f, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2(+0.5f, vd_fieldinfo.y)*vd_texsize.wz;
 	
 	return OUT;
 }
@@ -428,9 +429,9 @@ VertexOutputBicubic1_1 VertexShaderBicubic1_1A(VertexInput IN) {
 	OUT.pos = IN.pos;
 	OUT.uvfilt.x = IN.uv2.x * vd_vpsize.x * vd_interphtexsize.w;
 	OUT.uvfilt.y = 0;
-	OUT.uvsrc0 = IN.uv + float2(-1.0f + offset, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2( 0.0f + offset, 0)*vd_texsize.wz;
-	OUT.uvsrc2 = IN.uv + float2(+1.0f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + float2(-1.0f + offset, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2( 0.0f + offset, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc2 = IN.uv + float2(+1.0f + offset, vd_fieldinfo.y)*vd_texsize.wz;
 	return OUT;
 }
 
@@ -558,10 +559,10 @@ VertexOutputBicubic1_4 VertexShaderBicubic1_4A(VertexInput IN) {
 	OUT.uvfilt.x = IN.uv2.x * vd_vpsize.x * vd_interphtexsize.w;
 	OUT.uvfilt.y = 0;
 
-	OUT.uvsrc0 = IN.uv + float2(-1.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2( 0.0f, 0)*vd_texsize.wz;
-	OUT.uvsrc2 = IN.uv + float2( 0.0f, 0)*vd_texsize.wz;
-	OUT.uvsrc3 = IN.uv + float2(+1.5f, 0)*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + float2(-1.5f, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2( 0.0f, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc2 = IN.uv + float2( 0.0f, vd_fieldinfo.y)*vd_texsize.wz;
+	OUT.uvsrc3 = IN.uv + float2(+1.5f, vd_fieldinfo.y)*vd_texsize.wz;
 	
 	return OUT;
 }

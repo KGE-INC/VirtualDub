@@ -15,33 +15,30 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern	_YUV_clip_table: byte
 	extern	_YUV_clip_table16: byte
 
-	public	_YUV_Y_table2
-	public	_YUV_U_table2
-	public	_YUV_V_table2
-	public	_YUV_Y2_table2
-	public	_YUV_U2_table2
-	public	_YUV_V2_table2
+	global	_YUV_Y_table2	
+	global	_YUV_U_table2	
+	global	_YUV_V_table2	
+	global	_YUV_Y2_table2	
+	global	_YUV_U2_table2	
+	global	_YUV_V2_table2	
 
-	public	_asm_convert_yuy2_bgr16
-	public	_asm_convert_yuy2_bgr16_MMX
-	public	_asm_convert_yuy2_bgr24
-	public	_asm_convert_yuy2_bgr24_MMX
-	public	_asm_convert_yuy2_bgr32
-	public	_asm_convert_yuy2_bgr32_MMX
-	public	_asm_convert_yuy2_fullscale_bgr16
-	public	_asm_convert_yuy2_fullscale_bgr16_MMX
-	public	_asm_convert_yuy2_fullscale_bgr24
-	public	_asm_convert_yuy2_fullscale_bgr24_MMX
-	public	_asm_convert_yuy2_fullscale_bgr32
-	public	_asm_convert_yuy2_fullscale_bgr32_MMX
+	global	_asm_convert_yuy2_bgr16	
+	global	_asm_convert_yuy2_bgr16_MMX	
+	global	_asm_convert_yuy2_bgr24	
+	global	_asm_convert_yuy2_bgr24_MMX	
+	global	_asm_convert_yuy2_bgr32	
+	global	_asm_convert_yuy2_bgr32_MMX	
+	global	_asm_convert_yuy2_fullscale_bgr16	
+	global	_asm_convert_yuy2_fullscale_bgr16_MMX	
+	global	_asm_convert_yuy2_fullscale_bgr24	
+	global	_asm_convert_yuy2_fullscale_bgr24_MMX	
+	global	_asm_convert_yuy2_fullscale_bgr32	
+	global	_asm_convert_yuy2_fullscale_bgr32_MMX	
 
 ;asm_convert_yuy2_bgr16(void *dst, void *src, int w, int h, ptrdiff_t dstmod, ptrdiff_t srcmod)
 
@@ -86,9 +83,9 @@ yuy2_bgr16_scalar_x:
 	and	edx,000003ffh
 	shr	eax,20
 	and	ebx,000003ffh
-	movzx	edx,byte ptr [_YUV_clip_table16 + edx + 256 - 308]	;cl = blue
-	movzx	eax,byte ptr [_YUV_clip_table16 + eax + 256 - 244]	;al = red
-	movzx	ebx,byte ptr [_YUV_clip_table16 + ebx + 256 - 204]	;bl = green
+	movzx	edx,byte [_YUV_clip_table16 + edx + 256 - 308]	;cl = blue
+	movzx	eax,byte [_YUV_clip_table16 + eax + 256 - 244]	;al = red
+	movzx	ebx,byte [_YUV_clip_table16 + ebx + 256 - 204]	;bl = green
 	shl	edx,16
 	shl	eax,16+10
 	shl	ebx,16+5
@@ -104,9 +101,9 @@ yuy2_bgr16_scalar_x:
 	and	ecx,000003ffh
 	shr	eax,20
 	and	ebx,000003ffh
-	movzx	eax,byte ptr [_YUV_clip_table16 + eax + 256 - 244]		;al = red
-	movzx	ebx,byte ptr [_YUV_clip_table16 + ebx + 256 - 204]		;bl = green
-	movzx	ecx,byte ptr [_YUV_clip_table16 + ecx + 256 - 308]		;dl = blue
+	movzx	eax,byte [_YUV_clip_table16 + eax + 256 - 244]		;al = red
+	movzx	ebx,byte [_YUV_clip_table16 + ebx + 256 - 204]		;bl = green
+	movzx	ecx,byte [_YUV_clip_table16 + ecx + 256 - 308]		;dl = blue
 
 	shl	eax,10
 	add	ecx,edx
@@ -124,7 +121,7 @@ yuy2_bgr16_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_bgr16_scalar_y
 
 	pop	ebx
@@ -176,9 +173,9 @@ yuy2_fullscale_bgr16_scalar_x:
 	and	edx,000003ffh
 	shr	eax,20
 	and	ebx,000003ffh
-	movzx	edx,byte ptr [_YUV_clip_table16 + edx + 256 - 308]	;cl = blue
-	movzx	eax,byte ptr [_YUV_clip_table16 + eax + 256 - 244]	;al = red
-	movzx	ebx,byte ptr [_YUV_clip_table16 + ebx + 256 - 204]	;bl = green
+	movzx	edx,byte [_YUV_clip_table16 + edx + 256 - 308]	;cl = blue
+	movzx	eax,byte [_YUV_clip_table16 + eax + 256 - 244]	;al = red
+	movzx	ebx,byte [_YUV_clip_table16 + ebx + 256 - 204]	;bl = green
 	shl	edx,16
 	shl	eax,16+10
 	shl	ebx,16+5
@@ -194,9 +191,9 @@ yuy2_fullscale_bgr16_scalar_x:
 	and	ecx,000003ffh
 	shr	eax,20
 	and	ebx,000003ffh
-	movzx	eax,byte ptr [_YUV_clip_table16 + eax + 256 - 244]		;al = red
-	movzx	ebx,byte ptr [_YUV_clip_table16 + ebx + 256 - 204]		;bl = green
-	movzx	ecx,byte ptr [_YUV_clip_table16 + ecx + 256 - 308]		;dl = blue
+	movzx	eax,byte [_YUV_clip_table16 + eax + 256 - 244]		;al = red
+	movzx	ebx,byte [_YUV_clip_table16 + ebx + 256 - 204]		;bl = green
+	movzx	ecx,byte [_YUV_clip_table16 + ecx + 256 - 308]		;dl = blue
 
 	shl	eax,10
 	add	ecx,edx
@@ -214,7 +211,7 @@ yuy2_fullscale_bgr16_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_bgr16_scalar_y
 
 	pop	ebx
@@ -298,7 +295,7 @@ yuy2_bgr24_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_bgr24_scalar_y
 
 	pop	ebx
@@ -382,7 +379,7 @@ yuy2_fullscale_bgr24_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_fullscale_bgr24_scalar_y
 
 	pop	ebx
@@ -466,7 +463,7 @@ yuy2_bgr32_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_bgr32_scalar_y
 
 	pop	ebx
@@ -550,7 +547,7 @@ yuy2_fullscale_bgr32_scalar_x:
 	add	edi,[esp+20+16]
 	add	esi,[esp+24+16]
 
-	dec	dword ptr [esp + 16 + 16]
+	dec	dword [esp + 16 + 16]
 	jne	yuy2_fullscale_bgr32_scalar_y
 
 	pop	ebx
@@ -561,7 +558,7 @@ yuy2_fullscale_bgr32_scalar_x:
 
 ;**************************************************************************
 
-	.data
+	segment	.data
 
 Y_mask		dq		0000000000ff00ffh
 Y_round		dq		0020002000200020h
@@ -578,7 +575,7 @@ Y_coeff2	dq		0040004000400040h
 U_coeff2	dq		00000000ffea0071h
 V_coeff2	dq		0000005affd20000h
 
-	.code
+	segment	.text
 
 ;asm_convert_yuy2_bgr16_MMX(void *dst, void *src, int w, int h, ptrdiff_t dstmod, ptrdiff_t srcmod)
 
@@ -594,33 +591,33 @@ _asm_convert_yuy2_bgr16_MMX:
 	mov		ecx,[esp+16+16]
 	mov		eax,[esp+20+16]
 	mov		ebx,[esp+24+16]
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 
 yuy2_bgr16_MMX_y:
 	mov		edx,ebp
 yuy2_bgr16_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
-	psubw		mm0,Y_bias
+	psubw		mm0,[Y_bias]
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff
+	pmullw		mm0,[Y_coeff]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -635,16 +632,16 @@ yuy2_bgr16_MMX_x:
 	paddw		mm2,mm3
 	psraw		mm0,6
 
-	movq		mm1,G_mask
+	movq		mm1,[G_mask]
 	psraw		mm2,6
 
-	movq		mm3,RB_mask
+	movq		mm3,[RB_mask]
 	packuswb	mm0,mm2
 
 	pand		mm1,mm0
 	pand		mm3,mm0
 
-	pmaddwd		mm3,RB_coef
+	pmaddwd		mm3,[RB_coef]
 	;<-->
 
 	add		edi,4
@@ -659,7 +656,7 @@ yuy2_bgr16_MMX_x:
 
 	packssdw	mm3,mm3
 
-	movd		dword ptr [edi-4],mm3
+	movd		dword [edi-4],mm3
 
 	dec		edx
 	jne		yuy2_bgr16_MMX_x
@@ -691,32 +688,32 @@ _asm_convert_yuy2_fullscale_bgr16_MMX:
 	mov		ecx,[esp+16+16]
 	mov		eax,[esp+20+16]
 	mov		ebx,[esp+24+16]
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 
 yuy2_fullscale_bgr16_MMX_y:
 	mov		edx,ebp
 yuy2_fullscale_bgr16_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff2
+	pmullw		mm0,[Y_coeff2]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff2		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff2]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff2		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff2]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -731,16 +728,16 @@ yuy2_fullscale_bgr16_MMX_x:
 	paddw		mm2,mm3
 	psraw		mm0,6
 
-	movq		mm1,G_mask
+	movq		mm1,[G_mask]
 	psraw		mm2,6
 
-	movq		mm3,RB_mask
+	movq		mm3,[RB_mask]
 	packuswb	mm0,mm2
 
 	pand		mm1,mm0
 	pand		mm3,mm0
 
-	pmaddwd		mm3,RB_coef
+	pmaddwd		mm3,[RB_coef]
 	;<-->
 
 	add		edi,4
@@ -755,7 +752,7 @@ yuy2_fullscale_bgr16_MMX_x:
 
 	packssdw	mm3,mm3
 
-	movd		dword ptr [edi-4],mm3
+	movd		dword [edi-4],mm3
 
 	dec		edx
 	jne		yuy2_fullscale_bgr16_MMX_x
@@ -787,8 +784,8 @@ _asm_convert_yuy2_bgr24_MMX:
 	mov		ecx,[esp+16+16]
 	mov		eax,[esp+20+16]
 	mov		ebx,[esp+24+16]
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 
 yuy2_bgr24_MMX_y:
 	mov		edx,ebp
@@ -796,27 +793,27 @@ yuy2_bgr24_MMX_y:
 	dec		edx
 	jz		yuy2_bgr24_MMX_doodd
 yuy2_bgr24_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
-	psubw		mm0,Y_bias
+	psubw		mm0,[Y_bias]
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff
+	pmullw		mm0,[Y_coeff]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -834,39 +831,39 @@ yuy2_bgr24_MMX_x:
 	psraw		mm2,6
 	pxor		mm5,mm5
 
-	pand		mm0,mask24
+	pand		mm0,[mask24]
 	packuswb	mm2,mm5			;mm1 = [ 0][ 0][ 0][ 0][ 0][R1][G1][B1]
 
 	psllq		mm2,24			;mm1 = [ 0][ 0][R1][G1][B1][ 0][ 0][ 0]
 
-	pand		mm2,mask24
+	pand		mm2,[mask24]
 	packuswb	mm0,mm5			;mm0 = [ 0][ 0][ 0][ 0][ 0][R0][G0][B0]
 
 	por		mm0,mm2			;mm0 = [ 0][ 0][R1][G1][B1][R0][G0][B0]
 
 	;----------------------------------
 
-	movd		mm4,dword ptr [esi+4]		;mm4 = [V][Y2][U][Y1]
+	movd		mm4,dword [esi+4]		;mm4 = [V][Y2][U][Y1]
 
 	movq		mm1,mm4			;mm1 = [V][Y2][U][Y1]
 	pand		mm4,mm6			;mm4 = [ Y2  ][ Y1  ]
 
-	psubw		mm4,Y_bias
+	psubw		mm4,[Y_bias]
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm4,mm4			;mm4 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm4,Y_coeff
+	pmullw		mm4,[Y_coeff]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm4,mm7			;add rounding to Y
 
 	movq		mm2,mm4			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -881,10 +878,10 @@ yuy2_bgr24_MMX_x:
 	paddw		mm2,mm3
 	psraw		mm4,6
 
-	pand		mm4,mask24
+	pand		mm4,[mask24]
 	psraw		mm2,6
 
-	pand		mm2,mask24
+	pand		mm2,[mask24]
 	packuswb	mm4,mm5			;mm4 = [ 0][ 0][ 0][ 0][ 0][R2][G2][B2]
 
 	packuswb	mm2,mm5			;mm2 = [ 0][ 0][ 0][ 0][ 0][R3][G3][B3]
@@ -901,9 +898,9 @@ yuy2_bgr24_MMX_x:
 	por		mm2,mm1			;mm2 = [ 0][ 0][ 0][ 0][R3][G3][B3][R2]
 	psrlq		mm0,32			;mm0 = [ 0][ 0][ 0][ 0][G2][B2][R1][G1]
 
-	movd		dword ptr [edi],mm3
-	movd		dword ptr [edi+4],mm0
-	movd		dword ptr [edi+8],mm2
+	movd		dword [edi],mm3
+	movd		dword [edi+4],mm0
+	movd		dword [edi+8],mm2
 
 	add		edi,12
 	add		esi,8
@@ -914,27 +911,27 @@ yuy2_bgr24_MMX_x:
 	jnz		yuy2_bgr24_MMX_noodd
 
 yuy2_bgr24_MMX_doodd:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
-	psubw		mm0,Y_bias
+	psubw		mm0,[Y_bias]
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff
+	pmullw		mm0,[Y_coeff]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1003,8 +1000,8 @@ _asm_convert_yuy2_fullscale_bgr24_MMX:
 	mov		ecx,[esp+16+16]
 	mov		eax,[esp+20+16]
 	mov		ebx,[esp+24+16]
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 
 yuy2_fullscale_bgr24_MMX_y:
 	mov		edx,ebp
@@ -1012,26 +1009,26 @@ yuy2_fullscale_bgr24_MMX_y:
 	dec		edx
 	jz		yuy2_bgr24_MMX_doodd
 yuy2_fullscale_bgr24_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff2
+	pmullw		mm0,[Y_coeff2]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff2		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff2]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff2		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff2]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1049,38 +1046,38 @@ yuy2_fullscale_bgr24_MMX_x:
 	psraw		mm2,6
 	pxor		mm5,mm5
 
-	pand		mm0,mask24
+	pand		mm0,[mask24]
 	packuswb	mm2,mm5			;mm1 = [ 0][ 0][ 0][ 0][ 0][R1][G1][B1]
 
 	psllq		mm2,24			;mm1 = [ 0][ 0][R1][G1][B1][ 0][ 0][ 0]
 
-	pand		mm2,mask24
+	pand		mm2,[mask24]
 	packuswb	mm0,mm5			;mm0 = [ 0][ 0][ 0][ 0][ 0][R0][G0][B0]
 
 	por		mm0,mm2			;mm0 = [ 0][ 0][R1][G1][B1][R0][G0][B0]
 
 	;----------------------------------
 
-	movd		mm4,dword ptr [esi+4]		;mm4 = [V][Y2][U][Y1]
+	movd		mm4,dword [esi+4]		;mm4 = [V][Y2][U][Y1]
 
 	movq		mm1,mm4			;mm1 = [V][Y2][U][Y1]
 	pand		mm4,mm6			;mm4 = [ Y2  ][ Y1  ]
 
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm4,mm4			;mm4 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm4,Y_coeff2
+	pmullw		mm4,[Y_coeff2]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff2		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff2]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff2		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff2]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm4,mm7			;add rounding to Y
 
 	movq		mm2,mm4			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1095,10 +1092,10 @@ yuy2_fullscale_bgr24_MMX_x:
 	paddw		mm2,mm3
 	psraw		mm4,6
 
-	pand		mm4,mask24
+	pand		mm4,[mask24]
 	psraw		mm2,6
 
-	pand		mm2,mask24
+	pand		mm2,[mask24]
 	packuswb	mm4,mm5			;mm4 = [ 0][ 0][ 0][ 0][ 0][R2][G2][B2]
 
 	packuswb	mm2,mm5			;mm2 = [ 0][ 0][ 0][ 0][ 0][R3][G3][B3]
@@ -1115,9 +1112,9 @@ yuy2_fullscale_bgr24_MMX_x:
 	por		mm2,mm1			;mm2 = [ 0][ 0][ 0][ 0][R3][G3][B3][R2]
 	psrlq		mm0,32			;mm0 = [ 0][ 0][ 0][ 0][G2][B2][R1][G1]
 
-	movd		dword ptr [edi],mm3
-	movd		dword ptr [edi+4],mm0
-	movd		dword ptr [edi+8],mm2
+	movd		dword [edi],mm3
+	movd		dword [edi+4],mm0
+	movd		dword [edi+8],mm2
 
 	add		edi,12
 	add		esi,8
@@ -1128,26 +1125,26 @@ yuy2_fullscale_bgr24_MMX_x:
 	jnz		yuy2_fullscale_bgr24_MMX_noodd
 
 yuy2_fullscale_bgr24_MMX_doodd:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff2
+	pmullw		mm0,[Y_coeff2]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1216,33 +1213,33 @@ _asm_convert_yuy2_bgr32_MMX:
 	mov		ecx,[esp+16+16]
 	mov		eax,[esp+20+16]
 	mov		ebx,[esp+24+16]
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 
 yuy2_bgr32_MMX_y:
 	mov		edx,ebp
 yuy2_bgr32_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
-	psubw		mm0,Y_bias
+	psubw		mm0,[Y_bias]
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff
+	pmullw		mm0,[Y_coeff]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1283,7 +1280,7 @@ yuy2_bgr32_MMX_x:
 
 ;asm_convert_yuy2_fullscale_bgr32_MMX(void *dst, void *src, int w, int h, ptrdiff_t dstmod, ptrdiff_t srcmod)
 
-	public	_ycblit
+	global	_ycblit	
 
 _asm_convert_yuy2_fullscale_bgr32_MMX:
 _ycblit:
@@ -1301,7 +1298,7 @@ _ycblit:
 	or		esi,esi
 	jnz		yuy2_fullscale_bgr32_MMX_y0
 
-	lea		esi,_YUV_Y1_table
+	lea		esi,[_YUV_Y1_table]
 	lea		ebx,[edi+4000h]
 yuy2_fullscale_bgr32_MMX_x2:
 	lodsb
@@ -1335,31 +1332,31 @@ yuy2_fullscale_bgr32_MMX_y3:
 	dec		cl
 	jmp		short yuy2_fullscale_bgr32_MMX_y3
 yuy2_fullscale_bgr32_MMX_y0:
-	movq		mm6,Y_mask
-	movq		mm7,Y_round
+	movq		mm6,[Y_mask]
+	movq		mm7,[Y_round]
 yuy2_fullscale_bgr32_MMX_y:
 	mov		edx,ebp
 yuy2_fullscale_bgr32_MMX_x:
-	movd		mm0,dword ptr [esi]		;mm0 = [V][Y2][U][Y1]
+	movd		mm0,dword [esi]		;mm0 = [V][Y2][U][Y1]
 
 	movq		mm1,mm0			;mm1 = [V][Y2][U][Y1]
 	pand		mm0,mm6			;mm0 = [ Y2  ][ Y1  ]
 
 	psrlw		mm1,8			;mm1 = [ V ][ U ]
 
-	psubw		mm1,UV_bias
+	psubw		mm1,[UV_bias]
 	punpcklwd	mm0,mm0			;mm0 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
 
-	pmullw		mm0,Y_coeff2
+	pmullw		mm0,[Y_coeff2]
 	punpcklwd	mm1,mm1			;mm1 = [ V ][ V ][ U ][ U ]
 
 	movq		mm3,mm1			;mm3 = [ V ][ V ][ U ][ U ]
 	punpckldq	mm1,mm1			;mm1 = [ U ][ U ][ U ][ U ]
 
-	pmullw		mm1,U_coeff2		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
+	pmullw		mm1,[U_coeff2]		;mm1 = [ 0 ][ 0 ][ UG ][ UB ]
 	punpckhdq	mm3,mm3			;mm3 = [ V ][ V ][ V ][ V ]
 
-	pmullw		mm3,V_coeff2		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
+	pmullw		mm3,[V_coeff2]		;mm3 = [ 0 ][ VR ][ VG ][ 0 ]
 	paddw		mm0,mm7			;add rounding to Y
 
 	movq		mm2,mm0			;mm2 = [ Y2 ][ Y2 ][ Y1 ][ Y1 ]
@@ -1398,7 +1395,7 @@ yuy2_fullscale_bgr32_MMX_x:
 	emms
 	ret
 
-	.const
+	segment	.rdata, align=16
 
 _YUV_Y1_table	dd	032800186h,0a2307657h,010424552h,021821023h,021a12133h,0329d1241h,09d317547h,020653431h
 	dd	03243228ah,0a143119fh,064773542h,045319830h,0338d2053h,09b102342h,0a0204421h,077352261h

@@ -55,6 +55,7 @@ public:
 
 	void extract_8in16(int offset, uint32 w, uint32 h);
 	void extract_8in32(int offset, uint32 w, uint32 h);
+	void swap_8in16(uint32 w, uint32 h, uint32 bpr);
 
 	void conv_Pal1_to_8888(int srcIndex);
 	void conv_Pal2_to_8888(int srcIndex);
@@ -64,6 +65,8 @@ public:
 	void conv_555_to_8888();
 	void conv_565_to_8888();
 	void conv_888_to_8888();
+	void conv_555_to_565();
+	void conv_565_to_555();
 	void conv_8888_to_X32F();
 	void conv_8_to_32F();
 
@@ -82,8 +85,10 @@ public:
 	void interleave_G8B8_G8R8();
 	void interleave_X8R8G8B8();
 
-	void ycbcr_to_rgb32();
-	void rgb32_to_ycbcr();
+	void ycbcr601_to_rgb32();
+	void ycbcr709_to_rgb32();
+	void rgb32_to_ycbcr601();
+	void rgb32_to_ycbcr709();
 
 	void pointh(float xoffset, float xfactor, uint32 w);
 	void pointv(float yoffset, float yfactor, uint32 h);

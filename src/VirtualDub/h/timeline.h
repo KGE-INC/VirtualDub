@@ -60,6 +60,7 @@ public:
 	VDPosition		GetEnd()			{ return mSubset.getTotalFrames(); }
 	VDPosition		GetLength()			{ return mSubset.getTotalFrames(); }
 	VDPosition		GetNearestKey(VDPosition pos);
+	VDPosition		GetNearestKeyNext(sint64 pos);
 	VDPosition		GetPrevKey(VDPosition pos);
 	VDPosition		GetNextKey(VDPosition pos);
 	VDPosition		GetPrevDrop(VDPosition pos);

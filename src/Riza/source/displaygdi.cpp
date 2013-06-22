@@ -392,11 +392,12 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 	}
 
 	if (mSource.bInterlaced) {
+		int fieldMode = mode & kModeFieldMask;
 		uint32 vinc		= (r.height() << 16) / rClient.bottom;
 		uint32 vaccum	= (vinc >> 1) + (r.top << 16);
 		uint32 vtlimit	= (((r.height() + 1) >> 1) << 17) - 1;
-		int fieldbase	= (mode == kModeOddField ? 1 : 0);
-		int ystep		= (mode == kModeAllFields) ? 1 : 2;
+		int fieldbase	= (fieldMode == kModeOddField ? 1 : 0);
+		int ystep		= (fieldMode == kModeAllFields) ? 1 : 2;
 
 		vaccum += vinc*fieldbase;
 		vinc *= ystep;

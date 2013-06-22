@@ -15,27 +15,24 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.386
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern	_MMX_enabled:byte
 
 ;	asm_tv_average5col(Pixel *dst, Pixel *r1, Pixel *r2, Pixel *r3, Pixel *r4, Pixel *r5, long w);
 
-	public	_asm_tv_average5col
+	global	_asm_tv_average5col	
 
-p_dst	equ	[esp+4+28]
-p_r1	equ	[esp+8+28]
-p_r2	equ	[esp+12+28]
-p_r3	equ	[esp+16+28]
-p_r4	equ	[esp+20+28]
-p_r5	equ	[esp+24+28]
-p_width	equ	[esp+28+28]
+%define p_dst	[esp+4+28]
+%define p_r1	[esp+8+28]
+%define p_r2	[esp+12+28]
+%define p_r3	[esp+16+28]
+%define p_r4	[esp+20+28]
+%define p_r5	[esp+24+28]
+%define p_width	[esp+28+28]
 
 _asm_tv_average5col:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled],1
 	jnz	_asm_tv_average5col_MMX
 
 	push	ebp
@@ -166,23 +163,23 @@ tv5col_loop:
 ;	jl	@2
 ;	mov	x,255
 ;@2:
-;	endm
+;%endmacro
 
-CLIP	macro	x
+%macro CLIP	1
 	mov	edx,000000ffh
-	mov	esi,x
+	mov	esi,%1
 
 	shr	esi,24
-	sub	edx,x
+	sub	edx,%1
 
 	shr	edx,24
 	xor	esi,000000ffh
 
-	or	x,edx
+	or	%1,edx
 
-	and	x,esi
+	and	%1,esi
 
-	endm
+%endmacro
 
 	;------------------
 
@@ -263,7 +260,7 @@ _asm_tv_average5col_MMX:
 	neg	ebp
 	shl	ebp,2
 
-	movq	mm6,y_coeff
+	movq	mm6,[y_coeff]
 	pxor	mm7,mm7
 
 	mov	eax,p_r1
@@ -280,103 +277,34 @@ _asm_tv_average5col_MMX:
 	sub	esi,ebp
 	sub	edi,ebp
 
-	IF 0
+	movd	mm0,dword [eax+ebp]		;mm0 = [1/byte]
 
-tv5col_loop_MMX:
-	movd	mm0,[eax+ebp]		;mm0 = [1/byte]
+	movd	mm4,dword [esi+ebp]		;mm4 = [5/byte]
 
-	movd	mm4,[esi+ebp]		;mm4 = [5/byte]
-
-	movd	mm1,[ebx+ebp]		;mm1 = [2/byte]
-	punpcklbw mm0,mm7		;mm0 = [1/word]
-
-	punpcklbw mm4,mm7		;mm4 = [5/word]
-
-	movd	mm2,[ecx+ebp]		;mm2 = [3/byte]
-	punpcklbw mm1,mm7		;mm1 = [2/word]
-
-	movd	mm3,[edx+ebp]		;mm3 = [4/byte]
-	punpcklbw mm2,mm7		;mm2 = [3/word]
-
-	paddw	mm1,mm2			;mm1 = [2+3]/word
-	punpcklbw mm3,mm7		;mm3 = [4/word]
-
-	paddw	mm0,mm4			;mm0 = [1+5]/word
-	paddw	mm1,mm3			;mm1 = [2+3+4]/word
-
-	movd	mm5,[edi+ebp]		;mm5 = [d/byte]
-	paddw	mm1,mm1			;mm1 = [(2+3+4)*2]/word
-
-	punpcklbw mm5,mm7		;mm5 = [d/word]
-	paddw	mm0,mm1			;mm0 = [1+(2+3+4)*2+5]/word
-
-	psrlw	mm0,3			;mm0 = 5x5 average (word)
-
-	movq	mm1,mm5			;mm1 = [d/word]
-
-	movq	mm2,all_80w		;mm2 = [80h/word]
-	pmaddwd	mm0,mm6			;mm0 = 5x5 average Y in two parts
-
-	movq	mm3,all_80b		;mm3 = [80h/byte]
-	pmaddwd	mm1,mm6			;mm1 = source Y in two parts
-
-	psubw	mm5,mm2
-
-	;(stall)
-
-	psubd	mm1,mm0			;[tail]
-
-	movq	mm0,mm1			;[tail]
-
-	psrlq	mm1,32			;[tail]
-
-	paddd	mm0,mm1			;[tail]
-
-	psrad	mm0,8			;[tail]
-
-	punpcklwd mm0,mm0		;[tail]
-
-	punpcklwd mm0,mm0		;[tail]
-	add	ebp,4
-
-	paddw	mm5,mm0			;[tail]
-	packsswb mm5,mm5		;[tail]
-	pxor	mm5,mm3			;[tail]
-	movd	[edi+ebp-4],mm5		;[tail]
-
-	jne	tv5col_loop_MMX
-
-
-	ELSE
-
-	movd	mm0,dword ptr [eax+ebp]		;mm0 = [1/byte]
-
-	movd	mm4,dword ptr [esi+ebp]		;mm4 = [5/byte]
-
-	movd	mm1,dword ptr [ebx+ebp]		;mm1 = [2/byte]
+	movd	mm1,dword [ebx+ebp]		;mm1 = [2/byte]
 	punpcklbw mm0,mm7		;mm0 = [1/word]
 
 	punpcklbw mm4,mm7		;mm4 = [5/word]
 	jmp	short tv5col_loop_MMX_start
 
 tv5col_loop_MMX:
-	movd	mm0,dword ptr [eax+ebp]		;mm0 = [1/byte]
+	movd	mm0,dword [eax+ebp]		;mm0 = [1/byte]
 	packsswb mm5,mm5		;[tail]
 
-	movd	mm4,dword ptr [esi+ebp]		;mm4 = [5/byte]
+	movd	mm4,dword [esi+ebp]		;mm4 = [5/byte]
 	pxor	mm5,mm3			;[tail]
 
-	movd	mm1,dword ptr [ebx+ebp]		;mm1 = [2/byte]
+	movd	mm1,dword [ebx+ebp]		;mm1 = [2/byte]
 	punpcklbw mm0,mm7		;mm0 = [1/word]
 
 	punpcklbw mm4,mm7		;mm4 = [5/word]
-	movd	dword ptr [edi+ebp-4],mm5		;[tail]
+	movd	dword [edi+ebp-4],mm5		;[tail]
 
 tv5col_loop_MMX_start:
-	movd	mm2,dword ptr [ecx+ebp]		;mm2 = [3/byte]
+	movd	mm2,dword [ecx+ebp]		;mm2 = [3/byte]
 	punpcklbw mm1,mm7		;mm1 = [2/word]
 
-	movd	mm3,dword ptr [edx+ebp]		;mm3 = [4/byte]
+	movd	mm3,dword [edx+ebp]		;mm3 = [4/byte]
 	punpcklbw mm2,mm7		;mm2 = [3/word]
 
 	paddw	mm1,mm2			;mm1 = [2+3]/word
@@ -385,7 +313,7 @@ tv5col_loop_MMX_start:
 	paddw	mm0,mm4			;mm0 = [1+5]/word
 	paddw	mm1,mm3			;mm1 = [2+3+4]/word
 
-	movd	mm5,dword ptr [edi+ebp]		;mm5 = [d/byte]
+	movd	mm5,dword [edi+ebp]		;mm5 = [d/byte]
 	paddw	mm1,mm1			;mm1 = [(2+3+4)*2]/word
 
 	punpcklbw mm5,mm7		;mm5 = [d/word]
@@ -396,10 +324,10 @@ tv5col_loop_MMX_start:
 	movq	mm1,mm0			;mm1 = [d/word]
 	pmaddwd	mm0,mm6			;mm0 = 5x5 average Y in two parts
 
-	movq	mm2,all_80w		;mm2 = [80h/word]
+	movq	mm2,[all_80w]	;mm2 = [80h/word]
 	pmaddwd	mm1,mm6			;mm1 = source Y in two parts
 
-	movq	mm3,all_80b		;mm3 = [80h/byte]
+	movq	mm3,[all_80b]	;mm3 = [80h/byte]
 	psubw	mm5,mm2
 
 	;(stall)
@@ -423,9 +351,7 @@ tv5col_loop_MMX_start:
 
 	packsswb mm5,mm5		;[tail]
 	pxor	mm5,mm3			;[tail]
-	movd	dword ptr [edi+ebp-4],mm5		;[tail]
-
-	ENDIF
+	movd	dword [edi+ebp-4],mm5		;[tail]
 
 	emms
 	pop	eax
@@ -440,10 +366,10 @@ tv5col_loop_MMX_start:
 
 ;	asm_tv_average5row(Pixel *src, Pixel *dst, int count)
 
-	public	_asm_tv_average5row
+	global	_asm_tv_average5row	
 
 _asm_tv_average5row:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_tv_average5row_MMX
 
 	push	ebp
@@ -697,40 +623,40 @@ _asm_tv_average5row_MMX:
 	;
 	;	5*[2] + 2*[3] + 1*[4]
 
-	movd	mm0,dword ptr [esi+0]
-	movd	mm1,dword ptr [esi+4]
+	movd	mm0,dword [esi+0]
+	movd	mm1,dword [esi+4]
 	punpcklbw mm0,mm7
 	punpcklbw mm1,mm7
-	pmullw	mm0,by_5
+	pmullw	mm0,[by_5]
 	paddw	mm1,mm1
-	movd	mm2,dword ptr [esi+8]
+	movd	mm2,dword [esi+8]
 	punpcklbw mm2,mm7
 	paddw	mm0,mm1
 	paddw	mm0,mm2
 	psrlw	mm0,3
 	packuswb mm0,mm0
-	movd	dword ptr [edi+0],mm0
+	movd	dword [edi+0],mm0
 
 	;----------
 	;
 	;	3*[1] + 2*[2] + 2*[3] + 1*[4]
 
-	movd	mm0,dword ptr [esi+0]
-	movd	mm1,dword ptr [esi+4]
-	movd	mm2,dword ptr [esi+8]
-	movd	mm3,dword ptr [esi+12]
+	movd	mm0,dword [esi+0]
+	movd	mm1,dword [esi+4]
+	movd	mm2,dword [esi+8]
+	movd	mm3,dword [esi+12]
 	punpcklbw mm0,mm7
 	punpcklbw mm1,mm7
 	punpcklbw mm2,mm7
 	punpcklbw mm3,mm7
-	pmullw	mm0,by_3
+	pmullw	mm0,[by_3]
 	paddw	mm1,mm2
 	paddw	mm1,mm1
 	paddw	mm3,mm0
 	paddw	mm1,mm3
 	psrlw	mm0,3
 	packuswb mm0,mm0
-	movd	dword ptr [edi+4],mm0
+	movd	dword [edi+4],mm0
 
 	;----------
 
@@ -738,21 +664,21 @@ _asm_tv_average5row_MMX:
 	sub	edi,ebp
 
 tv5row_loop_MMX:
-	movd	mm0,dword ptr [esi+ebp+0]
+	movd	mm0,dword [esi+ebp+0]
 
-	movd	mm1,dword ptr [esi+ebp+4]
+	movd	mm1,dword [esi+ebp+4]
 	punpcklbw mm0,mm7
 
-	movd	mm2,dword ptr [esi+ebp+8]
+	movd	mm2,dword [esi+ebp+8]
 	punpcklbw mm1,mm7
 
-	movd	mm3,dword ptr [esi+ebp+12]
+	movd	mm3,dword [esi+ebp+12]
 	punpcklbw mm2,mm7
 
 	paddw	mm1,mm2
 	punpcklbw mm3,mm7
 
-	movd	mm4,dword ptr [esi+ebp+16]
+	movd	mm4,dword [esi+ebp+16]
 	paddw	mm1,mm3
 
 	paddw	mm1,mm1
@@ -766,7 +692,7 @@ tv5row_loop_MMX:
 
 	packuswb mm0,mm0
 
-	movd	dword ptr [edi+ebp+8],mm0
+	movd	dword [edi+ebp+8],mm0
 
 	add	ebp,4
 	jne	tv5row_loop_MMX

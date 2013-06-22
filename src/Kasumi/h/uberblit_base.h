@@ -89,6 +89,11 @@ public:
 		mHeight = mSrcHeight;
 	}
 
+	void AddWindowRequest(int minDY, int maxDY) {
+		VDPixmapGenWindowBased::AddWindowRequest(minDY, maxDY);
+		mpSrc->AddWindowRequest(minDY, maxDY);
+	}
+
 	void StartWindow(uint32 rowbytes, int outputCount = 1) {
 		mpSrc->Start();
 

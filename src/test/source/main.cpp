@@ -3,6 +3,7 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/text.h>
+#include <vd2/system/vdstl.h>
 
 #include "test.h"
 
@@ -16,12 +17,22 @@
 #endif
 
 namespace {
-	typedef std::vector<std::pair<TestFn, const char *> > Tests;
+	struct TestInfo {
+		TestFn		mpTestFn;
+		const char	*mpName;
+		bool		mbAutoRun;
+	};
+
+	typedef vdfastvector<TestInfo> Tests;
 	Tests g_tests;
 }
 
-void AddTest(TestFn f, const char *name) {
-	g_tests.push_back(Tests::value_type(f, name));
+void AddTest(TestFn f, const char *name, bool autoRun) {
+	TestInfo ti;
+	ti.mpTestFn = f;
+	ti.mpName = name;
+	ti.mbAutoRun = autoRun;
+	g_tests.push_back(ti);
 }
 
 void help() {
@@ -29,9 +40,9 @@ void help() {
 	wprintf(L"Available tests:\n");
 
 	for(Tests::const_iterator it(g_tests.begin()), itEnd(g_tests.end()); it!=itEnd; ++it) {
-		const Tests::value_type& ent = *it;
+		const TestInfo& ent = *it;
 
-		wprintf(L"\t%hs\n", ent.second);
+		wprintf(L"\t%hs%s\n", ent.mpName, ent.mbAutoRun ? "" : "*");
 	}
 	wprintf(L"\tAll\n");
 }
@@ -40,7 +51,7 @@ int wmain(int argc, wchar_t **argv) {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
 
 	wprintf(L"VirtualDub test harness utility for " BUILD L"\n");
-	wprintf(L"Copyright (C) 2005-2007 Avery Lee. Licensed under GNU General Public License\n\n");
+	wprintf(L"Copyright (C) 2005-2008 Avery Lee. Licensed under GNU General Public License\n\n");
 
 	CPUEnableExtensions(CPUCheckForExtensions());
 
@@ -54,14 +65,19 @@ int wmain(int argc, wchar_t **argv) {
 			const wchar_t *test = argv[i];
 
 			if (!_wcsicmp(test, L"all")) {
-				selectedTests = g_tests;
+				for(Tests::const_iterator it(g_tests.begin()), itEnd(g_tests.end()); it!=itEnd; ++it) {
+					const TestInfo& ent = *it;
+
+					if (ent.mbAutoRun)
+						selectedTests.push_back(ent);
+				}
 				break;
 			}
 
 			for(Tests::const_iterator it(g_tests.begin()), itEnd(g_tests.end()); it!=itEnd; ++it) {
-				const Tests::value_type& ent = *it;
+				const TestInfo& ent = *it;
 
-				if (!_wcsicmp(VDTextAToW(ent.second).c_str(), test)) {
+				if (!_wcsicmp(VDTextAToW(ent.mpName).c_str(), test)) {
 					selectedTests.push_back(ent);
 					goto next;
 				}
@@ -79,10 +95,10 @@ next:
 	for(Tests::const_iterator it(selectedTests.begin()), itEnd(selectedTests.end()); it!=itEnd; ++it) {
 		const Tests::value_type& ent = *it;
 
-		wprintf(L"Running test: %hs\n", ent.second);
+		wprintf(L"Running test: %hs\n", ent.mpName);
 
 		try {
-			ent.first();
+			ent.mpTestFn();
 		} catch(const AssertionException& e) {
 			wprintf(L"    TEST FAILED: %hs\n", e.gets());
 			++failedTests;

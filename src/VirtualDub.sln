@@ -3,17 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 9.00
 # Visual Studio 2005
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub\VirtualDub.vcproj", "{0766DAC1-1BC2-4FC8-BDDA-E083FC2F56F4}"
 	ProjectSection(ProjectDependencies) = postProject
-		{5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283} = {5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283}
-		{8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D} = {8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D}
-		{1D6B560F-064D-401E-AC94-C12B6354429C} = {1D6B560F-064D-401E-AC94-C12B6354429C}
-		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
-		{308BF83F-B11C-48DC-AAF2-4A2003E8C377} = {308BF83F-B11C-48DC-AAF2-4A2003E8C377}
-		{AF613049-D4E2-4C65-ADEE-40DC037995CC} = {AF613049-D4E2-4C65-ADEE-40DC037995CC}
-		{0D252872-7542-4232-8D02-53F9182AEE15} = {0D252872-7542-4232-8D02-53F9182AEE15}
-		{73619A81-5E8C-48E9-A96A-60A48D8A65C7} = {73619A81-5E8C-48E9-A96A-60A48D8A65C7}
-		{C2082189-3ECB-4079-91FA-89D3C8A305C0} = {C2082189-3ECB-4079-91FA-89D3C8A305C0}
-		{A8006C9B-E3C0-436D-8046-C3180B939E7A} = {A8006C9B-E3C0-436D-8046-C3180B939E7A}
 		{146714D9-1D90-4D50-B830-F453484EC2CD} = {146714D9-1D90-4D50-B830-F453484EC2CD}
+		{A8006C9B-E3C0-436D-8046-C3180B939E7A} = {A8006C9B-E3C0-436D-8046-C3180B939E7A}
+		{C2082189-3ECB-4079-91FA-89D3C8A305C0} = {C2082189-3ECB-4079-91FA-89D3C8A305C0}
+		{73619A81-5E8C-48E9-A96A-60A48D8A65C7} = {73619A81-5E8C-48E9-A96A-60A48D8A65C7}
+		{0D252872-7542-4232-8D02-53F9182AEE15} = {0D252872-7542-4232-8D02-53F9182AEE15}
+		{AF613049-D4E2-4C65-ADEE-40DC037995CC} = {AF613049-D4E2-4C65-ADEE-40DC037995CC}
+		{308BF83F-B11C-48DC-AAF2-4A2003E8C377} = {308BF83F-B11C-48DC-AAF2-4A2003E8C377}
+		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
+		{1D6B560F-064D-401E-AC94-C12B6354429C} = {1D6B560F-064D-401E-AC94-C12B6354429C}
+		{8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D} = {8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D}
+		{5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283} = {5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kasumi", "Kasumi\Kasumi.vcproj", "{0D252872-7542-4232-8D02-53F9182AEE15}"
@@ -43,6 +43,9 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Priss", "Priss\Priss.vcproj", "{73619A81-5E8C-48E9-A96A-60A48D8A65C7}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Riza", "Riza\Riza.vcproj", "{AF613049-D4E2-4C65-ADEE-40DC037995CC}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Setup", "Setup\Setup.vcproj", "{6A3E162D-4403-486B-A1DF-2AA22E2F34FC}"
 EndProject
@@ -52,9 +55,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "system", "system\system.vcp
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test", "test\test.vcproj", "{2839395D-BCEF-4D00-B847-031EDA2752E4}"
 	ProjectSection(ProjectDependencies) = postProject
-		{C2082189-3ECB-4079-91FA-89D3C8A305C0} = {C2082189-3ECB-4079-91FA-89D3C8A305C0}
-		{73619A81-5E8C-48E9-A96A-60A48D8A65C7} = {73619A81-5E8C-48E9-A96A-60A48D8A65C7}
 		{0D252872-7542-4232-8D02-53F9182AEE15} = {0D252872-7542-4232-8D02-53F9182AEE15}
+		{73619A81-5E8C-48E9-A96A-60A48D8A65C7} = {73619A81-5E8C-48E9-A96A-60A48D8A65C7}
+		{C2082189-3ECB-4079-91FA-89D3C8A305C0} = {C2082189-3ECB-4079-91FA-89D3C8A305C0}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdicmdrv", "vdicmdrv\vdicmdrv.vcproj", "{5F0777EC-CD14-43CD-9BA6-ED9295F6312E}"
@@ -107,48 +110,48 @@ Global
 		SccProjectUniqueName7 = Dita\\Dita.vcproj
 		SccLocalPath7 = .
 		SccProjectFilePathRelativizedFromConnection7 = Dita\\
-		SccProjectUniqueName8 = Ami\\Ami.vcproj
+		SccProjectUniqueName8 = VDLib\\VDLib.vcproj
 		SccLocalPath8 = .
-		SccProjectFilePathRelativizedFromConnection8 = Ami\\
-		SccProjectUniqueName9 = Asuka\\Asuka.vcproj
-		SccLocalPath9 = .
-		SccProjectFilePathRelativizedFromConnection9 = Asuka\\
-		SccProjectUniqueName10 = disasm\\disasm.vcproj
+		SccProjectFilePathRelativizedFromConnection8 = VDLib\\
+		SccProjectUniqueName9 = VDXFrame\\VDXFrame.vcproj
+		SccLocalPath9 = ..
+		SccProjectFilePathRelativizedFromConnection9 = src\\VDXFrame\\
+		SccProjectUniqueName10 = Ami\\Ami.vcproj
 		SccLocalPath10 = .
-		SccProjectFilePathRelativizedFromConnection10 = disasm\\
-		SccProjectUniqueName11 = Lina\\Lina.vcproj
+		SccProjectFilePathRelativizedFromConnection10 = Ami\\
+		SccProjectUniqueName11 = Asuka\\Asuka.vcproj
 		SccLocalPath11 = .
-		SccProjectFilePathRelativizedFromConnection11 = Lina\\
-		SccProjectUniqueName12 = Setup\\Setup.vcproj
+		SccProjectFilePathRelativizedFromConnection11 = Asuka\\
+		SccProjectUniqueName12 = disasm\\disasm.vcproj
 		SccLocalPath12 = .
-		SccProjectFilePathRelativizedFromConnection12 = Setup\\
-		SccProjectUniqueName13 = Sylia\\Sylia.vcproj
+		SccProjectFilePathRelativizedFromConnection12 = disasm\\
+		SccProjectUniqueName13 = Lina\\Lina.vcproj
 		SccLocalPath13 = .
-		SccProjectFilePathRelativizedFromConnection13 = Sylia\\
-		SccProjectUniqueName14 = test\\test.vcproj
+		SccProjectFilePathRelativizedFromConnection13 = Lina\\
+		SccProjectUniqueName14 = Setup\\Setup.vcproj
 		SccLocalPath14 = .
-		SccProjectFilePathRelativizedFromConnection14 = test\\
-		SccProjectUniqueName15 = vdicmdrv\\vdicmdrv.vcproj
+		SccProjectFilePathRelativizedFromConnection14 = Setup\\
+		SccProjectUniqueName15 = Sylia\\Sylia.vcproj
 		SccLocalPath15 = .
-		SccProjectFilePathRelativizedFromConnection15 = vdicmdrv\\
-		SccProjectUniqueName16 = vdremote\\vdremote.vcproj
+		SccProjectFilePathRelativizedFromConnection15 = Sylia\\
+		SccProjectUniqueName16 = test\\test.vcproj
 		SccLocalPath16 = .
-		SccProjectFilePathRelativizedFromConnection16 = vdremote\\
-		SccProjectUniqueName17 = vdsvrlnk\\vdsvrlnk.vcproj
+		SccProjectFilePathRelativizedFromConnection16 = test\\
+		SccProjectUniqueName17 = vdicmdrv\\vdicmdrv.vcproj
 		SccLocalPath17 = .
-		SccProjectFilePathRelativizedFromConnection17 = vdsvrlnk\\
-		SccProjectUniqueName18 = vdub\\vdub.vcproj
+		SccProjectFilePathRelativizedFromConnection17 = vdicmdrv\\
+		SccProjectUniqueName18 = vdremote\\vdremote.vcproj
 		SccLocalPath18 = .
-		SccProjectFilePathRelativizedFromConnection18 = vdub\\
-		SccProjectUniqueName19 = helpfile\\helpfile.vcproj
+		SccProjectFilePathRelativizedFromConnection18 = vdremote\\
+		SccProjectUniqueName19 = vdsvrlnk\\vdsvrlnk.vcproj
 		SccLocalPath19 = .
-		SccProjectFilePathRelativizedFromConnection19 = helpfile\\
-		SccProjectUniqueName20 = VDLib\\VDLib.vcproj
+		SccProjectFilePathRelativizedFromConnection19 = vdsvrlnk\\
+		SccProjectUniqueName20 = vdub\\vdub.vcproj
 		SccLocalPath20 = .
-		SccProjectFilePathRelativizedFromConnection20 = VDLib\\
-		SccProjectUniqueName21 = VDXFrame\\VDXFrame.vcproj
-		SccLocalPath21 = ..
-		SccProjectFilePathRelativizedFromConnection21 = src\\VDXFrame\\
+		SccProjectFilePathRelativizedFromConnection20 = vdub\\
+		SccProjectUniqueName21 = helpfile\\helpfile.vcproj
+		SccLocalPath21 = .
+		SccProjectFilePathRelativizedFromConnection21 = helpfile\\
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32

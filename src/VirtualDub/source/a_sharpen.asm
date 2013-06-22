@@ -15,25 +15,11 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-;
-;	Why did I write yet another ASM module?
-;
-;	Because I took the OBJ output of Visual C++ 4.0 on maximum optimization,
-;	disassembled it, and said out loud, "God this is sh*tty code!"
-;	(Without the asterisk, to boot.)
-;	That is why.
-;
-;	Hand assembly optimization forever.
-;
-
-	.586
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 
-	public	_asm_sharpen_run
+	global	_asm_sharpen_run	
 
 ;asm_sharpen_run(
 ;	[esp+ 4] void *dst,
@@ -47,7 +33,7 @@
 
 _asm_sharpen_run:
 
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled],1
 	jnz	_asm_sharpen_run_MMX
 
 	push	ebp
@@ -64,13 +50,13 @@ _asm_sharpen_run:
 
 	mov	ebp,[esp+16+28]
 
-rowloop:
+.rowloop:
 	push	ebp
 	mov	ebp,[esp+12+32]
 	mov	eax,ebp
 	shl	eax,2
 	add	esi,eax
-colloop:
+.colloop:
 	push	ebp
 	push	edx
 
@@ -201,7 +187,7 @@ colloop:
 	sub	esi,4		;   u
 	mov	[edx+ebp*4-4],eax	;v
 	dec	ebp
-	jne	colloop
+	jne	.colloop
 
 	pop	ebp
 
@@ -209,7 +195,7 @@ colloop:
 	add	edx,[esp+24+28]
 
 	dec	ebp
-	jne	rowloop
+	jne	.rowloop
 
 	pop	eax
 	pop	ebx
@@ -265,13 +251,13 @@ _asm_sharpen_run_MMX:
 	psllq	mm6,32
 	por	mm6,mm0
 
-rowloop_MMX:
+.rowloop_MMX:
 	push	ebp
 	push	edx
 	push	esi
 	mov	ebp,[esp+12+40]
 
-	movd	mm0,dword ptr [esi-4]
+	movd	mm0,dword [esi-4]
 	punpcklbw mm0,mm7
 
 	movq	mm1,[esi]
@@ -281,7 +267,7 @@ rowloop_MMX:
 	paddw	mm0,mm1
 	paddw	mm0,mm2
 
-	movd	mm1,dword ptr [esi+edi*2-4]
+	movd	mm1,dword [esi+edi*2-4]
 	punpcklbw mm1,mm7
 	paddw	mm0,mm1
 
@@ -292,43 +278,43 @@ rowloop_MMX:
 	paddw	mm0,mm1
 	paddw	mm0,mm2
 
-	movd	mm1,dword ptr [esi+edi-4]
+	movd	mm1,dword [esi+edi-4]
 	punpcklbw mm1,mm7
-	movd	mm2,dword ptr [esi+edi+4]
+	movd	mm2,dword [esi+edi+4]
 	punpcklbw mm2,mm7
 	paddw	mm1,mm2
 	paddw	mm1,mm0
 	pmullw	mm1,mm5
 
-	movd	mm2,dword ptr [esi+edi]
+	movd	mm2,dword [esi+edi]
 	punpcklbw mm2,mm7
 	pmullw	mm2,mm6
 	psubusw	mm2,mm1
 	psrlw	mm2,6
 	packuswb mm2,mm2
-	movd	dword ptr [edx],mm2
+	movd	dword [edx],mm2
 
 	add	esi,4
 	dec	ebp
 
-	movd	mm1,dword ptr [esi+4]
+	movd	mm1,dword [esi+4]
 	add	edx,4
-	movd	mm4,dword ptr [esi+edi*2+4]
+	movd	mm4,dword [esi+edi*2+4]
 	punpcklbw mm1,mm7
 	punpcklbw mm4,mm7
 	paddw	mm0,mm1
-	movd	mm1,dword ptr [esi-8]
-	movd	mm2,dword ptr [esi+edi*2-8]
+	movd	mm1,dword [esi-8]
+	movd	mm2,dword [esi+edi*2-8]
 	punpcklbw mm1,mm7
 	paddw	mm0,mm4
 
-	jmp	colloop_MMX_entry
+	jmp	.colloop_MMX_entry
 
-colloop_MMX:
-	movd	mm1,dword ptr [esi+4]
+.colloop_MMX:
+	movd	mm1,dword [esi+4]
 	add	edx,4
 
-	movd	mm4,dword ptr [esi+edi*2+4]
+	movd	mm4,dword [esi+edi*2+4]
 	punpcklbw mm1,mm7
 
 	psubusw	mm3,mm2
@@ -337,27 +323,27 @@ colloop_MMX:
 	psrlw	mm3,6
 	paddw	mm0,mm1
 
-	movd	mm1,dword ptr [esi-8]
+	movd	mm1,dword [esi-8]
 	packuswb mm3,mm3
 
-	movd	mm2,dword ptr [esi+edi*2-8]
+	movd	mm2,dword [esi+edi*2-8]
 	punpcklbw mm1,mm7
 
-	movd	dword ptr [edx-4],mm3
+	movd	dword [edx-4],mm3
 	paddw	mm0,mm4
 
-colloop_MMX_entry:
+.colloop_MMX_entry:
 
 	punpcklbw mm2,mm7
 	psubw	mm0,mm1
 
-	movd	mm1,dword ptr [esi+edi-4]
+	movd	mm1,dword [esi+edi-4]
 	psubw	mm0,mm2
 
-	movd	mm2,dword ptr [esi+edi+4]
+	movd	mm2,dword [esi+edi+4]
 	punpcklbw mm1,mm7
 
-	movd	mm3,dword ptr [esi+edi]
+	movd	mm3,dword [esi+edi]
 	punpcklbw mm2,mm7
 
 	punpcklbw mm3,mm7
@@ -370,12 +356,12 @@ colloop_MMX_entry:
 	add	esi,4
 
 	dec	ebp
-	jne	colloop_MMX
+	jne	.colloop_MMX
 
 	psubusw	mm3,mm2
 	psrlw	mm3,6
 	packuswb mm3,mm3
-	movd	dword ptr [edx],mm3
+	movd	dword [edx],mm3
 
 	pop	esi
 	pop	edx
@@ -385,7 +371,7 @@ colloop_MMX_entry:
 	add	edx,[esp+24+28]
 
 	dec	ebp
-	jne	rowloop_MMX
+	jne	.rowloop_MMX
 
 	pop	eax
 	pop	ebx
@@ -396,191 +382,5 @@ colloop_MMX_entry:
 	pop	ebp
 	emms
 	ret
-
-	IF 0
-
-;********************************
-
-	movd	mm0,[esi-4]
-	punpcklbw mm0,mm7
-
-	movq	mm1,[esi]
-	movq	mm2,mm1
-	punpcklbw mm1,mm7
-	punpckhbw mm2,mm7
-	paddw	mm0,mm1
-	paddw	mm0,mm2
-
-	movd	mm1,[esi+edi*2-4]
-	punpcklbw mm1,mm7
-	paddw	mm0,mm1
-
-	movq	mm1,[esi+edi*2]
-	movq	mm2,mm1
-	punpcklbw mm1,mm7
-	punpckhbw mm2,mm7
-	paddw	mm0,mm1
-	paddw	mm0,mm2
-
-	movd	mm1,[esi+edi-4]
-	punpcklbw mm1,mm7
-	movd	mm2,[esi+edi+4]
-	punpcklbw mm2,mm7
-	paddw	mm1,mm2
-	paddw	mm1,mm0
-	pmullw	mm1,mm5
-
-	movd	mm2,[esi+edi]
-	punpcklbw mm2,mm7
-	pmullw	mm2,mm6
-	psubw	mm2,mm1
-	psrlw	mm2,6
-	packuswb mm2,mm2
-	movd	[edx],mm2
-
-	add	esi,4
-	dec	ebp
-
-	movd	mm1,[esi+4]
-	movd	mm2,[esi+edi*2+4]
-	punpcklbw mm1,mm7
-	punpcklbw mm2,mm7
-	paddw	mm0,mm1
-	add	edx,4
-	jmp	colloop_MMX_entry
-
-colloop_MMX:
-	movd	mm1,[esi+4]
-	psubusw	mm3,mm2
-
-	movd	mm2,[esi+edi*2+4]
-	psrlw	mm3,6
-
-	punpcklbw mm1,mm7
-	packuswb mm3,mm3
-
-	punpcklbw mm2,mm7
-	paddw	mm0,mm1
-
-	movd	[edx-4],mm3
-	add	edx,4
-
-colloop_MMX_entry:
-	movd	mm1,[esi-8]
-	paddw	mm0,mm2
-
-	movd	mm2,[esi+edi*2-8]
-	punpcklbw mm1,mm7
-
-	punpcklbw mm2,mm7
-	psubw	mm0,mm1
-
-	movd	mm1,[esi+edi-4]
-	psubw	mm0,mm2
-
-	movd	mm2,[esi+edi+4]
-	punpcklbw mm1,mm7
-
-	movd	mm3,[esi+edi]
-	punpcklbw mm2,mm7
-
-	punpcklbw mm3,mm7
-	paddw	mm1,mm0
-
-	pmullw	mm3,mm6
-	paddw	mm2,mm1
-
-	pmullw	mm2,mm5
-	add	esi,4
-
-	dec	ebp
-	jne	colloop_MMX
-
-;*****************************************
-
-	movd	mm1,[esi+4]
-	add	edx,4
-
-	movd	mm2,[esi+edi*2+4]
-	punpcklbw mm1,mm7
-
-	punpcklbw mm2,mm7
-	paddw	mm0,mm1
-
-	movd	mm1,[esi-8]
-	paddw	mm0,mm2
-
-	movd	mm2,[esi+edi*2-8]
-	punpcklbw mm1,mm7
-
-	punpcklbw mm2,mm7
-	psubw	mm0,mm1
-
-	movd	mm1,[esi+edi-4]
-	psubw	mm0,mm2
-
-	movd	mm2,[esi+edi+4]
-	punpcklbw mm1,mm7
-
-	movd	mm3,[esi+edi]
-	punpcklbw mm2,mm7
-
-	punpcklbw mm3,mm7
-	paddw	mm1,mm0
-
-	pmullw	mm3,mm6
-	paddw	mm1,mm2
-
-	pmullw	mm1,mm5
-	add	esi,4
-
-	psubusw	mm3,mm1
-
-	psrlw	mm3,6
-
-	packuswb mm3,mm3
-	dec	ebp
-
-	movd	[edx-4],mm3
-	jne	colloop_MMX
-
-;**************************
-
-	movd	mm1,[esi+4]
-	punpcklbw mm1,mm7
-	paddw	mm0,mm1
-	movd	mm1,[esi+edi*2+4]
-	punpcklbw mm1,mm7
-	paddw	mm0,mm1
-	movd	mm1,[esi-8]
-	punpcklbw mm1,mm7
-	psubw	mm0,mm1
-	movd	mm1,[esi+edi*2-8]
-	punpcklbw mm1,mm7
-	psubw	mm0,mm1
-
-	movd	mm1,[esi+edi-4]
-	punpcklbw mm1,mm7
-	movd	mm2,[esi+edi+4]
-	punpcklbw mm2,mm7
-	paddw	mm1,mm2
-	paddw	mm1,mm0
-	pmullw	mm1,mm5
-
-	movd	mm2,[esi+edi]
-	punpcklbw mm2,mm7
-	pmullw	mm2,mm6
-	psubusw	mm2,mm1
-	psrlw	mm2,6
-	packuswb mm2,mm2
-	movd	[edx],mm2
-
-	add	esi,4
-	add	edx,4
-
-	dec	ebp
-	jne	colloop_MMX
-
-	ENDIF
 
 	end

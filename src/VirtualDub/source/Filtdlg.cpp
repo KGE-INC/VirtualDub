@@ -200,6 +200,8 @@ protected:
 
 	bool		mbShowFormats;
 
+	int			mFilterEnablesUpdateLock;
+
 	HWND		mhwndList;
 
 	typedef vdfastvector<FilterInstance *> Filters; 
@@ -217,6 +219,7 @@ VDVideoFiltersDialog::VDVideoFiltersDialog()
 	, mInputLength(100)
 	, mpVS(NULL)
 	, mbShowFormats(false)
+	, mFilterEnablesUpdateLock(0)
 {
 	mResult.mbDialogAccepted = false;
 	mResult.mbChangeDetected = false;
@@ -293,8 +296,11 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 						item.mask		= LVIF_TEXT;
 						item.pszText	= LPSTR_TEXTCALLBACK;
 
-						// Note that this call ends up disabling the filter instance (#$()#$).
+						// Note that this call would end up disabling the filter instance if
+						// we didn't have an update lock around it.
+						++mFilterEnablesUpdateLock;
 						int index = ListView_InsertItem(mhwndList, &item);
+						--mFilterEnablesUpdateLock;
 
 						item.iItem		= index;
 						item.iSubItem	= 1;
@@ -357,7 +363,11 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 						
 						mFilters.erase(mFilters.begin() + index);
 
+						// We need to disable check updates around the delete to avoid getting the filter
+						// enables scrambled.
+						++mFilterEnablesUpdateLock;
 						ListView_DeleteItem(mhwndList, index);
+						--mFilterEnablesUpdateLock;
 
 						if ((unsigned)index < mFilters.size())
 							ListView_SetItemState(mhwndList, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
@@ -563,6 +573,7 @@ void VDVideoFiltersDialog::OnInit() {
 	CheckDlgButton(mhdlg, IDC_SHOWIMAGEFORMATS, mbShowFormats ? BST_CHECKED : BST_UNCHECKED);
 
 	mhwndList = GetDlgItem(mhdlg, IDC_FILTER_LIST);
+	mFilterEnablesUpdateLock = 0;
 
 	ListView_SetExtendedListViewStyle(mhwndList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
 
@@ -720,13 +731,15 @@ void VDVideoFiltersDialog::OnLVItemChanged(const NMLISTVIEW& nmlv) {
 	FilterInstance *fi = mFilters[nmlv.iItem];
 
 	if (nmlv.uChanged & LVIF_STATE) {
-		// We fetch the item state because uNewState seems hosed when ListView_SetItemState() is called
-		// with a partial mask.
-		bool enabled = ListView_GetItemState(mhwndList, nmlv.iItem, LVIS_STATEIMAGEMASK) == INDEXTOSTATEIMAGEMASK(2);
+		if (!mFilterEnablesUpdateLock) {
+			// We fetch the item state because uNewState seems hosed when ListView_SetItemState() is called
+			// with a partial mask.
+			bool enabled = ListView_GetItemState(mhwndList, nmlv.iItem, LVIS_STATEIMAGEMASK) == INDEXTOSTATEIMAGEMASK(2);
 
-		if (enabled != fi->IsEnabled()) {
-			fi->SetEnabled(enabled);
-			RedoFilters();
+			if (enabled != fi->IsEnabled()) {
+				fi->SetEnabled(enabled);
+				RedoFilters();
+			}
 		}
 	}
 }
@@ -811,171 +824,6 @@ VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, 
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDDialogResizerW32 {
-public:
-	VDDialogResizerW32();
-	~VDDialogResizerW32();
-
-	enum {
-		kAnchorX	= 0x01,
-		kAnchorW	= 0x02,
-		kAnchorY	= 0x04,
-		kAnchorH	= 0x08,
-
-		kL		= 0,
-		kC		= kAnchorW,
-		kR		= kAnchorX,
-		kHMask	= 0x03,
-
-		kT		= 0,
-		kM		= kAnchorH,
-		kB		= kAnchorY,
-		kVMask	= 0x0C,
-
-		kTL		= kT | kL,
-		kTR		= kT | kR,
-		kTC		= kT | kC,
-		kML		= kM | kL,
-		kMR		= kM | kR,
-		kMC		= kM | kC,
-		kBL		= kB | kL,
-		kBR		= kB | kR,
-		kBC		= kB | kC,
-	};
-
-	void Init(HWND hwnd);
-	void Relayout();
-	void Relayout(int width, int height);
-	void Add(uint32 id, int alignment);
-
-protected:
-	struct ControlEntry {
-		HWND	mhwnd;
-		int		mAlignment;
-		sint32	mX;
-		sint32	mY;
-		sint32	mW;
-		sint32	mH;
-	};
-
-	HWND	mhwndBase;
-	int		mWidth;
-	int		mHeight;
-
-	typedef vdfastvector<ControlEntry> Controls;
-	Controls mControls;
-};
-
-VDDialogResizerW32::VDDialogResizerW32() {
-}
-
-VDDialogResizerW32::~VDDialogResizerW32() {
-}
-
-void VDDialogResizerW32::Init(HWND hwnd) {
-	mhwndBase = hwnd;
-	mWidth = 1;
-	mHeight = 1;
-
-	RECT r;
-	if (GetClientRect(hwnd, &r)) {
-		mWidth = r.right;
-		mHeight = r.bottom;
-	}
-}
-
-void VDDialogResizerW32::Relayout() {
-	RECT r;
-
-	if (GetClientRect(mhwndBase, &r))
-		Relayout(r.right, r.bottom);
-}
-
-void VDDialogResizerW32::Relayout(int width, int height) {
-	HDWP hdwp = BeginDeferWindowPos(mControls.size());
-
-	mWidth = width;
-	mHeight = height;
-
-	Controls::const_iterator it(mControls.begin()), itEnd(mControls.end());
-	for(; it!=itEnd; ++it) {
-		const ControlEntry& ent = *it;
-		uint32 flags = SWP_NOZORDER|SWP_NOACTIVATE;
-
-		if (!(ent.mAlignment & (kAnchorX | kAnchorY)))
-			flags |= SWP_NOMOVE;
-
-		if (!(ent.mAlignment & (kAnchorW | kAnchorH)))
-			flags |= SWP_NOSIZE;
-
-		int x = ent.mX;
-		int y = ent.mY;
-		int w = ent.mW;
-		int h = ent.mH;
-
-		if (ent.mAlignment & kAnchorX)
-			x += mWidth;
-
-		if (ent.mAlignment & kAnchorW)
-			w += mWidth;
-
-		if (ent.mAlignment & kAnchorY)
-			y += mHeight;
-
-		if (ent.mAlignment & kAnchorH)
-			h += mHeight;
-
-		if (hdwp) {
-			HDWP hdwp2 = DeferWindowPos(hdwp, ent.mhwnd, NULL, x, y, w, h, flags);
-
-			if (hdwp2) {
-				hdwp = hdwp2;
-				continue;
-			}
-		}
-
-		SetWindowPos(ent.mhwnd, NULL, x, y, w, h, flags);
-	}
-
-	if (hdwp)
-		EndDeferWindowPos(hdwp);
-}
-
-void VDDialogResizerW32::Add(uint32 id, int alignment) {
-	HWND hwndControl = GetDlgItem(mhwndBase, id);
-	if (!hwndControl)
-		return;
-
-	RECT r;
-	if (!GetWindowRect(hwndControl, &r))
-		return;
-
-	if (!MapWindowPoints(NULL, mhwndBase, (LPPOINT)&r, 2))
-		return;
-
-	ControlEntry& ce = mControls.push_back();
-
-	ce.mhwnd		= hwndControl;
-	ce.mAlignment	= alignment;
-	ce.mX			= r.left;
-	ce.mY			= r.top;
-	ce.mW			= r.right - r.left;
-	ce.mH			= r.bottom - r.top;
-
-	if (alignment & kAnchorX)
-		ce.mX -= mWidth;
-
-	if (alignment & kAnchorW)
-		ce.mW -= mWidth;
-
-	if (alignment & kAnchorY)
-		ce.mY -= mHeight;
-
-	if (alignment & kAnchorH)
-		ce.mH -= mHeight;
-}
-
-
 class VDFilterClippingDialog : public VDDialogFrameW32 {
 public:
 	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList);
@@ -1043,11 +891,13 @@ bool VDFilterClippingDialog::OnLoaded()  {
 			filters.DeallocateBuffers();
 
 			// start private filter system
+			const VDPixmap& pxsrc = inputVideo->getTargetFormat();
 			mFilterSys.initLinearChain(
 					mpFilterList,
 					pbih2->biWidth,
 					abs(pbih2->biHeight),
-					inputVideo->getTargetFormat().format,
+					pxsrc.format,
+					pxsrc.palette,
 					pVSS->getRate(),
 					pVSS->getLength());
 

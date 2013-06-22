@@ -32,8 +32,9 @@ public:
 	virtual bool Query(const void *inputFormat, const void *outputFormat = NULL) = 0;
 	virtual void GetOutputFormat(const void *inputFormat, vdstructex<tagBITMAPINFOHEADER>& outputFormat) = 0;
 	virtual const void *GetOutputFormat() = 0;
+	virtual uint32 GetOutputFormatSize() = 0;
 	virtual uint32 GetMaxOutputSize() = 0;
-	virtual void Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount) = 0;
+	virtual void Start(const void *inputFormat, uint32 inputFormatSize, const void *outputFormat, uint32 outputFormatSize, const VDFraction& frameRate, VDPosition frameCount) = 0;
 	virtual void Restart() = 0;
 	virtual void SkipFrame() = 0;
 	virtual void DropFrame() = 0;
@@ -52,6 +53,7 @@ public:
 	virtual bool SetTargetFormat(const void *format) = 0;
 	virtual int GetTargetFormat() = 0;
 	virtual int GetTargetFormatVariant() = 0;
+	virtual const uint32 *GetTargetFormatPalette() = 0;
 	virtual void Start() = 0;
 	virtual void Stop() = 0;
 	virtual void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) = 0;
@@ -59,10 +61,10 @@ public:
 	virtual const wchar_t *GetName() = 0;
 };
 
-IVDVideoDecompressor *VDCreateVideoDecompressorVCM(const void *srcFormat, const void *pHIC);
+IVDVideoDecompressor *VDCreateVideoDecompressorVCM(const void *srcFormat, uint32 srcFormatSize, const void *pHIC);
 IVDVideoDecompressor *VDCreateVideoDecompressorDV(int w, int h);
 
-IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredCodec, const void *srcFormat);
+IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredCodec, const void *srcFormat, uint32 srcFormatSize);
 
 class VDINTERFACE IVDVideoCodecBugTrap {
 public:

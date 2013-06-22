@@ -40,13 +40,16 @@ public:
 		OPTF_SSE2			= 0x20,		// (PIV)
 		OPTF_3DNOW			= 0x40,
 		OPTF_3DNOW_EXT		= 0x80,		// Athlon 3DNow! extensions
+		OPTF_SSE3			= 0x100,	// (Prefs2 only)
+		OPTF_SSSE3			= 0x200,	// (Prefs2 only)
+		OPTF_SSE4_1			= 0x400,	// (Prefs2 only)
 	};
 
 	char	iPreviewPriority;
 	char	iPreviewDepth;
 	char	iDubPriority;
 	char	fAttachExtension;
-	char	fOptimizations;
+	char	fOptimizations;		// deprecated
 };
 
 class PreferencesScene {

@@ -36,6 +36,7 @@ public:
 	bool SetTargetFormat(const void *format);
 	int GetTargetFormat() { return mFormat; }
 	int GetTargetFormatVariant() { return 0; }
+	const uint32 *GetTargetFormatPalette() { return NULL; }
 	void Start();
 	void Stop();
 	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);

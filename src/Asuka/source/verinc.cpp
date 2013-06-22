@@ -61,12 +61,12 @@ void tool_verinc(bool amd64) {
 
 	if (amd64)
 		fprintf(f,
-			"\t"	".const\n"
+			"\t"	"segment	.const\n"
 			"\n"
-			"\t"	"public\t"	"version_num\n"
-			"\t"	"public\t"	"version_time\n"
-			"\t"	"public\t"	"version_date\n"
-			"\t"	"public\t"	"version_buildmachine\n"
+			"\t"	"global\t"	"version_num\n"
+			"\t"	"global\t"	"version_time\n"
+			"\t"	"global\t"	"version_date\n"
+			"\t"	"global\t"	"version_buildmachine\n"
 			"\n"
 			"version_num\t"	"dd\t"	"%ld\n"
 			"version_time\t"	"db\t"	"\"%s\",0\n"
@@ -80,14 +80,12 @@ void tool_verinc(bool amd64) {
 			,machine_name.c_str());
 	else
 		fprintf(f,
-			"\t"	".386\n"
-			"\t"	".model\t"	"flat\n"
-			"\t"	".const\n"
+			"\t"	"segment	.const\n"
 			"\n"
-			"\t"	"public\t"	"_version_num\n"
-			"\t"	"public\t"	"_version_time\n"
-			"\t"	"public\t"	"_version_date\n"
-			"\t"	"public\t"	"_version_buildmachine\n"
+			"\t"	"global\t"	"_version_num\n"
+			"\t"	"global\t"	"_version_time\n"
+			"\t"	"global\t"	"_version_date\n"
+			"\t"	"global\t"	"_version_buildmachine\n"
 			"\n"
 			"_version_num\t"	"dd\t"	"%ld\n"
 			"_version_time\t"	"db\t"	"\"%s\",0\n"

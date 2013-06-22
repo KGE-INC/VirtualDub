@@ -223,7 +223,7 @@ void VDUISaveWindowPlacementW32(HWND hwnd, const char *name) {
 		key.setBinary(name, (const char *)&wp.rcNormalPosition, sizeof(RECT));
 }
 
-void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name) {
+void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name, int nCmdShow) {
 	if (!IsZoomed(hwnd) && !IsIconic(hwnd)) {
 		VDRegistryAppKey key("Window Placement");
 		RECT r;
@@ -234,7 +234,7 @@ void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name) {
 			if (GetWindowPlacement(hwnd, &wp)) {
 				wp.length			= sizeof(WINDOWPLACEMENT);
 				wp.flags			= 0;
-				wp.showCmd			= SW_SHOWNORMAL;
+				wp.showCmd			= nCmdShow;
 				wp.rcNormalPosition	= r;
 
 				SetWindowPlacement(hwnd, &wp);
@@ -550,6 +550,8 @@ VDPosition guiPositionHandleNotify(LPARAM lParam, IVDPositionControl *pc) {
 	switch(nmh->code) {
 	case PCN_THUMBTRACK:
 	case PCN_THUMBPOSITION:
+	case PCN_THUMBPOSITIONPREV:
+	case PCN_THUMBPOSITIONNEXT:
 	case PCN_PAGELEFT:
 	case PCN_PAGERIGHT:
 	case CCN_REFRESHFRAME:

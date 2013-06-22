@@ -44,6 +44,8 @@ void VDSubstituteStrings(VDStringW& s);
 
 void LaunchURL(const char *pURL);
 
+void VDInitiateSystemShutdown();
+
 class VDCPUUsageReader {
 public:
 	VDCPUUsageReader();

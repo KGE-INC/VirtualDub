@@ -164,7 +164,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 		hdr.HeightLo	= (unsigned char)(bih.biHeight & 0xff);
 		hdr.HeightHi	= (unsigned char)(bih.biHeight >> 8);
 		hdr.PixelSize	= (unsigned char)(bih.biBitCount);
-		hdr.AttBits		= (unsigned char)(bih.biBitCount==2 ? 1 : bih.biBitCount==4 ? 8 : 0);		// origin is bottom-left, x alpha bits
+		hdr.AttBits		= (unsigned char)(bih.biBitCount==16 ? 1 : bih.biBitCount==32 ? 8 : 0);		// origin is bottom-left, x alpha bits
 
 		// Do we have a pack buffer yet?
 
@@ -201,7 +201,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 				const int *masksrc = (const int *)src;
 
 				for(x=0; x<bih.biWidth; ++x) {
-					maskdst[x] = masksrc[x] & 0xff000000;
+					maskdst[x] = masksrc[x] | 0xff000000;
 				}
 				rlesrc = (const char *)mpPackBuffer;
 			}

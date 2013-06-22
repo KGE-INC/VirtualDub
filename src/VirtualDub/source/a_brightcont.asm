@@ -15,15 +15,12 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 
-	public _asm_brightcont1_run
-	public _asm_brightcont2_run
+	global _asm_brightcont1_run	
+	global _asm_brightcont2_run	
 
 ;asm_brightcont(x)_run(
 ;	[esp+ 4] void *dst,
@@ -35,7 +32,7 @@
 ;	[esp+28] ulong adder2);
 
 _asm_brightcont1_run:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_brightcont1_run_MMX
 
 	push	ebp
@@ -50,10 +47,10 @@ _asm_brightcont1_run:
 	mov	edi,[esp+20+28]
 	mov	ebp,[esp+12+28]
 
-brightcont1@rowloop:
+brightcont1.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
-brightcont1@colloop:
+brightcont1.colloop:
 	mov	eax,[esi+ebp*4-4]
 	mov	ecx,eax
 
@@ -109,13 +106,13 @@ brightcont1@colloop:
 
 	mov	[esi+ebp*4-4],eax
 	dec	ebp
-	jne	brightcont1@colloop
+	jne	brightcont1.colloop
 	pop	ebp
 
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	brightcont1@rowloop
+	jne	brightcont1.rowloop
 
 	pop	eax
 	pop	ebx
@@ -127,7 +124,7 @@ brightcont1@colloop:
 	ret
 
 _asm_brightcont2_run:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_brightcont2_run_MMX
 
 	push	ebp
@@ -142,10 +139,10 @@ _asm_brightcont2_run:
 	mov	edi,[esp+20+28]
 	mov	ebp,[esp+12+28]
 
-brightcont2@rowloop:
+brightcont2.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
-brightcont2@colloop:
+brightcont2.colloop:
 	mov	eax,[esi+ebp*4-4]
 	mov	ecx,eax
 
@@ -160,7 +157,7 @@ brightcont2@colloop:
 
 	;carry bits are at 0x00300000 and 0x30003000
 
-	IF 1
+	%if 1
 
 ;	mov	ecx,00100000h
 ;	mov	edx,10001000h
@@ -184,7 +181,7 @@ brightcont2@colloop:
 	shr	ebx,4			;[c   u]
 	or	eax,ebx			;[c   u]
 
-	ELSE
+	%else
 
 
 	mov	ecx,eax
@@ -211,17 +208,17 @@ brightcont2@colloop:
 	and	eax,0000ff00h
 	or	eax,ebx
 
-	ENDIF
+	%endif
 
 	mov	[esi+ebp*4-4],eax
 	dec	ebp
-	jne	brightcont2@colloop
+	jne	brightcont2.colloop
 	pop	ebp
 
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	brightcont2@rowloop
+	jne	brightcont2.rowloop
 
 	pop	eax
 	pop	ebx
@@ -277,19 +274,19 @@ _asm_brightcont1_run_MMX:
 ;	psrlq	mm7,4
 ;	punpcklbw mm7,mm5
 
-	movd	mm7,dword ptr [esp+24+28]
+	movd	mm7,dword [esp+24+28]
 	psrlq	mm7,4
 	movq	mm0,mm7
 	psllq	mm0,32
 	por	mm7,mm0
 
-brightcont1MMX@rowloop:
+brightcont1MMX.rowloop:
 	push	ebp
 	push	esi
 	mov	ebp,[esp+ 8+36]
 	shr	ebp,2
-	jz	brightcont1MMX@noby4
-brightcont1MMX@colloop:
+	jz	brightcont1MMX.noby4
+brightcont1MMX.colloop:
 	movq	mm0,[esi]
 ;	movq	mm7,mm7
 
@@ -332,32 +329,32 @@ brightcont1MMX@colloop:
 	add	esi,16
 
 	dec	ebp
-	jne	brightcont1MMX@colloop
-brightcont1MMX@noby4:
+	jne	brightcont1MMX.colloop
+brightcont1MMX.noby4:
 
 	mov	ebp,[esp+8+36]
 	and	ebp,3
-	jz	brightcont1MMX@nosingles
-brightcont1MMX@colloopsingle:
-	movd	mm0,dword ptr [esi]
+	jz	brightcont1MMX.nosingles
+brightcont1MMX.colloopsingle:
+	movd	mm0,dword [esi]
 	punpcklbw mm0,mm5
 	pmullw	mm0,mm6
 	add	esi,4
 	psrlw	mm0,4
 	psubusw	mm0,mm7
 	packuswb mm0,mm0
-	movd	dword ptr [esi-4],mm0
+	movd	dword [esi-4],mm0
 	dec	ebp
-	jne	brightcont1MMX@colloopsingle
+	jne	brightcont1MMX.colloopsingle
 
-brightcont1MMX@nosingles:
+brightcont1MMX.nosingles:
 	pop	esi
 	pop	ebp
 
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	brightcont1MMX@rowloop
+	jne	brightcont1MMX.rowloop
 
 	pop	eax
 	pop	ebx
@@ -399,19 +396,19 @@ _asm_brightcont2_run_MMX:
 ;	psrlq	mm7,4
 ;	punpcklbw mm7,mm5
 
-	movd	mm7,dword ptr [esp+24+28]
+	movd	mm7,dword [esp+24+28]
 	psrlq	mm7,4
 	movq	mm0,mm7
 	psllq	mm0,32
 	por	mm7,mm0
 
-brightcont2MMX@rowloop:
+brightcont2MMX.rowloop:
 	push	ebp
 	push	esi
 	mov	ebp,[esp+ 8+36]
 	shr	ebp,2
-	jz	brightcont2MMX@noby4
-brightcont2MMX@colloop:
+	jz	brightcont2MMX.noby4
+brightcont2MMX.colloop:
 	movq	mm0,[esi]
 ;	movq	mm7,mm7
 
@@ -454,32 +451,32 @@ brightcont2MMX@colloop:
 	add	esi,16
 
 	dec	ebp
-	jne	brightcont2MMX@colloop
-brightcont2MMX@noby4:
+	jne	brightcont2MMX.colloop
+brightcont2MMX.noby4:
 
 	mov	ebp,[esp+8+36]
 	and	ebp,3
-	jz	brightcont2MMX@nosingles
-brightcont2MMX@colloopsingle:
-	movd	mm0,dword ptr [esi]
+	jz	brightcont2MMX.nosingles
+brightcont2MMX.colloopsingle:
+	movd	mm0,dword [esi]
 	punpcklbw mm0,mm5
 	pmullw	mm0,mm6
 	add	esi,4
 	psrlw	mm0,4
 	paddusw	mm0,mm7
 	packuswb mm0,mm0
-	movd	dword ptr [esi-4],mm0
+	movd	dword [esi-4],mm0
 	dec	ebp
-	jne	brightcont2MMX@colloopsingle
+	jne	brightcont2MMX.colloopsingle
 
-brightcont2MMX@nosingles:
+brightcont2MMX.nosingles:
 	pop	esi
 	pop	ebp
 
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	brightcont2MMX@rowloop
+	jne	brightcont2MMX.rowloop
 
 	pop	eax
 	pop	ebx

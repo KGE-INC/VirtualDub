@@ -501,7 +501,7 @@ struct VDResizeFilterData {
 				framewf = imgw;
 				framehf = imgw * (mFrameAspectDenominator / mFrameAspectNumerator);
 				if (framehf > imgh) {
-					framewf = imgw * (mFrameAspectNumerator / mFrameAspectDenominator);
+					framewf = imgh * (mFrameAspectNumerator / mFrameAspectDenominator);
 					framehf = imgh;
 				}
 				break;
@@ -509,7 +509,7 @@ struct VDResizeFilterData {
 				framewf = imgw;
 				framehf = imgw * (mFrameAspectDenominator / mFrameAspectNumerator);
 				if (framehf < imgh) {
-					framewf = imgw * (mFrameAspectNumerator / mFrameAspectDenominator);
+					framewf = imgh * (mFrameAspectNumerator / mFrameAspectDenominator);
 					framehf = imgh;
 				}
 				break;
@@ -525,16 +525,20 @@ struct VDResizeFilterData {
 
 		int alignmentH = 1;
 		int alignmentW = 1;
-		if (useAlignment) {
-			alignmentH = mAlignment;
-			alignmentW = mAlignment;
-		}
 
 		if (format) {
 			const VDPixmapFormatInfo& info = VDPixmapGetInfo(format);
 
 			alignmentW = 1 << (info.qwbits + info.auxwbits);
 			alignmentH = 1 << (info.qhbits + info.auxhbits);
+		}
+
+		if (useAlignment) {
+			if (alignmentH < mAlignment)
+				alignmentH = mAlignment;
+
+			if (alignmentW < mAlignment)
+				alignmentW = mAlignment;
 		}
 
 		// if alignment is present, round frame sizes down to a multiple of alignment.
@@ -1305,12 +1309,17 @@ static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
 	float dy = ((float)pxdst.h - (float)dsth) * 0.5f;
 
 	if (mfd->mAlignment > 1) {
-		int x1 = VDCeilToInt(dx - 0.5f);
-		int y1 = VDCeilToInt(dy - 0.5f);
-		x1 -= x1 % mfd->mAlignment;
-		y1 -= y1 % mfd->mAlignment;
-		dx = (float)x1;
-		dy = (float)y1;
+		if (dx > 0.0) {
+			int x1 = VDCeilToInt(dx - 0.5f);
+			x1 -= x1 % (int)mfd->mAlignment;
+			dx = (float)x1;
+		}
+
+		if (dy > 0.0) {
+			int y1 = VDCeilToInt(dy - 0.5f);
+			y1 -= y1 % (int)mfd->mAlignment;
+			dy = (float)y1;
+		}
 	}
 
 	mfd->mDstRect.set(dx, dy, dx + (float)dstw, dy + (float)dsth);

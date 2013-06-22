@@ -15,15 +15,11 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-
-	.const
+	segment	.rdata, align=16
 
 	align 16
 
-		public _g_VDMPEGPredict_mmx
+		global _g_VDMPEGPredict_mmx
 
 _g_VDMPEGPredict_mmx	dd	predict_Y_normal_MMX
 			dd	predict_Y_halfpelX_MMX
@@ -61,9 +57,9 @@ predict_Y_halfpelX_table	dq	 0,64
 				dq	56, 8
 				dq	64, 0
 
-	.code
+	segment	.text
 
-PREDICT_START	macro
+%macro PREDICT_START 0
 		push	ebp
 		push	edi
 		push	esi
@@ -71,14 +67,14 @@ PREDICT_START	macro
 		mov	edx,[esp+4+16]
 		mov	ecx,[esp+8+16]
 		mov	esi,[esp+12+16]	
-		endm
+%endmacro
 
-PREDICT_END	macro
+%macro PREDICT_END 0
 		pop	ebx
 		pop	esi
 		pop	edi
 		pop	ebp
-		endm
+%endmacro
 
 
 ;*********************************************************
@@ -91,22 +87,22 @@ PREDICT_END	macro
 
 predict_Y_quadpel_MMX:
 	PREDICT_START
-	movq	mm6,MMX_02w
+	movq	mm6,[MMX_02w]
 
 	pxor	mm7,mm7
 	mov	edi,16
-predict_Y_quadpel_MMX@loop:
+predict_Y_quadpel_MMX.loop:
 	mov	eax,2
-predict_Y_quadpel_MMX@loop_2:
+predict_Y_quadpel_MMX.loop_2:
 	movq	mm0,[ecx]
 
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm4,mm0
 
 	movq	mm2,[ecx+esi]
 	psrlq	mm4,8
 
-	movd	mm3,dword ptr [ecx+esi+8]
+	movd	mm3,dword [ecx+esi+8]
 	psllq	mm1,56
 
 	por	mm1,mm4
@@ -157,13 +153,13 @@ predict_Y_quadpel_MMX@loop_2:
 	movq	[edx-8],mm0
 
 	dec	eax
-	jne	predict_Y_quadpel_MMX@loop_2
+	jne	predict_Y_quadpel_MMX.loop_2
 
 	lea	ecx,[ecx+esi-16]
 	lea	edx,[edx+esi-16]
 
 	dec	edi
-	jne	predict_Y_quadpel_MMX@loop
+	jne	predict_Y_quadpel_MMX.loop
 
 	PREDICT_END
 	ret
@@ -178,22 +174,22 @@ predict_Y_quadpel_MMX@loop_2:
 	align 16
 predict_Y_halfpelY_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,8
 	mov	ebx,7
 	and	ebx,ecx
-	jz	predict_Y_halfpelY_MMX@loop_aligned
+	jz	predict_Y_halfpelY_MMX.loop_aligned
 
 	shl	ebx,3
 	mov	edi,64
 	sub	edi,ebx
-	and	ecx,0fffffff8h
+	and	ecx,byte -8
 	movd	mm7,ebx
 	movd	mm6,edi
 	mov	edi,16
 
-predict_Y_halfpelY_MMX@loop_unaligned:
+predict_Y_halfpelY_MMX.loop_unaligned:
 	movq	mm0,[ecx]
 
 	movq	mm1,[ecx+8]
@@ -229,13 +225,13 @@ predict_Y_halfpelY_MMX@loop_unaligned:
 	pxor	mm1,mm4			;[1]
 	por	mm0,mm4			;[1]
 
-	pand	mm1,MMX_feb		;[1]
+	pand	mm1,[MMX_feb]		;[1]
 	movq	mm3,mm2			;[2]
 
 	psrlq	mm1,1			;[1]
 	pxor	mm3,mm5			;[2]
 
-	pand	mm3,MMX_feb		;[2]
+	pand	mm3,[MMX_feb]		;[2]
 	por	mm2,mm5			;[2]
 
 	psubb	mm0,mm1			;[1]
@@ -250,11 +246,11 @@ predict_Y_halfpelY_MMX@loop_unaligned:
 
 	movq	[edx+8],mm2		;[2]
 	lea	edx,[edx+esi]
-	jne	predict_Y_halfpelY_MMX@loop_unaligned
+	jne	predict_Y_halfpelY_MMX.loop_unaligned
 	PREDICT_END
 	ret
 
-predict_Y_halfpelY_MMX@loop_aligned:
+predict_Y_halfpelY_MMX.loop_aligned:
 	movq	mm0,[ecx]		;[1]
 	movq	mm1,[ecx+esi]		;[1]
 	movq	mm3,mm0			;[1]
@@ -294,7 +290,7 @@ predict_Y_halfpelY_MMX@loop_aligned:
 	psubb	mm0,mm4			;[2]
 	movq	[edx+esi+8],mm0		;[2]
 	lea	edx,[edx+esi*2]
-	jne	predict_Y_halfpelY_MMX@loop_aligned
+	jne	predict_Y_halfpelY_MMX.loop_aligned
 
 	PREDICT_END
 	ret
@@ -312,12 +308,12 @@ predict_Y_halfpelX_MMX:
 	mov	ebx,ecx
 	and	ebx,7
 	shl	ebx,4
-	and	ecx,0fffffff8h
+	and	ecx,byte -8
 	sub	edx,esi
-	movq	mm7,qword ptr [ebx+predict_Y_halfpelX_table+0]
-	movq	mm6,MMX_feb
+	movq	mm7,qword [ebx+predict_Y_halfpelX_table+0]
+	movq	mm6,[MMX_feb]
 
-predict_Y_halfpelX_MMX@loop:
+predict_Y_halfpelX_MMX.loop:
 	movq	mm0,[ecx]						;left
 
 	add	edx,esi
@@ -328,25 +324,25 @@ predict_Y_halfpelX_MMX@loop:
 	psrlq	mm0,mm7							;left
 	movq	mm3,mm1							;left
 
-	psrlq	mm2,qword ptr [ebx+predict_Y_halfpelX_table+16]		;left
+	psrlq	mm2,qword [ebx+predict_Y_halfpelX_table+16]		;left
 	movq	mm4,mm1							;right
 
-	psllq	mm3,qword ptr [ebx+predict_Y_halfpelX_table+24]		;left
+	psllq	mm3,qword [ebx+predict_Y_halfpelX_table+24]		;left
 	movq	mm5,mm4							;right
 
-	psllq	mm1,qword ptr [ebx+predict_Y_halfpelX_table+8]		;left
+	psllq	mm1,qword [ebx+predict_Y_halfpelX_table+8]		;left
 	por	mm2,mm3							;left
 
 	movq	mm3,[ecx+16]						;right
 	por	mm0,mm1							;left
 
-	psrlq	mm5,qword ptr [ebx+predict_Y_halfpelX_table+16]		;right
+	psrlq	mm5,qword [ebx+predict_Y_halfpelX_table+16]		;right
 	movq	mm1,mm3							;right
 
-	psllq	mm1,qword ptr [ebx+predict_Y_halfpelX_table+24]		;right
+	psllq	mm1,qword [ebx+predict_Y_halfpelX_table+24]		;right
 	psrlq	mm4,mm7							;right
 
-	psllq	mm3,qword ptr [ebx+predict_Y_halfpelX_table+8]		;right
+	psllq	mm3,qword [ebx+predict_Y_halfpelX_table+8]		;right
 	por	mm5,mm1							;right
 
 	movq	mm1,mm0							;left
@@ -374,7 +370,7 @@ predict_Y_halfpelX_MMX@loop:
 	dec	edi
 
 	movq	[edx+8],mm5						;right
-	jne	predict_Y_halfpelX_MMX@loop
+	jne	predict_Y_halfpelX_MMX.loop
 
 	PREDICT_END
 	ret
@@ -391,17 +387,17 @@ predict_Y_normal_MMX:
 	mov	eax,8
 	mov	ebx,7
 	and	ebx,ecx
-	jz	predict_Y_normal_MMX@loop_aligned
+	jz	predict_Y_normal_MMX.loop_aligned
 
 	shl	ebx,3
 	mov	edi,64
 	sub	edi,ebx
-	and	ecx,0fffffff8h
+	and	ecx,byte -8
 	movd	mm7,ebx
 	movd	mm6,edi
 	mov	eax,16
 
-predict_Y_normal_MMX@loop_unaligned:
+predict_Y_normal_MMX.loop_unaligned:
 	movq	mm1,[ecx+8]
 	movq	mm0,[ecx]
 	movq	mm2,mm1
@@ -417,12 +413,12 @@ predict_Y_normal_MMX@loop_unaligned:
 	add	ecx,esi
 	add	edx,esi
 	dec	eax
-	jne	predict_Y_normal_MMX@loop_unaligned
+	jne	predict_Y_normal_MMX.loop_unaligned
 	PREDICT_END
 	ret
 
 	align 16
-predict_Y_normal_MMX@loop_aligned:
+predict_Y_normal_MMX.loop_aligned:
 	movq	mm0,[ecx]
 	movq	mm1,[ecx+8]
 	movq	mm2,[ecx+esi]
@@ -434,7 +430,7 @@ predict_Y_normal_MMX@loop_aligned:
 	lea	ecx,[ecx+esi*2]
 	lea	edx,[edx+esi*2]
 	dec	eax
-	jne	predict_Y_normal_MMX@loop_aligned
+	jne	predict_Y_normal_MMX.loop_aligned
 
 	PREDICT_END
 	ret
@@ -462,22 +458,22 @@ predict_Y_normal_MMX@loop_aligned:
 	align 16
 predict_add_Y_quadpel_MMX:
 	PREDICT_START
-	movq	mm6,MMX_02w
+	movq	mm6,[MMX_02w]
 
 	pxor	mm7,mm7
 	mov	edi,16
-add_Y_quadpel_MMX@loop:
+add_Y_quadpel_MMX.loop:
 	mov	eax,2
-add_Y_quadpel_MMX@loop2:
+add_Y_quadpel_MMX.loop2:
 	movq	mm0,[ecx]
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,dword ptr [ecx+esi+8]
+	movd	mm3,dword [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -519,15 +515,15 @@ add_Y_quadpel_MMX@loop2:
 	psrlw	mm4,2
 	movq	mm5,mm3
 
-	pand	mm3,MMX_feb
+	pand	mm3,[MMX_feb]
 	packuswb	mm0,mm4
 
 	por		mm5,mm0
 	psrlq	mm3,1
 
-	pand	mm0,MMX_feb
+	pand	mm0,[MMX_feb]
 	psrlq	mm0,1
-	pand	mm5,MMX_01b
+	pand	mm5,[MMX_01b]
 	paddb	mm0,mm3
 	add		edx,8
 	paddb	mm0,mm5
@@ -535,13 +531,13 @@ add_Y_quadpel_MMX@loop2:
 	dec		eax
 
 	movq	[edx-8],mm0
-	jne	add_Y_quadpel_MMX@loop2
+	jne	add_Y_quadpel_MMX.loop2
 
 	lea	ecx,[ecx+esi-16]
 	lea	edx,[edx+esi-16]
 
 	dec	edi
-	jne	add_Y_quadpel_MMX@loop
+	jne	add_Y_quadpel_MMX.loop
 
 	PREDICT_END
 	ret
@@ -555,10 +551,10 @@ add_Y_quadpel_MMX@loop2:
 	align 16
 predict_add_Y_halfpelY_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,16
-predict_add_Y_halfpelY_MMX@loop:
+predict_add_Y_halfpelY_MMX.loop:
 	movq	mm3,[ecx]
 	movq	mm0,mm7
 
@@ -630,7 +626,7 @@ predict_add_Y_halfpelY_MMX@loop:
 	movq	[edx+8],mm4
 
 	lea	edx,[edx+esi]
-	jne	predict_add_Y_halfpelY_MMX@loop
+	jne	predict_add_Y_halfpelY_MMX.loop
 
 	PREDICT_END
 	ret
@@ -644,13 +640,13 @@ predict_add_Y_halfpelY_MMX@loop:
 	align 16
 predict_add_Y_halfpelX_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,16
-predict_add_Y_halfpelX_MMX@loop:
+predict_add_Y_halfpelX_MMX.loop:
 	movq	mm0,[ecx]
 
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm2,mm0
 
 	psrlq	mm2,8
@@ -688,7 +684,7 @@ predict_add_Y_halfpelX_MMX@loop:
 	movq	mm1,[ecx+8]		;[2]
 	paddb	mm4,mm0			;[1]
 
-	movd	mm0,dword ptr [ecx+16]		;[2]
+	movd	mm0,dword [ecx+16]		;[2]
 	movq	mm2,mm1			;[2]
 
 	movq	[edx],mm4		;[1]
@@ -732,7 +728,7 @@ predict_add_Y_halfpelX_MMX@loop:
 	movq	[edx+8],mm4
 
 	lea	edx,[edx+esi]
-	jne	predict_add_Y_halfpelX_MMX@loop
+	jne	predict_add_Y_halfpelX_MMX.loop
 
 	PREDICT_END
 	ret
@@ -748,23 +744,23 @@ predict_add_Y_halfpelX_MMX@loop:
 	align 16
 predict_add_Y_normal_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,16
 	mov	ebx,7
 	and	ebx,ecx
-	jz	add_Y_normal_MMX@loop_aligned
+	jz	add_Y_normal_MMX.loop_aligned
 
 ;*** unaligned loop
 
 	shl	ebx,3
 	mov	ebp,64
 	sub	ebp,ebx
-	and	ecx,0fffffff8h
+	and	ecx,byte -8
 	movd	mm5,ebx
 	movd	mm4,ebp
 
-add_Y_normal_MMX@loop_unaligned:
+add_Y_normal_MMX.loop_unaligned:
 	movq	mm1,[ecx+8]
 	movq	mm0,[ecx]
 	movq	mm2,mm1
@@ -779,18 +775,18 @@ add_Y_normal_MMX@loop_unaligned:
 	movq	mm6,mm0
 	movq	mm3,[edx+8]
 	movq	mm7,mm2
-	pand	mm0,MMX_feb
+	pand	mm0,[MMX_feb]
 	por	mm6,mm1
-	pand	mm1,MMX_feb
+	pand	mm1,[MMX_feb]
 	por	mm7,mm3
 	psrlq	mm0,1
-	pand	mm2,MMX_feb
+	pand	mm2,[MMX_feb]
 	psrlq	mm1,1
-	pand	mm3,MMX_feb
+	pand	mm3,[MMX_feb]
 	psrlq	mm2,1
-	pand	mm6,MMX_01b
+	pand	mm6,[MMX_01b]
 	psrlq	mm3,1
-	pand	mm7,MMX_01b
+	pand	mm7,[MMX_01b]
 	paddb	mm0,mm1
 
 	paddb	mm2,mm3
@@ -805,14 +801,14 @@ add_Y_normal_MMX@loop_unaligned:
 	add	edx,esi
 
 	dec	edi
-	jne	add_Y_normal_MMX@loop_unaligned
+	jne	add_Y_normal_MMX.loop_unaligned
 
 	PREDICT_END
 	ret
 
 ;*** aligned loop
 
-add_Y_normal_MMX@loop_aligned:
+add_Y_normal_MMX.loop_aligned:
 	movq	mm0,[ecx]
 
 	movq	mm1,[edx]
@@ -854,7 +850,7 @@ add_Y_normal_MMX@loop_aligned:
 	add	edx,esi
 
 	dec	edi
-	jne	add_Y_normal_MMX@loop_aligned
+	jne	add_Y_normal_MMX.loop_aligned
 
 	PREDICT_END
 	ret
@@ -880,20 +876,20 @@ add_Y_normal_MMX@loop_aligned:
 	align 16
 predict_C_quadpel_MMX:
 	PREDICT_START
-	movq	mm6,MMX_02w
+	movq	mm6,[MMX_02w]
 
 	pxor	mm7,mm7
 	mov	edi,8
-predict_C_quadpel_MMX@loop:
+predict_C_quadpel_MMX.loop:
 	movq	mm0,[ecx]
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,dword ptr [ecx+esi+8]
+	movd	mm3,dword [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -938,7 +934,7 @@ predict_C_quadpel_MMX@loop:
 	add	edx,esi
 
 	dec	edi
-	jne	predict_C_quadpel_MMX@loop
+	jne	predict_C_quadpel_MMX.loop
 
 	PREDICT_END
 	ret
@@ -953,10 +949,10 @@ predict_C_quadpel_MMX@loop:
 	align 16
 predict_C_halfpelY_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,4
-predict_C_halfpelY_MMX@loop:
+predict_C_halfpelY_MMX.loop:
 	movq	mm0,[ecx]
 	movq	mm1,[ecx+esi]
 	movq	mm3,mm0
@@ -982,7 +978,7 @@ predict_C_halfpelY_MMX@loop:
 	movq	[edx+esi],mm1
 
 	lea	edx,[edx+esi*2]
-	jne	predict_C_halfpelY_MMX@loop
+	jne	predict_C_halfpelY_MMX.loop
 
 	PREDICT_END
 	ret
@@ -996,16 +992,16 @@ predict_C_halfpelY_MMX@loop:
 	align 16
 predict_C_halfpelX_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,4
-predict_C_halfpelX_MMX@loop:
+predict_C_halfpelX_MMX.loop:
 	movq	mm0,[ecx]
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm2,mm0
 	movq	mm3,[ecx+esi]
 	psrlq	mm2,8
-	movd	mm4,dword ptr [ecx+esi+8]
+	movd	mm4,dword [ecx+esi+8]
 	psllq	mm1,56
 	movq	mm5,mm3
 	por	mm2,mm1
@@ -1035,7 +1031,7 @@ predict_C_halfpelX_MMX@loop:
 	lea	ecx,[ecx+esi*2]
 	lea	edx,[edx+esi*2]
 	dec	edi
-	jne	predict_C_halfpelX_MMX@loop
+	jne	predict_C_halfpelX_MMX.loop
 
 	PREDICT_END
 	ret
@@ -1113,20 +1109,20 @@ predict_C_normal_MMX:
 	align 16
 predict_add_C_quadpel_MMX:
 	PREDICT_START
-	movq	mm6,MMX_02w
+	movq	mm6,[MMX_02w]
 
 	pxor	mm7,mm7
 	mov	edi,8
-add_C_quadpel_MMX@loop:
+add_C_quadpel_MMX.loop:
 	movq	mm0,[ecx]
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm4,mm0
 	psrlq	mm4,8
 	psllq	mm1,56
 	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	movd	mm3,dword ptr [ecx+esi+8]
+	movd	mm3,dword [ecx+esi+8]
 	movq	mm5,mm2
 	psrlq	mm5,8
 	psllq	mm3,56
@@ -1168,15 +1164,15 @@ add_C_quadpel_MMX@loop:
 	psrlw	mm4,2
 	movq	mm5,mm3
 
-	pand	mm3,MMX_feb
+	pand	mm3,[MMX_feb]
 	packuswb	mm0,mm4
 
 	por		mm5,mm0
 	psrlq	mm3,1
 
-	pand	mm0,MMX_feb
+	pand	mm0,[MMX_feb]
 	psrlq	mm0,1
-	pand	mm5,MMX_01b
+	pand	mm5,[MMX_01b]
 	paddb	mm0,mm3
 	add		ecx,esi
 	paddb	mm0,mm5
@@ -1186,7 +1182,7 @@ add_C_quadpel_MMX@loop:
 	add	edx,esi
 
 	dec	edi
-	jne	add_C_quadpel_MMX@loop
+	jne	add_C_quadpel_MMX.loop
 
 	PREDICT_END
 	ret
@@ -1200,10 +1196,10 @@ add_C_quadpel_MMX@loop:
 	align 16
 predict_add_C_halfpelY_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,8
-predict_add_C_halfpelY_MMX@loop:
+predict_add_C_halfpelY_MMX.loop:
 	movq	mm0,[ecx]
 
 	movq	mm1,[ecx+esi]
@@ -1243,7 +1239,7 @@ predict_add_C_halfpelY_MMX@loop:
 	movq	[edx],mm4
 
 	lea	edx,[edx+esi]
-	jne	predict_add_C_halfpelY_MMX@loop
+	jne	predict_add_C_halfpelY_MMX.loop
 
 	PREDICT_END
 	ret
@@ -1257,13 +1253,13 @@ predict_add_C_halfpelY_MMX@loop:
 	align 16
 predict_add_C_halfpelX_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,8
-predict_add_C_halfpelX_MMX@loop:
+predict_add_C_halfpelX_MMX.loop:
 	movq	mm0,[ecx]
 
-	movd	mm1,dword ptr [ecx+8]
+	movd	mm1,dword [ecx+8]
 	movq	mm2,mm0
 
 	movq	mm3,mm0
@@ -1306,7 +1302,7 @@ predict_add_C_halfpelX_MMX@loop:
 	movq	[edx],mm4
 
 	lea	edx,[edx+esi]
-	jne	predict_add_C_halfpelX_MMX@loop
+	jne	predict_add_C_halfpelX_MMX.loop
 
 	PREDICT_END
 	ret
@@ -1322,10 +1318,10 @@ predict_add_C_halfpelX_MMX@loop:
 	align 16
 predict_add_C_normal_MMX:
 	PREDICT_START
-	movq	mm6,MMX_01b
-	movq	mm7,MMX_feb
+	movq	mm6,[MMX_01b]
+	movq	mm7,[MMX_feb]
 	mov	edi,4
-add_C_normal_MMX@loop:
+add_C_normal_MMX.loop:
 	movq	mm0,[ecx]
 
 	movq	mm1,[edx]
@@ -1366,7 +1362,7 @@ add_C_normal_MMX@loop:
 	lea	ecx,[ecx+esi*2]
 	lea	edx,[edx+esi*2]
 	dec	edi
-	jne	add_C_normal_MMX@loop
+	jne	add_C_normal_MMX.loop
 
 	PREDICT_END
 	ret

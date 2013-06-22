@@ -184,6 +184,7 @@ public:
 	virtual sint64	Pos() = 0;
 	virtual void	Read(void *buffer, sint32 bytes) = 0;
 	virtual sint32	ReadData(void *buffer, sint32 bytes) = 0;
+	virtual void	Write(const void *buffer, sint32 bytes) = 0;
 };
 
 class IVDRandomAccessStream : public IVDStream {
@@ -210,6 +211,7 @@ public:
 	sint64	Pos();
 	void	Read(void *buffer, sint32 bytes);
 	sint32	ReadData(void *buffer, sint32 bytes);
+	void	Write(const void *buffer, sint32 bytes);
 	sint64	Length();
 	void	Seek(sint64 offset);
 };
@@ -222,6 +224,7 @@ public:
 	sint64	Pos();
 	void	Read(void *buffer, sint32 bytes);
 	sint32	ReadData(void *buffer, sint32 bytes);
+	void	Write(const void *buffer, sint32 bytes);
 	sint64	Length();
 	void	Seek(sint64 offset);
 
@@ -240,6 +243,7 @@ public:
 	sint64	Pos();
 	void	Read(void *buffer, sint32 bytes);
 	sint32	ReadData(void *buffer, sint32 bytes);
+	void	Write(const void *buffer, sint32 bytes);
 
 	sint64	Length();
 	void	Seek(sint64 offset);
@@ -293,13 +297,15 @@ protected:
 	VDTextStream	mTextStream;
 };
 
-class VDTextOutputFile {
+class VDTextOutputStream {
 public:
-	VDTextOutputFile(const wchar_t *filename, uint32 flags = nsVDFile::kCreateAlways);
-	~VDTextOutputFile();
+	VDTextOutputStream(IVDStream *stream);
+	~VDTextOutputStream();
 
-	void Close();
+	void Flush();
 
+	void Write(const char *s, int len);
+	void PutLine();
 	void PutLine(const char *s);
 	void FormatLine(const char *format, ...);
 
@@ -310,7 +316,7 @@ protected:
 	enum { kBufSize = 4096 };
 
 	int			mLevel;
-	VDFile		mFile;
+	IVDStream	*mpDst;
 	char		mBuf[kBufSize];
 };
 

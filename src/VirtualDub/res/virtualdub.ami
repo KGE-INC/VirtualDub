@@ -6,7 +6,6 @@ stringset 1 {		// kVDST_Dub
 	message 1, "Dub: Switching to new segment.";
 	message 2, "Dub: I/O thread has not cycled for thirty seconds -- possible livelock. (Thread action: %[1]hs) (Current address: %[0]p)";
 	message 3, "Dub: Processing thread has not cycled for thirty seconds -- possible livelock. (Thread action: %[1]hs) (Current address: %[0]p)";
-	message 4, "Dub: Video codec produced delay frame while trying to flush codec B-frame delay! Ignoring to avert possible infinite loop.";
 	message 5, "Dub: Video codec is requesting B-frame delay %d frames longer than end of video! Stopping video stream to avert possible infinite loop.";
 	message 6, "Dub: Fast recompress mode started with format: %hs.";
 	message 7, "Dub: Recompressing using format: %hs.";
@@ -193,6 +192,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Render";
 				listitem "Disk I/O";
 				listitem "Images";
+				listitem "Threading";
 			}
 
 			pageset 101 : value={@100} {
@@ -205,6 +205,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1016;
 				page 1017;
 				page 1018;
+				page 1019;
 			}
 		}
 
@@ -354,6 +355,9 @@ dialog 1013, "" : fill, child {
 				checkbox 202, "Integer SSE";
 				checkbox 203, "SSE";
 				checkbox 204, "SSE2";
+				checkbox 207, "SSE3";
+				checkbox 208, "SSSE3";
+				checkbox 209, "SSE4.1";
 				nextrow;
 				checkbox 205, "3DNow!";
 				checkbox 206, "3DNow! 2";
@@ -454,6 +458,19 @@ dialog 1018, "" : fill, child {
 	}
 }
 
+dialog 1019, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		grid 0 : spacing=2, align=fill, valign=top {
+			label 0, "&Video compression threads";
+			textedit 100, "" : minw=60, sunken;
+
+			nextrow;
+			textarea 0, "Zero disables video compressor multithreading; '1' causes the compressor to run in a separate thread for better performance on dual-core and SMP systems. Values greater than 1 are not yet supported." : margint=5, colspan=2, fill, readonly, minh=40;
+			
+		}
+	}
+}
 
 
 dialog 2000, "Capture preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
@@ -586,6 +603,8 @@ dialog 3000, "Create test video" : aspect=140, maxw=350 {
 			label 0, "Video";
 			combobox 100 : minw=120 {
 				listitem "RGB color cube";
+				listitem "RGB color cube (TFF)";
+				listitem "RGB color cube (BFF)";
 				listitem "Chroma subsampling offset";
 				listitem "Channel levels";
 				listitem "Checkerboard";

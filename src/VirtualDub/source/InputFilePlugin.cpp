@@ -45,7 +45,7 @@ extern const char *LookupVideoCodec(uint32);
 
 bool VDPreferencesIsPreferInternalVideoDecodersEnabled();
 
-IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, bool preferInternal);
+IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBitmapInfoHeader& hdr, uint32 hdrSize, bool preferInternal);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -457,14 +457,16 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 	}
 
 	const void *format;
+	uint32 formatLen;
 	vdwithinputplugin(mpContext) {
 		format = mpXS->GetDirectFormat();
+		formatLen = mpXS->GetDirectFormatLen();
 	}
 
 	if (!mpXVDec) {
 		if (format) {
 			const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)format;
-			IVDVideoDecompressor *dec = VDFindVideoDecompressorEx(mSSInfo.mfccHandler, hdr, VDPreferencesIsPreferInternalVideoDecodersEnabled());
+			IVDVideoDecompressor *dec = VDFindVideoDecompressorEx(mSSInfo.mfccHandler, hdr, formatLen, VDPreferencesIsPreferInternalVideoDecodersEnabled());
 
 			if (dec)
 				mpXVDec = new VDVideoDecoderDefault(dec, hdr.biWidth, hdr.biHeight);

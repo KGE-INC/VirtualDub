@@ -11,7 +11,7 @@
 ;	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;	GNU General Public License for more details.
 ;
-;	You should have received a copy of the GNU General Public License
+;	You should have received a copy of the GNU General Public License	
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
@@ -30,7 +30,7 @@
 ;5	0.018300, 0.013623, 0.004900,-0.000239
 ;6	0.014000, 0.011439, 0.003600,-0.000117
 
-
+	default rel
 
 ;=============================================================================
 ;
@@ -39,34 +39,31 @@
 ;
 ;=============================================================================
 
-mword	typedef	qword
-mptr	equ	mword ptr
+BITS_INV_ACC	equ 4			; 4 or 5 for IEEE
+SHIFT_INV_ROW	equ 16 - BITS_INV_ACC
+SHIFT_INV_COL	equ 1 + BITS_INV_ACC
+RND_INV_ROW		equ 1024 * (6 - BITS_INV_ACC) ; 1 << (SHIFT_INV_ROW-1)
+RND_INV_COL		equ 16 * (BITS_INV_ACC - 3) ; 1 << (SHIFT_INV_COL-1)
+RND_INV_CORR	equ RND_INV_COL - 1 ; correction -1.0 and round
 
-BITS_INV_ACC	= 4			; 4 or 5 for IEEE
-SHIFT_INV_ROW	= 16 - BITS_INV_ACC
-SHIFT_INV_COL	= 1 + BITS_INV_ACC
-RND_INV_ROW	= 1024 * (6 - BITS_INV_ACC) ; 1 << (SHIFT_INV_ROW-1)
-RND_INV_COL	= 16 * (BITS_INV_ACC - 3) ; 1 << (SHIFT_INV_COL-1)
-RND_INV_CORR	= RND_INV_COL - 1 ; correction -1.0 and round
-
-		.const
+	segment	.rdata, align=16
 		Align	16
 
-rounder			sword	4, 4, 4, 4
-				sword	0,0,0,0
-round_inv_row	dword	RND_INV_ROW, RND_INV_ROW, RND_INV_ROW, RND_INV_ROW
-one_corr		sword	1, 1, 1, 1, 1, 1, 1, 1
+rounder			dw	4, 4, 4, 4
+				dw	0,0,0,0
+round_inv_row	dd	RND_INV_ROW, RND_INV_ROW, RND_INV_ROW, RND_INV_ROW
+one_corr		dw	1, 1, 1, 1, 1, 1, 1, 1
 
-round_inv_col	sword	RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL
-round_inv_corr	sword	RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR
-tg_1_16		sword	13036, 13036, 13036, 13036, 13036, 13036, 13036, 13036	; tg * (2<<16)
-tg_2_16		sword	27146, 27146, 27146, 27146, 27146, 27146, 27146, 27146	; tg * (2<<16)
-tg_3_16		sword	-21746, -21746, -21746, -21746, -21746, -21746, -21746, -21746	; tg * (2<<16) - 1.0
-cos_4_16	sword	-19195, -19195, -19195, -19195, -19195, -19195, -19195, -19195	; cos * (2<<16) - 1.0
-ocos_4_16	sword	23170, 23170, 23170, 23170, 23170, 23170, 23170, 23170	; cos * (2<<15) + 0.5
-ucos_4_16	sword	46341, 46341, 46341, 46341, 46341, 46341, 46341, 46341	; cos * (2<<16)
+round_inv_col	dw	RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL, RND_INV_COL
+round_inv_corr	dw	RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR, RND_INV_CORR
+tg_1_16		dw	13036, 13036, 13036, 13036, 13036, 13036, 13036, 13036	; tg * (2<<16)
+tg_2_16		dw	27146, 27146, 27146, 27146, 27146, 27146, 27146, 27146	; tg * (2<<16)
+tg_3_16		dw	-21746, -21746, -21746, -21746, -21746, -21746, -21746, -21746	; tg * (2<<16) - 1.0
+cos_4_16	dw	-19195, -19195, -19195, -19195, -19195, -19195, -19195, -19195	; cos * (2<<16) - 1.0
+ocos_4_16	dw	23170, 23170, 23170, 23170, 23170, 23170, 23170, 23170	; cos * (2<<15) + 0.5
+ucos_4_16	dw	46341, 46341, 46341, 46341, 46341, 46341, 46341, 46341	; cos * (2<<16)
 
-jump_tab	qword	tail_inter, tail_intra, tail_mjpeg,0
+jump_tab	dq	tail_inter, tail_intra, tail_mjpeg,0
 
 
 ;=============================================================================
@@ -131,16 +128,15 @@ jump_tab	qword	tail_inter, tail_intra, tail_mjpeg,0
 ; Table for rows 2,6 - constants are multiplied by cos_2_16
 ; Table for rows 3,5 - constants are multiplied by cos_3_16
 
-tabbase			db		0 dup (?)	;can't do "equ $" because ml64 fscks up on lea instruction
-
-tab_i_04_short	sword  16384,  21407,  16384,   8864,  16384,  -8867,  16384, -21407	; w00 w01 w04 w05 w08 w09 w12 w13
-				sword  22725,  19266,  19266,  -4525,  12873, -22725,   4520, -12873	; w16 w17 w20 w21 w24 w25 w28 w29
-tab_i_17_short	sword  22725,  29692,  22725,  12295,  22725, -12299,  22725, -29692	; w00 w01 w04 w05 w08 w09 w12 w13
-				sword  31521,  26722,  26722,  -6271,  17855, -31521,   6270, -17855	; w16 w17 w20 w21 w24 w25 w28 w29
-tab_i_26_short	sword  21407,  27969,  21407,  11587,  21407, -11585,  21407, -27969	; w00 w01 w04 w05 w08 w09 w12 w13
-				sword  29692,  25172,  25172,  -5902,  16819, -29692,   5906, -16819	; w16 w17 w20 w21 w24 w25 w28 w29
-tab_i_35_short	sword  19266,  25172,  19266,  10426,  19266, -10426,  19266, -25172	; w00 w01 w04 w05 w08 w09 w12 w13
-				sword  26722,  22654,  22654,  -5312,  15137, -26722,   5315, -15137	; w16 w17 w20 w21 w24 w25 w28 w29
+tabbase:
+tab_i_04_short	dw  16384,  21407,  16384,   8864,  16384,  -8867,  16384, -21407	; w00 w01 w04 w05 w08 w09 w12 w13
+				dw  22725,  19266,  19266,  -4525,  12873, -22725,   4520, -12873	; w16 w17 w20 w21 w24 w25 w28 w29
+tab_i_17_short	dw  22725,  29692,  22725,  12295,  22725, -12299,  22725, -29692	; w00 w01 w04 w05 w08 w09 w12 w13
+				dw  31521,  26722,  26722,  -6271,  17855, -31521,   6270, -17855	; w16 w17 w20 w21 w24 w25 w28 w29
+tab_i_26_short	dw  21407,  27969,  21407,  11587,  21407, -11585,  21407, -27969	; w00 w01 w04 w05 w08 w09 w12 w13
+				dw  29692,  25172,  25172,  -5902,  16819, -29692,   5906, -16819	; w16 w17 w20 w21 w24 w25 w28 w29
+tab_i_35_short	dw  19266,  25172,  19266,  10426,  19266, -10426,  19266, -25172	; w00 w01 w04 w05 w08 w09 w12 w13
+				dw  26722,  22654,  22654,  -5312,  15137, -26722,   5315, -15137	; w16 w17 w20 w21 w24 w25 w28 w29
 
 
 ; Table for rows 0,4 - constants are multiplied by cos_4_16
@@ -148,22 +144,22 @@ tab_i_35_short	sword  19266,  25172,  19266,  10426,  19266, -10426,  19266, -25
 ; Table for rows 2,6 - constants are multiplied by cos_2_16
 ; Table for rows 3,5 - constants are multiplied by cos_3_16
 
-tab_i_04	sword  16384,  21407, -16387, -21407,  16384,  -8867,  16384,  -8867	; w00 w01 w06 w07 w08 w09 w14 w15
-			sword  16384,   8867,  16384,   8864, -16384,  21407,  16384, -21407	; w02 w03 w04 w05 w10 w11 w12 w13
-			sword  22725,  19266, -22720, -12873,  12873, -22725,  19266, -22725	; w16 w17 w22 w23 w24 w25 w30 w31
-			sword  12873,   4520,  19266,  -4525,   4520,  19266,   4520, -12873	; w18 w19 w20 w21 w26 w27 w28 w29
-tab_i_17	sword  22725,  29692, -22729, -29692,  22725, -12299,  22725, -12299	; w00 w01 w06 w07 w08 w09 w14 w15
-			sword  22725,  12299,  22725,  12295, -22725,  29692,  22725, -29692	; w02 w03 w04 w05 w10 w11 w12 w13
-			sword  31521,  26722, -31520, -17855,  17855, -31521,  26722, -31521	; w16 w17 w22 w23 w24 w25 w30 w31
-			sword  17855,   6270,  26722,  -6271,   6270,  26722,   6270, -17855	; w18 w19 w20 w21 w26 w27 w28 w29
-tab_i_26	sword  21407,  27969, -21405, -27969,  21407, -11585,  21407, -11585	; w00 w01 w06 w07 w08 w09 w14 w15
-			sword  21407,  11585,  21407,  11587, -21407,  27969,  21407, -27969	; w02 w03 w04 w05 w10 w11 w12 w13
-			sword  29692,  25172, -29696, -16819,  16819, -29692,  25172, -29692	; w16 w17 w22 w23 w24 w25 w30 w31
-			sword  16819,   5906,  25172,  -5902,   5906,  25172,   5906, -16819	; w18 w19 w20 w21 w26 w27 w28 w29
-tab_i_35	sword  19266,  25172, -19266, -25172,  19266, -10426,  19266, -10426	; w00 w01 w06 w07 w08 w09 w14 w15
-			sword  19266,  10426,  19266,  10426, -19266,  25172,  19266, -25172	; w02 w03 w04 w05 w10 w11 w12 w13
-			sword  26722,  22654, -26725, -15137,  15137, -26722,  22654, -26722	; w16 w17 w22 w23 w24 w25 w30 w31
-			sword  15137,   5315,  22654,  -5312,   5315,  22654,   5315, -15137	; w18 w19 w20 w21 w26 w27 w28 w29
+tab_i_04	dw  16384,  21407, -16387, -21407,  16384,  -8867,  16384,  -8867	; w00 w01 w06 w07 w08 w09 w14 w15
+			dw  16384,   8867,  16384,   8864, -16384,  21407,  16384, -21407	; w02 w03 w04 w05 w10 w11 w12 w13
+			dw  22725,  19266, -22720, -12873,  12873, -22725,  19266, -22725	; w16 w17 w22 w23 w24 w25 w30 w31
+			dw  12873,   4520,  19266,  -4525,   4520,  19266,   4520, -12873	; w18 w19 w20 w21 w26 w27 w28 w29
+tab_i_17	dw  22725,  29692, -22729, -29692,  22725, -12299,  22725, -12299	; w00 w01 w06 w07 w08 w09 w14 w15
+			dw  22725,  12299,  22725,  12295, -22725,  29692,  22725, -29692	; w02 w03 w04 w05 w10 w11 w12 w13
+			dw  31521,  26722, -31520, -17855,  17855, -31521,  26722, -31521	; w16 w17 w22 w23 w24 w25 w30 w31
+			dw  17855,   6270,  26722,  -6271,   6270,  26722,   6270, -17855	; w18 w19 w20 w21 w26 w27 w28 w29
+tab_i_26	dw  21407,  27969, -21405, -27969,  21407, -11585,  21407, -11585	; w00 w01 w06 w07 w08 w09 w14 w15
+			dw  21407,  11585,  21407,  11587, -21407,  27969,  21407, -27969	; w02 w03 w04 w05 w10 w11 w12 w13
+			dw  29692,  25172, -29696, -16819,  16819, -29692,  25172, -29692	; w16 w17 w22 w23 w24 w25 w30 w31
+			dw  16819,   5906,  25172,  -5902,   5906,  25172,   5906, -16819	; w18 w19 w20 w21 w26 w27 w28 w29
+tab_i_35	dw  19266,  25172, -19266, -25172,  19266, -10426,  19266, -10426	; w00 w01 w06 w07 w08 w09 w14 w15
+			dw  19266,  10426,  19266,  10426, -19266,  25172,  19266, -25172	; w02 w03 w04 w05 w10 w11 w12 w13
+			dw  26722,  22654, -26725, -15137,  15137, -26722,  22654, -26722	; w16 w17 w22 w23 w24 w25 w30 w31
+			dw  15137,   5315,  22654,  -5312,   5315,  22654,   5315, -15137	; w18 w19 w20 w21 w26 w27 w28 w29
 
 rowstart_tbl2	dq	dorow_7is
 		dq	dorow_6is
@@ -175,30 +171,33 @@ rowstart_tbl2	dq	dorow_7is
 		dq	dorow_0is
 		dq	do_dc_sse2
 
-pos_tab	db	 1 dup (8*8)		;pos 0:     DC only
-		db	 1 dup (7*8)		;pos 1:     1 AC row
-		db	 1 dup (6*8)		;pos 2:     2 AC rows
-		db	 6 dup (5*8)		;pos 3-8:   3 AC rows
-		db	 1 dup (4*8)		;pos 9:     4 AC rows
-		db	10 dup (3*8)		;pos 10-19: 5 AC rows
-		db	 1 dup (2*8)		;pos 20:	6 AC rows
-		db	14 dup (1*8)		;pos 21-34:	7 AC rows
-		db	29 dup (0*8)		;pos 35-63: 8 AC rows
+pos_tab	times	 1 db (8*8)		;pos 0:     DC only
+		times	 1 db (7*8)		;pos 1:     1 AC row
+		times	 1 db (6*8)		;pos 2:     2 AC rows
+		times	 6 db (5*8)		;pos 3-8:   3 AC rows
+		times	 1 db (4*8)		;pos 9:     4 AC rows
+		times	10 db (3*8)		;pos 10-19: 5 AC rows
+		times	 1 db (2*8)		;pos 20:	6 AC rows
+		times	14 db (1*8)		;pos 21-34:	7 AC rows
+		times	29 db (0*8)		;pos 35-63: 8 AC rows
 
 
 ;-----------------------------------------------------------------------------
 
-DCT_8_INV_ROW_1_SSE2 MACRO INP:REQ, OUT:REQ, TABLE:REQ
-		movdqa		xmm0, [INP]	;xmm0 = x7 x5 x3 x1 x6 x4 x2 x0
+%macro DCT_8_INV_ROW_1_SSE2 3
+%define %%inp %1
+%define %%out %2
+%define %%table %3
+		movdqa		xmm0, [%%inp]	;xmm0 = x7 x5 x3 x1 x6 x4 x2 x0
 		pshufd		xmm1, xmm0, 00010001b	;xmm1 = x2 x0 x6 x4 x2 x0 x6 x4
 		pshufd		xmm2, xmm0, 11101110b	;xmm2 = x7 x5 x3 x1 x7 x5 x3 x1
 		pshufd		xmm3, xmm0, 10111011b	;xmm3 = x3 x1 x7 x5 x3 x1 x7 x5
 		pshufd		xmm0, xmm0, 01000100b	;xmm0 = x6 x4 x2 x0 x6 x4 x2 x0
 
-		pmaddwd		xmm0, [TABLE+00h]
-		pmaddwd		xmm1, [TABLE+10h]
-		pmaddwd		xmm2, [TABLE+20h]
-		pmaddwd		xmm3, [TABLE+30h]
+		pmaddwd		xmm0, [%%table+00h]
+		pmaddwd		xmm1, [%%table+10h]
+		pmaddwd		xmm2, [%%table+20h]
+		pmaddwd		xmm3, [%%table+30h]
 
 		paddd		xmm0, [rax + (round_inv_row - tabbase)]
 		paddd		xmm0, xmm1				;xmm0 = y3 y2 y1 y0
@@ -211,15 +210,18 @@ DCT_8_INV_ROW_1_SSE2 MACRO INP:REQ, OUT:REQ, TABLE:REQ
 		packssdw	xmm0, xmm1
 		pshufhw		xmm0, xmm0, 00011011b
 
-		movdqa		[OUT], xmm0
-ENDM
+		movdqa		[%%out], xmm0
+%endmacro
 
-DCT_8_INV_ROW_1_SSE2_SHORT MACRO INP:REQ, OUT:REQ, TABLE:REQ
-		movdqa		xmm0, [INP]		;xmm0 = -- -- x3 x1 -- -- x2 x0
+%macro DCT_8_INV_ROW_1_SSE2_SHORT 3
+%define %%inp %1
+%define %%out %2
+%define %%table %3
+		movdqa		xmm0, [%%inp]		;xmm0 = -- -- x3 x1 -- -- x2 x0
 		pshufd		xmm2, xmm0, 10101010b	;xmm2 = x3 x1 x3 x1 x3 x1 x3 x1
 		pshufd		xmm0, xmm0, 00000000b	;xmm0 = x2 x0 x2 x0 x2 x0 x2 x0
-		pmaddwd		xmm0, [TABLE+00h]	;xmm0 = y3 y2 y1 y0
-		pmaddwd		xmm2, [TABLE+10h]	;xmm2 = y4 y5 y6 y7
+		pmaddwd		xmm0, [%%table+00h]	;xmm0 = y3 y2 y1 y0
+		pmaddwd		xmm2, [%%table+10h]	;xmm2 = y4 y5 y6 y7
 		paddd		xmm0, [rax + (round_inv_row - tabbase)]
 		movdqa		xmm1, xmm0
 		paddd		xmm0, xmm2				;xmm0 = z3 z2 z1 z0
@@ -229,8 +231,8 @@ DCT_8_INV_ROW_1_SSE2_SHORT MACRO INP:REQ, OUT:REQ, TABLE:REQ
 		packssdw	xmm0, xmm1
 		pshufhw		xmm0, xmm0, 00011011b
 
-		movdqa		[OUT], xmm0
-ENDM
+		movdqa		[%%out], xmm0
+%endmacro
 
 
 ;=============================================================================
@@ -338,28 +340,28 @@ ENDM
 ;	out[7] = e0 - o0;
 ;
 ;=============================================================================
-DCT_8_INV_COL MACRO INP:REQ, OUT:REQ
-LOCAL	x0, x1, x2, x3, x4, x5, x6, x7
-LOCAL	y0, y1, y2, y3, y4, y5, y6, y7
+%macro DCT_8_INV_COL 2
+%define %%inp %1
+%define %%out %2
 
-x0	equ	[INP + 0*16]
-x1	equ	[INP + 1*16]
-x2	equ	[INP + 2*16]
-x3	equ	[INP + 3*16]
-x4	equ	[INP + 4*16]
-x5	equ	[INP + 5*16]
-x6	equ	[INP + 6*16]
-x7	equ	[INP + 7*16]
-y0	equ	[OUT + 0*16]
-y1	equ	[OUT + 1*16]
-y2	equ	[OUT + 2*16]
-y3	equ	[OUT + 3*16]
-y4	equ	[OUT + 4*16]
-y5	equ	[OUT + 5*16]
-y6	equ	[OUT + 6*16]
-y7	equ	[OUT + 7*16]
+%define	%%x0	[%%inp + 0*16]
+%define	%%x1	[%%inp + 1*16]
+%define	%%x2	[%%inp + 2*16]
+%define	%%x3	[%%inp + 3*16]
+%define	%%x4	[%%inp + 4*16]
+%define	%%x5	[%%inp + 5*16]
+%define	%%x6	[%%inp + 6*16]
+%define	%%x7	[%%inp + 7*16]
+%define	%%y0	[%%out + 0*16]
+%define	%%y1	[%%out + 1*16]
+%define	%%y2	[%%out + 2*16]
+%define	%%y3	[%%out + 3*16]
+%define	%%y4	[%%out + 4*16]
+%define	%%y5	[%%out + 5*16]
+%define	%%y6	[%%out + 6*16]
+%define	%%y7	[%%out + 7*16]
 
-	;======= optimized code
+	;======= optimized	segment	.text
 
 	;ODD ELEMENTS
 
@@ -368,16 +370,16 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm2, [rax + (tg_3_16 - tabbase)]
 	movdqa	xmm3,xmm0
 
-	movdqa	xmm1,x7
+	movdqa	xmm1,%%x7
 	movdqa	xmm6,xmm2
 
-	movdqa	xmm4,x5
+	movdqa	xmm4,%%x5
 	pmulhw	xmm0,xmm1
 
-	movdqa	xmm5,x1
+	movdqa	xmm5,%%x1
 	pmulhw	xmm2,xmm4
 
-	movdqa	xmm7,x3
+	movdqa	xmm7,%%x3
 	pmulhw	xmm3,xmm5
 
 	pmulhw	xmm6,xmm7
@@ -406,10 +408,10 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm2,xmm1
 	paddw	xmm1,xmm3			;[F8T] xmm1 = o1 + o2
 
-	movdqa	xmm4,x0			;[B8T1] xmm3 = tmp[0]
+	movdqa	xmm4,%%x0			;[B8T1] xmm3 = tmp[0]
 	psubw	xmm2,xmm3			;[F8T] xmm2 = o1 - o2
 
-	movdqa	xmm3,x4
+	movdqa	xmm3,%%x4
 	movdqa	xmm6,xmm2			;[F8T]
 
 	pmulhw	xmm2, [rax + (cos_4_16 - tabbase)]	;[F8T]
@@ -421,13 +423,13 @@ y7	equ	[OUT + 7*16]
 	paddw	xmm3, [rax + (round_inv_corr - tabbase)]	;[E8T]
 	;<v-pipe>
 
-	psubw	xmm4,x4			;[B8T1] xmm4 = x1 = tmp[0] - tmp[1]
+	psubw	xmm4,%%x4			;[B8T1] xmm4 = x1 = tmp[0] - tmp[1]
 	paddw	xmm2,xmm6			;[F8T]
 
-	por	xmm1,xmmword ptr one_corr	;[F8T]
+	por	xmm1,oword [one_corr]	;[F8T]
 	;<v-pipe>
 
-	movdqa	xmm6,x6			;[B8T2] xmm7 = tmp[3]
+	movdqa	xmm6,%%x6			;[B8T2] xmm7 = tmp[3]
 	paddw	xmm1,xmm7			;[F8T] xmm1 = o1' = (o1 + o2)*LAMBDA(4)
 
 	pmulhw	xmm6, [rax + (tg_2_16 - tabbase)]	;xmm7 = tmp[3] * TAN(2)
@@ -439,7 +441,7 @@ y7	equ	[OUT + 7*16]
 	paddw	xmm4, [rax + (round_inv_col - tabbase)]	;[out]
 	psubw	xmm2,xmm7			;[F8T] xmm2 = o2' = (o1 - o2)*LAMBDA(4)
 
-	paddw	xmm6,x2			;[B8T2] xmm7 = x2 = tmp[2] + tmp[3]*TAN(2)
+	paddw	xmm6,%%x2			;[B8T2] xmm7 = x2 = tmp[2] + tmp[3]*TAN(2)
 	paddw	xmm7,xmm3			;[E8T]
 
 	paddw	xmm7,xmm6			;[E8T] xmm6 = e0 = x0+x2
@@ -456,19 +458,19 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm0,xmm3		;xmm7 = e3 
 	psraw	xmm6,SHIFT_INV_COL
 
-	movdqa	y0,xmm7
+	movdqa	%%y0,xmm7
 	paddw	xmm3,xmm5		;xmm6 = e3 + o3
 
-	movdqa	xmm7,x2		;[B8T] xmm6 = tmp[2]
+	movdqa	xmm7,%%x2		;[B8T] xmm6 = tmp[2]
 	psubw	xmm0,xmm5		;[out] xmm7 = e3 - o3
 
-	movdqa	y7,xmm6
+	movdqa	%%y7,xmm6
 	psraw	xmm3,SHIFT_INV_COL
 
 	pmulhw	xmm7, [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = tmp[2] * TAN(2)
 	psraw	xmm0,SHIFT_INV_COL
 
-	movdqa	y3,xmm3
+	movdqa	%%y3,xmm3
 	movdqa	xmm6,xmm4				;[E8T]
 
 	psubw	xmm6, [rax + (one_corr - tabbase)]
@@ -479,12 +481,12 @@ y7	equ	[OUT + 7*16]
 	;
 	;free registers: 03567
 
-	psubw	xmm7,x6				;[B8T] xmm6 = x3 = tmp[2]*TAN(2) - tmp[3]
+	psubw	xmm7,%%x6				;[B8T] xmm6 = x3 = tmp[2]*TAN(2) - tmp[3]
 	movdqa	xmm3,xmm1
 
 	;E8T stage - x1 and x3 elements
 
-	movdqa	y4,xmm0
+	movdqa	%%y4,xmm0
 	paddw	xmm4,xmm7				;[E8T] xmm4 = e1 = x1+x3
 
 	psubw	xmm6,xmm7				;[E8T] xmm7 = e2 = x1-x3
@@ -499,17 +501,17 @@ y7	equ	[OUT + 7*16]
 	paddw	xmm6,xmm2				;xmm7 = e2 + o2
 	psubw	xmm5,xmm2				;xmm6 = e2 - o2
 
-	movdqa	y1,xmm3
+	movdqa	%%y1,xmm3
 	psraw	xmm6,SHIFT_INV_COL
 
-	movdqa	y6,xmm4
+	movdqa	%%y6,xmm4
 	psraw	xmm5,SHIFT_INV_COL
 
-	movdqa	y2,xmm6
+	movdqa	%%y2,xmm6
 
-	movdqa	y5,xmm5
+	movdqa	%%y5,xmm5
 
-ENDM
+%endmacro
 
 ;-----------------------------------------------------------------------------
 ;
@@ -598,33 +600,33 @@ ENDM
 ;
 ;=============================================================================
 
-DCT_8_INV_COL_SHORT MACRO INP:REQ, OUT:REQ
-LOCAL	x0, x1, x2, x3, x4, x5, x6, x7
-LOCAL	y0, y1, y2, y3, y4, y5, y6, y7
+%macro DCT_8_INV_COL_SHORT  2
+%define %%inp	%1
+%define %%out	%2
 
-x0	equ	[INP + 0*16]
-x1	equ	[INP + 1*16]
-x2	equ	[INP + 2*16]
-x3	equ	[INP + 3*16]
-y0	equ	[OUT + 0*16]
-y1	equ	[OUT + 1*16]
-y2	equ	[OUT + 2*16]
-y3	equ	[OUT + 3*16]
-y4	equ	[OUT + 4*16]
-y5	equ	[OUT + 5*16]
-y6	equ	[OUT + 6*16]
-y7	equ	[OUT + 7*16]
+%define	%%x0	[%%inp + 0*16]
+%define	%%x1	[%%inp + 1*16]
+%define	%%x2	[%%inp + 2*16]
+%define	%%x3	[%%inp + 3*16]
+%define	%%y0	[%%out + 0*16]
+%define	%%y1	[%%out + 1*16]
+%define	%%y2	[%%out + 2*16]
+%define	%%y3	[%%out + 3*16]
+%define	%%y4	[%%out + 4*16]
+%define	%%y5	[%%out + 5*16]
+%define	%%y6	[%%out + 6*16]
+%define	%%y7	[%%out + 7*16]
 
-	;======= optimized code
+	;======= optimized	segment	.text
 
 	;ODD ELEMENTS
 
 	movdqa	xmm3, [rax + (tg_1_16 - tabbase)]
 
-	movdqa	xmm0,x1
+	movdqa	xmm0,%%x1
 	movdqa	xmm6, [rax + (tg_3_16 - tabbase)]
 
-	movdqa	xmm2,x3
+	movdqa	xmm2,%%x3
 	pmulhw	xmm3,xmm0
 
 	pmulhw	xmm6,xmm2
@@ -646,7 +648,7 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm2,xmm1
 	paddw	xmm1,xmm3					;[F8T] xmm1 = o1 + o2
 
-	movdqa	xmm4,x0					;[B8T1] xmm4 = x0 = x1 = tmp[0]
+	movdqa	xmm4,%%x0					;[B8T1] xmm4 = x0 = x1 = tmp[0]
 	psubw	xmm2,xmm3					;[F8T] xmm2 = o1 - o2
 
 	movdqa	xmm6,xmm2					;[F8T]
@@ -669,7 +671,7 @@ y7	equ	[OUT + 7*16]
 	psubw	xmm2, [rax + (one_corr - tabbase)]		;[F8T] xmm2 = o2' = (o1 - o2)*LAMBDA(4)
 	paddw	xmm1,xmm7					;[F8T] xmm1 = o1' = (o1 + o2)*LAMBDA(4)
 
-	movdqa	xmm6,x2					;[B8T2] xmm7 = x2 = tmp[2]
+	movdqa	xmm6,%%x2					;[B8T2] xmm7 = x2 = tmp[2]
 	movdqa	xmm7,xmm4					;[E8T]
 
 	paddw	xmm7,xmm6					;[E8T] xmm6 = e0 = x0+x2
@@ -686,19 +688,19 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm0,xmm3		;xmm7 = e3 
 	psraw	xmm6,SHIFT_INV_COL
 
-	movdqa	y0,xmm7
+	movdqa	%%y0,xmm7
 	paddw	xmm3,xmm5		;xmm6 = e3 + o3
 
-	movdqa	xmm7,x2		;[B8T] xmm6 = tmp[2]
+	movdqa	xmm7,%%x2		;[B8T] xmm6 = tmp[2]
 	psubw	xmm0,xmm5		;[out] xmm7 = e3 - o3
 
-	movdqa	y7,xmm6
+	movdqa	%%y7,xmm6
 	psraw	xmm3,SHIFT_INV_COL
 
 	pmulhw	xmm7, [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = x3 = tmp[2] * TAN(2)
 	psraw	xmm0,SHIFT_INV_COL
 
-	movdqa	y3,xmm3
+	movdqa	%%y3,xmm3
 	movdqa	xmm6,xmm4				;[E8T]
 
 	psubw	xmm6, [rax + (one_corr - tabbase)]
@@ -713,7 +715,7 @@ y7	equ	[OUT + 7*16]
 
 	;E8T stage - x1 and x3 elements
 
-	movdqa	y4,xmm0
+	movdqa	%%y4,xmm0
 	paddw	xmm4,xmm7				;[E8T] xmm4 = e1 = x1+x3
 
 	psubw	xmm6,xmm7				;[E8T] xmm7 = e2 = x1-x3
@@ -728,33 +730,33 @@ y7	equ	[OUT + 7*16]
 	paddw	xmm6,xmm2				;xmm7 = e2 + o2
 	psubw	xmm5,xmm2				;xmm6 = e2 - o2
 
-	movdqa	y1,xmm3
+	movdqa	%%y1,xmm3
 	psraw	xmm6,SHIFT_INV_COL
 
-	movdqa	y6,xmm4
+	movdqa	%%y6,xmm4
 	psraw	xmm5,SHIFT_INV_COL
 
-	movdqa	y2,xmm6
+	movdqa	%%y2,xmm6
 
-	movdqa	y5,xmm5
-ENDM
+	movdqa	%%y5,xmm5
+%endmacro
 
 ;==========================================================================
 
-	.code
+	segment	.text
 
-	public IDCT_sse2
+	global IDCT_sse2	
 
 
 IDCT_sse2:
 	movlhps	xmm14, xmm6
 	movlhps	xmm15, xmm7
 	movsxd	r9, r9d
-	movsxd	r10, dword ptr [rsp+40]
-	lea		rax, tabbase
-	movzx	r11, byte ptr [rax+r10+(pos_tab - tabbase)]
+	movsxd	r10, dword [rsp+40]
+	lea		rax, [tabbase]
+	movzx	r11, byte [rax+r10+(pos_tab - tabbase)]
 
-	jmp	qword ptr [rax+r11+(rowstart_tbl2 - tabbase)]
+	jmp	qword [rax+r11+(rowstart_tbl2 - tabbase)]
 
 	align	16
 dorow_3is:
@@ -770,7 +772,7 @@ dorow_0is:
 
 	movhlps	xmm6, xmm14
 	movhlps	xmm7, xmm15
-	jmp	qword ptr [rax + (jump_tab - tabbase) + r9*8]
+	jmp	qword [rax + (jump_tab - tabbase) + r9*8]
 
 	align	16
 dorow_7is:
@@ -790,7 +792,7 @@ dorow_4is:
 
 	movhlps	xmm6, xmm14
 	movhlps	xmm7, xmm15
-	jmp	qword ptr [rax + (jump_tab - tabbase) + r9*8]
+	jmp	qword [rax + (jump_tab - tabbase) + r9*8]
 
 
 
@@ -803,7 +805,7 @@ tail_intra:
 intra_loop:
 	movdqa		xmm0,[rcx+rax+8*16]
 	packuswb	xmm0,xmm0
-	movq		qword ptr [rdx],xmm0
+	movq		qword [rdx],xmm0
 	add			rdx, r8
 	add			rax, 16
 	jne			intra_loop
@@ -817,11 +819,11 @@ tail_inter:
 	pxor		xmm4, xmm4
 inter_loop:
 	movdqa		xmm0, [rcx+rax+8*16]
-	movq		xmm2, qword ptr [rdx]
+	movq		xmm2, qword [rdx]
 	punpcklbw	xmm2, xmm4
 	paddw		xmm0, xmm2
 	packuswb	xmm0, xmm0
-	movq		qword ptr [rdx], xmm0
+	movq		qword [rdx], xmm0
 	add			rdx, r8
 	add			rax, 16
 	jne			inter_loop
@@ -832,7 +834,7 @@ inter_loop:
 do_dc_sse2:
 	pshuflw		xmm0, [rcx], 0
 	pxor		xmm1, xmm1
-	paddw		xmm0, rounder
+	paddw		xmm0, [rounder]
 	psraw		xmm0, 3
 	pshufd		xmm0, xmm0, 0
 	cmp			r9d, 1
@@ -840,17 +842,17 @@ do_dc_sse2:
 	ja			do_dc_mjpeg
 	packuswb	xmm0,xmm0
 
-	movq		qword ptr [rdx],xmm0		;row 0
+	movq		qword [rdx],xmm0		;row 0
 	lea			rax,[r8+r8*2]
-	movq		qword ptr [rdx+r8],xmm0		;row 1
+	movq		qword [rdx+r8],xmm0		;row 1
 	add			rax,rdx
-	movq		qword ptr [rdx+r8*2],xmm0		;row 2
+	movq		qword [rdx+r8*2],xmm0		;row 2
 	lea			rdx,[rdx+r8*2]
-	movq		qword ptr [rax],xmm0			;row 3
-	movq		qword ptr [rdx+r8*2],xmm0		;row 4
-	movq		qword ptr [rax+r8*2],xmm0		;row 5
-	movq		qword ptr [rdx+r8*4],xmm0		;row 6
-	movq		qword ptr [rax+r8*4],xmm0		;row 7
+	movq		qword [rax],xmm0			;row 3
+	movq		qword [rdx+r8*2],xmm0		;row 4
+	movq		qword [rax+r8*2],xmm0		;row 5
+	movq		qword [rdx+r8*4],xmm0		;row 6
+	movq		qword [rax+r8*4],xmm0		;row 7
 	ret
 
 	align		16
@@ -860,14 +862,14 @@ do_ac_sse2:
 	packuswb	xmm1,xmm1			;mm1 = subtractor
 
 	mov		rax,8
-do_ac_sse2@loop:
-	movq		xmm2, qword ptr [rdx]
+do_ac_sse2.loop:
+	movq		xmm2, qword [rdx]
 	paddusb		xmm2,xmm0
 	psubusb		xmm2,xmm1
-	movq		qword ptr [rdx],xmm2
+	movq		qword [rdx],xmm2
 	add			rdx,r8
 	sub			rax,1
-	jne			do_ac_sse2@loop
+	jne			do_ac_sse2.loop
 	ret
 
 do_dc_mjpeg:

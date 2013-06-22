@@ -15,13 +15,7 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.686
-	.mmx
-	.xmm
-	.model	flat
-
-
-	.const
+	segment	.rdata, align=16
 
 	align 16
 
@@ -29,7 +23,7 @@ SSE2_02b		dq	00202020202020202h,00202020202020202h
 SSE2_fcb		dq	0fcfcfcfcfcfcfcfch,0fcfcfcfcfcfcfcfch
 SSE2_02w		dq	00002000200020002h
 
-		public _g_VDMPEGPredict_sse2
+		global _g_VDMPEGPredict_sse2
 
 		extern predict_C_normal_ISSE : near
 		extern predict_C_halfpelX_ISSE : near
@@ -57,9 +51,9 @@ _g_VDMPEGPredict_sse2	dd	predict_Y_normal_SSE2
 			dd	predict_add_C_halfpelY_ISSE
 			dd	predict_add_C_quadpel_ISSE
 
-	.code
+	segment	.text
 
-PREDICT_START	macro
+%macro PREDICT_START 0
 		push	ebp
 		push	edi
 		push	esi
@@ -67,14 +61,14 @@ PREDICT_START	macro
 		mov	edx,[esp+4+16]
 		mov	ecx,[esp+8+16]
 		mov	esi,[esp+12+16]	
-		endm
+%endmacro
 
-PREDICT_END	macro
+%macro PREDICT_END 0
 		pop	ebx
 		pop	esi
 		pop	edi
 		pop	ebp
-		endm
+%endmacro
 
 
 ;*********************************************************
@@ -87,8 +81,8 @@ PREDICT_END	macro
 
 predict_Y_quadpel_SSE2:
 	PREDICT_START
-	movdqa	xmm6, xmmword ptr SSE2_02b
-	movdqa	xmm7, xmmword ptr SSE2_fcb
+	movdqa	xmm6, oword [SSE2_02b]
+	movdqa	xmm7, oword [SSE2_fcb]
 	mov	edi,16
 	
 	movdqu	xmm0,[ecx]
@@ -111,7 +105,7 @@ predict_Y_quadpel_SSE2:
 	; xmm0: last row high sum
 	; xmm3: last row low sum + rounder
 	
-predict_Y_quadpel_SSE2@loop:
+predict_Y_quadpel_SSE2.loop:
 	movdqu	xmm1,[ecx]	;xmm1 = p3
 	movdqu	xmm2,[ecx+1]	;xmm2 = p4
 	add	ecx,esi
@@ -141,7 +135,7 @@ predict_Y_quadpel_SSE2@loop:
 	add	edx,esi
 
 	dec	edi
-	jne	predict_Y_quadpel_SSE2@loop
+	jne	predict_Y_quadpel_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -160,7 +154,7 @@ predict_Y_halfpelY_SSE2:
 	mov	eax,esi
 	movdqu	xmm0,[ecx]
 	add	eax,eax
-predict_Y_halfpelY_SSE2@loop:
+predict_Y_halfpelY_SSE2.loop:
 	prefetcht0 [ecx+eax]
 	movdqu	xmm2,[ecx+esi]
 
@@ -177,7 +171,7 @@ predict_Y_halfpelY_SSE2@loop:
 	add	edx,eax
 	
 	dec	edi
-	jne	predict_Y_halfpelY_SSE2@loop
+	jne	predict_Y_halfpelY_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -195,7 +189,7 @@ predict_Y_halfpelX_SSE2:
 	mov	eax,esi
 	add	eax,eax
 
-predict_Y_halfpelX_SSE2@loop:
+predict_Y_halfpelX_SSE2.loop:
 	movdqu	xmm0,[ecx]
 	movdqu	xmm1,[ecx+1]
 	movdqu	xmm2,[ecx+esi]
@@ -209,7 +203,7 @@ predict_Y_halfpelX_SSE2@loop:
 	add	ecx,eax
 
 	dec	edi
-	jne	predict_Y_halfpelX_SSE2@loop
+	jne	predict_Y_halfpelX_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -227,7 +221,7 @@ predict_Y_normal_SSE2:
 	mov	eax,esi
 	add	eax,eax
 
-predict_Y_normal_SSE2@loop:
+predict_Y_normal_SSE2.loop:
 	movdqu	xmm0,[ecx]
 	movdqu	xmm2,[ecx+esi]
 	movdqa	[edx],xmm0
@@ -235,7 +229,7 @@ predict_Y_normal_SSE2@loop:
 	add	ecx,eax
 	add	edx,eax
 	dec	edi
-	jne	predict_Y_normal_SSE2@loop
+	jne	predict_Y_normal_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -253,8 +247,8 @@ predict_Y_normal_SSE2@loop:
 	
 predict_add_Y_quadpel_SSE2:
 	PREDICT_START
-	movdqa	xmm6, xmmword ptr SSE2_02b
-	movdqa	xmm7, xmmword ptr SSE2_fcb
+	movdqa	xmm6, [SSE2_02b]
+	movdqa	xmm7, [SSE2_fcb]
 	mov	edi,16
 	
 	movdqu	xmm0,[ecx]
@@ -277,7 +271,7 @@ predict_add_Y_quadpel_SSE2:
 	; xmm0: last row high sum
 	; xmm3: last row low sum + rounder
 	
-add_Y_quadpel_SSE2@loop:
+add_Y_quadpel_SSE2.loop:
 	movdqu	xmm1,[ecx]	;xmm1 = p3
 	movdqu	xmm2,[ecx+1]	;xmm2 = p4
 	add	ecx,esi
@@ -308,7 +302,7 @@ add_Y_quadpel_SSE2@loop:
 	add	edx,esi
 
 	dec	edi
-	jne	add_Y_quadpel_SSE2@loop
+	jne	add_Y_quadpel_SSE2.loop
 	
 	PREDICT_END
 	ret
@@ -327,7 +321,7 @@ predict_add_Y_halfpelY_SSE2:
 	mov	eax,esi
 	add	eax,eax
 	mov	edi,8
-predict_add_Y_halfpelY_SSE2@loop:
+predict_add_Y_halfpelY_SSE2.loop:
 	movdqu	xmm1,[ecx]
 	movdqu	xmm2,[ecx+esi]
 	pavgb	xmm0,xmm1
@@ -342,7 +336,7 @@ predict_add_Y_halfpelY_SSE2@loop:
 	add	edx,eax
 	movdqa	xmm0,xmm2
 	dec	edi
-	jne	predict_add_Y_halfpelY_SSE2@loop
+	jne	predict_add_Y_halfpelY_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -359,7 +353,7 @@ predict_add_Y_halfpelX_SSE2:
 	mov	edi,8
 	mov	eax,esi
 	add	eax,eax
-predict_add_Y_halfpelX_SSE2@loop:
+predict_add_Y_halfpelX_SSE2.loop:
 	movdqu	xmm0,[ecx]
 	movdqu	xmm2,[ecx+esi]
 	movdqu	xmm1,[ecx+1]
@@ -374,7 +368,7 @@ predict_add_Y_halfpelX_SSE2@loop:
 	movdqa	[edx+esi],xmm2
 	add	edx,eax
 	dec	edi
-	jne	predict_add_Y_halfpelX_SSE2@loop
+	jne	predict_add_Y_halfpelX_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -394,7 +388,7 @@ predict_add_Y_normal_SSE2:
 	mov	eax,esi
 	add	eax,eax
 
-add_Y_normal_SSE2@loop:
+add_Y_normal_SSE2.loop:
 	movdqu	xmm0,[ecx]
 	movdqu	xmm2,[ecx+esi]
 	pavgb	xmm0,[edx]
@@ -406,7 +400,7 @@ add_Y_normal_SSE2@loop:
 	add	edx,eax
 
 	dec	edi
-	jne	add_Y_normal_SSE2@loop
+	jne	add_Y_normal_SSE2.loop
 
 	PREDICT_END
 	ret

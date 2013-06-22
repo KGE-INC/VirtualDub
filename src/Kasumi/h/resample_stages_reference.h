@@ -31,6 +31,11 @@ public:
 class VDResamplerRowStageSeparableLinear8 : public IVDResamplerSeparableRowStage {
 public:
 	int GetWindowSize() const;
+	virtual void Process(void *dst0, const void *src0, uint32 w, uint32 u, uint32 dudx);
+};
+
+class VDResamplerRowStageSeparableLinear8_phaseZeroStepHalf : public VDResamplerRowStageSeparableLinear8 {
+public:
 	void Process(void *dst0, const void *src0, uint32 w, uint32 u, uint32 dudx);
 };
 

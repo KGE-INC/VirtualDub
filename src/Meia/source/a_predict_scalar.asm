@@ -28,15 +28,11 @@
 ;
 ;****************************************************
 
-	.586
-	.model	flat
-
-
-	.const
+	segment	.rdata, align=16
 
 	align 16
 
-	public	_g_VDMPEGPredict_scalar
+	global	_g_VDMPEGPredict_scalar
 
 _g_VDMPEGPredict_scalar	dd	predict_Y_normal
 			dd	predict_Y_halfpelX
@@ -55,7 +51,7 @@ _g_VDMPEGPredict_scalar	dd	predict_Y_normal
 			dd	predict_add_C_halfpelY
 			dd	predict_add_C_quadpel
 
-PREDICT_START	macro
+%macro PREDICT_START 0
 		push	ebp
 		push	edi
 		push	esi
@@ -63,17 +59,17 @@ PREDICT_START	macro
 		mov	edx,[esp+4+16]
 		mov	ecx,[esp+8+16]
 		mov	esi,[esp+12+16]	
-		endm
+%endmacro
 
-PREDICT_END	macro
+%macro PREDICT_END 0
 		pop	ebx
 		pop	esi
 		pop	edi
 		pop	ebp
-		endm
+%endmacro
 
 
-	.code
+	segment	.text
 
 ;*********************************************************
 ;*
@@ -90,15 +86,15 @@ loop_Y1_quadpel:
 ;	[A][B][C][D][E][F][G][H]
 ;	[I][J][K][L][M][N][O][P]
 
-quadpel_move	macro	off
-	mov	edi,[ecx+off]
+%macro quadpel_move 1
+	mov	edi,[ecx+%1]
 	mov	ebp,0fcfcfcfch
 
 	and	ebp,edi
 	and	edi,03030303h
 
 	shr	ebp,2
-	mov	eax,[ecx+esi+off]
+	mov	eax,[ecx+esi+%1]
 
 	mov	ebx,0fcfcfcfch
 	and	ebx,eax
@@ -107,7 +103,7 @@ quadpel_move	macro	off
 	add	edi,eax
 
 	shr	ebx,2
-	mov	eax,[ecx+1+off]
+	mov	eax,[ecx+1+%1]
 
 	add	ebp,ebx
 	mov	ebx,0fcfcfcfch
@@ -119,7 +115,7 @@ quadpel_move	macro	off
 	add	edi,eax
 
 	add	ebp,ebx
-	mov	eax,[ecx+esi+1+off]
+	mov	eax,[ecx+esi+1+%1]
 
 	add	edi,02020202h
 	mov	ebx,0fcfcfcfch
@@ -136,8 +132,8 @@ quadpel_move	macro	off
 	and	edi,03030303h
 	add	ebp,edi
 
-	mov	[edx+off],ebp
-	endm
+	mov	[edx+%1],ebp
+%endmacro
 
 	quadpel_move	0
 	quadpel_move	4
@@ -329,15 +325,15 @@ add_loop_Y1_quadpel:
 ;	[A][B][C][D][E][F][G][H]
 ;	[I][J][K][L][M][N][O][P]
 
-quadpel_add	macro	off
-	mov	edi,[ecx+off]
+%macro quadpel_add 1
+	mov	edi,[ecx+%1]
 	mov	ebp,0f8f8f8f8h
 
 	and	ebp,edi
 	and	edi,07070707h
 
 	shr	ebp,3
-	mov	eax,[ecx+esi+off]
+	mov	eax,[ecx+esi+%1]
 
 	mov	ebx,0f8f8f8f8h
 	and	ebx,eax
@@ -346,7 +342,7 @@ quadpel_add	macro	off
 	add	edi,eax
 
 	shr	ebx,3
-	mov	eax,[ecx+1+off]
+	mov	eax,[ecx+1+%1]
 
 	add	ebp,ebx
 	mov	ebx,0f8f8f8f8h
@@ -358,7 +354,7 @@ quadpel_add	macro	off
 	add	edi,eax
 
 	add	ebp,ebx
-	mov	eax,[ecx+esi+1+off]
+	mov	eax,[ecx+esi+1+%1]
 
 	add	edi,04040404h
 	mov	ebx,0f8f8f8f8h
@@ -369,7 +365,7 @@ quadpel_add	macro	off
 	shr	ebx,3
 	add	edi,eax
 
-	mov	eax,[edx+off]
+	mov	eax,[edx+%1]
 	add	ebp,ebx
 
 	mov	ebx,eax
@@ -386,8 +382,8 @@ quadpel_add	macro	off
 	and	edi,07070707h
 	add	ebp,edi
 
-	mov	[edx+off],ebp
-	endm
+	mov	[edx+%1],ebp
+%endmacro
 
 	quadpel_add	0
 	quadpel_add	4
@@ -661,9 +657,9 @@ loop_C1_quadpel:
 ;	[A][B][C][D][E][F][G][H]
 ;	[I][J][K][L][M][N][O][P]
 
-quadpel_move	macro	off
-	mov	eax,[ecx+off]		;EAX = [D][C][B][A] (#1)
-	mov	ebx,[ecx+1+off]		;EBX = [E][D][C][B] (#2)
+%macro quadpel_move_y 1
+	mov	eax,[ecx+%1]		;EAX = [D][C][B][A] (#1)
+	mov	ebx,[ecx+1+%1]		;EBX = [E][D][C][B] (#2)
 	mov	edi,eax			;EDI = [D][C][B][A] (#1)
 	mov	ebp,ebx			;EBP = [E][D][C][B] (#2)
 	shr	edi,8			;EDI = [0][D][C][B] (#1>>8)
@@ -675,7 +671,7 @@ quadpel_move	macro	off
 	add	eax,ebx			;EAX = [C+D][A+B]
 	add	edi,ebp			;EDI = [D+E][B+C]
 
-	mov	ebx,[ecx+esi+off]	;EBX = [L][K][J][I]
+	mov	ebx,[ecx+esi+%1]	;EBX = [L][K][J][I]
 	add	eax,00020002h		;EAX = [C+D+4][A+B+4]
 
 	mov	ebp,ebx			;EBP = [L][K][J][I]
@@ -683,7 +679,7 @@ quadpel_move	macro	off
 	shr	ebp,8			;EBP = [0][L][K][J]
 	add	eax,ebx			;EAX = [C+D+K+4][A+B+I+4]
 	and	ebp,00ff00ffh		;EBP = [ L ][ J ]
-	mov	ebx,[ecx+esi+1+off]	;EBX = [M][L][K][J]
+	mov	ebx,[ecx+esi+1+%1]	;EBX = [M][L][K][J]
 	add	edi,ebp			;EDI = [D+E+L][B+C+J]
 	mov	ebp,ebx			;EBP = [M][L][K][J]
 	
@@ -703,11 +699,11 @@ quadpel_move	macro	off
 	and	edi,0ff00ff00h
 
 	or	eax,edi
-	mov	[edx+off],eax
-	endm
+	mov	[edx+%1],eax
+%endmacro
 
-	quadpel_move	0
-	quadpel_move	4
+	quadpel_move_y	0
+	quadpel_move_y	4
 
 	mov	eax,[esp]
 	lea	ecx,[ecx+esi]
@@ -853,15 +849,15 @@ add_loop_C1_quadpel:
 ;	[A][B][C][D][E][F][G][H]
 ;	[I][J][K][L][M][N][O][P]
 
-quadpel_add	macro	off
-	mov	edi,[ecx+off]
+%macro quadpel_add_y	1
+	mov	edi,[ecx+%1]
 	mov	ebp,0f8f8f8f8h
 
 	and	ebp,edi
 	and	edi,07070707h
 
 	shr	ebp,3
-	mov	eax,[ecx+esi+off]
+	mov	eax,[ecx+esi+%1]
 
 	mov	ebx,0f8f8f8f8h
 	and	ebx,eax
@@ -870,7 +866,7 @@ quadpel_add	macro	off
 	add	edi,eax
 
 	shr	ebx,3
-	mov	eax,[ecx+1+off]
+	mov	eax,[ecx+1+%1]
 
 	add	ebp,ebx
 	mov	ebx,0f8f8f8f8h
@@ -882,7 +878,7 @@ quadpel_add	macro	off
 	add	edi,eax
 
 	add	ebp,ebx
-	mov	eax,[ecx+esi+1+off]
+	mov	eax,[ecx+esi+1+%1]
 
 	add	edi,04040404h
 	mov	ebx,0f8f8f8f8h
@@ -893,7 +889,7 @@ quadpel_add	macro	off
 	shr	ebx,3
 	add	edi,eax
 
-	mov	eax,[edx+off]
+	mov	eax,[edx+%1]
 	add	ebp,ebx
 
 	mov	ebx,eax
@@ -910,11 +906,11 @@ quadpel_add	macro	off
 	and	edi,07070707h
 	add	ebp,edi
 
-	mov	[edx+off],ebp
-	endm
+	mov	[edx+%1],ebp
+%endmacro
 
-	quadpel_add	0
-	quadpel_add	4
+	quadpel_add_y	0
+	quadpel_add_y	4
 
 	mov	eax,[esp]
 	lea	ecx,[ecx+esi]

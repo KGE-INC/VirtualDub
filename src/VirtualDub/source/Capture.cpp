@@ -1934,19 +1934,22 @@ unknown_PCM_format:
 		icd.mpszPath		= icd.mCaptureRoot.c_str();
 
 		// set up resynchronizer and stats filter
+		IVDCaptureDriverCallback *pCurrentCB = this;
 
+		icd.mpAudioCompFilter = NULL;
 		if (bCaptureAudio && !mAudioCompFormat.empty()) {
 			icd.mpAudioCompFilter = pAudioCompFilter;
-			pAudioCompFilter->SetChildCallback(this);
+			pAudioCompFilter->SetChildCallback(pCurrentCB);
+			pCurrentCB = pAudioCompFilter;
 			pAudioCompFilter->SetSourceSplit(mAudioAnalysisFormat.wFormatTag != 0);
 			pAudioCompFilter->Init((const WAVEFORMATEX *)wfexInput.data(), (const WAVEFORMATEX *)wfexOutput.data(), mAudioCompFormatHint.c_str());
-			pResyncFilter->SetChildCallback(pAudioCompFilter);
-		} else {
-			icd.mpAudioCompFilter = NULL;
-			pResyncFilter->SetChildCallback(this);
 		}
 
-		statsFilt.Init(pResyncFilter, bCaptureAudio ? (const WAVEFORMATEX *)wfexInput.data() : NULL);
+		pResyncFilter->SetChildCallback(pCurrentCB);
+		pCurrentCB = pResyncFilter;
+
+		statsFilt.Init(pCurrentCB, bCaptureAudio ? (const WAVEFORMATEX *)wfexInput.data() : NULL);
+		pCurrentCB = &statsFilt;
 
 		// setup log filter
 
@@ -1957,9 +1960,10 @@ unknown_PCM_format:
 
 		if (mpLogFilter) {
 			mpLogFilter->SetChildCallback(&statsFilt);
-			mpDriver->SetCallback(mpLogFilter);
-		} else
-			mpDriver->SetCallback(&statsFilt);
+			pCurrentCB = mpLogFilter;
+		}
+
+		mpDriver->SetCallback(pCurrentCB);
 
 		icd.mpStatsFilter	= &statsFilt;
 		icd.mpResyncFilter	= pResyncFilter;

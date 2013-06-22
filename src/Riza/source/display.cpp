@@ -503,23 +503,42 @@ void VDVideoDisplayWindow::SetFilterMode(FilterMode mode) {
 }
 
 void VDVideoDisplayWindow::ReleaseActiveFrame() {
+	VDVideoDisplayFrame *pFrameToDiscard = NULL;
+	VDVideoDisplayFrame *pFrameToDiscard2 = NULL;
+
 	vdsynchronized(mMutex) {
 		if (mpActiveFrame) {
 			if (mpLastFrame) {
-				mIdleFrames.push_front(mpLastFrame);
+				if (mpLastFrame->mFlags & kDoNotCache)
+					pFrameToDiscard = mpLastFrame;
+				else
+					mIdleFrames.push_front(mpLastFrame);
 				mpLastFrame = NULL;
 			}
 
 			if (mpActiveFrame->mFlags & kAutoFlipFields) {
-				mpActiveFrame->mFlags ^= 3;
+				if (mpActiveFrame->mFlags & (kBobEven | kBobOdd))
+					mpActiveFrame->mFlags ^= kBobEven | kBobOdd;
+				else
+					mpActiveFrame->mFlags ^= kEvenFieldOnly | kOddFieldOnly;
+
 				mpActiveFrame->mFlags &= ~(kAutoFlipFields | kFirstField);
 				mPendingFrames.push_front(mpActiveFrame);
-			} else
+			} else if (mpActiveFrame->mFlags & kDoNotCache) {
+				pFrameToDiscard2 = mpActiveFrame;
+			} else {
 				mpLastFrame = mpActiveFrame;
+			}
 
 			mpActiveFrame = NULL;
 		}
 	}
+
+	if (pFrameToDiscard)
+		pFrameToDiscard->Release();
+
+	if (pFrameToDiscard2)
+		pFrameToDiscard2->Release();
 }
 
 void VDVideoDisplayWindow::RequestNextFrame() {
@@ -543,11 +562,27 @@ void VDVideoDisplayWindow::DispatchActiveFrame() {
 		VDVideoDisplaySourceInfo params;
 
 		params.pixmap			= mpActiveFrame->mPixmap;
+
+		uint32 flags = mpActiveFrame->mFlags;
+		bool interlaced = mpActiveFrame->mbInterlaced;
+
+		if (flags & kBobEven) {
+			params.pixmap = VDPixmapExtractField(params.pixmap, false);
+			interlaced = false;
+		} else if (flags & kBobOdd) {
+			params.pixmap = VDPixmapExtractField(params.pixmap, true);
+			interlaced = false;
+		} else if (flags & kSequentialFields) {
+			params.pixmap = VDPixmapExtractField(params.pixmap, (flags & kOddFieldOnly) != 0);
+			flags &= ~(kSequentialFields | kEvenFieldOnly | kOddFieldOnly);
+			interlaced = false;
+		}
+
 		params.pSharedObject	= NULL;
 		params.sharedOffset		= 0;
 		params.bAllowConversion	= mpActiveFrame->mbAllowConversion;
 		params.bPersistent		= false;
-		params.bInterlaced		= mpActiveFrame->mbInterlaced;
+		params.bInterlaced		= interlaced;
 
 		const VDPixmapFormatInfo& info = VDPixmapGetInfo(mpActiveFrame->mPixmap.format);
 		params.bpp = info.qsize >> info.qhbits;
@@ -556,7 +591,7 @@ void VDVideoDisplayWindow::DispatchActiveFrame() {
 		params.mpCB				= this;
 
 		SyncSetSource(false, params);
-		SyncUpdate(mpActiveFrame->mFlags);
+		SyncUpdate(flags);
 	}
 }
 

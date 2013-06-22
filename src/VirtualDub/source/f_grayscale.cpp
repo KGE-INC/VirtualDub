@@ -33,6 +33,30 @@ extern "C" void asm_grayscale_run(
 
 ///////////////////////////////////
 
+#ifndef _M_IX86
+static void grayscale_run_rgb32(const VDXPixmap& pxdst) {
+	uint8 *row = (uint8 *)pxdst.data;
+	ptrdiff_t pitch = pxdst.pitch;
+	uint32 h = pxdst.h;
+	uint32 w = pxdst.w;
+
+	for(uint32 y=0; y<h; ++y) {
+		uint8 *p = row;
+
+		for(uint32 x=0; x<w; ++x) {
+			uint8 y = (((int)p[0] * 19 + (int)p[1]*183 + (int)p[2] * 54) >> 8);
+
+			p[0] = y;
+			p[1] = y;
+			p[2] = y;
+			p += 4;
+		}
+
+		row += pitch;
+	}
+}
+#endif
+
 static void grayscale_run_yuv(const VDXPixmap& pxdst, int xbits, int ybits) {
 	int w = -(-pxdst.w >> xbits);
 	int h = -(-pxdst.h >> ybits);
@@ -46,12 +70,16 @@ static int grayscale_run(const FilterActivation *fa, const FilterFunctions *ff) 
 
 	switch(pxdst.format) {
 		case nsVDXPixmap::kPixFormat_XRGB8888:
+#ifdef _M_IX86
 			asm_grayscale_run(
 					pxdst.data,
 					pxdst.w,
 					pxdst.h,
 					pxdst.pitch
 					);
+#else
+			grayscale_run_rgb32(pxdst);
+#endif
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV444_Planar:

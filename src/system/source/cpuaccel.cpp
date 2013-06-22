@@ -26,6 +26,7 @@
 #include "stdafx.h"
 #include <wtypes.h>
 #include <winnt.h>
+#include <intrin.h>
 #include <vd2/system/cpuaccel.h>
 
 static long g_lCPUExtensionsEnabled;
@@ -41,17 +42,46 @@ extern "C" {
 	long CPUCheckForExtensions() {
 		long flags = CPUF_SUPPORTS_FPU;
 
-		if (IsProcessorFeaturePresent(PF_MMX_INSTRUCTIONS_AVAILABLE))
+		// This code used to use IsProcessorFeaturePresent(), but this function is somewhat
+		// suboptimal in Win64 -- for one thing, it doesn't return true for MMX, at least
+		// on Vista 64.
+
+		// check for SSE3, SSSE3, SSE4.1
+		int cpuInfo[4];
+		__cpuid(cpuInfo, 1);
+
+		if (cpuInfo[3] & (1 << 23))
 			flags |= CPUF_SUPPORTS_MMX;
 
-		if (IsProcessorFeaturePresent(PF_XMMI_INSTRUCTIONS_AVAILABLE))
+		if (cpuInfo[3] & (1 << 25))
 			flags |= CPUF_SUPPORTS_SSE | CPUF_SUPPORTS_INTEGER_SSE;
 
-		if (IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE))
+		if (cpuInfo[3] & (1 << 26))
 			flags |= CPUF_SUPPORTS_SSE2;
 
-		if (IsProcessorFeaturePresent(PF_3DNOW_INSTRUCTIONS_AVAILABLE))
-			flags |= CPUF_SUPPORTS_3DNOW;
+		if (cpuInfo[2] & 0x00000001)
+			flags |= CPUF_SUPPORTS_SSE3;
+
+		if (cpuInfo[2] & 0x00000200)
+			flags |= CPUF_SUPPORTS_SSSE3;
+
+		if (cpuInfo[2] & 0x00080000)
+			flags |= CPUF_SUPPORTS_SSE41;
+
+		// check for 3DNow!, 3DNow! extensions
+		__cpuid(cpuInfo, 0x80000000);
+		if (cpuInfo[0] >= 0x80000001) {
+			__cpuid(cpuInfo, 0x80000001);
+
+			if (cpuInfo[3] & (1 << 31))
+				flags |= CPUF_SUPPORTS_3DNOW;
+
+			if (cpuInfo[3] & (1 << 30))
+				flags |= CPUF_SUPPORTS_3DNOW_EXT;
+
+			if (cpuInfo[3] & (1 << 22))
+				flags |= CPUF_SUPPORTS_INTEGER_SSE;
+		}
 
 		return flags;
 	}
@@ -136,6 +166,11 @@ no_sse3:
 			jz		no_ssse3
 			or		ebp, 200h
 no_ssse3:
+
+			test	ecx, 80000h		;SSE4_1 is bit 19 of ECX
+			jz		no_sse4_1
+			or		ebp, 400h
+no_sse4_1:
 
 			;check for vendor feature register (K6/Athlon).
 

@@ -1,8 +1,7 @@
-		.686
-		.model	flat
-		.code
+		section	.text
 
-_vdasm_pixblt_RGB565_to_XRGB1555		proc	near public
+		global	_vdasm_pixblt_RGB565_to_XRGB1555
+_vdasm_pixblt_RGB565_to_XRGB1555:
 		push	ebp
 		push	edi
 		push	esi
@@ -18,12 +17,12 @@ _vdasm_pixblt_RGB565_to_XRGB1555		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
+.xloop:
 		mov		eax, [ecx+ebp]
 		mov		ebx, 0ffc0ffc0h
 
@@ -37,30 +36,31 @@ _vdasm_pixblt_RGB565_to_XRGB1555		proc	near public
 		mov		[edx+ebp], eax
 		add		ebp, 4
 
-		jnc		@xloop
-		jnz		@noodd
-@odd:
-		movzx	eax, word ptr [ecx]
+		jnc		.xloop
+		jnz		.noodd
+.odd:
+		movzx	eax, word [ecx]
 		mov		ebx, 0ffc0ffc0h
 		and		ebx, eax
 		and		eax, 0001f001fh
 		shr		ebx, 1
 		add		eax, ebx
 		mov		[edx], ax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
 		dec		edi
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
 		pop		edi
 		pop		ebp
 		ret
-_vdasm_pixblt_RGB565_to_XRGB1555		endp
 
-_vdasm_pixblt_RGB888_to_XRGB1555		proc	near public
+
+		global	_vdasm_pixblt_RGB888_to_XRGB1555
+_vdasm_pixblt_RGB888_to_XRGB1555:
 		push	ebp
 		push	edi
 		push	esi
@@ -76,13 +76,13 @@ _vdasm_pixblt_RGB888_to_XRGB1555		proc	near public
 		sub		[esp+16+16],ebx
 
 		mov		edx,[esp+24+16]
-@yloop:
+.yloop:
 		mov		ebp,[esp+20+16]
 		push	ebp
 		push	edx
 		shr		ebp,1
-		jz		@checkodd
-@xloop:
+		jz		.checkodd
+.xloop:
 		mov		eax,[esi+2]		;u
 		add		esi,6			;v
 
@@ -115,14 +115,14 @@ _vdasm_pixblt_RGB888_to_XRGB1555		proc	near public
 		or		edx,eax			;u
 		sub		ebp,1			;v
 		mov		[edi-4],edx		;u
-		jne		@xloop			;v
-@checkodd:
+		jne		.xloop			;v
+.checkodd:
 		pop		edx
 		pop		ebp
 		and		ebp,1
-		jz		@noodd
-		movzx	eax,word ptr [esi]
-		movzx	ebx,byte ptr [esi+2]
+		jz		.noodd
+		movzx	eax,word [esi]
+		movzx	ebx,byte [esi+2]
 		shl		ebx,16
 		add		esi,3
 		add		eax,ebx
@@ -140,13 +140,13 @@ _vdasm_pixblt_RGB888_to_XRGB1555		proc	near public
 		mov		[edi+0],bl
 		mov		[edi+1],bh
 		add		edi,2
-@noodd:
+.noodd:
 
 		add		esi,[esp+16+16]
 		add		edi,[esp+ 8+16]
 
 		sub		edx,1
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -154,9 +154,9 @@ _vdasm_pixblt_RGB888_to_XRGB1555		proc	near public
 		pop		ebp
 
 		ret
-_vdasm_pixblt_RGB888_to_XRGB1555		endp
 
-_vdasm_pixblt_XRGB8888_to_XRGB1555		proc	near public
+		global	_vdasm_pixblt_XRGB8888_to_XRGB1555
+_vdasm_pixblt_XRGB8888_to_XRGB1555:
 		push	ebp
 		push	edi
 		push	esi
@@ -171,12 +171,12 @@ _vdasm_pixblt_XRGB8888_to_XRGB1555		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
+.xloop:
 		mov		eax, [ecx+ebp*2]
 		mov		ebx, 00f80000h
 		and		ebx, eax
@@ -202,9 +202,9 @@ _vdasm_pixblt_XRGB8888_to_XRGB1555		proc	near public
 		add		eax, ebx
 		mov		[edx+ebp], eax
 		add		ebp, 4
-		jnc		@xloop
-		jnz		@noodd
-@odd:
+		jnc		.xloop
+		jnz		.noodd
+.odd:
 		mov		eax, [ecx]
 		mov		ebx, 00f80000h
 		and		ebx, eax
@@ -217,11 +217,11 @@ _vdasm_pixblt_XRGB8888_to_XRGB1555		proc	near public
 		add		ebx, esi
 		add		eax, ebx
 		mov		[edx], ax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
-		dec		dword ptr [esp+24+16]
-		jne		@yloop
+		dec		dword [esp+24+16]
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -229,9 +229,8 @@ _vdasm_pixblt_XRGB8888_to_XRGB1555		proc	near public
 		pop		ebp
 		ret
 
-_vdasm_pixblt_XRGB8888_to_XRGB1555		endp
-
-_vdasm_pixblt_XRGB1555_to_RGB565		proc	near public
+		global	_vdasm_pixblt_XRGB1555_to_RGB565
+_vdasm_pixblt_XRGB1555_to_RGB565:
 		push	ebp
 		push	edi
 		push	esi
@@ -247,12 +246,12 @@ _vdasm_pixblt_XRGB1555_to_RGB565		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
+.xloop:
 		mov		eax, [ecx+ebp]
 		mov		ebx, 02000200h
 
@@ -269,10 +268,10 @@ _vdasm_pixblt_XRGB1555_to_RGB565		proc	near public
 		mov		[edx+ebp], eax
 		add		ebp, 4
 
-		jnc		@xloop
-		jnz		@noodd
-@odd:
-		movzx	eax, word ptr [ecx]
+		jnc		.xloop
+		jnz		.noodd
+.odd:
+		movzx	eax, word [ecx]
 		mov		ebx, 02000200h
 		mov		esi, eax
 		and		ebx, eax
@@ -281,20 +280,20 @@ _vdasm_pixblt_XRGB1555_to_RGB565		proc	near public
 		add		eax, esi
 		add		eax, ebx
 		mov		[edx], ax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
 		dec		edi
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
 		pop		edi
 		pop		ebp
 		ret
-_vdasm_pixblt_XRGB1555_to_RGB565		endp
 
-_vdasm_pixblt_RGB888_to_RGB565			proc	near public
+		global	_vdasm_pixblt_RGB888_to_RGB565
+_vdasm_pixblt_RGB888_to_RGB565:
 		push	ebp
 		push	edi
 		push	esi
@@ -310,13 +309,13 @@ _vdasm_pixblt_RGB888_to_RGB565			proc	near public
 		sub		[esp+16+16],ebx
 
 		mov		edx,[esp+24+16]
-@yloop:
+.yloop:
 		mov		ebp,[esp+20+16]
 		push	ebp
 		push	edx
 		shr		ebp,1
-		jz		@checkodd
-@xloop:
+		jz		.checkodd
+.xloop:
 		mov		eax,[esi+2]		;u
 		add		esi,6			;v
 
@@ -349,14 +348,14 @@ _vdasm_pixblt_RGB888_to_RGB565			proc	near public
 		or		edx,eax			;u
 		sub		ebp,1			;v
 		mov		[edi-4],edx		;u
-		jne		@xloop			;v
-@checkodd:
+		jne		.xloop			;v
+.checkodd:
 		pop		edx
 		pop		ebp
 		and		ebp,1
-		jz		@noodd
-		movzx	eax,word ptr [esi]
-		movzx	ebx,byte ptr [esi+2]
+		jz		.noodd
+		movzx	eax,word [esi]
+		movzx	ebx,byte [esi+2]
 		shl		ebx,16
 		add		esi,3
 		add		eax,ebx
@@ -374,13 +373,13 @@ _vdasm_pixblt_RGB888_to_RGB565			proc	near public
 		mov		[edi+0],bl
 		mov		[edi+1],bh
 		add		edi,2
-@noodd:
+.noodd:
 
 		add		esi,[esp+16+16]
 		add		edi,[esp+ 8+16]
 
 		sub		edx,1
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -388,9 +387,9 @@ _vdasm_pixblt_RGB888_to_RGB565			proc	near public
 		pop		ebp
 
 		ret
-_vdasm_pixblt_RGB888_to_RGB565		endp
 
-_vdasm_pixblt_XRGB8888_to_RGB565		proc	near public
+		global	_vdasm_pixblt_XRGB8888_to_RGB565
+_vdasm_pixblt_XRGB8888_to_RGB565:
 		push	ebp
 		push	edi
 		push	esi
@@ -405,12 +404,12 @@ _vdasm_pixblt_XRGB8888_to_RGB565		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
+.xloop:
 		mov		eax, [ecx+ebp*2]
 		mov		ebx, 00f80000h
 		and		ebx, eax
@@ -436,9 +435,9 @@ _vdasm_pixblt_XRGB8888_to_RGB565		proc	near public
 		add		eax, ebx
 		mov		[edx+ebp], eax
 		add		ebp, 4
-		jnc		@xloop
-		jnz		@noodd
-@odd:
+		jnc		.xloop
+		jnz		.noodd
+.odd:
 		mov		eax, [ecx]
 		mov		ebx, 00f80000h
 		and		ebx, eax
@@ -451,11 +450,11 @@ _vdasm_pixblt_XRGB8888_to_RGB565		proc	near public
 		add		ebx, esi
 		add		eax, ebx
 		mov		[edx], ax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
-		dec		dword ptr [esp+24+16]
-		jne		@yloop
+		dec		dword [esp+24+16]
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -463,9 +462,9 @@ _vdasm_pixblt_XRGB8888_to_RGB565		proc	near public
 		pop		ebp
 		ret
 
-_vdasm_pixblt_XRGB8888_to_RGB565		endp
 
-_vdasm_pixblt_XRGB8888_to_RGB888		proc	near public
+		global	_vdasm_pixblt_XRGB8888_to_RGB888
+_vdasm_pixblt_XRGB8888_to_RGB888:
 		push	ebp
 		push	edi
 		push	esi
@@ -481,13 +480,13 @@ _vdasm_pixblt_XRGB8888_to_RGB888		proc	near public
 		sub		[esp+16+16],ebx
 
 		mov		edx,[esp+24+16]
-@yloop:
+.yloop:
 		mov		ecx,[esp+20+16]
 		push	ecx
 		push	edx
 		shr		ecx,2
-		jz		@checkodd
-@xloop:
+		jz		.checkodd
+.xloop:
 		mov		eax,[esi]		;EAX = xxr0g0b0
 		mov		ebx,[esi+4]		;EBX = xxr1g1b1
 		mov		edx,ebx			;EDX = xxr1g1b1
@@ -511,13 +510,13 @@ _vdasm_pixblt_XRGB8888_to_RGB888		proc	near public
 		add		esi,16
 		mov		[edi+8-12],eax
 		sub		ecx,1
-		jne		@xloop
-@checkodd:
+		jne		.xloop
+.checkodd:
 		pop		edx
 		pop		ecx
 		and		ecx,3
-		jz		@noodd
-@oddloop:
+		jz		.noodd
+.oddloop:
 		mov		eax,[esi]
 		add		esi,4
 		mov		[edi],ax
@@ -525,22 +524,22 @@ _vdasm_pixblt_XRGB8888_to_RGB888		proc	near public
 		mov		[edi+2],al
 		add		edi,3
 		sub		ecx,1
-		jnz		@oddloop
-@noodd:
+		jnz		.oddloop
+.noodd:
 		add		esi,[esp+16+16]
 		add		edi,[esp+ 8+16]
 
 		sub		edx,1
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
 		pop		edi
 		pop		ebp
 		ret
-_vdasm_pixblt_XRGB8888_to_RGB888		endp
 
-_vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
+		global	_vdasm_pixblt_XRGB1555_to_XRGB8888
+_vdasm_pixblt_XRGB1555_to_XRGB8888:
 		push	ebp
 		push	edi
 		push	esi
@@ -555,12 +554,12 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
+.xloop:
 		mov		eax, [ecx+ebp]
 		mov		ebx, 00007c00h
 		and		ebx, eax
@@ -594,10 +593,10 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
 		mov		[edx+ebp*2], eax
 		mov		[edx+ebp*2+4], ebx
 		add		ebp, 4
-		jnc		@xloop
-		jnz		@noodd
-@odd:
-		movzx	eax, word ptr [ecx]
+		jnc		.xloop
+		jnz		.noodd
+.odd:
+		movzx	eax, word [ecx]
 		mov		ebx, 00007c00h
 		and		ebx, eax
 		mov		esi, eax
@@ -613,11 +612,11 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
 		shr		ebx, 5
 		add		eax, ebx
 		mov		[edx], eax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
-		dec		dword ptr [esp+24+16]
-		jne		@yloop
+		dec		dword [esp+24+16]
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -625,9 +624,9 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
 		pop		ebp
 		ret
 
-_vdasm_pixblt_XRGB1555_to_XRGB8888		endp
 
-_vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
+		global	_vdasm_pixblt_RGB565_to_XRGB8888
+_vdasm_pixblt_RGB565_to_XRGB8888:
 		push	ebp
 		push	edi
 		push	esi
@@ -642,13 +641,13 @@ _vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
 		neg		ebp
 		mov		[esp+20+16], ebp
 
-@yloop:
+.yloop:
 		mov		ebp, [esp+20+16]
 		add		ebp, 2
-		jbe		@odd
+		jbe		.odd
 
-@xloop:
-		movzx	eax, word ptr [ecx+ebp]
+.xloop:
+		movzx	eax, word [ecx+ebp]
 		mov		ebx, 0000f800h
 		and		ebx, eax
 		mov		esi, eax
@@ -669,7 +668,7 @@ _vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
 		add		eax, esi
 		mov		[edx+ebp*2], eax
 
-		movzx	eax, word ptr [ecx+ebp+2]
+		movzx	eax, word [ecx+ebp+2]
 		mov		ebx, 0000f800h
 		and		ebx, eax
 		mov		esi, eax
@@ -692,10 +691,10 @@ _vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
 
 		add		ebp, 4
 
-		jnc		@xloop
-		jnz		@noodd
-@odd:
-		movzx	eax, word ptr [ecx]
+		jnc		.xloop
+		jnz		.noodd
+.odd:
+		movzx	eax, word [ecx]
 		mov		ebx, 0000f800h
 		and		ebx, eax
 		mov		esi, eax
@@ -715,11 +714,11 @@ _vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
 		add		eax, ebx
 		add		eax, esi
 		mov		[edx], eax
-@noodd:
+.noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]
-		dec		dword ptr [esp+24+16]
-		jne		@yloop
+		dec		dword [esp+24+16]
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -727,9 +726,9 @@ _vdasm_pixblt_RGB565_to_XRGB8888		proc	near public
 		pop		ebp
 		ret
 
-_vdasm_pixblt_RGB565_to_XRGB8888		endp
 
-_vdasm_pixblt_RGB888_to_XRGB8888		proc	near public
+		global	_vdasm_pixblt_RGB888_to_XRGB8888
+_vdasm_pixblt_RGB888_to_XRGB8888:
 		push	ebp
 		push	edi
 		push	esi
@@ -745,12 +744,12 @@ _vdasm_pixblt_RGB888_to_XRGB8888		proc	near public
 		sub		[esp+16+16],eax
 
 		mov		edx,[esp+24+16]
-@yloop:
+.yloop:
 		mov		ebp,[esp+20+16]
 		shr		ebp,2
 		push	edx
-		jz		@checkodd
-@xloop:
+		jz		.checkodd
+.xloop:
 		mov		eax,[esi]			;EAX: b1r0g0b0
 		mov		ebx,[esi+4]			;EBX: g2b2r1g1
 
@@ -779,14 +778,14 @@ _vdasm_pixblt_RGB888_to_XRGB8888		proc	near public
 		sub		ebp,1
 
 		mov		[edi+8-16],edx
-		jne		@xloop
+		jne		.xloop
 
-@checkodd:
+.checkodd:
 		pop		edx
 		mov		ebx,[esp+20+16]
 		and		ebx,3
-		jz		@noodd
-@oddloop:
+		jz		.noodd
+.oddloop:
 		mov		ax,[esi]
 		mov		cl,[esi+2]
 		mov		[edi],ax
@@ -794,14 +793,14 @@ _vdasm_pixblt_RGB888_to_XRGB8888		proc	near public
 		add		esi,3
 		add		edi,4
 		sub		ebx,1
-		jne		@oddloop
-@noodd:
+		jne		.oddloop
+.noodd:
 
 		add		esi,[esp+16+16]
 		add		edi,[esp+ 8+16]
 
 		sub		edx,1
-		jne		@yloop
+		jne		.yloop
 
 		pop		ebx
 		pop		esi
@@ -809,6 +808,5 @@ _vdasm_pixblt_RGB888_to_XRGB8888		proc	near public
 		pop		ebp
 
 		ret
-_vdasm_pixblt_RGB888_to_XRGB8888	endp
 
 		end

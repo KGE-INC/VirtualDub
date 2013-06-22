@@ -38,7 +38,7 @@ public:
 	FilterSystem();
 	~FilterSystem();
 	void prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount);
-	void initLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount);
+	void initLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount);
 	void ReadyFilters();
 	void RestartFilters();
 	bool RunFilters(sint64 outputFrame, sint64 timelineFrame, sint64 sequenceFrame, sint64 sequenceTimeMS, FilterInstance *pfiStopPoint, uint32 flags);
@@ -91,6 +91,7 @@ private:
 
 	vdfastvector<RequestInfo>	mRequestStack;
 
+	uint32	mPalette[256];
 };
 
 #endif

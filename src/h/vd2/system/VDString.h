@@ -256,6 +256,12 @@ public:
 		assign(s, n);
 	}
 
+	VDStringA(const value_type *s, const value_type *t)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s, t);
+	}
+
 	~VDStringA() {
 		if (mpBegin != sNull)
 			delete[] mpBegin;

@@ -415,7 +415,12 @@ static const VDStringW VDGetFileName(bool bSaveAs, long nKey, VDGUIHandle ctxPar
 	ofn.w.nFilterIndex		= 0;
 	ofn.w.lpstrFileTitle	= NULL;
 	ofn.w.lpstrInitialDir	= NULL;
-	ofn.w.Flags				= OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ENABLESIZING|OFN_EXPLORER|OFN_OVERWRITEPROMPT|OFN_HIDEREADONLY;
+	ofn.w.Flags				= OFN_PATHMUSTEXIST|OFN_ENABLESIZING|OFN_EXPLORER|OFN_OVERWRITEPROMPT|OFN_HIDEREADONLY;
+
+	if (bSaveAs)
+		ofn.w.Flags |= OFN_OVERWRITEPROMPT;
+	else
+		ofn.w.Flags |= OFN_FILEMUSTEXIST;
 
 	DialogTemplateBuilder builder;
 	VDGetFileNameHook hook = { pOptions, pOptVals };
@@ -457,6 +462,10 @@ static const VDStringW VDGetFileName(bool bSaveAs, long nKey, VDGUIHandle ctxPar
 				VDASSERT(nSelectedFilterIndex < 0);
 				nSelectedFilterIndex = opt.mDstIdx;
 				ofn.w.nFilterIndex = pOptVals[opt.mDstIdx];
+				break;
+			case VDFileDialogOption::kConfirmFile:
+				if (!pOptVals[opt.mDstIdx])
+					ofn.w.Flags &= ~OFN_OVERWRITEPROMPT;
 				break;
 			}
 		}

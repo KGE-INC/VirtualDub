@@ -63,6 +63,7 @@ namespace
 		"vd_time",
 		"vd_interphtexsize",
 		"vd_interpvtexsize",
+		"vd_fieldinfo",
 	};
 }
 

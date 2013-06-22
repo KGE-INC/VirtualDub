@@ -20,6 +20,10 @@ class VDStreamInterleaver;
 class IVDVideoCompressor;
 class IVDAsyncBlitter;
 class IDubStatusHandler;
+struct VDRenderVideoPipeFrameInfo;
+class VDRenderOutputBufferTracker;
+class VDRenderOutputBuffer;
+class VDThreadedVideoCompressor;
 
 class VDDubProcessThread : public VDThread, protected IVDTimerCallback {
 public:
@@ -33,12 +37,12 @@ public:
 	void SetStatusHandler(IDubStatusHandler *pStatusHandler);
 	void SetInputDisplay(IVDVideoDisplay *pVideoDisplay);
 	void SetOutputDisplay(IVDVideoDisplay *pVideoDisplay);
-	void SetVideoFilterOutput(void *pBuffer, const VDPixmap& px);
+	void SetVideoFilterOutput(const VDPixmapLayout& layout);
 	void SetVideoSources(IVDVideoSource *const *pVideoSources, uint32 count);
 	void SetAudioSourcePresent(bool present);
 	void SetAudioCorrector(AudioStreamL3Corrector *pCorrector);
 	void SetVideoIVTC(VideoTelecineRemover *pIVTC);
-	void SetVideoCompressor(IVDVideoCompressor *pCompressor);
+	void SetVideoCompressor(IVDVideoCompressor *pCompressor, int maxThreads);
 
 	void Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, IVDDubberOutputSystem *pOutputSystem, AVIPipe *pVideoPipe, VDAudioPipeline *pAudioPipe, VDStreamInterleaver *pStreamInterleaver);
 	void Shutdown();
@@ -70,15 +74,22 @@ protected:
 	enum VideoWriteResult {
 		kVideoWriteOK,							// Frame was processed and written
 		kVideoWritePushedPendingEmptyFrame,		// A pending null frame was processed instead of the current frame.
-		kVideoWriteBufferedEmptyFrame,
-		kVideoWriteDelayed,
-		kVideoWriteBuffered,
-		kVideoWriteDiscarded,
+		kVideoWriteBufferedEmptyFrame,			// A pending null frame was buffered to track the codec's internal pipeline.
+		kVideoWriteDelayed,						// Codec received intermediate frame; no output.
+		kVideoWriteBuffered,					// Codec received display frame; no output.
+		kVideoWriteDiscarded,					// Frame was discarded by preview QC.
+		kVideoWritePullOnly						// Codec produced frame and didn't take input.
 	};
 
 	void NextSegment();
 
-	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, VDPosition sequenceFrame, int srcIndex);
+	void NotifyDroppedFrame(int exdata);
+	void NotifyCompletedFrame(uint32 size, bool isKey);
+
+	bool DoVideoFrameDropTest(const VDRenderVideoPipeFrameInfo& frameInfo);
+	VideoWriteResult WriteVideoFrame(const VDRenderVideoPipeFrameInfo& frameInfo);
+	void WriteFinishedVideoFrame(const void *data, uint32 size, bool isKey, bool renderEnabled, VDRenderOutputBuffer *pBuffer);
+
 	void WritePendingEmptyVideoFrame();
 	bool WriteAudio(sint32 count);
 
@@ -87,6 +98,8 @@ protected:
 	void UpdateAudioStreamRate();
 
 	static bool AsyncReinitDisplayCallback(int pass, void *pThisAsVoid, void *, bool aborting);
+	static bool StaticAsyncUpdateOutputCallback(int pass, void *pThisAsVoid, void *pBuffer, bool aborting);
+	bool AsyncUpdateOutputCallback(int pass, VDRenderOutputBuffer *pBuffer, bool aborting);
 
 	const DubOptions		*opt;
 
@@ -117,10 +130,12 @@ protected:
 	IVDAsyncBlitter		*mpBlitter;
 	VDXFilterStateInfo	mfsi;
 	IDubStatusHandler	*mpStatusHandler;
+
 	IVDVideoCompressor	*mpVideoCompressor;
-	vdblock<char>		mVideoCompressionBuffer;
-	void				*mpVideoFilterOutputBuffer;
-	VDPixmap			mVideoFilterOutputPixmap;
+	VDThreadedVideoCompressor *mpThreadedVideoCompressor;
+
+	VDRenderOutputBufferTracker *mpFrameBufferTracker;
+	VDRenderOutputBufferTracker *mpDisplayBufferTracker;
 
 	typedef vdfastvector<IVDVideoSource *> VideoSources;
 	VideoSources		mVideoSources;

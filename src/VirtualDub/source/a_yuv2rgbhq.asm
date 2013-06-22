@@ -3,7 +3,7 @@
 	.xmm
 	.model	flat
 
-	.const
+	segment	.rdata, align=16
 
 U_coeff_g	dq	0f37df37df37df37dh	; (-0.391 * 32 / 256) * 65536
 U_coeff_b	dq	04093409340934093h	; ( 2.018 * 32 / 256) * 65536
@@ -14,12 +14,12 @@ Y_bias		dq	0fdbcfdbcfdbcfdbch	; (0.5 - 1.164 * 16) * 32
 xFF00w		dq	0ff00ff00ff00ff00h
 x8000w		dq	08000800080008000h
 
-	.code
+	segment	.text
 
 	extern	_MMX_enabled:byte
 	extern	_ISSE_enabled:byte
 
-	public	_asm_YUVtoRGB32hq_row_ISSE
+	global	_asm_YUVtoRGB32hq_row_ISSE	
 
 ;	asm_YUVtoRGB32hq_row(
 ;		Pixel *ARGB1_pointer,
@@ -66,33 +66,33 @@ xloop:
 	prefetchnta	[ecx+7]
 	prefetchnta	[edx+7]
 
-	movd		mm0,dword ptr [esi]	;U4U3U2U1
-	movd		mm6,dword ptr [esi+ebp]
+	movd		mm0,dword [esi]	;U4U3U2U1
+	movd		mm6,dword [esi+ebp]
 	pavgb		mm6,mm0
 	pavgb		mm0,mm6
 
-	movd		mm1,dword ptr [edi]	;V4V3V2V1
-	movd		mm6,dword ptr [edi+ebp]
+	movd		mm1,dword [edi]	;V4V3V2V1
+	movd		mm6,dword [edi+ebp]
 	pavgb		mm6,mm1
 	pavgb		mm1,mm6
 
-	movd		mm2,dword ptr [esi-1]	;U3U2U1U0
-	movd		mm6,dword ptr [esi+ebp-1]
+	movd		mm2,dword [esi-1]	;U3U2U1U0
+	movd		mm6,dword [esi+ebp-1]
 	pavgb		mm6,mm2
 	pavgb		mm2,mm6
 
-	movd		mm3,dword ptr [edi-1]	;V3V2V1V0
-	movd		mm6,dword ptr [edi+ebp-1]
+	movd		mm3,dword [edi-1]	;V3V2V1V0
+	movd		mm6,dword [edi+ebp-1]
 	pavgb		mm6,mm3
 	pavgb		mm3,mm6
 
-	movd		mm4,dword ptr [esi+1]	;U5U4U3U2
-	movd		mm6,dword ptr [esi+ebp+1]
+	movd		mm4,dword [esi+1]	;U5U4U3U2
+	movd		mm6,dword [esi+ebp+1]
 	pavgb		mm6,mm4
 	pavgb		mm4,mm6
 
-	movd		mm5,dword ptr [edi+1]	;V5V4V3V2
-	movd		mm6,dword ptr [edi+ebp+1]
+	movd		mm5,dword [edi+1]	;V5V4V3V2
+	movd		mm6,dword [edi+ebp+1]
 	pavgb		mm6,mm5
 	pavgb		mm5,mm6
 
@@ -191,33 +191,33 @@ xloop:
 
 	mov		ebp,UV_down
 
-	movd		mm0,dword ptr [esi]	;U4U3U2U1
-	movd		mm6,dword ptr [esi+ebp]
+	movd		mm0,dword [esi]	;U4U3U2U1
+	movd		mm6,dword [esi+ebp]
 	pavgb		mm6,mm0
 	pavgb		mm0,mm6
 
-	movd		mm1,dword ptr [edi]	;V4V3V2V1
-	movd		mm6,dword ptr [edi+ebp]
+	movd		mm1,dword [edi]	;V4V3V2V1
+	movd		mm6,dword [edi+ebp]
 	pavgb		mm6,mm1
 	pavgb		mm1,mm6
 
-	movd		mm2,dword ptr [esi-1]	;U3U2U1U0
-	movd		mm6,dword ptr [esi+ebp-1]
+	movd		mm2,dword [esi-1]	;U3U2U1U0
+	movd		mm6,dword [esi+ebp-1]
 	pavgb		mm6,mm2
 	pavgb		mm2,mm6
 
-	movd		mm3,dword ptr [edi-1]	;V3V2V1V0
-	movd		mm6,dword ptr [edi+ebp-1]
+	movd		mm3,dword [edi-1]	;V3V2V1V0
+	movd		mm6,dword [edi+ebp-1]
 	pavgb		mm6,mm3
 	pavgb		mm3,mm6
 
-	movd		mm4,dword ptr [esi+1]	;U5U4U3U2
-	movd		mm6,dword ptr [esi+ebp+1]
+	movd		mm4,dword [esi+1]	;U5U4U3U2
+	movd		mm6,dword [esi+ebp+1]
 	pavgb		mm6,mm4
 	pavgb		mm4,mm6
 
-	movd		mm5,dword ptr [edi+1]	;V5V4V3V2
-	movd		mm6,dword ptr [edi+ebp+1]
+	movd		mm5,dword [edi+1]	;V5V4V3V2
+	movd		mm6,dword [edi+ebp+1]
 	pavgb		mm6,mm5
 	pavgb		mm5,mm6
 

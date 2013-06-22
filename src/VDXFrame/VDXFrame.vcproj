@@ -23,8 +23,8 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory="..\..\out\$(ConfigurationName)"
-			IntermediateDirectory="..\..\out\$(ConfigurationName)\$(ProjectName)"
+			OutputDirectory="..\..\lib\$(ConfigurationName)"
+			IntermediateDirectory="..\..\obj\$(ConfigurationName)\$(ProjectName)"
 			ConfigurationType="4"
 			CharacterSet="2"
 			WholeProgramOptimization="0"
@@ -90,7 +90,7 @@
 		</Configuration>
 		<Configuration
 			Name="Debug|x64"
-			OutputDirectory="..\..\out\$(ConfigurationName)X64"
+			OutputDirectory="..\..\lib\$(ConfigurationName)X64"
 			IntermediateDirectory="..\..\obj\$(ConfigurationName)X64\$(ProjectName)"
 			ConfigurationType="4"
 			CharacterSet="2"
@@ -158,8 +158,8 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory="..\..\out\$(ConfigurationName)"
-			IntermediateDirectory="..\..\out\$(ConfigurationName)\$(ProjectName)"
+			OutputDirectory="..\..\lib\$(ConfigurationName)"
+			IntermediateDirectory="..\..\obj\$(ConfigurationName)\$(ProjectName)"
 			ConfigurationType="4"
 			CharacterSet="2"
 			WholeProgramOptimization="0"
@@ -222,7 +222,7 @@
 		</Configuration>
 		<Configuration
 			Name="Release|x64"
-			OutputDirectory="..\..\out\$(ConfigurationName)X64"
+			OutputDirectory="..\..\lib\$(ConfigurationName)X64"
 			IntermediateDirectory="..\..\obj\$(ConfigurationName)X64\$(ProjectName)"
 			ConfigurationType="4"
 			CharacterSet="2"

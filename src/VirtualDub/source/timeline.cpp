@@ -82,6 +82,19 @@ VDPosition VDTimeline::GetNearestKey(VDPosition pos) {
 	return pos;
 }
 
+VDPosition VDTimeline::GetNearestKeyNext(VDPosition pos) {
+	VDPosition newpos = GetNearestKey(pos);
+
+	if (newpos < pos) {
+		VDPosition newpos2 = GetNextKey(pos);
+
+		if (newpos2 > pos)
+			return newpos2;
+	}
+
+	return newpos;
+}
+
 VDPosition VDTimeline::GetPrevKey(VDPosition pos) {
 	if (pos <= 0)
 		return -1;

@@ -204,15 +204,17 @@ bool VDInputFileOptionsMP3::read(const void *buf, int buflen) {
 }
 
 int VDInputFileOptionsMP3::write(char *buf, int buflen) const {
-	if (buflen < sizeof(VDInputFileOptionsSerializedMP3))
-		return 0;
+	if (buf) {
+		if (buflen < sizeof(VDInputFileOptionsSerializedMP3))
+			return 0;
 
-	VDInputFileOptionsSerializedMP3 ser = {0};
-	ser.mLength		= sizeof(VDInputFileOptionsSerializedMP3);
-	ser.mSignature	= VDInputFileOptionsSerializedMP3::kSignature;
-	ser.mMode		= (uint8)mMode;
+		VDInputFileOptionsSerializedMP3 ser = {0};
+		ser.mLength		= sizeof(VDInputFileOptionsSerializedMP3);
+		ser.mSignature	= VDInputFileOptionsSerializedMP3::kSignature;
+		ser.mMode		= (uint8)mMode;
 
-	memcpy(buf, &ser, sizeof(VDInputFileOptionsSerializedMP3));
+		memcpy(buf, &ser, sizeof(VDInputFileOptionsSerializedMP3));
+	}
 
 	return sizeof(VDInputFileOptionsSerializedMP3);
 }

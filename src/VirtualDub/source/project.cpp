@@ -102,6 +102,7 @@ extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
 
 extern uint32 VDPreferencesGetRenderThrottlePercent();
+extern int VDPreferencesGetVideoCompressionThreadCount();
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
@@ -784,18 +785,22 @@ bool VDProject::UpdateFrame() {
 	return mDesiredInputFrame >= 0;
 }
 
-void VDProject::RefilterFrame(VDPosition outPos, VDPosition timelinePos) {
+bool VDProject::RefilterFrame(VDPosition outPos, VDPosition timelinePos) {
 	if (!inputVideo)
-        return;
+        return false;
 
-	if (!filters.isRunning())
+	if (!filters.isRunning()) {
 		StartFilters();
-
+		if (!filters.isRunning())
+			return false;
+	}
 
 	VDPixmapBlt(filters.GetInput(), inputVideo->getTargetFormat());
 
 	sint64 timelineTimeMS = VDRoundToInt64(mVideoTimelineFrameRate.AsInverseDouble() * 1000.0 * (double)timelinePos);
 	filters.RunFilters(outPos, timelinePos, timelinePos, timelineTimeMS, NULL, VDXFilterStateInfo::kStatePreview);
+
+	return true;
 }
 
 void VDProject::LockFilterChain(bool enableLock) {
@@ -1525,6 +1530,14 @@ void VDProject::MoveToNearestKey(VDPosition pos) {
 	MoveToFrame(mTimeline.GetNearestKey(pos));
 }
 
+void VDProject::MoveToNearestKeyNext(VDPosition pos) {
+	if (!inputVideo)
+		return;
+
+
+	MoveToFrame(mTimeline.GetNearestKeyNext(pos));
+}
+
 void VDProject::MoveToPreviousKey() {
 	if (!inputVideo)
 		return;
@@ -1696,6 +1709,7 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 		}
 		opts->perf.fDropFrames = g_fDropFrames;
 		opts->mThrottlePercent = pOutputSystem->IsRealTime() ? 100 : VDPreferencesGetRenderThrottlePercent();
+		opts->video.mMaxVideoCompressionThreads = VDPreferencesGetVideoCompressionThreadCount();
 
 		if (!(g_dubber = CreateDubber(opts)))
 			throw MyMemoryError();
@@ -1856,7 +1870,7 @@ void VDProject::StartFilters() {
 	const VDPixmap& px = inputVideo->getTargetFormat();
 
 	// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
-	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, framerate, pVSS->getLength());
+	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength());
 	filters.ReadyFilters();
 }
 

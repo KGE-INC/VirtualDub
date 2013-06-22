@@ -59,6 +59,7 @@ public:
 	bool isDecodable(VDPosition sample_num)		{ return true; }
 
 private:
+	void DrawRotatingCubeFrame(VDPixmap& dst, bool interlaced, bool oddField, int frameIdx, bool isyuv);
 	void DrawPhysFrame(VDPixmap& dst, bool oddField, int frame);
 
 	VDPosition	mCachedFrame;
@@ -124,7 +125,7 @@ VDVideoSourceTest::VDVideoSourceTest(int mode)
 	streamInfo.rcFrameRight				= (uint16)getImageFormat()->biWidth;
 	streamInfo.rcFrameBottom			= (uint16)getImageFormat()->biHeight;
 
-	if (mMode == 5 || mMode == 6) {
+	if (mMode == 7 || mMode == 8) {
 		VDTestVidPhysSimulator sim;
 
 		for(int i=0; i<800; ++i) {
@@ -364,68 +365,16 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 	ortho.m[3].set(0.0f, 0.0f, 0.0f, 1.0f);
 
 	if (mMode == 0) {
-		// draw cube
-		static const int kIndices[] = {
-			0, 1, 4, 4, 1, 5,
-			2, 6, 3, 3, 6, 7,
-			0, 4, 2, 2, 4, 6,
-			1, 3, 5, 5, 3, 7,
-			0, 2, 1, 1, 2, 3,
-			4, 5, 6, 6, 5, 7,
-		};
-
-		VDTriColorVertex vertices[8];
-
-		for(int i=0; i<8; ++i) {
-			vertices[i].x = i&1 ? 1.0f : -1.0f;
-			vertices[i].y = i&2 ? 1.0f : -1.0f;
-			vertices[i].z = i&4 ? 1.0f : -1.0f;
-
-			float r = (i&1) ? 1.0f : 0.0f;
-			float g = (i&2) ? 1.0f : 0.0f;
-			float b = (i&4) ? 1.0f : 0.0f;
-
-			if (isyuv) {
-				float y = 0.299f*r + 0.587f*g + 0.114f*b;
-				float cr = 0.713f*(r-y);
-				float cb = 0.564f*(b-y);
-				vertices[i].r = cr*224.0f/255.0f + 128.0f/255.0f;
-				vertices[i].g = y*219.0f/255.0f + 16.0f/255.0f;
-				vertices[i].b = cb*224.0f/255.0f + 128.0f/255.0f;
-			} else {
-				vertices[i].r = r;
-				vertices[i].g = g;
-				vertices[i].b = b;
-			}
-
-			vertices[i].a = 1.0f;
-		}
-
-		float rot = (float)frame_num * 0.02f;
-
-		const float kNear = 0.1f;
-		const float kFar = 500.0f;
-		const float w = 640.0f / 5000.0f;
-		const float h = 480.0f / 5000.0f;
-
-		vdfloat4x4 proj;
-
-		proj.m[0].set(2.0f*kNear/w, 0.0f, 0.0f, 0.0f);
-		proj.m[1].set(0.0f, 2.0f*kNear/h, 0.0f, 0.0f);
-		proj.m[2].set(0.0f, 0.0f, -(kFar+kNear)/(kFar-kNear), -2.0f*kNear*kFar/(kFar-kNear));
-		proj.m[3].set(0.0f, 0.0f, -1.0f, 0.0f);
-
-		vdfloat4x4 objpos;
-
-		objpos.m[0].set(10.0f, 0.0f, 0.0f, 0.0f);
-		objpos.m[1].set(0.0f, 10.0f, 0.0f, 0.0f);
-		objpos.m[2].set(0.0f, 0.0f, 10.0f, -50.0f);
-		objpos.m[3].set(0.0f, 0.0f, 0.0f, 1.0f);
-
-		vdfloat4x4 xf = proj * objpos * vdfloat4x4(vdfloat4x4::rotation_x, rot*1.0f) * vdfloat4x4(vdfloat4x4::rotation_y, rot*1.7f) * vdfloat4x4(vdfloat4x4::rotation_z, rot*2.3f);
-
-		VDPixmapTriFill(*dst, vertices, 8, kIndices, 36, &xf[0][0]);
+		DrawRotatingCubeFrame(*dst, false, false, (int)frame_num, isyuv);
 	} else if (mMode == 1) {
+		int frameBase = (int)frame_num << 1;
+		DrawRotatingCubeFrame(*dst, true, false, frameBase + 0, isyuv);
+		DrawRotatingCubeFrame(*dst, true, true,  frameBase + 1, isyuv);
+	} else if (mMode == 2) {
+		int frameBase = (int)frame_num << 1;
+		DrawRotatingCubeFrame(*dst, true, false, frameBase + 1, isyuv);
+		DrawRotatingCubeFrame(*dst, true, true,  frameBase + 0, isyuv);
+	} else if (mMode == 3) {
 		static const int kIndices[6]={0,1,2,3,5,4};
 		VDTriColorVertex triv[6];
 
@@ -474,7 +423,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		triv[5].x = 260.0f;
 
 		VDPixmapTriFill(*dst, triv, 6, kIndices, 6, &ortho[0][0]);
-	} else if (mMode == 2) {
+	} else if (mMode == 4) {
 		static const int kIndices[6]={0,1,2,2,1,3};
 		VDTriColorVertex triv[4];
 
@@ -539,7 +488,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 			VDPixmapFillRegionAntialiased8x(*dst, border, 0, 0, black);
 			VDPixmapFillRegionAntialiased8x(*dst, region, 0, 0, textcolor);
 		}
-	} else if (mMode == 3) {
+	} else if (mMode == 5) {
 		uint8 *dstrow = (uint8 *)dst->data;
 		for(int y=0; y<480; ++y) {
 			uint8 *dstp = dstrow;
@@ -566,7 +515,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 
 			vdptrstep(dstrow, dst->pitch);
 		}
-	} else if (mMode == 4) {
+	} else if (mMode == 6) {
 		switch(dst->format) {
 		case nsVDPixmap::kPixFormat_XRGB8888:
 			DrawZonePlateXRGB8888(*dst, 112,  16, 192, 192, 0x00010000);
@@ -602,7 +551,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 			DrawZonePlateA8(*dst, 2,  84,  56,  48,  48, 16, 240);
 			break;
 		}
-	} else if (mMode == 5) {
+	} else if (mMode == 7) {
 		// A1 A1 B1 C1 D1
 		// A2 B2 C2 C2 D2
 		int frame32 = (int)frame_num;
@@ -635,7 +584,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		}
 
 		VDPixmapBlt(*dst, mRGB32Buffer);
-	} else if (mMode == 6) {
+	} else if (mMode == 8) {
 		// A1 B1 C1 C1 D1
 		// A2 A2 B2 C2 D2
 		int frame32 = (int)frame_num;
@@ -673,6 +622,8 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 	// draw text
 	static const char *const kModeNames[]={
 		"RGB color cube",
+		"RGB color cube (TFF)",
+		"RGB color cube (BFF)",
 		"Chroma subsampling offset",
 		"Channel levels",
 		"Checkerboard",
@@ -710,6 +661,84 @@ const void *VDVideoSourceTest::getFrame(VDPosition frameNum) {
 		return mpFrameBuffer;
 
 	return streamGetFrame(&frameNum, sizeof(VDPosition), FALSE, frameNum, frameNum);
+}
+
+void VDVideoSourceTest::DrawRotatingCubeFrame(VDPixmap& dst, bool interlaced, bool oddField, int frame_num, bool isyuv) {
+	// draw cube
+	static const int kIndices[] = {
+		0, 1, 4, 4, 1, 5,
+		2, 6, 3, 3, 6, 7,
+		0, 4, 2, 2, 4, 6,
+		1, 3, 5, 5, 3, 7,
+		0, 2, 1, 1, 2, 3,
+		4, 5, 6, 6, 5, 7,
+	};
+
+	VDTriColorVertex vertices[8];
+
+	for(int i=0; i<8; ++i) {
+		vertices[i].x = i&1 ? 1.0f : -1.0f;
+		vertices[i].y = i&2 ? 1.0f : -1.0f;
+		vertices[i].z = i&4 ? 1.0f : -1.0f;
+
+		float r = (i&1) ? 1.0f : 0.0f;
+		float g = (i&2) ? 1.0f : 0.0f;
+		float b = (i&4) ? 1.0f : 0.0f;
+
+		if (isyuv) {
+			float y = 0.299f*r + 0.587f*g + 0.114f*b;
+			float cr = 0.713f*(r-y);
+			float cb = 0.564f*(b-y);
+			vertices[i].r = cr*224.0f/255.0f + 128.0f/255.0f;
+			vertices[i].g = y*219.0f/255.0f + 16.0f/255.0f;
+			vertices[i].b = cb*224.0f/255.0f + 128.0f/255.0f;
+		} else {
+			vertices[i].r = r;
+			vertices[i].g = g;
+			vertices[i].b = b;
+		}
+
+		vertices[i].a = 1.0f;
+	}
+
+	float rot = (float)frame_num * 0.02f;
+
+	if (interlaced)
+		rot *= 0.5f;
+
+	const float kNear = 0.1f;
+	const float kFar = 500.0f;
+	const float w = 640.0f / 5000.0f;
+	const float h = 480.0f / 5000.0f;
+
+	vdfloat4x4 proj;
+
+	proj.m[0].set(2.0f*kNear/w, 0.0f, 0.0f, 0.0f);
+	proj.m[1].set(0.0f, 2.0f*kNear/h, 0.0f, 0.0f);
+	proj.m[2].set(0.0f, 0.0f, -(kFar+kNear)/(kFar-kNear), -2.0f*kNear*kFar/(kFar-kNear));
+	proj.m[3].set(0.0f, 0.0f, -1.0f, 0.0f);
+
+	vdfloat4x4 objpos;
+
+	objpos.m[0].set(10.0f, 0.0f, 0.0f, 0.0f);
+	objpos.m[1].set(0.0f, 10.0f, 0.0f, 0.0f);
+	objpos.m[2].set(0.0f, 0.0f, 10.0f, -50.0f);
+	objpos.m[3].set(0.0f, 0.0f, 0.0f, 1.0f);
+
+	vdfloat4x4 xf = proj * objpos * vdfloat4x4(vdfloat4x4::rotation_x, rot*1.0f) * vdfloat4x4(vdfloat4x4::rotation_y, rot*1.7f) * vdfloat4x4(vdfloat4x4::rotation_z, rot*2.3f);
+
+	if (interlaced) {
+		VDPixmap field(VDPixmapExtractField(dst, oddField));
+
+		if (oddField)
+			proj.m[2].z += proj.m[2].w / 480.0f;
+		else
+			proj.m[2].z -= proj.m[2].w / 480.0f;
+
+		VDPixmapTriFill(field, vertices, 8, kIndices, 36, &xf[0][0]);
+	} else {
+		VDPixmapTriFill(dst, vertices, 8, kIndices, 36, &xf[0][0]);
+	}
 }
 
 void VDVideoSourceTest::DrawPhysFrame(VDPixmap& dst, bool oddField, int frameIdx) {

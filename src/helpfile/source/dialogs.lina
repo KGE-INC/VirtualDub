@@ -979,6 +979,15 @@
 				</dd>
 			</dl>
 
+			<p>Threading options:</p>
+			<dl>
+				<dt>Video compression threads</dt>
+				<dd>
+					Controls the number of threads used for video compression; zero disables multithreaded
+					video compression. See <a href="p-compression.html">compression</a> for more details.
+				</dd>
+			</dl>
+
 		</dialog>
 	</dialog-docs>
 </lina:data>

@@ -47,7 +47,7 @@ bool isValidFOURCC(FOURCC fcc);
 FOURCC toupperFOURCC(FOURCC fcc);
 
 char *strCify(const char *s);
-VDStringA VDEncodeScriptString(const VDStringA& sa);
+VDStringA VDEncodeScriptString(const VDStringSpanA& sa);
 VDStringA VDEncodeScriptString(const VDStringW& sw);
 
 #endif

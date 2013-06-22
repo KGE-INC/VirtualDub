@@ -16,12 +16,7 @@
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
-	.586
-	.387
-	.mmx
-	.model	flat
-
-	.const
+	segment	.rdata, align=16
 
 x0100010001000100 dq 0100010001000100h
 x0080008000800080 dq 0080008000800080h
@@ -35,12 +30,12 @@ point_jumptbl	dd	off0, 0
 		dd	off2, -8
 		dd	off1, -4
 
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 	extern _FPU_enabled : byte
 
-	public	_asm_rotate_point
+	global	_asm_rotate_point	
 
 ;	void asm_rotate_point(
 ;		[esp+ 4] Pixel *src,
@@ -89,26 +84,26 @@ _asm_rotate_point:
 ;
 ; texmap codelet courtesy of Chris Hacker's texture mapping article...
 
-POINTPIX macro	dstoff
+%macro POINTPIX 1
 	add	ecx,ebp
 	mov	eax,[esi*4]
 
 	adc	esi,[esp + 28 + 28 + ebx*4]
-	add	edx,dword ptr [esp+36+28]
+	add	edx,dword [esp+36+28]
 
 	sbb	ebx,ebx
-	mov	[edi+dstoff*4],eax
-	endm
+	mov	[edi+%1*4],eax
+%endmacro
 
 	; figure out EDI and jump offsets
 
 	and	eax,7
-	add	edi,dword ptr [point_jumptbl + eax*8 + 4]
+	add	edi,dword [point_jumptbl + eax*8 + 4]
 
-	add	edx,dword ptr [esp+36+28]
+	add	edx,dword [esp+36+28]
 	sbb	ebx,ebx
 
-	jmp	dword ptr [point_jumptbl + eax*8]
+	jmp	dword [point_jumptbl + eax*8]
 
 	align	16
 xloop:
@@ -139,7 +134,7 @@ off7:	POINTPIX	7
 
 ;**************************************************************************
 
-	public	_asm_rotate_bilinear
+	global	_asm_rotate_bilinear	
 
 ;	void asm_rotate_bilinear(
 ;		[esp+ 4] Pixel *src,
@@ -154,7 +149,7 @@ off7:	POINTPIX	7
 ;		[esp+40] long Vstep);
 
 _asm_rotate_bilinear:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled],1
 	jnz	_asm_rotate_bilinear_MMX
 
 	push	eax
@@ -168,24 +163,24 @@ _asm_rotate_bilinear:
 	push	eax
 
 
-l_source	= 32 + 4
-l_dest		= 32 + 8
-l_destlimit	= 32 + 12
-l_pitch		= 32 + 16
-l_Ufrac		= 32 + 20
-l_Vfrac		= 32 + 24
-l_UVinctbl	= 32 + 28
-l_Ustep		= 32 + 36
-l_Vstep		= 32 + 40
-l_co3		= 0
+.l_source		equ 32 + 4
+.l_dest			equ 32 + 8
+.l_destlimit	equ 32 + 12
+.l_pitch		equ 32 + 16
+.l_Ufrac		equ 32 + 20
+.l_Vfrac		equ 32 + 24
+.l_UVinctbl		equ 32 + 28
+.l_Ustep		equ 32 + 36
+.l_Vstep		equ 32 + 40
+.l_co3			equ 0
 
-	mov	eax,[esp + l_destlimit]
-	mov	edx,[esp + l_dest]
+	mov	eax,[esp + .l_destlimit]
+	mov	edx,[esp + .l_dest]
 	shl	eax,2
-	mov	edi,[esp + l_source]
+	mov	edi,[esp + .l_source]
 	add	eax,edx
 	shr	edi,2
-	mov	[esp + l_destlimit], eax
+	mov	[esp + .l_destlimit], eax
 
 ;on entry into loop:
 ;
@@ -193,11 +188,11 @@ l_co3		= 0
 ;	EDX	U fraction >> 24
 ;	EDI	source address
 
-	mov	edx,[esp+l_Ufrac]
-	mov	ecx,[esp+l_Vfrac]
+	mov	edx,[esp+.l_Ufrac]
+	mov	ecx,[esp+.l_Vfrac]
 	shr	edx,24
 
-xloop_bilinear:
+.xloop_bilinear:
 	;compute coefficients and fetch pixels
 
 	shr	ecx,24				;ecx = bottom half
@@ -213,10 +208,10 @@ xloop_bilinear:
 	sub	ebx,edx				;ebx = top right
 
 	add	esi,ecx				;esi = !top left
-	mov	[esp+l_source],edi		;store updated source pixel address
+	mov	[esp+.l_source],edi		;store updated source pixel address
 
 	mov	eax,256
-	mov	ebp,[esp+l_pitch]
+	mov	ebp,[esp+.l_pitch]
 
 	sub	eax,esi
 	mov	esi,[edi*4 + ebp + 4]		;esi = bottom right pixel
@@ -225,24 +220,24 @@ xloop_bilinear:
 	and	esi,00ff00ffh			;esi = bottom right red/blue
 
 	and	edi,0000ff00h			;edi = bottom right green
-	mov	[esp+l_co3],ecx
+	mov	[esp+.l_co3],ecx
 
 	imul	esi,edx				;esi = scaled bottom right red/blue
 	imul	edi,edx				;edi = scaled bottom right green
 
 	;do bottom left pixel
 
-	mov	edx,[esp+l_source]
+	mov	edx,[esp+.l_source]
 	mov	ecx,00ff00ffh
 
 	mov	edx,[edx*4 + ebp]
-	mov	ebp,[esp+l_source]
+	mov	ebp,[esp+.l_source]
 
 	and	ecx,edx
 	and	edx,0000ff00h
 
-	imul	ecx,[esp+l_co3]
-	imul	edx,[esp+l_co3]
+	imul	ecx,[esp+.l_co3]
+	imul	edx,[esp+.l_co3]
 
 	add	esi,ecx
 	add	edi,edx
@@ -286,7 +281,7 @@ xloop_bilinear:
 	shr	edi,8
 	and	esi,00ff00ffh
 
-	mov	eax,[esp+l_dest]
+	mov	eax,[esp+.l_dest]
 	or	esi,edi
 
 	mov	[eax],esi
@@ -294,25 +289,25 @@ xloop_bilinear:
 
 	;update address and loop
 
-	mov	edx,[esp+l_Ufrac]
-	mov	ecx,[esp+l_Vfrac]
+	mov	edx,[esp+.l_Ufrac]
+	mov	ecx,[esp+.l_Vfrac]
 
-	add	ecx,[esp+l_Vstep]
+	add	ecx,[esp+.l_Vstep]
 
 	sbb	ebx,ebx
-	add	edx,[esp+l_Ustep]
+	add	edx,[esp+.l_Ustep]
 
-	mov	[esp+l_Ufrac],edx
-	mov	[esp+l_Vfrac],ecx
+	mov	[esp+.l_Ufrac],edx
+	mov	[esp+.l_Vfrac],ecx
 
-	adc	ebp,[esp+l_UVinctbl+4+ebx*4]
-	mov	[esp+l_dest],eax
+	adc	ebp,[esp+.l_UVinctbl+4+ebx*4]
+	mov	[esp+.l_dest],eax
 
 	shr	edx,24
 	mov	edi,ebp
 
-	cmp	eax,[esp+l_destlimit]
-	jne	xloop_bilinear
+	cmp	eax,[esp+.l_destlimit]
+	jne	.xloop_bilinear
 
 	pop	eax
 
@@ -328,7 +323,7 @@ xloop_bilinear:
 
 ;**************************************************************************
 
-	public	_asm_rotate_bilinear
+	global	_asm_rotate_bilinear	
 
 ;	void asm_rotate_bilinear(
 ;		[esp+ 4] Pixel *src,
@@ -351,23 +346,23 @@ _asm_rotate_bilinear_MMX:
 	push	edi
 	push	ebp
 
-l_source	= 28 + 4
-l_dest		= 28 + 8
-l_destlimit	= 28 + 12
-l_pitch		= 28 + 16
-l_Ufrac		= 28 + 20
-l_Vfrac		= 28 + 24
-l_UVinctbl	= 28 + 28
-l_Ustep		= 28 + 36
-l_Vstep		= 28 + 40
+.l_source		equ 28 + 4
+.l_dest			equ 28 + 8
+.l_destlimit	equ 28 + 12
+.l_pitch		equ 28 + 16
+.l_Ufrac		equ 28 + 20
+.l_Vfrac		equ 28 + 24
+.l_UVinctbl		equ 28 + 28
+.l_Ustep		equ 28 + 36
+.l_Vstep		equ 28 + 40
 
-	mov	eax,[esp + l_destlimit]
-	mov	edi,[esp + l_dest]
+	mov	eax,[esp + .l_destlimit]
+	mov	edi,[esp + .l_dest]
 	shl	eax,2
-	mov	esi,[esp + l_source]
+	mov	esi,[esp + .l_source]
 	add	eax,edi
 	shr	esi,2
-	mov	[esp + l_destlimit], eax
+	mov	[esp + .l_destlimit], eax
 
 ;on entry into loop:
 ;
@@ -377,12 +372,12 @@ l_Vstep		= 28 + 40
 ;	EDI	dest address
 ;	EBP	row pitch
 
-	mov	edx,[esp+l_Ufrac]
-	mov	ecx,[esp+l_Vfrac]
-	mov	ebp,[esp+l_pitch]
+	mov	edx,[esp+.l_Ufrac]
+	mov	ecx,[esp+.l_Vfrac]
+	mov	ebp,[esp+.l_pitch]
 	shr	edx,24
 
-xloop_bilinearMMX:
+.xloop_bilinearMMX:
 	;compute coefficients and fetch pixels
 
 	shr	ecx,24				;ecx = bottom half
@@ -398,7 +393,7 @@ xloop_bilinearMMX:
 	shl	edx,16
 	punpcklwd mm6,mm6
 
-	movq	mm4,x0100010001000100
+	movq	mm4,[x0100010001000100]
 	mov	ecx,ebx	
 
 	shl	ebx,16
@@ -422,16 +417,16 @@ xloop_bilinearMMX:
 
 	;do pixels
 
-	movd	mm0,dword ptr [esi*4+0]
+	movd	mm0,dword [esi*4+0]
 	pxor	mm3,mm3
 
-	movd	mm1,dword ptr [esi*4+4]
+	movd	mm1,dword [esi*4+4]
 	punpcklbw mm0,mm3
 
 	pmullw	mm0,mm4
 	punpcklbw mm1,mm3
 
-	movd	mm2,dword ptr [esi*4+ebp+0]
+	movd	mm2,dword [esi*4+ebp+0]
 	pxor	mm4,mm4
 
 	pmullw	mm1,mm5
@@ -440,37 +435,37 @@ xloop_bilinearMMX:
 	movd	mm3,[esi*4+ebp+4]
 	pmullw	mm2,mm6
 
-	paddw	mm0,x0080008000800080
+	paddw	mm0,[x0080008000800080]
 	punpcklbw mm3,mm4
 
 	pmullw	mm3,mm7
 	paddw	mm0,mm1
 
 	paddw	mm0,mm2
-	mov	edx,[esp+l_Ufrac]
+	mov	edx,[esp+.l_Ufrac]
 
 	paddw	mm0,mm3
-	mov	ecx,[esp+l_Vfrac]
+	mov	ecx,[esp+.l_Vfrac]
 
 	psrlw	mm0,8
 	add	edi,4
 
 	packuswb mm0,mm0
-	add	ecx,[esp+l_Vstep]
+	add	ecx,[esp+.l_Vstep]
 
 	sbb	ebx,ebx
-	add	edx,[esp+l_Ustep]
+	add	edx,[esp+.l_Ustep]
 
-	mov	[esp+l_Ufrac],edx
-	mov	[esp+l_Vfrac],ecx
+	mov	[esp+.l_Ufrac],edx
+	mov	[esp+.l_Vfrac],ecx
 
-	adc	esi,[esp+l_UVinctbl+4+ebx*4]
+	adc	esi,[esp+.l_UVinctbl+4+ebx*4]
 
 	shr	edx,24
-	cmp	edi,[esp+l_destlimit]
+	cmp	edi,[esp+.l_destlimit]
 
-	movd	dword ptr [edi-4],mm0
-	jne	xloop_bilinearMMX
+	movd	dword [edi-4],mm0
+	jne	.xloop_bilinearMMX
 
 	pop	ebp
 	pop	edi

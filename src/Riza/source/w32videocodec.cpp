@@ -36,7 +36,7 @@ public:
 	VDVideoDecompressorVCM();
 	~VDVideoDecompressorVCM();
 
-	void Init(const void *srcFormat, HIC hic);
+	void Init(const void *srcFormat, uint32 srcFormatSize, HIC hic);
 
 	bool QueryTargetFormat(int format);
 	bool QueryTargetFormat(const void *format);
@@ -44,6 +44,7 @@ public:
 	bool SetTargetFormat(const void *format);
 	int GetTargetFormat() { return mFormat; }
 	int GetTargetFormatVariant() { return mFormatVariant; }
+	const uint32 *GetTargetFormatPalette() { return mFormatPalette; }
 	void Start();
 	void Stop();
 	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
@@ -60,12 +61,14 @@ protected:
 	VDStringW	mDriverName;
 	vdstructex<VDAVIBitmapInfoHeader>	mSrcFormat;
 	vdstructex<VDAVIBitmapInfoHeader>	mDstFormat;
+
+	uint32		mFormatPalette[256];
 };
 
-IVDVideoDecompressor *VDCreateVideoDecompressorVCM(const void *srcFormat, const void *pHIC) {
+IVDVideoDecompressor *VDCreateVideoDecompressorVCM(const void *srcFormat, uint32 srcFormatSize, const void *pHIC) {
 	vdautoptr<VDVideoDecompressorVCM> p(new VDVideoDecompressorVCM);
 
-	p->Init(srcFormat, *(const HIC *)pHIC);
+	p->Init(srcFormat, srcFormatSize, *(const HIC *)pHIC);
 	return p.release();
 }
 
@@ -86,14 +89,14 @@ VDVideoDecompressorVCM::~VDVideoDecompressorVCM() {
 	}
 }
 
-void VDVideoDecompressorVCM::Init(const void *srcFormat, HIC hic) {
+void VDVideoDecompressorVCM::Init(const void *srcFormat, uint32 srcFormatSize, HIC hic) {
 	VDASSERT(!mhic);
 
 	mhic = hic;
 
 	const VDAVIBitmapInfoHeader *bih = (const VDAVIBitmapInfoHeader *)srcFormat;
 
-	mSrcFormat.assign(bih, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)bih));
+	mSrcFormat.assign(bih, srcFormatSize);
 
 	ICINFO info = {sizeof(ICINFO)};
 	DWORD rv;
@@ -149,14 +152,7 @@ bool VDVideoDecompressorVCM::SetTargetFormat(int format) {
 			return true;
 		}
 
-
-		if (mSrcFormat->biCompression == BI_RLE4 || mSrcFormat->biCompression == BI_RLE8
-			|| (mSrcFormat->biCompression == BI_RGB && mSrcFormat->biBitCount <= 8))
-		{
-			return SetTargetFormat(kPixFormat_Pal8);
-		}
-
-		return false;
+		return SetTargetFormat(kPixFormat_Pal8);
 	}
 
 	vdstructex<VDAVIBitmapInfoHeader> bmformat;
@@ -186,6 +182,19 @@ bool VDVideoDecompressorVCM::SetTargetFormat(const void *format) {
 	if (retval == ICERR_OK) {
 		if (mbActive)
 			Stop();
+
+		if (pDstFormat->bmiHeader.biCompression == BI_RGB && pDstFormat->bmiHeader.biBitCount <= 8) {
+			uint32 colors = 1 << pDstFormat->bmiHeader.biBitCount;
+
+			if (pDstFormat->bmiHeader.biClrUsed && pDstFormat->bmiHeader.biClrUsed < colors)
+				colors = pDstFormat->bmiHeader.biClrUsed;
+
+			if (colors > 256)
+				colors = 256;
+
+			uint32 palOffset = pDstFormat->bmiHeader.biSize;
+			memcpy(mFormatPalette, (const char *)format + palOffset, sizeof(uint32)*colors);
+		}
 
 		mDstFormat.assign((const VDAVIBitmapInfoHeader *)format, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)format));
 		mFormat = 0;
@@ -345,19 +354,14 @@ namespace {
 		}
 	}
 
-	DWORD VDSafeICDecompressQueryW32(HIC hic, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut, const wchar_t *codecDesc) {
+	DWORD VDSafeICDecompressQueryW32(HIC hic, LPBITMAPINFOHEADER lpbiIn, uint32 cbIn, LPBITMAPINFOHEADER lpbiOut, uint32 cbOut, const wchar_t *codecDesc) {
 		vdstructex<BITMAPINFOHEADER> bihIn, bihOut;
-		int cbIn = 0, cbOut = 0;
 
-		if (lpbiIn) {
-			cbIn = VDGetSizeOfBitmapHeaderW32(lpbiIn);
+		if (lpbiIn)
 			bihIn.assign(lpbiIn, cbIn);
-		}
 
-		if (lpbiOut) {
-			cbOut = VDGetSizeOfBitmapHeaderW32(lpbiOut);
+		if (lpbiOut)
 			bihOut.assign(lpbiIn, cbOut);
-		}
 
 		// AngelPotion overwrites its input format with biCompression='MP43' and doesn't
 		// restore it, which leads to video codec lookup errors.  So what we do here is
@@ -418,7 +422,7 @@ namespace {
 		return hic;
 	}
 
-	HIC VDSafeICLocateDecompressW32(DWORD fccType, DWORD fccHandler, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut) {
+	HIC VDSafeICLocateDecompressW32(DWORD fccType, DWORD fccHandler, LPBITMAPINFOHEADER lpbiIn, uint32 cbIn, LPBITMAPINFOHEADER lpbiOut, uint32 cbOut) {
 		ICINFO info={0};
 
 		for(DWORD id=0; ICInfo(fccType, id, &info); ++id) {
@@ -433,7 +437,7 @@ namespace {
 			swprintf(buf, 64, L"A video codec with FOURCC '%.4S'", (const char *)&fccHandler);
 
 			vdprotected1("querying video codec with FOURCC \"%.4s\"", const char *, (const char *)&info.fccHandler) {
-				DWORD result = VDSafeICDecompressQueryW32(hic, lpbiIn, lpbiOut, buf);
+				DWORD result = VDSafeICDecompressQueryW32(hic, lpbiIn, cbIn, lpbiOut, cbOut, buf);
 
 				if (result == ICERR_OK) {
 					// Check for a codec that doesn't actually support what it says it does.
@@ -519,8 +523,8 @@ namespace {
 	}
 }
 
-IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const void *srcFormat) {
-	vdstructex<BITMAPINFOHEADER> bmih((const BITMAPINFOHEADER *)srcFormat, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)srcFormat));
+IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const void *srcFormat, uint32 srcFormatSize) {
+	vdstructex<BITMAPINFOHEADER> bmih((const BITMAPINFOHEADER *)srcFormat, srcFormatSize);
 	HIC hicDecomp = NULL;
 
 	vdprotected2("attempting codec negotiation: fccHandler=0x%08x, biCompression=0x%08x", unsigned, preferredHandler, unsigned, bmih->biCompression) {
@@ -535,7 +539,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 		wchar_t buf[64];
 		swprintf(buf, 64, L"A video codec with FOURCC '%.4S'", (const char *)&preferredHandler);
 
-		if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL, buf)) {
+		if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, bmih.size(), NULL, 0, buf)) {
 			if (hicDecomp)
 				ICClose(hicDecomp);
 
@@ -553,7 +557,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 			if (fcc >= 0x10000)		// if we couldn't map a numerical value like BI_BITFIELDS, don't open a random codec
 				hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, fcc, ICMODE_DECOMPRESS);
 
-			if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL, buf)) {
+			if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, bmih.size(), NULL, 0, buf)) {
 				if (hicDecomp) {
 					ICClose(hicDecomp);
 					hicDecomp = NULL;
@@ -580,7 +584,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 								continue;
 
 							bmih->biCompression = kMPEG4V3Clones[j];
-							hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, NULL);
+							hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, bmih.size(), NULL, 0);
 							if (hicDecomp)
 								break;
 							bmih->biCompression = fcc;
@@ -592,7 +596,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 
 				// Okay, search all installed codecs.
 				if (!hicDecomp)
-					hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, NULL);
+					hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, bmih.size(), NULL, 0);
 			}
 		}
 	}
@@ -602,7 +606,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 
 	// All good!
 
-	return VDCreateVideoDecompressorVCM(&*bmih, &hicDecomp);
+	return VDCreateVideoDecompressorVCM(&*bmih, bmih.size(), &hicDecomp);
 }
 
 void VDSetVideoCodecBugTrap(IVDVideoCodecBugTrap *p) {

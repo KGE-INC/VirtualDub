@@ -15,20 +15,18 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.686
-	.mmx
-	.model	flat
-	.const
+	segment	.rdata, align=16
 luma_coeff2	dw	29*4, 150*4, 77*4, -1024
 luma_coeff4	dw	29*4, 150*4, 77*4, -2048
 
-	.code
+	segment	.text
 
 	; avg(c1, c2, c3) - luma(c1, c2, c3) + luma(c2)
 	; avg(c1, c2, c3) - luma(avg(c1, c2, c3) - c2)
 	; avg(c1, c2, c3) + luma(c2 - avg(c1, c2, c3))
 
-_asm_chromasmoother_FilterHorizontalMPEG1_MMX	proc	near public
+	global	_asm_chromasmoother_FilterHorizontalMPEG1_MMX
+_asm_chromasmoother_FilterHorizontalMPEG1_MMX:
 	push		ebp
 	push		edi
 	push		esi
@@ -40,7 +38,7 @@ _asm_chromasmoother_FilterHorizontalMPEG1_MMX	proc	near public
 	mov		edx, [esp+4+16]
 	add		eax, eax
 
-	movq		mm6, qword ptr luma_coeff4
+	movq		mm6, qword [luma_coeff4]
 	pcmpeqb		mm7, mm7
 	pxor		mm3, mm3
 	psllq		mm7, 48
@@ -49,7 +47,7 @@ _asm_chromasmoother_FilterHorizontalMPEG1_MMX	proc	near public
 	lea		edx, [edx+eax-4]
 	xor		eax, -4
 
-	movd		mm1, dword ptr [ecx+eax+4]
+	movd		mm1, dword [ecx+eax+4]
 	punpcklbw	mm1, mm3
 	movq		mm0, mm1
 	paddw		mm1, mm1
@@ -57,13 +55,13 @@ _asm_chromasmoother_FilterHorizontalMPEG1_MMX	proc	near public
 
 	mov		ebx, 2
 	add		eax, 8
-	jz		skiploop
+	jz		.skiploop
 
-xloop:
+.xloop:
 	movq		mm2, mm1
 	movq		mm1, mm0
 
-	movd		mm0, dword ptr [ecx+eax]
+	movd		mm0, dword [ecx+eax]
 	pxor		mm3, mm3
 
 	punpcklbw	mm0, mm3
@@ -98,15 +96,15 @@ xloop:
 
 	packuswb	mm2, mm2
 
-	movd		dword ptr [edx+eax], mm2
+	movd		dword [edx+eax], mm2
 
 	add		eax, 4
-	jne		xloop
-skiploop:
+	jne		.xloop
+.skiploop:
 	mov		eax, -4
 	add		edx, 4
 	sub		ebx, 1
-	jne		xloop
+	jne		.xloop
 
 	pop		ebx
 	pop		esi
@@ -114,9 +112,9 @@ skiploop:
 	pop		ebp
 	ret
 
-_asm_chromasmoother_FilterHorizontalMPEG1_MMX	endp
 
-_asm_chromasmoother_FilterHorizontalMPEG2_MMX	proc	near public
+	global	_asm_chromasmoother_FilterHorizontalMPEG2_MMX
+_asm_chromasmoother_FilterHorizontalMPEG2_MMX:
 	push		ebp
 	push		edi
 	push		esi
@@ -128,7 +126,7 @@ _asm_chromasmoother_FilterHorizontalMPEG2_MMX	proc	near public
 	mov		edx, [esp+4+16]
 	add		eax, eax
 
-	movq		mm6, qword ptr luma_coeff2
+	movq		mm6, qword [luma_coeff2]
 	pcmpeqb		mm7, mm7
 	pxor		mm3, mm3
 	psllq		mm7, 48
@@ -137,15 +135,15 @@ _asm_chromasmoother_FilterHorizontalMPEG2_MMX	proc	near public
 	lea		edx, [edx+eax-4]
 	xor		eax, -4
 
-	movd		mm4, dword ptr [ecx+eax+4]
+	movd		mm4, dword [ecx+eax+4]
 	punpcklbw	mm4, mm3
 
 	mov		ebx, 2
 	add		eax, 8
-	jz		skiploop
+	jz		.skiploop
 
-xloop:
-	movd		mm0, dword ptr [ecx+eax]
+.xloop:
+	movd		mm0, dword [ecx+eax]
 	pxor		mm3, mm3
 
 	punpcklbw	mm0, mm3
@@ -176,15 +174,15 @@ xloop:
 
 	packuswb	mm2, mm2
 
-	movd		dword ptr [edx+eax], mm2
+	movd		dword [edx+eax], mm2
 
 	add		eax, 4
-	jne		xloop
-skiploop:
+	jne		.xloop
+.skiploop:
 	mov		eax, -4
 	add		edx, 4
 	sub		ebx, 1
-	jne		xloop
+	jne		.xloop
 
 	pop		ebx
 	pop		esi
@@ -192,9 +190,9 @@ skiploop:
 	pop		ebp
 	ret
 
-_asm_chromasmoother_FilterHorizontalMPEG2_MMX	endp
 
-_asm_chromasmoother_FilterVerticalMPEG1_MMX	proc	near public
+	global	_asm_chromasmoother_FilterVerticalMPEG1_MMX
+_asm_chromasmoother_FilterVerticalMPEG1_MMX:
 	push		ebp
 	push		edi
 	push		esi
@@ -214,17 +212,17 @@ _asm_chromasmoother_FilterVerticalMPEG1_MMX	proc	near public
 	add			edi, eax
 	neg			eax
 
-	movq		mm6, qword ptr luma_coeff4
+	movq		mm6, qword [luma_coeff4]
 	pcmpeqb		mm7, mm7
 	pxor		mm3, mm3
 	psllq		mm7, 48
 
-xloop:
-	movd		mm1, dword ptr [ecx+eax]
+.xloop:
+	movd		mm1, dword [ecx+eax]
 	pxor		mm3, mm3
-	movd		mm0, dword ptr [ebx+eax]
+	movd		mm0, dword [ebx+eax]
 	punpcklbw	mm1, mm3
-	movd		mm2, dword ptr [edx+eax]
+	movd		mm2, dword [edx+eax]
 	punpcklbw	mm0, mm3
 	movq		mm4, mm1
 	punpcklbw	mm2, mm3
@@ -243,9 +241,9 @@ xloop:
 	paddw		mm1, mm4
 	psraw		mm1, 2
 	packuswb	mm1, mm1
-	movd		dword ptr [edi+eax], mm1
+	movd		dword [edi+eax], mm1
 	add			eax, 4
-	jne			xloop
+	jne			.xloop
 
 	pop		ebx
 	pop		esi
@@ -253,6 +251,5 @@ xloop:
 	pop		ebp
 	ret
 
-_asm_chromasmoother_FilterVerticalMPEG1_MMX	endp
 
 	end

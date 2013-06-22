@@ -152,7 +152,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			}
 		}
 
-		if (!g_project->Tick() && !g_projectui->Tick()) {
+		if (!g_project->Tick() && !g_projectui->Tick() && !JobPollAutoRun()) {
 			VDClearEvilCPUStates();		// clear evil CPU states set by Borland DLLs
 
 			WaitMessage();
@@ -242,6 +242,8 @@ static const wchar_t fileFiltersSaveConfig[]=
 		L"All files (*.*)\0"						L"*.*\0"
 		;
 
+static const char g_szRegKeyRunAsJob[]="Run as job";
+
   
 void OpenAVI(bool ext_opt) {
 	bool fExtendedOpen = false;
@@ -294,11 +296,17 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 		{0}
 	};
 
-	int optVals[1]={0};
+	VDRegistryAppKey key(g_szRegKeyPersistence);
+
+	int optVals[1]={
+		key.getBool(g_szRegKeyRunAsJob, false),
+	};
 
 	VDStringW fname(VDGetSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, (VDGUIHandle)hWnd, fUseCompatibility ? L"Save AVI 1.0 File" : L"Save AVI 2.0 File", fileFilters0, L"avi", sOptions, optVals));
 	if (!fname.empty()) {
 		bool fAddAsJob = !!optVals[0];
+
+		key.setBool(g_szRegKeyRunAsJob, fAddAsJob);
 
 		g_project->SaveAVI(fname.c_str(), fUseCompatibility, fAddAsJob);
 	}
@@ -306,7 +314,6 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-static const char g_szRegKeyRunAsJob[]="Run as job";
 static const char g_szRegKeySegmentFrameCount[]="Segment frame limit";
 static const char g_szRegKeyUseSegmentFrameCount[]="Use segment frame limit";
 static const char g_szRegKeySegmentSizeLimit[]="Segment size limit";

@@ -38,6 +38,9 @@ extern HINSTANCE g_hInst;
 typedef struct LevelsFilterData {
 	unsigned char xtblmono[256];
 	int xtblluma[256];
+	const uint8 *xtblluma2[256];
+	
+	uint8		cliptab[768];
 
 	int			iInputLo, iInputHi;
 	int			iOutputLo, iOutputHi;
@@ -279,7 +282,7 @@ static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 				uint32 r = p[2];
 				uint32 g = p[1];
 				uint32 b = p[0];
-				const uint8 *yp = YUV_clip_table + 256 + mfd->xtblluma[(bright_table_R[r] + bright_table_G[g] + bright_table_B[r] + 0x8000) >> 16];
+				const uint8 *yp = mfd->xtblluma2[(bright_table_R[r] + bright_table_G[g] + bright_table_B[r] + 0x8000) >> 16];
 
 				p[0] = yp[b];
 				p[1] = yp[g];
@@ -289,8 +292,28 @@ static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 			p += modulo;
 		} while(--h);
-	} else
-		((VBitmap&)fa->dst).BitBltXlat1(0, 0, (VBitmap *)&fa->src, 0, 0, -1, -1, mfd->xtblmono);
+	} else {
+		uint8 *p = (uint8 *)fa->dst.data;
+		ptrdiff_t modulo = fa->dst.pitch - 4*fa->dst.w;
+		const unsigned char (&table)[256] = mfd->xtblmono;
+
+		uint32 h = fa->dst.h;
+		do {
+			uint32 w = fa->dst.w;
+			do {
+				uint32 r = p[2];
+				uint32 g = p[1];
+				uint32 b = p[0];
+
+				p[0] = table[b];
+				p[1] = table[g];
+				p[2] = table[r];
+				p += 4;
+			} while(--w);
+
+			p += modulo;
+		} while(--h);
+	}
 
 	return 0;
 }
@@ -351,6 +374,13 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 		else
 			for(i=0; i<256; i++)
 				mfd->xtblluma[i] = (int)mfd->xtblmono[i] - i;
+
+		for(i=0; i<256; i++) {
+			mfd->xtblluma2[i] = mfd->cliptab + 256 + (int)mfd->xtblmono[i] - i;
+			mfd->cliptab[i] = 0;
+			mfd->cliptab[i+256] = (uint8)i;
+			mfd->cliptab[i+512] = 255;
+		}
 	}
 }
 

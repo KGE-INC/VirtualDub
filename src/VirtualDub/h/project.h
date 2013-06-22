@@ -53,6 +53,8 @@ enum {
 	kVDProjectCmd_ScrubBegin,
 	kVDProjectCmd_ScrubEnd,
 	kVDProjectCmd_ScrubUpdate,
+	kVDProjectCmd_ScrubUpdatePrev,
+	kVDProjectCmd_ScrubUpdateNext,
 	kVDProjectCmd_SetSelectionStart,
 	kVDProjectCmd_SetSelectionEnd
 };
@@ -158,6 +160,7 @@ public:
 	void MoveToSelectionStart();
 	void MoveToSelectionEnd();
 	void MoveToNearestKey(VDPosition pos);
+	void MoveToNearestKeyNext(VDPosition pos);
 	void MoveToPreviousKey();
 	void MoveToNextKey();
 	void MoveBackSome();
@@ -184,7 +187,7 @@ public:
 protected:
 	void SceneShuttleStep();
 	bool UpdateFrame();
-	void RefilterFrame(VDPosition outPos, VDPosition timelinePos);
+	bool RefilterFrame(VDPosition outPos, VDPosition timelinePos);
 	void LockFilterChain(bool enableLock);
 
 	static void StaticPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);

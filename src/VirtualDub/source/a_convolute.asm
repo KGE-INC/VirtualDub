@@ -15,15 +15,12 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 
-	public	_asm_convolute_run
-	public	_asm_dynamic_convolute_run
+	global	_asm_convolute_run	
+	global	_asm_dynamic_convolute_run	
 
 ;asm_convolute_run(
 ;	[esp+ 4] void *dst,
@@ -74,24 +71,26 @@ colloop:
 	xor	ebx,ebx
 	xor	ecx,ecx
 
-	CONV_ADD	macro	p_source, p_mult
+	%macro CONV_ADD	2
+	%define	%%p_source	%1
+	%define	%%p_mult	%2
 
-		mov	ebp,p_source	;u	EDX = xRGB
-		mov	edx,ebp		;u	EBP = xRGB
-		and	ebp,000000ffh	;v	EBP = 000B
-		imul	ebp,p_mult	;uv	EBP = 00bb
-		shr	edx,8		;u	EDX = 0xRG
-		add	eax,ebp		;v	add blues together
-		mov	ebp,edx		;u	EBP = 0xRG
-		and	edx,0000ff00h	;v	EDX = 00R0
-		shr	edx,8		;u	EDX = 000R
-		and	ebp,000000ffh	;v	EBP = 000G
-		imul	ebp,p_mult	;uv	EBP = 00gg
-		imul	edx,p_mult	;uv	EDX = 00rr
-		add	ebx,ebp		;u
-		add	ecx,edx		;v
+		mov		ebp,%%p_source	;u	EDX = xRGB
+		mov		edx,ebp			;u	EBP = xRGB
+		and		ebp,000000ffh	;v	EBP = 000B
+		imul	ebp,%%p_mult	;uv	EBP = 00bb
+		shr		edx,8			;u	EDX = 0xRG
+		add		eax,ebp			;v	add blues together
+		mov		ebp,edx			;u	EBP = 0xRG
+		and		edx,0000ff00h	;v	EDX = 00R0
+		shr		edx,8			;u	EDX = 000R
+		and		ebp,000000ffh	;v	EBP = 000G
+		imul	ebp,%%p_mult	;uv	EBP = 00gg
+		imul	edx,%%p_mult	;uv	EDX = 00rr
+		add		ebx,ebp			;u
+		add		ecx,edx			;v
 
-		endm
+	%endmacro
 
 	CONV_ADD [esi-4],[esp+24+12]
 	CONV_ADD [esi  ],[esp+28+12]
@@ -162,7 +161,7 @@ nocarry3:
 	ret
 
 
-	.code
+	segment	.text
 
 ;asm_dynamic_convolute_run(
 ;	[esp+ 4] void *dst,
@@ -201,7 +200,7 @@ rowloop_dyna:
 	shl	eax,2
 	add	esi,eax
 
-	call	dword ptr [esp+32+32+4]
+	call	dword [esp+32+32+4]
 
 
 	pop	ebp
@@ -225,7 +224,7 @@ rowloop_dyna:
 
 ;VC++4.0 is a broken compiler!!!!!!!!!!!!
 
-	public	_asm_dynamic_convolute_codecopy
+	global	_asm_dynamic_convolute_codecopy	
 
 codetbl:
 	dd	_asm_dynamic_convolute_start_1

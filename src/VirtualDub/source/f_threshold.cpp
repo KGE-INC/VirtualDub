@@ -45,6 +45,7 @@ struct MyFilterData {
 int threshold_run(const FilterActivation *fa, const FilterFunctions *ff) {	
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
+#ifdef _M_IX86
 	asm_threshold_run(
 			fa->src.data,
 			fa->src.w,
@@ -52,6 +53,29 @@ int threshold_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			fa->src.pitch,
 			mfd->threshold
 			);
+#else
+	ptrdiff_t pitch = fa->dst.pitch;
+	uint8 *row = (uint8 *)fa->dst.data;
+	uint32 h = fa->dst.h;
+	uint32 w = fa->dst.w;
+	sint32 addend = 0x80000000 - (mfd->threshold << 8);
+
+	for(uint32 y=0; y<h; ++y) {
+		uint8 *p = row;
+
+		for(uint32 x=0; x<w; ++x) {
+			int b = p[0];
+			int g = p[1];
+			int r = p[2];
+			int y = 54*r + 183*g + 19*b;
+
+			*(uint32 *)p = (addend + y) >> 31;
+			p += 4;
+		}
+
+		row += pitch;
+	}
+#endif
 
 	return 0;
 }

@@ -11,6 +11,7 @@
 			<tocnode target="p-filtercurves.html" name="Filter curves"/>
 			<tocnode target="video-filters.html" name="Video filter reference"/>
 		</tocnode>
+		<tocnode target="p-compression.html" name="Compression"/>
 		<tocnode target="p-render.html" name="Rendering/saving"/>
 		<tocnode target="p-artifacts.html" name="Artifacts"/>
 		<tocnode target="p-pipeline.html" name="The pipeline"/>

@@ -1,31 +1,30 @@
-		.586
-		.mmx
-		.model	flat
-		.const
+		segment	.rdata, align=16
+
 correct	dq			0000800000008000h
 
-		.code
+		segment	.text
 
-		include		a_triblt.inc
+		%include	"a_triblt.inc"
 
 ;--------------------------------------------------------------------------
-_vdasm_triblt_span_bilinear_mmx	proc	near public
+	global	_vdasm_triblt_span_bilinear_mmx
+_vdasm_triblt_span_bilinear_mmx:
 		push		ebp
 		push		edi
 		push		esi
 		push		ebx
 		mov			edi,[esp+4+16]
-		mov			edx,[edi].texinfo.dst
-		mov			ebp,[edi].texinfo.w
+		mov			edx,[edi+texinfo.dst]
+		mov			ebp,[edi+texinfo.w]
 		shl			ebp,2
-		mov			ebx,[edi].texinfo.mips[0].bits
+		mov			ebx,[edi+texinfo.mips+mipmap.bits]
 		add			edx,ebp
-		mov			esi,[edi].texinfo.mips[0].pitch
+		mov			esi,[edi+texinfo.mips+mipmap.pitch]
 		neg			ebp
-		movd		mm6,[edi].texinfo.mips[0].uvmul
+		movd		mm6,[edi+texinfo.mips+mipmap.uvmul]
 		pxor		mm7,mm7
-		mov			edi,[edi].texinfo.src
-@xloop:
+		mov			edi,[edi+texinfo.src]
+.xloop:
 		movq		mm4,[edi]
 		movq		mm0,mm4
 		psrld		mm0,16
@@ -38,12 +37,12 @@ _vdasm_triblt_span_bilinear_mmx	proc	near public
 		movd		ecx,mm0
 		add			ecx,ebx
 		psrlw		mm4,1
-		movd		mm0,dword ptr [ecx]
-		movd		mm1,dword ptr [ecx+4]
+		movd		mm0,dword [ecx]
+		movd		mm1,dword [ecx+4]
 		punpcklbw	mm0,mm7
-		movd		mm2,dword ptr [ecx+esi]
+		movd		mm2,dword [ecx+esi]
 		punpcklbw	mm1,mm7
-		movd		mm3,dword ptr [ecx+esi+4]
+		movd		mm3,dword [ecx+esi+4]
 		punpcklbw	mm2,mm7
 		punpcklbw	mm3,mm7
 		psubw		mm1,mm0
@@ -62,45 +61,45 @@ _vdasm_triblt_span_bilinear_mmx	proc	near public
 		pmulhw		mm2,mm5
 		paddw		mm0,mm2
 		packuswb	mm0,mm0
-		movd		dword ptr [edx+ebp],mm0
+		movd		dword [edx+ebp],mm0
 		add			ebp,4
-		jnc			@xloop
+		jnc			.xloop
 		pop			ebx
 		pop			esi
 		pop			edi
 		pop			ebp
 		emms
 		ret
-_vdasm_triblt_span_bilinear_mmx	endp
 		
 ;--------------------------------------------------------------------------
-_vdasm_triblt_span_trilinear_mmx	proc	near public
+	global	_vdasm_triblt_span_trilinear_mmx
+_vdasm_triblt_span_trilinear_mmx:
 		push		ebp
 		push		edi
 		push		esi
 		push		ebx
 		mov			esi,[esp+4+16]
-		mov			edx,[esi].texinfo.dst
-		mov			ebp,[esi].texinfo.w
+		mov			edx,[esi+texinfo.dst]
+		mov			ebp,[esi+texinfo.w]
 		shl			ebp,2
 		add			edx,ebp
 		neg			ebp
-		mov			edi,[esi].texinfo.src
+		mov			edi,[esi+texinfo.src]
 		pxor		mm7,mm7
-@xloop:
-		movd		mm6,[edi].mipspan.u
-		punpckldq	mm6,[edi].mipspan.v
-		mov			eax,[edi].mipspan.lambda
+.xloop:
+		movd		mm6,[edi+mipspan.u]
+		punpckldq	mm6,[edi+mipspan.v]
+		mov			eax,[edi+mipspan.lambda]
 		shr			eax,4
-		and			eax,0fffffff0h
+		and			eax,byte -16
 		movd		mm2,eax
 		psrlq		mm2,4
 		psrld		mm6,mm2
-		paddd		mm6,correct
+		paddd		mm6,[correct]
 
 		;fetch mipmap 1
-		mov			ebx,[esi+eax].mipmap.pitch
-		movd		mm1,[esi+eax].mipmap.uvmul
+		mov			ebx,[esi+eax+mipmap.pitch]
+		movd		mm1,[esi+eax+mipmap.uvmul]
 		movq		mm4,mm6
 		movq		mm0,mm6
 		psrld		mm0,16
@@ -112,14 +111,14 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		punpckhwd	mm5,mm5
 		punpckldq	mm5,mm5
 		movd		ecx,mm0
-		add			ecx,[esi+eax].mipmap.bits
+		add			ecx,[esi+eax+mipmap.bits]
 		psrlw		mm4,1
-		movd		mm0,dword ptr [ecx]
-		movd		mm1,dword ptr [ecx+4]
+		movd		mm0,dword [ecx]
+		movd		mm1,dword [ecx+4]
 		punpcklbw	mm0,mm7
-		movd		mm2,dword ptr [ecx+ebx]
+		movd		mm2,dword [ecx+ebx]
 		punpcklbw	mm1,mm7
-		movd		mm3,dword ptr [ecx+ebx+4]
+		movd		mm3,dword [ecx+ebx+4]
 		punpcklbw	mm2,mm7
 		punpcklbw	mm3,mm7
 		psubw		mm1,mm0
@@ -137,9 +136,9 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		paddw		mm0,mm2
 
 		;fetch mipmap 2
-		mov			ebx,[esi+eax+16].mipmap.pitch
-		movd		mm1,[esi+eax+16].mipmap.uvmul
-		paddd		mm6,correct
+		mov			ebx,[esi+eax+16+mipmap.pitch]
+		movd		mm1,[esi+eax+16+mipmap.uvmul]
+		paddd		mm6,[correct]
 		psrld		mm6,1
 		movq		mm4,mm6
 		psrld		mm6,16
@@ -151,14 +150,14 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		punpckhwd	mm5,mm5
 		punpckldq	mm5,mm5
 		movd		ecx,mm6
-		add			ecx,[esi+eax+16].mipmap.bits
+		add			ecx,[esi+eax+16+mipmap.bits]
 		psrlw		mm4,1
-		movd		mm6,dword ptr [ecx]
-		movd		mm1,dword ptr [ecx+4]
+		movd		mm6,dword [ecx]
+		movd		mm1,dword [ecx+4]
 		punpcklbw	mm6,mm7
-		movd		mm2,dword ptr [ecx+ebx]
+		movd		mm2,dword [ecx+ebx]
 		punpcklbw	mm1,mm7
-		movd		mm3,dword ptr [ecx+ebx+4]
+		movd		mm3,dword [ecx+ebx+4]
 		punpcklbw	mm2,mm7
 		punpcklbw	mm3,mm7
 		psubw		mm1,mm6
@@ -176,7 +175,7 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		paddw		mm6,mm2
 
 		;blend mips
-		movd		mm1,[edi].mipspan.lambda
+		movd		mm1,[edi+mipspan.lambda]
 		punpcklwd	mm1,mm1
 		punpckldq	mm1,mm1
 		psllw		mm1,8
@@ -187,16 +186,15 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		paddw		mm0,mm6
 		packuswb	mm0,mm0
 
-		movd		dword ptr [edx+ebp],mm0
-		add			edi,size mipspan
+		movd		dword [edx+ebp],mm0
+		add			edi, mipspan_size
 		add			ebp,4
-		jnc			@xloop
+		jnc			.xloop
 		pop			ebx
 		pop			esi
 		pop			edi
 		pop			ebp
 		emms
 		ret
-_vdasm_triblt_span_trilinear_mmx	endp
 
 		end

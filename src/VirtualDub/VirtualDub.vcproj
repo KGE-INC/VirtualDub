@@ -18,6 +18,9 @@
 		/>
 	</Platforms>
 	<ToolFiles>
+		<ToolFile
+			RelativePath="..\YASM.rules"
+		/>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
@@ -33,6 +36,9 @@
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="YASM"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -75,7 +81,7 @@
 			<Tool
 				Name="VCPreLinkEventTool"
 				Description="Updating build number information..."
-				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc&#x0D;&#x0A;ml /c /coff /nologo /Fo&quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
+				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc&#x0D;&#x0A;yasm -g cv8 -f $(PlatformName) -o &quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
 			/>
 			<Tool
 				Name="VCLinkerTool"
@@ -137,6 +143,9 @@
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
@@ -177,7 +186,7 @@
 			<Tool
 				Name="VCPreLinkEventTool"
 				Description="Updating build number information..."
-				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc /amd64&#x0D;&#x0A;ml64 /c /nologo /Fo&quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
+				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc /amd64&#x0D;&#x0A;yasm -g cv8 -f $(PlatformName) -o &quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
 			/>
 			<Tool
 				Name="VCLinkerTool"
@@ -237,6 +246,9 @@
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
@@ -278,7 +290,7 @@
 			<Tool
 				Name="VCPreLinkEventTool"
 				Description="Updating build number information..."
-				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc&#x0D;&#x0A;ml /c /coff /nologo /Fo&quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
+				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc&#x0D;&#x0A;yasm -g cv8 -f $(PlatformName) -o &quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
 			/>
 			<Tool
 				Name="VCLinkerTool"
@@ -341,6 +353,9 @@
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
@@ -382,7 +397,7 @@
 			<Tool
 				Name="VCPreLinkEventTool"
 				Description="Updating build number information..."
-				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc /amd64&#x0D;&#x0A;ml64 /c /nologo /Fo&quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
+				CommandLine="$(VDBaseDir)\out\$(VDConfigDirTag)\Asuka verinc /amd64&#x0D;&#x0A;yasm -g cv8 -f $(PlatformName) -o &quot;$(IntDir)\verstub.obj&quot; verstub.asm&#x0D;&#x0A;"
 			/>
 			<Tool
 				Name="VCLinkerTool"
@@ -1194,18 +1209,6 @@
 			</File>
 			<File
 				RelativePath=".\h\version.h"
-				>
-			</File>
-			<File
-				RelativePath="h\vf_base.h"
-				>
-			</File>
-			<File
-				RelativePath="h\VideoFilterFrame.h"
-				>
-			</File>
-			<File
-				RelativePath="h\VideoFilterSystem.h"
 				>
 			</File>
 			<File
@@ -3733,6 +3736,14 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\JobControl.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\JobControlDialog.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\leaks.cpp"
 				>
 				<FileConfiguration
@@ -4333,6 +4344,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\ShutdownDialog.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\sparseavi.cpp"
 				>
 				<FileConfiguration
@@ -4665,6 +4680,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\JobControl.h"
+				>
+			</File>
+			<File
 				RelativePath="h\misc.h"
 				>
 			</File>
@@ -4777,31 +4796,11 @@
 				RelativePath="source\a_bitmap.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -4809,9 +4808,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -4819,31 +4816,11 @@
 				RelativePath="source\a_chromasmoother.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -4851,9 +4828,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -4861,31 +4836,11 @@
 				RelativePath="source\a_convertout.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -4893,51 +4848,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="source\a_fastdisplay.asm"
-				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -4945,31 +4856,11 @@
 				RelativePath="source\a_histogram.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -4977,9 +4868,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -4987,31 +4876,11 @@
 				RelativePath="source\a_scene.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5019,9 +4888,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -5029,31 +4896,11 @@
 				RelativePath="source\a_yuv422torgb.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5061,9 +4908,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -5075,31 +4920,11 @@
 				RelativePath="source\a_mjpgdec.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5107,9 +4932,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -5118,11 +4941,10 @@
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
+					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5130,18 +4952,15 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
 					Name="Release|Win32"
+					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5149,9 +4968,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -5159,31 +4976,11 @@
 				RelativePath="source\a_yuvtable.asm"
 				>
 				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 				<FileConfiguration
@@ -5191,9 +4988,7 @@
 					ExcludedFromBuild="true"
 					>
 					<Tool
-						Name="VCCustomBuildTool"
-						CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-						Outputs="$(IntDir)\$(InputName).obj"
+						Name="YASM"
 					/>
 				</FileConfiguration>
 			</File>
@@ -6114,7 +5909,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Debug|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -6134,7 +5928,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Release|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -6506,7 +6299,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Debug|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -6526,7 +6318,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Release|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -6634,7 +6425,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Debug|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -6654,7 +6444,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Release|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -7150,7 +6939,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Debug|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -7170,7 +6958,6 @@
 					</FileConfiguration>
 					<FileConfiguration
 						Name="Release|x64"
-						ExcludedFromBuild="true"
 						>
 						<Tool
 							Name="VCCLCompilerTool"
@@ -7952,31 +7739,11 @@
 					RelativePath="source\a_brightcont.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -7984,9 +7751,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -7994,31 +7759,11 @@
 					RelativePath="source\a_cmult.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8026,9 +7771,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8036,31 +7779,11 @@
 					RelativePath="source\a_convolute.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8068,9 +7791,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8078,31 +7799,11 @@
 					RelativePath="source\a_grayscale.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8110,9 +7811,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8120,31 +7819,11 @@
 					RelativePath="source\a_reduce.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8152,9 +7831,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8162,31 +7839,11 @@
 					RelativePath="source\A_resize.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8194,9 +7851,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8204,31 +7859,11 @@
 					RelativePath="source\a_rotate.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8236,9 +7871,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8246,31 +7879,11 @@
 					RelativePath="source\a_sharpen.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8278,9 +7891,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8288,31 +7899,11 @@
 					RelativePath="source\a_threshold.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8320,9 +7911,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8330,31 +7919,11 @@
 					RelativePath="source\a_tv.asm"
 					>
 					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
 						Name="Debug|x64"
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8362,9 +7931,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-							CommandLine="ml /c /Zi /coff /nologo /Fo&quot;$(IntDir)\$(InputName).obj&quot; $(InputPath)&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>
@@ -8380,17 +7947,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug|x64"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							Description=""
-							CommandLine="ml64 /c /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 					<FileConfiguration
@@ -8398,17 +7955,7 @@
 						ExcludedFromBuild="true"
 						>
 						<Tool
-							Name="VCCustomBuildTool"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-							Description=""
-							CommandLine="ml64 /c /nologo /Zi /Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-							Outputs="$(IntDir)\$(InputName).obj"
+							Name="YASM"
 						/>
 					</FileConfiguration>
 				</File>

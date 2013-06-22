@@ -91,11 +91,22 @@ public:
 		kFrameRateAdjustSameLength = 1
 	};
 
+	enum PreviewFieldMode {
+		kPreviewFieldsProgressive,
+		kPreviewFieldsWeaveTFF,
+		kPreviewFieldsWeaveBFF,
+		kPreviewFieldsBobTFF,
+		kPreviewFieldsBobBFF,
+		kPreviewFieldsNonIntTFF,
+		kPreviewFieldsNonIntBFF
+	};
+
 	int		mInputFormat;
 	int		mOutputFormat;
 	char	mode;
 	bool	mbUseSmartRendering;
 	bool	mbPreserveEmptyFrames;
+	int		mMaxVideoCompressionThreads;
 	bool	fShowInputFrame, fShowOutputFrame, fShowDecompressedFrame;
 	bool	fSyncToAudio;
 	int		frameRateDecimation;
@@ -112,7 +123,7 @@ public:
 	int		nIVTCOffset;
 	bool	fIVTCPolarity;
 
-	int		nPreviewFieldMode;
+	PreviewFieldMode	previewFieldMode;
 };
 
 class DubPerfOptions {

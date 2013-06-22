@@ -15,14 +15,11 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-	.code
+	segment	.text
 
 	extern _MMX_enabled : byte
 
-	public	_asm_reduceby2_32
+	global	_asm_reduceby2_32	
 
 ;asm_reduceby2_32(
 ;	[esp+ 4] void *dst,
@@ -33,7 +30,7 @@
 ;	[esp+24] ulong dststride);
 
 _asm_reduceby2_32:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_reduceby2_32_MMX
 
 	push	ebp
@@ -158,7 +155,7 @@ colloop_MMX:
 	packuswb mm0,mm0
 	dec	ebp
 
-	movd	dword ptr [edx+ebp*4],mm0
+	movd	dword [edx+ebp*4],mm0
 	jne	colloop_MMX
 
 	pop	ebp
@@ -184,7 +181,7 @@ colloop_MMX:
 
 ;**********************************************************
 
-	public	_asm_reduce2hq_run
+	global	_asm_reduce2hq_run	
 
 ;asm_reduce2hq_run(
 ;	[esp+ 4] void *dst,
@@ -195,7 +192,7 @@ colloop_MMX:
 ;	[esp+24] ulong dststride);
 
 _asm_reduce2hq_run:
-	test	_MMX_enabled, 1
+	test	byte [_MMX_enabled], 1
 	jnz	_asm_reduce2hq_run_MMX
 
 	push	ebp
@@ -349,7 +346,7 @@ colloop2_MMX:
 	; top center, middle left, middle right, and bottom center are 2x
 	; corners are 1x
 
-	IF 0
+	%if 0
 	movd	mm0,[esi]
 	movd	mm1,[esi+edi-4]
 	movd	mm2,[esi+edi+4]
@@ -390,32 +387,32 @@ colloop2_MMX:
 	dec	ebp
 	jne	colloop2_MMX
 
-	ELSE
+	%else
 
-	movd	mm0,dword ptr [esi]
+	movd	mm0,dword [esi]
 
-	movd	mm1,dword ptr [esi+edi-4]
+	movd	mm1,dword [esi+edi-4]
 	punpcklbw mm0,mm7
 
-	movd	mm2,dword ptr [esi+edi+4]
+	movd	mm2,dword [esi+edi+4]
 	punpcklbw mm1,mm7
 
-	movd	mm3,dword ptr [esi+edi*2]
+	movd	mm3,dword [esi+edi*2]
 	punpcklbw mm2,mm7
 
 	punpcklbw mm3,mm7
 	paddw	mm0,mm1
 
-	movd	mm1,dword ptr [esi-4]
+	movd	mm1,dword [esi-4]
 	paddw	mm0,mm2
 
-	movd	mm2,dword ptr [esi+4]
+	movd	mm2,dword [esi+4]
 	paddw	mm0,mm3
 
-	movd	mm3,dword ptr [esi+edi*2-4]
+	movd	mm3,dword [esi+edi*2-4]
 	paddw	mm0,mm0
 
-	movd	mm4,dword ptr [esi+edi*2+4]
+	movd	mm4,dword [esi+edi*2+4]
 	punpcklbw mm1,mm7
 
 	punpcklbw mm2,mm7
@@ -424,7 +421,7 @@ colloop2_MMX:
 	punpcklbw mm3,mm7
 	paddw	mm0,mm1
 
-	movd	mm1,dword ptr [esi+edi]
+	movd	mm1,dword [esi+edi]
 	punpcklbw mm4,mm7
 
 	punpcklbw mm1,mm7
@@ -442,10 +439,10 @@ colloop2_MMX:
 	packuswb mm0,mm0
 	dec	ebp
 
-	movd	dword ptr [edx-4],mm0
+	movd	dword [edx-4],mm0
 	jne	colloop2_MMX
 
-	ENDIF
+	%endif
 
 	pop	edx
 	pop	esi

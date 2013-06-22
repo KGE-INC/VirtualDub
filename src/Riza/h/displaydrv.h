@@ -53,7 +53,9 @@ public:
 		kModeFieldMask	= 0x00000003,
 		kModeVSync		= 0x00000004,
 		kModeFirstField	= 0x00000008,
-		kModeAll		= 0x0000000f
+		kModeBobEven	= 0x00000100,
+		kModeBobOdd		= 0x00000200,
+		kModeAll		= 0x0000030f
 	};
 
 	enum FilterMode {

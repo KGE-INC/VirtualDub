@@ -520,7 +520,7 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	mScriptObj.obj_list		= NULL;
 	mScriptObj.Lookup		= NULL;
 	mScriptObj.func_list	= NULL;
-	mScriptObj.pNextObject	= &obj_VDVFiltInst;
+	mScriptObj.pNextObject	= NULL;
 
 	if (filter->script_obj) {
 		const ScriptFunctionDef *pf = filter->script_obj->func_list;
@@ -649,9 +649,9 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		VDASSERT(qx1 + qx2 < qw);
 		VDASSERT(qy1 + qy2 < qh);
 
-		mRealSrc.mPixmapLayout = VDPixmapLayoutOffset(mRealSrc.mPixmapLayout, qx1, qy1);
-		mRealSrc.mPixmapLayout.w -= qx1+qx2;
-		mRealSrc.mPixmapLayout.h -= qy1+qy2;
+		mRealSrc.mPixmapLayout = VDPixmapLayoutOffset(mRealSrc.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+		mRealSrc.mPixmapLayout.w -= (qx1+qx2) << formatInfo.qwbits;
+		mRealSrc.mPixmapLayout.h -= (qy1+qy2) << formatInfo.qhbits;
 	}
 
 	mRealSrc.ConvertPixmapLayoutToBitmapLayout();

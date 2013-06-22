@@ -81,6 +81,8 @@ extern void VDInitExternalCallTrap();
 extern void VDInitVideoCodecBugTrap();
 extern void VDInitProtectedScopeHook();
 
+extern uint32 VDPreferencesGetEnabledCPUFeatures();
+
 ///////////////////////////////////////////////////////////////////////////
 
 extern LONG __stdcall CrashHandlerHook(EXCEPTION_POINTERS *pExc);
@@ -161,11 +163,12 @@ extern "C" void _abort() {
 }
 
 void VDCPUTest() {
+	uint32 featureMask = VDPreferencesGetEnabledCPUFeatures();
 	long lEnableFlags;
 
-	lEnableFlags = g_prefs.main.fOptimizations & CPUF_SUPPORTS_MASK;
+	lEnableFlags = featureMask & CPUF_SUPPORTS_MASK;
 
-	if (!(g_prefs.main.fOptimizations & PreferencesMain::OPTF_FORCE)) {
+	if (!(featureMask & PreferencesMain::OPTF_FORCE)) {
 		SYSTEM_INFO si;
 
 		lEnableFlags = CPUCheckForExtensions();
@@ -429,6 +432,12 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
     // Create the main window.
 
+	if (cmdLine.FindAndRemoveSwitch(L"min")) {
+		nCmdShow = SW_SHOWMINNOACTIVE;
+	} else if (cmdLine.FindAndRemoveSwitch(L"max")) {
+		nCmdShow = SW_SHOWMAXIMIZED;
+	}
+
     if (!InitInstance(hInstance, nCmdShow))
         return (FALSE);
 
@@ -588,7 +597,7 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 	VDUIFrame *pFrame = VDUIFrame::GetFrame(g_hWnd);
 	pFrame->SetRegistryName("Main window");
-	pFrame->RestorePlacement();
+	pFrame->RestorePlacement(SW_HIDE);
 
 	g_projectui = new VDProjectUI;
 	g_project = &*g_projectui;
@@ -671,16 +680,23 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /hexedit [<filename>]     Open hex editor\n"
 						"  /hexview [<filename>]     Open hex editor (read-only mode)\n"
 						"  /i <script> [<args...>]   Invoke script with arguments\n"
+						"  /master <file>            Join shared job queue in non-autostart mode\n"
+						"  /min                      Start minimized\n"
+						"  /max                      Start maximized\n"
 						"  /noStupidAntiDebugChecks  Stop lame drivers from screwing up debugging\n"
 						"                            sessions\n"
 						"  /p <src> <dst>            Add a batch entry for a file\n"
+						"  /priority <pri>           Start in low, belowNormal, normal, aboveNormal,\n"
+						"                            high, or realtime priority\n"
 						"  /queryVersion             Return build number\n"
 						"  /r                        Run job queue\n"
 						"  /s <script>               Run a script\n"
 						"  /safecpu                  Do not use CPU extensions on startup\n"
+						"  /slave <file>             Join shared job queue in autostart mode\n"
 						"  /x                        Exit when complete\n"
 						);
-				} else if (!wcscmp(token, L"b")) {
+				}
+				else if (!wcscmp(token, L"b")) {
 					const wchar_t *path2;
 
 					if (!cmdLine.GetNextNonSwitchArgument(it, token) || !cmdLine.GetNextNonSwitchArgument(it, path2))
@@ -852,6 +868,12 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					};
 					static D3DLock sD3DLock;
 				}
+				else if (!wcscmp(token, L"master")) {
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
+						throw MyError("Command line error: syntax is /master <queue-file>");
+
+					JobSetQueueFile(token, true, false);
+				}
 				else if (!wcscmp(token, L"noStupidAntiDebugChecks")) {
 					// Note that this actually screws our ability to call IsDebuggerPresent() as well,
 					// not that we care.
@@ -877,6 +899,25 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 
 					JobAddBatchFile(token, path2);
 				}
+				else if (!wcscmp(token, L"priority")) {
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
+						throw MyError("Command line error: syntax is /priority <priority>");
+
+					if (!wcscmp(token, L"normal"))
+						SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
+					else if (!wcscmp(token, L"aboveNormal"))
+						SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+					else if (!wcscmp(token, L"belowNormal"))
+						SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+					else if (!wcscmp(token, L"high"))
+						SetPriorityClass(GetCurrentProcess(),  HIGH_PRIORITY_CLASS);
+					else if (!wcscmp(token, L"low"))
+						SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
+					else if (!wcscmp(token, L"realtime"))
+						SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+					else
+						throw MyError("Command line error: unknown priority '%ls'", token);
+				}
 				else if (!wcscmp(token, L"queryVersion")) {
 					rc = version_num;
 					break;
@@ -893,6 +934,22 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					RunScript(token);
 				}
 				else if (!wcscmp(token, L"safecpu")) {
+					// already handled elsewhere
+				}
+				else if (!wcscmp(token, L"slave")) {
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
+						throw MyError("Command line error: syntax is /slave <queue-file>");
+
+					JobSetQueueFile(token, true, true);
+
+					if (!g_consoleMode) {
+						OpenJobWindow();
+						ShowWindow(g_hWnd, SW_SHOWMINNOACTIVE);
+					} else {
+						VDLog(kVDLogInfo, VDswprintf(L"Joining shared job queue in slave mode: %ls", 1, &token));
+					}
+
+					fExitOnDone = false;
 				}
 				else if (!wcscmp(token, L"vtprofile")) {
 					g_bEnableVTuneProfiling = true;

@@ -23,7 +23,7 @@
 ;	3.	This notice may not be removed or altered from any source
 ;		distribution.
 
-		.code
+		segment	.text
 
 ;--------------------------------------------------------------------------
 ; VDFractionScale64(
@@ -33,13 +33,13 @@
 ;		[r9]  uint32& remainder);
 ;					
 ;
-VDFractionScale64	proc	public
+		global	VDFractionScale64
+VDFractionScale64:
 		mov		rax, rcx
 		mul		rdx
 		div		r8
 		mov		[r9], edx
 		ret
-VDFractionScale64	endp
 
 ;--------------------------------------------------------------------------
 ; VDUMulDiv64x32(
@@ -48,11 +48,11 @@ VDFractionScale64	endp
 ;		[r8]  uint64 c);
 ;					
 ;
-VDUMulDiv64x32	proc	public
+		global	VDUMulDiv64x32
+VDUMulDiv64x32:
 		mov		rax, rcx
 		mul		rdx
 		div		r8
 		ret
-VDUMulDiv64x32	endp
 
 		end

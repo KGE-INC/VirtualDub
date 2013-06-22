@@ -426,6 +426,8 @@ void VDCaptureDriverScreen::Shutdown() {
 		mPreviewFrameTimer = 0;
 	}
 
+	ShutdownVideoBuffer();
+
 	SaveSettings();
 
 	if (mhwnd) {
@@ -810,7 +812,15 @@ bool VDCaptureDriverScreen::CaptureStart() {
 	ShutdownWaveAnalysis();
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
-		FlushFrameQueue();
+		HDC hdc = GetDC(mhwndGL);
+		if (hdc) {
+			if (mGL.Begin(hdc)) {
+				FlushFrameQueue();
+				mGL.End();
+			}
+
+			ReleaseDC(mhwndGL, hdc);
+		}
 
 		if (mpCB->CapEvent(kEventPreroll, 0)) {
 			mpCB->CapBegin(0);
@@ -1198,13 +1208,13 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 
 		VDASSERT(!mGL.glGetError());
 
-		mGL.End();
-
-		ReleaseDC(mhwndGL, hdc);
-
 		mbOpenGLMode = true;
 
 		FlushFrameQueue();
+
+		mGL.End();
+
+		ReleaseDC(mhwndGL, hdc);
 
 		mTimestampIndex = 0;
 		mTimestampDelay = 0;

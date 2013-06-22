@@ -229,13 +229,15 @@ bool InputFileMPEGOptions::read(const char *buf) {
 }
 
 int InputFileMPEGOptions::write(char *buf, int buflen) const {
-	InputFileMPEGOpts *pp = (InputFileMPEGOpts *)buf;
+	if (buf) {
+		InputFileMPEGOpts *pp = (InputFileMPEGOpts *)buf;
 
-	if (buflen<sizeof(InputFileMPEGOpts))
-		return 0;
+		if (buflen<sizeof(InputFileMPEGOpts))
+			return 0;
 
-	*pp = opts;
-	pp->len = sizeof(InputFileMPEGOpts);
+		*pp = opts;
+		pp->len = sizeof(InputFileMPEGOpts);
+	}
 
 	return sizeof(InputFileMPEGOpts);
 }

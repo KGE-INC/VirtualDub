@@ -414,7 +414,9 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 		mPrimaryW = ddsdPri.dwWidth;
 		mPrimaryH = ddsdPri.dwHeight;
 
-		if ((allowOverlay && InitOverlay()) || InitOffscreen())
+		// Interestingly enough, if another app goes full-screen, it's possible for us to lose
+		// the device and have a failed Restore() between InitOverlay() and InitOffscreen().
+		if ((allowOverlay && InitOverlay()) || (mpddman && InitOffscreen()))
 			return true;
 
 	} while(false);

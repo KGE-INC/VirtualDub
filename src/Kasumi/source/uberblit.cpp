@@ -67,11 +67,194 @@ namespace {
 		sint32 ch = w >> dstInfo.mCXBits;
 
 		gen.swap(2);
-		gen.cubic(cxo, cxf, cw, cb_y / 16.0f, cyf, ch, -0.75f);
+		gen.linear(cxo, cxf, cw, cb_y / 16.0f, cyf, ch);
 		gen.swap(2);
-		gen.cubic(cxo, cxf, cw, cr_y / 16.0f, cyf, ch, -0.75f);
+		gen.linear(cxo, cxf, cw, cr_y / 16.0f, cyf, ch);
 
 		return (srcToken & ~kVDPixSamp_Mask) | kVDPixSamp_444;
+	}
+
+	uint32 BlitterConvertType(VDPixmapUberBlitterGenerator& gen, uint32 srcToken, uint32 dstToken, sint32 w, sint32 h) {
+		uint32 dstType = dstToken & kVDPixType_Mask;
+
+		while((srcToken ^ dstToken) & kVDPixType_Mask) {
+			uint32 srcType = srcToken & kVDPixType_Mask;
+			uint32 targetType = dstType;
+
+	type_reconvert:
+			switch(targetType) {
+				case kVDPixType_1555_LE:
+					switch(srcType) {
+						case kVDPixType_565_LE:
+							gen.conv_565_to_555();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_1555_LE;
+							break;
+
+						case kVDPixType_8888:
+							gen.conv_8888_to_555();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_1555_LE;
+							break;
+						case kVDPixType_B8G8_R8G8:
+						case kVDPixType_G8B8_G8R8:
+							targetType = kVDPixType_8_8_8;
+							goto type_reconvert;
+						default:
+							targetType = kVDPixType_8888;
+							goto type_reconvert;
+					}
+					break;
+
+				case kVDPixType_565_LE:
+					switch(srcType) {
+						case kVDPixType_1555_LE:
+							gen.conv_555_to_565();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_565_LE;
+							break;
+						case kVDPixType_8888:
+							gen.conv_8888_to_565();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_565_LE;
+							break;
+						case kVDPixType_B8G8_R8G8:
+						case kVDPixType_G8B8_G8R8:
+							targetType = kVDPixType_8_8_8;
+							goto type_reconvert;
+						default:
+							targetType = kVDPixType_8888;
+							goto type_reconvert;
+					}
+					break;
+
+				case kVDPixType_888:
+					switch(srcType) {
+						case kVDPixType_8888:
+							gen.conv_8888_to_888();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_888;
+							break;
+						default:
+							targetType = kVDPixType_8888;
+							goto type_reconvert;
+					}
+					break;
+
+				case kVDPixType_8888:
+					switch(srcType) {
+						case kVDPixType_1555_LE:
+							gen.conv_555_to_8888();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
+							break;
+						case kVDPixType_565_LE:
+							gen.conv_565_to_8888();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
+							break;
+						case kVDPixType_888:
+							gen.conv_888_to_8888();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
+							break;
+						case kVDPixType_32Fx4_LE:
+							gen.conv_X32F_to_8888();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
+							break;
+						case kVDPixType_8_8_8:
+							if ((srcToken & kVDPixSamp_Mask) != kVDPixSamp_444)
+								srcToken = BlitterConvertSampling(gen, srcToken, kVDPixSamp_444, w, h);
+							gen.interleave_X8R8G8B8();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
+							break;
+						default:
+							VDASSERT(false);
+							break;
+					}
+					break;
+
+				case kVDPixType_8:
+					switch(srcType) {
+						case kVDPixType_8_8_8:
+							gen.pop();
+							gen.swap(1);
+							gen.pop();
+							srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8;
+							break;
+						default:
+							targetType = kVDPixType_8_8_8;
+							break;
+					}
+					break;
+
+				case kVDPixType_8_8_8:
+					switch(srcType) {
+						case kVDPixType_B8G8_R8G8:
+							gen.dup();
+							gen.dup();
+							gen.extract_8in32(2, w >> 1, h);
+							gen.swap(2);
+							gen.extract_8in16(1, w, h);
+							gen.swap(1);
+							gen.extract_8in32(0, w >> 1, h);
+							srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_8_8_8 | kVDPixSamp_422;
+							break;
+						case kVDPixType_G8B8_G8R8:
+							if ((srcToken & kVDPixSamp_Mask) != kVDPixSamp_422)
+								srcToken = BlitterConvertSampling(gen, srcToken, kVDPixSamp_422, w, h);
+							gen.dup();
+							gen.dup();
+							gen.extract_8in32(3, w >> 1, h);
+							gen.swap(2);
+							gen.extract_8in16(0, w, h);
+							gen.swap(1);
+							gen.extract_8in32(1, w >> 1, h);
+							srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_8_8_8 | kVDPixSamp_422;
+							break;
+						default:
+							VDASSERT(false);
+							break;
+					}
+					break;
+
+				case kVDPixType_B8G8_R8G8:
+					switch(srcType) {
+					case kVDPixType_8_8_8:
+						if ((srcToken ^ dstToken) & kVDPixSamp_Mask)
+							srcToken = BlitterConvertSampling(gen, srcToken, dstToken, w, h);
+
+						gen.interleave_B8G8_R8G8();
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_B8G8_R8G8;
+						break;
+					case kVDPixType_G8B8_G8R8:
+						gen.swap_8in16(w, h, w*2);
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_B8G8_R8G8;
+						break;
+					default:
+						targetType = kVDPixType_8_8_8;
+						goto type_reconvert;
+					}
+					break;
+
+				case kVDPixType_G8B8_G8R8:
+					switch(srcType) {
+					case kVDPixType_8_8_8:
+						if ((srcToken ^ dstToken) & kVDPixSamp_Mask)
+							srcToken = BlitterConvertSampling(gen, srcToken, dstToken, w, h);
+
+						gen.interleave_G8B8_G8R8();
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_G8B8_G8R8;
+						break;
+					case kVDPixType_B8G8_R8G8:
+						gen.swap_8in16(w, h, w*2);
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_G8B8_G8R8;
+						break;
+					default:
+						targetType = kVDPixType_8_8_8;
+						goto type_reconvert;
+					}
+					break;
+
+				default:
+					VDASSERT(false);
+					break;
+			}
+		}
+
+		return srcToken;
 	}
 }
 
@@ -135,9 +318,9 @@ IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src
 
 			int cxbits = sampInfo.mCXBits;
 			int cybits = sampInfo.mCYBits;
-			gen.ldsrc(0, 1, 0, 0, w >> cxbits, h >> cybits, cbtoken, w >> cxbits);
+			gen.ldsrc(0, 2, 0, 0, w >> cxbits, h >> cybits, cbtoken, w >> cxbits);
 			gen.ldsrc(0, 0, 0, 0, w, h, srcToken, w);
-			gen.ldsrc(0, 2, 0, 0, w >> cxbits, h >> cybits, crtoken, w >> cxbits);
+			gen.ldsrc(0, 1, 0, 0, w >> cxbits, h >> cybits, crtoken, w >> cxbits);
 		}
 		break;
 	}
@@ -154,11 +337,11 @@ IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src
 
 				gen.dup();
 				gen.dup();
-				gen.extract_8in32(0, w >> 1, h);
+				gen.extract_8in32(2, w >> 1, h);
 				gen.swap(2);
 				gen.extract_8in16(1, w, h);
 				gen.swap(1);
-				gen.extract_8in32(2, w >> 1, h);
+				gen.extract_8in32(0, w >> 1, h);
 			}
 			break;
 		case kVDPixType_G8B8_G8R8:
@@ -169,11 +352,11 @@ IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src
 
 				gen.dup();
 				gen.dup();
-				gen.extract_8in32(1, w >> 1, h);
+				gen.extract_8in32(3, w >> 1, h);
 				gen.swap(2);
 				gen.extract_8in16(0, w, h);
 				gen.swap(1);
-				gen.extract_8in32(3, w >> 1, h);
+				gen.extract_8in32(1, w >> 1, h);
 			}
 			break;
 		}
@@ -194,8 +377,12 @@ space_reconvert:
 			switch(targetSpace) {
 				case kVDPixSpace_BGR:
 					switch(srcSpace) {
+					case kVDPixSpace_YCC_709:
+						gen.ycbcr709_to_rgb32();
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
+						break;
 					case kVDPixSpace_YCC_601:
-						gen.ycbcr_to_rgb32();
+						gen.ycbcr601_to_rgb32();
 						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
 						break;
 					case kVDPixSpace_Y_601:
@@ -218,7 +405,8 @@ space_reconvert:
 				case kVDPixSpace_YCC_601:
 					switch(srcSpace) {
 					case kVDPixSpace_BGR:
-						gen.rgb32_to_ycbcr();
+						srcToken = BlitterConvertType(gen, srcToken, kVDPixType_8888, w, h);
+						gen.rgb32_to_ycbcr601();
 						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_YCC_601 | kVDPixType_8_8_8;
 						break;
 					case kVDPixSpace_Y_601:
@@ -233,159 +421,24 @@ space_reconvert:
 						break;
 					}
 					break;
+				case kVDPixSpace_YCC_709:
+					switch(srcSpace) {
+					case kVDPixSpace_BGR:
+						srcToken = BlitterConvertType(gen, srcToken, kVDPixType_8888, w, h);
+						gen.rgb32_to_ycbcr709();
+						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_YCC_709 | kVDPixType_8_8_8;
+						break;
+					default:
+						VDASSERT(false);
+						break;
+					}
+					break;
 			}
 		}
 	}
 
 	// check if we need a type change
-	uint32 dstType = dstToken & kVDPixType_Mask;
-	while((srcToken ^ dstToken) & kVDPixType_Mask) {
-		uint32 srcType = srcToken & kVDPixType_Mask;
-		uint32 targetType = dstType;
-
-type_reconvert:
-		switch(targetType) {
-			case kVDPixType_1555_LE:
-				switch(srcType) {
-					case kVDPixType_8888:
-						gen.convd_8888_to_555();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_1555_LE;
-						break;
-					case kVDPixType_B8G8_R8G8:
-					case kVDPixType_G8B8_G8R8:
-						targetType = kVDPixType_8_8_8;
-						goto type_reconvert;
-					default:
-						targetType = kVDPixType_8888;
-						goto type_reconvert;
-				}
-				break;
-
-			case kVDPixType_565_LE:
-				switch(srcType) {
-					case kVDPixType_8888:
-						gen.convd_8888_to_565();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_565_LE;
-						break;
-					case kVDPixType_B8G8_R8G8:
-					case kVDPixType_G8B8_G8R8:
-						targetType = kVDPixType_8_8_8;
-						goto type_reconvert;
-					default:
-						targetType = kVDPixType_8888;
-						goto type_reconvert;
-				}
-				break;
-
-			case kVDPixType_8888:
-				switch(srcType) {
-					case kVDPixType_1555_LE:
-						gen.conv_555_to_8888();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
-						break;
-					case kVDPixType_565_LE:
-						gen.conv_565_to_8888();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
-						break;
-					case kVDPixType_888:
-						gen.conv_888_to_8888();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
-						break;
-					case kVDPixType_32Fx4_LE:
-						gen.conv_X32F_to_8888();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
-						break;
-					case kVDPixType_8_8_8:
-						if ((srcToken & kVDPixSamp_Mask) != kVDPixSamp_444)
-							srcToken = BlitterConvertSampling(gen, srcToken, kVDPixSamp_444, w, h);
-						gen.interleave_X8R8G8B8();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8888;
-						break;
-					default:
-						VDASSERT(false);
-						break;
-				}
-				break;
-
-			case kVDPixType_8:
-				switch(srcType) {
-					case kVDPixType_8_8_8:
-						gen.pop();
-						gen.swap(1);
-						gen.pop();
-						srcToken = (srcToken & ~kVDPixType_Mask) | kVDPixType_8;
-						break;
-					default:
-						targetType = kVDPixType_8_8_8;
-						break;
-				}
-				break;
-
-			case kVDPixType_8_8_8:
-				switch(srcType) {
-					case kVDPixType_B8G8_R8G8:
-						gen.dup();
-						gen.dup();
-						gen.extract_8in32(2, w >> 1, h);
-						gen.swap(2);
-						gen.extract_8in16(1, w, h);
-						gen.swap(1);
-						gen.extract_8in32(0, w >> 1, h);
-						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_8_8_8 | kVDPixSamp_422;
-						break;
-					case kVDPixType_G8B8_G8R8:
-						if ((srcToken & kVDPixSamp_Mask) != kVDPixSamp_422)
-							srcToken = BlitterConvertSampling(gen, srcToken, kVDPixSamp_422, w, h);
-						gen.dup();
-						gen.dup();
-						gen.extract_8in32(3, w >> 1, h);
-						gen.swap(2);
-						gen.extract_8in16(0, w, h);
-						gen.swap(1);
-						gen.extract_8in32(1, w >> 1, h);
-						srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_8_8_8 | kVDPixSamp_422;
-						break;
-					default:
-						VDASSERT(false);
-						break;
-				}
-				break;
-
-			case kVDPixType_B8G8_R8G8:
-				switch(srcType) {
-				case kVDPixType_8_8_8:
-					if ((srcToken ^ dstToken) & kVDPixSamp_Mask)
-						srcToken = BlitterConvertSampling(gen, srcToken, dstToken, w, h);
-
-					gen.interleave_B8G8_R8G8();
-					srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_B8G8_R8G8;
-					break;
-				default:
-					targetType = kVDPixType_8_8_8;
-					goto type_reconvert;
-				}
-				break;
-
-			case kVDPixType_G8B8_G8R8:
-				switch(srcType) {
-				case kVDPixType_8_8_8:
-					if ((srcToken ^ dstToken) & kVDPixSamp_Mask)
-						srcToken = BlitterConvertSampling(gen, srcToken, dstToken, w, h);
-
-					gen.interleave_G8B8_G8R8();
-					srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSamp_Mask)) | kVDPixType_G8B8_G8R8;
-					break;
-				default:
-					targetType = kVDPixType_8_8_8;
-					goto type_reconvert;
-				}
-				break;
-
-			default:
-				VDASSERT(false);
-				break;
-		}
-	}
+	srcToken = BlitterConvertType(gen, srcToken, dstToken, w, h);
 
 	// convert subsampling if necessary
 	if ((srcToken & kVDPixType_Mask) == kVDPixType_8_8_8) {

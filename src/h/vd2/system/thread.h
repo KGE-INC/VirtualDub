@@ -42,10 +42,13 @@ extern "C" void __declspec(dllimport) __stdcall InitializeCriticalSection(_RTL_C
 extern "C" void __declspec(dllimport) __stdcall LeaveCriticalSection(_RTL_CRITICAL_SECTION *lpCriticalSection);
 extern "C" void __declspec(dllimport) __stdcall EnterCriticalSection(_RTL_CRITICAL_SECTION *lpCriticalSection);
 extern "C" void __declspec(dllimport) __stdcall DeleteCriticalSection(_RTL_CRITICAL_SECTION *lpCriticalSection);
+extern "C" unsigned long __declspec(dllimport) __stdcall WaitForSingleObject(void *hHandle, unsigned long dwMilliseconds);
+extern "C" int __declspec(dllimport) __stdcall ReleaseSemaphore(void *hSemaphore, long lReleaseCount, long *lpPreviousCount);
 
 VDThreadID VDGetCurrentThreadID();
 
 void VDSetThreadDebugName(VDThreadID tid, const char *name);
+void VDThreadSleep(int milliseconds);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -229,82 +232,30 @@ public:
 ///////////////////////////////////////////////////////////////////////////
 
 class VDSemaphore {
-	VDAtomicInt mValue;
-	VDSignal	mSignalNotEmpty;
-
-	VDSemaphore(const VDSemaphore&);
-	VDSemaphore& operator=(const VDSemaphore&);
 public:
-	VDSemaphore() : mValue(0) {}
-	explicit VDSemaphore(int initial) : mValue(initial) {}
+	VDSemaphore(int initial);
+	~VDSemaphore();
 
-	void reset(int count) {
-		mValue = count;
+	void Reset(int count);
+
+	void Wait() {
+		WaitForSingleObject(mKernelSema, 0xFFFFFFFFU);
 	}
 
-	// I'm not using P and V.  No way.
-
-	void operator++() {
-		if (!mValue.postinc())
-			mSignalNotEmpty();
+	bool Wait(int timeout) {
+		return 0 == WaitForSingleObject(mKernelSema, timeout);
 	}
 
-	void operator--() {
-		while(mValue.postdec()<=0) {
-			// Here's where it gets tricky.  Any number of threads may
-			// have gotten to this point and done a down(), so the result
-			// may any negative value.  What we do now is increment the
-			// value back up before we block.  However, our decrementing
-			// the variable may have prevented the first up() from
-			// signalling.  This is indicated by a restore above zero,
-			// in which case we signal instead of wait.
-
-			if (!mValue.postinc()) {
-				mSignalNotEmpty();
-				continue;
-			}
-
-			mSignalNotEmpty.wait();
-		}
-	}
-};
-
-class VDLockedSemaphore {
-	int			mValue;
-	VDSignal	mSignalNotEmpty;
-
-	VDLockedSemaphore(const VDLockedSemaphore&);
-	VDLockedSemaphore& operator=(const VDLockedSemaphore&);
-public:
-	VDLockedSemaphore() : mValue(0) {}
-	explicit VDLockedSemaphore(int initial) : mValue(initial) {}
-
-	int count() const { return mValue; }
-
-	void reset(int count) {
-		mValue = count;
+	bool TryWait() {
+		return 0 == WaitForSingleObject(mKernelSema, 0);
 	}
 
-	bool post(VDCriticalSection&, int threshold = 0) {
-		if (threshold == mValue++) {
-			mSignalNotEmpty();
-			return true;
-		}
-
-		return false;
+	void Post() {
+		ReleaseSemaphore(mKernelSema, 1, NULL);
 	}
 
-	bool wait(VDCriticalSection& csect, int threshold = 0) {
-		// This is a bit easier than the other case.
-		while(!mValue) {
-			csect.Unlock();
-			mSignalNotEmpty.wait();
-			csect.Lock();
-		}
-
-		return threshold == --mValue;
-	}
-
+private:
+	void *mKernelSema;
 };
 
 #endif

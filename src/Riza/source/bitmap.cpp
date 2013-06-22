@@ -118,17 +118,18 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, 
 
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, const vdstructex<VDAVIBitmapInfoHeader>& src, int format, int variant, uint32 w, uint32 h) {
 	if (format == nsVDPixmap::kPixFormat_Pal8) {
-		if (src->biCompression != BI_RGB && src->biCompression != BI_RLE4 && src->biCompression != BI_RLE8)
-			return false;
-
 		if (src->biBitCount > 8)
 			return false;
 
 		uint32 clrUsed = src->biClrUsed;
 		uint32 clrImportant = src->biClrImportant;
 
-		if (clrUsed == 0)
+		if (clrUsed == 0) {
+			if (src->biCompression != BI_RGB && src->biCompression != BI_RLE4 && src->biCompression != BI_RLE8)
+				return false;
+
 			clrUsed = 1 << src->biBitCount;
+		}
 		if (clrUsed >= 256)
 			clrUsed = 0;				// means 'max for type'
 		if (clrImportant >= clrUsed)
@@ -268,13 +269,15 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, 
 	return true;
 }
 
-uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant) {
+uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant, const uint32 *palette) {
 	using namespace nsVDPixmap;
 
 	uint32 linspace = VDPixmapCreateLinearLayout(layout, format, w, abs(h), VDPixmapGetInfo(format).auxbufs > 1 ? 1 : 4);
 
 	switch(format) {
 	case kPixFormat_Pal8:
+		layout.palette = palette;
+		// fall through
 	case kPixFormat_XRGB1555:
 	case kPixFormat_RGB888:
 	case kPixFormat_RGB565:

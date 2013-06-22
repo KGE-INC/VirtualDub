@@ -620,7 +620,7 @@ void VDCaptureFilterChainAdapter::SetFrameRate(uint32 usPerFrame) {
 }
 
 void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
-	filters.initLinearChain(&g_listFA, layout.w, layout.h, layout.format, mFrameRate, -1);
+	filters.initLinearChain(&g_listFA, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1);
 	filters.ReadyFilters();
 
 	void *p;

@@ -132,6 +132,7 @@ protected:
 		int					mPerMCUH;
 		int					mXStep;
 		ptrdiff_t			mYStep;
+		uint8				mId;
 	};
 
 	int			mCompCount;
@@ -766,8 +767,12 @@ void VDJPEGDecoder::ParseFrameHeader() {
 
 	const uint8 *ycomp = mpSrc + 6;
 
-	// init Y component
-	if (ycomp[0] != 1)
+	// Init Y component.
+	//
+	// For some reason, the RAZR V3 phone encodes Exif images where the YCbCr components are
+	// labeled 0, 1, and 2 instead of 1, 2, and 3. This looks wrong according to the Exif
+	// spec, but oh well....
+	if (ycomp[0] != 1 && ycomp[0] != 0)
 		throw MyError("JPEGDecoder: Image is not in Y or YCbCr format");
 
 	mpQuant[0] = mQuant[ycomp[2]];
@@ -784,13 +789,14 @@ void VDJPEGDecoder::ParseFrameHeader() {
 	mComponents[0].mPlane.resize(mComponents[0].mPitch * (yblocks << (3 + mBlockShiftY)));
 	mComponents[0].mPerMCUW = xfactor;
 	mComponents[0].mPerMCUH = yfactor;
+	mComponents[0].mId = ycomp[0];
 
 	// init Cb/Cr if present
 	if (ncomps == 3) {
 		const uint8 *cbcomp = mpSrc + 9;
 		const uint8 *crcomp = mpSrc + 12;
 
-		if (ycomp[0] != 1 || cbcomp[0] != 2 || crcomp[0] != 3)
+		if (cbcomp[0] != (uint8)(ycomp[0] + 1) || crcomp[0] != (uint8)(ycomp[0] + 2))
 			throw MyError("JPEGDecoder: Image is not in Y or YCbCr format");
 
 		// The second byte holds sampling factors, not subsampling factors... so 4:2:2
@@ -812,11 +818,13 @@ void VDJPEGDecoder::ParseFrameHeader() {
 		mComponents[1].mPlane.resize(mComponents[1].mPitch * (yblocks << 3));
 		mComponents[1].mPerMCUW = 1;
 		mComponents[1].mPerMCUH = 1;
+		mComponents[1].mId = cbcomp[0];
 
 		mComponents[2].mPitch = xblocks << 3;
 		mComponents[2].mPlane.resize(mComponents[2].mPitch * (yblocks << 3));
 		mComponents[2].mPerMCUW = 1;
 		mComponents[2].mPerMCUH = 1;
+		mComponents[2].mId = crcomp[0];
 	}
 
 	for(int i=0; i<ncomps; ++i) {
@@ -851,10 +859,18 @@ void VDJPEGDecoder::ParseScanHeader() {
 		dcbase = (dcbase * mpIDCT->pPrescaler[mpScan[0]] + 128) >> 8;
 
 	for(int i=0; i<components; ++i) {
-		int comp = mpSrc[1 + 2*i] - 1;
+		int compID = mpSrc[1 + 2*i];
 		const uint8 tablesel = mpSrc[2+2*i];
 
-		if (comp < 0 || comp >= 3 || (tablesel & 0xcc))
+		int comp = -1;
+		for(int j = 0; j < mCompCount; ++j) {
+			if (mComponents[j].mId == compID) {
+				comp = j;
+				break;
+			}
+		}
+
+		if ((tablesel & 0xcc) || comp < 0)
 			throw MyError("JPEGDecoder: Malformed scan header at offset %04x", mpSrc - mpSrcStart);
 
 		const uint8 *pDCTable = mpHuffTab[0][(tablesel>>4) & 15];

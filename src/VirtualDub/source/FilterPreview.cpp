@@ -500,13 +500,28 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		if (g_dubOpts.video.mFrameRateAdjustLo > 0)
 			srcRate.Assign(g_dubOpts.video.mFrameRateAdjustHi, g_dubOpts.video.mFrameRateAdjustLo);
 
+		sint64 len = pVSS->getLength();
+		const VDPixmap& pxsrc = inputVideo->getTargetFormat();
+
+		mFiltSys.prepareLinearChain(
+				mpFilterList,
+				pbih2->biWidth,
+				abs(pbih2->biHeight),
+				pxsrc.format,
+				srcRate,
+				pVSS->getLength());
+
+		if (mFiltSys.GetOutputFrameRate() == srcRate)
+			len = mpTimeline->GetLength();
+
 		mFiltSys.initLinearChain(
 				mpFilterList,
 				pbih2->biWidth,
 				abs(pbih2->biHeight),
-				inputVideo->getTargetFormat().format,
+				pxsrc.format,
+				pxsrc.palette,
 				srcRate,
-				pVSS->getLength());
+				len);
 
 		mFiltSys.ReadyFilters();
 

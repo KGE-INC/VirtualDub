@@ -9,6 +9,11 @@
 #include "uberblit_rgb.h"
 #include "uberblit_pal.h"
 
+#ifdef VD_CPU_X86
+	#include "uberblit_ycbcr_x86.h"
+	#include "uberblit_rgb_x86.h"
+#endif
+
 void VDPixmapGenerate(void *dst, ptrdiff_t pitch, sint32 bpr, sint32 height, IVDPixmapGen *gen, int genIndex) {
 	for(sint32 y=0; y<height; ++y) {
 		memcpy(dst, gen->GetRow(y, genIndex), bpr);
@@ -226,6 +231,16 @@ void VDPixmapUberBlitterGenerator::extract_8in32(int offset, uint32 w, uint32 h)
 	args[0] = StackEntry(src, 0);
 }
 
+void VDPixmapUberBlitterGenerator::swap_8in16(uint32 w, uint32 h, uint32 bpr) {
+	StackEntry *args = &mStack.back();
+	VDPixmapGen_Swap8In16 *src = new VDPixmapGen_Swap8In16;
+
+	src->Init(args[0].mpSrc, args[0].mSrcIndex, w, h, bpr);
+
+	mGenerators.push_back(src);
+	args[0] = StackEntry(src, 0);
+}
+
 void VDPixmapUberBlitterGenerator::conv_Pal1_to_8888(int srcIndex) {
 	StackEntry *args = &mStack.back();
 	VDPixmapGen_Pal1_To_X8R8G8B8 *src = new VDPixmapGen_Pal1_To_X8R8G8B8;
@@ -419,7 +434,11 @@ void VDPixmapUberBlitterGenerator::lanczos3(float xoffset, float xfactor, uint32
 
 void VDPixmapUberBlitterGenerator::conv_555_to_8888() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_X1R5G5B5_To_X8R8G8B8 *src = MMX_enabled ? new VDPixmapGen_X1R5G5B5_To_X8R8G8B8_MMX : new VDPixmapGen_X1R5G5B5_To_X8R8G8B8;
+#else
 	VDPixmapGen_X1R5G5B5_To_X8R8G8B8 *src = new VDPixmapGen_X1R5G5B5_To_X8R8G8B8;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -429,7 +448,11 @@ void VDPixmapUberBlitterGenerator::conv_555_to_8888() {
 
 void VDPixmapUberBlitterGenerator::conv_565_to_8888() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_R5G6B5_To_X8R8G8B8 *src = MMX_enabled ? new VDPixmapGen_R5G6B5_To_X8R8G8B8_MMX : new VDPixmapGen_R5G6B5_To_X8R8G8B8;
+#else
 	VDPixmapGen_R5G6B5_To_X8R8G8B8 *src = new VDPixmapGen_R5G6B5_To_X8R8G8B8;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -439,7 +462,11 @@ void VDPixmapUberBlitterGenerator::conv_565_to_8888() {
 
 void VDPixmapUberBlitterGenerator::conv_888_to_8888() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_R8G8B8_To_A8R8G8B8 *src = MMX_enabled ? new VDPixmapGen_R8G8B8_To_X8R8G8B8_MMX : new VDPixmapGen_R8G8B8_To_A8R8G8B8;
+#else
 	VDPixmapGen_R8G8B8_To_A8R8G8B8 *src = new VDPixmapGen_R8G8B8_To_A8R8G8B8;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -469,7 +496,39 @@ void VDPixmapUberBlitterGenerator::conv_8888_to_X32F() {
 
 void VDPixmapUberBlitterGenerator::conv_8888_to_555() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_X8R8G8B8_To_X1R5G5B5 *src = MMX_enabled ? new VDPixmapGen_X8R8G8B8_To_X1R5G5B5_MMX : new VDPixmapGen_X8R8G8B8_To_X1R5G5B5;
+#else
 	VDPixmapGen_X8R8G8B8_To_X1R5G5B5 *src = new VDPixmapGen_X8R8G8B8_To_X1R5G5B5;
+#endif
+
+	src->Init(args[0].mpSrc, args[0].mSrcIndex);
+
+	mGenerators.push_back(src);
+	args[0] = StackEntry(src, 0);
+}
+
+void VDPixmapUberBlitterGenerator::conv_555_to_565() {
+	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_X1R5G5B5_To_R5G6B5 *src = MMX_enabled ? new VDPixmapGen_X1R5G5B5_To_R5G6B5_MMX : new VDPixmapGen_X1R5G5B5_To_R5G6B5;
+#else
+	VDPixmapGen_X1R5G5B5_To_R5G6B5 *src = new VDPixmapGen_X1R5G5B5_To_R5G6B5;
+#endif
+
+	src->Init(args[0].mpSrc, args[0].mSrcIndex);
+
+	mGenerators.push_back(src);
+	args[0] = StackEntry(src, 0);
+}
+
+void VDPixmapUberBlitterGenerator::conv_565_to_555() {
+	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_R5G6B5_To_X1R5G5B5 *src = MMX_enabled ? new VDPixmapGen_R5G6B5_To_X1R5G5B5_MMX : new VDPixmapGen_R5G6B5_To_X1R5G5B5;
+#else
+	VDPixmapGen_R5G6B5_To_X1R5G5B5 *src = new VDPixmapGen_R5G6B5_To_X1R5G5B5;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -479,7 +538,11 @@ void VDPixmapUberBlitterGenerator::conv_8888_to_555() {
 
 void VDPixmapUberBlitterGenerator::conv_8888_to_565() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_X8R8G8B8_To_R5G6B5 *src = MMX_enabled ? new VDPixmapGen_X8R8G8B8_To_R5G6B5_MMX : new VDPixmapGen_X8R8G8B8_To_R5G6B5;
+#else
 	VDPixmapGen_X8R8G8B8_To_R5G6B5 *src = new VDPixmapGen_X8R8G8B8_To_R5G6B5;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -489,7 +552,11 @@ void VDPixmapUberBlitterGenerator::conv_8888_to_565() {
 
 void VDPixmapUberBlitterGenerator::conv_8888_to_888() {
 	StackEntry *args = &mStack.back();
+#ifdef VD_CPU_X86
+	VDPixmapGen_X8R8G8B8_To_R8G8B8 *src = MMX_enabled ? new VDPixmapGen_X8R8G8B8_To_R8G8B8_MMX : new VDPixmapGen_X8R8G8B8_To_R8G8B8;
+#else
 	VDPixmapGen_X8R8G8B8_To_R8G8B8 *src = new VDPixmapGen_X8R8G8B8_To_R8G8B8;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 
@@ -593,9 +660,14 @@ void VDPixmapUberBlitterGenerator::interleave_X8R8G8B8() {
 	mStack.pop_back();
 }
 
-void VDPixmapUberBlitterGenerator::ycbcr_to_rgb32() {
+void VDPixmapUberBlitterGenerator::ycbcr601_to_rgb32() {
 	StackEntry *args = &mStack.back() - 2;
-	VDPixmapGenYCbCrToRGB32 *src = new VDPixmapGenYCbCrToRGB32;
+
+#ifdef VD_CPU_X86
+	VDPixmapGenYCbCr601ToRGB32 *src = MMX_enabled ? new VDPixmapGenYCbCr601ToRGB32_MMX : new VDPixmapGenYCbCr601ToRGB32;
+#else
+	VDPixmapGenYCbCr601ToRGB32 *src = new VDPixmapGenYCbCr601ToRGB32;
+#endif
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex, args[1].mpSrc, args[1].mSrcIndex, args[2].mpSrc, args[2].mSrcIndex);
 
@@ -605,9 +677,34 @@ void VDPixmapUberBlitterGenerator::ycbcr_to_rgb32() {
 	mStack.pop_back();
 }
 
-void VDPixmapUberBlitterGenerator::rgb32_to_ycbcr() {
+void VDPixmapUberBlitterGenerator::ycbcr709_to_rgb32() {
+	StackEntry *args = &mStack.back() - 2;
+
+	VDPixmapGenYCbCr709ToRGB32 *src = new VDPixmapGenYCbCr709ToRGB32;
+
+	src->Init(args[0].mpSrc, args[0].mSrcIndex, args[1].mpSrc, args[1].mSrcIndex, args[2].mpSrc, args[2].mSrcIndex);
+
+	mGenerators.push_back(src);
+	args[0] = StackEntry(src, 0);
+	mStack.pop_back();
+	mStack.pop_back();
+}
+
+void VDPixmapUberBlitterGenerator::rgb32_to_ycbcr601() {
 	StackEntry *args = &mStack.back();
-	VDPixmapGenRGB32ToYCbCr *src = new VDPixmapGenRGB32ToYCbCr;
+	VDPixmapGenRGB32ToYCbCr601 *src = new VDPixmapGenRGB32ToYCbCr601;
+
+	src->Init(args[0].mpSrc, args[0].mSrcIndex);
+
+	mGenerators.push_back(src);
+	args[0] = StackEntry(src, 0);
+	mStack.push_back(StackEntry(src, 1));
+	mStack.push_back(StackEntry(src, 2));
+}
+
+void VDPixmapUberBlitterGenerator::rgb32_to_ycbcr709() {
+	StackEntry *args = &mStack.back();
+	VDPixmapGenRGB32ToYCbCr709 *src = new VDPixmapGenRGB32ToYCbCr709;
 
 	src->Init(args[0].mpSrc, args[0].mSrcIndex);
 

@@ -29,6 +29,9 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/atomic.h>
 #include <vd2/system/thread.h>
+#include <vd2/system/win32/miniwindows.h>
+
+class VDFunctionThunk;
 
 // VDGetCurrentTick: Retrieve current process timer, in milliseconds.  Should only
 // be used for sparsing updates/checks, and not for precision timing.  Approximate
@@ -91,6 +94,23 @@ private:
 	VDSignal		msigExit;
 
 	volatile bool	mbExit;				// this doesn't really need to be atomic -- think about it
+};
+
+
+class VDLazyTimer {
+public:
+	VDLazyTimer();
+	~VDLazyTimer();
+
+	void SetOneShot(IVDTimerCallback *pCB, uint32 delay);
+	void Stop();
+
+protected:
+	void StaticTimeCallback(VDZHWND hwnd, VDZUINT msg, VDZUINT_PTR id, VDZDWORD time);
+
+	uint32				mTimerId;
+	VDFunctionThunk		*mpThunk;
+	IVDTimerCallback	*mpCB;
 };
 
 #endif

@@ -61,7 +61,7 @@ public:
 	void SetRegistryName(const char *name);
 
 	void SavePlacement();
-	void RestorePlacement();
+	void RestorePlacement(int nCmdShow);
 
 	LPARAM DefProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

@@ -2,6 +2,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include "resample_stages_reference.h"
 #include "resample_kernels.h"
+#include "blt_spanutils.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -63,6 +64,15 @@ void VDResamplerRowStageSeparableLinear8::Process(void *dst0, const void *src0, 
 		*dst++	= (uint8)(p0 + (((sint32)(p1 - p0)*f + 0x80)>>8));
 		u += dudx;
 	} while(--w);
+}
+
+void VDResamplerRowStageSeparableLinear8_phaseZeroStepHalf::Process(void *dst0, const void *src0, uint32 w, uint32 u, uint32 dudx) {
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *src = (const uint8 *)src0;
+
+	VDASSERT(!u && dudx == 0x8000);
+
+	nsVDPixmapSpanUtils::horiz_expand2x_coaligned(dst, src, w);
 }
 
 int VDResamplerRowStageSeparableLinear32::GetWindowSize() const {return 2;}

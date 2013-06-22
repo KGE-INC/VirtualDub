@@ -1,3 +1,5 @@
+<lina:include file="source/render/compression.lina" />
+
 <lina:create file="p-mainui.html" title="Processing: Main UI">
 	<blockquote>
 		<lina:image src="pics/p-mainui.png"/>

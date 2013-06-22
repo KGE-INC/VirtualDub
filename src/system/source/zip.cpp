@@ -171,6 +171,10 @@ sint32 VDZipStream::ReadData(void *dst0, sint32 bytes) {
 	return actual;
 }
 
+void VDZipStream::Write(const void *buffer, sint32 bytes) {
+	throw MyError("Zip streams are read-only.");
+}
+
 bool VDZipStream::Inflate() {
 	if (mBlockType == kNoBlock)
 		if (mbNoMoreBlocks || !ParseBlockHeader())

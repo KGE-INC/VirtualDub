@@ -441,6 +441,10 @@ sint32 VDFileStream::ReadData(void *buffer, sint32 bytes) {
 	return readData(buffer, bytes);
 }
 
+void VDFileStream::Write(const void *buffer, sint32 bytes) {
+	write(buffer, bytes);
+}
+
 sint64 VDFileStream::Length() {
 	return size();
 }
@@ -484,6 +488,10 @@ sint32 VDMemoryStream::ReadData(void *buffer, sint32 bytes) {
 	}
 
 	return bytes;
+}
+
+void VDMemoryStream::Write(const void *buffer, sint32 bytes) {
+	throw MyError("Memory streams are read-only.");
 }
 
 sint64 VDMemoryStream::Length() {
@@ -574,6 +582,10 @@ sint32 VDBufferedStream::ReadData(void *buffer, sint32 bytes) {
 	}
 
 	return actual;
+}
+
+void VDBufferedStream::Write(const void *buffer, sint32 bytes) {
+	throw MyError("Buffered streams are read-only.");
 }
 
 sint64 VDBufferedStream::Length() {
@@ -700,34 +712,41 @@ VDTextInputFile::~VDTextInputFile() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-VDTextOutputFile::VDTextOutputFile(const wchar_t *filename, uint32 flags)
-	: mFile(filename, flags | nsVDFile::kWrite)
+VDTextOutputStream::VDTextOutputStream(IVDStream *stream)
+	: mpDst(stream)
 	, mLevel(0)
 {
 }
 
-VDTextOutputFile::~VDTextOutputFile() {
+VDTextOutputStream::~VDTextOutputStream() {
 	try { 
-		Close();
+		Flush();
 	} catch(const MyError&) {
 		// ignore errors in destructor
 	}
 }
 
-void VDTextOutputFile::Close() {
-	if (mFile.isOpen()) {
-		if (mLevel)
-			mFile.write(mBuf, mLevel);
-		mFile.close();
+void VDTextOutputStream::Flush() {
+	if (mLevel) {
+		mpDst->Write(mBuf, mLevel);
+		mLevel = 0;
 	}
 }
 
-void VDTextOutputFile::PutLine(const char *s) {
+void VDTextOutputStream::Write(const char *s, int len) {
+	PutData(s, len);
+}
+
+void VDTextOutputStream::PutLine() {
+	PutData("\r\n", 2);
+}
+
+void VDTextOutputStream::PutLine(const char *s) {
 	PutData(s, strlen(s));
 	PutData("\r\n", 2);
 }
 
-void VDTextOutputFile::FormatLine(const char *format, ...) {
+void VDTextOutputStream::FormatLine(const char *format, ...) {
 	va_list val;
 
 	va_start(val, format);
@@ -745,7 +764,7 @@ void VDTextOutputFile::FormatLine(const char *format, ...) {
 	va_end(val);
 }
 
-void VDTextOutputFile::FormatLine2(const char *format, va_list val) {
+void VDTextOutputStream::FormatLine2(const char *format, va_list val) {
 	char buf[3072];
 
 	int rv = _vsnprintf(buf, 3072, format, val);
@@ -753,11 +772,11 @@ void VDTextOutputFile::FormatLine2(const char *format, va_list val) {
 		PutData(buf, rv);
 }
 
-void VDTextOutputFile::PutData(const char *s, int len) {
+void VDTextOutputStream::PutData(const char *s, int len) {
 	while(len > 0) {
 		int left = kBufSize - mLevel;
 		if (!left) {
-			mFile.write(mBuf, kBufSize);
+			mpDst->Write(mBuf, kBufSize);
 			mLevel = 0;
 			left = kBufSize;
 		}

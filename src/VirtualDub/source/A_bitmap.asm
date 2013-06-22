@@ -15,94 +15,91 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.586
-	.mmx
-	.model	flat
-
 	extern	_MMX_enabled:byte
 	extern	_FPU_enabled:byte
 
-	.const
+	segment	.rdata, align=16
 
-bilinFPU_tbl	real4	256.0,  0.0,  0.0,  0.0,240.0, 16.0,  0.0,  0.0,224.0, 32.0,  0.0,  0.0,208.0, 48.0,  0.0,  0.0
-	real4	192.0, 64.0,  0.0,  0.0,176.0, 80.0,  0.0,  0.0,160.0, 96.0,  0.0,  0.0,144.0,112.0,  0.0,  0.0
-	real4	128.0,128.0,  0.0,  0.0,112.0,144.0,  0.0,  0.0, 96.0,160.0,  0.0,  0.0, 80.0,176.0,  0.0,  0.0
-	real4	 64.0,192.0,  0.0,  0.0, 48.0,208.0,  0.0,  0.0, 32.0,224.0,  0.0,  0.0, 16.0,240.0,  0.0,  0.0
+bilinFPU_tbl:
+	dd	256.0,  0.0,  0.0,  0.0,240.0, 16.0,  0.0,  0.0,224.0, 32.0,  0.0,  0.0,208.0, 48.0,  0.0,  0.0
+	dd	192.0, 64.0,  0.0,  0.0,176.0, 80.0,  0.0,  0.0,160.0, 96.0,  0.0,  0.0,144.0,112.0,  0.0,  0.0
+	dd	128.0,128.0,  0.0,  0.0,112.0,144.0,  0.0,  0.0, 96.0,160.0,  0.0,  0.0, 80.0,176.0,  0.0,  0.0
+	dd	 64.0,192.0,  0.0,  0.0, 48.0,208.0,  0.0,  0.0, 32.0,224.0,  0.0,  0.0, 16.0,240.0,  0.0,  0.0
 
-	real4	240.0,  0.0, 16.0,  0.0,225.0, 15.0, 15.0,  1.0,210.0, 30.0, 14.0,  2.0,195.0, 45.0, 13.0,  3.0
-	real4	180.0, 60.0, 12.0,  4.0,165.0, 75.0, 11.0,  5.0,150.0, 90.0, 10.0,  6.0,135.0,105.0,  9.0,  7.0
-	real4	120.0,120.0,  8.0,  8.0,105.0,135.0,  7.0,  9.0, 90.0,150.0,  6.0, 10.0, 75.0,165.0,  5.0, 11.0
-	real4	 60.0,180.0,  4.0, 12.0, 45.0,195.0,  3.0, 13.0, 30.0,210.0,  2.0, 14.0, 15.0,225.0,  1.0, 15.0
+	dd	240.0,  0.0, 16.0,  0.0,225.0, 15.0, 15.0,  1.0,210.0, 30.0, 14.0,  2.0,195.0, 45.0, 13.0,  3.0
+	dd	180.0, 60.0, 12.0,  4.0,165.0, 75.0, 11.0,  5.0,150.0, 90.0, 10.0,  6.0,135.0,105.0,  9.0,  7.0
+	dd	120.0,120.0,  8.0,  8.0,105.0,135.0,  7.0,  9.0, 90.0,150.0,  6.0, 10.0, 75.0,165.0,  5.0, 11.0
+	dd	 60.0,180.0,  4.0, 12.0, 45.0,195.0,  3.0, 13.0, 30.0,210.0,  2.0, 14.0, 15.0,225.0,  1.0, 15.0
 
-	real4	224.0,  0.0, 32.0,  0.0,210.0, 14.0, 30.0,  2.0,196.0, 28.0, 28.0,  4.0,182.0, 42.0, 26.0,  6.0
-	real4	168.0, 56.0, 24.0,  8.0,154.0, 70.0, 22.0, 10.0,140.0, 84.0, 20.0, 12.0,126.0, 98.0, 18.0, 14.0
-	real4	112.0,112.0, 16.0, 16.0, 98.0,126.0, 14.0, 18.0, 84.0,140.0, 12.0, 20.0, 70.0,154.0, 10.0, 22.0
-	real4	 56.0,168.0,  8.0, 24.0, 42.0,182.0,  6.0, 26.0, 28.0,196.0,  4.0, 28.0, 14.0,210.0,  2.0, 30.0
+	dd	224.0,  0.0, 32.0,  0.0,210.0, 14.0, 30.0,  2.0,196.0, 28.0, 28.0,  4.0,182.0, 42.0, 26.0,  6.0
+	dd	168.0, 56.0, 24.0,  8.0,154.0, 70.0, 22.0, 10.0,140.0, 84.0, 20.0, 12.0,126.0, 98.0, 18.0, 14.0
+	dd	112.0,112.0, 16.0, 16.0, 98.0,126.0, 14.0, 18.0, 84.0,140.0, 12.0, 20.0, 70.0,154.0, 10.0, 22.0
+	dd	 56.0,168.0,  8.0, 24.0, 42.0,182.0,  6.0, 26.0, 28.0,196.0,  4.0, 28.0, 14.0,210.0,  2.0, 30.0
 
-	real4	208.0,  0.0, 48.0,  0.0,195.0, 13.0, 45.0,  3.0,182.0, 26.0, 42.0,  6.0,169.0, 39.0, 39.0,  9.0
-	real4	156.0, 52.0, 36.0, 12.0,143.0, 65.0, 33.0, 15.0,130.0, 78.0, 30.0, 18.0,117.0, 91.0, 27.0, 21.0
-	real4	104.0,104.0, 24.0, 24.0, 91.0,117.0, 21.0, 27.0, 78.0,130.0, 18.0, 30.0, 65.0,143.0, 15.0, 33.0
-	real4	 52.0,156.0, 12.0, 36.0, 39.0,169.0,  9.0, 39.0, 26.0,182.0,  6.0, 42.0, 13.0,195.0,  3.0, 45.0
+	dd	208.0,  0.0, 48.0,  0.0,195.0, 13.0, 45.0,  3.0,182.0, 26.0, 42.0,  6.0,169.0, 39.0, 39.0,  9.0
+	dd	156.0, 52.0, 36.0, 12.0,143.0, 65.0, 33.0, 15.0,130.0, 78.0, 30.0, 18.0,117.0, 91.0, 27.0, 21.0
+	dd	104.0,104.0, 24.0, 24.0, 91.0,117.0, 21.0, 27.0, 78.0,130.0, 18.0, 30.0, 65.0,143.0, 15.0, 33.0
+	dd	 52.0,156.0, 12.0, 36.0, 39.0,169.0,  9.0, 39.0, 26.0,182.0,  6.0, 42.0, 13.0,195.0,  3.0, 45.0
 
-	real4	192.0,  0.0, 64.0,  0.0,180.0, 12.0, 60.0,  4.0,168.0, 24.0, 56.0,  8.0,156.0, 36.0, 52.0, 12.0
-	real4	144.0, 48.0, 48.0, 16.0,132.0, 60.0, 44.0, 20.0,120.0, 72.0, 40.0, 24.0,108.0, 84.0, 36.0, 28.0
-	real4	 96.0, 96.0, 32.0, 32.0, 84.0,108.0, 28.0, 36.0, 72.0,120.0, 24.0, 40.0, 60.0,132.0, 20.0, 44.0
-	real4	 48.0,144.0, 16.0, 48.0, 36.0,156.0, 12.0, 52.0, 24.0,168.0,  8.0, 56.0, 12.0,180.0,  4.0, 60.0
+	dd	192.0,  0.0, 64.0,  0.0,180.0, 12.0, 60.0,  4.0,168.0, 24.0, 56.0,  8.0,156.0, 36.0, 52.0, 12.0
+	dd	144.0, 48.0, 48.0, 16.0,132.0, 60.0, 44.0, 20.0,120.0, 72.0, 40.0, 24.0,108.0, 84.0, 36.0, 28.0
+	dd	 96.0, 96.0, 32.0, 32.0, 84.0,108.0, 28.0, 36.0, 72.0,120.0, 24.0, 40.0, 60.0,132.0, 20.0, 44.0
+	dd	 48.0,144.0, 16.0, 48.0, 36.0,156.0, 12.0, 52.0, 24.0,168.0,  8.0, 56.0, 12.0,180.0,  4.0, 60.0
 
-	real4	176.0,  0.0, 80.0,  0.0,165.0, 11.0, 75.0,  5.0,154.0, 22.0, 70.0, 10.0,143.0, 33.0, 65.0, 15.0
-	real4	132.0, 44.0, 60.0, 20.0,121.0, 55.0, 55.0, 25.0,110.0, 66.0, 50.0, 30.0, 99.0, 77.0, 45.0, 35.0
-	real4	 88.0, 88.0, 40.0, 40.0, 77.0, 99.0, 35.0, 45.0, 66.0,110.0, 30.0, 50.0, 55.0,121.0, 25.0, 55.0
-	real4	 44.0,132.0, 20.0, 60.0, 33.0,143.0, 15.0, 65.0, 22.0,154.0, 10.0, 70.0, 11.0,165.0,  5.0, 75.0
+	dd	176.0,  0.0, 80.0,  0.0,165.0, 11.0, 75.0,  5.0,154.0, 22.0, 70.0, 10.0,143.0, 33.0, 65.0, 15.0
+	dd	132.0, 44.0, 60.0, 20.0,121.0, 55.0, 55.0, 25.0,110.0, 66.0, 50.0, 30.0, 99.0, 77.0, 45.0, 35.0
+	dd	 88.0, 88.0, 40.0, 40.0, 77.0, 99.0, 35.0, 45.0, 66.0,110.0, 30.0, 50.0, 55.0,121.0, 25.0, 55.0
+	dd	 44.0,132.0, 20.0, 60.0, 33.0,143.0, 15.0, 65.0, 22.0,154.0, 10.0, 70.0, 11.0,165.0,  5.0, 75.0
 
-	real4	160.0,  0.0, 96.0,  0.0,150.0, 10.0, 90.0,  6.0,140.0, 20.0, 84.0, 12.0,130.0, 30.0, 78.0, 18.0
-	real4	120.0, 40.0, 72.0, 24.0,110.0, 50.0, 66.0, 30.0,100.0, 60.0, 60.0, 36.0, 90.0, 70.0, 54.0, 42.0
-	real4	 80.0, 80.0, 48.0, 48.0, 70.0, 90.0, 42.0, 54.0, 60.0,100.0, 36.0, 60.0, 50.0,110.0, 30.0, 66.0
-	real4	 40.0,120.0, 24.0, 72.0, 30.0,130.0, 18.0, 78.0, 20.0,140.0, 12.0, 84.0, 10.0,150.0,  6.0, 90.0
+	dd	160.0,  0.0, 96.0,  0.0,150.0, 10.0, 90.0,  6.0,140.0, 20.0, 84.0, 12.0,130.0, 30.0, 78.0, 18.0
+	dd	120.0, 40.0, 72.0, 24.0,110.0, 50.0, 66.0, 30.0,100.0, 60.0, 60.0, 36.0, 90.0, 70.0, 54.0, 42.0
+	dd	 80.0, 80.0, 48.0, 48.0, 70.0, 90.0, 42.0, 54.0, 60.0,100.0, 36.0, 60.0, 50.0,110.0, 30.0, 66.0
+	dd	 40.0,120.0, 24.0, 72.0, 30.0,130.0, 18.0, 78.0, 20.0,140.0, 12.0, 84.0, 10.0,150.0,  6.0, 90.0
 
-	real4	144.0,  0.0,112.0,  0.0,135.0,  9.0,105.0,  7.0,126.0, 18.0, 98.0, 14.0,117.0, 27.0, 91.0, 21.0
-	real4	108.0, 36.0, 84.0, 28.0, 99.0, 45.0, 77.0, 35.0, 90.0, 54.0, 70.0, 42.0, 81.0, 63.0, 63.0, 49.0
-	real4	 72.0, 72.0, 56.0, 56.0, 63.0, 81.0, 49.0, 63.0, 54.0, 90.0, 42.0, 70.0, 45.0, 99.0, 35.0, 77.0
-	real4	 36.0,108.0, 28.0, 84.0, 27.0,117.0, 21.0, 91.0, 18.0,126.0, 14.0, 98.0,  9.0,135.0,  7.0,105.0
+	dd	144.0,  0.0,112.0,  0.0,135.0,  9.0,105.0,  7.0,126.0, 18.0, 98.0, 14.0,117.0, 27.0, 91.0, 21.0
+	dd	108.0, 36.0, 84.0, 28.0, 99.0, 45.0, 77.0, 35.0, 90.0, 54.0, 70.0, 42.0, 81.0, 63.0, 63.0, 49.0
+	dd	 72.0, 72.0, 56.0, 56.0, 63.0, 81.0, 49.0, 63.0, 54.0, 90.0, 42.0, 70.0, 45.0, 99.0, 35.0, 77.0
+	dd	 36.0,108.0, 28.0, 84.0, 27.0,117.0, 21.0, 91.0, 18.0,126.0, 14.0, 98.0,  9.0,135.0,  7.0,105.0
 
-	real4	128.0,  0.0,128.0,  0.0,120.0,  8.0,120.0,  8.0,112.0, 16.0,112.0, 16.0,104.0, 24.0,104.0, 24.0
-	real4	 96.0, 32.0, 96.0, 32.0, 88.0, 40.0, 88.0, 40.0, 80.0, 48.0, 80.0, 48.0, 72.0, 56.0, 72.0, 56.0
-	real4	 64.0, 64.0, 64.0, 64.0, 56.0, 72.0, 56.0, 72.0, 48.0, 80.0, 48.0, 80.0, 40.0, 88.0, 40.0, 88.0
-	real4	 32.0, 96.0, 32.0, 96.0, 24.0,104.0, 24.0,104.0, 16.0,112.0, 16.0,112.0,  8.0,120.0,  8.0,120.0
+	dd	128.0,  0.0,128.0,  0.0,120.0,  8.0,120.0,  8.0,112.0, 16.0,112.0, 16.0,104.0, 24.0,104.0, 24.0
+	dd	 96.0, 32.0, 96.0, 32.0, 88.0, 40.0, 88.0, 40.0, 80.0, 48.0, 80.0, 48.0, 72.0, 56.0, 72.0, 56.0
+	dd	 64.0, 64.0, 64.0, 64.0, 56.0, 72.0, 56.0, 72.0, 48.0, 80.0, 48.0, 80.0, 40.0, 88.0, 40.0, 88.0
+	dd	 32.0, 96.0, 32.0, 96.0, 24.0,104.0, 24.0,104.0, 16.0,112.0, 16.0,112.0,  8.0,120.0,  8.0,120.0
 
-	real4	112.0,  0.0,144.0,  0.0,105.0,  7.0,135.0,  9.0, 98.0, 14.0,126.0, 18.0, 91.0, 21.0,117.0, 27.0
-	real4	 84.0, 28.0,108.0, 36.0, 77.0, 35.0, 99.0, 45.0, 70.0, 42.0, 90.0, 54.0, 63.0, 49.0, 81.0, 63.0
-	real4	 56.0, 56.0, 72.0, 72.0, 49.0, 63.0, 63.0, 81.0, 42.0, 70.0, 54.0, 90.0, 35.0, 77.0, 45.0, 99.0
-	real4	 28.0, 84.0, 36.0,108.0, 21.0, 91.0, 27.0,117.0, 14.0, 98.0, 18.0,126.0,  7.0,105.0,  9.0,135.0
+	dd	112.0,  0.0,144.0,  0.0,105.0,  7.0,135.0,  9.0, 98.0, 14.0,126.0, 18.0, 91.0, 21.0,117.0, 27.0
+	dd	 84.0, 28.0,108.0, 36.0, 77.0, 35.0, 99.0, 45.0, 70.0, 42.0, 90.0, 54.0, 63.0, 49.0, 81.0, 63.0
+	dd	 56.0, 56.0, 72.0, 72.0, 49.0, 63.0, 63.0, 81.0, 42.0, 70.0, 54.0, 90.0, 35.0, 77.0, 45.0, 99.0
+	dd	 28.0, 84.0, 36.0,108.0, 21.0, 91.0, 27.0,117.0, 14.0, 98.0, 18.0,126.0,  7.0,105.0,  9.0,135.0
 
-	real4	 96.0,  0.0,160.0,  0.0, 90.0,  6.0,150.0, 10.0, 84.0, 12.0,140.0, 20.0, 78.0, 18.0,130.0, 30.0
-	real4	 72.0, 24.0,120.0, 40.0, 66.0, 30.0,110.0, 50.0, 60.0, 36.0,100.0, 60.0, 54.0, 42.0, 90.0, 70.0
-	real4	 48.0, 48.0, 80.0, 80.0, 42.0, 54.0, 70.0, 90.0, 36.0, 60.0, 60.0,100.0, 30.0, 66.0, 50.0,110.0
-	real4	 24.0, 72.0, 40.0,120.0, 18.0, 78.0, 30.0,130.0, 12.0, 84.0, 20.0,140.0,  6.0, 90.0, 10.0,150.0
+	dd	 96.0,  0.0,160.0,  0.0, 90.0,  6.0,150.0, 10.0, 84.0, 12.0,140.0, 20.0, 78.0, 18.0,130.0, 30.0
+	dd	 72.0, 24.0,120.0, 40.0, 66.0, 30.0,110.0, 50.0, 60.0, 36.0,100.0, 60.0, 54.0, 42.0, 90.0, 70.0
+	dd	 48.0, 48.0, 80.0, 80.0, 42.0, 54.0, 70.0, 90.0, 36.0, 60.0, 60.0,100.0, 30.0, 66.0, 50.0,110.0
+	dd	 24.0, 72.0, 40.0,120.0, 18.0, 78.0, 30.0,130.0, 12.0, 84.0, 20.0,140.0,  6.0, 90.0, 10.0,150.0
 
-	real4	 80.0,  0.0,176.0,  0.0, 75.0,  5.0,165.0, 11.0, 70.0, 10.0,154.0, 22.0, 65.0, 15.0,143.0, 33.0
-	real4	 60.0, 20.0,132.0, 44.0, 55.0, 25.0,121.0, 55.0, 50.0, 30.0,110.0, 66.0, 45.0, 35.0, 99.0, 77.0
-	real4	 40.0, 40.0, 88.0, 88.0, 35.0, 45.0, 77.0, 99.0, 30.0, 50.0, 66.0,110.0, 25.0, 55.0, 55.0,121.0
-	real4	 20.0, 60.0, 44.0,132.0, 15.0, 65.0, 33.0,143.0, 10.0, 70.0, 22.0,154.0,  5.0, 75.0, 11.0,165.0
+	dd	 80.0,  0.0,176.0,  0.0, 75.0,  5.0,165.0, 11.0, 70.0, 10.0,154.0, 22.0, 65.0, 15.0,143.0, 33.0
+	dd	 60.0, 20.0,132.0, 44.0, 55.0, 25.0,121.0, 55.0, 50.0, 30.0,110.0, 66.0, 45.0, 35.0, 99.0, 77.0
+	dd	 40.0, 40.0, 88.0, 88.0, 35.0, 45.0, 77.0, 99.0, 30.0, 50.0, 66.0,110.0, 25.0, 55.0, 55.0,121.0
+	dd	 20.0, 60.0, 44.0,132.0, 15.0, 65.0, 33.0,143.0, 10.0, 70.0, 22.0,154.0,  5.0, 75.0, 11.0,165.0
 
-	real4	 64.0,  0.0,192.0,  0.0, 60.0,  4.0,180.0, 12.0, 56.0,  8.0,168.0, 24.0, 52.0, 12.0,156.0, 36.0
-	real4	 48.0, 16.0,144.0, 48.0, 44.0, 20.0,132.0, 60.0, 40.0, 24.0,120.0, 72.0, 36.0, 28.0,108.0, 84.0
-	real4	 32.0, 32.0, 96.0, 96.0, 28.0, 36.0, 84.0,108.0, 24.0, 40.0, 72.0,120.0, 20.0, 44.0, 60.0,132.0
-	real4	 16.0, 48.0, 48.0,144.0, 12.0, 52.0, 36.0,156.0,  8.0, 56.0, 24.0,168.0,  4.0, 60.0, 12.0,180.0
+	dd	 64.0,  0.0,192.0,  0.0, 60.0,  4.0,180.0, 12.0, 56.0,  8.0,168.0, 24.0, 52.0, 12.0,156.0, 36.0
+	dd	 48.0, 16.0,144.0, 48.0, 44.0, 20.0,132.0, 60.0, 40.0, 24.0,120.0, 72.0, 36.0, 28.0,108.0, 84.0
+	dd	 32.0, 32.0, 96.0, 96.0, 28.0, 36.0, 84.0,108.0, 24.0, 40.0, 72.0,120.0, 20.0, 44.0, 60.0,132.0
+	dd	 16.0, 48.0, 48.0,144.0, 12.0, 52.0, 36.0,156.0,  8.0, 56.0, 24.0,168.0,  4.0, 60.0, 12.0,180.0
 
-	real4	 48.0,  0.0,208.0,  0.0, 45.0,  3.0,195.0, 13.0, 42.0,  6.0,182.0, 26.0, 39.0,  9.0,169.0, 39.0
-	real4	 36.0, 12.0,156.0, 52.0, 33.0, 15.0,143.0, 65.0, 30.0, 18.0,130.0, 78.0, 27.0, 21.0,117.0, 91.0
-	real4	 24.0, 24.0,104.0,104.0, 21.0, 27.0, 91.0,117.0, 18.0, 30.0, 78.0,130.0, 15.0, 33.0, 65.0,143.0
-	real4	 12.0, 36.0, 52.0,156.0,  9.0, 39.0, 39.0,169.0,  6.0, 42.0, 26.0,182.0,  3.0, 45.0, 13.0,195.0
+	dd	 48.0,  0.0,208.0,  0.0, 45.0,  3.0,195.0, 13.0, 42.0,  6.0,182.0, 26.0, 39.0,  9.0,169.0, 39.0
+	dd	 36.0, 12.0,156.0, 52.0, 33.0, 15.0,143.0, 65.0, 30.0, 18.0,130.0, 78.0, 27.0, 21.0,117.0, 91.0
+	dd	 24.0, 24.0,104.0,104.0, 21.0, 27.0, 91.0,117.0, 18.0, 30.0, 78.0,130.0, 15.0, 33.0, 65.0,143.0
+	dd	 12.0, 36.0, 52.0,156.0,  9.0, 39.0, 39.0,169.0,  6.0, 42.0, 26.0,182.0,  3.0, 45.0, 13.0,195.0
 
-	real4	 32.0,  0.0,224.0,  0.0, 30.0,  2.0,210.0, 14.0, 28.0,  4.0,196.0, 28.0, 26.0,  6.0,182.0, 42.0
-	real4	 24.0,  8.0,168.0, 56.0, 22.0, 10.0,154.0, 70.0, 20.0, 12.0,140.0, 84.0, 18.0, 14.0,126.0, 98.0
-	real4	 16.0, 16.0,112.0,112.0, 14.0, 18.0, 98.0,126.0, 12.0, 20.0, 84.0,140.0, 10.0, 22.0, 70.0,154.0
-	real4	  8.0, 24.0, 56.0,168.0,  6.0, 26.0, 42.0,182.0,  4.0, 28.0, 28.0,196.0,  2.0, 30.0, 14.0,210.0
+	dd	 32.0,  0.0,224.0,  0.0, 30.0,  2.0,210.0, 14.0, 28.0,  4.0,196.0, 28.0, 26.0,  6.0,182.0, 42.0
+	dd	 24.0,  8.0,168.0, 56.0, 22.0, 10.0,154.0, 70.0, 20.0, 12.0,140.0, 84.0, 18.0, 14.0,126.0, 98.0
+	dd	 16.0, 16.0,112.0,112.0, 14.0, 18.0, 98.0,126.0, 12.0, 20.0, 84.0,140.0, 10.0, 22.0, 70.0,154.0
+	dd	  8.0, 24.0, 56.0,168.0,  6.0, 26.0, 42.0,182.0,  4.0, 28.0, 28.0,196.0,  2.0, 30.0, 14.0,210.0
 
-	real4	 16.0,  0.0,240.0,  0.0, 15.0,  1.0,225.0, 15.0, 14.0,  2.0,210.0, 30.0, 13.0,  3.0,195.0, 45.0
-	real4	 12.0,  4.0,180.0, 60.0, 11.0,  5.0,165.0, 75.0, 10.0,  6.0,150.0, 90.0,  9.0,  7.0,135.0,105.0
-	real4	  8.0,  8.0,120.0,120.0,  7.0,  9.0,105.0,135.0,  6.0, 10.0, 90.0,150.0,  5.0, 11.0, 75.0,165.0
-	real4	  4.0, 12.0, 60.0,180.0,  3.0, 13.0, 45.0,195.0,  2.0, 14.0, 30.0,210.0,  1.0, 15.0, 15.0,225.0
+	dd	 16.0,  0.0,240.0,  0.0, 15.0,  1.0,225.0, 15.0, 14.0,  2.0,210.0, 30.0, 13.0,  3.0,195.0, 45.0
+	dd	 12.0,  4.0,180.0, 60.0, 11.0,  5.0,165.0, 75.0, 10.0,  6.0,150.0, 90.0,  9.0,  7.0,135.0,105.0
+	dd	  8.0,  8.0,120.0,120.0,  7.0,  9.0,105.0,135.0,  6.0, 10.0, 90.0,150.0,  5.0, 11.0, 75.0,165.0
+	dd	  4.0, 12.0, 60.0,180.0,  3.0, 13.0, 45.0,195.0,  2.0, 14.0, 30.0,210.0,  1.0, 15.0, 15.0,225.0
 
 
 bilinMMX_tab1	dq	0000000000000000h
@@ -143,7 +140,7 @@ zero	dq	0000000000000000h
 sixteen	dq	0010001000100010h
 
 
-	.code
+	segment	.text
 
 ;**************************************************************************
 ;
@@ -168,7 +165,7 @@ sixteen	dq	0010001000100010h
 ;
 ;**************************************************************************
 
-	public	_asm_resize_nearest
+	global	_asm_resize_nearest	
 
 _asm_resize_nearest:
 	push	ebp
@@ -264,7 +261,7 @@ rowloop_no_postcopy:
 	pop	ebp
 	ret
 
-	public	_asm_resize_bilinear
+	global	_asm_resize_bilinear	
 
 ;**************************************************************************
 ;
@@ -290,10 +287,10 @@ rowloop_no_postcopy:
 
 
 _asm_resize_bilinear:
-	test	_MMX_enabled,1
+	test	byte [_MMX_enabled], 1
 	jnz	asm_resize_bilinear_MMX
 
-	test	_FPU_enabled,1
+	test	byte [_FPU_enabled], 1
 	jnz	asm_resize_bilinear_FPU
 
 	push	ebp
@@ -473,7 +470,7 @@ bilinear_no_postcopy:
 	sub	ebx,eax
 	mov	[esp+28],ebx
 
-	dec	dword ptr [esp+16+16+32]	;next line!!
+	dec	dword [esp+16+16+32]	;next line!!
 	jne	rowloop_bilinear
 
 	add	esp,32
@@ -521,13 +518,8 @@ bilinear_prepostcopy:
 ;
 ;
 
-;real80_adjust	real10	4611686018427387904.0
-;real80_adjust	real10	9223372036854775808.0
-;real80_adjust	real10	13835058055282163712.0
-;real80_adjust	real10	1180591620717411303424.0	;shift right by 7
-real80_adjust	real10	2361183241434822606848.0	;shift right by 8
-real80_adjust16	real10	147573952589676412928.0
-;real80_adjust16	real10	 73786976294838206464.0		;shift right by 4
+real80_adjust	dt	2361183241434822606848.0	;shift right by 8
+real80_adjust16	dt	147573952589676412928.0
 
 asm_resize_bilinear_FPU:
 	push	ebp
@@ -538,10 +530,10 @@ asm_resize_bilinear_FPU:
 	mov	eax,esp
 	and	esp,-32
 
-LOCALS=96
+.LOCALS	equ 96
 
-	sub	esp,LOCALS
-	mov	[esp+LOCALS-4],eax
+	sub	esp,.LOCALS
+	mov	[esp+.LOCALS-4],eax
 
         ;copy down parameters.
 
@@ -552,8 +544,8 @@ LOCALS=96
 
 	;flip the FPU into 80-bit, round-down mode.
 
-	fstcw	[esp+LOCALS-8]
-	mov	eax,[esp+LOCALS-8]
+	fstcw	[esp+.LOCALS-8]
+	mov	eax,[esp+.LOCALS-8]
 	and	eax,0fffff0ffh
 	or	eax,000000700h
 	mov	[esp],eax
@@ -561,7 +553,7 @@ LOCALS=96
 
 	;prime FPU stack.
 
-	fld	real80_adjust
+	fld		tword [real80_adjust]
 
 ;******************************************************
 ;
@@ -590,7 +582,7 @@ LOCALS=96
 ;	[esp+  4]
 ;	[esp+  0]
 
-rowloop_bilinear_FPU:
+.rowloop_bilinear_FPU:
 	mov	ebp,[esp+32]		;load width count
 	mov	eax,[esp+48]		;copy xaccum
 	mov	[esp+20],eax		;xaccum' = xaccum
@@ -600,14 +592,14 @@ rowloop_bilinear_FPU:
 	mov	eax,[esp+52]		;eax = yaccum
 	and	eax,0f0000000h
 	shr	eax,20
-	add	eax,offset bilinFPU_tbl
+	add	eax, bilinFPU_tbl
 	mov	[esp+16],eax
 
 	;check for precopy
 
 	mov	ecx,[esp+76]
 	or	ecx,ecx
-	jz	colloop_bilinear_start_FPU
+	jz	.colloop_bilinear_start_FPU
 
 	;do precopy
 
@@ -617,16 +609,16 @@ rowloop_bilinear_FPU:
 	mov	[esp+24],edx
 	mov	esi,[esp+72]
 
-	call	bilinear_prepostcopy_FPU
+	call	.bilinear_prepostcopy_FPU
 
 	mov	ebp,[esp+76]
 	sub	edx,ebp
 	mov	[esp+24],edx
 	mov	ebp,[esp+32]
 
-colloop_bilinear_start_FPU:
+.colloop_bilinear_start_FPU:
 	or	ebp,ebp
-	jz	bilinear_check_postcopy_FPU
+	jz	.bilinear_check_postcopy_FPU
 
 	mov	esi,[esp+28]		;load source pointer
 	mov	bl,[esp+23]		;cl = xaccum>>24
@@ -635,7 +627,7 @@ colloop_bilinear_start_FPU:
 	and	ebx,000000f0h		;ecx = x-offset in rowbase
 	add	edx,ebx
 
-colloop_bilinear_FPU:
+.colloop_bilinear_FPU:
 	mov	eax,[esi*4]
 	mov	ecx,[esi*4+4]
 
@@ -648,7 +640,7 @@ colloop_bilinear_FPU:
 	mov	[esp+4],ebx
 	mov	ebx,ecx
 
-	fild	qword ptr [esp+0]	;stack: x1 cv
+	fild	qword [esp+0]	;stack: x1 cv
 
 	and	ecx,00ff00ffh
 	and	ebx,0000ff00h
@@ -656,8 +648,8 @@ colloop_bilinear_FPU:
 	mov	[esp+8],ecx
 	mov	[esp+12],ebx
 
-	fmul	real4 ptr [edx+0]	;stack: y1 cv
-	fild	qword ptr [esp+8]	;stack: x2 y1 cv
+	fmul	dword [edx+0]	;stack: y1 cv
+	fild	qword [esp+8]	;stack: x2 y1 cv
 
 	mov	eax,[esi*4+edi]
 	mov	ecx,[esi*4+edi+4]
@@ -665,9 +657,9 @@ colloop_bilinear_FPU:
 	mov	ebx,eax
 	and	eax,00ff00ffh
 
-	fmul	real4 ptr [edx+4]	;stack: y2 y1 cv
-	fxch	st(1)			;stack: y1 y2 cv
-	fadd	st,st(2)		;stack: (y1+cv) y2 cv
+	fmul	dword [edx+4]	;stack: y2 y1 cv
+	fxch	st1			;stack: y1 y2 cv
+	fadd	st0,st2		;stack: (y1+cv) y2 cv
 
 	and	ebx,0000ff00h
 	mov	[esp+0],eax
@@ -675,36 +667,36 @@ colloop_bilinear_FPU:
 	mov	[esp+4],ebx
 	mov	ebx,ecx
 
-	fild	qword ptr [esp+0]	;stack: x3 (y1+cv) y2 cv
-	fxch	st(1)			;stack: (y1+cv) x3 y2 cv
-	faddp	st(2),st		;stack: x3 (y1+y2+cv) cv
+	fild	qword [esp+0]	;stack: x3 (y1+cv) y2 cv
+	fxch	st1			;stack: (y1+cv) x3 y2 cv
+	faddp	st2,st0		;stack: x3 (y1+y2+cv) cv
 
 	and	ecx,00ff00ffh
 	and	ebx,0000ff00h
 
-	fmul	real4 ptr [edx+8]	;stack: y3 (y1+y2+cv) cv
+	fmul	dword [edx+8]	;stack: y3 (y1+y2+cv) cv
 
 	mov	[esp+8],ecx
 	mov	[esp+12],ebx
 
-	fild	qword ptr [esp+8]	;stack: x4 y3 (y1+y2+cv) cv
-	fxch	st(1)			;stack: y3 x4 (y1+y2+cv) cv
-	faddp	st(2),st		;stack: x4 (y1+y2+y3+cv) cv
+	fild	qword [esp+8]	;stack: x4 y3 (y1+y2+cv) cv
+	fxch	st1				;stack: y3 x4 (y1+y2+cv) cv
+	faddp	st2,st0			;stack: x4 (y1+y2+y3+cv) cv
 
 	mov	eax,[esp+20]		;[frac update] u x_accum
 	mov	ecx,[esp+56]		;[frac update] v x_inc
 
-	fmul	real4 ptr [edx+12]	;stack: y4 (y1+y2+y3+cv) cv
+	fmul	dword [edx+12]	;stack: y4 (y1+y2+y3+cv) cv
 
 	mov	ebx,[esp+64]		;[frac update] u xint
-	add	eax,ecx			;[frac update] v
+	add	eax,ecx				;[frac update] v
 
-	adc	esi,ebx			;[frac update] u: update source pointer
+	adc	esi,ebx				;[frac update] u: update source pointer
 	mov	[esp+20],eax		;[frac update] v new x_accum
 
-	fadd				;stack: (y1+y2+y3+y4+cv) cv
+	faddp					;stack: (y1+y2+y3+y4+cv) cv
 
-	shr	eax,24			;[frac update] al = xaccum>>24
+	shr	eax,24				;[frac update] al = xaccum>>24
 	mov	edx,[esp+16]		;[frac update] edx = rowbase
 
 	and	eax,000000f0h		;[frac update] eax = x-offset in rowbase
@@ -713,7 +705,7 @@ colloop_bilinear_FPU:
 	add	edx,eax			;[frac update] edx = new FPU coefficient pointer
 	;<<v-stall>>
 
-	fstp	real10 ptr [esp+0]	;stack: cv
+	fstp	tword [esp+0]	;stack: cv
 
 	mov	eax,[esp+0]		;[data merge ] u
 	mov	ecx,[esp+4]		;[data merge ] v
@@ -726,27 +718,27 @@ colloop_bilinear_FPU:
 	mov	[ebx+ebp],eax		;[data write ] u
 
 	add	ebp,4
-	jne	colloop_bilinear_FPU
+	jne	.colloop_bilinear_FPU
 
-bilinear_check_postcopy_FPU:
+.bilinear_check_postcopy_FPU:
 
 	mov	ebp,[esp+84]
 	or	ebp,ebp
-	jz	bilinear_no_postcopy_FPU
+	jz	.bilinear_no_postcopy_FPU
 
 	mov	eax,[esp+24]
 	sub	eax,ebp
 	mov	esi,[esp+80]
 	mov	[esp+24],eax
 
-	call	bilinear_prepostcopy_FPU
+	call	.bilinear_prepostcopy_FPU
 
 	add	edx,[esp+84]
 	mov	[esp+24],edx
 
 	;******************
 
-bilinear_no_postcopy_FPU:
+.bilinear_no_postcopy_FPU:
 	mov	eax,[esp+52]		;load yaccum
 	mov	edx,[esp+24]		;load dest. pointer
 
@@ -776,18 +768,18 @@ bilinear_no_postcopy_FPU:
 	mov	[esp+80],ebp		;store source ptr
 	mov	[esp+24],edx
 
-	dec	dword ptr [esp+36]
-	jne	rowloop_bilinear_FPU
+	dec	dword [esp+36]
+	jne	.rowloop_bilinear_FPU
 
 	;ditch fp value
 
-	fstp	st(0)
+	fstp	st0
 
 	;restore FPU rounding and precision
 
-	fldcw	[esp+LOCALS-8]
+	fldcw	[esp+.LOCALS-8]
 
-	mov	esp,[esp+LOCALS-4]
+	mov	esp,[esp+.LOCALS-4]
 
 	pop	ebx
 	pop	esi
@@ -795,9 +787,9 @@ bilinear_no_postcopy_FPU:
 	pop	ebp
 	ret
 
-bilinear_prepostcopy_FPU:
+.bilinear_prepostcopy_FPU:
 
-colloop_bilinear_prepostcopy_FPU:
+.colloop_bilinear_prepostcopy_FPU:
 	mov	edx,[esp+16+4]		;edx = rowbase
 	mov	eax,[esi]
 	mov	ecx,[esi+edi]
@@ -811,7 +803,7 @@ colloop_bilinear_prepostcopy_FPU:
 	mov	[esp+4+4],ebx
 	mov	ebx,ecx
 
-	fild	qword ptr [esp+0+4]	;stack: x1 cv
+	fild	qword [esp+0+4]	;stack: x1 cv
 
 	and	ecx,00ff00ffh
 	and	ebx,0000ff00h
@@ -819,17 +811,17 @@ colloop_bilinear_prepostcopy_FPU:
 	mov	[esp+8+4],ecx
 	mov	[esp+12+4],ebx
 
-	fmul	real4 ptr [edx+0]	;stack: y1 cv
-	fild	qword ptr [esp+8+4]	;stack: x2 y1 cv
+	fmul	dword [edx+0]	;stack: y1 cv
+	fild	qword [esp+8+4]	;stack: x2 y1 cv
 
-	fmul	real4 ptr [edx+8]	;stack: y2 y1 cv
-	fxch	st(1)			;stack: y1 y2 cv
-	fadd	st,st(2)		;stack: (y1+cv) y2 cv
+	fmul	dword [edx+8]	;stack: y2 y1 cv
+	fxch	st1				;stack: y1 y2 cv
+	fadd	st0,st2			;stack: (y1+cv) y2 cv
 
 	mov	edx,[esp+24+4]		;[data write] u
 	;<<v-stall>>
 
-	fadd				;stack: (y1+y2+cv) cv
+	faddp					;stack: (y1+y2+cv) cv
 
 	;<<u-stall>>
 	;<<v-stall>>
@@ -837,7 +829,7 @@ colloop_bilinear_prepostcopy_FPU:
 	;<<u-stall>>
 	;<<v-stall>>
 
-	fstp	real10 ptr [esp+0+4]	;stack: cv
+	fstp	tword [esp+0+4]	;stack: cv
 
 	mov	eax,[esp+0+4]		;[data merge ] u
 	mov	ecx,[esp+4+4]		;[data merge ] v
@@ -850,7 +842,7 @@ colloop_bilinear_prepostcopy_FPU:
 	mov	[edx+ebp],eax		;[data write ] u
 
 	add	ebp,4
-	jne	colloop_bilinear_prepostcopy_FPU
+	jne	.colloop_bilinear_prepostcopy_FPU
 
 	ret
 
@@ -883,7 +875,7 @@ asm_resize_bilinear_MMX:
 	mov	[esp+0],eax
 	mov	[esp+4],eax
 
-bilinear_rowloop_MMX:
+.bilinear_rowloop_MMX:
 	mov		esi,[esp+ 8+16+32]		;esi = source
 	mov		edi,[esp+24+16+32]		;edi = source pitch
 
@@ -895,7 +887,7 @@ bilinear_rowloop_MMX:
 	shr		eax,28
 	movd		mm7,eax
 	punpcklwd	mm7,mm7
-	movq		mm6,sixteen
+	movq		mm6,[sixteen]
 	punpckldq	mm7,mm7
 	psubw		mm6,mm7
 	pxor		mm5,mm5
@@ -906,24 +898,24 @@ bilinear_rowloop_MMX:
 
 	mov	ebp,[esp+56+16+32]		;load precopy value
 	or	ebp,ebp
-	jz	colloop_bilinear_start_MMX
+	jz	.colloop_bilinear_start_MMX
 
 	;do precopy
 
 	add	edx,[esp+12+16+32]
 	mov	esi,[esp+52+16+32]
 
-	call	bilinear_prepostcopy_MMX
+	call	.bilinear_prepostcopy_MMX
 
 	mov	edx,[esp+4+16+32]
 	mov	esi,[esp+8+16+32]
 
 	shr	esi,2
 
-colloop_bilinear_start_MMX:
+.colloop_bilinear_start_MMX:
 	mov	ebp,[esp+12+16+32]
 	or	ebp,ebp
-	jz	bilinear_check_postcopy_MMX
+	jz	.bilinear_check_postcopy_MMX
 
 	;<------------- begin pre-entry phase ------------->
 
@@ -931,31 +923,31 @@ colloop_bilinear_start_MMX:
 	mov		ecx,eax
 	shr		ecx,28
 
-	movd		mm0,dword ptr [esi*4]		;mm0 = top left pixel
-	movd		mm1,dword ptr [esi*4+4]		;mm1 = top right pixel
-	movd		mm3,dword ptr [esi*4+edi+4]	;mm3 = bottom right pixel
-	movd		mm2,dword ptr [esi*4+edi]		;mm2 = bottom left pixel
+	movd		mm0,dword [esi*4]		;mm0 = top left pixel
+	movd		mm1,dword [esi*4+4]		;mm1 = top right pixel
+	movd		mm3,dword [esi*4+edi+4]	;mm3 = bottom right pixel
+	movd		mm2,dword [esi*4+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 	pmullw		mm0,[bilinMMX_tab2 + ecx*8]
 	punpcklbw	mm1,mm5
 	pmullw		mm1,[bilinMMX_tab1 + ecx*8]
 	punpcklbw	mm2,mm5
 	punpcklbw	mm3,mm5
-	jmp		short bilinear_colloop_MMX_entry
+	jmp		short .bilinear_colloop_MMX_entry
 
 	align		16
 
-bilinear_colloop_MMX:
-	movd		mm0,dword ptr [esi*4]		;mm0 = top left pixel
+.bilinear_colloop_MMX:
+	movd		mm0,dword [esi*4]		;mm0 = top left pixel
 	paddw		mm4,mm2			;[last]
 
-	movd		mm1,dword ptr [esi*4+4]		;mm1 = top right pixel
+	movd		mm1,dword [esi*4+4]		;mm1 = top right pixel
 	psrlw		mm4,8			;[last]
 
-	movd		mm3,dword ptr [esi*4+edi+4]	;mm3 = bottom right pixel
+	movd		mm3,dword [esi*4+edi+4]	;mm3 = bottom right pixel
 	packuswb	mm4,mm4			;[last]
 
-	movd		mm2,dword ptr [esi*4+edi]		;mm2 = bottom left pixel
+	movd		mm2,dword [esi*4+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 
 	pmullw		mm0,[bilinMMX_tab2 + ecx*8]
@@ -964,10 +956,10 @@ bilinear_colloop_MMX:
 	pmullw		mm1,[bilinMMX_tab1 + ecx*8]
 	punpcklbw	mm2,mm5
 
-	movd		dword ptr [edx+ebp-4],mm4		;[last]
+	movd		dword [edx+ebp-4],mm4		;[last]
 	punpcklbw	mm3,mm5
 
-bilinear_colloop_MMX_entry:
+.bilinear_colloop_MMX_entry:
 	pmullw		mm2,[bilinMMX_tab2 + ecx*8]
 	movq		mm4,mm0
 
@@ -987,30 +979,30 @@ bilinear_colloop_MMX_entry:
 	pmullw		mm2,mm7
 
 	add		ebp,4
-	jnz		bilinear_colloop_MMX
+	jnz		.bilinear_colloop_MMX
 
 	;<-------------- begin exit phase -------------->
 
 	paddw		mm4,mm2			;[last]
 	psrlw		mm4,8			;[last]
 	packuswb	mm4,mm4			;[last]
-	movd		dword ptr [edx+ebp-4],mm4		;[last]
+	movd		dword [edx+ebp-4],mm4		;[last]
 	mov		ecx,[esp+44+16+32]
 
 
-bilinear_check_postcopy_MMX:
+.bilinear_check_postcopy_MMX:
 	mov	ebp,[esp+64+16+32]		;check for postcopy
 	or	ebp,ebp
-	jz	bilinear_no_postcopy_MMX
+	jz	.bilinear_no_postcopy_MMX
 
 	sub	edx,ebp
 	mov	esi,[esp+60+16+32]
 
-	call	bilinear_prepostcopy_MMX
+	call	.bilinear_prepostcopy_MMX
 
 	;********************************
 
-bilinear_no_postcopy_MMX:
+.bilinear_no_postcopy_MMX:
 	mov	eax,[esp+32+16+32]		;eax = y accumulator
 	mov	edx,[esp+ 4+16+32]		;reload destination pointer
 
@@ -1047,8 +1039,8 @@ bilinear_no_postcopy_MMX:
 
 	mov	[esp+28],ebx			;store y_frac2
 
-	dec	dword ptr [esp+16+16+32]
-	jne	bilinear_rowloop_MMX
+	dec	dword [esp+16+16+32]
+	jne	.bilinear_rowloop_MMX
 
 	add	esp,32
 
@@ -1060,10 +1052,10 @@ bilinear_no_postcopy_MMX:
 	ret
 
 	align		16
-bilinear_prepostcopy_MMX:
-	movd		mm0,dword ptr [esi]		;mm0 = top left pixel
+.bilinear_prepostcopy_MMX:
+	movd		mm0,dword [esi]		;mm0 = top left pixel
 
-	movd		mm2,dword ptr [esi+edi]		;mm2 = bottom left pixel
+	movd		mm2,dword [esi+edi]		;mm2 = bottom left pixel
 	punpcklbw	mm0,mm5
 
 	punpcklbw	mm2,mm5
@@ -1078,8 +1070,8 @@ bilinear_prepostcopy_MMX:
 
 	packuswb	mm0,mm0			;[last]
 
-	movd		dword ptr [edx+ebp-4],mm0		;[last]
-	jne		bilinear_prepostcopy_MMX
+	movd		dword [edx+ebp-4],mm0		;[last]
+	jne		.bilinear_prepostcopy_MMX
 
 	ret
 
@@ -1097,7 +1089,7 @@ bilinear_prepostcopy_MMX:
 ;
 ;**************************************************************************
 
-	public	_asm_bitmap_xlat1
+	global	_asm_bitmap_xlat1	
 
 _asm_bitmap_xlat1:
 	push	ebp
@@ -1142,7 +1134,7 @@ colloop_xlat1:
 	add	esi,[esp+16+16]		;next source row
 	add	edi,[esp+12+16]		;next dest row
 
-	dec	dword ptr [esp+24+16]
+	dec	dword [esp+24+16]
 	jnz	rowloop_xlat1
 
 	pop	ebx
@@ -1162,7 +1154,7 @@ colloop_xlat1:
 ;	[esp+24] PixDim h,
 ;	[esp+28] const Pixel32 *tbl);
 
-	public	_asm_bitmap_xlat3
+	global	_asm_bitmap_xlat3	
 
 _asm_bitmap_xlat3:
 	push	ebp
@@ -1208,7 +1200,7 @@ colloop_xlat3:
 	add	esi,[esp+16+16]		;next source row
 	add	edi,[esp+12+16]		;next dest row
 
-	dec	dword ptr [esp+24+16]
+	dec	dword [esp+24+16]
 	jnz	rowloop_xlat3
 
 	pop	ebx

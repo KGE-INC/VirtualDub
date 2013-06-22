@@ -15,9 +15,7 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.386
-	.model	flat
-	.data
+	segment	.data
 
 histo16_red_tab		dd	000h*54, 008h*54, 010h*54, 018h*54
 			dd	021h*54, 029h*54, 031h*54, 039h*54
@@ -46,13 +44,13 @@ histo16_blu_tab		dd	000h*19, 008h*19, 010h*19, 018h*19
 			dd	0c6h*19, 0ceh*19, 0d6h*19, 0deh*19
 			dd	0e7h*19, 0dfh*19, 0f7h*19, 0ffh*19
 
-	.code
+	segment	.text
 
-	public _asm_histogram_gray_run
-	public _asm_histogram_gray24_run
-	public _asm_histogram_color_run
-	public _asm_histogram_color24_run
-	public _asm_histogram16_run
+	global _asm_histogram_gray_run	
+	global _asm_histogram_gray24_run	
+	global _asm_histogram_color_run	
+	global _asm_histogram_color24_run	
+	global _asm_histogram16_run	
 
 ;asm_histogram_gray_run(
 ;	[esp+ 4] void *src,
@@ -75,12 +73,12 @@ _asm_histogram_gray_run:
 	mov	esi,[esp+ 4+28]
 	mov	ebp,[esp+12+28]
 
-histogram@rowloop:
+histogram.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
 	push	esi
-histogram@colloop:
+histogram.colloop:
 	mov     eax,[esi]		;1u EAX=?.R.G.B
         xor     ebx,ebx			;1v EBX=0
         mov     edx,eax			;2u EDX=?.R.G.B
@@ -102,9 +100,9 @@ histogram@colloop:
 	shr	eax,8			;10u
 	mov	edi,[esp+20+36]		;10v
 	and	eax,255
-	inc	dword ptr [edi+eax*4]	;12u (big AGI penalties... *ugh*)
+	inc	dword [edi+eax*4]	;12u (big AGI penalties... *ugh*)
 	dec	ebp			;12v
-	jne	histogram@colloop	;15u
+	jne	histogram.colloop	;15u
 
 	pop	esi
 
@@ -112,7 +110,7 @@ histogram@colloop:
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	histogram@rowloop
+	jne	histogram.rowloop
 
 	pop	eax
 	pop	ebx
@@ -144,12 +142,12 @@ _asm_histogram_gray24_run:
 	mov	esi,[esp+ 4+28]
 	mov	ebp,[esp+12+28]
 
-histogram24@rowloop:
+histogram24.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
 	push	esi
-histogram24@colloop:
+histogram24.colloop:
 	mov     eax,[esi]		;1u EAX=?.R.G.B
         xor     ebx,ebx			;1v EBX=0
         mov     edx,eax			;2u EDX=?.R.G.B
@@ -171,9 +169,9 @@ histogram24@colloop:
 	shr	eax,8			;10u
 	mov	edi,[esp+20+36]		;10v
 	and	eax,255
-	inc	dword ptr [edi+eax*4]	;12u (big AGI penalties... *ugh*)
+	inc	dword [edi+eax*4]	;12u (big AGI penalties... *ugh*)
 	dec	ebp			;12v
-	jne	histogram24@colloop	;15u
+	jne	histogram24.colloop	;15u
 
 	pop	esi
 
@@ -181,7 +179,7 @@ histogram24@colloop:
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	histogram24@rowloop
+	jne	histogram24.rowloop
 
 	pop	eax
 	pop	ebx
@@ -213,20 +211,20 @@ _asm_histogram_color_run:
 	mov	edi,[esp+20+28]
 	mov	ebp,[esp+12+28]
 
-histogram_color@rowloop:
+histogram_color.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
 	push	esi
 	xor	eax,eax
-histogram_color@colloop:
+histogram_color.colloop:
 	mov	al,[esi]		;1u
 	add	esi,4			;1v
 	mov	ebx,[edi+eax*4]		;2u [AGI]
 	inc	ebx			;4u
 	dec	ebp			;4v
 	mov	[edi+eax*4],ebx		;5u
-	jne	histogram_color@colloop	;5v
+	jne	histogram_color.colloop	;5v
 
 	pop	esi
 
@@ -234,7 +232,7 @@ histogram_color@colloop:
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	histogram_color@rowloop
+	jne	histogram_color.rowloop
 
 	pop	eax
 	pop	ebx
@@ -266,20 +264,20 @@ _asm_histogram_color24_run:
 	mov	edi,[esp+20+28]
 	mov	ebp,[esp+12+28]
 
-histogram_color24@rowloop:
+histogram_color24.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
 	push	esi
 	xor	eax,eax
-histogram_color24@colloop:
+histogram_color24.colloop:
 	mov	al,[esi]		;1u
 	add	esi,3			;1v
 	mov	ebx,[edi+eax*4]		;2u [AGI]
 	inc	ebx			;4u
 	dec	ebp			;4v
 	mov	[edi+eax*4],ebx		;5u
-	jne	histogram_color24@colloop	;5v
+	jne	histogram_color24.colloop	;5v
 
 	pop	esi
 
@@ -287,7 +285,7 @@ histogram_color24@colloop:
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	histogram_color24@rowloop
+	jne	histogram_color24.rowloop
 
 	pop	eax
 	pop	ebx
@@ -323,12 +321,12 @@ _asm_histogram16_run:
 	mov	ebp,[esp+12+28]
 	mov	edx,[esp+24+28]
 
-histogram16@rowloop:
+histogram16.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+32]
 
 	push	esi
-histogram16@colloop:
+histogram16.colloop:
 	xor	eax,eax
 
 	mov	ax,[esi+0]		;eax = RRRRRGGGGGBBBBB
@@ -358,10 +356,10 @@ histogram16@colloop:
 	shr	eax,8
 	add	esi,2
 
-	inc	dword ptr [edi+eax*4]	;12u (big AGI penalties... *ugh*)
+	inc	dword [edi+eax*4]	;12u (big AGI penalties... *ugh*)
 
 	dec	ebp			;12v
-	jne	histogram16@colloop	;15u
+	jne	histogram16.colloop	;15u
 
 	pop	esi
 
@@ -369,7 +367,7 @@ histogram16@colloop:
 	add	esi,[esp+16+28]
 
 	dec	ebp
-	jne	histogram16@rowloop
+	jne	histogram16.rowloop
 
 	pop	eax
 	pop	ebx

@@ -5,9 +5,10 @@
 
 typedef int (*TestFn)();
 
-extern void AddTest(TestFn, const char *);
+extern void AddTest(TestFn, const char *, bool autoRun);
 
-#define DEFINE_TEST(name) int Test##name(); namespace { struct TestAutoInit_##name { TestAutoInit_##name() { AddTest(Test##name, #name); } } g_testAutoInit_##name; } int Test##name()
+#define DEFINE_TEST(name) int Test##name(); namespace { struct TestAutoInit_##name { TestAutoInit_##name() { AddTest(Test##name, #name, true); } } g_testAutoInit_##name; } int Test##name()
+#define DEFINE_TEST_NONAUTO(name) int Test##name(); namespace { struct TestAutoInit_##name { TestAutoInit_##name() { AddTest(Test##name, #name, false); } } g_testAutoInit_##name; } int Test##name()
 
 class AssertionException : public MyError {
 public:

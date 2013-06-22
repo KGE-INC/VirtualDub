@@ -15,25 +15,18 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.686
-	.mmx
-	.xmm
-	.model	flat
-
 	extern _YUV_Y_table: dword
 	extern _YUV_U_table: dword
 	extern _YUV_V_table: dword
 	extern _YUV_clip_table: byte
 	extern _YUV_clip_table16: byte
 
-	assume fs:_TEXT
-
-	.const
+	segment	.rdata, align=16
 
 	align	16
 
-	public _asm_YUVtoRGB_row_constants_SSE2		
-_asm_YUVtoRGB_row_constants_SSE2	equ $
+	global	_asm_YUVtoRGB_row_constants_SSE2		
+_asm_YUVtoRGB_row_constants_SSE2:
 SSE2_80w	dq	00080008000800080h, 00080008000800080h
 SSE2_Ublucoeff	dq	00081008100810081h, 00081008100810081h
 SSE2_Vredcoeff	dq	00066006600660066h, 00066006600660066h
@@ -50,30 +43,30 @@ SSE2_Vcoeff0	dq	000000066FFCC0000h, 0FFCC00000066FFCCh
 SSE2_Vcoeff1	dq	00066FFCC00000066h, 000000066FFCC0000h
 SSE2_Vcoeff2	dq	0FFCC00000066FFCCh, 00066FFCC00000066h
 
-offs_var_begin		= 0
-offs_rgb_pitch		= offs_var_begin + 0
-offs_y_pitch		= offs_var_begin + 4
-offs_uv_pitch		= offs_var_begin + 8
-offs_width		= offs_var_begin + 12
-offs_height		= offs_var_begin + 16
+%assign		offs_var_begin		0
+%assign		offs_rgb_pitch		offs_var_begin + 0
+%assign		offs_y_pitch		offs_var_begin + 4
+%assign		offs_uv_pitch		offs_var_begin + 8
+%assign		offs_width			offs_var_begin + 12
+%assign		offs_height			offs_var_begin + 16
 
-offs_const_begin	= 32
+%assign		offs_const_begin	32
 
-offs_SSE2_80w		= offs_const_begin + 0
-offs_SSE2_Ublucoeff	= offs_const_begin + 16
-offs_SSE2_Vredcoeff	= offs_const_begin + 32
-offs_SSE2_Ugrncoeff	= offs_const_begin + 48
-offs_SSE2_Vgrncoeff	= offs_const_begin + 64
-offs_SSE2_Ylow		= offs_const_begin + 80
-offs_SSE2_Ybias		= offs_const_begin + 96
-offs_SSE2_Ycoeff	= offs_const_begin + 112
+%assign		offs_SSE2_80w		offs_const_begin + 0
+%assign		offs_SSE2_Ublucoeff	offs_const_begin + 16
+%assign		offs_SSE2_Vredcoeff	offs_const_begin + 32
+%assign		offs_SSE2_Ugrncoeff	offs_const_begin + 48
+%assign		offs_SSE2_Vgrncoeff	offs_const_begin + 64
+%assign		offs_SSE2_Ylow		offs_const_begin + 80
+%assign		offs_SSE2_Ybias		offs_const_begin + 96
+%assign		offs_SSE2_Ycoeff	offs_const_begin + 112
 
-offs_SSE2_Ucoeff0	= offs_const_begin + 128
-offs_SSE2_Ucoeff1	= offs_const_begin + 144
-offs_SSE2_Ucoeff2	= offs_const_begin + 160
-offs_SSE2_Vcoeff0	= offs_const_begin + 176
-offs_SSE2_Vcoeff1	= offs_const_begin + 192
-offs_SSE2_Vcoeff2	= offs_const_begin + 208
+%assign		offs_SSE2_Ucoeff0	offs_const_begin + 128
+%assign		offs_SSE2_Ucoeff1	offs_const_begin + 144
+%assign		offs_SSE2_Ucoeff2	offs_const_begin + 160
+%assign		offs_SSE2_Vcoeff0	offs_const_begin + 176
+%assign		offs_SSE2_Vcoeff1	offs_const_begin + 192
+%assign		offs_SSE2_Vcoeff2	offs_const_begin + 208
 
 
 MMX_10w		dq	00010001000100010h
@@ -97,18 +90,18 @@ MMX_Vcoeff0	dq	000000066FFCC0000h
 MMX_Vcoeff1	dq	0FFCC00000066FFCCh
 MMX_Vcoeff2	dq	00066FFCC00000066h
 
-	.code
+	segment	.text
 
-	public _asm_YUVtoRGB32_row
-	public _asm_YUVtoRGB32_row_MMX
-	public _asm_YUVtoRGB32_row_ISSE
-	public _asm_YUVtoRGB32_row_SSE2
-	public _asm_YUVtoRGB24_row
-	public _asm_YUVtoRGB24_row_MMX
-	public _asm_YUVtoRGB24_SSE2
-	public _asm_YUVtoRGB16_row
-	public _asm_YUVtoRGB16_row_MMX
-	public _asm_YUVtoRGB16_row_ISSE
+	global _asm_YUVtoRGB32_row
+	global _asm_YUVtoRGB32_row_MMX
+	global _asm_YUVtoRGB32_row_ISSE
+	global _asm_YUVtoRGB32_row_SSE2
+	global _asm_YUVtoRGB24_row
+	global _asm_YUVtoRGB24_row_MMX
+	global _asm_YUVtoRGB24_SSE2
+	global _asm_YUVtoRGB16_row
+	global _asm_YUVtoRGB16_row_MMX
+	global _asm_YUVtoRGB16_row_ISSE
 
 ;	asm_YUVtoRGB_row(
 ;		Pixel *ARGB1_pointer,
@@ -120,14 +113,14 @@ MMX_Vcoeff2	dq	00066FFCC00000066h
 ;		long width
 ;		);
 
-ARGB1_pointer	equ	[esp+ 4+16]
-ARGB2_pointer	equ	[esp+ 8+16]
-Y1_pointer	equ	[esp+12+16]
-Y2_pointer	equ	[esp+16+16]
-U_pointer	equ	[esp+20+16]
-V_pointer	equ	[esp+24+16]
-count		equ	[esp+28+16]
-context_pointer equ	[esp+32+16+8]
+%define	ARGB1_pointer	[esp+ 4+16]
+%define	ARGB2_pointer	[esp+ 8+16]
+%define	Y1_pointer		[esp+12+16]
+%define	Y2_pointer		[esp+16+16]
+%define	U_pointer		[esp+20+16]
+%define	V_pointer		[esp+24+16]
+%define	count			[esp+28+16]
+%define	context_pointer [esp+32+16+8]
 
 _asm_YUVtoRGB32_row:
 	push	ebx
@@ -299,24 +292,24 @@ _asm_YUVtoRGB32_row_MMX:
 	mov	ebx,ARGB2_pointer
 
 col_loop_MMX:
-	movd	mm0,dword ptr [esi+ebp]	;U (byte)
+	movd	mm0,dword [esi+ebp]	;U (byte)
 	pxor	mm7,mm7
 
-	movd	mm1,dword ptr [edi+ebp]	;V (byte)
+	movd	mm1,dword [edi+ebp]	;V (byte)
 	punpcklbw mm0,mm7		;U (word)
 
-	psubw	mm0,MMX_80w
+	psubw	mm0,[MMX_80w]
 	punpcklbw mm1,mm7		;V (word)
 
-	psubw	mm1,MMX_80w
+	psubw	mm1,[MMX_80w]
 	movq	mm2,mm0
 
-	pmullw	mm2,MMX_Ugrncoeff
+	pmullw	mm2,[MMX_Ugrncoeff]
 	movq	mm3,mm1
 
-	pmullw	mm3,MMX_Vgrncoeff
-	pmullw	mm0,MMX_Ublucoeff
-	pmullw	mm1,MMX_Vredcoeff
+	pmullw	mm3,[MMX_Vgrncoeff]
+	pmullw	mm0,[MMX_Ublucoeff]
+	pmullw	mm1,[MMX_Vredcoeff]
 	paddw	mm2,mm3
 
 	;mm0: blue
@@ -324,9 +317,9 @@ col_loop_MMX:
 	;mm2: green
 
 	movq	mm6,[ecx+ebp*2]		;Y
-	pand	mm6,MMX_00FFw
-	psubw	mm6,MMX_10w
-	pmullw	mm6,MMX_Ycoeff
+	pand	mm6,[MMX_00FFw]
+	psubw	mm6,[MMX_10w]
+	pmullw	mm6,[MMX_Ycoeff]
 	movq	mm4,mm6
 	paddw	mm6,mm0			;mm6: <B3><B2><B1><B0>
 	movq	mm5,mm4
@@ -346,8 +339,8 @@ col_loop_MMX:
 
 	movq	mm7,[ecx+ebp*2]		;Y
 	psrlw	mm7,8
-	psubw	mm7,MMX_10w
-	pmullw	mm7,MMX_Ycoeff
+	psubw	mm7,[MMX_10w]
+	pmullw	mm7,[MMX_Ycoeff]
 	movq	mm3,mm7
 	paddw	mm7,mm0			;mm7: final blue
 	movq	mm5,mm3
@@ -383,9 +376,9 @@ col_loop_MMX:
 	movq	[eax+ebp*8+24],mm7
 
 	movq	mm6,[edx+ebp*2]		;Y
-	pand	mm6,MMX_00FFw
-	psubw	mm6,MMX_10w
-	pmullw	mm6,MMX_Ycoeff
+	pand	mm6,[MMX_00FFw]
+	psubw	mm6,[MMX_10w]
+	pmullw	mm6,[MMX_Ycoeff]
 	movq	mm4,mm6
 	paddw	mm6,mm0			;mm6: <B3><B2><B1><B0>
 	movq	mm5,mm4
@@ -405,8 +398,8 @@ col_loop_MMX:
 
 	movq	mm7,[edx+ebp*2]		;Y
 	psrlw	mm7,8
-	psubw	mm7,MMX_10w
-	pmullw	mm7,MMX_Ycoeff
+	psubw	mm7,[MMX_10w]
+	pmullw	mm7,[MMX_Ycoeff]
 	movq	mm3,mm7
 	paddw	mm7,mm0			;mm7: final blue
 	movq	mm5,mm3
@@ -464,13 +457,13 @@ col_loop_MMX:
 ;		long width
 ;		);
 
-ARGB1_pointer	equ	[esp+ 4+16]
-ARGB2_pointer	equ	[esp+ 8+16]
-Y1_pointer	equ	[esp+12+16]
-Y2_pointer	equ	[esp+16+16]
-U_pointer	equ	[esp+20+16]
-V_pointer	equ	[esp+24+16]
-count		equ	[esp+28+16]
+%define	ARGB1_pointer	[esp+ 4+16]
+%define	ARGB2_pointer	[esp+ 8+16]
+%define	Y1_pointer		[esp+12+16]
+%define	Y2_pointer		[esp+16+16]
+%define	U_pointer		[esp+20+16]
+%define	V_pointer		[esp+24+16]
+%define	count			[esp+28+16]
 
 _asm_YUVtoRGB24_row:
 	push	ebx
@@ -668,31 +661,31 @@ _asm_YUVtoRGB24_row_MMX:
 	mov	ebx,ARGB2_pointer
 
 col_loop_MMX24:
-	movd		mm0,dword ptr [esi+ebp]	;U (byte)
+	movd		mm0,dword [esi+ebp]	;U (byte)
 	pxor		mm7,mm7
 
-	movd		mm1,dword ptr [edi+ebp]	;V (byte)
+	movd		mm1,dword [edi+ebp]	;V (byte)
 	punpcklbw mm0,mm7		;U (word)
 
-	movd		mm2,dword ptr [ecx+ebp*2]	;Y low
+	movd		mm2,dword [ecx+ebp*2]	;Y low
 	punpcklbw mm1,mm7		;V (word)
 
-	movd		mm3,dword ptr [edx+ebp*2]	;Y high
+	movd		mm3,dword [edx+ebp*2]	;Y high
 	punpcklbw mm2,mm7		;Y1 (word)
 
-	psubw		mm2,MMX_10w
+	psubw		mm2,[MMX_10w]
 	punpcklbw mm3,mm7		;Y2 (word)
 
-	psubw		mm3,MMX_10w
+	psubw		mm3,[MMX_10w]
 
-	psubw		mm0,MMX_80w
-	psubw		mm1,MMX_80w
+	psubw		mm0,[MMX_80w]
+	psubw		mm1,[MMX_80w]
 
 	;group 1
 
-	pmullw		mm2,MMX_Ycoeff	;[lazy]
+	pmullw		mm2,[MMX_Ycoeff]	;[lazy]
 	movq		mm6,mm0
-	pmullw		mm3,MMX_Ycoeff	;[lazy]
+	pmullw		mm3,[MMX_Ycoeff]	;[lazy]
 	movq		mm7,mm1
 	punpcklwd	mm6,mm6		;mm6 = U1U1U0U0
 	movq		mm4,mm2		;mm4 = Y3Y2Y1Y0		[high]
@@ -701,9 +694,9 @@ col_loop_MMX24:
 	punpcklwd	mm7,mm7		;mm7 = V1V1V0V0
 	punpckldq	mm7,mm7		;mm7 = V0V0V0V0
 
-	pmullw		mm6,MMX_Ucoeff0
+	pmullw		mm6,[MMX_Ucoeff0]
 	punpcklwd	mm4,mm4		;mm4 = Y1Y1Y0Y0		[high]
-	pmullw		mm7,MMX_Vcoeff0
+	pmullw		mm7,[MMX_Vcoeff0]
 	punpcklwd	mm5,mm5		;mm5 = Y1Y1Y0Y0		[low]
 
 	punpcklwd	mm4,mm2		;mm4 = Y1Y0Y0Y0
@@ -722,9 +715,9 @@ col_loop_MMX24:
 
 	;group 2
 
-	movd		dword ptr [eax],mm4	;[lazy write]
+	movd		dword [eax],mm4	;[lazy write]
 	movq		mm4,mm0
-	movd		dword ptr [ebx],mm5	;[lazy write]
+	movd		dword [ebx],mm5	;[lazy write]
 	movq		mm5,mm1
 
 	punpcklwd	mm4,mm4		;mm6 = U1U1U0U0
@@ -732,9 +725,9 @@ col_loop_MMX24:
 	punpcklwd	mm5,mm5		;mm6 = V1V1V0V0
 	movq		mm7,mm3		;mm3 = Y3Y2Y1Y0		[low]
 
-	pmullw		mm4,MMX_Ucoeff1
+	pmullw		mm4,[MMX_Ucoeff1]
 	psrlq		mm6,16		;mm4 = 00Y3Y2Y1		[high]
-	pmullw		mm5,MMX_Vcoeff1
+	pmullw		mm5,[MMX_Vcoeff1]
 	psrlq		mm7,16		;mm4 = 00Y3Y2Y1		[low]
 
 	punpcklwd	mm6,mm6		;mm4 = Y2Y2Y1Y1		[high]
@@ -753,9 +746,9 @@ col_loop_MMX24:
 
 	;group 3
 
-	movd		dword ptr [eax+4],mm6	;[lazy write]
+	movd		dword [eax+4],mm6	;[lazy write]
 	movq		mm6,mm0
-	movd		dword ptr [ebx+4],mm7	;[lazy write]
+	movd		dword [ebx+4],mm7	;[lazy write]
 	movq		mm7,mm1
 
 	movq		mm4,mm2		;mm4 = Y3Y2Y1Y0		[high]
@@ -765,9 +758,9 @@ col_loop_MMX24:
 	punpcklwd	mm7,mm7		;mm7 = V1V1V0V0
 	punpckhdq	mm7,mm7		;mm7 = V1V1V1V1
 
-	pmullw		mm6,MMX_Ucoeff2
+	pmullw		mm6,[MMX_Ucoeff2]
 	punpckhwd	mm2,mm2		;mm2 = Y3Y3Y2Y2		[high]
-	pmullw		mm7,MMX_Vcoeff2
+	pmullw		mm7,[MMX_Vcoeff2]
 	punpckhwd	mm3,mm3		;mm3 = Y3Y3Y2Y2		[low]
 
 	punpckhdq	mm4,mm2		;mm4 = Y3Y3Y3Y2		[high]
@@ -783,31 +776,31 @@ col_loop_MMX24:
 
 	;next 3 groups
 
-	movd		mm2,dword ptr [ecx+ebp*2+4]	;Y low
+	movd		mm2,dword [ecx+ebp*2+4]	;Y low
 	packuswb	mm4,mm4		;[lazy]
 
-	movd		mm3,dword ptr [edx+ebp*2+4]	;Y high
+	movd		mm3,dword [edx+ebp*2+4]	;Y high
 	packuswb	mm5,mm5		;[lazy]
 
-	movd		dword ptr [eax+8],mm4	;[lazy write]
+	movd		dword [eax+8],mm4	;[lazy write]
 	pxor		mm7,mm7
 
-	movd		dword ptr [ebx+8],mm5	;[lazy write]
+	movd		dword [ebx+8],mm5	;[lazy write]
 	punpcklbw	mm2,mm7		;U (word)
 
 
-	psubw		mm2,MMX_10w
+	psubw		mm2,[MMX_10w]
 	punpcklbw	mm3,mm7		;V (word)
 
-	psubw		mm3,MMX_10w
+	psubw		mm3,[MMX_10w]
 
 
 	;group 1
 
-	pmullw		mm2,MMX_Ycoeff	;[init]
+	pmullw		mm2,[MMX_Ycoeff]	;[init]
 	movq		mm6,mm0
 
-	pmullw		mm3,MMX_Ycoeff	;[init]
+	pmullw		mm3,[MMX_Ycoeff]	;[init]
 	punpckhwd	mm6,mm6		;mm6 = U3U3U2U2
 
 	movq		mm7,mm1
@@ -817,9 +810,9 @@ col_loop_MMX24:
 	movq		mm5,mm3		;mm3 = Y3Y2Y1Y0		[low]
 	punpckldq	mm7,mm7		;mm7 = V2V2V2V2
 
-	pmullw		mm6,MMX_Ucoeff0
+	pmullw		mm6,[MMX_Ucoeff0]
 	punpcklwd	mm4,mm4		;mm4 = Y1Y1Y0Y0		[high]
-	pmullw		mm7,MMX_Vcoeff0
+	pmullw		mm7,[MMX_Vcoeff0]
 	punpcklwd	mm5,mm5		;mm5 = Y1Y1Y0Y0		[low]
 
 	punpcklwd	mm4,mm2		;mm4 = Y1Y0Y0Y0
@@ -838,9 +831,9 @@ col_loop_MMX24:
 
 	;group 2
 
-	movd		dword ptr [eax+12],mm4
+	movd		dword [eax+12],mm4
 	movq		mm6,mm0
-	movd		dword ptr [ebx+12],mm5
+	movd		dword [ebx+12],mm5
 	movq		mm7,mm1
 
 	punpckhwd	mm6,mm6		;mm6 = U3U3U2U2
@@ -848,9 +841,9 @@ col_loop_MMX24:
 	punpckhwd	mm7,mm7		;mm6 = V3V3V2V2
 	movq		mm5,mm3		;mm3 = Y3Y2Y1Y0		[low]
 
-	pmullw		mm6,MMX_Ucoeff1
+	pmullw		mm6,[MMX_Ucoeff1]
 	psrlq		mm4,16		;mm4 = 00Y3Y2Y1		[high]
-	pmullw		mm7,MMX_Vcoeff1
+	pmullw		mm7,[MMX_Vcoeff1]
 	psrlq		mm5,16		;mm4 = 00Y3Y2Y1		[low]
 
 	punpcklwd	mm4,mm4		;mm4 = Y2Y2Y1Y1		[high]
@@ -875,15 +868,15 @@ col_loop_MMX24:
 	movq		mm7,mm3		;mm3 = Y3Y2Y1Y0		[low]
 	punpckhdq	mm0,mm0		;mm6 = U3U3U3U3
 
-	movd		dword ptr [eax+16],mm4	;[lazy write]
+	movd		dword [eax+16],mm4	;[lazy write]
 	punpckhwd	mm1,mm1		;mm7 = V3V3V2V2
 
-	movd		dword ptr [ebx+16],mm5	;[lazy write]
+	movd		dword [ebx+16],mm5	;[lazy write]
 	punpckhdq	mm1,mm1		;mm7 = V3V3V3V3
 
-	pmullw		mm0,MMX_Ucoeff2
+	pmullw		mm0,[MMX_Ucoeff2]
 	punpckhwd	mm2,mm2		;mm2 = Y3Y3Y2Y2		[high]
-	pmullw		mm1,MMX_Vcoeff2
+	pmullw		mm1,[MMX_Vcoeff2]
 	punpckhwd	mm3,mm3		;mm3 = Y3Y3Y2Y2		[low]
 
 	punpckhdq	mm6,mm2		;mm4 = Y3Y3Y3Y2		[high]
@@ -900,9 +893,9 @@ col_loop_MMX24:
 	packuswb	mm6,mm6
 	packuswb	mm7,mm7
 
-	movd		dword ptr [eax+20],mm6
+	movd		dword [eax+20],mm6
 	add	eax,24
-	movd		dword ptr [ebx+20],mm7
+	movd		dword [ebx+20],mm7
 	add	ebx,24
 
 	;done
@@ -1131,19 +1124,19 @@ _asm_YUVtoRGB16_row_MMX:
 	mov	ebx,ARGB2_pointer
 
 col_loop_MMX16:
-	movd	mm0,dword ptr [esi+ebp]		;[0       ] U (byte)
+	movd	mm0,dword [esi+ebp]		;[0       ] U (byte)
 	pxor	mm7,mm7			;[0      7] 
 
-	movd	mm1,dword ptr [edi+ebp]		;[01     7] V (byte)
+	movd	mm1,dword [edi+ebp]		;[01     7] V (byte)
 	punpcklbw mm0,mm7		;[01     7] U (word)
 
-	psubw	mm0,MMX_80w		;[01     7] 
+	psubw	mm0,[MMX_80w]		;[01     7] 
 	punpcklbw mm1,mm7		;[01     7] V (word)
 
-	psubw	mm1,MMX_80w		;[01      ] 
+	psubw	mm1,[MMX_80w]		;[01      ] 
 	movq	mm2,mm0			;[012     ] 
 
-	pmullw	mm2,MMX_Ugrncoeff	;[012     ] 
+	pmullw	mm2,[MMX_Ugrncoeff]	;[012     ] 
 	movq	mm3,mm1			;[0123    ] 
 
 	;mm0: blue
@@ -1153,26 +1146,26 @@ col_loop_MMX16:
 	movq	mm6,[ecx+ebp*2]		;[0123  6 ] [1] Y
 	;<-->
 
-	pmullw	mm3,MMX_Vgrncoeff	;[0123    ] 
+	pmullw	mm3,[MMX_Vgrncoeff]	;[0123    ] 
 	movq	mm7,mm6			;[012   67] [2] Y
 
-	pmullw	mm0,MMX_Ublucoeff	;[0123    ] 
+	pmullw	mm0,[MMX_Ublucoeff]	;[0123    ] 
 	psrlw	mm7,8			;[012   67] [2]
 
-	pmullw	mm1,MMX_Vredcoeff	;[0123    ] 
+	pmullw	mm1,[MMX_Vredcoeff]	;[0123    ] 
 	;<-->
 
-	pand	mm6,MMX_00FFw		;[012   67] [1]
+	pand	mm6,[MMX_00FFw]		;[012   67] [1]
 	paddw	mm2,mm3			;[012   6 ] [C]
 
-	psubw	mm6,MMX_10w		;[012   67] [1]
+	psubw	mm6,[MMX_10w]		;[012   67] [1]
 
-	pmullw	mm6,MMX_Ycoeff		;[012   67] [1]
+	pmullw	mm6,[MMX_Ycoeff]		;[012   67] [1]
 
-	psubw	mm7,MMX_10w		;[012   67] [2]
+	psubw	mm7,[MMX_10w]		;[012   67] [2]
 	movq	mm4,mm6			;[012 4 67] [1]
 
-	pmullw	mm7,MMX_Ycoeff		;[012   67] [2]
+	pmullw	mm7,[MMX_Ycoeff]		;[012   67] [2]
 	movq	mm5,mm6			;[012 4567] [1]
 
 	paddw	mm6,mm0			;[012 4 67] [1] mm6: <B3><B2><B1><B0>
@@ -1187,13 +1180,13 @@ col_loop_MMX16:
 	paddw	mm7,mm0			;[01234567] [2] mm6: <B3><B2><B1><B0>
 	psraw	mm6,6			;[01234567] [1]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm6,mm6		;[01234567] [1] mm6: B3B2B1B0B3B2B1B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm4,mm4		;[01234567] [1] mm4: R3R2R1R0R3R2R1R0
 
-	pand	mm5,MMX_grnmask		;[01234567] [1] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01234567] [1] mm7: <G3><G2><G1><G0>
 	psrlq	mm6,2			;[01234567] [1]
 
 	punpcklbw mm6,mm4		;[0123 567] [1] mm4: R3B3R2B2R1B1R0B0
@@ -1201,7 +1194,7 @@ col_loop_MMX16:
 	movq	mm4,[edx+ebp*2]		;[01234567] [3] Y
 	psrlw	mm6,1			;[01234567] [1]
 
-	pand	mm6,MMX_rbmask		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm6,[MMX_rbmask]		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
 
 	por	mm6,mm5			;[01234 67] [1] mm6: P6P4P2P0
 	movq	mm5,mm3			;[01234567] [2]
@@ -1209,22 +1202,22 @@ col_loop_MMX16:
 	paddw	mm3,mm1			;[01234567] [2] mm4: <R3><R2><R1><R0>
 	paddw	mm5,mm2			;[01234567] [2] mm5: <G3><G2><G1><G0>
 
-	pand	mm4,MMX_00FFw		;[01234567] [3]
+	pand	mm4,[MMX_00FFw]		;[01234567] [3]
 	psraw	mm3,6			;[01234567] [2]	
 
-	psubw	mm4,MMX_10w		;[01234567] [3]
+	psubw	mm4,[MMX_10w]		;[01234567] [3]
 	psraw	mm5,4			;[01234567] [2]
 
-	pmullw	mm4,MMX_Ycoeff		;[01234567] [3]
+	pmullw	mm4,[MMX_Ycoeff]		;[01234567] [3]
 	psraw	mm7,6			;[01234567] [2]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm3,mm3		;[01234567] [2] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm7,mm7		;[01234567] [2] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm5,MMX_grnmask		;[012 4567] [2] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[012 4567] [2] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2			;[01234567] [2]
 
 	punpcklbw mm7,mm3		;[012 4567] [2] mm6: R3B3R2B2R1B1R0B0
@@ -1232,16 +1225,16 @@ col_loop_MMX16:
 	movq	mm3,[edx+ebp*2]		;[01234567] [4] Y
 	psrlw	mm7,1			;[01234567] [2]
 
-	pand	mm7,MMX_rbmask		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm7,[MMX_rbmask]		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
 	psrlw	mm3,8			;[01234567] [4]
 
 	por	mm7,mm5			;[01234567] [2] mm7: P7P5P3P1
 	movq	mm5,mm6			;[01234567] [A]
 
-	psubw	mm3,MMX_10w		;[01234567] [4]
+	psubw	mm3,[MMX_10w]		;[01234567] [4]
 	punpcklwd mm6,mm7		;[01234567] [A] mm4: P3P2P1P0
 
-	pmullw	mm3,MMX_Ycoeff		;[0123456 ] [4]
+	pmullw	mm3,[MMX_Ycoeff]		;[0123456 ] [4]
 	punpckhwd mm5,mm7		;[0123456 ] [A} mm5: P7P6P5P4
 
 	movq	[eax+ebp*4   ],mm6	;[012345  ] [A]
@@ -1272,28 +1265,28 @@ col_loop_MMX16:
 	psrlq	mm6,2
 	paddw	mm0,mm2			;[01 34567] [4] mm5: <G3><G2><G1><G0>
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	punpcklbw mm6,mm4		;[01 3 567] [3] mm6: B3B3B2B2B1B1B0B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	psrlw	mm6,1			;[01 3 567] [3]
 
-	pand	mm6,MMX_rbmask		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
+	pand	mm6,[MMX_rbmask]		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
 	psraw	mm3,6			;[01 3 567] [4]
 
-	pand	mm5,MMX_grnmask		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
 	psraw	mm0,4			;[01 3 567] [4]
 
 	por	mm6,mm5			;[01 3  67] [3] mm4: P6P4P2P0	
 	psraw	mm7,6			;[01 3  67] [4]
 
-	paddsw	mm0,MMX_clip
+	paddsw	mm0,[MMX_clip]
 	packuswb mm3,mm3		;[01 3  67] [4] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm0,MMX_clip
+	psubusw	mm0,[MMX_clip]
 	packuswb mm7,mm7		;[01 3  67] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm0,MMX_grnmask		;[01    67] mm7: <G3><G2><G1><G0>
+	pand	mm0,[MMX_grnmask]		;[01    67] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2
 
 	punpcklbw mm7,mm3		;[01    67] mm6: R3B3R2B2R1B1R0B0
@@ -1302,7 +1295,7 @@ col_loop_MMX16:
 	psrlw	mm7,1
 	add	ebp,4
 
-	pand	mm7,MMX_rbmask		;[01    67] mm6: <B3><B2><B1><B0>
+	pand	mm7,[MMX_rbmask]		;[01    67] mm6: <B3><B2><B1><B0>
 
 	por	mm0,mm7			;[01    67] mm0: P7P5P3P1
 
@@ -1354,24 +1347,24 @@ col_loop_SSE:
 	prefetchnta [ecx+ebp*2+32]
 	prefetchnta [edx+ebp*2+32]
 
-	movd	mm0,dword ptr [esi+ebp]		;U (byte)
+	movd	mm0,dword [esi+ebp]		;U (byte)
 	pxor	mm7,mm7
 
-	movd	mm1,dword ptr [edi+ebp]		;V (byte)
+	movd	mm1,dword [edi+ebp]		;V (byte)
 	punpcklbw mm0,mm7		;U (word)
 
-	psubw	mm0,MMX_80w
+	psubw	mm0,[MMX_80w]
 	punpcklbw mm1,mm7		;V (word)
 
-	psubw	mm1,MMX_80w
+	psubw	mm1,[MMX_80w]
 	movq	mm2,mm0
 
-	pmullw	mm2,MMX_Ugrncoeff
+	pmullw	mm2,[MMX_Ugrncoeff]
 	movq	mm3,mm1
 
-	pmullw	mm3,MMX_Vgrncoeff
-	pmullw	mm0,MMX_Ublucoeff
-	pmullw	mm1,MMX_Vredcoeff
+	pmullw	mm3,[MMX_Vgrncoeff]
+	pmullw	mm0,[MMX_Ublucoeff]
+	pmullw	mm1,[MMX_Vredcoeff]
 	paddw	mm2,mm3
 
 	;mm0: blue
@@ -1379,9 +1372,9 @@ col_loop_SSE:
 	;mm2: green
 
 	movq	mm6,[ecx+ebp*2]		;Y
-	pand	mm6,MMX_00FFw
-	psubw	mm6,MMX_10w
-	pmullw	mm6,MMX_Ycoeff
+	pand	mm6,[MMX_00FFw]
+	psubw	mm6,[MMX_10w]
+	pmullw	mm6,[MMX_Ycoeff]
 	movq	mm4,mm6
 	paddw	mm6,mm0			;mm6: <B3><B2><B1><B0>
 	movq	mm5,mm4
@@ -1401,8 +1394,8 @@ col_loop_SSE:
 
 	movq	mm7,[ecx+ebp*2]		;Y
 	psrlw	mm7,8
-	psubw	mm7,MMX_10w
-	pmullw	mm7,MMX_Ycoeff
+	psubw	mm7,[MMX_10w]
+	pmullw	mm7,[MMX_Ycoeff]
 	movq	mm3,mm7
 	paddw	mm7,mm0			;mm7: final blue
 	movq	mm5,mm3
@@ -1438,9 +1431,9 @@ col_loop_SSE:
 	movntq	[eax+ebp*8+24],mm7
 
 	movq	mm6,[edx+ebp*2]		;Y
-	pand	mm6,MMX_00FFw
-	psubw	mm6,MMX_10w
-	pmullw	mm6,MMX_Ycoeff
+	pand	mm6,[MMX_00FFw]
+	psubw	mm6,[MMX_10w]
+	pmullw	mm6,[MMX_Ycoeff]
 	movq	mm4,mm6
 	paddw	mm6,mm0			;mm6: <B3><B2><B1><B0>
 	movq	mm5,mm4
@@ -1460,8 +1453,8 @@ col_loop_SSE:
 
 	movq	mm7,[edx+ebp*2]		;Y
 	psrlw	mm7,8
-	psubw	mm7,MMX_10w
-	pmullw	mm7,MMX_Ycoeff
+	psubw	mm7,[MMX_10w]
+	pmullw	mm7,[MMX_Ycoeff]
 	movq	mm3,mm7
 	paddw	mm7,mm0			;mm7: final blue
 	movq	mm5,mm3
@@ -1507,8 +1500,9 @@ col_loop_SSE:
 	pop	ebx
 	ret
 
-_asm_YUVtoRGB24_row_ISSE proc near
-	.FPO (7, 9, 0, 0, 0, 0)
+	global	_asm_YUVtoRGB24_row_ISSE
+_asm_YUVtoRGB24_row_ISSE:
+	;.FPO (7, 9, 0, 0, 0, 0)
 	push	ebx
 	push	esi
 	push	edi
@@ -1533,7 +1527,7 @@ _asm_YUVtoRGB24_row_ISSE proc near
 	movd	mm0,esp
 	sub	esp,20
 	and	esp,-8
-	movd	dword ptr [esp+16],mm0
+	movd	dword [esp+16],mm0
 
 col_loop_ISSE24:
 	prefetchnta	[esi+ebp+32]
@@ -1541,40 +1535,40 @@ col_loop_ISSE24:
 	prefetchnta [ecx+ebp*2+32]
 	prefetchnta [edx+ebp*2+32]
 
-	movd		mm0,dword ptr [esi+ebp]	;U (byte)
+	movd		mm0,dword [esi+ebp]	;U (byte)
 	pxor		mm7,mm7
 
-	movd		mm1,dword ptr [edi+ebp]	;V (byte)
+	movd		mm1,dword [edi+ebp]	;V (byte)
 	punpcklbw mm0,mm7		;U (word)
 
-	movd		mm2,dword ptr [ecx+ebp*2]	;Y low
+	movd		mm2,dword [ecx+ebp*2]	;Y low
 	punpcklbw mm1,mm7		;V (word)
 
-	movd		mm3,dword ptr [edx+ebp*2]	;Y high
+	movd		mm3,dword [edx+ebp*2]	;Y high
 	punpcklbw mm2,mm7		;Y1 (word)
 
-	psubw		mm2,MMX_10w
+	psubw		mm2,[MMX_10w]
 	punpcklbw mm3,mm7		;Y2 (word)
 
-	psubw		mm3,MMX_10w
+	psubw		mm3,[MMX_10w]
 
-	psubw		mm0,MMX_80w
-	psubw		mm1,MMX_80w
+	psubw		mm0,[MMX_80w]
+	psubw		mm1,[MMX_80w]
 
 	movq		[esp+0],mm0
 	movq		[esp+8],mm1
 
 	;group 1
 
-	pmullw		mm2,MMX_Ycoeff	;[lazy]
-	pmullw		mm3,MMX_Ycoeff	;[lazy]
+	pmullw		mm2,[MMX_Ycoeff]	;[lazy]
+	pmullw		mm3,[MMX_Ycoeff]	;[lazy]
 
 	pshufw		mm6,mm0,00000000b	;mm6 = U0U0U0U0
 	pshufw		mm7,mm1,00000000b	;mm7 = V0V0V0V0
 
-	pmullw		mm6,MMX_Ucoeff0
+	pmullw		mm6,[MMX_Ucoeff0]
 	pshufw		mm4,mm2,01000000b	;mm4 = Y1Y0Y0Y0 [high]
-	pmullw		mm7,MMX_Vcoeff0
+	pmullw		mm7,[MMX_Vcoeff0]
 	pshufw		mm5,mm3,01000000b	;mm4 = Y1Y0Y0Y0 [low]
 
 	paddw		mm4,mm6
@@ -1590,9 +1584,9 @@ col_loop_ISSE24:
 	pshufw		mm6,[esp+0],01010000b	;mm6 = U1U1U0U0
 	pshufw		mm7,[esp+8],01010000b	;mm7 = V1V1V0V0
 
-	pmullw		mm6,MMX_Ucoeff1
+	pmullw		mm6,[MMX_Ucoeff1]
 	pshufw		mm0,mm2,10100101b	;mm0 = Y2Y2Y1Y1		[high]
-	pmullw		mm7,MMX_Vcoeff1
+	pmullw		mm7,[MMX_Vcoeff1]
 	pshufw		mm1,mm3,10100101b	;mm1 = Y2Y2Y1Y1		[low]
 
 	paddw		mm0,mm6
@@ -1614,9 +1608,9 @@ col_loop_ISSE24:
 	movntq		[eax],mm4	;[lazy write]
 	movntq		[ebx],mm5	;[lazy write]
 
-	pmullw		mm6,MMX_Ucoeff2
+	pmullw		mm6,[MMX_Ucoeff2]
 	pshufw		mm4,mm2,11111110b	;mm4 = Y3Y3Y3Y2		[high]
-	pmullw		mm7,MMX_Vcoeff2
+	pmullw		mm7,[MMX_Vcoeff2]
 	pshufw		mm5,mm3,11111110b	;mm5 = Y3Y3Y3Y2		[low]
 
 	paddw		mm4,mm6
@@ -1629,29 +1623,29 @@ col_loop_ISSE24:
 
 	;next 3 groups
 
-	movd		mm2,dword ptr [ecx+ebp*2+4]	;Y low
+	movd		mm2,dword [ecx+ebp*2+4]	;Y low
 	pxor		mm7,mm7
 
-	movd		mm3,dword ptr [edx+ebp*2+4]	;Y high
+	movd		mm3,dword [edx+ebp*2+4]	;Y high
 	punpcklbw	mm2,mm7		;U (word)
 
-	psubw		mm2,MMX_10w
+	psubw		mm2,[MMX_10w]
 	punpcklbw	mm3,mm7		;V (word)
 
-	psubw		mm3,MMX_10w
+	psubw		mm3,[MMX_10w]
 
 
 	;group 1
 
-	pmullw		mm2,MMX_Ycoeff	;[init]
-	pmullw		mm3,MMX_Ycoeff	;[init]
+	pmullw		mm2,[MMX_Ycoeff]	;[init]
+	pmullw		mm3,[MMX_Ycoeff]	;[init]
 
 	pshufw		mm6,[esp+0],10101010b	;mm6 = U2U2U2U2
 	pshufw		mm7,[esp+8],10101010b	;mm7 = V2V2V2V2
 
-	pmullw		mm6,MMX_Ucoeff0
+	pmullw		mm6,[MMX_Ucoeff0]
 	pshufw		mm0,mm2,01000000b	;mm0 = Y1Y0Y0Y0 [high]
-	pmullw		mm7,MMX_Vcoeff0
+	pmullw		mm7,[MMX_Vcoeff0]
 	pshufw		mm1,mm3,01000000b	;mm1 = Y1Y0Y0Y0 [low]
 
 	paddw		mm0,mm6
@@ -1673,9 +1667,9 @@ col_loop_ISSE24:
 	movntq		[eax+8],mm4
 	movntq		[ebx+8],mm5
 
-	pmullw		mm6,MMX_Ucoeff1
+	pmullw		mm6,[MMX_Ucoeff1]
 	pshufw		mm4,mm2,10100101b	;mm4 = Y2Y2Y1Y1		[high]
-	pmullw		mm7,MMX_Vcoeff1
+	pmullw		mm7,[MMX_Vcoeff1]
 	pshufw		mm5,mm3,10100101b	;mm5 = Y2Y2Y1Y1		[low]
 
 	paddw		mm4,mm6
@@ -1691,9 +1685,9 @@ col_loop_ISSE24:
 	pshufw		mm0,[esp+0],11111111b	;mm6 = U3U3U3U3
 	pshufw		mm1,[esp+8],11111111b	;mm7 = V3V3V3V3
 
-	pmullw		mm0,MMX_Ucoeff2
+	pmullw		mm0,[MMX_Ucoeff2]
 	pshufw		mm2,mm2,11111110b	;mm6 = Y3Y3Y3Y2		[high]
-	pmullw		mm1,MMX_Vcoeff2
+	pmullw		mm1,[MMX_Vcoeff2]
 	pshufw		mm3,mm3,11111110b	;mm7 = Y3Y3Y3Y2		[low]
 
 	paddw		mm2,mm0
@@ -1724,7 +1718,6 @@ col_loop_ISSE24:
 	pop	esi
 	pop	ebx
 	ret
-_asm_YUVtoRGB24_row_ISSE endp
 
 _asm_YUVtoRGB16_row_ISSE:
 	push	ebx
@@ -1756,19 +1749,19 @@ col_loop_ISSE16:
 	prefetchnta [esi+ebp+32]
 	prefetchnta [edi+ebp+32]
 
-	movd	mm0,dword ptr [esi+ebp]		;[0       ] U (byte)
+	movd	mm0,dword [esi+ebp]		;[0       ] U (byte)
 	pxor	mm7,mm7			;[0      7] 
 
-	movd	mm1,dword ptr [edi+ebp]		;[01     7] V (byte)
+	movd	mm1,dword [edi+ebp]		;[01     7] V (byte)
 	punpcklbw mm0,mm7		;[01     7] U (word)
 
-	psubw	mm0,MMX_80w		;[01     7] 
+	psubw	mm0,[MMX_80w]		;[01     7] 
 	punpcklbw mm1,mm7		;[01     7] V (word)
 
-	psubw	mm1,MMX_80w		;[01      ] 
+	psubw	mm1,[MMX_80w]		;[01      ] 
 	movq	mm2,mm0			;[012     ] 
 
-	pmullw	mm2,MMX_Ugrncoeff	;[012     ] 
+	pmullw	mm2,[MMX_Ugrncoeff]	;[012     ] 
 	movq	mm3,mm1			;[0123    ] 
 
 	;mm0: blue
@@ -1781,26 +1774,26 @@ col_loop_ISSE16:
 	movq	mm6,[ecx+ebp*2]		;[0123  6 ] [1] Y
 	;<-->
 
-	pmullw	mm3,MMX_Vgrncoeff	;[0123    ] 
+	pmullw	mm3,[MMX_Vgrncoeff]	;[0123    ] 
 	movq	mm7,mm6			;[012   67] [2] Y
 
-	pmullw	mm0,MMX_Ublucoeff	;[0123    ] 
+	pmullw	mm0,[MMX_Ublucoeff]	;[0123    ] 
 	psrlw	mm7,8			;[012   67] [2]
 
-	pmullw	mm1,MMX_Vredcoeff	;[0123    ] 
+	pmullw	mm1,[MMX_Vredcoeff]	;[0123    ] 
 	;<-->
 
-	pand	mm6,MMX_00FFw		;[012   67] [1]
+	pand	mm6,[MMX_00FFw]		;[012   67] [1]
 	paddw	mm2,mm3			;[012   6 ] [C]
 
-	psubw	mm6,MMX_10w		;[012   67] [1]
+	psubw	mm6,[MMX_10w]		;[012   67] [1]
 
-	pmullw	mm6,MMX_Ycoeff		;[012   67] [1]
+	pmullw	mm6,[MMX_Ycoeff]		;[012   67] [1]
 
-	psubw	mm7,MMX_10w		;[012   67] [2]
+	psubw	mm7,[MMX_10w]		;[012   67] [2]
 	movq	mm4,mm6			;[012 4 67] [1]
 
-	pmullw	mm7,MMX_Ycoeff		;[012   67] [2]
+	pmullw	mm7,[MMX_Ycoeff]		;[012   67] [2]
 	movq	mm5,mm6			;[012 4567] [1]
 
 	paddw	mm6,mm0			;[012 4 67] [1] mm6: <B3><B2><B1><B0>
@@ -1815,13 +1808,13 @@ col_loop_ISSE16:
 	paddw	mm7,mm0			;[01234567] [2] mm6: <B3><B2><B1><B0>
 	psraw	mm6,6			;[01234567] [1]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm6,mm6		;[01234567] [1] mm6: B3B2B1B0B3B2B1B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm4,mm4		;[01234567] [1] mm4: R3R2R1R0R3R2R1R0
 
-	pand	mm5,MMX_grnmask		;[01234567] [1] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01234567] [1] mm7: <G3><G2><G1><G0>
 	psrlq	mm6,2			;[01234567] [1]
 
 	punpcklbw mm6,mm4		;[0123 567] [1] mm4: R3B3R2B2R1B1R0B0
@@ -1829,7 +1822,7 @@ col_loop_ISSE16:
 	movq	mm4,[edx+ebp*2]		;[01234567] [3] Y
 	psrlw	mm6,1			;[01234567] [1]
 
-	pand	mm6,MMX_rbmask		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm6,[MMX_rbmask]		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
 
 	por	mm6,mm5			;[01234 67] [1] mm6: P6P4P2P0
 	movq	mm5,mm3			;[01234567] [2]
@@ -1837,22 +1830,22 @@ col_loop_ISSE16:
 	paddw	mm3,mm1			;[01234567] [2] mm4: <R3><R2><R1><R0>
 	paddw	mm5,mm2			;[01234567] [2] mm5: <G3><G2><G1><G0>
 
-	pand	mm4,MMX_00FFw		;[01234567] [3]
+	pand	mm4,[MMX_00FFw]		;[01234567] [3]
 	psraw	mm3,6			;[01234567] [2]	
 
-	psubw	mm4,MMX_10w		;[01234567] [3]
+	psubw	mm4,[MMX_10w]		;[01234567] [3]
 	psraw	mm5,4			;[01234567] [2]
 
-	pmullw	mm4,MMX_Ycoeff		;[01234567] [3]
+	pmullw	mm4,[MMX_Ycoeff]		;[01234567] [3]
 	psraw	mm7,6			;[01234567] [2]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm3,mm3		;[01234567] [2] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm7,mm7		;[01234567] [2] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm5,MMX_grnmask		;[012 4567] [2] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[012 4567] [2] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2			;[01234567] [2]
 
 	punpcklbw mm7,mm3		;[012 4567] [2] mm6: R3B3R2B2R1B1R0B0
@@ -1860,16 +1853,16 @@ col_loop_ISSE16:
 	movq	mm3,[edx+ebp*2]		;[01234567] [4] Y
 	psrlw	mm7,1			;[01234567] [2]
 
-	pand	mm7,MMX_rbmask		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm7,[MMX_rbmask]		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
 	psrlw	mm3,8			;[01234567] [4]
 
 	por	mm7,mm5			;[01234567] [2] mm7: P7P5P3P1
 	movq	mm5,mm6			;[01234567] [A]
 
-	psubw	mm3,MMX_10w		;[01234567] [4]
+	psubw	mm3,[MMX_10w]		;[01234567] [4]
 	punpcklwd mm6,mm7		;[01234567] [A] mm4: P3P2P1P0
 
-	pmullw	mm3,MMX_Ycoeff		;[0123456 ] [4]
+	pmullw	mm3,[MMX_Ycoeff]		;[0123456 ] [4]
 	punpckhwd mm5,mm7		;[0123456 ] [A} mm5: P7P6P5P4
 
 	movntq	[eax+ebp*4   ],mm6	;[012345  ] [A]
@@ -1900,28 +1893,28 @@ col_loop_ISSE16:
 	psrlq	mm6,2
 	paddw	mm0,mm2			;[01 34567] [4] mm5: <G3><G2><G1><G0>
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	punpcklbw mm6,mm4		;[01 3 567] [3] mm6: B3B3B2B2B1B1B0B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	psrlw	mm6,1			;[01 3 567] [3]
 
-	pand	mm6,MMX_rbmask		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
+	pand	mm6,[MMX_rbmask]		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
 	psraw	mm3,6			;[01 3 567] [4]
 
-	pand	mm5,MMX_grnmask		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
 	psraw	mm0,4			;[01 3 567] [4]
 
 	por	mm6,mm5			;[01 3  67] [3] mm4: P6P4P2P0	
 	psraw	mm7,6			;[01 3  67] [4]
 
-	paddsw	mm0,MMX_clip
+	paddsw	mm0,[MMX_clip]
 	packuswb mm3,mm3		;[01 3  67] [4] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm0,MMX_clip
+	psubusw	mm0,[MMX_clip]
 	packuswb mm7,mm7		;[01 3  67] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm0,MMX_grnmask		;[01    67] mm7: <G3><G2><G1><G0>
+	pand	mm0,[MMX_grnmask]		;[01    67] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2
 
 	punpcklbw mm7,mm3		;[01    67] mm6: R3B3R2B2R1B1R0B0
@@ -1930,7 +1923,7 @@ col_loop_ISSE16:
 	psrlw	mm7,1
 	add	ebp,4
 
-	pand	mm7,MMX_rbmask		;[01    67] mm6: <B3><B2><B1><B0>
+	pand	mm7,[MMX_rbmask]		;[01    67] mm6: <B3><B2><B1><B0>
 
 	por	mm0,mm7			;[01    67] mm0: P7P5P3P1
 
@@ -1986,36 +1979,36 @@ col_loop_SSE2:
 	prefetchnta [ecx+ebp*2+32]
 	prefetchnta [edx+ebp*2+32]
 
-	movq		xmm0,qword ptr [esi+ebp];xmm0 = U7|U6|U5|U4|U3|U2|U1|U0
+	movq		xmm0,qword [esi+ebp];xmm0 = U7|U6|U5|U4|U3|U2|U1|U0
 	pxor		xmm7,xmm7
 
-	movq		xmm1,qword ptr [edi+ebp];xmm1 = V7|V6|V5|V4|V3|V2|V1|V0
+	movq		xmm1,qword [edi+ebp];xmm1 = V7|V6|V5|V4|V3|V2|V1|V0
 
 	punpcklbw	xmm0,xmm7
 	punpcklbw	xmm1,xmm7
 	
-	psubw		xmm0,xmmword ptr SSE2_80w		;xmm0 = U3|U2|U1|U0
-	psubw		xmm1,xmmword ptr SSE2_80w		;xmm1 = V3|V2|V1|V0
+	psubw		xmm0, [SSE2_80w]		;xmm0 = U3|U2|U1|U0
+	psubw		xmm1, [SSE2_80w]		;xmm1 = V3|V2|V1|V0
 	
 	movdqa		xmm2,xmm0
-	pmullw		xmm0,xmmword ptr SSE2_Ugrncoeff
-	pmullw		xmm2,xmmword ptr SSE2_Ublucoeff
+	pmullw		xmm0, [SSE2_Ugrncoeff]
+	pmullw		xmm2, [SSE2_Ublucoeff]
 	
 	movdqa		xmm3,xmm1
-	pmullw		xmm1,xmmword ptr SSE2_Vredcoeff
-	pmullw		xmm3,xmmword ptr SSE2_Vgrncoeff
+	pmullw		xmm1, [SSE2_Vredcoeff]
+	pmullw		xmm3, [SSE2_Vgrncoeff]
 	
 	paddw		xmm0,xmm1		;xmm0 = cG7|cG6|cG5|cG4|cG3|cG2|cG1|cG0
 	
 	movdqu		xmm3,[ecx+ebp*2]	;xmm4 = YF|YE|YD|YC|YB|YA|Y9|Y8|Y7|Y6|Y5|Y4|Y3|Y2|Y1|Y0
 	movq		xmm4,xmm4		;xmm5 = YF|YE|YD|YC|YB|YA|Y9|Y8|Y7|Y6|Y5|Y4|Y3|Y2|Y1|Y0
-	pand		xmm3,xmmword ptr SSE2_Ylow		;xmm4 = YE|YC|YA|Y8|Y6|Y4|Y2|Y0
+	pand		xmm3, [SSE2_Ylow]		;xmm4 = YE|YC|YA|Y8|Y6|Y4|Y2|Y0
 	psrlw		xmm4,8			;xmm5 = YF|YD|YB|Y9|Y7|Y5|Y3|Y1
 	
-	psubw		xmm3,xmmword ptr SSE2_Ybias
-	pmullw		xmm3,xmmword ptr SSE2_Ycoeff
-	psubw		xmm4,xmmword ptr SSE2_Ybias
-	pmullw		xmm4,xmmword ptr SSE2_Ycoeff
+	psubw		xmm3, [SSE2_Ybias]
+	pmullw		xmm3, [SSE2_Ycoeff]
+	psubw		xmm4, [SSE2_Ybias]
+	pmullw		xmm4, [SSE2_Ycoeff]
 	
 	;register layout at this point:
 	;xmm0:	chroma green
@@ -2106,9 +2099,9 @@ _asm_YUVtoRGB24_SSE2:
 	
 	;store esp in the SEH chain and set esp=constant_struct
 	push	0
-	push	dword ptr fs:[0]
-	mov	dword ptr fs:[0],esp
-	mov	esp, context_pointer
+	push	dword [fs:0]
+	mov		dword [fs:0],esp
+	mov		esp, context_pointer
 	
 	;---- we have no stack at this point!
 	
@@ -2127,7 +2120,7 @@ col_loop_SSE2_24:
 	;U2|U2|U2|U2|U1|U1|U1|U1
 	;U3|U3|U3|U3|U3|U3|U2|U2
 
-	movd		xmm0,dword ptr [esi+ebp];xmm0 = U3|U2|U1|U0
+	movd		xmm0,dword [esi+ebp];xmm0 = U3|U2|U1|U0
 	pxor		xmm7,xmm7
 	punpcklbw	xmm0,xmm7		;xmm0 = U3|U2|U1|U0
 	psubw		xmm0,[esp+offs_SSE2_80w]
@@ -2140,7 +2133,7 @@ col_loop_SSE2_24:
 	pmullw		xmm1,[esp+offs_SSE2_Ucoeff1]
 	pmullw		xmm2,[esp+offs_SSE2_Ucoeff2]
 
-	movd		xmm3,dword ptr [edi+ebp];xmm3 = V3|V2|V1|V0
+	movd		xmm3,dword [edi+ebp];xmm3 = V3|V2|V1|V0
 	punpcklbw	xmm3,xmm7		;xmm3 = V3|V2|V1|V0
 	psubw		xmm3,[esp+offs_SSE2_80w]
 	punpcklwd	xmm3,xmm3
@@ -2156,7 +2149,7 @@ col_loop_SSE2_24:
 	paddw		xmm1,xmm4
 	paddw		xmm2,xmm5
 	
-	movq		xmm3,qword ptr [ecx+ebp*2];xmm3 = Y7 | Y6 | Y5 | Y4 | Y3 | Y2 | Y1 | Y0
+	movq		xmm3,qword [ecx+ebp*2];xmm3 = Y7 | Y6 | Y5 | Y4 | Y3 | Y2 | Y1 | Y0
 	punpcklbw	xmm3,xmm7
 	psubw		xmm3,[esp+offs_SSE2_Ybias]
 	pmullw		xmm3,[esp+offs_SSE2_Ycoeff]
@@ -2186,7 +2179,7 @@ col_loop_SSE2_24:
 	movdq2q		mm1,xmm4
 	movdq2q		mm2,xmm5
 	
-	movq		xmm3,qword ptr [edx+ebp*2]	;xmm3 = Y7 | Y6 | Y5 | Y4 | Y3 | Y2 | Y1 | Y0
+	movq		xmm3,qword [edx+ebp*2]	;xmm3 = Y7 | Y6 | Y5 | Y4 | Y3 | Y2 | Y1 | Y0
 	punpcklbw	xmm3,xmm7
 	psubw		xmm3,[esp+offs_SSE2_Ybias]
 	pmullw		xmm3,[esp+offs_SSE2_Ycoeff]
@@ -2240,12 +2233,12 @@ col_loop_SSE2_24:
 	add	esi, ebp
 	add	edi, ebp
 	
-	dec	dword ptr [esp+offs_height]
+	dec	dword [esp+offs_height]
 	jnz	row_loop_SSE2_24
 
 	;restore esp from SEH chain
-	mov	esp, dword ptr fs:[0]
-	pop	dword ptr fs:[0]
+	mov	esp, dword [fs:0]
+	pop	dword [fs:0]
 	pop	eax
 
 	pop	ebp
@@ -2284,19 +2277,19 @@ col_loop_SSE2_16:
 	prefetchnta [esi+ebp+32]
 	prefetchnta [edi+ebp+32]
 
-	movd	mm0,dword ptr [esi+ebp]	;[0       ] U (byte)
+	movd	mm0,dword [esi+ebp]	;[0       ] U (byte)
 	pxor	mm7,mm7			;[0      7] 
 
-	movd	mm1,dword ptr [edi+ebp]	;[01     7] V (byte)
+	movd	mm1,dword [edi+ebp]	;[01     7] V (byte)
 	punpcklbw mm0,mm7		;[01     7] U (word)
 
-	psubw	mm0,MMX_80w		;[01     7] 
+	psubw	mm0,[MMX_80w]		;[01     7] 
 	punpcklbw mm1,mm7		;[01     7] V (word)
 
-	psubw	mm1,MMX_80w		;[01      ] 
+	psubw	mm1,[MMX_80w]		;[01      ] 
 	movq	mm2,mm0			;[012     ] 
 
-	pmullw	mm2,MMX_Ugrncoeff	;[012     ] 
+	pmullw	mm2,[MMX_Ugrncoeff]	;[012     ] 
 	movq	mm3,mm1			;[0123    ] 
 
 	;mm0: blue
@@ -2309,26 +2302,26 @@ col_loop_SSE2_16:
 	movq	mm6,[ecx+ebp*2]		;[0123  6 ] [1] Y
 	;<-->
 
-	pmullw	mm3,MMX_Vgrncoeff	;[0123    ] 
+	pmullw	mm3,[MMX_Vgrncoeff]	;[0123    ] 
 	movq	mm7,mm6			;[012   67] [2] Y
 
-	pmullw	mm0,MMX_Ublucoeff	;[0123    ] 
+	pmullw	mm0,[MMX_Ublucoeff]	;[0123    ] 
 	psrlw	mm7,8			;[012   67] [2]
 
-	pmullw	mm1,MMX_Vredcoeff	;[0123    ] 
+	pmullw	mm1,[MMX_Vredcoeff]	;[0123    ] 
 	;<-->
 
-	pand	mm6,MMX_00FFw		;[012   67] [1]
+	pand	mm6,[MMX_00FFw]		;[012   67] [1]
 	paddw	mm2,mm3			;[012   6 ] [C]
 
-	psubw	mm6,MMX_10w		;[012   67] [1]
+	psubw	mm6,[MMX_10w]		;[012   67] [1]
 
-	pmullw	mm6,MMX_Ycoeff		;[012   67] [1]
+	pmullw	mm6,[MMX_Ycoeff]		;[012   67] [1]
 
-	psubw	mm7,MMX_10w		;[012   67] [2]
+	psubw	mm7,[MMX_10w]		;[012   67] [2]
 	movq	mm4,mm6			;[012 4 67] [1]
 
-	pmullw	mm7,MMX_Ycoeff		;[012   67] [2]
+	pmullw	mm7,[MMX_Ycoeff]		;[012   67] [2]
 	movq	mm5,mm6			;[012 4567] [1]
 
 	paddw	mm6,mm0			;[012 4 67] [1] mm6: <B3><B2><B1><B0>
@@ -2343,13 +2336,13 @@ col_loop_SSE2_16:
 	paddw	mm7,mm0			;[01234567] [2] mm6: <B3><B2><B1><B0>
 	psraw	mm6,6			;[01234567] [1]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm6,mm6		;[01234567] [1] mm6: B3B2B1B0B3B2B1B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm4,mm4		;[01234567] [1] mm4: R3R2R1R0R3R2R1R0
 
-	pand	mm5,MMX_grnmask		;[01234567] [1] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01234567] [1] mm7: <G3><G2><G1><G0>
 	psrlq	mm6,2			;[01234567] [1]
 
 	punpcklbw mm6,mm4		;[0123 567] [1] mm4: R3B3R2B2R1B1R0B0
@@ -2357,7 +2350,7 @@ col_loop_SSE2_16:
 	movq	mm4,[edx+ebp*2]		;[01234567] [3] Y
 	psrlw	mm6,1			;[01234567] [1]
 
-	pand	mm6,MMX_rbmask		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm6,[MMX_rbmask]		;[01234567] [1] mm6: <RB3><RB2><RB1><RB0>
 
 	por	mm6,mm5			;[01234 67] [1] mm6: P6P4P2P0
 	movq	mm5,mm3			;[01234567] [2]
@@ -2365,22 +2358,22 @@ col_loop_SSE2_16:
 	paddw	mm3,mm1			;[01234567] [2] mm4: <R3><R2><R1><R0>
 	paddw	mm5,mm2			;[01234567] [2] mm5: <G3><G2><G1><G0>
 
-	pand	mm4,MMX_00FFw		;[01234567] [3]
+	pand	mm4,[MMX_00FFw]		;[01234567] [3]
 	psraw	mm3,6			;[01234567] [2]	
 
-	psubw	mm4,MMX_10w		;[01234567] [3]
+	psubw	mm4,[MMX_10w]		;[01234567] [3]
 	psraw	mm5,4			;[01234567] [2]
 
-	pmullw	mm4,MMX_Ycoeff		;[01234567] [3]
+	pmullw	mm4,[MMX_Ycoeff]		;[01234567] [3]
 	psraw	mm7,6			;[01234567] [2]
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	packuswb mm3,mm3		;[01234567] [2] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	packuswb mm7,mm7		;[01234567] [2] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm5,MMX_grnmask		;[012 4567] [2] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[012 4567] [2] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2			;[01234567] [2]
 
 	punpcklbw mm7,mm3		;[012 4567] [2] mm6: R3B3R2B2R1B1R0B0
@@ -2388,16 +2381,16 @@ col_loop_SSE2_16:
 	movq	mm3,[edx+ebp*2]		;[01234567] [4] Y
 	psrlw	mm7,1			;[01234567] [2]
 
-	pand	mm7,MMX_rbmask		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
+	pand	mm7,[MMX_rbmask]		;[01234567] [2] mm6: <RB3><RB2><RB1><RB0>
 	psrlw	mm3,8			;[01234567] [4]
 
 	por	mm7,mm5			;[01234567] [2] mm7: P7P5P3P1
 	movq	mm5,mm6			;[01234567] [A]
 
-	psubw	mm3,MMX_10w		;[01234567] [4]
+	psubw	mm3,[MMX_10w]		;[01234567] [4]
 	punpcklwd mm6,mm7		;[01234567] [A] mm4: P3P2P1P0
 
-	pmullw	mm3,MMX_Ycoeff		;[0123456 ] [4]
+	pmullw	mm3,[MMX_Ycoeff]		;[0123456 ] [4]
 	punpckhwd mm5,mm7		;[0123456 ] [A} mm5: P7P6P5P4
 
 	movntq	[eax+ebp*4   ],mm6	;[012345  ] [A]
@@ -2428,28 +2421,28 @@ col_loop_SSE2_16:
 	psrlq	mm6,2
 	paddw	mm0,mm2			;[01 34567] [4] mm5: <G3><G2><G1><G0>
 
-	paddsw	mm5,MMX_clip
+	paddsw	mm5,[MMX_clip]
 	punpcklbw mm6,mm4		;[01 3 567] [3] mm6: B3B3B2B2B1B1B0B0
 
-	psubusw	mm5,MMX_clip
+	psubusw	mm5,[MMX_clip]
 	psrlw	mm6,1			;[01 3 567] [3]
 
-	pand	mm6,MMX_rbmask		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
+	pand	mm6,[MMX_rbmask]		;[01 3 567] [3] mm6: <B3><B2><B1><B0>
 	psraw	mm3,6			;[01 3 567] [4]
 
-	pand	mm5,MMX_grnmask		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
+	pand	mm5,[MMX_grnmask]		;[01 3 567] [3] mm7: <G3><G2><G1><G0>
 	psraw	mm0,4			;[01 3 567] [4]
 
 	por	mm6,mm5			;[01 3  67] [3] mm4: P6P4P2P0	
 	psraw	mm7,6			;[01 3  67] [4]
 
-	paddsw	mm0,MMX_clip
+	paddsw	mm0,[MMX_clip]
 	packuswb mm3,mm3		;[01 3  67] [4] mm4: R3R2R1R0R3R2R1R0
 
-	psubusw	mm0,MMX_clip
+	psubusw	mm0,[MMX_clip]
 	packuswb mm7,mm7		;[01 3  67] mm6: B3B2B1B0B3B2B1B0
 
-	pand	mm0,MMX_grnmask		;[01    67] mm7: <G3><G2><G1><G0>
+	pand	mm0,[MMX_grnmask]		;[01    67] mm7: <G3><G2><G1><G0>
 	psrlq	mm7,2
 
 	punpcklbw mm7,mm3		;[01    67] mm6: R3B3R2B2R1B1R0B0
@@ -2458,7 +2451,7 @@ col_loop_SSE2_16:
 	psrlw	mm7,1
 	add	ebp,4
 
-	pand	mm7,MMX_rbmask		;[01    67] mm6: <B3><B2><B1><B0>
+	pand	mm7,[MMX_rbmask]		;[01    67] mm6: <B3><B2><B1><B0>
 
 	por	mm0,mm7			;[01    67] mm0: P7P5P3P1
 

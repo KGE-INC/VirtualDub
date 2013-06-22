@@ -1,6 +1,44 @@
 VirtualDub change log
 
-Build %build% (1.8.0, experimental): [%date%]
+Build %build% (1.8.1, stable): [%date%]
+   [features added]
+   * The 'run as job' setting is now saved in the Save AVI dialog.
+   * Added distributed job queue mode.
+   * Added bob and non-interlaced field display modes to render preview.
+   * Added new test video mode: interlaced cube.
+   * Added option to run video compressor in a separate thread for better dual core/SMP performance.
+   * YCbCr resampler is now SSE4.1 optimized.
+   * Added command-line switches for minimizing/maximizing the window on startup and setting process priority.
+   * AMD64: The threshold, grayscale, levels, logo, and brightness/contrast video filters are now available.
+   * Plugins: Fixed bugs with and raised size limits for serialized input plugin options data.
+
+   [bugs fixed]
+   * Fixed cases where the crop/letterbox to aspect ratio options in the resize filter were broken.
+   * Fixed another rare crash when exiting filter list dialog.
+   * Fixed Postpone and Delete buttons in job control dialog sometimes not updating when a job state changes.
+   * Fixed swapping of AVI superindex and subindex settings.
+   * Fixed bugs with cropping in filter chain with YUY2 or UYVY formats.
+   * Mouse wheel scrolling with Shift held down (by key frame) now works properly.
+   * Fixed infinite loop when attempting to convert a pal8 source to 4:2:0 YCbCr.
+   * The initial load of AVI files is now faster over a network.
+   * TARGA files are no longer written all black when 32-bit RGB output is used.
+   * Added workaround for "image not in Y or YCbCr format" errors when reading JPEGs from a RAZR V3 phone.
+   * Deleting a filter in the filter list no longer causes the checkboxes to desync from the actual filter enable states.
+   * AVI: Files with truncated hierarchical AVI indices no longer result in "missing 'movi' chunk" errors and can now be recovered.
+   * DV: Fixed decoding issue that resulted in some lost blocks.
+   * DDraw: Fixed occasional crash when another application forces full-screen mode.
+   * Capture: Fixed crash in OpenGL screen capture mode related to occlusion query based frame dropping.
+   * Capture: Fixed hang on shutdown when exiting with OpenGL screen capture mode active.
+
+   [regressions fixed]
+   * Fixed crash when a script specifies arguments for a video filter that doesn't take any.
+   * Data rate was reported incorrectly for the video stream in the status dialog.
+   * Fixed audio display.
+   * Fixed crashes and decompression errors with paletted video.
+   * Filter preview no longer shows bogus frames when previewing a filter chain with edits on the timeline and no frame rate changing filters.
+   * Filters: Codec-friendly alignment works in resize filter again.
+
+Build 29393 (1.8.0, experimental): [February 24, 2008]
    [breaking changes]
    * The old support for reading "striped AVIs" has been removed.
    

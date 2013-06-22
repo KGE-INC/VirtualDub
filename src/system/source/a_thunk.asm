@@ -1,65 +1,63 @@
-		.486
-		.model	flat
-		.code
+		segment	.text
 		
 		align		16
-_VDMethodToFunctionThunk32	proc public
+		global		_VDMethodToFunctionThunk32		
+_VDMethodToFunctionThunk32:
 		pop			eax					;get return address in thunk
 		
 		;re-copy arguments
-		movzx		ecx, byte ptr [eax+1]
+		movzx		ecx, byte [eax+1]
 		mov			edx, ecx
 argsloop:
-		push		dword ptr [esp+edx]
+		push		dword [esp+edx]
 		sub			ecx, 4
 		jnz			argsloop
 
 		push		eax					;replace thunk return address
 		
 		mov			ecx, [eax+7]		;load 'this' pointer
-		jmp			dword ptr [eax+3]	;tail-call function
-_VDMethodToFunctionThunk32	endp
+		jmp			dword [eax+3]	;tail-call function
 
 		align		16
-_VDMethodToFunctionThunk32_4	proc public
+		global		_VDMethodToFunctionThunk32_4
+_VDMethodToFunctionThunk32_4:
 		pop			eax					;get return address in thunk
-		push		dword ptr [esp+4]	;replicate 1st argument
+		push		dword [esp+4]		;replicate 1st argument
 		push		eax					;replace thunk return address
 		mov			ecx, [eax+7]		;load 'this' pointer
-		jmp			dword ptr [eax+3]	;tail-call function
-_VDMethodToFunctionThunk32_4	endp
+		jmp			dword [eax+3]		;tail-call function
 
 		align		16
-_VDMethodToFunctionThunk32_8	proc public
+		global		_VDMethodToFunctionThunk32_8
+_VDMethodToFunctionThunk32_8:
 		pop			eax					;get return address in thunk
-		push		dword ptr [esp+8]	;replicate 2nd argument
-		push		dword ptr [esp+8]	;replicate 1st argument
+		push		dword [esp+8]		;replicate 2nd argument
+		push		dword [esp+8]		;replicate 1st argument
 		push		eax					;replace thunk return address
 		mov			ecx, [eax+7]		;load 'this' pointer
-		jmp			dword ptr [eax+3]	;tail-call function
-_VDMethodToFunctionThunk32_8	endp
+		jmp			dword [eax+3]		;tail-call function
 
 		align		16
-_VDMethodToFunctionThunk32_12	proc public
+		global		_VDMethodToFunctionThunk32_12
+_VDMethodToFunctionThunk32_12:
 		pop			eax					;get return address in thunk
-		push		dword ptr [esp+12]	;replicate 3rd argument
-		push		dword ptr [esp+12]	;replicate 2nd argument
-		push		dword ptr [esp+12]	;replicate 1st argument
+		push		dword [esp+12]		;replicate 3rd argument
+		push		dword [esp+12]		;replicate 2nd argument
+		push		dword [esp+12]		;replicate 1st argument
 		push		eax					;replace thunk return address
 		mov			ecx, [eax+7]		;load 'this' pointer
-		jmp			dword ptr [eax+3]	;tail-call function
-_VDMethodToFunctionThunk32_12	endp
+		jmp			dword [eax+3]		;tail-call function
 
 		align		16
-_VDMethodToFunctionThunk32_16	proc public
+		global		_VDMethodToFunctionThunk32_16
+_VDMethodToFunctionThunk32_16:
 		pop			eax					;get return address in thunk
-		push		dword ptr [esp+16]	;replicate 4th argument
-		push		dword ptr [esp+16]	;replicate 3rd argument
-		push		dword ptr [esp+16]	;replicate 2nd argument
-		push		dword ptr [esp+16]	;replicate 1st argument
+		push		dword [esp+16]		;replicate 4th argument
+		push		dword [esp+16]		;replicate 3rd argument
+		push		dword [esp+16]		;replicate 2nd argument
+		push		dword [esp+16]		;replicate 1st argument
 		push		eax					;replace thunk return address
 		mov			ecx, [eax+7]		;load 'this' pointer
-		jmp			dword ptr [eax+3]	;tail-call function
-_VDMethodToFunctionThunk32_16	endp
+		jmp			dword [eax+3]		;tail-call function
 
 		end

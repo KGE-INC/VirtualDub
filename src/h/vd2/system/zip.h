@@ -160,6 +160,7 @@ public:
 	sint64	Pos();
 	void	Read(void *buffer, sint32 bytes);
 	sint32	ReadData(void *buffer, sint32 bytes);
+	void	Write(const void *buffer, sint32 bytes);
 
 protected:
 	bool	ParseBlockHeader();

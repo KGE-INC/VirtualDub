@@ -62,6 +62,10 @@ namespace {
 		VDFraction		mImageSequenceFrameRate;
 
 		bool			mbDisplayAllowDirectXOverlays;
+
+		int				mVideoCompressionThreads;
+
+		uint32			mEnabledCPUFeatures;
 	} g_prefs2;
 }
 
@@ -165,27 +169,35 @@ public:
 		switch(type) {
 		case kEventAttach:
 			mpBase = pBase;
-			SetValue(100, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_FORCE));
-			SetValue(200, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_FPU));
-			SetValue(201, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_MMX));
-			SetValue(202, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_INTEGER_SSE));
-			SetValue(203, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_SSE));
-			SetValue(204, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_SSE2));
-			SetValue(205, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW));
-			SetValue(206, 0 != (mPrefs.mOldPrefs.main.fOptimizations & PreferencesMain::OPTF_3DNOW_EXT));
+			SetValue(100, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_FORCE));
+			SetValue(200, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_FPU));
+			SetValue(201, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_MMX));
+			SetValue(202, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_INTEGER_SSE));
+			SetValue(203, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE));
+			SetValue(204, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE2));
+			SetValue(205, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_3DNOW));
+			SetValue(206, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_3DNOW_EXT));
+			SetValue(207, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE3));
+			SetValue(208, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSSE3));
+			SetValue(209, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE4_1));
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
 		case kEventDetach:
-			mPrefs.mOldPrefs.main.fOptimizations = 0;
-			if (GetValue(100)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_FORCE;
-			if (GetValue(200)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_FPU;
-			if (GetValue(201)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_MMX;
-			if (GetValue(202)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_INTEGER_SSE;
-			if (GetValue(203)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_SSE;
-			if (GetValue(204)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_SSE2;
-			if (GetValue(205)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_3DNOW;
-			if (GetValue(206)) mPrefs.mOldPrefs.main.fOptimizations |= PreferencesMain::OPTF_3DNOW_EXT;
+			mPrefs.mEnabledCPUFeatures = 0;
+			if (GetValue(100)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_FORCE;
+			if (GetValue(200)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_FPU;
+			if (GetValue(201)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_MMX;
+			if (GetValue(202)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_INTEGER_SSE;
+			if (GetValue(203)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE;
+			if (GetValue(204)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE2;
+			if (GetValue(205)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_3DNOW;
+			if (GetValue(206)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_3DNOW_EXT;
+			if (GetValue(207)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE3;
+			if (GetValue(208)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSSE3;
+			if (GetValue(209)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE4_1;
+
+			mPrefs.mOldPrefs.main.fOptimizations = (char)mPrefs.mEnabledCPUFeatures;
 			return true;
 		}
 		return false;
@@ -290,8 +302,12 @@ public:
 				mPrefs.mAVIAlignmentThreshold = (uint32)wcstoul(GetCaption(200).c_str(), 0, 10);
 			mPrefs.mbPreferInternalVideoDecoders = 0!=GetValue(104);
 			mPrefs.mbPreferInternalAudioDecoders = 0!=GetValue(105);
-			mPrefs.mAVISubindexLimit = (uint32)wcstoul(GetCaption(201).c_str(), 0, 10);
-			mPrefs.mAVISuperindexLimit = (uint32)wcstoul(GetCaption(202).c_str(), 0, 10);
+			mPrefs.mAVISuperindexLimit = (uint32)wcstoul(GetCaption(201).c_str(), 0, 10);
+			if (mPrefs.mAVISuperindexLimit < 1)
+				mPrefs.mAVISuperindexLimit = 1;
+			mPrefs.mAVISubindexLimit = (uint32)wcstoul(GetCaption(202).c_str(), 0, 10);
+			if (mPrefs.mAVISubindexLimit < 1)
+				mPrefs.mAVISubindexLimit = 1;
 			mPrefs.mbEnableAVIVBRWarning = 0!=GetValue(106);
 			return true;
 		}
@@ -414,6 +430,32 @@ public:
 	}
 };
 
+class VDDialogPreferencesThreading : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesThreading(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+
+			{
+				unsigned i = mPrefs.mVideoCompressionThreads;
+				SetCaption(100, VDswprintf(L"%u", 1, &i).c_str());
+			}
+
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mVideoCompressionThreads = std::min<uint32>(wcstoul(GetCaption(100).c_str(), 0, 10), 32);
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -438,6 +480,7 @@ public:
 				case 6:	pSubDialog->SetCallback(new VDDialogPreferencesDub(mPrefs), true); break;
 				case 7:	pSubDialog->SetCallback(new VDDialogPreferencesDiskIO(mPrefs), true); break;
 				case 8:	pSubDialog->SetCallback(new VDDialogPreferencesImages(mPrefs), true); break;
+				case 9:	pSubDialog->SetCallback(new VDDialogPreferencesThreading(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -525,6 +568,9 @@ void LoadPreferences() {
 
 	g_prefs2.mImageSequenceFrameRate.Assign(imageSeqHi, imageSeqLo);
 
+	g_prefs2.mVideoCompressionThreads = key.getInt("Threading: Video compression threads", 0);
+	g_prefs2.mEnabledCPUFeatures = key.getInt("CPU: Enabled extensions", 0);
+
 	g_prefs2.mOldPrefs = g_prefs;
 
 	VDPreferencesUpdated();
@@ -556,6 +602,10 @@ void VDSavePreferences(VDPreferences2& prefs) {
 
 	key.setInt("Images: Frame rate numerator", prefs.mImageSequenceFrameRate.getHi());
 	key.setInt("Images: Frame rate denominator", prefs.mImageSequenceFrameRate.getLo());
+
+	key.setInt("Threading: Video compression threads", prefs.mVideoCompressionThreads);
+
+	key.setInt("CPU: Enabled extensions", prefs.mEnabledCPUFeatures);
 }
 
 void VDSavePreferences() {
@@ -621,6 +671,14 @@ uint32 VDPreferencesGetFileAsyncDefaultMode() {
 
 const VDFraction& VDPreferencesGetImageSequenceFrameRate() {
 	return g_prefs2.mImageSequenceFrameRate;
+}
+
+int VDPreferencesGetVideoCompressionThreadCount() {
+	return g_prefs2.mVideoCompressionThreads;
+}
+
+uint32 VDPreferencesGetEnabledCPUFeatures() {
+	return g_prefs2.mEnabledCPUFeatures;
 }
 
 void VDPreferencesUpdated() {

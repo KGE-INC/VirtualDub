@@ -23,41 +23,38 @@
 ;	3.	This notice may not be removed or altered from any source
 ;		distribution.
 
-		.686
-		.mmx
-		.xmm
-		.model		flat
-		.code
+		segment	.text
 
-_VDFastMemcpyPartialScalarAligned8	proc	near public
+	global	_VDFastMemcpyPartialScalarAligned8
+_VDFastMemcpyPartialScalarAligned8:
 		mov		eax, [esp+12]
 		mov		edx, [esp+4]
 		mov		ecx, [esp+8]
 		add		ecx, eax
 		add		edx, eax
 		neg		eax
-		jz		@nobytes
+		jz		.nobytes
 		add		eax, 8
-		jz		@doodd
-		jmp		short @xloop
+		jz		.doodd
+		jmp		short .xloop
 		align	16
-@xloop:
-		fild	qword ptr [ecx+eax-8]
-		fild	qword ptr [ecx+eax]
+.xloop:
+		fild	qword [ecx+eax-8]
+		fild	qword [ecx+eax]
 		fxch
-		fistp	qword ptr [edx+eax-8]
-		fistp	qword ptr [edx+eax]
+		fistp	qword [edx+eax-8]
+		fistp	qword [edx+eax]
 		add		eax,16
-		jnc		@xloop
-		jnz		@nobytes
-@doodd:
-		fild	qword ptr [ecx-8]
-		fistp	qword ptr [edx-8]
-@nobytes:
+		jnc		.xloop
+		jnz		.nobytes
+.doodd:
+		fild	qword [ecx-8]
+		fistp	qword [edx-8]
+.nobytes:
 		ret
-_VDFastMemcpyPartialScalarAligned8	endp
 
-_VDFastMemcpyPartialMMX		proc	near public
+	global	_VDFastMemcpyPartialMMX
+_VDFastMemcpyPartialMMX:
 		push	edi
 		push	esi
 
@@ -73,9 +70,9 @@ _VDFastMemcpyPartialMMX		proc	near public
 		pop		esi
 		pop		edi
 		ret
-_VDFastMemcpyPartialMMX		endp
 
-_VDFastMemcpyPartialMMX2	proc	near public
+	global	_VDFastMemcpyPartialMMX2
+_VDFastMemcpyPartialMMX2:
 		push	ebp
 		push	edi
 		push	esi
@@ -86,8 +83,8 @@ _VDFastMemcpyPartialMMX2	proc	near public
 		mov		eax, [esp+12+16]
 		neg		eax
 		add		eax, 63
-		jbe		@skipblastloop
-@blastloop:
+		jbe		.skipblastloop
+.blastloop:
 		movq	mm0, [edx]
 		movq	mm1, [edx+8]
 		movq	mm2, [edx+16]
@@ -107,32 +104,31 @@ _VDFastMemcpyPartialMMX2	proc	near public
 		add		ebx, 64
 		add		edx, 64
 		add		eax, 64
-		jnc		@blastloop
-@skipblastloop:
+		jnc		.blastloop
+.skipblastloop:
 		sub		eax, 63-7
-		jns		@noextras
-@quadloop:
+		jns		.noextras
+.quadloop:
 		movq	mm0, [edx]
 		movntq	[ebx], mm0
 		add		edx, 8
 		add		ebx, 8
 		add		eax, 8
-		jnc		@quadloop
-@noextras:
+		jnc		.quadloop
+.noextras:
 		sub		eax, 7
-		jz		@nooddballs
+		jz		.nooddballs
 		mov		ecx, eax
 		neg		ecx
 		mov		esi, edx
 		mov		edi, ebx
 		rep		movsb
-@nooddballs:
+.nooddballs:
 		pop		ebx
 		pop		esi
 		pop		edi
 		pop		ebp
 		ret
-_VDFastMemcpyPartialMMX2	endp
 
 
 		end

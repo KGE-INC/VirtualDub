@@ -15,11 +15,9 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.386
-	.model	flat
-	.code
+	segment	.text
 
-	public _asm_threshold_run
+	global _asm_threshold_run	
 
 ;asm_threshold_run(
 ;	[esp+ 4] void *dst,
@@ -50,12 +48,12 @@ _asm_threshold_run:
 	push	ebx
 
 
-threshold@rowloop:
+threshold.rowloop:
 	push	ebp
 	mov	ebp,[esp+ 8+36]
 
 	push	esi
-threshold@colloop:
+threshold.colloop:
 	mov     eax,[esi]		;1u EAX=?.R.G.B
         xor     ebx,ebx			;1v EBX=0
         mov     edx,eax			;2u EDX=?.R.G.B
@@ -79,7 +77,7 @@ threshold@colloop:
 	sar	eax,31			;12u
 	dec	ebp			;12v
 	mov	[esi-4],eax		;13u
-	jne	threshold@colloop	;13v
+	jne	threshold.colloop	;13v
 
 	pop	esi
 
@@ -87,7 +85,7 @@ threshold@colloop:
 	add	esi,[esp+16+32]
 
 	dec	ebp
-	jne	threshold@rowloop
+	jne	threshold.rowloop
 
 	pop	eax			;remove thresholding temp
 

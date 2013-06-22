@@ -17,7 +17,6 @@
 #include "AVIOutputPreview.h"
 #include "VideoSource.h"
 #include "VideoTelecineRemover.h"
-#include "VideoSequenceCompressor.h"
 #include "prefs.h"
 #include "filters.h"
 #include "AsyncBlitter.h"
@@ -35,7 +34,6 @@ namespace {
 		kVDM_BeginningNextSegment,
 		kVDM_IOThreadLivelock,
 		kVDM_ProcessingThreadLivelock,
-		kVDM_CodecDelayedDuringDelayedFlush,
 		kVDM_CodecLoopingDuringDelayedFlush,
 		kVDM_FastRecompressUsingFormat,
 		kVDM_SlowRecompressUsingFormat,
@@ -45,12 +43,622 @@ namespace {
 
 	enum {
 		// This is to work around an XviD decode bug (see VideoSource.h).
-		kDecodeOverflowWorkaroundSize = 16
+		kDecodeOverflowWorkaroundSize = 16,
+
+		kReasonableBFrameBufferLimit = 100
+	};
+
+	enum {
+		BUFFERID_INPUT = 1,
+		BUFFERID_OUTPUT = 2
 	};
 };
 
-#define BUFFERID_INPUT (1)
-#define BUFFERID_OUTPUT (2)
+///////////////////////////////////////////////////////////////////////////////
+
+template<class T>
+class VDRenderBufferAllocator : public vdrefcounted<IVDRefCount> {
+public:
+	VDRenderBufferAllocator();
+	~VDRenderBufferAllocator();
+
+	void Init();
+	void Shutdown();
+
+	bool AllocFrame(int timeout, T **ppFrame);
+	bool FreeFrame(T *buffer);
+
+protected:
+	vdfastvector<T *>	mBuffers;
+
+	int					mOutstandingBufferCount;
+	VDSemaphore			mBufferCount;
+	VDCriticalSection	mMutex;
+	bool mbActive;
+};
+
+template<class T>
+VDRenderBufferAllocator<T>::VDRenderBufferAllocator()
+	: mBufferCount(0)
+	, mOutstandingBufferCount(0)
+	, mbActive(true)
+{
+}
+
+template<class T>
+VDRenderBufferAllocator<T>::~VDRenderBufferAllocator() {
+	Shutdown();
+}
+
+template<class T>
+void VDRenderBufferAllocator<T>::Init() {
+	vdsynchronized(mMutex) {
+		mBufferCount.Reset(0);
+		mbActive = true;
+	}
+}
+
+template<class T>
+void VDRenderBufferAllocator<T>::Shutdown() {
+	vdsynchronized(mMutex) {
+		mbActive = false;
+		mBufferCount.Post();
+
+		while(!mBuffers.empty()) {
+			T *buf = mBuffers.back();
+			mBuffers.pop_back();
+
+			delete buf;
+		}
+	}
+}
+
+template<class T>
+bool VDRenderBufferAllocator<T>::AllocFrame(int timeout, T **ppFrame) {
+	T *buf = NULL;
+
+	if (!mBufferCount.Wait(timeout))
+		return false;
+
+	vdsynchronized(mMutex) {
+		if (!mbActive) {
+			mBufferCount.Post();
+			return false;
+		}
+
+		VDASSERT(!mBuffers.empty());
+
+		buf = mBuffers.back();
+		mBuffers.pop_back();
+
+		++mOutstandingBufferCount;
+	}
+
+	*ppFrame = buf;
+	buf->AddRef();
+	return true;
+}
+
+template<class T>
+bool VDRenderBufferAllocator<T>::FreeFrame(T *buffer) {
+	bool active = false;
+	vdsynchronized(mMutex) {
+		active = mbActive;
+		if (active)
+			mBuffers.push_back(buffer);
+
+		--mOutstandingBufferCount;
+	}
+
+	if (active)
+		mBufferCount.Post();
+
+	return active;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+class VDRenderOutputBuffer;
+
+class VDRenderOutputBufferTracker : public VDRenderBufferAllocator<VDRenderOutputBuffer> {
+public:
+	void Init(void *base, const VDPixmap& px);
+	void Init(int count, const VDPixmapLayout& layout);
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDRenderOutputBuffer : public VDVideoDisplayFrame {
+public:
+	VDRenderOutputBuffer(VDRenderOutputBufferTracker *tracker);
+	~VDRenderOutputBuffer();
+
+	void Init(void *base, const VDPixmap& px);
+	void Init(const VDPixmapLayout& layout);
+
+	virtual int Release();
+
+	void *mpBase;
+
+public:
+	const vdrefptr<VDRenderOutputBufferTracker> mpTracker;
+	VDPixmapBuffer mBuffer;
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+void VDRenderOutputBufferTracker::Init(void *base, const VDPixmap& px) {
+	vdrefptr<VDRenderOutputBuffer> buf(new VDRenderOutputBuffer(this));
+
+	buf->Init(base, px);
+}
+
+void VDRenderOutputBufferTracker::Init(int count, const VDPixmapLayout& layout) {
+	VDRenderBufferAllocator<VDRenderOutputBuffer>::Init();
+
+	for(int i=0; i<count; ++i) {
+		vdrefptr<VDRenderOutputBuffer> buf(new VDRenderOutputBuffer(this));
+
+		buf->Init(layout);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDRenderOutputBuffer::VDRenderOutputBuffer(VDRenderOutputBufferTracker *tracker)
+	: mpTracker(tracker)
+{
+}
+
+VDRenderOutputBuffer::~VDRenderOutputBuffer() {
+}
+
+int VDRenderOutputBuffer::Release() {
+	int rc = --mRefCount;
+
+	if (!rc) {
+		if (!mpTracker->FreeFrame(this))
+			delete this;
+	}
+
+	return rc;
+}
+
+void VDRenderOutputBuffer::Init(void *base, const VDPixmap& px) {
+	mpBase = base;
+	mPixmap = px;
+}
+
+void VDRenderOutputBuffer::Init(const VDPixmapLayout& layout) {
+	mBuffer.init(layout);
+	mPixmap = mBuffer;
+	mpBase = mBuffer.base();
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDRenderPostCompressionBuffer;
+
+class VDRenderPostCompressionBufferAllocator : public VDRenderBufferAllocator<VDRenderPostCompressionBuffer> {
+public:
+	void Init(int count, uint32 auxsize);
+};
+
+class VDRenderPostCompressionBuffer : public vdrefcounted<IVDRefCount> {
+public:
+	VDRenderPostCompressionBuffer(VDRenderPostCompressionBufferAllocator *tracker);
+	~VDRenderPostCompressionBuffer();
+
+	virtual int Release();
+
+	uint32	mOutputSize;
+	bool	mbOutputIsKey;
+	vdfastvector<char>	mOutputBuffer;
+
+protected:
+	const vdrefptr<VDRenderPostCompressionBufferAllocator> mpTracker;
+};
+
+void VDRenderPostCompressionBufferAllocator::Init(int count, uint32 auxsize) {
+	VDRenderBufferAllocator<VDRenderPostCompressionBuffer>::Init();
+
+	for(int i=0; i<count; ++i) {
+		vdrefptr<VDRenderPostCompressionBuffer> buf(new VDRenderPostCompressionBuffer(this));
+
+		buf->mOutputBuffer.resize(auxsize);
+	}
+}
+
+VDRenderPostCompressionBuffer::VDRenderPostCompressionBuffer(VDRenderPostCompressionBufferAllocator *tracker)
+	: mpTracker(tracker)
+{
+}
+
+VDRenderPostCompressionBuffer::~VDRenderPostCompressionBuffer() {
+}
+
+int VDRenderPostCompressionBuffer::Release() {
+	int rc = --mRefCount;
+
+	if (!rc) {
+		if (!mpTracker->FreeFrame(this))
+			delete this;
+	}
+
+	return rc;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDThreadedVideoCompressorSlave;
+
+class VDThreadedVideoCompressor {
+public:
+	enum FlushStatus {
+		kFlushStatusNone				= 0,
+		kFlushStatusLoopingDetected		= 1,
+		kFlushStatusAll					= 1
+	};
+
+	VDThreadedVideoCompressor();
+	~VDThreadedVideoCompressor();
+
+	FlushStatus GetFlushStatus();
+
+	void Init(int threads, IVDVideoCompressor *pBaseCompressor);
+	void Shutdown();
+
+	void SetFlush(bool flush);
+
+	void SkipFrame();
+	void Restart();
+
+	bool ExchangeBuffer(VDRenderOutputBuffer *buffer, VDRenderPostCompressionBuffer **ppOutBuffer);
+
+public:
+	void RunSlave(IVDVideoCompressor *compressor);
+
+protected:
+	bool ProcessFrame(VDRenderOutputBuffer *pBuffer, IVDVideoCompressor *pCompressor, VDRTProfileChannel *pProfileChannel);
+	void FlushQueues();
+
+	VDThreadedVideoCompressorSlave *mpThreads;
+	int mThreadCount;
+	bool mbClientFlushInProgress;
+
+	IVDVideoCompressor *mpBaseCompressor;
+
+	vdrefptr<VDRenderPostCompressionBufferAllocator> mpAllocator;
+
+	VDSemaphore mBarrier;
+
+	VDAtomicInt	mFrameSkipCounter;
+
+	VDCriticalSection mMutex;
+	int mFramesSubmitted;
+	int mFramesProcessed;
+	int mFramesBufferedInFlush;
+	bool mbFlushInProgress;
+	bool mbLoopDetectedDuringFlush;
+
+	bool mbInErrorState;
+	vdfastdeque<VDRenderOutputBuffer *> mInputBuffer;
+	vdfastdeque<VDRenderPostCompressionBuffer *> mOutputBuffer;
+	VDSemaphore mInputBufferCount;
+
+	MyError mError;
+};
+
+/////////
+
+class VDThreadedVideoCompressorSlave : public VDThread {
+public:
+	VDThreadedVideoCompressorSlave();
+	~VDThreadedVideoCompressorSlave();
+
+	void Init(VDThreadedVideoCompressor *parent, IVDVideoCompressor *compressor);
+	void Shutdown();
+
+protected:
+	void ThreadRun();
+
+	VDThreadedVideoCompressor *mpParent;
+	IVDVideoCompressor *mpCompressor;
+};
+
+/////////
+
+VDThreadedVideoCompressor::VDThreadedVideoCompressor()
+	: mpThreads(NULL)
+	, mThreadCount(0)
+	, mbClientFlushInProgress(false)
+	, mBarrier(0)
+	, mFrameSkipCounter(0)
+	, mpAllocator(new VDRenderPostCompressionBufferAllocator)
+	, mFramesSubmitted(0)
+	, mFramesProcessed(0)
+	, mFramesBufferedInFlush(0)
+	, mbFlushInProgress(false)
+	, mbLoopDetectedDuringFlush(false)
+	, mInputBufferCount(0)
+{
+}
+
+VDThreadedVideoCompressor::~VDThreadedVideoCompressor() {
+}
+
+VDThreadedVideoCompressor::FlushStatus VDThreadedVideoCompressor::GetFlushStatus() {
+	uint32 result = 0;
+
+	vdsynchronized(mMutex) {
+		if (mbLoopDetectedDuringFlush)
+			result |= kFlushStatusLoopingDetected;
+	}
+
+	return (FlushStatus)result;
+}
+
+void VDThreadedVideoCompressor::Init(int threads, IVDVideoCompressor *pBaseCompressor) {
+	VDASSERT(threads <= 1);
+
+	Shutdown();
+
+	uint32 compsize = pBaseCompressor->GetMaxOutputSize() + kDecodeOverflowWorkaroundSize;
+
+	mpAllocator->Init(threads + 1, compsize);
+
+	mpBaseCompressor = pBaseCompressor;
+	mbInErrorState = false;
+	mInputBufferCount.Reset(0);
+	mThreadCount = threads;
+	mpThreads = new VDThreadedVideoCompressorSlave[threads];
+
+	if (threads)
+		mpThreads[0].Init(this, pBaseCompressor);
+}
+
+void VDThreadedVideoCompressor::Shutdown() {
+	vdsynchronized(mMutex) {
+		mbInErrorState = true;
+	}
+
+	mpAllocator->Shutdown();
+
+	if (mpThreads) {
+		for(int i=0; i<mThreadCount; ++i) {
+			mInputBufferCount.Post();
+		}
+
+		delete[] mpThreads;
+	}
+
+	FlushQueues();
+}
+
+void VDThreadedVideoCompressor::SetFlush(bool flush) {
+	if (mbClientFlushInProgress == flush)
+		return;
+
+	mbClientFlushInProgress = flush;
+	if (flush) {
+		vdsynchronized(mMutex) {
+			mbFlushInProgress = true;
+		}
+	} else {
+		// barrier all threads
+		for(int i=0; i<mThreadCount; ++i)
+			mBarrier.Wait();
+
+		// flush all queues
+		FlushQueues();
+
+		// clear the flush flag
+		vdsynchronized(mMutex) {
+			mbFlushInProgress = false;
+			mbLoopDetectedDuringFlush = false;
+		}
+
+		// release all threads
+		for(int i=0; i<mThreadCount; ++i)
+			mBarrier.Post();
+	}
+}
+
+void VDThreadedVideoCompressor::SkipFrame() {
+	if (mThreadCount)
+		++mFrameSkipCounter;
+	else
+		mpBaseCompressor->SkipFrame();
+}
+
+void VDThreadedVideoCompressor::Restart() {
+	// barrier all threads
+	for(int i=0; i<mThreadCount; ++i)
+		mBarrier.Wait();
+
+	mpBaseCompressor->SkipFrame();
+
+	// release all threads
+	for(int i=0; i<mThreadCount; ++i)
+		mBarrier.Post();
+}
+
+bool VDThreadedVideoCompressor::ExchangeBuffer(VDRenderOutputBuffer *buffer, VDRenderPostCompressionBuffer **ppOutBuffer) {
+	bool success = false;
+
+	if (mThreadCount) {
+		vdsynchronized(mMutex) {
+			if (mbInErrorState)
+				throw mError;
+
+			if (buffer) {
+				buffer->AddRef();
+				mInputBuffer.push_back(buffer);
+				mInputBufferCount.Post();
+
+				if (!mbFlushInProgress)
+					++mFramesSubmitted;
+			}
+
+			if (ppOutBuffer) {
+				if (!mOutputBuffer.empty()) {
+					*ppOutBuffer = mOutputBuffer.front();
+					mOutputBuffer.pop_front();
+					success = true;
+				}
+			}
+		}
+	} else {
+		if (buffer) {
+			if (!mbFlushInProgress)
+				++mFramesSubmitted;
+
+			if (!ProcessFrame(buffer, mpBaseCompressor, NULL))
+				return false;
+		}
+
+		if (ppOutBuffer) {
+			if (!mOutputBuffer.empty()) {
+				*ppOutBuffer = mOutputBuffer.front();
+				mOutputBuffer.pop_front();
+				success = true;
+			}
+		}
+	}
+
+	return success;
+}
+
+void VDThreadedVideoCompressor::RunSlave(IVDVideoCompressor *compressor) {
+	VDRTProfileChannel	profchan("VideoCompressor");
+
+	for(;;) {
+		mBarrier.Post();
+		mInputBufferCount.Wait();
+		mBarrier.Wait();
+
+		vdrefptr<VDRenderOutputBuffer> buffer;
+		int framesToSkip = 0;
+
+		vdsynchronized(mMutex) {
+			if (mbInErrorState)
+				break;
+
+			if (!mInputBuffer.empty()) {
+				buffer.set(mInputBuffer.front());
+				mInputBuffer.pop_front();
+
+				framesToSkip = mFrameSkipCounter.xchg(0);
+			}
+		}
+
+		// If we are coming off a flush, it's possible that we don't have a frame here.
+		if (!buffer) {
+			VDASSERT(!framesToSkip);
+			continue;
+		}
+
+		while(framesToSkip--)
+			compressor->SkipFrame();
+
+		if (!ProcessFrame(buffer, compressor, &profchan))
+			break;
+	}
+}
+
+bool VDThreadedVideoCompressor::ProcessFrame(VDRenderOutputBuffer *pBuffer, IVDVideoCompressor *pCompressor, VDRTProfileChannel *pProfileChannel) {
+	vdrefptr<VDRenderPostCompressionBuffer> pOutputBuffer;
+	if (!mpAllocator->AllocFrame(-1, ~pOutputBuffer)) {
+		VDASSERT(mbInErrorState);
+		return false;
+	}
+
+	bool isKey;
+	uint32 packedSize;
+	bool valid;
+
+	if (pProfileChannel)
+		pProfileChannel->Begin(0xe0e0e0, "V-Compress");
+
+	try {
+		valid = pCompressor->CompressFrame(pOutputBuffer->mOutputBuffer.data(), pBuffer->mpBase, isKey, packedSize);
+
+		if (!valid) {
+			vdsynchronized(mMutex) {
+				if (mbFlushInProgress) {
+					if (++mFramesBufferedInFlush >= kReasonableBFrameBufferLimit) {
+						mFramesBufferedInFlush = 0;
+						mbLoopDetectedDuringFlush = true;
+					}
+				}
+			}
+		}
+
+		if (pProfileChannel)
+			pProfileChannel->End();
+	} catch(MyError& e) {
+		if (pProfileChannel)
+			pProfileChannel->End();
+
+		vdsynchronized(mMutex) {
+			if (!mbInErrorState) {
+				mError.TransferFrom(e);
+				mbInErrorState = true;
+			}
+		}
+		return false;
+	}
+
+	if (valid) {
+		pOutputBuffer->mOutputSize = packedSize;
+		pOutputBuffer->mbOutputIsKey = isKey;
+
+		vdsynchronized(mMutex) {
+			mFramesBufferedInFlush = 0;
+
+			mOutputBuffer.push_back(pOutputBuffer);
+		}
+
+		pOutputBuffer.release();
+	}
+
+	return true;
+}
+
+void VDThreadedVideoCompressor::FlushQueues() {
+	vdsynchronized(mMutex) {
+		while(!mOutputBuffer.empty()) {
+			mOutputBuffer.front()->Release();
+			mOutputBuffer.pop_front();
+		}
+
+		while(!mInputBuffer.empty()) {
+			mInputBuffer.front()->Release();
+			mInputBuffer.pop_front();
+		}
+	}
+}
+
+/////////
+
+VDThreadedVideoCompressorSlave::VDThreadedVideoCompressorSlave() {
+}
+
+VDThreadedVideoCompressorSlave::~VDThreadedVideoCompressorSlave() {
+}
+
+void VDThreadedVideoCompressorSlave::Init(VDThreadedVideoCompressor *parent, IVDVideoCompressor *compressor) {
+	mpParent = parent;
+	mpCompressor = compressor;
+
+	ThreadStart();
+}
+
+void VDThreadedVideoCompressorSlave::ThreadRun() {
+	mpParent->RunSlave(mpCompressor);
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 namespace {
 	bool AsyncUpdateCallback(int pass, void *pDisplayAsVoid, void *pInterlaced, bool aborting) {
@@ -66,7 +674,7 @@ namespace {
 			baseFlags |= IVDVideoDisplay::kVSync;
 
 		if (nFieldMode) {
-			if (nFieldMode == 2) {
+			if ((nFieldMode - 1) & 1) {
 				if (pass)
 					pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | baseFlags);
 				else
@@ -134,6 +742,8 @@ VDDubProcessThread::VDDubProcessThread()
 	, mpAudioOut(NULL)
 	, mpOutputSystem(NULL)
 	, mpVideoPipe(NULL)
+	, mpInputDisplay(NULL)
+	, mpOutputDisplay(NULL)
 	, mpAudioPipe(NULL)
 	, mbAudioFrozen(false)
 	, mbAudioFrozenValid(false)
@@ -146,16 +756,20 @@ VDDubProcessThread::VDDubProcessThread()
 	, mActivityCounter(0)
 	, mRefreshFlag(1)
 	, mProcessingProfileChannel("Processor")
-	, mpVideoFilterOutputBuffer(NULL)
 	, mPendingNullVideoFrames(0)
 	, mpInvTelecine(NULL)
 	, mbVideoDecompressorEnabled(false)
 	, mpAbort(NULL)
 	, mpStatusHandler(NULL)
+	, mpVideoCompressor(NULL)
+	, mpThreadedVideoCompressor(NULL)
+	, mpFrameBufferTracker(NULL)
+	, mpDisplayBufferTracker(NULL)
 {
 }
 
 VDDubProcessThread::~VDDubProcessThread() {
+	Shutdown();
 }
 
 void VDDubProcessThread::SetParent(IDubberInternal *pParent) {
@@ -178,9 +792,12 @@ void VDDubProcessThread::SetOutputDisplay(IVDVideoDisplay *pVideoDisplay) {
 	mpOutputDisplay = pVideoDisplay;
 }
 
-void VDDubProcessThread::SetVideoFilterOutput(void *pBuffer, const VDPixmap& px) {
-	mpVideoFilterOutputBuffer = pBuffer;
-	mVideoFilterOutputPixmap = px;
+void VDDubProcessThread::SetVideoFilterOutput(const VDPixmapLayout& layout) {
+	VDASSERT(!mpDisplayBufferTracker);
+	mpDisplayBufferTracker = new VDRenderOutputBufferTracker;
+	mpDisplayBufferTracker->AddRef();
+
+	mpDisplayBufferTracker->Init(3, layout);
 }
 
 void VDDubProcessThread::SetVideoSources(IVDVideoSource *const *pVideoSources, uint32 count) {
@@ -199,10 +816,18 @@ void VDDubProcessThread::SetVideoIVTC(VideoTelecineRemover *pIVTC) {
 	mpInvTelecine = pIVTC;
 }
 
-void VDDubProcessThread::SetVideoCompressor(IVDVideoCompressor *pCompressor) {
+void VDDubProcessThread::SetVideoCompressor(IVDVideoCompressor *pCompressor, int threadCount) {
+	VDASSERT(!mpThreadedVideoCompressor);
+
 	mpVideoCompressor = pCompressor;
-	if (pCompressor)
-		mVideoCompressionBuffer.resize(pCompressor->GetMaxOutputSize() + kDecodeOverflowWorkaroundSize);
+
+	if (pCompressor) {
+		if (threadCount > 1)
+			threadCount = 1;
+
+		mpThreadedVideoCompressor = new VDThreadedVideoCompressor;
+		mpThreadedVideoCompressor->Init(threadCount, pCompressor);
+	}
 }
 
 void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, IVDDubberOutputSystem *pOutputSystem, AVIPipe *pVideoPipe, VDAudioPipeline *pAudioPipe, VDStreamInterleaver *pStreamInterleaver) {
@@ -227,7 +852,7 @@ void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, 
 	if (mpOutputSystem->IsRealTime()) {
 		int timerInterval = VDClampToSint32(mpVInfo->frameRate.scale64ir(1000));
 
-		if (opt->video.fSyncToAudio || opt->video.nPreviewFieldMode) {
+		if (opt->video.fSyncToAudio || opt->video.previewFieldMode) {
 			timerInterval /= 2;
 		}
 
@@ -236,6 +861,14 @@ void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, 
 	}
 
 	NextSegment();
+
+	if (!mpDisplayBufferTracker && !mpFrameBufferTracker) {
+		mpFrameBufferTracker = new VDRenderOutputBufferTracker;
+		mpFrameBufferTracker->AddRef();
+
+		IVDVideoSource *vs = mVideoSources[0];
+		mpFrameBufferTracker->Init((void *)vs->getFrameBuffer(), vs->getTargetFormat());
+	}
 }
 
 void VDDubProcessThread::Shutdown() {
@@ -252,6 +885,24 @@ void VDDubProcessThread::Shutdown() {
 		mpAVIOut = NULL;
 		mpAudioOut = NULL;
 		mpVideoOut = NULL;
+	}
+
+	if (mpThreadedVideoCompressor) {
+		mpThreadedVideoCompressor->Shutdown();
+		delete mpThreadedVideoCompressor;
+		mpThreadedVideoCompressor = NULL;
+	}
+
+	if (mpDisplayBufferTracker) {
+		mpDisplayBufferTracker->Shutdown();
+		mpDisplayBufferTracker->Release();
+		mpDisplayBufferTracker = NULL;
+	}
+
+	if (mpFrameBufferTracker) {
+		mpFrameBufferTracker->Shutdown();
+		mpFrameBufferTracker->Release();
+		mpFrameBufferTracker = NULL;
 	}
 }
 
@@ -350,8 +1001,6 @@ void VDDubProcessThread::ThreadRun() {
 						// We cannot wrap the entire loop with a profiling event because typically
 						// involves a nice wait in preview mode.
 
-						uint32 nFramesPushedTryingToFlushCodec = 0;
-
 						for(;;) {
 							const VDRenderVideoPipeFrameInfo *pFrameInfo;
 							VDRenderVideoPipeFrameInfo dummyFrameInfo;
@@ -425,38 +1074,28 @@ void VDDubProcessThread::ThreadRun() {
 								mbFirstPacket = false;
 							}
 
-							VideoWriteResult result = WriteVideoFrame(
-								pFrameInfo->mpData,
-								pFrameInfo->mFlags,
-								pFrameInfo->mDroptype,
-								pFrameInfo->mLength,
-								pFrameInfo->mRawFrame,
-								pFrameInfo->mTargetFrame,
-								pFrameInfo->mOrigDisplayFrame,
-								pFrameInfo->mDisplayFrame,
-								pFrameInfo->mTimelineFrame,
-								pFrameInfo->mSequenceFrame,
-								pFrameInfo->mSrcIndex);
+							VideoWriteResult result = WriteVideoFrame(*pFrameInfo);
 
 							// If we pushed an empty frame that was pending, we didn't actually process a real frame in
 							// the queue and should exit now.
-							if (result == kVideoWritePushedPendingEmptyFrame)
+							if (result == kVideoWritePushedPendingEmptyFrame) {
+//								VDDEBUG("[VideoPath] Frame was written; no frame pushed.\n");
 								break;
+							}
 
 							// If we pushed a frame to empty the video codec's B-frame queue, decrement the count here.
 							// Note that we must do this AFTER we check if an empty frame has been pushed, because in
 							// that case no frame actually got pushed through the video codec.
-							if (bAttemptingToFlushCodecBuffer)
-								--nVideoFramesDelayed;
+							if (bAttemptingToFlushCodecBuffer || result == kVideoWritePullOnly) {
+								VDVERIFY(--nVideoFramesDelayed >= 0);
+							}
 
 							lastVideoSourceIndex = pFrameInfo->mSrcIndex;
 
 							if (result == kVideoWriteDelayed) {
+//								VDDEBUG("[VideoPath] Frame %lld was buffered.\n", pFrameInfo->mDisplayFrame);
+
 								if (bAttemptingToFlushCodecBuffer) {
-									const int kReasonableBFrameBufferLimit = 100;
-
-									++nFramesPushedTryingToFlushCodec;
-
 									// DivX 5.0.5 seems to have a bug where in the second pass of a multipass operation
 									// it outputs an endless number of delay frames at the end!  This causes us to loop
 									// infinitely trying to flush a codec delay that never ends.  Unfortunately, there is
@@ -464,16 +1103,20 @@ void VDDubProcessThread::ThreadRun() {
 									// being compressed is shorter than the B-frame delay.  We attempt to detect when
 									// this situation occurs and avert the loop.
 
-									if (bVideoNonDelayedFrameReceived) {
-										VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_CodecDelayedDuringDelayedFlush);
-										--nVideoFramesDelayed;	// cancel increment below (might underflow but that's OK)
-									} else if (nFramesPushedTryingToFlushCodec > kReasonableBFrameBufferLimit) {
-										VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_CodecLoopingDuringDelayedFlush, 1, &kReasonableBFrameBufferLimit);
-										nVideoFramesDelayed = 0;
-										continue;
+									VDThreadedVideoCompressor::FlushStatus flushStatus = mpThreadedVideoCompressor->GetFlushStatus();
+
+									if (flushStatus & VDThreadedVideoCompressor::kFlushStatusLoopingDetected) {
+										int count = kReasonableBFrameBufferLimit;
+										VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_CodecLoopingDuringDelayedFlush, 1, &count);
+										result = kVideoWriteOK;
+
+										// cancel increment below
+										--nVideoFramesDelayed;
 									}
 								}
 								++nVideoFramesDelayed;
+							} else {
+//								VDDEBUG("[VideoPath] Frame %lld was processed (delay queue length = %d).\n", pFrameInfo->mDisplayFrame, nVideoFramesDelayed);
 							}
 
 							bVideoNonDelayedFrameReceived = true;
@@ -482,6 +1125,9 @@ void VDDubProcessThread::ThreadRun() {
 								static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->start();
 								mbAudioFrozenValid = true;
 							}
+
+							if (result == kVideoWritePullOnly)
+								break;
 
 							if (pFrameInfo != &dummyFrameInfo)
 								mpVideoPipe->releaseBuffer();
@@ -506,7 +1152,7 @@ void VDDubProcessThread::ThreadRun() {
 				break;
 
 			// check for video decompressor switch
-			if (mpVideoCompressor && mbVideoDecompressorEnabled != opt->video.fShowDecompressedFrame) {
+			if (mpOutputDisplay && mpVideoCompressor && mbVideoDecompressorEnabled != opt->video.fShowDecompressedFrame) {
 				mbVideoDecompressorEnabled = opt->video.fShowDecompressedFrame;
 
 				if (mbVideoDecompressorEnabled) {
@@ -514,7 +1160,7 @@ void VDDubProcessThread::ThreadRun() {
 					mbVideoDecompressorPending = true;
 
 					const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)mpVideoCompressor->GetOutputFormat();
-					mpVideoDecompressor = VDFindVideoDecompressor(0, pbih);
+					mpVideoDecompressor = VDFindVideoDecompressor(0, pbih, mpVideoCompressor->GetOutputFormatSize());
 
 					if (mpVideoDecompressor) {
 						if (!mpVideoDecompressor->SetTargetFormat(0))
@@ -532,7 +1178,7 @@ void VDDubProcessThread::ThreadRun() {
 								int variant = mpVideoDecompressor->GetTargetFormatVariant();
 
 								VDPixmapLayout layout;
-								VDMakeBitmapCompatiblePixmapLayout(layout, abs(pbih->biWidth), abs(pbih->biHeight), format, variant);
+								VDMakeBitmapCompatiblePixmapLayout(layout, abs(pbih->biWidth), abs(pbih->biHeight), format, variant, mpVideoDecompressor->GetTargetFormatPalette());
 
 								mVideoDecompBuffer.init(layout);
 							} catch(const MyError&) {
@@ -610,7 +1256,109 @@ abort_requested:
 	mpParent->InternalSignalStop();
 }
 
-VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition orig_display_num, VDPosition display_num, VDPosition timeline_num, VDPosition sequence_num, int srcIndex) {
+///////////////////////////////////////////////////////////////////////////////
+
+void VDDubProcessThread::NotifyDroppedFrame(int exdata) {
+	if (!(exdata & kBufferFlagPreload)) {
+		mpBlitter->nextFrame(opt->video.previewFieldMode ? 2 : 1);
+
+		if (lDropFrames)
+			--lDropFrames;
+
+		if (mpStatusHandler)
+			mpStatusHandler->NotifyNewFrame(0);
+	}
+}
+
+void VDDubProcessThread::NotifyCompletedFrame(uint32 bytes, bool isKey) {
+	mpVInfo->lastProcessedTimestamp = VDGetCurrentTick();
+	++mpVInfo->processed;
+
+	mpBlitter->nextFrame(opt->video.previewFieldMode ? 2 : 1);
+
+	if (mpStatusHandler)
+		mpStatusHandler->NotifyNewFrame(isKey ? bytes : bytes | 0x80000000);
+}
+
+bool VDDubProcessThread::DoVideoFrameDropTest(const VDRenderVideoPipeFrameInfo& frameInfo) {
+	const int			exdata				= frameInfo.mFlags;
+	const int			droptype			= frameInfo.mDroptype;
+	const uint32		lastSize			= frameInfo.mLength;
+	const VDPosition	sample_num			= frameInfo.mRawFrame;
+	const VDPosition	display_num			= frameInfo.mDisplayFrame;
+	const int			srcIndex			= frameInfo.mSrcIndex;
+	IVDVideoSource *vsrc = mVideoSources[srcIndex];
+
+	bool bDrop = false;
+
+	if (opt->perf.fDropFrames) {
+		// If audio is frozen, force frames to be dropped.
+		bDrop = !vsrc->isDecodable(sample_num);
+
+		if (mbAudioFrozen && mbAudioFrozenValid) {
+			lDropFrames = 1;
+		}
+
+		if (lDropFrames) {
+			long lCurrentDelta = mpBlitter->getFrameDelta();
+			if (opt->video.previewFieldMode)
+				lCurrentDelta >>= 1;
+			if (lDropFrames > lCurrentDelta) {
+				lDropFrames = lCurrentDelta;
+				if (lDropFrames < 0)
+					lDropFrames = 0;
+			}
+		}
+
+		if (lDropFrames && !bDrop) {
+
+			// Attempt to drop a frame before the decoder.  Droppable frames (zero-byte
+			// or B-frames) can be dropped without any problem without question.  Dependant
+			// (P-frames or delta frames) and independent frames (I-frames or keyframes)
+			// should only be dropped if there is a reasonable expectation that another
+			// independent frame will arrive around the time that we want to stop dropping
+			// frames, since we'll basically kill decoding until then.
+
+			if (droptype == AVIPipe::kDroppable) {
+				bDrop = true;
+			} else {
+				int total, indep;
+
+				mpVideoPipe->getDropDistances(total, indep);
+
+				// Do a blind drop if we know a keyframe will arrive within two frames.
+
+				if (indep == 0x3FFFFFFF && vsrc->nearestKey(display_num + opt->video.frameRateDecimation*2) > display_num)
+					indep = 0;
+
+				if (indep > 0 && indep < lDropFrames)
+					return true;
+			}
+		}
+	}
+
+	// Zero-byte drop frame? Just nuke it now.
+	if (opt->video.mbPreserveEmptyFrames || (opt->video.mode == DubVideoOptions::M_FULL && filters.isEmpty())) {
+		if (!lastSize && (!(exdata & kBufferFlagInternalDecode) || (exdata & kBufferFlagSameAsLast)))
+			return true;
+	}
+
+	// Don't drop this frame.
+	return false;
+}
+
+VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(const VDRenderVideoPipeFrameInfo& frameInfo) {
+	const void			*buffer				= frameInfo.mpData;
+	const int			exdata				= frameInfo.mFlags;
+	const uint32		lastSize			= frameInfo.mLength;
+	const VDPosition	sample_num			= frameInfo.mRawFrame;
+	const VDPosition	target_num			= frameInfo.mTargetFrame;
+	const VDPosition	orig_display_num	= frameInfo.mOrigDisplayFrame;
+	VDPosition	display_num			= frameInfo.mDisplayFrame;
+	VDPosition	timeline_num		= frameInfo.mTimelineFrame;
+	const VDPosition	sequence_num		= frameInfo.mSequenceFrame;
+	const int			srcIndex			= frameInfo.mSrcIndex;
+
 	uint32 dwBytes;
 	bool isKey;
 	const void *frameBuffer;
@@ -619,82 +1367,50 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	if (timeline_num >= 0)		// exclude injected frames
 		mpVInfo->cur_proc_src = timeline_num;
 
-	// Preview fast drop -- if there is another keyframe in the pipe, we can drop
-	// all the frames to it without even decoding them!
-	//
-	// Anime song played during development of this feature: "Trust" from the
-	// Vandread OST.
-
 	if (mpOutputSystem->IsRealTime()) {
-		bool bDrop = false;
-
-		if (opt->perf.fDropFrames) {
-			// If audio is frozen, force frames to be dropped.
-			bDrop = !vsrc->isDecodable(sample_num);
-
-			if (mbAudioFrozen && mbAudioFrozenValid) {
-				lDropFrames = 1;
-			}
-
-			if (lDropFrames) {
-				long lCurrentDelta = mpBlitter->getFrameDelta();
-				if (opt->video.nPreviewFieldMode)
-					lCurrentDelta >>= 1;
-				if (lDropFrames > lCurrentDelta) {
-					lDropFrames = lCurrentDelta;
-					if (lDropFrames < 0)
-						lDropFrames = 0;
-				}
-			}
-
-			if (lDropFrames && !bDrop) {
-
-				// Attempt to drop a frame before the decoder.  Droppable frames (zero-byte
-				// or B-frames) can be dropped without any problem without question.  Dependant
-				// (P-frames or delta frames) and independent frames (I-frames or keyframes)
-				// should only be dropped if there is a reasonable expectation that another
-				// independent frame will arrive around the time that we want to stop dropping
-				// frames, since we'll basically kill decoding until then.
-
-				if (droptype == AVIPipe::kDroppable) {
-					bDrop = true;
-				} else {
-					int total, indep;
-
-					mpVideoPipe->getDropDistances(total, indep);
-
-					// Do a blind drop if we know a keyframe will arrive within two frames.
-
-					if (indep == 0x3FFFFFFF && vsrc->nearestKey(display_num + opt->video.frameRateDecimation*2) > display_num)
-						indep = 0;
-
-					if (indep > 0 && indep < lDropFrames) {
-						bDrop = true;
-					}
-				}
-			}
-		}
-
-		// Zero-byte drop frame? Just nuke it now.
-		if (opt->video.mbPreserveEmptyFrames || (opt->video.mode == DubVideoOptions::M_FULL && filters.isEmpty())) {
-			if (!lastSize && (!(exdata & kBufferFlagInternalDecode) || (exdata & kBufferFlagSameAsLast)))
-				bDrop = true;
-		}
-
-		if (bDrop) {
-			if (!(exdata&kBufferFlagPreload)) {
-				mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
-			}
-
-			if (lDropFrames)
-				--lDropFrames;
-
-			if (mpStatusHandler)
-				mpStatusHandler->NotifyNewFrame(0);
-
+		if (DoVideoFrameDropTest(frameInfo)) {
+			NotifyDroppedFrame(exdata);
 			return kVideoWriteDiscarded;
 		}
 	}
+
+	if (mpThreadedVideoCompressor)
+		mpThreadedVideoCompressor->SetFlush((exdata & kBufferFlagFlushCodec) != 0);
+
+	vdrefptr<VDRenderOutputBuffer> pBuffer;
+	mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+	mLoopThrottle.BeginWait();
+	for(;;) {
+		if (mpThreadedVideoCompressor) {
+			vdrefptr<VDRenderPostCompressionBuffer> pOutBuffer;
+			if (mpThreadedVideoCompressor->ExchangeBuffer(NULL, ~pOutBuffer)) {
+				mLoopThrottle.EndWait();
+				mProcessingProfileChannel.End();
+
+				WriteFinishedVideoFrame(pOutBuffer->mOutputBuffer.data(), pOutBuffer->mOutputSize, pOutBuffer->mbOutputIsKey, false, NULL);
+				return kVideoWritePullOnly;
+			}
+		}
+
+		VDVideoDisplayFrame *tmp;
+		if (mpOutputDisplay && mpOutputDisplay->RevokeBuffer(false, &tmp)) {
+			pBuffer.set(static_cast<VDRenderOutputBuffer *>(tmp));
+			break;
+		}
+
+		bool successful = mpDisplayBufferTracker ? mpDisplayBufferTracker->AllocFrame(100, ~pBuffer) : mpFrameBufferTracker->AllocFrame(100, ~pBuffer);
+
+		if (*mpAbort)
+			break;
+
+		if (successful)
+			break;
+	}
+	mLoopThrottle.EndWait();
+	mProcessingProfileChannel.End();
+
+	if (!pBuffer)
+		return kVideoWriteDiscarded;
 
 	// We have to handle the case when the "preserve empty frames" option is enabled
 	// and a B-frame encoding delay is present. The problem is that the empty frames
@@ -724,8 +1440,8 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		if (mpStatusHandler)
 			mpStatusHandler->NotifyNewFrame(lastSize | (exdata&1 ? 0x80000000 : 0));
 
-		if (mpVideoCompressor)
-			mpVideoCompressor->SkipFrame();
+		if (mpThreadedVideoCompressor)
+			mpThreadedVideoCompressor->SkipFrame();
 
 		++mVideoNullFrameDelayQueue.back();
 		return kVideoWriteBufferedEmptyFrame;
@@ -757,11 +1473,11 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		if (mpStatusHandler)
 			mpStatusHandler->NotifyNewFrame(lastSize | (exdata&1 ? 0x80000000 : 0));
 
-		if (mpVideoCompressor) {
-			mpVideoCompressor->SkipFrame();
+		if (mpThreadedVideoCompressor) {
+			mpThreadedVideoCompressor->SkipFrame();
 
 			if (exdata & kBufferFlagDirectWrite)
-				mpVideoCompressor->Restart();
+				mpThreadedVideoCompressor->Restart();
 		}
 
 		mVideoNullFrameDelayQueue.clear();
@@ -786,6 +1502,8 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	if (!bLockSuccessful)
 		return kVideoWriteDiscarded;
 
+	///// DECODE FRAME
+
 	if (exdata & kBufferFlagPreload)
 		mProcessingProfileChannel.Begin(0xfff0f0, "V-Preload");
 	else
@@ -803,39 +1521,26 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		return kVideoWriteBuffered;
 	}
 
+	// drop frames if the drop counter is >0
 	if (lDropFrames && mbPreview) {
 		mpBlitter->unlock(BUFFERID_INPUT);
-		mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 
-		--lDropFrames;
-
-		if (mpStatusHandler)
-			mpStatusHandler->NotifyNewFrame(0);
-
+		NotifyDroppedFrame(exdata);
 		return kVideoWriteDiscarded;
 	}
 
 	// Process frame to backbuffer for Full video mode.  Do not process if we are
 	// running in Repack mode only!
+
 	if (opt->video.mode == DubVideoOptions::M_FULL) {
 		const VDPixmap& input = filters.GetInput();
 		const VDPixmap& output = filters.GetOutput();
 		VBitmap destbm;
 
 		if (exdata & kBufferFlagFlushCodec) {
-			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
-			mLoopThrottle.BeginWait();
-			mpBlitter->lock(BUFFERID_OUTPUT);
-			mLoopThrottle.EndWait();
-			mProcessingProfileChannel.End();
+			// do nothing.
 		} else if (!mpInvTelecine && filters.isEmpty()) {
-			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
-			mLoopThrottle.BeginWait();
-			mpBlitter->lock(BUFFERID_OUTPUT);
-			mLoopThrottle.EndWait();
-			mProcessingProfileChannel.End();
-
-			VDPixmapBlt(mVideoFilterOutputPixmap, vsrc->getTargetFormat());
+			VDPixmapBlt(pBuffer->mPixmap, vsrc->getTargetFormat());
 		} else {
 			if (mpInvTelecine) {
 				VDPosition timelineFrameOut, srcFrameOut;
@@ -850,8 +1555,11 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 				timeline_num = timelineFrameOut;
 				display_num = srcFrameOut;
-			} else
+			} else {
+				mProcessingProfileChannel.Begin(0xffc0c0, "V-BltIn");
 				VDPixmapBlt(input, vsrc->getTargetFormat());
+				mProcessingProfileChannel.End();
+			}
 
 			// process frame
 			sint64 sequenceTime = VDRoundToInt64(mpVInfo->frameRate.AsInverseDouble() * 1000.0 * sequence_num);
@@ -865,29 +1573,23 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 				return kVideoWriteBuffered;
 			}
 
-			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
-			mLoopThrottle.BeginWait();
-			mpBlitter->lock(BUFFERID_OUTPUT);
-			mLoopThrottle.EndWait();
+			mProcessingProfileChannel.Begin(0xffc0c0, "V-BltOut");
+			VDPixmapBlt(pBuffer->mPixmap, output);
 			mProcessingProfileChannel.End();
-
-			VDPixmapBlt(mVideoFilterOutputPixmap, output);
 		}
 	}
 
-	// write it to the file
-	
-	frameBuffer = mpVideoFilterOutputBuffer;
-	if (!frameBuffer)
-		frameBuffer = vsrc->getFrameBuffer();
+	// write it to the file	
+	frameBuffer = pBuffer->mBuffer.base();
 
+	vdrefptr<VDRenderPostCompressionBuffer> pNewBuffer;
 	if (mpVideoCompressor) {
 		bool gotFrame;
 
 		mProcessingProfileChannel.Begin(0x80c080, "V-Compress");
 		{
 			VDDubAutoThreadLocation loc(mpCurrentAction, "compressing video frame");
-			gotFrame = mpVideoCompressor->CompressFrame(mVideoCompressionBuffer.data(), frameBuffer, isKey, dwBytes);
+			gotFrame = mpThreadedVideoCompressor->ExchangeBuffer(pBuffer, ~pNewBuffer);
 		}
 		mProcessingProfileChannel.End();
 
@@ -899,101 +1601,17 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 			return kVideoWriteDelayed;
 		}
 
-		if (mpVideoDecompressor && !mbVideoDecompressorErrored) {
-			mProcessingProfileChannel.Begin(0x80c080, "V-Decompress");
+		frameBuffer = pNewBuffer->mOutputBuffer.data();
+		dwBytes = pNewBuffer->mOutputSize;
+		isKey = pNewBuffer->mbOutputIsKey;
 
-			if (mbVideoDecompressorPending && isKey) {
-				mbVideoDecompressorPending = false;
-			}
-
-			if (!mbVideoDecompressorPending && dwBytes) {
-				try {
-					memset(mVideoCompressionBuffer.data() + dwBytes, 0xA5, kDecodeOverflowWorkaroundSize);
-					mpVideoDecompressor->DecompressFrame(mVideoDecompBuffer.base(), mVideoCompressionBuffer.data(), dwBytes, isKey, false);
-				} catch(const MyError&) {
-					mpBlitter->postAPC(0, AsyncDecompressorErrorCallback, mpOutputDisplay, NULL);
-					mbVideoDecompressorErrored = true;
-				}
-			}
-
-			mProcessingProfileChannel.End();
-		}
-
-		VDDubAutoThreadLocation loc(mpCurrentAction, "writing compressed video frame to disk");
-		mpVideoOut->write(isKey ? AVIOutputStream::kFlagKeyFrame : 0, mVideoCompressionBuffer.data(), dwBytes, 1);
-
-		if (opt->video.mbPreserveEmptyFrames) {
-			if (!mVideoNullFrameDelayQueue.empty()) {
-				VDASSERT(!mPendingNullVideoFrames);
-				mPendingNullVideoFrames = mVideoNullFrameDelayQueue.front();
-				mVideoNullFrameDelayQueue.pop_front();
-				mVideoNullFrameDelayQueue.push_back(0);
-			}
-		}
 	} else {
 
-		dwBytes = ((const BITMAPINFOHEADER *)mpVideoOut->getFormat())->biSizeImage;
-
-		VDCHECKPOINT;
-		{
-			VDDubAutoThreadLocation loc(mpCurrentAction, "writing uncompressed video frame to disk");
-			mpVideoOut->write(AVIOutputStream::kFlagKeyFrame, (char *)frameBuffer, dwBytes, 1);
-		}
-		VDCHECKPOINT;
-
+		dwBytes = ((const VDAVIBitmapInfoHeader *)mpVideoOut->getFormat())->biSizeImage;
 		isKey = true;
 	}
 
-	mpVInfo->total_size += dwBytes + 24;
-
-	VDCHECKPOINT;
-
-	bool renderFrame = mbPreview || mRefreshFlag.xchg(0);
-	bool renderInputFrame = renderFrame && mpInputDisplay && opt->video.fShowInputFrame;
-	bool renderOutputFrame = (renderFrame || mbVideoDecompressorEnabled) && mpOutputDisplay && opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && dwBytes;
-
-	if (renderInputFrame) {
-		mpBlitter->postAPC(BUFFERID_INPUT, AsyncUpdateCallback, mpInputDisplay, (void *)&opt->video.nPreviewFieldMode);
-	} else
-		mpBlitter->unlock(BUFFERID_INPUT);
-
-	if (renderOutputFrame) {
-		if (mbVideoDecompressorEnabled) {
-			if (mpVideoDecompressor && !mbVideoDecompressorErrored && !mbVideoDecompressorPending)
-				mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorUpdateCallback, mpOutputDisplay, &mVideoDecompBuffer);
-			else
-				mpBlitter->unlock(BUFFERID_OUTPUT);
-		} else {
-			mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncUpdateCallback, mpOutputDisplay, (void *)&opt->video.nPreviewFieldMode);
-		}
-	} else
-		mpBlitter->unlock(BUFFERID_OUTPUT);
-
-	if (opt->perf.fDropFrames && mbPreview) {
-		long lFrameDelta;
-
-		lFrameDelta = mpBlitter->getFrameDelta();
-
-		if (opt->video.nPreviewFieldMode)
-			lFrameDelta >>= 1;
-
-		if (lFrameDelta < 0) lFrameDelta = 0;
-		
-		if (lFrameDelta > 0) {
-			lDropFrames = lFrameDelta;
-		}
-	}
-
-
-	mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
-
-	mpVInfo->lastProcessedTimestamp = VDGetCurrentTick();
-	++mpVInfo->processed;
-
-	if (mpStatusHandler)
-		mpStatusHandler->NotifyNewFrame(isKey ? dwBytes : dwBytes | 0x80000000);
-
-	VDCHECKPOINT;
+	WriteFinishedVideoFrame(frameBuffer, dwBytes, isKey, true, pBuffer);
 	return kVideoWriteOK;
 }
 
@@ -1003,6 +1621,90 @@ void VDDubProcessThread::WritePendingEmptyVideoFrame() {
 	mpVInfo->total_size += 24;
 	mpVInfo->lastProcessedTimestamp = VDGetCurrentTick();
 	++mpVInfo->processed;
+}
+
+void VDDubProcessThread::WriteFinishedVideoFrame(const void *data, uint32 size, bool isKey, bool renderEnabled, VDRenderOutputBuffer *pBuffer) {
+	if (mpVideoCompressor) {
+		if (mpVideoDecompressor && !mbVideoDecompressorErrored) {
+			mProcessingProfileChannel.Begin(0x80c080, "V-Decompress");
+
+			if (mbVideoDecompressorPending && isKey) {
+				mbVideoDecompressorPending = false;
+			}
+
+			if (!mbVideoDecompressorPending && size) {
+				try {
+					memset((char *)data + size, 0xA5, kDecodeOverflowWorkaroundSize);
+					mpVideoDecompressor->DecompressFrame(mVideoDecompBuffer.base(), (char *)data, size, isKey, false);
+				} catch(const MyError&) {
+					mpBlitter->postAPC(0, AsyncDecompressorErrorCallback, mpOutputDisplay, NULL);
+					mbVideoDecompressorErrored = true;
+				}
+			}
+
+			mProcessingProfileChannel.End();
+		}
+
+		if (opt->video.mbPreserveEmptyFrames) {
+			if (!mVideoNullFrameDelayQueue.empty()) {
+				VDASSERT(!mPendingNullVideoFrames);
+				mPendingNullVideoFrames = mVideoNullFrameDelayQueue.front();
+				mVideoNullFrameDelayQueue.pop_front();
+				mVideoNullFrameDelayQueue.push_back(0);
+			}
+		}
+	}
+
+	////// WRITE VIDEO FRAME TO DISK
+	{
+		VDDubAutoThreadLocation loc(mpCurrentAction, "writing video frame to disk");
+		mpVideoOut->write(isKey ? AVIOutputStream::kFlagKeyFrame : 0, (char *)data, size, 1);
+	}
+	mpVInfo->total_size += size + 24;
+
+	////// RENDERING
+
+	if (renderEnabled) {
+		bool renderFrame = (mbPreview || mRefreshFlag.xchg(0));
+		bool renderInputFrame = renderFrame && mpInputDisplay && opt->video.fShowInputFrame;
+		bool renderOutputFrame = (renderFrame || mbVideoDecompressorEnabled) && mpOutputDisplay && opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && size;
+
+		if (renderInputFrame) {
+			mpBlitter->postAPC(BUFFERID_INPUT, AsyncUpdateCallback, mpInputDisplay, (void *)&opt->video.previewFieldMode);
+		} else
+			mpBlitter->unlock(BUFFERID_INPUT);
+
+		if (renderOutputFrame) {
+			if (mbVideoDecompressorEnabled) {
+				if (mpVideoDecompressor && !mbVideoDecompressorErrored && !mbVideoDecompressorPending) {
+					mpBlitter->lock(BUFFERID_OUTPUT);
+					mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorUpdateCallback, mpOutputDisplay, &mVideoDecompBuffer);
+				}
+			} else {
+				mpBlitter->lock(BUFFERID_OUTPUT);
+				pBuffer->AddRef();
+				mpBlitter->postAPC(BUFFERID_OUTPUT, StaticAsyncUpdateOutputCallback, this, pBuffer);
+			}
+		} else
+			mpBlitter->unlock(BUFFERID_OUTPUT);
+	}
+
+	if (opt->perf.fDropFrames && mbPreview) {
+		long lFrameDelta;
+
+		lFrameDelta = mpBlitter->getFrameDelta();
+
+		if (opt->video.previewFieldMode)
+			lFrameDelta >>= 1;
+
+		if (lFrameDelta < 0) lFrameDelta = 0;
+		
+		if (lFrameDelta > 0) {
+			lDropFrames = lFrameDelta;
+		}
+	}
+
+	NotifyCompletedFrame(size, isKey);
 }
 
 bool VDDubProcessThread::WriteAudio(sint32 count) {
@@ -1170,7 +1872,7 @@ void VDDubProcessThread::TimerCallback() {
 			if (!pAudioOut->isFrozen()) {
 				int mPulseClock;
 
-				if (opt->video.nPreviewFieldMode)
+				if (opt->video.previewFieldMode)
 					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble() * 2.0);
 				else
 					mPulseClock = VDRoundToInt32(audioTime * mpVInfo->frameRate.asDouble());
@@ -1193,7 +1895,7 @@ void VDDubProcessThread::TimerCallback() {
 
 		mbAudioFrozen = true;
 
-		if (mbSyncToAudioEvenClock || opt->video.nPreviewFieldMode) {
+		if (mbSyncToAudioEvenClock || opt->video.previewFieldMode) {
 			if (mpBlitter) {
 				mpBlitter->pulse(1);
 			}
@@ -1226,9 +1928,87 @@ bool VDDubProcessThread::AsyncReinitDisplayCallback(int pass, void *pThisAsVoid,
 		return false;
 
 	VDDubProcessThread *pThis = (VDDubProcessThread *)pThisAsVoid;
-	if (pThis->opt->video.mode == DubVideoOptions::M_FULL)
-		pThis->mpOutputDisplay->SetSource(false, pThis->mVideoFilterOutputPixmap, NULL, 0, true, pThis->opt->video.nPreviewFieldMode>0);
-	else
-		pThis->mpOutputDisplay->Reset();
+	pThis->mpOutputDisplay->Reset();
 	return false;
+}
+
+bool VDDubProcessThread::StaticAsyncUpdateOutputCallback(int pass, void *pThisAsVoid, void *pBuffer, bool aborting) {
+	return ((VDDubProcessThread *)pThisAsVoid)->AsyncUpdateOutputCallback(pass, (VDRenderOutputBuffer *)pBuffer, aborting);
+}
+
+bool VDDubProcessThread::AsyncUpdateOutputCallback(int pass, VDRenderOutputBuffer *pBuffer, bool aborting) {
+	if (aborting) {
+		if (pBuffer)
+			pBuffer->Release();
+
+		return false;
+	}
+
+	IVDVideoDisplay *pVideoDisplay = mpOutputDisplay;
+	int nFieldMode = opt->video.previewFieldMode;
+
+	uint32 baseFlags = IVDVideoDisplay::kVisibleOnly | IVDVideoDisplay::kDoNotCache;
+
+	if (g_prefs.fDisplay & Preferences::kDisplayEnableVSync)
+		baseFlags |= IVDVideoDisplay::kVSync;
+
+	if (pBuffer) {
+		if (nFieldMode) {
+			switch(nFieldMode) {
+				case DubVideoOptions::kPreviewFieldsWeaveTFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kAutoFlipFields;
+					break;
+
+				case DubVideoOptions::kPreviewFieldsWeaveBFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kAutoFlipFields;
+					break;
+
+				case DubVideoOptions::kPreviewFieldsBobTFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kBobEven | IVDVideoDisplay::kAllFields | IVDVideoDisplay::kAutoFlipFields;
+					break;
+
+				case DubVideoOptions::kPreviewFieldsBobBFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kBobOdd | IVDVideoDisplay::kAllFields | IVDVideoDisplay::kAutoFlipFields;
+					break;
+
+				case DubVideoOptions::kPreviewFieldsNonIntTFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kAutoFlipFields | IVDVideoDisplay::kSequentialFields;
+					break;
+
+				case DubVideoOptions::kPreviewFieldsNonIntBFF:
+					pBuffer->mFlags = baseFlags | IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kAutoFlipFields | IVDVideoDisplay::kSequentialFields;
+					break;
+			}
+
+			pBuffer->mbInterlaced = true;
+		} else {
+			pBuffer->mFlags = IVDVideoDisplay::kAllFields | baseFlags;
+			pBuffer->mbInterlaced = false;
+		}
+
+		pBuffer->mbAllowConversion = true;
+
+		pVideoDisplay->PostBuffer(pBuffer);
+		pBuffer->Release();
+		return false;
+	}
+
+	if (nFieldMode) {
+		if (nFieldMode == 2) {
+			if (pass)
+				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | baseFlags);
+			else
+				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kFirstField | baseFlags);
+		} else {
+			if (pass)
+				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | baseFlags);
+			else
+				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kFirstField | baseFlags);
+		}
+
+		return !pass;
+	} else {
+		pVideoDisplay->Update(IVDVideoDisplay::kAllFields | baseFlags);
+		return false;
+	}
 }

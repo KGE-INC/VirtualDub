@@ -11,18 +11,20 @@
 ;	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;	GNU General Public License for more details.
 ;
-;	You should have received a copy of the GNU General Public License
+;	You should have received a copy of the GNU General Public License	
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.const
+	default	rel
+
+	segment	.rdata, align=16
 
 	align 16
 
 SSE2_02b		dq	00202020202020202h,00202020202020202h
 SSE2_fcb		dq	0fcfcfcfcfcfcfcfch,0fcfcfcfcfcfcfcfch
 
-		public g_VDMPEGPredict_sse2
+		global g_VDMPEGPredict_sse2	
 
 g_VDMPEGPredict_sse2	dq	predict_Y_normal_SSE2
 						dq	predict_Y_halfpelX_SSE2
@@ -41,14 +43,14 @@ g_VDMPEGPredict_sse2	dq	predict_Y_normal_SSE2
 						dq	predict_add_C_halfpelY_SSE2
 						dq	predict_add_C_quadpel_SSE2
 
-	.code
+	segment	.text
 
-PREDICT_START	macro
+%macro PREDICT_START 0
 		mov		rax, r8
-		endm
+%endmacro
 
-PREDICT_END	macro
-		endm
+%macro PREDICT_END 0
+%endmacro
 
 
 ;*********************************************************
@@ -64,8 +66,8 @@ predict_Y_quadpel_SSE2:
 	movlhps	xmm14, xmm6
 	movlhps	xmm15, xmm7
 
-	movdqa	xmm6, xmmword ptr SSE2_02b
-	movdqa	xmm7, xmmword ptr SSE2_fcb
+	movdqa	xmm6, oword [SSE2_02b]
+	movdqa	xmm7, oword [SSE2_fcb]
 	mov	r9,16
 	
 	movdqu	xmm0,[rdx]
@@ -88,7 +90,7 @@ predict_Y_quadpel_SSE2:
 	; xmm0: last row high sum
 	; xmm3: last row low sum + rounder
 	
-predict_Y_quadpel_SSE2@loop:
+predict_Y_quadpel_SSE2.loop:
 	movdqu	xmm1,[rdx]	;xmm1 = p3
 	movdqu	xmm2,[rdx+1]	;xmm2 = p4
 	add		rdx,rax
@@ -118,7 +120,7 @@ predict_Y_quadpel_SSE2@loop:
 	add		rcx,rax
 
 	sub		r9,1
-	jne		predict_Y_quadpel_SSE2@loop
+	jne		predict_Y_quadpel_SSE2.loop
 
 	movhlps	xmm6, xmm14
 	movhlps	xmm7, xmm15
@@ -138,7 +140,7 @@ predict_Y_halfpelY_SSE2:
 	mov		r9, 8
 	movdqu	xmm0, [rdx]
 	add		r8, r8
-predict_Y_halfpelY_SSE2@loop:
+predict_Y_halfpelY_SSE2.loop:
 	movdqu	xmm2, [rdx+rax]
 
 	movdqu	xmm4, [rdx+r8]
@@ -154,7 +156,7 @@ predict_Y_halfpelY_SSE2@loop:
 	add		rcx, r8
 	
 	sub		r9, 1
-	jne		predict_Y_halfpelY_SSE2@loop
+	jne		predict_Y_halfpelY_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -171,7 +173,7 @@ predict_Y_halfpelX_SSE2:
 	mov		r9,8
 	add		r8,r8
 
-predict_Y_halfpelX_SSE2@loop:
+predict_Y_halfpelX_SSE2.loop:
 	movdqu	xmm0,[rdx]
 	movdqu	xmm1,[rdx+1]
 	movdqu	xmm2,[rdx+rax]
@@ -185,7 +187,7 @@ predict_Y_halfpelX_SSE2@loop:
 	add		rdx,r8
 
 	sub		r9, 1
-	jne		predict_Y_halfpelX_SSE2@loop
+	jne		predict_Y_halfpelX_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -202,7 +204,7 @@ predict_Y_normal_SSE2:
 	mov		r9, 8
 	add		r8, r8
 
-predict_Y_normal_SSE2@loop:
+predict_Y_normal_SSE2.loop:
 	movdqu	xmm0,[rdx]
 	movdqu	xmm2,[rdx+rax]
 	movdqa	[rcx],xmm0
@@ -210,7 +212,7 @@ predict_Y_normal_SSE2@loop:
 	add		rdx,r8
 	add		rcx,r8
 	sub		r9, 1
-	jne		predict_Y_normal_SSE2@loop
+	jne		predict_Y_normal_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -229,16 +231,16 @@ predict_C_quadpel_SSE2:
 
 	pxor		xmm5,xmm5
 	mov			r9,8
-predict_C_quadpel_SSE2@loop:
-	movq		xmm0,qword ptr [rdx]
-	movd		xmm1,dword ptr [rdx+8]
+predict_C_quadpel_SSE2.loop:
+	movq		xmm0,qword [rdx]
+	movd		xmm1,dword [rdx+8]
 	movq		xmm4,xmm0
 	psrlq		xmm4,8
 	psllq		xmm1,56
 	por			xmm1,xmm4
 
-	movq		xmm2,qword ptr [rdx+rax]
-	movd		xmm3,dword ptr [rdx+rax+8]
+	movq		xmm2,qword [rdx+rax]
+	movd		xmm3,dword [rdx+rax+8]
 	movq		xmm4,xmm2
 	psrlq		xmm4,8
 	psllq		xmm3,56
@@ -261,13 +263,13 @@ predict_C_quadpel_SSE2@loop:
 
 	packuswb	xmm0,xmm0
 
-	movq		qword ptr [rcx],xmm0
+	movq		qword [rcx],xmm0
 
 	add			rcx,rax
 	add			rdx,rax
 
 	sub			r9, 1
-	jne			predict_C_quadpel_SSE2@loop
+	jne			predict_C_quadpel_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -282,26 +284,26 @@ predict_C_quadpel_SSE2@loop:
 	align 16
 predict_C_halfpelY_SSE2:
 	PREDICT_START
-	movq	xmm0, qword ptr [rdx]
+	movq	xmm0, qword [rdx]
 	mov		r9, 4
 	add		r8, r8
 
-predict_C_halfpelY_SSE2@loop:
-	movq	xmm2, qword ptr [rdx+rax]
-	movq	xmm4, qword ptr [rdx+r8]
+predict_C_halfpelY_SSE2.loop:
+	movq	xmm2, qword [rdx+rax]
+	movq	xmm4, qword [rdx+r8]
 
 	pavgb	xmm0, xmm2
 	pavgb	xmm2, xmm4
 
-	movq	qword ptr [rcx], xmm0
+	movq	qword [rcx], xmm0
 	movq	xmm0,xmm4
 
-	movq	qword ptr [rcx+rax],xmm2
+	movq	qword [rcx+rax],xmm2
 
 	add		rdx, r8
 	add		rcx, r8
 	sub		r9, 1
-	jne		predict_C_halfpelY_SSE2@loop
+	jne		predict_C_halfpelY_SSE2.loop
 	PREDICT_END
 	ret
 
@@ -316,23 +318,23 @@ predict_C_halfpelX_SSE2:
 	PREDICT_START
 	mov		r9,4
 	add		r8,r8
-predict_C_halfpelX_SSE2@loop:
-	movq	xmm0, qword ptr [rdx]
-	movq	xmm1, qword ptr [rdx+1]
-	movq	xmm2, qword ptr [rdx+rax]
-	movq	xmm3, qword ptr [rdx+rax+1]
+predict_C_halfpelX_SSE2.loop:
+	movq	xmm0, qword [rdx]
+	movq	xmm1, qword [rdx+1]
+	movq	xmm2, qword [rdx+rax]
+	movq	xmm3, qword [rdx+rax+1]
 
 	pavgb	xmm0, xmm1
 	pavgb	xmm2, xmm3
 
-	movq	qword ptr [rcx], xmm0
-	movq	qword ptr [rcx+rax], xmm2
+	movq	qword [rcx], xmm0
+	movq	qword [rcx+rax], xmm2
 
 	add		rdx, r8
 	add		rcx, r8
 	sub		r9, 1
 
-	jne	predict_C_halfpelX_SSE2@loop
+	jne	predict_C_halfpelX_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -401,8 +403,8 @@ predict_add_Y_quadpel_SSE2:
 	movlhps	xmm14, xmm6
 	movlhps	xmm15, xmm7
 
-	movdqa	xmm6, xmmword ptr SSE2_02b
-	movdqa	xmm7, xmmword ptr SSE2_fcb
+	movdqa	xmm6, oword [SSE2_02b]
+	movdqa	xmm7, oword [SSE2_fcb]
 	mov		r9,16
 	
 	movdqu	xmm0,[rdx]
@@ -425,7 +427,7 @@ predict_add_Y_quadpel_SSE2:
 	; xmm0: last row high sum
 	; xmm3: last row low sum + rounder
 	
-add_Y_quadpel_SSE2@loop:
+add_Y_quadpel_SSE2.loop:
 	movdqu	xmm1,[rdx]	;xmm1 = p3
 	movdqu	xmm2,[rdx+1]	;xmm2 = p4
 	add		rdx,rax
@@ -456,7 +458,7 @@ add_Y_quadpel_SSE2@loop:
 	add		rcx,rax
 
 	sub		r9, 1
-	jne		add_Y_quadpel_SSE2@loop
+	jne		add_Y_quadpel_SSE2.loop
 	
 	movhlps	xmm6, xmm14
 	movhlps	xmm7, xmm15
@@ -476,7 +478,7 @@ predict_add_Y_halfpelY_SSE2:
 	add		rdx,rax
 	add		r8, r8
 	mov		r9, 8
-predict_add_Y_halfpelY_SSE2@loop:
+predict_add_Y_halfpelY_SSE2.loop:
 	movdqu	xmm1,[rdx]
 	movdqu	xmm2,[rdx+rax]
 	pavgb	xmm0,xmm1
@@ -491,7 +493,7 @@ predict_add_Y_halfpelY_SSE2@loop:
 	add		rcx,r8
 	movdqa	xmm0,xmm2
 	sub		r9, 1
-	jne		predict_add_Y_halfpelY_SSE2@loop
+	jne		predict_add_Y_halfpelY_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -507,7 +509,7 @@ predict_add_Y_halfpelX_SSE2:
 	PREDICT_START
 	mov		r9,8
 	add		r8,r8
-predict_add_Y_halfpelX_SSE2@loop:
+predict_add_Y_halfpelX_SSE2.loop:
 	movdqu	xmm0,[rdx]
 	movdqu	xmm2,[rdx+rax]
 	movdqu	xmm1,[rdx+1]
@@ -522,7 +524,7 @@ predict_add_Y_halfpelX_SSE2@loop:
 	movdqa	[rcx+rax],xmm2
 	add		rcx,r8
 	sub		r9, 1
-	jne		predict_add_Y_halfpelX_SSE2@loop
+	jne		predict_add_Y_halfpelX_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -541,7 +543,7 @@ predict_add_Y_normal_SSE2:
 	mov		r9,8
 	add		r8,r8
 
-add_Y_normal_SSE2@loop:
+add_Y_normal_SSE2.loop:
 	movdqu	xmm0,[rdx]
 	movdqu	xmm2,[rdx+rax]
 	pavgb	xmm0,[rcx]
@@ -553,7 +555,7 @@ add_Y_normal_SSE2@loop:
 	add		rcx, r8
 
 	sub		r9, 1
-	jne		add_Y_normal_SSE2@loop
+	jne		add_Y_normal_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -571,16 +573,16 @@ predict_add_C_quadpel_SSE2:
 
 	pxor	xmm5, xmm5
 	mov		r9, 8
-add_C_quadpel_SSE2@loop:
-	movq		xmm0, qword ptr [rdx]
-	movd		xmm1, dword ptr [rdx+8]
+add_C_quadpel_SSE2.loop:
+	movq		xmm0, qword [rdx]
+	movd		xmm1, dword [rdx+8]
 	movq		xmm2, xmm0
 	psrlq		xmm2, 8
 	psllq		xmm1, 56
 	por			xmm1, xmm2
 
-	movq		xmm2, qword ptr [rdx+rax]
-	movd		xmm3, dword ptr [rdx+rax+8]
+	movq		xmm2, qword [rdx+rax]
+	movd		xmm3, dword [rdx+rax+8]
 	movq		xmm4, xmm2
 	psrlq		xmm4, 8
 	psllq		xmm3, 56
@@ -596,7 +598,7 @@ add_C_quadpel_SSE2@loop:
 
 	paddw		xmm2, xmm3
 
-	movq		xmm3, qword ptr [rcx]
+	movq		xmm3, qword [rcx]
 	paddw		xmm0, xmm2
 
 	psrlw		xmm0, 1
@@ -605,13 +607,13 @@ add_C_quadpel_SSE2@loop:
 	packuswb	xmm0, xmm0
 	pavgb		xmm0, xmm3
 
-	movq		qword ptr [rcx],xmm0
+	movq		qword [rcx],xmm0
 
 	add			rdx, rax
 	add			rcx, rax
 
 	sub			r9, 1
-	jne			add_C_quadpel_SSE2@loop
+	jne			add_C_quadpel_SSE2.loop
 
 	PREDICT_END
 	ret
@@ -626,17 +628,17 @@ add_C_quadpel_SSE2@loop:
 predict_add_C_halfpelY_SSE2:
 	PREDICT_START
 	mov		r9,8
-predict_add_C_halfpelY_SSE2@loop:
-	movq	xmm0, qword ptr [rdx]
-	movq	xmm1, qword ptr [rdx+rax]
-	movq	xmm2, qword ptr [rcx]
+predict_add_C_halfpelY_SSE2.loop:
+	movq	xmm0, qword [rdx]
+	movq	xmm1, qword [rdx+rax]
+	movq	xmm2, qword [rcx]
 	pavgb	xmm0, xmm1
 	pavgb	xmm0, xmm2
-	movq	qword ptr [rcx], xmm0
+	movq	qword [rcx], xmm0
 	add		rdx, rax
 	add		rcx, rax
 	sub		r9,1
-	jne	predict_add_C_halfpelY_SSE2@loop
+	jne	predict_add_C_halfpelY_SSE2.loop
 	PREDICT_END
 	ret
 
@@ -650,17 +652,17 @@ predict_add_C_halfpelY_SSE2@loop:
 predict_add_C_halfpelX_SSE2:
 	PREDICT_START
 	mov		r9,8
-predict_add_C_halfpelX_SSE2@loop:
-	movq	xmm0, qword ptr [rdx]
-	movq	xmm1, qword ptr [rdx+1]
-	movq	xmm2, qword ptr [rcx]
+predict_add_C_halfpelX_SSE2.loop:
+	movq	xmm0, qword [rdx]
+	movq	xmm1, qword [rdx+1]
+	movq	xmm2, qword [rcx]
 	pavgb	xmm0, xmm1
 	pavgb	xmm0, xmm2
-	movq	qword ptr [rcx], xmm0
+	movq	qword [rcx], xmm0
 	add		rdx,rax
 	add		rcx,rax
 	sub		r9, 1
-	jne		predict_add_C_halfpelX_SSE2@loop
+	jne		predict_add_C_halfpelX_SSE2.loop
 	PREDICT_END
 	ret
 
@@ -677,18 +679,18 @@ predict_add_C_normal_SSE2:
 	PREDICT_START
 	add		r8, r8
 
-	rept	4
-	movq	xmm0, qword ptr [rdx]
-	movq	xmm1, qword ptr [rcx]
-	movq	xmm2, qword ptr [rdx+rax]
-	movq	xmm3, qword ptr [rcx+rax]
+	%rep	4
+	movq	xmm0, qword [rdx]
+	movq	xmm1, qword [rcx]
+	movq	xmm2, qword [rdx+rax]
+	movq	xmm3, qword [rcx+rax]
 	pavgb	xmm0, xmm1
 	pavgb	xmm2, xmm3
-	movq	qword ptr [rcx], xmm0
-	movq	qword ptr [rcx+rax], xmm2
+	movq	qword [rcx], xmm0
+	movq	qword [rcx+rax], xmm2
 	add		rcx, r8
 	add		rdx, r8
-	endm
+	%endrep
 
 	PREDICT_END
 	ret

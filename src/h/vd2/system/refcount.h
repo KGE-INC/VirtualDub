@@ -107,14 +107,14 @@ public:
 	}
 
 	inline virtual int Release() {
-		if (mRefCount == 1) {		// We are the only reference, so there is no threading issue.  Don't decrement to zero as this can cause double destruction with a temporary addref/release in destruction.
+		int rc = --mRefCount;
+
+		if (!rc) {
 			delete this;
 			return 0;
 		}
 
-		VDASSERT(mRefCount > 1);
-
-		return mRefCount.dec();
+		return rc;
 	}
 
 protected:

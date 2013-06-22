@@ -113,7 +113,8 @@ void VDCaptureLogFilter::SetChildCallback(IVDCaptureDriverCallback *pChild) {
 }
 
 void VDCaptureLogFilter::WriteLog(const wchar_t *pszName) {
-	VDTextOutputFile fout(pszName);
+	VDFileStream stream(pszName, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
+	VDTextOutputStream fout(&stream);
 
 	fout.PutLine("VFrames,VCapTime,VGlobalTime,VSize,VKey,AFrames,ABytes,AGlobalTime,ASize");
 
@@ -165,7 +166,7 @@ void VDCaptureLogFilter::WriteLog(const wchar_t *pszName) {
 		fout.PutLine(buf);
 	}
 
-	fout.Close();
+	fout.Flush();
 }
 
 void VDCaptureLogFilter::CapBegin(sint64 global_clock) {

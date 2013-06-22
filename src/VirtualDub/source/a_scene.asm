@@ -15,13 +15,11 @@
 ;	along with this program; if not, write to the Free Software
 ;	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-	.386
-	.model	flat
-	.code
+	segment	.text
 
-	public	_asm_scene_lumtile32
-	public	_asm_scene_lumtile24
-	public	_asm_scene_lumtile16
+	global	_asm_scene_lumtile32	
+	global	_asm_scene_lumtile24	
+	global	_asm_scene_lumtile16	
 
 ;asm_scene_lumtile32(src, width, height, modulo, gtotalptr);
 

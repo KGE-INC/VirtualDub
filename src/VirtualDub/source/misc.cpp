@@ -219,7 +219,7 @@ char *strCify(const char *s) {
 	return buf;
 }
 
-VDStringA VDEncodeScriptString(const VDStringA& sa) {
+VDStringA VDEncodeScriptString(const VDStringSpanA& sa) {
 	VDStringA out;
 
 	// this is not very fast, but it's only used during script serialization
