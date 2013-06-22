@@ -681,7 +681,7 @@ bool VDAudioFilterInstance::Service() {
 
 		outpin.mbEnded = mbEnded;
 
-		if (outpin.CheckForWrite()) {
+		if (mbEnded || outpin.CheckForWrite()) {
 			pScheduler->RescheduleFast(outpin.ConnectedFilter());
 			bAnyActivity = true;
 		}

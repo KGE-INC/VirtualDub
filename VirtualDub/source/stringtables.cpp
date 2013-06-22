@@ -60,6 +60,7 @@ namespace {
 		"MPEGAudio: Concealing decoding error on frame %lu: %hs.",
 		"MPEG: Opening file \"%ls\"",
 		"MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld, from %lld to %lld. This may indicate an improper join.",
+		"MPEG: File ended unexpectedly during parsing -- file may be damaged or incomplete.",
 		0
 	};
 

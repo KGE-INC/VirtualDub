@@ -2907,13 +2907,15 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 			icd->bihFiltered2.biBitCount		= bihOut->biBitCount;
 
 		filters.initLinearChain(&g_listFA, (Pixel *)((char *)bihInput + bihInput->biSize), bihOut->biWidth, bihOut->biHeight, 32, icd->bihFiltered2.biBitCount);
-		if (filters.ReadyFilters(&icd->fsi))
-			throw MyError("%sUnable to initialize filters.", g_szCannotFilter);
 
 		icd->fsi.lCurrentFrame		= 0;
 		icd->fsi.lMicrosecsPerFrame	= dwRequestMicroSecPerFrame;
 		icd->fsi.lCurrentSourceFrame	= 0;
 		icd->fsi.lMicrosecsPerSrcFrame	= dwRequestMicroSecPerFrame;
+		icd->fsi.flags					= FilterStateInfo::kStateRealTime;
+
+		if (filters.ReadyFilters(&icd->fsi))
+			throw MyError("%sUnable to initialize filters.", g_szCannotFilter);
 
 		icd->bihFiltered2.biSize			= sizeof(BITMAPINFOHEADER);
 		icd->bihFiltered2.biPlanes			= 1;
@@ -3363,10 +3365,10 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		else
 			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
 
-		filters.RunFilters();
+		icd->fsi.lSourceFrameMS				= MulDiv(icd->fsi.lCurrentSourceFrame, icd->fsi.lMicrosecsPerSrcFrame, 1000);
+		icd->fsi.lDestFrameMS				= MulDiv(icd->fsi.lCurrentFrame, icd->fsi.lMicrosecsPerFrame, 1000);
 
-		icd->fsi.lSourceFrameMS				= icd->fsi.lCurrentSourceFrame * icd->fsi.lMicrosecsPerSrcFrame;
-		icd->fsi.lDestFrameMS				= icd->fsi.lCurrentFrame * icd->fsi.lMicrosecsPerFrame;
+		filters.RunFilters();
 
 		if (fInPlace)
 			vbmSrc.BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1);

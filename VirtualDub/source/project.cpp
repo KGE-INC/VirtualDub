@@ -298,6 +298,7 @@ void VDProject::DisplayFrame(VDPosition pos, bool bDispInput) {
 					mfsi.lMicrosecsPerSrcFrame		= (long)framerate.scale64ir(1000000);
 					mfsi.lSourceFrameMS				= framerate.scale64ir(mfsi.lCurrentSourceFrame * (sint64)1000);
 					mfsi.lDestFrameMS				= framerate.scale64ir(mfsi.lCurrentFrame * (sint64)1000);
+					mfsi.flags						= FilterStateInfo::kStatePreview;
 
 					if (!filters.isRunning()) {
 						filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 32, 16+8*g_dubOpts.video.outputDepth);

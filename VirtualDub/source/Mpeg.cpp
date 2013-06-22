@@ -29,6 +29,8 @@
 #include <vd2/system/fraction.h>
 #include <vd2/system/log.h>
 #include <vd2/system/file.h>
+#include <vd2/system/thread.h>
+#include <vd2/system/VDRingBuffer.h>
 #include <vd2/Dita/resources.h>
 
 #include "misc.h"
@@ -55,6 +57,7 @@ namespace {
 		kVDM_AudioConcealingError,		// MPEGAudio: Concealing decoding error on frame %lu: %hs.
 		kVDM_OpeningFile,				// MPEG: Opening file "%hs"
 		kVDM_OOOTimestamp,				// MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld (may indicate improper join)
+		kVDM_Incomplete,				// MPEG: File ended unexpectedly during parsing -- file may be damaged or incomplete.
 	};
 }
 
@@ -256,7 +259,7 @@ BOOL APIENTRY InputFileMPEGOptions::SetupDlgProc( HWND hDlg, UINT message, UINT 
 				if (IsDlgButtonChecked(hDlg, IDC_MPEG_ALL_FRAMES	))
 					thisPtr->opts.iDecodeMode = 0;
 
-				thisPtr->opts.fAcceptPartial = !!IsDlgButtonChecked(hDlg, IDC_MPEG_ACCEPTPARTIAL);
+				thisPtr->opts.fAcceptPartial = true;
 
 				EndDialog(hDlg, 0);
 				return TRUE;
@@ -308,6 +311,127 @@ struct MPEGSampleInfo {
 class AudioSourceMPEG;
 class VideoSourceMPEG;
 
+class InputFileMPEGPrefetcher : protected VDThread {
+public:
+	InputFileMPEGPrefetcher(VDFile& file, VDFile *unfile, int blocksize, int blockcount);
+	~InputFileMPEGPrefetcher();
+
+	sint32 readData(void *p, sint32 count);
+
+protected:
+	void ThreadRun();
+
+	VDAtomicInt			mbQuit;
+	int					mBlockSize;
+	VDSignal			msigRead;
+	VDSignal			msigWrite;
+	VDRingBuffer<char, VDFileUnbufferAllocator<char> >	mBuffer;
+	VDFile&				mFile;
+	VDFile *const		mpUnbufferedFile;
+	MyError				mError;
+};
+
+InputFileMPEGPrefetcher::InputFileMPEGPrefetcher(VDFile& file, VDFile *unfile, int blocksize, int blockcount)
+	: mbQuit(0)
+	, mBlockSize(blocksize)
+	, mBuffer(blocksize * blockcount)
+	, mFile(file)
+	, mpUnbufferedFile(unfile)
+{
+	ThreadStart();
+}
+
+InputFileMPEGPrefetcher::~InputFileMPEGPrefetcher() {
+	mbQuit = true;
+	msigRead.signal();
+	ThreadWait();
+}
+
+sint32 InputFileMPEGPrefetcher::readData(void *p, sint32 count) {
+	sint32 actual = 0;
+
+	const int threshold = mBuffer.getSize() - mBlockSize;
+
+	while(count > 0) {
+		int avail = 0;
+		const void *s = mBuffer.LockRead(count, avail);
+
+		if (avail > 0) {
+			if (p) {
+				memcpy(p, s, avail);
+				p = (char *)p + avail;
+			}
+
+			int newlevel = mBuffer.UnlockRead(avail);
+			int oldlevel = newlevel + avail;
+			if (oldlevel > threshold && newlevel <= threshold)
+				msigRead.signal();
+
+			actual += avail;
+			count -= avail;
+			continue;
+		}
+
+		if (mbQuit) {
+			if (mError.gets())
+				throw mError;
+
+			break;
+		}
+
+		msigWrite.wait();
+	}
+
+	return actual;
+}
+
+void InputFileMPEGPrefetcher::ThreadRun() {
+	const int blocksize = mBlockSize;
+
+	try {
+		sint64 pos = mFile.tell();
+		sint64 bufferedThreshold = mFile.size() - blocksize + 1;
+
+		if (mpUnbufferedFile)
+			mpUnbufferedFile->seek(pos);
+		else
+			bufferedThreshold = 0;
+
+		while(!mbQuit) {
+			int actual;
+			void *p;
+
+			p = mBuffer.LockWrite(blocksize, actual);
+			if (actual < blocksize) {
+				msigRead.wait();
+				continue;
+			}
+
+			if (pos >= bufferedThreshold) {
+				mFile.seek(pos);
+				actual = mFile.readData(p, blocksize);
+			} else {
+				actual = mpUnbufferedFile->readData(p, blocksize);
+			}
+
+			if (actual >= 0) {
+				pos += actual;
+
+				if (actual == mBuffer.UnlockWrite(actual))
+					msigWrite.signal();
+			}
+
+			if (actual < blocksize)
+				break;
+		}
+	} catch(const MyError& e) {
+		mError.assign(e);
+	}
+
+	mbQuit = true;
+	msigWrite.signal();
+}
+
 class InputFileMPEG : public InputFile {
 friend VideoSourceMPEG;
 friend AudioSourceMPEG;
@@ -336,6 +460,7 @@ private:
 	FastReadStream *pFastRead;
 
 	VDFile	mFile;
+	VDFile	mFileUnbuffered;
 
 	static const char szME[];
 
@@ -347,13 +472,14 @@ private:
 	};
 
 	enum {
-		SCAN_BUFFER_SIZE	= 1024,
+		SCAN_BUFFER_SIZE	= 262144,
 	};
 
 	char *	pScanBuffer;
 	char *	pScan;
 	char *	pScanLimit;
-	__int64	i64ScanCpos;
+	sint64	i64ScanCpos;
+	InputFileMPEGPrefetcher		*mpScanPrefetcher;
 
 	void	StartScan();
 	bool	NextStartCode();
@@ -2079,7 +2205,6 @@ InputFileMPEG::InputFileMPEG() {
 	fInterleaved = fHasAudio = FALSE;
 
 	iDecodeMode = 0;
-	fAcceptPartial = false;
 	fAbort = false;
 	fIsVCD = false;
 
@@ -2111,6 +2236,12 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 	// see if we can open the file
 
 	mFile.open(szFile, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting | nsVDFile::kSequential);
+
+	try {
+		mFileUnbuffered.open(szFile, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting | nsVDFile::kUnbuffered);
+	} catch(const MyError&) {
+		//ignore any errors
+	}
 
 	pFastRead = new FastReadStream(mFile.getRawHandle(), 24, 32768);
 
@@ -2146,6 +2277,9 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 
 		// seek to first pack code
 
+		int hardskip = 0;
+		int softskip = 0;
+
 		{
 			char ch[3];
 			int scan_count = 256;
@@ -2161,20 +2295,14 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 					// and the beginning 16 bytes of the next, so we need to
 					// back up 4.
 
-					i64ScanCpos = 40 + 256 - scan_count;
-
-					mFile.seek(i64ScanCpos);
-
+					hardskip = 40 + 256 - scan_count;
+					i64ScanCpos = hardskip;
 					break;
 				} else if (ch[0]==0 && ch[1]==0 && ch[2]==1) {
 					fIsVCD = false;
 
-					// We want reads to be aligned.
-
 					i64ScanCpos = 0;
-					mFile.seek(0);
-					Skip(256 + 3 - scan_count);
-
+					softskip = 256 + 3 - scan_count;
 					break;
 				}
 
@@ -2189,6 +2317,14 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 			}
 		}
 
+		mFile.seek(0);
+		mpScanPrefetcher = new InputFileMPEGPrefetcher(mFile, mFileUnbuffered.isOpen() ? &mFileUnbuffered : NULL, 262144, 4);
+
+		if (hardskip>0)
+			mpScanPrefetcher->readData(NULL, hardskip);
+		if (softskip>0)
+			Skip(softskip);
+
 		try {
 			do {
 				int c;
@@ -2201,9 +2337,8 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 					throw MyUserAbortError();
 
 				if (first_packet) {
+					c = Read();
 					if (!fIsVCD) {
-						c = Read();
-
 						fInterleaved = (c==0xBA);
 
 						if (!fInterleaved) {
@@ -2378,12 +2513,14 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 						break;
 				}
 			} while(!finished && (fInterleaved ? NextStartCode() : !end_of_file));
-		} catch(const MyError&) {
-			if (!fAcceptPartial)
-				throw;
-
+		} catch(const MyUserAbortError&) {
 			fTrimLastOff = true;
+		} catch(const MyError&) {
+			fTrimLastOff = true;
+			VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_Incomplete);
 		}
+
+		delete mpScanPrefetcher;
 
 		// We're done scanning the file.  Finish off any ending packets we may have.
 
@@ -2422,6 +2559,13 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 		video_sample_list = (MPEGSampleInfo *)video_stream_samples.MakeArray();
 		frames = video_stream_samples.Length();
 
+		// If we are accepting partial streams, then cut off the last video frame, as it may be incomplete.
+		// The audio parser checks for the entire frame to arrive, so we don't need to trim the audio.
+
+		if (fTrimLastOff) {
+			if (frames) --frames;
+		}
+
 		if (!frames)
 			throw MyError("No video frames found in MPEG file.");
 
@@ -2453,13 +2597,6 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 				cached_IP->subframe_num = sf;
 		}
 
-		// If we are accepting partial streams, then cut off the last video frame, as it may be incomplete.
-		// The audio parser checks for the entire frame to arrive, so we don't need to trim the audio.
-
-		if (fTrimLastOff) {
-			if (frames) --frames;
-		}
-
 	} catch(const MyError&) {
 		EnableWindow(GetParent(hWndStatus), TRUE);
 		DestroyWindow(hWndStatus);
@@ -2468,6 +2605,8 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 	}
 
 	EndScan();
+
+	mFileUnbuffered.closeNT();
 
 	EnableWindow(GetParent(hWndStatus), TRUE);
 	DestroyWindow(hWndStatus);
@@ -2614,7 +2753,7 @@ int InputFileMPEG::Read(void *buffer, int bytes, bool fShortOkay) {
 			if (fIsVCD) {
 				char hdr[20];
 
-				actual = mFile.readData(hdr, 20);
+				actual = mpScanPrefetcher->readData(hdr, 20);
 
 				if (actual != 20)
 					if (fShortOkay)
@@ -2626,7 +2765,7 @@ int InputFileMPEG::Read(void *buffer, int bytes, bool fShortOkay) {
 			}
 
 			if (tc > 0) {
-				actual = mFile.readData(buffer, tc);
+				actual = mpScanPrefetcher->readData(buffer, tc);
 
 				if (actual != tc)
 					if (fShortOkay)
@@ -2648,7 +2787,7 @@ int InputFileMPEG::Read(void *buffer, int bytes, bool fShortOkay) {
 			if (fIsVCD) {
 				char hdr[20];
 
-				actual = mFile.readData( hdr, 20);
+				actual = mpScanPrefetcher->readData( hdr, 20);
 
 				if (actual != 20)
 					if (fShortOkay)
@@ -2656,9 +2795,9 @@ int InputFileMPEG::Read(void *buffer, int bytes, bool fShortOkay) {
 
 				i64ScanCpos += 20;
 
-				actual = mFile.readData(pScanBuffer, 2332);
+				actual = mpScanPrefetcher->readData(pScanBuffer, 2332);
 			} else
-				actual = mFile.readData(pScanBuffer, SCAN_BUFFER_SIZE);
+				actual = mpScanPrefetcher->readData(pScanBuffer, SCAN_BUFFER_SIZE);
 
 			if (!fShortOkay && actual < tc)
 				throw MyError("%s: unexpected end of file", szME);
@@ -2827,7 +2966,6 @@ void InputFileMPEG::setOptions(InputFileOptions *_ifo) {
 	InputFileMPEGOptions *ifo = (InputFileMPEGOptions *)_ifo;
 
 	iDecodeMode = ifo->opts.iDecodeMode;
-	fAcceptPartial = ifo->opts.fAcceptPartial;
 
 	if (iDecodeMode & InputFileMPEGOptions::DECODE_NO_P)
 		iDecodeMode |= InputFileMPEGOptions::DECODE_NO_B;

@@ -20,6 +20,20 @@
 #include "VBitmap.h"
 #include <vd2/system/error.h>
 
+void ConvertOldHeader(BITMAPINFOHEADER& newhdr, const BITMAPCOREHEADER& oldhdr) {
+	newhdr.biSize			= sizeof(BITMAPINFOHEADER);
+	newhdr.biWidth			= oldhdr.bcWidth;
+	newhdr.biHeight			= oldhdr.bcHeight;
+	newhdr.biPlanes			= oldhdr.bcPlanes;
+	newhdr.biCompression	= BI_RGB;
+	newhdr.biBitCount		= oldhdr.bcBitCount;
+	newhdr.biSizeImage		= ((newhdr.biWidth * newhdr.biBitCount + 31)>>5)*4 * abs(newhdr.biHeight);
+	newhdr.biXPelsPerMeter	= 0;
+	newhdr.biYPelsPerMeter	= 0;
+	newhdr.biClrUsed		= 0;		// wrong for paletted, but we don't support that anyway
+	newhdr.biClrImportant	= 0;
+}
+
 bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha) {
 	const BITMAPFILEHEADER *pbfh = (const BITMAPFILEHEADER *)pBuffer;
 
@@ -36,7 +50,16 @@ bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 	if (pbih->biSize + sizeof(BITMAPFILEHEADER) > cbBuffer)
 		throw MyError("Image file is too short.");
 
-	if (pbih->biPlanes > 1 || pbih->biCompression != BI_RGB || (pbih->biBitCount != 16 && pbih->biBitCount != 24 && pbih->biBitCount != 32))
+	BITMAPINFOHEADER bihTemp;
+
+	if (pbih->biSize == sizeof(BITMAPCOREHEADER)) {
+		const BITMAPCOREHEADER *pbch = (const BITMAPCOREHEADER *)pbih;
+
+		ConvertOldHeader(bihTemp, *pbch);
+		pbih = &bihTemp;
+	}
+
+	if (pbih->biSize < sizeof(BITMAPINFOHEADER) || pbih->biPlanes > 1 || pbih->biCompression != BI_RGB || (pbih->biBitCount != 16 && pbih->biBitCount != 24 && pbih->biBitCount != 32))
 		throw MyError("Image file is in an unsupported format.");
 
 	// Verify that the image is all there.
@@ -56,6 +79,16 @@ void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 
 	const BITMAPFILEHEADER *pbfh = (const BITMAPFILEHEADER *)pBuffer;
 	const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)((char *)pBuffer + sizeof(BITMAPFILEHEADER));
+
+	BITMAPINFOHEADER bihTemp;
+
+	if (pbih->biSize == sizeof(BITMAPCOREHEADER)) {
+		const BITMAPCOREHEADER *pbch = (const BITMAPCOREHEADER *)pbih;
+
+		ConvertOldHeader(bihTemp, *pbch);
+		pbih = &bihTemp;
+	}
+
 	vb.BitBlt(0, 0, &VBitmap((char *)pBuffer + pbfh->bfOffBits, (BITMAPINFOHEADER *)pbih), 0, 0, -1, -1);
 }
 

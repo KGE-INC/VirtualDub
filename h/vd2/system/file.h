@@ -18,6 +18,7 @@
 #ifndef f_VD2_SYSTEM_FILE_H
 #define f_VD2_SYSTEM_FILE_H
 
+#include <limits.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdalloc.h>
 
@@ -99,6 +100,10 @@ public:
 	bool	isOpen();
 	VDFileHandle	getRawHandle();
 
+	// unbuffered I/O requires aligned buffers ("unbuffers")
+	static void *AllocUnbuffer(size_t nBytes);
+	static void FreeUnbuffer(void *p);
+
 protected:
 	bool	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags);
 };
@@ -151,6 +156,36 @@ protected:
 	const char		*mpSrc;
 	const uint32	mLength;
 	uint32			mPos;
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+template<class T>
+class VDFileUnbufferAllocator {
+public:
+	typedef	size_t		size_type;
+	typedef	ptrdiff_t	difference_type;
+	typedef	T*			pointer;
+	typedef	const T*	const_pointer;
+	typedef	T&			reference;
+	typedef	const T&	const_reference;
+	typedef	T			value_type;
+
+	template<class U> struct rebind { typedef VDFileUnbufferAllocator<U> other; };
+
+	pointer			address(reference x) const			{ return &x; }
+	const_pointer	address(const_reference x) const	{ return &x; }
+
+	pointer			allocate(size_type n, void *p = 0)	{ return (pointer)VDFile::AllocUnbuffer(n * sizeof(T)); }
+	void			deallocate(pointer p, size_type n)	{ VDFile::FreeUnbuffer(p); }
+	size_type		max_size() const throw()			{ return MAX_INT; }
+
+	void			construct(pointer p, const T& val)	{ new((void *)p) T(val); }
+	void			destroy(pointer p)					{ ((T*)p)->~T(); }
+
+#if defined(_MSC_VER) && _MSC_VER < 1300
+	char *			_Charalloc(size_type n)				{ return (char *)allocate(n); }
+#endif
 };
 
 #endif

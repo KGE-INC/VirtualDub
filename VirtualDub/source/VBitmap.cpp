@@ -291,7 +291,7 @@ namespace {
 			do {
 				const unsigned px = src[w2];
 
-				dst[w2] = (uint16)(px + (px & 0x7fe0) + ((px >> 4)&0x20));
+				dst[w2] = (uint16)(px + (px & 0xffe0) + ((px >> 4)&0x20));
 			} while(++w2);
 
 			src = (const uint16 *)((const char *)src + srcpitch);

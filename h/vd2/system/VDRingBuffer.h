@@ -2,11 +2,12 @@
 #define f_SYSTEM_VDRINGBUFFER_H
 
 #include <string.h>
+#include <utility>
 
 #include <vd2/system/VDAtomic.h>
 
-template<class T>
-class VDRingBuffer {
+template<class T, class Allocator = std::allocator<T> >
+class VDRingBuffer : private Allocator {
 protected:
 	T				*pBuffer;
 	int				 nSize;
@@ -43,15 +44,15 @@ public:
 	int		 UnlockWrite(int actual);
 };
 
-template<class T>
-VDRingBuffer<T>::VDRingBuffer(int size)
+template<class T, class Allocator>
+VDRingBuffer<T, Allocator>::VDRingBuffer(int size)
 : pBuffer(0)
 {
 	Init(size);
 }
 
-template<class T>
-VDRingBuffer<T>::VDRingBuffer()
+template<class T, class Allocator>
+VDRingBuffer<T, Allocator>::VDRingBuffer()
 : nSize(0)
 , nLevel(0)
 , nReadPoint(0)
@@ -60,28 +61,30 @@ VDRingBuffer<T>::VDRingBuffer()
 {
 }
 
-template<class T>
-VDRingBuffer<T>::~VDRingBuffer() {
+template<class T, class Allocator>
+VDRingBuffer<T, Allocator>::~VDRingBuffer() {
 	Shutdown();
 }
 
-template<class T>
-void VDRingBuffer<T>::Init(int size) {
+template<class T, class Allocator>
+void VDRingBuffer<T, Allocator>::Init(int size) {
 	Shutdown();
-	pBuffer		= new T[nSize = size];
+	pBuffer		= allocate(nSize = size, 0);
 	nLevel		= 0;
 	nReadPoint	= 0;
 	nWritePoint	= 0;
 }
 
-template<class T>
-void VDRingBuffer<T>::Shutdown() {
-	delete[] pBuffer;
-	pBuffer = NULL;
+template<class T, class Allocator>
+void VDRingBuffer<T, Allocator>::Shutdown() {
+	if (pBuffer) {
+		deallocate(pBuffer, nSize);
+		pBuffer = NULL;
+	}
 }
 
-template<class T>
-int VDRingBuffer<T>::getWriteSpace() const {
+template<class T, class Allocator>
+int VDRingBuffer<T, Allocator>::getWriteSpace() const {
 	volatile int tc = nSize - nWritePoint;
 	volatile int space = nSize - nLevel;
 
@@ -91,8 +94,8 @@ int VDRingBuffer<T>::getWriteSpace() const {
 	return tc;
 }
 
-template<class T>
-int VDRingBuffer<T>::Read(T *pBuffer, int units) {
+template<class T, class Allocator>
+int VDRingBuffer<T, Allocator>::Read(T *pBuffer, int units) {
 	VDASSERT(units >= 0);
 
 	int actual = 0;
@@ -118,8 +121,8 @@ int VDRingBuffer<T>::Read(T *pBuffer, int units) {
 	return actual;
 }
 
-template<class T>
-const T *VDRingBuffer<T>::LockRead(int requested, int& actual) {
+template<class T, class Allocator>
+const T *VDRingBuffer<T, Allocator>::LockRead(int requested, int& actual) {
 	VDASSERT(requested >= 0);
 
 	int nLevelNow = nLevel;
@@ -135,8 +138,8 @@ const T *VDRingBuffer<T>::LockRead(int requested, int& actual) {
 	return pBuffer + nReadPoint;
 }
 
-template<class T>
-const T *VDRingBuffer<T>::LockReadWrapped(int requested, int& actual, int& readpt) {
+template<class T, class Allocator>
+const T *VDRingBuffer<T, Allocator>::LockReadWrapped(int requested, int& actual, int& readpt) {
 	int nLevelNow = nLevel;
 
 	if (requested > nLevelNow)
@@ -148,8 +151,8 @@ const T *VDRingBuffer<T>::LockReadWrapped(int requested, int& actual, int& readp
 	return pBuffer;
 }
 
-template<class T>
-int VDRingBuffer<T>::UnlockRead(int actual) {
+template<class T, class Allocator>
+int VDRingBuffer<T, Allocator>::UnlockRead(int actual) {
 	VDASSERT(actual >= 0);
 	VDASSERT(nLevel >= actual);
 
@@ -163,8 +166,8 @@ int VDRingBuffer<T>::UnlockRead(int actual) {
 	return nLevel.add(-actual);
 }
 
-template<class T>
-int VDRingBuffer<T>::Write(const T *pData, int bytes) {
+template<class T, class Allocator>
+int VDRingBuffer<T, Allocator>::Write(const T *pData, int bytes) {
 	VDASSERT(bytes >= 0);
 
 	int actual = 0;
@@ -190,8 +193,8 @@ int VDRingBuffer<T>::Write(const T *pData, int bytes) {
 	return actual;
 }
 
-template<class T>
-T *VDRingBuffer<T>::LockWrite(int requested, int& actual) {
+template<class T, class Allocator>
+T *VDRingBuffer<T, Allocator>::LockWrite(int requested, int& actual) {
 	VDASSERT(requested >= 0);
 	int nLevelNow = nSize - nLevel;
 
@@ -206,8 +209,8 @@ T *VDRingBuffer<T>::LockWrite(int requested, int& actual) {
 	return pBuffer + nWritePoint;
 }
 
-template<class T>
-int VDRingBuffer<T>::UnlockWrite(int actual) {
+template<class T, class Allocator>
+int VDRingBuffer<T, Allocator>::UnlockWrite(int actual) {
 	VDASSERT(actual >= 0);
 	VDASSERT(nLevel + actual <= nSize);
 

@@ -299,6 +299,7 @@ LRESULT CALLBACK VDVideoDisplayWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM
 		if (pThis)
 			pThis->SyncReset();
 		delete pThis;
+		pThis = NULL;
 		SetWindowLongPtr(hwnd, 0, 0);
 		break;
 	}

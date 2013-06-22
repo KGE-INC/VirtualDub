@@ -4,6 +4,34 @@
 		.model		flat
 		.code
 
+_VDFastMemcpyPartialScalarAligned8	proc	near public
+		mov		eax, [esp+12]
+		mov		edx, [esp+4]
+		mov		ecx, [esp+8]
+		add		ecx, eax
+		add		edx, eax
+		neg		eax
+		jz		@nobytes
+		add		eax, 8
+		jz		@doodd
+		jmp		short @xloop
+		align	16
+@xloop:
+		fild	qword ptr [ecx+eax-8]
+		fild	qword ptr [ecx+eax]
+		fxch
+		fistp	qword ptr [edx+eax-8]
+		fistp	qword ptr [edx+eax]
+		add		eax,16
+		jnc		@xloop
+		jnz		@nobytes
+@doodd:
+		fild	qword ptr [ecx-8]
+		fistp	qword ptr [edx-8]
+@nobytes:
+		ret
+_VDFastMemcpyPartialScalarAligned8	endp
+
 _VDFastMemcpyPartialMMX		proc	near public
 		push	edi
 		push	esi

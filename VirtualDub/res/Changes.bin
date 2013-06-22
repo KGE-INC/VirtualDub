@@ -1,7 +1,32 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
-Current build (1.5.9, stable):
+Current build (1.5.10, stable):
+   [features added]
+   * Removed "accept partial streams" from MPEG-1 options
+     and made it enabled by default; added warning.
+   * Filters are now notified whether a render is for
+     preview or output purposes.
+
+   [bugs fixed]
+   * Fixed a stall condition at end of render when advanced
+     audio pipeline is active.
+   * Fixed "frame not found" errors when processing
+     truncated MPEG-1 streams.
+   * BMP reader can now handle BITMAPCOREHEADER type
+     headers (fixes incompatibility with ZSNES
+     screenshots).
+   * Filters were receiving garbage frame timings in
+     capture mode.
+
+   [regressions fixed]
+   * Fixed instability in application when parsing VideoCD
+     streams.
+   * Fixed crash on exit on Windows 9x systems.
+   * Fixed visual errors in input pane when decoding
+     Microsoft Video 1 to a 565 16-bit display.
+
+Build 18121 (1.5.9, stable):   [November 9, 2003]
    [features added]
    * Made 'autodetect additional segments by filename'
      option sticky.
@@ -29,7 +54,7 @@ Current build (1.5.9, stable):
      up segments from a multisegment capture, as directed
      by the AVI's segment hint block.
 
-Current build (1.5.8, stable):   [November 3, 2003]
+Build 18068 (1.5.8, stable):   [November 3, 2003]
    [features added]
    * DirectDraw support is disabled when Terminal Services
      or Remote Desktop clients are detected to work around

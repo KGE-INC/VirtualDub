@@ -953,6 +953,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 			fsi.lMicrosecsPerFrame = g_dubOpts.video.frameRateNewMicroSecs;
 
 		fsi.lMicrosecsPerSrcFrame = fsi.lMicrosecsPerFrame;
+		fsi.flags = FilterStateInfo::kStatePreview;
 	}
 }
 

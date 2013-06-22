@@ -88,11 +88,15 @@ void VDMemset32(void *dst, uint32 value, size_t count) {
 }
 
 #if defined(_WIN32) && defined(_M_IX86)
+	extern "C" void __cdecl VDFastMemcpyPartialScalarAligned8(void *dst, const void *src, size_t bytes);
 	extern "C" void __cdecl VDFastMemcpyPartialMMX(void *dst, const void *src, size_t bytes);
 	extern "C" void __cdecl VDFastMemcpyPartialMMX2(void *dst, const void *src, size_t bytes);
 
 	void VDFastMemcpyPartialScalar(void *dst, const void *src, size_t bytes) {
-		memcpy(dst, src, bytes);
+		if (!(((int)dst | (int)src | bytes) & 7))
+			VDFastMemcpyPartialScalarAligned8(dst, src, bytes);
+		else
+			memcpy(dst, src, bytes);
 	}
 
 	void VDFastMemcpyFinishScalar() {

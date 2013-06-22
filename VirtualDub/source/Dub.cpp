@@ -1402,6 +1402,7 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 		fsi.lMicrosecsPerFrame		= vInfo.usPerFrame;
 		fsi.lMicrosecsPerSrcFrame	= vInfo.usPerFrameIn;
 		fsi.lCurrentFrame			= 0;
+		fsi.flags					= fPreview ? FilterStateInfo::kStateRealTime | FilterStateInfo::kStatePreview : 0;
 
 		if (filters.ReadyFilters(&fsi))
 			throw "Error readying filters.";

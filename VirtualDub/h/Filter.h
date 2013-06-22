@@ -120,7 +120,7 @@ public:
 
 //////////
 
-#define VIRTUALDUB_FILTERDEF_VERSION		(9)
+#define VIRTUALDUB_FILTERDEF_VERSION		(10)
 #define	VIRTUALDUB_FILTERDEF_COMPATIBLE		(4)
 
 // v3: added lCurrentSourceFrame to FrameStateInfo
@@ -130,6 +130,7 @@ public:
 // v7 (1.4d): added frame lag, exception handling
 // v8 (1.4.11): added string2 proc
 // v9 (1.4.12): added (working) copy constructor
+// v10 (1.5.10): added preview flag
 
 typedef struct FilterModule {
 	struct FilterModule *next, *prev;
@@ -181,6 +182,15 @@ public:
 	long	lMicrosecsPerSrcFrame;		// microseconds per source frame
 	long	lSourceFrameMS;				// source frame timestamp
 	long	lDestFrameMS;				// output frame timestamp
+
+	enum {
+		kStateNone		= 0x00000000,
+		kStatePreview	= 0x00000001,	// (V1.5.10+) Job output is not being saved to disk.
+		kStateRealTime	= 0x00000002,	// (V1.5.10+) Operation is running in real-time (capture, playback).
+		kStateMax		= 0xFFFFFFFF
+	};
+
+	long	flags;
 };
 
 // VFBitmap: VBitmap extended to hold filter-specific information

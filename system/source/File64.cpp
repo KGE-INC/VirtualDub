@@ -305,6 +305,14 @@ VDFileHandle VDFile::getRawHandle() {
 	return mhFile;
 }
 
+void *VDFile::AllocUnbuffer(size_t nBytes) {
+	return VirtualAlloc(NULL, nBytes, MEM_COMMIT, PAGE_READWRITE);
+}
+
+void VDFile::FreeUnbuffer(void *p) {
+	VirtualFree(p, 0, MEM_RELEASE);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 VDFileStream::~VDFileStream() {

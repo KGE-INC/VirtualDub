@@ -75,9 +75,10 @@ uint32 VDAudioFilterSink::Run() {
 
 	samples = mpContext->mpInputs[0]->Read(dst, samples, false, kVFARead_Native);
 
-	if (samples)
-		mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
+	if (!samples)
+		return pin.mbEnded ? kVFARun_Finished : 0;
 
+	mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
 	return 0;
 }
 

@@ -29,7 +29,7 @@ class VDRenderFrameIterator;
 class AudioStream;
 class AVIPipe;
 class VDAudioPipeline;
-template<class T> class VDRingBuffer;
+template<class T, class Allocator> class VDRingBuffer;
 class DubAudioStreamInfo;
 class DubVideoStreamInfo;
 

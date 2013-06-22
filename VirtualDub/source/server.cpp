@@ -241,6 +241,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		fsi.lMicrosecsPerFrame		= vInfo.usPerFrame;
 		fsi.lMicrosecsPerSrcFrame	= vInfo.usPerFrameIn;
+		fsi.flags					= 0;
 
 		if (filters.ReadyFilters(&fsi))
 			throw MyError("Error readying filters.");
