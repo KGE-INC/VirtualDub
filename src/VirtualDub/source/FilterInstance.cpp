@@ -409,6 +409,7 @@ bool FilterInstance::VideoPrefetcher::operator!=(const VideoPrefetcher& other) c
 
 void FilterInstance::VideoPrefetcher::Clear() {
 	mDirectFrame = -1;
+	mSymbolicFrame = -1;
 	mSourceFrames.clear();
 }
 
@@ -1520,6 +1521,7 @@ bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOf
 	bool success = true;
 	const VDFilterFrameRequestTiming& timing = overrideTiming ? *overrideTiming : request.GetTiming();
 
+	VDASSERT(request.GetSourceCount() > 0);
 	IVDFilterFrameClientRequest *creqsrc0 = request.GetSourceRequest(sourceOffset);
 	vdrefptr<VDFilterFrameRequestError> err(creqsrc0->GetError());
 

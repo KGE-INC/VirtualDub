@@ -2808,6 +2808,9 @@ void VDProjectUI::UpdateCurveEditorPosition() {
 
 	int selIndex = mpUICurveComboBox->GetValue();
 
+	if (selIndex >= 0)
+		selIndex = vdpoly_cast<IVDUIList *>(mpUICurveComboBox)->GetItemData(selIndex) - 1;
+
 	if (selIndex >= 0) {
 		if (!filters.isRunning()) {
 			try {

@@ -489,6 +489,11 @@ void VDVideoSourceANIM::DecompressMode5(const uint8 *src, uint32 srclen, uint8 *
 	for(int plane = 0; plane < mPlanes; ++plane) {
 		uint32 srcOffset = VDFromBigEndian32(planeoffsets[plane]);
 
+		if (!srcOffset) {
+			dst += planepitch;
+			continue;
+		}
+
 		if (srcOffset >= srclen)
 			throw ANIMDecompressionError();
 

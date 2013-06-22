@@ -355,7 +355,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 			for(VDParameterCurve::PointList::const_iterator it(pts.begin()), itEnd(pts.end()); it!=itEnd; ++it) {
 				const VDParameterCurvePoint& pt = *it;
 
-				output.addf("curve.AddPoint(%g, %g, %d);", pt.mX, pt.mY, pt.mbLinear);
+				output.addf("curve.AddPoint(%.12g, %.12g, %d);", pt.mX, pt.mY, pt.mbLinear);
 			}
 		}
 

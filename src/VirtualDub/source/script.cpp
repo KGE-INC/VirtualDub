@@ -320,7 +320,7 @@ static void func_VDParameterCurve_AddPoint(IVDScriptInterpreter *isi, VDScriptVa
 	pt.mY = argv[1].asDouble();
 	pt.mbLinear = argv[2].asInt() != 0;
 
-	VDParameterCurve::PointList::iterator it(obj->LowerBound(argv[0].asDouble()));
+	VDParameterCurve::PointList::iterator it(obj->UpperBound(argv[0].asDouble()));
 
 	pts.insert(it, pt);
 }

@@ -500,6 +500,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\TestParameterCurve.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\TestPixel.cpp"
 				>
 			</File>

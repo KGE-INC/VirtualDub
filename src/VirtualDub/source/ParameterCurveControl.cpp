@@ -650,21 +650,27 @@ void VDParameterCurveControlW32::OnPaint() {
 						MoveToEx(hdc, x, y, NULL);
 						LineTo(hdc, xn, yn);
 					} else {
-
 						SelectObject(hdc, mhpenCurve);
 						MoveToEx(hdc, x, y, NULL);
 
-						POINT pts[16];
+						if (xn <= x) {
+							LineTo(hdc, xn, yn);
+						} else {
+							POINT pts[16];
 
-						for(int i=1; i<=16; ++i) {
-							double xt = pt.mX + (pt2.mX - pt.mX) * ((float)i / 16.0f);
-							double yt = mpCurve->operator()(xt).mY;
+							for(int i=1; i<16; ++i) {
+								double xt = pt.mX + (pt2.mX - pt.mX) * ((float)i / 16.0f);
+								double yt = mpCurve->operator()(xt).mY;
 
-							pts[i-1].x = CurveToScreenX(xt);
-							pts[i-1].y = CurveToScreenY(yt);
+								pts[i-1].x = CurveToScreenX(xt);
+								pts[i-1].y = CurveToScreenY(yt);
+							}
+
+							pts[15].x = xn;
+							pts[15].y = yn;
+
+							PolylineTo(hdc, pts, 16);
 						}
-
-						PolylineTo(hdc, pts, 16);
 					}
 				} else if (isEndPtPresent) {
 					SelectObject(hdc, mhpenEndLine);

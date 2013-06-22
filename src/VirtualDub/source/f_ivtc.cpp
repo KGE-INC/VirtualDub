@@ -920,7 +920,7 @@ void VDVideoFilterIVTC::Run() {
 	if (mConfig.mbReduceRate) {
 		// Compute where the second duplicate C frame occurs in a repeated 5-frame, phase-0
 		// pattern.
-		int dupeOffset = (int)((fa->src.mFrameNumber + bestPhase + 3) % 5);
+		int dupeOffset = (int)((fa->mpSourceFrames[5]->mFrameNumber + bestPhase + 3) % 5);
 
 		// If we're past that point, then read one frame ahead.
 		int localOffset = (int)fa->dst.mFrameNumber & 3;

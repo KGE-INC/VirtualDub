@@ -49,7 +49,7 @@ sint64 VDFilterAccelUploader::GetSymbolicFrame(sint64 outputFrame, IVDFilterFram
 	if (source == this)
 		return outputFrame;
 
-	return source->GetSymbolicFrame(outputFrame, source);
+	return mpSource->GetSymbolicFrame(outputFrame, source);
 }
 
 sint64 VDFilterAccelUploader::GetNearestUniqueFrame(sint64 outputFrame) {
@@ -64,12 +64,24 @@ VDFilterAccelUploader::RunResult VDFilterAccelUploader::RunRequests() {
 
 	VDFilterFrameBuffer *srcbuf = req->GetSource(0);
 	if (!srcbuf) {
+		IVDFilterFrameClientRequest *creq0 = mpRequest->GetSourceRequest(0);
+
+		if (creq0)
+			mpRequest->SetError(creq0->GetError());
+
 		req->MarkComplete(false);
 		CompleteRequest(req, false);
 		return kRunResult_Running;
 	}
 
 	if (!AllocateRequestBuffer(req)) {
+		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
+
+		if (err) {
+			err->mError = "Unable to allocate an accelerated video frame buffer.";
+			mpRequest->SetError(err);
+		}
+
 		req->MarkComplete(false);
 		CompleteRequest(req, false);
 		return kRunResult_Running;

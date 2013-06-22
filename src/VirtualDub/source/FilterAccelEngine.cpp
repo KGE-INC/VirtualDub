@@ -694,6 +694,7 @@ bool VDFilterAccelEngine::BeginDownload(VDFilterAccelEngineDownloadMsg *msg, VDF
 	msg->mbDstYUV = dstLayout.format != nsVDXPixmap::kPixFormat_XRGB8888;
 	msg->mbWaitingForRender = false;
 	msg->mbSuccess = false;
+	msg->mbDeviceLost = false;
 
 	return true;
 }
@@ -906,7 +907,8 @@ void VDFilterAccelEngine::DownloadCallback2b(DownloadMsg& msg) {
 	msg.mbSuccess = true;
 
 xit:
-	;
+	if (mpTC->IsDeviceLost())
+		msg.mbDeviceLost = true;
 }
 
 struct VDFilterAccelEngine::ConvertMsg : public VDFilterAccelEngineMessage {

@@ -811,7 +811,7 @@ space_reconvert:
 
 					case kVDPixSpace_Pal:
 						targetSpace = kVDPixSpace_BGR;
-						break;
+						goto space_reconvert;
 
 					default:
 						VDASSERT(false);
@@ -849,7 +849,7 @@ space_reconvert:
 						break;
 					case kVDPixSpace_Pal:
 						targetSpace = kVDPixSpace_BGR;
-						break;
+						goto space_reconvert;
 					default:
 						VDASSERT(false);
 						break;

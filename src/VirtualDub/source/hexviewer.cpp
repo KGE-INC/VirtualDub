@@ -1739,12 +1739,15 @@ LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) {
 				Handle_WM_COMMAND(ID_EDIT_RIFFTREE, 0);
 		break;
 	case 'O':
-		Open();
+		if (GetKeyState(VK_CONTROL)<0)
+	 		Open();
 		break;
 
 	case 'S':
-		if (mFile.isOpen() && bEnableWrite)
-			Commit();
+		if (GetKeyState(VK_CONTROL)<0) {
+			if (mFile.isOpen() && bEnableWrite)
+				Commit();
+		}
 		break;
 	}
 

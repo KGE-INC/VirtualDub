@@ -870,7 +870,7 @@ const uint8 *MJPEGDecoder::decodeMCUs(const uint8 *ptr, bool odd_field) {
 #endif
 
 	mcu = 0;
-	try {
+	__try {
 		while(mcu<mcu_count) {
 			int mcus = 4;
 
@@ -980,7 +980,7 @@ const uint8 *MJPEGDecoder::decodeMCUs(const uint8 *ptr, bool odd_field) {
 			for(int i=0; i<mcu_length*mcus; i++)
 				memset(dct_coeff[i], 0, 128);
 		}
-	} catch(...) {
+	} _except(1) {
 		// This ain't good, folks
 #ifdef _M_IX86
 		__asm emms
@@ -1066,7 +1066,7 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 		const uint8 (*const acquick2)[2] = block->huff_ac_quick2;
 		const uint8 *const huffac = block->huff_ac;
 		short *dctptr = *dctarray++;
-		const int *quantlimit = quantptr + 64*2;
+		const int *quantlimit = quantptr + 63*2;
 
 		// fill bit heap
 		if (bitcnt >= -8) {
@@ -1081,9 +1081,10 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 		// decode DC coefficient
 		int i = 0;
 		int code = 0;
+		sint32 oheap = bitheap;
 		sint32 acc = bitheap >> 30;
 		bitheap <<= 2;
-		while(i < 16) {
+		while(i < 15) {
 			uint32 count = block->huff_dc[i + 1];
 			if (acc < count)
 				break;
@@ -1096,6 +1097,9 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 
 		bitcnt += i + 2;
 		code += acc;
+
+		VDASSERT(bitcnt < 32);
+		VDASSERT(code <= 16);
 		
 		sint32 coeff = 0;
 		if (code) {
@@ -1122,6 +1126,8 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 		coeff += *block->dc_ptr;
 		*block->dc_ptr = coeff;
 		*dctptr = (short)coeff;
+
+		VDASSERT(bitcnt < 32);
 
 		// BEGIN DECODING AC COEFFICIENTS
 

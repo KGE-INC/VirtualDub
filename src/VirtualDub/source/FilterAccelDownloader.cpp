@@ -75,7 +75,7 @@ sint64 VDFilterAccelDownloader::GetSymbolicFrame(sint64 outputFrame, IVDFilterFr
 	if (source == this)
 		return outputFrame;
 
-	return source->GetSymbolicFrame(outputFrame, source);
+	return mpSource->GetSymbolicFrame(outputFrame, source);
 }
 
 sint64 VDFilterAccelDownloader::GetNearestUniqueFrame(sint64 outputFrame) {
@@ -101,6 +101,11 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
 
 	VDFilterFrameBufferAccel *srcbuf = static_cast<VDFilterFrameBufferAccel *>(mpRequest->GetSource(0));
 	if (!srcbuf) {
+		IVDFilterFrameClientRequest *creq0 = mpRequest->GetSourceRequest(0);
+
+		if (creq0)
+			mpRequest->SetError(creq0->GetError());
+
 		mpRequest->MarkComplete(false);
 		CompleteRequest(mpRequest, false);
 		mpRequest = NULL;
@@ -108,6 +113,13 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
 	}
 
 	if (!AllocateRequestBuffer(mpRequest)) {
+		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
+
+		if (err) {
+			err->mError = "Unable to allocate a video frame buffer.";
+			mpRequest->SetError(err);
+		}
+
 		mpRequest->MarkComplete(false);
 		CompleteRequest(mpRequest, false);
 		mpRequest = NULL;
@@ -126,6 +138,15 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests() {
 	mpEngine->WaitForCall(&mDownloadMsg);
 
 	bool succeeded = mpEngine->EndDownload(&mDownloadMsg);
+
+	if (!succeeded && mDownloadMsg.mbDeviceLost) {
+		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
+
+		if (err) {
+			err->mError = "The 3D accelerator is no longer available.";
+			mpRequest->SetError(err);
+		}
+	}
 
 	mpRequest->MarkComplete(succeeded);
 	CompleteRequest(mpRequest, true);

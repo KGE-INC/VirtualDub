@@ -68,6 +68,7 @@ struct VDFilterAccelEngineDownloadMsg : public VDFilterAccelEngineMessage {
 	bool mbDstYUV;
 	bool mbWaitingForRender;
 	bool mbSuccess;
+	bool mbDeviceLost;
 	uint32 mFence;
 };
 

@@ -464,7 +464,7 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 
 
 		if (fa->GetAlphaParameterCurve()) {
-				// size check
+			// size check
 			if (fa->mRealSrc.w != fa->mRealDst.w || fa->mRealSrc.h != fa->mRealDst.h) {
 				throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output sizes (%dx%d -> %dx%d). Input and output sizes must match."
 					, fa->GetName()
@@ -473,6 +473,12 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 					, fa->mRealDst.w
 					, fa->mRealDst.h
 					);
+			}
+
+			// format check
+			if (fa->mRealSrc.mPixmapLayout.format != fa->mRealDst.mPixmapLayout.format) {
+				throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output formats. Input and output formats must match."
+					, fa->GetName());
 			}
 		}
 

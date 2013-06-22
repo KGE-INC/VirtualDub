@@ -139,6 +139,8 @@ bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
 		if (anyFailed) {
 			r->SetError(error);
 			r->MarkComplete(false);
+			mRequests.pop_front();
+			r->Release();
 			continue;
 		}
 

@@ -44,7 +44,7 @@ sint64 VDFilterFrameConverter::GetSymbolicFrame(sint64 outputFrame, IVDFilterFra
 	if (source == this)
 		return outputFrame;
 
-	return source->GetSymbolicFrame(outputFrame, source);
+	return mpSource->GetSymbolicFrame(outputFrame, source);
 }
 
 sint64 VDFilterFrameConverter::GetNearestUniqueFrame(sint64 outputFrame) {

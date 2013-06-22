@@ -383,19 +383,19 @@ pixelloop:
 
 		;finish up
 
-		mov		eax,[esi+8]
+		mov		eax,[esi+4]
 		mov		ebx,0000ff00h
 		and		ebx,eax
 		and		eax,00ff00ffh
 
-		mov		ecx,[esi+12]
+		mov		ecx,[esi+8]
 		mov		edx,0000ff00h
 		and		edx,ecx
 		and		ecx,00ff00ffh
 		add		ebx,edx
 		add		eax,ecx
 
-		mov		ecx,[esi+16]
+		mov		ecx,[esi+12]
 		mov		edx,0000ff00h
 		and		edx,ecx
 		and		ecx,00ff00ffh
@@ -406,7 +406,7 @@ pixelloop:
 		add		ebx,edx
 		add		eax,ecx
 
-		mov		ecx,[esi+4]
+		mov		ecx,[esi]
 		mov		edx,0000ff00h
 		and		edx,ecx
 		and		ecx,00ff00ffh
@@ -428,12 +428,12 @@ pixelloop:
 
 
 
-		mov		eax,[esi+16]
+		mov		eax,[esi+12]
 		mov		ebx,0000ff00h
 		and		ebx,eax
 		and		eax,00ff00ffh
 
-		mov		ecx,[esi+12]
+		mov		ecx,[esi+8]
 		mov		edx,0000ff00h
 		and		edx,ecx
 		and		ecx,00ff00ffh
@@ -444,7 +444,7 @@ pixelloop:
 		add		ebx,edx
 		add		eax,ecx
 
-		mov		ecx,[esi+8]
+		mov		ecx,[esi+4]
 		mov		edx,0000ff00h
 		and		edx,ecx
 		and		ecx,00ff00ffh

@@ -527,7 +527,9 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 		*(long *)(fs->arena+4) = lVideoSamples;			//vSrc->lSampleLast;
 
 		IVDStreamSource *pVSS = vSrc->asStream();
-		memcpy(lpasi, &pVSS->getStreamInfo(), sizeof(AVISTREAMINFO));
+
+		memset(lpasi, 0, sizeof *lpasi);
+		memcpy(lpasi, &pVSS->getStreamInfo(), sizeof(VDAVIStreamInfo));
 
 		lpasi->fccHandler	= ' BID';
 		lpasi->dwLength		= *(long *)(fs->arena+4);
