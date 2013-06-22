@@ -1939,7 +1939,7 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 					break;
 				}
 			case 'C':
-				*buf = inputVideoAVI->getFrameTypeChar(srcStreamFrame);
+				*buf = inputVideoAVI->getFrameTypeChar(srcFrame);
 				actual = 1;
 				break;
 

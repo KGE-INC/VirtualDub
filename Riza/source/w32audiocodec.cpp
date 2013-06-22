@@ -133,17 +133,29 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 	if (res) {
 		Shutdown();
 
-		if (res == ACMERR_NOTPOSSIBLE) {
-			throw MyError(
-						"Error initializing audio stream decompression:\n"
-						"The requested conversion is not possible.\n"
-						"\n"
-						"Check to make sure you have the required codec%s."
-						,
-						(pSrcFormat->wFormatTag&~1)==0x160 ? " (Microsoft Audio Codec)" : ""
-					);
-		} else
-			throw MyError("Error initializing audio stream decompression.");
+		if (pSrcFormat->wFormatTag == WAVE_FORMAT_PCM) {
+			if (res == ACMERR_NOTPOSSIBLE) {
+				throw MyError(
+							"Error initializing audio stream compression:\n"
+							"The audio codec cannot compress the source audio to the desired format.\n"
+							"\n"
+							"Check that the sampling rate and number of channels in the source is compatible with the selected compressed audio format."
+						);
+			} else
+				throw MyError("Error initializing audio stream compression.");
+		} else {
+			if (res == ACMERR_NOTPOSSIBLE) {
+				throw MyError(
+							"Error initializing audio stream decompression:\n"
+							"No installed audio codec could be found to decompress the compressed source audio.\n"
+							"\n"
+							"Check to make sure you have the required codec%s."
+							,
+							(pSrcFormat->wFormatTag&~1)==0x160 ? " (Microsoft Audio Codec)" : ""
+						);
+			} else
+				throw MyError("Error initializing audio stream decompression.");
+		}
 	}
 
 	DWORD dwSrcBufferSize = mSrcFormat->nAvgBytesPerSec / 5;

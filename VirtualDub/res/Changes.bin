@@ -1,6 +1,21 @@
 VirtualDub change log
 
-Build %build% (1.6.9, stable): [%date%]
+Build %build% (1.6.10, stable): [%date%]
+   [features added]
+   * The Y800 FOURCC has been added as a supported synonym for the monochrome Y8 format.
+
+   [bugs fixed]
+   * "Run analysis video pass" now uses the correct priority setting.
+   * The ESC key and close button now work in the capture spill drive dialog.
+   * Fixed some DV quality issues, including broken DV PAL chroma decoding.
+   * Capture: Fixed divide-by-zero crash in DirectShow driver when selecting 8-bit mono formats.
+   * Capture: Fixed scrambled audio output when resampling with 8-bit audio formats.
+
+   [regressions fixed]
+   * MPEG-1 frame types were being reported improperly. This caused the key-frame-step command to appear not to land on I-frames.
+   * Selecting an incompatible audio compression format reported a *de*compression error.
+
+Build 23604 (1.6.9, stable): [July 10, 2005]
    [bugs fixed]
    * Extended workaround for Huffyuv joining problems to capture mode (pre-zeroing format block).
    * Hex editor would warp to a random location when using the mouse wheel for the first time.

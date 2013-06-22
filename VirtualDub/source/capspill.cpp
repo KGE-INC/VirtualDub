@@ -272,6 +272,7 @@ INT_PTR CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
 		case IDOK:
+		case IDCANCEL:
 			{
 				BOOL fOk;
 				LONG lMin, lMax;

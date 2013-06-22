@@ -78,12 +78,15 @@ const VDAudioFilterCallbacks g_audioFilterCallbacks = {
 VDFilterConfigVariant::VDFilterConfigVariant(const VDFilterConfigVariant& x) : mType(x.mType), mData(x.mData) {
 	switch(mType) {
 	case kTypeAStr:
+		mType = kTypeInvalid;
 		SetAStr(x.mData.vsa.s);
 		break;
 	case kTypeWStr:
+		mType = kTypeInvalid;
 		SetWStr(x.mData.vsw.s);
 		break;
 	case kTypeBlock:
+		mType = kTypeInvalid;
 		SetBlock(x.mData.vb.s, x.mData.vb.len);
 		break;
 	}

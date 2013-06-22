@@ -237,12 +237,14 @@ protected:
 	VDCriticalSection	mcsLock;
 
 	tpVDConvertPCM	mpAudioDecoder16;
+	tpVDConvertPCM	mpAudioEncoder16;
 	uint32		mBytesPerInputSample;
 
 	sint32		mInputLevel;
 	uint32		mAccum;
 	vdblock<sint16>	mInputBuffer;
 	vdblock<sint16>	mOutputBuffer;
+	vdblock<char>	mEncodingBuffer;
 
 	MovingAverage<double, 8>	mCurrentLatencyAverage;
 
@@ -290,9 +292,13 @@ void VDCaptureResyncFilter::SetAudioChannels(int chans) {
 
 void VDCaptureResyncFilter::SetAudioFormat(VDAudioSampleType type) {
 	mpAudioDecoder16 = NULL;
+	mpAudioEncoder16 = NULL;
 
-	if (type != kVDAudioSampleType16S)
-		mpAudioDecoder16 = VDGetPCMConversionVtable()[type][kVDAudioSampleType16S];
+	if (type != kVDAudioSampleType16S) {
+		tpVDConvertPCMVtbl tbl = VDGetPCMConversionVtable();
+		mpAudioDecoder16 = tbl[type][kVDAudioSampleType16S];
+		mpAudioEncoder16 = tbl[kVDAudioSampleType16S][type];
+	}
 
 	mBytesPerInputSample = 1<<type;
 }
@@ -333,6 +339,9 @@ void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
 	mInputBuffer.resize(4096 * mChannels);
 	memset(mInputBuffer.data(), 0, mInputBuffer.size() * sizeof(mInputBuffer[0]));
 	mOutputBuffer.resize(4096 * mChannels);
+
+	if (mpAudioEncoder16)
+		mEncodingBuffer.resize(4096 * mChannels * mBytesPerInputSample);
 
 	mpCB->CapBegin(global_clock);
 }
@@ -520,7 +529,7 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 }
 
 void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock) {
-	int samples = (size >> 1) / mChannels;
+	int samples = size / (mChannels * mBytesPerInputSample);
 
 	while(samples > 0) {
 		int tc = 4096 - mInputLevel;
@@ -573,13 +582,25 @@ void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 si
 		VDASSERT((unsigned)mInputLevel < 4096);
 		mAccum -= shift << 16;
 
-		if (limit) {
-			mAudioWrittenBytes += limit*chans*2;
+		const void *p = mOutputBuffer.data();
+		uint32 size = limit * chans * 2;
 
-			mpCB->CapProcessData(1, mOutputBuffer.data(), limit*chans*2, 0, key, global_clock);
+		if (mpAudioEncoder16) {
+			void *dst = mEncodingBuffer.data();
+
+			mpAudioEncoder16(dst, p, limit * chans);
+
+			size = limit * chans * mBytesPerInputSample;
+			p = dst;
 		}
 
-		data = (char *)data + 2*chans*tc;
+		if (limit) {
+			mAudioWrittenBytes += size;
+
+			mpCB->CapProcessData(1, p, size, 0, key, global_clock);
+		}
+
+		data = (char *)data + mBytesPerInputSample*chans*tc;
 	}
 }
 
@@ -619,7 +640,7 @@ void VDCaptureResyncFilter::UnpackSamples(sint16 *dst, ptrdiff_t dstStride, cons
 		strided_copy_16(dst, dstStride, buf, tc, channels);
 
 		dst += tc;
-		src = (const char *)src + tc*mBytesPerInputSample;
+		src = (const char *)src + tc*channels*mBytesPerInputSample;
 		samples -= tc;
 	}
 }

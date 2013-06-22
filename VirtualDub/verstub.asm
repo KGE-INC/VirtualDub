@@ -5,9 +5,9 @@
 	public	version_date
 	public	version_buildmachine
 
-version_num	dd	23604
-version_time	db	"Sun Jul 10 14:49:59 2005",0
-version_date	db	"July 10, 2005",0
+version_num	dd	23648
+version_time	db	"Sun Aug 07 16:19:09 2005",0
+version_date	db	"August 7, 2005",0
 version_buildmachine	db	"Kos-mos",0
 
 	end

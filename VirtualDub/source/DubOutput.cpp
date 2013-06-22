@@ -165,6 +165,7 @@ void VDAVIOutputFileSystem::SetVideo(const AVIStreamHeader_fixed& asi, const voi
 		case '9UVY':	// YVU9
 		case '61VY':	// YV16
 		case '  8Y':	// Y8
+		case '008Y':	// Y800
 		case '112Y':	// Y211
 		case 'P14Y':	// Y41P
 		case 'VUYA':	// AYUV

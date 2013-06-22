@@ -757,6 +757,7 @@ void VideoSourceAVI::_construct() {
 				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV410_Planar;
 				break;
 			case '  8Y':		// Y8
+			case '008Y':		// Y800
 				mSourceLayout.format = nsVDPixmap::kPixFormat_Y8;
 				break;
 			}

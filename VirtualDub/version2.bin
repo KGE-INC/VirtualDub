@@ -1,6 +1,6 @@
 host: "Athena"              builds: 16007
 host: "Athena64"            builds: 96
 host: "Belldandy"           builds: 7023
-host: "Kos-mos"             builds: 137
+host: "Kos-mos"             builds: 181
 host: "Kumi64"              builds: 138
 host: "Risa"                builds: 203

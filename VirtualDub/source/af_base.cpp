@@ -91,7 +91,7 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 				l = str.size() + 1;
 				if (size >= l)
 					memcpy(dst, str.c_str(), l);
-				return size;
+				return l;
 			}
 
 		case VDFilterConfigEntry::kTypeWStr:
@@ -100,7 +100,7 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 				l = (str.size() + 1) * sizeof(wchar_t);
 				if (size >= l)
 					memcpy(dst, str.c_str(), l);
-				return size;
+				return l;
 			}
 
 		case VDFilterConfigEntry::kTypeBlock:
@@ -108,7 +108,7 @@ unsigned VDAudioFilterBase::GetParam(unsigned idx, void *dst, unsigned size) {
 				Type_Block& blk = *(Type_Block *)ptr;
 				if (size >= blk.size())
 					memcpy(dst, &blk[0], size);
-				return size;
+				return blk.size();
 			}
 
 		}

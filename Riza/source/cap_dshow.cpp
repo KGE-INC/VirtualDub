@@ -2799,7 +2799,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 				if (!allocProp.cbBuffer)
 					allocProp.cbBuffer = 1;
 				allocProp.cbBuffer += mAudioFormat->nBlockAlign - 1;
-				allocProp.cbBuffer -= allocProp.cbBuffer % (mAudioFormat->nBlockAlign - 1);
+				allocProp.cbBuffer -= allocProp.cbBuffer % mAudioFormat->nBlockAlign;
 				allocProp.cbPrefix = -1;
 				allocProp.cBuffers = -1;
 

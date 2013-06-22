@@ -34,6 +34,8 @@ public:
 	VDPixmap	GetFrameBuffer();
 
 protected:
+	void InterpolatePALChroma();
+
 	bool	mbLastWasPAL;
 
 	__declspec(align(16)) uint8	mYPlane[576][736];
@@ -44,8 +46,8 @@ protected:
 			uint8	mCbPlane[480][184];
 		} m411;
 		struct {
-			uint8	mCrPlane[288][368];
-			uint8	mCbPlane[288][368];
+			uint8	mCrPlane[576][368];
+			uint8	mCbPlane[576][368];
 		} m420;
 	};
 };
@@ -387,27 +389,16 @@ namespace {
 		CS1/CS4
 	};
 #else
-	// Weights 2/(w(i)*w(j)) according to SMPTE 314M 5.2.2, in zigzag order and 12-bit fixed point.
-	static const int weights_std[64]={
-		8192,  8035,  8035,  7568,  7880,  7568,  7373,  7423,
-		7423,  7373,  7168,  7231,  6992,  7231,  7168,  6967,
-		7030,  6811,  6811,  7030,  6967,  6270,  6833,  6622,
-		6635,  6622,  6833,  6270,  5906,  6149,  6436,  6451,
-		6451,  6436,  6149,  5906,  5793,  5793,  6270,  6272,
-		6270,  5793,  5793,  5457,  5643,  6096,  6096,  5643,
-		5457,  5315,  5486,  5925,  5486,  5315,  5168,  5332,
-		5332,  5168,  5023,  4799,  5023,  4520,  4520,  4258,
-	};
-
-	static const int weights_alt[64]={
-		8192, 7568, 8035, 7423, 8192, 7568, 7568, 6992,
-		8035, 7423, 8035, 7373, 8035, 7373, 7880, 7231,
-		7568, 6992, 7373, 6811, 7168, 6622, 7373, 6811,
-		7423, 6811, 7880, 7231, 7423, 6811, 7231, 6635,
-		7168, 6622, 6967, 6436, 6270, 5793, 6967, 6436,
-		7030, 6451, 7231, 6635, 7030, 6451, 6833, 6270,
-		6270, 5793, 5906, 5457, 5906, 5457, 6149, 5643,
-		6833, 6270, 6149, 5643, 5793, 5315, 5793, 5315,
+	// Weights 2/(w(i)*w(j)) according to SMPTE 314M 5.2.2, in 12-bit fixed point.
+	static const int weights[64]={
+		 8192,  8352,  8867,  9102,  9362,  9633, 10703, 11363,
+		 8352,  8516,  9041,  9281,  9546,  9821, 10913, 11585,
+		 8867,  9041,  9598,  9852, 10134, 10426, 11585, 12299,
+		 9102,  9281,  9852, 10114, 10403, 10703, 11893, 12625,
+		 9362,  9546, 10134, 10403, 10700, 11009, 12232, 12986,
+		 9633,  9821, 10426, 10703, 11009, 11327, 12586, 13361,
+		10703, 10913, 11585, 11893, 12232, 12586, 13985, 14846,
+		11363, 11585, 12299, 12625, 12986, 13361, 14846, 15760,
 	};
 #endif
 
@@ -449,7 +440,7 @@ namespace {
 
 	class DVDCTBlockDecoder {
 	public:
-		void Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& bitsource, int qno, bool split, const int zigzag[2][64]);
+		void Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& bitsource, int qno, bool split, const int zigzag[2][64], short weights_prescaled[2][13][64]);
 		bool Decode(DVBitSource& bitsource, const DVDecoderContext& context);
 
 	protected:
@@ -468,10 +459,7 @@ namespace {
 		bool		mbSplit;
 	};
 
-	short weights_std_prescaled[13][64];
-	short weights_alt_prescaled[13][64];
-
-	void DVDCTBlockDecoder::Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& src, int qno, bool split, const int zigzag[2][64]) {
+	void DVDCTBlockDecoder::Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& src, int qno, bool split, const int zigzag[2][64], short weights_prescaled[2][13][64]) {
 		mpDst = dst;
 		mPitch = pitch;
 		mBitHeap = mBitCount = 0;
@@ -490,23 +478,14 @@ namespace {
 
 		mb842 = false;
 		mpZigzag = zigzag[0];
-		mpWeights = weights_std_prescaled[quanttable[dctclass][qno]];
+		mpWeights = weights_prescaled[0][quanttable[dctclass][qno]];
 		if (src0[1] & 0x40) {
 			mb842 = true;
 			mpZigzag = zigzag[1];
-			mpWeights = weights_alt_prescaled[quanttable[dctclass][qno]];
+			mpWeights = weights_prescaled[1][quanttable[dctclass][qno]];
 		}
 
 		mbSplit = split;
-
-		if (!weights_std_prescaled[0][0]) {
-			for(int i=0; i<13; ++i) {
-				for(int j=0; j<64; ++j) {
-					weights_std_prescaled[i][j] = (short)(((weights_std[j] >> (6 - shifttable[i][range[j]]))+1)>>1);
-					weights_alt_prescaled[i][j] = (short)(((weights_alt[j] >> (6 - shifttable[i][range[j]]))+1)>>1);
-				}
-			}
-		}
 	}
 
 #ifdef _MSC_VER
@@ -652,7 +631,7 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 	};
 
 	static const int sPALMacroblockOffsets[5][27][2]={
-#define P(x,y) {x*16+y*16*sizeof(mYPlane[0]), x*8+y*8*sizeof(m420.mCrPlane[0])}
+#define P(x,y) {x*16+y*16*sizeof(mYPlane[0]), x*8+y*16*sizeof(m420.mCrPlane[0])}
 		{
 			P(18,0),P(18,1),P(18,2),P(19,2),P(19,1),P(19,0),
 			P(20,0),P(20,1),P(20,2),P(21,2),P(21,1),P(21,0),
@@ -705,22 +684,25 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 	const int (*const pDCTYBlockOffsets)[4] = (isPAL ? sDCTYBlockOffsets420 : sDCTYBlockOffsets411);
 	const uint8 *pVideoBlock = (const uint8 *)src + 7*80;
 
-	const int kChromaStep = sizeof(m411.mCrPlane[0]) * 48;
-	VDASSERTCT(kChromaStep == sizeof(m420.mCrPlane[0]) * 24);
+	int chromaStep;
 
 	uint8 *pCr, *pCb;
 	ptrdiff_t chroma_pitch;
 	int nDIFSequences;
 
 	if (isPAL) {
+		chromaStep = sizeof(m420.mCrPlane[0]) * 48;
+
 		memset(m420.mCrPlane, 0x80, sizeof m420.mCrPlane);
 		memset(m420.mCbPlane, 0x80, sizeof m420.mCbPlane);
 
 		pCr = m420.mCrPlane[0];
-		pCb = m420.mCbPlane[0];
-		chroma_pitch = sizeof m420.mCrPlane[0];
+		pCb = m420.mCbPlane[1];
+		chroma_pitch = sizeof m420.mCrPlane[0] * 2;
 		nDIFSequences = 12;
 	} else {
+		chromaStep = sizeof(m411.mCrPlane[0]) * 48;
+
 		memset(m411.mCrPlane, 0x80, sizeof m411.mCrPlane);
 		memset(m411.mCbPlane, 0x80, sizeof m411.mCbPlane);
 
@@ -731,6 +713,7 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 	}
 
 	int zigzag[2][64];
+	short weights_prescaled[2][13][64];
 
 	DVDecoderContext context;
 
@@ -741,7 +724,21 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 
 	memcpy(zigzag[1], zigzag_alt, sizeof(int)*64);
 
-	for(int i=0; i<nDIFSequences; ++i) {			// 10/12 DIF sequences
+	int i;
+	for(i=0; i<13; ++i) {
+		for(int j=0; j<64; ++j) {
+			weights_prescaled[0][i][j] = (short)(((weights[zigzag_std[j]] >> (6 - shifttable[i][range[j]]))+1)>>1);
+
+			int zig = zigzag_alt[j];		// for great justice
+
+			// fold sum/diff together and then double y
+			zig = (zig & 0x1f) + (zig & 0x18);
+
+			weights_prescaled[1][i][j] = (short)(((weights[zig] >> (6 - shifttable[i][range[j]]))+1)>>1);
+		}
+	}
+
+	for(i=0; i<nDIFSequences; ++i) {			// 10/12 DIF sequences
 		int audiocounter = 0;
 
 		const int columns[5]={
@@ -764,8 +761,8 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 				const int super_y = columns[j];
 
 				uint8 *yptr = mYPlane[super_y*48] + y_offset;
-				uint8 *crptr = pCr + kChromaStep * super_y;
-				uint8 *cbptr = pCb + kChromaStep * super_y;
+				uint8 *crptr = pCr + chromaStep * super_y;
+				uint8 *cbptr = pCb + chromaStep * super_y;
 
 				int qno = pVideoBlock[3] & 15;
 
@@ -777,12 +774,12 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 				mSources[blk+3].Init(pVideoBlock + 46, pVideoBlock + 60, 0);
 				mSources[blk+4].Init(pVideoBlock + 60, pVideoBlock + 70, 0);
 				mSources[blk+5].Init(pVideoBlock + 70, pVideoBlock + 80, 0);
-				mDecoders[blk+0].Init(yptr + pDCTYBlockOffsets[bHalfBlock][0], sizeof mYPlane[0], mSources[blk+0], qno, false, zigzag);
-				mDecoders[blk+1].Init(yptr + pDCTYBlockOffsets[bHalfBlock][1], sizeof mYPlane[0], mSources[blk+1], qno, false, zigzag);
-				mDecoders[blk+2].Init(yptr + pDCTYBlockOffsets[bHalfBlock][2], sizeof mYPlane[0], mSources[blk+2], qno, false, zigzag);
-				mDecoders[blk+3].Init(yptr + pDCTYBlockOffsets[bHalfBlock][3], sizeof mYPlane[0], mSources[blk+3], qno, false, zigzag);
-				mDecoders[blk+4].Init(crptr + c_offset, chroma_pitch, mSources[blk+4], qno, bHalfBlock, zigzag);
-				mDecoders[blk+5].Init(cbptr + c_offset, chroma_pitch, mSources[blk+5], qno, bHalfBlock, zigzag);
+				mDecoders[blk+0].Init(yptr + pDCTYBlockOffsets[bHalfBlock][0], sizeof mYPlane[0], mSources[blk+0], qno, false, zigzag, weights_prescaled);
+				mDecoders[blk+1].Init(yptr + pDCTYBlockOffsets[bHalfBlock][1], sizeof mYPlane[0], mSources[blk+1], qno, false, zigzag, weights_prescaled);
+				mDecoders[blk+2].Init(yptr + pDCTYBlockOffsets[bHalfBlock][2], sizeof mYPlane[0], mSources[blk+2], qno, false, zigzag, weights_prescaled);
+				mDecoders[blk+3].Init(yptr + pDCTYBlockOffsets[bHalfBlock][3], sizeof mYPlane[0], mSources[blk+3], qno, false, zigzag, weights_prescaled);
+				mDecoders[blk+4].Init(crptr + c_offset, chroma_pitch, mSources[blk+4], qno, bHalfBlock, zigzag, weights_prescaled);
+				mDecoders[blk+5].Init(cbptr + c_offset, chroma_pitch, mSources[blk+5], qno, bHalfBlock, zigzag, weights_prescaled);
 
 				int i;
 
@@ -822,6 +819,9 @@ void VDVideoDecoderDV::DecompressFrame(const void *src, bool isPAL) {
 		pVideoBlock += 80 * 6;
 	}
 
+	if (isPAL)
+		InterpolatePALChroma();
+
 #ifndef _M_AMD64
 	if (MMX_enabled)
 		__asm emms
@@ -845,7 +845,7 @@ VDPixmap VDVideoDecoderDV::GetFrameBuffer() {
 		pxsrc.pitch2	= sizeof m420.mCbPlane[0];
 		pxsrc.pitch3	= sizeof m420.mCrPlane[0];
 		pxsrc.h			= 576;
-		pxsrc.format	= nsVDPixmap::kPixFormat_YUV420_Planar;
+		pxsrc.format	= nsVDPixmap::kPixFormat_YUV422_Planar;
 	} else {
 		pxsrc.data2		= m411.mCbPlane;
 		pxsrc.data3		= m411.mCrPlane;
@@ -856,4 +856,94 @@ VDPixmap VDVideoDecoderDV::GetFrameBuffer() {
 	}
 
 	return pxsrc;
+}
+
+namespace {
+	void AverageRows(uint8 *dst0, const uint8 *src10, const uint8 *src20) {
+		uint32 *dst = (uint32 *)dst0;
+		const uint32 *src1 = (const uint32 *)src10;
+		const uint32 *src2 = (const uint32 *)src20;
+
+		int x = 45;
+		do {
+			uint32 a, b;
+
+			a = src1[0];
+			b = src2[0];
+			dst[0] = (a|b) - (((a^b)&0xfefefefe)>>1);
+
+			a = src1[1];
+			b = src2[1];
+			dst[1] = (a|b) - (((a^b)&0xfefefefe)>>1);
+
+			src1 += 2;
+			src2 += 2;
+			dst += 2;
+		} while(--x);
+	}
+}
+
+void VDVideoDecoderDV::InterpolatePALChroma() {
+	//	Cr:
+	//	0	e			e			ok
+	//	1					o		copy
+	//	2		o		.			lerp
+	//	3					.		lerp
+	//	4	e			e
+	//	5					o
+	//	6		o		.
+	//	7					.
+
+	uint8 *p0 = m420.mCrPlane[0];
+	const ptrdiff_t pitch = sizeof m420.mCrPlane[0];
+	const size_t bpr = 360;
+
+	int y;
+	for(y=0; y<572; y+=4) {
+		uint8 *p1 = p0 + pitch;
+		uint8 *p2 = p0 + pitch*2;
+		uint8 *p3 = p1 + pitch*2;
+		uint8 *p4 = p0 + pitch*4;
+		uint8 *p6 = p4 + pitch*2;
+
+		memcpy(p1, p2, bpr);
+		AverageRows(p3, p2, p6);
+		AverageRows(p2, p0, p4);
+
+		p0 = p4;
+	}
+
+	memcpy(p0+pitch*1, p0+pitch*2, bpr);
+	memcpy(p0+pitch*2, p0        , bpr);
+	memcpy(p0+pitch*3, p0+pitch*1, bpr);
+
+	//	Cb:
+	//	0				.			lerp
+	//	1	e				.		copy, lerp
+	//	2				e			-
+	//	3		o			o		ok
+	//	4				.
+	//	5	e				.
+	//	6				e
+	//	7		o			o
+
+	p0 = m420.mCbPlane[0];
+
+	memcpy(p0        , p0+pitch*1, bpr);
+	memcpy(p0+pitch*2, p0+pitch*1, bpr);
+	memcpy(p0+pitch*1, p0+pitch*3, bpr);
+
+	for(y=4; y<576; y+=4) {
+		p0 += pitch*4;
+
+		uint8 *py = p0 - pitch*2;
+		uint8 *pz = p0 - pitch;
+		uint8 *p1 = p0 + pitch;
+		uint8 *p2 = p0 + pitch*2;
+		uint8 *p3 = p1 + pitch*2;
+
+		AverageRows(p0, py, p1);
+		memcpy(p2, p1, bpr);
+		AverageRows(p1, p3, pz);
+	}
 }

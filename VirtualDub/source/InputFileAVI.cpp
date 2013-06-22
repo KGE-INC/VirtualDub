@@ -765,7 +765,9 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 						else if (comp == '9UVY')
 							strcpy(buf, "YCbCr 4:1:0 planar (YVU9)");
 						else if (comp == '  8Y')
-							strcpy(buf, "Y8 monochrome");
+							strcpy(buf, "Monochrome (Y8)");
+						else if (comp == '008Y')
+							strcpy(buf, "Monochrome (Y800)");
 						else
 							sprintf(buf, "Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
 					}

@@ -1037,7 +1037,7 @@ void VDProject::RunNullVideoPass() {
 		throw MyError("No input file to process.");
 
 	VDAVIOutputNullVideoSystem nullout;
-	g_project->RunOperation(&nullout, FALSE, NULL, 0, true);
+	g_project->RunOperation(&nullout, FALSE, NULL, g_prefs.main.iDubPriority, true);
 }
 
 void VDProject::CloseAVI() {
