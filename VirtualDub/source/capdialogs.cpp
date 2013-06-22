@@ -21,6 +21,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/file.h>
 #include <vd2/system/error.h>
+#include <vd2/Dita/interface.h>
 #include "misc.h"
 #include "oshelper.h"
 #include "gui.h"
@@ -166,60 +167,6 @@ bool VDShowCaptureDiskIODialog(VDGUIHandle hwndParent, VDCaptureDiskSettings& se
 	return 0 != dlg.ActivateDialog(hwndParent);
 }
 
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	timing dialog
-//
-////////////////////////////////////////////////////////////////////////////
-
-class VDDialogCaptureTiming : public VDDialogBaseW32 {
-public:
-	VDDialogCaptureTiming(IVDCaptureProject::SyncMode& mode) : VDDialogBaseW32(IDD_CAPTURE_TIMING), mMode(mode) {}
-
-protected:
-	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
-
-	IVDCaptureProject::SyncMode& mMode;
-};
-
-INT_PTR VDDialogCaptureTiming::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_INITDIALOG:
-		CheckDlgButton(mhdlg, IDC_ADJUSTVIDEOTIMING, mMode == IVDCaptureProject::kSyncToAudio);
-
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			{
-				if (IsDlgButtonChecked(mhdlg, IDC_ADJUSTVIDEOTIMING))
-					mMode = IVDCaptureProject::kSyncToAudio;
-				else
-					mMode = IVDCaptureProject::kSyncNone;
-
-				VDRegistryAppKey key(g_szCapture);
-				key.setInt(g_szAdjustVideoTiming, mMode == IVDCaptureProject::kSyncToAudio);
-			}
-			End(1);
-			return TRUE;
-
-		case IDCANCEL:
-			End(0);
-			return TRUE;
-		}
-		break;
-	}
-
-	return FALSE;
-}
-
-bool VDShowCaptureTimingDialog(VDGUIHandle hwndParent, IVDCaptureProject::SyncMode& mode) {
-	VDDialogCaptureTiming dlg(mode);
-
-	return 0 != dlg.ActivateDialog(hwndParent);
-}
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -493,7 +440,7 @@ INT_PTR VDDialogCaptureAllocate::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_INITDIALOG:
 			{
-				sint64 client_free = VDGetDiskFreeSpace(mPath);
+				sint64 client_free = VDGetDiskFreeSpace(mPath.c_str());
 
 				SetDlgItemText(mhdlg, IDC_STATIC_DISK_FREE_SPACE, "Free disk space:");
 
@@ -658,4 +605,246 @@ bool VDShowCaptureStopPrefsDialog(VDGUIHandle hwndParent, VDCaptureStopPrefs& pr
 	VDDialogCaptureStopPrefs dlg(prefs);
 
 	return 0 != dlg.ActivateDialog(hwndParent);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//	preferences
+//
+//////////////////////////////////////////////////////////////////////////////
+
+struct VDCapturePreferences {} g_capPrefs;
+
+class VDDialogCapturePreferencesSidePanel : public VDDialogBase {
+public:
+	VDCapturePreferences& mPrefs;
+	VDDialogCapturePreferencesSidePanel(VDCapturePreferences& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+
+			{
+				IVDUIList *pList = vdpoly_cast<IVDUIList *>(pBase->GetControl(100));
+				IVDUIListView *pListView = vdpoly_cast<IVDUIListView *>(pList);
+				if (pListView) {
+					pListView->AddColumn(L"Blah", 0, 1);
+					pList->AddItem(L"Audio resampling rate");
+					pList->AddItem(L"Audio relative rate");
+				}
+			}
+
+			pBase->ExecuteAllLinks();
+			return true;
+		case kEventSync:
+		case kEventDetach:
+			return true;
+		}
+		return false;
+	}
+};
+
+class VDDialogCapturePreferences : public VDDialogBase {
+public:
+	VDCapturePreferences& mPrefs;
+	VDDialogCapturePreferences(VDCapturePreferences& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+			SetValue(100, 0);
+			pBase->ExecuteAllLinks();
+		} else if (id == 101 && type == kEventSelect) {
+			IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetStartingChild());
+
+			if (pSubDialog) {
+				switch(item) {
+				case 0:	pSubDialog->SetCallback(new VDDialogCapturePreferencesSidePanel(mPrefs), true); break;
+#if 0
+				case 1:	pSubDialog->SetCallback(new VDDialogPreferencesDisplay(mPrefs), true); break;
+				case 2:	pSubDialog->SetCallback(new VDDialogPreferencesScene(mPrefs), true); break;
+				case 3:	pSubDialog->SetCallback(new VDDialogPreferencesCPU(mPrefs), true); break;
+				case 4:	pSubDialog->SetCallback(new VDDialogPreferencesAVI(mPrefs), true); break;
+				case 5:	pSubDialog->SetCallback(new VDDialogPreferencesTimeline(mPrefs), true); break;
+				case 6:	pSubDialog->SetCallback(new VDDialogPreferencesDub(mPrefs), true); break;
+#endif
+				}
+			}
+		} else if (type == kEventSelect) {
+			if (id == 10) {
+				pBase->EndModal(true);
+				return true;
+			} else if (id == 11) {
+				pBase->EndModal(false);
+				return true;
+			} else if (id == 12) {
+				IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetStartingChild());
+
+				if (pSubDialog)
+					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);
+
+#if 0
+				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs.mOldPrefs, sizeof mPrefs.mOldPrefs);
+
+				VDRegistryAppKey key("Preferences");
+				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
+				key.setBool("Allow direct YCbCr decoding", g_prefs2.mbAllowDirectYCbCrDecoding);
+#endif
+			}
+		}
+		return false;
+	}
+};
+
+void VDShowCapturePreferencesDialog(VDGUIHandle h) {
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(2000, peer);
+	VDCapturePreferences temp(g_capPrefs);
+	VDDialogCapturePreferences prefDlg(temp);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&prefDlg, false);
+	int result = pBase->DoModal();
+
+	peer->Shutdown();
+
+	if (result) {
+		g_capPrefs = temp;
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//	raw audio format
+//
+//////////////////////////////////////////////////////////////////////////////
+
+class VDDialogCaptureRawAudioFormat : public VDDialogBase {
+public:
+	const std::list<vdstructex<WAVEFORMATEX> >& mFormats;
+	int mSelected;
+
+	VDDialogCaptureRawAudioFormat(const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) : mFormats(formats), mSelected(sel) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+
+			std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(mFormats.begin()), itEnd(mFormats.end());
+
+			IVDUIList *pList = vdpoly_cast<IVDUIList *>(mpBase->GetControl(100));
+			for(; it!=itEnd; ++it) {
+				const WAVEFORMATEX& wfex = **it;
+
+				const unsigned samprate = wfex.nSamplesPerSec;
+				const unsigned channels = wfex.nChannels;
+				const unsigned depth	= wfex.wBitsPerSample;
+				const unsigned kbps		= wfex.nAvgBytesPerSec / 125;
+				const wchar_t *chstr	= wfex.nChannels == 2 ? L"stereo" : L"mono";
+				const wchar_t *lineformat;
+
+				if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
+					if (wfex.nChannels > 2)
+						lineformat = L"PCM: %uHz, %uch, %[3]u-bit";
+					else
+						lineformat = L"PCM: %uHz, %[2]ls, %[3]u-bit";
+				} else {
+					if (wfex.nChannels > 2)
+						lineformat = L"Compressed: %uHz, %uch, %[4]uKbps";
+					else
+						lineformat = L"Compressed: %uHz, %[2]ls, %[4]uKbps";
+				}
+
+				VDStringW buf(VDswprintf(lineformat, 5, &samprate, &channels, &chstr, &depth, &kbps));
+				pList->AddItem(buf.c_str());
+			}
+
+			if ((unsigned)mSelected < mFormats.size())
+				SetValue(100, mSelected);
+			pBase->ExecuteAllLinks();
+		} else if (type == kEventSelect) {
+			if (id == 10) {
+				pBase->EndModal(GetValue(100));
+				return true;
+			} else if (id == 11) {
+				pBase->EndModal(-1);
+				return true;
+			}
+		}
+		return false;
+	}
+};
+
+int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) {
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(2100, peer);
+	VDDialogCaptureRawAudioFormat prefDlg(formats, sel);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&prefDlg, false);
+	int result = pBase->DoModal();
+	peer->Shutdown();
+
+	return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//	timing
+//
+//////////////////////////////////////////////////////////////////////////////
+
+class VDDialogTimingOptions : public VDDialogBase {
+public:
+	VDDialogTimingOptions(VDCaptureTimingSetup& timing) : mTimingSetup(timing) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+
+			SetValue(100, mTimingSetup.mbAllowEarlyDrops);
+			SetValue(101, mTimingSetup.mbAllowLateInserts);
+			SetValue(102, mTimingSetup.mbResyncWithIntegratedAudio);
+
+			SetValue(200, mTimingSetup.mSyncMode);
+
+			pBase->ExecuteAllLinks();
+		} else if (type == kEventSelect) {
+			if (id == 10) {
+				mTimingSetup.mSyncMode = (VDCaptureTimingSetup::SyncMode)GetValue(200);
+				mTimingSetup.mbAllowEarlyDrops = GetValue(100) != 0;
+				mTimingSetup.mbAllowLateInserts = GetValue(101) != 0;
+				mTimingSetup.mbResyncWithIntegratedAudio = GetValue(102) != 0;
+
+				pBase->EndModal(true);
+				return true;
+			} else if (id == 11) {
+				pBase->EndModal(false);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	VDCaptureTimingSetup& mTimingSetup;
+};
+
+bool VDShowCaptureTimingDialog(VDGUIHandle h, VDCaptureTimingSetup& timing) {
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(2101, peer);
+	VDDialogTimingOptions prefDlg(timing);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&prefDlg, false);
+	bool result = 0 != pBase->DoModal();
+	peer->Shutdown();
+
+	return result;
 }

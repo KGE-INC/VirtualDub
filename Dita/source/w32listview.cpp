@@ -37,8 +37,10 @@ public:
 	void PreLayoutBaseW32(const VDUILayoutSpecs&);
 
 protected:
-	void AddItem(const wchar_t *text);
+	int GetItemCount();
+	void AddItem(const wchar_t *text, uintptr data);
 	void AddColumn(const wchar_t *name, int width, int affinity);
+	bool IsItemChecked(int item);
 	void OnNotifyCallback(const NMHDR *);
 	void OnResize();
 
@@ -48,6 +50,9 @@ protected:
 	};
 
 	int mSelected;
+	int		mTotalAffinity;
+	int		mTotalWidth;
+	bool	mbCheckable;
 	std::vector<Column>	mColumns;
 };
 
@@ -55,7 +60,10 @@ extern IVDUIWindow *VDCreateUIListView() { return new VDUIListViewW32; }
 
 VDUIListViewW32::VDUIListViewW32()
 	: mSelected(-1)
+	, mTotalAffinity(0)
+	, mTotalWidth(0)
 {
+	InitCommonControls();
 }
 
 void *VDUIListViewW32::AsInterface(uint32 id) {
@@ -66,16 +74,97 @@ void *VDUIListViewW32::AsInterface(uint32 id) {
 }
 
 bool VDUIListViewW32::Create(IVDUIParameters *pParameters) {
-	return CreateW32(pParameters, WC_LISTVIEW, LVS_REPORT);
+	mbCheckable = pParameters->GetB(nsVDUI::kUIParam_Checkable, false);
+
+	DWORD dwFlags = LVS_REPORT;
+
+	if (pParameters->GetB(nsVDUI::kUIParam_NoHeader, false))
+		dwFlags |= LVS_NOCOLUMNHEADER;
+
+	if (!CreateW32(pParameters, WC_LISTVIEW, dwFlags))
+		return false;
+
+	if (mbCheckable) {
+		const int cx = GetSystemMetrics(SM_CXMENUCHECK);
+		const int cy = GetSystemMetrics(SM_CYMENUCHECK);
+
+		if (HBITMAP hbm = CreateBitmap(cx, cy, 1, 1, NULL)) {
+			if (HDC hdc = CreateCompatibleDC(NULL)) {
+				if (HGDIOBJ hbmOld = SelectObject(hdc, hbm)) {
+					bool success = false;
+
+					RECT r = { 0, 0, cx, cy };
+
+					SetBkColor(hdc, PALETTEINDEX(0));
+					ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &r, "", 0, NULL);
+					DrawFrameControl(hdc, &r, DFC_BUTTON, DFCS_BUTTONCHECK|DFCS_CHECKED);
+
+					SelectObject(hdc, hbmOld);
+
+					if (HIMAGELIST himl = ImageList_Create(cx, cy, ILC_COLOR, 1, 1)) {
+						if (ImageList_Add(himl, hbm, NULL) >= 0)
+							ListView_SetImageList(mhwnd, himl, LVSIL_STATE);
+						else
+							ImageList_Destroy(himl);
+					}
+				}
+
+				DeleteDC(hdc);
+			}
+
+			DeleteObject(hbm);
+		}
+	}
+
+	return true;
 }
 
 void VDUIListViewW32::PreLayoutBaseW32(const VDUILayoutSpecs& parentConstraints) {
 }
 
-void VDUIListViewW32::AddItem(const wchar_t *text) {
+int VDUIListViewW32::GetItemCount() {
+	return (int)ListView_GetItemCount(mhwnd);
+}
+
+void VDUIListViewW32::AddItem(const wchar_t *text, uintptr data) {
+	DWORD dwMask = LVIF_PARAM | LVIF_TEXT;
+
+	if (mbCheckable)
+		dwMask |= LVIF_STATE;
+
+	if (VDIsWindowsNT()) {
+		LVITEMW lviw={0};
+
+		lviw.mask		= dwMask;
+		lviw.iItem		= 0;
+		lviw.iSubItem	= 0;
+		lviw.state		= 0x1000;
+		lviw.stateMask	= (UINT)-1;
+		lviw.pszText	= (LPWSTR)text;
+		lviw.lParam		= (LPARAM)data;
+
+		SendMessageW(mhwnd, LVM_INSERTITEMW, 0, (LPARAM)&lviw);
+	} else {
+		LVITEMA lvia={0};
+
+		VDStringA textA(VDTextWToA(text));
+
+		lvia.mask		= dwMask;
+		lvia.iItem		= 0;
+		lvia.iSubItem	= 0;
+		lvia.state		= 0x1000;
+		lvia.stateMask	= (UINT)-1;
+		lvia.pszText	= (LPSTR)textA.c_str();
+		lvia.lParam		= (LPARAM)data;
+
+		SendMessageA(mhwnd, LVM_INSERTITEMA, 0, (LPARAM)&lvia);
+	}
 }
 
 void VDUIListViewW32::AddColumn(const wchar_t *name, int width, int affinity) {
+	VDASSERT(affinity >= 0);
+	VDASSERT(width >= 0);
+
 	if (VDIsWindowsNT()) {
 		LVCOLUMNW lvcw={0};
 
@@ -100,6 +189,17 @@ void VDUIListViewW32::AddColumn(const wchar_t *name, int width, int affinity) {
 
 	col.mWidth		= width;
 	col.mAffinity	= affinity;
+
+	mTotalWidth		+= width;
+	mTotalAffinity	+= affinity;
+
+	OnResize();
+}
+
+bool VDUIListViewW32::IsItemChecked(int item) {
+	UINT oldState = ListView_GetItemState(mhwnd, item, -1);
+
+	return 0 != (oldState & 0x1000);
 }
 
 void VDUIListViewW32::OnNotifyCallback(const NMHDR *pHdr) {
@@ -116,16 +216,49 @@ void VDUIListViewW32::OnNotifyCallback(const NMHDR *pHdr) {
    				mpBase->DispatchEvent(this, mID, IVDUICallback::kEventSelect, mSelected);
    			}
    		}
+	} else if ((pHdr->code == NM_CLICK || pHdr->code == NM_DBLCLK) && mbCheckable) {
+		DWORD pos = GetMessagePos();
+
+		LVHITTESTINFO lvhi = {0};
+
+		lvhi.pt.x = (SHORT)LOWORD(pos);
+		lvhi.pt.y = (SHORT)HIWORD(pos);
+
+		ScreenToClient(mhwnd, &lvhi.pt);
+
+		int idx = ListView_HitTest(mhwnd, &lvhi);
+
+		if (idx >= 0) {
+			UINT oldState = ListView_GetItemState(mhwnd, idx, -1);
+
+			ListView_SetItemState(mhwnd, idx, oldState ^ INDEXTOSTATEIMAGEMASK(1), LVIS_STATEIMAGEMASK);
+			ListView_RedrawItems(mhwnd, idx, idx);
+		}
 	}
 }
 
 void VDUIListViewW32::OnResize() {
 	const int ncols = mColumns.size();
 	const Column *pcol = &mColumns[0];
+	RECT r;
+
+	GetClientRect(mhwnd, &r);
+
+	int spaceLeft = r.right - mTotalWidth;
+	int affinityLeft = mTotalAffinity;
 
 	for(int i=0; i<ncols; ++i) {
 		const Column& col = *pcol++;
+		int width = col.mWidth;
 
-		SendMessageA(mhwnd, LVM_SETCOLUMNWIDTH, i, MAKELPARAM((int)col.mWidth, 0));
+		if (affinityLeft && col.mAffinity) {
+			int extra = (spaceLeft * col.mAffinity + affinityLeft - 1) / affinityLeft;
+
+			affinityLeft -= col.mAffinity;
+			spaceLeft -= extra;
+			width += extra;
+		}	
+
+		SendMessageA(mhwnd, LVM_SETCOLUMNWIDTH, i, MAKELPARAM((int)width, 0));
 	}
 }

@@ -480,7 +480,7 @@ static void func_VDVideo_SetDepth(IVDScriptInterpreter *, VDScriptValue *arglist
 
 	switch(arglist[0].asInt()) {
 	case 16:	new_depth1 = nsVDPixmap::kPixFormat_XRGB1555; break;
-	case 24:	new_depth1 = nsVDPixmap::kPixFormat_RGB565; break;
+	case 24:	new_depth1 = nsVDPixmap::kPixFormat_RGB888; break;
 	case 32:	new_depth1 = nsVDPixmap::kPixFormat_XRGB8888; break;
 	default:
 		return;
@@ -488,7 +488,7 @@ static void func_VDVideo_SetDepth(IVDScriptInterpreter *, VDScriptValue *arglist
 
 	switch(arglist[1].asInt()) {
 	case 16:	new_depth2 = nsVDPixmap::kPixFormat_XRGB1555; break;
-	case 24:	new_depth2 = nsVDPixmap::kPixFormat_RGB565; break;
+	case 24:	new_depth2 = nsVDPixmap::kPixFormat_RGB888; break;
 	case 32:	new_depth2 = nsVDPixmap::kPixFormat_XRGB8888; break;
 	default:
 		return;
@@ -1011,7 +1011,7 @@ static void func_VDAudio_SetMode(IVDScriptInterpreter *, VDScriptValue *arglist,
 	int new_mode = arglist[0].asInt();
 
 	if (new_mode>=0 && new_mode<2)
-		g_dubOpts.audio.mode = new_mode;
+		g_dubOpts.audio.mode = (char)new_mode;
 }
 
 static void func_VDAudio_GetInterleave(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1158,7 +1158,7 @@ static void func_VDAudio_SetVolume(IVDScriptInterpreter *isi, VDScriptValue *arg
 }
 
 static void func_VDAudio_GetVolume(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	arglist[-1] = VDScriptValue(g_dubOpts.audio.volume);
+	arglist[0] = VDScriptValue(g_dubOpts.audio.volume);
 }
 
 static void func_VDAudio_EnableFilterGraph(IVDScriptInterpreter *isi, VDScriptValue *arglist, int arg_count) {
@@ -1266,6 +1266,40 @@ static const VDScriptFunctionDef obj_VDParams_functbl[]={
 
 static const VDScriptObject obj_VDParams={
 	NULL, obj_VDParams_functbl, NULL	
+};
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	Object: VirtualDub.project
+//
+///////////////////////////////////////////////////////////////////////////
+
+static void func_VDProject_ClearTextInfo(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	VDProject::tTextInfo& textInfo = g_project->GetTextInfo();
+
+	textInfo.clear();
+}
+
+static void func_VDProject_AddTextInfo(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	VDProject::tTextInfo& textInfo = g_project->GetTextInfo();
+	union {
+		char buf[4];
+		uint32 id;
+	} conv;
+
+	strncpy(conv.buf, *argv[0].asString(), 4);
+
+	textInfo.push_back(VDProject::tTextInfo::value_type(conv.id, VDStringA(*argv[1].asString())));
+}
+
+static const VDScriptFunctionDef obj_VDProject_functbl[]={
+	{ func_VDProject_ClearTextInfo,	"ClearTextInfo", "0" },
+	{ func_VDProject_AddTextInfo,	"AddTextInfo", "0ss" },
+	{ NULL }
+};
+
+static const VDScriptObject obj_VDProject={
+	NULL, obj_VDProject_functbl, NULL	
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1431,6 +1465,8 @@ static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDSc
 		return VDScriptValue(NULL, &obj_VDAudio);
 	else if (!strcmp(szName, "subset"))
 		return VDScriptValue(NULL, &obj_VDSubset);
+	else if (!strcmp(szName, "project"))
+		return VDScriptValue(NULL, &obj_VDProject);
 	else if (!strcmp(szName, "params"))
 		return VDScriptValue(NULL, &obj_VDParams);
 

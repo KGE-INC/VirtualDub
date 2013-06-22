@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include <list>
 #include <vd2/system/VDString.h>
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/vdalloc.h>
@@ -275,7 +276,7 @@ void VDDeinitPluginSystem() {
 }
 
 void VDAddPluginModule(const wchar_t *pFilename) {
-	VDStringW path(VDGetFullPath(VDStringW(pFilename)));
+	VDStringW path(VDGetFullPath(pFilename));
 
 	if (path.empty())
 		path = pFilename;
@@ -337,7 +338,7 @@ void VDUnlockPlugin(VDPluginDescription *pDesc) {
 }
 
 void VDLoadPlugins(const VDStringW& path, int& succeeded, int& failed) {
-	VDDirectoryIterator it(VDMakePath(path, VDStringW(L"*.vdf")).c_str());
+	VDDirectoryIterator it(VDMakePath(path.c_str(), L"*.vdf").c_str());
 
 	succeeded = failed = 0;
 

@@ -40,6 +40,7 @@
 #include "projectui.h"
 #include "crash.h"
 #include "capture.h"
+#include "server.h"
 #include "uiframe.h"
 #include <vd2/system/strutil.h>
 
@@ -168,19 +169,24 @@ void VDSwitchUIFrameMode(HWND hwnd, int nextMode) {
 		if (g_capProject->Attach((VDGUIHandle)hwnd)) {
 			g_capProjectUI = VDCreateCaptureProjectUI();
 			if (g_capProjectUI->Attach((VDGUIHandle)hwnd, g_capProject)) {
-				break;
+				return;
 			}
 			g_capProjectUI = NULL;
 
 			g_capProject->Detach();
 			g_capProject = NULL;
 		}
+		break;
 
-		// uh oh... better reconnect the main project. *fall through*
-	case 2:
-		g_projectui->Attach((VDGUIHandle)hwnd);
+		// case 2 is the main project mode
+
+	case 3:
+		ActivateFrameServerDialog(hwnd);
+		// fall through and reconnect main project when done
 		break;
 	}
+
+	g_projectui->Attach((VDGUIHandle)hwnd);
 }
 
 
@@ -282,6 +288,7 @@ static const char g_szRegKeySegmentFrameCount[]="Segment frame limit";
 static const char g_szRegKeyUseSegmentFrameCount[]="Use segment frame limit";
 static const char g_szRegKeySegmentSizeLimit[]="Segment size limit";
 static const char g_szRegKeySaveSelectionAndEditList[]="Save edit list";
+static const char g_szRegKeySaveTextInfo[]="Save text info";
   
 void SaveSegmentedAVI(HWND hWnd) {
 	if (!inputVideoAVI) {
@@ -481,7 +488,7 @@ VDSaveImageSeqDialogW32::VDSaveImageSeqDialogW32()
 VDSaveImageSeqDialogW32::~VDSaveImageSeqDialogW32() {}
 
 void VDSaveImageSeqDialogW32::UpdateFilenames() {
-	mFormatString = VDMakePath(mDirectory, mPrefix);
+	mFormatString = VDMakePath(mDirectory.c_str(), mPrefix.c_str());
 	
 	VDStringW format(mFormatString + L"%0*lld" + mPostfix);
 
@@ -674,21 +681,24 @@ void SaveImageSeq(HWND hwnd) {
 void SaveConfiguration(HWND hWnd) {
 	static const VDFileDialogOption sOptions[]={
 		{ VDFileDialogOption::kBool, 0, L"Include selection and edit list", 0, 0 },
+		{ VDFileDialogOption::kBool, 1, L"Include file text information strings", 0, 0 },
 		{0}
 	};
 
 	VDRegistryAppKey key(g_szRegKeyPersistence);
-	int optVals[1]={
+	int optVals[2]={
 		key.getBool(g_szRegKeySaveSelectionAndEditList, false),
+		key.getBool(g_szRegKeySaveTextInfo, false),
 	};
 
 	const VDStringW filename(VDGetSaveFileName(kFileDialog_Config, (VDGUIHandle)hWnd, L"Save Configuration", fileFiltersSaveConfig, L"vcf", sOptions, optVals));
 
 	if (!filename.empty()) {
 		key.setBool(g_szRegKeySaveSelectionAndEditList, !!optVals[0]);
+		key.setBool(g_szRegKeySaveTextInfo, !!optVals[1]);
 
 		try {
-			JobWriteConfiguration(filename.c_str(), &g_dubOpts, !!optVals[0]);
+			JobWriteConfiguration(filename.c_str(), &g_dubOpts, !!optVals[0], !!optVals[1]);
 		} catch(const MyError& e) {
 			e.post(NULL, g_szError);
 		}

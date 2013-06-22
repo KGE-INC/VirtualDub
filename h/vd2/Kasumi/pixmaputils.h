@@ -65,6 +65,10 @@ uint32 VDPixmapCreateLinearLayout(VDPixmapLayout& layout, int format, vdpixsize 
 VDPixmap VDPixmapOffset(const VDPixmap& src, vdpixpos x, vdpixpos y);
 VDPixmapLayout VDPixmapLayoutOffset(const VDPixmapLayout& src, vdpixpos x, vdpixpos y);
 
+void VDPixmapFlipV(VDPixmap& layout);
+void VDPixmapLayoutFlipV(VDPixmapLayout& layout);
+
+
 #ifndef VDPTRSTEP_DECLARED
 	template<class T>
 	void vdptrstep(T *&p, ptrdiff_t offset) {

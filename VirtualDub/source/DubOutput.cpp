@@ -62,6 +62,10 @@ void VDAVIOutputFileSystem::SetBuffer(int bufferSize) {
 	mBufferSize = bufferSize;
 }
 
+void VDAVIOutputFileSystem::SetTextInfo(const std::list<std::pair<uint32, VDStringA> >& info) {
+	mTextInfo = info;
+}
+
 IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
 	vdautoptr<IVDMediaOutputAVIFile> pOutput(VDCreateMediaOutputAVIFile());
 
@@ -91,6 +95,13 @@ IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
 		IVDMediaOutputStream *pAudioOut = pOutput->createAudioStream();
 		pAudioOut->setFormat(&mAudioFormat[0], mAudioFormat.size());
 		pAudioOut->setStreamInfo(mAudioStreamInfo);
+	}
+
+	if (!mTextInfo.empty()) {
+		tTextInfo::const_iterator it(mTextInfo.begin()), itEnd(mTextInfo.end());
+
+		for(; it!=itEnd; ++it)
+			pOutput->setTextInfo((*it).first, (*it).second.c_str());
 	}
 
 	pOutput->setBuffering(mBufferSize, mBufferSize >> 2);

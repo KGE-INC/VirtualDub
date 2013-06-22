@@ -627,6 +627,9 @@ public:
 	bool Update(FieldMode);
 	void Refresh(FieldMode);
 	bool Paint(HDC hdc, const RECT& rClient) { return true; }
+	bool SetSubrect(const vdrect32 *r) {
+		return false;
+	}
 	void SetLogicalPalette(const uint8 *pLogicalPalette) {}
 
 protected:
@@ -666,6 +669,7 @@ VDVideoDisplayMinidriverOpenGL::VDVideoDisplayMinidriverOpenGL()
 	, mbValid(false)
 	, mPreferredFilter(kFilterAnySuitable)
 {
+	memset(&mSource, 0, sizeof mSource);
 }
 
 VDVideoDisplayMinidriverOpenGL::~VDVideoDisplayMinidriverOpenGL() {
@@ -1428,6 +1432,7 @@ public:
 	bool Update(FieldMode);
 	void Refresh(FieldMode);
 	bool Paint(HDC hdc, const RECT& rClient);
+	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
 
 protected:
@@ -1470,6 +1475,8 @@ protected:
 	bool		mbValid;
 	bool		mbRepaintOnNextUpdate;
 	bool		mbSwapChromaPlanes;
+	bool		mbUseSubrect;
+	vdrect32	mSubrect;
 
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
@@ -1485,11 +1492,14 @@ VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw()
 	, mpddc(0)
 	, mpddsBitmap(0)
 	, mpddsOverlay(0)
+	, mpLogicalPalette(NULL)
 	, mOverlayUpdateTimer(0)
 	, mbReset(false)
 	, mbValid(false)
 	, mbRepaintOnNextUpdate(false)
+	, mbUseSubrect(false)
 {
+	memset(&mSource, 0, sizeof mSource);
 }
 
 VDVideoDisplayMinidriverDirectDraw::~VDVideoDisplayMinidriverDirectDraw() {
@@ -1989,7 +1999,6 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 		VDDitherImage(dstbm, source, mpLogicalPalette);
 	else
 		VDPixmapBlt(dstbm, source);
-
 	
 	hr = pTarget->Unlock(0);
 
@@ -2027,6 +2036,16 @@ bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient) {
 	return !mbReset;
 }
 
+bool VDVideoDisplayMinidriverDirectDraw::SetSubrect(const vdrect32 *r) {
+	if (r) {
+		mbUseSubrect = true;
+		mSubrect = *r;
+	} else
+		mbUseSubrect = false;
+
+	return true;
+}
+
 void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, FieldMode mode) {
 	RECT rDst = rClient;
 
@@ -2040,12 +2059,22 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 
 	pDest->SetClipper(mpddc);
 
-	if (!mSource.bInterlaced)
-		InternalBlt(pDest, &rDst, NULL);
-	else {
+	if (!mSource.bInterlaced) {
+		if (mbUseSubrect) {
+			RECT rSrc = { mSubrect.left, mSubrect.top, mSubrect.right, mSubrect.bottom };
+			InternalBlt(pDest, &rDst, &rSrc);
+		} else
+			InternalBlt(pDest, &rDst, NULL);
+	} else {
 		const VDPixmap& source = mSource.pixmap;
-		uint32 vinc		= (source.h << 16) / rClient.bottom;
-		uint32 vaccum	= vinc >> 1;
+		vdrect32 r;
+		if (mbUseSubrect)
+			r = mSubrect;
+		else
+			r.set(0, 0, source.w, source.h);
+
+		uint32 vinc		= (r.height() << 16) / rClient.bottom;
+		uint32 vaccum	= (vinc >> 1) + (r.top << 16);
 		uint32 vtlimit	= (((source.h + 1) >> 1) << 17) - 1;
 		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
 		int ystep		= (mode == kAllFields) ? 1 : 2;
@@ -2070,7 +2099,7 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 			}
 
 			RECT rDstTemp = { rDst.left, rDst.top+y, rDst.right, rDst.top+y+1 };
-			RECT rSrcTemp = { 0, v, source.w, v+1 };
+			RECT rSrcTemp = { r.left, v, r.width(), v+1 };
 
 			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp))
 				break;
@@ -2134,6 +2163,7 @@ public:
 	bool Update(FieldMode);
 	void Refresh(FieldMode);
 	bool Paint(HDC hdc, const RECT& rClient);
+	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
 
 protected:
@@ -2147,12 +2177,17 @@ protected:
 	const uint8 *mpLogicalPalette;
 	bool		mbPaletted;
 	bool		mbValid;
+	bool		mbUseSubrect;
+	int			mScreenFormat;
+
+	vdrect32	mSubrect;
 
 	uint8		mIdentTab[256];
 
 	VDVideoDisplaySourceInfo	mSource;
 
 	void InternalRefresh(HDC hdc, const RECT& rClient, FieldMode mode);
+	static int GetScreenIntermediatePixmapFormat(HDC);
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverGDI() {
@@ -2164,8 +2199,11 @@ VDVideoDisplayMinidriverGDI::VDVideoDisplayMinidriverGDI()
 	, mhdc(0)
 	, mhbm(0)
 	, mpal(0)
+	, mpLogicalPalette(NULL)
 	, mbValid(false)
+	, mbUseSubrect(false)
 {
+	memset(&mSource, 0, sizeof mSource);
 }
 
 VDVideoDisplayMinidriverGDI::~VDVideoDisplayMinidriverGDI() {
@@ -2197,6 +2235,8 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 	mSource	= info;
 
 	if (HDC hdc = GetDC(mhwnd)) {
+		mScreenFormat = GetScreenIntermediatePixmapFormat(hdc);
+
 		mhdc = CreateCompatibleDC(hdc);
 
 		if (mhdc) {
@@ -2283,11 +2323,24 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 				case nsVDPixmap::kPixFormat_YUV410_Planar:
 				case nsVDPixmap::kPixFormat_Y8:
 				case nsVDPixmap::kPixFormat_RGB565:
-					bih.bV4V4Compression	= BI_BITFIELDS;
-					bih.bV4RedMask			= 0xf800;
-					bih.bV4GreenMask		= 0x07e0;
-					bih.bV4BlueMask			= 0x001f;
-					bih.bV4BitCount			= 16;
+					switch(mScreenFormat) {
+					case nsVDPixmap::kPixFormat_XRGB1555:
+						bih.bV4BitCount			= 16;
+						break;
+					case nsVDPixmap::kPixFormat_RGB565:
+						bih.bV4V4Compression	= BI_BITFIELDS;
+						bih.bV4RedMask			= 0xf800;
+						bih.bV4GreenMask		= 0x07e0;
+						bih.bV4BlueMask			= 0x001f;
+						bih.bV4BitCount			= 16;
+						break;
+					case nsVDPixmap::kPixFormat_RGB888:
+						bih.bV4BitCount			= 24;
+						break;
+					case nsVDPixmap::kPixFormat_XRGB8888:
+						bih.bV4BitCount			= 32;
+						break;
+					}
 					break;
 				default:
 					return false;
@@ -2395,7 +2448,7 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 			case nsVDPixmap::kPixFormat_YUV411_Planar:
 			case nsVDPixmap::kPixFormat_YUV410_Planar:
 			case nsVDPixmap::kPixFormat_Y8:
-				dstbm.format = kPixFormat_RGB565;
+				dstbm.format = mScreenFormat;
 				break;
 			}
 
@@ -2425,14 +2478,31 @@ bool VDVideoDisplayMinidriverGDI::Paint(HDC hdc, const RECT& rClient) {
 	return true;
 }
 
+bool VDVideoDisplayMinidriverGDI::SetSubrect(const vdrect32 *r) {
+	if (r) {
+		mbUseSubrect = true;
+		mSubrect = *r;
+	} else
+		mbUseSubrect = false;
+
+	return true;
+}
+
 void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, FieldMode mode) {
 	SetStretchBltMode(hdc, COLORONCOLOR);
 
+	const VDPixmap& source = mSource.pixmap;
+
+	vdrect32 r;
+	if (mbUseSubrect)
+		r = mSubrect;
+	else
+		r.set(0, 0, source.w, source.h);
+
 	if (mSource.bInterlaced) {
-		const VDPixmap& source = mSource.pixmap;
-		uint32 vinc		= (source.h << 16) / rClient.bottom;
-		uint32 vaccum	= vinc >> 1;
-		uint32 vtlimit	= (((source.h + 1) >> 1) << 17) - 1;
+		uint32 vinc		= (r.height() << 16) / rClient.bottom;
+		uint32 vaccum	= (vinc >> 1) + (r.top << 16);
+		uint32 vtlimit	= (((r.height() + 1) >> 1) << 17) - 1;
 		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
 		int ystep		= (mode == kAllFields) ? 1 : 2;
 
@@ -2455,10 +2525,64 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 				v = (vt>>16) & ~1;
 			}
 
-			StretchBlt(hdc, 0, y, rClient.right, 1, mhdc, 0, v, source.w, 1, SRCCOPY);
+			StretchBlt(hdc, 0, y, rClient.right, 1, mhdc, r.left, v, r.width(), 1, SRCCOPY);
 			vaccum += vinc;
 		}
 	} else {
-		StretchBlt(hdc, 0, 0, rClient.right, rClient.bottom, mhdc, 0, 0, mSource.pixmap.w, mSource.pixmap.h, SRCCOPY);
+		StretchBlt(hdc, 0, 0, rClient.right, rClient.bottom, mhdc, r.left, r.top, r.width(), r.height(), SRCCOPY);
 	}
+}
+
+int VDVideoDisplayMinidriverGDI::GetScreenIntermediatePixmapFormat(HDC hdc) {
+	int pxformat = 0;
+
+	// First, get the depth of the screen and guess that way.
+	int depth = GetDeviceCaps(hdc, BITSPIXEL);
+
+	if (depth < 24)
+		pxformat = nsVDPixmap::kPixFormat_RGB565;
+	else if (depth < 32)
+		pxformat = nsVDPixmap::kPixFormat_RGB888;
+	else
+		pxformat = nsVDPixmap::kPixFormat_XRGB8888;
+
+	// If the depth is 16-bit, attempt to determine the exact format.
+	if (HBITMAP hbm = CreateCompatibleBitmap(hdc, 1, 1)) {
+		struct {
+			BITMAPV5HEADER hdr;
+			RGBQUAD buf[256];
+		} format={0};
+
+		if (GetDIBits(hdc, hbm, 0, 1, NULL, (LPBITMAPINFO)&format, DIB_RGB_COLORS)
+			&& GetDIBits(hdc, hbm, 0, 1, NULL, (LPBITMAPINFO)&format, DIB_RGB_COLORS))
+		{
+			if (format.hdr.bV5Size >= sizeof(BITMAPINFOHEADER)) {
+				const BITMAPV5HEADER& hdr = format.hdr;
+
+				if (hdr.bV5Planes == 1) {
+					if (hdr.bV5Compression == BI_BITFIELDS) {
+						if (hdr.bV5BitCount == 16 && hdr.bV5RedMask == 0x7c00 && hdr.bV5GreenMask == 0x03e0 && hdr.bV5BlueMask == 0x7c00)
+							pxformat = nsVDPixmap::kPixFormat_XRGB1555;
+						else if (hdr.bV5BitCount == 16 && hdr.bV5RedMask == 0xf800 && hdr.bV5GreenMask == 0x07e0 && hdr.bV5BlueMask == 0x7c00)
+							pxformat = nsVDPixmap::kPixFormat_RGB565;
+						else if (hdr.bV5BitCount == 24 && hdr.bV5RedMask == 0xff0000 && hdr.bV5GreenMask == 0x00ff00 && hdr.bV5BlueMask == 0x0000ff)
+							pxformat = nsVDPixmap::kPixFormat_RGB888;
+						else if (hdr.bV5BitCount == 32 && hdr.bV5RedMask == 0x00ff0000 && hdr.bV5GreenMask == 0x0000ff00 && hdr.bV5BlueMask == 0x000000ff)
+							pxformat = nsVDPixmap::kPixFormat_XRGB8888;
+					} else if (hdr.bV5Compression == BI_RGB) {
+						if (hdr.bV5BitCount == 16)
+							pxformat = nsVDPixmap::kPixFormat_XRGB1555;
+						else if (hdr.bV5BitCount == 24)
+							pxformat = nsVDPixmap::kPixFormat_RGB888;
+						else if (hdr.bV5BitCount == 32)
+							pxformat = nsVDPixmap::kPixFormat_XRGB8888;
+					}
+				}
+			}
+		}
+
+		DeleteObject(hbm);
+	}
+
+	return pxformat;
 }

@@ -214,7 +214,7 @@ void VDUIWindow::RemoveChild(IVDUIWindow *pWindow) {
 	}
 }
 
-IVDUIWindow *VDUIWindow::GetFirstChild() {
+IVDUIWindow *VDUIWindow::GetStartingChild() {
 	return mChildren.empty() ? NULL : mChildren.front();
 }
 

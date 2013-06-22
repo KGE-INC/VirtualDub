@@ -39,6 +39,7 @@ uint32 VDGetCurrentTick();
 // Win32).
 uint64 VDGetPreciseTick();
 double VDGetPreciseTicksPerSecond();
+double VDGetPreciseSecondsPerTick();
 
 // VDCallbackTimer is an abstraction of the Windows multimedia timer.  As such, it
 // is rather expensive to instantiate, and should only be used for critical timing

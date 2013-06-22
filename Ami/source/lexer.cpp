@@ -94,6 +94,8 @@ static const struct {
 	{ L"child",				"child",				kTokenChild },
 	{ L"multiline",			"multiline",			kTokenMultiline },
 	{ L"readonly",			"readonly",				kTokenReadonly },
+	{ L"checkable",			"checkable",			kTokenCheckable },
+	{ L"noheader",			"noheader",				kTokenNoHeader },
 
 	{ L"enable",			"enable",				kTokenEnable },
 	{ L"value",				"value",				kTokenValue },

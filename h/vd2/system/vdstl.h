@@ -254,7 +254,7 @@ public:
 	}
 
 	vdstructex(const vdstructex<T>& src) : mSize(src.mSize), mpMemory((T*)malloc(src.mSize)) {
-		memcpy(mpMemory, pStruct, len);
+		memcpy(mpMemory, src.mpMemory, mSize);
 	}
 
 	~vdstructex() {

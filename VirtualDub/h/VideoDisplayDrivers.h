@@ -19,6 +19,7 @@
 #define f_VIDEODISPLAYDRIVERS_H
 
 #include <windows.h>
+#include <vd2/system/vectors.h>
 #include <vd2/Kasumi/pixmap.h>
 
 struct VDVideoDisplaySourceInfo {
@@ -64,6 +65,7 @@ public:
 	virtual void Refresh(FieldMode) = 0;
 	virtual bool Paint(HDC hdc, const RECT& rClient) = 0;
 
+	virtual bool SetSubrect(const vdrect32 *r) = 0;
 	virtual void SetLogicalPalette(const uint8 *pLogicalPalette) = 0;
 };
 

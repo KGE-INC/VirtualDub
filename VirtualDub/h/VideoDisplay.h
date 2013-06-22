@@ -2,6 +2,7 @@
 #define f_VIDEODISPLAY_H
 
 #include <windows.h>
+#include <vd2/system/vectors.h>
 #include <vd2/Kasumi/pixmap.h>
 
 #define VIDEODISPLAYCONTROLCLASS (g_szVideoDisplayControlName)
@@ -46,6 +47,7 @@ public:
 	virtual void Reset() = 0;
 	virtual bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject = 0, ptrdiff_t sharedOffset = 0, bool bAllowConversion = true, bool bInterlaced = false) = 0;
 	virtual bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion = true, bool bInterlaced = false) = 0;
+	virtual void SetSourceSubrect(const vdrect32 *r) = 0;
 	virtual void Update(int mode = kAllFields) = 0;
 	virtual void PostUpdate(int mode = kAllFields) = 0;
 	virtual void Cache() = 0;

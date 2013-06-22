@@ -255,6 +255,10 @@ SOURCE=..\h\VD2\system\cpuaccel.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\h\vd2\system\debug.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\h\vd2\system\debugx86.h
 # End Source File
 # Begin Source File

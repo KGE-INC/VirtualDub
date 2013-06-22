@@ -48,6 +48,8 @@ public:
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
 
+	bool	IsHardwareDisplayAvailable();
+
 	void	SetDisplayMode(nsVDCapture::DisplayMode m);
 	nsVDCapture::DisplayMode		GetDisplayMode();
 
@@ -66,6 +68,9 @@ public:
 	bool	IsAudioCapturePossible();
 	bool	IsAudioCaptureEnabled();
 	void	SetAudioCaptureEnabled(bool b);
+	void	SetAudioAnalysisEnabled(bool b);
+
+	void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats);
 
 	bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat);
 	bool	SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size);
@@ -82,6 +87,7 @@ protected:
 	void	CloseInputFile();
 	void	OpenInputFile(const wchar_t *fn);
 	void	TimerCallback();
+	void	OnTick();
 
 	static LRESULT CALLBACK StaticMessageWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -90,6 +96,7 @@ protected:
 	HWND	mhwndMessages;
 	IVDCaptureDriverCallback	*mpCB;
 	bool	mbAudioCaptureEnabled;
+	bool	mbAudioAnalysisEnabled;
 	bool	mbCapturing;
 	VDAtomicInt	mDisplayMode;
 
@@ -97,6 +104,7 @@ protected:
 	IVDVideoSource	*mpVideo;
 	AudioSource		*mpAudio;
 	VDPosition		mAudioPos;
+	VDPosition		mLastDisplayedVideoFrame;
 
 	IVDVideoDisplay	*mpDisplay;
 
@@ -105,14 +113,18 @@ protected:
 	VDPosition		mFrameCount;
 
 	VDTime			mCaptureStart;
+	VDPosition		mLastCapturedFrame;
 
 	AVIAudioOutput	mAudioOutput;
 	UINT			mAudioTimer;
 	uint32			mAudioSampleSize;
+	uint32			mAudioSampleRate;
+	uint32			mAudioClientPosition;
 	vdblock<char>	mAudioClientBuffer;
 	VDRingBuffer<char>	mAudioRecordBuffer;
 
 	VDAtomicInt		mPreviewFrameCount;
+	MyError			mCaptureError;
 
 	static ATOM sMsgWndClass;
 };
@@ -125,8 +137,10 @@ VDCaptureDriverEmulation::VDCaptureDriverEmulation()
 	, mhwndMessages(NULL)
 	, mpCB(NULL)
 	, mbAudioCaptureEnabled(true)
+	, mbAudioAnalysisEnabled(false)
 	, mbCapturing(false)
 	, mDisplayMode(kDisplayNone)
+	, mLastDisplayedVideoFrame(-1)
 	, mpVideo(NULL)
 	, mpAudio(NULL)
 	, mpDisplay(NULL)
@@ -205,6 +219,10 @@ void VDCaptureDriverEmulation::Shutdown() {
 	}
 }
 
+bool VDCaptureDriverEmulation::IsHardwareDisplayAvailable() {
+	return false;
+}
+
 void VDCaptureDriverEmulation::SetDisplayMode(DisplayMode mode) {
 	if (mode == mDisplayMode)
 		return;
@@ -270,6 +288,7 @@ bool VDCaptureDriverEmulation::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vfor
 bool VDCaptureDriverEmulation::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size) {
 	if (mpVideo) {
 		mpDisplay->Reset();
+		mLastDisplayedVideoFrame = -1;
 		bool success = mpVideo->setDecompressedFormat(pbih);
 		UpdateDisplayMode();
 		return success;
@@ -287,6 +306,23 @@ bool VDCaptureDriverEmulation::IsAudioCaptureEnabled() {
 
 void VDCaptureDriverEmulation::SetAudioCaptureEnabled(bool b) {
 	mbAudioCaptureEnabled = b;
+}
+
+void VDCaptureDriverEmulation::SetAudioAnalysisEnabled(bool b) {
+	if (b != mbAudioAnalysisEnabled) {
+		mAudioRecordBuffer.Flush();
+		mbAudioAnalysisEnabled = b;
+
+		if (mpAudio)
+			mAudioClientPosition = (uint32)VDFraction(mAudioSampleRate, 1000).scale64r(mAudioOutput.position()) * mAudioSampleSize;
+	}
+}
+
+void VDCaptureDriverEmulation::GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats) {
+	aformats.clear();
+
+	if (mpAudio)
+		aformats.push_back(vdstructex<WAVEFORMATEX>(mpAudio->getWaveFormat(), mpAudio->getFormatLen()));
 }
 
 bool VDCaptureDriverEmulation::GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) {
@@ -336,11 +372,20 @@ bool VDCaptureDriverEmulation::CaptureStart() {
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
 		mbCapturing = true;
 
-		if (mpCB)
-			mpCB->CapBegin(0);
+		if (mpCB) {
+			try {
+				mpCB->CapBegin(0);
+			} catch(MyError& e) {
+				mCaptureError.TransferFrom(e);
+				CaptureStop();
+				return false;
+			}
+		}
 
+		mAudioClientPosition = 0;
 		mAudioRecordBuffer.Flush();
 		mCaptureStart = VDGetPreciseTick();
+		mLastCapturedFrame = -1;
 	}
 
 	return mbCapturing;
@@ -349,7 +394,8 @@ bool VDCaptureDriverEmulation::CaptureStart() {
 void VDCaptureDriverEmulation::CaptureStop() {
 	if (VDINLINEASSERT(mbCapturing)) {
 		if (mpCB)
-			mpCB->CapEnd();
+			mpCB->CapEnd(mCaptureError.gets() ? &mCaptureError : NULL);
+		mCaptureError.discard();
 		mbCapturing = false;
 	}
 }
@@ -357,7 +403,8 @@ void VDCaptureDriverEmulation::CaptureStop() {
 void VDCaptureDriverEmulation::CaptureAbort() {
 	if (mbCapturing) {
 		if (mpCB)
-			mpCB->CapEnd();
+			mpCB->CapEnd(mCaptureError.gets() ? &mCaptureError : NULL);
+		mCaptureError.discard();
 		mbCapturing = false;
 	}
 }
@@ -375,6 +422,7 @@ void VDCaptureDriverEmulation::UpdateDisplayMode() {
 	case kDisplayNone:
 	case kDisplayAnalyze:
 		mpDisplay->Reset();
+		mLastDisplayedVideoFrame = -1;
 		ShowWindow(mhwnd, SW_HIDE);
 		break;
 	}
@@ -391,6 +439,7 @@ void VDCaptureDriverEmulation::CloseInputFile() {
 		mpDisplay->Reset();
 
 	mAudioOutput.stop();
+	mAudioOutput.shutdown();
 	mAudioClientBuffer.clear();
 	mAudioRecordBuffer.Shutdown();
 
@@ -408,21 +457,22 @@ void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
 
 	mpInputFile->Init(fn);
 
-	mpVideo = mpInputFile->videoSrc;
-	mpAudio = mpInputFile->audioSrc;
+	IVDVideoSource *pVideo = mpInputFile->videoSrc;
+	AudioSource *pAudio = mpInputFile->audioSrc;
 
-	if (mpVideo) {
+	if (pVideo) {
 		mFrame = 0;
-		mFrameCount = mpVideo->asStream()->getLength();
+		mFrameCount = pVideo->asStream()->getLength();
 
-		mpVideo->setTargetFormat(0);
+		pVideo->setTargetFormat(0);
+		mLastDisplayedVideoFrame = -1;
 		UpdateDisplayMode();
 
-		mFrameTimer.Init(this, (sint32)mpVideo->asStream()->getRate().scale64ir(1000));
+		mFrameTimer.Init(this, (sint32)pVideo->asStream()->getRate().scale64ir(1000));
 	}
 
-	if (mpAudio) {
-		const WAVEFORMATEX *pwfex = mpAudio->getWaveFormat();
+	if (pAudio) {
+		const WAVEFORMATEX *pwfex = pAudio->getWaveFormat();
 
 		if (pwfex->wFormatTag == WAVE_FORMAT_PCM) {
 			sint32 audioSamplesPerBlock = (pwfex->nAvgBytesPerSec / 5 + pwfex->nBlockAlign - 1) / pwfex->nBlockAlign;
@@ -432,19 +482,76 @@ void VDCaptureDriverEmulation::OpenInputFile(const wchar_t *fn) {
 			mAudioOutput.init(pwfex);
 			mAudioOutput.start();
 			mAudioClientBuffer.resize(bytesPerBlock);
-			mAudioRecordBuffer.Init(bytesPerBlock * 2);
+			mAudioRecordBuffer.Init(bytesPerBlock * 4);		// We need more space to account for device buffering
 
 			mAudioSampleSize = pwfex->nBlockAlign;
+			mAudioSampleRate = pwfex->nSamplesPerSec;
 
 			mAudioTimer = SetTimer(mhwndMessages, 1, 10, NULL);
 			mAudioPos = 0;
+			mAudioClientPosition = 0;
 		} else
-			mpAudio = NULL;
+			pAudio = NULL;
 	}
+
+	mpVideo = pVideo;
+	mpAudio = pAudio;
 }
 
 void VDCaptureDriverEmulation::TimerCallback() {
 	PostMessage(mhwndMessages, WM_APP, 0, 0);
+}
+
+void VDCaptureDriverEmulation::OnTick() {
+	if (!mpVideo)
+		return;
+
+	int m = mDisplayMode;
+
+	VDTime clk = (VDTime)((VDGetPreciseTick() - mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
+
+	if (mpAudio) {
+		double audioRate = (double)mpAudio->getRate();
+		VDPosition samples = (VDPosition)(mAudioOutput.position() / 1000.0 * audioRate) % mpAudio->getLength();
+		mFrame = (VDPosition)(samples / audioRate * (double)mpVideo->asStream()->getRate());
+	}
+
+	try {
+		mpVideo->getFrame(mFrame);
+
+		if (mbCapturing && mLastCapturedFrame != mFrame) {
+			mLastCapturedFrame = mFrame;
+			const VDPixmap& px = mpVideo->getTargetFormat();
+			mpCB->CapProcessData(0, mpVideo->getFrameBuffer(), (px.pitch<0?-px.pitch:px.pitch) * px.h, clk, true, clk);
+		}
+	} catch(MyError& e) {
+		m = 0;
+
+		if (mbCapturing) {
+			mCaptureError.TransferFrom(e);
+			CaptureStop();
+			return;
+		}
+	}
+
+	if (!mpAudio && ++mFrame >= mFrameCount)
+		mFrame = 0;
+
+	if (m && mLastDisplayedVideoFrame != mFrame) {
+		mLastDisplayedVideoFrame = mFrame;
+		++mPreviewFrameCount;
+		if (!mbCapturing && m == kDisplayAnalyze) {
+			const VDPixmap& px = mpVideo->getTargetFormat();
+			try {
+				mpCB->CapProcessData(-1, mpVideo->getFrameBuffer(), (px.pitch < 0 ? -px.pitch : px.pitch) * px.h, clk, true, clk);
+			} catch(const MyError&) {
+				// eat the error
+			}
+		}
+
+		if (m == kDisplayHardware || m == kDisplaySoftware)
+			mpDisplay->PostUpdate();
+	}
 }
 
 LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -453,41 +560,8 @@ LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT 
 	else if (msg == WM_APP) {
 		VDCaptureDriverEmulation *const pThis = (VDCaptureDriverEmulation *)GetWindowLongPtr(hwnd, 0);
 
-		int m = pThis->mDisplayMode;
-
-		VDTime clk = (VDTime)((VDGetPreciseTick() - pThis->mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
-
-		if (pThis->mpAudio) {
-			double audioRate = (double)pThis->mpAudio->getRate();
-			VDPosition samples = (VDPosition)(pThis->mAudioOutput.position() / 1000.0 * audioRate) % pThis->mpAudio->getLength();
-			pThis->mFrame = (VDPosition)(samples / audioRate * (double)pThis->mpVideo->asStream()->getRate());
-		}
-
-		try {
-			pThis->mpVideo->getFrame(pThis->mFrame);
-
-			if (pThis->mbCapturing) {
-				const VDPixmap& px = pThis->mpVideo->getTargetFormat();
-				pThis->mpCB->CapProcessData(0, pThis->mpVideo->getFrameBuffer(), (px.pitch<0?-px.pitch:px.pitch) * px.h, clk, true, clk);
-			}
-		} catch(const MyError&) {
-			m = 0;
-		}
-
-		if (!pThis->mpAudio && ++pThis->mFrame >= pThis->mFrameCount)
-			pThis->mFrame = 0;
-
-		if (m) {
-			++pThis->mPreviewFrameCount;
-			if (!pThis->mbCapturing && m == kDisplayAnalyze) {
-				const VDPixmap& px = pThis->mpVideo->getTargetFormat();
-				pThis->mpCB->CapProcessData(-1, pThis->mpVideo->getFrameBuffer(), (px.pitch < 0 ? -px.pitch : px.pitch) * px.h, clk, true, clk);
-			}
-
-			if (m == kDisplayHardware || m == kDisplaySoftware)
-				pThis->mpDisplay->PostUpdate();
-		}
-
+		pThis->OnTick();
+		return 0;
 	} else if (msg == WM_TIMER) {
 		VDCaptureDriverEmulation *const pThis = (VDCaptureDriverEmulation *)GetWindowLongPtr(hwnd, 0);
 
@@ -495,7 +569,14 @@ LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT 
 			char buf[8192];
 			uint32 bytes, samples;
 
-			if (pThis->mpAudio->read(pThis->mAudioPos, availbytes, buf, availbytes, &bytes, &samples) || !samples) {
+			int err = 0;
+			try {
+				err = pThis->mpAudio->read(pThis->mAudioPos, availbytes, buf, availbytes, &bytes, &samples);
+			} catch(const MyError&) {
+				samples = 0;
+			}
+			
+			if (err || !samples) {
 				if (!pThis->mAudioPos)
 					break;
 				pThis->mAudioPos = 0;
@@ -506,31 +587,82 @@ LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT 
 			pThis->mAudioPos += samples;
 
 			// attempt to fill audio recording buffer... if full, send out a client block
-			if (pThis->mbCapturing) {
+			if (pThis->mbCapturing ? pThis->mbAudioCaptureEnabled : pThis->mbAudioAnalysisEnabled) {
 				const char *src = buf;
 				while(bytes > 0) {
 					int actualBytes;
 					void *dst = pThis->mAudioRecordBuffer.LockWrite(bytes, actualBytes);
 
 					if (!actualBytes) {
-						VDTime clk = (VDTime)((VDGetPreciseTick() - pThis->mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
-						const uint32 size = pThis->mAudioClientBuffer.size();
-						char *data = pThis->mAudioClientBuffer.data();
-						pThis->mAudioRecordBuffer.Read(data, size);
+						if (pThis->mbCapturing) {
+							if (pThis->mbAudioCaptureEnabled) {
+								VDTime clk = (VDTime)((VDGetPreciseTick() - pThis->mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
+								const uint32 size = pThis->mAudioClientBuffer.size();
+								char *data = pThis->mAudioClientBuffer.data();
+								pThis->mAudioRecordBuffer.Read(data, size);
+								pThis->mAudioClientPosition += size;
 
-#if 0
-						uint32 newsize = size - (size >> 4);
-						newsize -= newsize % pThis->mAudioSampleSize;
-						pThis->mpCB->CapProcessData(1, data, newsize, clk, false, clk);
-#else
-						pThis->mpCB->CapProcessData(1, data, size, clk, false, clk);
-#endif
+								try {
+									pThis->mpCB->CapProcessData(1, data, size, clk, false, clk);
+								} catch(MyError& e) {
+									pThis->mCaptureError.TransferFrom(e);
+									pThis->CaptureStop();
+									return 0;
+								}
+							}
+						} else {
+							VDDEBUG("CaptureEmulation: Audio capture buffer overflow detected.\n");
+
+							const uint32 size = pThis->mAudioClientBuffer.size();
+							char *data = pThis->mAudioClientBuffer.data();
+							pThis->mAudioRecordBuffer.Read(data, size);
+
+							pThis->mAudioClientPosition += size;
+
+							try {
+								pThis->mpCB->CapProcessData(-2, data, size, 0, false, 0);
+							} catch(MyError& e) {
+								pThis->mCaptureError.TransferFrom(e);
+								pThis->CaptureStop();
+								return 0;
+							}
+						}
 					}
 
 					memcpy(dst, src, actualBytes);
 					src += actualBytes;
 					bytes -= actualBytes;
 					pThis->mAudioRecordBuffer.UnlockWrite(actualBytes);
+				}
+			}
+		}
+
+		// If we are analyzing, determine if it is time to send out a new block.
+		if (!pThis->mbCapturing && pThis->mbAudioAnalysisEnabled) {
+			uint32 pos = (uint32)VDFraction(pThis->mAudioSampleRate, 1000).scale64r(pThis->mAudioOutput.position()) * pThis->mAudioSampleSize;
+
+			while(pos > pThis->mAudioClientPosition) {
+				uint32 limit = pThis->mAudioClientBuffer.size();
+				uint32 tc = pos - pThis->mAudioClientPosition;
+				char *data = pThis->mAudioClientBuffer.data();
+
+				if (tc > limit)
+					tc = limit;
+
+				int actual = pThis->mAudioRecordBuffer.Read(data, tc);
+
+				if (!actual) {
+					VDDEBUG("CaptureEmulation: Audio capture buffer underflow detected.\n");
+					pThis->mAudioClientPosition = pos;
+					break;
+				}
+
+				pThis->mAudioClientPosition += actual;
+
+				try {
+					pThis->mpCB->CapProcessData(-2, data, actual, 0, false, 0);
+				} catch(const MyError&) {
+					break;
 				}
 			}
 		}

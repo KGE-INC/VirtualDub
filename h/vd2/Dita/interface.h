@@ -41,6 +41,8 @@ namespace nsVDUI {
 		kUIParam_Child,
 		kUIParam_Multiline,
 		kUIParam_Readonly,
+		kUIParam_Checkable,
+		kUIParam_NoHeader,
 
 		kUIParam_Spacing,
 
@@ -136,7 +138,7 @@ public:
 
 	virtual void AddChild(IVDUIWindow *pWindow) = 0;
 	virtual void RemoveChild(IVDUIWindow *pWindow) = 0;
-	virtual IVDUIWindow *GetFirstChild() = 0;
+	virtual IVDUIWindow *GetStartingChild() = 0;
 	virtual IVDUIWindow *GetPreviousChild(IVDUIWindow *pWindow) = 0;
 	virtual IVDUIWindow *GetNextChild(IVDUIWindow *pWindow) = 0;
 
@@ -245,7 +247,8 @@ class VDINTERFACE IVDUIList : public IVDUnknown {
 public:
 	enum { kTypeID = 'list' };
 
-	virtual void AddItem(const wchar_t *text) = 0;
+	virtual int GetItemCount() = 0;
+	virtual void AddItem(const wchar_t *text, uintptr data = 0) = 0;
 };
 
 class VDINTERFACE IVDUIListView : public IVDUnknown {
@@ -253,6 +256,7 @@ public:
 	enum { kTypeID = 'lsvw' };
 
 	virtual void AddColumn(const wchar_t *name, int width, int affinity) = 0;
+	virtual bool IsItemChecked(int item) = 0;
 };
 
 class VDINTERFACE IVDUIPageSet : public IVDUnknown {

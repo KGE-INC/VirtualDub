@@ -215,8 +215,8 @@ namespace {
 
 ATOM VDUICustomControlW32::sWindowClass = NULL;
 
-bool VDUICustomControlW32::Create(IVDUIParameters *pParameters, bool forceNonChild) {
-	if (!VDUIPeerW32::Create(pParameters))
+bool VDUICustomControlW32::Create(IVDUIParameters *pParms, bool forceNonChild) {
+	if (!VDUIPeerW32::Create(pParms))
 		return false;
 
 	if (!sWindowClass) {
@@ -258,6 +258,13 @@ bool VDUICustomControlW32::Create(IVDUIParameters *pParameters, bool forceNonChi
 	}
 
 	HWND hwndParent = GetParentW32();
+	DWORD exflags = 0;
+
+	if (pParms->GetB(nsVDUI::kUIParam_Raised, !hwndParent))
+		exflags |= WS_EX_DLGMODALFRAME;
+
+	if (pParms->GetB(nsVDUI::kUIParam_Sunken, false))
+		exflags |= WS_EX_CLIENTEDGE;
 
 	VDDialogTemplateW32 templ;
 
@@ -265,6 +272,8 @@ bool VDUICustomControlW32::Create(IVDUIParameters *pParameters, bool forceNonChi
 		templ = g_dummyDialogDefChild;
 	else
 		templ = g_dummyDialogDef;
+
+	templ.exStyle = exflags;
 
 	if (VDIsWindowsNT())
 		mhwnd = CreateDialogIndirectParamW(GetModuleHandle(NULL), (LPCDLGTEMPLATE)&templ, hwndParent, StaticDlgProc, (LPARAM)this);

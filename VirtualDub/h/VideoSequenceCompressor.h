@@ -66,6 +66,7 @@ private:
 	void		*pConfigData;
 	int			cbConfigData;
 
+	VDStringA	mCodecName;
 	VDStringW	mDriverName;
 };
 

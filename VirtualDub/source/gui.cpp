@@ -512,27 +512,28 @@ void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 		dcf = inputVideoAVI->getDecompressedFormat();
 
 		if (lFrame < inputVideoAVI->getStart() || lFrame >= inputVideoAVI->getEnd())
-			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)NULL, (LPARAM)NULL);
-      else {
-         Pixel32 *tmpmem;
-         const void *pFrame = inputVideoAVI->getFrame(lFrame);
+			SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)NULL);
+		else {
+			Pixel32 *tmpmem;
+			const void *pFrame = inputVideoAVI->getFrame(lFrame);
 
-         if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
-            VBitmap vbt(tmpmem, w, h, 32);
-            VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
-            BITMAPINFOHEADER bih;
+			if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
+				VBitmap vbt(tmpmem, w, h, 32);
+				VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
+				BITMAPINFOHEADER bih;
 
-			VBitmap srcbm((void *)pFrame, dcf);
-			vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
-            vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
-            vbt.MakeBitmapHeader(&bih);
+				VBitmap srcbm((void *)pFrame, dcf);
+				vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
+				vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
 
-   			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)tmpmem);
+				VDPixmap px(VDAsPixmap(vbt));
 
-            delete[] tmpmem;
-         } else
-   			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)dcf, (LPARAM)pFrame);
-      }
+				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&px);
+
+				delete[] tmpmem;
+			} else
+				SendMessage(hWndClipping, CCM_BLITFRAME2, 0, (LPARAM)&inputVideoAVI->getTargetFormat());
+		}
 
 	} catch(const MyError&) {
 		_RPT0(0,"Exception!!!\n");

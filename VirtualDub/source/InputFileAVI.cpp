@@ -26,6 +26,7 @@
 #include "InputFileAVI.h"
 #include "AudioSource.h"
 #include "VideoSource.h"
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/Dita/resources.h>
@@ -474,7 +475,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 
 			sPathTail.resize(sPathTail.size() - 7);
 
-			VDStringW sPathPattern(VDMakePath(sPathBase, sPathTail));
+			VDStringW sPathPattern(VDMakePath(sPathBase.c_str(), sPathTail.c_str()));
 
 			try {
 				const char *pszPathHint;
@@ -485,7 +486,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 
 					VDStringW sPath(sPathPattern + VDswprintf(L".%02d.avi", 1, &nSegment));
 
-					if (!VDDoesPathExist(sPath)) {
+					if (!VDDoesPathExist(sPath.c_str())) {
 						if (pszPathHint && *pszPathHint) {
 							sPathPattern = VDTextAToW(pszPathHint) + sPathTail;
 						}
@@ -493,7 +494,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 						sPath = (sPathPattern + VDswprintf(L".%02d.avi", 1, &nSegment));
 					}
 
-					if (!VDDoesPathExist(sPath)) {
+					if (!VDDoesPathExist(sPath.c_str())) {
 						char szPath[MAX_PATH];
 						wchar_t szTitle[MAX_PATH];
 
@@ -509,7 +510,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 						if (!Append(fname.c_str()))
 							break;
 
-						sPathPattern = VDMakePath(VDFileSplitPathLeft(fname), sPathTail);
+						sPathPattern = VDMakePath(VDFileSplitPathLeft(fname).c_str(), sPathTail.c_str());
 					} else if (!Append(sPath.c_str()))
 						break;
 				}
@@ -594,6 +595,10 @@ void InputFileAVI::InitStriped(const char *szFile) {
 	if (!audioSrc->init()) {
 		audioSrc = NULL;
 	}
+}
+
+void InputFileAVI::GetTextInfo(tFileTextInfo& info) {
+	pAVIFile->GetTextInfo(info);	
 }
 
 bool InputFileAVI::isOptimizedForRealtime() {

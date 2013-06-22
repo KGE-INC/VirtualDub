@@ -20,6 +20,9 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vector>
+#include <list>
+#include <vd2/system/VDString.h>
 
 // These are meant as AVIFile replacements.  They're not quite to AVIFile
 // specs, but they'll do for now.
@@ -58,6 +61,10 @@ public:
 	virtual bool isIndexFabricated()=0;
 	virtual bool AppendFile(const wchar_t *pszFile)=0;
 	virtual bool getSegmentHint(const char **ppszPath)=0;
+
+	typedef std::list<std::pair<uint32, VDStringA> > tTextInfo;
+	virtual void GetTextInfo(tTextInfo& textInfo) = 0;
+	virtual void GetTextInfoEncoding(int& codePage, int& countryCode, int& language, int& dialect) = 0;
 };
 
 IAVIReadHandler *CreateAVIReadHandler(PAVIFILE paf);

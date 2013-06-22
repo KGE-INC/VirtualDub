@@ -136,6 +136,10 @@ LIB32=link.exe -lib
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
+SOURCE=.\source\convert.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\engine.cpp
 
 !IF  "$(CFG)" == "Priss - Win32 Release"
@@ -258,6 +262,10 @@ SOURCE=.\h\polyphase.h
 # PROP Default_Filter ""
 # Begin Source File
 
+SOURCE=..\h\vd2\Priss\convert.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\h\vd2\Priss\decoder.h
 # End Source File
 # End Group
@@ -291,7 +299,7 @@ InputName=a64_polyphase
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 # PROP BASE Exclude_From_Build 1
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\DebugAMD64\Priss
 InputPath=.\source\a64_polyphase.asm
 InputName=a64_polyphase

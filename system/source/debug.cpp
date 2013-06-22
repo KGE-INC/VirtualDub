@@ -24,12 +24,12 @@
 //		distribution.
 
 #include <stdio.h>
-#include <process.h>
 
 #include <windows.h>
 
 #include <vd2/system/vdtypes.h>
-#include <vd2/system/List.h>
+#include <vd2/system/cpuaccel.h>
+#include <vd2/system/debug.h>
 #include <vd2/system/thread.h>
 
 #ifdef _DEBUG
@@ -120,67 +120,6 @@ __declspec(thread) VDProtectedAutoScope *volatile g_protectedScopeLink;
 
 void VDProtectedAutoScopeICLWorkaround() {}
 
-#if 0			//def _DEBUG
-static VDCriticalSection g_csDebug;
-static VDSignal g_signalDebug;
-static VDSignal g_signalDebugReturn;
-static bool g_bDebugThreadStarted;
-static char g_debugBuffer[128];
-static int g_debugBufferPtr;
-
-static void debugThread(void *) {
-	for(;;) {
-		g_signalDebug.wait();
-
-		++g_csDebug;
-		if (g_debugBufferPtr) {
-			g_debugBuffer[g_debugBufferPtr] = 0;
-
-			Sleep(0);
-			OutputDebugString(g_debugBuffer);
-			g_debugBufferPtr = 0;
-		}
-		--g_csDebug;
-
-		g_signalDebugReturn.signal();
-	}
-}
-
-void VDDebugPrint(const char *format, ...) {
-	va_list val;
-	int len;
-
-	if (!g_bDebugThreadStarted) {
-		g_bDebugThreadStarted = true;
-		_beginthread(debugThread, 0, NULL);
-	}
-
-	va_start(val, format);
-
-	++g_csDebug;
-	len = _vsnprintf(g_debugBuffer + g_debugBufferPtr, sizeof g_debugBuffer - 1 - g_debugBufferPtr, format, val);
-
-	while(len < 0 && g_debugBufferPtr) {
-		--g_csDebug;
-		g_signalDebug.signal();
-		g_signalDebugReturn.wait();
-		++g_csDebug;
-
-		if (!g_debugBufferPtr) {
-			len = _vsnprintf(g_debugBuffer, sizeof g_debugBuffer-1, format, val);
-			break;
-		}
-	}
-
-	if (len > 0) {
-		g_debugBufferPtr += len;
-		g_signalDebug.signal();
-	}
-
-	--g_csDebug;
-	va_end(val);
-}
-#else
 void VDDebugPrint(const char *format, ...) {
 	char buf[4096];
 
@@ -191,4 +130,127 @@ void VDDebugPrint(const char *format, ...) {
 	Sleep(0);
 	OutputDebugString(buf);
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	IVDExternalCallTrap *g_pExCallTrap;
+}
+
+void VDSetExternalCallTrap(IVDExternalCallTrap *trap) {
+	g_pExCallTrap = trap;
+}
+
+#if defined(WIN32) && defined(_M_IX86)
+	namespace {
+		bool IsFPUStateOK(unsigned& ctlword) {
+			ctlword = 0;
+
+			__asm mov eax, ctlword
+			__asm fnstcw [eax]
+
+			ctlword &= 0x0f3f;
+
+			return ctlword == 0x023f;
+		}
+
+		void ResetFPUState() {
+			static const unsigned ctlword = 0x027f;
+
+			__asm fnclex
+			__asm fldcw ctlword
+		}
+	}
+
+	bool IsMMXState() {
+		char	buf[28];
+		unsigned short tagword;
+
+		__asm fnstenv buf		// this resets the FPU control word somehow!?
+
+		tagword = *(unsigned short *)(buf + 8);
+
+		return (tagword != 0xffff);
+	}
+	void ClearMMXState() {
+		if (MMX_enabled)
+			__asm emms
+		else {
+			__asm {
+				ffree st(0)
+				ffree st(1)
+				ffree st(2)
+				ffree st(3)
+				ffree st(4)
+				ffree st(5)
+				ffree st(6)
+				ffree st(7)
+			}
+		}
+	}
+
+	void VDClearEvilCPUStates() {
+		ResetFPUState();
+		ClearMMXState();
+	}
+
+	void VDPreCheckExternalCodeCall(const char *file, int line) {
+		unsigned fpucw;
+		bool bFPUStateBad = !IsFPUStateOK(fpucw);
+		bool bMMXStateBad = IsMMXState();
+
+		if (bMMXStateBad || bFPUStateBad) {
+			ClearMMXState();
+			ResetFPUState();
+		}
+
+		if (bMMXStateBad) {
+			if (g_pExCallTrap)
+				g_pExCallTrap->OnMMXTrap(NULL, file, line);
+		}
+		if (bFPUStateBad) {
+			if (g_pExCallTrap)
+				g_pExCallTrap->OnFPUTrap(NULL, file, line, fpucw);
+		}
+	}
+
+	void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine) {
+		unsigned fpucw;
+		bool bFPUStateBad = !IsFPUStateOK(fpucw);
+		bool bMMXStateBad = IsMMXState();
+		bool bBadState = bMMXStateBad || bFPUStateBad;
+
+		if (bBadState) {
+			ClearMMXState();
+			ResetFPUState();
+		}
+
+		if (bMMXStateBad) {
+			if (g_pExCallTrap)
+				g_pExCallTrap->OnMMXTrap(mpContext, mpFile, mLine);
+		}
+		if (bFPUStateBad) {
+			if (g_pExCallTrap)
+				g_pExCallTrap->OnFPUTrap(mpContext, mpFile, mLine, fpucw);
+		}
+	}
+
+#else
+
+	bool IsMMXState() {
+		return false;
+	}
+
+	void ClearMMXState() {
+	}
+
+	void VDClearEvilCPUStates() {
+	}
+
+	void VDPreCheckExternalCodeCall(const char *file, int line) {
+	}
+
+	void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine) {
+	}
+
 #endif

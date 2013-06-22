@@ -38,7 +38,7 @@ public:
 	virtual int	streamGetRequiredCount(long *pSize);
 	virtual void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) = NULL;
 
-	virtual void streamBegin(bool fRealTime);
+	virtual void streamBegin(bool fRealTime, bool bForceReset);
 
 	virtual void invalidateFrameBuffer();
 	virtual	BOOL isFrameBufferValid() = NULL;

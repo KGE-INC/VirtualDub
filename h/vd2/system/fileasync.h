@@ -28,6 +28,8 @@
 
 #include <vd2/system/vdtypes.h>
 
+class VDRTProfileChannel;
+
 class IVDFileAsync {
 public:
 	virtual ~IVDFileAsync() {}

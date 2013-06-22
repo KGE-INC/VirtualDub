@@ -175,7 +175,7 @@ VDStringW VDFileSplitExtRight(const VDStringW& s) { return splitimp2R(s, VDFileS
 
 #include <windows.h>
 
-sint64 VDGetDiskFreeSpace(const VDStringW& path) {
+sint64 VDGetDiskFreeSpace(const wchar_t *path) {
 	typedef BOOL (WINAPI *tpGetDiskFreeSpaceExA)(LPCSTR lpDirectoryName, PULARGE_INTEGER lpFreeBytesAvailable, PULARGE_INTEGER lpTotalNumberOfBytes, PULARGE_INTEGER lpTotalNumberOfFreeBytes);
 	typedef BOOL (WINAPI *tpGetDiskFreeSpaceExW)(LPCWSTR lpDirectoryName, PULARGE_INTEGER lpFreeBytesAvailable, PULARGE_INTEGER lpTotalNumberOfBytes, PULARGE_INTEGER lpTotalNumberOfFreeBytes);
 
@@ -196,8 +196,8 @@ sint64 VDGetDiskFreeSpace(const VDStringW& path) {
 		uint64 freeClient, totalBytes, totalFreeBytes;
 		VDStringW directoryName(path);
 
-		if (!path.empty()) {
-			wchar_t c = path[path.length()-1];
+		if (!directoryName.empty()) {
+			wchar_t c = directoryName[directoryName.length()-1];
 
 			if (c != L'/' && c != L'\\')
 				directoryName += L'\\';
@@ -224,28 +224,28 @@ sint64 VDGetDiskFreeSpace(const VDStringW& path) {
 	}
 }
 
-bool VDDoesPathExist(const VDStringW& fileName) {
+bool VDDoesPathExist(const wchar_t *fileName) {
 	bool bExists;
 
 	if (!(GetVersion() & 0x80000000)) {
-		bExists = ((DWORD)-1 != GetFileAttributesW(fileName.c_str()));
+		bExists = ((DWORD)-1 != GetFileAttributesW(fileName));
 	} else {
-		bExists = ((DWORD)-1 != GetFileAttributesA(VDFastTextWToA(fileName.c_str())));
+		bExists = ((DWORD)-1 != GetFileAttributesA(VDFastTextWToA(fileName)));
 		VDFastTextFree();
 	}
 
 	return bExists;
 }
 
-void VDCreateDirectory(const VDStringW& path) {
+void VDCreateDirectory(const wchar_t *path) {
 	// can't create dir with trailing slash
-	VDStringW::size_type l(path.size());
+	VDStringW::size_type l(wcslen(path));
 
 	if (l) {
 		const wchar_t c = path[l-1];
 
 		if (c == L'/' || c == L'\\') {
-			VDCreateDirectory(VDStringW(path.c_str(), l-1));
+			VDCreateDirectory(VDStringW(path, l-1).c_str());
 			return;
 		}
 	}
@@ -253,9 +253,9 @@ void VDCreateDirectory(const VDStringW& path) {
 	BOOL succeeded;
 
 	if (!(GetVersion() & 0x80000000)) {
-		succeeded = CreateDirectoryW(path.c_str(), NULL);
+		succeeded = CreateDirectoryW(path, NULL);
 	} else {
-		succeeded = CreateDirectoryA(VDFastTextWToA(path.c_str()), NULL);
+		succeeded = CreateDirectoryA(VDFastTextWToA(path), NULL);
 		VDFastTextFree();
 	}
 
@@ -263,7 +263,7 @@ void VDCreateDirectory(const VDStringW& path) {
 		throw MyWin32Error("Cannot create directory: %%s", GetLastError());
 }
 
-VDStringW VDGetFullPath(const VDStringW& partialPath) {
+VDStringW VDGetFullPath(const wchar_t *partialPath) {
 	typedef BOOL (WINAPI *tpGetFullPathNameW)(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart);
 
 	static tpGetFullPathNameW spGetFullPathNameW = (tpGetFullPathNameW)GetProcAddress(GetModuleHandle("kernel32.dll"), "GetFullPathNameW");
@@ -277,7 +277,7 @@ VDStringW VDGetFullPath(const VDStringW& partialPath) {
 		LPWSTR p;
 
 		tmpBuf.w[0] = 0;
-		spGetFullPathNameW(partialPath.c_str(), MAX_PATH, tmpBuf.w, &p);
+		spGetFullPathNameW(partialPath, MAX_PATH, tmpBuf.w, &p);
 
 		VDStringW pathw(tmpBuf.w);
 		return pathw;
@@ -293,13 +293,13 @@ VDStringW VDGetFullPath(const VDStringW& partialPath) {
 	}
 }
 
-VDStringW VDMakePath(const VDStringW& base, const VDStringW& file) {
-	if (base.empty())
-		return file;
+VDStringW VDMakePath(const wchar_t *base, const wchar_t *file) {
+	if (!*base)
+		return VDStringW(file);
 
 	VDStringW result(base);
 
-	const wchar_t c = base[base.size() - 1];
+	const wchar_t c = result[result.size() - 1];
 
 	if (c != L'/' && c != L'\\' && c != L'/')
 		result += L'\\';

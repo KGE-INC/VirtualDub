@@ -76,6 +76,10 @@ void InputFile::InfoDialog(HWND hwndParent) {
 void InputFile::setAutomated(bool) {
 }
 
+void InputFile::GetTextInfo(tFileTextInfo& info) {
+	info.clear();
+}
+
 bool InputFile::isOptimizedForRealtime() {
 	return false;
 }

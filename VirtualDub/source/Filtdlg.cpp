@@ -29,6 +29,7 @@
 #include "plugins.h"
 #include "resource.h"
 #include "oshelper.h"
+#include "PositionControl.h"
 #include "ClippingControl.h"
 #include "gui.h"
 
@@ -513,26 +514,20 @@ INT_PTR CALLBACK FilterClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, L
 				fa = (FilterInstance *)lParam;
 				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)fa);
 
-				hWnd = GetDlgItem(hDlg, IDC_BORDERS);
+				HWND hwndClipping = GetDlgItem(hDlg, IDC_BORDERS);
 				ccb.x1	= fa->x1;
 				ccb.x2	= fa->x2;
 				ccb.y1	= fa->y1;
 				ccb.y2	= fa->y2;
 
-/*				if (inputVideoAVI) {
-					BITMAPINFOHEADER *bmi = inputVideoAVI->getImageFormat();
-					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(bmi->biWidth,bmi->biHeight));
-				} else
-					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));*/
+				SendMessage(hwndClipping, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->origw,fa->origh));
+				SendMessage(hwndClipping, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
-				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->origw,fa->origh));
-				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
-
-				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hWnd);
+				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
 				guiPositionInitFromStream(pc);
 
 				GetWindowRect(hDlg, &rw);
-				GetWindowRect(hWnd, &rc);
+				GetWindowRect(hwndClipping, &rc);
 				hborder = rc.left - rw.left;
 				ScreenToClient(hDlg, (LPPOINT)&rc.left);
 				ScreenToClient(hDlg, (LPPOINT)&rc.right);
@@ -550,6 +545,9 @@ INT_PTR CALLBACK FilterClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, L
 				ScreenToClient(hDlg, (LPPOINT)&rccancel.right);
 				SetWindowPos(hWndCancel, NULL, rc.right - (rccancel.right-rccancel.left), rccancel.top + (rc.bottom-rc.top), 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
 				SetWindowPos(hWnd, NULL, rc.right - (rccancel.right-rccancel.left) - (rcok.right-rcok.left) - hspace, rcok.top + (rc.bottom-rc.top), 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
+
+				// render first frame
+				guiPositionBlit(hwndClipping, pc->GetPosition(), fa->origw, fa->origh);
 			}
 
             return (TRUE);

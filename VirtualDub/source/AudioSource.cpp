@@ -253,7 +253,7 @@ bool AudioSourceAVI::isStreaming() {
 	return pAVIStream->isStreaming();
 }
 
-void AudioSourceAVI::streamBegin(bool fRealTime) {
+void AudioSourceAVI::streamBegin(bool fRealTime, bool bForceReset) {
 	pAVIStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 }
 
@@ -477,7 +477,7 @@ bool AudioSourceDV::isStreaming() {
 	return mpStream->isStreaming();
 }
 
-void AudioSourceDV::streamBegin(bool fRealTime) {
+void AudioSourceDV::streamBegin(bool fRealTime, bool bForceReset) {
 	mpStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 }
 

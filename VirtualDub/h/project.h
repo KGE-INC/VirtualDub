@@ -7,6 +7,8 @@
 #include "FrameSubset.h"
 #include "filter.h"
 #include "timeline.h"
+#include <list>
+#include <utility>
 
 class SceneDetector;
 class IVDDubberOutputSystem;
@@ -31,6 +33,10 @@ public:
 	VDPosition GetCurrentFrame();
 	VDPosition GetFrameCount();
 	VDFraction GetInputFrameRate();
+
+	typedef std::list<std::pair<uint32, VDStringA> > tTextInfo;
+	tTextInfo& GetTextInfo() { return mTextInfo; }
+	const tTextInfo& GetTextInfo() const { return mTextInfo; }
 
 	void ClearSelection();
 	bool IsSelectionEmpty();
@@ -151,6 +157,8 @@ protected:
 
 	VDFraction		mVideoInputFrameRate;
 	VDFraction		mVideoOutputFrameRate;
+
+	std::list<std::pair<uint32, VDStringA> >	mTextInfo;
 
 #if 0		// We don't need this yet.
 	VDScheduler					mScheduler;

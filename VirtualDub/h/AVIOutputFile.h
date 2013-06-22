@@ -31,6 +31,9 @@ public:
 	virtual void setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, int cbBlock) = 0;
 	virtual void setHiddenTag(const char *pTag) = 0;
 
+	virtual void setTextInfoEncoding(int codePage, int countryCode, int language, int dialect) = 0;
+	virtual void setTextInfo(uint32 ckid, const char *text) = 0;
+
 	virtual uint32 bufferStatus(uint32 *lplBufferSize) = 0;
 };
 

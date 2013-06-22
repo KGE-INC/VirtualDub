@@ -1283,6 +1283,7 @@ protected:
 	void Refresh(FieldMode);
 	bool Paint(HDC hdc, const RECT& rClient);
 
+	bool SetSubrect(const vdrect32 *) { return false; }
 	void SetLogicalPalette(const uint8 *pLogicalPalette);
 
 protected:

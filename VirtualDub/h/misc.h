@@ -46,62 +46,8 @@ bool isEqualFOURCC(FOURCC fccA, FOURCC fccB);
 bool isValidFOURCC(FOURCC fcc);
 FOURCC toupperFOURCC(FOURCC fcc);
 
-bool IsMMXState();
-void ClearMMXState();
-
-void VDClearEvilCPUStates();
-
-void VDPreCheckExternalCodeCall(const char *file, int line);
-void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine);
-
-struct VDSilentExternalCodeBracket {
-	VDSilentExternalCodeBracket() {
-		VDClearEvilCPUStates();
-	}
-
-	~VDSilentExternalCodeBracket() {
-		VDClearEvilCPUStates();
-	}
-};
-
-struct VDExternalCodeBracket {
-	VDExternalCodeBracket(const wchar_t *pContext, const char *file, const int line)
-		: mpContext(pContext)
-		, mpFile(file)
-		, mLine(line)
-	{
-		VDPreCheckExternalCodeCall(file, line);
-	}
-
-	~VDExternalCodeBracket() {
-		VDPostCheckExternalCodeCall(mpContext, mpFile, mLine);
-	}
-
-	const wchar_t *mpContext;
-	const char *mpFile;
-	const int mLine;
-};
-
 char *strCify(const char *s);
+VDStringA VDEncodeScriptString(const VDStringA& sa);
 VDStringA VDEncodeScriptString(const VDStringW& sw);
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	pixmap <-> bitmap format converters
-//
-//	pixmap format:	describes channel layout, color space, subsampling
-//	variant:		describes variations in layout and FOURCC that may
-//					correspond to the same pixmap format
-//	bitmap format:	Win32 BITMAPINFOHEADER
-//
-struct VDPixmapLayout;
-
-int VDGetPixmapToBitmapVariants(int format);
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr);
-int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant);
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant);
-bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h);
-uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint32 h, int format, int variant);
-
 
 #endif

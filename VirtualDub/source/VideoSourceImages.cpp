@@ -8,6 +8,8 @@
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/Meia/decode_png.h>
+#include <vd2/Kasumi/pixmapops.h>
 #include "ProgressDialog.h"
 #include "VideoSourceImages.h"
 #include "image.h"
@@ -190,12 +192,25 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 
 	int w, h;
 	bool bHasAlpha;
-	bool bIsJPG = IsJPEGHeader(inputBuffer, data_len);
-	bool bIsBMP = !bIsJPG && DecodeBMPHeader(inputBuffer, data_len, w, h, bHasAlpha);
-	bool bIsTGA = !bIsJPG && !bIsBMP && DecodeTGAHeader(inputBuffer, data_len, w, h, bHasAlpha);
 
-	if (!bIsJPG && !bIsBMP && !bIsTGA)
-		throw MyError("Image file must be in Windows BMP, truecolor TARGA, or sequential JPEG format.");
+	bool bIsPNG = false;
+	bool bIsJPG = false;
+	bool bIsBMP = false;
+	bool bIsTGA = false;
+
+	bIsPNG = VDDecodePNGHeader(inputBuffer, data_len, w, h, bHasAlpha);
+	if (!bIsPNG) {
+		bIsJPG = IsJPEGHeader(inputBuffer, data_len);
+		if (!bIsJPG) {
+			bIsBMP = DecodeBMPHeader(inputBuffer, data_len, w, h, bHasAlpha);
+			if (!bIsBMP) {
+				bIsTGA = DecodeTGAHeader(inputBuffer, data_len, w, h, bHasAlpha);
+			}
+		}
+	}
+
+	if (!bIsBMP && !bIsTGA && !bIsJPG && !bIsPNG)
+		throw MyError("Image file must be in PNG, Windows BMP, truecolor TARGA format, or sequential JPEG format.");
 
 	vdautoptr<IVDJPEGDecoder> pDecoder;
 
@@ -255,6 +270,13 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 		DecodeBMP(inputBuffer, data_len, mvbFrameBuffer);
 	if (bIsTGA)
 		DecodeTGA(inputBuffer, data_len, mvbFrameBuffer);
+	if (bIsPNG) {
+		vdautoptr<IVDImageDecoderPNG> pPNGDecoder(VDCreateImageDecoderPNG());
+
+		pPNGDecoder->Decode(inputBuffer, data_len);
+
+		VDPixmapBlt(VDAsPixmap(mvbFrameBuffer), pPNGDecoder->GetFrameBuffer());
+	}
 
 	mCachedFrame = frame_num;
 

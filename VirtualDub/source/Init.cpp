@@ -36,6 +36,7 @@
 #include "script.h"
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/tls.h>
+#include <vd2/system/thread.h>
 #include <vd2/system/profile.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/filesys.h>
@@ -65,6 +66,8 @@
 extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
 extern void VDInitInputDrivers();
+extern void VDInitExternalCallTrap();
+extern void VDInitVideoCodecBugTrap();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -286,9 +289,14 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
 //#endif
 
+	VDSetThreadDebugName(GetCurrentThreadId(), "Main");
+
 	// setup crash traps
 	SetUnhandledExceptionFilter(CrashHandler);
 	set_terminate(VDterminate);
+
+	VDInitExternalCallTrap();
+	VDInitVideoCodecBugTrap();
 
 	// initialize globals
     g_hInst = hInstance;
@@ -377,7 +385,7 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 	vdprotected("autoloading filters at startup") {
 		int f, s;
 
-		VDLoadPlugins(VDMakePath(VDGetProgramPath(), VDStringW(L"plugins")), s, f);
+		VDLoadPlugins(VDMakePath(VDGetProgramPath().c_str(), L"plugins"), s, f);
 
 		if (s || f)
 			guiSetStatus("Autoloaded %d filters (%d failed).", 255, s, f);
@@ -631,8 +639,10 @@ namespace {
 
 		const wchar_t c = s[len];
 
-		if (c == L' ' || c == L'"' || c == L'/')
+		if (c && c != L' ' && c != L'"' && c != L'/')
 			return false;
+
+		s += len;
 
 		return true;
 	}
@@ -773,6 +783,11 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 					}
 					break;
 				}
+
+				// Toss remaining garbage.
+				while(*s && *s != L' ' && *s != '/' && *s != '-')
+					++s;
+
 			} else {
 				if (ParseArgument(s, token, false))
 					g_project->Open(token.c_str());

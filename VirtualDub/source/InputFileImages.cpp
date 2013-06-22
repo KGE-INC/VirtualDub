@@ -67,7 +67,7 @@ public:
 	uint32 GetFlags() { return kF_Video; }
 
 	const wchar_t *GetFilenamePattern() {
-		return L"Image sequence (*.bmp,*.tga,*.jpg,*.jpeg)\0*.bmp;*.tga;*.jpg;*.jpeg\0";
+		return L"Image sequence (*.png,*.bmp,*.tga,*.jpg,*.jpeg)\0*.png;*.bmp;*.tga;*.jpg;*.jpeg\0";
 	}
 
 	bool DetectByFilename(const wchar_t *pszFilename) {
@@ -82,6 +82,11 @@ public:
 	int DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 32) {
 			const uint8 *buf = (const uint8 *)pHeader;
+
+			const uint8 kPNGSignature[8]={137,80,78,71,13,10,26,10};
+
+			if (!memcmp(buf, kPNGSignature, 8))
+				return 1;
 
 			if (buf[0] == 'B' && buf[1] == 'M')
 				return 1;

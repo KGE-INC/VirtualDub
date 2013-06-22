@@ -38,21 +38,28 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 		const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
 
 		if (px.format) {
-			VDASSERT(VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w >> info.qwbits)*info.qsize, -(-px.h >> info.qhbits)));
+			if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w >> info.qwbits)*info.qsize, -(-px.h >> info.qhbits))))
+				return false;
 
 			if (info.palsize)
-				VDASSERT(VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize));
+				if (!VDINLINEASSERT(VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize)))
+					return false;
 
 			if (info.auxbufs) {
 				const vdpixsize auxw = -(-px.w >> info.auxwbits);
 				const vdpixsize auxh = -(-px.h >> info.auxhbits);
 
-				VDASSERT(VDIsValidPixmapPlane(px.data2, px.pitch2, auxw, auxh));
+				if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data2, px.pitch2, auxw, auxh)))
+					return false;
 
-				if (info.auxbufs > 2)
-					VDASSERT(VDIsValidPixmapPlane(px.data3, px.pitch3, auxw, auxh));
+				if (info.auxbufs > 2) {
+					if (!VDINLINEASSERT(VDIsValidPixmapPlane(px.data3, px.pitch3, auxw, auxh)))
+						return false;
+				}
 			}
 		}
+
+		return true;
 	}
 #endif
 
@@ -136,6 +143,54 @@ uint32 VDPixmapCreateLinearLayout(VDPixmapLayout& layout, int format, vdpixsize 
 
 	return mainsize;
 }
+
+void VDPixmapFlipV(VDPixmap& px) {
+	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(px.format);
+	sint32		w			= px.w;
+	sint32		h			= px.h;
+	sint32		qw			= -(-w >> srcinfo.qwbits);
+	sint32		qh			= -(-h >> srcinfo.qhbits);
+	sint32		subw		= w >> srcinfo.auxwbits;
+	sint32		subh		= h >> srcinfo.auxhbits;
+
+	vdptrstep(px.data, px.pitch * (qh - 1));
+	px.pitch = -px.pitch;
+
+	if (srcinfo.auxbufs >= 1) {
+		vdptrstep(px.data2, px.pitch2 * (subh - 1));
+		px.pitch2 = -px.pitch2;
+
+		if (srcinfo.auxbufs >= 2) {
+			vdptrstep(px.data3, px.pitch3 * (subh - 1));
+			px.pitch3 = -px.pitch3;
+		}
+	}
+}
+
+void VDPixmapLayoutFlipV(VDPixmapLayout& layout) {
+	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(layout.format);
+	sint32		w			= layout.w;
+	sint32		h			= layout.h;
+	sint32		qw			= -(-w >> srcinfo.qwbits);
+	sint32		qh			= -(-h >> srcinfo.qhbits);
+	sint32		subw		= w >> srcinfo.auxwbits;
+	sint32		subh		= h >> srcinfo.auxhbits;
+
+	layout.data += layout.pitch * (qh - 1);
+	layout.pitch = -layout.pitch;
+
+	if (srcinfo.auxbufs >= 1) {
+		layout.data2 += layout.pitch2 * (subh - 1);
+		layout.pitch2 = -layout.pitch2;
+
+		if (srcinfo.auxbufs >= 2) {
+			layout.data3 += layout.pitch3 * (subh - 1);
+			layout.pitch3 = -layout.pitch3;
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 VDPixmapBuffer::VDPixmapBuffer(const VDPixmap& src)
 	: pBuffer(NULL)

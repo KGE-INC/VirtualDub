@@ -45,8 +45,12 @@ void VDCaptureFilterCrop::Init(VDPixmapLayout& layout, uint32 x1, uint32 y1, uin
 	y2 = (y2 >> (format.qhbits + format.auxhbits)) << (format.qhbits + format.auxhbits);
 
 	mLayout = VDPixmapLayoutOffset(layout, x1, y1);
-	mLayout.w -= x2;
-	mLayout.h -= y2;
+	mLayout.w -= (x1+x2);
+	mLayout.h -= (y1+y2);
+
+	mLayout.data -= layout.data;
+	mLayout.data2 -= layout.data;
+	mLayout.data3 -= layout.data;
 
 	layout = mLayout;
 }
@@ -227,12 +231,12 @@ namespace {
 
 	static void __declspec(naked) __cdecl lumasquish_MMX(void *dst, ptrdiff_t pitch, long w2, long h, int bIsUYVY) {
 		static const __int64 scalers[2] = {
-			0x40003b0040003b00i64,		// YUY2
-			0x3b0040003b004000i64,		// UYVY
+			0x400036f7400036f7i64,		// YUY2
+			0x36f7400036f74000i64,		// UYVY
 		};
 		static const __int64 biases[2] = {
-			0x0000000500000005i64,		// YUY2
-			0x0005000000050000i64,		// UYVY
+			0x0000004d0000004di64,		// YUY2
+			0x004d0000004d0000i64,		// UYVY
 		};
 
 		__asm {
@@ -625,6 +629,11 @@ protected:
 	bool	mbLumaSquish;
 	bool	mbFieldSwap;
 	bool	mbChainEnable;
+	bool	mbCropEnable;
+
+	VDPixmapLayout	mLinearLayout;
+
+	vdblock<char, vdaligned_alloc<char> > mLinearBuffer;
 
 	typedef vdlist<VDCaptureFilter> tFilterChain;
 	tFilterChain		mFilterChain;
@@ -686,7 +695,9 @@ void VDCaptureFilterSystem::SetChainEnable(bool enable) {
 }
 
 void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
+	mbCropEnable = false;
 	if (mCropX1|mCropY1|mCropX2|mCropY2) {
+		mbCropEnable = true;
 		mFilterCrop.Init(pxl, mCropX1, mCropY1, mCropX2, mCropY2);
 		mFilterChain.push_back(&mFilterCrop);
 	}
@@ -718,6 +729,15 @@ void VDCaptureFilterSystem::Init(VDPixmapLayout& pxl, uint32 usPerFrame) {
 		mFilterChainAdapter.Init(pxl);
 		mFilterChain.push_back(&mFilterChainAdapter);
 	}
+
+	// We need to linearize the bitmap if cropping is enabled but filter chain is not.
+	if (mbCropEnable && !mbChainEnable) {
+		uint32 bytes = VDPixmapCreateLinearLayout(mLinearLayout, pxl.format, pxl.w, pxl.h, VDPixmapGetInfo(pxl.format).auxbufs > 1 ? 1 : 4);
+
+		VDPixmapLayoutFlipV(mLinearLayout);
+
+		mLinearBuffer.resize(bytes);
+	}
 }
 
 void VDCaptureFilterSystem::Run(VDPixmap& px) {
@@ -731,7 +751,20 @@ void VDCaptureFilterSystem::Run(VDPixmap& px) {
 	}
 
 	VDAssertValidPixmap(px);
+
+	// Check if we have to linearize the bitmap.
+
+	if (mbCropEnable && !mbChainEnable) {
+		VDPixmap pxLinear(VDPixmapFromLayout(mLinearLayout, mLinearBuffer.data()));
+		VDPixmapBlt(pxLinear, px);
+		px = pxLinear;
+	}
 }
+
+#ifdef _MSC_VER
+	// VC6 goofs up the clear() below when no-aliasing is set. Hmmmm.
+	#pragma optimize("a", off)
+#endif
 
 void VDCaptureFilterSystem::Shutdown() {
 	tFilterChain::iterator it(mFilterChain.begin()), itEnd(mFilterChain.end());

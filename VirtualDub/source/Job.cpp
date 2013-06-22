@@ -1410,7 +1410,7 @@ static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 
 ///////////////////////////////////////////////////////////////////////////
 
-void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bIncludeEditList = true) {
+void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bIncludeEditList = true, bool bIncludeTextInfo = true) {
 	char *mem= NULL;
 	char buf[4096];
 	long l;
@@ -1638,6 +1638,21 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 		for(FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end()); it!=itEnd; ++it)
 			output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
 	}
+
+	// Add text information
+	if (bIncludeTextInfo) {
+		typedef std::list<std::pair<uint32, VDStringA> > tTextInfo;
+		const tTextInfo& textInfo = g_project->GetTextInfo();
+
+		output.addf("VirtualDub.project.ClearTextInfo();");
+		for(tTextInfo::const_iterator it(textInfo.begin()), itEnd(textInfo.end()); it!=itEnd; ++it) {
+			char buf[5]={0};
+			
+			memcpy(buf, &(*it).first, 4);
+
+			output.addf("VirtualDub.project.AddTextInfo(\"%s\", \"%s\");", buf, VDEncodeScriptString((*it).second).c_str());
+		}
+	}
 }
 
 void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInput, const wchar_t *pszInputDriver, List2<InputFilenameNode> *pListAppended) {
@@ -1737,10 +1752,10 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 	}
 }
 
-void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList) {
+void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList, bool bIncludeTextInfo) {
 	JobScriptOutput output;
 
-	JobCreateScript(output, opt, bIncludeEditList);
+	JobCreateScript(output, opt, bIncludeEditList, bIncludeTextInfo);
 
 	VDFile f(filename, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
 	f.write(output.data(), output.size());

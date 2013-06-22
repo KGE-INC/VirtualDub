@@ -206,6 +206,7 @@
 #define IDD_FILTER_PERSPECTIVE          264
 #define IDD_CHANGE_LOG                  265
 #define IDD_CAPTURE_BROKEN              266
+#define IDD_FILE_SETTEXTINFO            267
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -789,6 +790,7 @@
 #define IDS_OPTIONS_DISPLAYOUTPUTVIDEO  1411
 #define IDC_POSITION                    1411
 #define IDS_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT 1412
+#define IDC_LIST                        1412
 #define IDS_OPTIONS_ENABLEMMX           1413
 #define IDS_OPTIONS_SHOWSTATUSWINDOW    1414
 #define IDS_OPTIONS_SYNCHRONOUSBLIT     1415
@@ -1011,6 +1013,7 @@
 #define ID_VIDEO_SEEK_END               40203
 #define ID_EDIT_DELETE                  40206
 #define ID_VIDEO_CLIPPING_SET           40208
+#define ID_VIDEO_CROPPING               40208
 #define ID_TOOLS_HEXVIEWER              40209
 #define ID_FILE_EXIT                    40210
 #define ID_FILE_OPEN                    40211
@@ -1112,6 +1115,11 @@
 #define ID_VIDEO_DISCONNECT             40319
 #define ID_AUDIO_ENABLE                 40320
 #define ID_VIDEO_NODISPLAY              40321
+#define ID_CAPTURE_SHOWPROFILER         40322
+#define ID_AUDIO_RAWCAPTUREFORMAT       40323
+#define ID_AUDIO_PEAKMETER              40324
+#define ID_TOOLS_CREATEPALETTIZEDAVI    40325
+#define ID_FILE_SETTEXTINFO             40326
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1153,9 +1161,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        267
-#define _APS_NEXT_COMMAND_VALUE         40322
-#define _APS_NEXT_CONTROL_VALUE         1412
+#define _APS_NEXT_RESOURCE_VALUE        268
+#define _APS_NEXT_COMMAND_VALUE         40327
+#define _APS_NEXT_CONTROL_VALUE         1413
 #define _APS_NEXT_SYMED_VALUE           108
 #endif
 #endif

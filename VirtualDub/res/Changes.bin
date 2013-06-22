@@ -1,6 +1,33 @@
 VirtualDub change log
 
-Build %build% (1.6.1, experimental): [%date%]
+Build %build% (1.6.2, experimental): [%date%]
+   [features added]
+   * Capture: Improved Unicode support.
+   * Capture: DirectShow video capture support.
+   * Capture: Enhanced volume meter.
+   * Capture: Alternate audio resampling mode for reduced frame drops when resyncing.
+   * Capture: Audio compression now occurs after resampling for better timing.
+   * Capture: Stop hotkeys are no longer system global.
+   * PNG images are now supported for read.
+   * AVI info tags are now supported.
+
+   [bugs fixed]
+   * Fixed occasional crash when using DirectX display mode with 8-bit display.
+   * Appending type-1 DV AVIs caused the output AVI to have the wrong stream type.
+   * Fixed rare junk displays when overlay playback is enabled, caused by selection of overlay formats that the bitmap library cannot support conversions to.
+   * Fixed source formatting tags in timeline strings reporting huge frame numbers at the end of the timeline.
+   * Fixed garbage when attempting to convert Pal8 to Y8.
+
+   [regressions fixed]
+   * Fixed slowdown in shuttle commands.
+   * 24-bit video depth settings in configuration files saved from 1.5.x were being imported as 16-bit.
+   * Fixed crash when switching to frameserver mode.
+   * Fixed crash when attempting to finalize AVI file after a disk full or file size error.
+   * Fixed expression evaluation errors in scripting language.
+   * Fixed intermitted crash in Preferences dialog related to enable links.
+   * Fixed crash when attempting to play 8-bit paletted AVI files.
+
+Build 22022 (1.6.1, experimental): [November 3, 2004]
    [features added]
    * Rewrote command line parsing so that arguments to /s, /p, and /b no longer require the parameters to be adjacent to the switch.
    * New /i (invoke) command line flag runs a script and passes additional parameters to it, which are available as VirtualDub.params[n].

@@ -18,6 +18,7 @@
 #ifndef f_AUDIO_H
 #define f_AUDIO_H
 
+#include <vd2/Riza/w32audiocodec.h>
 #include <windows.h>
 #include <mmsystem.h>
 #include <mmreg.h>
@@ -74,22 +75,14 @@ public:
 class AudioStreamSource : public AudioStream {
 private:
 	AudioSource *aSrc;
-	WAVEFORMATEX *pwfexTempInput;
 	sint64 cur_samp;
 	sint64 end_samp;
-	HACMSTREAM hACStream;
-	ACMSTREAMHEADER ashBuffer;
-	void *inputBuffer;
-	void *outputBuffer;
-	char *outputBufferPtr;
 	sint64 mPreskip;
 	sint64 mPrefill;
 	bool fZeroRead;
 	bool fStart;
 
-	char mDriverName[64];
-
-	enum { INPUT_BUFFER_SIZE = 16384 };
+	VDAudioCodecW32	mCodec;
 
 public:
 	AudioStreamSource(AudioSource *src, sint64 first_sample, sint64 max_sample, bool allow_decompression);
@@ -149,17 +142,10 @@ public:
 
 class AudioCompressor : public AudioStream {
 private:
-	HACMSTREAM hACStream;
-	HACMDRIVER hADriver;
-	ACMSTREAMHEADER ashBuffer;
-	WAVEFORMATEX *pwfexTempOutput;
-	void *inputBuffer;
-	void *outputBuffer;
+	VDAudioCodecW32	mCodec;
 	bool fStreamEnded;
 	long bytesPerInputSample;
 	long bytesPerOutputSample;
-
-	uint32	mReadOffset;			// Read offset from output buffer
 
 	char mDriverName[64];
 

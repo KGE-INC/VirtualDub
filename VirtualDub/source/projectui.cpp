@@ -47,7 +47,8 @@
 #include "VideoDisplay.h"
 
 ///////////////////////////////////////////////////////////////////////////
-#define MRU_LIST_POSITION		(24)
+
+#define MRU_LIST_POSITION		(25)
 
 namespace {
 	enum {
@@ -754,6 +755,11 @@ bool VDProjectUI::MenuHit(UINT id) {
 			break;
 		case ID_FILE_JOBCONTROL:				OpenJobWindow();							break;
 		case ID_FILE_AVIINFO:					ShowInputInfo();					break;
+		case ID_FILE_SETTEXTINFO:
+			// ugh
+			extern void VDDisplayFileTextInfoDialog(VDGUIHandle hParent, std::list<std::pair<uint32, VDStringA> >&);
+			VDDisplayFileTextInfoDialog(mhwnd, mTextInfo);
+			break;
 
 		case ID_EDIT_CUT:						Cut();						break;
 		case ID_EDIT_COPY:						Copy();						break;
@@ -902,6 +908,11 @@ bool VDProjectUI::MenuHit(UINT id) {
 			VDBenchmarkResampler(mhwnd);
 			break;
 
+		case ID_TOOLS_CREATEPALETTIZEDAVI:
+			extern void VDCreateTestPal8Video(VDGUIHandle);
+			VDCreateTestPal8Video(mhwnd);
+			break;
+
 		case ID_HELP_LICENSE:
 			DisplayLicense((HWND)mhwnd);
 			break;
@@ -1024,6 +1035,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu,ID_FILE_CLOSEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_AVIINFO				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu,ID_FILE_SETTEXTINFO			, bSourceFileExists);
 
 	const bool bSelectionExists = bSourceFileExists && IsSelectionPresent();
 
@@ -1737,13 +1749,18 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 	const wchar_t *s = format.data();
 	const wchar_t *end = s + format.length();
 
-	bool bMasked;
-	VDPosition srcFrame = mTimeline.GetSubset().lookupFrame(dstFrame, bMasked);
-	VDPosition srcStreamFrame = inputVideoAVI->displayToStreamOrder(srcFrame);
-
-	const VDFraction srcRate = inputVideoAVI->getRate();
-
 	try {
+		bool bMasked;
+		VDPosition srcFrame = mTimeline.GetSubset().lookupFrame(dstFrame, bMasked);
+		VDPosition srcStreamFrame;
+		
+		if (srcFrame < 0)
+			srcFrame = srcStreamFrame = inputVideoAVI->getLength();
+		else
+			srcStreamFrame = inputVideoAVI->displayToStreamOrder(srcFrame);
+
+		const VDFraction srcRate = inputVideoAVI->getRate();
+
 		VDPosition dstTime = mVideoInputFrameRate.scale64ir(dstFrame * 1000);
 		VDPosition srcTime = srcRate.scale64ir(srcFrame * 1000);
 

@@ -23,15 +23,19 @@ DECLARE_RGB(RGB565,   RGB888);
 									DECLARE_RGB_ASM(RGB565,   XRGB8888);	DECLARE_RGB_ASM_MMX(RGB565,   XRGB8888);
 									DECLARE_RGB_ASM(RGB888,   XRGB8888);	DECLARE_RGB_ASM_MMX(RGB888,   XRGB8888);
 
+DECLARE_PALETTED(Pal1, Any8);
 DECLARE_PALETTED(Pal1, Any16);
 DECLARE_PALETTED(Pal1, Any24);
 DECLARE_PALETTED(Pal1, Any32);
+DECLARE_PALETTED(Pal2, Any8);
 DECLARE_PALETTED(Pal2, Any16);
 DECLARE_PALETTED(Pal2, Any24);
 DECLARE_PALETTED(Pal2, Any32);
+DECLARE_PALETTED(Pal4, Any8);
 DECLARE_PALETTED(Pal4, Any16);
 DECLARE_PALETTED(Pal4, Any24);
 DECLARE_PALETTED(Pal4, Any32);
+DECLARE_PALETTED(Pal8, Any8);
 DECLARE_PALETTED(Pal8, Any16);
 DECLARE_PALETTED(Pal8, Any24);
 DECLARE_PALETTED(Pal8, Any32);
@@ -87,18 +91,22 @@ using namespace nsVDPixmap;
 tpVDPixBltTable VDGetPixBltTableX86Scalar() {
 	static void *sReferenceMap[kPixFormat_Max_Standard][kPixFormat_Max_Standard] = {0};
 
+	sReferenceMap[kPixFormat_Pal1][kPixFormat_Y8      ] = VDPixmapBlt_Pal1_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_XRGB1555] = VDPixmapBlt_Pal1_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_RGB565  ] = VDPixmapBlt_Pal1_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_RGB888  ] = VDPixmapBlt_Pal1_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_XRGB8888] = VDPixmapBlt_Pal1_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal2][kPixFormat_Y8      ] = VDPixmapBlt_Pal2_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_XRGB1555] = VDPixmapBlt_Pal2_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_RGB565  ] = VDPixmapBlt_Pal2_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_RGB888  ] = VDPixmapBlt_Pal2_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_XRGB8888] = VDPixmapBlt_Pal2_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal4][kPixFormat_Y8      ] = VDPixmapBlt_Pal4_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_XRGB1555] = VDPixmapBlt_Pal4_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_RGB565  ] = VDPixmapBlt_Pal4_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_RGB888  ] = VDPixmapBlt_Pal4_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_XRGB8888] = VDPixmapBlt_Pal4_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal8][kPixFormat_Y8      ] = VDPixmapBlt_Pal8_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_XRGB1555] = VDPixmapBlt_Pal8_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_RGB565  ] = VDPixmapBlt_Pal8_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_RGB888  ] = VDPixmapBlt_Pal8_to_Any24_reference;
@@ -278,18 +286,22 @@ tpVDPixBltTable VDGetPixBltTableX86Scalar() {
 tpVDPixBltTable VDGetPixBltTableX86MMX() {
 	static void *sReferenceMap[kPixFormat_Max_Standard][kPixFormat_Max_Standard] = {0};
 
+	sReferenceMap[kPixFormat_Pal1][kPixFormat_Y8      ] = VDPixmapBlt_Pal1_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_XRGB1555] = VDPixmapBlt_Pal1_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_RGB565  ] = VDPixmapBlt_Pal1_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_RGB888  ] = VDPixmapBlt_Pal1_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal1][kPixFormat_XRGB8888] = VDPixmapBlt_Pal1_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal2][kPixFormat_Y8      ] = VDPixmapBlt_Pal2_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_XRGB1555] = VDPixmapBlt_Pal2_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_RGB565  ] = VDPixmapBlt_Pal2_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_RGB888  ] = VDPixmapBlt_Pal2_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal2][kPixFormat_XRGB8888] = VDPixmapBlt_Pal2_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal4][kPixFormat_Y8      ] = VDPixmapBlt_Pal4_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_XRGB1555] = VDPixmapBlt_Pal4_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_RGB565  ] = VDPixmapBlt_Pal4_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_RGB888  ] = VDPixmapBlt_Pal4_to_Any24_reference;
 	sReferenceMap[kPixFormat_Pal4][kPixFormat_XRGB8888] = VDPixmapBlt_Pal4_to_Any32_reference;
+	sReferenceMap[kPixFormat_Pal8][kPixFormat_Y8      ] = VDPixmapBlt_Pal8_to_Any8_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_XRGB1555] = VDPixmapBlt_Pal8_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_RGB565  ] = VDPixmapBlt_Pal8_to_Any16_reference;
 	sReferenceMap[kPixFormat_Pal8][kPixFormat_RGB888  ] = VDPixmapBlt_Pal8_to_Any24_reference;

@@ -139,6 +139,14 @@ SOURCE=.\source\convert_reference.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\decode_dv.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\decode_png.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\idct_mmx.cpp
 # End Source File
 # Begin Source File
@@ -169,6 +177,14 @@ SOURCE=.\source\tables.cpp
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=..\h\vd2\Meia\decode_dv.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Meia\decode_png.h
+# End Source File
 # Begin Source File
 
 SOURCE=.\source\idct_scalar_asm.inl

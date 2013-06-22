@@ -20,8 +20,8 @@
 #include "af_polyphase.h"
 #include "gui.h"
 #include "resource.h"
-#include "audioutil.h"
 #include <vd2/system/fraction.h>
+#include <vd2/Priss/convert.h>
 
 namespace {
 	// sin(x) = x - x^3/6 + x^5/120 - x^7/5040...

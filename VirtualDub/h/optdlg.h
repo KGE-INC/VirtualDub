@@ -20,22 +20,6 @@
 
 #include <windows.h>
 
-#ifdef OPTDLG_STATICS
-#define EXTERN
-#define INIT(x) =x
-#else
-#define EXTERN extern
-#define INIT(x)
-#endif
-
-typedef struct {
-	long samp_frac;
-	BOOL is_stereo, is_16bit, converting;
-	char bytesPerSample;
-} AudioInterleaveOptions;
-
-EXTERN AudioInterleaveOptions audioInt;
-
 /////////////////
 
 void ActivateDubDialog(HINSTANCE hInst, LPCTSTR lpResource, HWND hDlg, DLGPROC dlgProc);

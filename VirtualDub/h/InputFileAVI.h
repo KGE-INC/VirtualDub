@@ -49,6 +49,8 @@ public:
 	void InitStriped(const char *szFile);
 	bool Append(const wchar_t *szFile);
 
+	void GetTextInfo(tFileTextInfo& info);
+
 	bool isOptimizedForRealtime();
 	bool isStreaming();
 

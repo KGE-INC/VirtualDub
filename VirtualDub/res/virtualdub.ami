@@ -19,6 +19,7 @@ stringset 2 {		// kVDST_AVIReadHandler
 	message 4, "AVI: Invalid block found at %lld -- disabling streaming.";
 	message 5, "AVI: Stream %d has an invalid sample rate. Substituting %lg samples/sec as a placeholder.";
 	message 6, "AVI: Palette changes detected. These are not currently supported -- color palette errors may appear in the output.";
+	message 7, "AVI: The text information chunk of type '%hs' at %llx was not not fully read because it was too long (%u bytes).";
 }
 
 stringset 3 {		// kVDST_VideoSource
@@ -83,8 +84,8 @@ template kTemplateOKCancel {
 	using valign=bottom {
 		set 0 : align=right, spacing=3 {
 			now minw=50, minh=14;
-			button kID_OK, [1000, 0];
-			button kID_Cancel, [1000, 1];
+			button kID_OK, [1000, 10];
+			button kID_Cancel, [1000, 11];
 		}
 	}
 }
@@ -291,6 +292,67 @@ dialog 1016, "" : fill, child {
 	}
 }
 
+
+
+
+dialog 2000, "Capture preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
+	set 0: vertical {
+		set 0 : spacing=5 {
+			now fill;
+
+			listbox 100 : minw=50, sunken, align=left {
+				listitem "Side panel";
+			}
+
+			pageset 101 : value={@100} {
+				page 2010;
+			}
+		}
+
+		using valign=bottom {
+			set 0 : align=right, spacing=3 {
+				now minw=50, minh=14;
+				button kID_Save, [1000, 12];
+				button kID_OK, [1000, 10];
+				button kID_Cancel, [1000, 11];
+			}
+		}
+	}
+}
+
+dialog 2010, "" : fill, child {
+	now fill;
+	set 0 : vertical {
+		group 0, "Information panel items" {
+			set 0: vertical, spacing=3 {
+				label 0, "Select the items that should appear in the side panel:" : valign=top;
+				listview 100, "" : checkable, fill, noheader, sunken;
+			}
+		}
+	}
+}
+
+dialog 2100, "Select raw audio format" : minw=200, aspect=140, align=fill, valign=fill+expand {
+	set 0 : vertical, fill, spacing=3 {
+		listbox 100 : sunken, fill;
+		include template kTemplateOKCancel;
+	}
+}
+
+dialog 2101, "Capture sync options" : aspect=140, maxw=350 {
+	set 0 : vertical {
+		checkbox 100, "&Drop frames when captured frames are too close together";
+		checkbox 101, "&Insert null frames when captured frames are too far apart";
+		label 0, "Resync mode:" : margint=5, marginb=5;
+		using marginl=10 {
+			option 200, "Do &not resync between audio and video streams";
+			option 201, "Sync &video to audio by adjusting video timing";
+			option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
+		}
+		checkbox 102, "Automatically disable resync when integrated audio/video capture is detected" : margint=5, marginb=5;
+		include template kTemplateOKCancel;
+	}
+}
 
 // output window for resampler benchmark
 dialog 9000, "Output window" : minw=350, aspect=140, valign=fill+expand {

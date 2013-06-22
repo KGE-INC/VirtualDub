@@ -18,23 +18,23 @@
 #ifndef f_CAPHISTO_H
 #define f_CAPHISTO_H
 
-#include <windows.h>
-#include <vfw.h>
+class IVDUIWindow;
 
-#include "VBitmap.h"
-
-#include "capclip.h"
-
-class CaptureHistogram : public CaptureFrameSource {
-private:
-	Histogram			histo;
-
+class VDINTERFACE IVDCaptureVideoHistogram {
 public:
-	CaptureHistogram(HWND, HDC, int);
-	~CaptureHistogram();
+	virtual ~IVDCaptureVideoHistogram() {}
 
-	void Process(VIDEOHDR *pvhdr);
-	void Draw(HDC hdc, RECT& r);
+	virtual bool Process(const VDPixmap& px, float out[256], double scale) = 0;
 };
+
+class VDINTERFACE IVDUICaptureVideoHistogram : public IVDUnknown {
+public:
+	enum { kTypeID = 'caph' };
+
+	virtual void SetHistogram(const float data[256]) = 0;		// (thread-safe)
+};
+
+IVDCaptureVideoHistogram *VDCreateCaptureVideoHistogram();
+IVDUIWindow *VDCreateUICaptureVideoHistogram();
 
 #endif

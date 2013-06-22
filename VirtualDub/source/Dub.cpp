@@ -44,6 +44,7 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Riza/bitmap.h>
 #include "AudioFilterSystem.h"
 #include "convert.h"
 #include "filters.h"
@@ -712,7 +713,7 @@ void Dubber::InitAudioConversionChain() {
 
 	// ready the audio stream for streaming operation
 
-	aSrc->streamBegin(fPreview);
+	aSrc->streamBegin(fPreview, false);
 	fADecompressionOk = true;
 
 	// Initialize audio conversion chain
@@ -1388,7 +1389,7 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 
 		VDDEBUG("Dub: Initializing input decompressor.\n");
 
-		vSrc->streamBegin(fPreview);
+		vSrc->streamBegin(fPreview, opt->video.mode == DubVideoOptions::M_NONE);
 		fVDecompressionOk = true;
 
 	}

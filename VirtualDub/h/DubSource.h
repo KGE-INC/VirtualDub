@@ -44,7 +44,7 @@ public:
 
 	virtual bool isStreaming() = 0;
 
-	virtual void streamBegin( bool fRealTime) = 0;
+	virtual void streamBegin(bool fRealTime, bool bForceReset) = 0;
 	virtual void streamEnd() = 0;
 
 	enum ErrorMode {
@@ -109,7 +109,7 @@ public:
 	virtual bool isStreaming();
 
 
-	virtual void streamBegin( bool fRealTime);
+	virtual void streamBegin(bool fRealTime, bool bForceReset);
 	virtual void streamEnd();
 
 	virtual ErrorMode getDecodeErrorMode() { return kErrorModeReportAll; }

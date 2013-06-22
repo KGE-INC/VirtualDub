@@ -55,7 +55,7 @@ int DubSource::read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbB
 	return _read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
 }
 
-void DubSource::streamBegin(bool fRealTime) {
+void DubSource::streamBegin(bool fRealTime, bool bForceReset) {
 }
 
 void DubSource::streamEnd() {

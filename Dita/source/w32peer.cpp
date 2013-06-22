@@ -33,6 +33,14 @@ VDUIPeerW32::VDUIPeerW32(HWND hwnd)
 {
 }
 
+void VDUIPeerW32::Attach(HWND hwnd) {
+	mhwnd = hwnd;
+}
+
+void VDUIPeerW32::Detach() {
+	mhwnd = NULL;
+}
+
 void *VDUIPeerW32::AsInterface(uint32 id) {
 	if (id == VDUIPeerW32::kTypeID) return static_cast<VDUIPeerW32 *>(this);
 	if (id == IVDUIWindowW32::kTypeID) return static_cast<IVDUIWindowW32 *>(this);

@@ -19,6 +19,22 @@ Package=<4>
 
 ###############################################################################
 
+Project: "Asuka"=.\Asuka\Asuka.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    "//depot/VirtualDub/1.x/main/Asuka"
+    .\asuka
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "Dita"=.\Dita\Dita.dsp - Package Owner=<4>
 
 Package=<5>
@@ -182,12 +198,6 @@ Package=<4>
     Project_Dep_Name system
     End Project Dependency
     Begin Project Dependency
-    Project_Dep_Name verinc
-    End Project Dependency
-    Begin Project Dependency
-    Project_Dep_Name mapconv
-    End Project Dependency
-    Begin Project Dependency
     Project_Dep_Name Dita
     End Project Dependency
     Begin Project Dependency
@@ -204,6 +214,9 @@ Package=<4>
     End Project Dependency
     Begin Project Dependency
     Project_Dep_Name Riza
+    End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name Asuka
     End Project Dependency
 }}}
 
@@ -240,22 +253,6 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name Lina
     End Project Dependency
-}}}
-
-###############################################################################
-
-Project: "mapconv"=.\mapconv\mapconv.dsp - Package Owner=<4>
-
-Package=<5>
-{{{
-    begin source code control
-    "//depot/VirtualDub/1.x/main/mapconv"
-    .\mapconv
-    end source code control
-}}}
-
-Package=<4>
-{{{
 }}}
 
 ###############################################################################
@@ -337,22 +334,6 @@ Package=<5>
     begin source code control
     "//depot/VirtualDub/1.x/main/vdsvrlnk"
     .\vdsvrlnk
-    end source code control
-}}}
-
-Package=<4>
-{{{
-}}}
-
-###############################################################################
-
-Project: "verinc"=.\verinc\verinc.dsp - Package Owner=<4>
-
-Package=<5>
-{{{
-    begin source code control
-    "//depot/VirtualDub/1.x/main/verinc"
-    .\verinc
     end source code control
 }}}
 

@@ -12,6 +12,9 @@ public:
 	VDUIPeerW32();
 	VDUIPeerW32(HWND hwnd);
 
+	void		Attach(HWND hwnd);
+	void		Detach();
+
 	void *AsInterface(uint32 id);
 
 	void		SetCaption(const VDStringW& caption);

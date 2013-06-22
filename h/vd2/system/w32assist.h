@@ -31,17 +31,23 @@
 #include <vd2/system/VDString.h>
 
 inline bool VDIsWindowsNT() {
+#ifdef _M_AMD64
+	return true;
+#else
 	static bool is_nt = !(GetVersion() & 0x80000000);
 
 	return is_nt;
+#endif
 }
 
 int			VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr);
 void		VDSetWindowTextW32(HWND hwnd, const wchar_t *s);
 VDStringW	VDGetWindowTextW32(HWND hwnd);
+void		VDAppendMenuW32(HMENU hmenu, UINT flags, UINT id, const wchar_t *text);
 void		VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
 void		VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
 
+LRESULT		VDDualCallWindowProcW32(WNDPROC wp, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT		VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags);

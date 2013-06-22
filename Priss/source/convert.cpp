@@ -1,5 +1,6 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	Audio processing library
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,9 +16,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#include "stdafx.h"
 #include <vd2/system/cpuaccel.h>
-#include "audioutil.h"
+#include <vd2/Priss/convert.h>
 
 ///////////////////////////////////////////////////////////////////////////
 //

@@ -100,13 +100,13 @@ VDStringW VDFileSplitExtRight(const VDStringW&);
 
 /////////////////////////////////////////////////////////////////////////////
 
-sint64 VDGetDiskFreeSpace(const VDStringW& path);
-void VDCreateDirectory(const VDStringW& path);
-bool VDDoesPathExist(const VDStringW& fileName);
+sint64 VDGetDiskFreeSpace(const wchar_t *path);
+void VDCreateDirectory(const wchar_t *path);
+bool VDDoesPathExist(const wchar_t *fileName);
 
-VDStringW VDGetFullPath(const VDStringW& partialPath);
+VDStringW VDGetFullPath(const wchar_t *partialPath);
 
-VDStringW VDMakePath(const VDStringW& base, const VDStringW& file);
+VDStringW VDMakePath(const wchar_t *base, const wchar_t *file);
 
 /////////////////////////////////////////////////////////////////////////////
 

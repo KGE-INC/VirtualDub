@@ -31,8 +31,37 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/tls.h>
 
+namespace {
+	//
+	// This apparently came from one a talk by one of the Visual Studio
+	// developers, i.e. I didn't write it.
+	//
+	#define MS_VC_EXCEPTION 0x406d1388
+
+	typedef struct tagTHREADNAME_INFO
+	{
+		DWORD dwType;        // must be 0x1000
+		LPCSTR szName;       // pointer to name (in same addr space)
+		DWORD dwThreadID;    // thread ID (-1 caller thread)
+		DWORD dwFlags;       // reserved for future use, most be zero
+	} THREADNAME_INFO;
+}
+
 VDThreadID VDGetCurrentThreadID() {
 	return (VDThreadID)GetCurrentThreadId();
+}
+
+void VDSetThreadDebugName(VDThreadID tid, const char *name) {
+	THREADNAME_INFO info;
+	info.dwType		= 0x1000;
+	info.szName		= name;
+	info.dwThreadID	= tid;
+	info.dwFlags	= 0;
+
+	__try {
+		RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(DWORD), (ULONG_PTR *)&info);
+	} __except (EXCEPTION_CONTINUE_EXECUTION) {
+	}
 }
 
 VDThread::VDThread(const char *pszDebugName)
@@ -107,34 +136,6 @@ void *VDThread::ThreadLocation() const {
 }
 
 ///////////////////////////////////////////////////////////////////////////
-//
-// This apparently came from one a talk by one of the Visual Studio
-// developers, i.e. I didn't write it.
-
-#define MS_VC_EXCEPTION 0x406d1388
-
-typedef struct tagTHREADNAME_INFO
-{
-    DWORD dwType;        // must be 0x1000
-    LPCSTR szName;       // pointer to name (in same addr space)
-    DWORD dwThreadID;    // thread ID (-1 caller thread)
-    DWORD dwFlags;       // reserved for future use, most be zero
-} THREADNAME_INFO;
-
-static void SetThreadName(DWORD dwThreadID, LPCTSTR szThreadName)
-{
-    THREADNAME_INFO info;
-    info.dwType = 0x1000;
-    info.szName = szThreadName;
-    info.dwThreadID = dwThreadID;
-    info.dwFlags = 0;
-
-    __try {
-        RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(DWORD), (ULONG_PTR *)&info);
-    } __except (EXCEPTION_CONTINUE_EXECUTION) {
-    }
-}
-
 
 unsigned __stdcall VDThread::StaticThreadStart(void *pThisAsVoid) {
 	VDThread *pThis = static_cast<VDThread *>(pThisAsVoid);
@@ -142,7 +143,7 @@ unsigned __stdcall VDThread::StaticThreadStart(void *pThisAsVoid) {
 	// We cannot use mThreadID here because it might already have been
 	// invalidated by a detach in the main thread.
 	if (pThis->mpszDebugName)
-		SetThreadName(GetCurrentThreadId(), pThis->mpszDebugName);
+		VDSetThreadDebugName(GetCurrentThreadId(), pThis->mpszDebugName);
 
 	VDInitThreadData(pThis->mpszDebugName);
 

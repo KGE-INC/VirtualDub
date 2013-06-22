@@ -15,7 +15,7 @@ public:
 	void Clear();
 	void BeginGC();
 	void Mark(char *s);
-	void EndGC();
+	int EndGC();
 	char **Allocate(int);
 };
 

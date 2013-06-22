@@ -25,6 +25,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/fraction.h>
+#include <vd2/Riza/w32audiocodec.h>
 #include "AudioFilterSystem.h"
 #include "AudioSource.h"
 #include "af_sink.h"
@@ -372,100 +373,21 @@ void AudioStream::Seek(VDPosition pos) {
 AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64 max_samples, bool allow_decompression) : AudioStream() {
 	WAVEFORMATEX *iFormat = src->getWaveFormat();
 	WAVEFORMATEX *oFormat;
-	MMRESULT res;
 
-	hACStream = NULL;
-	inputBuffer = outputBuffer = NULL;
 	fZeroRead = false;
-	fStart = true;
-	pwfexTempInput = NULL;
 	mPreskip = 0;
 
 	if (max_samples < 0)
 		max_samples = 0;
 
 	if (iFormat->wFormatTag != WAVE_FORMAT_PCM && allow_decompression) {
-		DWORD dwOutputBufferSize;
-		DWORD dwOutputFormatSize;
+		mCodec.Init(iFormat, NULL);
 
-		if (!AllocFormat(sizeof(PCMWAVEFORMAT)))
-			throw MyMemoryError();
+		const unsigned oflen = mCodec.GetOutputFormatSize();
 
-		if (acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&dwOutputFormatSize))
-			throw MyError("Couldn't get ACM's max format size");
+		memcpy(AllocFormat(oflen), mCodec.GetOutputFormat(), oflen);
 
-		oFormat = (WAVEFORMATEX *)allocmem(dwOutputFormatSize); //AllocFormat(dwOutputFormatSize);
-		if (!oFormat) throw MyMemoryError();
-		oFormat->wFormatTag			= WAVE_FORMAT_PCM;
-
-		if (acmFormatSuggest(NULL, iFormat, oFormat, dwOutputFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
-			freemem(oFormat);
-			throw MyError("No audio decompressor could be found to decompress the source audio format.");
-		}
-
-		if (oFormat->wBitsPerSample!=8 && oFormat->wBitsPerSample!=16)
-				oFormat->wBitsPerSample=16;
-
-		if (oFormat->nChannels!=1 && oFormat->nChannels!=2)
-			oFormat->nChannels = 2;
-
-		oFormat->nBlockAlign		= (WORD)((oFormat->wBitsPerSample/8) * oFormat->nChannels);
-		oFormat->nAvgBytesPerSec	= oFormat->nBlockAlign * oFormat->nSamplesPerSec;
-		oFormat->cbSize				= 0;
-
-		memcpy(GetFormat(), oFormat, sizeof(PCMWAVEFORMAT));
-		freemem(oFormat);
 		oFormat = GetFormat();
-
-		memset(&ashBuffer, 0, sizeof ashBuffer);
-
-		res = acmStreamOpen(&hACStream, NULL, iFormat, oFormat, NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
-
-		if (res) {
-			if (res == ACMERR_NOTPOSSIBLE) {
-				throw MyError(
-							"Error initializing audio stream decompression:\n"
-							"The requested conversion is not possible.\n"
-							"\n"
-							"Check to make sure you have the required codec%s."
-							,
-							(iFormat->wFormatTag&~1)==0x160 ? " (Microsoft Audio Codec)" : ""
-						);
-			} else
-				throw MyError("Error initializing audio stream decompression.");
-		}
-
-		if (acmStreamSize(hACStream, INPUT_BUFFER_SIZE, &dwOutputBufferSize, ACM_STREAMSIZEF_SOURCE))
-			throw MyError("Error initializing audio stream output size.");
-
-		if (!(inputBuffer = allocmem(INPUT_BUFFER_SIZE))
-			|| !(outputBuffer = allocmem(dwOutputBufferSize)))
-
-			throw MyMemoryError();
-
-		ashBuffer.cbStruct		= sizeof(ACMSTREAMHEADER);
-		ashBuffer.pbSrc			= (LPBYTE)inputBuffer;
-		ashBuffer.cbSrcLength	= INPUT_BUFFER_SIZE;
-		ashBuffer.pbDst			= (LPBYTE)outputBuffer;
-		ashBuffer.cbDstLength	= dwOutputBufferSize;
-
-		if (acmStreamPrepareHeader(hACStream, &ashBuffer, 0))
-			throw MyError("Error preparing audio decompression buffers.");
-
-		ashBuffer.cbSrcLength = 0;
-		ashBuffer.cbDstLengthUsed = 0;
-
-		// try to get driver name
-		mDriverName[0] = 0;
-
-		HACMDRIVERID hDriverID;
-		if (!acmDriverID((HACMOBJ)hACStream, &hDriverID, 0)) {
-			ACMDRIVERDETAILS add = { sizeof(ACMDRIVERDETAILS) };
-			if (!acmDriverDetails(hDriverID, &add, 0)) {
-				strncpyz(mDriverName, add.szLongName, sizeof mDriverName);
-			}
-		}
-
 	} else {
 
 		// FIX: If we have a PCMWAVEFORMAT stream, artificially cut the format size
@@ -490,7 +412,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 	aSrc = src;
 	stream_len = std::min<sint64>(max_samples, aSrc->getEnd() - first_samp);
 
-	if (hACStream) {
+	if (mCodec.IsInitialized()) {
 		stream_len = MulDiv(stream_len, GetFormat()->nSamplesPerSec * aSrc->getWaveFormat()->nBlockAlign, aSrc->getWaveFormat()->nAvgBytesPerSec);
 	}
 
@@ -500,16 +422,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 }
 
 AudioStreamSource::~AudioStreamSource() {
-	if (hACStream) {
-		if (ashBuffer.fdwStatus & ACMSTREAMHEADER_STATUSF_PREPARED) {
-			ashBuffer.cbSrcLength = INPUT_BUFFER_SIZE;
-			acmStreamUnprepareHeader(hACStream, &ashBuffer, 0);
-		}
-		acmStreamClose(hACStream, 0);
-	}
-	if (inputBuffer)	freemem(inputBuffer);
-	if (outputBuffer)	freemem(outputBuffer);
-	delete[] pwfexTempInput;
+	mCodec.Shutdown();
 }
 
 long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
@@ -544,7 +457,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 	// read actual samples
 
-	if (hACStream) {
+	if (mCodec.IsInitialized()) {
 		uint32 ltActualBytes, ltActualSamples;
 		LONG lBytesLeft = max_samples * GetFormat()->nBlockAlign;
 		LONG lTotalBytes = lBytesLeft;
@@ -552,114 +465,71 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 		while(lBytesLeft > 0) {
 			// hmm... data still in the output buffer?
+			if (mPreskip) {
+				unsigned actual = mCodec.CopyOutput(NULL, mPreskip);
 
-			if (ashBuffer.cbDstLengthUsed>0) {
-				long tc = std::min<long>(lBytesLeft, ashBuffer.cbDstLengthUsed);
-
-				if (mPreskip) {
-					if (tc > mPreskip)
-						tc = (long)mPreskip;
-
-					mPreskip -= tc;
-				} else {
-					memcpy(buffer, outputBufferPtr, tc);
-					buffer = (void *)((char *)buffer + tc);
-					lBytesLeft -= tc;
+				if (actual) {
+					VDASSERT(actual <= mPreskip);
+					mPreskip -= actual;
+					continue;
 				}
+			} else {
+				unsigned actual = mCodec.CopyOutput(buffer, lBytesLeft);
 
-				outputBufferPtr += tc;
-				ashBuffer.cbDstLengthUsed -= tc;
-				continue;
+				VDASSERT(actual <= lBytesLeft);
+
+				if (actual) {
+					buffer = (void *)((char *)buffer + actual);
+					lBytesLeft -= actual;
+					continue;
+				}
 			}
 
 			// fill the input buffer up... if we haven't gotten a zero yet.
+			if (!fZeroRead) {
+				unsigned totalBytes = 0;
+				unsigned bytes;
+				void *dst = mCodec.LockInputBuffer(bytes);
 
-			if (ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE && !fZeroRead) {
-				LONG lBytes=0;
+				bool successfulRead = false;
 
-				do {
-					long to_read = (INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength)/nBlockAlign;
+				if (bytes > 0) {
+					do {
+						long to_read = bytes/nBlockAlign;
 
-					if (to_read > end_samp - cur_samp)
-						to_read = (long)(end_samp - cur_samp);
+						if (to_read > end_samp - cur_samp)
+							to_read = (long)(end_samp - cur_samp);
 
-					err = aSrc->read(cur_samp, to_read, (char *)inputBuffer + ashBuffer.cbSrcLength, INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength, &ltActualBytes, &ltActualSamples);
+						err = aSrc->read(cur_samp, to_read, dst, bytes, &ltActualBytes, &ltActualSamples);
 
-					if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
-						if (err == AVIERR_FILEREAD)
-							throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+to_read-1);
-						else
-							throw MyAVIError("AudioStreamSource", err);
-					}
+						if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
+							if (err == AVIERR_FILEREAD)
+								throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+to_read-1);
+							else
+								throw MyAVIError("AudioStreamSource", err);
+						}
 
-					cur_samp += ltActualSamples;
+						if (!ltActualBytes)
+							break;
 
-//					_RPT1(0,"Read to %ld\n", cur_samp);
+						totalBytes += ltActualBytes;
+						bytes -= ltActualBytes;
+						cur_samp += ltActualSamples;
+						dst = (char *)dst + ltActualBytes;
 
-					ashBuffer.cbSrcLength += ltActualBytes;
+						successfulRead = true;
 
-					lBytes += ltActualBytes;
-
-				} while(err != AVIERR_BUFFERTOOSMALL && ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE && ltActualBytes && cur_samp < end_samp);
-
-				if (!lBytes) fZeroRead = true;
-			}
-
-			// ask ACM to convert for us
-
-			ashBuffer.cbSrcLengthUsed = 0;
-			ashBuffer.cbDstLengthUsed = 0;
-
-	VDCHECKPOINT;
-			vdprotected1("decompressing audio using \"%s\"", const char *, mDriverName) {
-				if (ashBuffer.cbSrcLength)
-					if (res = acmStreamConvert(hACStream, &ashBuffer, (fStart ? ACM_STREAMCONVERTF_START : 0) | ACM_STREAMCONVERTF_BLOCKALIGN))
-						throw MyError("ACM reported error on audio decompress (%lx)", res);
-			}
-	VDCHECKPOINT;
-
-			fStart = false;
-
-			_RPT2(0,"Converted %ld bytes to %ld\n", ashBuffer.cbSrcLengthUsed, ashBuffer.cbDstLengthUsed);
-
-			if (!ashBuffer.cbSrcLengthUsed && fZeroRead)
-				break;
-
-			// Check for a jam condition.
-
-			if (!ashBuffer.cbSrcLengthUsed && !ashBuffer.cbDstLengthUsed) {
-				// The codec didn't do anything.  Uh oh.
-
-				if (lBytesLeft > 0) {
-					const WAVEFORMATEX& wfsrc = *aSrc->getWaveFormat();
-					const WAVEFORMATEX& wfdst = *GetFormat();
-
-					throw MyError("The operation cannot continue as the source audio codec has jammed and is not decompressing data.\n"
-									"Codec state for driver \"%s\":\n"
-									"    source buffer size: %d bytes\n"
-									"    destination buffer size: %d bytes\n"
-									"    source format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
-									"    destination format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
-									, mDriverName
-									, ashBuffer.cbSrcLength
-									, ashBuffer.cbDstLength
-									, wfsrc.wFormatTag, wfsrc.nSamplesPerSec, wfsrc.nChannels, wfsrc.wBitsPerSample, wfsrc.nAvgBytesPerSec
-									, wfdst.wFormatTag, wfdst.nSamplesPerSec, wfdst.nChannels, wfdst.wBitsPerSample, wfdst.nAvgBytesPerSec);
+					} while(bytes > 0 && err != AVIERR_BUFFERTOOSMALL && cur_samp < end_samp);
 				}
+
+				mCodec.UnlockInputBuffer(totalBytes);
+
+				if (!successfulRead)
+					fZeroRead = true;
 			}
 
-			// if ACM didn't use all the source data, copy the remainder down
-
-			if (ashBuffer.cbSrcLengthUsed < ashBuffer.cbSrcLength) {
-				long left = ashBuffer.cbSrcLength - ashBuffer.cbSrcLengthUsed;
-
-				memmove(inputBuffer, (char *)inputBuffer + ashBuffer.cbSrcLengthUsed, left);
-
-				ashBuffer.cbSrcLength = left;
-			} else
-				ashBuffer.cbSrcLength = 0;
-
-			outputBufferPtr = (char *)outputBuffer;
+			if (!mCodec.Convert(fZeroRead, true))
+				break;
 		};
 
 		*lplBytes = (lTotalBytes - lBytesLeft) + lAddedBytes;
@@ -712,7 +582,7 @@ bool AudioStreamSource::Skip(sint64 samples) {
 	// nAvgBytesPerSec / nBlockAlign = blocks per second.
 	// nSamplesPerSec * nBlockAlign / nAvgBytesPerSec = samples per block.
 
-	if (hACStream) {
+	if (mCodec.IsInitialized()) {
 		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
 
 		if (samples < MulDiv(4*pwfex->nBlockAlign, pwfex->nSamplesPerSec, pwfex->nAvgBytesPerSec)) {
@@ -721,21 +591,15 @@ bool AudioStreamSource::Skip(sint64 samples) {
 		}
 
 		// Flush input and output buffers.
-
-		ashBuffer.cbSrcLength = 0;
-		ashBuffer.cbDstLengthUsed = 0;
+		mCodec.Restart();
 
 		// Trigger a reseek.
-
 		long new_pos = ((samples_read + samples) * (__int64)pwfex->nAvgBytesPerSec) / ((__int64)pwfex->nBlockAlign*pwfex->nSamplesPerSec);
 
 		if (new_pos > cur_samp)
 			cur_samp = new_pos;
 
-		fStart = true;
-
 		// Skip fractional samples.
-
 		long samp_start = (new_pos * (__int64)pwfex->nSamplesPerSec*pwfex->nBlockAlign) / pwfex->nAvgBytesPerSec;
 
 		mPreskip = ((samples_read + samples) - samp_start)*GetFormat()->nBlockAlign;
@@ -753,7 +617,7 @@ bool AudioStreamSource::Skip(sint64 samples) {
 }
 
 bool AudioStreamSource::_isEnd() {
-	return (cur_samp >= end_samp || fZeroRead) && (!hACStream || !ashBuffer.cbDstLengthUsed);
+	return (cur_samp >= end_samp || fZeroRead) && (!mCodec.IsInitialized() || !mCodec.GetOutputLevel());
 }
 
 void AudioStreamSource::Seek(VDPosition pos) {
@@ -766,13 +630,11 @@ void AudioStreamSource::Seek(VDPosition pos) {
 	fZeroRead = false;
 	mPreskip = 0;
 
-	if (hACStream) {
+	if (mCodec.IsInitialized()) {
 		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
 
 		// flush decompression buffers
-		ashBuffer.cbDstLengthUsed = 0;
-		ashBuffer.cbSrcLength = 0;
-		fStart = true;
+		mCodec.Restart();
 
 		// recompute new position
 		cur_samp = (long)(pos * (sint64)pwfex->nAvgBytesPerSec / ((sint64)pwfex->nBlockAlign*pwfex->nSamplesPerSec));
@@ -1467,151 +1329,23 @@ bool AudioStreamResampler::_isEnd() {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-
-struct FrustratedACMOpenData {
-	HACMSTREAM *pp;
-	HACMDRIVER hdrv;
-	WAVEFORMATEX *iFormat;
-	WAVEFORMATEX *oFormat;
-	bool success;
-};
-
-
-BOOL CALLBACK ACMStreamOpenCallback(HACMDRIVERID hadid, DWORD_PTR dwInstance, DWORD fdwSupport) {
-	FrustratedACMOpenData *pfad = (FrustratedACMOpenData *)dwInstance;
-
-	// Ignore drivers that don't do format conversion.
-
-	if (fdwSupport & ACMDRIVERDETAILS_SUPPORTF_CODEC) {
-		MMRESULT res;
-
-		// Attempt to open driver.
-
-		res = acmDriverOpen(&pfad->hdrv, hadid, 0);
-
-		if (!res) {
-
-			// Attempt our stream open!
-
-			res = acmStreamOpen(pfad->pp, pfad->hdrv, pfad->iFormat, pfad->oFormat, NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
-			if (!res)
-				pfad->success = true;
-			else {
-				res = acmStreamOpen(pfad->pp, pfad->hdrv, pfad->iFormat, pfad->oFormat, NULL, 0, 0, 0);
-				if (!res)
-					pfad->success = true;
-				else
-					acmDriverClose(pfad->hdrv, 0);
-			}
-		}
-	}
-
-	return !pfad->success;
-}
-
-
 AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len) : AudioStream() {
 	WAVEFORMATEX *iFormat = src->GetFormat();
-	WAVEFORMATEX *oFormat;
-	DWORD dwOutputBufferSize;
-	MMRESULT err;
+	WAVEFORMATEX *oFormat = AllocFormat(dst_format_len);
 
-	hADriver = NULL;
-	hACStream = NULL;
-	pwfexTempOutput = NULL;
-	inputBuffer = outputBuffer = NULL;
-
-	// Stupid Microsoft Audio Codec.
-
-	oFormat = AllocFormat(dst_format_len);
 	memcpy(oFormat, dst_format, dst_format_len);
 
 	SetSource(src);
 
-	memset(&ashBuffer, 0, sizeof ashBuffer);
-
-	do {
-		// Try opening with ACM_STREAMOPENF_NONREALTIME.
-
-		if (!(err = acmStreamOpen(&hACStream, NULL, iFormat, oFormat, NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME)))
-			break;
-
-		// Still didn't work, try every f*cking driver.
-
-		struct FrustratedACMOpenData fad;
-
-		fad.pp		= &hACStream;
-		fad.hdrv	= NULL;
-		fad.iFormat = iFormat;
-		fad.oFormat = oFormat;
-		fad.success = false;
-
-		if (!acmDriverEnum(ACMStreamOpenCallback, (DWORD_PTR)&fad, 0) && fad.success) {
-			hADriver = fad.hdrv;
-			break;
-		}
-
-		// Damn!
-
-		if (err == ACMERR_NOTPOSSIBLE)
-			throw MyError("Error initializing audio stream compression:\nThe requested conversion is not possible.");
-		else
-			throw MyError("Error initializing audio stream compression.");
-
-	} while(false);
-
-	ACMDRIVERDETAILS add;
-
-	memset(&add, 0, sizeof add);
-	add.cbStruct = sizeof add;
-	mDriverName[0] = 0;
-	HACMDRIVERID hadid;
-	if (!acmDriverID((HACMOBJ)hACStream, &hadid, 0)) {
-		if (!acmDriverDetails(hadid, &add, 0)) {
-			strncpyz(mDriverName, add.szLongName, sizeof mDriverName);
-		}
-	}
-
-	if (acmStreamSize(hACStream, INPUT_BUFFER_SIZE, &dwOutputBufferSize, ACM_STREAMSIZEF_SOURCE))
-		throw MyError("Error querying audio compression.");
-
-	if (!(inputBuffer = allocmem(INPUT_BUFFER_SIZE))
-		|| !(outputBuffer = allocmem(dwOutputBufferSize)))
-
-		throw MyMemoryError();
-
-	ashBuffer.cbStruct		= sizeof(ACMSTREAMHEADER);
-	ashBuffer.pbSrc			= (LPBYTE)inputBuffer;
-	ashBuffer.cbSrcLength	= INPUT_BUFFER_SIZE;
-	ashBuffer.pbDst			= (LPBYTE)outputBuffer;
-	ashBuffer.cbDstLength	= dwOutputBufferSize;
-
-	if (acmStreamPrepareHeader(hACStream, &ashBuffer, 0))
-		throw MyError("Error preparing audio compression buffers.");
-
-	ashBuffer.cbSrcLength = 0;
+	mCodec.Init(iFormat, dst_format);
 
 	bytesPerInputSample = iFormat->nBlockAlign;
-	bytesPerOutputSample = oFormat->nBlockAlign;
+	bytesPerOutputSample = dst_format->nBlockAlign;
 
 	fStreamEnded = FALSE;
-
-	mReadOffset = 0;
 }
 
 AudioCompressor::~AudioCompressor() {
-	if (hACStream) {
-		if (ashBuffer.fdwStatus & ACMSTREAMHEADER_STATUSF_PREPARED)
-			acmStreamUnprepareHeader(hACStream, &ashBuffer, 0);
-		acmStreamClose(hACStream, 0);
-	}
-	if (hADriver)
-		acmDriverClose(hADriver, 0);
-
-	if (inputBuffer)	freemem(inputBuffer);
-	if (outputBuffer)	freemem(outputBuffer);
-
-	delete[] pwfexTempOutput;
 }
 
 void AudioCompressor::CompensateForMP3() {
@@ -1629,152 +1363,100 @@ void AudioCompressor::CompensateForMP3() {
 	// called nCodecDelay which is set to this value...
 
 	if (GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
-		long lSamplesToRead = ((MPEGLAYER3WAVEFORMAT *)GetFormat())->nCodecDelay;
+		long samples = ((MPEGLAYER3WAVEFORMAT *)GetFormat())->nCodecDelay;
 
 		// Note: LameACM does not have a codec delay!
 
-		if (lSamplesToRead) {
-			long ltActualBytes, ltActualSamples;
-			int nBlockAlign = source->GetFormat()->nBlockAlign;
+		if (samples && !source->Skip(samples)) {
+			int maxRead = bytesPerInputSample > 16384 ? 1 : 16384 / bytesPerInputSample;
 
+			vdblock<char> tempBuf(bytesPerInputSample * maxRead);
+			void *dst = tempBuf.data();
+
+			long actualBytes, actualSamples;
 			do {
-				long tc;
+				long tc = samples;
 
-				tc = lSamplesToRead;
-				if (tc > INPUT_BUFFER_SIZE / nBlockAlign)
-					tc = INPUT_BUFFER_SIZE / nBlockAlign;
+				if (tc > maxRead)
+					tc = maxRead;
+					
+				actualSamples = source->Read(dst, tc, &actualBytes);
 
-				ltActualSamples = source->Read((char *)inputBuffer, tc,
-							&ltActualBytes);
+				samples -= actualSamples;
+			} while(samples>0 && actualBytes);
 
-				lSamplesToRead -= ltActualSamples;
-			} while(lSamplesToRead>0 && ltActualBytes);
-
-			if (!ltActualBytes || source->isEnd())
+			if (!actualBytes || source->isEnd())
 				fStreamEnded = TRUE;
 		}
 	}
 }
 
 long AudioCompressor::_Read(void *buffer, long samples, long *lplBytes) {
-	long bytesToRead = samples * bytesPerOutputSample;
-	long actualBytes = 0;
+	long bytes = 0;
+	long space = samples * bytesPerOutputSample;
 
-	while(bytesToRead > 0) {
-		long tc = std::min<long>(bytesToRead, ashBuffer.cbDstLengthUsed - mReadOffset);
+	while(space > 0) {
+		unsigned actualBytes = mCodec.CopyOutput(buffer, space);
+		VDASSERT(!(actualBytes % bytesPerOutputSample));	// should always be true, since we trim runts in Process()
 
-		if (tc > 0) {
-			memcpy(buffer, (char *)outputBuffer + mReadOffset, tc);
-			buffer = (char *)buffer + tc;
-			bytesToRead -= tc;
-			mReadOffset += tc;
-			actualBytes += tc;
+		if (!actualBytes) {
+			if (!Process())
+				break;
+
 			continue;
 		}
 
-		if (!Process())
-			break;
+		buffer = (char *)buffer + actualBytes;
+		space -= actualBytes;
+		bytes += actualBytes;
 	}
 
-	VDASSERT(!(actualBytes % bytesPerOutputSample));	// should always be true, since we trim runts in Process()
-
 	if (lplBytes)
-		*lplBytes = actualBytes;
+		*lplBytes = bytes;
 
-	return actualBytes / bytesPerOutputSample;
+	return bytes / bytesPerOutputSample;
 }
 
 bool AudioCompressor::Process() {
-	VDASSERT(mReadOffset >= ashBuffer.cbDstLengthUsed);
+	if (mCodec.GetOutputLevel())
+		return true;
 
-	ashBuffer.cbDstLengthUsed = 0;
-	mReadOffset = 0;
+	// fill the input buffer up!
+	bool audioRead = false;
 
-	while(!fStreamEnded && !ashBuffer.cbDstLengthUsed) {
-		// fill the input buffer up!
-		if (ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE) {
-			LONG lBytes=0;
-			LONG ltActualSamples;
-			LONG ltActualBytes;
-			long lSamplesToRead;
+	if (!fStreamEnded) {
+		unsigned inputSpace;
+		char *dst0 = (char *)mCodec.LockInputBuffer(inputSpace);
+		if (inputSpace >= bytesPerInputSample) {
+			char *dst = dst0;
 
 			do {
-				lSamplesToRead = (INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength)/bytesPerInputSample;
+				const long samples = inputSpace / bytesPerInputSample;
+				long actualBytes;
 
-				ltActualSamples = source->Read((char *)inputBuffer + ashBuffer.cbSrcLength, lSamplesToRead,
-							&ltActualBytes);
+				long actualSamples = source->Read(dst, samples, &actualBytes);
 
-				ashBuffer.cbSrcLength += ltActualBytes;
+				if (!actualSamples || source->isEnd()) {
+					fStreamEnded = TRUE;
+					break;
+				}
 
-				lBytes += ltActualBytes;
-			} while(ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE && ltActualBytes);
+				inputSpace -= actualBytes;
+				dst += actualBytes;
+			} while(inputSpace >= bytesPerInputSample);
 
-			if (!ltActualBytes || source->isEnd())
-				fStreamEnded = TRUE;
-		}
-
-		if (ashBuffer.cbSrcLength <= 0)
-			return false;
-
-		// ask ACM to convert for us
-		ashBuffer.cbSrcLengthUsed = 0;
-		ashBuffer.cbDstLengthUsed = 0;
-
-		vdprotected1("compressing audio using \"%.64s\"", const char *, mDriverName) {
-			if (acmStreamConvert(hACStream, &ashBuffer, fStreamEnded ? ACM_STREAMCONVERTF_END : ACM_STREAMCONVERTF_BLOCKALIGN))
-				throw MyError("Audio Compression Manager (ACM) failure on compress");
-		}
-
-		// Check for a jam condition to try to trap that damned 9995 frame
-		// hang problem.
-
-		if (!ashBuffer.cbSrcLengthUsed && !ashBuffer.cbDstLengthUsed) {
-			// The codec didn't do anything.  Uh oh.
-
-			if (!fStreamEnded && ashBuffer.cbSrcLength >= INPUT_BUFFER_SIZE) {
-				const WAVEFORMATEX& wfsrc = *source->GetFormat();
-				const WAVEFORMATEX& wfdst = *GetFormat();
-
-				throw MyError("The operation cannot continue as the target audio codec has jammed and is not compressing data.\n"
-								"Codec state for driver \"%.64s\":\n"
-								"    source buffer size: %d bytes\n"
-								"    destination buffer size: %d bytes\n"
-								"    source format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
-								"    destination format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
-								, mDriverName
-								, ashBuffer.cbSrcLength
-								, ashBuffer.cbDstLength
-								, wfsrc.wFormatTag, wfsrc.nSamplesPerSec, wfsrc.nChannels, wfsrc.wBitsPerSample, wfsrc.nAvgBytesPerSec
-								, wfdst.wFormatTag, wfdst.nSamplesPerSec, wfdst.nChannels, wfdst.wBitsPerSample, wfdst.nAvgBytesPerSec);
+			if (dst > dst0) {
+				mCodec.UnlockInputBuffer(dst - dst0);
+				audioRead = true;
 			}
 		}
-
-		// if ACM didn't use all the source data, copy the remainder down
-
-		if (ashBuffer.cbSrcLengthUsed < ashBuffer.cbSrcLength) {
-			long left = ashBuffer.cbSrcLength - ashBuffer.cbSrcLengthUsed;
-
-			memmove(inputBuffer, (char *)inputBuffer + ashBuffer.cbSrcLengthUsed, left);
-
-			ashBuffer.cbSrcLength = left;
-		} else
-			ashBuffer.cbSrcLength = 0;
-
-		// NOTE: Microsoft ADPCM appears to write a partial block when the
-		//       last part of the input stream is insufficient to end with
-		//		 a full block.  We can't write partial blocks to the AVI
-		//		 file, as AVIFile will ignore it.  So we cut it off.
-
-		VDASSERT(fStreamEnded || !(ashBuffer.cbDstLengthUsed % format->nBlockAlign));
-
-		ashBuffer.cbDstLengthUsed -= ashBuffer.cbDstLengthUsed % format->nBlockAlign;
 	}
 
-	return mReadOffset < ashBuffer.cbDstLengthUsed;
+	return mCodec.Convert(fStreamEnded, !audioRead);
 }
 
 bool AudioCompressor::isEnd() {
-	return fStreamEnded && mReadOffset >= ashBuffer.cbDstLengthUsed;
+	return fStreamEnded && !mCodec.GetOutputLevel();
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -73,6 +73,7 @@ protected:
 	void SetSourcePalette(const uint32 *palette, int count);
 	bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
 	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
+	void SetSourceSubrect(const vdrect32 *r);
 	void Update(int);
 	void PostUpdate(int);
 	void Reset();
@@ -119,6 +120,9 @@ protected:
 
 	FilterMode	mFilterMode;
 	bool	mbLockAcceleration;
+
+	bool		mbUseSubrect;
+	vdrect32	mSourceSubrect;
 
 	VDPixmapBuffer		mCachedImage;
 
@@ -188,6 +192,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd)
 	, mInhibitRefresh(0)
 	, mFilterMode(kFilterAnySuitable)
 	, mbLockAcceleration(false)
+	, mbUseSubrect(false)
 {
 	mSource.pixmap.data = 0;
 
@@ -261,6 +266,19 @@ bool VDVideoDisplayWindow::SetSourcePersistent(bool bAutoUpdate, const VDPixmap&
 	params.bpr = (((src.w-1) >> info.qwbits)+1) * info.qsize;
 
 	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAutoUpdate, (LPARAM)&params);
+}
+
+void VDVideoDisplayWindow::SetSourceSubrect(const vdrect32 *r) {
+	if (r) {
+		mbUseSubrect = true;
+		mSourceSubrect = *r;
+	} else
+		mbUseSubrect = false;
+
+	if (mpMiniDriver) {
+		if (!mpMiniDriver->SetSubrect(r))
+			SyncReset();
+	}
 }
 
 void VDVideoDisplayWindow::Update(int fieldmode) {
@@ -442,18 +460,21 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 	do {
 		if ((g_prefs.fDisplay & Preferences::kDisplayUseDXWithTS) || !VDIsTerminalServicesClient()) {
 			if (mbLockAcceleration || !mSource.bAllowConversion || bIsForeground) {
-				if (g_prefs.fDisplay & Preferences::kDisplayEnableOpenGL) {
-					mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
-					if (mpMiniDriver->Init(mhwnd, mSource))
-						break;
-					SyncReset();
-				}
+				// The 3D drivers don't currently support subrects.
+				if (!mbUseSubrect) {
+					if (g_prefs.fDisplay & Preferences::kDisplayEnableOpenGL) {
+						mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
+						if (mpMiniDriver->Init(mhwnd, mSource))
+							break;
+						SyncReset();
+					}
 
-				if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
-					mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
-					if (mpMiniDriver->Init(mhwnd, mSource))
-						break;
-					SyncReset();
+					if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D) {
+						mpMiniDriver = VDCreateVideoDisplayMinidriverDX9();
+						if (mpMiniDriver->Init(mhwnd, mSource))
+							break;
+						SyncReset();
+					}
 				}
 
 				if (!(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
@@ -477,7 +498,9 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 	} while(false);
 
 	if (mpMiniDriver) {
+		mpMiniDriver->SetLogicalPalette(sLogicalPalette);
 		mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
+		mpMiniDriver->SetSubrect(mbUseSubrect ? &mSourceSubrect : NULL);
 
 		if (mReinitDisplayTimer)
 			KillTimer(mhwnd, mReinitDisplayTimer);
@@ -658,7 +681,7 @@ bool VDVideoDisplayWindow::StaticCheckPaletted() {
 	bool bPaletted = false;
 
 	if (HDC hdc = GetDC(0)) {
-		if (GetDeviceCaps(hdc, RASTERCAPS) & RC_PALETTE)
+		if (GetDeviceCaps(hdc, BITSPIXEL) <= 8)		// RC_PALETTE doesn't seem to be set if you switch to 8-bit in Win98 without rebooting.
 			bPaletted = true;
 		ReleaseDC(0, hdc);
 	}

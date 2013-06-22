@@ -20,6 +20,10 @@
 
 #include <windows.h>
 
+#include <vd2/system/vectors.h>
+
+struct VDPixmap;
+
 #define CLIPPINGCONTROLCLASS (szClippingControlName)
 
 #ifndef f_CLIPPINGCONTROL_CPP
@@ -36,7 +40,15 @@ extern const char szClippingControlName[];
 #define CCM_SETBITMAPSIZE		(WM_USER+0x120)
 #define CCM_SETCLIPBOUNDS		(WM_USER+0x121)
 #define CCM_GETCLIPBOUNDS		(WM_USER+0x122)
-#define CCM_BLITFRAME			(WM_USER+0x123)
+#define CCM_BLITFRAME2			(WM_USER+0x124)
+
+class VDINTERFACE IVDClippingControl {
+public:
+	virtual void SetBitmapSize(int w, int h) = 0;
+	virtual void SetClipBounds(const vdrect32& r) = 0;
+	virtual void GetClipBounds(vdrect32& r) = 0;
+	virtual void BlitFrame(const VDPixmap *px) = 0;
+};
 
 typedef struct ClippingControlBounds {
 	LONG x1,y1,x2,y2;
@@ -46,6 +58,7 @@ ATOM RegisterClippingControl();
 
 class IVDPositionControl;
 
+IVDClippingControl *VDGetIClippingControl(VDGUIHandle h);
 IVDPositionControl *VDGetIPositionControlFromClippingControl(VDGUIHandle h);
 
 #endif

@@ -22,6 +22,8 @@
 #include <vfw.h>
 
 #include <vector>
+#include <list>
+#include <utility>
 #include <vd2/system/list.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/VDString.h>
@@ -32,6 +34,8 @@ class AVIStripeSystem;
 class IAVIReadHandler;
 class IAVIReadStream;
 
+template<class T> class VDBasicString;
+typedef VDBasicString<char> VDStringA;
 
 class InputFileOptions {
 public:
@@ -65,6 +69,9 @@ public:
 	virtual InputFileOptions *promptForOptions(HWND);
 	virtual InputFileOptions *createOptions(const char *buf);
 	virtual void InfoDialog(HWND hwndParent);
+
+	typedef std::list<std::pair<uint32, VDStringA> > tFileTextInfo;
+	virtual void GetTextInfo(tFileTextInfo& info);
 
 	virtual bool isOptimizedForRealtime();
 	virtual bool isStreaming();

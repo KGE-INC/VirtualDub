@@ -58,7 +58,7 @@ public:
 
 	void AddChild(IVDUIWindow *pWindow);
 	void RemoveChild(IVDUIWindow *pWindow);
-	IVDUIWindow *GetFirstChild();
+	IVDUIWindow *GetStartingChild();
 	IVDUIWindow *GetPreviousChild(IVDUIWindow *pWindow);
 	IVDUIWindow *GetNextChild(IVDUIWindow *pWindow);
 

@@ -24,18 +24,19 @@ class CapSpillDrive : public ListNode2<CapSpillDrive> {
 public:
 	int threshold;
 	int priority;
-	char *path;
+	VDStringW	path;
+	VDStringA	pathA;
 
 	CapSpillDrive();
 	~CapSpillDrive();
 
-	void setPath(char *s);
-	char *makePath(char *buf, const char *fn) const;
+	void setPath(const wchar_t *s);
+	wchar_t *makePath(wchar_t *buf, const wchar_t *fn) const;
 };
 
 
 __int64 CapSpillGetFreeSpace();
-CapSpillDrive *CapSpillFindDrive(const char *path);
+CapSpillDrive *CapSpillFindDrive(const wchar_t *path);
 void CapSpillSaveToRegistry();
 void CapSpillRestoreFromRegistry();
 CapSpillDrive *CapSpillPickDrive(bool fAudio);

@@ -62,9 +62,9 @@ LINK32=link.exe
 IntDir=.\../obj/Release/VirtualDub
 SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
-PreLink_Cmds=..\out\Release\verinc	ml /c /coff /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
+PreLink_Cmds=..\out\Release\Asuka verinc	ml /c /coff /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Release\mapconv ..\out\release\VirtualDub.map ..\out\release\VirtualDub.vdi res\ia32.vdi
+PostBuild_Cmds=..\out\Release\Asuka mapconv ..\out\release\VirtualDub.map ..\out\release\VirtualDub.vdi res\ia32.vdi
 # End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
@@ -97,9 +97,9 @@ LINK32=link.exe
 IntDir=.\../obj/Debug/VirtualDub
 SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
-PreLink_Cmds=..\out\Debug\verinc	ml /c /coff /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
+PreLink_Cmds=..\out\Debug\Asuka verinc	ml /c /coff /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Debug\mapconv ..\out\debug\VirtualDub.map ..\out\debug\VirtualDub.vdi res\ia32.vdi
+PostBuild_Cmds=..\out\Debug\Asuka mapconv ..\out\debug\VirtualDub.map ..\out\debug\VirtualDub.vdi res\ia32.vdi
 # End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
@@ -136,9 +136,9 @@ LINK32=link.exe
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
 SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
-PreLink_Cmds=..\out\Release\verinc amd64	ml64 /c /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
+PreLink_Cmds=..\out\Release\Asuka verinc /amd64	ml64 /c /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Release\mapconv ..\out\ReleaseAMD64\Veedub64.map ..\out\ReleaseAMD64\Veedub64.vdi res\amd64.vdi
+PostBuild_Cmds=..\out\Release\Asuka mapconv ..\out\ReleaseAMD64\Veedub64.map ..\out\ReleaseAMD64\Veedub64.vdi res\amd64.vdi /amd64
 # End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
@@ -173,9 +173,9 @@ LINK32=link.exe
 IntDir=.\..\obj\DebugAMD64\VirtualDub
 SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
-PreLink_Cmds=..\out\Debug\verinc amd64	ml64 /c /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
+PreLink_Cmds=..\out\Debug\Asuka verinc /amd64	ml64 /c /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Debug\mapconv ..\out\DebugAMD64\Veedub64.map ..\out\DebugAMD64\VirtualDub.vdi res\amd64.vdi
+PostBuild_Cmds=..\out\Debug\Asuka mapconv ..\out\DebugAMD64\Veedub64.map ..\out\DebugAMD64\VirtualDub.vdi res\amd64.vdi /amd64
 # End Special Build Tool
 
 !ENDIF 
@@ -200,10 +200,6 @@ SOURCE=.\source\AsyncBlitter.cpp
 # Begin Source File
 
 SOURCE=.\source\Audio.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\audioutil.cpp
 # End Source File
 # Begin Source File
 
@@ -240,6 +236,10 @@ SOURCE=.\source\imagejpegdec.cpp
 # Begin Source File
 
 SOURCE=.\source\SceneDetector.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\test_pal8.cpp
 # End Source File
 # Begin Source File
 
@@ -303,11 +303,11 @@ SOURCE=.\h\Audio.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\h\audioutil.h
+SOURCE=.\h\Avisynth.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\h\Avisynth.h
+SOURCE=.\h\capvumeter.h
 # End Source File
 # Begin Source File
 
@@ -499,48 +499,47 @@ SOURCE=.\res\virtualdub.ami
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build - Compiling program resources....
 IntDir=.\../obj/Release/VirtualDub
 TargetDir=\p4root\dev\out\Release
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	$(TargetDir)\ami $(InputPath) $(IntDir)\virtualdub.vdres
+	"$(TargetDir)\ami" "$(InputPath)" "$(IntDir)\virtualdub.vdres"
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build - Compiling program resources....
 IntDir=.\../obj/Debug/VirtualDub
 TargetDir=\p4root\dev\out\Debug
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	$(TargetDir)\ami $(InputPath) $(IntDir)\virtualdub.vdres
+	"$(TargetDir)\ami" "$(InputPath)" "$(IntDir)\virtualdub.vdres"
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
-# Begin Custom Build
+# Begin Custom Build - Compiling program resources....
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	..\out\Release\ami $(InputPath) $(IntDir)\virtualdub.vdres
+	..\out\Release\ami "$(InputPath)" "$(IntDir)\virtualdub.vdres"
 
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
-# Begin Custom Build
+# Begin Custom Build - Compiling program resources....
 IntDir=.\..\obj\DebugAMD64\VirtualDub
-TargetDir=\p4root\dev\out\DebugAMD64
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	$(TargetDir)\ami $(InputPath) $(IntDir)\virtualdub.vdres
+	..\out\Debug\ami "$(InputPath)" "$(IntDir)\virtualdub.vdres"
 
 # End Custom Build
 
@@ -3902,7 +3901,7 @@ SOURCE=.\source\a64_resize.asm
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
 InputPath=.\source\a64_resize.asm
 InputName=a64_resize
@@ -3915,7 +3914,7 @@ InputName=a64_resize
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP BASE Exclude_From_Build 1
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\DebugAMD64\VirtualDub
 InputPath=.\source\a64_resize.asm
 InputName=a64_resize

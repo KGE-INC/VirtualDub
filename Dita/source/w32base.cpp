@@ -198,8 +198,8 @@ void VDUIBaseWindowW32::Link(uint32 id, nsVDUI::LinkTarget target, const uint8 *
 
 		const int bclen = src[0] + ((uint32)src[1]<<8);
 		src += 2;
-		linkEnt.mByteCode.assign(src, src+len);
-		src += bclen;
+		linkEnt.mByteCode.assign(src, src+bclen+1);
+		src += bclen+1;
 		linkEnt.mTarget = target;
 	}
 

@@ -374,7 +374,7 @@ void VDProject::DisplayFrame(bool bDispInput) {
 					CPUTest();
 
 				if (mDesiredInputFrame < 0)
-					inputVideoAVI->streamBegin(false);
+					inputVideoAVI->streamBegin(false, false);
 
 				bool replace = true;
 
@@ -389,11 +389,11 @@ void VDProject::DisplayFrame(bool bDispInput) {
 				}
 
 				if (replace) {
+					inputVideoAVI->streamSetDesiredFrame(pos);
 					mDesiredInputFrame	= pos;
 					mDesiredOutputFrame = original_pos;
 					mDesiredNextInputFrame = -1;
 					mDesiredNextOutputFrame = -1;
-					inputVideoAVI->streamSetDesiredFrame(pos);
 				} else {
 					mDesiredNextInputFrame	= pos;
 					mDesiredNextOutputFrame = original_pos;
@@ -539,7 +539,7 @@ bool VDProject::UpdateFrame() {
 		mDesiredNextOutputFrame = -1;
 	}
 
-	return true;
+	return mDesiredInputFrame >= 0;
 }
 
 void VDProject::RefilterFrame() {
@@ -581,7 +581,7 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 	try {
 		// attempt to determine input file type
 
-		VDStringW filename(VDGetFullPath(VDStringW(pFilename)));
+		VDStringW filename(VDGetFullPath(pFilename));
 
 		if (!pSelectedDriver) {
 			pSelectedDriver = VDAutoselectInputDriverForFile(filename.c_str());
@@ -632,6 +632,10 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 			if (nFiles > 1)
 				guiSetStatus("Autoloaded %d segments (last was \"%s\")", 255, nFiles, pnode->NextFromTail()->name);
 		}
+
+		// Retrieve info text
+
+		inputAVI->GetTextInfo(mTextInfo);
 
 		// Set current filename
 
@@ -787,6 +791,8 @@ void VDProject::CloseAVI() {
 	inputVideoAVI = NULL;
 	inputAVI = NULL;
 
+	mTextInfo.clear();
+
 	filters.DeinitFilters();
 	filters.DeallocateBuffers();
 }
@@ -800,10 +806,10 @@ void VDProject::Close() {
 void VDProject::StartServer() {
 	VDGUIHandle hwnd = mhwnd;
 
-	Detach();
-	ActivateFrameServerDialog((HWND)hwnd);
+	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)hwnd);
 
-	Attach(hwnd);
+	pFrame->SetNextMode(3);
+	pFrame->Detach();
 }
 
 void VDProject::ShowInputInfo() {
@@ -1218,6 +1224,9 @@ void VDProject::SceneShuttleStep() {
 		DisplayFrame(true);
 	} else
 		DisplayFrame(false);
+
+	while(UpdateFrame())
+		;
 
 	UICurrentPositionUpdated();
 

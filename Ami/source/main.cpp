@@ -740,6 +740,8 @@ void parse_parameters(tDialogScript& script) {
 		case kTokenChild:		parse_parameterB(kUIParam_Child, script); break;
 		case kTokenMultiline:	parse_parameterB(kUIParam_Multiline, script); break;
 		case kTokenReadonly:	parse_parameterB(kUIParam_Readonly, script); break;
+		case kTokenCheckable:	parse_parameterB(kUIParam_Checkable, script); break;
+		case kTokenNoHeader:	parse_parameterB(kUIParam_NoHeader, script); break;
 
 		case kTokenEnable:
 		case kTokenValue:

@@ -85,12 +85,24 @@ VDStringW VDGetWindowTextW32(HWND hwnd) {
 	return VDStringW();
 }
 
+void VDAppendMenuW32(HMENU hmenu, UINT flags, UINT id, const wchar_t *text){
+	if (VDIsWindowsNT()) {
+		AppendMenuW(hmenu, flags, id, text);
+	} else {
+		AppendMenuA(hmenu, flags, id, VDTextWToA(text).c_str());
+	}
+}
+
 void VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
 	CheckMenuItem(hmenu, cmd, checked ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 }
 
 void VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
 	EnableMenuItem(hmenu, cmd, checked ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
+}
+
+LRESULT	VDDualCallWindowProcW32(WNDPROC wp, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	return (IsWindowUnicode(hwnd) ? CallWindowProcW : CallWindowProcA)(wp, hwnd, msg, wParam, lParam);
 }
 
 LRESULT VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

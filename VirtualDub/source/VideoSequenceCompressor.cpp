@@ -20,6 +20,7 @@
 #include <vfw.h>
 
 #include "VideoSequenceCompressor.h"
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include "crash.h"
 #include "misc.h"
@@ -119,6 +120,7 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 		throw MyError("Unable to retrieve video compressor information.");
 
 	const wchar_t *pName = info.szDescription;
+	mCodecName = VDTextWToA(pName);
 	mDriverName = VDswprintf(L"The video codec \"%s\"", 1, &pName);
 
 	// Analyze compressor.
@@ -536,7 +538,7 @@ crunch_complete:
 
 		{
 			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-			vdprotected3("decompressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pOutputBuffer, unsigned, (unsigned)pPrevBuffer) {
+			vdprotected4("decompressing frame %u from %08x to %08x using codec \"%s\"", unsigned, lFrameNum, unsigned, (unsigned)pOutputBuffer, unsigned, (unsigned)pPrevBuffer, const char *, mCodecName.c_str()) {
 				res = ICDecompress(hic, dwFlagsOut & AVIIF_KEYFRAME ? 0 : ICDECOMPRESS_NOTKEYFRAME
 						,(LPBITMAPINFOHEADER)pbiOutput
 						,pOutputBuffer
@@ -589,7 +591,7 @@ void VideoSequenceCompressor::PackFrameInternal(DWORD frameSize, DWORD q, void *
 	DWORD sizeImage = pbiOutput->bmiHeader.biSizeImage;
 
 	VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-	vdprotected3("compressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer) {
+	vdprotected4("compressing frame %u from %08x to %08x using codec \"%s\"", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer, const char *, mCodecName.c_str()) {
 		res = ICCompress(hic, dwFlagsIn,
 				(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
 				(LPBITMAPINFOHEADER)pbiInput, pBits,

@@ -18,6 +18,7 @@
 #include "stdafx.h"
 #include <vector>
 #include <list>
+#include <map>
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/fileasync.h>
@@ -205,6 +206,15 @@ private:
 	bool		mbLimitTo4GB;
 	bool		mbPreemptiveExtendFailed;
 
+	int			mTextInfoListSize;
+	int			mTextInfoCodePage;
+	int			mTextInfoCountryCode;
+	int			mTextInfoLanguage;
+	int			mTextInfoDialect;
+
+	typedef std::map<uint32, VDStringA> tTextInfo;
+	tTextInfo	mTextInfo;
+
 	void		HeaderWrite(const void *data, long len);
 	uint32		HeaderWriteChunk(uint32 ckid, const void *data, long len);
 	uint32		HeaderBeginList(uint32 ckid);
@@ -246,6 +256,8 @@ public:
 		mSuperIndexLimit = nMaxSuperIndexEntries;
 		mSubIndexLimit = nMaxSubIndexEntries;
 	}
+	void setTextInfoEncoding(int codePage, int countryCode, int language, int dialect);
+	void setTextInfo(uint32 ckid, const char *text);
 
 	IVDMediaOutputStream *createAudioStream();
 	IVDMediaOutputStream *createVideoStream();
@@ -311,6 +323,10 @@ IVDMediaOutputAVIFile *VDGetIMediaOutputFile(IVDMediaOutput *pOutput) {
 AVIOutputFile::AVIOutputFile()
 	: mpFirstAudioStream(NULL)
 	, mpFirstVideoStream(NULL)
+	, mTextInfoCodePage(0)
+	, mTextInfoCountryCode(0)
+	, mTextInfoLanguage(0)
+	, mTextInfoDialect(0)
 {
 	mbCaching			= true;
 	mAVIXLevel			= 0;
@@ -427,6 +443,17 @@ void AVIOutputFile::setBuffering(sint32 nBufferSize, sint32 nChunkSize) {
 
 	mBufferSize = nBufferSize;
 	mChunkSize = nChunkSize;
+}
+
+void AVIOutputFile::setTextInfoEncoding(int codePage, int countryCode, int language, int dialect) {
+	mTextInfoCodePage		= codePage;
+	mTextInfoCountryCode	= countryCode;
+	mTextInfoLanguage		= language;
+	mTextInfoDialect		= dialect;
+}
+
+void AVIOutputFile::setTextInfo(uint32 ckid, const char *text) {
+	mTextInfo[ckid] = text;
 }
 
 // I don't like to bitch about other programs (well, okay, so I do), but
@@ -606,6 +633,27 @@ bool AVIOutputFile::init(const wchar_t *szFile) {
 	BlockOpen();
 
 	mEndOfFile = FileSize();
+
+	// Compute how many bytes are necessary for text information structures.
+	uint32 textInfoSize = 0;
+	if (!mTextInfo.empty()) {
+		textInfoSize = 8;		// LIST+size
+
+		mTextInfoListSize = 4;	// 'INFO'
+
+		if (mTextInfoCodePage || mTextInfoCountryCode || mTextInfoLanguage || mTextInfoDialect)
+			mTextInfoListSize += 16;
+
+		tTextInfo::const_iterator it(mTextInfo.begin()), itEnd(mTextInfo.end());
+		for(; it!=itEnd; ++it) {
+			const VDStringA& text = (*it).second;
+			mTextInfoListSize += (text.size() + 9 + 1) & ~1;
+		}
+
+		textInfoSize += mTextInfoListSize;
+	}
+
+	mAVIXLevel += textInfoSize;
 
 	mbInitialized = true;
 
@@ -856,14 +904,16 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 	if (chunkloc - stream.mLastChunkPos > stream.mLargestPosDelta)
 		stream.mLargestPosDelta = chunkloc - stream.mLastChunkPos;
 
-	++stream.mChunkCount;
-
 	// compute how much total space we need to close the file
 
 	mIndexSize = 8;
 
 	for(tStreams::const_iterator it(mStreams.begin()), itEnd(mStreams.end()); it!=itEnd; ++it) {
 		const StreamInfo& s = *it;
+		uint32 chunkCount = stream.mChunkCount;
+
+		if (&s == &stream)
+			++chunkCount;
 
 		if (mbExtendedAVI && s.mLargestPosDelta) {
 			const uint32 idxblocksize = std::min<uint32>(mSubIndexLimit, (uint32)(0xFFFFFFFF / s.mLargestPosDelta) + 1);
@@ -913,6 +963,7 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 	if (!(flags & AVIIF_KEYFRAME))
 		ent.length_and_flags |= 0x80000000L;
 
+	++stream.mChunkCount;			// Important: This must only be done iff the entry is added or a crash will occur during index write.
 	++mIndexEntries;
 
 	uint32 buf[5];
@@ -977,6 +1028,51 @@ void AVIOutputFile::BlockClose() {
 			StreamInfo& stream = *it;
 
 			stream.mChunkCountBlock0 = stream.mChunkCount;
+		}
+
+		if (!mTextInfo.empty()) {
+			struct {
+				uint32 ckid;
+				uint32 size;
+				uint32 listid;
+			} infoList = { 'TSIL', mTextInfoListSize, 'OFNI' };
+
+			FastWrite(&infoList, 12);
+
+			if (mTextInfoCodePage || mTextInfoCountryCode || mTextInfoLanguage || mTextInfoDialect) {
+				struct {
+					uint32 ckid;
+					uint32 size;
+					uint16	wCodePage;
+					uint16	wCountryCode;
+					uint16	wLanguageCode;
+					uint16	wDialect;
+				} csetData = {
+					'TESC',
+					8,
+					(uint16)mTextInfoCodePage,
+					(uint16)mTextInfoCountryCode,
+					(uint16)mTextInfoLanguage,
+					(uint16)mTextInfoDialect
+				};
+
+				FastWrite(&csetData, sizeof csetData);
+			}
+
+			tTextInfo::iterator itT(mTextInfo.begin()), itTEnd(mTextInfo.end());
+
+			for(; itT != itTEnd; ++itT) {
+				const uint32 ckid = (*itT).first;
+				const VDStringA& text = (*itT).second;
+
+				uint32 hdr[2]={ckid, text.size()+1 };
+
+				FastWrite(hdr, 8);
+				FastWrite(text.data(), text.size());
+
+				uint32 zero = 0;
+				FastWrite(&zero, hdr[1] & 1 ? 2 : 1);
+			}
 		}
 	}
 

@@ -457,7 +457,7 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 
 				argv = argv0 + newid;
 
-				VDASSERT(*format++ == L']');
+				VDVERIFY(*format++ == L']');
 			}
 
 			// process flags

@@ -86,6 +86,8 @@ enum {
 	kTokenChild,
 	kTokenMultiline,
 	kTokenReadonly,
+	kTokenCheckable,
+	kTokenNoHeader,
 
 	kTokenEnable,
 	kTokenValue,

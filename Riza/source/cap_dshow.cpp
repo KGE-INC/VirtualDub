@@ -23,6 +23,7 @@
 #include <vd2/system/vdstring.h>
 #include <vd2/system/time.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/error.h>
 #include <windows.h>
 #include <objbase.h>
 #include <strmif.h>
@@ -33,6 +34,7 @@
 #include <ks.h>
 #include <ksmedia.h>
 #include <amvideo.h>
+#include <vfwmsgs.h>
 #include <olectl.h>
 #include <vector>
 
@@ -43,7 +45,7 @@ using namespace nsVDCapture;
 extern HINSTANCE g_hInst;
 
 
-#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDDEBUG("Failed: " msg " [%08lx]\n", hr); return false; } else
+#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDDEBUG("Failed: " msg " [%08lx : %s]\n", hr, GetDXErrorName(hr)); return false; } else
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -170,11 +172,147 @@ namespace {
 	I_HATE(IVideoWindow);
 	I_HATE(IMediaEventEx);
 	I_HATE(IMediaSample);
+	I_HATE(IEnumMediaTypes);
 
 	#undef I_HATE
 }
 
 namespace {
+	#ifdef _DEBUG
+		const char *GetDXErrorName(const HRESULT hr) {
+#define X(err) case err: return #err
+			switch(hr) {
+				X(VFW_E_INVALIDMEDIATYPE);
+				X(VFW_E_INVALIDSUBTYPE);
+				X(VFW_E_NEED_OWNER);
+				X(VFW_E_ENUM_OUT_OF_SYNC);
+				X(VFW_E_ALREADY_CONNECTED);
+				X(VFW_E_FILTER_ACTIVE);
+				X(VFW_E_NO_TYPES);
+				X(VFW_E_NO_ACCEPTABLE_TYPES);
+				X(VFW_E_INVALID_DIRECTION);
+				X(VFW_E_NOT_CONNECTED);
+				X(VFW_E_NO_ALLOCATOR);
+				X(VFW_E_RUNTIME_ERROR);
+				X(VFW_E_BUFFER_NOTSET);
+				X(VFW_E_BUFFER_OVERFLOW);
+				X(VFW_E_BADALIGN);
+				X(VFW_E_ALREADY_COMMITTED);
+				X(VFW_E_BUFFERS_OUTSTANDING);
+				X(VFW_E_NOT_COMMITTED);
+				X(VFW_E_SIZENOTSET);
+				X(VFW_E_NO_CLOCK);
+				X(VFW_E_NO_SINK);
+				X(VFW_E_NO_INTERFACE);
+				X(VFW_E_NOT_FOUND);
+				X(VFW_E_CANNOT_CONNECT);
+				X(VFW_E_CANNOT_RENDER);
+				X(VFW_E_CHANGING_FORMAT);
+				X(VFW_E_NO_COLOR_KEY_SET);
+				X(VFW_E_NOT_OVERLAY_CONNECTION);
+				X(VFW_E_NOT_SAMPLE_CONNECTION);
+				X(VFW_E_PALETTE_SET);
+				X(VFW_E_COLOR_KEY_SET);
+				X(VFW_E_NO_COLOR_KEY_FOUND);
+				X(VFW_E_NO_PALETTE_AVAILABLE);
+				X(VFW_E_NO_DISPLAY_PALETTE);
+				X(VFW_E_TOO_MANY_COLORS);
+				X(VFW_E_STATE_CHANGED);
+				X(VFW_E_NOT_STOPPED);
+				X(VFW_E_NOT_PAUSED);
+				X(VFW_E_NOT_RUNNING);
+				X(VFW_E_WRONG_STATE);
+				X(VFW_E_START_TIME_AFTER_END);
+				X(VFW_E_INVALID_RECT);
+				X(VFW_E_TYPE_NOT_ACCEPTED);
+				X(VFW_E_SAMPLE_REJECTED);
+				X(VFW_E_SAMPLE_REJECTED_EOS);
+				X(VFW_E_DUPLICATE_NAME);
+				X(VFW_S_DUPLICATE_NAME);
+				X(VFW_E_TIMEOUT);
+				X(VFW_E_INVALID_FILE_FORMAT);
+				X(VFW_E_ENUM_OUT_OF_RANGE);
+				X(VFW_E_CIRCULAR_GRAPH);
+				X(VFW_E_NOT_ALLOWED_TO_SAVE);
+				X(VFW_E_TIME_ALREADY_PASSED);
+				X(VFW_E_ALREADY_CANCELLED);
+				X(VFW_E_CORRUPT_GRAPH_FILE);
+				X(VFW_E_ADVISE_ALREADY_SET);
+				X(VFW_S_STATE_INTERMEDIATE);
+				X(VFW_E_NO_MODEX_AVAILABLE);
+				X(VFW_E_NO_ADVISE_SET);
+				X(VFW_E_NO_FULLSCREEN);
+				X(VFW_E_IN_FULLSCREEN_MODE);
+				X(VFW_E_UNKNOWN_FILE_TYPE);
+				X(VFW_E_CANNOT_LOAD_SOURCE_FILTER);
+				X(VFW_S_PARTIAL_RENDER);
+				X(VFW_E_FILE_TOO_SHORT);
+				X(VFW_E_INVALID_FILE_VERSION);
+				X(VFW_S_SOME_DATA_IGNORED);
+				X(VFW_S_CONNECTIONS_DEFERRED);
+				X(VFW_E_INVALID_CLSID);
+				X(VFW_E_INVALID_MEDIA_TYPE);
+				X(VFW_E_SAMPLE_TIME_NOT_SET);
+				X(VFW_S_RESOURCE_NOT_NEEDED);
+				X(VFW_E_MEDIA_TIME_NOT_SET);
+				X(VFW_E_NO_TIME_FORMAT_SET);
+				X(VFW_E_MONO_AUDIO_HW);
+				X(VFW_S_MEDIA_TYPE_IGNORED);
+				X(VFW_E_NO_DECOMPRESSOR);
+				X(VFW_E_NO_AUDIO_HARDWARE);
+				X(VFW_S_VIDEO_NOT_RENDERED);
+				X(VFW_S_AUDIO_NOT_RENDERED);
+				X(VFW_E_RPZA);
+				X(VFW_S_RPZA);
+				X(VFW_E_PROCESSOR_NOT_SUITABLE);
+				X(VFW_E_UNSUPPORTED_AUDIO);
+				X(VFW_E_UNSUPPORTED_VIDEO);
+				X(VFW_E_MPEG_NOT_CONSTRAINED);
+				X(VFW_E_NOT_IN_GRAPH);
+				X(VFW_S_ESTIMATED);
+				X(VFW_E_NO_TIME_FORMAT);
+				X(VFW_E_READ_ONLY);
+				X(VFW_S_RESERVED);
+				X(VFW_E_BUFFER_UNDERFLOW);
+				X(VFW_E_UNSUPPORTED_STREAM);
+				X(VFW_E_NO_TRANSPORT);
+				X(VFW_S_STREAM_OFF);
+				X(VFW_S_CANT_CUE);
+				X(VFW_E_BAD_VIDEOCD);
+				X(VFW_S_NO_STOP_TIME);
+				X(VFW_E_OUT_OF_VIDEO_MEMORY);
+				X(VFW_E_VP_NEGOTIATION_FAILED);
+				X(VFW_E_DDRAW_CAPS_NOT_SUITABLE);
+				X(VFW_E_NO_VP_HARDWARE);
+				X(VFW_E_NO_CAPTURE_HARDWARE);
+				X(VFW_E_DVD_OPERATION_INHIBITED);
+				X(VFW_E_DVD_INVALIDDOMAIN);
+				X(VFW_E_DVD_NO_BUTTON);
+				X(VFW_E_DVD_GRAPHNOTREADY);
+				X(VFW_E_DVD_RENDERFAIL);
+				X(VFW_E_DVD_DECNOTENOUGH);
+				X(VFW_E_DVD_NOT_IN_KARAOKE_MODE);
+				X(VFW_E_FRAME_STEP_UNSUPPORTED);
+				X(VFW_E_PIN_ALREADY_BLOCKED_ON_THIS_THREAD);
+				X(VFW_E_PIN_ALREADY_BLOCKED);
+				X(VFW_E_CERTIFICATION_FAILURE);
+				X(VFW_E_VMR_NOT_IN_MIXER_MODE);
+				X(VFW_E_VMR_NO_AP_SUPPLIED);
+				X(VFW_E_VMR_NO_DEINTERLACE_HW);
+				X(VFW_E_VMR_NO_PROCAMP_HW);
+				X(VFW_E_DVD_VMR9_INCOMPATIBLEDEC);
+				X(VFW_E_BAD_KEY);
+			default:
+				return "";
+			}
+#undef X
+		}
+	#else
+		const char *GetDXErrorName(const HRESULT hr) {
+			return "";
+		}
+	#endif
+
 	HRESULT AddToRot(IUnknown *pUnkGraph, DWORD *pdwRegister) 
 	{
 		IMoniker * pMoniker;
@@ -294,6 +432,30 @@ namespace {
 		CoTaskMemFree(pamt);
 	}
 
+	class VDWaveFormatAsDShowMediaType : public AM_MEDIA_TYPE {
+	public:
+		VDWaveFormatAsDShowMediaType(const WAVEFORMATEX *pwfex, UINT size) {
+			majortype		= MEDIATYPE_Audio;
+			subtype.Data1	= pwfex->wFormatTag;
+			subtype.Data2	= 0;
+			subtype.Data3	= 0x0010;
+			subtype.Data4[0] = 0x80;
+			subtype.Data4[1] = 0x00;
+			subtype.Data4[2] = 0x00;
+			subtype.Data4[3] = 0xAA;
+			subtype.Data4[4] = 0x00;
+			subtype.Data4[5] = 0x38;
+			subtype.Data4[6] = 0x9B;
+			subtype.Data4[7] = 0x71;
+			bFixedSizeSamples	= TRUE;
+			bTemporalCompression	= FALSE;
+			lSampleSize		= pwfex->nBlockAlign;
+			formattype		= FORMAT_WaveFormatEx;
+			pUnk			= NULL;
+			cbFormat		= size;
+			pbFormat		= (BYTE *)pwfex;
+		}
+	};
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -357,10 +519,15 @@ public:
 
 class VDCapDevDSVideoCallback : public VDCapDevDSCallback {
 public:
-	VDCapDevDSVideoCallback(IVDCaptureDSCallback *pCB) : VDCapDevDSCallback(pCB) {}
+	VDCapDevDSVideoCallback(IVDCaptureDSCallback *pCB)
+		: VDCapDevDSCallback(pCB)
+		, mChannel(0)
+	{
+	}
+
+	void SetChannel(int chan) { mChannel = chan; }
 
 	HRESULT __stdcall SampleCB(double SampleTime, IMediaSample *pSample) {
-		__int64 t1, t2;
 		BYTE *pData;
 		HRESULT hr;
 
@@ -370,7 +537,7 @@ public:
 			return hr;
 
 		// retrieve times
-
+		__int64 t1, t2;
 		if (FAILED(hr = pSample->GetTime(&t1, &t2)))
 			return hr;
 
@@ -387,23 +554,36 @@ public:
 		}
 #endif
 
-		mpCallback->CapProcessData(0, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+		mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
 
 		return S_OK;
 	}
+
+protected:
+	int mChannel;
 };
 
 class VDCapDevDSAudioCallback : public VDCapDevDSCallback {
 public:
-	VDCapDevDSAudioCallback(IVDCaptureDSCallback *pCB) : VDCapDevDSCallback(pCB) {}
+	VDCapDevDSAudioCallback(IVDCaptureDSCallback *pCB)
+		: VDCapDevDSCallback(pCB)
+		, mChannel(1)
+	{
+	}
+
+	void SetChannel(int chan) { mChannel = chan; }
 
 	HRESULT __stdcall SampleCB(double SampleTime, IMediaSample *pSample) {
 		BYTE *pData;
 		HRESULT hr;
 
 		// retrieve sample pointer
-
 		if (FAILED(hr = pSample->GetPointer(&pData)))
+			return hr;
+
+		// retrieve times
+		__int64 t1, t2;
+		if (FAILED(hr = pSample->GetTime(&t1, &t2)))
 			return hr;
 
 		// create buffer -- must be in heap!!
@@ -417,8 +597,12 @@ public:
 			mpCallback->PostAudio(pBuffer);
 		}
 #endif
+		mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
 		return S_OK;
 	}
+
+protected:
+	int mChannel;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -438,6 +622,8 @@ public:
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
 
+	bool	IsHardwareDisplayAvailable();
+
 	void	SetDisplayMode(nsVDCapture::DisplayMode m);
 	nsVDCapture::DisplayMode		GetDisplayMode();
 
@@ -456,6 +642,9 @@ public:
 	bool	IsAudioCapturePossible();
 	bool	IsAudioCaptureEnabled();
 	void	SetAudioCaptureEnabled(bool b);
+	void	SetAudioAnalysisEnabled(bool b);
+
+	void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats);
 
 	bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat);
 	bool	SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size);
@@ -535,12 +724,17 @@ protected:
 	HWND mhwndEventSink;				// Our dummy window used as DS event sink
 
 	bool mbAudioCaptureEnabled;
+	bool mbAudioAnalysisEnabled;
 	bool mbGraphActive;					// true if the graph is currently running
 	bool mbGraphHasPreview;				// true if the graph has separate capture and preview pins
 
 	VDFraction			mfrFrameRate;
+	vdstructex<WAVEFORMATEX>	mAudioFormat;
 
 	VDTime	mCaptureStart;
+
+	HANDLE	mCaptureThread;
+	VDAtomicPtr<MyError>	mpCaptureError;
 
 	static ATOM sMsgSinkClass;
 };
@@ -549,8 +743,10 @@ ATOM VDCaptureDriverDS::sMsgSinkClass;
 
 VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	: mVideoDeviceMoniker(pVideoDevice)
+	, mpVideoQualProp(NULL)
 	, mdwRegisterGraph(0)
 	, mbAudioCaptureEnabled(true)
+	, mbAudioAnalysisEnabled(false)
 	, mbGraphActive(false)
 	, mVideoCallback(this)
 	, mAudioCallback(this)
@@ -560,6 +756,8 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	, mhwndEventSink(NULL)
 	, mDisplayMode(kDisplayHardware)
 	, mfrFrameRate(0,0)
+	, mCaptureThread(NULL)
+	, mpCaptureError(NULL)
 {
 }
 
@@ -601,6 +799,8 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 	mpGraphBuilder->SetFiltergraph(mpGraph);
 
 	AddToRot(mpGraph, &mdwRegisterGraph);
+
+	VDDEBUG("ROT entry: %x   PID: %x\n", mdwRegisterGraph, GetCurrentProcessId());
 
 	// Try to find the event sink interface.
 	if (SUCCEEDED(mpGraph->QueryInterface(IID_IMediaEventEx,(void **)~mpMediaEventEx))) {
@@ -661,6 +861,20 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 	}
 	mpGraphBuilder->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTVTuner, (void **)~mpTVTuner);
 
+
+
+	// Initialize audio format.
+	if (mpRealAudioPin) {
+		std::list<vdstructex<WAVEFORMATEX> > aformats;
+
+		GetAvailableAudioFormats(aformats);
+
+		mAudioFormat.clear();
+		if (!aformats.empty())
+			mAudioFormat = aformats.front();
+	}
+
+
 	// Find the control interface to the graph and start it.
 
 	DS_VERIFY(mpGraph->QueryInterface(IID_IMediaControl, (void **)~mpGraphControl), "find graph control interface");
@@ -697,6 +911,7 @@ void VDCaptureDriverDS::Shutdown() {
 	mpCapFilt			= NULL;
 	mpRealCapturePin	= NULL;
 	mpRealPreviewPin	= NULL;
+	mpRealAudioPin		= NULL;
 	mpCrossbar			= NULL;
 	mpCrossbar2			= NULL;
 	mpTVTuner			= NULL;
@@ -712,14 +927,33 @@ void VDCaptureDriverDS::Shutdown() {
 	mpGraphBuilder		= NULL;
 	mpGraphControl		= NULL;
 
-	if (mhwndEventSink)
+	if (mhwndEventSink) {
 		DestroyWindow(mhwndEventSink);
+		mhwndEventSink = NULL;
+	}
 
-	if (mdwRegisterGraph)
+	if (mdwRegisterGraph) {
 		RemoveFromRot(mdwRegisterGraph);
+		mdwRegisterGraph = 0;
+	}
+
+	if (mCaptureThread) {
+		CloseHandle(mCaptureThread);
+		mCaptureThread = NULL;
+	}
+
+	if (MyError *e = mpCaptureError.xchg(NULL))
+		delete e;
+}
+
+bool VDCaptureDriverDS::IsHardwareDisplayAvailable() {
+	return true;
 }
 
 void VDCaptureDriverDS::SetDisplayMode(nsVDCapture::DisplayMode mode) {
+	if (mDisplayMode == mode)
+		return;
+
 	mDisplayMode = mode;
 
 	if (mode == kDisplayNone) {
@@ -727,10 +961,8 @@ void VDCaptureDriverDS::SetDisplayMode(nsVDCapture::DisplayMode mode) {
 		return;
 	}
 
-	if (BuildPreviewGraph() && StartGraph()) {
-		if (mode == kDisplaySoftware)
-			mpVideoGrabber->SetCallback(&mVideoCallback, 0);
-	}
+	if (BuildPreviewGraph())
+		StartGraph();
 }
 
 nsVDCapture::DisplayMode VDCaptureDriverDS::GetDisplayMode() {
@@ -863,14 +1095,85 @@ bool VDCaptureDriverDS::IsAudioCaptureEnabled() {
 }
 
 void VDCaptureDriverDS::SetAudioCaptureEnabled(bool b) {
+	if (mbAudioCaptureEnabled == b)
+		return;
+
 	mbAudioCaptureEnabled = b;
+
+	if (mbAudioAnalysisEnabled) {
+		TearDownGraph();
+		if (BuildPreviewGraph())
+			StartGraph();
+	}
+}
+
+void VDCaptureDriverDS::SetAudioAnalysisEnabled(bool b) {
+	if (mbAudioAnalysisEnabled == b)
+		return;
+
+	mbAudioAnalysisEnabled = b;
+
+	if (mbAudioCaptureEnabled) {
+		TearDownGraph();
+		if (BuildPreviewGraph())
+			StartGraph();
+	}
+}
+
+void VDCaptureDriverDS::GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats) {
+	aformats.clear();
+
+	if (!mpRealAudioPin)
+		return;
+
+	IEnumMediaTypesPtr pEnum;
+
+	if (FAILED(mpRealAudioPin->EnumMediaTypes(~pEnum)))
+		return;
+
+	AM_MEDIA_TYPE *pMediaType;
+	while(S_OK == pEnum->Next(1, &pMediaType, NULL)) {
+
+		if (pMediaType->majortype == MEDIATYPE_Audio && pMediaType->formattype == FORMAT_WaveFormatEx
+			&& pMediaType->cbFormat >= sizeof(WAVEFORMATEX)) {
+			const WAVEFORMATEX *pwfex = (const WAVEFORMATEX *)pMediaType->pbFormat;
+
+			if (pwfex->wFormatTag == WAVE_FORMAT_PCM)
+				aformats.push_back(vdstructex<WAVEFORMATEX>(pwfex, sizeof(WAVEFORMATEX)));
+			else if (pwfex->cbSize + sizeof(WAVEFORMATEX) <= pMediaType->cbFormat)
+				aformats.push_back(vdstructex<WAVEFORMATEX>(pwfex, pwfex->cbSize + sizeof(WAVEFORMATEX)));
+		}
+
+		RizaDeleteMediaType(pMediaType);
+	}
 }
 
 bool VDCaptureDriverDS::GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) {
+	if (!mpRealAudioPin)
+		return false;
+
+	if (!mAudioFormat.empty()) {
+		aformat = mAudioFormat;
+		return true;
+	}
+
 	return false;
 }
 
 bool VDCaptureDriverDS::SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size) {
+	VDWaveFormatAsDShowMediaType	amt(pwfex, size);
+
+	if (SUCCEEDED(mpRealAudioPin->QueryAccept(&amt))) {
+		mAudioFormat.assign(pwfex, size);
+
+		if (mbAudioCaptureEnabled && mbAudioAnalysisEnabled) {
+			if (BuildPreviewGraph())
+				StartGraph();
+		}	
+
+		return true;
+	}
+
 	return false;
 }
 
@@ -961,32 +1264,53 @@ void VDCaptureDriverDS::DisplayDriverDialog(nsVDCapture::DriverDialog dlg) {
 }
 
 bool VDCaptureDriverDS::CaptureStart() {
-	// switch to a capture graph, but don't start it.
-	if (!BuildCaptureGraph())
+	if (VDINLINEASSERTFALSE(mCaptureThread)) {
+		CloseHandle(mCaptureThread);
+		mCaptureThread = NULL;
+	}
+	HANDLE hProcess = GetCurrentProcess();
+	if (!DuplicateHandle(hProcess, GetCurrentThread(), hProcess, &mCaptureThread, 0, FALSE, DUPLICATE_SAME_ACCESS))
 		return false;
 
-	// cancel default handling for EC_REPAINT, otherwise
-	// the Video Renderer will start sending back extra requests
-	mpMediaEventEx->CancelDefaultHandling(EC_REPAINT);
+	// switch to a capture graph, but don't start it.
+	if (BuildCaptureGraph()) {
 
-	// kick the sample grabbers and go!!
-	mpVideoGrabber->SetCallback(&mVideoCallback, 0);
+		// cancel default handling for EC_REPAINT, otherwise
+		// the Video Renderer will start sending back extra requests
+		mpMediaEventEx->CancelDefaultHandling(EC_REPAINT);
 
-	if (mpAudioGrabber)
-		mpAudioGrabber->SetCallback(&mAudioCallback, 0);
+		// kick the sample grabbers and go!!
+		mpVideoGrabber->SetCallback(&mVideoCallback, 0);
 
-	mCaptureStart = VDGetPreciseTick();
-	if (mpCB)
-		mpCB->CapBegin(0);
-	if (StartGraph())
-		return true;
-	if (mpCB)
-		mpCB->CapEnd();
+		if (mpAudioGrabber)
+			mpAudioGrabber->SetCallback(&mAudioCallback, 0);
 
-	if (mpAudioGrabber)
-		mpAudioGrabber->SetCallback(NULL, 0);
+		mCaptureStart = VDGetPreciseTick();
 
-	mpVideoGrabber->SetCallback(NULL, 0);
+		bool success = false;
+		if (mpCB) {
+			try {
+				mpCB->CapBegin(0);
+				success = true;
+			} catch(MyError& e) {
+				MyError *p = new MyError;
+				p->TransferFrom(e);
+				delete mpCaptureError.xchg(p);
+			}
+		}
+		if (success && StartGraph())
+			return true;
+
+		if (mpCB)
+			mpCB->CapEnd(mpCaptureError ? mpCaptureError : NULL);
+
+		delete mpCaptureError.xchg(NULL);
+
+		if (mpAudioGrabber)
+			mpAudioGrabber->SetCallback(NULL, 0);
+
+		mpVideoGrabber->SetCallback(NULL, 0);
+	}
 
 	mpMediaEventEx->RestoreDefaultHandling(EC_REPAINT);
 
@@ -999,11 +1323,20 @@ bool VDCaptureDriverDS::CaptureStart() {
 void VDCaptureDriverDS::CaptureStop() {
 	StopGraph();
 
-	mpVideoGrabber->SetCallback(NULL, 0);
+	if (mpVideoGrabber)
+		mpVideoGrabber->SetCallback(NULL, 0);
+
 	mpMediaEventEx->RestoreDefaultHandling(EC_REPAINT);
 
-	if (mpCB)
-		mpCB->CapEnd();
+	if (mpCB) {
+		mpCB->CapEnd(mpCaptureError ? mpCaptureError : NULL);
+	}
+	delete mpCaptureError.xchg(NULL);
+
+	if (mCaptureThread) {
+		CloseHandle(mCaptureThread);
+		mCaptureThread = NULL;
+	}
 
 	// Switch to a preview graph.
 
@@ -1031,7 +1364,7 @@ bool VDCaptureDriverDS::StartGraph() {
 	return mbGraphActive = SUCCEEDED(mpGraphControl->Run());
 }
 
-//	_BuildPreviewGraph()
+//	BuildPreviewGraph()
 //
 //	This routine builds the preview part of a graph.  It turns out that
 //	if you try to leave the Capture pin connected, VFW drivers may not
@@ -1041,10 +1374,19 @@ bool VDCaptureDriverDS::StartGraph() {
 //	it on the Preview pin.
 //
 bool VDCaptureDriverDS::BuildPreviewGraph() {
-	return BuildGraph(mDisplayMode == kDisplaySoftware, false);
+	mVideoCallback.SetChannel(-1);
+	mAudioCallback.SetChannel(-2);
+	if (!BuildGraph(mDisplayMode == kDisplaySoftware, mbAudioCaptureEnabled && mbAudioAnalysisEnabled))
+		return false;
+
+	if (mpAudioGrabber && mbAudioCaptureEnabled && mbAudioAnalysisEnabled)
+		mpAudioGrabber->SetCallback(&mAudioCallback, 0);
+
+
+	return true;
 }
 
-//	_BuildCaptureGraph()
+//	BuildCaptureGraph()
 //
 //	This routine builds the capture part of the graph:
 //
@@ -1057,6 +1399,8 @@ bool VDCaptureDriverDS::BuildPreviewGraph() {
 //	* Render the preview pin.
 //
 bool VDCaptureDriverDS::BuildCaptureGraph() {
+	mVideoCallback.SetChannel(0);
+	mAudioCallback.SetChannel(1);
 	return BuildGraph(true, mbAudioCaptureEnabled);
 }
 
@@ -1068,8 +1412,10 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 	TearDownGraph();
 
-	// If we have an audio capture pin, attach a null renderer to it.
-	if (mpRealAudioPin && (!bNeedCapture || !bEnableAudio)) {
+	// If we have an audio capture pin, attach a renderer to it. We do this even if we are
+	// just previewing, because the Plextor PX-M402U doesn't output frames reliably
+	// otherwise.
+	if (mpRealAudioPin && ((!bNeedCapture && !mbAudioAnalysisEnabled) || !bEnableAudio)) {
 		IBaseFilterPtr pAudioNullRenderer;
 		IPinPtr pAudioNullRendererInput;
 
@@ -1123,6 +1469,20 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		DS_VERIFY(mpVideoPullFilt->QueryInterface(IID_ISampleGrabber, (void **)~mpVideoGrabber), "find sample grabber if");
 		DS_VERIFY(mpVideoGrabber->SetOneShot(FALSE), "switch sample grabber to continuous");
 
+		AM_MEDIA_TYPE vamt;
+
+		vamt.majortype	= MEDIATYPE_Video;
+		vamt.subtype	= GUID_NULL;
+		vamt.bFixedSizeSamples = FALSE;
+		vamt.bTemporalCompression = FALSE;
+		vamt.lSampleSize	= 0;
+		vamt.formattype	= FORMAT_VideoInfo;
+		vamt.pUnk		= NULL;
+		vamt.cbFormat	= 0;
+		vamt.pbFormat	= NULL;
+
+		DS_VERIFY(mpVideoGrabber->SetMediaType(&vamt), "set video sample grabber format");
+
 		// Attach the sink to the grabber, and the grabber to the capture pin.
 
 		IPinPtr pPinSGIn, pPinSGOut, pPinNRIn;
@@ -1135,10 +1495,15 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		DS_VERIFY(pPinSGOut->Connect(pPinNRIn, NULL), "connect grabber -> sink");
 
 		mpVideoGrabberInputPin = pPinSGIn;
+	}
 
+	if (bNeedCapture || (bEnableAudio && mbAudioAnalysisEnabled)) {
 		// We need to do the audio now.
 
 		if (mpRealAudioPin && bEnableAudio) {
+			IBaseFilterPtr pNullRenderer;
+			IPinPtr pPinSGIn, pPinSGOut, pPinNRIn;
+
 			DS_VERIFY(mpAudioPullFilt.CreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER), "create sample grabber");
 			DS_VERIFY(mpGraph->AddFilter(mpAudioPullFilt, L"Audio pulldown"), "add sample grabber");
 			DS_VERIFY(pNullRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create null renderer");
@@ -1147,6 +1512,13 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			// Set the sample grabber to continuous mode.
 
 			DS_VERIFY(mpAudioPullFilt->QueryInterface(IID_ISampleGrabber, (void **)~mpAudioGrabber), "find sample grabber if");
+
+			if (mAudioFormat.empty())
+				return false;
+
+			VDWaveFormatAsDShowMediaType amt(mAudioFormat.data(), mAudioFormat.size());
+
+			DS_VERIFY(mpAudioGrabber->SetMediaType(&amt), "set media type");
 			DS_VERIFY(mpAudioGrabber->SetOneShot(FALSE), "switch sample grabber to continuous");
 
 			// Attach the sink to the grabber, and the grabber to the capture pin.
@@ -1219,11 +1591,17 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 void VDCaptureDriverDS::TearDownGraph() {
 	StopGraph();
 
+	if (mpAudioGrabber)
+		mpAudioGrabber->SetCallback(NULL, 0);
+
 	mpVideoGrabberInputPin	= NULL;
 	mpVideoPullFilt			= NULL;
 	mpVideoGrabber			= NULL;
 	mpVideoWindow			= NULL;
-	mpVideoQualProp			= NULL;
+	if (mpVideoQualProp) {
+		mpVideoQualProp->Release();
+		mpVideoQualProp = NULL;
+	}
 
 	mpAudioGrabberInPin = NULL;
 	mpAudioPullFilt = NULL;
@@ -1251,9 +1629,12 @@ void VDCaptureDriverDS::CheckForWindow() {
 		IBaseFilter *pFilter = NULL;
 
 		while(S_OK == pEnumFilters->Next(1, &pFilter, NULL)) {
-			if (SUCCEEDED(pFilter->QueryInterface(IID_IQualProp, (void **)&mpVideoQualProp)))
-				break;
+			bool success = SUCCEEDED(pFilter->QueryInterface(IID_IQualProp, (void **)&mpVideoQualProp));
+
 			pFilter->Release();
+
+			if (success)
+				break;
 		}
 
 		pEnumFilters->Release();
@@ -1344,18 +1725,31 @@ LRESULT CALLBACK VDCaptureDriverDS::StaticMessageSinkWndProc(HWND hwnd, UINT msg
 
 	if (msg == WM_APP)
 		((VDCaptureDriverDS *)lParam)->DoEvents();
+	else if (msg == WM_APP+1) {
+		((VDCaptureDriverDS *)lParam)->CaptureStop();
+	}
 
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 void VDCaptureDriverDS::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key) {
+	if (mpCaptureError)
+		return;
+
 	if (mpCB) {
 		sint32 reltime = (sint64)((sint64)(VDGetPreciseTick() - mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
 
-		mpCB->CapProcessData(stream, data, size, timestamp, key, reltime);
+		try {
+			mpCB->CapProcessData(stream, data, size, timestamp, key, reltime);
+		} catch(MyError& e) {
+			MyError *e2 = new MyError;
+			e2->TransferFrom(e);
+			delete mpCaptureError.xchg(e2);
+
+			PostMessage(mhwndEventSink, WM_APP+1, 0, (LPARAM)this);
+		}
 	}
 }
-
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -1447,7 +1841,16 @@ void VDCaptureSystemDS::Enumerate(tDeviceVector& devlist, REFCLSID devclsid) {
 				varName.vt = VT_BSTR;
 
 				if (SUCCEEDED(pPropBag->Read(L"FriendlyName", &varName, 0))) {
-					devlist.push_back(tDeviceVector::value_type(pM, VDStringW(varName.bstrVal) + L" (DirectShow)"));
+					bool isVFWDriver = false;
+					LPOLESTR displayName;
+					if (SUCCEEDED(pM->GetDisplayName(NULL, NULL, &displayName))) {
+						// Detect a VFW driver by the compression manager tag.
+						if (!wcsncmp(displayName, L"@device:cm:", 11))
+							isVFWDriver = true;
+						CoTaskMemFree(displayName);
+					}
+
+					devlist.push_back(tDeviceVector::value_type(pM, VDStringW(varName.bstrVal) + (isVFWDriver ? L" (VFW>DirectShow)" : L" (DirectShow)")));
 
 					SysFreeString(varName.bstrVal);
 				}

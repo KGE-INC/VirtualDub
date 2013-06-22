@@ -37,8 +37,9 @@ void VDScriptStringHeap::Mark(char *s) {
 	s[-1] = 1;
 }
 
-void VDScriptStringHeap::EndGC() {
+int VDScriptStringHeap::EndGC() {
 	tStrings::iterator it(mStrings.begin()), itEnd(mStrings.end());
+	int n = 0;
 
 	while(it != itEnd) {
 		char *s = *it;
@@ -46,9 +47,12 @@ void VDScriptStringHeap::EndGC() {
 		if (!s[-1]) {
 			free(s-1);
 			it = mStrings.erase(it);
+			++n;
 		} else
 			++it;
 	}
+
+	return n;
 }
 
 char **VDScriptStringHeap::Allocate(int len) {

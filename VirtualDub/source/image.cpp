@@ -20,6 +20,9 @@
 #include "VBitmap.h"
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Meia/decode_png.h>
 #include "imagejpegdec.h"
 
 void ConvertOldHeader(BITMAPINFOHEADER& newhdr, const BITMAPCOREHEADER& oldhdr) {
@@ -346,12 +349,24 @@ bool IsJPEGHeader(const void *pv, uint32 len) {
 void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha) {
 	int w, h;
 
-	bool bIsJPG = IsJPEGHeader(pBuffer, cbBuffer);
-	bool bIsBMP = !bIsJPG &&            DecodeBMPHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
-	bool bIsTGA = !bIsJPG && !bIsBMP && DecodeTGAHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+	bool bIsPNG = false;
+	bool bIsJPG = false;
+	bool bIsBMP = false;
+	bool bIsTGA = false;
 
-	if (!bIsBMP && !bIsTGA && !bIsJPG)
-		throw MyError("Image file must be in Windows BMP, truecolor TARGA format, or sequential JPEG format.");
+	bIsPNG = VDDecodePNGHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+	if (!bIsPNG) {
+		bIsJPG = IsJPEGHeader(pBuffer, cbBuffer);
+		if (!bIsJPG) {
+			bIsBMP = DecodeBMPHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+			if (!bIsBMP) {
+				bIsTGA = DecodeTGAHeader(pBuffer, cbBuffer, w, h, bHasAlpha);
+			}
+		}
+	}
+
+	if (!bIsBMP && !bIsTGA && !bIsJPG && !bIsPNG)
+		throw MyError("Image file must be in PNG, Windows BMP, truecolor TARGA format, or sequential JPEG format.");
 
 	vdautoptr<IVDJPEGDecoder> pDecoder;
 
@@ -381,6 +396,13 @@ void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_de
 		DecodeBMP(pBuffer, cbBuffer, vb);
 	if (bIsTGA)
 		DecodeTGA(pBuffer, cbBuffer, vb);
+	if (bIsPNG) {
+		vdautoptr<IVDImageDecoderPNG> pPNGDecoder(VDCreateImageDecoderPNG());
+
+		pPNGDecoder->Decode(pBuffer, cbBuffer);
+
+		VDPixmapBlt(VDAsPixmap(vb), pPNGDecoder->GetFrameBuffer());
+	}
 }
 
 void DecodeImage(const char *pszFile, VBitmap& vb, int desired_depth, bool& bHasAlpha) {

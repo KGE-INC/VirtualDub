@@ -38,6 +38,8 @@ void VDPixmapBltDirectPalettedConversion(const VDPixmap& dst, const VDPixmap& sr
 		VDNEVERHERE;
 	}
 
+	VDASSERT(src.palette);
+
 	VDPixmap srcpal = { (void *)src.palette, NULL, palsize, 1, 0, kPixFormat_XRGB8888 };
 	VDPixmap dstpal = { palbytes, NULL, palsize, 1, 0, dst.format };
 
@@ -123,9 +125,17 @@ bool VDPixmapIsBltPossible(int dst_format, int src_format) {
 
 	tpVDPixBltTable tab(VDPixmapGetBlitterTable());
 
-	return tab[src_format][dst_format]
-		||(tab[src_format][kPixFormat_YUV444_XVYU] && tab[kPixFormat_YUV444_XVYU][dst_format])
-		||(tab[src_format][kPixFormat_XRGB8888] && tab[kPixFormat_XRGB8888][dst_format]);
+	if (tab[src_format][dst_format])
+		return true;
+
+	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(src_format);
+	const VDPixmapFormatInfo& dstinfo = VDPixmapGetInfo(dst_format);
+
+	if (srcinfo.auxbufs > 0 || dstinfo.auxbufs > 0)
+		return false;		// fail, planar buffers involved (can't do scanlines independently)
+
+	return 	  (tab[src_format][kPixFormat_YUV444_XVYU] && tab[kPixFormat_YUV444_XVYU][dst_format])
+			||(tab[src_format][kPixFormat_XRGB8888] && tab[kPixFormat_XRGB8888][dst_format]);
 }
 
 bool VDPixmapBltFast(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h) {
@@ -141,6 +151,9 @@ bool VDPixmapBltFast(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpi
 
 	if (srcinfo.qh > 1)
 		return false;		// fail, vertically packed formats involved
+
+	if (srcinfo.palsize)
+		return false;		// fail, paletted formats involved
 
 	// Allocate a 4xW buffer and try round-tripping through either
 	// RGB32 or XYVU.

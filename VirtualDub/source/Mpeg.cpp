@@ -560,7 +560,7 @@ public:
 	bool setTargetFormat(int depth);
 	void invalidateFrameBuffer();
 	bool isFrameBufferValid();
-	void streamBegin(bool fRealTime);
+	void streamBegin(bool fRealTime, bool bForceReset);
 	void streamEnd();
 	void streamSetDesiredFrame(VDPosition frame_num);
 	VDPosition streamGetNextRequiredFrame(bool& is_preroll);
@@ -808,7 +808,7 @@ VDPosition VideoSourceMPEG::nextKey(VDPosition lSample64) {
 	return -1;
 }
 
-void VideoSourceMPEG::streamBegin(bool fRealTime) {
+void VideoSourceMPEG::streamBegin(bool fRealTime, bool bForceReset) {
 	UpdateAcceleration();
 }
 

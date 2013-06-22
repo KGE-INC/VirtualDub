@@ -28,6 +28,7 @@ public:
 	// new methods (not exported)
 	virtual const VDScriptFunctionDef *GetCurrentMethod() = 0;
 	virtual int GetErrorLocation() = 0;
+	virtual VDScriptValue	DupCString(const char *) = 0;
 };
 
 IVDScriptInterpreter *VDCreateScriptInterpreter();

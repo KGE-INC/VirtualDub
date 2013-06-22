@@ -135,6 +135,10 @@ LIB32=link.exe -lib
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
+SOURCE=.\source\bitmap.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\cap_dshow.cpp
 # End Source File
 # Begin Source File
@@ -143,12 +147,36 @@ SOURCE=.\source\cap_vfw.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\capaudiocomp.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\capresync.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\vc_dv.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\w32audiocodec.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\w32videocodec.cpp
 # End Source File
 # End Group
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\bitmap.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\capaudiocomp.h
+# End Source File
 # Begin Source File
 
 SOURCE=..\h\vd2\Riza\capdriver.h
@@ -161,6 +189,14 @@ SOURCE=..\h\vd2\Riza\capdrivers.h
 
 SOURCE=..\h\vd2\Riza\capresync.h
 # End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\videocodec.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\w32audiocodec.h
+# End Source File
 # End Group
 # Begin Group "Assembly Files (x86)"
 
@@ -171,7 +207,7 @@ SOURCE=.\source\a_resync.asm
 
 !IF  "$(CFG)" == "Riza - Win32 Release"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Release\Riza
 InputPath=.\source\a_resync.asm
 InputName=a_resync
@@ -183,7 +219,7 @@ InputName=a_resync
 
 !ELSEIF  "$(CFG)" == "Riza - Win32 Debug"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\Debug\Riza
 InputPath=.\source\a_resync.asm
 InputName=a_resync

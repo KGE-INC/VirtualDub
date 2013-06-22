@@ -24,6 +24,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/Kasumi/pixmap.h>
+#include <vd2/Riza/videocodec.h>
 
 #include "DubSource.h"
 
@@ -57,7 +58,7 @@ public:
 	virtual int			streamGetRequiredCount(uint32 *totalsize) = 0;
 	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) = 0;
 
-	virtual void		streamBegin(bool fRealTime) = 0;
+	virtual void		streamBegin(bool fRealTime, bool bForceReset) = 0;
 
 	virtual void		invalidateFrameBuffer() = 0;
 	virtual	bool		isFrameBufferValid() = 0;
@@ -155,7 +156,7 @@ public:
 	virtual VDPosition streamGetNextRequiredFrame(bool& is_preroll);
 	virtual int	streamGetRequiredCount(uint32 *totalsize);
 
-	virtual void streamBegin(bool fRealTime);
+	virtual void streamBegin(bool fRealTime, bool bForceReset);
 
 	virtual void invalidateFrameBuffer();
 	virtual	bool isFrameBufferValid() = NULL;
@@ -174,22 +175,6 @@ public:
 	virtual VDPosition	displayToStreamOrder(VDPosition display_num) { return display_num; }
 
 	virtual sint64		getSampleBytePosition(VDPosition sample_num) { return -1; }
-};
-
-class VDINTERFACE IVDVideoDecompressor {
-public:
-	virtual ~IVDVideoDecompressor() {}
-	virtual bool QueryTargetFormat(int format) = 0;
-	virtual bool QueryTargetFormat(const void *format) = 0;
-	virtual bool SetTargetFormat(int format) = 0;
-	virtual bool SetTargetFormat(const void *format) = 0;
-	virtual int GetTargetFormat() = 0;
-	virtual int GetTargetFormatVariant() = 0;
-	virtual void Start() = 0;
-	virtual void Stop() = 0;
-	virtual void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) = 0;
-	virtual const void *GetRawCodecHandlePtr() = 0;		// (HIC *) on Win32
-	virtual const wchar_t *GetName() = 0;
 };
 
 class VideoSourceAVI : public VideoSource {
@@ -223,7 +208,7 @@ private:
 	void		*mjpeg_reorder_buffer;
 	int			mjpeg_reorder_buffer_size;
 	long		*mjpeg_splits;
-	long		mjpeg_last;
+	VDPosition	mjpeg_last;
 	long		mjpeg_last_size;
 	FOURCC		fccForceVideo;
 	FOURCC		fccForceVideoHandler;
@@ -232,6 +217,7 @@ private:
 	bool		mbMMXBrokenCodecDetected;
 	bool		mbConcealingErrors;
 	bool		mbDecodeStarted;
+	bool		mbDecodeRealTime;
 
 	vdautoptr<IVDVideoDecompressor>	mpDecompressor;
 
@@ -266,7 +252,7 @@ public:
 	bool isFrameBufferValid();
 	bool isStreaming();
 
-	void streamBegin(bool fRealTime);
+	void streamBegin(bool fRealTime, bool bForceReset);
 	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
 	void streamEnd();
 

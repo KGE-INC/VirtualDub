@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <vd2/system/list.h>
+#include <vd2/Dita/interface.h>
 #include "LogWindow.h"
 
 #define IDC_CAPTURE_WINDOW		(500)
@@ -105,6 +106,33 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////////
+
+class VDDialogBase : public IVDUICallback {
+protected:
+	int GetValue(uint32 id) const {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		return pWin ? pWin->GetValue() : 0;
+	}
+
+	void SetValue(uint32 id, int value) {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		if (pWin)
+			pWin->SetValue(value);
+	}
+
+	const VDStringW GetCaption(uint32 id) const {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		return pWin ? pWin->GetCaption() : VDStringW();
+	}
+
+	void SetCaption(uint32 id, const VDStringW& s) {
+		IVDUIWindow *pWin = mpBase->GetControl(id);
+		if (pWin)
+			pWin->SetCaption(s);
+	}
+
+	IVDUIBase *mpBase;
+};
 
 class VDDialogBaseW32 {
 public:

@@ -20,6 +20,7 @@
 #define f_VD2_RIZA_CAPRESYNC_H
 
 #include <vd2/Riza/capdriver.h>
+#include <vd2/Priss/convert.h>
 
 #include <vd2/system/int128.h>
 
@@ -53,12 +54,22 @@ struct VDCaptureResyncStatus {
 
 class VDINTERFACE IVDCaptureResyncFilter : public IVDCaptureDriverCallback {
 public:
+	enum Mode {
+		kModeNone,
+		kModeResampleVideo,
+		kModeResampleAudio,
+
+		kModeCount
+	};
+
 	virtual ~IVDCaptureResyncFilter() {}
 
 	virtual void SetChildCallback(IVDCaptureDriverCallback *pChild) = 0;
 	virtual void SetVideoRate(double fps) = 0;
 	virtual void SetAudioRate(double bytesPerSec) = 0;
 	virtual void SetAudioChannels(int chans) = 0;
+	virtual void SetAudioFormat(VDAudioSampleType sampleType) = 0;
+	virtual void SetResyncMode(Mode mode) = 0;
 
 	virtual void GetStatus(VDCaptureResyncStatus&) = 0;
 };

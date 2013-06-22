@@ -21,8 +21,11 @@
 #include <commctrl.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/math.h>
+#include <vd2/system/w32assist.h>
 
-#define OPTDLG_STATICS
+#include <list>
+#include <utility>
+
 #include "optdlg.h"
 
 #include "resource.h"
@@ -36,6 +39,8 @@
 #include "Dub.h"
 
 extern HINSTANCE g_hInst;
+
+#define VD_FOURCC(fcc) (((fcc&0xff000000)>>24)+((fcc&0xff0000)>>8)+((fcc&0xff00)<<8)+((fcc&0xff)<<24))
 
 ///////////////////////////////////////////
 
@@ -963,86 +968,97 @@ protected:
 };
 
 void VDDialogVideoRangeW32::MSToFrames(UINT idFrames, UINT idMS) {
-	LONG lv,lFrames;
+	VDPosition frames;
+	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo) return;
+	if (!mpVideo)
+		return;
 
-	lv = GetDlgItemInt(mhdlg, idMS, &ok, FALSE);
-	if (!ok) return;
+	ms = GetDlgItemInt(mhdlg, idMS, &ok, FALSE);
+	if (!ok)
+		return;
 	mbReentry = true;
-	SetDlgItemInt(mhdlg, idFrames, lFrames=mpVideo->msToSamples(lv), FALSE);
+	frames = mpVideo->msToSamples(ms);
+	SetDlgItemInt(mhdlg, idFrames, (UINT)frames, FALSE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_MS,
-				mpVideo->samplesToMs(mpVideo->getLength())
+				(UINT)(mpVideo->samplesToMs(mpVideo->getLength())
 				-GetDlgItemInt(mhdlg, IDC_END_MS, NULL, FALSE)
-				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE), TRUE);
+				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES,
-				mpVideo->getLength()
+				(UINT)(mpVideo->getLength()
 				-GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE)
-				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE), TRUE);
+				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE)), TRUE);
 	mbReentry = false;
 }
 
 void VDDialogVideoRangeW32::FramesToMS(UINT idMS, UINT idFrames) {
-	LONG lv, lMS;
+	VDPosition frames;
+	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo) return;
+	if (!mpVideo)
+		return;
 
-	lv = GetDlgItemInt(mhdlg, idFrames, &ok, FALSE);
+	frames = GetDlgItemInt(mhdlg, idFrames, &ok, FALSE);
 	if (!ok) return;
 	mbReentry = true;
-	SetDlgItemInt(mhdlg, idMS, lMS = mpVideo->samplesToMs(lv), FALSE);
+	ms = mpVideo->samplesToMs(frames);
+	SetDlgItemInt(mhdlg, idMS, (UINT)ms, FALSE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_MS,
-				mpVideo->samplesToMs(mpVideo->getLength())
+				(UINT)(mpVideo->samplesToMs(mpVideo->getLength())
 				-GetDlgItemInt(mhdlg, IDC_END_MS, NULL, FALSE)
-				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE), TRUE);
+				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES,
-				mpVideo->getLength()
+				(UINT)(mpVideo->getLength()
 				-GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE)
-				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE), TRUE);
+				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE)), TRUE);
 	mbReentry = false;
 }
 
 void VDDialogVideoRangeW32::LengthFrames() {
-	LONG lv, lMS;
+	VDPosition frames;
+	VDTime ms;
 	BOOL ok;
 
 	if (!mpVideo) return;
 
-	lv = GetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, &ok, TRUE);
+	frames = GetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, &ok, TRUE);
 	if (!ok) return;
 	mbReentry = true;
-	SetDlgItemInt(mhdlg, IDC_LENGTH_MS, lMS = mpVideo->samplesToMs(lv), FALSE);
+	ms = mpVideo->samplesToMs(frames);
+	SetDlgItemInt(mhdlg, IDC_LENGTH_MS, (UINT)ms, FALSE);
 	SetDlgItemInt(mhdlg, IDC_END_MS,
-				mpVideo->samplesToMs(mpVideo->getLength())
-				-lMS
-				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE), TRUE);
+				(UINT)(mpVideo->samplesToMs(mpVideo->getLength())
+				-ms
+				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_END_FRAMES,
-				mpVideo->getLength()
-				-lv
-				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE), TRUE);
+				(UINT)(mpVideo->getLength()
+				-frames
+				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE)), TRUE);
 	mbReentry = false;
 }
 
 void VDDialogVideoRangeW32::LengthMS() {
-	LONG lv,lFrames;
+	VDPosition frames;
+	VDTime ms;
 	BOOL ok;
 
 	if (!mpVideo) return;
 
-	lv = GetDlgItemInt(mhdlg, IDC_LENGTH_MS, &ok, TRUE);
+	ms = GetDlgItemInt(mhdlg, IDC_LENGTH_MS, &ok, TRUE);
 	if (!ok) return;
 	mbReentry = TRUE;
-	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, lFrames=mpVideo->msToSamples(lv), FALSE);
+	frames = mpVideo->msToSamples(ms);
+	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, (UINT)frames, FALSE);
 	SetDlgItemInt(mhdlg, IDC_END_MS,
-				mpVideo->samplesToMs(mpVideo->getLength())
-				-lv
-				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE), TRUE);
+				(UINT)(mpVideo->samplesToMs(mpVideo->getLength())
+				-ms
+				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_END_FRAMES,
-				mpVideo->getLength()
-				-lFrames
-				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE), TRUE);
+				(UINT)(mpVideo->getLength()
+				-frames
+				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE)), TRUE);
 	mbReentry = FALSE;
 }
 
@@ -1404,4 +1420,471 @@ DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::Er
 	VDDialogErrorModeW32 dlg(pszSettingsKey, pSource);
 
 	return dlg.Activate(hParent, oldMode);
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	File info dialog
+//
+///////////////////////////////////////////////////////////////////////////
+
+class VDDialogFileTextInfoW32 : public VDDialogBaseW32 {
+public:
+	typedef std::map<uint32, VDStringW> tTextInfo;
+	typedef std::list<std::pair<uint32, VDStringA> > tRawTextInfo;
+
+	VDDialogFileTextInfoW32(tRawTextInfo& info);
+	void Activate(VDGUIHandle hParent);
+
+protected:
+	void Read();
+	void Write();
+	void ReinitDialog();
+	void RedoColumnWidths();
+	void BeginEdit(int index);
+	void EndEdit(bool write);
+	void UpdateRow(int index);
+
+	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK LVStaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT LVWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK LVStaticEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT LVEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+	HWND	mhwndList;
+	HWND	mhwndEdit;
+	WNDPROC	mOldLVProc;
+	WNDPROC	mOldEditProc;
+	int		mIndex;
+	uint32	mID;
+
+	tTextInfo mTextInfo;
+	tRawTextInfo& mTextInfoOrig;
+
+	static const struct FieldEntry {
+		uint32 fcc;
+		const char *desc;
+	} kFields[];
+};
+
+const struct VDDialogFileTextInfoW32::FieldEntry VDDialogFileTextInfoW32::kFields[]={
+	{ VD_FOURCC('ISBJ'), "Subject" },
+	{ VD_FOURCC('IART'), "Artist (Author)" },
+	{ VD_FOURCC('ICOP'), "Copyright" },
+	{ VD_FOURCC('IARL'), "Archival Location" },
+	{ VD_FOURCC('ICMS'), "Commissioned" },
+	{ VD_FOURCC('ICMT'), "Comments" },
+	{ VD_FOURCC('ICRD'), "Creation Date" },
+	{ VD_FOURCC('ICRP'), "Cropped" },
+	{ VD_FOURCC('IDIM'), "Dimensions" },
+	{ VD_FOURCC('IDPI'), "Dots Per Inch" },
+	{ VD_FOURCC('IENG'), "Engineer" },
+	{ VD_FOURCC('IGNR'), "Genre" },
+	{ VD_FOURCC('IKEY'), "Keywords" },
+	{ VD_FOURCC('ILGT'), "Lightness" },
+	{ VD_FOURCC('IMED'), "Medium" },
+	{ VD_FOURCC('INAM'), "Name" },
+	{ VD_FOURCC('IPLT'), "Palette Setting" },
+	{ VD_FOURCC('IPRD'), "Product" },
+	{ VD_FOURCC('ISFT'), "Software" },
+	{ VD_FOURCC('ISHP'), "Sharpness" },
+	{ VD_FOURCC('ISRC'), "Source" },
+	{ VD_FOURCC('ISRF'), "Source Form" },
+	{ VD_FOURCC('ITCH'), "Technician" },
+};
+
+VDDialogFileTextInfoW32::VDDialogFileTextInfoW32(tRawTextInfo& info)
+	: VDDialogBaseW32(IDD_FILE_SETTEXTINFO)
+	, mhwndEdit(NULL)
+	, mTextInfoOrig(info)
+{
+}
+
+void VDDialogFileTextInfoW32::Activate(VDGUIHandle hParent) {
+	ActivateDialogDual(hParent);
+}
+
+void VDDialogFileTextInfoW32::Read() {
+	tRawTextInfo::const_iterator itSrc(mTextInfoOrig.begin()), itSrcEnd(mTextInfoOrig.end());
+	for(; itSrc != itSrcEnd; ++itSrc)
+		mTextInfo[(*itSrc).first] = VDTextAToW((*itSrc).second);
+}
+
+void VDDialogFileTextInfoW32::Write() {
+	mTextInfoOrig.clear();
+
+	tTextInfo::const_iterator itSrc(mTextInfo.begin()), itSrcEnd(mTextInfo.end());
+	for(; itSrc != itSrcEnd; ++itSrc)
+		mTextInfoOrig.push_back(tRawTextInfo::value_type((*itSrc).first, VDTextWToA((*itSrc).second)));
+}
+
+void VDDialogFileTextInfoW32::ReinitDialog() {
+	HWND hwndList = GetDlgItem(mhdlg, IDC_LIST);
+
+	mhwndList = hwndList;
+
+	SetWindowLong(mhwndList, GWL_STYLE, GetWindowLong(mhwndList, GWL_STYLE) | WS_CLIPCHILDREN);
+
+	union {
+		LVCOLUMNA a;
+		LVCOLUMNW w;
+	} lvc;
+
+	if (VDIsWindowsNT()) {
+		SendMessageW(hwndList, LVM_SETEXTENDEDLISTVIEWSTYLE, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+
+		lvc.w.mask = LVCF_TEXT | LVCF_WIDTH;
+		lvc.w.pszText = L"Field";
+		lvc.w.cx = 50;
+		SendMessageW(hwndList, LVM_INSERTCOLUMNW, 0, (LPARAM)&lvc.w);
+
+		lvc.w.pszText = L"Text";
+		lvc.w.cx = 100;
+		SendMessageW(hwndList, LVM_INSERTCOLUMNW, 0, (LPARAM)&lvc.w);
+	} else {
+		SendMessageA(hwndList, LVM_SETEXTENDEDLISTVIEWSTYLE, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+
+		lvc.a.mask = LVCF_TEXT | LVCF_WIDTH;
+		lvc.a.iSubItem = 0;
+		lvc.a.pszText = "Field";
+		lvc.a.cx = 50;
+		SendMessageA(hwndList, LVM_INSERTCOLUMNA, 0, (LPARAM)&lvc.a);
+
+		lvc.a.pszText = "Text";
+		lvc.a.cx = 100;
+		SendMessageA(hwndList, LVM_INSERTCOLUMNA, 0, (LPARAM)&lvc.a);
+	}
+
+	for(int i=0; i<sizeof kFields / sizeof kFields[0]; ++i) {
+		union {
+			LVITEMA a;
+			LVITEMW w;
+		} lvi;
+
+		if (VDIsWindowsNT()) {
+			VDStringW wtext(VDTextAToW(kFields[i].desc));
+			lvi.w.mask = LVIF_TEXT | LVIF_PARAM;
+			lvi.w.pszText = (LPWSTR)wtext.c_str();
+			lvi.w.iItem = i;
+			lvi.w.iSubItem = 0;
+			lvi.w.lParam = (LPARAM)kFields[i].fcc;
+
+			SendMessageW(hwndList, LVM_INSERTITEMW, 0, (LPARAM)&lvi.w);
+		} else {
+			lvi.a.mask = LVIF_TEXT | LVIF_PARAM;
+			lvi.a.pszText = (LPSTR)kFields[i].desc;
+			lvi.a.iItem = i;
+			lvi.a.iSubItem = 0;
+			lvi.a.lParam = (LPARAM)kFields[i].fcc;
+
+			SendMessageA(hwndList, LVM_INSERTITEMA, 0, (LPARAM)&lvi.a);
+		}
+
+		UpdateRow(i);
+	}
+
+	RedoColumnWidths();
+
+	if (VDIsWindowsNT()) {
+		mOldLVProc = (WNDPROC)GetWindowLongPtrW(mhwndList, GWLP_WNDPROC);
+		SetWindowLongPtrW(mhwndList, GWLP_USERDATA, (LONG_PTR)this);
+		SetWindowLongPtrW(mhwndList, GWLP_WNDPROC, (LONG_PTR)LVStaticWndProc);
+	} else {
+		mOldLVProc = (WNDPROC)GetWindowLongPtrA(mhwndList, GWLP_WNDPROC);
+		SetWindowLongPtrA(mhwndList, GWLP_USERDATA, (LONG_PTR)this);
+		SetWindowLongPtrA(mhwndList, GWLP_WNDPROC, (LONG_PTR)LVStaticWndProc);
+	}
+}
+
+void VDDialogFileTextInfoW32::RedoColumnWidths() {
+	SendMessage(mhwndList, LVM_SETCOLUMNWIDTH, 0, LVSCW_AUTOSIZE);
+	SendMessage(mhwndList, LVM_SETCOLUMNWIDTH, 1, LVSCW_AUTOSIZE_USEHEADER);
+}
+
+void VDDialogFileTextInfoW32::BeginEdit(int index) {
+	RECT r;
+	int w=0, w2=0;
+	int i;
+
+	ListView_EnsureVisible(mhwndList, index, FALSE);
+
+	for(i=0; i<=1; i++)
+		w2 += w = SendMessage(mhwndList, LVM_GETCOLUMNWIDTH, i, 0);
+
+	EndEdit(true);
+
+	r.left = LVIR_BOUNDS;
+
+	LVITEM lvi;
+	lvi.mask = LVIF_PARAM;
+	lvi.iItem = index;
+	lvi.iSubItem = 0;
+	ListView_GetItem(mhwndList, &lvi);
+	SendMessage(mhwndList, LVM_GETITEMRECT, index, (LPARAM)&r);
+
+	mID = lvi.lParam;
+	mIndex = index;
+
+	DWORD dwEditStyle = WS_VISIBLE|WS_CHILD|WS_BORDER | ES_WANTRETURN|ES_AUTOHSCROLL;
+
+	r.left = w2-w;
+	r.right = w2;
+
+	InflateRect(&r, GetSystemMetrics(SM_CXEDGE), GetSystemMetrics(SM_CYEDGE));
+
+	AdjustWindowRect(&r, dwEditStyle, FALSE);
+
+	if (VDIsWindowsNT()) {
+		mhwndEdit = CreateWindowW(L"EDIT",
+				NULL,
+				dwEditStyle,
+				r.left,
+				r.top,
+				r.right - r.left,
+				r.bottom - r.top,
+				mhwndList, (HMENU)1, g_hInst, NULL);
+	} else {
+		mhwndEdit = CreateWindowA("EDIT",
+				NULL,
+				dwEditStyle,
+				r.left,
+				r.top,
+				r.right - r.left,
+				r.bottom - r.top,
+				mhwndList, (HMENU)1, g_hInst, NULL);
+	}
+	
+	if (mhwndEdit) {
+		if (VDIsWindowsNT()) {
+			mOldEditProc = (WNDPROC)GetWindowLongPtrW(mhwndEdit, GWLP_WNDPROC);
+			SetWindowLongPtrW(mhwndEdit, GWLP_USERDATA, (LONG_PTR)this);
+			SetWindowLongPtrW(mhwndEdit, GWLP_WNDPROC, (LONG_PTR)LVStaticEditProc);
+		} else {
+			mOldEditProc = (WNDPROC)GetWindowLongPtrA(mhwndEdit, GWLP_WNDPROC);
+			SetWindowLongPtrA(mhwndEdit, GWLP_USERDATA, (LONG_PTR)this);
+			SetWindowLongPtrA(mhwndEdit, GWLP_WNDPROC, (LONG_PTR)LVStaticEditProc);
+		}
+
+		SendMessage(mhwndEdit, WM_SETFONT, SendMessage(mhwndList, WM_GETFONT, 0, 0), MAKELPARAM(FALSE,0));
+
+		tTextInfo::iterator it(mTextInfo.find(mID));
+		if (it != mTextInfo.end())
+			VDSetWindowTextW32(mhwndEdit, (*it).second.c_str());
+
+		SetFocus(mhwndEdit);
+	}
+}
+
+void VDDialogFileTextInfoW32::EndEdit(bool write) {
+	if (!mhwndEdit)
+		return;
+
+	if (write) {
+		const VDStringW text(VDGetWindowTextW32(mhwndEdit));
+
+		if (text.empty())
+			mTextInfo.erase(mID);
+		else
+			mTextInfo[mID] = text;
+
+		UpdateRow(mIndex);
+	}
+
+	DestroyWindow(mhwndEdit);
+	mhwndEdit = NULL;
+}
+
+void VDDialogFileTextInfoW32::UpdateRow(int index) {
+	union {
+		LVITEMA a;
+		LVITEMW w;
+	} lvi;
+
+	uint32 id;
+
+	if (VDIsWindowsNT()) {
+		lvi.w.mask = LVIF_PARAM;
+		lvi.w.iItem = index;
+		lvi.w.iSubItem = 0;
+		SendMessageW(mhwndList, LVM_GETITEMW, 0, (LPARAM)&lvi.w);
+		id = lvi.w.lParam;
+	} else {
+		lvi.a.mask = LVIF_PARAM;
+		lvi.a.iItem = index;
+		lvi.a.iSubItem = 0;
+		SendMessageA(mhwndList, LVM_GETITEMA, 0, (LPARAM)&lvi.a);
+		id = lvi.a.lParam;
+	}
+
+	const wchar_t *text = L"";
+
+	tTextInfo::iterator it(mTextInfo.find(id));
+	if (it != mTextInfo.end())
+		text = (*it).second.c_str();
+
+	if (VDIsWindowsNT()) {
+		lvi.w.mask = LVIF_TEXT;
+		lvi.w.iSubItem = 1;
+		lvi.w.pszText = (LPWSTR)text;
+		SendMessageW(mhwndList, LVM_SETITEMW, 0, (LPARAM)&lvi.w);
+		id = lvi.w.lParam;
+	} else {
+		VDStringA textA(VDTextWToA(text));
+		lvi.a.mask = LVIF_TEXT;
+		lvi.a.iSubItem = 1;
+		lvi.a.pszText = (LPSTR)textA.c_str();
+		SendMessageA(mhwndList, LVM_SETITEMA, 0, (LPARAM)&lvi.a);
+		id = lvi.a.lParam;
+	}
+}
+
+INT_PTR VDDialogFileTextInfoW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message)
+    {
+        case WM_INITDIALOG:
+			Read();
+			ReinitDialog();
+			SetFocus(mhwndList);
+            return FALSE;
+
+        case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+			case IDOK:
+				EndEdit(true);
+				Write();
+				End(true);
+				return TRUE;
+			case IDCANCEL:
+				EndEdit(false);
+				End(false);
+				return TRUE;
+			}
+            break;
+    }
+    return FALSE;
+}
+
+LRESULT CALLBACK VDDialogFileTextInfoW32::LVStaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	VDDialogFileTextInfoW32 *p = (VDDialogFileTextInfoW32 *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+	return p->LVWndProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT VDDialogFileTextInfoW32::LVWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_DESTROY:
+		EndEdit(true);
+		break;
+
+	case WM_GETDLGCODE:
+		if (lParam) {
+			const MSG& msg = *(const MSG *)lParam;
+
+			if (msg.message == WM_KEYDOWN && wParam == VK_RETURN)
+				return DLGC_WANTMESSAGE;
+		} else
+			return VDDualCallWindowProcW32(mOldLVProc, hwnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
+
+		break;
+
+	case WM_KEYDOWN:
+		if (wParam == VK_RETURN) {
+			int index = VDDualCallWindowProcW32(mOldLVProc, hwnd, LVM_GETNEXTITEM, -1, MAKELPARAM(LVNI_ALL|LVNI_SELECTED,0));
+
+			if (index>=0)
+				BeginEdit(index);
+		}
+		break;
+
+	case WM_LBUTTONDOWN:
+		{
+			LVHITTESTINFO htinfo;
+			LVITEM lvi;
+			int index;
+
+			// if this isn't done, the control doesn't gain focus properly...
+
+			VDDualCallWindowProcW32(mOldLVProc, hwnd, msg, wParam, lParam);
+
+			htinfo.pt.x	= 2;
+			htinfo.pt.y = HIWORD(lParam);
+
+			index = VDDualCallWindowProcW32(mOldLVProc, hwnd, LVM_HITTEST, 0, (LPARAM)&htinfo);
+
+			if (index >= 0) {
+				int x = LOWORD(lParam);
+				int w2=0, w;
+				int i=-1;
+
+				lvi.state = lvi.stateMask = LVIS_SELECTED | LVIS_FOCUSED;
+				VDDualCallWindowProcW32(mOldLVProc, hwnd, LVM_SETITEMSTATE, index, (LPARAM)&lvi);
+
+				for(i=0; i<3; i++) {
+					w2 += w = VDDualCallWindowProcW32(mOldLVProc, hwnd, LVM_GETCOLUMNWIDTH, i, 0);
+					if (x<w2) {
+						BeginEdit(index);
+
+						return 0;
+					}
+				}
+			}
+			EndEdit(true);
+		}
+		return 0;
+	}
+	return VDDualCallWindowProcW32(mOldLVProc, hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK VDDialogFileTextInfoW32::LVStaticEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	VDDialogFileTextInfoW32 *p = (VDDialogFileTextInfoW32 *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+	return p->LVEditProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT VDDialogFileTextInfoW32::LVEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_GETDLGCODE:
+		return VDDualCallWindowProcW32(mOldEditProc, hwnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
+		break;
+	case WM_KEYDOWN:
+		if (wParam == VK_UP) {
+			if (mIndex > 0) {
+				ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED|LVIS_FOCUSED);
+				ListView_SetItemState(mhwndList, mIndex-1, LVIS_SELECTED|LVIS_FOCUSED, LVIS_SELECTED|LVIS_FOCUSED);
+				BeginEdit(mIndex-1);
+			}
+			return 0;
+		} else if (wParam == VK_DOWN) {
+			if (mIndex < SendMessage(mhwndList, LVM_GETITEMCOUNT, 0, 0)-1) {
+				ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED|LVIS_FOCUSED);
+				ListView_SetItemState(mhwndList, mIndex+1, LVIS_SELECTED|LVIS_FOCUSED, LVIS_SELECTED|LVIS_FOCUSED);
+				BeginEdit(mIndex+1);
+			}
+			return 0;
+		}
+		break;
+	case WM_CHAR:
+		if (wParam == 0x0d) {
+			EndEdit(true);
+			return 0;
+		} else if (wParam == 0x1b) {
+			EndEdit(false);
+			return 0;
+		}
+		break;
+	case WM_KILLFOCUS:
+		EndEdit(true);
+		break;
+	case WM_ACTIVATE:
+		if (LOWORD(wParam) == WA_INACTIVE)
+			EndEdit(true);
+		break;
+	}
+	return VDDualCallWindowProcW32(mOldEditProc, hwnd, msg, wParam, lParam);
+}
+
+void VDDisplayFileTextInfoDialog(VDGUIHandle hParent, std::list<std::pair<uint32, VDStringA> >& info) {
+	VDDialogFileTextInfoW32 dlg(info);
+
+	dlg.Activate(hParent);
 }

@@ -10,11 +10,11 @@
 #include <vd2/system/fraction.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
+#include <vd2/Priss/convert.h>
 
 #include "filter.h"
 #include "filters.h"
 #include "AudioFilterSystem.h"
-#include "audioutil.h"
 #include "plugins.h"
 
 extern FilterFunctions g_filterFuncs;

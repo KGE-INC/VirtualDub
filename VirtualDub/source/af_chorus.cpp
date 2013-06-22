@@ -20,7 +20,6 @@
 #include "af_base.h"
 #include "gui.h"
 #include "resource.h"
-#include "audioutil.h"
 
 ///////////////////////////////////////////////////////////////////////////
 

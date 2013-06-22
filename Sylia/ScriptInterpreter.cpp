@@ -109,6 +109,7 @@ public:
 	void ScriptError(int e);
 	const char *TranslateScriptError(const VDScriptError& cse);
 	char** AllocTempString(long l);
+	VDScriptValue	DupCString(const char *s);
 
 	VDScriptValue	LookupObjectMember(const VDScriptObject *obj, void *lpVoid, char *szIdent);
 
@@ -153,24 +154,24 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 
 	while(t = Token()) {
 		if (isExprFirstToken(t)) {
-			VDScriptValue csv;
-
 			TokenUnput(t);
+			VDASSERT(mStack.empty());
 			ParseExpression();
 
 			VDASSERT(!mStack.empty());
 
 			VDScriptValue& val = mStack.back();
-			if (csv.isInt())
-				VDDEBUG("Expression: integer %ld\n", csv.asInt());
-			else if (csv.isString())
-				VDDEBUG("Expression: string [%s]\n", *csv.asString());
-			else if (csv.isVoid())
+			if (val.isInt())
+				VDDEBUG("Expression: integer %ld\n", val.asInt());
+			else if (val.isString())
+				VDDEBUG("Expression: string [%s]\n", *val.asString());
+			else if (val.isVoid())
 				VDDEBUG("Expression: void\n");
 			else
 				VDDEBUG("Expression: unknown type\n");
 
 			mStack.pop_back();
+			VDASSERT(mStack.empty());
 
 			if (Token() != ';')
 				SCRIPT_ERROR(SEMICOLON_EXPECTED);
@@ -182,9 +183,20 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 				if (t != TOK_IDENT)
 					SCRIPT_ERROR(IDENTIFIER_EXPECTED);
 
-				vartbl.Declare(szIdent);
+				VariableTableEntry *vte = vartbl.Declare(szIdent);
 
 				t = Token();
+
+				if (t == '=') {
+					ParseExpression();
+
+					VDASSERT(!mStack.empty());
+					vte->v = mStack.back();
+					mStack.pop_back();
+
+					t = Token();
+				}
+
 			} while(t == ',');
 
 			if (t != ';')
@@ -193,6 +205,8 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 		} else
 			SCRIPT_ERROR(PARSE_ERROR);
 	}
+
+	VDASSERT(mStack.empty());
 
 	GC();
 }
@@ -261,6 +275,15 @@ char **VDScriptInterpreter::AllocTempString(long l) {
 
 	return handle;
 }
+
+VDScriptValue VDScriptInterpreter::DupCString(const char *s) {
+	const size_t l = strlen(s);
+	char **pp = AllocTempString(l);
+
+	memcpy(*pp, s, l);
+	return VDScriptValue(pp);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	Expression parsing
@@ -268,25 +291,26 @@ char **VDScriptInterpreter::AllocTempString(long l) {
 ///////////////////////////////////////////////////////////////////////////
 
 int VDScriptInterpreter::ExprOpPrecedence(int op) {
+	// All of these need to be EVEN.
 	switch(op) {
-	case '=':			return 1;
-	case TOK_OR:		return 2;
-	case TOK_AND:		return 3;
-	case '|':			return 4;
-	case '^':			return 5;
-	case '&':			return 6;
+	case '=':			return 2;
+	case TOK_OR:		return 4;
+	case TOK_AND:		return 6;
+	case '|':			return 8;
+	case '^':			return 10;
+	case '&':			return 12;
 	case TOK_EQUALS:
-	case TOK_NOTEQ:		return 7;
+	case TOK_NOTEQ:		return 14;
 	case '<':
 	case '>':
 	case TOK_LESSEQ:
-	case TOK_GRTREQ:	return 8;
+	case TOK_GRTREQ:	return 16;
 	case '+':
-	case '-':			return 9;
+	case '-':			return 18;
 	case '*':
 	case '/':
-	case '%':			return 10;
-	case '.':			return 11;
+	case '%':			return 20;
+	case '.':			return 22;
 	}
 
 	return 0;
@@ -316,7 +340,7 @@ void VDScriptInterpreter::ParseExpression() {
 
 		VDScriptValue& v = mStack.back();
 
-		if (t=='.') {			// object indirection operator
+		if (t=='.') {			// object indirection operator (object -> member)
 			VDDEBUG("found object indirection op\n");
 
 			ConvertToRvalue();
@@ -335,7 +359,7 @@ void VDScriptInterpreter::ParseExpression() {
 			if (v.isVoid())
 				SCRIPT_ERROR(MEMBER_NOT_FOUND);
 
-		} else if (t == '[') {	// array indexing operator
+		} else if (t == '[') {	// array indexing operator (object, value -> value)
 			// Reduce lvalues to rvalues
 
 			ConvertToRvalue();
@@ -351,7 +375,7 @@ void VDScriptInterpreter::ParseExpression() {
 
 			if (Token() != ']')
 				SCRIPT_ERROR(CLOSEBRACKET_EXPECTED);
-		} else if (t == '(') {	// function indirection operator
+		} else if (t == '(') {	// function indirection operator (method -> value)
 			const VDScriptValue fcall(mStack.back());
 			mStack.pop_back();
 
@@ -382,12 +406,15 @@ void VDScriptInterpreter::ParseExpression() {
 			VDASSERT(mStack.size() >= 2);
 			mStack.erase(mStack.end() - 2);
 		} else {
-			int prec = ExprOpPrecedence(t)*2 - ExprOpIsRightAssoc(t);
+			int prec = ExprOpPrecedence(t) + ExprOpIsRightAssoc(t);
 
-			while(depth > 0 && ExprOpPrecedence(mOpStack.back())*2 <= prec) {
+			while(depth > 0 && ExprOpPrecedence(mOpStack.back()) >= prec) {
 				--depth;
 				Reduce();
 			}
+
+			mOpStack.push_back(t);
+			++depth;
 
 			need_value = true;
 		}
@@ -607,7 +634,7 @@ arglist_match:
 
 	// invoke
 	sfd->func_ptr(this, argv, pcount);
-	mStack.resize(mStack.size() + 1 - pcount);
+	mStack.resize(mStack.size() + 1 - stackcount);
 	if (sfd->arg_list[0] == '0')
 		mStack.back() = VDScriptValue();
 }
@@ -955,6 +982,9 @@ int VDScriptInterpreter::Token() {
 
 void VDScriptInterpreter::GC() {
 	strheap.BeginGC();
-	
-	strheap.EndGC();
+	vartbl.MarkStrings(strheap);
+	int n = strheap.EndGC();
+
+	if (n)
+		VDDEBUG("Script: %d strings freed by GC.\n", n);
 }

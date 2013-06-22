@@ -75,7 +75,7 @@ public:
 	void Reinit();
 	bool isStreaming();
 
-	void streamBegin(bool fRealTime);
+	void streamBegin(bool fRealTime, bool bForceReset);
 	void streamEnd();
 
 	bool init();
@@ -89,7 +89,7 @@ public:
 	void Reinit();
 	bool isStreaming();
 
-	void streamBegin(bool fRealTime);
+	void streamBegin(bool fRealTime, bool bForceReset);
 	void streamEnd();
 
 	bool init();

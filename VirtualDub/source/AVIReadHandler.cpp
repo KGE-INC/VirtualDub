@@ -23,12 +23,15 @@
 #include "FastReadStream.h"
 #include "ProgressDialog.h"
 #include "AVIIndex.h"
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
 #include <vd2/system/file.h>
 #include "Fixes.h"
 #include <vd2/system/log.h>
 #include <vd2/system/text.h>
+#include <vd2/system/vdstl.h>
+#include <vd2/system/VDString.h>
 #include <vd2/Dita/resources.h>
 #include "Avisynth.h"
 #include "misc.h"
@@ -58,7 +61,8 @@ namespace {
 		kVDM_InvalidChunkDetected,	// AVI: Invalid chunk detected at %lld. Enabling aggressive recovery mode.
 		kVDM_StreamFailure,			// AVI: Invalid block found at %lld -- disabling streaming.
 		kVDM_FixingBadSampleRate,	// AVI: Stream %d has an invalid sample rate. Substituting %lu samples/sec as placeholder.
-		kVDM_PaletteChanges			// AVI: Palette changes detected.  These are not currently supported -- color palette errors may appear in the output.
+		kVDM_PaletteChanges,		// AVI: Palette changes detected.  These are not currently supported -- color palette errors may appear in the output.
+		kVDM_InfoTruncated			// AVI: The text information chunk of type '%s' at %llx was not fully read because it was too long (%u bytes).
 	};
 
 	bool is_palette_change(uint32 ckid) {
@@ -523,6 +527,8 @@ public:
 	bool isIndexFabricated();
 	bool AppendFile(const wchar_t *pszFile);
 	bool getSegmentHint(const char **ppszPath);
+	void GetTextInfo(tTextInfo& textInfo);
+	void GetTextInfoEncoding(int& codePage, int& countryCode, int& language, int& dialect);
 
 	void EnableStreaming(int stream);
 	void DisableStreaming(int stream);
@@ -558,6 +564,13 @@ private:
 
 	bool		mbFileIsDamaged;
 	bool		mbPaletteChangesDetected;
+
+	int			mTextInfoCodePage;
+	int			mTextInfoCountryCode;
+	int			mTextInfoLanguage;
+	int			mTextInfoDialect;
+
+	tTextInfo	mTextInfo;
 
 	List2<AVIStreamNode>		listStreams;
 	List2<AVIFileDesc>			listFiles;
@@ -1459,6 +1472,10 @@ bool AVIReadStream::getVBRInfo(double& bitrate_mean, double& bitrate_stddev, dou
 AVIReadHandler::AVIReadHandler(const wchar_t *s)
 : pAvisynthClipInfo(0)
 , mbFileIsDamaged(false)
+, mTextInfoCodePage(0)
+, mTextInfoCountryCode(0)
+, mTextInfoLanguage(0)
+, mTextInfoDialect(0)
 {
 	this->hFile = INVALID_HANDLE_VALUE;
 	this->hFileUnbuffered = INVALID_HANDLE_VALUE;
@@ -1759,20 +1776,17 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 	// begin parsing chunks
 	mbPaletteChangesDetected = false;
 
+	sint64	infoChunkEnd = 0;
+	sint64	fileSize = _sizeFile();
+
 	while(_readChunkHeader(fccType, dwLength)) {
 
 //		_RPT4(0,"%08I64x %08I64x Chunk '%-4s', length %08lx\n", _posFile()+dwLengthLeft, _posFile(), &fccType, dwLength);
 
-		// Invalid FCCs are bad.  If we find one, set the aggressive flag so if a scan
-		// starts, we aggressively search for and validate data.
-
-		if (!isValidFOURCC(fccType)) {
-			bAggressive = true;
+		if (!isValidFOURCC(fccType))
 			break;
-		}
 
-		switch(fccType) {
-		case FOURCC_LIST:
+		if (fccType == FOURCC_LIST) {
 			_readFile2(&fccType, 4);
 
 			// If we find a LIST/movi chunk with zero size, jump straight to reindexing
@@ -1794,8 +1808,6 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 				dwLength = 0;
 			else
 				dwLength -= 4;
-
-//			_RPT1(0,"\tList type '%-4s'\n", &fccType);
 
 			switch(fccType) {
 			case 'ivom':
@@ -1829,53 +1841,133 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 				++streams;
 				dwLength = 0;
 				break;
+			case 'OFNI':
+				infoChunkEnd = _posFile() + dwLength;
+				dwLength = 0;
+				break;
 			}
+		} else {
+			// Check if the chunk extends outside of the boundaries, and bail if so. We don't do
+			// this for LIST chunks because those are often done incorrectly and we don't actually
+			// maintain a nesting stack anyway.
+			if (_posFile() + dwLength > fileSize)
+				break;
 
-			break;
+			switch(fccType) {
+			case ckidAVINEWINDEX:	// idx1
+				if (!hyperindexed) {
+					index_found = _parseIndexBlock(streamlist, dwLength/16, i64ChunkMoviPos);
+					dwLength &= 15;
+				}
+				break;
 
-		case ckidAVINEWINDEX:	// idx1
-			if (!hyperindexed) {
-				index_found = _parseIndexBlock(streamlist, dwLength/16, i64ChunkMoviPos);
-				dwLength &= 15;
+			case ckidAVIPADDING:	// JUNK
+				break;
+
+			case 'mges':			// VirtualDub segment hint block
+				delete pSegmentHint;
+				if (!(pSegmentHint = new char[dwLength]))
+					throw MyMemoryError();
+
+				_readFile2(pSegmentHint, dwLength);
+
+				if (dwLength&1)
+					_skipFile2(1);
+
+				dwLength = 0;
+				break;
+
+			case 'lrdh':
+				if (!bMainAVIHeaderFound) {
+					uint32 tc = std::min<uint32>(dwLength, sizeof avihdr);
+					memset(&avihdr, 0, sizeof avihdr);
+					_readFile2(&avihdr, tc);
+					dwLength -= tc;
+					bMainAVIHeaderFound = true;
+				}
+				break;
+
+			case 'TESC':		// CSET (character set)
+				if (dwLength >= 8) {
+					struct {
+						uint16	wCodePage;
+						uint16	wCountryCode;
+						uint16	wLanguageCode;
+						uint16	wDialect;
+					} csetData;
+
+					_readFile2(&csetData, 8);
+					dwLength -= 8;
+
+					mTextInfoCodePage		= csetData.wCodePage;
+					mTextInfoCountryCode	= csetData.wCountryCode;
+					mTextInfoLanguage		= csetData.wLanguageCode;
+					mTextInfoDialect		= csetData.wDialect;
+				}
+				break;
+
+			default:
+				if (infoChunkEnd && (_posFile() < infoChunkEnd)) {
+					switch(fccType) {
+					case 'LRAI':
+					case 'TRAI':
+					case 'SMCI':
+					case 'TMCI':
+					case 'POCI':
+					case 'DRCI':
+					case 'PRCI':
+					case 'MIDI':
+					case 'IPDI':
+					case 'GNEI':
+					case 'RNGI':
+					case 'YEKI':
+					case 'TGLI':
+					case 'DEMI':
+					case 'MANI':
+					case 'TLPI':
+					case 'DRPI':
+					case 'JBSI':
+					case 'TFSI':
+					case 'PHSI':
+					case 'CRSI':
+					case 'FRSI':
+					case 'HCTI':
+						uint32 tc = dwLength;
+						if (tc > 4096) {
+							char fccstr[5]={0};
+							*(uint32 *)fccstr = fccType;
+							const char *fccptr = fccstr;
+							sint64 pos = _posFile();
+							unsigned len = dwLength;
+
+							VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_InfoTruncated, 3, &fccptr, &pos, &len);
+							tc = 4096;
+						}
+
+						vdblock<char> data((tc + 1) & ~1);
+
+						dwLength -= tc;
+						_readFile2(data.data(), data.size());
+
+						int len = tc;
+
+						while(len > 0 && !data[len-1])
+							--len;
+
+						if (len > 0)
+							mTextInfo.push_back(tTextInfo::value_type(fccType, VDStringA(data.data(), len)));
+
+						break;
+					}
+				}
+				break;
 			}
-			break;
-
-		case ckidAVIPADDING:	// JUNK
-			break;
-
-		case 'mges':			// VirtualDub segment hint block
-			delete pSegmentHint;
-			if (!(pSegmentHint = new char[dwLength]))
-				throw MyMemoryError();
-
-			_readFile2(pSegmentHint, dwLength);
-
-			if (dwLength&1)
-				_skipFile2(1);
-
-			dwLength = 0;
-			break;
-
-		case 'lrdh':
-			if (!bMainAVIHeaderFound) {
-				uint32 tc = std::min<uint32>(dwLength, sizeof avihdr);
-				memset(&avihdr, 0, sizeof avihdr);
-				_readFile2(&avihdr, tc);
-				dwLength -= tc;
-				bMainAVIHeaderFound = true;
-			}
-			break;
 		}
 
 		if (dwLength) {
 			if (!_skipFile2(dwLength + (dwLength&1)))
 				break;
 		}
-
-		// Quit as soon as we see the index block.
-
-		if (fccType == ckidAVINEWINDEX)
-			break;
 	}
 
 	if (i64ChunkMoviPos == 0)
@@ -2508,6 +2600,17 @@ bool AVIReadHandler::getSegmentHint(const char **ppszPath) {
 		*ppszPath = pSegmentHint+1;
 
 	return !!pSegmentHint[0];
+}
+
+void AVIReadHandler::GetTextInfo(tTextInfo& textInfo) {
+	textInfo = mTextInfo;
+}
+
+void AVIReadHandler::GetTextInfoEncoding(int& codePage, int& countryCode, int& language, int& dialect) {
+	codePage		= mTextInfoCodePage;
+	countryCode		= mTextInfoCountryCode;
+	language		= mTextInfoLanguage;
+	dialect			= mTextInfoDialect;
 }
 
 ///////////////////////////////////////////////////////////////////////////

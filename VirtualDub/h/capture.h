@@ -48,7 +48,6 @@ struct VDCaptureFilterSetup {
 	IVDCaptureFilterSystem::FilterMode mVertSquashMode;
 	int			mNRThreshold;		// default 16
 
-	bool		mbEnableCrop;
 	bool		mbEnableRGBFiltering;
 	bool		mbEnableNoiseReduction;
 	bool		mbEnableLumaSquish;
@@ -59,6 +58,20 @@ struct VDCaptureDiskSettings {
 	sint32		mDiskChunkSize;
 	sint32		mDiskChunkCount;
 	bool		mbDisableWriteCache;
+};
+
+struct VDCaptureTimingSetup {
+	enum SyncMode {
+		kSyncNone,
+		kSyncVideoToAudio,
+		kSyncAudioToVideo,
+		kSyncModeCount
+	};
+
+	SyncMode	mSyncMode;
+	bool		mbResyncWithIntegratedAudio;
+	bool		mbAllowEarlyDrops;
+	bool		mbAllowLateInserts;
 };
 
 struct VDCaptureStatus {
@@ -90,32 +103,54 @@ public:
 	virtual void UICaptureDriversUpdated() = 0;
 	virtual void UICaptureDriverChanged(int driver) = 0;
 	virtual void UICaptureFileUpdated() = 0;
+	virtual void UICaptureAudioFormatUpdated() = 0;
 	virtual void UICaptureVideoFormatUpdated() = 0;
 	virtual void UICaptureParmsUpdated() = 0;
 	virtual bool UICaptureAnalyzeBegin(const VDPixmap& format) = 0;
 	virtual void UICaptureAnalyzeFrame(const VDPixmap& format) = 0;
 	virtual void UICaptureAnalyzeEnd() = 0;
+	virtual void UICaptureVideoHistoBegin() = 0;
+	virtual void UICaptureVideoHisto(const float data[256]) = 0;
+	virtual void UICaptureVideoHistoEnd() = 0;
+	virtual void UICaptureAudioPeaksUpdated(float l, float r) = 0;
 	virtual void UICaptureStart() = 0;
 	virtual bool UICapturePreroll() = 0;
 	virtual void UICaptureStatusUpdated(VDCaptureStatus&) = 0;
 	virtual void UICaptureEnd(bool success) = 0;
 };
 
+class VDCaptureProjectBaseCallback : public IVDCaptureProjectCallback {
+public:
+	virtual void UICaptureDriversUpdated();
+	virtual void UICaptureDriverChanged(int driver);
+	virtual void UICaptureFileUpdated();
+	virtual void UICaptureAudioFormatUpdated();
+	virtual void UICaptureVideoFormatUpdated();
+	virtual void UICaptureParmsUpdated();
+	virtual bool UICaptureAnalyzeBegin(const VDPixmap& format);
+	virtual void UICaptureAnalyzeFrame(const VDPixmap& format);
+	virtual void UICaptureAnalyzeEnd();
+	virtual void UICaptureVideoHistoBegin();
+	virtual void UICaptureVideoHisto(const float data[256]);
+	virtual void UICaptureVideoHistoEnd();
+	virtual void UICaptureAudioPeaksUpdated(float l, float r);
+	virtual void UICaptureStart();
+	virtual bool UICapturePreroll();
+	virtual void UICaptureStatusUpdated(VDCaptureStatus&);
+	virtual void UICaptureEnd(bool success);
+};
+
 class VDINTERFACE IVDCaptureProject : public IVDRefCount {
 public:
-	enum SyncMode {
-		kSyncNone,
-		kSyncToVideo,
-		kSyncToAudio
-	};
-
 	virtual ~IVDCaptureProject() {}
 
 	virtual bool	Attach(VDGUIHandle hwnd) = 0;
 	virtual void	Detach() = 0;
 
+	virtual IVDCaptureProjectCallback *GetCallback() = 0;
 	virtual void	SetCallback(IVDCaptureProjectCallback *pCB) = 0;
 
+	virtual bool	IsHardwareDisplayAvailable() = 0;
 	virtual void	SetDisplayMode(nsVDCapture::DisplayMode mode) = 0;
 	virtual nsVDCapture::DisplayMode	GetDisplayMode() = 0;
 	virtual void	SetDisplayChromaKey(int key) = 0;
@@ -123,14 +158,24 @@ public:
 	virtual vdrect32	GetDisplayRectAbsolute() = 0;
 	virtual void	SetDisplayVisibility(bool vis) = 0;
 
+	virtual void	SetVideoFrameTransferEnabled(bool ena) = 0;
+	virtual bool	IsVideoFrameTransferEnabled() = 0;
+
+	virtual void	SetVideoHistogramEnabled(bool ena) = 0;
+	virtual bool	IsVideoHistogramEnabled() = 0;
+
 	virtual void	SetFrameTime(sint32 lFrameTime) = 0;
 	virtual sint32	GetFrameTime() = 0;
 
-	virtual void	SetSyncMode(SyncMode mode) = 0;
-	virtual SyncMode	GetSyncMode() = 0;
+	virtual void	SetTimingSetup(const VDCaptureTimingSetup& syncSetup) = 0;
+	virtual const VDCaptureTimingSetup&	GetTimingSetup() = 0;
 
 	virtual void	SetAudioCaptureEnabled(bool ena) = 0;
 	virtual bool	IsAudioCaptureEnabled() = 0;
+	virtual bool	IsAudioCaptureAvailable() = 0;
+
+	virtual void	SetAudioVumeterEnabled(bool ena) = 0;
+	virtual bool	IsAudioVumeterEnabled() = 0;
 
 	virtual void	SetHardwareBuffering(int videoBuffers, int audioBuffers, int audioBufferSize) = 0;
 	virtual bool	GetHardwareBuffering(int& videoBuffers, int& audioBuffers, int& audioBufferSize) = 0;
@@ -154,8 +199,14 @@ public:
 	virtual bool	SetVideoFormat(const BITMAPINFOHEADER& bih, LONG cbih) = 0;
 	virtual bool	GetVideoFormat(vdstructex<BITMAPINFOHEADER>& bih) = 0;
 
+	virtual void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats) = 0;
+
 	virtual bool	SetAudioFormat(const WAVEFORMATEX& wfex, LONG cbwfex) = 0;
 	virtual bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex) = 0;
+
+	virtual void	SetAudioCompFormat() = 0;
+	virtual void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex) = 0;
+	virtual bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex) = 0;
 
 	virtual void		SetCaptureFile(const VDStringW& filename, bool isStripeSystem) = 0;
 	virtual VDStringW	GetCaptureFile() = 0;
@@ -169,8 +220,10 @@ public:
 
 	virtual void	ScanForDrivers() = 0;
 	virtual int		GetDriverCount() = 0;
-	virtual const char *GetDriverName(int i) = 0;
+	virtual const wchar_t *GetDriverName(int i) = 0;
 	virtual bool	SelectDriver(int nDriver) = 0;
+	virtual bool	IsDriverConnected() = 0;
+	virtual int		GetConnectedDriverIndex() = 0;
 
 	virtual void	Capture(bool bTest) = 0;
 	virtual void	CaptureStop() = 0;

@@ -28,6 +28,7 @@
 #include "MJPEGDecoder.h"
 #include "crash.h"
 
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/text.h>
 #include <vd2/system/log.h>
@@ -38,6 +39,7 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Riza/bitmap.h>
 #include "misc.h"
 #include "oshelper.h"
 #include "helpfile.h"
@@ -72,67 +74,6 @@ namespace {
 		kVDM_CodecRenamingDetected,
 		kVDM_CodecAcceptsBS
 	};
-}
-
-///////////////////////////
-
-static bool CheckMPEG4Codec(HIC hic, bool isV3) {
-	char frame[0x380];
-	BITMAPINFOHEADER bih;
-
-	// Form a completely black frame if it's V3.
-
-	bih.biSize			= 40;
-	bih.biWidth			= 320;
-	bih.biHeight		= 240;
-	bih.biPlanes		= 1;
-	bih.biBitCount		= 24;
-	bih.biCompression	= '24PM';
-	bih.biSizeImage		= 0;
-	bih.biXPelsPerMeter	= 0;
-	bih.biYPelsPerMeter	= 0;
-	bih.biClrUsed		= 0;
-	bih.biClrImportant	= 0;
-
-	if (isV3) {
-		int i;
-
-		frame[0] = (char)0x3f;
-		frame[1] = (char)0x71;
-		frame[2] = (char)0x1b;
-		frame[3] = (char)0x7c;
-
-		for(i=4; i<0x179; i+=5) {
-			frame[i+0] = (char)0x2f;
-			frame[i+1] = (char)0x0b;
-			frame[i+2] = (char)0xc2;
-			frame[i+3] = (char)0xf0;
-			frame[i+4] = (char)0xbc;
-		}
-
-		frame[0x179] = (char)0xf0;
-		frame[0x17a] = (char)0xb8;
-		frame[0x17b] = (char)0x01;
-
-		bih.biCompression	= '34PM';
-		bih.biSizeImage		= 0x17c;
-	}
-
-	// Attempt to decompress.
-
-	HANDLE h;
-
-	{
-		VDSilentExternalCodeBracket bracket;
-		h = ICImageDecompress(hic, 0, (BITMAPINFO *)&bih, frame, NULL);
-	}
-
-	if (h) {
-		GlobalFree(h);
-		return true;
-	} else {
-		return false;
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -261,1157 +202,6 @@ const wchar_t *VDVideoDecompressorMJPEG::GetName() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoDecompressorDV : public IVDVideoDecompressor {
-public:
-	VDVideoDecompressorDV();
-	~VDVideoDecompressorDV();
-
-	void Init(int w, int h);
-
-	bool QueryTargetFormat(int format);
-	bool QueryTargetFormat(const void *format);
-	bool SetTargetFormat(int format);
-	bool SetTargetFormat(const void *format);
-	int GetTargetFormat() { return mFormat; }
-	int GetTargetFormatVariant() { return 0; }
-	void Start();
-	void Stop();
-	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
-	const void *GetRawCodecHandlePtr();
-	const wchar_t *GetName();
-
-protected:
-	int		mWidth, mHeight;
-	int		mFormat;
-
-	uint8	mYPlane[576][736];
-
-	union {
-		struct {
-			uint8	mCrPlane[480][184];
-			uint8	mCbPlane[480][184];
-		} m411;
-		struct {
-			uint8	mCrPlane[288][368];
-			uint8	mCbPlane[288][368];
-		} m420;
-	};
-};
-
-// 10 DIF sequences (NTSC) or 12 DIF sequences (PAL)
-// Each DIF sequence contains:
-//		1 DIF block		header
-//		2 DIF blocks	subcode
-//		3 DIF blocks	VAUX
-//		9 DIF blocks	audio
-//		135 DIF blocks	video
-//
-// Each DIF block has a 3 byte header and 77 bytes of payload.
-
-VDVideoDecompressorDV::VDVideoDecompressorDV()
-	: mFormat(0)
-{
-}
-
-VDVideoDecompressorDV::~VDVideoDecompressorDV() {
-}
-
-void VDVideoDecompressorDV::Init(int w, int h) {
-	mWidth = w;
-	mHeight = h;
-}
-
-bool VDVideoDecompressorDV::QueryTargetFormat(int format) {
-	return format > 0;
-}
-
-bool VDVideoDecompressorDV::QueryTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
-
-	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
-		return false;
-
-	int pxformat = VDBitmapFormatToPixmapFormat(hdr);
-
-	return QueryTargetFormat(pxformat);
-}
-
-bool VDVideoDecompressorDV::SetTargetFormat(int format) {
-	if (!format)
-		format = nsVDPixmap::kPixFormat_YUV422_YUYV;
-
-	if (QueryTargetFormat(format)) {
-		mFormat = format;
-		return true;
-	}
-
-	return false;
-}
-
-bool VDVideoDecompressorDV::SetTargetFormat(const void *format) {
-	const BITMAPINFOHEADER& hdr = *(const BITMAPINFOHEADER *)format;
-
-	if (hdr.biWidth != mWidth || hdr.biHeight != mHeight)
-		return false;
-
-	int pxformat = VDBitmapFormatToPixmapFormat(hdr);
-
-	if (QueryTargetFormat(pxformat)) {
-		mFormat = pxformat;
-		return true;
-	}
-
-	return false;
-}
-
-void VDVideoDecompressorDV::Start() {
-	if (!mFormat)
-		throw MyError("Cannot find compatible target format for video decompression.");
-}
-
-void VDVideoDecompressorDV::Stop() {
-}
-
-namespace {
-
-#define	TIMES_2x(v1,v2,v3) v1,v2,v3,v1,v2,v3
-#define	TIMES_4x(v1,v2,v3) v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3
-#define	TIMES_8x(v1,v2,v3) v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3,v1,v2,v3
-
-#define VLC_3(run,amp) TIMES_8x({run+1,3,(amp<<7)}),TIMES_8x({run+1,3,-(amp<<7)})
-#define VLC_4(run,amp) TIMES_4x({run+1,4,(amp<<7)}),TIMES_4x({run+1,4,-(amp<<7)})
-#define REP_4(run,amp) TIMES_4x({run+1,4,(amp<<7)})
-#define VLC_5(run,amp) TIMES_2x({run+1,5,(amp<<7)}),TIMES_2x({run+1,5,-(amp<<7)})
-#define VLC_6(run,amp) {run+1,6,(amp<<7)},{run+1,6,-(amp<<7)}
-
-#define VLC_7(run,amp) TIMES_2x({run+1,7,(amp<<7)}),TIMES_2x({run+1,7,-(amp<<7)})
-#define VLC_8(run,amp) {run+1,8,(amp<<7)},{run+1,8,-(amp<<7)}
-
-#define VLC_9(run,amp) {run+1,9,(amp<<7)},{run+1,9,-(amp<<7)}
-
-#define VLC_10(run,amp) {run+1,10,(amp<<7)},{run+1,10,-(amp<<7)}
-
-#define VLC_11(run,amp) TIMES_4x({run+1,11,(amp<<7)}),TIMES_4x({run+1,11,-(amp<<7)})
-#define REP_11(run,amp) TIMES_4x({run+1,11,(amp<<7)})
-#define VLC_12(run,amp) TIMES_2x({run+1,12,(amp<<7)}),TIMES_2x({run+1,12,-(amp<<7)})
-#define REP_12(run,amp) TIMES_2x({run+1,12,(amp<<7)})
-#define VLC_13(run,amp) {run+1,13,(amp<<7)},{run+1,13,-(amp<<7)}
-
-#define REP_13(run,amp) {run+1,13,(amp<<7)}
-
-#define REP_16(run,amp) {run+1,16,(amp<<7)}
-
-	struct VLCEntry {
-		uint8	run;
-		uint8	len;
-		sint16	coeff;
-	};
-
-	static const VLCEntry kDVACDecode1[48]={
-						// xxxxxx
-		VLC_3(0,1),		// 00s
-		VLC_4(0,2),		// 010s
-		REP_4(64,0),	// 0110
-		VLC_5(1,1),		// 0111s
-		VLC_5(0,3),		// 1000s
-		VLC_5(0,4),		// 1001s
-		VLC_6(2,1),		// 10100s
-		VLC_6(1,2),		// 10101s
-		VLC_6(0,5),		// 10110s
-		VLC_6(0,6),		// 10111s
-	};
-
-	static const VLCEntry kDVACDecode2[32]={
-						// 11xxxxxx
-		VLC_7(3,1),		// 110000s
-		VLC_7(4,1),		// 110001s
-		VLC_7(0,7),		// 110010s
-		VLC_7(0,8),		// 110011s
-		VLC_8(5,1),		// 1101000s
-		VLC_8(6,1),		// 1101001s
-		VLC_8(2,2),		// 1101010s
-		VLC_8(1,3),		// 1101011s
-		VLC_8(1,4),		// 1101100s
-		VLC_8(0,9),		// 1101101s
-		VLC_8(0,10),	// 1101110s
-		VLC_8(0,11),	// 1101111s
-	};
-
-	static const VLCEntry kDVACDecode3[32]={
-						// 111xxxxxx
-		VLC_9(7,1),		// 11100000s
-		VLC_9(8,1),		// 11100001s
-		VLC_9(9,1),		// 11100010s
-		VLC_9(10,1),	// 11100011s
-		VLC_9(3,2),		// 11100100s
-		VLC_9(4,2),		// 11100101s
-		VLC_9(2,3),		// 11100110s
-		VLC_9(1,5),		// 11100111s
-		VLC_9(1,6),		// 11101000s
-		VLC_9(1,7),		// 11101001s
-		VLC_9(0,12),	// 11101010s
-		VLC_9(0,13),	// 11101011s
-		VLC_9(0,14),	// 11101100s
-		VLC_9(0,15),	// 11101101s
-		VLC_9(0,16),	// 11101110s
-		VLC_9(0,17),	// 11101111s
-	};
-
-	static const VLCEntry kDVACDecode4[32]={
-						// 1111xxxxxx
-		VLC_10(11,1),	// 111100000s
-		VLC_10(12,1),	// 111100001s
-		VLC_10(13,1),	// 111100010s
-		VLC_10(14,1),	// 111100011s
-		VLC_10(5,2),	// 111100100s
-		VLC_10(6,2),	// 111100101s
-		VLC_10(3,3),	// 111100110s
-		VLC_10(4,3),	// 111100111s
-		VLC_10(2,4),	// 111101000s
-		VLC_10(2,5),	// 111101001s
-		VLC_10(1,8),	// 111101010s
-		VLC_10(0,18),	// 111101011s
-		VLC_10(0,19),	// 111101100s
-		VLC_10(0,20),	// 111101101s
-		VLC_10(0,21),	// 111101110s
-		VLC_10(0,22),	// 111101111s
-	};
-
-	static const VLCEntry kDVACDecode5[192]={
-						// 111110xxxxxxx
-		VLC_11(5,3),	// 1111100000s
-		VLC_11(3,4),	// 1111100001s
-		VLC_11(3,5),	// 1111100010s
-		VLC_11(2,6),	// 1111100011s
-		VLC_11(1,9),	// 1111100100s
-		VLC_11(1,10),	// 1111100101s
-		VLC_11(1,11),	// 1111100110s
-		REP_11(0,0),	// 11111001110
-		REP_11(1,0),	// 11111001111
-		VLC_12(6,3),	// 11111010000s
-		VLC_12(4,4),	// 11111010001s
-		VLC_12(3,6),	// 11111010010s
-		VLC_12(1,12),	// 11111010011s
-		VLC_12(1,13),	// 11111010100s
-		VLC_12(1,14),	// 11111010101s
-		REP_12(2,0),	// 111110101100
-		REP_12(3,0),	// 111110101101
-		REP_12(4,0),	// 111110101110
-		REP_12(5,0),	// 111110101111
-		VLC_13(7,2),	// 111110110000s
-		VLC_13(8,2),	// 111110110001s
-		VLC_13(9,2),	// 111110110010s
-		VLC_13(10,2),	// 111110110011s
-		VLC_13(7,3),	// 111110110100s
-		VLC_13(8,3),	// 111110110101s
-		VLC_13(4,5),	// 111110110110s
-		VLC_13(3,7),	// 111110110111s
-		VLC_13(2,7),	// 111110111000s
-		VLC_13(2,8),	// 111110111001s
-		VLC_13(2,9),	// 111110111010s
-		VLC_13(2,10),	// 111110111011s
-		VLC_13(2,11),	// 111110111100s
-		VLC_13(1,15),	// 111110111101s
-		VLC_13(1,16),	// 111110111110s
-		VLC_13(1,17),	// 111110111111s
-		REP_13(0,0),	// 1111110000000
-		REP_13(1,0),	// 1111110000001
-		REP_13(2,0),	// 1111110000010
-		REP_13(3,0),	// 1111110000011
-		REP_13(4,0),	// 1111110000100
-		REP_13(5,0),	// 1111110000101
-		REP_13(6,0),	// 1111110000110
-		REP_13(7,0),	// 1111110000111
-		REP_13(8,0),	// 1111110001000
-		REP_13(9,0),	// 1111110001001
-		REP_13(10,0),	// 1111110001010
-		REP_13(11,0),	// 1111110001011
-		REP_13(12,0),	// 1111110001100
-		REP_13(13,0),	// 1111110001101
-		REP_13(14,0),	// 1111110001110
-		REP_13(15,0),	// 1111110001111
-		REP_13(16,0),	// 1111110010000
-		REP_13(17,0),	// 1111110010001
-		REP_13(18,0),	// 1111110010010
-		REP_13(19,0),	// 1111110010011
-		REP_13(20,0),	// 1111110010100
-		REP_13(21,0),	// 1111110010101
-		REP_13(22,0),	// 1111110010110
-		REP_13(23,0),	// 1111110010111
-		REP_13(24,0),	// 1111110011000
-		REP_13(25,0),	// 1111110011001
-		REP_13(26,0),	// 1111110011010
-		REP_13(27,0),	// 1111110011011
-		REP_13(28,0),	// 1111110011100
-		REP_13(29,0),	// 1111110011101
-		REP_13(30,0),	// 1111110011110
-		REP_13(31,0),	// 1111110011111
-		REP_13(32,0),	// 1111110100000
-		REP_13(33,0),	// 1111110100001
-		REP_13(34,0),	// 1111110100010
-		REP_13(35,0),	// 1111110100011
-		REP_13(36,0),	// 1111110100100
-		REP_13(37,0),	// 1111110100101
-		REP_13(38,0),	// 1111110100110
-		REP_13(39,0),	// 1111110100111
-		REP_13(40,0),	// 1111110101000
-		REP_13(41,0),	// 1111110101001
-		REP_13(42,0),	// 1111110101010
-		REP_13(43,0),	// 1111110101011
-		REP_13(44,0),	// 1111110101100
-		REP_13(45,0),	// 1111110101101
-		REP_13(46,0),	// 1111110101110
-		REP_13(47,0),	// 1111110101111
-		REP_13(48,0),	// 1111110110000
-		REP_13(49,0),	// 1111110110001
-		REP_13(50,0),	// 1111110110010
-		REP_13(51,0),	// 1111110110011
-		REP_13(52,0),	// 1111110110100
-		REP_13(53,0),	// 1111110110101
-		REP_13(54,0),	// 1111110110110
-		REP_13(55,0),	// 1111110110111
-		REP_13(56,0),	// 1111110111000
-		REP_13(57,0),	// 1111110111001
-		REP_13(58,0),	// 1111110111010
-		REP_13(59,0),	// 1111110111011
-		REP_13(60,0),	// 1111110111100
-		REP_13(61,0),	// 1111110111101
-		REP_13(62,0),	// 1111110111110
-		REP_13(63,0),	// 1111110111111
-	};
-
-	static const VLCEntry kDVACDecode8[512]={
-#define R2(y) {1,16,((y)<<7)},{1,16,-((y)<<7)}
-#define R(x) R2(x+0),R2(x+1),R2(x+2),R2(x+3),R2(x+4),R2(x+5),R2(x+6),R2(x+7),R2(x+8),R2(x+9),R2(x+10),R2(x+11),R2(x+12),R2(x+13),R2(x+14),R2(x+15)
-		R(0x00),
-		R(0x10),
-		R(0x20),
-		R(0x30),
-		R(0x40),
-		R(0x50),
-		R(0x60),
-		R(0x70),
-		R(0x80),
-		R(0x90),
-		R(0xA0),
-		R(0xB0),
-		R(0xC0),
-		R(0xD0),
-		R(0xE0),
-		R(0xF0),
-#undef R
-#undef R2
-	};
-
-	const VLCEntry *DVDecodeAC(uint32 bitheap) {
-		if (bitheap < 0xC0000000)
-			return &kDVACDecode1[bitheap >> 26];
-
-		if (bitheap < 0xE0000000)
-			return &kDVACDecode2[(bitheap >> 24) - (0xC0000000 >> 24)];
-
-		if (bitheap < 0xF0000000)
-			return &kDVACDecode3[(bitheap >> 23) - (0xE0000000 >> 23)];
-
-		if (bitheap < 0xF8000000)
-			return &kDVACDecode4[(bitheap >> 22) - (0xF0000000 >> 22)];
-
-		if (bitheap < 0xFE000000)
-			return &kDVACDecode5[(bitheap >> 19) - (0xF8000000 >> 19)];
-
-		return &kDVACDecode8[(bitheap >> 16) - (0xFE000000 >> 16)];
-	}
-
-	static const int zigzag_std[64]={
-		 0,  1,  8, 16,  9,  2,  3, 10,
-		17, 24, 32, 25, 18, 11,  4,  5,
-		12, 19, 26, 33, 40, 48, 41, 34,
-		27, 20, 13,  6,  7, 14, 21, 28,
-		35, 42, 49, 56, 57, 50, 43, 36,
-		29, 22, 15, 23, 30, 37, 44, 51,
-		58, 59, 52, 45, 38, 31, 39, 46,
-		53, 60, 61, 54, 47, 55, 62, 63,
-	};
-
-	static const int zigzag_alt[64]={
-		 0,  8,  1,  9, 16, 24,  2, 10,
-		17, 25, 32, 40, 48, 56, 33, 41,
-		18, 26,  3, 11,  4, 12, 19, 27,
-		34, 42, 49, 57, 50, 58, 35, 43,
-		20, 28,  5, 13,  6, 14, 21, 29,
-		36, 44, 51, 59, 52, 60, 37, 45,
-		22, 30,  7, 15, 23, 31, 38, 46,
-		53, 61, 54, 62, 39, 47, 55, 63,
-	};
-
-	static const int range[64]={
-		0,
-		0,0,0,0,0,
-		1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-		2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-		3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
-	};
-
-	static const char shifttable[][4]={
-		{0,0,0,0},
-		{0,0,0,1},
-		{0,0,1,1},
-		{0,1,1,2},
-		{1,1,2,2},
-		{1,2,2,3},
-		{2,2,3,3},
-		{2,3,3,4},
-		{3,3,4,4},
-		{3,4,4,5},
-		{4,4,5,5},
-		{1,1,1,1},
-		{1,1,1,2},
-	};
-
-	static const int quanttable[4][16]={
-		{            5,5,4,4,3,3,2,2,1,0,0,0,0,0,0,0},
-		{      7,6,6,5,5,4,4,3,3,2,2,1,0,0,0,0},
-		{8,8,7,7,6,6,5,5,4,4,3,3,2,2,1,0},
-		{ 10,9,9,8,8,7,7,6,6,5,5,4,4,12,11,11},
-	};
-
-#if 0
-	static const double CS1 = 0.98078528040323044912618223613424;
-	static const double CS2 = 0.92387953251128675612818318939679;
-	static const double CS3 = 0.83146961230254523707878837761791;
-	static const double CS4 = 0.70710678118654752440084436210485;
-	static const double CS5 = 0.55557023301960222474283081394853;
-	static const double CS6 = 0.3826834323650897717284599840304;
-	static const double CS7 = 0.19509032201612826784828486847702;
-
-	static const double w[8] = {
-		1.0,
-		(4.0*CS7*CS2)/CS4,
-		(2.0*CS6)/CS4,
-		2.0*CS5,
-		8.0/7.0,
-		CS3/CS4,
-		CS2/CS4,
-		CS1/CS4
-	};
-#else
-	// Weights 2/(w(i)*w(j)) according to SMPTE 314M 5.2.2, in zigzag order and 12-bit fixed point.
-	static const int weights_std[64]={
-		8192,  8035,  8035,  7568,  7880,  7568,  7373,  7423,
-		7423,  7373,  7168,  7231,  6992,  7231,  7168,  6967,
-		7030,  6811,  6811,  7030,  6967,  6270,  6833,  6622,
-		6635,  6622,  6833,  6270,  5906,  6149,  6436,  6451,
-		6451,  6436,  6149,  5906,  5793,  5793,  6270,  6272,
-		6270,  5793,  5793,  5457,  5643,  6096,  6096,  5643,
-		5457,  5315,  5486,  5925,  5486,  5315,  5168,  5332,
-		5332,  5168,  5023,  4799,  5023,  4520,  4520,  4258,
-	};
-
-	static const int weights_alt[64]={
-		8192, 7568, 8035, 7423, 8192, 7568, 7568, 6992,
-		8035, 7423, 8035, 7373, 8035, 7373, 7880, 7231,
-		7568, 6992, 7373, 6811, 7168, 6622, 7373, 6811,
-		7423, 6811, 7880, 7231, 7423, 6811, 7231, 6635,
-		7168, 6622, 6967, 6436, 6270, 5793, 6967, 6436,
-		7030, 6451, 7231, 6635, 7030, 6451, 6833, 6270,
-		6270, 5793, 5906, 5457, 5906, 5457, 6149, 5643,
-		6833, 6270, 6149, 5643, 5793, 5315, 5793, 5315,
-	};
-#endif
-
-	struct DVBitSource {
-		const uint8 *src;
-		const uint8 *srclimit;
-		int bitpos;
-
-		void Init(const uint8 *_src, const uint8 *_srclimit, int _bitpos) {
-			src = _src;
-			srclimit = _srclimit;
-			bitpos = _bitpos;
-		}
-	};
-
-	class DVDecoderContext {
-	public:
-		DVDecoderContext();
-
-		const VDMPEGIDCTSet	*mpIDCT;
-	};
-
-	DVDecoderContext::DVDecoderContext() {
-		long flags = CPUGetEnabledExtensions();
-
-#ifdef _M_AMD64
-		mpIDCT = &g_VDMPEGIDCT_sse2;
-#else
-		if (flags & CPUF_SUPPORTS_SSE2)
-			mpIDCT = &g_VDMPEGIDCT_sse2;
-		else if (flags & CPUF_SUPPORTS_INTEGER_SSE)
-			mpIDCT = &g_VDMPEGIDCT_isse;
-		else if (flags & CPUF_SUPPORTS_MMX)
-			mpIDCT = &g_VDMPEGIDCT_mmx;
-		else
-			mpIDCT = &g_VDMPEGIDCT_scalar;
-#endif
-	}
-
-	class DVDCTBlockDecoder {
-	public:
-		void Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& bitsource, int qno, bool split, const int zigzag[2][64]);
-		bool Decode(DVBitSource& bitsource, const DVDecoderContext& context);
-
-	protected:
-		uint32		mBitHeap;
-		int			mBitCount;
-		int			mIdx;
-		const char	*mpShiftTab;
-		const int	*mpZigzag;
-		const short	*mpWeights;
-
-		__declspec(align(16)) sint16		mCoeff[64];
-
-		uint8		*mpDst;
-		ptrdiff_t	mPitch;
-		bool		mb842;
-		bool		mbSplit;
-	};
-
-	short weights_std_prescaled[13][64];
-	short weights_alt_prescaled[13][64];
-
-	void DVDCTBlockDecoder::Init(uint8 *dst, ptrdiff_t pitch, DVBitSource& src, int qno, bool split, const int zigzag[2][64]) {
-		mpDst = dst;
-		mPitch = pitch;
-		mBitHeap = mBitCount = 0;
-		mIdx = 0;
-
-		memset(&mCoeff, 0, sizeof mCoeff);
-
-		const uint8 *src0 = src.src;
-		++src.src;
-		src.bitpos = 4;
-
-		const int dctclass = (src0[1] >> 4) & 3;
-
-		mpShiftTab = shifttable[quanttable[dctclass][qno]];
-		mCoeff[0] = (sint16)(((sint8)src0[0]*2 + (src0[1]>>7) + 0x100) << 2);
-
-		mb842 = false;
-		mpZigzag = zigzag[0];
-		mpWeights = weights_std_prescaled[quanttable[dctclass][qno]];
-		if (src0[1] & 0x40) {
-			mb842 = true;
-			mpZigzag = zigzag[1];
-			mpWeights = weights_alt_prescaled[quanttable[dctclass][qno]];
-		}
-
-		mbSplit = split;
-
-		if (!weights_std_prescaled[0][0]) {
-			for(int i=0; i<13; ++i) {
-				for(int j=0; j<64; ++j) {
-					weights_std_prescaled[i][j] = (short)(((weights_std[j] >> (6 - shifttable[i][range[j]]))+1)>>1);
-					weights_alt_prescaled[i][j] = (short)(((weights_alt[j] >> (6 - shifttable[i][range[j]]))+1)>>1);
-				}
-			}
-		}
-	}
-
-#ifdef _MSC_VER
-	#pragma auto_inline(off)
-#endif
-	void WrapPrescaledIDCT(const VDMPEGIDCTSet& idct, uint8 *dst, ptrdiff_t pitch, void *coeff0, int last_pos) {
-		const sint16 *coeff = (const sint16 *)coeff0;
-		int coeff2[64];
-
-		for(int i=0; i<64; ++i)
-			coeff2[i] = (coeff[i] * idct.pPrescaler[i] + 128) >> 8;
-
-		idct.pIntra(dst, pitch, coeff2, last_pos);
-	}
-#ifdef _MSC_VER
-	#pragma auto_inline(on)
-#endif
-
-	bool DVDCTBlockDecoder::Decode(DVBitSource& bitsource, const DVDecoderContext& context) {
-		if (!mpWeights)
-			return true;
-
-		if (bitsource.src >= bitsource.srclimit)
-			return false;
-
-		VDASSERT(mBitCount < 24);
-
-		mBitHeap += (((*bitsource.src++) << bitsource.bitpos) & 0xff) << (24-mBitCount);
-		mBitCount += 8 - bitsource.bitpos;
-
-		for(;;) {
-			if (mBitCount < 16) {
-				if(bitsource.src < bitsource.srclimit) {
-					mBitHeap += *bitsource.src++ << (24 - mBitCount);
-					mBitCount += 8;
-				}
-				if(bitsource.src < bitsource.srclimit) {
-					mBitHeap += *bitsource.src++ << (24 - mBitCount);
-					mBitCount += 8;
-				}
-			}
-
-			const VLCEntry *acdec = DVDecodeAC(mBitHeap);
-
-			int tmpcnt = mBitCount - acdec->len;
-
-			if (tmpcnt < 0)
-				return false;
-
-			mBitCount = tmpcnt;
-			mBitHeap <<= acdec->len;
-
-			if (acdec->run > 64)
-				break;
-
-			int tmpidx = mIdx + acdec->run;
-
-			if (tmpidx >= 64) {
-				mIdx = 63;
-				break;
-			}
-
-			mIdx = tmpidx;
-
-			const int q = mpWeights[mIdx];
-
-			mCoeff[mpZigzag[mIdx]] = (short)((((sint32)acdec->coeff /*<< mpShiftTab[range[mIdx]]*/) * q + 2048) >> 12);
-		}
-
-		// release bits
-		bitsource.src -= mBitCount >> 3;
-		bitsource.bitpos = 0;
-		if (mBitCount & 7) {
-			--bitsource.src;
-			bitsource.bitpos = 8 - (mBitCount & 7);
-		}
-
-		mpWeights = NULL;
-
-#pragma vdpragma_TODO("optimize interlaced 8x4x2 IDCT")
-		if (mb842)
-			g_VDMPEGIDCT_reference.pIntra4x2(mpDst, mPitch, mCoeff, 63);
-		else {
-			if (context.mpIDCT->pPrescaler) {
-#pragma vdpragma_TODO("consider whether we should suck less here on scalar")
-				WrapPrescaledIDCT(*context.mpIDCT, mpDst, mPitch, mCoeff, mIdx);
-			} else {
-				context.mpIDCT->pIntra(mpDst, mPitch, mCoeff, mIdx);
-			}
-		}
-
-		if (mbSplit) {
-			for(int i=0; i<8; ++i) {
-				*(uint32 *)(mpDst + mPitch*(8+i)) = *(uint32 *)(mpDst + 4 + mPitch*i);
-			}
-		}
-
-		return true;
-	}
-}
-
-void VDVideoDecompressorDV::DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) {
-	if (!mFormat)
-		throw MyError("Cannot find compatible target format for video decompression.");
-
-	if ((mHeight == 480 && srcSize != 120000) || (mHeight == 576 && srcSize != 144000))
-		throw MyError("DV frame data is wrong size (truncated or corrupted)");
-
-	static const int sNTSCMacroblockOffsets[5][27][2]={
-#define P(x,y) {x*32+y*8*sizeof(mYPlane[0]), x*8+y*8*sizeof(m411.mCrPlane[0])}
-		{
-			P( 9,0),P( 9,1),P( 9,2),P( 9,3),P( 9,4),P( 9,5),
-			P(10,5),P(10,4),P(10,3),P(10,2),P(10,1),P(10,0),
-			P(11,0),P(11,1),P(11,2),P(11,3),P(11,4),P(11,5),
-			P(12,5),P(12,4),P(12,3),P(12,2),P(12,1),P(12,0),
-			P(13,0),P(13,1),P(13,2)
-		},
-		{
-								P(4,3),P(4,4),P(4,5),
-			P(5,5),P(5,4),P(5,3),P(5,2),P(5,1),P(5,0),
-			P(6,0),P(6,1),P(6,2),P(6,3),P(6,4),P(6,5),
-			P(7,5),P(7,4),P(7,3),P(7,2),P(7,1),P(7,0),
-			P(8,0),P(8,1),P(8,2),P(8,3),P(8,4),P(8,5),
-		},
-		{
-									P(13,3),P(13,4),P(13,5),
-			P(14,5),P(14,4),P(14,3),P(14,2),P(14,1),P(14,0),
-			P(15,0),P(15,1),P(15,2),P(15,3),P(15,4),P(15,5),
-			P(16,5),P(16,4),P(16,3),P(16,2),P(16,1),P(16,0),
-			P(17,0),P(17,1),P(17,2),P(17,3),P(17,4),P(17,5),
-		},
-		{
-			P(0,0),P(0,1),P(0,2),P(0,3),P(0,4),P(0,5),
-			P(1,5),P(1,4),P(1,3),P(1,2),P(1,1),P(1,0),
-			P(2,0),P(2,1),P(2,2),P(2,3),P(2,4),P(2,5),
-			P(3,5),P(3,4),P(3,3),P(3,2),P(3,1),P(3,0),
-			P(4,0),P(4,1),P(4,2)
-		},
-		{
-			P(18,0),P(18,1),P(18,2),P(18,3),P(18,4),P(18,5),
-			P(19,5),P(19,4),P(19,3),P(19,2),P(19,1),P(19,0),
-			P(20,0),P(20,1),P(20,2),P(20,3),P(20,4),P(20,5),
-			P(21,5),P(21,4),P(21,3),P(21,2),P(21,1),P(21,0),
-			P(22,0),P(22,2),P(22,4)
-		},
-#undef P
-	};
-
-	static const int sPALMacroblockOffsets[5][27][2]={
-#define P(x,y) {x*16+y*16*sizeof(mYPlane[0]), x*8+y*8*sizeof(m420.mCrPlane[0])}
-		{
-			P(18,0),P(18,1),P(18,2),P(19,2),P(19,1),P(19,0),
-			P(20,0),P(20,1),P(20,2),P(21,2),P(21,1),P(21,0),
-			P(22,0),P(22,1),P(22,2),P(23,2),P(23,1),P(23,0),
-			P(24,0),P(24,1),P(24,2),P(25,2),P(25,1),P(25,0),
-			P(26,0),P(26,1),P(26,2),
-		},
-		{
-			P( 9,0),P( 9,1),P( 9,2),P(10,2),P(10,1),P(10,0),
-			P(11,0),P(11,1),P(11,2),P(12,2),P(12,1),P(12,0),
-			P(13,0),P(13,1),P(13,2),P(14,2),P(14,1),P(14,0),
-			P(15,0),P(15,1),P(15,2),P(16,2),P(16,1),P(16,0),
-			P(17,0),P(17,1),P(17,2),
-		},
-		{
-			P(27,0),P(27,1),P(27,2),P(28,2),P(28,1),P(28,0),
-			P(29,0),P(29,1),P(29,2),P(30,2),P(30,1),P(30,0),
-			P(31,0),P(31,1),P(31,2),P(32,2),P(32,1),P(32,0),
-			P(33,0),P(33,1),P(33,2),P(34,2),P(34,1),P(34,0),
-			P(35,0),P(35,1),P(35,2),
-		},
-		{
-			P(0,0),P(0,1),P(0,2),P(1,2),P(1,1),P(1,0),
-			P(2,0),P(2,1),P(2,2),P(3,2),P(3,1),P(3,0),
-			P(4,0),P(4,1),P(4,2),P(5,2),P(5,1),P(5,0),
-			P(6,0),P(6,1),P(6,2),P(7,2),P(7,1),P(7,0),
-			P(8,0),P(8,1),P(8,2)
-		},
-		{
-			P(36,0),P(36,1),P(36,2),P(37,2),P(37,1),P(37,0),
-			P(38,0),P(38,1),P(38,2),P(39,2),P(39,1),P(39,0),
-			P(40,0),P(40,1),P(40,2),P(41,2),P(41,1),P(41,0),
-			P(42,0),P(42,1),P(42,2),P(43,2),P(43,1),P(43,0),
-			P(44,0),P(44,1),P(44,2),
-		},
-#undef P
-	};
-
-	static const int sDCTYBlockOffsets411[2][4]={
-		0, 8, 16, 24,
-		0, 8, 8 * sizeof mYPlane[0], 8 + 8 * sizeof mYPlane[0],
-	};
-
-	static const int sDCTYBlockOffsets420[2][4]={
-		0, 8, 8 * sizeof mYPlane[0], 8 + 8 * sizeof mYPlane[0],
-		0, 8, 8 * sizeof mYPlane[0], 8 + 8 * sizeof mYPlane[0],
-	};
-
-	const int (*const pMacroblockOffsets)[27][2] = (mHeight == 576 ? sPALMacroblockOffsets : sNTSCMacroblockOffsets);
-	const int (*const pDCTYBlockOffsets)[4] = (mHeight == 576 ? sDCTYBlockOffsets420 : sDCTYBlockOffsets411);
-	const uint8 *pVideoBlock = (const uint8 *)src + 7*80;
-
-	const int kChromaStep = sizeof(m411.mCrPlane[0]) * 48;
-	VDASSERTCT(kChromaStep == sizeof(m420.mCrPlane[0]) * 24);
-
-	uint8 *pCr, *pCb;
-	ptrdiff_t chroma_pitch;
-	int nDIFSequences;
-
-	if (mHeight == 576) {
-		memset(m420.mCrPlane, 0x80, sizeof m420.mCrPlane);
-		memset(m420.mCbPlane, 0x80, sizeof m420.mCbPlane);
-
-		pCr = m420.mCrPlane[0];
-		pCb = m420.mCbPlane[0];
-		chroma_pitch = sizeof m420.mCrPlane[0];
-		nDIFSequences = 12;
-	} else {
-		memset(m411.mCrPlane, 0x80, sizeof m411.mCrPlane);
-		memset(m411.mCbPlane, 0x80, sizeof m411.mCbPlane);
-
-		pCr = m411.mCrPlane[0];
-		pCb = m411.mCbPlane[0];
-		chroma_pitch = sizeof m411.mCrPlane[0];
-		nDIFSequences = 10;
-	}
-
-	int zigzag[2][64];
-
-	DVDecoderContext context;
-
-	if (context.mpIDCT->pAltScan)
-		memcpy(zigzag[0], context.mpIDCT->pAltScan, sizeof(int)*64);
-	else
-		memcpy(zigzag[0], zigzag_std, sizeof(int)*64);
-
-	memcpy(zigzag[1], zigzag_alt, sizeof(int)*64);
-
-	for(int i=0; i<nDIFSequences; ++i) {			// 10/12 DIF sequences
-		int audiocounter = 0;
-
-		const int columns[5]={
-			(i+2) % nDIFSequences,
-			(i+6) % nDIFSequences,
-			(i+8) % nDIFSequences,
-			(i  ) % nDIFSequences,
-			(i+4) % nDIFSequences,
-		};
-
-		for(int k=0; k<27; ++k) {
-			DVBitSource mSources[30];
-			__declspec(align(16)) DVDCTBlockDecoder mDecoders[30];
-
-			int blk = 0;
-
-			for(int j=0; j<5; ++j) {
-				const int y_offset = pMacroblockOffsets[j][k][0];
-				const int c_offset = pMacroblockOffsets[j][k][1];
-				const int super_y = columns[j];
-
-				uint8 *yptr = mYPlane[super_y*48] + y_offset;
-				uint8 *crptr = pCr + kChromaStep * super_y;
-				uint8 *cbptr = pCb + kChromaStep * super_y;
-
-				int qno = pVideoBlock[3] & 15;
-
-				bool bHalfBlock = nDIFSequences == 10 && j==4 && k>=24;
-				
-				mSources[blk+0].Init(pVideoBlock +  4, pVideoBlock + 18, 0);
-				mSources[blk+1].Init(pVideoBlock + 18, pVideoBlock + 32, 0);
-				mSources[blk+2].Init(pVideoBlock + 32, pVideoBlock + 46, 0);
-				mSources[blk+3].Init(pVideoBlock + 46, pVideoBlock + 60, 0);
-				mSources[blk+4].Init(pVideoBlock + 60, pVideoBlock + 70, 0);
-				mSources[blk+5].Init(pVideoBlock + 70, pVideoBlock + 80, 0);
-				mDecoders[blk+0].Init(yptr + pDCTYBlockOffsets[bHalfBlock][0], sizeof mYPlane[0], mSources[blk+0], qno, false, zigzag);
-				mDecoders[blk+1].Init(yptr + pDCTYBlockOffsets[bHalfBlock][1], sizeof mYPlane[0], mSources[blk+1], qno, false, zigzag);
-				mDecoders[blk+2].Init(yptr + pDCTYBlockOffsets[bHalfBlock][2], sizeof mYPlane[0], mSources[blk+2], qno, false, zigzag);
-				mDecoders[blk+3].Init(yptr + pDCTYBlockOffsets[bHalfBlock][3], sizeof mYPlane[0], mSources[blk+3], qno, false, zigzag);
-				mDecoders[blk+4].Init(crptr + c_offset, chroma_pitch, mSources[blk+4], qno, bHalfBlock, zigzag);
-				mDecoders[blk+5].Init(cbptr + c_offset, chroma_pitch, mSources[blk+5], qno, bHalfBlock, zigzag);
-
-				int i;
-
-				for(i=0; i<6; ++i)
-					mDecoders[blk+i].Decode(mSources[blk+i], context);
-
-				int source = 0;
-
-				i = 0;
-				while(i < 6 && source < 6) {
-					if (!mDecoders[blk+i].Decode(mSources[blk+source], context))
-						++source;
-					else
-						++i;
-				}
-
-				blk += 6;
-
-				pVideoBlock += 80;
-				if (++audiocounter >= 15) {
-					audiocounter = 0;
-					pVideoBlock += 80;
-				}
-			}
-
-			int source = 0;
-			blk = 0;
-
-			while(blk < 30 && source < 30) {
-				if (!mDecoders[blk].Decode(mSources[source], context))
-					++source;
-				else
-					++blk;
-			}
-		}
-
-		pVideoBlock += 80 * 6;
-	}
-
-#ifndef _M_AMD64
-	if (MMX_enabled)
-		__asm emms
-	if (ISSE_enabled)
-		__asm sfence
-#else
-	_mm_sfence();
-#endif
-
-	// blit time!
-
-	VDPixmap pxsrc = {0};
-	pxsrc.data		= mYPlane;
-	pxsrc.pitch		= sizeof mYPlane[0];
-	pxsrc.w			= 720;
-	if (mHeight == 576) {
-		pxsrc.data2		= m420.mCbPlane;
-		pxsrc.data3		= m420.mCrPlane;
-		pxsrc.pitch2	= sizeof m420.mCbPlane[0];
-		pxsrc.pitch3	= sizeof m420.mCrPlane[0];
-		pxsrc.h			= 576;
-		pxsrc.format	= nsVDPixmap::kPixFormat_YUV420_Planar;
-	} else {
-		pxsrc.data2		= m411.mCbPlane;
-		pxsrc.data3		= m411.mCrPlane;
-		pxsrc.pitch2	= sizeof m411.mCbPlane[0];
-		pxsrc.pitch3	= sizeof m411.mCrPlane[0];
-		pxsrc.h			= 480;
-		pxsrc.format	= nsVDPixmap::kPixFormat_YUV411_Planar;
-	}
-
-	VDPixmapLayout dstlayout;
-	VDMakeBitmapCompatiblePixmapLayout(dstlayout, mWidth, mHeight, mFormat, 0);
-	VDPixmap pxdst(VDPixmapFromLayout(dstlayout, dst));
-
-	VDPixmapBlt(pxdst, pxsrc);
-}
-
-const void *VDVideoDecompressorDV::GetRawCodecHandlePtr() {
-	return NULL;
-}
-
-const wchar_t *VDVideoDecompressorDV::GetName() {
-	return L"Internal DV decoder";
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-class VDVideoDecompressorVCM : public IVDVideoDecompressor {
-public:
-	VDVideoDecompressorVCM();
-	~VDVideoDecompressorVCM();
-
-	void Init(const void *srcFormat, HIC hic);
-
-	bool QueryTargetFormat(int format);
-	bool QueryTargetFormat(const void *format);
-	bool SetTargetFormat(int format);
-	bool SetTargetFormat(const void *format);
-	int GetTargetFormat() { return mFormat; }
-	int GetTargetFormatVariant() { return mFormatVariant; }
-	void Start();
-	void Stop();
-	void DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll);
-	const void *GetRawCodecHandlePtr();
-	const wchar_t *GetName();
-
-protected:
-	HIC			mhic;
-	int			mFormat;
-	int			mFormatVariant;
-	bool		mbActive;
-	bool		mbUseEx;
-	VDStringW	mName;
-	VDStringW	mDriverName;
-	vdstructex<BITMAPINFOHEADER>	mSrcFormat;
-	vdstructex<BITMAPINFOHEADER>	mDstFormat;
-};
-
-VDVideoDecompressorVCM::VDVideoDecompressorVCM()
-	: mhic(NULL)
-	, mbActive(false)
-	, mFormat(0)
-	, mFormatVariant(0)
-{
-}
-
-VDVideoDecompressorVCM::~VDVideoDecompressorVCM() {
-	Stop();
-
-	if (mhic) {
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		ICClose(mhic);
-	}
-}
-
-void VDVideoDecompressorVCM::Init(const void *srcFormat, HIC hic) {
-	VDASSERT(!mhic);
-
-	mhic = hic;
-
-	const BITMAPINFOHEADER *bih = (const BITMAPINFOHEADER *)srcFormat;
-
-	mSrcFormat.assign(bih, VDGetSizeOfBitmapHeaderW32(bih));
-
-	ICINFO info = {sizeof(ICINFO)};
-	DWORD rv;
-
-	{
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		rv = ICGetInfo(mhic, &info, sizeof info);
-	}
-
-	if (rv >= sizeof info) {
-		mName = info.szDescription;
-		const wchar_t *pName = info.szDescription;
-		mDriverName = VDswprintf(L"Video codec \"%ls\"", 1, &pName);
-	}
-}
-
-bool VDVideoDecompressorVCM::QueryTargetFormat(int format) {
-	vdstructex<BITMAPINFOHEADER> bmformat;
-	const int variants = VDGetPixmapToBitmapVariants(format);
-
-	for(int variant=1; variant<=variants; ++variant) {
-		if (VDMakeBitmapFormatFromPixmapFormat(bmformat, mSrcFormat, format, variant) && QueryTargetFormat(bmformat.data()))
-			return true;
-	}
-
-	return false;
-}
-
-bool VDVideoDecompressorVCM::QueryTargetFormat(const void *format) {
-	const BITMAPINFO *pSrcFormat = (const BITMAPINFO *)mSrcFormat.data();
-	DWORD retval;
-
-	{
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		retval = ICDecompressQuery(mhic, pSrcFormat, (BITMAPINFO *)format);
-	}
-
-	return retval == ICERR_OK;
-}
-
-bool VDVideoDecompressorVCM::SetTargetFormat(int format) {
-	using namespace nsVDPixmap;
-
-	if (!format)
-		return SetTargetFormat(kPixFormat_RGB888)
-			|| SetTargetFormat(kPixFormat_XRGB8888)
-			|| SetTargetFormat(kPixFormat_XRGB1555);
-
-	vdstructex<BITMAPINFOHEADER> bmformat;
-	const int variants = VDGetPixmapToBitmapVariants(format);
-
-	for(int variant=1; variant<=variants; ++variant) {
-		if (VDMakeBitmapFormatFromPixmapFormat(bmformat, mSrcFormat, format, variant) && SetTargetFormat(bmformat.data())) {
-			mFormat = format;
-			mFormatVariant = variant;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool VDVideoDecompressorVCM::SetTargetFormat(const void *format) {
-	BITMAPINFO *pSrcFormat = (BITMAPINFO *)mSrcFormat.data();
-	BITMAPINFO *pDstFormat = (BITMAPINFO *)format;
-	DWORD retval;
-
-	{
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		retval = ICDecompressQuery(mhic, pSrcFormat, pDstFormat);
-	}
-
-	if (retval == ICERR_OK) {
-		if (mbActive)
-			Stop();
-
-		mDstFormat.assign((const BITMAPINFOHEADER *)format, VDGetSizeOfBitmapHeaderW32((const BITMAPINFOHEADER *)format));
-		mFormat = 0;
-		mFormatVariant = 0;
-		return true;
-	}
-
-	return false;
-}
-
-void VDVideoDecompressorVCM::Start() {
-	if (mDstFormat.empty())
-		throw MyError("Cannot find compatible target format for video decompression.");
-
-	if (!mbActive) {
-		BITMAPINFO *pSrcFormat = (BITMAPINFO *)mSrcFormat.data();
-		BITMAPINFO *pDstFormat = (BITMAPINFO *)mDstFormat.data();
-		DWORD retval;
-
-		mbUseEx = false;
-		{
-			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-			retval = ICDecompressBegin(mhic, pSrcFormat, pDstFormat);
-
-			if (retval != ICERR_OK) {
-				BITMAPINFOHEADER *bihSrc = (BITMAPINFOHEADER *)pSrcFormat;
-				BITMAPINFOHEADER *bihDst = (BITMAPINFOHEADER *)pDstFormat;
-				if (ICERR_OK == ICDecompressExBegin(mhic, 0, bihSrc, NULL, 0, 0, bihSrc->biWidth, bihSrc->biHeight, bihDst, NULL, 0, 0, bihDst->biWidth, bihDst->biHeight)) {
-					mbUseEx = true;
-					retval = ICERR_OK;
-				}
-			}
-		}
-
-		if (retval != ICERR_OK)
-			throw MyICError("VideoSourceAVI", retval);
-
-		mbActive = true;
-	}
-}
-
-void VDVideoDecompressorVCM::Stop() {
-	if (mbActive) {
-		mbActive = false;
-
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		if (mbUseEx)
-			ICDecompressExEnd(mhic);
-		else
-			ICDecompressEnd(mhic);
-	}
-}
-
-void VDVideoDecompressorVCM::DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) {
-	if (!mbActive)
-		Start();
-
-	BITMAPINFOHEADER *pSrcFormat = mSrcFormat.data();
-	BITMAPINFOHEADER *pDstFormat = mDstFormat.data();
-
-	DWORD dwFlags = 0;
-
-	if (!keyframe)
-		dwFlags |= ICDECOMPRESS_NOTKEYFRAME;
-
-	if (preroll)
-		dwFlags |= ICDECOMPRESS_PREROLL;
-
-	DWORD dwOldSize = pSrcFormat->biSizeImage;
-	pSrcFormat->biSizeImage = srcSize;
-	DWORD retval;
-	
-	{
-		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
-		if (mbUseEx) {
-			BITMAPINFOHEADER *bihSrc = (BITMAPINFOHEADER *)pSrcFormat;
-			BITMAPINFOHEADER *bihDst = (BITMAPINFOHEADER *)pDstFormat;
-			retval = ICDecompressEx(mhic, dwFlags, bihSrc, (LPVOID)src, 0, 0, bihSrc->biWidth, bihSrc->biHeight, bihDst, dst, 0, 0, bihDst->biWidth, bihDst->biHeight);
-		} else
-			retval = ICDecompress(mhic, dwFlags, pSrcFormat, (LPVOID)src, pDstFormat, dst);
-	}
-
-	pSrcFormat->biSizeImage = dwOldSize;
-
-	// We will get ICERR_DONTDRAW if we set preroll.
-	if (retval < 0)
-		throw MyICError(retval, "%%s (Error code: %d)", (int)retval);
-}
-
-const void *VDVideoDecompressorVCM::GetRawCodecHandlePtr() {
-	return &mhic;
-}
-
-const wchar_t *VDVideoDecompressorVCM::GetName() {
-	return mName.c_str();
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 VideoSource::VideoSource() {
 	lpvBuffer = NULL;
 	hBufferObject = NULL;
@@ -1523,7 +313,7 @@ bool VideoSource::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 	return false;
 }
 
-void VideoSource::streamBegin(bool) {
+void VideoSource::streamBegin(bool, bool) {
 	stream_current_frame	= -1;
 }
 
@@ -1614,6 +404,7 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 	, mbMMXBrokenCodecDetected(false)
 	, mbConcealingErrors(false)
 	, mbDecodeStarted(false)
+	, mbDecodeRealTime(false)
 {
 	pAVIFile	= pAVI;
 	pAVIStream	= NULL;
@@ -2019,33 +810,8 @@ void VideoSourceAVI::_construct() {
 		if (use_internal) {
 			bFailed = true;
 		} else {
-			vdprotected2("attempting codec negotiation: fccHandler=0x%08x, biCompression=0x%08x", unsigned, streamInfo.fccHandler, unsigned, fccOriginalCodec) {
-				VDExternalCodeBracket bracket(L"A video codec", __FILE__, __LINE__);
-
-				switch(bmih->biCompression) {
-				case '34PM':		// Microsoft MPEG-4 V3
-				case '3VID':		// "DivX Low-Motion" (4.10.0.3917)
-				case '4VID':		// "DivX Fast-Motion" (4.10.0.3920)
-				case '5VID':		// unknown
-				case '14PA':		// "AngelPotion Definitive" (4.0.00.3688)
-					if (!AttemptCodecNegotiation(bmih)) {
-						bmih->biCompression = '34PM';
-						if (!AttemptCodecNegotiation(bmih)) {
-							bmih->biCompression = '3VID';
-							if (!AttemptCodecNegotiation(bmih)) {
-								bmih->biCompression = '4VID';
-								if (!AttemptCodecNegotiation(bmih)) {
-									bmih->biCompression = '14PA';
-				default:
-									if (!AttemptCodecNegotiation(bmih))
-										bFailed = true;
-								}
-							}
-						}
-					}
-					break;
-				}
-			}
+			mpDecompressor = VDFindVideoDecompressor(streamInfo.fccHandler, bmih);
+			bFailed = !mpDecompressor;
 		}
 
 		if (bFailed) {
@@ -2061,10 +827,7 @@ void VideoSourceAVI::_construct() {
 
 				mpDecompressor = pDecoder.release();
 			} else if (is_dv && w==720 && (h == 480 || h == 576)) {
-				vdautoptr<VDVideoDecompressorDV> pDecoder(new_nothrow VDVideoDecompressorDV);
-				pDecoder->Init(w, h);
-
-				mpDecompressor = pDecoder.release();
+				mpDecompressor = VDCreateVideoDecompressorDV(w, h);
 			} else {
 				const char *s = LookupVideoCodec(fccOriginalCodec);
 
@@ -2081,209 +844,6 @@ void VideoSourceAVI::_construct() {
 			}
 		}
 	}
-}
-
-DWORD VDSafeICDecompressQueryW32(HIC hic, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut) {
-	vdstructex<BITMAPINFOHEADER> bihIn, bihOut;
-	int cbIn = 0, cbOut = 0;
-
-	if (lpbiIn) {
-		cbIn = VDGetSizeOfBitmapHeaderW32(lpbiIn);
-		bihIn.assign(lpbiIn, cbIn);
-	}
-
-	if (lpbiOut) {
-		cbOut = VDGetSizeOfBitmapHeaderW32(lpbiOut);
-		bihOut.assign(lpbiIn, cbOut);
-	}
-
-	// AngelPotion overwrites its input format with biCompression='MP43' and doesn't
-	// restore it, which leads to video codec lookup errors.  So what we do here is
-	// make a copy of the format in nice, safe memory and feed that in instead.
-
-	// We used to write protect the format here, but apparently some versions of Windows
-	// have certain functions accepting (BITMAPINFOHEADER *) that actually call
-	// IsBadWritePtr() to verify the incoming pointer, even though those functions
-	// don't actually need to write to the format.  It would be nice if someone learned
-	// what 'const' was for.  AngelPotion doesn't crash because it has a try/catch
-	// handler wrapped around its code.
-
-	DWORD result = ICDecompressQuery(hic, lpbiIn ? bihIn.data() : NULL, lpbiOut ? bihOut.data() : NULL);
-
-	// check for unwanted modification
-	static bool sbBadCodecDetected = false;		// we only need one warning, not a billion....
-	if (!sbBadCodecDetected && ((lpbiIn && memcmp(bihIn.data(), lpbiIn, cbIn)) || (lpbiOut && memcmp(bihOut.data(), lpbiOut, cbOut)))) {
-		ICINFO info = {sizeof(ICINFO)};
-		ICGetInfo(hic, &info, sizeof info);
-
-		const wchar_t *ppName = info.szDescription;
-		VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecRenamingDetected, 1, &ppName);
-		sbBadCodecDetected = true;
-	}
-
-	return result;
-}
-
-HIC VDSafeICOpenW32(DWORD fccType, DWORD fccHandler, UINT wMode) {
-	HIC hic;
-	
-	vdprotected1("attempting to open video codec with FOURCC '%.4s'", const char *, (const char *)&fccHandler) {
-		wchar_t buf[64];
-		_swprintf(buf, L"A video codec with FOURCC '%.4S'", (const char *)&fccHandler);
-		VDExternalCodeBracket bracket(buf, __FILE__, __LINE__);
-		hic = ICOpen(fccType, fccHandler, wMode);
-	}
-
-	return hic;
-}
-
-HIC VDSafeICLocateDecompressW32(DWORD fccType, DWORD fccHandler, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut) {
-	ICINFO info={0};
-
-	for(DWORD id=0; ICInfo(fccType, id, &info); ++id) {
-		info.dwSize = sizeof(ICINFO);	// I don't think this is necessary, but just in case....
-
-		HIC hic = VDSafeICOpenW32(fccType, info.fccHandler, ICMODE_DECOMPRESS);
-
-		if (!hic)
-			continue;
-
-		DWORD result = VDSafeICDecompressQueryW32(hic, lpbiIn, lpbiOut);
-
-		if (result == ICERR_OK) {
-			// Check for a codec that doesn't actually support what it says it does.
-			// We ask the codec whether it can do a specific conversion that it can't
-			// possibly support.  If it does it, then we call BS and ignore the codec.
-			// The Grand Tech Camera Codec and Panasonic DV codecs are known to do this.
-			//
-			// (general idea from Raymond Chen's blog)
-
-			BITMAPINFOHEADER testSrc = {		// note: can't be static const since IsBadWritePtr() will get called on it
-				sizeof(BITMAPINFOHEADER),
-				320,
-				240,
-				1,
-				24,
-				0x2E532E42,
-				320*240*3,
-				0,
-				0,
-				0,
-				0
-			};
-
-			static bool sbBSReported = false;	// Only report once per session.
-
-			if (!sbBSReported && ICERR_OK == ICDecompressQuery(hic, &testSrc, NULL)) {		// Don't need to wrap this, as it's OK if testSrc gets modified.
-				ICINFO info = {sizeof(ICINFO)};
-
-				ICGetInfo(hic, &info, sizeof info);
-
-				const wchar_t *ppName = info.szDescription;
-				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecAcceptsBS, 1, &ppName);
-				sbBSReported = true;
-
-				// Okay, let's give the codec a chance to redeem itself. Reformat the input format into
-				// a plain 24-bit RGB image, and ask it what the compressed format is. If it produces
-				// a FOURCC that matches, allow it to handle the format. This should allow at least
-				// the codec's primary format to work. Otherwise, drop it on the ground.
-				
-				if (lpbiIn) {
-					BITMAPINFOHEADER unpackedSrc={
-						sizeof(BITMAPINFOHEADER),
-						lpbiIn ? lpbiIn->biWidth : 320,
-						lpbiIn ? lpbiIn->biHeight : 240,
-						1,
-						24,
-						BI_RGB,
-						0,
-						0,
-						0,
-						0,
-						0
-					};
-
-					unpackedSrc.biSizeImage = ((unpackedSrc.biWidth*3+3)&~3)*unpackedSrc.biHeight;
-
-					LONG size = ICCompressGetFormatSize(hic, &unpackedSrc);
-
-					if (size >= sizeof(BITMAPINFOHEADER)) {
-						vdstructex<BITMAPINFOHEADER> tmp;
-
-						tmp.resize(size);
-						if (ICERR_OK == ICCompressGetFormat(hic, &unpackedSrc, tmp.data()) && isEqualFOURCC(tmp->biCompression, lpbiIn->biCompression))
-							return hic;
-					}
-				}
-			} else {
-				return hic;
-			}
-		}
-
-		ICClose(hic);
-	}
-
-	return NULL;
-}
-
-bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih) {
-	HIC hicDecomp = NULL;
-
-	// Try the handler specified in the file first.  In some cases, it'll
-	// be wrong or missing. (VideoMatrix, among other programs, sets fccHandler=0.
-
-	if (streamInfo.fccHandler)
-		hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, streamInfo.fccHandler, ICMODE_DECOMPRESS);
-
-	if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, bmih, NULL)) {
-		if (hicDecomp)
-			ICClose(hicDecomp);
-
-		// Pick a handler based on the biCompression field instead. We should imitate the
-		// mappings that ICLocate() does -- namely, BI_RGB and BI_RLE8 map to MRLE, and
-		// CRAM maps to MSVC (apparently an outdated name for Microsoft Video 1).
-
-		DWORD fcc = bmih->biCompression;
-
-		if (fcc == BI_RGB || fcc == BI_RLE8)
-			fcc = 'ELRM';
-		else if (isEqualFOURCC(fcc, 'MARC'))
-			fcc = 'CVSM';
-
-		if (fcc >= 0x10000)		// if we couldn't map a numerical value like BI_BITFIELDS, don't open a random codec
-			hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, fcc, ICMODE_DECOMPRESS);
-
-		if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, bmih, NULL)) {
-			if (hicDecomp)
-				ICClose(hicDecomp);
-
-			// Okay, search all installed codecs.
-			hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, bmih, NULL);
-		}
-	}
-
-	if (!hicDecomp)
-		return false;
-
-	// check for bad MPEG-4 V2/V3 codec
-
-	if (isEqualFOURCC(bmih->biCompression, '24PM')) {
-		if (!CheckMPEG4Codec(hicDecomp, false)) {
-			ICClose(hicDecomp);
-			return false;
-		}
-	} else if (isEqualFOURCC(bmih->biCompression, '34PM')) {
-		if (!CheckMPEG4Codec(hicDecomp, true)) {
-			ICClose(hicDecomp);
-			return false;
-		}
-	}
-
-	// All good!
-
-	mpDecompressor = new VDVideoDecompressorVCM;
-	static_cast<VDVideoDecompressorVCM *>(&*mpDecompressor)->Init(getImageFormat(), hicDecomp);
-	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2320,6 +880,9 @@ void VideoSourceAVI::Reinit() {
 
 	if (pAVIStream->Info(&streamInfo, sizeof streamInfo))
 		throw MyError("Error obtaining video stream info.");
+
+	streamInfo.fccType = 'sdiv';
+
 
 	mSampleFirst = pAVIStream->Start();
 
@@ -2387,7 +950,7 @@ void VideoSourceAVI::redoKeyFlags() {
 		ProgressDialog pd(NULL, "AVI Import Filter", "Rekeying video stream", (mSampleLast - mSampleFirst)*2, true);
 		pd.setValueFormat("Frame %ld of %ld");
 
-		streamBegin(true);
+		streamBegin(true, false);
 		fStreamBegun = TRUE;
 
 		lSample = mSampleFirst;
@@ -2919,6 +1482,9 @@ bool VideoSourceAVI::setTargetFormat(int format) {
 		}
 		return false;
 	} else {
+		if (format != mSourceLayout.format && !VDPixmapIsBltPossible(format, mSourceLayout.format))
+			return false;
+
 		if (!VideoSource::setTargetFormat(format))
 			return false;
 
@@ -3025,6 +1591,7 @@ void VideoSourceAVI::DecompressFrame(const void *pSrc) {
 		return;
 
 	VDPixmap src(VDPixmapFromLayout(mSourceLayout, (void *)pSrc));
+	src.palette = mPalette;
 
 	VDPixmapBlt(mTargetFormat, src);
 }
@@ -3094,13 +1661,14 @@ bool VideoSourceAVI::isType1() {
    return bIsType1;
 }
 
-void VideoSourceAVI::streamBegin(bool fRealTime) {
-	// must reset prevframe in any case  so that dsc renders don't pick up the last
-	// preview frame
-	stream_current_frame	= -1;
+void VideoSourceAVI::streamBegin(bool fRealTime, bool bForceReset) {
+	if (bForceReset)
+		stream_current_frame	= -1;
 
-	if (mbDecodeStarted)
+	if (mbDecodeStarted && fRealTime == mbDecodeRealTime)
 		return;
+
+	stream_current_frame	= -1;
 
 	pAVIStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 
@@ -3108,12 +1676,13 @@ void VideoSourceAVI::streamBegin(bool fRealTime) {
 		mpDecompressor->Start();
 
 	mbDecodeStarted = true;
+	mbDecodeRealTime = fRealTime;
 }
 
 const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
 	if (isKey(frame_num)) {
 		if (mbConcealingErrors) {
-			const unsigned frame = frame_num;
+			const unsigned frame = (unsigned)frame_num;
 			VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_ResumeFromConceal, 1, &frame);
 		}
 		mbConcealingErrors = false;
@@ -3127,7 +1696,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 			if (mErrorMode != kErrorModeReportAll) {
 				const unsigned actual = data_len;
 				const unsigned expected = to_copy;
-				const unsigned frame = frame_num;
+				const unsigned frame = (unsigned)frame_num;
 				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
 				to_copy = data_len;
 			} else
@@ -3160,7 +1729,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 				if (mErrorMode == kErrorModeReportAll)
 					throw MyError("Error decompressing video frame %u:\n\n%s", (unsigned)frame_num, e.gets());
 				else {
-					const unsigned frame = frame_num;
+					const unsigned frame = (unsigned)frame_num;
 					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_DecodingError, 1, &frame);
 
 					if (mErrorMode == kErrorModeConceal)
@@ -3175,7 +1744,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 
 		if (data_len < nBytesRequired) {
 			if (mErrorMode != kErrorModeReportAll) {
-				const unsigned frame = frame_num;
+				const unsigned frame = (unsigned)frame_num;
 				const unsigned actual = data_len;
 				const unsigned expected = nBytesRequired;
 				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
@@ -3292,4 +1861,27 @@ void VideoSourceAVI::setDecodeErrorMode(ErrorMode mode) {
 
 bool VideoSourceAVI::isDecodeErrorModeSupported(ErrorMode mode) {
 	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoCodecBugTrap : public IVDVideoCodecBugTrap {
+public:
+	void OnCodecRenamingDetected(const wchar_t *pName) {
+		static bool sbBadCodecDetected = false;
+
+		VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecRenamingDetected, 1, &pName);
+		sbBadCodecDetected = true;
+	}
+
+	void OnAcceptedBS(const wchar_t *pName) {
+		static bool sbBSReported = false;	// Only report once per session.
+
+		VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecAcceptsBS, 1, &pName);
+		sbBSReported = true;
+	}
+} g_videoCodecBugTrap;
+
+void VDInitVideoCodecBugTrap() {
+	VDSetVideoCodecBugTrap(&g_videoCodecBugTrap);
 }

@@ -113,7 +113,7 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 
 	try {
 		for(;;) {
-			if (!VDDoesPathExist(VDStringW(buf)))
+			if (!VDDoesPathExist(buf))
 				break;
 			
 			if (!inputAVI->Append(buf))
@@ -174,6 +174,7 @@ void SaveAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, bool
 	fileout.SetIndexing(!fCompatibility);
 	fileout.SetFilename(szFilename);
 	fileout.SetBuffer(g_dubOpts.perf.outputBufferSize);
+	fileout.SetTextInfo(g_project->GetTextInfo());
 
 	g_project->RunOperation(&fileout, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp);
 }
@@ -260,7 +261,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 
 		pd.setValueFormat("Frame %d of %d");
 
-		pVideoSource->streamBegin(false);
+		pVideoSource->streamBegin(false, true);
 
 		while(lFrame <= lLast) {
 			uint32 lActualBytes, lActualSamples;

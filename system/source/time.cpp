@@ -41,10 +41,24 @@ uint64 VDGetPreciseTick() {
 	return li.QuadPart;
 }
 
+namespace {
+	double VDGetPreciseTicksPerSecondNow() {
+		LARGE_INTEGER freq;
+		QueryPerformanceFrequency(&freq);
+		return freq.QuadPart;
+	}
+}
+
 double VDGetPreciseTicksPerSecond() {
-	LARGE_INTEGER freq;
-	QueryPerformanceFrequency(&freq);
-	return freq.QuadPart;
+	static double ticksPerSecond = VDGetPreciseTicksPerSecondNow();
+
+	return ticksPerSecond;
+}
+
+double VDGetPreciseSecondsPerTick() {
+	static double secondsPerTick = 1.0 / VDGetPreciseTicksPerSecondNow();
+
+	return secondsPerTick;
 }
 
 VDCallbackTimer::VDCallbackTimer()

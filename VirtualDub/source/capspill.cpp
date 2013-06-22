@@ -23,39 +23,40 @@
 #include <vd2/system/list.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/w32assist.h>
+#include <vd2/system/registry.h>
 #include "gui.h"
 #include "oshelper.h"
 #include "capspill.h"
 
 CapSpillDrive::CapSpillDrive() {
-	path = NULL;
 	threshold = priority = 0;
 }
 
 CapSpillDrive::~CapSpillDrive() {
-	delete path;
 }
 
-void CapSpillDrive::setPath(char *s) {
-	delete path;
+void CapSpillDrive::setPath(const wchar_t *s) {
 	path = s;
+	pathA = VDTextWToA(s);
 }
 
-char *CapSpillDrive::makePath(char *buf, const char *fn) const {
-	char *t, *s;
+wchar_t *CapSpillDrive::makePath(wchar_t *buf, const wchar_t *fn) const {
+	wchar_t *t;
+	const wchar_t *s;
 
-	s = path;
+	s = path.c_str();
 	t = buf;
 	while(*t++ = *s++);
 
 	--t;
 
 	if (t>buf) {
-		if (t[-1] != '\\' && t[-1]!=':')
-			*t++ = '\\'; 
+		if (t[-1] != L'\\' && t[-1]!=L':')
+			*t++ = L'\\'; 
 	}
 
-	strcpy(t, fn);
+	wcscpy(t, fn);
 
 	return buf;
 }
@@ -65,7 +66,7 @@ char *CapSpillDrive::makePath(char *buf, const char *fn) const {
 extern HINSTANCE g_hInst;
 extern const char g_szError[];
 
-static List2<CapSpillDrive> g_spillDrives;
+static ListAlloc<CapSpillDrive> g_spillDrives;
 
 extern long	g_lSpillMinSize = 50;
 extern long g_lSpillMaxSize = 1900;
@@ -82,7 +83,7 @@ __int64 CapSpillGetFreeSpace() {
 		// Probably shouldn't continuously query free space on a UNC path.
 
 		if (pcsd->path[0] != '\\' || pcsd->path[1] != '\\') {
-			i64Free = VDGetDiskFreeSpace(VDTextAToW(VDString(pcsd->path)));
+			i64Free = VDGetDiskFreeSpace(pcsd->path.c_str());
 
 			if (i64Free != -1)
 				i64Total += i64Free;
@@ -104,7 +105,7 @@ CapSpillDrive *CapSpillPickDrive(bool fAudio) {
 
 	while(pcsd_next = pcsd->NextFromHead()) {
 
-		i64Free = VDGetDiskFreeSpace(VDTextAToW(VDString(pcsd->path)));
+		i64Free = VDGetDiskFreeSpace(pcsd->path.c_str());
 
 		if ((i64Free>>20) > pcsd->threshold + g_lSpillMinSize &&
 			(!pcsd_best || pcsd->priority > pcsd_best->priority
@@ -120,18 +121,18 @@ CapSpillDrive *CapSpillPickDrive(bool fAudio) {
 	return pcsd_best;
 }
 
-CapSpillDrive *CapSpillFindDrive(const char *path) {
+CapSpillDrive *CapSpillFindDrive(const wchar_t *path) {
 	CapSpillDrive *pcsd = g_spillDrives.AtHead();
 	CapSpillDrive *pcsd_next;
 
 	while(pcsd_next = pcsd->NextFromHead()) {
-		const char *s = path, *t = pcsd->path;
-		char c, d;
+		const wchar_t *s = path, *t = pcsd->path.c_str();
+		wchar_t c, d;
 
 		while((c=*s++)==(d=*t++) && c)
 			;
 
-		if ((!c && !d) || (c=='/' && !d) || (!c && d=='/'))
+		if ((!c && !d) || (c==L'/' && !d) || (!c && d==L'/'))
 			return pcsd;
 
 		pcsd = pcsd_next;
@@ -141,54 +142,58 @@ CapSpillDrive *CapSpillFindDrive(const char *path) {
 }
 
 void CapSpillSaveToRegistry() {
-	DWORD dwNumDrives = 0;
+	int numDrives = 0;
 	CapSpillDrive *pcsd = g_spillDrives.AtHead(), *pcsd_next;
-	char szDriveConfig[512];
-	char szValueName[32];
+
+	VDRegistryAppKey driveKey("Capture\\Spill Drives");
 
 	while(pcsd_next = (CapSpillDrive *)pcsd->NextFromHead()) {
-		sprintf(szValueName, "Drive %d", ++dwNumDrives);
-		sprintf(szDriveConfig, "%d,%d,%s", pcsd->priority, pcsd->threshold, pcsd->path);
+		char szValueName[32];
+		sprintf(szValueName, "Drive %d", numDrives + 1);
 
-		SetConfigString("Capture\\Spill Drives", szValueName, szDriveConfig);
+		wchar_t szDriveConfig[1024];
+		if ((unsigned)_snwprintf(szDriveConfig, 1024, L"%d,%d,%s", pcsd->priority, pcsd->threshold, pcsd->path.c_str()) < 1024) {
+			driveKey.setString(szValueName, szDriveConfig);
+			++numDrives;
+		}
 
 		pcsd = pcsd_next;
 	}
-	SetConfigDword("Capture\\Spill Drives", "Number", dwNumDrives);
-	SetConfigDword("Capture\\Spill Drives", "Minimum file size", g_lSpillMinSize);
-	SetConfigDword("Capture\\Spill Drives", "Maximum file size", g_lSpillMaxSize);
+
+	driveKey.setInt("Number", numDrives);
+	driveKey.setInt("Minimum file size", g_lSpillMinSize);
+	driveKey.setInt("Maximum file size", g_lSpillMaxSize);
 }
 
 void CapSpillRestoreFromRegistry() {
-	DWORD dwNumDrives;
-	DWORD dwDrive=1;
-	char szValueName[32];
-	char szDriveConfig[512];
 	CapSpillDrive *pcsd;
 
-	QueryConfigDword("Capture\\Spill Drives", "Minimum file size", (DWORD *)&g_lSpillMinSize);
-	QueryConfigDword("Capture\\Spill Drives", "Maximum file size", (DWORD *)&g_lSpillMaxSize);
+	VDRegistryAppKey driveKey("Capture\\Spill Drives");
 
-	if (!QueryConfigDword("Capture\\Spill Drives", "Number", &dwNumDrives))
+	g_lSpillMinSize = driveKey.getInt("Minimum file size", 50);
+	g_lSpillMaxSize = driveKey.getInt("Maximum file size", 1900);
+
+	int numDrives = driveKey.getInt("Number", 0);
+	if (!numDrives)
 		return;
 
 	while(pcsd = g_spillDrives.RemoveTail())
 		delete pcsd;
 
-	while(dwDrive <= dwNumDrives) {
-		sprintf(szValueName, "Drive %d", dwDrive);
+	for(int drive = 1; drive <= numDrives; ++drive) {
+		char szValueName[32];
+		sprintf(szValueName, "Drive %d", drive);
 
-		if (QueryConfigString("Capture\\Spill Drives", szValueName, szDriveConfig, sizeof szDriveConfig)) {
+		VDStringW driveConfig;
+		if (driveKey.getString(szValueName, driveConfig)) {
 			int pri, thresh, pos;
 
-			if (2==sscanf(szDriveConfig, "%d,%d%n", &pri, &thresh, &pos) && szDriveConfig[pos]==',') {
-				pcsd = new CapSpillDrive();
-				char *pszPath = strdup(szDriveConfig+pos+1);
+			if (2==swscanf(driveConfig.c_str(), L"%d,%d%n", &pri, &thresh, &pos) && driveConfig[pos]==',') {
+				pcsd = new_nothrow CapSpillDrive();
 
-				if (!pcsd || !pszPath) {
-					delete pcsd;
-					freemem(pszPath);
-				} else {
+				if (pcsd) {
+					const wchar_t *pszPath = driveConfig.c_str()+pos+1;
+
 					pcsd->priority = pri;
 					pcsd->threshold = thresh;
 					pcsd->setPath(pszPath);
@@ -196,8 +201,6 @@ void CapSpillRestoreFromRegistry() {
 				}
 			}
 		}
-
-		++dwDrive;
 	}
 }
 
@@ -355,10 +358,7 @@ INT_PTR CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 					_snprintf(pnldi->item.pszText, pnldi->item.cchTextMax, "%ldMB", pcsd->threshold);
 					break;
 				case 2:
-					if (pcsd->path)
-						pnldi->item.pszText = pcsd->path;
-					else
-						pnldi->item.pszText[0] = 0;
+					pnldi->item.pszText = (TCHAR *)pcsd->pathA.c_str();
 					break;
 				default:
 					pnldi->item.pszText[0] = 0;
@@ -388,10 +388,8 @@ int CALLBACK LVSorter(LPARAM lp1, LPARAM lp2, LPARAM lp) {
 	else if (pcsd1->priority < pcsd2->priority)		return 1;
 	else if (pcsd1->threshold > pcsd2->threshold)	return 1;
 	else if (pcsd1->threshold < pcsd2->threshold)	return -1;
-	else if (pcsd1->path && pcsd2->path)
-		return stricmp(pcsd1->path, pcsd2->path);
 	else
-		return 0;
+		return wcsicmp(pcsd1->path.c_str(), pcsd2->path.c_str());
 }
 
 static void LVDestroyEdit(bool write, bool sort) {
@@ -402,13 +400,7 @@ static void LVDestroyEdit(bool write, bool sort) {
 
 	if (g_hwndEdit) {
 		if (g_csdItem == 2) {
-			int len = GetWindowTextLength(g_hwndEdit);
-			char *s;
-
-			if (s = (char *)allocmem(len+1)) {
-				GetWindowText(g_hwndEdit, s, len+1);
-				g_csdPtr->setPath(s);
-			}
+			g_csdPtr->setPath(VDGetWindowTextW32(g_hwndEdit).c_str());
 		} else {
 			char buf[32];
 			long lv;
@@ -540,8 +532,7 @@ static void LVBeginEdit(HWND hwndLV, int index, int subitem) {
 			SetWindowText(g_hwndEdit, buf);
 			break;
 		case 2:
-			if (pcsd->path)
-				SetWindowText(g_hwndEdit, pcsd->path);
+			VDSetWindowTextW32(g_hwndEdit, pcsd->path.c_str());
 			break;
 		}
 

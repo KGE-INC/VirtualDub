@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 
+#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include "VBitmap.h"
 #include "crash.h"

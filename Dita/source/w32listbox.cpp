@@ -36,7 +36,8 @@ public:
 	void SetValue(int);
 
 protected:
-	void AddItem(const wchar_t *text);
+	int GetItemCount();
+	void AddItem(const wchar_t *text, uintptr data = 0);
 
 	void OnCommandCallback(UINT code);
 
@@ -57,17 +58,30 @@ void *VDUIListBoxW32::AsInterface(uint32 id) {
 }
 
 bool VDUIListBoxW32::Create(IVDUIParameters *pParameters) {
-	return CreateW32(pParameters, "LISTBOX", LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|WS_TABSTOP);
+	return CreateW32(pParameters, "LISTBOX", LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|WS_TABSTOP|WS_VSCROLL);
 }
 
 void VDUIListBoxW32::PreLayoutBaseW32(const VDUILayoutSpecs& parentConstraints) {
 }
 
-void VDUIListBoxW32::AddItem(const wchar_t *text) {
+int VDUIListBoxW32::GetItemCount() {
+	LRESULT lr = SendMessage(mhwnd, LB_GETCOUNT, 0, 0);
+
+	VDASSERT(lr != LB_ERR);
+
+	return lr == LB_ERR ? 0 : (int)lr;
+}
+
+void VDUIListBoxW32::AddItem(const wchar_t *text, uintptr data) {
+	int idx;
+
 	if (VDIsWindowsNT())
-		SendMessageW(mhwnd, LB_ADDSTRING, 0, (LPARAM)text);
+		idx = (int)SendMessageW(mhwnd, LB_ADDSTRING, 0, (LPARAM)text);
 	else
-		SendMessageA(mhwnd, LB_ADDSTRING, 0, (LPARAM)VDTextWToA(text).c_str());
+		idx = (int)SendMessageA(mhwnd, LB_ADDSTRING, 0, (LPARAM)VDTextWToA(text).c_str());
+
+	if (idx >= 0)
+		SendMessage(mhwnd, LB_SETITEMDATA, (WPARAM)idx, (LPARAM)data);
 }
 
 void VDUIListBoxW32::OnCommandCallback(UINT code) {
@@ -109,7 +123,8 @@ public:
 	void SetValue(int);
 
 protected:
-	void AddItem(const wchar_t *text);
+	int GetItemCount();
+	void AddItem(const wchar_t *text, uintptr data);
 
 	void OnCommandCallback(UINT code);
 
@@ -151,11 +166,24 @@ void VDUIComboBoxW32::PreLayoutBaseW32(const VDUILayoutSpecs& parentConstraints)
 	mLayoutSpecs.minsize.h = mHeight;
 }
 
-void VDUIComboBoxW32::AddItem(const wchar_t *text) {
+int VDUIComboBoxW32::GetItemCount() {
+	LRESULT lr = SendMessage(mhwnd, CB_GETCOUNT, 0, 0);
+
+	VDASSERT(lr != CB_ERR);
+
+	return (lr == CB_ERR) ? 0 : (int)lr;
+}
+
+void VDUIComboBoxW32::AddItem(const wchar_t *text, uintptr data) {
+	int sel;
+
 	if (VDIsWindowsNT())
-		SendMessageW(mhwnd, CB_ADDSTRING, 0, (LPARAM)text);
+		sel = (int)SendMessageW(mhwnd, CB_ADDSTRING, 0, (LPARAM)text);
 	else
-		SendMessageA(mhwnd, CB_ADDSTRING, 0, (LPARAM)VDTextWToA(text).c_str());
+		sel = (int)SendMessageA(mhwnd, CB_ADDSTRING, 0, (LPARAM)VDTextWToA(text).c_str());
+
+	if (sel >= 0)
+		SendMessage(mhwnd, CB_SETITEMDATA, (WPARAM)sel, (LPARAM)data);
 }
 
 void VDUIComboBoxW32::OnCommandCallback(UINT code) {

@@ -17,681 +17,317 @@
 
 #include "stdafx.h"
 #include <windows.h>
-#include <commctrl.h>
-#include <vfw.h>
 
 #include "resource.h"
-#include "oshelper.h"
-#include "helpfile.h"
-#include "MonoBitmap.h"
-#include "FHT.h"
 #include <vd2/system/error.h>
+#include <vd2/system/time.h>
+#include <vd2/Dita/w32control.h>
+#include "capvumeter.h"
 
 
 #define BALANCE_DEADZONE		(2048)
 
 ///////////////////////////////////////////////////////////////////////////
-//
-//	Volume meter
-//
+namespace {
+	void ComputeWavePeaks_8M(const uint8 *p, unsigned count, float& l, float& r) {
+		int v=0;
+
+		do {
+			int c = abs((sint8)(*p++ ^ 0x80));
+
+			if (v < c)
+				v = c;
+		} while(--count);
+
+		l = r = (v * (1.0f / 128.0f));
+	}
+
+	void ComputeWavePeaks_8S(const uint8 *p, unsigned count, float& l, float& r) {
+		int vL=0;
+		int vR=0;
+
+		do {
+			int cL = abs((sint8)(p[0] ^ 0x80));
+			int cR = abs((sint8)(p[1] ^ 0x80));
+			p += 2;
+
+			if (vL < cL)
+				vL = cL;
+			if (vR < cR)
+				vR = cR;
+		} while(--count);
+
+		l = (vL * (1.0f / 128.0f));
+		r = (vR * (1.0f / 128.0f));
+	}
+
+	void ComputeWavePeaks_16M(const sint16 *p, unsigned count, float& l, float& r) {
+		int v=0;
+
+		do {
+			int c = abs((int)*p++);
+
+			if (v < c)
+				v = c;
+		} while(--count);
+
+		l = r = (v * (1.0f / 32768.0f));
+	}
+
+	void ComputeWavePeaks_16S(const sint16 *p, unsigned count, float& l, float& r) {
+		int vL=0;
+		int vR=0;
+
+		do {
+			int cL = abs((int)p[0]);
+			int cR = abs((int)p[1]);
+			p += 2;
+
+			if (vL < cL)
+				vL = cL;
+			if (vR < cR)
+				vR = cR;
+		} while(--count);
+
+		l = (vL * (1.0f / 32768.0f));
+		r = (vR * (1.0f / 32768.0f));
+	}
+}
+
+void VDComputeWavePeaks(const void *p, unsigned depth, unsigned channels, unsigned count, float& l, float& r) {
+	if (depth == 8 && channels == 1)
+		ComputeWavePeaks_8M((const uint8 *)p, count, l, r);
+	else if (depth == 8 && channels == 2)
+		ComputeWavePeaks_8S((const uint8 *)p, count, l, r);
+	else if (depth == 16 && channels == 1)
+		ComputeWavePeaks_16M((const sint16 *)p, count, l, r);
+	else if (depth == 16 && channels == 2)
+		ComputeWavePeaks_16S((const sint16 *)p, count, l, r);
+	else
+		l = r = 0;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
-enum {
-	VMMODE_VUMETER,
-	VMMODE_SCOPE,
-	VMMODE_ANALYZER,
+class VDUICaptureVumeterW32 : public VDUICustomControlW32, public IVDUICaptureVumeter {
+public:
+	VDUICaptureVumeterW32();
+	~VDUICaptureVumeterW32();
+
+	void *AsInterface(uint32 id);
+
+	bool Create(IVDUIParameters *pParams) { return VDUICustomControlW32::Create(pParams); }
+
+	void SetArea(const vduirect& r);
+
+	void SetPeakLevels(float l, float r);
+
+protected:
+	LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+	void OnPaint();
+
+	uint64	mLastPeakL, mLastPeakR;
+	float	mFracL, mFracR;
+	float	mPeakL, mPeakR;
+	HBRUSH	mhbrFillL;
+	HBRUSH	mhbrFillR;
+	HBRUSH	mhbrErase;
+	HBRUSH	mhbrPeak;
 };
 
-typedef struct VumeterDlgData {
-	RECT rect[2];
-	LONG last[2], peak[2];
-	void *buffer;
-	char *scrollBuffer;
-	int scrollSize;
-	int bufCnt;
-	WAVEFORMATEX wfex;
-	HWAVEIN hWaveIn;
-	WAVEHDR bufs[2];
-	char *pBitmap;
-	MonoBitmap *pbm;
-	int mode;
-	Fht *pfht_left, *pfht_right;
-	HWND hwndVolume, hwndBalance;
-	long lVolume, lBalance;
-	MIXERCONTROLDETAILS mcdVolume;
-	MIXERCONTROLDETAILS_UNSIGNED mcdVolumeData[2];
+extern IVDUIWindow *VDCreateUICaptureVumeter() { return new VDUICaptureVumeterW32; }
 
-	BOOL fOpened;
-	BOOL fRecording;
-	BOOL fStereo;
-	BOOL fOddByte;
-} VumeterDlgData;
-
-static void CaptureVumeterDestruct(VumeterDlgData *vdd) {
-	if (vdd->fRecording) waveInReset(vdd->hWaveIn);
-
-	while(vdd->bufCnt--) {
-		--vdd->bufCnt;
-		waveInUnprepareHeader(vdd->hWaveIn, &vdd->bufs[vdd->bufCnt], sizeof(WAVEHDR));
-	}
-	GdiFlush();
-	delete vdd->pbm;
-	delete vdd->pfht_left;
-	delete vdd->pfht_right;
-	if (vdd->fOpened) waveInClose(vdd->hWaveIn);
-	if (vdd->buffer) freemem(vdd->buffer);
-	freemem(vdd);
+VDUICaptureVumeterW32::VDUICaptureVumeterW32()
+	: mLastPeakL(0)
+	, mLastPeakR(0)
+	, mFracL(0.5f)
+	, mFracR(0.5f)
+	, mhbrFillL(CreateSolidBrush(RGB(0,128,192)))
+	, mhbrFillR(CreateSolidBrush(RGB(0,0,255)))
+	, mhbrErase(CreateSolidBrush(RGB(0,0,0)))
+	, mhbrPeak(CreateSolidBrush(RGB(255,0,0)))
+{
 }
 
-static void CaptureVumeterRepaintVumeter(VumeterDlgData *vdd, HDC hDC) {
-	HBRUSH hbr, hbrp;
-	int i;
+VDUICaptureVumeterW32::~VDUICaptureVumeterW32() {
+	if (mhbrFillL)
+		DeleteObject(mhbrFillL);
+	if (mhbrFillR)
+		DeleteObject(mhbrFillR);
+	if (mhbrErase)
+		DeleteObject(mhbrErase);
+	if (mhbrPeak)
+		DeleteObject(mhbrPeak);
+}
 
-	for(i=0; i<(vdd->fStereo?2:1); i++)
-		Draw3DRect(hDC,
-				vdd->rect[i].left,
-				vdd->rect[i].top,
-				vdd->rect[i].right  - vdd->rect[i].left,
-				vdd->rect[i].bottom - vdd->rect[i].top,
-				TRUE);
+void *VDUICaptureVumeterW32::AsInterface(uint32 id) {
+	switch(id) {
+		case IVDUICaptureVumeter::kTypeID: return static_cast<IVDUICaptureVumeter *>(this); break;
+	}
 
-	if ((hbr = CreateSolidBrush(RGB(0x00,0x00,0xff))) && (hbrp = CreateSolidBrush(RGB(0xff,0x00,0x00)))) {
+	return VDUICustomControlW32::AsInterface(id);
+}
+
+void VDUICaptureVumeterW32::SetArea(const vduirect& r) {
+	VDUICustomControlW32::SetArea(r);
+	InvalidateRect(mhwnd, NULL, TRUE);
+}
+
+void VDUICaptureVumeterW32::SetPeakLevels(float l, float r) {
+	const float invLn10_4 = 0.2171472409516259138255644594583f;
+
+	if (l < 1e-4f)
+		mFracL = 0;
+	else
+		mFracL = 1.0f + (float)(log(l) * invLn10_4);
+
+	if (r < 1e-4f)
+		mFracR = 0;
+	else
+		mFracR = 1.0f + (float)(log(r) * invLn10_4);
+
+	if (mFracL < 0)
+		mFracL = 0;
+
+	if (mFracR < 0)
+		mFracR = 0;
+
+	RECT rClient;
+
+	GetClientRect(mhwnd, &rClient);
+	rClient.bottom -= (unsigned)(rClient.bottom - rClient.top) >> 1;
+	InvalidateRect(mhwnd, &rClient, TRUE);
+}
+
+LRESULT VDUICaptureVumeterW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_PAINT:
+		OnPaint();
+		break;
+	case WM_ERASEBKGND:
+		{
+			HDC hdc = (HDC)wParam;
+			RECT r;
+			GetClientRect(mhwnd, &r);
+
+			r.top += (unsigned)(r.bottom - r.top) >> 1;
+
+			FillRect(hdc, &r, (HBRUSH)GetClassLongPtr(mhwnd, GCLP_HBRBACKGROUND));
+		}
+		return TRUE;
+	}
+	return VDUICustomControlW32::WndProc(msg, wParam, lParam);
+}
+
+void VDUICaptureVumeterW32::OnPaint() {
+	PAINTSTRUCT ps;
+
+	if (HDC hdc = BeginPaint(mhwnd, &ps)) {
 		RECT r;
+		GetClientRect(mhwnd, &r);
 
-		for(i=0; i<(vdd->fStereo?2:1); i++) {
-			r.top		= vdd->rect[i].top+1;
-			r.bottom	= vdd->rect[i].bottom-1;
+		// compute peak falloff
+		uint64 t = VDGetPreciseTick();
+		double invfreq = VDGetPreciseSecondsPerTick() * 0.1f;
 
-			if (vdd->peak[i]) {
-				r.left		= vdd->rect[i].left+1 + vdd->last[i];
-				r.right		= vdd->rect[i].left+1 + vdd->peak[i];
-				FillRect(hDC, &r, hbrp);
-			}
+		if (!mLastPeakL)
+			mLastPeakL = t;
 
-			if (vdd->last[i]) {
-				r.left		= vdd->rect[i].left+1;
-				r.right		= vdd->rect[i].left+1 + vdd->last[i];
-				FillRect(hDC, &r, hbr);
-			}
+		if (!mLastPeakR)
+			mLastPeakR = t;
 
-			r.left		= vdd->rect[i].left+1 + vdd->peak[i];
-			r.right		= vdd->rect[i].right-1;
-			FillRect(hDC, &r, (HBRUSH)GetStockObject(LTGRAY_BRUSH));
+		struct local {
+			static double sq(double x) { return x*x; }
+		};
+
+		float peakL = mPeakL - (float)local::sq((t - mLastPeakL) * invfreq);
+		float peakR = mPeakR - (float)local::sq((t - mLastPeakR) * invfreq);
+
+		if (peakL < mFracL) {
+			mPeakL = peakL = mFracL;
+			mLastPeakL = t;
 		}
 
+		if (peakR < mFracR) {
+			mPeakR = peakR = mFracR;
+			mLastPeakR = t;
+		}
+
+		int xL = VDRoundToIntFast(mFracL * r.right);
+		int xR = VDRoundToIntFast(mFracR * r.right);
+
+		const int y0 = 0;
+		const int y1 = r.bottom >> 2;
+		const int y2 = r.bottom >> 1;
+
+		RECT r2L = {0,y0,xL,y1};
+		RECT r2R = {0,y1,xR,y2};
+
+		FillRect(hdc, &r2L, mhbrFillL);
+		FillRect(hdc, &r2R, mhbrFillR);
+
+		r2L.left = xL;
+		r2L.right = r.right;
+		r2R.left = xR;
+		r2R.right = r.right;
+		FillRect(hdc, &r2L, mhbrErase);
+		FillRect(hdc, &r2R, mhbrErase);
+
+		int peakxL = VDRoundToIntFast(peakL * (r.right-1));
+		int peakxR = VDRoundToIntFast(peakR * (r.right-1));
+
+		RECT rPeakL = {peakxL, y0, peakxL+1, y1 };
+		RECT rPeakR = {peakxR, y1, peakxR+1, y2 };
+
+		FillRect(hdc, &rPeakL, mhbrPeak);
+		FillRect(hdc, &rPeakR, mhbrPeak);
+
+		// determine the -10db, -6db, and -3db points; the -20db and 0db points
+		// are defined as the ends, which makes this easier
+
+		int x_30db	= VDRoundToIntFast(r.right * (10.0f/40.0f));
+		int x_20db	= VDRoundToIntFast(r.right * (20.0f/40.0f));
+		int x_10db	= VDRoundToIntFast(r.right * (30.0f/40.0f));
+		int x_6db	= VDRoundToIntFast(r.right * (34.0f/40.0f));
+		int x_3db	= VDRoundToIntFast(r.right * (37.0f/40.0f));
+
+		if (HGDIOBJ hOldFont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT))) {
+			TEXTMETRIC tm;
+			int y3 = (y2+r.bottom)>>1;
+
+			if (GetTextMetrics(hdc, &tm))
+				y3 = r.bottom - tm.tmHeight;
+
+			// draw -10db, -6db, and -3db notches
+			RECT r30dbNotch	= { x_30db, y2 + 1, x_30db+1, y3 };
+			RECT r20dbNotch	= { x_20db, y2 + 1, x_20db+1, y3 };
+			RECT r10dbNotch	= { x_10db, y2 + 1, x_10db+1, y3 };
+			RECT r6dbNotch	= { x_6db, y2 + 1, x_6db+1, y3 };
+			RECT r3dbNotch	= { x_3db, y2 + 1, x_3db+1, y3 };
+
+			HBRUSH hBlackBrush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+
+			FillRect(hdc, &r30dbNotch, hBlackBrush);
+			FillRect(hdc, &r20dbNotch, hBlackBrush);
+			FillRect(hdc, &r10dbNotch, hBlackBrush);
+			FillRect(hdc, &r6dbNotch, hBlackBrush);
+			FillRect(hdc, &r3dbNotch, hBlackBrush);
+
+			// draw db text
+			SetBkMode(hdc, TRANSPARENT);
+			SetTextAlign(hdc, TA_LEFT | TA_BOTTOM);
+			TextOut(hdc, 0, r.bottom, "-40 dB", 6);
+			SetTextAlign(hdc, TA_CENTER | TA_BOTTOM);
+			TextOut(hdc, x_30db, r.bottom, "-30 dB", 6);
+			TextOut(hdc, x_20db, r.bottom, "-20 dB", 6);
+			TextOut(hdc, x_10db, r.bottom, "-10 dB", 6);
+			TextOut(hdc, x_6db, r.bottom, "-6 dB", 5);
+			TextOut(hdc, x_3db, r.bottom, "-3 dB", 5);
+			SetTextAlign(hdc, TA_RIGHT | TA_BOTTOM);
+			TextOut(hdc, r.right, r.bottom, "0 dB", 4);
+			SelectObject(hdc, hOldFont);
+		}
+
+		EndPaint(mhwnd, &ps);
 	}
-	if (hbr) DeleteObject(hbr);
-	if (hbrp) DeleteObject(hbrp);
-}
-
-static void CaptureVumeterDoVumeter(VumeterDlgData *vdd, HDC hdc, unsigned long *total, unsigned long *peak, DWORD dwBytes) {
-	HBRUSH hbr = CreateSolidBrush(RGB(0x00,0x00,0xff));
-	HBRUSH hbrp = CreateSolidBrush(RGB(0xff,0x00,0x00));
-	LONG lvl, plvl;
-	RECT r;
-	int i;
-
-	for(i=0; i<(vdd->fStereo?2:1); i++) {
-		lvl = MulDiv(total[i],vdd->rect[i].right-vdd->rect[i].left-2,dwBytes*128);
-		plvl = MulDiv(peak[i],vdd->rect[i].right-vdd->rect[i].left-2,128);
-
-		r.top		= vdd->rect[i].top+1;
-		r.bottom	= vdd->rect[i].bottom-1;
-
-		if (lvl < vdd->last[i] && hbrp) {
-			r.left		= vdd->rect[i].left+1 + std::max<LONG>(lvl, plvl);
-			r.right		= vdd->rect[i].left+1 + std::min<LONG>(vdd->peak[i], vdd->last[i]);
-			FillRect(hdc, &r, hbrp);
-		} else if (lvl > vdd->last[i] && hbr) {
-			r.left		= vdd->rect[i].left+1 + vdd->last[i];
-			r.right		= vdd->rect[i].left+1 + std::min<LONG>(lvl, plvl);
-			FillRect(hdc, &r, hbr);
-		}
-
-		if (plvl < vdd->peak[i]) {
-			r.left		= vdd->rect[i].left+1 + plvl;
-			r.right		= vdd->rect[i].left+1 + vdd->peak[i];
-			FillRect(hdc, &r, (HBRUSH)GetStockObject(LTGRAY_BRUSH));
-		} else if (plvl > vdd->peak[i] && hbrp) {
-			r.left		= vdd->rect[i].left+1 + std::max<LONG>(lvl, vdd->peak[i]);
-			r.right		= vdd->rect[i].left+1 + plvl;
-			FillRect(hdc, &r, hbrp);
-		}
-
-		vdd->last[i] = lvl;
-		vdd->peak[i] = plvl;
-	}
-
-	if (hbr) DeleteObject(hbr);
-	if (hbrp) DeleteObject(hbrp);
-}
-
-static void CaptureVumeterRepaintScopeAnalyzer(VumeterDlgData *vdd, HDC hDC) {
-	vdd->pbm->BitBlt(hDC, vdd->rect[0].left, vdd->rect[0].top, 0, 0, vdd->rect[0].right-vdd->rect[0].left, vdd->rect[0].bottom-vdd->rect[0].top);
-	if (vdd->fStereo)
-		vdd->pbm->BitBlt(hDC, vdd->rect[1].left, vdd->rect[1].top, 0, vdd->rect[0].bottom-vdd->rect[0].top, vdd->rect[1].right-vdd->rect[1].left, vdd->rect[1].bottom-vdd->rect[1].top);
-}
-
-static void CaptureVumeterDoScope(VumeterDlgData *vdd, HDC hDC) {
-	int w = vdd->rect[0].right - vdd->rect[0].left;
-	if (w > 4096) w = 4096;
-
-	unsigned char *src = (unsigned char *)vdd->scrollBuffer + vdd->scrollSize - (vdd->fStereo ? w*2 : w);
-	unsigned char *dst_col = (unsigned char *)vdd->pbm->getBits(), *dst;
-	int hl = vdd->rect[0].bottom - vdd->rect[0].top;
-	int hr = vdd->rect[1].bottom - vdd->rect[1].top;
-	int h1, h2, h;
-	unsigned char mask, c;
-	int iPitch = vdd->pbm->getPitch();
-	int left_offset = hl*iPitch;
-
-	GdiFlush();
-	vdd->pbm->Clear();
-
-	mask = 0x80;
-	do {
-		c = *src++;
-
-		h1 = (c * hl) >> 8;
-		h2 = hl>>1;
-
-		if (h1 < h2)
-			h = h2+1-h1;
-		else {
-			h = h1+1-h2;
-			h1 = h2;
-		}
-
-		dst = dst_col + left_offset + iPitch * h1;
-		do {
-			*dst |= mask;
-			dst += iPitch;
-		} while(--h);
-
-		if (vdd->fStereo) {
-			c = *src++;
-
-			h1 = (c * hr) >> 8;
-			h2 = hr>>1;
-
-			if (h1 < h2)
-				h = h2+1-h1;
-			else {
-				h = h1+1-h2;
-				h1 = h2;
-			}
-
-			dst = dst_col + iPitch * h1;
-			do {
-				*dst |= mask;
-				dst += iPitch;
-			} while(--h);
-		}
-
-		if (!(mask>>=1)) {
-			mask = 0x80;
-			++dst_col;
-		}
-	} while(--w);
-
-	CaptureVumeterRepaintScopeAnalyzer(vdd, hDC);
-}
-
-static void CaptureVumeterDoAnalyzer(VumeterDlgData *vdd, HDC hDC) {
-	int w = vdd->rect[0].right - vdd->rect[0].left;
-	if (w > 1024) w = 1024;
-
-	unsigned char *dst_col = (unsigned char *)vdd->pbm->getBits(), *dst;
-	int hl = vdd->rect[0].bottom - vdd->rect[0].top;
-	int hr = vdd->rect[1].bottom - vdd->rect[1].top;
-	int h1;
-	int x=0;
-	unsigned char mask;
-	int iPitch = vdd->pbm->getPitch();
-	int left_offset = hl*iPitch;
-
-	if (vdd->fStereo) {
-		vdd->pfht_left->CopyInStereo8((unsigned char *)vdd->scrollBuffer, 1024);
-		vdd->pfht_left->Transform(w);
-		vdd->pfht_right->CopyInStereo8((unsigned char *)vdd->scrollBuffer + 1, 1024);
-		vdd->pfht_right->Transform(w);
-	} else {
-		vdd->pfht_left->CopyInMono8((unsigned char *)vdd->scrollBuffer, 1024);
-		vdd->pfht_left->Transform(w);
-	}
-
-	GdiFlush();
-	vdd->pbm->Clear();
-
-	mask = 0x80;
-	do {
-		h1 = VDRoundToInt(vdd->pfht_left->GetIntensity(x) * 8 * hl);
-		if (h1 > hl) h1 = hl;
-
-		if (h1>0) {
-			dst = dst_col + left_offset;
-			do {
-				*dst |= mask;
-				dst += iPitch;
-			} while(--h1);
-		}
-
-		if (vdd->fStereo) {
-			h1 = VDRoundToInt(vdd->pfht_right->GetIntensity(x) * 8 * hr);
-			if (h1 > hr) h1 = hr;
-
-			if (h1>0) {
-				dst = dst_col;
-				do {
-					*dst |= mask;
-					dst += iPitch;
-				} while(--h1);
-			}
-		}
-
-		++x;
-
-		if (!(mask>>=1)) {
-			mask = 0x80;
-			++dst_col;
-		}
-	} while(--w);
-
-	CaptureVumeterRepaintScopeAnalyzer(vdd, hDC);
-}
-
-static void CaptureVumeterSetupMixer(HWND hdlg, VumeterDlgData *vdd) {
-	MMRESULT res;
-	UINT mixerID;
-	MIXERCAPS mixerCaps;
-	MIXERLINE mainMixerLine;
-	MIXERLINE lineinMixerLine;
-	MIXERLINECONTROLS mixerLineControls;
-	MIXERCONTROL control;
-	bool fVolumeOk = false;
-
-	//
-	// I have only this to say:
-	//
-	//		I hate the Windows mixer architecture.
-	//
-	// We have to use this braindead code because there's no good way
-	// to get the mixer controls associated with a wave handle.  If you
-	// give the mixer functions a wave handle, you always get the direct
-	// line to that channel, and can't get to any of the sources...
-	//
-
-	mainMixerLine.cbStruct		= sizeof(MIXERLINE);
-
-	_RPT0(0,"CaptureVumeterSetupMixer() begin\n");
-
-	// Find the mixer line associated with the wave input device
-
-	if (MMSYSERR_NOERROR != (res = mixerGetID((HMIXEROBJ)vdd->hWaveIn, &mixerID, MIXER_OBJECTF_HWAVEIN)))
-		return;
-
-	if (MMSYSERR_NOERROR != (res = mixerGetDevCaps(mixerID, &mixerCaps, sizeof(MIXERCAPS))))
-		return;
-
-	mainMixerLine.cbStruct					= sizeof(MIXERLINE);
-	mainMixerLine.Target.dwType				= MIXERLINE_TARGETTYPE_WAVEIN;
-	mainMixerLine.Target.wMid				= mixerCaps.wMid;
-	mainMixerLine.Target.wPid				= mixerCaps.wPid;
-	mainMixerLine.Target.vDriverVersion		= mixerCaps.vDriverVersion;
-	strcpy(mainMixerLine.Target.szPname,mixerCaps.szPname);
-
-	if (MMSYSERR_NOERROR == (res = mixerGetLineInfo((HMIXEROBJ)vdd->hWaveIn, &mainMixerLine, MIXER_OBJECTF_HWAVEIN))) {
-		int src;
-
-		_RPT1(0,"Found input line - %d connections\n", mainMixerLine.cConnections);
-
-		// Look for the line-in line that feeds to us
-
-		for(src = 0; src < mainMixerLine.cConnections; src++) {
-
-			lineinMixerLine.cbStruct		= sizeof(MIXERLINE);
-			lineinMixerLine.dwDestination	= mainMixerLine.dwDestination;
-			lineinMixerLine.dwSource		= src;
-
-			if (MMSYSERR_NOERROR == (res = mixerGetLineInfo((HMIXEROBJ)mixerID, &lineinMixerLine, MIXER_OBJECTF_MIXER| MIXER_GETLINEINFOF_SOURCE))
-				&& (lineinMixerLine.dwComponentType == MIXERLINE_COMPONENTTYPE_SRC_AUXILIARY
-					|| lineinMixerLine.dwComponentType == MIXERLINE_COMPONENTTYPE_SRC_LINE)) {
-
-				_RPT0(0,"Found Line-In for this input device\n");
-
-				vdd->mcdVolume.paDetails = vdd->mcdVolumeData;
-
-				// Look for a volume control
-
-				mixerLineControls.cbStruct		= sizeof mixerLineControls;
-				mixerLineControls.dwLineID		= lineinMixerLine.dwLineID;
-				mixerLineControls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-				mixerLineControls.cbmxctrl		= sizeof(MIXERCONTROL);
-				mixerLineControls.pamxctrl		= &control;
-
-				if (MMSYSERR_NOERROR == (res = mixerGetLineControls((HMIXEROBJ)mixerID, &mixerLineControls, MIXER_GETLINECONTROLSF_ONEBYTYPE | MIXER_OBJECTF_MIXER))) {
-					_RPT0(0,"Got the control.\n");
-
-					vdd->mcdVolume.cbStruct			= sizeof(MIXERCONTROLDETAILS);
-					vdd->mcdVolume.dwControlID		= control.dwControlID;
-					vdd->mcdVolume.cChannels		= lineinMixerLine.cChannels==2 ? 2 : 1;
-					vdd->mcdVolume.cMultipleItems	= 0;
-					vdd->mcdVolume.cbDetails		= sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-
-					if (MMSYSERR_NOERROR == (res = mixerGetControlDetails((HMIXEROBJ)mixerID, &vdd->mcdVolume, MIXER_GETCONTROLDETAILSF_VALUE | MIXER_OBJECTF_MIXER)))
-						fVolumeOk = true;
-
-				}
-
-				break;
-
-			}
-		}
-	}
-
-	if (fVolumeOk) {
-		vdd->hwndVolume = GetDlgItem(hdlg, IDC_VOLUME);
-
-		if (vdd->mcdVolume.cChannels > 1) {
-			long l, r;
-
-			l = vdd->mcdVolumeData[0].dwValue;
-			r = vdd->mcdVolumeData[1].dwValue;
-
-			vdd->lVolume = std::max<long>(l,r);
-			if (vdd->lVolume)
-				vdd->lBalance = MulDiv(r-l, 32768-BALANCE_DEADZONE, vdd->lVolume);
-			else
-				vdd->lBalance = 0;
-		} else {
-			vdd->lVolume = vdd->mcdVolumeData[0].dwValue;
-			vdd->lBalance = 0;
-		}
-
-		EnableWindow(vdd->hwndVolume, TRUE);
-		SendMessage(vdd->hwndVolume, TBM_SETRANGEMIN, TRUE, 0);
-		SendMessage(vdd->hwndVolume, TBM_SETRANGEMAX, TRUE, 65535);
-		SendMessage(vdd->hwndVolume, TBM_SETPOS, TRUE, vdd->lVolume);
-
-		SendMessage(vdd->hwndVolume, TBM_SETTICFREQ, 8192, 0);
-
-		EnableWindow(GetDlgItem(hdlg, IDC_STATIC_VOLUME), TRUE);
-
-		if (vdd->mcdVolume.cChannels>1) {
-			vdd->hwndBalance = GetDlgItem(hdlg, IDC_BALANCE);
-
-			EnableWindow(vdd->hwndBalance, TRUE);
-			SendMessage(vdd->hwndBalance, TBM_SETRANGEMIN, TRUE, 0);
-			SendMessage(vdd->hwndBalance, TBM_SETRANGEMAX, TRUE, 65535);
-
-			if (vdd->lBalance<0)
-				SendMessage(vdd->hwndBalance, TBM_SETPOS, TRUE, vdd->lBalance + 32768 - BALANCE_DEADZONE);
-			else if (vdd->lBalance>0)
-				SendMessage(vdd->hwndBalance, TBM_SETPOS, TRUE, vdd->lBalance + 32768 + BALANCE_DEADZONE);
-			else
-				SendMessage(vdd->hwndBalance, TBM_SETPOS, TRUE, 32768);
-
-			SendMessage(vdd->hwndBalance, TBM_SETTIC, 0, 0);
-			SendMessage(vdd->hwndBalance, TBM_SETTIC, 0, 32768 - BALANCE_DEADZONE);
-			SendMessage(vdd->hwndBalance, TBM_SETTIC, 0, 32768 + BALANCE_DEADZONE);
-			SendMessage(vdd->hwndBalance, TBM_SETTIC, 0, 65536);
-
-			EnableWindow(GetDlgItem(hdlg, IDC_STATIC_BALANCE), TRUE);
-		}
-	}
-
-	_RPT0(0,"CaptureVumeterSetupMixer() end\n");
-}
-
-INT_PTR CALLBACK CaptureVumeterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	VumeterDlgData *vdd = (VumeterDlgData *)GetWindowLongPtr(hDlg, DWLP_USER);
-	MMRESULT res;
-
-	switch(message) {
-
-		case WM_INITDIALOG:
-			try {
-				HWND hWndLeft, hWndRight;
-
-				////
-
-				if (!(vdd = new VumeterDlgData)) throw MyError("Out of memory");
-				memset(vdd, 0, sizeof(VumeterDlgData));
-
-				vdd->fStereo = lParam ? TRUE : FALSE;
-
-				if (!(vdd->buffer = allocmem(vdd->fStereo?1024 + 2048 : 512 + 1024))) throw MyError("Out of memory");
-				if (!(vdd->pfht_left = new Fht(1024))
-					|| (vdd->fStereo && !(vdd->pfht_right = new Fht(1024))))
-					throw MyMemoryError();
-
-				vdd->scrollBuffer = (char *)vdd->buffer + (vdd->fStereo ? 1024 : 512);
-				vdd->scrollSize = vdd->fStereo ? 2048 : 1024;
-
-				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)vdd);
-
-				GetWindowRect(hWndLeft = GetDlgItem(hDlg, IDC_VOLUME_LEFT), &vdd->rect[0]);
-				GetWindowRect(hWndRight = GetDlgItem(hDlg, IDC_VOLUME_RIGHT), &vdd->rect[1]);
-
-				if (!(vdd->pbm = new MonoBitmap(NULL, (vdd->rect[0].right - vdd->rect[0].left), (vdd->rect[0].bottom - vdd->rect[0].top) + (vdd->rect[1].bottom - vdd->rect[1].top), RGB(0x00, 0x80, 0xff), RGB(0,0,0))))
-					throw MyMemoryError();
-
-				ShowWindow(hWndLeft, SW_HIDE);
-				ShowWindow(hWndRight, SW_HIDE);
-
-				ScreenToClient(hDlg, (LPPOINT)&vdd->rect[0] + 0);
-				ScreenToClient(hDlg, (LPPOINT)&vdd->rect[0] + 1);
-				ScreenToClient(hDlg, (LPPOINT)&vdd->rect[1] + 0);
-				ScreenToClient(hDlg, (LPPOINT)&vdd->rect[1] + 1);
-
-				vdd->wfex.wFormatTag		= WAVE_FORMAT_PCM;
-				vdd->wfex.nChannels			= (WORD)(vdd->fStereo?2:1);
-				vdd->wfex.nSamplesPerSec	= 11025;
-				vdd->wfex.nAvgBytesPerSec	= vdd->fStereo?22050:11025;
-				vdd->wfex.nBlockAlign		= (WORD)(vdd->fStereo?2:1);
-				vdd->wfex.wBitsPerSample	= 8;
-				vdd->wfex.cbSize			= 0;
-
-				if (MMSYSERR_NOERROR != (res = waveInOpen(&vdd->hWaveIn, WAVE_MAPPER, &vdd->wfex, (DWORD)hDlg, 0, CALLBACK_WINDOW)))
-					throw MyError("MM system: error %ld", res);
-
-				vdd->fOpened = TRUE;
-
-				for(vdd->bufCnt=0; vdd->bufCnt<2; vdd->bufCnt++) {
-					vdd->bufs[vdd->bufCnt].lpData			= (char *)vdd->buffer + (vdd->fStereo?512:256)*vdd->bufCnt;
-					vdd->bufs[vdd->bufCnt].dwBufferLength	= vdd->fStereo?512:256;
-					vdd->bufs[vdd->bufCnt].dwFlags			= NULL;
-
-					if (MMSYSERR_NOERROR != (res = waveInPrepareHeader(vdd->hWaveIn,&vdd->bufs[vdd->bufCnt],sizeof(WAVEHDR))))
-						throw MyError("MM system: error %ld", res);
-					if (MMSYSERR_NOERROR != (res = waveInAddBuffer(vdd->hWaveIn,&vdd->bufs[vdd->bufCnt],sizeof(WAVEHDR))))
-						throw MyError("MM system: error %ld", res);
-				}
-
-				CaptureVumeterSetupMixer(hDlg, vdd);
-
-				if (MMSYSERR_NOERROR != (res = waveInStart(vdd->hWaveIn)))
-					throw MyError("MM system: error %ld", res);
-
-				vdd->fRecording = TRUE;
-				vdd->mode = VMMODE_VUMETER;
-
-				CheckDlgButton(hDlg, IDC_VMODE_VUMETER, BST_CHECKED);
-
-			} catch(const MyError& e) {
-				e.post(NULL,"Vumeter error");
-
-				if (vdd) CaptureVumeterDestruct(vdd);
-
-				EndDialog(hDlg, FALSE);
-				return FALSE;
-			}
-
-			return TRUE;
-
-		case WM_PAINT:
-			{
-				PAINTSTRUCT ps;
-				HDC hDC;
-
-				hDC = BeginPaint(hDlg, &ps);
-
-				if (vdd->mode == VMMODE_VUMETER)
-					CaptureVumeterRepaintVumeter(vdd, hDC);
-				else
-					CaptureVumeterRepaintScopeAnalyzer(vdd, hDC);
-
-				EndPaint(hDlg, &ps);
-			}
-			return TRUE;
-
-		case WM_SYSCOMMAND:
-			if ((wParam & 0xFFF0) == SC_CONTEXTHELP) {
-				VDShowHelp(hDlg, L"d-capturevumeter.html");
-				return TRUE;
-			}
-			break;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-
-			case IDOK:
-			case IDCANCEL:
-				if (vdd) CaptureVumeterDestruct(vdd);
-				EndDialog(hDlg, FALSE);
-				return TRUE;
-			case IDC_VMODE_VUMETER:
-				vdd->mode = VMMODE_VUMETER;
-				InvalidateRect(hDlg, &vdd->rect[0], FALSE);
-				InvalidateRect(hDlg, &vdd->rect[1], FALSE);
-				return TRUE;
-			case IDC_VMODE_OSCILLOSCOPE:
-				vdd->mode = VMMODE_SCOPE;
-				return TRUE;
-			case IDC_VMODE_ANALYZER:
-				vdd->mode = VMMODE_ANALYZER;
-				return TRUE;
-			}
-			break;
-
-		case WM_HSCROLL:
-			if (!lParam) return FALSE;
-
-			if ((HWND)lParam == vdd->hwndVolume || (HWND)lParam == vdd->hwndBalance) {
-				if ((HWND)lParam == vdd->hwndVolume) {
-					vdd->lVolume = SendMessage(vdd->hwndVolume, TBM_GETPOS, 0, 0);
-				} else {
-					long lPos;
-
-					lPos = SendMessage(vdd->hwndBalance, TBM_GETPOS, 0, 0) - 32768;
-
-					if (lPos < -BALANCE_DEADZONE)
-						vdd->lBalance = lPos + BALANCE_DEADZONE;
-					else if (lPos > BALANCE_DEADZONE)
-						vdd->lBalance = lPos - BALANCE_DEADZONE;
-					else
-						vdd->lBalance = 0;
-				}
-
-				// compute L/R volume
-
-				if (vdd->mcdVolume.cChannels == 1)
-					vdd->mcdVolumeData[0].dwValue = vdd->lVolume;
-				else if (vdd->lBalance < 0) {
-					vdd->mcdVolumeData[0].dwValue = vdd->lVolume;
-					vdd->mcdVolumeData[1].dwValue = MulDiv(vdd->lVolume, (32768-BALANCE_DEADZONE)+vdd->lBalance, 32768-BALANCE_DEADZONE);
-				} else {
-					vdd->mcdVolumeData[0].dwValue = MulDiv(vdd->lVolume, (32768-BALANCE_DEADZONE)-vdd->lBalance, 32768-BALANCE_DEADZONE);
-					vdd->mcdVolumeData[1].dwValue =	vdd->lVolume;
-				}
-				mixerSetControlDetails(
-						(HMIXEROBJ)vdd->hWaveIn,
-						&vdd->mcdVolume,
-						MIXER_GETCONTROLDETAILSF_VALUE | MIXER_OBJECTF_HWAVEIN);
-			}
-			return TRUE;
-
-		case MM_WIM_DATA:
-			{
-				WAVEHDR *hdr = (WAVEHDR *)lParam;
-				unsigned char c,*src = (unsigned char *)hdr->lpData;
-				long dwBytes = hdr->dwBytesRecorded, len;
-
-				if (dwBytes) {
-					memmove(vdd->scrollBuffer, vdd->scrollBuffer + dwBytes, vdd->scrollSize - dwBytes);
-					memcpy(vdd->scrollBuffer + vdd->scrollSize - dwBytes, src, dwBytes);
-				}
-
-				if (vdd->fStereo) {
-					if (vdd->fOddByte) {
-						++src;
-						--dwBytes;
-					}
-
-					vdd->fOddByte = dwBytes & 1;
-
-					dwBytes/=2;
-				}
-				if (len = dwBytes) {
-					unsigned long total[2]={0,0}, peak[2]={0,0}, v;
-					HDC hdc;
-
-					if (!vdd->fStereo) {
-						do {
-							c = *src++;
-
-							if (c>=0x80)	v = (c-0x80);
-							else			v = (0x80-c);
-
-							if (v>peak[0]) peak[0]=v;
-
-							total[0] += v;
-
-						} while(--len);
-					} else {
-						do {
-							c = *src++;
-
-							if (c>=0x80)	v = (c-0x80);
-							else			v = (0x80-c);
-
-							if (v>peak[0]) peak[0]=v;
-
-							total[0] += v;
-
-							//////
-
-							c = *src++;
-
-							if (c>=0x80)	v = (c-0x80);
-							else			v = (0x80-c);
-
-							if (v>peak[1]) peak[1]=v;
-
-							total[1] += v;
-						} while(--len);
-					}
-
-					if (hdc = GetDC(hDlg)) {
-						if (vdd->mode == VMMODE_VUMETER)
-							CaptureVumeterDoVumeter(vdd, hdc, total, peak, dwBytes);
-						else if (vdd->mode == VMMODE_ANALYZER)
-							CaptureVumeterDoAnalyzer(vdd, hdc);
-						else
-							CaptureVumeterDoScope(vdd, hdc);
-						ReleaseDC(hDlg, hdc);
-					}
-				}
-
-				hdr->dwFlags &= ~WHDR_DONE;
-
-//				_RPT1(0,"Received buffer: %ld bytes\n", hdr->dwBytesRecorded);
-
-				if (MMSYSERR_NOERROR != (res = waveInAddBuffer(vdd->hWaveIn,hdr,sizeof(WAVEHDR))))
-					MyError("MM system: error %ld",res).post(hDlg,"Vumeter error");
-			}
-			break;
-	}
-
-	return FALSE;
 }

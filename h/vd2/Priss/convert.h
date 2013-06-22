@@ -1,5 +1,6 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	Audio processing library
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,8 +16,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_AUDIOUTIL_H
-#define f_AUDIOUTIL_H
+#ifndef f_VD2_PRISS_CONVERT_H
+#define f_VD2_PRISS_CONVERT_H
 
 #include <vd2/system/vdtypes.h>
 
@@ -40,6 +41,13 @@ void VDConvertPCM16ToPCM32F_SSE	(void *dst0, const void *src0, uint32 samples);
 void VDConvertPCM8ToPCM32F_SSE	(void *dst0, const void *src0, uint32 samples);
 
 typedef const tpVDConvertPCM (*tpVDConvertPCMVtbl)[3];
+
+enum VDAudioSampleType {
+	kVDAudioSampleType8U,
+	kVDAudioSampleType16S,
+	kVDAudioSampleType32F,
+	kVDAudioSampleTypeCount
+};
 
 tpVDConvertPCMVtbl VDGetPCMConversionVtable();
 

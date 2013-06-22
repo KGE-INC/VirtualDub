@@ -7,6 +7,12 @@ if "%COMPUTERNAME%"=="ATHENA64" (
 	set _vc71=c:\vs.net\vc7
 	set _vc8=d:\vs8\vc
 	set _dx9=d:\dx9sdk
+) else if "%COMPUTERNAME%"=="ATHENA" (
+	set _ddk=c:\winddk\3790
+	set _vc6=c:\vc6\vc98
+	set _vc71=c:\vs.net\vc7
+	set _vc8=c:\vs8\vc
+	set _dx9=i:\dx9sdk
 ) else (
 	set _ddk=c:\winddk\3790
 	set _vc6=c:\vc6\vc98
@@ -92,7 +98,7 @@ goto arglist
 
 rem --- initialize build parameters
 
-del VirtualDub\autobuild.lock /q
+if exist VirtualDub\autobuild.lock del VirtualDub\autobuild.lock /q
 if not "%_check%"=="true" (
 	echo. >VirtualDub\autobuild.lock
 )
@@ -161,12 +167,12 @@ if "%_check%"=="false" (
 )
 
 :cleanup
-del VirtualDub\autobuild.lock /q
+if exist VirtualDub\autobuild.lock del VirtualDub\autobuild.lock /q
 endlocal
 exit /b
 
 :abort
-del /q VirtualDub\autobuild.lock
+if exist VirtualDub\autobuild.lock del /q VirtualDub\autobuild.lock
 endlocal
 exit /b 5
 
@@ -175,11 +181,17 @@ echo --- Building release: %2
 
 if "%3"=="AMD64" (
 	rem ---these must be built separately as we can't run AMD64 tools on Win32
-	if not exist out\Release\verinc.exe (
-		msdev VirtualDub.dsw /make "verinc - Win32 Release" %_project_switches%
+	if "%_incremental%"=="false" (
+		msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /clean
 	)
-	if not exist out\Release\mapconv.exe (
-		msdev VirtualDub.dsw /make "mapconv - Win32 Release" %_project_switches%
+	if "%2"=="DebugAMD64" (
+		if not exist out\Debug\Asuka.exe (
+			msdev VirtualDub.dsw /make "Asuka - Win32 Debug" %_project_switches%
+		)
+	) else (
+		if not exist out\Release\Asuka.exe (
+			msdev VirtualDub.dsw /make "Asuka - Win32 Release" %_project_switches%
+		)
 	)
 
 	setlocal
@@ -202,7 +214,7 @@ if "%3"=="AMD64" (
 	)
 	set include=%_dx9%\include;!include!
 	set lib=%_dx9%\lib\x64;!lib!
-	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" %_project_switches% /useenv
+	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /useenv
 	endlocal
 	if errorlevel 1 set _build_abort=true
 ) else (

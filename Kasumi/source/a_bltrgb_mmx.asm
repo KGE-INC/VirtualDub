@@ -24,11 +24,23 @@ b_mask_565	dq		0001f001f001f001fh
 
 		.code
 
+prologue	macro	paramdwords:req
+			push	ebx
+			push	esi
+			push	edi
+			push	ebp
+			.fpo	(0,paramdwords,4,4,1,0)
+			endm
+
+epilogue	macro
+			pop		ebp
+			pop		edi
+			pop		esi
+			pop		ebx
+			endm
+
 _vdasm_pixblt_RGB565_to_XRGB1555_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -78,18 +90,12 @@ _vdasm_pixblt_RGB565_to_XRGB1555_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 _vdasm_pixblt_RGB565_to_XRGB1555_MMX	endp
 
 _vdasm_pixblt_XRGB8888_to_XRGB1555_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -212,18 +218,12 @@ _vdasm_pixblt_XRGB8888_to_XRGB1555_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 _vdasm_pixblt_XRGB8888_to_XRGB1555_MMX	endp
 
 _vdasm_pixblt_XRGB1555_to_RGB565_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -278,19 +278,13 @@ _vdasm_pixblt_XRGB1555_to_RGB565_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 
 _vdasm_pixblt_XRGB1555_to_RGB565_MMX	endp
 
 _vdasm_pixblt_XRGB8888_to_RGB565_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -421,18 +415,12 @@ _vdasm_pixblt_XRGB8888_to_RGB565_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 _vdasm_pixblt_XRGB8888_to_RGB565_MMX	endp
 
 _vdasm_pixblt_XRGB8888_to_RGB888_MMX	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
+		prologue	6
 
 		mov			esi,[esp+12+16]
 		mov			edi,[esp+4+16]
@@ -544,18 +532,12 @@ _vdasm_pixblt_XRGB8888_to_RGB888_MMX	proc	near public
 
 		emms
 
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
+		epilogue
 		ret
 _vdasm_pixblt_XRGB8888_to_RGB888_MMX	endp
 
 _vdasm_pixblt_XRGB1555_to_XRGB8888_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -629,19 +611,13 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 
 _vdasm_pixblt_XRGB1555_to_XRGB8888_MMX	endp
 
 _vdasm_pixblt_RGB565_to_XRGB8888_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		ebp, [esp+20+16]
 		mov		edi, [esp+24+16]
@@ -715,19 +691,13 @@ _vdasm_pixblt_RGB565_to_XRGB8888_MMX	proc	near public
 		jne		@yloop
 
 		emms
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
+		epilogue
 		ret
 
 _vdasm_pixblt_RGB565_to_XRGB8888_MMX	endp
 
 _vdasm_pixblt_RGB888_to_XRGB8888_MMX	proc	near public
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
+		prologue	6
 
 		mov		esi,[esp+12+16]
 		mov		edi,[esp+4+16]
@@ -826,11 +796,7 @@ _vdasm_pixblt_RGB888_to_XRGB8888_MMX	proc	near public
 		sub			edx,1
 		jne			@yloop
 		emms
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-
+		epilogue
 		ret
 _vdasm_pixblt_RGB888_to_XRGB8888_MMX	endp
 

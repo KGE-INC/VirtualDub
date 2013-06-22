@@ -209,13 +209,13 @@ VDStringW VDGetProgramPath() {
 		wstr = VDTextAToW(buf.a, -1);
 	}
 
-	VDStringW wstr2(VDGetFullPath(wstr));
+	VDStringW wstr2(VDGetFullPath(wstr.c_str()));
 
 	return wstr2;
 }
 
 VDStringW VDGetHelpPath() {
-	return VDMakePath(VDGetProgramPath(), VDStringW(L"help"));
+	return VDMakePath(VDGetProgramPath().c_str(), L"help");
 }
 
 void VDUnpackHelp(const VDStringW& path) {
@@ -224,7 +224,7 @@ void VDUnpackHelp(const VDStringW& path) {
 
 	// Decompress the first file in the outer zip to make the inner zip archive.
 	{
-		VDFileStream			helpzipfile(VDMakePath(VDGetProgramPath(), VDStringW(L"VirtualDub.vdhelp")).c_str());
+		VDFileStream			helpzipfile(VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.vdhelp").c_str());
 
 		chkvalue = (uint32)helpzipfile.Length();
 
@@ -245,8 +245,8 @@ void VDUnpackHelp(const VDStringW& path) {
 	
 	innerzip.Init(&innerzipstream);
 
-	if (!VDDoesPathExist(path))
-		VDCreateDirectory(path);
+	if (!VDDoesPathExist(path.c_str()))
+		VDCreateDirectory(path.c_str());
 
 	const sint32 entries = innerzip.GetFileCount();
 
@@ -262,15 +262,15 @@ void VDUnpackHelp(const VDStringW& path) {
 		const wchar_t *base = name.c_str(), *s = base;
 
 		while(const wchar_t *t = wcschr(s, L'/')) {
-			VDStringW dirPath(VDMakePath(path, VDStringW(base, t - base)));
+			VDStringW dirPath(VDMakePath(path.c_str(), VDStringW(base, t - base).c_str()));
 
-			if (!VDDoesPathExist(dirPath))
-				VDCreateDirectory(dirPath);
+			if (!VDDoesPathExist(dirPath.c_str()))
+				VDCreateDirectory(dirPath.c_str());
 
 			s = t+1;
 		}
 
-		VDStringW filePath(VDMakePath(path, name));
+		VDStringW filePath(VDMakePath(path.c_str(), name.c_str()));
 
 		VDDEBUG("file: %-40S %10d <- %10d\n", filePath.c_str(), fi.mCompressedSize, fi.mUncompressedSize);
 
@@ -286,21 +286,21 @@ void VDUnpackHelp(const VDStringW& path) {
 	}
 
 	// write help identifier
-	VDFile chkfile(VDMakePath(path, VDStringW(L"helpfile.id")).c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
+	VDFile chkfile(VDMakePath(path.c_str(), L"helpfile.id").c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
 
 	chkfile.write(&chkvalue, 4);
 	chkfile.close();
 }
 
 bool VDIsHelpUpToDate(const VDStringW& helpPath) {
-	if (!VDDoesPathExist(helpPath))
+	if (!VDDoesPathExist(helpPath.c_str()))
 		return false;
 
 	bool bUpToDate = false;
 
 	try {
-		VDFile helpzipfile(VDMakePath(VDGetProgramPath(), VDStringW(L"VirtualDub.vdhelp")).c_str());
-		VDFile chkfile(VDMakePath(helpPath, VDStringW(L"helpfile.id")).c_str(), nsVDFile::kRead | nsVDFile::kOpenExisting);
+		VDFile helpzipfile(VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.vdhelp").c_str());
+		VDFile chkfile(VDMakePath(helpPath.c_str(), L"helpfile.id").c_str(), nsVDFile::kRead | nsVDFile::kOpenExisting);
 		uint32 chk;
 
 		chkfile.read(&chk, 4);
@@ -322,7 +322,7 @@ void VDShowHelp(HWND hwnd, const wchar_t *filename) {
 			VDUnpackHelp(helpPath);
 		}
 
-		LaunchURL(VDTextWToA(VDMakePath(helpPath, VDStringW(filename?filename:L"index.html"))).c_str());
+		LaunchURL(VDTextWToA(VDMakePath(helpPath.c_str(), filename?filename:L"index.html")).c_str());
 //	WinHelp(hwnd, g_szHelpPath, HELP_FINDER, 0);
 	} catch(const MyError& e) {
 		e.post(hwnd, g_szError);

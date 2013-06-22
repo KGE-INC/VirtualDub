@@ -35,6 +35,8 @@ typedef unsigned VDThreadID;
 
 VDThreadID VDGetCurrentThreadID();
 
+void VDSetThreadDebugName(VDThreadID tid, const char *name);
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	VDThread
@@ -228,7 +230,7 @@ public:
 
 			if (!value.postinc()) {
 				signalNotEmpty();
-				break;
+				continue;
 			}
 
 			signalNotEmpty.wait();

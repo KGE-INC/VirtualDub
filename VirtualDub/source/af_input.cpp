@@ -24,221 +24,11 @@
 #include <vd2/system/strutil.h>
 #include <vd2/system/fraction.h>
 #include <vd2/system/refcount.h>
+#include <vd2/Riza/w32audiocodec.h>
 
 #include "filter.h"
 #include "AudioSource.h"
 #include "af_base.h"
-
-///////////////////////////////////////////////////////////////////////////
-
-class VDAudioDecompressorW32 {
-public:
-	VDAudioDecompressorW32();
-	~VDAudioDecompressorW32();
-
-	void Init(const WAVEFORMATEX *pSrcFormat);
-	void Shutdown();
-
-	unsigned	GetInputLevel() const { return mBufferHdr.cbSrcLength; }
-	const WAVEFORMATEX *GetOutputFormat() const { return mpDstFormat; }
-
-	void Convert();
-
-	void		*LockInputBuffer(unsigned& bytes);
-	void		UnlockInputBuffer(unsigned bytes);
-	unsigned	GetOutputLevel();
-	unsigned	CopyOutput(void *dst, unsigned bytes);
-
-protected:
-	HACMSTREAM		mhStream;
-	WAVEFORMATEX	*mpDstFormat;
-	ACMSTREAMHEADER mBufferHdr;
-	char mDriverName[64];
-	char mDriverFilename[64];
-
-	unsigned		mOutputReadPt;
-	bool			mbFirst;
-
-	std::vector<char>	mInputBuffer;
-	std::vector<char>	mOutputBuffer;
-
-	enum { kInputBufferSize = 16384 };
-};
-
-VDAudioDecompressorW32::VDAudioDecompressorW32()
-	: mhStream(NULL)
-	, mpDstFormat(NULL)
-	, mOutputReadPt(0)
-{
-	mDriverName[0] = 0;
-	mDriverFilename[0] = 0;
-}
-
-VDAudioDecompressorW32::~VDAudioDecompressorW32() {
-	Shutdown();
-}
-
-void VDAudioDecompressorW32::Init(const WAVEFORMATEX *pSrcFormat) {
-	Shutdown();
-
-	DWORD dwDstFormatSize;
-
-	if (acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&dwDstFormatSize))
-		throw MyError("Couldn't get ACM's max format size");
-
-	mpDstFormat = (WAVEFORMATEX *)allocmem(dwDstFormatSize);
-	if (!mpDstFormat)
-		throw MyMemoryError();
-
-	mpDstFormat->wFormatTag	= WAVE_FORMAT_PCM;
-
-	if (acmFormatSuggest(NULL, (WAVEFORMATEX *)pSrcFormat, mpDstFormat, dwDstFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
-		Shutdown();
-		throw MyError("No audio decompressor could be found to decompress the source audio format.");
-	}
-
-	// sanitize the destination format a bit
-
-	if (mpDstFormat->wBitsPerSample!=8 && mpDstFormat->wBitsPerSample!=16)
-		mpDstFormat->wBitsPerSample=16;
-
-	if (mpDstFormat->nChannels!=1 && mpDstFormat->nChannels!=2)
-		mpDstFormat->nChannels = 2;
-
-	mpDstFormat->nBlockAlign		= (uint16)((mpDstFormat->wBitsPerSample>>3) * mpDstFormat->nChannels);
-	mpDstFormat->nAvgBytesPerSec	= mpDstFormat->nBlockAlign * mpDstFormat->nSamplesPerSec;
-	mpDstFormat->cbSize				= 0;
-
-	// open conversion stream
-
-	MMRESULT res;
-
-	memset(&mBufferHdr, 0, sizeof mBufferHdr);	// Do this so we can detect whether the buffer is prepared or not.
-
-	res = acmStreamOpen(&mhStream, NULL, (WAVEFORMATEX *)pSrcFormat, mpDstFormat, NULL, 0, 0, ACM_STREAMOPENF_NONREALTIME);
-
-	if (res) {
-		Shutdown();
-
-		if (res == ACMERR_NOTPOSSIBLE) {
-			throw MyError(
-						"Error initializing audio stream decompression:\n"
-						"The requested conversion is not possible.\n"
-						"\n"
-						"Check to make sure you have the required codec%s."
-						,
-						(pSrcFormat->wFormatTag&~1)==0x160 ? " (Microsoft Audio Codec)" : ""
-					);
-		} else
-			throw MyError("Error initializing audio stream decompression.");
-	}
-
-	DWORD dwDstBufferSize;
-
-	if (acmStreamSize(mhStream, kInputBufferSize, &dwDstBufferSize, ACM_STREAMSIZEF_SOURCE)) {
-		memset(&mBufferHdr, 0, sizeof mBufferHdr);
-		throw MyError("Error initializing audio stream output size.");
-	}
-
-	mInputBuffer.resize(kInputBufferSize);
-	mOutputBuffer.resize(dwDstBufferSize);
-
-	mBufferHdr.cbStruct		= sizeof(ACMSTREAMHEADER);
-	mBufferHdr.pbSrc		= (LPBYTE)&mInputBuffer.front();
-	mBufferHdr.cbSrcLength	= mInputBuffer.size();
-	mBufferHdr.pbDst		= (LPBYTE)&mOutputBuffer.front();
-	mBufferHdr.cbDstLength	= mOutputBuffer.size();
-
-	if (acmStreamPrepareHeader(mhStream, &mBufferHdr, 0)) {
-		memset(&mBufferHdr, 0, sizeof mBufferHdr);
-		throw MyError("Error preparing audio decompression buffers.");
-	}
-
-	mBufferHdr.cbSrcLength = 0;
-	mBufferHdr.cbDstLengthUsed = 0;
-	mbFirst	= true;
-
-	// try to get driver name for debugging purposes (OK to fail)
-	mDriverName[0] = mDriverFilename[0] = 0;
-
-	HACMDRIVERID hDriverID;
-	if (!acmDriverID((HACMOBJ)mhStream, &hDriverID, 0)) {
-		ACMDRIVERDETAILS add = { sizeof(ACMDRIVERDETAILS) };
-		if (!acmDriverDetails(hDriverID, &add, 0)) {
-			strncpyz(mDriverName, add.szLongName, sizeof mDriverName);
-			strncpyz(mDriverFilename, add.szShortName, sizeof mDriverFilename);
-		}
-	}
-}
-
-void VDAudioDecompressorW32::Shutdown() {
-	free(mpDstFormat);
-	mpDstFormat = NULL;
-
-	if (mhStream) {
-		if (mBufferHdr.fdwStatus & ACMSTREAMHEADER_STATUSF_PREPARED) {
-			mBufferHdr.cbSrcLength = mInputBuffer.size();
-			mBufferHdr.cbDstLength = mOutputBuffer.size();
-			acmStreamUnprepareHeader(mhStream, &mBufferHdr, 0);
-		}
-		acmStreamClose(mhStream, 0);
-		mhStream = NULL;
-	}
-
-	mDriverName[0] = 0;
-	mDriverFilename[0] = 0;
-}
-
-void *VDAudioDecompressorW32::LockInputBuffer(unsigned& bytes) {
-	unsigned space = mInputBuffer.size() - mBufferHdr.cbSrcLength;
-
-	bytes = space;
-	return &mInputBuffer[mBufferHdr.cbSrcLength];
-}
-
-void VDAudioDecompressorW32::UnlockInputBuffer(unsigned bytes) {
-	mBufferHdr.cbSrcLength += bytes;
-}
-
-void VDAudioDecompressorW32::Convert() {
-	VDASSERT(mOutputReadPt >= mBufferHdr.cbDstLengthUsed);		// verify all output data used
-
-	mBufferHdr.cbSrcLengthUsed = 0;
-	mBufferHdr.cbDstLengthUsed = 0;
-
-	vdprotected2("decompressing audio", const char *, mDriverName, const char *, mDriverFilename) {
-		if (mBufferHdr.cbSrcLength)
-			if (MMRESULT res = acmStreamConvert(mhStream, &mBufferHdr, (mbFirst ? ACM_STREAMCONVERTF_START : 0) | ACM_STREAMCONVERTF_BLOCKALIGN))
-				throw MyError("ACM reported error on audio decompress (%lx)", res);
-	}
-
-	mbFirst = false;
-	mOutputReadPt = 0;
-
-	// if ACM didn't use all the source data, copy the remainder down
-
-	if (mBufferHdr.cbSrcLengthUsed < mBufferHdr.cbSrcLength) {
-		long left = mBufferHdr.cbSrcLength - mBufferHdr.cbSrcLengthUsed;
-
-		memmove(&mInputBuffer.front(), &mInputBuffer[mBufferHdr.cbSrcLengthUsed], left);
-
-		mBufferHdr.cbSrcLength = left;
-	} else
-		mBufferHdr.cbSrcLength = 0;
-}
-
-unsigned VDAudioDecompressorW32::GetOutputLevel() {
-	return mBufferHdr.cbDstLengthUsed - mOutputReadPt;
-}
-
-unsigned VDAudioDecompressorW32::CopyOutput(void *dst, unsigned bytes) {
-	bytes = std::min<unsigned>(bytes, mBufferHdr.cbDstLengthUsed - mOutputReadPt);
-
-	memcpy(dst, &mOutputBuffer[mOutputReadPt], bytes);
-
-	mOutputReadPt += bytes;
-	return bytes;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -258,7 +48,7 @@ public:
 	int				mSrcBlockAlign;
 	bool			mbDecompressionActive;
 
-	VDAudioDecompressorW32	mDecompressor;
+	VDAudioCodecW32	mDecompressor;
 };
 
 void __cdecl VDAudioFilterInput::InitProc(const VDAudioFilterContext *pContext) {
@@ -346,6 +136,7 @@ uint32 VDAudioFilterInput::Run() {
 		}
 
 		void *dst = mDecompressor.LockInputBuffer(bytes);
+		bool inputRead = false;
 
 		if (bytes >= mSrcBlockAlign && mPos < mLimit) {
 			uint32 actualbytes, samples;
@@ -367,10 +158,11 @@ uint32 VDAudioFilterInput::Run() {
 				return kVFARun_InternalWork;
 		}
 
-		if (mDecompressor.GetInputLevel())
-			mDecompressor.Convert();
+		bool inputEnded = mPos >= mLimit; 
 
-		return mPos >= mLimit && !mDecompressor.GetOutputLevel() ? kVFARun_Finished : kVFARun_InternalWork;
+		mDecompressor.Convert(inputEnded, true);
+
+		return inputEnded && mDecompressor.IsEnded() ? kVFARun_Finished : kVFARun_InternalWork;
 	} else {
 		uint32 samples = pin.mAvailSpace;
 		uint32 bytes = pin.mAvailSpace * format.mBlockSize;

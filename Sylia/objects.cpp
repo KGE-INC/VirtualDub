@@ -23,6 +23,41 @@ namespace {
 		}
 	}
 
+	FUNC(messagebox) {
+		MessageBox(NULL, *argv[0].asString(), *argv[1].asString(), MB_OK);
+	}
+
+	FUNC(IntToString) {
+		char buf[32];
+
+		if ((unsigned)_snprintf(buf, sizeof buf, "%d", argv[0].asInt()) > 31)
+			buf[0] = 0;
+
+		argv[0] = isi->DupCString(buf);
+	}
+
+	FUNC(LongToString) {
+		char buf[32];
+
+		if ((unsigned)_snprintf(buf, sizeof buf, "%I64d", argv[0].asLong()) > 31)
+			buf[0] = 0;
+
+		argv[0] = isi->DupCString(buf);
+	}
+
+	FUNC(DoubleToString) {
+		char buf[256];
+
+		if ((unsigned)_snprintf(buf, sizeof buf, "%g", argv[0].asDouble()) > 255)
+			buf[0] = 0;
+
+		argv[0] = isi->DupCString(buf);
+	}
+
+	FUNC(StringToString) {
+		// don't need to do anything
+	}
+
 	FUNC(add_int) {	argv[0] = argv[0].asInt() + argv[1].asInt(); }
 	FUNC(add_long) { argv[0] = argv[0].asLong() + argv[1].asLong(); }
 	FUNC(add_double) { argv[0] = argv[0].asDouble() + argv[1].asDouble(); }
@@ -121,6 +156,11 @@ namespace {
 
 static const VDScriptFunctionDef objFL_Sylia[]={
 	{ dprint,		"dprint", "0." },
+	{ messagebox,	"MessageBox", "0ss" },
+	{ IntToString,		"ToString", "si" },
+	{ LongToString,		NULL, "sl" },
+	{ DoubleToString,	NULL, "sd" },
+	{ StringToString,	NULL, "ss" },
 	{ add_int,		"+", "iii" },
 	{ add_long,		NULL, "lll" },
 	{ add_double,	NULL, "ddd" },

@@ -22,9 +22,12 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vectors.h>
 #include <vd2/system/vdstl.h>
+#include <list>
 
 #include <windows.h>			// hmm, need to get rid of this....
 #include <mmsystem.h>
+
+class MyError;
 
 namespace nsVDCapture {
 	enum DisplayMode {
@@ -51,7 +54,7 @@ namespace nsVDCapture {
 class VDINTERFACE IVDCaptureDriverCallback {
 public:
 	virtual void CapBegin(sint64 global_clock) = 0;
-	virtual void CapEnd() = 0;
+	virtual void CapEnd(const MyError *pError) = 0;
 	virtual bool CapControl(bool is_preroll) = 0;
 	virtual void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock) = 0;
 };
@@ -63,6 +66,8 @@ public:
 	virtual bool	Init(VDGUIHandle hParent) = 0;
 
 	virtual void	SetCallback(IVDCaptureDriverCallback *pCB) = 0;
+
+	virtual bool	IsHardwareDisplayAvailable() = 0;
 
 	virtual void	SetDisplayMode(nsVDCapture::DisplayMode m) = 0;
 	virtual nsVDCapture::DisplayMode		GetDisplayMode() = 0;
@@ -82,6 +87,9 @@ public:
 	virtual	bool	IsAudioCapturePossible() = 0;
 	virtual bool	IsAudioCaptureEnabled() = 0;
 	virtual void	SetAudioCaptureEnabled(bool b) = 0;
+	virtual void	SetAudioAnalysisEnabled(bool b) = 0;
+
+	virtual void	GetAvailableAudioFormats(std::list<vdstructex<WAVEFORMATEX> >& aformats) = 0;
 
 	virtual bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) = 0;
 	virtual bool	SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size) = 0;

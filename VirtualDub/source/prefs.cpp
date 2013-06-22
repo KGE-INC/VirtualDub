@@ -54,34 +54,6 @@ static char g_szMainPrefs[]="Main prefs";
 
 ////////////////////////////////////////////////////////////////
 
-
-class VDDialogBase : public IVDUICallback {
-protected:
-	int GetValue(uint32 id) const {
-		IVDUIWindow *pWin = mpBase->GetControl(id);
-		return pWin ? pWin->GetValue() : 0;
-	}
-
-	void SetValue(uint32 id, int value) {
-		IVDUIWindow *pWin = mpBase->GetControl(id);
-		if (pWin)
-			pWin->SetValue(value);
-	}
-
-	const VDStringW GetCaption(uint32 id) const {
-		IVDUIWindow *pWin = mpBase->GetControl(id);
-		return pWin ? pWin->GetCaption() : VDStringW();
-	}
-
-	void SetCaption(uint32 id, const VDStringW& s) {
-		IVDUIWindow *pWin = mpBase->GetControl(id);
-		if (pWin)
-			pWin->SetCaption(s);
-	}
-
-	IVDUIBase *mpBase;
-};
-
 class VDDialogPreferencesGeneral : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -316,7 +288,7 @@ public:
 			SetValue(100, 0);
 			pBase->ExecuteAllLinks();
 		} else if (id == 101 && type == kEventSelect) {
-			IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetFirstChild());
+			IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetStartingChild());
 
 			if (pSubDialog) {
 				switch(item) {
@@ -337,7 +309,7 @@ public:
 				pBase->EndModal(false);
 				return true;
 			} else if (id == 12) {
-				IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetFirstChild());
+				IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetStartingChild());
 
 				if (pSubDialog)
 					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);

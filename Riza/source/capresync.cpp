@@ -19,7 +19,9 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/math.h>
+#include <vd2/system/profile.h>
 #include <vd2/Riza/capresync.h>
+#include <vd2/Priss/convert.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -190,18 +192,25 @@ public:
 	void SetVideoRate(double fps);
 	void SetAudioRate(double bytesPerSec);
 	void SetAudioChannels(int chans);
+	void SetAudioFormat(VDAudioSampleType type);
+	void SetResyncMode(Mode mode);
 
 	void GetStatus(VDCaptureResyncStatus&);
 
 	void CapBegin(sint64 global_clock);
-	void CapEnd();
+	void CapEnd(const MyError *pError);
 	bool CapControl(bool is_preroll);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
+	void ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock);
+	void UnpackSamples(sint16 *dst, ptrdiff_t dstStride, const void *src, uint32 samples, uint32 channels);
+
 	IVDCaptureDriverCallback *mpCB;
 
 	bool		mbCapturing;
+	Mode		mMode;
+
 	sint64		mGlobalClockBase;
 	sint64		mVideoLastTime;
 	sint64		mVideoLastRawTime;
@@ -220,21 +229,28 @@ protected:
 	VDCaptureAudioRateEstimator	mAudioRelativeRateEstimator;
 	VDCriticalSection	mcsLock;
 
+	tpVDConvertPCM	mpAudioDecoder16;
+	uint32		mBytesPerInputSample;
+
 	sint32		mInputLevel;
 	uint32		mAccum;
 	vdblock<sint16>	mInputBuffer;
 	vdblock<sint16>	mOutputBuffer;
 
 	MovingAverage<double, 8>	mCurrentLatencyAverage;
+
+	VDRTProfileChannel	mProfileChannel;
 };
 
 VDCaptureResyncFilter::VDCaptureResyncFilter()
 	: mbCapturing(false)
+	, mMode(kModeNone)
 	, mVideoLastTime(0)
 	, mVideoLastRawTime(0)
 	, mVideoTimingWrapAdjust(0)
 	, mVideoTimingAdjust(0)
 	, mAudioBytes(0)
+	, mProfileChannel("Resynchronizer")
 {
 }
 
@@ -262,6 +278,19 @@ void VDCaptureResyncFilter::SetAudioChannels(int chans) {
 	mChannels = chans;
 }
 
+void VDCaptureResyncFilter::SetAudioFormat(VDAudioSampleType type) {
+	mpAudioDecoder16 = NULL;
+
+	if (type != kVDAudioSampleType16S)
+		mpAudioDecoder16 = VDGetPCMConversionVtable()[type][kVDAudioSampleType16S];
+
+	mBytesPerInputSample = 1<<type;
+}
+
+void VDCaptureResyncFilter::SetResyncMode(Mode mode) {
+	mMode = mode;
+}
+
 void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
 	status.mVideoTimingAdjust = mVideoTimingAdjust;
 	status.mAudioResamplingRate = (float)mAudioResamplingRate;
@@ -282,8 +311,8 @@ void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
 	mpCB->CapBegin(global_clock);
 }
 
-void VDCaptureResyncFilter::CapEnd() {
-	mpCB->CapEnd();
+void VDCaptureResyncFilter::CapEnd(const MyError *pError) {
+	mpCB->CapEnd(pError);
 }
 
 bool VDCaptureResyncFilter::CapControl(bool is_preroll) {
@@ -326,7 +355,7 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			timestamp += mVideoTimingAdjust;
 
 			mVideoRealRateEstimator.AddSample(global_clock, timestamp);
-		} else {
+		} else if (mMode) {
 			mAudioBytes += size;
 			mAudioRelativeRateEstimator.AddSample(mVideoLastTime, mAudioBytes);
 
@@ -339,103 +368,150 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 				if (estimatedVideoTime < mVideoLastTime)
 					estimatedVideoTime = mVideoLastTime;
 
-				double currentLatency = mCurrentLatencyAverage(mVideoTimeLastAudioBlock - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
-//				double currentLatency = mCurrentLatencyAverage(mVideoLastTime - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
-
 				mVideoTimeLastAudioBlock = estimatedVideoTime;
 
 				double rate, latency;
 
 				if (mAudioRelativeRateEstimator.GetCount() > 8 && mAudioRelativeRateEstimator.GetSlope(rate) && mAudioRelativeRateEstimator.GetXIntercept(rate, latency)) {
-					double adjustedRate = rate * ((double)(mVideoLastTime + mVideoTimingAdjust) / mVideoLastTime);
-					double audioBytesPerSecond = adjustedRate * 1000000.0;
-					double audioSecondsPerSecond = audioBytesPerSecond * mInvAudioRate;
-					double errorSecondsPerSecond = audioSecondsPerSecond - 1.0;
-					double errorSeconds = errorSecondsPerSecond * mVideoLastTime / 1000000.0;
-					double errorFrames = errorSeconds * mVideoRate;
+					if (mMode == kModeResampleVideo) {
+						double adjustedRate = rate * ((double)(mVideoLastTime + mVideoTimingAdjust) / mVideoLastTime);
+						double audioBytesPerSecond = adjustedRate * 1000000.0;
+						double audioSecondsPerSecond = audioBytesPerSecond * mInvAudioRate;
+						double errorSecondsPerSecond = audioSecondsPerSecond - 1.0;
+						double errorSeconds = errorSecondsPerSecond * mVideoLastTime / 1000000.0;
+						double errorFrames = errorSeconds * mVideoRate;
 
-					double latencyError = currentLatency - latency;			// negative means too much data; positive means too little data
+						if (fabs(errorFrames) >= 0.8) {
+							sint32 errorAdj = -(sint32)(errorFrames / mVideoRate * 1000000.0);
 
-					double targetRate = mAudioTrackingRate - (1e-7)*latencyError;
-					mAudioResamplingRate += 0.1 * (targetRate - mAudioResamplingRate);
-					mAudioTrackingRate += 0.01*(rate*1000000.0*mInvAudioRate - mAudioTrackingRate);
+							VDDEBUG("Applying delta of %d us -- total delta %d us\n", errorAdj, (sint32)mVideoTimingAdjust);
+							mVideoTimingAdjust += errorAdj;
+						}
+					} else if (mMode == kModeResampleAudio) {
+						double currentLatency = mCurrentLatencyAverage(mVideoTimeLastAudioBlock - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
+//						double currentLatency = mCurrentLatencyAverage(mVideoLastTime - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
+						double latencyError = currentLatency - latency;			// negative means too much data; positive means too little data
+						double targetRate = mAudioTrackingRate - (1e-7)*latencyError;
 
-#if 0
-					if (fabs(errorFrames) >= 0.8) {
-						sint32 errorAdj = -(sint32)(errorFrames / mVideoRate * 1000000.0);
+						mAudioResamplingRate += 0.1 * (targetRate - mAudioResamplingRate);
+						mAudioTrackingRate += 0.01*(rate*1000000.0*mInvAudioRate - mAudioTrackingRate);
 
-						VDDEBUG("Applying delta of %d us -- total delta %d us\n", errorAdj, (sint32)mVideoTimingAdjust);
-						mVideoTimingAdjust += errorAdj;
+						if (mAudioResamplingRate < 0.1)
+							mAudioResamplingRate = 0.1;
+						else if (mAudioResamplingRate > 10.0)
+							mAudioResamplingRate = 10.0;
+
+						VDDEBUG("audio rate: %.2fHz (%.2fHz), latency: %.2fms (latency error: %+.2fms; current rate: %.6g; target: %.6g)\n"
+								, rate * 1000000.0 / 4.0
+								, mAudioRate * mAudioTrackingRate / 4.0
+								, latency / 1000.0
+								, latencyError / 1000.0
+								, mAudioResamplingRate
+								, targetRate);
 					}
-#endif
-
-					VDDEBUG("audio rate: %.2fHz (%.2fHz), latency: %.2fms (latency error: %+.2fms; current rate: %.6g; target: %.6g)\n"
-							, rate * 1000000.0 / 4.0
-							, mAudioRate * mAudioTrackingRate / 4.0
-							, latency / 1000.0
-							, latencyError / 1000.0
-							, mAudioResamplingRate
-							, targetRate);
 				}
 			}
 		}
 	}
 
-	if (stream == 1) {
-		int samples = (size >> 1) / mChannels;
+	if (stream == 1 && mMode == kModeResampleAudio)
+		ResampleAndDispatchAudio(data, size, key, global_clock);
+	else
+		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+}
 
-		while(samples > 0) {
-			int tc = 4096 - mInputLevel;
+void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock) {
+	int samples = (size >> 1) / mChannels;
 
-			if (tc > samples)
-				tc = samples;
+	while(samples > 0) {
+		int tc = 4096 - mInputLevel;
 
-			int base = mInputLevel;
+		if (tc > samples)
+			tc = samples;
 
-			samples -= tc;
-			mInputLevel += tc;
+		int base = mInputLevel;
 
-			// resample
-			uint32 inc = VDRoundToInt(mAudioResamplingRate * 65536.0);
-			int limit = 0;
+		samples -= tc;
+		mInputLevel += tc;
 
-			const int chans = mChannels;
-			if (mInputLevel >= 8) {
-				limit = ((mInputLevel << 16)-0x70000-mAccum + (inc-1)) / inc;
-				if (limit > 4096)
-					limit = 4096;
+		// resample
+		uint32 inc = VDRoundToInt(mAudioResamplingRate * 65536.0);
+		int limit = 0;
 
-				uint32 accum0 = mAccum;
+		const int chans = mChannels;
+		if (mInputLevel >= 8) {
+			limit = ((mInputLevel << 16)-0x70000-mAccum + (inc-1)) / inc;
+			if (limit > 4096)
+				limit = 4096;
 
-				for(int chan=0; chan<chans; ++chan) {
-					const sint16 *src = (const sint16 *)data + chan;
-					sint16 *dst = mInputBuffer.data() + 4096*chan + base;
+			uint32 accum0 = mAccum;
 
-					for(int idx=0; idx<tc; ++idx) {
-						*dst++ = *src;
-						src += chans;
-					}
+			mProfileChannel.Begin(0xc0e0ff, "A-Copy");
+			UnpackSamples(mInputBuffer.data() + base, 4096*sizeof(mInputBuffer[0]), data, tc, chans);
+			mProfileChannel.End();
 
-					src = mInputBuffer.data() + 4096*chan;
-					dst = mOutputBuffer.data() + chan;
+			mProfileChannel.Begin(0xffe0c0, "A-Filter");
+			for(int chan=0; chan<chans; ++chan) {
+				const sint16 *src = mInputBuffer.data() + 4096*chan;
+				sint16 *dst = mOutputBuffer.data() + chan;
 
-					mAccum = (uint32)(resample16(dst, chans, src, limit, (uint64)accum0<<16, (sint64)inc<<16) >> 16);
+				mAccum = (uint32)(resample16(dst, chans, src, limit, (uint64)accum0<<16, (sint64)inc<<16) >> 16);
 
-					int pos = mAccum >> 16;
+				int pos = mAccum >> 16;
 
-					memmove(&mInputBuffer[4096*chan], &mInputBuffer[4096*chan + pos], (mInputLevel - pos)*2);
-				}
+				memmove(&mInputBuffer[4096*chan], &mInputBuffer[4096*chan + pos], (mInputLevel - pos)*2);
+			}
+			mProfileChannel.End();
+		}
+
+		mInputLevel -= mAccum >> 16;
+		mAccum &= 0xffff;
+
+		mAudioWrittenBytes += limit*chans*2;
+
+		mpCB->CapProcessData(1, mOutputBuffer.data(), limit*chans*2, 0, key, global_clock);
+
+		data = (char *)data + 2*chans*tc;
+	}
+}
+
+namespace {
+	void strided_copy_16(sint16 *dst, ptrdiff_t dstStride, const sint16 *src, uint32 samples, uint32 channels) {
+		for(uint32 ch=0; ch<channels; ++ch) {
+			const sint16 *src2 = src++;
+			dstStride -= samples*sizeof(sint16);
+
+			for(uint32 s=0; s<samples; ++s) {
+				*dst++ = *src2;
+				src2 += channels;
 			}
 
-			mInputLevel -= mAccum >> 16;
-			mAccum &= 0xffff;
-
-			mAudioWrittenBytes += limit*chans*2;
-
-			mpCB->CapProcessData(stream, mOutputBuffer.data(), limit*chans*2, 0, key, global_clock);
-
-			data = (char *)data + 2*chans*tc;
+			dst = (sint16 *)((char *)dst + dstStride);
 		}
-	} else
-		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+	}
+}
+
+void VDCaptureResyncFilter::UnpackSamples(sint16 *dst, ptrdiff_t dstStride, const void *src, uint32 samples, uint32 channels) {
+	if (!samples)
+		return;
+
+	if (!mpAudioDecoder16) {
+		strided_copy_16(dst, dstStride, (const sint16 *)src, samples, channels);
+		return;
+	}
+
+	sint16 buf[512];
+	uint32 stripSize = 512 / channels;
+
+	while(samples > 0) {
+		uint32 tc = std::min<uint32>(stripSize, samples);
+
+		mpAudioDecoder16(buf, src, tc * channels);
+
+		strided_copy_16(dst, dstStride, buf, tc, channels);
+
+		dst += tc;
+		src = (const char *)src + tc*mBytesPerInputSample;
+		samples -= tc;
+	}
 }

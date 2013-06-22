@@ -1,0 +1,5 @@
+SCC = This is a source code control file
+
+[vdremote.vcproj]
+SCC_Aux_Path = "P4SCC#127.0.0.1:1666##athena##Belldandy"
+SCC_Project_Name = "//depot/VirtualDub/1.x/main/vdremote"

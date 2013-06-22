@@ -46,6 +46,7 @@ public:
 	void SetIndexing(bool bAllowHierarchicalExtensions);
 	void Set1GBLimit(bool bUse1GBLimit);
 	void SetBuffer(int bufferSize);
+	void SetTextInfo(const std::list<std::pair<uint32, VDStringA> >& info);
 
 	void SetFilename(const wchar_t *pszFilename);
 	void SetFilenamePattern(const wchar_t *pszSegmentPrefix, const wchar_t *pszExt, int nMinimumDigits);
@@ -68,6 +69,9 @@ private:
 	bool		mbAllowCaching;
 	bool		mbAllowIndexing;
 	bool		mbUse1GBLimit;
+
+	typedef std::list<std::pair<uint32, VDStringA> > tTextInfo;
+	tTextInfo	mTextInfo;
 
 	AVIStreamHeader_fixed	mVideoStreamInfo;
 	std::vector<char>		mVideoFormat;

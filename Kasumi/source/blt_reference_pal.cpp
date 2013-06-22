@@ -10,6 +10,44 @@
 //
 ///////////////////////////////////////////////////////////////////////////
 
+DECLARE_PALETTED(Pal1, Any8) {
+	const uint8 *src = (const uint8 *)src0;
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *pal = (const uint8 *)pal0;
+
+	dst += (w & ~7);
+
+	srcpitch -= (w+7) >> 3;
+	dstpitch += (w+7) & ~7;
+
+	do {
+		int wt = w;
+
+		uint8 v = src[0] >> ((-wt) & 7);
+		
+		switch(wt & 7) {
+			do {
+				v = src[0];
+
+		case 0:	dst[7] = pal[v&1];	v >>= 1;
+		case 7:	dst[6] = pal[v&1];	v >>= 1;
+		case 6:	dst[5] = pal[v&1];	v >>= 1;
+		case 5:	dst[4] = pal[v&1];	v >>= 1;
+		case 4:	dst[3] = pal[v&1];	v >>= 1;
+		case 3:	dst[2] = pal[v&1];	v >>= 1;
+		case 2:	dst[1] = pal[v&1];	v >>= 1;
+		case 1:	dst[0] = pal[v&1];	v >>= 1;
+
+				dst -= 8;
+				--src;
+			} while((wt -= 8) > 0);
+		}
+
+		vdptrstep(src, srcpitch);
+		vdptrstep(dst, dstpitch);
+	} while(--h);
+}
+
 DECLARE_PALETTED(Pal1, Any16) {
 	const uint8 *src = (const uint8 *)src0;
 	uint16 *dst = (uint16 *)dst0;
@@ -18,7 +56,7 @@ DECLARE_PALETTED(Pal1, Any16) {
 	dst += (w & ~7);
 
 	srcpitch -= (w+7) >> 3;
-	dstpitch += (w+7) & ~7;
+	dstpitch += ((w+7) & ~7) * 2;
 
 	do {
 		int wt = w;
@@ -56,7 +94,7 @@ DECLARE_PALETTED(Pal1, Any24) {
 	dst += (w & ~7) * 3;
 
 	srcpitch -= (w+7) >> 3;
-	dstpitch += (w+7) & ~7;
+	dstpitch += ((w+7) & ~7) * 3;
 
 	do {
 		int wt = w;
@@ -95,7 +133,7 @@ DECLARE_PALETTED(Pal1, Any32) {
 	dst += (w & ~7);
 
 	srcpitch -= (w+7) >> 3;
-	dstpitch += (w+7) & ~7;
+	dstpitch += ((w+7) & ~7) * 4;
 
 	do {
 		int wt = w;
@@ -131,6 +169,40 @@ DECLARE_PALETTED(Pal1, Any32) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
+DECLARE_PALETTED(Pal2, Any8) {
+	const uint8 *src = (const uint8 *)src0;
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *pal = (const uint8 *)pal0;
+
+	dst += (w & ~3);
+
+	srcpitch -= (w+3) >> 2;
+	dstpitch += (w+3) & ~3;
+
+	do {
+		int wt = w;
+
+		uint8 v = src[0] >> (((-wt) & 3)*2);
+		
+		switch(wt & 3) {
+			do {
+				v = src[0];
+
+		case 0:	dst[3] = pal[v&3];	v >>= 2;
+		case 3:	dst[2] = pal[v&3];	v >>= 2;
+		case 2:	dst[1] = pal[v&3];	v >>= 2;
+		case 1:	dst[0] = pal[v&3];	v >>= 2;
+
+				dst -= 4;
+				--src;
+			} while((wt -= 4) > 0);
+		}
+
+		vdptrstep(src, srcpitch);
+		vdptrstep(dst, dstpitch);
+	} while(--h);
+}
+
 DECLARE_PALETTED(Pal2, Any16) {
 	const uint8 *src = (const uint8 *)src0;
 	uint16 *dst = (uint16 *)dst0;
@@ -139,7 +211,7 @@ DECLARE_PALETTED(Pal2, Any16) {
 	dst += (w & ~3);
 
 	srcpitch -= (w+3) >> 2;
-	dstpitch += (w+3) & ~3;
+	dstpitch += ((w+3) & ~3) * 2;
 
 	do {
 		int wt = w;
@@ -173,7 +245,7 @@ DECLARE_PALETTED(Pal2, Any24) {
 	dst += (w & ~3) * 3;
 
 	srcpitch -= (w+3) >> 2;
-	dstpitch += (w+3) & ~3;
+	dstpitch += ((w+3) & ~3) * 3;
 
 	do {
 		int wt = w;
@@ -208,7 +280,7 @@ DECLARE_PALETTED(Pal2, Any32) {
 	dst += (w & ~3);
 
 	srcpitch -= (w+3) >> 2;
-	dstpitch += (w+3) & ~3;
+	dstpitch += ((w+3) & ~3) * 4;
 
 	do {
 		int wt = w;
@@ -240,6 +312,38 @@ DECLARE_PALETTED(Pal2, Any32) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
+DECLARE_PALETTED(Pal4, Any8) {
+	const uint8 *src = (const uint8 *)src0;
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *pal = (const uint8 *)pal0;
+
+	dst += (w & ~1);
+
+	srcpitch -= (w+1) >> 1;
+	dstpitch += (w+1) & ~1;
+
+	do {
+		int wt = w;
+
+		uint8 v = src[0] >> (((-wt) & 1)*4);
+		
+		switch(wt & 1) {
+			do {
+				v = src[0];
+
+		case 0:	dst[1] = pal[v&15];	v >>= 4;
+		case 1:	dst[0] = pal[v&15];	v >>= 4;
+
+				dst -= 2;
+				--src;
+			} while((wt -= 2) > 0);
+		}
+
+		vdptrstep(src, srcpitch);
+		vdptrstep(dst, dstpitch);
+	} while(--h);
+}
+
 DECLARE_PALETTED(Pal4, Any16) {
 	const uint8 *src = (const uint8 *)src0;
 	uint16 *dst = (uint16 *)dst0;
@@ -248,7 +352,7 @@ DECLARE_PALETTED(Pal4, Any16) {
 	dst += (w & ~1);
 
 	srcpitch -= (w+1) >> 1;
-	dstpitch += (w+1) & ~1;
+	dstpitch += ((w+1) & ~1) * 2;
 
 	do {
 		int wt = w;
@@ -280,7 +384,7 @@ DECLARE_PALETTED(Pal4, Any24) {
 	dst += (w & ~1) * 3;
 
 	srcpitch -= (w+1) >> 1;
-	dstpitch += (w+1) & ~1;
+	dstpitch += ((w+1) & ~1) * 3;
 
 	do {
 		int wt = w;
@@ -313,7 +417,7 @@ DECLARE_PALETTED(Pal4, Any32) {
 	dst += (w & ~1);
 
 	srcpitch -= (w+1) >> 1;
-	dstpitch += (w+1) & ~1;
+	dstpitch += ((w+1) & ~1) * 4;
 
 	do {
 		int wt = w;
@@ -342,6 +446,26 @@ DECLARE_PALETTED(Pal4, Any32) {
 //	RGB blitters: Pal8 ->
 //
 ///////////////////////////////////////////////////////////////////////////
+
+DECLARE_PALETTED(Pal8, Any8) {
+	const uint8 *src = (const uint8 *)src0;
+	uint8 *dst = (uint8 *)dst0;
+	const uint8 *pal = (const uint8 *)pal0;
+
+	srcpitch -= w;
+	dstpitch -= w;
+
+	do {
+		int wt = w;
+
+		do {
+			*dst++ = pal[*src++];
+		} while(--wt);
+
+		vdptrstep(src, srcpitch);
+		vdptrstep(dst, dstpitch);
+	} while(--h);
+}
 
 DECLARE_PALETTED(Pal8, Any16) {
 	const uint8 *src = (const uint8 *)src0;

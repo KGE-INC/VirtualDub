@@ -69,6 +69,9 @@ AVIAudioOutput::AVIAudioOutput(long bufsize, int maxbufs) {
 
 AVIAudioOutput::~AVIAudioOutput() {
 	shutdown();
+	if (hEventBuffersFree)
+		CloseHandle(hEventBuffersFree);
+	DeleteCriticalSection(&mcsWaveDevice);
 }
 
 bool AVIAudioOutput::init(const WAVEFORMATEX *wf) {
@@ -126,8 +129,6 @@ bool AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 void AVIAudioOutput::shutdown() {
 	AVIAudioOutputBuffer *nb;
 
-	DeleteCriticalSection(&mcsWaveDevice);
-
 	if (curState == STATE_SILENT)
 		return;
 
@@ -145,11 +146,10 @@ void AVIAudioOutput::shutdown() {
 		delete nb;
 	}
 
+	numbufs = 0;
+
 	if (curState >= STATE_OPENED)
 		waveOutClose(hWaveOut);
-
-	if (hEventBuffersFree)
-		CloseHandle(hEventBuffersFree);
 
 	curState = STATE_NONE;
 }

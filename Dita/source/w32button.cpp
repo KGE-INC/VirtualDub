@@ -165,8 +165,12 @@ bool VDUIOptionW32::Create(IVDUIParameters *pParams) {
 	
 	while(pWin = mpParent->GetPreviousChild(pWin)) {
 		mpBaseOption = vdpoly_cast<VDUIOptionW32 *>(pWin);
-		if (mpBaseOption)
+		if (mpBaseOption) {
+			VDUIOptionW32 *pTrueBase = mpBaseOption->mpBaseOption;
+			if (pTrueBase)
+				mpBaseOption = pTrueBase;
 			break;
+		}
 	}
 
 	if (CreateW32(pParams, "BUTTON", mpBaseOption	? (BS_AUTORADIOBUTTON|BS_TOP|BS_MULTILINE|WS_TABSTOP)
