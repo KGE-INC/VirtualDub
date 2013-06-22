@@ -696,6 +696,9 @@ VDCaptureResyncFilter::VDCaptureResyncFilter()
 	, mVideoRate(1)
 	, mInvVideoRate(1)
 	, mChannels(0)
+	, mpAudioDecoder16(NULL)
+	, mpAudioEncoder16(NULL)
+	, mBytesPerInputSample(0)
 	, mProfileChannel("Resynchronizer")
 {
 }

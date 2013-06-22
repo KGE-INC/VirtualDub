@@ -1,6 +1,11 @@
 VirtualDub change log
 
-Build %build% (1.6.17, stable): [%date%]
+Build %build% (1.6.18, stable): [%date%]
+   [bugs fixed]
+   * Improved compatibility of AVI files written in capture mode or with the "sector alignment" option. (NOTE: Affected files can be fixed by re-running them through VirtualDub in Direct mode.)
+   * Fixed crash when selecting Cancel after removing certain video filters from the video filter chain.
+
+Build 24469 (1.6.17, stable): [November 4, 2006]
    [bugs fixed]
    * Fixed divide by zero crash when Direct3D display is enabled and a video pane is shrunken to zero width.
    * UYVY video streams were being reported as RGB16.

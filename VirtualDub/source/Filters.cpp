@@ -212,6 +212,14 @@ void FilterDefinitionInstance::Detach() {
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//	FilterInstanceAutoDeinit
+//
+///////////////////////////////////////////////////////////////////////////
+
+class FilterInstanceAutoDeinit : public vdrefcounted<IVDRefCount> {};
+
+///////////////////////////////////////////////////////////////////////////
+//
 //	FilterInstance
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -228,24 +236,27 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, pvLastView		(fi.pvLastView)
 	, srcbuf			(fi.srcbuf)
 	, dstbuf			(fi.dstbuf)
-	, fNoDeinit			(fi.fNoDeinit)
 	, pfsiDelayRing		(NULL)
 	, mpFDInst			(fi.mpFDInst)
+	, mpAutoDeinit		(fi.mpAutoDeinit)
 	, mScriptFunc		(fi.mScriptFunc)
 	, mScriptObj		(fi.mScriptObj)
 {
+	if (mpAutoDeinit)
+		mpAutoDeinit->AddRef();
+
 	filter = const_cast<FilterDefinition *>(&fi.mpFDInst->Attach());
 }
 
 FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	: FilterActivation((VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
 	, mpFDInst(fdi)
+	, mpAutoDeinit(NULL)
 {
 	filter = const_cast<FilterDefinition *>(&fdi->Attach());
 	src.hdc = NULL;
 	dst.hdc = NULL;
 	last->hdc = NULL;
-	fNoDeinit = false;
 	pfsiDelayRing = NULL;
 
 	if (filter->inst_data_size) {
@@ -256,6 +267,11 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 
 		if (filter->initProc)
 			try {
+				vdrefptr<FilterInstanceAutoDeinit> autoDeinit;
+				
+				if (!filter->copyProc && filter->deinitProc)
+					autoDeinit = new FilterInstanceAutoDeinit;
+
 				if (filter->initProc(this, &g_filterFuncs)) {
 					if (filter->deinitProc)
 						filter->deinitProc(this, &g_filterFuncs);
@@ -263,6 +279,8 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 					freemem(filter_data);
 					throw MyError("Filter failed to initialize.");
 				}
+
+				mpAutoDeinit = autoDeinit.release();
 			} catch(const MyError& e) {
 				throw MyError("Cannot initialize filter '%s': %s", filter->name, e.gets());
 			}
@@ -313,9 +331,13 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 }
 
 FilterInstance::~FilterInstance() {
-	if (!fNoDeinit)
-		if (filter->deinitProc)
+	if (mpAutoDeinit) {
+		if (!mpAutoDeinit->Release())
 			filter->deinitProc(this, &g_filterFuncs);
+		mpAutoDeinit = NULL;
+	} else if (filter->deinitProc) {
+		filter->deinitProc(this, &g_filterFuncs);
+	}
 
 	freemem(filter_data);
 
@@ -344,10 +366,6 @@ FilterInstance *FilterInstance::Clone() {
 
 void FilterInstance::Destroy() {
 	delete this;
-}
-
-void FilterInstance::ForceNoDeinit() {
-	fNoDeinit = true;
 }
 
 void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc) {

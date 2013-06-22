@@ -72,6 +72,8 @@ public:
 	HDC		hdc;
 };
 
+class FilterInstanceAutoDeinit;
+
 class FilterInstance : public ListNode, public FilterActivation {
 private:
 	FilterInstance& operator=(const FilterInstance&);		// outlaw copy assignment
@@ -83,7 +85,6 @@ public:
 	void *pvDstView, *pvLastView;
 	int srcbuf, dstbuf;
 	int origw, origh;
-	bool fNoDeinit;
 
 	FilterStateInfo *pfsiDelayRing;
 	FilterStateInfo *pfsiDelayInput;
@@ -93,6 +94,8 @@ public:
 	int nDelayRingSize;
 
 	VDStringW	mFilterName;
+
+	FilterInstanceAutoDeinit	*mpAutoDeinit;
 
 	std::vector<VDScriptFunctionDef>	mScriptFunc;
 	VDScriptObject	mScriptObj;
@@ -105,7 +108,6 @@ public:
 
 	FilterInstance *Clone();
 	void Destroy();
-	void ForceNoDeinit();
 
 protected:
 	static void ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc);

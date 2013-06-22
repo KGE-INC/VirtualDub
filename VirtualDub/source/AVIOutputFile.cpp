@@ -945,7 +945,7 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 	// Align the chunk, if an alignment was specified for this stream.
 	uint32 buf[2];
 
-	if (stream.mAlignment) {
+	if (stream.mAlignment && mIndexEntries) {
 		int offset = (int)(mFilePosition+8) & (stream.mAlignment - 1);
 
 		if (offset) {
