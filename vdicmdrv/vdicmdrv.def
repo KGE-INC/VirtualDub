@@ -1,5 +1,0 @@
-LIBRARY			vdicmdrv
-DESCRIPTION		'VirtualDub video compression/decompression driver DLL'
-
-EXPORTS
-		DriverProc
