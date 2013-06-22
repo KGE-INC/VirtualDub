@@ -347,6 +347,10 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 						, fa->IsPreciseCroppingEnabled() ? "" : ",0"
 						);
 		}
+		
+		if (fa->IsForceSingleFBEnabled()) {
+			output.addf("VirtualDub.video.filters.instance[%d].SetForceSingleFBEnabled(true);", iFilter);
+		}
 
 		VDStringA scriptStr;
 		if (fa->GetScriptString(scriptStr))

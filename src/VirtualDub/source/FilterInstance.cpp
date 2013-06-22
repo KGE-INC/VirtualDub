@@ -532,6 +532,7 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, mbConvertOnEntry	(fi.mbConvertOnEntry)
 	, mbAlignOnEntry	(fi.mbAlignOnEntry)
 	, mbAccelerated		(fi.mbAccelerated)
+	, mbForceSingleFB	(fi.mbForceSingleFB)
 	, mOrigW			(fi.mOrigW)
 	, mOrigH			(fi.mOrigH)
 	, mbPreciseCrop		(fi.mbPreciseCrop)
@@ -570,6 +571,7 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	, mbConvertOnEntry(false)
 	, mbAlignOnEntry(false)
 	, mbAccelerated(false)
+	, mbForceSingleFB(false)
 	, mOrigW(0)
 	, mOrigH(0)
 	, mbPreciseCrop(true)
@@ -1094,10 +1096,10 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 		StartInner();
 	}
 
-	if (!mRealSrc.hdc)
+	if (!mRealSrc.hdc && !mbForceSingleFB)
 		mRealSrc.Unbind();
 
-	if (!mRealDst.hdc)
+	if (!mRealDst.hdc && !mbForceSingleFB)
 		mRealDst.Unbind();
 
 	mpSource = pSource;
@@ -1545,7 +1547,7 @@ bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOf
 	VDFilterFrameBuffer *resultBuffer = request.GetResultBuffer();
 	bool bltSrcOnEntry = false;
 
-	if (mRealSrc.hdc) {
+	if (mRealSrc.hdc || mbForceSingleFB) {
 		mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
 		bltSrcOnEntry = true;
 	} else if (!IsInPlace()) {
@@ -1567,7 +1569,7 @@ bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOf
 	mRealSrc.SetFrameNumber(creqsrc0->GetFrameNumber());
 	mRealSrc.mCookie = creqsrc0->GetCookie();
 
-	if (!mRealDst.hdc)
+	if (!mRealDst.hdc && !mbForceSingleFB)
 		mRealDst.BindToFrameBuffer(resultBuffer, false);
 
 	mRealDst.SetFrameNumber(timing.mOutputFrame);
@@ -1681,12 +1683,12 @@ void FilterInstance::EndRequest() {
 		mSourceFrames[i].Unbind();
 	}
 
-	if (!mRealSrc.hdc)
+	if (!mRealSrc.hdc && !mbForceSingleFB)
 		mRealSrc.Unbind();
 
 	mExternalSrcCropped.Unbind();
 
-	if (!mRealDst.hdc)
+	if (!mRealDst.hdc && !mbForceSingleFB)
 		mRealDst.Unbind();
 
 	mExternalDst.Unbind();
@@ -1798,8 +1800,10 @@ void FilterInstance::RunFilter(sint64 sourceFrame, sint64 outputFrame, VDXFilter
 		}
 
 
-		if (mRealDst.hdc) {
-			::GdiFlush();
+		if (mRealDst.hdc || mbForceSingleFB) {
+			if (mRealDst.hdc)
+				::GdiFlush();
+
 			VDPixmapBlt(mExternalDst.mPixmap, mRealDst.mPixmap);
 		}
 	}

@@ -218,6 +218,9 @@ public:
 	bool	IsAcceleratable() const;
 	bool	IsAccelerated() const { return mbAccelerated; }
 
+	bool	IsForceSingleFBEnabled() const { return mbForceSingleFB; }
+	void	SetForceSingleFBEnabled(bool en) { mbForceSingleFB = en; }
+
 	const char *GetName() const;
 	uint32	GetFlags() const { return mFlags; }
 	uint32	GetFrameDelay() const { return mFlags >> 16; }
@@ -343,6 +346,7 @@ public:
 protected:
 	bool	mbInvalidFormat;
 	bool	mbInvalidFormatHandling;
+	bool	mbForceSingleFB;
 
 	int		mOrigW;
 	int		mOrigH;

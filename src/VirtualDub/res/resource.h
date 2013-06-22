@@ -45,6 +45,7 @@
 #define IDS_TITLE_FRAMESERVER           9
 #define IDC_BLENDING                    9
 #define IDS_TITLE_CAPTURE2              10
+#define IDC_OPTIONS                     10
 #define IDC_DELETE                      11
 #define IDS_TITLE_IDLE2                 11
 #define IDS_TITLE_CAPTURE3              12
@@ -237,6 +238,8 @@
 #define IDR_FRAME_SYSTEM_MENU           285
 #define IDD_FILTER_TEST                 286
 #define IDD_FILTER_FIELDDELAY           287
+#define IDD_DIALOG1                     288
+#define IDD_FILTER_OPTIONS              288
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -572,6 +575,7 @@
 #define IDC_SHOWIMAGEFORMATS            1184
 #define IDC_AUTOSTART                   1184
 #define IDC_MATCHCASE                   1184
+#define IDC_SINGLE_FB                   1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -1462,7 +1466,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        288
+#define _APS_NEXT_RESOURCE_VALUE        289
 #define _APS_NEXT_COMMAND_VALUE         40518
 #define _APS_NEXT_CONTROL_VALUE         1482
 #define _APS_NEXT_SYMED_VALUE           111

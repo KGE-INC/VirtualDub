@@ -1,6 +1,10 @@
 VirtualDub change log
 
-Build %build% (1.9.10, stable): [%date%]
+Build %build% (1.9.11, stable): [%date%]
+   [bugs fixed]
+   * Filters: Added compatibility option for filters that rely on constant buffer addresses.
+
+Build 32839 (1.9.10, stable): [September 5, 2010]
    [bugs fixed]
    * Fixed icon on status dialog.
    * Fixed crash in scene detector with UYVY/YUY2 input.

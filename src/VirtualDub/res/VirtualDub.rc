@@ -842,16 +842,17 @@ BEGIN
     CONTROL         "",IDC_FILTER_LIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,7,270,175,WS_EX_CLIENTEDGE
     DEFPUSHBUTTON   "OK",IDOK,285,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,285,24,50,14
-    PUSHBUTTON      "&Add...",IDC_ADD,285,47,50,14
-    PUSHBUTTON      "&Delete",IDC_DELETE,285,63,50,14
-    PUSHBUTTON      "Move &Up",IDC_MOVEUP,285,88,50,14
-    PUSHBUTTON      "Move D&own",IDC_MOVEDOWN,285,104,50,14
-    PUSHBUTTON      "C&ropping...",IDC_CLIPPING,285,127,50,14,WS_DISABLED
-    PUSHBUTTON      "&Configure...",IDC_CONFIGURE,285,143,50,14,WS_DISABLED
-    PUSHBUTTON      "&Blend",IDC_BLENDING,285,168,50,14,WS_DISABLED
+    PUSHBUTTON      "&Add...",IDC_ADD,285,45,50,14
+    PUSHBUTTON      "&Delete",IDC_DELETE,285,61,50,14
+    PUSHBUTTON      "Move &Up",IDC_MOVEUP,285,85,50,14
+    PUSHBUTTON      "Move D&own",IDC_MOVEDOWN,285,101,50,14
+    PUSHBUTTON      "C&ropping...",IDC_CLIPPING,285,125,50,14,WS_DISABLED
+    PUSHBUTTON      "&Configure...",IDC_CONFIGURE,285,141,50,14,WS_DISABLED
+    PUSHBUTTON      "&Blend",IDC_BLENDING,285,164,50,14,WS_DISABLED
     CONTROL         "&Show image formats",IDC_SHOWIMAGEFORMATS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,185,81,10
     CONTROL         "Show &pixel aspect ratios",IDC_SHOWASPECTRATIOS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,99,185,93,10
     CONTROL         "Show &frame rates",IDC_SHOWFRAMERATES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,199,185,73,10
+    PUSHBUTTON      "O&ptions...",IDC_OPTIONS,285,181,50,14,WS_DISABLED
 END
 
 IDD_FILTER_LIST DIALOGEX 0, 0, 332, 199
@@ -872,7 +873,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub $v$s - Copyright (C) 1998-2009 by Avery Lee, All Rights Reserved.\nCompiled with $k\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub $v$s - Copyright (C) 1998-2010 by Avery Lee, All Rights Reserved.\nCompiled with $k\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -2705,6 +2706,17 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,129,47,50,14
 END
 
+IDD_FILTER_OPTIONS DIALOGEX 0, 0, 269, 79
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Filter Options"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "&Force single framebuffer\n\nNeeded for compatibility with some older filters. Enable this if you see intermittent corruption showing up as small overlapping images. This slightly slows down filter execution.",IDC_SINGLE_FB,
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,7,7,255,45
+    DEFPUSHBUTTON   "OK",IDOK,155,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,212,58,50,14
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -3726,6 +3738,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 61
     END
+
+    IDD_FILTER_OPTIONS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 262
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 72
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -3894,8 +3914,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,9,9,0
- PRODUCTVERSION 1,9,9,0
+ FILEVERSION 1,9,11,0
+ PRODUCTVERSION 1,9,11,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3911,12 +3931,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.9.10"
+            VALUE "FileVersion", "1.9.11"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2010 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.9.10"
+            VALUE "ProductVersion", "1.9.11"
         END
     END
     BLOCK "VarFileInfo"
@@ -3932,8 +3952,8 @@ VS_VERSION_INFO$(_DEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,9,9,0
- PRODUCTVERSION 1,9,9,0
+ FILEVERSION 1,9,11,0
+ PRODUCTVERSION 1,9,11,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x21L

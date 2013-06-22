@@ -394,6 +394,12 @@ static void func_VDVFiltInst_SetEnabled(IVDScriptInterpreter *isi, VDScriptValue
 	fa->SetEnabled(argv[0].asInt() != 0);
 }
 
+static void func_VDVFiltInst_SetForceSingleFBEnabled(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	FilterInstance *fi = (FilterInstance *)argv[-1].asObjectPtr();
+
+	fi->SetForceSingleFBEnabled(argv[0].asInt() != 0);
+}
+
 static VDScriptValue obj_VDVFiltInst_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
 	FilterInstance *pfi = (FilterInstance *)lpVoid;
 	if (!(strcmp(szName, "__srcwidth"))) {
@@ -450,6 +456,7 @@ static const VDScriptFunctionDef obj_VDVFiltInst_functbl[]={
 	{ func_VDVFiltInst_GetClipping		, "GetClipping", "ii" },
 	{ func_VDVFiltInst_AddOpacityCurve	, "AddOpacityCurve", "v" },
 	{ func_VDVFiltInst_SetEnabled		, "SetEnabled", "0i" },
+	{ func_VDVFiltInst_SetForceSingleFBEnabled, "SetForceSingleFBEnabled", "0i" },
 	{ NULL }
 };
 

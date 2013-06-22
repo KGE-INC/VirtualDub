@@ -61,6 +61,36 @@ void FilterLoadFilter(HWND hWnd);
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//	filter options dialog
+//
+///////////////////////////////////////////////////////////////////////////
+
+class VDDialogFilterOptions : public VDDialogFrameW32 {
+public:
+	VDDialogFilterOptions(FilterInstance *fi);
+
+protected:
+	void OnDataExchange(bool write);
+
+	FilterInstance *mpFI;
+};
+
+VDDialogFilterOptions::VDDialogFilterOptions(FilterInstance *fi)
+	: VDDialogFrameW32(IDD_FILTER_OPTIONS)
+	, mpFI(fi)
+{
+}
+
+void VDDialogFilterOptions::OnDataExchange(bool write) {
+	if (write) {
+		mpFI->SetForceSingleFBEnabled(IsButtonChecked(IDC_SINGLE_FB));
+	} else {
+		CheckButton(IDC_SINGLE_FB, mpFI->IsForceSingleFBEnabled());
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
 //	add filter dialog
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -469,6 +499,21 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 				}
 				break;
 
+			case IDC_OPTIONS:
+				{
+					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+
+					if ((unsigned)index < mFilters.size()) {
+						FilterInstance *fa = mFilters[index];
+
+						VDDialogFilterOptions optdlg(fa);
+						optdlg.ShowDialog((VDGUIHandle)mhdlg);
+
+						RedoFilters();
+					}
+				}
+				break;
+
 			case IDC_MOVEUP:
 				{
 					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
@@ -700,10 +745,11 @@ void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
 				if (!fi->IsEnabled())
 					item.pszText[0] = 0;
 				else
-					_snprintf(item.pszText, item.cchTextMax, "%s%s%s"
+					_snprintf(item.pszText, item.cchTextMax, "%s%s%s%s"
 								,fi->GetAlphaParameterCurve() ? "[B] " : ""
 								,fi->IsConversionRequired() ? "[C] " : fi->IsAlignmentRequired() ? "[A]" : ""
 								,fi->IsAccelerated() ? "[3D]" : ""
+								,fi->IsForceSingleFBEnabled() ? "[F]" : ""
 						);
 				break;
 			case 1:
@@ -840,10 +886,12 @@ void VDVideoFiltersDialog::EnableConfigureBox(HWND hdlg, int index) {
 		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), fa->IsConfigurable());
 		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), fa->IsEnabled());
 		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), TRUE);
+		EnableWindow(GetDlgItem(hdlg, IDC_OPTIONS), TRUE);
 	} else {
 		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), FALSE);
 		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), FALSE);
 		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), FALSE);
+		EnableWindow(GetDlgItem(hdlg, IDC_OPTIONS), FALSE);
 	}
 }
 
