@@ -362,15 +362,16 @@ void VDInputFileMP3::Init(const wchar_t *szFile) {
 			freq >>= 1;
 
 		sint32 frameDataSize;
+		uint32 frameSamplesDiv192 = 0;
 		if (layer == 1) {
 			frameDataSize = 4*(12000*bitrate/freq + padding);
-			totalSamplesDiv192 += 2;		// 384 samples
+			frameSamplesDiv192 = 2;		// 384 samples
 		} else if (is_mpeg2 && layer == 3) {
 			frameDataSize = (72000*bitrate/freq + padding);
-			totalSamplesDiv192 += 3;		// 576 samples
+			frameSamplesDiv192 = 3;		// 576 samples
 		} else {
 			frameDataSize = (144000*bitrate/freq + padding);
-			totalSamplesDiv192 += 6;		// 1152 samples
+			frameSamplesDiv192 = 6;		// 1152 samples
 		}
 
 		if (currentTrackedHeader && !((currentTrackedHeader ^ header) & 0x00000CC0)) {
@@ -428,7 +429,8 @@ void VDInputFileMP3::Init(const wchar_t *szFile) {
 		if (frameDataSize != mBufferedFile.ReadData(NULL, frameDataSize))
 			break;
 
-		mDataLength += frameDataSize;
+		mDataLength += frameDataSize + 4;
+		totalSamplesDiv192 += frameSamplesDiv192;
 
 		mFrames.push_back(fi);
 

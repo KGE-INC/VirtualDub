@@ -2015,7 +2015,7 @@ void VDProject::SceneShuttleStop() {
 			MoveToFrame(GetCurrentFrame());
 
 			// We have to force the input frame to refresh since we may have omitted one of the updates.
-			if (mpCurrentInputFrame->IsSuccessful()) {
+			if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
 				VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
 				VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)buf->LockRead()));
 				mpCB->UIRefreshInputFrame(&px);

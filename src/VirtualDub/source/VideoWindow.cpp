@@ -50,6 +50,7 @@ public:
 
 	static ATOM RegisterControl();
 
+	void SetMouseTransparent(bool);
 	void GetSourceSize(int& w, int& h);
 	void SetSourceSize(int w, int h);
 	void GetFrameSize(int& w, int& h);
@@ -77,6 +78,7 @@ private:
 	bool mbAspectIsFrameBased;
 	bool mbUseSourcePAR;
 	bool mbResizing;
+	bool mbMouseTransparent;
 
 	IVDVideoDisplay *mpDisplay;
 	VDStringW	mSourcePARTextPattern;
@@ -125,6 +127,7 @@ VDVideoWindow::VDVideoWindow(HWND hwnd)
 	, mLastHitTest(HTNOWHERE)
 	, mbUseSourcePAR(false)
 	, mbResizing(false)
+	, mbMouseTransparent(false)
 	, mpDisplay(NULL)
 {
 	SetWindowLongPtr(mhwnd, 0, (LONG_PTR)this);
@@ -153,6 +156,10 @@ ATOM VDVideoWindow::RegisterControl() {
 	wc.lpszClassName	= g_szVideoWindowClass;
 
 	return RegisterClass(&wc);
+}
+
+void VDVideoWindow::SetMouseTransparent(bool trans) {
+	mbMouseTransparent = trans;
 }
 
 void VDVideoWindow::GetSourceSize(int& w, int& h) {
@@ -411,7 +418,7 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	case WM_CONTEXTMENU:
 		OnContextMenu((sint16)LOWORD(lParam), (sint16)HIWORD(lParam));
-		break;
+		return 0;
 
 	case WM_COMMAND:
 		OnCommand(LOWORD(wParam));
@@ -502,7 +509,7 @@ LRESULT VDVideoWindow::HitTest(int x, int y) {
 	ScreenToClient(mhwnd, &pt);
 
 	if (pt.x >= 4 && pt.y >= 4 && pt.x < rc.right-4 && pt.y < rc.bottom-4)
-		return HTCLIENT; //HTCAPTION;
+		return mbMouseTransparent ? HTTRANSPARENT : HTCLIENT; //HTCAPTION;
 	else {
 		int xseg = std::min<int>(16, rc.right/3);
 		int yseg = std::min<int>(16, rc.bottom/3);

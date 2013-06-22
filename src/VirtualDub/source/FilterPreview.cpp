@@ -420,6 +420,17 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		}
 		return OnCommand(LOWORD(wParam));
 
+	case WM_CONTEXTMENU:
+		{
+			POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+			RECT r;
+
+			if (::GetWindowRect(mhwndVideoWindow, &r) && ::PtInRect(&r, pt)) {
+				SendMessage(mhwndVideoWindow, WM_CONTEXTMENU, wParam, lParam);
+			}
+		}
+		break;
+
 	case MYWM_REDRAW:
 		OnVideoRedraw();
 		return TRUE;
@@ -433,7 +444,6 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		OnVideoRedraw();
 		return TRUE;
 
-//	case WM_WINDOWPOSCHANGING:
 	}
 
 	return FALSE;
@@ -464,6 +474,7 @@ void FilterPreview::OnInit() {
 	mpVideoWindow = VDGetIVideoWindow(mhwndVideoWindow);
 	mpVideoWindow->SetChild(mhwndDisplay);
 	mpVideoWindow->SetDisplay(mpDisplay);
+	mpVideoWindow->SetMouseTransparent(true);
 
 	mDlgNode.hdlg = mhdlg;
 	mDlgNode.mhAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_PREVIEW_KEYS));
@@ -871,11 +882,24 @@ bool FilterPreview::SampleCurrentFrame() {
 
 	if (pos >= 0) {
 		try {
-			vdrefptr<IVDFilterFrameClientRequest> req;
-			if (mpThisFilter->CreateSamplingRequest(pos, mpSampleCallback, mpvSampleCBData, ~req)) {
-				while(!req->IsCompleted()) {
-					mFiltSys.Run(true);
-					mpVideoFrameSource->RunRequests();
+			IVDStreamSource *pVSS = inputVideo->asStream();
+			const VDFraction frameRate(pVSS->getRate());
+
+			// This hack is for consistency with FetchFrame().
+			sint64 frame = pos;
+
+			if (mFiltSys.GetOutputFrameRate() == frameRate)
+				frame = mpTimeline->TimelineToSourceFrame(frame);
+
+			frame = mFiltSys.GetSymbolicFrame(frame, mpThisFilter);
+
+			if (frame >= 0) {
+				vdrefptr<IVDFilterFrameClientRequest> req;
+				if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
+					while(!req->IsCompleted()) {
+						mFiltSys.Run(true);
+						mpVideoFrameSource->RunRequests();
+					}
 				}
 			}
 		} catch(const MyError& e) {

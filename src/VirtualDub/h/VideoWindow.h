@@ -14,6 +14,7 @@ class IVDVideoDisplay;
 
 class VDINTERFACE IVDVideoWindow {
 public:
+	virtual void SetMouseTransparent(bool) = 0;
 	virtual void GetSourceSize(int& w, int& h) = 0;
 	virtual void SetSourceSize(int w, int h) = 0;
 	virtual void GetFrameSize(int& w, int& h) = 0;

@@ -1,6 +1,19 @@
 VirtualDub change log
 
-Build %build% (1.9.5, stable): [%date%]
+Build %build% (1.9.6, stable): [%date%]
+   [bugs fixed]
+   * Images: Fixed bug where the PNG encoder would randomly produce invalid encoded images.
+   * Scripts: Fixed memory read crash when attempting to open a file with percent signs.
+
+   [regressions fixed]
+   * Retweaked MP3 CBR rate determination.
+   * Fixed rare crash when stopping a scene shuttle operation.
+   * AVI: 1GB option was broken for normal save operations (although it did work for capture mode).
+   * Filters: Shift+Mouse color checking in preview windows works again (broken in 1.9.2).
+   * Filters: Fixed incorrect frame being sampled after edits were done on the timeline.
+   * UI: Removed "run as job" check box from Save Image Sequence dialog, since it's now redundant with the "queue batch operation" command.
+
+Build 32593 (1.9.5, stable): [August 24, 2009]
    [bugs fixed]
    * UI: Panes didn't always auto-refresh immediately after choosing some menu items.
    * UI: Fixed output pane changing aspect ratio when window is minimized.

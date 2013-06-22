@@ -634,6 +634,8 @@ void VDPNGDeflateEncoder::Compress(bool flush) {
 			limit = len-pos;
 
 		sint32 hlimit = pos - mWindowLimit;		// note that our initial hash table values are low enough to avoid colliding with this.
+		if (hlimit < 0)
+			hlimit = 0;
 
 		uint32 bestlen = 5;
 		uint32 bestoffset = 0;

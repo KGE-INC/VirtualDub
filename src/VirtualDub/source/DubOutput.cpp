@@ -86,6 +86,9 @@ IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
 	if (!mbAllowIndexing)
 		pOutput->disable_extended_avi();
 
+	if (mbUse1GBLimit)
+		pOutput->set_1Gb_limit();
+
 	VDStringW s(mSegmentBaseName);
 
 	if (mSegmentDigits) {
