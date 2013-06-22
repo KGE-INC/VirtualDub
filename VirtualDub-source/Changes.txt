@@ -1,6 +1,15 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 11636 (Version 1.4b):
+   [bug fixes]
+   * Fixed a critical problem which caused multisegment
+     joins to corrupt data on read, leading to -100 errors
+     or corrupted output files.  (Thanks to Alan
+     Cuthberson)
+   * Reverted to old video capture synchronization system
+     (thanks to all of you who moaned and bitched ;-)
+
 Build 11617 (Version 1.4a):
    [features added]
    * Trying an alternate capture audio synchronization

@@ -2317,7 +2317,6 @@ static struct CapClipFormats {
 	{ BI_RGB,	24,	4, 12, true },
 	{ BI_RGB,	32,	1, 4, true },
 	{ '2YUY',	16,	2, 4, false },
-	{ 'YUYV',	16,	2, 4, false },		// VYUY: ATi All-in-Blunder clone of YUY2
 	{ 'YVYU',	16, 2, 4, false },
 	{ 'UYVY',	16, 2, 4, false },
 	{ 'P14Y',	12, 8, 12, false }, 
@@ -2388,10 +2387,7 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 			if (bihInput->biCompression == '2YUY' && bihInput->biBitCount == 16)
 				break;
 
-			if (bihInput->biCompression == 'YUYV' && bihInput->biBitCount == 16)
-				break;
-
-			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2/VYUY).");
+			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2).");
 
 		} while(false);
 
@@ -2405,15 +2401,15 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 
 		// We can swap all RGB formats and some YUV ones.
 
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY' && bihInput->biCompression!='YUYV')
-			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, YUYV, VYUY formats.");
+		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
+			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, and YUYV formats.");
 	}
 
 	icd->bihFiltered	= icd->bihClipFormat;
 
 	if (g_iVertSquash) {
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YUYV' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
-			throw MyError("2:1 vertical reduction is only supported for RGB, YUY2, VYUY, UYVY, and YUYV formats.");
+		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
+			throw MyError("2:1 vertical reduction is only supported for RGB, YUY2, UYVY, and YUYV formats.");
 
 		// Allocate temporary row buffer in bicubic mode.
 
@@ -2429,7 +2425,7 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 
 	if (g_fEnableRGBFiltering) {
 
-		if (icd->bihFiltered.biCompression != BI_RGB && (!fPermitSizeAlteration || (icd->bihFiltered.biCompression != '2YUY' && icd->bihFiltered.biCompression != 'YUYV')))
+		if (icd->bihFiltered.biCompression != BI_RGB && (!fPermitSizeAlteration || icd->bihFiltered.biCompression != '2YUY'))
 			throw MyError("%sThe capture video format is not an uncompressed RGB format.", g_szCannotFilter);
 
 		if (fPermitSizeAlteration)
@@ -2486,8 +2482,9 @@ static const __int64 three = 0x0003000300030003i64;
 		mov		ecx,[esp+16+16]
 		mov		ebx,[esp+20+16]
 		mov		eax,[esp+24+16]
-		movq	mm6,[esp+36+16]
-		movq	mm5,[esp+28+16]
+		pxor	mm7,mm7
+		movq	mm6,[esp+32+16]
+		movq	mm5,[esp+24+16]
 
 yloop:
 		mov		ebp,edx
@@ -2617,9 +2614,6 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		__int64 thresh1 = 0x0001000100010001i64*((g_iNoiseReduceThreshold>>1)+1);
 		__int64 thresh2 = 0x0001000100010001i64*(g_iNoiseReduceThreshold);
 
-		if (!g_iNoiseReduceThreshold)
-			thresh1 = thresh2;
-
 		dodnrMMX((Pixel32 *)lpVHdr->lpData,
 			(Pixel32 *)icd->pNoiseReductionBuffer,
 			icd->rowdwords,
@@ -2720,7 +2714,7 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		vbmSrc.modulo = vbmSrc.Modulo();
 		vbmSrc.size = bpr*vbmSrc.h;
 
-		if (icd->bihFiltered.biCompression == '2YUY' || icd->bihFiltered.biCompression == 'YUYV' )
+		if (icd->bihFiltered.biCompression == '2YUY')
 			filters.InputBitmap()->BitBltFromYUY2(0, 0, &vbmSrc, 0, 0, -1, -1);
 		else
 			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
@@ -3041,15 +3035,11 @@ public:
 	bool			fAllFull;
 	bool			fNTSC;
 	bool			fWarnVideoCaptureTiming1;	// 71 minute bug #1 found
-	bool			fAudio;
 
 	// video clock correction
 
 	long			lVideoAdjust;
 	long			lFirstVideoPt;
-	double			rTimingDeltas[10];
-	double			rAvgDelta;
-	int				nDropCount;
 
 	InternalCapVars() {
 		memset(this, 0, sizeof *this);
@@ -3211,8 +3201,6 @@ static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
 	bool fSwitch = false;
 
 	InitThreadData();
-
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
 
 	for(;;) {
 		bool fSuccess = false;
@@ -3402,8 +3390,7 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 	// We must detect this and add 4294967ms to the count.  This will be off by 1ms every three
 	// times this occurs, but 1ms of error every 3.5 hours is not that big of a deal.
 
-//	lTimeStamp = lpVHdr->dwTimeCaptured;
-	lTimeStamp = capStatus.dwCurrentTimeElapsedMS;
+	lTimeStamp = lpVHdr->dwTimeCaptured;
 
 	if (lTimeStamp < icd->lLastVideoUncorrectedMS && lTimeStamp < 10000 && icd->lLastVideoUncorrectedMS >= 4285000) {
 
@@ -3450,6 +3437,8 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 //	dwTime = lTimeStamp - icd->lVideoFirstMS;
 	dwTime = lTimeStamp;
 
+	icd->lVideoLastMS = lTimeStamp;
+
 	icd->total_video_size += icd->last_video_size;
 	icd->last_video_size = 0;
 
@@ -3485,33 +3474,12 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 
 	// Is the frame too early?
 
-	if (!g_fAdjustVideoTimer || !icd->fAudio) {
-		if (icd->lastFrame > dwCurrentFrame+1) {
-			++icd->dropped;
-	++g_dropforward;
-	_RPT2(0,"Drop forward at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTimeStamp);
-			return 0;
-		}
-	} else {
-		long lTimeDelta = lTimeStamp - icd->lVideoLastMS;
-
-		if (icd->lastFrame > dwCurrentFrame+1) {
-			icd->nDropCount -= (icd->lastFrame - (dwCurrentFrame+1));
-		}
-		if (icd->lastFrame+1 < dwCurrentFrame) {
-			icd->nDropCount += dwCurrentFrame - (icd->lastFrame+1);
-		}
-
-		if (icd->nDropCount < 0) {
-			++icd->nDropCount;
-			++icd->dropped;
-	++g_dropforward;
-	_RPT2(0,"Drop forward at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTimeStamp);
-			return 0;
-		}
+	if (icd->lastFrame > dwCurrentFrame+1) {
+		++icd->dropped;
+++g_dropforward;
+_RPT2(0,"Drop forward at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTimeStamp);
+		return 0;
 	}
-
-	icd->lVideoLastMS = lTimeStamp;
 
 	// Run the frame through the filterer.
 
@@ -3525,18 +3493,8 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 			// Don't do this for the first frame, since we don't
 			// have any frames preceding it!
 
-			if (icd->total_cap > 1) {
-				int nToDrop;
-
-				if (!g_fAdjustVideoTimer || !icd->fAudio) {
-					nToDrop = dwCurrentFrame - icd->lastFrame;
-				} else {
-					nToDrop = icd->nDropCount;
-					if (icd->nDropCount > 0)
-						icd->nDropCount = 0;
-				}
-
-				while(nToDrop-->0) {
+			if (icd->total_cap > 1)
+				while(icd->lastFrame < dwCurrentFrame) {
 					hr = icd->aoFileVideo->videoOut->write(0, lpVHdr->lpData, 0, 1);
 					++icd->lastFrame;
 					++icd->dropped;
@@ -3550,7 +3508,6 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 
 					CaptureInternalCheckVideoAfter(icd);
 				}
-			}
 
 			if (icd->pvsc) {
 				bool isKey;
@@ -3621,13 +3578,12 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 			if (icd->hwndPanel)
 				SendMessage(icd->hwndPanel, WM_APP, 0, (LPARAM)(CaptureData *)icd);
 
-			sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d, %d/%d, %.2f"
+			sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d, %d/%d"
 						,icd->last_cap ? (long)(icd->total_jitter/(icd->last_cap*1)) : 0
 						,icd->last_cap ? (long)(icd->total_disp/(icd->last_cap*1)) : 0
 						,(long)((icd->total_video_size + icd->total_audio_size + 1023)/1024)
 						,icd->iSpillNumber+1
 						,g_dropback, g_dropforward
-						,icd->rAvgDelta
 						);
 		} else {
 			__int64 i64;
@@ -3716,62 +3672,32 @@ static LRESULT CaptureInternalWaveCallbackProc2(InternalCapData *icd, HWND hWnd,
 	dwTime += icd->lVideoAdjust;
 
 	if (g_fAdjustVideoTimer && icd->total_audio_cap) {
-		double rDesiredVideoFrame;
-		double rDelta;
-		double multiplier, divisor;
+		long lDesiredVideoFrame;
+		long lDelta;
 
 		// Truncate the division, then accept desired or desired+1.
 
-		if (icd->fNTSC) {
-			multiplier = 30000i64;
-			divisor = icd->wfex.nAvgBytesPerSec*1001i64;
-		} else {
-			multiplier = 1000000i64;
-			divisor = icd->wfex.nAvgBytesPerSec*(__int64)icd->interval;
-		}
-		rDesiredVideoFrame = icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * multiplier) / divisor;
+		if (icd->fNTSC)
+			lDesiredVideoFrame = icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 30000i64) / (icd->wfex.nAvgBytesPerSec*1001i64);
+		else
+			lDesiredVideoFrame = icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 1000000i64) / (icd->wfex.nAvgBytesPerSec*(__int64)icd->interval);
 
-		rDelta = (double)icd->lastFrame - rDesiredVideoFrame;
+		lDelta = (long)icd->lastFrame - lDesiredVideoFrame;
 
-		if (rDelta < -0.5)
-			rDelta += 0.5;
-		else if (rDelta > 0.5)
-			rDelta -= 0.5;
-
-		icd->rTimingDeltas[0] = icd->rTimingDeltas[1];
-		icd->rTimingDeltas[1] = icd->rTimingDeltas[2];
-		icd->rTimingDeltas[2] = icd->rTimingDeltas[3];
-		icd->rTimingDeltas[3] = icd->rTimingDeltas[4];
-		icd->rTimingDeltas[4] = icd->rTimingDeltas[5];
-		icd->rTimingDeltas[5] = icd->rTimingDeltas[6];
-		icd->rTimingDeltas[6] = icd->rTimingDeltas[7];
-		icd->rTimingDeltas[7] = icd->rTimingDeltas[8];
-		icd->rTimingDeltas[8] = icd->rTimingDeltas[9];
-		icd->rTimingDeltas[9] = rDelta;
-
-		double rDeltaSum = (icd->rTimingDeltas[0] + icd->rTimingDeltas[1] + icd->rTimingDeltas[2] + icd->rTimingDeltas[3] + icd->rTimingDeltas[4]
-			+ icd->rTimingDeltas[5] + icd->rTimingDeltas[6] + icd->rTimingDeltas[7] + icd->rTimingDeltas[8] + icd->rTimingDeltas[9]
-			) / 10.0;
-
-		icd->rAvgDelta = rDeltaSum;
-
-		if (rDeltaSum >= +1.0) {
-			icd->lVideoAdjust -= (icd->interval+999)/1000;
+		if (lDelta > 1) {
+			--icd->lVideoAdjust;
+//			icd->lVideoAdjust -= icd->interval/1000;
 _RPT2(0,"Timing reverse at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
-
-			memset(icd->rTimingDeltas, 0, sizeof icd->rTimingDeltas);
-			icd->nDropCount -= (int)rDeltaSum;
-		} else if (rDeltaSum <= -1.0) {
-			icd->lVideoAdjust += (icd->interval+999)/1000;
+		} else if (lDelta < 0) {
+			++icd->lVideoAdjust;
+//			icd->lVideoAdjust += icd->interval/1000;
 _RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
-			memset(icd->rTimingDeltas, 0, sizeof icd->rTimingDeltas);
-			icd->nDropCount -= (int)rDeltaSum;
 		}
 
 	}
 
 	if (g_fLogEvents)
-		g_capLog.LogAudio(dwOTime, lpWHdr->dwBytesRecorded, 0);
+		g_capLog.LogAudio(dwTime, lpWHdr->dwBytesRecorded, 0);
 
 	// Has the I/O thread successfully completed the switch?
 
@@ -3980,8 +3906,6 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
 			throw MyError("Couldn't get capture setup info.");
-
-		icd.fAudio = !!cp.fCaptureAudio;
 
 		// create an output file object
 

@@ -62,8 +62,8 @@ static char *strCify(const char *s) {
 	char c,*t = buf;
 
 	while(c=*s++) {
-		if (c<0x20 || c>=0x7f)
-			t += sprintf(t, "\\x%02x", c);
+		if (isprint((unsigned char)c))
+			t += sprintf(t, "\\x%02x", (int)c & 0xff);
 		else {
 			if (c=='"' || c=='\\')
 				*t++ = '\\';

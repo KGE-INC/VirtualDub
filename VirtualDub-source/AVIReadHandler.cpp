@@ -373,7 +373,7 @@ void AVIReadCache::WriteEnd() {
 
 long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
 	long ptr;
-	long offset;
+	__int64 offset;
 
 //	_RPT3(0,"Read request: chunk %16I64, pos %16I64d, %ld bytes\n", chunk_pos, pos, len);
 
@@ -743,8 +743,12 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 
 		// too small to hold a sample?
 
-		if (lpBuffer && cbBuffer < sampsize)
+		if (lpBuffer && cbBuffer < sampsize) {
+			if (*plBytes) *plBytes = sampsize * lSamples;
+			if (*plSamples) *plSamples = lSamples;
+
 			return AVIERR_BUFFERTOOSMALL;
+		}
 
 		// find the frame that has the starting sample -- try and work
 		// from our last position to save time
@@ -890,6 +894,9 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 		AVIIndexEntry2 *avie2 = &pIndex[lStart];
 
 		if (lpBuffer && (avie2->size & 0x7FFFFFFF) > cbBuffer) {
+			if (*plBytes) *plBytes = avie2->size & 0x7FFFFFFF;
+			if (*plSamples) *plSamples = 1;
+
 			return AVIERR_BUFFERTOOSMALL;
 		}
 
@@ -1359,7 +1366,7 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 
 	while(dwLengthLeft >= 8 && _readChunkHeader(fccType, dwLength)) {
 
-		_RPT4(0,"%08I64x %08I64x Chunk '%-4s', length %08lx\n", _posFile()+dwLengthLeft, _posFile(), &fccType, dwLength);
+//		_RPT4(0,"%08I64x %08I64x Chunk '%-4s', length %08lx\n", _posFile()+dwLengthLeft, _posFile(), &fccType, dwLength);
 
 		if (!size_invalid) {
 			dwLengthLeft -= 8;
@@ -1938,7 +1945,7 @@ char *AVIReadHandler::_StreamRead(long& bytes) {
 		_SelectFile((int)(i64StreamPosition>>48));
 
 	if (sbPosition >= sbSize) {
-		if (nRealTime || ((i64StreamPosition+sbSize) & -STREAM_BLOCK_SIZE)+STREAM_SIZE > i64Size) {
+		if (nRealTime || (((i64StreamPosition&0x0000FFFFFFFFFFFFi64)+sbSize) & -STREAM_BLOCK_SIZE)+STREAM_SIZE > i64Size) {
 			i64StreamPosition += sbSize;
 			sbPosition = 0;
 			_seekFile(i64StreamPosition & 0x0000FFFFFFFFFFFFi64);
@@ -2030,7 +2037,7 @@ bool AVIReadHandler::Stream(AVIStreamNode *pusher, __int64 pos) {
 		if (isxdigit(hdr[0]&0xff) && isxdigit((hdr[0]>>8)&0xff) && stream<32 &&
 			((1L<<stream) & fStreamsActive)) {
 
-//			_RPT3(0,"\tstream: reading chunk at %8I64d, length %6ld, stream %ld\n", i64StreamPosition+sbPosition-8, hdr[1], stream);
+//			_RPT3(0,"\tstream: reading chunk at %I64x, length %6ld, stream %ld\n", i64StreamPosition+sbPosition-8, hdr[1], stream);
 
 			AVIStreamNode *pasn, *pasn_next;
 			int streamno = 0;
@@ -2178,6 +2185,8 @@ void AVIReadHandler::FixCacheProblems(AVIReadStream *arse) {
 long AVIReadHandler::ReadData(int stream, void *buffer, __int64 position, long len) {
 	if (nCurrentFile<0 || nCurrentFile != (int)(position>>48))
 		_SelectFile((int)(position>>48));
+
+//	_RPT3(0,"Reading from file %d, position %I64x, size %d\n", nCurrentFile, position, len);
 
 	if (!_seekFile2(position & 0x0000FFFFFFFFFFFFi64))
 		return -1;
