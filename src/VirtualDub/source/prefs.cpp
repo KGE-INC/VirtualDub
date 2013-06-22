@@ -54,6 +54,7 @@ namespace {
 		uint32			mRenderOutputBufferSize;
 		uint32			mRenderWaveBufferSize;
 		uint32			mRenderVideoBufferCount;
+		uint32			mRenderAudioBufferSeconds;
 		uint32			mRenderThrottlePercent;
 		VDStringW		mD3DFXFile;
 		uint32			mFileAsyncDefaultMode;
@@ -639,6 +640,7 @@ void LoadPreferences() {
 	g_prefs2.mRenderOutputBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Output buffer size", 2097152)));
 	g_prefs2.mRenderWaveBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Wave buffer size", 65536)));
 	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
+	g_prefs2.mRenderAudioBufferSeconds = std::max<uint32>(1, std::min<uint32>(32, key.getInt("Render: Audio buffer seconds", 2)));
 	g_prefs2.mRenderThrottlePercent = std::max<uint32>(10, std::min<uint32>(100, key.getInt("Render: Default throttle percent", 100)));
 	g_prefs2.mFileAsyncDefaultMode = std::min<uint32>(IVDFileAsync::kModeCount-1, key.getInt("File: Async mode", IVDFileAsync::kModeAsynchronous));
 	g_prefs2.mAVISuperindexLimit = key.getInt("AVI: Superindex entry limit", 256);
@@ -681,6 +683,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
 	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
 	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
+	key.setInt("Render: Audio buffer seconds", prefs.mRenderAudioBufferSeconds);
 	key.setInt("Render: Default throttle percent", prefs.mRenderThrottlePercent);
 	key.setInt("File: Async mode", prefs.mFileAsyncDefaultMode);
 	key.setInt("AVI: Superindex entry limit", prefs.mAVISuperindexLimit);
@@ -752,6 +755,10 @@ uint32& VDPreferencesGetRenderWaveBufferSize() {
 
 uint32& VDPreferencesGetRenderVideoBufferCount() {
 	return g_prefs2.mRenderVideoBufferCount;
+}
+
+uint32& VDPreferencesGetRenderAudioBufferSeconds() {
+	return g_prefs2.mRenderAudioBufferSeconds;
 }
 
 uint32 VDPreferencesGetRenderThrottlePercent() {

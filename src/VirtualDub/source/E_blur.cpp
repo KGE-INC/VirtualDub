@@ -753,8 +753,8 @@ static void dorow2_8(unsigned char *dst, unsigned char *src, PixDim w) {
 	if (w < 4)
 		return;
 
-	dst[0] = (src[0]*11 + src[1]*4 + src[2] + 8) >> 4;
-	dst[1] = (src[0]*5 + src[1]*6 + src[2]*4 + src[3] + 8) >> 4;
+	dst[0] = (uint8)((src[0]*11 + src[1]*4 + src[2] + 8) >> 4);
+	dst[1] = (uint8)((src[0]*5 + src[1]*6 + src[2]*4 + src[3] + 8) >> 4);
 
 	dst += 2;
 
@@ -772,13 +772,13 @@ static void dorow2_8(unsigned char *dst, unsigned char *src, PixDim w) {
 			s4 = src[w+3];
 			s5 = src[w+4];
 
-			dst[w+0]= (s1 + 4*s2 + 6*s3 + 4*s4 + s5 + 8) >> 4;
+			dst[w+0] = (uint8)((s1 + 4*s2 + 6*s3 + 4*s4 + s5 + 8) >> 4);
 
 		} while(++w);
 	}
 
-	dst[0] = (src[0] + src[1]*4 + src[2]*6 + src[3]*5 + 8) >> 4;
-	dst[1] = (src[0] + src[1]*4 + src[2]*11 + 8) >> 4;
+	dst[0] = (uint8)((src[0] + src[1]*4 + src[2]*6 + src[3]*5 + 8) >> 4);
+	dst[1] = (uint8)((src[0] + src[1]*4 + src[2]*11 + 8) >> 4);
 }
 
 #ifdef _M_IX86

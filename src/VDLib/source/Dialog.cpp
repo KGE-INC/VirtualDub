@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <windows.h>
+#include <commctrl.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/VDLib/Dialog.h>
 
@@ -102,6 +103,13 @@ void VDDialogFrameW32::End(sintptr result) {
 		DestroyWindow(mhdlg);
 }
 
+VDZHWND VDDialogFrameW32::GetControl(uint32 id) {
+	if (!mhdlg)
+		return NULL;
+
+	return GetDlgItem(mhdlg, id);
+}
+
 void VDDialogFrameW32::SetFocusToControl(uint32 id) {
 	if (!mhdlg)
 		return;
@@ -118,6 +126,11 @@ void VDDialogFrameW32::EnableControl(uint32 id, bool enabled) {
 	HWND hwnd = GetDlgItem(mhdlg, id);
 	if (hwnd)
 		EnableWindow(hwnd, enabled);
+}
+
+void VDDialogFrameW32::SetCaption(uint32 id, const wchar_t *format) {
+	if (mhdlg)
+		VDSetWindowTextW32(mhdlg, format);
 }
 
 void VDDialogFrameW32::SetControlText(uint32 id, const wchar_t *s) {
@@ -296,6 +309,19 @@ void VDDialogFrameW32::LBAddStringF(uint32 id, const wchar_t *format, ...) {
 	LBAddString(id, s.c_str());
 }
 
+sint32 VDDialogFrameW32::TBGetValue(uint32 id) {
+	return SendDlgItemMessage(mhdlg, id, TBM_GETPOS, 0, 0);
+}
+
+void VDDialogFrameW32::TBSetValue(uint32 id, sint32 value) {
+	SendDlgItemMessage(mhdlg, id, TBM_SETPOS, TRUE, value);
+}
+
+void VDDialogFrameW32::TBSetRange(uint32 id, sint32 minval, sint32 maxval) {
+	SendDlgItemMessage(mhdlg, id, TBM_SETRANGEMIN, FALSE, minval);
+	SendDlgItemMessage(mhdlg, id, TBM_SETRANGEMAX, TRUE, maxval);
+}
+
 void VDDialogFrameW32::OnDataExchange(bool write) {
 }
 
@@ -336,6 +362,12 @@ void VDDialogFrameW32::OnDropFiles(VDZHDROP hdrop) {
 }
 
 void VDDialogFrameW32::OnDropFiles(IVDUIDropFileList *dropFileList) {
+}
+
+void VDDialogFrameW32::OnHScroll(uint32 code, int id) {
+}
+
+void VDDialogFrameW32::OnVScroll(uint32 code, int id) {
 }
 
 bool VDDialogFrameW32::PreNCDestroy() {
@@ -407,6 +439,14 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 
 		case WM_DROPFILES:
 			OnDropFiles((VDZHDROP)wParam);
+			return 0;
+
+		case WM_HSCROLL:
+			OnHScroll(lParam ? GetWindowLong((HWND)lParam, GWL_ID) : 0, LOWORD(wParam));
+			return 0;
+
+		case WM_VSCROLL:
+			OnVScroll(lParam ? GetWindowLong((HWND)lParam, GWL_ID) : 0, LOWORD(wParam));
 			return 0;
 	}
 

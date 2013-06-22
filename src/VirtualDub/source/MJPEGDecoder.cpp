@@ -741,21 +741,17 @@ const uint8 *MJPEGDecoder::decodeScan(const uint8 *ptr, bool odd_field) {
 	}
 
 	static const char translator_444_422[] = { 0,1,2,3 };
-	static const char translator_420[] = { 0,2,1,3,4,5 };
-
-	const char *pTranslator = (mChromaMode == kYCrCb420) ? translator_420 : translator_444_422;
+	static const char translator_420[] = { 0,1,2,3,4,5 };
 
 	for(i=0; i<mcu_length; i++) {
 		blocks[i+mcu_length] = blocks[i];
 		blocks[i+mcu_length*2] = blocks[i];
 		blocks[i+mcu_length*3] = blocks[i];
 
-		int j  = pTranslator[i];
-
-		dct_coeff_ptrs[i] = &dct_coeff[j][0];
-		dct_coeff_ptrs[i+mcu_length] = &dct_coeff[j+mcu_length][0];
-		dct_coeff_ptrs[i+mcu_length*2] = &dct_coeff[j+mcu_length*2][0];
-		dct_coeff_ptrs[i+mcu_length*3] = &dct_coeff[j+mcu_length*3][0];
+		dct_coeff_ptrs[i] = &dct_coeff[i][0];
+		dct_coeff_ptrs[i+mcu_length] = &dct_coeff[i+mcu_length][0];
+		dct_coeff_ptrs[i+mcu_length*2] = &dct_coeff[i+mcu_length*2][0];
+		dct_coeff_ptrs[i+mcu_length*3] = &dct_coeff[i+mcu_length*3][0];
 	}
 
 	comp_last_dc[0] = 128*8;
@@ -940,8 +936,8 @@ const uint8 *MJPEGDecoder::decodeMCUs(const uint8 *ptr, bool odd_field) {
 
 					case kYCrCb420:
 						pIDCT(dct_src[0], dstY, pitchY, 1, block_src[0].ac_last);
-						pIDCT(dct_src[1], dstY + pitchY * 8, pitchY, 1, block_src[1].ac_last);
-						pIDCT(dct_src[2], dstY + 8, pitchY, 1, block_src[2].ac_last);
+						pIDCT(dct_src[1], dstY + 8, pitchY, 1, block_src[1].ac_last);
+						pIDCT(dct_src[2], dstY + pitchY * 8, pitchY, 1, block_src[2].ac_last);
 						pIDCT(dct_src[3], dstY + pitchY * 8 + 8, pitchY, 1, block_src[3].ac_last);
 						dct_src += 4;
 						block_src += 4;
@@ -1238,7 +1234,7 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 			int len = code & 15;
 
 			quantptr += skip*2 + 2;
-			if (quantptr >= quantlimit) {
+			if (quantptr > quantlimit) {
 				quantptr = quantlimit;
 				break;
 			}

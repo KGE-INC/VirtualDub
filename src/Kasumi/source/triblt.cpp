@@ -307,7 +307,7 @@ namespace {
 		}
 	};
 
-	void TransformVerts(VDTriBltTransformedVertex *dst, const VDTriBltVertex *src, int nVerts, const float xform[16], float width, float height) {
+	void TransformVerts(VDTriBltTransformedVertex *dst, const VDTriBltVertex *src, int nVerts, const float xform[16]) {
 		const float xflocal[16]={
 			xform[ 0],	xform[ 1],	xform[ 2],	xform[ 3],
 			xform[ 4],	xform[ 5],	xform[ 6],	xform[ 7],
@@ -354,7 +354,7 @@ namespace {
 		} while(--nVerts);
 	}
 
-	void TransformVerts(VDTriBltTransformedVertex *dst, const VDTriColorVertex *src, int nVerts, const float xform[16], float width, float height) {
+	void TransformVerts(VDTriBltTransformedVertex *dst, const VDTriColorVertex *src, int nVerts, const float xform[16]) {
 		const float xflocal[16]={
 			xform[ 0],	xform[ 1],	xform[ 2],	xform[ 3],
 			xform[ 4],	xform[ 5],	xform[ 6],	xform[ 7],
@@ -1388,7 +1388,7 @@ bool VDPixmapTriFill(VDPixmap& dst, const uint32 c, const VDTriBltVertex *pVerti
 	if (!pTransform)
 		pTransform = xf_ident;
 
-	TransformVerts(xverts.data(), pVertices, nVertices, pTransform, (float)dst.w, (float)dst.h);
+	TransformVerts(xverts.data(), pVertices, nVertices, pTransform);
 
 	const VDTriBltTransformedVertex *xsrc = xverts.data();
 
@@ -1470,6 +1470,9 @@ bool VDPixmapTriFill(VDPixmap& dst, const VDTriColorVertex *pVertices, int nVert
 		} else if (dst.format == nsVDPixmap::kPixFormat_YUV422_Planar) {
 			pxCr.w = pxCb.w = dst.w >> 1;
 			ycbcr_xoffset = 0.5f / (float)pxCr.w;
+		} else if (dst.format == nsVDPixmap::kPixFormat_YUV444_Planar) {
+			pxCr.w = pxCb.w = dst.w;
+			ycbcr_xoffset = 0.0f;
 		}
 
 		ycbcr = true;
@@ -1493,80 +1496,70 @@ bool VDPixmapTriFill(VDPixmap& dst, const VDTriColorVertex *pVertices, int nVert
 	if (!pTransform)
 		pTransform = xf_ident;
 
-	TransformVerts(xsrc, pVertices, nVertices, pTransform, (float)dst.w, (float)dst.h);
-
 	VDTriClipWorkspace clipws;
+	for(int plane=0; plane<(ycbcr?3:1); ++plane) {
+		VDPixmap& pxPlane = ycbcr ? plane == 0 ? pxY : plane == 1 ? pxCb : pxCr : dst;
 
-	while(nIndices >= 3) {
-		const int idx0 = pIndices[0];
-		const int idx1 = pIndices[1];
-		const int idx2 = pIndices[2];
-		const VDTriBltTransformedVertex *xv0 = &xsrc[idx0];
-		const VDTriBltTransformedVertex *xv1 = &xsrc[idx1];
-		const VDTriBltTransformedVertex *xv2 = &xsrc[idx2];
-		const int kode0 = xv0->outcode;
-		const int kode1 = xv1->outcode;
-		const int kode2 = xv2->outcode;
+		if (ycbcr && plane) {
+			float xf_ycbcr[16];
+			memcpy(xf_ycbcr, pTransform, sizeof(float) * 16);
 
-		if (!(kode0 & kode1 & kode2)) {
-			if (int orflags = kode0 | kode1 | kode2) {
-				VDTriBltTransformedVertex **src = VDClipTriangle(clipws, xv0, xv1, xv2, orflags);
+			// translate in x by ycbcr_xoffset
+			xf_ycbcr[0] += xf_ycbcr[12]*ycbcr_xoffset;
+			xf_ycbcr[1] += xf_ycbcr[13]*ycbcr_xoffset;
+			xf_ycbcr[2] += xf_ycbcr[14]*ycbcr_xoffset;
+			xf_ycbcr[3] += xf_ycbcr[15]*ycbcr_xoffset;
 
-				if (src) {
-					VDTriBltTransformedVertex *src0 = *src++;
+			TransformVerts(xsrc, pVertices, nVertices, xf_ycbcr);
 
-					// fan out triangles
-					if (ycbcr) {
+			switch(plane) {
+				case 1:
+					for(int i=0; i<nVertices; ++i)
+						xsrc[i].g = xsrc[i].b;
+					break;
+				case 2:
+					for(int i=0; i<nVertices; ++i)
+						xsrc[i].g = xsrc[i].r;
+					break;
+			}
+		} else {
+			TransformVerts(xsrc, pVertices, nVertices, pTransform);
+		}
+
+		const int *nextIndex = pIndices;
+		int indicesLeft = nIndices;
+		while(indicesLeft >= 3) {
+			const int idx0 = nextIndex[0];
+			const int idx1 = nextIndex[1];
+			const int idx2 = nextIndex[2];
+			const VDTriBltTransformedVertex *xv0 = &xsrc[idx0];
+			const VDTriBltTransformedVertex *xv1 = &xsrc[idx1];
+			const VDTriBltTransformedVertex *xv2 = &xsrc[idx2];
+			const int kode0 = xv0->outcode;
+			const int kode1 = xv1->outcode;
+			const int kode2 = xv2->outcode;
+
+			if (!(kode0 & kode1 & kode2)) {
+				if (int orflags = kode0 | kode1 | kode2) {
+					VDTriBltTransformedVertex **src = VDClipTriangle(clipws, xv0, xv1, xv2, orflags);
+
+					if (src) {
+						VDTriBltTransformedVertex *src0 = *src++;
+
+						// fan out triangles
 						while(src[1]) {
-							VDTriBltTransformedVertex t0 = *src0;
-							VDTriBltTransformedVertex t1 = *src[0];
-							VDTriBltTransformedVertex t2 = *src[1];
-
-							FillTriGrad(pxY, &t0, &t1, &t2);
-							t0.g = t0.b;
-							t1.g = t1.b;
-							t2.g = t2.b;
-							FillTriGrad(pxCb, &t0, &t1, &t2);
-							t0.g = t0.r;
-							t1.g = t1.r;
-							t2.g = t2.r;
-							FillTriGrad(pxCr, &t0, &t1, &t2);
-
-							++src;
-						}
-					} else {
-						while(src[1]) {
-							FillTriGrad(dst, src0, src[0], src[1]);
+							FillTriGrad(pxPlane, src0, src[0], src[1]);
 							++src;
 						}
 					}
-				}
-			} else {
-				if (ycbcr) {
-					VDTriBltTransformedVertex t0 = *xv0;
-					VDTriBltTransformedVertex t1 = *xv1;
-					VDTriBltTransformedVertex t2 = *xv2;
-
-					FillTriGrad(pxY, &t0, &t1, &t2);
-					t0.x += t0.w*ycbcr_xoffset;
-					t0.g = t0.b;
-					t1.x += t1.w*ycbcr_xoffset;
-					t1.g = t1.b;
-					t2.x += t2.w*ycbcr_xoffset;
-					t2.g = t2.b;
-					FillTriGrad(pxCb, &t0, &t1, &t2);
-					t0.g = t0.r;
-					t1.g = t1.r;
-					t2.g = t2.r;
-					FillTriGrad(pxCr, &t0, &t1, &t2);
 				} else {
-					FillTriGrad(dst, xv0, xv1, xv2);
+					FillTriGrad(pxPlane, xv0, xv1, xv2);
 				}
 			}
-		}
 
-		pIndices += 3;
-		nIndices -= 3;
+			nextIndex += 3;
+			indicesLeft -= 3;
+		}
 	}
 
 	return true;
@@ -1588,7 +1581,7 @@ bool VDPixmapTriBlt(VDPixmap& dst, const VDPixmap *const *pSources, int nMipmaps
 	if (!pTransform)
 		pTransform = xf_ident;
 
-	TransformVerts(xverts.data(), pVertices, nVertices, pTransform, (float)dst.w, (float)dst.h);
+	TransformVerts(xverts.data(), pVertices, nVertices, pTransform);
 
 	const VDTriBltTransformedVertex *xsrc = xverts.data();
 

@@ -156,7 +156,7 @@ namespace {
 						}
 
 						++curdecidx;
-						int shift = mBsrShiftTable[curdecidx];
+						unsigned shift = mBsrShiftTable[curdecidx];
 						if (shift > 32-len) {
 							shift = 32-len;
 							mBsrShiftTable[curdecidx] = 32-len;

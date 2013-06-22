@@ -2363,6 +2363,9 @@ protected:
 	VDPixmap					mTexFmt;
 
 	VDVideoDisplaySourceInfo	mSource;
+
+	VDStringA		mFormatString;
+	VDStringA		mDebugString;
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9() {
@@ -2998,8 +3001,6 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 
 	if (mbDisplayDebugInfo && mpFontRenderer) {
 		if (mpManager->BeginScene() && mpFontRenderer->Begin()) {
-			VDStringA s;
-
 			const char *modestr = "point";
 
 			switch(mode) {
@@ -3011,12 +3012,11 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 					break;
 			}
 
-			VDStringA desc;
-			GetFormatString(mSource, desc);
-			s.sprintf("Direct3D9 minidriver - %s (%s%s)  Average present time: %6.2fms", desc.c_str(), modestr, mbHighPrecision && mpVideoManager->Is16FEnabled() ? "-16F" : "", mPresentHistory.mAveragePresentTime * 1000.0);
-			mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, s.c_str());
+			GetFormatString(mSource, mFormatString);
+			mDebugString.sprintf("Direct3D9 minidriver - %s (%s%s)  Average present time: %6.2fms", mFormatString.c_str(), modestr, mbHighPrecision && mpVideoManager->Is16FEnabled() ? "-16F" : "", mPresentHistory.mAveragePresentTime * 1000.0);
+			mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, mDebugString.c_str());
 
-			s.sprintf("Target scanline: %7.2f  Average bracket [%7.2f,%7.2f]  Last bracket [%4d,%4d]  Poll count %5d"
+			mDebugString.sprintf("Target scanline: %7.2f  Average bracket [%7.2f,%7.2f]  Last bracket [%4d,%4d]  Poll count %5d"
 					, mPresentHistory.mScanlineTarget
 					, mPresentHistory.mAverageStartScanline
 					, mPresentHistory.mAverageEndScanline
@@ -3024,7 +3024,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 					, mPresentHistory.mLastBracketY2
 					, mPresentHistory.mPollCount);
 			mPresentHistory.mPollCount = 0;
-			mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, s.c_str());
+			mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, mDebugString.c_str());
 
 			mpFontRenderer->End();
 		}

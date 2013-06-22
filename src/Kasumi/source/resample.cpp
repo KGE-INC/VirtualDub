@@ -198,8 +198,8 @@ bool VDPixmapResampler::Init(const vdrect32f& dstrect0, uint32 dw, uint32 dh, in
 		mDstRectPlane12.right	= VDCeilToInt(dstrect2.right	- 0.5f);
 		mDstRectPlane12.bottom	= VDCeilToInt(dstrect2.bottom	- 0.5f);
 
-		xoffset2 = (((float)mDstRectPlane12.left + 0.5f) - dstrect2.left) * xfactor + srcrect2.left - 0.5f;
-		yoffset2 = (((float)mDstRectPlane12.top  + 0.5f) - dstrect2.top ) * yfactor + srcrect2.top  - 0.5f;
+		xoffset2 = (((float)mDstRectPlane12.left + 0.5f) - dstrect2.left) * xfactor + srcrect2.left;
+		yoffset2 = (((float)mDstRectPlane12.top  + 0.5f) - dstrect2.top ) * yfactor + srcrect2.top;
 	}
 
 	VDPixmapUberBlitterGenerator gen;

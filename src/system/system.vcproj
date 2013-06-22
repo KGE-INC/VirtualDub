@@ -1322,6 +1322,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\vdstl.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\VDString.cpp"
 				>
 				<FileConfiguration

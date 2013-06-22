@@ -320,6 +320,7 @@ void SaveSegmentedAVI(HWND hWnd, bool queueAsJob) {
 
 	VDRegistryAppKey key(g_szRegKeyPersistence);
 	int optVals[4]={
+		0,
 		key.getBool(g_szRegKeyUseSegmentFrameCount, false),
 		key.getInt(g_szRegKeySegmentFrameCount, 100),
 		key.getInt(g_szRegKeySegmentSizeLimit, 2000),

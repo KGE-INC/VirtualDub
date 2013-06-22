@@ -383,6 +383,8 @@ public:
 
 	// VideoSource
 	const void *getFrameBuffer();
+	const VDFraction getPixelAspectRatio() const;
+
 	const VDPixmap& getTargetFormat();
 	bool setTargetFormat(int format);
 	bool setDecompressedFormat(int depth);
@@ -582,6 +584,10 @@ const void *VDVideoSourcePlugin::getFrameBuffer() {
 	}
 
 	return p;
+}
+
+const VDFraction VDVideoSourcePlugin::getPixelAspectRatio() const {
+	return VDFraction(mSSInfo.mInfo.mPixelAspectRatio.mNumerator, mSSInfo.mInfo.mPixelAspectRatio.mDenominator);
 }
 
 const VDPixmap& VDVideoSourcePlugin::getTargetFormat() {

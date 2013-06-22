@@ -52,6 +52,12 @@ AVIAudioPreviewOutputStream::~AVIAudioPreviewOutputStream() {
 	}
 }
 
+uint32 AVIAudioPreviewOutputStream::GetPreviewTime() {
+	sint32 t = mpAudioOut->GetPosition();
+
+	return t < 0 ? 0 : t;
+}
+
 void AVIAudioPreviewOutputStream::initAudio() {
 	const VDWaveFormat *pwfex = (const VDWaveFormat *)getFormat();
 	int blocks;

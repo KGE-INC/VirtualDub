@@ -1567,6 +1567,14 @@
 				</FileConfiguration>
 			</File>
 		</Filter>
+		<Filter
+			Name="Interface Header Files"
+			>
+			<File
+				RelativePath="..\h\vd2\Kasumi\blitter.h"
+				>
+			</File>
+		</Filter>
 		<File
 			RelativePath="source\a_triblt.inc"
 			>

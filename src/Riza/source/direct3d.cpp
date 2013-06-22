@@ -1369,7 +1369,15 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 
 		syncDelta = 0.0f;
 
-		hr = pD3DSwapChain->Present(srcRect, NULL, hwndDest, NULL, 0);
+		for(;;) {
+			hr = pD3DSwapChain->Present(srcRect, NULL, hwndDest, NULL, D3DPRESENT_DONOTWAIT);
+
+			if (hr != D3DERR_WASSTILLDRAWING)
+				break;
+
+			::Sleep(1);
+		}
+
 		history.mbPresentPending = false;
 		return hr;
 	}

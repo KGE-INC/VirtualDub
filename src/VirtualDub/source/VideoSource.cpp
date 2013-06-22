@@ -839,7 +839,6 @@ IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBi
 	const int h = abs((int)hdr->biHeight);
 
 	// If it's Motion JPEG, use the internal decoder.
-	// TODO: AMD64 currently does not have a working MJPEG decoder.
 	bool is_mjpeg	 = isEqualFOURCC(hdr->biCompression, 'GPJM')
 					|| isEqualFOURCC(hdr->biCompression, '1bmd');
 	if (is_mjpeg) {
@@ -884,6 +883,7 @@ VideoSource::VideoSource()
 	: stream_current_frame(-1)
 	, mpFrameBuffer(NULL)
 	, mFrameBufferSize(0)
+	, mpStreamOwner(NULL)
 {
 }
 
@@ -905,6 +905,10 @@ void VideoSource::FreeFrameBuffer() {
 		VDAlignedFree(mpFrameBuffer);
 		mpFrameBuffer = NULL;
 	}
+}
+
+const VDFraction VideoSource::getPixelAspectRatio() const {
+	return VDFraction(0, 0);
 }
 
 bool VideoSource::setTargetFormat(int format) {
@@ -990,6 +994,24 @@ bool VideoSource::setDecompressedFormat(const VDAVIBitmapInfoHeader *pbih) {
 	}
 
 	return false;
+}
+
+bool VideoSource::streamOwn(void *owner) {
+	if (owner == mpStreamOwner)
+		return true;
+
+	if (mpStreamOwner)
+		streamEnd();
+
+	mpStreamOwner = owner;
+	return false;
+}
+
+void VideoSource::streamDisown(void *owner) {
+	if (mpStreamOwner == owner) {
+		mpStreamOwner = NULL;
+		streamEnd();
+	}
 }
 
 void VideoSource::streamBegin(bool, bool) {

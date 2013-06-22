@@ -293,7 +293,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& create
 	, mInhibitRefresh(0)
 	, mSyncDelta(0.0f)
 	, mFilterMode(kFilterAnySuitable)
-	, mAccelMode(kAccelOnlyInForeground)
+	, mAccelMode(VDVideoDisplayWindow::sbEnableBackgroundFallback ? kAccelOnlyInForeground : kAccelAlways)
 	, mbIgnoreMouse(false)
 	, mbUseSubrect(false)
 	, mbReturnFocus(false)

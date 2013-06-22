@@ -4,6 +4,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/vectors.h>
+#include <vd2/Kasumi/blitter.h>
 
 struct VDPixmap;
 
@@ -78,14 +79,5 @@ public:
 	virtual const void *GetRow(sint32 y, uint32 output) = 0;
 	virtual void ProcessRow(void *dst, sint32 y) = 0;
 };
-
-class IVDPixmapBlitter {
-public:
-	virtual ~IVDPixmapBlitter() {}
-	virtual void Blit(const VDPixmap& dst, const VDPixmap& src) = 0;
-	virtual void Blit(const VDPixmap& dst, const vdrect32 *rDst, const VDPixmap& src) = 0;
-};
-
-IVDPixmapBlitter *VDPixmapCreateBlitter(const VDPixmap& dst, const VDPixmap& src);
 
 #endif

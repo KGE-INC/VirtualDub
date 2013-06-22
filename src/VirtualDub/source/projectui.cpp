@@ -47,6 +47,7 @@
 #include "script.h"
 #include "optdlg.h"
 #include "auxdlg.h"
+#include "FilterInstance.h"
 #include "filters.h"
 #include "filtdlg.h"
 #include "mrulist.h"
@@ -262,8 +263,6 @@ VDProjectUI::VDProjectUI()
 	, mhMenuDisplay(NULL)
 	, mhAccelDub(NULL)
 	, mhAccelMain(NULL)
-	, mbInputFrameValid(false)
-	, mbOutputFrameValid(false)
 	, mOldWndProc(NULL)
 	, mbDubActive(false)
 	, mbLockPreviewRestart(false)
@@ -809,8 +808,8 @@ void VDProjectUI::SetVideoFiltersAsk() {
 		MoveToFrame(VDCeilToInt64(GetCurrentFrame() * rateConversion - 0.5));
 	}
 
-	UpdateFilterList();
 	UpdateDubParameters();
+	UpdateFilterList();
 }
 
 void VDProjectUI::SetVideoFramerateOptionsAsk() {
@@ -827,6 +826,7 @@ void VDProjectUI::SetVideoDepthOptionsAsk() {
 	VDDisplayVideoDepthDialog(mhwnd, g_dubOpts);
 
 	if (inputFormatOld != g_dubOpts.video.mInputFormat && inputVideo) {
+		StopFilters();
 		VDRenderSetVideoSourceInputFormat(inputVideo, g_dubOpts.video.mInputFormat);
 		DisplayFrame();
 	}
@@ -996,6 +996,8 @@ void VDProjectUI::QueueCommand(int cmd) {
 		switch(cmd) {
 		case kVDProjectCmd_GoToStart:
 		case kVDProjectCmd_GoToEnd:
+		case kVDProjectCmd_GoToSelectionStart:
+		case kVDProjectCmd_GoToSelectionEnd:
 		case kVDProjectCmd_ScrubBegin:
 		case kVDProjectCmd_ScrubEnd:
 		case kVDProjectCmd_ScrubUpdate:
@@ -1016,6 +1018,36 @@ void VDProjectUI::ExecuteCommand(int cmd) {
 			break;
 		case kVDProjectCmd_GoToEnd:
 			MoveToEnd();
+			break;
+		case kVDProjectCmd_GoToPrevFrame:
+			MoveToPrevious();
+			break;
+		case kVDProjectCmd_GoToNextFrame:
+			MoveToNext();
+			break;
+		case kVDProjectCmd_GoToPrevUnit:
+			MoveBackSome();
+			break;
+		case kVDProjectCmd_GoToNextUnit:
+			MoveForwardSome();
+			break;
+		case kVDProjectCmd_GoToPrevKey:
+			MoveToPreviousKey();
+			break;
+		case kVDProjectCmd_GoToNextKey:
+			MoveToNextKey();
+			break;
+		case kVDProjectCmd_GoToPrevDrop:
+			MoveToPreviousDrop();
+			break;
+		case kVDProjectCmd_GoToNextDrop:
+			MoveToNextDrop();
+			break;
+		case kVDProjectCmd_GoToSelectionStart:
+			MoveToSelectionStart();
+			break;
+		case kVDProjectCmd_GoToSelectionEnd:
+			MoveToSelectionEnd();
 			break;
 		case kVDProjectCmd_ScrubBegin:
 			OnPositionNotify(PCN_BEGINTRACK);
@@ -1064,8 +1096,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_VIDEO_COPYOUTPUTFRAME:
 			break;
 		default:
-			filters.DeinitFilters();
-			filters.DeallocateBuffers();
+			StopFilters();
 			break;
 		}
 	}
@@ -1201,16 +1232,16 @@ bool VDProjectUI::MenuHit(UINT id) {
 			QueueCommand(kVDProjectCmd_GoToEnd);
 			break;
 
-		case ID_VIDEO_SEEK_PREV:				MoveToPrevious();			break;
-		case ID_VIDEO_SEEK_NEXT:				MoveToNext();				break;
-		case ID_VIDEO_SEEK_PREVONESEC:			MoveBackSome();			break;
-		case ID_VIDEO_SEEK_NEXTONESEC:			MoveForwardSome();			break;
-		case ID_VIDEO_SEEK_KEYPREV:				MoveToPreviousKey();		break;
-		case ID_VIDEO_SEEK_KEYNEXT:				MoveToNextKey();			break;
-		case ID_VIDEO_SEEK_SELSTART:			MoveToSelectionStart();	break;
-		case ID_VIDEO_SEEK_SELEND:				MoveToSelectionEnd();		break;
-		case ID_VIDEO_SEEK_PREVDROP:			MoveToPreviousDrop();		break;
-		case ID_VIDEO_SEEK_NEXTDROP:			MoveToNextDrop();			break;
+		case ID_VIDEO_SEEK_PREV:				QueueCommand(kVDProjectCmd_GoToPrevFrame); break;
+		case ID_VIDEO_SEEK_NEXT:				QueueCommand(kVDProjectCmd_GoToNextFrame); break;
+		case ID_VIDEO_SEEK_PREVONESEC:			QueueCommand(kVDProjectCmd_GoToPrevUnit); break;
+		case ID_VIDEO_SEEK_NEXTONESEC:			QueueCommand(kVDProjectCmd_GoToNextUnit); break;
+		case ID_VIDEO_SEEK_KEYPREV:				QueueCommand(kVDProjectCmd_GoToPrevKey); break;
+		case ID_VIDEO_SEEK_KEYNEXT:				QueueCommand(kVDProjectCmd_GoToNextKey); break;
+		case ID_VIDEO_SEEK_SELSTART:			QueueCommand(kVDProjectCmd_GoToSelectionStart);	break;
+		case ID_VIDEO_SEEK_SELEND:				QueueCommand(kVDProjectCmd_GoToSelectionEnd);	break;
+		case ID_VIDEO_SEEK_PREVDROP:			QueueCommand(kVDProjectCmd_GoToPrevDrop);		break;
+		case ID_VIDEO_SEEK_NEXTDROP:			QueueCommand(kVDProjectCmd_GoToNextDrop);		break;
 		case ID_VIDEO_SEEK_PREVSCENE:
 			if (IsSceneShuttleRunning())
 				SceneShuttleStop();
@@ -1283,8 +1314,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 			break;
 
 		case ID_OPTIONS_PERFORMANCE:
-			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERFORMANCE), (HWND)mhwnd, PerformanceOptionsDlgProc);
+			extern void VDShowPerformanceDialog(VDGUIHandle h);
+			VDShowPerformanceDialog((VDGUIHandle)mhwnd);
 			break;
+
 		case ID_OPTIONS_DYNAMICCOMPILATION:
 			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERF_DYNAMIC), (HWND)mhwnd, DynamicCompileOptionsDlgProc);
 			break;
@@ -1716,10 +1749,19 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 					RepositionPanes();
 					break;
 				case VWN_REQUPDATE:
-					if (nmh->idFrom == 1)
-						UIRefreshInputFrame(inputVideo && inputVideo->isFrameBufferValid() && mbInputFrameValid);
-					else
-						UIRefreshOutputFrame(filters.isRunning() && mbOutputFrameValid);
+					if (nmh->idFrom == 1) {
+						if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
+							VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
+							UIRefreshInputFrame(&px);
+						} else
+							UIRefreshInputFrame(NULL);
+					} else {
+						if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
+							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+							UIRefreshOutputFrame(&px);
+						} else
+							UIRefreshOutputFrame(NULL);
+					}
 					break;
 				}
 				break;
@@ -1748,25 +1790,20 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_USER+100:		// display update request
 		if (!g_dubber) {
 			IVDVideoDisplay *pDisp = wParam ? mpOutputDisplay : mpInputDisplay;
-			if (wParam) {
-				bool bValid = mbOutputFrameValid && filters.isRunning();
 
-				if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideo && inputVideo->isFrameBufferValid() && mbInputFrameValid) {
-					try {
-						VDPosition timelinePos = GetCurrentFrame();
-						VDPosition dstPos = mTimeline.TimelineToSourceFrame(timelinePos);
-
-						if (RefilterFrame(dstPos, timelinePos))
-							bValid = true;
-					} catch(const MyError&) {
-						// eat error
-					}
-				}
-
-				VDASSERT(!bValid || filters.isRunning());
-				UIRefreshOutputFrame(bValid);
-			} else
-				UIRefreshInputFrame(mbInputFrameValid && inputVideo && inputVideo->isFrameBufferValid());
+			if (!wParam) {
+				if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
+					VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
+					UIRefreshInputFrame(&px);
+				} else
+					UIRefreshInputFrame(NULL);
+			} else {
+				if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
+					VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+					UIRefreshOutputFrame(&px);
+				} else
+					UIRefreshOutputFrame(NULL);
+			}
 
 			pDisp->Cache();
 		}
@@ -2067,8 +2104,10 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			int w = w0;
 			int h = h0;
 
-			VDGetIVideoWindow(mhwndInputFrame)->SetSourceSize(w, h);
-			VDGetIVideoWindow(mhwndInputFrame)->GetFrameSize(w, h);
+			IVDVideoWindow *inputWin = VDGetIVideoWindow(mhwndInputFrame);
+			inputWin->SetSourceSize(w, h);
+			inputWin->SetSourcePAR(inputVideo->getPixelAspectRatio());
+			inputWin->GetFrameSize(w, h);
 
 			mrInputFrame.left = 0;
 			mrInputFrame.top = 0;
@@ -2078,20 +2117,24 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			// figure out output size too
 
 			int w2 = w0, h2 = h0;
+			VDFraction outputPAR(0, 0);
 
 			if (!g_listFA.IsEmpty()) {
 				if (!filters.isRunning()) {
 					IVDStreamSource *pVSS = inputVideo->asStream();
-					filters.prepareLinearChain(&g_listFA, w0, h0, px.format ? px.format : nsVDPixmap::kPixFormat_XRGB8888, pVSS->getRate(), pVSS->getLength());
+					filters.prepareLinearChain(&g_listFA, w0, h0, px.format ? px.format : nsVDPixmap::kPixFormat_XRGB8888, pVSS->getRate(), pVSS->getLength(), inputVideo->getPixelAspectRatio());
 				}
 
 				const VDPixmapLayout& output = filters.GetOutputLayout();
 				w2 = output.w;
 				h2 = output.h;
+				outputPAR = filters.GetOutputPixelAspect();
 			}
 
-			VDGetIVideoWindow(mhwndOutputFrame)->SetSourceSize(w2, h2);
-			VDGetIVideoWindow(mhwndOutputFrame)->GetFrameSize(w2, h2);
+			IVDVideoWindow *outputWin = VDGetIVideoWindow(mhwndOutputFrame);
+			outputWin->SetSourceSize(w2, h2);
+			outputWin->SetSourcePAR(outputPAR);
+			outputWin->GetFrameSize(w2, h2);
 
 			mrOutputFrame.left = 0;
 			mrOutputFrame.top = 0;
@@ -2306,7 +2349,7 @@ void VDProjectUI::UpdateAudioDisplay() {
 }
 
 void VDProjectUI::UpdateAudioDisplayPosition() {
-	if (inputAudio) {
+	if (inputAudio && mpAudioDisplay) {
 		IVDStreamSource *pVSS = inputVideo->asStream();
 		VDPosition pos = GetCurrentFrame();
 		VDPosition cenpos = inputAudio->TimeToPositionVBR(pVSS->PositionToTimeVBR(pos));
@@ -2358,9 +2401,9 @@ void VDProjectUI::OpenCurveEditor() {
 	mpCurveEditor = VDGetIUIParameterCurveControl((VDGUIHandle)mhwndCurveEditor);
 	mpCurveEditor->CurveUpdatedEvent() += mCurveUpdatedDelegate(this, &VDProjectUI::OnCurveUpdated);
 	mpCurveEditor->StatusUpdatedEvent() += mCurveStatusUpdatedDelegate(this, &VDProjectUI::OnCurveStatusUpdated);
-	mpCurveEditor->SetPosition(GetCurrentFrame());
 
 	UpdateCurveList();
+	UpdateCurveEditorPosition();
 	OnSize();
 }
 
@@ -2404,7 +2447,8 @@ void VDProjectUI::UpdateCurveList() {
 		while(fa->next) {
 			VDParameterCurve *pc = fa->GetAlphaParameterCurve();
 			if (pc) {
-				pList->AddItem(VDswprintf(L"Video filter %d: %hs (Opacity curve)", 2, &index, &fa->filter->name).c_str(), (uintptr)index);
+				const char *name = fa->GetName();
+				pList->AddItem(VDswprintf(L"Video filter %d: %hs (Opacity curve)", 2, &index, &name).c_str(), (uintptr)index);
 				curvesFound = true;
 
 				if (pc == pcSelected)
@@ -2432,28 +2476,67 @@ void VDProjectUI::UpdateCurveList() {
 	}
 }
 
-void VDProjectUI::UIRefreshInputFrame(bool bValid) {
-	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
-	if (bValid) {
-		const VDPixmap& pxsrc = inputVideo->getTargetFormat();
+void VDProjectUI::UpdateCurveEditorPosition() {
+	if (!mpCurveEditor)
+		return;
 
-		pDisp->SetSource(true, pxsrc);
-	} else {
-		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_APPWORKSPACE) & 0xFFFFFF) >> 8));
+	int selIndex = mpUICurveComboBox->GetValue();
+
+	if (selIndex >= 0) {
+		if (!filters.isRunning()) {
+			try {
+				StartFilters();
+
+				if (!filters.isRunning())
+					return;
+			} catch(const MyError&) {
+				return;
+			}
+		}
+
+		FilterInstance *selected = NULL;
+		FilterInstance *fa = static_cast<FilterInstance *>(g_listFA.tail.next);
+		while(fa->next) {
+			if (!selIndex--)
+				selected = fa;
+
+			fa = static_cast<FilterInstance *>(fa->next);
+		}
+
+		if (selected) {
+			sint64 timelineFrame = GetCurrentFrame();
+
+			if (timelineFrame >= mTimeline.GetLength())
+				--timelineFrame;
+
+			sint64 outFrame = mTimeline.TimelineToSourceFrame(timelineFrame);
+
+			if (outFrame >= 0) {
+				sint64 symFrame = filters.GetSymbolicFrame(outFrame, selected);
+
+				if (symFrame >= 0)
+					mpCurveEditor->SetPosition(symFrame);
+			}
+		}
 	}
-
-	mbInputFrameValid = bValid;
 }
 
-void VDProjectUI::UIRefreshOutputFrame(bool bValid) {
-	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
-	if (bValid) {
-		pDisp->SetSource(true, filters.GetOutput());
+void VDProjectUI::UIRefreshInputFrame(const VDPixmap *px) {
+	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
+	if (px) {
+		pDisp->SetSource(true, *px);
 	} else {
 		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_APPWORKSPACE) & 0xFFFFFF) >> 8));
 	}
+}
 
-	mbOutputFrameValid = bValid;
+void VDProjectUI::UIRefreshOutputFrame(const VDPixmap *px) {
+	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
+	if (px) {
+		pDisp->SetSource(true, *px);
+	} else {
+		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_APPWORKSPACE) & 0xFFFFFF) >> 8));
+	}
 }
 
 void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
@@ -2495,6 +2578,7 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 		mpInputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelOnlyInForeground);
 		mpOutputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelOnlyInForeground);
 		DisplayFrame();
+		UpdateAudioDisplayPosition();
 	}
 }
 
@@ -2517,14 +2601,16 @@ bool VDProjectUI::UIRunDubMessageLoop() {
 			return false;
 		}
 #else
-		if (!PeekMessage(&msg, (HWND) NULL, 0, 0, PM_REMOVE)) {
-			WaitMessage();
-			continue;
-		}
+		if (!PeekMessage(&msg, (HWND) NULL, 0, 0, QS_ALLINPUT)) {
+			if (!PeekMessage(&msg, (HWND) NULL, 0, 0, PM_REMOVE)) {
+				WaitMessage();
+				continue;
+			}
 
-		if (msg.message == WM_QUIT) {
-			PostQuitMessage(msg.wParam);
-			break;
+			if (msg.message == WM_QUIT) {
+				PostQuitMessage(msg.wParam);
+				break;
+			}
 		}
 #endif
 
@@ -2550,7 +2636,7 @@ void VDProjectUI::UICurrentPositionUpdated() {
 
 	mpPosition->SetPosition(pos);
 	if (mhwndCurveEditor)
-		mpCurveEditor->SetPosition(pos);
+		UpdateCurveEditorPosition();
 
 	if (mpAudioDisplay && !mbDubActive)
 		UpdateAudioDisplayPosition();
@@ -3048,12 +3134,10 @@ void VDProjectUI::OnCurveUpdated(IVDUIParameterCurveControl *source, const int& 
 
 	try {
 		VDPosition timelinePos = GetCurrentFrame();
-		VDPosition dstPos = mTimeline.TimelineToSourceFrame(timelinePos);
 
-		RefilterFrame(dstPos, timelinePos);
-		UIRefreshOutputFrame(true);
+		RefilterFrame(timelinePos);
 	} catch(const MyError&) {
-		UIRefreshOutputFrame(false);
+		// do nothing
 	}
 }
 

@@ -104,9 +104,10 @@ protected:
 	void OpenCurveEditor();
 	void CloseCurveEditor();
 	void UpdateCurveList();
+	void UpdateCurveEditorPosition();
 
-	void UIRefreshInputFrame(bool bValid);
-	void UIRefreshOutputFrame(bool bValid);
+	void UIRefreshInputFrame(const VDPixmap *px);
+	void UIRefreshOutputFrame(const VDPixmap *px);
 	void UISetDubbingMode(bool bActive, bool bIsPreview);
 	bool UIRunDubMessageLoop();
 	void UIAbortDubMessageLoop();

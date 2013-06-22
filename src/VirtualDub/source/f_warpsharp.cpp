@@ -106,6 +106,8 @@ public:
 
 	void ScriptConfig(IVDXScriptInterpreter *interp, const VDXScriptValue *argv, int argc);
 
+	VDXVF_DECLARE_SCRIPT_METHODS();
+
 protected:
 	ptrdiff_t mBumpPitch;
 	unsigned char *mpBumpBuf;
@@ -119,6 +121,10 @@ protected:
 	int mCubicTab[1024];
 	__declspec(align(8)) int mCubicTabMMX[1024];
 };
+
+VDXVF_BEGIN_SCRIPT_METHODS(VDVFilterWarpSharp)
+	VDXVF_DEFINE_SCRIPT_METHOD(VDVFilterWarpSharp, ScriptConfig, "ii")
+VDXVF_END_SCRIPT_METHODS()
 
 VDVFilterWarpSharp::VDVFilterWarpSharp() {
 }
@@ -817,11 +823,11 @@ void VDVFilterWarpSharp::Run() {
 	int *const disprow = mDisplacementRowMap.data();
 	for(y=0; y<height-8; y++) {
 		lo_dispy = -(3+y)*256;
-		hi_dispy = (height-2-y)*256 - 1;
+		hi_dispy = (height-6-y)*256 - 1;
 		bump = mpBumpBuf + mBumpPitch * (3+y) + 3;
 
 		int lo_dispx = -3*256;
-		int hi_dispx = (width-2)*256 - 1;
+		int hi_dispx = (width-6)*256 - 1;
 
 		int *dispdst = disprow;
 		for(x=0; x<width-8; x++) {

@@ -1,5 +1,59 @@
 VirtualDub change log
-Build %build% (1.9.0, experimental): [%date%]
+
+Build %build% (1.9.1, experimental): [%date%]
+   [features added]
+   * Render: Audio buffer size is now tunable in Options > Preferences.
+   * Render: Blitters are now cached for additional speed.
+   * Render: Performance sub-panel of status window now shows more appropriate stats.
+   * Render: Navigation keyboard shortcuts now work during preview.
+   * Filters: IVTC is now a video filter.
+   * Filters: Convert format filter now has options for UYVY and YUY2.
+   * Filters: Field swap now supports YCbCr formats.
+   * Filters: The filter system now automatically prerolls forward to compensate for filters with a lag (delay from input to output).
+   * Filters: New interlace filter to generate interlaced video.
+   * Filters: New interpolate filter to resample to different frame rates with blending.
+   * Filters: Added ELA, Yadif, and frame rate doubling modes to deinterlace filter.
+   * Filters: The filter system is now better at detecting and reporting errors in filters.
+   * Filters: Fixed overrun crash in box blur filter if radius exceeds size of image.
+   * PluginAPI: Video filters can request multiple source frames per output frame.
+   * PluginAPI: Video filters can request aligned scanlines.
+   * PluginAPI: Video filters can initiate direct bypass for frames during smart rendering.
+   * Capture: Fixed wrong area captured by screen capture driver with OpenGL acceleration enabled, rescale on, and mouse pointer capture enabled.
+   * Display: Added options for zooming to 12% and 6%.
+   * UI: Added Ctrl+Shift+F7 as a shortcut for batching Save AVI.
+   * UI: Preview no longer sticks if you seek to the end of the timeline.
+   * UI: Curve editor position now updates at end of timeline.
+   * AVI: Added DVSD to list of video formats that only have key frames.
+   
+   [bugs fixed]
+   * Audio duration in File Information was incorrect for VBR audio streams.
+   * Fixed crashes with test videos when input color format was set to 4:4:4 YCbCr (YV24).
+   * Audio display now updates after preview stops.
+   * Decoders: MJPEG decoder was decoding blocks in the wrong order for 4:2:0 mode.
+   * Decoders: MJPEG decoder didn't safely handle corrupt data having skip-16 codes overruning the coefficient matrix.
+   * Filters: Fixed cases where resize filter was not using fast paths for 1:1 resampling along an axis.
+   * Filters: Fixed crash in warpsharp filter due to out of bounds displacement vectors.
+   * Filters: Fixed script error when loading configurations with warpsharp filters.
+   * Filters: The filter system no longer tries Y8 before other YCbCr formats if the filter cannot support a RGB32 source.
+   * Filters: The resize filter was using incorrect border fill colors for 4:4:4 YCbCr (YV24) input.
+   * Capture: Frame rate changes in filters are now respected.
+   * Display: Panes could get stuck in GDI mode if auto-fallback mode was disabled.
+   * Display: Reduced CPU usage when GPU queue becomes full in Direct3D mode with vsync off.
+   * Display: You can no longer resize panes below 1x1.
+   * Render: "Show decompressed output" no longer misses the very first frame if activated at the start of a render.
+   * Render: "Show decompressed output" wasn't using internal video decoders.
+   
+   [regressions fixed]
+   * Filters: Sampling with levels filter didn't work when the input format was YCbCr (since 1.9.0).
+   * Filters: Filter preview broke when toggling luma mode on levels filter with YCbCr input (since 1.9.0).
+   * Filters: Fixed cropping bug where tall, narrow videos didn't crop properly.
+   * Filters: Brightness/contrast filter was broken for RGB32 input (since 1.9.0).
+   * Render: Fixed smart rendering issue that could cause broken frames at the start of a new processed section (since 1.8.1).
+   * Fixed a rare crash when doing YUV to RGB conversion on SSE2 capable systems (since 1.9.0).
+   * Settings saving in the Save Segmented AVI... dialog was scrambled (since 1.9.0).
+   * Fixed an off-by-one error in the frame count limit for segmented saving.
+
+Build 30586 (1.9.0, experimental): [December 21, 2008]
    [features added]
    * Added internal Huffyuv decoder.
    * Added "crop to selection" command.

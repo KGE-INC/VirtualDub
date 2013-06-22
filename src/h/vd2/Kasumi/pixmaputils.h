@@ -24,7 +24,7 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[];
 
 inline const VDPixmapFormatInfo& VDPixmapGetInfo(sint32 format) {
 	VDASSERT((uint32)format < nsVDPixmap::kPixFormat_Max_Standard);
-	return g_vdPixmapFormats[format];
+	return g_vdPixmapFormats[(uint32)format < nsVDPixmap::kPixFormat_Max_Standard ? format : 0];
 }
 
 #ifdef _DEBUG

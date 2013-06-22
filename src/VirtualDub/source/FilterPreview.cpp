@@ -19,9 +19,13 @@
 #include <vd2/system/w32assist.h>
 #include <vd2/Riza/display.h>
 #include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Kasumi/pixel.h>
 #include <vd2/VDLib/Dialog.h>
 #include "FilterPreview.h"
+#include "FilterInstance.h"
+#include "FilterFrameRequest.h"
+#include "FilterFrameVideoSource.h"
 #include "filters.h"
 #include "PositionControl.h"
 #include "ProgressDialog.h"
@@ -42,6 +46,7 @@ namespace {
 
 	static const UINT MYWM_REDRAW = WM_USER+100;
 	static const UINT MYWM_RESTART = WM_USER+101;
+	static const UINT MYWM_INVALIDATE = WM_USER+102;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -206,6 +211,7 @@ private:
 	VDPosition FetchFrame(VDPosition);
 
 	void UpdateButton();
+	void RedrawFrame();
 
 	HWND		mhdlg;
 	HWND		mhwndButton;
@@ -233,6 +239,7 @@ private:
 	List		*mpFilterList;
 	FilterInstance *mpThisFilter;
 	VDTimeline	*mpTimeline;
+	VDFraction	mTimelineRate;
 
 	VDXFilterPreviewButtonCallback	mpButtonCallback;
 	void							*mpvButtonCBData;
@@ -242,6 +249,9 @@ private:
 	MyError		mFailureReason;
 
 	VDVideoFilterPreviewZoomPopup	mZoomPopup;
+
+	vdrefptr<VDFilterFrameVideoSource>	mpVideoFrameSource;
+	vdrefptr<VDFilterFrameBuffer>		mpVideoFrameBuffer;
 
 	ModelessDlgNode		mDlgNode;
 };
@@ -332,12 +342,11 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		{
 			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
 
-			const VDPixmap& output = mFiltSys.GetOutput();
-
 			int xoffset = pt.x - mDisplayX;
 			int yoffset = pt.y - mDisplayY;
 
-			if ((wParam & MK_SHIFT) && mFiltSys.isRunning() && (unsigned)xoffset < (unsigned)mDisplayW && (unsigned)yoffset < (unsigned)mDisplayH) {
+			if ((wParam & MK_SHIFT) && mFiltSys.isRunning() && mpVideoFrameBuffer && (unsigned)xoffset < (unsigned)mDisplayW && (unsigned)yoffset < (unsigned)mDisplayH) {
+				const VDPixmap& output = VDPixmapFromLayout(mFiltSys.GetOutputLayout(), mpVideoFrameBuffer->GetBasePointer());
 				uint32 pixels[7][7];
 				int x = VDFloorToInt((xoffset + 0.5) * (double)output.w / (double)mDisplayW);
 				int y = VDFloorToInt((yoffset + 0.5) * (double)output.h / (double)mDisplayH);
@@ -385,12 +394,17 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		}
 		return OnCommand(LOWORD(wParam));
 
-	case MYWM_REDRAW:		// redraw modified frame
+	case MYWM_REDRAW:
 		OnVideoRedraw();
 		return TRUE;
 
 	case MYWM_RESTART:
 		OnVideoResize(false);
+		return TRUE;
+
+	case MYWM_INVALIDATE:
+		mFiltSys.InvalidateCachedFrames(mpThisFilter);
+		OnVideoRedraw();
 		return TRUE;
 	}
 
@@ -399,6 +413,7 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 
 void FilterPreview::OnInit() {
 	mpTimeline = &g_project->GetTimeline();
+	mTimelineRate = g_project->GetTimelineFrameRate();
 
 	mWidth = 0;
 	mHeight = 0;
@@ -410,6 +425,7 @@ void FilterPreview::OnInit() {
 	mpPosition->SetFrameTypeCallback(VDGetPositionControlCallbackTEMP());
 
 	inputVideo->setTargetFormat(0);
+	inputVideo->streamRestart();
 
 	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)mhdlg);
 	if (mhwndDisplay)
@@ -510,6 +526,7 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 
 		sint64 len = pVSS->getLength();
 		const VDPixmap& pxsrc = inputVideo->getTargetFormat();
+		const VDFraction& srcPAR = inputVideo->getPixelAspectRatio();
 
 		mFiltSys.prepareLinearChain(
 				mpFilterList,
@@ -517,21 +534,27 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 				abs(pbih2->biHeight),
 				pxsrc.format,
 				srcRate,
-				pVSS->getLength());
+				pVSS->getLength(),
+				srcPAR);
 
 		if (mFiltSys.GetOutputFrameRate() == srcRate)
 			len = mpTimeline->GetLength();
 
+		mpVideoFrameSource = new VDFilterFrameVideoSource;
+		mpVideoFrameSource->Init(inputVideo, mFiltSys.GetInputLayout());
+
 		mFiltSys.initLinearChain(
 				mpFilterList,
+				mpVideoFrameSource,
 				pbih2->biWidth,
 				abs(pbih2->biHeight),
 				pxsrc.format,
 				pxsrc.palette,
 				srcRate,
-				len);
+				len,
+				srcPAR);
 
-		mFiltSys.ReadyFilters();
+		mFiltSys.ReadyFilters(VDXFilterStateInfo::kStatePreview);
 
 		const VDPixmapLayout& output = mFiltSys.GetOutputLayout();
 		w = output.w;
@@ -589,19 +612,38 @@ void FilterPreview::OnVideoRedraw() {
 	if (!mFiltSys.isRunning())
 		return;
 
-	bool bSuccessful = FetchFrame() >= 0;
-
 	try {
-		if (bSuccessful)
-			mFiltSys.RunFilters(mLastOutputFrame, mLastTimelineFrame, mLastTimelineFrame, mLastTimelineTimeMS, NULL, VDXFilterStateInfo::kStatePreview);
+		bool success = false;
+
+		FetchFrame();
+
+		vdrefptr<IVDFilterFrameClientRequest> req;
+		if (mFiltSys.RequestFrame(mLastOutputFrame, ~req)) {
+			while(!req->IsCompleted()) {
+				mpVideoFrameSource->Run();
+				mFiltSys.RunToCompletion();
+			}
+
+			success = req->IsSuccessful();
+		}
 
 		if (mpDisplay) {
 			ShowWindow(mhwndDisplay, SW_SHOW);
 
-			if (bSuccessful)
-				mpDisplay->SetSourcePersistent(false, mFiltSys.GetOutput());
-			else
-				mpDisplay->SetSourceSolidColor(VDSwizzleU32(GetSysColor(COLOR_3DFACE)) >> 8);
+			if (success) {
+				mpVideoFrameBuffer = req->GetResultBuffer();
+
+				const VDPixmapLayout& layout = mFiltSys.GetOutputLayout();
+
+				mpDisplay->SetSourcePersistent(false, VDPixmapFromLayout(layout, mpVideoFrameBuffer->GetBasePointer()));
+			} else {
+				VDFilterFrameRequestError *err = req->GetError();
+
+				if (err)
+					mpDisplay->SetSourceMessage(VDTextAToW(err->mError.c_str()).c_str());
+				else
+					mpDisplay->SetSourceSolidColor(VDSwizzleU32(GetSysColor(COLOR_3DFACE)) >> 8);
+			}
 
 			mpDisplay->Update(IVDVideoDisplay::kAllFields);
 		}
@@ -666,18 +708,11 @@ VDPosition FilterPreview::FetchFrame(VDPosition pos) {
 		mLastTimelineFrame	= pos;
 		mLastTimelineTimeMS	= VDRoundToInt64(mFiltSys.GetOutputFrameRate().AsInverseDouble() * 1000.0 * (double)pos);
 
-		sint64 srcFrame = mFiltSys.GetSourceFrame(mLastOutputFrame);
-
-		if (!inputVideo->getFrame(srcFrame))
-			return -1;
-
 		mInitialTimeUS = VDRoundToInt64(mFiltSys.GetOutputFrameRate().AsInverseDouble() * 1000000.0 * (double)pos);
 
 	} catch(const MyError&) {
 		return -1;
 	}
-
-	VDPixmapBlt(mFiltSys.GetInput(), inputVideo->getTargetFormat());
 
 	return pos;
 }
@@ -751,7 +786,7 @@ void FilterPreview::Display(VDXHWND hwndParent, bool fDisplay) {
 
 void FilterPreview::RedoFrame() {
 	if (mhdlg)
-		SendMessage(mhdlg, MYWM_REDRAW, 0, 0);
+		SendMessage(mhdlg, MYWM_INVALIDATE, 0, 0);
 }
 
 void FilterPreview::RedoSystem() {
@@ -762,8 +797,11 @@ void FilterPreview::RedoSystem() {
 void FilterPreview::UndoSystem() {
 	if (mpDisplay)
 		mpDisplay->Reset();
+
+	mpVideoFrameBuffer = NULL;
 	mFiltSys.DeinitFilters();
 	mFiltSys.DeallocateBuffers();
+	mpVideoFrameSource = NULL;
 }
 
 void FilterPreview::Close() {
@@ -784,18 +822,23 @@ bool FilterPreview::SampleCurrentFrame() {
 			return false;
 	}
 
-	VDPosition pos = FetchFrame();
+	VDPosition pos = mpPosition->GetPosition();
 
 	if (pos >= 0) {
 		try {
-			mFiltSys.RunFilters(mLastOutputFrame, mLastTimelineFrame, mLastTimelineFrame, mLastTimelineTimeMS, mpThisFilter, VDXFilterStateInfo::kStatePreview);
-			mpSampleCallback(&mpThisFilter->src, (long)pos, (long)mpTimeline->GetLength(), mpvSampleCBData);
+			vdrefptr<IVDFilterFrameClientRequest> req;
+			if (mpThisFilter->CreateSamplingRequest(pos, mpSampleCallback, mpvSampleCBData, ~req)) {
+				while(!req->IsCompleted()) {
+					mFiltSys.RunToCompletion();
+					mpVideoFrameSource->Run();
+				}
+			}
 		} catch(const MyError& e) {
 			e.post(mhdlg, "Video sampling error");
 		}
 	}
 
-	RedoFrame();
+	RedrawFrame();
 
 	return true;
 }
@@ -852,7 +895,6 @@ long FilterPreview::SampleFrames() {
 		"Sampling all frames",
 	};
 
-	int iMode;
 	long lCount = 0;
 
 	if (!mpFilterList || !mhdlg || !mpSampleCallback)
@@ -865,48 +907,51 @@ long FilterPreview::SampleFrames() {
 			return -1;
 	}
 
-	iMode = DialogBox(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SAMPLE), mhdlg, SampleFramesDlgProc);
+	int mode = DialogBox(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SAMPLE), mhdlg, SampleFramesDlgProc);
 
-	if (!iMode)
+	if (!mode)
 		return -1;
 
 	// Time to do the actual sampling.
-
-	VDPosition first, last;
-
-	first = mpTimeline->GetStart();
-	last = mpTimeline->GetEnd();
-
 	try {
-		ProgressDialog pd(mhdlg, "Sampling input video", szCaptions[iMode-1], (long)(last-first), true);
-		VDPosition lSample = first;
+		VDPosition count = mpThisFilter->GetOutputFrameCount();
+		ProgressDialog pd(mhdlg, "Sampling input video", szCaptions[mode-1], VDClampToSint32(count), true);
 		IVDStreamSource *pVSS = inputVideo->asStream();
-		VDPosition lSecondIncrement = pVSS->msToSamples(1000)-1;
+		VDPosition secondIncrement = pVSS->msToSamples(1000)-1;
 
 		pd.setValueFormat("Sampling frame %ld of %ld");
 
-		if (lSecondIncrement<0)
-			lSecondIncrement = 0;
+		if (secondIncrement<0)
+			secondIncrement = 0;
 
-		while(lSample>=0 && lSample < last) {
-			pd.advance((long)(lSample - first));
+		vdrefptr<IVDFilterFrameClientRequest> req;
+
+		VDPosition lastFrame = 0;
+		for(VDPosition frame = 0; frame < count; ++frame) {
+			pd.advance(VDClampToSint32(frame));
 			pd.check();
 
-			if (FetchFrame(mFiltSys.GetSourceFrame(lSample))>=0) {
-				mFiltSys.RunFilters(mLastOutputFrame, mLastTimelineFrame, mLastTimelineFrame, mLastTimelineTimeMS, mpThisFilter, VDXFilterStateInfo::kStatePreview);
-				mpSampleCallback(&mpThisFilter->src, (long)(lSample-first), (long)(last-first), mpvSampleCBData);
-				++lCount;
+			VDPosition srcFrame = mpThisFilter->GetSourceFrame(frame);
+
+			if (mode != FPSAMP_ALL) {
+				if (!inputVideo->isKey(srcFrame))
+					continue;
+
+				if (mode == FPSAMP_KEYONESEC) {
+					if (frame - lastFrame < secondIncrement)
+						continue;
+				}
+
+				lastFrame = frame;
 			}
 
-			switch(iMode) {
-			case FPSAMP_KEYONESEC:
-				lSample += lSecondIncrement;
-			case FPSAMP_KEYALL:
-				lSample = mpTimeline->GetNextKey(lSample);
-				break;
-			case FPSAMP_ALL:
-				++lSample;
-				break;
+			if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
+				while(!req->IsCompleted()) {
+					mFiltSys.RunToCompletion();
+					mpVideoFrameSource->Run();
+				}
+
+				++lCount;
 			}
 		}
 	} catch(MyUserAbortError e) {
@@ -917,7 +962,12 @@ long FilterPreview::SampleFrames() {
 		e.post(mhdlg, "Video sampling error");
 	}
 
-	RedoFrame();
+	RedrawFrame();
 
 	return lCount;
+}
+
+void FilterPreview::RedrawFrame() {
+	if (mhdlg)
+		SendMessage(mhdlg, MYWM_REDRAW, 0, 0);
 }

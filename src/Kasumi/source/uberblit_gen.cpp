@@ -711,7 +711,7 @@ void VDPixmapUberBlitterGenerator::conv_Pal8_to_8888(int srcIndex) {
 void VDPixmapUberBlitterGenerator::pointh(float xoffset, float xfactor, uint32 w) {
 	StackEntry *args = &mStack.back();
 
-	if (xoffset != 0.0f || xfactor != 1.0f) {
+	if (xoffset != 0.5f || xfactor != 1.0f) {
 		VDPixmapGenResampleRow *src = new VDPixmapGenResampleRow;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, w, xoffset, xfactor, nsVDPixmap::kFilterPoint, 0, false);
@@ -725,7 +725,7 @@ void VDPixmapUberBlitterGenerator::pointh(float xoffset, float xfactor, uint32 w
 void VDPixmapUberBlitterGenerator::pointv(float yoffset, float yfactor, uint32 h) {
 	StackEntry *args = &mStack.back();
 
-	if (yoffset != 0.0f || yfactor != 1.0f) {
+	if (yoffset != 0.5f || yfactor != 1.0f) {
 		VDPixmapGenResampleCol *src = new VDPixmapGenResampleCol;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, h, yoffset, yfactor, nsVDPixmap::kFilterPoint, 0, false);
@@ -880,7 +880,7 @@ void VDPixmapUberBlitterGenerator::linear(float xoffset, float xfactor, uint32 w
 void VDPixmapUberBlitterGenerator::cubich(float xoffset, float xfactor, uint32 w, float splineFactor, bool interpOnly) {
 	StackEntry *args = &mStack.back();
 
-	if (xoffset != 0.0f || xfactor != 1.0f) {
+	if (xoffset != 0.5f || xfactor != 1.0f) {
 		VDPixmapGenResampleRow *src = new VDPixmapGenResampleRow;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, w, xoffset, xfactor, nsVDPixmap::kFilterCubic, splineFactor, interpOnly);
@@ -894,7 +894,7 @@ void VDPixmapUberBlitterGenerator::cubich(float xoffset, float xfactor, uint32 w
 void VDPixmapUberBlitterGenerator::cubicv(float yoffset, float yfactor, uint32 h, float splineFactor, bool interpOnly) {
 	StackEntry *args = &mStack.back();
 
-	if (yoffset != 0.0f || yfactor != 1.0f) {
+	if (yoffset != 0.5f || yfactor != 1.0f) {
 		VDPixmapGenResampleCol *src = new VDPixmapGenResampleCol;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, h, yoffset, yfactor, nsVDPixmap::kFilterCubic, splineFactor, interpOnly);
@@ -913,7 +913,7 @@ void VDPixmapUberBlitterGenerator::cubic(float xoffset, float xfactor, uint32 w,
 void VDPixmapUberBlitterGenerator::lanczos3h(float xoffset, float xfactor, uint32 w) {
 	StackEntry *args = &mStack.back();
 
-	if (xoffset != 0.0f || xfactor != 1.0f) {
+	if (xoffset != 0.5f || xfactor != 1.0f) {
 		VDPixmapGenResampleRow *src = new VDPixmapGenResampleRow;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, w, xoffset, xfactor, nsVDPixmap::kFilterLanczos3, 0, false);
@@ -927,7 +927,7 @@ void VDPixmapUberBlitterGenerator::lanczos3h(float xoffset, float xfactor, uint3
 void VDPixmapUberBlitterGenerator::lanczos3v(float yoffset, float yfactor, uint32 h) {
 	StackEntry *args = &mStack.back();
 
-	if (yoffset != 0.0f || yfactor != 1.0f) {
+	if (yoffset != 0.5f || yfactor != 1.0f) {
 		VDPixmapGenResampleCol *src = new VDPixmapGenResampleCol;
 
 		src->Init(args[0].mpSrc, args[0].mSrcIndex, h, yoffset, yfactor, nsVDPixmap::kFilterLanczos3, 0, false);

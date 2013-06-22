@@ -48,6 +48,7 @@
 #include "misc.h"
 #include "project.h"
 #include "filters.h"
+#include "FilterInstance.h"
 #include "oshelper.h"
 
 #include "JobControl.h"
@@ -55,7 +56,6 @@
 ///////////////////////////////////////////////////////////////////////////
 
 extern HINSTANCE g_hInst;
-extern FilterFunctions g_filterFuncs;
 extern wchar_t g_szInputAVIFile[];
 extern wchar_t g_szInputWAVFile[];
 extern InputFileOptions *g_pInputOpts;
@@ -274,11 +274,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 				opt->video.frameRateTargetLo);
 	}
 
-	output.addf("VirtualDub.video.SetIVTC(%d,%d,%d,%d);",
-			opt->video.fInvTelecine,
-			opt->video.fIVTCMode,
-			opt->video.nIVTCOffset,
-			opt->video.fIVTCPolarity);
+	output.addf("VirtualDub.video.SetIVTC(0, 0, 0, 0);");
 
 	if ((g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) && g_Vcompression.fccHandler) {
 		output.addf("VirtualDub.video.SetCompression(0x%08lx,%d,%d,%d);",
@@ -325,20 +321,24 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 	int iFilter = 0;
 
 	while(fa_next = (FilterInstance *)fa->next) {
-		output.addf("VirtualDub.video.filters.Add(\"%s\");", strCify(fa->filter->name));
+		output.addf("VirtualDub.video.filters.Add(\"%s\");", strCify(fa->GetName()));
 
-		if (fa->mCropX1 || fa->mCropY1 || fa->mCropX2 || fa->mCropY2)
+		if (fa->IsCroppingEnabled()) {
+			const vdrect32& cropInsets = fa->GetCropInsets();
+
 			output.addf("VirtualDub.video.filters.instance[%d].SetClipping(%d,%d,%d,%d%s);"
-						,iFilter
-						,fa->mCropX1
-						,fa->mCropY1
-						,fa->mCropX2
-						,fa->mCropY2
-						,fa->mbPreciseCrop ? "" : ",0"
+						, iFilter
+						, cropInsets.left
+						, cropInsets.top
+						, cropInsets.right
+						, cropInsets.bottom
+						, fa->IsPreciseCroppingEnabled() ? "" : ",0"
 						);
+		}
 
-		if (fa->filter->fssProc && fa->filter->fssProc(fa->AsVDXFilterActivation(), &g_filterFuncs, buf, sizeof buf))
-			output.addf("VirtualDub.video.filters.instance[%d].%s;", iFilter, buf);
+		VDStringA scriptStr;
+		if (fa->GetScriptString(scriptStr))
+			output.addf("VirtualDub.video.filters.instance[%d].%s;", iFilter, scriptStr.c_str());
 
 		if (!fa->IsEnabled())
 			output.addf("VirtualDub.video.filters.instance[%d].SetEnabled(false);", iFilter);

@@ -30,8 +30,12 @@ protected:
 
 	void End(sintptr result);
 
+	VDZHWND GetControl(uint32 id);
+
 	void SetFocusToControl(uint32 id);
 	void EnableControl(uint32 id, bool enabled);
+
+	void SetCaption(uint32 id, const wchar_t *format);
 
 	void SetControlText(uint32 id, const wchar_t *s);
 	void SetControlTextF(uint32 id, const wchar_t *format, ...);
@@ -59,6 +63,11 @@ protected:
 	void LBAddString(uint32 id, const wchar_t *s);
 	void LBAddStringF(uint32 id, const wchar_t *format, ...);
 
+	// trackbar
+	sint32 TBGetValue(uint32 id);
+	void TBSetValue(uint32 id, sint32 value);
+	void TBSetRange(uint32 id, sint32 minval, sint32 maxval);
+
 protected:
 	virtual VDZINT_PTR DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lParam);
 	virtual void OnDataExchange(bool write);
@@ -71,6 +80,8 @@ protected:
 	virtual bool OnCommand(uint32 id, uint32 extcode);
 	virtual void OnDropFiles(VDZHDROP hDrop);
 	virtual void OnDropFiles(IVDUIDropFileList *dropFileList);
+	virtual void OnHScroll(uint32 id, int code);
+	virtual void OnVScroll(uint32 id, int code);
 	virtual bool PreNCDestroy();
 
 	bool	mbValidationFailed;

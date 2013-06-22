@@ -183,6 +183,7 @@ void VDVFilterBrightCont::Run() {
 					pxdst.pitch,
 					mConfig.mLookup);
 #endif
+			break;
 
 		case nsVDXPixmap::kPixFormat_RGB888:
 			brightcont_run_trans8(pxdst.data, pxdst.w*3, pxdst.h, pxdst.pitch, mConfig.mLookup);

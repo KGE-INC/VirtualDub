@@ -79,6 +79,11 @@ _vdasm_pixblt_XRGB8888_to_YUV444Planar_scan_SSE2:
 		dd			.do2
 		dd			.do3
 		
+.finaltable2:
+		dd			.fin1
+		dd			.fin2
+		dd			.fin3
+
 .do1:
 		movd		xmm2, [edx]
 		jmp			short .dofinal
@@ -119,12 +124,38 @@ _vdasm_pixblt_XRGB8888_to_YUV444Planar_scan_SSE2:
 		packuswb	xmm1, xmm1
 		movd		xmm7, [bytemasks + esi*4 + 12]
 		packuswb	xmm2, xmm2
-		mov			edi, eax
-		maskmovdqu	xmm0, xmm7
-		mov			edi, ebx
-		maskmovdqu	xmm1, xmm7
-		mov			edi, ecx
-		maskmovdqu	xmm2, xmm7
+		
+		jmp			dword [.finaltable2 + esi*4 + 12]
+		
+.fin1:
+		movd		edx, xmm0
+		mov			[eax], dl
+		movd		edx, xmm1
+		mov			[ebx], dl
+		movd		edx, xmm2
+		mov			[ecx], dl
+		jmp			.complete
+.fin2:
+		movd		edx, xmm0
+		mov			[eax], dx
+		movd		edx, xmm1
+		mov			[ebx], dx
+		movd		edx, xmm2
+		mov			[ecx], dx
+		jmp			.complete
+.fin3:
+		movd		edx, xmm0
+		mov			[eax], dx
+		shr			edx, 16
+		mov			[eax+2], dl
+		movd		edx, xmm1
+		mov			[ebx], dx
+		shr			edx, 16
+		mov			[ebx+2], dl
+		movd		edx, xmm2
+		mov			[ecx], dx
+		shr			edx, 16
+		mov			[ecx+2], dl
 		jmp			.complete
 
 		end

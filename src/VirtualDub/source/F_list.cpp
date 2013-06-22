@@ -20,12 +20,20 @@
 #include "filters.h"
 
 extern const VDXFilterDefinition
+#ifdef _DEBUG
+	filterDef_debugerror,
+	filterDef_showinfo,
+#endif
 	filterDef_fieldbob2,
 	filterDef_warpresize,
 	filterDef_warpsharp,
 	filterDef_blur,
 	filterDef_blurhi,
-	filterDef_brightcont;
+	filterDef_brightcont,
+	filterDef_interlace,
+	filterDef_ivtc,
+	filterDef_fieldswap,
+	filterDef_interpolate;
 
 #ifdef _M_IX86
 extern const VDXFilterDefinition
@@ -37,7 +45,6 @@ extern const VDXFilterDefinition
 extern FilterDefinition
 	filterDef_chromasmoother,
 	filterDef_fieldbob,
-	filterDef_fieldswap,
 	filterDef_fill,
 	filterDef_invert,
 	filterDef_null,
@@ -93,6 +100,14 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_perspective,
 	&filterDef_blur,
 	&filterDef_blurhi,
+	&filterDef_interlace,
+	&filterDef_ivtc,
+	&filterDef_interpolate,
+
+#ifdef _DEBUG
+	&filterDef_debugerror,
+	&filterDef_showinfo,
+#endif
 
 #ifdef _M_IX86
 	&filterDef_reduceby2,

@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2009 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -13,21 +13,30 @@
 //
 //	You should have received a copy of the GNU General Public License
 //	along with this program; if not, write to the Free Software
-//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-#ifndef f_VIDEOTELECINEREMOVER_H
-#define f_VIDEOTELECINEREMOVER_H
+#ifndef f_VD2_FILTERFRAMESHARINGPREDICTOR_H
+#define f_VD2_FILTERFRAMESHARINGPREDICTOR_H
 
-struct VDPixmap;
-class VBitmap;
-
-class VDINTERFACE VideoTelecineRemover {
+class VDFilterFrameSharingPredictor {
 public:
-	virtual ~VideoTelecineRemover() = 0;
-	virtual void ProcessIn(const VDPixmap& in, VDPosition srcFrame, VDPosition timelineFrame) = 0;
-	virtual bool ProcessOut(const VDPixmap& out, VDPosition& srcFrame, VDPosition& timelineFrame) = 0;
-};
+	VDFilterFrameSharingPredictor();
 
-VideoTelecineRemover *CreateVideoTelecineRemover(int w, int h, bool fDecomb, int iOffset, bool fInvertedPolarity);
+	void Clear();
+	void OnRequest(sint64 frame);
+
+	bool IsSharingPredicted(sint64 frame) const {
+		return mShareCount > 0;
+	}
+
+protected:
+	struct LRUEntry {
+		sint64	mFrame;
+		bool	mbShared;
+	};
+
+	uint32		mShareCount;
+	LRUEntry	mLRU[8];
+};
 
 #endif

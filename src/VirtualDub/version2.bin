@@ -1,4 +1,5 @@
 host: "AEGIS-DEV18"         builds: 483
+host: "Aegis (dev19)"       builds: 950
 host: "Aegis (sb2)"         builds: 532
 host: "Athena"              builds: 16029
 host: "Athena64"            builds: 96
