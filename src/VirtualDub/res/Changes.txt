@@ -1,6 +1,10 @@
 VirtualDub change log
 
-Build %build% (1.8.2, stable): [%date%]
+Build %build% (1.8.3, stable): [%date%]
+   [regressions fixed]
+   * Fixed issue where main window failed to appear on first start on some systems.
+
+Build 29883 (1.8.2, stable): [July 19, 2008]
    [features added]
    * JobControl: Job control dialog now shows machine name and PID.
    * Filters: Added mOutputFrame field to VDXFilterStateInfo for reliable frame rate change operations.

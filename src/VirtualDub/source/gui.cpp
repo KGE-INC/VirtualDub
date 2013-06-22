@@ -264,7 +264,7 @@ void VDUIRestoreWindowPlacementW32(HWND hwnd, const char *name, int nCmdShow) {
 				wp.rcNormalPosition.right = sp.mRight;
 				wp.rcNormalPosition.bottom = sp.mBottom;
 
-				if ((wp.showCmd == SW_SHOW || wp.showCmd == SW_SHOWNORMAL) && sp.mbMaximized)
+				if ((wp.showCmd == SW_SHOW || wp.showCmd == SW_SHOWNORMAL || wp.showCmd == SW_SHOWDEFAULT) && sp.mbMaximized)
 					wp.showCmd = SW_SHOWMAXIMIZED;
 
 				SetWindowPlacement(hwnd, &wp);

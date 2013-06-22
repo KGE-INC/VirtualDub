@@ -605,6 +605,10 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
     // Make the window visible; update its client area; and return "success".
 	pFrame->RestorePlacement(nCmdShow);
+
+	if (nCmdShow != SW_HIDE && !(GetWindowLong(g_hWnd, GWL_STYLE) & WS_VISIBLE))
+		ShowWindow(g_hWnd, nCmdShow);
+
     UpdateWindow(g_hWnd);          
 
 	VDSetWindowTextW32(g_hWnd, versionFormat.c_str());

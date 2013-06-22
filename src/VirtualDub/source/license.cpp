@@ -119,6 +119,9 @@ INT_PTR APIENTRY Licensor::DProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM
     {
         case WM_INITDIALOG:
 			depack(hDlg);
+
+			// Force visible even if we were started with nCmdShow == SW_HIDE.
+			ShowWindow(hDlg, SW_SHOWNA);
             return TRUE;
 
         case WM_COMMAND:
