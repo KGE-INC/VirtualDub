@@ -231,6 +231,7 @@ BEGIN
         MENUITEM "Preferences...",              ID_OPTIONS_PREFERENCES
         MENUITEM "Keyboard shortcuts...",       ID_OPTIONS_KEYBOARDSHORTCUTS
         MENUITEM "External encoders...",        ID_OPTIONS_EXTERNALENCODERS
+        MENUITEM "Plug-ins...",                 ID_OPTIONS_PLUGINS
         MENUITEM SEPARATOR
         MENUITEM "Sync to audio",               ID_OPTIONS_SYNCTOAUDIO, CHECKED
         MENUITEM "Drop frames when behind",     ID_OPTIONS_DROPFRAMES
@@ -881,7 +882,7 @@ BEGIN
     CONTROL         "&Show image formats",IDC_SHOWIMAGEFORMATS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,184,81,10
     CONTROL         "Show &pixel aspect ratios",IDC_SHOWASPECTRATIOS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,99,184,93,10
     CONTROL         "Show &frame rates",IDC_SHOWFRAMERATES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,199,184,73,10
-    PUSHBUTTON      "O&ptions...",IDC_OPTIONS,285,180,50,14,WS_DISABLED
+    PUSHBUTTON      "Optio&ns...",IDC_OPTIONS,285,180,50,14,WS_DISABLED
 END
 
 IDD_FILTER_LIST DIALOGEX 0, 0, 332, 199
@@ -2141,7 +2142,7 @@ END
 IDD_EXPERIMENTAL DIALOG  0, 0, 311, 105
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "VirtualDub warning"
-FONT 8, "MS Sans Serif"
+FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,254,84,50,14,WS_DISABLED
     CONTROL         "I understand -- please go away now.",IDC_VERIFY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,84,241,14
@@ -2162,7 +2163,7 @@ END
 IDD_FILE_SETTEXTINFO DIALOGEX 0, 0, 290, 181
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Set textual information"
-FONT 8, "MS Sans Serif", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,181,160,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,233,160,50,14
@@ -2485,6 +2486,18 @@ BEGIN
     EDITTEXT        IDC_NAME,34,7,176,12,ES_AUTOHSCROLL
     DEFPUSHBUTTON   "OK",IDOK,107,24,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,160,24,50,14
+END
+
+IDD_PLUGINS DIALOGEX 0, 0, 277, 162
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Plug-ins"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_LIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_TABSTOP,7,7,263,129,WS_EX_CLIENTEDGE
+    PUSHBUTTON      "&Configure...",IDC_CONFIGURE,7,141,50,14
+    PUSHBUTTON      "&About",IDC_ABOUT,60,141,50,14
+    DEFPUSHBUTTON   "OK",IDOK,167,141,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,220,141,50,14
 END
 
 
@@ -3364,6 +3377,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 38
     END
+
+    IDD_PLUGINS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 270
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 155
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -3532,8 +3553,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,1,0
- PRODUCTVERSION 1,10,1,0
+ FILEVERSION 1,10,2,0
+ PRODUCTVERSION 1,10,2,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3549,12 +3570,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.1"
+            VALUE "FileVersion", "1.10.2"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.1"
+            VALUE "ProductVersion", "1.10.2"
         END
     END
     BLOCK "VarFileInfo"
@@ -3570,8 +3591,8 @@ VS_VERSION_INFO$(_DEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,1,0
- PRODUCTVERSION 1,10,1,0
+ FILEVERSION 1,10,2,0
+ PRODUCTVERSION 1,10,2,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x21L
@@ -3587,12 +3608,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.1"
+            VALUE "FileVersion", "1.10.2"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1999-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.1"
+            VALUE "ProductVersion", "1.10.2"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)"
         END
     END

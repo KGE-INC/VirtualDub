@@ -60,16 +60,16 @@
 
 					const uint32 sum = (p4*2 + p1 + p3 + p5 + p7) * 2 + p0 + p2 + p6 + p8;
 					const uint32 losum
-						= ((p4 & 0x030303)*2
-							+ (p1 & 0x070707)
-							+ (p3 & 0x070707)
-							+ (p5 & 0x070707)
-							+ (p7 & 0x070707)
+						= ((p4 & 0xff030303)*2
+							+ (p1 & 0xff070707)
+							+ (p3 & 0xff070707)
+							+ (p5 & 0xff070707)
+							+ (p7 & 0xff070707)
 							)*2
-						+ (p0 & 0x0f0f0f)
-						+ (p2 & 0x0f0f0f)
-						+ (p6 & 0x0f0f0f)
-						+ (p8 & 0x0f0f0f);
+						+ (p0 & 0xff0f0f0f)
+						+ (p2 & 0xff0f0f0f)
+						+ (p6 & 0xff0f0f0f)
+						+ (p8 & 0xff0f0f0f);
 
 					dstp[x] = (sum - losum + ((losum + 0x080808) & 0xf0f0f0)) >> 4;
 				}

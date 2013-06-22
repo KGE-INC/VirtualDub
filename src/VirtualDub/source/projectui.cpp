@@ -159,6 +159,7 @@ extern const VDStringW& VDPreferencesGetTimelineFormat();
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
 void VDUIDisplayDialogConfigureExternalEncoders(VDGUIHandle h);
+void VDUIShowDialogPlugins(VDGUIHandle h);
 
 ///////////////////////////////////////////////////////////////////////////
 #define MENU_TO_HELP(x) ID_##x, IDS_##x
@@ -351,6 +352,7 @@ namespace {
 		{ ID_OPTIONS_DYNAMICCOMPILATION,	"Options.ShowJITDialog" },
 		{ ID_OPTIONS_PREFERENCES,		"Options.ShowPreferencesDialog" },
 		{ ID_OPTIONS_KEYBOARDSHORTCUTS,	"Options.ShowShortcutsDialog" },
+		{ ID_OPTIONS_PLUGINS,			"Options.ShowPluginsDialog" },
 		{ ID_OPTIONS_DISPLAYINPUTVIDEO,	"View.ToggleInputPane" },
 		{ ID_OPTIONS_DISPLAYOUTPUTVIDEO,	"View.ToggleOutputPane" },
 		{ ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT,	"View.ToggleDecompressedOutput" },
@@ -1952,6 +1954,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 					// eat the error
 				}
 			}
+			break;
+
+		case ID_OPTIONS_PLUGINS:
+			VDUIShowDialogPlugins((VDGUIHandle)mhwnd);
 			break;
 
 		case ID_OPTIONS_DISPLAYINPUTVIDEO:

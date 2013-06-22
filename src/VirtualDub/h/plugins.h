@@ -20,6 +20,8 @@ struct VDPluginDescription {
 	VDExternalModule	*mpModule;
 	const VDPluginInfo	*mpInfo;
 	const VDPluginInfo	*mpShadowedInfo;
+	bool				mbHasStaticAbout;
+	bool				mbHasStaticConfigure;
 };
 
 struct VDXFilterModule {		// formerly FilterModule
@@ -36,6 +38,9 @@ public:
 
 	bool Lock();
 	void Unlock();
+
+	bool IsConfigureSupported() const;
+	bool IsAboutSupported() const;
 
 	int GetVideoFilterAPIVersion() const { return mVFHighVersion; }
 

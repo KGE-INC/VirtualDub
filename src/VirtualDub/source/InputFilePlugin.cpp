@@ -546,7 +546,7 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 	}
 
 	streamInfo.fccType			= VDAVIStreamInfo::kTypeVideo;
-	streamInfo.fccHandler		= 0;
+	streamInfo.fccHandler		= mSSInfo.mfccHandler;
 	streamInfo.dwFlags			= 0;
 	streamInfo.dwCaps			= 0;
 	streamInfo.wPriority		= 0;

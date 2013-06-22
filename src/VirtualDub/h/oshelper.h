@@ -18,19 +18,22 @@
 #ifndef f_OSHELPER_H
 #define f_OSHELPER_H
 
-#include <windows.h>
-
+#include <vd2/system/win32/miniwindows.h>
 #include <vd2/system/VDString.h>
 
-void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted);
+void Draw3DRect(VDZHDC hDC, int x, int y, int dx, int dy, bool inverted);
 
-void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
+void VDShowHelp(VDZHWND hwnd, const wchar_t *filename = 0);
 
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
-HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);
-VDStringW VDLoadStringW32(UINT uID, bool doSubstitutions);
+VDZHWND VDGetAncestorW32(VDZHWND hwnd, uint32 gaFlags);
+VDStringW VDLoadStringW32(uint32 uID, bool doSubstitutions);
 void VDSubstituteStrings(VDStringW& s);
+
+void VDSetDataPath(const wchar_t *path);
+const wchar_t *VDGetDataPath();
+VDStringW VDGetLocalAppDataPath();
 
 // Creates a 32-bit signature from the current date, time, and process ID. Not
 // guaranteed to be unique, but reasonably non-conflicting.
@@ -60,11 +63,11 @@ public:
 
 private:
 	bool fNTMethod;
-	HKEY hkeyKernelCPU;
+	VDZHKEY hkeyKernelCPU;
 
-	unsigned __int64 kt_last;
-	unsigned __int64 ut_last;
-	unsigned __int64 st_last;
+	uint64 kt_last;
+	uint64 ut_last;
+	uint64 st_last;
 };
 
 void VDEnableSampling(bool bEnable);

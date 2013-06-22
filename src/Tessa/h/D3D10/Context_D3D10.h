@@ -355,6 +355,8 @@ public:
 	uint32 GetDeviceLossCounter() const;
 	void Present();
 
+	void SetGpuPriority(int priority) {}
+
 public:
 	void BeginScope(uint32 color, const char *message);
 	void EndScope();

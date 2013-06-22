@@ -32,10 +32,25 @@ namespace {
 			mType			= pInfo->mType;
 			mpModule		= pModule;
 
-			mShadowedInfo	= *pInfo;
-			mShadowedInfo.mpName		= mName.c_str();
-			mShadowedInfo.mpAuthor		= mAuthor.c_str();
-			mShadowedInfo.mpDescription	= mDescription.c_str();
+			mShadowedInfo.mSize = pInfo->mSize;
+			mShadowedInfo.mpName = mName.c_str();
+			mShadowedInfo.mpAuthor = mAuthor.c_str();
+			mShadowedInfo.mpDescription = mDescription.c_str();
+			mShadowedInfo.mVersion = pInfo->mVersion;
+			mShadowedInfo.mType = pInfo->mType;
+			mShadowedInfo.mFlags = pInfo->mFlags;
+			mShadowedInfo.mAPIVersionRequired = pInfo->mAPIVersionRequired;
+			mShadowedInfo.mAPIVersionUsed = pInfo->mAPIVersionUsed;
+			mShadowedInfo.mTypeAPIVersionRequired = pInfo->mTypeAPIVersionRequired;
+			mShadowedInfo.mTypeAPIVersionUsed = pInfo->mTypeAPIVersionUsed;
+			mShadowedInfo.mpTypeSpecificInfo = NULL;
+
+			mbHasStaticAbout = false;
+			mbHasStaticConfigure = false;
+			if (pInfo->mSize >= offsetof(VDPluginInfo, mpStaticConfigureProc) + sizeof(VDXShowStaticConfigureProc)) {
+				mbHasStaticAbout = pInfo->mpStaticAboutProc != NULL;
+				mbHasStaticConfigure = pInfo->mpStaticConfigureProc != NULL;
+			}
 		}
 
 		VDPluginInfo			mShadowedInfo;

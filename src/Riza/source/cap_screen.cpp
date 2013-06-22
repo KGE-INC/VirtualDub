@@ -180,7 +180,7 @@ protected:
 	static LRESULT CALLBACK StaticWndProcGL(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	static INT_PTR CALLBACK VideoSourceDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
-	enum { kPreviewTimerID = 100 };
+	enum { kPreviewTimerID = 100, kResponsivenessTimerID = 101 };
 
 	HWND	mhwndParent;
 	HWND	mhwnd;
@@ -258,6 +258,9 @@ protected:
 	DisplayMode			mDisplayMode;
 	uint32	mGlobalTimeBase;
 
+	UINT	mResponsivenessTimer;
+	VDAtomicInt	mResponsivenessCounter;
+
 	UINT	mPreviewFrameTimer;
 	VDAtomicInt	mPreviewFrameCount;
 
@@ -327,6 +330,8 @@ VDCaptureDriverScreen::VDCaptureDriverScreen()
 	, mFramePeriod(10000000 / 30)
 	, mpCB(NULL)
 	, mDisplayMode(kDisplayNone)
+	, mResponsivenessTimer(0)
+	, mResponsivenessCounter(0)
 	, mPreviewFrameTimer(0)
 	, mhMixer(NULL)
 	, mhWaveIn(NULL)
@@ -816,6 +821,11 @@ bool VDCaptureDriverScreen::CaptureStart() {
 	ShutdownWaveAnalysis();
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
+		if (!mResponsivenessTimer)
+			mResponsivenessTimer = SetTimer(mhwnd, kResponsivenessTimerID, 500, NULL);
+
+		mResponsivenessCounter = GetTickCount();
+
 		if (mbOpenGLMode) {
 			HDC hdc = GetDC(mhwndGL);
 			if (hdc) {
@@ -872,6 +882,11 @@ void VDCaptureDriverScreen::SyncCaptureStop() {
 
 		if (mbAudioAnalysisEnabled)
 			InitWaveAnalysis();
+
+		if (mResponsivenessTimer) {
+			KillTimer(mhwnd, mResponsivenessTimer);
+			mResponsivenessTimer = 0;
+		}
 	}
 }
 
@@ -943,8 +958,10 @@ void VDCaptureDriverScreen::InitMixerSupport() {
 					}
 
 					// The mux/mixer control must be of MULTIPLE type; otherwise, we reject it.
-					if (!(mMixerInputControl.fdwControl & MIXERCONTROL_CONTROLF_MULTIPLE))
-						res = MMSYSERR_ERROR;
+					if (MMSYSERR_NOERROR == res) {
+						if (!(mMixerInputControl.fdwControl & MIXERCONTROL_CONTROLF_MULTIPLE))
+							res = MMSYSERR_ERROR;
+					}
 
 					// If we were successful, then enumerate all source lines and push them into the map.
 					if (MMSYSERR_NOERROR != res) {
@@ -2614,8 +2631,10 @@ void VDCaptureDriverScreen::SaveSettings() {
 }
 
 void VDCaptureDriverScreen::TimerCallback() {
-	mbCaptureFramePending = true;
-	PostMessage(mhwnd, WM_APP+18, 0, 0);
+	if (GetTickCount() - mResponsivenessCounter < 2000) {
+		mbCaptureFramePending = true;
+		PostMessage(mhwnd, WM_APP+18, 0, 0);
+	}
 }
 
 LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2687,8 +2706,12 @@ LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARA
 		case WM_TIMER:
 			{
 				VDCaptureDriverScreen *pThis = (VDCaptureDriverScreen *)GetWindowLongPtr(hwnd, 0);
-				if (!pThis->mbCapturing)
-					pThis->DoFrame();
+
+				if (wParam == kPreviewTimerID) {
+					if (!pThis->mbCapturing)
+						pThis->DoFrame();
+				} else if (wParam == kResponsivenessTimerID)
+					pThis->mResponsivenessCounter = GetTickCount();
 			}
 			return 0;
 	}

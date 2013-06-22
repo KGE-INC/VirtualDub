@@ -42,6 +42,7 @@ public:
 	void Shutdown();
 
 	void SetJobFilePath(const wchar_t *path, bool enableDistributedMode, bool enableAutoUpdate);
+	void SetDefaultJobFilePath(const wchar_t *path);
 	const wchar_t *GetJobFilePath() const;
 	const wchar_t *GetDefaultJobFilePath() const;
 

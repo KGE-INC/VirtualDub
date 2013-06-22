@@ -243,7 +243,7 @@ void VDProjectAutoSave::Save() {
 	for(int counter = 1; counter <= 100; ++counter) {
 		fileName.sprintf(L"VirtualDub_AutoSave_%x_%u.vdscript", signature, counter);
 
-		path = VDMakePath(VDGetProgramPath().c_str(), fileName.c_str());
+		path = VDMakePath(VDGetDataPath(), fileName.c_str());
 
 		if (!VDDoesPathExist(path.c_str()))
 			break;

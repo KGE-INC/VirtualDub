@@ -57,6 +57,9 @@ public:
 	const VDStringA&	GetAuthor() const { return mAuthor; }
 	const VDStringA&	GetDescription() const { return mDescription; }
 
+	bool				HasStaticAbout() const { return mbHasStaticAbout; }
+	bool				HasStaticConfigure() const { return mbHasStaticConfigure; }
+
 protected:
 	VDExternalModule	*mpExtModule;
 	int					mAPIVersion;
@@ -65,6 +68,8 @@ protected:
 	VDStringA			mName;
 	VDStringA			mAuthor;
 	VDStringA			mDescription;
+	bool				mbHasStaticAbout;
+	bool				mbHasStaticConfigure;
 };
 
 //////////
@@ -86,5 +91,6 @@ struct FilterBlurb {
 };
 
 void				FilterEnumerateFilters(std::list<FilterBlurb>& blurbs);
+void				VDEnumerateFilters(vdfastvector<FilterDefinitionInstance *>& defs);
 
 #endif

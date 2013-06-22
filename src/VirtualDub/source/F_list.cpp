@@ -18,6 +18,8 @@
 #include "stdafx.h"
 #include "filter.h"
 #include "filters.h"
+#include <vd2/plugin/vdvideofilt.h>
+#include <vd2/VDXFrame/VideoFilter.h>
 #include <vd2/VDFilters/VFList.h>
 
 extern const VDXFilterDefinition
@@ -59,6 +61,8 @@ static const FilterDefinition *const builtin_filters[]={
 
 void InitBuiltinFilters() {
 	const FilterDefinition *cur, *const *cpp;
+
+	VDXVideoFilter::SetAPIVersion(VIRTUALDUB_FILTERDEF_VERSION);
 
 	cpp = builtin_filters;
 	while(cur = *cpp++)

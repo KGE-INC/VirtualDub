@@ -1649,6 +1649,11 @@ void VDTContextD3D9::Present() {
 		ProcessHRESULT(hr);
 }
 
+void VDTContextD3D9::SetGpuPriority(int priority) {
+	if (mpD3DDeviceEx)
+		mpD3DDeviceEx->SetGPUThreadPriority(priority < 0 ? -7 : priority > 0 ? +7 : 0);
+}
+
 void VDTContextD3D9::BeginScope(uint32 color, const char *message) {
 	typedef int (WINAPI *tpBeginEvent)(D3DCOLOR, LPCWSTR);
 	if (mpBeginEvent) {

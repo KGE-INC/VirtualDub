@@ -240,6 +240,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "3D accel";
 				listitem "Batch";
 				listitem "Auto-recover";
+				listitem "Startup";
 			}
 
 			pageset 101 : value={@100} {
@@ -257,6 +258,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1021;
 				page 1022;
 				page 1023;
+				page 1024;
 			}
 		}
 
@@ -513,9 +515,10 @@ dialog 1017, "" : fill, child {
 			set 0: vertical {
 				label 0, "Disk I/O write mode:" : marginb=5;
 				set 0: marginl=10, vertical {
-					option 100, "Write through - slowest, but most compatible";
-					option 101, "Unbuffered - faster";
-					option 102, "Asynchronous unbuffered - fastest (Windows NT only)";
+					option 100, "Buffered - slowest, but most compatible";
+					option 101, "Write through - slower";
+					option 102, "Unbuffered - faster";
+					option 103, "Asynchronous unbuffered - fastest (Windows NT only)";
 				}
 			}
 		}
@@ -610,6 +613,21 @@ dialog 1023, "" : fill, child {
 			set 0: vertical, spacing=3 {
 				label 0, "VirtualDub can optionally save recovery information before beginning a preview or render operation. If a program failure occurs, this information can then be used to restore the project state." : readonly, multiline;
 				checkbox 100, "&Enable auto-recover";
+			}
+		}
+	}
+}
+
+dialog 1024, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Startup options" {
+			set 0: vertical, spacing=3 {
+				label 0, "The following location will be used for configuration files, including the job queue and auto-recover files:" : readonly, multiline;
+				set 0: marginl=10, vertical {
+					option 100, "Program directory";
+					option 101, "User profile";
+				}
 			}
 		}
 	}

@@ -98,6 +98,7 @@ namespace {
 		bool			mbBatchStatusWindowEnabled;
 
 		bool			mbAutoRecoverEnabled;
+		bool			mbUseUserProfile;
 	} g_prefs2;
 }
 
@@ -426,11 +427,44 @@ public:
 		case kEventAttach:
 			mpBase = pBase;
 			pBase->ExecuteAllLinks();
-			SetValue(100, mPrefs.mFileAsyncDefaultMode);
+			switch(mPrefs.mFileAsyncDefaultMode) {
+				case IVDFileAsync::kModeBuffered:
+					SetValue(100, 0);
+					break;
+
+				case IVDFileAsync::kModeSynchronous:
+					SetValue(100, 1);
+					break;
+
+				case IVDFileAsync::kModeThreaded:
+					SetValue(100, 2);
+					break;
+
+				case IVDFileAsync::kModeAsynchronous:
+				default:
+					SetValue(100, 3);
+					break;
+			}
 			return true;
 		case kEventDetach:
 		case kEventSync:
-			mPrefs.mFileAsyncDefaultMode = GetValue(100);
+			switch(GetValue(100)) {
+				case 0:
+					mPrefs.mFileAsyncDefaultMode = IVDFileAsync::kModeBuffered;
+					break;
+
+				case 1:
+					mPrefs.mFileAsyncDefaultMode = IVDFileAsync::kModeSynchronous;
+					break;
+
+				case 2:
+					mPrefs.mFileAsyncDefaultMode = IVDFileAsync::kModeThreaded;
+					break;
+
+				case 3:
+					mPrefs.mFileAsyncDefaultMode = IVDFileAsync::kModeAsynchronous;
+					break;
+			}
 			return true;
 		}
 		return false;
@@ -661,6 +695,27 @@ public:
 	}
 };
 
+class VDDialogPreferencesStartup : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesStartup(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbUseUserProfile);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbUseUserProfile = GetValue(100) != 0;
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -690,6 +745,7 @@ public:
 				case 11:	pSubDialog->SetCallback(new VDDialogPreferencesAccel(mPrefs), true); break;
 				case 12:	pSubDialog->SetCallback(new VDDialogPreferencesBatch(mPrefs), true); break;
 				case 13:	pSubDialog->SetCallback(new VDDialogPreferencesAutoRecover(mPrefs), true); break;
+				case 14:	pSubDialog->SetCallback(new VDDialogPreferencesStartup(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -803,6 +859,7 @@ void LoadPreferences() {
 	g_prefs2.mbBatchStatusWindowEnabled = key.getBool("Batch: Show status window", false);
 
 	g_prefs2.mbAutoRecoverEnabled = key.getBool("AutoRecover: Enabled", false);
+	g_prefs2.mbUseUserProfile = key.getBool("Use profile-local path", false);
 
 	g_prefs2.mOldPrefs = g_prefs;
 
@@ -860,6 +917,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setBool("Batch: Show status window", prefs.mbBatchStatusWindowEnabled);
 
 	key.setBool("AutoRecover: Enabled", prefs.mbAutoRecoverEnabled);
+	key.setBool("Use profile-local path", prefs.mbUseUserProfile);
 }
 
 void VDSavePreferences() {

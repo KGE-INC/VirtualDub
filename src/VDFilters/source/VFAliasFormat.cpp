@@ -331,6 +331,9 @@ uint32 VDVFilterAliasFormat::GetParams() {
 			break;
 	}
 
+	if (fa->src.mpPixmapLayout->format > kPixFormat_YUV420ib_Planar_709_FR)
+		return FILTERPARAM_NOT_SUPPORTED;
+
 	return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_PURE_TRANSFORM;
 }
 

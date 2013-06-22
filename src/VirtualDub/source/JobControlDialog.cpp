@@ -720,6 +720,9 @@ void VDUIJobControlDialog::GetJobListDispInfoW(NMLVDISPINFOW *nldi) {
 	SYSTEMTIME ct;
 	static const wchar_t *const dow[]={L"Sun",L"Mon",L"Tue",L"Wed",L"Thu",L"Fri",L"Sat"};
 
+	if (!(nldi->item.mask & LVIF_TEXT))
+		return;
+
 	nldi->item.mask			= LVIF_TEXT;
 	nldi->item.pszText[0]	= 0;
 

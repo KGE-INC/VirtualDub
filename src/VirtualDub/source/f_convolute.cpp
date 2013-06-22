@@ -214,7 +214,7 @@ long filter_convolute_param(FilterActivation *fa, const FilterFunctions *ff) {
 	if (pxlsrc.format != nsVDXPixmap::kPixFormat_XRGB8888)
 		return FILTERPARAM_NOT_SUPPORTED;
 
-	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM;
+	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM | FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 //////////////////

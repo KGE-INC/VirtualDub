@@ -28,6 +28,7 @@
 #define IDC_DEBUG                       4
 #define IDC_RENAMEFILES                 4
 #define IDCANCEL2                       4
+#define IDCANCEL4                       4
 #define IDC_MOVEUP                      5
 #define IDS_TITLE_DUBBING_MINIMIZED     5
 #define IDC_SAMPLE_MULTIPLE             5
@@ -228,6 +229,7 @@
 #define IDD_AUTORECOVER                 301
 #define IDR_FILTER_LIST_CONTEXT         303
 #define IDD_FILTER_OUTPUT_NAME          304
+#define IDD_PLUGINS                     305
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -1368,6 +1370,8 @@
 #define ID_LIST_ADDINPUT                40548
 #define ID_FILTERLIST_NAMEOUTPUT        40549
 #define ID_FILTERLIST_ADDINPUT          40550
+#define ID_OPTIONS_PLUG                 40551
+#define ID_OPTIONS_PLUGINS              40552
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1422,9 +1426,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        305
-#define _APS_NEXT_COMMAND_VALUE         40551
-#define _APS_NEXT_CONTROL_VALUE         1527
+#define _APS_NEXT_RESOURCE_VALUE        306
+#define _APS_NEXT_COMMAND_VALUE         40553
+#define _APS_NEXT_CONTROL_VALUE         1528
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

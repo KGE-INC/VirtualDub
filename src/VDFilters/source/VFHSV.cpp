@@ -1437,7 +1437,7 @@ long hsv_param(VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
 		return FILTERPARAM_NOT_SUPPORTED;
 
 	pxldst.pitch = pxlsrc.pitch;
-	return FILTERPARAM_PURE_TRANSFORM;
+	return FILTERPARAM_PURE_TRANSFORM | FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 //////////////////

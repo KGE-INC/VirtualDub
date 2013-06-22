@@ -117,6 +117,8 @@ public:
 	virtual bool IsDeviceLost() const = 0;
 	virtual uint32 GetDeviceLossCounter() const = 0;
 	virtual void Present() = 0;
+
+	virtual void SetGpuPriority(int priority) = 0;
 };
 
 class IVDTProfiler : public IVDRefUnknown {

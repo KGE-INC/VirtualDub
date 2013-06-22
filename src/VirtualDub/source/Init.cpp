@@ -367,6 +367,11 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	VDSetThreadDebugName(GetCurrentThreadId(), "Main");
 	VDInitProtectedScopeHook();
 
+	VDSetDataPath(VDGetProgramPath().c_str());
+
+	const wchar_t *pDataPath = VDGetDataPath();
+	VDSetCrashDumpPath(pDataPath);
+
 	// setup crash traps
 	if (!cmdLine.FindAndRemoveSwitch(L"h")) {
 		SetUnhandledExceptionFilter(CrashHandlerHook);
@@ -442,6 +447,32 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	}
 
 	VDRegistryAppKey::setDefaultKey("Software\\VirtualDub.org\\VirtualDub\\");
+
+	const bool regUseProfileSetting = VDRegistryAppKey("Preferences", false).getBool("Use profile-local path")
+		|| VDRegistryAppKey("Preferences", false, true).getBool("Use profile-local path") ;
+	const bool useProfileSwitch = cmdLine.FindAndRemoveSwitch(L"useprofile");
+	const bool noUseProfileSwitch = cmdLine.FindAndRemoveSwitch(L"nouseprofile");
+	const bool useProfileSetting = useProfileSwitch || (!noUseProfileSwitch && regUseProfileSetting);
+
+	if (useProfileSetting) {
+		const VDStringW& localAppDataPath = VDGetLocalAppDataPath();
+		const VDStringW& localAppDataPath1 = VDMakePath(localAppDataPath.c_str(), L"virtualdub.org");
+		const VDStringW& localAppDataPath2 = VDMakePath(localAppDataPath1.c_str(), L"VirtualDub");
+		if (!VDDoesPathExist(localAppDataPath2.c_str())) {
+			VDCreateDirectory(localAppDataPath1.c_str());
+			VDCreateDirectory(localAppDataPath2.c_str());
+		}
+
+		VDSetDataPath(localAppDataPath2.c_str());
+		VDSetCrashDumpPath(localAppDataPath2.c_str());
+	}
+
+	if (useProfileSetting != regUseProfileSetting) {
+		VDRegistryAppKey key("Preferences", true);
+
+		key.setBool("Use profile-local path", useProfileSetting);
+	}
+
 	VDLoadFilespecSystemData();
 
 	LoadPreferences();

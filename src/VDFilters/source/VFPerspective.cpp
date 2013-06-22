@@ -124,20 +124,8 @@ static int perspective_init(VDXFilterActivation *fa, const VDXFilterFunctions *f
 
 static int perspective_run(const VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
 	PerspectiveFilterData *mfd = (PerspectiveFilterData *)fa->filter_data;
-	VDPixmap pxsrc = {0};
-	VDPixmap pxdst = {0};
-
-	pxsrc.data		= (char *)fa->src.data + fa->src.pitch * (fa->src.h-1);
-	pxsrc.pitch		= -fa->src.pitch;
-	pxsrc.format	= nsVDPixmap::kPixFormat_XRGB8888;
-	pxsrc.w			= fa->src.w;
-	pxsrc.h			= fa->src.h;
-
-	pxdst.data		= (char *)fa->dst.data + fa->dst.pitch * (fa->dst.h-1);
-	pxdst.pitch		= -fa->dst.pitch;
-	pxdst.format	= nsVDPixmap::kPixFormat_XRGB8888;
-	pxdst.w			= fa->dst.w;
-	pxdst.h			= fa->dst.h;
+	VDPixmap pxsrc = (VDPixmap&)*fa->src.mpPixmap;
+	VDPixmap pxdst = (VDPixmap&)*fa->dst.mpPixmap;
 
 	VDPixmapTextureMipmapChain	mipmaps(pxsrc, false, mfd->filtermode == 3, mfd->filtermode ? 16 : 1);
 
@@ -202,13 +190,16 @@ static int perspective_run(const VDXFilterActivation *fa, const VDXFilterFunctio
 
 static long perspective_param(VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
 	PerspectiveFilterData *mfd = (PerspectiveFilterData *)fa->filter_data;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+	if (pxlsrc.format != nsVDXPixmap::kPixFormat_XRGB8888)
+		return FILTERPARAM_NOT_SUPPORTED;
 
-	fa->dst.w		= mfd->new_x;
-	fa->dst.h		= mfd->new_y;
+	VDXPixmapLayout& pxldst = *fa->dst.mpPixmapLayout;
 
-	fa->dst.AlignTo8();
+	pxldst.w		= mfd->new_x;
+	pxldst.h		= mfd->new_y;
 
-	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM;
+	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM | FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 namespace {

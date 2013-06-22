@@ -56,8 +56,10 @@ FilterSystem	filters;
 
 FilterDefinitionInstance::FilterDefinitionInstance(VDExternalModule *pfm)
 	: mpExtModule(pfm)
-	, mRefCount(0)
 	, mAPIVersion(0)
+	, mRefCount(0)
+	, mbHasStaticAbout(false)
+	, mbHasStaticConfigure(false)
 {
 }
 
@@ -87,6 +89,9 @@ void FilterDefinitionInstance::Assign(const FilterDefinition& def, int len) {
 		mDef.mSourceCountLowMinus1 = 0;
 		mDef.mSourceCountHighMinus1 = 0;
 	}
+
+	mbHasStaticAbout = (mDef.mpStaticAboutProc != NULL);
+	mbHasStaticConfigure = (mDef.mpStaticConfigureProc != NULL);
 }
 
 void FilterDefinitionInstance::Deactivate() {
@@ -184,5 +189,15 @@ void FilterEnumerateFilters(std::list<FilterBlurb>& blurbs) {
 		fb.name			= fd.GetName();
 		fb.author		= fd.GetAuthor();
 		fb.description	= fd.GetDescription();
+	}
+}
+
+void VDEnumerateFilters(vdfastvector<FilterDefinitionInstance *>& defs) {
+	List2<FilterDefinitionInstance>::fwit it(g_filterDefs.begin());
+
+	for(; it; ++it) {
+		FilterDefinitionInstance& fd = *it;
+
+		defs.push_back(&fd);
 	}
 }

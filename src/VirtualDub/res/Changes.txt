@@ -1,6 +1,28 @@
 VirtualDub change log
 
-Build %build% (1.10.1, experimental): [%date%]
+Build %build% (1.10.2, experimental): [%date%]
+   [features added]
+   * Added option and /[no]useprofile switch to store configuration files under the user profile.
+   * Added option for fully buffered write I/O.
+   * PluginAPI: The preferred fccHandler supplied by input plugins is now also passed through to output files.
+   * Decoders: Relaxed size restrictions on MJPEG decoder since a more flexible conversion blitter is now being used.
+   
+   [bugs fixed]
+   * The priority of the ASF pseudo-handler has been reduced to allow plugins to handle the format.
+   * Fixed .exe manifest embedding error.
+   * "Export raw video" command now saves properly in job scripts.
+   * Fixed inversion when reading TARGA images (regression from 1.10.1).
+   * Fixed bug that caused occasional truncated audio when writing segmented AVIs.
+   * ExtEnc: Fixed omitted parameters and occasional extra commas when exporting profiles.
+   * Filters: Fixed artifacts in 2:1 filters in 64-bit build.
+   * Filters: Fixed logic errors in HSV adjust and emboss filters.
+   * Filters: Lowered GPU priority in D3D9Ex acceleration mode to improve system responsiveness.
+   * Filters: Restored missing perspective filter.
+   * Filters: Fixed chroma smoother filter.
+   * HexViewer: Fixed incorrect text label for fccHandler stream field.
+   * Capture: Added timeout check for screen capture driver to avoid locking up program totally when capture load is too high.
+
+Build 34703 (1.10.1, experimental): [December 23, 2011]
    [features added]
    * The "audio from other file" dialog now has an extended open options option.
    * Added m2a, m1a, and mpa as default supported extensions to the MPEG audio input module.

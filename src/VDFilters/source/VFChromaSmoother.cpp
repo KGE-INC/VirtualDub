@@ -501,12 +501,12 @@ bool VDVFChromaSmoother::Configure(VDXHWND hwnd) {
 	const int mOldMode = mMode;
 	VDVFChromaSmootherDialog dlg(mMode, fa->ifp);
 
-	if (dlg.ShowDialog((VDGUIHandle)hwnd)) {
+	if (!dlg.ShowDialog((VDGUIHandle)hwnd)) {
 		mMode = mOldMode;
-		return true;
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 VDXVF_BEGIN_SCRIPT_METHODS(VDVFChromaSmoother)

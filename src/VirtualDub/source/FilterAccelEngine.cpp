@@ -349,6 +349,8 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 		return false;
 	}
 
+	mpTC->SetGpuPriority(-1);
+
 	VDSetThreadExecutionStateW32(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
 
 	mpTP = vdpoly_cast<IVDTProfiler *>(mpTC);

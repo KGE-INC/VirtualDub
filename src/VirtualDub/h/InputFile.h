@@ -99,6 +99,7 @@ public:
 
 	enum DetectionConfidence {
 		kDC_None,
+		kDC_VeryLow,
 		kDC_Low,
 		kDC_Moderate,
 		kDC_High

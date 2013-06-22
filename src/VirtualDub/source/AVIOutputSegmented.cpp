@@ -163,7 +163,6 @@ public:
 	void *AsInterface(uint32 id);
 
 	void Update();
-	void Finish(int stream);
 
 	IVDMediaOutputStream *createAudioStream();
 	IVDMediaOutputStream *createVideoStream();
@@ -213,6 +212,8 @@ public:
 		kFlushEnded
 	};
 
+	VDAVIOutputSegmentedStream();
+
 	void setStreamInfo(const AVIStreamHeader_fixed& hdr);
 
 	virtual bool IsEnded() = 0;
@@ -221,12 +222,21 @@ public:
 	virtual bool GetNextPendingRun(uint32& samples, uint32& bytes, VDTime& endTime) = 0;
 	virtual bool GetPendingInfo(VDTime endTime, uint32& samples, uint32& bytes) = 0;
 	virtual void ScheduleSamples(uint32 samples) = 0;
+	virtual void EndScheduling() { mbSchedulingEnabled = false; }
 	virtual FlushResult Flush(uint32 samples, bool force) = 0;
 
 protected:
 	double	mSampleRate;
 	double	mInvSampleRate;
+	bool	mbSchedulingEnabled;
 };
+
+VDAVIOutputSegmentedStream::VDAVIOutputSegmentedStream()
+	: mSampleRate(1)
+	, mInvSampleRate(1)
+	, mbSchedulingEnabled(true)
+{
+}
 
 void VDAVIOutputSegmentedStream::setStreamInfo(const AVIStreamHeader_fixed& hdr) {
 	AVIOutputStream::setStreamInfo(hdr);
@@ -366,21 +376,30 @@ VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedVideoStream::Flush(u
 	if (!samples)
 		return kFlushOK;
 
-	bool gotall = true;
-
+	// Check if we are being asked to write more samples than were scheduled.
 	if (samples > mScheduledSamples) {
-		if (!force || !mScheduledSamples) {
-			if (mbEnded && mPendingRuns.empty())
-				return kFlushEnded;
-			else
-				return kFlushPending;
-		}
+		// Okay, we are. We should only proceed in one of two cases:
+		//
+		//  1) We're ending a segment (force=true). In that case, we want to flush
+		//     out all remaining scheduled samples.
+		//
+		//  2) The stream is ended and scheduling has been disabled. In that case,
+		//     we want to write out whatever is left. Note that we do NOT want to
+		//     do this just when the stream ends as we might have a segment break
+		//     in between.
+		//
+		// Otherwise, we need to return Pending to stall the interleaved output until
+		// more samples can be scheduled or the segment is ended.
+		if (mbSchedulingEnabled && !force)
+			return kFlushPending;
 
-		gotall = false;
 		samples = mScheduledSamples;
 	}
 
 	samples += mExtraSamples;
+
+	if (!samples && (force || mbEnded))
+		return kFlushEnded;
 
 	while(samples > 0) {
 		Run& run = mClearedRuns.front();
@@ -460,6 +479,7 @@ public:
 	VDTime GetPendingLevel();
 	void ScheduleSamples(uint32 samples);
 	FlushResult Flush(uint32 samples, bool force);
+	void EstimateFitSamples(sint64 bytesToFit, uint32& samples, uint32& bytes, bool forceSample);
 
 	void setFormat(const void *pFormat, int len);
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
@@ -470,7 +490,7 @@ public:
 
 protected:
 	uint64 RemoveSamples(uint32& samples, uint32 vbrSizeThreshold);
-	uint64 GetBytesForSamples(uint32 samples) const;
+	uint64 GetBytesForSamples(uint32 samplesToSkip, uint32 samples) const;
 	void ValidateChunkList();
 
 	VDAVIOutputSegmented *const mpParent;
@@ -488,6 +508,7 @@ protected:
 	struct ChunkEntry {
 		uint32	mSampleSize;
 		uint32	mSampleCount;
+		uint32	mBytes;
 	};
 
 	typedef vdfastdeque<ChunkEntry> Chunks;
@@ -519,7 +540,7 @@ bool VDAVIOutputSegmentedAudioStream::GetNextPendingRun(uint32& samples, uint32&
 		return false;
 
 	samples = mBufferedSamples;
-	bytes = (uint32)GetBytesForSamples(samples);
+	bytes = (uint32)GetBytesForSamples(0, samples);
 	endTime = VDRoundToInt64(mTotalBufferedSamples * 1000000.0 * mInvSampleRate);
 	return true;
 }
@@ -528,18 +549,18 @@ bool VDAVIOutputSegmentedAudioStream::GetPendingInfo(VDTime endTime, uint32& sam
 	bool ok = true;
 
 	if (endTime < 0)
-		samples = mBufferedSamples;
+		samples = mBufferedSamples - mScheduledSamples;
 	else {
 		samples = (uint32)(VDRoundToInt64(endTime * 1.0 / 1000000.0 * mSampleRate) - mTotalScheduledSamples);
 
-		if (samples > mBufferedSamples) {
-			samples = mBufferedSamples;
+		if (samples > mBufferedSamples - mScheduledSamples) {
+			samples = mBufferedSamples - mScheduledSamples;
 			if (!mbEnded)
 				ok = false;
 		}
 	}
 
-	bytes = (uint32)GetBytesForSamples(samples);
+	bytes = (uint32)GetBytesForSamples(mScheduledSamples, samples);
 
 	bytes = (bytes + 1) & ~1;		// evenify for AVI
 	return ok;
@@ -552,24 +573,34 @@ VDTime VDAVIOutputSegmentedAudioStream::GetPendingLevel() {
 void VDAVIOutputSegmentedAudioStream::ScheduleSamples(uint32 samples) {
 	mScheduledSamples += samples;
 	mTotalScheduledSamples += samples;
+
+	VDASSERT(mScheduledSamples <= mBufferedSamples);
 }
 
 VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedAudioStream::Flush(uint32 samples, bool force) {
 	if (!samples)
 		return kFlushOK;
 
-	bool gotall = true;
+	// Check if we are being asked to write more samples than were scheduled.
 	if (samples > mScheduledSamples) {
-		if (!force || !mScheduledSamples) {
-			if (mbEnded && mBufferedSamples <= mScheduledSamples)
-				return kFlushEnded;
-			else
-				return kFlushPending;
-		}
+		// Okay, we are. We should only proceed in one of two cases:
+		//
+		//  1) We're ending a segment (force=true). In that case, we want to flush
+		//     out all remaining scheduled samples.
+		//
+		//  2) The stream is ended and scheduling has been disabled. In that case,
+		//     we want to write out whatever is left. Note that we do NOT want to
+		//     do this just when the stream ends as we might have a segment break
+		//     in between.
+		//
+		// Otherwise, we need to return Pending to stall the interleaved output until
+		// more samples can be scheduled or the segment is ended.
+		if (mbSchedulingEnabled && !force)
+			return kFlushPending;
 
-		gotall = false;
 		samples = mScheduledSamples;
 	}
+
 	mScheduledSamples -= samples;
 
 	samples += mExtraSamples;
@@ -581,6 +612,9 @@ VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedAudioStream::Flush(u
 	}
 
 	mBufferedSamples -= samples;
+
+	if (!samples && (mbEnded || force))
+		return kFlushEnded;
 
 	while(samples) {
 		uint32 samplesToCopy = samples;
@@ -608,6 +642,65 @@ VDAVIOutputSegmentedStream::FlushResult VDAVIOutputSegmentedAudioStream::Flush(u
 	return kFlushOK;
 }
 
+void VDAVIOutputSegmentedAudioStream::EstimateFitSamples(sint64 bytesToFit, uint32& samples, uint32& bytes, bool forceSample) {
+	if (!bytesToFit) {
+		samples = 0;
+		bytes = 0;
+		return;
+	}
+
+	Chunks::const_iterator it(mChunks.begin()), itEnd(mChunks.end());
+	uint32 samplesToSkip = mScheduledSamples;
+	uint32 tempSamples = 0;
+	uint32 tempBytes = 0;
+	uint32 bytesLeft = VDClampToUint32(bytesToFit);
+
+	for(; it != itEnd; ++it) {
+		const ChunkEntry& ent = *it;
+		uint32 tc = ent.mSampleCount;
+		uint32 bytes = ent.mBytes;
+
+		VDASSERT(tc > 0);
+
+		if (samplesToSkip) {
+			uint32 ts = tc;
+
+			if (ts > samplesToSkip)
+				ts = samplesToSkip;
+
+			samplesToSkip -= ts;
+			tc -= ts;
+
+			if (!tc)
+				continue;
+
+			bytes = tc * ent.mSampleSize;
+		}
+
+		if (bytesLeft < bytes) {
+			tc = bytesLeft / ent.mSampleSize;
+
+			if (!tc && !tempSamples && forceSample)
+				tc = 1;
+
+			tempBytes += bytesLeft - bytesLeft % ent.mSampleSize;
+			tempSamples += tc;
+			break;
+		}
+
+		bytesLeft -= bytes;
+		tempBytes += bytes;
+		tempSamples += tc;
+
+		if (!bytesLeft)
+			break;
+	}
+
+	bytes = tempBytes;
+	samples = tempSamples;
+	VDASSERT(bytes <= bytesToFit);
+}
+
 void VDAVIOutputSegmentedAudioStream::setFormat(const void *pFormat, int len) {
 	VDAVIOutputSegmentedStream::setFormat(pFormat, len);
 
@@ -631,14 +724,17 @@ void VDAVIOutputSegmentedAudioStream::partialWriteBegin(uint32 flags, uint32 byt
 		ChunkEntry& ent = mChunks.push_back();
 		ent.mSampleCount = samples;
 		ent.mSampleSize = sampleSize;
+		ent.mBytes = samples * sampleSize;
 	} else {
 		ChunkEntry& ent = mChunks.back();
 		if (ent.mSampleSize != sampleSize) {
 			ChunkEntry& ent2 = mChunks.push_back();
 			ent2.mSampleCount = samples;
 			ent2.mSampleSize = sampleSize;
+			ent2.mBytes = samples * sampleSize;
 		} else {
 			ent.mSampleCount += samples;
+			ent.mBytes += samples * sampleSize;
 		}
 	}
 
@@ -690,16 +786,29 @@ uint64 VDAVIOutputSegmentedAudioStream::RemoveSamples(uint32& samples, uint32 vb
 	return bytes;
 }
 
-uint64 VDAVIOutputSegmentedAudioStream::GetBytesForSamples(uint32 samples) const {
+uint64 VDAVIOutputSegmentedAudioStream::GetBytesForSamples(uint32 samplesToSkip, uint32 samples) const {
 	Chunks::const_iterator it(mChunks.begin()), itEnd(mChunks.end());
 	uint64 bytes = 0;
 
 	for(; it != itEnd && samples; ++it) {
 		const ChunkEntry& ent = *it;
 
-		uint32 tc = samples;
-		if (tc > ent.mSampleCount)
-			tc = ent.mSampleCount;
+		uint32 tc = ent.mSampleCount;
+
+		if (samplesToSkip) {
+			uint32 ts = samplesToSkip;
+			if (ts > tc)
+				ts = tc;
+
+			samplesToSkip -= ts;
+			tc -= ts;
+
+			if (!tc)
+				continue;
+		}
+
+		if (tc > samples)
+			tc = samples;
 
 		bytes += (uint64)ent.mSampleSize * tc;
 		samples -= tc;
@@ -767,8 +876,10 @@ void *VDAVIOutputSegmented::AsInterface(uint32 id) {
 
 void VDAVIOutputSegmented::Update() {
 	if (!mbSegmentEnding) {
-		uint32 videoSamples, videoBytes;
-		VDTime endTime;
+		uint32 videoSamples = 0;
+		uint32 videoBytes = 0;
+		VDTime endTime = 0;
+
 		if (mpFirstVideoStream->GetNextPendingRun(videoSamples, videoBytes, endTime)) {
 			uint32 audioSamples, audioBytes;
 
@@ -784,6 +895,8 @@ void VDAVIOutputSegmented::Update() {
 			} else if (mpFirstAudioStream->GetPendingInfo(endTime, audioSamples, audioBytes)) {
 				sint64 newSize = mAccumulatedBytes + audioBytes + videoBytes;
 
+				// Check if we can fit both the video and audio; if not, don't schedule either and
+				// end the segment. However, if the segment is empty, force an overflow.
 				if (mAccumulatedBytes > 0 && (newSize + VDFloorToInt64(mAccumulatedFrames * (1.0 + 1.0 / mAudioInterval)) * 24 > mSegmentSizeLimit || mAccumulatedFrames+videoSamples > mSegmentFrameLimit)) {
 					mbSegmentEnding = true;
 				} else {
@@ -792,14 +905,37 @@ void VDAVIOutputSegmented::Update() {
 					mpFirstVideoStream->ScheduleSamples(videoSamples);
 					mpFirstAudioStream->ScheduleSamples(audioSamples);
 				}
+			} else if (mpFirstAudioStream->IsEnded()) {
+				mpFirstAudioStream->EndScheduling();
+
+				// We don't have enough audio samples to match the video segment, so just schedule whatever
+				// we have left.
+				mpFirstVideoStream->ScheduleSamples(videoSamples);
+				mAccumulatedBytes += videoBytes;
+				mAccumulatedFrames += videoSamples;
+
+				if (mpFirstAudioStream->GetPendingInfo(-1, audioSamples, audioBytes)) {
+					mAccumulatedBytes += audioBytes;
+					mpFirstAudioStream->ScheduleSamples(audioSamples);
+				}
 			}
 		} else if (mpFirstVideoStream->IsEnded()) {
 			uint32 audioSamples, audioBytes;
 
+			mpFirstVideoStream->EndScheduling();
+
 			if (mpFirstAudioStream->GetPendingInfo(-1, audioSamples, audioBytes)) {
+				if (!audioSamples && mpFirstAudioStream->IsEnded())
+					mpFirstAudioStream->EndScheduling();
+
 				sint64 newSize = mAccumulatedBytes + audioBytes + 24;
 
-				if (newSize + VDFloorToInt64(mAccumulatedFrames * (1.0 + 1.0 / mAudioInterval)) * 24 > mSegmentSizeLimit && mAccumulatedBytes > 0) {
+				if (newSize + VDFloorToInt64(mAccumulatedFrames * (1.0 + 1.0 / mAudioInterval)) * 24 > mSegmentSizeLimit) {
+					mpFirstAudioStream->EstimateFitSamples(mSegmentSizeLimit - mAccumulatedBytes, audioSamples, audioBytes, !mAccumulatedBytes);
+
+					mAccumulatedBytes += audioBytes;
+					mpFirstAudioStream->ScheduleSamples(audioSamples);
+
 					mbSegmentEnding = true;
 				} else {
 					mAccumulatedBytes = newSize;
@@ -852,10 +988,6 @@ void VDAVIOutputSegmented::Update() {
 
 		mNextAction = mStreamInterleaver.GetNextAction(mNextStream, mNextSamples);
 	}
-}
-
-void VDAVIOutputSegmented::Finish(int stream) {
-	mStreamInterleaver.EndStream(stream);
 }
 
 void VDAVIOutputSegmented::ReinitInterleaver() {

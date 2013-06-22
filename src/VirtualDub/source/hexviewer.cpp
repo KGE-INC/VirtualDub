@@ -66,7 +66,7 @@ static const struct RIFFFieldInfo {
 	const char *name;
 } g_Fields_strh[]={
 	{ 8, RIFFFieldInfo::kfcc, "fccType: stream type"},
-	{12, RIFFFieldInfo::kfcc, "fccType: stream handler"},
+	{12, RIFFFieldInfo::kfcc, "fccHandler: stream handler"},
 	{16, RIFFFieldInfo::kulong, "dwFlags"},
 	{20, RIFFFieldInfo::kuword, "wPriority"},
 	{22, RIFFFieldInfo::kuword, "wLanguage"},
@@ -2556,6 +2556,9 @@ void HexEditor::RIFFTree(HWND hwndTV) {
 
 INT_PTR CALLBACK HexEditor::TreeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hdlg, DWLP_USER);
+
+	if (!pcd && msg != WM_INITDIALOG)
+		return FALSE;
 
 	switch(msg) {
 	case WM_INITDIALOG:

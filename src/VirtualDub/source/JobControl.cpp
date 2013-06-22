@@ -72,8 +72,6 @@ VDJobQueue::VDJobQueue()
 		mBaseSignature ^= computerHash;
 		mRunnerId += computerHash;
 	}
-
-	mDefaultJobFilePath = VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.jobs");
 }
 
 VDJobQueue::~VDJobQueue() {
@@ -125,6 +123,10 @@ void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode,
 		g_pVDJobQueueStatusCallback->OnJobQueueReloaded();
 		g_pVDJobQueueStatusCallback->OnJobQueueStatusChanged(GetQueueStatus());
 	}
+}
+
+void VDJobQueue::SetDefaultJobFilePath(const wchar_t *path) {
+	mDefaultJobFilePath = path;
 }
 
 int32 VDJobQueue::GetJobIndexById(uint64 id) const {

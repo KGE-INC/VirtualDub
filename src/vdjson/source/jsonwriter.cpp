@@ -28,6 +28,8 @@ VDJSONWriter::~VDJSONWriter() {
 
 void VDJSONWriter::Begin(IVDJSONWriterOutput *output) {
 	mpOutput = output;
+	mbArrayMode = false;
+	mbFirstItem = true;
 }
 
 void VDJSONWriter::End() {

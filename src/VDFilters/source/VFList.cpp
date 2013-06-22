@@ -45,6 +45,7 @@ extern const VDXFilterDefinition g_VDVFIVTC;
 extern const VDXFilterDefinition g_VDVFMergeLayers;
 extern const VDXFilterDefinition g_VDVFMotionBlur;
 extern const VDXFilterDefinition g_VDVFNull;
+extern const VDXFilterDefinition g_VDVFPerspective;
 extern const VDXFilterDefinition g_VDVFReduce2;
 extern const VDXFilterDefinition g_VDVFReduce2HQ;
 extern const VDXFilterDefinition g_VDVFRotate;
@@ -83,6 +84,7 @@ extern const VDXFilterDefinition *const g_VDVFList[]={
 	&g_VDVFMergeLayers,
 	&g_VDVFMotionBlur,
 	&g_VDVFNull,
+	&g_VDVFPerspective,
 	&g_VDVFReduce2,
 	&g_VDVFReduce2HQ,
 	&g_VDVFRotate,

@@ -467,14 +467,16 @@ VDZLRESULT VDUIProxyListView::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
 				NMLVDISPINFOA *dispa = (NMLVDISPINFOA *)hdr;
 				IVDUIListViewVirtualItem *lvvi = (IVDUIListViewVirtualItem *)dispa->item.lParam;
 
-				mTextW[0].clear();
-				if (lvvi)
-					lvvi->GetText(dispa->item.iSubItem, mTextW[0]);
-				mTextA[mNextTextIndex] = VDTextWToA(mTextW[0]);
-				dispa->item.pszText = (LPSTR)mTextA[mNextTextIndex].c_str();
+				if (dispa->item.mask & LVIF_TEXT) {
+					mTextW[0].clear();
+					if (lvvi)
+						lvvi->GetText(dispa->item.iSubItem, mTextW[0]);
+					mTextA[mNextTextIndex] = VDTextWToA(mTextW[0]);
+					dispa->item.pszText = (LPSTR)mTextA[mNextTextIndex].c_str();
 
-				if (++mNextTextIndex >= 3)
-					mNextTextIndex = 0;
+					if (++mNextTextIndex >= 3)
+						mNextTextIndex = 0;
+				}
 			}
 			break;
 
@@ -483,13 +485,15 @@ VDZLRESULT VDUIProxyListView::On_WM_NOTIFY(VDZWPARAM wParam, VDZLPARAM lParam) {
 				NMLVDISPINFOW *dispw = (NMLVDISPINFOW *)hdr;
 				IVDUIListViewVirtualItem *lvvi = (IVDUIListViewVirtualItem *)dispw->item.lParam;
 
-				mTextW[mNextTextIndex].clear();
-				if (lvvi)
-					lvvi->GetText(dispw->item.iSubItem, mTextW[mNextTextIndex]);
-				dispw->item.pszText = (LPWSTR)mTextW[mNextTextIndex].c_str();
+				if (dispw->item.mask & LVIF_TEXT) {
+					mTextW[mNextTextIndex].clear();
+					if (lvvi)
+						lvvi->GetText(dispw->item.iSubItem, mTextW[mNextTextIndex]);
+					dispw->item.pszText = (LPWSTR)mTextW[mNextTextIndex].c_str();
 
-				if (++mNextTextIndex >= 3)
-					mNextTextIndex = 0;
+					if (++mNextTextIndex >= 3)
+						mNextTextIndex = 0;
+				}
 			}
 			break;
 

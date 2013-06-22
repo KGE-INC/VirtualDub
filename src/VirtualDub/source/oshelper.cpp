@@ -19,6 +19,8 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shlwapi.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/zip.h>
@@ -29,7 +31,11 @@
 
 extern const char g_szError[];
 
-void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted) {
+VDStringW g_VDDataPath;
+
+///////////////////////////////////////////////////////////////////////////
+
+void Draw3DRect(VDZHDC hDC, int x, int y, int dx, int dy, bool inverted) {
 	HPEN hPenOld;
 
 	hPenOld = (HPEN)SelectObject(hDC, GetStockObject(inverted ? WHITE_PEN : BLACK_PEN));
@@ -193,11 +199,11 @@ HWND APIENTRY VDGetAncestorW98(HWND hwnd, UINT gaFlags) {
 	return g_pVDGetAncestorRaw(hwnd, gaFlags);
 }
 
-HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags) {
+HWND VDGetAncestorW32(HWND hwnd, uint32 gaFlags) {
 	return g_pVDGetAncestor(hwnd, gaFlags);
 }
 
-VDStringW VDLoadStringW32(UINT uID, bool doSubstitutions) {
+VDStringW VDLoadStringW32(uint32 uID, bool doSubstitutions) {
 	// Credit for this function goes to Raymond Chen, who described how
 	// to directly access string resources in his blog.
 
@@ -307,6 +313,50 @@ void VDSubstituteStrings(VDStringW& s) {
 	}
 
 	s = t;
+}
+
+void VDSetDataPath(const wchar_t *path) {
+	g_VDDataPath = path;
+}
+
+const wchar_t *VDGetDataPath() {
+	return g_VDDataPath.c_str();
+}
+
+VDStringW VDGetLocalAppDataPath() {
+	int csidl = CSIDL_APPDATA;
+
+	HMODULE hmodShell32 = VDLoadSystemLibraryW32("shell32");
+
+	if (hmodShell32) {
+		typedef HRESULT (CALLBACK *tpDllGetVersion)(DLLVERSIONINFO *);
+
+		DLLVERSIONINFO dvi = {sizeof(DLLVERSIONINFO)};
+
+		tpDllGetVersion pDllGetVersion = (tpDllGetVersion)GetProcAddress(hmodShell32, "DllGetVersion");
+		if (pDllGetVersion && NOERROR == pDllGetVersion(&dvi)) {
+			if (dvi.dwMajorVersion >= 5)
+				csidl = CSIDL_LOCAL_APPDATA;
+		}
+
+		FreeLibrary(hmodShell32);
+	}
+
+	if (VDIsWindowsNT()) {
+		wchar_t pathW[MAX_PATH];
+
+		if (!SHGetSpecialFolderPathW(NULL, pathW, csidl, FALSE))
+			return VDGetProgramPath();
+
+		return VDStringW(pathW);
+	} else {
+		char pathA[MAX_PATH];
+
+		if (!SHGetSpecialFolderPathA(NULL, pathA, csidl, FALSE))
+			return VDGetProgramPath();
+
+		return VDTextAToW(pathA);
+	}
 }
 
 uint32 VDCreateAutoSaveSignature() {

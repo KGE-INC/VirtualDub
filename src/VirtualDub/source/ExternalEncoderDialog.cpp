@@ -846,6 +846,7 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 					const VDJSONValueRef& description = setInfo["description"];
 					const VDJSONValueRef& extension = setInfo["extension"];
 					const VDJSONValueRef& processPartial = setInfo["processPartial"];
+					const VDJSONValueRef& useOutputAsTemp = setInfo["useOutputAsTemp"];
 
 					eset->mName = setEnum.GetName();
 
@@ -870,6 +871,9 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 					if (processPartial.IsValid())
 						eset->mbProcessPartialOutput = processPartial.AsBool();
 
+					if (useOutputAsTemp.IsValid())
+						eset->mbUseOutputAsTemp = useOutputAsTemp.AsBool();
+
 					esets.push_back(eset);
 				}
 			}
@@ -891,6 +895,7 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 					const VDJSONValueRef& logStdout = profInfo["logStdout"];
 					const VDJSONValueRef& logStderr = profInfo["logStderr"];
 					const VDJSONValueRef& bypassCompression = profInfo["bypassCompression"];
+					const VDJSONValueRef& predeleteOutputFile = profInfo["predeleteOutputFile"];
 
 					eprof->mName = profEnum.GetName();
 
@@ -926,6 +931,9 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 
 					if (logStderr.IsValid())
 						eprof->mbLogStderr = logStderr.AsBool();
+
+					if (predeleteOutputFile.IsValid())
+						eprof->mbPredeleteOutputFile = predeleteOutputFile.AsBool();
 
 					if (bypassCompression.IsValid())
 						eprof->mbBypassCompression = bypassCompression.AsBool();
@@ -998,6 +1006,9 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 
 									writer.WriteMemberName(L"processPartial");
 									writer.WriteBool(eset->mbProcessPartialOutput);
+
+									writer.WriteMemberName(L"useOutputAsTemp");
+									writer.WriteBool(eset->mbUseOutputAsTemp);
 								writer.Close();
 							}
 						}
@@ -1050,6 +1061,9 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 
 									writer.WriteMemberName(L"bypassCompression");
 									writer.WriteBool(eprof->mbBypassCompression);
+
+									writer.WriteMemberName(L"predeleteOutputFile");
+									writer.WriteBool(eprof->mbPredeleteOutputFile);
 								writer.Close();
 							}
 						}

@@ -45,7 +45,7 @@ public:
 
 		if (nHeaderSize >= 16) {
 			if (!memcmp(pHeader, asf_sig, 16))
-				return kDC_Low;
+				return kDC_VeryLow;
 		}
 
 		return kDC_None;

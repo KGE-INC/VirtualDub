@@ -344,6 +344,9 @@ INT_PTR CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 			if (pnldi->hdr.code == LVN_GETDISPINFO) {
 				CapSpillDrive *pcsd;
 
+				if (!(pnldi->item.mask & LVIF_TEXT))
+					return FALSE;
+
 				pcsd = (CapSpillDrive *)pnldi->item.lParam;
 
 				if (!pcsd) {

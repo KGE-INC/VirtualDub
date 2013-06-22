@@ -282,7 +282,7 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, const VDPixmap& vb) {
 		vbSrc.format = kFormats[bpp - 2];
 		vbSrc.pitch = bpp * vbSrc.w;
 
-		if (hdr.AttBits & 0x20) {
+		if (!(hdr.AttBits & 0x20)) {
 			vdptrstep(vbSrc.data, vbSrc.pitch * (h-1));
 			vbSrc.pitch = -vbSrc.pitch;
 		}
@@ -327,10 +327,11 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, const VDPixmap& vb) {
 			c &= 0x7f;
 
 			if (dst == dstEnd) {
-				if (hdr.AttBits & 0x20)
+				if (!(hdr.AttBits & 0x20))
 					BitBltAlpha(vb, 0, y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				else
 					BitBltAlpha(vb, 0, h-1-y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
+
 				dst = rowbuf;
 				if (++y >= h) {
 					if (c)

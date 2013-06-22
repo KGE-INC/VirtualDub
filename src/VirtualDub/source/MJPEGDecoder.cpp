@@ -631,10 +631,6 @@ const uint8 *MJPEGDecoder::decodeFrameInfo(const uint8 *psrc) {
 			mChromaMode = kYCrCb444;
 			mcu_width	= (raw_width + 7)/8;
 			mcu_height	= (raw_height + 7)/8;
-
-			if (raw_width & 7)
-				throw	MyError("VirtualDub cannot decode 4:4:4 Motion JPEG frames with image widths that are not "
-						"multiples of 8.  Please install a third-party Motion-JPEG codec.");
 			break;
 		}
 
@@ -644,11 +640,6 @@ const uint8 *MJPEGDecoder::decodeFrameInfo(const uint8 *psrc) {
 			mChromaMode = kYCrCb422;
 			mcu_width	= (raw_width + 15)/16;
 			mcu_height	= (raw_height + 7)/8;
-
-			if (raw_width & 15)
-				throw	MyError("VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths that are not "
-						"multiples of 16.  Please install a third-party Motion-JPEG codec.");
-
 			break;
 		}
 
@@ -658,11 +649,6 @@ const uint8 *MJPEGDecoder::decodeFrameInfo(const uint8 *psrc) {
 			mChromaMode = kYCrCb420;
 			mcu_width	= (raw_width + 15)/16;
 			mcu_height	= (raw_height + 15)/16;
-
-			if ((raw_width|raw_height) & 15)
-				throw	MyError("VirtualDub cannot decode 4:2:0 Motion JPEG frames with image widths or heights that are not "
-						"multiples of 16.  Please install a third-party Motion-JPEG codec.");
-
 			break;
 		}
 
@@ -690,8 +676,13 @@ const uint8 *MJPEGDecoder::decodeFrameInfo(const uint8 *psrc) {
 			break;
 	}
 
-	if (!mImageBuffer.base() || mImageBuffer.format != format)
+	if (!mImageBuffer.base() || mImageBuffer.format != format) {
+		// Allocate an image with space for 16x16 blocks, but set the width and height
+		// to the MCUs. This promotes proper chroma handling at the edges.
 		mImageBuffer.init((width + 15) & ~15, (height + 15) & ~15, format);
+		mImageBuffer.w = comp_mcu_x[0] * 8 * mcu_width;
+		mImageBuffer.h = comp_mcu_y[0] * 8 * mcu_height;
+	}
 
 	return psrc + 8 + 3*3;
 }
@@ -762,67 +753,6 @@ const uint8 *MJPEGDecoder::decodeScan(const uint8 *ptr, bool odd_field) {
 
 	return decodeMCUs(ptr, odd_field);
 }
-
-///////////////////////////////////////////////////////////////////////////
-
-#if 0
-namespace nsVDMJPEG {
-	static const uint64 Cr_coeff = 0x0000005AFFD20000;
-	static const uint64 Cb_coeff = 0x00000000FFEA0071;
-
-	static const uint64 C_bias = 0x0000008000000080;
-	static const uint64 C_bias2 = 0x0080008000800080;
-
-	static const uint64 Cr_coeff_R = 0x005A005A005A005A;
-	static const uint64 Cr_coeff_G = 0xFFD2FFD2FFD2FFD2;
-
-	static const uint64 CrCb_coeff_G = 0xFFD2FFEAFFD2FFEA;
-
-	static const uint64 Cb_coeff_B = 0x0071007100710071;
-	static const uint64 Cb_coeff_G = 0xFFEAFFEAFFEAFFEA;
-	static const uint64 rb_mask	= 0x7C1F7C1F7C1F7C1F;
-	static const uint64 mask5		= 0xF8F8F8F8F8F8F8F8;
-
-	static const uint64 G_const_1	= 0x7C007C007C007C00;
-	static const uint64 G_const_2	= 0x7C007C007C007C00;
-	static const uint64 G_const_3	= 0x03e003e003e003e0;
-	static const uint64 G_const_4	= 0x7F007F007F007F00;
-
-	static const uint64 x00FFw			= 0x00FF00FF00FF00FF;
-	static const uint64 U_coeff_twice	= 0xFFEA0071FFEA0071;
-	static const uint64 V_coeff_twice	= 0x005AFFD2005AFFD2;
-	static const uint64 x00000000FFFFFFFF = 0x00000000FFFFFFFF;
-	static const uint64 x0000FFFFFFFF0000 = 0x0000FFFFFFFF0000;
-};
-
-using namespace nsVDMJPEG;
-
-#pragma warning(push)
-#pragma warning(disable: 4799)		// function 'foo' has no EMMS instruction
-
-#define DECLARE_MJPEG_COLOR_CONVERTER(x) static void __declspec(naked) __stdcall MJPEGDecode##x##_MMX(void *dst, const short *dct_coeffs, ptrdiff_t dstpitch, int rows)
-#define MOVNTQ movq
-#define DECLARE_MJPEG_CONSTANTS
-#define	MJPEG_MODE_MMX
-
-#include "mjpeg_color.inl"
-
-#undef	MJPEG_MODE_MMX
-#undef DECLARE_MJPEG_CONSTANTS
-#undef DECLARE_MJPEG_COLOR_CONVERTER
-#undef MOVNTQ
-#define DECLARE_MJPEG_COLOR_CONVERTER(x) static void __declspec(naked) __stdcall MJPEGDecode##x##_ISSE(void *dst, const short *dct_coeffs, ptrdiff_t dstpitch, int rows)
-#define MOVNTQ movntq
-#define MJPEG_MODE_ISSE
-
-#include "mjpeg_color.inl"
-
-#undef MJPEG_MODE_ISSE
-#undef DECLARE_MJPEG_COLOR_CONVERTER
-#undef MOVNTQ
-
-#pragma warning(pop)
-#endif
 
 ///////////////////////////////////////////////////////////////////////////
 

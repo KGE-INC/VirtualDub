@@ -22,6 +22,7 @@
 #include <vd2/VDLib/Dialog.h>
 #include <vd2/VDLib/UIProxies.h>
 #include "script.h"
+#include "oshelper.h"
 #include "resource.h"
 
 extern const char g_szError[];
@@ -225,7 +226,7 @@ void VDUIDialogAutoRecover::UpdateEnables() {
 ///////////////////////////////////////////////////////////////////////////
 
 VDStringW VDUIGetAutoRecoverPath() {
-	return VDGetProgramPath();
+	return VDStringW(VDGetDataPath());
 }
 
 void VDUICheckForAutoRecoverFiles(VDGUIHandle h) {

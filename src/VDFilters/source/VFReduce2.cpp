@@ -52,10 +52,10 @@ static int reduce_run(const VDXFilterActivation *fa, const VDXFilterFunctions *f
 			src1 += 2;
 			src2 += 2;
 
-			const uint32 lo0 = p0 & 0x030303;
-			const uint32 lo1 = p1 & 0x030303;
-			const uint32 lo2 = p2 & 0x030303;
-			const uint32 lo3 = p3 & 0x030303;
+			const uint32 lo0 = p0 & 0xff030303;
+			const uint32 lo1 = p1 & 0xff030303;
+			const uint32 lo2 = p2 & 0xff030303;
+			const uint32 lo3 = p3 & 0xff030303;
 
 			const uint32 losum = lo0 + lo1 + lo2 + lo3;
 

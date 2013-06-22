@@ -617,6 +617,7 @@ void JobAddConfigurationSaveVideo(const DubOptions *opt, const wchar_t *srcFile,
 		, strCify(VDTextWToU8(VDStringW(dstFile)).c_str())
 		, format.mOutputFormat
 		, format.mScanlineAlignment
+		, format.mbSwapChromaPlanes
 		, format.mbBottomUp
 		);
 
@@ -676,6 +677,7 @@ void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bInclu
 ///////////////////////////////////////////////////////////////////////////
 
 bool InitJobSystem() {
+	g_VDJobQueue.SetDefaultJobFilePath(VDMakePath(VDGetDataPath(), L"VirtualDub.jobs").c_str());
 	g_VDJobQueue.SetJobFilePath(NULL, false, false);
 
 	return true;

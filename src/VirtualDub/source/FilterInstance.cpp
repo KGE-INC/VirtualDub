@@ -1110,6 +1110,10 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal *inputs, uint32 numInputs,
 		if (invalidCrop)
 			flags = FILTERPARAM_NOT_SUPPORTED;
 
+		// we can't allow single FB mode with VDXA
+		if (VDIsVDXAFormat(mRealSrc.mPixmapLayout.format) && mbForceSingleFB)
+			flags = FILTERPARAM_NOT_SUPPORTED;
+
 		if (flags == FILTERPARAM_NOT_SUPPORTED) {
 			mbInvalidFormat = true;
 			break;
@@ -1298,7 +1302,7 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *const *pSources, 
 		// Older filters use the fa->src/dst/last fields directly and need buffers
 		// bound in order to start correctly.
 		
-		if (mAPIVersion < 16) {
+		if (mAPIVersion < 16 || mbForceSingleFB) {
 			if (!mRealSrc.hdc) {
 				vdrefptr<VDFilterFrameBuffer> tempSrc;
 				mSourceAllocator.Allocate(~tempSrc);
@@ -1354,7 +1358,7 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *const *pSources, 
 	mSharingPredictor.Clear();
 
 	if (mpLogicError)
-		throw MyError("Cannot start filter '%s': %s", mpLogicError->mError.c_str());
+		throw MyError("Cannot start filter '%s': %s", filter->name, mpLogicError->mError.c_str());
 
 	VDASSERT(mRealDst.mBorderWidth < 10000000 && mRealDst.mBorderHeight < 10000000);
 
