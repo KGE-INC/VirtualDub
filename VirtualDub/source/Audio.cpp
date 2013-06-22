@@ -1444,22 +1444,27 @@ bool AudioCompressor::Process() {
 		if (inputSpace >= bytesPerInputSample) {
 			char *dst = dst0;
 
+			unsigned left = inputSpace;
 			do {
-				const long samples = inputSpace / bytesPerInputSample;
+				const long samples = left / bytesPerInputSample;
 				long actualBytes;
 
 				long actualSamples = source->Read(dst, samples, &actualBytes);
 
-				inputSpace -= actualBytes;
+				VDASSERT(actualSamples * bytesPerInputSample == actualBytes);
+
+				left -= actualBytes;
 				dst += actualBytes;
 
 				if (!actualSamples || source->isEnd()) {
 					fStreamEnded = TRUE;
 					break;
 				}
-			} while(inputSpace >= bytesPerInputSample);
+			} while(left >= bytesPerInputSample);
 
 			if (dst > dst0) {
+				VDASSERT(dst - dst0 <= inputSpace);
+
 				mCodec.UnlockInputBuffer(dst - dst0);
 				audioRead = true;
 			}
@@ -1694,6 +1699,7 @@ long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
 		samples = 0;
 	}
 
+	*lplBytes = 0;
 	if (samples) {
 		samples = source->Read(buffer, samples, lplBytes);
 

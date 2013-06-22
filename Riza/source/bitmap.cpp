@@ -64,6 +64,8 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 		return kPixFormat_YUV422_UYVY;
 	case '2YUY':
 		return kPixFormat_YUV422_YUYV;
+	case '61VY':
+		return kPixFormat_YUV422_Planar;
 	case '21VY':
 		return kPixFormat_YUV420_Planar;
 	case '024I':

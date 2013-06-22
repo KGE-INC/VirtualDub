@@ -380,8 +380,9 @@ private:
 HexViewer::HexViewer(HWND _hwnd)
 	: hwnd(_hwnd)
 	, hfont(NULL)
-	, mpDataSource(NULL)
+	, iMouseWheelDelta(0)
 	, bCaretHidden(true)
+	, mpDataSource(NULL)
 {
 	SetDetails(0, false);
 }
@@ -1690,9 +1691,9 @@ LRESULT HexEditor::Handle_WM_SIZE(WPARAM wParam, LPARAM lParam) {
 	const int statusH = rstatus.bottom - rstatus.top;
 
 	hdwp = BeginDeferWindowPos(2);
-	DeferWindowPos(hdwp, hwndStatus, NULL, 0, r.bottom-statusH, r.right, statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-	DeferWindowPos(hdwp, hwndView, NULL, 0, 0, r.right, r.bottom - statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOMOVE);
-	EndDeferWindowPos(hdwp);
+	if (hdwp) hdwp = DeferWindowPos(hdwp, hwndStatus, NULL, 0, r.bottom-statusH, r.right, statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+	if (hdwp) hdwp = DeferWindowPos(hdwp, hwndView, NULL, 0, 0, r.right, r.bottom - statusH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOMOVE);
+	if (hdwp) EndDeferWindowPos(hdwp);
 
 	return 0;
 }

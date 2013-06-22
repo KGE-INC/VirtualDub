@@ -299,9 +299,6 @@ LRESULT VDUIBaseWindowW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 				Shutdown();
 			break;
 
-		case WM_NOTIFYFORMAT:
-			return VDIsWindowsNT() ? NFR_ANSI : NFR_UNICODE;
-
 		case WM_COMMAND:
 			if (!lParam) {
 				DispatchEvent(this, 0, IVDUICallback::kEventCommand, LOWORD(wParam));

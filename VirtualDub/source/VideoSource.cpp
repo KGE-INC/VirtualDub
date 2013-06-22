@@ -750,6 +750,9 @@ void VideoSourceAVI::_construct() {
 				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
 				mSourceVariant = 2;
 				break;
+			case '61VY':		// YV16
+				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV422_Planar;
+				break;
 			case '9UVY':		// YVU9
 				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV410_Planar;
 				break;
@@ -763,8 +766,14 @@ void VideoSourceAVI::_construct() {
 
 	is_dib = (mSourceLayout.format != 0);
 
-	if (mSourceLayout.format)
+	if (mSourceLayout.format) {
 		VDMakeBitmapCompatiblePixmapLayout(mSourceLayout, mSourceLayout.w, mSourceLayout.h, mSourceLayout.format, mSourceVariant);
+
+		vdstructex<BITMAPINFOHEADER> format;
+		VDMakeBitmapFormatFromPixmapFormat(format, vdstructex<BITMAPINFOHEADER>(getImageFormat(), getFormatLen()), mSourceLayout.format, mSourceVariant);
+
+		mSourceFrameSize = format->biSizeImage;
+	}
 
 	// If this is MJPEG, check to see if we should modify the output format and/or stream info
 
@@ -1659,16 +1668,19 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 	if (!data_len || mbConcealingErrors) return getFrameBuffer();
 
 	if (bDirectDecompress) {
-		int to_copy = getImageFormat()->biSizeImage;
-		if (data_len < to_copy) {
-			if (mErrorMode != kErrorModeReportAll) {
-				const unsigned actual = data_len;
-				const unsigned expected = to_copy;
-				const unsigned frame = (unsigned)frame_num;
-				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
-				to_copy = data_len;
-			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %I64u is short (expected %d bytes, got %d)", frame_num, to_copy, data_len);
+		// avoid passing runt uncompressed frames
+		uint32 to_copy = data_len;
+		if (mSourceLayout.format) {
+			if (data_len < mSourceFrameSize) {
+				if (mErrorMode != kErrorModeReportAll) {
+					const unsigned actual = data_len;
+					const unsigned expected = mSourceFrameSize;
+					const unsigned frame = (unsigned)frame_num;
+					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
+					to_copy = data_len;
+				} else
+					throw MyError("VideoSourceAVI: uncompressed frame %I64u is short (expected %d bytes, got %d)", frame_num, mSourceFrameSize, data_len);
+			}
 		}
 		
 		memcpy((void *)getFrameBuffer(), inputBuffer, to_copy);
@@ -1681,7 +1693,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 		SetDIBits(hdc, hbmLame, 0, getDecompressedFormat()->biHeight, inputBuffer, (BITMAPINFO *)getFormat(), DIB_RGB_COLORS);
 		ReleaseDC(0,hdc);
 		GdiFlush();
-	} else if (mpDecompressor && !bDirectDecompress) {
+	} else if (mpDecompressor) {
 		// Asus ASV1 crashes with zero byte frames!!!
 
 		if (data_len) {
@@ -1708,24 +1720,15 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 	} else {
 		const BITMAPINFOHEADER *bih = getImageFormat();
 		void *tmpBuffer = NULL;
-		long nBytesRequired;
 
-		// RGB formats are aligned to DWORD, but YCbCr formats are not.
-		if (bih->biCompression == BI_RGB || bih->biCompression == BI_BITFIELDS)
-			nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4;
-		else
-			nBytesRequired = (bih->biWidth * bih->biBitCount + 7) >> 3;
-
-		nBytesRequired *= bih->biHeight;
-
-		if (data_len < nBytesRequired) {
+		if (data_len < mSourceFrameSize) {
 			if (mErrorMode != kErrorModeReportAll) {
 				const unsigned frame = (unsigned)frame_num;
 				const unsigned actual = data_len;
-				const unsigned expected = nBytesRequired;
+				const unsigned expected = mSourceFrameSize;
 				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
 
-				tmpBuffer = malloc(nBytesRequired);
+				tmpBuffer = malloc(mSourceFrameSize);
 				if (!tmpBuffer)
 					throw MyMemoryError();
 
@@ -1733,7 +1736,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 
 				inputBuffer = tmpBuffer;
 			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", (unsigned)frame_num, nBytesRequired, data_len);
+				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", (unsigned)frame_num, mSourceFrameSize, data_len);
 		}
 
 		DecompressFrame(inputBuffer);

@@ -641,11 +641,9 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 			}
 		}
 		return 0;
-
-	default:
-		return DefWindowProc(mhwnd, msg, wParam, lParam);
 	}
-	return FALSE;
+
+	return DefWindowProc(mhwnd, msg, wParam, lParam);
 }
 
 void VDPositionControlW32::OnCreate() {

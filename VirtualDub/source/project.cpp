@@ -906,6 +906,9 @@ void VDProject::Reopen() {
 			MoveToFrame(newFrameCount);
 	}
 
+	// redisplay current frame
+	DisplayFrame();
+
 	guiSetStatus("Reloaded \"%ls\" (%I64d frames).", 255, filename.c_str(), newFrameCount);
 }
 

@@ -1,6 +1,17 @@
 VirtualDub change log
 
-Build %build% (1.6.8, stable): [%date%]
+Build %build% (1.6.9, stable): [%date%]
+   [bugs fixed]
+   * Extended workaround for Huffyuv joining problems to capture mode (pre-zeroing format block).
+   * Hex editor would warp to a random location when using the mouse wheel for the first time.
+   * Currently displayed frame was not updated after a reload (F2).
+   * Fixed errors when opening YCbCr (YUV) videos that had nonstandard bit depth or image size values in the frame header.
+   * YV16 input is now supported; previously it could be written but not re-read.
+
+   [regressions fixed]
+   * Fixed sporadic audio compression errors at end of render.
+
+Build 23567 (1.6.8, stable): [July 3, 2005]
    [bugs fixed]
    * Fixed occasional crash if display panes are refreshed while editing the filter list.
    * Fixed hang if VirtualDub is the active application and attempts to refresh the display panes when a display mode switch occurs.
@@ -17,7 +28,7 @@ Build %build% (1.6.8, stable): [%date%]
    * Pixel shaders were disabled in Direct3D bicubic mode due to debug code mistakenly left in.
    * MRU list sometimes didn't resort properly when reopening a recently opened file.
 
-Build 23538 (1.6.7, experimental): [%date%]
+Build 23538 (1.6.7, experimental): [June 12, 2005]
    [features added]
    * Script: Added support for cast expressions to int/long/double.
    * Video direct-stream path now treats zero-byte (drop) frames as non-essential. A video stream that has been spaced with drop frames to a higher frame rate can now be cleanly converted down as well.

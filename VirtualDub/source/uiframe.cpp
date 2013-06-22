@@ -124,7 +124,7 @@ ATOM VDUIFrame::Register() {
 		WNDCLASSW w;
 	} wc;
 
-    wc.a.style			= CS_OWNDC;
+    wc.a.style			= 0;
     wc.a.lpfnWndProc	= VDUIFrame::StaticWndProc;
     wc.a.cbClsExtra		= 0;
     wc.a.cbWndExtra		= sizeof(void *)*2;

@@ -2238,7 +2238,7 @@ void VDCaptureProjectUI::OnSize() {
 	const int infoPanelWidth = mbInfoPanel ? rPanel.right - rPanel.left : 0;
 	const int statusHt = rStatus.bottom - rStatus.top;
 
-	guiDeferWindowPos(hdwp, mhwndStatus,
+	hdwp = guiDeferWindowPos(hdwp, mhwndStatus,
 				NULL,
 				rClient.left,
 				y_bottom - statusHt,
@@ -2259,7 +2259,7 @@ void VDCaptureProjectUI::OnSize() {
 	}
 
 	if (mbInfoPanel) {
-		guiDeferWindowPos(hdwp, mhwndPanel,
+		hdwp = guiDeferWindowPos(hdwp, mhwndPanel,
 					NULL,
 					rClient.right - (rPanel.right - rPanel.left),
 					rClient.top,

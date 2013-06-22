@@ -81,7 +81,7 @@ struct ReposItem {
 void guiReposInit(HWND hwnd, struct ReposItem *lpri, POINT *lppt);
 void guiReposResize(HWND hwnd, struct ReposItem *lpri, POINT *lppt);
 
-void guiDeferWindowPos(HDWP hdwp, HWND hwnd, HWND hwndInsertAfter, int x, int y, int dx, int dy, UINT flags);
+HDWP guiDeferWindowPos(HDWP hdwp, HWND hwnd, HWND hwndInsertAfter, int x, int y, int dx, int dy, UINT flags);
 void guiEndDeferWindowPos(HDWP hdwp);
 int guiMessageBoxF(HWND hwnd, LPCTSTR lpCaption, UINT uType, const char *format, ...);
 

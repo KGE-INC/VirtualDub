@@ -235,7 +235,9 @@ void guiRedoWindows(HWND hWnd) {
 				SWP_NOACTIVATE|SWP_NOZORDER);
 #endif
 
-	SetWindowPos(hWndPosition,
+	HDWP hdwp = NULL;//BeginDeferWindowPos(2);
+
+	hdwp = guiDeferWindowPos(hdwp, hWndPosition,
 				NULL,
 				0,
 				rClient.bottom - (rStatus.bottom-rStatus.top) - (rPosition.bottom-rPosition.top),
@@ -243,13 +245,15 @@ void guiRedoWindows(HWND hWnd) {
 				rPosition.bottom-rPosition.top,
 				SWP_NOACTIVATE|SWP_NOZORDER);
 
-	SetWindowPos(hWndStatus,
+	hdwp = guiDeferWindowPos(hdwp, hWndStatus,
 				NULL,
 				0,
 				rClient.bottom - (rStatus.bottom-rStatus.top),
 				rClient.right,
 				rStatus.bottom-rStatus.top,
 				SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOCOPYBITS);
+
+	guiEndDeferWindowPos(hdwp);
 
 	if ((nParts = SendMessage(hWndStatus, SB_GETPARTS, 0, 0))>1) {
 		int i;
@@ -624,8 +628,8 @@ void guiReposInit(HWND hwnd, struct ReposItem *lpri, POINT *lppt) {
 }
 
 static BOOL CALLBACK ReposResizeFunc(HWND hwnd, LPARAM lParam) {
-	const struct reposInitData *rid = (struct reposInitData *)lParam;
-	const struct ReposItem *lpri = rid->lpri;
+	reposInitData *rid = (struct reposInitData *)lParam;
+	const ReposItem *lpri = rid->lpri;
 	POINT *lppt = rid->lppt;
 	UINT uiID = GetWindowLong(hwnd, GWL_ID);
 	RECT rc;
@@ -661,7 +665,7 @@ static BOOL CALLBACK ReposResizeFunc(HWND hwnd, LPARAM lParam) {
 					 |SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOZORDER;
 
 			if (rid->hdwp)
-				DeferWindowPos(rid->hdwp, hwnd, NULL, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, uiFlags);
+				rid->hdwp = DeferWindowPos(rid->hdwp, hwnd, NULL, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, uiFlags);
 			else
 				SetWindowPos(hwnd, NULL, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, uiFlags);
 
@@ -690,14 +694,17 @@ void guiReposResize(HWND hwnd, struct ReposItem *lpri, POINT *lppt) {
 
 	EnumChildWindows(hwnd, ReposResizeFunc, (LPARAM)&rid);
 
-	EndDeferWindowPos(rid.hdwp);
+	if (rid.hdwp)
+		EndDeferWindowPos(rid.hdwp);
 }
 
-void guiDeferWindowPos(HDWP hdwp, HWND hwnd, HWND hwndInsertAfter, int x, int y, int dx, int dy, UINT flags) {
+HDWP guiDeferWindowPos(HDWP hdwp, HWND hwnd, HWND hwndInsertAfter, int x, int y, int dx, int dy, UINT flags) {
 	if (hdwp)
-		DeferWindowPos(hdwp, hwnd, hwndInsertAfter, x, y, dx, dy, flags);
+		hdwp = DeferWindowPos(hdwp, hwnd, hwndInsertAfter, x, y, dx, dy, flags);
 	else
 		SetWindowPos(hwnd, hwndInsertAfter, x, y, dx, dy, flags);
+
+	return hdwp;
 }
 
 void guiEndDeferWindowPos(HDWP hdwp) {

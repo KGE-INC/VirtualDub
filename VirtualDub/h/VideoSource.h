@@ -186,6 +186,7 @@ private:
 
 	VDPixmapLayout	mSourceLayout;
 	int				mSourceVariant;
+	uint32			mSourceFrameSize;
 
 	AVIStripeSystem			*stripesys;
 	IAVIReadHandler			**stripe_files;

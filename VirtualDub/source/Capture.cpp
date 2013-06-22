@@ -1665,6 +1665,9 @@ unknown_PCM_format:
 
 			bmiOutput.resize(formatSize);
 
+			// pre-clear format memory to work around Huffyuv 2.1.1 bug
+			memset(&*bmiOutput, 0, formatSize);
+
 			if (ICERR_OK != (icErr = ICCompressGetFormat(g_compression.hic, bmiToFile, (BITMAPINFO *)bmiOutput.data())))
 				throw MyICError("Video compressor",icErr);
 
