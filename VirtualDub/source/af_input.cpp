@@ -186,7 +186,7 @@ void VDAudioDecompressorW32::Shutdown() {
 	}
 
 	mDriverName[0] = 0;
-	mDriverFilename[64] = 0;
+	mDriverFilename[0] = 0;
 }
 
 void *VDAudioDecompressorW32::LockInputBuffer(unsigned& bytes) {

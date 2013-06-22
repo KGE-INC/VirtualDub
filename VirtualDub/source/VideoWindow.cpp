@@ -251,8 +251,6 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	case WM_SIZE:
 		break;
-	case WM_MOUSEACTIVATE:
-		return MA_NOACTIVATE;
 
 	case WM_ENTERSIZEMOVE:
 		mbResizing = true;

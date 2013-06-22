@@ -1,6 +1,39 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Current build (1.5.8, stable):
+   [features added]
+   * DirectDraw support is disabled when Terminal Services
+     or Remote Desktop clients are detected to work around
+     a DirectX clipping bug.
+   * Re-enabled places bar on open and save dialogs.
+   * Disabled FPU state warning and made the fixup silent.
+     WAY too many drivers are screwing up the FPU unit.
+   * Edit lists can now be omitted from configuration
+     files without needing to close the source file.
+
+   [bugs fixed]
+   * Main window is disabled during MPEG-1 scan to prevent
+     crash if main window is closed.
+   * Previous-key and next-key movement commands were not
+     correct for B-frames in an MPEG-1 file.
+   * Fixed decoding of MPEG-1 B-frames at the start of
+     GOPs with broken_link set.
+   * Palette change blocks no longer appear as garbage
+     video streams.  In-stream palette changes are still
+     not supported, however.
+   * biSizeImage was incorrect when using fast recompress
+     in YV12 mode.
+   * Sequence appends failing on the first file now throw
+     an error rather than a warning.
+
+   [regressions fixed]
+   * A race condition in the fast write code occasionally
+     resulted in spurious write errors.
+   * Fixed swapped 00db/00dc tags in AVI output.
+   * Fixed display of 8-bit paletted video.
+   * Program starts under Windows 95 again.
+
 Current build (1.5.7, stable):    [October 20, 2003]
    [bugs fixed]
    * Quick preview didn't work if the current position was
@@ -26,8 +59,6 @@ Current build (1.5.7, stable):    [October 20, 2003]
    * MPEG decoder occasionally decoded garbage into the
      video frame, resulting in sporadic block errors
      during processing.
-   * A race condition in the fast write code occasionally
-     resulted in spurious write errors.
    * Append AVI function was incrementing the filename
      extension instead of the name component.
    * Avisynth scripts smaller than 60 bytes weren't being

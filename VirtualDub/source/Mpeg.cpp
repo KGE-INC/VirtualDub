@@ -287,7 +287,7 @@ struct MPEGSampleInfo {
 	union {
 		struct {
 			char			frame_type;
-			char			_pad;
+			bool			broken_link;
 			unsigned short	subframe_num;
 		};
 
@@ -347,7 +347,7 @@ private:
 	};
 
 	enum {
-		SCAN_BUFFER_SIZE	= 65536,
+		SCAN_BUFFER_SIZE	= 1024,
 	};
 
 	char *	pScanBuffer;
@@ -587,7 +587,8 @@ char VideoSourceMPEG::getFrameTypeChar(long lFrameNum) {
 	switch(parentPtr->video_sample_list[lFrameNum].frame_type) {
 	case MPEG_FRAME_TYPE_I:	return 'I';
 	case MPEG_FRAME_TYPE_P: return 'P';
-	case MPEG_FRAME_TYPE_B: return 'B';
+	case MPEG_FRAME_TYPE_B:
+		return parentPtr->video_sample_list[lFrameNum].broken_link ? 'r' : 'B';
 	default:
 		return ' ';
 	}
@@ -648,9 +649,18 @@ LONG VideoSourceMPEG::prevKey(LONG lSample) {
 
 	lSample = translate_frame(renumber_frame(lSample));
 
+	bool skipkey = false;
+
+	if (parentPtr->video_sample_list[lSample].frame_type == MPEG_FRAME_TYPE_B)
+		skipkey = true;
+
 	while(--lSample >= lSampleFirst) {
-		if (parentPtr->video_sample_list[lSample].frame_type == MPEG_FRAME_TYPE_I)
-			return lSample + parentPtr->video_sample_list[lSample].subframe_num;
+		if (parentPtr->video_sample_list[lSample].frame_type != MPEG_FRAME_TYPE_B) {
+			if (skipkey) {
+				skipkey = false;
+			} else if (parentPtr->video_sample_list[lSample].frame_type == MPEG_FRAME_TYPE_I)
+				return lSample + parentPtr->video_sample_list[lSample].subframe_num;
+		}
 	}
 
 	return -1;
@@ -661,6 +671,16 @@ LONG VideoSourceMPEG::nextKey(LONG lSample) {
 	if (lSample < lSampleFirst) lSample = lSampleFirst;
 
 	lSample = translate_frame(renumber_frame(lSample));
+
+	// For a B-frame, the next display I/P is actually before the B-frame in
+	// the stream order.  Check the preceding I/P and 
+
+	if (parentPtr->video_sample_list[lSample].frame_type == MPEG_FRAME_TYPE_B) {
+		LONG pos = prev_IP(lSample);
+
+		if (pos >= 0 && parentPtr->video_sample_list[pos].frame_type == MPEG_FRAME_TYPE_I)
+			return pos + parentPtr->video_sample_list[pos].subframe_num;
+	}
 
 	while(++lSample < lSampleLast) {
 		if (parentPtr->video_sample_list[lSample].frame_type == MPEG_FRAME_TYPE_I)
@@ -692,7 +712,9 @@ void VideoSourceMPEG::streamSetDesiredFrame(long frame_num) {
 
 		// Avoid decoding a I/P frame twice.
 
-		if (frame_forw == stream_current_frame && stream_current_frame != stream_desired_frame)
+		if (stream_current_frame < 0)
+			stream_current_frame = stream_desired_frame;
+		else if (frame_forw == stream_current_frame && stream_current_frame != stream_desired_frame)
 			++stream_current_frame;
 
 		break;
@@ -745,6 +767,9 @@ void VideoSourceMPEG::streamSetDesiredFrame(long frame_num) {
 					break;
 				}
 			}
+
+			if (stream_current_frame < 0)
+				stream_current_frame = 0;
 
 //			_RPT1(0,"Beginning B-frame scan: %ld\n", stream_current_frame);
 
@@ -880,7 +905,10 @@ void *VideoSourceMPEG::streamGetFrame(void *inputBuffer, long data_len, BOOL is_
 			VDASSERT(false);
 		}
 
-		mpDecoder->DecodeFrame((char *)inputBuffer+4, data_len-4, frame_num, dstbuffer, fwdbuffer, revbuffer);
+		if (parentPtr->video_sample_list[frame_num].broken_link)
+			mpDecoder->CopyFrameBuffer(dstbuffer, revbuffer, frame_num);
+		else
+			mpDecoder->DecodeFrame((char *)inputBuffer+4, data_len-4, frame_num, dstbuffer, fwdbuffer, revbuffer);
 	}
 	
 	if (!is_preroll) {
@@ -946,18 +974,24 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 
 			// Look for backward prediction frame and swap to backward buffer.
 			back_frame = prev_IP(frameNum);
-			back_buffer = mpDecoder->GetFrameBuffer(back_frame);
-			if (back_buffer >= 0)
-				mpDecoder->SwapFrameBuffers(back_buffer, MPEG_BUFFER_BACKWARD);
+			if (back_frame >= 0) {
+				back_buffer = mpDecoder->GetFrameBuffer(back_frame);
+				if (back_buffer >= 0)
+					mpDecoder->SwapFrameBuffers(back_buffer, MPEG_BUFFER_BACKWARD);
+			}
 
 			// Look for forward prediction frame and swap to forward buffer.
 			forw_frame = prev_IP(back_frame);
-			forw_buffer = mpDecoder->GetFrameBuffer(forw_frame);
-			if (forw_buffer >= 0)
-				mpDecoder->SwapFrameBuffers(forw_buffer, MPEG_BUFFER_FORWARD);
+			if (forw_frame >= 0) {
+				forw_buffer = mpDecoder->GetFrameBuffer(forw_frame);
+				if (forw_buffer >= 0)
+					mpDecoder->SwapFrameBuffers(forw_buffer, MPEG_BUFFER_FORWARD);
+			}
 
-			forw_buffer = mpDecoder->GetFrameBuffer(forw_frame);
-			back_buffer = mpDecoder->GetFrameBuffer(back_frame);
+			if (forw_frame >= 0)
+				forw_buffer = mpDecoder->GetFrameBuffer(forw_frame);
+			if (back_frame >= 0)
+				back_buffer = mpDecoder->GetFrameBuffer(back_frame);
 
 			// If we are missing the backward frame, decode off the forward frame.
 			// If we are missing the forward frame, decode from prev I/P of the
@@ -1012,13 +1046,6 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 
 		if (lCurrent == frameNum || (msi->frame_type == MPEG_FRAME_TYPE_I || msi->frame_type == MPEG_FRAME_TYPE_P)) {
 
-			parentPtr->ReadStream(parentPtr->video_packet_buffer, msi->stream_pos, msi->size, FALSE);
-
-			parentPtr->video_packet_buffer[msi->size] = 0;
-			parentPtr->video_packet_buffer[msi->size+1] = 0;
-			parentPtr->video_packet_buffer[msi->size+2] = 1;
-			parentPtr->video_packet_buffer[msi->size+3] = 0;
-
 			int dstbuffer, fwdbuffer, revbuffer;
 
 			switch(parentPtr->video_sample_list[lCurrent].frame_type) {
@@ -1043,7 +1070,18 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 				VDASSERT(false);
 			}
 
-			mpDecoder->DecodeFrame(parentPtr->video_packet_buffer+4, msi->size, lCurrent, dstbuffer, fwdbuffer, revbuffer);
+			if (parentPtr->video_sample_list[lCurrent].broken_link) {
+				mpDecoder->CopyFrameBuffer(dstbuffer, revbuffer, lCurrent);
+			} else {
+				parentPtr->ReadStream(parentPtr->video_packet_buffer, msi->stream_pos, msi->size, FALSE);
+
+				parentPtr->video_packet_buffer[msi->size] = 0;
+				parentPtr->video_packet_buffer[msi->size+1] = 0;
+				parentPtr->video_packet_buffer[msi->size+2] = 1;
+				parentPtr->video_packet_buffer[msi->size+3] = 0;
+
+				mpDecoder->DecodeFrame(parentPtr->video_packet_buffer+4, msi->size, lCurrent, dstbuffer, fwdbuffer, revbuffer);
+			}
 		}
 
 		++msi;
@@ -1166,11 +1204,11 @@ long VideoSourceMPEG::prev_I(long lSample) {
 }
 
 long VideoSourceMPEG::prev_IP(long f) {
-	if (f<=0) return f;
+	if (f<0) return f;
 
 	do
 		--f;
-	while (f>0 && parentPtr->video_sample_list[f].frame_type == MPEG_FRAME_TYPE_B);
+	while (f>=0 && parentPtr->video_sample_list[f].frame_type == MPEG_FRAME_TYPE_B);
 
 	return f;
 }
@@ -1784,6 +1822,9 @@ private:
 	bool fCustomIntra, fCustomNonintra;
 	bool fPicturePending;
 	bool fFoundSequenceStart;
+	bool mbFirstGOP;
+	bool mbBrokenLink;
+	bool mbIPFoundInGroup;
 
 	IVDMPEGDecoder *const mpDecoder;
 
@@ -1797,7 +1838,12 @@ public:
 	void Parse(const void *, int, DataVector *);
 };
 
-MPEGVideoParser::MPEGVideoParser(IVDMPEGDecoder *pDecoder) : mpDecoder(pDecoder) {
+MPEGVideoParser::MPEGVideoParser(IVDMPEGDecoder *pDecoder)
+	: mpDecoder(pDecoder)
+	, mbFirstGOP(true)
+	, mbBrokenLink(false)
+	, mbIPFoundInGroup(false)
+{
 	bytepos = 0;
 	header = -1;
 
@@ -1837,6 +1883,16 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 						msi.frame_type		= (buf[1]>>3)&7;
 						msi.subframe_num	= (buf[0]<<2) | (buf[1]>>6);
 						fPicturePending		= true;
+
+						if (msi.frame_type == MPEG_FRAME_TYPE_B) {
+							msi.broken_link		= mbBrokenLink;
+						} else {
+							if (mbIPFoundInGroup)
+								mbBrokenLink = false;
+							mbIPFoundInGroup = true;
+							msi.broken_link = false;
+						}
+
 						header = 0xFFFFFFFF;
 						break;
 
@@ -1905,6 +1961,33 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 						mpDecoder->SetNonintraQuantizers(fCustomNonintra ? nonintramatrix : NULL);
 						header = 0xFFFFFFFF;
 						break;
+
+					case VIDPKT_TYPE_GROUP_START:
+						// +---+-------------------+-------+
+						// |DFF|       hours       | min4-5| buf[0]
+						// +---+-----------+---+---+-------+
+						// |  minutes 0-3  | 1 | secs 3-5  | buf[1]
+						// +-----------+---+---+-----------+
+						// |  secs 0-3 |   pictures 1-5    | buf[2]
+						// +---+---+---+-------------------+
+						// |pc0|C_G|B_L|xxxxxxxxxxxxxxxxxxx| buf[3] (closed_gop, broken_link)
+						// +---+---+---+-------------------+
+						
+						// We can't rely on the timestamp in GOP headers, unfortunately, as
+						// some MPEG-1 files have them incorrect in minutes whenever secs=0.
+						// But we can use broken_link.
+
+						mbBrokenLink = false;
+						if (buf[3] & 0x20)
+							mbBrokenLink = true;
+
+						// If this if the first GOP but the GOP is not closed, set broken_link.
+						if (!(buf[3] & 0x40) && mbFirstGOP)
+							mbBrokenLink = true;
+
+						mbFirstGOP = false;
+						mbIPFoundInGroup = false;
+						break;
 				}	
 			}
 			continue;
@@ -1947,6 +2030,11 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 
 			case VIDPKT_TYPE_EXT_START:
 				throw MyError("VirtualDub cannot decode MPEG-2 video streams.");
+
+			case VIDPKT_TYPE_GROUP_START:
+				idx = 0;
+				bytes = 4;
+				break;
 
 			default:
 				header = 0xFFFFFFFF;
@@ -2373,6 +2461,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 		}
 
 	} catch(const MyError&) {
+		EnableWindow(GetParent(hWndStatus), TRUE);
 		DestroyWindow(hWndStatus);
 		hWndStatus = NULL;
 		throw;
@@ -2380,6 +2469,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 
 	EndScan();
 
+	EnableWindow(GetParent(hWndStatus), TRUE);
 	DestroyWindow(hWndStatus);
 	hWndStatus = NULL;
 
@@ -2703,6 +2793,8 @@ BOOL CALLBACK InputFileMPEG::ParseDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam
 				: thisPtr->fInterleaved ? "Parsing interleaved MPEG file" : "Parsing MPEG video file");
 		SendMessage(GetDlgItem(hDlg, IDC_PROGRESS), PBM_SETRANGE, 0, MAKELPARAM(0, 16384));
 		SetTimer(hDlg, 1, 250, (TIMERPROC)NULL);
+
+		EnableWindow(GetParent(hDlg), FALSE);
 		return TRUE;
 
 	case WM_TIMER:
@@ -2726,7 +2818,7 @@ BOOL CALLBACK InputFileMPEG::ParseDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam
 		return TRUE;
 	}
 
-	return 0;
+	return FALSE;
 }
 
 ///////////////////////////////////////////////////////////////////////////

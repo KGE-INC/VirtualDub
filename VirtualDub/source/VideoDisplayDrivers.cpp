@@ -21,6 +21,7 @@
 #include <vector>
 #include <ddraw.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/memory.h>
 #include <vd2/system/log.h>
 #include "VideoDisplay.h"
 #include "VideoDisplayDrivers.h"
@@ -36,24 +37,6 @@ extern HINSTANCE g_hInst;
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
-
-void VDMemcpyRect(void *dst, ptrdiff_t dststride, const void *src, ptrdiff_t srcstride, size_t w, size_t h) {
-	if (w <= 0 || h <= 0)
-		return;
-
-	if (w == srcstride && w == dststride)
-		memcpy(dst, src, w*h);
-	else {
-		char *dst2 = (char *)dst;
-		const char *src2 = (const char *)src;
-
-		do {
-			memcpy(dst2, src2, w);
-			dst2 += dststride;
-			src2 += srcstride;
-		} while(--h);
-	}
-}
 
 namespace {
 	struct YCbCrFormatInfo {
@@ -387,6 +370,21 @@ struct VDDitherUtils {
 		g3 = d3*51/16,
 	};
 
+	static void DoSpan8To8(uint8 *dstp, const uint8 *srcp, int w2, const uint8 *pLogPal, const uint8 *palette) {
+		const uint8 *p;
+
+		switch(w2 & 3) {
+			do {
+		case 0:	p = &palette[4*srcp[0]]; dstp[w2  ] = pLogPal[rdithertab8[rb0+p[2]] + gdithertab8[g0+p[1]] + bdithertab8[rb0+p[0]]];
+		case 1:	p = &palette[4*srcp[1]]; dstp[w2+1] = pLogPal[rdithertab8[rb1+p[2]] + gdithertab8[g1+p[1]] + bdithertab8[rb1+p[0]]];
+		case 2:	p = &palette[4*srcp[2]]; dstp[w2+2] = pLogPal[rdithertab8[rb2+p[2]] + gdithertab8[g2+p[1]] + bdithertab8[rb2+p[0]]];
+		case 3:	p = &palette[4*srcp[3]]; dstp[w2+3] = pLogPal[rdithertab8[rb3+p[2]] + gdithertab8[g3+p[1]] + bdithertab8[rb3+p[0]]];
+
+				srcp += 16;
+			} while((w2 += 4) < 0);
+		}
+	}
+
 	static void DoSpan16To8(uint8 *dstp, const uint16 *srcp, int w2, const uint8 *pLogPal) {
 		uint32 px;
 
@@ -432,6 +430,31 @@ struct VDDitherUtils {
 		}
 	}
 };
+
+void VDDitherImage8To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal, const uint8 *palette) {
+	int h = dst.h;
+	int w = dst.w;
+
+	uint8 *dstp0 = (uint8 *)dst.data;
+	const uint8 *srcp0 = (const uint8 *)src.data;
+
+	do {
+		int w2 = -w;
+
+		uint8 *dstp = dstp0 + w - (w2&3);
+		const uint8 *srcp = srcp0;
+
+		switch(h & 3) {
+			case 0: VDDitherUtils< 0, 8, 2,10>::DoSpan8To8(dstp, srcp, w2, pLogPal, palette); break;
+			case 1: VDDitherUtils<12, 4,14, 6>::DoSpan8To8(dstp, srcp, w2, pLogPal, palette); break;
+			case 2: VDDitherUtils< 3,11, 1, 9>::DoSpan8To8(dstp, srcp, w2, pLogPal, palette); break;
+			case 3: VDDitherUtils<15, 7,13, 5>::DoSpan8To8(dstp, srcp, w2, pLogPal, palette); break;
+		}
+
+		dstp0 += dst.pitch;
+		srcp0 = (const uint8 *)((const char *)srcp0 + src.pitch);
+	} while(--h);
+}
 
 void VDDitherImage16To8(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
 	int h = dst.h;
@@ -516,6 +539,9 @@ void VDDitherImage(VBitmap& dst, const VBitmap& src, const uint8 *pLogPal) {
 
 	if (dst.depth == 8) {
 		switch(src.depth) {
+		case 8:
+			VDDitherImage8To8(dst, src, pLogPal, (const uint8 *)src.palette);
+			break;
 		case 16:
 			VDDitherImage16To8(dst, src, pLogPal);
 			break;
@@ -1796,9 +1822,21 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 		} else
 			break;
 
-		if (mPrimaryFormat != mSource.format && !mSource.bAllowConversion) {
-			VDDEBUG("VideoDisplay/DirectDraw: Display is not compatible with source and conversion is disallowed.\n");
-			return false;
+		if (mPrimaryFormat != mSource.format) {
+			if (!mSource.bAllowConversion) {
+				VDDEBUG("VideoDisplay/DirectDraw: Display is not compatible with source and conversion is disallowed.\n");
+				return false;
+			}
+
+			switch(mSource.format) {
+			case IVDVideoDisplay::kFormatRGB1555:
+			case IVDVideoDisplay::kFormatRGB888:
+			case IVDVideoDisplay::kFormatRGB8888:
+				break;
+			default:
+				VDDEBUG("VideoDisplay/DirectDraw: Display conversion is not available.\n");
+				return false;
+			}
 		}
 
 		// attempt to create clipper
@@ -2340,6 +2378,32 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 					mIdentTab[j] = j;
 
 				mhbm = CreateDIBSection(hdc, (const BITMAPINFO *)&bih, DIB_RGB_COLORS, &mpBitmapBits, mSource.pSharedObject, mSource.sharedOffset);
+			} else if (mSource.format == IVDVideoDisplay::kFormatPal8) {
+				struct {
+					BITMAPINFOHEADER hdr;
+					RGBQUAD pal[256];
+				} bih;
+
+				bih.hdr.biSize			= sizeof(BITMAPINFOHEADER);
+				bih.hdr.biWidth			= mSource.w;
+				bih.hdr.biHeight		= mSource.h;
+				bih.hdr.biPlanes		= 1;
+				bih.hdr.biCompression	= BI_RGB;
+				bih.hdr.biBitCount		= 8;
+
+				mPitch = ((mSource.w + 3) & ~3);
+				bih.hdr.biSizeImage		= mPitch * mSource.h;
+				bih.hdr.biClrUsed		= 256;
+				bih.hdr.biClrImportant	= 256;
+
+				for(int i=0; i<256; ++i) {
+					bih.pal[i].rgbRed	= (uint8)(mSource.palette[i] >> 16);
+					bih.pal[i].rgbGreen	= (uint8)(mSource.palette[i] >> 8);
+					bih.pal[i].rgbBlue	= (uint8)mSource.palette[i];
+					bih.pal[i].rgbReserved = 0;
+				}
+
+				mhbm = CreateDIBSection(hdc, (const BITMAPINFO *)&bih, DIB_RGB_COLORS, &mpBitmapBits, mSource.pSharedObject, mSource.sharedOffset);
 			} else {
 				BITMAPV4HEADER bih = {0};
 
@@ -2454,6 +2518,9 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 			int mSrcDepth;
 
 			switch(source.format) {
+			case IVDVideoDisplay::kFormatPal8:
+				mSrcDepth = 8;
+				break;
 			case IVDVideoDisplay::kFormatRGB1555:
 				mSrcDepth = 16;
 				break;
@@ -2468,6 +2535,7 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 			VBitmap srcbm, dstbm;
 
 			srcbm.data		= (Pixel32 *)source.data;
+			srcbm.palette	= (Pixel32 *)source.palette;
 			srcbm.w			= source.w;
 			srcbm.h			= source.h;
 			srcbm.pitch		= source.stride;

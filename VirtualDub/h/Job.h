@@ -28,7 +28,7 @@ bool InitJobSystem();
 void DeinitJobSystem();
 void JobAddConfiguration(const DubOptions *, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fUseCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold);
 void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutputPrefix, const wchar_t *szFileOutputSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended);
-void JobWriteConfiguration(FILE *f, DubOptions *);
+void JobWriteConfiguration(FILE *f, DubOptions *, bool bIncludeEditList = true);
 void JobLockDubber();
 void JobUnlockDubber();
 void JobPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);

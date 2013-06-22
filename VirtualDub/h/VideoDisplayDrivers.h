@@ -22,6 +22,7 @@
 
 struct VDVideoDisplaySourceInfo {
 	const void	*data;
+	const uint32 *palette;
 	ptrdiff_t	stride;
 	int			w;
 	int			h;

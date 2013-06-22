@@ -383,14 +383,14 @@ bool FastWriteStream::BackgroundCheck() {
 	// a split write may still be required, but the last write will
 	// be sector-aligned if the user sector-aligned the data.
 
-	if (fFlush) {
-		len = lDataPoint;
+	len = lDataPoint;
 
+	if (fFlush) {
 		if (len >= 2048)
 			len -= len % 2048;
 
 	} else {
-		len = lDataPoint - lDataPoint % lChunkSize;
+		len -= len % lChunkSize;
 
 		if (len > lChunkSize)
 			len = lChunkSize;

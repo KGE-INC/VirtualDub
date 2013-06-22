@@ -36,6 +36,7 @@ public:
 	};
 
 	virtual void Reset() = 0;
+	virtual void SetSourcePalette(const uint32 *palette, int count) = 0;
 	virtual bool SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pSharedObject = 0, ptrdiff_t sharedOffset = 0, bool bAllowConversion = true, bool bInterlaced = false) = 0;
 	virtual void Update(int mode) = 0;
 	virtual void Cache() = 0;

@@ -27,6 +27,7 @@ namespace {
 		"AVI: Invalid chunk detected at %lld. Enabling aggressive recovery mode.",
 		"AVI: Invalid block found at %lld -- disabling streaming.",
 		"AVI: Stream %d has an invalid sample rate. Substituting %lg samples/sec as a placeholder.",
+		"AVI: Palette changes detected. These are not currently supported -- color palette errors may appear in the output.",
 		0
 	};
 

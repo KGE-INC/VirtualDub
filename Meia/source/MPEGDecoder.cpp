@@ -25,6 +25,7 @@
 #endif
 
 #include <vd2/system/VDAtomic.h>
+#include <vd2/system/memory.h>
 #include <vd2/Meia/MPEGDecoder.h>
 #include <vd2/Meia/MPEGPredict.h>
 #include <vd2/Meia/MPEGConvert.h>
@@ -583,7 +584,7 @@ public:
 	
 	int GetFrameBuffer(long frame);
 	long GetFrameNumber(int buffer);
-	void CopyFrameBuffer(int dst, int src);
+	void CopyFrameBuffer(int dst, int src, long frameno);
 	void SwapFrameBuffers(int dst, int src);
 	const void *GetYBuffer(int buffer, long& pitch);
 	const void *GetCrBuffer(int buffer, long& pitch);
@@ -1060,13 +1061,15 @@ long VDMPEGDecoder::GetFrameNumber(int buffer) {
 	return mpBuffers[buffer].frame;
 }
 
-void VDMPEGDecoder::CopyFrameBuffer(int dst, int src) {
-	if ((src|dst)<0 || src >= mnBuffers)
+void VDMPEGDecoder::CopyFrameBuffer(int dst, int src, long frameno) {
+	if ((unsigned)src >= mnBuffers || (unsigned)dst >= mnBuffers)
 		return;
 
-	memcpy(mpBuffers[dst].pY, mpBuffers[src].pY, mnYPitch * mnBlockH * 16);
-	memcpy(mpBuffers[dst].pCr, mpBuffers[src].pCr, mnCPitch * mnBlockH * 16);
-	memcpy(mpBuffers[dst].pCb, mpBuffers[src].pCb, mnCPitch * mnBlockH * 16);
+	VDMemcpyRect(mpBuffers[dst].pY, mnYPitch, mpBuffers[src].pY, mnYPitch, mnBlockW * 16, mnBlockH * 16);
+	VDMemcpyRect(mpBuffers[dst].pCr, mnCPitch, mpBuffers[src].pCr, mnCPitch, mnBlockW * 8, mnBlockH * 8);
+	VDMemcpyRect(mpBuffers[dst].pCb, mnCPitch, mpBuffers[src].pCb, mnCPitch, mnBlockW * 8, mnBlockH * 8);
+
+	mpBuffers[dst].frame = frameno;
 }
 
 void VDMPEGDecoder::SwapFrameBuffers(int dst, int src) {

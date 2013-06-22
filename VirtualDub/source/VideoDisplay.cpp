@@ -46,6 +46,14 @@ namespace {
 
 		return dwProcessId == GetCurrentProcessId();
 	}
+
+	bool VDIsTerminalServicesClient() {
+		if ((sint32)(GetVersion() & 0x000000FF) >= 0x00000005) {
+			return GetSystemMetrics(SM_REMOTESESSION) != 0;		// Requires Windows NT SP4 or later.
+		}
+
+		return false;	// Ignore Windows 95/98/98SE/ME/NT3/NT4.  (Broken on NT4 Terminal Server, but oh well.)
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -58,6 +66,7 @@ protected:
 	VDVideoDisplayWindow(HWND hwnd);
 	~VDVideoDisplayWindow();
 
+	void SetSourcePalette(const uint32 *palette, int count);
 	bool SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
 	void Update(int);
 	void Reset();
@@ -104,6 +113,8 @@ protected:
 
 	typedef std::vector<char> tCachedImage;
 	tCachedImage		mCachedImage;
+
+	uint32	mSourcePalette[256];
 
 	typedef std::vector<VDVideoDisplayWindow *> tDisplayWindows;
 	static tDisplayWindows	sDisplayWindows;
@@ -205,10 +216,15 @@ VDVideoDisplayWindow::~VDVideoDisplayWindow() {
 #define MYWM_CACHE			(WM_USER + 0x102)
 #define MYWM_RESET			(WM_USER + 0x103)
 
+void VDVideoDisplayWindow::SetSourcePalette(const uint32 *palette, int count) {
+	memcpy(mSourcePalette, palette, 4*std::min<int>(count, 256));
+}
+
 bool VDVideoDisplayWindow::SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pObject, ptrdiff_t offset, bool bAllowConversion, bool bInterlaced) {
 	VDVideoDisplaySourceInfo params;
 
 	params.data		= data;
+	params.palette	= mSourcePalette;
 	params.stride	= stride;
 	params.w		= w;
 	params.h		= h;
@@ -220,6 +236,10 @@ bool VDVideoDisplayWindow::SetSource(const void *data, ptrdiff_t stride, int w, 
 	params.bInterlaced		= bInterlaced;
 
 	switch(format) {
+	case kFormatPal8:
+		params.bpp = 1;
+		params.bpr = w;
+		break;
 	case kFormatRGB1555:
 	case kFormatRGB565:
 		params.bpp = 2;
@@ -308,6 +328,7 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		return 0;
 	case MYWM_RESET:
 		SyncReset();
+		mSource.data = NULL;
 		return 0;
 	case WM_SIZE:
 		if (mpMiniDriver)
@@ -388,21 +409,23 @@ bool VDVideoDisplayWindow::SyncInit() {
 	bool bIsForeground = VDIsForegroundTask();
 
 	do {
-		if (mbLockAcceleration || bIsForeground) {
+		if (!VDIsTerminalServicesClient()) {
+			if (mbLockAcceleration || bIsForeground) {
 #if 0
-			mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
-			if (mpMiniDriver->Init(mhwnd, mSource))
-				break;
-			SyncReset();
+				mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
+				if (mpMiniDriver->Init(mhwnd, mSource))
+					break;
+				SyncReset();
 #endif
 
-			mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
-			if (mpMiniDriver->Init(mhwnd, mSource))
-				break;
-			SyncReset();
+				mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
+				if (mpMiniDriver->Init(mhwnd, mSource))
+					break;
+				SyncReset();
 
-		} else {
-			VDDEBUG("VideoDisplay: Application in background -- disabling accelerated preview.\n");
+			} else {
+				VDDEBUG("VideoDisplay: Application in background -- disabling accelerated preview.\n");
+			}
 		}
 
 		mpMiniDriver = VDCreateVideoDisplayMinidriverGDI();

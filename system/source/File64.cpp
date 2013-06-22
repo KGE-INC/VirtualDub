@@ -136,14 +136,14 @@ bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	else
 		mhFile = CreateFileW(pwszFilename, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, dwAttributes, NULL);
 
+	DWORD err = GetLastError();
+
 	VDFastTextFree();
 
 	// INVALID_HANDLE_VALUE isn't NULL.  *sigh*
 
 	if (mhFile == INVALID_HANDLE_VALUE) {
 		mhFile = NULL;
-
-		DWORD err = GetLastError();
 
 		if (err == ERROR_FILE_NOT_FOUND)
 			return false;

@@ -1349,7 +1349,7 @@ bool VideoSourceAVI::setDecompressedFormat(int depth) {
 }
 
 bool VideoSourceAVI::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
-	if (pbih->biCompression == BI_RGB)
+	if (pbih->biCompression == BI_RGB && pbih->biBitCount > 8)
 		return setDecompressedFormat(pbih->biBitCount);
 
 	if (mdec) {

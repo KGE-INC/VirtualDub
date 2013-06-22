@@ -147,8 +147,11 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 			}
 		}
 	} catch(const MyError& e) {
-		// log append errors, but otherwise eat them
+		// if the first segment failed, turn the warning into an error
+		if (!count)
+			throw;
 
+		// log append errors, but otherwise eat them
 		VDLog(kVDLogWarning, VDTextAToW(e.gets()));
 	}
 

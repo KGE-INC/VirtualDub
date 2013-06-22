@@ -159,6 +159,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 										));
 		}
 		if (bFPUStateBad) {
+#if 0		// Far too many drivers get this wrong... #@&*($@&#(*$
 			VDLog(kVDLogError, VDswprintf(L"Internal error: Floating-point state was bad before entry to external code at (%hs:%d). "
 										L"This indicates an uncaught bug either in an external driver or in VirtualDub itself "
 										L"that could cause application instability.  Please report this problem to the author!\n"
@@ -168,6 +169,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 										&line,
 										&fpucw
 										));
+#endif
 		}
 	}
 
@@ -199,6 +201,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 			sbDisableFurtherWarnings = true;
 		}
 		if (bFPUStateBad) {
+#if 0		// Far too many drivers get this wrong... #@&*($@&#(*$
 			VDLog(kVDLogWarning, VDswprintf(L"%ls returned to VirtualDub with the floating-point unit in an abnormal state. "
 											L"This indicates a bug in that module which could cause application instability. "
 											L"Please check with the module vendor for an updated version which addresses this problem. "
@@ -208,6 +211,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 											&mpFile,
 											&mLine,
 											&fpucw));
+#endif
 			sbDisableFurtherWarnings = true;
 		}
 	}

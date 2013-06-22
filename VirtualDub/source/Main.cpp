@@ -24,6 +24,7 @@
 #include "oshelper.h"
 #include "gui.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/memory.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/vdalloc.h>
@@ -117,7 +118,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			if (guiCheckDialogs(&msg))
 				continue;
 
-			HWND hwndRoot = GetAncestor(msg.hwnd, GA_ROOT);
+			HWND hwndRoot = VDGetAncestorW32(msg.hwnd, GA_ROOT);
 
 			if (hwndRoot == g_hWnd && TranslateAccelerator(g_hWnd, g_hAccelMain, &msg))
 				continue;
@@ -200,7 +201,7 @@ void OpenAVI(bool ext_opt) {
 
 	static const VDFileDialogOption sOptions[]={
 		{ VDFileDialogOption::kBool, 0, L"Ask for e&xtended options after this dialog", 0, 0 },
-		{ VDFileDialogOption::kBool, 1, L"Automatically attach segments with numbered filenames", 0, 0 },
+		{ VDFileDialogOption::kBool, 1, L"Automatically load linked segments", 0, 0 },
 		{ VDFileDialogOption::kSelectedFilter, 2, 0, 0, 0 },
 		{0}
 	};
@@ -257,6 +258,7 @@ static const char g_szRegKeyRunAsJob[]="Run as job";
 static const char g_szRegKeySegmentFrameCount[]="Segment frame limit";
 static const char g_szRegKeyUseSegmentFrameCount[]="Use segment frame limit";
 static const char g_szRegKeySegmentSizeLimit[]="Segment size limit";
+static const char g_szRegKeySaveSelectionAndEditList[]="Save edit list";
   
 void SaveSegmentedAVI(HWND hWnd) {
 	if (!inputVideoAVI) {
@@ -417,6 +419,8 @@ void CPUTest() {
 	// Enable FPU support...
 
 	long lActualEnabled = CPUEnableExtensions(lEnableFlags);
+
+	VDFastMemcpyAutodetect();
 }
 
 /////////////////////////////
@@ -602,9 +606,21 @@ void SaveImageSeq(HWND hwnd) {
 /////////////////////////////////////////////////////////////////////////////////
 
 void SaveConfiguration(HWND hWnd) {
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_Config, (VDGUIHandle)hWnd, L"Save Configuration", fileFiltersSaveConfig, L"vcf"));
+	static const VDFileDialogOption sOptions[]={
+		{ VDFileDialogOption::kBool, 0, L"Include selection and edit list", 0, 0 },
+		{0}
+	};
+
+	VDRegistryAppKey key(g_szRegKeyPersistence);
+	int optVals[1]={
+		key.getBool(g_szRegKeySaveSelectionAndEditList, false),
+	};
+
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_Config, (VDGUIHandle)hWnd, L"Save Configuration", fileFiltersSaveConfig, L"vcf", sOptions, optVals));
 
 	if (!filename.empty()) {
+		key.setBool(g_szRegKeySaveSelectionAndEditList, !!optVals[0]);
+
 		FILE *f = NULL;
 		try {
 			f = fopen(VDTextWToA(filename).c_str(), "w");
@@ -612,7 +628,7 @@ void SaveConfiguration(HWND hWnd) {
 			if (!f)
 				throw MyError("Cannot open output file: %s.", strerror(errno));
 
-			JobWriteConfiguration(f, &g_dubOpts);
+			JobWriteConfiguration(f, &g_dubOpts, !!optVals[0]);
 
 			fclose(f);
 			f = NULL;

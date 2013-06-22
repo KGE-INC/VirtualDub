@@ -435,6 +435,45 @@ bool IsFilenameOnFATVolume(const wchar_t *pszFilename) {
 
 }
 
+HWND APIENTRY VDGetAncestorW95(HWND hwnd, UINT gaFlags) {
+	switch(gaFlags) {
+	case GA_PARENT:
+		return GetWindowLong(hwnd, GWL_STYLE) & WS_CHILD ? GetParent(hwnd) : NULL;
+	case GA_ROOT:
+		while(GetWindowLong(hwnd, GWL_STYLE) & WS_CHILD)
+			hwnd = GetParent(hwnd);
+		return hwnd;
+	case GA_ROOTOWNER:
+		while(HWND hwndParent = GetParent(hwnd))
+			hwnd = hwndParent;
+		return hwnd;
+	default:
+		VDNEVERHERE;
+		return NULL;
+	}
+}
+
+namespace {
+	typedef HWND (APIENTRY *tpGetAncestor)(HWND, UINT);
+}
+
+HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags) {
+	struct local {
+		static tpGetAncestor FindGetAncestor() {
+			tpGetAncestor ga = (tpGetAncestor)GetProcAddress(GetModuleHandle("user32"), "GetAncestor");
+
+			if (!ga)
+				ga = VDGetAncestorW95;
+
+			return ga;
+		}
+	};
+
+	static tpGetAncestor spGetAncestor = local::FindGetAncestor();
+
+	return spGetAncestor(hwnd, gaFlags);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 void LaunchURL(const char *pURL) {

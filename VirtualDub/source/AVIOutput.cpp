@@ -354,7 +354,7 @@ bool AVIOutputFile::_init(const wchar_t *pwszFile, bool fThreaded) {
 		avihdr.dwWidth					= pVF->biWidth;
 		avihdr.dwHeight					= pVF->biHeight;
 
-		static_cast<AVIVideoOutputStream *>(videoOut)->setCompressed(pVF->biCompression == BI_RGB);
+		static_cast<AVIVideoOutputStream *>(videoOut)->setCompressed(pVF->biCompression != BI_RGB);
 	}
 
 	// Initialize file

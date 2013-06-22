@@ -26,7 +26,7 @@ CFG=system - Win32 Debug
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName "system"
 # PROP Scc_LocalPath "."
-CPP=cl.exe
+CPP=xicl6.exe
 RSC=rc.exe
 
 !IF  "$(CFG)" == "system - Win32 Release"
@@ -48,7 +48,7 @@ RSC=rc.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=link.exe -lib
+LIB32=xilink6.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -71,7 +71,7 @@ LIB32=link.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=link.exe -lib
+LIB32=xilink6.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -94,7 +94,7 @@ LIB32=link.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=link.exe -lib
+LIB32=xilink6.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -359,6 +359,53 @@ SOURCE=..\h\VD2\system\vdtypes.h
 # Begin Source File
 
 SOURCE=..\h\vd2\system\zip.h
+# End Source File
+# End Group
+# Begin Group "Assembly Files"
+
+# PROP Default_Filter ".asm"
+# Begin Source File
+
+SOURCE=.\source\a_memory.asm
+
+!IF  "$(CFG)" == "system - Win32 Release"
+
+# Begin Custom Build -
+IntDir=.\..\obj\Release\system
+InputPath=.\source\a_memory.asm
+InputName=a_memory
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug"
+
+# Begin Custom Build -
+IntDir=.\..\obj\Debug\system
+InputPath=.\source\a_memory.asm
+InputName=a_memory
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
+
+# Begin Custom Build -
+IntDir=.\..\obj\ReleaseICL\system
+InputPath=.\source\a_memory.asm
+InputName=a_memory
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ENDIF 
+
 # End Source File
 # End Group
 # End Target

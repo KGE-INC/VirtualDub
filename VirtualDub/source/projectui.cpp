@@ -141,11 +141,15 @@ extern void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 
 UINT iMainMenuHelpTranslator[]={
 	MENU_TO_HELP(FILE_OPENAVI),
+	MENU_TO_HELP(FILE_APPENDSEGMENT),
+	MENU_TO_HELP(FILE_PREVIEWINPUT),
+	MENU_TO_HELP(FILE_PREVIEWOUTPUT),
 	MENU_TO_HELP(FILE_PREVIEWAVI),
 	MENU_TO_HELP(FILE_SAVEAVI),
 	MENU_TO_HELP(FILE_SAVECOMPATIBLEAVI),
 	MENU_TO_HELP(FILE_SAVESTRIPEDAVI),
 	MENU_TO_HELP(FILE_SAVEIMAGESEQ),
+	MENU_TO_HELP(FILE_SAVESEGMENTEDAVI),
 	MENU_TO_HELP(FILE_CLOSEAVI),
 	MENU_TO_HELP(FILE_CAPTUREAVI),
 	MENU_TO_HELP(FILE_STARTSERVER),
@@ -199,6 +203,10 @@ UINT iMainMenuHelpTranslator[]={
 	MENU_TO_HELP(OPTIONS_SYNCTOAUDIO),
 	MENU_TO_HELP(OPTIONS_DROPFRAMES),
 	MENU_TO_HELP(OPTIONS_ENABLEDIRECTDRAW),
+
+	MENU_TO_HELP(TOOLS_HEXVIEWER),
+	MENU_TO_HELP(TOOLS_CREATESPARSEAVI),
+	MENU_TO_HELP(TOOLS_EXPANDSPARSEAVI),
 
 	MENU_TO_HELP(HELP_CONTENTS),
 	MENU_TO_HELP(HELP_CHANGELOG),
@@ -473,10 +481,14 @@ void VDProjectUI::AppendAsk() {
 	if (fname.empty())
 		return;
 
+	VDAutoLogDisplay logDisp;
+
 	if (optVals[0])
 		AppendAVIAutoscan(fname.c_str());
 	else
 		AppendAVI(fname.c_str());
+
+	logDisp.Post((VDGUIHandle)mhwnd);
 }
 
 void VDProjectUI::SaveAVIAsk() {
@@ -1401,6 +1413,10 @@ void VDProjectUI::UIRefreshInputFrame(bool bValid) {
 			const char *data = (const char *)lpBits + stride * (dcf->biHeight - 1);
 
 			switch(dcf->biBitCount) {
+			case 8:
+				pDisp->SetSourcePalette((const uint32 *)((const char *)dcf + dcf->biSize), dcf->biClrUsed);
+				pDisp->SetSource(data, -stride, dcf->biWidth, dcf->biHeight, IVDVideoDisplay::kFormatPal8);
+				break;
 			case 16:
 				pDisp->SetSource(data, -stride, dcf->biWidth, dcf->biHeight, IVDVideoDisplay::kFormatRGB1555);
 				break;
@@ -1489,7 +1505,7 @@ void VDProjectUI::UIRunDubMessageLoop() {
 		if (guiCheckDialogs(&msg))
 			continue;
 
-		HWND hwndRoot = GetAncestor(msg.hwnd, GA_ROOT);
+		HWND hwndRoot = VDGetAncestorW32(msg.hwnd, GA_ROOT);
 		if (hwndRoot == mhwnd && TranslateAccelerator(mhwnd, mhAccelDub, &msg))
 			continue;
 

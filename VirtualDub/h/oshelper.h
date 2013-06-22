@@ -43,6 +43,8 @@ char *MergePath(char *path, const char *fn);
 bool IsFilenameOnFATVolume(const char *pszFilename);
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
+HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);
+
 void LaunchURL(const char *pURL);
 
 class CPUUsageReader {

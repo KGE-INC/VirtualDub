@@ -1406,7 +1406,7 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 
 ///////////////////////////////////////////////////////////////////////////
 
-void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
+void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bIncludeEditList = true) {
 	char *mem= NULL;
 	char buf[4096];
 	long l;
@@ -1502,9 +1502,11 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 			opt->video.nIVTCOffset,
 			opt->video.fIVTCPolarity);
 
-	output.addf("VirtualDub.video.SetRange(%d,%d);",
-			opt->video.lStartOffsetMS,
-			opt->video.lEndOffsetMS);
+	if (bIncludeEditList) {
+		output.addf("VirtualDub.video.SetRange(%d,%d);",
+				opt->video.lStartOffsetMS,
+				opt->video.lEndOffsetMS);
+	}
 
 	if ((g_Vcompression.dwFlags & ICMF_COMPVARS_VALID) && g_Vcompression.fccHandler) {
 		output.addf("VirtualDub.video.SetCompression(0x%08lx,%d,%d,%d);",
@@ -1635,11 +1637,13 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 	// Add subset information
 
-	if (inputSubset) {
-		output.addf("VirtualDub.subset.Clear();");
+	if (bIncludeEditList) {
+		if (inputSubset) {
+			output.addf("VirtualDub.subset.Clear();");
 
-		for(FrameSubset::const_iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it)
-			output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", it->bMask ? "Masked" : "", it->start, it->len);
+			for(FrameSubset::const_iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it)
+				output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", it->bMask ? "Masked" : "", it->start, it->len);
+		}
 	}
 }
 
@@ -1738,11 +1742,11 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 	}
 }
 
-void JobWriteConfiguration(FILE *f, DubOptions *opt) {
+void JobWriteConfiguration(FILE *f, DubOptions *opt, bool bIncludeEditList) {
 	JobScriptOutput output;
 	char *scr;
 
-	JobCreateScript(output, opt);
+	JobCreateScript(output, opt, bIncludeEditList);
 
 	scr = output.getscript();
 

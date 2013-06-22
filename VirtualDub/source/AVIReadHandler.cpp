@@ -57,8 +57,13 @@ namespace {
 		kVDM_IndexMissing,			// AVI: Index not found or damaged -- reconstructing via file scan.
 		kVDM_InvalidChunkDetected,	// AVI: Invalid chunk detected at %lld. Enabling aggressive recovery mode.
 		kVDM_StreamFailure,			// AVI: Invalid block found at %lld -- disabling streaming.
-		kVDM_FixingBadSampleRate,	// AVI: Stream %d has an invalid sample rate. Substituting %lu samples/sec as placeholder.  
+		kVDM_FixingBadSampleRate,	// AVI: Stream %d has an invalid sample rate. Substituting %lu samples/sec as placeholder.
+		kVDM_PaletteChanges			// AVI: Palette changes detected.  These are not currently supported -- color palette errors may appear in the output.
 	};
+
+	bool is_palette_change(uint32 ckid) {
+		return (ckid >> 16) == 'cp';
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -366,6 +371,7 @@ private:
 	// Whenever a file is aggressively recovered, do not allow streaming.
 
 	bool		mbFileIsDamaged;
+	bool		mbPaletteChangesDetected;
 
 	List2<AVIStreamNode>		listStreams;
 	List2<AVIFileDesc>			listFiles;
@@ -1349,25 +1355,24 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 		pasn_new = newstreams.AtHead();
 
 		while(!!(pasn_old_next = pasn_old->NextFromHead()) & !!(pasn_new_next = pasn_new->NextFromHead())) {
-			const char *szPrefix;
+			const char *szStreamType = NULL;
 
 			switch(pasn_old->hdr.fccType) {
-			case streamtypeAUDIO:	szPrefix = "Cannot append segment: The audio streams "; break;
-			case streamtypeVIDEO:	szPrefix = "Cannot append segment: The video streams "; break;
-			case 'savi':			szPrefix = "Cannot append segment: The DV streams "; break;
-			default:				szPrefix = NULL; break;
+			case streamtypeAUDIO:	szStreamType = "audio"; break;
+			case streamtypeVIDEO:	szStreamType = "video"; break;
+			case 'savi':			szStreamType = "DV"; break;
 			}
 
 			// If it's not an audio or video stream, why do we care?
 
-			if (szPrefix) {
+			if (szStreamType) {
 				// allow ivas as a synonym for vids
 
 				FOURCC fccOld = pasn_old->hdr.fccType;
 				FOURCC fccNew = pasn_new->hdr.fccType;
 
 				if (fccOld != fccNew)
-					throw MyError("Cannot append segment: The stream types do not match.");
+					throw MyError("Cannot append segment \"%ls\": The segment has a different set of streams.", pszFile);
 
 //				if (pasn_old->hdr.fccHandler != pasn_new->hdr.fccHandler)
 //					throw MyError("%suse incompatible compression types.", szPrefix);
@@ -1375,14 +1380,15 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 				// A/B ?= C/D ==> AD ?= BC
 
 				if ((__int64)pasn_old->hdr.dwScale * pasn_new->hdr.dwRate != (__int64)pasn_new->hdr.dwScale * pasn_old->hdr.dwRate)
-					throw MyError("%shave different sampling rates (%.5f vs. %.5f)"
-							,szPrefix
+					throw MyError("Cannot append segment \"%ls\": The %s streams have different sampling rates (%.5f vs. %.5f)"
+							,pszFile
+							,szStreamType
 							,(double)pasn_old->hdr.dwRate / pasn_old->hdr.dwScale
 							,(double)pasn_new->hdr.dwRate / pasn_new->hdr.dwScale
 							);
 
 				if (pasn_old->hdr.dwSampleSize != pasn_new->hdr.dwSampleSize)
-					throw MyError("%shave different block sizes (%d vs %d).", szPrefix, pasn_old->hdr.dwSampleSize, pasn_new->hdr.dwSampleSize);
+					throw MyError("Cannot append segment \"%ls\": The %s streams have different sample sizes (%d vs %d).", pszFile, szStreamType, pasn_old->hdr.dwSampleSize, pasn_new->hdr.dwSampleSize);
 
 				// I hate PCMWAVEFORMAT.
 
@@ -1394,7 +1400,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 							fOk = !memcmp(pasn_old->pFormat, pasn_new->pFormat, sizeof(PCMWAVEFORMAT));
 
 				if (!fOk)
-					throw MyError("%shave different data formats.", szPrefix);
+					throw MyError("Cannot append segment \"%ls\": The %s streams have different data formats.", pszFile, szStreamType);
 			}
 
 			pasn_old = pasn_old_next;
@@ -1402,7 +1408,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 		}
 
 		if (pasn_old_next || pasn_new_next)
-			throw MyError("Cannot append segment: The segment has a different number of streams.");
+			throw MyError("Cannot append segment \"%ls\": The segment has a different number of streams.", pszFile);
 
 		if (!(pDesc = new AVIFileDesc))
 			throw MyMemoryError();
@@ -1521,6 +1527,7 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 	bool bAggressive = false;
 
 	// begin parsing chunks
+	mbPaletteChangesDetected = false;
 
 	while(_readChunkHeader(fccType, dwLength)) {
 
@@ -1776,28 +1783,35 @@ terminate_scan:
 				break;
 
 			if (isxdigit(fccType&0xff) && isxdigit((fccType>>8)&0xff)) {
-				stream = StreamFromFOURCC(fccType);
+				if (is_palette_change(fccType)) {
+					mbPaletteChangesDetected = true;
+				} else {
+					stream = StreamFromFOURCC(fccType);
 
-				if (stream >=0 && stream < streams) {
+					if (stream >=0 && stream < streams) {
 
-					pasn = streamlist.AtHead();
+						pasn = streamlist.AtHead();
 
-					while((pasn_next = pasn->NextFromHead()) && stream--)
-						pasn = pasn_next;
+						while((pasn_next = pasn->NextFromHead()) && stream--)
+							pasn = pasn_next;
 
-					if (pasn && pasn_next) {
+						if (pasn && pasn_next) {
 
-						// Set the keyframe flag for the first sample in the stream, or
-						// if this is known to be a keyframe-only stream.  Do not set the
-						// keyframe flag if the frame has zero bytes (drop frame).
+							// Set the keyframe flag for the first sample in the stream, or
+							// if this is known to be a keyframe-only stream.  Do not set the
+							// keyframe flag if the frame has zero bytes (drop frame).
 
-						pasn->index.add(fccType, _posFile()-(dwLength + (dwLength&1))-8, dwLength, (!pasn->bytes || pasn->keyframe_only) && dwLength>0);
-						pasn->bytes += dwLength;
+							pasn->index.add(fccType, _posFile()-(dwLength + (dwLength&1))-8, dwLength, (!pasn->bytes || pasn->keyframe_only) && dwLength>0);
+							pasn->bytes += dwLength;
+						}
 					}
 				}
-
 			}
 		}
+	}
+
+	if (mbPaletteChangesDetected) {
+		VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_PaletteChanges);
 	}
 
 	mbFileIsDamaged |= bAggressive;
@@ -2026,6 +2040,11 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 
 			if (absolute_addr && avie[i].dwChunkOffset<movi_offset)
 				absolute_addr = false;
+
+			if (is_palette_change(avie[i].ckid)) {
+				mbPaletteChangesDetected = true;
+				continue;
+			}
 
 			pasn = streamlist.AtHead();
 

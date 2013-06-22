@@ -196,15 +196,6 @@ SOURCE=.\source\leaks.cpp
 # Begin Source File
 
 SOURCE=.\source\plugins.cpp
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-!ENDIF 
-
 # End Source File
 # Begin Source File
 
@@ -2066,7 +2057,7 @@ SOURCE=.\source\a_bitmap.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_bitmap.asm
 InputName=a_bitmap
@@ -2078,7 +2069,7 @@ InputName=a_bitmap
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_bitmap.asm
 InputName=a_bitmap
@@ -2090,7 +2081,7 @@ InputName=a_bitmap
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_bitmap.asm
 InputName=a_bitmap
@@ -2109,7 +2100,7 @@ SOURCE=.\source\a_chromasmoother.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_chromasmoother.asm
 InputName=a_chromasmoother
@@ -2121,7 +2112,7 @@ InputName=a_chromasmoother
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_chromasmoother.asm
 InputName=a_chromasmoother
@@ -2133,7 +2124,7 @@ InputName=a_chromasmoother
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_chromasmoother.asm
 InputName=a_chromasmoother
@@ -2152,7 +2143,7 @@ SOURCE=.\source\a_convert.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_convert.asm
 InputName=a_convert
@@ -2164,7 +2155,7 @@ InputName=a_convert
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_convert.asm
 InputName=a_convert
@@ -2176,7 +2167,7 @@ InputName=a_convert
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_convert.asm
 InputName=a_convert
@@ -2195,7 +2186,7 @@ SOURCE=.\source\a_convertout.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_convertout.asm
 InputName=a_convertout
@@ -2207,7 +2198,7 @@ InputName=a_convertout
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_convertout.asm
 InputName=a_convertout
@@ -2219,7 +2210,7 @@ InputName=a_convertout
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_convertout.asm
 InputName=a_convertout
@@ -2238,7 +2229,7 @@ SOURCE=.\source\a_fastdisplay.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_fastdisplay.asm
 InputName=a_fastdisplay
@@ -2250,7 +2241,7 @@ InputName=a_fastdisplay
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_fastdisplay.asm
 InputName=a_fastdisplay
@@ -2262,7 +2253,7 @@ InputName=a_fastdisplay
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_fastdisplay.asm
 InputName=a_fastdisplay
@@ -2281,7 +2272,7 @@ SOURCE=.\source\a_histogram.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_histogram.asm
 InputName=a_histogram
@@ -2293,7 +2284,7 @@ InputName=a_histogram
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_histogram.asm
 InputName=a_histogram
@@ -2305,7 +2296,7 @@ InputName=a_histogram
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_histogram.asm
 InputName=a_histogram
@@ -2324,7 +2315,7 @@ SOURCE=.\source\a_scene.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_scene.asm
 InputName=a_scene
@@ -2336,7 +2327,7 @@ InputName=a_scene
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_scene.asm
 InputName=a_scene
@@ -2348,7 +2339,7 @@ InputName=a_scene
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_scene.asm
 InputName=a_scene
@@ -2367,7 +2358,7 @@ SOURCE=.\source\a_yuv422torgb.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_yuv422torgb.asm
 InputName=a_yuv422torgb
@@ -2379,7 +2370,7 @@ InputName=a_yuv422torgb
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_yuv422torgb.asm
 InputName=a_yuv422torgb
@@ -2391,7 +2382,7 @@ InputName=a_yuv422torgb
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_yuv422torgb.asm
 InputName=a_yuv422torgb
@@ -2414,7 +2405,7 @@ SOURCE=.\source\a_brightcont.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_brightcont.asm
 InputName=a_brightcont
@@ -2426,7 +2417,7 @@ InputName=a_brightcont
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_brightcont.asm
 InputName=a_brightcont
@@ -2438,7 +2429,7 @@ InputName=a_brightcont
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_brightcont.asm
 InputName=a_brightcont
@@ -2457,7 +2448,7 @@ SOURCE=.\source\a_cmult.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_cmult.asm
 InputName=a_cmult
@@ -2469,7 +2460,7 @@ InputName=a_cmult
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_cmult.asm
 InputName=a_cmult
@@ -2481,7 +2472,7 @@ InputName=a_cmult
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_cmult.asm
 InputName=a_cmult
@@ -2500,7 +2491,7 @@ SOURCE=.\source\a_convolute.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_convolute.asm
 InputName=a_convolute
@@ -2512,7 +2503,7 @@ InputName=a_convolute
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_convolute.asm
 InputName=a_convolute
@@ -2524,7 +2515,7 @@ InputName=a_convolute
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_convolute.asm
 InputName=a_convolute
@@ -2543,7 +2534,7 @@ SOURCE=.\source\a_grayscale.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_grayscale.asm
 InputName=a_grayscale
@@ -2555,7 +2546,7 @@ InputName=a_grayscale
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_grayscale.asm
 InputName=a_grayscale
@@ -2567,7 +2558,7 @@ InputName=a_grayscale
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_grayscale.asm
 InputName=a_grayscale
@@ -2586,7 +2577,7 @@ SOURCE=.\source\a_reduce.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_reduce.asm
 InputName=a_reduce
@@ -2598,7 +2589,7 @@ InputName=a_reduce
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_reduce.asm
 InputName=a_reduce
@@ -2610,7 +2601,7 @@ InputName=a_reduce
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_reduce.asm
 InputName=a_reduce
@@ -2629,7 +2620,7 @@ SOURCE=.\source\A_resize.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\A_resize.asm
 InputName=A_resize
@@ -2641,7 +2632,7 @@ InputName=A_resize
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\A_resize.asm
 InputName=A_resize
@@ -2653,7 +2644,7 @@ InputName=A_resize
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\A_resize.asm
 InputName=A_resize
@@ -2672,7 +2663,7 @@ SOURCE=.\source\a_rotate.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_rotate.asm
 InputName=a_rotate
@@ -2684,7 +2675,7 @@ InputName=a_rotate
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_rotate.asm
 InputName=a_rotate
@@ -2696,7 +2687,7 @@ InputName=a_rotate
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_rotate.asm
 InputName=a_rotate
@@ -2715,7 +2706,7 @@ SOURCE=.\source\a_sharpen.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_sharpen.asm
 InputName=a_sharpen
@@ -2727,7 +2718,7 @@ InputName=a_sharpen
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_sharpen.asm
 InputName=a_sharpen
@@ -2739,7 +2730,7 @@ InputName=a_sharpen
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_sharpen.asm
 InputName=a_sharpen
@@ -2758,7 +2749,7 @@ SOURCE=.\source\a_threshold.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_threshold.asm
 InputName=a_threshold
@@ -2770,7 +2761,7 @@ InputName=a_threshold
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_threshold.asm
 InputName=a_threshold
@@ -2782,7 +2773,7 @@ InputName=a_threshold
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_threshold.asm
 InputName=a_threshold
@@ -2801,7 +2792,7 @@ SOURCE=.\source\a_tv.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_tv.asm
 InputName=a_tv
@@ -2813,7 +2804,7 @@ InputName=a_tv
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_tv.asm
 InputName=a_tv
@@ -2825,7 +2816,7 @@ InputName=a_tv
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_tv.asm
 InputName=a_tv
@@ -2848,7 +2839,7 @@ SOURCE=.\source\a_mjpgdec.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_mjpgdec.asm
 InputName=a_mjpgdec
@@ -2860,7 +2851,7 @@ InputName=a_mjpgdec
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_mjpgdec.asm
 InputName=a_mjpgdec
@@ -2872,7 +2863,7 @@ InputName=a_mjpgdec
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_mjpgdec.asm
 InputName=a_mjpgdec
@@ -2891,7 +2882,7 @@ SOURCE=.\source\a_yuv2rgbhq.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_yuv2rgbhq.asm
 InputName=a_yuv2rgbhq
@@ -2903,7 +2894,7 @@ InputName=a_yuv2rgbhq
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_yuv2rgbhq.asm
 InputName=a_yuv2rgbhq
@@ -2915,7 +2906,7 @@ InputName=a_yuv2rgbhq
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_yuv2rgbhq.asm
 InputName=a_yuv2rgbhq
@@ -2934,7 +2925,7 @@ SOURCE=.\source\a_yuvtable.asm
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Release/VirtualDub
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable
@@ -2946,7 +2937,7 @@ InputName=a_yuvtable
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\../obj/Debug/VirtualDub
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable
@@ -2958,7 +2949,7 @@ InputName=a_yuvtable
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseICL\VirtualDub
 InputPath=.\source\a_yuvtable.asm
 InputName=a_yuvtable

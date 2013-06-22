@@ -1167,64 +1167,71 @@ void Dubber::InitSelectInputFormat() {
 
 		// Begin decompressor to compressor format negotiation.
 		//
-
-		// Attempt UYVY.
-
 		memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
 
-		bih.biSize			= sizeof(BITMAPINFOHEADER);
-		bih.biPlanes		= 1;
-		bih.biBitCount		= 16;
-		bih.biCompression	= 'YVYU';
-		bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
-		bih.biXPelsPerMeter	= 0;
-		bih.biYPelsPerMeter	= 0;
-		bih.biClrUsed		= 0;
-		bih.biClrImportant	= 0;
+		// Don't use odd-width YUV formats.  They may technically be allowed, but
+		// a lot of codecs crash.  For instance, Huffyuv in "Convert to YUY2"
+		// mode will accept a 639x360 format for compression, but crashes trying
+		// to decompress it.
 
-		if (NegotiateFastFormat(&bih)) {
-			mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_UYVY);
-			mbInputDisplayInitialized = true;
-			return;
-		}
+		if (!(bih.biWidth & 1)) {
+			// Attempt UYVY.
+			bih.biSize			= sizeof(BITMAPINFOHEADER);
+			bih.biPlanes		= 1;
+			bih.biBitCount		= 16;
+			bih.biCompression	= 'YVYU';
+			bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
+			bih.biXPelsPerMeter	= 0;
+			bih.biYPelsPerMeter	= 0;
+			bih.biClrUsed		= 0;
+			bih.biClrImportant	= 0;
 
-		// Attempt YVYU.
-		bih.biCompression	= 'UYVY';
+			if (NegotiateFastFormat(&bih)) {
+				mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_UYVY);
+				mbInputDisplayInitialized = true;
+				return;
+			}
 
-		if (NegotiateFastFormat(&bih)) {
-			mpInputDisplay->Reset();		// No support for YVYU yet
-			mbInputDisplayInitialized = true;
-			return;
-		}
+			// Attempt YVYU.
+			bih.biCompression	= 'UYVY';
 
-		// Attempt YUY2.
+			if (NegotiateFastFormat(&bih)) {
+				mpInputDisplay->Reset();		// No support for YVYU yet
+				mbInputDisplayInitialized = true;
+				return;
+			}
 
-		bih.biCompression	= '2YUY';
+			// Attempt YUY2.
 
-		if (NegotiateFastFormat(&bih)) {
-			mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_YUYV);
-			mbInputDisplayInitialized = true;
-			return;
-		}
+			bih.biCompression	= '2YUY';
 
-		// Attempt YV12
+			if (NegotiateFastFormat(&bih)) {
+				mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_YUYV);
+				mbInputDisplayInitialized = true;
+				return;
+			}
 
-		memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
+			// Attempt YV12
 
-		bih.biSize			= sizeof(BITMAPINFOHEADER);
-		bih.biPlanes		= 1;
-		bih.biBitCount		= 12;
-		bih.biCompression	= '21VY';
-		bih.biSizeImage		= ((bih.biWidth+1)&~1) * ((bih.biHeight+1)&~1) * 6;
-		bih.biXPelsPerMeter	= 0;
-		bih.biYPelsPerMeter	= 0;
-		bih.biClrUsed		= 0;
-		bih.biClrImportant	= 0;
+			if (!(bih.biHeight & 1)) {
+				memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
 
-		if (NegotiateFastFormat(&bih)) {
-			mpInputDisplay->Reset();		// VideoDisplay doesn't handle planar formats (yet).
-			mbInputDisplayInitialized = true;
-			return;
+				bih.biSize			= sizeof(BITMAPINFOHEADER);
+				bih.biPlanes		= 1;
+				bih.biBitCount		= 12;
+				bih.biCompression	= '21VY';
+				bih.biSizeImage		= ((bih.biWidth+1)>>1) * ((bih.biHeight+1)>>1) * 6;
+				bih.biXPelsPerMeter	= 0;
+				bih.biYPelsPerMeter	= 0;
+				bih.biClrUsed		= 0;
+				bih.biClrImportant	= 0;
+
+				if (NegotiateFastFormat(&bih)) {
+					mpInputDisplay->Reset();		// VideoDisplay doesn't handle planar formats (yet).
+					mbInputDisplayInitialized = true;
+					return;
+				}
+			}
 		}
 
 		// Attempt RGB format negotiation.
@@ -1240,6 +1247,14 @@ void Dubber::InitSelectInputFormat() {
 			return;
 		if (NegotiateFastFormat(8))
 			return;
+
+		// Attempt source format.
+
+		if (NegotiateFastFormat(vSrc->getImageFormat())) {
+			mpInputDisplay->Reset();
+			mbInputDisplayInitialized = true;
+			return;
+		}
 
 		throw MyError("Video format negotiation failed: use slow-repack or full mode.");
 	}
@@ -1871,7 +1886,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 				// Do a blind drop if we know a keyframe will arrive within two frames.
 
-				if (indep == 0x3FFFFFFF && vSrc->streamToDisplayOrder(vSrc->nearestKey(vSrc->displayToStreamOrder(display_num) + opt->video.frameRateDecimation*2)) > display_num)
+				if (indep == 0x3FFFFFFF && vSrc->nearestKey(display_num + opt->video.frameRateDecimation*2) > display_num)
 					indep = 0;
 
 				if (indep > 0 && indep < lDropFrames) {

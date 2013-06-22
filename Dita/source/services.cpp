@@ -362,7 +362,9 @@ static const VDStringW VDGetFileName(bool bSaveAs, long nKey, VDGUIHandle ctxPar
 		OPENFILENAMEW w;
 	} ofn={0};
 
-	ofn.w.lStructSize		= OPENFILENAME_SIZE_VERSION_400;
+	bool bIsAtLeastWin2K = (sint32)(GetVersion() & 0x800000FF) >= 5;	// OS must be NT, major version >= 5
+
+	ofn.w.lStructSize		= bIsAtLeastWin2K ? sizeof(OPENFILENAME) : OPENFILENAME_SIZE_VERSION_400;
 	ofn.w.hwndOwner			= (HWND)ctxParent;
 	ofn.w.lpstrCustomFilter	= NULL;
 	ofn.w.nFilterIndex		= 0;

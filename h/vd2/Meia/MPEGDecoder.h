@@ -55,7 +55,7 @@ public:
 	virtual long GetErrorState()=0;
 	virtual int GetFrameBuffer(long frame)=0;
 	virtual long GetFrameNumber(int buffer)=0;
-	virtual void CopyFrameBuffer(int dst, int src)=0;
+	virtual void CopyFrameBuffer(int dst, int src, long newframe)=0;
 	virtual void SwapFrameBuffers(int dst, int src)=0;
 
 	// framebuffer access
