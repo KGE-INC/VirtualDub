@@ -60,6 +60,7 @@
 
 #include "project.h"
 #include "projectui.h"
+#include "capture.h"
 #include "captureui.h"
 
 #ifdef _DEBUG
@@ -123,6 +124,7 @@ extern HWND			g_hWnd;
 extern VDProject *g_project;
 vdrefptr<VDProjectUI> g_projectui;
 
+extern vdrefptr<IVDCaptureProject> g_capProject;
 extern vdrefptr<IVDCaptureProjectUI> g_capProjectUI;
 
 extern DubSource::ErrorMode	g_videoErrorMode;
@@ -346,7 +348,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
-			L"VirtualDub CLI Video Processor Version 1.6.13 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+			L"VirtualDub CLI Video Processor Version 1.6.14 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 			,1
 			,&version_num));
 	VDLog(kVDLogInfo, VDswprintf(
@@ -745,7 +747,6 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 
 			if (*s == L'/') {
 				++s;
-
 				if (*s == L'?')
 					throw MyError(
 					//   12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -757,6 +758,7 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						"  /capchannel <ch> [<freq>] Set capture channel (opt. frequency in MHz)\n"
 						"  /capdevice <devname>      Set capture device\n"
 						"  /capfile <filename>       Set capture filename\n"
+						"  /capfileinc <filename>    Set capture filename and bump until clear\n"
 						"  /capstart [<time>[s]]     Capture with optional time limit\n"
 						"                            (default is minutes, use 's' for seconds)\n"
 						"  /cmd <command>            Run quick script command\n"
@@ -823,6 +825,16 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						throw MyError("Command line error: syntax is /capfile <filename>");
 
 					g_capProjectUI->SetCaptureFile(token.c_str());
+				}
+				else if (token == L"capfileinc") {
+					if (!g_capProjectUI)
+						throw MyError("Command line error: not in capture mode");
+
+					if (!ParseArgument(s, token))
+						throw MyError("Command line error: syntax is /capfileinc <filename>");
+
+					g_capProjectUI->SetCaptureFile(token.c_str());
+					g_capProject->IncrementFileIDUntilClear();
 				}
 				else if (token == L"capstart") {
 					if (!g_capProjectUI)

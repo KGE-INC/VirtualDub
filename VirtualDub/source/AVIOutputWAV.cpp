@@ -23,6 +23,8 @@
 
 #include "AVIOutputWAV.h"
 
+extern uint32 VDPreferencesGetFileAsyncDefaultMode();
+
 //////////////////////////////////////////////////////////////////////
 //
 // AVIAudioOutputStreamWAV
@@ -77,7 +79,7 @@ bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 
 	if (!audioOut) return false;
 
-	mpFileAsync = VDCreateFileAsync();
+	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
 	mpFileAsync->Open(pwszFile, 2, mBufferSize >> 1);
 
 	dwHeader[0]	= FOURCC_RIFF;

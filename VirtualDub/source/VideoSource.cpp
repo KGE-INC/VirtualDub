@@ -1827,7 +1827,7 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 				if (aviErr)
 					throw MyAVIError("VideoSourceAVI", aviErr);
 
-				uint32 newSize = (lBytesRead+65535) & -65535;
+				uint32 newSize = (lBytesRead + streamGetDecodePadding() + 65535) & -65535;
 				if (!newSize)
 					++newSize;
 

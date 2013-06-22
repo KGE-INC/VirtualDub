@@ -271,6 +271,8 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 
 		pVideoSource->streamBegin(false, true);
 
+		const uint32 padSize = pVideoSource->streamGetDecodePadding();
+
 		while(lFrame <= lLast) {
 			uint32 lActualBytes, lActualSamples;
 			int err;
@@ -291,8 +293,8 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 					if (err)
 						break;
 
-					if (buffer.empty() || buffer.size() < lActualBytes)
-						buffer.resize(((lActualBytes + 65535) & ~65535) + !lActualBytes);
+					if (buffer.empty() || buffer.size() < lActualBytes + padSize)
+						buffer.resize(((lActualBytes + padSize + 65535) & ~65535) + !lActualBytes);
 
 					err = pVideoSource->read(lFrame, 1, buffer.data(), buffer.size(), &lActualBytes, &lActualSamples);
 

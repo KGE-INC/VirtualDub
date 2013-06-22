@@ -35,13 +35,6 @@
 #include <vd2/system/VDRingBuffer.h>
 #include <vd2/system/w32assist.h>
 
-namespace {
-	bool IsWindowsNT() {
-		static bool sbIsNT = (LONG)GetVersion()>=0;
-		return sbIsNT;
-	}
-};
-
 ///////////////////////////////////////////////////////////////////////////
 //
 //	VDFileAsync - Windows 9x implementation
@@ -50,7 +43,7 @@ namespace {
 
 class VDFileAsync9x : public IVDFileAsync, protected VDThread {
 public:
-	VDFileAsync9x();
+	VDFileAsync9x(bool useFastMode);
 	~VDFileAsync9x();
 
 	void SetPreemptiveExtend(bool b) { mbPreemptiveExtend = b; }
@@ -82,6 +75,8 @@ protected:
 	uint32		mSectorSize;
 	sint64		mClientFastPointer;
 
+	const bool		mbUseFastMode;
+
 	volatile bool	mbPreemptiveExtend;
 
 	enum {
@@ -102,10 +97,12 @@ protected:
 
 ///////////////////////////////////////////////////////////////////////////
 
-VDFileAsync9x::VDFileAsync9x()
+VDFileAsync9x::VDFileAsync9x(bool useFastMode)
 	: mhFileSlow(INVALID_HANDLE_VALUE)
 	, mhFileFast(INVALID_HANDLE_VALUE)
 	, mClientFastPointer(0)
+	, mbUseFastMode(useFastMode)
+	, mbPreemptiveExtend(false)
 	, mpError(NULL)
 {
 }
@@ -122,7 +119,8 @@ void VDFileAsync9x::Open(const wchar_t *pszFilename, uint32 count, uint32 buffer
 		if (mhFileSlow == INVALID_HANDLE_VALUE)
 			throw MyWin32Error("Unable to open file \"%s\" for write: %%s", GetLastError(), mFilename.c_str());
 
-		mhFileFast = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
+		if (mbUseFastMode)
+			mhFileFast = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 
 		mSectorSize = 4096;		// guess for now... proper way would be GetVolumeMountPoint() followed by GetDiskFreeSpace().
 
@@ -370,9 +368,10 @@ void VDFileAsync9x::ThreadRun() {
 
 struct VDFileAsyncNTBuffer : public OVERLAPPED {
 	bool	mbActive;
+	bool	mbPending;
 	uint32	mLength;
 
-	VDFileAsyncNTBuffer() : mbActive(false) { hEvent = CreateEvent(NULL, TRUE, FALSE, NULL); }
+	VDFileAsyncNTBuffer() : mbActive(false), mbPending(false) { hEvent = CreateEvent(NULL, TRUE, FALSE, NULL); }
 	~VDFileAsyncNTBuffer() { if (hEvent) CloseHandle(hEvent); }
 };
 
@@ -691,13 +690,16 @@ void VDFileAsyncNT::ThreadRun() {
 				actual = mBufferSize - readOffset;
 
 			if (actual < mBlockSize) {
-				if (state == kStateNormal) {
+				if (state == kStateNormal || actual < mSectorSize) {
 					// check for blocks that have completed
 					bool blocksCompleted = false;
 					for(;;) {
 						VDFileAsyncNTBuffer& buf = mpBlocks[requestTail];
 
 						if (!buf.mbActive) {
+							if (state == kStateFlush)
+								goto all_done;
+
 							if (!blocksCompleted) {
 								// wait for further writes
 								mWriteOccurred.wait();
@@ -705,15 +707,18 @@ void VDFileAsyncNT::ThreadRun() {
 							break;
 						}
 
-						HANDLE h[2] = {buf.hEvent, mWriteOccurred.getHandle()};
-						DWORD waitResult = WaitForMultipleObjects(2, h, FALSE, INFINITE);
+						if (buf.mbPending) {
+							HANDLE h[2] = {buf.hEvent, mWriteOccurred.getHandle()};
+							DWORD waitResult = WaitForMultipleObjects(2, h, FALSE, INFINITE);
 
-						if (waitResult == WAIT_OBJECT_0+1)	// write pending
-							break;
+							if (waitResult == WAIT_OBJECT_0+1)	// write pending
+								break;
 
-						DWORD dwActual;
-						if (!GetOverlappedResult(mhFileFast, &buf, &dwActual, TRUE))
-							throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());
+							DWORD dwActual;
+							if (!GetOverlappedResult(mhFileFast, &buf, &dwActual, TRUE))
+								throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());
+						}
+
 						buf.mbActive = false;
 
 						blocksCompleted = true;
@@ -729,14 +734,16 @@ void VDFileAsyncNT::ThreadRun() {
 						mReadOccurred.signal();
 
 					}
-					continue;
+
+					if (state == kStateNormal)
+						continue;
 				}
 
 				VDASSERT(state == kStateFlush);
 
 				actual &= ~(mSectorSize-1);
-				if (!actual)
-					break;
+
+				VDASSERT(actual > 0);
 			} else {
 				actual = mBlockSize;
 
@@ -764,12 +771,16 @@ void VDFileAsyncNT::ThreadRun() {
 
 			buf.Offset = (DWORD)mFastPointer;
 			buf.OffsetHigh = (DWORD)((uint64)mFastPointer >> 32);
+			buf.Internal = 0;
+			buf.InternalHigh = 0;
 			buf.mLength = actual;
+			buf.mbPending = false;
 
-			ResetEvent(buf.hEvent);
 			if (!WriteFile(mhFileFast, &mBuffer[readOffset], actual, &dwActual, &buf)) {
 				if (GetLastError() != ERROR_IO_PENDING)
 					throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());
+
+				buf.mbPending = true;
 			}
 
 			buf.mbActive = true;
@@ -787,6 +798,9 @@ void VDFileAsyncNT::ThreadRun() {
 			if (++requestHead >= requestCount)
 				requestHead = 0;
 		}
+all_done:
+		;
+
 	} catch(MyError& e) {
 		MyError *p = new MyError;
 
@@ -798,6 +812,17 @@ void VDFileAsyncNT::ThreadRun() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-IVDFileAsync *VDCreateFileAsync() {
-	return IsWindowsNT() ? static_cast<IVDFileAsync *>(new VDFileAsyncNT) : static_cast<IVDFileAsync *>(new VDFileAsync9x);
+IVDFileAsync *VDCreateFileAsync(IVDFileAsync::Mode mode) {
+	switch(mode) {
+
+		case IVDFileAsync::kModeAsynchronous:
+			if (VDIsWindowsNT())
+				return new VDFileAsyncNT;
+			// Can't do async I/O. Fall-through to 9x method.
+		case IVDFileAsync::kModeThreaded:
+			return new VDFileAsync9x(true);
+
+		default:
+			return new VDFileAsync9x(false);
+	}
 }

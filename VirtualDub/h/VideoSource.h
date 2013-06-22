@@ -57,6 +57,7 @@ public:
 	virtual VDPosition	streamGetNextRequiredFrame(bool& is_preroll) = 0;
 	virtual int			streamGetRequiredCount(uint32 *totalsize) = 0;
 	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) = 0;
+	virtual uint32		streamGetDecodePadding() = 0;
 
 	virtual void		streamBegin(bool fRealTime, bool bForceReset) = 0;
 
@@ -155,6 +156,7 @@ public:
 	virtual void streamSetDesiredFrame(VDPosition frame_num);
 	virtual VDPosition streamGetNextRequiredFrame(bool& is_preroll);
 	virtual int	streamGetRequiredCount(uint32 *totalsize);
+	virtual uint32 streamGetDecodePadding() { return 0; }
 
 	virtual void streamBegin(bool fRealTime, bool bForceReset);
 
@@ -256,6 +258,10 @@ public:
 	void streamBegin(bool fRealTime, bool bForceReset);
 	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
 	void streamEnd();
+
+	// I really hate doing this, but an awful lot of codecs are sloppy about their
+	// Huffman or VLC decoding and read a few bytes beyond the end of the stream.
+	uint32 streamGetDecodePadding() { return 16; }
 
 	const void *getFrame(VDPosition frameNum);
 

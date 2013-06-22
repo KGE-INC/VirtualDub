@@ -132,7 +132,7 @@ private:
 
 	HWND			hwndStatus;
 
-	std::vector<char>	mInputBuffer;
+	vdblock<char>	mInputBuffer;
 
 	typedef std::map<uint32, FrameserverSession *> tSessions;
 	tSessions	mSessions;
@@ -621,8 +621,9 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				mInputBuffer.reserve((lSize + 65535) & ~65535);
-				mInputBuffer.resize(lSize);
+				uint32 bufSize = (lSize + 65535 + vSrc->streamGetDecodePadding()) & ~65535;
+				if (mInputBuffer.size() < bufSize)
+					mInputBuffer.resize(bufSize);
 
 				hr = vSrc->read(frame, 1, &mInputBuffer[0], lSize, &lSize, NULL); 
 				if (hr)

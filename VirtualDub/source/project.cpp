@@ -606,16 +606,19 @@ bool VDProject::UpdateFrame() {
 
 				int err = AVIERR_BUFFERTOOSMALL;
 				
-				if (!mVideoSampleBuffer.empty())
-					err = inputVideoAVI->read(frame, 1, mVideoSampleBuffer.data(), mVideoSampleBuffer.size(), &bytes, &samples);
+				uint32 pad = inputVideoAVI->streamGetDecodePadding();
+
+				if (mVideoSampleBuffer.size() > pad)
+					err = inputVideoAVI->read(frame, 1, mVideoSampleBuffer.data(), mVideoSampleBuffer.size() - pad, &bytes, &samples);
 
 				if (err == AVIERR_BUFFERTOOSMALL) {
 					inputVideoAVI->read(frame, 1, NULL, 0, &bytes, &samples);
 					if (!bytes)
 						++bytes;
-					VDASSERT(bytes > mVideoSampleBuffer.size());
-					mVideoSampleBuffer.resize(bytes);
-					err = inputVideoAVI->read(frame, 1, mVideoSampleBuffer.data(), mVideoSampleBuffer.size(), &bytes, &samples);
+
+					uint32 newSize = (bytes + pad + 16383) & ~16383;
+					mVideoSampleBuffer.resize(newSize);
+					err = inputVideoAVI->read(frame, 1, mVideoSampleBuffer.data(), newSize, &bytes, &samples);
 				}
 
 				if (err != AVIERR_OK)
@@ -623,11 +626,6 @@ bool VDProject::UpdateFrame() {
 
 				if (samples > 0) {
 					const void *p = inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame);
-
-#if 0
-					unsigned prerolli = preroll;
-					VDLog(kVDLogInfo, VDswprintf(L"DEBUG: Decoding frame %lld, preroll=%d, ptr=%p", 3, &mDesiredInputFrame, &prerolli, &p));
-#endif
 				}
 
 				++mFramesDecoded;

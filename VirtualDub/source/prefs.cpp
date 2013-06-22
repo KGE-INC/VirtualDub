@@ -24,6 +24,7 @@
 
 #include <vd2/Dita/interface.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/fileasync.h>
 
 #include "resource.h"
 #include "helpfile.h"
@@ -49,6 +50,7 @@ namespace {
 		uint32			mRenderWaveBufferSize;
 		uint32			mRenderVideoBufferCount;
 		VDStringW		mD3DFXFile;
+		uint32			mFileAsyncDefaultMode;
 	} g_prefs2;
 }
 
@@ -301,6 +303,27 @@ public:
 	}
 };
 
+class VDDialogPreferencesDiskIO : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesDiskIO(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mFileAsyncDefaultMode);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mFileAsyncDefaultMode = 0 != GetValue(100);
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -323,6 +346,7 @@ public:
 				case 4:	pSubDialog->SetCallback(new VDDialogPreferencesAVI(mPrefs), true); break;
 				case 5:	pSubDialog->SetCallback(new VDDialogPreferencesTimeline(mPrefs), true); break;
 				case 6:	pSubDialog->SetCallback(new VDDialogPreferencesDub(mPrefs), true); break;
+				case 7:	pSubDialog->SetCallback(new VDDialogPreferencesDiskIO(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -393,6 +417,7 @@ void LoadPreferences() {
 	g_prefs2.mRenderOutputBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Output buffer size", 2097152)));
 	g_prefs2.mRenderWaveBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Wave buffer size", 65536)));
 	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
+	g_prefs2.mFileAsyncDefaultMode = std::min<uint32>(IVDFileAsync::kModeCount-1, key.getInt("File: Async mode", IVDFileAsync::kModeAsynchronous));
 
 	g_prefs2.mOldPrefs = g_prefs;
 }
@@ -410,6 +435,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
 	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
 	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
+	key.setInt("File: Async mode", g_prefs2.mFileAsyncDefaultMode);
 }
 
 void VDSavePreferences() {
@@ -450,4 +476,8 @@ uint32& VDPreferencesGetRenderWaveBufferSize() {
 
 uint32& VDPreferencesGetRenderVideoBufferCount() {
 	return g_prefs2.mRenderVideoBufferCount;
+}
+
+uint32 VDPreferencesGetFileAsyncDefaultMode() {
+	return g_prefs2.mFileAsyncDefaultMode;
 }

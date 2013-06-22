@@ -201,10 +201,7 @@ void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_f
 			throw MyAVIError("Dub/IO-Video", hr);
 	}
 
-	// Add 4 bytes -- otherwise, we can get crashes with uncompressed video because
-	// the bitmap routines expect to be able to read 4 bytes out.
-
-	buffer = mpVideoPipe->getWriteBuffer(size+4, &handle);
+	buffer = mpVideoPipe->getWriteBuffer(size + mpVideo->streamGetDecodePadding(), &handle);
 	if (!buffer) return;	// hmm, aborted...
 
 	uint32 lActualBytes;

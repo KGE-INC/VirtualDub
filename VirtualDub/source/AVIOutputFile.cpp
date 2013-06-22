@@ -26,6 +26,8 @@
 #include "AVIOutputFile.h"
 #include "oshelper.h"
 
+extern uint32 VDPreferencesGetFileAsyncDefaultMode();
+
 ///////////////////////////////////////////
 
 // The following comes from the OpenDML 1.0 spec for extended AVI files
@@ -822,7 +824,7 @@ void AVIOutputFile::FastWrite(const void *data, int len) {
 }
 
 void AVIOutputFile::FileOpen(const wchar_t *pwszFile, bool bCaching, uint32 nBufferSize, uint32 nChunkSize) {
-	mpFileAsync = VDCreateFileAsync();
+	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
 	mpFileAsync->SetPreemptiveExtend(true);
 	mpFileAsync->Open(pwszFile, mBufferSize / mChunkSize, mChunkSize);
 	mFilePosition = 0;

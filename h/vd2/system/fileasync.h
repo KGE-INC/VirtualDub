@@ -32,6 +32,13 @@ class VDRTProfileChannel;
 
 class IVDFileAsync {
 public:
+	enum Mode {
+		kModeSynchronous,		///< Use synchronous I/O.
+		kModeThreaded,			///< Use multithreaded I/O.
+		kModeAsynchronous,		///< Use true asynchronous I/O (Windows NT only).
+		kModeCount
+	};
+
 	virtual ~IVDFileAsync() {}
 	virtual void SetPreemptiveExtend(bool b) = 0;
 	virtual bool IsPreemptiveExtendActive() = 0;
@@ -47,6 +54,6 @@ public:
 	virtual sint64 GetSize() = 0;
 };
 
-IVDFileAsync *VDCreateFileAsync();
+IVDFileAsync *VDCreateFileAsync(IVDFileAsync::Mode);
 
 #endif

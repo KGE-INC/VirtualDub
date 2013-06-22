@@ -185,6 +185,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "AVI";
 				listitem "Timeline";
 				listitem "Render";
+				listitem "Disk I/O";
 			}
 
 			pageset 101 : value={@100} {
@@ -195,6 +196,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1014;
 				page 1015;
 				page 1016;
+				page 1017;
 			}
 		}
 
@@ -392,6 +394,21 @@ dialog 1016, "" : fill, child {
 	}
 }
 
+dialog 1017, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Turbo I/O" {
+			set 0: vertical {
+				label 0, "Disk I/O write mode:" : marginb=5;
+				set 0: marginl=10, vertical {
+					option 100, "Write through - slowest, but most compatible";
+					option 101, "Unbuffered - faster";
+					option 102, "Asynchronous unbuffered - fastest (Windows NT only)";
+				}
+			}
+		}
+	}
+}
 
 
 

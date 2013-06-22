@@ -568,6 +568,8 @@ public:
 	VDPosition streamGetNextRequiredFrame(bool& is_preroll);
 	int streamGetRequiredCount(long *);
 	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	uint32 streamGetDecodePadding() { return 8; }
+
 	const void *getFrame(VDPosition frameNum);
 	eDropType getDropType(VDPosition);
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lBytesRead, uint32 *lSamplesRead);

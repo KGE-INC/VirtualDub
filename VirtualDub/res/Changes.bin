@@ -1,6 +1,15 @@
 VirtualDub change log
 
-Build %build% (1.6.13, experimental): [%date%]
+Build %build% (1.6.14, stable): [%date%]
+   [features added]
+   * Added option to choose different disk I/O modes to tradeoff slower speed for better compatibility and system response.
+   * Added /capfileinc switch to set filename and increment its trailing number to avoid existing files.
+
+   [bugs fixed]
+   * Added workaround for video codecs that read beyond the end of the input buffer during Huffman/VLC decoding.
+   * Fixed intermittent problems with writing AVI files to a network drive.
+
+Build 24390 (1.6.13, experimental): [February 26, 2006]
    [features added]
    * Added support for pass-through of PCM audio that has more than 2 channels.
    * Added limited support for correct seeking when reading AVI files with VBR audio. The VBR audio still cannot be written as such in Direct mode, however.

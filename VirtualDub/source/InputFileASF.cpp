@@ -52,11 +52,7 @@ public:
 	}
 
 	InputFile *CreateInputFile(uint32 flags) {
-		throw MyError("Not supported: Microsoft owns US patent #6,041,345 on the ASF file format, preventing "
-					"third-party applications from extracting data from ASF files. ASF file format support "
-					"was removed as of V1.3d at the request of Microsoft and to avoid patent "
-					"infringement claims, and as such VirtualDub no longer supports ASF. Please "
-					"do not ask for versions that do.");
+		throw MyError("ASF files are not supported.");
 	}
 };
 
