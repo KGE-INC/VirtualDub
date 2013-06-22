@@ -42,11 +42,11 @@ class DubVideoStreamInfo;
 
 namespace nsVDDub {
 	enum {
-		kBufferFlagDelta		= 1,
-		kBufferFlagPreload		= 2,
-		kBufferFlagDirectWrite	= 4,
-		kBufferFlagSameAsLast	= 8,
-		kBufferFlagInternalDecode	= 16
+		kBufferFlagDelta			= 1,		///< This video frame is a delta frame (i.e. not a key frame).
+		kBufferFlagPreload			= 2,		///< This video frame is not a final frame and is being queued for decoding purposes.
+		kBufferFlagDirectWrite		= 4,		///< This video frame should be streamed to the output rather than being processed (smart rendering).
+		kBufferFlagSameAsLast		= 8,		///< This video frame is the same as the previous final frame and can be dropped as a duplicate.
+		kBufferFlagInternalDecode	= 16		///< This video frame is a dummy to pull a frame that the video decoder already has decoded due to reordering.
 	};
 }
 

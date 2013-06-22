@@ -216,7 +216,7 @@ IVDUIWindow *VDUICreator::Execute(const unsigned char *resdata) {
 
 		case kBC_CreateCustom:
 			{
-				const VDStringW caption(mValueStack.back().s);
+				const wchar_t *caption = mValueStack.back().s;
 				mValueStack.pop_back();
 				const uint32 clsid = mValueStack.back().i;
 				mValueStack.pop_back();
@@ -253,10 +253,11 @@ IVDUIWindow *VDUICreator::Execute(const unsigned char *resdata) {
 				case kBC_CreateGroup:		mpLastWindow = VDCreateUIGroup(); break;
 				case kBC_CreateOption:		mpLastWindow = VDCreateUIOption(); break;
 				case kBC_CreateTrackbar:	mpLastWindow = VDCreateUITrackbar(); break;
+				case kBC_CreateHotkey:		mpLastWindow = VDCreateUIHotkey(); break;
 				default:	VDNEVERHERE;
 				}
 
-				mpLastWindow->SetCaption(VDStringW(mValueStack.back().s));
+				mpLastWindow->SetCaption(mValueStack.back().s);
 				mValueStack.pop_back();
 				const uint32 id = mValueStack.back().i;
 				mpLastWindow->SetID(id);

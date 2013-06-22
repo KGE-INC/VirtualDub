@@ -72,7 +72,7 @@ void VDBenchmarkResampler(VDGUIHandle h) {
 	vdautoptr<IVDUIWindow> pPeer(VDUICreatePeer(h));
 	IVDUIWindow *pWin = VDCreateDialogFromResource(9000, pPeer);
 	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
-	pBase->GetControl(100)->SetCaption(s);
+	pBase->GetControl(100)->SetCaption(s.c_str());
 	pBase->DoModal();
 	pWin->Shutdown();
 }

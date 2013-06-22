@@ -59,8 +59,6 @@ VDDubIOThread::~VDDubIOThread() {
 }
 
 void VDDubIOThread::ThreadRun() {
-	VDDEBUG("Dub/Main: Start.\n");
-
 	VDRTProfileChannel profchan("I/O");
 
 	bool bAudioActive = mpAudioPipe && (mpAudio != 0);
@@ -159,10 +157,6 @@ void VDDubIOThread::ThreadRun() {
 		if (mpVideoPipe)
 			mpVideoPipe->finalize();
 	}
-
-	// All done, time to get the pooper-scooper and clean up...
-
-	VDDEBUG("Dub/Main: End.\n");
 }
 
 void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
@@ -279,21 +273,15 @@ void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame,
 bool VDDubIOThread::MainAddVideoFrame() {
 	if (vInfo.cur_dst >= vInfo.end_dst)
 		return false;
-
-	VDPosition streamFrame, displayFrame, timelineFrame;
-	bool bIsPreroll;
-	bool direct;
-	bool sameAsLast;
-	int srcIndex;
 	
-	mVideoFrameIterator.Next(streamFrame, displayFrame, timelineFrame, bIsPreroll, srcIndex, direct, sameAsLast);
+	VDRenderFrameStep step(mVideoFrameIterator.Next());
 
-	if (streamFrame<0)
-		ReadNullVideoFrame(srcIndex, displayFrame, timelineFrame, direct, sameAsLast);
+	if (step.mSourceFrame < 0)
+		ReadNullVideoFrame(step.mSrcIndex, step.mDisplayFrame, step.mTimelineFrame, step.mbDirect, step.mbSameAsLast);
 	else
-		ReadVideoFrame(srcIndex, streamFrame, displayFrame, timelineFrame, bIsPreroll, direct, sameAsLast);
+		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
 
-	if (!bIsPreroll)
+	if (!step.mbIsPreroll)
 		++vInfo.cur_dst;
 
 	return true;

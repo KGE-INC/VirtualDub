@@ -248,7 +248,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				GenerateManifest="false"
 				GenerateDebugInformation="true"
@@ -336,7 +336,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				GenerateDebugInformation="true"
 				SubSystem="1"

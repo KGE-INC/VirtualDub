@@ -94,6 +94,7 @@ IVDUIWindow *VDCreateUIGrid() { return new VDUIGrid; }
 VDUIGrid::VDUIGrid() {
 	mAlignX = nsVDUI::kFill;
 	mAlignY = nsVDUI::kFill;
+	mSpacing = 0;
 	mX = 0;
 	mY = 0;
 	mbVerticalTravel = false;

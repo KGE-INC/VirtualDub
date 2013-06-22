@@ -104,7 +104,7 @@ public:
 		return mCaption;
 	}
 
-	void SetCaption(const VDStringW& caption) {
+	void SetCaption(const wchar_t *caption) {
 		mCaption = caption;
 	}
 

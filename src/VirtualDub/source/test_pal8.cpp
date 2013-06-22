@@ -98,10 +98,16 @@ void VDCreateTestPal8Video(VDGUIHandle h) {
 		if (srcfile.empty())
 			return;
 
-		tVDInputDrivers::iterator itDrv(inputDrivers.begin());
-		std::advance(itDrv, optval[0]);
+		IVDInputDriver *pDrv;
+		int filtidx = xlat[optval[0] - 1];
+		if (filtidx < 0)
+			pDrv = VDAutoselectInputDriverForFile(srcfile.c_str());
+		else {
+			tVDInputDrivers::iterator itDrv(inputDrivers.begin());
+			std::advance(itDrv, filtidx);
 
-		IVDInputDriver *pDrv = *itDrv;
+			pDrv = *itDrv;
+		}
 
 		vdrefptr<InputFile> pIF(pDrv->CreateInputFile(0));
 

@@ -264,7 +264,6 @@ void FrameSubset::deleteRange(sint64 start, sint64 len) {
 		}
 	}
 	invalidateCache();
-	dump();
 }
 
 void FrameSubset::setRange(sint64 start, sint64 len, bool bMask, int source) {
@@ -423,7 +422,6 @@ void FrameSubset::insert(iterator it, const FrameSubset& src) {
 	}
 
 	invalidateCache();
-	dump();
 }
 
 void FrameSubset::insert(sint64 insertionPoint, const FrameSubset& src) {

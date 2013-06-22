@@ -1,6 +1,6 @@
 //	VirtualDub - Video processing and capture application
 //	Graphics support library
-//	Copyright (C) 1998-2005 Avery Lee
+//	Copyright (C) 1998-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -22,11 +22,14 @@
 struct VDPixmap;
 
 #include <vd2/system/vectors.h>
-#include <vector>
+#include <vd2/system/vdstl.h>
 
 class VDPixmapRegion {
 public:
-	std::vector<uint32> mSpans;
+	void swap(VDPixmapRegion& x);
+
+public:
+	vdfastvector<uint32> mSpans;
 	vdrect32	mBounds;
 };
 
@@ -35,8 +38,10 @@ public:
 	VDPixmapPathRasterizer();
 	~VDPixmapPathRasterizer();
 
-	void Bezier(const vdvector2i pts[4]);
-	void Line(const vdvector2i& pt1, const vdvector2i& pt2);
+	void Clear();
+	void QuadraticBezier(const vdint2 pts[4]);
+	void CubicBezier(const vdint2 pts[4]);
+	void Line(const vdint2& pt1, const vdint2& pt2);
 	void FastLine(int x0, int y0, int x1, int y1);
 
 	void ScanConvert(VDPixmapRegion& region);
@@ -74,5 +79,9 @@ protected:
 };
 
 bool VDPixmapFillRegion(const VDPixmap& dst, const VDPixmapRegion& region, int x, int y, uint32 color);
+bool VDPixmapFillRegionAntialiased8x(const VDPixmap& dst, const VDPixmapRegion& region, int x, int y, uint32 color);
+
+void VDPixmapCreateRoundRegion(VDPixmapRegion& dst, float r);
+void VDPixmapConvolveRegion(VDPixmapRegion& dst, const VDPixmapRegion& r1, const VDPixmapRegion& r2);
 
 #endif

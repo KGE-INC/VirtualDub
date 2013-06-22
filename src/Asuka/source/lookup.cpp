@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/vdstl.h>
 #include <vd2/system/text.h>
 #include <vd2/system/VDString.h>
 #include <stdlib.h>
@@ -29,7 +30,7 @@ void VDNORETURN help_lookup() {
 	exit(5);
 }
 
-void tool_lookup(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64) {
+void tool_lookup(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64) {
 	if (args.size() < 2)
 		help_lookup();
 

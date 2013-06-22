@@ -174,10 +174,10 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					break;
 				case kTarget_lx:
 					symoffset = VDDisasmPack32(sp_base + c - 1);
-					s += sprintf(s, "%08lx", symoffset);
+					s += sprintf(s, "%08lxh", symoffset);
 					break;
 				case kTarget_hx:
-					s += sprintf(s, "%02x%02x"
+					s += sprintf(s, "%02x%02xh"
 								, (unsigned char)sp_base[c]
 								, (unsigned char)sp_base[c-1]
 								);
@@ -187,14 +187,14 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					break;
 				case kTarget_lo:
 					symoffset = VDDisasmPack32(sp_base + c - 1);
-					s += sprintf(s, "%c%02lx", symoffset<0 ? '-' : '+', abs(symoffset));
+					s += sprintf(s, "%c%02lxh", symoffset<0 ? '-' : '+', abs(symoffset));
 					break;
 				case kTarget_ho:
 					{
 						short x =  ((unsigned char)sp_base[c  ] << 8)
 								+  (unsigned char)sp_base[c-1];
 
-						s += sprintf(s, "%c%02lx", x<0 ? '-' : '+', abs(x));
+						s += sprintf(s, "%c%02lxh", x<0 ? '-' : '+', abs(x));
 					}
 					break;
 				case kTarget_o:
@@ -202,15 +202,15 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					break;
 				case kTarget_la:
 					symoffset = (long)source + VDDisasmPack32(sp_base + c - 1) + pContext->physToVirtOffset;
-					s += sprintf(s, "%08lx", symoffset);
+					s += sprintf(s, "%08lxh", symoffset);
 					break;
 				case kTarget_ha:
 					symoffset = (long)source + (signed short)(sp_base[c-1] + (sp_base[c]<<8)) + pContext->physToVirtOffset;
-					s += sprintf(s, "%08lx", symoffset);
+					s += sprintf(s, "%08lxh", symoffset);
 					break;
 				case kTarget_a:
 					symoffset = (long)source + (signed char)arg + pContext->physToVirtOffset;
-					s += sprintf(s, "%08lx", symoffset);
+					s += sprintf(s, "%08lxh", symoffset);
 					break;
 				case kTarget_s:
 					s = strtack(s, arg_s);
@@ -246,7 +246,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 						while(*s)
 							++s;
 						if (symoffset)
-							s += sprintf(s, "+%02x", symoffset);
+							s += sprintf(s, "+%02xh", symoffset);
 						*s++ = ')';
 					}
 				}
@@ -307,8 +307,10 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 			if (pattern[0] & 0x80) {
 				int count = pattern[0] & 0x3f;
 
-				if (pattern[0] & 0x40)
+				if (pattern[0] & 0x40) {
 					--source;
+					++bytes;
+				}
 			
 				const uint8 *src_end;
 

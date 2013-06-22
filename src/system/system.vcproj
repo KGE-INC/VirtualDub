@@ -355,6 +355,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\cmdline.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\cpuaccel.cpp"
 				>
 				<FileConfiguration
@@ -1456,6 +1460,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\cmdline.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\VD2\system\cpuaccel.h"
 				>
 			</File>
@@ -1585,6 +1593,14 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\system\vectors.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vectors_float.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\vectors_int.h"
 				>
 			</File>
 			<File

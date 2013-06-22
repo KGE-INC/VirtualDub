@@ -64,7 +64,7 @@ void VDUIPeerW32::SetFocus() {
 		::SetFocus(mhwnd);
 }
 
-void VDUIPeerW32::SetCaption(const VDStringW& caption) {
+void VDUIPeerW32::SetCaption(const wchar_t *caption) {
 	VDUIWindow::SetCaption(caption);
 	VDSetWindowTextW32(mhwnd, mCaption.c_str());
 }

@@ -980,9 +980,13 @@ void AVIOutputFile::partialWriteIndexedChunkBegin(int nStream, uint32 flags, uin
 	}
 
 	// Align the chunk, if an alignment was specified for this stream.
+	//
+	// NOTE: We have to skip this alignment for the very first chunk we write, in order to
+	//       avoid screwing up the legacy index.
+
 	uint32 buf[2];
 
-	if (stream.mAlignment) {
+	if (stream.mAlignment && mIndexEntries) {
 		int offset = (int)(mFilePosition+8) & (stream.mAlignment - 1);
 
 		if (offset) {

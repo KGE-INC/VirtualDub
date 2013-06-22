@@ -212,7 +212,7 @@ void VDVideoDecompressorVCM::Start() {
 			if (retval != ICERR_OK) {
 				BITMAPINFOHEADER *bihSrc = (BITMAPINFOHEADER *)pSrcFormat;
 				BITMAPINFOHEADER *bihDst = (BITMAPINFOHEADER *)pDstFormat;
-				if (ICERR_OK == ICDecompressExBegin(mhic, 0, bihSrc, NULL, 0, 0, bihSrc->biWidth, bihSrc->biHeight, bihDst, NULL, 0, 0, bihDst->biWidth, bihDst->biHeight)) {
+				if (ICERR_OK == ICDecompressExBegin(mhic, 0, bihSrc, NULL, 0, 0, bihSrc->biWidth, abs(bihSrc->biHeight), bihDst, NULL, 0, 0, bihDst->biWidth, abs(bihDst->biHeight))) {
 					mbUseEx = true;
 					retval = ICERR_OK;
 				}
@@ -262,7 +262,7 @@ void VDVideoDecompressorVCM::DecompressFrame(void *dst, const void *src, uint32 
 		if (mbUseEx) {
 			BITMAPINFOHEADER *bihSrc = (BITMAPINFOHEADER *)pSrcFormat;
 			BITMAPINFOHEADER *bihDst = (BITMAPINFOHEADER *)pDstFormat;
-			retval = ICDecompressEx(mhic, dwFlags, bihSrc, (LPVOID)src, 0, 0, bihSrc->biWidth, bihSrc->biHeight, bihDst, dst, 0, 0, bihDst->biWidth, bihDst->biHeight);
+			retval = ICDecompressEx(mhic, dwFlags, bihSrc, (LPVOID)src, 0, 0, bihSrc->biWidth, abs(bihSrc->biHeight), bihDst, dst, 0, 0, bihDst->biWidth, abs(bihDst->biHeight));
 		} else
 			retval = ICDecompress(mhic, dwFlags, pSrcFormat, (LPVOID)src, pDstFormat, dst);
 	}
@@ -493,7 +493,7 @@ namespace {
 								0
 							};
 
-							unpackedSrc.biSizeImage = ((unpackedSrc.biWidth*3+3)&~3)*unpackedSrc.biHeight;
+							unpackedSrc.biSizeImage = ((unpackedSrc.biWidth*3+3)&~3)*abs(unpackedSrc.biHeight);
 
 							LONG size = ICCompressGetFormatSize(hic, &unpackedSrc);
 

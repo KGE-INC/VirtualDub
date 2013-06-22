@@ -4,6 +4,8 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/time.h>
 #include <vd2/system/profile.h>
+#include <vd2/Kasumi/pixmaputils.h>
+#include <deque>
 
 class IVDMediaOutput;
 class IVDMediaOutputStream;
@@ -61,7 +63,9 @@ public:
 
 protected:
 	enum VideoWriteResult {
-		kVideoWriteOK,
+		kVideoWriteOK,							// Frame was processed and written
+		kVideoWritePushedPendingEmptyFrame,		// A pending null frame was processed instead of the current frame.
+		kVideoWriteBufferedEmptyFrame,
 		kVideoWriteDelayed,
 		kVideoWriteBuffered,
 		kVideoWriteDiscarded,
@@ -70,11 +74,14 @@ protected:
 	void NextSegment();
 
 	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
+	void WritePendingEmptyVideoFrame();
 	void WriteAudio(void *buffer, long lActualBytes, long lActualSamples);
 
 	void ThreadRun();
 	void TimerCallback();
 	void UpdateAudioStreamRate();
+
+	static bool AsyncReinitDisplayCallback(int pass, void *pThisAsVoid, void *, bool aborting);
 
 	const DubOptions		*opt;
 
@@ -109,11 +116,21 @@ protected:
 	typedef vdfastvector<IVDVideoSource *> VideoSources;
 	VideoSources		mVideoSources;
 
+	std::deque<uint32>	mVideoNullFrameDelayQueue;		///< This is a queue used to track null frames between non-null frames. It runs parallel to a video codec's internal B-frame delay queue.
+	uint32				mPendingNullVideoFrames;
+
 	// PREVIEW
 	bool				mbAudioFrozen;
 	bool				mbAudioFrozenValid;
 	bool				mbSyncToAudioEvenClock;
 	long				lDropFrames;
+
+	// DECOMPRESSION PREVIEW
+	vdautoptr<IVDVideoDecompressor>	mpVideoDecompressor;
+	bool				mbVideoDecompressorEnabled;
+	bool				mbVideoDecompressorPending;
+	bool				mbVideoDecompressorErrored;
+	VDPixmapBuffer		mVideoDecompBuffer;
 
 	// ERROR HANDLING
 	MyError				mError;

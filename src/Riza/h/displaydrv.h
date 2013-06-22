@@ -44,7 +44,8 @@ public:
 		kModeAllFields	= 0x00000003,
 		kModeFieldMask	= 0x00000003,
 		kModeVSync		= 0x00000004,
-		kModeAll		= 0x00000007
+		kModeFirstField	= 0x00000008,
+		kModeAll		= 0x000000015
 	};
 
 	enum FilterMode {
@@ -73,10 +74,12 @@ public:
 
 	virtual bool SetSubrect(const vdrect32 *r) = 0;
 	virtual void SetLogicalPalette(const uint8 *pLogicalPalette) = 0;
+
+	virtual float GetSyncDelta() const = 0;
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverOpenGL();
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw();
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays);
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverGDI();
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9();
 

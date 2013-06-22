@@ -64,6 +64,8 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 		return kPixFormat_YUV422_UYVY;
 	case '2YUY':
 		return kPixFormat_YUV422_YUYV;
+	case '42VY':			// Avisynth format
+		return kPixFormat_YUV444_Planar;
 	case '61VY':
 		return kPixFormat_YUV422_Planar;
 	case '21VY':
@@ -77,6 +79,7 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 	case '9UVY':
 		return kPixFormat_YUV410_Planar;
 	case '  8Y':
+	case '008Y':
 		return kPixFormat_Y8;
 	}
 	return 0;
@@ -85,6 +88,9 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 int VDGetPixmapToBitmapVariants(int format) {
 	if (format == nsVDPixmap::kPixFormat_YUV420_Planar)
 		return 3;
+
+	if (format == nsVDPixmap::kPixFormat_Y8)
+		return 2;
 
 	return 1;
 }
@@ -154,6 +160,11 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		dst->biBitCount		= 16;
 		dst->biSizeImage	= ((w+1)&~1)*2*h;
 		break;
+	case kPixFormat_YUV444_Planar:
+		dst->biCompression	= '42VY';
+		dst->biBitCount		= 24;
+		dst->biSizeImage	= w * h * 3;
+		break;
 	case kPixFormat_YUV422_Planar:
 		dst->biCompression	= '61VY';
 		dst->biBitCount		= 16;
@@ -181,7 +192,15 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		dst->biSizeImage	= ((w+2)>>2) * ((h+2)>>2) * 18;
 		break;
 	case kPixFormat_Y8:
-		dst->biCompression	= '  8Y';
+		switch(variant) {
+		case 2:
+			dst->biCompression	= '008Y';
+			break;
+		case 1:
+		default:
+			dst->biCompression	= '  8Y';
+			break;
+		}
 		dst->biBitCount		= 8;
 		dst->biSizeImage	= ((w+3) & ~3) * h;
 		break;
@@ -192,10 +211,10 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 	return true;
 }
 
-uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint32 h, int format, int variant) {
+uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant) {
 	using namespace nsVDPixmap;
 
-	uint32 linspace = VDPixmapCreateLinearLayout(layout, format, w, h, VDPixmapGetInfo(format).auxbufs > 1 ? 1 : 4);
+	uint32 linspace = VDPixmapCreateLinearLayout(layout, format, w, abs(h), VDPixmapGetInfo(format).auxbufs > 1 ? 1 : 4);
 
 	switch(format) {
 	case kPixFormat_Pal8:
@@ -203,8 +222,11 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint
 	case kPixFormat_RGB888:
 	case kPixFormat_RGB565:
 	case kPixFormat_XRGB8888:
-		layout.data += layout.pitch * (h-1);
-		layout.pitch = -layout.pitch;
+		// RGB can be flipped (but YUV can't)
+		if (h > 0) {
+			layout.data += layout.pitch * (h-1);
+			layout.pitch = -layout.pitch;
+		}
 		break;
 	case kPixFormat_YUV420_Planar:
 		if (variant < 2) {				// need to swap UV planes for YV12 (1)

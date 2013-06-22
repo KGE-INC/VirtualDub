@@ -98,7 +98,6 @@ extern bool g_fJobMode;
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
 
-extern void CPUTest();
 extern void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 extern uint32& VDPreferencesGetRenderWaveBufferSize();
 
@@ -336,7 +335,7 @@ bool VDProject::Tick() {
 
 	if (inputVideoAVI && mSceneShuttleMode) {
 		if (!mpSceneDetector)
-			mpSceneDetector = new_nothrow SceneDetector(inputVideoAVI->getImageFormat()->biWidth, inputVideoAVI->getImageFormat()->biHeight);
+			mpSceneDetector = new_nothrow SceneDetector(inputVideoAVI->getImageFormat()->biWidth, abs(inputVideoAVI->getImageFormat()->biHeight));
 
 		if (mpSceneDetector) {
 			mpSceneDetector->SetThresholds(g_prefs.scene.iCutThreshold, g_prefs.scene.iFadeThreshold);
@@ -516,8 +515,6 @@ void VDProject::DisplayFrame(bool bDispInput) {
 				if (bShowOutput)
 					mpCB->UIRefreshOutputFrame(false);
 			} else {
-				if (bShowOutput && !filters.isRunning())
-					CPUTest();
 
 				if (mDesiredInputFrame < 0)
 					inputVideoAVI->streamBegin(false, false);
@@ -698,7 +695,7 @@ void VDProject::RefilterFrame(VDPosition srcPos, VDPosition dstPos) {
 	BITMAPINFOHEADER *dcf = inputVideoAVI->getDecompressedFormat();
 
 	if (!filters.isRunning()) {
-		filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 0);
+		filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, abs(dcf->biHeight), 0);
 		if (filters.ReadyFilters(mfsi))
 			throw MyError("can't initialize filters");
 	}
@@ -1084,10 +1081,15 @@ void VDProject::SaveFilmstrip(const wchar_t *pFilename) {
 	if (!inputVideoAVI)
 		throw MyError("No input file to process.");
 
-	if (!inputAudio)
-		throw MyError("No audio stream to process.");
-
 	VDAVIOutputFilmstripSystem out(pFilename);
+	RunOperation(&out, TRUE, NULL, 0, false);
+}
+
+void VDProject::SaveAnimatedGIF(const wchar_t *pFilename) {
+	if (!inputVideoAVI)
+		throw MyError("No input file to process.");
+
+	VDAVIOutputGIFSystem out(pFilename);
 	RunOperation(&out, TRUE, NULL, 0, false);
 }
 
@@ -1442,8 +1444,6 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 		filters.DeinitFilters();
 		filters.DeallocateBuffers();
 
-		CPUTest();
-
 		// Create a dubber.
 
 		if (!pOptions) {
@@ -1545,8 +1545,6 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 	mpDubStatus = NULL;
 
 	_CrtCheckMemory();
-
-	_RPT0(0,"Ending dub.\n");
 
 	delete g_dubber;
 	g_dubber = NULL;

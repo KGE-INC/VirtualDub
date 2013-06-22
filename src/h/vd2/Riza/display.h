@@ -32,6 +32,7 @@ public:
 		kOddFieldOnly		= 2,
 		kAllFields			= 3,
 		kVSync				= 4,
+		kFirstField			= 8,
 		kVisibleOnly		= 16,
 
 		kFieldModeMax		= 255
@@ -56,9 +57,10 @@ public:
 	virtual void LockAcceleration(bool) = 0;
 	virtual FilterMode GetFilterMode() = 0;
 	virtual void SetFilterMode(FilterMode) = 0;
+	virtual float GetSyncDelta() const = 0;
 };
 
-void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableD3DFX);
+void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableOverlays, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableD3DFX);
 void VDVideoDisplaySetD3DFXFileName(const wchar_t *path);
 
 IVDVideoDisplay *VDGetIVideoDisplay(HWND hwnd);

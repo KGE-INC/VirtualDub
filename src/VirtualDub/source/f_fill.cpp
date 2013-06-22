@@ -98,7 +98,7 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 
 				if (inputVideoAVI) {
 					BITMAPINFOHEADER *bmi = inputVideoAVI->getImageFormat();
-					pClipCtrl->SetBitmapSize(bmi->biWidth,bmi->biHeight);
+					pClipCtrl->SetBitmapSize(bmi->biWidth, abs(bmi->biHeight));
 				} else
 					pClipCtrl->SetBitmapSize(320, 240);
 

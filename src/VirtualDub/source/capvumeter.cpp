@@ -95,16 +95,18 @@ namespace {
 }
 
 void VDComputeWavePeaks(const void *p, unsigned depth, unsigned channels, unsigned count, float& l, float& r) {
-	if (depth == 8 && channels == 1)
-		ComputeWavePeaks_8M((const uint8 *)p, count, l, r);
-	else if (depth == 8 && channels == 2)
-		ComputeWavePeaks_8S((const uint8 *)p, count, l, r);
-	else if (depth == 16 && channels == 1)
-		ComputeWavePeaks_16M((const sint16 *)p, count, l, r);
-	else if (depth == 16 && channels == 2)
-		ComputeWavePeaks_16S((const sint16 *)p, count, l, r);
-	else
-		l = r = 0;
+	l = r = 0;
+
+	if (count) {
+		if (depth == 8 && channels == 1)
+			ComputeWavePeaks_8M((const uint8 *)p, count, l, r);
+		else if (depth == 8 && channels == 2)
+			ComputeWavePeaks_8S((const uint8 *)p, count, l, r);
+		else if (depth == 16 && channels == 1)
+			ComputeWavePeaks_16M((const sint16 *)p, count, l, r);
+		else if (depth == 16 && channels == 2)
+			ComputeWavePeaks_16S((const sint16 *)p, count, l, r);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -441,7 +441,7 @@ void VDCaptureProjectBaseCallback::UICaptureVideoHistoBegin() {}
 void VDCaptureProjectBaseCallback::UICaptureVideoHisto(const float data[256]) {}
 void VDCaptureProjectBaseCallback::UICaptureVideoHistoEnd() {}
 void VDCaptureProjectBaseCallback::UICaptureAudioPeaksUpdated(float l, float r) {}
-void VDCaptureProjectBaseCallback::UICaptureStart() {}
+void VDCaptureProjectBaseCallback::UICaptureStart(bool fTest) {}
 bool VDCaptureProjectBaseCallback::UICapturePreroll() { return true; }
 void VDCaptureProjectBaseCallback::UICaptureStatusUpdated(VDCaptureStatus&) {}
 void VDCaptureProjectBaseCallback::UICaptureEnd(bool success) {}
@@ -546,6 +546,11 @@ public:
 
 	bool	IsDriverDialogSupported(DriverDialog dlg);
 	void	DisplayDriverDialog(DriverDialog dlg);
+
+	bool	IsPropertySupported(uint32 id);
+	sint32	GetPropertyInt(uint32 id, bool *pAutomatic);
+	void	SetPropertyInt(uint32 id, sint32 value, bool automatic);
+	void	GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual);
 
 	void	GetPreviewImageSize(sint32& w, sint32& h);
 
@@ -741,6 +746,7 @@ VDCaptureProject::VDCaptureProject()
 
 	mSystems.push_back(VDCreateCaptureSystemVFW());
 	mSystems.push_back(VDCreateCaptureSystemDS());
+	mSystems.push_back(VDCreateCaptureSystemScreen());
 	mSystems.push_back(VDCreateCaptureSystemEmulation());
 }
 
@@ -1193,6 +1199,34 @@ void VDCaptureProject::DisplayDriverDialog(DriverDialog dlg) {
 		mpDriver->DisplayDriverDialog(dlg);
 }
 
+bool VDCaptureProject::IsPropertySupported(uint32 id) {
+	return mpDriver && mpDriver->IsPropertySupported(id);
+}
+
+sint32 VDCaptureProject::GetPropertyInt(uint32 id, bool *pAutomatic) {
+	if (mpDriver)
+		return mpDriver->GetPropertyInt(id, pAutomatic);
+	
+	if (pAutomatic)
+		*pAutomatic = true;
+	return 0;
+}
+
+void VDCaptureProject::SetPropertyInt(uint32 id, sint32 value, bool automatic) {
+	if (mpDriver)
+		mpDriver->SetPropertyInt(id, value, automatic);
+}
+
+void VDCaptureProject::GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual) {
+	minVal = maxVal = defaultVal = 0;
+	step = 1;
+	automatic = false;
+	manual = false;
+
+	if (mpDriver)
+		mpDriver->GetPropertyInfoInt(id, minVal, maxVal, step, defaultVal, automatic, manual);
+}
+
 void VDCaptureProject::GetPreviewImageSize(sint32& w, sint32& h) {
 	if (mpFilterSys) {
 		w = mFilterOutputLayout.w;
@@ -1204,7 +1238,7 @@ void VDCaptureProject::GetPreviewImageSize(sint32& w, sint32& h) {
 		vdstructex<BITMAPINFOHEADER> vformat;
 		if (GetVideoFormat(vformat)) {
 			w = vformat->biWidth;
-			h = vformat->biHeight;
+			h = abs(vformat->biHeight);
 		}
 	}
 }
@@ -1434,7 +1468,7 @@ void VDCaptureProject::IncrementFileID() {
 			break;
 	}
 
-	name.insert(pos+1, L'1');
+	name.insert(name.begin() + (pos + 1), L'1');
 	SetCaptureFile(name.c_str(), mbStripingEnabled);
 
 	if (mpCB)
@@ -1442,8 +1476,21 @@ void VDCaptureProject::IncrementFileID() {
 }
 
 void VDCaptureProject::IncrementFileIDUntilClear() {
-	while(VDDoesPathExist(mFilename.c_str()))
+	for(;;) {
+		bool exists = false;
+		if (mbEnableSpill) {
+			if (VDDoesPathExist((VDFileSplitExtLeft(mFilename) + L".00.avi").c_str()))
+				exists = true;
+		}
+
+		if (VDDoesPathExist(mFilename.c_str()))
+			exists = true;
+
+		if (!exists)
+			break;
+
 		IncrementFileID();
+	}
 }
 
 void VDCaptureProject::ScanForDrivers() {
@@ -1794,7 +1841,7 @@ unknown_PCM_format:
 			vstrhdr.rcFrame.left			= 0;
 			vstrhdr.rcFrame.top				= 0;
 			vstrhdr.rcFrame.right			= (short)bmiToFile->biWidth;
-			vstrhdr.rcFrame.bottom			= (short)bmiToFile->biHeight;
+			vstrhdr.rcFrame.bottom			= (short)abs(bmiToFile->biHeight);
 
 			icd.mpVideoOut->setFormat(bmiToFile, biSizeToFile);
 			icd.mpVideoOut->setStreamInfo(vstrhdr);
@@ -1904,7 +1951,7 @@ unknown_PCM_format:
 		mMainThreadId = GetCurrentThreadId();
 
 		if (mpCB)
-			mpCB->UICaptureStart();
+			mpCB->UICaptureStart(fTest);
 
 		{
 			VDCaptureTimingAccuracyBooster timingBooster;

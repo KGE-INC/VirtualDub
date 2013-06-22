@@ -100,6 +100,7 @@ extern IVDInputDriver *VDCreateInputDriverImages();
 extern IVDInputDriver *VDCreateInputDriverASF();
 extern IVDInputDriver *VDCreateInputDriverANIM();
 extern IVDInputDriver *VDCreateInputDriverFLM();
+extern IVDInputDriver *VDCreateInputDriverGIF();
 
 namespace {
 	struct SortByRevPriority {
@@ -120,6 +121,7 @@ void VDInitInputDrivers() {
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverASF()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverFLM()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverGIF()));
 
 	g_VDInputDrivers = g_VDInputDriversByLegacyIndex;
 

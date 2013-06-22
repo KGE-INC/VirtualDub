@@ -227,6 +227,7 @@ namespace {
 		case kPixFormat_YUV411_Planar:	format = kPixFormat_YUV422_YUYV; break;
 		case kPixFormat_YUV420_Planar:	format = kPixFormat_YUV422_YUYV; break;
 		case kPixFormat_YUV422_Planar:	format = kPixFormat_YUV422_YUYV; break;
+		case kPixFormat_YUV444_Planar:	format = kPixFormat_YUV422_YUYV; break;
 		case kPixFormat_YUV422_YUYV:	format = kPixFormat_RGB888; break;
 		case kPixFormat_YUV422_UYVY:	format = kPixFormat_RGB888; break;
 		case kPixFormat_Y8:				format = kPixFormat_RGB888; break;
@@ -239,7 +240,7 @@ namespace {
 		// 565 -> 8888 -> 888 -> 1555 -> Pal8
 		// 1555 -> 8888 -> 888 -> Pal8
 
-		case kPixFormat_RGB888:			format = (originalFormat == kPixFormat_RGB888  ) ? kPixFormat_XRGB8888 : (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_Pal8 : kPixFormat_XRGB1555; break;
+		case kPixFormat_RGB888:			format = (originalFormat == kPixFormat_RGB565  ) ? kPixFormat_XRGB1555 : (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_Pal8 : kPixFormat_XRGB8888; break;
 		case kPixFormat_XRGB8888:		format = (originalFormat == kPixFormat_RGB888  ) ? kPixFormat_XRGB1555 : kPixFormat_RGB888; break;
 		case kPixFormat_RGB565:			format = kPixFormat_XRGB8888; break;
 		case kPixFormat_XRGB1555:		format = (originalFormat == kPixFormat_XRGB1555) ? kPixFormat_XRGB8888 : kPixFormat_Pal8; break;
@@ -528,7 +529,10 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 		vInfo.usPerFrameIn	= (long)vInfo.frameRateIn.scale64ir(1000000);
 		vInfo.usPerFrame	= (long)vInfo.frameRate.scale64ir(1000000);
 
-		vInfo.end_dst		= (long)(vInfo.frameRate / vInfo.frameRateIn).scale64t(vInfo.end_src - vInfo.start_src);
+		if (vInfo.end_src <= vInfo.start_src)
+			vInfo.end_dst = 0;
+		else
+			vInfo.end_dst		= (long)(vInfo.frameRate / vInfo.frameRateIn).scale64t(vInfo.end_src - vInfo.start_src);
 		vInfo.end_proc_dst	= vInfo.end_dst;
 	}
 
@@ -1081,7 +1085,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	inputSubsetActive	= pfs;
 	compVars			= videoCompVars;
 
-	if (!fPreview && opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic)
+	if (!fPreview && pOutputSystem->AcceptsVideo() && opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic)
 		mpVideoCompressor = VDCreateVideoCompressorVCM(compVars->hic, compVars->lDataRate*1024, compVars->lQ, compVars->lKey);
 
 	// check the mode; if we're using DirectStreamCopy mode, we'll need to
@@ -1178,7 +1182,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 0);
+		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), abs(bmih->biWidth), abs(bmih->biHeight), 0);
 		
 		VBitmap *lastBitmap = filters.LastBitmap();
 
@@ -1206,6 +1210,9 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 		// Inverse telecine?
 
 		if (opt->video.fInvTelecine) {
+			if (opt->video.mbUseSmartRendering)
+				throw MyError("Inverse telecine cannot be used with smart rendering.");
+
 			if (!(pInvTelecine = CreateVideoTelecineRemover(filters.InputBitmap(), !opt->video.fIVTCMode, opt->video.nIVTCOffset, opt->video.fIVTCPolarity)))
 				throw MyMemoryError();
 

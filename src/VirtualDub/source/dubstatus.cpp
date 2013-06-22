@@ -742,6 +742,7 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				guiOffsetDlgItem(hdlg, IDC_STATIC_PRIORITY, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_INPUT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_OUTPUT, 0, yoffset);
+				guiOffsetDlgItem(hdlg, IDC_DRAW_DOUTPUT, 0, yoffset);
 
 				// resize us
 
@@ -759,6 +760,7 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 
 				CheckDlgButton(hdlg, IDC_DRAW_INPUT, thisPtr->opt->video.fShowInputFrame);
 				CheckDlgButton(hdlg, IDC_DRAW_OUTPUT, thisPtr->opt->video.fShowOutputFrame);
+				CheckDlgButton(hdlg, IDC_DRAW_DOUTPUT, thisPtr->opt->video.fShowDecompressedFrame);
 
 				hwndItem = GetDlgItem(hdlg, IDC_PRIORITY);
 				SendMessage(hwndItem, CB_RESETCONTENT,0,0);
@@ -849,6 +851,10 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 
 			case IDC_DRAW_OUTPUT:
 				thisPtr->opt->video.fShowOutputFrame = SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)==BST_CHECKED;
+				break;
+
+			case IDC_DRAW_DOUTPUT:
+				thisPtr->opt->video.fShowDecompressedFrame = SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)==BST_CHECKED;
 				break;
 
 			case IDC_PRIORITY:

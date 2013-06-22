@@ -117,7 +117,7 @@ LRESULT CCompRemote::DecompressGetFormat(BITMAPINFO *lpbiInput, BITMAPINFO *lpbi
 	bmihOutput->biPlanes		= 1;
 	bmihOutput->biBitCount		= 24;
 	bmihOutput->biCompression	= BI_RGB;
-	bmihOutput->biSizeImage		= ((bmihInput->biWidth*3+3)&-4)*bmihInput->biHeight;
+	bmihOutput->biSizeImage		= ((bmihInput->biWidth*3+3)&-4)*abs(bmihInput->biHeight);
 	bmihOutput->biXPelsPerMeter	= bmihInput->biXPelsPerMeter;
 	bmihOutput->biYPelsPerMeter	= bmihInput->biYPelsPerMeter;
 	bmihOutput->biClrUsed		= 0;

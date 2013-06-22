@@ -58,9 +58,7 @@ private:
 	enum {
 		kFlagFinalizeTriggered		= 1,
 		kFlagFinalizeAcknowledged	= 2,
-		kFlagAborted				= 4,
-		kFlagSyncTriggered			= 8,
-		kFlagSyncAcknowledged		= 16
+		kFlagAborted				= 4
 	};
 
 	// These are the same as in VideoSourceAVI
@@ -92,8 +90,6 @@ public:
 	void finalizeAndWait();
 	void finalizeAck();
 	void abort();
-	bool sync();
-	void syncack();
 	void getDropDistances(int& dependant, int& independent);
 	void getQueueInfo(int& total, int& finals);
 };

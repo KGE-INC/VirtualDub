@@ -42,7 +42,8 @@
 	</p>
 	<ul>
 		<li>The output render target, sized to the output frame.</li>
-		<li>The source texture, which holds the video frame.</li>
+		<li>The source texture, which holds the current video frame.</li>
+		<li>The previous source texture, which holds the last video frame.</li>
 		<li>Two temporary render target textures, which are at least as large as the desktop.</li>
 	</ul>
 	<p>
@@ -50,6 +51,7 @@
 	</p>
 <blockquote><pre>
 texture vd_srctexture;
+texture vd_prevsrctexture;   // new - 1.7.1
 texture vd_temptexture;
 texture vd_temptexture2;
 </pre></blockquote>
@@ -59,6 +61,18 @@ texture vd_temptexture2;
 		non-power-of-two textures; in particular, the restrictions of the <tt>NONPOW2CONDITIONAL</tt> caps bit do
 		not have to be followed when using them.
 	</p>
+	<p>
+		The <tt>vd_srctexture</tt> variable can take a single annotation:
+	</p>
+	<dl>
+		<dt>bool vd_forceframeupload = <i>force_flag</i>; // new - 1.7.1</dt>
+		<dd>
+			If <tt>true</tt>, this annotation changes the behavior of image upload when operating in field
+			mode. Normally, when field display mode is enabled, the even and odd fields of the source texture
+			are alternately updated; this effectively applies weave deinterlacing to the input. When <tt>vd_forceframeupload</tt>
+			is set to <tt>true</tt>, both fields are uploaded on the first field of every frame.
+		</dd>
+	</dl>
 
 	<h2>Technique selection and execution</h2>
 	<p>
@@ -102,6 +116,17 @@ texture vd_temptexture2;
 		<dd>
 			Selects the render target texture to use for rendering. If this is not specified, the output render target
 			is used instead. The viewport is automatically set to the entire texture.
+		</dd>
+		
+		<dt>int vd_fieldmask = mask; // new - 1.7.1</dt>
+		<dd>
+			Restricts a pass to running in only certain fields during field playback:
+			<ul>
+				<li>1 - run during even field only</li>
+				<li>2 - run during odd field only</li>
+				<li>3 - run during either field</li>
+			</ul>
+			If this annotation is absent, the pass always runs.
 		</dd>
 	</dl>
 	<p>

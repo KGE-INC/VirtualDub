@@ -1165,8 +1165,11 @@ void VDJPEGDecoder::Refill() {
 			return;
 		uint8 c = *mpSrc++;
 		if (c == 0xff) {
+			// We used to throw an error here, but it turns out some models of Ricoh digital
+			// camera don't write out the final byte of the EOI marker, so instead we just
+			// stop the bitstream.
 			if (mpSrc >= mpSrcEnd)
-				throw MyError("JPEGDecoder: Corrupted image");
+				return;
 
 			++mpSrc;
 		}

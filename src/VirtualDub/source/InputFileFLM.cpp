@@ -165,6 +165,7 @@ void VDVideoSourceFLM::parse() {
 
 	memset(&streamInfo, 0, sizeof streamInfo);
 
+	streamInfo.fccType		= streamtypeVIDEO;
 	streamInfo.dwLength		= (DWORD)mSampleLast;
 	streamInfo.dwRate		= (uint32)mHeader.framesPerSec;
 	streamInfo.dwScale		= 1;
@@ -254,6 +255,8 @@ const void *VDVideoSourceFLM::streamGetFrame(const void *inputBuffer, uint32 dat
 	srcbm.format	= nsVDPixmap::kPixFormat_XRGB8888;
 
 	VDPixmapBlt(mTargetFormat, srcbm);
+
+	mCachedFrame = frame_num;
 
 	return getFrameBuffer();
 }

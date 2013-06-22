@@ -35,6 +35,8 @@ extern "C" unsigned long version_num;
 extern uint32 VDPreferencesGetAVIAlignmentThreshold();
 extern void VDPreferencesGetAVIIndexingLimits(uint32& superindex, uint32& subindex);
 
+extern AVIOutput *VDCreateAVIOutputGIF();
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	VDAVIOutputFileSystem
@@ -483,6 +485,57 @@ bool VDAVIOutputFilmstripSystem::AcceptsVideo() {
 }
 
 bool VDAVIOutputFilmstripSystem::AcceptsAudio() {
+	return false;
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	VDAVIOutputGIFSystem
+//
+///////////////////////////////////////////////////////////////////////////
+
+VDAVIOutputGIFSystem::VDAVIOutputGIFSystem(const wchar_t *filename)
+	: mFilename(filename)
+{
+}
+
+VDAVIOutputGIFSystem::~VDAVIOutputGIFSystem() {
+}
+
+IVDMediaOutput *VDAVIOutputGIFSystem::CreateSegment() {
+	vdautoptr<AVIOutput> pOutput(VDCreateAVIOutputGIF());
+
+	if (!mVideoFormat.empty()) {
+		IVDMediaOutputStream *pOutputStream = pOutput->createVideoStream();
+		
+		pOutputStream->setFormat(&mVideoFormat[0], mVideoFormat.size());
+		pOutputStream->setStreamInfo(mVideoStreamInfo);
+	}
+
+	pOutput->init(mFilename.c_str());
+
+	return pOutput.release();
+}
+
+void VDAVIOutputGIFSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
+	vdautoptr<AVIOutputFLM> pFile(static_cast<AVIOutputFLM *>(pSegment));
+	pFile->finalize();
+}
+
+void VDAVIOutputGIFSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
+	mVideoStreamInfo = asi;
+	mVideoFormat.resize(cbFormat);
+	memcpy(&mVideoFormat[0], pFormat, cbFormat);
+}
+
+void VDAVIOutputGIFSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+}
+
+bool VDAVIOutputGIFSystem::AcceptsVideo() {
+	return true;
+}
+
+bool VDAVIOutputGIFSystem::AcceptsAudio() {
 	return false;
 }
 

@@ -40,7 +40,7 @@ extern HINSTANCE g_hInst;
 
 ///////////////////////
 
-vdmatrix3f MapQuadToUnitSquare(const vdvector2f src[4]) {
+vdfloat3x3 MapQuadToUnitSquare(const vdfloat2 src[4]) {
 	double m[8][8] = {
 		{	-src[0][0],	-src[0][1],	-1,		+src[0][0],	+src[0][1],	+1,		0,			0,			},
 		{	-src[0][0],	-src[0][1],	-1,		0,			0,			0,		-src[0][0],	-src[0][1],	},
@@ -58,11 +58,11 @@ vdmatrix3f MapQuadToUnitSquare(const vdvector2f src[4]) {
 
 	VDSolveLinearEquation(&m[0][0], 8, 8, b);
 
-	vdmatrix3f mx;
+	vdfloat3x3 mx;
 
-	mx[0] = vdvector3f((float)b[0], (float)b[1], (float)b[2]);
-	mx[1] = vdvector3f((float)b[3], (float)b[4], (float)b[5]);
-	mx[2] = vdvector3f((float)b[6], (float)b[7], 1);
+	mx[0].set((float)b[0], (float)b[1], (float)b[2]);
+	mx[1].set((float)b[3], (float)b[4], (float)b[5]);
+	mx[2].set((float)b[6], (float)b[7], 1);
 
 	return mx;
 }
@@ -84,7 +84,7 @@ struct PerspectiveFilterData {
 #if 0
 	int hrot, vrot, roll, nearpt, zoom;
 #else
-	vdvector2f src[4];
+	vdfloat2 src[4];
 #endif
 
 	int filtermode;
@@ -114,14 +114,11 @@ namespace {
 static int perspective_init(FilterActivation *fa, const FilterFunctions *ff) {
 	PerspectiveFilterData *mfd = (PerspectiveFilterData *)fa->filter_data;
 
-#if 0
-	mfd->zoom = 100;
-#else
-	mfd->src[0] = vdvector2f(-1, -1);
-	mfd->src[1] = vdvector2f(+1, -1);
-	mfd->src[2] = vdvector2f(-1, +1);
-	mfd->src[3] = vdvector2f(+1, +1);
-#endif
+	mfd->src[0].set(-1, -1);
+	mfd->src[1].set(+1, -1);
+	mfd->src[2].set(-1, +1);
+	mfd->src[3].set(+1, +1);
+
 	return 0;
 }
 
@@ -153,12 +150,12 @@ static int perspective_run(const FilterActivation *fa, const FilterFunctions *ff
 
 	static const int indices[6]={0,1,2,0,2,3};
 
-	vdmatrix3f temp(MapQuadToUnitSquare(mfd->src));
+	vdfloat3x3 temp(MapQuadToUnitSquare(mfd->src));
 
 	if (!mfd->unproject)
 		temp = ~temp;
 
-	vdmatrix4f mx;
+	vdfloat4x4 mx;
 
 	mx[0][0] = temp[0][0];
 	mx[0][1] = temp[0][1];
@@ -179,7 +176,7 @@ static int perspective_run(const FilterActivation *fa, const FilterFunctions *ff
 
 	// manually transform corners and form fill mesh
 	for(int i=0; i<4; ++i) {
-		vdvector3f xfv((mx*vdvector4f(trivx[i].x, trivx[i].y, trivx[i].z, 1.0f)).project());
+		vdfloat3 xfv((mx*vdfloat4c(trivx[i].x, trivx[i].y, trivx[i].z, 1.0f)).project());
 
 		trivx[i+4].x = xfv[0];
 		trivx[i+4].y = xfv[1];

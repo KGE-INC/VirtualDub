@@ -1,6 +1,67 @@
 VirtualDub change log
 
-Build %build% (1.7.0, experimental): [%date%]
+Build %build% (1.7.1, experimental): [%date%]
+   [features added]
+   * AVI file info now shows the FOURCC of the video stream.
+   * The "display decompressed output" option can now be enabled and disabled in the middle of encoding.
+   * Improved playback timing.
+   * Added /hexview command-line flag to open a file in read-only mode.
+   * Added /noStupidAntiDebugChecks for development purposes.
+   * Added "warp resize" video filter.
+   * The "resize" video filter now allows editing the frame height with an aspect ratio constraint active.
+   * Ctrl+Drag in the audio display modifies the audio displacement.
+   * Added an option to create several types of diagnostic test videos.
+   * Added Y800 as a synonym for Y8.
+   * Added support for the 4:4:4 planar YCbCr "YV24" format.
+   * Added animated GIF import.
+   * D3D: UYVY, YUY2, YV24, YV16, YV12, I420, and YVU9 video display is now accelerated in Direct3D mode.
+   * D3DFX: Added additional support for field-based display shaders.
+   * Capture: Added a new screen capture driver.
+   * Capture: Added configurable hotkeys for stopping and starting capture.
+   * Capture: DirectShow filter graph build errors are now noted in the log window.
+   * Capture: Full-screen mode now auto-hides mouse cursor.
+   * Capture: Added UI for modifying DirectShow brightness, contrast, gamma, sharpness, and hue settings.
+   * Capture: Audio playback setting is now auto-saved.
+
+   [bugs fixed]
+   * "Export as filmstrip" command failed if no audio stream was available.
+   * Filmstrips didn't resave properly as AVI (video stream type set incorrectly).
+   * Modified the SSE check to ignore the flush-to-zero (FTZ) bit, which unfortunately some compiler DLL runtimes twiddle.
+   * "Preserve empty frames" was writing out the empty frames as key frames. VirtualDub corrects this on load, but it was still incorrect on disk.
+   * "Preserve empty frames" caused the video codec key frame interval to work incorrectly -- it counted compressed frames rather than total frames.
+   * "Display decompressed output" was broken.
+   * Added workaround for silent crash when using the audio display with older versions of Avisynth.
+   * Added workaround for digital cameras that leave the last byte off of JPEG images.
+   * Added workaround for some naughty DLLs that prevented VirtualDub's crash logging mechanisms from working properly.
+   * Added more workarounds for overlay surface goofiness on Windows Vista.
+   * Audio display now reflects timeline edits and the audio displacement setting.
+   * Made it more difficult to accidentally select frames in the audio display.
+   * Fixed divide by zero crash when D3DFX display is enabled and a video pane is shrunken to zero width.
+   * Fixed case where tiny audio chunks were emitted periodically when using some MP3 codecs at a 44KHz sampling rate (audio interleaving issue, not sync issue).
+   * Fixed goofed file filters in source dialog of "create paletted AVI" option.
+   * Inverse telecine could be enabled with smart rendering (which doesn't work).
+   * Fixed "preserve empty frames" and "smart rendering" options to work better in the presence of a B-frame encoding delay.
+   * Capture: Alt+Enter full-screen toggle left window in topmost placement.
+   * Capture: Fixed sporadic crash when capturing with resync disabled.
+   * Capture: Fixed tabbing in "set custom format" dialog.
+   * Capture: /capfileinc and the startup code didn't increment the filename properly past existing files when multisegment capture was enabled.
+   * Capture: Hide on Capture now works for DirectShow-based devices.
+   * Capture: Added workaround for driver bug in Adaptec AVC-1400 GameBridge drivers that causes a crash when displaying video capture pin properties.
+   * Capture: Fixed filter leak in DirectShow driver in some cases when the filter graph failed to build properly.
+   * Capture: When the "transform filter" registry option was used, the transform filter popped off the capture filter after a video format change.
+
+   [regressions fixed]
+   * Fixed crash when opening AVI file with truncated MP3 audio format.
+   * Fixed some audio sync errors when cutting.
+   * Fixed the resize filter's settings not saving properly. This was actually caused by a long standing overload resolution bug in filter script with multiple glue functions on the same overload.
+   * Fixed crash when attempting to preview with an audio stream for which no decompressor is available.
+   * Fixed crash when using quick preview beyond end of selection.
+   * Fixed a couple of cases of bogus total audio sample counts being reported in the dub status window.
+   * Audio sync sometimes wasn't correct when cutting files with VBR audio.
+   * Audio stream estimate on status window was sometimes negative.
+   * Fixed crash at end of operation with IVTC enabled.
+
+Build 25854 (1.7.0, experimental): [November 5, 2006]
    [features added]
    * New "smart rendering" feature for selective processing of video around edit areas while copying as many existing frames as possible.
    * New audio waveform/spectrogram display.

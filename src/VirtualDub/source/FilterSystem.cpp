@@ -243,10 +243,6 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 	lRequiredSize = lAdditionalBytes;
 
 	for(i=0; i<iBitmapCount; i++) {
-
-		_RPT4(0,"Buffer %d: %dx%d (%d bits), ", i, bitmap[i].w, bitmap[i].h, bitmap[i].depth);
-		_RPT2(0,"pitch %d, offset %ld\n", bitmap[i].pitch, lRequiredSize);
-
 		bitmap[i].buffer		= i;
 		bitmap[i].lMapOffset	= lRequiredSize;
 

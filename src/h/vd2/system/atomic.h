@@ -199,6 +199,37 @@ public:
 };
 
 ///////////////////////////////////////////////////////////////////////////
+
+class VDAtomicFloat {
+protected:
+	volatile float n;
+
+public:
+	VDAtomicFloat() {}
+	VDAtomicFloat(float v) : n(v) {}
+
+	bool operator!=(float v) const  { return n!=v; }
+	bool operator==(float v) const { return n==v; }
+	bool operator<=(float v) const { return n<=v; }
+	bool operator>=(float v) const { return n>=v; }
+	bool operator<(float v) const { return n<v; }
+	bool operator>(float v) const { return n>v; }
+
+	float operator=(float v) { return n = v; }
+
+	operator float() const {
+		return n;
+	}
+
+	/// Atomic exchange.
+	float xchg(float v) {
+		union { int i; float f; } converter = {VDAtomicInt::staticExchange((volatile int *)&n, *(const int *)&v)};
+
+		return converter.f;
+	}
+};
+
+///////////////////////////////////////////////////////////////////////////
 /// \class VDAtomicPtr
 /// \brief Wrapped pointer supporting thread-safe atomic operations.
 ///

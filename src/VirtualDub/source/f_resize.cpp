@@ -451,26 +451,31 @@ struct VDResizeFilterData {
 		return NULL;
 	}
 
-	void ComputeSizes(uint32 srcw, uint32 srch, double& imgw, double& imgh, uint32& framew, uint32& frameh, bool useAlignment) {
-		if (mbUseRelative)
+	void ComputeSizes(uint32 srcw, uint32 srch, double& imgw, double& imgh, uint32& framew, uint32& frameh, bool useAlignment, bool widthHasPriority) {
+		if (mbUseRelative) {
 			imgw = srcw * (mImageRelW * (1.0 / 100.0));
-		else
+			imgh = srch * (mImageRelH * (1.0 / 100.0));
+		} else {
 			imgw = mImageW;
+			imgh = mImageH;
+		}
 
 		switch(mImageAspectMode) {
 			case kImageAspectNone:
-				if (mbUseRelative)
-					imgh = srch * (mImageRelH * (1.0 / 100.0));
-				else
-					imgh = mImageH;
 				break;
 
 			case kImageAspectUseSource:
-				imgh = imgw * ((double)srch / (double)srcw);
+				if (widthHasPriority)
+					imgh = imgw * ((double)srch / (double)srcw);
+				else
+					imgw = imgh * ((double)srcw / (double)srch);
 				break;
 
 			case kImageAspectCustom:
-				imgh = imgw * (mImageAspectDenominator / mImageAspectNumerator);
+				if (widthHasPriority)
+					imgh = imgw * (mImageAspectDenominator / mImageAspectNumerator);
+				else
+					imgw = imgh * (mImageAspectNumerator / mImageAspectDenominator);
 				break;
 		}
 
@@ -563,21 +568,29 @@ struct VDResizeFilterData {
 		}
 	}
 
-	void UpdateInformativeFields(uint32 srcw, uint32 srch) {
+	void UpdateInformativeFields(uint32 srcw, uint32 srch, bool widthHasPriority) {
 		double imgw, imgh;
 		uint32 framew, frameh;
-		ComputeSizes(srcw, srch, imgw, imgh, framew, frameh, false);
+		ComputeSizes(srcw, srch, imgw, imgh, framew, frameh, false, widthHasPriority);
 
 		if (mbUseRelative) {
 			mImageW = imgw;
 			mImageH = imgh;
-			if (mImageAspectMode != VDResizeFilterData::kImageAspectNone)
-				mImageRelH = 100.0 * imgh / (double)srch;
+			if (mImageAspectMode != VDResizeFilterData::kImageAspectNone) {
+				if (widthHasPriority)
+					mImageRelH = 100.0 * imgh / (double)srch;
+				else
+					mImageRelW = 100.0 * imgw / (double)srcw;
+			}
 		} else {
 			mImageRelW = 100.0 * imgw / (double)srcw;
 			mImageRelH = 100.0 * imgh / (double)srch;
-			if (mImageAspectMode != VDResizeFilterData::kImageAspectNone)
-				mImageH = imgh;
+			if (mImageAspectMode != VDResizeFilterData::kImageAspectNone) {
+				if (widthHasPriority)
+					mImageH = imgh;
+				else
+					mImageW = imgw;
+			}
 		}
 	}
 
@@ -632,7 +645,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 	double dstw, dsth;
 	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true);
+	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true, true);
 
 	double dx = (fa->dst.w - dstw) * 0.5;
 	double dy = (fa->dst.h - dsth) * 0.5;
@@ -731,7 +744,7 @@ static long resize_param(FilterActivation *fa, const FilterFunctions *ff) {
 
 	double imgw, imgh;
 	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, imgw, imgh, framew, frameh, true);
+	mfd->ComputeSizes(fa->src.w, fa->src.h, imgw, imgh, framew, frameh, true, true);
 
 	fa->dst.w = framew;
 	fa->dst.h = frameh;
@@ -785,6 +798,7 @@ protected:
 	VDResizeFilterData& mConfig;
 	VDResizeFilterData mNewConfig;
 	bool		mbConfigDirty;
+	bool		mbWidthPriority;
 	HBRUSH		mhbrColor;
 	IVDFilterPreview2 *mifp;
 	uint32		mWidth;
@@ -796,6 +810,7 @@ VDVF1ResizeDlg::VDVF1ResizeDlg(VDResizeFilterData& config, IVDFilterPreview2 *if
 	: VDDialogBaseW32(IDD_FILTER_RESIZE)
 	, mConfig(config)
 	, mbConfigDirty(false)
+	, mbWidthPriority(true)
 	, mhbrColor(NULL)
 	, mifp(ifp)
 	, mWidth(w)
@@ -857,6 +872,7 @@ INT_PTR VDVF1ResizeDlg::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			case IDC_HEIGHT:
 				if (!mRecursionLock && (HIWORD(wParam) == EN_KILLFOCUS || HIWORD(wParam) == EN_CHANGE)) {
 					if (HIWORD(wParam) == EN_CHANGE) {
+						mbWidthPriority = (LOWORD(wParam) == IDC_WIDTH);
 						++mRecursionLock;
 						CheckDlgButton(mhdlg, IDC_SIZE_ABSOLUTE, BST_CHECKED);
 						CheckDlgButton(mhdlg, IDC_SIZE_RELATIVE, BST_UNCHECKED);
@@ -870,6 +886,7 @@ INT_PTR VDVF1ResizeDlg::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			case IDC_RELHEIGHT:
 				if (!mRecursionLock && (HIWORD(wParam) == EN_KILLFOCUS || HIWORD(wParam) == EN_CHANGE)) {
 					if (HIWORD(wParam) == EN_CHANGE) {
+						mbWidthPriority = (LOWORD(wParam) == IDC_RELWIDTH);
 						++mRecursionLock;
 						CheckDlgButton(mhdlg, IDC_SIZE_ABSOLUTE, BST_UNCHECKED);
 						CheckDlgButton(mhdlg, IDC_SIZE_RELATIVE, BST_CHECKED);
@@ -949,7 +966,7 @@ void VDVF1ResizeDlg::InitDialog() {
 		SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)filter_names[i]);
 
 	if (mWidth && mHeight)
-		mConfig.UpdateInformativeFields(mWidth, mHeight);
+		mConfig.UpdateInformativeFields(mWidth, mHeight, true);
 
 	mNewConfig = mConfig;
 	ExchangeWithDialog(true);
@@ -979,14 +996,22 @@ uint32 VDVF1ResizeDlg::ExchangeWithDialog(bool write) {
 	ex.ExchangeOption(IDC_SIZE_ABSOLUTE, mNewConfig.mbUseRelative, false);
 	ex.ExchangeOption(IDC_SIZE_RELATIVE, mNewConfig.mbUseRelative, true);
 
+	bool doboth = mNewConfig.mImageAspectMode == VDResizeFilterData::kImageAspectNone || write;
+	bool dowidth = doboth || mbWidthPriority;
+	bool doheight = doboth || !mbWidthPriority;
+
 	if (write || mNewConfig.mbUseRelative) {
-		ex.ExchangeEdit(IDC_RELWIDTH, mNewConfig.mImageRelW);
-		ex.ExchangeEdit(IDC_RELHEIGHT, mNewConfig.mImageRelH);
+		if (dowidth)
+			ex.ExchangeEdit(IDC_RELWIDTH, mNewConfig.mImageRelW);
+		if (doheight)
+			ex.ExchangeEdit(IDC_RELHEIGHT, mNewConfig.mImageRelH);
 	}
 	
 	if (write || !mNewConfig.mbUseRelative) {
-		ex.ExchangeEdit(IDC_WIDTH, mNewConfig.mImageW);
-		ex.ExchangeEdit(IDC_HEIGHT, mNewConfig.mImageH);
+		if (dowidth)
+			ex.ExchangeEdit(IDC_WIDTH, mNewConfig.mImageW);
+		if (doheight)
+			ex.ExchangeEdit(IDC_HEIGHT, mNewConfig.mImageH);
 	}
 
 	ex.ExchangeEdit(IDC_ASPECT_RATIO1, mNewConfig.mImageAspectNumerator);
@@ -1019,19 +1044,27 @@ uint32 VDVF1ResizeDlg::ExchangeWithDialog(bool write) {
 		if (!write && !error && mWidth && mHeight) {
 			VDDataExchangeDialogW32 wex(mhdlg, true);
 
-			mNewConfig.UpdateInformativeFields(mWidth, mHeight);
+			mNewConfig.UpdateInformativeFields(mWidth, mHeight, mbWidthPriority);
 
 			++mRecursionLock;
 			if (mNewConfig.mbUseRelative) {
 				wex.ExchangeEdit(IDC_WIDTH, mNewConfig.mImageW);
 				wex.ExchangeEdit(IDC_HEIGHT, mNewConfig.mImageH);
-				if (mNewConfig.mImageAspectMode != VDResizeFilterData::kImageAspectNone)
-					wex.ExchangeEdit(IDC_RELHEIGHT, mNewConfig.mImageRelH);
+				if (mNewConfig.mImageAspectMode != VDResizeFilterData::kImageAspectNone) {
+					if (mbWidthPriority)
+						wex.ExchangeEdit(IDC_RELHEIGHT, mNewConfig.mImageRelH);
+					else
+						wex.ExchangeEdit(IDC_RELWIDTH, mNewConfig.mImageRelW);
+				}
 			} else {
 				wex.ExchangeEdit(IDC_RELWIDTH, mNewConfig.mImageRelW);
 				wex.ExchangeEdit(IDC_RELHEIGHT, mNewConfig.mImageRelH);
-				if (mNewConfig.mImageAspectMode != VDResizeFilterData::kImageAspectNone)
-					wex.ExchangeEdit(IDC_HEIGHT, mNewConfig.mImageH);
+				if (mNewConfig.mImageAspectMode != VDResizeFilterData::kImageAspectNone) {
+					if (mbWidthPriority)
+						wex.ExchangeEdit(IDC_HEIGHT, mNewConfig.mImageH);
+					else
+						wex.ExchangeEdit(IDC_WIDTH, mNewConfig.mImageW);
+				}
 			}
 			--mRecursionLock;
 		}
@@ -1045,8 +1078,6 @@ uint32 VDVF1ResizeDlg::ExchangeWithDialog(bool write) {
 }
 
 void VDVF1ResizeDlg::UpdateEnables() {
-	EnableWindow(GetDlgItem(mhdlg, IDC_HEIGHT), mNewConfig.mImageAspectMode == VDResizeFilterData::kImageAspectNone);
-	EnableWindow(GetDlgItem(mhdlg, IDC_RELHEIGHT), mNewConfig.mImageAspectMode == VDResizeFilterData::kImageAspectNone);
 	EnableWindow(GetDlgItem(mhdlg, IDC_ASPECT_RATIO1), mNewConfig.mImageAspectMode == VDResizeFilterData::kImageAspectCustom);
 	EnableWindow(GetDlgItem(mhdlg, IDC_ASPECT_RATIO2), mNewConfig.mImageAspectMode == VDResizeFilterData::kImageAspectCustom);
 	EnableWindow(GetDlgItem(mhdlg, IDC_FRAMEWIDTH), mNewConfig.mFrameMode == VDResizeFilterData::kFrameModeToSize);
@@ -1122,7 +1153,7 @@ static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	double dstw, dsth;
 	uint32 framew, frameh;
-	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true);
+	mfd->ComputeSizes(fa->src.w, fa->src.h, dstw, dsth, framew, frameh, true, true);
 
 	IVDPixmapResampler::FilterMode fmode;
 	bool bInterpolationOnly = true;

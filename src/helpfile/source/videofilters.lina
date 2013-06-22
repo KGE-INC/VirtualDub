@@ -418,5 +418,14 @@
 				chroma blurring will lead to bleeding.
 			</long>
 		</filter>
+		<filter>
+			<name>warp resize</name>
+			<desc>Resize video using an edge-sensitive algorithm.</desc>
+			<long>
+				<em>Warp resize</em> attempts to resize video more intelligently by detecting edges in the video and
+				warping areas to sharpen edges. It works better with computer-generated video or animations than with
+				natural video.
+			</long>
+		</filter>
 	</video-filters>
 </lina:data>

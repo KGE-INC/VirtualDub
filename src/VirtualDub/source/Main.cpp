@@ -32,6 +32,7 @@
 #include <vd2/system/memory.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/debug.h>
+#include <vd2/system/cmdline.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmaputils.h>
@@ -86,18 +87,17 @@ static const char g_szRegKeyPersistence[]="Persistence";
 
 ///////////////////////////
 
-extern bool Init(HINSTANCE hInstance, int nCmdShow);
+extern bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine);
 extern void Deinit();
 
 void OpenAVI(int index, bool extended_opt);
 void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 void SaveAVI(HWND, bool);
 void SaveSegmentedAVI(HWND);
-void CPUTest();
 void SaveImageSeq(HWND);
 void SaveConfiguration(HWND);
 
-extern int VDProcessCommandLine(const wchar_t *s);
+extern int VDProcessCommandLine(const VDCommandLine& cmdLine);
 
 //
 //  FUNCTION: WinMain(HANDLE, HANDLE, LPSTR, int)
@@ -115,7 +115,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 {
 	MSG msg;
 
-	if (!Init(hInstance, nCmdShow))
+	VDCommandLine cmdLine(GetCommandLineW());
+	if (!Init(hInstance, nCmdShow, cmdLine))
 		return 10;
 
     // Acquire and dispatch messages until a WM_QUIT message is received.
@@ -143,7 +144,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 		if (!bCommandLineProcessed) {
 			bCommandLineProcessed = true;
-			int rc = VDProcessCommandLine(GetCommandLineW());
+			int rc = VDProcessCommandLine(cmdLine);
 
 			if (rc >= 0) {
 				VDUIFrame::DestroyAll();
@@ -454,30 +455,6 @@ void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp)
 	g_project->RunOperation(&outpreview, FALSE, quick_options, iPriority, fProp, 0, 0);
 
 	g_dubOpts.audio.enabled = bPreview;
-}
-
-void CPUTest() {
-	long lEnableFlags;
-
-	lEnableFlags = g_prefs.main.fOptimizations & CPUF_SUPPORTS_MASK;
-
-	if (!(g_prefs.main.fOptimizations & PreferencesMain::OPTF_FORCE)) {
-		SYSTEM_INFO si;
-
-		lEnableFlags = CPUCheckForExtensions();
-
-		GetSystemInfo(&si);
-
-		if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
-			if (si.wProcessorLevel < 4)
-				lEnableFlags &= ~CPUF_SUPPORTS_FPU;		// Not strictly true, but very slow anyway
-	}
-
-	// Enable FPU support...
-
-	CPUEnableExtensions(lEnableFlags);
-
-	VDFastMemcpyAutodetect();
 }
 
 /////////////////////////////

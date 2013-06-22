@@ -82,8 +82,10 @@ public:
 
 	bool Query(const void *inputFormat, const void *outputFormat);
 	void GetOutputFormat(const void *inputFormat, vdstructex<tagBITMAPINFOHEADER>& outputFormat);
+	const void *GetOutputFormat();
 	void Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount);
 	void Restart();
+	void SkipFrame();
 	void DropFrame();
 	bool CompressFrame(void *dst, const void *src, bool& keyframe, uint32& size);
 	void Stop();
@@ -176,6 +178,10 @@ void VDVideoCompressorVCM::GetOutputFormat(const void *inputFormat, vdstructex<t
 	}
 }
 
+const void *VDVideoCompressorVCM::GetOutputFormat() {
+	return mOutputFormat.data();
+}
+
 void VDVideoCompressorVCM::Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount) {
 	this->hic		= hic;
 
@@ -234,7 +240,7 @@ void VDVideoCompressorVCM::Start(const void *inputFormat, const void *outputForm
 	// 43/51 value, and use the higher of the two.
 
 	if ((info.fccHandler & 0xdfdfdfdf) == 'UYFH') {
-		long lRealMaxPackedSize = pbihInput->biWidth * pbihInput->biHeight;
+		long lRealMaxPackedSize = pbihInput->biWidth * abs(pbihInput->biHeight);
 
 		if (pbihInput->biCompression == BI_RGB)
 			lRealMaxPackedSize = (lRealMaxPackedSize * 51) >> 3;
@@ -382,10 +388,16 @@ void VDVideoCompressorVCM::Stop() {
 	}
 }
 
+void VDVideoCompressorVCM::SkipFrame() {
+	if (lKeyRate && lKeyRateCounter>1)
+		--lKeyRateCounter;
+}
+
 void VDVideoCompressorVCM::DropFrame() {
 	if (lKeyRate && lKeyRateCounter>1)
 		--lKeyRateCounter;
 
+	// Hmm, this seems to make Cinepak restart on a key frame.
 	++lFrameNum;
 }
 

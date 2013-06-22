@@ -64,29 +64,32 @@ public:
 	virtual void TimerCallback() = 0;
 };
 
-class VDCallbackTimer {
+class VDCallbackTimer : private VDThread {
 public:
 	VDCallbackTimer();
-	~VDCallbackTimer() throw();
+	~VDCallbackTimer();
 
 	bool Init(IVDTimerCallback *pCB, uint32 period_ms);
+	bool Init2(IVDTimerCallback *pCB, uint32 period_100ns);
 	void Shutdown();
+
+	void SetRateDelta(int delta_100ns);
+	void AdjustRate(int adjustment_100ns);
 
 	bool IsTimerRunning() const;
 
 private:
+	void ThreadRun();
+
 	IVDTimerCallback *mpCB;
-	unsigned		mTimerID;
-	unsigned		mTimerPeriod;
+	unsigned		mTimerAccuracy;
+	uint32			mTimerPeriod;
+	VDAtomicInt		mTimerPeriodDelta;
+	VDAtomicInt		mTimerPeriodAdjustment;
 
-	VDSignal		*mpExitSucceeded;
+	VDSignal		msigExit;
+
 	volatile bool	mbExit;				// this doesn't really need to be atomic -- think about it
-
-#ifdef _M_AMD64
-	static void __stdcall StaticTimerCallback(unsigned id, unsigned, unsigned __int64 thisPtr, unsigned __int64, unsigned __int64);
-#else
-	static void __stdcall StaticTimerCallback(unsigned id, unsigned, unsigned long thisPtr, unsigned long, unsigned long);
-#endif
 };
 
 #endif

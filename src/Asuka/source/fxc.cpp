@@ -25,6 +25,7 @@
 #include <vd2/system/refcount.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/math.h>
+#include <vd2/system/vdstl.h>
 
 #pragma comment(lib, "d3dx9")
 
@@ -35,15 +36,19 @@ namespace
 {
 	static const char *const kTextureNames[]={
 		"vd_srctexture",
+		"vd_src2atexture",
+		"vd_src2btexture",
 		"vd_temptexture",
 		"vd_temp2texture",
 		"vd_cubictexture",
+		"vd_hevenoddtexture",
 	};
 
 	static const char *const kParameterNames[]={
 		"vd_vpsize",
 		"vd_cvpsize",
 		"vd_texsize",
+		"vd_tex2size",
 		"vd_srcsize",
 		"vd_tempsize",
 		"vd_temp2size",
@@ -556,7 +561,7 @@ namespace
 
 		D3DCAPS9 mRequiredCaps;
 
-		std::vector<uint32> mAccumulatedStates;
+		vdfastvector<uint32> mAccumulatedStates;
 	};
 }
 
@@ -594,7 +599,7 @@ namespace {
 		}
 	}
 
-	void EmitShaderConstants(std::vector<uint32>& states, ID3DXConstantTable *pConstants, bool pixelShader) {
+	void EmitShaderConstants(vdfastvector<uint32>& states, ID3DXConstantTable *pConstants, bool pixelShader) {
 		D3DXCONSTANTTABLE_DESC desc;
 		HRESULT hr;
 		hr = pConstants->GetDesc(&desc);
@@ -667,7 +672,7 @@ texture_found:
 	}
 }
 
-void tool_fxc(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64) {
+void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64) {
 	if (args.size() != 2) {
 		puts("usage: asuka fxc source.fx target.cpp");
 		exit(5);
@@ -675,18 +680,29 @@ void tool_fxc(const std::vector<const char *>& args, const std::vector<const cha
 
 	const char *filename = args[0];
 
-	printf("Asuka: Compiling effect file: %s -> %s.\n", filename, args[1]);
+	printf("Asuka: Compiling effect file (Direct3D): %s -> %s.\n", filename, args[1]);
 
 	vdrefptr<DummyD3DDevice> pDevice(new DummyD3DDevice);
 	vdrefptr<DummyD3DBaseTexture> pSrcTexture(new DummyD3DBaseTexture(pDevice, 1));
-	vdrefptr<DummyD3DBaseTexture> pTempTexture(new DummyD3DBaseTexture(pDevice, 2));
-	vdrefptr<DummyD3DBaseTexture> pTemp2Texture(new DummyD3DBaseTexture(pDevice, 3));
-	vdrefptr<DummyD3DBaseTexture> pCubicTexture(new DummyD3DBaseTexture(pDevice, 4));
+	vdrefptr<DummyD3DBaseTexture> pSrc2aTexture(new DummyD3DBaseTexture(pDevice, 2));
+	vdrefptr<DummyD3DBaseTexture> pSrc2bTexture(new DummyD3DBaseTexture(pDevice, 3));
+	vdrefptr<DummyD3DBaseTexture> pTempTexture(new DummyD3DBaseTexture(pDevice, 4));
+	vdrefptr<DummyD3DBaseTexture> pTemp2Texture(new DummyD3DBaseTexture(pDevice, 5));
+	vdrefptr<DummyD3DBaseTexture> pCubicTexture(new DummyD3DBaseTexture(pDevice, 6));
+	vdrefptr<DummyD3DBaseTexture> pHEvenOddTexture(new DummyD3DBaseTexture(pDevice, 7));
 
 	vdrefptr<ID3DXEffect> pEffect;
 	vdrefptr<ID3DXBuffer> pErrors;
 
-	HRESULT hr = D3DXCreateEffectFromFile(pDevice, filename, NULL, NULL, D3DXSHADER_NO_PRESHADER, NULL, ~pEffect, ~pErrors);
+	DWORD flags = D3DXSHADER_NO_PRESHADER;
+
+#ifdef D3DXSHADER_USE_LEGACY_D3DX9_31_DLL
+	// The V32 compiler seems to be broken in that it thinks "point" and "linear" are
+	// keywords.
+	flags |= D3DXSHADER_USE_LEGACY_D3DX9_31_DLL;
+#endif
+
+	HRESULT hr = D3DXCreateEffectFromFile(pDevice, filename, NULL, NULL, flags, NULL, ~pEffect, ~pErrors);
 
 	if (FAILED(hr)) {
 		printf("Effect compilation failed for \"%s\"\n", filename);
@@ -714,9 +730,12 @@ void tool_fxc(const std::vector<const char *>& args, const std::vector<const cha
 	pEffect->GetDesc(&desc);
 
 	pEffect->SetTexture("vd_srctexture", pSrcTexture);
+	pEffect->SetTexture("vd_src2atexture", pSrc2aTexture);
+	pEffect->SetTexture("vd_src2btexture", pSrc2bTexture);
 	pEffect->SetTexture("vd_temptexture", pTempTexture);
 	pEffect->SetTexture("vd_temp2texture", pTemp2Texture);
 	pEffect->SetTexture("vd_cubictexture", pCubicTexture);
+	pEffect->SetTexture("vd_hevenoddtexture", pHEvenOddTexture);
 
 	FILE *f = fopen(args[1], "w");
 	if (!f) {
@@ -766,7 +785,7 @@ void tool_fxc(const std::vector<const char *>& args, const std::vector<const cha
 
 	std::list<std::vector<uint32> > mVertexShaders;
 	std::list<std::vector<uint32> > mPixelShaders;
-	std::vector<uint32> mStates;
+	vdfastvector<uint32> mStates;
 
 	pDevice->ClearStates();
 
@@ -785,7 +804,7 @@ void tool_fxc(const std::vector<const char *>& args, const std::vector<const cha
 			exit(20);
 		}
 
-		std::vector<PassInfo> mPasses;
+		vdfastvector<PassInfo> mPasses;
 		uint32 maxVSVersion = 0;
 		uint32 maxPSVersion = 0;
 
@@ -1034,8 +1053,8 @@ void tool_fxc(const std::vector<const char *>& args, const std::vector<const cha
 	std::list<std::vector<uint32> >::iterator it, itEnd;
 
 	std::vector<uint32> mShaderData;
-	std::vector<int> mVertexShaderOffsets;
-	std::vector<int> mPixelShaderOffsets;
+	vdfastvector<int> mVertexShaderOffsets;
+	vdfastvector<int> mPixelShaderOffsets;
 
 	for(it=mVertexShaders.begin(), itEnd=mVertexShaders.end(); it!=itEnd; ++it) {
 		mVertexShaderOffsets.push_back(mShaderData.size());

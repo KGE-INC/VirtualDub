@@ -756,9 +756,18 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 					strcpy(buf, "Unknown");
 
-					if (const wchar_t *name = pvs->getDecompressorName())
+					if (const wchar_t *name = pvs->getDecompressorName()) {
 						VDTextWToA(buf, sizeof(buf)-7, name, -1);
-					else {
+						
+						char fcc[5];
+						*(long *)fcc = pvs->getImageFormat()->biCompression;
+						fcc[4] = 0;
+						for(int i=0; i<4; ++i)
+							if ((uint8)(fcc[i] - 0x20) >= 0x7f)
+								fcc[i] = ' ';
+
+						sprintf(buf+strlen(buf), " (%s)", fcc);
+					} else {
 						const uint32 comp = pvs->getImageFormat()->biCompression;
 
 						if (comp == '2YUY')

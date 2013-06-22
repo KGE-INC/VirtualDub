@@ -176,7 +176,9 @@ void VDSetExternalCallTrap(IVDExternalCallTrap *trap) {
 
 		bool IsSSEStateOK(uint32& ctlword) {
 			ctlword = _mm_getcsr();
-			return (ctlword & 0xff80) == 0x1f80;
+
+			// Intel C/C++ flips FTZ and DAZ. :(
+			return (ctlword & 0x7f80) == 0x1f80;
 		}
 
 		void ResetSSEState() {

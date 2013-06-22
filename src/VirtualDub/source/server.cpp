@@ -242,7 +242,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 24);
+		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), bmih->biWidth, abs(bmih->biHeight), 24);
 
 		if (filters.getFrameLag())
 			MessageBox(g_hWnd,
@@ -579,7 +579,7 @@ LRESULT Frameserver::SessionFormat(LPARAM lParam, WPARAM stream) {
 		bmih->biPlanes		= 1;
 		bmih->biCompression	= BI_RGB;
 		bmih->biBitCount	= 24;
-		bmih->biSizeImage	= ((bmih->biWidth*3+3)&-4)*bmih->biHeight;
+		bmih->biSizeImage	= ((bmih->biWidth*3+3)&-4)*abs(bmih->biHeight);
 		bmih->biClrUsed		= 0;
 		bmih->biClrImportant= 0;
 	}

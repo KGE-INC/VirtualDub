@@ -74,6 +74,7 @@ private:
 	VariableTable	vartbl;
 
 	const VDScriptFunctionDef *mpCurrentInvocationMethod;
+	const VDScriptFunctionDef *mpCurrentInvocationMethodOverload;
 	int mMethodArgumentCount;
 
 	VDStringA mErrorExtraToken;
@@ -118,7 +119,7 @@ public:
 
 	VDScriptValue	LookupObjectMember(const VDScriptObject *obj, void *lpVoid, char *szIdent);
 
-	const VDScriptFunctionDef *GetCurrentMethod() { return mpCurrentInvocationMethod; }
+	const VDScriptFunctionDef *GetCurrentMethod() { return mpCurrentInvocationMethodOverload; }
 	int GetErrorLocation() { return tokstr - tokbase; }
 };
 
@@ -151,8 +152,6 @@ void VDScriptInterpreter::SetRootHandler(VDScriptRootHandlerPtr rh, void *rh_dat
 void VDScriptInterpreter::ExecuteLine(const char *s) {
 	int t;
 
-	VDDEBUG("Sylia: executing \"%s\"\n", s);
-
 	mErrorExtraToken.clear();
 
 	TokenBegin(s);
@@ -166,14 +165,6 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 			VDASSERT(!mStack.empty());
 
 			VDScriptValue& val = mStack.back();
-			if (val.isInt())
-				VDDEBUG("Expression: integer %ld\n", val.asInt());
-			else if (val.isString())
-				VDDEBUG("Expression: string [%s]\n", *val.asString());
-			else if (val.isVoid())
-				VDDEBUG("Expression: void\n");
-			else
-				VDDEBUG("Expression: unknown type\n");
 
 			mStack.pop_back();
 			VDASSERT(mStack.empty());
@@ -365,8 +356,6 @@ void VDScriptInterpreter::ParseExpression() {
 		VDScriptValue& v = mStack.back();
 
 		if (t=='.') {			// object indirection operator (object -> member)
-			VDDEBUG("found object indirection op\n");
-
 			ConvertToRvalue();
 
 			if (!v.isObject()) {
@@ -375,8 +364,6 @@ void VDScriptInterpreter::ParseExpression() {
 
 			if (Token() != TOK_IDENT)
 				SCRIPT_ERROR(OBJECT_MEMBER_NAME_REQUIRED);
-
-			VDDEBUG("Attempting to find member: [%s]\n", szIdent);
 
 			v = LookupObjectMember(v.asObjectDef(), v.asObjectPtr(), szIdent);
 
@@ -544,7 +531,6 @@ void VDScriptInterpreter::ParseValue() {
 				SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
 		}
 	} else if (t==TOK_IDENT) {
-		VDDEBUG("Resolving variable: [%s]\n", szIdent);
 		mStack.push_back(LookupRootVariable(szIdent));
 	} else if (t == TOK_INTVAL)
 		mStack.push_back(VDScriptValue(tokival));
@@ -682,8 +668,6 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcoun
 				--s;			// repeat this character
 				break;
 			default:
-				VDDEBUG("Sylia external error: invalid argument type '%c' for method\n", c);
-
 				SCRIPT_ERROR(EXTERNAL_ERROR);
 			}
 			++csv;
@@ -773,6 +757,7 @@ arglist_nomatch:
 	}
 
 	// invoke
+	mpCurrentInvocationMethodOverload = sfd_best;
 	sfd_best->func_ptr(this, argv, pcount);
 	mStack.resize(mStack.size() + 1 - stackcount);
 	if (sfd_best->arg_list[0] == '0')
@@ -885,13 +870,6 @@ void VDScriptInterpreter::TokenBegin(const char *s) {
 
 void VDScriptInterpreter::TokenUnput(int t) {
 	tokhold = t;
-
-#ifdef DEBUG_TOKEN
-	if (t>=' ' && t<256)
-		VDDEBUG("TokenUnput('%c' (%d))\n", (char)t, t);
-	else
-		VDDEBUG("TokenUnput(%d)\n", t);
-#endif
 }
 
 int VDScriptInterpreter::Token() {
@@ -978,10 +956,6 @@ int VDScriptInterpreter::Token() {
 		*t=0;
 
 		if (!c) --tokstr;
-
-#ifdef DEBUG_TOKEN
-		VDDEBUG("Literal: [%s]\n", *tokslit);
-#endif
 
 		return TOK_STRING;
 	}
@@ -1129,8 +1103,5 @@ int VDScriptInterpreter::Token() {
 void VDScriptInterpreter::GC() {
 	strheap.BeginGC();
 	vartbl.MarkStrings(strheap);
-	int n = strheap.EndGC();
-
-	if (n)
-		VDDEBUG("Script: %d strings freed by GC.\n", n);
+	strheap.EndGC();
 }

@@ -25,6 +25,11 @@
 
 extern const char g_szAudioDisplayControlName[];
 
+struct VDUIAudioDisplaySelectionRange {
+	VDPosition mStart;
+	VDPosition mEnd;
+};
+
 class IVDUIAudioDisplayControl : public IVDRefUnknown {
 public:
 	enum { kTypeID = 'uiad' };
@@ -57,8 +62,11 @@ public:
 	virtual bool ProcessAudio16S(const sint16 *src, int count, int chanStride, int sampleStride) = 0;
 
 	virtual VDEvent<IVDUIAudioDisplayControl, VDPosition>& AudioRequiredEvent() = 0;
-	virtual VDEvent<IVDUIAudioDisplayControl, VDPosition>& SetSelectStartEvent() = 0;
-	virtual VDEvent<IVDUIAudioDisplayControl, VDPosition>& SetSelectEndEvent() = 0;
+	virtual VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectStartEvent() = 0;
+	virtual VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectTrackEvent() = 0;
+	virtual VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectEndEvent() = 0;
+	virtual VDEvent<IVDUIAudioDisplayControl, sint32>& TrackAudioOffsetEvent() = 0;
+	virtual VDEvent<IVDUIAudioDisplayControl, sint32>& SetAudioOffsetEvent() = 0;
 };
 
 IVDUIAudioDisplayControl *VDGetIUIAudioDisplayControl(VDGUIHandle h);

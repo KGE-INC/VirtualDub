@@ -695,6 +695,9 @@ VDCaptureResyncFilter::VDCaptureResyncFilter()
 	, mVideoRate(1)
 	, mInvVideoRate(1)
 	, mChannels(0)
+	, mpAudioDecoder16(NULL)
+	, mpAudioEncoder16(NULL)
+	, mBytesPerInputSample(0)
 	, mProfileChannel("Resynchronizer")
 {
 }
@@ -890,11 +893,17 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			double frameError = frame - mVideoFramesWritten;
 
 			if (frameError < -0.75 && mbAllowDrops) {
-				mpCB->CapEvent(nsVDCapture::kEventVideoFramesDropped, 1);
+				// don't flag event for null frames
+				if (size)
+					mpCB->CapEvent(nsVDCapture::kEventVideoFramesDropped, 1);
 				frameKill = true;
 			} else {
+				double threshold = +0.75;
+				if (!size)
+					threshold += mInsertLimit;
+
 				// Don't allow inserts before the first frame.
-				if (frameError > +0.75 && mbAllowInserts && mVideoFramesWritten) {
+				if (frameError > threshold && mbAllowInserts && mVideoFramesWritten) {
 					int framesToInsert = VDRoundToInt(frameError);
 
 					if (framesToInsert > mInsertLimit)
@@ -905,8 +914,13 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 					mVideoFramesWritten += framesToInsert;
 				}
 
-				++mVideoFramesWritten;
+				if (size)
+					++mVideoFramesWritten;
 			}
+
+			// don't pass through null frames
+			if (!size)
+				frameKill = true;
 
 			// update video timing controller
 			if (mbAdjustVideoTime)

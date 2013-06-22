@@ -286,6 +286,7 @@ dialog 1011, "" : fill, child {
 			checkbox 101, "Use DirectX for display panes";
 			now marginl=20, enable = {@101};
 			checkbox 102, "Use DirectX when Terminal Services is active (may cause display corruption)";
+			checkbox 107, "Use DirectX overlay surfaces";
 
 			// it is NOT a good idea to enable both Direct3D and OpenGL
 			checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
@@ -435,10 +436,12 @@ dialog 2000, "Capture preferences" : minw=350, maxw=350, aspect=140, valign=top+
 
 			listbox 100 : minw=50, sunken, align=left {
 				listitem "Side panel";
+				listitem "Hotkeys";
 			}
 
 			pageset 101 : value={@100} {
 				page 2010;
+				page 2011;
 			}
 		}
 
@@ -459,6 +462,24 @@ dialog 2010, "" : fill, child {
 			set 0: vertical, spacing=3 {
 				label 0, "Select the items that should appear in the side panel:" : valign=top;
 				listview 100, "" : checkable, fill, noheader, sunken;
+			}
+		}
+	}
+}
+
+dialog 2011, "" : fill, child {
+	now fill;
+	set 0 : vertical {
+		group 0, "Hotkeys" {
+			grid 0 : spacing=2, valign=top {
+				column 0: minw=100;
+				column 1: affinity=1;
+
+				label 0, "Start capture";
+				hotkey 100;
+				nextrow;
+				label 1, "Stop capture";
+				hotkey 101;				
 			}
 		}
 	}
@@ -517,6 +538,30 @@ dialog 2102, "Capture device options" : aspect=140, maxw=350 {
 		include template kTemplateOKCancel;
 	}
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+dialog 3000, "Create test video" : aspect=140, maxw=350 {
+	set 0 : vertical, spacing=5 {
+		grid 0 : spacing=2, align=fill {
+			now valign=fill;
+			column 0: minw=60;
+			column 1: affinity=1;
+
+			label 0, "Video";
+			combobox 100 : minw=120 {
+				listitem "RGB color cube";
+				listitem "Chroma subsampling offset";
+				listitem "Channel levels";
+				listitem "Checkerboard";
+			}
+		}
+
+		include template kTemplateOKCancel;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // output window for resampler benchmark
 dialog 9000, "Output window" : minw=350, aspect=140, valign=fill+expand {

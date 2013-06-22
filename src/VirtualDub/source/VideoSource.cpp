@@ -210,7 +210,9 @@ const wchar_t *VDVideoDecompressorMJPEG::GetName() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-VideoSource::VideoSource() {
+VideoSource::VideoSource()
+	: stream_current_frame(-1)
+{
 	lpvBuffer = NULL;
 	hBufferObject = NULL;
 }
@@ -266,8 +268,8 @@ bool VideoSource::setTargetFormatVariant(int format, int variant) {
 		format = kPixFormat_XRGB8888;
 
 	const BITMAPINFOHEADER *bih = getImageFormat();
-	const uint32 w = bih->biWidth;
-	const uint32 h = bih->biHeight;
+	const sint32 w = bih->biWidth;
+	const sint32 h = abs(bih->biHeight);			// we don't want inverted output....
 	VDPixmapLayout layout;
 
 	VDMakeBitmapCompatiblePixmapLayout(layout, w, h, format, variant);
@@ -675,7 +677,7 @@ void VideoSourceAVI::_construct() {
 		}
 
 		if (bmih->biPlanes == 1) {
-			long nPitch = ((bmih->biWidth * bmih->biBitCount + 31) >> 5) * 4 * bmih->biHeight;
+			long nPitch = ((bmih->biWidth * bmih->biBitCount + 31) >> 5) * 4 * abs(bmih->biHeight);
 
 			bmih->biSizeImage = nPitch;
 		}
@@ -698,8 +700,6 @@ void VideoSourceAVI::_construct() {
 		 || isEqualFOURCC(fccForceVideo, 'dsvd');
 
 	// Check if we can handle the format directly; if so, convert bitmap format to Kasumi format
-	bool inverted = false;
-
 	mSourceLayout.data		= 0;
 	mSourceLayout.data2		= 0;
 	mSourceLayout.data3		= 0;
@@ -714,7 +714,6 @@ void VideoSourceAVI::_construct() {
 
 	switch(bmih->biCompression) {
 	case BI_RGB:
-		inverted = bmih->biHeight >= 0;
 		switch(bmih->biBitCount) {
 		case 8:
 			mSourceLayout.format = nsVDPixmap::kPixFormat_Pal8;
@@ -788,12 +787,10 @@ void VideoSourceAVI::_construct() {
 	is_dib = (mSourceLayout.format != 0);
 
 	if (mSourceLayout.format) {
-		VDMakeBitmapCompatiblePixmapLayout(mSourceLayout, mSourceLayout.w, mSourceLayout.h, mSourceLayout.format, mSourceVariant);
+		mSourceFrameSize = VDMakeBitmapCompatiblePixmapLayout(mSourceLayout, mSourceLayout.w, mSourceLayout.h, mSourceLayout.format, mSourceVariant);
 
 		vdstructex<BITMAPINFOHEADER> format;
 		VDMakeBitmapFormatFromPixmapFormat(format, vdstructex<BITMAPINFOHEADER>(getImageFormat(), getFormatLen()), mSourceLayout.format, mSourceVariant);
-
-		mSourceFrameSize = format->biSizeImage;
 	}
 
 	// init target format to something sane
@@ -803,7 +800,7 @@ void VideoSourceAVI::_construct() {
 	mpTargetFormatHeader->biPlanes			= 1;
 	mpTargetFormatHeader->biBitCount		= 32;
 	mpTargetFormatHeader->biCompression		= BI_RGB;
-	mpTargetFormatHeader->biSizeImage		= mpTargetFormatHeader->biWidth*mpTargetFormatHeader->biHeight*4;
+	mpTargetFormatHeader->biSizeImage		= mpTargetFormatHeader->biWidth*abs(mpTargetFormatHeader->biHeight)*4;
 
 	// If this is MJPEG, check to see if we should modify the output format and/or stream info
 
@@ -813,7 +810,7 @@ void VideoSourceAVI::_construct() {
 	if (is_mjpeg) {
 		BITMAPINFOHEADER *pbih = getImageFormat();
 
-		if (mjpeg_mode && mjpeg_mode != IFMODE_SWAP && pbih->biHeight > 288) {
+		if (mjpeg_mode && mjpeg_mode != IFMODE_SWAP && abs(pbih->biHeight) > 288) {
 			pbih->biHeight /= 2;
 
 			if (mjpeg_mode == IFMODE_SPLIT1 || mjpeg_mode == IFMODE_SPLIT2) {
@@ -839,7 +836,7 @@ void VideoSourceAVI::_construct() {
 
 	// allocate framebuffer
 
-	if (!AllocFrameBuffer(bmih->biWidth * 4 * bmih->biHeight + 4))
+	if (!AllocFrameBuffer(bmih->biWidth * 4 * abs((int)bmih->biHeight) + 4))
 		throw MyMemoryError();
 
 	// get a decompressor
@@ -876,7 +873,7 @@ void VideoSourceAVI::_construct() {
 
 			const BITMAPINFOHEADER *bihSrc = getImageFormat();
 			const int w = bihSrc->biWidth;
-			const int h = bihSrc->biHeight;
+			const int h = abs((int)bihSrc->biHeight);
 
 			// AMD64 currently does not have a working MJPEG decoder. Should fix this.
 #ifndef _M_AMD64
@@ -1030,7 +1027,7 @@ void VideoSourceAVI::redoKeyFlags() {
 			long x, y;
 			const long lWidth	= (mpTargetFormatHeader->biWidth * mpTargetFormatHeader->biBitCount + 7)/8;
 			const long lModulo	= (4-lWidth)&3;
-			const long lHeight	= mpTargetFormatHeader->biHeight;
+			const long lHeight	= abs(mpTargetFormatHeader->biHeight);
 			unsigned char *ptr;
 
 			_RPT1(0,"Rekeying frame %ld\n", lSample);
@@ -1075,7 +1072,7 @@ rekey_error:
 			long x, y;
 			const long lWidth	= (mpTargetFormatHeader->biWidth * mpTargetFormatHeader->biBitCount + 7)/8;
 			const long lModulo	= (4-lWidth)&3;
-			const long lHeight	= mpTargetFormatHeader->biHeight;
+			const long lHeight	= abs(mpTargetFormatHeader->biHeight);
 			unsigned char *ptr;
 
 			_RPT1(0,"Rekeying frame %ld\n", lSample);

@@ -21,6 +21,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <vd2/system/atomic.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/w32assist.h>
@@ -29,6 +30,9 @@
 
 #include <vd2/Riza/display.h>
 #include "displaydrv.h"
+
+#define VDDEBUG_DISP (void)sizeof printf
+//#define VDDEBUG_DISP VDDEBUG
 
 extern const char g_szVideoDisplayControlName[] = "phaeronVideoDisplay";
 
@@ -83,6 +87,7 @@ protected:
 	void LockAcceleration(bool locked);
 	FilterMode GetFilterMode();
 	void SetFilterMode(FilterMode mode);
+	float GetSyncDelta() const { return mSyncDelta; }
 
 	static LRESULT CALLBACK StaticChildWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT ChildWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -128,6 +133,8 @@ protected:
 	IVDVideoDisplayCallback		*mpCB;
 	int		mInhibitRefresh;
 
+	VDAtomicFloat	mSyncDelta;
+
 	FilterMode	mFilterMode;
 	bool	mbLockAcceleration;
 
@@ -148,6 +155,7 @@ protected:
 
 public:
 	static bool		sbEnableDX;
+	static bool		sbEnableDXOverlay;
 	static bool		sbEnableD3D;
 	static bool		sbEnableD3DFX;
 	static bool		sbEnableOGL;
@@ -160,6 +168,7 @@ HPALETTE								VDVideoDisplayWindow::shPalette;
 uint8									VDVideoDisplayWindow::sLogicalPalette[256];
 ATOM									VDVideoDisplayWindow::sChildWindowClass;
 bool VDVideoDisplayWindow::sbEnableDX = true;
+bool VDVideoDisplayWindow::sbEnableDXOverlay = true;
 bool VDVideoDisplayWindow::sbEnableD3D;
 bool VDVideoDisplayWindow::sbEnableD3DFX;
 bool VDVideoDisplayWindow::sbEnableOGL;
@@ -167,8 +176,9 @@ bool VDVideoDisplayWindow::sbEnableTS;
 
 ///////////////////////////////////////////////////////////////////////////
 
-void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableDirect3DFX) {
+void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableDirectXOverlay, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableDirect3DFX) {
 	VDVideoDisplayWindow::sbEnableDX = enableDirectX;
+	VDVideoDisplayWindow::sbEnableDXOverlay = enableDirectXOverlay;
 	VDVideoDisplayWindow::sbEnableD3D = enableDirect3D;
 	VDVideoDisplayWindow::sbEnableD3DFX = enableDirect3DFX;
 	VDVideoDisplayWindow::sbEnableOGL = enableOpenGL;
@@ -244,6 +254,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd)
 	, mReinitDisplayTimer(0)
 	, mpCB(0)
 	, mInhibitRefresh(0)
+	, mSyncDelta(0.0f)
 	, mFilterMode(kFilterAnySuitable)
 	, mbLockAcceleration(false)
 	, mbUseSubrect(false)
@@ -440,7 +451,7 @@ void VDVideoDisplayWindow::OnChildPaint() {
 		}
 		++mInhibitRefresh;
 	}
-#if 1
+
 	PAINTSTRUCT ps;
 	HDC hdc = BeginPaint(mhwndChild, &ps);
 
@@ -454,7 +465,7 @@ void VDVideoDisplayWindow::OnChildPaint() {
 
 		EndPaint(mhwndChild, &ps);
 	}
-#endif
+
 
 	--mInhibitRefresh;
 }
@@ -636,14 +647,14 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 						}
 					}
 
-					mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
+					mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw(sbEnableDXOverlay);
 					if (InitMiniDriver())
 						break;
 					SyncReset();
 				}
 
 			} else {
-				VDDEBUG("VideoDisplay: Application in background -- disabling accelerated preview.\n");
+				VDDEBUG_DISP("VideoDisplay: Application in background -- disabling accelerated preview.\n");
 			}
 		}
 
@@ -651,7 +662,7 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 		if (InitMiniDriver())
 			break;
 
-		VDDEBUG("VideoDisplay: No driver was able to handle the requested format! (%d)\n", mSource.pixmap.format);
+		VDDEBUG_DISP("VideoDisplay: No driver was able to handle the requested format! (%d)\n", mSource.pixmap.format);
 		SyncReset();
 	} while(false);
 
@@ -683,6 +694,7 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 
 void VDVideoDisplayWindow::SyncUpdate(int mode) {
 	if (mSource.pixmap.data && !mpMiniDriver) {
+		mSyncDelta = 0.0f;
 		SyncInit(true);
 		return;
 	}
@@ -704,9 +716,12 @@ void VDVideoDisplayWindow::SyncUpdate(int mode) {
 				return;
 		}
 
+		mSyncDelta = 0.0f;
 		if (mpMiniDriver->Update((IVDVideoDisplayMinidriver::UpdateMode)mode)) {
-			if (!mInhibitRefresh)
+			if (!mInhibitRefresh) {
 				mpMiniDriver->Refresh((IVDVideoDisplayMinidriver::UpdateMode)mode);
+				mSyncDelta = mpMiniDriver->GetSyncDelta();
+			}
 		}
 	}
 }
@@ -916,6 +931,7 @@ LRESULT CALLBACK VDVideoDisplayWindow::StaticLookoutWndProc(HWND hwnd, UINT msg,
 				}
 			}
 			break;
+
 		case WM_ACTIVATEAPP:
 			{
 				for(tDisplayWindows::const_iterator it(sDisplayWindows.begin()), itEnd(sDisplayWindows.end()); it!=itEnd; ++it) {

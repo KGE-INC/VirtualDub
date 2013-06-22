@@ -130,7 +130,8 @@ bool VDRegistryKey::getString(const char *pszName, VDStringA& str) const {
 	if (!pHandle || RegQueryValueEx((HKEY)pHandle, pszName, 0, &type, NULL, &s) || type != REG_SZ)
 		return false;
 
-	if (RegQueryValueEx((HKEY)pHandle, pszName, 0, NULL, (BYTE *)str.alloc(s), &s))
+	str.resize(s);
+	if (RegQueryValueEx((HKEY)pHandle, pszName, 0, NULL, (BYTE *)str.data(), &s))
 		return false;
 
 	str.resize(strlen(str.c_str()));		// Trim off pesky terminating NULLs.

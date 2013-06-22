@@ -23,8 +23,8 @@
 //	3.	This notice may not be removed or altered from any source
 //		distribution.
 
-#ifndef f_SYSTEM_VDSTRING_H
-#define f_SYSTEM_VDSTRING_H
+#ifndef f_VD2_SYSTEM_VDSTRING_H
+#define f_VD2_SYSTEM_VDSTRING_H
 
 #include <string.h>
 #include <stdlib.h>
@@ -33,566 +33,854 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/text.h>
-#include <vd2/system/atomic.h>
 
 ///////////////////////////////////////////////////////////////////////////
-//
-//	VDBasicString
-//
-//	VDBasicString<T> is very strongly patterned after the STL
-//	basic_string, but with one very important guarantee -- it is multi-
-//	thread safe.  It is also guaranteed to use copy-on-write, which means
-//	that although it is slower in general, it has fast assignment.  This
-//	is very useful for STL containers.  It is unsafe for two threads to
-//	simultaneously use a string when one is writing to it, but it is
-//	guaranteed that multiple threads may read from a string without
-//	spinlocking.
-//
-//	Not all basic_string<> capabilities are implemented.  In particular,
-//	read-only accessors tend to be more complete than mutators.  Reverse
-//	iteration is also unimplemented.
-//
-//	Code that constructs or performs serious modifications on strings
-//	should use std::vector<> or std::deque<> instead of
-//	std::basic_string<> or VDBasicString<>.
 
-template<class T>
-struct VDStringInstance {
-	volatile int refcount;
-	int length;
-	T str[1];
-};
-
-template<class T>		// T must have a trivial copy constructor and copy assignment operator!!
-struct VDCharOpsImpl {
-	static void copy(T *dst, const T *src, int len) {
-		if (len)
-			memcpy(dst, src, len * sizeof(T));
-	}
-
-	static int len(const T *s) {
-		const T *t = s;
-
-		while(*t)
-			++t;
-
-		return t - s;
-	}
-
-	static int compare(const T *s, int s_length, const T *t, int t_length) {
-		int st_len = s_length < t_length ? s_length : t_length;
-
-		if (st_len)
-			do {
-				const T& x = *s++;
-				const T& y = *t++;
-
-				if (x<y)
-					return -1;
-				if (x>y)
-					return +1;
-
-			} while(--st_len);
-
-		return s_length > t_length ? 1 : s_length < t_length ? -1 : 0;
-	}
-
-	static bool compare_equal(const T *s, const T *t, int l) {
-		return !memcmp(s, t, l*sizeof(T));
-	}
-
-	static int find(const T *s, int l, T c, int off) {
-		for(int i=0; i<l; ++i)
-			if (s[i] == c)
-				return i+off;
-
-		return -1;
-	}
-
-	static int find_not_first_of(const T *s, int l, T c, int off) {
-		for(int i=0; i<l; ++i)
-			if (s[i] != c)
-				return i + off;
-
-		return -1;
-	}
-};
-
-template<class T> struct VDCharOps : public VDCharOpsImpl<T> {};
-
-template<> struct VDCharOps<char> : public VDCharOpsImpl<char> {
-	static int len(const char *s) { return (int)strlen(s); }
-	static int compare(const char *s, int s_length, const char *t, int t_length) {
-		int st_len = s_length < t_length ? s_length : t_length;
-		int r = memcmp(s, t, st_len);
-
-		return r ? r : s_length < t_length ? -1 : s_length > t_length ? +1 : 0;
-	}
-	static int find(const char *s, int l, char c, int off) {
-		const char *t = (const char *)memchr(s, c, l);
-		return t ? (int)(t-s+off) : -1;
-	}
-};
-
-template<> struct VDCharOps<wchar_t> : public VDCharOpsImpl<wchar_t> {
-	static inline int len(const wchar_t *s) { return (int)wcslen(s); }
-};
-
-template<class T>
-struct VDBasicStringExtra {};
-
-template<class T>
-class VDBasicString : public VDBasicStringExtra<T> {
-protected:
-	typedef VDCharOps<T> char_ops;
-	typedef VDBasicString<T> self_type;
-
-	VDStringInstance<T> *s;
-
-	static VDStringInstance<T> s_null;
-
-	inline T *initalloc(int l) {
-		s = (VDStringInstance<T> *)malloc(sizeof(VDStringInstance<T>) + l*sizeof(T));
-
-		s->refcount = 1;
-		s->length = l;
-
-		return s->str;
-	}
-
-	void fork() {		// must never be called when s->refcount == 1
-		VDStringInstance<T> *s_temp = (VDStringInstance<T> *)malloc(sizeof(VDStringInstance<T>) + s->length*sizeof(T));
-
-		VDASSERT(s->refcount > 1);
-
-		s_temp->refcount = 1;
-		s_temp->length = s->length;
-
-		char_ops::copy(s_temp->str, s->str, s->length);
-
-		if (VDAtomicInt::staticDecrementTestZero(&s->refcount))
-			delete s;
-
-		s = s_temp;
-	}
-
+class VDStringSpanA {
 public:
-	/////////////////////////////////////////////////
-	// declarations
+	typedef char					value_type;
+	typedef uint32					size_type;
+	typedef ptrdiff_t				difference_type;
+	typedef value_type&				reference;
+	typedef const value_type&		const_reference;
+	typedef value_type *			pointer;
+	typedef const value_type *		const_pointer;
+	typedef pointer					iterator;
+	typedef const_pointer			const_iterator;
 
-	typedef T				value_type;
-	typedef unsigned		size_type;
-	typedef T&				reference;
-	typedef T*				pointer;
-	typedef pointer			iterator;
-	typedef const T&		const_reference;
-	typedef const T*		const_pointer;
-	typedef const_pointer	const_iterator;
-	typedef ptrdiff_t		difference_type;
+	static const size_type npos = (size_type)-1;
 
-	enum { npos = -1 };		// NOTE: This may conflict with some code that is valid with STL's basic_string<>.
-
-	/////////////////////////////////////////////////
-	// ctor/dtor
-
-	inline VDBasicString() : s(&s_null) { VDAtomicInt::staticIncrement(&s_null.refcount); }
-
-	VDBasicString(const self_type& x) {
-		s = x.s;
-		VDAtomicInt::staticIncrement(&s->refcount);
+	VDStringSpanA() 
+		: mpBegin(const_cast<value_type *>(sNull))
+		, mpEnd(const_cast<value_type *>(sNull))
+	{
 	}
 
-	explicit VDBasicString(const T *_s) {
-		int l = char_ops::len(_s);
-
-		char_ops::copy(initalloc(l), _s, l);
+	VDStringSpanA(const value_type *s, const value_type *t)
+		: mpBegin(const_cast<value_type *>(s))
+		, mpEnd(const_cast<value_type *>(t))
+	{
 	}
 
-	explicit VDBasicString(const T *_s, size_type l) {
-		char_ops::copy(initalloc(l), _s, l);
+	// 21.3.2 iterators
+	const_iterator		begin() const		{ return mpBegin; }
+	const_iterator		end() const			{ return mpEnd; }
+
+	// 21.3.3 capacity
+	size_type			size() const		{ return mpEnd - mpBegin; }
+	size_type			length() const		{ return mpEnd - mpBegin; }
+	bool				empty() const		{ return mpBegin == mpEnd; }
+
+	// 21.3.4 element access
+	const_reference		operator[](size_type pos) const	{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	const_reference		at(size_type pos) const			{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+
+	const_reference		front() const		{ VDASSERT(mpBegin != mpEnd); return *mpBegin; }
+	const_reference		back() const		{ VDASSERT(mpBegin != mpEnd); return mpEnd[-1]; }
+
+	// 21.3.6 string operations
+	const_pointer		data() const		{ return mpBegin; }
+
+	size_type copy(value_type *dst, size_type n, size_type pos = 0) const {
+		size_type len = (size_type)(mpEnd - mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		memcpy(dst, mpBegin + pos, n*sizeof(value_type));
+		return n;
 	}
 
-	explicit VDBasicString(int l) {
-		initalloc(l);
+protected:
+	value_type *mpBegin;
+	value_type *mpEnd;
+
+	static const value_type sNull[1];
+};
+
+class VDStringA : public VDStringSpanA {
+public:
+	typedef VDStringA				this_type;
+
+	// 21.3.1 construct/copy/destroy
+
+	VDStringA()
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
 	}
 
-	~VDBasicString() {
-		if (VDAtomicInt::staticDecrementTestZero(&s->refcount))
-			delete s;
+	VDStringA(const this_type& x)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(x);
 	}
 
-	/////////////////////////////////////////////////
-	// accessors
-
-	inline T& operator[](size_type pos) {
-		if (s->refcount > 1)
-			fork();
-
-		VDASSERT(pos < (size_type)s->length);
-
-		return s->str[pos];
+	explicit VDStringA(const value_type *s)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s);
 	}
 
-	inline const T& operator[](size_type pos) const {
-		VDASSERT(pos < (size_type)s->length);
-
-		return s->str[pos];
+	explicit VDStringA(size_type n)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		resize(n);
 	}
 
-	inline T& at(size_type pos) {
-		if (s->refcount>1)
-			fork();
-
-		VDASSERT(pos < (size_type)s->length);
-
-		return s->str[pos];
+	VDStringA(const value_type *s, size_type n)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s, n);
 	}
 
-	inline const T& at(size_type pos) const {
-		VDASSERT(pos < (size_type)s->length);
-
-		return s->str[pos];
+	~VDStringA() {
+		if (mpBegin != sNull)
+			delete[] mpBegin;
 	}
 
-	inline iterator begin() const {
-		return s->str;
-	}
-
-	inline const T *c_str() const {
-		if (s->str[s->length])
-			s->str[s->length] = 0;
-		return s->str;
-	}
-
-	inline void copy(T *dst, size_type count, size_type off = 0) {
-		if (count > s->length - off)
-			count = s->length - off;
-		char_ops::copy(dst, s->str + off, count);
-	}
-
-	inline const T *data() const {
-		return s->str;
-	}
-
-	inline bool empty() const {
-		return !s->length;
-	}
-
-	inline iterator end() const {
-		return s->str + s->length;
-	}
-
-	inline size_type length() const {
-		return s->length;
-	}
-
-	inline size_type size() const {
-		return s->length;
-	}
-
-	/////////////////////////////////////////////////
-	// mutators
-
-	T *alloc(size_type l) {
-		if (VDAtomicInt::staticDecrementTestZero(&s->refcount))
-			delete s;
-
-		return initalloc((int)l);
-	}
-
-	void clear() {
-		if (s != &s_null) {
-			if (VDAtomicInt::staticDecrementTestZero(&s->refcount))
-				delete s;
-
-			s = &s_null;
-			VDAtomicInt::staticIncrement(&s->refcount);
-		}
-	}
-
-	inline void push_back(T x) {
-		operator+=(x);
-	}
-
-	void resize(size_type siz) {
-		if (siz != length()) {
-			self_type tmp(siz);
-
-			char_ops::copy(tmp.s->str, s->str, std::min<size_type>(siz, s->length));
-			swap(tmp);
-		}
-	}
-
-	void swap(self_type& x) {
-		VDStringInstance<T> *t = s;
-		s=x.s;
-		x.s=t;
-	}
-
-	void erase(size_type p, size_type n) {
-		if (p >= s->length)
-			return;
-		if (n > s->length - p)
-			n = s->length - p;
-		if (n > 0) {
-			VDBasicString tmp(s->length - n);
-
-			char_ops::copy(tmp.s->str, s->str, p);
-			char_ops::copy(tmp.s->str + p, s->str + (p+n), s->length - (p+n));
-			swap(tmp);
-		}
-	}
-
-	void replace(size_type p0, size_type n0, const T *s) {
-		replace(p0, n0, s, char_ops::len(s));
-	}
-
-	void replace(size_type p0, size_type n0, const T *src, size_type n) {
-		if (n0 == n)
-			char_ops::copy(s->str + p0, src, n);
-		else {
-			VDBasicString tmp(s->length + n - n0);
-
-			char_ops::copy(tmp.s->str, s->str, p0);
-			char_ops::copy(tmp.s->str + p0, src, n);
-			char_ops::copy(tmp.s->str + p0 + n, s->str + (p0+n0), s->length - (p0+n0));
-
-			swap(tmp);
-		}
-	}
-
-	/////////////////////////////////////////////////
-	// find()/rfind()
-
-	inline int find(const T x, int off = 0) const {
-		return char_ops::find(s->str + off, s->length - off, x, off);
-	}
-
-	int find_first_not_of(const T x, int off = 0) const {
-		for(; off < s->length; ++off)
-			if (s->str[off] != x)
-				return off;
-
-		return npos;
-	}
-
-	int rfind(const T x, int off = npos) const {
-		if (off == npos)
-			off = s->length;
-	
-		while(--off >= 0)
-			if (s->str[off] == x)
-				return off;
-
-		return npos;
-	}
-
-	/////////////////////////////////////////////////
-	// compare()
-
-	int compare(const self_type& x) const {
-		return char_ops::compare(s->str, s->length, x.s->str, x.s->length);
-	}
-
-	int compare(const T *x) const {
-		return char_ops::compare(s->str, s->length, x, char_ops::len(x));
-	}
-
-	int compare(const T *x, int x_length) const {
-		return char_ops::compare(s->str, s->length, x, x_length);
-	}
-
-	/////////////////////////////////////////////////
-	// operator==()
-
-	inline bool operator==(const self_type& x) const {
-		return s->length == x.s->length && char_ops::compare_equal(s->str, x.s->str, s->length);
-	}
-
-	inline bool operator==(const T *x) const {
-		const int x_length = char_ops::len(x);
-		return s->length == x_length && char_ops::compare_equal(s->str, x, x_length);
-	}
-
-	/////////////////////////////////////////////////
-	// operator!=()
-
-	inline bool operator!=(const self_type& x) const {
-		return s->length != x.s->length || !char_ops::compare_equal(s->str, x.s->str, s->length);
-	}
-
-	inline bool operator!=(const T *x) const {
-		const int x_length = char_ops::len(x);
-		return s->length != x_length || !char_ops::compare_equal(s->str, x, x_length);
-	}
-
-	/////////////////////////////////////////////////
-	// assign()
-
-	const self_type& assign(const T *_s, int len) {
-		if (!len)
-			clear();
-		else
-			char_ops::copy(alloc(len), _s, len);
+	this_type& operator=(const value_type *s) {
+		assign(s);
 		return *this;
 	}
 
-	inline const self_type& assign(const self_type& src) {
-		return src.s == this->s ? *this : assign(src.s->str, src.s->length);
+	this_type& operator=(const this_type& str) {
+		assign(str);
+		return *this;
 	}
 
-	inline const self_type& assign(const T *t) {
-		return assign(t, char_ops::len(t));
+	// 21.3.2 iterators
+	using VDStringSpanA::begin;
+	using VDStringSpanA::end;
+
+	iterator			begin()				{ return mpBegin; }
+	iterator			end()				{ return mpEnd; }
+
+	// 21.3.3 capacity (COMPLETE)
+	void resize(size_type n) {
+		size_type current = (size_type)(mpEnd - mpBegin);
+
+		if (n < current) {
+			mpEnd = mpBegin + n;
+			mpEnd[0] = 0;
+		} else if (n > current)
+			resize_slow(n, current);
 	}
 
-	inline const self_type& assign(const T *start, const T *end) {
-		return assign(start, end-start);
+	void resize(size_type n, value_type v) {
+		size_type current = (size_type)(mpEnd - mpBegin);
+
+		if (n < current) {
+			mpEnd = mpBegin + n;
+			mpEnd[0] = 0;
+		} else if (n > current)
+			resize_slow(n, current, v);
 	}
 
-	/////////////////////////////////////////////////
-	// operator=()
+	size_type			capacity() const	{ return mpEOS - mpBegin; }
 
-	inline const self_type& operator=(const self_type& src) {
-		return assign(src.s->str, src.s->length);
+	void reserve(size_t n) {
+		size_type current = (size_type)(mpEOS - mpBegin);
+
+		if (n > current)
+			reserve_slow(n, current);
 	}
 
-	inline const self_type& operator=(const T *t) {
-		return assign(t, char_ops::len(t));
+	void clear() {
+		if (mpEnd != mpBegin) {
+			mpEnd = mpBegin;
+			mpEnd[0] = 0;
+		}
 	}
 
-	/////////////////////////////////////////////////
-	// operator+()
+	// 21.3.4 element access
+	using VDStringSpanA::operator[];
+	using VDStringSpanA::at;
+	using VDStringSpanA::front;
+	using VDStringSpanA::back;
 
-	self_type operator+(T c) const {
-		const int s_len = s->length;
-		self_type tmp(s_len + 1);
+	reference			operator[](size_type pos)		{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	reference			at(size_type pos)				{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	reference			front()				{ VDASSERT(mpBegin != mpEnd); return *mpBegin; }
+	reference			back()				{ VDASSERT(mpBegin != mpEnd); return mpEnd[-1]; }
 
-		char_ops::copy(tmp.s->str, s->str, s_len);
-		tmp.s->str[s_len] = c;
-
-		return tmp;
+	// 21.3.5 modifiers
+	this_type& operator+=(const this_type& str) {
+		return append(str.mpBegin, str.mpEnd);
 	}
 
-	inline self_type operator+(const T *t) const {
-		const int t_length = char_ops::len(t);
-		self_type tmp(s->length + t_length);
-
-		char_ops::copy(tmp.s->str, s->str, s->length);
-		char_ops::copy(tmp.s->str + s->length, t, t_length);
-
-		return tmp;
+	this_type& operator+=(const value_type *s) {
+		return append(s, s+strlen(s));
 	}
 
-	inline self_type operator+(const self_type& x) const {
-		self_type tmp(s->length + x.s->length);
+	this_type& operator+=(value_type c) {
+		if (mpEnd == mpEOS)
+			push_back_extend();
 
-		char_ops::copy(tmp.s->str, s->str, s->length);
-		char_ops::copy(tmp.s->str + s->length, x.s->str, x.s->length);
-
-		return tmp;
+		*mpEnd++ = c;
+		*mpEnd = 0;
+		return *this;
 	}
 
-	/////////////////////////////////////////////////
-	// append()
-
-	inline const self_type& append(const T *t, int t_length) {
-		self_type tmp(s->length + t_length);
-
-		char_ops::copy(tmp.s->str, s->str, s->length);
-		char_ops::copy(tmp.s->str + s->length, t, t_length);
-
-		return *this = tmp;
+	this_type& append(const this_type& str) {
+		return append(str.mpBegin, str.mpEnd);
 	}
 
-	inline const self_type& append(const T *t) {
-		return append(t, char_ops::len(t));
+	this_type& append(const this_type& str, size_type pos, size_type n) {
+		size_type len = (size_type)(str.mpEnd - str.mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		return append(str.mpBegin + pos, str.mpBegin + pos + n);
 	}
 
-	inline const self_type& append(T c) {
-		self_type tmp(s->length + 1);
-
-		char_ops::copy(tmp.s->str, s->str, s->length);
-		tmp.s->str[s->length] = c;
-
-		return operator=(tmp);
+	this_type& append(const value_type *s, size_type n) {
+		return append(s, s+n);
 	}
 
-	inline const self_type& append(const self_type& x) {
-		return append(x.s->str, x.s->length);
+	this_type& append(const value_type *s) {
+		return append(s, s+strlen(s));
 	}
 
-	/////////////////////////////////////////////////
-	// operator+=()
+	this_type& append(const value_type *s, const value_type *t) {
+		if (s != t) {
+			size_type current_size = (size_type)(mpEnd - mpBegin);
+			size_type current_capacity = (size_type)(mpEOS - mpBegin);
+			size_type n = (size_type)(t - s);
 
-	inline const self_type& operator+=(const T *t) {
-		return append(t, char_ops::len(t));
+			if (current_capacity - current_size < n)
+				reserve_amortized_slow(n, current_size, current_capacity);
+
+			memcpy(mpBegin + current_size, s, n*sizeof(value_type));
+			mpEnd += n;
+			*mpEnd = 0;
+		}
+		return *this;
 	}
-	inline const self_type& operator+=(T c) {
-		return append(c);
+
+	void push_back(const value_type c) {
+		if (mpEnd == mpEOS)
+			push_back_extend();
+
+		*mpEnd++ = c;
+		*mpEnd = 0;
 	}
-	inline const self_type& operator+=(const self_type& x) {
-		return append(x);
+
+	this_type& assign(const this_type& str) {
+		return assign(str.mpBegin, str.mpEnd);
 	}
 
-	/////////////////////////////////////////////////
-	// insert()
+	this_type& assign(const this_type& str, size_type pos, size_type n) {
+		size_type len = (size_type)(str.mpEnd - str.mpBegin);
+		VDASSERT(pos <= len);
 
-	void insert(size_type pos, T c) {
-		const size_type l = s->length;
+		len -= pos;
+		if (n > len)
+			n = len;
 
-		if (pos > l)
-			pos = l;
-
-		self_type tmp(l + 1);
-		char_ops::copy(tmp.s->str, s->str, pos);
-		tmp.s->str[pos] = c;
-		char_ops::copy(tmp.s->str+pos+1, s->str+pos, l-pos);
-
-		swap(tmp);
+		return assign(str.mpBegin + pos, str.mpBegin + pos + n);
 	}
+
+	this_type& assign(const value_type *s, size_type n) {
+		return assign(s, s+n);
+	}
+
+	this_type& assign(const value_type *s) {
+		return assign(s, s+strlen(s));
+	}
+
+	this_type& assign(size_type n, value_type c) {
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+
+		if (current_capacity < n)
+			reserve_slow(n, current_capacity);
+
+		if (mpBegin != sNull) {
+			mpEnd = mpBegin;
+			while(n--)
+				*mpEnd++ = c;
+		}
+
+		return *this;
+	}
+
+	this_type& assign(const value_type *s, const value_type *t) {
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+		size_type n = (size_type)(t - s);
+
+		if (current_capacity < n)
+			reserve_slow(n, current_capacity);
+
+		if (mpBegin != sNull) {
+			memcpy(mpBegin, s, sizeof(value_type)*n);
+			mpEnd = mpBegin + n;
+			*mpEnd = 0;
+		}
+
+		return *this;
+	}
+
+	this_type& insert(iterator it, value_type c) {
+		if (mpEnd == mpEOS) {
+			size_type pos = (size_type)(it - mpBegin);
+			push_back_extend();
+			it = mpBegin + pos;
+		}
+
+		memmove(it + 1, it, (mpEnd - it + 1)*sizeof(value_type));
+		*it = c;
+		++mpEnd;
+		return *this;
+	}
+
+	this_type& erase(size_type pos = 0, size_type n = npos) {
+		size_type len = (size_type)(mpEnd - mpBegin);
+
+		VDASSERT(pos <= len);
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		if (n) {
+			size_type pos2 = pos + n;
+			memmove(mpBegin + pos, mpBegin + pos2, (len + 1 - n)*sizeof(value_type));
+			mpEnd -= n;
+		}
+
+		return *this;
+	}
+
+	iterator erase(iterator x) {
+		VDASSERT(x != mpEnd);
+
+		memmove(x, x+1, (mpEnd - x)*sizeof(value_type));
+		--mpEnd;
+		return x;
+	}
+
+	iterator erase(iterator first, iterator last) {
+		VDASSERT(last >= first);
+
+		memmove(first, last, ((mpEnd - last) + 1)*sizeof(value_type));
+		mpEnd -= (last - first);
+		return first;
+	}
+
+	this_type& replace(size_type pos, size_type n1, const value_type *s, size_type n2) {
+		size_type len = (size_type)(mpEnd - mpBegin);
+
+		VDASSERT(pos <= len);
+		size_type limit = len - pos;
+		if (n1 > limit)
+			n1 = limit;
+
+		size_type len2 = len - n1 + n2;
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+
+		if (current_capacity < len2)
+			reserve_slow(len2, current_capacity);
+
+		memmove(mpBegin + pos + n2, mpBegin + pos + n1, (limit - n1 + 1) * sizeof(value_type));
+		memcpy(mpBegin + pos, s, n2*sizeof(value_type));
+		mpEnd = mpBegin + len2;
+		return *this;
+	}
+
+	void swap(this_type& x) {
+		value_type *p;
+
+		p = mpBegin;	mpBegin = x.mpBegin;	x.mpBegin = p;
+		p = mpEnd;		mpEnd = x.mpEnd;		x.mpEnd = p;
+		p = mpEOS;		mpEOS = x.mpEOS;		x.mpEOS = p;
+	}
+
+	// 21.3.6 string operations
+	const_pointer		c_str() const		{ return mpBegin; }
+
+	size_type find(value_type c, size_type pos = 0) const {
+		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
+		const void *p = memchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
+
+		return p ? (const value_type *)p - mpBegin : npos;
+	}
+
+	this_type& sprintf(const value_type *format, ...);
+
+protected:
+	friend bool operator==(const VDStringA& x, const VDStringA& y);
+	friend bool operator==(const VDStringA& x, const char *y);
+
+	void push_back_extend();
+	void resize_slow(size_type n, size_type current_size);
+	void resize_slow(size_type n, size_type current_size, value_type c);
+	void reserve_slow(size_type n, size_type current_capacity);
+	void reserve_amortized_slow(size_type n, size_type current_size, size_type current_capacity);
+
+	char *mpEOS;
 };
-
-template<class T>
-VDStringInstance<T> VDBasicString<T>::s_null={1,0,0};
 
 ///////////////////////////////////////////////////////////////////////////
 
-template<class T>
-inline bool operator==(const char *x, const VDBasicString<T>& y) throw() { return y == x; }
+inline bool operator==(const VDStringA& x, const VDStringA& y) { VDStringA::size_type len = (VDStringA::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringA::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(char)); }
+inline bool operator==(const VDStringA& x, const char *y) { size_t len = strlen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(char)); }
+inline bool operator==(const char *x, const VDStringA& y) { return y == x; }
 
-template<class T>
-inline bool operator!=(const char *x, const VDBasicString<T>& y) throw() { return !(y == x); }
+inline bool operator!=(const VDStringA& x, const VDStringA& y) { return !(x == y); }
+inline bool operator!=(const VDStringA& x, const char *y) { return !(x == y); }
+inline bool operator!=(const char *x, const VDStringA& y) { return !(y == x); }
+
+inline VDStringA operator+(const VDStringA& str, const VDStringA& s) {
+	VDStringA result;
+	result.reserve(str.size() + s.size());
+	result.assign(str);
+	result.append(s);
+	return result;
+}
+
+inline VDStringA operator+(const VDStringA& str, const char *s) {
+	VDStringA result;
+	result.reserve(str.size() + strlen(s));
+	result.assign(str);
+	result.append(s);
+	return result;
+}
+
+inline VDStringA operator+(const VDStringA& str, char c) {
+	VDStringA result;
+	result.reserve(str.size() + 1);
+	result.assign(str);
+	result += c;
+	return result;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
-template<> struct VDBasicStringExtra<char> {
-	static inline VDBasicString<char> setf(const char *format, ...) throw() {
-		va_list val;
-		va_start(val, format);
-		VDBasicString<char> tmp(VDFastTextVprintfA(format, val));
-		va_end(val);
-		VDFastTextFree();
+class VDStringSpanW {
+public:
+	typedef wchar_t					value_type;
+	typedef uint32					size_type;
+	typedef ptrdiff_t				difference_type;
+	typedef value_type&				reference;
+	typedef const value_type&		const_reference;
+	typedef value_type *			pointer;
+	typedef const value_type *		const_pointer;
+	typedef pointer					iterator;
+	typedef const_pointer			const_iterator;
 
-		return tmp;
+	static const size_type npos = (size_type)-1;
+
+	VDStringSpanW() 
+		: mpBegin(const_cast<value_type *>(sNull))
+		, mpEnd(const_cast<value_type *>(sNull))
+	{
 	}
+
+	VDStringSpanW(const value_type *s, const value_type *t)
+		: mpBegin(const_cast<value_type *>(s))
+		, mpEnd(const_cast<value_type *>(t))
+	{
+	}
+
+	// 21.3.2 iterators
+	const_iterator		begin() const		{ return mpBegin; }
+	const_iterator		end() const			{ return mpEnd; }
+
+	// 21.3.3 capacity
+	size_type			size() const		{ return mpEnd - mpBegin; }
+	size_type			length() const		{ return mpEnd - mpBegin; }
+	bool				empty() const		{ return mpBegin == mpEnd; }
+
+	// 21.3.4 element access
+	const_reference		operator[](size_type pos) const	{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	const_reference		at(size_type pos) const			{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+
+	const_reference		front() const		{ VDASSERT(mpBegin != mpEnd); return *mpBegin; }
+	const_reference		back() const		{ VDASSERT(mpBegin != mpEnd); return mpEnd[-1]; }
+
+	// 21.3.6 string operations
+	const_pointer		data() const		{ return mpBegin; }
+
+	size_type copy(value_type *dst, size_type n, size_type pos = 0) const {
+		size_type len = (size_type)(mpEnd - mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		memcpy(dst, mpBegin + pos, n*sizeof(value_type));
+		return n;
+	}
+
+protected:
+	value_type *mpBegin;
+	value_type *mpEnd;
+
+	static const value_type sNull[1];
 };
 
-template<> struct VDBasicStringExtra<wchar_t> {
-	static inline VDBasicString<wchar_t> setf(const wchar_t *format, ...) throw() {
-		va_list val;
-		va_start(val, format);
-		VDBasicString<wchar_t> tmp(VDFastTextVprintfW(format, val));
-		va_end(val);
-		VDFastTextFree();
+class VDStringW : public VDStringSpanW {
+public:
+	typedef VDStringW				this_type;
 
-		return tmp;
+	// 21.3.1 construct/copy/destroy
+
+	VDStringW()
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
 	}
+
+	VDStringW(const this_type& x)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(x);
+	}
+
+	explicit VDStringW(const value_type *s)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s);
+	}
+
+	explicit VDStringW(size_type n)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		resize(n);
+	}
+
+	VDStringW(const value_type *s, size_type n)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s, n);
+	}
+
+	~VDStringW() {
+		if (mpBegin != sNull)
+			delete[] mpBegin;
+	}
+
+	this_type& operator=(const wchar_t *s) {
+		assign(s);
+		return *this;
+	}
+
+	this_type& operator=(const this_type& str) {
+		assign(str);
+		return *this;
+	}
+
+	// 21.3.2 iterators
+	using VDStringSpanW::begin;
+	using VDStringSpanW::end;
+	iterator			begin()				{ return mpBegin; }
+	iterator			end()				{ return mpEnd; }
+
+	// 21.3.3 capacity (COMPLETE)
+	void resize(size_type n) {
+		size_type current = (size_type)(mpEnd - mpBegin);
+
+		if (n < current) {
+			mpEnd = mpBegin + n;
+			mpEnd[0] = 0;
+		} else if (n > current)
+			resize_slow(n, current);
+	}
+
+	void resize(size_type n, value_type v) {
+		size_type current = (size_type)(mpEnd - mpBegin);
+
+		if (n < current) {
+			mpEnd = mpBegin + n;
+			mpEnd[0] = 0;
+		} else if (n > current)
+			resize_slow(n, current);
+		wmemset(mpBegin, v, n);
+	}
+
+	size_type			capacity() const	{ return mpEOS - mpBegin; }
+
+	void reserve(size_t n) {
+		size_type current = (size_type)(mpEOS - mpBegin);
+
+		if (n > current)
+			reserve_slow(n, current);
+	}
+
+	void clear() {
+		if (mpEnd != mpBegin) {
+			mpEnd = mpBegin;
+			mpEnd[0] = 0;
+		}
+	}
+
+	// 21.3.4 element access
+	using VDStringSpanW::operator[];
+	using VDStringSpanW::at;
+	using VDStringSpanW::front;
+	using VDStringSpanW::back;
+	reference			operator[](size_type pos)		{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	reference			at(size_type pos)				{ VDASSERT(pos < (size_type)(mpEnd - mpBegin)); return mpBegin[pos]; }
+	reference			front()				{ VDASSERT(mpBegin != mpEnd); return *mpBegin; }
+	reference			back()				{ VDASSERT(mpBegin != mpEnd); return mpEnd[-1]; }
+
+	// 21.3.5 modifiers
+	this_type& operator+=(const this_type& str) {
+		return append(str.mpBegin, str.mpEnd);
+	}
+
+	this_type& operator+=(const value_type *s) {
+		return append(s, s+wcslen(s));
+	}
+
+	this_type& operator+=(value_type c) {
+		if (mpEnd == mpEOS)
+			push_back_extend();
+
+		*mpEnd++ = c;
+		*mpEnd = 0;
+		return *this;
+	}
+
+	this_type& append(const this_type& str) {
+		return append(str.mpBegin, str.mpEnd);
+	}
+
+	this_type& append(const this_type& str, size_type pos, size_type n) {
+		size_type len = (size_type)(str.mpEnd - str.mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		return append(str.mpBegin + pos, str.mpBegin + pos + n);
+	}
+
+	this_type& append(const value_type *s, size_type n) {
+		return append(s, s+n);
+	}
+
+	this_type& append(const value_type *s) {
+		return append(s, s+wcslen(s));
+	}
+
+	this_type& append(const value_type *s, const value_type *t) {
+		if (s != t) {
+			size_type current_size = (size_type)(mpEnd - mpBegin);
+			size_type current_capacity = (size_type)(mpEOS - mpBegin);
+			size_type n = (size_type)(t - s);
+
+			if (current_capacity - current_size < n)
+				reserve_amortized_slow(n, current_size, current_capacity);
+
+			memcpy(mpBegin + current_size, s, n*sizeof(value_type));
+			mpEnd += n;
+			*mpEnd = 0;
+		}
+		return *this;
+	}
+
+	void push_back(const value_type c) {
+		if (mpEnd == mpEOS)
+			push_back_extend();
+
+		*mpEnd++ = c;
+		*mpEnd = 0;
+	}
+
+	this_type& assign(const this_type& str) {
+		return assign(str.mpBegin, str.mpEnd);
+	}
+
+	this_type& assign(const this_type& str, size_type pos, size_type n) {
+		size_type len = (size_type)(str.mpEnd - str.mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		return assign(str.mpBegin + pos, str.mpBegin + pos + n);
+	}
+
+	this_type& assign(const value_type *s, size_type n) {
+		return assign(s, s+n);
+	}
+
+	this_type& assign(const value_type *s) {
+		return assign(s, s+wcslen(s));
+	}
+
+	this_type& assign(size_type n, value_type c) {
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+
+		if (current_capacity < n)
+			reserve_slow(n, current_capacity);
+
+		if (mpBegin != sNull) {
+			mpEnd = mpBegin;
+			while(n--)
+				*mpEnd++ = c;
+		}
+
+		return *this;
+	}
+
+	this_type& assign(const value_type *s, const value_type *t) {
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+		size_type n = (size_type)(t - s);
+
+		if (current_capacity < n)
+			reserve_slow(n, current_capacity);
+
+		if (mpBegin != sNull) {
+			memcpy(mpBegin, s, sizeof(value_type)*n);
+			mpEnd = mpBegin + n;
+			*mpEnd = 0;
+		}
+
+		return *this;
+	}
+
+	this_type& insert(iterator it, value_type c) {
+		if (mpEnd == mpEOS) {
+			size_type pos = (size_type)(it - mpBegin);
+			push_back_extend();
+			it = mpBegin + pos;
+		}
+
+		memmove(it + 1, it, (mpEnd - it + 1)*sizeof(value_type));
+		*it = c;
+		++mpEnd;
+		return *this;
+	}
+
+	this_type& erase(size_type pos = 0, size_type n = npos) {
+		size_type len = (size_type)(mpEnd - mpBegin);
+
+		VDASSERT(pos <= len);
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		if (n) {
+			size_type pos2 = pos + n;
+			memmove(mpBegin + pos, mpBegin + pos2, (len + 1 - n)*sizeof(value_type));
+			mpEnd -= n;
+		}
+
+		return *this;
+	}
+
+	iterator erase(iterator x) {
+		VDASSERT(x != mpEnd);
+
+		memmove(x, x+1, (mpEnd - x)*sizeof(value_type));
+		--mpEnd;
+		return x;
+	}
+
+	iterator erase(iterator first, iterator last) {
+		VDASSERT(last >= first);
+
+		memmove(first, last, ((mpEnd - last) + 1)*sizeof(value_type));
+		mpEnd -= (last - first);
+		return first;
+	}
+
+	this_type& replace(size_type pos, size_type n1, const value_type *s, size_type n2) {
+		size_type len = (size_type)(mpEnd - mpBegin);
+
+		VDASSERT(pos <= len);
+		size_type limit = len - pos;
+		if (n1 > limit)
+			n1 = limit;
+
+		size_type len2 = len - n1 + n2;
+		size_type current_capacity = (size_type)(mpEOS - mpBegin);
+
+		if (current_capacity < len2)
+			reserve_slow(len2, current_capacity);
+
+		memmove(mpBegin + pos + n2, mpBegin + pos + n1, (limit - n1 + 1) * sizeof(value_type));
+		memcpy(mpBegin + pos, s, n2*sizeof(value_type));
+		mpEnd = mpBegin + len2;
+		return *this;
+	}
+
+	void swap(this_type& x) {
+		value_type *p;
+
+		p = mpBegin;	mpBegin = x.mpBegin;	x.mpBegin = p;
+		p = mpEnd;		mpEnd = x.mpEnd;		x.mpEnd = p;
+		p = mpEOS;		mpEOS = x.mpEOS;		x.mpEOS = p;
+	}
+
+	// 21.3.6 string operations
+	const_pointer		c_str() const		{ return mpBegin; }
+
+	size_type find(value_type c, size_type pos = 0) const {
+		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
+		const void *p = memchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
+
+		return p ? (const value_type *)p - mpBegin : npos;
+	}
+
+	this_type& sprintf(const value_type *format, ...);
+
+protected:
+	friend bool operator==(const VDStringW& x, const VDStringW& y);
+	friend bool operator==(const VDStringW& x, const wchar_t *y);
+
+	void push_back_extend();
+	void resize_slow(size_type n, size_type current_size);
+	void reserve_slow(size_type n, size_type current_capacity);
+	void reserve_amortized_slow(size_type n, size_type current_size, size_type current_capacity);
+
+	value_type *mpEOS;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-typedef VDBasicString<char>		VDStringA;
-typedef VDBasicString<wchar_t>	VDStringW;
+inline bool operator==(const VDStringW& x, const VDStringW& y) { VDStringA::size_type len = (VDStringW::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringW::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(wchar_t)); }
+inline bool operator==(const VDStringW& x, const wchar_t *y) { size_t len = wcslen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(wchar_t)); }
+inline bool operator==(const wchar_t *x, const VDStringW& y) { return y == x; }
+
+inline bool operator!=(const VDStringW& x, const VDStringW& y) { return !(x == y); }
+inline bool operator!=(const VDStringW& x, const wchar_t *y) { return !(x == y); }
+inline bool operator!=(const wchar_t *x, const VDStringW& y) { return !(y == x); }
+
+inline VDStringW operator+(const VDStringW& str, const VDStringW& s) {
+	VDStringW result;
+	result.reserve(str.size() + s.size());
+	result.assign(str);
+	result.append(s);
+	return result;
+}
+
+inline VDStringW operator+(const VDStringW& str, const wchar_t *s) {
+	VDStringW result;
+	result.reserve(str.size() + wcslen(s));
+	result.assign(str);
+	result.append(s);
+	return result;
+}
+
+inline VDStringW operator+(const VDStringW& str, wchar_t c) {
+	VDStringW result;
+	result.reserve(str.size() + 1);
+	result.assign(str);
+	result += c;
+	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 typedef VDStringA				VDString;
+
 
 #endif

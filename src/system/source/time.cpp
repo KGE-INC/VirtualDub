@@ -32,6 +32,10 @@
 #include <vd2/system/time.h>
 #include <vd2/system/thread.h>
 
+#ifdef _MSC_VER
+	#pragma comment(lib, "winmm")
+#endif
+
 uint32 VDGetCurrentTick() {
 	return (uint32)GetTickCount();
 }
@@ -66,60 +70,45 @@ uint32 VDGetAccurateTick() {
 	return timeGetTime();
 }
 
+///////////////////////////////////////////////////////////////////////////////
 VDCallbackTimer::VDCallbackTimer()
-	: mTimerID(NULL)
-	, mTimerPeriod(0)
-	, mpExitSucceeded(NULL)
+	: mTimerAccuracy(0)
 {
 }
 
-VDCallbackTimer::~VDCallbackTimer() throw() {
+VDCallbackTimer::~VDCallbackTimer() {
 	Shutdown();
-
-	delete mpExitSucceeded;
 }
 
-// We are playing with a bit of fire here -- only Windows XP has the
-// TIME_KILL_SYNCHRONOUS flag, so we must make sure to shut things
-// down properly.  The only way to do this right is to do the kill
-// in the callback itself; otherwise, we run into this situation:
-//
-// 1) Callback starts executing, but is suspended by scheduler.
-// 2) Timer is killed.
-// 3) Callback executes.
-
 bool VDCallbackTimer::Init(IVDTimerCallback *pCB, uint32 period_ms) {
-	VDASSERTCT(sizeof mTimerID == sizeof(UINT));
+	return Init2(pCB, period_ms * 10000);
+}
 
+bool VDCallbackTimer::Init2(IVDTimerCallback *pCB, uint32 period_100ns) {
 	Shutdown();
 
 	mpCB = pCB;
 	mbExit = false;
-	mpExitSucceeded = new_nothrow VDSignal;
+	UINT accuracy = period_100ns / 20000;
+	if (accuracy > 10)
+		accuracy = 10;
 
-	if (mpExitSucceeded) {
-		UINT accuracy = period_ms / 2;
+	TIMECAPS tc;
+	if (TIMERR_NOERROR == timeGetDevCaps(&tc, sizeof tc)) {
+		if (accuracy < tc.wPeriodMin)
+			accuracy = tc.wPeriodMin;
+		if (accuracy > tc.wPeriodMax)
+			accuracy = tc.wPeriodMax;
+	}
 
-		TIMECAPS tc;
-		if (TIMERR_NOERROR == timeGetDevCaps(&tc, sizeof tc)) {
-			if (accuracy < tc.wPeriodMin)
-				accuracy = tc.wPeriodMin;
-			if (accuracy > tc.wPeriodMax)
-				accuracy = tc.wPeriodMax;
+	if (TIMERR_NOERROR == timeBeginPeriod(accuracy)) {
+		mTimerAccuracy = accuracy;
+		mTimerPeriod = period_100ns;
+		mTimerPeriodAdjustment = 0;
+		mTimerPeriodDelta = 0;
 
-			if (period_ms < tc.wPeriodMin)
-				period_ms = tc.wPeriodMin;
-			if (period_ms > tc.wPeriodMax)
-				period_ms = tc.wPeriodMax;
-		}
-
-		if (TIMERR_NOERROR == timeBeginPeriod(accuracy)) {
-			mTimerPeriod = accuracy;
-
-			mTimerID = timeSetEvent(period_ms, 0, StaticTimerCallback, (DWORD_PTR)this, TIME_CALLBACK_FUNCTION | TIME_PERIODIC);
-
-			return mTimerID != 0;
-		}
+		if (ThreadStart())
+			return true;
 	}
 
 	Shutdown();
@@ -128,37 +117,80 @@ bool VDCallbackTimer::Init(IVDTimerCallback *pCB, uint32 period_ms) {
 }
 
 void VDCallbackTimer::Shutdown() {
-	if (mTimerID) {
+	if (isThreadActive()) {
 		mbExit = true;
-
-		mpExitSucceeded->wait();
-		mTimerID = 0;
+		msigExit.signal();
+		ThreadWait();
 	}
 
-	if (mTimerPeriod) {
-		timeEndPeriod(mTimerPeriod);
-		mTimerPeriod = 0;
+	if (mTimerAccuracy) {
+		timeEndPeriod(mTimerAccuracy);
+		mTimerAccuracy = 0;
 	}
+}
 
-	if (mpExitSucceeded) {
-		delete mpExitSucceeded;
-		mpExitSucceeded = NULL;
-	}
+void VDCallbackTimer::SetRateDelta(int delta_100ns) {
+	mTimerPeriodDelta = delta_100ns;
+}
+
+void VDCallbackTimer::AdjustRate(int adjustment_100ns) {
+	mTimerPeriodAdjustment += adjustment_100ns;
 }
 
 bool VDCallbackTimer::IsTimerRunning() const {
-	return mTimerID != 0;
+	return const_cast<VDCallbackTimer *>(this)->isThreadActive();
 }
 
-// This prototype is deliberately different than the one in the header
-// file to avoid having to pull in windows.h for clients; if Microsoft
-// changes the definitions of UINT and DWORD, this won't compile.
-void CALLBACK VDCallbackTimer::StaticTimerCallback(UINT id, UINT, DWORD_PTR thisPtr, DWORD_PTR, DWORD_PTR) {
-	VDCallbackTimer *pThis = (VDCallbackTimer *)thisPtr;
+void VDCallbackTimer::ThreadRun() {
+	uint32 timerPeriod = mTimerPeriod;
+	uint32 periodHi = timerPeriod / 10000;
+	uint32 periodLo = timerPeriod % 10000;
+	uint32 nextTimeHi = VDGetAccurateTick() + periodHi;
+	uint32 nextTimeLo = periodLo;
 
-	if (pThis->mbExit) {
-		timeKillEvent(id);
-		pThis->mpExitSucceeded->signal();
-	} else
-		pThis->mpCB->TimerCallback();
+	uint32 maxDelay = mTimerPeriod / 2000;
+
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+
+	HANDLE hExit = msigExit.getHandle();
+
+	while(!mbExit) {
+		uint32 currentTime = VDGetAccurateTick();
+		sint32 delta = nextTimeHi - currentTime;
+
+		if (delta > 0) {
+			// safety guard against the clock going nuts
+			DWORD res;
+			if ((uint32)delta > maxDelay)
+				res = ::WaitForSingleObject(hExit, maxDelay);
+			else
+				res = ::WaitForSingleObject(hExit, nextTimeHi - currentTime);
+
+			if (res != WAIT_TIMEOUT)
+				break;
+		}
+
+		if ((uint32)abs(delta) > maxDelay) {
+			nextTimeHi = currentTime + periodHi;
+			nextTimeLo = periodLo;
+		} else {
+			nextTimeLo += periodLo;
+			nextTimeHi += periodHi;
+			if (nextTimeLo >= 10000) {
+				nextTimeLo -= 10000;
+				++nextTimeHi;
+			}
+		}
+
+		mpCB->TimerCallback();
+
+		int adjust = mTimerPeriodAdjustment.xchg(0);
+		int perdelta = mTimerPeriodDelta;
+
+		if (adjust || perdelta) {
+			timerPeriod += adjust;
+			periodHi = (timerPeriod+perdelta) / 10000;
+			periodLo = (timerPeriod+perdelta) % 10000;
+		}
+	}
 }

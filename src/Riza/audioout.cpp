@@ -154,11 +154,13 @@ void VDAudioOutputWaveOutW32::Shutdown() {
 
 	Stop();
 
-	for(int i=mBlockCount-1; i>=0; --i) {
-		WAVEHDR& hdr = mHeaders[i];
+	if (!mHeaders.empty()) {
+		for(int i=mHeaders.size()-1; i>=0; --i) {
+			WAVEHDR& hdr = mHeaders[i];
 
-		if (hdr.dwFlags & WHDR_PREPARED)
-			waveOutUnprepareHeader(mhWaveOut, &hdr, sizeof hdr);
+			if (hdr.dwFlags & WHDR_PREPARED)
+				waveOutUnprepareHeader(mhWaveOut, &hdr, sizeof hdr);
+		}
 	}
 
 	mHeaders.clear();

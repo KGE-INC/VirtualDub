@@ -19,10 +19,11 @@
 
 #include <windows.h>
 #include <math.h>
-#include <vector>
+#include <vd2/system/binary.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/Dita/interface.h>
 #include <vd2/VDLib/fft.h>
 
 #include "oshelper.h"
@@ -37,20 +38,557 @@ extern HINSTANCE g_hInst;
 extern const char g_szAudioDisplayControlName[]="birdyAudioDisplayControl";
 
 /////////////////////////////////////////////////////////////////////////////
+
+class IVDUIDrawContext {
+public:
+	enum {
+		kTA_Left	= 0,
+		kTA_Center	= 1,
+		kTA_Right	= 2,
+		kTA_HMask	= 3,
+
+		kTA_Top			= 0x00,
+		kTA_Baseline	= 0x04,
+		kTA_Bottom		= 0x08,
+		kTA_VMask		= 0x0C
+	};
+
+	virtual void SetColor(uint32 color) = 0;
+	virtual void SetTextBackColor(uint32 color) = 0;
+	virtual void SetTextBackTransparent() = 0;
+	virtual void SetTextAlignment(int alignment) = 0;
+
+	virtual void SetOffset(int x, int y) = 0;
+
+	virtual void DrawLine(int x1, int y1, int x2, int y2) = 0;
+	virtual void FillRect(int x, int y, int w, int h) = 0;
+
+	virtual void DrawTextLine(int x, int y, const char *text) = 0;
+
+	virtual vduisize MeasureText(const char *text) = 0;
+};
+
+class VDUIDrawContextGDI : public IVDUIDrawContext {
+public:
+	VDUIDrawContextGDI();
+	~VDUIDrawContextGDI();
+
+	bool Init(HDC hdc);
+	void Shutdown();
+
+	HDC GetHDC() const { return mhdc; }
+
+	void Reset();
+	void SetColor(uint32 color);
+	void SetTextBackColor(uint32 color);
+	void SetTextBackTransparent();
+	void SetTextAlignment(int alignment);
+
+	void SetOffset(int x, int y);
+
+	void DrawLine(int x1, int y1, int x2, int y2);
+	void FillRect(int x, int y, int w, int h);
+
+	void DrawTextLine(int x, int y, const char *text);
+
+	vduisize MeasureText(const char *text);
+
+protected:
+	void UpdatePen();
+
+	HDC mhdc;
+	int mSavedDC;
+	HPEN mpen;
+	uint32 mColor;
+	uint32 mLastPenColor;
+	uint32 mLastTextColor;
+	int mOffsetX;
+	int mOffsetY;
+};
+
+VDUIDrawContextGDI::VDUIDrawContextGDI()
+	: mhdc(NULL)
+	, mpen((HPEN)GetStockObject(BLACK_PEN))
+	, mColor(0xFF000000)
+	, mLastPenColor(0xFF000000)
+	, mLastTextColor(0xFF000000)
+	, mOffsetX(0)
+	, mOffsetY(0)
+{
+}
+
+VDUIDrawContextGDI::~VDUIDrawContextGDI() {
+}
+
+bool VDUIDrawContextGDI::Init(HDC hdc) {
+	mSavedDC = SaveDC(hdc);
+	if (!mSavedDC)
+		return false;
+
+	mhdc = hdc;
+	SelectObject(mhdc, mpen);
+	SelectObject(mhdc, (HFONT)GetStockObject(DEFAULT_GUI_FONT));
+	SetBkMode(mhdc, TRANSPARENT);
+	SetBkColor(mhdc, RGB(0, 0, 0));
+	SetTextAlign(mhdc, TA_TOP | TA_LEFT);
+	return true;
+}
+
+void VDUIDrawContextGDI::Shutdown() {
+	if (mhdc) {
+		RestoreDC(mhdc, mSavedDC);
+		mhdc = NULL;
+	}
+}
+
+void VDUIDrawContextGDI::Reset() {
+	SetColor(0xFF000000);
+	SetBkMode(mhdc, TRANSPARENT);
+	SetBkColor(mhdc, RGB(0, 0, 0));
+}
+
+void VDUIDrawContextGDI::SetColor(uint32 color) {
+	mColor = color;
+}
+
+void VDUIDrawContextGDI::SetTextBackColor(uint32 color) {
+	SetBkMode(mhdc, OPAQUE);
+	SetBkColor(mhdc, VDSwizzleU32(color) >> 8);
+}
+
+void VDUIDrawContextGDI::SetTextBackTransparent() {
+	SetBkMode(mhdc, TRANSPARENT);
+}
+
+void VDUIDrawContextGDI::SetTextAlignment(int alignment) {
+	static const UINT kAlignmentMap[16]={
+		TA_LEFT | TA_TOP,		TA_CENTER | TA_TOP,			TA_RIGHT | TA_TOP,			TA_LEFT | TA_TOP,
+		TA_LEFT | TA_BASELINE,	TA_CENTER | TA_BASELINE,	TA_RIGHT | TA_BASELINE,		TA_LEFT | TA_BASELINE,
+		TA_LEFT | TA_BOTTOM,	TA_CENTER | TA_BOTTOM,		TA_RIGHT | TA_BOTTOM,		TA_LEFT | TA_BOTTOM,
+		TA_LEFT | TA_TOP,		TA_CENTER | TA_TOP,			TA_RIGHT | TA_TOP,			TA_LEFT | TA_TOP,
+	};
+
+	SetTextAlign(mhdc, kAlignmentMap[alignment & 15]);
+}
+
+void VDUIDrawContextGDI::SetOffset(int x, int y) {
+	mOffsetX = x;
+	mOffsetY = y;
+}
+
+void VDUIDrawContextGDI::DrawLine(int x1, int y1, int x2, int y2) {
+	UpdatePen();
+	MoveToEx(mhdc, mOffsetX + x1, mOffsetY + y1, NULL);
+	LineTo(mhdc, mOffsetX + x2, mOffsetY + y2);
+}
+
+void VDUIDrawContextGDI::FillRect(int x, int y, int w, int h) {
+}
+
+void VDUIDrawContextGDI::DrawTextLine(int x, int y, const char *text) {
+	TextOutA(mhdc, mOffsetX + x, mOffsetY + y, text, strlen(text));
+}
+
+vduisize VDUIDrawContextGDI::MeasureText(const char *text) {
+	SIZE siz = {0,0};
+	GetTextExtentPoint32(mhdc, text, strlen(text), &siz);
+
+	return vduisize(siz.cx, siz.cy);
+}
+
+void VDUIDrawContextGDI::UpdatePen() {
+	if (mLastPenColor != mColor) {
+		mLastPenColor = mColor;
+
+		COLORREF c = VDSwizzleU32(mColor) >> 8;
+
+		HPEN pen = CreatePen(PS_SOLID, 0, c);
+
+		if (pen) {
+			if (SelectObject(mhdc, pen)) {
+				if (mpen)
+					DeleteObject(mpen);
+
+				mpen = pen;
+			} else {
+				DeleteObject(pen);
+			}
+		}
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUISprite;
+
+class IVDUISpriteContext : public IVDUnknown {
+public:
+	virtual IVDUIDrawContext *GetIC() = 0;
+	virtual void ReleaseIC(IVDUIDrawContext *) = 0;
+	virtual void InvalidateCanvas(const vduirect& r) = 0;
+};
+
+class VDUISprite : public vdrefcounted<IVDRefCount> {
+public:
+	VDUISprite();
+	~VDUISprite();
+
+	virtual void Attach(IVDUISpriteContext *, VDUISprite *parent);
+	virtual void Detach();
+
+	virtual void AddChild(VDUISprite *sprite);
+	virtual void RemoveChild(VDUISprite *sprite);
+
+	virtual void Render(IVDUIDrawContext& dc, int x, int y);
+	virtual void RenderLocal(IVDUIDrawContext& dc) {}
+	virtual bool HitTest(int x, int y) { return true; }
+
+	const vduirect& GetBounds() const { return mBounds; }
+	void SetBounds(const vduirect& r) { mBounds = r; }
+
+	const vduirect& GetLastRenderedBounds() const { return mLastRenderedBounds; }
+	const vduirect& GetCumulativeBounds() const { return mCumulativeBounds; }
+
+	void Invalidate();
+
+protected:
+	void Invalidate(int xoffset, int yoffset);
+
+	vduirect	mLastRenderedBounds;		// global
+	vduirect	mBounds;					// local
+	vduirect	mCumulativeBounds;			// global
+
+	IVDUISpriteContext *mpContext;
+	VDUISprite *mpParent;
+
+	typedef vdfastvector<VDUISprite *> Sprites;
+	Sprites mSprites;
+};
+
+VDUISprite::VDUISprite()
+	: mBounds(0,0,0,0)
+	, mpContext(NULL)
+	, mpParent(NULL)
+{
+}
+
+VDUISprite::~VDUISprite() {
+	while(!mSprites.empty())
+		RemoveChild(mSprites.back());
+}
+
+void VDUISprite::Attach(IVDUISpriteContext *context, VDUISprite *parent) {
+	mpContext = context;
+	mpParent = parent;
+	mLastRenderedBounds.set(0, 0, 0, 0);
+
+	Sprites::const_iterator it(mSprites.begin()), itEnd(mSprites.end());
+	for(; it!=itEnd; ++it) {
+		VDUISprite& sprite = **it;
+
+		sprite.Attach(context, this);
+	}
+}
+
+void VDUISprite::Detach() {
+	if (mpContext) {
+		Sprites::const_iterator it(mSprites.begin()), itEnd(mSprites.end());
+		for(; it!=itEnd; ++it) {
+			VDUISprite& sprite = **it;
+
+			sprite.Detach();
+		}
+
+		mpContext = NULL;
+		mpParent = NULL;
+	}
+}
+
+void VDUISprite::AddChild(VDUISprite *sprite) {
+	sprite->AddRef();
+	mSprites.push_back(sprite);
+
+	if (mpContext)
+		sprite->Attach(mpContext, this);
+}
+
+void VDUISprite::RemoveChild(VDUISprite *sprite) {
+	Sprites::iterator it(std::find(mSprites.begin(), mSprites.end(), sprite));
+
+	if (it != mSprites.end()) {
+		if (mpContext)
+			sprite->Invalidate();
+		sprite->Detach();
+		mSprites.erase(it);
+		sprite->Release();
+	}
+}
+
+void VDUISprite::Render(IVDUIDrawContext& dc, int x, int y) {
+	x += mBounds.left;
+	y += mBounds.top;
+
+	dc.SetOffset(x, y);
+	RenderLocal(dc);
+
+	Sprites::const_iterator it(mSprites.begin()), itEnd(mSprites.end());
+	for(; it!=itEnd; ++it) {
+		VDUISprite& sprite = **it;
+
+		sprite.Render(dc, x, y);
+	}
+}
+
+void VDUISprite::Invalidate() {
+	int x = 0;
+	int y = 0;
+
+	for(VDUISprite *p = mpParent; p; p = p->mpParent) {
+		x += p->mBounds.left;
+		y += p->mBounds.top;
+	}
+
+	Invalidate(x, y);
+}
+
+void VDUISprite::Invalidate(int xoffset, int yoffset) {
+	mpContext->InvalidateCanvas(mLastRenderedBounds);
+	mLastRenderedBounds = mBounds;
+	mLastRenderedBounds.left += xoffset;
+	mLastRenderedBounds.top += yoffset;
+	mLastRenderedBounds.right += xoffset;
+	mLastRenderedBounds.bottom += yoffset;
+	mpContext->InvalidateCanvas(mLastRenderedBounds);
+
+	Sprites::const_iterator it(mSprites.begin()), itEnd(mSprites.end());
+	for(; it!=itEnd; ++it) {
+		VDUISprite& sprite = **it;
+
+		sprite.Invalidate(mLastRenderedBounds.left, mLastRenderedBounds.top);
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUISpriteBasedControlW32 : public IVDUISpriteContext {
+public:
+	VDUISpriteBasedControlW32(HWND hwnd);
+	virtual ~VDUISpriteBasedControlW32();
+
+	int AddRef();
+	int Release();
+
+	void AddSprite(VDUISprite *sprite);
+	void RemoveSprite(VDUISprite *sprite);
+	void Render(IVDUIDrawContext& dc);
+
+public:
+	void InvalidateCanvas(const vduirect& r);
+	IVDUIDrawContext *GetIC();
+	void ReleaseIC(IVDUIDrawContext *);
+
+public:
+	template<class T>
+	static LRESULT APIENTRY StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+protected:
+	virtual LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+
+protected:
+	const HWND mhwnd;
+
+	vdrefptr<VDUISprite> mpRootSprite;
+
+	VDUIDrawContextGDI	mDC;
+
+	VDAtomicInt	mRefCount;
+};
+
+VDUISpriteBasedControlW32::VDUISpriteBasedControlW32(HWND hwnd)
+	: mhwnd(hwnd)
+	, mpRootSprite(new VDUISprite)
+	, mRefCount(1)
+{
+	mpRootSprite->Attach(this, NULL);
+}
+
+VDUISpriteBasedControlW32::~VDUISpriteBasedControlW32() {
+}
+
+int VDUISpriteBasedControlW32::AddRef() {
+	return ++mRefCount;
+}
+
+int VDUISpriteBasedControlW32::Release() {
+	int rc = --mRefCount;
+
+	if (!rc)
+		delete this;
+
+	return rc;
+}
+
+void VDUISpriteBasedControlW32::AddSprite(VDUISprite *sprite) {
+	mpRootSprite->AddChild(sprite);
+}
+
+void VDUISpriteBasedControlW32::RemoveSprite(VDUISprite *sprite) {
+	mpRootSprite->RemoveChild(sprite);
+}
+
+void VDUISpriteBasedControlW32::Render(IVDUIDrawContext& dc) {
+	mpRootSprite->Render(dc, 0, 0);
+}
+
+void VDUISpriteBasedControlW32::InvalidateCanvas(const vduirect& r) {
+	// We dilate by one pixel to work around antialiasing related glitches, particularly
+	// ClearType text rendering slightly out of bounds.
+	RECT r2 = { r.left - 1, r.top - 1, r.right + 1, r.bottom + 1 };
+	InvalidateRect(mhwnd, &r2, TRUE);
+}
+
+IVDUIDrawContext *VDUISpriteBasedControlW32::GetIC() {
+	HDC hdc = GetDC(mhwnd);
+	if (!hdc)
+		return NULL;
+	if (!mDC.Init(hdc)) {
+		ReleaseDC(mhwnd, hdc);
+		return NULL;
+	}
+
+	return &mDC;
+}
+
+void VDUISpriteBasedControlW32::ReleaseIC(IVDUIDrawContext *pdc) {
+	HDC hdc = mDC.GetHDC();
+	mDC.Shutdown();
+	ReleaseDC(mhwnd, hdc);
+}
+
+template<class T>
+LRESULT APIENTRY VDUISpriteBasedControlW32::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	VDUISpriteBasedControlW32 *pThis = (VDUISpriteBasedControlW32 *)GetWindowLongPtr(hwnd, 0);
+
+	if (msg == WM_NCCREATE) {
+		pThis = new T(hwnd);
+
+		if (!pThis)
+			return FALSE;
+
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
+	} else if (msg == WM_NCDESTROY) {
+		pThis->Release();
+		return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
+
+	return pThis->WndProc(msg, wParam, lParam);
+}
+
+LRESULT VDUISpriteBasedControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
+	return DefWindowProc(mhwnd, msg, wParam, lParam);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUITextSprite : public VDUISprite {
+public:
+	void RenderLocal(IVDUIDrawContext& dc);
+
+	void SetCenteredText(int cx, int cy, const char *text);
+
+protected:
+	VDStringA	mText;
+};
+
+void VDUITextSprite::RenderLocal(IVDUIDrawContext& dc) {
+	dc.SetColor(0xFFFFFFFF);
+	dc.SetTextBackColor(0xFF000000);
+	dc.SetTextAlignment(dc.kTA_Top | dc.kTA_Left);
+	dc.DrawTextLine(0, 0, mText.c_str());
+}
+
+void VDUITextSprite::SetCenteredText(int cx, int cy, const char *text) {
+	IVDUIDrawContext *ic = mpContext->GetIC();
+
+	const vduisize siz(ic->MeasureText(text));
+
+	mpContext->ReleaseIC(ic);
+
+	mText = text;
+
+	int x = cx - (siz.w >> 1);
+	int y = cy - (siz.h >> 1);
+	SetBounds(vduirect(x, y, x+siz.w, y+siz.h));
+	Invalidate();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDUIDimensionSprite : public VDUISprite {
+public:
+	VDUIDimensionSprite();
+	~VDUIDimensionSprite();
+
+	void RenderLocal(IVDUIDrawContext& dc);
+
+	void SetLine(int x1, int y1, int x2, int ht, const char *text);
+
+protected:
+	VDStringA	mText;
+	int mYOffset;
+
+	vdrefptr<VDUITextSprite> mpTextSprite;
+};
+
+VDUIDimensionSprite::VDUIDimensionSprite()
+	: mpTextSprite(new VDUITextSprite)
+{
+	AddChild(mpTextSprite);
+}
+
+VDUIDimensionSprite::~VDUIDimensionSprite() {
+}
+
+void VDUIDimensionSprite::RenderLocal(IVDUIDrawContext& dc) {
+	dc.SetColor(0xFFFFFFFF);
+
+	int w = mBounds.right - mBounds.left;
+	int h = mBounds.bottom - mBounds.top;
+
+	dc.DrawLine(0, mYOffset, w, mYOffset);
+	dc.DrawLine(0, 0, 0, h);
+	dc.DrawLine(w-1, 0, w-1, h);
+}
+
+void VDUIDimensionSprite::SetLine(int x1, int y1, int x2, int ht, const char *text) {
+	y1 -= ht >> 1;
+	mYOffset = ht >> 1;
+
+	if (x2 < x1)
+		std::swap(x1, x2);
+
+	SetBounds(vduirect(x1, y1, x2+1, y1 + ht));
+	Invalidate();
+
+	mpTextSprite->SetCenteredText((x2 - x1) >> 1, mYOffset + 4, text);
+}
+
+/////////////////////////////////////////////////////////////////////////////
 //
 //	VDAudioDisplayControl
 //
 /////////////////////////////////////////////////////////////////////////////
 
-class VDAudioDisplayControl : public vdrefcounted<IVDUIAudioDisplayControl> {
+class VDAudioDisplayControl : public VDUISpriteBasedControlW32, public IVDUIAudioDisplayControl {
 public:
 	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-protected:
+public:
 	VDAudioDisplayControl(HWND hwnd);
 	~VDAudioDisplayControl();
 
-public:
+	int AddRef() { return VDUISpriteBasedControlW32::AddRef(); }
+	int Release() { return VDUISpriteBasedControlW32::Release(); }
 	void *AsInterface(uint32 id);
 
 	void SetSpectralPaletteDefault();
@@ -71,6 +609,7 @@ public:
 	void OnInitMenu(HMENU hmenu);
 	void OnMouseMove(int x, int y, uint32 modifiers);
 	void OnLButtonDown(int x, int y, uint32 modifiers);
+	void OnLButtonUp(int x, int y, uint32 modifiers);
 	void OnRButtonDown(int x, int y, uint32 modifiers);
 	void OnPaint(HDC hdc, const PAINTSTRUCT& ps);
 	void OnSize();
@@ -88,8 +627,11 @@ public:
 	bool ProcessAudio8U(const uint8 *src, int count, int chanStride, int sampleStride);
 	bool ProcessAudio16S(const sint16 *src, int count, int chanStride, int sampleStride);
 	VDEvent<IVDUIAudioDisplayControl, VDPosition>& AudioRequiredEvent();
-	VDEvent<IVDUIAudioDisplayControl, VDPosition>& SetSelectStartEvent();
-	VDEvent<IVDUIAudioDisplayControl, VDPosition>& SetSelectEndEvent();
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectStartEvent();
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectTrackEvent();
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& SetSelectEndEvent();
+	VDEvent<IVDUIAudioDisplayControl, sint32>& TrackAudioOffsetEvent();
+	VDEvent<IVDUIAudioDisplayControl, sint32>& SetAudioOffsetEvent();
 
 protected:
 	bool ProcessAudio(const void *src, int count, int chanStride, int sampleStride, bool bit16);
@@ -98,7 +640,6 @@ protected:
 
 	static void FastFill(HDC hdc, int x1, int y1, int x2, int y2, DWORD c);
 
-	const HWND	mhwnd;
 	HFONT		mhfont;
 	int			mFontDigitWidth;
 	int			mFontHeight;
@@ -113,6 +654,8 @@ protected:
 	VDPosition	mHighlightedMarker;
 	VDPosition	mSelectedMarkerRangeStart;
 	VDPosition	mSelectedMarkerRangeEnd;
+	VDPosition	mAudioOffsetDragAnchor;
+	VDPosition	mAudioOffsetDragEndPoint;
 	uint32		mAccumulatedSamples;
 	uint32		mBufferedWindowSamples;
 	double		mSamplingRate;
@@ -139,14 +682,30 @@ protected:
 	int			mUpdateX2;
 	UINT		mUpdateTimer;
 
+	enum DragMode {
+		kDragModeNone,
+		kDragModeSelect,
+		kDragModeAudioOffset,
+		kDragModeCount
+	};
+
+	DragMode	mDragMode;
+	int			mDragAnchorX;
+	int			mDragAnchorY;
+
+	vdrefptr<VDUIDimensionSprite> mpDimensionSprite;
+
 	vdfastvector<uint8>	mImage;
 	vdfastvector<POINT> mPoints;
 
 	VDStringW	mFailureMessage;
 
 	VDEvent<IVDUIAudioDisplayControl, VDPosition> mAudioRequiredEvent;
-	VDEvent<IVDUIAudioDisplayControl, VDPosition> mSetSelectStartEvent;
-	VDEvent<IVDUIAudioDisplayControl, VDPosition> mSetSelectEndEvent;
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange> mSetSelectStartEvent;
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange> mSetSelectTrackEvent;
+	VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange> mSetSelectEndEvent;
+	VDEvent<IVDUIAudioDisplayControl, sint32> mTrackAudioOffsetEvent;
+	VDEvent<IVDUIAudioDisplayControl, sint32> mSetAudioOffsetEvent;
 
 	struct {
 		BITMAPINFOHEADER hdr;
@@ -161,9 +720,9 @@ ATOM RegisterAudioDisplayControl() {
 	WNDCLASS wc;
 
 	wc.style		= CS_VREDRAW | CS_HREDRAW;
-	wc.lpfnWndProc	= VDAudioDisplayControl::StaticWndProc;
+	wc.lpfnWndProc	= VDUISpriteBasedControlW32::StaticWndProc<VDAudioDisplayControl>;
 	wc.cbClsExtra	= 0;
-	wc.cbWndExtra	= sizeof(VDAudioDisplayControl *);
+	wc.cbWndExtra	= sizeof(IVDUnknown *);
 	wc.hInstance	= g_hInst;
 	wc.hIcon		= NULL;
 	wc.hCursor		= LoadCursor(NULL, IDC_ARROW);
@@ -179,7 +738,7 @@ IVDUIAudioDisplayControl *VDGetIUIAudioDisplayControl(VDGUIHandle h) {
 }
 
 VDAudioDisplayControl::VDAudioDisplayControl(HWND hwnd)
-	: mhwnd(hwnd)
+	: VDUISpriteBasedControlW32(hwnd)
 	, mWidth(0)
 	, mHeight(0)
 	, mChanWidth(0)
@@ -212,6 +771,7 @@ VDAudioDisplayControl::VDAudioDisplayControl(HWND hwnd)
 	, mUpdateX1(INT_MAX)
 	, mUpdateX2(INT_MIN)
 	, mUpdateTimer(0)
+	, mDragMode(kDragModeNone)
 {
 	SetSpectralPaletteDefault();
 
@@ -263,42 +823,6 @@ void *VDAudioDisplayControl::AsInterface(uint32 id) {
 }
 
 void VDAudioDisplayControl::SetSpectralPaletteDefault() {
-#if 0
-	static const uint32 kDefaultPalette[]={
-		0x070000,0x09000a,0x0a0013,0x0b001c,0x0d0025,0x0e002e,0x0f0037,0x11003f,
-		0x120047,0x13014f,0x150157,0x16015e,0x180165,0x19016c,0x1b0173,0x1c027a,
-		0x1e0280,0x1f0286,0x21028c,0x220292,0x240397,0x26039d,0x2703a2,0x2904a7,
-		0x2a04ac,0x2c04b1,0x2e05b5,0x2f05ba,0x3105be,0x3306c2,0x3506c6,0x3606ca,
-		0x3807cd,0x3a07d1,0x3c08d4,0x3d08d7,0x3f09da,0x4109dd,0x430ae0,0x450ae2,
-		0x460be5,0x480be7,0x4a0ce9,0x4c0ceb,0x4e0ded,0x500def,0x510ef1,0x530ff3,
-		0x550ff4,0x5710f6,0x5911f7,0x5b11f8,0x5d12f9,0x5f13fa,0x6113fb,0x6314fc,
-		0x6415fd,0x6615fd,0x6816fe,0x6a17fe,0x6c18fe,0x6e18ff,0x7019ff,0x721aff,
-		0x741bff,0x761cff,0x781cff,0x7a1dff,0x7c1efe,0x7d1ffe,0x7f20fe,0x8121fd,
-		0x8322fd,0x8522fc,0x8723fb,0x8924fb,0x8b25fa,0x8d26f9,0x8f27f8,0x9028f7,
-		0x9229f6,0x942af5,0x962bf4,0x982cf3,0x9a2df1,0x9c2ef0,0x9d2fef,0x9f30ee,
-		0xa131ec,0xa332eb,0xa533e9,0xa734e8,0xa835e6,0xaa36e5,0xac37e3,0xae39e2,
-		0xaf3ae0,0xb13bde,0xb33cdc,0xb53ddb,0xb63ed9,0xb83fd7,0xba40d5,0xbb42d3,
-		0xbd43d2,0xbe44d0,0xc045ce,0xc246cc,0xc348ca,0xc549c8,0xc64ac6,0xc84bc4,
-		0xc94cc2,0xcb4ec0,0xcc4fbe,0xce50bc,0xcf51ba,0xd153b8,0xd254b6,0xd455b4,
-		0xd556b1,0xd658af,0xd859ad,0xd95aab,0xda5ba9,0xdc5da7,0xdd5ea5,0xde5fa3,
-		0xdf61a0,0xe1629e,0xe2639c,0xe3659a,0xe46698,0xe56796,0xe66994,0xe76a91,
-		0xe86b8f,0xe96d8d,0xeb6e8b,0xeb6f89,0xec7187,0xed7285,0xee7383,0xef7580,
-		0xf0767e,0xf1777c,0xf2797a,0xf37a78,0xf37b76,0xf47d74,0xf57e72,0xf68070,
-		0xf6816e,0xf7826c,0xf8846a,0xf88568,0xf98666,0xf98864,0xfa8962,0xfa8b60,
-		0xfb8c5e,0xfb8d5c,0xfc8f5a,0xfc9058,0xfc9157,0xfd9355,0xfd9453,0xfd9651,
-		0xfe974f,0xfe984e,0xfe9a4c,0xfe9b4a,0xff9c48,0xff9e47,0xff9f45,0xffa043,
-		0xffa242,0xffa340,0xffa53e,0xffa63d,0xffa73b,0xffa93a,0xffaa38,0xffab36,
-		0xffad35,0xfeae33,0xfeaf32,0xfeb131,0xfeb22f,0xfdb32e,0xfdb52c,0xfdb62b,
-		0xfcb72a,0xfcb928,0xfcba27,0xfbbb26,0xfbbc24,0xfabe23,0xfabf22,0xf9c021,
-		0xf9c220,0xf8c31e,0xf7c41d,0xf7c51c,0xf6c71b,0xf5c81a,0xf5c919,0xf4ca18,
-		0xf3cc17,0xf2cd16,0xf2ce15,0xf1cf14,0xf0d013,0xefd212,0xeed311,0xedd410,
-		0xecd510,0xebd60f,0xead80e,0xe9d90d,0xe8da0d,0xe7db0c,0xe6dc0b,0xe5dd0a,
-		0xe4de0a,0xe3df09,0xe2e109,0xe0e208,0xdfe307,0xdee407,0xdde506,0xdbe606,
-		0xdae705,0xd9e805,0xd7e904,0xd6ea04,0xd5eb04,0xd3ec03,0xd2ed03,0xd0ee03,
-		0xcfef02,0xcef002,0xccf102,0xcbf201,0xc9f301,0xc8f401,0xc6f501,0xc4f601,
-		0xc3f700,0xc1f700,0xc0f800,0xbef900,0xbcfa00,0xbbfb00,0xb9fc00,0xb8fd00,
-	};
-#else
 	static const uint32 kDefaultPalette[]={
 		0x000000,0x000000,0x000000,0x000000,0x000001,0x000001,0x000001,0x000002,
 		0x010002,0x010003,0x010003,0x010004,0x010005,0x010006,0x010006,0x020007,
@@ -333,7 +857,6 @@ void VDAudioDisplayControl::SetSpectralPaletteDefault() {
 		0xc3e102,0xc2e302,0xc2e502,0xc1e701,0xc0e801,0xc0ea01,0xbfec01,0xbeee01,
 		0xbef000,0xbdf200,0xbcf300,0xbbf500,0xbaf700,0xb9f900,0xb8fb00,0xb8fd00,
 	};
-#endif
 
 	memcpy(mbihSpectrum.pal, kDefaultPalette, sizeof mbihSpectrum.pal);
 
@@ -603,31 +1126,24 @@ VDEvent<IVDUIAudioDisplayControl, VDPosition>& VDAudioDisplayControl::AudioRequi
 	return mAudioRequiredEvent;
 }
 
-VDEvent<IVDUIAudioDisplayControl, VDPosition>& VDAudioDisplayControl::SetSelectStartEvent() {
+VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& VDAudioDisplayControl::SetSelectStartEvent() {
 	return mSetSelectStartEvent;
 }
 
-VDEvent<IVDUIAudioDisplayControl, VDPosition>& VDAudioDisplayControl::SetSelectEndEvent() {
+VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& VDAudioDisplayControl::SetSelectTrackEvent() {
+	return mSetSelectTrackEvent;
+}
+
+VDEvent<IVDUIAudioDisplayControl, VDUIAudioDisplaySelectionRange>& VDAudioDisplayControl::SetSelectEndEvent() {
 	return mSetSelectEndEvent;
 }
 
-LRESULT CALLBACK VDAudioDisplayControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	VDAudioDisplayControl *pThis = (VDAudioDisplayControl *)GetWindowLongPtr(hwnd, 0);
+VDEvent<IVDUIAudioDisplayControl, sint32>& VDAudioDisplayControl::TrackAudioOffsetEvent() {
+	return mTrackAudioOffsetEvent;
+}
 
-	if (msg == WM_NCCREATE) {
-		pThis = new VDAudioDisplayControl(hwnd);
-
-		if (!pThis)
-			return FALSE;
-
-		pThis->AddRef();
-		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pThis);
-	} else if (msg == WM_NCDESTROY) {
-		pThis->Release();
-		return DefWindowProc(hwnd, msg, wParam, lParam);
-	}
-
-	return pThis->WndProc(msg, wParam, lParam);
+VDEvent<IVDUIAudioDisplayControl, sint32>& VDAudioDisplayControl::SetAudioOffsetEvent() {
+	return mSetAudioOffsetEvent;
 }
 
 LRESULT VDAudioDisplayControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -647,24 +1163,31 @@ LRESULT VDAudioDisplayControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
-			HDC hDC;
+			HDC hdc;
 
-			hDC = BeginPaint(mhwnd, &ps);
-			OnPaint(hDC, ps);
+			hdc = BeginPaint(mhwnd, &ps);
+			OnPaint(hdc, ps);
+			mDC.Init(hdc);
+			Render(mDC);
+			mDC.Shutdown();
 			EndPaint(mhwnd, &ps);
 		}
 		return 0;
 
 	case WM_MOUSEMOVE:
-		OnMouseMove((int)LOWORD(lParam), (int)HIWORD(lParam), wParam);
+		OnMouseMove((short)LOWORD(lParam), (short)HIWORD(lParam), wParam);
 		break;
 
 	case WM_LBUTTONDOWN:
-		OnLButtonDown((int)LOWORD(lParam), (int)HIWORD(lParam), wParam);
+		OnLButtonDown((short)LOWORD(lParam), (short)HIWORD(lParam), wParam);
+		break;
+
+	case WM_LBUTTONUP:
+		OnLButtonUp((short)LOWORD(lParam), (short)HIWORD(lParam), wParam);
 		break;
 
 	case WM_RBUTTONDOWN:
-		OnRButtonDown((int)LOWORD(lParam), (int)HIWORD(lParam), wParam);
+		OnRButtonDown((short)LOWORD(lParam), (short)HIWORD(lParam), wParam);
 		break;
 
 	case WM_COMMAND:
@@ -766,16 +1289,75 @@ void VDAudioDisplayControl::OnTimer() {
 }
 
 void VDAudioDisplayControl::OnMouseMove(int x, int y, uint32 modifiers) {
-	if (modifiers & MK_LBUTTON)
-		OnLButtonDown(x, y, modifiers);
+	if (modifiers & MK_LBUTTON) {
+		VDPosition pos = mWindowPosition + x * mSamplesPerPixel;
+
+		switch(mDragMode) {
+			case kDragModeSelect:
+				{
+					VDUIAudioDisplaySelectionRange range = {mAudioOffsetDragAnchor, pos};
+					mSetSelectTrackEvent.Raise(this, range);
+				}
+				break;
+			case kDragModeAudioOffset:
+				mAudioOffsetDragEndPoint = pos;
+				mTrackAudioOffsetEvent.Raise(this, VDClampToSint32(pos - mAudioOffsetDragAnchor));
+				
+				{
+					char buf[64];
+
+					sprintf(buf, "%+.0fms", (pos - mAudioOffsetDragAnchor) / mSamplingRate * 1000.0f);
+					mpDimensionSprite->SetLine(mDragAnchorX, mDragAnchorY, x, 24, buf);
+				}
+
+				break;
+		}
+	}
 }
 
 void VDAudioDisplayControl::OnLButtonDown(int x, int y, uint32 modifiers) {
 	VDPosition pos = mWindowPosition + x * mSamplesPerPixel;
-	if (modifiers & MK_SHIFT)
-		mSetSelectEndEvent.Raise(this, pos);
-	else
-		mSetSelectStartEvent.Raise(this, pos);
+
+	mDragAnchorX = x;
+	mDragAnchorY = y;
+
+	SetCapture(mhwnd);
+
+	if (modifiers & MK_CONTROL) {
+		mTrackAudioOffsetEvent.Raise(this, 0);
+		mAudioOffsetDragAnchor = pos;
+		mAudioOffsetDragEndPoint = pos;
+		mDragMode = kDragModeAudioOffset;
+
+		mpDimensionSprite = new VDUIDimensionSprite;
+		AddSprite(mpDimensionSprite);
+		mpDimensionSprite->SetLine(x, mDragAnchorY, x, 24, "+0 ms");
+	} else if (modifiers & MK_SHIFT) {
+		mAudioOffsetDragAnchor = pos;
+		VDUIAudioDisplaySelectionRange range = {pos, pos};
+		mSetSelectEndEvent.Raise(this, range);
+		mDragMode = kDragModeSelect;
+	}
+}
+
+void VDAudioDisplayControl::OnLButtonUp(int x, int y, uint32 modifiers) {
+	VDPosition pos = mWindowPosition + x * mSamplesPerPixel;
+	switch(mDragMode) {
+		case kDragModeSelect:
+			{
+				VDUIAudioDisplaySelectionRange range = {mAudioOffsetDragAnchor, pos};
+				mSetSelectEndEvent.Raise(this, range);
+			}
+			break;
+		case kDragModeAudioOffset:
+			mSetAudioOffsetEvent.Raise(this, VDClampToSint32(pos - mAudioOffsetDragAnchor));
+			RemoveSprite(mpDimensionSprite);
+			mpDimensionSprite = NULL;
+			break;
+	}
+	mDragMode = kDragModeNone;
+
+	ReleaseCapture();
 }
 
 void VDAudioDisplayControl::OnRButtonDown(int x, int y, uint32 modifiers) {
@@ -877,7 +1459,7 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 			} else {
 				FastFill(hdc, x, ps.rcPaint.top, x+1, ps.rcPaint.bottom, RGB(64, 64, 64));
 			}
-		} else if (ps.rcPaint.top < mChanHeight) {
+		} else if (ps.rcPaint.top < mChanHeight * mChanCount) {
 			if (mbSpectrumMode) {
 				StretchDIBits(hdc, x, 0, 1, mChanHeight * mChanCount, x, 0, 1, mbihSpectrum.hdr.biHeight, &mImage[0], (const BITMAPINFO *)&mbihSpectrumMinorMarker, DIB_RGB_COLORS, SRCCOPY);
 			} else {
@@ -892,7 +1474,7 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 		}
 	}
 
-	if (ps.rcPaint.top < mChanHeight && mHighlightedMarker >= marker1*mMarkerMinorStep && mHighlightedMarker < marker2*mMarkerMinorStep) {
+	if (ps.rcPaint.top < mChanHeight * mChanCount && mHighlightedMarker >= marker1*mMarkerMinorStep && mHighlightedMarker < marker2*mMarkerMinorStep) {
 		sint32 xh1 = VDFloorToInt((mHighlightedMarker*mMarkerRate + mMarkerStart - mWindowPosition) * mPixelsPerSample);
 		sint32 xh2 = VDFloorToInt(((mHighlightedMarker+1)*mMarkerRate + mMarkerStart - mWindowPosition) * mPixelsPerSample);
 
@@ -1051,8 +1633,9 @@ bool VDAudioDisplayControl::ProcessAudio(const void *src, int count, int chanStr
 
 				static const float kSpecScale = 24.525815695112377925118719577032f;		// 255 / ln(32768)
 				static const float kSpecOffset = 289.0f + 17.0f;
+				static const float kLn2 = 0.69314718055994530941723212145818f;
 
-				float offset = kSpecOffset + (float)mSpectralBoost * (kSpecScale * 0.69314718055994530941723212145818f);
+				float offset = kSpecOffset + (float)mSpectralBoost * (kSpecScale * kLn2);
 
 				unsigned char *dst = &mImage[mAccumulatedSamples];
 
@@ -1136,6 +1719,7 @@ bool VDAudioDisplayControl::ProcessAudio(const void *src, int count, int chanStr
 			for(int ch = 0; ch < mChanCount; ++ch) {
 				const uint8 *src8 = (const uint8 *)src + chanStride*ch;
 				uint8 *dst8 = dst + ch;
+
 				for(int i=0; i<count; ++i) {
 					*dst8 = *src8;
 					dst8 += mChanCount;

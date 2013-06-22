@@ -1,0 +1,110 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "winresrc.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""winresrc.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_SCREENCAP_OPTS DIALOGEX 0, 0, 300, 158
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Screen capture settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Track mouse &cursor",IDC_TRACK_CURSOR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,7,78,10
+    CONTROL         "Track active &window client area",IDC_TRACK_ACTIVE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,18,116,10
+    CONTROL         "Use &OpenGL hardware acceleration",IDC_USE_OPENGL,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,29,129,10
+    LTEXT           "OpenGL acceleration greatly lowers CPU usage when doing screen capture and permits advanced GPU processing of the captured image. At least a GeForce 1, Radeon 8500, or equivalent is required for hardware YUV conversion support.",IDC_STATIC_OPENGL,19,42,274,27
+    CONTROL         "&Rescale from larger area",IDC_RESCALE_IMAGE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,71,95,10
+    LTEXT           "Source wi&dth",IDC_STATIC_WIDTH,31,86,42,12
+    EDITTEXT        IDC_WIDTH,82,84,58,12,ES_AUTOHSCROLL
+    LTEXT           "Source &height",IDC_STATIC_HEIGHT,31,100,45,12
+    EDITTEXT        IDC_HEIGHT,82,98,58,12,ES_AUTOHSCROLL
+    CONTROL         "Remove &unchanged frames\n(Requires at least a GeForce 3 or Radeon 8500)",IDC_REMOVE_DUPES,
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,18,114,263,16
+    DEFPUSHBUTTON   "OK",IDOK,190,137,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,243,137,50,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_SCREENCAP_OPTS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 293
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 151
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

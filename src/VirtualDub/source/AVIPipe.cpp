@@ -25,12 +25,6 @@
 
 ///////////////////////////////
 
-//#define AVIPIPE_PERFORMANCE_MESSAGES
-
-//static CRITICAL_SECTION csect;
-
-///////////////////////////////
-
 AVIPipe::AVIPipe(int buffers, long roundup_size)
 	: mState(0)
 	, mReadPt(0)
@@ -46,8 +40,6 @@ AVIPipe::AVIPipe(int buffers, long roundup_size)
 }
 
 AVIPipe::~AVIPipe() {
-	_RPT0(0,"AVIPipe::~AVIPipe()\n");
-
 	if (pBuffers) {
 		for(int i=0; i<num_buffers; ++i) {
 			void *buf = pBuffers[i].mFrameInfo.mpData;
@@ -160,9 +152,6 @@ buffer_found:
 			if (buf) {
 				pBuffers[h].mFrameInfo.mpData = buf;
 				pBuffers[h].mBufferSize = len;
-#ifdef AVIPIPE_PERFORMANCE_MESSAGES
-				_RPT2(0,"Reallocated #%d: %ld bytes\n", h+1, len);
-#endif
 			}
 		}
 
@@ -240,28 +229,14 @@ void AVIPipe::getQueueInfo(int& total, int& finals) {
 }
 
 const VDRenderVideoPipeFrameInfo *AVIPipe::getReadBuffer() {
-	int h;
-
-	++mcsQueue;
-
 	for(;;) {
-//		_RPT1(0,"Scouring buffers for ID %08lx\n",cur_read);
+		vdsynchronized(mcsQueue) {
+			if (mState & kFlagAborted)
+				return NULL;
 
-		if (mLevel) {
-			h = mReadPt;
-			break;
+			if (mLevel)
+				return &pBuffers[mReadPt].mFrameInfo;
 		}
-
-		if (mState & kFlagSyncTriggered) {
-			mState |= kFlagSyncAcknowledged;
-			mState &= ~kFlagSyncTriggered;
-			msigRead.signal();
-		}
-
-		--mcsQueue;
-
-		if (mState & kFlagAborted)
-			return NULL;
 
 		if (mState & kFlagFinalizeTriggered) {
 			mState |= kFlagFinalizeAcknowledged;
@@ -271,17 +246,7 @@ const VDRenderVideoPipeFrameInfo *AVIPipe::getReadBuffer() {
 		}
 
 		msigWrite.wait();
-
-		++mcsQueue;
 	}
-
-#ifdef AVIPIPE_PERFORMANCE_MESSAGES
-	_RPT1(0,"[#%d] ", h+1);
-#endif
-
-	--mcsQueue;
-
-	return &pBuffers[h].mFrameInfo;
 }
 
 void AVIPipe::releaseBuffer() {
@@ -319,18 +284,4 @@ void AVIPipe::abort() {
 		msigWrite.signal();
 		msigRead.signal();
 	}
-}
-
-bool AVIPipe::sync() {
-	mState |= kFlagSyncTriggered;
-	while(!(mState & kFlagSyncAcknowledged)) {
-		if (mState & kFlagAborted)
-			return false;
-
-		msigWrite.signal();
-		msigRead.wait();
-	}
-	mState &= ~kFlagSyncAcknowledged;
-
-	return true;
 }

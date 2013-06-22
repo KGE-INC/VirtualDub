@@ -54,6 +54,8 @@ namespace {
 		uint32			mFileAsyncDefaultMode;
 		uint32			mAVISuperindexLimit;
 		uint32			mAVISubindexLimit;
+
+		bool			mbDisplayAllowDirectXOverlays;
 	} g_prefs2;
 }
 
@@ -113,6 +115,7 @@ public:
 			SetValue(104, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableOpenGL));
 			SetValue(105, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3DFX));
 			SetValue(106, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableVSync));
+			SetValue(107, mPrefs.mbDisplayAllowDirectXOverlays);
 			SetCaption(300, mPrefs.mD3DFXFile);
 			pBase->ExecuteAllLinks();
 			return true;
@@ -126,6 +129,7 @@ public:
 			if ( GetValue(104)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableOpenGL;
 			if ( GetValue(105)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3DFX;
 			if ( GetValue(106)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableVSync;
+			mPrefs.mbDisplayAllowDirectXOverlays = GetValue(107) != 0;
 			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
@@ -434,6 +438,8 @@ void LoadPreferences() {
 	g_prefs2.mAVISuperindexLimit = key.getInt("AVI: Superindex entry limit", 256);
 	g_prefs2.mAVISubindexLimit = key.getInt("AVI: Subindex entry limit", 8192);
 
+	g_prefs2.mbDisplayAllowDirectXOverlays = key.getBool("Display: Allow DirectX overlays", true);
+
 	g_prefs2.mOldPrefs = g_prefs;
 
 	VDPreferencesUpdated();
@@ -456,6 +462,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("File: Async mode", prefs.mFileAsyncDefaultMode);
 	key.setInt("AVI: Superindex entry limit", prefs.mAVISuperindexLimit);
 	key.setInt("AVI: Subindex entry limit", prefs.mAVISubindexLimit);
+
+	key.setBool("Display: Allow DirectX overlays", prefs.mbDisplayAllowDirectXOverlays);
 }
 
 void VDSavePreferences() {
@@ -510,6 +518,7 @@ uint32 VDPreferencesGetFileAsyncDefaultMode() {
 void VDPreferencesUpdated() {
 	VDVideoDisplaySetFeatures(
 		!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayDisableDX),
+		g_prefs2.mbDisplayAllowDirectXOverlays,
 		!!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayUseDXWithTS),
 		!!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayEnableOpenGL),
 		!!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3D),

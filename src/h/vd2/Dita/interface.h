@@ -161,7 +161,7 @@ public:
 	virtual void		SetID(uint32 id) = 0;
 
 	virtual VDStringW	GetCaption() = 0;
-	virtual void		SetCaption(const VDStringW& caption) = 0;
+	virtual void		SetCaption(const wchar_t *s) = 0;
 
 	virtual vduirect	GetArea() const = 0;
 	virtual void		SetArea(const vduirect& pos) = 0;

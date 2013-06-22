@@ -144,6 +144,8 @@ enum VDCaptureInfoId {
 struct VDCapturePreferences {
 	typedef std::vector<uint32> InfoItems;
 	InfoItems	mInfoItems;
+	int			mHotKeyStart;
+	int			mHotKeyStop;
 };
 
 class VDINTERFACE IVDCaptureProjectCallback {
@@ -170,7 +172,7 @@ public:
 	virtual void UICaptureVideoHisto(const float data[256]) = 0;
 	virtual void UICaptureVideoHistoEnd() = 0;
 	virtual void UICaptureAudioPeaksUpdated(float l, float r) = 0;
-	virtual void UICaptureStart() = 0;
+	virtual void UICaptureStart(bool test) = 0;
 	virtual bool UICapturePreroll() = 0;
 	virtual void UICaptureStatusUpdated(VDCaptureStatus&) = 0;
 	virtual void UICaptureEnd(bool success) = 0;
@@ -200,7 +202,7 @@ public:
 	virtual void UICaptureVideoHisto(const float data[256]);
 	virtual void UICaptureVideoHistoEnd();
 	virtual void UICaptureAudioPeaksUpdated(float l, float r);
-	virtual void UICaptureStart();
+	virtual void UICaptureStart(bool test);
 	virtual bool UICapturePreroll();
 	virtual void UICaptureStatusUpdated(VDCaptureStatus&);
 	virtual void UICaptureEnd(bool success);
@@ -320,6 +322,11 @@ public:
 	virtual void	SetAudioCompFormat() = 0;
 	virtual void	SetAudioCompFormat(const WAVEFORMATEX& wfex, uint32 cbwfex, const char *shortNameHint) = 0;
 	virtual bool	GetAudioCompFormat(vdstructex<WAVEFORMATEX>& wfex, VDStringA& shortNameHint) = 0;
+
+	virtual bool	IsPropertySupported(uint32 id) = 0;
+	virtual sint32	GetPropertyInt(uint32 id, bool *pAutomatic) = 0;
+	virtual void	SetPropertyInt(uint32 id, sint32 value, bool automatic) = 0;
+	virtual void	GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual) = 0;
 
 	virtual void		SetCaptureFile(const wchar_t *filename, bool isStripeSystem) = 0;
 	virtual VDStringW	GetCaptureFile() = 0;

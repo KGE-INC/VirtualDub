@@ -88,7 +88,7 @@ sint64 VDRoundToInt64(double x) {
 			mov		ecx, eax
 			mov		eax, [esp+4]
 			div		dword ptr [esp+16]
-			mov		eax, ecx
+			mov		edx, ecx
 			ret		16
 invalid:
 			mov		eax, -1					;return FFFFFFFF'FFFFFFFF

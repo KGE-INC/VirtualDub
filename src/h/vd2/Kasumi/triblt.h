@@ -9,6 +9,10 @@ struct VDTriBltVertex {
 	float x, y, z, u, v;
 };
 
+struct VDTriColorVertex {
+	float x, y, z, r, g, b, a;
+};
+
 enum VDTriBltFilterMode {
 	kTriBltFilterPoint,
 	kTriBltFilterBilinear,
@@ -18,6 +22,11 @@ enum VDTriBltFilterMode {
 
 bool VDPixmapTriFill(VDPixmap& dst, uint32 c,
 					const VDTriBltVertex *pVertices, int nVertices,
+					const int *pIndices, const int nIndices,
+					const float pTransform[16] = NULL);
+
+bool VDPixmapTriFill(VDPixmap& dst,
+					const VDTriColorVertex *pVertices, int nVertices,
 					const int *pIndices, const int nIndices,
 					const float pTransform[16] = NULL);
 

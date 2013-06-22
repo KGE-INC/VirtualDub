@@ -266,7 +266,9 @@ void VDBackfaceService::operator()(const char *format, ...) {
 }
 
 VDStringA VDBackfaceService::GetTag(VDBackfaceObjectBase *p) {
-	return VDStringA::setf("%s:%u", p->mpClass->mpShortName, p->mInstance);
+	VDStringA tag;
+	tag.sprintf("%s:%u", p->mpClass->mpShortName, p->mInstance);
+	return tag;
 }
 
 VDStringA VDBackfaceService::GetBlurb(VDBackfaceObjectBase *pObject) {

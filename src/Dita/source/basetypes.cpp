@@ -223,8 +223,8 @@ void VDUIWindow::AddChild(IVDUIWindow *pWindow) {
 
 	if (it == mChildren.end()) {
 		mChildren.push_back(pWindow);
-		pWindow->SetParent(this);
 		pWindow->AddRef();
+		pWindow->SetParent(this);
 	}
 }
 

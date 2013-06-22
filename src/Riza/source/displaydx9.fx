@@ -38,13 +38,17 @@ float4 vd_vpsize;
 float4 vd_cvpsize;
 float4 vd_srcsize;
 float4 vd_texsize;
+float4 vd_tex2size;
 float4 vd_tempsize;
 float4 vd_temp2size;
 
 texture vd_srctexture;
+texture vd_src2atexture;
+texture vd_src2btexture;
 texture vd_temptexture;
 texture vd_temp2texture;
 texture vd_cubictexture;
+texture vd_hevenoddtexture;
 
 ////////////////////////////////////////////////////////////////////////////////
 technique point {
@@ -417,8 +421,8 @@ VertexOutputBicubic1_1 VertexShaderBicubic1_1A(VertexInput IN, uniform float4 uv
 	OUT.pos = IN.pos;
 	OUT.uvfilt.x = -0.125f - IN.uv2.x * vd_srcsize.x * 0.25f;
 	OUT.uvfilt.y = filtoffset;
-	OUT.uvsrc0 = IN.uv + uvoffset.xy*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + uvoffset.zw*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + (uvoffset.xy - float2(1.0f/128.0f, 0))*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + (uvoffset.zw - float2(1.0f/128.0f, 0))*vd_texsize.wz;
 	
 	return OUT;
 }
@@ -431,8 +435,8 @@ VertexOutputBicubic1_1 VertexShaderBicubic1_1B(VertexInput IN, uniform float4 uv
 	OUT.uvfilt.y = filtoffset;
 	
 	float2 uv = IN.uv2 * float2(vd_vpsize.x, vd_srcsize.y) * vd_tempsize.wz;
-	OUT.uvsrc0 = uv + uvoffset.xy*vd_tempsize.wz;
-	OUT.uvsrc1 = uv + uvoffset.zw*vd_tempsize.wz;
+	OUT.uvsrc0 = uv + (uvoffset.xy - float2(0, 1.0f/128.0f))*vd_tempsize.wz;
+	OUT.uvsrc1 = uv + (uvoffset.zw - float2(0, 1.0f/128.0f))*vd_tempsize.wz;
 	
 	return OUT;
 }
@@ -556,16 +560,18 @@ struct VertexOutputBicubic1_4 {
 	float2	uvsrc3	: TEXCOORD4;
 };
 
+static const float offset = 1.0f / 128.0f;
+
 VertexOutputBicubic1_4 VertexShaderBicubic1_4A(VertexInput IN) {
 	VertexOutputBicubic1_4 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.x * vd_srcsize.x * 0.25f;
+	OUT.uvfilt.x = -0.125f - IN.uv2.x * vd_srcsize.x * 0.25f - 0.5f / 256.0f;
 	OUT.uvfilt.y = 0.125f;
-	OUT.uvsrc0 = IN.uv + float2(-1.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2(-0.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc2 = IN.uv + float2(+0.5f, 0)*vd_texsize.wz;
-	OUT.uvsrc3 = IN.uv + float2(+1.5f, 0)*vd_texsize.wz;
+	OUT.uvsrc0 = IN.uv + float2(-1.5f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2(-0.5f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc2 = IN.uv + float2(+0.5f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc3 = IN.uv + float2(+1.5f + offset, 0)*vd_texsize.wz;
 	
 	return OUT;
 }
@@ -574,14 +580,14 @@ VertexOutputBicubic1_4 VertexShaderBicubic1_4B(VertexInput IN) {
 	VertexOutputBicubic1_4 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.y * vd_srcsize.y * 0.25f;
+	OUT.uvfilt.x = -0.125f - IN.uv2.y * vd_srcsize.y * 0.25f - 0.5f / 256.0f;
 	OUT.uvfilt.y = 0.125f;
 	
 	float2 uv = IN.uv2 * float2(vd_vpsize.x, vd_srcsize.y) * vd_tempsize.wz;
-	OUT.uvsrc0 = uv + float2(0, -1.5f)*vd_tempsize.wz;
-	OUT.uvsrc1 = uv + float2(0, -0.5f)*vd_tempsize.wz;
-	OUT.uvsrc2 = uv + float2(0,  0.5f)*vd_tempsize.wz;
-	OUT.uvsrc3 = uv + float2(0, +1.5f)*vd_tempsize.wz;
+	OUT.uvsrc0 = uv + float2(0, -1.5f + offset)*vd_tempsize.wz;
+	OUT.uvsrc1 = uv + float2(0, -0.5f + offset)*vd_tempsize.wz;
+	OUT.uvsrc2 = uv + float2(0,  0.5f + offset)*vd_tempsize.wz;
+	OUT.uvsrc3 = uv + float2(0, +1.5f + offset)*vd_tempsize.wz;
 	
 	return OUT;
 }
@@ -653,5 +659,266 @@ technique bicubic1_4 {
 		Texture[2] = <vd_temptexture>;
 		Texture[3] = <vd_temptexture>;
 		Texture[4] = <vd_temptexture>;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	UYVY/YUY2 to RGB -- pixel shader 1.1
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void VS_UYVY_to_RGB_1_1(
+	float4 pos : POSITION,
+	float2 uv : TEXCOORD0,
+	float2 uv2 : TEXCOORD1,
+	out float4 oPos : POSITION,
+	out float2 oT0 : TEXCOORD0,
+	out float2 oT1 : TEXCOORD1,
+	out float2 oT2 : TEXCOORD2)
+{
+	oPos = pos;
+	oT0 = uv;
+	oT1 = oT0 + vd_texsize.wz * float2(0.25, 0);
+	oT2.x = vd_srcsize.x * uv2.x / 16.0f;
+	oT2.y = 0;
+}
+
+technique uyvy_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_UYVY_to_RGB_1_1();
+
+		PixelShader = asm {
+			ps_1_1
+			def c0, 0.4065, 0, 0.1955, 0.582		// -Cr->G/2, 0, -Cb->G/2, Y_coeff/2
+			def c1, 0.399, 0, 0.5045, -0.0627451	// Cr->R/4, 0, Cb->B/4, -Y_bias
+			def c2, 0, 1, 0, 0
+
+			tex t0							// Y
+			tex t1							// C
+			tex t2							// select
+			
+			dp3 r0, t0, c2					// select Y1 from green
+			
+			dp3 r1.rgb, t1_bias, c0			// compute chroma green / 2
+			+ lrp r0.a, t2.a, t0.a, r0.a	// select Y1/Y2 based on even/odd
+			
+			mul r1.rgb, r1, c2				// restrict chroma green to green channel
+			
+			mad r1.rgb, t1_bx2, c1, -r1		// compute chroma red/blue / 2 and merge chroma green
+			+ add r0.a, r0.a, c1.a			// add luma bias (-16/255)
+			
+			mad_x2 r0.rgb, r0.a, c0.a, r1	// scale luma and merge chroma
+			+ mov r0.a, c2.a
+		};
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_srctexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_hevenoddtexture>;
+		AddressU[2] = Wrap;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Point;
+		MagFilter[2] = Point;
+	}
+}
+
+technique yuy2_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_UYVY_to_RGB_1_1();
+
+		PixelShader = asm {
+			ps_1_1
+			def c0, 0, 0.1955, 0, 0.582		// 0, -Cb->G/2, 0, Y_coeff/2
+			def c1, 0, 0.5045, 0, -0.0627451// 0, Cb->B/4, 0, -Y_bias
+			def c2, 0, 1, 0, 0.4065			// [green], -Cr->G/2
+			def c3, 1, 0, 0, 0.798			// [red], Cr->R/2
+
+			tex t0							// Y
+			tex t1							// C
+			tex t2							// select
+			
+			dp3 r1.rgb, t1_bias, c0			// compute chroma green / 2 (Cb half)
+			
+			dp3 t2.rgb, t0, c3				// extract Y1 (red)
+			+ mad r1.a, t1_bias, c2.a, r1.b	// compute chroma green / 2
+						
+			dp3 r0.rgb, t1_bx2, c1			// compute Cb (green) -> chroma blue
+			+ mul r0.a, t1_bias, c3.a		// compute Cr (alpha) -> chroma red
+
+			lrp r1.rgb, c2, -r1.a, r0		// merge chroma green and chroma blue
+			+ lrp t0.a, t2.a, t2.b, t0.b	// select Y from Y1 (red) and Y2 (blue)
+			
+			lrp r1.rgb, c3, r0.a, r1		// merge chroma red
+			+ add t0.a, t0.a, c1.a			// add luma bias (-16/255)
+			
+			mad_x2 r0.rgb, t0.a, c0.a, r1	// scale luma and merge chroma
+			+ mov r0.a, c2.a
+		};
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_srctexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_hevenoddtexture>;
+		AddressU[2] = Wrap;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Point;
+		MagFilter[2] = Point;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	YCbCr to RGB -- pixel shader 1.1
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void VS_YCbCr_to_RGB_1_1(
+	float4 pos : POSITION,
+	float2 uv : TEXCOORD0,
+	float2 uv2 : TEXCOORD1,
+	out float4 oPos : POSITION,
+	out float2 oT0 : TEXCOORD0,
+	out float2 oT1 : TEXCOORD1,
+	out float2 oT2 : TEXCOORD2,
+	uniform float2 scale,
+	uniform float2 offset)
+{
+	oPos = pos;
+	oT0 = uv;
+	oT1 = (uv2 * scale * vd_srcsize.xy + offset) * vd_tex2size.wz;
+	oT2 = (uv2 * scale * vd_srcsize.xy + offset) * vd_tex2size.wz;
+}
+
+pixelshader PS_YCbCr_to_RGB_1_1 = asm {
+	ps_1_1
+
+	def c0, 0, -0.09775, 0.5045, -0.0365176
+	def c1, 0.798, -0.4065, 0, 0.582
+
+	tex t0							// Y
+	tex t1							// Cb
+	tex t2							// Cr
+	
+	mad r0, t1_bx2, c0, c0.a
+	mad r0, t2_bias, c1, r0
+	mad_x2 r0, t0, c1.a, r0
+};
+
+technique yvu9_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.25, 0.25), float2(0, 0));
+		PixelShader = <PS_YCbCr_to_RGB_1_1>;
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_src2atexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_src2btexture>;
+		AddressU[2] = Clamp;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
+	}
+}
+
+technique yv12_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.5, 0.5), float2(-0.25, 0));
+		PixelShader = <PS_YCbCr_to_RGB_1_1>;
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_src2atexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_src2btexture>;
+		AddressU[2] = Clamp;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
+	}
+}
+
+technique yv16_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.5, 1), float2(-0.25, 0));
+		PixelShader = <PS_YCbCr_to_RGB_1_1>;
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_src2atexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_src2btexture>;
+		AddressU[2] = Clamp;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
+	}
+}
+
+technique yv24_to_rgb_1_1 {
+	pass {
+		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(1, 1), float2(0, 0));
+		PixelShader = <PS_YCbCr_to_RGB_1_1>;
+		
+		Texture[0] = <vd_srctexture>;
+		AddressU[0] = Clamp;
+		AddressV[0] = Clamp;
+		MinFilter[0] = Point;
+		MagFilter[0] = Point;
+
+		Texture[1] = <vd_src2atexture>;
+		AddressU[1] = Clamp;
+		AddressV[1] = Clamp;
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		
+		Texture[2] = <vd_src2btexture>;
+		AddressU[2] = Clamp;
+		AddressV[2] = Clamp;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
 	}
 }

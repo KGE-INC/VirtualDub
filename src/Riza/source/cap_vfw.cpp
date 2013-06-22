@@ -138,6 +138,11 @@ public:
 	bool	IsDriverDialogSupported(nsVDCapture::DriverDialog dlg);
 	void	DisplayDriverDialog(nsVDCapture::DriverDialog dlg);
 
+	bool	IsPropertySupported(uint32 id) { return false; }
+	sint32	GetPropertyInt(uint32 id, bool *pAutomatic) { if (pAutomatic) *pAutomatic = true; return 0; }
+	void	SetPropertyInt(uint32 id, sint32 value, bool automatic) {}
+	void	GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual) {}
+
 	bool	CaptureStart();
 	void	CaptureStop();
 	void	CaptureAbort();

@@ -719,7 +719,7 @@ static VDScriptValue obj_VirtualDub_video_lookup(IVDScriptInterpreter *isi, cons
 	if (!strcmp(szName, "width"))
 		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
 	else if (!strcmp(szName, "height"))
-		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biHeight : 0);
+		return VDScriptValue(inputVideoAVI ? abs(inputVideoAVI->getImageFormat()->biHeight) : 0);
 	else if (!strcmp(szName, "length"))
 		return VDScriptValue(inputVideoAVI ? inputVideoAVI->asStream()->getLength() : 0);
 	else if (!strcmp(szName, "framerate"))

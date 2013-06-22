@@ -130,11 +130,11 @@ public:
 	}
 
 	const wchar_t *GetName() const {
-		return &mFilename[0];
+		return mFilename.c_str();
 	}
 
 	const VDStringW GetFullPath() const {
-		return VDStringW(mBasePath + mFilename);
+		return mBasePath + mFilename;
 	}
 
 	const sint64 GetSize() const {

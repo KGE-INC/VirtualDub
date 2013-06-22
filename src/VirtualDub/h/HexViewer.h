@@ -28,6 +28,6 @@ extern const char szHexEditorClassName[];
 
 ATOM RegisterHexEditor();
 
-void HexEdit(HWND, const char *filename);
+void HexEdit(HWND, const char *filename, bool readonly);
 
 #endif

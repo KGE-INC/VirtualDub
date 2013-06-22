@@ -21,7 +21,7 @@ public:
 
 	void		SetFocus();
 
-	void		SetCaption(const VDStringW& caption);
+	void		SetCaption(const wchar_t *caption);
 
 	vduirect	GetArea();
 	void		SetArea(const vduirect& pos);

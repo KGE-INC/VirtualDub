@@ -36,3 +36,37 @@ void VDUILabelW32::PreLayoutBaseW32(const VDUILayoutSpecs& parentConstraints) {
 	mLayoutSpecs.minsize.w	= siz.cx;
 	mLayoutSpecs.minsize.h	= siz.cy;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+class VDUINumericLabelW32 : public VDUILabelW32 {
+public:
+	VDUINumericLabelW32();
+
+	int GetValue();
+	void SetValue(int v);
+
+protected:
+	int mValue;
+	VDStringW	mFormat;
+};
+
+extern IVDUIWindow *VDCreateUINumericLabel() { return new VDUINumericLabelW32; }
+
+VDUINumericLabelW32::VDUINumericLabelW32()
+	: mValue(0)
+	, mFormat(L"%d")
+{
+}
+
+int VDUINumericLabelW32::GetValue() {
+	return mValue;
+}
+
+void VDUINumericLabelW32::SetValue(int v) {
+	if (v != mValue) {
+		mValue = v;
+
+		SetCaption(VDswprintf(mFormat.c_str(), 1, &v).c_str());
+	}
+}

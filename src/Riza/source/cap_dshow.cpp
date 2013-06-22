@@ -25,6 +25,7 @@
 #include <vd2/system/fraction.h>
 #include <vd2/system/error.h>
 #include <vd2/system/math.h>
+#include <vd2/system/log.h>
 #include <vd2/system/registry.h>
 #include <objbase.h>
 #include <dshow.h>
@@ -46,8 +47,11 @@ extern HINSTANCE g_hInst;
 	#pragma warning(disable: 4355)		// warning C4355: 'this' : used in base member initializer list
 #endif
 
-
-#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDDEBUG("Failed: " msg " [%08lx : %s]\n", hr, GetDXErrorName(hr)); return false; } else
+#ifdef _DEBUG
+	#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDDEBUG("Failed: " msg " [%08lx : %s]\n", hr, GetDXErrorName(hr)); VDDumpFilterGraphDShow(mpGraph); TearDownGraph(); return false; } else
+#else
+	#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDLog(kVDLogWarning, VDStringW(L"CapDShow: Failed to build filter graph: " L##msg L"\n")); TearDownGraph(); return false; } else
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -246,6 +250,7 @@ namespace {
 	I_HATE(IVideoWindow);
 	I_HATE(IKsPropertySet);
 	I_HATE(IClassFactory);
+	I_HATE(IAMVideoProcAmp);
 
 	#undef I_HATE
 }
@@ -394,9 +399,6 @@ namespace {
 			return E_FAIL;
 		}
 		WCHAR wsz[256];
-#ifdef _CRT_NON_CONFORMING_SWPRINTFS
-#error x
-#endif
 		swprintf(wsz, 256, L"FilterGraph %08p pid %08x", (DWORD_PTR)pUnkGraph, GetCurrentProcessId());
 		HRESULT hr = CreateItemMoniker(L"!", wsz, &pMoniker);
 		if (SUCCEEDED(hr)) {
@@ -867,7 +869,7 @@ namespace {
 						if (fi.pGraph)
 							fi.pGraph->Release();
 
-						VDDEBUG("  Reference clock: filter \"%s\"\n", fi.achName);
+						VDDEBUG("  Reference clock: filter \"%ls\"\n", fi.achName);
 					}
 				} else if (pRefClock)
 					VDDEBUG("  Reference clock: unknown\n");
@@ -915,6 +917,30 @@ namespace {
 			}
 		}
 		VDDEBUG("\n");
+	}
+
+	bool VDSaveFilterGraphDShow(const wchar_t *filename, IFilterGraph *pGraph) {
+		bool success = false;
+
+		IStorage *pStorage = NULL;
+		HRESULT hr = StgCreateDocfile(filename, STGM_CREATE | STGM_TRANSACTED | STGM_WRITE | STGM_SHARE_DENY_READ, 0, &pStorage);
+		if (SUCCEEDED(hr)) {
+			IPersistStream *pPersistStream = NULL;
+			hr = pGraph->QueryInterface(IID_IPersistStream, (void **)&pPersistStream);
+			if (SUCCEEDED(hr)) {
+				IStream *pStream = NULL;
+				hr = pStorage->CreateStream(L"ActiveMovieGraph", STGM_CREATE | STGM_WRITE | STGM_SHARE_EXCLUSIVE, 0, 0, &pStream);
+				if(SUCCEEDED(hr)) {
+					hr = pPersistStream->Save(pStream, TRUE);
+					success = SUCCEEDED(hr);
+					pStream->Release();
+				}
+				pPersistStream->Release();
+			}
+			pStorage->Commit(STGC_DEFAULT);
+			pStorage->Release();
+		}
+		return success;
 	}
 }
 
@@ -1000,15 +1026,19 @@ public:
 
 		if (mpCallback->CapTryEnterCriticalSection()) {
 			// retrieve sample pointer
-			if (FAILED(hr = pSample->GetPointer(&pData)))
+			hr = pSample->GetPointer(&pData);
+			if (FAILED(hr))
 				return hr;
 
 			// retrieve times
 			__int64 t1, t2;
-			if (FAILED(hr = pSample->GetTime(&t1, &t2)))
-				return hr;
+			hr = pSample->GetTime(&t1, &t2);
+			if (FAILED(hr))
+				t1 = t2 = -1;
+			else
+				t1 = (t1+5)/10;
 
-			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), t1, S_OK == pSample->IsSyncPoint());
 			++mFrameCount;
 
 			mpCallback->CapLeaveCriticalSection();
@@ -1038,15 +1068,19 @@ public:
 
 		if (mpCallback->CapTryEnterCriticalSection()) {
 			// retrieve sample pointer
-			if (FAILED(hr = pSample->GetPointer(&pData)))
+			hr = pSample->GetPointer(&pData);
+			if (FAILED(hr))
 				return hr;
 
-			// retrieve times
+			// Retrieve times. Note that if no clock is set, this will fail.
 			__int64 t1, t2;
-			if (FAILED(hr = pSample->GetTime(&t1, &t2)))
-				return hr;
+			hr = pSample->GetTime(&t1, &t2);
+			if (FAILED(hr))
+				t1 = t2 = -1;
+			else
+				t1 = (t1+5)/10;
 
-			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), (t1+5)/10, S_OK == pSample->IsSyncPoint());
+			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), t1, S_OK == pSample->IsSyncPoint());
 			mpCallback->CapLeaveCriticalSection();
 		}
 
@@ -1143,6 +1177,11 @@ public:
 	bool	IsDriverDialogSupported(nsVDCapture::DriverDialog dlg);
 	void	DisplayDriverDialog(nsVDCapture::DriverDialog dlg);
 
+	bool	IsPropertySupported(uint32 id);
+	sint32	GetPropertyInt(uint32 id, bool *pAutomatic);
+	void	SetPropertyInt(uint32 id, sint32 value, bool automatic);
+	void	GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual);
+
 	bool	CaptureStart();
 	void	CaptureStop();
 	void	CaptureAbort();
@@ -1160,7 +1199,7 @@ protected:
 	void	TearDownGraph();
 	void	CheckForWindow();
 	void	CheckForChanges();
-	bool	DisplayPropertyPages(IUnknown *ptr, HWND hwndParent);
+	bool	DisplayPropertyPages(IUnknown *ptr, HWND hwndParent, const GUID *pDisablePages, int nDisablePages);
 	int		EnumerateCrossbarSources(InputSources& sources, IAMCrossbar *pCrossbar, int output);
 	int		UpdateCrossbarSource(InputSources& sources, IAMCrossbar *pCrossbar, int output);
 	void	DoEvents();
@@ -1192,7 +1231,8 @@ protected:
 	IBaseFilterPtr		mpCapFilt;
 	IBaseFilterPtr		mpCapSplitFilt;			// DV Splitter, if INTERLEAVED is detected
 	IBaseFilterPtr		mpCapTransformFilt;		//
-	IPinPtr				mpRealCapturePin;		// the one on the cap filt
+	IPinPtr				mpShadowedRealCapturePin;		// the one on the cap filt
+	IPinPtr				mpRealCapturePin;		// the one on the cap filt, or a transform filter if present
 	IPinPtr				mpRealPreviewPin;		// the one on the cap filt
 	IPinPtr				mpRealAudioPin;			// the one on the cap filt
 	IPinPtr				mpCapFiltVideoPortPin;	// on cap filt
@@ -1202,10 +1242,14 @@ protected:
 	IAMCrossbarPtr		mpCrossbar2;
 	IAMTunerPtr			mpTuner;
 	IAMTVTunerPtr		mpTVTuner;
+	IAMVideoProcAmpPtr	mpVideoProcAmp;
 	IVideoWindowPtr		mpVideoWindow;
 	typedef std::list<IVideoWindowPtr> VideoWindows;
 	VideoWindows		mVideoWindows;
 	IQualProp			*mpVideoQualProp;
+
+	typedef std::list<IBaseFilterPtr> ExtraFilters;
+	ExtraFilters		mExtraFilters;
 
 	// Video formats.
 	typedef std::list<VDAMMediaType> VideoFormats;
@@ -1272,6 +1316,7 @@ protected:
 	bool mbAudioPlaybackEnabled;
 	bool mbGraphActive;					// true if the graph is currently running
 	bool mbGraphHasPreview;				// true if the graph has separate capture and preview pins
+	bool mbDisplayVisible;
 
 	// state tracking for reporting changes
 	sint32		mTrackedFramePeriod;
@@ -1298,10 +1343,6 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	, mAudioDeviceIndex(0)
 	, mpVideoQualProp(NULL)
 	, mdwRegisterGraph(0)
-	, mbAudioCaptureEnabled(true)
-	, mbAudioAnalysisEnabled(false)
-	, mbAudioPlaybackEnabled(false)
-	, mbGraphActive(false)
 	, mCurrentVideoSource(-1)
 	, mCurrentAudioSource(-1)
 	, mCurrentAudioInput(-1)
@@ -1316,7 +1357,14 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	, mUpdateLocks(0)
 	, mbUpdatePending(false)
 	, mbStartPending(false)
+	, mbAudioCaptureEnabled(true)
+	, mbAudioAnalysisEnabled(false)
+	, mbAudioPlaybackEnabled(false)
+	, mbGraphActive(false)
+	, mbGraphHasPreview(false)
+	, mbDisplayVisible(false)
 	, mTrackedFramePeriod(0)
+	, mCaptureStart(0)
 	, mCaptureStopQueued(0)
 	, mCaptureThread(NULL)
 	, mpCaptureError(NULL)
@@ -1416,9 +1464,10 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 		if (SUCCEEDED(hr)) {
 			IPinPtr pPinTIn, pPinTOut;
 			DS_VERIFY(mpGraphBuilder->AddFilter(mpCapTransformFilt, L"Video transform"), "add transform filter");
-			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinTIn), "find sample grabber input");
-			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinTOut), "find sample grabber output");
-			DS_VERIFY(mpGraphBuilder->Connect(mpRealCapturePin, pPinTIn), "connect capture -> grabber");
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinTIn), "find transform filter input");
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinTOut), "find transform filter output");
+			DS_VERIFY(mpGraphBuilder->Connect(mpRealCapturePin, pPinTIn), "connect capture -> transform");
+			mpShadowedRealCapturePin = mpRealCapturePin;
 			mpRealCapturePin = pPinTOut;
 		}
 	}
@@ -1499,6 +1548,7 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 		mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMTuner, (void **)~mpTuner);
 
 	mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMAnalogVideoDecoder, (void **)~mpAnalogVideoDecoder);
+	mpCapGraphBuilder2->FindInterface(NULL, NULL, mpCapFilt, IID_IAMVideoProcAmp, (void **)~mpVideoProcAmp);
 
 	// If there is at least one crossbar, examine the crossbars to see if we can spot
 	// an audio input switch.
@@ -1586,7 +1636,7 @@ void VDCaptureDriverDS::Shutdown() {
 	}
 
 	if (mpVideoWindow) {
-		mpVideoWindow->put_Visible(FALSE);
+		mpVideoWindow->put_Visible(OAFALSE);
 		mpVideoWindow->put_Owner(NULL);
 		mpVideoWindow = NULL;
 	}
@@ -1608,6 +1658,7 @@ void VDCaptureDriverDS::Shutdown() {
 	mpCapFilt			= NULL;
 	mpCapSplitFilt		= NULL;
 	mpCapTransformFilt	= NULL;
+	mpShadowedRealCapturePin	= NULL;
 	mpRealCapturePin	= NULL;
 	mpRealPreviewPin	= NULL;
 	mpCapFiltVideoPortPin	= NULL;
@@ -1618,6 +1669,7 @@ void VDCaptureDriverDS::Shutdown() {
 	mpCrossbar2			= NULL;
 	mpTuner				= NULL;
 	mpTVTuner			= NULL;
+	mpVideoProcAmp		= NULL;
 	mpVideoGrabber		= NULL;
 	mpVFWDialogs		= NULL;
 	mpVideoConfigCap	= NULL;
@@ -1708,6 +1760,13 @@ vdrect32 VDCaptureDriverDS::GetDisplayRectAbsolute() {
 }
 
 void VDCaptureDriverDS::SetDisplayVisibility(bool vis) {
+	if (mbDisplayVisible == vis)
+		return;
+
+	mbDisplayVisible = vis;
+
+	if (mpVideoWindow)
+		mpVideoWindow->put_Visible(vis ? OATRUE : OAFALSE);
 }
 
 void VDCaptureDriverDS::SetFramePeriod(sint32 framePeriod100nsUnits) {
@@ -1761,13 +1820,13 @@ sint32 VDCaptureDriverDS::GetFramePeriod() {
 		if (past->formattype == FORMAT_VideoInfo || past->formattype == FORMAT_MPEGVideo) {
 			const VIDEOINFOHEADER *pvih = (const VIDEOINFOHEADER *)past->pbFormat;
 
-			rate = pvih->AvgTimePerFrame;
+			rate = VDClampToSint32(pvih->AvgTimePerFrame);
 
 			bRet = true;
 		} else if (past->formattype == FORMAT_VideoInfo2 || past->formattype == FORMAT_MPEG2Video) {
 			const VIDEOINFOHEADER2 *pvih = (const VIDEOINFOHEADER2 *)past->pbFormat;
 
-			rate = pvih->AvgTimePerFrame;
+			rate = VDClampToSint32(pvih->AvgTimePerFrame);
 
 			bRet = true;
 		} else if (past->formattype == FORMAT_DvInfo) {
@@ -2614,15 +2673,15 @@ bool VDCaptureDriverDS::IsDriverDialogSupported(nsVDCapture::DriverDialog dlg) {
 	case kDialogVideoSource:		return mpVFWDialogs && SUCCEEDED(mpVFWDialogs->HasDialog(VfwCaptureDialog_Source));
 	case kDialogVideoDisplay:
 		if (mpCapTransformFilt)
-			return DisplayPropertyPages(mpCapTransformFilt, NULL);
+			return DisplayPropertyPages(mpCapTransformFilt, NULL, NULL, 0);
 		else
 			return mpVFWDialogs && SUCCEEDED(mpVFWDialogs->HasDialog(VfwCaptureDialog_Display));
-	case kDialogVideoCaptureFilter:	return DisplayPropertyPages(mpCapFilt, NULL);
-	case kDialogVideoCapturePin:	return DisplayPropertyPages(mpRealCapturePin, NULL);
-	case kDialogVideoPreviewPin:	return DisplayPropertyPages(mpRealPreviewPin, NULL);
-	case kDialogVideoCrossbar:		return DisplayPropertyPages(mpCrossbar, NULL);
-	case kDialogVideoCrossbar2:		return DisplayPropertyPages(mpCrossbar2, NULL);
-	case kDialogTVTuner:			return DisplayPropertyPages(mpTVTuner, NULL);
+	case kDialogVideoCaptureFilter:	return DisplayPropertyPages(mpCapFilt, NULL, NULL, 0);
+	case kDialogVideoCapturePin:	return DisplayPropertyPages(mpRealCapturePin, NULL, NULL, 0);
+	case kDialogVideoPreviewPin:	return DisplayPropertyPages(mpRealPreviewPin, NULL, NULL, 0);
+	case kDialogVideoCrossbar:		return DisplayPropertyPages(mpCrossbar, NULL, NULL, 0);
+	case kDialogVideoCrossbar2:		return DisplayPropertyPages(mpCrossbar2, NULL, NULL, 0);
+	case kDialogTVTuner:			return DisplayPropertyPages(mpTVTuner, NULL, NULL, 0);
 	}
 
 	return false;
@@ -2634,7 +2693,7 @@ void VDCaptureDriverDS::DisplayDriverDialog(nsVDCapture::DriverDialog dlg) {
 	switch(dlg) {
 	case kDialogVideoDisplay:
 		if (mpCapTransformFilt) {
-			DisplayPropertyPages(mpCapTransformFilt, mhwndParent);
+			DisplayPropertyPages(mpCapTransformFilt, mhwndParent, NULL, 0);
 			break;
 		}
 		// fall through
@@ -2698,10 +2757,25 @@ void VDCaptureDriverDS::DisplayDriverDialog(nsVDCapture::DriverDialog dlg) {
 
 		switch(dlg) {
 		case kDialogVideoCapturePin:
-			DisplayPropertyPages(mpRealCapturePin, mhwndParent);
+			{
+				// For some strange reason, the Adaptec GameBridge 1.00 drivers specify two property
+				// pages for the video capture pin, one of which is CLSID_AudioSamplingRate. Attempting
+				// to display this page causes a crash (reproduced with AMCAP). We detect this errant
+				// page and specifically exclude it from being displayed.
+				//
+				// Interestingly, GraphEdit does NOT have this problem... but it also doesn't seem
+				// to use OleCreatePropertyFrame. Either the GraphEdit guys accidentally bypassed this
+				// bug with custom code, or they know something and aren't telling us.
+				//
+				static const GUID kInvalidVideoCapturePinGuids[]={
+					{ 0x05ea6f6b, 0x3b1e, 0x4958, 0xa6, 0x8d, 0xa3, 0x7f, 0x0b, 0x6a, 0x29, 0x95 }
+				};
+
+				DisplayPropertyPages(mpRealCapturePin, mhwndParent, kInvalidVideoCapturePinGuids, sizeof(kInvalidVideoCapturePinGuids)/sizeof(kInvalidVideoCapturePinGuids[0]));
+			}
 			break;
 		case kDialogVideoPreviewPin:
-			DisplayPropertyPages(mpRealPreviewPin, mhwndParent);
+			DisplayPropertyPages(mpRealPreviewPin, mhwndParent, NULL, 0);
 			break;
 		}
 
@@ -2713,20 +2787,131 @@ void VDCaptureDriverDS::DisplayDriverDialog(nsVDCapture::DriverDialog dlg) {
 		break;
 
 	case kDialogVideoCaptureFilter:
-		DisplayPropertyPages(mpCapFilt, mhwndParent);
+		DisplayPropertyPages(mpCapFilt, mhwndParent, NULL, 0);
 		break;
 	case kDialogVideoCrossbar:
-		DisplayPropertyPages(mpCrossbar, mhwndParent);
+		DisplayPropertyPages(mpCrossbar, mhwndParent, NULL, 0);
 		break;
 	case kDialogVideoCrossbar2:
-		DisplayPropertyPages(mpCrossbar2, mhwndParent);
+		DisplayPropertyPages(mpCrossbar2, mhwndParent, NULL, 0);
 		break;
 	case kDialogTVTuner:
-		DisplayPropertyPages(mpTVTuner, mhwndParent);
+		DisplayPropertyPages(mpTVTuner, mhwndParent, NULL, 0);
 		break;
 	}
 
 	CheckForChanges();
+}
+
+namespace {
+	bool VDGetDShowProcAmpPropertyFromCaptureProperty(uint32 id, VideoProcAmpProperty& dshowPropId) {
+		switch(id) {
+			case kPropBacklightCompensation:
+				dshowPropId = VideoProcAmp_BacklightCompensation;
+				return true;
+
+			case kPropBrightness:
+				dshowPropId = VideoProcAmp_Brightness;
+				return true;
+
+			case kPropColorEnable:
+				dshowPropId = VideoProcAmp_ColorEnable;
+				return true;
+
+			case kPropContrast:
+				dshowPropId = VideoProcAmp_Contrast;
+				return true;
+
+			case kPropGain:
+				dshowPropId = VideoProcAmp_Gain;
+				return true;
+
+			case kPropGamma:
+				dshowPropId = VideoProcAmp_Gamma;
+				return true;
+
+			case kPropSaturation:
+				dshowPropId = VideoProcAmp_Saturation;
+				return true;
+
+			case kPropHue:
+				dshowPropId = VideoProcAmp_Hue;
+				return true;
+
+			case kPropSharpness:
+				dshowPropId = VideoProcAmp_Sharpness;
+				return true;
+
+			case kPropWhiteBalance:
+				dshowPropId = VideoProcAmp_WhiteBalance;
+				return true;
+
+			default:
+				return false;
+		}
+	}
+}
+
+bool VDCaptureDriverDS::IsPropertySupported(uint32 id) {
+	if (!mpVideoProcAmp)
+		return false;
+
+	VideoProcAmpProperty prop;
+	if (!VDGetDShowProcAmpPropertyFromCaptureProperty(id, prop))
+		return false;
+
+	long minVal, maxVal, steppingDelta, defaultVal, capsFlags;
+	HRESULT hr = mpVideoProcAmp->GetRange(prop, &minVal, &maxVal, &steppingDelta, &defaultVal, &capsFlags);
+	return SUCCEEDED(hr);
+}
+
+sint32 VDCaptureDriverDS::GetPropertyInt(uint32 id, bool *pAutomatic) {
+	VideoProcAmpProperty prop;
+	if (!mpVideoProcAmp || !VDGetDShowProcAmpPropertyFromCaptureProperty(id, prop))
+		return false;
+
+	long lValue, lFlags;
+	HRESULT hr = mpVideoProcAmp->Get(prop, &lValue, &lFlags);
+
+	if (FAILED(hr))
+		lValue = lFlags = 0;
+
+	if (pAutomatic)
+		*pAutomatic = (lFlags == VideoProcAmp_Flags_Auto);
+
+	return lValue;
+}
+
+void VDCaptureDriverDS::SetPropertyInt(uint32 id, sint32 value, bool automatic) {
+	VideoProcAmpProperty prop;
+	if (!mpVideoProcAmp || !VDGetDShowProcAmpPropertyFromCaptureProperty(id, prop))
+		return;
+
+	HRESULT hr = mpVideoProcAmp->Set(prop, value, automatic ? VideoProcAmp_Flags_Auto : VideoProcAmp_Flags_Manual);
+	VDASSERT(SUCCEEDED(hr));
+}
+
+void VDCaptureDriverDS::GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual) {
+	minVal = maxVal = 0;
+	step = 1;
+	defaultVal = 0;
+	automatic = false;
+	manual = false;
+
+	VideoProcAmpProperty prop;
+	if (!mpVideoProcAmp || !VDGetDShowProcAmpPropertyFromCaptureProperty(id, prop))
+		return;
+
+	long lMinVal, lMaxVal, lSteppingDelta, lDefaultVal, lCapsFlags;
+	HRESULT hr = mpVideoProcAmp->GetRange(prop, &lMinVal, &lMaxVal, &lSteppingDelta, &lDefaultVal, &lCapsFlags);
+	if (SUCCEEDED(hr)) {
+		minVal = lMinVal;
+		maxVal = lMaxVal;
+		step = lSteppingDelta;
+		defaultVal = lDefaultVal;
+		automatic = (lCapsFlags & VideoProcAmp_Flags_Auto) != 0;
+		manual = (lCapsFlags & VideoProcAmp_Flags_Manual) != 0;
+	}
 }
 
 bool VDCaptureDriverDS::CaptureStart() {
@@ -2935,7 +3120,6 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	VDASSERT(!mUpdateLocks);
 
 	// Tear down existing graph.
-
 	TearDownGraph();
 
 	// Check if the audio filter is in the filter graph, and if so, rip
@@ -2959,12 +3143,27 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	///////////////////////////////////////////////////////////////////////
 	VDASSERT(!mpAudioPin || !VDIsPinConnectedDShow(mpAudioPin));
 
+	// Check if we need to reattach a transform filter (it can unattach
+	// on a format change).
+	if (mpCapTransformFilt) {
+		IPinPtr pPinTest;
+
+		if (VFW_E_NOT_CONNECTED == mpRealCapturePin->ConnectedTo(~pPinTest)) {
+			// Reconnect transform filter input to capture pin
+			IPinPtr pPinTIn;
+			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinTIn), "find transform filter input");
+			DS_VERIFY(mpGraphBuilder->Connect(mpShadowedRealCapturePin, pPinTIn), "reconnect capture -> transform");
+		}
+	}
+
 	if (bNeedCapture || mDisplayMode == kDisplaySoftware) {
 		// Create a sample grabber.
 		IBaseFilterPtr pVideoPullFilt;
 
 		DS_VERIFY(pVideoPullFilt.CreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER), "create sample grabber");
 		DS_VERIFY(mpGraphBuilder->AddFilter(pVideoPullFilt, L"Video pulldown"), "add sample grabber");
+
+		mExtraFilters.push_back(pVideoPullFilt);
 
 		// Set the sample grabber to continuous mode.
 		//
@@ -3082,6 +3281,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 		DS_VERIFY(pNullRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create null renderer");
 		DS_VERIFY(mpGraphBuilder->AddFilter(pNullRenderer, L"Video sink"), "add null renderer");
+		mExtraFilters.push_back(pNullRenderer);
 		DS_VERIFY(mpCapGraphBuilder2->FindPin(pNullRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinNRIn), "find null renderer input");
 		DS_VERIFY(mpGraphBuilder->Connect(pCapturePin, pPinNRIn), "connect grabber -> sink");
 		pCapturePin = NULL;
@@ -3105,6 +3305,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 
 			DS_VERIFY(pAudioPullFilt.CreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER), "create sample grabber");
 			DS_VERIFY(mpGraphBuilder->AddFilter(pAudioPullFilt, L"Audio pulldown"), "add sample grabber");
+			mExtraFilters.push_back(pAudioPullFilt);
 
 			// Set the sample grabber to continuous mode.
 
@@ -3198,6 +3399,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 			DS_VERIFY(pRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create audio null renderer");
 			DS_VERIFY(mpGraphBuilder->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
+			mExtraFilters.push_back(pRenderer);
 			DS_VERIFY(mpCapGraphBuilder2->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
 			DS_VERIFY(mpGraphBuilder->Connect(pAudioPin, pPinRIn), "connect audio null renderer");
 		}
@@ -3209,6 +3411,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		IBaseFilterPtr pRenderer;
 		DS_VERIFY(pRenderer.CreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER), "create audio null renderer");
 		DS_VERIFY(mpGraphBuilder->AddFilter(pRenderer, L"Audio sink"), "add null renderer");
+		mExtraFilters.push_back(pRenderer);
 		DS_VERIFY(mpCapGraphBuilder2->FindPin(pRenderer, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinRIn), "find audio renderer input");
 		DS_VERIFY(mpGraphBuilder->Connect(mpRealAudioPin, pPinRIn), "connect audio null renderer to real audio cap pin");
 	}
@@ -3269,6 +3472,20 @@ void VDCaptureDriverDS::TearDownGraph() {
 	// destroy downstreams
 	DestroySubgraph(mpGraphBuilder, mpCapFilt, mpCapSplitFilt, mpCapTransformFilt);
 	DestroySubgraph(mpGraphBuilder, mpAudioCapFilt, NULL, NULL);
+
+	// yank any loose filters
+	while(!mExtraFilters.empty()) {
+		IBaseFilterPtr filt = mExtraFilters.back();
+		mExtraFilters.pop_back();
+
+		FILTER_INFO finfo;
+		if (SUCCEEDED(filt->QueryFilterInfo(&finfo))) {
+			if (finfo.pGraph) {
+				finfo.pGraph->RemoveFilter(filt);
+				finfo.pGraph->Release();
+			}
+		}
+	}
 
 	VDASSERT(!mpRealAudioPin || !VDIsPinConnectedDShow(mpRealAudioPin));
 	VDASSERT(!mpAudioPin || !VDIsPinConnectedDShow(mpAudioPin));
@@ -3359,7 +3576,8 @@ void VDCaptureDriverDS::CheckForWindow() {
 	if (mpVideoWindow) {
 		long styles;
 
-		mpVideoWindow->put_AutoShow(OATRUE);
+		mpVideoWindow->put_Visible(OAFALSE);
+		mpVideoWindow->put_AutoShow(mbDisplayVisible ? OATRUE : OAFALSE);
 
 		if (SUCCEEDED(mpVideoWindow->get_WindowStyle(&styles))) {
 			mpVideoWindow->put_WindowStyle(styles & ~(WS_CAPTION|WS_THICKFRAME));
@@ -3427,34 +3645,55 @@ void VDCaptureDriverDS::CheckForChanges() {
 	}
 }
 
-bool VDCaptureDriverDS::DisplayPropertyPages(IUnknown *ptr, HWND hwndParent) {
+bool VDCaptureDriverDS::DisplayPropertyPages(IUnknown *ptr, HWND hwndParent, const GUID *pDisablePages, int nDisablePages) {
 	if (!ptr)
 		return false;
 
+	HRESULT hr;
 	ISpecifyPropertyPages *pPages;
-
-	if (FAILED(ptr->QueryInterface(IID_ISpecifyPropertyPages, (void **)&pPages)))
+	hr = ptr->QueryInterface(IID_ISpecifyPropertyPages, (void **)&pPages);
+	if (FAILED(hr))
 		return false;
 
 	CAUUID cauuid;
-	bool bSuccess = false;
+	hr = pPages->GetPages(&cauuid);
+	pPages->Release();
 
-	if (SUCCEEDED(pPages->GetPages(&cauuid))) {
-		if (cauuid.cElems) {
-			if (hwndParent) {
-				HRESULT hr = OleCreatePropertyFrame(hwndParent, 0, 0, NULL, 1,
-					(IUnknown **)&pPages, cauuid.cElems, (GUID *)cauuid.pElems, 0, 0, NULL);
+	if (FAILED(hr))
+		return false;
 
-				bSuccess = SUCCEEDED(hr);
-			} else
-				bSuccess = true;
+	bool success = false;
+	if (cauuid.cElems) {
+		uint32 n = 0;
+		for(uint32 i = 0; i < cauuid.cElems; ++i) {
+			const GUID& guid = cauuid.pElems[i];
+			bool copy = true;
+
+			for(int j=0; j<nDisablePages; ++j) {
+				if (guid == pDisablePages[j]) {
+					copy = false;
+					break;
+				}
+			}
+
+			if (copy)
+				cauuid.pElems[n++] = guid;
 		}
 
-		CoTaskMemFree(cauuid.pElems);
+		if (n) {
+			if (hwndParent) {
+				HRESULT hr = OleCreatePropertyFrame(hwndParent, 0, 0, NULL, 1,
+					&ptr, n, cauuid.pElems, 0, 0, NULL);
+
+				success = SUCCEEDED(hr);
+			} else
+				success = true;
+		}
 	}
 
-	pPages->Release();
-	return bSuccess;
+	CoTaskMemFree(cauuid.pElems);
+
+	return success;
 }
 
 int VDCaptureDriverDS::EnumerateCrossbarSources(InputSources& sources, IAMCrossbar *pCrossbar, int output) {

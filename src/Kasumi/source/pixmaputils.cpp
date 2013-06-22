@@ -231,19 +231,7 @@ VDPixmapBuffer::VDPixmapBuffer(const VDPixmapLayout& layout) {
 
 VDPixmapBuffer::~VDPixmapBuffer() {
 #ifdef _DEBUG
-	if (mpBuffer) {
-		char *p = (char *)(((uintptr)mpBuffer + 15) & ~(uintptr)15);
-
-		// verify head bytes
-		for(int i=0; i<12; ++i)
-			if (p[i+4] != (char)(0xa0 + i))
-				VDASSERT(!"VDPixmapBuffer: Buffer underflow detected.\n");
-
-		// verify tail bytes
-		for(int j=0; j<12; ++j)
-			if (p[mLinearSize - 12 + j] != (char)(0xb0 + j))
-				VDASSERT(!"VDPixmapBuffer: Buffer overflow detected.\n");
-	}
+	validate();
 #endif
 
 	delete[] mpBuffer;
@@ -430,3 +418,27 @@ void VDPixmapBuffer::assign(const VDPixmap& src) {
 		}
 	}
 }
+
+void VDPixmapBuffer::swap(VDPixmapBuffer& dst) {
+	std::swap(mpBuffer, dst.mpBuffer);
+	std::swap(mLinearSize, dst.mLinearSize);
+	std::swap(static_cast<VDPixmap&>(*this), static_cast<VDPixmap&>(dst));
+}
+
+#ifdef _DEBUG
+void VDPixmapBuffer::validate() {
+	if (mpBuffer) {
+		char *p = (char *)(((uintptr)mpBuffer + 15) & ~(uintptr)15);
+
+		// verify head bytes
+		for(int i=0; i<12; ++i)
+			if (p[i+4] != (char)(0xa0 + i))
+				VDASSERT(!"VDPixmapBuffer: Buffer underflow detected.\n");
+
+		// verify tail bytes
+		for(int j=0; j<12; ++j)
+			if (p[mLinearSize - 12 + j] != (char)(0xb0 + j))
+				VDASSERT(!"VDPixmapBuffer: Buffer overflow detected.\n");
+	}
+}
+#endif

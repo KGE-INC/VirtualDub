@@ -21,9 +21,11 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/file.h>
 #include <vd2/system/error.h>
+#include <vd2/Dita/controls.h>
 #include <vd2/Dita/interface.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/w32peer.h>
+#include <vd2/Dita/bytecode.h>
 #include "misc.h"
 #include "oshelper.h"
 #include "gui.h"
@@ -642,6 +644,30 @@ public:
 	}
 };
 
+class VDDialogCapturePreferencesHotKey : public VDDialogBase {
+public:
+	VDCapturePreferences& mPrefs;
+	VDDialogCapturePreferencesHotKey(VDCapturePreferences& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			SetValue(100, mPrefs.mHotKeyStart);
+			SetValue(101, mPrefs.mHotKeyStop);
+
+			pBase->ExecuteAllLinks();
+			return true;
+		case kEventSync:
+		case kEventDetach:
+			mPrefs.mHotKeyStart = GetValue(100);
+			mPrefs.mHotKeyStop = GetValue(101);
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogCapturePreferences : public VDDialogBase {
 public:
 	VDCapturePreferences& mPrefs;
@@ -658,6 +684,7 @@ public:
 			if (pSubDialog) {
 				switch(item) {
 				case 0:	pSubDialog->SetCallback(new VDDialogCapturePreferencesInfoPanel(mPrefs), true); break;
+				case 1:	pSubDialog->SetCallback(new VDDialogCapturePreferencesHotKey(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -699,6 +726,8 @@ void VDCaptureSavePreferences(const VDCapturePreferences& prefs) {
 	VDRegistryAppKey key(g_szCapture);
 	
 	key.setBinary("Capture: Info panel items", prefs.mInfoItems.empty() ? "" : (const char *)&prefs.mInfoItems[0], prefs.mInfoItems.size() * 4);
+	key.setInt("Capture: Start hotkey", prefs.mHotKeyStart);
+	key.setInt("Capture: Stop hotkey", prefs.mHotKeyStop);
 }
 
 void VDCaptureLoadPreferences(VDCapturePreferences& prefs) {
@@ -735,7 +764,10 @@ void VDCaptureLoadPreferences(VDCapturePreferences& prefs) {
 		};
 
 		prefs.mInfoItems.assign(kDefaultInfoItems, kDefaultInfoItems + sizeof kDefaultInfoItems / sizeof kDefaultInfoItems[0]);
-	} 
+	}
+
+	prefs.mHotKeyStart = key.getInt("Capture: Start hotkey", 0);
+	prefs.mHotKeyStop = key.getInt("Capture: Stop hotkey", 0);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -977,4 +1009,131 @@ bool VDShowCaptureDeviceOptionsDialog(VDGUIHandle h, uint32& opts) {
 	peer->Shutdown();
 
 	return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//	procamp
+//
+//////////////////////////////////////////////////////////////////////////////
+
+class VDDialogCaptureVideoProcAmp : public IVDUICallback {
+public:
+	VDDialogCaptureVideoProcAmp(IVDCaptureProject *pProject) : mpProject(pProject) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		if (type == kEventAttach) {
+			mpBase = pBase;
+
+		} else if (type == kEventCreate) {
+			vdrefptr<IVDUIWindow> child;
+			VDUIParameters parms;
+
+			vduirectinsets labelpad(0);
+
+			labelpad.right = pBase->MapUnitsToPixels(vduisize(3, 0)).w;
+			
+			child = VDCreateUIGrid();
+			child->SetAlignment(nsVDUI::kFill, nsVDUI::kFill);
+			pWin->AddChild(child);
+
+			IVDUIGrid *pGrid = vdpoly_cast<IVDUIGrid *>(child);
+
+			static const wchar_t *const kPropertyNames[]={
+				L"Brightness",
+				L"Contrast",
+				L"Hue",
+				L"Saturation",
+				L"Sharpness",
+				L"Gamma",
+				L"Color enable",
+				L"White balance",
+				L"Backlight compensation",
+				L"Gain"
+			};
+
+			int propcount = 0;
+			for(int prop = 0; prop < nsVDCapture::kPropCount; ++prop) {
+				if (mpProject->IsPropertySupported(prop)) {
+					sint32 minVal, maxVal, step, defaultVal;
+					bool automatic, manual;
+
+					mpProject->GetPropertyInfoInt(prop, minVal, maxVal, step, defaultVal, automatic, manual);
+
+					if (!manual)
+						continue;
+
+					child = VDCreateUILabel();
+					child->SetCaption(kPropertyNames[prop]);
+					child->SetMinimumSize(pBase->MapUnitsToPixels(vduisize(0, 14)));
+					child->SetPadding(labelpad);
+					pGrid->AddChild(child, 0, propcount, 1, 1);
+					child->Create(&parms);
+
+					child = VDCreateUITrackbar();
+					child->SetMinimumSize(pBase->MapUnitsToPixels(vduisize(100, 14)));
+					child->SetID(100 + prop);
+					pGrid->AddChild(child, 1, propcount, 1, 1);
+					child->Create(&parms);
+
+					IVDUITrackbar *track = vdpoly_cast<IVDUITrackbar *>(child);
+
+					track->SetRange(minVal, maxVal);
+					child->SetValue(mpProject->GetPropertyInt(prop, NULL));
+
+					child = VDCreateUINumericLabel();
+					child->SetMinimumSize(pBase->MapUnitsToPixels(vduisize(40, 14)));
+					child->SetID(200 + prop);
+					pGrid->AddChild(child, 2, propcount, 1, 1);
+					child->Create(&parms);
+
+					const uint8 bytecode1[] = {
+						1, 1,
+						(uint8)(((100 + prop) >> 0) & 255),
+						(uint8)(((100 + prop) >> 8) & 255),
+						(uint8)(((100 + prop) >> 16) & 255),
+						(uint8)(((100 + prop) >> 24) & 255),
+						3, 0,
+						nsVDDitaBytecode::kBCE_GetValue, 0,
+						nsVDDitaBytecode::kBCE_End,
+					};
+
+					pBase->Link(200 + prop, nsVDUI::kLinkTarget_Value, bytecode1, sizeof bytecode1);
+
+					++propcount;
+				}
+			}
+
+			if (propcount == 0) {
+				child = VDCreateUILabel();
+				child->SetCaption(L"No video level controls are available with this capture driver.");
+				vduisize padding(pBase->MapUnitsToPixels(vduisize(40, 20)));
+				child->SetMargins(vduirectinsets(padding.w, padding.h, padding.w, padding.h));
+				pGrid->AddChild(child, 0, 0, 1, 1);
+				child->Create(&parms);
+			}
+		} else if (type == kEventSelect) {
+			if (id >= 100 && id < 200) {
+				mpProject->SetPropertyInt(id - 100, item, false);
+			}
+		}
+		return false;
+	}
+
+	IVDUIBase *mpBase;
+	IVDCaptureProject *const mpProject;
+};
+
+void VDCreateDialogCaptureVideoProcAmp(IVDUIWindow *pParent, IVDCaptureProject *pProject) {
+	IVDUIWindow *pWin = VDCreateUIBaseWindow();
+	pWin->SetCaption(L"Video levels");
+	VDDialogCaptureVideoProcAmp *procAmpDlg = new VDDialogCaptureVideoProcAmp(pProject);
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(procAmpDlg, true);
+	pParent->AddChild(pWin);
+	pBase->SetAutoDestroy(true);
+	VDUIParameters parms;
+	pWin->Create(&parms);
 }

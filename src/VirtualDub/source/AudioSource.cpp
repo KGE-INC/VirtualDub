@@ -352,7 +352,8 @@ bool AudioSourceAVI::init() {
 			if (!allocFormat(sizeof wf))
 				return FALSE;
 
-			memcpy(getFormat(), &wf, sizeof wf);
+			pwfex = getWaveFormat();
+			memcpy(pwfex, &wf, sizeof wf);
 
 			const int bad_len = format_len;
 			const int good_len = sizeof(MPEGLAYER3WAVEFORMAT);

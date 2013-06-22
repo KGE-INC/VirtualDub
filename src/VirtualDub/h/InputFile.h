@@ -34,8 +34,7 @@ class AVIStripeSystem;
 class IAVIReadHandler;
 class IAVIReadStream;
 
-template<class T> class VDBasicString;
-typedef VDBasicString<char> VDStringA;
+class VDStringA;
 
 class InputFileOptions {
 public:

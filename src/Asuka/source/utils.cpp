@@ -1,5 +1,5 @@
 //	Asuka - VirtualDub Build/Post-Mortem Utility
-//	Copyright (C) 2005 Avery Lee
+//	Copyright (C) 2005-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <string>
 
 #include "utils.h"
+#include "resource.h"
 
 using namespace std;
 
@@ -37,16 +38,24 @@ string		g_machineName;
 
 
 void help() {
-	puts("VirtualDub Build/Post-Mortem Utility Version 1.7.0 for "
+	puts("VirtualDub Build/Post-Mortem Utility Version 1.7.1 for "
 #if VD_CPU_AMD64
 			"AMD64"
 #else
 			"80x86"
 #endif
 			);
-	puts("Copyright (C) Avery Lee 2005. Licensed under GNU General Public License");
+	puts("Copyright (C) Avery Lee 2005-2007. Licensed under GNU General Public License");
 	puts("");
-	puts("usage: Asuka (verinc | lookup | mapconv)");
+	puts("Usage: Asuka <command> [args...]");
+	puts("");
+	puts("Asuka fontencode   Extract TrueType font glyph outlines");
+	puts("Asuka fxc          Compile shaders for Direct3D");
+	puts("Asuka glc          Compile shaders for OpenGL");
+	puts("Asuka lookup       Look up address in link map");
+	puts("Asuka makearray    Convert binary file to C array");
+	puts("Asuka mapconv      Generate runtime symbol database");
+	puts("Asuka verinc       Increment version file");
 	exit(5);
 }
 
@@ -127,6 +136,21 @@ void inc_version() {
 	++g_versionMap[g_machineName];
 }
 
+INT_PTR CALLBACK VerincErrorDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_COMMAND:
+		switch(LOWORD(wParam)) {
+		case IDCANCEL:
+		case IDC_CHECKOUT:
+		case IDC_STRIP_READONLY:
+			EndDialog(hdlg, LOWORD(wParam));
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 bool write_version() {
 	printf("    incrementing to build %d (builds on '%s': %d)\n", g_version, g_machineName.c_str(), g_versionMap[g_machineName]);
 
@@ -147,9 +171,17 @@ bool write_version() {
 			fclose(f);
 			return true;
 		} else {
-			if (IDOK == MessageBox(NULL, "Can't open version2.bin.  Check out from Perforce?", "verinc error", MB_ICONEXCLAMATION|MB_OKCANCEL)) {
-				system("p4 edit version2.bin");
-				continue;
+			DWORD attr = GetFileAttributes("version2.bin");
+			if (attr != 0xFFFFFFFF && (attr & FILE_ATTRIBUTE_READONLY)) {
+				LRESULT rv = DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_VERINC_ERROR), NULL, VerincErrorDlgProc);
+
+				if (rv == IDC_STRIP_READONLY) {
+					SetFileAttributes("version2.bin", attr & ~FILE_ATTRIBUTE_READONLY);
+					continue;
+				} else if (rv == IDC_CHECKOUT) {
+					system("p4 edit version2.bin");
+					continue;
+				}
 			}
 
 			fail("Can't open version2.bin for write.");

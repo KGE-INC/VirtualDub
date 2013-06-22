@@ -136,7 +136,7 @@ protected:
 	void SetCaption(uint32 id, const VDStringW& s) {
 		IVDUIWindow *pWin = mpBase->GetControl(id);
 		if (pWin)
-			pWin->SetCaption(s);
+			pWin->SetCaption(s.c_str());
 	}
 
 	IVDUIBase *mpBase;

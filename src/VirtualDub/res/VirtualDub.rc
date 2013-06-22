@@ -128,11 +128,11 @@ BEGIN
         MENUITEM "Arrange video panes vertically", ID_OPTIONS_VERTICALDISPLAY
         MENUITEM "Swap input/output panes",     ID_OPTIONS_SWAPPANES
         MENUITEM SEPARATOR
-        MENUITEM "Display &decompressed output\tShift-F10", ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT
+        MENUITEM "Display &decompressed output\tShift+F10", ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT
         MENUITEM "Show &status window",         ID_OPTIONS_SHOWSTATUSWINDOW, CHECKED
         MENUITEM SEPARATOR
         MENUITEM "&Log\tF8",                    ID_OPTIONS_SHOWLOG
-        MENUITEM "Real-time profiler\tShift-F8", ID_OPTIONS_SHOWPROFILER
+        MENUITEM "Real-time profiler\tShift+F8", ID_OPTIONS_SHOWPROFILER
     END
     POPUP "&Go"
     BEGIN
@@ -218,6 +218,8 @@ BEGIN
         MENUITEM "&Expand sparse AVI...",       ID_TOOLS_EXPANDSPARSEAVI
         MENUITEM "Benchmark resampler",         ID_TOOLS_BENCHMARKRESAMPLER
         MENUITEM "Create palettized AVI...",    ID_TOOLS_CREATEPALETTIZEDAVI
+        MENUITEM "Create test video...",        ID_TOOLS_CREATETESTVIDEO
+        MENUITEM "Create animated GIF...",      ID_FILE_SAVEANIMATEDGIF
     END
     POPUP "&Help"
     BEGIN
@@ -320,7 +322,11 @@ BEGIN
             MENUITEM "Off",                         ID_CAPTURE_HWACCEL_NONE
             MENUITEM "Even lines only",             ID_CAPTURE_HWACCEL_TOP
             MENUITEM "Odd lines only",              ID_CAPTURE_HWACCEL_BOTTOM
-            MENUITEM "Both fields",                 ID_CAPTURE_HWACCEL_BOTH
+            MENUITEM "Both fields (progressive)",   ID_CAPTURE_HWACCEL_BOTH
+            MENUITEM "Both fields (even first)",    ID_CAPTURE_HWACCEL_EVENFIRST
+            MENUITEM "Both fields (odd first)",     ID_CAPTURE_HWACCEL_ODDFIRST
+            MENUITEM "Non-interlaced (even first)", ID_CAPTURE_HWACCEL_NONINTEVEN
+            MENUITEM "Non-interlaced (odd first)",  ID_CAPTURE_HWACCEL_NONINTODD
         END
         MENUITEM SEPARATOR
         MENUITEM "Stretch to window",           ID_VIDEO_STRETCH
@@ -339,6 +345,7 @@ BEGIN
         MENUITEM "Crossbar...",                 ID_VIDEO_CROSSBAR
         MENUITEM "Crossbar 2...",               ID_VIDEO_CROSSBAR2
         MENUITEM "Tuner...",                    ID_VIDEO_TUNER
+        MENUITEM "&Levels...\tL",               ID_VIDEO_LEVELS
         MENUITEM SEPARATOR
         MENUITEM "Cropping...",                 ID_VIDEO_CROPPING
         MENUITEM "Swap fields",                 ID_VIDEO_SWAPFIELDS
@@ -402,6 +409,7 @@ BEGIN
         MENUITEM "Show information panel",      ID_CAPTURE_INFOPANEL
         MENUITEM "Show status bar",             ID_CAPTURE_STATUSBAR
         MENUITEM "Timing graph",                ID_CAPTURE_TIMINGGRAPH
+        MENUITEM "&Log\tF8",                    ID_CAPTURE_SHOWLOG
         MENUITEM "Enable multisegment capture", ID_CAPTURE_ENABLESPILL
         MENUITEM "Start capture on left-click in pane", ID_CAPTURE_STARTONLEFT
         MENUITEM "&Autoincrement filename after capture", ID_CAPTURE_AUTOINCREMENT
@@ -610,20 +618,21 @@ END
 // Dialog
 //
 
-IDD_DUBBING DIALOGEX 0, 0, 186, 149
-STYLE DS_SETFONT | DS_MODALFRAME | DS_NOIDLEMSG | DS_CENTER | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_DUBBING DIALOGEX 0, 0, 186, 158
+STYLE DS_SETFONT | DS_MODALFRAME | DS_NOIDLEMSG | DS_FIXEDSYS | DS_CENTER | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_NOPARENTNOTIFY
 CAPTION "VirtualDub Status"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    PUSHBUTTON      "&Abort",IDC_ABORT,129,128,50,14
-    CONTROL         "Progress1",IDC_PROGRESS,"msctls_progress32",WS_BORDER | 0x1,93,95,86,10
-    LTEXT           "Progress:",IDC_STATIC_PROGRESS,7,95,86,8
-    CONTROL         "Show &input video",IDC_DRAW_INPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,121,70,10
-    CONTROL         "Show &output video",IDC_DRAW_OUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,132,75,10
-    COMBOBOX        IDC_PRIORITY,93,105,86,40,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Processing thread &priority:",IDC_STATIC_PRIORITY,7,107,86,8
+    PUSHBUTTON      "&Abort",IDC_ABORT,129,137,50,14
     CONTROL         "Tab1",IDC_TABS,"SysTabControl32",WS_TABSTOP,7,7,172,85
+    LTEXT           "Progress:",IDC_STATIC_PROGRESS,7,95,86,8
+    CONTROL         "Progress1",IDC_PROGRESS,"msctls_progress32",WS_BORDER | 0x1,93,95,86,10
+    LTEXT           "Processing thread &priority:",IDC_STATIC_PRIORITY,7,107,86,8
+    COMBOBOX        IDC_PRIORITY,93,105,86,40,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Show &input video",IDC_DRAW_INPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,121,70,10
+    CONTROL         "Show &output video",IDC_DRAW_OUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,131,75,10
+    CONTROL         "Show &decompressed video",IDC_DRAW_DOUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,141,99,10
 END
 
 IDD_INTERLEAVE DIALOG  0, 0, 249, 175
@@ -793,7 +802,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub 1.7.0 - Copyright (C) 1998-2006 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub 1.7.1 - Copyright (C) 1998-2006 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -2315,20 +2324,6 @@ BEGIN
     LTEXT           "Please DO NOT report interoperability problems with this release to vendors of third party codecs and plugins unless you are SURE it is not caused by the experimental code in this release.  Verifying against the previous STABLE release is a good idea.",IDC_STATIC,7,53,297,30
 END
 
-IDD_FILTER_TRIRESIZE DIALOG  0, 0, 217, 66
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: triangular resize"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "New &width",-1,7,8,34,8
-    EDITTEXT        IDC_WIDTH,54,7,139,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "New &height",-1,7,22,37,8
-    EDITTEXT        IDC_HEIGHT,54,20,139,12,ES_AUTOHSCROLL | ES_NUMBER
-    PUSHBUTTON      "Cancel",IDCANCEL,160,45,50,14
-    DEFPUSHBUTTON   "OK",IDOK,107,45,50,14
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,45,50,14
-END
-
 IDD_FILTER_PERSPECTIVE DIALOG  0, 0, 317, 205
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter: Perspective"
@@ -2379,6 +2374,20 @@ BEGIN
     EDITTEXT        IDC_PRECISION,95,7,70,12,ES_AUTOHSCROLL
 END
 
+IDD_FILTER_WARPRESIZE DIALOGEX 0, 0, 186, 82
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Filter: warp resize"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Target &width",IDC_STATIC,7,7,50,12
+    EDITTEXT        IDC_WIDTH,83,7,96,12,ES_AUTOHSCROLL
+    LTEXT           "Target &height",IDC_STATIC,7,21,50,12
+    EDITTEXT        IDC_HEIGHT,83,21,96,13,ES_AUTOHSCROLL
+    CONTROL         "Show &gradient map",IDC_SHOW_GRADIENT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,83,35,96,13
+    DEFPUSHBUTTON   "OK",IDOK,77,61,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,61,50,14
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -2394,7 +2403,7 @@ BEGIN
         RIGHTMARGIN, 179
         VERTGUIDE, 93
         TOPMARGIN, 7
-        BOTTOMMARGIN, 142
+        BOTTOMMARGIN, 151
     END
 
     IDD_INTERLEAVE, DIALOG
@@ -3232,17 +3241,6 @@ BEGIN
         BOTTOMMARGIN, 98
     END
 
-    IDD_FILTER_TRIRESIZE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 210
-        VERTGUIDE, 21
-        VERTGUIDE, 54
-        VERTGUIDE, 71
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 59
-    END
-
     IDD_FILTER_PERSPECTIVE, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3276,6 +3274,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 43
     END
+
+    IDD_FILTER_WARPRESIZE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 75
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -3297,59 +3303,60 @@ IDR_VIRUS               STUFF                   "license.bin"
 
 IDR_IDLE_KEYS ACCELERATORS 
 BEGIN
-    "1",            ID_VIDEO_COPYSOURCEFRAME, VIRTKEY, CONTROL, NOINVERT
-    "2",            ID_VIDEO_COPYOUTPUTFRAME, VIRTKEY, CONTROL, NOINVERT
-    "<",            ID_EDIT_PREVRANGE,      ASCII,  NOINVERT
-    ">",            ID_EDIT_NEXTRANGE,      ASCII,  NOINVERT
-    "[",            ID_VIDEO_SEEK_SELSTART, ASCII,  NOINVERT
-    "]",            ID_VIDEO_SEEK_SELEND,   ASCII,  NOINVERT
-    "A",            ID_EDIT_SELECTALL,      VIRTKEY, CONTROL, NOINVERT
-    "C",            ID_EDIT_COPY,           VIRTKEY, CONTROL, NOINVERT
-    "D",            ID_EDIT_CLEAR,          VIRTKEY, CONTROL, NOINVERT
-    "F",            ID_VIDEO_FILTERS,       VIRTKEY, CONTROL, NOINVERT
-    "G",            ID_EDIT_JUMPTO,         VIRTKEY, CONTROL, NOINVERT
-    "I",            ID_AUDIO_INTERLEAVE,    VIRTKEY, CONTROL, NOINVERT
-    "L",            ID_FILE_LOADCONFIGURATION, VIRTKEY, CONTROL, NOINVERT
     "N",            ID_AUDIO_CONVERSION,    VIRTKEY, CONTROL, NOINVERT
-    "O",            ID_FILE_OPENAVI,        VIRTKEY, CONTROL, NOINVERT
-    "P",            ID_VIDEO_COMPRESSION,   VIRTKEY, CONTROL, NOINVERT
-    "R",            ID_VIDEO_FRAMERATE,     VIRTKEY, CONTROL, NOINVERT
-    "S",            ID_FILE_SAVECONFIGURATION, VIRTKEY, CONTROL, NOINVERT
-    "Z",            ID_EDIT_UNDO,           VIRTKEY, CONTROL, NOINVERT
-    "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL, NOINVERT
+    "I",            ID_AUDIO_INTERLEAVE,    VIRTKEY, CONTROL, NOINVERT
+    "D",            ID_EDIT_CLEAR,          VIRTKEY, CONTROL, NOINVERT
+    "C",            ID_EDIT_COPY,           VIRTKEY, CONTROL, NOINVERT
+    "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL, NOINVERT
     VK_DELETE,      ID_EDIT_DELETE,         VIRTKEY, NOINVERT
+    "G",            ID_EDIT_JUMPTO,         VIRTKEY, CONTROL, NOINVERT
+    ">",            ID_EDIT_NEXTRANGE,      ASCII,  NOINVERT
+    "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL, NOINVERT
+    "<",            ID_EDIT_PREVRANGE,      ASCII,  NOINVERT
+    "Y",            ID_EDIT_REDO,           VIRTKEY, CONTROL, NOINVERT
+    "A",            ID_EDIT_SELECTALL,      VIRTKEY, CONTROL, NOINVERT
     VK_END,         ID_EDIT_SETSELEND,      VIRTKEY, NOINVERT
-    VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
-    VK_F10,         ID_OPTIONS_DISPLAYOUTPUTVIDEO, VIRTKEY, NOINVERT
-    VK_F11,         ID_TOOLS_BACKFACE,      VIRTKEY, SHIFT, CONTROL, NOINVERT
-    VK_F2,          ID_FILE_REOPEN,         VIRTKEY, NOINVERT
+    VK_HOME,        ID_EDIT_SETSELSTART,    VIRTKEY, NOINVERT
+    "Z",            ID_EDIT_UNDO,           VIRTKEY, CONTROL, NOINVERT
+    "W",            ID_FILE_CLOSEAVI,       VIRTKEY, CONTROL, NOINVERT
     VK_F4,          ID_FILE_JOBCONTROL,     VIRTKEY, NOINVERT
+    "L",            ID_FILE_LOADCONFIGURATION, VIRTKEY, CONTROL, NOINVERT
+    "O",            ID_FILE_OPENAVI,        VIRTKEY, CONTROL, NOINVERT
     VK_F5,          ID_FILE_PREVIEWAVI,     VIRTKEY, NOINVERT
+    VK_SPACE,       ID_FILE_PREVIEWINPUT,   VIRTKEY, NOINVERT
+    VK_RETURN,      ID_FILE_PREVIEWOUTPUT,  VIRTKEY, NOINVERT
+    VK_F2,          ID_FILE_REOPEN,         VIRTKEY, NOINVERT
     VK_F7,          ID_FILE_SAVEAVI,        VIRTKEY, NOINVERT
     VK_F7,          ID_FILE_SAVECOMPATIBLEAVI, VIRTKEY, SHIFT, NOINVERT
+    "S",            ID_FILE_SAVECONFIGURATION, VIRTKEY, CONTROL, NOINVERT
+    VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
+    VK_F9,          ID_OPTIONS_DISPLAYINPUTVIDEO, VIRTKEY, NOINVERT
+    VK_F10,         ID_OPTIONS_DISPLAYOUTPUTVIDEO, VIRTKEY, NOINVERT
     VK_F8,          ID_OPTIONS_SHOWLOG,     VIRTKEY, NOINVERT
     VK_F8,          ID_OPTIONS_SHOWPROFILER, VIRTKEY, SHIFT, NOINVERT
-    VK_F9,          ID_OPTIONS_DISPLAYINPUTVIDEO, VIRTKEY, NOINVERT
-    VK_HOME,        ID_EDIT_SETSELSTART,    VIRTKEY, NOINVERT
-    VK_LEFT,        ID_VIDEO_SEEK_PREV,     VIRTKEY, NOINVERT
-    VK_LEFT,        ID_VIDEO_SEEK_START,    VIRTKEY, CONTROL, NOINVERT
-    VK_LEFT,        ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, ALT, NOINVERT
-    VK_LEFT,        ID_VIDEO_SEEK_KEYPREV,  VIRTKEY, SHIFT, NOINVERT
-    VK_LEFT,        ID_VIDEO_SEEK_PREVSCENE, VIRTKEY, SHIFT, CONTROL, NOINVERT
-    VK_NEXT,        ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, NOINVERT
-    VK_PRIOR,       ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, NOINVERT
-    VK_RETURN,      ID_FILE_PREVIEWOUTPUT,  VIRTKEY, NOINVERT
-    VK_RIGHT,       ID_VIDEO_SEEK_NEXT,     VIRTKEY, NOINVERT
+    VK_F11,         ID_TOOLS_BACKFACE,      VIRTKEY, SHIFT, CONTROL, NOINVERT
+    "P",            ID_VIDEO_COMPRESSION,   VIRTKEY, CONTROL, NOINVERT
+    "2",            ID_VIDEO_COPYOUTPUTFRAME, VIRTKEY, CONTROL, NOINVERT
+    "1",            ID_VIDEO_COPYSOURCEFRAME, VIRTKEY, CONTROL, NOINVERT
+    "F",            ID_VIDEO_FILTERS,       VIRTKEY, CONTROL, NOINVERT
+    "R",            ID_VIDEO_FRAMERATE,     VIRTKEY, CONTROL, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_END,      VIRTKEY, CONTROL, NOINVERT
-    VK_RIGHT,       ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, ALT, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_KEYNEXT,  VIRTKEY, SHIFT, NOINVERT
-    VK_RIGHT,       ID_VIDEO_SEEK_NEXTSCENE, VIRTKEY, SHIFT, CONTROL, NOINVERT
-    VK_SPACE,       ID_FILE_PREVIEWINPUT,   VIRTKEY, NOINVERT
-    "W",            ID_FILE_CLOSEAVI,       VIRTKEY, CONTROL, NOINVERT
-    "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL, NOINVERT
-    "Y",            ID_EDIT_REDO,           VIRTKEY, CONTROL, NOINVERT
-    "{",            ID_VIDEO_SEEK_PREVDROP, ASCII,  NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_KEYPREV,  VIRTKEY, SHIFT, NOINVERT
+    VK_RIGHT,       ID_VIDEO_SEEK_NEXT,     VIRTKEY, NOINVERT
     "}",            ID_VIDEO_SEEK_NEXTDROP, ASCII,  NOINVERT
+    VK_NEXT,        ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, NOINVERT
+    VK_RIGHT,       ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, ALT, NOINVERT
+    VK_RIGHT,       ID_VIDEO_SEEK_NEXTSCENE, VIRTKEY, SHIFT, CONTROL, NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_PREV,     VIRTKEY, NOINVERT
+    "{",            ID_VIDEO_SEEK_PREVDROP, ASCII,  NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, ALT, NOINVERT
+    VK_PRIOR,       ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_PREVSCENE, VIRTKEY, SHIFT, CONTROL, NOINVERT
+    "]",            ID_VIDEO_SEEK_SELEND,   ASCII,  NOINVERT
+    "[",            ID_VIDEO_SEEK_SELSTART, ASCII,  NOINVERT
+    VK_LEFT,        ID_VIDEO_SEEK_START,    VIRTKEY, CONTROL, NOINVERT
+    VK_F10,         ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT, VIRTKEY, SHIFT, NOINVERT
 END
 
 IDR_CAPTURE_KEYS ACCELERATORS 
@@ -3358,8 +3365,10 @@ BEGIN
     "V",            ID_AUDIO_PEAKMETER,     VIRTKEY, NOINVERT
     VK_F5,          ID_CAPTURE_CAPTUREVIDEO, VIRTKEY, NOINVERT
     VK_F6,          ID_CAPTURE_CAPTUREVIDEO, VIRTKEY, NOINVERT
+    VK_RETURN,      ID_CAPTURE_FULLSCREEN,  VIRTKEY, ALT, NOINVERT
     VK_F10,         ID_CAPTURE_PREFERENCES, VIRTKEY, NOINVERT
     VK_F9,          ID_CAPTURE_SETTINGS,    VIRTKEY, NOINVERT
+    VK_F8,          ID_CAPTURE_SHOWLOG,     VIRTKEY, NOINVERT
     VK_ESCAPE,      ID_CAPTURE_STOP,        VIRTKEY, NOINVERT
     VK_F7,          ID_CAPTURE_TEST,        VIRTKEY, NOINVERT
     VK_DOWN,        ID_DEVICE_TUNER_FINEDOWN, VIRTKEY, SHIFT, NOINVERT
@@ -3381,7 +3390,7 @@ BEGIN
     "S",            ID_VIDEO_SOURCE,        VIRTKEY, NOINVERT
     "<",            ID_VIDEO_SQUISH_LOWER,  ASCII,  NOINVERT
     ">",            ID_VIDEO_SQUISH_UPPER,  ASCII,  NOINVERT
-    VK_RETURN,      ID_CAPTURE_FULLSCREEN,  VIRTKEY, ALT, NOINVERT
+    "L",            ID_VIDEO_LEVELS,        VIRTKEY, NOINVERT
 END
 
 IDR_DUB_KEYS ACCELERATORS 
@@ -3423,8 +3432,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,7,0,0
- PRODUCTVERSION 1,7,0,0
+ FILEVERSION 1,7,1,0
+ PRODUCTVERSION 1,7,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3441,12 +3450,12 @@ BEGIN
         BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!"
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.7.0"
+            VALUE "FileVersion", "1.7.1"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2006 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.7.0"
+            VALUE "ProductVersion", "1.7.1"
         END
     END
     BLOCK "VarFileInfo"
@@ -3537,17 +3546,17 @@ IDC_MODIFYPOINT         CURSOR                  "modifypoint.cur"
 
 STRINGTABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.7.0 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.7.0"
-    IDS_TITLE_IDLE          "VirtualDub 1.7.0 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.7.0- [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.0"
+    IDS_TITLE_INITIAL       "VirtualDub 1.7.1 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.7.1"
+    IDS_TITLE_IDLE          "VirtualDub 1.7.1 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.7.1- [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.1"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.7.0- serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.7.0 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.0 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.0 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.7.0 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.7.1- serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.7.1 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.1 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.1 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.7.1 - [%s] (%s)"
 END
 
 STRINGTABLE 

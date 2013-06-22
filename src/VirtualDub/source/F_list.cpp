@@ -33,7 +33,8 @@ extern FilterDefinition
 	filterDef_fliph,
 	filterDef_deinterlace,
 	filterDef_rotate,
-	filterDef_hsv
+	filterDef_hsv,
+	filterDef_warpresize
 
 #ifdef _M_IX86
 	,
@@ -72,6 +73,7 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_deinterlace,
 	&filterDef_rotate,
 	&filterDef_hsv,
+	&filterDef_warpresize,
 #ifdef _M_IX86
 	&filterDef_reduceby2,
 	&filterDef_convolute,

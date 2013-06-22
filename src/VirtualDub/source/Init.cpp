@@ -22,6 +22,7 @@
 #include <vfw.h>
 #include <shellapi.h>
 #include <eh.h>
+#include <signal.h>
 
 #include "resource.h"
 #include "job.h"
@@ -41,6 +42,8 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/cmdline.h>
+#include <vd2/system/cpuaccel.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Riza/display.h>
@@ -170,6 +173,93 @@ void VDterminate() {
 	}
 }
 
+extern "C" void _abort() {
+	vdprotected("processing call to abort()") {
+#if _MSC_VER >= 1300
+		__debugbreak();
+#else
+		__asm int 3
+#endif
+	}
+}
+
+void VDCPUTest() {
+	long lEnableFlags;
+
+	lEnableFlags = g_prefs.main.fOptimizations & CPUF_SUPPORTS_MASK;
+
+	if (!(g_prefs.main.fOptimizations & PreferencesMain::OPTF_FORCE)) {
+		SYSTEM_INFO si;
+
+		lEnableFlags = CPUCheckForExtensions();
+
+		GetSystemInfo(&si);
+
+		if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+			if (si.wProcessorLevel < 4)
+				lEnableFlags &= ~CPUF_SUPPORTS_FPU;		// Not strictly true, but very slow anyway
+	}
+
+	// Enable FPU support...
+
+	CPUEnableExtensions(lEnableFlags);
+
+	VDFastMemcpyAutodetect();
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool g_consoleMode;
+
+class VDConsoleLogger : public IVDLogger {
+public:
+	void AddLogEntry(int severity, const VDStringW& s);
+	void Write(const wchar_t *s, size_t len);
+} g_VDConsoleLogger;
+
+void VDConsoleLogger::AddLogEntry(int severity, const VDStringW& s) {
+	const size_t len = s.length();
+	const wchar_t *text = s.data();
+	const wchar_t *end = text + len;
+
+	// Don't annotate lines in this routine. We print some 'errors' in
+	// the cmdline handling that aren't really errors, and would have
+	// to be revisited.
+	for(;;) {
+		const wchar_t *t = text;
+
+		while(t != end && *t != '\n')
+			++t;
+
+		Write(text, t-text);
+		if (t == end)
+			break;
+
+		text = t+1;
+	}
+}
+
+void VDConsoleLogger::Write(const wchar_t *text, size_t len) {
+	DWORD actual;
+
+	if (!len) {
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), "\r\n", 2, &actual, NULL);
+	}
+
+	int mblen = WideCharToMultiByte(CP_ACP, 0, text, len, NULL, 0, NULL, NULL);
+
+	char *buf = (char *)alloca(mblen + 2);
+
+	mblen = WideCharToMultiByte(CP_ACP, 0, text, len, buf, mblen, NULL, NULL);
+
+	if (mblen) {
+		buf[mblen] = '\r';
+		buf[mblen+1] = '\n';
+
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, mblen+2, &actual, NULL);
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 #if 0
@@ -222,86 +312,6 @@ static void crash() {
 
 #endif
 
-extern "C" void WinMainCRTStartup();
-
-#if defined(__INTEL_COMPILER)
-extern "C" void __declspec(naked) __stdcall VeedubWinMain() {
-	static const char g_szSSE2Error[]="This build of VirtualDub is optimized for the Pentium 4 processor and will not run on "
-										"CPUs without SSE2 support. Your CPU does not appear to support SSE2, so you will need to run "
-										"the regular VirtualDub build, which runs on all Pentium and higher CPUs.\n\n"
-										"Choose OK if you want to try running this version anyway -- it'll likely crash -- or CANCEL "
-										"to exit."
-										;
-
-	__asm {
-		// The Intel compiler could use P4 instructions anywhere, so let's do this right.
-		// A little assembly never hurt anyone anyway....
-
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
-
-		;check for CPUID
-		pushfd
-		pop		eax
-		or		eax,00200000h
-		push	eax
-		popfd
-		pushfd
-		pop		eax
-		test	eax,00200000h
-		jz		failed
-
-		;MMX, SSE, and SSE2 bits must be set
-		mov		eax, 1
-		cpuid
-		mov		eax,06800000h
-		and		edx,eax
-		cmp		edx,eax
-		jne		failed
-
-		;test for operating system SSE2 support
-		push	offset exchandler
-		push	dword ptr fs:[0]
-		mov		dword ptr fs:[0],esp	;hook SEH chain
-
-		xor		eax,eax
-		andps	xmm0,xmm0
-
-		pop		ecx						;remove SEH record
-		pop		dword ptr fs:[0]
-
-		or		eax,eax					;eax is set if exception occurred
-		jnz		failed
-appstart:
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
-		jmp		WinMainCRTStartup
-
-failed:
-		push	MB_OKCANCEL | MB_ICONERROR
-		push	offset g_szError
-		push	offset g_szSSE2Error
-		push	0
-		call	dword ptr [MessageBoxA]
-		cmp		eax,IDOK
-		je		appstart
-		mov		eax,20
-		jmp		dword ptr [ExitProcess]
-
-exchandler:
-		mov		eax,[esp+12]			;get exception context
-		mov		[eax+176],1				;set EAX in crash zone
-		add		dword ptr [eax+184],3	;bump past SSE2 instruction
-		mov		eax,0					;ExceptionContinueExecution
-		ret
-	}
-}
-#endif
-
 void VDInitAppResources() {
 	HRSRC hResource = FindResource(NULL, MAKEINTRESOURCE(IDR_RESOURCES), "STUFF");
 
@@ -319,7 +329,7 @@ void VDInitAppResources() {
 	VDLoadResources(0, lpData, SizeofResource(NULL, hResource));
 }
 
-bool Init(HINSTANCE hInstance, int nCmdShow) {
+bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 //#ifdef _DEBUG
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
@@ -328,7 +338,29 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 	VDSetThreadDebugName(GetCurrentThreadId(), "Main");
 
 	// setup crash traps
-	SetUnhandledExceptionFilter(CrashHandlerHook);
+	if (!cmdLine.FindAndRemoveSwitch(L"h")) {
+		SetUnhandledExceptionFilter(CrashHandlerHook);
+
+		// Some DLLs, most notably MSCOREE.DLL, steal the UnhandledExceptionFilter hook.
+		// Bad DLL! We patch SetUnhandledExceptionFilter() to prevent this.
+
+		// don't attempt to patch system DLLs on Windows 98
+		if (VDIsWindowsNT()) {
+			HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
+			FARPROC fpSUEF = GetProcAddress(hmodKernel32, "SetUnhandledExceptionFilter");
+
+			DWORD oldProtect;
+			if (VirtualProtect(fpSUEF, 5, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+				static const uint8 patch[]={
+					0x33, 0xC0,				// XOR EAX, EAX
+					0xC2, 0x04, 0x00		// RET 4
+				};
+				memcpy(fpSUEF, patch, 5);
+				VirtualProtect(fpSUEF, 5, oldProtect, &oldProtect);
+			}
+		}
+	}
+
 	set_terminate(VDterminate);
 
 	VDInitExternalCallTrap();
@@ -347,15 +379,21 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 	VDInitResourceSystem();
 	VDInitAppResources();
 
-	// announce startup
-	VDLog(kVDLogInfo, VDswprintf(
-			L"VirtualDub CLI Video Processor Version 1.7.0 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
-			,1
-			,&version_num));
-	VDLog(kVDLogInfo, VDswprintf(
-			L"Copyright (C) Avery Lee 1998-2006. Licensed under GNU General Public License\n"
-			,1
-			,&version_num));
+	// check for console mode and announce startup
+	if (cmdLine.FindAndRemoveSwitch(L"console")) {
+		g_consoleMode = true;
+		VDAttachLogger(&g_VDConsoleLogger, false, true);
+
+		// announce startup
+		VDLog(kVDLogInfo, VDswprintf(
+				L"VirtualDub CLI Video Processor Version 1.7.1 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				,1
+				,&version_num));
+		VDLog(kVDLogInfo, VDswprintf(
+				L"Copyright (C) Avery Lee 1998-2007. Licensed under GNU General Public License\n"
+				,1
+				,&version_num));
+	}
 
 	// prep system stuff
 
@@ -365,16 +403,6 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	VDRegistryAppKey::setDefaultKey("Software\\Freeware\\VirtualDub\\");
 	VDLoadFilespecSystemData();
-
-	// initialize filters, job system, MRU list, help system
-
-	InitBuiltinFilters();
-	VDInitBuiltinAudioFilters();
-	VDInitBuiltinVideoFilters();
-	VDInitInputDrivers();
-
-	if (!InitJobSystem())
-		return FALSE;
 
 	LoadPreferences();
 	{
@@ -390,6 +418,18 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 			g_audioErrorMode = (DubSource::ErrorMode)errorMode;
 	}
 
+	if (!cmdLine.FindAndRemoveSwitch(L"safecpu"))
+		VDCPUTest();
+
+	// initialize filters, job system, MRU list, help system
+
+	InitBuiltinFilters();
+	VDInitBuiltinAudioFilters();
+	VDInitBuiltinVideoFilters();
+	VDInitInputDrivers();
+
+	if (!InitJobSystem())
+		return FALSE;
 
 	// initialize interface
 
@@ -485,8 +525,6 @@ void Deinit() {
 		ICRemove(ICTYPE_VIDEO, 'TSDV', 0);
 
 	VDDeinstallModelessDialogHookW32();
-
-	// deinitialize DirectDraw2
 
 	VDCHECKPOINT;
 
@@ -607,120 +645,7 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-
-class VDConsoleLogger : public IVDLogger {
-public:
-	void AddLogEntry(int severity, const VDStringW& s);
-	void Write(const wchar_t *s, size_t len);
-} g_VDConsoleLogger;
-
-void VDConsoleLogger::AddLogEntry(int severity, const VDStringW& s) {
-	const size_t len = s.length();
-	const wchar_t *text = s.data();
-	const wchar_t *end = text + len;
-
-	// Don't annotate lines in this routine. We print some 'errors' in
-	// the cmdline handling that aren't really errors, and would have
-	// to be revisited.
-	for(;;) {
-		const wchar_t *t = text;
-
-		while(t != end && *t != '\n')
-			++t;
-
-		Write(text, t-text);
-		if (t == end)
-			break;
-
-		text = t+1;
-	}
-}
-
-void VDConsoleLogger::Write(const wchar_t *text, size_t len) {
-	DWORD actual;
-
-	if (!len) {
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), "\r\n", 2, &actual, NULL);
-	}
-
-	int mblen = WideCharToMultiByte(CP_ACP, 0, text, len, NULL, 0, NULL, NULL);
-
-	char *buf = (char *)alloca(mblen + 2);
-
-	mblen = WideCharToMultiByte(CP_ACP, 0, text, len, buf, mblen, NULL, NULL);
-
-	if (mblen) {
-		buf[mblen] = '\r';
-		buf[mblen+1] = '\n';
-
-		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, mblen+2, &actual, NULL);
-	}
-}
-
-namespace {
-	bool ParseArgument(const wchar_t *&s, VDStringW& parm) {
-		while(iswspace(*s))
-			++s;
-
-		if (!*s || *s == L'/')
-			return false;
-
-		const wchar_t *start;
-		const wchar_t *end;
-
-		parm.clear();
-
-		start = s;
-		while(*s && *s != L' ' && *s != L'/' && *s != L',') {			
-			if (*s == L'"') {
-				if (s != start)
-					parm.append(start, s-start);
-
-				start = ++s;
-				while(*s && *s != L'"')
-					++s;
-				end = s;
-
-				if (end != start)
-					parm.append(start, end-start);
-
-				if (*s)
-					++s;
-
-				start = s;
-			} else
-				++s;
-		}
-
-		if (s != start)
-			parm.append(start, s-start);
-
-		if (*s == L',')
-			++s;
-
-		return true;
-	}
-
-	bool CheckForSwitch(const wchar_t *&s, const wchar_t *token) {
-		const size_t len = wcslen(token);
-		if (wcsncmp(s, token, len))
-			return false;
-
-		const wchar_t c = s[len];
-
-		if (c && c != L' ' && c != L'"' && c != L'/')
-			return false;
-
-		s += len;
-
-		return true;
-	}
-}
-
-int VDProcessCommandLine(const wchar_t *lpCmdLine) {
-	const wchar_t *const cmdline = lpCmdLine;
-
-	const wchar_t *s;
+int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 	static const wchar_t seps[] = L" \t\n\r";
 	bool fExitOnDone = false;
 
@@ -736,15 +661,8 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 	//	/fsck					test crash handler
 	//	/vtprofile				enable VTune profiling
 
-	s = cmdline;
 	g_szFile[0] = 0;
 
-	VDStringW token;
-
-	VDStringW progName;
-	ParseArgument(s, token);
-
-	bool consoleMode = false;
 	int argsFound = 0;
 	int rc = -1;
 
@@ -753,17 +671,22 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 	VDAutoLogDisplay disp;
 
 	try {
-		while(*s) {
-			while(iswspace(*s))
-				++s;
+		VDCommandLineIterator it;
+		const wchar_t *token;
+		bool isSwitch;
 
-			if (!*s) break;
-
+		while(cmdLine.GetNextArgument(it, token, isSwitch)) {
 			++argsFound;
 
-			if (*s == L'/') {
-				++s;
-				if (*s == L'?')
+			if (!isSwitch) {
+				if (g_capProjectUI)
+					g_capProjectUI->SetCaptureFile(token);
+				else
+					g_project->Open(token);
+			} else {
+				// parse out the switch name
+				++token;
+				if (!wcscmp(token, L"?")) {
 					throw MyError(
 					//   12345678901234567890123456789012345678901234567890123456789012345678901234567890
 						"Command-line flags:\n"
@@ -772,6 +695,7 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						"  /c                        Clear job list\n"
 						"  /capture                  Switch to capture mode\n"
 						"  /capchannel <ch> [<freq>] Set capture channel (opt. frequency in MHz)\n"
+						"                            Use antenna:<n> or cable:<n> to force mode\n"
 						"  /capdevice <devname>      Set capture device\n"
 						"  /capfile <filename>       Set capture filename\n"
 						"  /capfileinc <filename>    Set capture filename and bump until clear\n"
@@ -781,205 +705,209 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						"  /F <filter>               Load filter\n"
 						"  /h                        Disable exception filter\n"
 						"  /hexedit [<filename>]     Open hex editor\n"
+						"  /hexview [<filename>]     Open hex editor (read-only mode)\n"
 						"  /i <script> [<args...>]   Invoke script with arguments\n"
+						"  /noStupidAntiDebugChecks  Stop lame drivers from screwing up debugging\n"
+						"                            sessions\n"
 						"  /p <src> <dst>            Add a batch entry for a file\n"
 						"  /queryVersion             Return build number\n"
 						"  /r                        Run job queue\n"
 						"  /s <script>               Run a script\n"
+						"  /safecpu                  Do not use CPU extensions on startup\n"
 						"  /x                        Exit when complete\n"
 						);
+				} else if (!wcscmp(token, L"b")) {
+					const wchar_t *path2;
 
-				// parse out the switch name
-				const wchar_t *switchStart = s;
-				while(*s && iswalnum(*s))
-					++s;
-
-				token.assign(switchStart, s-switchStart);
-
-				if (token == L"b") {
-					VDStringW path2;
-
-					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
+					if (!cmdLine.GetNextSwitchArgument(it, token) || !cmdLine.GetNextSwitchArgument(it, path2))
 						throw MyError("Command line error: syntax is /b <src_dir> <dst_dir>");
 
-					JobAddBatchDirectory(token.c_str(), path2.c_str());
+					JobAddBatchDirectory(token, path2);
 				}
-				else if (token == L"c") {
+				else if (!wcscmp(token, L"c")) {
 					JobClearList();
 				}
-				else if (token == L"capture") {
+				else if (!wcscmp(token, L"capture")) {
 					VDUIFrame *pFrame = VDUIFrame::GetFrame(g_hWnd);
 					pFrame->SetNextMode(1);
 				}
-				else if (token == L"capchannel") {
+				else if (!wcscmp(token, L"capchannel")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!ParseArgument(s, token))
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capchannel [antenna:|cable:]<channel>");
 
-					if (!wcsncmp(token.c_str(), L"antenna:", 8)) {
+					if (!wcsncmp(token, L"antenna:", 8)) {
 						g_capProjectUI->SetTunerInputMode(false);
-						token = VDStringW(token.c_str() + 8);
-					} else if (!wcsncmp(token.c_str(), L"cable:", 6)) {
+						token += 8;
+					} else if (!wcsncmp(token, L"cable:", 6)) {
 						g_capProjectUI->SetTunerInputMode(true);
-						token = VDStringW(token.c_str() + 6);
+						token += 6;
 					}
 
-					g_capProjectUI->SetTunerChannel(_wtoi(token.c_str()));
+					g_capProjectUI->SetTunerChannel(_wtoi(token));
 
-					if (ParseArgument(s, token))
-						g_capProjectUI->SetTunerExactFrequency(VDRoundToInt(wcstod(token.c_str(), NULL) * 1000000));
+					if (cmdLine.GetNextSwitchArgument(it, token))
+						g_capProjectUI->SetTunerExactFrequency(VDRoundToInt(wcstod(token, NULL) * 1000000));
 				}
-				else if (token == L"capdevice") {
+				else if (!wcscmp(token, L"capdevice")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!ParseArgument(s, token))
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capdevice <device>");
 
-					if (!g_capProjectUI->SetDriver(token.c_str()))
-						throw MyError("Unable to initialize capture device: %ls\n", token.c_str());
+					if (!g_capProjectUI->SetDriver(token))
+						throw MyError("Unable to initialize capture device: %ls\n", token);
 				}
-				else if (token == L"capfile") {
+				else if (!wcscmp(token, L"capfile")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!ParseArgument(s, token))
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capfile <filename>");
 
-					g_capProjectUI->SetCaptureFile(token.c_str());
+					g_capProjectUI->SetCaptureFile(token);
 				}
-				else if (token == L"capfileinc") {
+				else if (!wcscmp(token, L"capfileinc")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!ParseArgument(s, token))
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capfileinc <filename>");
 
-					g_capProjectUI->SetCaptureFile(token.c_str());
+					g_capProjectUI->SetCaptureFile(token);
 					g_capProject->IncrementFileIDUntilClear();
 				}
-				else if (token == L"capstart") {
+				else if (!wcscmp(token, L"capstart")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (ParseArgument(s, token)) {
+					if (cmdLine.GetNextSwitchArgument(it, token)) {
 						int multiplier = 60;
 
-						if (!token.empty() && token[token.size()-1] == 's') {
-							token.resize(token.size()-1);
+						if (*token && token[wcslen(token)-1] == L's')
 							multiplier = 1;
-						}
 
-						int limit = multiplier*_wtoi(token.c_str());
+						int limit = multiplier*_wtoi(token);
 
 						g_capProjectUI->SetTimeLimit(limit);
 					}
 
 					g_capProjectUI->Capture();
 				}
-				else if (token == L"console") {
-					consoleMode = true;
-					VDAttachLogger(&g_VDConsoleLogger, false, true);
-					// don't count the /console flag as an argument that does work
-					--argsFound;
-				}
-				else if (token == L"cmd") {
-					if (!ParseArgument(s, token))
+				else if (!wcscmp(token, L"cmd")) {
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /cmd <script>");
-					const size_t len = token.size();
+					VDStringW token2(token);
+					const size_t len = token2.size();
 					for(int i=0; i<len; ++i)
-						if (token[i] == '\'')
-							token[i] = '"';
-					token.append(L';');
-					RunScriptMemory((char *)VDTextWToA(token).c_str());
+						if (token2[i] == '\'')
+							token2[i] = '"';
+					token2 += L';';
+					RunScriptMemory((char *)VDTextWToA(token2).c_str());
 				}
-				else if (token == L"fsck") {
+				else if (!wcscmp(token, L"fsck")) {
 					crash();
 				}
-				else if (token == L"F") {
-					if (!ParseArgument(s, token))
+				else if (!wcscmp(token, L"F")) {
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /F <filter>");
 
-					VDAddPluginModule(token.c_str());
+					VDAddPluginModule(token);
 
-					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token).c_str());
+					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token));
 				}
-				else if (token == L"h") {
+				else if (!wcscmp(token, L"h")) {
 					SetUnhandledExceptionFilter(NULL);
 				}
-				else if (token == L"hexedit") {
-					if (ParseArgument(s, token))
-						HexEdit(NULL, VDTextWToA(token).c_str());
+				else if (!wcscmp(token, L"hexedit")) {
+					if (cmdLine.GetNextSwitchArgument(it, token))
+						HexEdit(NULL, VDTextWToA(token).c_str(), false);
 					else
-						HexEdit(NULL, NULL);
+						HexEdit(NULL, NULL, false);
 				}
-				else if (token == L"i") {
-					VDStringW filename;
+				else if (!wcscmp(token, L"hexview")) {
+					if (cmdLine.GetNextSwitchArgument(it, token))
+						HexEdit(NULL, VDTextWToA(token).c_str(), true);
+					else
+						HexEdit(NULL, NULL, true);
+				}
+				else if (!wcscmp(token, L"i")) {
+					const wchar_t *filename;
 
-					if (!ParseArgument(s, filename))
+					if (!cmdLine.GetNextSwitchArgument(it, filename))
 						throw MyError("Command line error: syntax is /i <script> [<args>...]");
 
 					g_VDStartupArguments.clear();
-					while(ParseArgument(s, token))
+					while(cmdLine.GetNextSwitchArgument(it, token))
 						g_VDStartupArguments.push_back(VDTextWToA(token));
 
-					RunScript(filename.c_str());
+					RunScript(filename);
 				}
-				else if (token == L"p") {
-					VDStringW path2;
+				else if (!wcscmp(token, L"lockd3d")) {
+					LoadLibraryA("d3d9");
+				}
+				else if (!wcscmp(token, L"noStupidAntiDebugChecks")) {
+					// Note that this actually screws our ability to call IsDebuggerPresent() as well,
+					// not that we care.
 
-					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
+					HMODULE hmodKernel32 = GetModuleHandleA("kernel32");
+					FARPROC fpIDP = GetProcAddress(hmodKernel32, "IsDebuggerPresent");
+
+					DWORD oldProtect;
+					if (VirtualProtect(fpIDP, 3, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+						static const uint8 patch[]={
+							0x33, 0xC0,				// XOR EAX, EAX
+							0xC3,					// RET
+						};
+						memcpy(fpIDP, patch, 3);
+						VirtualProtect(fpIDP, 3, oldProtect, &oldProtect);
+					}					
+				}
+				else if (!wcscmp(token, L"p")) {
+					const wchar_t *path2;
+
+					if (!cmdLine.GetNextSwitchArgument(it, token) || !cmdLine.GetNextSwitchArgument(it, path2))
 						throw MyError("Command line error: syntax is /p <src_file> <dst_file>");
 
-					JobAddBatchFile(token.c_str(), path2.c_str());
+					JobAddBatchFile(token, path2);
 				}
-				else if (token == L"queryVersion") {
+				else if (!wcscmp(token, L"queryVersion")) {
 					rc = version_num;
 					break;
 				}
-				else if (token == L"r") {
+				else if (!wcscmp(token, L"r")) {
 					JobUnlockDubber();
 					JobRunList();
 					JobLockDubber();
 				}
-				else if (token == L"s") {
-					if (!ParseArgument(s, token))
+				else if (!wcscmp(token, L"s")) {
+					if (!cmdLine.GetNextSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /s <script>");
 
-					RunScript(token.c_str());
+					RunScript(token);
 				}
-				else if (token == L"vtprofile") {
+				else if (!wcscmp(token, L"safecpu")) {
+				}
+				else if (!wcscmp(token, L"vtprofile")) {
 					g_bEnableVTuneProfiling = true;
 				}
-				else if (token == L"w") {
+				else if (!wcscmp(token, L"w")) {
 					g_fWine = true;
 				}
-				else if (token == L"x") {
+				else if (!wcscmp(token, L"x")) {
 					fExitOnDone = true;
 
 					// don't count the /x flag as an argument that does work
 					--argsFound;
 				} else
-					throw MyError("Command line error: unknown switch /%ls", token.c_str());
-
-				// Toss remaining garbage.
-				while(*s && *s != L' ' && *s != '/' && *s != '-')
-					++s;
-
-			} else {
-				if (ParseArgument(s, token)) {
-					if (g_capProjectUI)
-						g_capProjectUI->SetCaptureFile(token.c_str());
-					else
-						g_project->Open(token.c_str());
-				} else
-					++s;
+					throw MyError("Command line error: unknown switch %ls", token);
 			}
 		}
 
-		if (!argsFound && consoleMode)
+		if (!argsFound && g_consoleMode)
 			throw MyError(
 				"This application allows usage of VirtualDub from the command line. To use\n"
 				"the program interactively, launch "VD_EXEFILE_NAMEA" directly.\n"
@@ -987,16 +915,16 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				"Usage: "VD_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
 				"       "VD_CLIEXE_NAMEA" /? for help\n");
 
-		if (!consoleMode)
+		if (!g_consoleMode)
 			disp.Post((VDGUIHandle)g_hWnd);
 	} catch(const MyUserAbortError&) {
-		if (consoleMode) {
+		if (g_consoleMode) {
 			VDLog(kVDLogInfo, VDStringW(L"Operation was aborted by user."));
 
 			rc = 1;
 		}
 	} catch(const MyError& e) {
-		if (consoleMode) {
+		if (g_consoleMode) {
 			const char *err = e.gets();
 
 			if (err)

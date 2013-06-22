@@ -338,7 +338,6 @@ bool AudioStream::Skip(sint64 samples) {
 }
 
 void AudioStream::SetLimit(sint64 limit) {
-	_RPT1(0,"AudioStream: limit set to %I64d\n", limit);
 	stream_limit = limit;
 }
 
@@ -445,6 +444,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 		stream_len = (sint64)VDUMulDiv64x32(stream_len, GetFormat()->nSamplesPerSec * aSrc->getWaveFormat()->nBlockAlign, aSrc->getWaveFormat()->nAvgBytesPerSec);
 	}
 
+	mBasePos = first_samp;
 	cur_samp = first_samp;
 	end_samp = first_samp + max_samples;
 
@@ -669,23 +669,7 @@ bool AudioStreamSource::Skip(sint64 samples) {
 			return true;
 		}
 
-		// Flush input and output buffers.
-		mCodec.Restart();
-
-		// Trigger a reseek.
-		sint64 new_pos = ((samples_read + samples) * (__int64)pwfex->nAvgBytesPerSec) / ((__int64)pwfex->nBlockAlign*pwfex->nSamplesPerSec);
-
-		if (new_pos > cur_samp)
-			cur_samp = new_pos;
-
-		// Skip fractional samples.
-		sint64 samp_start = (new_pos * (__int64)pwfex->nSamplesPerSec*pwfex->nBlockAlign) / pwfex->nAvgBytesPerSec;
-
-		mPreskip = ((samples_read + samples) - samp_start)*GetFormat()->nBlockAlign;
-		VDASSERT(mPreskip >= 0);
-
-		samples_read = samp_start;
-
+		Seek(samples_read + samples);
 		return true;
 
 	} else {
@@ -711,6 +695,7 @@ void AudioStreamSource::Seek(VDPosition pos) {
 
 	fZeroRead = false;
 	mPreskip = 0;
+	samples_read = pos;
 
 	if (mCodec.IsInitialized()) {
 		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
@@ -1689,8 +1674,6 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 
 		nError = total*nDivisor - (nTotalFramesAccumulated * nMultiplier);
 
-		VDDEBUG("nError = %I64d\n", nError);
-
 		// Add a block.
 
 		if (pVBRAudio)
@@ -1763,8 +1746,6 @@ void VDTranslateVideoSubsetToAudioSubset(FrameSubset& dst, const vdfastvector<Au
 		// Audiolen = (videolen * usPerFrame * nBytesPerSec) / (1000000*nBlockAlign);
 
 		nError = total*nDivisor - (nTotalFramesAccumulated * nMultiplier);
-
-		VDDEBUG("nError = %I64d\n", nError);
 
 		// Add a block.
 
@@ -1839,15 +1820,16 @@ long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
 		}
 
 		for(;;) {
-			if (mSrcPos == node.start + mOffset)
+			sint64 targetPos = node.start + mOffset;
+			if (mSrcPos == targetPos)
 				break;
 
-			sint64 offset = node.start - mSrcPos;
+			sint64 offset = targetPos - mSrcPos;
 			long t;
 
 			if (offset < 0 || forceSeek) {
-				mpCurrentSource->Seek(node.start);
-				mSrcPos = node.start + mOffset;
+				mpCurrentSource->Seek(targetPos);
+				mSrcPos = targetPos;
 				break;
 			}
 

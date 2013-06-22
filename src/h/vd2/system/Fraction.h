@@ -79,6 +79,8 @@ public:
 
 	VDFraction reduce() const { return reduce(hi, lo); }
 
+	bool Parse(const char *s);
+
 	static inline VDFraction reduce64(sint64 hi, sint64 lo) { return reduce(hi, lo); }
 };
 

@@ -507,6 +507,14 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<File
+				RelativePath=".\source\TestString.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\TestVector.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Header Files"

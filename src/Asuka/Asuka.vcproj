@@ -51,7 +51,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="NDEBUG;WIN32;_CONSOLE;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -229,7 +229,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="_DEBUG;WIN32;_CONSOLE;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;NOMINMAX"
 				StringPooling="true"
 				MinimalRebuild="true"
@@ -254,7 +254,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="system.lib dxguid.lib"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				AdditionalLibraryDirectories="$(VDLibPath)"
 				GenerateManifest="false"
@@ -344,7 +344,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="system.lib dxguid.lib"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				AdditionalLibraryDirectories="$(VDLibPath)"
 				GenerateDebugInformation="true"
@@ -387,7 +387,27 @@
 			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 			>
 			<File
+				RelativePath=".\res\Asuka.rc"
+				>
+			</File>
+			<File
+				RelativePath=".\source\fontextract.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\fxc.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\glc.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\glc_atifs.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\glc_nvrc.cpp"
 				>
 			</File>
 			<File
@@ -639,6 +659,14 @@
 			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl"
 			>
+			<File
+				RelativePath=".\h\glc.h"
+				>
+			</File>
+			<File
+				RelativePath=".\res\resource.h"
+				>
+			</File>
 			<File
 				RelativePath="h\symbols.h"
 				>

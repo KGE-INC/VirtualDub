@@ -3,6 +3,8 @@
 #include <vd2/system/error.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Riza/display.h>
+#include <vd2/Riza/videocodec.h>
+#include <vd2/Riza/bitmap.h>
 #include "crash.h"
 #include "Dub.h"
 #include "DubIO.h"
@@ -41,6 +43,84 @@ namespace {
 	};
 };
 
+#define BUFFERID_INPUT (1)
+#define BUFFERID_OUTPUT (2)
+
+namespace {
+	bool AsyncUpdateCallback(int pass, void *pDisplayAsVoid, void *pInterlaced, bool aborting) {
+		if (aborting)
+			return false;
+
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+		int nFieldMode = *(int *)pInterlaced;
+
+		uint32 baseFlags = IVDVideoDisplay::kVisibleOnly;
+
+		if (g_prefs.fDisplay & Preferences::kDisplayEnableVSync)
+			baseFlags |= IVDVideoDisplay::kVSync;
+
+		if (nFieldMode) {
+			if (nFieldMode == 2) {
+				if (pass)
+					pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | baseFlags);
+				else
+					pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kFirstField | baseFlags);
+			} else {
+				if (pass)
+					pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | baseFlags);
+				else
+					pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kFirstField | baseFlags);
+			}
+
+			return !pass;
+		} else {
+			pVideoDisplay->Update(IVDVideoDisplay::kAllFields | baseFlags);
+			return false;
+		}
+	}
+
+	bool AsyncDecompressorFailedCallback(int pass, void *pDisplayAsVoid, void *, bool aborting) {
+		if (aborting)
+			return false;
+
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+
+		pVideoDisplay->SetSourceMessage(L"Unable to display compressed video: no decompressor is available to decode the compressed video.");
+		return false;
+	}
+
+	bool AsyncDecompressorSuccessfulCallback(int pass, void *pDisplayAsVoid, void *, bool aborting) {
+		if (aborting)
+			return false;
+
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+
+		pVideoDisplay->SetSourceMessage(L"Compressed video preview is enabled.\n\nPreview will resume starting with the next key frame.");
+		return false;
+	}
+
+	bool AsyncDecompressorErrorCallback(int pass, void *pDisplayAsVoid, void *, bool aborting) {
+		if (aborting)
+			return false;
+
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+
+		pVideoDisplay->SetSourceMessage(L"Unable to display compressed video: An error has occurred during decompression.");
+		return false;
+	}
+
+	bool AsyncDecompressorUpdateCallback(int pass, void *pDisplayAsVoid, void *pPixmapAsVoid, bool aborting) {
+		if (aborting)
+			return false;
+
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+		VDPixmap *pPixmap = (VDPixmap *)pPixmapAsVoid;
+
+		pVideoDisplay->SetSource(true, *pPixmap);
+		return false;
+	}
+}
+
 VDDubProcessThread::VDDubProcessThread()
 	: VDThread("Processing")
 	, mpAVIOut(NULL)
@@ -60,7 +140,9 @@ VDDubProcessThread::VDDubProcessThread()
 	, mRefreshFlag(1)
 	, mProcessingProfileChannel("Processor")
 	, mpVideoFilterOutputBuffer(NULL)
+	, mPendingNullVideoFrames(0)
 	, mpInvTelecine(NULL)
+	, mbVideoDecompressorEnabled(false)
 	, mpAbort(NULL)
 	, mpStatusHandler(NULL)
 {
@@ -200,8 +282,6 @@ void VDDubProcessThread::ThreadRun() {
 	lDropFrames = 0;
 	mpVInfo->processed = 0;
 
-	VDDEBUG("Dub/Processor: start\n");
-
 	std::vector<char>	audioBuffer;
 	const bool fPreview = mpOutputSystem->IsRealTime();
 
@@ -264,19 +344,46 @@ void VDDubProcessThread::ThreadRun() {
 
 							{
 								VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for video frame from I/O thread");
+
 								pFrameInfo = mpVideoPipe->getReadBuffer();
+							}
+
+							// Check if we have frames buffered in the codec due to B-frame encoding. If we do,
+							// we can't immediately switch from compression to direct copy for smart rendering
+							// purposes -- we have to flush the B-frames first.
+							//
+							// Note that there is a trick here: we DON'T wait until the whole frame queue is
+							// flushed here. The reason is that the codec's frame delay has caused us to read
+							// farther ahead in the frame queue than the interleaver is tracking. We need to
+							// only write out one frame whenever requested to maintain interleaving; this
+							// effectively stalls the input pipe until the queue is drained. It looks something
+							// like this (assume the codec has a delay of 2):
+							//
+							//	Interleaver request		0			1	2	3	4	5	6	7	8	9	10	11	12	13	14	15
+							//	Input pipe				0F	1F	2F	3F	4F	5F	6F	(*)	(*)	7D	8D	9D	10D	11D	12D	13F	14F	15F	-	-
+							//	Codec input				0	1	2	3	4	5	6									13	14	15	-	-
+							//	Codec output			-	-	0	1	2	3	4	5	6							-	-	13	14	15
+							//	Written to disk			-	-	0	1	2	3	4	5	6	7D	8D	9D	10D	11D	12D	-	-	13	14	15
+							//
+							// The key is at timeline frame 7, which gets hit at interleaver frame 5 due to
+							// the delay. This is the point at which we switch from full frames to direct mode.
+							// The asterisks (*) in the chart indicate where we stalling the input pipe and
+							// pushing in null frames to clear out the delay.
+							//
+							if (pFrameInfo && pFrameInfo->mFlags & kBufferFlagDirectWrite) {
+								bVideoNonDelayedFrameReceived = false;
+								if (nVideoFramesDelayed > 0 && pFrameInfo)
+									pFrameInfo = NULL;
 							}
 
 							if (!pFrameInfo) {
 								if (nVideoFramesDelayed > 0) {
-									--nVideoFramesDelayed;
-
 									dummyFrameInfo.mpData			= "";
 									dummyFrameInfo.mLength			= 0;
 									dummyFrameInfo.mRawFrame		= -1;
 									dummyFrameInfo.mDisplayFrame	= -1;
 									dummyFrameInfo.mTimelineFrame	= -1;
-									dummyFrameInfo.mFlags			= 0;
+									dummyFrameInfo.mFlags			= kBufferFlagDelta;
 									dummyFrameInfo.mDroptype		= AVIPipe::kDroppable;
 									dummyFrameInfo.mSrcIndex		= lastVideoSourceIndex;
 									pFrameInfo = &dummyFrameInfo;
@@ -305,6 +412,17 @@ void VDDubProcessThread::ThreadRun() {
 								pFrameInfo->mDisplayFrame,
 								pFrameInfo->mTimelineFrame,
 								pFrameInfo->mSrcIndex);
+
+							// If we pushed an empty frame that was pending, we didn't actually process a real frame in
+							// the queue and should exit now.
+							if (result == kVideoWritePushedPendingEmptyFrame)
+								break;
+
+							// If we pushed a frame to empty the video codec's B-frame queue, decrement the count here.
+							// Note that we must do this AFTER we check if an empty frame has been pushed, because in
+							// that case no frame actually got pushed through the video codec.
+							if (bAttemptingToFlushCodecBuffer)
+								--nVideoFramesDelayed;
 
 							lastVideoSourceIndex = pFrameInfo->mSrcIndex;
 
@@ -342,7 +460,7 @@ void VDDubProcessThread::ThreadRun() {
 
 							if (pFrameInfo != &dummyFrameInfo)
 								mpVideoPipe->releaseBuffer();
-
+							
 							if (result == kVideoWriteOK || result == kVideoWriteDiscarded)
 								break;
 						}
@@ -427,6 +545,52 @@ void VDDubProcessThread::ThreadRun() {
 
 			if (bVideoEnded && bAudioEnded)
 				break;
+
+			// check for video decompressor switch
+			if (mpVideoCompressor && mbVideoDecompressorEnabled != opt->video.fShowDecompressedFrame) {
+				mbVideoDecompressorEnabled = opt->video.fShowDecompressedFrame;
+
+				if (mbVideoDecompressorEnabled) {
+					mbVideoDecompressorErrored = false;
+					mbVideoDecompressorPending = true;
+
+					const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)mpVideoCompressor->GetOutputFormat();
+					mpVideoDecompressor = VDFindVideoDecompressor(0, pbih);
+					if (!mpVideoDecompressor->SetTargetFormat(0))
+						mpVideoDecompressor = NULL;
+					else {
+						try {
+							mpVideoDecompressor->Start();
+
+							mpBlitter->lock(BUFFERID_OUTPUT);
+							mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorSuccessfulCallback, mpOutputDisplay, NULL);					
+
+							int format = mpVideoDecompressor->GetTargetFormat();
+							int variant = mpVideoDecompressor->GetTargetFormatVariant();
+
+							VDPixmapLayout layout;
+							VDMakeBitmapCompatiblePixmapLayout(layout, abs(pbih->biWidth), abs(pbih->biHeight), format, variant);
+
+							mVideoDecompBuffer.init(layout);
+						} catch(const MyError&) {
+							mpVideoDecompressor = NULL;
+						}
+					}
+
+					if (!mpVideoDecompressor) {
+						mpBlitter->lock(BUFFERID_OUTPUT);
+						mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorFailedCallback, mpOutputDisplay, NULL);
+					}
+				} else {
+					if (mpVideoDecompressor) {
+						mpBlitter->lock(BUFFERID_OUTPUT);
+						mpBlitter->unlock(BUFFERID_OUTPUT);
+						mpVideoDecompressor->Stop();
+						mpVideoDecompressor = NULL;
+						mpBlitter->postAPC(0, AsyncReinitDisplayCallback, this, NULL);
+					}
+				}
+			}
 		}
 abort_requested:
 		;
@@ -464,7 +628,6 @@ abort_requested:
 			IVDMediaOutput *temp = mpAVIOut;
 			mpAVIOut = NULL;
 			mpOutputSystem->CloseSegment(temp, true);
-			VDDEBUG("Dub/Processor: finalized.\n");
 		}
 	} catch(MyError& e) {
 		if (!mbError) {
@@ -473,39 +636,7 @@ abort_requested:
 		}
 	}
 
-	VDDEBUG("Dub/Processor: end\n");
-
 	*mpAbort = true;
-}
-
-#define BUFFERID_INPUT (1)
-#define BUFFERID_OUTPUT (2)
-
-namespace {
-	bool AsyncUpdateCallback(int pass, void *pDisplayAsVoid, void *pInterlaced, bool aborting) {
-		if (aborting)
-			return false;
-
-		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
-		int nFieldMode = *(int *)pInterlaced;
-
-		uint32 baseFlags = IVDVideoDisplay::kVisibleOnly;
-
-		if (g_prefs.fDisplay & Preferences::kDisplayEnableVSync)
-			baseFlags |= IVDVideoDisplay::kVSync;
-
-		if (nFieldMode) {
-			if ((pass^nFieldMode)&1)
-				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | baseFlags);
-			else
-				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | baseFlags);
-
-			return !pass;
-		} else {
-			pVideoDisplay->Update(IVDVideoDisplay::kAllFields | baseFlags);
-			return false;
-		}
-	}
 }
 
 VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
@@ -592,11 +723,60 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		}
 	}
 
-//	VDDEBUG("Handling frame %d -> %d (%6d bytes) as %s\n", (int)sample_num, (int)display_num, (int)lastSize, (exdata & kBufferFlagDirectWrite) ? "DIRECT" : (exdata & kBufferFlagPreload) ? "PRELOAD" : "FULL");
+	// We have to handle the case when the "preserve empty frames" option is enabled
+	// and a B-frame encoding delay is present. The problem is that the empty frames
+	// are interspersed with the *input* frames, but they need to go out with the
+	// *output* frames. What we do is collapse runs of the preserved empty frames
+	// and track them in parallel with the video codec's queue as
+	// mVideoNullFrameDelayQueue.
+	//
+	// The following sequence diagram shows how this works:
+	//
+	//	Input buffer	0	1n	2n	3	4n	5	6	7n	8n	9
+	//	Codec input		0			3		5	6			9		-	-
+	//	Codec output	-			-			0			3		5	6			9
+	//	Output buffer							0	1n	2n	3	4n	5	6	7n	8n	9
+	//
+	// The catch is that this ALSO has an interaction with the smart rendering
+	// option in that the pending frames must also be flushed whenever a switch to
+	// direct mode occurs.
 
-	// With Direct mode, write video data directly to output.
-	if ((exdata & kBufferFlagDirectWrite) || (opt->video.mbPreserveEmptyFrames && !lastSize && (exdata & kBufferFlagSameAsLast))) {
-		mpVideoOut->write((exdata & kBufferFlagDelta) ? 0 : AVIIF_KEYFRAME, (char *)buffer, lastSize, 1);
+	bool preservingEmptyFrame = opt->video.mbPreserveEmptyFrames && !lastSize && (exdata & kBufferFlagSameAsLast);
+
+	if (preservingEmptyFrame && !mVideoNullFrameDelayQueue.empty()) {
+		// We have an empty frame that we want to preserve, but can't write it out yet
+		// because the adjacent frames are still buffered in the codec, so we must
+		// buffer this too.
+
+		if (mpStatusHandler)
+			mpStatusHandler->NotifyNewFrame(lastSize | (exdata&1 ? 0x80000000 : 0));
+
+		if (mpVideoCompressor)
+			mpVideoCompressor->SkipFrame();
+
+		++mVideoNullFrameDelayQueue.back();
+		return kVideoWriteBufferedEmptyFrame;
+	}
+
+	// We're about to process and write out some non-trivial frame, so if we have pending
+	// empty frames, write one of those out instead.
+	if (mPendingNullVideoFrames) {
+		--mPendingNullVideoFrames;
+
+		WritePendingEmptyVideoFrame();
+		return kVideoWritePushedPendingEmptyFrame;
+	}
+
+	// If:
+	//
+	//	- we're in direct mode, or
+	//	- we've got an empty frame and "Preserve Empty Frames" is enabled
+	//
+	// ...write it directly to the output and skip the rest.
+
+	if ((exdata & kBufferFlagDirectWrite) || preservingEmptyFrame) {
+		uint32 flags = (exdata & kBufferFlagDelta) || !(exdata & kBufferFlagDirectWrite) ? 0 : AVIIF_KEYFRAME;
+		mpVideoOut->write(flags, (char *)buffer, lastSize, 1);
 
 		mpVInfo->total_size += lastSize + 24;
 		mpVInfo->lastProcessedTimestamp = VDGetCurrentTick();
@@ -604,10 +784,14 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		if (mpStatusHandler)
 			mpStatusHandler->NotifyNewFrame(lastSize | (exdata&1 ? 0x80000000 : 0));
 
-		if (exdata & kBufferFlagDirectWrite) {
-			if (mpVideoCompressor)
+		if (mpVideoCompressor) {
+			mpVideoCompressor->SkipFrame();
+
+			if (exdata & kBufferFlagDirectWrite)
 				mpVideoCompressor->Restart();
 		}
+
+		mVideoNullFrameDelayQueue.clear();
 
 		return kVideoWriteOK;
 	}
@@ -655,7 +839,6 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		mpBlitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 		++mfsi.lCurrentFrame;
 
-//		VDDEBUG2("Dubber: skipped frame\n");
 		--lDropFrames;
 
 		if (mpStatusHandler)
@@ -740,12 +923,42 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 		// Check if codec buffered a frame.
 		if (!gotFrame) {
+			if (opt->video.mbPreserveEmptyFrames)
+				mVideoNullFrameDelayQueue.push_back(0);
+
 			return kVideoWriteDelayed;
+		}
+
+		if (mpVideoDecompressor && !mbVideoDecompressorErrored) {
+			mProcessingProfileChannel.Begin(0x80c080, "V-Decompress");
+
+			if (mbVideoDecompressorPending && isKey) {
+				mbVideoDecompressorPending = false;
+			}
+
+			if (!mbVideoDecompressorPending && dwBytes) {
+				try {
+					mpVideoDecompressor->DecompressFrame(mVideoDecompBuffer.base(), mVideoCompressionBuffer.data(), dwBytes, isKey, false);
+				} catch(const MyError&) {
+					mpBlitter->postAPC(0, AsyncDecompressorErrorCallback, mpOutputDisplay, NULL);
+					mbVideoDecompressorErrored = true;
+				}
+			}
+
+			mProcessingProfileChannel.End();
 		}
 
 		VDDubAutoThreadLocation loc(mpCurrentAction, "writing compressed video frame to disk");
 		mpVideoOut->write(isKey ? AVIIF_KEYFRAME : 0, mVideoCompressionBuffer.data(), dwBytes, 1);
 
+		if (opt->video.mbPreserveEmptyFrames) {
+			if (!mVideoNullFrameDelayQueue.empty()) {
+				VDASSERT(!mPendingNullVideoFrames);
+				mPendingNullVideoFrames = mVideoNullFrameDelayQueue.front();
+				mVideoNullFrameDelayQueue.pop_front();
+				mVideoNullFrameDelayQueue.push_back(0);
+			}
+		}
 	} else {
 
 		dwBytes = ((const BITMAPINFOHEADER *)mpVideoOut->getFormat())->biSizeImage;
@@ -764,20 +977,26 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 	VDCHECKPOINT;
 
-	if (fPreview || mRefreshFlag.xchg(0)) {
-		if (mpInputDisplay && opt->video.fShowInputFrame) {
-			mpBlitter->postAPC(BUFFERID_INPUT, AsyncUpdateCallback, mpInputDisplay, (void *)&opt->video.nPreviewFieldMode);
-		} else
-			mpBlitter->unlock(BUFFERID_INPUT);
+	bool renderFrame = fPreview || mRefreshFlag.xchg(0);
+	bool renderInputFrame = renderFrame && mpInputDisplay && opt->video.fShowInputFrame;
+	bool renderOutputFrame = (renderFrame || mbVideoDecompressorEnabled) && mpOutputDisplay && opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && dwBytes;
 
-		if (mpOutputDisplay && opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && dwBytes) {
-			mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncUpdateCallback, mpOutputDisplay, (void *)&opt->video.nPreviewFieldMode);
-		} else
-			mpBlitter->unlock(BUFFERID_OUTPUT);
-	} else {
-		mpBlitter->unlock(BUFFERID_OUTPUT);
+	if (renderInputFrame) {
+		mpBlitter->postAPC(BUFFERID_INPUT, AsyncUpdateCallback, mpInputDisplay, (void *)&opt->video.nPreviewFieldMode);
+	} else
 		mpBlitter->unlock(BUFFERID_INPUT);
-	}
+
+	if (renderOutputFrame) {
+		if (mbVideoDecompressorEnabled) {
+			if (mpVideoDecompressor && !mbVideoDecompressorErrored && !mbVideoDecompressorPending)
+				mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorUpdateCallback, mpOutputDisplay, &mVideoDecompBuffer);
+			else
+				mpBlitter->unlock(BUFFERID_OUTPUT);
+		} else {
+			mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncUpdateCallback, mpOutputDisplay, (void *)&opt->video.nPreviewFieldMode);
+		}
+	} else
+		mpBlitter->unlock(BUFFERID_OUTPUT);
 
 	if (opt->perf.fDropFrames && fPreview) {
 		long lFrameDelta;
@@ -791,7 +1010,6 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		
 		if (lFrameDelta > 0) {
 			lDropFrames = lFrameDelta;
-//			VDDEBUG2("Dubber: Skipping %d frames\n", lDropFrames);
 		}
 	}
 
@@ -806,6 +1024,14 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 	VDCHECKPOINT;
 	return kVideoWriteOK;
+}
+
+void VDDubProcessThread::WritePendingEmptyVideoFrame() {
+	mpVideoOut->write(0, NULL, 0, 1);
+
+	mpVInfo->total_size += 24;
+	mpVInfo->lastProcessedTimestamp = VDGetCurrentTick();
+	++mpVInfo->processed;
 }
 
 void VDDubProcessThread::WriteAudio(void *buffer, long lActualBytes, long lActualSamples) {
@@ -875,4 +1101,13 @@ void VDDubProcessThread::UpdateAudioStreamRate() {
 	AVIStreamHeader_fixed hdr(mpAudioOut->getStreamInfo());
 	hdr.dwRate = wfex->nAvgBytesPerSec * hdr.dwScale;
 	mpAudioOut->updateStreamInfo(hdr);
+}
+
+bool VDDubProcessThread::AsyncReinitDisplayCallback(int pass, void *pThisAsVoid, void *, bool aborting) {
+	if (aborting)
+		return false;
+
+	VDDubProcessThread *pThis = (VDDubProcessThread *)pThisAsVoid;
+	pThis->mpOutputDisplay->SetSource(false, pThis->mVideoFilterOutputPixmap, NULL, 0, true, pThis->opt->video.nPreviewFieldMode>0);
+	return false;
 }

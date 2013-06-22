@@ -290,7 +290,7 @@ namespace {
 					for(k=base; k<0x100; k+=ki)
 						dst[k] = j;
 
-					base = revword8(revword8(base)+(0x100 >> i));
+					base = revword8((revword8(base)+(0x100 >> i)) & 0xff);
 				}
 			}
 		}

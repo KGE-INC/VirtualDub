@@ -21,86 +21,8 @@
 
 #include <windows.h>
 #include <d3d9.h>
-#include <vector>
 
-#include <vd2/system/vdstl.h>
-
-namespace nsVDVideoDisplayDriverDX9 {
-	enum {
-		kVertexBufferSize	= 4096,						// in vertices
-		kIndexBufferSize	= kVertexBufferSize*3/2		// in indices
-	};
-
-	struct Vertex {
-		float x, y, z;
-		uint32 diffuse;
-		float u0, v0, u1, v1, u2, v2, u3, v3, u4, v4;
-
-		Vertex(float x_, float y_, float z_, uint32 c_, uint32 d_, float u0_, float v0_, float u1_=0.f, float v1_=0.f) : x(x_), y(y_), z(z_), diffuse(c_), u0(u0_), v0(v0_), u1(u1_), v1(v1_)
-			, u2(0), v2(0), u3(0), v3(0), u4(0), v4(0) {}
-
-		inline void SetFF1(float x_, float y_, float u0_, float v0_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = v1 = u2 = v2 = u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetFF2(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_, float v1_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = c_;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = v2 = u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetFF3(float x_, float y_, float u0_, float v0_, float u1_, float v1_, float u2_, float v2_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = u2_;
-			v2 = v2_;
-			u3 = v3 = u4 = v4 = 0.f;
-		}
-
-		inline void SetPS1_4(float x_, float y_, float u0_, float v0_, float u1_, float v1_, float u2_, float v2_,
-								float u3_, float v3_, float u4_, float v4_) {
-			x = x_;
-			y = y_;
-			z = 0.f;
-			diffuse = 0xffffffff;
-			u0 = u0_;
-			v0 = v0_;
-			u1 = u1_;
-			v1 = v1_;
-			u2 = u2_;
-			v2 = v2_;
-			u3 = u3_;
-			v3 = v3_;
-			u4 = u4_;
-			v4 = v4_;
-		}
-	};
-};
-
-class VDVideoDisplayDX9Client : public vdlist<VDVideoDisplayDX9Client>::node {
-public:
-	virtual void OnPreDeviceReset() = 0;
-};
-
-class VDVideoDisplayDX9Manager {
+class IVDVideoDisplayDX9Manager : public IVDRefCount {
 public:
 	enum CubicMode {
 		kCubicNotInitialized,
@@ -111,118 +33,19 @@ public:
 		kCubicUsePS1_4Path,		// Use programmable, 5 stage path (RADEON 85xx+/GeForceFX+ - 2 passes)
 		kMaxCubicMode = kCubicUsePS1_4Path
 	};
-
-	struct SurfaceInfo {
-		int		mWidth;
-		int		mHeight;
-		float	mInvWidth;
-		float	mInvHeight;
-	};
-
-	VDVideoDisplayDX9Manager();
-	~VDVideoDisplayDX9Manager();
-
-	bool Attach(VDVideoDisplayDX9Client *pClient);
-	void Detach(VDVideoDisplayDX9Client *pClient);
-
-	bool InitTempRTT(int index);
-	void ShutdownTempRTT(int index);
-
-	CubicMode InitBicubic();
-	void ShutdownBicubic();
-
-	const D3DCAPS9& GetCaps() const { return mDevCaps; }
-	IDirect3D9 *GetD3D() const { return mpD3D; }
-	IDirect3DDevice9 *GetDevice() const { return mpD3DDevice; }
-	IDirect3DIndexBuffer9 *GetIndexBuffer() const { return mpD3DIB; }
-	IDirect3DVertexBuffer9 *GetVertexBuffer() const { return mpD3DVB; }
-	const D3DPRESENT_PARAMETERS& GetPresentParms() const { return mPresentParms; }
-	UINT GetAdapter() const { return mAdapter; }
-	D3DDEVTYPE GetDeviceType() const { return mDevType; }
-
-	IDirect3DSurface9	*GetRenderTarget() const { return mpD3DRTMain; }
-	IDirect3DTexture9	*GetTempRTT(int index) const { return mpD3DRTTs[index]; }
-	int GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
-	int GetMainRTHeight() const { return mPresentParms.BackBufferHeight; }
-	const SurfaceInfo& GetTempRTTInfo(int index) const { return mRTTSurfaceInfo[index]; }
-	IDirect3DTexture9	*GetFilterTexture() const { return mpD3DFilterTexture; }
-
-	bool		Reset();
-	bool		CheckDevice();
-
-	void		AdjustTextureSize(int& w, int& h);
-	void		DetermineBestTextureFormat(int srcFormat, int& dstFormat, D3DFORMAT& dstD3DFormat);
-
-	void		ClearRenderTarget(IDirect3DTexture9 *pTexture);
-
-	void		ResetBuffers();
-	nsVDVideoDisplayDriverDX9::Vertex *	LockVertices(unsigned vertices);
-	void		UnlockVertices();
-	uint16 *	LockIndices(unsigned indices);
-	void		UnlockIndices();
-	bool		BeginScene();
-	bool		EndScene();
-	HRESULT		DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount);
-	HRESULT		DrawElements(D3DPRIMITIVETYPE type, UINT vertStart, UINT vertCount, UINT idxStart, UINT primCount);
-	HRESULT		Present(const RECT *srcRect, HWND hwndDest, bool vsync);
-
-	bool Is3DCardLame();
-	bool ValidateBicubicShader(CubicMode mode);
-
-	IDirect3DVertexShader9 *GetEffectVertexShader(int index) const;
-	IDirect3DPixelShader9 *GetEffectPixelShader(int index) const;
-
-	void MakeCubic4Texture(uint32 *texture, ptrdiff_t pitch, double A, CubicMode mode);
-protected:
-	bool Init();
-	bool InitVRAMResources();
-	void ShutdownVRAMResources();
-	void Shutdown();
-
-	bool InitEffect();
-	void ShutdownEffect();
-
-	HMODULE				mhmodDX9;
-	IDirect3D9			*mpD3D;
-	IDirect3DDevice9	*mpD3DDevice;
-	IDirect3DTexture9	*mpD3DFilterTexture;
-	IDirect3DSurface9	*mpD3DRTMain;
-	IDirect3DTexture9	*mpD3DRTTs[2];
-	int					mRTTRefCounts[2];
-	SurfaceInfo			mRTTSurfaceInfo[2];
-	UINT				mAdapter;
-	D3DDEVTYPE			mDevType;
-
-	static ATOM			sDevWndClass;
-	HWND				mhwndDevice;
-
-	bool				mbDeviceValid;
-	bool				mbInScene;
-
-	IDirect3DVertexBuffer9	*mpD3DVB;
-	IDirect3DIndexBuffer9	*mpD3DIB;
-	uint32					mVertexBufferPt;
-	uint32					mVertexBufferLockSize;
-	uint32					mIndexBufferPt;
-	uint32					mIndexBufferLockSize;
-
-	std::vector<IDirect3DVertexShader9 *>	mVertexShaders;
-	std::vector<IDirect3DPixelShader9 *>	mPixelShaders;
-
-	D3DCAPS9				mDevCaps;
-	D3DPRESENT_PARAMETERS	mPresentParms;
-	D3DDISPLAYMODE			mDisplayMode;
-
-	CubicMode			mCubicMode;
-	int					mCubicRefCount;
-	uint8				mCubicTempRTTsAllocated;
-
-	int					mRefCount;
-
-	vdlist<VDVideoDisplayDX9Client>	mClients;
 };
 
-VDVideoDisplayDX9Manager *VDInitDisplayDX9(VDVideoDisplayDX9Client *pClient);
-void VDDeinitDisplayDX9(VDVideoDisplayDX9Manager *p, VDVideoDisplayDX9Client *pClient);
+class IVDVideoUploadContextD3D9 : public IVDRefCount {
+public:
+	virtual IDirect3DTexture9 *GetD3DTexture(int i) = 0;
+
+	virtual bool Init(const VDPixmap& source, bool allowConversion, int buffers = 1) = 0;
+	virtual void Shutdown() = 0;
+
+	virtual bool Update(const VDPixmap& source, int fieldMask) = 0;
+};
+
+bool VDCreateVideoUploadContextD3D9(IVDVideoUploadContextD3D9 **);
+bool VDInitDisplayDX9(IVDVideoDisplayDX9Manager **ppManager);
 
 #endif

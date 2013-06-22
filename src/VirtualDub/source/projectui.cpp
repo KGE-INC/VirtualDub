@@ -58,6 +58,8 @@ namespace {
 		kFileDialog_WAVAudioIn		= 'wavi',
 		kFileDialog_WAVAudioOut		= 'wavo',
 		kFileDialog_RawAudioOut		= 'rwao',
+		kFileDialog_FLMOut			= 'flmo',
+		kFileDialog_GIFOut			= 'gifo',
 		kFileDialog_AVIStripe		= 'stri'
 	};
 
@@ -108,6 +110,8 @@ extern wchar_t g_szInputWAVFile[MAX_PATH];
 
 extern const wchar_t fileFiltersAppend[];
 
+extern void VDCPUTest();
+
 // need to do this directly in Dita....
 static const char g_szRegKeyPersistence[]="Persistence";
 static const char g_szRegKeyAutoAppendByName[]="Auto-append by name";
@@ -119,8 +123,6 @@ extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP() {
 }
 
 extern char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos);
-
-extern void CPUTest();
 
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
@@ -254,6 +256,7 @@ VDProjectUI::VDProjectUI()
 	, mhwndCurveEditor(NULL)
 	, mhwndAudioDisplay(NULL)
 	, mAudioDisplayPosNext(-1)
+	, mbAudioDisplayReadActive(false)
 	, mhMenuNormal(NULL)
 	, mhMenuDub(NULL)
 	, mhMenuDisplay(NULL)
@@ -511,7 +514,7 @@ void VDProjectUI::Detach() {
 }
 
 bool VDProjectUI::Tick() {
-	if (mpAudioDisplay && mAudioDisplayPosNext >= 0) {
+	if (mpAudioDisplay && mbAudioDisplayReadActive) {
 		char buf[4000];
 
 		uint32 actualBytes = 0, actualSamples = 0;
@@ -527,22 +530,72 @@ bool VDProjectUI::Tick() {
 			return false;
 		}
 
-		if (inputAudio->read(mAudioDisplayPosNext, sizeof buf, buf, sizeof buf, &actualBytes, &actualSamples) || !actualSamples) {
-			mAudioDisplayPosNext = -1;
+		uint32 maxlen = sizeof buf;
+		sint64 apos = mAudioDisplayPosNext;
+
+		const FrameSubset& subset = GetTimeline().GetSubset();
+
+		double audioToVideoFactor = (double)inputVideoAVI->getRate() / (double)inputAudio->getRate();
+		double vframef = mAudioDisplayPosNext * audioToVideoFactor;
+		sint64 vframe = VDFloorToInt64(vframef);
+		double vframeoff = vframef - vframe;
+
+		sint64 len = 1;
+		sint64 vframesrc = subset.lookupRange(vframe, len);
+
+		if (vframesrc < 0) {
+			sint64 vend;
+			if (g_dubOpts.audio.fEndAudio || subset.empty() || (vend = subset.back().end()) != inputVideoAVI->getEnd()) {
+				mbAudioDisplayReadActive = false;
+				return false;
+			}
+
+			apos = VDRoundToInt64((double)(vend + vframef - subset.getTotalFrames()) / audioToVideoFactor);
 		} else {
-			mAudioDisplayPosNext += actualSamples;
+			apos = VDRoundToInt64((double)(vframesrc + vframeoff) / audioToVideoFactor);
+			sint64 alimit = VDRoundToInt64((double)(vframesrc + len) / audioToVideoFactor);
 
-			bool needMore;
-			if (wfex->wBitsPerSample == 8)
-				needMore = mpAudioDisplay->ProcessAudio8U((const uint8 *)buf, actualSamples, 1, wfex->nBlockAlign);
-			else
-				needMore = mpAudioDisplay->ProcessAudio16S((const sint16 *)buf, actualSamples, 2, wfex->nBlockAlign);
-
-			if (needMore)
-				return true;
-
-			mAudioDisplayPosNext = -1;
+			maxlen = VDClampToUint32(alimit - apos);
 		}
+
+		apos -= inputAudio->msToSamples(g_dubOpts.audio.offset);
+
+		// avoid Avisynth buffer overflow bug
+		uint32 nBlockAlign = wfex->nBlockAlign;
+		if (nBlockAlign)
+			maxlen = std::min<uint32>(maxlen, sizeof buf / nBlockAlign);
+
+		if (apos < 0) {
+			uint32 count = maxlen;
+
+			if (apos + count > 0)
+				count = -(sint32)apos;
+
+			if (wfex->wBitsPerSample == 16)
+				VDMemset16(buf, 0, wfex->nChannels * count);
+			else
+				VDMemset8(buf, 0x80, wfex->nChannels * count);
+
+			actualSamples = count;
+			actualBytes = wfex->nBlockAlign * count;
+		} else {
+			if (inputAudio->read(apos, maxlen, buf, sizeof buf, &actualBytes, &actualSamples) || !actualSamples) {
+				mbAudioDisplayReadActive = false;
+				return false;
+			}
+		}
+		mAudioDisplayPosNext += actualSamples;
+
+		bool needMore;
+		if (wfex->wBitsPerSample == 8)
+			needMore = mpAudioDisplay->ProcessAudio8U((const uint8 *)buf, actualSamples, 1, wfex->nBlockAlign);
+		else
+			needMore = mpAudioDisplay->ProcessAudio16S((const sint16 *)buf, actualSamples, 2, wfex->nBlockAlign);
+
+		if (needMore)
+			return true;
+
+		mbAudioDisplayReadActive = false;
 	}
 
 	return false;
@@ -661,9 +714,19 @@ void VDProjectUI::SaveFilmstripAsk() {
 	if (!inputVideoAVI)
 		throw MyError("No input video stream to process.");
 
-	const VDStringW filename(VDGetSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, mhwnd, L"Save Filmstrip file", L"Adobe Filmstrip (*.flm)\0*.flm\0", g_prefs.main.fAttachExtension ? L"flm" : NULL));
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_FLMOut, mhwnd, L"Save Filmstrip file", L"Adobe Filmstrip (*.flm)\0*.flm\0", g_prefs.main.fAttachExtension ? L"flm" : NULL));
 	if (!filename.empty()) {
 		SaveFilmstrip(filename.c_str());
+	}
+}
+
+void VDProjectUI::SaveAnimatedGIFAsk() {
+	if (!inputVideoAVI)
+		throw MyError("No input video stream to process.");
+
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_GIFOut, mhwnd, L"Save animated GIF", L"Animated GIF (*.gif)\0*.gif\0", g_prefs.main.fAttachExtension ? L"gif" : NULL));
+	if (!filename.empty()) {
+		SaveAnimatedGIF(filename.c_str());
 	}
 }
 
@@ -690,7 +753,6 @@ void VDProjectUI::LoadConfigurationAsk() {
 }
 
 void VDProjectUI::SetVideoFiltersAsk() {
-	CPUTest();
 	ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
 	RedrawWindow((HWND)mhwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 	UpdateFilterList();
@@ -737,7 +799,6 @@ void VDProjectUI::SetVideoErrorModeAsk() {
 
 void VDProjectUI::SetAudioFiltersAsk() {
 	extern void VDDisplayAudioFilterDialog(VDGUIHandle, VDAudioFilterGraph&, AudioSource *pAS);
-	CPUTest();
 	VDDisplayAudioFilterDialog(mhwnd, g_audioFilterGraph, inputAudio);
 }
 
@@ -882,6 +943,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_FILE_SAVEIMAGESEQ:				SaveImageSequenceAsk();		break;
 		case ID_FILE_SAVESEGMENTEDAVI:			SaveSegmentedAVIAsk();			break;
 		case ID_FILE_SAVEFILMSTRIP:				SaveFilmstripAsk();				break;
+		case ID_FILE_SAVEANIMATEDGIF:			SaveAnimatedGIFAsk();			break;
 		case ID_FILE_SAVERAWAUDIO:				SaveRawAudioAsk();				break;
 		case ID_FILE_SAVEWAV:					SaveWAVAsk();					break;
 		case ID_FILE_CLOSEAVI:					Close();						break;
@@ -1039,6 +1101,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_OPTIONS_PREFERENCES:
 			extern void VDShowPreferencesDialog(VDGUIHandle h);
 			VDShowPreferencesDialog((VDGUIHandle)mhwnd);
+			VDCPUTest();
 			break;
 		case ID_OPTIONS_DISPLAYINPUTVIDEO:
 			if (mpDubStatus)
@@ -1085,7 +1148,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 
 		case ID_TOOLS_HEXVIEWER:
-			HexEdit(NULL, NULL);
+			HexEdit(NULL, NULL, false);
 			break;
 
 		case ID_TOOLS_CREATESPARSEAVI:
@@ -1104,6 +1167,16 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_TOOLS_CREATEPALETTIZEDAVI:
 			extern void VDCreateTestPal8Video(VDGUIHandle);
 			VDCreateTestPal8Video(mhwnd);
+			break;
+
+		case ID_TOOLS_CREATETESTVIDEO:
+			{
+				extern IVDInputDriver *VDCreateInputDriverTest();
+
+				vdrefptr<IVDInputDriver> pDriver(VDCreateInputDriverTest());
+
+				Open(L"", pDriver, true);
+			}
 			break;
 
 		case ID_HELP_LICENSE:
@@ -1242,6 +1315,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVESEGMENTEDAVI		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEWAV				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEFILMSTRIP		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEANIMATEDGIF		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVERAWAUDIO			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_CLOSEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_STARTSERVER			, bSourceFileExists);
@@ -1679,8 +1753,10 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 
 		if (formatIn) {
 			BITMAPINFOHEADER *dcf = inputVideoAVI->getDecompressedFormat();
-			int w = dcf->biWidth;
-			int h = dcf->biHeight;
+			int w0 = abs(dcf->biWidth);
+			int h0 = abs(dcf->biHeight);
+			int w = w0;
+			int h = h0;
 
 			VDGetIVideoWindow(mhwndInputFrame)->SetSourceSize(w, h);
 			VDGetIVideoWindow(mhwndInputFrame)->GetFrameSize(w, h);
@@ -1692,11 +1768,11 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 
 			// figure out output size too
 
-			int w2=dcf->biWidth, h2=dcf->biHeight;
+			int w2 = w0, h2 = h0;
 
 			if (!g_listFA.IsEmpty()) {
 				if (!filters.isRunning())
-					filters.prepareLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 0);
+					filters.prepareLinearChain(&g_listFA, (Pixel *)(dcf+1), w0, h0, 0);
 
 				w2 = filters.LastBitmap()->w;
 				h2 = filters.LastBitmap()->h;
@@ -1737,8 +1813,11 @@ void VDProjectUI::OpenAudioDisplay() {
 	mpAudioDisplay = VDGetIUIAudioDisplayControl((VDGUIHandle)mhwndAudioDisplay);
 
 	mpAudioDisplay->AudioRequiredEvent() += mAudioDisplayUpdateRequiredDelegate(this, &VDProjectUI::OnAudioDisplayUpdateRequired);
-	mpAudioDisplay->SetSelectStartEvent() += mAudioDisplaySetSelectStartDelegate(this, &VDProjectUI::OnAudioDisplaySetSelectStart);
-	mpAudioDisplay->SetSelectEndEvent() += mAudioDisplaySetSelectEndDelegate(this, &VDProjectUI::OnAudioDisplaySetSelectEnd);
+	mpAudioDisplay->SetSelectStartEvent() += mAudioDisplaySetSelectStartDelegate(this, &VDProjectUI::OnAudioDisplaySetSelect);
+	mpAudioDisplay->SetSelectTrackEvent() += mAudioDisplaySetSelectTrackDelegate(this, &VDProjectUI::OnAudioDisplaySetSelect);
+	mpAudioDisplay->SetSelectEndEvent() += mAudioDisplaySetSelectEndDelegate(this, &VDProjectUI::OnAudioDisplaySetSelect);
+	mpAudioDisplay->TrackAudioOffsetEvent() += mAudioDisplayTrackAudioOffsetDelegate(this, &VDProjectUI::OnAudioDisplayTrackAudioOffset);
+	mpAudioDisplay->SetAudioOffsetEvent() += mAudioDisplaySetAudioOffsetDelegate(this, &VDProjectUI::OnAudioDisplaySetAudioOffset);
 
 	if (IsSelectionPresent())
 		mpAudioDisplay->SetSelectedFrameRange(GetSelectionStartFrame(), GetSelectionEndFrame());
@@ -1792,20 +1871,20 @@ void VDProjectUI::UpdateAudioDisplay() {
 
 	if (!inputAudio) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because there is no audio track.");
-		mAudioDisplayPosNext = -1;
+		mbAudioDisplayReadActive = false;
 		return;
 	}
 
 	const WAVEFORMATEX *wfex = inputAudio->getWaveFormat();
 	if (wfex->wFormatTag != WAVE_FORMAT_PCM) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because the audio track is compressed.");
-		mAudioDisplayPosNext = -1;
+		mbAudioDisplayReadActive = false;
 		return;
 	}
 
 	if (wfex->wBitsPerSample != 8 && wfex->wBitsPerSample != 16) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because the audio track uses an unsupported PCM format.");
-		mAudioDisplayPosNext = -1;
+		mbAudioDisplayReadActive = false;
 		return;
 	}
 
@@ -2107,7 +2186,9 @@ void VDProjectUI::UIShuttleModeUpdated() {
 
 void VDProjectUI::UISourceFileUpdated() {
 	if (inputAVI) {
-		mMRUList.add(g_szInputAVIFile);
+		if (g_szInputAVIFile[0])
+			mMRUList.add(g_szInputAVIFile);
+
 		UpdateMRUList();
 
 		VDStringW fileName(VDFileSplitExtLeft(VDStringW(VDFileSplitPath(g_szInputAVIFile))));
@@ -2568,17 +2649,28 @@ void VDProjectUI::OnCurveStatusUpdated(IVDUIParameterCurveControl *source, const
 
 void VDProjectUI::OnAudioDisplayUpdateRequired(IVDUIAudioDisplayControl *source, const VDPosition& pos) {
 	mAudioDisplayPosNext = pos;
+	mbAudioDisplayReadActive = true;
 }
 
-void VDProjectUI::OnAudioDisplaySetSelectStart(IVDUIAudioDisplayControl *source, const VDPosition& pos) {
-	VDPosition cenpos = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(pos));
+void VDProjectUI::OnAudioDisplaySetSelect(IVDUIAudioDisplayControl *source, const VDUIAudioDisplaySelectionRange& range) {
+	VDPosition pos1 = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mStart));
+	VDPosition pos2 = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(range.mEnd));
+
+	if (pos1 > pos2)
+		std::swap(pos1, pos2);
 
 	ClearSelection();
-	SetSelectionStart(cenpos);
+	SetSelectionEnd(pos2);
+	SetSelectionStart(pos1);
 }
 
-void VDProjectUI::OnAudioDisplaySetSelectEnd(IVDUIAudioDisplayControl *source, const VDPosition& pos) {
-	VDPosition cenpos = inputVideoAVI->TimeToPositionVBR(inputAudio->PositionToTimeVBR(pos));
-
-	SetSelectionEnd(cenpos);
+void VDProjectUI::OnAudioDisplayTrackAudioOffset(IVDUIAudioDisplayControl *source, const sint32& offset) {
+	// ignore
 }
+
+void VDProjectUI::OnAudioDisplaySetAudioOffset(IVDUIAudioDisplayControl *source, const sint32& offset) {
+	g_dubOpts.audio.offset += (long)inputAudio->samplesToMs(offset);
+
+	source->Rescan();
+}
+

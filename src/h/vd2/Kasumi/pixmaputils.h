@@ -109,12 +109,12 @@ tpVDPixBltTable VDGetPixBltTableX86MMX();
 class VDPixmapBuffer : public VDPixmap {
 public:
 	VDPixmapBuffer() : mpBuffer(NULL), mLinearSize(0) { data = NULL; format = 0; }
-	VDPixmapBuffer(const VDPixmap& src);
+	explicit VDPixmapBuffer(const VDPixmap& src);
 	VDPixmapBuffer(const VDPixmapBuffer& src);
 	VDPixmapBuffer(sint32 w, sint32 h, int format) : mpBuffer(NULL), mLinearSize(0) {
 		init(w, h, format);
 	}
-	VDPixmapBuffer(const VDPixmapLayout& layout);
+	explicit VDPixmapBuffer(const VDPixmapLayout& layout);
 
 	~VDPixmapBuffer();
 
@@ -127,19 +127,25 @@ public:
 	}
 
 #ifdef _DEBUG
-	void *base() { return mpBuffer + 16; }
-	const void *base() const { return mpBuffer + 16; }
+	void *base() { return mpBuffer + (-(int)(uintptr)mpBuffer & 15) + 16; }
+	const void *base() const { return mpBuffer + (-(int)(uintptr)mpBuffer & 15) + 16; }
 	size_t size() const { return mLinearSize - 28; }
+
+	void validate();
 #else
-	void *base() { return mpBuffer; }
-	const void *base() const { return mpBuffer; }
+	void *base() { return mpBuffer + (-(int)(uintptr)mpBuffer & 15); }
+	const void *base() const { return mpBuffer + (-(int)(uintptr)mpBuffer & 15); }
 	size_t size() const { return mLinearSize; }
+
+	void validate() {}
 #endif
 
 	void init(sint32 w, sint32 h, int format);
 	void init(const VDPixmapLayout&);
 
 	void assign(const VDPixmap& src);
+
+	void swap(VDPixmapBuffer&);
 
 protected:
 	char *mpBuffer;

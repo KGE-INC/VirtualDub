@@ -33,6 +33,9 @@
 #include <vd2/Riza/display.h>
 #include "displaydrv.h"
 
+#define VDDEBUG_DISP (void)sizeof printf
+//#define VDDEBUG_DISP VDDEBUG
+
 #if 0
 	#define DEBUG_LOG(x) VDLog(kVDLogInfo, VDStringW(L##x))
 #else
@@ -631,6 +634,7 @@ public:
 		return false;
 	}
 	void SetLogicalPalette(const uint8 *pLogicalPalette) {}
+	float GetSyncDelta() const { return 0.0f; }
 
 protected:
 	void Upload(const VDPixmap& source, VDVideoTextureTilePatternOpenGL& texPattern);
@@ -939,7 +943,7 @@ bool VDVideoDisplayMinidriverOpenGL::OnOpenGLInit() {
 				if (mhglrc) {
 					mpgl->pwglMakeCurrent(hdc, mhglrc);
 
-					VDDEBUG("VideoDisplay: OpenGL version string: [%s]\n", g_openGLtable.pglGetString(GL_VERSION));
+					VDDEBUG_DISP("VideoDisplay: OpenGL version string: [%s]\n", g_openGLtable.pglGetString(GL_VERSION));
 
 					const GLubyte *pExtensions = mpgl->pglGetString(GL_EXTENSIONS);
 
@@ -972,7 +976,7 @@ bool VDVideoDisplayMinidriverOpenGL::OnOpenGLInit() {
 					mpgl->pwglMakeCurrent(NULL, NULL);
 					ReleaseDC(mhwndOGL, hdc);
 
-					VDDEBUG("VideoDisplay: Using OpenGL for %dx%d display.\n", mSource.pixmap.w, mSource.pixmap.h);
+					VDDEBUG_DISP("VideoDisplay: Using OpenGL for %dx%d display.\n", mSource.pixmap.w, mSource.pixmap.h);
 					return true;
 				}
 			}
@@ -1330,12 +1334,12 @@ bool VDDirectDrawManager::Restore() {
 		if (SUCCEEDED(mpddsPrimary->IsLost()))
 			return true;
 
-		VDDEBUG("VDDirectDraw: Primary surface restore requested.\n");
+		VDDEBUG_DISP("VDDirectDraw: Primary surface restore requested.\n");
 
 		HRESULT hr = mpddsPrimary->Restore();
 
 		if (FAILED(hr)) {
-			VDDEBUG("VDDirectDraw: Primary surface restore failed -- tearing down DirectDraw!\n");
+			VDDEBUG_DISP("VDDirectDraw: Primary surface restore failed -- tearing down DirectDraw!\n");
 
 			for(tClients::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
 				IVDDirectDrawClient *pClient = *it;
@@ -1344,13 +1348,13 @@ bool VDDirectDrawManager::Restore() {
 			}
 
 			if (!mInitCount) {
-				VDDEBUG("VDDirectDraw: All clients vacated.\n");
+				VDDEBUG_DISP("VDDirectDraw: All clients vacated.\n");
 				return false;
 			}
 
 			Shutdown(NULL);
 			if (!Init(NULL)) {
-				VDDEBUG("VDDirectDraw: Couldn't resurrect DirectDraw!\n");
+				VDDEBUG_DISP("VDDirectDraw: Couldn't resurrect DirectDraw!\n");
 				return false;
 			}
 		}
@@ -1359,7 +1363,7 @@ bool VDDirectDrawManager::Restore() {
 			return false;
 	}
 
-	VDDEBUG("VDDirectDraw: Primary surface restore complete.\n");
+	VDDEBUG_DISP("VDDirectDraw: Primary surface restore complete.\n");
 	for(tClients::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
 		IVDDirectDrawClient *pClient = *it;
 
@@ -1418,7 +1422,7 @@ void VDShutdownDirectDraw(IVDDirectDrawClient *pClient) {
 
 class VDVideoDisplayMinidriverDirectDraw : public IVDVideoDisplayMinidriver, protected IVDDirectDrawClient {
 public:
-	VDVideoDisplayMinidriverDirectDraw();
+	VDVideoDisplayMinidriverDirectDraw(bool enableOverlays);
 	~VDVideoDisplayMinidriverDirectDraw();
 
 	bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info);
@@ -1436,6 +1440,7 @@ public:
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
+	float GetSyncDelta() const { return 0.0f; }
 
 protected:
 	enum {
@@ -1454,6 +1459,7 @@ protected:
 	bool InitOverlay();
 	bool InitOffscreen();
 	void ShutdownDisplay();
+	bool UpdateOverlay(bool force);
 	void InternalRefresh(const RECT& rClient, UpdateMode mode);
 	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, UpdateMode mode);
 
@@ -1475,20 +1481,23 @@ protected:
 
 	bool		mbReset;
 	bool		mbValid;
+	bool		mbFirstFrame;
 	bool		mbRepaintOnNextUpdate;
 	bool		mbSwapChromaPlanes;
 	bool		mbUseSubrect;
 	vdrect32	mSubrect;
 
+	bool		mbEnableOverlays;
+
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
 };
 
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw() {
-	return new VDVideoDisplayMinidriverDirectDraw();
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays) {
+	return new VDVideoDisplayMinidriverDirectDraw(enableOverlays);
 }
 
-VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw()
+VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw(bool enableOverlays)
 	: mhwnd(0)
 	, mpddman(0)
 	, mpddc(0)
@@ -1498,8 +1507,10 @@ VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw()
 	, mOverlayUpdateTimer(0)
 	, mbReset(false)
 	, mbValid(false)
+	, mbFirstFrame(false)
 	, mbRepaintOnNextUpdate(false)
 	, mbUseSubrect(false)
+	, mbEnableOverlays(enableOverlays)
 {
 	memset(&mSource, 0, sizeof mSource);
 }
@@ -1535,6 +1546,29 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 		if (!mpddman)
 			break;
 
+		// The Windows Vista DWM has a bug where it allows you to create an overlay surface even
+		// though you'd never be able to display it -- so we have to detect the DWM and force
+		// overlays off.
+		bool allowOverlay = mbEnableOverlays;
+
+		if (mbEnableOverlays) {
+			HMODULE hmodDwmApi = LoadLibraryA("dwmapi");
+			if (hmodDwmApi) {
+				typedef HRESULT (WINAPI *tpDwmIsCompositionEnabled)(BOOL *);
+
+				tpDwmIsCompositionEnabled pDwmIsCompositionEnabled = (tpDwmIsCompositionEnabled)GetProcAddress(hmodDwmApi, "DwmIsCompositionEnabled");
+				if (pDwmIsCompositionEnabled) {
+					BOOL enabled;
+					HRESULT hr = pDwmIsCompositionEnabled(&enabled);
+
+					if (SUCCEEDED(hr) && enabled)
+						allowOverlay = false;
+				}
+
+				FreeLibrary(hmodDwmApi);
+			}
+		}
+
 		mCaps = mpddman->GetCaps();
 
 		const DDSURFACEDESC& ddsdPri = mpddman->GetPrimaryDesc();
@@ -1542,7 +1576,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 		mPrimaryW = ddsdPri.dwWidth;
 		mPrimaryH = ddsdPri.dwHeight;
 
-		if (InitOverlay() || InitOffscreen())
+		if ((allowOverlay && InitOverlay()) || InitOffscreen())
 			return true;
 
 	} while(false);
@@ -1615,13 +1649,14 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 		}
 
 		IDirectDrawSurface *pdds;
+		HRESULT hr = mpddman->GetDDraw()->CreateSurface(&ddsdOff, &pdds, NULL);
 
-		if (FAILED(mpddman->GetDDraw()->CreateSurface(&ddsdOff, &pdds, NULL))) {
+		if (FAILED(hr)) {
 			DEBUG_LOG("VideoDisplay/DDraw: Overlay surface creation failed\n");
 			break;
 		}
 
-		HRESULT hr = pdds->QueryInterface(IID_IDirectDrawSurface2, (void **)&mpddsOverlay);
+		hr = pdds->QueryInterface(IID_IDirectDrawSurface2, (void **)&mpddsOverlay);
 		pdds->Release();
 
 		if (FAILED(hr))
@@ -1643,11 +1678,15 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 		mOverlayUpdateTimer = SetTimer(mhwnd, kOverlayUpdateTimerId, 100, NULL);
 		memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 
-		VDDEBUG("VideoDisplay: Using DirectDraw overlay for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
+		VDDEBUG_DISP("VideoDisplay: Using DirectDraw overlay for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 		DEBUG_LOG("VideoDisplay/DDraw: Overlay surface creation successful\n");
 
 		mbRepaintOnNextUpdate = true;
 		mbValid = false;
+
+		if (!UpdateOverlay(false))
+			break;
+
 		return true;
 	} while(false);
 
@@ -1664,20 +1703,20 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 		// determine primary surface pixel format
 		if (pf.dwFlags & DDPF_PALETTEINDEXED8) {
 			mPrimaryFormat = nsVDPixmap::kPixFormat_Pal8;
-			VDDEBUG("VideoDisplay/DirectDraw: Display is 8-bit paletted.\n");
+			VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is 8-bit paletted.\n");
 		} else if (pf.dwFlags & DDPF_RGB) {
 			if (   pf.dwRGBBitCount == 16 && pf.dwRBitMask == 0x7c00 && pf.dwGBitMask == 0x03e0 && pf.dwBBitMask == 0x001f) {
 				mPrimaryFormat = nsVDPixmap::kPixFormat_XRGB1555;
-				VDDEBUG("VideoDisplay/DirectDraw: Display is 16-bit xRGB (1-5-5-5).\n");
+				VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is 16-bit xRGB (1-5-5-5).\n");
 			} else if (pf.dwRGBBitCount == 16 && pf.dwRBitMask == 0xf800 && pf.dwGBitMask == 0x07e0 && pf.dwBBitMask == 0x001f) {
 				mPrimaryFormat = nsVDPixmap::kPixFormat_RGB565;
-				VDDEBUG("VideoDisplay/DirectDraw: Display is 16-bit RGB (5-6-5).\n");
+				VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is 16-bit RGB (5-6-5).\n");
 			} else if (pf.dwRGBBitCount == 24 && pf.dwRBitMask == 0xff0000 && pf.dwGBitMask == 0x00ff00 && pf.dwBBitMask == 0x0000ff) {
 				mPrimaryFormat = nsVDPixmap::kPixFormat_RGB888;
-				VDDEBUG("VideoDisplay/DirectDraw: Display is 24-bit RGB (8-8-8).\n");
+				VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is 24-bit RGB (8-8-8).\n");
 			} else if (pf.dwRGBBitCount == 32 && pf.dwRBitMask == 0xff0000 && pf.dwGBitMask == 0x00ff00 && pf.dwBBitMask == 0x0000ff) {
 				mPrimaryFormat = nsVDPixmap::kPixFormat_XRGB8888;
-				VDDEBUG("VideoDisplay/DirectDraw: Display is 32-bit xRGB (8-8-8-8).\n");
+				VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is 32-bit xRGB (8-8-8-8).\n");
 			} else
 				break;
 		} else
@@ -1685,7 +1724,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 
 		if (mPrimaryFormat != mSource.pixmap.format) {
 			if (!mSource.bAllowConversion) {
-				VDDEBUG("VideoDisplay/DirectDraw: Display is not compatible with source and conversion is disallowed.\n");
+				VDDEBUG_DISP("VideoDisplay/DirectDraw: Display is not compatible with source and conversion is disallowed.\n");
 				return false;
 			}
 		}
@@ -1742,9 +1781,10 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOffscreen() {
 		mChromaKey = 0;
 		mbValid = false;
 		mbRepaintOnNextUpdate = false;
+		mbFirstFrame = true;
 
 		DEBUG_LOG("VideoDriver/DDraw: Offscreen initialization successful\n");
-		VDDEBUG("VideoDisplay: Using DirectDraw offscreen surface for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
+		VDDEBUG_DISP("VideoDisplay: Using DirectDraw offscreen surface for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 		return true;
 	} while(false); 
 
@@ -1776,7 +1816,7 @@ void VDVideoDisplayMinidriverDirectDraw::Shutdown() {
 	
 	if (mpddman) {
 		VDShutdownDirectDraw(this);
-		mpddman = 0;
+		mpddman = NULL;
 	}
 }
 
@@ -1810,109 +1850,123 @@ bool VDVideoDisplayMinidriverDirectDraw::Tick(int id) {
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::Resize() {
-	if (mpddsOverlay) {
-		do {
-			RECT rDst0;
+	if (mpddsOverlay)
+		UpdateOverlay(false);
 
-			GetClientRect(mhwnd, &rDst0);
-			MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst0, 2);
+	return !mbReset;
+}
 
-			// destination clipping
-			RECT rDst = rDst0;
-			const int dstw = rDst.right - rDst.left;
-			const int dsth = rDst.bottom - rDst.top;
+bool VDVideoDisplayMinidriverDirectDraw::UpdateOverlay(bool force) {
+	do {
+		RECT rDst0;
 
-			if (rDst.left < 0)
-				rDst.left = 0;
+		GetClientRect(mhwnd, &rDst0);
+		MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst0, 2);
 
-			if (rDst.top < 0)
-				rDst.top = 0;
+		// destination clipping
+		RECT rDst = rDst0;
+		const int dstw = rDst.right - rDst.left;
+		const int dsth = rDst.bottom - rDst.top;
 
-			if (rDst.right > mPrimaryW)
-				rDst.right = mPrimaryW;
+		if (rDst.left < 0)
+			rDst.left = 0;
 
-			if (rDst.bottom > mPrimaryH)
-				rDst.bottom = mPrimaryH;
+		if (rDst.top < 0)
+			rDst.top = 0;
 
-			if (rDst.bottom <= rDst.top || rDst.right <= rDst.left)
+		if (rDst.right > mPrimaryW)
+			rDst.right = mPrimaryW;
+
+		if (rDst.bottom > mPrimaryH)
+			rDst.bottom = mPrimaryH;
+
+		if (rDst.bottom <= rDst.top || rDst.right <= rDst.left)
+			break;
+
+		// source clipping
+		RECT rSrc = {
+			(rDst.left   - rDst0.left) * mSource.pixmap.w / dstw,
+			(rDst.top    - rDst0.top ) * mSource.pixmap.h / dsth,
+			(rDst.right  - rDst0.left) * mSource.pixmap.w / dstw,
+			(rDst.bottom - rDst0.top ) * mSource.pixmap.h / dsth,
+		};
+
+		// source alignment
+		if (mCaps.dwCaps & DDCAPS_ALIGNBOUNDARYSRC) {
+			int align = mCaps.dwAlignBoundarySrc;
+			rSrc.left -= rSrc.left % align;
+		}
+
+		if (mCaps.dwCaps & DDCAPS_ALIGNSIZESRC) {
+			int w = rSrc.right - rSrc.left;
+
+			w -= w % mCaps.dwAlignSizeSrc;
+
+			rSrc.right = rSrc.left + w;
+		}
+
+		// destination alignment
+		if (mCaps.dwCaps & DDCAPS_ALIGNBOUNDARYDEST) {
+			int align = mCaps.dwAlignBoundaryDest;
+
+			rDst.left += align-1;
+			rDst.left -= rDst.left % align;
+		}
+
+		if (mCaps.dwCaps & DDCAPS_ALIGNSIZEDEST) {
+			int w = rDst.right - rDst.left;
+
+			w -= w % mCaps.dwAlignSizeDest;
+
+			if (w <= 0)
 				break;
 
-			// source clipping
-			RECT rSrc = {
-				(rDst.left   - rDst0.left) * mSource.pixmap.w / dstw,
-				(rDst.top    - rDst0.top ) * mSource.pixmap.h / dsth,
-				(rDst.right  - rDst0.left) * mSource.pixmap.w / dstw,
-				(rDst.bottom - rDst0.top ) * mSource.pixmap.h / dsth,
-			};
+			rDst.right = rDst.left + w;
+		}
 
-			// source alignment
-			if (mCaps.dwCaps & DDCAPS_ALIGNBOUNDARYSRC) {
-				int align = mCaps.dwAlignBoundarySrc;
-				rSrc.left -= rSrc.left % align;
-			}
+		DWORD dwFlags = DDOVER_SHOW | DDOVER_DDFX;
+		DDOVERLAYFX ddfx = {sizeof(DDOVERLAYFX)};
 
-			if (mCaps.dwCaps & DDCAPS_ALIGNSIZESRC) {
-				int w = rSrc.right - rSrc.left;
+		if (mChromaKey) {
+			dwFlags |= DDOVER_KEYDESTOVERRIDE;
+			ddfx.dckDestColorkey.dwColorSpaceLowValue = mRawChromaKey;
+			ddfx.dckDestColorkey.dwColorSpaceHighValue = mRawChromaKey;
+		}
 
-				w -= w % mCaps.dwAlignSizeSrc;
+		if (mCaps.dwFXCaps & DDFXCAPS_OVERLAYARITHSTRETCHY)
+			ddfx.dwFlags |= DDOVERFX_ARITHSTRETCHY;
 
-				rSrc.right = rSrc.left + w;
-			}
+		if (force) {
+			static int y = 0;
 
-			// destination alignment
-			if (mCaps.dwCaps & DDCAPS_ALIGNBOUNDARYDEST) {
-				int align = mCaps.dwAlignBoundaryDest;
+			rDst.top += (y&1);
+			rDst.bottom += (y&1);
+			++y;
+		}
 
-				rDst.left += align-1;
-				rDst.left -= rDst.left % align;
-			}
+		IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
+		HRESULT hr = mpddsOverlay->UpdateOverlay(&rSrc, pDest, &rDst, dwFlags, &ddfx);
 
-			if (mCaps.dwCaps & DDCAPS_ALIGNSIZEDEST) {
-				int w = rDst.right - rDst.left;
+		if (FAILED(hr)) {
+			mbValid = false;
+			memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 
-				w -= w % mCaps.dwAlignSizeDest;
+			// NVIDIA ForceWare 96.85 for Vista allows us to create multiple overlays,
+			// but attempting to show more than one gives DDERR_NOTAVAILABLE.
+			if (hr != DDERR_SURFACELOST)
+				return false;
 
-				if (w <= 0)
-					break;
+			if (FAILED(mpddsOverlay->Restore()))
+				return false;
 
-				rDst.right = rDst.left + w;
-			}
+			if (FAILED(pDest->IsLost()) && mpddman->Restore())
+				return false;
+		} else
+			mLastDisplayRect = rDst0;
+		return !mbReset;
+	} while(false);
 
-			DWORD dwFlags = DDOVER_SHOW | DDOVER_DDFX;
-			DDOVERLAYFX ddfx = {sizeof(DDOVERLAYFX)};
-
-			if (mChromaKey) {
-				dwFlags |= DDOVER_KEYDESTOVERRIDE;
-				ddfx.dckDestColorkey.dwColorSpaceLowValue = mRawChromaKey;
-				ddfx.dckDestColorkey.dwColorSpaceHighValue = mRawChromaKey;
-			}
-
-			if (mCaps.dwFXCaps & DDFXCAPS_OVERLAYARITHSTRETCHY)
-				ddfx.dwFlags |= DDOVERFX_ARITHSTRETCHY;
-
-
-			IDirectDrawSurface2 *pDest = mpddman->GetPrimary();
-			HRESULT hr = mpddsOverlay->UpdateOverlay(&rSrc, pDest, &rDst, dwFlags, &ddfx);
-
-			if (FAILED(hr)) {
-				if (hr == DDERR_SURFACELOST) {
-					mbValid = false;
-					memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
-
-					if (FAILED(mpddsOverlay->Restore()))
-						return false;
-
-					if (FAILED(pDest->IsLost()) && mpddman->Restore())
-						return false;
-				}
-			} else
-				mLastDisplayRect = rDst0;
-			return !mbReset;
-		} while(false);
-
-		mpddsOverlay->UpdateOverlay(NULL, mpddman->GetPrimary(), NULL, DDOVER_HIDE, NULL);
-	}
-
+	mpddsOverlay->UpdateOverlay(NULL, mpddman->GetPrimary(), NULL, DDOVER_HIDE, NULL);
 	return !mbReset;
 }
 
@@ -2033,6 +2087,12 @@ void VDVideoDisplayMinidriverDirectDraw::Refresh(UpdateMode mode) {
 			RECT r;
 			GetClientRect(mhwnd, &r);
 			InternalRefresh(r, mode);
+
+			// Workaround for Windows Vista DWM not adding window to composition tree immediately
+			if (mbFirstFrame) {
+				mbFirstFrame = false;
+				SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+			}
 		}
 	}
 }
@@ -2045,6 +2105,12 @@ bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient, Upd
 		}
 	} else {
 		InternalRefresh(rClient, mode);
+	}
+
+	// Workaround for Windows Vista DWM not adding window to composition tree immediately
+	if (mbFirstFrame) {
+		mbFirstFrame = false;
+		SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
 	}
 
 	return !mbReset;
@@ -2155,6 +2221,11 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest
 				if (scan < maxScan)
 					break;
 
+				// We're in the danger zone. If the delta is greater than one tenth of the
+				// display, do a sleep.
+				if ((prDst->bottom - (int)scan) * 10 >= (int)mpddman->GetPrimaryDesc().dwHeight)
+					::Sleep(1);
+
 				maxScan = scan;
 			}
 		}
@@ -2213,6 +2284,7 @@ public:
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
+	float GetSyncDelta() const { return 0.0f; }
 
 protected:
 	HWND		mhwnd;
@@ -2404,7 +2476,7 @@ bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 
 				if (mhbmOld) {
 					ReleaseDC(mhwnd, hdc);
-					VDDEBUG("VideoDisplay: Using GDI for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
+					VDDEBUG_DISP("VideoDisplay: Using GDI for %dx%d %s display.\n", mSource.pixmap.w, mSource.pixmap.h, VDPixmapGetInfo(mSource.pixmap.format).name);
 					mbValid = (mSource.pSharedObject != 0);
 					return true;
 				}

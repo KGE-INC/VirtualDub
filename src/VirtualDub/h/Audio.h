@@ -82,6 +82,7 @@ private:
 	sint64 mPreskip;
 	sint64 mPrefill;
 	sint64 mOffset;
+	sint64 mBasePos;
 	bool fZeroRead;
 	bool fStart;
 	bool mbSourceIsVBR;

@@ -1,6 +1,6 @@
 //	VirtualDub - Video processing and capture application
 //	System library component
-//	Copyright (C) 1998-2004 Avery Lee, All Rights Reserved.
+//	Copyright (C) 1998-2006 Avery Lee, All Rights Reserved.
 //
 //	Beginning with 1.6.0, the VirtualDub system library is licensed
 //	differently than the remainder of VirtualDub.  This particular file is
@@ -65,71 +65,63 @@ VDFraction VDFraction::reduce(uint64 hi, uint64 lo) {
 	if (!((uint64)lo>>32) && (uint64)hi > ((uint64)lo<<32)-lo)
 		return VDFraction(0xFFFFFFFFUL, 1);
 
-	// Check for one.
+	// Algorithm from Wikipedia, Continued Fractions:
+	uint64 n0 = 0;
+	uint64 d0 = 1;
+	uint32 n1 = 1;
+	uint32 d1 = 0;
+	uint64 fp = 0;
 
-	if (lo == hi)
-		return VDFraction(1,1);
+	uint32 n_best;
+	uint32 d_best;
 
-	// Remove factors of two.
+	for(;;) {
+		uint64 a = hi/lo;			// next continued fraction term
+		uint64 f = hi%lo;			// remainder
 
-	while(!(((unsigned)hi | (unsigned)lo) & 1)) {
-		hi >>= 1;
-		lo >>= 1;
+		uint64 n2 = n0 + n1*a;		// next convergent numerator
+		uint64 d2 = d0 + d1*a;		// next convergent denominator
+
+		uint32 n_overflow = (uint32)(n2 >> 32);
+		uint32 d_overflow = (uint32)(d2 >> 32);
+
+		if (n_overflow | d_overflow) {
+			uint64 a2 = a;
+
+			// reduce last component until numerator and denominator are within range
+			if (n_overflow)
+				a2 = (0xFFFFFFFF - n0) / n1;
+
+			if (d_overflow) {
+				uint64 a3 = (0xFFFFFFFF - d0) / d1;
+				if (a2 > a3)
+					a2 = a3;
+			}
+
+			// check if new term is better
+			// 1/2a_k admissibility test
+			if (a2*2 < a || (a2*2 == a && d0*fp <= f*d1))
+				return VDFraction((uint32)n_best, (uint32)d_best);
+
+			return VDFraction((uint32)(n0 + n1*a2), (uint32)(d0 + d1*a2));
+		}
+
+		n_best = (uint32)n2;
+		d_best = (uint32)d2;
+
+		// if fraction is exact, we're done.
+		if (!f)
+			return VDFraction((uint32)n_best, (uint32)d_best);
+
+		n0 = n1;
+		n1 = (uint32)n2;
+		d0 = d1;
+		d1 = (uint32)d2;
+		fp = f;
+
+		hi = lo;
+		lo = f;
 	}
-
-	// Remove factors of 3.
-
-	while(!(lo%3) && !(hi%3)) {
-		lo /= 3;
-		hi /= 3;
-	}
-
-	// Use Euclid's algorithm to find the GCD of the two numbers.
-	//
-	// If D is the GCD of A and B, A>=B, then let A=xD and B=yD.
-	// It follows that x>=y and that (A-B) = (x-y)D is also
-	// divisible by D.  From this, we can repeat the subtraction,
-	// giving C = (x % y)D = A % B being divisible by D.
-
-	uint64 A, B, C;
-
-	A = hi;
-	B = lo;
-
-	if (lo > hi) {
-		A = lo;
-		B = hi;
-	}
-
-	do {
-		C = A % B;
-		A = B;
-		B = C;
-	} while(B > 0);
-
-	// Since A>0 and B>0, then A>1 after this operation.
-
-	lo /= A;
-	hi /= A;
-
-	// Return the fraction if it's within range.
-
-	if (lo == (uint32)lo && hi == (uint32)hi)
-		return VDFraction((uint32)hi, (uint32)lo);
-
-	// Reduce the fraction in range, crudely.
-
-//	return VDFraction(((uint64)hi * 0xFFFFFFFFUL + lo/2) / lo, 0xFFFFFFFFUL);
-
-	while(lo != (uint32)lo || hi != (uint32)hi) {
-		lo >>= 1;
-		hi >>= 1;
-	}
-
-	if (!lo)
-		return VDFraction(1,0xFFFFFFFFUL);
-
-	return VDFraction((uint32)hi, (uint32)lo);
 }
 
 // a (cond) b
@@ -251,3 +243,70 @@ unsigned long VDFraction::roundup32ul() const {
 	return (hi + (lo-1)) / lo;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
+bool VDFraction::Parse(const char *s) {
+	char c;
+
+	// skip whitespace
+	while((c = *s) && (c == ' ' || c == '\t'))
+		++s;
+
+	// accumulate integer digits
+	uint64 x = 0;
+	uint64 y = 1;
+
+	while(c = *s) {
+		uint32 offset = (uint32)c - '0';
+
+		if (offset >= 10)
+			break;
+
+		x = (x * 10) + offset;
+
+		// check for overflow
+		if (x >> 32)
+			return false;
+
+		++s;
+	}
+
+	if (c == '.') {
+		++s;
+
+		while(c = *s) {
+			uint32 offset = (uint32)c - '0';
+
+			if (offset >= 10)
+				break;
+
+			if (x >= 100000000000000000 ||
+				y >= 100000000000000000) {
+				if (offset >= 5)
+					++x;
+				while((c = *s) && (unsigned)(c - '0') < 10)
+					++s;
+				break;
+			}
+
+			x = (x * 10) + offset;
+			y *= 10;
+			++s;
+		}
+	}
+
+	while(c == ' ' || c == '\t')
+		c = *++s;
+
+	// check for trailing garbage
+	if (c)
+		return false;
+
+	// check for overflow
+	if (!(y >> 32) && ((uint64)(uint32)y << 32) <= x)
+		return false;
+
+	// reduce fraction and return success
+	*this = reduce(x, y);
+	return true;
+}

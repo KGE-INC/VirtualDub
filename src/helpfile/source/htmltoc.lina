@@ -17,6 +17,7 @@
 		<tocnode target="p-direct.html" name="Direct mode"/>
 		<tocnode target="p-smartrendering.html" name="Smart rendering"/>
 		<tocnode target="p-displays.html" name="Display panes"/>
+		<tocnode target="p-audiodisplay.html" name="Audio display"/>
 		<tocnode target="frameserver.html" name="Frameserver"/>
 		<tocnode target="fxvideo.html" name="Video shader reference"/>
 	</tocnode>
@@ -31,6 +32,7 @@
 		<tocnode target="c-timing.html" name="Timing dialog"/>
 		<tocnode target="c-performance.html" name="Performance"/>
 		<tocnode target="c-troubleshooting.html" name="Troubleshooting"/>
+		<tocnode target="c-screencap.html" name="Screen capture"/>
 	</tocnode>
 	<tocnode name="Dialogs">
 		<lina:for-each name="/dialog-docs/dialog">
@@ -47,4 +49,3 @@
 	</tocnode>
 	<tocnode target="crash.html" name="On a crash..."/>
 </lina:htmlhelp-toc>
-"/

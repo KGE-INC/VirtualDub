@@ -212,7 +212,7 @@ static void RedoFilters(HWND hWndList) {
 	try {
 		if (inputVideoAVI) {
 			BITMAPINFOHEADER *bmih = inputVideoAVI->getImageFormat();
-			filters.prepareLinearChain(&listFA, (Pixel *)(bmih+1), bmih->biWidth, bmih->biHeight, 24);
+			filters.prepareLinearChain(&listFA, (Pixel *)(bmih+1), bmih->biWidth, abs(bmih->biHeight), 24);
 		} else {
 			filters.prepareLinearChain(&listFA, NULL, 320, 240, 24);
 		}
@@ -583,7 +583,7 @@ INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 								mpFilterList,
 								(Pixel *)((const char *)pbih + pbih->biSize),
 								pbih2->biWidth,
-								pbih2->biHeight,
+								abs(pbih2->biHeight),
 								0);
 
 						mfsi.lCurrentFrame			= 0;

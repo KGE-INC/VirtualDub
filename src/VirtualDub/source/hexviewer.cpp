@@ -2657,7 +2657,7 @@ ATOM RegisterHexEditor() {
 	return RegisterClass(&wc1) && RegisterClass(&wc2);
 
 }
-void HexEdit(HWND hwndParent, const char *filename) {
+void HexEdit(HWND hwndParent, const char *filename, bool readonly) {
 	HWND hwndEdit = CreateWindow(
 		HEXEDITORCLASS,
 		"VirtualDub Hex Editor",
@@ -2674,6 +2674,6 @@ void HexEdit(HWND hwndParent, const char *filename) {
 	if (filename && hwndEdit) {
 		HexEditor *pcd = (HexEditor *)GetWindowLongPtr(hwndEdit, 0);
 
-		pcd->Open(filename, true);
+		pcd->Open(filename, !readonly);
 	}
 }

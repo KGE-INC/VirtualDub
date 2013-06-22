@@ -31,9 +31,11 @@ public:
 
 	virtual bool Query(const void *inputFormat, const void *outputFormat = NULL) = 0;
 	virtual void GetOutputFormat(const void *inputFormat, vdstructex<tagBITMAPINFOHEADER>& outputFormat) = 0;
+	virtual const void *GetOutputFormat() = 0;
 	virtual uint32 GetMaxOutputSize() = 0;
 	virtual void Start(const void *inputFormat, const void *outputFormat, const VDFraction& frameRate, VDPosition frameCount) = 0;
 	virtual void Restart() = 0;
+	virtual void SkipFrame() = 0;
 	virtual void DropFrame() = 0;
 	virtual bool CompressFrame(void *dst, const void *src, bool& keyframe, uint32& size) = 0;
 	virtual void Stop() = 0;

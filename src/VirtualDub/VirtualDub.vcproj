@@ -1212,6 +1212,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\Riza\res\resource.h"
+				>
+			</File>
+			<File
 				RelativePath="h\SceneDetector.h"
 				>
 			</File>
@@ -1254,18 +1258,6 @@
 			</File>
 			<File
 				RelativePath="res\Changes.bin"
-				>
-			</File>
-			<File
-				RelativePath=".\res\cur00001.cur"
-				>
-			</File>
-			<File
-				RelativePath=".\res\cursor1.cur"
-				>
-			</File>
-			<File
-				RelativePath=".\res\dragpoin.cur"
 				>
 			</File>
 			<File
@@ -5703,6 +5695,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\AVIOutputGIF.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\AVIOutputImages.cpp"
 				>
 				<FileConfiguration
@@ -6147,6 +6143,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\InputFileGIF.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\InputFileImages.cpp"
 				>
 				<FileConfiguration
@@ -6187,6 +6187,10 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\InputFileTest.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\VideoSource.cpp"
@@ -7645,6 +7649,10 @@
 						/>
 					</FileConfiguration>
 				</File>
+				<File
+					RelativePath=".\source\f_warpresize.cpp"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="Source - Video Filters"
@@ -9052,6 +9060,14 @@
 					>
 				</File>
 			</Filter>
+		</Filter>
+		<Filter
+			Name="Imported Files"
+			>
+			<File
+				RelativePath="..\Riza\res\Riza.rc"
+				>
+			</File>
 		</Filter>
 	</Files>
 	<Globals>

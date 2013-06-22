@@ -742,6 +742,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\w32hotkey.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\w32label.cpp"
 				>
 				<FileConfiguration

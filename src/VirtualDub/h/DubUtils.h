@@ -72,12 +72,10 @@ protected:
 		sint32		mSamplesToWrite;
 		sint32		mMaxSampleSize;
 		double		mSamplesPerFrame;
-		sint64		mBytesPerFrame;
+		double		mSamplesPerFramePending;
 		sint32		mIntervalMicroFrames;
 		sint32		mPreloadMicroFrames;
-		sint64		mEstimatedSamples;
 		sint32		mMaxPush;
-		sint32		mLastSampleWrite;
 		bool		mbActive;
 	};
 
@@ -86,9 +84,6 @@ protected:
 
 
 	std::vector<Stream>	mStreams;
-
-	sint64	mBytesPerFrame;			// Current estimate of # of bytes per frame.
-	sint64	mSegmentStartFrame;
 
 	int		mNonIntStream;			// Current stream being worked on in a non-interleaved scenario
 	int		mNextStream;
@@ -142,12 +137,22 @@ protected:
 //
 ///////////////////////////////////////////////////////////////////////////
 
+struct VDRenderFrameStep {
+	VDPosition	mSourceFrame;
+	VDPosition	mDisplayFrame;
+	VDPosition	mTimelineFrame;
+	bool		mbIsPreroll;
+	bool		mbDirect;
+	bool		mbSameAsLast;
+	int			mSrcIndex;
+};
+
 class VDRenderFrameIterator {
 public:
 	VDRenderFrameIterator(const VDRenderFrameMap& frameMap) : mFrameMap(frameMap) {}
 
 	void		Init(const vdfastvector<IVDVideoSource *>& videoSources, bool bDirect, bool bSmart, const FilterSystem *filtsys);
-	void		Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll, int& srcIndex, bool& direct, bool& sameAsLast);
+	VDRenderFrameStep	Next();
 
 protected:
 	bool		Reload();

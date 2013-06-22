@@ -54,6 +54,7 @@ namespace nsVDDitaBytecode {
 		kBC_CreateTextEdit,
 		kBC_CreateTextArea,
 		kBC_CreateChildDialog,
+		kBC_CreateHotkey,
 
 		kBC_Count
 	};

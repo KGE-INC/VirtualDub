@@ -72,11 +72,19 @@ void VDUIBaseWindowW32::Destroy() {
 
 	VDUICustomControlW32::Destroy();
 
-	if (mbAutoDestroy)
-		delete this;
+	if (mbAutoDestroy) {
+		mbAutoDestroy = false;
+		if (mpParent)
+			mpParent->RemoveChild(this);
+		Release();
+	}
 }
 
 void VDUIBaseWindowW32::SetAutoDestroy(bool enable) {
+	if (enable)
+		AddRef();
+	if (mbAutoDestroy)
+		Release();
 	mbAutoDestroy = enable;
 }
 

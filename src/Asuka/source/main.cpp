@@ -1,5 +1,5 @@
 //	Asuka - VirtualDub Build/Post-Mortem Utility
-//	Copyright (C) 2005 Avery Lee
+//	Copyright (C) 2005-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <stddef.h>
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/vdstl.h>
 #include <vd2/system/error.h>
 
 #include <vector>
@@ -35,16 +36,18 @@
 using namespace std;
 
 extern void tool_verinc(bool amd64);
-extern void tool_lookup(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64);
-extern void tool_mapconv(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64);
-extern void tool_fxc(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64);
-extern void tool_makearray(const std::vector<const char *>& args, const std::vector<const char *>& switches);
+extern void tool_lookup(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+extern void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+extern void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+extern void tool_makearray(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+extern void tool_glc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+extern void tool_fontextract(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
 
 int main(int argc, char **argv) {
 	--argc;
 	++argv;
 
-	std::vector<const char *> switches, args;
+	vdfastvector<const char *> switches, args;
 	bool amd64 = false;
 
 	while(const char *s = *argv++) {
@@ -79,6 +82,10 @@ int main(int argc, char **argv) {
 			tool_fxc(args, switches, amd64);
 		} else if (!_stricmp(s, "makearray")) {
 			tool_makearray(args, switches);
+		} else if (!_stricmp(s, "glc")) {
+			tool_glc(args, switches);
+		} else if (!_stricmp(s, "fontextract")) {
+			tool_fontextract(args, switches);
 		} else
 			help();
 	} catch(const char *s) {

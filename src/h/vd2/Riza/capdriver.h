@@ -70,6 +70,20 @@ namespace nsVDCapture {
 		kEventAudioSourceChanged,
 		kEventCount
 	};
+
+	enum VDCapturePropertyId {
+		kPropBrightness,
+		kPropContrast,
+		kPropHue,
+		kPropSaturation,
+		kPropSharpness,
+		kPropGamma,
+		kPropColorEnable,
+		kPropWhiteBalance,
+		kPropBacklightCompensation,
+		kPropGain,
+		kPropCount
+	};
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -183,6 +197,11 @@ public:
 
 	virtual bool	IsDriverDialogSupported(nsVDCapture::DriverDialog dlg) = 0;
 	virtual void	DisplayDriverDialog(nsVDCapture::DriverDialog dlg) = 0;
+
+	virtual bool	IsPropertySupported(uint32 id) = 0;
+	virtual sint32	GetPropertyInt(uint32 id, bool *pAutomatic) = 0;
+	virtual void	SetPropertyInt(uint32 id, sint32 value, bool automatic) = 0;
+	virtual void	GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& maxVal, sint32& step, sint32& defaultVal, bool& automatic, bool& manual) = 0;
 
 	virtual bool	CaptureStart() = 0;
 	virtual void	CaptureStop() = 0;

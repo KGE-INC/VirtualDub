@@ -199,6 +199,26 @@ private:
 	std::vector<char>		mVideoFormat;
 };
 
+class VDAVIOutputGIFSystem : public IVDDubberOutputSystem {
+public:
+	VDAVIOutputGIFSystem(const wchar_t *filename);
+	~VDAVIOutputGIFSystem();
+
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
+	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	bool AcceptsVideo();
+	bool AcceptsAudio();
+	bool IsRealTime() { return false; }
+
+private:
+	VDStringW	mFilename;
+
+	AVIStreamHeader_fixed	mVideoStreamInfo;
+	std::vector<char>		mVideoFormat;
+};
+
 class VDAVIOutputPreviewSystem : public IVDDubberOutputSystem {
 public:
 	VDAVIOutputPreviewSystem();

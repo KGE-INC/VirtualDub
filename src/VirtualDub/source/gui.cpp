@@ -575,9 +575,11 @@ void guiPositionBlit(HWND hWndClipping, VDPosition lFrame, int w, int h) {
 				Pixel32 *tmpmem;
 				const void *pFrame = inputVideoAVI->getFrame(lFrame);
 
-				if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
+				int dch = abs(dcf->biHeight);
+
+				if (w>0 && h>0 && w!=dcf->biWidth && h != dch && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dch])) {
 					VBitmap vbt(tmpmem, w, h, 32);
-					VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
+					VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dch, 32);
 
 					VBitmap srcbm((void *)pFrame, dcf);
 					vbs.BitBlt(0, 0, &srcbm, 0, 0, -1, -1);

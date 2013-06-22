@@ -869,6 +869,7 @@
 			a video file using a codec, and encode with that codec, but not encode to the same format as
 			the source.
 		</li>
+		<li>Inverse telecine must be disabled.</li>
 	</ul>
 	<p>
 		In addition, the video codec must be configured to match the source. There are often parameters in
@@ -1282,15 +1283,6 @@
 		or <em>Zoom out</em> option from the resulting context menu. Zoom in to see the waveform in greater time
 		resolution, and zoom out to see more of the waveform over time in the display.
 	</p>
-	<p>
-		You can select video frames in the audio display by clicking with the left mouse button, similarly to how
-		you can select a range by using the mark-in/out buttons on the position control. Click normally to set
-		the start of the desired range, and Shift+Click to set the end. The selection is displayed in light blue
-		at the bottom of the display. To avoid clicks and pops when editing, choose endpoints where the sound
-		is quietest. It is usually best to get as close as possible to a <i>zero crossing</i> where the waveform
-		crosses the centerline, but this is often difficult with multiple channels and only being able to cut on
-		frame boundaries; fortunately, you don't need a perfect cut for the jump to be inaudible.
-	</p>
 	
 	<h2>Spectrogram mode</h2>
 	<p>
@@ -1318,6 +1310,36 @@
 		If the sound track is low in volume, the graph may be somewhat dim and difficult to see. The <em>Spectral Boost</em>
 		option in the right-click context menu allows the signal to be amplified, increasing the brightness of the
 		graph.
+	</p>
+	
+	<h2>Selecting frames</h2>
+	<p>
+		You can select video frames in the audio display by clicking with the left mouse button, similarly to how
+		you can select a range by using the mark-in/out buttons on the position control.
+	</p>
+	<ul>
+		<li>Hold down the Shift key and drag with the left mouse button to set the selection.</li>
+		<li>The selection is displayed in light blue at the bottom of the display.</li>
+		<li>To avoid clicks and pops when editing, choose endpoints where the sound is quietest.
+			It is usually best to get as close as possible to a <i>zero crossing</i> where the waveform
+			crosses the centerline. This is often difficult with multiple channels and only being able to cut on
+			frame boundaries, but fortunately, you don't need a perfect cut for the jump to be inaudible.</li>
+	</ul>
+	
+	<h2>Shifting audio</h2>
+	<p>
+		You can also shift the audio track back and forth from the audio display to fix audio sync errors.
+	</p>
+	<ul>
+		<li>Identify a portion of the video clip where both the video frame and the audio waveform/spectrogram are
+			distinctive.</li>
+		<li>Hold down the Control key and click with the left mouse button on a portion of audio.</li>
+		<li>Drag horizontally to when the audio should play.</li>
+		<li>The audio display will now update with the new offset.</li>
+	</ul>
+	<p>
+		This changes the same setting as the <i>audio displacement</i> field of the <a href="d-audiointerleaving.html">Audio interleaving</a>
+		dialog.
 	</p>
 </lina:create>
 

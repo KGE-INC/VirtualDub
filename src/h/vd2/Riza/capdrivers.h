@@ -23,5 +23,6 @@ class IVDCaptureSystem;
 
 IVDCaptureSystem *VDCreateCaptureSystemVFW();
 IVDCaptureSystem *VDCreateCaptureSystemDS();
+IVDCaptureSystem *VDCreateCaptureSystemScreen();
 
 #endif

@@ -156,7 +156,7 @@ void VDNORETURN help_mapconv() {
 	exit(5);
 }
 
-void tool_mapconv(const std::vector<const char *>& args, const std::vector<const char *>& switches, bool amd64) {
+void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64) {
 	FILE *fo;
 	int i;
 

@@ -56,6 +56,7 @@ public:
 	void SaveSegmentedAVIAsk();
 	void SaveWAVAsk();
 	void SaveFilmstripAsk();
+	void SaveAnimatedGIFAsk();
 	void SaveRawAudioAsk();
 	void SaveConfigurationAsk();
 	void LoadConfigurationAsk();
@@ -127,8 +128,9 @@ protected:
 	void OnCurveUpdated(IVDUIParameterCurveControl *source, const int& args);
 	void OnCurveStatusUpdated(IVDUIParameterCurveControl *source, const IVDUIParameterCurveControl::Status& status);
 	void OnAudioDisplayUpdateRequired(IVDUIAudioDisplayControl *source, const VDPosition& pos);
-	void OnAudioDisplaySetSelectStart(IVDUIAudioDisplayControl *source, const VDPosition& pos);
-	void OnAudioDisplaySetSelectEnd(IVDUIAudioDisplayControl *source, const VDPosition& pos);
+	void OnAudioDisplaySetSelect(IVDUIAudioDisplayControl *source, const VDUIAudioDisplaySelectionRange& pos);
+	void OnAudioDisplayTrackAudioOffset(IVDUIAudioDisplayControl *source, const sint32& offset);
+	void OnAudioDisplaySetAudioOffset(IVDUIAudioDisplayControl *source, const sint32& offset);
 
 	LRESULT (VDProjectUI::*mpWndProc)(UINT, WPARAM, LPARAM);
 
@@ -148,6 +150,7 @@ protected:
 	vdrefptr<IVDUIAudioDisplayControl> mpAudioDisplay;
 	HWND		mhwndAudioDisplay;
 	VDPosition	mAudioDisplayPosNext;
+	bool		mbAudioDisplayReadActive;
 
 	HMENU		mhMenuNormal;
 	HMENU		mhMenuDub;
@@ -184,7 +187,10 @@ protected:
 	VDDelegate mCurveStatusUpdatedDelegate;
 	VDDelegate mAudioDisplayUpdateRequiredDelegate;
 	VDDelegate mAudioDisplaySetSelectStartDelegate;
+	VDDelegate mAudioDisplaySetSelectTrackDelegate;
 	VDDelegate mAudioDisplaySetSelectEndDelegate;
+	VDDelegate mAudioDisplayTrackAudioOffsetDelegate;
+	VDDelegate mAudioDisplaySetAudioOffsetDelegate;
 };
 
 #endif

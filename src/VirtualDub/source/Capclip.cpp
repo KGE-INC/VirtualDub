@@ -130,7 +130,7 @@ void VDDialogCaptureCropping::OnInit() {
 
 	if (mpProject->GetVideoFormat(bih)) {
 		mLastFrameWidth = bih->biWidth;
-		mLastFrameHeight = bih->biHeight;
+		mLastFrameHeight = abs(bih->biHeight);
 
 		pCC->SetBitmapSize(mLastFrameWidth, mLastFrameHeight);
 	} else

@@ -104,6 +104,7 @@ public:
 	void Close();
 
 	void SaveFilmstrip(const wchar_t *pFilename);
+	void SaveAnimatedGIF(const wchar_t *pFilename);
 	void SaveRawAudio(const wchar_t *pFilename);
 
 	void StartServer();

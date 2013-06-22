@@ -1170,3 +1170,60 @@
 		really quiet quality will be lost due to limited precision, even after amplification in post-processing.
 	</p>
 </lina:create>
+
+<lina:create title="Capture: Screen capture" file="c-screencap.html">
+	<p>
+		The <em>screen capture</em> entry is a special capture "driver" within VirtualDub that allows the video screen
+		to be used as the capture source instead of an external source.
+	</p>
+	<h2>Selecting the region to capture</h2>
+	<p>
+		Use the <em>Video > Set Custom Format...</em> menu option to choose the size of image to capture. Use 32-bit RGB as
+		the format.
+	</p>
+	<p>
+		By default, the image capture will occur at the top-left corner of the screen. The <em>Video > Source...</em> menu
+		option exposes a couple of additional options to control the origin: it can be centered on the mouse cursor, to
+		the current active top-level window, or both. When both options are active, VirtualDub will pan around the bounds
+		of the active window according to the cursor position.
+	</p>
+	<h2>Starting the capture and performance implications</h2>
+	<p>
+		You will usually want to set hotkey shortcuts for starting and stopping the capture via <em>Capture > Preferences</em>,
+		so as to avoid capturing the VirtualDub window itself.
+	</p>
+	<p>
+		Capturing from the screen is very CPU-intensive and depends greatly on the speed of your CPU and video card.
+		The size of the region captured greatly influences the CPU usage, so if you have problems, consider capturing
+		a smaller size. More modern video cards and video drivers also tend to be more efficient at screen capture.
+	</p>
+	<h2>Enabling OpenGL acceleration</h2>
+	<p>
+		If you have a video card with 3D acceleration, you may be able to enable <em>OpenGL acceleration mode</em>, which
+		enables additional features and also speeds up the screen capture process.
+	</p>
+	<p>
+		The amount of acceleration possible depends on your video card's features.
+	</p>
+	<ul>
+		<li><em>Basic OpenGL support</em> allows 32-bit capture with hardware accelerated resizing.</li>
+		<li><em>Advanced blending support</em> permits hardware accelerated conversion to YCbCr formats, including
+			<em>YUY2</em>, <em>UYVY</em>, and <em>YV12</em>. For cases where some color bleeding can be tolerated, this
+			drops the raw data bandwidth requirements by 50-60%, and also speeds up real-time video compression if used.
+			You need at least an NVIDIA GeForce video card (<tt>NV_register_combiners</tt> OpenGL extension) for hardware YCbCr conversion.
+		</li>
+		<li><em>Pixel (fragment) shader support</em> lowers the load on the video card. To take advantage of pixel shader
+			support, you need at least an NVIDIA GeForce 3 (<tt>NV_register_combiners2</tt> extension) or an ATI
+			RADEON 8500 (<tt>ATI_fragment_shader</tt> extension).
+		</li>
+		<li><em>Occlusion query support</em> allows duplicate frames to be removed on the video card with neglegible
+			CPU load. Occlusion query support requires the <tt>NV_occlusion_query</tt> OpenGL extension (this is generally
+			supported on 3D accelerators from both NVIDIA and ATI).
+		</li>
+	</ul>
+	<lina:note>
+		As of this writing, some video card drivers for Windows Vista are not compatible with the methods used here to capture
+		the screen through OpenGL. If this is the case on your system, you will need to disable OpenGL acceleration so that
+		the slower, more compatible GDI-based method is used.
+	</lina:note>
+</lina:create>

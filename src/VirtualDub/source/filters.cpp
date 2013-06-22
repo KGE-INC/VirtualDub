@@ -60,7 +60,6 @@ extern VDProject *g_project;
 extern const VDScriptObject obj_VDVFiltInst;
 
 extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP();
-extern void CPUTest();
 
 /////////////////////////////////////
 
@@ -775,13 +774,11 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
 		BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
 
-		CPUTest();
-
 		filtsys.initLinearChain(
 				pFilterList,
 				(Pixel *)((char *)pbih + pbih->biSize),
 				pbih2->biWidth,
-				pbih2->biHeight,
+				abs(pbih2->biHeight),
 				0);
 
 		if (!filtsys.ReadyFilters(fsi)) {
@@ -1079,13 +1076,13 @@ void FilterPreview::UpdateButton() {
 		VDStringW text(hdlg ? L"Hide preview" : L"Show preview");
 
 		if (mButtonAccelerator) {
-			int pos = text.find(mButtonAccelerator);
+			VDStringW::size_type pos = text.find(mButtonAccelerator);
 
-			if (pos < 0)
+			if (pos == VDStringW::npos)
 				pos = text.find(towupper(mButtonAccelerator));
 
-			if (pos >= 0)
-				text.insert(pos, L'&');
+			if (pos != VDStringW::npos)
+				text.insert(text.begin() + pos, L'&');
 		}
 
 		VDSetWindowTextW32(hwndButton, text.c_str());

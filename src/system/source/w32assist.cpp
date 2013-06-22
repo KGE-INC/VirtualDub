@@ -330,7 +330,7 @@ bool VDPatchModuleImportTableW32(HMODULE hmod, const char *srcModule, const char
 
 		for(i=0; i<nImports; ++i) {
 			if (!_stricmp(pBase + pImportDir[i].Name, srcModule))
-				return false;
+				break;
 		}
 
 		if (i >= nImports)

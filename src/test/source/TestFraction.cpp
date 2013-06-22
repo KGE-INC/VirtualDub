@@ -64,6 +64,34 @@ DEFINE_TEST(Fraction) {
 
 	// check for broken carry
 	VDASSERT(VDFraction(0xFFFFFFFF, 0xFFFFFFFF).scale64r(0x7FFFFFFFFFFFFFFFi64) == 0x7FFFFFFFFFFFFFFFi64);
+
+	// check fraction conversion
+	VDFraction frac;
+	VDASSERT(frac.Parse("0") && frac == VDFraction(0, 1));
+	VDASSERT(frac.Parse("1") && frac == VDFraction(1, 1));
+	VDASSERT(frac.Parse(" 1") && frac == VDFraction(1, 1));
+	VDASSERT(frac.Parse(" 1 ") && frac == VDFraction(1, 1));
+	VDASSERT(frac.Parse("4294967295") && frac == VDFraction(0xFFFFFFFFUL, 1));
+	VDASSERT(!frac.Parse("4294967296"));
+	VDASSERT(!frac.Parse(" 1x"));
+	VDASSERT(!frac.Parse("x1"));
+
+	// check continued fraction approximations
+	frac = VDFraction(30000, 1001);
+	VDASSERT(frac * frac * frac == VDFraction(2596703098, 96463));
+
+	VDASSERT(frac.Parse("3.14159265358979324") && frac == VDFraction(4030016662, 1282794145));
+
+	// check overflow and underflow behavior
+	frac = VDFraction(0x80000000, 1);
+	VDASSERT(frac * frac * frac * frac == VDFraction(0xFFFFFFFFUL, 1));
+
+	frac = VDFraction(1, 0x80000000);
+	VDASSERT(frac * frac * frac * frac == VDFraction(0, 1));
+
+	frac = VDFraction(16, 15);
+	VDASSERT(frac * frac * frac * frac * frac * frac * frac * frac == VDFraction(2569952127, 1533540481));
+
 	return 0;
 }
 

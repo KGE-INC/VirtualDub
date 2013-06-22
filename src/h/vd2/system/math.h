@@ -43,6 +43,34 @@ namespace nsVDMath {
 	static const double	krOneOverLn10 = 0.43429448190325182765112891891661;
 };
 
+///////////////////////////////////////////////////////////////////////////
+// Integer clamping functions
+//
+#ifdef _M_IX86
+	inline uint32 VDClampToUint32(sint64 v) {
+		union U {
+			__int64 v64;
+			struct {
+				unsigned lo;
+				int hi;
+			} v32;
+		};
+
+		return ((U *)&v)->v32.hi ? ~(((U *)&v)->v32.hi >> 31) : ((U *)&v)->v32.lo;
+	}
+#else
+	inline uint32 VDClampToUint32(sint64 v) {
+		uint32 r = (uint32)v;
+		return r == v ? r : (uint32)~(sint32)(v>>63);
+	}
+#endif
+
+inline sint32 VDClampToSint32(sint64 v) {
+	sint32 r = (sint32)v;
+	return r == v ? r : (sint32)(v >> 63) ^ 0x7FFFFFFF;
+}
+
+///////////////////////////////////////////////////////////////////////////
 // Absolute value functions
 inline sint64 VDAbs64(sint64 v) {
 	return v<0 ? -v : v;

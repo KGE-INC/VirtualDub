@@ -378,8 +378,19 @@ public:
 	vdlist_node *mp;
 };
 
+class vdlist_base {
+public:
+	static void unlink(vdlist_node& node) {
+		vdlist_node& n1 = *node.mListNodePrev;
+		vdlist_node& n2 = *node.mListNodeNext;
+
+		n1.mListNodeNext = &n2;
+		n2.mListNodePrev = &n1;
+	}
+};
+
 template<class T>
-class vdlist {
+class vdlist : public vdlist_base {
 public:
 	typedef	vdlist_node						node;
 	typedef	T*								value_type;
@@ -734,7 +745,7 @@ public:
 
 		if (m.end == m.eos) {
 			difference_type delta = it - m.begin;
-			_reserve_always((m.eos - m.begin)*2 + 1);
+			_reserve_always_add_one();
 			it = m.begin + delta;
 		}
 
@@ -752,7 +763,7 @@ public:
 
 		if ((char *)m.eos - (char *)m.end < bytesToCopy) {
 			difference_type delta = it - m.begin;
-			_reserve_always((m.eos - m.begin)*2 + elementsToCopy);
+			_reserve_always_add(bytesToCopy);
 			it = m.begin + delta;
 		}
 
@@ -763,11 +774,18 @@ public:
 		return it;
 	}
 
+	void push_back() {
+		if (m.end == m.eos)
+			_reserve_always_add_one();
+
+		++m.end;
+	}
+
 	void push_back(const T& value) {
 		const T temp(value);		// copy in case value is inside container.
 
 		if (m.end == m.eos)
-			_reserve_always((m.eos - m.begin)*2 + 1);
+			_reserve_always_add_one();
 
 		*m.end++ = temp;
 	}
@@ -791,8 +809,10 @@ public:
 			_reserve_always_amortized(n);
 		}
 
-		std::fill(m.end, m.begin + n, temp);
-		m.end = m.begin + n;
+		const iterator newEnd(m.begin + n);
+		if (newEnd > m.end)
+			std::fill(m.end, newEnd, temp);
+		m.end = newEnd;
 	}
 
 	void reserve(size_type n) {
@@ -809,6 +829,23 @@ public:
 	}
 
 protected:
+#ifdef _MSC_VER
+	__declspec(noinline)
+#endif
+	void _reserve_always_add_one() {
+		_reserve_always((m.eos - m.begin) * 2 + 1);
+	}
+
+#ifdef _MSC_VER
+	__declspec(noinline)
+#endif
+	void _reserve_always_add(size_type n) {
+		_reserve_always((m.eos - m.begin) * 2 + n);
+	}
+
+#ifdef _MSC_VER
+	__declspec(noinline)
+#endif
 	void _reserve_always(size_type n) {
 		size_type oldSize = m.end - m.begin;
 		T *oldStorage = m.begin;
@@ -821,6 +858,9 @@ protected:
 		m.eos = newStorage + n;
 	}
 
+#ifdef _MSC_VER
+	__declspec(noinline)
+#endif
 	void _reserve_always_amortized(size_type n) {
 		size_type nextCapacity = (size_type)((m.eos - m.begin)*2);
 

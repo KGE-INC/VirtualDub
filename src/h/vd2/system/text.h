@@ -29,7 +29,8 @@
 #include <ctype.h>
 #include <stdarg.h>
 
-template<class T> class VDBasicString;
+class VDStringA;
+class VDStringW;
 
 // Fast text routines attempt to work in the per-thread area; if the
 // per-thread area is not large enough, a buffer is allocated.  If
@@ -74,23 +75,23 @@ void VDFastTextFree();
 int VDTextWToA(char *dst, int max_dst, const wchar_t *src, int max_src = -1);
 int VDTextAToW(wchar_t *dst, int max_dst, const char *src, int max_src = -1);
 
-VDBasicString<char> VDTextWToA(const wchar_t *src, int length = -1);
-VDBasicString<char> VDTextWToA(const VDBasicString<wchar_t>& sw);
-VDBasicString<wchar_t> VDTextAToW(const char *src, int length = -1);
-VDBasicString<wchar_t> VDTextAToW(const VDBasicString<char>& sw);
+VDStringA VDTextWToA(const wchar_t *src, int length = -1);
+VDStringA VDTextWToA(const VDStringW& sw);
+VDStringW VDTextAToW(const char *src, int length = -1);
+VDStringW VDTextAToW(const VDStringA& sw);
 
-VDBasicString<char> VDTextWToU8(const VDBasicString<wchar_t>& s);
-VDBasicString<char> VDTextWToU8(const wchar_t *s, int length);
-VDBasicString<wchar_t> VDTextU8ToW(const VDBasicString<char>& s);
-VDBasicString<wchar_t> VDTextU8ToW(const char *s, int length);
+VDStringA VDTextWToU8(const VDStringW& s);
+VDStringA VDTextWToU8(const wchar_t *s, int length);
+VDStringW VDTextU8ToW(const VDStringA& s);
+VDStringW VDTextU8ToW(const char *s, int length);
 
 // The terminating NULL character is not included in these.
 
 int VDTextWToALength(const wchar_t *s, int length=-1);
 int VDTextAToWLength(const char *s, int length=-1);
 
-VDBasicString<wchar_t> VDaswprintf(const wchar_t *format, int args, const void *const *argv);
-VDBasicString<wchar_t> VDvswprintf(const wchar_t *format, int args, va_list val);
-VDBasicString<wchar_t> VDswprintf(const wchar_t *format, int args, ...);
+VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv);
+VDStringW VDvswprintf(const wchar_t *format, int args, va_list val);
+VDStringW VDswprintf(const wchar_t *format, int args, ...);
 
 #endif

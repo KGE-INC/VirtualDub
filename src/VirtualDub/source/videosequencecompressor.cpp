@@ -172,7 +172,7 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 	// 43/51 value, and use the higher of the two.
 
 	if (isEqualFOURCC(info.fccHandler, 'UYFH')) {
-		long lRealMaxPackedSize = pbiInput->bmiHeader.biWidth * pbiInput->bmiHeader.biHeight;
+		long lRealMaxPackedSize = pbiInput->bmiHeader.biWidth * abs(pbiInput->bmiHeader.biHeight);
 
 		if (pbiInput->bmiHeader.biCompression == BI_RGB)
 			lRealMaxPackedSize = (lRealMaxPackedSize * 51) >> 3;

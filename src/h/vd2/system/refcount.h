@@ -232,4 +232,17 @@ public:
 	}
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+template<class T, class U>
+bool VDRefCountObjectFactory(U **pp) {
+	T *p = new_nothrow T;
+	if (!p)
+		return false;
+
+	*pp = static_cast<U *>(p);
+	p->AddRef();
+	return true;
+}
+
 #endif

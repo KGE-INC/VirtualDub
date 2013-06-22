@@ -37,6 +37,8 @@ void help() {
 }
 
 int wmain(int argc, wchar_t **argv) {
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
+
 	wprintf(L"VirtualDub test harness utility for " BUILD L"\n");
 	wprintf(L"Copyright (C) 2005 Avery Lee. Licensed under GNU General Public License\n\n");
 

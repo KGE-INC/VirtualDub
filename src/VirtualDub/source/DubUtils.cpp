@@ -41,8 +41,6 @@ void VDStreamInterleaver::Init(int streams) {
 	mNextStream = 0;
 	mFrames = 0;
 
-	mSegmentStartFrame	= 0;
-	mBytesPerFrame		= 0;
 	mbInterleavingEnabled	= true;
 	mNonIntStream		= 0;
 	mActiveStreams		= 0;
@@ -57,15 +55,12 @@ void VDStreamInterleaver::InitStream(int stream, uint32 nSampleSize, sint32 nPre
 	streaminfo.mMaxSampleSize		= nSampleSize;
 	streaminfo.mPreloadMicroFrames	= (sint32)((double)nPreload / nSamplesPerFrame * 65536);
 	streaminfo.mSamplesPerFrame		= nSamplesPerFrame;
-	streaminfo.mBytesPerFrame		= (sint64)ceil(nSampleSize * nSamplesPerFrame);
+	streaminfo.mSamplesPerFramePending	= -1;
 	streaminfo.mIntervalMicroFrames	= (sint32)(65536.0 / nInterval);
-	streaminfo.mLastSampleWrite		= 0;
 	streaminfo.mbActive				= true;
 	streaminfo.mMaxPush				= nMaxPush;
 
 	++mActiveStreams;
-
-	mBytesPerFrame += streaminfo.mBytesPerFrame;
 }
 
 void VDStreamInterleaver::EndStream(int stream) {
@@ -74,7 +69,6 @@ void VDStreamInterleaver::EndStream(int stream) {
 	if (streaminfo.mbActive) {
 		streaminfo.mbActive		= false;
 		streaminfo.mSamplesToWrite	= 0;
-		mBytesPerFrame -= streaminfo.mBytesPerFrame;
 		--mActiveStreams;
 
 		while(mNonIntStream < mStreams.size() && !mStreams[mNonIntStream].mbActive)
@@ -86,7 +80,7 @@ void VDStreamInterleaver::AdjustStreamRate(int stream, double samplesPerFrame) {
 	VDASSERT(stream >= 0 && stream < mStreams.size());
 	Stream& streaminfo = mStreams[stream];
 
-	streaminfo.mSamplesPerFrame = samplesPerFrame;
+	streaminfo.mSamplesPerFramePending = samplesPerFrame;
 }
 
 VDStreamInterleaver::Action VDStreamInterleaver::GetNextAction(int& streamID, sint32& samples) {
@@ -114,7 +108,6 @@ VDStreamInterleaver::Action VDStreamInterleaver::GetNextAction(int& streamID, si
 				if (samples > streaminfo.mMaxPush)
 					samples = streaminfo.mMaxPush;
 				streaminfo.mSamplesToWrite -= samples;
-				streaminfo.mLastSampleWrite = samples;
 				streamID = mNextStream;
 				VDASSERT(samples < 2147483647);
 				streaminfo.mSamplesWrittenToSegment += samples;
@@ -131,7 +124,6 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 
 	for(;;) {
 		int nFeeding = 0;
-		sint64 minframe = 0x7fffffffffffffff;
 		sint64 microFrames = (sint64)mFrames << 16;
 
 		for(int i=mNonIntStream; i<nStreams; ++i) {
@@ -149,15 +141,10 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 
 			microFrameOffset += streaminfo.mPreloadMicroFrames;
 
-			sint64 iframe = (microFrameOffset + 65535) >> 16;
-			double frame;
+			double frame = microFrameOffset / 65536.0;
 
-			frame = microFrameOffset / 65536.0;
-
-			if (iframe < minframe)
-				minframe = iframe;
-
-			sint64 toread = (sint64)ceil(streaminfo.mSamplesPerFrame * (frame + mSegmentStartFrame)) - streaminfo.mSamplesWrittenToSegment;
+			sint64 target = (sint64)ceil(streaminfo.mSamplesPerFrame * frame);
+			sint64 toread = target - streaminfo.mSamplesWrittenToSegment;
 
 			if (toread < 0)
 				toread = 0;
@@ -165,7 +152,7 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 			VDASSERT((sint32)toread == toread);
 			streaminfo.mSamplesToWrite = (sint32)toread;
 
-//			VDDEBUG("Dub/Interleaver: Stream #%d: feeding %d samples\n", i, (int)toread);
+//			VDDEBUG("Dub/Interleaver: Stream #%d: feeding %d samples (%4I64x, %I64d + %I64d -> %I64d)\n", i, (int)toread, microFrameOffset, streaminfo.mSamplesWrittenToSegment, toread, target);
 			if (toread > 0)
 				++nFeeding;
 
@@ -180,6 +167,15 @@ VDStreamInterleaver::Action VDStreamInterleaver::PushStreams() {
 		// try again.
 
 		++mFrames;
+
+		for(int i=0; i<nStreams; ++i) {
+			Stream& streaminfo = mStreams[i];
+
+			if (streaminfo.mSamplesPerFramePending >= 0) {
+				streaminfo.mSamplesPerFrame = streaminfo.mSamplesPerFramePending;
+				streaminfo.mSamplesPerFramePending = -1.0;
+			}
+		}
 	}
 
 	if (!mbInterleavingEnabled)
@@ -282,56 +278,63 @@ void VDRenderFrameIterator::Init(const vdfastvector<IVDVideoSource *>& videoSour
 	Reload();
 }
 
-void VDRenderFrameIterator::Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll, int& srcIndex, bool& direct, bool& sameAsLast) {
+VDRenderFrameStep VDRenderFrameIterator::Next() {
+	VDRenderFrameStep step;
+
 	while(!mbFinished) {
 		bool b;
 		VDPosition f = -1;
 
 		if (mSrcDisplayFrame >= 0) {
 			f = mpVideoSource->streamGetNextRequiredFrame(b);
-			bIsPreroll = (b!=0) && !mbDirect;
+			step.mbIsPreroll = (b!=0) && !mbDirect;
 		} else {
 			f = -1;
-			bIsPreroll = false;
+			step.mbIsPreroll = false;
 		}
 
 		if (f!=-1 || mbFirstSourceFrame) {
 			mbFirstSourceFrame = false;
 
-			srcFrame = f;
-			displayFrame = mSrcDisplayFrame;
-			timelineFrame = mSrcTimelineFrame;
-			srcIndex = mSrcIndex;
-			direct = mbDirect;
-			sameAsLast = mbSameAsLast;
+			step.mSourceFrame	= f;
+			step.mDisplayFrame	= mSrcDisplayFrame;
+			step.mTimelineFrame	= mSrcTimelineFrame;
+			step.mSrcIndex		= mSrcIndex;
+			step.mbDirect		= mbDirect;
+			step.mbSameAsLast	= mbSameAsLast;
 
 			if (mbDirect) {
 				if (!Reload())
 					mbFinished = true;
 			}
-			return;
+
+			return step;
 		}
 
 		if (!Reload())
 			break;
-	}		
+	}
 
-	srcFrame = -1;
-	srcIndex = mSrcIndex;
-	timelineFrame = mSrcTimelineFrame;
-	displayFrame = mSrcDisplayFrame;
-	bIsPreroll = false;
-	sameAsLast = true;
+	step.mSourceFrame	= -1;
+	step.mSrcIndex		= mSrcIndex;
+	step.mTimelineFrame	= mSrcTimelineFrame;
+	step.mDisplayFrame	= mSrcDisplayFrame;
+	step.mbIsPreroll	= false;
+	step.mbSameAsLast	= true;
+	step.mbDirect		= mbDirect;
+
 	mbFinished = true;
-	direct = mbDirect;
+
+	return step;
 }
 
 bool VDRenderFrameIterator::Reload() {
 	const VDRenderFrameMap::FrameEntry& ent = mFrameMap[mDstFrame];
 
-	mSrcIndex = ent.mSrcIndex;
-	if (mSrcIndex < 0)
+	if (ent.mSrcIndex < 0)
 		return false;
+
+	mSrcIndex = ent.mSrcIndex;
 
 	if (mLastSrcIndex != mSrcIndex) {
 		mLastSrcIndex = mSrcIndex;

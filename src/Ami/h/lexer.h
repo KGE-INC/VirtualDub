@@ -46,6 +46,7 @@ enum {
 	kTokenTextEdit,
 	kTokenTextArea,
 	kTokenTrackBar,
+	kTokenHotkey,
 	kTokenCustomWindow,
 
 	kTokenListItem,

@@ -935,6 +935,9 @@ void parse_dialog_common(int dlgID, tDialogScript& script, int t) {
 	case kTokenDialog:
 		parse_dialog_control(dlgID, script, kBC_CreateChildDialog);
 		break;
+	case kTokenHotkey:
+		parse_dialog_control(dlgID, script, kBC_CreateHotkey);
+		break;
 	case kTokenCustomWindow:
 		parse_dialog_control(dlgID, script, kBC_CreateCustom);
 		break;

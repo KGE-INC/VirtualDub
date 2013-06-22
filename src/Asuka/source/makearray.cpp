@@ -17,13 +17,14 @@
 
 #include "stdafx.h"
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/vdstl.h>
 #include <vd2/system/filesys.h>
 #include <string>
 #include <vector>
 
 #include "utils.h"
 
-void tool_makearray(const std::vector<const char *>& args, const std::vector<const char *>& switches) {
+void tool_makearray(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches) {
 	if (args.size() < 3) {
 		printf("usage: makearray <binary file> <.cpp output file> <symbol name>\n");
 		exit(5);
@@ -34,7 +35,7 @@ void tool_makearray(const std::vector<const char *>& args, const std::vector<con
 		fail("    couldn't open: %s\n", args[0]);
 	fseek(f, 0, SEEK_END);
 	size_t l = ftell(f);
-	std::vector<char> buf(l);
+	vdfastvector<char> buf(l);
 	fseek(f, 0, SEEK_SET);
 	if (!buf.empty())
 		fread(&buf[0], l, 1, f);

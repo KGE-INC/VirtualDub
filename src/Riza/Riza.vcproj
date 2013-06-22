@@ -48,7 +48,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="NDEBUG;WIN32;_LIB;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -119,7 +119,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="NDEBUG;WIN32;_LIB;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -188,7 +188,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="_DEBUG;WIN32;_LIB;NOMINMAX"
 				StringPooling="true"
 				MinimalRebuild="true"
@@ -259,7 +259,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="h,..\h"
+				AdditionalIncludeDirectories="h,..\h,res"
 				PreprocessorDefinitions="_DEBUG;WIN32;_LIB;NOMINMAX"
 				StringPooling="true"
 				MinimalRebuild="true"
@@ -397,6 +397,10 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\cap_screen.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\cap_vfw.cpp"
@@ -599,6 +603,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\direct3d.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\display.cpp"
 				>
 				<FileConfiguration
@@ -757,6 +765,10 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\opengl.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\vc_dv.cpp"
@@ -924,6 +936,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\Riza\direct3d.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\Riza\display.h"
 				>
 			</File>
@@ -933,6 +949,10 @@
 			</File>
 			<File
 				RelativePath=".\h\displaydrvdx9.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\opengl.h"
 				>
 			</File>
 			<File
@@ -996,6 +1016,54 @@
 			Filter="fx"
 			>
 			<File
+				RelativePath=".\source\cap_screen_glshaders.vdfx"
+				>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
+						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
+						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|x64"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
+						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
+						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
+						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
+						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|x64"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						Description=""
+						CommandLine="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka&quot; glc &quot;$(InputPath)&quot; &quot;$(InputDir)\..\h\$(InputName).inl&quot;&#x0D;&#x0A;"
+						AdditionalDependencies="&quot;$(VDBaseDir)\out\$(VDConfigDirTag)\asuka.exe&quot;"
+						Outputs="&quot;$(InputDir)\..\h\$(InputName).inl&quot;"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
 				RelativePath=".\source\displaydx9.fx"
 				>
 				<FileConfiguration
@@ -1042,6 +1110,62 @@
 						Outputs="&quot;$(InputDir)\..\h\$(InputName)_shader.inl&quot;"
 					/>
 				</FileConfiguration>
+			</File>
+		</Filter>
+		<Filter
+			Name="Resource Files"
+			>
+			<File
+				RelativePath=".\res\resource.h"
+				>
+			</File>
+			<File
+				RelativePath=".\res\Riza.rc"
+				>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCResourceCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|x64"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCResourceCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCResourceCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|x64"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCResourceCompilerTool"
+					/>
+				</FileConfiguration>
+			</File>
+		</Filter>
+		<Filter
+			Name="Autogenerated Header Files"
+			>
+			<File
+				RelativePath=".\h\cap_screen_glshaders.inl"
+				>
+			</File>
+			<File
+				RelativePath=".\h\displaydx9_shader.inl"
+				>
 			</File>
 		</Filter>
 	</Files>

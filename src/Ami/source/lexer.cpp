@@ -55,6 +55,7 @@ static const struct {
 	{ L"splitter",			"splitter",				kTokenSplitter },
 	{ L"textedit",			"textedit",				kTokenTextEdit },
 	{ L"textarea",			"textarea",				kTokenTextArea },
+	{ L"hotkey",			"hotkey",				kTokenHotkey },
 	{ L"customWindow",		"customWindow",			kTokenCustomWindow },
 
 	{ L"listitem",			"listitem",				kTokenListItem },

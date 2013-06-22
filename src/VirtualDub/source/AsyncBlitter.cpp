@@ -479,8 +479,6 @@ bool VDAsyncBlitter::ServiceRequests(bool fWait) {
 }
 
 void VDAsyncBlitter::ThreadRun() {
-	_RPT0(0,"VDAsyncBlitter: Thread started.\n");
-
 	mpRTProfiler = VDGetRTProfiler();
 	if (mpRTProfiler)
 		mProfileChannel = mpRTProfiler->AllocChannel("Blitter");
@@ -518,6 +516,4 @@ void VDAsyncBlitter::ThreadRun() {
 	dwLockedBuffers = 0;
 	mEventDraw.signal();
 	mEventAbort.signal();
-
-	_RPT0(0,"VDAsyncBlitter: thread exit.\n");
 }

@@ -119,13 +119,11 @@ void AVIAudioPreviewOutputStream::stop() {
 }
 
 void AVIAudioPreviewOutputStream::flush() {
-	_RPT0(0,"AVIAudioPreviewOutputStream: flushing...\n");
 	if (mpAudioOut && started)
 		mpAudioOut->Flush();
 }
 
 void AVIAudioPreviewOutputStream::finalize() {
-	_RPT0(0,"AVIAudioPreviewOutputStream: finalizing...\n");
 	if (mpAudioOut && started)
 		mpAudioOut->Finalize();
 }
@@ -179,8 +177,6 @@ bool AVIOutputPreview::init(const wchar_t *szFile) {
 }
 
 void AVIOutputPreview::finalize() {
-	_RPT0(0,"AVIOutputPreview: Finalizing...\n");
-
 	if (audioOut)
 		static_cast<AVIAudioPreviewOutputStream *>(audioOut)->finalize();
 }

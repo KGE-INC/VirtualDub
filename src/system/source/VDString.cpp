@@ -25,3 +25,117 @@
 
 #include "stdafx.h"
 #include <vd2/system/VDString.h>
+
+const VDStringSpanA::value_type VDStringSpanA::sNull[1] = {0};
+
+void VDStringA::push_back_extend() {
+	VDASSERT(mpEOS == mpEnd);
+	size_type current_size = (size_type)(mpEnd - mpBegin);
+
+	reserve_slow(current_size * 2 + 1, current_size);
+}
+
+void VDStringA::resize_slow(size_type n, size_type current_size) {
+	resize_slow(n, current_size, 0);
+}
+
+void VDStringA::resize_slow(size_type n, size_type current_size, value_type c) {
+	VDASSERT(n > current_size);
+
+	size_type current_capacity = (size_type)(mpEOS - mpBegin);
+	if (n > current_capacity)
+		reserve_slow(n, current_capacity);
+
+	memset(mpBegin + current_size, c, n - current_size);
+	mpEnd = mpBegin + n;
+	*mpEnd = 0;
+}
+
+void VDStringA::reserve_slow(size_type n, size_type current_capacity) {
+	VDASSERT(n > current_capacity);
+
+	size_type current_size = (size_type)(mpEnd - mpBegin);
+	value_type *s = new value_type[n + 1];
+	memcpy(s, mpBegin, (current_size + 1) * sizeof(value_type));
+	if (mpBegin != sNull)
+		delete[] mpBegin;
+
+	mpBegin = s;
+	mpEnd = s + current_size;
+	mpEOS = s + n;
+}
+
+void VDStringA::reserve_amortized_slow(size_type n, size_type current_size, size_type current_capacity) {
+	n += current_size;
+
+	size_type doublesize = current_size * 2;
+	if (n < doublesize)
+		n = doublesize;
+
+	reserve_slow(n, current_capacity);
+}
+
+VDStringA& VDStringA::sprintf(const value_type *format, ...) {
+	va_list val;
+	va_start(val, format);
+	assign(VDFastTextVprintfA(format, val));
+	va_end(val);
+	VDFastTextFree();
+	return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+const VDStringSpanW::value_type VDStringSpanW::sNull[1] = {0};
+
+void VDStringW::push_back_extend() {
+	VDASSERT(mpEOS == mpEnd);
+	size_type current_size = (size_type)(mpEnd - mpBegin);
+
+	reserve_slow(current_size * 2 + 1, current_size);
+}
+
+void VDStringW::resize_slow(size_type n, size_type current_size) {
+	VDASSERT(n > current_size);
+
+	size_type current_capacity = (size_type)(mpEOS - mpBegin);
+	if (n > current_capacity)
+		reserve_slow(n, current_capacity);
+
+	mpEnd = mpBegin + n;
+	*mpEnd = 0;
+}
+
+void VDStringW::reserve_slow(size_type n, size_type current_capacity) {
+	VDASSERT(current_capacity == (size_type)(mpEOS - mpBegin));
+	VDASSERT(n > current_capacity);
+
+	size_type current_size = (size_type)(mpEnd - mpBegin);
+	value_type *s = new value_type[n + 1];
+	memcpy(s, mpBegin, (current_size + 1) * sizeof(value_type));
+	if (mpBegin != sNull)
+		delete[] mpBegin;
+
+	mpBegin = s;
+	mpEnd = s + current_size;
+	mpEOS = s + n;
+}
+
+void VDStringW::reserve_amortized_slow(size_type n, size_type current_size, size_type current_capacity) {
+	n += current_size;
+
+	size_type doublesize = current_size * 2;
+	if (n < doublesize)
+		n = doublesize;
+
+	reserve_slow(n, current_capacity);
+}
+
+VDStringW& VDStringW::sprintf(const value_type *format, ...) {
+	va_list val;
+	va_start(val, format);
+	assign(VDFastTextVprintfW(format, val));
+	va_end(val);
+	VDFastTextFree();
+	return *this;
+}
