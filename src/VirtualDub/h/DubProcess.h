@@ -75,7 +75,7 @@ protected:
 
 	void NextSegment();
 
-	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
+	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
 	void WritePendingEmptyVideoFrame();
 	void WriteAudio(void *buffer, long lActualBytes, long lActualSamples);
 

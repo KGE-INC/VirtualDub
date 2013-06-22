@@ -27,6 +27,7 @@ struct VDRenderVideoPipeFrameInfo {
 	int			mSrcIndex;
 	VDPosition	mRawFrame;
 	VDPosition	mTargetFrame;
+	VDPosition	mOrigDisplayFrame;
 	VDPosition	mDisplayFrame;
 	VDPosition	mTimelineFrame;
 	uint32		mFlags;

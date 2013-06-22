@@ -134,7 +134,10 @@ bool VDRegistryKey::getString(const char *pszName, VDStringA& str) const {
 	if (RegQueryValueEx((HKEY)pHandle, pszName, 0, NULL, (BYTE *)str.data(), &s))
 		return false;
 
-	str.resize(strlen(str.c_str()));		// Trim off pesky terminating NULLs.
+	if (!s)
+		str.clear();
+	else
+		str.resize(strlen(str.c_str()));		// Trim off pesky terminating NULLs.
 
 	return true;
 }
@@ -157,14 +160,16 @@ bool VDRegistryKey::getString(const char *pszName, VDStringW& str) const {
 	if (!pHandle || RegQueryValueExW((HKEY)pHandle, wsName.c_str(), 0, &type, NULL, &s) || type != REG_SZ)
 		return false;
 
-	if (s > 0) {
+	if (s <= 0)
+		str.clear();
+	else {
 		str.resize((s + sizeof(wchar_t) - 1) / sizeof(wchar_t));
 
 		if (RegQueryValueExW((HKEY)pHandle, wsName.c_str(), 0, NULL, (BYTE *)&str[0], &s))
 			return false;
-	}
 
-	str.resize(wcslen(str.c_str()));		// Trim off pesky terminating NULLs.
+		str.resize(wcslen(str.c_str()));		// Trim off pesky terminating NULLs.
+	}
 
 	return true;
 }

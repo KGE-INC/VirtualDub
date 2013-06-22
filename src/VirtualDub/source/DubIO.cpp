@@ -166,7 +166,7 @@ void VDDubIOThread::ThreadRun() {
 	}
 }
 
-void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
+void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
 	int hr;
 
 	void *buffer;
@@ -178,6 +178,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	frameInfo.mLength			= 0;
 	frameInfo.mRawFrame			= stream_frame;
 	frameInfo.mTargetFrame		= target_frame;
+	frameInfo.mOrigDisplayFrame	= orig_display_frame;
 	frameInfo.mDisplayFrame		= display_frame;
 	frameInfo.mTimelineFrame	= timeline_frame;
 	frameInfo.mSrcIndex			= sourceIndex;
@@ -231,6 +232,8 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 			throw MyAVIError("Dub/IO-Video", hr);
 	}
 
+	vsrc->streamFillDecodePadding(buffer, size);
+
 	display_frame = vsrc->streamToDisplayOrder(stream_frame);
 
 	frameInfo.mLength	= lActualBytes;
@@ -238,7 +241,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	mpVideoPipe->postBuffer(frameInfo);
 }
 
-void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast) {
+void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition origDisplayFrame, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast) {
 	void *buffer;
 	int handle;
 
@@ -249,6 +252,7 @@ void VDDubIOThread::ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame,
 
 	VDRenderVideoPipeFrameInfo frameInfo;
 	frameInfo.mLength			= 0;
+	frameInfo.mOrigDisplayFrame	= origDisplayFrame;
 	frameInfo.mDisplayFrame		= displayFrame;
 	frameInfo.mTimelineFrame	= timelineFrame;
 	frameInfo.mTargetFrame		= vsrc->displayToStreamOrder(displayFrame);
@@ -287,9 +291,9 @@ bool VDDubIOThread::MainAddVideoFrame() {
 	VDRenderFrameStep step(mVideoFrameIterator.Next());
 
 	if (step.mSourceFrame < 0)
-		ReadNullVideoFrame(step.mSrcIndex, step.mDisplayFrame, step.mTimelineFrame, step.mbDirect, step.mbSameAsLast);
+		ReadNullVideoFrame(step.mSrcIndex, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbDirect, step.mbSameAsLast);
 	else
-		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mTargetSample, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
+		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mTargetSample, step.mOrigDisplayFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
 
 	if (!step.mbIsPreroll)
 		++vInfo.cur_dst;

@@ -1,6 +1,19 @@
 VirtualDub change log
 
-Build %build% (1.7.7, stable): [%date%]
+Build %build% (1.7.8, stable): [%date%]
+   [bugs fixed]
+   * Capture: Fixed crash when starting capture from command line with filters and preview acceleration enabled.
+   * Capture: Fixed issues with custom DirectShow filters not reconnecting.
+   * Capture: Added workaround for audio source switching to "no audio" in UI due to DirectShow crossbar goofiness.
+   * Capture: Changing the audio source manually now asks to turn off auto-switching.
+   * Capture: Audio source now saves properly when set to "no audio."
+   * Fixed crash when previewing beyond end of selection with IVTC enabled.
+   * Added workaround for XviD decompression crashes.
+
+   [regressions fixed]
+   * Filters receive distinct source frame numbers for null frames again.
+
+Build 28312 (1.7.7, stable): [December 9, 2007]
    [bugs fixed]
    * Improved accuracy of "set so audio and video durations match" for short clips.
    * Fixed vertical chroma positioning errors when converting to 4:2:0 or 4:1:0 YCbCr.

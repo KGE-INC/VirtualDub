@@ -84,8 +84,8 @@ public:
 
 protected:
 	void ThreadRun();
-	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast);
-	void ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast);
+	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition orig_display_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast);
+	void ReadNullVideoFrame(int sourceIndex, VDPosition orig_display_frame, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast);
 	bool MainAddVideoFrame();
 	bool MainAddAudioFrame();
 

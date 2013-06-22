@@ -1215,10 +1215,14 @@ int VDInputDriverPlugin::DetectBySignature(const void *pHeader, sint32 nHeaderSi
 		return 1;
 
 	LoadPlugin();
-	int retval;
-	vdwithinputplugin(mContext) {
-		retval = mpXObject->DetectBySignature(pHeader, nHeaderSize, pFooter, nFooterSize, nFileSize);
+
+	int retval = -1;
+	if (mpXObject) {
+		vdwithinputplugin(mContext) {
+			retval = mpXObject->DetectBySignature(pHeader, nHeaderSize, pFooter, nFooterSize, nFileSize);
+		}
 	}
+
 	UnloadPlugin();
 
 	return retval;
@@ -1229,6 +1233,11 @@ InputFile *VDInputDriverPlugin::CreateInputFile(uint32 flags) {
 
 	LoadPlugin();
 
+	if (!mpXObject) {
+		UnloadPlugin();
+		throw MyMemoryError();
+	}
+
 	vdwithinputplugin(mContext) {
 		mpXObject->CreateInputFile(flags, ~ifile);
 	}
@@ -1236,9 +1245,12 @@ InputFile *VDInputDriverPlugin::CreateInputFile(uint32 flags) {
 	InputFile *p = NULL;
 
 	if (ifile)
-		p = new VDInputFilePlugin(ifile, mpPluginDesc, &mContext);
+		p = new_nothrow VDInputFilePlugin(ifile, mpPluginDesc, &mContext);
 
 	UnloadPlugin();
+
+	if (!p)
+		throw MyMemoryError();
 
 	return p;
 }

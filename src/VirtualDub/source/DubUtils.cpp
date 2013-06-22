@@ -220,6 +220,8 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 			directLast = -1;
 		}
 
+		// we need to preserve this so filter timing isn't screwed up across drop frames
+		VDPosition origSrcFrame = srcFrame;
 		srcFrame = pVS->getRealDisplayFrame(srcFrame);
 
 		if (bDirect) {
@@ -245,6 +247,7 @@ void VDRenderFrameMap::Init(const vdfastvector<IVDVideoSource *>& videoSources, 
 		ent.mSrcIndex = source;
 		ent.mTimelineFrame = timelineFrame;
 		ent.mDisplayFrame = srcFrame;
+		ent.mOrigDisplayFrame = origSrcFrame;
 
 		mFrameMap.push_back(ent);
 	}
@@ -268,6 +271,7 @@ void VDRenderFrameIterator::Init(const vdfastvector<IVDVideoSource *>& videoSour
 	mbDirect		= bDirect || bSmart;
 	mbSmart			= bSmart;
 	mDstFrame		= 0;
+	mSrcOrigDisplayFrame	= -1;
 	mSrcDisplayFrame	= -1;
 	mSrcTargetSample	= -1;
 	mLastSrcDisplayFrame = -1;
@@ -300,6 +304,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 
 			step.mSourceFrame	= f;
 			step.mTargetSample	= mSrcTargetSample;
+			step.mOrigDisplayFrame = mSrcOrigDisplayFrame;
 			step.mDisplayFrame	= mSrcDisplayFrame;
 			step.mTimelineFrame	= mSrcTimelineFrame;
 			step.mSrcIndex		= mSrcIndex;
@@ -322,6 +327,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 	step.mTargetSample	= mSrcTargetSample;
 	step.mSrcIndex		= mSrcIndex;
 	step.mTimelineFrame	= mSrcTimelineFrame;
+	step.mOrigDisplayFrame	= mSrcOrigDisplayFrame;
 	step.mDisplayFrame	= mSrcDisplayFrame;
 	step.mbIsPreroll	= false;
 	step.mbSameAsLast	= true;
@@ -348,6 +354,7 @@ bool VDRenderFrameIterator::Reload() {
 	mpVideoSource = mVideoSources[mSrcIndex];
 
 	mSrcTimelineFrame	= ent.mTimelineFrame;
+	VDPosition nextOrigDisplay = ent.mOrigDisplayFrame;
 	VDPosition nextDisplay = ent.mDisplayFrame;
 
 	if (mbSmart) {
@@ -369,13 +376,15 @@ bool VDRenderFrameIterator::Reload() {
 
 	mbSameAsLast = (nextDisplay == mLastSrcDisplayFrame);
 
-	if (mbDirect && mbSameAsLast)
+	if (mbDirect && mbSameAsLast) {
+		nextOrigDisplay = -1;
 		nextDisplay = -1;
-	else {
+	} else {
 		mpVideoSource->streamSetDesiredFrame(nextDisplay);
 		mLastSrcDisplayFrame = nextDisplay;
 	}
 
+	mSrcOrigDisplayFrame = nextOrigDisplay;
 	mSrcDisplayFrame = nextDisplay;
 	mSrcTargetSample = mpVideoSource->displayToStreamOrder(nextDisplay);
 	++mDstFrame;

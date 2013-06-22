@@ -54,6 +54,16 @@ extern HINSTANCE g_hInst;
 	#define DS_VERIFY(exp, msg) if (FAILED(hr = (exp))) { VDLog(kVDLogWarning, VDStringW(L"CapDShow: Failed to build filter graph: " L##msg L"\n")); TearDownGraph(); return false; } else
 #endif
 
+//#define VD_DSHOW_VERBOSE_LOGGING 1
+
+#if VD_DSHOW_VERBOSE_LOGGING
+	#define DS_VERBOSE_LOG(msg) (VDLog(kVDLogInfo, VDStringW(L##msg)))
+	#define DS_VERBOSE_LOGF(...) (VDLog(kVDLogInfo, VDswprintf(__VA_ARGS__)))
+#else
+	#define DS_VERBOSE_LOG(msg) ((void)0)
+	#define DS_VERBOSE_LOGF(...) ((void)0)
+#endif
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	fast semaphore
@@ -2935,19 +2945,29 @@ void VDCaptureDriverDS::GetPropertyInfoInt(uint32 id, sint32& minVal, sint32& ma
 }
 
 bool VDCaptureDriverDS::CaptureStart() {
+	DS_VERBOSE_LOG("DShow: Entering CaptureStart().");
+
 	if (VDINLINEASSERTFALSE(mCaptureThread)) {
 		CloseHandle(mCaptureThread);
 		mCaptureThread = NULL;
 	}
+
 	HANDLE hProcess = GetCurrentProcess();
-	if (!DuplicateHandle(hProcess, GetCurrentThread(), hProcess, &mCaptureThread, 0, FALSE, DUPLICATE_SAME_ACCESS))
+	if (!DuplicateHandle(hProcess, GetCurrentThread(), hProcess, &mCaptureThread, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+		VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to duplicate process handle.\n"));
 		return false;
+	}
 
 	// there had better not be update locks when we're trying to start a capture!
 	VDASSERT(!mUpdateLocks);
 
 	// switch to a capture graph, but don't start it.
+	DS_VERBOSE_LOG("DShow: Building capture graph.");
+
+	int audioSource = mCurrentAudioSource;
 	if (BuildCaptureGraph()) {
+		if (audioSource != mCurrentAudioSource)
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Audio source change was detected during capture start.\n"));
 
 		// cancel default handling for EC_REPAINT, otherwise
 		// the Video Renderer will start sending back extra requests
@@ -2963,31 +2983,71 @@ bool VDCaptureDriverDS::CaptureStart() {
 		mCaptureStopQueued = false;
 
 		// Kick the graph into PAUSED state.
-		
+
+		DS_VERBOSE_LOG("DShow: Pausing filter graph.");		
 		HRESULT hr = mpGraphControl->Pause();
 
-		if (SUCCEEDED(hr) && (!mpCB || mpCB->CapEvent(kEventPreroll, 0))) {
+		if (hr == S_FALSE) {
+			OAFilterState state;
+			for(int i=0; i<30; ++i) {
+				hr = mpGraphControl->GetState(1000, &state);
+				if (hr != VFW_S_STATE_INTERMEDIATE)
+					break;
+			}
 
-			// reset capture start time in case there was a preroll dialog
-			mCaptureStart = VDGetAccurateTick();
+			if (hr == VFW_S_STATE_INTERMEDIATE)
+				VDLog(kVDLogWarning, VDStringW(L"CapDShow: Filter graph took more than 30 seconds to transition state.\n"));
+		}
 
-			bool success = false;
-			if (mpCB) {
-				try {
-					mpCB->CapBegin(0);
-					success = true;
-				} catch(MyError& e) {
-					MyError *p = new MyError;
-					p->TransferFrom(e);
-					delete mpCaptureError.xchg(p);
+		if (FAILED(hr)) {
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to transition filter graph to paused state.\n"));
+		} else {
+			if (!mpCB || mpCB->CapEvent(kEventPreroll, 0)) {
+				// reset capture start time in case there was a preroll dialog
+				mCaptureStart = VDGetAccurateTick();
+
+				bool success = false;
+				if (mpCB) {
+					try {
+						mpCB->CapBegin(0);
+						success = true;
+					} catch(MyError& e) {
+						MyError *p = new MyError;
+						p->TransferFrom(e);
+						delete mpCaptureError.xchg(p);
+					}
+				}
+
+				if (success) {
+					DS_VERBOSE_LOG("DShow: Running filter graph.");
+
+					if (StartGraph()) {
+						DS_VERBOSE_LOG("DShow: Exiting CaptureStart() (success).");
+						return true;
+					}
+
+					DS_VERBOSE_LOG("DShow: Failed to run filter graph.");
 				}
 			}
-			if (success && StartGraph())
-				return true;
 		}
 
 		mGraphStateLock.Wait();
-		mpGraphControl->Stop();		// Have to do this because our graph state flag doesn't track PAUSED. Okay to fail.
+		hr = mpGraphControl->Stop();		// Have to do this because our graph state flag doesn't track PAUSED. Okay to fail.
+		if (hr == S_FALSE) {
+			OAFilterState state;
+			for(int i=0; i<30; ++i) {
+				hr = mpGraphControl->GetState(1000, &state);
+				if (hr != VFW_S_STATE_INTERMEDIATE)
+					break;
+			}
+
+			if (hr == VFW_S_STATE_INTERMEDIATE)
+				VDLog(kVDLogWarning, VDStringW(L"CapDShow: Filter graph took more than 30 seconds to transition state.\n"));
+		}
+
+		if (FAILED(hr))
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to stop filter graph.\n"));
+
 		mGraphStateLock.Post();
 
 		if (mpCB)
@@ -3004,10 +3064,14 @@ bool VDCaptureDriverDS::CaptureStart() {
 	mpMediaEventEx->RestoreDefaultHandling(EC_REPAINT);
 
 	UpdateDisplay();
+
+	DS_VERBOSE_LOG("DShow: Exiting CaptureStart() (failed).");
 	return false;
 }
 
 void VDCaptureDriverDS::CaptureStop() {
+	DS_VERBOSE_LOG("DShow: Entering CaptureStop().");
+
 	if (mCaptureThread) {
 		mCaptureStopQueued = true;
 
@@ -3032,8 +3096,13 @@ void VDCaptureDriverDS::CaptureStop() {
 
 		// Switch to a preview graph.
 
+		int audioSource = mCurrentAudioSource;
 		UpdateDisplay();
+		if (audioSource != mCurrentAudioSource)
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Audio source change was detected during capture stop.\n"));
 	}
+
+	DS_VERBOSE_LOG("DShow: Exiting CaptureStop().");
 }
 
 void VDCaptureDriverDS::CaptureAbort() {
@@ -3062,7 +3131,11 @@ void VDCaptureDriverDS::UpdateDisplay() {
 	else {
 		mbUpdatePending = false;
 
+		DS_VERBOSE_LOG("DShow: Entering UpdateDisplay().");
+
 		VDVERIFY(BuildPreviewGraph() && StartGraph());
+
+		DS_VERBOSE_LOG("DShow: Exiting UpdateDisplay().");
 	}
 }
 
@@ -3079,7 +3152,24 @@ bool VDCaptureDriverDS::StopGraph() {
 #endif
 
 	mGraphStateLock.Wait();
+
 	HRESULT hr = mpGraphControl->Stop();
+
+	if (hr == S_FALSE) {
+		OAFilterState state;
+		for(int i=0; i<30; ++i) {
+			hr = mpGraphControl->GetState(1000, &state);
+			if (hr != VFW_S_STATE_INTERMEDIATE)
+				break;
+		}
+
+		if (hr == VFW_S_STATE_INTERMEDIATE)
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Filter graph took more than 30 seconds to transition state.\n"));
+	}
+
+	if (FAILED(hr))
+		VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to stop filter graph.\n"));
+
 	mGraphStateLock.Post();
 
 #ifdef _DEBUG
@@ -3102,7 +3192,29 @@ bool VDCaptureDriverDS::StartGraph() {
 
 	mbStartPending = false;
 
-	return mbGraphActive = SUCCEEDED(mpGraphControl->Run());
+	mbGraphActive = false;
+	HRESULT hr = mpGraphControl->Run();
+
+	if (hr == S_FALSE) {
+		OAFilterState state;
+		for(int i=0; i<30; ++i) {
+			hr = mpGraphControl->GetState(1000, &state);
+			if (hr != VFW_S_STATE_INTERMEDIATE)
+				break;
+		}
+
+		if (hr == VFW_S_STATE_INTERMEDIATE)
+			VDLog(kVDLogWarning, VDStringW(L"CapDShow: Filter graph took more than 30 seconds to transition state.\n"));
+	}
+
+	if (FAILED(hr)) {
+		const char *err = GetDXErrorName(hr);
+		VDLog(kVDLogWarning, VDswprintf(L"CapDShow: Unable to transition filter graph to run state: hr = %08x (%hs)\n", 2, &hr, &err));
+	} else {
+		mbGraphActive = true;
+	}
+
+	return mbGraphActive;
 }
 
 //	BuildPreviewGraph()
@@ -3188,7 +3300,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	if (mpCapTransformFilt) {
 		IPinPtr pPinTest;
 
-		if (VFW_E_NOT_CONNECTED == mpRealCapturePin->ConnectedTo(~pPinTest)) {
+		if (VFW_E_NOT_CONNECTED == mpShadowedRealCapturePin->ConnectedTo(~pPinTest)) {
 			// Reconnect transform filter input to capture pin
 			IPinPtr pPinTIn;
 			DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapTransformFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinTIn), "find transform filter input");
@@ -3647,8 +3759,19 @@ void VDCaptureDriverDS::CheckForChanges() {
 	if (mpAudioCrossbar) {
 		int newAudioSource = UpdateCrossbarSource(mAudioSources, mpAudioCrossbar, mAudioCrossbarOutput);
 
-		if (mCurrentAudioSource != newAudioSource) {
+		// Sigh... DirectShow crossbars seem to have the general problem that after stopping the graph,
+		// get_IsRoutedTo() starts returning -1 even though the crossbar is actually still routing
+		// audio. You can see this in GraphEdit if you start and stop the graph -- afterward the crossbar
+		// property page shows Mute In (-1) for the audio input. As such, we ignore the return value if
+		// -1 is returned.
+		//
+		// Seen directly on the Adaptec GameBridge; similar behavior reported for WinFast and Usenet
+		// hints it happens on ATI too.
+
+		if (mCurrentAudioSource != newAudioSource && newAudioSource != -1) {
 			mCurrentAudioSource = newAudioSource;
+
+			DS_VERBOSE_LOGF(L"DShow: Detected audio source change: %d", 1, &newAudioSource);
 
 			if (mpCB)
 				mpCB->CapEvent(kEventAudioSourceChanged, newAudioSource);
@@ -3771,6 +3894,16 @@ int VDCaptureDriverDS::EnumerateCrossbarSources(InputSources& sources, IAMCrossb
 			// add entry for this pin
 			sources.push_back(InputSource(pin, physType, VDStringW(VDGetNameForPhysicalConnectorTypeDShow((PhysicalConnectorType)physType))));
 		}
+
+		// If the crossbar is current set to -1, we force it to the first source for two reasons.
+		// One is so that we get audio/video by default. The other is so that we're sure that
+		// the source index we return is consistent. get_IsRoutedTo() has a nasty habit of
+		// returning -1 when the graph is stopped or paused, even if a route actually exists.
+		if (currentSource < 0 && !sources.empty()) {
+			HRESULT hr = pCrossbar->Route(output, sources.front().mCrossbarPin);
+			if (SUCCEEDED(hr))
+				currentSourceIndex = 0;
+		}
 	}
 
 	return currentSourceIndex;
@@ -3779,21 +3912,34 @@ int VDCaptureDriverDS::EnumerateCrossbarSources(InputSources& sources, IAMCrossb
 int VDCaptureDriverDS::UpdateCrossbarSource(InputSources& sources, IAMCrossbar *pCrossbar, int output) {
 	// If there is an audio crossbar, scan it for sources.
 	long inputs, outputs;
-	if (SUCCEEDED(pCrossbar->get_PinCounts(&outputs, &inputs))) {
-		long currentSource = -1;
+	HRESULT hr = pCrossbar->get_PinCounts(&outputs, &inputs);
 
-		VDVERIFY(SUCCEEDED(pCrossbar->get_IsRoutedTo(output, &currentSource)));
-
-		InputSources::const_iterator it(sources.begin()), itEnd(sources.end());
-		int index = 0;
-		for(; it!=itEnd; ++it, ++index) {
-			const InputSource& src = *it;
-
-			if (src.mCrossbarPin == currentSource)
-				return index;
-		}
+	if (FAILED(hr)) {
+		VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to retrieve crossbar pin counts.\n"));
+		return -1;
 	}
 
+	long currentSource = -1;
+
+	hr = pCrossbar->get_IsRoutedTo(output, &currentSource);
+	if (FAILED(hr)) {
+		VDLog(kVDLogWarning, VDStringW(L"CapDShow: Unable to retrieve crossbar output pin routing.\n"));
+		return -1;
+	}
+
+	if (hr == S_FALSE || currentSource == -1)
+		return -1;
+
+	InputSources::const_iterator it(sources.begin()), itEnd(sources.end());
+	int index = 0;
+	for(; it!=itEnd; ++it, ++index) {
+		const InputSource& src = *it;
+
+		if (src.mCrossbarPin == currentSource)
+			return index;
+	}
+
+	VDLog(kVDLogWarning, VDStringW(L"CapDShow: Current crossbar pin does not correspond to a known source.\n"));
 	return -1;
 }
 

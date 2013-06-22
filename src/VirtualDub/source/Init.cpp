@@ -403,11 +403,11 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 		// announce startup
 		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.7 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				L"VirtualDub CLI Video Processor Version 1.7.8 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 				,1
 				,&version_num));
 		VDLog(kVDLogInfo, VDswprintf(
-				L"Copyright (C) Avery Lee 1998-2007. Licensed under GNU General Public License\n"
+				L"Copyright (C) Avery Lee 1998-2008. Licensed under GNU General Public License\n"
 				,1
 				,&version_num));
 	}

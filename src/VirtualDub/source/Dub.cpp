@@ -1236,7 +1236,8 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 		}
 	}
 
-	vInfo.cur_dst = -nVideoLagTimeline;
+	if (vInfo.end_dst > 0)
+		vInfo.cur_dst = -nVideoLagTimeline;
 
 	// initialize input decompressor
 

@@ -41,6 +41,11 @@ namespace {
 		kVDM_FullUsingInputFormat,
 		kVDM_FullUsingOutputFormat
 	};
+
+	enum {
+		// This is to work around an XviD decode bug (see VideoSource.h).
+		kDecodeOverflowWorkaroundSize = 16
+	};
 };
 
 #define BUFFERID_INPUT (1)
@@ -192,7 +197,7 @@ void VDDubProcessThread::SetVideoIVTC(VideoTelecineRemover *pIVTC) {
 void VDDubProcessThread::SetVideoCompressor(IVDVideoCompressor *pCompressor) {
 	mpVideoCompressor = pCompressor;
 	if (pCompressor)
-		mVideoCompressionBuffer.resize(pCompressor->GetMaxOutputSize());
+		mVideoCompressionBuffer.resize(pCompressor->GetMaxOutputSize() + kDecodeOverflowWorkaroundSize);
 }
 
 void VDDubProcessThread::Init(const DubOptions& opts, DubVideoStreamInfo *pvsi, IVDDubberOutputSystem *pOutputSystem, AVIPipe *pVideoPipe, VDAudioPipeline *pAudioPipe, VDStreamInterleaver *pStreamInterleaver) {
@@ -394,6 +399,7 @@ void VDDubProcessThread::ThreadRun() {
 									dummyFrameInfo.mpData			= "";
 									dummyFrameInfo.mLength			= 0;
 									dummyFrameInfo.mRawFrame		= -1;
+									dummyFrameInfo.mOrigDisplayFrame	= -1;
 									dummyFrameInfo.mDisplayFrame	= -1;
 									dummyFrameInfo.mTimelineFrame	= -1;
 									dummyFrameInfo.mTargetFrame		= -1;
@@ -424,6 +430,7 @@ void VDDubProcessThread::ThreadRun() {
 								pFrameInfo->mLength,
 								pFrameInfo->mRawFrame,
 								pFrameInfo->mTargetFrame,
+								pFrameInfo->mOrigDisplayFrame,
 								pFrameInfo->mDisplayFrame,
 								pFrameInfo->mTimelineFrame,
 								pFrameInfo->mSrcIndex);
@@ -665,7 +672,7 @@ abort_requested:
 	*mpAbort = true;
 }
 
-VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
+VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition orig_display_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
 	uint32 dwBytes;
 	bool isKey;
 	const void *frameBuffer;
@@ -851,7 +858,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	CHECK_FPU_STACK
 	if (!(exdata & kBufferFlagFlushCodec)) {
 		VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing video frame");
-		vsrc->streamGetFrame(buffer, lastSize, (exdata & kBufferFlagPreload), sample_num, target_num);
+		vsrc->streamGetFrame(buffer, lastSize, 0 != (exdata & kBufferFlagPreload), sample_num, target_num);
 	}
 	CHECK_FPU_STACK
 
@@ -918,7 +925,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 			// process frame
 
-			mfsi.lCurrentSourceFrame	= (long)(display_num - startOffset);
+			mfsi.lCurrentSourceFrame	= (long)(orig_display_num - startOffset);
 			mfsi.lCurrentFrame			= (long)timeline_num;
 			mfsi.lSourceFrameMS			= (long)mpVInfo->frameRateIn.scale64ir(mfsi.lCurrentSourceFrame * (sint64)1000);
 			mfsi.lDestFrameMS			= (long)mpVInfo->frameRateIn.scale64ir(mfsi.lCurrentFrame * (sint64)1000);
@@ -977,6 +984,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 			if (!mbVideoDecompressorPending && dwBytes) {
 				try {
+					memset(mVideoCompressionBuffer.data() + dwBytes, 0xA5, kDecodeOverflowWorkaroundSize);
 					mpVideoDecompressor->DecompressFrame(mVideoDecompBuffer.base(), mVideoCompressionBuffer.data(), dwBytes, isKey, false);
 				} catch(const MyError&) {
 					mpBlitter->postAPC(0, AsyncDecompressorErrorCallback, mpOutputDisplay, NULL);

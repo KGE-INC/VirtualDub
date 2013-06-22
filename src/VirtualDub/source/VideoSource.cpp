@@ -46,8 +46,6 @@
 #include "helpfile.h"
 #include "resource.h"
 
-#include <vd2/Meia/MPEGIDCT.h>
-
 #if defined(_M_AMD64)
 	#define VDPROT_PTR	"%p"
 #else
@@ -1662,6 +1660,11 @@ bool VideoSourceAVI::isFrameBufferValid() {
 	return lLastFrame != -1;
 }
 
+void VideoSourceAVI::streamFillDecodePadding(void *inputBuffer, uint32 data_len) {
+	if (data_len)
+		memset((char *)inputBuffer + data_len, 0xA5, streamGetDecodePadding());
+}
+
 char VideoSourceAVI::getFrameTypeChar(VDPosition lFrameNum) {
 	if (lFrameNum<mSampleFirst || lFrameNum >= mSampleLast)
 		return ' ';
@@ -1869,14 +1872,15 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 	stream_current_frame	= -1;	// invalidate streaming frame
 
 	vdblock<char>	dataBuffer;
+	uint32 decodePadding = streamGetDecodePadding();
 	do {
 		uint32 lBytesRead, lSamplesRead;
 
 		for(;;) {
-			if (dataBuffer.empty())
+			if (dataBuffer.size() <= decodePadding)
 				aviErr = AVIERR_BUFFERTOOSMALL;
 			else
-				aviErr = read(lFrameNum, 1, dataBuffer.data(), dataBuffer.size(), &lBytesRead, &lSamplesRead);
+				aviErr = read(lFrameNum, 1, dataBuffer.data(), dataBuffer.size() - decodePadding, &lBytesRead, &lSamplesRead);
 
 			if (aviErr == AVIERR_BUFFERTOOSMALL) {
 				aviErr = read(lFrameNum, 1, NULL, 0, &lBytesRead, &lSamplesRead);
@@ -1884,15 +1888,17 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 				if (aviErr)
 					throw MyAVIError("VideoSourceAVI", aviErr);
 
-				uint32 newSize = (lBytesRead + streamGetDecodePadding() + 65535) & -65535;
+				uint32 newSize = (lBytesRead + decodePadding + 65535) & -65535;
 				if (!newSize)
 					++newSize;
 
 				dataBuffer.resize(newSize);
 			} else if (aviErr) {
 				throw MyAVIError("VideoSourceAVI", aviErr);
-			} else
+			} else {
+				streamFillDecodePadding(dataBuffer.data(), lBytesRead);
 				break;
+			}
 		};
 
 		if (!lBytesRead)

@@ -805,7 +805,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub 1.7.7 - Copyright (C) 1998-2007 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub 1.7.8 - Copyright (C) 1998-2008 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -3439,8 +3439,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,7,6,0
- PRODUCTVERSION 1,7,6,0
+ FILEVERSION 1,7,8,0
+ PRODUCTVERSION 1,7,8,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3457,12 +3457,12 @@ BEGIN
         BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!"
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.7.6"
+            VALUE "FileVersion", "1.7.8"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1998-2007 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1998-2008 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.7.6"
+            VALUE "ProductVersion", "1.7.8"
         END
     END
     BLOCK "VarFileInfo"
@@ -3553,17 +3553,17 @@ IDC_MODIFYPOINT         CURSOR                  "modifypoint.cur"
 
 STRINGTABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.7.7 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.7.7"
-    IDS_TITLE_IDLE          "VirtualDub 1.7.7 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.7.7 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.7"
+    IDS_TITLE_INITIAL       "VirtualDub 1.7.8 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.7.8"
+    IDS_TITLE_IDLE          "VirtualDub 1.7.8 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.7.8 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.8"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.7.7 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.7.7 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.7 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.7 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.7.7 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.7.8 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.7.8 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.8 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.8 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.7.8 - [%s] (%s)"
 END
 
 STRINGTABLE 

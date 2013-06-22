@@ -162,6 +162,7 @@ static const char *const g_szCapVideoProcAmpItems[]={
 
 extern HINSTANCE g_hInst;
 extern const char g_szError[];
+extern const char g_szWarning[];
 
 static char g_szStripeFile[MAX_PATH];
 
@@ -1283,10 +1284,14 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	}
 
 	if (devkey.getString(g_szCapAudioSource, s)) {
-		int audioIdx = mpProject->GetAudioSourceByName(s.c_str());
+		if (s.empty())
+			mpProject->SetAudioSource(-1);
+		else {
+			int audioIdx = mpProject->GetAudioSourceByName(s.c_str());
 
-		if (audioIdx >= 0)
-			mpProject->SetAudioSource(audioIdx);
+			if (audioIdx >= 0)
+				mpProject->SetAudioSource(audioIdx);
+		}
 	}
 
 	if (devkey.getString(g_szCapAudioInput, s)) {
@@ -1467,12 +1472,10 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 		if (idx >= 0)
 			s = mpProject->GetAudioSourceName(idx);
 		else
-			s = NULL;
+			s = L"";
 
 		if (s)
 			devkey.setString(g_szCapAudioSource, s);
-		else
-			devkey.removeValue(g_szCapAudioSource);
 	}
 
 	if (mask & kSaveDevInputs) {
@@ -3413,6 +3416,22 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			} else if (id >= ID_AUDIO_CAPTURE_INPUT && id < ID_AUDIO_CAPTURE_INPUT+50) {
 				mpProject->SetAudioInput(id - ID_AUDIO_CAPTURE_INPUT - 1);
 			} else if (id >= ID_AUDIO_CAPTURE_SOURCE && id < ID_AUDIO_CAPTURE_SOURCE+50) {
+
+				if (mbSwitchSourcesTogether) {
+					DWORD result = MessageBox((HWND)mhwnd,
+							"The audio source setting is currently being auto-set to match the video source. "
+							"This will be disabled if you manually switch the audio source. Proceed?\n"
+							"\n"
+							"(Auto-switching can be re-enabled in Device, Device Settings.)",
+							g_szWarning, MB_OKCANCEL | MB_ICONEXCLAMATION);
+
+					if (result == IDOK) {
+						mbSwitchSourcesTogether = false;
+						SaveDeviceSettings(kSaveDevMiscOptions);
+					} else
+						break;
+				}
+
 				mpProject->SetAudioSource(id - ID_AUDIO_CAPTURE_SOURCE - 1);
 			} else if (id >= ID_VIDEO_CAPTURE_SOURCE && id < ID_VIDEO_CAPTURE_SOURCE+50) {
 				int videoIdx = id - ID_VIDEO_CAPTURE_SOURCE - 1;

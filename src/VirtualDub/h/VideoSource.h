@@ -55,6 +55,7 @@ public:
 	virtual int			streamGetRequiredCount(uint32 *totalsize) = 0;
 	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample) = 0;
 	virtual uint32		streamGetDecodePadding() = 0;
+	virtual void		streamFillDecodePadding(void *buffer, uint32 data_len) = 0;
 
 	virtual void		streamBegin(bool fRealTime, bool bForceReset) = 0;
 	virtual void		streamRestart() = 0;
@@ -152,6 +153,7 @@ public:
 	virtual VDPosition streamGetNextRequiredFrame(bool& is_preroll);
 	virtual int	streamGetRequiredCount(uint32 *totalsize);
 	virtual uint32 streamGetDecodePadding() { return 0; }
+	virtual void streamFillDecodePadding(void *inputBuffer, uint32 data_len) {}
 
 	virtual void streamBegin(bool fRealTime, bool bForceReset);
 	virtual void streamRestart();
@@ -261,6 +263,14 @@ public:
 	// I really hate doing this, but an awful lot of codecs are sloppy about their
 	// Huffman or VLC decoding and read a few bytes beyond the end of the stream.
 	uint32 streamGetDecodePadding() { return 16; }
+
+	// This is to work around an XviD decode bug. From squid_80:
+	// "When decompressing a b-frame, Xvid reads past the end of the input buffer looking for a resync
+	//  marker. This is the nasty bit - if it sees what it thinks is a resync marker it toddles off the
+	//  end of the input buffer merrily decoding garbage. Unfortunately it doesn't stay merry for long.
+	//  Best case = artifacts in the decompressed frame, worst case = heap corruption which lets the
+	//  encode continue but with a borked result, normal case = plain old access violation."
+	void streamFillDecodePadding(void *inputBuffer, uint32 data_len);
 
 	const void *getFrame(VDPosition frameNum);
 

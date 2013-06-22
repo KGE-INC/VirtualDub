@@ -641,6 +641,7 @@ bool VDProject::UpdateFrame() {
 					throw MyAVIError("Display", err);
 
 				if (samples > 0) {
+					inputVideoAVI->streamFillDecodePadding(mVideoSampleBuffer.data(), bytes);
 					inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame, mDesiredInputSample);
 				}
 

@@ -627,11 +627,12 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 				if (mInputBuffer.size() < bufSize)
 					mInputBuffer.resize(bufSize);
 
-				hr = vSrc->read(frame, 1, &mInputBuffer[0], lSize, &lSize, NULL); 
+				hr = vSrc->read(frame, 1, mInputBuffer.data(), lSize, &lSize, NULL); 
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, is_preroll, frame, targetSample);
+				vSrc->streamFillDecodePadding(mInputBuffer.data(), lSize);
+				ptr = vSrc->streamGetFrame(mInputBuffer.data(), lSize, is_preroll, frame, targetSample);
 			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(is_preroll)));
 
 		} else

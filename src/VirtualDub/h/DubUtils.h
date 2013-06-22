@@ -109,6 +109,7 @@ public:
 	struct FrameEntry {
 		VDPosition	mTimelineFrame;
 		VDPosition	mDisplayFrame;
+		VDPosition	mOrigDisplayFrame;
 		int			mSrcIndex;
 	};
 
@@ -140,6 +141,7 @@ protected:
 struct VDRenderFrameStep {
 	VDPosition	mSourceFrame;
 	VDPosition	mTargetSample;
+	VDPosition	mOrigDisplayFrame;
 	VDPosition	mDisplayFrame;
 	VDPosition	mTimelineFrame;
 	bool		mbIsPreroll;
@@ -165,6 +167,7 @@ protected:
 	int			mSrcIndex;
 	int			mLastSrcIndex;
 	VDPosition	mSrcTimelineFrame;
+	VDPosition	mSrcOrigDisplayFrame;
 	VDPosition	mSrcDisplayFrame;
 	VDPosition	mSrcTargetSample;
 	VDPosition	mLastSrcDisplayFrame;

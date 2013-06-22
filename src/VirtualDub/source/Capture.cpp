@@ -616,6 +616,7 @@ protected:
 	void	DispatchAnalysis(const VDPixmap&);
 
 	LRESULT	OnEngineEvent(WPARAM wParam, LPARAM lParam);
+	void	ProcessPendingEvents();
 
 	void	CapBegin(sint64 global_clock);
 	void	CapEnd(const MyError *pError);
@@ -690,6 +691,9 @@ protected:
 
 	VDAtomicInt	mRefCount;
 	VDCaptureTimingAccuracyBooster mTimingAccuracyBooster;
+
+	VDCriticalSection			mEventLock;
+	vdfastvector<DriverEvent>	mPendingEvents;
 };
 
 IVDCaptureProject *VDCreateCaptureProject() { return new VDCaptureProject; }
@@ -1654,6 +1658,9 @@ void VDCaptureProject::Capture(bool fTest) {
 	MyError pendingError;
 
 	try {
+		// flush any currently pending events
+		ProcessPendingEvents();
+
 		// get the input filename
 		icd.mpszFilename = VDFileSplitPath(mFilename.c_str());
 
@@ -2008,7 +2015,6 @@ VDDEBUG("Capture has stopped.\n");
 			MyError e;
 
 			e.TransferFrom(*icd.mpError);
-			delete icd.mpError;
 			icd.mpError = NULL;
 			throw e;
 		}
@@ -2114,25 +2120,42 @@ void VDCaptureProject::CaptureStop() {
 }
 
 LRESULT	VDCaptureProject::OnEngineEvent(WPARAM wParam, LPARAM lParam) {
-	switch(wParam) {
-	case kEventVideoFrameRateChanged:
-		if (mpCB)
-			mpCB->UICaptureParmsUpdated();
-		break;
-
-	case kEventVideoFormatChanged:
-		if (mDisplayMode == kDisplayAnalyze)
-			ShutdownVideoAnalysis();
-		if (mpCB) {
-			mpCB->UICaptureVideoFormatUpdated();
-			mpCB->UICaptureVideoPreviewFormatUpdated();
-		}
-		if (mDisplayMode == kDisplayAnalyze)
-			InitVideoAnalysis();
-		break;
-	}
-
+	ProcessPendingEvents();
 	return 0;
+}
+
+void VDCaptureProject::ProcessPendingEvents() {
+	DriverEvent event;
+
+	for(;;) {
+		vdsynchronized(mEventLock) {
+			if (mPendingEvents.empty())
+				return;
+
+			event = mPendingEvents.front();
+
+			// Yes, this is an expensive vector erase()....
+			mPendingEvents.erase(mPendingEvents.begin());
+		}
+
+		switch(event) {
+		case kEventVideoFrameRateChanged:
+			if (mpCB)
+				mpCB->UICaptureParmsUpdated();
+			break;
+
+		case kEventVideoFormatChanged:
+			if (mDisplayMode == kDisplayAnalyze)
+				ShutdownVideoAnalysis();
+			if (mpCB) {
+				mpCB->UICaptureVideoFormatUpdated();
+				mpCB->UICaptureVideoPreviewFormatUpdated();
+			}
+			if (mDisplayMode == kDisplayAnalyze)
+				InitVideoAnalysis();
+			break;
+		}
+	}
 }
 
 void VDCaptureProject::CapBegin(sint64 global_clock) {
@@ -2183,7 +2206,11 @@ bool VDCaptureProject::CapEvent(DriverEvent event, int data) {
 
 	case kEventVideoFrameRateChanged:
 	case kEventVideoFormatChanged:
-		PostMessage((HWND)mhwnd, VDWM_ENGINE_EVENT, (WPARAM)event, 0);
+		vdsynchronized(mEventLock) {
+			mPendingEvents.push_back(event);
+		}
+
+		PostMessage((HWND)mhwnd, VDWM_ENGINE_EVENT, 0, 0);
 		break;
 
 	case kEventVideoFramesDropped:
@@ -2949,11 +2976,13 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 	// mode while capture is running.
 	if (mpFilterSys) {
 		vdsynchronized(mpProject->mVideoFilterLock) {
-			mVideoProfileChannel.Begin(0x008000, "V-Filter");
-			mpFilterSys->Run(px);
-			mVideoProfileChannel.End();
-			pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
-			dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+			if (mpFilterSys) {
+				mVideoProfileChannel.Begin(0x008000, "V-Filter");
+				mpFilterSys->Run(px);
+				mVideoProfileChannel.End();
+				pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
+				dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+			}
 		}
 	}
 

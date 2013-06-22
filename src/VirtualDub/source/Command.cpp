@@ -294,12 +294,14 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 						break;
 
 					if (buffer.empty() || buffer.size() < lActualBytes + padSize)
-						buffer.resize(((lActualBytes + padSize + 65535) & ~65535) + !lActualBytes);
+						buffer.resize(((lActualBytes + !lActualBytes + padSize + 65535) & ~65535));
 
-					err = pVideoSource->read(lFrame, 1, buffer.data(), buffer.size(), &lActualBytes, &lActualSamples);
+					err = pVideoSource->read(lFrame, 1, buffer.data(), buffer.size() - padSize, &lActualBytes, &lActualSamples);
 
 					if (err)
 						break;
+
+					pVideoSource->streamFillDecodePadding(buffer.data(), lActualBytes);
 
 					try {
 						pVideoSource->streamGetFrame(buffer.data(), lActualBytes, FALSE, lFrame, lFrame);
