@@ -1,0 +1,101 @@
+{\rtf1\ansi\ansicpg1252\deff0\deflang1033{\fonttbl{\f0\fswiss\fcharset0 Arial;}{\f1\froman\fcharset0 Times New Roman;}{\f2\fmodern\fcharset0 Courier New;}{\f3\fnil\fcharset2 Symbol;}}
+\viewkind4\uc1\pard\f0\fs32 VirtualDub V1.4 (build 11583/release)\par
+\fs20 ___________________________________________________________________________\par
+\pard\fi-360\li360\b Table of contents\b0\par
+\par
+1.\tab What is VirtualDub?\par
+2.\tab System Requirements\par
+3.\tab Windows NT warnings\par
+4..\tab Known issues\par
+5.\tab Performance tips\par
+6.\tab Source code\par
+7.\tab Credits\par
+8.\tab Miscellaneous\par
+\pard ___________________________________________________________________________\par
+\pard\fi-360\li360\b 1.\tab What is VirtualDub?\par
+\b0\par
+\pard\i VirtualDub\i0  is a program designed for fast, powerful AVI/ASF/MPEG-to-AVI processing.  This means you put in one AVI, ASF, MPEG-1 file, and you get out another AVI.  You can preform most popular image filters on all the frames of an video file, including \i average (blur), sharpen, convolute, emboss, \i0 and \i resize\i0 .  The audio track can be extracted, or an external audio track (WAV file) inserted.  VirtualDub also includes features not found in other AVI tools, such as the ability to clip an AVI file without modifying (recompressing) any of the frames in the file.  For convienence, VirtualDub also includes a fully-featured video capture interface, which can far outperform the capture performance of many common capture programs.\par
+\par
+VirtualDub is not designed to be a general AVI editing tool such as Microsoft \i VidEdit\i0  or Adobe \i Premiere.\i0\par
+___________________________________________________________________________\par
+\b 2. System Requirements\b0\par
+\par
+If your computer can run Windows 95, it can probably run VirtualDub.  The following system components are highly recommended:\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270 Pentium, PPro, PII, or AMD K6 CPU (Cyrix not tested).\f1\par
+\f0{\pntext\f3\'B7\tab}16Mb or more of memory\f1\par
+\f0{\pntext\f3\'B7\tab}EIDE or SCSI hard drive\f1\par
+\f0{\pntext\f3\'B7\tab}Accelerated VESA local bus or PCI video card\f1\par
+\pard\f0\par
+A 486 CPU will work but will crawl.  VirtualDub's bulk pixel-processing routines are written in highly optimized Pentium assembly, and run 50-100% faster on a Pentium CPU just due to architectural differences between the two CPUs alone.\par
+\par
+\b Note:\b0  MMX support is required for software MJPEG decompression.\par
+\par
+You do not need to run the included Setup utility to begin using VirtualDub's main features.\par
+___________________________________________________________________________\par
+\b 3. Windows NT and WINE compatibility\b0\par
+\par
+VirtualDub works fine under Windows NT 4.0, Service Pack 3.  Due to differences between NT's CPU scheduler and 95/98's, you may experience a bit of interface sluggishness.  Frameserver mode is untested and not supported under Windows NT.\par
+\par
+As of WINE version 981108, VirtualDub still does not run under Linux or Unix using the WINE emulator, due to issues with its CreateDIBSection(), multimedia timer, and common dialog implementation.  \b Wine\b0  stands for \b W\b0 ine \b I\b0 s \b N\b0 ot an \b E\b0 mulator and is a Win16/Win32 execution environment for Unix.  See \f2 http://www.winehq.com\f0  for more details.\par
+___________________________________________________________________________\par
+\b 4. Known issues\b0\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270 Audio and video may become desynchronized if the video processing thread cannot keep up or during the first preview after a new AVI has been opened.  Trying preview again will sometimes help in the latter case.\f1\par
+\pard\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270\f0 VirtualDub requires a decompressor for the input AVI's video stream, even though the decompressor may not be used (such as for a \i Direct Stream Copy\i0 ).\f1\line\par
+\f0{\pntext\f3\'B7\tab}The MJPEG video decoder may have trouble with some MJPEG streams that have restart tags.  If this is a problem with your capture card, install a third-party software MJPEG codec.\f1\line\par
+\f0{\pntext\f3\'B7\tab}VirtualDub may crash on (very) rare AVI files that have RLE compressed DIBs.\f1\line\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent0{\pntxtb\'B7}}\fi-360\li360\f0 ASF support works on most files, but may have trouble if you do not have the appropriate ACM/VCM codecs installed; in particular, you need the ACM Microsoft Audio Codec and the VCM Microsoft MPEG-4 V3 codecs, and not the DirectShow filters\par
+\pard ___________________________________________________________________________\par
+\b 5. Performance tips\b0\f1\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270\f0 With an accelerated video card, 16-bit output is usually faster than 24-bit output regardless of the true display depth.\f1\par
+\pard\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270\f0 Selecting a priority level below "normal" can impede performance even though no other tasks require CPU time.  Selecting a priority level above "normal," however, does not increase performance unless other tasks are fighting for the CPU as well.\f1\par
+\pard\par
+\f0 ___________________________________________________________________________\par
+\b 6. Source code\b0\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent270{\pntxtb\'B7}}\fi-270\li270 Visual C++ 6.0 is required, with Service Pack 3 or higher \f1\par
+\f0{\pntext\f3\'B7\tab}Microsoft Macro Assembler (MASM) 6.14 or higher is recommended, although the .obj files for the assembly sources are included for those without a suitable assembler.\f1\par
+\pard\f0 ____________________________________________________________________________\par
+\b 7. Credits\b0\par
+\par
+\pard\fi-2880\li2880\tx2880 Project leader\tab Avery Lee\par
+Lead programmer\tab Avery Lee\par
+Main artist\tab Avery Lee\par
+QA coordinator\tab Avery Lee\par
+\par
+(grin)\par
+\par
+Okay, now for some real thanks:\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent0{\pntxtb\'B7}}\fi-360\li360\tx360 Paul Hsieh, for posting his enormous list of constant multiply code strings on his web page.  It's part of the convolution filter's dynamic codegen now.\par
+{\pntext\f3\'B7\tab}Robert Blum, who led the impromptu \f2 rec.games.programmer\f0  team that optimized my grayscale conversion code.  Robert, your work has not gone to waste. ;-)\par
+{\pntext\f3\'B7\tab}Joerg Anders, for posting complete source to his Java MPEG player, a rare gem on the web.\par
+{\pntext\f3\'B7\tab}Steven Weixel, for beta- (alpha-?) testing so many of my intermediate builds.\par
+{\pntext\f3\'B7\tab}Reliable Software (http://www.relisoft.com) for posting source to their frequency spectrum analyzer.  Parts of their FFT class are in the capture vumeter routines (although it's an FHT now).\par
+{\pntext\f3\'B7\tab}Serguei Grigoriev, for providing beta software and diagnostic tips to help me track down capture-related bugs in VirtualDub.\par
+{\pntext\f3\'B7\tab}Donald Graft, for lots of tips on improving the video filtering system, and working on a smart deinterlace filter.\par
+{\pntext\f3\'B7\tab}Anyone I've forgotten who has given me feedback on VirtualDub!\par
+\pard\tx360\par
+And, of course:\par
+\par
+\pard{\pntext\f3\'B7\tab}{\*\pn\pnlvlblt\pnf3\pnindent0{\pntxtb\'B7}}\fi-360\li360\tx360 A giant stinko to Microsoft Corporation for providing such sh*tty and inaccurate documentation on Windows in general, especially in the multimedia department.\par
+\pard\tx360\par
+____________________________________________________________________________\par
+\pard\b 8. Miscellaneous\b0\par
+\f1\par
+\f0 I'm going to throw something if WordPad switches me back to Times New Roman again.\par
+\par
+I can be contacted at the email address \i uleea05@umail.ucsb.edu (Avery Lee)\i0 .  Helpful bug reports, code snippets, and thoughts are welcome.  Anyone willing to write a manual is \i especially\i0  welcome!\par
+\par
+Oh yeah, and then there's this stuff I should probably include:\par
+\par
+\i VirtualDub is copyright \'a9 1998-2000 by Avery Lee, All Rights Reserved.  VirtualDub is released with NO WARRANTY and freely usable/distributable under the terms of the GNU General Public License (GPL).  It should have been included with VirtualDub; if not, you may receive a copy by writing to the Free Software Foundation, Inc., 675 Mass Ave., Cambridge, MA 02139, USA.\par
+\par
+Any trademarks mentioned here are the property of their owners.  To the author's knowledge no trademark or patent infringement exists in this document or in the VirtualDub distribution; any such infringement is purely unintentional.\par
+\par
+}
+ 

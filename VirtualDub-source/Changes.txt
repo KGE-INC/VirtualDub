@@ -1,0 +1,728 @@
+VirtualDub change log
+--------------- start VirtualDub change log ---------------
+
+Build 11583 (Version 1.4):
+   [features added]
+   * Hold down SHIFT when scanning through frames to snap
+     to the nearest keyframe.  Necessary for MPEG-4.
+   * Avisynth scripts are now detected as AVI files and
+     automatically opened using the AVIFile system.
+   * Frameserver: AVIFile frameclient now supports proxying
+     Avisynth scripts as .AVI, if they begin with
+     "#avisynth".
+   * Added workaround for 71-minute capture problem that
+     affects V2.3 of the Hauppauge capture driver.
+   * Added limited read-only support for Matrox MPEG-2
+     OpenDML format.
+   * "Show Decompressed Output" is now disabled by default
+     since it impacts compression speed.
+   * VirtualDub now parses and decodes MPEG-1 layer I
+     audio.
+   * Frameserver now supports frame deletes.
+   * Enhanced IVTC algorithm, thanks to Samuel Audet.
+   * Special IVTC algorithm to recover progressive frames
+     from deinterlaced source.
+   * The video format and handler FOURCC codes of a video
+     file can now be independently changed.
+   * Deinterlace filter now allows field folding and
+     unfolding, to allow video filters to operate in quasi-
+     interlaced mode.
+   * Added detection of additional CPU extensions.
+     (Note: They aren't used yet.)
+
+   [optimizations]
+   * Optimized MJPEG decoder core... again.
+   * Precise bilinear and precise bicubic modes of resize
+     filter (MMX) slightly sped up.
+
+   [bug fixes]
+   * Capture: NT/2000 timer correction has been removed
+     (seemed to be subtly mucking up timing).
+   * Frameserver: Aliasing bug causing video stream to
+     indicate original codec has been fixed.
+   * Fixed clipping in levels filter when input range is
+     shrunk from (0-255) (thanks to Matt Heaney).
+   * Spilled capture with audio disable no longer crashes.
+   * Appending motion-JPEG files with one of the split
+     options enabled now works.
+   * Fixed some compressors not allowing quality setting
+     changes.
+   * Fixed capture time limit getting frozen with Internal
+     capture.
+   * Fixed 16-bit mono-to-stereo conversion (thanks to Jim
+     Leonard).
+   * VirtualDub now releases the lock on its plugins
+     directory once it has finished autoloading.
+   * Fixed spill system not switching files with audio
+     absent.
+   * Spaces now work in command-line loading.
+   * Fixed broken capture log display option.
+   * Added workaround for DirectDraw acceleration under
+     NT/2K for input overlays.
+   * Fixed spill drives getting multiply loaded and added
+     to list.
+   * Dragging a file onto VirtualDub now resets the
+     filtering system.
+   * The first file is closed as soon as possible during a
+     multisegment write.
+   * Y41P is now available for capture clipping.
+   * TV, levels, fill, field swap, deinterlace, and invert
+     filters now crop properly.
+   * No longer reports "unexpected end of file" on video-
+     only MPEG files.
+   * Fixed Access Violation in smoother filter if noise
+     prefilter and clipping were used.
+   * Multisegment writes work on files with no audio.
+
+   [misc changes]
+   * "Temporal softener" has been renamed "motion blur."
+
+
+Build 10805 (Version 1.3d):
+   [thanks to Microsoft]
+   * Support for ASF and MPEG-4 V3 has been removed at the
+     request of Microsoft.  I can't tell you how disappointed
+     I am at this, but Microsoft says they have intellectual
+     property rights, and I can't do anything about it.
+     This makes me very sad.
+
+   [features added]
+   * Added Matrox dmb1 to motion-JPEG detection.
+
+   [optimizations]
+   * Removed FlushFileBuffers() call in AVIOutput.cpp --
+     this should improve file switching performance in
+     capture mode.
+
+   [bug fixes]
+   * Capture: Internal mode no longer stomps on BITMAPV4
+     gamma information -- fixes Pinnacle DCxx problems.
+   * Fixed MPEG-1 P-frame random access decode errors
+     (thanks to John Lynch).
+   * Writing segmented files in Direct Stream Copy mode
+     uses the correct segment size, and not half.
+   * Static version of general convolution filter no longer
+     inverts filter kernel.
+   * Fixed rounding problem in 2:1 bicubic kernel (thanks
+     to Ben Rudiak-Gould).
+   * API: Fixed problems with aborting in startProc (thanks
+     to Donald Graft).
+   * API: Fixed FilterStatusInfo not being filled out in
+     all circumstances.
+
+Build 10740 (Version 1.3c):
+   [bug fixes]
+   * WAV replacement audio works again.
+   * Frameserver code now supports frame size changes
+     properly.
+   * Fixed frameserver client proxy mode under Win95/98.
+   * No longer crashes if you load a config file without
+     a video file loaded.
+   * Moved tab stop over on audio compression dialog, so
+     that audio codecs with really long format names will
+     fit.
+
+Build 10728 (Version 1.3b):
+   [features added]
+   * Added additional checks to MPEG-1 decoding.
+   * Seek to dropped frames, and selection endpoints.
+   * Range selection and cut selection are now the same.
+   * Added active preview to smoother filter.
+   * Added autodetection for some "not quite MPEGs."
+   * Added clipping during capture.
+   * MJPEG decoder understands PICVideo 4:2:0 encoding now
+     (but still not 4:1:1).
+   * New experimental inverse telecine algorithm.
+   * Input and output frames can be swapped.
+   * Filename can be specified on the command line.
+   * The Append option now allows auto-adding multiple
+     segments by sequential filenames.
+
+   [bug fixes]
+   * Capture: Added special case code to exactly hit 29.97
+     fps (NTSC).
+   * Capture: Windows95/98 timing correction has been killed.
+   * Capture: Fixed some overdraw problems with overlay.
+   * Smoother filter doesn't smush everything over with 0
+     threshold in MMX mode.
+   * Filter preview and sampling now obey cuts.
+   * Fixed memory leak with filters requesting GDI DCs.
+   * Fixed TV I/Q 5x5+t/s filter (stupid, stupid, stupid bug).
+   * Fixed short progress bars during some operations.
+   * Filter API: Last frame buffer works properly.
+   * Capture: Histogram modes have better compatibility.
+   * VirtualDub's internal YUY2 driver doesn't show up in
+     the compression dialog after capture mode anymore.
+   * Fixed corruption & segmenting problems with audio
+     sampling rate conversion filter.
+   * Fixed MJPEG field swap option.
+   * Window sizing now affects dub mode as well.
+   * Segments aren't lost if you append after doing cuts.
+   * Capture: Preview w/ Histogram is more stable.
+   * Video direct stream copy with MPEG-1 input isn't allowed
+     anymore.
+   * Audio track sources are now saved properly in batch
+     entries.
+   * Fixed audio offset problem with compressed audio if
+     you delete frames and use an output range.
+
+Build 10015 (Version 1.3a):
+   [bug fixes]
+   * Fixed funny "x" dialogs popping up on crashes.
+   * Fixed MPEG-1 crashes caused by errors in audio streams
+     (STOP USING COPY /B TO JOIN FILES!!!!)
+   * Fixed test capture crashing.
+   * Changed average video rate back to fps instead of us.
+   * Fixed 2:1 reduction not reducing file size on
+     uncompressed captures.
+   * Fixed divide-by-zero errors if you aborted a capture
+     in less than 1/2 second.
+   * Fixed disk space checking/file extension code.
+   * Fixed a bug in the MJPEG code that caused crashes for
+     frames with extremely high quality macroblocks (all
+     64 coefficients).
+
+Build 9924 (Version 1.3):
+   [misc changes]
+   * Inverse telecine has been disabled.  It's not working
+     nearly as well on various sources as I'd hoped, and so
+     I've disabled it until I have time to fix it.
+
+   [features added: main program]
+   * Direct support for YUY2 in both processing and capture
+     modes.
+   * VirtualDub can now detect when files are about to
+     exceed available disk space and/or the 4Gb FAT32 limit,
+     and close the file before the limit.
+   * Replaced puny OS audio compression dialog with better,
+     BIGGER one.
+
+   [features added: capture]
+   * Capture: Implemented video clock adjustment in capture
+     mode for better audio/video sync.
+   * Capture: Fast field swap (RGB, YUY2, UYVY, YVYU).
+   * Capture: Fast noise reduction (RGB8, RGB24, RGB32, YUY2,
+     UYVY, YVYU).  (Algorithm courtesy of Steven Don).
+   * Capture: Fast 2:1 linear and cubic vertical reduction
+     (RGB8, RGB24, RGB32, YUY2, UYVY, YVYU). 
+   * Capture: CPU usage detection works in Windows NT/2K.
+
+   [optimizations]
+   * Added MMX IDCT routine to MPEG-1 and MJPEG decoding.
+   * MJPEG decoding significantly faster.
+
+   [bug fixes: main program]
+   * MJPEG mode selections no longer crash if the video
+     isn't in MJPEG format.
+   * Internal MJPEG decoder now handles output from PICVideo
+     and recent Morgan MJPEG codecs.
+   * Fixed video filter API causing filters to occasionally
+     receive timestamps in us instead of ms.
+   * Fixed MPEG-1 packet sync errors caused by improper
+     handling of sequence end tags.
+   * Fixed slight bias in MPEG-1 motion prediction.
+   * Fixed MPEG-1 macroblock skipping at slice start
+     [fixes KareKano op].
+   * Fixed video compressor confusion when two codecs of the
+     same format are installed under different FOURCCs (e.g.
+     PICVideo and MainConcept).
+   * Fixed intermittent file write corruption on NT/2K SMP
+     systems.
+   * Filters deinitialized on exit (thanks Joey Liaw).
+   * Hitting Cancel on the audio compression dialog no longer
+     disables audio compression.
+   * Jobs with extended open options work.
+   * Smoother filter saves noise prefilter option.
+   * Fixed some miscellaneous "Unhandled Microsoft C++
+     Exception" crashes that were supposed to be errors.
+   * Fixed audio segments getting dropped during preview
+     whenever the pipeline stalled temporarily.
+   * Fixed the stupid crash requester not saving crashinfo
+     files.
+
+   [bug fixes: capture]
+   * Fixed capture 'audio relative rate' value going negative.
+   * Fixed not being able to disable 'stupid capture driver'
+     settings in preferences.
+   * Allocate disk space dialog properly shows current
+     capture drive.
+   * Disk space measurement works with UNC network paths.
+   * Segments can now exceed 2Gb.
+   * Fixed seek timing errors introduced in capture files
+     with compressed audio.
+   * No longer crashes when running out of spill drives.
+   * Fixed crashing problems when using the 'save compression'
+     option with [No compression] or codecs that are
+     later removed.
+
+Build 8981 (Version 1.2a):
+   [bug fixes]
+   * Fixed MPEG-1 quantization matrix loading: corrects
+     quality problems with Panasonic MPEG encoded files.
+   * MPEG-1 IDCT routine is now IEEE-1180 compliant.
+   * Fixed interleaving errors when compressing audio and
+     with inverse telecine.
+   * Fixed segmented saving stopping at 0.0 fps half the
+     time due to rounding error.
+   * Changed the interleaving default back to 1:1 per frame.
+
+Build 8892 (Version 1.2):
+   [features added]
+   * External video filter interface reworked -- video
+     filters now have access to bitmap manipulation routines
+     and can obtain GDI handles to buffers.
+   * Added levels filter - allows brightness, contrast, and
+     gamma correction, with preview and histogram.
+   * Changed position slider to display frame type
+     (keyframe/nonkeyframe for AVI/ASF, IPB for MPEG-1),
+     and time in HH:MM:SS.XXX instead of milliseconds.
+   * Added field swap filter.
+   * Added custom video format dialog to capture.  This
+     allows selecting arbitrary frame sizes for cards that
+     support them but don't include the option.
+   * [EXPERIMENTAL] Added segmented multi-file support.
+   * [EXPERIMENTAL] Added 3:2 pulldown removal.
+   * Capture mode warns if the capture file is in use.  No
+     more mysterious C:\CAPTURE.AVI files. :)
+
+   [optimizations]
+   * MMX bilinear resize filter faster, and MMX precise modes
+     optimized for 2:1 reduction.
+   * Changed interleaving default to 500ms intervals with a
+     500ms preload, for smoother Windows Media Player playback.
+
+   [bug fixes]
+   * Can now open some AVI 1.0 files between 2 and 4Gb in
+     size without "RIFF chunk <4 bytes" error.
+   * Segment deletion works with compressed audio.
+   * Fixed MPEG layer III 'incomplete frame' decoding bug
+     (NekoAmp 1.3).
+   * Fixed OpenDML 1.02 (AVI2) output problems with files
+     exceeding 4Gb (NTFS only) and video frames exceeding
+     512K each.
+   * Fixed crashing problems with uncompressed 24-bit
+     frames with power of two sizes.
+   * Fixed crash when previewing (F5) a file with audio
+     compressed at fewer than 5 samples per second.
+   * Fixed subpixel offsets between some of the resize
+     filter modes.
+   * Fixed emboss and general convolution filters (why
+     didn't anyone tell me they were broken!?)
+   * Test capture mode now activates video compression.
+   * Fixed 'wait for OK to capture' option causing weird
+     capture settings and crashes.
+   * Fixed difficulty switching between compressed and
+     uncompressed Internal capture.
+   * Fixed crashing on 'Perf' status tab.
+   * Now disables display low-power and power-off properly
+     during capture, thanks to Berrie Bloem.
+   * Microsoft Video 1 compression now works (oops).
+   * Fixed audio device getting locked silent when errors
+     occur while starting preview.
+   * Fixed audio desync effects when using frame rate
+     decimation with files having odd speed fractions (10/1).
+   * Fixed MPEG-4 codec behavior for builds 3845 and 3918.
+   * Fixed minor B-frame accuracy bug in MPEG-1 decoder.
+
+
+Build 7713 (Version 1.1):
+   [features added]
+   * Began adding active preview to filter system; only
+     resize filter supports it right now.
+   * Capture: On-the-fly filtering for uncompressed
+     RGB captures.
+   * Capture: Running histogram during preview, even
+     through dialogs.  (May not work with some MJPEG
+     cards.)
+   * Capture: Information panel can be toggled.
+
+   [bug fixes]
+   * Matrox Rainbow Runner MJPEG codec works now (stupid
+     codec).
+   * Fixed drag-and-drop redraw issues.
+   * Fixed last major MPEG-1 video quality problem!
+   * Started reworking MPEG-1 routines to be 64-bit file
+     clean (not yet fully tested).
+   * External WAV audio splicing driver no longer chokes
+     on 'fact' chunks.
+   * Fixed crashes caused by audio interleave settings
+     that pushed the audio stream start past the end.
+
+Build 7538 (Version 1.0a):
+   [optimizations]
+   * Sped up MPEG packet search routines (thanks to Stephen
+     Botzko for the tip).
+
+   [bug fixes]
+   * Fixed some AVIs improperly showing up as Uncompressed
+     in the Information dialog.
+   * Fixed some small niggling interface drawing issues.
+   * Fixed accuracy issues with chrominance motion prediction
+     in MPEG-1 decoder that cropped up since 1.0 pre-9.
+
+*** Build 7419 (Version 1.0) ***:
+   [features added]
+   * Added autoloading for video filters.  Copy external .vdf
+     files to PLUGINS\ in the VirtualDub program directory.
+   * Added MPEG motion vector checking.  Hopefully this will
+     solve crashes with some of those fscked up MPEGs people
+	 seem to have.
+   * Finally implemented Abort button in the load progress
+     boxes.
+   * Implemented basic DirectDraw acceleration for output
+     pane.  Not likely to work on some video cards with
+     different pixel formats, though.
+   * Added "copy output frame" to augment "copy source frame."
+   * Option to accept partial ASF streams on error.
+   * Start and end offsets now reset when new file is loaded.
+
+   [bug fixes]
+   * Fixed +/-100% brightness adjustment on brightness/
+     contrast filter in MMX mode.
+   * Error now thrown if a script/job attempts to load
+     a filter which is not available.
+   * Fixed crash-on-exit caused by external filters being
+     unloaded before being deinitialized.
+   * Fixed abort-on-right flipping on during Internal capture
+     when 'hit Ok' enabled.  Now, only if you have 'abort on
+	 left' enabled with that option, does it flip to
+	 abort-on-right.  (Abort-on-left catches the OK click.)
+   * Most-recently-used list on menu now updates correctly
+     when file loads fail.
+   * ASF frame timing algorithm changed again; this one
+     should avoid the 800,000 ms audio errors that sometimes
+     occurred.
+   * Squashed some audio funniness in Preview mode with
+     compressed audio in Direct Stream Copy mode.
+   * Fixed AVI load/decoding problems with files created by
+     VideoMatrix.
+   * NekoAmp: Fixed 320+kbps layer 2 and 160+kbps layer 3
+     decoding.
+   * Fixed menu item descriptions not appearing until after
+     exit from capture mode.
+   * Input options are now used in batch mode.
+   * Resize filter now enforces sanity checks on values.
+
+Build 7268 (Version 1.0 pre-9):
+   [bug fixes]
+   * Hopefully, fixed problems with MPEG-1 layer 2
+     audio decoding that was causing "AudioSource" errors.
+   * Fixed video compression not kicking back in from
+     saved settings in capture mode.
+   * Fixed ASF video decoding problems with build 3845
+     of the MPEG-4 V2/V3 codec.
+   * Solved crashes that occurred on some dubbing errors.
+
+Build 7219 (Version 1.0 pre-8):
+   [bug fixes]
+   * Fixed hang-on-abort under NT.
+   * Fixed backwards position skidding on preview stops.
+
+Build 7209 (Version 1.0 pre-7):
+   [features added]
+   * Video overlay support (input playback only).
+   * Fast Recompress mode is back!  Now it allows
+     recompression through YUV formats for extra speed.
+   * Autodetection of "bad" MPEG-4 codec driver.
+   * Resize filter supports letterboxing as well.
+
+   [optimizations]
+   * Revamped thread synchronization - should be faster
+     at stopping previews now.
+   * Replaced old MPEG audio decoding core (Amp) with
+     new core, NekoAmp.
+
+   [bug fixes]
+   * Fixed high-quality downsampling with 8-bit audio.
+   * Fixed problems with Windows Media Audio v2 codec.
+   * ASF routines now understand audio scrambling.
+   * ASF audio sync fixed.
+
+Build 6973 (Version 1.0 pre-6):
+   [bug fixes]
+   * Fixed intermittent stack overflow crashes on long
+     captures (usually >70 minutes).
+   * Altered ASF packet read algorithm to eliminate packet
+     sync errors.
+
+Build 6904 (Version 1.0 pre-5):
+   [features added]
+   * Arbitrary angle rotate filter (rotate2).
+   * Preliminary ASF file support (it sucks).
+   * Input and output pane zooming (right-click on panes).
+   * Filtered output displayed when browsing source file.
+   * Altered audio rate statistic in capture mode to track
+     video capture clock (some audio cards are really,
+     really far off in pitch....)
+   * New audio rate correction option in AVI input options;
+     allows compensation for bad audio clock.
+   * Audio conversion dialog now allows arbitrary sampling
+     rates (such as 22047).
+
+   [optimizations]
+   * MMX version of precise resize filters sped up
+     slightly.
+   * Tweaked bicubic mode of resize filter from A=-1.0 to
+     A=-0.75 to reduce oversharpening effect.
+
+   [bug fixes]
+   * Fixed problems with Microsoft Audio Codec.
+   * Fixed interface overdraw problems with overly large
+     frame dimensions.
+   * Fixed inadvertent disables of fast I/O mode during
+     dubs.
+   * Video compression dialog no longer says "Uncompressed
+     RGB" on non-RGB capture devices.
+   * Invert filter now works (DUH!!!)
+   * Fixed visual problems with a 565 16-bit display, MMX
+     enabled, and an odd output frame width.
+   * Fixed ACM decompress errors on short, compressed
+     audio streams.
+
+
+Build 6536 (Version 1.0 pre-4):
+   [features added]
+   * Added some command line batch switches.
+   * Load and save processing configuration.
+
+   [optimizations]
+   * Altered bitrate control algorithm.
+
+   [bug fixes]
+   * Fixed crashing problems with Morgan Multimedia codec
+     and with Indeo 5 Quick Compress when keyframes and
+     data rate are disabled.
+
+Build 6502 (Version 1.0 pre-3):
+   [features added]
+   * Added rotate and invert filters.
+   * Added tent filter for better audio resampling.
+
+   [bug fixes]
+   * Fixed scripting errors and top/bottom noise lines in
+     the deinterlace filter.
+   * "Normal recompress" mode fixed, including keyframe
+     problems and strange moire compression patterns.
+   * Improved accuracy and speed of precise resize modes.
+   * Save WAV... now confirms overwriting files.
+   * Audio conversion disabled in Direct Stream Copy mode.
+
+Build 6375 (Version 1.0 pre-2):
+   [bug fixes]
+   * A large memory leak in the AVI output routines has
+     been plugged.  (DOH!!!)
+
+Build 6344 (Version 1.0 pre-1):
+   [Features added]
+   * Precise bilinear and precise bicubic resize improves
+     quality on reductions >2:1.
+   * Automatic detection and support for 16-bit 565 displays.
+   * Fast MJPEG field deletion, splitting, and swapping.
+   * Better video compression dialog.
+   * More codecs identified when codec not present.
+
+   [Optimizations]
+   * AVI disk I/O revamped -- dub speeds can now reach 3Mb/s
+     and higher.
+   * Faster MJPEG decoding.
+
+   [bug fixes]
+   * MPEG video decoding quality improved.
+   * Bicubic resizes should no longer crash on certain sizes.
+   * Now keeps MPEG-4 settings across compression sessions
+     (the Microsoft codec resets itself).
+   * Fixed MMX-related illegal opcode faults on non-MMX
+     CPUs.
+   * Fixed configuration save problems under Windows 95.
+   * The last image file is closed if an error occurs during
+     Save Image Sequence....
+   * Auto-correction for improperly sized PCM formats added,
+     fixing problems with Ligos' LSX-MPEG Encoder.
+   * Bit rate control support added for video codecs that
+     support crunching.
+
+Build 5401 (Version 1.0 beta):
+   [Features added]
+   * Chunks of the input file can be deleted (e.g. remove
+     commercials), and frame rate decimation can sometimes
+     be done in Direct Stream Copy mode.
+   * 2 gigabyte barrier broken!  VirtualDub now supports
+     the OpenDML 1.02 (AVI 2.0) extensions, meaning
+     capture and processing to >2Gb files is now
+     possible.
+   * 'Save striped master' greatly speeds up making audio
+     master tracks for using frameservers with the VCM
+     driver.
+   * Built-in MJPEG support -- it's incredibly slow, but
+     will kick in for MJPEG files that cannot be processed
+     by existing compressors in the system.
+   * Capture mode now has a nifty panel on the
+     right that delivers more useful information.
+   * VirtualDub now catches some formerly fatal exceptions
+     during capture and allows for clean shutdown in those
+     cases.
+   * Volume monitor in capture mode has an oscilloscope and
+     spectrum analyzer, and can control Line-In volume.
+   * "Big timer" displays running time during a capture.
+
+   [optimizations]
+   * Disk write routines adjusted for lower latency writes
+     to disk (i.e. faster).
+
+   [bug fixes]
+   * MPEG parsing revised to ignore user chunks, fixing
+     problems with the Final Fantasy: The Movie trailer.
+   * Fixed hanging problems when writing out video frames
+     larger than 4Mb.
+   * Fixed some problems setting clipping regions with
+     striped AVI files.
+   * Jobs that are In Progress can no longer be switched
+     to Postponed mode.
+
+Build 4150 (Version 1.0 alpha):
+   [Features added]
+   * Job system.
+   * Scripting support.
+   * Double-clicking a filter in 'Add Filter' adds it.
+   * New 16-bit dithering option dithers 24-bit images down
+     to 16-bit 5:5:5 RGB -- the difference is noticeable
+     sometimes.
+   * Drop Frames During Preview option.
+   * Sync to Audio now adjusts the time base rather than
+     throttling the output, leading to smoother playback.
+   * MPEG requester displays progress in bytes.
+   * Audio support for MPEG files using Tomislav Uzelac's
+     Amp 0.7.6 engine.
+
+   [optimizations]
+   * Bicubic resizes optimized for MMX.
+   * MPEG decoding much faster (by about 50%), and MMX
+     optimized.
+   * 16-bit RGB MPEG decoding.
+
+   [bug fixes]
+   * Audio streams are no longer written out with overly
+     large wave formats when in Full Processing Mode.  This
+     caused RealEncoder G2 beta 2 to reject PCM audio
+     streams from VirtualDub.
+   * Fixed a really stupid error: the bicubic resizer won't
+     crash on integral multiples anymore.
+   * The bilinear/bicubic resize filters have been adjusted
+     to better filter when enlarging by an integral factor.
+   * Scene Thresholds don't reset when the CPU Preferences
+     tab is visited.
+   * A race condition during dub shutdown has been fixed.
+   * Crash/hang problems with certain size MPEG chunks
+     solved.
+   * MRUList fixed -- VirtualDub runs under NT again!
+   * Predicted size and audio size in status box fixed.
+   * Closed a lot of memory leaks, including one caused by
+     a buggy CreateDIBSection() under NT4.0.
+
+Build 3174 (Public Release 3):
+   [Features added]
+   * Striped AVI output mode for higher performance and
+     evading the 2Gb limit.
+   * Scene forward/reverse.
+   * Histogram works on cards with hardware decompression.
+   * VCM frameclient driver + support; now XingMPEG Encoder
+     can use frameservers.
+   * MPEGs can have their P/B frames omitted and/or motion
+     vectors truncated to full pels for performance.
+   * AVI rekeying, to fix AVIs with bad keyframe flags.
+   * Task priority and filename extension behavior
+     configurable.
+   * Resize filter can now do bicubic filtering in addition
+     to bilinear (formerly Linear Interpolation).
+   * Flip Horizontally filter.
+   * Limit preferences saving.
+   * Color can be set for the fill filter.
+   * MMX and FPU settings have been moved to Preferences,
+     where they can be saved.
+   * Double-clicking on a filter entry brings up the
+     configure dialog box for that filter.
+
+   [bug fixes]
+   * Frameserver setup no longer says 'Korin.'
+   * AVI output routines fixed - no longer writes odd-byte
+     chunks.
+   * Potential crash/hang problems with y-values in the
+     fill filter fixed.
+   * Filter entries now highlighted after an Add.
+
+Build 2769 (Public Release 2):
+   [Features added - main program]
+   * Preliminary MPEG support (video only).
+   * Histogram support. Click on the histograms to cycle
+     between R/G/B/I modes.
+   * Dubbing and capture windows now show filename.
+   * Support for compressed 8-bit AVI files.
+   * Audio compression and decompression.
+   * Left, right arrow keys fine-step frames.
+   * New output mode: individual DIB frames.
+   * Context help for all capture and some dub dialogs.
+   * Frameserver mode, to serve processed video output to
+     other applications in real-time.
+   * Vertical flip filter.
+   * MRU (Most recently used) list.
+   * Interleaving options now work.
+
+   [Features added - capture]
+   * Capture mode now has accelerators.
+   * Total size during internal capture.
+   * Histogram works on capture cards that use hardware
+     compression.
+   * Capture file, driver, and settings can be saved.
+
+   [optimizations]
+   * Larger granularity for index blocks.
+   * Resize filter heavily optimized for FPU - linear
+     interpolation now runs at full speed on many AVIs,
+     without an MMX CPU.
+   * Slightly better interface performance under NT.
+   * Output buffering works now.
+   * Internal capture mode - much better capture
+     performance.
+
+   [bug fixes]
+   * Output file properly closed upon write failures.
+   * Audio offset/clipping parameters fixed for frame rate
+     decimation.
+   * WAV files now closed when disabled.
+   * Time limit for captures fixed; no longer alters the
+     audio buffer size.
+   * Conversion routines fixed for odd AVI widths; solves
+     crash problems on many AVIs, particularly in 16-bit
+     decompression mode.
+   * ICDecompress() now used with decompressors that do
+     not support ICDecompressEx().  This allows the
+     miroVideo DRX MJPEG decompressor to work with
+     VirtualDub.
+   * Titlebars no longer refreshed every 1/2 second
+     unless necessary -- speeds up dubs on slow systems.
+   * Problems with audio-less files fixed.
+   * Fixed range dialog from 'locking' when length(ms)
+     field cleared.
+   * Dynamic compilation filters work under NT.
+   * Fixed corruption/crash problems with convolution
+     based filters.
+   * Failed captures and dubs are still finalized.
+   * Memory leaks with filter system solved.
+   * Capture errors forced to foreground.
+
+Build 1482 (Public Release 1):
+   * Marking works.
+   * Frame reset to 0 upon load.
+   * Position control.
+   * Rounding/overflow errors in clipping dialog gone.
+   * 8-bit AVIs now supported.
+   * End-of-file race condition fixed.
+   * AVI length write fixed
+     (NOTE: If you have files which give errors at the end
+            of processing, trim the end back and turn on
+	    Audio clipping.)
+   * Audio interleaving fixed.
+   * Preview mode audio playback no longer cut off.
+   * Miscellaneous bug fixes.
+
+------------------- end VirtualDub log --------------------

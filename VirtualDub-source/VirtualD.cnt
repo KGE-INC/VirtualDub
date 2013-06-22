@@ -1,0 +1,108 @@
+:Base virtuald.hlp>Normal
+:Title VirtualDub User's Guide
+1 Introduction=introduction
+1 What is VirtualDub?=start_whatisvdub
+1 GNU General Public License (GPL)=license
+1 Introduction to digital video
+2 Pixels and images=intro1_pixelsandimages
+2 Frames and framerates=intro1_framesandframerates
+2 Keyframes vs. delta frames=intro1_keyframesvsdeltaframes
+2 It all seems so big...=intro1_itallseemssobig
+2 Video compression=intro1_videocompression
+2 Compression artifacts=intro1_compressionartifacts
+1 Using VirtualDub
+2 Video processing modes=start_videomodes
+2 The Position control=posctl_main
+2 Monitoring dub status=dubstat_main
+2 Job control (batch processing)=jobs_dialogbox
+2 How do I...
+3 ...change the frame rate?=howto_change_framerate>Helpme
+3 ...compress a file?=howto_compress>Helpme
+3 ...delete JUNK chunks from a file?=howto_delete_junk>Helpme
+3 ...extract audio from the file?=howto_extract_audio>Helpme
+3 ...insert/replace audio in a file?=howto_insert_audio>Helpme
+3 ...repair a bad video file?=howto_repair>Helpme
+3 ...resize a video file?=howto_resize>Helpme
+2 Frame rate control
+3 Frame rate adjustment and decimation=video_frc_main
+3 Inverse telecine (NTSC 3:2 pulldown removal)=video_frc_ivtc
+2 Video filters
+3 Processing video the powerful way=filt_intro
+3 The Filter dialog box=filt_dialog
+3 Filter reference
+4 2:1 reduce (normal and high quality)=filter_2_1_reduce
+4 3x3 Average=filter_3_3_average
+4 Brightness/contrast=filter_brightness_contrast
+4 Deinterlace=filter_deinterlace
+4 Emboss=filter_emboss
+4 Fill=filter_fill
+4 Flip horizontally=filter_flip_horizontally
+4 Flip vertically=filter_flip_vertically
+4 General convolution=filter_general_convolution
+4 Grayscale=filter_grayscale
+4 Invert=filter_invert
+4 Levels=filter_levels
+4 Null transform=filter_null_transform
+4 Resize=filter_resize
+4 Rotate=filter_rotate
+4 Rotate2=filter_rotate2
+4 Sharpen=filter_sharpen
+4 Smoother=filter_smoother
+4 Temporal softener=filter_temporal_softener
+4 Threshold=filter_threshold
+4 TV=filter_tv
+1 Video capture
+2 The video capture window=vidcap_mainwindow
+2 AVICap vs. Internal capture=vidcap_avicapvinternal
+2 Tips
+3 Picking a video format=vidcap_tips_pickformat
+3 Adjusting video and audio levels=vidcap_tips_adjustlevels
+3 Optimizing your hard drive=vidcap_tips_optimizehd
+3 Dropped frames and how to avoid them=vidcap_tips_dropframes
+3 Interlaced vs. Noninterlaced=vidcap_tips_interlaced
+3 Color formats=vidcap_tips_colorformats
+3 The caveats of composite video=vidcap_tips_compositevideo
+3 A special case: video game consoles=vidcap_tips_consoles
+1 Advanced Topics
+2 Command line options=adv_commandline
+2 Segmented AVIs
+3 Introduction to segmented AVI files=segment_intro
+3 Reading and writing segmented files in VirtualDub=segment_readwrite
+3 Capturing to AVI segments=segment_capture
+3 Exporting segmented files to traditional video editors=segment_export
+3 Importing segmented files from other applications=segment_import
+3 How the automatic segment joining works=segment_tagging
+2 Striped AVIs [DEPRECATED]
+3 RAID striping for AVI files?=stripe_intro
+3 Creating a stripe definition file=stripe_sdf
+3 Capturing to a striped system=stripe_captures
+3 Stripe systems for VCM frameclients=stripe_vcm
+2 Frameserver support
+3 Introducing the Frameserver=fs_intro
+3 Setting up the frameserver=fs_serverside
+3 Connecting as a client=fs_clientside
+3 Installing the VCM driver=fs_vcmdriver_install
+3 Using the VCM driver=fs_vcmdriver_use
+3 AVIFile proxy mode=fs_aviproxy
+3 Performance issues=fs_performance
+3 It's only a signpost=fs_signpost
+1 Common Mistakes
+2 You dumba... heh heh...=cm_youidiot
+2 Clip out dead space=cm_clipdeadspace
+2 Don't release in MJPEG=cm_avoid_mjpeg
+2 Avoid outdated formats=cm_avoid_outdated_formats
+2 Compress the audio!=cm_compress_the_audio
+2 Don't compress AVIs to ZIP, ARJ, RAR, etc.=cm_dont_compress_avis
+2 Match the frame rate to the source=cm_match_frame_rate
+2 Stop attaching openings, trailers, etc.=cm_stop_attaching_crap
+1 Miscellaneous Troubleshooting
+2 It's broken...=misctbl_its_broken
+2 AVI file very slow at seeking=misctbl_avi_slow_seek
+2 Can't compress to a particular audio/video format=misctbl_cant_compress
+2 Cannot encode audio with Windows Media Audio V1 or V2=misctbl_wma12
+2 Cannot encode video as Microsoft High-speed MPEG-4 V1-V3=misctbl_mpeg4
+2 Fraunhofer-IIS's MPEG Audio Layer 3 codec=misctbl_fraunhofer_mp3
+2 Stuttering in ActiveMovie and Windows Media Player=misctbl_stuttering_activemovie
+2 Video files play in ActiveMovie applications only=misctbl_video_files_activemovie_only
+1 Reference
+2 Glossary=gloss

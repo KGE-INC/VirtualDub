@@ -1,0 +1,38 @@
+Hello.
+
+If you're seeing this, it means you've unpacked the VirtualDub source code
+and have loaded it into Visual C++.  You're looking at the workspace
+pretty much as I saw it when I hit F7 to build the archive.
+
+So now, to build:
+
+0) Make sure you have NekoAmp and Sylia unpacked and built already.  It's
+   a lot easier if the NekoAmp (amplib_new\) and sylia\ directories are
+   parallel to VirtualDub\.  You also *must* have at least Visual C++
+   6.0 Service Pack 3; VC5 does not support MMX and unpatched VC6
+   introduces code generation errors into the resize filter.
+
+1) Change the current project from Distribution.  You'll need to build
+   the vdremote and vdsvrlnk projects first to get VirtualDub itself to
+   build.
+
+2) Nuke the pre-build and post-build steps for VirtualDub.exe for both
+   Debug and Release builds.  This will kill the errors that you'd other-
+   wise get for not having the verinc and mapconv tools.
+
+3) Check the import library paths for VirtualDub.exe, vdremote.dll, and
+   vdsvrlnk.dll and make sure they point to the correct locations.
+
+4) Build vdsvrlnk first, then vdremote, then VirtualDub.  If all goes
+   well, you'll have a working executable!
+
+If you're getting a lot of missing include files, make sure the source
+zip files were correctly unzipped (i.e. with directories).
+
+If you're getting "can't find ML.EXE", you're missing MASM 6.14.  You
+can get around this by installing the Debug and Release OBJ files from
+the auxiliary source archive and killing the custom build rules from
+the ASM files in the project.
+
+--Avery <uleea05@umail.ucsb.edu>
+

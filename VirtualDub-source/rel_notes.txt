@@ -1,0 +1,8 @@
+VirtualDub release notes
+See "readme.doc" for further information.
+
+* MJPEG field operations do not work with output from PICVideo
+  when it doesn't write out interlaced fields.
+
+For more information, please visit the VirtualDub web page:
+http://www186.pair.com/vdub/
