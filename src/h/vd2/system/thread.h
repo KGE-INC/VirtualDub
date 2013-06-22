@@ -34,7 +34,9 @@
 #include <vd2/system/atomic.h>
 
 typedef void *VDThreadHandle;
-typedef unsigned VDThreadID;
+typedef uint32 VDThreadID;
+typedef uint32 VDThreadId;
+typedef uint32 VDProcessId;
 
 struct _RTL_CRITICAL_SECTION;
 
@@ -46,6 +48,7 @@ extern "C" unsigned long __declspec(dllimport) __stdcall WaitForSingleObject(voi
 extern "C" int __declspec(dllimport) __stdcall ReleaseSemaphore(void *hSemaphore, long lReleaseCount, long *lpPreviousCount);
 
 VDThreadID VDGetCurrentThreadID();
+VDProcessId VDGetCurrentProcessId();
 
 void VDSetThreadDebugName(VDThreadID tid, const char *name);
 void VDThreadSleep(int milliseconds);

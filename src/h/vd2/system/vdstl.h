@@ -788,13 +788,6 @@ public:
 	}
 
 	void assign(const T *p1, const T *p2) {
-		if (mpBegin) {
-			m.deallocate(mpBegin, m.eos - mpBegin);
-			mpBegin = NULL;
-			mpEnd = NULL;
-			m.eos = NULL;
-		}
-
 		resize(p2 - p1);
 		memcpy(mpBegin, p1, (char *)p2 - (char *)p1);
 	}

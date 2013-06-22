@@ -291,6 +291,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\Job.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\ParameterCurve.cpp"
 				>
 			</File>
@@ -384,6 +388,10 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\VDLib\fft.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\VDLib\Job.h"
 				>
 			</File>
 			<File

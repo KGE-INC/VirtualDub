@@ -4,8 +4,10 @@
 #include <vd2/system/file.h>
 #include <vd2/system/hash.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/thread.h>
 #include <vd2/system/time.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/VDLib/Job.h>
 #include <hash_map>
 
 #include "misc.h"
@@ -44,12 +46,14 @@ VDJobQueue::VDJobQueue()
 	, mJobNumber(1)
 	, mpRunningJob(NULL)
 	, mbRunning(false)
+	, mbRunAll(false)
 	, mbRunAllStop(false)
 	, mbModified(false)
 	, mbBlocked(false)
 	, mbOrderModified(false)
 	, mbAutoRun(false)
 	, mbDistributedMode(false)
+	, mJobIdToRun(0)
 	, mLastSignature(0)
 	, mLastRevision(0)
 {
@@ -94,7 +98,7 @@ const wchar_t *VDJobQueue::GetDefaultJobFilePath() const {
 	return mDefaultJobFilePath.c_str();
 }
 
-void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode) {
+void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode, bool enableAutoUpdate) {
 	if (mpRunningJob) {
 		VDASSERT(!"Can't change job file path while job is running.");
 		return;
@@ -109,7 +113,7 @@ void VDJobQueue::SetJobFilePath(const wchar_t *path, bool enableDistributedMode)
 	else
 		mJobFilePath = mDefaultJobFilePath;
 
-	SetAutoUpdateEnabled(enableDistributedMode);
+	SetAutoUpdateEnabled(enableAutoUpdate);
 	mLastSignature = 0;
 	mLastRevision = 0;
 	mbDistributedMode = enableDistributedMode;
@@ -245,28 +249,99 @@ void VDJobQueue::Delete(VDJob *job, bool force_no_update) {
 }
 
 void VDJobQueue::Run(VDJob *job) {
-	job->SetState(VDJob::kStateInProgress);
+	uint64 id = job->mId;
+
+	if (mbDistributedMode) {
+		try {
+			Flush();
+		} catch(const MyError&) {
+			if (!mRetryTimer.mLastPeriod)
+				mRetryTimer.mLastPeriod = 100;
+			else {
+				mRetryTimer.mLastPeriod += mRetryTimer.mLastPeriod;
+				if (mRetryTimer.mLastPeriod > 1000)
+					mRetryTimer.mLastPeriod = 1000;
+			}
+
+			mRetryTimer.mbRetryOK = false;
+			mRetryTimer.mTimer.SetOneShot(&mRetryTimer, mRetryTimer.mLastPeriod);
+			return;
+		}
+	}
+
+	job = GetJobById(id);
+	if (!job || job->IsRunning())
+		return;
 
 	FILETIME ft;
 	GetSystemTimeAsFileTime(&ft);
 
+	VDASSERT(!mbDistributedMode || !job->IsModified());
+
+	uint64 oldDateStart = job->mDateStart;
+	uint64 oldDateEnd = job->mDateEnd;
+	int oldState = job->GetState();
+	uint64 oldRunner = job->GetRunnerId();
+	VDStringA oldRunnerName(job->GetRunnerName());
+
 	job->mDateStart = ((uint64)ft.dwHighDateTime << 32) + (uint32)ft.dwLowDateTime;
 	job->mDateEnd = 0;
-	job->SetState(VDJob::kStateInProgress);
 	job->SetRunner(mRunnerId, mComputerName.c_str());
 
-	job->Refresh();
+	if (mbDistributedMode) {
+		job->SetState(VDJob::kStateStarting);
 
-	uint64 id = job->mId;
+		bool flushOK = false;
 
-	Flush();
+		try {
+			if (Flush())
+				flushOK = true;
+		} catch(const MyError&) {
+			// ignore
+		}
+
+		if (!flushOK) {
+			//VDDEBUG("[%d] Failed to commit, rolling back...\n", VDGetCurrentProcessId());
+			job->SetState(oldState);
+			job->SetRunner(oldRunner, oldRunnerName.c_str());
+			job->mDateStart = oldDateStart;
+			job->mDateEnd = oldDateEnd;
+			job->SetModified(false);
+			job->Refresh();
+
+			if (!mRetryTimer.mLastPeriod)
+				mRetryTimer.mLastPeriod = 100;
+			else {
+				mRetryTimer.mLastPeriod += mRetryTimer.mLastPeriod;
+				if (mRetryTimer.mLastPeriod > 1000)
+					mRetryTimer.mLastPeriod = 1000;
+			}
+
+			mRetryTimer.mbRetryOK = false;
+			mRetryTimer.mTimer.SetOneShot(&mRetryTimer, mRetryTimer.mLastPeriod);
+			return;
+		}
+	} else {
+		job->SetState(VDJob::kStateInProgress);
+	}
+
+	mRetryTimer.mbRetryOK = true;
+	mRetryTimer.mLastPeriod = 0;
 
 	job = GetJobById(id);
 
-	if (!job || !job->IsRunning() || !job->IsLocal())
+	if (!job || !job->IsLocal())
+		return;
+
+	VDASSERT(job->GetState() != VDJob::kStateStarting);
+
+	if (!job->IsRunning())
 		return;
 
 	mpRunningJob = job;
+
+	job->Refresh();
+
 	if (g_pVDJobQueueStatusCallback) {
 		NotifyStatus();
 		g_pVDJobQueueStatusCallback->OnJobStarted(*job);
@@ -315,8 +390,6 @@ void VDJobQueue::Run(VDJob *job) {
 		// Eat errors from the job flush.  The job queue on disk may be messed
 		// up, but as long as our in-memory queue is OK, we can at least finish
 		// remaining jobs.
-
-		VDASSERT(false);		// But we'll at least annoy people with debuggers.
 	}
 }
 
@@ -357,7 +430,6 @@ void VDJobQueue::Transform(int fromState, int toState) {
 
 		if (job->GetState() == fromState) {
 			job->SetState(toState);
-			job->mChangeRevision = 0;
 			modified = true;
 			job->Refresh();
 		}
@@ -397,7 +469,7 @@ static void strgetarg(VDStringA& str, const char *s) {
 }
 
 static void strgetarg2(VDStringA& str, const char *s) {
-	static char hexdig[]="0123456789ABCDEF";
+	static const char hexdig[]="0123456789ABCDEF";
 	vdfastvector<char> buf;
 	char stopchar = 0;
 
@@ -604,6 +676,8 @@ bool VDJobQueue::Load(IVDStream *stream, bool merge) {
 						script_capture = false;
 					}
 
+					job->SetModified(false);
+
 					// Check if the job is running and if the process corresponds to the same machine as
 					// us. If so, check if the process is still running and if not, mark the job as aborted.
 
@@ -671,6 +745,8 @@ bool VDJobQueue::Load(IVDStream *stream, bool merge) {
 			// Merge the in-memory and on-disk job queues.
 			typedef stdext::hash_map<uint64, int> JobQueueLookup;
 
+			//VDDEBUG("[%d] Merging job queues - last rev %d (order%s modified), new rev %d\n", VDGetCurrentProcessId(), mLastRevision, mbOrderModified ? "" : " not", newRevision);
+
 			bool useJobsFromDstQueue = mbOrderModified;
 			JobQueue dstQueue;
 			JobQueue srcQueue;
@@ -713,13 +789,16 @@ bool VDJobQueue::Load(IVDStream *stream, bool merge) {
 					VDASSERT(crossJob);
 					if (crossJob) {
 						if (useJobsFromDstQueue) {
-							modified |= job->Merge(*crossJob, true);
+							modified |= job->Merge(*crossJob);
 							dumpQueue.push_back(crossJob);
 						} else {
-							modified |= crossJob->Merge(*job, false);
+							modified |= crossJob->Merge(*job);
 							*it = crossJob;
 							dumpQueue.push_back(job);
 						}
+
+						//VDDEBUG("[%d] %s\n", VDGetCurrentProcessId(), job->ToString().c_str());
+
 						srcQueue[crossIndex] = NULL;
 					}
 				} else if (job->mCreationRevision < srcRevision) {
@@ -859,7 +938,18 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 			VDFileStream outputStream(fileName, nsVDFile::kReadWrite | nsVDFile::kDenyAll | nsVDFile::kOpenAlways);
 
 			Load(&outputStream, true);
-			
+
+			for(JobQueue::iterator it(mJobQueue.begin()), itEnd(mJobQueue.end()); it != itEnd; ++it) {
+				VDJob *job = *it;
+
+				VDASSERT(job->mpJobQueue == this);
+
+				if (job->GetState() == VDJob::kStateStarting && job->IsLocal()) {
+					job->SetState(VDJob::kStateInProgress);
+					job->Refresh();
+				}
+			}
+
 			uint64 signature = CreateListSignature();
 			outputStream.seek(0);
 			outputStream.truncate();
@@ -882,6 +972,8 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 
 				if (!job->mChangeRevision)
 					job->mChangeRevision = revision;
+
+				job->SetModified(false);
 			}
 		} catch(const MyError&) {
 			return false;
@@ -918,8 +1010,12 @@ void VDJobQueue::Save(IVDStream *stream, uint64 signature, uint32 revision, bool
 		output.FormatLine("// $state %d"		, state);
 		output.FormatLine("// $id %llx"			, vdj->mId);
 
-		if (!resetJobRevisions)
-			output.FormatLine("// $revision %x %x", vdj->mCreationRevision ? vdj->mCreationRevision : revision, vdj->mChangeRevision ? vdj->mChangeRevision : revision);
+		if (!resetJobRevisions) {
+			if (vdj->IsModified())
+				vdj->mChangeRevision = revision;
+
+			output.FormatLine("// $revision %x %x", vdj->mCreationRevision ? vdj->mCreationRevision : revision, vdj->mChangeRevision);
+		}
 
 		if (state == VDJob::kStateInProgress || state == VDJob::kStateAborting || state == VDJob::kStateCompleted || state == VDJob::kStateError) {
 			output.FormatLine("// $runner_id %llx", vdj->mRunnerId);
@@ -977,34 +1073,35 @@ void VDJobQueue::Save(IVDStream *stream, uint64 signature, uint32 revision, bool
 	output.Flush();
 }
 
-void VDJobQueue::RunAll() {
-	mbRunning	= true;
-	mbRunAllStop		= false;
+void VDJobQueue::RunAllStart() {
+	if (mbRunning || mbRunAll)
+		return;
+
+	mbRunning		= true;
+	mbRunAll		= true;
+	mbRunAllStop	= false;
+	mRetryTimer.mbRetryOK = true;
+	mRetryTimer.mLastPeriod = 0;
 
 	NotifyStatus();
 
 	ShowWindow(g_hWnd, SW_MINIMIZE);
+}
 
-	while(!mbRunAllStop) {
-		VDJob *vdj = NULL;
+bool VDJobQueue::RunAllNext() {
+	JobQueue::const_iterator it(mJobQueue.begin()), itEnd(mJobQueue.end());
+	for(; it != itEnd; ++it) {
+		VDJob *testJob = *it;
 
-		JobQueue::const_iterator it(mJobQueue.begin()), itEnd(mJobQueue.end());
-		for(; it != itEnd; ++it) {
-			VDJob *testJob = *it;
-
-			if (testJob->GetState() == VDJob::kStateWaiting) {
-				vdj = testJob;
-				break;
-			}
+		if (testJob->GetState() == VDJob::kStateWaiting) {
+			mJobIdToRun = testJob->GetId();
+			return true;
 		}
-
-		if (!vdj)
-			break;
-
-		vdj->Run();
 	}
 
 	mbRunning = false;
+	mbRunAll = false;
+	mbRunAllStop = false;
 	NotifyStatus();
 
 	if (VDRegistryAppKey().getBool(g_szRegKeyShutdownWhenFinished)) {
@@ -1021,6 +1118,8 @@ void VDJobQueue::RunAll() {
 			PostQuitMessage(0);
 		}
 	}
+
+	return false;
 }
 
 void VDJobQueue::RunAllStop() {
@@ -1103,7 +1202,35 @@ void VDJobQueue::SetAutoUpdateEnabled(bool enabled) {
 }
 
 bool VDJobQueue::PollAutoRun() {
-	if (!mbAutoRun || mbBlocked || mbRunning)
+	if (mbBlocked)
+		return false;
+
+	if (mbRunAllStop) {
+		mJobIdToRun = 0;
+		mbRunAll = false;
+		mbRunning = false;
+		mbRunAllStop = false;
+		NotifyStatus();
+		return false;
+	}
+
+	if (mJobIdToRun) {
+		if (!mRetryTimer.mbRetryOK)
+			return false;
+
+		VDJob *job = GetJobById(mJobIdToRun);
+		if (job && job->GetState() == VDJob::kStateWaiting) {
+			job->Run();
+			return true;
+		}
+
+		mJobIdToRun = 0;
+	}
+
+	if (mbRunAll)
+		return RunAllNext();
+
+	if (mbRunning || !mbAutoRun)
 		return false;
 
 	JobQueue::const_iterator it(mJobQueue.begin()), itEnd(mJobQueue.end());
@@ -1111,7 +1238,7 @@ bool VDJobQueue::PollAutoRun() {
 		VDJob *job = *it;
 
 		if (job->GetState() == VDJob::kStateWaiting) {
-			RunAll();
+			RunAllStart();
 			return true;
 		}
 	}
@@ -1187,128 +1314,6 @@ void VDJobQueue::TimerCallback() {
 		SetModified();
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
-VDJob::VDJob()
-	: mpJobQueue(NULL)
-	, mState(VDJob::kStateWaiting)
-	, mId(0)
-	, mRunnerId(0)
-	, mDateStart(0)
-	, mDateEnd(0)
-	, mbContainsReloadMarker(false)
-{
-}
-
-VDJob::~VDJob() {
-}
-
-bool VDJob::operator==(const VDJob& job) const {
-#define TEST(field) if (field != job.field) return false
-	TEST(mCreationRevision);
-	TEST(mChangeRevision);
-	TEST(mId);
-	TEST(mDateStart);
-	TEST(mDateEnd);
-	TEST(mRunnerId);
-	TEST(mRunnerName);
-	TEST(mName);
-	TEST(mInputFile);
-	TEST(mOutputFile);
-	TEST(mError);
-	TEST(mScript);
-	TEST(mState);
-	TEST(mRunnerId);
-	TEST(mbContainsReloadMarker);
-#undef TEST
-
-	return true;
-}
-
-void VDJob::SetState(int state) {
-	mState = state;
-	mChangeRevision = 0;
-
-	switch(state) {
-	case kStateInProgress:
-	case kStateAborted:
-	case kStateAborting:
-	case kStateCompleted:
-	case kStateError:
-		break;
-	default:
-		mRunnerName.clear();
-		mRunnerId = 0;
-		break;
-	}
-}
-
-void VDJob::SetRunner(uint64 id, const char *name) {
-	mRunnerId = id;
-	mRunnerName = name;
-}
-
-void VDJob::SetScript(const void *script, uint32 len, bool reloadable) {
-	mScript.assign((const char *)script, (const char *)script + len);
-	mbContainsReloadMarker = reloadable;
-}
-
-void VDJob::Refresh() {
-	if (mpJobQueue)
-		mpJobQueue->Refresh(this);
-}
-
-void VDJob::Run() {
-	if (mpJobQueue)
-		mpJobQueue->Run(this);
-}
-
-void VDJob::Reload() {
-	if (mpJobQueue)
-		mpJobQueue->Reload(this);
-}
-
-bool VDJob::Merge(const VDJob& src, bool srcHasInProgressPriority) {
-	if (operator==(src))
-		return false;
-
-	if (IsRunning() && src.IsRunning() && mState != kStateAborting && src.mState != kStateAborting) {
-		if (srcHasInProgressPriority) {
-			mName		= src.mName;
-			mError		= src.mError;
-			mRunnerName	= src.mRunnerName;
-			mState		= src.mState;
-			mRunnerId	= src.mRunnerId;
-			mDateStart	= src.mDateStart;
-			mDateEnd	= src.mDateEnd;
-			return true;
-		}
-
-		return false;
-	}
-
-	// Priority:
-	//	1) Done
-	//	2) In progress (us)
-	//	3) In progress (someone else)
-	//	4) Error
-	//	5) Aborted
-	//	6) Waiting
-	//	7) Postponed
-
-	int ourRevision = src.mChangeRevision ? src.mChangeRevision : 0xFFFFFFFFU;
-	int loadedRevision = mChangeRevision ? mChangeRevision : 0xFFFFFFFFU;
-
-	if (ourRevision > loadedRevision) {
-		mName		= src.mName;
-		mError		= src.mError;
-		mRunnerName	= src.mRunnerName;
-		mState		= src.mState;
-		mRunnerId	= src.mRunnerId;
-		mDateStart	= src.mDateStart;
-		mDateEnd	= src.mDateEnd;
-		return true;
-	}
-
-	return false;
+void VDJobQueue::RetryTimer::TimerCallback() {
+	mbRetryOK = true;
 }

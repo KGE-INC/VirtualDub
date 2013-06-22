@@ -248,7 +248,12 @@ void VDUIJobControlDialog::OnDestroy() {
 	VDUISaveWindowPlacementW32(mhdlg, "Job control");
 	g_VDJobQueue.SetCallback(NULL);
 	g_hwndJobs = NULL;
-	g_VDJobQueue.Flush();
+
+	try {
+		g_VDJobQueue.Flush();
+	} catch(const MyError&) {
+		// ignore flush error
+	}
 }
 
 bool VDUIJobControlDialog::OnCommand(uint32 id, uint32 extcode) {
@@ -336,7 +341,7 @@ bool VDUIJobControlDialog::OnCommand(uint32 id, uint32 extcode) {
 				g_VDJobQueue.RunAllStop();
 				EnableControl(IDC_START, FALSE);
 			} else
-				g_VDJobQueue.RunAll();
+				g_VDJobQueue.RunAllStart();
 			return TRUE;
 
 		case IDC_ABORT:
@@ -400,7 +405,7 @@ bool VDUIJobControlDialog::OnMenuHit(uint32 id) {
 				if (g_VDJobQueue.IsRunInProgress())
 					MessageBox(mhdlg, "Cannot switch job queues while a job is in progress.", g_szError, MB_ICONERROR | MB_OK);
 				else
-					g_VDJobQueue.SetJobFilePath(NULL, false);
+					g_VDJobQueue.SetJobFilePath(NULL, false, false);
 				break;
 
 			case ID_FILE_USEREMOTEJOBQUEUE:
@@ -430,7 +435,7 @@ bool VDUIJobControlDialog::OnMenuHit(uint32 id) {
 								break;
 						}
 
-						g_VDJobQueue.SetJobFilePath(filename.c_str(), true);
+						g_VDJobQueue.SetJobFilePath(filename.c_str(), true, true);
 					}
 				}
 				break;
@@ -743,6 +748,12 @@ void VDUIJobControlDialog::GetJobListDispInfoW(NMLVDISPINFOW *nldi) {
 				nldi->item.pszText = L"In progress";
 			else
 				swprintf(nldi->item.pszText, nldi->item.cchTextMax, L"In progress (%hs:%d)", vdj->mRunnerName.c_str(), (uint32)vdj->GetRunnerId());
+			break;
+		case VDJob::kStateStarting:
+			if (vdj->mRunnerName.empty() || vdj->IsLocal())
+				nldi->item.pszText = L"Starting";
+			else
+				swprintf(nldi->item.pszText, nldi->item.cchTextMax, L"Starting (%hs:%d)", vdj->mRunnerName.c_str(), (uint32)vdj->GetRunnerId());
 			break;
 		case VDJob::kStateAborting:
 			if (vdj->mRunnerName.empty() || vdj->IsLocal())

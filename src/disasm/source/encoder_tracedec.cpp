@@ -91,7 +91,7 @@ void dump_tracedec(std::vector<char>& dst, const tRuleSystem& rulesys) {
 #ifndef _M_AMD64
 	static const char header[64]="[02|02] VirtualDub tracedec module (IA32:P4/Athlon V1.05)\r\n\x1A";
 #else
-	static const char header[64]="[02|02] VirtualDub tracedec module (AMD64:EM64T/Athlon64 V1.0)\r\n\x1A";
+	static const char header[64]="[02|02] VirtualDub tracedec module (AMD64:EM64T/A64 V1.0)\r\n\x1A";
 #endif
 
 	memcpy(&dst[0], header, 64);

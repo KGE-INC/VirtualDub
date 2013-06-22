@@ -1033,6 +1033,16 @@ INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 			}
 			break;
 
+		case WM_MOUSEWHEEL:
+			// Windows forwards all mouse wheel messages down to us, which we then forward
+			// to the clipping control.  Obviously for this to be safe the position control
+			// MUST eat the message, which it currently does.
+			{
+				HWND hwndClipping = GetDlgItem(mhdlg, IDC_BORDERS);
+				if (hwndClipping)
+					return SendMessage(hwndClipping, WM_MOUSEWHEEL, wParam, lParam);
+			}
+			break;
     }
 
 	return VDDialogFrameW32::DlgProc(message, wParam, lParam);

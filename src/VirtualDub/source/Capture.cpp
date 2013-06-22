@@ -735,6 +735,7 @@ VDCaptureProject::VDCaptureProject()
 	mTimingSetup.mbUseAudioTimestamps	= false;
 	mTimingSetup.mbDisableClockForPreview	= false;
 	mTimingSetup.mbForceAudioRendererClock	= true;
+	mTimingSetup.mbIgnoreVideoTimestamps	= false;
 
 	mFilterSetup.mCropRect.clear();
 	mFilterSetup.mVertSquashMode		= IVDCaptureFilterSystem::kFilterDisable;
@@ -2437,6 +2438,7 @@ void VDCaptureProject::UpdateTimingOptions() {
 	if (pds) {
 		pds->SetDisableClockForPreview(mTimingSetup.mbDisableClockForPreview);
 		pds->SetForceAudioRendererClock(mTimingSetup.mbForceAudioRendererClock);
+		pds->SetIgnoreVideoTimestamps(mTimingSetup.mbIgnoreVideoTimestamps);
 	}
 }
 

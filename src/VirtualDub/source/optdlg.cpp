@@ -145,8 +145,17 @@ INT_PTR VDDialogAudioConversionW32::DlgProc(UINT message, WPARAM wParam, LPARAM 
 				else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_22KHZ   )) mOpts.audio.new_rate = 22050;
 				else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_44KHZ   )) mOpts.audio.new_rate = 44100;
 				else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_48KHZ   )) mOpts.audio.new_rate = 48000;
-				else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_CUSTOM))
-					mOpts.audio.new_rate = GetDlgItemInt(mhdlg, IDC_SAMPLINGRATE_CUSTOM_VAL, NULL, FALSE);
+				else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_CUSTOM)) {
+					BOOL valid = FALSE;
+					UINT hz = GetDlgItemInt(mhdlg, IDC_SAMPLINGRATE_CUSTOM_VAL, &valid, FALSE);
+					if (!valid || !hz || hz > 10000000) {
+						SetFocus(GetDlgItem(mhdlg, IDC_SAMPLINGRATE_CUSTOM_VAL));
+						MessageBeep(MB_ICONEXCLAMATION);
+						return TRUE;
+					}
+
+					mOpts.audio.new_rate = hz;
+				}
 
 				if		(IsDlgButtonChecked(mhdlg, IDC_PRECISION_NOCHANGE)) mOpts.audio.newPrecision = DubAudioOptions::P_NOCHANGE;
 				else if	(IsDlgButtonChecked(mhdlg, IDC_PRECISION_8BIT    )) mOpts.audio.newPrecision = DubAudioOptions::P_8BIT;

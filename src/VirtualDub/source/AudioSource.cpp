@@ -534,8 +534,12 @@ zero_fill:
 
 				bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
 
-				if (bytes != (isPAL ? 144000 : 120000))
+				if (bytes != (isPAL ? 144000 : 120000)) {
+					if (mErrorMode != kErrorModeReportAll)
+						goto zero_fill;
+
 					return NULL;
+				}
 
 				uint32 minimumFrameSize;
 

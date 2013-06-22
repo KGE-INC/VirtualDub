@@ -922,6 +922,8 @@ protected:
 	VDAtomicInt mRefCount;
 	IVDCaptureDSCallback *mpCallback;
 	VDAtomicInt mBlockSamples;
+	bool mIgnoreTimestamps;
+	uint32 mTimeBase;
 
 public:
 
@@ -929,11 +931,18 @@ public:
 		: mRefCount(1)
 		, mpCallback(pCB)
 		, mBlockSamples(true)
+		, mIgnoreTimestamps(false)
+		, mTimeBase(0)
 	{
 	}
 
 	void SetBlockSamples(bool block) {
 		mBlockSamples = block;
+	}
+
+	void SetIgnoreTimestamps(bool enabled, uint32 timeBase) {
+		mIgnoreTimestamps = enabled;
+		mTimeBase = timeBase;
 	}
 
 	// IUnknown
@@ -1005,11 +1014,15 @@ public:
 
 			// retrieve times
 			__int64 t1, t2;
-			hr = pSample->GetTime(&t1, &t2);
-			if (FAILED(hr))
-				t1 = t2 = -1;
-			else
-				t1 = (t1+5)/10;
+			if (mIgnoreTimestamps) {
+				t1 = (VDGetAccurateTick() - mTimeBase) * 1000;
+			} else {
+				hr = pSample->GetTime(&t1, &t2);
+				if (FAILED(hr))
+					t1 = t2 = -1;
+				else
+					t1 = (t1+5)/10;
+			}
 
 			mpCallback->CapProcessData(mChannel, pData, pSample->GetActualDataLength(), t1, S_OK == pSample->IsSyncPoint());
 			++mFrameCount;
@@ -1180,6 +1193,9 @@ public:
 	bool	GetForceAudioRendererClock();
 	void	SetForceAudioRendererClock(bool enabled);
 
+	bool	GetIgnoreVideoTimestamps();
+	void	SetIgnoreVideoTimestamps(bool enabled);
+
 protected:
 	struct InputSource;
 	typedef std::vector<InputSource>	InputSources;
@@ -1313,6 +1329,7 @@ protected:
 	bool mbDisplayVisible;
 	bool mbForceAudioRendererClock;		// force the audio renderer to be the clock when present
 	bool mbDisableClockForPreview;		// disable the clock by default
+	bool mbIgnoreVideoTimestamps;
 
 	// state tracking for reporting changes
 	sint32		mTrackedFramePeriod;
@@ -2979,6 +2996,7 @@ bool VDCaptureDriverDS::CaptureStart() {
 			if (!mpCB || mpCB->CapEvent(kEventPreroll, 0)) {
 				// reset capture start time in case there was a preroll dialog
 				mCaptureStart = VDGetAccurateTick();
+				mVideoCallback.SetIgnoreTimestamps(mbIgnoreVideoTimestamps, mCaptureStart);
 
 				bool success = false;
 				if (mpCB) {
@@ -3100,6 +3118,14 @@ bool VDCaptureDriverDS::GetForceAudioRendererClock() {
 
 void VDCaptureDriverDS::SetForceAudioRendererClock(bool enabled) {
 	mbForceAudioRendererClock = enabled;
+}
+
+bool VDCaptureDriverDS::GetIgnoreVideoTimestamps() {
+	return mbIgnoreVideoTimestamps;
+}
+
+void VDCaptureDriverDS::SetIgnoreVideoTimestamps(bool enabled) {
+	mbIgnoreVideoTimestamps = enabled;
 }
 
 void VDCaptureDriverDS::UpdateDisplay() {

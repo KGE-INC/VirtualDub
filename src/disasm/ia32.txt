@@ -328,7 +328,9 @@ modrm_base:			$ap "real80 ptr " $2s
 [66] 17 modrm64x:	"movhpd " $3s ", " $2[3-5]rx		# SSE2
 
 [F2] 10 modrm64x:		"movsd " $2[3-5]rx ", " $3s			# SSE2
+[F3] 10 modrm32x:		"movss " $2[3-5]rx ", " $3s			# SSE
 [F2] 11 modrm64x:		"movsd " $3s ", " $2[3-5]rx			# SSE2
+[F3] 11 modrm32x:		"movss " $3s ", " $2[3-5]rx			# SSE
 
 10 modrm128:			"movups " $2[3-5]rx ", " $3s		# SSE
 11 modrm128:			"movups " $3s ", " $2[3-5]rx		# SSE
@@ -340,9 +342,6 @@ modrm_base:			$ap "real80 ptr " $2s
 16 C0-FF:				"movlhps " $2[3-5]rx ", " $2[0-2]rx	# SSE
 16 modrm64x:			"movhps " $2[3-5]rx ", " $3s		# SSE
 17 modrm64x:			"movhps " $3s ", " $2[3-5]rx		# SSE
-
-[F3] 10 modrm32x:		"movss " $2[3-5]rx ", " $3s			# SSE
-[F3] 11 modrm32x:		"movss " $3s ", " $2[3-5]rx			# SSE
 
 18 00-C0 !modrm:		"prefetchnta " $4s						# MMX2
 18 08-C8 !modrm:		"prefetcht0 " $4s						# MMX2
@@ -412,6 +411,7 @@ modrm_base:			$ap "real80 ptr " $2s
 [66] 57 modrm128:	"xorpd "   $2[3-5]rx ", " $3s		# SSE2
 [66] 58 modrm128:	"addpd "   $2[3-5]rx ", " $3s		# SSE2
 [66] 59 modrm128:	"mulpd "   $2[3-5]rx ", " $3s		# SSE2
+[66] 5B modrm128:	"cvtps2dq " $2[3-5]rx ", " $3s		# SSE2
 [66] 5C modrm128:	"subpd "   $2[3-5]rx ", " $3s		# SSE2
 [66] 5D modrm128:	"minpd "   $2[3-5]rx ", " $3s		# SSE2
 [66] 5E modrm128:	"divpd "   $2[3-5]rx ", " $3s		# SSE2
@@ -437,6 +437,7 @@ modrm_base:			$ap "real80 ptr " $2s
 57 modrm128:			"xorps " $2[3-5]rx ", " $3s
 58 modrm128:			"addps " $2[3-5]rx ", " $3s
 59 modrm128:			"mulps " $2[3-5]rx ", " $3s
+5B modrm128:			"cvtdq2ps " $2[3-5]rx ", " $3s		# SSE2
 5C modrm128:			"subps " $2[3-5]rx ", " $3s
 5D modrm128:			"minps " $2[3-5]rx ", " $3s
 5E modrm128:			"divps " $2[3-5]rx ", " $3s
@@ -477,12 +478,16 @@ modrm_base:			$ap "real80 ptr " $2s
 [66] 70 modrm128 *:	"pshufd " $2[3-5]rx ", " $3s ", " $4x
 [F2] 70 modrm128 *:	"pshuflw " $2[3-5]rx ", " $3s ", " $4x
 [F3] 70 modrm128 *:	"pshufhw " $2[3-5]rx ", " $3s ", " $4x
+
+[66] 71 D0-D7 *:	"psrld " $2[0-2]rx ", " $3x				# SSE2
+
+[66] 73 D8-DF *:	"psrldq " $2[0-2]rx ", " $3x
+[66] 73 F8-FF *:	"pslldq " $2[0-2]rx ", " $3x
+
 [F3] 7E modrm64x:	"movq " $2[3-5]rx ", " $3s				# SSE2
 [66] 7F modrm128:	"movdqa " $3s ", " $2[3-5]rx
 [F3] 7F modrm128:	"movdqu " $3s ", " $2[3-5]rx
 
-[66] 73 D8-DF *:	"psrldq " $2[0-2]rx ", " $3x
-[66] 73 F8-FF *:	"pslldq " $2[0-2]rx ", " $3x
 
 70 modrm64m *:	"pshufw " $2[3-5]rm ", " $3s ", " $4x
 71 D0-D7 *:		"psrlw " $2[0-2]rmx ", " $3x

@@ -1831,9 +1831,28 @@ void VDCaptureDriverScreen::DoFrame() {
 			mProfileChannel.Begin(0xf0d0d0, "Capture (GDI)");
 			if (HDC hdc = GetDC(NULL)) {
 				static DWORD sBitBltMode = AutodetectCaptureBltMode();
-				BitBlt(mhdcOffscreen, 0, 0, w, h, hdc, mTrackX, mTrackY, sBitBltMode);
+
+				int srcx = mTrackX;
+				int srcy = mTrackY;
+
+				int limitx = GetSystemMetrics(SM_CXSCREEN) - w;
+				int limity = GetSystemMetrics(SM_CYSCREEN) - h;
+
+				if (srcx > limitx)
+					srcx = limitx;
+
+				if (srcx < 0)
+					srcx = 0;
+
+				if (srcy > limity)
+					srcy = limity;
+
+				if (srcy < 0)
+					srcy = 0;
+
+				BitBlt(mhdcOffscreen, 0, 0, w, h, hdc, srcx, srcy, sBitBltMode);
 				if (ci.hCursor)
-					DrawIcon(mhdcOffscreen, ci.ptScreenPos.x - mTrackX, ci.ptScreenPos.y - mTrackY, ci.hCursor);
+					DrawIcon(mhdcOffscreen, ci.ptScreenPos.x - srcx, ci.ptScreenPos.y - srcy, ci.hCursor);
 				ReleaseDC(NULL, hdc);
 			}
 			mProfileChannel.End();
@@ -1932,7 +1951,25 @@ void VDCaptureDriverScreen::DoFrame() {
 				mProfileChannel.Begin(0xe0e0e0, "Overlay (GDI)");
 				if (HDC hdcScreen = GetDC(NULL)) {
 					if (HDC hdc = GetDC(mhwnd)) {
-						BitBlt(hdc, 0, 0, w, h, hdcScreen, mTrackX, mTrackY, SRCCOPY);
+						int srcx = mTrackX;
+						int srcy = mTrackY;
+
+						int limitx = GetSystemMetrics(SM_CXSCREEN) - w;
+						int limity = GetSystemMetrics(SM_CYSCREEN) - h;
+
+						if (srcx > limitx)
+							srcx = limitx;
+
+						if (srcx < 0)
+							srcx = 0;
+
+						if (srcy > limity)
+							srcy = limity;
+
+						if (srcy < 0)
+							srcy = 0;
+
+						BitBlt(hdc, 0, 0, w, h, hdcScreen, srcx, srcy, SRCCOPY);
 						ReleaseDC(mhwnd, hdc);
 					}
 					ReleaseDC(NULL, hdcScreen);

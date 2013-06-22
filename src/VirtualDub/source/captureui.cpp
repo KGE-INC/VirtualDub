@@ -135,6 +135,7 @@ static const char g_szCaptureTimingAutoAudioLatencyLimit		[] = "Timing: Auto aud
 static const char g_szCaptureTimingUseAudioTimestamps			[] = "Timing: Use audio timestamps";
 static const char g_szCaptureTimingDisableClockForPreview		[] = "Timing: Disable clock for preview";
 static const char g_szCaptureTimingForceAudioRendererClock		[] = "Timing: Force audio renderer clock";
+static const char g_szCaptureTimingIgnoreVideoTimestamps		[] = "Timing: Ignore video timestamps";
 
 static const char g_szFilterEnableFieldSwap			[] = "Enable field swap";
 static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish";
@@ -1032,6 +1033,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	ts.mbUseAudioTimestamps			= key.getBool(g_szCaptureTimingUseAudioTimestamps, ts.mbUseAudioTimestamps);
 	ts.mbDisableClockForPreview		= key.getBool(g_szCaptureTimingDisableClockForPreview, ts.mbDisableClockForPreview);
 	ts.mbForceAudioRendererClock	= key.getBool(g_szCaptureTimingForceAudioRendererClock, ts.mbForceAudioRendererClock);
+	ts.mbIgnoreVideoTimestamps		= key.getBool(g_szCaptureTimingIgnoreVideoTimestamps, ts.mbIgnoreVideoTimestamps);
 
 	mpProject->SetTimingSetup(ts);
 
@@ -1135,6 +1137,7 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szCaptureTimingUseAudioTimestamps, ts.mbUseAudioTimestamps);
 	key.setBool(g_szCaptureTimingDisableClockForPreview, ts.mbDisableClockForPreview);
 	key.setBool(g_szCaptureTimingForceAudioRendererClock, ts.mbForceAudioRendererClock);
+	key.setBool(g_szCaptureTimingIgnoreVideoTimestamps, ts.mbIgnoreVideoTimestamps);
 
 	const VDCaptureFilterSetup& fs = mpProject->GetFilterSetup();
 

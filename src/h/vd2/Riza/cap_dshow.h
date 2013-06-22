@@ -32,6 +32,9 @@ public:
 
 	virtual bool GetForceAudioRendererClock() = 0;
 	virtual void SetForceAudioRendererClock(bool enabled) = 0;
+
+	virtual bool GetIgnoreVideoTimestamps() = 0;
+	virtual void SetIgnoreVideoTimestamps(bool enabled) = 0;
 };
 
 #endif

@@ -881,6 +881,7 @@ public:
 			SetValue(104, mTimingSetup.mbUseAudioTimestamps);
 			SetValue(105, mTimingSetup.mbDisableClockForPreview);
 			SetValue(106, mTimingSetup.mbForceAudioRendererClock);
+			SetValue(107, mTimingSetup.mbIgnoreVideoTimestamps);
 
 			pBase->ExecuteAllLinks();
 		} else if (type == kEventSelect) {
@@ -894,6 +895,7 @@ public:
 				mTimingSetup.mbUseAudioTimestamps = GetValue(104) != 0;
 				mTimingSetup.mbDisableClockForPreview = GetValue(105) != 0;
 				mTimingSetup.mbForceAudioRendererClock = GetValue(106) != 0;
+				mTimingSetup.mbIgnoreVideoTimestamps = GetValue(107) != 0;
 
 				VDStringW s(GetCaption(300));
 

@@ -809,6 +809,20 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 
+	case WM_MOUSEWHEEL:
+		// Windows forwards all mouse wheel messages down to us, which we then forward
+		// to the position control.  Obviously for this to be safe the position control
+		// MUST eat the message, which it currently does.
+		{
+			HWND hwndPosition = GetDlgItem(mhwnd, kIDC_POSITION);
+
+			if (hwndPosition) {
+				SendMessage(hwndPosition, WM_MOUSEWHEEL, wParam, lParam);
+				return TRUE;
+			}
+		}
+		break;
+
 	case CCM_SETBITMAPSIZE:
 		SetBitmapSize(LOWORD(lParam), HIWORD(lParam));
 		AutoSize(0, 0);

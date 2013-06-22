@@ -569,13 +569,19 @@ void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bInclu
 ///////////////////////////////////////////////////////////////////////////
 
 bool InitJobSystem() {
-	g_VDJobQueue.SetJobFilePath(NULL, false);
+	g_VDJobQueue.SetJobFilePath(NULL, false, false);
 
 	return true;
 }
 
 void DeinitJobSystem() {
-	g_VDJobQueue.Flush();
+	try {
+		if (g_VDJobQueue.IsModified())
+			g_VDJobQueue.Flush();
+	} catch(const MyError&) {
+		// eat flush errors
+	}
+
 	g_VDJobQueue.Shutdown();
 }
 
@@ -592,7 +598,7 @@ void JobClearList() {
 }
 
 void JobRunList() {
-	g_VDJobQueue.RunAll();
+	g_VDJobQueue.RunAllStart();
 }
 
 bool JobPollAutoRun() {
@@ -601,7 +607,7 @@ bool JobPollAutoRun() {
 
 void JobSetQueueFile(const wchar_t *filename, bool distributed, bool autorun) {
 	g_VDJobQueue.SetAutoRunEnabled(false);
-	g_VDJobQueue.SetJobFilePath(filename, distributed);
+	g_VDJobQueue.SetJobFilePath(filename, distributed, distributed);
 	g_VDJobQueue.SetAutoRunEnabled(autorun);
 }
 

@@ -574,6 +574,7 @@ dialog 2101, "Capture timing options" : aspect=140, maxw=350 {
 				checkbox 104, "Use audio timestamps when available";
 				checkbox 105, "Disable timestamps for preview";
 				checkbox 106, "Force audio clock when audio playback is enabled";
+				checkbox 107, "Ignore video timestamps from capture driver";
 			}
 		}
 		

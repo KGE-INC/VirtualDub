@@ -53,6 +53,10 @@ VDThreadID VDGetCurrentThreadID() {
 	return (VDThreadID)GetCurrentThreadId();
 }
 
+VDProcessId VDGetCurrentProcessId() {
+	return (VDProcessId)GetCurrentProcessId();
+}
+
 void VDSetThreadDebugName(VDThreadID tid, const char *name) {
 	THREADNAME_INFO info;
 	info.dwType		= 0x1000;

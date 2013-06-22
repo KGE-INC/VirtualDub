@@ -1671,16 +1671,17 @@ long VDDebugInfoLookupRVA(VDDebugInfoContext *pctx, unsigned rva, char *buf, int
 	#endif
 
 	NT_TIB *VDGetThreadTibW32(HANDLE hThread, const CONTEXT *pContext) {
-		typedef LONG (APIENTRY *tpNtQueryInformationThread)(HANDLE hThread, int infoclass, void *buf, LONG size, LONG *used);
+		typedef NTSTATUS (WINAPI *tpNtQueryInformationThread)(HANDLE ThreadHandle, int ThreadInformationClass, PVOID ThreadInformation, ULONG ThreadInformationLength, PULONG ReturnLength);
 
 		const tpNtQueryInformationThread pNtQueryInformationThread = (tpNtQueryInformationThread)GetProcAddress(GetModuleHandle("ntdll"), "NtQueryInformationThread");
 		const int ThreadBasicInformation = 0;
 
 		VDASSERTCT(sizeof(THREAD_BASIC_INFORMATION) == 0x30);
 		THREAD_BASIC_INFORMATION info;
-		LONG actual = 0;
+		ULONG actual = 0;
 
-		VDVERIFY(pNtQueryInformationThread(hThread, ThreadBasicInformation, &info, sizeof info, &actual));
+		NTSTATUS status = pNtQueryInformationThread(hThread, ThreadBasicInformation, &info, sizeof info, &actual);
+		VDVERIFY(SUCCEEDED(status));
 
 		return (NT_TIB *)info.TebBaseAddress;
 	}

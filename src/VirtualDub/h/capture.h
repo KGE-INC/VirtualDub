@@ -90,6 +90,7 @@ struct VDCaptureTimingSetup {
 	bool		mbUseAudioTimestamps;
 	bool		mbDisableClockForPreview;
 	bool		mbForceAudioRendererClock;
+	bool		mbIgnoreVideoTimestamps;
 };
 
 struct VDCaptureStatus {

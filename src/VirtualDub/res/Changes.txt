@@ -1,6 +1,17 @@
 VirtualDub change log
 
-Build %build% (1.8.6, stable): [%date%]
+Build %build% (1.8.7, stable): [%date%]
+   [bugs fixed]
+   * Wheel scrolling now works in the filter crop dialog.
+   * Added clamp in audio conversion dialog to prevent invalid custom sampling rates.
+   * DV: Audio error concealment now works when the PAL/NTSC bit in a frame is incorrect.
+   * Capture: Added option to ignore DirectShow video timestamps when capture driver timing is busted.
+   * JobControl: Rewrote sync mechanism to fix problems with multiple machines attempting to run the same job.
+
+   [regressions fixed]
+   * JobControl: Fixed crash if job list couldn't be flushed on exit.
+
+Build 30009 (1.8.6, stable): [September 21, 2008]
    [bugs fixed]
    * Wheel scrolling in the Set Text Information dialog closes the edit control.
    * Save Segmented AVI now works with VBR audio.

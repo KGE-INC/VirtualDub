@@ -9,6 +9,7 @@
 #include <vd2/system/filewatcher.h>
 #include <vd2/system/log.h>
 #include <vd2/system/time.h>
+#include <vd2/VDLib/Job.h>
 
 class VDJob;
 class IVDStream;
@@ -31,7 +32,7 @@ public:
 	virtual void OnJobQueueReloaded() = 0;
 };
 
-class VDJobQueue : protected IVDFileWatcherCallback, protected IVDTimerCallback {
+class VDJobQueue : protected IVDFileWatcherCallback, protected IVDTimerCallback, public IVDJobQueue {
 	VDJobQueue(const VDJobQueue&);
 	VDJobQueue& operator=(const VDJobQueue&);
 public:
@@ -40,7 +41,7 @@ public:
 
 	void Shutdown();
 
-	void SetJobFilePath(const wchar_t *path, bool enableDistributedMode);
+	void SetJobFilePath(const wchar_t *path, bool enableDistributedMode, bool enableAutoUpdate);
 	const wchar_t *GetJobFilePath() const;
 	const wchar_t *GetDefaultJobFilePath() const;
 
@@ -67,7 +68,9 @@ public:
 	void SetModified();
 
 	bool Flush(const wchar_t *lpfn =NULL);
-	void RunAll();
+
+	void RunAllStart();
+	bool RunAllNext();
 	void RunAllStop();
 
 	void Swap(int x, int y);
@@ -102,6 +105,8 @@ public:
 	void SetCallback(IVDJobQueueStatusCallback *cb);
 
 protected:
+	typedef vdfastvector<VDJob *> JobQueue;
+
 	bool Load(IVDStream *stream, bool skipIfSignatureSame);
 	void Save(IVDStream *stream, uint64 signature, uint32 revision, bool resetJobRevisions);
 
@@ -110,19 +115,21 @@ protected:
 	bool OnFileUpdated(const wchar_t *path);
 	void TimerCallback();
 
-	typedef vdfastvector<VDJob *> JobQueue;
 	JobQueue mJobQueue;
 
 	uint32	mJobCount;
 	uint32	mJobNumber;
 	VDJob	*mpRunningJob;
 	bool	mbRunning;
+	bool	mbRunAll;
 	bool	mbRunAllStop;
 	bool	mbModified;
 	bool	mbBlocked;
 	bool	mbOrderModified;
 	bool	mbAutoRun;
 	bool	mbDistributedMode;
+
+	uint64	mJobIdToRun;
 
 	VDStringA	mComputerName;
 	uint64	mBaseSignature;
@@ -135,83 +142,16 @@ protected:
 
 	VDFileWatcher	mFileWatcher;
 	VDLazyTimer		mFlushTimer;
-};
 
-class VDJob {
-public:
-	enum {
-		kStateWaiting		= 0,
-		kStateInProgress	= 1,
-		kStateCompleted		= 2,
-		kStatePostponed		= 3,
-		kStateAborted		= 4,
-		kStateError			= 5,
-		kStateAborting		= 6,
-		kStateCount			= 7
-	};
+	struct RetryTimer : public IVDTimerCallback {
+		VDLazyTimer	mTimer;
+		bool		mbRetryOK;
+		uint32		mLastPeriod;
 
-	VDJobQueue	*mpJobQueue;
+		RetryTimer() : mbRetryOK(true), mLastPeriod(0) {}
 
-	uint32		mCreationRevision;
-	uint32		mChangeRevision;
-	uint64		mId;
-	uint64		mDateStart;		///< Same units as NT FILETIME.
-	uint64		mDateEnd;		///< Same units as NT FILETIME.
-
-	typedef VDAutoLogger::tEntries tLogEntries;
-	tLogEntries	mLogEntries;
-
-	/////
-	VDJob();
-	~VDJob();
-
-	bool operator==(const VDJob& job) const;
-
-	bool	IsLocal() const { return !mpJobQueue || mpJobQueue->IsLocal(this); }
-
-	const char *	GetName() const				{ return mName.c_str(); }
-	void			SetName(const char *name)	{ mName = name; }
-
-	const char *	GetInputFile() const			{ return mInputFile.c_str(); }
-	void			SetInputFile(const char *file)	{ mInputFile = file; }
-
-	const char *	GetOutputFile() const			{ return mOutputFile.c_str(); }
-	void			SetOutputFile(const char *file)	{ mOutputFile = file; }
-
-	const char *	GetError() const				{ return mError.c_str(); }
-	void			SetError(const char *err)		{ mError = err; }
-
-	const char *	GetRunnerName() const			{ return mRunnerName.c_str(); }
-	uint64			GetRunnerId() const				{ return mRunnerId; }
-
-	bool	IsRunning() const { return mState == kStateInProgress || mState == kStateAborting; }
-
-	int		GetState() const { return mState; }
-	void	SetState(int state);
-
-	void	SetRunner(uint64 id, const char *name);
-
-	bool	IsReloadMarkerPresent() const { return mbContainsReloadMarker; }
-
-	void	SetScript(const void *script, uint32 len, bool reloadable);
-	const char *GetScript() const { return mScript.c_str(); }
-
-	void Refresh();
-	void Run();
-	void Reload();
-
-	bool Merge(const VDJob& src, bool srcHasInProgressPriority);
-
-	uint64		mRunnerId;
-	VDStringA	mRunnerName;
-protected:
-	VDStringA	mName;
-	VDStringA	mInputFile;
-	VDStringA	mOutputFile;
-	VDStringA	mError;
-	VDStringA	mScript;
-	int			mState;
-	bool		mbContainsReloadMarker;
+		void TimerCallback();
+	} mRetryTimer;
 };
 
 #endif
