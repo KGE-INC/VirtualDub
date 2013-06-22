@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <malloc.h>
 
 #include "StringHeap.h"
 #include "ScriptError.h"
@@ -32,7 +33,10 @@ private:
 
 	enum {
 		TOK_IDENT		= 256,
-		TOK_INTEGER,
+		TOK_INTVAL,
+		TOK_LONGVAL,
+		TOK_DBLVAL,
+		TOK_INT,
 		TOK_LONG,
 		TOK_DOUBLE,
 		TOK_STRING,
@@ -57,7 +61,7 @@ private:
 	int tokhold;
 	char **tokslit;
 	char szIdent[MAX_IDENT_CHARS+1];
-	char szError[256];
+	std::vector<char> mError;
 
 	std::vector<VDScriptValue> mStack;
 	std::vector<int> mOpStack;
@@ -215,19 +219,33 @@ void VDScriptInterpreter::ScriptError(int e) {
 	throw VDScriptError(e);
 }
 
+namespace {
+	void strveccat(std::vector<char>& error, const char *s) {
+		error.insert(error.end(), s, s+strlen(s));
+	}
+}
+
 const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) {
-	char *s;
 	int i;
+	char szError[1024];
 
 	switch(cse.err) {
 	case VDScriptError::OVERLOADED_FUNCTION_NOT_FOUND:
+	case VDScriptError::AMBIGUOUS_CALL:
 		{
-			if (mpCurrentInvocationMethod && mpCurrentInvocationMethod->name)
-				sprintf(szError, "Overloaded method %s(", mpCurrentInvocationMethod->name);
-			else
-				strcpy(szError, "Overloaded method (");
+			if (cse.err == VDScriptError::OVERLOADED_FUNCTION_NOT_FOUND) {
+				if (mpCurrentInvocationMethod && mpCurrentInvocationMethod->name)
+					sprintf(szError, "Overloaded method %s(", mpCurrentInvocationMethod->name);
+				else
+					strcpy(szError, "Overloaded method (");
+			} else {
+				if (mpCurrentInvocationMethod && mpCurrentInvocationMethod->name)
+					sprintf(szError, "Ambiguous call with arguments %s(", mpCurrentInvocationMethod->name);
+				else
+					strcpy(szError, "Ambiguous call with arguments (");
+			}
 
-			s = szError + strlen(szError);
+			mError.assign(szError, szError + strlen(szError));
 
 			const VDScriptValue *const argv = &*(mStack.end() - mMethodArgumentCount);
 
@@ -235,33 +253,38 @@ const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) 
 				if (i) {
 					if (argv[i].isVoid()) break;
 
-					*s++ = ',';
+					mError.push_back(',');
 				}
 
 				switch(argv[i].type) {
-				case VDScriptValue::T_VOID:		strcpy(s, "void"); break;
-				case VDScriptValue::T_INT:		strcpy(s, "int"); break;
-				case VDScriptValue::T_STR:		strcpy(s, "string"); break;
-				case VDScriptValue::T_OBJECT:	strcpy(s, "object"); break;
-				case VDScriptValue::T_FNAME:		strcpy(s, "method"); break;
-				case VDScriptValue::T_FUNCTION:	strcpy(s, "function"); break;
-				case VDScriptValue::T_VARLV:		strcpy(s, "var"); break;
+				case VDScriptValue::T_VOID:		strveccat(mError, "void"); break;
+				case VDScriptValue::T_INT:		strveccat(mError, "int"); break;
+				case VDScriptValue::T_LONG:		strveccat(mError, "long"); break;
+				case VDScriptValue::T_DOUBLE:		strveccat(mError, "double"); break;
+				case VDScriptValue::T_STR:		strveccat(mError, "string"); break;
+				case VDScriptValue::T_OBJECT:	strveccat(mError, "object"); break;
+				case VDScriptValue::T_FNAME:		strveccat(mError, "method"); break;
+				case VDScriptValue::T_FUNCTION:	strveccat(mError, "function"); break;
+				case VDScriptValue::T_VARLV:		strveccat(mError, "var"); break;
 				}
-
-				while(*s) ++s;
 			}
 
-			strcpy(s, ") not found");
+			strveccat(mError, ")");
+			if (cse.err == VDScriptError::OVERLOADED_FUNCTION_NOT_FOUND)
+				strveccat(mError, " not found");
 		}
+		mError.push_back(0);
 
-		return szError;
+		return &mError[0];
 	case VDScriptError::MEMBER_NOT_FOUND:
 		sprintf(szError, "Member '%s' not found", szIdent);
-		return szError;
+		mError.assign(szError, szError + strlen(szError) + 1);
+		return &mError[0];
 	case VDScriptError::VAR_NOT_FOUND:
 		if (!mErrorExtraToken.empty()) {
 			sprintf(szError, "Variable '%s' not found", mErrorExtraToken.c_str());
-			return szError;
+			mError.assign(szError, szError + strlen(szError) + 1);
+			return &mError[0];
 		}
 		break;
 	}
@@ -376,6 +399,8 @@ void VDScriptInterpreter::ParseExpression() {
 			if (Token() != ']')
 				SCRIPT_ERROR(CLOSEBRACKET_EXPECTED);
 		} else if (t == '(') {	// function indirection operator (method -> value)
+			ConvertToRvalue();	// can happen if a method is assigned
+
 			const VDScriptValue fcall(mStack.back());
 			mStack.pop_back();
 
@@ -465,40 +490,77 @@ void VDScriptInterpreter::ParseValue() {
 	int t = Token();
 
 	if (t=='(') {
-		ParseExpression();
+		t = Token();
 
-		if (Token() != ')')
-			SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
+		if (t == TOK_INT) {
+			if (Token() != ')')
+				SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
+
+			ParseExpression();
+
+			VDScriptValue& v = mStack.back();
+
+			if (v.isDouble())
+				v = (int)v.asDouble();
+			else if (v.isLong())
+				v = (int)v.asLong();
+			else if (!v.isInt())
+				SCRIPT_ERROR(CANNOT_CAST);
+		} else if (t == TOK_LONG) {
+			if (Token() != ')')
+				SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
+
+			ParseExpression();
+
+			VDScriptValue& v = mStack.back();
+
+			if (v.isDouble())
+				v = (sint64)v.asDouble();
+			else if (v.isInt())
+				v = (sint64)v.asInt();
+			else if (!v.isLong())
+				SCRIPT_ERROR(CANNOT_CAST);
+		} else if (t == TOK_DOUBLE) {
+			if (Token() != ')')
+				SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
+
+			ParseExpression();
+
+			VDScriptValue& v = mStack.back();
+
+			if (v.isInt())
+				v = (double)v.asInt();
+			else if (v.isLong())
+				v = (double)v.asLong();
+			else if (!v.isDouble())
+				SCRIPT_ERROR(CANNOT_CAST);
+		} else {
+			TokenUnput(t);
+
+			ParseExpression();
+
+			if (Token() != ')')
+				SCRIPT_ERROR(CLOSEPARENS_EXPECTED);
+		}
 	} else if (t==TOK_IDENT) {
 		VDDEBUG("Resolving variable: [%s]\n", szIdent);
 		mStack.push_back(LookupRootVariable(szIdent));
-	} else if (t == TOK_INTEGER)
+	} else if (t == TOK_INTVAL)
 		mStack.push_back(VDScriptValue(tokival));
-	else if (t == TOK_LONG)
+	else if (t == TOK_LONGVAL)
 		mStack.push_back(VDScriptValue(toklval));
-	else if (t == TOK_DOUBLE)
+	else if (t == TOK_DBLVAL)
 		mStack.push_back(VDScriptValue(tokdval));
 	else if (t == TOK_STRING)
 		mStack.push_back(VDScriptValue(tokslit));
 	else if (t=='!' || t=='~' || t=='-' || t=='+') {
 		ParseValue();
 
-		VDScriptValue& v = mStack.back();
-
-		if (!v.isInt())
-			SCRIPT_ERROR(TYPE_INT_REQUIRED);
-
 		switch(t) {
-		case '!':
-			v = VDScriptValue(!v.asInt());
-			break;
-		case '~':
-			v = VDScriptValue(~v.asInt());
-			break;
-		case '+':
-			break;
-		case '-':
-			v = VDScriptValue(-v.asInt());
+		case '!':		InvokeMethod(&obj_Sylia, "!", 1); break;
+		case '~':		InvokeMethod(&obj_Sylia, "~", 1); break;
+		case '+':		InvokeMethod(&obj_Sylia, "+", 1); break;
+		case '-':		InvokeMethod(&obj_Sylia, "-", 1); break;
 			break;
 		default:
 			SCRIPT_ERROR(PARSE_ERROR);
@@ -558,38 +620,67 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcoun
 	// 0 = void, v = value, i = int, . = varargs
 	//
 	// <return value><param1><param2>...
-	char c;
-	const char *s;
 	const char *name = sfd->name;
-	VDScriptValue *csv;
-	int argcnt;
 
 	// Yes, goto's are usually considered gross... but I prefer
 	// cleanly labeled goto's to excessive boolean variable usage.
+	const VDScriptFunctionDef *sfd_best = NULL;
+
+	int *best_scores = (int *)_alloca(sizeof(int) * (pcount + 1));
+	int *current_scores = (int *)_alloca(sizeof(int) * (pcount + 1));
+	int best_promotions = 0;
+	bool ambiguous = false;
 
 	while(sfd->arg_list && (sfd->name == name || !sfd->name)) {
-		s = sfd->arg_list+1;
-		argcnt = pcount;
-		csv = params;
+		const char *s = sfd->arg_list+1;
+		VDScriptValue *csv = params;
+		int argcnt = pcount;
+		bool better_conversion;
+		int current_promotions = 0;
 
-		while((c=*s++) && argcnt--) {
+		// reset current scores to zero (default)
+		memset(current_scores, 0, sizeof(int) * (pcount + 1));
+
+		enum {
+			kConversion = -2,
+			kEllipsis = -3
+		};
+
+		for(int i=0; i<pcount; ++i) {
+			const char c = *s++;
+
+			if (!c)
+				goto arglist_nomatch;
+
 			switch(c) {
 			case 'v':
 				break;
 			case 'i':
-				if (!csv->isInt()) goto arglist_nomatch;
+				if (csv->isLong() || csv->isDouble())
+					current_scores[i] = kConversion;
+				else if (!csv->isInt())
+					goto arglist_nomatch;
 				break;
 			case 'l':
-				if (!csv->isInt() && !csv->isLong()) goto arglist_nomatch;
+				if (csv->isDouble())
+					current_scores[i] = kConversion;
+				else if (csv->isInt())
+					++current_promotions;
+				else if (!csv->isLong())
+					goto arglist_nomatch;
 				break;
 			case 'd':
-				if (!csv->isInt() && !csv->isLong() && !csv->isDouble()) goto arglist_nomatch;
+				if (csv->isInt() || csv->isLong())
+					++current_promotions;
+				else if (!csv->isDouble())
+					goto arglist_nomatch;
 				break;
 			case 's':
 				if (!csv->isString()) goto arglist_nomatch;
 				break;
 			case '.':
-				goto arglist_match;
+				--s;			// repeat this character
+				break;
 			default:
 				VDDEBUG("Sylia external error: invalid argument type '%c' for method\n", c);
 
@@ -598,15 +689,53 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcoun
 			++csv;
 		}
 
-		if (!c && !argcnt)
-			goto arglist_match;
+		// check if we have no parms left, or only an ellipsis
+		if (*s == '.' && !s[1]) {
+			current_scores[pcount] = kEllipsis;
+		} else if (*s)
+			goto arglist_nomatch;
+
+		// do check for better match
+		better_conversion = true;
+
+		if (sfd_best) {
+			better_conversion = false;
+			for(int i=0; i<=pcount; ++i) {		// we check one additional parm, the ellipsis parm
+				// reject if there is a worse conversion than the best match so far
+				if (current_scores[i] < best_scores[i]) {
+					goto arglist_nomatch;
+				}
+
+				// add +1 if there is a better match
+				if (current_scores[i] > best_scores[i])
+					better_conversion = true;
+			}
+
+			// all things being equal, choose the method with fewer promotions
+			if (!better_conversion) {
+				if (current_promotions < best_promotions)
+					better_conversion = true;
+				else if (current_promotions == best_promotions)
+					ambiguous = true;
+			}
+		}
+
+		if (better_conversion) {
+			std::swap(current_scores, best_scores);
+			sfd_best = sfd;
+			best_promotions = current_promotions;
+			ambiguous = false;
+		}
 
 arglist_nomatch:
 		++sfd;
 	}
-	SCRIPT_ERROR(OVERLOADED_FUNCTION_NOT_FOUND);
 
-arglist_match:
+	if (!sfd_best)
+		SCRIPT_ERROR(OVERLOADED_FUNCTION_NOT_FOUND);
+	else if (ambiguous)
+		SCRIPT_ERROR(AMBIGUOUS_CALL);
+
 	// Make sure there is room for the return value.
 	int stackcount = pcount;
 
@@ -617,7 +746,7 @@ arglist_match:
 
 	// coerce arguments
 	VDScriptValue *const argv = &*(mStack.end() - stackcount);
-	const char *const argdesc = sfd->arg_list + 1;
+	const char *const argdesc = sfd_best->arg_list + 1;
 
 	for(int i=0; i<pcount; ++i) {
 		VDScriptValue& a = argv[i];
@@ -644,9 +773,9 @@ arglist_match:
 	}
 
 	// invoke
-	sfd->func_ptr(this, argv, pcount);
+	sfd_best->func_ptr(this, argv, pcount);
 	mStack.resize(mStack.size() + 1 - stackcount);
-	if (sfd->arg_list[0] == '0')
+	if (sfd_best->arg_list[0] == '0')
 		mStack.back() = VDScriptValue();
 }
 
@@ -728,7 +857,7 @@ void VDScriptInterpreter::ConvertToRvalue() {
 ///////////////////////////////////////////////////////////////////////////
 
 bool VDScriptInterpreter::isExprFirstToken(int t) {
-	return t==TOK_IDENT || t==TOK_STRING || t==TOK_INTEGER || isUnaryToken(t) || t=='(';
+	return t==TOK_IDENT || t==TOK_STRING || t==TOK_INTVAL || isUnaryToken(t) || t=='(';
 }
 
 bool VDScriptInterpreter::isUnaryToken(int t) {
@@ -904,6 +1033,12 @@ int VDScriptInterpreter::Token() {
 			return TOK_TRUE;
 		else if (!strcmp(szIdent, "false"))
 			return TOK_FALSE;
+		else if (!strcmp(szIdent, "int"))
+			return TOK_INT;
+		else if (!strcmp(szIdent, "long"))
+			return TOK_LONG;
+		else if (!strcmp(szIdent, "double"))
+			return TOK_DOUBLE;
 
 		return TOK_IDENT;
 	}
@@ -935,7 +1070,7 @@ int VDScriptInterpreter::Token() {
 
 					--tokstr;
 					tokdval = strtod(tokstr, (char **)&tokstr);
-					return TOK_DOUBLE;
+					return TOK_DBLVAL;
 				}
 
 				if (!isdigit((unsigned char)*s))
@@ -952,10 +1087,10 @@ int VDScriptInterpreter::Token() {
 
 		if (v > 0x7FFFFFFF) {
 			toklval = v;
-			return TOK_LONG;
+			return TOK_LONGVAL;
 		} else {
 			tokival = v;
-			return TOK_INTEGER;
+			return TOK_INTVAL;
 		}
 	}
 

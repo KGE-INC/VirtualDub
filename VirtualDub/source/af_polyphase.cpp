@@ -193,13 +193,13 @@ uint32 VDAudioFilterSymmetricFIR::Run() {
 	sint16 *dst = (sint16 *)mpContext->mpOutputs[0]->mpBuffer;
 	int samples = mFIRBufferWritePoint - mFIRBufferReadPoint - 2*mFilterSize;
 
-	if (samples > mpContext->mOutputSamples)
+	if (samples > (int)mpContext->mOutputSamples)
 		samples = mpContext->mOutputSamples;
 	
-	if (samples > mMaxQuantum)
+	if (samples > (int)mMaxQuantum)
 		samples = mMaxQuantum;
 
-	if (!samples) {
+	if (samples <= 0) {
 		if (!bInputRead && mpContext->mInputsEnded)
 			return kVFARun_Finished;
 

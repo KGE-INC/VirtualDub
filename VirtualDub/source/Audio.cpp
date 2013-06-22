@@ -1450,13 +1450,13 @@ bool AudioCompressor::Process() {
 
 				long actualSamples = source->Read(dst, samples, &actualBytes);
 
+				inputSpace -= actualBytes;
+				dst += actualBytes;
+
 				if (!actualSamples || source->isEnd()) {
 					fStreamEnded = TRUE;
 					break;
 				}
-
-				inputSpace -= actualBytes;
-				dst += actualBytes;
 			} while(inputSpace >= bytesPerInputSample);
 
 			if (dst > dst0) {
@@ -1563,7 +1563,7 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex) {
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 tail) {
 	const long nBytesPerSec = pwfex->nAvgBytesPerSec;
 	const int nBlockAlign = pwfex->nBlockAlign;
 	sint64 total = 0;
@@ -1605,15 +1605,36 @@ sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const
 		total += end-start;
 	}
 
+	if (tail) {
+		sint64 end = 0;
+
+		if (dst.empty()) {
+			dst.addRange(0, tail, false);
+			total += tail;
+		} else {
+			FrameSubsetNode& fsn = dst.back();
+
+			if (tail > fsn.end()) {
+				total -= fsn.len;
+				fsn.len = tail - fsn.start;
+				total += fsn.len;
+			}
+		}
+	}
+
 	return total;
 }
 
-AudioSubset::AudioSubset(AudioStream *src, const FrameSubset *pfs, const VDFraction& videoFrameRate, sint64 preskew) : AudioStream() {
+AudioSubset::AudioSubset(AudioStream *src, const FrameSubset *pfs, const VDFraction& videoFrameRate, sint64 preskew, bool appendTail)
+	: AudioStream()
+	, mbLimited(!appendTail)
+	, mbEnded(false)
+{
 	memcpy(AllocFormat(src->GetFormatLen()), src->GetFormat(), src->GetFormatLen());
 
 	SetSource(src);
 
-	sint64 total = AudioTranslateVideoSubset(subset, *pfs, videoFrameRate, src->GetFormat());
+	sint64 total = AudioTranslateVideoSubset(subset, *pfs, videoFrameRate, src->GetFormat(), appendTail ? src->GetLength() : 0);
 
 	const WAVEFORMATEX *pSrcFormat = src->GetFormat();
 
@@ -1635,60 +1656,64 @@ AudioSubset::~AudioSubset() {
 long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
 	int actual;
 
-	if (pfsnCur == subset.end()) {
-		*lplBytes = 0;
-		return 0;
+	if (pfsnCur != subset.end()) {
+		const FrameSubsetNode& node = *pfsnCur;
+
+		while (mSrcPos != node.start + mOffset) {
+			sint64 offset = node.start - mSrcPos;
+			long t;
+
+			if (offset < 0) {
+				source->Seek(node.start);
+				mSrcPos = node.start + mOffset;
+				break;
+			}
+
+			if (source->Skip(offset)) {
+				mSrcPos += offset;
+				break;
+			}
+
+			sint32 toskip = mSkipSize;
+			if (toskip > offset) toskip = (sint32)offset;
+
+			char skipBuffer[kSkipBufferSize];
+			actual = source->Read(skipBuffer, toskip, &t);
+
+			if (!actual) {
+				*lplBytes = 0;
+				return 0;
+			}
+
+			mSrcPos += actual;
+		}
+
+		if (samples > node.len - mOffset)
+			samples = (long)(node.len - mOffset);
+	} else if (mbLimited) {
+		samples = 0;
 	}
 
-	const FrameSubsetNode& node = *pfsnCur;
+	if (samples) {
+		samples = source->Read(buffer, samples, lplBytes);
 
-	while (mSrcPos != node.start + mOffset) {
-		sint64 offset = node.start - mSrcPos;
-		long t;
-
-		if (offset < 0) {
-			source->Seek(node.start);
-			mSrcPos = node.start + mOffset;
-			break;
-		}
-
-		if (source->Skip(offset)) {
-			mSrcPos += offset;
-			break;
-		}
-
-		sint32 toskip = mSkipSize;
-		if (toskip > offset) toskip = (sint32)offset;
-
-		char skipBuffer[kSkipBufferSize];
-		actual = source->Read(skipBuffer, toskip, &t);
-
-		if (!actual) {
-			*lplBytes = 0;
-			return 0;
-		}
-
-		mSrcPos += actual;
+		mOffset += samples;
+		mSrcPos += samples;
 	}
-
-	if (samples > node.len - mOffset)
-		samples = (long)(node.len - mOffset);
-
-	samples = source->Read(buffer, samples, lplBytes);
-
-	mOffset += samples;
-	mSrcPos += samples;
 
 	while (pfsnCur != subset.end() && mOffset >= pfsnCur->len) {
 		mOffset -= pfsnCur->len;
 		++pfsnCur;
 	}
 
+	if (!samples)
+		mbEnded = true;
+
 	return samples;
 }
 
 bool AudioSubset::_isEnd() {
-	return pfsnCur == subset.end() || source->isEnd();
+	return mbEnded;
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -746,7 +746,12 @@ void Dubber::InitAudioConversionChain() {
 		if (opt->audio.fStartAudio)
 			offset = vInfo.frameRateIn.scale64ir((sint64)1000000 * vInfo.start_src);
 
-		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset)))
+		bool applyTail = false;
+
+		if (!opt->audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vSrc->asStream()->getEnd()))
+			applyTail = true;
+
+		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset, applyTail)))
 			throw MyMemoryError();
 
 		mAudioStreams.push_back(audioStream);
@@ -2405,11 +2410,13 @@ abort_requested:
 ///////////////////////////////////////////////////////////////////
 
 void Dubber::Abort() {
-	fUserAbort = true;
-	fAbort = true;
-	mAudioPipe.Abort();
-	mpVideoPipe->abort();
-	PostMessage(g_hWnd, WM_USER, 0, 0);
+	if (!mStopLock) {
+		fUserAbort = true;
+		fAbort = true;
+		mAudioPipe.Abort();
+		mpVideoPipe->abort();
+		PostMessage(g_hWnd, WM_USER, 0, 0);
+	}
 }
 
 bool Dubber::isRunning() {

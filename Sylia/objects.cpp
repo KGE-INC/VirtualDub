@@ -113,6 +113,41 @@ namespace {
 		argv[0] = v;
 	}
 
+	FUNC(TypeName) {
+		switch(argv[0].type) {
+			case VDScriptValue::T_VOID:		argv[0] = isi->DupCString("void"); break;
+			case VDScriptValue::T_INT:		argv[0] = isi->DupCString("int"); break;
+			case VDScriptValue::T_LONG:		argv[0] = isi->DupCString("long"); break;
+			case VDScriptValue::T_DOUBLE:	argv[0] = isi->DupCString("double"); break;
+			case VDScriptValue::T_STR:		argv[0] = isi->DupCString("string"); break;
+			case VDScriptValue::T_OBJECT:	argv[0] = isi->DupCString("object"); break;
+			case VDScriptValue::T_FNAME:	argv[0] = isi->DupCString("method"); break;
+			case VDScriptValue::T_FUNCTION:	argv[0] = isi->DupCString("function"); break;
+			case VDScriptValue::T_VARLV:	argv[0] = isi->DupCString("var"); break;
+			default:						argv[0] = isi->DupCString("unknown"); break;
+		}
+	}
+
+	FUNC(Assert) {
+		if (!argv[0].asInt())
+			SCRIPT_ERROR(ASSERTION_FAILED);
+	}
+
+	FUNC(TestOverload1) {argv[0] = 1;}
+	FUNC(TestOverload2) {argv[0] = 2;}
+	FUNC(TestOverload3) {argv[0] = 3;}
+	FUNC(TestOverload4) {argv[0] = 4;}
+	FUNC(TestOverload5) {argv[0] = 5;}
+	FUNC(TestOverload6) {argv[0] = 6;}
+	FUNC(TestOverload7) {argv[0] = 7;}
+	FUNC(TestOverload8) {argv[0] = 8;}
+	FUNC(TestOverload9) {argv[0] = 9;}
+	FUNC(TestOverload10) {argv[0] = 10;}
+	FUNC(TestOverload11) {argv[0] = 11;}
+	FUNC(TestOverload12) {argv[0] = 12;}
+	FUNC(TestOverload13) {argv[0] = 13;}
+	FUNC(TestOverload14) {argv[0] = 14;}
+
 	FUNC(add_int) {	argv[0] = argv[0].asInt() + argv[1].asInt(); }
 	FUNC(add_long) { argv[0] = argv[0].asLong() + argv[1].asLong(); }
 	FUNC(add_double) { argv[0] = argv[0].asDouble() + argv[1].asDouble(); }
@@ -129,9 +164,17 @@ namespace {
 		argv[0] = VDScriptValue(pp);
 	}
 
+	FUNC(upos_int) {}
+	FUNC(upos_long) {}
+	FUNC(upos_double) {}
+
 	FUNC(sub_int) { argv[0] = argv[0].asInt() - argv[1].asInt(); }
 	FUNC(sub_long) { argv[0] = argv[0].asLong() - argv[1].asLong(); }
 	FUNC(sub_double) { argv[0] = argv[0].asDouble() - argv[1].asDouble(); }
+
+	FUNC(uneg_int) { argv[0] = -argv[0].asInt(); }
+	FUNC(uneg_long) { argv[0] = -argv[0].asLong(); }
+	FUNC(uneg_double) { argv[0] = -argv[0].asDouble(); }
 
 	FUNC(mul_int) { argv[0] = argv[0].asInt() * argv[1].asInt(); }
 	FUNC(mul_long) { argv[0] = argv[0].asLong() * argv[1].asLong(); }
@@ -195,10 +238,12 @@ namespace {
 	FUNC(eq_int) { argv[0] = argv[0].asInt() == argv[1].asInt(); }
 	FUNC(eq_long) { argv[0] = argv[0].asLong() == argv[1].asLong(); }
 	FUNC(eq_double) { argv[0] = argv[0].asDouble() == argv[1].asDouble(); }
+	FUNC(eq_string) { argv[0] = !strcmp(*argv[0].asString(), *argv[1].asString()); }
 
 	FUNC(ne_int) { argv[0] = argv[0].asInt() != argv[1].asInt(); }
 	FUNC(ne_long) { argv[0] = argv[0].asLong() != argv[1].asLong(); }
 	FUNC(ne_double) { argv[0] = argv[0].asDouble() != argv[1].asDouble(); }
+	FUNC(ne_string) { argv[0] = !!strcmp(*argv[0].asString(), *argv[1].asString()); }
 
 	FUNC(land_int) { argv[0] = argv[0].asInt() && argv[1].asInt(); }
 	FUNC(land_long) { argv[0] = argv[0].asLong() && argv[1].asLong(); }
@@ -207,6 +252,13 @@ namespace {
 	FUNC(lor_int) { argv[0] = argv[0].asInt() || argv[1].asInt(); }
 	FUNC(lor_long) { argv[0] = argv[0].asLong() || argv[1].asLong(); }
 	FUNC(lor_double) { argv[0] = argv[0].asDouble() || argv[1].asDouble(); }
+
+	FUNC(unot_int) { argv[0] = !argv[0].asInt(); }
+	FUNC(unot_long) { argv[0] = !argv[0].asLong(); }
+	FUNC(unot_double) { argv[0] = !argv[0].asDouble(); }
+
+	FUNC(uinv_int) { argv[0] = ~argv[0].asInt(); }
+	FUNC(uinv_long) { argv[0] = ~argv[0].asLong(); }
 }
 
 static const VDScriptFunctionDef objFL_Sylia[]={
@@ -222,10 +274,16 @@ static const VDScriptFunctionDef objFL_Sylia[]={
 	{ add_int,		"+", "iii" },
 	{ add_long,		NULL, "lll" },
 	{ add_double,	NULL, "ddd" },
+	{ upos_int,		NULL, "ii" },
+	{ upos_long,	NULL, "ll" },
+	{ upos_double,	NULL, "dd" },
 	{ add_string,	NULL, "sss" },
 	{ sub_int,		"-", "iii" },
 	{ sub_long,		NULL, "lll" },
 	{ sub_double,	NULL, "ddd" },
+	{ uneg_int,		NULL, "ii" },
+	{ uneg_long,	NULL, "ll" },
+	{ uneg_double,	NULL, "dd" },
 	{ mul_int,		"*", "iii" },
 	{ mul_long,		NULL, "lll" },
 	{ mul_double,	NULL, "ddd" },
@@ -255,15 +313,37 @@ static const VDScriptFunctionDef objFL_Sylia[]={
 	{ eq_int,		"==", "iii" },
 	{ eq_long,		NULL, "ill" },
 	{ eq_double,	NULL, "idd" },
+	{ eq_string,	NULL, "iss" },
 	{ ne_int,		"!=", "iii" },
 	{ ne_long,		NULL, "ill" },
 	{ ne_double,	NULL, "idd" },
+	{ ne_string,	NULL, "iss" },
 	{ land_int,		"&&", "iii" },
 	{ land_long,	NULL, "ill" },
 	{ land_double,	NULL, "idd" },
 	{ lor_int,		"||", "iii" },
 	{ lor_long,		NULL, "ill" },
 	{ lor_double,	NULL, "idd" },
+	{ unot_int,		"!",  "ii" },
+	{ unot_long,	NULL,  "ll" },
+	{ uinv_int,		"~", "ii" },
+	{ uinv_long,	NULL, "ll" },
+	{ TypeName,		"TypeName", "s." },
+	{ Assert,		"Assert", "0i" },
+	{ TestOverload1, "TestOverloading", "i" },
+	{ TestOverload2, NULL, "ii" },
+	{ TestOverload3, NULL, "il" },
+	{ TestOverload4, NULL, "id" },
+	{ TestOverload5, NULL, "iii" },
+	{ TestOverload6, NULL, "iil" },
+	{ TestOverload7, NULL, "iid" },
+	{ TestOverload8, NULL, "ili" },
+	{ TestOverload9, NULL, "ill" },
+	{ TestOverload10, NULL, "ild" },
+	{ TestOverload11, NULL, "idi" },
+	{ TestOverload12, NULL, "idl" },
+	{ TestOverload13, NULL, "idd" },
+	{ TestOverload14, NULL, "iii." },
 	{ NULL }
 };
 

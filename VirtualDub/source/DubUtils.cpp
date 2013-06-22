@@ -386,8 +386,14 @@ void VDRenderFrameMap::Init(IVDVideoSource *pVS, VDPosition nSrcStart, VDFractio
 				directLast = key;
 			else if (directLast > srcFrame)
 				directLast = key;
-			else if (directLast < srcFrame)
-				++directLast;
+			else {
+				while(directLast < srcFrame) {
+					++directLast;
+
+					if (pVS->getDropType(directLast) != VideoSource::kDroppable)
+						break;
+				}
+			}
 
 			srcFrame = directLast;
 		}

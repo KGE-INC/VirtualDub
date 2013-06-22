@@ -679,10 +679,6 @@ void AVIOutputFile::finalize() {
 	if (!mbInitialized)
 		return;
 
-	// finish last Xblock
-
-	BlockClose();
-
 	// update OpenDML indices (must be done here as the indices are written via fast write)
 	if (mbExtendedAVI) {
 		if (mpFirstVideoStream) {
@@ -691,7 +687,7 @@ void AVIOutputFile::finalize() {
 			HeaderWrite(&dw, 4);
 		}
 
-		if (mBlock > 1) {
+		if (mBlock >= 1) {		// The current block is still open, so mBlock==1 means two blocks are present.
 			std::vector<_avisuperindex_entry> asie(mSuperIndexLimit);
 
 			tStreams::iterator it(mStreams.begin()), itEnd(mStreams.end());
@@ -708,6 +704,9 @@ void AVIOutputFile::finalize() {
 			}
 		}
 	}
+
+	// finish last Xblock
+	BlockClose();
 
 	// fast path: clean it up and resync slow path.
 	FileEndFastPath();

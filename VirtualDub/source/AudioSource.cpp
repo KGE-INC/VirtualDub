@@ -413,9 +413,10 @@ bool AudioSourceDV::init() {
 	pwfex->wBitsPerSample	= 16;
 	pwfex->cbSize			= 0;
 
-	if (isPAL) {
-		mGatherTab.resize(1944);
+	mGatherTab.resize(1960);
+	memset(mGatherTab.data(), 0, mGatherTab.size() * sizeof mGatherTab[0]);
 
+	if (isPAL) {
 		for(int i=0; i<1944; ++i) {
 			int dif_sequence	= ((i/3)+2*(i%3))%6;
 			int dif_block		= 6 + 16*(3*(i%3) + ((i%54)/18));
@@ -426,8 +427,6 @@ bool AudioSourceDV::init() {
 
 		mRightChannelOffset = 12000*6;	// left channel is first 6 DIF sequences
 	} else {
-		mGatherTab.resize(1620);
-
 		for(int i=0; i<1620; ++i) {
 			int dif_sequence	= ((i/3)+2*(i%3))%5;
 			int dif_block		= 6 + 16*(3*(i%3) + ((i%45)/15));
@@ -545,6 +544,9 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 
 			int err = mpStream->Read(pos++, 1, mTempBuffer.data(), mTempBuffer.size(), &bytes, &samples);
 			if (err)
+				return NULL;
+
+			if (bytes != mTempBuffer.size())
 				return NULL;
 
 			const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];

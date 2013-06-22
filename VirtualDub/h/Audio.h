@@ -195,11 +195,13 @@ private:
 	sint64 mOffset;
 	sint64 mSrcPos;
 	int mSkipSize;
+	bool mbLimited;
+	bool mbEnded;
 
 	enum { kSkipBufferSize = 512 };
 
 public:
-	AudioSubset(AudioStream *, const FrameSubset *, const VDFraction& frameRate, sint64 offset);
+	AudioSubset(AudioStream *, const FrameSubset *, const VDFraction& frameRate, sint64 offset, bool appendTail);
 	~AudioSubset();
 	long _Read(void *, long, long *);
 	bool _isEnd();
@@ -236,6 +238,6 @@ protected:
 	sint64		mSamplePos;
 };
 
-sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex);
+sint64 AudioTranslateVideoSubset(FrameSubset& dst, const FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex, sint64 appendTail);
 
 #endif

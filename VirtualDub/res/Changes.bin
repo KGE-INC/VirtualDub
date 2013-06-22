@@ -1,6 +1,24 @@
 VirtualDub change log
 
-Build %build% (1.6.6, experimental): [%date%]
+Build %build% (1.6.7, experimental): [%date%]
+   [features added]
+   * Script: Added support for cast expressions to int/long/double.
+   * Video direct-stream path now treats zero-byte (drop) frames as non-essential. A video stream that has been spaced with drop frames to a higher frame rate can now be cleanly converted down as well.
+
+   [bugs fixed]
+   * Fixed crash when decoding audio from broken or mismatched DV frame.
+   * Hierarchical AVI index blocks were being placed outside of RIFF chunks. No known actual incompatibility cases (yet).
+   * Fixed occasional crash when using lowpass or highpass filters with a large tap count.
+   * Fixed crash on attempting to abort a render when an error had already occurred.
+   * Fixed "cut off audio stream when video stream ends" sometimes being active even after being disabled.
+   * Fixed audio stream being shortened slightly when using audio compression.
+   * Capture: Fixed crash in volume meter code triggered by load of DLLs that whack the floating-point control word.
+   * Capture: Fixed crash on exit in DirectShow layer caused by shutting down COM too early.
+
+   [regressions fixed]
+   * Script: Fixed "method not found" errors loading .vcfs caused by failure to convert longs to ints.
+
+Build 23486 (1.6.6, experimental): [May 29, 2005]
    [features added]
    * Added an option in Options > Preferences > AVI to force sector alignment for large uncompressed frames. This can resolve compatibility problems with some uncompressed hardware video playback units.
 

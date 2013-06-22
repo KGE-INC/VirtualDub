@@ -35,6 +35,9 @@ namespace {
 		{ VDScriptError::NUMERIC_OVERFLOW,				"numeric overflow" },
 		{ VDScriptError::STRING_NOT_AN_INTEGER_VALUE,	"string is not an integer number" },
 		{ VDScriptError::STRING_NOT_A_REAL_VALUE,		"string is not an real number" },
+		{ VDScriptError::ASSERTION_FAILED,				"assertion failed" },
+		{ VDScriptError::AMBIGUOUS_CALL,				"ambiguous call to overloaded method" },
+		{ VDScriptError::CANNOT_CAST,					"cannot cast to specified type" },
 		{ 0, 0 },
 	};
 }

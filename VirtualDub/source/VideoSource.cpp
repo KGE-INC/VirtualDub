@@ -338,7 +338,10 @@ VDPosition VideoSource::streamGetNextRequiredFrame(bool& is_preroll) {
 		return -1;
 	}
 
-	is_preroll = (++stream_current_frame != stream_desired_frame);
+	// skip zero-byte preroll frames
+	do {
+		is_preroll = (++stream_current_frame != stream_desired_frame);
+	} while(is_preroll && stream_current_frame < stream_desired_frame && getDropType(stream_current_frame) == kDroppable);
 
 	return stream_current_frame;
 }

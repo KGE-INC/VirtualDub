@@ -3253,6 +3253,7 @@ VDCaptureSystemDS::VDCaptureSystemDS()
 }
 
 VDCaptureSystemDS::~VDCaptureSystemDS() {
+	mVideoDevices.clear();		// must clear this first before COM goes away
 	CoUninitialize();
 }
 

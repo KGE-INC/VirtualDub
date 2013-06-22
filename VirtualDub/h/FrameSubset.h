@@ -30,6 +30,8 @@ public:
 	FrameSubsetNode() {}
 	FrameSubsetNode(sint64 _s, sint64 _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
 
+	sint64 end() const { return start+len; }
+
 	bool CanMergeBefore(const FrameSubsetNode& fsn) const {
 		return start+len == fsn.start && bMask == fsn.bMask;
 	}

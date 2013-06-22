@@ -140,6 +140,8 @@ extern IVDUIWindow *VDCreateUICaptureVumeter() { return new VDUICaptureVumeterW3
 VDUICaptureVumeterW32::VDUICaptureVumeterW32()
 	: mLastPeakL(0)
 	, mLastPeakR(0)
+	, mPeakL(0)
+	, mPeakR(0)
 	, mFracL(0.5f)
 	, mFracR(0.5f)
 	, mhbrFillL(CreateSolidBrush(RGB(0,128,192)))

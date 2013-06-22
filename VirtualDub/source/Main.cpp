@@ -31,6 +31,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/memory.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/system/debug.h>
 #include <vd2/Dita/services.h>
 #include "Dub.h"
 #include "DubOutput.h"
@@ -148,8 +149,11 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			}
 		}
 
-		if (!g_project->Tick())
+		if (!g_project->Tick()) {
+			VDClearEvilCPUStates();		// clear evil CPU states set by Borland DLLs
+
 			WaitMessage();
+		}
 	}
 wm_quit_detected:
 
