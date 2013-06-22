@@ -404,6 +404,7 @@ VDProjectUI::VDProjectUI()
 	, mPaneLayoutMode(kPaneLayoutDual)
 	, mbPaneLayoutBusy(false)
 	, mbAutoSizePanes(false)
+	, mbPanesNeedUpdate(false)
 	, mMRUList(4, "MRU List")
 {
 }
@@ -704,6 +705,13 @@ bool VDProjectUI::Tick() {
 
 	if (mpAudioDisplay)
 		activity = TickAudioDisplay();
+
+	if (mbPanesNeedUpdate) {
+		mbPanesNeedUpdate = false;
+
+		if (!mbDubActive)
+			DisplayFrame();
+	}
 
 	if (!mPendingCommands.empty()) {
 		PendingCommands::const_iterator it(mPendingCommands.begin()), itEnd(mPendingCommands.end());
@@ -2004,21 +2012,9 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 					break;
 				case VWN_REQUPDATE:
 					if (nmh->idFrom == 1) {
-						if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
-							VDFilterFrameBuffer *srcFrame = mpCurrentInputFrame->GetResultBuffer();
-							VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)srcFrame->LockRead()));
-							UIRefreshInputFrame(&px);
-							srcFrame->Unlock();
-						} else
-							UIRefreshInputFrame(NULL);
+						RefreshInputPane();
 					} else {
-						if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
-							VDFilterFrameBuffer *dstFrame = mpCurrentOutputFrame->GetResultBuffer();
-							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), (void *)dstFrame->LockRead()));
-							UIRefreshOutputFrame(&px);
-							dstFrame->Unlock();
-						} else
-							UIRefreshOutputFrame(NULL);
+						RefreshOutputPane();
 					}
 					break;
 				}
@@ -2173,13 +2169,9 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_USER+100:		// display update request
-		if (wParam) {
-			if (!g_dubOpts.video.fShowOutputFrame)
-				UIRefreshOutputFrame(false);
-		} else {
-			if (!g_dubOpts.video.fShowInputFrame)
-				UIRefreshInputFrame(false);
-		}
+		// Don't pay attention to these. If we re-init the displays while a render is
+		// running because the panes are disabled, then they won't update properly
+		// when re-enabled since the rendering engine calls Update().
 		break;
 
 	default:
@@ -2363,43 +2355,45 @@ void VDProjectUI::RepositionPanes() {
 	if (mbAutoSizePanes) {
 		vdsize32 size = mpUIPaneSet->GetArea().size();
 
-		double weightTotal = 0;
-		double weights[2];
+		if (size.w && size.h) {
+			double weightTotal = 0;
+			double weights[2];
 
-		for(int i=0; i<n; ++i) {
-			IVDVideoWindow *w = VDGetIVideoWindow(panes[i]);
-
-			int srcw;
-			int srch;
-			w->GetSourceSize(srcw, srch);
-
-			if (g_vertical) {
-				weights[i] = (double)(srch + 8);
-				weightTotal += (double)(srch + 8);
-			} else {
-				const VDFraction srcpar = w->GetSourcePAR();
-
-				double srcw2 = (double)srcw;
-				if (srcpar.getLo())
-					srcw2 *= srcpar.asDouble();
-
-				weights[i] = (double)(srcw2 + 8);
-				weightTotal += (double)(srcw2 + 8);
-			}
-		}
-
-		if (weightTotal > 0) {
 			for(int i=0; i<n; ++i) {
 				IVDVideoWindow *w = VDGetIVideoWindow(panes[i]);
 
-				if (g_vertical)
-					w->SetZoom(w->GetMaxZoomForArea(size.w, VDFloorToInt((double)size.h * weights[i] / weightTotal)));
-				else
-					w->SetZoom(w->GetMaxZoomForArea(VDFloorToInt((double)size.w * weights[i] / weightTotal), size.h));
+				int srcw;
+				int srch;
+				w->GetSourceSize(srcw, srch);
 
-				int frameW;
-				int frameH;
-				w->GetFrameSize(frameW, frameH);
+				if (g_vertical) {
+					weights[i] = (double)(srch + 8);
+					weightTotal += (double)(srch + 8);
+				} else {
+					const VDFraction srcpar = w->GetSourcePAR();
+
+					double srcw2 = (double)srcw;
+					if (srcpar.getLo())
+						srcw2 *= srcpar.asDouble();
+
+					weights[i] = (double)(srcw2 + 8);
+					weightTotal += (double)(srcw2 + 8);
+				}
+			}
+
+			if (weightTotal > 0) {
+				for(int i=0; i<n; ++i) {
+					IVDVideoWindow *w = VDGetIVideoWindow(panes[i]);
+
+					if (g_vertical)
+						w->SetZoom(w->GetMaxZoomForArea(size.w, VDFloorToInt((double)size.h * weights[i] / weightTotal)));
+					else
+						w->SetZoom(w->GetMaxZoomForArea(VDFloorToInt((double)size.w * weights[i] / weightTotal), size.h));
+
+					int frameW;
+					int frameH;
+					w->GetFrameSize(frameW, frameH);
+				}
 			}
 		}
 	}
@@ -3195,6 +3189,11 @@ void VDProjectUI::RefreshInputPane() {
 	if (mbDubActive)
 		return;
 
+	if (!mpCurrentInputFrame) {
+		mLastDisplayedInputFrame = -1;
+		mbPanesNeedUpdate = true;
+	}
+
 	if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
 		VDFilterFrameBuffer *srcFrame = mpCurrentInputFrame->GetResultBuffer();
 		VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)srcFrame->LockRead()));
@@ -3207,6 +3206,11 @@ void VDProjectUI::RefreshInputPane() {
 void VDProjectUI::RefreshOutputPane() {
 	if (mbDubActive)
 		return;
+
+	if (!mpCurrentOutputFrame) {
+		mLastDisplayedTimelineFrame = -1;
+		mbPanesNeedUpdate = true;
+	}
 
 	if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
 		VDFilterFrameBuffer *dstFrame = mpCurrentOutputFrame->GetResultBuffer();

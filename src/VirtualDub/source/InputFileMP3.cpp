@@ -423,12 +423,12 @@ void VDInputFileMP3::Init(const wchar_t *szFile) {
 		fi.mSize	= frameDataSize;
 		fi.mSamples	= samples;
 
-		mDataLength += frameDataSize;
-
 		// skip data payload
 		frameDataSize -= 4;
 		if (frameDataSize != mBufferedFile.ReadData(NULL, frameDataSize))
 			break;
+
+		mDataLength += frameDataSize;
 
 		mFrames.push_back(fi);
 

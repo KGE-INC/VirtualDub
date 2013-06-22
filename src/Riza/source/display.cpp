@@ -266,7 +266,7 @@ ATOM VDVideoDisplayWindow::Register() {
 	wc.hInstance		= hInst;
 	wc.hIcon			= 0;
 	wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground	= 0;
+	wc.hbrBackground	= (HBRUSH)(COLOR_3DFACE + 1);
 	wc.lpszMenuName		= 0;
 	wc.lpszClassName	= g_szVideoDisplayControlName;
 

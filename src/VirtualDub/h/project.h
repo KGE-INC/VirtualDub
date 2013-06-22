@@ -206,7 +206,7 @@ public:
 
 protected:
 	void SceneShuttleStep();
-	bool UpdateFrame();
+	bool UpdateFrame(bool updateInputFrame = true);
 	bool RefilterFrame(VDPosition timelinePos);
 	void LockFilterChain(bool enableLock);
 

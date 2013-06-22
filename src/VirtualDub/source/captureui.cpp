@@ -696,6 +696,7 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 		UICaptureVideoSourceChanged(mpProject->GetVideoSourceIndex());
 		UICaptureTunerChannelChanged(mpProject->GetTunerChannel(), false);
 	} else {
+		UICaptureAudioDriversUpdated();
 		SetStatusImmediate("Scanning for capture drivers....");
 		mpProject->ScanForDrivers();
 		CaptureWarnCheckDrivers((HWND)mhwnd);
@@ -1734,7 +1735,7 @@ void VDCaptureProjectUI::UICaptureAudioDriversUpdated() {
 	}
 
 	if (!driversFound)
-		VDAppendMenuW32(hmenu, 0, ID_AUDIO_CAPTURE_DRIVER, L"No drivers found");
+		VDAppendMenuW32(hmenu, MF_GRAYED, ID_AUDIO_CAPTURE_DRIVER, L"No drivers found");
 }
 
 void VDCaptureProjectUI::UICaptureAudioInputChanged(int input) {

@@ -324,6 +324,12 @@ void VDJobQueue::Run(VDJob *job) {
 		}
 	} else {
 		job->SetState(VDJob::kStateInProgress);
+
+		try {
+			Flush();
+		} catch(const MyError&) {
+			// ignore
+		}
 	}
 
 	mRetryTimer.mbRetryOK = true;
@@ -983,6 +989,9 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 		VDFileStream outputStream(fileName, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
 		
 		Save(&outputStream, 0, 1, true);
+
+		mbModified = false;
+		mbOrderModified = false;
 	}
 
 	return true;

@@ -711,7 +711,7 @@ void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput,
 	}
 }
 
-bool VDProject::UpdateFrame() {
+bool VDProject::UpdateFrame(bool updateInputFrame) {
 	if (!mpCB)
 		return false;
 
@@ -739,7 +739,7 @@ bool VDProject::UpdateFrame() {
 				mpCurrentInputFrame = mpPendingInputFrame;
 				mpPendingInputFrame = NULL;
 
-				if (mpCB) {
+				if (mpCB && updateInputFrame) {
 					if (mpCurrentInputFrame->IsSuccessful()) {
 						VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
 						VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)buf->LockRead()));
@@ -2011,8 +2011,19 @@ void VDProject::SceneShuttleStop() {
 		if (mpCB)
 			mpCB->UIShuttleModeUpdated();
 
-		if (inputVideo)
+		if (inputVideo) {
 			MoveToFrame(GetCurrentFrame());
+
+			// We have to force the input frame to refresh since we may have omitted one of the updates.
+			if (mpCurrentInputFrame->IsSuccessful()) {
+				VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
+				VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)buf->LockRead()));
+				mpCB->UIRefreshInputFrame(&px);
+				buf->Unlock();
+			} else {
+				mpCB->UIRefreshInputFrame(NULL);
+			}
+		}
 	}
 }
 
@@ -2036,13 +2047,15 @@ void VDProject::SceneShuttleStep() {
 
 	mposCurrentFrame = sample;
 
+	DisplayFrame(true, false, true, false);
+
+	bool updateInputFrame = false;
 	if (mSceneShuttleCounter >= mSceneShuttleAdvance) {
 		mSceneShuttleCounter = 0;
-		DisplayFrame(true, true, true, false);
-	} else
-		DisplayFrame(false, true, true, false);
+		updateInputFrame = true;
+	}
 
-	while(UpdateFrame())
+	while(UpdateFrame(updateInputFrame))
 		;
 
 	if (mpCB)

@@ -702,6 +702,35 @@ space_reconvert:
 					case kVDPixSpace_Y_601:
 						targetSpace = kVDPixSpace_YCC_601;
 						goto space_reconvert;
+
+					case kVDPixSpace_Pal:
+						switch(srcToken & kVDPixType_Mask) {
+							case kVDPixType_1:
+								gen.conv_Pal1_to_8888(0);
+								srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
+								break;
+
+							case kVDPixType_2:
+								gen.conv_Pal2_to_8888(0);
+								srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
+								break;
+
+							case kVDPixType_4:
+								gen.conv_Pal4_to_8888(0);
+								srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
+								break;
+
+							case kVDPixType_8:
+								gen.conv_Pal8_to_8888(0);
+								srcToken = (srcToken & ~(kVDPixType_Mask | kVDPixSpace_Mask)) | kVDPixSpace_BGR | kVDPixType_8888;
+								break;
+
+							default:
+								VDASSERT(false);
+								break;
+						}
+						break;
+
 					default:
 						VDASSERT(false);
 						break;
@@ -779,6 +808,11 @@ space_reconvert:
 						gen.ycbcr709_to_ycbcr601();
 						srcToken = (srcToken & ~kVDPixSpace_Mask) | kVDPixSpace_YCC_601;
 						break;
+
+					case kVDPixSpace_Pal:
+						targetSpace = kVDPixSpace_BGR;
+						break;
+
 					default:
 						VDASSERT(false);
 						break;
@@ -812,6 +846,9 @@ space_reconvert:
 						VDASSERT((srcToken & kVDPixType_Mask) == kVDPixType_8_8_8 || (srcToken & kVDPixType_Mask) == kVDPixType_32F_32F_32F_LE);
 						gen.ycbcr601_to_ycbcr709();
 						srcToken = (srcToken & ~kVDPixSpace_Mask) | kVDPixSpace_YCC_709;
+						break;
+					case kVDPixSpace_Pal:
+						targetSpace = kVDPixSpace_BGR;
 						break;
 					default:
 						VDASSERT(false);

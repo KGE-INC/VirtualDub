@@ -955,6 +955,8 @@ void VDFilterClippingDialog::OnDataExchange(bool write) {
 bool VDFilterClippingDialog::OnLoaded()  {
 	RECT rw, rc;
 
+	VDSetDialogDefaultIcons(mhdlg);
+
 	// try to init filters
 	mFilterFramesToSourceFrames = 1.0;
 	mSourceFramesToFilterFrames = 1.0;

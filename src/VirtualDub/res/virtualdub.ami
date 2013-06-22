@@ -488,7 +488,7 @@ dialog 1020, "" : fill, child {
 	now align=fill;
 	set 0: vertical {
 		label 0, "&Preferred audio playback device";
-		combobox 100, "";			
+		combobox 100, "" : margint = 2;			
 	}
 }
 

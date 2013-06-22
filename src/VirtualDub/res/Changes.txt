@@ -1,6 +1,22 @@
 VirtualDub change log
 
-Build %build% (1.9.4, stable): [%date%]
+Build %build% (1.9.5, stable): [%date%]
+   [bugs fixed]
+   * UI: Panes didn't always auto-refresh immediately after choosing some menu items.
+   * UI: Fixed output pane changing aspect ratio when window is minimized.
+   * Fixed blank dialog system icon in cropping dialog.
+   * Render: Importing an MP3 audio stream with a partial final audio frame could result in a silent error at the end of a save/export.
+   * Capture: Added missing "No drivers found" item to audio menu if no capture device is connected at startup.
+   * Filters: The filter system now initially tries converting NV12 to YV12 before trying YV24.
+   * JobControl: Fixed repeated flushing of job file in non-distributed mode.
+   * Fixed crash when creating animated GIF from 8-bit video.
+   * Reversed order of UV planes for YV16 and YV24 formats to match YV12. (Note: This does not affect filters.)
+   
+   [regressions fixed]
+   * Output panes don't update during scene stepping again (broken in 1.9.4).
+   * Input preview forces on the input pane again (broken in 1.9.1).
+
+Build 32559 (1.9.4, stable): [July 27, 2009]
    [bugs fixed]
    * Fixed chroma subsampling and 4:1:0 chroma positioning in test videos.
    * Scene stepping works with panes disabled.

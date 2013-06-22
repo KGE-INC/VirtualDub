@@ -312,6 +312,11 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint
 			layout.pitch = -layout.pitch;
 		}
 		break;
+	case kPixFormat_YUV444_Planar:		// swap YV24 to match YV12
+	case kPixFormat_YUV422_Planar:		// swap YV16 to match YV12
+		std::swap(layout.data2, layout.data3);
+		std::swap(layout.pitch2, layout.pitch3);
+		break;
 	case kPixFormat_YUV420_Planar:
 		if (variant < 2) {				// need to swap UV planes for YV12 (1)
 			std::swap(layout.data2, layout.data3);

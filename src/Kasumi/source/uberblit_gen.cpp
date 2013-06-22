@@ -644,7 +644,7 @@ void VDPixmapUberBlitterGenerator::conv_Pal1_to_8888(int srcIndex) {
 
 	mGenerators.push_back(src);
 	MarkDependency(src, args[0].mpSrc);
-	mStack.push_back(StackEntry(src, 0));
+	args[0] = StackEntry(src, 0);
 
 	SourceEntry se;
 	se.mpSrc = src;
@@ -663,7 +663,7 @@ void VDPixmapUberBlitterGenerator::conv_Pal2_to_8888(int srcIndex) {
 
 	mGenerators.push_back(src);
 	MarkDependency(src, args[0].mpSrc);
-	mStack.push_back(StackEntry(src, 0));
+	args[0] = StackEntry(src, 0);
 
 	SourceEntry se;
 	se.mpSrc = src;
@@ -682,7 +682,7 @@ void VDPixmapUberBlitterGenerator::conv_Pal4_to_8888(int srcIndex) {
 
 	mGenerators.push_back(src);
 	MarkDependency(src, args[0].mpSrc);
-	mStack.push_back(StackEntry(src, 0));
+	args[0] = StackEntry(src, 0);
 
 	SourceEntry se;
 	se.mpSrc = src;
@@ -701,7 +701,7 @@ void VDPixmapUberBlitterGenerator::conv_Pal8_to_8888(int srcIndex) {
 
 	mGenerators.push_back(src);
 	MarkDependency(src, args[0].mpSrc);
-	mStack.push_back(StackEntry(src, 0));
+	args[0] = StackEntry(src, 0);
 
 	SourceEntry se;
 	se.mpSrc = src;

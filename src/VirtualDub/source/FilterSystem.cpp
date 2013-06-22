@@ -297,6 +297,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 						break;
 
 					case kPixFormat_YUV410_Planar:
+					case kPixFormat_YUV420_NV12:
 						format = kPixFormat_YUV420_Planar;
 						break;
 
