@@ -24,7 +24,12 @@
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Meia/decode_png.h>
+#include <vd2/Dita/resources.h>
 #include "imagejpegdec.h"
+
+namespace {
+	enum { kVDST_PNGDecodeErrors = 100 };
+}
 
 void ConvertOldHeader(BITMAPINFOHEADER& newhdr, const BITMAPCOREHEADER& oldhdr) {
 	newhdr.biSize			= sizeof(BITMAPINFOHEADER);
@@ -489,7 +494,15 @@ void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_de
 	if (bIsPNG) {
 		vdautoptr<IVDImageDecoderPNG> pPNGDecoder(VDCreateImageDecoderPNG());
 
-		pPNGDecoder->Decode(pBuffer, cbBuffer);
+		PNGDecodeError err = pPNGDecoder->Decode(pBuffer, cbBuffer);
+		if (err) {
+			if (err == kPNGDecodeOutOfMemory)
+				throw MyMemoryError();
+
+			vdfastvector<wchar_t> errBuf;
+
+			throw MyError("Error decoding PNG image: %ls", VDLoadString(0, kVDST_PNGDecodeErrors, err));
+		}
 
 		VDPixmapBlt(VDAsPixmap(vb), pPNGDecoder->GetFrameBuffer());
 	}

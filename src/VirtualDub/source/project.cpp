@@ -294,6 +294,8 @@ VDProject::VDProject()
 	, mLastDecodeUpdate(0)
 	, mPreviewRestartMode(kPreviewRestart_None)
 	, mVideoInputFrameRate(0,0)
+	, mVideoOutputFrameRate(0,0)
+	, mVideoTimelineFrameRate(0,0)
 	, mAudioSourceMode(kVDAudioSourceMode_Source)
 {
 }

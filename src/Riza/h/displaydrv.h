@@ -123,8 +123,8 @@ protected:
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverOpenGL();
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays);
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays, bool enableSecondaryDraw);
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverGDI();
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9();
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9(bool clipToMonitor);
 
 #endif

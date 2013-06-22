@@ -246,7 +246,7 @@ namespace {
 
 class VDVideoDisplayMinidriverD3DFX : public VDVideoDisplayMinidriver, protected VDD3D9Client {
 public:
-	VDVideoDisplayMinidriverD3DFX();
+	VDVideoDisplayMinidriverD3DFX(bool clipToMonitor);
 	~VDVideoDisplayMinidriverD3DFX();
 
 protected:
@@ -349,6 +349,7 @@ protected:
 	bool				mbSwapChainImageValid;
 	bool				mbFirstPresent;
 	bool				mbFullScreen;
+	bool				mbClipToMonitor;
 
 	VDAtomicInt			mTickPending;
 
@@ -424,11 +425,11 @@ protected:
 };
 
 
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverD3DFX() {
-	return new VDVideoDisplayMinidriverD3DFX;
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverD3DFX(bool clipToMonitor) {
+	return new VDVideoDisplayMinidriverD3DFX(clipToMonitor);
 }
 
-VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
+VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX(bool clipToMonitor)
 	: mhwnd(NULL)
 	, mhwndError(NULL)
 	, mhmodD3DX(NULL)
@@ -440,6 +441,7 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
 	, mbSwapChainPresentPolling(false)
 	, mbFirstPresent(false)
 	, mbFullScreen(false)
+	, mbClipToMonitor(clipToMonitor)
 	, mTickPending(0)
 	, mpD3DTempTexture(NULL)
 	, mpD3DTempTexture2(NULL)
@@ -955,7 +957,7 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 
 		VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
 
-		if (!mpManager->CreateSwapChain(scw, sch, ~mpSwapChain))
+		if (!mpManager->CreateSwapChain(scw, sch, mbClipToMonitor, ~mpSwapChain))
 			return false;
 
 		mSwapChainW = scw;

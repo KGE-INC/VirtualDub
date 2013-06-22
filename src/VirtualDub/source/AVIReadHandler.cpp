@@ -1878,11 +1878,6 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 	};
 #pragma warning(pop)
 
-	union {
-		struct	_avisuperindex_entry		superent[4096];
-		uint32	dwHeap[16384];		// 64K
-	};
-
 	int entries, tp;
 	int i;
 	sint64 i64FPSave = mpCurrentFile->mFile.tell();
@@ -1895,25 +1890,35 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 
 		switch(idxsuper.bIndexType) {
 		case AVI_INDEX_OF_INDEXES:
-			// sanity check
+			{
+				// sanity check
 
-			if (idxsuper.wLongsPerEntry != 4)
-				throw MyError("Invalid superindex block in stream");
+				if (idxsuper.wLongsPerEntry != 4)
+					throw MyError("Invalid superindex block in stream");
 
-			entries = idxsuper.nEntriesInUse;
+				// Compute buffer size -- the smaller of the number needed or 64K (16K dwords).
+				uint32 maxcount = 65536 / sizeof(_avisuperindex_entry);
 
-			while(entries > 0) {
-				tp = sizeof superent / sizeof superent[0];
-				if (tp>entries) tp=entries;
+				entries = idxsuper.nEntriesInUse;
+				if (maxcount > entries)
+					maxcount = entries;
 
-				mpCurrentFile->mFile.read(superent, tp*sizeof superent[0]);
+				vdblock<_avisuperindex_entry> buf(maxcount);
+				_avisuperindex_entry *heap = buf.data();
 
-				for(i=0; i<tp; i++)
-					_parseExtendedIndexBlock(streamlist, pasn, superent[i].qwOffset+8, superent[i].dwSize-8);
+				while(entries > 0) {
+					tp = maxcount;
+					if (tp > maxcount)
+						tp = maxcount;
 
-				entries -= tp;
+					mpCurrentFile->mFile.read(heap, tp * sizeof(heap[0]));
+
+					for(i=0; i<tp; i++)
+						_parseExtendedIndexBlock(streamlist, pasn, heap[i].qwOffset+8, heap[i].dwSize-8);
+
+					entries -= tp;
+				}
 			}
-
 			break;
 
 		case AVI_INDEX_OF_CHUNKS:
@@ -1931,20 +1936,30 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 			// For wLongsPerEntry==2 and ==3, dwOffset is at 0 and dwLength at 1;
 			// for wLongsPerEntry==6, dwOffset is at 2 and all are keyframes.
 
-			{
+			if (entries) {
 				if (idxstd.wLongsPerEntry!=2 && idxstd.wLongsPerEntry!=3 && idxstd.wLongsPerEntry!=6)
 					throw MyError("Invalid OpenDML index block in stream (wLongsPerEntry=%d)", idxstd.wLongsPerEntry);
 
-				while(entries > 0) {
-					tp = (sizeof dwHeap / sizeof dwHeap[0]) / idxstd.wLongsPerEntry;
-					if (tp>entries) tp=entries;
+				// Compute buffer size -- the smaller of the number needed or 64K (16K dwords).
+				uint32 maxcount = 16384 / idxstd.wLongsPerEntry;
 
-					mpCurrentFile->mFile.read(dwHeap, tp*idxstd.wLongsPerEntry*sizeof(uint32));
+				if (maxcount > entries)
+					maxcount = entries;
+
+				vdblock<uint32> buf(maxcount * idxstd.wLongsPerEntry);
+				uint32 *heap = buf.data();
+
+				while(entries > 0) {
+					tp = maxcount;
+					if (tp > entries)
+						tp = entries;
+
+					mpCurrentFile->mFile.read(heap, tp*idxstd.wLongsPerEntry*sizeof(uint32));
 
 					if (idxstd.wLongsPerEntry == 6)
 						for(i=0; i<tp; i++) {
-							uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
-							uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 2];
+							uint32 dwOffset = heap[i*idxstd.wLongsPerEntry + 0];
+							uint32 dwSize = heap[i*idxstd.wLongsPerEntry + 2];
 
 							pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize | 0x80000000);
 
@@ -1952,8 +1967,8 @@ void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, 
 						}
 					else
 						for(i=0; i<tp; i++) {
-							uint32 dwOffset = dwHeap[i*idxstd.wLongsPerEntry + 0];
-							uint32 dwSize = dwHeap[i*idxstd.wLongsPerEntry + 1];
+							uint32 dwOffset = heap[i*idxstd.wLongsPerEntry + 0];
+							uint32 dwSize = heap[i*idxstd.wLongsPerEntry + 1];
 
 							pasn->mIndex.AddChunk(idxstd.qwBaseOffset+dwOffset, dwSize ^ 0x80000000);
 

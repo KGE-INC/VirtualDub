@@ -67,6 +67,7 @@ namespace {
 		bool			mbDisplayAllowDirectXOverlays;
 		bool			mbDisplayEnableHighPrecision;
 		bool			mbDisplayEnableBackgroundFallback;
+		bool			mbDisplayEnableSecondaryDX;
 
 		int				mVideoCompressionThreads;
 
@@ -150,6 +151,7 @@ public:
 			SetValue(108, mPrefs.mbDisplayEnableDebugInfo);
 			SetValue(109, mPrefs.mbDisplayEnableHighPrecision);
 			SetValue(110, mPrefs.mbDisplayEnableBackgroundFallback);
+			SetValue(111, mPrefs.mbDisplayEnableSecondaryDX);
 			SetCaption(300, mPrefs.mD3DFXFile.c_str());
 			pBase->ExecuteAllLinks();
 			return true;
@@ -167,6 +169,7 @@ public:
 			mPrefs.mbDisplayEnableDebugInfo = GetValue(108) != 0;
 			mPrefs.mbDisplayEnableHighPrecision = GetValue(109) != 0;
 			mPrefs.mbDisplayEnableBackgroundFallback = GetValue(110) != 0;
+			mPrefs.mbDisplayEnableSecondaryDX = GetValue(111) != 0;
 			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
@@ -683,6 +686,7 @@ void LoadPreferences() {
 	g_prefs2.mbDisplayEnableDebugInfo = key.getBool("Display: Enable debug info", false);
 	g_prefs2.mbDisplayEnableHighPrecision = key.getBool("Display: Enable high precision", false);
 	g_prefs2.mbDisplayEnableBackgroundFallback = key.getBool("Display: Enable background fallback", true);
+	g_prefs2.mbDisplayEnableSecondaryDX = key.getBool("Display: Enable DirectX on secondary", false);
 
 	uint32 imageSeqHi = key.getInt("Images: Frame rate numerator", 10);
 	uint32 imageSeqLo = key.getInt("Images: Frame rate denominator", 1);
@@ -729,6 +733,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setBool("Display: Enable debug info", prefs.mbDisplayEnableDebugInfo);
 	key.setBool("Display: Enable high precision", prefs.mbDisplayEnableHighPrecision);
 	key.setBool("Display: Enable background fallback", prefs.mbDisplayEnableBackgroundFallback);
+	key.setBool("Display: Enable DirectX on secondary", prefs.mbDisplayEnableSecondaryDX);
 
 	key.setInt("Images: Frame rate numerator", prefs.mImageSequenceFrameRate.getHi());
 	key.setInt("Images: Frame rate denominator", prefs.mImageSequenceFrameRate.getLo());
@@ -853,4 +858,5 @@ void VDPreferencesUpdated() {
 	VDVideoDisplaySetD3DFXFileName(g_prefs2.mD3DFXFile.c_str());
 	VDVideoDisplaySetDebugInfoEnabled(g_prefs2.mbDisplayEnableDebugInfo);
 	VDVideoDisplaySetBackgroundFallbackEnabled(g_prefs2.mbDisplayEnableBackgroundFallback);
+	VDVideoDisplaySetSecondaryDXEnabled(g_prefs2.mbDisplayEnableSecondaryDX);
 }

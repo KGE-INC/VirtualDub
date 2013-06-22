@@ -616,7 +616,7 @@ void VDDumpChangeLog() {
 
 	while(*s) {
 		// parse line
-		if (*s != ' ') {
+		if (*s != ' ' && *s != '\r' && *s != '\n') {
 			if (foundNonIndentedLine)
 				break;
 

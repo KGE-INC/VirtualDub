@@ -203,7 +203,7 @@ public:
 		return CreateSharedTexture(name, VDRefCountObjectFactory<T, IVDD3D9TextureGenerator>, ppTexture);
 	}
 
-	bool		CreateSwapChain(int width, int height, IVDD3D9SwapChain **ppSwapChain);
+	bool		CreateSwapChain(int width, int height, bool clipToMonitor, IVDD3D9SwapChain **ppSwapChain);
 	void		SetSwapChainActive(IVDD3D9SwapChain *pSwapChain);
 	HRESULT		PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT *srcRect, HWND hwndDest, bool vsync, bool newframe, bool donotwait, float& syncDelta, VDD3DPresentHistory& history);
 

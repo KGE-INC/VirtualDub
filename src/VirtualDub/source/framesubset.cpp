@@ -504,11 +504,17 @@ void FrameSubset::rescale(const VDFraction& oldRate, sint64 oldLength, const VDF
 		sint64 start = fsn.start;
 		sint64 len = fsn.len;
 
+		sint64 oldEnd = start + len;
 		sint64 newStart = VDCeilToInt64((double)start * rateFactor - 0.5);
-		sint64 newLen = VDCeilToInt64((double)(start + len) * rateFactor - 0.5) - newStart;
+		sint64 newEnd = VDCeilToInt64((double)(start + len) * rateFactor - 0.5);
 
-		if (newLen)
-			addRange(newStart, newLen, fsn.bMask, fsn.source);
+		if (newEnd > newLength)
+			newEnd = newLength;
+		else if (newEnd < newLength && oldEnd == oldLength)
+			newEnd = newLength;
+
+		if (newEnd > newStart)
+			addRange(newStart, newEnd - newStart, fsn.bMask, fsn.source);
 	}
 }
 

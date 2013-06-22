@@ -999,7 +999,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				"Usage: "VD_PROGRAM_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
 				"       "VD_PROGRAM_CLIEXE_NAMEA" /? for help\n");
 
-		if (!g_consoleMode)
+		if (!g_consoleMode && !fExitOnDone)
 			disp.Post((VDGUIHandle)g_hWnd);
 	} catch(const MyUserAbortError&) {
 		if (g_consoleMode) {

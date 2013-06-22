@@ -1,7 +1,7 @@
 host: "AEGIS-DEV18"         builds: 494
-host: "Aegis (dev19)"       builds: 1727
+host: "Aegis (dev19)"       builds: 1759
 host: "Aegis (sb2)"         builds: 532
-host: "Aegis (stable19)"    builds: 2
+host: "Aegis (stable19)"    builds: 13
 host: "Athena"              builds: 16029
 host: "Athena64"            builds: 96
 host: "Belldandy"           builds: 7023

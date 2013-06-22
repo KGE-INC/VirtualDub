@@ -2290,7 +2290,7 @@ bool VDVideoUploadContextD3D9::ReinitVRAMTextures() {
 
 class VDVideoDisplayMinidriverDX9 : public VDVideoDisplayMinidriver, protected VDD3D9Client {
 public:
-	VDVideoDisplayMinidriverDX9();
+	VDVideoDisplayMinidriverDX9(bool clipToMonitor);
 	~VDVideoDisplayMinidriverDX9();
 
 protected:
@@ -2350,6 +2350,7 @@ protected:
 	bool				mbFirstPresent;
 	bool				mbFullScreen;
 	bool				mbFullScreenSet;
+	const bool			mbClipToMonitor;
 
 	VDVideoDisplayDX9Manager::CubicMode	mCubicMode;
 	bool				mbCubicInitialized;
@@ -2368,11 +2369,11 @@ protected:
 	VDStringA		mDebugString;
 };
 
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9() {
-	return new VDVideoDisplayMinidriverDX9;
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9(bool clipToMonitor) {
+	return new VDVideoDisplayMinidriverDX9(clipToMonitor);
 }
 
-VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9()
+VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor)
 	: mpManager(NULL)
 	, mpD3DDevice(NULL)
 	, mInterpFilterHSize(0)
@@ -2388,6 +2389,7 @@ VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9()
 	, mbFirstPresent(true)
 	, mbFullScreen(false)
 	, mbFullScreenSet(false)
+	, mbClipToMonitor(clipToMonitor)
 	, mbCubicInitialized(false)
 	, mbCubicAttempted(false)
 	, mbCubicUsingHighPrecision(false)
@@ -2836,7 +2838,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
 
 
-		if (!mpManager->CreateSwapChain(scw, sch, ~mpSwapChain))
+		if (!mpManager->CreateSwapChain(scw, sch, mbClipToMonitor, ~mpSwapChain))
 			return false;
 
 		mSwapChainW = scw;

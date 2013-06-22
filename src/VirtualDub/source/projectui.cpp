@@ -968,7 +968,7 @@ void VDProjectUI::LoadConfigurationAsk() {
 void VDProjectUI::SetVideoFiltersAsk() {
 	VDPosition initialTime = -1;
 	
-	if (mVideoTimelineFrameRate.getLo() | mVideoTimelineFrameRate.getHi())
+	if (mVideoTimelineFrameRate.getLo() && mVideoTimelineFrameRate.getHi())
 		initialTime = mVideoTimelineFrameRate.scale64ir(GetCurrentFrame()*1000000);
 
 	LockFilterChain(true);

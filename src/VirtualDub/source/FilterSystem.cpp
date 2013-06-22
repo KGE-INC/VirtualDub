@@ -246,9 +246,28 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 						flags = fa->Prepare(bmTemp);
 
 						if (flags != FILTERPARAM_NOT_SUPPORTED) {
+							// clear the format mask so we don't try any more formats
 							formatMask = 0;
 							break;
 						}
+					}
+
+					if (formatMask) {
+						// failed - restore original first format to try
+						format = originalFormat;
+					}
+				}
+
+				// check if the incoming format is VDXA and we haven't already handled the situation --
+				// if so we must convert it to the equivalent.
+				if (formatMask) {
+					switch(originalFormat) {
+						case nsVDXPixmap::kPixFormat_VDXA_RGB:
+							format = nsVDXPixmap::kPixFormat_XRGB8888;
+							break;
+						case nsVDXPixmap::kPixFormat_VDXA_YUV:
+							format = nsVDXPixmap::kPixFormat_YUV444_Planar;
+							break;
 					}
 				}
 

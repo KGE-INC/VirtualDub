@@ -319,6 +319,7 @@ dialog 1011, "" : fill, child {
 				}			
 				checkbox 104, "Use OpenGL" : enable={@101 && !@103};
 				checkbox 106, "Avoid tearing (enable vsync)";
+				checkbox 111, "Enable DirectX on secondary displays";
 			}
 			checkbox 110, "Disable accelerated display when inactive";
 			checkbox 108, "Show debug information";

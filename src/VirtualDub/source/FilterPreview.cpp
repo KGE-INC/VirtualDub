@@ -42,6 +42,8 @@ extern HINSTANCE	g_hInst;
 extern VDProject *g_project;
 extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP();
 
+int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
+
 namespace {
 	static const UINT IDC_FILTDLG_POSITION = 500;
 
@@ -462,7 +464,7 @@ void FilterPreview::OnInit() {
 	mpPosition->SetRange(0, mpTimeline->GetLength());
 	mpPosition->SetFrameTypeCallback(VDGetPositionControlCallbackTEMP());
 
-	inputVideo->setTargetFormat(0);
+	VDRenderSetVideoSourceInputFormat(inputVideo, g_dubOpts.video.mInputFormat);
 	inputVideo->streamRestart();
 
 	mhwndVideoWindow = CreateWindow(VIDEOWINDOWCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 0, mhdlg, (HMENU)100, g_hInst, NULL);
@@ -618,7 +620,7 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 
 	} catch(const MyError& e) {
 		mpDisplay->Reset();
-		ShowWindow(mhwndDisplay, SW_HIDE);
+		ShowWindow(mhwndVideoWindow, SW_HIDE);
 		mFailureReason.assign(e);
 		InvalidateRect(mhdlg, NULL, TRUE);
 	}
@@ -680,7 +682,7 @@ void FilterPreview::OnVideoRedraw() {
 		}
 
 		if (mpDisplay) {
-			ShowWindow(mhwndDisplay, SW_SHOW);
+			ShowWindow(mhwndVideoWindow, SW_SHOW);
 
 			if (success) {
 				mpVideoFrameBuffer = req->GetResultBuffer();
@@ -702,7 +704,7 @@ void FilterPreview::OnVideoRedraw() {
 		}
 	} catch(const MyError& e) {
 		mpDisplay->Reset();
-		ShowWindow(mhwndDisplay, SW_HIDE);
+		ShowWindow(mhwndVideoWindow, SW_HIDE);
 		mFailureReason.assign(e);
 		InvalidateRect(mhdlg, NULL, TRUE);
 		UndoSystem();

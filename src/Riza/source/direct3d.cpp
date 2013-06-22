@@ -1311,7 +1311,7 @@ bool VDD3D9Manager::CreateSharedTexture(const char *name, SharedTextureFactory f
 	return true;
 }
 
-bool VDD3D9Manager::CreateSwapChain(int width, int height, IVDD3D9SwapChain **ppSwapChain) {
+bool VDD3D9Manager::CreateSwapChain(int width, int height, bool clipToMonitor, IVDD3D9SwapChain **ppSwapChain) {
 	D3DPRESENT_PARAMETERS pparms={};
 
 	pparms.Windowed			= TRUE;
@@ -1321,6 +1321,7 @@ bool VDD3D9Manager::CreateSwapChain(int width, int height, IVDD3D9SwapChain **pp
 	pparms.BackBufferHeight	= height;
 	pparms.BackBufferCount	= 1;
 	pparms.BackBufferFormat	= mPresentParms.BackBufferFormat;
+	pparms.Flags = clipToMonitor ? D3DPRESENTFLAG_DEVICECLIP : 0;
 
 	vdrefptr<IDirect3DSwapChain9> pD3DSwapChain;
 	HRESULT hr = mpD3DDevice->CreateAdditionalSwapChain(&pparms, ~pD3DSwapChain);

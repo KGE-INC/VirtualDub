@@ -22,6 +22,7 @@
 extern const VDXFilterDefinition
 #ifdef _DEBUG
 	filterDef_debugerror,
+	filterDef_debugcrop,
 	filterDef_showinfo,
 #endif
 	filterDef_fieldbob2,
@@ -111,6 +112,7 @@ static const FilterDefinition *const builtin_filters[]={
 
 #ifdef _DEBUG
 	&filterDef_debugerror,
+	&filterDef_debugcrop,
 	&filterDef_showinfo,
 	&filterDef_test,
 #endif

@@ -3,13 +3,14 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/time.h>
+#include <vd2/system/math.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include "displaydrv.h"
 
-#define VDDEBUG_DISP (void)sizeof printf
-//#define VDDEBUG_DISP VDDEBUG
+//#define VDDEBUG_DISP (void)sizeof printf
+#define VDDEBUG_DISP VDDEBUG
 
 #if 0
 	#define DEBUG_LOG(x) VDLog(kVDLogInfo, VDStringW(L##x))
@@ -34,6 +35,7 @@ public:
 	virtual IDirectDrawSurface2 *GetPrimary() = 0;
 	virtual const DDSURFACEDESC& GetPrimaryDesc() = 0;
 	virtual HMONITOR GetMonitor() = 0;
+	virtual const vdrect32& GetMonitorRect() = 0;
 	virtual bool Restore() = 0;
 };
 
@@ -97,6 +99,7 @@ public:
 	const DDSURFACEDESC& GetPrimaryDesc() { return mPrimaryDesc; }
 
 	HMONITOR GetMonitor() { return mhMonitor; }
+	const vdrect32& GetMonitorRect() { return mMonitorRect; }
 
 	bool Restore();
 
@@ -116,6 +119,8 @@ protected:
 	DDSURFACEDESC			mPrimaryDesc;
 	DDCAPS					mCaps;
 
+	vdrect32				mMonitorRect;
+
 	typedef vdfastvector<IVDDirectDrawClient *> tClients;
 	tClients mClients;
 };
@@ -134,6 +139,20 @@ bool VDDirectDrawManager::Init(IVDDirectDrawClient *pClient) {
 	mhMonitor = NULL;
 	if (pMonitorFromPoint)
 		mhMonitor = pMonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+
+	mMonitorRect.set(0, 0, ::GetSystemMetrics(SM_CXSCREEN), ::GetSystemMetrics(SM_CYSCREEN));
+
+	// GetMonitorInfo() requires Windows 98/2000.
+	if (mhMonitor) {
+		typedef BOOL (APIENTRY *tpGetMonitorInfo)(HMONITOR mon, LPMONITORINFO lpmi);
+		tpGetMonitorInfo pGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandle("user32"), "GetMonitorInfo");
+
+		if (pGetMonitorInfo) {
+			MONITORINFO monInfo = {sizeof(MONITORINFO)};
+			if (pGetMonitorInfo(mhMonitor, &monInfo))
+				mMonitorRect.set(monInfo.rcMonitor.left, monInfo.rcMonitor.top, monInfo.rcMonitor.right, monInfo.rcMonitor.bottom);
+		}
+	}
 
 	mhmodDD = LoadLibrary("ddraw");
 	if (!mhmodDD)
@@ -322,7 +341,7 @@ void VDShutdownDirectDraw(IVDDirectDrawClient *pClient) {
 
 class VDVideoDisplayMinidriverDirectDraw : public VDVideoDisplayMinidriver, protected IVDDirectDrawClient {
 public:
-	VDVideoDisplayMinidriverDirectDraw(bool enableOverlays);
+	VDVideoDisplayMinidriverDirectDraw(bool enableOverlays, bool enableOldSecondaryMonitorBehavior);
 	~VDVideoDisplayMinidriverDirectDraw();
 
 	bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info);
@@ -391,6 +410,7 @@ protected:
 	vdrect32	mSubrect;
 
 	bool		mbEnableOverlays;
+	bool		mbEnableSecondaryDraw;
 
 	DDCAPS		mCaps;
 	VDVideoDisplaySourceInfo	mSource;
@@ -398,11 +418,11 @@ protected:
 	VDDDrawPresentHistory	mPresentHistory;
 };
 
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays) {
-	return new VDVideoDisplayMinidriverDirectDraw(enableOverlays);
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw(bool enableOverlays, bool enableOldSecondaryMonitorBehavior) {
+	return new VDVideoDisplayMinidriverDirectDraw(enableOverlays, enableOldSecondaryMonitorBehavior);
 }
 
-VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw(bool enableOverlays)
+VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw(bool enableOverlays, bool enableOldSecondaryMonitorBehavior)
 	: mhwnd(0)
 	, mpddman(0)
 	, mpddc(0)
@@ -418,6 +438,7 @@ VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw(bool enab
 	, mbUseSubrect(false)
 	, mPresentPendingFlags(0)
 	, mbEnableOverlays(enableOverlays)
+	, mbEnableSecondaryDraw(enableOldSecondaryMonitorBehavior)
 {
 	memset(&mSource, 0, sizeof mSource);
 	mrClient.top = mrClient.left = mrClient.right = mrClient.bottom = 0;
@@ -1178,21 +1199,9 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 		IDirectDraw2 *pDD = mpddman->GetDDraw();
 
 		if (newFrame && !mPresentHistory.mbPresentPending) {
-			int top = 0;
-			int bottom = GetSystemMetrics(SM_CYSCREEN);
-
-			// GetMonitorInfo() requires Windows 98/2000.
-			typedef BOOL (APIENTRY *tpGetMonitorInfo)(HMONITOR mon, LPMONITORINFO lpmi);
-			static tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandle("user32"), "GetMonitorInfo");
-
-			if (spGetMonitorInfo) {
-				HMONITOR hmon = mpddman->GetMonitor();
-				MONITORINFO monInfo = {sizeof(MONITORINFO)};
-				if (spGetMonitorInfo(hmon, &monInfo)) {
-					top = monInfo.rcMonitor.top;
-					bottom = monInfo.rcMonitor.bottom;
-				}
-			}
+			const vdrect32& monitorRect = mpddman->GetMonitorRect();
+			int top = monitorRect.top;
+			int bottom = monitorRect.bottom;
 
 			RECT r(rDst);
 			if (r.top < top)
@@ -1416,10 +1425,84 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Up
 bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, bool doNotWait, bool& stillDrawing) {
 	HRESULT hr;
 	DWORD flags = doNotWait ? DDBLT_ASYNC : DDBLT_ASYNC | DDBLT_WAIT;
+	RECT rdstClip;
+	RECT rsrcClip;
+
+	if (prDst && !mbEnableSecondaryDraw) {
+		// NVIDIA drivers have an annoying habit of glitching horribly when the blit rectangle extends outside of the
+		// primary monitor onto a secondary, so we clip manually.
+		const vdrect32& rclip = mpddman->GetMonitorRect();
+
+		if (prDst->left >= prDst->right && prDst->bottom >= prDst->top) {
+			stillDrawing = false;
+			return true;
+		}
+
+		RECT rsrc0;
+		if (prSrc)
+			rsrc0 = *prSrc;
+		else {
+			rsrc0.left = 0;
+			rsrc0.top = 0;
+			rsrc0.right = mSource.pixmap.w;
+			rsrc0.bottom = mSource.pixmap.h;
+		}
+
+		rsrcClip = rsrc0;
+		int offsetL = prDst->left - rclip.left;
+		int offsetT = prDst->top - rclip.top;
+		int offsetR = rclip.right - prDst->right;
+		int offsetB = rclip.bottom - prDst->bottom;
+
+		if ((offsetL | offsetT | offsetR | offsetB) < 0) {
+			rdstClip = *prDst;
+
+			float xRatio = (float)(rsrc0.right - rsrc0.left) / (float)(rdstClip.right - rdstClip.left);
+			float yRatio = (float)(rsrc0.bottom - rsrc0.top) / (float)(rdstClip.bottom - rdstClip.top);
+
+			if (offsetL < 0) {
+				rdstClip.left = rclip.left;
+				rsrcClip.left -= VDRoundToInt(offsetL * xRatio);
+			}
+
+			if (offsetT < 0) {
+				rdstClip.top = rclip.top;
+				rsrcClip.top -= VDRoundToInt(offsetT * yRatio);
+			}
+
+			if (offsetR < 0) {
+				rdstClip.right = rclip.right;
+				rsrcClip.right += VDRoundToInt(offsetR * xRatio);
+			}
+
+			if (offsetB < 0) {
+				rdstClip.bottom = rclip.bottom;
+				rsrcClip.bottom += VDRoundToInt(offsetB * yRatio);
+			}
+
+			if (rdstClip.left >= rdstClip.right || rdstClip.top >= rdstClip.bottom) {
+				stillDrawing = false;
+				return true;
+			}
+
+			if (rsrcClip.right <= rsrcClip.left) {
+				rsrcClip.left = (rsrc0.left + rsrc0.right) >> 1;
+				rsrcClip.right = rsrcClip.left + 1;
+			}
+
+			if (rsrcClip.bottom <= rsrcClip.top) {
+				rsrcClip.top = (rsrc0.top + rsrc0.bottom) >> 1;
+				rsrcClip.bottom = rsrcClip.top + 1;
+			}
+
+			prDst = &rdstClip;
+			prSrc = &rsrcClip;
+		}
+	}
 
 	stillDrawing = false;
 	for(;;) {
-		hr = pDest->Blt(prDst, mpddsBitmap, prSrc, flags, NULL);
+		hr = pDest->Blt(prDst, mpddsBitmap, prSrc, 0, NULL);
 
 		if (hr == DDERR_WASSTILLDRAWING) {
 			stillDrawing = true;

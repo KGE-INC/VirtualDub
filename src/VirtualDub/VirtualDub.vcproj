@@ -6149,6 +6149,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\source\f_debugcrop.cpp"
+					>
+				</File>
+				<File
 					RelativePath=".\source\f_debugerror.cpp"
 					>
 				</File>
