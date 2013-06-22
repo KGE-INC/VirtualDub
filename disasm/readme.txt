@@ -19,6 +19,10 @@ Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 =============================================================================
 Changelog
 =============================================================================
+V1.2      Released with VirtualDub 1.5.2
+
+- Fixed bad PREFETCH opcodes.
+
 V1.1      Released October 31, 2002 with VirtualDub 1.4.11
 
 - Fixes several bad instruction rules, most notably all the floating-

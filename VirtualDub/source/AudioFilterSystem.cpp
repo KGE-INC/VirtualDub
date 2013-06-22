@@ -10,6 +10,7 @@
 #include "filter.h"
 #include "filters.h"
 #include "AudioFilterSystem.h"
+#include "audioutil.h"
 
 extern FilterFunctions g_filterFuncs;
 
@@ -111,6 +112,8 @@ public:
 	VDAudioFilterInstance *Filter() const { return mpFilter; }
 	VDAudioFilterPinImpl *Connection() const { return mpPin; }
 	bool IsConnected() const { return mpPin != 0; }
+	int GetFormat() const { return mFormat; }
+	void SetFormat(int f) { mFormat = f; }
 
 	void Connect(VDAudioFilterInstance *pFilt, unsigned pin);
 
@@ -123,12 +126,13 @@ public:
 	sint32 OutputDelay() const;
 
 protected:
-	static uint32 __cdecl ReadData(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill);
+	static uint32 __cdecl ReadData(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill, int dstFormat);
 
 	VDAudioFilterInstance	*mpFilter;
 	VDAudioFilterPinImpl	*mpPin;
 	unsigned				mPinNumber;
 	sint32					mAddedDelay;
+	int						mFormat;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -157,7 +161,8 @@ public:
 	void DeserializeConfig(const VDFilterConfig& config);
 	void *GetObject();
 
-	uint32 ReadData(unsigned pin, void *dst, uint32 samples, bool bAllowFill);
+	uint32 ReadData(unsigned pin, void *dst, uint32 samples, bool bAllowFill, int dstFormat);
+	uint32 ReadDataConvert(unsigned pin, void *dst, uint32 samples, int srcFormat, int dstFormat);
 
 	void EqualizeDelay();
 	sint32 OutputDelay() const { return mTotalDelay; }
@@ -199,7 +204,7 @@ void VDAudioFilterPinImpl::Connect(VDAudioFilterInstance *pFilt, unsigned pin) {
 void VDAudioFilterPinImpl::ResetBufferConfiguration() {
 	mCurrentLevel	= 0;
 	mBufferSize		= 0;
-	mGranularity	= 0;
+	mGranularity	= 1;
 	mbVBR			= false;
 	mbEnded			= false;
 	mAddedDelay		= 0;
@@ -243,9 +248,9 @@ void VDAudioFilterPinImpl::PushBufferConfiguration() {
 	mpPin->mBufferSize = mBufferSize + extra;
 }
 
-uint32 __cdecl VDAudioFilterPinImpl::ReadData(VDAudioFilterPin *pPin0, void *dst, uint32 samples, bool bAllowFill) {
+uint32 __cdecl VDAudioFilterPinImpl::ReadData(VDAudioFilterPin *pPin0, void *dst, uint32 samples, bool bAllowFill, int format) {
 	VDAudioFilterPinImpl *pPin = static_cast<VDAudioFilterPinImpl *>(pPin0);
-	uint32 actual = pPin->mpPin->mpFilter->ReadData(pPin->mpPin->mPinNumber, dst, samples, bAllowFill);
+	uint32 actual = pPin->mpPin->mpFilter->ReadData(pPin->mpPin->mPinNumber, dst, samples, bAllowFill, format);
 
 	pPin->mCurrentLevel = pPin->mpPin->mCurrentLevel;
 	return actual;
@@ -292,13 +297,13 @@ VDAudioFilterInstance::VDAudioFilterInstance(const VDAudioFilterDefinition *pDef
 }
 
 VDAudioFilterInstance::~VDAudioFilterInstance() {
-	mpDefinition->mpDestroy(this);
+	mpDefinition->mpVtbl->mpDestroy(this);
 	if (mpDefinition)
 		VDUnlockAudioFilter(mpDefinition);
 }
 
 uint32 VDAudioFilterInstance::Prepare() {
-	return mpDefinition->mpPrepare(this);
+	return mpDefinition->mpVtbl->mpPrepare(this);
 }
 
 void VDAudioFilterInstance::Start() {
@@ -320,21 +325,21 @@ void VDAudioFilterInstance::Start() {
 		OutputPin(j).mLength = max_us;
 	}
 
-	mpDefinition->mpStart(this);
+	mpDefinition->mpVtbl->mpStart(this);
 }
 
 void VDAudioFilterInstance::Stop() {
-	mpDefinition->mpStop(this);
+	mpDefinition->mpVtbl->mpStop(this);
 }
 
 bool VDAudioFilterInstance::Configure(VDGUIHandle hParent) {
-	if (!mpDefinition->mpConfig)
+	if (!mpDefinition->mpVtbl->mpConfig)
 		return false;
 
 	bool rv;
 
 	vdprotected1("displaying config dialog for audio filter \"%s\"", const char *, mDebugName.c_str()) {
-		rv = mpDefinition->mpConfig(this, (HWND)hParent);
+		rv = mpDefinition->mpVtbl->mpConfig(this, (HWND)hParent);
 	}
 
 	return rv;
@@ -352,59 +357,59 @@ void VDAudioFilterInstance::SerializeConfig(VDFilterConfig& config) {
 				case VDFilterConfigEntry::kTypeU32:
 					{
 						uint32 v;
-						mpDefinition->mpGetParam(this, pEnt->idx, &v, sizeof(uint32));
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(uint32));
 						config[pEnt->idx].SetU32(v);
 					}
 					break;
 				case VDFilterConfigEntry::kTypeS32:
 					{
 						uint32 v;
-						mpDefinition->mpGetParam(this, pEnt->idx, &v, sizeof(sint32));
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(sint32));
 						config[pEnt->idx].SetS32(v);
 					}
 					break;
 				case VDFilterConfigEntry::kTypeU64:
 					{
 						uint32 v;
-						mpDefinition->mpGetParam(this, pEnt->idx, &v, sizeof(uint64));
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(uint64));
 						config[pEnt->idx].SetU64(v);
 					}
 					break;
 				case VDFilterConfigEntry::kTypeS64:
 					{
 						uint32 v;
-						mpDefinition->mpGetParam(this, pEnt->idx, &v, sizeof(sint64));
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(sint64));
 						config[pEnt->idx].SetS64(v);
 					}
 					break;
 				case VDFilterConfigEntry::kTypeDouble:
 					{
 						double v;
-						mpDefinition->mpGetParam(this, pEnt->idx, &v, sizeof(double));
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &v, sizeof(double));
 						config[pEnt->idx].SetDouble(v);
 					}
 					break;
 				case VDFilterConfigEntry::kTypeAStr:
 					{
-						uint32 l = mpDefinition->mpGetParam(this, pEnt->idx, NULL, 0);
+						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
-						mpDefinition->mpGetParam(this, pEnt->idx, &tmp.front(), l);
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &tmp.front(), l);
 						config[pEnt->idx].SetAStr(&tmp.front());
 					}
 					break;
 				case VDFilterConfigEntry::kTypeWStr:
 					{
-						uint32 l = mpDefinition->mpGetParam(this, pEnt->idx, NULL, 0);
+						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
-						mpDefinition->mpGetParam(this, pEnt->idx, &tmp.front(), l);
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &tmp.front(), l);
 						config[pEnt->idx].SetWStr((const wchar_t *)&tmp.front());
 					}
 					break;
 				case VDFilterConfigEntry::kTypeBlock:
 					{
-						uint32 l = mpDefinition->mpGetParam(this, pEnt->idx, NULL, 0);
+						uint32 l = mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, NULL, 0);
 						std::vector<char> tmp(l);
-						mpDefinition->mpGetParam(this, pEnt->idx, &tmp.front(), l);
+						mpDefinition->mpVtbl->mpGetParam(this, pEnt->idx, &tmp.front(), l);
 						config[pEnt->idx].SetBlock(&tmp.front(), l);
 					}
 					break;
@@ -423,14 +428,14 @@ void VDAudioFilterInstance::DeserializeConfig(const VDFilterConfig& config) {
 			const VDFilterConfigVariant& var = (*it).second;
 
 			switch(var.GetType()) {
-			case VDFilterConfigVariant::kTypeU32:		mpDefinition->mpSetParam(this, idx, &var.GetU32(), sizeof(uint32)); break;
-			case VDFilterConfigVariant::kTypeS32:		mpDefinition->mpSetParam(this, idx, &var.GetS32(), sizeof(sint32)); break;
-			case VDFilterConfigVariant::kTypeU64:		mpDefinition->mpSetParam(this, idx, &var.GetU64(), sizeof(uint64)); break;
-			case VDFilterConfigVariant::kTypeS64:		mpDefinition->mpSetParam(this, idx, &var.GetS64(), sizeof(sint64)); break;
-			case VDFilterConfigVariant::kTypeDouble:	mpDefinition->mpSetParam(this, idx, &var.GetDouble(), sizeof(double)); break;
-			case VDFilterConfigVariant::kTypeAStr:		mpDefinition->mpSetParam(this, idx, var.GetAStr(), strlen(var.GetAStr())+1); break;
-			case VDFilterConfigVariant::kTypeWStr:		mpDefinition->mpSetParam(this, idx, var.GetWStr(), (wcslen(var.GetWStr())+1)*sizeof(wchar_t)); break;
-			case VDFilterConfigVariant::kTypeBlock:		mpDefinition->mpSetParam(this, idx, var.GetBlockPtr(), var.GetBlockLen()); break;
+			case VDFilterConfigVariant::kTypeU32:		mpDefinition->mpVtbl->mpSetParam(this, idx, &var.GetU32(), sizeof(uint32)); break;
+			case VDFilterConfigVariant::kTypeS32:		mpDefinition->mpVtbl->mpSetParam(this, idx, &var.GetS32(), sizeof(sint32)); break;
+			case VDFilterConfigVariant::kTypeU64:		mpDefinition->mpVtbl->mpSetParam(this, idx, &var.GetU64(), sizeof(uint64)); break;
+			case VDFilterConfigVariant::kTypeS64:		mpDefinition->mpVtbl->mpSetParam(this, idx, &var.GetS64(), sizeof(sint64)); break;
+			case VDFilterConfigVariant::kTypeDouble:	mpDefinition->mpVtbl->mpSetParam(this, idx, &var.GetDouble(), sizeof(double)); break;
+			case VDFilterConfigVariant::kTypeAStr:		mpDefinition->mpVtbl->mpSetParam(this, idx, var.GetAStr(), strlen(var.GetAStr())+1); break;
+			case VDFilterConfigVariant::kTypeWStr:		mpDefinition->mpVtbl->mpSetParam(this, idx, var.GetWStr(), (wcslen(var.GetWStr())+1)*sizeof(wchar_t)); break;
+			case VDFilterConfigVariant::kTypeBlock:		mpDefinition->mpVtbl->mpSetParam(this, idx, var.GetBlockPtr(), var.GetBlockLen()); break;
 			default:
 				VDASSERT(false);
 			}
@@ -442,8 +447,18 @@ void *VDAudioFilterInstance::GetObject() {
 	return mpFilterData;
 }
 
-uint32 VDAudioFilterInstance::ReadData(unsigned pin, void *dst, uint32 samples, bool bAllowFill) {
-	uint32 actual = mpDefinition->mpRead(this, pin, dst, samples);
+uint32 VDAudioFilterInstance::ReadData(unsigned nPin, void *dst, uint32 samples, bool bAllowFill, int nFormat) {
+	VDAudioFilterPinImpl& pin = OutputPin(nPin);
+	uint32 actual;
+
+	vdprotected1("reading samples from audio filter \"%s\"", const char *, mDebugName.c_str()) {
+		if (pin.GetFormat() == nFormat || nFormat == kVFARead_Native)
+			actual = mpDefinition->mpVtbl->mpRead(this, nPin, dst, samples);
+		else if (pin.GetFormat() != kVFARead_Native)
+			actual = ReadDataConvert(nPin, dst, samples, pin.GetFormat(), nFormat);
+		else
+			throw MyError("Error in audio filter \"%s\": Attempt to read PCM from non-PCM source", mDebugName.c_str());
+	}
 
 	if (actual || !mbEnded)
 		return actual;
@@ -452,8 +467,7 @@ uint32 VDAudioFilterInstance::ReadData(unsigned pin, void *dst, uint32 samples, 
 		return 0;
 
 	if (dst) {
-		const VDWaveFormat& format = *mpOutputs[pin]->mpFormat;
-
+		const VDWaveFormat& format = *mpOutputs[nPin]->mpFormat;
 		VDASSERT(format.mTag == VDWaveFormat::kTagPCM);
 
 		unsigned fill = 0;
@@ -464,6 +478,40 @@ uint32 VDAudioFilterInstance::ReadData(unsigned pin, void *dst, uint32 samples, 
 	}
 
 	return samples;
+}
+
+uint32 VDAudioFilterInstance::ReadDataConvert(unsigned pin, void *dst, uint32 samples, int srcFormat, int dstFormat) {
+	static const uint32 sBlkSize[]={0,1,2,4};
+
+	union {
+		uint8	b[8192];
+		sint16	w[4096];
+		float	f[2048];
+	} buf;
+
+	uint32 total = 0;
+	const uint32 ch			= mpOutputs[pin]->mpFormat->mChannels;
+	const uint32 sblksize	= mpOutputs[pin]->mpFormat->mBlockSize;
+	const uint32 dblksize	= sBlkSize[dstFormat] * ch;
+	const uint32 maxsamples	= sizeof buf / sblksize;
+
+	const tpVDConvertPCMVtbl vtbl = VDGetPCMConversionVtable();
+
+	while(samples > 0) {
+		uint32 tc		= std::min<uint32>(maxsamples, samples);
+		uint32 actual	= mpDefinition->mpVtbl->mpRead(this, pin, &buf, tc);
+
+		if (!actual)
+			break;
+
+		vtbl[srcFormat-1][dstFormat-1](dst, &buf, ch * actual);
+
+		samples -= actual;
+		total += actual;
+		dst = (char *)dst + dblksize * actual;
+	}
+
+	return total;
 }
 
 bool VDAudioFilterInstance::Service() {
@@ -499,7 +547,7 @@ bool VDAudioFilterInstance::Service() {
 	uint32 res;
 
 	vdprotected1("running audio filter \"%s\"", const char *, mDebugName.c_str()) {
-		res = mpDefinition->mpRun(this);
+		res = mpDefinition->mpVtbl->mpRun(this);
 	}
 
 	if (res & kVFARun_Finished) {
@@ -530,7 +578,7 @@ void VDAudioFilterInstance::EqualizeDelay() {
 }
 
 void VDAudioFilterInstance::Seek(sint64 us) {
-	us = mpDefinition->mpSeek(this, us);
+	us = mpDefinition->mpVtbl->mpSeek(this, us);
 
 	for(unsigned i=0; i<mpDefinition->mInputPins; ++i)
 		InputPin(i).mbEnded = false;
@@ -612,6 +660,9 @@ void VDAudioFilterSystem::LoadFromGraph(const VDAudioFilterGraph& graph, std::ve
 
 		for(int i=0; i<f.mInputPins; ++i) {
 			const VDAudioFilterGraph::FilterConnection& conn = graph.mConnections[connidx];
+
+			if (conn.filt < 0)
+				throw MyError("Audio filter \"%s\" has unconnected input pins.", VDTextWToA(f.mFilterName).c_str());
 
 			if (conn.filt >= filterPtrs.size())
 				throw MyInternalError("Audio filter graph has forward branches\n(%s:%d)", __FILE__, __LINE__);
@@ -719,15 +770,18 @@ void VDAudioFilterSystem::Prepare() {
 			pInst->EqualizeDelay();
 
 			for(i=0, n=pInst->InputPinCount(); i<n; ++i) {
-				pInst->InputPin(i).PushBufferConfiguration();
-				VDDEBUG("AudioFilterSystem: Filter %s pin %d: size %d\n", VDTextWToA(pInst->GetDefinition()->pszName).c_str(), i, pInst->InputPin(i).mBufferSize);
+				VDAudioFilterPinImpl& pin = pInst->InputPin(i);
+
+				pin.PushBufferConfiguration();
+				VDDEBUG("AudioFilterSystem: Filter %s pin %d: size %d\n", VDTextWToA(pInst->GetDefinition()->pszName).c_str(), i, pin.mBufferSize);
 			}
 
-	#ifdef _DEBUG
 			for(i=0, n=pInst->OutputPinCount(); i<n; ++i) {
 				VDASSERT(pInst->OutputPin(i).mpFormat);
 
-				const VDWaveFormat& f = *pInst->OutputPin(i).mpFormat;
+				VDAudioFilterPinImpl& pin = pInst->OutputPin(i);
+
+				const VDWaveFormat& f = *pin.mpFormat;
 
 				if (f.mTag == VDWaveFormat::kTagPCM) {
 					VDASSERT(!(f.mSampleBits & 7));
@@ -735,8 +789,24 @@ void VDAudioFilterSystem::Prepare() {
 					VDASSERT(f.mChannels * (f.mSampleBits>>3) == f.mBlockSize);
 					VDASSERT(f.mBlockSize * f.mSamplingRate == f.mDataRate);
 				}
+
+				if (f.mTag == VDWaveFormat::kTagPCM) {
+					switch(f.mSampleBits) {
+					case 8:
+						pin.SetFormat(kVFARead_PCM8);
+						break;
+					case 16:
+						pin.SetFormat(kVFARead_PCM16);
+						break;
+					default:
+						pin.SetFormat(kVFARead_Native);
+						break;
+					}
+
+				} else {
+					pin.SetFormat(kVFARead_Native);
+				}
 			}
-	#endif
 		}
 	}
 }

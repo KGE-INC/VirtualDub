@@ -44,7 +44,8 @@ VDFile::VDFile(const char *pszFileName, uint32 flags)
 : mhFile(NULL)
 {
 	if (!open_internal(pszFileName, NULL, flags)) {
-		throw MyWin32Error("Cannot open file \"%s\":\n%%s", GetLastError(), VDFileSplitPathRight(VDString(pszFileName)).c_str());
+		const DWORD err = GetLastError();
+		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, VDFileSplitPathRight(VDString(pszFileName)).c_str());
 	}
 }
 
@@ -52,7 +53,8 @@ VDFile::VDFile(const wchar_t *pwszFileName, uint32 flags)
 : mhFile(NULL)
 {
 	if (!open_internal(NULL, pwszFileName, flags)) {
-		throw MyWin32Error("Cannot open file \"%s\":\n%%s", GetLastError(), VDFileSplitPathRight(VDTextWToA(VDStringW(pwszFileName))).c_str());
+		const DWORD err = GetLastError();
+		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, VDFileSplitPathRight(VDTextWToA(VDStringW(pwszFileName))).c_str());
 	}
 }
 
@@ -66,7 +68,7 @@ VDFile::VDFile(HANDLE h)
 	mFilePosition = (uint32)lo + ((uint64)(uint32)hi << 32);
 }
 
-VDFile::~VDFile() throw() {
+VDFile::~VDFile() {
 	closeNT();
 }
 
@@ -299,6 +301,75 @@ bool VDFile::isOpen() {
 
 VDFileHandle VDFile::getRawHandle() {
 	return mhFile;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDFileStream::~VDFileStream() {
+}
+
+sint64 VDFileStream::Pos() {
+	return tell();
+}
+
+void VDFileStream::Read(void *buffer, sint32 bytes) {
+	read(buffer, bytes);
+}
+
+sint32 VDFileStream::ReadData(void *buffer, sint32 bytes) {
+	return readData(buffer, bytes);
+}
+
+sint64 VDFileStream::Length() {
+	return size();
+}
+
+void VDFileStream::Seek(sint64 offset) {
+	seek(offset);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+VDMemoryStream::VDMemoryStream(const void *pSrc, uint32 len) 
+	: mpSrc((const char *)pSrc)
+	, mPos(0)
+	, mLength(len)
+{
+}
+
+sint64 VDMemoryStream::Pos() {
+	return mPos;
+}
+
+void VDMemoryStream::Read(void *buffer, sint32 bytes) {
+	if (bytes != ReadData(buffer, bytes))
+		throw MyError("Attempt to read beyond stream.");
+}
+
+sint32 VDMemoryStream::ReadData(void *buffer, sint32 bytes) {
+	if (bytes <= 0)
+		return 0;
+
+	if (bytes + mPos > mLength)
+		bytes = mLength - mPos;
+
+	if (bytes > 0) {
+		memcpy(buffer, mpSrc+mPos, bytes);
+		mPos += bytes;
+	}
+
+	return bytes;
+}
+
+sint64 VDMemoryStream::Length() {
+	return mLength;
+}
+
+void VDMemoryStream::Seek(sint64 offset) {
+	if (offset < 0 || offset > mLength)
+		throw MyError("Invalid seek position");
+
+	mPos = offset;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

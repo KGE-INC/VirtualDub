@@ -20,6 +20,7 @@
 #include "af_polyphase.h"
 #include "gui.h"
 #include "resource.h"
+#include "audioutil.h"
 #include <vd2/system/fraction.h>
 
 namespace {
@@ -129,10 +130,9 @@ uint32 VDAudioFilterSymmetricFIR::Prepare() {
 
 
 	GenerateFilter(inFormat.mSamplingRate);
+	mFilterBank.resize((mFilterBank.size() + 3) & ~3, 0);
 
-	mpContext->mpInputs[0]->mGranularity	= 1;
 	mpContext->mpInputs[0]->mDelay			= (sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate;
-	mpContext->mpOutputs[0]->mGranularity	= 1;
 
 	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
 
@@ -152,51 +152,37 @@ void VDAudioFilterSymmetricFIR::Start() {
 	const VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 
-	mFIRBufferPoint = 0;
-	mFIRBufferLimit = 16384;
-	mFIRBufferChannelStride = 16384;
+	mFIRBufferReadPoint = 0;
+	mFIRBufferWritePoint = 0;
+	mFIRBufferLimit = (mFilterSize*2 + format.mSamplingRate + 15) & ~15;
+	mFIRBufferChannelStride = mFIRBufferLimit;
 	mFIRBuffer.resize(mFIRBufferChannelStride * format.mChannels);
 	mOutputBuffer.Init(format.mBlockSize * pin.mBufferSize);
+
+	mMaxQuantum = std::max<int>(format.mSamplingRate / 10, 256);
 }
 
 uint32 VDAudioFilterSymmetricFIR::Run() {
-	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
+	VDAudioFilterPin& pin = *mpContext->mpOutputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 	bool bInputRead = false;
 
 	// fill up FIR buffer
-	while(mFIRBufferPoint < mFIRBufferLimit) {
-		char buf[4096];
-		int samples_req = std::min<int>(mFIRBufferLimit - mFIRBufferPoint, sizeof buf / format.mBlockSize);
+	while(mFIRBufferWritePoint < mFIRBufferLimit) {
+		sint16 buf[4096];
+		int samples_req = std::min<int>(mFIRBufferLimit - mFIRBufferWritePoint, 4096 / format.mChannels);
 
-		int samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf, samples_req, false);
+		int samples = mpContext->mpInputs[0]->Read(buf, samples_req, false, kVFARead_PCM16);
 
 		for(int ch=0; ch<format.mChannels; ++ch) {
-			sint16 *dst = &mFIRBuffer[mFIRBufferChannelStride * ch + mFIRBufferPoint];
+			sint16 *dst = &mFIRBuffer[mFIRBufferChannelStride * ch + mFIRBufferWritePoint];
+			const sint16 *src16 = (const sint16 *)buf + ch;
 
-			switch(format.mSampleBits) {
-			case 8:
-				{
-					const uint8 *src8 = (const uint8 *)buf + ch;
-
-					for(int i=0; i<samples; ++i) {
-						dst[i] = (sint16)((*src8<<8) - 0x8000);
-						src8 += format.mChannels;
-					}
-				}
-				break;
-			case 16:
-				{
-					const sint16 *src16 = (const sint16 *)buf + ch;
-
-					for(int i=0; i<samples; ++i)
-						dst[i] = src16[i * format.mChannels];
-				}
-				break;
-			}
+			for(int i=0; i<samples; ++i)
+				dst[i] = src16[i * format.mChannels];
 		}
 
-		mFIRBufferPoint += samples;
+		mFIRBufferWritePoint += samples;
 
 		if (samples < samples_req)
 			break;
@@ -205,7 +191,7 @@ uint32 VDAudioFilterSymmetricFIR::Run() {
 	}
 
 	// compute output samples
-	int bytes = (mFIRBufferPoint - 2*mFilterSize) * format.mBlockSize;
+	int bytes = (mFIRBufferWritePoint - mFIRBufferReadPoint - 2*mFilterSize) * format.mBlockSize;
 	sint16 *dst;
 	int samples = 0;
 	
@@ -214,38 +200,35 @@ uint32 VDAudioFilterSymmetricFIR::Run() {
 		samples = bytes / format.mBlockSize;
 	}
 
+	if (samples > mMaxQuantum)
+		samples = mMaxQuantum;
+
 	if (!samples) {
-		if (!bInputRead && pin.mbEnded && !bytes)
+		if (!bInputRead && mpContext->mpInputs[0]->mbEnded && bytes<=0)
 			return kVFARun_Finished;
 
 		return 0;
 	}
 
+	const VDAudioFilterVtable *pVtbl = VDGetAudioFilterVtable();
+	int newReadPoint = mFIRBufferReadPoint + samples;
+	bool bShift = (newReadPoint >= (mFIRBufferLimit>>1));
+
 	for(int ch=0; ch<format.mChannels; ++ch) {
-		sint16 *src0 = &mFIRBuffer[mFIRBufferChannelStride * ch];
-		sint16 *src = src0 + mFilterSize;
-		sint16 *dst2 = dst + ch;
+		sint16 *src = &mFIRBuffer[mFIRBufferChannelStride * ch];
 
-		for(int i=0; i<samples; ++i) {
-			const sint16 *pFilter = &mFilterBank[0];
-			sint32 v = 0x2000 + (sint32)pFilter[0] * src[i];
+		pVtbl->FilterPCM16SymmetricArray(dst + ch, format.mChannels, src + mFIRBufferReadPoint, samples, &mFilterBank.front(), (mFilterSize>>2));
 
-			for(int j=1; j<=mFilterSize; ++j)
-				v += (sint32)pFilter[j] * ((sint32)src[i+j] + (sint32)src[i-j]);
-
-			v = (v>>14) + 0x8000;
-
-			if ((uint32)v >= 0x10000)
-				v = ~v >> 31;
-
-			*dst2 = (sint16)(v - 0x8000);
-			dst2 += format.mChannels;
-		}
-
-		memmove(src0, src0+samples, sizeof(src0[0]) * (mFIRBufferPoint - samples));
+		if (bShift)
+			memmove(src, src+newReadPoint, sizeof(src[0]) * (mFIRBufferWritePoint - newReadPoint));
 	}
 
-	mFIRBufferPoint -= samples;
+	mFIRBufferReadPoint = newReadPoint;
+
+	if (bShift) {
+		mFIRBufferReadPoint = 0;
+		mFIRBufferWritePoint -= newReadPoint;
+	}
 
 	mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
 
@@ -271,7 +254,8 @@ uint32 VDAudioFilterSymmetricFIR::Read(unsigned inpin, void *dst, uint32 samples
 sint64 VDAudioFilterSymmetricFIR::Seek(sint64 us) {
 	mOutputBuffer.Flush();
 	mpContext->mpOutputs[0]->mCurrentLevel = 0;
-	mFIRBufferPoint = 0;
+	mFIRBufferReadPoint = 0;
+	mFIRBufferWritePoint = 0;
 	return us;
 }
 
@@ -335,34 +319,17 @@ uint32 VDAudioFilterPolyphase::Run() {
 
 	// fill up FIR buffer
 	while(mFIRBufferPoint < mFIRBufferLimit) {
-		char buf[4096];
-		int samples_req = std::min<int>(mFIRBufferLimit - mFIRBufferPoint, sizeof buf / format.mBlockSize);
+		sint16 buf[4096];
+		int samples_req = std::min<int>(mFIRBufferLimit - mFIRBufferPoint, 4096 / format.mChannels);
 
-		int samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf, samples_req, false);
+		int samples = mpContext->mpInputs[0]->Read(buf, samples_req, false, kVFARead_PCM16);
 
 		for(int ch=0; ch<format.mChannels; ++ch) {
 			sint16 *dst = &mFIRBuffer[mFIRBufferChannelStride * ch + mFIRBufferPoint];
+			const sint16 *src16 = (const sint16 *)buf + ch;
 
-			switch(format.mSampleBits) {
-			case 8:
-				{
-					const uint8 *src8 = (const uint8 *)buf + ch;
-
-					for(int i=0; i<samples; ++i) {
-						dst[i] = (sint16)((*src8<<8) - 0x8000);
-						src8 += format.mChannels;
-					}
-				}
-				break;
-			case 16:
-				{
-					const sint16 *src16 = (const sint16 *)buf + ch;
-
-					for(int i=0; i<samples; ++i)
-						dst[i] = src16[i * format.mChannels];
-				}
-				break;
-			}
+			for(int i=0; i<samples; ++i)
+				dst[i] = src16[i * format.mChannels];
 		}
 
 		mFIRBufferPoint += samples;
@@ -396,6 +363,8 @@ uint32 VDAudioFilterPolyphase::Run() {
 	sint32	newPhase	= mCurrentPhase + mRatioSrc * samples;
 	sint32	srcInc		= newPhase / mRatioDst;
 
+	const VDAudioFilterVtable *pVtbl = VDGetAudioFilterVtable();
+
 	for(int ch=0; ch<format.mChannels; ++ch) {
 		sint16 *src = &mFIRBuffer[mFIRBufferChannelStride * ch];
 		sint16 *dst2 = dst + ch;
@@ -404,20 +373,12 @@ uint32 VDAudioFilterPolyphase::Run() {
 		for(int i=0; i<samples; ++i) {
 			const sint16 *pFilter = &mFilterBank[mFilterSize * ((phase>>11)&31)];
 			const sint16 *src2 = src + (phase>>16);
-			sint32 v = 0x2000;
-
-			for(int j=0; j<mFilterSize; ++j)
-				v += (sint32)pFilter[j] * (sint32)src2[j];
-
-			v = (v>>14) + 0x8000;
-
-			if ((uint32)v >= 0x10000)
-				v = ~v >> 31;
-
-			*dst2 = (sint16)(v - 0x8000);
+			*dst2 = pVtbl->FilterPCM16(src2, pFilter, mFilterSize >> 2);
 			dst2 += format.mChannels;
 			phase += phaseincfixed;
 		}
+
+		pVtbl->FilterPCM16End();
 
 		memmove(src, src+srcInc, sizeof(src[0]) * (mFIRBufferPoint - srcInc));
 	}
@@ -458,7 +419,8 @@ sint64 VDAudioFilterPolyphase::Seek(sint64 us) {
 
 VDAFBASE_BEGIN_CONFIG(Xpass);
 VDAFBASE_CONFIG_ENTRY(Xpass, 0, U32, cutoff, L"Cutoff frequency (Hz)",	L"Approximate frequency in Hertz at which filter takes effect (cuts off audio components)." );
-VDAFBASE_END_CONFIG(Xpass, 0);
+VDAFBASE_CONFIG_ENTRY(Xpass, 1, U32, taps, L"Filter tap count",	L"Number of filter taps to use." );
+VDAFBASE_END_CONFIG(Xpass, 1);
 
 typedef VDAudioFilterData_Xpass VDAudioFilterXpassConfig;
 
@@ -474,6 +436,7 @@ public:
 		switch(msg) {
 		case WM_INITDIALOG:
 			SetDlgItemInt(mhdlg, IDC_CUTOFF, mConfig.cutoff, FALSE);
+			SetDlgItemInt(mhdlg, IDC_TAPS, mConfig.taps, FALSE);
 			return TRUE;
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
@@ -485,6 +448,12 @@ public:
 					if (!valid) {
 						MessageBeep(MB_ICONEXCLAMATION);
 						SetFocus(GetDlgItem(mhdlg, IDC_CUTOFF));
+						return TRUE;
+					}
+					mConfig.taps = GetDlgItemInt(mhdlg, IDC_TAPS, &valid, FALSE);
+					if (!valid) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(mhdlg, IDC_TAPS));
 						return TRUE;
 					}
 					End(TRUE);
@@ -504,7 +473,10 @@ public:
 
 class VDAudioFilterXpass : public VDAudioFilterSymmetricFIR {
 public:
-	VDAudioFilterXpass(bool bHighpass) : mbHighpass(bHighpass) {}
+	VDAudioFilterXpass(bool bHighpass) : mbHighpass(bHighpass) {
+		mConfig.cutoff = 4000;
+		mConfig.taps = 64;
+	}
 
 	bool Config(HWND hwnd) {
 		VDAudioFilterXpassConfig	config(mConfig);
@@ -528,7 +500,14 @@ public:
 };
 
 void VDAudioFilterXpass::GenerateFilter(int freq) {
-	int halfsize = 64;
+	int requested_halfsize = mConfig.taps;
+
+	if (requested_halfsize < 8)
+		requested_halfsize = 8;
+	if (requested_halfsize > 16384)
+		requested_halfsize = 16384;
+
+	int halfsize = requested_halfsize;
 	double cutoff = (double)mConfig.cutoff / freq;
 
 	if (cutoff > 1.0)
@@ -543,10 +522,20 @@ void VDAudioFilterXpass::GenerateFilter(int freq) {
 	else
 		AudioMakeLowpassFilter(&halfkernel[0], halfsize, cutoff);
 
+	// Cut off zeroes at the end of the kernel.
+	while(halfsize > 1 && fabs(halfkernel[halfsize-1]) < (0.5f / 16384.0f))
+		--halfsize;
+
+	halfsize = (halfsize + 3) & ~3;
+
+	if (halfsize < requested_halfsize) {
+		VDDEBUG("AudioFilter/XPass: Reduced filter halfkernel size from %d taps to %d due to zero roundoff\n", requested_halfsize, halfsize);
+	}
+
 	mFilterSize = halfsize;
-	mFilterBank.resize(mFilterSize+1);
+	mFilterBank.resize(2*mFilterSize+1);
 	for(int i=0; i<=halfsize; ++i) {
-		mFilterBank[i] = (int)floor(0.5 + halfkernel[i]*16384);
+		mFilterBank[mFilterSize+i] = mFilterBank[mFilterSize-i] = (int)floor(0.5 + halfkernel[i]*16384);
 	}
 }
 
@@ -562,7 +551,7 @@ extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	sizeof(VDAudioFilterDefinition),
 	L"lowpass",
 	NULL,
-	L"Removes frequency components above a given cutoff using a 129-tap windowed-sinc filter.",
+	L"Removes frequency components above a given cutoff using a windowed-sinc filter.",
 	0,
 	kVFAF_HasConfig,
 
@@ -571,25 +560,14 @@ extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	&VDAudioFilterData_Xpass::members.info,
 
 	VDAudioFilterLowpassInitProc,
-	VDAudioFilterXpass::DestroyProc,
-	VDAudioFilterXpass::PrepareProc,
-	VDAudioFilterXpass::StartProc,
-	VDAudioFilterXpass::StopProc,
-	VDAudioFilterXpass::RunProc,
-	VDAudioFilterXpass::ReadProc,
-	VDAudioFilterXpass::SeekProc,
-	VDAudioFilterXpass::SerializeProc,
-	VDAudioFilterXpass::DeserializeProc,
-	VDAudioFilterXpass::GetParamProc,
-	VDAudioFilterXpass::SetParamProc,
-	VDAudioFilterXpass::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 	sizeof(VDAudioFilterDefinition),
 	L"highpass",
 	NULL,
-	L"Removes frequency components below a given cutoff using a 129-tap windowed-sinc filter.",
+	L"Removes frequency components below a given cutoff using a windowed-sinc filter.",
 	0,
 	kVFAF_HasConfig,
 
@@ -598,25 +576,15 @@ extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 	&VDAudioFilterData_Xpass::members.info,
 
 	VDAudioFilterHighpassInitProc,
-	VDAudioFilterXpass::DestroyProc,
-	VDAudioFilterXpass::PrepareProc,
-	VDAudioFilterXpass::StartProc,
-	VDAudioFilterXpass::StopProc,
-	VDAudioFilterXpass::RunProc,
-	VDAudioFilterXpass::ReadProc,
-	VDAudioFilterXpass::SeekProc,
-	VDAudioFilterXpass::SerializeProc,
-	VDAudioFilterXpass::DeserializeProc,
-	VDAudioFilterXpass::GetParamProc,
-	VDAudioFilterXpass::SetParamProc,
-	VDAudioFilterXpass::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 VDAFBASE_BEGIN_CONFIG(Resample);
 VDAFBASE_CONFIG_ENTRY(Resample, 0, U32, newfreq, L"New frequency (Hz)",	L"Target frequency in Hertz." );
-VDAFBASE_END_CONFIG(Resample, 0);
+VDAFBASE_CONFIG_ENTRY(Resample, 1, U32, taps, L"Filter tap count",	L"Number of filter taps to use." );
+VDAFBASE_END_CONFIG(Resample, 1);
 
 typedef VDAudioFilterData_Resample VDAudioFilterResampleConfig;
 
@@ -632,6 +600,7 @@ public:
 		switch(msg) {
 		case WM_INITDIALOG:
 			SetDlgItemInt(mhdlg, IDC_FREQ, mConfig.newfreq, FALSE);
+			SetDlgItemInt(mhdlg, IDC_TAPS, mConfig.taps, FALSE);
 			return TRUE;
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
@@ -643,6 +612,12 @@ public:
 					if (!valid) {
 						MessageBeep(MB_ICONEXCLAMATION);
 						SetFocus(GetDlgItem(mhdlg, IDC_FREQ));
+						return TRUE;
+					}
+					mConfig.taps = GetDlgItemInt(mhdlg, IDC_TAPS, &valid, FALSE);
+					if (!valid) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(mhdlg, IDC_TAPS));
 						return TRUE;
 					}
 					End(TRUE);
@@ -666,6 +641,7 @@ public:
 
 	VDAudioFilterResample() {
 		mConfig.newfreq = 44100;
+		mConfig.taps = 64;
 	}
 
 	bool Config(HWND hwnd) {
@@ -693,7 +669,15 @@ void __cdecl VDAudioFilterResample::InitProc(const VDAudioFilterContext *pContex
 }
 
 int VDAudioFilterResample::GenerateFilterBank(int freq) {
-	int halfsize = 64;
+	int requested_halfsize = mConfig.taps;
+
+	if (requested_halfsize < 8)
+		requested_halfsize = 8;
+	if (requested_halfsize > 16384)
+		requested_halfsize = 16384;
+
+	const int halfsize = requested_halfsize;
+	const int fullsize = 2*halfsize;
 	double cutoff = 0.5 * (double)mConfig.newfreq / freq;
 
 	if (cutoff > 0.5)
@@ -701,17 +685,46 @@ int VDAudioFilterResample::GenerateFilterBank(int freq) {
 	if (cutoff < 0)
 		cutoff = 0;
 
-	mFilterSize = 2*halfsize;
-	mFilterBank.resize(32 * mFilterSize);
+	std::vector<float> kernel(fullsize);
+	std::vector<sint16> ikernels(32 * fullsize);
+	sint16 *dst = &ikernels.front();
+	int phase, i;
+	int lorange = fullsize, hirange = 0;
 
-	sint16 *dst = &mFilterBank.front();
-	std::vector<float> kernel(2*halfsize);
-
-	for(int phase=0; phase<32; ++phase) {
+	for(phase=0; phase<32; ++phase) {
 		AudioMakeResampleFilter(&kernel[0], halfsize, cutoff, phase / 32.0);
 
-		for(int i=0; i<mFilterSize; ++i)
-			*dst++ = (int)floor(0.5 + kernel[i]*16384);
+		for(i=0; i<fullsize; ++i) {
+			int v = (int)floor(0.5 + kernel[i]*16384);
+			*dst++ = v;
+
+			if (v) {
+				if (lorange > i)
+					lorange = i;
+				if (hirange < i)
+					hirange = i;
+			}
+		}
+	}
+
+	int trim = std::min<int>(lorange, hirange) & ~3;
+
+	mFilterSize = fullsize - trim;
+	if (mFilterSize < 8) {
+		mFilterSize = 8;
+		trim = halfsize - 4;
+	}
+
+	if (mFilterSize != fullsize) {
+		VDDEBUG("AudioFilter/Resample: Reduced filter kernel size from %d taps to %d due to zero roundoff\n", fullsize, mFilterSize);
+	}
+
+	mFilterBank.resize(32 * mFilterSize);
+
+	dst = &mFilterBank.front();
+	for(phase=0; phase<32; ++phase) {
+		std::copy(&ikernels[2*halfsize*phase + trim], &ikernels[2*halfsize*phase + trim + mFilterSize], dst);
+		dst += mFilterSize;
 	}
 
 	return mConfig.newfreq;
@@ -721,7 +734,7 @@ extern const struct VDAudioFilterDefinition afilterDef_resample = {
 	sizeof(VDAudioFilterDefinition),
 	L"resample",
 	NULL,
-	L"Resamples audio to a new sampling frequency using a 32-phase, 129-tap filter bank.",
+	L"Resamples audio to a new sampling frequency using a 32-phase filter bank.",
 	0,
 	kVFAF_HasConfig,
 
@@ -730,18 +743,7 @@ extern const struct VDAudioFilterDefinition afilterDef_resample = {
 	&VDAudioFilterData_Resample::members.info,
 
 	VDAudioFilterResample::InitProc,
-	VDAudioFilterResample::DestroyProc,
-	VDAudioFilterResample::PrepareProc,
-	VDAudioFilterResample::StartProc,
-	VDAudioFilterResample::StopProc,
-	VDAudioFilterResample::RunProc,
-	VDAudioFilterResample::ReadProc,
-	VDAudioFilterResample::SeekProc,
-	VDAudioFilterResample::SerializeProc,
-	VDAudioFilterResample::DeserializeProc,
-	VDAudioFilterResample::GetParamProc,
-	VDAudioFilterResample::SetParamProc,
-	VDAudioFilterResample::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -878,16 +880,5 @@ extern const struct VDAudioFilterDefinition afilterDef_stretch = {
 	&VDAudioFilterData_Stretch::members.info,
 
 	VDAudioFilterStretch::InitProc,
-	VDAudioFilterStretch::DestroyProc,
-	VDAudioFilterStretch::PrepareProc,
-	VDAudioFilterStretch::StartProc,
-	VDAudioFilterStretch::StopProc,
-	VDAudioFilterStretch::RunProc,
-	VDAudioFilterStretch::ReadProc,
-	VDAudioFilterStretch::SeekProc,
-	VDAudioFilterStretch::SerializeProc,
-	VDAudioFilterStretch::DeserializeProc,
-	VDAudioFilterStretch::GetParamProc,
-	VDAudioFilterStretch::SetParamProc,
-	VDAudioFilterStretch::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

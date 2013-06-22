@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vector>
 
 #include "VideoSource.h"
 #include "VBitmap.h"
@@ -29,6 +30,8 @@
 
 #include <vd2/system/error.h>
 #include <vd2/system/text.h>
+#include <vd2/system/log.h>
+#include <vd2/Dita/resources.h>
 #include "misc.h"
 #include "oshelper.h"
 #include "helpfile.h"
@@ -43,34 +46,23 @@ extern HWND g_hWnd;
 
 ///////////////////////////
 
-const char g_szNoMPEG4Test[]="No MPEG-4 Test";
+namespace {
+	enum { kVDST_VideoSource = 3 };
 
-static BOOL CALLBACK MP4CodecWarningDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_INITDIALOG:
-		return TRUE;
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			HelpContext(hdlg, IDH_WARN_MPEG4);
-		case IDCANCEL:
-			if (IsDlgButtonChecked(hdlg, IDC_NOMORE))
-				SetConfigDword(NULL, g_szNoMPEG4Test, 1);
-			EndDialog(hdlg, 0);
-			break;
-		}
-		break;
-	}
-	return FALSE;
+	enum {
+		kVDM_ResumeFromConceal,
+		kVDM_DecodingError,
+		kVDM_FrameTooShort,
+		kVDM_CodecMMXError,
+		kVDM_FixingHugeVideoFormat
+	};
 }
+
+///////////////////////////
 
 static bool CheckMPEG4Codec(HIC hic, bool isV3) {
 	char frame[0x380];
 	BITMAPINFOHEADER bih;
-	DWORD dw;
-
-	if (QueryConfigDword(NULL, g_szNoMPEG4Test, &dw) && dw)
-		return true;
 
 	// Form a completely black frame if it's V3.
 
@@ -115,11 +107,6 @@ static bool CheckMPEG4Codec(HIC hic, bool isV3) {
 	HANDLE h;
 
 	h = ICImageDecompress(hic, 0, (BITMAPINFO *)&bih, frame, NULL);
-
-//	if (!h)
-//		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_WARN_MPEG4), g_hWnd, MP4CodecWarningDlgProc);
-//	else
-//		GlobalFree(h);
 
 	if (h) {
 		GlobalFree(h);
@@ -266,7 +253,11 @@ bool VideoSource::isType1() {
 
 ///////////////////////////
 
-VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys, IAVIReadHandler **stripe_files, bool use_internal, int mjpeg_mode, FOURCC fccForceVideo, FOURCC fccForceVideoHandler) {
+VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys, IAVIReadHandler **stripe_files, bool use_internal, int mjpeg_mode, FOURCC fccForceVideo, FOURCC fccForceVideoHandler)
+	: mErrorMode(kErrorModeReportAll)
+	, mbMMXBrokenCodecDetected(false)
+	, mbConcealingErrors(false)
+{
 	pAVIFile	= pAVI;
 	pAVIStream	= NULL;
 	lpvBuffer	= NULL;
@@ -460,10 +451,38 @@ void VideoSourceAVI::_construct() {
 	} else {
 		format_stream->FormatSize(0, &format_len);
 
-		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
+		std::vector<char> format(format_len);
 
-		if (format_stream->ReadFormat(0, getFormat(), &format_len))
+		if (format_stream->ReadFormat(0, &format.front(), &format_len))
 			throw MyError("Error obtaining video stream format.");
+
+		// check for a very large BITMAPINFOHEADER -- structs as large as 153K
+		// can be written out by some ePSXe video plugins
+
+		const BITMAPINFOHEADER *pFormat = (const BITMAPINFOHEADER *)&format.front();
+
+		if (format.size() >= 16384 && format.size() > pFormat->biSize) {
+			int badsize = format.size();
+			int realsize = pFormat->biSize;
+
+			if (realsize >= sizeof(BITMAPINFOHEADER)) {
+				realsize += sizeof(RGBQUAD) * pFormat->biClrUsed;
+
+				if (realsize < format.size()) {
+					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FixingHugeVideoFormat, 2, &badsize, &realsize);
+
+					format.resize(realsize);
+					format_len = realsize;
+				}
+			}
+		}
+
+		// copy format to official video stream format
+
+		if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len)))
+			throw MyMemoryError();
+
+		memcpy(getFormat(), pFormat, format.size());
 	}
 	if (!(bmihTemp = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
 	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
@@ -579,9 +598,9 @@ void VideoSourceAVI::_construct() {
 					bmih->biCompression = '34PM';
 					if (!AttemptCodecNegotiation(bmih, is_mjpeg)) {
 						bmih->biCompression = '3VID';
-						if (AttemptCodecNegotiation(bmih, is_mjpeg)) {
+						if (!AttemptCodecNegotiation(bmih, is_mjpeg)) {
 							bmih->biCompression = '4VID';
-							if (AttemptCodecNegotiation(bmih, is_mjpeg)) {
+							if (!AttemptCodecNegotiation(bmih, is_mjpeg)) {
 								bmih->biCompression = '14PA';
 			default:
 								if (!AttemptCodecNegotiation(bmih, is_mjpeg))
@@ -1346,6 +1365,7 @@ void VideoSourceAVI::invalidateFrameBuffer() {
 	if (lLastFrame != -1 && hicDecomp)
 		ICDecompressEnd(hicDecomp);
 	lLastFrame = -1;
+	mbConcealingErrors = false;
 }
 
 BOOL VideoSourceAVI::isFrameBufferValid() {
@@ -1448,13 +1468,30 @@ void VideoSourceAVI::streamBegin(bool fRealTime) {
 void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
 	DWORD err;
 
-	if (!data_len) return getFrameBuffer();
+	if (isKey(frame_num)) {
+		if (mbConcealingErrors) {
+			const unsigned frame = frame_num;
+			VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_ResumeFromConceal, 1, &frame);
+		}
+		mbConcealingErrors = false;
+	}
+
+	if (!data_len || mbConcealingErrors) return getFrameBuffer();
 
 	if (bDirectDecompress) {
-		if (data_len < getImageFormat()->biSizeImage)
-			throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, data_len);
+		int to_copy = getImageFormat()->biSizeImage;
+		if (data_len < to_copy) {
+			if (mErrorMode != kErrorModeReportAll) {
+				const unsigned actual = data_len;
+				const unsigned expected = to_copy;
+				const unsigned frame = frame_num;
+				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
+				to_copy = data_len;
+			} else
+				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, getImageFormat()->biSizeImage, data_len);
+		}
 		
-		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
+		memcpy(getFrameBuffer(), inputBuffer, to_copy);
 	} else if (fUseGDI) {
 		if (!hbmLame)
 			throw MyError("Insufficient GDI resources to convert frame.");
@@ -1462,7 +1499,6 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 		SetDIBits(NULL, hbmLame, 0, getDecompressedFormat()->biHeight, inputBuffer, (BITMAPINFO *)getFormat(),
 			DIB_RGB_COLORS);
 		GdiFlush();
-
 	} else if (hicDecomp && !bDirectDecompress) {
 		// Asus ASV1 crashes with zero byte frames!!!
 
@@ -1506,14 +1542,21 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 								lpvBuffer
 								);
 			}
+			CheckMMX();
+
 			VDCHECKPOINT;
 
-			if (ICERR_OK != err)
-				throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", frame_num, (int)err);
+			if (ICERR_OK != err) {
+				if (mErrorMode == kErrorModeReportAll) {
+					throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", frame_num, (int)err);
+				} else {
+					const unsigned frame = frame_num;
+					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_DecodingError, 1, &frame);
 
-
-			if (IsMMXState())
-				ClearMMXState();
+					if (mErrorMode == kErrorModeConceal)
+						mbConcealingErrors = true;
+				}
+			}
 		}
 
 	} else if (mdec) {
@@ -1539,11 +1582,29 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
    } else {
 		const BITMAPINFOHEADER *bih = getImageFormat();
 		long nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4 * bih->biHeight;
+		void *tmpBuffer = 0;
 
-		if (data_len < nBytesRequired)
-			throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", nBytesRequired, data_len);
+		if (data_len < nBytesRequired) {
+			if (mErrorMode != kErrorModeReportAll) {
+				const unsigned frame = frame_num;
+				const unsigned actual = data_len;
+				const unsigned expected = nBytesRequired;
+				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
+
+				tmpBuffer = malloc(nBytesRequired);
+				if (!tmpBuffer)
+					throw MyMemoryError();
+
+				memcpy(tmpBuffer, inputBuffer, data_len);
+
+				inputBuffer = tmpBuffer;
+			} else
+				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, nBytesRequired, data_len);
+		}
 
 		DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+
+		free(tmpBuffer);
    }
 //		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
 
@@ -1669,8 +1730,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 							throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", lFrameNum, (int)err);
 					}
 
-					if (IsMMXState())
-						ClearMMXState();
+					CheckMMX();
 
 					VDCHECKPOINT;
 				}
@@ -1721,4 +1781,23 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 	lLastFrame = lFrameDesired; 
 
 	return getFrameBuffer();
+}
+
+void VideoSourceAVI::setDecodeErrorMode(ErrorMode mode) {
+	mErrorMode = mode;
+}
+
+bool VideoSourceAVI::isDecodeErrorModeSupported(ErrorMode mode) {
+	return true;
+}
+
+void VideoSourceAVI::CheckMMX() {
+	if (IsMMXState()) {
+		ClearMMXState();
+
+		if (!mbMMXBrokenCodecDetected) {
+			const char *pszCodecName = szCodecName;
+			VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecMMXError, 1, &pszCodecName);
+		}
+	}
 }

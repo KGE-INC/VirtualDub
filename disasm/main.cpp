@@ -260,7 +260,7 @@ void parse_ia(FILE *f) {
 						++s;
 					}
 					
-					r.result.append(start, s);
+					r.result.append(start, s-start);
 					++s;
 				} else if (*s == '$') {	// macro expansion
 					++s;
@@ -519,7 +519,7 @@ void dump_ia(FILE *f) {
 		decomp_bytes += 2;
 	}
 
-	static const char header[64]="[01|01] VirtualDub disasm module (IA32:P4/Athlon V1.03)\r\n\x1A";
+	static const char header[64]="[01|01] VirtualDub disasm module (IA32:P4/Athlon V1.04)\r\n\x1A";
 
 	fwrite(header, 64, 1, f);
 
@@ -948,6 +948,19 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 
 void __declspec(naked) test1() {
 	__asm {
+		__emit 0x0f
+		__emit 0x18
+		__emit 0x05
+		__emit 0x40
+		__emit 0x07
+		__emit 0x90
+		__emit 0x02
+
+		prefetchnta [eax]
+		prefetcht0 [eax]
+		prefetcht1 [eax]
+		prefetcht2 [eax]
+
 		pavgusb		mm0,[eax]
 		prefetch	[eax]
 		prefetchw	[eax]

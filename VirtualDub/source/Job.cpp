@@ -29,6 +29,8 @@
 #include <vd2/system/error.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/log.h>
+#include <vd2/system/text.h>
 #include <vd2/Dita/services.h>
 #include "InputFile.h"
 #include "vector.h"
@@ -87,18 +89,7 @@ VDStringA VDEncodeBase64A(const void *src, unsigned len) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class JobScriptOutputBlock : public ListNode {
-public:
-	long size;
-	long ptr;
-	char data[];
-};
-
 class JobScriptOutput {
-private:
-	List listScript;
-	JobScriptOutputBlock *jsob;
-	long total;
 public:
 	JobScriptOutput();
 	~JobScriptOutput();
@@ -108,6 +99,10 @@ public:
 	void adds(const char *s);
 	void addf(const char *fmt, ...);
 	char *getscript();
+
+protected:
+	typedef std::vector<char> tScript;
+	tScript		mScript;
 };
 
 ///////
@@ -121,47 +116,19 @@ JobScriptOutput::~JobScriptOutput() {
 }
 
 void JobScriptOutput::clear() {
-	JobScriptOutputBlock *jsob;
-
-	while(jsob = (JobScriptOutputBlock *)listScript.RemoveHead())
-		freemem(jsob);
-
-	total = 0;
-	this->jsob = NULL;
+	mScript.clear();
 }
 
 void JobScriptOutput::write(const char *s, long l) {
-	long to_copy;
+	tScript::size_type	pos(mScript.size());
 
-	total += l;
-
-	while(l) {
-		if (jsob && jsob->ptr<jsob->size) {
-			to_copy = jsob->size-jsob->ptr;
-			if (to_copy > l) to_copy = l;
-
-			memcpy(jsob->data + jsob->ptr, s, to_copy);
-			jsob->ptr += to_copy;
-			l -= to_copy;
-			s += to_copy;
-		} else {
-			jsob = (JobScriptOutputBlock *)allocmem(16384);
-
-			if (!jsob) throw MyMemoryError();
-
-			jsob->size = 16384 - sizeof(JobScriptOutputBlock);
-			jsob->ptr = 0;
-			listScript.AddTail(jsob);
-		}
-	}
+	mScript.resize(pos + l);
+	std::copy(s, s+l, &mScript[pos]);
 }
 
 void JobScriptOutput::adds(const char *s) {
-	long l = strlen(s);
-
-	write(s, l);
+	write(s, strlen(s));
 	write("\n",1);
-//	_RPT1(0,">%s\n",s);
 }
 
 void JobScriptOutput::addf(const char *fmt, ...) {
@@ -179,19 +146,12 @@ void JobScriptOutput::addf(const char *fmt, ...) {
 }
 
 char *JobScriptOutput::getscript() {
-	char *mem = (char *)allocmem(total+1), *t=mem;
-	JobScriptOutputBlock *jsobptr;
+	const tScript::size_type	siz(mScript.size());
+	char *mem = (char *)allocmem(siz+1);
 	if (!mem) throw MyMemoryError();
 
-	jsobptr = (JobScriptOutputBlock *)listScript.head.prev;
-
-	while(jsobptr->prev) {
-		memcpy(t, jsobptr->data, jsobptr->ptr);
-		t += jsobptr->ptr;
-
-		jsobptr = (JobScriptOutputBlock *)jsobptr->prev;
-	}
-	*t = 0;
+	mem[siz] = 0;
+	memcpy(mem, &mScript[0], siz);
 
 	return mem;
 }
@@ -223,10 +183,13 @@ public:
 	char szOutputFile[MAX_PATH];
 	char *szInputFileTitle;
 	char *szOutputFileTitle;
-	char szError[256];
+	VDStringA	mError;
 	int iState;
 	SYSTEMTIME stStart, stEnd;
 	char *script;
+
+	typedef VDAutoLogger::tEntries tLogEntries;
+	tLogEntries	mLogEntries;
 
 	/////
 
@@ -347,13 +310,17 @@ void VDJob::Run() {
 	try {
 		g_fJobMode = true;
 		g_fJobAborted = false;
-		_CrtCheckMemory();
+
+		VDAutoLogger logger(kVDLogMarker);
+
 		RunScriptMemory(script);
-		_CrtCheckMemory();
+
+		mLogEntries = logger.GetEntries();
+
 		g_fJobMode = false;
 	} catch(const MyError& err) {
 		iState = ERR;
-		strcpy(szError, err.gets());
+		mError = err.gets();
 	}
 
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PROGRESS), FALSE);
@@ -367,7 +334,16 @@ void VDJob::Run() {
 	}
 	GetLocalTime(&stEnd);
 	Refresh();
-	Flush();
+
+	try {
+		Flush();
+	} catch(const MyError&) {
+		// Eat errors from the job flush.  The job queue on disk may be messed
+		// up, but as long as our in-memory queue is OK, we can at least finish
+		// remaining jobs.
+
+		VDASSERT(false);		// But we'll at least annoy people with debuggers.
+	}
 }
 
 ////////
@@ -452,6 +428,21 @@ static void strgetarg(char *buf, long bufsiz, const char *s) {
 	buf[l]=0;
 }
 
+static void strgetarg(VDStringA& str, const char *s) {
+	const char *t = s;
+	long l;
+
+	if (*t == '"') {
+		s = ++t;
+		while(*s && *s!='"') ++s;
+	} else
+		while(*s && !isspace(*s)) ++s;
+
+	l = s-t;
+
+	str.assign(t, l);
+}
+
 void VDJob::ListLoad(const char *lpszName) {
 	FILE *f = NULL;
 	char szName[MAX_PATH], szVDPath[MAX_PATH], *lpFilePart;
@@ -512,7 +503,6 @@ void VDJob::ListLoad(const char *lpszName) {
 
 				if (!stricmp(s, "job")) {
 					if (!(job = new VDJob)) throw "out of memory";
-					job->szError[0]=0;
 
 					strgetarg(job->szName, sizeof job->szName, t);
 
@@ -526,7 +516,7 @@ void VDJob::ListLoad(const char *lpszName) {
 
 				} else if (!stricmp(s, "error")) {
 
-					strgetarg(job->szError, sizeof job->szError, t);
+					strgetarg(job->mError, t);
 
 				} else if (!stricmp(s, "state")) {
 
@@ -571,7 +561,18 @@ void VDJob::ListLoad(const char *lpszName) {
 					}
 
 					job->Add(true);
-					job = NULL;;
+					job = NULL;
+
+				} else if (!stricmp(s, "logent")) {
+
+					int severity;
+					char dummyspace;
+					int pos;
+
+					if (2 != sscanf(t, "%d%c%n", &severity, &dummyspace, &pos))
+						throw "invalid log entry";
+
+					job->mLogEntries.push_back(VDJob::tLogEntries::value_type(severity, VDTextAToW(t + pos, -1)));
 				}
 			} else if (script_capture) {
 				// kill starting spaces
@@ -679,8 +680,14 @@ void VDJob::Flush(const char *lpszFileName) {
 			} else
 				if (fprintf(f,"// $end_time 0 0\n")<0) throw errno;
 
+			for(VDJob::tLogEntries::const_iterator it(vdj->mLogEntries.begin()), itEnd(vdj->mLogEntries.end()); it!=itEnd; ++it) {
+				const VDJob::tLogEntries::value_type& ent = *it;
+				if (fprintf(f,"// $logent %d %s\n", ent.severity, VDTextWToA(ent.text).c_str())<0)
+					throw errno;
+			}
+
 			if (vdj->iState == ERR)
-				if (fprintf(f,"// $error \"%s\"\n", vdj->szError)<0) throw errno;
+				if (fprintf(f,"// $error \"%s\"\n", vdj->mError.c_str())<0) throw errno;
 
 			if (fprintf(f,"// $script\n\n")<0) throw errno;
 
@@ -802,12 +809,37 @@ static BOOL CALLBACK JobErrorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARA
 			_snprintf(buf, sizeof buf, "VirtualDub - Job \"%s\"", vdj->szName);
 			SetWindowText(hdlg, buf);
 
-			SetDlgItemText(hdlg, IDC_ERROR, vdj->szError);
+			SetDlgItemText(hdlg, IDC_ERROR, vdj->mError.c_str());
 		}
 		return TRUE;
 
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+			EndDialog(hdlg, 0);
+			return TRUE;
+		}
+		break;
+	}
+
+	return FALSE;
+}
+
+static BOOL CALLBACK JobLogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_INITDIALOG:
+		{
+			const VDJob::tLogEntries& ents = *(VDJob::tLogEntries *)lParam;
+			IVDLogWindowControl *pLogWin = VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG));
+
+			for(VDAutoLogger::tEntries::const_iterator it(ents.begin()), itEnd(ents.end()); it!=itEnd; ++it) {
+				const VDAutoLogger::Entry& ent = *it;
+				pLogWin->AddEntry(ent.severity, ent.text);
+			}
+		}
+		return TRUE;
+	case WM_COMMAND:
+		switch(LOWORD(wParam)) {
+		case IDOK: case IDCANCEL:
 			EndDialog(hdlg, 0);
 			return TRUE;
 		}
@@ -863,7 +895,12 @@ static void Job_GetDispInfo(NMLVDISPINFO *nldi) {
 		switch(vdj->iState) {
 		case VDJob::WAITING:	nldi->item.pszText = "Waiting"		; break;
 		case VDJob::INPROGRESS:	nldi->item.pszText = "In progress"	; break;
-		case VDJob::DONE:		nldi->item.pszText = "Done"			; break;
+		case VDJob::DONE:
+			if (vdj->mLogEntries.empty())
+				nldi->item.pszText = "Done";
+			else
+				nldi->item.pszText = "Done (warnings)";
+			break;
 		case VDJob::POSTPONED:	nldi->item.pszText = "Postponed"	; break;
 		case VDJob::ABORTED:	nldi->item.pszText = "Aborted"		; break;
 		case VDJob::ERR:		nldi->item.pszText = "Error"		; break;
@@ -992,6 +1029,7 @@ void Job_MenuHit(HWND hdlg, WPARAM wParam) {
 
 				while(vdj_next = (VDJob *)vdj->next) {
 					if (vdj->iState == VDJob::DONE) {
+						vdj->mLogEntries.clear();
 						vdj->iState = VDJob::WAITING;
 						vdj->Refresh();
 					}
@@ -1188,7 +1226,15 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 						switch(vdj->iState) {
 						case VDJob::ERR:
 							DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_JOBERROR), hdlg, JobErrorDlgProc, (LPARAM)vdj);
+							vdj->iState = VDJob::WAITING;
+							vdj->Refresh();
+							VDJob::SetModified();
+							break;
 						case VDJob::DONE:
+							if (!vdj->mLogEntries.empty()) {
+								DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_JOBLOG), hdlg, JobLogDlgProc, (LPARAM)&vdj->mLogEntries);
+								vdj->mLogEntries.clear();
+							}
 						case VDJob::ABORTED:
 							vdj->iState = VDJob::WAITING;
 							vdj->Refresh();
@@ -1446,6 +1492,12 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 	output.addf("VirtualDub.video.SetFrameRate(%d,%d);",
 			opt->video.frameRateNewMicroSecs,
 			opt->video.frameRateDecimation);
+
+	if (opt->video.frameRateTargetLo) {
+		output.addf("VirtualDub.video.SetTargetFrameRate(%u,%u);",
+				opt->video.frameRateTargetHi,
+				opt->video.frameRateTargetLo);
+	}
 
 	output.addf("VirtualDub.video.SetIVTC(%d,%d,%d,%d);",
 			opt->video.fInvTelecine,

@@ -301,13 +301,6 @@ BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 			hdd->histo->SetMode(Histogram::MODE_NEXT);
 			return TRUE;
 
-		case WM_SYSCOMMAND:
-			if ((wParam & 0xFFF0) == SC_CONTEXTHELP) {
-				HelpPopup(hDlg, IDH_CAPTURE_HISTOGRAM);
-				return TRUE;
-			}
-			return FALSE;
-
 		case WM_COMMAND:
 			if (hdd) {
 				if (hdd->fCapture) {

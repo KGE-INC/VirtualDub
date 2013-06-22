@@ -20,6 +20,7 @@
 #include "af_base.h"
 #include "gui.h"
 #include "resource.h"
+#include "audioutil.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -131,10 +132,6 @@ uint32 VDAudioFilterPitchShift::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay			= 0;
-	mpContext->mpOutputs[0]->mGranularity	= 1;
-
 	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
@@ -169,7 +166,6 @@ uint32 VDAudioFilterPitchShift::Run() {
 
 	// foo
 	short buf16[4096];
-	char buf8[4096];
 
 	int samples = std::min<int>(mpContext->mInputSamples, 4096 / format.mChannels);
 
@@ -192,25 +188,8 @@ uint32 VDAudioFilterPitchShift::Run() {
 
 	// read buffer
 
-	switch(format.mSampleBits) {
-	case 8:
-		{
-			int actual_samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf8, samples, false);
-			VDASSERT(actual_samples == samples);
-
-			unsigned count = format.mChannels * samples;
-
-			for(unsigned i=0; i<count; ++i)
-				buf16[i] = (sint16)((buf8[i]<<8) - 0x8000);
-		}
-		break;
-	case 16:
-		{
-			int actual_samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf16, samples, false);
-			VDASSERT(actual_samples == samples);
-		}
-		break;
-	}
+	int actual_samples = mpContext->mpInputs[0]->Read(buf16, samples, false, kVFARead_PCM16);
+	VDASSERT(actual_samples == samples);
 
 	// matrixing (2-channel only)
 
@@ -387,16 +366,5 @@ extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {
 	&VDAudioFilterData_PitchShift::members.info,
 
 	VDAudioFilterPitchShift::InitProc,
-	VDAudioFilterPitchShift::DestroyProc,
-	VDAudioFilterPitchShift::PrepareProc,
-	VDAudioFilterPitchShift::StartProc,
-	VDAudioFilterPitchShift::StopProc,
-	VDAudioFilterPitchShift::RunProc,
-	VDAudioFilterPitchShift::ReadProc,
-	VDAudioFilterPitchShift::SeekProc,
-	VDAudioFilterPitchShift::SerializeProc,
-	VDAudioFilterPitchShift::DeserializeProc,
-	VDAudioFilterPitchShift::GetParamProc,
-	VDAudioFilterPitchShift::SetParamProc,
-	VDAudioFilterPitchShift::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

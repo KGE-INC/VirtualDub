@@ -22,6 +22,7 @@
 
 #include "filter.h"
 #include "af_base.h"
+#include "audioutil.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -65,12 +66,6 @@ uint32 VDAudioFilterCenterMix::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay			= 0;
-	mpContext->mpInputs[1]->mGranularity	= 1;
-	mpContext->mpInputs[1]->mDelay			= 0;
-	mpContext->mpOutputs[0]->mGranularity	= 1;
-
 	VDWaveFormat *pwf0;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
@@ -110,57 +105,28 @@ uint32 VDAudioFilterCenterMix::Run() {
 		return true;
 
 	while(samples > 0) {
-		union {
-			sint16	w[4096];
-			uint8	b[4096];
-		} buf0, buf1;
-		int tc = std::min<int>(samples, 2048);
+		sint16 buf[4096];
+		int tc = std::min<int>(samples, 2048);		// 4096 / 2 channels
 
-		int tca0 = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf0, tc, true);
-		int tca1 = mpContext->mpInputs[1]->mpReadProc(mpContext->mpInputs[1], &buf1, tc, true);
+		int tca0 = mpContext->mpInputs[0]->Read(dst, tc, true, kVFARead_PCM16);
+		int tca1 = mpContext->mpInputs[1]->Read(buf, tc, true, kVFARead_PCM16);
 
 		VDASSERT(tc == tca0 && tc == tca1);
 
-		if (format1.mSampleBits==16)
-			memcpy(dst, buf0.w, tc*4);
-		else {
-			for(unsigned i=0; i<tc*2; ++i) {
-				dst[i] = (sint16)(sint8)(buf0.b[i]-0x80) << 8;
-			}
-		}
+		for(unsigned i=0; i<tc; ++i) {
+			const sint32 t = buf[i];
+			sint32 t0 = dst[0] + t + 0x8000;
+			sint32 t1 = dst[1] + t + 0x8000;
 
-		if (format2.mSampleBits==16) {
-			for(unsigned i=0; i<tc; ++i) {
-				const sint32 t = buf1.w[i];
-				sint32 t0 = dst[0] + t + 0x8000;
-				sint32 t1 = dst[1] + t + 0x8000;
+			if ((uint32)t0 >= 0x10000)
+				t0 = ~t0 >> 31;
 
-				if ((uint32)t0 >= 0x10000)
-					t0 = ~t0 >> 31;
+			if ((uint32)t1 >= 0x10000)
+				t1 = ~t1 >> 31;
 
-				if ((uint32)t1 >= 0x10000)
-					t1 = ~t1 >> 31;
-
-				dst[0] = (sint16)(t0 - 0x8000);
-				dst[1] = (sint16)(t1 - 0x8000);
-				dst += 2;
-			}
-		} else {
-			for(unsigned i=0; i<tc; ++i) {
-				const sint32 t = (sint32)buf1.b[i] << 8;
-				sint32 t0 = dst[0] + t;
-				sint32 t1 = dst[1] + t;
-
-				if ((uint32)t0 >= 0x10000)
-					t0 = ~t0 >> 31;
-
-				if ((uint32)t1 >= 0x10000)
-					t1 = ~t1 >> 31;
-
-				dst[0] = (sint16)(t0 - 0x8000);
-				dst[1] = (sint16)(t1 - 0x8000);
-				dst += 2;
-			}
+			dst[0] = (sint16)(t0 - 0x8000);
+			dst[1] = (sint16)(t1 - 0x8000);
+			dst += 2;
 		}
 
 		actual += tc;
@@ -207,17 +173,6 @@ extern const struct VDAudioFilterDefinition afilterDef_centermix = {
 	NULL,
 
 	VDAudioFilterCenterMix::InitProc,
-	VDAudioFilterCenterMix::DestroyProc,
-	VDAudioFilterCenterMix::PrepareProc,
-	VDAudioFilterCenterMix::StartProc,
-	VDAudioFilterCenterMix::StopProc,
-	VDAudioFilterCenterMix::RunProc,
-	VDAudioFilterCenterMix::ReadProc,
-	VDAudioFilterCenterMix::SeekProc,
-	VDAudioFilterCenterMix::SerializeProc,
-	VDAudioFilterCenterMix::DeserializeProc,
-	VDAudioFilterCenterMix::GetParamProc,
-	VDAudioFilterCenterMix::SetParamProc,
-	VDAudioFilterCenterMix::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 

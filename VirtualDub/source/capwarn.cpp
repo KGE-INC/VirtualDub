@@ -53,7 +53,7 @@ void CaptureWarnCheckDriver(HWND hwnd, const char *s) {
 			"Miro/Pinnacle Systems driver detected",
 			MB_YESNO)) {
 
-			HelpPopup(hwnd, IDH_CAPWARN_PINNACLE);
+			VDShowHelp(hwnd, L"capwarn.html");
 		}
 
 		CaptureWarnDisable(CWF_PINNACLE);
@@ -95,7 +95,7 @@ void CaptureWarnCheckDrivers(HWND hwnd) {
 				"Zoran drivers detected",
 				MB_YESNO)) {
 
-				HelpPopup(hwnd, IDH_CAPWARN_ZORAN);
+				VDShowHelp(hwnd, L"capwarn.html");
 			}
 			CaptureWarnDisable(CWF_ZORAN);
 		}
@@ -130,7 +130,7 @@ void CaptureWarnCheckDrivers(HWND hwnd) {
 				"Brooktree Bt848/878 drivers detected",
 				MB_YESNO)) {
 
-				HelpPopup(hwnd, IDH_CAPWARN_BROOKTREE);
+				VDShowHelp(hwnd, L"capwarn.html");
 			}
 			CaptureWarnDisable(CWF_BROOKTREE);
 		}

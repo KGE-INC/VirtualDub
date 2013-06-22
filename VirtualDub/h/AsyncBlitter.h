@@ -24,6 +24,7 @@
 #include <vd2/system/thread.h>
 
 class IDDrawSurface;
+class VDRTProfiler;
 
 class AsyncBlitRequestDrawDib {
 public:
@@ -128,6 +129,8 @@ private:
 	AsyncBlitRequest *requests;
 	int max_requests;
 
+	VDRTProfiler	*mpRTProfiler;
+	int				mProfileChannel;
 	VDSignal		mEventDraw;
 	VDSignal		mEventDrawReturn;
 	VDSignal		mEventAbort;

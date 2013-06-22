@@ -22,21 +22,25 @@ public:
 	void	 Init(int size);
 	void	 Shutdown();
 
-	int		 getSize() const throw() { return nSize; }
-	int		 getLevel() const throw() { return nLevel; }
-	int		 getWriteSpace() const throw();
-	T *		 getWritePtr() const throw() { return pBuffer+nWritePoint; }
+	int		 getSize() const { return nSize; }
+	int		 getLevel() const { return nLevel; }
+	int		 getSpace() const { return nSize - nLevel; }
+	int		 getWriteSpace() const;
+	T *		 getWritePtr() const { return pBuffer+nWritePoint; }
 
-	void	 Flush() throw() { nReadPoint = nWritePoint = nLevel = 0; }
+	bool	 empty() const { return !nLevel; }
+	bool	 full() const { return nLevel == nSize; }
 
-	int		 Read(T *pBuffer, int bytes) throw();
-	const T	*LockRead(int requested, int& actual) throw();
-	const T *LockReadWrapped(int requested, int& actual, int& nReadPoint) throw();
-	int		 UnlockRead(int actual) throw();
+	void	 Flush() { nReadPoint = nWritePoint = nLevel = 0; }
 
-	int		 Write(const T *pData, int bytes) throw();
-	T		*LockWrite(int requested, int& actual) throw();
-	int		 UnlockWrite(int actual) throw();
+	int		 Read(T *pBuffer, int bytes);
+	const T	*LockRead(int requested, int& actual);
+	const T *LockReadWrapped(int requested, int& actual, int& nReadPoint);
+	int		 UnlockRead(int actual);
+
+	int		 Write(const T *pData, int bytes);
+	T		*LockWrite(int requested, int& actual);
+	int		 UnlockWrite(int actual);
 };
 
 template<class T>
@@ -77,7 +81,7 @@ void VDRingBuffer<T>::Shutdown() {
 }
 
 template<class T>
-int VDRingBuffer<T>::getWriteSpace() const throw() {
+int VDRingBuffer<T>::getWriteSpace() const {
 	volatile int tc = nSize - nWritePoint;
 	volatile int space = nSize - nLevel;
 
@@ -88,7 +92,7 @@ int VDRingBuffer<T>::getWriteSpace() const throw() {
 }
 
 template<class T>
-int VDRingBuffer<T>::Read(T *pBuffer, int units) throw() {
+int VDRingBuffer<T>::Read(T *pBuffer, int units) {
 	VDASSERT(units >= 0);
 
 	int actual = 0;
@@ -115,7 +119,7 @@ int VDRingBuffer<T>::Read(T *pBuffer, int units) throw() {
 }
 
 template<class T>
-const T *VDRingBuffer<T>::LockRead(int requested, int& actual) throw() {
+const T *VDRingBuffer<T>::LockRead(int requested, int& actual) {
 	VDASSERT(requested >= 0);
 
 	int nLevelNow = nLevel;
@@ -132,7 +136,7 @@ const T *VDRingBuffer<T>::LockRead(int requested, int& actual) throw() {
 }
 
 template<class T>
-const T *VDRingBuffer<T>::LockReadWrapped(int requested, int& actual, int& readpt) throw() {
+const T *VDRingBuffer<T>::LockReadWrapped(int requested, int& actual, int& readpt) {
 	int nLevelNow = nLevel;
 
 	if (requested > nLevelNow)
@@ -145,7 +149,7 @@ const T *VDRingBuffer<T>::LockReadWrapped(int requested, int& actual, int& readp
 }
 
 template<class T>
-int VDRingBuffer<T>::UnlockRead(int actual) throw() {
+int VDRingBuffer<T>::UnlockRead(int actual) {
 	VDASSERT(actual >= 0);
 	VDASSERT(nLevel >= actual);
 
@@ -160,7 +164,7 @@ int VDRingBuffer<T>::UnlockRead(int actual) throw() {
 }
 
 template<class T>
-int VDRingBuffer<T>::Write(const T *pData, int bytes) throw() {
+int VDRingBuffer<T>::Write(const T *pData, int bytes) {
 	VDASSERT(bytes >= 0);
 
 	int actual = 0;
@@ -187,7 +191,7 @@ int VDRingBuffer<T>::Write(const T *pData, int bytes) throw() {
 }
 
 template<class T>
-T *VDRingBuffer<T>::LockWrite(int requested, int& actual) throw() {
+T *VDRingBuffer<T>::LockWrite(int requested, int& actual) {
 	VDASSERT(requested >= 0);
 	int nLevelNow = nSize - nLevel;
 
@@ -203,7 +207,7 @@ T *VDRingBuffer<T>::LockWrite(int requested, int& actual) throw() {
 }
 
 template<class T>
-int VDRingBuffer<T>::UnlockWrite(int actual) throw() {
+int VDRingBuffer<T>::UnlockWrite(int actual) {
 	VDASSERT(actual >= 0);
 	VDASSERT(nLevel + actual <= nSize);
 

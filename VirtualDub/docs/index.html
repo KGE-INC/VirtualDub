@@ -18,9 +18,29 @@ DD { color: #000000 }
 <h1>VirtualDub source code - build notes</h1>
 
 <p>
-You obviously have too much time on your hands if you want to build my
-source code, so here are some tips....
+This file automatically displays the first time you attempt to build VirtualDub, in order to warn you of possible pitfalls.
+It won't auto-display. Look in the <tt>Docs</tt> project for this file and other documentation.
 </p>
+
+<h2>Quickstart</h2>
+<ul>
+	<li>Set build target to <tt>Helpfile - Win32 Debug</tt> and build.  This will automatically build the HTML compiler,
+		Lina, and the help archive.</li>
+
+	<li>Set build target to <tt>VirtualDub - Win32 Debug</tt> and build.  This will compile the build tools, support
+		libraries, then the final application.</li>
+</ul>
+
+<h2>Build requirements</h2>
+<p>
+	You need the following tools to build VirtualDub out of the box:
+</p>
+<ul>
+	<li>Microsoft Windows NT 4.0, 2000, or XP.  You can build under 95/98/ME, but you will need to modify the
+		build process.</li>
+	<li>Microsoft Visual C++ 6.0 or Microsoft Visual Studio .NET (2002).  Intel C/C++ 6.0/7.0 is optional.</li>
+	<li>Info-ZIP for Win32 (<tt>zip.exe</tt>).</li>
+</ul>
 
 <h2>General notes</h2>
 <p>
@@ -41,15 +61,7 @@ active project and starting a build. Special project directories:
 </blockquote>
 
 <p>
-Make sure your build target is "VirtualDub - Win32 Debug" or
-"VirtualDub - Win32 Release" to start.  Also, if you distribute a fork, please
-make sure you're not distributing debug builds!
-</p>
-
-<p>
-The recommended build platforms are Windows 2000 Professional and
-Windows XP Professional.  Developing under Windows 95/98/ME is <b>not recommended</b>
-and not supported.
+Make sure you're not releasing debug builds!
 </p>
 
 <h2>Stylistic changes from V1.4</h2>
@@ -113,7 +125,7 @@ An out-of-bounds memory access (access violation) occurred in module 'VirtualDub
 
 <h2>Tools</h2>
 <p>
-Three tools are included in the workspace:
+Four build tools are included in the workspace:
 </p>
 <blockquote>
 <dl>
@@ -136,6 +148,11 @@ Three tools are included in the workspace:
 		reflected into <tt>version.bin</tt> for mapconv compatibility. Build counts are tracked by
 		hostname, so development can occur on multiple machines and the source code control system
 		in use can merge the <tt>version2.bin</tt> files to maintain the cumulative build count.
+	</dd>
+
+	<dt>Lina</dt>
+	<dd>
+		A HTML compiler required to build the help file.
 	</dd>
 </dl>
 </blockquote>

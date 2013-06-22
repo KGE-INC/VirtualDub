@@ -100,8 +100,12 @@ void ProgressDialog::check() {
 }
 
 void ProgressDialog::close() {
-	if (hwndDialog)
+	if (hwndDialog) {
+		if (mhwndParent)
+			EnableWindow(mhwndParent, mbPreviouslyEnabled);
 		DestroyWindow(hwndDialog);
+		hwndDialog = 0;
+	}
 }
 
 BOOL CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -133,12 +137,6 @@ BOOL CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam
 			SetTimer(hDlg, 1, 500, NULL);
 
 			break;
-
-		case WM_DESTROY:
-			if (thisPtr->mhwndParent)
-				EnableWindow(thisPtr->mhwndParent, thisPtr->mbPreviouslyEnabled);
-
-			return FALSE;
 
 		case WM_TIMER:
 			newval2 = MulDiv(thisPtr->newval, 16384, thisPtr->maxval);

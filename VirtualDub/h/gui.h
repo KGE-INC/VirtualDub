@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <vd2/system/list.h>
+#include "LogWindow.h"
 
 #define IDC_CAPTURE_WINDOW		(500)
 #define IDC_STATUS_WINDOW		(501)
@@ -79,6 +80,21 @@ void ticks_to_str(char *dst, DWORD ticks);
 void size_to_str(char *dst, __int64 i64Bytes);
 
 int guiListboxInsertSortedString(HWND, const char *);
+
+///////////////////////////////////////////////////////////////////////////////
+
+class VDAutoLogDisplay {
+public:
+	VDAutoLogDisplay();
+	~VDAutoLogDisplay();
+
+	void Post(VDGUIHandle hParent);
+
+protected:
+	VDAutoLogger		mLogger;
+
+	static BOOL CALLBACK DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 

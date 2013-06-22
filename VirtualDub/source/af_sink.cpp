@@ -50,8 +50,6 @@ void __cdecl VDAudioFilterSink::InitProc(const VDAudioFilterContext *pContext) {
 }
 
 uint32 VDAudioFilterSink::Prepare() {
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay			= 0;
 	return 0;
 }
 
@@ -75,7 +73,7 @@ uint32 VDAudioFilterSink::Run() {
 	if (!samples)
 		return pin.mbEnded ? kVFARun_Finished : 0;
 
-	samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst, samples, false);
+	samples = mpContext->mpInputs[0]->Read(dst, samples, false, kVFARead_Native);
 
 	if (samples)
 		mOutputBuffer.UnlockWrite(samples * format.mBlockSize);
@@ -124,18 +122,7 @@ extern const struct VDAudioFilterDefinition afilterDef_sink = {
 	NULL,
 
 	VDAudioFilterSink::InitProc,
-	VDAudioFilterSink::DestroyProc,
-	VDAudioFilterSink::PrepareProc,
-	VDAudioFilterSink::StartProc,
-	VDAudioFilterSink::StopProc,
-	VDAudioFilterSink::RunProc,
-	VDAudioFilterSink::ReadProc,
-	VDAudioFilterSink::SeekProc,
-	VDAudioFilterSink::SerializeProc,
-	VDAudioFilterSink::DeserializeProc,
-	VDAudioFilterSink::GetParamProc,
-	VDAudioFilterSink::SetParamProc,
-	VDAudioFilterSink::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 IVDAudioFilterSink *VDGetAudioFilterSinkInterface(void *p) {
@@ -176,7 +163,7 @@ uint32 VDAudioFilterOutput::Run() {
 	int maxsamp = sizeof buf / mpContext->mpInputs[0]->mpFormat->mBlockSize;
 	int actual = 0;
 
-	while(uint32 c = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf, maxsamp, false))
+	while(uint32 c = mpContext->mpInputs[0]->Read(buf, maxsamp, false, kVFARead_Native))
 		actual += c;
 
 	return !actual && mpContext->mpInputs[0]->mbEnded ? kVFARun_Finished : 0;
@@ -195,18 +182,7 @@ extern const struct VDAudioFilterDefinition afilterDef_output = {
 	NULL,
 
 	VDAudioFilterOutput::InitProc,
-	VDAudioFilterOutput::DestroyProc,
-	VDAudioFilterOutput::PrepareProc,
-	VDAudioFilterOutput::StartProc,
-	VDAudioFilterOutput::StopProc,
-	VDAudioFilterOutput::RunProc,
-	VDAudioFilterOutput::ReadProc,
-	VDAudioFilterOutput::SeekProc,
-	VDAudioFilterOutput::SerializeProc,
-	VDAudioFilterOutput::DeserializeProc,
-	VDAudioFilterOutput::GetParamProc,
-	VDAudioFilterOutput::SetParamProc,
-	VDAudioFilterOutput::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 extern const struct VDAudioFilterDefinition afilterDef_discard = {
@@ -222,16 +198,5 @@ extern const struct VDAudioFilterDefinition afilterDef_discard = {
 	NULL,
 
 	VDAudioFilterOutput::InitProc,
-	VDAudioFilterOutput::DestroyProc,
-	VDAudioFilterOutput::PrepareProc,
-	VDAudioFilterOutput::StartProc,
-	VDAudioFilterOutput::StopProc,
-	VDAudioFilterOutput::RunProc,
-	VDAudioFilterOutput::ReadProc,
-	VDAudioFilterOutput::SeekProc,
-	VDAudioFilterOutput::SerializeProc,
-	VDAudioFilterOutput::DeserializeProc,
-	VDAudioFilterOutput::GetParamProc,
-	VDAudioFilterOutput::SetParamProc,
-	VDAudioFilterOutput::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

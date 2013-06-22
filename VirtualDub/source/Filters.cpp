@@ -524,21 +524,23 @@ void FilterLoadModule(const char *szModule) {
 			return;		// Module already exists
 	}
 
-	// create the module
-	vdautoptr<FilterModuleInstance> fmi(new FilterModuleInstance(filename));
+	vdprotected1("attempting to load module \"%S\"", const wchar_t *, filename.c_str()) {
+		// create the module
+		vdautoptr<FilterModuleInstance> fmi(new FilterModuleInstance(filename));
 
-	// force the module to load to create filter entries
-	g_filterModules.AddTail(fmi);
+		// force the module to load to create filter entries
+		g_filterModules.AddTail(fmi);
 
-	try {
-		fmi->AttachToModule();
-		fmi->ReleaseModule();
-	} catch(...) {
-		fmi->Remove();
-		throw;
+		try {
+			fmi->AttachToModule();
+			fmi->ReleaseModule();
+		} catch(...) {
+			fmi->Remove();
+			throw;
+		}
+
+		fmi.release();
 	}
-
-	fmi.release();
 }
 
 void FilterUnloadModule(FilterModule *fm) {
@@ -569,7 +571,7 @@ FilterDefinition *FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len)
 			for(; it2; ++it2) {
 				FilterDefinitionInstance& fdi = *it2;
 
-				if (fdi.GetModule() == &fmi) {
+				if (fdi.GetModule() == &fmi && fdi.GetName() == pfd->name) {
 					fdi.Assign(*pfd, fd_len);
 					return const_cast<FilterDefinition *>(&fdi.GetDef());
 				}

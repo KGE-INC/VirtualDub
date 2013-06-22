@@ -557,7 +557,7 @@ BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 
 		case WM_SYSCOMMAND:
 			if ((wParam & 0xFFF0) == SC_CONTEXTHELP) {
-				HelpPopup(hDlg, IDH_CAPTURE_VUMETER);
+				VDShowHelp(hDlg, L"d-capturevumeter.html");
 				return TRUE;
 			}
 			break;

@@ -20,12 +20,15 @@
 
 #include <windows.h>
 
+#include <vd2/system/thread.h>
+#include <vd2/system/atomic.h>
+
 class AVIPipe {
 private:
 	static char me[];
 
-	HANDLE				hEventRead, hEventWrite;
-	CRITICAL_SECTION	critsec;
+	VDSignal			msigRead, msigWrite;
+	VDCriticalSection	mcsQueue;
 
 	volatile struct AVIPipeBuffer {
 		void	*data;
@@ -44,16 +47,14 @@ private:
 	long	cur_read;
 	long	cur_write;
 
-	long	total_audio;
-
-	volatile char	finalize_state;
+	VDAtomicInt		mState;
 
 	enum {
-		FINALIZE_TRIGGERED		= 1,
-		FINALIZE_ACKNOWLEDGED	= 2,
-		FINALIZE_ABORTED		= 4,
-		SYNCPOINT_TRIGGERED		= 8,
-		SYNCPOINT_ACKNOWLEDGED	= 16,
+		kFlagFinalizeTriggered		= 1,
+		kFlagFinalizeAcknowledged	= 2,
+		kFlagAborted				= 4,
+		kFlagSyncTriggered			= 8,
+		kFlagSyncAcknowledged		= 16
 	};
 
 	// These are the same as in VideoSourceAVI
@@ -68,15 +69,20 @@ public:
 	AVIPipe(int buffers, long roundup_size);
 	~AVIPipe();
 
-	BOOL isOkay();
-	BOOL isFinalized();
-	BOOL isNoMoreAudio();
+	VDSignal& getReadSignal() { return msigRead; }
+	VDSignal& getWriteSignal() { return msigWrite; }
 
-	void *getWriteBuffer(long len, int *handle_ptr, DWORD timeout);
+	bool isOkay();
+	bool isFinalized();
+
+	bool full();
+
+	void *getWriteBuffer(long len, int *handle_ptr);
 	void postBuffer(long len, long samples, long dframe, int exdata, int droptype, int handle);
-	void *getReadBuffer(long *len_ptr, long *samples_ptr, long *dframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr, DWORD timeout);
+	void *getReadBuffer(long *len_ptr, long *samples_ptr, long *dframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr);
 	void releaseBuffer(int handle);
 	void finalize();
+	void finalizeAndWait();
 	void abort();
 	bool sync();
 	void syncack();

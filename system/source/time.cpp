@@ -6,6 +6,10 @@
 #include <vd2/system/time.h>
 #include <vd2/system/thread.h>
 
+uint32 VDGetCurrentTick() {
+	return (uint32)GetTickCount();
+}
+
 VDCallbackTimer::VDCallbackTimer()
 	: mTimerID(NULL)
 	, mTimerPeriod(0)

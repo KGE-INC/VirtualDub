@@ -3,6 +3,7 @@
 
 #include <vd2/system/VDString.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/Error.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -137,7 +138,7 @@ sint64 VDGetDiskFreeSpace(const VDStringW& path) {
 	static tpGetDiskFreeSpaceExA spGetDiskFreeSpaceExA;
 	static tpGetDiskFreeSpaceExW spGetDiskFreeSpaceExW;
 
-	if (sbChecked) {
+	if (!sbChecked) {
 		HMODULE hmodKernel = GetModuleHandle("kernel32.dll");
 		spGetDiskFreeSpaceExA = (tpGetDiskFreeSpaceExA)GetProcAddress(hmodKernel, "GetDiskFreeSpaceExA");
 		spGetDiskFreeSpaceExW = (tpGetDiskFreeSpaceExW)GetProcAddress(hmodKernel, "GetDiskFreeSpaceExW");
@@ -174,8 +175,47 @@ sint64 VDGetDiskFreeSpace(const VDStringW& path) {
 		else
 			success = GetDiskFreeSpaceW(rootPath.empty() ? NULL : rootPath.c_str(), &sectorsPerCluster, &bytesPerSector, &freeClusters, &totalClusters);
 
-		return success ? (sint64)((uint64)(sectorsPerCluster * bytesPerSector) * freeClusters) : -1;
+		return success ? (sint64)((uint64)sectorsPerCluster * bytesPerSector * freeClusters) : -1;
 	}
+}
+
+bool VDDoesPathExist(const VDStringW& fileName) {
+	bool bExists;
+
+	if (!(GetVersion() & 0x80000000)) {
+		bExists = ((DWORD)-1 != GetFileAttributesW(fileName.c_str()));
+	} else {
+		bExists = ((DWORD)-1 != GetFileAttributesA(VDFastTextWToA(fileName.c_str())));
+		VDFastTextFree();
+	}
+
+	return bExists;
+}
+
+void VDCreateDirectory(const VDStringW& path) {
+	// can't create dir with trailing slash
+	VDStringW::size_type l(path.size());
+
+	if (l) {
+		const wchar_t c = path[l-1];
+
+		if (c == L'/' || c == L'\\') {
+			VDCreateDirectory(VDStringW(path.c_str(), l-1));
+			return;
+		}
+	}
+
+	BOOL succeeded;
+
+	if (!(GetVersion() & 0x80000000)) {
+		succeeded = CreateDirectoryW(path.c_str(), NULL);
+	} else {
+		succeeded = CreateDirectoryA(VDFastTextWToA(path.c_str()), NULL);
+		VDFastTextFree();
+	}
+
+	if (!succeeded)
+		throw MyWin32Error("Cannot create directory: %%s", GetLastError());
 }
 
 VDStringW VDGetFullPath(const VDStringW& partialPath) {
@@ -208,3 +248,18 @@ VDStringW VDGetFullPath(const VDStringW& partialPath) {
 	}
 }
 
+VDStringW VDMakePath(const VDStringW& base, const VDStringW& file) {
+	if (base.empty())
+		return file;
+
+	VDStringW result(base);
+
+	const wchar_t c = base[base.size() - 1];
+
+	if (c != L'/' && c != L'\\' && c != L'/')
+		result += L'\\';
+
+	result.append(file);
+
+	return result;
+}

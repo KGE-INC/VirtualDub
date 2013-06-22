@@ -1454,9 +1454,6 @@ AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, lon
 	hACStream = NULL;
 	pwfexTempOutput = NULL;
 	inputBuffer = outputBuffer = NULL;
-	holdBuffer = NULL;
-	holdBufferSize = 0;
-	holdBufferOffset = 0;
 
 	// Stupid Microsoft Audio Codec.
 
@@ -1532,11 +1529,14 @@ AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, lon
 	bytesPerOutputSample = oFormat->nBlockAlign;
 
 	fStreamEnded = FALSE;
+
+	mReadOffset = 0;
 }
 
 AudioCompressor::~AudioCompressor() {
 	if (hACStream) {
-		if (ashBuffer.fdwStatus & ACMSTREAMHEADER_STATUSF_PREPARED) acmStreamUnprepareHeader(hACStream, &ashBuffer, 0);
+		if (ashBuffer.fdwStatus & ACMSTREAMHEADER_STATUSF_PREPARED)
+			acmStreamUnprepareHeader(hACStream, &ashBuffer, 0);
 		acmStreamClose(hACStream, 0);
 	}
 	if (hADriver)
@@ -1544,7 +1544,6 @@ AudioCompressor::~AudioCompressor() {
 
 	if (inputBuffer)	freemem(inputBuffer);
 	if (outputBuffer)	freemem(outputBuffer);
-	if (holdBuffer)		freemem(holdBuffer);
 
 	delete[] pwfexTempOutput;
 }
@@ -1591,46 +1590,50 @@ void AudioCompressor::CompensateForMP3() {
 	}
 }
 
-void AudioCompressor::ResizeHoldBuffer(long lNewSize) {
-	void *holdBufferTemp;
+long AudioCompressor::_Read(void *buffer, long samples, long *lplBytes) {
+	long bytesToRead = samples * bytesPerOutputSample;
+	long actualBytes = 0;
 
-	if (holdBufferSize >= lNewSize) return;
+	while(bytesToRead > 0) {
+		long tc = std::min<long>(bytesToRead, ashBuffer.cbDstLengthUsed - mReadOffset);
 
-	if (!(holdBufferTemp = allocmem(holdBufferSize = ((lNewSize + 65535) & -65536))))
-		throw MyError("AudioCompressor: Unable to resize hold buffer");
+		if (tc > 0) {
+			memcpy(buffer, (char *)outputBuffer + mReadOffset, tc);
+			buffer = (char *)buffer + tc;
+			bytesToRead -= tc;
+			mReadOffset += tc;
+			actualBytes += tc;
+			continue;
+		}
 
-	memcpy(holdBufferTemp, holdBuffer, holdBufferOffset);
-	freemem(holdBuffer);
+		if (!Process())
+			break;
+	}
 
-	holdBuffer = holdBufferTemp;
+	VDASSERT(!(actualBytes % bytesPerOutputSample));	// should always be true, since we trim runts in Process()
+
+	if (lplBytes)
+		*lplBytes = actualBytes;
+
+	return actualBytes / bytesPerOutputSample;
 }
 
-void AudioCompressor::WriteToHoldBuffer(void *data, long lBytes) {
-	if (lBytes + holdBufferOffset > holdBufferSize)
-		ResizeHoldBuffer(lBytes + holdBufferOffset);
+bool AudioCompressor::Process() {
+	VDASSERT(mReadOffset >= ashBuffer.cbDstLengthUsed);
 
-	memcpy((char *)holdBuffer + holdBufferOffset, data, lBytes);
-	holdBufferOffset += lBytes;
-}
+	ashBuffer.cbDstLengthUsed = 0;
+	mReadOffset = 0;
 
-void *AudioCompressor::Compress(long lInputSamples, long *lplSrcInputSamples, long *lplOutputBytes, long *lplOutputSamples) {
-	LONG ltActualSamples, ltActualBytes;
-	LONG lActualSrcSamples = 0;
-
-//	_RPT1(0,"Compressor: we want to convert %ld input samples\n", lInputSamples);
-
-	holdBufferOffset = 0;
-
-	while(lInputSamples > 0 && !fStreamEnded) {
-
+	while(!fStreamEnded && !ashBuffer.cbDstLengthUsed) {
 		// fill the input buffer up!
-
 		if (ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE) {
 			LONG lBytes=0;
+			LONG ltActualSamples;
+			LONG ltActualBytes;
 			long lSamplesToRead;
 
 			do {
-				lSamplesToRead = std::min<long>(lInputSamples, (INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength)/bytesPerInputSample);
+				lSamplesToRead = (INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength)/bytesPerInputSample;
 
 				ltActualSamples = source->Read((char *)inputBuffer + ashBuffer.cbSrcLength, lSamplesToRead,
 							&ltActualBytes);
@@ -1638,28 +1641,23 @@ void *AudioCompressor::Compress(long lInputSamples, long *lplSrcInputSamples, lo
 				ashBuffer.cbSrcLength += ltActualBytes;
 
 				lBytes += ltActualBytes;
-
-				lInputSamples -= ltActualSamples;
-				lActualSrcSamples += ltActualSamples;
-
-				_ASSERT(lInputSamples >= 0);
-			} while(ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE && lInputSamples>0 && ltActualBytes);
+			} while(ashBuffer.cbSrcLength < INPUT_BUFFER_SIZE && ltActualBytes);
 
 			if (!ltActualBytes || source->isEnd())
 				fStreamEnded = TRUE;
 		}
 
-		// ask ACM to convert for us
+		if (ashBuffer.cbSrcLength <= 0)
+			return false;
 
+		// ask ACM to convert for us
 		ashBuffer.cbSrcLengthUsed = 0;
 		ashBuffer.cbDstLengthUsed = 0;
 
-	VDCHECKPOINT;
 		vdprotected1("compressing audio using \"%.64s\"", const char *, mDriverName) {
 			if (acmStreamConvert(hACStream, &ashBuffer, fStreamEnded ? ACM_STREAMCONVERTF_END : ACM_STREAMCONVERTF_BLOCKALIGN))
 				throw MyError("Audio Compression Manager (ACM) failure on compress");
 		}
-	VDCHECKPOINT;
 
 		// Check for a jam condition to try to trap that damned 9995 frame
 		// hang problem.
@@ -1667,7 +1665,7 @@ void *AudioCompressor::Compress(long lInputSamples, long *lplSrcInputSamples, lo
 		if (!ashBuffer.cbSrcLengthUsed && !ashBuffer.cbDstLengthUsed) {
 			// The codec didn't do anything.  Uh oh.
 
-			if (lInputSamples > 0 && !fStreamEnded && ashBuffer.cbSrcLength >= INPUT_BUFFER_SIZE) {
+			if (!fStreamEnded && ashBuffer.cbSrcLength >= INPUT_BUFFER_SIZE) {
 				const WAVEFORMATEX& wfsrc = *source->GetFormat();
 				const WAVEFORMATEX& wfdst = *GetFormat();
 
@@ -1696,29 +1694,21 @@ void *AudioCompressor::Compress(long lInputSamples, long *lplSrcInputSamples, lo
 		} else
 			ashBuffer.cbSrcLength = 0;
 
-		// chuck all pending data to the hold buffer
-		//
 		// NOTE: Microsoft ADPCM appears to write a partial block when the
 		//       last part of the input stream is insufficient to end with
 		//		 a full block.  We can't write partial blocks to the AVI
 		//		 file, as AVIFile will ignore it.  So we cut it off.
 
-		if (fStreamEnded)
-			ashBuffer.cbDstLengthUsed -= ashBuffer.cbDstLengthUsed % format->nBlockAlign;
-		WriteToHoldBuffer(outputBuffer, ashBuffer.cbDstLengthUsed);
+		VDASSERT(fStreamEnded || !(ashBuffer.cbDstLengthUsed % format->nBlockAlign));
+
+		ashBuffer.cbDstLengthUsed -= ashBuffer.cbDstLengthUsed % format->nBlockAlign;
 	}
 
-	*lplOutputBytes = holdBufferOffset;
-	*lplOutputSamples = (holdBufferOffset + bytesPerOutputSample - 1) / bytesPerOutputSample;
-	*lplSrcInputSamples = lActualSrcSamples;
-
-//	_RPT2(0,"Compressor: %ld bytes, %ld samples\n", *lplOutputBytes, *lplOutputSamples);
-
-	return holdBuffer;
+	return mReadOffset < ashBuffer.cbDstLengthUsed;
 }
 
 BOOL AudioCompressor::isEnd() {
-	return fStreamEnded;
+	return fStreamEnded && mReadOffset >= ashBuffer.cbDstLengthUsed;
 }
 
 ///////////////////////////////////////////////////////////////////////////

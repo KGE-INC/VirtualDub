@@ -1,0 +1,178 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<style>
+BODY { background: #ffffff; color: #000000 }
+H1 { font-weight: normal; background: #c0e0ff; font-family: Arial }
+H2 { font-weight: normal; border-width: 0; border-bottom-width: 4px; border-color: #60c040; border-style: solid; font-family: Arial }
+U { text-decoration: none; color: #800000 }
+TT { font-family: Lucida Console, monospace }
+PRE { font-family: Lucida Console, monospace }
+DT { color: #800000; margin-top: 4px; margin-bottom: 4px; font-style: italic }
+DD { color: #000000 }
+</style>
+<title>VirtualDub source code - Lina</title>
+</head>
+<body>
+
+<h1>VirtualDub source code - Lina</h1>
+
+<p>
+Lina is the HTML compiler for VirtualDub's help system.
+</p>
+
+<h2>Syntax and input</h2>
+<p>
+	The basic input format to Lina is almost XML, but not quite:
+</p>
+<ul>
+	<li>
+		All elements are either paired (<tt>&lt;p&gt;...&lt;/p&gt;</tt>), or are self-closed
+		(&lt;p/&gt;).  There are no &quot;provisionally open&quot; tags, as in HTML 4 Transitional.
+		Lina enforces this and thus makes it impossible to forget a closing tag.
+	</li>
+
+	<li>
+		Correct tag pairing is enforced -- you cannot mix up end tags.
+	</li>
+
+	<li>
+		The starting document must have only one root tag.
+	</li>
+
+	<li>
+		XML violations: A schema/DTD is not required or used if present. Entities are not parsed. Attributes need not
+		be quoted and attribute minimization (no value) is allowed.
+	</li>
+</ul>
+<p>
+Lina constructs a parse tree from her input and uses that tree to write output.  Attributes are quoted as necessary,
+standalone tags are written without the self-close for greatest compatibility, and redundant whitespace is removed.
+As a result, it is difficult to make common HTML structural errors.
+</p>
+
+<h2>Parsing phase</h2>
+
+<p>
+All control tags are of the form <tt>&lt;lina:</tt>xxxx<tt>&gt;</tt>.  Two of these tags are special and execute as
+soon as they are parsed:
+</p>
+<ul>
+	<li><tt>&lt;lina:include src=</tt>file<tt>/&gt;</tt> begins parsing of a separate file at the current tree point.
+		This inclusion is done on a file basis, so it is possible to begin a tag in one file and end it in another.
+		When the included file has been processed, parsing resumes in the original file.
+	</li>
+	<li><tt>&lt;lina:macro name=</tt>name<tt>&gt;</tt> creates a macro with the given name, containing the given
+		contents.  The macro is callable via the same <tt>&lt;lina:</tt>xxxx<tt>&gt;</tt> syntax.
+	</li>
+</ul>
+<p>
+These immediate tags are never placed in the tree; all other control tags are put in the tree and execute only
+after the entire tree has been parsed.
+</p>
+<p>
+Lina requires that non-space character data only appear within tags that allow them, and will error if it is present
+elsewhere, such as immediately inside an <tt>&lt;html&gt;</tt> tag.  The list of tags allowing CDATA can be augmented
+using <tt>&lt;lina:set-option&gt;</tt>.
+</p>
+
+<h2>Execution phase</h2>
+
+<p>
+After parsing is complete, Lina then executes the parse tree from top to bottom:
+</p>
+
+<ul>
+	<li>Text is output.</li>
+	<li>Regular tags output themselves and their children.</li>
+	<li>Macro and command tags fire when encountered.</li>
+</ul>
+
+<p>
+In the process of doing so, three separate stacks are maintained:
+</p>
+
+<ul>
+	<li><b>Execution stack</b>: Holds all tags currently being executed.</li>
+	<li><b>Context stack</b>: Holds tags that establish reference points for data references -- macro calls, tag iterations.  Relative
+		paths use the top-of-stack as the starting point.</li>
+	<li><b>Construction stack</b>: Holds tags and files that are currently being created.</li>
+</ul>
+
+<p>
+When tags are being constructed, plain text and tags copy themselves into the new tag. If a file is being written,
+the tags are output to that file. Otherwise, the output is discarded.
+</p>
+
+<h2>Control tags</h2>
+<dl>
+	<dt><tt>&lt;lina:apply name="macro"&gt;</tt>...<tt>&lt;/lina:apply&gt;</tt></dt>
+	<dd>Apply the named macro with each of the enclosed children as the given context.</dd>
+
+	<dt><tt>&lt;lina:arg name="argname"/&gt;</tt></dt>
+	<dd>Output the named attribute argument from the current macro context.</dd>
+
+	<dt><tt>&lt;lina:attrib name="att-name"&gt;</tt>...<tt>&lt;/lina:attrib&gt;</tt></dt>
+	<dd>Create an attribute in the currently constructing tag with the given contents.</dd>
+
+	<dt><tt>&lt;lina:cdata&gt;</tt>...<tt>&lt;/lina:cdata&gt;</tt></dt>
+	<dd>Insert the enclosed text and tags with whitespace collapsing enabled.</dd>
+
+	<dt><tt>&lt;lina:data&gt;</tt>...<tt>&lt;/lina:data&gt;</tt></dt>
+	<dd>Prohibit execution of enclosed tags.  This tag is skipped during path searches.</dd>
+
+	<dt><tt>&lt;lina:delay&gt;</tt>...<tt>&lt;/lina:delay&gt;</tt></dt>
+	<dd>Copy tags verbatim without execution into the output.</dd>
+
+	<dt><tt>&lt;lina:dump-stack/&gt;</tt></dt>
+	<dd>Dump current stacks to standard output for debugging.</dd>
+
+	<dt><tt>&lt;lina:fireball src="src-file" dst="dst-file"&gt;</tt></dt>
+	<dd>Copy a file.</dd>
+
+	<dt><tt>&lt;lina:for-each name="path"&gt;</tt>...<tt>&lt;/lina:for-each&gt;</tt></dt>
+	<dd>Execute the tag body as a macro, with all tags referenced by the given path as the contexts.</dd>
+
+	<dt><tt>&lt;lina:if-arg name="arg-name"&gt;</tt>...<tt>&lt;/lina:if-arg&gt;</tt></dt>
+	<dd>Executes the tag body only if the current macro context has the named attribute argument.</dd>
+
+	<dt><tt>&lt;lina:if-not-arg name="tag-name"&gt;</tt>...<tt>/&lt;lina:if-not-arg&gt;</tt></dt>
+	<dd>Executes the tag body only if the current macro context does not have the named attribute argument.</dd>
+
+	<dt><tt>&lt;lina:if-not-present name="tag-name"&gt;</tt>...<tt>&lt;/lina:if-not-present&gt;</tt></dt>
+	<dd>Executes the tag body only if the current macro context does not have the named tag.</dd>
+
+	<dt><tt>&lt;lina:if-present name="tag-name"&gt;</tt>...<tt>&lt;/lina:if-present&gt;</tt></dt>
+	<dd>Executes the tag body only if the current macro context has the named tag.</dd>
+
+	<dt><tt>&lt;lina:pre&gt;</tt>...<tt>&lt;/lina:pre&gt;</tt></dt>
+	<dd>Insert the enclosed text and tags without whitespace collapsing enabled.</dd>
+	
+	<dt><tt>&lt;lina:pull name="path"/&gt;</tt></dt>
+	<dd>Execute the contents of the tag specified by the given path in the current context.</dd>
+
+	<dt><tt>&lt;lina:replace from="pattern" to="result"&gt;</tt>...<tt>&lt;/lina:replace&gt;</tt></dt>
+	<dd>Execute the tag contents, replace all instances of <i>pattern</i> with <i>result</i> in the output, and
+		place the output into a new string tag.</dd>
+
+	<dt><tt>&lt;lina:set-option name="link-truncate" baseurl="base-url" [notruncate]&gt;</tt></dt>
+	<dd>Toggles extension truncation for links with the given prefix.</dd>
+
+	<dt><tt>&lt;lina:set-option name="output-dir" target="path"&gt;</tt></dt>
+	<dd>Sets the output directory for file writes and file copies.</dd>
+
+	<dt><tt>&lt;lina:set-option name="tag-info" tag="tag-name" cdata="y"|"n"&gt;</tt></dt>
+	<dd>Allows or disallows inline character data (CDATA) for the given tags.</dd>
+
+	<dt><tt>&lt;lina:source&gt;</tt>...<tt>&lt;/lina:source&gt;</tt></dt>
+	<dd>Output the source to the enclosed tag structure as text in HTML.</dd>
+
+	<dt><tt>&lt;lina:tag name="tag-name"&gt;</tt>...<tt>&lt;/lina:tag&gt;</tt></dt>
+	<dd>Create a tag with the given name and body as contents, and then execute the created tag.</dd>
+
+	<dt><tt>&lt;lina:write file="filename"&gt;</tt>...<tt>&lt;/lina:write&gt;</tt></dt>
+	<dd>Execute the given body and write the output to a file.</dd>
+</dl>
+
+</body>
+</html>

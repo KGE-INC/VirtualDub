@@ -134,6 +134,7 @@ BEGIN
         MENUITEM "Copy output frame to clipboard\tCtrl+2", 
                                                 ID_VIDEO_COPYOUTPUTFRAME
         MENUITEM "Scan video stream for errors....", ID_VIDEO_SCANFORERRORS
+        MENUITEM "&Error mode...",              ID_VIDEO_ERRORMODE
     END
     POPUP "&Audio"
     BEGIN
@@ -153,9 +154,15 @@ BEGIN
         MENUITEM "Direct stream copy",          ID_AUDIO_MODE_DIRECT
         , CHECKED
         MENUITEM "Full processing mode",        ID_AUDIO_MODE_FULL
+        MENUITEM SEPARATOR
+        MENUITEM "&Error mode...",              ID_AUDIO_ERRORMODE
     END
     POPUP "&Options"
     BEGIN
+        MENUITEM "Show &log...\tF8",            ID_OPTIONS_SHOWLOG
+        MENUITEM "Show real-time profiler\tShift-F8", 
+                                                ID_OPTIONS_SHOWPROFILER
+        MENUITEM SEPARATOR
         MENUITEM "&Performance...",             ID_OPTIONS_PERFORMANCE
         MENUITEM "Dynamic Compilation...",      ID_OPTIONS_DYNAMICCOMPILATION
 
@@ -590,7 +597,7 @@ BEGIN
     LTEXT           "",IDC_FRAMERATE_SAMELENGTH_VALUE,173,40,79,8
     LTEXT           "Note: Changing the framerate will cause audio/video desynchronization.",
                     IDC_STATIC,13,52,227,8
-    GROUPBOX        "Frame rate decimation ",IDC_STATIC,7,67,297,59
+    GROUPBOX        "Frame rate conversion",IDC_STATIC,7,67,297,59
     CONTROL         "Process all frames",IDC_DECIMATE_1,"Button",
                     BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,78,73,10
     CONTROL         "Process every other frame (decimate by 2)",
@@ -598,11 +605,13 @@ BEGIN
     CONTROL         "Process every third frame (decimate by 3)",
                     IDC_DECIMATE_3,"Button",BS_AUTORADIOBUTTON,15,99,145,10
     CONTROL         "Decimate by",IDC_DECIMATE_N,"Button",BS_AUTORADIOBUTTON,
-                    15,109,55,10
+                    15,109,55,12
+    CONTROL         "Convert to fps:",IDC_DECIMATE_TARGET,"Button",
+                    BS_AUTORADIOBUTTON,179,78,60,12
     EDITTEXT        IDC_DECIMATE_VALUE,70,108,40,12,ES_AUTOHSCROLL | 
                     WS_GROUP
-    CTEXT           "\nFramerate decimation will not affect a/v sync.",
-                    IDC_STATIC,195,81,101,37,0,WS_EX_CLIENTEDGE
+    EDITTEXT        IDC_FRAMERATE_TARGET,244,78,40,12,ES_AUTOHSCROLL | 
+                    WS_GROUP
     GROUPBOX        "Inverse telecine (3:2 pulldown removal)",IDC_STATIC,7,
                     130,297,62
     CONTROL         "None (progressive)",IDC_IVTC_OFF,"Button",
@@ -662,7 +671,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.5.1 - Copyright (C) 1998-2003 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.5.2 - Copyright (C) 1998-2003 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1133,12 +1142,11 @@ BEGIN
     EDITTEXT        IDC_FSNAME,141,7,100,13,ES_AUTOHSCROLL
 END
 
-IDD_CAPTURE_HISTOGRAM DIALOGEX 0, 0, 14, 14
+IDD_CAPTURE_HISTOGRAM DIALOG DISCARDABLE  0, 0, 14, 14
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
     WS_SYSMENU
-EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Histogram"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
 END
 
@@ -1877,19 +1885,6 @@ BEGIN
                     8
 END
 
-IDD_WARN_MPEG4 DIALOG DISCARDABLE  0, 0, 286, 82
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "VirtualDub warning"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    DEFPUSHBUTTON   "Yes",IDOK,89,61,50,14
-    PUSHBUTTON      "No",IDCANCEL,146,61,50,14
-    CONTROL         "Do not show this warning again.",IDC_NOMORE,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,83,41,117,10
-    LTEXT           "The file you are opening requires the Microsoft MPEG-4 V2/V3 codec, but VirtualDub has detected that your version of the codec may refuse to decompress the file.  Do you wish to see more information on this problem?",
-                    IDC_STATIC,7,7,272,29
-END
-
 IDD_FILTER_PREVIEW DIALOG DISCARDABLE  0, 0, 159, 79
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_VISIBLE | WS_CAPTION | 
     WS_SYSMENU
@@ -2249,8 +2244,8 @@ FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "&Find next",IDC_FIND,218,7,50,14
     PUSHBUTTON      "Close",IDCANCEL,218,24,50,14
-    EDITTEXT        IDC_STRING,27,10,182,12,ES_AUTOHSCROLL
     LTEXT           "Fi&nd:",IDC_STATIC,7,10,16,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_STRING,27,10,182,12,ES_AUTOHSCROLL
     CONTROL         "&Hexadecimal search string",IDC_HEX,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,27,32,99,10
     CONTROL         "&Case insensitive search",IDC_CASELESS,"Button",
@@ -2436,12 +2431,13 @@ BEGIN
                     ES_READONLY | NOT WS_BORDER
     LTEXT           "",IDC_CRASH_HELP,7,7,300,38
     PUSHBUTTON      "Save...",IDC_SAVE,314,24,50,14
+    PUSHBUTTON      "Help...",IDC_HELP2,314,58,50,14
 END
 
 IDD_AF_SETUP DIALOGEX 0, 0, 350, 229
 STYLE DS_MODALFRAME | WS_POPUP | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU
 CAPTION "Audio filters"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     PUSHBUTTON      "OK",IDOK,293,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,24,50,14
@@ -2459,30 +2455,36 @@ BEGIN
     PUSHBUTTON      "Con&figure",IDC_CONFIGURE,293,134,50,14
 END
 
-IDD_AF_XPASS DIALOG DISCARDABLE  0, 0, 150, 50
+IDD_AF_XPASS DIALOG DISCARDABLE  0, 0, 175, 61
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
     WS_SYSMENU
 CAPTION "filter: lowpass/highpass"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,93,29,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,39,29,50,14
-    LTEXT           "Cutoff frequency (Hz)",IDC_STATIC,7,7,53,12,
+    DEFPUSHBUTTON   "OK",IDOK,118,40,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,64,40,50,14
+    LTEXT           "Cutoff frequency (Hz)",IDC_STATIC,7,7,81,12,
                     SS_CENTERIMAGE
-    EDITTEXT        IDC_CUTOFF,73,7,70,12,ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_CUTOFF,98,7,70,12,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Filter taps (quality)",IDC_STATIC,7,21,81,12,
+                    SS_CENTERIMAGE
+    EDITTEXT        IDC_TAPS,98,21,70,12,ES_AUTOHSCROLL | ES_NUMBER
 END
 
-IDD_AF_RESAMPLE DIALOG DISCARDABLE  0, 0, 172, 50
+IDD_AF_RESAMPLE DIALOG DISCARDABLE  0, 0, 172, 58
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
     WS_SYSMENU
 CAPTION "filter: resample"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,115,29,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,61,29,50,14
+    DEFPUSHBUTTON   "OK",IDOK,115,37,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,61,37,50,14
     LTEXT           "Target frequency (Hz)",IDC_STATIC,7,7,77,12,
                     SS_CENTERIMAGE
     EDITTEXT        IDC_FREQ,95,7,70,12,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Filter taps (quality)",IDC_STATIC,7,21,81,12,
+                    SS_CENTERIMAGE
+    EDITTEXT        IDC_TAPS,95,21,70,12,ES_AUTOHSCROLL | ES_NUMBER
 END
 
 IDD_AF_PITCHSHIFT DIALOG DISCARDABLE  0, 0, 172, 50
@@ -2530,6 +2532,90 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,61,29,50,14
     LTEXT           "Gain",IDC_STATIC,7,7,77,12,SS_CENTERIMAGE
     EDITTEXT        IDC_FACTOR,95,7,70,12,ES_AUTOHSCROLL
+END
+
+IDD_LOG DIALOG DISCARDABLE  0, 0, 270, 158
+STYLE DS_3DLOOK | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE | 
+    WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "VirtualDub Log"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL         "",IDC_LOG,"phaeronLogWindowControl",WS_VSCROLL | 
+                    WS_TABSTOP,7,7,256,144
+END
+
+IDD_ERRORMODE DIALOG DISCARDABLE  0, 0, 219, 106
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Decoder error mode"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "Decoder error mode",IDC_STATIC,7,7,205,48
+    CONTROL         "&Report all errors",IDC_ERROR_REPORTALL,"Button",
+                    BS_AUTORADIOBUTTON,13,17,65,10
+    CONTROL         "&Conceal errors and resume decoding at next keyframe",
+                    IDC_ERROR_CONCEAL,"Button",BS_AUTORADIOBUTTON,13,28,185,
+                    10
+    CONTROL         "&Decode even if the result may be garbled",
+                    IDC_ERROR_DECODE,"Button",BS_AUTORADIOBUTTON,13,39,145,
+                    10
+    LTEXT           "Note: Some errors cannot be concealed or ignored -- including, but not limited to, a crash in a third-party driver.",
+                    IDC_STATIC,7,61,205,22
+    DEFPUSHBUTTON   "OK",IDOK,109,85,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,162,85,50,14
+    PUSHBUTTON      "Save as default",IDC_SAVEASDEFAULT,7,85,60,14
+END
+
+IDD_WITHERRORS DIALOGEX 0, 0, 309, 183
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "VirtualDub Warning"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,162,50,14
+    LTEXT           "Some warnings were issued during the previous operation:",
+                    IDC_STATIC,7,7,295,8
+    CONTROL         "",IDC_LOG,"phaeronLogWindowControl",WS_VSCROLL | 
+                    WS_TABSTOP,7,19,295,136,WS_EX_CLIENTEDGE
+END
+
+IDD_JOBLOG DIALOGEX 0, 0, 309, 183
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "VirtualDub Job Log"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,162,50,14
+    LTEXT           "Some warnings were issued during the batch operation:",
+                    IDC_STATIC,7,7,295,8
+    CONTROL         "",IDC_LOG,"phaeronLogWindowControl",WS_VSCROLL | 
+                    WS_TABSTOP,7,19,295,136,WS_EX_CLIENTEDGE
+END
+
+IDD_DUBBING_LOG DIALOGEX 0, 0, 172, 102
+STYLE DS_CONTROL | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_LOG,"phaeronLogWindowControl",WS_VSCROLL | 
+                    WS_TABSTOP,7,7,158,88,WS_EX_CLIENTEDGE
+END
+
+IDD_PROFILER DIALOG DISCARDABLE  0, 0, 270, 158
+STYLE DS_3DLOOK | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE | 
+    WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "VirtualDub Real-Time Profiler"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL         "",IDC_PROFILE,"phaeronRTProfileDisplay",WS_TABSTOP,7,7,
+                    256,144
+END
+
+IDD_AF_NEWRATE DIALOG DISCARDABLE  0, 0, 172, 50
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "filter: new rate"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,115,29,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,61,29,50,14
+    LTEXT           "New frequency (Hz)",IDC_STATIC,7,7,77,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_FREQ,95,7,70,12,ES_AUTOHSCROLL
 END
 
 
@@ -3088,14 +3174,6 @@ BEGIN
         BOTTOMMARGIN, 37
     END
 
-    IDD_WARN_MPEG4, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 279
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 75
-    END
-
     IDD_FILTER_PREVIEW, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3328,9 +3406,9 @@ BEGIN
     IDD_AF_XPASS, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 143
+        RIGHTMARGIN, 168
         TOPMARGIN, 7
-        BOTTOMMARGIN, 43
+        BOTTOMMARGIN, 54
     END
 
     IDD_AF_RESAMPLE, DIALOG
@@ -3338,7 +3416,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 165
         TOPMARGIN, 7
-        BOTTOMMARGIN, 43
+        BOTTOMMARGIN, 51
     END
 
     IDD_AF_PITCHSHIFT, DIALOG
@@ -3367,6 +3445,62 @@ BEGIN
     END
 
     IDD_AF_GAIN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 165
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 43
+    END
+
+    IDD_LOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 263
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 151
+    END
+
+    IDD_ERRORMODE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 212
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 99
+    END
+
+    IDD_WITHERRORS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 302
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 176
+    END
+
+    IDD_JOBLOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 302
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 176
+    END
+
+    IDD_DUBBING_LOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 165
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 95
+    END
+
+    IDD_PROFILER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 263
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 151
+    END
+
+    IDD_AF_NEWRATE, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 165
@@ -3416,6 +3550,8 @@ BEGIN
     VK_F5,          ID_FILE_PREVIEWAVI,     VIRTKEY, NOINVERT
     VK_F7,          ID_FILE_SAVEAVI,        VIRTKEY, NOINVERT
     VK_F7,          ID_FILE_SAVECOMPATIBLEAVI, VIRTKEY, SHIFT, NOINVERT
+    VK_F8,          ID_OPTIONS_SHOWLOG,     VIRTKEY, NOINVERT
+    VK_F8,          ID_OPTIONS_SHOWPROFILER, VIRTKEY, SHIFT, NOINVERT
     VK_F9,          ID_OPTIONS_DISPLAYINPUTVIDEO, VIRTKEY, NOINVERT
     VK_HOME,        ID_EDIT_SETSELSTART,    VIRTKEY, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_PREV,     VIRTKEY, NOINVERT
@@ -3471,8 +3607,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,5,1,0
- PRODUCTVERSION 1,5,1,0
+ FILEVERSION 1,5,2,0
+ PRODUCTVERSION 1,5,2,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3490,14 +3626,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.5.1\0"
+            VALUE "FileVersion", "1.5.2\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.5.1\0"
+            VALUE "ProductVersion", "1.5.2\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3533,14 +3669,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4.13\0"
+            VALUE "FileVersion", "1.5.2\0"
             VALUE "InternalName", "VirtualDub\0"
-            VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.13\0"
+            VALUE "ProductVersion", "1.5.2\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -3583,17 +3719,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.5.1 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.5.1"
-    IDS_TITLE_IDLE          "VirtualDub 1.5.1 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.5.1 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.1"
+    IDS_TITLE_INITIAL       "VirtualDub 1.5.2 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.5.2"
+    IDS_TITLE_IDLE          "VirtualDub 1.5.2 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.5.2 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.2"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.5.1 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.5.1 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.1 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.1 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.5.1 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.5.2 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.5.2 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.2 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.2 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.5.2 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

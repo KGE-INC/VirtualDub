@@ -8,6 +8,8 @@
 typedef void *VDThreadHandle;
 typedef unsigned VDThreadID;
 
+VDThreadID VDGetCurrentThreadID();
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	VDThread

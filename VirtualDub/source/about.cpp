@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2003 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -54,7 +54,7 @@ typedef unsigned short Pixel16;
 // Triangle setup based on Chris Hecker's GDM article on texture mapping.
 // We define pixel centers on the display to be at integers.
 
-void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt *pt2, TriPt *pt3) {
+void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt *pt2, TriPt *pt3, uint32 s) {
 	TriPt *pt, *pl, *pr;
 
 	// Find top point
@@ -95,8 +95,8 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	one_over_A = 1.0 / A;
 	dudx = ((pr->u - pl->u) * (pt->y - pl->y) - (pt->u - pl->u) * (pr->y - pl->y)) * one_over_A;
 	dvdx = ((pr->v - pl->v) * (pt->y - pl->y) - (pt->v - pl->v) * (pr->y - pl->y)) * one_over_A;
-	dudy = ((pr->u - pl->u) * (pt->x - pl->x) - (pt->u - pl->u) * (pr->x - pl->x)) * -one_over_A;
-	dvdy = ((pr->v - pl->v) * (pt->x - pl->x) - (pt->v - pl->v) * (pr->x - pl->x)) * -one_over_A;
+	dudy = ((pt->u - pl->u) * (pr->x - pl->x) - (pr->u - pl->u) * (pt->x - pl->x)) * one_over_A;
+	dvdy = ((pt->v - pl->v) * (pr->x - pl->x) - (pr->v - pl->v) * (pt->x - pl->x)) * one_over_A;
 
 	dudxi = (long)(dudx * 16777216.0);
 	dvdxi = (long)(dvdx * 16777216.0);
@@ -208,6 +208,8 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	else if (dvdx > 0)		v_correct = 0;
 	else if (dvl1 < 0)		v_correct = -1;
 
+	s = (s>>3) + (s>>7);
+
 /*	if (y < 0)
 		y = 0;
 
@@ -253,7 +255,12 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 			int A = tex[(u>>24) + (v>>24)*32];
 			int B = dst[x1];
 
-			dst[x1] = ((A&0x7bde)>>1) + ((B>>1)&0x3def) + (A&B&0x0421);
+//			dst[x1] = (((A^B) & 0x7bde)>>1) + (A&B);
+
+			uint16 p0 = (((A^B ) & 0x7bde)>>1) + (A&B);
+			uint16 p  = (((A^p0) & 0x7bde)>>1) + (A&B);
+			dst[x1] = (uint16)(((((p&0x007c1f)*s + 0x004010) & 0x0f83e0) + (((p&0x0003e0)*s + 0x000200) & 0x007c00)) >> 5);
+
 			++x1;
 
 			u += dudxi;
@@ -320,6 +327,7 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 	static RECT rBounce;
 	static RECT rDirtyLast;
 	static int xpos, ypos, xvel, yvel;
+	static double cubeside;
 	static double vx[8][3];
 	static const int faces[6][4] = {
 		{ 0, 1, 4, 5 },
@@ -441,6 +449,8 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 									HICON hico = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_VIRTUALDUB));
 
+									RECT rFill = {0,0,32,32};
+									FillRect(g_hdcAboutDisplay, &rFill, (HBRUSH)(COLOR_3DFACE+1));
 									DrawIcon(g_hdcAboutDisplay, 0, 0, hico);
 
 									GdiFlush();
@@ -465,6 +475,8 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 											vx[i][1] = i&2 ? -rs : +rs;
 											vx[i][2] = i&4 ? -rs : +rs;
 										}
+
+										cubeside = rs + rs;
 
 										rBounce.left = rBounce.top = (int)ceil(rs*1.8);
 										rBounce.right = r.right - rBounce.left;
@@ -628,18 +640,51 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 				v[2].u = 32;	v[2].v = 0;
 				v[3].u = 32;	v[3].v = 32;
 
-				for(int f=0; f<6; f++) {
-					v[0].x = vx[faces[f][0]][0] + xpos;
-					v[0].y = vx[faces[f][0]][1] + ypos;
-					v[1].x = vx[faces[f][1]][0] + xpos;
-					v[1].y = vx[faces[f][1]][1] + ypos;
-					v[2].x = vx[faces[f][2]][0] + xpos;
-					v[2].y = vx[faces[f][2]][1] + ypos;
-					v[3].x = vx[faces[f][3]][0] + xpos;
-					v[3].y = vx[faces[f][3]][1] + ypos;
+				const float lightdir[3]={
+					0.57735026918962576450914878050196f / (cubeside*cubeside),
+					0.57735026918962576450914878050196f / (cubeside*cubeside),
+					0.57735026918962576450914878050196f / (cubeside*cubeside),
+				};
 
-					RenderTriangle((Pixel16 *)g_vbAboutDst.Address32(0,0), -g_vbAboutDst.pitch/2, tex, v+0, v+1, v+2);
-					RenderTriangle((Pixel16 *)g_vbAboutDst.Address32(0,0), -g_vbAboutDst.pitch/2, tex, v+2, v+1, v+3);
+				for(int f=0; f<6; f++) {
+					const int f0 = faces[f][0];
+					const int f1 = faces[f][1];
+					const int f2 = faces[f][2];
+					const int f3 = faces[f][3];
+
+					v[0].x = vx[f0][0] + xpos;
+					v[0].y = vx[f0][1] + ypos;
+					v[1].x = vx[f1][0] + xpos;
+					v[1].y = vx[f1][1] + ypos;
+					v[2].x = vx[f2][0] + xpos;
+					v[2].y = vx[f2][1] + ypos;
+					v[3].x = vx[f3][0] + xpos;
+					v[3].y = vx[f3][1] + ypos;
+
+					const float side0[3]={
+						vx[f1][0] - vx[f0][0],
+						vx[f1][1] - vx[f0][1],
+						vx[f1][2] - vx[f0][2]
+					};
+
+					const float side1[3]={
+						vx[f2][0] - vx[f0][0],
+						vx[f2][1] - vx[f0][1],
+						vx[f2][2] - vx[f0][2]
+					};
+
+					const float normal[3]={
+						side0[1]*side1[2] - side0[2]*side1[1],
+						side0[2]*side1[0] - side0[0]*side1[2],
+						side0[0]*side1[1] - side0[1]*side1[0]
+					};
+
+					float shade = normal[0]*lightdir[0] + normal[1]*lightdir[1] + normal[2]*lightdir[2];
+
+					uint32 alpha = VDRoundToInt((1.5f + 0.5f*shade) * 127.5f);
+
+					RenderTriangle((Pixel16 *)g_vbAboutDst.Address32(0,0), -g_vbAboutDst.pitch/2, tex, v+0, v+1, v+2, alpha);
+					RenderTriangle((Pixel16 *)g_vbAboutDst.Address32(0,0), -g_vbAboutDst.pitch/2, tex, v+2, v+1, v+3, alpha);
 				}
 
 				InvalidateRect(hDlg, &rDirty2, FALSE);

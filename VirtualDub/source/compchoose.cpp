@@ -709,7 +709,7 @@ BOOL CALLBACK ChooseCompressorDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hdlg, lphi->iCtrlId, dwHelpLookup);
+					VDShowHelp(hdlg, L"d-videocompression.html");
 			}
 			return TRUE;
 	}

@@ -26,7 +26,7 @@ CFG=system - Win32 Debug
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName "system"
 # PROP Scc_LocalPath "."
-CPP=xicl6.exe
+CPP=cl.exe
 RSC=rc.exe
 
 !IF  "$(CFG)" == "system - Win32 Release"
@@ -42,13 +42,13 @@ RSC=rc.exe
 # PROP Intermediate_Dir "..\obj\Release\system"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /Gy /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -71,7 +71,7 @@ LIB32=xilink6.exe -lib
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -87,14 +87,14 @@ LIB32=xilink6.exe -lib
 # PROP Output_Dir "..\lib\ReleaseICL"
 # PROP Intermediate_Dir "..\obj\ReleaseICL\system"
 # PROP Target_Dir ""
-# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /Gy /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /Gy /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LIB32=xilink6.exe -lib
+LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
@@ -146,11 +146,19 @@ SOURCE=.\source\list.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\log.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\math.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=.\source\memory.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\profile.cpp
 # End Source File
 # Begin Source File
 
@@ -208,6 +216,10 @@ SOURCE=.\source\VDScheduler.cpp
 
 SOURCE=.\source\VDString.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=.\source\zip.cpp
+# End Source File
 # End Group
 # Begin Group "Header Files"
 
@@ -227,6 +239,10 @@ SOURCE=..\h\vd2\system\debugx86.h
 # Begin Source File
 
 SOURCE=..\h\VD2\system\Error.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\system\file.h
 # End Source File
 # Begin Source File
 
@@ -250,11 +266,19 @@ SOURCE=..\h\VD2\system\list.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\h\vd2\system\log.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\h\vd2\system\math.h
 # End Source File
 # Begin Source File
 
 SOURCE=..\h\VD2\system\memory.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\system\profile.h
 # End Source File
 # Begin Source File
 
@@ -331,6 +355,10 @@ SOURCE=..\h\VD2\system\VDString.h
 # Begin Source File
 
 SOURCE=..\h\VD2\system\vdtypes.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\system\zip.h
 # End Source File
 # End Group
 # End Target

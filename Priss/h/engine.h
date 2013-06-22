@@ -42,6 +42,7 @@ public:
 	void	ReadHeader();
 	void	PrereadFrame();
 	bool	DecodeFrame();
+	void	ConcealFrame();
 
 protected:
 	bool	DecodeLayerI();

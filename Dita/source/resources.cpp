@@ -8,30 +8,45 @@
 #include <map>
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/log.h>
 #include <vd2/Dita/resources.h>
 
-typedef std::map<int, int> tStringSet;
-typedef std::map<int, tStringSet> tStringSetList;
-typedef std::map<int, std::vector<unsigned char> > tDialogList;
-typedef std::map<int, std::vector<unsigned char> > tDialogTemplateList;
+namespace {
+	typedef std::map<int, int> tStringSet;
+	typedef std::map<int, tStringSet> tStringSetList;
+	typedef std::map<int, std::vector<unsigned char> > tDialogList;
+	typedef std::map<int, std::vector<unsigned char> > tDialogTemplateList;
 
-struct VDModuleResources {
-	std::vector<wchar_t>	stringHeap;
-	tStringSetList			stringTable;
-	tDialogList				dialogs;
-	tDialogTemplateList		dlgTemplates;
-};
+	struct VDModuleResources {
+		std::vector<wchar_t>	stringHeap;
+		tStringSetList			stringTable;
+		tDialogList				dialogs;
+		tDialogTemplateList		dlgTemplates;
+	};
 
-typedef std::map<int, VDModuleResources> tModuleResourceList;
+	typedef std::map<int, VDModuleResources> tModuleResourceList;
 
-// Don't make this a static object -- VC7's STL is unsafe with static containers.
-tModuleResourceList *g_pModuleResources;
+	// Don't make this a static object -- VC7's STL is unsafe with static containers.
+	tModuleResourceList *g_pModuleResources;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void VDInitResourceSystem() {
+	if (!g_pModuleResources)
+		g_pModuleResources = new tModuleResourceList;
+}
+
+void VDDeinitResourceSystem() {
+	delete g_pModuleResources;
+	g_pModuleResources = NULL;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
 // This is not a fully compliant SCSU decoder.
 
-void DecompressSCSU(std::vector<wchar_t>& heap, const unsigned char *src, int len) {
+void VDDecompressSCSU(std::vector<wchar_t>& heap, const unsigned char *src, int len) {
 	enum {
 		kSQn		= 0x01,		// 01-08 ch		Quote from window n
 
@@ -202,7 +217,7 @@ bool VDLoadResources(int moduleID, const void *src0, int length) {
 					// decompress string
 
 					strset[strid] = module.stringHeap.size();
-					DecompressSCSU(module.stringHeap, src2, size);
+					VDDecompressSCSU(module.stringHeap, src2, size);
 
 					src2 += size;
 				}
@@ -272,6 +287,46 @@ void VDUnloadResources(int moduleID) {
 	g_pModuleResources->erase(moduleID);
 }
 
+///////////////////////////////////////////////////////////////////////////
+
+void VDLoadStaticStringTableA(int moduleID, int tableID, const char *const *pStrings) {
+	VDModuleResources& modres = (*g_pModuleResources)[moduleID];
+	tStringSet& sset = modres.stringTable[tableID];
+	int id = 0;
+
+	while(const char *s = *pStrings++) {
+		VDStringW ws(VDTextAToW(s));
+
+		int pos = modres.stringHeap.size();
+
+		modres.stringHeap.resize(pos + ws.size() + 1);
+		modres.stringHeap[pos + ws.size()] = 0;
+		ws.copy(&modres.stringHeap[pos], ws.size());
+
+		sset[id++] = pos;
+	}
+}
+
+void VDLoadStaticStringTableW(int moduleID, int tableID, const wchar_t *const *pStrings) {
+	VDModuleResources& modres = (*g_pModuleResources)[moduleID];
+	tStringSet& sset = modres.stringTable[tableID];
+	int id = 0;
+
+	while(const wchar_t *ws = *pStrings++) {
+		size_t wslen = wcslen(ws);
+
+		int pos = modres.stringHeap.size();
+
+		modres.stringHeap.resize(pos + wslen + 1);
+		modres.stringHeap[pos + wslen] = 0;
+		std::copy(ws, ws+wslen, &modres.stringHeap[pos]);
+
+		sset[id++] = pos;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 const wchar_t *VDTryLoadString(int moduleID, int table, int id) {
 	tModuleResourceList::iterator itModule = (*g_pModuleResources).find(moduleID);
 
@@ -327,3 +382,17 @@ const unsigned char *VDLoadTemplate(int moduleID, int id) {
 
 	return NULL;
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+void VDLogAppMessage(int loglevel, int table, int id) {
+	VDLog(loglevel, VDStringW(VDLoadString(0, table, id)));
+}
+
+void VDLogAppMessage(int loglevel, int table, int id, int args, ...) {
+	va_list val;
+	va_start(val, args);
+	VDLog(loglevel, VDvswprintf(VDLoadString(0, table, id), args, val));
+	va_end(val);
+}
+

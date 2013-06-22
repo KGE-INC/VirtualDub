@@ -99,6 +99,7 @@ public:
 	bool	fShowInputFrame, fShowOutputFrame, fShowDecompressedFrame;
 	bool	fHistogram, fSyncToAudio;
 	int		frameRateDecimation;
+	uint32	frameRateTargetHi, frameRateTargetLo;
 	long	frameRateNewMicroSecs;
 
 	long	lStartOffsetMS;
@@ -139,10 +140,10 @@ public:
 	long	cur_src;
 	long	cur_proc_src;
 	long	end_src;
-	long	start_dst;
 	long	cur_dst;
+	long	cur_proc_dst;
 	long	end_dst;
-	__int64	total_size;
+	sint64	total_size;
 };
 
 class DubAudioStreamInfo : public DubStreamInfo {
@@ -199,151 +200,6 @@ public:
 
 IDubber *CreateDubber(DubOptions *xopt);
 void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, VideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs=NULL);
-
-
-class VDINTERFACE IVDDubberOutputSystem {
-public:
-	virtual AVIOutput *CreateSegment() = 0;
-	virtual void CloseSegment(AVIOutput *pSegment, bool bLast) = 0;
-	virtual void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) = 0;
-	virtual void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) = 0;
-	virtual bool AcceptsVideo() = 0;
-	virtual bool AcceptsAudio() = 0;
-	virtual bool IsRealTime() = 0;
-};
-
-class VDAVIOutputFileSystem : public IVDDubberOutputSystem {
-public:
-	VDAVIOutputFileSystem();
-	~VDAVIOutputFileSystem();
-
-	void SetCaching(bool bAllowOSCaching);
-	void SetIndexing(bool bAllowHierarchicalExtensions);
-	void Set1GBLimit(bool bUse1GBLimit);
-	void SetBuffer(int bufferSize);
-
-	void SetFilename(const wchar_t *pszFilename);
-	void SetFilenamePattern(const wchar_t *pszSegmentPrefix, const wchar_t *pszExt, int nMinimumDigits);
-
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
-	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
-	bool AcceptsVideo();
-	bool AcceptsAudio();
-	bool IsRealTime() { return false; }
-
-private:
-	VDStringW	mSegmentBaseName;
-	VDStringW	mSegmentExt;
-	int			mSegmentDigits;
-	int			mCurrentSegment;
-	int			mBufferSize;
-	bool		mbInterleaved;
-	bool		mbAllowCaching;
-	bool		mbAllowIndexing;
-	bool		mbUse1GBLimit;
-
-	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
-	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
-};
-
-class VDAVIOutputStripedSystem : public IVDDubberOutputSystem {
-public:
-	VDAVIOutputStripedSystem(const wchar_t *pszFilename);
-	~VDAVIOutputStripedSystem();
-
-	void Set1GBLimit(bool bUse1GBLimit);
-
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
-	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
-	bool AcceptsVideo();
-	bool AcceptsAudio();
-	bool IsRealTime() { return false; }
-
-private:
-	bool		mbUse1GBLimit;
-
-	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
-	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
-
-	vdautoptr<AVIStripeSystem>	mpStripeSystem;
-};
-
-class VDAVIOutputWAVSystem : public IVDDubberOutputSystem {
-public:
-	VDAVIOutputWAVSystem(const wchar_t *pszFilename);
-	~VDAVIOutputWAVSystem();
-
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
-	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
-	bool AcceptsVideo();
-	bool AcceptsAudio();
-	bool IsRealTime() { return false; }
-
-private:
-	VDStringW	mFilename;
-
-	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
-};
-
-class VDAVIOutputImagesSystem : public IVDDubberOutputSystem {
-public:
-	VDAVIOutputImagesSystem();
-	~VDAVIOutputImagesSystem();
-
-	void SetFilenamePattern(const wchar_t *pszSegmentPrefix, const wchar_t *pszSegmentSuffix, int nMinimumDigits);
-	void SetFormat(int format);
-
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
-	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
-	bool AcceptsVideo();
-	bool AcceptsAudio();
-	bool IsRealTime() { return false; }
-
-private:
-	VDStringW	mSegmentPrefix;
-	VDStringW	mSegmentSuffix;
-	int			mSegmentDigits;
-	int			mFormat;			// from AVIOutputImages
-
-	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
-	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
-};
-
-class VDAVIOutputPreviewSystem : public IVDDubberOutputSystem {
-public:
-	VDAVIOutputPreviewSystem();
-	~VDAVIOutputPreviewSystem();
-
-	AVIOutput *CreateSegment();
-	void CloseSegment(AVIOutput *pSegment, bool bLast);
-	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
-	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
-	bool AcceptsVideo();
-	bool AcceptsAudio();
-	bool IsRealTime() { return true; }
-
-private:
-	AVIStreamHeader_fixed	mVideoStreamInfo;
-	std::vector<char>		mVideoFormat;
-	AVIStreamHeader_fixed	mAudioStreamInfo;
-	std::vector<char>		mAudioFormat;
-};
-
 
 #ifndef f_DUB_CPP
 

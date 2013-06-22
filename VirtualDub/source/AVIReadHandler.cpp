@@ -27,6 +27,9 @@
 #include <vd2/system/list.h>
 #include "Fixes.h"
 #include <vd2/system/File64.h>
+#include <vd2/system/log.h>
+#include <vd2/system/text.h>
+#include <vd2/Dita/resources.h>
 #include "Avisynth.h"
 #include "misc.h"
 
@@ -38,7 +41,22 @@ CRITICAL_SECTION g_diskcs;
 bool g_disklockinited=false;
 
 
-///////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	enum { kVDST_AVIReadHandler = 2 };
+
+	enum {
+		kVDM_AvisynthDetected,		// AVI: Avisynth detected. Extended error handling enabled.
+		kVDM_OpenDMLIndexDetected,	// AVI: OpenDML hierarchical index detected on stream %d.
+		kVDM_IndexMissing,			// AVI: Index not found or damaged -- reconstructing via file scan.
+		kVDM_InvalidChunkDetected,	// AVI: Invalid chunk detected at %lld. Enabling aggressive recovery mode.
+		kVDM_StreamFailure,			// AVI: Invalid block found at %lld -- disabling streaming.
+		kVDM_FixingBadSampleRate,	// AVI: Stream %d has an invalid sample rate. Substituting %lu samples/sec as placeholder.  
+	};
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 typedef __int64 QUADWORD;
 
@@ -1251,6 +1269,8 @@ AVIReadHandler::AVIReadHandler(PAVIFILE paf) {
 			paf->Release();
 			throw e;
 		}
+
+		VDLogAppMessage(kVDLogInfo, kVDST_AVIReadHandler, kVDM_AvisynthDetected);
 	}
 }
 
@@ -1479,6 +1499,8 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 	bool hyperindexed = false;
 	bool bScanRequired = false;
 	AVIStreamNode *pasn, *pasn_next;
+	MainAVIHeader avihdr;
+	bool bMainAVIHeaderFound = false;
 
 	__int64	i64ChunkMoviPos = 0;
 	DWORD	dwChunkMoviLength = 0;
@@ -1568,8 +1590,11 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 			case listtypeSTREAMHEADER:
 				if (!_parseStreamHeader(streamlist, dwLength, bScanRequired))
 					fAcceptIndexOnly = false;
-				else
+				else {
+					int s = streams;
+					VDLogAppMessage(kVDLogInfo, kVDST_AVIReadHandler, kVDM_OpenDMLIndexDetected, 1, &s);
 					hyperindexed = true;
+				}
 
 				++streams;
 				dwLength = 0;
@@ -1601,6 +1626,15 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 			dwLength = 0;
 			break;
 
+		case 'lrdh':
+			if (!bMainAVIHeaderFound) {
+				uint32 tc = std::min<uint32>(dwLength, sizeof avihdr);
+				memset(&avihdr, 0, sizeof avihdr);
+				_readFile2(&avihdr, tc);
+				dwLength -= tc;
+				bMainAVIHeaderFound = true;
+			}
+			break;
 		}
 
 		if (dwLength) {
@@ -1623,6 +1657,8 @@ terminate_scan:
 		bScanRequired = true;
 
 	if (bScanRequired) {
+		VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_IndexMissing);
+
 		// It's possible that we were in the middle of reading an index when an error
 		// occurred, so we need to clear all of the indices for all streams.
 
@@ -1700,6 +1736,9 @@ terminate_scan:
 				// Notify the user that recovering this file requires stronger measures.
 
 				if (!bAggressive) {
+					sint64 bad_pos = _posFile();
+					VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_InvalidChunkDetected, 1, &bad_pos);
+
 					bAggressive = true;
 					bStopWhenLengthExhausted = false;
 					pd.setCaption("Reconstructing missing index block (aggressive mode)");
@@ -1772,6 +1811,7 @@ terminate_scan:
 
 	pasn = streamlist.AtHead();
 
+	int nStream = 0;
 	while(pasn_next = pasn->NextFromHead()) {
 		if (!pasn->index.makeIndex2())
 			throw MyMemoryError();
@@ -1783,7 +1823,39 @@ terminate_scan:
 		if (pasn->hdr.fccType == streamtypeVIDEO)
 			pasn->hdr.dwSampleSize=0;
 
-		// Sample size == nBlockAlign for audio
+		// Attempt to fix invalid dwRate/dwScale fractions (can result from unclosed
+		// AVI files being written by DirectShow).
+
+		if (pasn->hdr.dwRate==0 || pasn->hdr.dwScale == 0) {
+			// If we're dealing with a video stream, try the frame rate in the AVI header.
+			// If we're dealing with an audio stream, try the frame rate in the audio
+			// format.
+			// Otherwise, just use... uh, 15.
+
+			if (pasn->hdr.fccType == streamtypeVIDEO) {
+				if (bMainAVIHeaderFound) {
+					pasn->hdr.dwRate	= avihdr.dwMicroSecPerFrame;		// This can be zero, in which case the default '15' will kick in below.
+					pasn->hdr.dwScale	= 1000000;
+				}
+			} else if (pasn->hdr.fccType == streamtypeAUDIO) {
+				const WAVEFORMATEX *pwfex = (const WAVEFORMATEX *)pasn->pFormat;
+
+				pasn->hdr.dwRate	= pwfex->nAvgBytesPerSec;
+				pasn->hdr.dwScale	= pwfex->nBlockAlign;
+			}
+
+			if (pasn->hdr.dwRate==0 || pasn->hdr.dwScale == 0) {
+				pasn->hdr.dwRate = 15;
+				pasn->hdr.dwScale = 1;
+			}
+
+			const int badstream = nStream;
+			const double newrate = pasn->hdr.dwRate / (double)pasn->hdr.dwScale;
+			VDLogAppMessage(kVDLogWarning, kVDST_AVIReadHandler, kVDM_FixingBadSampleRate, 2, &badstream, &newrate);
+		}
+
+		// Verify sample size == nBlockAlign for audio.  If we find runt samples,
+		// assume someone did a VBR hack.
 
 		if (pasn->hdr.fccType == streamtypeAUDIO) {
 			const AVIIndexEntry2 *pIdx = pasn->index.index2Ptr();
@@ -1807,6 +1879,7 @@ terminate_scan:
 			pasn->length = pasn->frames;
 
 		pasn = pasn_next;
+		++nStream;
 	}
 
 //	throw MyError("Parse complete.  Aborting.");
@@ -2341,6 +2414,9 @@ bool AVIReadHandler::Stream(AVIStreamNode *pusher, __int64 pos) {
 
 					if (chunk_size >= 0x7ffffff0) {
 						// Uh oh... assume the file has been damaged.  Disable streaming.
+						sint64 bad_pos = i64StreamPosition+sbPosition-8;
+
+						VDLogAppMessage(kVDLogInfo, kVDST_AVIReadHandler, kVDM_StreamFailure, 1, &bad_pos);
 						mbFileIsDamaged = true;
 						i64StreamPosition = -1;
 						sbPosition = sbSize = 0;

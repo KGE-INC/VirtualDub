@@ -412,18 +412,7 @@ extern const struct VDAudioFilterDefinition afilterDef_input = {
 	NULL,
 
 	VDAudioFilterInput::InitProc,
-	VDAudioFilterInput::DestroyProc,
-	VDAudioFilterInput::PrepareProc,
-	VDAudioFilterInput::StartProc,
-	VDAudioFilterInput::StopProc,
-	VDAudioFilterInput::RunProc,
-	VDAudioFilterInput::ReadProc,
-	VDAudioFilterInput::SeekProc,
-	VDAudioFilterInput::SerializeProc,
-	VDAudioFilterInput::DeserializeProc,
-	VDAudioFilterInput::GetParamProc,
-	VDAudioFilterInput::SetParamProc,
-	VDAudioFilterInput::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -446,7 +435,7 @@ public:
 };
 
 VDAudioFilterPlayback::VDAudioFilterPlayback()
-	: mAudioOut(16384, 2)
+	: mAudioOut(32768, 4)
 {
 }
 
@@ -473,13 +462,16 @@ uint32 VDAudioFilterPlayback::Run() {
 	const VDWaveFormat& format = *pin.mpFormat;
 	char buf[16384];
 
-	uint32 samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf, sizeof buf / format.mBlockSize, false);
+	for(;;) {
+		uint32 samples = mpContext->mpInputs[0]->Read(buf, sizeof buf / format.mBlockSize, false, kVFARead_Native);
 
-	if (samples)
-		mAudioOut.write(buf, samples*format.mBlockSize, INFINITE);
-	else if (pin.mbEnded)
-		return kVFARun_Finished;
-
+		if (samples)
+			mAudioOut.write(buf, samples*format.mBlockSize, INFINITE);
+		else if (pin.mbEnded)
+			return kVFARun_Finished;
+		else
+			break;
+	}
 
 	return 0;
 }
@@ -501,18 +493,7 @@ extern const struct VDAudioFilterDefinition afilterDef_playback = {
 	NULL,
 
 	VDAudioFilterPlayback::InitProc,
-	VDAudioFilterPlayback::DestroyProc,
-	VDAudioFilterPlayback::PrepareProc,
-	VDAudioFilterPlayback::StartProc,
-	VDAudioFilterPlayback::StopProc,
-	VDAudioFilterPlayback::RunProc,
-	VDAudioFilterPlayback::ReadProc,
-	VDAudioFilterPlayback::SeekProc,
-	VDAudioFilterPlayback::SerializeProc,
-	VDAudioFilterPlayback::DeserializeProc,
-	VDAudioFilterPlayback::GetParamProc,
-	VDAudioFilterPlayback::SetParamProc,
-	VDAudioFilterPlayback::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -543,8 +524,6 @@ void __cdecl VDAudioFilterButterfly::InitProc(const VDAudioFilterContext *pConte
 }
 
 uint32 VDAudioFilterButterfly::Prepare() {
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpOutputs[0]->mGranularity = 1;
 	if (!(mpContext->mpOutputs[0]->mpFormat = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 	return 0;
@@ -570,7 +549,7 @@ uint32 VDAudioFilterButterfly::Run() {
 	if (!samples)
 		return pin.mbEnded ? kVFARun_Finished : 0;
 
-	samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst, samples, false);
+	samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst, samples, false, kVFARead_PCM16);
 
 	if (samples) {
 		short *p = (short *)dst;
@@ -626,18 +605,7 @@ extern const struct VDAudioFilterDefinition afilterDef_butterfly = {
 	NULL,
 
 	VDAudioFilterButterfly::InitProc,
-	VDAudioFilterButterfly::DestroyProc,
-	VDAudioFilterButterfly::PrepareProc,
-	VDAudioFilterButterfly::StartProc,
-	VDAudioFilterButterfly::StopProc,
-	VDAudioFilterButterfly::RunProc,
-	VDAudioFilterButterfly::ReadProc,
-	VDAudioFilterButterfly::SeekProc,
-	VDAudioFilterButterfly::SerializeProc,
-	VDAudioFilterButterfly::DeserializeProc,
-	VDAudioFilterButterfly::GetParamProc,
-	VDAudioFilterButterfly::SetParamProc,
-	VDAudioFilterButterfly::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -718,45 +686,22 @@ uint32 VDAudioFilterStereoSplit::Run() {
 	samples /= mpContext->mpOutputs[0]->mpFormat->mBlockSize;
 
 	while(samples > 0) {
-		union {
-			sint16	w[4096];
-			uint8	b[8192];
-		} buf;
-		int tc = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf, std::min<int>(samples, sizeof buf / format.mBlockSize), false);
+		sint16 buf[4096];
+		int tc = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf, std::min<int>(samples, 4096 / format.mChannels), false, kVFARead_PCM16);
 
 		if (tc<=0)
 			break;
 
-		switch(format.mSampleBits) {
-		case 8:
-			{
-				uint8 *dst1w = (uint8 *)dst1;
-				uint8 *dst2w = (uint8 *)dst2;
+		sint16 *dst1w = (sint16 *)dst1;
+		sint16 *dst2w = (sint16 *)dst2;
 
-				for(int i=0; i<tc; ++i) {
-					*dst1w++ = buf.b[i*2+0];
-					*dst2w++ = buf.b[i*2+1];
-				}
-
-				dst1 = dst1w;
-				dst2 = dst2w;
-			}
-			break;
-		case 16:
-			{
-				sint16 *dst1w = (sint16 *)dst1;
-				sint16 *dst2w = (sint16 *)dst2;
-
-				for(int i=0; i<tc; ++i) {
-					*dst1w++ = buf.w[i*2+0];
-					*dst2w++ = buf.w[i*2+1];
-				}
-
-				dst1 = dst1w;
-				dst2 = dst2w;
-			}
-			break;
+		for(int i=0; i<tc; ++i) {
+			*dst1w++ = buf[i*2+0];
+			*dst2w++ = buf[i*2+1];
 		}
+
+		dst1 = dst1w;
+		dst2 = dst2w;
 
 		actual += tc;
 		samples -= tc;
@@ -806,18 +751,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereosplit = {
 	NULL,
 
 	VDAudioFilterStereoSplit::InitProc,
-	VDAudioFilterStereoSplit::DestroyProc,
-	VDAudioFilterStereoSplit::PrepareProc,
-	VDAudioFilterStereoSplit::StartProc,
-	VDAudioFilterStereoSplit::StopProc,
-	VDAudioFilterStereoSplit::RunProc,
-	VDAudioFilterStereoSplit::ReadProc,
-	VDAudioFilterStereoSplit::SeekProc,
-	VDAudioFilterStereoSplit::SerializeProc,
-	VDAudioFilterStereoSplit::DeserializeProc,
-	VDAudioFilterStereoSplit::GetParamProc,
-	VDAudioFilterStereoSplit::SetParamProc,
-	VDAudioFilterStereoSplit::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -911,8 +845,8 @@ uint32 VDAudioFilterStereoMerge::Run() {
 		} buf0, buf1;
 		int tc = std::min<int>(samples, sizeof buf0 / format.mBlockSize);
 
-		int tca0 = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf0, tc, false);
-		int tca1 = mpContext->mpInputs[1]->mpReadProc(mpContext->mpInputs[1], &buf1, tc, false);
+		int tca0 = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf0, tc, false, kVFARead_Native);
+		int tca1 = mpContext->mpInputs[1]->mpReadProc(mpContext->mpInputs[1], &buf1, tc, false, kVFARead_Native);
 
 		VDASSERT(tc == tca0 && tc == tca1);
 
@@ -983,18 +917,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereomerge = {
 	NULL,
 
 	VDAudioFilterStereoMerge::InitProc,
-	VDAudioFilterStereoMerge::DestroyProc,
-	VDAudioFilterStereoMerge::PrepareProc,
-	VDAudioFilterStereoMerge::StartProc,
-	VDAudioFilterStereoMerge::StopProc,
-	VDAudioFilterStereoMerge::RunProc,
-	VDAudioFilterStereoMerge::ReadProc,
-	VDAudioFilterStereoMerge::SeekProc,
-	VDAudioFilterStereoMerge::SerializeProc,
-	VDAudioFilterStereoMerge::DeserializeProc,
-	VDAudioFilterStereoMerge::GetParamProc,
-	VDAudioFilterStereoMerge::SetParamProc,
-	VDAudioFilterStereoMerge::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };
 
 ///////////////////////////////////////////////////////////////////////////

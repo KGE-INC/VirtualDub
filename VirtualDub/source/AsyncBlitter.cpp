@@ -22,6 +22,7 @@
 #include "AsyncBlitter.h"
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/profile.h>
 #include <vd2/system/tls.h>
 
 #include "VBitmap.h"
@@ -1030,7 +1031,13 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 					continue;
 				}
 
-				if (DoRequest(req)) {
+				if (mpRTProfiler)
+					mpRTProfiler->BeginEvent(mProfileChannel, 0xe0ffe0, "Blit");
+				bool bMore = DoRequest(req);
+				if (mpRTProfiler)
+					mpRTProfiler->EndEvent(mProfileChannel);
+
+				if (bMore) {
 					++req->framenum;
 					continue;
 				}
@@ -1047,6 +1054,10 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 void AsyncBlitter::ThreadRun() {
 	_RPT0(0,"AsyncBlitter: Thread started.\n");
 
+	mpRTProfiler = VDGetRTProfiler();
+	if (mpRTProfiler)
+		mProfileChannel = mpRTProfiler->AllocChannel("Blitter");
+
 	while(!fAbort) {
 		if (!ServiceRequests(true) && !fAbort) {
 			LOCK_SET(LOCK_ASYNC_EXIT);
@@ -1054,6 +1065,9 @@ void AsyncBlitter::ThreadRun() {
 			LOCK_CLEAR(LOCK_ASYNC_EXIT);
 		}
 	}
+
+	if (mpRTProfiler)
+		mpRTProfiler->FreeChannel(mProfileChannel);
 
 	dwLockedBuffers = 0;
 	mEventDraw.signal();

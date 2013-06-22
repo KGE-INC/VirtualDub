@@ -75,8 +75,10 @@ const VDStringW VDGetLoadFileNameReadOnly(long nKey, VDGUIHandle ctxParent, cons
 	if (it == g_pFilespecMap->end()) {
 		std::pair<tFilespecMap::iterator, bool> r = g_pFilespecMap->insert(tFilespecMap::value_type(nKey, FilespecEntry()));
 
-		if (!r.second)
-			return NULL;
+		if (!r.second) {
+			VDStringW empty;
+			return empty;
+		}
 
 		it = r.first;
 
@@ -154,8 +156,10 @@ const VDStringW VDGetSaveFileName(long nKey, VDGUIHandle ctxParent, const wchar_
 	if (it == g_pFilespecMap->end()) {
 		std::pair<tFilespecMap::iterator, bool> r = g_pFilespecMap->insert(tFilespecMap::value_type(nKey, FilespecEntry()));
 
-		if (!r.second)
-			return NULL;
+		if (!r.second) {
+			VDStringW empty;
+			return empty;
+		}
 
 		it = r.first;
 
@@ -233,8 +237,10 @@ const VDStringW VDGetDirectory(long nKey, VDGUIHandle ctxParent, const wchar_t *
 	if (it == g_pDirspecMap->end()) {
 		std::pair<tDirspecMap::iterator, bool> r = g_pDirspecMap->insert(tDirspecMap::value_type(nKey, DirspecEntry()));
 
-		if (!r.second)
-			return NULL;
+		if (!r.second) {
+			VDStringW empty;
+			return empty;
+		}
 
 		it = r.first;
 

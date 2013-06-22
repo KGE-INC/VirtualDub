@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <vd2/system/registry.h>
 
 #define OPTDLG_STATICS
 #include "optdlg.h"
@@ -211,7 +212,7 @@ BOOL APIENTRY AudioConversionDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwAudioConversionHelpLookup);
+					VDShowHelp(hDlg, L"d-audioconversion.html");
 			}
 			return TRUE;
     }
@@ -321,7 +322,7 @@ BOOL APIENTRY VideoDepthDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lPar
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwVideoDepthHelpLookup);
+					VDShowHelp(hDlg, L"d-videodepth.html");
 			}
 			return TRUE;
 
@@ -532,18 +533,6 @@ BOOL APIENTRY DynamicCompileOptionsDlgProc( HWND hDlg, UINT message, UINT wParam
 
 //////////////////////////////////////////////
 
-static DWORD dwVideoFramerateHelpLookup[]={
-	IDC_DECIMATE_1,			IDH_DLG_VFR_DECIMATION,
-	IDC_DECIMATE_2,			IDH_DLG_VFR_DECIMATION,
-	IDC_DECIMATE_3,			IDH_DLG_VFR_DECIMATION,
-	IDC_DECIMATE_N,			IDH_DLG_VFR_DECIMATION,
-	IDC_DECIMATE_VALUE,		IDH_DLG_VFR_DECIMATION,
-	IDC_FRAMERATE,			IDH_DLG_VFR_FRAMERATE,
-	IDC_FRAMERATE_CHANGE,	IDH_DLG_VFR_FRAMERATE,
-	IDC_FRAMERATE_NOCHANGE,	IDH_DLG_VFR_FRAMERATE,
-	0,0
-};
-
 static void VideoDecimationRedoIVTCEnables(HWND hDlg) {
 	bool f3, f4;
 	BOOL e;
@@ -583,7 +572,12 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), FALSE);
 				}
 
-				CheckDlgButton(hDlg, IDC_DECIMATE_1, dopt->video.frameRateDecimation==1);
+				if (dopt->video.frameRateDecimation==1 && dopt->video.frameRateTargetLo)
+					CheckDlgButton(hDlg, IDC_DECIMATE_TARGET, TRUE);
+				else
+					EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), FALSE);
+
+				CheckDlgButton(hDlg, IDC_DECIMATE_1, dopt->video.frameRateDecimation==1 && !dopt->video.frameRateTargetLo);
 				CheckDlgButton(hDlg, IDC_DECIMATE_2, dopt->video.frameRateDecimation==2);
 				CheckDlgButton(hDlg, IDC_DECIMATE_3, dopt->video.frameRateDecimation==3);
 				CheckDlgButton(hDlg, IDC_DECIMATE_N, dopt->video.frameRateDecimation>3);
@@ -591,6 +585,11 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					SetDlgItemInt(hDlg, IDC_DECIMATE_VALUE, dopt->video.frameRateDecimation, FALSE);
 				else
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), FALSE);
+
+				if (dopt->video.frameRateTargetLo) {
+					sprintf(buf, "%.4f", (double)VDFraction(dopt->video.frameRateTargetHi, dopt->video.frameRateTargetLo));
+					SetDlgItemText(hDlg, IDC_FRAMERATE_TARGET, buf);
+				}
 
 				if (inputVideoAVI) {
 					sprintf(buf, "No change (current: %.3f fps)", (double)inputVideoAVI->streamInfo.dwRate / inputVideoAVI->streamInfo.dwScale);
@@ -641,7 +640,7 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwVideoFramerateHelpLookup);
+					VDShowHelp(hDlg, L"d-videoframerate.html");
 			}
 			return TRUE;
 
@@ -651,10 +650,17 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 			case IDC_DECIMATE_2:
 			case IDC_DECIMATE_3:
 				EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), FALSE);
+				EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), FALSE);
 				break;
 			case IDC_DECIMATE_N:
 				EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), TRUE);
-				SetFocus(GetDlgItem(hDlg, IDC_DECIMATE_VALUE));
+				EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), FALSE);
+				break;
+
+			case IDC_DECIMATE_TARGET:
+				EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), FALSE);
+				EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), TRUE);
+				SetFocus(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET));
 				break;
 
 			case IDC_FRAMERATE_CHANGE:
@@ -686,9 +692,26 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 
 			case IDOK:
 				{
+					VDFraction newTarget(0,0);
 					int newFRD;
 
-					if (IsDlgButtonChecked(hDlg, IDC_DECIMATE_N)) {
+					if (IsDlgButtonChecked(hDlg, IDC_DECIMATE_TARGET)) {
+						double newFR;
+						char buf[128];
+
+						GetDlgItemText(hDlg, IDC_FRAMERATE_TARGET, buf, sizeof buf);
+						newFR = atof(buf);
+
+						if (newFR<=0.0 || newFR>=200.0) {
+							SetFocus(GetDlgItem(hDlg, IDC_FRAMERATE));
+							MessageBeep(MB_ICONQUESTION);
+							return FALSE;
+						}
+
+						newTarget = VDFraction((uint32)(0.5 + newFR * 10000.0), 10000);
+
+						newFRD = 1;
+					} else if (IsDlgButtonChecked(hDlg, IDC_DECIMATE_N)) {
 						LONG lv = GetDlgItemInt(hDlg, IDC_DECIMATE_VALUE, NULL, TRUE);
 
 						if (lv<1) {
@@ -724,6 +747,8 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					} else dopt->video.frameRateNewMicroSecs = 0;
 
 					dopt->video.frameRateDecimation = newFRD;
+					dopt->video.frameRateTargetHi = newTarget.getHi();
+					dopt->video.frameRateTargetLo = newTarget.getLo();
 
 					if (IsDlgButtonChecked(hDlg, IDC_IVTC_RECONFIELDS)) {
 						dopt->video.fInvTelecine = true;
@@ -889,7 +914,7 @@ BOOL APIENTRY VideoClippingDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwVideoClippingHelpLookup);
+					VDShowHelp(hDlg, L"d-videorange.html");
 			}
 			return TRUE;
 
@@ -970,7 +995,7 @@ BOOL APIENTRY AudioVolumeDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lPa
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hdlg, lphi->iCtrlId, dwVideoClippingHelpLookup);
+					VDShowHelp(hdlg, L"d-audiovolume.html");
 			}
 			return TRUE;
 
@@ -1105,4 +1130,88 @@ BOOL CALLBACK VideoJumpDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam
 		return TRUE;
 	}
 	return FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	error mode dialog
+//
+///////////////////////////////////////////////////////////////////////////
+
+class VDDialogErrorModeW32 : public VDDialogBaseW32 {
+public:
+	inline VDDialogErrorModeW32(const char *pszSettingsKey, DubSource *pSource) : VDDialogBaseW32(IDD_ERRORMODE), mpszSettingsKey(pszSettingsKey), mpSource(pSource) {}
+
+	DubSource::ErrorMode Activate(VDGUIHandle hParent, DubSource::ErrorMode oldMode);
+
+	void ComputeMode();
+
+protected:
+	BOOL DlgProc(UINT message, UINT wParam, LONG lParam);
+	void ReinitDialog();
+
+	const char *const mpszSettingsKey;
+	DubSource::ErrorMode	mErrorMode;
+	DubSource *const mpSource;
+};
+
+DubSource::ErrorMode VDDialogErrorModeW32::Activate(VDGUIHandle hParent, DubSource::ErrorMode oldMode) {
+	mErrorMode = oldMode;
+	ActivateDialog(hParent);
+	return mErrorMode;
+}
+
+void VDDialogErrorModeW32::ReinitDialog() {
+	EnableWindow(GetDlgItem(mhdlg, IDC_SAVEASDEFAULT), mpszSettingsKey != 0);
+	EnableWindow(GetDlgItem(mhdlg, IDC_ERROR_CONCEAL), !mpSource || mpSource->isDecodeErrorModeSupported(DubSource::kErrorModeConceal));
+	EnableWindow(GetDlgItem(mhdlg, IDC_ERROR_DECODE), !mpSource || mpSource->isDecodeErrorModeSupported(DubSource::kErrorModeDecodeAnyway));
+
+	CheckDlgButton(mhdlg, IDC_ERROR_REPORTALL,	mErrorMode == DubSource::kErrorModeReportAll);
+	CheckDlgButton(mhdlg, IDC_ERROR_CONCEAL,	mErrorMode == DubSource::kErrorModeConceal);
+	CheckDlgButton(mhdlg, IDC_ERROR_DECODE,		mErrorMode == DubSource::kErrorModeDecodeAnyway);
+}
+
+BOOL VDDialogErrorModeW32::DlgProc(UINT message, UINT wParam, LONG lParam) {
+    switch (message)
+    {
+        case WM_INITDIALOG:
+			ReinitDialog();
+            return TRUE;
+
+        case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+			case IDOK:
+				ComputeMode();
+				End(true);
+				return TRUE;
+			case IDCANCEL:
+				End(false);
+				return TRUE;
+			case IDC_SAVEASDEFAULT:
+				{
+					VDRegistryAppKey key("Preferences");
+
+					ComputeMode();
+					key.setInt(mpszSettingsKey, mErrorMode);
+				}
+				return TRUE;
+			}
+            break;
+    }
+    return FALSE;
+}
+
+void VDDialogErrorModeW32::ComputeMode() {
+	if (IsDlgButtonChecked(mhdlg, IDC_ERROR_REPORTALL))
+		mErrorMode = DubSource::kErrorModeReportAll;
+	if (IsDlgButtonChecked(mhdlg, IDC_ERROR_CONCEAL))
+		mErrorMode = DubSource::kErrorModeConceal;
+	if (IsDlgButtonChecked(mhdlg, IDC_ERROR_DECODE))
+		mErrorMode = DubSource::kErrorModeDecodeAnyway;
+}
+
+DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::ErrorMode oldMode, const char *pszSettingsKey, DubSource *pSource) {
+	VDDialogErrorModeW32 dlg(pszSettingsKey, pSource);
+
+	return dlg.Activate(hParent, oldMode);
 }

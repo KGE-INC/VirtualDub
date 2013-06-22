@@ -268,7 +268,12 @@ struct VDAudioFilterPin {
 	bool		mbVBR;
 	bool		mbEnded;
 
-	uint32 (__cdecl *mpReadProc)(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill);
+	uint32 (__cdecl *mpReadProc)(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill, int format);
+
+	// These helpers are non-virtual inlines and are compiled into filters.
+	uint32 Read(void *dst, uint32 samples, bool bAllowFill, int format) {
+		return mpReadProc(this, dst, samples, bAllowFill, format);
+	}
 };
 
 struct VDAudioFilterContext {
@@ -328,6 +333,13 @@ enum {
 	kVFAPrepare_BadFormat	= 1
 };
 
+enum {
+	kVFARead_Native			= 0,
+	kVFARead_PCM8			= 1,
+	kVFARead_PCM16			= 2,
+	kVFARead_PCM32F			= 3
+};
+
 typedef uint32		(__cdecl *VDAudioFilterRunProc			)(const VDAudioFilterContext *pContext);
 typedef sint64		(__cdecl *VDAudioFilterSeekProc			)(const VDAudioFilterContext *pContext, sint64 microsecs);
 typedef uint32		(__cdecl *VDAudioFilterPrepareProc		)(const VDAudioFilterContext *pContext);
@@ -349,6 +361,21 @@ enum {
 	kVFAF_Max				= 0xFFFFFFFF,
 };
 
+struct VDAudioFilterVtbl {
+	VDAudioFilterDestroyProc			mpDestroy;
+	VDAudioFilterPrepareProc			mpPrepare;
+	VDAudioFilterStartProc				mpStart;
+	VDAudioFilterStopProc				mpStop;
+	VDAudioFilterRunProc				mpRun;
+	VDAudioFilterReadProc				mpRead;
+	VDAudioFilterSeekProc				mpSeek;
+	VDAudioFilterSerializeProc			mpSerialize;
+	VDAudioFilterDeserializeProc		mpDeserialize;
+	VDAudioFilterGetParamProc			mpGetParam;
+	VDAudioFilterSetParamProc			mpSetParam;
+	VDAudioFilterConfigProc				mpConfig;
+};
+
 struct VDAudioFilterDefinition {
 	uint32							mSize;				// size of this structure in bytes
 	const wchar_t					*pszName;
@@ -363,19 +390,8 @@ struct VDAudioFilterDefinition {
 
 	const VDFilterConfigEntry		*mpConfigInfo;
 
-	VDAudioFilterInitProc				mpInit;
-	VDAudioFilterDestroyProc			mpDestroy;
-	VDAudioFilterPrepareProc			mpPrepare;
-	VDAudioFilterStartProc				mpStart;
-	VDAudioFilterStopProc				mpStop;
-	VDAudioFilterRunProc				mpRun;
-	VDAudioFilterReadProc				mpRead;
-	VDAudioFilterSeekProc				mpSeek;
-	VDAudioFilterSerializeProc			mpSerialize;
-	VDAudioFilterDeserializeProc		mpDeserialize;
-	VDAudioFilterGetParamProc			mpGetParam;
-	VDAudioFilterSetParamProc			mpSetParam;
-	VDAudioFilterConfigProc				mpConfig;
+	VDAudioFilterInitProc			mpInit;
+	const VDAudioFilterVtbl			*mpVtbl;
 };
 
 #endif

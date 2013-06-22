@@ -27,6 +27,7 @@
 #include "VideoSource.h"
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/Dita/resources.h>
 #include "AVIStripeSystem.h"
 #include "AVIReadHandler.h"
 
@@ -40,6 +41,16 @@
 extern HINSTANCE g_hInst;
 extern const char fileFiltersAppend[];
 extern HWND g_hWnd;
+
+namespace {
+	enum { kVDST_InputFile = 4 };
+
+	enum {
+		kVDM_OpeningFile,			// AVI: Opening file "%hs"
+		kVDM_RekeyNotSpecified,		// AVI: Keyframe flag reconstruction was not specified in open options and the video stream is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.
+		kVDM_Type1DVNoSound,		// AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.
+	};
+}
 
 /////////////////////////////////////////////////////////////////////
 
@@ -360,6 +371,8 @@ void InputFileAVI::setAutomated(bool fAuto) {
 }
 
 void InputFileAVI::Init(const char *szFile) {
+	VDLogAppMessage(kVDLogMarker, kVDST_InputFile, kVDM_OpeningFile, 1, &szFile);
+
 	HRESULT err;
 	PAVIFILE paf;
 
@@ -397,20 +410,13 @@ void InputFileAVI::Init(const char *szFile) {
 
 	if (fRedoKeyFlags)
 		((VideoSourceAVI *)videoSrc)->redoKeyFlags();
-	else if (pAVIFile->isIndexFabricated() && !fAutomated && !videoSrc->isKeyframeOnly())
-		MessageBox(NULL,
-			"Warning: VirtualDub has reconstructed the index for this file, but you have not specified "
-			"rekeying in the extended open options dialog.  Seeking in this file may be slow.",
-			"AVI Import Filter Warning",
-			MB_OK|MB_ICONEXCLAMATION);
+	else if (pAVIFile->isIndexFabricated() && videoSrc->isKeyframeOnly()) {
+		VDLogAppMessage(kVDLogWarning, kVDST_InputFile, kVDM_RekeyNotSpecified);
+	}
 
-	if (videoSrc->isType1() && !fAutomated)
-		MessageBox(NULL,
-			"Warning: Type-1 DV file detected. Type-1 DV files have video and audio combined into one stream, "
-			"and VirtualDub currently cannot extract the audio. Only the video stream will be available."
-			,
-			"AVI Import Filter Warning",
-			MB_OK|MB_ICONEXCLAMATION);
+	if (videoSrc->isType1()) {
+		VDLogAppMessage(kVDLogWarning, kVDST_InputFile, kVDM_Type1DVNoSound);
+	}
 
 
 	audioSrc = new AudioSourceAVI(pAVIFile, fAutomated);

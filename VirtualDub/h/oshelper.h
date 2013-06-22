@@ -32,12 +32,7 @@ BOOL SetConfigString(const char *szKeyName, const char *szValueName, const char 
 BOOL SetConfigBinary(const char *szKeyName, const char *szValueName, const char *lpBuffer, int cbBuffer);
 BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData);
 
-void HelpSetPath();
-const char *HelpGetPath();
-void HelpShowHelp(HWND hwnd);
-void HelpContext(HWND hwnd, DWORD helpID);
-void HelpPopup(HWND hwnd, DWORD helpID);
-void HelpPopupByID(HWND hwnd, DWORD ctrlID, const DWORD *lookup);
+void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
 
 char *SplitPathRoot(char *dst, const char *path);
 char *MergePath(char *path, const char *fn);

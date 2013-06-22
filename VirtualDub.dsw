@@ -8,7 +8,7 @@ Project: "Dita"=.\Dita\Dita.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Dita
+    Perforce Project
     .\dita
     end source code control
 }}}
@@ -24,8 +24,24 @@ Project: "Docs"=.\VirtualDub\docs\Docs.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Docs
+    Perforce Project
     .\virtualdub\docs
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "Lina"=.\Lina\Lina.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\lina
     end source code control
 }}}
 
@@ -40,7 +56,7 @@ Project: "Priss"=.\Priss\Priss.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Priss
+    Perforce Project
     .\priss
     end source code control
 }}}
@@ -56,7 +72,7 @@ Project: "Setup"=.\Setup\Setup.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Setup
+    Perforce Project
     .\setup
     end source code control
 }}}
@@ -72,7 +88,7 @@ Project: "Sylia"=.\Sylia\Sylia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Sylia
+    Perforce Project
     .\sylia
     end source code control
 }}}
@@ -88,7 +104,7 @@ Project: "VirtualDub"=.\VirtualDub\VirtualDub.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    VirtualDub
+    Perforce Project
     .\virtualdub
     end source code control
 }}}
@@ -134,7 +150,7 @@ Project: "disasm"=.\disasm\disasm.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    disasm
+    Perforce Project
     .\disasm
     end source code control
 }}}
@@ -145,12 +161,31 @@ Package=<4>
 
 ###############################################################################
 
+Project: "helpfile"=.\helpfile\helpfile.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\helpfile
+    end source code control
+}}}
+
+Package=<4>
+{{{
+    Begin Project Dependency
+    Project_Dep_Name Lina
+    End Project Dependency
+}}}
+
+###############################################################################
+
 Project: "mapconv"=.\mapconv\mapconv.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
     begin source code control
-    mapconv
+    Perforce Project
     .\mapconv
     end source code control
 }}}
@@ -166,7 +201,7 @@ Project: "system"=.\system\system.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    system
+    Perforce Project
     .\system
     end source code control
 }}}
@@ -182,7 +217,7 @@ Project: "vdicmdrv"=.\vdicmdrv\vdicmdrv.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    vdicmdrv
+    Perforce Project
     .\vdicmdrv
     end source code control
 }}}
@@ -201,7 +236,7 @@ Project: "vdremote"=.\vdremote\vdremote.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    vdremote
+    Perforce Project
     .\vdremote
     end source code control
 }}}
@@ -220,7 +255,7 @@ Project: "vdsvrlnk"=.\vdsvrlnk\vdsvrlnk.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    vdsvrlnk
+    Perforce Project
     .\vdsvrlnk
     end source code control
 }}}
@@ -236,7 +271,7 @@ Project: "verinc"=.\verinc\verinc.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    verinc
+    Perforce Project
     .\verinc
     end source code control
 }}}

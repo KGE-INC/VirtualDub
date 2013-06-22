@@ -74,6 +74,14 @@ MTL=midl.exe
 # Name "Docs - Win32 Release"
 # Name "Docs - Win32 Debug"
 # Name "Docs - Win32 Release ICL"
+# Begin Group "Source Files"
+
+# PROP Default_Filter ".cpp"
+# Begin Source File
+
+SOURCE=.\cltest.cpp
+# End Source File
+# End Group
 # Begin Source File
 
 SOURCE=.\checklist.html
@@ -81,6 +89,29 @@ SOURCE=.\checklist.html
 # Begin Source File
 
 SOURCE=.\index.html
+
+!IF  "$(CFG)" == "Docs - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "Docs - Win32 Debug"
+
+# Begin Custom Build - Displaying build help for first-time programmers....
+InputPath=.\index.html
+
+".\firsttime.dat" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	echo "x" >firsttime.dat 
+	start index.html 
+	exit 10 
+	
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "Docs - Win32 Release ICL"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\lina.html
 # End Source File
 # End Target
 # End Project

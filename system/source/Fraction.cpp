@@ -165,6 +165,8 @@ VDFraction VDFraction::operator/(unsigned long b) const {
 	return reduce(hi, (sint64)lo * b);
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 sint64 VDFraction::scale64t(sint64 v) const {
 	return (v*hi)/lo;
 }
@@ -184,6 +186,12 @@ sint64 VDFraction::scale64it(sint64 v) const {
 sint64 VDFraction::scale64ir(sint64 v) const {
 	return (v*lo + hi/2) / hi;
 }
+
+sint64 VDFraction::scale64iu(sint64 v) const {
+	return (v*lo + hi - 1) / hi;
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 VDFraction::operator long() const {
 	return (long)((hi + lo/2) / lo);

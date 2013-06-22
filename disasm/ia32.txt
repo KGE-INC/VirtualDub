@@ -1,4 +1,4 @@
-# IA-32 disassembly ruleset module for VirtualDub -- V1.03
+# IA-32 disassembly ruleset module for VirtualDub -- V1.04
 # By Avery Lee <phaeron@virtualdub.org>
 #
 # Based off of:
@@ -344,10 +344,10 @@ modrm_base:			$ap "real80 ptr " $2s
 [F3] 10 modrm32x:		"movss " $2[3-5]rx ", " $3s			# SSE
 [F3] 11 modrm32x:		"movss " $3s ", " $2[3-5]rx			# SSE
 
-18 modrm 00:		"prefetchnta " $3s						# MMX2
-18 modrm 01:		"prefetcht0 " $3s						# MMX2
-18 modrm 02:		"prefetcht1 " $3s						# MMX2
-18 modrm 03:		"prefetcht2 " $3s						# MMX2
+18 00-C0 !modrm:		"prefetchnta " $4s						# MMX2
+18 08-C8 !modrm:		"prefetcht0 " $4s						# MMX2
+18 10-D7 !modrm:		"prefetcht1 " $4s						# MMX2
+18 18-DF !modrm:		"prefetcht2 " $4s						# MMX2
 
 20 C0-FF:		"mov " $2[0-2]r32 ", " $2[3-5]rc
 21 C0-FF:		"mov " $2[0-2]r32 ", " $2[3-5]rd

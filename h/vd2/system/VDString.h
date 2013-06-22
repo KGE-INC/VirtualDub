@@ -183,12 +183,7 @@ public:
 		char_ops::copy(initalloc(l), _s, l);
 	}
 
-	explicit VDBasicString(const T *_s, int maxchars) {
-		int l = char_ops::len(_s);
-
-		if (l>maxchars)
-			l = maxchars;
-
+	explicit VDBasicString(const T *_s, size_type l) {
 		char_ops::copy(initalloc(l), _s, l);
 	}
 

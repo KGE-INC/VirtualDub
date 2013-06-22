@@ -12,6 +12,7 @@
 #define IDC_MOVE_UP                     3
 #define IDC_ACCEPT                      3
 #define IDC_PREVIEW                     3
+#define IDC_SAVEASDEFAULT               3
 #define IDC_REMOVE                      4
 #define IDS_TITLE_DUBBING               4
 #define IDC_MOVE_DOWN                   4
@@ -188,6 +189,13 @@
 #define IDD_AF_STRETCH                  250
 #define IDD_AF_LIST                     251
 #define IDD_AF_GAIN                     252
+#define IDD_LOG                         253
+#define IDD_ERRORMODE                   254
+#define IDD_WITHERRORS                  255
+#define IDD_JOBLOG                      256
+#define IDD_DUBBING_LOG                 257
+#define IDD_PROFILER                    258
+#define IDD_AF_NEWRATE                  259
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -228,7 +236,9 @@
 #define IDC_DECIMATE_N                  1020
 #define IDC_STATIC_PIPE_BUFFERS         1020
 #define IDC_DECIMATE_VALUE              1021
+#define IDC_DECIMATE_TARGET             1022
 #define IDC_FILTER_LIST                 1023
+#define IDC_FRAMERATE_TARGET            1023
 #define IDC_FILTER_INFO                 1024
 #define IDS_FILE_OPENAVI                1024
 #define IDC_PROGRESS                    1025
@@ -385,6 +395,7 @@
 #define IDC_EDIT2                       1153
 #define IDC_EDIT_FRAMELIMIT             1153
 #define IDC_XPOS                        1153
+#define IDC_TAPS                        1153
 #define IDS_VIDEO_COLORDEPTH            1154
 #define IDC_SELECT_CAPTURE_FILE         1154
 #define IDC_DISKLIMIT_SETTING           1154
@@ -704,9 +715,14 @@
 #define IDC_RATIO                       1398
 #define IDC_FACTOR                      1399
 #define IDC_PRECISION_NOCHANGE          1400
+#define IDC_LOG                         1400
 #define IDC_PRECISION_8BIT              1401
 #define IDC_PRECISION_16BIT             1402
+#define IDC_ERROR_REPORTALL             1402
 #define IDC_REASSERT                    1403
+#define IDC_ERROR_CONCEAL               1403
+#define IDC_PROFILE                     1403
+#define IDC_ERROR_DECODE                1404
 #define IDS_OPTIONS_PERFORMANCE         1408
 #define IDS_OPTIONS_DYNAMICCOMPILATION  1409
 #define IDS_OPTIONS_DISPLAYINPUTVIDEO   1410
@@ -974,6 +990,10 @@
 #define ID_AUDIO_FILTERS                40263
 #define ID_AUDIO_ADVANCEDFILTERING      40264
 #define ID_AUDIO_WINMIXER               40265
+#define ID_OPTIONS_SHOWLOG              40266
+#define ID_VIDEO_ERRORMODE              40267
+#define ID_AUDIO_ERRORMODE              40268
+#define ID_OPTIONS_SHOWPROFILER         40269
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1015,9 +1035,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        250
-#define _APS_NEXT_COMMAND_VALUE         40266
-#define _APS_NEXT_CONTROL_VALUE         1400
+#define _APS_NEXT_RESOURCE_VALUE        257
+#define _APS_NEXT_COMMAND_VALUE         40270
+#define _APS_NEXT_CONTROL_VALUE         1404
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

@@ -27,6 +27,8 @@
 #include "FastReadStream.h"
 #include <vd2/system/error.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/log.h>
+#include <vd2/Dita/resources.h>
 
 #include "misc.h"
 #include "mpeg.h"
@@ -42,7 +44,17 @@ extern HINSTANCE g_hInst;
 
 //////////////////////////////////////////////////////////////////////////
 
-#define ENABLE_AUDIO_SUPPORT
+namespace {
+	enum { kVDST_Mpeg = 5 };
+
+	enum {
+		kVDM_AudioConcealingError,		// MPEGAudio: Concealing decoding error on frame %lu: %hs.
+		kVDM_OpeningFile,				// MPEG: Opening file "%hs"
+		kVDM_OOOTimestamp,				// MPEG: Anachronistic or discontinuous timestamp found in %ls stream %d at byte position %lld (may indicate improper join)
+	};
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 #define VIDPKT_TYPE_SEQUENCE_START		(0xb3)
 #define	VIDPKT_TYPE_SEQUENCE_END		(0xb7)
@@ -1282,8 +1294,6 @@ unsigned MPEGAudioHeader::GetPayloadSizeL3() const {
 	return size;
 }
 
-#ifdef ENABLE_AUDIO_SUPPORT
-
 class AudioSourceMPEG : public AudioSource, IAMPBitsource {
 private:
 	InputFileMPEG *parentPtr;
@@ -1298,6 +1308,7 @@ private:
 	int		mSamplesPerFrame;
 
 	bool	mbIsMPEG2;
+	ErrorMode	mErrorMode;
 
 	BOOL _isKey(LONG lSample);
 
@@ -1310,13 +1321,19 @@ public:
 	BOOL init();
 	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
 
+	void setDecodeErrorMode(ErrorMode mode);
+	bool isDecodeErrorModeSupported(ErrorMode mode);
+
 	// IAMPBitsource methods
 
 	int read(void *buffer, int bytes);
 
 };
 
-AudioSourceMPEG::AudioSourceMPEG(InputFileMPEG *pp) : AudioSource() {
+AudioSourceMPEG::AudioSourceMPEG(InputFileMPEG *pp)
+	: AudioSource()
+	, mErrorMode(kErrorModeReportAll)
+{
 	parentPtr = pp;
 
 	if (!(pkt_buffer = new char[8192]))
@@ -1370,6 +1387,8 @@ BOOL AudioSourceMPEG::init() {
 	streamInfo.fccType					= streamtypeAUDIO;
 	streamInfo.fccHandler				= 0;
 	streamInfo.dwCaps					= 0;
+	streamInfo.wPriority				= 0;
+	streamInfo.wLanguage				= 0;
 	streamInfo.dwFlags					= 0;
 	streamInfo.dwScale					= wfex->nBlockAlign;
 	streamInfo.dwRate					= wfex->nSamplesPerSec * wfex->nBlockAlign;
@@ -1483,15 +1502,38 @@ int AudioSourceMPEG::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuf
 
 				iad->setDestination((short *)sample_buffer);
 				iad->ReadHeader();
-				if (lCurrentPacket < nDecodeStart)
-					iad->PrereadFrame();
-				else
-					iad->DecodeFrame();
+
+				try {
+					if (lCurrentPacket < nDecodeStart)
+						iad->PrereadFrame();
+					else
+						iad->DecodeFrame();
+				} catch(int i) {
+					if (mErrorMode != kErrorModeReportAll) {
+						const char *pszError = iad->getErrorString(i);
+						unsigned frame = lAudioPacket;
+						VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_AudioConcealingError, 2, &lAudioPacket, &pszError);
+
+						if (lCurrentPacket >= nDecodeStart)
+							memset(sample_buffer, 0, sizeof sample_buffer);
+
+						iad->ConcealFrame();
+					} else
+						throw;
+				}
 
 			} while(++lCurrentPacket <= lAudioPacket);
 			--lCurrentPacket;
 		} catch(int i) {
-			throw MyError("MPEG-1 audio decode error: %s", iad->getErrorString(i));
+			char buf[64];
+			long badpacket = lCurrentPacket;
+
+			uint32 ticks = (uint32)(0.5 + (badpacket * 1000.0 * mSamplesPerFrame) / getWaveFormat()->nSamplesPerSec);
+			ticks_to_str(buf, ticks);
+
+			lCurrentPacket = -1;
+
+			throw MyError("Error decoding MPEG audio frame %lu (%s): %s", (unsigned long)badpacket, buf, iad->getErrorString(i));
 		}
 	}
 
@@ -1513,7 +1555,15 @@ int AudioSourceMPEG::read(void *buffer, int bytes) {
 	return bytes;
 }
 
-#endif
+void AudioSourceMPEG::setDecodeErrorMode(ErrorMode mode) {
+	if (mode == kErrorModeDecodeAnyway)
+		mode = kErrorModeConceal;
+	mErrorMode = mode;
+}
+
+bool AudioSourceMPEG::isDecodeErrorModeSupported(ErrorMode mode) {
+	return mode == kErrorModeReportAll || mode == kErrorModeConceal;
+}
 
 //////////////////////////////////////////////////////////////////////////
 //
@@ -1850,6 +1900,8 @@ InputFile *CreateInputFileMPEG() {
 }
 
 void InputFileMPEG::Init(const char *szFile) {
+	VDLogAppMessage(kVDLogMarker, kVDST_Mpeg, kVDM_OpeningFile, 1, &szFile);
+
 	BOOL finished = FALSE;
 	HWND hWndStatus = 0;
 
@@ -1860,10 +1912,8 @@ void InputFileMPEG::Init(const char *szFile) {
 	if (!(video_packet_buffer = new char[VIDEO_PACKET_BUFFER_SIZE]))
 		throw MyMemoryError();
 
-#ifdef ENABLE_AUDIO_SUPPORT
 	if (!(audio_packet_buffer = new char[AUDIO_PACKET_BUFFER_SIZE]))
 		throw MyMemoryError();
-#endif
 
 	// see if we can open the file
 
@@ -1888,16 +1938,16 @@ void InputFileMPEG::Init(const char *szFile) {
 		MPEGVideoParser videoParser;
 
 
-#ifdef ENABLE_AUDIO_SUPPORT
 		DataVector audio_stream_blocks(sizeof MPEGPacketInfo);
 		DataVector audio_stream_samples(sizeof MPEGSampleInfo);
 		MPEGAudioParser audioParser;
 		__int64 audio_stream_pos = 0;
-#endif
 
 		bool first_packet = true;
 		bool end_of_file = false;
 		bool fTrimLastOff = false;
+
+		sint64 last_dts[48] = {0};
 
 		// seek to first pack code
 
@@ -2029,14 +2079,61 @@ void InputFileMPEG::Init(const char *szFile) {
 									Read();			// skip one byte
 									c=Read();
 								}
-								if ((c>>4) == 2) {	// 0010
+
+								uint8 buf[9];
+								bool bPTSPresent = false;
+								bool bDTSPresent = false;
+
+								buf[0] = c;
+								if ((c>>4) == 2) {			// 0010 (PTS = DTS)
 									pack_length -= 4;
-									Skip(4);
-								} else if ((c>>4) == 3) {	// 0011
+									Read(buf+1, 4, false);
+									bPTSPresent = true;
+								} else if ((c>>4) == 3) {	// 0011 (PTS + DTS)
 									pack_length -= 9;
-									Skip(9);
+									Read(buf+1, 9, false);
+									bPTSPresent = bDTSPresent = true;
 								} else if (c != 0x0f)
 									throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+
+								if (bPTSPresent) {
+									// Validate PTS marker bits.  Force resync on failure.
+									if (!(buf[0]&buf[2]&buf[4]&1))
+										throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+
+									sint64 pts	= ((sint64)(buf[0]&0x0e) << 29)
+												+ ((sint64) buf[1]       << 22)
+												+ ((sint64)(buf[2]&0xfe) << 14)
+												+ ((sint64) buf[3]       <<  7)
+												+ (        (buf[4]&0xfe) >>  1);
+
+									// If DTS is not present, it is the same as PTS.
+									sint64 dts = pts;
+
+									if (bDTSPresent) {
+										// Validate DTS marker bits.  Force resync on failure.
+										if ((buf[5]&0xf1)!=0x11 || (buf[7]&buf[9]&1)!=1)
+											throw MyError("%s: packet sync error on packet stream (%I64x)", szME, tagpos);
+
+										dts	= ((sint64)(buf[5]&0x0e) << 29)
+											+ ((sint64) buf[6]       << 22)
+											+ ((sint64)(buf[7]&0xfe) << 14)
+											+ ((sint64) buf[8]       <<  7)
+											+ (        (buf[9]&0xfe) >>  1);
+									}
+
+									sint64& last_stream_dts = last_dts[stream_id - 0xc0];
+									sint64 dts_delta = (dts - last_stream_dts) & 0x1FFFFFFFF;		// timestamps are 33 bits long.
+
+									if (dts_delta > 56000) {					// decoding timestamps should never run backwards and must be occur at least every 0.7s (90KHz clock)
+										const wchar_t *pStreamType = stream_id < 0xe0 ? L"audio" : L"video";
+										const int nStream = (stream_id - 0xc0) & 0x1f;
+										const sint64 nPos = tagpos;
+										VDLogAppMessage(kVDLogWarning, kVDST_Mpeg, kVDM_OOOTimestamp, 3, &pStreamType, &nStream, &tagpos);
+									}
+
+									last_stream_dts = dts;
+								}
 							}
 						} else {
 							stream_id = 0xe0;
@@ -2047,7 +2144,6 @@ void InputFileMPEG::Init(const char *szFile) {
 
 						if ((0xe0 & stream_id) == 0xc0) {			// audio packet
 
-#ifdef ENABLE_AUDIO_SUPPORT
 							fHasAudio = TRUE;
 
 							MPEGPacketInfo mpi;
@@ -2060,7 +2156,6 @@ void InputFileMPEG::Init(const char *szFile) {
 							Read(audio_packet_buffer, pack_length, false);
 							audioParser.Parse(audio_packet_buffer, pack_length, &audio_stream_samples);
 							pack_length = 0;
-#endif	// ENABLE_AUDIO_SUPPORT
 
 						} else if ((0xf0 & stream_id) == 0xe0) {	// video packet
 
@@ -2116,7 +2211,6 @@ void InputFileMPEG::Init(const char *szFile) {
 			video_packet_list = (MPEGPacketInfo *)video_stream_blocks.MakeArray();
 			packets = video_stream_blocks.Length() - 1;
 
-#ifdef ENABLE_AUDIO_SUPPORT
 			mpi.file_pos		= 0;
 			mpi.stream_pos		= audio_stream_pos;
 			audio_stream_blocks.Add(&mpi);
@@ -2127,11 +2221,13 @@ void InputFileMPEG::Init(const char *szFile) {
 			audio_sample_list = (MPEGSampleInfo *)audio_stream_samples.MakeArray();
 			aframes = audio_stream_samples.Length();
 			audio_first_header = audioParser.getHeader();
-#endif // ENABLE_AUDIO_SUPPORT
 		}
 
 		video_sample_list = (MPEGSampleInfo *)video_stream_samples.MakeArray();
 		frames = video_stream_samples.Length();
+
+		if (!frames)
+			throw MyError("No video frames found in MPEG file.");
 
 		// Begin renumbering the frames.  Some MPEG files have incorrectly numbered
 		// subframes within each group.  So we do them from scratch.
@@ -2181,11 +2277,9 @@ void InputFileMPEG::Init(const char *szFile) {
 
 	// initialize DubSource pointers
 
-#ifdef ENABLE_AUDIO_SUPPORT
 	audioSrc = fHasAudio ? new AudioSourceMPEG(this) : NULL;
 	if (audioSrc)
 		audioSrc->init();
-#endif
 
 	videoSrc = new VideoSourceMPEG(this);
 	videoSrc->init();

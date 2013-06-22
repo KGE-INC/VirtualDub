@@ -113,7 +113,6 @@ BOOL AVIOutputStream::_write(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LO
 }
 
 BOOL AVIOutputStream::finalize() {
-	_RPT0(0,"AVIOutputStream: finalize()\n");
 	return TRUE;
 }
 
@@ -134,8 +133,6 @@ BOOL AVIAudioOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuff
 }
 
 BOOL AVIAudioOutputStream::finalize() {
-	_RPT0(0,"AVIAudioOutputStream: finalize()\n");
-
 	if (!lTotalSamplesWritten)
 		streamInfo.dwLength = 1;
 	else
@@ -164,8 +161,6 @@ BOOL AVIVideoOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuff
 }
 
 BOOL AVIVideoOutputStream::finalize() {
-	_RPT0(0,"AVIVideoOutputStream: finalize()\n");
-
 	if (!lTotalSamplesWritten)
 		streamInfo.dwLength = 1;
 	else
@@ -183,7 +178,6 @@ AVIOutput::AVIOutput() {
 }
 
 AVIOutput::~AVIOutput() {
-	_RPT0(0,"AVIOutput::~AVIOutput()\n");
 	delete audioOut;
 	delete videoOut;
 }
@@ -206,8 +200,7 @@ AVIOutputFile::AVIOutputFile() {
 	cbSegmentHint		= 0;
 	fInitComplete		= false;
 
-	pHeaderBlock		= (char *)allocmem(65536);
-	nHeaderLen			= 0;
+	mHeaderBlock.reserve(16384);
 	i64FarthestWritePoint	= 0;
 	lLargestIndexDelta[0]	= 0;
 	lLargestIndexDelta[1]	= 0;
@@ -226,9 +219,6 @@ AVIOutputFile::~AVIOutputFile() {
 	delete index_audio;
 	delete index_video;
 	delete pSegmentHint;
-	freemem(pHeaderBlock);
-
-	_RPT0(0,"AVIOutputFile: destructor called\n");
 
 	if (hFile) {
 		LONG lHi = (LONG)(i64FarthestWritePoint>>32);
@@ -406,8 +396,6 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 
 	main_hdr_pos = _writeHdrChunk(ckidAVIMAINHDR, &avihdr, sizeof avihdr);
 
-	_RPT1(0,"Main header is at %08lx\n", main_hdr_pos);
-
 	// start video stream headers
 
 	strl_pos = _beginList(listtypeSTREAMHEADER);
@@ -416,8 +404,6 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 
 	video_hdr_pos	= _writeHdrChunk(ckidSTREAMHEADER, &videoOut->streamInfo, sizeof videoOut->streamInfo);
 	_writeHdrChunk(ckidSTREAMFORMAT, videoOut->getFormat(), videoOut->getFormatLen());
-
-	_RPT1(0,"Video header is at %08lx\n", video_hdr_pos);
 
 	// write out video superindex (but make it a JUNK chunk for now).
 
@@ -484,28 +470,29 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 		seghint_pos = _writeHdrChunk('mges', pSegmentHint, cbSegmentHint);
 
 	_closeList(hdrl_pos);
-//	_flushHdr();
 
 	// pad out to a multiple of 2048 bytes
 	//
 	// WARNING: ActiveMovie/WMP can't handle a trailing JUNK chunk in hdrl
 	//			if an extended index is in use.  It says the file format
 	//			is invalid!
+	//
+	// WARNING: WMP8 (XP) thinks a file is an MP3 file if it contains two
+	//			MP3 frames within its first 8K.  We force the LIST/movi
+	//			chunk to start beyond 8K to solve this problem.
 
 	{
 		char *s;
-		long pad;
+		sint32	curpos = (sint32)_getPosition();
 
-		pad = (2048 - ((_getPosition()+8)&2047))&2047;
+		if (curpos < 8192 || (curpos & 2047)) {
+			sint32	padpos = std::max<sint32>(8192, (curpos + 8 + 2047) & ~2047);
+			sint32	pad = padpos - curpos - 8;
 
-		if (pad) {
-			if (!(s = (char *)allocmem(pad)))
-				return FALSE;
-
-			memset(s,0,pad);
+			std::vector<char> s(pad);
 
 			if (pad > 80)
-				sprintf(s, "VirtualDub build %d/%s", version_num,
+				sprintf(&s[0], "VirtualDub build %d/%s", version_num,
 #ifdef _DEBUG
 		"debug"
 #else
@@ -513,9 +500,7 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 #endif
 				);
 
-			_writeHdrChunk(ckidAVIPADDING, s, pad);
-
-			freemem(s);
+			_writeHdrChunk(ckidAVIPADDING, &s[0], pad);
 		}
 
 //		// If we are using a fast path, sync the fast path to the slow path
@@ -526,7 +511,7 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 
 	if (fastIO)
 //		fastIO->FlushStart();
-		fastIO->Put(pHeaderBlock, nHeaderLen);
+		fastIO->Put(&mHeaderBlock.front(), mHeaderBlock.size());
 	else
 		_flushHdr();
 
@@ -553,6 +538,8 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 }
 
 BOOL AVIOutputFile::finalize() {
+	VDDEBUG("AVIOutputFile: Beginning finalize.\n");
+
 	AVISUPERINDEX asi_video;
 	AVISUPERINDEX asi_audio;
 	struct _avisuperindex_entry asie_video[MAX_SUPERINDEX_ENTRIES];
@@ -585,8 +572,6 @@ BOOL AVIOutputFile::finalize() {
 
 		// pad to next boundary
 
-		_RPT1(0,"AVIOutputFile: starting pad at position %08I64x\n", i64FilePosition);
-
 		*(long *)(pad + 0) = 'KNUJ';
 		*(long *)(pad + 4) = (2048 - ((i64FilePosition+8)&2047))&2047;
 		memset(pad+8, 0, 2048);
@@ -607,36 +592,29 @@ BOOL AVIOutputFile::finalize() {
 
 	SetEndOfFile(hFile);
 
-	_RPT0(0,"AVIOutputFile: Writing main AVI header...\n");
 	_seekHdr(main_hdr_pos+8);
 	_writeHdr(&avihdr, sizeof avihdr);
 
-	_RPT0(0,"AVIOutputFile: Writing video header...\n");
 	_seekHdr(video_hdr_pos+8);
 	_writeHdr(&videoOut->streamInfo, sizeof(AVIStreamHeader_fixed));
 
 	if (audioOut) {
-		_RPT0(0,"AVIOutputFile: Writing audio header...\n");
 		_seekHdr(audio_hdr_pos+8);
 		_writeHdr(&audioOut->streamInfo, sizeof(AVIStreamHeader_fixed));
 
 		// we have to rewrite the audio format, in case someone
 		// fixed fields in the format afterward (MPEG-1/L3)
 
-		_RPT0(0,"AVIOutputFile: Writing audio format...\n");
-
 		_seekHdr(audio_format_pos+8);
 		_writeHdr(audioOut->getFormat(), audioOut->getFormatLen());
 	}
 
 	if (fExtendedAVI) {
-		_RPT0(0,"AVIOutputFile: writing dmlh header...\n");
 		_seekHdr(dmlh_pos+8);
 		dw = videoOut->streamInfo.dwLength;
 		_writeHdr(&dw, 4);
 
 		if (xblock > 1) {
-			_RPT0(0,"AVIOutputFile: writing video superindex...\n");
 
 			_seekHdr(video_indx_pos);
 			_writeHdr(&asi_video, sizeof asi_video);
@@ -656,8 +634,6 @@ BOOL AVIOutputFile::finalize() {
 	}
 
 	_flushHdr();
-
-	_RPT0(0,"AVIOutputFile: closing RIFF and movi chunks...\n");
 
 	for(i=0; i<xblock; i++) {
 		DWORD dwLen;
@@ -683,6 +659,8 @@ BOOL AVIOutputFile::finalize() {
 
 	hFile = NULL;
 
+	VDDEBUG("AVIOutputFile: Finalize was successful.\n");
+
 	return TRUE;
 }
 
@@ -699,10 +677,14 @@ long AVIOutputFile::bufferStatus(long *lplBufferSize) {
 ////////////////////////////
 
 __int64 AVIOutputFile::_writeHdr(void *data, long len) {
-	if (nHeaderLen < (long)i64FilePosition + len)
-		nHeaderLen = (long)i64FilePosition + len;
+	long writepos = (long)i64FilePosition;
+	int cursize = mHeaderBlock.size();
 
-	memcpy(pHeaderBlock + (long)i64FilePosition, data, len);
+	if (writepos < cursize)
+		memcpy(&mHeaderBlock[writepos], data, std::min<int>(cursize-writepos, len));
+
+	if (writepos + len > cursize)
+		mHeaderBlock.insert(mHeaderBlock.end(), (char *)data + (cursize-writepos), (char *)data + len);
 
 	i64FilePosition += len;
 
@@ -760,12 +742,12 @@ void AVIOutputFile::_flushHdr() {
 
 	i64FilePosition = 0;
 
-	if (!WriteFile(hFile, pHeaderBlock, nHeaderLen, &dwActual, NULL)
-		|| dwActual != nHeaderLen)
+	if (!WriteFile(hFile, &mHeaderBlock.front(), mHeaderBlock.size(), &dwActual, NULL)
+		|| dwActual != mHeaderBlock.size())
 
 		throw MyWin32Error("%s: %%s", GetLastError(), szME);
 
-	i64FilePosition = nHeaderLen;
+	i64FilePosition = mHeaderBlock.size();
 
 	if (i64FilePosition > i64FarthestWritePoint)
 		i64FarthestWritePoint = i64FilePosition;

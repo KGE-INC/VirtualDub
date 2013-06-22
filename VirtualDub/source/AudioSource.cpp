@@ -19,12 +19,27 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/Dita/resources.h>
 
 #include "gui.h"
 #include "AudioSource.h"
 #include "AVIReadHandler.h"
 
+//////////////////////////////////////////////////////////////////////////////
+
 extern HWND g_hWnd;		// TODO: Remove in 1.5.0
+
+//////////////////////////////////////////////////////////////////////////////
+
+namespace {
+	enum { kVDST_AudioSource = 6 };
+
+	enum {
+		kVDM_TruncatedMP3FormatFixed,
+	};
+}
+
+//////////////////////////////////////////////////////////////////////////////
 
 AudioSourceWAV::AudioSourceWAV(const char *szFile, LONG inputBufferSize)
 {
@@ -139,6 +154,61 @@ BOOL AudioSourceAVI::init() {
 
 	lSampleFirst = pAVIStream->Start();
 	lSampleLast = pAVIStream->End();
+
+	// Check for illegal (truncated) MP3 format.
+	const WAVEFORMATEX *pwfex = getWaveFormat();
+
+	if (pwfex->wFormatTag == WAVE_FORMAT_MPEGLAYER3 && format_len < sizeof(MPEGLAYER3WAVEFORMAT)) {
+		MPEGLAYER3WAVEFORMAT wf;
+
+		wf.wfx				= *pwfex;
+		wf.wfx.cbSize		= MPEGLAYER3_WFX_EXTRA_BYTES;
+
+		wf.wID				= MPEGLAYER3_ID_MPEG;
+
+		// Attempt to detect the padding mode and block size for the stream.
+
+		double byterate = wf.wfx.nAvgBytesPerSec;
+		double fAverageFrameSize = 1152.0 * byterate / wf.wfx.nSamplesPerSec;
+
+		int estimated_bitrate = (int)floor(0.5 + byterate * (1.0/1000.0)) * 8;
+		double fEstimatedFrameSizeISO = 144000.0 * estimated_bitrate / wf.wfx.nSamplesPerSec;
+
+		if (wf.wfx.nSamplesPerSec < 32000) {	// MPEG-2?
+			fAverageFrameSize *= 0.5;
+			fEstimatedFrameSizeISO *= 0.5;
+		}
+
+		double fEstimatedFrameSizePaddingOff = floor(fEstimatedFrameSizeISO);
+		double fEstimatedFrameSizePaddingOn = fEstimatedFrameSizePaddingOff + 1.0;
+		double fErrorISO = fabs(fEstimatedFrameSizeISO - fAverageFrameSize);
+		double fErrorPaddingOn = fabs(fEstimatedFrameSizePaddingOn - fAverageFrameSize);
+		double fErrorPaddingOff = fabs(fEstimatedFrameSizePaddingOff - fAverageFrameSize);
+
+		if (fErrorISO <= fErrorPaddingOn)				// iso < on
+			if (fErrorISO <= fErrorPaddingOff)			// iso < on, off
+				wf.fdwFlags			= MPEGLAYER3_FLAG_PADDING_ISO;
+			else										// off < iso < on
+				wf.fdwFlags			= MPEGLAYER3_FLAG_PADDING_OFF;
+		else											// on < iso
+			if (fErrorPaddingOn <= fErrorPaddingOff)	// on < iso, off
+				wf.fdwFlags			= MPEGLAYER3_FLAG_PADDING_ON;
+			else										// off < on < iso
+				wf.fdwFlags			= MPEGLAYER3_FLAG_PADDING_OFF;
+
+		wf.nBlockSize		= (int)floor(0.5 + fAverageFrameSize);	// This is just a guess.  The MP3 codec always turns padding off, so I don't know whether this should be rounded up or not.
+		wf.nFramesPerBlock	= 1;
+		wf.nCodecDelay		= 1393;									// This is the number of samples padded by the compressor.  1393 is the value typically written by the codec.
+
+		if (!allocFormat(sizeof wf))
+			return FALSE;
+
+		memcpy(getFormat(), &wf, sizeof wf);
+
+		const int bad_len = format_len;
+		const int good_len = sizeof(MPEGLAYER3WAVEFORMAT);
+		VDLogAppMessage(kVDLogWarning, kVDST_AudioSource, kVDM_TruncatedMP3FormatFixed, 2, &bad_len, &good_len);
+	}
 
 	if (!bQuiet) {
 		double mean, stddev, maxdev;

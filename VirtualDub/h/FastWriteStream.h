@@ -18,6 +18,8 @@
 #ifndef f_FASTWRITESTREAM_H
 #define f_FASTWRITESTREAM_H
 
+#include <vd2/system/profile.h>
+
 class FastWriteStream {
 private:
 	HANDLE hFile, hFileSlow, hFileClose;
@@ -36,6 +38,8 @@ private:
 	volatile BOOL fDie, fFlush;
 
 	bool fSynchronous;
+
+	VDRTProfileChannel mProfileChannel;
 
 	/////////
 

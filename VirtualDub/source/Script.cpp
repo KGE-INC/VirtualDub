@@ -494,6 +494,8 @@ static int func_VDVideo_GetFrameRate(IScriptInterpreter *, CScriptObject *, CScr
 static void func_VDVideo_SetFrameRate(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
 	g_dubOpts.video.frameRateNewMicroSecs = arglist[0].asInt();
 	g_dubOpts.video.frameRateDecimation = arglist[1].asInt();
+	g_dubOpts.video.frameRateTargetLo = 0;
+	g_dubOpts.video.frameRateTargetHi = 0;
 
 	if (arg_count > 2) {
 		if (arglist[2].asInt()) {
@@ -505,6 +507,12 @@ static void func_VDVideo_SetFrameRate(IScriptInterpreter *, CScriptObject *, CSc
 			g_dubOpts.video.fInvTelecine = false;
 		}
 	}
+}
+
+static void func_VDVideo_SetTargetFrameRate(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	g_dubOpts.video.frameRateDecimation = 1;
+	g_dubOpts.video.frameRateTargetLo = arglist[1].asInt();
+	g_dubOpts.video.frameRateTargetHi = arglist[0].asInt();
 }
 
 static int func_VDVideo_GetRange(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
@@ -615,6 +623,7 @@ static ScriptFunctionDef obj_VDVideo_functbl[]={
 	{ (ScriptFunctionPtr)func_VDVideo_GetFrameRate		, "GetFrameRate", "ii" },
 	{ (ScriptFunctionPtr)func_VDVideo_SetFrameRate		, "SetFrameRate", "0ii" },
 	{ (ScriptFunctionPtr)func_VDVideo_SetFrameRate		, NULL, "0iii" },
+	{ (ScriptFunctionPtr)func_VDVideo_SetTargetFrameRate, "SetTargetFrameRate", "0ii" },
 	{ (ScriptFunctionPtr)func_VDVideo_GetRange			, "GetRange", "ii" },
 	{ (ScriptFunctionPtr)func_VDVideo_SetRange			, "SetRange", "0ii" },
 	{ (ScriptFunctionPtr)func_VDVideo_GetCompression	, "GetCompression"	, "ii" },

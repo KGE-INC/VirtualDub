@@ -5,6 +5,11 @@
 #include <vd2/system/atomic.h>
 #include <vd2/system/thread.h>
 
+// VDGetCurrentTick: Retrieve current process timer, in milliseconds.  Should only
+// be used for sparsing updates/checks, and not for precision timing.  Approximate
+// resolution is 55ms under Win9x and 10ms under WinNT.
+uint32 VDGetCurrentTick();
+
 // VDCallbackTimer is an abstraction of the Windows multimedia timer.  As such, it
 // is rather expensive to instantiate, and should only be used for critical timing
 // needs... such as multimedia.  Basically, there should only really be one or two

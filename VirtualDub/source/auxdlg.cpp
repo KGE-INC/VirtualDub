@@ -25,11 +25,119 @@
 #include "oshelper.h"
 
 #include <vd2/Priss/decoder.h>
+#include <vd2/system/thread.h>
+#include <vd2/system/profile.h>
+#include "LogWindow.h"
+#include "RTProfileDisplay.h"
 
 extern "C" unsigned long version_num;
 extern "C" char version_time[];
 
 extern HINSTANCE g_hInst;
+
+static volatile HWND g_hwndLogWindow = NULL;
+static volatile HWND g_hwndProfileWindow = NULL;
+
+class VDLogWindowThread : public VDThread {
+public:
+	VDSignal mReady;
+
+	VDLogWindowThread() : VDThread("Log Window") {}
+
+	void ThreadRun() {
+		mReady.signal();
+		// There is a race condition here that can allow two log windows to appear,
+		// but that is not a big deal.
+		if (!g_hwndLogWindow) {
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_LOG), NULL, LogDlgProc);
+			g_hwndLogWindow = 0;
+		} else
+			SetWindowPos(g_hwndLogWindow, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE);
+	}
+
+	static BOOL CALLBACK LogDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+		switch(msg) {
+		case WM_INITDIALOG:
+			VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG))->AttachAsLogger(false);
+			g_hwndLogWindow = hdlg;
+		case WM_SIZE:
+			{
+				RECT r;
+
+				GetClientRect(hdlg, &r);
+				SetWindowPos(GetDlgItem(hdlg, IDC_LOG), NULL, 0, 0, r.right, r.bottom, SWP_NOZORDER|SWP_NOACTIVATE);
+			}
+			return TRUE;
+		case WM_COMMAND:
+			if (LOWORD(wParam) == IDCANCEL)
+				EndDialog(hdlg, 0);
+			return TRUE;
+		}
+		return FALSE;
+	}
+};
+
+extern void VDOpenLogWindow() {
+	VDLogWindowThread logwin;
+
+	logwin.ThreadStart();
+	if (logwin.isThreadAttached()) {
+		logwin.mReady.wait();
+		logwin.ThreadDetach();
+	}
+}
+
+
+class VDProfileWindowThread : public VDThread {
+public:
+	VDSignal mReady;
+
+	VDProfileWindowThread() : VDThread("Profile Window") {}
+
+	void ThreadRun() {
+		mReady.signal();
+		// There is a race condition here that can allow two Profile windows to appear,
+		// but that is not a big deal.
+		if (!g_hwndProfileWindow) {
+			VDInitProfilingSystem();
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_PROFILER), NULL, ProfileDlgProc);
+			g_hwndProfileWindow = 0;
+		} else
+			SetWindowPos(g_hwndProfileWindow, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE);
+	}
+
+	static BOOL CALLBACK ProfileDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+		switch(msg) {
+		case WM_INITDIALOG:
+			g_hwndProfileWindow = hdlg;
+			VDGetIRTProfileDisplayControl(GetDlgItem(hdlg, IDC_PROFILE))->SetProfiler(VDGetRTProfiler());
+		case WM_SIZE:
+			{
+				RECT r;
+
+				GetClientRect(hdlg, &r);
+				SetWindowPos(GetDlgItem(hdlg, IDC_PROFILE), NULL, 0, 0, r.right, r.bottom, SWP_NOZORDER|SWP_NOACTIVATE);
+			}
+			return TRUE;
+		case WM_COMMAND:
+			if (LOWORD(wParam) == IDCANCEL)
+				EndDialog(hdlg, 0);
+			return TRUE;
+		}
+		return FALSE;
+	}
+};
+
+extern void VDOpenProfileWindow() {
+	VDProfileWindowThread profwin;
+
+	profwin.ThreadStart();
+	if (profwin.isThreadAttached()) {
+		profwin.mReady.wait();
+		profwin.ThreadDetach();
+	}
+}
+
 
 BOOL APIENTRY ShowTextDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
 	HRSRC hRSRC;
@@ -85,7 +193,7 @@ BOOL APIENTRY WelcomeDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
                 EndDialog(hDlg, TRUE);  
                 return TRUE;
 			case IDC_HELP2:
-				HelpShowHelp(hDlg);
+				VDShowHelp(hDlg);
 				return TRUE;
             }
             break;

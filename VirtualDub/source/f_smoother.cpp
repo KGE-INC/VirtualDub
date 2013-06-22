@@ -1152,7 +1152,7 @@ static int smoother_end(FilterActivation *fa, const FilterFunctions *ff) {
 		square_table = NULL;
 	}
 
-	for(i=0; i<3; i++) {
+	for(i=0; i<5; i++) {
 		delete mfd->sum_row[i];
 		mfd->sum_row[i] = NULL;
 	}

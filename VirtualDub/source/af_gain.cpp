@@ -128,10 +128,6 @@ uint32 VDAudioFilterGain::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay			= 0;
-	mpContext->mpOutputs[0]->mGranularity	= 1;
-
 	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
@@ -161,10 +157,7 @@ uint32 VDAudioFilterGain::Run() {
 	const VDWaveFormat& format = *pin.mpFormat;
 	bool bInputRead = false;
 
-	// foo
-	char buf8[4096];
-
-	int samples = std::min<int>(mpContext->mInputSamples, 4096 / format.mChannels);
+	int samples = mpContext->mInputSamples;
 
 	// compute output samples
 	int elems = samples * format.mChannels;
@@ -187,37 +180,16 @@ uint32 VDAudioFilterGain::Run() {
 
 	unsigned count = format.mChannels * samples;
 
-	switch(format.mSampleBits) {
-	case 8:
-		{
-			int actual_samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], buf8, samples, false);
-			VDASSERT(actual_samples == samples);
+	int actual_samples = mpContext->mpInputs[0]->Read(dst, samples, false, kVFARead_PCM16);
+	VDASSERT(actual_samples == samples);
 
-			for(unsigned i=0; i<count; ++i) {
-				sint32 v = ((sint32)dst[i] * mScale8 + 0x000080) >> 8;
+	for(unsigned i=0; i<count; ++i) {
+		sint32 v = ((sint32)dst[i] * mScale16 + 0x800080) >> 8;
 
-				if ((uint32)v >= 0x10000)
-					v = ~v >> 31;
+		if ((uint32)v >= 0x10000)
+			v = ~v >> 31;
 
-				dst[i] = (sint16)(v - 0x8000);
-			}
-		}
-		break;
-	case 16:
-		{
-			int actual_samples = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst, samples, false);
-			VDASSERT(actual_samples == samples);
-
-			for(unsigned i=0; i<count; ++i) {
-				sint32 v = ((sint32)dst[i] * mScale16 + 0x800080) >> 8;
-
-				if ((uint32)v >= 0x10000)
-					v = ~v >> 31;
-
-				dst[i] = (sint16)(v - 0x8000);
-			}
-		}
-		break;
+		dst[i] = (sint16)(v - 0x8000);
 	}
 
 	mOutputBuffer.UnlockWrite(samples * format.mChannels);
@@ -260,16 +232,5 @@ extern const struct VDAudioFilterDefinition afilterDef_gain = {
 	&VDAudioFilterData_Gain::members.info,
 
 	VDAudioFilterGain::InitProc,
-	VDAudioFilterGain::DestroyProc,
-	VDAudioFilterGain::PrepareProc,
-	VDAudioFilterGain::StartProc,
-	VDAudioFilterGain::StopProc,
-	VDAudioFilterGain::RunProc,
-	VDAudioFilterGain::ReadProc,
-	VDAudioFilterGain::SeekProc,
-	VDAudioFilterGain::SerializeProc,
-	VDAudioFilterGain::DeserializeProc,
-	VDAudioFilterGain::GetParamProc,
-	VDAudioFilterGain::SetParamProc,
-	VDAudioFilterGain::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

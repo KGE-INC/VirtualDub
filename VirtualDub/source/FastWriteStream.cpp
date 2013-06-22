@@ -23,6 +23,7 @@
 
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/tls.h>
+#include <vd2/system/profile.h>
 
 #include <vd2/system/error.h>
 
@@ -33,7 +34,9 @@ extern bool g_disklockinited;
 
 //////////////////////////////////////////////////////////////////////
 
-FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lChunkSize, bool fLaunchThread) {
+FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lChunkSize, bool fLaunchThread)
+	: mProfileChannel("FastWrite")
+{
 
 	hFile = hFileClose = CreateFile(
 			lpszFile,
@@ -60,7 +63,7 @@ FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lC
 			);
 
 		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyError("FastWriteStream: open failed");
+			throw MyWin32Error("FastWriteStream: couldn't open \"%s\": %%s.", GetLastError());
 	}
 
 	this->lBufferSize		= lBufferSize;
@@ -69,7 +72,9 @@ FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lC
 	_construct(fLaunchThread);
 }
 
-FastWriteStream::FastWriteStream(HANDLE hFile, long lBufferSize, long lChunkSize, bool fLaunchThread) {
+FastWriteStream::FastWriteStream(HANDLE hFile, long lBufferSize, long lChunkSize, bool fLaunchThread)
+	: mProfileChannel("FastWrite")
+{
 	this->hFile				= hFile;
 	this->lBufferSize		= lBufferSize;
 	this->lChunkSize		= lChunkSize;
@@ -151,8 +156,6 @@ void FastWriteStream::_construct(bool fLaunchThread) {
 }
 
 void FastWriteStream::_destruct() {
-	_RPT0(0,"FastWriteStream::_destruct()\n");
-
 	if (hThread) {
 		fDie = TRUE;
 		SetEvent(hEventOkRead);
@@ -300,14 +303,10 @@ void FastWriteStream::Seek(__int64 llPos) {
 
 	SetLastError(0);
 
-//	_RPT2(0,"FastWriteStream::Seek(%08lx%08lx)\n", lHigh, lLow);
-
 	SetFilePointer(hFile, lLow, &lHigh, FILE_BEGIN);
 
 	if (dwErrorRet = GetLastError())
 		ThrowError();
-
-//	_RPT0(0,"FastWriteStream::Seek() exit\n");
 }
 
 long FastWriteStream::getBufferStatus(long *lplBufferSize) {
@@ -326,8 +325,6 @@ unsigned __stdcall FastWriteStream::BackgroundThreadStart(void *lpThisPtr) {
 	FastWriteStream *thisPtr = (FastWriteStream *)lpThisPtr;
 
 	VDInitThreadData("FastWriteStream");
-
-	_RPT2(0,"FastWriteStream thread start: thread=%p, this=%p\n", GetCurrentThreadId(), thisPtr);
 
 	try {
 
@@ -352,7 +349,12 @@ void FastWriteStream::BackgroundWrite(HANDLE hFile, long lOffset, long lSize) {
 	DWORD dwActual;
 
 	EnterCriticalSection(&g_diskcs);
-	if (!WriteFile(hFile,(char *)lpBuffer + lOffset,lSize,&dwActual,NULL)) {
+
+	mProfileChannel.Begin(0xa0c0c0, "Write");
+	bool bFailed = !WriteFile(hFile,(char *)lpBuffer + lOffset,lSize,&dwActual,NULL);
+	mProfileChannel.End();
+
+	if (bFailed) {
 		LeaveCriticalSection(&g_diskcs);
 		throw GetLastError();
 	}
@@ -388,10 +390,8 @@ bool FastWriteStream::BackgroundCheck() {
 	if (fFlush) {
 		len = lDataPoint;
 
-#ifdef _DEBUG
-		if (len && len < 2048)
-			_RPT0(0,"FastWriteStream: Error! Final flushed write is not a 2K multiple!\n");
-#endif
+		VDASSERT(!len || len >= 2048);
+
 		if (len >= 2048)
 			len -= len % 2048;
 

@@ -1,13 +1,15 @@
 #ifndef f_VD2_SYSTEM_FRACTION_H
 #define f_VD2_SYSTEM_FRACTION_H
 
+#include <vd2/system/vdtypes.h>
+
 class VDFraction {
 friend VDFraction operator*(unsigned long b, const VDFraction f);
 friend VDFraction operator*(int b, const VDFraction f);
 private:
 	unsigned long	hi, lo;
 
-	static VDFraction reduce(__int64 hi, __int64 lo);
+	static VDFraction reduce(sint64 hi, sint64 lo);
 
 public:
 	VDFraction() {}
@@ -34,11 +36,12 @@ public:
 	VDFraction operator*(int b) const { return operator*((unsigned long)b); }
 	VDFraction operator/(int b) const { return operator/((unsigned long)b); }
 
-	__int64 scale64t(__int64) const;
-	__int64 scale64r(__int64) const;
-	__int64 scale64u(__int64) const;
-	__int64 scale64it(__int64) const;
-	__int64 scale64ir(__int64) const;
+	sint64 scale64t(sint64) const;
+	sint64 scale64r(sint64) const;
+	sint64 scale64u(sint64) const;
+	sint64 scale64it(sint64) const;
+	sint64 scale64ir(sint64) const;
+	sint64 scale64iu(sint64) const;
 
 	operator long() const;
 	operator unsigned long() const;
@@ -51,7 +54,7 @@ public:
 
 	VDFraction reduce() const { return reduce(hi, lo); }
 
-	static inline VDFraction reduce64(__int64 hi, __int64 lo) { return reduce(hi, lo); }
+	static inline VDFraction reduce64(sint64 hi, sint64 lo) { return reduce(hi, lo); }
 };
 
 inline VDFraction operator*(unsigned long b, const VDFraction f) { return f*b; }

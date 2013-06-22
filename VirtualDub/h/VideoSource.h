@@ -145,12 +145,17 @@ private:
 	FOURCC		fccForceVideo;
 	FOURCC		fccForceVideoHandler;
 
+	ErrorMode	mErrorMode;
+	bool		mbMMXBrokenCodecDetected;
+	bool		mbConcealingErrors;
+
 	char		szCodecName[128];
 
 	void _construct();
 	void _destruct();
 
 	bool AttemptCodecNegotiation(BITMAPINFOHEADER *, bool);
+	void CheckMMX();
 
 public:
 	VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys=NULL, IAVIReadHandler **stripe_files=NULL, bool use_internal=false, int mjpeg_mode=0, FOURCC fccForceVideo=0, FOURCC fccForceVideoHandler=0);
@@ -185,6 +190,9 @@ public:
 	bool isKeyframeOnly();
 	bool isType1();
 	bool isDecodable(long sample_num);
+
+	void setDecodeErrorMode(ErrorMode mode);
+	bool isDecodeErrorModeSupported(ErrorMode mode);
 };
 
 #endif

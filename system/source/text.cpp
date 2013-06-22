@@ -592,7 +592,7 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 
 					pbuf0 = VDGetFastTextBufferW(maxlen);
 
-					pbuf = pbuf0 + VDTextAToW(pbuf0, maxlen, (const char *)*argv++, precision);
+					pbuf = pbuf0 + VDTextAToW(pbuf0, maxlen, *(const char *const *)*argv++, precision);
 				} else {
 					pbuf = pbuf0 = *(wchar_t *const *)*argv++;
 

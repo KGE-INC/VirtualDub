@@ -37,7 +37,8 @@ extern const VDAudioFilterDefinition
 	afilterDef_gain,
 	afilterDef_stereochorus,
 	afilterDef_split,
-	afilterDef_mix;
+	afilterDef_mix,
+	afilterDef_newrate;
 
 static const VDAudioFilterDefinition *const g_builtin_audio_filters[]={
 	&afilterDef_input,
@@ -59,6 +60,7 @@ static const VDAudioFilterDefinition *const g_builtin_audio_filters[]={
 	&afilterDef_stereochorus,
 	&afilterDef_split,
 	&afilterDef_mix,
+	&afilterDef_newrate,
 };
 
 void VDInitBuiltinAudioFilters() {

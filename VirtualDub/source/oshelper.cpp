@@ -19,7 +19,13 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <vd2/system/VDString.h>
+#include <vd2/system/filesys.h>
+#include <vd2/system/zip.h>
+#include <vd2/system/Error.h>
 #include "oshelper.h"
+
+extern const char g_szError[];
 
 void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted) {
 	HPEN hPenOld;
@@ -177,40 +183,149 @@ BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static char g_szHelpPath[MAX_PATH]="VirtualD.hlp";
+static bool VDIsWindowsNT() {
+	static bool bIsNT = (LONG)GetVersion() >= 0;
 
-void HelpSetPath() {
-	char szPath[MAX_PATH];
-	char *lpFilePart;
-	char *ext = NULL;
-
-	if (GetModuleFileName(NULL, szPath, sizeof szPath))
-		if (GetFullPathName(szPath, sizeof g_szHelpPath, g_szHelpPath, &lpFilePart))
-			strcpy(lpFilePart,"VirtualD.hlp");
+	return bIsNT;
 }
 
-const char *HelpGetPath() {
-	return g_szHelpPath;
+VDStringW VDGetProgramPath() {
+	union {
+		wchar_t w[MAX_PATH];
+		char a[MAX_PATH];
+	} buf;
+
+	VDStringW wstr;
+
+	if (VDIsWindowsNT()) {
+		wcscpy(buf.w, L".");
+		if (GetModuleFileNameW(NULL, buf.w, MAX_PATH))
+			*VDFileSplitPath(buf.w) = 0;
+		wstr = buf.w;
+	} else {
+		strcpy(buf.a, ".");
+		if (GetModuleFileNameA(NULL, buf.a, MAX_PATH))
+			*VDFileSplitPath(buf.a) = 0;
+		wstr = VDTextAToW(buf.a, -1);
+	}
+
+	VDStringW wstr2(VDGetFullPath(wstr));
+
+	return wstr2;
 }
 
-void HelpShowHelp(HWND hwnd) {
-	WinHelp(hwnd, g_szHelpPath, HELP_FINDER, 0);
+VDStringW VDGetHelpPath() {
+	return VDMakePath(VDGetProgramPath(), VDStringW(L"help"));
 }
 
-void HelpContext(HWND hwnd, DWORD helpID) {
-	WinHelp(hwnd, g_szHelpPath, HELP_CONTEXT, helpID);
+void VDUnpackHelp(const VDStringW& path) {
+	std::vector<char> innerzipdata;
+	uint32 chkvalue;		// value used to identify whether help directory is up to date
+
+	// Decompress the first file in the outer zip to make the inner zip archive.
+	{
+		VDFileStream			helpzipfile(VDMakePath(VDGetProgramPath(), VDStringW(L"VirtualDub.vdhelp")).c_str());
+
+		chkvalue = helpzipfile.Length();
+
+		VDZipArchive			helpzip;
+		helpzip.Init(&helpzipfile);
+		const VDZipArchive::FileInfo& fi = helpzip.GetFileInfo(0);
+		VDZipStream				zipstream(helpzip.OpenRaw(0), fi.mCompressedSize, !fi.mbPacked);
+
+		innerzipdata.resize(fi.mUncompressedSize);
+
+		zipstream.Read(&innerzipdata.front(), innerzipdata.size());
+	}
+
+	// Decompress the inner zip archive.
+
+	VDMemoryStream	innerzipstream(&innerzipdata[0], innerzipdata.size());
+	VDZipArchive	innerzip;
+	
+	innerzip.Init(&innerzipstream);
+
+	if (!VDDoesPathExist(path))
+		VDCreateDirectory(path);
+
+	const sint32 entries = innerzip.GetFileCount();
+
+	for(sint32 idx=0; idx<entries; ++idx) {
+		const VDZipArchive::FileInfo& fi = innerzip.GetFileInfo(idx);
+
+		// skip directories -- Zip paths always use forward slashes.
+		if (!fi.mFileName.empty() && fi.mFileName[fi.mFileName.size()-1] == '/')
+			continue;
+
+		// create partial paths as necessary
+		const VDStringW name(VDTextAToW(fi.mFileName));
+		const wchar_t *base = name.c_str(), *s = base;
+
+		while(const wchar_t *t = wcschr(s, L'/')) {
+			VDStringW dirPath(VDMakePath(path, VDStringW(base, t - base)));
+
+			if (!VDDoesPathExist(dirPath))
+				VDCreateDirectory(dirPath);
+
+			s = t+1;
+		}
+
+		VDStringW filePath(VDMakePath(path, name));
+
+		VDDEBUG("file: %-40S %10d <- %10d\n", filePath.c_str(), fi.mCompressedSize, fi.mUncompressedSize);
+
+		// unpack the file
+
+		VDZipStream unpackstream(innerzip.OpenRaw(idx), fi.mCompressedSize, !fi.mbPacked);
+
+		std::vector<char> fileData(fi.mUncompressedSize);
+		unpackstream.Read(&fileData.front(), fileData.size());
+
+		VDFile outfile(filePath.c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
+		outfile.write(&fileData[0], fileData.size());
+	}
+
+	// write help identifier
+	VDFile chkfile(VDMakePath(path, VDStringW(L"helpfile.id")).c_str(), nsVDFile::kWrite | nsVDFile::kCreateAlways);
+
+	chkfile.write(&chkvalue, 4);
+	chkfile.close();
 }
 
-void HelpPopup(HWND hwnd, DWORD helpID) {
-	WinHelp(hwnd, g_szHelpPath, HELP_CONTEXTPOPUP, helpID);
+bool VDIsHelpUpToDate(const VDStringW& helpPath) {
+	if (!VDDoesPathExist(helpPath))
+		return false;
+
+	bool bUpToDate = false;
+
+	try {
+		VDFile helpzipfile(VDMakePath(VDGetProgramPath(), VDStringW(L"VirtualDub.vdhelp")).c_str());
+		VDFile chkfile(VDMakePath(helpPath, VDStringW(L"helpfile.id")).c_str(), nsVDFile::kRead | nsVDFile::kOpenExisting);
+		uint32 chk;
+
+		chkfile.read(&chk, 4);
+
+		if (helpzipfile.size() == chk)
+			bUpToDate = true;
+	} catch(const MyError&) {
+		// eat errors
+	}
+
+	return bUpToDate;
 }
 
-void HelpPopupByID(HWND hwnd, DWORD ctrlID, const DWORD *lookup) {
-	while(lookup[0]) {
-		if (lookup[0] == ctrlID)
-			HelpPopup(hwnd, lookup[1]);
+void VDShowHelp(HWND hwnd, const wchar_t *filename) {
+	try {
+		VDStringW helpPath(VDGetHelpPath());
 
-		lookup+=2;
+		if (!VDIsHelpUpToDate(helpPath)) {
+			VDUnpackHelp(helpPath);
+		}
+
+		LaunchURL(VDTextWToA(VDMakePath(helpPath, VDStringW(filename?filename:L"index.html"))).c_str());
+//	WinHelp(hwnd, g_szHelpPath, HELP_FINDER, 0);
+	} catch(const MyError& e) {
+		e.post(hwnd, g_szError);
 	}
 }
 

@@ -150,27 +150,25 @@ private:
 	WAVEFORMATEX *pwfexTempOutput;
 	void *inputBuffer;
 	void *outputBuffer;
-	char *outputBufferPtr;
-	void *holdBuffer;
-	long holdBufferSize;
-	long holdBufferOffset;
-	BOOL fStreamEnded;
-	LONG bytesPerInputSample;
-	LONG bytesPerOutputSample;
+	bool fStreamEnded;
+	long bytesPerInputSample;
+	long bytesPerOutputSample;
+
+	uint32	mReadOffset;			// Read offset from output buffer
 
 	char mDriverName[64];
 
 	enum { INPUT_BUFFER_SIZE = 16384 };
 
-	void	ResizeHoldBuffer(long lNewSize);
-	void	WriteToHoldBuffer(void *data, long lBytes);
-
 public:
 	AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, long dst_format_len);
 	~AudioCompressor();
 	void CompensateForMP3();
-	void *	Compress(long lInputSamples, long *lplSrcInputSamples, long *lplOutputBytes, long *lplOutputSamples);
+	long _Read(void *buffer, long samples, long *lplBytes);
 	BOOL	isEnd();
+
+protected:
+	bool Process();
 };
 
 class AudioL3Corrector {

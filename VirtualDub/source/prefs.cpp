@@ -433,7 +433,7 @@ BOOL APIENTRY PreferencesDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lPa
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwPrefsHelpLookup);
+					VDShowHelp(hDlg, L"d-preferences.html");
 			}
 			return TRUE;
 	}

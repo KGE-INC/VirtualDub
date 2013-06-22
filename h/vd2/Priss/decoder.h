@@ -43,6 +43,7 @@ public:
 	virtual void	ReadHeader()						=0;
 	virtual void	PrereadFrame()						=0;
 	virtual bool	DecodeFrame()						=0;
+	virtual void	ConcealFrame()						=0;
 };
 
 extern IAMPDecoder * __cdecl CreateAMPDecoder();

@@ -96,6 +96,8 @@ public:
 	static bool		__cdecl ConfigProc				(const VDAudioFilterContext *pContext, HWND hwnd);
 	static uint32	__cdecl ReadProc				(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples);
 
+	static const VDAudioFilterVtbl sVtbl;
+
 protected:
 	const nsVDAudioFilterBase::ConfigEntryExt *GetParamEntry(const unsigned idx);
 

@@ -9,7 +9,7 @@
 
 #ifdef _DEBUG
 
-bool VDAssert(const char *exp, const char *file, int line) {
+VDAssertResult VDAssert(const char *exp, const char *file, int line) {
 	char szText[1024];
 
 	wsprintf(szText,
@@ -19,10 +19,19 @@ bool VDAssert(const char *exp, const char *file, int line) {
 		"\n"
 		"Break into debugger?", file, line, exp);
 
-	return IDYES == MessageBox(NULL, szText, "Assert failure", MB_YESNO|MB_ICONWARNING|MB_TASKMODAL);
+	switch(MessageBox(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
+	case IDABORT:
+		return kVDAssertBreak;
+	case IDRETRY:
+		return kVDAssertContinue;
+	default:
+		VDNEVERHERE;
+	case IDIGNORE:
+		return kVDAssertIgnore;
+	}
 }
 
-bool VDAssertPtr(const char *exp, const char *file, int line) {
+VDAssertResult VDAssertPtr(const char *exp, const char *file, int line) {
 	char szText[1024];
 
 	wsprintf(szText,
@@ -32,7 +41,16 @@ bool VDAssertPtr(const char *exp, const char *file, int line) {
 		"\n"
 		"Break into debugger?", file, line, exp);
 
-	return IDYES == MessageBox(NULL, szText, "Assert failure", MB_YESNO|MB_ICONWARNING|MB_TASKMODAL);
+	switch(MessageBox(NULL, szText, "Assert failure", MB_ABORTRETRYIGNORE|MB_ICONWARNING|MB_TASKMODAL)) {
+	case IDABORT:
+		return kVDAssertBreak;
+	case IDRETRY:
+		return kVDAssertContinue;
+	default:
+		VDNEVERHERE;
+	case IDIGNORE:
+		return kVDAssertIgnore;
+	}
 }
 
 #endif

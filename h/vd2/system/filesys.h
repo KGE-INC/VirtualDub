@@ -64,7 +64,11 @@ VDStringW VDFileSplitExtRight(const VDStringW&);
 /////////////////////////////////////////////////////////////////////////////
 
 sint64 VDGetDiskFreeSpace(const VDStringW& path);
+void VDCreateDirectory(const VDStringW& path);
+bool VDDoesPathExist(const VDStringW& fileName);
 
 VDStringW VDGetFullPath(const VDStringW& partialPath);
+
+VDStringW VDMakePath(const VDStringW& base, const VDStringW& file);
 
 #endif

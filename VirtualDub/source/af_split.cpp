@@ -53,11 +53,6 @@ void __cdecl VDAudioFilterSplit::InitProc(const VDAudioFilterContext *pContext) 
 uint32 VDAudioFilterSplit::Prepare() {
 	const VDWaveFormat& format0 = *mpContext->mpInputs[0]->mpFormat;
 
-	mpContext->mpInputs[0]->mGranularity	= 1;
-	mpContext->mpInputs[0]->mDelay		= 0;
-	mpContext->mpOutputs[0]->mGranularity = 1;
-	mpContext->mpOutputs[1]->mGranularity = 1;
-
 	VDWaveFormat *pwf0, *pwf1;
 
 	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
@@ -88,7 +83,7 @@ uint32 VDAudioFilterSplit::Run() {
 
 	samples /= mpContext->mpOutputs[0]->mpFormat->mBlockSize;
 
-	actual = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], dst1, samples, false);
+	actual = mpContext->mpInputs[0]->Read(dst1, samples, false, kVFARead_Native);
 
 	memcpy(dst2, dst1, actual * mpContext->mpOutputs[0]->mpFormat->mBlockSize);
 
@@ -136,16 +131,5 @@ extern const struct VDAudioFilterDefinition afilterDef_split = {
 	NULL,
 
 	VDAudioFilterSplit::InitProc,
-	VDAudioFilterSplit::DestroyProc,
-	VDAudioFilterSplit::PrepareProc,
-	VDAudioFilterSplit::StartProc,
-	VDAudioFilterSplit::StopProc,
-	VDAudioFilterSplit::RunProc,
-	VDAudioFilterSplit::ReadProc,
-	VDAudioFilterSplit::SeekProc,
-	VDAudioFilterSplit::SerializeProc,
-	VDAudioFilterSplit::DeserializeProc,
-	VDAudioFilterSplit::GetParamProc,
-	VDAudioFilterSplit::SetParamProc,
-	VDAudioFilterSplit::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

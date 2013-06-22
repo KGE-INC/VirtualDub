@@ -6,6 +6,10 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/tls.h>
 
+VDThreadID VDGetCurrentThreadID() {
+	return (VDThreadID)GetCurrentThreadId();
+}
+
 VDThread::VDThread(const char *pszDebugName)
 	: mpszDebugName(pszDebugName)
 	, mhThread(0)

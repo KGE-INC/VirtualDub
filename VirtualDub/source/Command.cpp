@@ -29,6 +29,7 @@
 #include "AVIOutputImages.h"
 #include "AVIOutputStriped.h"
 #include "Dub.h"
+#include "DubOutput.h"
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include "AudioFilterSystem.h"
@@ -51,6 +52,9 @@ extern HDRAWDIB				hDDWindow;
 extern char g_szInputAVIFile[MAX_PATH];
 extern char g_szInputAVIFileTitle[MAX_PATH];
 extern char g_szInputWAVFile[MAX_PATH];
+
+extern DubSource::ErrorMode	g_videoErrorMode;
+extern DubSource::ErrorMode	g_audioErrorMode;
 
 InputFile			*inputAVI				= NULL;
 InputFileOptions	*g_pInputOpts			= NULL;
@@ -262,6 +266,11 @@ void OpenAVI(const char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet,
 				if (!inputVideoAVI->setDecompressedFormat(16))
 					inputVideoAVI->setDecompressedFormat(8);
 
+		inputVideoAVI->setDecodeErrorMode(g_videoErrorMode);
+
+		if (inputAudioAVI)
+			inputAudioAVI->setDecodeErrorMode(g_audioErrorMode);
+
 		// How many items did we get?
 
 		{
@@ -394,6 +403,9 @@ void OpenWAV(const char *szFile) {
 			delete inputAudioWAV;
 			inputAudioWAV = NULL;
 		}
+
+		if (inputAudioWAV)
+			inputAudioWAV->setDecodeErrorMode(g_audioErrorMode);
 
 		strcpy(g_szInputWAVFile, szFile);
 

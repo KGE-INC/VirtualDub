@@ -43,7 +43,9 @@
 #else
 	#error Please add an entry for your compiler for 64-bit constant literals.
 #endif
+
 	
+#define VDAPIENTRY			__cdecl
 
 typedef int64 VDTime;
 typedef int64 VDPosition;
@@ -146,8 +148,14 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-extern bool VDAssert(const char *exp, const char *file, int line);
-extern bool VDAssertPtr(const char *exp, const char *file, int line);
+enum VDAssertResult {
+	kVDAssertBreak,
+	kVDAssertContinue,
+	kVDAssertIgnore
+};
+
+extern VDAssertResult VDAssert(const char *exp, const char *file, int line);
+extern VDAssertResult VDAssertPtr(const char *exp, const char *file, int line);
 extern void VDDebugPrint(const char *format, ...);
 
 #if defined(_MSC_VER)
@@ -162,10 +170,10 @@ extern void VDDebugPrint(const char *format, ...);
 #ifdef _DEBUG
 
 	#define VDASSUME(exp)
-	#define VDASSERT(exp)		do { if (!(exp)) if (VDAssert   ( #exp, __FILE__, __LINE__ )) VDBREAK; } while(false)
-	#define VDASSERTPTR(exp) 	do { if (!(exp)) if (VDAssertPtr( #exp, __FILE__, __LINE__ )) VDBREAK; } while(false)
-	#define VDVERIFY(exp)		do { if (!(exp)) if (VDAssert   ( #exp, __FILE__, __LINE__ )) VDBREAK; } while(false)
-	#define VDVERIFYPTR(exp) 	do { if (!(exp)) if (VDAssertPtr( #exp, __FILE__, __LINE__ )) VDBREAK; } while(false)
+	#define VDASSERT(exp)		if (static bool active = true) if (exp); else switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
+	#define VDASSERTPTR(exp) 	if (static bool active = true) if (exp); else switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
+	#define VDVERIFY(exp)		if (exp); else if (static bool active = true) switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
+	#define VDVERIFYPTR(exp) 	if (exp); else if (static bool active = true) switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
 	#define VDASSERTCT(exp)		(void)sizeof(int[(exp)?1:-1])
 
 	#define NEVER_HERE			do { if (VDAssert( "[never here]", __FILE__, __LINE__ )) VDBREAK; __assume(false); } while(false)

@@ -151,30 +151,16 @@ uint32 VDAudioFilterCenterCut::Run() {
 	// fill up the input window
 
 	while(mInputSamplesNeeded > 0) {
-		union {
-			sint16	w[4096];
-			uint8	b[8192];
-		} buf;
-		int tc = mpContext->mpInputs[0]->mpReadProc(mpContext->mpInputs[0], &buf, std::min<int>(mInputSamplesNeeded, sizeof buf / format.mBlockSize), false);
+		sint16 buf[4096];
+		int tc = mpContext->mpInputs[0]->Read(&buf, std::min<int>(mInputSamplesNeeded, 4096 / format.mChannels), false, kVFARead_PCM16);
 
 		if (tc<=0)
 			return !actual && pin.mbEnded ? kVFARun_Finished : 0;
 
-		switch(format.mSampleBits) {
-		case 8:
-			for(i=0; i<tc; ++i) {
-				mInput[mInputPos][0] = (float)(((int)buf.b[i*2+0] - 0x80)<<8);
-				mInput[mInputPos][1] = (float)(((int)buf.b[i*2+1] - 0x80)<<8);
-				mInputPos = (mInputPos + 1) & (kWindowSize-1);
-			}
-			break;
-		case 16:
-			for(i=0; i<tc; ++i) {
-				mInput[mInputPos][0] = buf.w[i*2+0];
-				mInput[mInputPos][1] = buf.w[i*2+1];
-				mInputPos = (mInputPos + 1) & (kWindowSize-1);
-			}
-			break;
+		for(i=0; i<tc; ++i) {
+			mInput[mInputPos][0] = buf[i*2+0];
+			mInput[mInputPos][1] = buf[i*2+1];
+			mInputPos = (mInputPos + 1) & (kWindowSize-1);
 		}
 
 		actual += tc;
@@ -332,16 +318,5 @@ extern const struct VDAudioFilterDefinition afilterDef_centercut = {
 	NULL,
 
 	VDAudioFilterCenterCut::InitProc,
-	VDAudioFilterCenterCut::DestroyProc,
-	VDAudioFilterCenterCut::PrepareProc,
-	VDAudioFilterCenterCut::StartProc,
-	VDAudioFilterCenterCut::StopProc,
-	VDAudioFilterCenterCut::RunProc,
-	VDAudioFilterCenterCut::ReadProc,
-	VDAudioFilterCenterCut::SeekProc,
-	VDAudioFilterCenterCut::SerializeProc,
-	VDAudioFilterCenterCut::DeserializeProc,
-	VDAudioFilterCenterCut::GetParamProc,
-	VDAudioFilterCenterCut::SetParamProc,
-	VDAudioFilterCenterCut::ConfigProc,
+	&VDAudioFilterBase::sVtbl,
 };

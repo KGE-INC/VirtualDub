@@ -686,6 +686,49 @@ int guiListboxInsertSortedString(HWND hwnd, const char *pszStr) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+VDAutoLogDisplay::VDAutoLogDisplay()
+	: mLogger(kVDLogWarning)
+{
+}
+
+VDAutoLogDisplay::~VDAutoLogDisplay() {
+}
+
+void VDAutoLogDisplay::Post(VDGUIHandle hParent) {
+	const VDAutoLogger::tEntries& ents = mLogger.GetEntries();
+
+	if (!ents.empty()) {
+		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_WITHERRORS), (HWND)hParent, DlgProc, (LPARAM)&ents);
+	}
+}
+
+BOOL CALLBACK VDAutoLogDisplay::DlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+	case WM_INITDIALOG:
+		{
+			const VDAutoLogger::tEntries& ents = *(VDAutoLogger::tEntries *)lParam;
+			IVDLogWindowControl *pLogWin = VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG));
+
+			for(VDAutoLogger::tEntries::const_iterator it(ents.begin()), itEnd(ents.end()); it!=itEnd; ++it) {
+				const VDAutoLogger::Entry& ent = *it;
+				pLogWin->AddEntry(ent.severity, ent.text);
+			}
+		}
+		return TRUE;
+	case WM_COMMAND:
+		switch(LOWORD(wParam)) {
+		case IDOK: case IDCANCEL:
+			EndDialog(hdlg, 0);
+			return TRUE;
+		}
+		break;
+	}
+
+	return FALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 VDDialogBaseW32::VDDialogBaseW32(UINT dlgid)
 : mpszDialogName(MAKEINTRESOURCE(dlgid))
 , mhdlg(NULL)

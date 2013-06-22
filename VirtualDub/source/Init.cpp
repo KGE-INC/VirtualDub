@@ -34,7 +34,9 @@
 #include "ddrawsup.h"
 #include "script.h"
 #include <vd2/system/tls.h>
+#include <vd2/system/profile.h>
 #include <vd2/system/registry.h>
+#include <vd2/Dita/resources.h>
 #include "crash.h"
 
 #include "ClippingControl.h"
@@ -42,14 +44,17 @@
 #include "LevelControl.h"
 #include "HexViewer.h"
 #include "FilterGraph.h"
+#include "LogWindow.h"
 #include "AudioDisplay.h"
 #include "VideoDisplay.h"
+#include "RTProfileDisplay.h"
 #include "MRUList.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
 extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
+extern void VDInitAppStringTables();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -227,20 +232,33 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 //#endif
 
 	// setup crash trap
-
 	SetUnhandledExceptionFilter(CrashHandler);
 
 	// initialize globals
-
     g_hInst = hInstance;
 
 	// initialize TLS trace system
-
 	VDSetThreadInitHook(VDThreadInitHandler);
 
 	// initialize TLS for main thread
-
 	VDInitThreadData("Main thread");
+
+	// initialize resource system
+	VDInitResourceSystem();
+	VDInitAppStringTables();
+
+	// announce startup
+	VDLog(kVDLogInfo, VDswprintf(
+			L"Starting up: VirtualDub build %lu/"
+#ifdef DEBUG
+			L"debug"
+#elif defined(__INTEL_COMPILER)
+			L"release-P4"
+#else
+			L"release"
+#endif
+			,1
+			,&version_num));
 
 	// prep system stuff
 
@@ -258,8 +276,6 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 		return FALSE;
 
 	if (!(mru_list = new MRUList(4, "MRU List"))) return false;
-
-	HelpSetPath();
 
 	LoadPreferences();
 
@@ -284,7 +300,8 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 	// Autoload filters.
 
 	VDCHECKPOINT;
-	{
+
+	vdprotected("autoloading filters at startup") {
 		int f, s;
 
 		s = FilterAutoloadModules(f);
@@ -402,6 +419,11 @@ void Deinit() {
 	_CrtCheckMemory();
 
 	VDCHECKPOINT;
+
+	VDDeinitResourceSystem();
+	VDDeinitProfilingSystem();
+
+	VDCHECKPOINT;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -420,6 +442,8 @@ bool InitApplication(HINSTANCE hInstance) {
 	if (!RegisterAudioDisplayControl()) return false;
 	if (!RegisterVideoDisplayControl()) return false;
 	if (!RegisterFilterGraphControl()) return false;
+	if (!RegisterLogWindowControl()) return false;
+	if (!RegisterRTProfileDisplayControl()) return false;
 
 	// Load menus.
 

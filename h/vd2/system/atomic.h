@@ -104,6 +104,24 @@ public:
 		__asm lock sub dword ptr [ecx],eax
 	}
 
+	void operator&=(int v) {
+		__asm mov eax,v
+		__asm mov ecx,this
+		__asm lock and dword ptr [ecx],eax
+	}
+
+	void operator|=(int v) {
+		__asm mov eax,v
+		__asm mov ecx,this
+		__asm lock or dword ptr [ecx],eax
+	}
+
+	void operator^=(int v) {
+		__asm mov eax,v
+		__asm mov ecx,this
+		__asm lock xor dword ptr [ecx],eax
+	}
+
 	operator int() const {
 		return n;
 	}

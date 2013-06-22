@@ -1432,7 +1432,7 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 		break;
 
 	case ID_HELP_CONTENTS:
-		HelpShowHelp(hWnd);
+		VDShowHelp(hWnd);
 		break;
 
 	default:
@@ -2493,19 +2493,6 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static DWORD dwCaptureSettingsHelpLookup[]={
-	IDC_CAPTURE_FRAMERATE,			IDH_CAPTURE_SETTINGS_FRAMERATE,
-	IDC_CAPTURE_ENABLE_TIMELIMIT,	IDH_CAPTURE_SETTINGS_LIMITLENGTH,
-	IDC_CAPTURE_TIMELIMIT,			IDH_CAPTURE_SETTINGS_LIMITLENGTH,
-	IDC_CAPTURE_DROP_LIMIT,			IDH_CAPTURE_SETTINGS_DROPLIMIT,
-	IDC_CAPTURE_MAX_INDEX,			IDH_CAPTURE_SETTINGS_MAXINDEX,
-	IDC_CAPTURE_VIDEO_BUFFERS,		IDH_CAPTURE_SETTINGS_VIDBUFLIMIT,
-	IDC_CAPTURE_AUDIO_BUFFERS,		IDH_CAPTURE_SETTINGS_AUDIOBUFFERS,
-	IDC_CAPTURE_AUDIO_BUFFERSIZE,	IDH_CAPTURE_SETTINGS_AUDIOBUFFERS,
-	IDC_CAPTURE_LOCK_TO_AUDIO,		IDH_CAPTURE_SETTINGS_LOCKDURATION,
-	0
-};
-
 static BOOL APIENTRY CaptureSettingsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
 	HWND hWndCapture = (HWND)GetWindowLong(hDlg, DWL_USER);
 
@@ -2559,7 +2546,7 @@ static BOOL APIENTRY CaptureSettingsDlgProc( HWND hDlg, UINT message, UINT wPara
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwCaptureSettingsHelpLookup);
+					VDShowHelp(hDlg, L"d-capturesettings.html");
 			}
 			return TRUE;
 
@@ -5265,17 +5252,6 @@ static void CapturePreferencesDlgBrowse(HWND hDlg) {
 		SetDlgItemText(hDlg, IDC_DEFAULT_CAPFILE, szFile);
 }
 
-DWORD dwCapturePrefsHelpLookup[]={
-	IDC_DEFAULT_DRIVER,			IDH_CAPTURE_PREFS_DEFAULTDRIVER,
-	IDC_INITIAL_NODISPLAY,		IDH_CAPTURE_PREFS_INITIALDISPLAY,
-	IDC_INITIAL_PREVIEW,		IDH_CAPTURE_PREFS_INITIALDISPLAY,
-	IDC_INITIAL_OVERLAY,		IDH_CAPTURE_PREFS_INITIALDISPLAY,
-	IDC_SLOW_PREVIEW,			IDH_CAPTURE_PREFS_SLOW,
-	IDC_SLOW_OVERLAY,			IDH_CAPTURE_PREFS_SLOW,
-	IDC_DRIVER_TO_SET,			IDH_CAPTURE_PREFS_PERDRIVER,
-	0
-};
-
 static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam) {
 	switch(message) {
 		case WM_INITDIALOG:
@@ -5287,7 +5263,7 @@ static BOOL APIENTRY CapturePreferencesDlgProc( HWND hDlg, UINT message, UINT wP
 				HELPINFO *lphi = (HELPINFO *)lParam;
 
 				if (lphi->iContextType == HELPINFO_WINDOW)
-					HelpPopupByID(hDlg, lphi->iCtrlId, dwCapturePrefsHelpLookup);
+					VDShowHelp(hDlg, L"d-capturepreferences.html");
 			}
 			return TRUE;
 

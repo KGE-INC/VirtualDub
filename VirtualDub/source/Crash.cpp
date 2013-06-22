@@ -865,7 +865,7 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 	if (LookupModuleByAddress(mi, szName, NULL, (uint32)pExc->ContextRecord->Eip, NULL))
 		out.writef(" in module '%.64s'.", mi.name);
 	else
-		out.writef(" at %p.", pExc->ContextRecord->Eip);
+		out.writef(" at %08lx.", pExc->ContextRecord->Eip);
 
 	__try {
 		for(VDProtectedAutoScope *pScope = g_protectedScopeLink; pScope; pScope = pScope->mpLink) {
@@ -1598,6 +1598,10 @@ protected:
 			MessageBox(mhdlg, "Save failed.", "VirtualDub Error", MB_OK | MB_ICONERROR);
 	}
 
+	static void DoHelp(HWND hwnd) {
+		VDShowHelp(hwnd, L"crash.html");		// hopefully, we didn't crash while trying to unpack the help file....
+	}
+
 	HWND mhdlg;
 	const EXCEPTION_POINTERS *mpExc;
 	const char *mpszScopeInfo;
@@ -1675,15 +1679,6 @@ protected:
 			VDDebugCrashDumpCallStack(out4, mpExc, g_pcdw->vdc.pExtraData);
 		}
 	}
-
-	static void DoHelp(HWND hwnd) {
-		char buf[512];
-
-		strcpy(buf, HelpGetPath());
-		strcat(buf, ">Helpme");
-
-		WinHelp(hwnd, buf, HELP_CONTEXT, IDH_CRASH);
-	}
 };
 
 class VDCrashDialogFriendly : public VDCrashDialog {
@@ -1725,6 +1720,9 @@ protected:
 				return TRUE;
 			case IDC_SAVE:
 				DoSave();
+				return TRUE;
+			case IDC_HELP2:
+				DoHelp(mhdlg);
 				return TRUE;
 			}
 		}

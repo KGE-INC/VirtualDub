@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vector>
 
 #include "Fixes.h"
 
@@ -144,8 +145,7 @@ private:
 	int			chunkFlags;
 
 	AVIIndex	*index, *index_audio, *index_video;
-	char *		pHeaderBlock;
-	long		nHeaderLen;
+	std::vector<char>	mHeaderBlock;
 
 	MainAVIHeader		avihdr;
 

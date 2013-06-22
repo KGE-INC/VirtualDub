@@ -296,3 +296,8 @@ bool VDMPEGAudioDecoder::DecodeFrame() {
 
 	return false;
 }
+
+void VDMPEGAudioDecoder::ConcealFrame() {
+	mpPolyphaseFilter->Reset();
+	memset(mL3OverlapBuffer, 0, sizeof mL3OverlapBuffer);
+}

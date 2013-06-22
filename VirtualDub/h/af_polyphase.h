@@ -41,8 +41,10 @@ protected:
 
 	std::vector<sint16>		mFIRBuffer;
 	int mFIRBufferChannelStride;
-	int mFIRBufferPoint;
+	int mFIRBufferReadPoint;
+	int mFIRBufferWritePoint;
 	int mFIRBufferLimit;
+	int mMaxQuantum;
 
 	VDRingBuffer<char>		mOutputBuffer;
 };

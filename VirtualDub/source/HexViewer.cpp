@@ -982,7 +982,7 @@ private:
 	int TruncateVerifier(HWND hdlg, __int64 v1, __int64 v2) throw();
 
 	void Extract() throw();
-	void Find() throw();
+	void Find(HWND) throw();
 	void _RIFFScan(struct RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64 pos, __int64 sizeleft);
 	void RIFFTree(HWND hwndTV) throw();
 
@@ -1516,9 +1516,11 @@ LRESULT HexEditor::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw() {
 			SendMessage(hwndFind, WM_COMMAND, IDC_FIND, 0);
 			break;
 		} else if (pszFindString) {
-			Find();
+			Find(hwnd);
 			break;
 		}
+		break;
+
 	case ID_EDIT_FIND:
 		if (hwndFind)
 			SetForegroundWindow(hwndFind);
@@ -1838,7 +1840,7 @@ void HexEditor::Extract() throw() {
 	i64FileReadPosition = -1;
 }
 
-void HexEditor::Find() throw() {
+void HexEditor::Find(HWND hwndParent) throw() {
 	if (!nFindLength || !pszFindString) {
 		SendMessage(hwnd, WM_COMMAND, ID_EDIT_FIND, 0);
 		return;
@@ -1888,7 +1890,7 @@ void HexEditor::Find() throw() {
 	__int64 posbase;
 	bool bLastPartial = false;
 
-	ProgressDialog pd(GetForegroundWindow(), "Find",
+	ProgressDialog pd(hwndParent, "Find",
 		bFindReverse?"Reverse searching for string":"Forward searching for string", (long)(((bFindReverse ? pos : i64FileSize - pos)+1048575)>>20), TRUE);
 	pd.setValueFormat("%dMB of %dMB");
 
@@ -2043,7 +2045,7 @@ void HexEditor::Find() throw() {
 
 		pd.close();
 
-		MessageBox(GetForegroundWindow(), "Search string not found", "Find", MB_OK);
+		MessageBox(hwndParent, "Search string not found", "Find", MB_OK);
 xit:
 		;
 	} catch(MyUserAbortError) {
@@ -2236,7 +2238,7 @@ BOOL APIENTRY HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 					pcd->pszFindString = text;
 					pcd->nFindLength = l;
 
-					pcd->Find();
+					pcd->Find(hwnd);
 				}
 			}
 		}

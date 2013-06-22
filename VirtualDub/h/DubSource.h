@@ -56,6 +56,16 @@ public:
 	virtual void streamBegin( bool fRealTime);
 	virtual void streamEnd();
 
+	enum ErrorMode {
+		kErrorModeReportAll = 0,
+		kErrorModeConceal,
+		kErrorModeDecodeAnyway,
+		kErrorModeCount
+	};
+
+	virtual void setDecodeErrorMode(ErrorMode mode) {}
+	virtual bool isDecodeErrorModeSupported(ErrorMode mode) { return false; }
+
 	LONG msToSamples(LONG lMs) const {
 		return (LONG)(((__int64)lMs * streamInfo.dwRate + (__int64)500 * streamInfo.dwScale) / ((__int64)1000 * streamInfo.dwScale));
 	}

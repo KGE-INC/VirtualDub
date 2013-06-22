@@ -167,6 +167,10 @@ SOURCE=.\source\AudioSource.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\audioutil.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\AVIIndex.cpp
 # End Source File
 # Begin Source File
@@ -256,6 +260,10 @@ SOURCE=.\h\Audio.h
 # Begin Source File
 
 SOURCE=.\h\AudioSource.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\audioutil.h
 # End Source File
 # Begin Source File
 
@@ -907,37 +915,6 @@ InputName=rel_notes
 
 # End Source File
 # End Group
-# Begin Group "Source - coach"
-
-# PROP Default_Filter ""
-# Begin Source File
-
-SOURCE=.\source\coach.cpp
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-# ADD CPP /Os /Oy- /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-# SUBTRACT CPP /YX /Yc /Yu
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy- /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy- /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
-!ENDIF 
-
-# End Source File
-# Begin Source File
-
-SOURCE=.\h\coach.txt
-# End Source File
-# End Group
 # Begin Group "Source - User Interface"
 
 # PROP Default_Filter ""
@@ -1027,6 +1004,10 @@ SOURCE=.\source\LevelControl.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\LogWindow.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\PositionControl.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
@@ -1073,6 +1054,10 @@ SOURCE=.\source\ProgressDialog.cpp
 !ENDIF 
 
 # End Source File
+# Begin Source File
+
+SOURCE=.\source\RTProfileDisplay.cpp
+# End Source File
 # End Group
 # Begin Group "Headers - User Interface"
 
@@ -1099,11 +1084,19 @@ SOURCE=.\h\LevelControl.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\LogWindow.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\h\PositionControl.h
 # End Source File
 # Begin Source File
 
 SOURCE=.\h\ProgressDialog.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\RTProfileDisplay.h
 # End Source File
 # End Group
 # Begin Group "Files - YUV codec"
@@ -1457,6 +1450,10 @@ SOURCE=.\source\Dub.cpp
 
 !ENDIF 
 
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\DubOutput.cpp
 # End Source File
 # Begin Source File
 
@@ -1997,6 +1994,10 @@ SOURCE=.\source\sparseavi.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\stringtables.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\VideoSequenceCompressor.cpp
 
 !IF  "$(CFG)" == "VirtualDub - Win32 Release"
@@ -2086,6 +2087,10 @@ SOURCE=.\h\disasm.h
 # Begin Source File
 
 SOURCE=.\h\Dub.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\DubOutput.h
 # End Source File
 # Begin Source File
 
@@ -3310,6 +3315,10 @@ SOURCE=.\source\af_list.cpp
 # Begin Source File
 
 SOURCE=.\source\af_mix.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\af_newrate.cpp
 # End Source File
 # Begin Source File
 

@@ -47,7 +47,8 @@
 #include <vd2/Dita/services.h>
 #include "capture.h"
 #include "auxdlg.h"
-#include "dub.h"
+#include "Dub.h"
+#include "DubOutput.h"
 #include "DubStatus.h"
 #include "mpeg.h"
 #include "ddrawsup.h"
@@ -113,6 +114,9 @@ bool				g_fSwapPanes			= false;
 
 static IDubStatusHandler	*g_dubStatus			= NULL;
 
+DubSource::ErrorMode	g_videoErrorMode			= DubSource::kErrorModeReportAll;
+DubSource::ErrorMode	g_audioErrorMode			= DubSource::kErrorModeReportAll;
+
 RECT	g_rInputFrame;
 RECT	g_rOutputFrame;
 int		g_iInputFrameShift = 0;
@@ -131,7 +135,6 @@ extern const char g_szOutOfMemory[]="Out of memory";
 
 extern bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow);
 extern void Deinit();
-extern bool CoachCheckSaveOp(HWND hwndParent, DubOptions *dopt, COMPVARS *vcomp, WAVEFORMATEX *, List *);
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
 extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *, WAVEFORMATEX *);
@@ -184,6 +187,19 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	MSG msg;
 
 	Init(hInstance, lpCmdLine, nCmdShow);
+
+	{
+		VDRegistryAppKey key("Preferences");
+		unsigned errorMode;
+
+		errorMode = key.getInt("Edit: Video error mode");
+		if (errorMode < DubSource::kErrorModeCount)
+			g_videoErrorMode = (DubSource::ErrorMode)errorMode;
+
+		errorMode = key.getInt("Edit: Audio error mode");
+		if (errorMode < DubSource::kErrorModeCount)
+			g_audioErrorMode = (DubSource::ErrorMode)errorMode;
+	}
 
 	// Load a file on the command line.
 
@@ -904,6 +920,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 				inputAVI->InfoDialog(hWnd);
 			break;
 		case ID_VIDEO_FILTERS:
+			CPUTest();
 			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, FilterDlgProc);
 			RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 			RecalcFrameSizes();
@@ -955,6 +972,16 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			CopyFrameToClipboard(*filters.LastBitmap());
 			break;
 
+		case ID_VIDEO_ERRORMODE:
+			{
+				extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::ErrorMode oldMode, const char *pszSettingsKey, DubSource *pSource);
+				g_videoErrorMode = VDDisplayErrorModeDialog((VDGUIHandle)hWnd, g_videoErrorMode, "Edit: Video error mode", inputVideoAVI);
+
+				if (inputVideoAVI)
+					inputVideoAVI->setDecodeErrorMode(g_videoErrorMode);
+			}
+			break;
+
 		case ID_EDIT_DELETE:
 			DoDelete();
 			break;
@@ -995,6 +1022,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		case ID_AUDIO_FILTERS:
 			extern void VDDisplayAudioFilterDialog(VDGUIHandle, VDAudioFilterGraph&);
 			SetAudioSource();
+			CPUTest();
 			VDDisplayAudioFilterDialog((VDGUIHandle)hWnd, g_audioFilterGraph);
 			break;
 
@@ -1086,6 +1114,29 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			g_dubOpts.audio.mode = DubAudioOptions::M_FULL;
 			break;
 
+		case ID_AUDIO_ERRORMODE:
+			{
+				extern DubSource::ErrorMode VDDisplayErrorModeDialog(VDGUIHandle hParent, DubSource::ErrorMode oldMode, const char *pszSettingsKey, DubSource *pSource);
+				SetAudioSource();
+				g_audioErrorMode = VDDisplayErrorModeDialog((VDGUIHandle)hWnd, g_audioErrorMode, "Edit: Audio error mode", inputAudio);
+
+				if (inputAudioAVI)
+					inputAudioAVI->setDecodeErrorMode(g_audioErrorMode);
+				if (inputAudioWAV)
+					inputAudioWAV->setDecodeErrorMode(g_audioErrorMode);
+			}
+			break;
+
+		case ID_OPTIONS_SHOWLOG:
+			extern void VDOpenLogWindow();
+			VDOpenLogWindow();
+			break;
+
+		case ID_OPTIONS_SHOWPROFILER:
+			extern void VDOpenProfileWindow();
+			VDOpenProfileWindow();
+			break;
+
 		case ID_OPTIONS_PERFORMANCE:
 			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_PERFORMANCE), hWnd, PerformanceOptionsDlgProc);
 			break;
@@ -1164,7 +1215,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			break;
 
 		case ID_HELP_CONTENTS:
-			HelpShowHelp(hWnd);
+			VDShowHelp(hWnd);
 			break;
 		case ID_HELP_CHANGELOG:
 			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_SHOWTEXT), hWnd, ShowTextDlgProc, (LPARAM)MAKEINTRESOURCE(IDR_CHANGES));
@@ -2190,7 +2241,11 @@ void OpenAVI(int index, bool ext_opt) {
 		default:iFileType = FILETYPE_AUTODETECT; break;
 		}
 
+		VDAutoLogDisplay logDisp;
+
 		OpenAVI(g_szInputAVIFile, iFileType, fExtendedOpen, false, fAutoscan);
+
+		logDisp.Post((VDGUIHandle)g_hWnd);
 
 		if (index<0)
 			mru_list->add(g_szInputAVIFile);
@@ -2239,10 +2294,14 @@ void AppendAVI() {
 	if (!GetOpenFileName(&ofn)) return;
 
 	try {
+		VDAutoLogDisplay logDisp;
+
 		if (ofn.lCustData)
 			AppendAVIAutoscan(g_szFile);
 		else
 			AppendAVI(g_szFile);
+
+		logDisp.Post((VDGUIHandle)g_hWnd);
 	} catch(const MyError& e) {
 		e.post(NULL, g_szError);
 	}
@@ -2264,7 +2323,11 @@ void HandleDragDrop(HDROP hdrop) {
 
 		strcpy(g_szInputAVIFileTitle, s);
 
+		VDAutoLogDisplay logDisp;
+
 		OpenAVI(g_szInputAVIFile, FILETYPE_AUTODETECT, false);
+
+		logDisp.Post((VDGUIHandle)g_hWnd);
 
 		mru_list->add(g_szInputAVIFile);
 		MenuMRUListUpdate(g_hWnd);
@@ -2325,9 +2388,6 @@ void SaveAVI(HWND hWnd, bool fUseCompatibility) {
 
 	if (GetSaveFileName(&ofn)) {
 		BOOL fAddAsJob = !!ofn.lCustData;
-
-		if (!CoachCheckSaveOp(hWnd, &g_dubOpts, &g_Vcompression, g_ACompressionFormat, &g_listFA))
-			return;
 
 		if (fAddAsJob) {
 			try {
@@ -2541,9 +2601,6 @@ void SaveSegmentedAVI(HWND hWnd) {
 			}
 		}
 
-		if (!CoachCheckSaveOp(hWnd, &g_dubOpts, &g_Vcompression, g_ACompressionFormat, &g_listFA))
-			return;
-
 		if (sv.fDefer) {
 			try {
 				JobAddConfiguration(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, g_szFile, true, &inputAVI->listFiles, sv.lThreshMB, sv.lThreshFrames);
@@ -2656,6 +2713,11 @@ void InitDubAVI(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOption
 	DubOptions *opts;
 	POINT pt;
 
+	{
+		const wchar_t *pOpType = pOutputSystem->IsRealTime() ? L"preview" : L"dub";
+		VDLog(kVDLogMarker, VDswprintf(L"Beginning %ls operation.", 1, &pOpType));
+	}
+
 	try {
 		filters.DeinitFilters();
 		filters.DeallocateBuffers();
@@ -2764,6 +2826,8 @@ void InitDubAVI(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOption
 				inputVideoAVI->setDecompressedFormat(8);
 
 	if (!quick_options) RedrawWindow(g_hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+
+	VDLog(kVDLogMarker, VDStringW(L"Ending operation."));
 
 	if (fError && fPropagateErrors)
 		throw prop_err;

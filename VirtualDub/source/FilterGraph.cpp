@@ -634,6 +634,14 @@ void VDFilterGraphControl::Arrange() {
 			ArrangeSort(sortedFilters, &f);
 	}
 
+	// catch any filters that haven't been swept yet
+	vdforeach(tFilterList, mFilters) {
+		Filter& f = *it;
+
+		if (!f.bMarked)
+			ArrangeSort(sortedFilters, &f);
+	}
+
 	// The 'rank' of a filter is the depth of the filter in the filter
 	// graph and is computed as max(rank(inputs))+1.  Since the filters
 	// are now sorted we can compute these in one pass by pushing ranks
@@ -900,8 +908,13 @@ void VDFilterGraphControl::AddFilter(const wchar_t *name, int inpins, int outpin
 				break;		// hmm... a filter with no inputs or outputs.
 
 			for(;;) {
-				if (pin >= total_pins)
+				if (pin >= total_pins) {
 					pin = 0;
+					// Detect that we circled around on the starting filter.  This can
+					// occur if you drop an output filter.
+					if (pSelect == pDstFilter)
+						break;
+				}
 
 				if (pin < pSelect->outputs) {
 					PinConnection *conn = pSelect->outpins[pin];

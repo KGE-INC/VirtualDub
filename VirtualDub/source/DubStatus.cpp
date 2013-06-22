@@ -82,6 +82,7 @@ private:
 	static BOOL APIENTRY StatusMainDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusVideoDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusPerfDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
+	static BOOL APIENTRY StatusLogDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	void StatusTimerProc(HWND hWnd);
 
@@ -251,17 +252,15 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	__int64 lProjSize;
 	char buf[256];
 
-	LONG	totalVSamples	= pvinfo->end_src - pvinfo->start_src;
+	LONG	totalVSamples	= pvinfo->end_dst;
 //	LONG	totalASamples	= painfo->end_src - painfo->start_src;
 	LONG	totalASamples	= audioStreamSource ? audioStreamSource->GetLength() : 0;
-	LONG	curVSample		= pvinfo->cur_proc_src - pvinfo->start_src;
+	LONG	curVSample		= pvinfo->cur_proc_dst;
 	LONG	curASample		= audioStreamSource ? audioStreamSource->GetSampleCount() : 0;
 	char	*s;
 	bool	bPreloading = false;
 
 	/////////////
-
-	curVSample -= opt->video.frameRateDecimation * pvinfo->nLag;
 
 	if (curVSample<0) {
 		curVSample = 0;
@@ -606,6 +605,29 @@ BOOL APIENTRY DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, UINT wParam
     return FALSE;
 }
 
+BOOL APIENTRY DubStatus::StatusLogDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam) {
+	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
+
+    switch (message)
+    {
+        case WM_INITDIALOG:
+			{
+				SetWindowLong(hdlg, DWL_USER, lParam);
+				thisPtr = (DubStatus *)lParam;
+				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE);
+
+				IVDLogWindowControl *pLogWin = VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG));
+				pLogWin->AttachAsLogger(false);
+			}
+            return (TRUE);
+
+		case WM_TIMER:
+			return TRUE;
+
+    }
+    return FALSE;
+}
+
 ///////////////////////////////////
 
 const char * const g_szDubPriorities[]={
@@ -629,6 +651,7 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 		{	MAKEINTRESOURCE(IDD_DUBBING_MAIN),	"Main",		StatusMainDlgProc	},
 		{	MAKEINTRESOURCE(IDD_DUBBING_VIDEO),	"Video",	StatusVideoDlgProc	},
 		{	MAKEINTRESOURCE(IDD_DUBBING_PERF),	"Perf",		StatusPerfDlgProc	},
+		{	MAKEINTRESOURCE(IDD_DUBBING_LOG),	"Log",		StatusLogDlgProc	},
 	};
 
 	DubStatus *thisPtr = (DubStatus *)GetWindowLong(hdlg, DWL_USER);
@@ -748,15 +771,13 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 			{
 				DWORD dwProgress;
 
-				LONG	totalVSamples	= thisPtr->pvinfo->end_src - thisPtr->pvinfo->start_src;
+				LONG	totalVSamples	= thisPtr->pvinfo->end_dst;
 				LONG	totalASamples	= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetLength() : 0;
 //				LONG	totalASamples	= thisPtr->painfo->end_src - thisPtr->painfo->start_src;
-				LONG	curVSample		= thisPtr->pvinfo->cur_proc_src - thisPtr->pvinfo->start_src;
+				LONG	curVSample		= thisPtr->pvinfo->cur_proc_dst;
 				LONG	curASample		= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetSampleCount() : 0;
 
 				/////////////
-
-				curVSample -= thisPtr->opt->video.frameRateDecimation * thisPtr->pvinfo->nLag;
 
 				if (curVSample<0)
 					curVSample = 0;

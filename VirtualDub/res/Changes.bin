@@ -1,6 +1,57 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 16188 (Version 1.5.2):          [April 30, 2003]
+   [features added]
+   * Converted help from WinHelp to HTML and updated dialog
+     help to current feature set.
+   * Added frame rate conversion to arbitrary frame rates.
+   * Added logging to report non-fatal warnings during
+     operations.
+   * MPEG parser detects and reports timestamp
+     discontinuities.
+   * Added limited error concealment capabilities to input
+     handlers.
+   * Optimized audio filters a bit and added tap count
+     control for lowpass, highpass, and resampling filters.
+   * Added "new rate" audio filter to relabel an audio
+     stream with a new sampling rate without resampling.
+   * Incomplete audio format headers that are rejected by
+     ACM MP3 codecs are automatically fixed with the
+     required fields (the infamous "tag 0055" problem).
+   * Added workaround for AVI1 files with MP3 audio being
+     detected as MP3 files by Windows Media Player 8.
+
+   [features removed]
+   * Removed coach dialogs.  Not helpful enough and too
+     outdated to maintain.
+
+   [bug fixes]
+   * Fixed capture free space indicator being limited to 4GB
+     under Windows 98 (regression in 1.5 series).
+   * Fixed crash when job queue could not be flushed to
+     disk.
+   * VDFs that contained multiple filters were only showing
+     the last filter in the library (regression in 1.5
+     series).
+   * Fixed crash when attempting to direct copy a video
+     stream with an abnormally large BITMAPINFOHEADER (>16K).
+     Added code to detect and correct such mistakes.
+   * Fixed hang in audio filter graph editor when placing
+     output filter with autoconnect on and no place for it
+     to attach.
+   * Fixed livelock at end of operation when lowpass/
+     highpass audio filters were in use.
+   * Fixed internal error when attempting to start an
+     incomplete audio filter graph (unconnected pins).
+   * Fixed garbage wLanguage/wPriority values being written
+     to audio AVI track headers when converting an MPEG-1
+     file.
+   * Fixed crash when attempting to load an AVI stream with
+     an invalid sample rate (zero or infinite).  Added code
+     to guess and substitute a reasonable value.
+   * Fixed small memory leak in "smoother" video filter.
+
 Build 15654 (Version 1.5.1):          [February 22, 2003]
    [features added]
    * Improved audio filter dialog.

@@ -22,6 +22,7 @@
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/Error.h>
+#include <vd2/system/log.h>
 
 MyError::MyError() {
 	buf = NULL;
@@ -68,7 +69,9 @@ void MyError::post(HWND hWndParent, const char *title) const {
 	if (!buf || !*buf)
 		return;
 
-	_RPT2(0,"*** %s: %s\n", title, buf);
+	VDDEBUG("*** %s: %s\n", title, buf);
+	VDLog(kVDLogError, VDswprintf(L"Error: %hs", 1, &buf));
+
 	MessageBox(hWndParent, buf, title, MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
 

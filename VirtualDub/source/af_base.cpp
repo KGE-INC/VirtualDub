@@ -213,3 +213,20 @@ uint32 __cdecl VDAudioFilterBase::ReadProc(const VDAudioFilterContext *pContext,
 	((VDAudioFilterBase *)pContext->mpFilterData)->mpContext = pContext;
 	return ((VDAudioFilterBase *)pContext->mpFilterData)->Read(pin, dst, samples);
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+const VDAudioFilterVtbl VDAudioFilterBase::sVtbl = {
+	DestroyProc,
+	PrepareProc,
+	StartProc,
+	StopProc,
+	RunProc,
+	ReadProc,
+	SeekProc,
+	SerializeProc,
+	DeserializeProc,
+	GetParamProc,
+	SetParamProc,
+	ConfigProc,
+};

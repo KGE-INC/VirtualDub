@@ -31,27 +31,21 @@
 
 ///////////////////////////////
 
-AVIPipe::AVIPipe(int buffers, long roundup_size) {
-	hEventRead		= CreateEvent(NULL,FALSE,FALSE,NULL);
-	hEventWrite		= CreateEvent(NULL,FALSE,FALSE,NULL);
+AVIPipe::AVIPipe(int buffers, long roundup_size)
+	: mState(0)
+{
 	pBuffers		= new struct AVIPipeBuffer[buffers];
 	num_buffers		= buffers;
 	round_size		= roundup_size;
 	cur_read		= 1;
 	cur_write		= 1;
-	finalize_state	= 0;
-	total_audio		= 0;
 
 	if (pBuffers)
 		memset((void *)pBuffers, 0, sizeof(struct AVIPipeBuffer)*buffers);
-
-	InitializeCriticalSection(&critsec);
 }
 
 AVIPipe::~AVIPipe() {
 	_RPT0(0,"AVIPipe::~AVIPipe()\n");
-
-	DeleteCriticalSection(&critsec);
 
 	if (pBuffers) {
 		for(int i=0; i<num_buffers; i++)
@@ -60,19 +54,12 @@ AVIPipe::~AVIPipe() {
 
 		delete[] (void *)pBuffers;
 	}
-
-	if (hEventRead)		CloseHandle(hEventRead);
-	if (hEventWrite)	CloseHandle(hEventWrite);
 }
 
-BOOL AVIPipe::isOkay() {
-	return pBuffers && hEventRead && hEventWrite;
-}
-
-BOOL AVIPipe::isFinalized() {
-	if (finalize_state & FINALIZE_TRIGGERED) {
-		finalize_state |= FINALIZE_ACKNOWLEDGED;
-		SetEvent(hEventRead);
+bool AVIPipe::isFinalized() {
+	if (mState & kFlagFinalizeTriggered) {
+		mState |= kFlagFinalizeAcknowledged;
+		msigRead.signal();
 
 		return TRUE;
 	}
@@ -80,22 +67,43 @@ BOOL AVIPipe::isFinalized() {
 	return FALSE;
 }
 
-BOOL AVIPipe::isNoMoreAudio() {
-	return (finalize_state & FINALIZE_TRIGGERED) && !total_audio;
+bool AVIPipe::full() {
+	int h;
+
+	vdsynchronized(mcsQueue) {
+		if (mState & kFlagAborted)
+			return false;
+
+		// look for a handle without a buffer
+
+		for(h=0; h<num_buffers; h++)
+			if (!pBuffers[h].size)
+				return false;
+		
+		// look for a handle with a free buffer
+		
+		for(h=0; h<num_buffers; h++)
+			if (!pBuffers[h].len)
+				return false;
+
+		return true;
+	}
+
+	return false;
 }
 
-void *AVIPipe::getWriteBuffer(long len, int *handle_ptr, DWORD timeout) {
+void *AVIPipe::getWriteBuffer(long len, int *handle_ptr) {
 	int h;
 
 	if (!len) ++len;
 	len = ((len+round_size-1) / round_size) * round_size;
 
-	EnterCriticalSection(&critsec);
+	++mcsQueue;
 
 	for(;;) {
 
-		if (finalize_state & FINALIZE_ABORTED) {
-			LeaveCriticalSection(&critsec);
+		if (mState & kFlagAborted) {
+			--mcsQueue;
 			return NULL;
 		}
 
@@ -139,16 +147,15 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr, DWORD timeout) {
 
 		if (h<num_buffers) break;
 
-		LeaveCriticalSection(&critsec);
+		--mcsQueue;
 
-		if (WAIT_TIMEOUT == WaitForSingleObject(hEventRead, timeout)) {
-			return NULL;
-		}
+		msigRead.wait();
 
-		EnterCriticalSection(&critsec);
+		++mcsQueue;
 	}
 
-	LeaveCriticalSection(&critsec);
+	--mcsQueue;
+
 	*handle_ptr = h;
 
 	return pBuffers[h].data;
@@ -156,7 +163,7 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr, DWORD timeout) {
 
 void AVIPipe::postBuffer(long len, long samples, long dframe, int exdata, int droptype, int h) {
 
-	EnterCriticalSection(&critsec);
+	++mcsQueue;
 
 	pBuffers[h].len		= len+1;
 	pBuffers[h].sample	= samples;
@@ -165,11 +172,9 @@ void AVIPipe::postBuffer(long len, long samples, long dframe, int exdata, int dr
 	pBuffers[h].droptype = droptype;
 	pBuffers[h].id		= cur_write++;
 
-	if (exdata == -1) ++total_audio;
+	--mcsQueue;
 
-	LeaveCriticalSection(&critsec);
-
-	SetEvent(hEventWrite);
+	msigWrite.signal();
 
 	//	_RPT2(0,"Posted buffer %ld (ID %08lx)\n",handle,cur_write-1);
 }
@@ -180,28 +185,26 @@ void AVIPipe::getDropDistances(int& total, int& indep) {
 	total = 0;
 	indep = 0x3FFFFFFF;
 
-	EnterCriticalSection(&critsec);
+	++mcsQueue;
 
 	for(h=0; h<num_buffers; h++) {
 		int ahead = pBuffers[h].id - cur_read;
 
-		if (pBuffers[h].iExdata >= 0) {
-			if (pBuffers[h].len>1) {
-				if (pBuffers[h].droptype == kIndependent && ahead >= 0 && ahead < indep)
-					indep = ahead;
-			}
-
-			++total;
+		if (pBuffers[h].len>1) {
+			if (pBuffers[h].droptype == kIndependent && ahead >= 0 && ahead < indep)
+				indep = ahead;
 		}
+
+		++total;
 	}
 
-	LeaveCriticalSection(&critsec);
+	--mcsQueue;
 }
 
-void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr, DWORD timeout) {
+void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr) {
 	int h;
 
-	EnterCriticalSection(&critsec);
+	++mcsQueue;
 
 	for(;;) {
 //		_RPT1(0,"Scouring buffers for ID %08lx\n",cur_read);
@@ -213,25 +216,27 @@ void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayfram
 
 		if (h<num_buffers) break;
 
-		if (finalize_state & SYNCPOINT_TRIGGERED) {
-			finalize_state |= SYNCPOINT_ACKNOWLEDGED;
-			finalize_state &= ~SYNCPOINT_TRIGGERED;
-			SetEvent(hEventRead);
+		if (mState & kFlagSyncTriggered) {
+			mState |= kFlagSyncAcknowledged;
+			mState &= ~kFlagSyncTriggered;
+			msigRead.signal();
 		}
 
-		LeaveCriticalSection(&critsec);
+		--mcsQueue;
 
-		if (finalize_state & FINALIZE_TRIGGERED) {
-			finalize_state |= FINALIZE_ACKNOWLEDGED;
+		if (mState & kFlagAborted)
+			return NULL;
 
-			SetEvent(hEventRead);
+		if (mState & kFlagFinalizeTriggered) {
+			mState |= kFlagFinalizeAcknowledged;
+
+			msigRead.signal();
 			return NULL;
 		}
 
-		if (WAIT_TIMEOUT == WaitForSingleObject(hEventWrite, timeout)) {
-			return NULL;
-		}
-		EnterCriticalSection(&critsec);
+		msigWrite.wait();
+
+		++mcsQueue;
 	}
 
 #ifdef AVIPIPE_PERFORMANCE_MESSAGES
@@ -240,7 +245,7 @@ void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayfram
 
 	++cur_read;
 
-	LeaveCriticalSection(&critsec);
+	--mcsQueue;
 
 	*len_ptr			= pBuffers[h].len-1;
 	*samples_ptr		= pBuffers[h].sample;
@@ -254,46 +259,46 @@ void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayfram
 
 void AVIPipe::releaseBuffer(int handle) {
 
-	EnterCriticalSection(&critsec);
+	++mcsQueue;
 
-	if (pBuffers[handle].iExdata==-1)
-		--total_audio;
 	pBuffers[handle].len = 0;
 
-	LeaveCriticalSection(&critsec);
+	--mcsQueue;
 
-	SetEvent(hEventRead);
+	msigRead.signal();
 }
 
 void AVIPipe::finalize() {
-	finalize_state |= FINALIZE_TRIGGERED;
-	SetEvent(hEventWrite);
+	mState |= kFlagFinalizeTriggered;
+	msigWrite.signal();
+}
 
-	_RPT0(0,"AVIPipe: finalizing...\n");
+void AVIPipe::finalizeAndWait() {
+	finalize();
 
-	while(!(finalize_state & FINALIZE_ACKNOWLEDGED)) {
-		WaitForSingleObject(hEventRead, INFINITE);
+	while(!(mState & kFlagFinalizeAcknowledged)) {
+		msigRead.wait();
 	}
-
-	_RPT0(0,"AVIPipe: finalized.\n");
 }
 
 void AVIPipe::abort() {
-	finalize_state |= FINALIZE_ABORTED;
-	SetEvent(hEventWrite);
-	SetEvent(hEventRead);
+	vdsynchronized(mcsQueue) {
+		mState |= kFlagAborted;
+		msigWrite.signal();
+		msigRead.signal();
+	}
 }
 
 bool AVIPipe::sync() {
-	finalize_state |= SYNCPOINT_TRIGGERED;
-	while(!(finalize_state & SYNCPOINT_ACKNOWLEDGED)) {
-		if (finalize_state & FINALIZE_ABORTED)
+	mState |= kFlagSyncTriggered;
+	while(!(mState & kFlagSyncAcknowledged)) {
+		if (mState & kFlagAborted)
 			return false;
 
-		SetEvent(hEventWrite);
-		WaitForSingleObject(hEventRead, INFINITE);
+		msigWrite.signal();
+		msigRead.wait();
 	}
-	finalize_state &= ~SYNCPOINT_ACKNOWLEDGED;
+	mState &= ~kFlagSyncAcknowledged;
 
 	return true;
 }
