@@ -59,7 +59,7 @@ protected:
 	~VDVideoDisplayWindow();
 
 	bool SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
-	void Update(FieldMode);
+	void Update(int);
 	void Reset();
 	void Cache();
 	void SetCallback(IVDVideoDisplayCallback *pcb);
@@ -72,7 +72,7 @@ protected:
 	bool SyncSetSource(const VDVideoDisplaySourceInfo& params);
 	void SyncReset();
 	bool SyncInit();
-	void SyncUpdate(FieldMode);
+	void SyncUpdate(int);
 	void SyncCache();
 	void SyncDisplayChange();
 	void SyncForegroundChange(bool bForeground);
@@ -243,7 +243,7 @@ bool VDVideoDisplayWindow::SetSource(const void *data, ptrdiff_t stride, int w, 
 	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAllowConversion, (LPARAM)&params);
 }
 
-void VDVideoDisplayWindow::Update(FieldMode fieldmode) {
+void VDVideoDisplayWindow::Update(int fieldmode) {
 	SendMessage(mhwnd, MYWM_UPDATE, fieldmode, 0);
 }
 
@@ -348,7 +348,7 @@ void VDVideoDisplayWindow::OnPaint() {
 
 		GetClientRect(mhwnd, &r);
 
-		if (mpMiniDriver)
+		if (mpMiniDriver && mpMiniDriver->IsValid())
 			VerifyDriverResult(mpMiniDriver->Paint(hdc, r));
 		else
 			FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE + 1));
@@ -433,11 +433,27 @@ bool VDVideoDisplayWindow::SyncInit() {
 	return mpMiniDriver != 0;
 }
 
-void VDVideoDisplayWindow::SyncUpdate(FieldMode mode) {
+void VDVideoDisplayWindow::SyncUpdate(int mode) {
 	if (mSource.data && !mpMiniDriver)
 		SyncInit();
 
 	if (mpMiniDriver) {
+		if (mode & kVisibleOnly) {
+			bool bVisible = true;
+
+			if (HDC hdc = GetDC(mhwnd)) {
+				RECT r;
+				GetClientRect(mhwnd, &r);
+				bVisible = 0 != RectVisible(hdc, &r);
+				ReleaseDC(mhwnd, hdc);
+			}
+
+			mode = (FieldMode)(mode & ~kVisibleOnly);
+
+			if (!bVisible)
+				return;
+		}
+
 		if (mpMiniDriver->Update((IVDVideoDisplayMinidriver::FieldMode)mode)) {
 			if (!mInhibitRefresh)
 				mpMiniDriver->Refresh((IVDVideoDisplayMinidriver::FieldMode)mode);

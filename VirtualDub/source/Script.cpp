@@ -1135,33 +1135,19 @@ static CScriptObject obj_VDAudio={
 ///////////////////////////////////////////////////////////////////////////
 
 static void func_VDSubset_Delete(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (inputSubset) {
-		delete inputSubset;
-		inputSubset = NULL;
-	}
+	g_project->ResetTimeline();
 }
 
 static void func_VDSubset_Clear(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (inputSubset) {
-		delete inputSubset;
-		inputSubset = NULL;
-	}
-
-	if (!(inputSubset = new FrameSubset()))
-		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
+	g_project->ResetTimeline();
+	inputSubset->clear();
 }
 
 static void func_VDSubset_AddRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (!inputSubset && !(inputSubset = new FrameSubset()))
-		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
-
 	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), false);
 }
 
 static void func_VDSubset_AddMaskedRange(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	if (!inputSubset && !(inputSubset = new FrameSubset()))
-		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
-
 	inputSubset->addRange(arglist[0].asInt(), arglist[1].asInt(), true);
 }
 

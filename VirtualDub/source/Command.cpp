@@ -79,7 +79,6 @@ extern VDProject *g_project;
 
 bool				g_drawDecompressedFrame	= FALSE;
 bool				g_showStatusWindow		= TRUE;
-bool				g_syncroBlit			= FALSE;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -178,7 +177,7 @@ void CloseAVI() {
 void OpenWAV(const wchar_t *szFile) {
 	vdrefptr<AudioSourceWAV> pNewAudio(new AudioSourceWAV(szFile, g_dubOpts.perf.waveBufferSize));
 	if (!pNewAudio->init())
-		pNewAudio = NULL;
+		throw MyError("The sound file \"%s\" could not be processed. Please check that it is a valid WAV file.", VDTextWToA(szFile).c_str());
 
 	pNewAudio->setDecodeErrorMode(g_audioErrorMode);
 
@@ -320,7 +319,7 @@ void RecalcPositionTimeConstant() {
 	if (inputVideoAVI) {
 		try {
 			InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
-			SendMessage(hwndPosition, PCM_SETFRAMERATE, vInfo.frameRate.getHi(), vInfo.frameRate.getLo());
+			SendMessage(hwndPosition, PCM_SETFRAMERATE, vInfo.frameRateIn.getHi(), vInfo.frameRateIn.getLo());
 		} catch(const MyError&) {
 			// The input stream may throw an error here trying to obtain the nearest key.
 			// If so, bail.

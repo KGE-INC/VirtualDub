@@ -230,6 +230,7 @@ BOOL APIENTRY AnnounceExperimentalDlgProc( HWND hDlg, UINT message, UINT wParam,
 }
 
 void AnnounceExperimental() {
+#if 0		// 1.5.6 is not experimental
 	DWORD dwSeenIt;
 
 	if (!QueryConfigDword(NULL, "SeenExperimental 1.5.5", &dwSeenIt) || !dwSeenIt) {
@@ -237,6 +238,7 @@ void AnnounceExperimental() {
 
 		SetConfigDword(NULL, "SeenExperimental 1.5.5", 1);
 	}
+#endif
 }
 
 static const char g_szDivXWarning[]=

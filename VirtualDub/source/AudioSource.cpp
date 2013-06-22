@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/system/Error.h>
 #include <vd2/Dita/resources.h>
 
 #include "gui.h"
@@ -44,10 +45,27 @@ namespace {
 AudioSourceWAV::AudioSourceWAV(const wchar_t *szFile, LONG inputBufferSize)
 {
 	MMIOINFO mmi;
+	VDStringA filenameA(VDTextWToA(szFile));
 
 	memset(&mmi,0,sizeof mmi);
 	mmi.cchBuffer	= inputBufferSize;
-	hmmioFile		= mmioOpen((char *)VDTextWToA(szFile).c_str(), &mmi, MMIO_READ | MMIO_ALLOCBUF);
+	hmmioFile		= mmioOpen((char *)filenameA.c_str(), &mmi, MMIO_READ | MMIO_ALLOCBUF);
+
+	if (!hmmioFile) {
+		const char *pError = "An unknown error has occurred";
+		switch(mmi.wErrorRet) {
+		case MMIOERR_FILENOTFOUND:		pError = "File not found"; break;
+		case MMIOERR_OUTOFMEMORY:		pError = "Out of memory"; break;
+		case MMIOERR_ACCESSDENIED:		pError = "Access is denied"; break;
+		case MMIOERR_CANNOTOPEN:		// fall through
+		case MMIOERR_INVALIDFILE:		pError = "The file could not be opened"; break;
+		case MMIOERR_NETWORKERROR:		pError = "A network error occurred while opening the file"; break;
+		case MMIOERR_PATHNOTFOUND:		pError = "The file path does not exist"; break;
+		case MMIOERR_SHARINGVIOLATION:	pError = "The file is currently in use"; break;
+		case MMIOERR_TOOMANYOPENFILES:	pError = "Too many files are already open"; break;
+		}
+		throw MyError("Cannot open \"%s\": %s.", filenameA.c_str(), pError);
+	}
 }
 
 AudioSourceWAV::~AudioSourceWAV() {
@@ -55,8 +73,6 @@ AudioSourceWAV::~AudioSourceWAV() {
 }
 
 bool AudioSourceWAV::init() {
-	if (!hmmioFile) return FALSE;
-
 	chunkRIFF.fccType = mmioFOURCC('W','A','V','E');
 	if (MMSYSERR_NOERROR != mmioDescend(hmmioFile, &chunkRIFF, NULL, MMIO_FINDRIFF))
 		return FALSE;

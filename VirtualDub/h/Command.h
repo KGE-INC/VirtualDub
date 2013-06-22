@@ -60,7 +60,6 @@ extern VDAudioFilterGraph	g_audioFilterGraph;
 
 extern bool				g_drawDecompressedFrame;
 extern bool				g_showStatusWindow;
-extern bool				g_syncroBlit;
 
 ///////////////////////////
 

@@ -209,6 +209,13 @@ void VDStreamInterleaver::AddCBRCorrection(int stream, sint32 actual) {
 	VDASSERT(mCurrentSize >= 0);
 }
 
+void VDStreamInterleaver::AdjustStreamRate(int stream, double samplesPerFrame) {
+	VDASSERT(stream >= 0 && stream < mStreams.size());
+	Stream& streaminfo = mStreams[stream];
+
+	streaminfo.mSamplesPerFrame = samplesPerFrame;
+}
+
 VDStreamInterleaver::Action VDStreamInterleaver::GetNextAction(int& streamID, sint32& samples) {
 	const int nStreams = mStreams.size();
 

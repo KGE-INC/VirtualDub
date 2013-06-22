@@ -839,10 +839,12 @@ void VDProject::MoveForwardSome() {
 
 void VDProject::StartSceneShuttleReverse() {
 	mSceneShuttleMode = -1;
+	UIShuttleModeUpdated();
 }
 
 void VDProject::StartSceneShuttleForward() {
 	mSceneShuttleMode = +1;
+	UIShuttleModeUpdated();
 }
 
 void VDProject::MoveToPreviousRange() {
@@ -1084,10 +1086,11 @@ void VDProject::AbortOperation() {
 
 void VDProject::SceneShuttleStop() {
 	if (mSceneShuttleMode) {
-		UIShuttleModeUpdated();
 		mSceneShuttleMode = 0;
 		mSceneShuttleAdvance = 0;
 		mSceneShuttleCounter = 0;
+
+		UIShuttleModeUpdated();
 
 		if (inputVideoAVI)
 			MoveToFrame(GetCurrentFrame());

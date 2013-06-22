@@ -1,7 +1,45 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
-Current build (Version 1.5.5):
+Current build (1.5.6, stable):      [October 10, 2003]
+   [features added]
+   * Added support for YV12 during fast recompress.
+   * Input video is now displayed during fast recompress
+     for UYVY and YUY2 modes.
+   * Video display updates are now suppressed for panes
+     that are totally hidden.
+
+   [bugs fixed]
+   * MP3 rate correction was correcting dwRate but not
+     interleaving, causing some problems for embedded
+     decoders.  The interleaving rate is now adjusted
+     on the fly.  Note that MP3 correction is still not
+     enabled when segmentation is active.
+   * Time base for the position control was improperly
+     affected by the "convert to fps" option.
+   * "Box blur" filter was broken on CPUs without MMX.
+     Dumb (Dumb compiler bugs....)
+
+   [regressions fixed]
+   * Menu cleanup: removed synchronous blit and histogram,
+     fixed vertical layout and pane swap.
+   * Fixed crash when loading some job configurations from
+     1.5.4 and below.
+   * Fixed audio displacement not working in simple audio
+     pipeline with forward offset.
+   * Adjusted Z-order of status bar relative to panes.
+   * MPEG-1 decoding was broken on platforms with MMX
+     but without SSE2.
+   * Plugin code could crash if no plugins were installed,
+     particularly under Windows NT 4.0.
+   * Video codec code occasionally named the wrong codec
+     when reporting video format corruption during codec
+     arbitration.
+   * Corrected DCT coefficient pruning in MJPEG decoder.
+   * Fixed crash when WAV open fails.
+   * Delete was producing invalid subsets in some cases.
+
+Build 17881 (1.5.5, experimental):    [October 1, 2003]
    [features added]
    * Partial Unicode support -- you can now open and save
      files using Unicode filenames.

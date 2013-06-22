@@ -234,15 +234,15 @@ rowstart_tbl2	dd	dorow_7is
 		dd	dorow_0is
 		dd	do_dc_isse
 
-pos_tab	db	 1 dup (8)		;pos 0:     DC only
-		db	 1 dup (7)		;pos 1:     1 AC row
-		db	 1 dup (6)		;pos 2:     2 AC rows
-		db	 6 dup (5)		;pos 3-8:   3 AC rows
-		db	 1 dup (4)		;pos 9:     4 AC rows
-		db	10 dup (3)		;pos 10-19: 5 AC rows
-		db	 1 dup (2)		;pos 20:	6 AC rows
-		db	14 dup (1)		;pos 21-34:	7 AC rows
-		db	29 dup (0)		;pos 35-63: 8 AC rows
+pos_tab	db	 1 dup (8*4)		;pos 0:     DC only
+		db	 1 dup (7*4)		;pos 1:     1 AC row
+		db	 1 dup (6*4)		;pos 2:     2 AC rows
+		db	 6 dup (5*4)		;pos 3-8:   3 AC rows
+		db	 1 dup (4*4)		;pos 9:     4 AC rows
+		db	10 dup (3*4)		;pos 10-19: 5 AC rows
+		db	 1 dup (2*4)		;pos 20:	6 AC rows
+		db	14 dup (1*4)		;pos 21-34:	7 AC rows
+		db	29 dup (0*4)		;pos 35-63: 8 AC rows
 
 ;pos_tab		db	8,7,5,5,3,3,1,1
 ;		db	6,5,5,3,3,1,1,0
@@ -985,7 +985,7 @@ _IDCT_mmx:
 	movzx	ecx,byte ptr [pos_tab+ecx]
 
 	mov	eax,[esp+4]
-	jmp	dword ptr [rowstart_tbl+ecx*4]
+	jmp	dword ptr [rowstart_tbl+ecx]
 
 	align	16
 dorow_7:	DCT_8_INV_ROW_1		eax+7*16, eax+7*16, tab_i_17
@@ -1071,7 +1071,7 @@ _IDCT_isse:
 	movzx	ecx,byte ptr [pos_tab+ecx]
 
 	mov	eax,[esp+4]
-	jmp	dword ptr [rowstart_tbl2+ecx*4]
+	jmp	dword ptr [rowstart_tbl2+ecx]
 
 	align	16
 dorow_3is:
@@ -1252,11 +1252,12 @@ do_dc_mmx:
 	punpcklwd	mm0,mm0
 	mov		ecx,[esp+8]		;ecx = dst
 	punpckldq	mm0,mm0
-	or		edx,edx
+	cmp		edx, 1
 	paddw		mm0,qword ptr rounder
 	mov		eax,[esp+12]		;eax = pitch
 	psraw		mm0,3
-	jz		do_ac_mmx
+	jb		do_ac_mmx
+	ja		do_dc_mjpeg
 	packuswb	mm0,mm0
 
 	movq		[ecx],mm0		;row 0
@@ -1298,9 +1299,10 @@ do_dc_isse:
 	paddw		mm0,qword ptr rounder
 	mov		ecx,[esp+8]		;ecx = dst
 	psraw		mm0,3
-	or		edx,edx
+	cmp		edx, 1
 	mov		eax,[esp+12]		;eax = pitch
-	jz		do_ac_isse
+	jb		do_ac_isse
+	ja		do_dc_mjpeg
 	packuswb	mm0,mm0
 
 	movntq		[ecx],mm0		;row 0
@@ -1331,6 +1333,28 @@ do_ac_isse@loop:
 	add		ecx,eax
 	dec		edx
 	jne		do_ac_mmx@loop
+	ret
+
+do_dc_mjpeg:
+	movq		[ecx],mm0		;row 0
+	movq		[ecx+8],mm0		;row 0
+	lea		edx,[eax+eax*2]
+	movq		[ecx+eax],mm0		;row 1
+	movq		[ecx+eax+8],mm0		;row 1
+	add		edx,ecx
+	movq		[ecx+eax*2],mm0		;row 2
+	movq		[ecx+eax*2+8],mm0	;row 2
+	lea		ecx,[ecx+eax*2]
+	movq		[edx],mm0		;row 3
+	movq		[edx+8],mm0		;row 3
+	movq		[ecx+eax*2],mm0		;row 4
+	movq		[ecx+eax*2+8],mm0	;row 4
+	movq		[edx+eax*2],mm0		;row 5
+	movq		[edx+eax*2+8],mm0	;row 5
+	movq		[ecx+eax*4],mm0		;row 6
+	movq		[ecx+eax*4+8],mm0	;row 6
+	movq		[edx+eax*4],mm0		;row 7
+	movq		[edx+eax*4+8],mm0	;row 7
 	ret
 
 	end

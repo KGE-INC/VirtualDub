@@ -100,10 +100,12 @@ void MRUList::load() {
 	VDStringA s;
 	if (!key.getString("MRUList", s))
 		return;
-	
+
+	int nItems = std::min<int>(mMaxCount, s.length());
+
 	mKey.resize(mMaxCount, 0);
 
-	for(int i=0; i<mMaxCount; i++) {
+	for(int i=0; i<nItems; i++) {
 		char name[2]={s[i], 0};
 
 		if (!name[0])

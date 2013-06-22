@@ -14,6 +14,22 @@
 //	You should have received a copy of the GNU General Public License
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//
+/////////////////////////////////////////////////////////////////////////////
+//
+//	COMPILER BUG WARNING:
+//
+//	VC6 will sometimes miscompile expressions having both downcasts and
+//	upcasts:
+//
+//		// compile with /O2axb2 /G6s
+//		void foo(unsigned short *dst, unsigned v, int mul) {
+//			*dst = (int)(unsigned char)(v>>8) * mul;
+//
+//	The emitted code is missing the truncating downcast to unsigned
+//	char, and thus fails to separate channels properly.  To work around
+//	the problem, this filter now explicitly does (&255).  The bug is
+//	not present in Visual Studio .NET (2003).
 
 #include "stdafx.h"
 
@@ -127,17 +143,17 @@ static void box_filter_row(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, i
 	Pixel32 A, B;
 
 	A = src[0];
-	r = (int)(unsigned char)(A>>16) * filtwidth;
-	g = (int)(unsigned char)(A>> 8) * filtwidth;
-	b = (int)(unsigned char)(A	  ) * filtwidth;
+	r = (int)((A>>16)&255) * filtwidth;
+	g = (int)((A>> 8)&255) * filtwidth;
+	b = (int)((A    )&255) * filtwidth;
 
 	i = filtwidth + 1;
 	do {
 		B = *src++;
 
-		r += (int)(unsigned char)(B>>16);
-		g += (int)(unsigned char)(B>> 8);
-		b += (int)(unsigned char)(B    );
+		r += (int)((B>>16) & 255);
+		g += (int)((B>> 8) & 255);
+		b += (int)((B    ) & 255);
 	} while(--i);
 
 	i = filtwidth;
@@ -148,9 +164,9 @@ static void box_filter_row(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, i
 		B = src[0];
 		++src;
 
-		r = r - (int)(unsigned char)(A>>16) + (int)(unsigned char)(B>>16);
-		g = g - (int)(unsigned char)(A>> 8) + (int)(unsigned char)(B>> 8);
-		b = b - (int)(unsigned char)(A	  ) + (int)(unsigned char)(B	);
+		r = r - (int)((A>>16) & 255) + (int)((B>>16) & 255);
+		g = g - (int)((A>> 8) & 255) + (int)((B>> 8) & 255);
+		b = b - (int)((A    ) & 255) + (int)((B    ) & 255);
 
 	} while(--i);
 
@@ -162,9 +178,9 @@ static void box_filter_row(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, i
 		B = src[0];
 		++src;
 
-		r = r - (int)(unsigned char)(A>>16) + (int)(unsigned char)(B>>16);
-		g = g - (int)(unsigned char)(A>> 8) + (int)(unsigned char)(B>> 8);
-		b = b - (int)(unsigned char)(A	  ) + (int)(unsigned char)(B	);
+		r = r - (int)((A>>16) & 255) + (int)((B>>16) & 255);
+		g = g - (int)((A>> 8) & 255) + (int)((B>> 8) & 255);
+		b = b - (int)((A    ) & 255) + (int)((B    ) & 255);
 	} while(--i);
 
 	i = filtwidth;
@@ -174,9 +190,9 @@ static void box_filter_row(Pixel32 *dst, Pixel32 *src, int filtwidth, int cnt, i
 		A = src[-(2*filtwidth+1)];
 		++src;
 
-		r = r - (int)(unsigned char)(A>>16) + (int)(unsigned char)(B>>16);
-		g = g - (int)(unsigned char)(A>> 8) + (int)(unsigned char)(B>> 8);
-		b = b - (int)(unsigned char)(A	  ) + (int)(unsigned char)(B	);
+		r = r - (int)((A>>16) & 255) + (int)((B>>16) & 255);
+		g = g - (int)((A>> 8) & 255) + (int)((B>> 8) & 255);
+		b = b - (int)((A    ) & 255) + (int)((B    ) & 255);
 
 	} while(--i);
 
@@ -324,9 +340,9 @@ xloop:
 		do {
 			A = *src++;
 
-			dst[0] = (int)(unsigned char)(A>>16) * mult;
-			dst[1] = (int)(unsigned char)(A>> 8) * mult;
-			dst[2] = (int)(unsigned char)(A    ) * mult;
+			dst[0] = (int)((A>>16) & 255) * mult;
+			dst[1] = (int)((A>> 8) & 255) * mult;
+			dst[2] = (int)((A    ) & 255) * mult;
 
 			dst += 3;
 		} while(--cnt);
@@ -357,9 +373,9 @@ xloop:
 		do {
 			A = *src++;
 
-			dst[0] += (int)(unsigned char)(A>>16);
-			dst[1] += (int)(unsigned char)(A>> 8);
-			dst[2] += (int)(unsigned char)(A	);
+			dst[0] += (int)((A>>16) & 255);
+			dst[1] += (int)((A>> 8) & 255);
+			dst[2] += (int)((A    ) & 255);
 
 			dst += 3;
 		} while(--cnt);
@@ -419,9 +435,9 @@ xloop:
 					+(((g*mult) & 0xff0000) >> 8)
 					+ ((b*mult) >> 16);
 
-			tmp[0] = r + (int)(unsigned char)(A>>16) - (int)(unsigned char)(B>>16);
-			tmp[1] = g + (int)(unsigned char)(A>> 8) - (int)(unsigned char)(B>> 8);
-			tmp[2] = b + (int)(unsigned char)(A    ) - (int)(unsigned char)(B	 );
+			tmp[0] = r + (int)((A>>16)&255) - (int)((B>>16) & 255);
+			tmp[1] = g + (int)((A>> 8)&255) - (int)((B>> 8) & 255);
+			tmp[2] = b + (int)((A    )&255) - (int)((B    ) & 255);
 
 			tmp += 3;
 		} while(--cnt);
@@ -535,9 +551,9 @@ xloop:
 			dst2[1] = YUV_clip_table[256 + 128 - ((g*mult)>>16) + ((orig[0]&0x00ff00)>> 8)];
 			dst2[0] = YUV_clip_table[256 + 128 - ((b*mult)>>16) + ((orig[0]&0x0000ff)    )];
 
-			tmp[0] = r + (int)(unsigned char)(A>>16) - (int)(unsigned char)(B>>16);
-			tmp[1] = g + (int)(unsigned char)(A>> 8) - (int)(unsigned char)(B>> 8);
-			tmp[2] = b + (int)(unsigned char)(A    ) - (int)(unsigned char)(B	 );
+			tmp[0] = r + (int)((A>>16)&255) - (int)((B>>16)&255);
+			tmp[1] = g + (int)((A>> 8)&255) - (int)((B>> 8)&255);
+			tmp[2] = b + (int)((A    )&255) - (int)((B    )&255);
 
 			tmp += 3;
 			++orig;

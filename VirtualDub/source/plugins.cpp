@@ -9,7 +9,7 @@
 #include <vd2/plugin/vdaudiofilt.h>
 
 #include "plugins.h"
-
+#include "misc.h"
 
 
 
@@ -166,10 +166,14 @@ VDExternalModule::~VDExternalModule() {
 
 void VDExternalModule::Lock() {
 	if (!mhModule) {
-		if (GetVersion() & 0x80000000)
-			mhModule = LoadLibraryA(VDTextWToA(mFilename).c_str());
-		else
-			mhModule = LoadLibraryW(mFilename.c_str());
+		{
+			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
+
+			if (GetVersion() & 0x80000000)
+				mhModule = LoadLibraryA(VDTextWToA(mFilename).c_str());
+			else
+				mhModule = LoadLibraryW(mFilename.c_str());
+		}
 
 		if (!mhModule)
 			throw MyWin32Error("Cannot load plugin module \"%s\": %%s", GetLastError(), VDTextWToA(mFilename).c_str());

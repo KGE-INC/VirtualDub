@@ -48,7 +48,7 @@ namespace {
 	enum { kVDST_InputFileAVI = 4 };
 
 	enum {
-		kVDM_OpeningFile,			// AVI: Opening file "%hs"
+		kVDM_OpeningFile,			// AVI: Opening file "%ls"
 		kVDM_RekeyNotSpecified,		// AVI: Keyframe flag reconstruction was not specified in open options and the video stream is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.
 		kVDM_Type1DVNoSound,		// AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.
 	};

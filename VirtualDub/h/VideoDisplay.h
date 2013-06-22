@@ -28,12 +28,16 @@ public:
 	enum FieldMode {
 		kAllFields,
 		kEvenFieldOnly,
-		kOddFieldOnly
+		kOddFieldOnly,
+
+		kVisibleOnly		= 16,
+
+		kFieldModeMax		= 255
 	};
 
 	virtual void Reset() = 0;
 	virtual bool SetSource(const void *data, ptrdiff_t stride, int w, int h, int format, void *pSharedObject = 0, ptrdiff_t sharedOffset = 0, bool bAllowConversion = true, bool bInterlaced = false) = 0;
-	virtual void Update(FieldMode mode) = 0;
+	virtual void Update(int mode) = 0;
 	virtual void Cache() = 0;
 	virtual void SetCallback(IVDVideoDisplayCallback *p) = 0;
 	virtual void LockAcceleration(bool) = 0;

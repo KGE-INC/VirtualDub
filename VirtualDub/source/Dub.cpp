@@ -79,7 +79,6 @@ using namespace nsVDDub;
 ///////////////////////////////////////////////////////////////////////////
 
 extern const char g_szError[];
-extern bool g_syncroBlit;
 extern HWND g_hWnd;
 extern bool g_fWine;
 
@@ -126,7 +125,7 @@ DubOptions g_dubOpts = {
 		TRUE,						// show input video
 		TRUE,						// show output video
 		FALSE,						// decompress output video before display
-		FALSE,						// histograms
+		FALSE,						// histograms (unused)
 		TRUE,						// sync to audio
 		1,							// no frame rate decimation
 		0,0,						// no target
@@ -349,7 +348,6 @@ public:
 	void SetInputDisplay(IVDVideoDisplay *);
 	void SetOutputDisplay(IVDVideoDisplay *);
 	void SetInputFile(InputFile *pInput);
-	void SetFrameRectangles(RECT *prInput, RECT *prOutput);
 	void SetAudioFilterGraph(const VDAudioFilterGraph& graph);
 	void EnableSpill(sint64 threshold, long framethreshold);
 
@@ -374,7 +372,6 @@ public:
 	bool isRunning();
 	bool isAbortedByUser();
 	bool IsPreviewing();
-	void Tag(int x, int y);
 
 	void SetStatusHandler(IDubStatusHandler *pdsh);
 	void SetPriority(int index);
@@ -490,14 +487,6 @@ void Dubber::SetInputDisplay(IVDVideoDisplay *pDisplay) {
 
 void Dubber::SetOutputDisplay(IVDVideoDisplay *pDisplay) {
 	mpOutputDisplay = pDisplay;
-}
-
-void Dubber::SetFrameRectangles(RECT *prInput, RECT *prOutput) {
-//	rInputFrame = *prInput;
-//	rOutputFrame = *prOutput;
-
-//	mInputDisplay.SetDestRect(rInputFrame.left, rInputFrame.top, rInputFrame.right-rInputFrame.left, rInputFrame.bottom - rInputFrame.top);
-//	mOutputDisplay.SetDestRect(rOutputFrame.left, rOutputFrame.top, rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom - rOutputFrame.top);
 }
 
 /////////////
@@ -1193,22 +1182,50 @@ void Dubber::InitSelectInputFormat() {
 		bih.biClrUsed		= 0;
 		bih.biClrImportant	= 0;
 
-		if (NegotiateFastFormat(&bih))
+		if (NegotiateFastFormat(&bih)) {
+			mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_UYVY);
+			mbInputDisplayInitialized = true;
 			return;
+		}
 
-		// Attempt YUYV.
+		// Attempt YVYU.
+		bih.biCompression	= 'UYVY';
 
-		bih.biCompression	= 'VYUY';
-
-		if (NegotiateFastFormat(&bih))
+		if (NegotiateFastFormat(&bih)) {
+			mpInputDisplay->Reset();		// No support for YVYU yet
+			mbInputDisplayInitialized = true;
 			return;
+		}
 
 		// Attempt YUY2.
 
 		bih.biCompression	= '2YUY';
 
-		if (NegotiateFastFormat(&bih))
+		if (NegotiateFastFormat(&bih)) {
+			mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (bih.biWidth*2 + 3) & ~3, bih.biWidth, bih.biHeight, IVDVideoDisplay::kFormatYUV422_YUYV);
+			mbInputDisplayInitialized = true;
 			return;
+		}
+
+		// Attempt YV12
+
+		memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
+
+		bih.biSize			= sizeof(BITMAPINFOHEADER);
+		bih.biPlanes		= 1;
+		bih.biBitCount		= 12;
+		bih.biCompression	= '21VY';
+		bih.biSizeImage		= ((bih.biWidth+1)&~1) * ((bih.biHeight+1)&~1) * 6;
+		bih.biXPelsPerMeter	= 0;
+		bih.biYPelsPerMeter	= 0;
+		bih.biClrUsed		= 0;
+		bih.biClrImportant	= 0;
+
+		if (NegotiateFastFormat(&bih)) {
+			mpInputDisplay->Reset();		// VideoDisplay doesn't handle planar formats (yet).
+			mbInputDisplayInitialized = true;
+			return;
+		}
 
 		// Attempt RGB format negotiation.
 
@@ -1331,7 +1348,7 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 
 	VDDEBUG("Dub: Creating blitter.\n");
 
-	if (g_syncroBlit || !fPreview)
+	if (!fPreview)
 		blitter = new AsyncBlitter();
 	else
 		blitter = new AsyncBlitter(8);
@@ -1781,13 +1798,13 @@ namespace {
 
 		if (nFieldMode) {
 			if ((pass^nFieldMode)&1)
-				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly);
+				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kVisibleOnly);
 			else
-				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly);
+				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kVisibleOnly);
 
 			return !pass;
 		} else {
-			pVideoDisplay->Update(IVDVideoDisplay::kAllFields);
+			pVideoDisplay->Update(IVDVideoDisplay::kAllFields | IVDVideoDisplay::kVisibleOnly);
 			return false;
 		}
 	}
@@ -2285,6 +2302,19 @@ void Dubber::ThreadRun() {
 						}
 
 						bytesread += tc;
+					}
+
+					// apply audio correction on the fly if we are doing L3
+					//
+					// NOTE: Don't begin correction until we have at least 20 MPEG frames.  The error
+					//       is generally under 5% and we don't want the beginning of the stream to go
+					//       nuts.
+					if (audioCorrector && audioCorrector->GetFrameCount() >= 20) {
+						VDFormatStruct<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+						
+						double bytesPerSec = audioCorrector->ComputeByterateDouble(wfex->nSamplesPerSec);
+
+						mInterleaver.AdjustStreamRate(1, bytesPerSec / (double)vInfo.frameRate);
 					}
 
 					mProcessingProfileChannel.End();

@@ -221,7 +221,7 @@ void OpenAVI(bool ext_opt) {
 		{0}
 	};
 
-	int optVals[3]={0,0,0};
+	int optVals[3]={0,1,0};
 
 	VDStringW fname(VDGetLoadFileName(VDFSPECKEY_LOADVIDEOFILE, (VDGUIHandle)g_hWnd, L"Open video file", fileFilters.c_str(), NULL, sOptions, optVals));
 

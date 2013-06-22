@@ -478,8 +478,8 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 
 	mPrefill = 0;
 	if (first_samp < 0) {
-		first_samp = -mPrefill;
-		mPrefill = 0;
+		mPrefill = -first_samp;
+		first_samp = 0;
 	}
 
 	aSrc = src;
@@ -1776,11 +1776,16 @@ BOOL AudioCompressor::isEnd() {
 AudioL3Corrector::AudioL3Corrector() {
 	samples = frame_bytes = 0;
 	read_left = 4;
+	frames = 0;
 	header_mode = true;
 }
 
-long AudioL3Corrector::ComputeByterate(long sample_rate) {
+long AudioL3Corrector::ComputeByterate(long sample_rate) const {
 	return MulDiv(frame_bytes, sample_rate, samples);
+}
+
+double AudioL3Corrector::ComputeByterateDouble(long sample_rate) const {
+	return (double)frame_bytes*sample_rate/samples;
 }
 
 void AudioL3Corrector::Process(void *buffer, long bytes) {
@@ -1833,6 +1838,7 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 				// update statistics
 
 				frame_bytes += framelen;
+				++frames;
 
 				// start skipping the remainder
 
@@ -1974,7 +1980,7 @@ long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
 }
 
 BOOL AudioSubset::_isEnd() {
-	return pfsnCur != subset.end() || source->isEnd();
+	return pfsnCur == subset.end() || source->isEnd();
 }
 
 ///////////////////////////////////////////////////////////////////////////

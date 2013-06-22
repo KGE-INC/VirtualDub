@@ -398,10 +398,11 @@ AC_exit_clamp:
 
 	ALIGN16
 AC_exit:
-	mov	ebx,dword ptr [ebx-4]
-	shr	ebx,1
-
-	and	ebx,63		;just in case
+	mov	eax,[esp + p_blocks]
+	sub ebx, [eax].block.quant		;compute offset from start of zigzag/quant table
+	shr ebx, 3						;convert offset to index
+	sub ebx, 1						;compensate for ebx being just after last coeff
+	and	ebx,63						;just in case
 
 AC_exit_nocomputelast:
 	;all done with this macroblock!

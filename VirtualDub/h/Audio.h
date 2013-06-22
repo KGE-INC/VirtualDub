@@ -177,13 +177,17 @@ protected:
 
 class AudioL3Corrector {
 private:
-	long samples, frame_bytes, read_left;
+	long samples, frame_bytes, read_left, frames;
 	bool header_mode;
 	char hdr_buffer[4];
 
 public:
 	AudioL3Corrector();
-	long ComputeByterate(long sample_rate);
+	long ComputeByterate(long sample_rate) const;
+	double ComputeByterateDouble(long sample_rate) const;
+
+	sint32 GetFrameCount() const { return frames; }
+
 	void Process(void *buffer, long bytes);
 };
 

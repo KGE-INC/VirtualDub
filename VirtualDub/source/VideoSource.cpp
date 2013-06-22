@@ -722,12 +722,7 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 
 					static bool sbBadCodecDetected = false;		// we only need one warning, not a billion....
 					if (!sbBadCodecDetected && memcmp(pbih_protected, bmih, siz)) {
-						ICINFO info = {sizeof(ICINFO)};
-
-						ICGetInfo(hicDecomp, &info, sizeof info);
-
-						const wchar_t *ppName = info.szDescription;
-						VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecRenamingDetected, 1, &ppName);
+						VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecRenamingDetected);
 						sbBadCodecDetected = true;
 					}
 

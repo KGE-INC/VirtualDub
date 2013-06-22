@@ -38,16 +38,15 @@ namespace {
 		"AVI: Frame %u is too short (%d < %d bytes) but decoding anyway.",
 		"Video codec \"%.64hs\" is buggy and returned to VirtualDub with MMX active. Applying workaround.",
 		"AVI: Video format structure in file is abnormally large (%d bytes > 16K). Truncating to %d bytes.",
-		"Video codec \"%.128ls\" modified the video format passed to it by VirtualDub.  This indicates a codec "
-			"bug that may cause the Windows video codec system to malfunction.  Please remove the errant codec "
-			"or replace it with an updated version from the original vendor.",
+		"One of the video codecs installed in the system modified the video format passed to it by VirtualDub.  This indicates a codec "
+			"bug that may cause the Windows video codec system to malfunction.",
 		0
 	};
 
 	enum { kVDST_InputFileAVI = 4 };
 
 	const char *const g_strtab_InputFileAVI[]={
-		"AVI: Opening file \"%hs\"",
+		"AVI: Opening file \"%ls\"",
 		"AVI: Keyframe flag reconstruction was not specified in open options and the video stream "
 							"is not a known keyframe-only type.  Seeking in the video stream may be extremely slow.",
 		"AVI: Type-1 DV file detected -- VirtualDub cannot extract audio from this type of interleaved stream.",

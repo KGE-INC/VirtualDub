@@ -92,17 +92,20 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 		char	buf[28];
 		unsigned short tagword;
 
-		__asm fnstenv buf
+		__asm fnstenv buf		// this resets the FPU control word somehow!?
 
 		tagword = *(unsigned short *)(buf + 8);
 
 		return (tagword != 0xffff);
 	}
 
-	bool IsFPUStateOK() {
-		unsigned ctlword = 0;
+	bool IsFPUStateOK(unsigned& ctlword) {
+		ctlword = 0;
 
-		__asm fnstcw ctlword
+		__asm mov eax, ctlword
+		__asm fnstcw [eax]
+
+		ctlword &= 0xffff;
 
 		return ctlword == 0x027f;
 	}
@@ -137,8 +140,9 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 	}
 
 	void VDPreCheckExternalCodeCall(const char *file, int line) {
+		unsigned fpucw;
+		bool bFPUStateBad = !IsFPUStateOK(fpucw);
 		bool bMMXStateBad = IsMMXState();
-		bool bFPUStateBad = !IsFPUStateOK();
 
 		if (bMMXStateBad || bFPUStateBad) {
 			ClearMMXState();
@@ -146,7 +150,7 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 		}
 
 		if (bMMXStateBad) {
-			VDLog(kVDLogError, VDswprintf(L"Internal error: MMX state was active before entry to external code. "
+			VDLog(kVDLogError, VDswprintf(L"Internal error: MMX state was active before entry to external code at (%hs:%d). "
 										L"This indicates an uncaught bug either in an external driver or in VirtualDub itself "
 										L"that could cause application instability.  Please report this problem to the author!",
 										2,
@@ -155,19 +159,22 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 										));
 		}
 		if (bFPUStateBad) {
-			VDLog(kVDLogError, VDswprintf(L"Internal error: Floating-point state was bad before entry to external code at (%s:%d). "
+			VDLog(kVDLogError, VDswprintf(L"Internal error: Floating-point state was bad before entry to external code at (%hs:%d). "
 										L"This indicates an uncaught bug either in an external driver or in VirtualDub itself "
-										L"that could cause application instability.  Please report this problem to the author!",
-										2,
+										L"that could cause application instability.  Please report this problem to the author!\n"
+										L"(FPU tag word = %04x)",
+										3,
 										&file,
-										&line
+										&line,
+										&fpucw
 										));
 		}
 	}
 
 	void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine) {
+		unsigned fpucw;
+		bool bFPUStateBad = !IsFPUStateOK(fpucw);
 		bool bMMXStateBad = IsMMXState();
-		bool bFPUStateBad = !IsFPUStateOK();
 		bool bBadState = bMMXStateBad || bFPUStateBad;
 
 		static bool sbDisableFurtherWarnings = false;
@@ -195,11 +202,12 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 			VDLog(kVDLogWarning, VDswprintf(L"%ls returned to VirtualDub with the floating-point unit in an abnormal state. "
 											L"This indicates a bug in that module which could cause application instability. "
 											L"Please check with the module vendor for an updated version which addresses this problem. "
-											L"(Trap location: %hs:%d)",
-											3,
+											L"(Trap location: %hs:%d, FPUCW = %04x)",
+											4,
 											&mpContext,
 											&mpFile,
-											&mLine));
+											&mLine,
+											&fpucw));
 			sbDisableFurtherWarnings = true;
 		}
 	}

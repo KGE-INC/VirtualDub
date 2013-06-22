@@ -992,9 +992,8 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 #endif
 
 		if (ISSE_enabled)
-			for(int i=0; i<mcu_length*mcus; i++) {
+			for(int i=0; i<mcu_length*mcus; i++)
 				IDCT_isse(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
-			}
 		else
 			for(int i=0; i<mcu_length*mcus; i++)
 				IDCT_mmx(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);

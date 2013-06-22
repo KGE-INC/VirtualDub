@@ -30,7 +30,6 @@
 #include "fixes.h"
 #include "AVIStripeSystem.h"
 
-class Histogram;
 class AsyncBlitter;
 class AVIPipe;
 class AVIOutput;
@@ -97,7 +96,7 @@ public:
 	char	inputDepth, outputDepth;
 	char	mode;
 	bool	fShowInputFrame, fShowOutputFrame, fShowDecompressedFrame;
-	bool	fHistogram, fSyncToAudio;
+	bool	fHistogram_unused, fSyncToAudio;
 	int		frameRateDecimation;
 	uint32	frameRateTargetHi, frameRateTargetLo;
 	long	frameRateNewMicroSecs;
@@ -183,7 +182,6 @@ public:
 	virtual void SetPhantomVideoMode()=0;
 	virtual void SetInputDisplay(IVDVideoDisplay *pDisplay) = 0;
 	virtual void SetOutputDisplay(IVDVideoDisplay *pDisplay) = 0;
-	virtual void SetFrameRectangles(RECT *prInput, RECT *prOutput)=0;
 	virtual void SetAudioFilterGraph(const VDAudioFilterGraph& graph)=0;
 	virtual void EnableSpill(__int64 size, long lFrameLimit)=0;
 	virtual void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *out, COMPVARS *videoCompVars) = 0;

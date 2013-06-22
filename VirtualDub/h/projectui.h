@@ -55,6 +55,7 @@ protected:
 	bool DoFrameRightClick(LPARAM lParam);
 	void UpdateMainMenu(HMENU hMenu);
 	void UpdateDubMenu(HMENU hMenu);
+	void RepositionPanes();
 	void UpdateVideoFrameLayout();
 
 	void UIRefreshInputFrame(bool bValid);

@@ -213,17 +213,15 @@ void FrameSubset::deleteRange(int start, int len) {
 	iterator it = findNode(offset, start), itEnd = end();
 
 	while(it != itEnd && len>0) {
+		VDASSERT(offset >= 0);
 		if (len+offset < it->len) {
-			if (offset) {
-				FrameSubsetNode *pfsn2 = new FrameSubsetNode;
-
-				if (!pfsn2) throw MyMemoryError();
-
-				mTimeline.insert(it, FrameSubsetNode(it->start, start - it->start, it->bMask));
-			}
+			if (offset)
+				mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
 
 			it->start += (offset+len);
 			it->len -= (offset+len);
+
+			VDASSERT(it->len > 0);
 
 			break;
 		} else {

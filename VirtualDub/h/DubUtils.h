@@ -124,6 +124,7 @@ public:
 	void EndStream(int stream);
 	void AddVBRCorrection(int stream, sint32 actual);
 	void AddCBRCorrection(int stream, sint32 actual);
+	void AdjustStreamRate(int stream, double samplesPerFrame);
 
 	Action GetNextAction(int& streamID, sint32& samples);
 

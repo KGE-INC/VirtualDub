@@ -1198,27 +1198,25 @@ void VideoSourceMPEG::UpdateAcceleration() {
 	if (mAccelerationFlags != flags) {
 		mAccelerationFlags = flags;
 
-		if (1) {
-			if (flags & (CPUF_SUPPORTS_SSE2 | CPUF_SUPPORTS_INTEGER_SSE | CPUF_SUPPORTS_MMX)) {
-				mpDecoder->SetPredictors(&g_VDMPEGPredict_sse2);
-				mpDecoder->SetConverters(&g_VDMPEGConvert_isse);
-				mpDecoder->SetIDCTs(&g_VDMPEGIDCT_isse);
-			} else if (flags & (CPUF_SUPPORTS_INTEGER_SSE | CPUF_SUPPORTS_MMX)) {
-				mpDecoder->SetPredictors(&g_VDMPEGPredict_isse);
-				mpDecoder->SetConverters(&g_VDMPEGConvert_isse);
-				mpDecoder->SetIDCTs(&g_VDMPEGIDCT_isse);
-			} else if (flags & CPUF_SUPPORTS_MMX) {
-				mpDecoder->SetPredictors(&g_VDMPEGPredict_mmx);
-				mpDecoder->SetConverters(&g_VDMPEGConvert_mmx);
-				mpDecoder->SetIDCTs(&g_VDMPEGIDCT_mmx);
-			} else {
-				mpDecoder->SetPredictors(&g_VDMPEGPredict_scalar);
-				mpDecoder->SetConverters(&g_VDMPEGConvert_scalar);
-				mpDecoder->SetIDCTs(&g_VDMPEGIDCT_scalar);
-			}
-		} else {
+		static const uint32 sse2_flags = (CPUF_SUPPORTS_SSE2 | CPUF_SUPPORTS_INTEGER_SSE | CPUF_SUPPORTS_MMX);
+		static const uint32 isse_flags = (CPUF_SUPPORTS_INTEGER_SSE | CPUF_SUPPORTS_MMX);
+		static const uint32 mmx_flags = CPUF_SUPPORTS_MMX;
+
+		if ((flags & sse2_flags) == sse2_flags) {
 			mpDecoder->SetPredictors(&g_VDMPEGPredict_sse2);
 			mpDecoder->SetConverters(&g_VDMPEGConvert_isse);
+			mpDecoder->SetIDCTs(&g_VDMPEGIDCT_isse);
+		} else if ((flags & isse_flags) == isse_flags) {
+			mpDecoder->SetPredictors(&g_VDMPEGPredict_isse);
+			mpDecoder->SetConverters(&g_VDMPEGConvert_isse);
+			mpDecoder->SetIDCTs(&g_VDMPEGIDCT_isse);
+		} else if ((flags & mmx_flags) == mmx_flags) {
+			mpDecoder->SetPredictors(&g_VDMPEGPredict_mmx);
+			mpDecoder->SetConverters(&g_VDMPEGConvert_mmx);
+			mpDecoder->SetIDCTs(&g_VDMPEGIDCT_mmx);
+		} else {
+			mpDecoder->SetPredictors(&g_VDMPEGPredict_scalar);
+			mpDecoder->SetConverters(&g_VDMPEGConvert_scalar);
 			mpDecoder->SetIDCTs(&g_VDMPEGIDCT_scalar);
 		}
 	}

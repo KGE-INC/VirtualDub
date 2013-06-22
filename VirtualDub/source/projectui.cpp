@@ -195,9 +195,7 @@ UINT iMainMenuHelpTranslator[]={
 	MENU_TO_HELP(OPTIONS_DISPLAYDECOMPRESSEDOUTPUT),
 	MENU_TO_HELP(OPTIONS_ENABLEMMX),
 	MENU_TO_HELP(OPTIONS_SHOWSTATUSWINDOW),
-	MENU_TO_HELP(OPTIONS_SYNCHRONOUSBLIT),
 	MENU_TO_HELP(OPTIONS_VERTICALDISPLAY),
-	MENU_TO_HELP(OPTIONS_DRAWHISTOGRAMS),
 	MENU_TO_HELP(OPTIONS_SYNCTOAUDIO),
 	MENU_TO_HELP(OPTIONS_DROPFRAMES),
 	MENU_TO_HELP(OPTIONS_ENABLEDIRECTDRAW),
@@ -316,6 +314,13 @@ bool VDProjectUI::Attach(HWND hwnd) {
 		SetWindowLongPtrA(mhwnd, GWL_WNDPROC, (LONG_PTR)StaticWndProc);
 	}
 
+	mhwndStatus = CreateStatusWindow(WS_CHILD|WS_VISIBLE, "", mhwnd, IDC_STATUS_WINDOW);
+	if (!mhwndStatus) {
+		Detach();
+		return false;
+	}
+
+	SendMessage(mhwndStatus, SB_SIMPLE, TRUE, 0);
 	// Create position window.
 	mhwndPosition = CreateWindowEx(0, POSITIONCONTROLCLASS, "", WS_CHILD | WS_VISIBLE | PCS_PLAYBACK | PCS_MARK | PCS_SCENE, 0, 100, 200, 64, mhwnd, (HMENU)IDC_POSITION, g_hInst, NULL);
 
@@ -351,14 +356,6 @@ bool VDProjectUI::Attach(HWND hwnd) {
 
 	VDGetIVideoWindow(mhwndInputFrame)->SetChild(mhwndInputDisplay);
 	VDGetIVideoWindow(mhwndOutputFrame)->SetChild(mhwndOutputDisplay);
-
-	mhwndStatus = CreateStatusWindow(WS_CHILD|WS_VISIBLE, "", mhwnd, IDC_STATUS_WINDOW);
-	if (!mhwndStatus) {
-		Detach();
-		return false;
-	}
-
-	SendMessage(mhwndStatus, SB_SIMPLE, TRUE, 0);
 
 	guiRedoWindows(mhwnd);
 	SetMenu(mhwnd, mhMenuNormal);
@@ -434,8 +431,12 @@ void VDProjectUI::SetTitle(int nTitleString, int nArgs, ...) {
 
 	VDASSERT(nArgs < 16);
 
-	const wchar_t *s = L"VirtualDub 1.5.5";
-	args[0] = &s;
+	char version[128];
+	LoadString(g_hInst, IDS_TITLE_NOFILE, version, sizeof version);
+
+	VDStringW versionW(VDTextAToW(version));
+	const wchar_t *pVersion = versionW.c_str();
+	args[0] = &pVersion;
 
 	va_list val;
 	va_start(val, nArgs);
@@ -465,7 +466,7 @@ void VDProjectUI::AppendAsk() {
 		{0}
 	};
 
-	int optVals[1]={0};
+	int optVals[1]={true};
 
 	VDStringW fname(VDGetLoadFileName(VDFSPECKEY_LOADVIDEOFILE, (VDGUIHandle)mhwnd, L"Append AVI segment", fileFiltersAppend, NULL, sOptions, optVals));
 
@@ -847,15 +848,9 @@ bool VDProjectUI::MenuHit(UINT id) {
 			else
 				g_showStatusWindow = !g_showStatusWindow;
 			break;
-		case ID_OPTIONS_SYNCHRONOUSBLIT:
-			g_syncroBlit = !g_syncroBlit;
-			break;
 		case ID_OPTIONS_VERTICALDISPLAY:
 			g_vertical = !g_vertical;
-			UpdateVideoFrameLayout();
-			break;
-		case ID_OPTIONS_DRAWHISTOGRAMS:
-			g_dubOpts.video.fHistogram = !g_dubOpts.video.fHistogram;
+			RepositionPanes();
 			break;
 		case ID_OPTIONS_SYNCTOAUDIO:
 			g_dubOpts.video.fSyncToAudio = !g_dubOpts.video.fSyncToAudio;
@@ -868,7 +863,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 			break;
 		case ID_OPTIONS_SWAPPANES:
 			g_fSwapPanes = !g_fSwapPanes;
-			UpdateVideoFrameLayout();
+			RepositionPanes();
 			break;
 
 		case ID_OPTIONS_PREVIEWPROGRESSIVE:	g_dubOpts.video.nPreviewFieldMode = 0; break;
@@ -986,9 +981,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DISPLAYOUTPUTVIDEO,		g_dubOpts.video.fShowOutputFrame);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT,	g_drawDecompressedFrame);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SHOWSTATUSWINDOW,			g_showStatusWindow);
-	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SYNCHRONOUSBLIT,			g_syncroBlit);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_VERTICALDISPLAY,			g_vertical);
-	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DRAWHISTOGRAMS,			g_dubOpts.video.fHistogram);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SYNCTOAUDIO,				g_dubOpts.video.fSyncToAudio);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_ENABLEDIRECTDRAW,			g_dubOpts.perf.useDirectDraw);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DROPFRAMES,				g_fDropFrames);
@@ -1044,6 +1037,8 @@ void VDProjectUI::UpdateDubMenu(HMENU hMenu) {
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DISPLAYINPUTVIDEO, fShowInputFrame);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_DISPLAYOUTPUTVIDEO, fShowOutputFrame);
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SHOWSTATUSWINDOW, fShowStatusWindow);
+	VDCheckMenuItemW32(hMenu, ID_OPTIONS_VERTICALDISPLAY,			g_vertical);
+	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SWAPPANES,					g_fSwapPanes);
 }
 
 LRESULT VDProjectUI::StaticWndProc( HWND hWnd, UINT msg, UINT wParam, LONG lParam) {
@@ -1165,15 +1160,12 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, UINT wParam, LONG lParam) {
 				switch(nmh->code) {
 				case VWN_RESIZED:
 					if (nmh->idFrom == 1) {
-						RECT r;
-						GetWindowRect(nmh->hwndFrom, &r);
-						ScreenToClient(mhwnd, (LPPOINT)&r + 1);
-						SetWindowPos(mhwndOutputFrame, NULL, r.right+8, 0, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-
 						GetClientRect(nmh->hwndFrom, &mrInputFrame);
 					} else {
 						GetClientRect(nmh->hwndFrom, &mrOutputFrame);
 					}
+
+					RepositionPanes();
 					break;
 				case VWN_REQUPDATE:
 					if (nmh->idFrom == 1)
@@ -1279,16 +1271,11 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				switch(nmh->code) {
 				case VWN_RESIZED:
 					if (nmh->idFrom == 1) {
-						RECT r;
-						GetWindowRect(nmh->hwndFrom, &r);
-						ScreenToClient(mhwnd, (LPPOINT)&r + 1);
-						SetWindowPos(mhwndOutputFrame, NULL, r.right+8, 0, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-
 						GetClientRect(nmh->hwndFrom, &mrInputFrame);
 					} else {
 						GetClientRect(nmh->hwndFrom, &mrOutputFrame);
 					}
-					g_dubber->SetFrameRectangles(&mrInputFrame, &mrOutputFrame);
+					RepositionPanes();
 					break;
 				case VWN_REQUPDATE:
 					// eat it
@@ -1339,6 +1326,25 @@ void VDProjectUI::HandleDragDrop(HDROP hdrop) {
 			e.post(mhwnd, g_szError);
 		}
 	}
+}
+
+void VDProjectUI::RepositionPanes() {
+	HWND hwndPane1 = mhwndInputFrame;
+	HWND hwndPane2 = mhwndOutputFrame;
+
+	if (g_fSwapPanes)
+		std::swap(hwndPane1, hwndPane2);
+
+	RECT r;
+	GetWindowRect(hwndPane1, &r);
+	ScreenToClient(mhwnd, (LPPOINT)&r + 1);
+
+	SetWindowPos(hwndPane1, NULL, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+	if (g_vertical)
+		SetWindowPos(hwndPane2, NULL, 0, r.bottom + 8, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
+	else
+		SetWindowPos(hwndPane2, NULL, r.right+8, 0, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
 }
 
 void VDProjectUI::UpdateVideoFrameLayout() {
@@ -1451,7 +1457,6 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 
 		g_dubber->SetInputDisplay(mpInputDisplay);
 		g_dubber->SetOutputDisplay(mpOutputDisplay);
-		g_dubber->SetFrameRectangles(&mrInputFrame, &mrOutputFrame);
 
 		SetMenu(mhwnd, mhMenuDub);
 		mpWndProc = DubWndProc;

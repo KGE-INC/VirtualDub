@@ -1987,13 +1987,14 @@ bool VDVideoDisplayMinidriverDirectDraw::Resize() {
 
 			if (FAILED(hr)) {
 				if (hr == DDERR_SURFACELOST) {
+					mbValid = false;
+					memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
+
 					if (FAILED(mpddsOverlay->Restore()))
 						return false;
 
 					if (pDest->IsLost() && FAILED(mpddman->Restore()))
 						return false;
-
-					memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 				}
 			} else
 				mLastDisplayRect = rDst0;
@@ -2021,19 +2022,23 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 
 	while(FAILED(hr = pTarget->Lock(NULL, &ddsd, dwLockFlags, 0))) {
 		if (hr == DDERR_SURFACELOST) {
+			mbValid = false;
+			memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
+
 			if (!mpddman->Restore())
 				break;
 
 			hr = pTarget->Restore();
 			if (FAILED(hr))
 				break;
-
-			memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 		}
 	}
 
-	if (FAILED(hr))
+	if (FAILED(hr)) {
+		mbValid = false;
+		memset(&mLastDisplayRect, 0, sizeof mLastDisplayRect);
 		return false;
+	}
 
 	VDVideoDisplaySourceInfo source(mSource);
 
@@ -2107,9 +2112,10 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 	} else {
 		VDMemcpyRect(dst, dstpitch, source.data, source.stride, source.bpr, source.h);
 	}
-	pTarget->Unlock(0);
+	
+	hr = pTarget->Unlock(0);
 
-	mbValid = true;
+	mbValid = SUCCEEDED(hr);
 
 	return !mbReset;
 }
@@ -2145,6 +2151,10 @@ bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient) {
 
 void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, FieldMode mode) {
 	RECT rDst = rClient;
+
+	// DirectX doesn't like null rects.
+	if (rDst.right <= rDst.left || rDst.bottom <= rDst.top)
+		return;
 
 	MapWindowPoints(mhwnd, NULL, (LPPOINT)&rDst, 2);
 
@@ -2203,6 +2213,7 @@ bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest
 
 		if (mpddsBitmap->IsLost()) {
 			mpddsBitmap->Restore();
+			mbValid = false;
 			break;
 		}
 

@@ -293,7 +293,7 @@ bool VDDirectoryIterator::Next() {
 			mbSearchComplete = !FindNextFileA((HANDLE)mpHandle, &wfd.a);
 		else {
 			mpHandle = FindFirstFileA(VDTextWToA(mSearchPath).c_str(), &wfd.a);
-			mbSearchComplete = !mpHandle;
+			mbSearchComplete = (INVALID_HANDLE_VALUE == mpHandle);
 		}
 		if (mbSearchComplete)
 			return false;
@@ -306,7 +306,7 @@ bool VDDirectoryIterator::Next() {
 			mbSearchComplete = !FindNextFileW((HANDLE)mpHandle, &wfd.w);
 		else {
 			mpHandle = FindFirstFileW(mSearchPath.c_str(), &wfd.w);
-			mbSearchComplete = !mpHandle;
+			mbSearchComplete = (INVALID_HANDLE_VALUE == mpHandle);
 		}
 		if (mbSearchComplete)
 			return false;
