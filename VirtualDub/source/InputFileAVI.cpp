@@ -762,6 +762,8 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 						if (comp == '2YUY')
 							strcpy(buf, "YCbCr 4:2:2 (YUY2)");
+						else if (comp == 'YVYU')
+							strcpy(buf, "YCbCr 4:2:2 (UYVY)");
 						else if (comp == '024I')
 							strcpy(buf, "YCbCr 4:2:0 planar (I420)");
 						else if (comp == 'VUYI')

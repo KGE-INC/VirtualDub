@@ -1452,6 +1452,9 @@ void VDVideoDisplayMinidriverDX9::Refresh(UpdateMode mode) {
 bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode updateMode) {
 	const RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
 
+	if (rClippedClient.right <= 0 || rClippedClient.bottom <= 0)
+		return true;
+
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
 		return false;
@@ -1596,9 +1599,9 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode
 			float umax = (float)mSource.pixmap.w / (float)mTexFmt.w;
 			float vmax = (float)mSource.pixmap.h / (float)mTexFmt.h;
 			float x0 = -1.f;
-			float x1 = -1.f + 4.0f*(rClient.right / rClippedClient.right);
+			float x1 = -1.f + 4.0f*((float)rClient.right / (float)rClippedClient.right);
 			float y0 = 1.f;
-			float y1 = 1.f - 4.0f*(rClient.bottom / rClippedClient.bottom);
+			float y1 = 1.f - 4.0f*((float)rClient.bottom / (float)rClippedClient.bottom);
 
 			pvx[0].SetFF1(x0, y0, 0, 0);
 			pvx[1].SetFF1(x0, y1, 0, vmax*2);

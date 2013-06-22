@@ -1,6 +1,16 @@
 VirtualDub change log
 
-Build %build% (1.6.16, stable): [%date%]
+Build %build% (1.6.17, stable): [%date%]
+   [bugs fixed]
+   * Fixed divide by zero crash when Direct3D display is enabled and a video pane is shrunken to zero width.
+   * UYVY video streams were being reported as RGB16.
+   * Direct3D display minidriver didn't clip properly when the image was zoomed larger than the screen.
+
+   [regressions fixed]
+   * Capture: Reverted change in rendering strategy for DirectShow filter graphs in order to fix field problems with ATI devices.
+   * Capture: Fixed crash when capturing video only using a VFW driver.
+
+Build 24463 (1.6.16, stable): [August 12, 2006]
    [features added]
    * Added AMD64 versions of the frameserver and AVIFile frameclient.
    * Added .divx to file filter for video open dialog (although AVI files should be tagged .avi, dammit).

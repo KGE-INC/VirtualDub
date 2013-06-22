@@ -2870,7 +2870,7 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 		lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
 		mVideoProfileChannel.End();
 
-		if (mpOutputFile) {
+		if (mpOutput) {
 			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
 			mpVideoOut->write(
 					isKey ? AVIIF_KEYFRAME : 0,
@@ -2883,7 +2883,7 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 
 		mLastVideoSize = lBytes + 24;
 	} else {
-		if (mpOutputFile) {
+		if (mpOutput) {
 			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
 			mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
 			mVideoProfileChannel.End();

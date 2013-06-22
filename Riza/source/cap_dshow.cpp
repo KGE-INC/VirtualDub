@@ -18,7 +18,7 @@
 
 #pragma warning(disable: 4786)	// STFU
 
-//#define INITGUID
+#define NO_DSHOW_STRSAFE
 #include <vd2/Riza/capdriver.h>
 #include <vd2/system/vdstring.h>
 #include <vd2/system/time.h>
@@ -2892,7 +2892,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			// No need to handle this here, as we always render the VP pin below.
 			break;
 		} else if (pPreviewPin) {
-			DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pPreviewPin, NULL, NULL), "render preview pin (hardware display)");
+			DS_VERIFY(mpGraphBuilder->Render(pPreviewPin), "render preview pin (hardware display)");
 			pPreviewPin = NULL;
 			break;
 		}
@@ -2905,7 +2905,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		// timestamps, this doesn't work since it causes the video to play at maximum speed,
 		// causing horrible stuttering on the PX-M402U.
 		//
-		DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pCapturePin, NULL, NULL), "render capture pin (hardware display)");
+		DS_VERIFY(mpGraphBuilder->Render(pCapturePin), "render capture pin (hardware display)");
 		pCapturePin = NULL;
 		break;
 	}
@@ -2917,7 +2917,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	// our process.
 
 	if (pVideoPortPin) {
-		DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pVideoPortPin, NULL, NULL), "render video port pin");
+		DS_VERIFY(mpGraphBuilder->Render(pVideoPortPin), "render video port pin");
 		pVideoPortPin = NULL;
 	}
 

@@ -541,7 +541,7 @@ bool VDCaptureDriverVFW::SetAudioInput(int idx) {
 
 	vdblock<MIXERCONTROLDETAILS_BOOLEAN> vals(mMixerInputControl.cMultipleItems);
 
-	for(int i=0; i<mMixerInputControl.cMultipleItems; ++i)
+	for(unsigned i=0; i<mMixerInputControl.cMultipleItems; ++i)
 		vals[i].fValue = (i == idx);
 
 	MIXERCONTROLDETAILS details = {sizeof(MIXERCONTROLDETAILS)};
@@ -726,10 +726,10 @@ bool VDCaptureDriverVFW::CaptureStart() {
 				cp.wNumAudioRequested = 10;
 				cp.dwAudioBufferSize = (wfex->nAvgBytesPerSec / 10 + wfex->nBlockAlign - 1);
 				cp.dwAudioBufferSize -= cp.dwAudioBufferSize % wfex->nBlockAlign;
-
-				capCaptureSetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS));
 			}
 		}
+
+		capCaptureSetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS));
 	}
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
@@ -859,7 +859,7 @@ void VDCaptureDriverVFW::InitMixerSupport() {
 						if (MMSYSERR_NOERROR == mixerGetControlDetails((HMIXEROBJ)mhMixer, &details, MIXER_GETCONTROLDETAILSF_LISTTEXT)) {
 							mMixerInputs.reserve(details.cMultipleItems);
 
-							for(int i=0; i<details.cMultipleItems; ++i)
+							for(unsigned i=0; i<details.cMultipleItems; ++i)
 								mMixerInputs.push_back(MixerInputs::value_type(VDTextAToW(names[i].szName)));
 
 							vdblock<MIXERCONTROLDETAILS_BOOLEAN> vals(mMixerInputControl.cMultipleItems);
@@ -871,7 +871,7 @@ void VDCaptureDriverVFW::InitMixerSupport() {
 								// Attempt to find a mixer input that is set. Note that for
 								// a multiple-select type (MIXER) this will pick the first
 								// enabled input.
-								for(int i=0; i<details.cMultipleItems; ++i)
+								for(unsigned i=0; i<details.cMultipleItems; ++i)
 									if (vals[i].fValue) {
 										mMixerInput = i;
 										break;
@@ -1217,11 +1217,11 @@ int VDCaptureSystemVFW::GetDeviceCount() {
 }
 
 const wchar_t *VDCaptureSystemVFW::GetDeviceName(int index) {
-	return (unsigned)index < mDriverCount ? mDrivers[index].c_str() : NULL;
+	return (unsigned)index < (unsigned)mDriverCount ? mDrivers[index].c_str() : NULL;
 }
 
 IVDCaptureDriver *VDCaptureSystemVFW::CreateDriver(int index) {
-	if ((unsigned)index >= mDriverCount)
+	if ((unsigned)index >= (unsigned)mDriverCount)
 		return NULL;
 
 	return new VDCaptureDriverVFW(mhmodAVICap, index);
