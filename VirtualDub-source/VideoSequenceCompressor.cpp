@@ -23,10 +23,16 @@
 #include "VideoSequenceCompressor.h"
 #include "Error.h"
 #include "crash.h"
+#include "misc.h"
 
 //////////////////////////////////////////////////////////////////////////////
 //
 //	IMITATING WIN2K AVISAVEV() BEHAVIOR IN 0x7FFFFFFF EASY STEPS
+//
+//	It seems some codecs are rather touchy about how exactly you call
+//	them, and do a variety of odd things if you don't imitiate the
+//	standard libraries... compressing at top quality seems to be the most
+//	common symptom.
 //
 //	ICM_COMPRESS_FRAMES_INFO:
 //
@@ -128,6 +134,30 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 	// Allocate destination buffer
 
 	lMaxPackedSize = ICCompressGetSize(hic, pbiInput, pbiOutput);
+
+	// Work around a bug in Huffyuv.  Ben tried to save some memory
+	// and specified a "near-worst-case" bound in the codec instead
+	// of the actual worst case bound.  Unfortunately, it's actually
+	// not that hard to exceed the codec's estimate with noisy
+	// captures -- the most common way is accidentally capturing
+	// static from a non-existent channel.
+	//
+	// According to the 2.1.1 comments, Huffyuv uses worst-case
+	// values of 24-bpp for YUY2/UYVY and 40-bpp for RGB, while the
+	// actual worst case values are 43 and 51.  We'll compute the
+	// 43/51 value, and use the higher of the two.
+
+	if (isEqualFOURCC(info.fccHandler, 'UYFH')) {
+		long lRealMaxPackedSize = pbiInput->bmiHeader.biWidth * pbiInput->bmiHeader.biHeight;
+
+		if (pbiInput->bmiHeader.biCompression == BI_RGB)
+			lRealMaxPackedSize = (lRealMaxPackedSize * 51) >> 3;
+		else
+			lRealMaxPackedSize = (lRealMaxPackedSize * 43) >> 3;
+
+		if (lRealMaxPackedSize > lMaxPackedSize)
+			lMaxPackedSize = lRealMaxPackedSize;
+	}
 
 	if (!(pOutputBuffer = new char[lMaxPackedSize]))
 		throw MyMemoryError();

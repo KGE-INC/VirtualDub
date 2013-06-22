@@ -43,7 +43,9 @@ enum {
 	FILTER_BILINEAR			= 1,
 	FILTER_BICUBIC			= 2,
 	FILTER_TABLEBILINEAR	= 3,
-	FILTER_TABLEBICUBIC		= 4
+	FILTER_TABLEBICUBIC075	= 4,
+	FILTER_TABLEBICUBIC060	= 5,
+	FILTER_TABLEBICUBIC100	= 6,
 };
 
 static char *filter_names[]={
@@ -51,7 +53,9 @@ static char *filter_names[]={
 	"Bilinear",
 	"Bicubic",
 	"Precise bilinear",
-	"Precise bicubic",
+	"Precise bicubic (A=-0.75)",
+	"Precise bicubic (A=-0.60)",
+	"Precise bicubic (A=-1.00)",
 };
 
 typedef struct MyFilterData {
@@ -82,7 +86,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	unsigned long x_inc, y_inc;
 	long dstw = mfd->new_x;
 	long dsth = mfd->new_y;
-	long h_margin=0, w_margin=0;
+	long h_margin=0, w_margin=0, h_margin_half=0;
 	Pixel *dst, *src;
 
 	dst = fa->dst.data;
@@ -96,7 +100,8 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 		long w1, w2, w, h;
 
-		dsth = (dsth+1)&~1;
+		if (mfd->fInterlaced)
+			dsth = (dsth+1)&~1;
 
 		w_margin = fa->dst.w - dstw;
 		h_margin = fa->dst.h - dsth;
@@ -107,7 +112,12 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		if (h_margin < 0)
 			h_margin = 0;
 
-		h = h_margin/2;
+		h_margin_half = h_margin/2;
+
+		if (mfd->fInterlaced)
+			h_margin_half &= ~1;
+
+		h = h_margin - h_margin_half;
 		if (h>0) do {
 			dst3  = dst2;
 			w = fa->dst.w;
@@ -121,7 +131,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 		w1 = w_margin/2;
 		w2 = w_margin - w_margin/2;
 
-		h = mfd->new_y;
+		h = dsth;
 		do {
 			dst3 = dst2;
 
@@ -147,7 +157,7 @@ static int resize_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			dst2 = (Pixel32 *)((char *)dst2 + fa->dst.pitch);
 		} while(--h);
 
-		h = h_margin - h_margin/2;
+		h = h_margin_half;
 		if (h>0) do {
 			dst3  = dst2;
 			w = fa->dst.w;
@@ -459,13 +469,15 @@ static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
 	case FILTER_BILINEAR:		fmode = Resampler::eFilter::kLinearInterp; break;
 	case FILTER_BICUBIC:		fmode = Resampler::eFilter::kCubicInterp; break;
 	case FILTER_TABLEBILINEAR:	fmode = Resampler::eFilter::kLinearDecimate; break;
-	case FILTER_TABLEBICUBIC:	fmode = Resampler::eFilter::kCubicDecimate; break;
+	case FILTER_TABLEBICUBIC060:	fmode = Resampler::eFilter::kCubicDecimate060; break;
+	case FILTER_TABLEBICUBIC075:	fmode = Resampler::eFilter::kCubicDecimate075; break;
+	case FILTER_TABLEBICUBIC100:	fmode = Resampler::eFilter::kCubicDecimate100; break;
 	}
 
 	mfd->resampler = new Resampler();
 
 	if (mfd->fInterlaced)
-		mfd->resampler->Init(fmode, fmode, dstw, dsth/2, fa->src.w, fa->src.h/2);
+		mfd->resampler->Init(fmode, fmode, dstw, (dsth+1)/2, fa->src.w, fa->src.h/2);
 	else
 		mfd->resampler->Init(fmode, fmode, dstw, dsth, fa->src.w, fa->src.h);
 

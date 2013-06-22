@@ -133,6 +133,7 @@ FilterInstance::FilterInstance()
 	src.hdc = NULL;
 	dst.hdc = NULL;
 	last->hdc = NULL;
+	pfsiDelayRing = NULL;
 }
 
 FilterInstance::FilterInstance(const FilterInstance& fi)
@@ -149,7 +150,7 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	srcbuf		= fi.srcbuf;
 	dstbuf		= fi.dstbuf;
 	fNoDeinit	= fi.fNoDeinit;
-
+	pfsiDelayRing = NULL;
 }
 
 FilterInstance::FilterInstance(FilterDefinition *fd)
@@ -160,6 +161,7 @@ FilterInstance::FilterInstance(FilterDefinition *fd)
 	dst.hdc = NULL;
 	last->hdc = NULL;
 	fNoDeinit = false;
+	pfsiDelayRing = NULL;
 
 	if (filter->inst_data_size) {
 		if (!(filter_data = allocmem(filter->inst_data_size)))

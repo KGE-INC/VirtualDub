@@ -2643,7 +2643,7 @@ static void video_add_backward_prediction(int x_pos, int y_pos, bool fchrom) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-#if 0
+#if 1
 #ifdef _DEBUG
 
 class MPEGDecoderVerifier {
@@ -2680,10 +2680,10 @@ int MPEGDecoderVerifier::checkpred(int vx, int vy, int w, int h, bool add) {
 			p3 = src[j+((vy+1)>>1)][i+((vx+0)>>1)];
 			p4 = src[j+((vy+1)>>1)][i+((vx+1)>>1)];
 
+			r = ((int)p1 + (int)p2 + (int)p3 + (int)p4 + 2)/4;
+
 			if (add)
-				r = ((int)p1 + (int)p2 + (int)p3 + (int)p4 + 4*src2[j][i] + 4)/8;
-			else
-				r = ((int)p1 + (int)p2 + (int)p3 + (int)p4 + 2)/4;
+				r = (r + src2[j][i] + 1)/2;
 
 			e = abs(r - (int)dst[j][i]);
 
@@ -2712,6 +2712,25 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 
 		do {
 			_RPT2(0,"MPEG-1 decoder: testing prediction copy (MMX %s / ISSE %s)\n", MMX_enabled ? "on" : "off", ISSE_enabled ? "on" : "off");
+
+			if (MMX_enabled) {
+				if (ISSE_enabled) {
+					video_copy_prediction_Y = video_copy_prediction_Y_ISSE;
+					video_add_prediction_Y = video_add_prediction_Y_ISSE;
+					video_copy_prediction_C = video_copy_prediction_C_ISSE;
+					video_add_prediction_C = video_add_prediction_C_ISSE;
+				} else {
+					video_copy_prediction_Y = video_copy_prediction_Y_MMX;
+					video_add_prediction_Y = video_add_prediction_Y_MMX;
+					video_copy_prediction_C = video_copy_prediction_C_MMX;
+					video_add_prediction_C = video_add_prediction_C_MMX;
+				}
+			} else {
+				video_copy_prediction_Y = video_copy_prediction_Y_scalar;
+				video_add_prediction_Y = video_add_prediction_Y_scalar;
+				video_copy_prediction_C = video_copy_prediction_C_scalar;
+				video_add_prediction_C = video_add_prediction_C_scalar;
+			}
 
 			memset(err, 0, sizeof err);
 			for(j=0; j<16; j++) {

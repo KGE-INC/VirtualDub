@@ -327,7 +327,7 @@ static void levelsSampleCallback(VFBitmap *src, long pos, long cnt, void *pv) {
 	LevelsFilterData *mfd = (LevelsFilterData *)pv;
 	long *pHisto = mfd->pHisto;
 
-	src->Histogram(0, 0, -1, -1, pHisto, VFBitmap::HISTO_GRAY);
+	src->Histogram(0, 0, -1, -1, pHisto, VFBitmap::HISTO_LUMA);
 }
 
 static void levelsSampleDisplay(LevelsFilterData *mfd, HWND hdlg) {
@@ -607,10 +607,7 @@ static BOOL APIENTRY levelsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 
 						i = (x * 0xFF00) / (w-1);
 
-						if (i >= 0xFF00)
-							y = mfd->pHisto[255];
-						else
-							y = (long)(((__int64)mfd->pHisto[(i>>8)+0] * (256 - (i&255)) + (__int64)mfd->pHisto[(i>>8)+1] * (i&255)) >> 8);
+						y = mfd->pHisto[i>>8];
 
 						xp = x+mfd->rHisto.left;
 						yp = mfd->rHisto.bottom-1;
@@ -781,12 +778,13 @@ static CScriptObject levels_obj={
 static bool levels_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 
-	_snprintf(buf, buflen, "Config(0x%04X,0x%04X,0x%08lX,0x%04X,0x%04X)"
+	_snprintf(buf, buflen, "Config(0x%04X,0x%04X,0x%08lX,0x%04X,0x%04X, %d)"
 				,mfd->iInputLo
 				,mfd->iInputHi
 				,(long)(0.5 + mfd->rGammaCorr * 16777216.0)
 				,mfd->iOutputLo
 				,mfd->iOutputHi
+				,mfd->bLuma
 				);
 
 	return true;

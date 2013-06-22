@@ -398,11 +398,13 @@ void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
          Pixel32 *tmpmem;
          void *pFrame = inputVideoAVI->getFrame(lFrame);
 
-         if (w>0 && h>0 && (tmpmem = new Pixel32[((w+1)&~1)*h])) {
+         if (w>0 && h>0 && w!=dcf->biWidth && h != dcf->biHeight && (tmpmem = new Pixel32[((w+1)&~1)*h + ((dcf->biWidth+1)&~1)*dcf->biHeight])) {
             VBitmap vbt(tmpmem, w, h, 32);
+            VBitmap vbs(tmpmem+((w+1)&~1)*h, dcf->biWidth, dcf->biHeight, 32);
             BITMAPINFOHEADER bih;
 
-            vbt.StretchBltBilinearFast(0, 0, w, h, &VBitmap(pFrame, dcf), 0, 0, dcf->biWidth, dcf->biHeight);
+			vbs.BitBlt(0, 0, &VBitmap(pFrame, dcf), 0, 0, -1, -1);
+            vbt.StretchBltBilinearFast(0, 0, w, h, &vbs, 0, 0, vbs.w, vbs.h);
             vbt.MakeBitmapHeader(&bih);
 
    			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)&bih, (LPARAM)tmpmem);

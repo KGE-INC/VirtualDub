@@ -180,17 +180,19 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	if (*g_szFile)
 		try {
 			char szFileTmp[MAX_PATH];
-			char *t;
+			char *t = NULL;
 
 			strcpy(g_szInputAVIFile, g_szFile);
 			GetFullPathName(g_szInputAVIFile, sizeof szFileTmp, szFileTmp, &t);
-			strcpy(g_szInputAVIFileTitle, t);
+			if (t) {
+				strcpy(g_szInputAVIFileTitle, t);
 
-			OpenAVI(g_szFile, 0, false, false, NULL);
-			SetTitleByFile(g_hWnd);
-			RecalcFrameSizes();
-			InvalidateRect(g_hWnd, NULL, TRUE);
-
+				OpenAVI(g_szFile, 0, false, false, NULL);
+				SetTitleByFile(g_hWnd);
+				RecalcFrameSizes();
+				InvalidateRect(g_hWnd, NULL, TRUE);
+			} else
+				g_szFile[0] = g_szInputAVIFile[0] = 0;
 		} catch(MyError e) {
 			e.post(g_hWnd, g_szError);
 		}
@@ -344,9 +346,11 @@ char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos) {
 void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 	static FilterStateInfo fsi;
 	long original_pos = pos;
+	static int s_nLastFrame = -1;
 
 	if (!g_dubOpts.video.fShowInputFrame && !g_dubOpts.video.fShowOutputFrame)
 		return;
+
 
 	try {
 		BITMAPINFOHEADER *dcf;
@@ -362,72 +366,77 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 				pos = inputVideoAVI->lSampleLast;
 		}
 
-		dcf = inputVideoAVI->getDecompressedFormat();
+		if (s_nLastFrame != pos || !inputVideoAVI->isFrameBufferValid()) {
 
-		if (pos >= inputVideoAVI->lSampleLast) {
-			FillRect(hDCWindow, &g_rInputFrame, (HBRUSH)GetClassLong(hWnd,GCL_HBRBACKGROUND));
-		} else {
-			BITMAPINFOHEADER bihOutput;
-			VBitmap *out;
+			s_nLastFrame = pos;
 
-			VDCHECKPOINT;
+			dcf = inputVideoAVI->getDecompressedFormat();
 
-			lpBits = inputVideoAVI->getFrame(pos);
+			if (pos >= inputVideoAVI->lSampleLast) {
+				FillRect(hDCWindow, &g_rInputFrame, (HBRUSH)GetClassLong(hWnd,GCL_HBRBACKGROUND));
+			} else {
+				BITMAPINFOHEADER bihOutput;
+				VBitmap *out;
 
-			VDCHECKPOINT;
+				VDCHECKPOINT;
 
-			if (!lpBits)
-				return;
+				lpBits = inputVideoAVI->getFrame(pos);
 
-			if (g_dubOpts.video.fShowInputFrame && bDispInput)
-				DrawDibDraw(
-						hDDWindow,
-						hDCWindow,
-						g_rInputFrame.left, g_rInputFrame.top,
-						g_rInputFrame.right-g_rInputFrame.left, g_rInputFrame.bottom-g_rInputFrame.top,
-						dcf,
-						lpBits,
-						0, 0, 
-						dcf->biWidth, dcf->biHeight,
-						0);
+				VDCHECKPOINT;
 
-			VDCHECKPOINT;
+				if (!lpBits)
+					return;
 
-			if (!g_sceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame) {
-				if (!filters.isRunning()) {
-					CPUTest();
-					filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 32, 16+8*g_dubOpts.video.outputDepth);
-					if (filters.ReadyFilters(&fsi))
-						throw MyError("can't initialize filters");
+				if (g_dubOpts.video.fShowInputFrame && bDispInput)
+					DrawDibDraw(
+							hDDWindow,
+							hDCWindow,
+							g_rInputFrame.left, g_rInputFrame.top,
+							g_rInputFrame.right-g_rInputFrame.left, g_rInputFrame.bottom-g_rInputFrame.top,
+							dcf,
+							lpBits,
+							0, 0, 
+							dcf->biWidth, dcf->biHeight,
+							0);
+
+				VDCHECKPOINT;
+
+				if (!g_sceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame) {
+					if (!filters.isRunning()) {
+						CPUTest();
+						filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 32, 16+8*g_dubOpts.video.outputDepth);
+						if (filters.ReadyFilters(&fsi))
+							throw MyError("can't initialize filters");
+					}
+
+					fsi.lCurrentFrame				= original_pos;
+					fsi.lMicrosecsPerFrame			= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
+					fsi.lCurrentSourceFrame			= pos;
+					fsi.lMicrosecsPerSrcFrame		= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
+					fsi.lSourceFrameMS				= MulDiv(fsi.lCurrentSourceFrame, fsi.lMicrosecsPerSrcFrame, 1000);
+					fsi.lDestFrameMS				= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
+
+					filters.InputBitmap()->BitBlt(0, 0, &VBitmap(lpBits, dcf), 0, 0, -1, -1);
+
+					filters.RunFilters();
+
+					out = filters.LastBitmap();
+
+					out->MakeBitmapHeader(&bihOutput);
+
+					DrawDibDraw(
+							hDDWindow2,
+							hDCWindow,
+							g_rOutputFrame.left, g_rOutputFrame.top,
+							g_rOutputFrame.right-g_rOutputFrame.left, g_rOutputFrame.bottom-g_rOutputFrame.top,
+							&bihOutput,
+							out->data,
+							0, 0, 
+							out->w, out->h,
+							0);
 				}
-
-				fsi.lCurrentFrame				= original_pos;
-				fsi.lMicrosecsPerFrame			= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
-				fsi.lCurrentSourceFrame			= pos;
-				fsi.lMicrosecsPerSrcFrame		= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
-				fsi.lSourceFrameMS				= MulDiv(fsi.lCurrentSourceFrame, fsi.lMicrosecsPerSrcFrame, 1000);
-				fsi.lDestFrameMS				= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
-
-				filters.InputBitmap()->BitBlt(0, 0, &VBitmap(lpBits, dcf), 0, 0, -1, -1);
-
-				filters.RunFilters();
-
-				out = filters.LastBitmap();
-
-				out->MakeBitmapHeader(&bihOutput);
-
-				DrawDibDraw(
-						hDDWindow2,
-						hDCWindow,
-						g_rOutputFrame.left, g_rOutputFrame.top,
-						g_rOutputFrame.right-g_rOutputFrame.left, g_rOutputFrame.bottom-g_rOutputFrame.top,
-						&bihOutput,
-						out->data,
-						0, 0, 
-						out->w, out->h,
-						0);
+				VDCHECKPOINT;
 			}
-			VDCHECKPOINT;
 		}
 
 	} catch(MyError e) {
@@ -484,10 +493,14 @@ void MenuMRUListUpdate(HWND hwnd) {
 	char name[MAX_PATH], name2[MAX_PATH];
 	int index=0;
 
+#define WIN95_MENUITEMINFO_SIZE (offsetof(MENUITEMINFO, hbmpItem))
+
+	memset(&mii, 0, sizeof mii);
+	mii.cbSize	= WIN95_MENUITEMINFO_SIZE;
 	for(;;) {
-		memset(&mii, 0, sizeof mii);
-		mii.cbSize	= sizeof mii;
-		mii.fMask	= MIIM_TYPE;
+		mii.fMask			= MIIM_TYPE;
+		mii.dwTypeData		= name2;
+		mii.cch				= sizeof name2;
 
 		if (!GetMenuItemInfo(hmenuFile, MRU_LIST_POSITION, TRUE, &mii)) break;
 
@@ -503,25 +516,26 @@ void MenuMRUListUpdate(HWND hwnd) {
 		while(s>name && s[-1]!='\\' && s[-1]!=':') --s;
 		wsprintf(name2, "&%d %s", (index+1)%10, s);
 
-		mii.cbSize		= sizeof mii;
 		mii.fMask		= MIIM_TYPE | MIIM_STATE | MIIM_ID;
 		mii.fType		= MFT_STRING;
 		mii.fState		= MFS_ENABLED;
 		mii.wID			= ID_MRU_FILE0 + index;
 		mii.dwTypeData	= name2;
+		mii.cch				= sizeof name2;
 
 		if (!InsertMenuItem(hmenuFile, MRU_LIST_POSITION+index, TRUE, &mii))
 			break;
+
 		++index;
 	}
 
 	if (!index) {
-		mii.cbSize		= sizeof mii;
 		mii.fMask		= MIIM_TYPE | MIIM_STATE | MIIM_ID;
 		mii.fType		= MFT_STRING;
 		mii.fState		= MFS_GRAYED;
 		mii.wID			= ID_MRU_FILE0;
 		mii.dwTypeData	= "Recent file list";
+		mii.cch			= sizeof name2;
 
 		InsertMenuItem(hmenuFile, MRU_LIST_POSITION+index, TRUE, &mii);
 	}
@@ -618,9 +632,31 @@ void SetTitleByFile(HWND hWnd) {
 }
 
 BOOL MenuHit(HWND hWnd, UINT id) {
-	if (!g_dubber && id != ID_VIDEO_COPYSOURCEFRAME && id != ID_VIDEO_COPYOUTPUTFRAME) {
-		filters.DeinitFilters();
-		filters.DeallocateBuffers();
+	bool bFilterReinitialize = !g_dubber;
+
+	if (bFilterReinitialize) {
+		switch(id) {
+		case ID_VIDEO_SEEK_START:
+		case ID_VIDEO_SEEK_END:
+		case ID_VIDEO_SEEK_PREV:
+		case ID_VIDEO_SEEK_NEXT:
+		case ID_VIDEO_SEEK_PREVONESEC:
+		case ID_VIDEO_SEEK_NEXTONESEC:
+		case ID_VIDEO_SEEK_KEYPREV:
+		case ID_VIDEO_SEEK_KEYNEXT:
+		case ID_VIDEO_SEEK_SELSTART:
+		case ID_VIDEO_SEEK_SELEND:
+		case ID_VIDEO_SEEK_PREVDROP:
+		case ID_VIDEO_SEEK_NEXTDROP:
+		case ID_EDIT_JUMPTO:
+		case ID_VIDEO_COPYSOURCEFRAME:
+		case ID_VIDEO_COPYOUTPUTFRAME:
+			break;
+		default:
+			filters.DeinitFilters();
+			filters.DeallocateBuffers();
+			break;
+		}
 	}
 
 	SetAudioSource();
@@ -1449,12 +1485,12 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 						if (dubOpt->audio.preload > preload)
 							dubOpt->audio.preload = preload;
 
+						dubOpt->audio.enabled				= TRUE;
 						dubOpt->audio.interval				= 250;
 						dubOpt->audio.is_ms					= TRUE;
 						dubOpt->video.lStartOffsetMS		= inputVideoAVI->samplesToMs(lStart);
 
 						if (HIWORD(wParam) != PCN_PLAYPREVIEW) {
-							dubOpt->audio.enabled				= TRUE;
 							dubOpt->audio.fStartAudio			= TRUE;
 							dubOpt->audio.new_rate				= 0;
 							dubOpt->audio.newPrecision			= DubAudioOptions::P_NOCHANGE;
@@ -2432,8 +2468,15 @@ void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp)
 
 	if (!(outputAVI = new AVIOutputPreview()))
 		MessageBox(NULL, g_szOutOfMemory, g_szError,MB_OK);
-	else
+	else {
+		BOOL bPreview = g_dubOpts.audio.enabled;
+
+		g_dubOpts.audio.enabled = TRUE;
+
 		InitDubAVI(NULL, FALSE, quick_options, iPriority, fProp, 0, 0);
+
+		g_dubOpts.audio.enabled = FALSE;
+	}
 }
 
 void PositionCallback(LONG start, LONG cur, LONG end) {
@@ -2879,8 +2922,10 @@ void DoDelete() {
 
 		if (lStart>=0 && lEnd>=0 && lEnd>=lStart)
 			inputSubset->deleteRange(lStart, lEnd+1-lStart);
-		else
+		else {
+			lStart = lSample;
 			inputSubset->deleteRange(lSample, 1);
+		}
 
 		SendMessage(hwndPosition, PCM_SETRANGEMAX, (BOOL)TRUE, inputSubset->getTotalFrames());
 		SendMessage(hwndPosition, PCM_CLEARSEL, (BOOL)TRUE, 0);

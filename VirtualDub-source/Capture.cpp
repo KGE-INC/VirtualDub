@@ -55,6 +55,7 @@
 #include "filtdlg.h"
 #include "cpuaccel.h"
 #include "caplog.h"
+#include "capaccel.h"
 
 #define TAG2(x) OutputDebugString("At line " #x "\n")
 #define TAG1(x) TAG2(x)
@@ -78,6 +79,8 @@ extern void FreeCompressor(COMPVARS *pCompVars);
 extern LRESULT CALLBACK VCMDriverProc(DWORD dwDriverID, HDRVR hDriver, UINT uiMessage, LPARAM lParam1, LPARAM lParam2);
 
 extern void CaptureDisplayBT848Tweaker(HWND hwndParent);
+extern void CaptureCloseBT848Tweaker();
+extern void CaptureBT848Reassert();
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -126,6 +129,11 @@ public:
 	int128		i64AudioHzY2;
 	int128		i64AudioHzXY;
 	int			iAudioHzSamples;
+
+	// video timing correction (non-compat only)
+
+	long			lVideoAdjust;
+
 
 	CaptureVars() { memset(this, 0, sizeof *this); }
 };
@@ -321,6 +329,16 @@ static bool			g_fRestricted = false;
 static CaptureLog g_capLog;
 static bool			g_fLogEvents = false;
 
+static enum {
+	kDDP_Off = 0,
+	kDDP_Top,
+	kDDP_Bottom,
+	kDDP_Both,
+} g_nCaptureDDraw;
+static bool			g_bCaptureDDrawActive;
+static RydiaDirectDrawContext	g_DDContext;
+static WNDPROC		g_pCapWndProc;
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	prototypes
@@ -330,6 +348,7 @@ static bool			g_fLogEvents = false;
 extern void CaptureWarnCheckDriver(HWND hwnd, const char *s);
 extern void CaptureWarnCheckDrivers(HWND hwnd);
 static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable);
+static void CaptureSetPreview(HWND, bool);
 
 static LRESULT CALLBACK CaptureYieldCallback(HWND hwnd);
 
@@ -352,8 +371,10 @@ static void CaptureInternalSelectCompression(HWND);
 static void CaptureInternalLoadFromRegistry();
 
 LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
+LRESULT CALLBACK CaptureOverlayFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
 static void CaptureToggleNRDialog(HWND);
 void CaptureShowClippingDialog(HWND hwndCapture);
+static void CaptureMoveWindow(HWND);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -495,7 +516,7 @@ static int CaptureAddDrivers(HWND hwnd, HMENU hMenu) {
 	return nDriver==-1 ? firstDriver : nDriver;
 }
 
-static void CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
+static bool CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
 	HMENU hMenu = GetMenu(hWnd);
 	CAPDRIVERCAPS cdc;
 
@@ -504,9 +525,11 @@ static void CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
 	if (!capDriverConnect(hWndCapture, nDriver)) {
 		MessageBox(hWnd, "VirtualDub cannot connect to the desired capture driver. Trying all available drivers.", g_szError, MB_OK);
 
+		int nDriverOriginal = nDriver;
+
 		nDriver = 0;
 		while(nDriver < 10) {
-			if (capGetDriverDescription(nDriver, NULL, 0, NULL, 0) && capDriverConnect(hWndCapture, nDriver))
+			if (nDriver != nDriverOriginal && capGetDriverDescription(nDriver, NULL, 0, NULL, 0) && capDriverConnect(hWndCapture, nDriver))
 				break;
 
 			++nDriver;
@@ -514,7 +537,7 @@ static void CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
 
 		if (nDriver >= 10) {
 			MessageBox(hWnd, "PANIC: VirtualDub cannot connect to any capture drivers!", g_szError, MB_OK);
-			return;
+			return false;
 		}
 	}
 
@@ -534,17 +557,22 @@ static void CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
 
 	switch(g_driver_options & CAPDRV_DISPLAY_MASK) {
 	case CAPDRV_DISPLAY_PREVIEW:
-		capPreview(hWndCapture, TRUE);
+		CaptureSetPreview(hWndCapture, true);
 		break;
 	case CAPDRV_DISPLAY_OVERLAY:
 		if (cdc.fHasOverlay) capOverlay(hWndCapture, TRUE);
 		break;
 	}
+
+	return true;
 }
 
 static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable) {
 	if (fEnable) {
 		if (!g_pHistogram) {
+			if (g_bCaptureDDrawActive)
+				CaptureSetPreview(hWndCapture, false);
+
 			try {
 				g_pHistogram = new CaptureHistogram(hWndCapture, NULL, 128);
 
@@ -557,16 +585,54 @@ static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable) {
 				guiSetStatus("Cannot initialize histogram: %s", 0, e.gets());
 			}
 		}
+
+		capPreview(hWndCapture, true);
 	} else {
 		if (g_pHistogram) {
-			capSetCallbackOnFrame(hWndCapture, NULL);
+			CaptureSetPreview(hWndCapture, true);
 			delete g_pHistogram;
 			g_pHistogram = NULL;
 			InvalidateRect(GetParent(hWndCapture), NULL, TRUE);
 		}
 	}
+	CaptureBT848Reassert();
 }
 
+static void CaptureSetPreview(HWND hwndCapture, bool b) {
+	capSetCallbackOnFrame(hwndCapture, NULL);
+
+	if (!b) {
+		RydiaEnableAVICapPreview(false);
+		g_bCaptureDDrawActive = false;
+		capPreview(hwndCapture, FALSE);
+		g_DDContext.DestroyOverlay();
+	} else {
+		if (g_nCaptureDDraw) {
+			BITMAPINFOHEADER *bih;
+			LONG fsize;
+
+			g_bCaptureDDrawActive = false;
+
+			if (g_DDContext.isReady() || g_DDContext.Init()) {
+				if (fsize = capGetVideoFormatSize(hwndCapture)) {
+					if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
+						if (capGetVideoFormat(hwndCapture, bih, fsize)) {
+							if (g_DDContext.CreateOverlay(bih->biWidth, g_nCaptureDDraw==kDDP_Both ? bih->biHeight : bih->biHeight/2, bih->biBitCount, bih->biCompression)) {
+								g_bCaptureDDrawActive = true;
+								RydiaInitAVICapHotPatch();
+								RydiaEnableAVICapPreview(true);
+								CaptureMoveWindow(hwndCapture);
+								capSetCallbackOnFrame(hwndCapture, CaptureOverlayFrameCallback);
+							}
+						}
+						freemem(bih);
+					}
+				}
+			}
+		}
+		capPreview(hwndCapture, TRUE);
+	}
+}
 ///////////////////////////////////////////////////////////////////////////
 //
 //	'gooey' (interface)
@@ -590,7 +656,7 @@ static void CaptureEnterSlowPeriod(HWND hwnd) {
 		}
 		if (cs.fLiveWindow && (g_driver_options & CAPDRV_CRAPPY_PREVIEW)) {
 			g_cap_modeBeforeSlow |= 2;
-			capPreview(hwndCapture, FALSE);
+			CaptureSetPreview(hwndCapture, false);
 		}
 	}
 }
@@ -603,7 +669,22 @@ static void CaptureExitSlowPeriod(HWND hwnd) {
 	HWND hwndCapture = GetDlgItem(hwnd, IDC_CAPTURE_WINDOW);
 
 	if (g_cap_modeBeforeSlow & 1) capOverlay(hwndCapture, TRUE);
-	if (g_cap_modeBeforeSlow & 2) capPreview(hwndCapture, TRUE);
+	if (g_cap_modeBeforeSlow & 2) CaptureSetPreview(hwndCapture, TRUE);
+
+	CaptureBT848Reassert();
+}
+
+static void CaptureMoveWindow(HWND hwnd) {
+	if (!g_bCaptureDDrawActive)
+		return;
+
+	RECT r;
+
+	GetClientRect(hwnd, &r);
+	ClientToScreen(hwnd, (LPPOINT)&r+0);
+	ClientToScreen(hwnd, (LPPOINT)&r+1);
+
+	g_DDContext.PositionOverlay(r.left, r.top, r.right-r.left, r.bottom-r.top);
 }
 
 static void CaptureResizeWindow(HWND hWnd) {
@@ -616,6 +697,7 @@ static void CaptureResizeWindow(HWND hWnd) {
 
 	HWND hwndParent = GetParent(hWnd);
 	HWND hwndPanel = GetDlgItem(hwndParent, IDC_CAPTURE_PANEL);
+	HWND hwndStatus = GetDlgItem(hwndParent, IDC_STATUS_WINDOW);
 	RECT r;
 	int		xedge = GetSystemMetrics(SM_CXEDGE);
 	int		yedge = GetSystemMetrics(SM_CYEDGE);
@@ -627,10 +709,15 @@ static void CaptureResizeWindow(HWND hWnd) {
 		ScreenToClient(hwndParent, (LPPOINT)&r + 1);
 	} else {
 		GetClientRect(hwndParent, &r);
+		r.left = r.right;
 	}
 
 	sx = r.left-xedge*2;
-	sy = r.bottom-yedge*2;
+
+	GetWindowRect(hwndStatus, &r);
+	ScreenToClient(hwndParent, (LPPOINT)&r);
+
+	sy = r.top-yedge*2;
 
 	if (!g_fStretch) {
 		if (sx > cs.uiImageWidth)
@@ -640,7 +727,9 @@ static void CaptureResizeWindow(HWND hWnd) {
 			sy = cs.uiImageHeight;
 	}
 
-	SetWindowPos(hWnd, NULL, 0, 0, sx, sy, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(hWnd, NULL, xedge, yedge, sx, sy, SWP_NOZORDER|SWP_NOACTIVATE);
+
+	CaptureMoveWindow(hWnd);
 
 }
 
@@ -893,6 +982,11 @@ static void CaptureInitMenu(HWND hWnd, HMENU hMenu) {
 	CheckMenuItem(hMenu, ID_CAPTURE_INFOPANEL, g_fInfoPanel ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_CAPTURE_ENABLESPILL, g_fEnableSpill ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_CAPTURE_ENABLELOGGING, g_fLogEvents ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+
+	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_NONE, g_nCaptureDDraw == kDDP_Off ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_TOP, g_nCaptureDDraw == kDDP_Top ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_BOTTOM, g_nCaptureDDraw == kDDP_Bottom ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_BOTH, g_nCaptureDDraw == kDDP_Both ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 }
 
 static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
@@ -934,6 +1028,7 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS)))
 				fNewMode = !cs.fOverlayWindow;
 
+			CaptureSetPreview(hWndCapture, false);
 			capOverlay(hWndCapture, fNewMode);
 			CaptureAbortSlowPeriod();
 			CaptureEnablePreviewHistogram(hWndCapture, false);
@@ -949,13 +1044,19 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 				fNewMode = !cs.fLiveWindow;
 
 			capPreviewRate(hWndCapture, 1000 / 15);
-			capPreview(hWndCapture, fNewMode);
-			CaptureAbortSlowPeriod();
 
-			if (id == ID_VIDEO_PREVIEWHISTOGRAM) {
-				CaptureEnablePreviewHistogram(hWndCapture, true);
+			if (fNewMode) {
+				if (id == ID_VIDEO_PREVIEWHISTOGRAM) {
+					CaptureSetPreview(hWndCapture, false);
+					CaptureAbortSlowPeriod();
+					CaptureEnablePreviewHistogram(hWndCapture, true);
+				} else {
+					CaptureSetPreview(hWndCapture, true);
+					CaptureAbortSlowPeriod();
+					CaptureEnablePreviewHistogram(hWndCapture, false);
+				}
 			} else {
-				CaptureEnablePreviewHistogram(hWndCapture, false);
+				CaptureSetPreview(hWndCapture, false);
 			}
 		}
 		break;
@@ -968,14 +1069,19 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 	case ID_VIDEO_CUSTOMFORMAT:
 		{
 			bool fHistoEnabled = !!g_pHistogram;
+			bool bAccelPreview = g_bCaptureDDrawActive;
 
 			CaptureEnablePreviewHistogram(hWndCapture, false);
+			if (bAccelPreview)
+				CaptureSetPreview(hWndCapture, false);
 
 			if (id == ID_VIDEO_CUSTOMFORMAT)
 				DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_CUSTOMVIDEO), hWnd, CaptureCustomVidSizeDlgProc, (LPARAM)hWndCapture);
 			else
 				capDlgVideoFormat(hWndCapture);
 
+			if (bAccelPreview)
+				CaptureSetPreview(hWndCapture, true);
 			if (fHistoEnabled)
 				CaptureEnablePreviewHistogram(hWndCapture, true);
 		}
@@ -1049,9 +1155,21 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 		break;
 
 	case ID_CAPTURE_SETTINGS:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SETTINGS), hWnd, CaptureSettingsDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
+		{
+			bool b = g_bCaptureDDrawActive;
+
+			if (b)
+				CaptureSetPreview(hWndCapture, false);
+			else
+				CaptureEnterSlowPeriod(hWnd);
+
+			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SETTINGS), hWnd, CaptureSettingsDlgProc, (LPARAM)hWndCapture);
+
+			if (b)
+				CaptureSetPreview(hWndCapture, true);
+			else
+				CaptureExitSlowPeriod(hWnd);
+		}
 		break;
 
 	case ID_CAPTURE_PREFERENCES:
@@ -1136,6 +1254,62 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 
 	case ID_CAPTURE_ENABLELOGGING:
 		g_fLogEvents = !g_fLogEvents;
+		break;
+
+	case ID_CAPTURE_HWACCEL_NONE:
+		if (g_bCaptureDDrawActive)
+			CaptureSetPreview(hWndCapture, false);
+
+		g_nCaptureDDraw = kDDP_Off;
+		g_DDContext.Shutdown();
+		break;
+
+	case ID_CAPTURE_HWACCEL_TOP:
+		{
+			CAPSTATUS cs;
+
+			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, false);
+
+				g_nCaptureDDraw = kDDP_Top;
+
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, true);
+			}
+		}
+		break;
+
+	case ID_CAPTURE_HWACCEL_BOTTOM:
+		{
+			CAPSTATUS cs;
+
+			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, false);
+
+				g_nCaptureDDraw = kDDP_Bottom;
+
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, true);
+			}
+		}
+		break;
+
+	case ID_CAPTURE_HWACCEL_BOTH:
+		{
+			CAPSTATUS cs;
+
+			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, false);
+
+				g_nCaptureDDraw = kDDP_Both;
+
+				if (cs.fLiveWindow)
+					CaptureSetPreview(hWndCapture, true);
+			}
+		}
 		break;
 
 	case ID_HELP_CONTENTS:
@@ -1243,6 +1417,23 @@ LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr) {
 	return 0;
 }
 
+LRESULT CALLBACK CaptureOverlayFrameCallback(HWND hWnd, VIDEOHDR *lpVHdr) {
+	if (g_bCaptureDDrawActive) {
+		switch(g_nCaptureDDraw) {
+		case kDDP_Top:
+			g_DDContext.LockAndLoad(lpVHdr->lpData, 0, 2);
+			break;
+		case kDDP_Bottom:
+			g_DDContext.LockAndLoad(lpVHdr->lpData, 1, 2);
+			break;
+		case kDDP_Both:
+			g_DDContext.LockAndLoad(lpVHdr->lpData, 0, 1);
+			break;
+		}
+	}
+
+	return 0;
+}
 
 LRESULT CALLBACK CaptureStatusCallback(HWND hWnd, int nID, LPCSTR lpsz) {
 	char buf[256];
@@ -1310,10 +1501,11 @@ void CaptureRedoWindows(HWND hWnd) {
 	if (g_fStretch) {
 		guiDeferWindowPos(hdwp, GetDlgItem(hWnd, IDC_CAPTURE_WINDOW),
 				NULL,
-				0, 0,
+				xedge, yedge,
 				rClient.right - (g_fInfoPanel ? (rPanel.right-rPanel.left) : 0) - xedge*2,
 				rClient.bottom - (g_fInfoPanel ? (rStatus.bottom-rStatus.top) : 0) - yedge*2,
 				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
+
 	} else {
 		int sx = rClient.right - (g_fInfoPanel ? (rPanel.right-rPanel.left) : 0) - xedge*2; 
 		int sy = rClient.bottom - (g_fInfoPanel ? (rStatus.bottom-rStatus.top) : 0) - yedge*2;
@@ -1329,13 +1521,14 @@ void CaptureRedoWindows(HWND hWnd) {
 
 		guiDeferWindowPos(hdwp, GetDlgItem(hWnd, IDC_CAPTURE_WINDOW),
 				NULL,
-				0, 0,
+				xedge, yedge,
 				sx, sy,
 				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
 	}
 
 	guiEndDeferWindowPos(hdwp);
 
+	CaptureMoveWindow(hwndCapture);
 
 	if ((nParts = SendMessage(hWndStatus, SB_GETPARTS, 0, 0))>1) {
 		int i;
@@ -1432,6 +1625,10 @@ static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, UINT wParam, LONG 
 				TPM_CENTERALIGN | TPM_LEFTBUTTON,
 				LOWORD(lParam), HIWORD(lParam),
 				0, hWnd, NULL);
+		break;
+
+	case WM_MOVE:
+		CaptureMoveWindow(GetDlgItem(hWnd, IDC_CAPTURE_WINDOW));
 		break;
 
 	case WM_SIZE:
@@ -1643,6 +1840,9 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 				lAudioRate = (pcd->total_audio_size*1000 + pcd->lCurrentMS/2) / pcd->lAudioLastMS;
 				sprintf(buf,"%ldK/s", (lAudioRate+1023)/1024);
 				SetDlgItemText(hdlg, IDC_AUDIO_DATARATE, buf);
+
+				sprintf(buf,"%+ld ms", pcd->lVideoAdjust);
+				SetDlgItemText(hdlg, IDC_AUDIO_CORRECTIONS, buf);
 			} else {
 				lAudioRate = 0;
 				SetDlgItemText(hdlg, IDC_AUDIO_RATE, "(n/a)");
@@ -1690,6 +1890,44 @@ static BOOL CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 
 
 
+static LONG APIENTRY CaptureSubWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam) {
+	if (g_bCaptureDDrawActive) {
+		switch(message) {
+		case WM_ERASEBKGND:
+			return 0;
+
+		case WM_PAINT:
+			{
+				int key = g_DDContext.getColorKey();
+				PAINTSTRUCT ps;
+				HDC hdc;
+
+				hdc = BeginPaint(hWnd, &ps);
+
+				if (key >= 0) {
+					HBRUSH hbrColorKey;
+					RECT r;
+
+					if (hbrColorKey = CreateSolidBrush((COLORREF)key)) {
+						GetClientRect(hWnd, &r);
+						FillRect(hdc, &r, hbrColorKey);
+						DeleteObject(hbrColorKey);
+					}
+				}
+
+				EndPaint(hWnd, &ps);
+			}
+			return 0;
+
+		case WM_TIMER:
+			RydiaEnableAVICapInvalidate(true);
+			CallWindowProc(g_pCapWndProc, hWnd, message, wParam, lParam);
+			RydiaEnableAVICapInvalidate(false);
+			return 0;
+		}
+	}
+	return CallWindowProc(g_pCapWndProc, hWnd, message, wParam, lParam);
+}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -1777,13 +2015,21 @@ void Capture(HWND hWnd) {
 		if (!(hWndCapture = capCreateCaptureWindow((LPSTR)"Capture window", WS_VISIBLE|WS_CHILD, xedge, yedge, 160, 120, hWnd, IDC_CAPTURE_WINDOW)))
 			throw MyError("Can't create capture window.");
 
+		// subclass the capture window
+
+		g_pCapWndProc = (WNDPROC)GetWindowLong(hWndCapture, GWL_WNDPROC);
+
+		SetWindowLong(hWndCapture, GWL_WNDPROC, (LONG)CaptureSubWndProc);
+
 		capSetCallbackOnError(hWndCapture, (LPVOID)CaptureErrorCallback);
 		capSetCallbackOnStatus(hWndCapture, (LPVOID)CaptureStatusCallback);
 		capSetCallbackOnYield(hWndCapture, (LPVOID)CaptureYieldCallback);
 
 		VDCHECKPOINT;
 
-		CaptureSelectDriver(hWnd, hWndCapture, nDriver);
+		if (!CaptureSelectDriver(hWnd, hWndCapture, nDriver))
+			throw MyUserAbortError();
+
 		capCaptureSetSetup(hWndCapture, &g_defaultCaptureParms, sizeof(CAPTUREPARMS));
 		
 		// If the user has selected a default capture file, use it; if not, 
@@ -1958,6 +2204,7 @@ void Capture(HWND hWnd) {
 				SetConfigDword(g_szCapture, g_szHideInfoPanel, g_fInfoPanel);
 		}
 
+	} catch(MyUserAbortError e) {
 	} catch(MyError e) {
 		e.post(hWnd, g_szError);
 	}
@@ -1965,6 +2212,8 @@ void Capture(HWND hWnd) {
 	// close up shop
 
 	VDCHECKPOINT;
+
+	CaptureCloseBT848Tweaker();
 
 	if (g_pHistogram)
 		CaptureEnablePreviewHistogram(hWndCapture, false);
@@ -1987,6 +2236,8 @@ void Capture(HWND hWnd) {
 		capDriverDisconnect(hWndCapture);
 		DestroyWindow(hWndCapture);
 	}
+
+	g_DDContext.Shutdown();
 
 	if (hMenuOld)		SetMenu(hWnd, hMenuOld);
 	if (hMenuCapture)	DestroyMenu(hMenuCapture);
@@ -2292,6 +2543,8 @@ static LRESULT CALLBACK CaptureControlCallbackProc(HWND hwnd, int nState) {
 		if (g_stopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
 			if (cd->total_cap > 50 && cd->dropped*100 > g_stopPrefs.lMaxDropRate*cd->total_cap)
 				return FALSE;
+	} else if (nState == CONTROLCALLBACK_PREROLL) {
+		CaptureBT848Reassert();
 	}
 
 	return TRUE;
@@ -3041,6 +3294,9 @@ static LRESULT CALLBACK CaptureAVICapVideoCallbackProc(HWND hWnd, LPVIDEOHDR lpV
 		icd->total_jitter = icd->total_disp = 0;
 	};
 
+	if (g_bCaptureDDrawActive)
+		CaptureOverlayFrameCallback(hWnd, lpVHdr);
+
 	return 0;
 }
 
@@ -3215,7 +3471,6 @@ public:
 
 	// video clock correction
 
-	long			lVideoAdjust;
 	long			lFirstVideoPt;
 
 	InternalCapVars() {
@@ -3745,6 +4000,7 @@ _RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTim
 		while(icd->lastFrame < dwCurrentFrame) {
 			++icd->lastFrame;
 			++icd->dropped;
+++g_dropback;
 			icd->total_video_size += 24;
 			icd->segment_video_size += 24;
 		}
@@ -4002,6 +4258,9 @@ static LRESULT CALLBACK CaptureInternalVideoCallbackProc(HWND hWnd, LPVIDEOHDR l
 
 	lr = CaptureInternalVideoCallbackProc2(icd, hWnd, lpVHdr);
 
+	if (g_bCaptureDDrawActive)
+		CaptureOverlayFrameCallback(hWnd, lpVHdr);
+
 	///////////////////////////////
 	CAPINT_FATAL_CATCH_END("video")
 	///////////////////////////////
@@ -4070,7 +4329,8 @@ static LRESULT CALLBACK CaptureInternalControlCallbackProc(HWND hwnd, int nState
 	if (nState == CONTROLCALLBACK_PREROLL) {
 //		InternalCapData *icd = (InternalCapData *)capGetUserData(hwnd);
 
-		return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_HITOK), hwnd, CaptureInternalHitOKDlgProc, (LPARAM)hwnd);
+		return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_HITOK), hwnd, CaptureInternalHitOKDlgProc, (LPARAM)hwnd)
+			&& CaptureControlCallbackProc(hwnd, nState);
 	} else
 		return CaptureControlCallbackProc(hwnd, nState);
 

@@ -49,7 +49,7 @@ BEGIN
             VALUE "FileDescription", "AVIFile-to-VirtualDub-Frameserver glue library\0"
             VALUE "FileVersion", "1.4\0"
             VALUE "InternalName", "vdremote\0"
-            VALUE "LegalCopyright", "Copyright © 1998-2000 Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1998-2001 Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "vdremote.dll\0"
             VALUE "PrivateBuild", "\0"

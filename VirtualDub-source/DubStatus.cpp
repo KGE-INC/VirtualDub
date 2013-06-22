@@ -252,8 +252,16 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	LONG	curVSample		= pvinfo->cur_proc_src - pvinfo->start_src;
 	LONG	curASample		= audioStreamSource ? audioStreamSource->GetSampleCount() : 0;
 	char	*s;
+	bool	bPreloading = false;
 
 	/////////////
+
+	curVSample -= opt->video.frameRateDecimation * pvinfo->nLag;
+
+	if (curVSample<0) {
+		curVSample = 0;
+		bPreloading = true;
+	}
 
 	dwProgress = (curVSample>totalVSamples ? 4096 : MulDiv(curVSample, 4096, totalVSamples))
 				+(curASample>totalASamples ? 4096 : MulDiv(curASample, 4096, totalASamples));
@@ -264,8 +272,12 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	dwLastTicks1 = dwTicks;
 	dwTicks = GetTickCount() - dwStartTime;
 
-	wsprintf(buf, "%ld/%ld", curVSample, totalVSamples);
-	SetDlgItemText(hWnd, IDC_CURRENT_VFRAME, buf);
+	if (bPreloading) {
+		SetDlgItemText(hWnd, IDC_CURRENT_VFRAME, "Preloading...");
+	} else {
+		wsprintf(buf, "%ld/%ld", curVSample, totalVSamples);
+		SetDlgItemText(hWnd, IDC_CURRENT_VFRAME, buf);
+	}
 
 	wsprintf(buf, "%ld/%ld", curASample, totalASamples);
 	SetDlgItemText(hWnd, IDC_CURRENT_ASAMPLE, buf);

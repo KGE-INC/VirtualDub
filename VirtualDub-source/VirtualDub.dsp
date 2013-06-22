@@ -121,7 +121,7 @@ InputPath=.\a_bitmap.asm
 InputName=a_bitmap
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -133,7 +133,7 @@ InputPath=.\a_bitmap.asm
 InputName=a_bitmap
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -152,7 +152,7 @@ InputPath=.\a_convert.asm
 InputName=a_convert
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -164,7 +164,7 @@ InputPath=.\a_convert.asm
 InputName=a_convert
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -183,7 +183,7 @@ InputPath=.\a_convertout.asm
 InputName=a_convertout
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -195,7 +195,7 @@ InputPath=.\a_convertout.asm
 InputName=a_convertout
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -214,7 +214,7 @@ InputPath=.\a_histogram.asm
 InputName=a_histogram
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -226,7 +226,7 @@ InputPath=.\a_histogram.asm
 InputName=a_histogram
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -245,7 +245,7 @@ InputPath=.\a_scene.asm
 InputName=a_scene
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -257,7 +257,7 @@ InputPath=.\a_scene.asm
 InputName=a_scene
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -276,7 +276,7 @@ InputPath=.\a_yuv422torgb.asm
 InputName=a_yuv422torgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -288,7 +288,7 @@ InputPath=.\a_yuv422torgb.asm
 InputName=a_yuv422torgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -498,10 +498,6 @@ SOURCE=.\AVIStripeSystem.h
 # Begin Source File
 
 SOURCE=.\Avisynth.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\capture.h
 # End Source File
 # Begin Source File
 
@@ -725,6 +721,14 @@ SOURCE=.\virtuald.ico
 # PROP Default_Filter ""
 # Begin Source File
 
+SOURCE=.\capaccel.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\capaccel.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\capbt848.cpp
 # End Source File
 # Begin Source File
@@ -765,6 +769,10 @@ SOURCE=.\capture.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\capture.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\capvumeter.cpp
 # End Source File
 # Begin Source File
@@ -787,7 +795,7 @@ InputPath=.\a_average.asm
 InputName=a_average
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -799,7 +807,7 @@ InputPath=.\a_average.asm
 InputName=a_average
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -818,7 +826,7 @@ InputPath=.\a_brightcont.asm
 InputName=a_brightcont
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -830,7 +838,7 @@ InputPath=.\a_brightcont.asm
 InputName=a_brightcont
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -849,7 +857,7 @@ InputPath=.\a_cmult.asm
 InputName=a_cmult
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -861,7 +869,7 @@ InputPath=.\a_cmult.asm
 InputName=a_cmult
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -880,7 +888,7 @@ InputPath=.\a_convolute.asm
 InputName=a_convolute
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -892,7 +900,7 @@ InputPath=.\a_convolute.asm
 InputName=a_convolute
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -911,7 +919,7 @@ InputPath=.\a_grayscale.asm
 InputName=a_grayscale
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -923,7 +931,7 @@ InputPath=.\a_grayscale.asm
 InputName=a_grayscale
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -942,7 +950,7 @@ InputPath=.\a_reduce.asm
 InputName=a_reduce
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -954,7 +962,7 @@ InputPath=.\a_reduce.asm
 InputName=a_reduce
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -973,7 +981,7 @@ InputPath=.\A_resize.asm
 InputName=A_resize
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -985,7 +993,7 @@ InputPath=.\A_resize.asm
 InputName=A_resize
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1004,7 +1012,7 @@ InputPath=.\a_rotate.asm
 InputName=a_rotate
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1016,7 +1024,7 @@ InputPath=.\a_rotate.asm
 InputName=a_rotate
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1035,7 +1043,7 @@ InputPath=.\a_sharpen.asm
 InputName=a_sharpen
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1047,7 +1055,7 @@ InputPath=.\a_sharpen.asm
 InputName=a_sharpen
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1066,7 +1074,7 @@ InputPath=.\a_threshold.asm
 InputName=a_threshold
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1078,7 +1086,7 @@ InputPath=.\a_threshold.asm
 InputName=a_threshold
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1097,7 +1105,7 @@ InputPath=.\a_tv.asm
 InputName=a_tv
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1109,7 +1117,7 @@ InputPath=.\a_tv.asm
 InputName=a_tv
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1143,6 +1151,10 @@ SOURCE=.\f_deinterlace.cpp
 # Begin Source File
 
 SOURCE=.\f_emboss.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\f_fieldbob.cpp
 # End Source File
 # Begin Source File
 
@@ -1253,7 +1265,7 @@ InputPath=.\a_mjpgdec.asm
 InputName=a_mjpgdec
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1265,7 +1277,7 @@ InputPath=.\a_mjpgdec.asm
 InputName=a_mjpgdec
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1284,7 +1296,7 @@ InputPath=.\a_mpeg.asm
 InputName=a_mpeg
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1296,7 +1308,7 @@ InputPath=.\a_mpeg.asm
 InputName=a_mpeg
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1315,7 +1327,7 @@ InputPath=.\a_predict.asm
 InputName=a_predict
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1327,7 +1339,7 @@ InputPath=.\a_predict.asm
 InputName=a_predict
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1346,7 +1358,7 @@ InputPath=.\a_predict_isse.asm
 InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1358,7 +1370,7 @@ InputPath=.\a_predict_isse.asm
 InputName=a_predict_isse
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1377,7 +1389,7 @@ InputPath=.\a_predict_mmx.asm
 InputName=a_predict_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1389,7 +1401,7 @@ InputPath=.\a_predict_mmx.asm
 InputName=a_predict_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1408,7 +1420,7 @@ InputPath=.\a_yuv2rgb.asm
 InputName=a_yuv2rgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /Zd /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1420,7 +1432,7 @@ InputPath=.\a_yuv2rgb.asm
 InputName=a_yuv2rgb
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1439,7 +1451,7 @@ InputPath=.\a_yuvtable.asm
 InputName=a_yuvtable
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1451,7 +1463,7 @@ InputPath=.\a_yuvtable.asm
 InputName=a_yuvtable
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1499,7 +1511,7 @@ InputPath=.\mpeg_idct_mmx.asm
 InputName=mpeg_idct_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 
@@ -1511,7 +1523,7 @@ InputPath=.\mpeg_idct_mmx.asm
 InputName=mpeg_idct_mmx
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zd /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
 
 # End Custom Build
 

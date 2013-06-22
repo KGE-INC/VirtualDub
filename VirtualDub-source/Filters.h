@@ -52,7 +52,15 @@ public:
 	HGDIOBJ hgoDst, hgoLast;
 	void *pvDstView, *pvLastView;
 	int srcbuf, dstbuf;
+	int origw, origh;
 	bool fNoDeinit;
+
+	FilterStateInfo *pfsiDelayRing;
+	FilterStateInfo *pfsiDelayInput;
+	FilterStateInfo fsiDelay;
+	FilterStateInfo fsiDelayOutput;
+	int nDelayRingPos;
+	int nDelayRingSize;
 
 	///////
 

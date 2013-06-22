@@ -94,6 +94,9 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 	while(fa->next) {
 		fa->src			= *bmLast;
 
+		fa->origw		= fa->src.w;
+		fa->origh		= fa->src.h;
+
 		fa->src.w		-= fa->x1 + fa->x2;
 		fa->src.h		-= fa->y1 + fa->y2;
 		fa->src.depth	= 32;
@@ -131,11 +134,11 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 			flags = FILTERPARAM_SWAP_BUFFERS;
 
 		nFrameLag += (flags>>16);
-		flags &= 0x0000ffff;
-
-		flags_accum |= flags;
 
 		fa->flags = flags;
+
+		flags &= 0x0000ffff;
+		flags_accum |= flags;
 
 		fa->dst.modulo	= fa->dst.Modulo();
 		fa->dst.size	= fa->dst.Size();
@@ -388,9 +391,22 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 
 	dwFlags &= ~FILTERS_ERROR;
 
+	FilterStateInfo *pfsiPrev = pfsi;
+
 	try {
 		while(fa->next) {
-			fa->pfsi = pfsi;
+			int nDelay = fa->flags >> 16;
+
+			if (nDelay) {
+				fa->nDelayRingSize = nDelay;
+				fa->nDelayRingPos = 0;
+				fa->pfsiDelayRing = new FilterStateInfo[nDelay];
+
+				fa->pfsiDelayInput = pfsiPrev;
+				fa->pfsi = &fa->fsiDelay;
+				pfsiPrev = &fa->fsiDelayOutput;
+			} else
+				fa->pfsi = pfsiPrev;
 
 			VDCHECKPOINT;
 
@@ -415,6 +431,8 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 
 	if (rcode)
 		DeinitFilters();
+
+	mbFirstFrame = true;
 
 	return rcode;
 }
@@ -463,6 +481,34 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 			IntersectClipRect(fa->dst.hdc, 0, 0, fa->dst.w, fa->dst.h);
 		}
 
+		// If the filter has a delay ring...
+
+		if (fa->pfsiDelayRing) {
+			if (mbFirstFrame) {
+				for(int i=0; i<fa->nDelayRingSize; ++i)
+					fa->pfsiDelayRing[i] = *fa->pfsiDelayInput;
+			}
+
+			// Create composite FilterStateInfo structure for lagged filter.
+
+			const FilterStateInfo& fsiIn = *fa->pfsiDelayInput;
+			FilterStateInfo& fsiOut = fa->pfsiDelayRing[fa->nDelayRingPos];
+
+			fa->fsiDelay = fsiIn;
+			fa->fsiDelay.lCurrentFrame = fsiOut.lCurrentFrame;
+			fa->fsiDelay.lDestFrameMS = fsiOut.lDestFrameMS;
+
+			// Send out old value, read in new value, and advance ring.
+
+			fa->fsiDelayOutput = fsiOut;
+			fsiOut = fsiIn;
+
+			if (++fa->nDelayRingPos >= fa->nDelayRingSize)
+				fa->nDelayRingPos = 0;
+		}
+
+		// Run the filter.
+
 		VDCHECKPOINT;
 
 		try {
@@ -479,6 +525,8 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 
 		fa = (FilterInstance *)fa->next;
 	}
+
+	mbFirstFrame = false;
 
 	return rcode;
 }
@@ -498,6 +546,9 @@ void FilterSystem::DeinitFilters() {
 		VDCHECKPOINT;
 		if (fa->filter->endProc)
 			fa->filter->endProc(fa, &g_filterFuncs);
+
+		delete[] fa->pfsiDelayRing;
+		fa->pfsiDelayRing = NULL;
 
 		fa = (FilterInstance *)fa->next;
 	}

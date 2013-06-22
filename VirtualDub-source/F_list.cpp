@@ -36,7 +36,8 @@ extern FilterDefinition filterDef_average, filterDef_reduceby2,
 						filterDef_blur,
 						filterDef_blurhi,
 						filterDef_box,
-						filterDef_timesmooth;
+						filterDef_timesmooth,
+						filterDef_fieldbob;
 
 static FilterDefinition *builtin_filters[]={
 	&filterDef_average,
@@ -66,6 +67,7 @@ static FilterDefinition *builtin_filters[]={
 	&filterDef_blurhi,
 	&filterDef_box,
 	&filterDef_timesmooth,
+	&filterDef_fieldbob,
 	NULL
 };
 

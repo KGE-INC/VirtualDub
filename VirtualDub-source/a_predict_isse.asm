@@ -301,73 +301,49 @@ predict_Y_halfpelX_ISSE:
 	shl	ebx,4
 	and	ecx,0fffffff8h
 	sub	edx,esi
-	movq	mm7,qword ptr [ebx+predict_Y_halfpelX_table+0]
+	add	ebx,offset predict_Y_halfpelX_table
+	movq	mm7,qword ptr [ebx+0]
 	movq	mm6,ISSE_feb
 
 predict_Y_halfpelX_ISSE@loop:
-	movq	mm0,[ecx]						;left
+	movq	mm0,[ecx]			;left
 	add	edx,esi
 
-	movq	mm1,[ecx+8]						;left
-	movq	mm2,mm0							;left
+	movq	mm1,[ecx+8]			;left
+	movq	mm2,mm0				;left
 
-	psrlq	mm0,mm7							;left
-	movq	mm3,mm1							;left
+	psrlq	mm0,mm7				;left
+	movq	mm3,mm1				;left
 
-	psrlq	mm2,qword ptr [ebx+predict_Y_halfpelX_table+16]		;left
-	movq	mm4,mm3							;right
+	psrlq	mm2,qword ptr [ebx+16]		;left
+	movq	mm4,mm3				;right
 
-	psllq	mm3,qword ptr [ebx+predict_Y_halfpelX_table+24]		;left
-	movq	mm5,mm4							;right
+	psllq	mm3,qword ptr [ebx+24]		;left
+	movq	mm5,mm4				;right
 
-	psllq	mm1,qword ptr [ebx+predict_Y_halfpelX_table+8]		;left
-	por	mm2,mm3							;left
+	psllq	mm1,qword ptr [ebx+8]		;left
+	por	mm2,mm3				;left
 
-	movq	mm3,[ecx+16]						;right
-	por	mm0,mm1							;left
+	movq	mm3,[ecx+16]			;right
+	por	mm0,mm1				;left
 
-	psrlq	mm5,qword ptr [ebx+predict_Y_halfpelX_table+16]		;right
-	movq	mm1,mm3							;right
+	psrlq	mm5,qword ptr [ebx+16]		;right
+	movq	mm1,mm3				;right
 
-	psllq	mm1,qword ptr [ebx+predict_Y_halfpelX_table+24]		;right
-	psrlq	mm4,mm7							;right
+	psllq	mm1,qword ptr [ebx+24]		;right
+	psrlq	mm4,mm7				;right
 
-	psllq	mm3,qword ptr [ebx+predict_Y_halfpelX_table+8]		;right
-	por	mm5,mm1							;right
+	psllq	mm3,qword ptr [ebx+8]		;right
+	por	mm5,mm1				;right
+	por	mm4,mm3				;right
 
-	movq	mm1,mm0							;left
-	por	mm4,mm3							;right
-
-	movq	mm3,mm4							;right
-	por	mm1,mm2							;left
-
-	pand	mm0,mm6							;left
-	por	mm3,mm5							;right
-
-	pand	mm2,mm6							;left
-	psrlq	mm0,1							;left
-
-	pand	mm4,mm6							;right
-	psrlq	mm2,1							;left
-
-	pand	mm5,mm6							;right
-	psrlq	mm4,1							;right
-
-	psrlq	mm5,1							;right
-	paddb	mm0,mm2							;left
-
-	pand	mm1,ISSE_01b						;left
-	paddb	mm4,mm5							;right
-
-	pand	mm3,ISSE_01b						;right
-	paddb	mm0,mm1							;left
-
-	paddb	mm4,mm3							;right
-
+	pavgb	mm0,mm2				;left
+	pavgb	mm4,mm5				;right
 	add	ecx,esi
+
 	dec	edi
-	movq	[edx],mm0						;left
-	movq	[edx+8],mm4						;right
+	movq	[edx],mm0			;left
+	movq	[edx+8],mm4			;right
 	jne	predict_Y_halfpelX_ISSE@loop
 
 	ret
@@ -583,77 +559,25 @@ add_Y_quadpel_ISSE@loop2:
 predict_add_Y_halfpelY_ISSE:
 	movq	mm6,ISSE_01b
 	movq	mm7,ISSE_feb
+	movq	mm0,[ecx]
+	movq	mm1,[ecx+8]
+	add	ecx,esi
 	mov	edi,16
 predict_add_Y_halfpelY_ISSE@loop:
-	movq	mm0,[ecx]
-	movq	mm3,mm6
-
-	movq	mm1,[ecx+esi]
-	pand	mm3,mm0
-
-	pand	mm3,mm1
-	pand	mm0,mm7
-
-	pand	mm1,mm7
-	psrlq	mm0,1
-
-	psrlq	mm1,1
-	paddb	mm0,mm3
-
-	movq	mm4,[edx]
-	paddb	mm0,mm1
-
-	movq	mm2,mm0
-	pand	mm0,mm7
-
-	psrlq	mm0,1
-	por	mm2,mm4
-
-	pand	mm2,mm6
-	pand	mm4,mm7
-
-	psrlq	mm4,1
-	paddb	mm0,mm2
-	
-	movq	mm1,[ecx+8]		;[2]
-	paddb	mm4,mm0			;[1]
-	
-	movq	mm0,[ecx+esi+8]		;[2]
-	movq	mm3,mm6			;[2]
-
-	movq	[edx],mm4		;[1]
-	pand	mm3,mm1			;[2]
-
-	pand	mm3,mm0
-	pand	mm1,mm7
-
-	pand	mm0,mm7
-	psrlq	mm1,1
-
-	psrlq	mm0,1
-	paddb	mm1,mm3
-
-	movq	mm4,[edx+8]
-	paddb	mm1,mm0
-
-	movq	mm2,mm1
-	pand	mm1,mm7
-
-	psrlq	mm1,1
-	por	mm2,mm4
-
-	pand	mm2,mm6
-	pand	mm4,mm7
-
-	psrlq	mm4,1
-	paddb	mm1,mm2
-	
-	paddb	mm4,mm1
+	movq	mm2,[ecx]
+	movq	mm3,[ecx+8]
+	pavgb	mm0,mm2
+	pavgb	mm1,mm3
+	pavgb	mm0,[edx]
+	pavgb	mm1,[edx+8]
 		
 	add	ecx,esi
 	dec	edi
 
-	movq	[edx+8],mm4
+	movq	[edx],mm0
+	movq	mm0,mm2
+	movq	[edx+8],mm1
+	movq	mm1,mm3
 
 	lea	edx,[edx+esi]
 	jne	predict_add_Y_halfpelY_ISSE@loop
@@ -673,89 +597,17 @@ predict_add_Y_halfpelX_ISSE:
 	mov	edi,16
 predict_add_Y_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]
-	movq	mm3,mm6
-	prefetcht0 [edx]
+	movq	mm1,[ecx+8]
+	pavgb	mm0,[ecx+1]
+	pavgb	mm1,[ecx+9]
+	pavgb	mm0,[edx]
+	pavgb	mm1,[edx+8]
 
-	movd	mm1,[ecx+8]
-	movq	mm2,mm0
-
-	psrlq	mm2,8
-	pand	mm3,mm0
-
-	psllq	mm1,56
-
-	por	mm1,mm2
-
-	pand	mm3,mm1
-	pand	mm0,mm7
-
-	pand	mm1,mm7
-	psrlq	mm0,1
-
-	psrlq	mm1,1
-	paddb	mm0,mm3
-
-	movq	mm4,[edx]
-	paddb	mm0,mm1
-
-	movq	mm2,mm0
-	pand	mm0,mm7
-
-	psrlq	mm0,1
-	por	mm2,mm4
-
-	pand	mm2,mm6
-	pand	mm4,mm7
-
-	psrlq	mm4,1
-	paddb	mm0,mm2
-	
-	movq	mm1,[ecx+8]		;[2]
-	paddb	mm4,mm0			;[1]
-
-	movd	mm0,[ecx+16]		;[2]
-	movq	mm3,mm6			;[2]
-
-	movq	[edx],mm4		;[1]
-	movq	mm2,mm1			;[2]
-
-	psrlq	mm2,8
-	pand	mm3,mm1
-
-	psllq	mm0,56
-
-	por	mm0,mm2
-
-	pand	mm3,mm0
-	pand	mm1,mm7
-
-	pand	mm0,mm7
-	psrlq	mm1,1
-
-	psrlq	mm0,1
-	paddb	mm1,mm3
-
-	movq	mm4,[edx+8]
-	paddb	mm1,mm0
-
-	movq	mm2,mm1
-	pand	mm1,mm7
-
-	psrlq	mm1,1
-	por	mm2,mm4
-
-	pand	mm2,mm6
-	pand	mm4,mm7
-
-	psrlq	mm4,1
-	paddb	mm1,mm2
-	
-	paddb	mm4,mm1
-	
 	add	ecx,esi
 	dec	edi
 
-	movq	[edx+8],mm4
+	movq	[edx],mm0
+	movq	[edx+8],mm1
 
 	lea	edx,[edx+esi]
 	jne	predict_add_Y_halfpelX_ISSE@loop
@@ -1210,20 +1062,8 @@ predict_add_C_halfpelY_ISSE:
 	mov	edi,8
 predict_add_C_halfpelY_ISSE@loop:
 	movq	mm0,[ecx]
-
-	movq	mm1,[ecx+esi]
-	movq	mm2,mm0
-
-	pxor	mm2,mm0
-	pavgb	mm0,mm1
-
-	movq	mm1,[edx]
-	pand	mm2,mm6
-
-	psubusb	mm0,mm2
-
-	pavgb	mm0,mm1
-
+	pavgb	mm0,[ecx+esi]
+	pavgb	mm0,[edx]
 	add	ecx,esi
 	dec	edi
 
@@ -1247,48 +1087,13 @@ predict_add_C_halfpelX_ISSE:
 	mov	edi,8
 predict_add_C_halfpelX_ISSE@loop:
 	movq	mm0,[ecx]
-	movq	mm3,mm6
-
-	movd	mm1,[ecx+8]
-	movq	mm2,mm0
-
-	psrlq	mm2,8
-	pand	mm3,mm0
-
-	psllq	mm1,56
-
-	por	mm1,mm2
-
-	pand	mm3,mm1
-	pand	mm0,mm7
-
-	pand	mm1,mm7
-	psrlq	mm0,1
-
-	psrlq	mm1,1
-	paddb	mm0,mm3
-
-	movq	mm4,[edx]
-	paddb	mm0,mm1
-
-	movq	mm2,mm0
-	pand	mm0,mm7
-
-	psrlq	mm0,1
-	por	mm2,mm4
-
-	pand	mm2,mm6
-	pand	mm4,mm7
-
-	psrlq	mm4,1
-	paddb	mm0,mm2
-	
-	paddb	mm4,mm0
+	pavgb	mm0,[ecx+1]
+	pavgb	mm0,[edx]
 	
 	add	ecx,esi
 	dec	edi
 
-	movq	[edx],mm4
+	movq	[edx],mm0
 
 	lea	edx,[edx+esi]
 	jne	predict_add_C_halfpelX_ISSE@loop

@@ -44,6 +44,7 @@ private:
 	VFBitmap *bmLast;
 	List *listFilters;
 	int nFrameLag;
+	bool mbFirstFrame;
 
 	HBITMAP hbmSrc;
 	HDC		hdcSrc;

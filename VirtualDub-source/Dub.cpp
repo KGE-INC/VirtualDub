@@ -1537,6 +1537,7 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *
 
 	InitStreamValuesStatic(vInfo, aInfo, video, audio, opt, inputSubsetActive);
 
+	vInfo.nLag = 0;
 	vInfo.usPerFrameNoTelecine = vInfo.usPerFrame;
 	if (opt->video.mode >= DubVideoOptions::M_FULL && opt->video.fInvTelecine) {
 		vInfo.usPerFrame = MulDiv(vInfo.usPerFrame, 30, 24);
@@ -1601,6 +1602,7 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *
 	}
 
 	nVideoLagPreload = nVideoLagNoTelecine;
+	vInfo.nLag = nVideoLag;
 
 	// initialize directdraw display if in preview
 

@@ -114,7 +114,11 @@ static const char g_szDivXWarning[]=
 	"crashes and interference with the original drivers. When these drivers are loaded, the author cannot "
 	"make any guarantees as to the stability of VirtualDub. Please do not "
 	"forward crash dumps involving these drivers, as the author has no control "
-	"of the original third-party drivers or the binary hacks applied to them.";
+	"of the original third-party drivers or the binary hacks applied to them.\r\n"
+	"\r\n"
+	"This is only a warning. Aside from bug workarounds and warnings, VirtualDub does not take "
+	"further action in response to DivX being loaded."
+	;
 
 static const char g_szAPWarning[]=
 	"\"AngelPotion Definitive\" codec detected\0"
@@ -132,7 +136,10 @@ static const char g_szAPWarning[]=
 	"\r\n"
 	"The author cannot guarantee the stability of VirtualDub in any way when AngelPotion is loaded, "
 	"even if the codec is not in use. All crash dumps indicating AP is loaded will be promptly discarded. "
-	"It is HIGHLY suggested that you uninstall AngelPotion immediately."
+	"It is recommended that you uninstall AngelPotion when possible.\r\n"
+	"\r\n"
+	"This is only a warning. Aside from bug workarounds and warnings, VirtualDub does not take "
+	"further action in response to AngelPotion being loaded."
 	;
 
 BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam)

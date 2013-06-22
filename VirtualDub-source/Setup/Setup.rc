@@ -57,7 +57,7 @@ STYLE DS_3DLOOK | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "VirtualDub 1.4 auxiliary setup"
 CLASS "VirtualDub Setup Class"
-FONT 8, "MS Sans Serif"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
     PUSHBUTTON      "Exit",IDCANCEL,7,121,71,14
     PUSHBUTTON      "Benchmark",IDC_BENCHMARK,7,24,71,14
@@ -154,8 +154,7 @@ BEGIN
     ICON            IDI_VIRTUALDUB,IDC_STATIC,7,7,20,20
     LTEXT           "VirtualDub Setup 1.0, Copyright (C) 1998 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,41,7,252,41
-    LTEXT           "Build 0/release (14 Aug 79 xx:xx:xx finals suck)",
-                    IDC_FINALS_SUCK,41,53,238,8
+    LTEXT           "Build 0/release (bleh)",IDC_FINALS_SUCK,41,53,238,8
 END
 
 IDD_DISKTEST2 DIALOGEX 0, 0, 184, 55
@@ -277,7 +276,7 @@ BEGIN
             VALUE "FileDescription", "VirtualDub Setup Utility\0"
             VALUE "FileVersion", "1.4\0"
             VALUE "InternalName", "Setup\0"
-            VALUE "LegalCopyright", "Copyright © 1998-2000 Avery Lee, All Rights Reserved\0"
+            VALUE "LegalCopyright", "Copyright © 1998-2001 Avery Lee, All Rights Reserved\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "Setup.exe\0"
             VALUE "PrivateBuild", "\0"

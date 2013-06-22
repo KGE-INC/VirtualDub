@@ -1252,10 +1252,10 @@ bool AVIReadHandler::AppendFile(const char *pszFile) {
 
 			if (szPrefix) {
 				if (pasn_old->hdr.fccType != pasn_new->hdr.fccType)
-					throw MyError("Cannot append segment: The stream types do not count.");
+					throw MyError("Cannot append segment: The stream types do not match.");
 
-				if (pasn_old->hdr.fccHandler != pasn_new->hdr.fccHandler)
-					throw MyError("%suse incompatible compression types.", szPrefix);
+//				if (pasn_old->hdr.fccHandler != pasn_new->hdr.fccHandler)
+//					throw MyError("%suse incompatible compression types.", szPrefix);
 
 				// A/B ?= C/D ==> AD ?= BC
 
@@ -1414,11 +1414,16 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 
 //		_RPT4(0,"%08I64x %08I64x Chunk '%-4s', length %08lx\n", _posFile()+dwLengthLeft, _posFile(), &fccType, dwLength);
 
+		bool bInvalidLength = false;
+
 		if (!size_invalid) {
 			dwLengthLeft -= 8;
 
 			if (dwLength > dwLengthLeft)
-				throw MyError("Invalid AVI file: chunk at %I64d extends outside of parent by %ld bytes", _posFile()-8, dwLength-dwLengthLeft);
+				if (fccType == FOURCC_LIST)
+					bInvalidLength = true;
+				else
+					throw MyError("Invalid AVI file: chunk at %I64d extends outside of parent by %ld bytes", _posFile()-8, dwLength-dwLengthLeft);
 
 			dwLengthLeft -= (dwLength + (dwLength&1));
 		}
@@ -1427,7 +1432,13 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 		case FOURCC_LIST:
 			_readFile2(&fccType, 4);
 
-			if (dwLength<4 && (fccType != 'ivom' || !size_invalid))
+			if (fccType != listtypeAVIHEADER && bInvalidLength)
+				throw MyError("Invalid AVI file: LIST chunk at %I64d extends outside of parent by %ld bytes", _posFile()-12, dwLength-dwLengthLeft);
+
+			// Some idiot Premiere plugin is writing AVI files with an invalid
+			// size field in the LIST/hdrl chunk.
+
+			if (dwLength<4 && fccType != listtypeAVIHEADER && (fccType != 'ivom' || !size_invalid))
 				throw MyError("Invalid AVI file: LIST chunk <4 bytes");
 
 			dwLength -= 4;
@@ -1497,10 +1508,9 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 				break;
 		}
 
-		// If we're trying to read a broken file, quit as soon as we see the index
-		// block.
+		// Quit as soon as we see the index block.
 
-		if (size_invalid && fccType == ckidAVINEWINDEX)
+		if (fccType == ckidAVINEWINDEX)
 			break;
 	}
 

@@ -1,6 +1,46 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 12903 (Version 1.4.5):
+   [features added]
+   * Added DIV5 as yet another MS MPEG-4 V3 hack.
+   * Experimental support for hardware UYVY/YUY2 hardware
+     overlay when Preview display mode is used in capture.
+   * The BT8x8 tweaker is now modeless and periodically
+     reasserts your settings as long as it is up.
+   * Added workaround for a buffer overflow problem in
+     Huffyuv.
+   * Fast recompress now works even if no decompressor
+     is present (i.e. YUY2 -> MJPG).
+   * Added workaround for broken AVI files with negative
+     chunk sizes in the AVI header block.
+   * New filter: field bob.
+
+   [bug fixes]
+   * Fixed menu problems under 95/NT.
+   * Recompressed executable with newer version of UPX
+     -- should fix NAV problems.
+   * Added short-circuit code for AVI parser to avoid
+     bombing on crud at end of some files.
+   * Fixed broken 16-bit mono to 16-bit stereo
+     conversion.
+   * Filters are no longer reset when scrolling via
+     keyboard shortcuts (Jason Haitsuka).
+   * Levels filter now saves Y/RGB setting properly.
+   * Fixed capture window vanishing with "stretch to
+     window" set and "info panel" unchecked.
+   * Fixed some problems with the hex editor.
+   * Fixed the cropping dialog from coming up with
+     the post-crop size.
+   * Changed histogram in Levels filter to use luma
+     instead of RGB, and removed bilinear filtering.
+   * Video timing is now propagated properly through
+     lagged filters (temporal smoother).
+   * Script variables may now have numbers in their
+     names.
+   * No longer crashes if you specify a path without a
+     filename on the command line.
+
 Build 12667 (Version 1.4d):
    [features added]
    * Added HFYU (Huffyuv) to list of codecs that do not

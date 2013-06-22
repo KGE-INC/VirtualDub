@@ -36,7 +36,7 @@ public:
 
 		FCALL_OUT_OF_RANGE,
 		FCALL_INVALID_PTYPE,
-		FCALL_UNKNOWN_STR,
+		FCALL_UNKNOWN_STR
 	};
 
 	CScriptError(int err_num) : err(err_num) { }

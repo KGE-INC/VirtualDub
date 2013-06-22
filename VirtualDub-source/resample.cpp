@@ -201,6 +201,17 @@ const int *GetStandardCubic4Table() throw() {
 	return cubic4_tbl;
 }
 
+const int *GetBetterCubic4Table() throw() {
+	static int cubic4_tbl[256*4*2];
+
+	if (!cubic4_tbl[1]) {
+		MakeCubic4Table(cubic4_tbl, -0.6, false);
+		MakeCubic4Table(cubic4_tbl+1024, -0.6, true);
+	}
+
+	return cubic4_tbl;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 void ResampleInfo::computeBounds(__int64 u, __int64 dudx, unsigned int dx, unsigned int kernel, unsigned long limit) {
@@ -894,12 +905,28 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 	case eFilter::kLinearInterp:
 		xfiltwidth = 2;
 		break;
-	case eFilter::kCubicDecimate:
+	case eFilter::kCubicDecimate060:
+	case eFilter::kCubicDecimate075:
+	case eFilter::kCubicDecimate100:
 		if (sx > dx) {
-			xtable = _CreateCubicDecimateTable(dx, sx, xfiltwidth);
+			switch(horiz_filt) {
+			case eFilter::kCubicDecimate060:
+				xtable = _CreateCubicDecimateTable(dx, sx, xfiltwidth, -0.60);
+				break;
+			case eFilter::kCubicDecimate075:
+				xtable = _CreateCubicDecimateTable(dx, sx, xfiltwidth, -0.75);
+				break;
+			case eFilter::kCubicDecimate100:
+				xtable = _CreateCubicDecimateTable(dx, sx, xfiltwidth, -1.00);
+				break;
+			}
 			break;
 		}
-		horiz_filt = eFilter::kCubicInterp;
+		horiz_filt = eFilter::kCubicInterp060;
+	case eFilter::kCubicInterp060:
+		GetBetterCubic4Table();
+		xfiltwidth = 4;
+		break;
 	case eFilter::kCubicInterp:
 		GetStandardCubic4Table();
 		xfiltwidth = 4;
@@ -927,13 +954,30 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 			vbias = 1.0/32.0;
 		yfiltwidth = 2;
 		break;
-	case eFilter::kCubicDecimate:
+	case eFilter::kCubicDecimate060:
+	case eFilter::kCubicDecimate075:
+	case eFilter::kCubicDecimate100:
 		if (sy > dy) {
-			ytable = _CreateCubicDecimateTable(dy, sy, yfiltwidth);
+			switch(vert_filt) {
+			case eFilter::kCubicDecimate060:
+				ytable = _CreateCubicDecimateTable(dy, sy, yfiltwidth, -0.60);
+				break;
+			case eFilter::kCubicDecimate075:
+				ytable = _CreateCubicDecimateTable(dy, sy, yfiltwidth, -0.75);
+				break;
+			case eFilter::kCubicDecimate100:
+				ytable = _CreateCubicDecimateTable(dy, sy, yfiltwidth, -1.00);
+				break;
+			}
 			rowcount = yfiltwidth;
 			break;
 		}
-		vert_filt = eFilter::kCubicInterp;
+		vert_filt = eFilter::kCubicInterp060;
+	case eFilter::kCubicInterp060:
+		GetBetterCubic4Table();
+		yfiltwidth = 4;
+		rowcount = 4;
+		break;
 	case eFilter::kCubicInterp:
 		GetStandardCubic4Table();
 		yfiltwidth = 4;
@@ -1036,6 +1080,26 @@ void Resampler::_DoRow(Pixel32 *dstp, const Pixel32 *srcp, long srcw) {
 					(long)(horiz.dudx_int.v >> 16),
 					GetStandardCubic4Table());
 			break;
+		case eFilter::kCubicInterp060:
+			if (horiz.clip.allclip)
+				cc_row_protected(dstp + horiz.clip.precopy,
+					srcp, srcp+srcw,
+					horiz.clip.allclip,
+					(long)(horiz.u0_int.v >> 16),
+					(long)(horiz.dudx_int.v >> 16),
+					GetBetterCubic4Table());
+			else
+				cc_row(dstp + horiz.clip.precopy,
+					srcp,
+					horiz.clip.unclipped,
+					horiz.clip.preclip2,
+					horiz.clip.preclip,
+					horiz.clip.postclip,
+					horiz.clip.postclip2,
+					(long)(horiz.u0_int.v >> 16),
+					(long)(horiz.dudx_int.v >> 16),
+					GetBetterCubic4Table());
+			break;
 	};
 
 	for(x=0; x < horiz.clip.postcopy; ++x)
@@ -1057,7 +1121,7 @@ bool Resampler::Process(const VBitmap *dst, double _x2, double _y2, const VBitma
 
 	// Compute clipping parameters.
 
-	if (!horiz.init(_x2, dstw, _x1 + ubias, srcw, dst->w, src->w, xfiltwidth, bMapCorners, nHorizFilt == eFilter::kCubicInterp))
+	if (!horiz.init(_x2, dstw, _x1 + ubias, srcw, dst->w, src->w, xfiltwidth, bMapCorners, nHorizFilt == eFilter::kCubicInterp || nHorizFilt == eFilter::kCubicInterp060))
 		return false;
 
 	if (!vert.init(_y2, dsth, _y1 + vbias, srch, dst->h, src->h, yfiltwidth, bMapCorners, false))
@@ -1230,6 +1294,12 @@ bool Resampler::Process(const VBitmap *dst, double _x2, double _y2, const VBitma
 					else
 						asm_resize_ccint_col(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetStandardCubic4Table()+4*((unsigned long)yaccum>>24));
 					break;
+				case eFilter::kCubicInterp060:
+					if (MMX_enabled)
+						asm_resize_ccint_col_MMX(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetBetterCubic4Table()+1024+4*((unsigned long)yaccum>>24));
+					else
+						asm_resize_ccint_col(dstp, rows[pos], rows[pos+1], rows[pos+2], rows[pos+3], dx, GetBetterCubic4Table()+4*((unsigned long)yaccum>>24));
+					break;
 			}
 
 			yaccum += yinc;
@@ -1328,7 +1398,7 @@ int *Resampler::_CreateLinearDecimateTable(double dx, double sx, int& filtwidth)
 	return table;
 }
 
-int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth) { 
+int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, double A) { 
 	int i;
 	long filtwidth_frac;
 	double filtwidth_fracd;
@@ -1349,7 +1419,6 @@ int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth) 
 	for(i=0; i<128*filtwidth; i++) {
 		int y = 0;
 		double d = (double)i / filtwidth_fracd;
-		const double A=-0.75;
 
 		if (d < 1.0)
 			y = (int)floor(0.5 + (1.0 - (A+3.0)*d*d + (A+2.0)*d*d*d) * filt_max);

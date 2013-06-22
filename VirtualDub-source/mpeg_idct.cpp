@@ -126,7 +126,7 @@ extern "C" unsigned char YUV_clip_table[];
 #define MATH_PI		(3.141592653589793238462643)
 
 static struct {
-	int data[64][64];
+	int data[16][64];
 } idct_precomputed;
 
 int dct_coeff[64];
@@ -136,20 +136,19 @@ extern void MJPEG_IDCT(int *);
 
 void IDCT_init() {
 	int x, y;
-	for (int i=0; i<64; i++) {
-		double d = 0.25 * 256.0;
+	for (int i=0; i<8; i++) {
+		double d0 = 0.125 * sqrt(2) * 256.0;
+		double d1 = 0.25 * 256.0;
 
-		x = i % 8;
-		y = i / 8;
-
-		if (!x && !y)
-			d = 0.125 * 256.0;
-		else if (!x || !y)
-			d = 0.125 * sqrt(2) * 256.0;
+		if (!i) {
+			d0 = 0.125 * 256.0;
+			d1 = 0.125 * sqrt(2) * 256.0;
+		}
 
 		for (int k = 0; k < 8; k++) {
 			for (int l = 0; l < 8; l++) {
-				idct_precomputed.data[i][k * 8 + l] = (int)floor(0.5 + d * cos(MATH_PI * y * (2*k+1) / 16.0) * cos(MATH_PI * x * (2*l+1) / 16.0));
+				idct_precomputed.data[i][k * 8 + l] = (int)floor(0.5 + d0 * cos(MATH_PI * (2*k+1) / 16.0) * cos(MATH_PI * i * (2*l+1) / 16.0));
+				idct_precomputed.data[i+8][k * 8 + l] = (int)floor(0.5 + d1 * cos(MATH_PI * (2*k+1) / 16.0) * cos(MATH_PI * i * (2*l+1) / 16.0));
 			}
 		}
 #if 0
@@ -254,7 +253,13 @@ DC_loop_MMX:
 		;	ebp = H counter
 
 AC_coeff:
+		mov		ebp,esi
+		and		esi,7
 		shl		esi,8
+		test	ebp,038h
+		jnz		AC_coeff_1
+		add		esi,64*4*8
+AC_coeff_1:
 		mov		ecx,dct_coeff
 		add		esi,offset idct_precomputed
 		mov		dword ptr [dct_coeff],0
@@ -264,24 +269,34 @@ AC_coeff:
 		test	MMX_enabled,1
 		jnz		AC_with_MMX
 
-AC_loop_vert:
+		shl		ebp,3
+		and		ebp,0e0h
+		push	ebp
+
 		mov		ebp,8
+AC_loop_vert:
+		push	esi
 AC_loop_horiz:
 		mov		ebx,eax
-		imul	ebx,[esi]
+		imul	ebx,[esi+edx]
 		add		ebx,ecx
 		sar		ebx,19
 		mov		bl,[YUV_clip_table+ebx+256]
 		mov		[edi],bl
 		add		esi,4
 		inc		edi
-		dec		ebp
-		jne		AC_loop_horiz
+		add		ebp,20000000h
+		jnc		AC_loop_horiz
+		pop		esi
+		add		edx,[esp]
+		and		edx,0e0h
 
-		mov		ebx,[esp+12+16]
-		dec		edx
+		mov		ebx,[esp+12+16+4]
+		dec		ebp
 		lea		edi,[edi+ebx-8]
 		jne		AC_loop_vert
+
+		pop		eax
 
 fnexit:
 #ifdef PROFILE
@@ -303,6 +318,10 @@ notsec:
 		ret
 
 AC_with_MMX:
+		shl		ebp,2
+		and		ebp,0e0h
+		push	ebp
+
 		movd	mm6,ecx
 		pxor	mm7,mm7
 		mov		ebx,eax
@@ -322,14 +341,16 @@ AC_with_MMX:
 		movd	mm5,eax
 		punpckldq	mm5,mm5
 
+		pop		ebp
+		xor		ecx,ecx
+
 AC_loop_vert_MMX:
-		movq	mm0,[esi]			;AC pattern #0, #1
-		movq	mm2,[esi+8]			;AC pattern #2, #3
+		movq	mm0,[esi+ecx]			;AC pattern #0, #1
+		movq	mm2,[esi+ecx+8]			;AC pattern #2, #3
 		movq	mm1,mm0
 		movq	mm3,mm2
 		pmaddwd	mm0,mm4
 		pmaddwd	mm2,mm4
-		add		esi,32
 		pmaddwd	mm1,mm5
 		pmaddwd	mm3,mm5
 		pslld	mm0,15
@@ -342,8 +363,8 @@ AC_loop_vert_MMX:
 		psrad	mm3,19
 		packssdw	mm1,mm3
 
-		movq	mm0,[esi-16]		;AC pattern #4, #5
-		movq	mm2,[esi-8]			;AC pattern #6, #7
+		movq	mm0,[esi+ecx+16]		;AC pattern #4, #5
+		movq	mm2,[esi+ecx+24]		;AC pattern #6, #7
 		movq	mm7,mm0
 		movq	mm3,mm2
 		pmaddwd	mm0,mm4
@@ -363,6 +384,9 @@ AC_loop_vert_MMX:
 
 		mov		ebx,[esp+12+16]
 		dec		edx
+
+		add		ecx,ebp
+		and		ecx,0e0h
 
 		movq	[edi],mm1
 
@@ -487,7 +511,13 @@ DC_loop_MMX_sub:
 		;	ebp = H counter
 
 AC_coeff:
+		mov		ebp,esi
+		and		esi,7
 		shl		esi,8
+		test	ebp,038h
+		jnz		AC_coeff_1
+		add		esi,64*4*8
+AC_coeff_1:
 		mov		ecx,dct_coeff
 		add		esi,offset idct_precomputed
 		mov		dword ptr [dct_coeff],0
@@ -497,10 +527,12 @@ AC_coeff:
 		test	MMX_enabled,1
 		jnz		AC_with_MMX
 
-		push	eax
+		shl		ebp,3
+		and		ebp,0e0h
+		push	ebp
 
-AC_loop_vert:
 		mov		ebp,8
+AC_loop_vert:
 AC_loop_horiz:
 		mov		ebx,[esp]
 		xor		eax,eax
@@ -512,11 +544,11 @@ AC_loop_horiz:
 		mov		[edi],bl
 		add		esi,4
 		inc		edi
-		dec		ebp
-		jne		AC_loop_horiz
+		add		ebp,20000000h
+		jnc		AC_loop_horiz
 
 		mov		ebx,[esp+12+20]
-		dec		edx
+		dec		ebp
 		lea		edi,[edi+ebx-8]
 		jne		AC_loop_vert
 
@@ -542,6 +574,10 @@ notsec:
 		ret
 
 AC_with_MMX:
+		shl		ebp,2
+		and		ebp,0e0h
+		push	ebp
+
 		movd	mm6,ecx
 		pxor	mm7,mm7
 		mov		ebx,eax
@@ -561,15 +597,17 @@ AC_with_MMX:
 		movd	mm5,eax
 		punpckldq	mm5,mm5
 
+		pop		ebp
+		xor		ecx,ecx
+
 
 AC_loop_vert_MMX:
-		movq	mm0,[esi]			;AC pattern #0, #1
-		movq	mm2,[esi+8]			;AC pattern #2, #3
+		movq	mm0,[esi+ecx]			;AC pattern #0, #1
+		movq	mm2,[esi+ecx+8]			;AC pattern #2, #3
 		movq	mm1,mm0
 		movq	mm3,mm2
 		pmaddwd	mm0,mm4
 		pmaddwd	mm2,mm4
-		add		esi,32
 		pmaddwd	mm1,mm5
 		pmaddwd	mm3,mm5
 		pslld	mm0,15
@@ -581,11 +619,11 @@ AC_loop_vert_MMX:
 		paddd	mm0,mm6
 		punpcklbw	mm3,mm1
 		paddd	mm2,mm6
-		movq	mm7,[esi-16]		;AC pattern #0, #1
+		movq	mm7,[esi+ecx+16]		;AC pattern #0, #1
 		psrad	mm0,19
 		psrad	mm2,19
 		packssdw	mm0,mm2
-		movq	mm2,[esi-8]			;AC pattern #2, #3
+		movq	mm2,[esi+ecx+24]			;AC pattern #2, #3
 		paddw		mm0,mm3
 
 		movq	mm1,mm7
@@ -610,6 +648,9 @@ AC_loop_vert_MMX:
 		packuswb	mm0,mm7
 
 		movq	[edi],mm0
+
+		add		ecx,ebp
+		and		ecx,0e0h
 
 		mov		ebx,[esp+12+16]
 		dec		edx

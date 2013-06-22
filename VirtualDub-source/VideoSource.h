@@ -116,6 +116,7 @@ private:
 	bool		fUseGDI;
 	bool		fAllKeyFrames;
 	bool		bIsType1;
+	bool		bDirectDecompress;
 
 	IAVIReadStream *format_stream;
 

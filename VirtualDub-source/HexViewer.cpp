@@ -467,7 +467,7 @@ LRESULT HexViewer::Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam) throw() {
 			__int64 v1 = i64Position, v2;
 
 			if (AskForValues("Jump to address", "Address:", NULL, v1, v2, JumpVerifier))
-				ScrollTopTo((long)(v1>>4));
+				MoveCaretToByte(v1);
 		}
 		break;
 	case ID_EDIT_TRUNCATE:
@@ -754,6 +754,11 @@ LRESULT HexViewer::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) throw() {
 			if (GetKeyState(VK_CONTROL)<0)
 				Handle_WM_COMMAND(ID_EDIT_FIND, 0);
 		break;
+	case 'G':
+		if (hFile != INVALID_HANDLE_VALUE)
+			if (GetKeyState(VK_CONTROL)<0)
+				Handle_WM_COMMAND(ID_EDIT_JUMP, 0);
+		break;
 	case 'R':
 		if (hFile != INVALID_HANDLE_VALUE)
 			if (GetKeyState(VK_CONTROL)<0)
@@ -920,7 +925,11 @@ BOOL CALLBACK HexViewer::AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam,
 			ShowWindow(GetDlgItem(hdlg, IDC_EDIT_ADDRESS2), SW_HIDE);
 			ShowWindow(GetDlgItem(hdlg, IDC_STATIC_ADDRESS2), SW_HIDE);
 		}
-		return TRUE;
+
+		SendDlgItemMessage(hdlg, IDC_EDIT_ADDRESS1, EM_SETSEL, 0, -1);
+		SetFocus(GetDlgItem(hdlg, IDC_EDIT_ADDRESS1));
+
+		return FALSE;
 
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
@@ -1167,8 +1176,8 @@ void HexViewer::Find() throw() {
 	bool bLastPartial = false;
 
 	ProgressDialog pd(GetForegroundWindow(), "Find",
-		bFindReverse?"Reverse searching for string":"Forward searching for string", (long)((i64Position+1048575)>>10), TRUE);
-	pd.setValueFormat("%dK of %dK");
+		bFindReverse?"Reverse searching for string":"Forward searching for string", (long)(((bFindReverse ? i64Position : i64FileSize - i64Position)+1048575)>>20), TRUE);
+	pd.setValueFormat("%dMB of %dMB");
 
 	i = 0;
 	j = -1;	// this causes the first char to be skipped
@@ -1246,7 +1255,7 @@ void HexViewer::Find() throw() {
 							j = next[j];
 					}
 
-				pd.advance((long)((i64Position - pos)>>10));
+				pd.advance((long)((i64Position - pos)>>20));
 				pd.check();
 			}
 		} else {
@@ -1314,7 +1323,7 @@ void HexViewer::Find() throw() {
 							j = next[j];
 					}
 
-				pd.advance((long)((pos - i64Position)>>10));
+				pd.advance((long)((pos - i64Position)>>20));
 				pd.check();
 			}
 		}
@@ -1400,12 +1409,12 @@ LRESULT APIENTRY HexViewer::HexViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 			EnableMenuItem(hMenu,ID_FILE_SAVE, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_FILE_REVERT, dwEnableFlags);
-			EnableMenuItem(hMenu,ID_EDIT_JUMP, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_TRUNCATE, dwEnableFlags);
-			EnableMenuItem(hMenu,ID_EDIT_EXTRACT, dwEnableFlags);
 
 			dwEnableFlags = (pcd->hFile != INVALID_HANDLE_VALUE ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED));
 
+			EnableMenuItem(hMenu,ID_EDIT_JUMP, dwEnableFlags);
+			EnableMenuItem(hMenu,ID_EDIT_EXTRACT, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_RIFFTREE, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_FIND, dwEnableFlags);
 			EnableMenuItem(hMenu,ID_EDIT_FINDNEXT, dwEnableFlags);

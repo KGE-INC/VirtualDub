@@ -478,7 +478,7 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				} else
 					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));*/
 
-				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->src.w,fa->src.h));
+				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(fa->origw,fa->origh));
 				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
 				guiPositionInitFromStream(hWnd);
@@ -526,14 +526,19 @@ BOOL APIENTRY FilterClippingDlgProc(HWND hDlg, UINT message, UINT wParam, LONG l
 				return TRUE;
 			case IDC_BORDERS:
 				fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
-				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam), fa->src.w, fa->src.h);
+				guiPositionBlit((HWND)lParam, guiPositionHandleCommand(wParam, lParam), fa->origw, fa->origh);
 				return TRUE;
 			}
             break;
 
-			case WM_NOTIFY:
-				guiPositionBlit(((NMHDR *)lParam)->hwndFrom, guiPositionHandleNotify(wParam, lParam));
-				break;
+		case WM_NOTIFY:
+			if (GetWindowLong(((NMHDR *)lParam)->hwndFrom, GWL_ID) == IDC_BORDERS) {
+				fa = (FilterInstance *)GetWindowLong(hDlg, DWL_USER);
+
+				if (fa)
+					guiPositionBlit(((NMHDR *)lParam)->hwndFrom, guiPositionHandleNotify(wParam, lParam), fa->origw, fa->origh);
+			}
+			break;
 
     }
     return FALSE;

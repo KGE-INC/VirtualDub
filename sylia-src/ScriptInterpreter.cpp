@@ -801,7 +801,7 @@ int CScriptInterpreter::Token() {
 		s = szIdent;
 
 		*s++ = c;
-		while(isIdentFirstChar(c = *tokstr++)) {
+		while(isIdentNextChar(c = *tokstr++)) {
 			if (s>=szIdent + MAX_IDENT_CHARS)
 				SCRIPT_ERROR(IDENT_TOO_LONG);
 

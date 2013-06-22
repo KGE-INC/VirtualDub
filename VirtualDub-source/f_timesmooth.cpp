@@ -150,33 +150,48 @@ xloop:
 timeloop:
 		movd		mm0,[edi]
 		movq		mm1,mm5
-		pand		mm0,noalpha
+
 		punpcklbw	mm0,mm7
+
 		psubw		mm1,mm0
+
 		pmaddwd		mm1,mm1
 		add			edi,4
+
 		punpckldq	mm2,mm1
+
 		paddd		mm1,mm2					;mm0 = |r|^2 + |g|^2 + |b|^2 in high dword
+
 		movq		mm2,sixteen
 		psrlq		mm1,mm6
+
 		punpcklwd	mm1,mm1
+
 		punpckldq	mm1,mm1
+
 		psubusw		mm2,mm1
+
 		pmullw		mm0,mm2
+
 		psllq		mm2,48
+
 		paddw		mm4,mm2					;add scale to scale accumulator
-		paddw		mm4,mm0					;add scaled pixel to pixel accumulator
-		movq		mm0,mm4
 		dec			edx
+		paddw		mm4,mm0					;add scaled pixel to pixel accumulator
 		jne			timeloop
 
+		movq		mm0,mm4
 		psrlq		mm4,48
+
 		movd		eax,mm4					;eax = scale accumulator
 
 		pmulhw		mm0,[scaletab+eax*8]	;produce output pixel
 
 		packuswb	mm0,mm0
 		dec			ecx
+
+;		mov			eax,[esp+32+16]			;center offset
+;		movd		[edi+ebx],mm0			;put into place
 
 		movd		[esi-4],mm0
 		jne			xloop

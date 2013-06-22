@@ -30,6 +30,8 @@
 
 extern const char g_szError[];
 extern HINSTANCE g_hInst;
+static HWND g_hwndTweaker;
+static HMODULE g_hmodDTV;
 
 struct dTVDriverData {
 	PIsDriverOpened				isDriverOpened;
@@ -57,6 +59,9 @@ static void InitializeBT8X8() {
 		{ 0x109e, 0x0351 },
 		{ 0x109e, 0x036f },
 	};
+
+	if (g_dTVDriver.dwPhysicalAddress)
+		return;
 
 	for(int i=0; i<4; ++i) {
 		int ret;
@@ -86,7 +91,10 @@ static void InitializeBT8X8() {
 }
 
 static void DeinitializeBT8X8() {
-	g_dTVDriver.memoryUnmap(g_dTVDriver.dwPhysicalAddress, g_dTVDriver.dwMemoryLength);
+	if (g_dTVDriver.dwPhysicalAddress) {
+		g_dTVDriver.memoryUnmap(g_dTVDriver.dwPhysicalAddress, g_dTVDriver.dwMemoryLength);
+		g_dTVDriver.dwPhysicalAddress = NULL;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -124,6 +132,11 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 		{ IDC_LUMAPEAKODD,		0x0C0, 0x80 },
 		{0},
 	};
+
+   static const char *const s_whitept_types[]={
+      "3/4 max", "1/2 max", "1/4 max", "auto"
+   };
+
 	int i;
 
 	switch(msg) {
@@ -144,11 +157,16 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 		SendDlgItemMessage(hdlg, IDC_SLIDER_VDELAY, TBM_SETRANGE, TRUE, MAKELONG(0, 256));
 		SendDlgItemMessage(hdlg, IDC_SLIDER_AGCDELAY, TBM_SETRANGE, TRUE, MAKELONG(0, 255));
 		SendDlgItemMessage(hdlg, IDC_SLIDER_BURSTDELAY, TBM_SETRANGE, TRUE, MAKELONG(0, 255));
+		SendDlgItemMessage(hdlg, IDC_SLIDER_WHITEUP, TBM_SETRANGE, TRUE, MAKELONG(0, 63));
+		SendDlgItemMessage(hdlg, IDC_SLIDER_WHITEDOWN, TBM_SETRANGE, TRUE, MAKELONG(0, 63));
 
 		{
-			int hscale = g_dTVDriver.memoryReadBYTE(0x020)*256+g_dTVDriver.memoryReadBYTE(0x024) + 4096;
-			int hdelay = ((g_dTVDriver.memoryReadBYTE(0x00C)&0x0c)<<6)+(g_dTVDriver.memoryReadBYTE(0x018)&0xfe);
-			int hactive = ((g_dTVDriver.memoryReadBYTE(0x00C)&0x003)<<8)+g_dTVDriver.memoryReadBYTE(0x01c);
+			// grab from the currently captured field
+
+			int regbase = (g_dTVDriver.memoryReadBYTE(0x0DC) & 1) ? 0x000 : 0x080;
+			int hscale = g_dTVDriver.memoryReadBYTE(regbase + 0x020)*256+g_dTVDriver.memoryReadBYTE(regbase + 0x024) + 4096;
+			int hdelay = ((g_dTVDriver.memoryReadBYTE(regbase + 0x00C)&0x0c)<<6)+(g_dTVDriver.memoryReadBYTE(regbase + 0x018)&0xfe);
+			int hactive = ((g_dTVDriver.memoryReadBYTE(regbase + 0x00C)&0x003)<<8)+g_dTVDriver.memoryReadBYTE(regbase + 0x01c);
 			int left = MulDiv(hdelay,hscale,512);
 			int right = left + MulDiv(hactive, hscale,512);
 
@@ -165,12 +183,56 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 		SendDlgItemMessage(hdlg, IDC_SLIDER_BURSTDELAY, TBM_SETPOS, TRUE,
 			g_dTVDriver.memoryReadBYTE(0x64));
 
+		SendDlgItemMessage(hdlg, IDC_SLIDER_WHITEDOWN, TBM_SETPOS, TRUE,
+			g_dTVDriver.memoryReadBYTE(0x78)&0x3f);
+
+		SendDlgItemMessage(hdlg, IDC_SLIDER_WHITEUP, TBM_SETPOS, TRUE,
+			g_dTVDriver.memoryReadBYTE(0x44)&0x3f);
+
+		for(i=0; i<4; ++i)
+			SendDlgItemMessage(hdlg, IDC_WHITE_POINT, CB_ADDSTRING, 0, (LPARAM)s_whitept_types[i]);
+
+		SendDlgItemMessage(hdlg, IDC_WHITE_POINT, CB_SETCURSEL, g_dTVDriver.memoryReadBYTE(0x44)>>6, 0);
+
 		return TRUE;
+	case WM_DESTROY:
+		g_hwndTweaker = NULL;
+		break;
+	case WM_TIMER:
+		KillTimer(hdlg, 1);
+		wParam = IDC_REASSERT;
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
 		case IDOK:
 		case IDCANCEL:
-			EndDialog(hdlg, 0);
+			DestroyWindow(hdlg);
+			break;
+		case IDC_WHITE_POINT:
+			g_dTVDriver.memoryWriteBYTE(0x44, (g_dTVDriver.memoryReadBYTE(0x44)&0x3f)
+				+ (SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0)<<6));
+			break;
+		case IDC_REASSERT:
+			// this is, admittedly, goofy
+			_RPT0(0, "Reasserting settings\n");
+
+			for(i=0; s_bits[i].id; ++i)
+				if (IsDlgButtonChecked(hdlg, s_bits[i].id))
+					g_dTVDriver.memoryWriteBYTE(s_bits[i].offset, g_dTVDriver.memoryReadBYTE(s_bits[i].offset) | s_bits[i].bit);
+				else
+					g_dTVDriver.memoryWriteBYTE(s_bits[i].offset, g_dTVDriver.memoryReadBYTE(s_bits[i].offset) & ~s_bits[i].bit);
+
+			CaptureBT848TweakerDlgProc(hdlg, WM_COMMAND, BN_CLICKED, (LPARAM)GetDlgItem(hdlg, IDC_WHITE_POINT));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_LUMAPEAKEVEN));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_LUMAPEAKODD));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_CORING));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_LEFT));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_RIGHT));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_VDELAY));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_AGCDELAY));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_BURSTDELAY));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_WHITEDOWN));
+			CaptureBT848TweakerDlgProc(hdlg, WM_HSCROLL, SB_THUMBPOSITION, (LPARAM)GetDlgItem(hdlg, IDC_SLIDER_WHITEUP));
+				
 			break;
 		default:
 			if (HIWORD(wParam) == BN_CLICKED)
@@ -209,7 +271,8 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 					if (right < left)
 						right = left;
 
-					int hactive = ((g_dTVDriver.memoryReadBYTE(0x00C)&0x003)<<8)+g_dTVDriver.memoryReadBYTE(0x01c);
+					int regbase = (g_dTVDriver.memoryReadBYTE(0x0DC) & 1) ? 0x000 : 0x080;
+					int hactive = ((g_dTVDriver.memoryReadBYTE(regbase + 0x00C)&0x003)<<8)+g_dTVDriver.memoryReadBYTE(regbase + 0x01c);
 					int hscale = MulDiv(right-left, 512, hactive);
 
 					if (hscale < 4096)
@@ -239,6 +302,12 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 			case IDC_SLIDER_BURSTDELAY:
 				g_dTVDriver.memoryWriteBYTE(0x64, pos);
 				return TRUE;
+			case IDC_SLIDER_WHITEDOWN:
+				g_dTVDriver.memoryWriteBYTE(0x78, (g_dTVDriver.memoryReadBYTE(0x78) & 0xc0) + pos);
+				return TRUE;
+			case IDC_SLIDER_WHITEUP:
+				g_dTVDriver.memoryWriteBYTE(0x44, (g_dTVDriver.memoryReadBYTE(0x44) & 0xc0) + pos);
+				return TRUE;
 			}
 		}
 		break;
@@ -247,7 +316,7 @@ BOOL CALLBACK CaptureBT848TweakerDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPA
 }
 
 void CaptureDisplayBT848Tweaker(HWND hwndParent) {
-	const char *const g_dtvEntryPts[]={
+	static const char *const g_dtvEntryPts[]={
 		"isDriverOpened",
 		"pciGetHardwareResources",
 		"memoryAlloc",
@@ -262,23 +331,28 @@ void CaptureDisplayBT848Tweaker(HWND hwndParent) {
 		"memoryWriteDWORD",
 	};
 
+	if (g_hwndTweaker) {
+		SetForegroundWindow(g_hwndTweaker);
+		return;
+	}
+
 	// Attempt to load dTV driver
 
-	HMODULE hmodDTV = LoadLibrary("dTVdrv.dll");
+	g_hmodDTV = LoadLibrary("dTVdrv.dll");
 
 	try {
 
-		if (!hmodDTV)
-			throw MyWin32Error("Cannot load dTV driver: %%s\n\nThis function requires the dTVdrv.dll, dTVdrvNT.sys, and dTVdrv95.vxd "
-				"files from dTV to be copied into the VirtualDub program directory.", GetLastError());
+		if (!g_hmodDTV)
+			throw MyWin32Error("Cannot load DScaler driver: %%s\n\nThis function requires the dTVdrv.dll, dTVdrvNT.sys, and dTVdrv95.vxd "
+				"files from DScaler to be copied into the VirtualDub program directory.", GetLastError());
 
 		// dTV driver is loaded -- obtain entry points.
 
 		FARPROC *ppEntries = (FARPROC *)&g_dTVDriver;
 
 		for(int i=0; i<(sizeof g_dtvEntryPts / sizeof g_dtvEntryPts[0]); ++i)
-			if (!(ppEntries[i] = GetProcAddress(hmodDTV, g_dtvEntryPts[i])))
-				throw MyError("Cannot load dTV driver: entry point \"%s\" is missing!", g_dtvEntryPts[i]);
+			if (!(ppEntries[i] = GetProcAddress(g_hmodDTV, g_dtvEntryPts[i])))
+				throw MyError("Cannot load DScaler driver: entry point \"%s\" is missing!", g_dtvEntryPts[i]);
 
 		// Map the registers.
 
@@ -286,16 +360,35 @@ void CaptureDisplayBT848Tweaker(HWND hwndParent) {
 
 		// Display the dialog.
 
-		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BT8X8), hwndParent, CaptureBT848TweakerDlgProc);
-
-		// Unmap the registers.
-
-		DeinitializeBT8X8();
+		g_hwndTweaker = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BT8X8), hwndParent, CaptureBT848TweakerDlgProc);
 
 	} catch(MyError e) {
 		e.post(hwndParent, g_szError);
-	}
 
-	if (hmodDTV)
-		FreeLibrary(hmodDTV);
+		DeinitializeBT8X8();
+
+		if (g_hmodDTV) {
+			FreeLibrary(g_hmodDTV);
+			g_hmodDTV = NULL;
+		}
+	}
+}
+
+void CaptureCloseBT848Tweaker() {
+	if (g_hwndTweaker) {
+		DestroyWindow(g_hwndTweaker);
+
+		DeinitializeBT8X8();
+
+		if (g_hmodDTV) {
+			FreeLibrary(g_hmodDTV);
+			g_hmodDTV = NULL;
+		}
+	}
+}
+
+void CaptureBT848Reassert() {
+	if (g_hwndTweaker) {
+		SetTimer(g_hwndTweaker, 1, 1000, NULL);
+	}
 }

@@ -173,6 +173,7 @@
 #define IDD_FILTER_TIMESMOOTH           237
 #define IDD_AUDIO_VOLUME                238
 #define IDD_HEXVIEWER_RIFFLIST          239
+#define IDD_FILTER_FIELDBOB             240
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -494,6 +495,7 @@
 #define IDC_VOLUME                      1226
 #define IDC_FILE_SIZE                   1226
 #define IDC_BALANCE                     1227
+#define IDC_AUDIO_CORRECTIONS           1227
 #define IDC_STATIC_VOLUME               1228
 #define IDC_STATIC_BALANCE              1229
 #define IDC_TABS                        1230
@@ -641,14 +643,26 @@
 #define IDC_TREE                        1375
 #define IDC_LUMAPEAKODD                 1376
 #define IDC_SLIDER_LUMAPEAKODD          1377
+#define IDC_WHITE_POINT                 1378
 #define IDC_SLIDER_VDELAY               1379
+#define IDC_EVEN_NONE                   1379
 #define IDC_SLIDER_RIGHT                1380
+#define IDC_EVEN_SMOOTH                 1380
 #define IDC_SLIDER_LEFT                 1381
+#define IDC_EVEN_HALFUP                 1381
 #define IDC_SLIDER_AGCDELAY             1382
+#define IDC_EVEN_HALFDOWN               1382
 #define IDC_SLIDER_BURSTDELAY           1383
+#define IDC_ODD_NONE                    1383
+#define IDC_SLIDER_WHITEDOWN            1384
+#define IDC_ODD_SMOOTH                  1384
+#define IDC_SLIDER_WHITEUP              1385
+#define IDC_ODD_HALFUP                  1385
+#define IDC_ODD_HALFDOWN                1386
 #define IDC_PRECISION_NOCHANGE          1400
 #define IDC_PRECISION_8BIT              1401
 #define IDC_PRECISION_16BIT             1402
+#define IDC_REASSERT                    1403
 #define IDS_OPTIONS_PERFORMANCE         1408
 #define IDS_OPTIONS_DYNAMICCOMPILATION  1409
 #define IDS_OPTIONS_DISPLAYINPUTVIDEO   1410
@@ -893,6 +907,11 @@
 #define ID_VIDEO_SEEK_PREVONESEC        40238
 #define ID_VIDEO_SEEK_NEXTONESEC        40239
 #define ID_EDIT_RIFFTREE                40240
+#define ID_CAPTURE_ENABLEHWACCEL        40241
+#define ID_CAPTURE_HWACCEL_NONE         40242
+#define ID_CAPTURE_HWACCEL_TOP          40243
+#define ID_CAPTURE_HWACCEL_BOTTOM       40244
+#define ID_CAPTURE_HWACCEL_BOTH         40245
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -934,9 +953,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        240
-#define _APS_NEXT_COMMAND_VALUE         40241
-#define _APS_NEXT_CONTROL_VALUE         1376
+#define _APS_NEXT_RESOURCE_VALUE        241
+#define _APS_NEXT_COMMAND_VALUE         40246
+#define _APS_NEXT_CONTROL_VALUE         1380
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

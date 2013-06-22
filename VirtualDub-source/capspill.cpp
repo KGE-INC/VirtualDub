@@ -283,7 +283,7 @@ BOOL CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lPa
 					return TRUE;
 				}
 				lMax = GetDlgItemInt(hdlg, IDC_MAX_SIZE, &fOk, FALSE);
-				if (!fOk || lMax < 50 && lMax > 2048) {
+				if (!fOk || lMax < 50 || lMax > 2048) {
 					SetFocus(GetDlgItem(hdlg, IDC_MAX_SIZE));
 					MessageBox(hdlg, "Maximum size must be between 50 and 2048 megabytes.", g_szError, MB_OK);
 					return TRUE;

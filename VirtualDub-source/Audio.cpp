@@ -103,8 +103,8 @@ static void convert_audio_mono16_to_stereo16(void *dest, void *src, long count) 
 	unsigned long *d = (unsigned long *)dest, c;
 
 	do {
-		c = *s++;
-		*d++ = (unsigned short)(c | (c<<16));
+		c = 0xffff & *s++;
+		*d++ = (c | (c<<16));
 	} while(--count);
 }
 

@@ -53,8 +53,11 @@ public:
 		kPoint			= 0,
 		kLinearInterp	= 1,
 		kCubicInterp	= 2,
+		kCubicInterp060	= 7,
 		kLinearDecimate	= 3,
-		kCubicDecimate	= 4,
+		kCubicDecimate075	= 4,
+		kCubicDecimate060	= 5,
+		kCubicDecimate100	= 6,
 	};
 
 	Resampler();
@@ -78,7 +81,7 @@ protected:
 	
 	void _DoRow(Pixel32 *dstp, const Pixel32 *srcp, long srcw);
 	static int *_CreateLinearDecimateTable(double dx, double sx, int& filtwidth);
-	static int *_CreateCubicDecimateTable(double dx, double sx, int& filtwidth);
+	static int *_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, double A);
 };
 
 #endif

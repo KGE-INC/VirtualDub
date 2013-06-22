@@ -280,6 +280,7 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 	this->fccForceVideoHandler = fccForceVideoHandler;
 	hbmLame = NULL;
 	fUseGDI = false;
+	bDirectDecompress = false;
 
 	// striping...
 
@@ -537,6 +538,7 @@ void VideoSourceAVI::_construct() {
 		case '34PM':		// Microsoft MPEG-4 V3
 		case '3VID':		// "DivX Low-Motion" (4.10.0.3917)
 		case '4VID':		// "DivX Fast-Motion" (4.10.0.3920)
+		case '5VID':		// unknown
 		case '14PA':		// "AngelPotion Definitive" (4.0.00.3688)
 			if (AttemptCodecNegotiation(bmih, is_mjpeg)) return;
 			bmih->biCompression = '34PM';
@@ -1162,6 +1164,8 @@ LONG VideoSourceAVI::nextKey(LONG lSample) {
 }
 
 bool VideoSourceAVI::setDecompressedFormat(int depth) {
+	bDirectDecompress = false;
+
 	VideoSource::setDecompressedFormat(depth);
 
 	if (fUseGDI) {
@@ -1200,10 +1204,28 @@ bool VideoSourceAVI::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
 	if (mdec)
 		return false;
 
+	if (pbih->biCompression == getImageFormat()->biCompression) {
+		const BITMAPINFOHEADER *pbihSrc = getImageFormat();
+		if (pbih->biBitCount == pbihSrc->biBitCount
+			&& pbih->biSizeImage == pbihSrc->biSizeImage
+			&& pbih->biWidth == pbihSrc->biWidth
+			&& pbih->biHeight == pbihSrc->biHeight
+			&& pbih->biPlanes == pbihSrc->biPlanes) {
+
+			memcpy(bmihDecompressedFormat, pbih, sizeof(BITMAPINFOHEADER));
+
+			bDirectDecompress = true;
+
+			invalidateFrameBuffer();
+			return true;
+		}
+	}
+
 	if (hicDecomp && ICERR_OK == ICDecompressQuery(hicDecomp, getImageFormat(), pbih)) {
 		memcpy(bmihDecompressedFormat, pbih, sizeof(BITMAPINFOHEADER));
 
 		invalidateFrameBuffer();
+		bDirectDecompress = false;
 		return true;
 	}
 
@@ -1308,7 +1330,12 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 
 	if (!data_len) return getFrameBuffer();
 
-	if (fUseGDI) {
+	if (bDirectDecompress) {
+		if (data_len < getImageFormat()->biSizeImage)
+			throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, data_len);
+		
+		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
+	} else if (fUseGDI) {
 		if (!hbmLame)
 			throw MyError("Insufficient GDI resources to convert frame.");
 
@@ -1316,7 +1343,7 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 			DIB_RGB_COLORS);
 		GdiFlush();
 
-	} else if (hicDecomp) {
+	} else if (hicDecomp && !bDirectDecompress) {
 		// Asus ASV1 crashes with zero byte frames!!!
 
 		if (data_len) {
@@ -1415,16 +1442,18 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 	if (lLastFrame == lFrameDesired)
 		return getFrameBuffer();
 
+	// 
+
+	// back us off to the last key frame if we need to
+
+	lFrameNum = lFrameKey = nearestKey(lFrameDesired);
+
+	_RPT1(0,"Nearest key frame: %ld\n", lFrameKey);
+
+	if (lLastFrame > lFrameKey && lLastFrame < lFrameDesired)
+		lFrameNum = lLastFrame+1;
+
 	if (hicDecomp) {
-
-		// back us off to the last key frame if we need to
-
-		lFrameNum = lFrameKey = nearestKey(lFrameDesired);
-
-		_RPT1(0,"Nearest key frame: %ld\n", lFrameKey);
-
-		if (lLastFrame > lFrameKey && lLastFrame < lFrameDesired)
-			lFrameNum = lLastFrame+1;
 
 		// tell VCM we're going to do a little decompression...
 
@@ -1432,8 +1461,6 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 			err = ICDecompressBegin(hicDecomp, getImageFormat(), getDecompressedFormat());
 			if (err != ICERR_OK) throw MyICError("VideoSourceAVI", err);
 		}
-	} else {
-		lFrameNum = lFrameDesired;
 	}
 
 	_RPT2(0,"VideoSourceAVI: obtaining frame %ld, last was %ld\n", lFrameDesired, lLastFrame);
@@ -1475,7 +1502,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 			if (fUseGDI)
 				streamGetFrame(dataBuffer, lBytesRead, TRUE, FALSE, lFrameNum);
-			else if (hicDecomp) {
+			else if (hicDecomp && !bDirectDecompress) {
 				bmihTemp->biSizeImage = lBytesRead;
 
 				if (lBytesRead) {
@@ -1502,12 +1529,15 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 				} catch(char *s) {
 					throw MyError(s);
 				}
-         } else {
-            if (lBytesRead < getImageFormat()->biSizeImage)
-               throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, lBytesRead);
+			} else {
+				if (lBytesRead < getImageFormat()->biSizeImage)
+					throw MyError("VideoSourceAVI: uncompressed frame is short (expected %d bytes, got %d)", getImageFormat()->biSizeImage, lBytesRead);
 
-            DIBconvert(dataBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
-         }
+				if (!bDirectDecompress)
+					DIBconvert(dataBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
+				else
+					memcpy(getFrameBuffer(), dataBuffer, getDecompressedFormat()->biSizeImage);
+			}
 //			} else memcpy(getFrameBuffer(), dataBuffer, getDecompressedFormat()->biSizeImage);
 
 		} while(++lFrameNum <= lFrameDesired);

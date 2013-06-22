@@ -158,6 +158,7 @@ public:
 	long	usPerFrameIn;
 	long	usPerFrameNoTelecine;
 	long	processed;
+	int		nLag;
 	bool	fAudioOnly;
 };
 
