@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <crtdbg.h>
 #include <stdio.h>
 
@@ -568,7 +570,7 @@ static void func_VDVideo_SetCompData(IScriptInterpreter *isi, CScriptObject *, C
 
 	l = arglist[0].asInt();
 
-	if (!(mem = malloc(l)))
+	if (!(mem = allocmem(l)))
 		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
 
 	_CrtCheckMemory();
@@ -577,7 +579,7 @@ static void func_VDVideo_SetCompData(IScriptInterpreter *isi, CScriptObject *, C
 
 	ICSetState(g_Vcompression.hic, mem, l);
 
-	free(mem);
+	freemem(mem);
 }
 
 static void func_VDVideo_EnableIndeoQC(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
@@ -722,7 +724,7 @@ static void func_VDAudio_SetSource(IScriptInterpreter *, CScriptObject *, CScrip
 }
 
 static void func_VDAudio_SetCompressionPCM(IScriptInterpreter *isi, void *, CScriptValue *arglist, int arg_count) {
-	PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)malloc(sizeof(PCMWAVEFORMAT));
+	PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)allocmem(sizeof(PCMWAVEFORMAT));
 
 	if (!pwf) EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
 
@@ -733,7 +735,7 @@ static void func_VDAudio_SetCompressionPCM(IScriptInterpreter *isi, void *, CScr
 	pwf->wf.nBlockAlign		= (pwf->wBitsPerSample/8) * pwf->wf.nChannels;
 	pwf->wf.nAvgBytesPerSec	= pwf->wf.nSamplesPerSec * pwf->wf.nBlockAlign;
 	g_ACompressionFormatSize = sizeof(PCMWAVEFORMAT);
-	free(g_ACompressionFormat);
+	freemem(g_ACompressionFormat);
 	g_ACompressionFormat = (WAVEFORMATEX *)pwf;
 }
 
@@ -746,7 +748,7 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 	long ex_data=0;
 
 	if (!arg_count) {
-		free(g_ACompressionFormat);
+		freemem(g_ACompressionFormat);
 		g_ACompressionFormat = NULL;
 		return;
 	}
@@ -754,7 +756,7 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 	if (arg_count > 6)
 		ex_data = arglist[6].asInt();
 
-	if (!(wfex = (WAVEFORMATEX *)malloc(sizeof(WAVEFORMATEX) + ex_data)))
+	if (!(wfex = (WAVEFORMATEX *)allocmem(sizeof(WAVEFORMATEX) + ex_data)))
 		EXT_SCRIPT_ERROR(OUT_OF_MEMORY);
 
 	wfex->wFormatTag		= arglist[0].asInt();
@@ -769,7 +771,7 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 		long l = ((strlen(*arglist[7].asString())+3)/4)*3;
 
 		if (ex_data > l) {
-			free(wfex);
+			freemem(wfex);
 			return;
 		}
 
@@ -779,7 +781,7 @@ static void func_VDAudio_SetCompression(IScriptInterpreter *isi, void *, CScript
 	_CrtCheckMemory();
 
 	if (g_ACompressionFormat)
-		free(g_ACompressionFormat);
+		freemem(g_ACompressionFormat);
 
 	g_ACompressionFormat = wfex;
 

@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <stdarg.h>
 #include <malloc.h>
 #include <crtdbg.h>
@@ -135,7 +137,7 @@ FilterInstance::FilterInstance(FilterDefinition *fd)
 	fNoDeinit = false;
 
 	if (filter->inst_data_size) {
-		if (!(filter_data = malloc(filter->inst_data_size)))
+		if (!(filter_data = allocmem(filter->inst_data_size)))
 			throw MyMemoryError();
 
 		memset(filter_data, 0, filter->inst_data_size);
@@ -146,7 +148,7 @@ FilterInstance::FilterInstance(FilterDefinition *fd)
 					if (filter->deinitProc)
 						filter->deinitProc(this, &g_filterFuncs);
 
-					free(filter_data);
+					freemem(filter_data);
 					throw MyError("Filter failed to initialize.");
 				}
 			} catch(MyError e) {
@@ -161,7 +163,7 @@ FilterInstance::~FilterInstance() {
 		if (filter->deinitProc)
 			filter->deinitProc(this, &g_filterFuncs);
 
-	free(filter_data);
+	freemem(filter_data);
 }
 
 FilterInstance *FilterInstance::Clone() {
@@ -170,7 +172,7 @@ FilterInstance *FilterInstance::Clone() {
 	if (!fi) throw MyMemoryError();
 
 	if (fi->filter_data) {
-		fi->filter_data = malloc(fi->filter->inst_data_size);
+		fi->filter_data = allocmem(fi->filter->inst_data_size);
 
 		if (!fi->filter_data)
 			throw MyMemoryError();

@@ -202,6 +202,22 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 				if (!inputVideoAVI->setDecompressedFormat(16))
 					inputVideoAVI->setDecompressedFormat(8);
 
+		// How many items did we get?
+
+		{
+			InputFilenameNode *pnode = inputAVI->listFiles.AtHead();
+			InputFilenameNode *pnode_next;
+			int nFiles = 0;
+
+			while(pnode_next = pnode->NextFromHead()) {
+				++nFiles;
+				pnode = pnode_next;
+			}
+
+			if (nFiles > 1)
+				guiSetStatus("Autoloaded %d segments (last was \"%s\")", 255, nFiles, pnode->NextFromTail()->name);
+		}
+
 //		SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputAVI->videoSrc->lSampleFirst);
 //		SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputAVI->videoSrc->lSampleLast);
 		RemakePositionSlider();

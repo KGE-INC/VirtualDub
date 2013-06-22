@@ -308,7 +308,7 @@ bool AVIReadCache::WriteBegin(__int64 pos, long len) {
 		return false;
 
 	while(lines+needed > lines_max) {
-		int siz = (buffer[read_tail][1]+15)/16 + 1;
+		int siz = (int)((buffer[read_tail][1]+15)/16 + 1);
 		read_tail += siz;
 		lines -= siz;
 		if (read_tail >= lines_max)
@@ -360,8 +360,9 @@ void AVIReadCache::Write(void *src, long len) {
 }
 
 void AVIReadCache::WriteEnd() {
-	lines += 1 + (buffer[write_hdr][1]+15)/16;
-	write_tail = write_hdr + 1 + (buffer[write_hdr][1]+15)/16;
+	long cnt = (long)(1 + (buffer[write_hdr][1]+15)/16);
+	lines += cnt;
+	write_tail = write_hdr + cnt;
 
 	if (write_tail >= lines_max)
 		write_tail -= lines_max;
@@ -402,28 +403,28 @@ long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
 					cache_hit_bytes >>= 1;
 				}
 
-				if (len > buffer[ptr][1]*16 - offset)
-					len = buffer[ptr][1]*16 - offset;
+				if (len > (long)(buffer[ptr][1]*16 - offset))
+					len = (long)(buffer[ptr][1]*16 - offset);
 
-				ptr += 1+(offset>>4);
+				ptr += 1+((long)offset>>4);
 				if (ptr >= lines_max)
 					ptr -= lines_max;
 
-				end = ptr + ((len+(offset&15)+15)>>4);
+				end = ptr + ((len+((long)offset&15)+15)>>4);
 
 				if (end > lines_max) {
-					long tc = (lines_max - ptr)*16 - (offset&15);
-					memcpy(dest, (char *)&buffer[ptr][0] + (offset&15), tc);
+					long tc = (lines_max - ptr)*16 - ((long)offset&15);
+					memcpy(dest, (char *)&buffer[ptr][0] + ((long)offset&15), tc);
 					memcpy((char *)dest + tc, (char *)&buffer[0][0], len-tc);
 				} else {
-					memcpy(dest, (char *)&buffer[ptr][0] + (offset&15), len);
+					memcpy(dest, (char *)&buffer[ptr][0] + ((long)offset&15), len);
 				}
 
 				return len;
 			}
 
 //		_RPT4(0,"[x] line %8d: pos %16I64d, len %ld bytes (%ld lines)\n", ptr, buffer[ptr][0], (long)buffer[ptr][1], (long)(buffer[ptr][1]+15)/16);
-			ptr += 1+(buffer[ptr][1] + 15)/16;
+			ptr += (long)(1+(buffer[ptr][1] + 15)/16);
 
 			if (ptr >= lines_max)
 				ptr -= lines_max;
@@ -774,10 +775,10 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 		// Client too lazy to specify a size?
 
 		if (lSamples == AVISTREAMREAD_CONVENIENT) {
-			lSamples = ((avie2->size & 0x7FFFFFFF) - byte_off) / sampsize;
+			lSamples = ((avie2->size & 0x7FFFFFFF) - (long)byte_off) / sampsize;
 
 			if (!lSamples && avie2+1 < avie2_limit)
-				lSamples = ((avie2[0].size & 0x7FFFFFFF) + (avie2[1].size & 0x7FFFFFFF) - byte_off) / sampsize;
+				lSamples = ((avie2[0].size & 0x7FFFFFFF) + (avie2[1].size & 0x7FFFFFFF) - (long)byte_off) / sampsize;
 
 			if (lSamples < 0)
 				lSamples = 1;
@@ -811,7 +812,7 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 						__int64 streamptr = parent->getStreamPtr();
 						__int64 fptrdiff = streamptr - avie2->pos;
 
-						if (!parent->isStreaming() || streamptr<0 || abs(fptrdiff)<4194304) {
+						if (!parent->isStreaming() || streamptr<0 || (fptrdiff<4194304 && fptrdiff>-4194304)) {
 							if (!psnData->cache)
 								psnData->cache = new AVIReadCache(psnData->hdr.fccType == 'sdiv' ? 131072 : 16384, streamno, parent, psnData);
 							else
@@ -847,7 +848,7 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 			while(bytecnt > 0) {
 				long tc;
 
-				tc = (avie2->size & 0x7FFFFFFF) - byte_off;
+				tc = (avie2->size & 0x7FFFFFFF) - (long)byte_off;
 				if (tc > bytecnt)
 					tc = (long)bytecnt;
 
@@ -880,10 +881,10 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 
 			actual_bytes -= actual_bytes % sampsize;
 
-			if (plBytes) *plBytes = actual_bytes;
-			if (plSamples) *plSamples = actual_bytes / sampsize;
+			if (plBytes) *plBytes = (long)actual_bytes;
+			if (plSamples) *plSamples = (long)actual_bytes / sampsize;
 
-			lStreamTrackValue = lStart + actual_bytes / sampsize;
+			lStreamTrackValue = lStart + (long)actual_bytes / sampsize;
 
 		} else {
 			if (plBytes) *plBytes = (long)bytecnt;
@@ -911,7 +912,7 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 						__int64 streamptr = parent->getStreamPtr();
 						__int64 fptrdiff = streamptr - avie2->pos;
 
-						if (!parent->isStreaming() || streamptr<0 || abs(fptrdiff)<4194304) {
+						if (!parent->isStreaming() || streamptr<0 || (fptrdiff<4194304 && fptrdiff>-4194304)) {
 							if (!psnData->cache)
 								psnData->cache = new AVIReadCache(psnData->hdr.fccType == 'sdiv' ? 131072 : 16384, streamno, parent, psnData);
 							else
@@ -1194,7 +1195,7 @@ bool AVIReadHandler::AppendFile(const char *pszFile) {
 		pasn_old = listStreams.AtHead();
 		pasn_new = newstreams.AtHead();
 
-		while((bool)(pasn_old_next = pasn_old->NextFromHead()) & (bool)(pasn_new_next = pasn_new->NextFromHead())) {
+		while(!!(pasn_old_next = pasn_old->NextFromHead()) & !!(pasn_new_next = pasn_new->NextFromHead())) {
 			const char *szPrefix;
 
 			switch(pasn_old->hdr.fccType) {
@@ -1540,7 +1541,7 @@ terminate_scan:
 			pasn->hdr.dwSampleSize=0;
 
 		if (pasn->hdr.dwSampleSize)
-			pasn->length = pasn->bytes / pasn->hdr.dwSampleSize;
+			pasn->length = (long)pasn->bytes / pasn->hdr.dwSampleSize;
 		else
 			pasn->length = pasn->frames;
 

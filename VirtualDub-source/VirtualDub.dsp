@@ -416,6 +416,10 @@ SOURCE=.\list.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\memcheck.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\MonoBitmap.cpp
 # End Source File
 # Begin Source File
@@ -1178,6 +1182,10 @@ SOURCE=.\f_averag.cpp
 # Begin Source File
 
 SOURCE=.\F_blur.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\f_boxblur.cpp
 # End Source File
 # Begin Source File
 

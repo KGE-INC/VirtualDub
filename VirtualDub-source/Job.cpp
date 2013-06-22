@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <stdio.h>
 #include <crtdbg.h>
 
@@ -58,11 +60,11 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 ///////////////////////////////////////////////////////////////////////////
 
 static char *strCify(const char *s) {
-	static char buf[512];
+	static char buf[2048];
 	char c,*t = buf;
 
 	while(c=*s++) {
-		if (isprint((unsigned char)c))
+		if (!isprint((unsigned char)c))
 			t += sprintf(t, "\\x%02x", (int)c & 0xff);
 		else {
 			if (c=='"' || c=='\\')
@@ -114,7 +116,7 @@ void JobScriptOutput::clear() {
 	JobScriptOutputBlock *jsob;
 
 	while(jsob = (JobScriptOutputBlock *)listScript.RemoveHead())
-		delete jsob;
+		freemem(jsob);
 
 	total = 0;
 	this->jsob = NULL;
@@ -134,7 +136,7 @@ void JobScriptOutput::write(const char *s, long l) {
 			jsob->ptr += to_copy;
 			l -= to_copy;
 		} else {
-			jsob = (JobScriptOutputBlock *)malloc(16384);
+			jsob = (JobScriptOutputBlock *)allocmem(16384);
 
 			if (!jsob) throw MyMemoryError();
 
@@ -154,7 +156,7 @@ void JobScriptOutput::adds(const char *s) {
 }
 
 void JobScriptOutput::addf(const char *fmt, ...) {
-	char buf[512];
+	char buf[2048];
 	va_list val;
 	long l;
 
@@ -168,7 +170,7 @@ void JobScriptOutput::addf(const char *fmt, ...) {
 }
 
 char *JobScriptOutput::getscript() {
-	char *mem = (char *)malloc(total+1), *t=mem;
+	char *mem = (char *)allocmem(total+1), *t=mem;
 	JobScriptOutputBlock *jsobptr;
 	if (!mem) throw MyMemoryError();
 
@@ -444,7 +446,7 @@ static void strgetarg(char *buf, long bufsiz, const char *s) {
 void VDJob::ListLoad(char *lpszName) {
 	FILE *f = NULL;
 	char szName[MAX_PATH], szVDPath[MAX_PATH], *lpFilePart;
-	char linebuf[1024];
+	char linebuf[2048];
 	VDJob *job = NULL;
 
 	// Try to create VirtualDub.jobs in the same directory as VirtualDub.
@@ -1374,7 +1376,7 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 
 void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 	char *mem= NULL;
-	char buf[1024];
+	char buf[2048];
 	long l;
 
 	switch(audioInputMode) {
@@ -1410,7 +1412,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 	if (g_ACompressionFormat) {
 		if (g_ACompressionFormat->cbSize) {
-			mem = (char *)malloc(((g_ACompressionFormat->cbSize+2)/3)*4 + 1);
+			mem = (char *)allocmem(((g_ACompressionFormat->cbSize+2)/3)*4 + 1);
 			if (!mem) throw MyMemoryError();
 
 			membase64(mem, (char *)(g_ACompressionFormat+1), g_ACompressionFormat->cbSize);
@@ -1425,7 +1427,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 						,mem
 						);
 
-			free(mem);
+			freemem(mem);
 		} else
 			output.addf("VirtualDub.audio.SetCompression(%d,%d,%d,%d,%d,%d);"
 						,g_ACompressionFormat->wFormatTag
@@ -1469,11 +1471,11 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 		l = ICGetStateSize(g_Vcompression.hic);
 
 		if (l>0) {
-			mem = (char *)malloc(l + ((l+2)/3)*4 + 1);
+			mem = (char *)allocmem(l + ((l+2)/3)*4 + 1);
 			if (!mem) throw MyMemoryError();
 
 			if (ICGetState(g_Vcompression.hic, mem, l)<0) {
-				free(mem);
+				freemem(mem);
 //				throw MyError("Bad state data returned from compressor");
 
 				// Fine then, be that way.  Stupid Pinnacle DV200 driver.
@@ -1482,7 +1484,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 			if (mem) {
 				membase64(mem+l, mem, l);
 				output.addf("VirtualDub.video.SetCompData(%d,\"%s\");", l, mem+l);
-				free(mem);
+				freemem(mem);
 			}
 		}
 
@@ -1585,7 +1587,7 @@ void JobAddConfiguration(const DubOptions *opt, const char *szFileInput, int iFi
 		vdj->script = output.getscript();
 		vdj->Add();
 	} catch(...) {
-		free(vdj);
+		freemem(vdj);
 		throw;
 	}
 }
@@ -1599,11 +1601,11 @@ void JobWriteConfiguration(FILE *f, DubOptions *opt) {
 	scr = output.getscript();
 
 	if (fputs(scr, f)<0 || fflush(f)) {
-		free(scr);
+		freemem(scr);
 		throw MyError("Can't write configuration: %s.", strerror(errno));
 	}
 
-	free(scr);
+	freemem(scr);
 }
 
 ///////////////////////////////////////////////////////////////////////////

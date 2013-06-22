@@ -659,7 +659,7 @@ static void CaptureShowParms(HWND hWnd) {
 		SendMessage(hWndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)buf);
 
 		if (fsize = capGetVideoFormatSize(hWndCapture)) {
-			if (bih = (BITMAPINFOHEADER *)malloc(fsize)) {
+			if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
 				if (capGetVideoFormat(hWndCapture, bih, fsize)) {
 					DWORD size = bih->biSizeImage;
 
@@ -671,14 +671,14 @@ static void CaptureShowParms(HWND hWnd) {
 									1000000,
 									cp.dwRequestMicroSecPerFrame);
 				}
-				free(bih);
+				freemem(bih);
 			}
 		}
 	}
 
 	strcpy(buf,"(unknown)");
 	if (fsize = capGetAudioFormatSize(hWndCapture)) {
-		if (wf = (WAVEFORMATEX *)malloc(fsize)) {
+		if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
 			if (capGetAudioFormat(hWndCapture, wf, fsize)) {
 				if (wf->wFormatTag != WAVE_FORMAT_PCM) {
 					wsprintf(buf, "%d.%03dKHz", wf->nSamplesPerSec/1000, wf->nSamplesPerSec%1000);
@@ -690,7 +690,7 @@ static void CaptureShowParms(HWND hWnd) {
 
 				bandwidth += 8 + wf->nAvgBytesPerSec;
 			}
-			free(wf);
+			freemem(wf);
 		}
 	}
 
@@ -834,7 +834,7 @@ static void CaptureChooseAudioCompression(HWND hWnd, HWND hWndCapture) {
 
 	if (dwFormatSize2 > dwFormatSize1) dwFormatSize1 = dwFormatSize2;
 
-	if (!(wf = (WAVEFORMATEX *)malloc(dwFormatSize1)))
+	if (!(wf = (WAVEFORMATEX *)allocmem(dwFormatSize1)))
 		return;
 
 	memset(&afc, 0, sizeof afc);
@@ -856,7 +856,7 @@ static void CaptureChooseAudioCompression(HWND hWnd, HWND hWndCapture) {
 		capSetAudioFormat(hWndCapture, wf, sizeof(WAVEFORMATEX) + wf->cbSize);
 	}
 
-	free(wf);
+	freemem(wf);
 }
 
 static void CaptureInitMenu(HWND hWnd, HMENU hMenu) {
@@ -1783,7 +1783,7 @@ void Capture(HWND hWnd) {
 				dwSizeAlloc = dwSize;
 				if (dwSize < sizeof(CAPTUREPARMS)) dwSize = sizeof(CAPTUREPARMS);
 
-				if (cp = (CAPTUREPARMS *)malloc(dwSizeAlloc)) {
+				if (cp = (CAPTUREPARMS *)allocmem(dwSizeAlloc)) {
 					memset(cp, 0, dwSizeAlloc);
 
 					if (QueryConfigBinary(g_szCapture, g_szCapSettings, (char *)cp, dwSize)) {
@@ -1793,7 +1793,7 @@ void Capture(HWND hWnd) {
 						capCaptureSetSetup(hWndCapture, cp, dwSize);
 					}
 
-					free(cp);
+					freemem(cp);
 				}
 			}
 		}
@@ -1805,11 +1805,11 @@ void Capture(HWND hWnd) {
 			DWORD dwSize;
 
 			if (dwSize = QueryConfigBinary(g_szCapture, g_szVideoFormat, NULL, 0)) {
-				if (bih = (BITMAPINFOHEADER *)malloc(dwSize)) {
+				if (bih = (BITMAPINFOHEADER *)allocmem(dwSize)) {
 					if (QueryConfigBinary(g_szCapture, g_szVideoFormat, (char *)bih, dwSize))
 						capSetVideoFormat(hWndCapture, bih, dwSize);
 
-					free(bih);
+					freemem(bih);
 				}
 			}
 		}
@@ -1821,11 +1821,11 @@ void Capture(HWND hWnd) {
 			DWORD dwSize;
 
 			if (dwSize = QueryConfigBinary(g_szCapture, g_szAudioFormat, NULL, 0)) {
-				if (wfex = (WAVEFORMATEX *)malloc(dwSize)) {
+				if (wfex = (WAVEFORMATEX *)allocmem(dwSize)) {
 					if (QueryConfigBinary(g_szCapture, g_szAudioFormat, (char *)wfex, dwSize))
 						capSetAudioFormat(hWndCapture, wfex, dwSize);
 
-					free(wfex);
+					freemem(wfex);
 				}
 			}
 		}
@@ -1837,13 +1837,13 @@ void Capture(HWND hWnd) {
 			DWORD dwSize;
 
 			if (dwSize = QueryConfigBinary(g_szCapture, g_szStopConditions, NULL, 0)) {
-				if (mem = (WAVEFORMATEX *)malloc(dwSize)) {
+				if (mem = (WAVEFORMATEX *)allocmem(dwSize)) {
 					if (QueryConfigBinary(g_szCapture, g_szStopConditions, (char *)mem, dwSize)) {
 						memset(&g_stopPrefs, 0, sizeof g_stopPrefs);
 						memcpy(&g_stopPrefs, mem, min(sizeof g_stopPrefs, dwSize));
 					}
 
-					free(mem);
+					freemem(mem);
 				}
 			}
 		}
@@ -1975,7 +1975,7 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 
 		case WM_INITDIALOG:
 			{
-				char *pb = (char *)malloc(MAX_PATH*2);
+				char *pb = (char *)allocmem(MAX_PATH*2);
 
 				if (!pb) return FALSE;
 
@@ -2000,7 +2000,7 @@ static BOOL APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, UINT wPara
 
 				}
 
-				free(pb);
+				freemem(pb);
 
 				SetFocus(GetDlgItem(hDlg, IDC_DISK_SPACE_ALLOCATE));
 			}	
@@ -2317,6 +2317,7 @@ static struct CapClipFormats {
 	{ BI_RGB,	24,	4, 12, true },
 	{ BI_RGB,	32,	1, 4, true },
 	{ '2YUY',	16,	2, 4, false },
+	{ 'YUYV',	16, 2, 4, false },			// VYUY: ATi All-in-Blunder clone of YUY2
 	{ 'YVYU',	16, 2, 4, false },
 	{ 'UYVY',	16, 2, 4, false },
 	{ 'P14Y',	12, 8, 12, false }, 
@@ -2387,7 +2388,10 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 			if (bihInput->biCompression == '2YUY' && bihInput->biBitCount == 16)
 				break;
 
-			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2).");
+			if (bihInput->biCompression == 'YUYV' && bihInput->biBitCount == 16)
+				break;
+
+			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2/VYUY).");
 
 		} while(false);
 
@@ -2401,15 +2405,15 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 
 		// We can swap all RGB formats and some YUV ones.
 
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
-			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, and YUYV formats.");
+		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY' && bihInput->biCompression!='YUYV')
+			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, YUYV, VYUY formats.");
 	}
 
 	icd->bihFiltered	= icd->bihClipFormat;
 
 	if (g_iVertSquash) {
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
-			throw MyError("2:1 vertical reduction is only supported for RGB, YUY2, UYVY, and YUYV formats.");
+		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YUYV' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
+			throw MyError("2:1 vertical reduction is only supported for RGB, YUY2, VYUY, UYVY, and YUYV formats.");
 
 		// Allocate temporary row buffer in bicubic mode.
 
@@ -2425,8 +2429,8 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 
 	if (g_fEnableRGBFiltering) {
 
-		if (icd->bihFiltered.biCompression != BI_RGB && (!fPermitSizeAlteration || icd->bihFiltered.biCompression != '2YUY'))
-			throw MyError("%sThe capture video format is not an uncompressed RGB format.", g_szCannotFilter);
+		if (icd->bihFiltered.biCompression != BI_RGB && (!fPermitSizeAlteration || (icd->bihFiltered.biCompression != '2YUY' && icd->bihFiltered.biCompression != 'YUYV')))
+			throw MyError("%sThe capture video format must be RGB, YUY2, or VYUY.", g_szCannotFilter);
 
 		if (fPermitSizeAlteration)
 			icd->bihFiltered2.biBitCount		= 24;
@@ -2482,9 +2486,8 @@ static const __int64 three = 0x0003000300030003i64;
 		mov		ecx,[esp+16+16]
 		mov		ebx,[esp+20+16]
 		mov		eax,[esp+24+16]
-		pxor	mm7,mm7
-		movq	mm6,[esp+32+16]
-		movq	mm5,[esp+24+16]
+		movq	mm6,[esp+36+16]
+		movq	mm5,[esp+28+16]
 
 yloop:
 		mov		ebp,edx
@@ -2614,6 +2617,9 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		__int64 thresh1 = 0x0001000100010001i64*((g_iNoiseReduceThreshold>>1)+1);
 		__int64 thresh2 = 0x0001000100010001i64*(g_iNoiseReduceThreshold);
 
+		if (!g_iNoiseReduceThreshold)
+			thresh1 = thresh2;
+
 		dodnrMMX((Pixel32 *)lpVHdr->lpData,
 			(Pixel32 *)icd->pNoiseReductionBuffer,
 			icd->rowdwords,
@@ -2714,7 +2720,7 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		vbmSrc.modulo = vbmSrc.Modulo();
 		vbmSrc.size = bpr*vbmSrc.h;
 
-		if (icd->bihFiltered.biCompression == '2YUY')
+		if (icd->bihFiltered.biCompression == '2YUY' || icd->bihFiltered.biCompression == 'YUYV')
 			filters.InputBitmap()->BitBltFromYUY2(0, 0, &vbmSrc, 0, 0, -1, -1);
 		else
 			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
@@ -2933,7 +2939,7 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 		wfSize = capGetAudioFormatSize(hWndCapture);
 
-		if (!(wfTemp = wf = (WAVEFORMAT *)malloc(wfSize))) throw MyMemoryError();
+		if (!(wfTemp = wf = (WAVEFORMAT *)allocmem(wfSize))) throw MyMemoryError();
 
 		if (!capGetAudioFormat(hWndCapture, wf, wfSize))
 			throw MyError("Couldn't get audio format");
@@ -2942,7 +2948,7 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 		biSize = capGetVideoFormatSize(hWndCapture);
 
-		if (!(bmi = bmiTemp = (BITMAPINFO *)malloc(biSize)))
+		if (!(bmi = bmiTemp = (BITMAPINFO *)allocmem(biSize)))
 			throw MyMemoryError();
 
 		if (!capGetVideoFormat(hWndCapture, bmiTemp, biSize))
@@ -2992,8 +2998,8 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 
 	CaptureDeinitFiltering(&cd);
 
-	free(bmiTemp);
-	free(wfTemp);
+	freemem(bmiTemp);
+	freemem(wfTemp);
 
 }
 
@@ -3942,7 +3948,7 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		wfSize = capGetAudioFormatSize(hWndCapture);
 
-		if (!(wfexInput = (WAVEFORMATEX *)malloc(wfSize)))
+		if (!(wfexInput = (WAVEFORMATEX *)allocmem(wfSize)))
 			throw MyMemoryError();
 
 		if (!capGetAudioFormat(hWndCapture, wfexInput, wfSize))
@@ -3952,7 +3958,7 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		biSize = capGetVideoFormatSize(hWndCapture);
 
-		if (!(bmiInput = (BITMAPINFO *)malloc(biSize)))
+		if (!(bmiInput = (BITMAPINFO *)allocmem(biSize)))
 			throw MyMemoryError();
 
 		if (!capGetVideoFormat(hWndCapture, bmiInput, biSize))
@@ -3973,7 +3979,7 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 			if (formatSize < ICERR_OK)
 				throw MyError("Error getting compressor output format size.");
 
-			if (!(bmiOutput = (BITMAPINFO *)malloc(formatSize)))
+			if (!(bmiOutput = (BITMAPINFO *)allocmem(formatSize)))
 				throw MyMemoryError();
 
 			if (ICERR_OK != (icErr = ICCompressGetFormat(g_compression.hic, &bmiToFile->bmiHeader, bmiOutput)))
@@ -4253,9 +4259,9 @@ _RPT0(0,"Capture has stopped.\n");
 	if (icd.fatal_error_2) delete icd.fatal_error_2;
 	if (icd.hFont)
 		DeleteObject(icd.hFont);
-	free(bmiInput);
-	free(bmiOutput);
-	free(wfexInput);
+	freemem(bmiInput);
+	freemem(bmiOutput);
+	freemem(wfexInput);
 	if (icd.pvsc)
 		delete icd.pvsc;
 	delete icd.aoFile;
@@ -4297,14 +4303,14 @@ void CaptureInternalSelectCompression(HWND hwndCapture) {
 	g_compression.cbSize = sizeof(COMPVARS);
 
 	if (fsize = capGetVideoFormatSize(hwndCapture)) {
-		if (bih = (BITMAPINFOHEADER *)malloc(fsize)) {
+		if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
 			if (capGetVideoFormat(hwndCapture, bih, fsize)) {
 //				ICCompressorChoose(hwnd, ICMF_CHOOSE_DATARATE | ICMF_CHOOSE_KEYFRAME, (void *)bih, NULL, &g_compression, "Video compression (internal mode)");
 				ChooseCompressor(hwnd, &g_compression, bih);
-				free(bih);
+				freemem(bih);
 				return;
 			}
-			free(bih);
+			freemem(bih);
 		}
 	}
 	ChooseCompressor(hwnd, &g_compression, NULL);
@@ -4341,13 +4347,13 @@ static void CaptureInternalLoadFromRegistry() {
 		if (g_compression.hic) {
 			if (dwSize = QueryConfigBinary(g_szCapture, g_szCompressorData, NULL, 0)) {
 
-				if (lpData = malloc(dwSize)) {
+				if (lpData = allocmem(dwSize)) {
 					memset(lpData, 0, dwSize);
 
 					if (QueryConfigBinary(g_szCapture, g_szCompressorData, (char *)lpData, dwSize))
 						ICSetState(g_compression.hic, lpData, dwSize);
 
-					free(lpData);
+					freemem(lpData);
 				}
 			}
 		} else
@@ -4457,22 +4463,22 @@ static void CapturePreferencesDlgStore(HWND hDlg, HWND hwndCapture) {
 
 	if (IsDlgButtonChecked(hDlg, IDC_SAVE_VIDEOFORMAT)) {
 		if (fsize = capGetVideoFormatSize(hwndCapture)) {
-			if (bih = (BITMAPINFOHEADER *)malloc(fsize)) {
+			if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
 				if (capGetVideoFormat(hwndCapture, bih, fsize)) {
 					SetConfigBinary(g_szCapture, g_szVideoFormat, (char *)bih, fsize);
 				}
-				free(bih);
+				freemem(bih);
 			}
 		}
 	}
 
 	if (IsDlgButtonChecked(hDlg, IDC_SAVE_AUDIOFORMAT)) {
 		if (fsize = capGetAudioFormatSize(hwndCapture)) {
-			if (wf = (WAVEFORMATEX *)malloc(fsize)) {
+			if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
 				if (capGetAudioFormat(hwndCapture, wf, fsize)) {
 					SetConfigBinary(g_szCapture, g_szAudioFormat, (char *)wf, fsize);
 				}
-				free(wf);
+				freemem(wf);
 			}
 		}
 	}
@@ -4493,12 +4499,12 @@ static void CapturePreferencesDlgStore(HWND hDlg, HWND hwndCapture) {
 
 			if (g_compression.hic
 					&& ((dwSize = ICGetStateSize(g_compression.hic))>0)
-					&& (mem = malloc(dwSize))
+					&& (mem = allocmem(dwSize))
 					) {
 
 				ICGetState(g_compression.hic, mem, dwSize);
 				SetConfigBinary(g_szCapture, g_szCompressorData, (char *)mem, dwSize);
-				free(mem);
+				freemem(mem);
 
 			} else
 				DeleteConfigValue(g_szCapture, g_szCompressorData);
@@ -4915,14 +4921,14 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 			s_fcc = BI_RGB;
 			s_bpp = 16;
 			i = capGetVideoFormatSize(hwndCapture);
-			if (pbih = (BITMAPINFOHEADER *)malloc(i)) {
+			if (pbih = (BITMAPINFOHEADER *)allocmem(i)) {
 				if (capGetVideoFormat(hwndCapture, pbih, i)) {
 					s_fcc = pbih->biCompression;
 					w = pbih->biWidth;
 					h = pbih->biHeight;
 					s_bpp = pbih->biBitCount;
 				}
-				free(pbih);
+				freemem(pbih);
 			}
 
 			hwndItem = GetDlgItem(hdlg, IDC_FRAME_WIDTH);
@@ -5036,9 +5042,9 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 
 				if (!f) {
 					cb = capGetVideoFormatSize(hwndCapture);
-					if (pbih = (BITMAPINFOHEADER *)malloc(cb)) {
+					if (pbih = (BITMAPINFOHEADER *)allocmem(cb)) {
 						if (!capGetVideoFormat(hwndCapture, pbih, cb)) {
-							free(pbih);
+							freemem(pbih);
 							pbih = &bih;
 						}
 					} else
@@ -5061,7 +5067,7 @@ static BOOL APIENTRY CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wPa
 				capSetVideoFormat(hwndCapture, (BITMAPINFO *)pbih, cb);
 
 				if (pbih != &bih)
-					free(pbih);
+					freemem(pbih);
 
 			} while(false);
 

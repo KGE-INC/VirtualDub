@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <crtdbg.h>
@@ -576,4 +578,50 @@ void size_to_str(char *dst, __int64 i64Bytes) {
 				)
 		);
 	}
+}
+
+
+
+
+int guiListboxInsertSortedString(HWND hwnd, const char *pszStr) {
+	int idx, cnt;
+	char buf[2048];
+	char *activebuf = buf, *activebufalloc = NULL;
+	int activebuflen = sizeof buf;
+
+	cnt = SendMessage(hwnd, LB_GETCOUNT, 0, 0);
+
+	if (cnt==LB_ERR)
+		return -1;
+
+	for(idx=0; idx<cnt; idx++) {
+		int len = SendMessage(hwnd, LB_GETTEXTLEN, idx, 0);
+
+		if (len < 0) {
+			freemem(activebufalloc);
+			return -1;
+		}
+
+		if (++len > activebuflen) {
+			activebuf = (char *)reallocmem(activebufalloc, len);
+
+			if (!activebuf) {
+				freemem(activebufalloc);
+				return -1;
+			}
+
+			activebufalloc = activebuf;
+			activebuflen = len;
+		}
+
+		SendMessage(hwnd, LB_GETTEXT, idx, (LPARAM)activebuf);
+
+		if (stricmp(pszStr, activebuf) < 0)
+			break;
+	}
+
+	if (idx >= cnt)
+		idx = -1;
+
+	return SendMessage(hwnd, LB_INSERTSTRING, idx, (LPARAM)pszStr);
 }

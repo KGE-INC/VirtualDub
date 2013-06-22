@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <stdlib.h>
 
 #include <windows.h>
@@ -386,12 +387,12 @@ bool EnableCPUTracking() {
 		if ( (rc = RegQueryValueEx(hOpen,"KERNEL\\CPUUsage",NULL,&dwType,
 				NULL, &cbData )) == ERROR_SUCCESS) {
 
-			pByte = (LPBYTE)malloc(cbData);
+			pByte = (LPBYTE)allocmem(cbData);
 
 			rc = RegQueryValueEx(hOpen,"KERNEL\\CPUUsage",NULL,&dwType, pByte,
                               &cbData );
 
-			free(pByte);
+			freemem(pByte);
 		} else
 			fSuccess = false;
 
@@ -418,12 +419,12 @@ bool DisableCPUTracking() {
 		if ( (rc = RegQueryValueEx(hOpen,"KERNEL\\CPUUsage",NULL,&dwType,
 				NULL, &cbData )) == ERROR_SUCCESS) {
 
-			pByte = (LPBYTE)malloc(cbData);
+			pByte = (LPBYTE)allocmem(cbData);
 
 			rc = RegQueryValueEx(hOpen,"KERNEL\\CPUUsage",NULL,&dwType, pByte,
                               &cbData );
 
-			free(pByte);
+			freemem(pByte);
 		} else
 			fSuccess = false;
 

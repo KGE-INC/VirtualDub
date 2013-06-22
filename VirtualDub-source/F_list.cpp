@@ -34,7 +34,8 @@ extern FilterDefinition filterDef_average, filterDef_reduceby2,
 						filterDef_levels,
 						filterDef_fieldswap,
 						filterDef_blur,
-						filterDef_blurhi;
+						filterDef_blurhi,
+						filterDef_box;
 
 static FilterDefinition *builtin_filters[]={
 	&filterDef_average,
@@ -62,6 +63,7 @@ static FilterDefinition *builtin_filters[]={
 	&filterDef_fieldswap,
 	&filterDef_blur,
 	&filterDef_blurhi,
+	&filterDef_box,
 	NULL
 };
 

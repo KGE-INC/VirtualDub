@@ -1626,7 +1626,7 @@ IDD_VIDEOCOMPRESSION DIALOGEX 0, 0, 350, 172
 STYLE DS_MODALFRAME | DS_CONTEXTHELP | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Select video compression"
-FONT 8, "MS Sans Serif", 0, 0, 0x1
+FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,241,151,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,151,50,14
@@ -1843,25 +1843,27 @@ STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter: levels"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,190,144,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,243,144,50,14
-    CONTROL         "",IDC_OUTPUT_LEVELS,"birdyLevelControl",WS_TABSTOP,7,
-                    117,286,20
-    CONTROL         "",IDC_INPUT_LEVELS,"birdyLevelControl",WS_TABSTOP,7,79,
-                    286,20
     LTEXT           "Input levels",IDC_STATIC,7,64,37,12,SS_CENTERIMAGE
-    LTEXT           "Output levels",IDC_STATIC,7,102,42,12,SS_CENTERIMAGE
     EDITTEXT        IDC_INPUTLO,67,64,28,12,ES_AUTOHSCROLL | ES_NUMBER
     EDITTEXT        IDC_INPUTGAMMA,98,64,28,12,ES_AUTOHSCROLL
     EDITTEXT        IDC_INPUTHI,129,64,28,12,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "Operate in &luma instead of RGB",IDC_LUMA,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,178,65,115,10
+    CONTROL         "",IDC_INPUT_LEVELS,"birdyLevelControl",WS_TABSTOP,7,79,
+                    286,20
+    LTEXT           "Output levels",IDC_STATIC,7,102,42,12,SS_CENTERIMAGE
     EDITTEXT        IDC_OUTPUTLO,68,102,28,12,ES_AUTOHSCROLL | ES_NUMBER
     EDITTEXT        IDC_OUTPUTHI,130,102,28,12,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_OUTPUT_LEVELS,"birdyLevelControl",WS_TABSTOP,7,
+                    117,286,20
     PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,144,50,14
-    CTEXT           "Click ""Sample frame"" or ""Sample video"" to display video histogram.",
-                    IDC_HISTOGRAM,7,7,286,54,SS_CENTERIMAGE | SS_SUNKEN
     PUSHBUTTON      "Sample frame",IDC_SAMPLE,60,144,50,14,WS_DISABLED
     PUSHBUTTON      "Sample video...",IDC_SAMPLE_MULTIPLE,113,144,59,14,
                     WS_DISABLED
+    DEFPUSHBUTTON   "OK",IDOK,190,144,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,243,144,50,14
+    CTEXT           "Click ""Sample frame"" or ""Sample video"" to display video histogram.",
+                    IDC_HISTOGRAM,7,7,286,54,SS_CENTERIMAGE | SS_SUNKEN
 END
 
 IDD_FILTER_SAMPLE DIALOG DISCARDABLE  0, 0, 186, 79
@@ -1974,8 +1976,8 @@ FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,240,209,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,209,50,14
-    LISTBOX         IDC_FORMATTAG,7,7,141,193,LBS_SORT | 
-                    LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+    LISTBOX         IDC_FORMATTAG,7,7,141,193,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
     LISTBOX         IDC_FORMAT,157,7,187,113,LBS_USETABSTOPS | 
                     LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Show all formats",IDC_SHOWALL,"Button",BS_AUTOCHECKBOX | 
@@ -2057,6 +2059,34 @@ BEGIN
                     IDC_STATIC,7,7,406,19
     EDITTEXT        IDC_LICENSE,7,29,406,214,ES_MULTILINE | ES_AUTOVSCROLL | 
                     ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
+END
+
+IDD_FILTER_BOX DIALOG DISCARDABLE  0, 0, 229, 95
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Filter: box blur"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Filter &radius",IDC_STATIC,7,11,36,8
+    CONTROL         "Slider1",IDC_SLIDER_WIDTH,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_TABSTOP,57,7,115,18
+    LTEXT           "Filter &power",IDC_STATIC,7,29,36,8
+    CONTROL         "Slider1",IDC_SLIDER_POWER,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_TABSTOP,57,26,115,18
+    PUSHBUTTON      "Show preview",IDC_PREVIEW,7,74,50,14
+    DEFPUSHBUTTON   "OK",IDOK,117,74,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,172,74,50,14
+    RTEXT           "radius 1",IDC_STATIC_WIDTH,172,9,50,8
+    RTEXT           "2 (quadratic)",IDC_STATIC_POWER,172,28,50,8
+END
+
+IDD_DIVX_WARNING DIALOG DISCARDABLE  0, 0, 303, 138
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "VirtualDub warning: DivX codec detected"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,127,117,50,14
+    EDITTEXT        IDC_WARNING,7,7,289,101,ES_MULTILINE | ES_AUTOVSCROLL | 
+                    ES_READONLY | NOT WS_BORDER
 END
 
 
@@ -2749,6 +2779,23 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 264
     END
+
+    IDD_FILTER_BOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 222
+        VERTGUIDE, 57
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 88
+    END
+
+    IDD_DIVX_WARNING, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 296
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 131
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -2834,8 +2881,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,0,11617
- PRODUCTVERSION 1,4,0,11617
+ FILEVERSION 1,4,2,11759
+ PRODUCTVERSION 1,4,2,11759
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -2853,14 +2900,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub  MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4b\0"
+            VALUE "FileVersion", "1.4c\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999, 2000 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4b\0"
+            VALUE "ProductVersion", "1.4c\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -2896,14 +2943,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\n""7 o'clock news"" from Kodomo no Omocha\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4b\0"
+            VALUE "FileVersion", "1.4c\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999, 2000 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4b\0"
+            VALUE "ProductVersion", "1.4c\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -2958,17 +3005,17 @@ IDB_TOOLBAR_SETTINGS    BITMAP  DISCARDABLE     "bmp00004.bmp"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4b (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4b"
-    IDS_TITLE_IDLE          "VirtualDub 1.4b - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4b - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4b"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4c (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4c"
+    IDS_TITLE_IDLE          "VirtualDub 1.4c - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4c - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4c"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4b - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4b - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4b - Frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4b - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4b - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4c - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4c - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4c - Frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4c - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4c - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

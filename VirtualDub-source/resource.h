@@ -166,6 +166,8 @@
 #define IDD_APPEND_AVI                  231
 #define IDR_VIRUS                       231
 #define IDD_LICENSE                     232
+#define IDD_FILTER_BOX                  233
+#define IDD_DIVX_WARNING                234
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -350,6 +352,7 @@
 #define IDC_FRAMENUMBER                 1152
 #define IDC_LICENSE                     1152
 #define IDC_IVTCOFFSET                  1152
+#define IDC_WARNING                     1152
 #define IDS_VIDEO_FRAMERATE             1153
 #define IDC_DEFAULT_DRIVER              1153
 #define IDC_FILELIMIT_SETTING           1153
@@ -423,6 +426,7 @@
 #define IDC_TWEAK_TIMER                 1184
 #define IDC_SHOWALL                     1184
 #define IDC_INVPOLARITY                 1184
+#define IDC_LUMA                        1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -594,6 +598,10 @@
 #define IDC_IVTC_RECONFIELDSFIXED       1348
 #define IDC_IVTC_RECONFRAMESMANUAL      1349
 #define IDC_STATIC_IVTCOFFSET           1350
+#define IDC_SLIDER_WIDTH                1351
+#define IDC_SLIDER_POWER                1352
+#define IDC_STATIC_WIDTH                1353
+#define IDC_STATIC_POWER                1354
 #define IDC_PRECISION_NOCHANGE          1400
 #define IDC_PRECISION_8BIT              1401
 #define IDC_PRECISION_16BIT             1402
@@ -866,9 +874,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        233
+#define _APS_NEXT_RESOURCE_VALUE        235
 #define _APS_NEXT_COMMAND_VALUE         40223
-#define _APS_NEXT_CONTROL_VALUE         1351
+#define _APS_NEXT_CONTROL_VALUE         1355
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

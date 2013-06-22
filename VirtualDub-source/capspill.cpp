@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -189,7 +190,7 @@ void CapSpillRestoreFromRegistry() {
 
 				if (!pcsd || !pszPath) {
 					delete pcsd;
-					free(pszPath);
+					freemem(pszPath);
 				} else {
 					pcsd->priority = pri;
 					pcsd->threshold = thresh;
@@ -408,7 +409,7 @@ static void LVDestroyEdit(bool write, bool sort) {
 			int len = GetWindowTextLength(g_hwndEdit);
 			char *s;
 
-			if (s = (char *)malloc(len+1)) {
+			if (s = (char *)allocmem(len+1)) {
 				GetWindowText(g_hwndEdit, s, len+1);
 				g_csdPtr->setPath(s);
 			}

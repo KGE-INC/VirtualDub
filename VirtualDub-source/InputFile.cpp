@@ -53,7 +53,7 @@ InputFilenameNode::InputFilenameNode(const char *_n) : name(strdup(_n)) {
 }
 
 InputFilenameNode::~InputFilenameNode() {
-	delete (char *)name;
+	free((char *)name);
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -734,7 +734,7 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 
 					// Fill out a destination wave format (PCM).
 
-					if (pwfxTemp = (WAVEFORMATEX *)malloc(cbwfxTemp)) {
+					if (pwfxTemp = (WAVEFORMATEX *)allocmem(cbwfxTemp)) {
 						pwfxTemp->wFormatTag	= WAVE_FORMAT_PCM;
 
 						// Ask ACM to fill out the details.
@@ -757,7 +757,7 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 							}
 						}
 
-						free(pwfxTemp);
+						freemem(pwfxTemp);
 					}
 
 					if (!fSuccessful) {

@@ -65,7 +65,7 @@ ATOM RegisterLevelControl() {
 	wc.cbWndExtra	= sizeof(LevelControlData *);
 	wc.hInstance	= g_hInst;
 	wc.hIcon		= NULL;
-	wc.hCursor		= NULL;
+	wc.hCursor		= LoadCursor(NULL, IDC_ARROW);
 	wc.hbrBackground= (HBRUSH)(COLOR_3DFACE+1);	//GetStockObject(LTGRAY_BRUSH);
 	wc.lpszMenuName	= NULL;
 	wc.lpszClassName= VIDEOLEVELCONTROLCLASS;

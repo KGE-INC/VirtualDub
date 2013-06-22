@@ -125,6 +125,20 @@ void VBitmap::MakeBitmapHeader(BITMAPINFOHEADER *bih) const throw() {
 	bih->biYPelsPerMeter	= 0;
 }
 
+void VBitmap::MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const throw() {
+	bih->biSize				= sizeof(BITMAPINFOHEADER);
+	bih->biBitCount			= depth;
+	bih->biPlanes			= 1;
+	bih->biCompression		= BI_RGB;
+	bih->biWidth			= w;
+	bih->biHeight			= h;
+	bih->biSizeImage		= (((w*bih->biBitCount + 31)/32) * 4)*h;
+	bih->biClrUsed			= 0;
+	bih->biClrImportant		= 0;
+	bih->biXPelsPerMeter	= 0;
+	bih->biYPelsPerMeter	= 0;
+}
+
 void VBitmap::AlignTo4() throw() {
 	pitch		= PitchAlign4();
 	modulo		= Modulo();

@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <crtdbg.h>
 #include <windows.h>
 #include <vfw.h>
@@ -48,7 +49,7 @@ CaptureFrameSource::CaptureFrameSource(HWND hwndCapture)
 		if ((fsize = capGetVideoFormatSize(hwndCapture))<=0)
 			throw MyError("Couldn't get video format.");
 
-		if (!(bmihSrc = (BITMAPINFOHEADER *)malloc(fsize)))
+		if (!(bmihSrc = (BITMAPINFOHEADER *)allocmem(fsize)))
 			throw MyMemoryError();
 
 		if (!capGetVideoFormat(hwndCapture, bmihSrc, fsize))
@@ -142,7 +143,7 @@ CaptureFrameSource::CaptureFrameSource(HWND hwndCapture)
 }
 
 void CaptureFrameSource::_destruct() {
-	if (bmihSrc)			{ free(bmihSrc); bmihSrc = NULL; }
+	if (bmihSrc)			{ freemem(bmihSrc); bmihSrc = NULL; }
 	if (fDecompressionOk)	{ ICDecompressEnd(hic); fDecompressionOk = false; }
 	if (hic)				{ ICClose(hic); hic = NULL; }
 	if (pFrameBuffer)		{ VirtualFree(pFrameBuffer, 0, MEM_RELEASE); pFrameBuffer = NULL; }

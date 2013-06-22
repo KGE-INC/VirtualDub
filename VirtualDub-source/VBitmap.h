@@ -134,6 +134,10 @@ public:
 	virtual bool BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
 	virtual bool BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
 
+	//// NEW AS OF VIRTUALDUB V1.4C
+
+	virtual void MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const throw();
+
 private:
 	bool dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCoord& x1, PixCoord& y1, PixDim& dx, PixDim& dy) const throw();
 };

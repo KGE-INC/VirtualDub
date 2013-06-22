@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <crtdbg.h>
 #include <stdio.h>
 
@@ -508,7 +509,7 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	if (!g_dubOpts.perf.dynamicEnable) return 0;
 
-	if (!(cfd->dyna_func = malloc(4096))) return 1;
+	if (!(cfd->dyna_func = allocmem(4096))) return 1;
 
 	pptr = (char *)cfd->dyna_func;
 
@@ -659,7 +660,7 @@ int filter_convolute_end(FilterActivation *fa, const FilterFunctions *ff) {
 
 	if (cfd->dyna_func) {
 		VirtualProtect(cfd->dyna_func, cfd->dyna_size, cfd->dyna_old_protect, &cfd->dyna_old_protect);
-		free(cfd->dyna_func);
+		freemem(cfd->dyna_func);
 		cfd->dyna_func = NULL;
 	}
 

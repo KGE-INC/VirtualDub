@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <stdio.h>
 #include <crtdbg.h>
 
@@ -179,7 +180,8 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	if (opt->audio.fStartAudio)
 		videoset.clip(lOffsetStart, videoset.getTotalFrames() - lOffsetStart);
 
-	AudioTranslateVideoSubset(audioset, videoset, vInfo.usPerFrameIn, audio->getWaveFormat());
+	if (audio)
+		AudioTranslateVideoSubset(audioset, videoset, vInfo.usPerFrameIn, audio->getWaveFormat());
 
 	if (!opt->audio.fEndAudio)
 		videoset.clip(0, videoset.getTotalFrames() - lOffsetEnd);
@@ -187,11 +189,14 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	if (!opt->audio.fStartAudio)
 		videoset.clip(lOffsetStart, videoset.getTotalFrames() - lOffsetStart);
 
-	audioset.offset(audio->msToSamples(-opt->audio.offset));
-	audioset.clipToRange(-0x40000000, audio->lSampleLast - audio->lSampleFirst+0x40000000);
+	if (audio) {
+		audioset.offset(audio->msToSamples(-opt->audio.offset));
+		audioset.clipToRange(-0x40000000, audio->lSampleLast - audio->lSampleFirst+0x40000000);
+		lAudioSamples = audioset.getTotalFrames();
+	} else
+		lAudioSamples = 0;
 
 	lVideoSamples = videoset.getTotalFrames();
-	lAudioSamples = audioset.getTotalFrames();
 }
 
 Frameserver::~Frameserver() {
@@ -214,7 +219,7 @@ Frameserver::~Frameserver() {
 	if (tempBuffer)							{ UnmapViewOfFile(tempBuffer); tempBuffer = NULL; }
 	if (hFileShared!=INVALID_HANDLE_VALUE)	{ CloseHandle(hFileShared); hFileShared = INVALID_HANDLE_VALUE; }
 
-	free(input_buffer);
+	freemem(input_buffer);
 }
 
 void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
@@ -232,7 +237,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 						if (!vSrc->setDecompressedFormat(8))
 							throw MyError("VCM cannot decompress to a format we can handle.");
 
-		vSrc->streamBegin(false);
+		vSrc->streamBegin(true);
 
 		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
 
@@ -246,6 +251,9 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		fFiltersOk = TRUE;
 	}
+
+	if (aSrc)
+		aSrc->streamBegin(true);
 
 	// usurp the window
 
@@ -322,15 +330,6 @@ LONG APIENTRY Frameserver::WndProc2( HWND hWnd, UINT message, UINT wParam, LONG 
 		{
 			long size=sizeof(AVISTREAMINFO);
 
-#if 0
-			if (vSrc) {
-				BITMAPINFOHEADER *bmih = vSrc->getImageFormat();
-
-				if (vSrc->getFormatLen()>size) size=vSrc->getFormatLen();
-				if (size < ((bmih->biWidth*3+3)&-4)*bmih->biHeight)
-					size = ((bmih->biWidth*3+3)&-4)*bmih->biHeight;
-			}
-#else
 			if (vSrc) {
 				if (size < sizeof(BITMAPINFOHEADER))
 					size = sizeof(BITMAPINFOHEADER);
@@ -338,8 +337,15 @@ LONG APIENTRY Frameserver::WndProc2( HWND hWnd, UINT message, UINT wParam, LONG 
 				if (size < filters.OutputBitmap()->size)
 					size = filters.OutputBitmap()->size;
 			}
-#endif
-			if (aSrc && aSrc->getFormatLen()>size) size=aSrc->getFormatLen();
+
+			if (aSrc) {
+				if (size < aSrc->getWaveFormat()->nAvgBytesPerSec)
+					size = aSrc->getWaveFormat()->nAvgBytesPerSec;
+
+				if (aSrc->getFormatLen()>size)
+					size=aSrc->getFormatLen();
+			}
+
 			if (size < 65536) size=65536;
 
 			_RPT1(0,"VDSRVM_BIGGEST: allocate a frame of size %ld bytes\n", size);
@@ -373,7 +379,6 @@ LONG APIENTRY Frameserver::WndProc2( HWND hWnd, UINT message, UINT wParam, LONG 
 
 	case VDSRVM_REQ_AUDIO:
 		++lAudioSegCount;
-		_RPT2(0,"[session %08lx] VDSRVM_REQ_AUDIO(sample %ld)\n", lParam, wParam);
 		return SessionAudio(lParam, wParam);
 
 	case VDSRVM_REQ_AUDIOINFO:
@@ -620,7 +625,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 
 					new_size = (lSize + 65535) & -65536;
 
-					if (!(newblock = (char *)realloc(input_buffer, new_size)))
+					if (!(newblock = (char *)reallocmem(input_buffer, new_size)))
 						return VDSRVERR_FAILED;
 
 					input_buffer = newblock;
@@ -676,6 +681,8 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 
 	if (cbBuffer > fs->arena_size - 8) cbBuffer = fs->arena_size - 8;
 
+	_RPT4(0,"[session %08lx] VDSRVM_REQ_AUDIO(sample %ld, count %d, cbBuffer %ld)\n", lParam, lCount, lStart, cbBuffer);
+
 	// Do not return an error on an attempt to read beyond the end of
 	// the audio stream -- this causes Panasonic to error.
 
@@ -717,7 +724,7 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 			case AVIERR_BUFFERTOOSMALL:
 				if (!lTotalSamples)
 					return VDSRVERR_TOOBIG;
-				break;
+				goto out_of_space;
 			default:
 				return VDSRVERR_FAILED;
 			}
@@ -729,6 +736,8 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 			lTotalSamples += lActualSamples;
 			lTotalBytes += lActualBytes;
 		}
+out_of_space:
+		;
 
 	} catch(MyError e) {
 		return VDSRVERR_FAILED;

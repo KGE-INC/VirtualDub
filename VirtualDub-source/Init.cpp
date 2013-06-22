@@ -51,6 +51,7 @@ extern void InitBuiltinFilters();
 extern LONG __stdcall CrashHandler(struct _EXCEPTION_POINTERS *ExceptionInfo);
 extern void FreeCompressor(COMPVARS *pCompVars);
 extern LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam);
+extern void DetectDivX();
 
 bool InitApplication(HINSTANCE hInstance);
 bool InitInstance( HANDLE hInstance, int nCmdShow);
@@ -151,6 +152,10 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 		if (s || f)
 			guiSetStatus("Autoloaded %d filters (%d failed).", 255, s, f);
 	}
+
+	// Detect DivX.
+
+	DetectDivX();
 
 	// attempt to initialize DirectDraw 2, if we have it
 

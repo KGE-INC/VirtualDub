@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <vfw.h>
 
 #include "resource.h"
 #include "auxdlg.h"
@@ -156,5 +157,54 @@ void Welcome() {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_WELCOME), NULL, WelcomeDlgProc);
 
 		SetConfigDword(NULL, "SeenWelcome", 1);
+	}
+}
+
+static const char g_szDivXWarning[]=
+	"One or more of the \"DivX\" drivers have been detected on your system. These drivers are illegal binary hacks "
+	"of legitimate drivers:\r\n"
+	"\r\n"
+	"* DivX low motion/fast motion: Microsoft MPEG-4 V3 video\r\n"
+	"* DivX audio: Microsoft Windows Media Audio\r\n"
+	"* \"Radium\" MP3: Fraunhofer-IIS MPEG layer III audio\r\n"
+	"\r\n"
+	"Hacked drivers are known to cause serious problems, including "
+	"crashes and interference with the original drivers. When these drivers are loaded, the author cannot "
+	"make any guarantees as to the stability of VirtualDub. Please do not "
+	"forward crash dumps involving these drivers, as the author has no control "
+	"of the original third-party drivers or the binary hacks applied to them.";
+
+BOOL APIENTRY DivXWarningDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lParam)
+{
+    switch (message)
+    {
+		case WM_INITDIALOG:
+			SendDlgItemMessage(hdlg, IDC_WARNING, WM_SETTEXT, 0, (LPARAM)g_szDivXWarning);
+			return TRUE;
+
+        case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+			case IDOK: case IDCANCEL:
+                EndDialog(hdlg, TRUE);
+                return TRUE;
+            }
+            break;
+    }
+    return FALSE;
+}
+
+void DetectDivX() {
+	DWORD dwSeenIt;
+
+	if (!QueryConfigDword(NULL, "SeenDivXWarning", &dwSeenIt) || !dwSeenIt) {
+		HIC hic;
+
+		if (hic = ICOpen('CDIV', '3VID', ICMODE_QUERY)) {
+			ICClose(hic);
+
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc);
+
+			SetConfigDword(NULL, "SeenDivXWarning", 1);
+		}
 	}
 }

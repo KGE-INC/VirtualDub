@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <crtdbg.h>
 #include <windows.h>
 #include <vfw.h>
@@ -69,6 +70,10 @@ VideoSequenceCompressor::VideoSequenceCompressor() {
 }
 
 VideoSequenceCompressor::~VideoSequenceCompressor() {
+
+	freemem(pbiInput);
+	freemem(pbiOutput);
+
 	finish();
 
 	delete pConfigData;
@@ -79,11 +84,18 @@ VideoSequenceCompressor::~VideoSequenceCompressor() {
 void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pbiOutput, long lQ, long lKeyRate) {
 	ICINFO	info;
 	LRESULT	res;
+	int cbSizeIn, cbSizeOut;
+
+	cbSizeIn = pbiInput->bmiHeader.biSize + pbiInput->bmiHeader.biClrUsed*4;
+	cbSizeOut = pbiOutput->bmiHeader.biSize + pbiOutput->bmiHeader.biClrUsed*4;
 
 	this->hic		= hic;
-	this->pbiInput	= pbiInput;
-	this->pbiOutput	= pbiOutput;
+	this->pbiInput	= (BITMAPINFO *)allocmem(cbSizeIn);
+	this->pbiOutput	= (BITMAPINFO *)allocmem(cbSizeOut);
 	this->lKeyRate	= lKeyRate;
+
+	memcpy(this->pbiInput, pbiInput, cbSizeIn);
+	memcpy(this->pbiOutput, pbiOutput, cbSizeOut);
 
 	lKeyRateCounter = 1;
 
@@ -297,6 +309,8 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 			lQuality,
 			dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
 			dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
+
+	_RPT2(0,"Compressed frame %d: %d bytes\n", lFrameNum, pbiOutput->bmiHeader.biSizeImage);
 
 	++lFrameNum;
 

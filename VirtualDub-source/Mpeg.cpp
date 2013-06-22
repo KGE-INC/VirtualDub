@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <stdio.h>
 #include <crtdbg.h>
 #include <process.h>
@@ -434,7 +435,7 @@ BOOL VideoSourceMPEG::init() {
 	if (!(bmih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER))))
 		throw MyMemoryError();
 
-	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)malloc(getFormatLen()))) throw MyMemoryError();
+	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)allocmem(getFormatLen()))) throw MyMemoryError();
 
 	bmih->biSize		= sizeof(BITMAPINFOHEADER);
 	bmih->biWidth		= w;
@@ -1203,9 +1204,7 @@ int AudioSourceMPEG::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuf
 		samples = 1152 - (lStart % 1152);
 	}
 
-	if (lCount == AVISTREAMREAD_CONVENIENT)
-		lCount = samples;
-	else
+	if (lCount != AVISTREAMREAD_CONVENIENT)
 		if (samples > lCount) samples = lCount;
 
 #if 0

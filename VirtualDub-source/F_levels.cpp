@@ -30,6 +30,7 @@
 #include "resource.h"
 #include "filter.h"
 #include "gui.h"
+#include "cpuaccel.h"
 
 /////////////////////////////////////////////////////////////////////
 
@@ -37,6 +38,7 @@ extern HINSTANCE g_hInst;
 
 typedef struct LevelsFilterData {
 	unsigned char xtblmono[256];
+	int xtblluma[256];
 
 	int			iInputLo, iInputHi;
 	int			iOutputLo, iOutputHi;
@@ -47,6 +49,7 @@ typedef struct LevelsFilterData {
 	long *		pHisto;
 	long		lHistoMax;
 	bool		fInhibitUpdate;
+	bool		bLuma;
 } LevelsFilterData;
 
 /////////////////////////////////////////////////////////////////////
@@ -59,17 +62,208 @@ static int levels_init(FilterActivation *fa, const FilterFunctions *ff) {
 	mfd->rGammaCorr = 1.0;
 	mfd->iInputHi = 0xFFFF;
 	mfd->iOutputHi = 0xFFFF;
+	mfd->bLuma = true;
 
 	return 0;
+}
+
+/////////////////////////////////////////////////////////////////////
+
+static int bright_table_R[256];
+static int bright_table_G[256];
+static int bright_table_B[256];
+extern "C" unsigned char YUV_clip_table[];
+
+static void __declspec(naked) AsmLevelsRunScalar(Pixel32 *dst, PixOffset dstpitch, PixDim w, PixDim h, const int *xtblptr) {
+	__asm {
+			push	ebp
+			push	edi
+			push	esi
+			push	ebx
+			mov		edi,[esp+4+16]
+			mov		ebp,[esp+12+16]
+			shl		ebp,2
+			sub		dword ptr [esp+8+16],ebp
+yloop:
+			mov		ebp,[esp+12+16]
+xloop:
+			mov		eax,[edi]					;load source pixel
+			xor		ebx,ebx
+
+			mov		bl,al
+			xor		ecx,ecx
+
+			mov		cl,ah
+			and		eax,00ff0000h
+
+			shr		eax,16
+			mov		edx,[bright_table_R+ebx*4]
+
+			mov		esi,[bright_table_G+ecx*4]
+			add		edx,00008000h
+
+			add		edx,esi
+			mov		esi,[bright_table_B+eax*4]
+
+			add		edx,esi						;edx = bright*65536
+			mov		esi,[esp+20+16]					;load brightness translation table
+
+			shr		edx,16						;edx = brightness
+			add		edi,4
+
+			mov		edx,[esi+edx*4]				;get brightness delta [AGI]
+
+			mov		al,[YUV_clip_table+eax+edx+256]	;[AGI]
+			mov		bl,[YUV_clip_table+ebx+edx+256]
+
+			mov		cl,[YUV_clip_table+ecx+edx+256]
+			mov		[edi-2],al
+
+			mov		[edi-4],bl
+			dec		ebp
+
+			mov		[edi-3],cl
+			jne		xloop
+
+			add		edi,[esp+8+16]
+
+			dec		dword ptr [esp+16+16]
+			jne		yloop
+
+			pop		ebx
+			pop		esi
+			pop		edi
+			pop		ebp
+			ret
+	}
+}
+
+static void __declspec(naked) AsmLevelsRunMMX(Pixel32 *dst, PixOffset dstpitch, PixDim w, PixDim h, const int *xtblptr) {
+	static const __int64 bright_coeff=0x000026464b220e98i64;
+	static const __int64 round = 0x0000000000004000i64;
+	__asm {
+			push	ebp
+			push	edi
+			push	esi
+			push	ebx
+			mov		edi,[esp+4+16]
+			mov		ebp,[esp+12+16]
+			shl		ebp,2
+			sub		dword ptr [esp+8+16],ebp
+			mov		esi,[esp+20+16]
+
+			movq		mm6,bright_coeff
+yloop:
+			mov			ebp,[esp+12+16]
+			dec			ebp
+			jz			do_single
+xloop:
+			movd		mm2,[edi]
+			pxor		mm7,mm7
+
+			movd		mm3,[edi+4]
+			movq		mm0,mm6
+
+			movq		mm1,round
+			punpcklbw	mm2,mm7
+
+			pmaddwd		mm0,mm2
+			punpcklbw	mm3,mm7
+
+			movq		mm4,mm3
+			pmaddwd		mm3,mm6
+
+			movq		mm5,mm1
+			;
+
+			paddd		mm1,mm0
+			psrlq		mm0,32
+
+			paddd		mm5,mm3
+			psrlq		mm3,32
+
+			paddd		mm0,mm1
+			paddd		mm3,mm5
+
+			psrld		mm0,15
+
+			psrld		mm3,15
+
+			movd		eax,mm0
+
+			movd		ebx,mm3
+
+			movd		mm1,[esi+eax*4]
+
+			movd		mm5,[esi+ebx*4]
+			punpckldq	mm1,mm1
+
+			paddw		mm2,mm1
+			punpckldq	mm5,mm5
+
+			paddw		mm4,mm5
+			add			edi,8
+
+			packuswb	mm2,mm4
+			sub			ebp,2
+
+			;
+			;
+
+			movq		[edi-8],mm2
+			ja			xloop
+			jnz			no_single
+
+			;----------
+
+do_single:
+			movd		mm2,[edi]
+			movq		mm0,mm6
+			movq		mm1,round
+			pmaddwd		mm0,mm2
+			paddd		mm1,mm0
+			psrlq		mm0,32
+			paddd		mm0,mm1
+			psrld		mm0,15
+			movd		eax,mm0
+			movd		mm1,[esi+eax*4]
+			punpckldq	mm1,mm1
+			paddw		mm2,mm1
+			packuswb	mm2,mm2
+			movd		[edi],mm2
+no_single:
+
+			;----------
+
+			add		edi,[esp+8+16]
+
+			dec		dword ptr [esp+16+16]
+			jne		yloop
+
+			pop		ebx
+			pop		esi
+			pop		edi
+			pop		ebp
+			emms
+			ret
+	}
 }
 
 static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	const LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 
-	fa->dst.BitBltXlat1(0, 0, &fa->src, 0, 0, -1, -1, mfd->xtblmono);
+	if (mfd->bLuma) {
+		if (CPUGetEnabledExtensions() & CPUF_SUPPORTS_MMX)
+			AsmLevelsRunMMX(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, mfd->xtblluma);
+		else
+			AsmLevelsRunScalar(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, mfd->xtblluma);
+	} else
+		fa->dst.BitBltXlat1(0, 0, &fa->src, 0, 0, -1, -1, mfd->xtblmono);
 
 	return 0;
 }
+
+/////////////////////////////////////////////////////////////////////
 
 static long levels_param(FilterActivation *fa, const FilterFunctions *ff) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
@@ -94,19 +288,38 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 					x_hi		= mfd->iInputHi / (double)0xffff;
 
 	for(i=0; i<256; i++) {
-		double y, x;
+		bright_table_R[i] = 19595*i;
+		bright_table_G[i] = 38470*i;
+		bright_table_B[i] =  7471*i;
+	}
 
-		x = i / 255.0;
+	if (x_lo == x_hi)
+		for(i=0; i<256; i++)
+			mfd->xtblmono[i] = (unsigned char)((int)(0.5 + y_base + y_range * 0.5) >> 8);
+	else
+		for(i=0; i<256; i++) {
+			double y, x;
 
-		if (x < x_lo)
-			mfd->xtblmono[i] = mfd->iOutputLo >> 8;
-		else if (x > x_hi)
-			mfd->xtblmono[i] = mfd->iOutputHi >> 8;
-		else {
-			y = pow((x - x_lo) / (x_hi - x_lo), 1.0/mfd->rGammaCorr);
+			x = i / 255.0;
 
-			mfd->xtblmono[i] = (unsigned char)((int)(0.5 + y_base + y_range * y) >> 8);
+			if (x < x_lo)
+				mfd->xtblmono[i] = mfd->iOutputLo >> 8;
+			else if (x > x_hi)
+				mfd->xtblmono[i] = mfd->iOutputHi >> 8;
+			else {
+				y = pow((x - x_lo) / (x_hi - x_lo), 1.0/mfd->rGammaCorr);
+
+				mfd->xtblmono[i] = (unsigned char)((int)(0.5 + y_base + y_range * y) >> 8);
+			}
 		}
+
+	if (mfd->bLuma) {
+		if (CPUGetEnabledExtensions() & CPUF_SUPPORTS_MMX)
+			for(i=0; i<256; i++)
+				mfd->xtblluma[i] = (((int)mfd->xtblmono[i] - i)&0xffff) * 0x10001;
+		else
+			for(i=0; i<256; i++)
+				mfd->xtblluma[i] = (int)mfd->xtblmono[i] - i;
 	}
 }
 
@@ -173,6 +386,8 @@ static BOOL APIENTRY levelsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				SendMessage(hwndItem, VLCM_MOVETABPOS, MAKELONG(1,  TRUE), mfd->iOutputHi);
 				SendMessage(hwndItem, VLCM_SETGRADIENT, 0x000000, 0xFFFFFF);
 
+				CheckDlgButton(hDlg, IDC_LUMA, mfd->bLuma ? BST_CHECKED : BST_UNCHECKED);
+
 				mfd->ifp->SetButtonCallback(levelsButtonCallback, (void *)hDlg);
 				mfd->ifp->SetSampleCallback(levelsSampleCallback, (void *)mfd);
 				mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
@@ -209,6 +424,19 @@ static BOOL APIENTRY levelsDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				memset(mfd->pHisto, 0, sizeof(mfd->pHisto[0])*256);
 				mfd->ifp->SampleFrames();
 				levelsSampleDisplay(mfd, hDlg);
+				return TRUE;
+
+			case IDC_LUMA:
+				{	
+					bool bNewState = !!IsDlgButtonChecked(hDlg, IDC_LUMA);
+
+					if (bNewState != mfd->bLuma) {
+						mfd->bLuma = bNewState;
+						levelsRedoTables(mfd);
+						mfd->ifp->RedoFrame();
+					}
+
+				}
 				return TRUE;
 
 			case IDC_INPUTGAMMA:
@@ -514,12 +742,13 @@ static int levels_start(FilterActivation *fa, const FilterFunctions *ff) {
 static void levels_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 
-	sprintf(buf, " ( [%4.2f-%4.2f] > %.2f > [%4.2f-%4.2f] )",
+	sprintf(buf, " ( [%4.2f-%4.2f] > %.2f > [%4.2f-%4.2f] (%s) )",
 			mfd->iInputLo/(double)0xffff,
 			mfd->iInputHi/(double)0xffff,
 			mfd->rGammaCorr,
 			mfd->iOutputLo/(double)0xffff,
-			mfd->iOutputHi/(double)0xffff
+			mfd->iOutputHi/(double)0xffff,
+			mfd->bLuma ? "Y" : "RGB"
 			);
 }
 
@@ -533,10 +762,15 @@ static void levels_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 	mfd->rHalfPt	= pow(0.5, mfd->rGammaCorr);
 	mfd->iOutputLo	= argv[3].asInt();
 	mfd->iOutputHi	= argv[4].asInt();
+
+	mfd->bLuma = false;
+	if (argc > 5)
+		mfd->bLuma = !!argv[5].asInt();
 }
 
 static ScriptFunctionDef levels_func_defs[]={
 	{ (ScriptFunctionPtr)levels_script_config, "Config", "0iiiii" },
+	{ (ScriptFunctionPtr)levels_script_config, NULL, "0iiiiii" },
 	{ NULL },
 };
 

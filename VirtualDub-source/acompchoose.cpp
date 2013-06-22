@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <string.h>
 #include <stdlib.h>
 
@@ -25,6 +27,7 @@
 
 #include "resource.h"
 #include "list.h"
+#include "gui.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -51,7 +54,7 @@ public:
 };
 
 ACMFormatEntry::~ACMFormatEntry() {
-	free(pwfex);
+	freemem(pwfex);
 }
 
 class ACMTagEntry {
@@ -94,7 +97,7 @@ BOOL CALLBACK ACMFormatEnumerator(HACMDRIVERID hadid, LPACMFORMATDETAILS pafd, D
 
 	if (!pafe) return TRUE;
 
-	if (!(pafe->pwfex = (WAVEFORMATEX *)malloc(sizeof(WAVEFORMATEX) + pafd->pwfx->cbSize))) {
+	if (!(pafe->pwfex = (WAVEFORMATEX *)allocmem(sizeof(WAVEFORMATEX) + pafd->pwfx->cbSize))) {
 		delete pafe;
 		return TRUE;
 	}
@@ -132,7 +135,7 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 	if (paftd->dwFormatTag != WAVE_FORMAT_PCM) {
 		int index;
 
-		index = SendMessage(pData->hwndDriverList, LB_ADDSTRING, 0, (LPARAM)paftd->szFormatTag);
+		index = guiListboxInsertSortedString(pData->hwndDriverList, paftd->szFormatTag);
 
 		if (index != LB_ERR) {
 			ACMTagEntry *pate = new ACMTagEntry();
@@ -266,14 +269,9 @@ static BOOL CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM w
 
 			SendDlgItemMessage(hdlg, IDC_FORMAT, LB_SETTABSTOPS, 1, (LPARAM)tabs);
 
-			idx = SendDlgItemMessage(hdlg, IDC_DRIVER, LB_ADDSTRING, 0, (LPARAM)"<No compression (PCM)>");
-
-			if (idx >= 0)
-				SendDlgItemMessage(hdlg, IDC_DRIVER, LB_SETITEMDATA, idx, NULL);
-
 			acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, &aed.cbwfex);
 
-			aed.pwfex = (WAVEFORMATEX *)malloc(aed.cbwfex);
+			aed.pwfex = (WAVEFORMATEX *)allocmem(aed.cbwfex);
 			aed.pwfexSelect = thisPtr->pwfex;
 			aed.pwfexSrc = thisPtr->pwfexSrc;
 			aed.pTagSelect = NULL;
@@ -288,7 +286,16 @@ static BOOL CALLBACK AudioChooseCompressionDlgProc(HWND hdlg, UINT msg, WPARAM w
 
 			acmDriverEnum(ACMDriverEnumerator, (DWORD)&aed, ACM_DRIVERENUMF_NOLOCAL);
 
-			free(aed.pwfex);
+			freemem(aed.pwfex);
+
+			// This has to go last, because some version of DivX audio come up
+			// with a blank name. #*$&@*#$^)&@*#^@$
+
+			idx = SendDlgItemMessage(hdlg, IDC_DRIVER, LB_INSERTSTRING, 0, (LPARAM)"<No compression (PCM)>");
+
+			if (idx >= 0)
+				SendDlgItemMessage(hdlg, IDC_DRIVER, LB_SETITEMDATA, idx, NULL);
+
 
 			if (!aed.pTagSelect) {
 				SendMessage(aed.hwndDriverList, LB_SETCURSEL, 0, 0);
@@ -436,7 +443,7 @@ WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *pwfexOld, WAV
 		return pwfexOld;
 	else {
 		if (pwfexOld)
-			free(pwfexOld);
+			freemem(pwfexOld);
 
 		return data.pwfex;
 	}

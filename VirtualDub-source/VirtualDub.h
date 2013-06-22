@@ -45,6 +45,10 @@
 
 	extern void stackcheck(void *&);
 
+	void *allocmem(size_t);
+	void freemem(void *);
+	void *reallocmem(void *, size_t);
+	void *callocmem(size_t, size_t);
 
 #define ENABLE_DIRECTDRAW_SUPPORT
 

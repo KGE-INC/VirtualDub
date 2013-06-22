@@ -237,7 +237,7 @@ DIBconvert816@x2:
 	mov	ecx,[esp+28+28]
 	mov	al,[esi]
 	mov	eax,[eax*4+ecx]
-	add	esi,2
+	inc	esi
 
 	mov	ebx,eax
 	mov	ecx,eax

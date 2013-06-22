@@ -15,6 +15,8 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
+
 #include <string.h>
 #include <crtdbg.h>
 
@@ -209,13 +211,13 @@ AudioStream::AudioStream() {
 }
 
 AudioStream::~AudioStream() {
-	free(format);
+	freemem(format);
 }
 
 WAVEFORMATEX *AudioStream::AllocFormat(long len) {
-	if (format) { free(format); format = 0; }
+	if (format) { freemem(format); format = 0; }
 
-	if (!(format = (WAVEFORMATEX *)malloc(len)))
+	if (!(format = (WAVEFORMATEX *)allocmem(len)))
 		throw MyError("AudioStream: Out of memory");
 
     format_len = len;
@@ -319,12 +321,12 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 		if (acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&dwOutputFormatSize))
 			throw MyError("Couldn't get ACM's max format size");
 
-		oFormat = (WAVEFORMATEX *)malloc(dwOutputFormatSize); //AllocFormat(dwOutputFormatSize);
+		oFormat = (WAVEFORMATEX *)allocmem(dwOutputFormatSize); //AllocFormat(dwOutputFormatSize);
 		if (!oFormat) throw MyMemoryError();
 		oFormat->wFormatTag			= WAVE_FORMAT_PCM;
 
 		if (acmFormatSuggest(NULL, iFormat, oFormat, dwOutputFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
-			free(oFormat);
+			freemem(oFormat);
 			throw MyError("ACM failed to suggest audio decompression format");
 		}
 
@@ -339,7 +341,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 		oFormat->cbSize				= 0;
 
 		memcpy(GetFormat(), oFormat, sizeof(PCMWAVEFORMAT));
-		free(oFormat);
+		freemem(oFormat);
 		oFormat = GetFormat();
 
 		memset(&ashBuffer, 0, sizeof ashBuffer);
@@ -363,8 +365,8 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 		if (acmStreamSize(hACStream, INPUT_BUFFER_SIZE, &dwOutputBufferSize, ACM_STREAMSIZEF_SOURCE))
 			throw MyError("Error initializing audio stream output size.");
 
-		if (!(inputBuffer = malloc(INPUT_BUFFER_SIZE))
-			|| !(outputBuffer = malloc(dwOutputBufferSize)))
+		if (!(inputBuffer = allocmem(INPUT_BUFFER_SIZE))
+			|| !(outputBuffer = allocmem(dwOutputBufferSize)))
 
 			throw MyMemoryError();
 
@@ -414,8 +416,8 @@ AudioStreamSource::~AudioStreamSource() {
 		}
 		acmStreamClose(hACStream, 0);
 	}
-	if (inputBuffer)	free(inputBuffer);
-	if (outputBuffer)	free(outputBuffer);
+	if (inputBuffer)	freemem(inputBuffer);
+	if (outputBuffer)	freemem(outputBuffer);
 	delete[] pwfexTempInput;
 }
 
@@ -648,12 +650,12 @@ AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool
 	holdover_ptr = NULL;
 	accum=0;
 
-	if (!(cbuffer = malloc(bytesPerInputSample * BUFFER_SIZE)))
+	if (!(cbuffer = allocmem(bytesPerInputSample * BUFFER_SIZE)))
 		throw MyError("AudioStreamConverter: out of memory");
 }
 
 AudioStreamConverter::~AudioStreamConverter() {
-	free(cbuffer);
+	freemem(cbuffer);
 }
 
 long AudioStreamConverter::_Read(void *buffer, long samples, long *lplBytes) {
@@ -1037,7 +1039,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 	accum=0;
 	fHighQuality = hi_quality;
 
-	if (!(cbuffer = malloc(bytesPerSample * BUFFER_SIZE)))
+	if (!(cbuffer = allocmem(bytesPerSample * BUFFER_SIZE)))
 		throw MyMemoryError();
 
 	// If this is a high-quality downsample, allocate memory for the filter bank
@@ -1050,7 +1052,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 			filter_width = ((samp_frac + 0xffff)>>16)<<1;
 
 			if (!(filter_bank = new long[filter_width * 256])) {
-				free(cbuffer);
+				freemem(cbuffer);
 				throw MyMemoryError();
 			}
 
@@ -1069,7 +1071,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 }
 
 AudioStreamResampler::~AudioStreamResampler() {
-	free(cbuffer);
+	freemem(cbuffer);
 	delete filter_bank;
 }
 
@@ -1379,8 +1381,8 @@ AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, lon
 	if (acmStreamSize(hACStream, INPUT_BUFFER_SIZE, &dwOutputBufferSize, ACM_STREAMSIZEF_SOURCE))
 		throw MyError("Error querying audio compression.");
 
-	if (!(inputBuffer = malloc(INPUT_BUFFER_SIZE))
-		|| !(outputBuffer = malloc(dwOutputBufferSize)))
+	if (!(inputBuffer = allocmem(INPUT_BUFFER_SIZE))
+		|| !(outputBuffer = allocmem(dwOutputBufferSize)))
 
 		throw MyMemoryError();
 
@@ -1409,9 +1411,9 @@ AudioCompressor::~AudioCompressor() {
 	if (hADriver)
 		acmDriverClose(hADriver, 0);
 
-	if (inputBuffer)	free(inputBuffer);
-	if (outputBuffer)	free(outputBuffer);
-	if (holdBuffer)		free(holdBuffer);
+	if (inputBuffer)	freemem(inputBuffer);
+	if (outputBuffer)	freemem(outputBuffer);
+	if (holdBuffer)		freemem(holdBuffer);
 
 	delete[] pwfexTempOutput;
 }
@@ -1458,11 +1460,11 @@ void AudioCompressor::ResizeHoldBuffer(long lNewSize) {
 
 	if (holdBufferSize >= lNewSize) return;
 
-	if (!(holdBufferTemp = malloc(holdBufferSize = ((lNewSize + 65535) & -65536))))
+	if (!(holdBufferTemp = allocmem(holdBufferSize = ((lNewSize + 65535) & -65536))))
 		throw MyError("AudioCompressor: Unable to resize hold buffer");
 
 	memcpy(holdBufferTemp, holdBuffer, holdBufferOffset);
-	free(holdBuffer);
+	freemem(holdBuffer);
 
 	holdBuffer = holdBufferTemp;
 }

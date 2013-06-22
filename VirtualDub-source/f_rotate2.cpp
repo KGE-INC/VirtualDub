@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <crtdbg.h>
@@ -758,7 +759,7 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 	mfd->u_step = du = (__int64)floor(ustep*4294967296.0 + 0.5);
 	mfd->v_step = dv = (__int64)floor(vstep*4294967296.0 + 0.5);
 
-	if (!(mfd->rows = (RotateRow *)calloc(sizeof(RotateRow), fa->dst.h)))
+	if (!(mfd->rows = (RotateRow *)callocmem(sizeof(RotateRow), fa->dst.h)))
 		return 1;
 
 	// It's time for Mr.Bonehead!!
@@ -869,7 +870,7 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 	// Fill out cubic interpolation coeff. table
 
 	if (mfd->filtmode == FILTMODE_BICUBIC) {
-		if (!(mfd->coeff_tbl = (int *)malloc(sizeof(int)*256*4)))
+		if (!(mfd->coeff_tbl = (int *)allocmem(sizeof(int)*256*4)))
 			return 1;
 
 		MakeCubic4Table(mfd->coeff_tbl, -0.75, !!MMX_enabled);
@@ -882,8 +883,8 @@ static int rotate2_start(FilterActivation *fa, const FilterFunctions *ff) {
 static int rotate2_end(FilterActivation *fa, const FilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	free(mfd->rows); mfd->rows = NULL;
-	free(mfd->coeff_tbl); mfd->coeff_tbl = NULL;
+	freemem(mfd->rows); mfd->rows = NULL;
+	freemem(mfd->coeff_tbl); mfd->coeff_tbl = NULL;
 
 	return 0;
 }

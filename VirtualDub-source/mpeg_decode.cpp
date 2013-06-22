@@ -261,7 +261,7 @@ static enum {
 ////////////////////////////////////////////////////////////////////////////////
 
 void mpeg_deinitialize() {
-//	if (memblock) { free(memblock); memblock = NULL; }
+//	if (memblock) { freemem(memblock); memblock = NULL; }
 	if (memblock) { VirtualFree(memblock, 0, MEM_RELEASE); memblock = NULL; }
 }
 
@@ -283,7 +283,7 @@ void mpeg_initialize(int width, int height, char *imatrix, char *nimatrix, BOOL 
 		vector_limit_x	= (mbWidth-1) * 32;
 		vector_limit_y	= (mbHeight-1) * 32;
 
-//		if (!(memblock = (char *)malloc(32 + mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (uv_pitch+8)*8)))
+//		if (!(memblock = (char *)allocmem(32 + mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (uv_pitch+8)*8)))
 //			throw MyMemoryError();
 
 		if (!(memblock = (char *)VirtualAlloc(NULL, mbWidth * mbHeight * (3*256*sizeof(YUVPixel) + 6*64*sizeof(YUVPixel)) + (32)*8, MEM_COMMIT, PAGE_READWRITE)))

@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <crtdbg.h>
 #include <math.h>
 #include <windows.h>
@@ -80,8 +81,8 @@ static void CaptureVumeterDestruct(VumeterDlgData *vdd) {
 	delete vdd->pfht_left;
 	delete vdd->pfht_right;
 	if (vdd->fOpened) waveInClose(vdd->hWaveIn);
-	if (vdd->buffer) free(vdd->buffer);
-	free(vdd);
+	if (vdd->buffer) freemem(vdd->buffer);
+	freemem(vdd);
 }
 
 static void CaptureVumeterRepaintVumeter(VumeterDlgData *vdd, HDC hDC) {
@@ -463,15 +464,15 @@ BOOL APIENTRY CaptureVumeterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG 
 				memset(vdd, 0, sizeof(VumeterDlgData));
 
 				if (fsize = capGetAudioFormatSize((HWND)lParam)) {
-					if (wf = (WAVEFORMATEX *)malloc(fsize)) {
+					if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
 						if (capGetAudioFormat((HWND)lParam, wf, fsize)) {
 							vdd->fStereo = wf->nChannels>1 ? TRUE : FALSE;
 						}
-						free(wf);
+						freemem(wf);
 					}
 				}
 
-				if (!(vdd->buffer = malloc(vdd->fStereo?1024 + 2048 : 512 + 1024))) throw MyError("Out of memory");
+				if (!(vdd->buffer = allocmem(vdd->fStereo?1024 + 2048 : 512 + 1024))) throw MyError("Out of memory");
 				if (!(vdd->pfht_left = new Fht(1024, 11025))
 					|| (vdd->fStereo && !(vdd->pfht_right = new Fht(1024, 11025))))
 					throw MyMemoryError();

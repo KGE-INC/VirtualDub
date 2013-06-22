@@ -78,4 +78,6 @@ int guiMessageBoxF(HWND hwnd, LPCTSTR lpCaption, UINT uType, const char *format,
 void ticks_to_str(char *dst, DWORD ticks);
 void size_to_str(char *dst, __int64 i64Bytes);
 
+int guiListboxInsertSortedString(HWND, const char *);
+
 #endif

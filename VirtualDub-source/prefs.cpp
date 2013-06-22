@@ -32,7 +32,7 @@
 extern HINSTANCE g_hInst;
 
 Preferences g_prefs={
-	{ 0, PreferencesMain::DEPTH_FASTEST, 0, FALSE, 0 },
+	{ 0, PreferencesMain::DEPTH_FASTEST, 0, TRUE, 0 },
 	{ 50*16, 4*16 },
 };
 

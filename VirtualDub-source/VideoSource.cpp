@@ -136,7 +136,7 @@ VideoSource::VideoSource() {
 }
 
 VideoSource::~VideoSource() {
-	delete bmihDecompressedFormat;
+	freemem(bmihDecompressedFormat);
 	FreeFrameBuffer();
 }
 
@@ -169,7 +169,7 @@ void VideoSource::FreeFrameBuffer() {
 			UnmapViewOfFile(lpvBuffer);
 		CloseHandle(hBufferObject);
 	} else
-		free(lpvBuffer);
+		freemem(lpvBuffer);
 
 	lpvBuffer = NULL;
 	hBufferObject = NULL;
@@ -304,13 +304,13 @@ void VideoSourceAVI::_destruct() {
 		delete stripe_streams;
 	}
 
-	if (bmihTemp) free(bmihTemp);
+	if (bmihTemp) freemem(bmihTemp);
 	if (hicDecomp) ICClose(hicDecomp);
 
 	if (pAVIStream) delete pAVIStream;
 
 	delete mdec;
-	free(mjpeg_reorder_buffer);
+	freemem(mjpeg_reorder_buffer);
 	mjpeg_reorder_buffer = NULL;
 	delete[] mjpeg_splits;
 	mjpeg_splits = NULL;
@@ -415,8 +415,8 @@ void VideoSourceAVI::_construct() {
 	format_stream->FormatSize(0, &format_len);
 
 	if (!(bmih = (BITMAPINFOHEADER *)allocFormat(format_len))) throw MyMemoryError();
-	if (!(bmihTemp = (BITMAPINFOHEADER *)malloc(format_len))) throw MyMemoryError();
-	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)malloc(format_len))) throw MyMemoryError();
+	if (!(bmihTemp = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
+	if (!(bmihDecompressedFormat = (BITMAPINFOHEADER *)allocmem(format_len))) throw MyMemoryError();
 
 	if (format_stream->ReadFormat(0, getFormat(), &format_len))
 		throw MyError("Error obtaining video stream format.");
@@ -875,7 +875,7 @@ int VideoSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 
 						new_size = (lBytes + 4095) & -4096;
 //						new_size = lBytes;
-						new_buffer = realloc(mjpeg_reorder_buffer, new_size);
+						new_buffer = reallocmem(mjpeg_reorder_buffer, new_size);
 
 						if (!new_buffer)
 							return AVIERR_MEMORY;
@@ -1155,6 +1155,8 @@ void DIBconvert(void *src0, BITMAPINFOHEADER *srcfmt, void *dst0, BITMAPINFOHEAD
 		VBitmap(dst0, dstfmt).BitBlt(0, 0, &VBitmap(src0, srcfmt), 0, 0, -1, -1);
 }
 
+////////////////////////////////////////////////
+
 void VideoSourceAVI::invalidateFrameBuffer() {
 	if (lLastFrame != -1 && hicDecomp)
 		ICDecompressEnd(hicDecomp);
@@ -1370,7 +1372,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 					dataBufferSize = (lBytesRead+65535) & -65535;
 
-					if (!(newDataBuffer = realloc(dataBuffer, dataBufferSize)))
+					if (!(newDataBuffer = reallocmem(dataBuffer, dataBufferSize)))
 						throw MyMemoryError();
 
 					dataBuffer = newDataBuffer;
@@ -1419,13 +1421,13 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 		} while(++lFrameNum <= lFrameDesired);
 
 	} catch(MyError e) {
-		if (dataBuffer) free(dataBuffer);
+		if (dataBuffer) freemem(dataBuffer);
 		ICDecompressEnd(hicDecomp);
 		lLastFrame = -1;
 		throw e;
 	}
 
-	if (dataBuffer) free(dataBuffer);
+	if (dataBuffer) freemem(dataBuffer);
 //	if (hicDecomp) ICDecompressEnd(hicDecomp);
 
 	lLastFrame = lFrameDesired; 

@@ -763,7 +763,7 @@ void Dubber::InitAudioConversionChain() {
 	// Check the output format, and if we're compressing to
 	// MPEG Layer III, compensate for the lag and create a bitrate corrector
 
-	if (!g_prefs.fNoCorrectLayer3 && audioCompressor && audioCompressor->GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
+	if (!fEnableSpill && !g_prefs.fNoCorrectLayer3 && audioCompressor && audioCompressor->GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
 
 		audioCompressor->CompensateForMP3();
 
@@ -1605,7 +1605,7 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *
 
 	// Allocate input buffer.
 
-	if (!(inputBuffer = malloc(inputBufferSize = 65536)))
+	if (!(inputBuffer = allocmem(inputBufferSize = 65536)))
 		throw MyMemoryError();
 
 	// Create a pipe.
@@ -1829,8 +1829,8 @@ _XRPT0(0,"\tDub: Threads still active\n");
 	if (fADecompressionOk)	{ aSrc->streamEnd(); }
 
 	if (hEventAbortOk)	{ CloseHandle(hEventAbortOk); hEventAbortOk = NULL; }
-	if (inputBuffer)	{ free(inputBuffer); inputBuffer = NULL; }
-	if (audioBuffer)	{ free(audioBuffer); audioBuffer = NULL; }
+	if (inputBuffer)	{ freemem(inputBuffer); inputBuffer = NULL; }
+	if (audioBuffer)	{ freemem(audioBuffer); audioBuffer = NULL; }
 
 	if (audioCorrector)			{ delete audioCorrector; audioCorrector = NULL; }
 	if (audioCompressor)		{ delete audioCompressor; audioCompressor = NULL; }
@@ -1991,14 +1991,14 @@ int Dubber::PulseCallbackProc(void *_thisPtr, DWORD framenum) {
 void Dubber::ResizeInputBuffer(long bufsize) {
 	inputBufferSize = (bufsize+65535) & 0xFFFF0000L;
 
-	if (!(inputBuffer = realloc(inputBuffer, inputBufferSize)))
+	if (!(inputBuffer = reallocmem(inputBuffer, inputBufferSize)))
 		throw "Error reallocating input buffer.\n";
 }
 
 void Dubber::ResizeAudioBuffer(long bufsize) {
 	audioBufferSize = (bufsize+65535) & 0xFFFF0000L;
 
-	if (!(audioBuffer = realloc(audioBuffer, audioBufferSize)))
+	if (!(audioBuffer = reallocmem(audioBuffer, audioBufferSize)))
 		throw "Error reallocating audio buffer.\n";
 }
 
@@ -2255,7 +2255,23 @@ void Dubber::CheckSpill(long videopt, long audiopt) {
 
 	// Figure out how many more bytes it would be.
 
-	nAdditionalBytes = (__int64)lVideoSizeEstimate * (vInfo.start_src + lFrame2 * opt->video.frameRateDecimation - vInfo.cur_src + (pInvTelecine?10:0));
+	if (opt->video.mode)
+		nAdditionalBytes = (__int64)lVideoSizeEstimate * (vInfo.start_src + lFrame2 * opt->video.frameRateDecimation - vInfo.cur_src + (pInvTelecine?10:0));
+	else {
+		HRESULT hr;
+		LONG lSize = 0;
+		long lSamp = vInfo.cur_src;
+		long lSampLimit = vInfo.start_src + lFrame2 * opt->video.frameRateDecimation + (pInvTelecine?10:0);
+
+		nAdditionalBytes = 0;
+
+		while(lSamp < lSampLimit) {
+			hr = vSrc->read(lSamp, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
+			if (!hr)
+				nAdditionalBytes += lSize;
+			lSamp += opt->video.frameRateDecimation;
+		}
+	}
 
 	if (aSrc)
 		nAdditionalBytes += (lSample - aInfo.cur_src) * audioStream->GetFormat()->nBlockAlign;
@@ -2394,7 +2410,7 @@ void Dubber::MainAddAudioFrame(int lag) {
 
 		__int64 i64CurrentFrameMs;
 
-		i64CurrentFrameMs = ((__int64)vInfo.usPerFrame * lFrame)/1000;
+		i64CurrentFrameMs = ((__int64)vInfo.usPerFrameNoTelecine * lFrame)/1000;
 
 		// Round up lCurrentFrameMs to next interval
 
@@ -2933,7 +2949,9 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 
 	vInfo.cur_proc_src += opt->video.frameRateDecimation;
 	++vInfo.processed;
-	i64SegmentCredit += lVideoSizeEstimate - (dwBytes + (dwBytes&1));
+
+	if (opt->video.mode)
+		i64SegmentCredit += lVideoSizeEstimate - (dwBytes + (dwBytes&1));
 
 	pStatusHandler->NotifyNewFrame(isKey ? dwBytes : dwBytes | 0x80000000);
 

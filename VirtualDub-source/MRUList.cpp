@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <string.h>
 
 #include "Error.h"
@@ -78,7 +79,7 @@ void MRUList::add(char *file) {
 		while(file_list[index]) ++index;
 	}
 
-	if (file_list[index]) free(file_list[index]);
+	if (file_list[index]) freemem(file_list[index]);
 	file_list[index] = new_str;
 
 	memmove(file_order+1, file_order, max_files-1);
@@ -152,10 +153,10 @@ void MRUList::load() {
 
 			if (dwType != REG_SZ) break;
 
-			if (!(file_list[i] = (char *)malloc(cbData))) break;
+			if (!(file_list[i] = (char *)allocmem(cbData))) break;
 
 			if (ERROR_SUCCESS != RegQueryValueEx(hkey, buf2, NULL, NULL, (LPBYTE)file_list[i], &cbData)) {
-				free(file_list[i]);
+				freemem(file_list[i]);
 				break;
 			}
 

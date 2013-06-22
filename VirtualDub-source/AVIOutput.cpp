@@ -206,7 +206,7 @@ AVIOutputFile::AVIOutputFile() {
 	cbSegmentHint		= 0;
 	fInitComplete		= false;
 
-	pHeaderBlock		= (char *)malloc(65536);
+	pHeaderBlock		= (char *)allocmem(65536);
 	nHeaderLen			= 0;
 	i64FarthestWritePoint	= 0;
 	lLargestIndexDelta[0]	= 0;
@@ -226,7 +226,7 @@ AVIOutputFile::~AVIOutputFile() {
 	delete index_audio;
 	delete index_video;
 	delete pSegmentHint;
-	free(pHeaderBlock);
+	freemem(pHeaderBlock);
 
 	_RPT0(0,"AVIOutputFile: destructor called\n");
 
@@ -499,7 +499,7 @@ BOOL AVIOutputFile::_init(const char *szFile, LONG xSize, LONG ySize, BOOL video
 		pad = (2048 - ((_getPosition()+8)&2047))&2047;
 
 		if (pad) {
-			if (!(s = (char *)malloc(pad)))
+			if (!(s = (char *)allocmem(pad)))
 				return FALSE;
 
 			memset(s,0,pad);
@@ -515,7 +515,7 @@ BOOL AVIOutputFile::_init(const char *szFile, LONG xSize, LONG ySize, BOOL video
 
 			_writeHdrChunk(ckidAVIPADDING, s, pad);
 
-			delete s;
+			freemem(s);
 		}
 
 //		// If we are using a fast path, sync the fast path to the slow path

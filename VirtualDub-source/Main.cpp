@@ -111,6 +111,7 @@ char g_msgBuf[128];
 char g_szFileDescription[256];
 
 extern const char g_szError[]="VirtualDub Error";
+extern const char g_szWarning[]="VirtualDub Warning";
 extern const char g_szOutOfMemory[]="Out of memory";
 static char szWAVOutput[]="WAVOutput";
 
@@ -752,13 +753,14 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 				HANDLE hMem;
 				void *lpvMem;
 
-				filters.LastBitmap()->MakeBitmapHeader(&bih);
+				filters.LastBitmap()->MakeBitmapHeaderNoPadding(&bih);
 				lFormatSize = bih.biSize;
 
 				if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, bih.biSizeImage + lFormatSize)) {
 					if (lpvMem = GlobalLock(hMem)) {
 						memcpy(lpvMem, &bih, lFormatSize);
-						memcpy((char *)lpvMem + lFormatSize, filters.LastBitmap()->data, bih.biSizeImage);
+
+						VBitmap((char *)lpvMem + lFormatSize, &bih).BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1); 
 
 						GlobalUnlock(lpvMem);
 						SetClipboardData(CF_DIB, hMem);
@@ -816,7 +818,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			if (g_ACompressionFormat && g_ACompressionFormatSize > cbFormat)
 				cbFormat = g_ACompressionFormatSize;
 
-			if (!(pFormat = (WAVEFORMATEX *)malloc(cbFormat)))
+			if (!(pFormat = (WAVEFORMATEX *)allocmem(cbFormat)))
 				break;
 
 			if (g_ACompressionFormat)
@@ -839,11 +841,11 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			afc.pfnHook			= NULL;
 
 			if (!acmFormatChoose(&afc)) {
-				free(g_ACompressionFormat);
+				freemem(g_ACompressionFormat);
 				g_ACompressionFormat = pFormat;
 				g_ACompressionFormatSize = cbFormat;
 			} else
-				free(pFormat);
+				freemem(pFormat);
 		}
 #else
 		SetAudioSource();
@@ -2139,7 +2141,7 @@ void SaveSegmentedAVI(HWND hWnd) {
 	ofn.nMaxFileTitle		= sizeof szFileTitle;
 	ofn.lpstrInitialDir		= NULL;
 	ofn.lpstrTitle			= "Save segmented AVI";
-	ofn.Flags				= OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_ENABLESIZING | OFN_ENABLETEMPLATE | OFN_ENABLEHOOK;
+	ofn.Flags				= OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_ENABLESIZING | OFN_ENABLETEMPLATE | OFN_ENABLEHOOK;
 	ofn.lpstrDefExt			= g_prefs.main.fAttachExtension ? "avi" : NULL;
 	ofn.hInstance			= g_hInst;
 	ofn.lpTemplateName		= MAKEINTRESOURCE(IDD_SAVE_SEGMENTED);
@@ -2147,6 +2149,87 @@ void SaveSegmentedAVI(HWND hWnd) {
 	ofn.lCustData			= (LONG)&sv;
 
 	if (GetSaveFileName(&ofn)) {
+		{
+			char szPrefixBuffer[MAX_PATH], szPattern[MAX_PATH*2], *t, *t2, c;
+			const char *s;
+			int nMatchCount = 0;
+
+			t = SplitPathName(g_szFile);
+			t2 = SplitPathExt(t);
+
+			if (!stricmp(t2, ".avi")) {
+				while(t2>t && isdigit((unsigned)t2[-1]))
+					--t2;
+
+				if (t2>t && t2[-1]=='.')
+					strcpy(t2, "avi");
+			}
+
+			strcpy(szPrefixBuffer, g_szFile);
+			SplitPathExt(szPrefixBuffer)[0] = 0;
+
+			s = SplitPathName(szPrefixBuffer);
+			t = szPattern;
+
+			while(*t++ = *s++)
+				if (s[-1]=='%')
+					*t++ = '%';
+
+			t = szPrefixBuffer;
+			while(*t)
+				++t;
+
+			strcpy(t, ".*.avi");
+
+			WIN32_FIND_DATA wfd;
+			HANDLE h;
+
+			h = FindFirstFile(szPrefixBuffer, &wfd);
+			if (h != INVALID_HANDLE_VALUE) {
+				strcat(szPattern, ".%d.av%c");
+
+				do {
+					int n;
+
+					if (2 == sscanf(wfd.cFileName, szPattern, &n, &c) && tolower(c)=='i')
+						++nMatchCount;
+					
+				} while(FindNextFile(h, &wfd));
+				FindClose(h);
+			}
+
+			if (nMatchCount) {
+				if (IDOK != guiMessageBoxF(g_hWnd, g_szWarning, MB_OKCANCEL|MB_ICONEXCLAMATION,
+					"There %s %d existing file%s which match%s the filename pattern \"%s\". These files "
+					"will be erased if you continue, to prevent confusion with the new files."
+					,nMatchCount==1 ? "is" : "are"
+					,nMatchCount
+					,nMatchCount==1 ? "" : "s"
+					,nMatchCount==1 ? "es" : ""
+					,SplitPathName(szPrefixBuffer)))
+					return;
+
+				h = FindFirstFile(szPrefixBuffer, &wfd);
+				if (h != INVALID_HANDLE_VALUE) {
+					strcat(szPattern, ".%d.av%c");
+
+					t = SplitPathName(szPrefixBuffer);
+
+					do {
+						int n;
+
+						if (2 == sscanf(wfd.cFileName, szPattern, &n, &c) && tolower(c)=='i') {
+							strcpy(t, wfd.cFileName);
+							DeleteFile(t);
+						}
+							
+						
+					} while(FindNextFile(h, &wfd));
+					FindClose(h);
+				}
+			}
+		}
+
 		if (!CoachCheckSaveOp(hWnd, &g_dubOpts, &g_Vcompression, g_ACompressionFormat, &g_listFA))
 			return;
 
@@ -2349,17 +2432,10 @@ void InitDubAVI(char *szFile, BOOL fAudioOnly, DubOptions *quick_options, int iP
 		AVIOutput *pOutput = outputAVI;
 
 		if (lSpillThreshold) {
-			char *s, *dot = NULL;
 			char szFile2[MAX_PATH];
 
 			strcpy(szSpillPrefix, szFile);
-			s = szSpillPrefix;
-			while(*s++)
-				if (s[-1]=='.')
-					dot = s-1;
-
-			if (dot)
-				*dot = 0;
+			const_cast<char *>(SplitPathExt(szSpillPrefix))[0] = 0;
 
 			strcpy(szFile2, szSpillPrefix);
 			strcat(szFile2, ".00.avi");

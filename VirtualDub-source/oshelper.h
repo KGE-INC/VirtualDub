@@ -42,7 +42,11 @@ void HelpPopupByID(HWND hwnd, DWORD ctrlID, const DWORD *lookup);
 __int64 MyGetDiskFreeSpace(const char *lpRoot);
 
 const char *SplitPathName(const char *path);
+inline char *SplitPathName(char *path) { return const_cast<char *>(SplitPathName(const_cast<const char *>(path))); }
+
 const char *SplitPathExt(const char *path);
+inline char *SplitPathExt(char *path) { return const_cast<char *>(SplitPathExt(const_cast<const char *>(path))); }
+
 char *SplitPathRoot(char *dst, const char *path);
 char *MergePath(char *path, const char *fn);
 bool IsFilenameOnFATVolume(const char *pszFilename);

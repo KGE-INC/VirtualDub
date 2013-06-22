@@ -15,6 +15,7 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include "VirtualDub.h"
 #include <crtdbg.h>
 #include <windows.h>
 #include <vfw.h>
@@ -153,12 +154,12 @@ static void CaptureHistogramDestruct(HWND hwnd, HistogramDlgData *hdd) {
 	if (hdd->fParmsSet)
 		capCaptureSetSetup(hdd->hwndCapture, &hdd->cp_back, sizeof(CAPTUREPARMS));
 
-	free(hdd->buffer);
+	freemem(hdd->buffer);
 	if (hdd->fCompressionOk)	ICDecompressEnd(hdd->hic);
 	if (hdd->hic)				ICClose(hdd->hic);
 
 	delete hdd->histo;
-	free(hdd->bmih);
+	freemem(hdd->bmih);
 	if (hdd->hdc) ReleaseDC(hwnd, hdd->hdc);
 	capSetCallbackOnFrame(hdd->hwndCapture, (LPVOID)NULL);
 	capSetCallbackOnVideoStream(hdd->hwndCapture, (LPVOID)NULL);
@@ -186,7 +187,7 @@ BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 //				hdd->hwndStatus = GetDlgItem(GetParent(hdd->hwndCapture), IDC_STATUS_WINDOW);
 
 				if (!(hdd->fsize = capGetVideoFormatSize((HWND)lParam))
-					|| !(hdd->bmih = (BITMAPINFOHEADER *)malloc(hdd->fsize))
+					|| !(hdd->bmih = (BITMAPINFOHEADER *)allocmem(hdd->fsize))
 					|| !capGetVideoFormat(hdd->hwndCapture, hdd->bmih, hdd->fsize)
 					)
 					throw MyError("Couldn't get video format.");
@@ -200,7 +201,7 @@ BOOL APIENTRY CaptureHistogramDlgProc( HWND hDlg, UINT message, UINT wParam, LON
 
 				// allocate screenbuffer
 
-				if (!(hdd->buffer = malloc(hdd->bmihDecomp.biSizeImage+4))) throw MyError("Out of memory");
+				if (!(hdd->buffer = allocmem(hdd->bmihDecomp.biSizeImage+4))) throw MyError("Out of memory");
 
 				// initialize VirtualBitmap
 

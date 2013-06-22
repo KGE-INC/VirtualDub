@@ -1,6 +1,45 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 11759 (Version 1.4c):
+   [features added]
+   * New filter: box blur.
+   * Levels filter can now work in YCC space to avoid
+     altering saturation.
+   * Interface notifies you when multiple input files have
+     been loaded.
+   * "Add filename extension" is now on by default (this
+     won't change anything for those who already saved
+     their settings in Preferences).
+   * Added workaround for broken DivX audio hacked codec
+     which comes up with no name above the PCM codec in
+     the audio codec list.
+   * Added check and warning for DivX drivers.
+   * VirtualDub now warns and deletes multisegment files
+     already on disk on a save, preventing old and new
+     saves from mixing.
+
+   [bug fixes]
+   * Lengthened some job system buffers to handle long
+     filename issues.
+   * Levels control now sets the cursor -- no more I-beam
+     when trying to change input levels.
+   * Fixed a problem which caused multisegment saves with
+     video compression to break.
+   * MPEG layer III correction is now disabled on multi-
+     segment saves to avoid errors on join.
+   * Fixed interleaving when saving a file with IVTC
+     enabled and audio interleaving in per-ms mode.
+   * Job system no longer writes out filenames as all
+     C-escapes.
+   * Fixed the noise reduction in capture mode, AGAIN,
+     since I brought the old code into 1.4b by mistake.
+   * Fixed a potential crash with the levels filter.
+   * Fixed "copy output frame" command when an in-place
+     filter with clipping is last in the filter list.
+   * Fixed a nasty frameserver bug that caused crashes on
+     certain audio reads.
+
 Build 11636 (Version 1.4b):
    [bug fixes]
    * Fixed a critical problem which caused multisegment
