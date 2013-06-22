@@ -30,7 +30,7 @@
 int VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr) {
 	int palents = 0;
 
-	if (pHdr->biCompression == BI_RGB && pHdr->biBitCount <= 8) {
+	if ((pHdr->biCompression == BI_RGB || pHdr->biCompression == BI_RLE4 || pHdr->biCompression == BI_RLE8) && pHdr->biBitCount <= 8) {
 		palents = pHdr->biClrUsed;
 		if (!palents)
 			palents = 1 << pHdr->biBitCount;

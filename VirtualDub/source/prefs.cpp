@@ -317,7 +317,7 @@ public:
 			return true;
 		case kEventDetach:
 		case kEventSync:
-			mPrefs.mFileAsyncDefaultMode = 0 != GetValue(100);
+			mPrefs.mFileAsyncDefaultMode = GetValue(100);
 			return true;
 		}
 		return false;
@@ -428,6 +428,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	VDRegistryAppKey key("Preferences");
 	key.setString("Timeline format", prefs.mTimelineFormat.c_str());
 	key.setBool("Allow direct YCbCr decoding", prefs.mbAllowDirectYCbCrDecoding);
+	key.setBool("Confirm render abort", prefs.mbConfirmRenderAbort);
 	key.setBool("AVI: Alignment threshold enable", prefs.mbEnableAVIAlignmentThreshold);
 	key.setInt("AVI: Alignment threshold", prefs.mAVIAlignmentThreshold);
 	key.setBool("AVI: Prefer internal decoders", prefs.mbPreferInternalDecoders);
@@ -435,7 +436,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
 	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
 	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
-	key.setInt("File: Async mode", g_prefs2.mFileAsyncDefaultMode);
+	key.setInt("File: Async mode", prefs.mFileAsyncDefaultMode);
 }
 
 void VDSavePreferences() {

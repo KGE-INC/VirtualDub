@@ -75,6 +75,8 @@
 #                               REX prefixes
 #		r3264rexX				$r32 or $r64 using 66h and REX.X
 #		r3264rexB				$r32 or $r64 using 66h and REX.B
+#		r163264rexB				$r16, $r32, or $r64 depending on 66h and
+#								REX.B
 #		r32						32-bit register (EAX, EBX, ECX, ...)
 #		rc						Control register (CR0, CR1, ...)
 #		rd						Debug register (DR0, DR1, ...)
@@ -422,7 +424,7 @@ modrm_base:			$ap "real80 ptr " $2s
 
 60 modrm64128:		"punpcklbw " $2[3-5]rmx ", " $3s
 61 modrm64128:		"punpcklwd " $2[3-5]rmx ", " $3s
-62 modrm64128:		"punpcklqd " $2[3-5]rmx ", " $3s
+62 modrm64128:		"punpckldq " $2[3-5]rmx ", " $3s
 63 modrm64128:		"packsswb "  $2[3-5]rmx ", " $3s
 64 modrm64128:		"pcmpgtb "   $2[3-5]rmx ", " $3s
 65 modrm64128:		"pcmpgtw "   $2[3-5]rmx ", " $3s
@@ -687,8 +689,9 @@ FE modrm64128:		"paddd " $2[3-5]rmx ", " $3s
 3D * * * *:			"cmp eax, " $2lx
 
 40-4F:				$p_rex
-50-57:				"push " $1[0-2]r163264
-58-5F:				"pop " $1[0-2]r163264
+
+50-57:				"push " $1[0-2]r163264rexB
+58-5F:				"pop " $1[0-2]r163264rexB
 
 62 modrm32:			"bound " $2[3-5]r32 "," $3s
 63 modrm32:			"movsxd " $2[3-5]r16 ", " $3s

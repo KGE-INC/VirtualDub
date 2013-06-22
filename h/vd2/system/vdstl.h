@@ -282,7 +282,7 @@ public:
 	}
 
 	void assign(const T *pStruct, size_type len) {
-		if (mSize < len)
+		if (mSize != len)
 			resize(len);
 
 		memcpy(mpMemory, pStruct, len);
@@ -295,7 +295,7 @@ public:
 	}
 
 	void resize(size_type len) {
-		if (mSize < len)
+		if (mSize != len)
 			mpMemory = (T *)realloc(mpMemory, mSize = len);
 	}
 

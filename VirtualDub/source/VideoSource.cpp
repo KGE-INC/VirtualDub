@@ -436,7 +436,7 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 
 	try {
 		_construct();
-	} catch(...) {
+	} catch(const MyError&) {
 		_destruct();
 		throw;
 	}

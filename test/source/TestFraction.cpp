@@ -49,6 +49,19 @@ DEFINE_TEST(Fraction) {
 	VDASSERT(VDFraction(0xF0000000, 0x08000000).scale64it(-30000000000000i64) ==-1000000000000i64);
 	VDASSERT(VDFraction(0xF0000000, 0x08000000).scale64iu(-30000000000000i64) ==-1000000000000i64);
 
+	VDASSERT(VDFraction(1, 1).scale64r (1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64t (1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64u (1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64ir(1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64it(1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64iu(1) == 1);
+	VDASSERT(VDFraction(1, 1).scale64r (-1) == -1);
+	VDASSERT(VDFraction(1, 1).scale64t (-1) == -1);
+	VDASSERT(VDFraction(1, 1).scale64u (-1) == -1);
+	VDASSERT(VDFraction(1, 1).scale64ir(-1) == -1);
+	VDASSERT(VDFraction(1, 1).scale64it(-1) == -1);
+	VDASSERT(VDFraction(1, 1).scale64iu(-1) == -1);
+
 	// check for broken carry
 	VDASSERT(VDFraction(0xFFFFFFFF, 0xFFFFFFFF).scale64r(0x7FFFFFFFFFFFFFFFi64) == 0x7FFFFFFFFFFFFFFFi64);
 	return 0;

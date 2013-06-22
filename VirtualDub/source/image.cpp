@@ -53,7 +53,10 @@ bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 	if (cbBuffer < sizeof(BITMAPFILEHEADER) + sizeof(DWORD) || pbfh->bfType != 'MB')
 		return false;
 
-	if (pbfh->bfSize > cbBuffer || pbfh->bfOffBits > cbBuffer)
+	// Some apps don't get bfSize correct, and seems no one else validates it. Boo.
+	// if (pbfh->bfSize > cbBuffer || pbfh->bfOffBits > cbBuffer)
+
+	if (pbfh->bfOffBits > cbBuffer)
 		throw MyError("Image file is too short.");
 
 	const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)((char *)pBuffer + sizeof(BITMAPFILEHEADER));
@@ -269,16 +272,13 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 		vbSrc.h = h;
 		vbSrc.depth = bpp<<3;
 		vbSrc.pitch = bpp*vbSrc.w;
-		vbSrc.modulo = vbSrc.pitch & 1;
-		vbSrc.pitch = (vbSrc.pitch + 1) & ~1;
+		vbSrc.modulo = 0;
 
 		if (hdr.AttBits & 0x20) {
 			vbSrc.data = (Pixel32 *)(src + vbSrc.pitch * (h-1));
 			vbSrc.modulo = -bpp*vbSrc.w - vbSrc.pitch;
 			vbSrc.pitch = -vbSrc.pitch;
 		}
-
-		// arrgh... 1555 is a special case.
 
 		BitBltAlpha(&vb, 0, 0, &vbSrc, 0, 0, w, h, bSrcHasAlpha);
 
@@ -290,7 +290,7 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 		vbSrc.depth = bpp<<3;
 		vbSrc.pitch = vbSrc.modulo = 0;
 
-#if 0	// This version allows RLE packets to span rows (illegal).
+#if 1	// This version allows RLE packets to span rows (illegal).
 		unsigned char *dst = rowbuf;
 		unsigned char *dstEnd = rowbuf + bpp*w;
 
@@ -315,23 +315,27 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 				src += bpp * c;
 			}
 
+			c &= 0x7f;
+
 			if (dst == dstEnd) {
 				if (hdr.AttBits & 0x20)
 					BitBltAlpha(&vb, 0, y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				else
 					BitBltAlpha(&vb, 0, h-1-y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				dst = rowbuf;
-				if (++y >= h)
+				if (++y >= h) {
+					if (c)
+						throw MyError("TARGA RLE decoding error");
 					break;
+				}
 			}
 
-			if (c &= 0x7f) {
+			if (c) {
 				c *= bpp;
-//				if (dst + c > dstEnd)
-//					throw MyError("TARGA RLE decoding error");
 
 				do {
 					*dst++ = *copysrc++;
+
 					if (copysrc == dstEnd)
 						copysrc = rowbuf;
 					if (dst == dstEnd) {
@@ -340,8 +344,11 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 						else
 							BitBltAlpha(&vb, 0, h-1-y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 						dst = rowbuf;
-						if (++y >= h)
+						if (++y >= h) {
+							if (c > 1)
+								throw MyError("TARGA RLE decoding error");
 							break;
+						}
 					}
 				} while(--c);
 			}

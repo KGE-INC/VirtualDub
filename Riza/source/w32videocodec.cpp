@@ -134,10 +134,23 @@ bool VDVideoDecompressorVCM::QueryTargetFormat(const void *format) {
 bool VDVideoDecompressorVCM::SetTargetFormat(int format) {
 	using namespace nsVDPixmap;
 
-	if (!format)
-		return SetTargetFormat(kPixFormat_RGB888)
+	if (!format) {
+		if (SetTargetFormat(kPixFormat_RGB888)
 			|| SetTargetFormat(kPixFormat_XRGB8888)
-			|| SetTargetFormat(kPixFormat_XRGB1555);
+			|| SetTargetFormat(kPixFormat_XRGB1555))
+		{
+			return true;
+		}
+
+
+		if (mSrcFormat->biCompression == BI_RLE4 || mSrcFormat->biCompression == BI_RLE8
+			|| (mSrcFormat->biCompression == BI_RGB && mSrcFormat->biBitCount <= 8))
+		{
+			return SetTargetFormat(kPixFormat_Pal8);
+		}
+
+		return false;
+	}
 
 	vdstructex<BITMAPINFOHEADER> bmformat;
 	const int variants = VDGetPixmapToBitmapVariants(format);
@@ -327,7 +340,7 @@ namespace {
 		}
 	}
 
-	DWORD VDSafeICDecompressQueryW32(HIC hic, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut) {
+	DWORD VDSafeICDecompressQueryW32(HIC hic, LPBITMAPINFOHEADER lpbiIn, LPBITMAPINFOHEADER lpbiOut, const wchar_t *codecDesc) {
 		vdstructex<BITMAPINFOHEADER> bihIn, bihOut;
 		int cbIn = 0, cbOut = 0;
 
@@ -352,12 +365,19 @@ namespace {
 		// what 'const' was for.  AngelPotion doesn't crash because it has a try/catch
 		// handler wrapped around its code.
 
-		DWORD result = ICDecompressQuery(hic, lpbiIn ? bihIn.data() : NULL, lpbiOut ? bihOut.data() : NULL);
+		DWORD result;
+		{
+			VDExternalCodeBracket bracket(codecDesc, __FILE__, __LINE__);
+			result = ICDecompressQuery(hic, lpbiIn ? bihIn.data() : NULL, lpbiOut ? bihOut.data() : NULL);
+		}
 
 		// check for unwanted modification
 		if ((lpbiIn && memcmp(bihIn.data(), lpbiIn, cbIn)) || (lpbiOut && memcmp(bihOut.data(), lpbiOut, cbOut))) {
 			ICINFO info = {sizeof(ICINFO)};
-			ICGetInfo(hic, &info, sizeof info);
+			{
+				VDExternalCodeBracket bracket(codecDesc, __FILE__, __LINE__);
+				ICGetInfo(hic, &info, sizeof info);
+			}
 
 			if (g_pVideoCodecBugTrap)
 				g_pVideoCodecBugTrap->OnCodecRenamingDetected(info.szDescription);
@@ -404,76 +424,90 @@ namespace {
 			if (!hic)
 				continue;
 
-			DWORD result = VDSafeICDecompressQueryW32(hic, lpbiIn, lpbiOut);
+			wchar_t buf[64];
+			_swprintf(buf, L"A video codec with FOURCC '%.4S'", (const char *)&fccHandler);
 
-			if (result == ICERR_OK) {
-				// Check for a codec that doesn't actually support what it says it does.
-				// We ask the codec whether it can do a specific conversion that it can't
-				// possibly support.  If it does it, then we call BS and ignore the codec.
-				// The Grand Tech Camera Codec and Panasonic DV codecs are known to do this.
-				//
-				// (general idea from Raymond Chen's blog)
+			vdprotected1("querying video codec with FOURCC \"%.4s\"", const char *, (const char *)&info.fccHandler) {
+				DWORD result = VDSafeICDecompressQueryW32(hic, lpbiIn, lpbiOut, buf);
 
-				BITMAPINFOHEADER testSrc = {		// note: can't be static const since IsBadWritePtr() will get called on it
-					sizeof(BITMAPINFOHEADER),
-					320,
-					240,
-					1,
-					24,
-					0x2E532E42,
-					320*240*3,
-					0,
-					0,
-					0,
-					0
-				};
+				if (result == ICERR_OK) {
+					// Check for a codec that doesn't actually support what it says it does.
+					// We ask the codec whether it can do a specific conversion that it can't
+					// possibly support.  If it does it, then we call BS and ignore the codec.
+					// The Grand Tech Camera Codec and Panasonic DV codecs are known to do this.
+					//
+					// (general idea from Raymond Chen's blog)
 
-				if (ICERR_OK == ICDecompressQuery(hic, &testSrc, NULL)) {		// Don't need to wrap this, as it's OK if testSrc gets modified.
-					ICINFO info = {sizeof(ICINFO)};
+					BITMAPINFOHEADER testSrc = {		// note: can't be static const since IsBadWritePtr() will get called on it
+						sizeof(BITMAPINFOHEADER),
+						320,
+						240,
+						1,
+						24,
+						0x2E532E42,
+						320*240*3,
+						0,
+						0,
+						0,
+						0
+					};
 
-					ICGetInfo(hic, &info, sizeof info);
-
-					if (g_pVideoCodecBugTrap)
-						g_pVideoCodecBugTrap->OnAcceptedBS(info.szDescription);
-
-					// Okay, let's give the codec a chance to redeem itself. Reformat the input format into
-					// a plain 24-bit RGB image, and ask it what the compressed format is. If it produces
-					// a FOURCC that matches, allow it to handle the format. This should allow at least
-					// the codec's primary format to work. Otherwise, drop it on the ground.
-					
-					if (lpbiIn) {
-						BITMAPINFOHEADER unpackedSrc={
-							sizeof(BITMAPINFOHEADER),
-							lpbiIn ? lpbiIn->biWidth : 320,
-							lpbiIn ? lpbiIn->biHeight : 240,
-							1,
-							24,
-							BI_RGB,
-							0,
-							0,
-							0,
-							0,
-							0
-						};
-
-						unpackedSrc.biSizeImage = ((unpackedSrc.biWidth*3+3)&~3)*unpackedSrc.biHeight;
-
-						LONG size = ICCompressGetFormatSize(hic, &unpackedSrc);
-
-						if (size >= sizeof(BITMAPINFOHEADER)) {
-							vdstructex<BITMAPINFOHEADER> tmp;
-
-							tmp.resize(size);
-							if (ICERR_OK == ICCompressGetFormat(hic, &unpackedSrc, tmp.data()) && tmp->biCompression == lpbiIn->biCompression)
-								return hic;
-						}
+					DWORD res;
+					{
+						VDExternalCodeBracket bracket(buf, __FILE__, __LINE__);
+						res = ICDecompressQuery(hic, &testSrc, NULL);
 					}
-				} else {
-					return hic;
-				}
-			}
 
-			ICClose(hic);
+					if (ICERR_OK == res) {		// Don't need to wrap this, as it's OK if testSrc gets modified.
+						ICINFO info = {sizeof(ICINFO)};
+
+						{
+							VDExternalCodeBracket bracket(buf, __FILE__, __LINE__);
+							ICGetInfo(hic, &info, sizeof info);
+						}
+
+						if (g_pVideoCodecBugTrap)
+							g_pVideoCodecBugTrap->OnAcceptedBS(info.szDescription);
+
+						// Okay, let's give the codec a chance to redeem itself. Reformat the input format into
+						// a plain 24-bit RGB image, and ask it what the compressed format is. If it produces
+						// a FOURCC that matches, allow it to handle the format. This should allow at least
+						// the codec's primary format to work. Otherwise, drop it on the ground.
+						
+						if (lpbiIn) {
+							BITMAPINFOHEADER unpackedSrc={
+								sizeof(BITMAPINFOHEADER),
+								lpbiIn ? lpbiIn->biWidth : 320,
+								lpbiIn ? lpbiIn->biHeight : 240,
+								1,
+								24,
+								BI_RGB,
+								0,
+								0,
+								0,
+								0,
+								0
+							};
+
+							unpackedSrc.biSizeImage = ((unpackedSrc.biWidth*3+3)&~3)*unpackedSrc.biHeight;
+
+							LONG size = ICCompressGetFormatSize(hic, &unpackedSrc);
+
+							if (size >= sizeof(BITMAPINFOHEADER)) {
+								vdstructex<BITMAPINFOHEADER> tmp;
+
+								tmp.resize(size);
+								if (ICERR_OK == ICCompressGetFormat(hic, &unpackedSrc, tmp.data()) && tmp->biCompression == lpbiIn->biCompression)
+									return hic;
+							}
+						}
+					} else {
+						return hic;
+					}
+				}
+
+				ICClose(hic);
+			}
 		}
 
 		return NULL;
@@ -493,7 +527,10 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 		if (preferredHandler)
 			hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, preferredHandler, ICMODE_DECOMPRESS);
 
-		if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL)) {
+		wchar_t buf[64];
+		_swprintf(buf, L"A video codec with FOURCC '%.4S'", (const char *)&preferredHandler);
+
+		if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL, buf)) {
 			if (hicDecomp)
 				ICClose(hicDecomp);
 
@@ -511,7 +548,7 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 			if (fcc >= 0x10000)		// if we couldn't map a numerical value like BI_BITFIELDS, don't open a random codec
 				hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, fcc, ICMODE_DECOMPRESS);
 
-			if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL)) {
+			if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL, buf)) {
 				if (hicDecomp) {
 					ICClose(hicDecomp);
 					hicDecomp = NULL;

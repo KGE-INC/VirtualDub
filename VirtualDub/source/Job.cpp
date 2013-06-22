@@ -657,7 +657,10 @@ void VDJob::Flush(const char *lpszFileName) {
 
 	// Try to create VirtualDub.jobs in the same directory as VirtualDub.
 
+	bool throwErrors = true;
 	if (!lpszFileName) {
+		throwErrors = false;
+
 		if (!GetModuleFileName(NULL, szVDPath, sizeof szVDPath))
 			return;
 
@@ -761,7 +764,7 @@ void VDJob::Flush(const char *lpszFileName) {
 
 	} catch(int) {
 		_RPT0(0,"I/O error on job flush\n");
-		if (lpszFileName) {
+		if (throwErrors) {
 			if (f) fclose(f);
 			throw MyError("Job list flush failed: %s.", strerror(errno));
 		}

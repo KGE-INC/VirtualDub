@@ -454,7 +454,7 @@ modrm_base:			$ap "real80 ptr " $2s
 
 60 modrm64128:		"punpcklbw " $2[3-5]rmx ", " $3s
 61 modrm64128:		"punpcklwd " $2[3-5]rmx ", " $3s
-62 modrm64128:		"punpcklqd " $2[3-5]rmx ", " $3s
+62 modrm64128:		"punpckldq " $2[3-5]rmx ", " $3s
 63 modrm64128:		"packsswb "  $2[3-5]rmx ", " $3s
 64 modrm64128:		"pcmpgtb "   $2[3-5]rmx ", " $3s
 65 modrm64128:		"pcmpgtw "   $2[3-5]rmx ", " $3s

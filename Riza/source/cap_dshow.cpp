@@ -2892,7 +2892,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			// No need to handle this here, as we always render the VP pin below.
 			break;
 		} else if (pPreviewPin) {
-			DS_VERIFY(mpGraphBuilder->Render(pPreviewPin), "render preview pin (hardware display)");
+			DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pPreviewPin, NULL, NULL), "render preview pin (hardware display)");
 			pPreviewPin = NULL;
 			break;
 		}
@@ -2905,7 +2905,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		// timestamps, this doesn't work since it causes the video to play at maximum speed,
 		// causing horrible stuttering on the PX-M402U.
 		//
-		DS_VERIFY(mpGraphBuilder->Render(pCapturePin), "render capture pin (hardware display)");
+		DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pCapturePin, NULL, NULL), "render capture pin (hardware display)");
 		pCapturePin = NULL;
 		break;
 	}
@@ -2917,7 +2917,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	// our process.
 
 	if (pVideoPortPin) {
-		DS_VERIFY(mpGraphBuilder->Render(pVideoPortPin), "render video port pin");
+		DS_VERIFY(mpCapGraphBuilder2->RenderStream(NULL, NULL, pVideoPortPin, NULL, NULL), "render video port pin");
 		pVideoPortPin = NULL;
 	}
 
@@ -3027,7 +3027,7 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 		VDASSERT(!VDIsPinConnectedDShow(pAudioPin));
 
 		if (mbAudioPlaybackEnabled) {
-			HRESULT hrRender = mpGraphBuilder->Render(pAudioPin);
+			HRESULT hrRender = mpCapGraphBuilder2->RenderStream(NULL, NULL, pAudioPin, NULL, NULL);
 
 			// Reset the filter graph clock. We have to do this because when we
 			// create a capture graph a different filter may end up being the

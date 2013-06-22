@@ -112,6 +112,7 @@ static const char kTarget_ext		= 30;
 
 static const char kTarget_ext_r3264rexX	= 1;
 static const char kTarget_ext_r3264rexB = 2;
+static const char kTarget_ext_r163264rexB = 3;
 
 static const char kTarget_ap		= (char)224;
 static const char kTarget_p_cs		= (char)225;
@@ -407,6 +408,9 @@ void parse_ia(FILE *f) {
 						} else if (!stricmp(s, "r3264rexB")) {
 							control_byte = kTarget_ext;
 							ext_byte = kTarget_ext_r3264rexB;
+						} else if (!stricmp(s, "r163264rexB")) {
+							control_byte = kTarget_ext;
+							ext_byte = kTarget_ext_r163264rexB;
 						} else {
 							oops("unknown macro expansion mode: '%s'\n", s);
 						}
@@ -820,7 +824,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					s = strtack(s, (pContext->rex & 8 ? reg32 : reg64)[arg + ((pContext->rex & 0x04) << 1)]);
 					break;
 				case kTarget_r163264:
-					s = strtack(s, (pContext->rex & 8 ? reg64 : pContext->bAddressOverride ? reg16 : reg32)[arg + ((pContext->rex & 0x04) << 1)]);
+					s = strtack(s, (pContext->rex & 8 ? reg64 : pContext->bSizeOverride ? reg16 : reg32)[arg + ((pContext->rex & 0x04) << 1)]);
 					break;
 				case kTarget_ext:
 					switch(*result++) {
@@ -829,6 +833,9 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 						break;
 					case kTarget_ext_r3264rexB:
 						s = strtack(s, (pContext->bAddressOverride ? reg32 : reg64)[arg + ((pContext->rex & 0x01) << 3)]);
+						break;
+					case kTarget_ext_r163264rexB:
+						s = strtack(s, (pContext->rex & 8 ? reg64 : pContext->bSizeOverride ? reg16 : reg32)[arg + ((pContext->rex & 0x01) << 3)]);
 						break;
 					}
 					break;
@@ -1018,7 +1025,32 @@ void VDDisassemble(VDDisassemblyContext *pvdc, const byte *source, int bytes) {
 
 #ifdef _M_AMD64
 static const char test1[]={
-	0x66,0x41,0x83,0x39,0x01
+	0x50,
+	0x51,
+	0x52,
+	0x53,
+	0x54,
+	0x55,
+	0x56,
+	0x57,
+
+	0x48, 0x50,
+	0x4c, 0x50,
+	0x4a, 0x50,
+	0x49, 0x50,
+
+	0x66, 0x44, 0x50,
+	0x66, 0x42, 0x50,
+	0x66, 0x41, 0x50,
+
+	0x58,
+	0x59,
+	0x5a,
+	0x5b,
+	0x5c,
+	0x5d,
+	0x5e,
+	0x5f,
 };
 #else
 void __declspec(naked) test1() {

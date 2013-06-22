@@ -1,6 +1,21 @@
 VirtualDub change log
 
-Build %build% (1.6.14, stable): [%date%]
+Build %build% (1.6.15, stable): [%date%]
+   [bugs fixed]
+   * Added workaround for BMP files with bad BITMAPINFOHEADER::bfSize fields.
+   * Added workaround for TARGA files with run-length encodings that span scanlines (not allowed by spec).
+   * Fixed abort confirm and disk I/O options not saving consistently.
+   * Warnings, particularly the VBR warning, are now displayed after opening a file through command-line arguments.
+   * Fixed crash when VirtualDub.jobs file is not writable.
+   * Fixed crash when dealing with RLE4 and RLE8 encoded videos.
+   * Fixed stride error with odd-width TARGA files.
+   * Fixed occasionally oversized wave format structure begin written when decompressing audio.
+   * The "autoselect" input color format now also tries 256 color mode in order to support old codecs that can only output this format.
+   * Capture: Switched graph construction code in DirectShow layer to prefer Video Renderer over VMR to avoid Direct3D.
+   * AMD64: Fixed one-byte PUSH/POP instructions reporting incorrect registers in disassembly.
+   * AMD64: Fixed field swap filter.
+
+Build 24415 (1.6.14, stable): [March 12, 2006]
    [features added]
    * Added option to choose different disk I/O modes to tradeoff slower speed for better compatibility and system response.
    * Added /capfileinc switch to set filename and increment its trailing number to avoid existing files.

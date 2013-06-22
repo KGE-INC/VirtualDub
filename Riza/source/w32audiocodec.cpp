@@ -122,6 +122,7 @@ void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *p
 		mDstFormat->nBlockAlign		= (uint16)((mDstFormat->wBitsPerSample>>3) * mDstFormat->nChannels);
 		mDstFormat->nAvgBytesPerSec	= mDstFormat->nBlockAlign * mDstFormat->nSamplesPerSec;
 		mDstFormat->cbSize				= 0;
+		mDstFormat.resize(sizeof(WAVEFORMATEX));
 	}
 
 	// try to find the hinted driver, if a hint is provided

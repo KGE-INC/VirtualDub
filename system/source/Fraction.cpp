@@ -228,10 +228,10 @@ sint64 VDFraction::scale64r(sint64 v) const {
 	uint32 r;
 	if (v<0) {
 		v = -VDFractionScale64(-v, hi, lo, r);
-		return v - (r >= (lo>>1));
+		return v - (r >= (lo>>1) + (lo&1));
 	} else {
 		v = +VDFractionScale64(+v, hi, lo, r);
-		return v + (r >= (lo>>1));
+		return v + (r >= (lo>>1) + (lo&1));
 	}
 }
 
@@ -244,10 +244,10 @@ sint64 VDFraction::scale64ir(sint64 v) const {
 	uint32 r;
 	if (v<0) {
 		v = -VDFractionScale64(-v, lo, hi, r);
-		return v - (r >= (hi>>1));
+		return v - (r >= (hi>>1) + (hi&1));
 	} else {
 		v = +VDFractionScale64(+v, lo, hi, r);
-		return v + (r >= (hi>>1));
+		return v + (r >= (hi>>1) + (hi&1));
 	}
 }
 

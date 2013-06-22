@@ -17,8 +17,7 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-#include <commctrl.h>
+#include <vd2/system/memory.h>
 
 #include "resource.h"
 #include "filter.h"
@@ -76,38 +75,12 @@ no_extra:
 		ret
 	}
 }
-#else
-static void asm_fieldswap(void *data, int bytes4, int bytes1, int height, long pitch) {
-	uint32 *p1 = (uint32 *)data;
-	uint32 *p2 = (uint32 *)((char *)data + pitch);
-
-	if (bytes4)
-		do {
-			const uint32 x = *p1;
-			const uint32 y = *p2;
-
-			*p1++ = y;
-			*p2++ = x;
-		} while(--bytes4);
-
-	if (bytes1) {
-		uint8 *p1b = (uint8 *)p1;
-		uint8 *p2b = (uint8 *)p2;
-
-		do {
-			const uint8 x = *p1b;
-			const uint8 y = *p2b;
-
-			*p1b++ = y;
-			*p1b++ = x;
-		} while(--bytes1);
-	}
-}
 #endif
 
 ///////////////////////////////////
 
 int fieldswap_run(const FilterActivation *fa, const FilterFunctions *ff) {	
+#ifdef _M_IX86
 	asm_fieldswap(
 			fa->src.data + fa->src.w,
 			-fa->src.w*4,
@@ -115,6 +88,19 @@ int fieldswap_run(const FilterActivation *fa, const FilterFunctions *ff) {
 			fa->src.h/2,
 			fa->src.pitch*2
 			);
+#else
+	char *dst1 = (char *)fa->dst.data;
+	char *dst2 = dst1 + fa->dst.pitch;
+	ptrdiff_t step = fa->dst.pitch * 2;
+	uint32 rowbytes = fa->dst.w * 4;
+	uint32 rowpairs = fa->src.h >> 1;
+
+	for(uint32 y=0; y<rowpairs; ++y) {
+		VDSwapMemory(dst1, dst2, rowbytes);
+		dst1 += step;
+		dst2 += step;
+	}
+#endif
 
 	return 0;
 }

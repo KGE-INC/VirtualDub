@@ -348,7 +348,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
-			L"VirtualDub CLI Video Processor Version 1.6.14 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+			L"VirtualDub CLI Video Processor Version 1.6.15 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 			,1
 			,&version_num));
 	VDLog(kVDLogInfo, VDswprintf(
@@ -736,6 +736,9 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 	int rc = -1;
 
 	JobLockDubber();
+
+	VDAutoLogDisplay disp;
+
 	try {
 		while(*s) {
 			while(iswspace(*s))
@@ -963,6 +966,8 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				"Usage: "VD_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
 				"       "VD_CLIEXE_NAMEA" /? for help\n");
 
+		if (!consoleMode)
+			disp.Post((VDGUIHandle)g_hWnd);
 	} catch(const MyUserAbortError&) {
 		if (consoleMode) {
 			VDLog(kVDLogInfo, VDStringW(L"Operation was aborted by user."));

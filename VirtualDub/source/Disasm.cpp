@@ -631,7 +631,7 @@ char *VDDisassemble(VDDisassemblyContext *pvdc, const unsigned char *source, int
 	} while(!*s && bytes);
 
 	if (!*s)
-		return NULL;
+		return "???";
 
 	count = src2 - source;
 

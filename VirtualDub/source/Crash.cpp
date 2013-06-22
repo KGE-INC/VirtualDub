@@ -771,6 +771,7 @@ static const struct ExceptionLookup {
 	{	EXCEPTION_PRIV_INSTRUCTION,			"Privileged Instruction",	},
 	{	EXCEPTION_ILLEGAL_INSTRUCTION,		"Illegal instruction"	},
 	{	EXCEPTION_INVALID_HANDLE,			"Invalid handle"		},
+	{	EXCEPTION_STACK_OVERFLOW,			"Stack overflow"		},
 	{	0xe06d7363,							"Unhandled Microsoft C++ Exception",	},
 			// hmm... '_msc'... gee, who would have thought?
 	{	NULL	},
