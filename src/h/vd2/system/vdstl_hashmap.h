@@ -34,15 +34,19 @@ template<class K, class V, class Hash = vdhash<K>, class Pred = std::equal_to<K>
 class vdhashmap : public vdhashtable<std::pair<K, V> > {
 public:
 	typedef K key_type;
+	typedef V mapped_type;
 	typedef Hash hasher;
 	typedef Pred key_equal;
 	typedef A allocator_type;
+	typedef std::pair<iterator, bool> insert_return_type;
 
 	vdhashmap();
 	vdhashmap(const vdhashmap&);
 	~vdhashmap();
 
 	vdhashmap& operator=(const vdhashmap&);
+
+	mapped_type&		operator[](const K& key);
 
 	allocator_type get_allocator() const;
 
@@ -55,9 +59,13 @@ public:
 //	const_iterator		end() const;		Inherited.
 
 	// modifiers
-	std::pair<iterator, bool> insert(const value_type& obj);
+	insert_return_type	insert(const key_type& key);
+	insert_return_type	insert(const std::pair<K, V>& obj);
 //	iterator			insert(iterator hint, const value_type& obj);			// TODO
 //	const_iterator		insert(const_iterator hint, const value_type& obj);	// TODO
+
+	template<class U>
+	insert_return_type	insert_as(const U& k);	// extension
 
 	iterator			erase(iterator position);
 	const_iterator		erase(const_iterator position);
@@ -175,13 +183,44 @@ vdhashmap<K, V, Hash, Pred, A>& vdhashmap<K, V, Hash, Pred, A>::operator=(const 
 }
 
 template<class K, class V, class Hash, class Pred, class A>
+typename vdhashmap<K, V, Hash, Pred, A>::mapped_type& vdhashmap<K, V, Hash, Pred, A>::operator[](const K& key) {
+	return insert(key).first->second;
+}
+
+template<class K, class V, class Hash, class Pred, class A>
 typename vdhashmap<K, V, Hash, Pred, A>::allocator_type vdhashmap<K, V, Hash, Pred, A>::get_allocator() const {
 	return A();
 }
 
 // modifiers
 template<class K, class V, class Hash, class Pred, class A>
-std::pair<typename vdhashmap<K, V, Hash, Pred, A>::iterator, bool> vdhashmap<K, V, Hash, Pred, A>::insert(const value_type& obj) {
+typename vdhashmap<K, V, Hash, Pred, A>::insert_return_type vdhashmap<K, V, Hash, Pred, A>::insert(const key_type& key) {
+	if (mElementCount >= mBucketCount)
+		rehash_to_size(mElementCount + 1);
+
+	size_type bucket = mHasher(key) % mBucketCount;
+
+	for(node_type *p = static_cast<node_type *>(mpBucketStart[bucket]); p; p = static_cast<node_type *>(p->mpHashNext)) {
+		if (mPred(p->mData.first, key))
+			return std::pair<iterator, bool>(iterator(p, &mpBucketStart[bucket], mpBucketEnd), false);
+	}
+
+	node_type *node = mAllocator.allocate(1);
+	try {
+		new(node) node_type(static_cast<node_type *>(mpBucketStart[bucket]), value_type(key, V()));
+	} catch(...) {
+		mAllocator.deallocate(node, 1);
+		throw;
+	}
+
+	mpBucketStart[bucket] = node;
+	++mElementCount;
+
+	return std::pair<iterator, bool>(iterator(node, &mpBucketStart[bucket], mpBucketEnd), true);
+}
+
+template<class K, class V, class Hash, class Pred, class A>
+typename vdhashmap<K, V, Hash, Pred, A>::insert_return_type vdhashmap<K, V, Hash, Pred, A>::insert(const std::pair<K, V>& obj) {
 	if (mElementCount >= mBucketCount)
 		rehash_to_size(mElementCount + 1);
 
@@ -195,6 +234,40 @@ std::pair<typename vdhashmap<K, V, Hash, Pred, A>::iterator, bool> vdhashmap<K, 
 	node_type *node = mAllocator.allocate(1);
 	try {
 		new(node) node_type(static_cast<node_type *>(mpBucketStart[bucket]), obj);
+	} catch(...) {
+		mAllocator.deallocate(node, 1);
+		throw;
+	}
+
+	mpBucketStart[bucket] = node;
+	++mElementCount;
+
+	return std::pair<iterator, bool>(iterator(node, &mpBucketStart[bucket], mpBucketEnd), true);
+}
+
+template<class K, class V, class Hash, class Pred, class A>
+template<class U>
+typename vdhashmap<K, V, Hash, Pred, A>::insert_return_type vdhashmap<K, V, Hash, Pred, A>::insert_as(const U& key) {
+	if (mElementCount >= mBucketCount)
+		rehash_to_size(mElementCount + 1);
+
+	size_type bucket = mHasher(key) % mBucketCount;
+
+	for(node_type *p = static_cast<node_type *>(mpBucketStart[bucket]); p; p = static_cast<node_type *>(p->mpHashNext)) {
+		if (mPred(p->mData.first, key))
+			return std::pair<iterator, bool>(iterator(p, &mpBucketStart[bucket], mpBucketEnd), false);
+	}
+
+	node_type *node = mAllocator.allocate(1);
+	try {
+		new(node) node_type(static_cast<node_type *>(mpBucketStart[bucket]));
+
+		try {
+			node->mData.first = key;
+		} catch(...) {
+			node->~node_type();
+		}
+
 	} catch(...) {
 		mAllocator.deallocate(node, 1);
 		throw;
@@ -261,15 +334,15 @@ typename vdhashmap<K, V, Hash, Pred, A>::size_type vdhashmap<K, V, Hash, Pred, A
 	if (!mBucketCount)
 		return 0;
 
-	size_type bucket = mHasher(position->first) % mBucketCount;
-	const vdhashtable_base_node *prev = NULL;
-	const vdhashtable_base_node *p = mpBucketStart[bucket];
+	size_type bucket = mHasher(k) % mBucketCount;
+	vdhashtable_base_node *prev = NULL;
+	vdhashtable_base_node *p = mpBucketStart[bucket];
 
 	while(p) {
 		node_type *node = static_cast<node_type *>(p);
 
-		if (mPred(node->mData, k)) {
-			const vdhashtable_base_node *next = p->mpHashNext;
+		if (mPred(node->mData.first, k)) {
+			vdhashtable_base_node *next = p->mpHashNext;
 
 			if (prev)
 				prev->mpHashNext = next;
@@ -287,14 +360,6 @@ typename vdhashmap<K, V, Hash, Pred, A>::size_type vdhashmap<K, V, Hash, Pred, A
 	}
 
 	return 0;
-
-	const vdhashtable_base_node *next = p->mpHashNext;
-	if (prev)
-		prev->mpHashNext = next;
-	else
-		mpBucketStart[bucket] = next;
-
-	return const_iterator(next, &mpBucketStart[bucket], mpBucketEnd);
 }
 
 template<class K, class V, class Hash, class Pred, class A>

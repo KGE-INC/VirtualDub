@@ -331,10 +331,14 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 
 	// Add video filters
 
-	FilterInstance *fa = (FilterInstance *)g_listFA.tail.next, *fa_next;
 	int iFilter = 0;
+	for(VDFilterChainDesc::Entries::const_iterator it(g_filterChain.mEntries.begin()), itEnd(g_filterChain.mEntries.end());
+		it != itEnd;
+		++it)
+	{
+		VDFilterChainEntry *ent = *it;
+		FilterInstance *fa = ent->mpInstance;
 
-	while(fa_next = (FilterInstance *)fa->next) {
 		output.addf("VirtualDub.video.filters.Add(\"%s\");", strCify(fa->GetName()));
 
 		if (fa->IsCroppingEnabled()) {
@@ -361,6 +365,19 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 		if (!fa->IsEnabled())
 			output.addf("VirtualDub.video.filters.instance[%d].SetEnabled(false);", iFilter);
 
+		if (!ent->mOutputName.empty())
+			output.addf("VirtualDub.video.filters.instance[%d].SetOutputName(\"%s\");", iFilter, VDEncodeScriptString(ent->mOutputName).c_str());
+
+		if (!ent->mSources.empty()) {
+			for(vdvector<VDStringA>::const_iterator it2(ent->mSources.begin()), it2End(ent->mSources.end());
+				it2 != it2End;
+				++it2)
+			{
+				const VDStringA& name = *it2;
+				output.addf("VirtualDub.video.filters.instance[%d].AddInput(\"%s\");", iFilter, VDEncodeScriptString(name).c_str());
+			}
+		}
+
 		VDParameterCurve *pc = fa->GetAlphaParameterCurve();
 		if (pc) {
 			output.addf("declare curve = VirtualDub.video.filters.instance[%d].AddOpacityCurve();", iFilter);
@@ -374,7 +391,6 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditLi
 		}
 
 		++iFilter;
-		fa = fa_next;
 	}
 
 	// Add audio filters
@@ -637,6 +653,15 @@ void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_
 
 	JobAddClose(output);
 	JobCreateEntry(output, srcFile, NULL);
+}
+
+void JobWriteAutoSave(VDFile& f, DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended) {
+	JobScriptOutput output;
+
+	JobAddConfigurationInputs(output, srcFile, srcInputDriver, pListAppended);
+	JobCreateScript(output, opt, kVDJobEditListMode_Include, true);
+
+	f.write(output.data(), output.size());
 }
 
 void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList, bool bIncludeTextInfo) {

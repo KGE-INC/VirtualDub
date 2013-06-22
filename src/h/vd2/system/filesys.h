@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <vector>
 
+#include <vd2/system/date.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>
@@ -164,14 +165,22 @@ VDStringW VDFileGetCanonicalPath(const wchar_t *path);
 /// allowAscent flag is set.
 VDStringW VDFileGetRelativePath(const wchar_t *basePath, const wchar_t *pathToConvert, bool allowAscent);
 
+/// Returns true if the given path is a relative path.
 bool VDFileIsRelativePath(const wchar_t *path);
+
+/// Resolves a possibly relatively path with a given base path. If the path
+/// is absolute, the base path is ignored.
+VDStringW VDFileResolvePath(const wchar_t *basePath, const wchar_t *pathToResolve);
 
 /////////////////////////////////////////////////////////////////////////////
 
 sint64 VDGetDiskFreeSpace(const wchar_t *path);
 void VDCreateDirectory(const wchar_t *path);
+void VDRemoveDirectory(const wchar_t *path);
 
 extern bool (*VDRemoveFile)(const wchar_t *path);
+
+void VDMoveFile(const wchar_t *srcPath, const wchar_t *dstPath);
 
 bool VDDoesPathExist(const wchar_t *fileName);
 
@@ -184,7 +193,22 @@ bool VDFileIsPathEqual(const wchar_t *path1, const wchar_t *path2);
 void VDFileFixDirPath(VDStringW& path);
 VDStringW VDGetLocalModulePath();
 VDStringW VDGetProgramPath();
+VDStringW VDGetProgramFilePath();
 VDStringW VDGetSystemPath();
+
+/////////////////////////////////////////////////////////////////////////////
+
+enum VDFileAttributes {
+	kVDFileAttr_ReadOnly	= 0x01,
+	kVDFileAttr_System		= 0x02,
+	kVDFileAttr_Hidden		= 0x04,
+	kVDFileAttr_Archive		= 0x08,
+	kVDFileAttr_Directory	= 0x10,
+	kVDFileAttr_Invalid		= 0xFFFFFFFFU
+};
+
+uint32 VDFileGetAttributes(const wchar_t *path);
+void VDFileSetAttributes(const wchar_t *path, uint32 attrsToChange, uint32 newAttrs);
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -196,6 +220,9 @@ public:
 	~VDDirectoryIterator();
 
 	bool Next();
+
+	// checks for . and .. directories
+	bool IsDotDirectory() const;
 
 	bool IsDirectory() const {
 		return mbDirectory;
@@ -213,6 +240,14 @@ public:
 		return mFileSize;
 	}
 
+	VDDate GetLastWriteDate() const {
+		return mLastWriteDate;
+	}
+
+	uint32 GetAttributes() const {
+		return mAttributes;
+	}
+
 protected:
 	void *mpHandle;
 	bool mbSearchComplete;
@@ -223,6 +258,9 @@ protected:
 	VDStringW	mFilename;
 	sint64		mFileSize;
 	bool		mbDirectory;
+	uint32		mAttributes;
+
+	VDDate		mLastWriteDate;
 };
 
 #endif

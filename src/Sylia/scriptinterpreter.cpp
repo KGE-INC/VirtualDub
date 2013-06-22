@@ -158,6 +158,9 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 	TokenBegin(s);
 
 	while(t = Token()) {
+		if (t == ';')
+			continue;
+
 		if (isExprFirstToken(t)) {
 			TokenUnput(t);
 			VDASSERT(mStack.empty());

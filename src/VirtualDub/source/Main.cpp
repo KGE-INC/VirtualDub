@@ -84,6 +84,7 @@ char g_serverName[256];
 
 extern const char g_szError[]="VirtualDub Error";
 extern const char g_szWarning[]="VirtualDub Warning";
+extern const wchar_t g_szWarningW[]=L"VirtualDub Warning";
 
 static const char g_szRegKeyPersistence[]="Persistence";
 
@@ -239,8 +240,7 @@ extern const wchar_t fileFiltersAppend[]=
 		;
 
 static const wchar_t fileFiltersSaveConfig[]=
-		L"VirtualDub configuration (*.vcf)\0"		L"*.vcf\0"
-		L"Sylia script for VirtualDub (*.syl)\0"	L"*.syl\0"
+		L"VirtualDub script (*.vdscript)\0"			L"*.vdscript;*.vcf;*.syl\0"
 		L"All files (*.*)\0"						L"*.*\0"
 		;
 
@@ -716,7 +716,7 @@ void SaveConfiguration(HWND hWnd) {
 		key.getBool(g_szRegKeySaveTextInfo, false),
 	};
 
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_Config, (VDGUIHandle)hWnd, L"Save Configuration", fileFiltersSaveConfig, L"vcf", sOptions, optVals));
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_Config, (VDGUIHandle)hWnd, L"Save Configuration", fileFiltersSaveConfig, L"vdscript", sOptions, optVals));
 
 	if (!filename.empty()) {
 		key.setBool(g_szRegKeySaveSelectionAndEditList, !!optVals[0]);

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <d3d9.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Tessa/Context.h>
 #include "D3D9/Context_D3D9.h"
 #include "D3D9/FenceManager_D3D9.h"
@@ -111,6 +112,7 @@ bool VDTReadbackBufferD3D9::Restore() {
 
 VDTSurfaceD3D9::VDTSurfaceD3D9()
 	: mpSurface(NULL)
+	, mpSurfaceSys(NULL)
 {
 }
 
@@ -120,6 +122,7 @@ VDTSurfaceD3D9::~VDTSurfaceD3D9() {
 
 bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, VDTUsage usage) {
 	IDirect3DDevice9 *dev = parent->GetDeviceD3D9();
+	IDirect3DDevice9 *dev9Ex = parent->GetDeviceD3D9Ex();
 	HRESULT hr;
 	
 	mDesc.mWidth = width;
@@ -129,7 +132,7 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, u
 	mbDefaultPool = false;
 	switch(usage) {
 		case kVDTUsage_Default:
-			hr = dev->CreateOffscreenPlainSurface(width, height, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &mpSurface, NULL);
+			hr = dev->CreateOffscreenPlainSurface(width, height, D3DFMT_A8R8G8B8, dev9Ex ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpSurface, NULL);
 			break;
 
 		case kVDTUsage_Render:
@@ -143,7 +146,7 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height, u
 	return SUCCEEDED(hr);
 }
 
-bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf) {
+bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf, IDirect3DSurface9 *surfsys) {
 	D3DSURFACE_DESC desc = {};
 
 	HRESULT hr = surf->GetDesc(&desc);
@@ -162,6 +165,11 @@ bool VDTSurfaceD3D9::Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf) {
 
 	mpSurface = surf;
 	mpSurface->AddRef();
+
+	if (surfsys) {
+		mpSurfaceSys = surfsys;
+		mpSurfaceSys->AddRef();
+	}
 	return true;
 }
 
@@ -169,6 +177,11 @@ void VDTSurfaceD3D9::Shutdown() {
 	if (mpSurface) {
 		mpSurface->Release();
 		mpSurface = NULL;
+	}
+
+	if (mpSurfaceSys) {
+		mpSurfaceSys->Release();
+		mpSurfaceSys = NULL;
 	}
 
 	VDTResourceD3D9::Shutdown();
@@ -195,7 +208,10 @@ bool VDTSurfaceD3D9::Readback(IVDTReadbackBuffer *target) {
 void VDTSurfaceD3D9::Load(uint32 dx, uint32 dy, const VDTInitData2D& srcData, uint32 w, uint32 h) {
 	D3DLOCKED_RECT lr;
 	RECT r = { dx, dy, w, h };
-	HRESULT hr = mpSurface->LockRect(&lr, &r, D3DLOCK_NOSYSLOCK);
+
+	IDirect3DSurface9 *locksurf = mpSurfaceSys ? mpSurfaceSys : mpSurface;
+
+	HRESULT hr = locksurf->LockRect(&lr, &r, D3DLOCK_NOSYSLOCK);
 	if (FAILED(hr)) {
 		VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 		parent->ProcessHRESULT(hr);
@@ -204,11 +220,21 @@ void VDTSurfaceD3D9::Load(uint32 dx, uint32 dy, const VDTInitData2D& srcData, ui
 
 	VDMemcpyRect(lr.pBits, lr.Pitch, srcData.mpData, srcData.mPitch, 4*w, h);
 
-	hr = mpSurface->UnlockRect();
+	hr = locksurf->UnlockRect();
+
+	VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 	if (FAILED(hr)) {
-		VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 		parent->ProcessHRESULT(hr);
 		return;
+	}
+
+	if (mpSurfaceSys) {
+		hr = parent->GetDeviceD3D9()->UpdateSurface(mpSurfaceSys, NULL, mpSurface, NULL);
+
+		if (FAILED(hr)) {
+			parent->ProcessHRESULT(hr);
+			return;
+		}
 	}
 }
 
@@ -243,7 +269,7 @@ bool VDTSurfaceD3D9::Lock(const vdrect32 *r, VDTLockData2D& lockData) {
 	}
 
 	D3DLOCKED_RECT lr;
-	HRESULT hr = mpSurface->LockRect(&lr, pr, D3DLOCK_NOSYSLOCK);
+	HRESULT hr = (mpSurfaceSys ? mpSurfaceSys : mpSurface)->LockRect(&lr, pr, D3DLOCK_NOSYSLOCK);
 	if (FAILED(hr)) {
 		VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 		parent->ProcessHRESULT(hr);
@@ -257,11 +283,21 @@ bool VDTSurfaceD3D9::Lock(const vdrect32 *r, VDTLockData2D& lockData) {
 }
 
 void VDTSurfaceD3D9::Unlock() {
-	HRESULT hr = mpSurface->UnlockRect();
+	HRESULT hr = (mpSurfaceSys ? mpSurfaceSys : mpSurface)->UnlockRect();
 
+	VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 	if (FAILED(hr)) {
-		VDTContextD3D9 *parent = static_cast<VDTContextD3D9 *>(mpParent);
 		parent->ProcessHRESULT(hr);
+		return;
+	}
+
+	if (mpSurfaceSys) {
+		hr = parent->GetDeviceD3D9()->UpdateSurface(mpSurfaceSys, NULL, mpSurface, NULL);
+
+		if (FAILED(hr)) {
+			parent->ProcessHRESULT(hr);
+			return;
+		}
 	}
 }
 
@@ -279,6 +315,7 @@ void VDTSurfaceD3D9::ShutdownDefaultPool() {
 
 VDTTexture2DD3D9::VDTTexture2DD3D9()
 	: mpTexture(NULL)
+	, mpTextureSys(NULL)
 {
 }
 
@@ -312,17 +349,26 @@ bool VDTTexture2DD3D9::Init(VDTContextD3D9 *parent, uint32 width, uint32 height,
 
 	for(uint32 i=0; i<mipCount; ++i) {
 		vdrefptr<VDTSurfaceD3D9> surf(new VDTSurfaceD3D9);
-		IDirect3DSurface9 *surfd3d9;
+		vdrefptr<IDirect3DSurface9> surfd3d9;
+		vdrefptr<IDirect3DSurface9> surfd3d9sys;
 
-		HRESULT hr = mpTexture->GetSurfaceLevel(i, &surfd3d9);
+		HRESULT hr = mpTexture->GetSurfaceLevel(i, ~surfd3d9);
 		if (FAILED(hr)) {
 			parent->ProcessHRESULT(hr);
 			Shutdown();
 			return false;
 		}
 
-		surf->Init(parent, surfd3d9);
-		surfd3d9->Release();
+		if (mpTextureSys) {
+			hr = mpTextureSys->GetSurfaceLevel(i, ~surfd3d9sys);
+			if (FAILED(hr)) {
+				parent->ProcessHRESULT(hr);
+				Shutdown();
+				return false;
+			}
+		}
+
+		surf->Init(parent, surfd3d9, surfd3d9sys);
 
 		mMipmaps.push_back(surf.release());
 	}
@@ -356,6 +402,11 @@ void VDTTexture2DD3D9::Shutdown() {
 		mpTexture = NULL;
 	}
 
+	if (mpTextureSys) {
+		mpTextureSys->Release();
+		mpTextureSys = NULL;
+	}
+
 	VDTResourceD3D9::Shutdown();
 }
 
@@ -368,41 +419,59 @@ bool VDTTexture2DD3D9::Restore() {
 	if (!dev)
 		return false;
 
-	IDirect3DTexture9 *texD3D9;
+	IDirect3DDevice9Ex *dev9Ex = parent->GetDeviceD3D9Ex();
+
 	HRESULT hr;
 	switch(mUsage) {
 		case kVDTUsage_Default:
-			hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &texD3D9, NULL);
+			if (dev9Ex) {
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &mpTexture, NULL);
+				if (FAILED(hr))
+					return false;
+
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &mpTextureSys, NULL);
+			} else {
+				hr = dev->CreateTexture(mWidth, mHeight, mMipCount, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &mpTexture, NULL);
+			}
 			break;
 
 		case kVDTUsage_Render:
-			hr = dev->CreateTexture(mWidth, mHeight, mMipCount, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &texD3D9, NULL);
+			hr = dev->CreateTexture(mWidth, mHeight, mMipCount, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &mpTexture, NULL);
 			break;
 
 		default:
 			return false;
 	}
 	
-	if (FAILED(hr))
+	if (FAILED(hr)) {
+		Shutdown();
 		return false;
-
-	mpTexture = texD3D9;
+	}
 
 	uint32 n = (uint32)mMipmaps.size();
 	for(uint32 i=0; i<n; ++i) {
 		VDTSurfaceD3D9 *surf = mMipmaps[i];
-		IDirect3DSurface9 *surfd3d9;
+		vdrefptr<IDirect3DSurface9> surfd3d9;
+		vdrefptr<IDirect3DSurface9> surfd3d9sys;
 
-		HRESULT hr = mpTexture->GetSurfaceLevel(i, &surfd3d9);
+		HRESULT hr = mpTexture->GetSurfaceLevel(i, ~surfd3d9);
 		if (FAILED(hr)) {
 			parent->ProcessHRESULT(hr);
 			Shutdown();
 			return false;
 		}
 
+		if (mpTextureSys) {
+			hr = mpTextureSys->GetSurfaceLevel(i, ~surfd3d9sys);
+			if (FAILED(hr)) {
+				parent->ProcessHRESULT(hr);
+				Shutdown();
+				return false;
+			}
+		}
+
 		surf->Shutdown();
-		surf->Init(parent, surfd3d9);
-		surfd3d9->Release();
+		surf->Init(parent, surfd3d9, surfd3d9sys);
 	}
 
 	return true;
@@ -494,7 +563,9 @@ bool VDTVertexBufferD3D9::Restore() {
 	if (!dev)
 		return false;
 
-	HRESULT hr = dev->CreateVertexBuffer(mByteSize, mbDynamic ? D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY : 0, 0, mbDynamic ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpVB, NULL);
+	IDirect3DDevice9Ex *dev9Ex = static_cast<VDTContextD3D9 *>(mpParent)->GetDeviceD3D9Ex();
+
+	HRESULT hr = dev->CreateVertexBuffer(mByteSize, mbDynamic ? D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY : 0, 0, mbDynamic || dev9Ex ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpVB, NULL);
 
 	if (FAILED(hr))
 		return false;
@@ -607,7 +678,8 @@ bool VDTIndexBufferD3D9::Restore() {
 	if (!dev)
 		return false;
 
-	HRESULT hr = dev->CreateIndexBuffer(mByteSize, mbDynamic ? D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY : 0, mbIndex32 ? D3DFMT_INDEX32 : D3DFMT_INDEX16, mbDynamic ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpIB, NULL);
+	IDirect3DDevice9 *dev9Ex = static_cast<VDTContextD3D9 *>(mpParent)->GetDeviceD3D9Ex();
+	HRESULT hr = dev->CreateIndexBuffer(mByteSize, mbDynamic ? D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY : 0, mbIndex32 ? D3DFMT_INDEX32 : D3DFMT_INDEX16, mbDynamic || dev9Ex ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, &mpIB, NULL);
 
 	if (FAILED(hr))
 		return false;
@@ -993,6 +1065,7 @@ VDTContextD3D9::VDTContextD3D9()
 	, mpData(NULL)
 	, mpD3DHolder(NULL)
 	, mpD3DDevice(NULL)
+	, mpD3DDeviceEx(NULL)
 	, mDeviceLossCounter(0)
 	, mbDeviceLost(false)
 	, mbInScene(false)
@@ -1041,9 +1114,9 @@ void *VDTContextD3D9::AsInterface(uint32 iid) {
 	return NULL;
 }
 
-bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IVDRefUnknown *pD3DHolder) {
+bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVDRefUnknown *pD3DHolder) {
 	mpData = new PrivateData;
-	mpData->mhmodD3D9 = LoadLibrary("d3d9");
+	mpData->mhmodD3D9 = VDLoadSystemLibraryW32("d3d9");
 
 	if (mpData->mhmodD3D9) {
 		mpBeginEvent = GetProcAddress(mpData->mhmodD3D9, "D3DPERF_BeginEvent");
@@ -1056,6 +1129,10 @@ bool VDTContextD3D9::Init(IDirect3DDevice9 *dev, IVDRefUnknown *pD3DHolder) {
 
 	mpD3DDevice = dev;
 	mpD3DDevice->AddRef();
+
+	mpD3DDeviceEx = dev9Ex;
+	if (mpD3DDeviceEx)
+		mpD3DDeviceEx->AddRef();
 
 	mpData->mFenceManager.Init(mpD3DDevice);
 
@@ -1139,6 +1216,11 @@ void VDTContextD3D9::Shutdown() {
 		mpD3DDevice = NULL;
 	}
 
+	if (mpD3DDeviceEx) {
+		mpD3DDeviceEx->Release();
+		mpD3DDeviceEx = NULL;
+	}
+
 	if (mpD3DHolder) {
 		mpD3DHolder->Release();
 		mpD3DHolder = NULL;
@@ -1206,7 +1288,7 @@ bool VDTContextD3D9::CreateFragmentProgram(VDTProgramFormat format, const void *
 	return true;
 }
 
-bool VDTContextD3D9::CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexFormat **format) {
+bool VDTContextD3D9::CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexProgram *vp, IVDTVertexFormat **format) {
 	vdrefptr<VDTVertexFormatD3D9> vf(new VDTVertexFormatD3D9);
 
 	if (!vf->Init(this, elements, count))
@@ -1441,8 +1523,7 @@ void VDTContextD3D9::Clear(VDTClearFlags clearFlags, uint32 color, float depth, 
 namespace {
 	const D3DPRIMITIVETYPE kPTLookup[]={
 		D3DPT_TRIANGLELIST,
-		D3DPT_TRIANGLESTRIP,
-		D3DPT_TRIANGLEFAN
+		D3DPT_TRIANGLESTRIP
 	};
 }
 
@@ -1691,7 +1772,7 @@ bool VDTContextD3D9::ConnectSurfaces() {
 	}
 
 	mpDefaultRT->Shutdown();
-	bool success = mpDefaultRT->Init(this, surf);
+	bool success = mpDefaultRT->Init(this, surf, NULL);
 	surf->Release();
 
 	return success;
@@ -1764,6 +1845,7 @@ public:
 	void *AsInterface(uint32 iid);
 
 	IDirect3D9 *GetD3D9() const { return mpD3D9; }
+	IDirect3D9Ex *GetD3D9Ex() const { return mpD3D9Ex; }
 
 	bool Init();
 	void Shutdown();
@@ -1771,11 +1853,13 @@ public:
 protected:
 	HMODULE mhmodD3D9;
 	IDirect3D9 *mpD3D9;
+	IDirect3D9Ex *mpD3D9Ex;
 };
 
 VDDirect3DHolder::VDDirect3DHolder()
 	: mhmodD3D9(NULL)
 	, mpD3D9(NULL)
+	, mpD3D9Ex(NULL)
 {
 }
 
@@ -1789,7 +1873,7 @@ void *VDDirect3DHolder::AsInterface(uint32 iid) {
 
 bool VDDirect3DHolder::Init() {
 	if (!mhmodD3D9) {
-		mhmodD3D9 = LoadLibrary("d3d9");
+		mhmodD3D9 = VDLoadSystemLibraryW32("d3d9");
 
 		if (!mhmodD3D9) {
 			Shutdown();
@@ -1798,16 +1882,29 @@ bool VDDirect3DHolder::Init() {
 	}
 
 	if (!mpD3D9) {
+		HRESULT (APIENTRY *pDirect3DCreate9Ex)(UINT, IDirect3D9Ex **) = (HRESULT (APIENTRY *)(UINT, IDirect3D9Ex **))GetProcAddress(mhmodD3D9, "Direct3DCreate9Ex");
 		IDirect3D9 *(APIENTRY *pDirect3DCreate9)(UINT) = (IDirect3D9 *(APIENTRY *)(UINT))GetProcAddress(mhmodD3D9, "Direct3DCreate9");
-		if (!pDirect3DCreate9) {
+
+		if (!pDirect3DCreate9Ex && !pDirect3DCreate9) {
 			Shutdown();
 			return false;
 		}
 
-		mpD3D9 = pDirect3DCreate9(D3D_SDK_VERSION);
-		if (!mpD3D9) {
-			Shutdown();
-			return false;
+		if (pDirect3DCreate9Ex) {
+			HRESULT hr = pDirect3DCreate9Ex(D3D_SDK_VERSION, &mpD3D9Ex);
+			if (FAILED(hr)) {
+				Shutdown();
+				return false;
+			}
+
+			mpD3D9 = mpD3D9Ex;
+			mpD3D9->AddRef();
+		} else {
+			mpD3D9 = pDirect3DCreate9(D3D_SDK_VERSION);
+			if (!mpD3D9) {
+				Shutdown();
+				return false;
+			}
 		}
 	}
 
@@ -1818,6 +1915,11 @@ void VDDirect3DHolder::Shutdown() {
 	if (mpD3D9) {
 		mpD3D9->Release();
 		mpD3D9 = NULL;
+	}
+
+	if (mpD3D9Ex) {
+		mpD3D9Ex->Release();
+		mpD3D9Ex = NULL;
 	}
 
 	if (mhmodD3D9) {
@@ -1835,6 +1937,7 @@ bool VDTCreateContextD3D9(int width, int height, int refresh, bool fullscreen, b
 		return false;
 
 	IDirect3D9 *d3d9 = holder->GetD3D9();
+	IDirect3D9Ex *d3d9Ex = holder->GetD3D9Ex();
 
 	D3DPRESENT_PARAMETERS parms;
 	parms.BackBufferWidth = width;
@@ -1869,23 +1972,35 @@ bool VDTCreateContextD3D9(int width, int height, int refresh, bool fullscreen, b
 		}
 	}
 
+	vdrefptr<IDirect3DDevice9Ex> dev9Ex;
 	vdrefptr<IDirect3DDevice9> dev;
-	HRESULT hr = d3d9->CreateDevice(adapter, devType, (HWND)hwnd, D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING, &parms, ~dev);
-	if (FAILED(hr))
-		return false;
+	HRESULT hr;
+	
+	if (d3d9Ex) {
+		hr = d3d9Ex->CreateDeviceEx(adapter, devType, (HWND)hwnd, D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING, &parms, NULL, ~dev9Ex);
+
+		if (FAILED(hr))
+			return false;
+
+		dev = dev9Ex;
+	} else {
+		hr = d3d9->CreateDevice(adapter, devType, (HWND)hwnd, D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING, &parms, ~dev);
+		if (FAILED(hr))
+			return false;
+	}
 
 	vdrefptr<VDTContextD3D9> ctx(new VDTContextD3D9);
-	if (!ctx->Init(dev, holder))
+	if (!ctx->Init(dev, dev9Ex, holder))
 		return false;
 
 	*ppctx = ctx.release();
 	return true;
 }
 
-bool VDTCreateContextD3D9(IDirect3DDevice9 *dev, IVDTContext **ppctx) {
+bool VDTCreateContextD3D9(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVDTContext **ppctx) {
 	vdrefptr<VDTContextD3D9> ctx(new VDTContextD3D9);
 
-	if (!ctx->Init(dev, NULL))
+	if (!ctx->Init(dev, dev9Ex, NULL))
 		return false;
 
 	*ppctx = ctx.release();

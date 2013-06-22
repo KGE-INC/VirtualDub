@@ -51,6 +51,7 @@
 #include "uiframe.h"
 #include "filters.h"
 #include "FilterFrameRequest.h"
+#include "gui.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -109,6 +110,8 @@ extern char g_serverName[256];
 extern uint32 VDPreferencesGetRenderThrottlePercent();
 extern int VDPreferencesGetVideoCompressionThreadCount();
 extern bool VDPreferencesGetFilterAccelEnabled();
+extern bool VDPreferencesGetRenderBackgroundPriority();
+extern bool VDPreferencesGetAutoRecoverEnabled();
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
@@ -204,6 +207,78 @@ namespace {
 
 			CopyTextToClipboardA(sa.c_str());
 		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDProjectAutoSave {
+public:
+	VDProjectAutoSave(VDProject *proj);
+	~VDProjectAutoSave();
+
+	void Save();
+	void Delete();
+
+protected:
+	VDProject	*const mpProject;
+	VDStringW	mAutoSavePath;
+	VDFile		mAutoSaveFile;
+};
+
+VDProjectAutoSave::VDProjectAutoSave(VDProject *proj)
+	: mpProject(proj)
+{
+}
+
+VDProjectAutoSave::~VDProjectAutoSave() {
+	Delete();
+}
+
+void VDProjectAutoSave::Save() {
+	VDStringW fileName;
+	VDStringW path;
+
+	const uint32 signature = VDCreateAutoSaveSignature();
+	for(int counter = 1; counter <= 100; ++counter) {
+		fileName.sprintf(L"VirtualDub_AutoSave_%x_%u.vdscript", signature, counter);
+
+		path = VDMakePath(VDGetProgramPath().c_str(), fileName.c_str());
+
+		if (!VDDoesPathExist(path.c_str()))
+			break;
+
+		path.clear();
+	}
+
+	if (path.empty())
+		return;
+
+	try {
+		// Note that we intentionally KEEP THIS FILE OPEN. This prevents other instances of VirtualDub
+		// from trying to recover while we're active!
+		mAutoSaveFile.open(path.c_str(), nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
+		mpProject->AutoSave(mAutoSaveFile);
+		mAutoSaveFile.flushNT();
+	} catch(...) {
+		return;
+	}
+
+	mAutoSavePath = path;
+}
+
+void VDProjectAutoSave::Delete() {
+	try {
+		if (!mAutoSavePath.empty()) {
+			mAutoSaveFile.seek(0);
+			mAutoSaveFile.truncate();
+			mAutoSaveFile.close();
+
+			VDRemoveFile(mAutoSavePath.c_str());
+		}
+	} catch(...) {
+		// whatever it is, eat it -- we do NOT want to terminate due to
+		// throwing from the dtor.
 	}
 }
 
@@ -699,7 +774,7 @@ void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput,
 	try {
 		sint64 outpos = mTimeline.TimelineToSourceFrame(pos);
 
-		if (!g_listFA.IsEmpty() && outpos >= 0) {
+		if (!g_filterChain.IsEmpty() && outpos >= 0) {
 			if (!filters.isRunning()) {
 				StartFilters();
 			}
@@ -967,6 +1042,10 @@ void VDProject::LockFilterChain(bool enableLock) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+void VDProject::AutoSave(VDFile& f) {
+	JobWriteAutoSave(f, &g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), &inputAVI->listFiles);
+}
+
 void VDProject::Quit() {
 	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
 
@@ -995,6 +1074,9 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		if (!inputAVI) throw MyMemoryError();
 
 		// Extended open?
+		if (!(pSelectedDriver->GetFlags() & IVDInputDriver::kF_SupportsOpts))
+			fExtendedOpen = false;
+
 		if (fExtendedOpen || (pSelectedDriver->GetFlags() & IVDInputDriver::kF_PromptForOpts)) {
 			g_pInputOpts = inputAVI->promptForOptions(mhwnd);
 			if (!g_pInputOpts)
@@ -1214,6 +1296,9 @@ void VDProject::OpenWAV(const wchar_t *szFile, IVDInputDriver *pSelectedDriver, 
 			extOpts = true;
 	}
 
+	if (!(pSelectedDriver->GetFlags() & IVDInputDriver::kF_SupportsOpts))
+		extOpts = false;
+
 	if (!automated && extOpts) {
 		mpAudioInputOptions = ifile->promptForOptions((VDGUIHandle)mhwnd);
 		if (!mpAudioInputOptions)
@@ -1406,7 +1491,7 @@ void VDProject::RunNullVideoPass() {
 		throw MyError("No input file to process.");
 
 	VDAVIOutputNullVideoSystem nullout;
-	RunOperation(&nullout, FALSE, NULL, g_prefs.main.iDubPriority, true);
+	RunOperation(&nullout, FALSE, NULL, g_prefs.main.iDubPriority, true, 0, 0, VDPreferencesGetRenderBackgroundPriority());
 }
 
 void VDProject::QueueNullVideoPass() {
@@ -1900,10 +1985,16 @@ void VDProject::ScanForErrors() {
 	}
 }
 
-void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOptions *pOptions, int iPriority, bool fPropagateErrors, long lSpillThreshold, long lSpillFrameThreshold) {
+void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOptions *pOptions, int iPriority, bool fPropagateErrors, long lSpillThreshold, long lSpillFrameThreshold, bool backgroundPriority) {
 
 	if (!inputAVI)
 		throw MyError("No source has been loaded to process.");
+
+	VDProjectAutoSave autoSave(this);
+
+	if (!g_fJobMode && VDPreferencesGetAutoRecoverEnabled()) {
+		autoSave.Save();
+	}
 
 	bool fError = false;
 	bool bUserAbort = false;
@@ -1981,6 +2072,7 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 		g_dubber->Stopped() += mStoppedDelegate(this, &VDProject::OnDubAbort);
 		g_dubber->Go(iPriority);
+		g_dubber->SetBackground(backgroundPriority);
 
 		if (mpCB)
 			bUserAbort = !mpCB->UIRunDubMessageLoop();
@@ -2089,7 +2181,7 @@ void VDProject::PrepareFilters() {
 	const VDPixmap& px = inputVideo->getTargetFormat();
 	const VDFraction& srcPAR = inputVideo->getPixelAspectRatio();
 
-	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, framerate, pVSS->getLength(), srcPAR);
+	filters.prepareLinearChain(&g_filterChain, px.w, px.h, px.format, framerate, pVSS->getLength(), srcPAR);
 }
 
 void VDProject::StartFilters() {
@@ -2105,7 +2197,7 @@ void VDProject::StartFilters() {
 
 	if (px.format) {
 		const VDFraction& srcPAR = inputVideo->getPixelAspectRatio();
-		filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, framerate, pVSS->getLength(), srcPAR);
+		filters.prepareLinearChain(&g_filterChain, px.w, px.h, px.format, framerate, pVSS->getLength(), srcPAR);
 
 		mpVideoFrameSource = new VDFilterFrameVideoSource;
 		mpVideoFrameSource->Init(inputVideo, filters.GetInputLayout());
@@ -2117,7 +2209,7 @@ void VDProject::StartFilters() {
 		// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
 		vdrefptr<IVDFilterSystemScheduler> fss(new VDFilterSystemMessageLoopScheduler);
 
-		filters.initLinearChain(fss, VDXFilterStateInfo::kStatePreview, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
+		filters.initLinearChain(fss, VDXFilterStateInfo::kStatePreview, &g_filterChain, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
 
 		filters.ReadyFilters();
 	}

@@ -22,6 +22,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/binary.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/process.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/w32assist.h>
@@ -97,6 +98,7 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////
 
 extern const char g_szError[];
+extern const char g_szWarning[];
 
 extern bool g_bEnableVTuneProfiling;
 extern bool g_bAutoTest;
@@ -141,7 +143,7 @@ extern char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos);
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
 extern WAVEFORMATEX *AudioChooseCompressor(HWND hwndParent, WAVEFORMATEX *, WAVEFORMATEX *, VDString& shortNameHint);
-extern void DisplayLicense(HWND hwndParent);
+extern void VDDisplayLicense(HWND hwndParent, bool conditional);
 
 extern void OpenAVI(bool extended_opt);
 extern void SaveAVI(HWND, bool, bool queueAsBatch);
@@ -263,6 +265,9 @@ namespace {
 		{ ID_FILE_JOBCONTROL,			"Jobs.OpenJobControlDialog" },
 		{ ID_FILE_AVIINFO,				"File.Information" },
 		{ ID_FILE_SETTEXTINFO,			"File.SetTextInfo" },
+		{ ID_FILE_NEWINSTANCE,			"File.NewInstance" },
+		{ ID_FILE_OPENPREVIOUS,			"File.OpenPrevious" },
+		{ ID_FILE_OPENNEXT,				"File.OpenNext" },
 		{ ID_QUEUEBATCHOPERATION_SAVEASAVI,	"Jobs.SaveAsAVI" },
 		{ ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI,	"Jobs.SaveAsOldAVI" },
 		{ ID_QUEUEBATCHOPERATION_SAVESEGMENTEDAVI,	"Jobs.SaveSegmentedAVI" },
@@ -1372,6 +1377,8 @@ void VDProjectUI::SetAudioCompressionAsk() {
 
 		switch(g_dubOpts.audio.newChannels) {
 		case DubAudioOptions::C_MONO:	wfex.nChannels = 1; break;
+		case DubAudioOptions::C_MONOLEFT:	wfex.nChannels = 1; break;
+		case DubAudioOptions::C_MONORIGHT:	wfex.nChannels = 1; break;
 		case DubAudioOptions::C_STEREO:	wfex.nChannels = 2; break;
 		}
 
@@ -1413,10 +1420,11 @@ void VDProjectUI::SetAudioSourceWAVAsk() {
 
 	static const VDFileDialogOption sOptions[]={
 		{ VDFileDialogOption::kSelectedFilter, 0, 0, 0, 0 },
+		{ VDFileDialogOption::kBool, 1, L"Ask for e&xtended options after this dialog", 0, 0 },
 		{0}
 	};
 
-	int optVals[1]={0};
+	int optVals[2]={0,0};
 
 	VDStringW fname(VDGetLoadFileName(kFileDialog_WAVAudioIn, mhwnd, L"Open audio file", fileFilters.c_str(), NULL, sOptions, optVals));
 
@@ -1427,7 +1435,7 @@ void VDProjectUI::SetAudioSourceWAVAsk() {
 		pDriver = inputDrivers[xlat[optVals[0]-1]];
 
 	VDAutoLogDisplay logDisp;
-	OpenWAV(fname.c_str(), pDriver);
+	OpenWAV(fname.c_str(), pDriver, false, optVals[1] != 0);
 	logDisp.Post(mhwnd);
 }
 
@@ -1447,6 +1455,82 @@ void VDProjectUI::JumpToFrameAsk() {
 		if (pos >= 0)
 			MoveToFrame(pos);
 	}
+}
+
+void VDProjectUI::OpenNewInstance() {
+	VDLaunchProgram(VDGetProgramFilePath().c_str());
+}
+
+void VDProjectUI::CloseAndDelete() {
+	if (!inputAVI || !VDDoesPathExist(g_szInputAVIFile))
+		return;
+
+	VDStringA s;
+	s.sprintf("Are you sure you want to delete the file \"%ls\"?", g_szInputAVIFile);
+
+	if (IDOK == MessageBoxA((HWND)mhwnd, s.c_str(), g_szWarning, MB_ICONEXCLAMATION | MB_OKCANCEL)) {
+		VDStringW fn(g_szInputAVIFile);
+
+		Close();
+
+		VDRemoveFile(fn.c_str());
+	}
+}
+
+void VDProjectUI::OpenPrevious() {
+	OpenPreviousNext(false);
+}
+
+void VDProjectUI::OpenNext() {
+	OpenPreviousNext(true);
+}
+
+void VDProjectUI::OpenPreviousNext(bool next) {
+	typedef vdvector<VDStringW> Patterns;
+	Patterns patterns;
+	VDGetInputDriverFilePatterns(IVDInputDriver::kF_Video, patterns);
+
+	VDStringW fileToOpen;
+	VDStringW bestFileName;
+
+	const wchar_t *fnref = VDFileSplitPath(g_szInputAVIFile);
+	VDDirectoryIterator it(VDMakePath(VDFileSplitPathLeft(VDStringW(g_szInputAVIFile)).c_str(), L"*.*").c_str());
+	while(it.Next()) {
+		bool matched = false;
+
+		if (it.IsDirectory())
+			continue;
+
+		const wchar_t *fn = it.GetName();
+		for(Patterns::const_iterator itPat(patterns.begin()), itPatEnd(patterns.end());
+			itPat != itPatEnd;
+			++itPat)
+		{
+			if (VDFileWildMatch(itPat->c_str(), fn)) {
+				matched = true;
+				break;
+			}
+		}
+
+		if (matched) {
+			if (next) {
+				// Look for least file > current
+				if (vdwcsicmp(fn, fnref) > 0 && (bestFileName.empty() || vdwcsicmp(fn, bestFileName.c_str()) < 0)) {
+					fileToOpen = it.GetFullPath();
+					bestFileName = fn;
+				}
+			} else {
+				// Look for greatest file < current
+				if (vdwcsicmp(fn, fnref) < 0 && (bestFileName.empty() || vdwcsicmp(fn, bestFileName.c_str()) > 0)) {
+					fileToOpen = it.GetFullPath();
+					bestFileName = fn;
+				}
+			}
+		}
+	}
+
+	if (!fileToOpen.empty())
+		Open(fileToOpen.c_str());
 }
 
 void VDProjectUI::QueueCommand(int cmd) {
@@ -1616,6 +1700,22 @@ bool VDProjectUI::MenuHit(UINT id) {
 			// ugh
 			extern void VDDisplayFileTextInfoDialog(VDGUIHandle hParent, std::list<std::pair<uint32, VDStringA> >&);
 			VDDisplayFileTextInfoDialog(mhwnd, mTextInfo);
+			break;
+
+		case ID_FILE_NEWINSTANCE:
+			OpenNewInstance();
+			break;
+
+		case ID_FILE_CLOSEANDDELETE:
+			CloseAndDelete();
+			break;
+
+		case ID_FILE_OPENPREVIOUS:
+			OpenPrevious();
+			break;
+
+		case ID_FILE_OPENNEXT:
+			OpenNext();
 			break;
 
 		case ID_QUEUEBATCHOPERATION_SAVEASAVI:
@@ -1934,7 +2034,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 			break;
 
 		case ID_HELP_LICENSE:
-			DisplayLicense((HWND)mhwnd);
+			VDDisplayLicense((HWND)mhwnd, false);
 			break;
 
 		case ID_HELP_CONTENTS:
@@ -2089,6 +2189,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_AVIINFO				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SETTEXTINFO			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_FILE_EXPORTEXTERNALENCODER, bSourceFileExists);
 
 	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_SAVEASAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI		, bSourceFileExists);
@@ -2807,10 +2908,10 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			int w2 = w0, h2 = h0;
 			VDFraction outputPAR(inputPAR);
 
-			if (!g_listFA.IsEmpty()) {
+			if (!g_filterChain.IsEmpty()) {
 				if (!filters.isRunning()) {
 					IVDStreamSource *pVSS = inputVideo->asStream();
-					filters.prepareLinearChain(&g_listFA, w0, h0, px.format ? px.format : nsVDPixmap::kPixFormat_XRGB8888, pVSS->getRate(), pVSS->getLength(), inputVideo->getPixelAspectRatio());
+					filters.prepareLinearChain(&g_filterChain, w0, h0, px.format ? px.format : nsVDPixmap::kPixFormat_XRGB8888, pVSS->getRate(), pVSS->getLength(), inputVideo->getPixelAspectRatio());
 				}
 
 				const VDPixmapLayout& output = filters.GetOutputLayout();
@@ -3136,8 +3237,12 @@ void VDProjectUI::UpdateCurveList() {
 		int comboIndex = 0;
 		int currentSelect = -1;
 
-		FilterInstance *fa = (FilterInstance *)g_listFA.tail.next;
-		while(fa->next) {
+		for(VDFilterChainDesc::Entries::const_iterator it(g_filterChain.mEntries.begin()), itEnd(g_filterChain.mEntries.end());
+			it != itEnd;
+			++it)
+		{
+			FilterInstance *fa = (*it)->mpInstance;
+
 			VDParameterCurve *pc = fa->GetAlphaParameterCurve();
 			if (pc) {
 				const char *name = fa->GetName();
@@ -3152,7 +3257,6 @@ void VDProjectUI::UpdateCurveList() {
 				++comboIndex;
 			}
 
-			fa = (FilterInstance *)fa->next;
 			++index;
 		}
 
@@ -3195,12 +3299,15 @@ void VDProjectUI::UpdateCurveEditorPosition() {
 		}
 
 		FilterInstance *selected = NULL;
-		FilterInstance *fa = static_cast<FilterInstance *>(g_listFA.tail.next);
-		while(fa->next) {
+
+		for(VDFilterChainDesc::Entries::const_iterator it(g_filterChain.mEntries.begin()), itEnd(g_filterChain.mEntries.end());
+			it != itEnd;
+			++it)
+		{
+			FilterInstance *fa = (*it)->mpInstance;
+
 			if (!selIndex--)
 				selected = fa;
-
-			fa = static_cast<FilterInstance *>(fa->next);
 		}
 
 		if (selected) {
@@ -3857,14 +3964,16 @@ bool VDProjectUI::HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, 
 				if (item >= 0) {
 					int id = (int)vdpoly_cast<IVDUIList *>(pWin)->GetItemData(item);
 
-					FilterInstance *fa = (FilterInstance *)g_listFA.tail.next;
-					while(fa->next) {
+					for(VDFilterChainDesc::Entries::const_iterator it(g_filterChain.mEntries.begin()), itEnd(g_filterChain.mEntries.end());
+						it != itEnd;
+						++it)
+					{
+						FilterInstance *fa = (*it)->mpInstance;
+
 						if (!--id) {
 							pc = fa->GetAlphaParameterCurve();
 							break;
 						}
-
-						fa = (FilterInstance *)fa->next;
 					}
 				}
 

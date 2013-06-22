@@ -229,9 +229,11 @@ public:
 	virtual bool isAbortedByUser()	=0;
 	virtual bool IsAborted()		=0;
 	virtual bool IsPreviewing()		=0;
+	virtual bool IsBackground()		=0;
 
 	virtual void SetStatusHandler(IDubStatusHandler *pdsh)		=0;
 	virtual void SetPriority(int index)=0;
+	virtual void SetBackground(bool background) = 0;
 	virtual void UpdateFrames()=0;
 
 	virtual void SetThrottleFactor(float throttleFactor) = 0;

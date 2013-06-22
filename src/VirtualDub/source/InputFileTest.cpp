@@ -256,28 +256,49 @@ bool VDVideoSourceTest::setTargetFormat(int format) {
 		return false;
 	}
 
-	switch(format) {
-	case nsVDPixmap::kPixFormat_XRGB8888:
-	case nsVDPixmap::kPixFormat_YUV444_Planar:
-	case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
-	case nsVDPixmap::kPixFormat_YUV444_Planar_709:
-	case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
-		mbUseTempBuffer = false;
-		break;
+	// Channel level tests always use the temp buffer.
+	if (mMode == 4) {
+		mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_XRGB8888);
 
-	default:
-		if (!finfo->mbIsYUV)
-			mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_XRGB8888);
-		else if (finfo->mbIs709) {
-			if (finfo->mbIsFullRange)
-				mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709_FR);
-			else
-				mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709);
-		} else {
-			if (finfo->mbIsFullRange)
-				mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_FR);
-			else
-				mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar);
+		mbUseTempBuffer = true;
+	} else if (mMode == 9) {
+		if (finfo->mbIsYUV && finfo->mbIs709)
+			mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709);
+		else
+			mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar);
+
+		mbUseTempBuffer = true;
+	} else if (mMode == 10) {
+		if (finfo->mbIsYUV && finfo->mbIs709)
+			mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709_FR);
+		else
+			mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_FR);
+
+		mbUseTempBuffer = true;
+	} else {
+		switch(format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+		case nsVDPixmap::kPixFormat_YUV444_Planar:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
+			mbUseTempBuffer = false;
+			break;
+		default:
+			if (!finfo->mbIsYUV)
+				mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_XRGB8888);
+			else if (finfo->mbIs709) {
+				if (finfo->mbIsFullRange)
+					mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709_FR);
+				else
+					mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_709);
+			} else {
+				if (finfo->mbIsFullRange)
+					mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar_FR);
+				else
+					mTempBuffer.init(640, 480, nsVDPixmap::kPixFormat_YUV444_Planar);
+			}
+			break;
 		}
 	}
 
@@ -501,7 +522,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		triv[5].x = 260.0f;
 
 		VDPixmapTriFill(*dst, triv, 6, kIndices, 6, &ortho[0][0]);
-	} else if (mMode == 4) {
+	} else if (mMode == 4 || mMode == 9 || mMode == 10) {
 		static const int kIndices[6]={0,1,2,2,1,3};
 		VDTriColorVertex triv[4];
 
@@ -516,7 +537,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 				triv[v].y = 40.0f + 120.0f * channel + ((v&2) ? 80.0f : 0.0f);
 				triv[v].z = 0;
 
-				if (isyuv) {
+				if (mMode == 9 || mMode == 10) {
 					triv[v].r = 128.0f / 255.0f;
 					triv[v].g = 128.0f / 255.0f;
 					triv[v].b = 128.0f / 255.0f;
@@ -527,6 +548,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 						break;
 					case 1:
 						triv[v].g = v&1 ? 1.0f : 0.0f;
+						triv[v].y = 40.0f + 120.0f * channel + ((v&2) ? 80.0f : 60.0f);
 						break;
 					case 2:
 						triv[v].b = v&1 ? 1.0f : 0.0f;
@@ -550,10 +572,11 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 					}
 				}
 			}
+
 			VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
 
 			VDPixmapPathRasterizer rast;
-			VDPixmapConvertTextToPath(rast, NULL, 24.0f * 64.0f, 10.0f * 64.0f, (60.0f + 120.0f * channel) * 64.0f, kNames[isyuv][channel]);
+			VDPixmapConvertTextToPath(rast, NULL, 24.0f * 64.0f, 10.0f * 64.0f, (60.0f + 120.0f * channel) * 64.0f, kNames[mMode == 9 || mMode == 10][channel]);
 
 			VDPixmapRegion region;
 			VDPixmapRegion border;
@@ -565,6 +588,82 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 
 			VDPixmapFillRegionAntialiased8x(*dst, border, 0, 0, black);
 			VDPixmapFillRegionAntialiased8x(*dst, region, 0, 0, textcolor);
+
+			if ((mMode == 9 || mMode == 10) && channel == 1) {
+				// Draw double limited range ramp
+				triv[0].y = triv[1].y = 160.0f;
+				triv[2].y = triv[3].y = 180.0f;
+
+				// draw 0-16 ramp
+				triv[0].x = triv[2].x = 90.0f;
+				triv[1].x = triv[3].x = 90.0f + (16.0f / 255.0f * 219.0f / 255.0f + 16.0f / 255.0f) * 512.0f;
+				triv[0].g = triv[2].g = 16.0f / 255.0f * 219.0f / 255.0f + 16.0f / 255.0f;
+				triv[1].g = triv[3].g = triv[0].g;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				// draw 16-235 ramp
+				triv[0].x = triv[1].x;
+				triv[2].x = triv[3].x;
+				triv[1].x = triv[3].x = 90.0f + (235.0f / 255.0f * 219.0f / 255.0f + 16.0f / 255.0f) * 512.0f;
+				triv[1].g = triv[3].g = 235.0f / 255.0f * 219.0f / 255.0f + 16.0f / 255.0f;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				// draw 235-255 clamp
+				triv[0].x = triv[1].x;
+				triv[2].x = triv[3].x;
+				triv[1].x = triv[3].x = 90.0f + 512.0f;
+				triv[0].g = triv[2].g = triv[1].g;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				// draw 16-235 clamped ramp
+				triv[0].y = triv[1].y = 180.0f;
+				triv[2].y = triv[3].y = 220.0f;
+
+				// draw 0-16 clamp
+				triv[0].x = triv[2].x = 90.0f;
+				triv[1].x = triv[3].x = 90.0f + (16.0f / 255.0f) * 512.0f;
+				triv[0].g = 16.0f / 255.0f;
+				triv[1].g = 16.0f / 255.0f;
+				triv[2].g = 16.0f / 255.0f;
+				triv[3].g = 16.0f / 255.0f;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				// draw 16-235 ramp
+				triv[0].x = triv[1].x;
+				triv[2].x = triv[3].x;
+				triv[1].x = 90.0f + (235.0f / 255.0f) * 512.0f;
+				triv[3].x = triv[1].x;
+				triv[1].g = 235.0f / 255.0f;
+				triv[3].g = 235.0f / 255.0f;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				// draw 235-255 clamp
+				triv[0].x = triv[1].x;
+				triv[2].x = triv[3].x;
+				triv[1].x = 90.0f + 512.0f;
+				triv[3].x = triv[1].x;
+				triv[0].g = 235.0f / 255.0f;
+				triv[2].g = 235.0f / 255.0f;
+				VDPixmapTriFill(*dst, triv, 4, kIndices, 6, &ortho[0][0]);
+
+				static const char *const kSubNames[]={
+					"30-217",
+					"16-235",
+					"0-255"
+				};
+
+				for(int subChannel = 0; subChannel < 3; ++subChannel) {
+					VDPixmapConvertTextToPath(rast, NULL, 14.0f * 64.0f, 30.0f * 64.0f, (170.0f + 100.0f / 3.0f * subChannel) * 64.0f, kSubNames[subChannel]);
+
+					rast.ScanConvert(region);
+
+					VDPixmapCreateRoundRegion(brush, 16.0f);
+					VDPixmapConvolveRegion(border, region, brush);
+
+					VDPixmapFillRegionAntialiased8x(*dst, border, 0, 0, black);
+					VDPixmapFillRegionAntialiased8x(*dst, region, 0, 0, textcolor);
+				}
+			}
 		}
 	} else if (mMode == 5) {
 		uint8 *dstrow = (uint8 *)dst->data;
@@ -684,18 +783,20 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 		"RGB color cube (TFF)",
 		"RGB color cube (BFF)",
 		"Chroma subsampling offset",
-		"Channel levels",
+		"Channel levels (RGB)",
 		"Checkerboard",
 		"Zone plates",
 		"3:2 pulldown (TFF)",
-		"3:2 pulldown (BFF)"
+		"3:2 pulldown (BFF)",
+		"Channel levels (YCbCr LR)",
+		"Channel levels (YCbCr FR)",
 	};
 
-	char buf[128];
-	sprintf(buf, "%s - frame %d (%s)", kModeNames[mMode], (int)frame_num, mpFormatInfo->mpName);
+	VDStringA buf;
+	buf.sprintf("%s - frame %d (%s)", kModeNames[mMode], (int)frame_num, mpFormatInfo->mpName);
 
 	mTextRasterizer.Clear();
-	VDPixmapConvertTextToPath(mTextRasterizer, NULL, 24.0f * 64.0f, 20.0f * 64.0f, 460.0f * 64.0f, buf);
+	VDPixmapConvertTextToPath(mTextRasterizer, NULL, 24.0f * 64.0f, 20.0f * 64.0f, 460.0f * 64.0f, buf.c_str());
 
 	mTextRasterizer.ScanConvert(mTextRegion);
 
@@ -704,7 +805,7 @@ const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 da
 	VDPixmapFillRegionAntialiased8x(*dst, mTextBorderRegion, 0, 0, black);
 	VDPixmapFillRegionAntialiased8x(*dst, mTextRegion, 0, 0, textcolor);
 
-	if (mTargetFormat.format != dst->format)
+	if (&mTargetFormat != dst)
 		VDPixmapBlt(mTargetFormat, *dst);
 
 	mCachedFrame = frame_num;
@@ -1027,7 +1128,7 @@ public:
 		return -1000;
 	}
 
-	uint32 GetFlags() { return kF_Video; }
+	uint32 GetFlags() { return kF_Video | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
 		// This input driver is never meant to be used for a file.

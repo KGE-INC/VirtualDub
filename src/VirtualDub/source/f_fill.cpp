@@ -73,8 +73,15 @@ static int fill_run(const FilterActivation *fa, const FilterFunctions *ff) {
 }
 
 static long fill_param(FilterActivation *fa, const FilterFunctions *ff) {
-	fa->dst.offset = fa->src.offset;
-	return 0;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+	VDXPixmapLayout& pxldst = *fa->dst.mpPixmapLayout;
+
+	if (pxlsrc.format != nsVDXPixmap::kPixFormat_XRGB8888)
+		return FILTERPARAM_NOT_SUPPORTED;
+
+	pxldst.data = pxlsrc.data;
+	pxldst.pitch = pxlsrc.pitch;
+	return FILTERPARAM_PURE_TRANSFORM | FILTERPARAM_SUPPORTS_ALTFORMATS;
 }
 
 static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -220,10 +227,10 @@ static int fill_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND 
 	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FILL), (HWND)hWnd, fillDlgProc, (LPARAM)mfd);
 }
 
-static void fill_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
+static void fill_string2(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	wsprintf(buf, " (color: #%02X%02X%02X)", mfd->color&0xff, (mfd->color>>8)&0xff, (mfd->color>>16)&0xff);
+	_snprintf(buf, maxlen, " (color: #%02X%02X%02X)", mfd->color&0xff, (mfd->color>>8)&0xff, (mfd->color>>16)&0xff);
 }
 
 static void fill_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
@@ -264,11 +271,12 @@ FilterDefinition filterDef_fill={
 	fill_run,
 	fill_param,
 	fill_config,
-	fill_string,
+	NULL,
 	NULL,
 	NULL,
 
 	&fill_obj,
 	fill_script_line,
+	fill_string2,
 };
 

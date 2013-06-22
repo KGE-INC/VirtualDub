@@ -86,7 +86,14 @@ public:
 	void SetAudioErrorModeAsk();
 	void JumpToFrameAsk();
 
+	void OpenNewInstance();
+	void CloseAndDelete();
+	void OpenPrevious();
+	void OpenNext();
+
 protected:
+	void OpenPreviousNext(bool next);
+
 	void QueueCommand(int cmd);
 	void ExecuteCommand(int cmd);
 

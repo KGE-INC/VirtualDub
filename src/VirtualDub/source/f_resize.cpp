@@ -430,8 +430,8 @@ void VDVideoFilterResize::GetSettingString(char *buf, int maxlen) {
 }
 
 void VDVideoFilterResize::Start() {
-	const VDXPixmap& pxdst = *fa->dst.mpPixmap;
-	const VDXPixmap& pxsrc = *fa->src.mpPixmap;
+	const VDXPixmapLayout& pxdst = *fa->dst.mpPixmapLayout;
+	const VDXPixmapLayout& pxsrc = *fa->src.mpPixmapLayout;
 
 	if (const char *error = mConfig.Validate())
 		ff->Except("%s", error);
@@ -507,10 +507,10 @@ void VDVideoFilterResize::Start() {
 		srcrect2.transform(1.0f, 0.5f, 0.0f, -0.25f);
 		dstrect2.transform(1.0f, 0.5f, 0.0f, -0.25f);
 
-		mpResampler ->Init(dstrect1, pxdst.w, (pxdst.h+1) >> 1, pxdst.format, srcrect1, pxsrc.w, (pxsrc.h+1) >> 1, pxsrc.format);
-		mpResampler2->Init(dstrect2, pxdst.w, (pxdst.h+0) >> 1, pxdst.format, srcrect2, pxsrc.w, (pxsrc.h+0) >> 1, pxsrc.format);
+		VDVERIFY(mpResampler ->Init(dstrect1, pxdst.w, (pxdst.h+1) >> 1, pxdst.format, srcrect1, pxsrc.w, (pxsrc.h+1) >> 1, pxsrc.format));
+		VDVERIFY(mpResampler2->Init(dstrect2, pxdst.w, (pxdst.h+0) >> 1, pxdst.format, srcrect2, pxsrc.w, (pxsrc.h+0) >> 1, pxsrc.format));
 	} else {
-		mpResampler->Init(mConfig.mDstRect, pxdst.w, pxdst.h, pxdst.format, srcrect, pxsrc.w, pxsrc.h, pxsrc.format);
+		VDVERIFY(mpResampler->Init(mConfig.mDstRect, pxdst.w, pxdst.h, pxdst.format, srcrect, pxsrc.w, pxsrc.h, pxsrc.format));
 	}
 }
 

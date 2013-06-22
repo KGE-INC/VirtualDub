@@ -82,7 +82,7 @@ using namespace nsVDCapture;
 
 extern HINSTANCE g_hInst;
 extern const char g_szError[];
-extern List g_listFA;
+extern VDFilterChainDesc g_filterChain;
 extern long g_lSpillMinSize;
 extern long g_lSpillMaxSize;
 extern HWND			g_hWnd;
@@ -647,6 +647,7 @@ protected:
 	bool		mbEnableAudioVumeter;
 	bool		mbEnableVideoHistogram;
 	bool		mbEnableVideoFrameTransfer;
+	VDAtomicInt	mSuspendVideoFrameTransferCount;
 	bool		mbVideoFrameTransferActive;
 
 	// driver state shadowing
@@ -713,6 +714,7 @@ VDCaptureProject::VDCaptureProject()
 	, mbEnableAudioVumeter(false)
 	, mbEnableVideoHistogram(false)
 	, mbEnableVideoFrameTransfer(false)
+	, mSuspendVideoFrameTransferCount(0)
 	, mbVideoFrameTransferActive(false)
 	, mbDisplayVisible(true)
 	, mbAudioCaptureEnabled(true)
@@ -1730,7 +1732,7 @@ void VDCaptureProject::Capture(bool fTest) {
 
 		// get capture parms
 
-		bool bCaptureAudio = IsAudioCaptureEnabled();
+		bool bCaptureAudio = IsAudioCaptureEnabled() && IsAudioCaptureAvailable();
 
 		// create an output file object
 
@@ -2224,6 +2226,8 @@ void VDCaptureProject::ProcessPendingEvents() {
 			}
 			if (mDisplayMode == kDisplayAnalyze)
 				InitVideoAnalysis();
+
+			VDVERIFY(--mSuspendVideoFrameTransferCount >= 0);
 			break;
 		}
 	}
@@ -2277,6 +2281,9 @@ bool VDCaptureProject::CapEvent(DriverEvent event, int data) {
 
 	case kEventVideoFrameRateChanged:
 	case kEventVideoFormatChanged:
+		if (event == kEventVideoFormatChanged)
+			++mSuspendVideoFrameTransferCount;
+
 		vdsynchronized(mEventLock) {
 			mPendingEvents.push_back(event);
 		}
@@ -2677,7 +2684,7 @@ void VDCaptureProject::ShutdownVideoFrameTransfer() {
 
 void VDCaptureProject::DispatchAnalysis(const VDPixmap& px) {
 	vdsynchronized(mVideoAnalysisLock) {
-		if (mDisplayMode == kDisplayAnalyze && mpCB) {
+		if (mDisplayMode == kDisplayAnalyze && mpCB && !mSuspendVideoFrameTransferCount) {
 			if (mpVideoHistogram) {
 				float data[256];
 

@@ -40,6 +40,10 @@ inline bool VDIsWindowsNT() {
 #endif
 }
 
+inline bool VDIsAtLeastVistaW32() {
+	return (sint32)(::GetVersion() & 0x800000FF) >= 6;
+}
+
 // useful constants missing from the Platform SDK
 
 enum {
@@ -94,5 +98,8 @@ bool		VDDrawTextW32(HDC hdc, const wchar_t *s, int nCount, LPRECT lpRect, UINT u
 
 bool		VDPatchModuleImportTableW32(HMODULE hmod, const char *srcModule, const char *name, void *pCompareValue, void *pNewValue, void *volatile *ppOldValue);
 bool		VDPatchModuleExportTableW32(HMODULE hmod, const char *name, void *pCompareValue, void *pNewValue, void *volatile *ppOldValue);
+
+/// Load a library from the Windows system directory.
+HMODULE		VDLoadSystemLibraryW32(const char *name);
 
 #endif

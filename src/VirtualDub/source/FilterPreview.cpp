@@ -177,8 +177,10 @@ void VDVideoFilterPreviewZoomPopup::OnPaint() {
 ///////////////////////////////////////////////////////////////////////////////
 
 class FilterPreview : public IVDXFilterPreview2, public vdrefcounted<IVDVideoFilterPreviewDialog> {
+	FilterPreview(const FilterPreview&);
+	FilterPreview& operator=(const FilterPreview&);
 public:
-	FilterPreview(List *, FilterInstance *);
+	FilterPreview(VDFilterChainDesc *desc, FilterInstance *);
 	~FilterPreview();
 
 	IVDXFilterPreview2 *AsIVDXFilterPreview2() { return this; }
@@ -241,7 +243,7 @@ private:
 	IVDVideoDisplay *mpDisplay;
 	IVDVideoWindow *mpVideoWindow;
 	FilterSystem mFiltSys;
-	List		*mpFilterList;
+	VDFilterChainDesc *mpFilterChainDesc;
 	FilterInstance *mpThisFilter;
 	VDTimeline	*mpTimeline;
 	VDFraction	mTimelineRate;
@@ -261,8 +263,8 @@ private:
 	ModelessDlgNode		mDlgNode;
 };
 
-bool VDCreateVideoFilterPreviewDialog(List *list, FilterInstance *finst, IVDVideoFilterPreviewDialog **pp) {
-	IVDVideoFilterPreviewDialog *p = new_nothrow FilterPreview(list, finst);
+bool VDCreateVideoFilterPreviewDialog(VDFilterChainDesc *desc, FilterInstance *finst, IVDVideoFilterPreviewDialog **pp) {
+	IVDVideoFilterPreviewDialog *p = new_nothrow FilterPreview(desc, finst);
 	if (!p)
 		return false;
 	p->AddRef();
@@ -270,7 +272,7 @@ bool VDCreateVideoFilterPreviewDialog(List *list, FilterInstance *finst, IVDVide
 	return true;
 }
 
-FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
+FilterPreview::FilterPreview(VDFilterChainDesc *pFilterChainDesc, FilterInstance *pfiThisFilter)
 	: mhdlg(NULL)
 	, mhwndButton(NULL)
 	, mhwndParent(NULL)
@@ -291,7 +293,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 	, mpPosition(NULL)
 	, mpDisplay(NULL)
 	, mpVideoWindow(NULL)
-	, mpFilterList(pFilterList)
+	, mpFilterChainDesc(pFilterChainDesc)
 	, mpThisFilter(pfiThisFilter)
 	, mpTimeline(0)
 	, mpButtonCallback(NULL)
@@ -567,7 +569,7 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 
 	try {
 		IVDStreamSource *pVSS = inputVideo->asStream();
-		const VDAVIBitmapInfoHeader *pbih2 = inputVideo->getDecompressedFormat();
+		const VDPixmap& px = inputVideo->getTargetFormat();
 		VDFraction srcRate = pVSS->getRate();
 
 		if (g_dubOpts.video.mFrameRateAdjustLo > 0)
@@ -578,9 +580,9 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		const VDFraction& srcPAR = inputVideo->getPixelAspectRatio();
 
 		mFiltSys.prepareLinearChain(
-				mpFilterList,
-				pbih2->biWidth,
-				abs(pbih2->biHeight),
+				mpFilterChainDesc,
+				px.w,
+				px.h,
 				pxsrc.format,
 				srcRate,
 				pVSS->getLength(),
@@ -592,10 +594,10 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		mFiltSys.initLinearChain(
 				NULL,
 				VDXFilterStateInfo::kStatePreview,
-				mpFilterList,
+				mpFilterChainDesc,
 				mpVideoFrameSource,
-				pbih2->biWidth,
-				abs(pbih2->biHeight),
+				px.w,
+				px.h,
 				pxsrc.format,
 				pxsrc.palette,
 				srcRate,
@@ -790,7 +792,7 @@ VDPosition FilterPreview::FetchFrame(VDPosition pos) {
 }
 
 bool FilterPreview::isPreviewEnabled() {
-	return !!mpFilterList;
+	return !!mpFilterChainDesc;
 }
 
 bool FilterPreview::IsPreviewDisplayed() {
@@ -816,7 +818,7 @@ void FilterPreview::InitButton(VDXHWND hwnd) {
 		// look for an accelerator
 		mButtonAccelerator = 0;
 
-		if (mpFilterList) {
+		if (mpFilterChainDesc) {
 			int pos = wintext.find(L'&');
 			if (pos != wintext.npos) {
 				++pos;
@@ -829,7 +831,7 @@ void FilterPreview::InitButton(VDXHWND hwnd) {
 			}
 		}
 
-		EnableWindow((HWND)hwnd, mpFilterList ? TRUE : FALSE);
+		EnableWindow((HWND)hwnd, mpFilterChainDesc ? TRUE : FALSE);
 	}
 }
 
@@ -845,7 +847,7 @@ void FilterPreview::Display(VDXHWND hwndParent, bool fDisplay) {
 		DestroyWindow(mhdlg);
 		mhdlg = NULL;
 		UndoSystem();
-	} else if (mpFilterList) {
+	} else if (mpFilterChainDesc) {
 		mhwndParent = (HWND)hwndParent;
 		mhdlg = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_PREVIEW), (HWND)hwndParent, StaticDlgProc, (LPARAM)this);
 	}
@@ -887,7 +889,7 @@ void FilterPreview::Close() {
 }
 
 bool FilterPreview::SampleCurrentFrame() {
-	if (!mpFilterList || !mhdlg || !mpSampleCallback)
+	if (!mpFilterChainDesc || !mhdlg || !mpSampleCallback)
 		return false;
 
 	if (!mFiltSys.isRunning()) {
@@ -998,7 +1000,7 @@ long FilterPreview::SampleFrames() {
 
 	long lCount = 0;
 
-	if (!mpFilterList || !mhdlg || !mpSampleCallback)
+	if (!mpFilterChainDesc || !mhdlg || !mpSampleCallback)
 		return -1;
 
 	if (!mFiltSys.isRunning()) {

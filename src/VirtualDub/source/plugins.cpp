@@ -14,6 +14,7 @@
 #include <vd2/plugin/vdinputdriver.h>
 
 #include "plugins.h"
+#include "filters.h"
 #include "misc.h"
 
 extern VDXFilterFunctions g_VDFilterCallbacks;
@@ -133,7 +134,7 @@ void VDConnectPluginDescription(const VDPluginInfo *pInfo, VDExternalModule *pMo
 				break;
 
 			case kVDXPluginType_Input:
-				if (pInfo->mTypeAPIVersionRequired > kVDPlugin_AudioAPIVersion)
+				if (pInfo->mTypeAPIVersionRequired > kVDXPlugin_InputDriverAPIVersion)
 					throw MyError("Plugin requires a newer input API version (v%u > v%u)", pInfo->mTypeAPIVersionRequired, kVDXPlugin_InputDriverAPIVersion);
 
 				if (pInfo->mTypeAPIVersionUsed < 1)
@@ -247,6 +248,8 @@ void VDExternalModule::Unlock() {
 
 void VDExternalModule::DisconnectOldPlugins() {
 	if (mModuleInfo.hInstModule) {
+		VDFilterRemoveAll(this);
+
 		{
 			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
 			mModuleInfo.deinitProc(&mModuleInfo, &g_VDFilterCallbacks);
@@ -305,7 +308,11 @@ void VDExternalModule::ReconnectOldPlugins() {
 					"VirtualDub to use this filter."
 					);
 			}
+
+			mVFHighVersion = ver_hi;
 		} catch(...) {
+			VDFilterRemoveAll(this);
+
 			mModuleInfo.hInstModule = NULL;
 			throw;
 		}

@@ -239,16 +239,16 @@ void vdvector<T,A>::resize(size_type sz, T c = T()) {
 				pointer p1 = std::uninitialized_copy(m.mpBegin, m.mpEnd, p0);
 				pointer p2 = p0 + sz;
 
+				T *prev0 = m.mpBegin;
+				T *prev1 = m.mpEnd;
+				T *prev2 = m.mpEOS;
 				try {
 					std::uninitialized_fill(p1, p2, c);
 
 					// destroy old range
-					T *prev1 = m.mpBegin;
-					T *prev2 = m.mpEnd;
-
-					while(prev2 != prev1) {
-						--prev2;
-						prev2->~T();
+					while(prev1 != prev0) {
+						--prev1;
+						prev0->~T();
 					}
 
 					m.mpBegin = p0;
@@ -259,7 +259,11 @@ void vdvector<T,A>::resize(size_type sz, T c = T()) {
 						--p2;
 						p2->~T();
 					}
+					m.deallocate(p0, sz);
+					throw;
 				}
+
+				m.deallocate(prev0, prev2 - prev0);
 			} catch(...) {
 				m.deallocate(p0, sz);
 				throw;
@@ -318,6 +322,7 @@ typename vdvector<T,A>::reference vdvector<T,A>::push_back() {
 
 template <class T, class A>
 void vdvector<T,A>::push_back(const T& x) {
+	VDASSERT(m.mpEnd >= m.mpBegin && m.mpEnd <= m.mpEOS);
 	if (m.mpEnd != m.mpEOS) {
 		new(m.mpEnd) T(x);
 		++m.mpEnd;
@@ -367,13 +372,26 @@ typename vdvector<T,A>::iterator vdvector<T,A>::insert_as(iterator position, con
 			m.deallocate(p0, newCapacity);
 			throw;
 		}
-	} else {
-		const T tmp(*position);
+	} else if (position != m.mpEnd) {
+		T tmp(*position);
 
 		*position = x;
 
-		std::copy_backward(position, m.mpEnd, m.mpEnd + 1);
-		position[1] = tmp;
+		new(m.mpEnd) T();
+
+		try {
+			vdmove_backward(position + 1, m.mpEnd, m.mpEnd + 1);
+			position[1] = tmp;
+			++m.mpEnd;
+		} catch(...) {
+			m.mpEnd->~T();
+			throw;
+		}
+
+		return position;
+	} else {
+		new(m.mpEnd) T(x);
+		++m.mpEnd;
 
 		return position;
 	}
@@ -413,13 +431,26 @@ typename vdvector<T,A>::iterator vdvector<T,A>::insert(iterator position, const 
 			m.deallocate(p0, newCapacity);
 			throw;
 		}
-	} else {
-		const T tmp(*position);
+	} else if (position != m.mpEnd) {
+		T tmp(*position);
 
 		*position = x;
 
-		std::copy_backward(position, m.mpEnd, m.mpEnd + 1);
-		position[1] = tmp;
+		new(m.mpEnd) T();
+
+		try {
+			vdmove_backward(position + 1, m.mpEnd, m.mpEnd + 1);
+			position[1] = tmp;
+			++m.mpEnd;
+		} catch(...) {
+			m.mpEnd->~T();
+			throw;
+		}
+
+		return position;
+	} else {
+		new(m.mpEnd) T(x);
+		++m.mpEnd;
 
 		return position;
 	}

@@ -24,6 +24,7 @@ class AudioSource;
 class IDubber;
 struct VDAVIOutputRawVideoFormat;
 struct VDAVIOutputCLITemplate;
+class VDFile;
 
 enum VDAudioSourceMode {
 	kVDAudioSourceMode_None		= 0,
@@ -135,9 +136,11 @@ public:
 
 	void DisplayFrame(bool bDispInput = true, bool bDispOutput = true, bool forceInput = false, bool forceOutput = false);
 
-	void RunOperation(IVDDubberOutputSystem *pOutputSystem, int fAudioOnly, DubOptions *pOptions, int iPriority=0, bool fPropagateErrors = false, long lSpillThreshold = 0, long lSpillFrameThreshold = 0);
+	void RunOperation(IVDDubberOutputSystem *pOutputSystem, int fAudioOnly, DubOptions *pOptions, int iPriority=0, bool fPropagateErrors = false, long lSpillThreshold = 0, long lSpillFrameThreshold = 0, bool backgroundPriority = false);
 
 	////////////////////
+
+	void AutoSave(VDFile& f);
 
 	void Quit();
 	void Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = 0, bool fExtendedOpen = false, bool fQuiet = false, bool fAutoscan = false, const char *pInputOpts = 0, uint32 inputOptsLen = 0);

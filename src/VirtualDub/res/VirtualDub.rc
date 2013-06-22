@@ -73,7 +73,7 @@ BEGIN
         MENUITEM "Save &as AVI...\tF7",         ID_FILE_SAVEAVI
         MENUITEM "Save old format AVI...\tShift+F7", ID_FILE_SAVECOMPATIBLEAVI
         MENUITEM "Save segmented AVI...",       ID_FILE_SAVESEGMENTEDAVI
-        MENUITEM "&Close video file\tCtrl-W",   ID_FILE_CLOSEAVI
+        MENUITEM "&Close video file\tCtrl+W",   ID_FILE_CLOSEAVI
         MENUITEM SEPARATOR
         POPUP "E&xport"
         BEGIN
@@ -254,6 +254,14 @@ BEGIN
         MENUITEM "Benchmark resampler",         ID_TOOLS_BENCHMARKRESAMPLER
         MENUITEM "Create palettized AVI...",    ID_TOOLS_CREATEPALETTIZEDAVI
         MENUITEM "Create test video...",        ID_TOOLS_CREATETESTVIDEO
+        MENUITEM SEPARATOR
+        MENUITEM "Open new program instance",   ID_FILE_NEWINSTANCE
+        POPUP "Triage"
+        BEGIN
+            MENUITEM "Close and delete",            ID_FILE_CLOSEANDDELETE
+            MENUITEM "Open previous file",          ID_FILE_OPENPREVIOUS
+            MENUITEM "Open next file",              ID_FILE_OPENNEXT
+        END
     END
     POPUP "&Help"
     BEGIN
@@ -679,6 +687,15 @@ BEGIN
     MENUITEM "Always on top",               ID_SYSTEM_ALWAYSONTOP
 END
 
+IDR_FILTER_LIST_CONTEXT MENU 
+BEGIN
+    POPUP "FilterList"
+    BEGIN
+        MENUITEM "Name Output",                 ID_FILTERLIST_NAMEOUTPUT
+        MENUITEM "Add Input",                   ID_FILTERLIST_ADDINPUT
+    END
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -691,7 +708,6 @@ EXSTYLE WS_EX_NOPARENTNOTIFY
 CAPTION "VirtualDub Status"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    PUSHBUTTON      "&Abort",IDC_ABORT,129,149,50,14
     CONTROL         "Tab1",IDC_TABS,"SysTabControl32",WS_TABSTOP,7,7,172,85
     LTEXT           "Progress:",IDC_STATIC_PROGRESS,7,95,86,8
     CONTROL         "Progress1",IDC_PROGRESS,"msctls_progress32",WS_BORDER | 0x1,93,95,86,10
@@ -702,6 +718,8 @@ BEGIN
     CONTROL         "Show &input video",IDC_DRAW_INPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,133,70,10
     CONTROL         "Show &output video",IDC_DRAW_OUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,143,75,10
     CONTROL         "Show &decompressed video",IDC_DRAW_DOUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,153,99,10
+    CONTROL         "Background I/O",IDC_BACKGROUND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,96,133,82,10
+    PUSHBUTTON      "&Abort",IDC_ABORT,129,149,50,14
 END
 
 IDD_INTERLEAVE DIALOG  0, 0, 249, 175
@@ -845,8 +863,8 @@ BEGIN
     LTEXT           "Inverse telecine has been moved to the IVTC video filter.",IDC_STATIC,15,142,184,8
 END
 
-IDD_FILTERS DIALOGEX 0, 0, 342, 202
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_FILTERS DIALOGEX 0, 0, 342, 201
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "Filters"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
@@ -860,22 +878,22 @@ BEGIN
     PUSHBUTTON      "C&ropping...",IDC_CLIPPING,285,125,50,14,WS_DISABLED
     PUSHBUTTON      "&Configure...",IDC_CONFIGURE,285,141,50,14,WS_DISABLED
     PUSHBUTTON      "&Blend",IDC_BLENDING,285,164,50,14,WS_DISABLED
-    CONTROL         "&Show image formats",IDC_SHOWIMAGEFORMATS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,185,81,10
-    CONTROL         "Show &pixel aspect ratios",IDC_SHOWASPECTRATIOS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,99,185,93,10
-    CONTROL         "Show &frame rates",IDC_SHOWFRAMERATES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,199,185,73,10
-    PUSHBUTTON      "O&ptions...",IDC_OPTIONS,285,181,50,14,WS_DISABLED
+    CONTROL         "&Show image formats",IDC_SHOWIMAGEFORMATS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,184,81,10
+    CONTROL         "Show &pixel aspect ratios",IDC_SHOWASPECTRATIOS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,99,184,93,10
+    CONTROL         "Show &frame rates",IDC_SHOWFRAMERATES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,199,184,73,10
+    PUSHBUTTON      "O&ptions...",IDC_OPTIONS,285,180,50,14,WS_DISABLED
 END
 
 IDD_FILTER_LIST DIALOGEX 0, 0, 332, 199
-STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 CAPTION "Add Filter"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
+    LISTBOX         IDC_FILTER_LIST,7,7,258,141,LBS_SORT | LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     DEFPUSHBUTTON   "OK",IDOK,275,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,275,24,50,14
-    LISTBOX         IDC_FILTER_LIST,7,7,258,137,LBS_SORT | LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Filter information",IDC_FILTER_INFO,7,152,258,40,0,WS_EX_STATICEDGE
     PUSHBUTTON      "&Load...",IDC_LOAD,275,49,50,14
+    LTEXT           "Filter information",IDC_FILTER_INFO,7,152,258,40,0,WS_EX_STATICEDGE
 END
 
 IDD_ABOUT DIALOGEX 0, 0, 340, 238
@@ -884,7 +902,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub $v$s - Copyright (C) 1998-2010 by Avery Lee, All Rights Reserved.\nCompiled with $k\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub $v$s - Copyright (C) 1998-2012 by Avery Lee, All Rights Reserved.\nCompiled with $k\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -948,79 +966,44 @@ BEGIN
     CONTROL         "Bandwidth required: 0KB/s",IDC_BANDWIDTH_REQD,"Static",SS_LEFTNOWORDWRAP | WS_GROUP,7,158,105,10,WS_EX_STATICEDGE
 END
 
-IDD_AVI_INFO DIALOG  0, 0, 290, 218
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_AVI_INFO DIALOGEX 0, 0, 320, 218
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "AVI Information"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,233,197,50,14
-    LTEXT           "Frame size, fps (µs per frame)",IDC_STATIC,15,17,92,8
+    DEFPUSHBUTTON   "OK",IDOK,263,197,50,14
+    LTEXT           "Frame size, fps (µs per frame):",IDC_STATIC,15,17,105,8
     LTEXT           "Length:",IDC_STATIC,15,27,25,8
     LTEXT           "Min/avg/max/total key frame size:",IDC_STATIC,15,57,109,8
-    LTEXT           "Min/avg/max/total delta frame size:",IDC_STATIC,15,67,113,8
+    LTEXT           "Min/avg/max/total delta size:",IDC_STATIC,15,67,113,8
     LTEXT           "Sampling rate:",IDC_STATIC,15,106,46,8
     LTEXT           "Channels:",IDC_STATIC,15,116,32,8
     LTEXT           "Sample precision:",IDC_STATIC,15,126,56,8
-    GROUPBOX        "Audio stream",IDC_STATIC,7,96,276,96
-    GROUPBOX        "Video stream",IDC_STATIC,7,7,276,88
+    GROUPBOX        "Audio stream",IDC_STATIC,7,96,306,96
+    GROUPBOX        "Video stream",IDC_STATIC,7,7,306,88
     LTEXT           "Length:",IDC_STATIC,15,156,25,8
     LTEXT           "Min/avg/max/total frame size:",IDC_STATIC,15,166,100,8
     LTEXT           "Decompressor:",IDC_STATIC,15,37,48,8
     LTEXT           "Layout:",IDC_STATIC,15,146,24,8
-    RTEXT           "",IDC_VIDEO_FORMAT,142,17,133,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NUMFRAMES,142,27,133,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_COMPRESSION,142,37,133,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,142,57,133,9,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,142,67,133,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,142,47,133,10,SS_SUNKEN
-    LTEXT           "Number of key frames:",IDC_STATIC,15,47,72,8
-    RTEXT           "",IDC_AUDIO_SAMPLINGRATE,142,106,133,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_CHANNELS,142,116,133,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_PRECISION,142,126,133,9,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_LAYOUT,142,146,133,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_LENGTH,142,156,133,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_FRAMESIZES,142,166,133,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_FORMAT,129,17,176,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NUMFRAMES,129,27,176,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_COMPRESSION,129,37,176,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,129,57,176,9,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,129,67,176,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,129,47,176,10,SS_SUNKEN
+    LTEXT           "Number of key frames:",IDC_STATIC,15,47,102,8
+    RTEXT           "",IDC_AUDIO_SAMPLINGRATE,129,106,176,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_CHANNELS,129,116,176,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_PRECISION,129,126,176,9,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_LAYOUT,129,146,176,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_LENGTH,129,156,176,10,SS_SUNKEN
+    RTEXT           "",IDC_AUDIO_FRAMESIZES,129,166,176,10,SS_SUNKEN
     LTEXT           "Compression:",IDC_STATIC,15,136,43,8
-    RTEXT           "",IDC_AUDIO_COMPRESSION,142,136,133,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_DATARATE,142,77,133,10,SS_SUNKEN
-    LTEXT           "Data rate:",IDC_STATIC,15,77,32,8
+    RTEXT           "",IDC_AUDIO_COMPRESSION,129,136,176,10,SS_SUNKEN
+    RTEXT           "",IDC_VIDEO_DATARATE,129,77,176,10,SS_SUNKEN
+    LTEXT           "Data rate:",IDC_STATIC,15,77,102,8
     LTEXT           "Data rate:",IDC_STATIC,15,176,100,8
-    RTEXT           "",IDC_AUDIO_DATARATE,142,176,133,10,SS_SUNKEN
-END
-
-IDD_FILTER_SINGVAR DIALOGEX 0, 0, 215, 63
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Dialog"
-FONT 8, "MS Shell Dlg", 0, 0, 0x0
-BEGIN
-    CONTROL         "Slider1",IDC_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,7,7,176,21
-    LTEXT           "None",IDC_STATIC,7,28,80,8
-    RTEXT           "Maximum",IDC_STATIC,110,28,80,8
-    LTEXT           "",IDC_VALUE,7,43,59,8,WS_DISABLED
-    DEFPUSHBUTTON   "OK",IDOK,105,42,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,159,42,50,14
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,41,50,14
-    RTEXT           "Static",IDC_SETTING,183,9,25,8
-END
-
-IDD_FILTER_BRIGHTCONT DIALOGEX 0, 0, 280, 98
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: brightness/contrast"
-FONT 8, "MS Shell Dlg", 0, 0, 0x0
-BEGIN
-    LTEXT           "&Brightness",IDC_STATIC,7,10,34,8
-    CONTROL         "Slider1",IDC_BRIGHTNESS,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,51,7,222,20
-    LTEXT           "Black",IDC_STATIC,51,26,19,8
-    LTEXT           "Normal",IDC_STATIC,150,26,23,8
-    LTEXT           "White",IDC_STATIC,253,26,20,8
-    LTEXT           "&Contrast",IDC_STATIC,7,44,27,8
-    CONTROL         "Slider2",IDC_CONTRAST,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,51,42,222,20
-    LTEXT           "0%",IDC_STATIC,55,62,10,8
-    LTEXT           "100%",IDC_STATIC,153,62,18,8
-    LTEXT           "200%",IDC_STATIC,255,62,18,8
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,77,50,14,WS_DISABLED
-    DEFPUSHBUTTON   "OK",IDOK,165,77,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,223,77,50,14
+    RTEXT           "",IDC_AUDIO_DATARATE,129,176,176,10,SS_SUNKEN
 END
 
 IDD_FILTER_EMBOSS DIALOG  0, 0, 307, 106
@@ -1241,18 +1224,6 @@ BEGIN
     LTEXT           "",IDC_CURRENT_VALUE,7,40,114,8
 END
 
-IDD_PREFERENCES DIALOGEX 0, 0, 200, 151
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-EXSTYLE WS_EX_CONTEXTHELP
-CAPTION "Preferences"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
-BEGIN
-    DEFPUSHBUTTON   "Accept",IDOK,89,130,51,14
-    PUSHBUTTON      "Cancel",IDCANCEL,143,130,50,14
-    CONTROL         "Tab1",IDC_TAB,"SysTabControl32",WS_TABSTOP,7,7,186,119
-    PUSHBUTTON      "Save",IDC_SAVE,36,130,50,14
-END
-
 IDD_SERVER DIALOG  0, 0, 252, 103
 STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 CAPTION "Frameserver mode - VirtualDub"
@@ -1336,23 +1307,6 @@ BEGIN
     LTEXT           "Capture device and output file prepped.  Ready to capture on your mark.  Use right mouse button to end.",IDC_STATIC,7,7,172,20
 END
 
-IDD_PREFS_MAIN DIALOG  0, 0, 250, 150
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg"
-BEGIN
-    GROUPBOX        "Dub defaults",IDC_STATIC,7,54,236,30
-    LTEXT           "Output color depth",IDC_STATIC,13,19,60,8
-    LTEXT           "Process priority",IDC_STATIC,13,33,48,8
-    GROUPBOX        "File options",IDC_STATIC,7,89,236,31
-    CONTROL         "Automatically add extension to filenames when saving",IDC_TACK_EXTENSION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,101,185,10
-    COMBOBOX        IDC_OUTPUT_DEPTH,84,17,153,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    COMBOBOX        IDC_PREVIEW_PRIORITY,84,31,153,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Quick preview defaults",IDC_STATIC,7,7,236,43
-    LTEXT           "Process priority",IDC_STATIC,13,66,48,8
-    COMBOBOX        IDC_DUB_PRIORITY,84,64,153,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-END
-
 IDD_EXTOPENOPTS_MPEG DIALOG  0, 0, 228, 77
 STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 CAPTION "Import Options: MPEG input filter"
@@ -1400,59 +1354,6 @@ BEGIN
     PUSHBUTTON      "OK",IDCANCEL,113,205,50,14
 END
 
-IDD_PREFS_SCENE DIALOGEX 0, 0, 250, 150
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
-BEGIN
-    GROUPBOX        "Scene change thresholds",IDC_STATIC,7,7,236,68
-    CONTROL         "Slider1",IDC_INTERFRAME_SLIDER,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,73,17,144,16,WS_EX_STATICEDGE
-    LTEXT           "Interframe (cut)",IDC_STATIC,13,21,48,8
-    LTEXT           "Intraframe (fade)",IDC_STATIC,13,39,52,8
-    CONTROL         "Slider1",IDC_INTRAFRAME_SLIDER,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,73,36,144,16,WS_EX_STATICEDGE
-    RTEXT           "255",IDC_INTERFRAME_VALUE,217,21,20,9
-    RTEXT           "255",IDC_INTRAFRAME_VALUE,217,40,20,8
-    LTEXT           "Less sensitive",IDC_STATIC,60,57,45,8
-    LTEXT           "More sensitive",IDC_STATIC,187,57,46,8
-END
-
-IDD_FILTER_TV DIALOG  0, 0, 138, 118
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: tv"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    CONTROL         "Y channel (luminance)",IDC_MODE_Y,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,7,7,86,10
-    CONTROL         "I channel (chrominance axis 1)",IDC_MODE_I,"Button",BS_AUTORADIOBUTTON,7,16,112,10
-    CONTROL         "Q channel (chrominance axis 2)",IDC_MODE_Q,"Button",BS_AUTORADIOBUTTON,7,25,115,10
-    CONTROL         "I/Q (chrominance) 3x3 average",IDC_MODE_IQAVERAGE3,
-                    "Button",BS_AUTORADIOBUTTON,7,34,115,10
-    CONTROL         "I/Q (chrominance) 5x5 average",IDC_MODE_IQAVERAGE5,
-                    "Button",BS_AUTORADIOBUTTON,7,43,115,10
-    CONTROL         "I/Q 5x5 avg/temporal soften",IDC_MODE_IQAV5TMP,"Button",BS_AUTORADIOBUTTON,7,52,105,10
-    CONTROL         "Chrominance shift up",IDC_MODE_CHROMAUP,"Button",BS_AUTORADIOBUTTON,7,61,82,10
-    CONTROL         "Chrominance shift down",IDC_MODE_CHROMADOWN,"Button",BS_AUTORADIOBUTTON,7,70,91,10
-    DEFPUSHBUTTON   "OK",IDOK,27,97,50,14,WS_GROUP
-    PUSHBUTTON      "Cancel",IDCANCEL,81,97,50,14
-END
-
-IDD_PREFS_CPU DIALOG  0, 0, 250, 150
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg"
-BEGIN
-    GROUPBOX        "Performance optimizations",IDC_STATIC,7,7,236,126
-    CONTROL         "Use default optimizations for current CPU",IDC_PERFOPT_DEFAULT,
-                    "Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,13,17,145,10
-    CONTROL         "Force optimizations",IDC_PERFOPT_FORCE,"Button",BS_AUTORADIOBUTTON,13,55,76,10
-    CONTROL         "FPU",IDC_PERFOPT_FPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,66,30,10
-    CONTROL         "MMX",IDC_PERFOPT_MMX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,77,33,10
-    CONTROL         "Integer SSE",IDC_PERFOPT_SSEPARTIAL,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,87,54,10
-    CONTROL         "SSE",IDC_PERFOPT_SSE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,97,30,10
-    CONTROL         "SSE2",IDC_PERFOPT_SSE2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,107,34,10
-    CONTROL         "3DNow!",IDC_PERFOPT_3DNOW,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,120,66,42,10
-    CONTROL         "3DNow! 2",IDC_PERFOPT_3DNOW2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,120,76,48,10
-    LTEXT           "FPU routines enabled for all 486 and higher systems.",IDC_STATIC,25,27,166,8
-    LTEXT           "MMX, SSE, 3DNow!, and Integer SSE enabled if available.",IDC_STATIC,25,37,186,8
-END
-
 IDD_JOBCONTROL DIALOGEX 0, 0, 351, 199
 STYLE DS_SETFONT | DS_3DLOOK | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 EXSTYLE WS_EX_CLIENTEDGE
@@ -1484,21 +1385,6 @@ BEGIN
     LTEXT           "Job stopped with the following error:",IDC_STATIC,7,7,226,8
     EDITTEXT        IDC_ERROR,7,17,226,75,ES_MULTILINE | ES_AUTOVSCROLL
     DEFPUSHBUTTON   "Requeue Job as Waiting",IDOK,91,96,89,14
-END
-
-IDD_PREFS_DISPLAY DIALOG  0, 0, 250, 150
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg"
-BEGIN
-    GROUPBOX        "Display options",-1,7,7,236,136
-    CONTROL         "Enable dithering for 16-bit desktops",IDC_ENABLE_16DITHERING,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,18,127,10
-    CONTROL         "Use DirectX for display panes",IDC_ENABLE_DIRECTX,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,28,109,10
-    CONTROL         "Use DirectX even when Terminal Services is active (may cause display corruption)",IDC_FORCE_DXWITHTS,
-                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,25,40,212,19
-    CONTROL         "Use Direct3D (requires DirectX 9)",IDC_ENABLE_D3D,
-                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,25,59,212,10
 END
 
 IDD_MPEG_INFO DIALOG  0, 0, 290, 173
@@ -1608,18 +1494,6 @@ BEGIN
     RTEXT           "0K",IDC_STATIC_LOBOUND,146,71,19,8
 END
 
-IDD_PREFS_AVI DIALOG  0, 0, 250, 150
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg"
-BEGIN
-    CONTROL         "Restrict legacy AVI support to 1 gigabyte (instead of 2GB)",IDC_RESTRICT_AVI_1GB,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,7,196,10
-    LTEXT           "AVIFile and ActiveMovie can support standard AVI files up to 2 gigabytes, but MCIAVI based applications reject legacy AVI files longer than 1 gigabyte.  AVI 2.0 files are not affected.",IDC_STATIC,20,19,223,27
-    CONTROL         "Do not correct MPEG Layer III audio streams",IDC_AUTOCORRECT_L3,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,57,199,10
-    LTEXT           "This option prevents VirtualDub from correcting bad byterate values and compensating for a 1393 sample lag in MPEG Layer III audio streams during audio compression.  See help for more details.",IDC_STATIC,19,70,224,27
-END
-
 IDD_COACH DIALOG  0, 0, 242, 124
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Video coach warning"
@@ -1695,14 +1569,17 @@ BEGIN
 END
 
 IDD_VIDEOCOMPRESSION DIALOGEX 0, 0, 350, 172
-STYLE DS_SETFONT | DS_MODALFRAME | DS_CONTEXTHELP | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CONTEXTHELP | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Select video compression"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,241,151,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,293,151,50,14
-    LISTBOX         IDC_COMP_LIST,7,7,180,102,LBS_SORT | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+    LISTBOX         IDC_COMP_LIST,7,7,180,91,LBS_SORT | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Show a&ll codecs, even if they may not work",IDC_SHOW_ALL,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,100,177,8
+    LTEXT           "&Quality",IDC_STATIC_QUALITY_LABEL,7,114,22,14,SS_CENTERIMAGE
+    CONTROL         "Slider1",IDC_QUALITY_SLIDER,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,38,114,130,14
+    EDITTEXT        IDC_EDIT_QUALITY,171,115,27,12,ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER
     CONTROL         "Use target &data rate of",IDC_USE_DATARATE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,136,87,10
     EDITTEXT        IDC_DATARATE,97,134,46,13,ES_AUTOHSCROLL | ES_NUMBER
     LTEXT           "kilobytes/second",IDC_STATIC_DATARATE,148,138,55,8
@@ -1711,18 +1588,17 @@ BEGIN
     LTEXT           "frames",IDC_STATIC_KEYFRAMES,148,154,22,8
     GROUPBOX        "Video codec information",IDC_STATIC,193,7,150,102
     LTEXT           "Delta frames",IDC_STATIC,197,19,40,8
+    LTEXT           "",IDC_STATIC_DELTA,275,19,63,8
     LTEXT           "FOURCC code",IDC_STATIC,197,29,48,8
+    LTEXT           "",IDC_STATIC_FOURCC,275,29,63,8
     LTEXT           "Driver name",IDC_STATIC,197,39,39,8
+    LTEXT           "",IDC_STATIC_DRIVER,275,39,63,8
     LTEXT           "Format restrictions:",IDC_STATIC,198,62,60,8
     LISTBOX         IDC_SIZE_RESTRICTIONS,198,70,140,35,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
     PUSHBUTTON      "&Configure",IDC_CONFIGURE,241,114,50,14
     PUSHBUTTON      "&About",IDC_ABOUT,293,114,50,14
-    LTEXT           "",IDC_STATIC_DELTA,275,19,63,8
-    LTEXT           "",IDC_STATIC_FOURCC,275,29,63,8
-    LTEXT           "",IDC_STATIC_DRIVER,275,39,63,8
-    LTEXT           "&Quality",IDC_STATIC_QUALITY_LABEL,7,114,22,14,SS_CENTERIMAGE
-    CONTROL         "Slider1",IDC_QUALITY_SLIDER,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,38,114,130,14
-    EDITTEXT        IDC_EDIT_QUALITY,171,115,27,12,ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER
+    DEFPUSHBUTTON   "OK",IDOK,241,151,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,293,151,50,14
 END
 
 IDD_DISASM_CRASH DIALOG  0, 0, 399, 234
@@ -1773,84 +1649,6 @@ BEGIN
     LTEXT           "--Avery Lee <phaeron@virtualdub.org>",IDC_STATIC,201,110,92,16
     PUSHBUTTON      "View Help File",IDC_HELP2,38,132,56,14
     LTEXT           "I started this program in my freshman year at UCSB because I didn't have a good capture or compression program.  It's grown steadily since then. Please feel free to explore and enjoy the result of three years' worth of work.",IDC_STATIC,38,28,255,26
-END
-
-IDD_FILTER_SMOOTHER DIALOG  0, 0, 270, 79
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Smoother"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "Detail &threshold",IDC_STATIC,7,11,50,8
-    CONTROL         "Slider1",IDC_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,78,7,154,21
-    CONTROL         "Enable noise &prefilter",IDC_PREFILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,73,41,81,10
-    PUSHBUTTON      "Show preview",IDC_PREVIEW,7,58,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,213,58,50,14
-    DEFPUSHBUTTON   "OK",IDOK,160,58,50,14
-    LTEXT           "Detailed",IDC_STATIC,73,27,27,8
-    RTEXT           "Smooth",IDC_STATIC,152,27,80,8
-    LTEXT           "",IDC_VALUE,238,10,25,8
-END
-
-IDD_FILTER_DEINTERLACE DIALOGEX 0, 0, 374, 132
-STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Deinterlace"
-FONT 8, "MS Shell Dlg", 0, 0, 0x0
-BEGIN
-    GROUPBOX        "Deinterlacing &mode",IDC_STATIC,7,7,178,96
-    CONTROL         "Interpolate using &Yadif algorithm",IDC_MODE_INTERP_YADIF,
-                    "Button",BS_AUTORADIOBUTTON | WS_GROUP,13,18,165,10
-    CONTROL         "Interpolate using &ELA algorithm",IDC_MODE_INTERP_ELA,
-                    "Button",BS_AUTORADIOBUTTON,13,28,165,10
-    CONTROL         "Interpolate using &bob algorithm",IDC_MODE_INTERP_BOB,
-                    "Button",BS_AUTORADIOBUTTON,13,38,116,10
-    CONTROL         "Blend fields",IDC_MODE_INTERP_BLEND,"Button",BS_AUTORADIOBUTTON,13,48,52,10
-    CONTROL         "Duplicate fields",IDC_MODE_DUP,"Button",BS_AUTORADIOBUTTON,13,58,64,10
-    CONTROL         "Discard fields",IDC_MODE_DISCARD,"Button",BS_AUTORADIOBUTTON,13,68,58,10
-    CONTROL         "Unfold fields side-by-side",IDC_MODE_UNFOLD,"Button",BS_AUTORADIOBUTTON,13,78,93,10
-    CONTROL         "Fold side-by-side fields together",IDC_MODE_FOLD,"Button",BS_AUTORADIOBUTTON,13,88,114,10
-    GROUPBOX        "Field order",IDC_STATIC,189,7,178,96
-    CONTROL         "Keep &top field, interpolate/discard bottom field",IDC_FIELDMODE_KEEPTOP,
-                    "Button",BS_AUTORADIOBUTTON | WS_GROUP,195,17,165,10
-    CONTROL         "Keep bottom field, interpolate/discard top field",IDC_FIELDMODE_KEEPBOTTOM,
-                    "Button",BS_AUTORADIOBUTTON,195,27,165,10
-    CONTROL         "&Double frame rate, top field first",IDC_FIELDMODE_DOUBLETFF,
-                    "Button",BS_AUTORADIOBUTTON,195,37,119,10
-    CONTROL         "D&ouble frame rate, bottom field first",IDC_FIELDMODE_DOUBLEBFF,
-                    "Button",BS_AUTORADIOBUTTON,195,47,131,10
-    DEFPUSHBUTTON   "OK",IDOK,264,111,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,317,111,50,14
-END
-
-IDD_FILTER_ROTATE DIALOG  0, 0, 122, 81
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: rotate"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "Rotate image:",IDC_STATIC,7,7,45,8
-    CONTROL         "&Left by 90°",IDC_ROTATE_LEFT,"Button",BS_AUTORADIOBUTTON,7,17,50,10
-    CONTROL         "&Right by 90°",IDC_ROTATE_RIGHT,"Button",BS_AUTORADIOBUTTON,7,27,55,10
-    CONTROL         "&Around 180°",IDC_ROTATE_180,"Button",BS_AUTORADIOBUTTON,7,37,55,10
-    DEFPUSHBUTTON   "OK",IDOK,7,60,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,65,60,50,14
-END
-
-IDD_FILTER_ROTATE2 DIALOG  0, 0, 188, 93
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: rotate2"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "Rotation &angle",IDC_STATIC,7,7,49,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_ANGLE,61,7,77,12,ES_AUTOHSCROLL
-    LTEXT           "Filtering &mode",IDC_STATIC,7,22,44,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_FILTERMODE,61,22,108,78,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Fill color",IDC_STATIC,7,40,26,12,SS_CENTERIMAGE
-    PUSHBUTTON      "Pick &color...",IDC_PICKCOLOR,103,39,58,14
-    CONTROL         "&Expand frame to fit",IDC_EXPANDBOUNDS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,61,56,75,10
-    DEFPUSHBUTTON   "OK",IDOK,76,72,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,131,72,50,14
-    LTEXT           "degrees",IDC_STATIC,143,7,26,12,SS_CENTERIMAGE
-    LTEXT           "",IDC_COLOR,61,40,32,12,SS_SUNKEN
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,72,50,14
 END
 
 IDD_DEBUGVAL DIALOG  0, 0, 83, 44
@@ -1940,21 +1738,23 @@ BEGIN
     LTEXT           "Maximum",IDC_STATIC,174,27,30,8
 END
 
-IDD_AUDIOCOMPRESSION DIALOG  0, 0, 350, 230
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_AUDIOCOMPRESSION DIALOGEX 0, 0, 350, 230
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Select audio compression"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,240,209,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,293,209,50,14
     LISTBOX         IDC_FORMATTAG,7,7,141,193,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     LISTBOX         IDC_FORMAT,157,7,187,113,LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Show all formats",IDC_SHOWALL,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,162,126,67,10
+    PUSHBUTTON      "&Configure",IDC_CONFIGURE,240,124,50,14
+    PUSHBUTTON      "&About",IDC_ABOUT,293,124,50,14
     GROUPBOX        "Format information",IDC_STATIC,160,141,182,59
     LTEXT           "Format ID",IDC_STATIC,168,152,32,8
     LTEXT           "Bytes per block",IDC_STATIC,168,162,50,8
     LTEXT           "Data rate",IDC_STATIC,168,172,30,8
-    LTEXT           "Granularity",IDC_STATIC,168,182,34,8
+    LTEXT           "Granularity",IDC_STATIC,168,182,45,8
     CONTROL         "",IDC_STATIC_GRANULARITY,"Static",SS_LEFTNOWORDWRAP | WS_GROUP,229,182,96,8
     CONTROL         "",IDC_STATIC_DATARATE,"Static",SS_LEFTNOWORDWRAP | WS_GROUP,229,172,96,8
     CONTROL         "",IDC_STATIC_BYTESPERBLOCK,"Static",SS_LEFTNOWORDWRAP | WS_GROUP,229,162,96,8
@@ -2005,22 +1805,6 @@ BEGIN
     DEFPUSHBUTTON   "OK",IDCANCEL,187,229,50,14
     LTEXT           "Please read the license agreement below in its entirely.  It describes the only conditions under which you may redistribute and modify VirtualDub, and that this program comes with no warranty.",IDC_STATIC,7,7,406,19
     EDITTEXT        IDC_LICENSE,7,29,406,194,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
-END
-
-IDD_FILTER_BOX DIALOG  0, 0, 229, 95
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: box blur"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "Filter &radius",IDC_STATIC,7,11,36,8
-    CONTROL         "Slider1",IDC_SLIDER_WIDTH,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,57,7,115,18
-    LTEXT           "Filter &power",IDC_STATIC,7,29,36,8
-    CONTROL         "Slider1",IDC_SLIDER_POWER,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,57,26,115,18
-    PUSHBUTTON      "Show preview",IDC_PREVIEW,7,74,50,14
-    DEFPUSHBUTTON   "OK",IDOK,117,74,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,172,74,50,14
-    RTEXT           "radius 1",IDC_STATIC_WIDTH,172,9,50,8
-    RTEXT           "2 (quadratic)",IDC_STATIC_POWER,172,28,50,8
 END
 
 IDD_DIVX_WARNING DIALOG  0, 0, 303, 183
@@ -2105,18 +1889,6 @@ BEGIN
     CONTROL         "&Down",IDC_DOWN,"Button",BS_AUTORADIOBUTTON,168,41,35,10
 END
 
-IDD_FILTER_TIMESMOOTH DIALOG  0, 0, 186, 49
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "filter: timesmooth"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,77,28,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,129,28,50,14
-    PUSHBUTTON      "Show preview",IDC_PREVIEW,7,28,50,14
-    LTEXT           "Filter strength",IDC_STATIC,7,7,43,15,SS_CENTERIMAGE
-    CONTROL         "Slider1",IDC_STRENGTH,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,57,7,122,20
-END
-
 IDD_AUDIO_VOLUME DIALOGEX 0, 0, 260, 69
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Audio volume"
@@ -2135,25 +1907,6 @@ CAPTION "RIFF chunk list"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     CONTROL         "Tree1",IDC_TREE,"SysTreeView32",TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | WS_TABSTOP,0,0,271,257,WS_EX_CLIENTEDGE
-END
-
-IDD_FILTER_FIELDBOB DIALOG  0, 0, 256, 90
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "filter: field bob"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    GROUPBOX        "Even field",IDC_STATIC,7,7,118,55
-    CONTROL         "Normal",IDC_EVEN_NONE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,14,18,38,10
-    CONTROL         "Smooth",IDC_EVEN_SMOOTH,"Button",BS_AUTORADIOBUTTON,14,28,38,10
-    CONTROL         "Quarter scanline up",IDC_EVEN_HALFUP,"Button",BS_AUTORADIOBUTTON,14,38,77,10
-    CONTROL         "Quarter scanline down",IDC_EVEN_HALFDOWN,"Button",BS_AUTORADIOBUTTON,14,48,87,10
-    GROUPBOX        "Odd field",IDC_STATIC,131,7,118,55
-    CONTROL         "Normal",IDC_ODD_NONE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,138,18,38,10
-    CONTROL         "Smooth",IDC_ODD_SMOOTH,"Button",BS_AUTORADIOBUTTON,138,28,38,10
-    CONTROL         "Quarter scanline up",IDC_ODD_HALFUP,"Button",BS_AUTORADIOBUTTON,138,38,77,10
-    CONTROL         "Quarter scanline down",IDC_ODD_HALFDOWN,"Button",BS_AUTORADIOBUTTON,138,48,87,10
-    DEFPUSHBUTTON   "OK",IDOK,146,69,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,199,69,50,14
 END
 
 IDD_FILTER_LOGO DIALOG  0, 0, 302, 198
@@ -2197,25 +1950,6 @@ BEGIN
     RTEXT           "100%",IDC_STATIC_OPACITY,266,104,19,16,SS_CENTERIMAGE
 END
 
-IDD_FILTER_HSV DIALOG  0, 0, 272, 84
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "filter: HSV Adjust"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "&Hue",IDC_STATIC,7,7,49,16,SS_CENTERIMAGE
-    CONTROL         "Slider1",IDC_HUE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,56,7,172,16
-    LTEXT           "&Saturation",IDC_STATIC,7,23,49,16,SS_CENTERIMAGE
-    CONTROL         "Slider1",IDC_SATURATION,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,56,23,172,16
-    LTEXT           "&Value",IDC_STATIC,7,39,49,16,SS_CENTERIMAGE
-    CONTROL         "Slider1",IDC_VALUE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,56,39,172,16
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,63,50,14
-    DEFPUSHBUTTON   "OK",IDOK,162,63,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,215,63,50,14
-    RTEXT           "",IDC_STATIC_HUE,228,7,37,16,SS_CENTERIMAGE
-    RTEXT           "",IDC_STATIC_SATURATION,228,23,37,16,SS_CENTERIMAGE
-    RTEXT           "",IDC_STATIC_VALUE,228,39,37,16,SS_CENTERIMAGE
-END
-
 IDD_JOBFINISH DIALOG  0, 0, 186, 71
 STYLE DS_SETFONT | DS_MODALFRAME | DS_NOIDLEMSG | DS_SETFOREGROUND | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 CAPTION "VirtualDub Warning"
@@ -2244,7 +1978,7 @@ BEGIN
 END
 
 IDD_AF_SETUP DIALOGEX 0, 0, 350, 270
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "Audio filters"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
@@ -2404,24 +2138,6 @@ BEGIN
     EDITTEXT        IDC_FREQ,95,7,70,12,ES_AUTOHSCROLL
 END
 
-IDD_FILTER_CHROMASMOOTHER DIALOG  0, 0, 193, 108
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "filter: chroma smoother"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "Source &color space:",IDC_STATIC,7,7,64,8
-    CONTROL         "4:4:4 (disable chroma smoothing)",IDC_MODE_DISABLE,
-                    "Button",BS_AUTORADIOBUTTON,21,19,119,10
-    CONTROL         "4:2:0 (MPEG-&1)",IDC_MODE_420MPEG1,"Button",BS_AUTORADIOBUTTON,21,29,65,10
-    CONTROL         "4:2:0 (MPEG-2, MPEG-&4)",IDC_MODE_420MPEG2,"Button",BS_AUTORADIOBUTTON,21,39,95,10
-    CONTROL         "4:2:2 (MPEG-&2)",IDC_MODE_422,"Button",BS_AUTORADIOBUTTON,21,49,65,10
-    CONTROL         "4:1:0 (Indeo®)",IDC_MODE_410,"Button",BS_AUTORADIOBUTTON,21,59,98,10
-    CONTROL         "4:1:1 (NTSC DV)",IDC_MODE_411,"Button",BS_AUTORADIOBUTTON,21,69,69,10
-    DEFPUSHBUTTON   "OK",IDOK,84,87,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,136,87,50,14
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,87,50,14,WS_DISABLED
-END
-
 IDD_EXPERIMENTAL DIALOG  0, 0, 311, 105
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "VirtualDub warning"
@@ -2432,25 +2148,6 @@ BEGIN
     LTEXT           "This is an EXPERIMENTAL release.",IDC_STATIC,7,7,115,8
     LTEXT           "That means there are new features implemented by new code that may be BROKEN.  I put it out so people can play with it and report feedback to me while I continue working on other stuff.  However, it should not be used for production purposes.",IDC_STATIC,7,20,297,32
     LTEXT           "Please DO NOT report interoperability problems with this release to vendors of third party codecs and plugins unless you are SURE it is not caused by the experimental code in this release.  Verifying against the previous STABLE release is a good idea.",IDC_STATIC,7,53,297,30
-END
-
-IDD_FILTER_PERSPECTIVE DIALOG  0, 0, 317, 205
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Perspective"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT           "New &width",-1,7,7,67,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_WIDTH,74,7,236,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "New &height",-1,7,20,67,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_HEIGHT,74,20,236,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "Filtering mode",-1,7,149,67,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_FILTER,74,149,236,68,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,184,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,260,184,50,14
-    DEFPUSHBUTTON   "OK",IDOK,207,184,50,14
-    CONTROL         "Unproject",IDC_UNPROJECT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,74,164,236,12
-    LTEXT           "Static",IDC_FIELD,74,36,167,108
-    PUSHBUTTON      "&Sample frame",IDC_SAMPLE,60,184,50,14,WS_DISABLED
 END
 
 IDD_CHANGE_LOG DIALOG  0, 0, 350, 199
@@ -2484,20 +2181,6 @@ BEGIN
     EDITTEXT        IDC_PRECISION,95,7,70,12,ES_AUTOHSCROLL
 END
 
-IDD_FILTER_WARPRESIZE DIALOGEX 0, 0, 186, 82
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: warp resize"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "Target &width",IDC_STATIC,7,7,50,12
-    EDITTEXT        IDC_WIDTH,83,7,96,12,ES_AUTOHSCROLL
-    LTEXT           "Target &height",IDC_STATIC,7,21,50,12
-    EDITTEXT        IDC_HEIGHT,83,21,96,13,ES_AUTOHSCROLL
-    CONTROL         "Show &gradient map",IDC_SHOW_GRADIENT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,83,35,96,13
-    DEFPUSHBUTTON   "OK",IDOK,77,61,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,129,61,50,14
-END
-
 IDD_AF_TIMESTRETCH DIALOGEX 0, 0, 172, 50
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter: time stretch"
@@ -2507,17 +2190,6 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,115,29,50,14
     LTEXT           "Time ratio",IDC_STATIC,7,7,77,12,SS_CENTERIMAGE
     EDITTEXT        IDC_RATIO,95,7,70,12,ES_AUTOHSCROLL
-END
-
-IDD_FILTER_CONVERTFORMAT DIALOGEX 0, 0, 240, 119
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Convert format"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "New &format:",IDC_STATIC,7,7,55,18
-    LISTBOX         IDC_FORMATS,64,7,169,87,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Cancel",IDCANCEL,183,98,50,14
-    DEFPUSHBUTTON   "OK",IDOK,131,98,50,14
 END
 
 IDD_EXTOPENOPTS_MP3 DIALOGEX 0, 0, 300, 134
@@ -2546,43 +2218,6 @@ BEGIN
     LTEXT           "R: 0",IDC_RED,2,16,41,8
     LTEXT           "G: 0",IDC_GREEN,2,25,41,8
     LTEXT           "B: 0",IDC_BLUE,2,35,41,8
-END
-
-IDD_FILTER_BOBDOUBLER DIALOGEX 0, 0, 209, 114
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Bob doubler"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "&Field order",IDC_STATIC,7,7,35,8
-    CONTROL         "&Top field first",IDC_FIELDORDER_TFF,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,86,7,58,10
-    CONTROL         "&Bottom field first",IDC_FIELDORDER_BFF,"Button",BS_AUTORADIOBUTTON,86,17,69,10
-    LTEXT           "&Deinterlacing method",IDC_STATIC,7,33,68,8
-    CONTROL         "B&ob",IDC_DEINTERLACE_BOB,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,86,33,28,10
-    CONTROL         "&ELA",IDC_DEINTERLACE_ELA,"Button",BS_AUTORADIOBUTTON,86,43,28,10
-    CONTROL         "&Adaptive ELA",IDC_DEINTERLACE_ADAPTIVEELA,"Button",BS_AUTORADIOBUTTON,86,53,59,10
-    CONTROL         "None - &alternate fields",IDC_DEINTERLACE_NONEHALF,
-                    "Button",BS_AUTORADIOBUTTON,86,63,87,10
-    CONTROL         "None - &double up frames",IDC_DEINTERLACE_NONEFULL,
-                    "Button",BS_AUTORADIOBUTTON,86,73,95,10
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,93,50,14
-    DEFPUSHBUTTON   "OK",IDOK,99,93,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,152,93,50,14
-END
-
-IDD_FILTER_WARPSHARP DIALOGEX 0, 0, 230, 71
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Warp sharp"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "&Depth",IDC_STATIC,7,7,20,15,SS_CENTERIMAGE
-    CONTROL         "",IDC_DEPTH,"msctls_trackbar32",TBS_AUTOTICKS | TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,53,7,144,15
-    RTEXT           "Static",IDC_STATIC_DEPTH,200,7,19,15,SS_CENTERIMAGE
-    LTEXT           "&Blur passes",IDC_STATIC,7,27,37,15,SS_CENTERIMAGE
-    CONTROL         "",IDC_BLUR,"msctls_trackbar32",TBS_AUTOTICKS | TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,53,27,144,15
-    RTEXT           "Static",IDC_STATIC_BLUR,200,27,19,15,SS_CENTERIMAGE
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,50,50,14
-    DEFPUSHBUTTON   "OK",IDOK,121,50,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,173,50,50,14
 END
 
 IDD_BATCH_WIZARD DIALOGEX 0, 0, 384, 220
@@ -2619,66 +2254,6 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,264,24,50,14
 END
 
-IDD_FILTER_INTERPOLATE DIALOGEX 0, 0, 231, 81
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Interpolate"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "&Frame rate target",IDC_STATIC,7,7,66,12,SS_CENTERIMAGE
-    CONTROL         "&Scale frame rate by:",IDC_FRAMERATE_SCALE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,73,7,81,12
-    CONTROL         "&Target frame rate (fps):",IDC_FRAMERATE_TARGET,"Button",BS_AUTORADIOBUTTON,73,19,93,10
-    EDITTEXT        IDC_EDIT_SCALE,174,7,50,12,ES_AUTOHSCROLL | WS_DISABLED
-    EDITTEXT        IDC_EDIT_TARGET,174,19,50,12,ES_AUTOHSCROLL | WS_DISABLED
-    LTEXT           "&Interpolation mode",IDC_STATIC,7,33,66,10,SS_CENTERIMAGE
-    CONTROL         "&Nearest frame (duplicate)",IDC_INTERP_NONE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,73,33,98,10
-    CONTROL         "&Linear blending",IDC_INTERP_LINEAR,"Button",BS_AUTORADIOBUTTON,73,43,64,10
-    PUSHBUTTON      "&Show Preview",IDC_PREVIEW,7,60,50,14
-    DEFPUSHBUTTON   "OK",IDOK,121,60,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,174,60,50,14
-END
-
-IDD_FILTER_INTERLACE DIALOGEX 0, 0, 183, 84
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Interlace"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "&Source format",IDC_STATIC,7,7,66,10
-    CONTROL         "&Progressive frames",IDC_SOURCE_PROGRESSIVE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,73,7,77,10
-    CONTROL         "&Alternating fields",IDC_SOURCE_ALTERNATING,"Button",BS_AUTORADIOBUTTON,73,17,70,10
-    LTEXT           "&Field order",IDC_STATIC,7,35,66,10
-    CONTROL         "&Even field first",IDC_FIELDORDER_EVENFIRST,"Button",BS_AUTORADIOBUTTON | WS_GROUP,73,35,92,10
-    CONTROL         "&Odd field first",IDC_FIELDORDER_ODDFIRST,"Button",BS_AUTORADIOBUTTON,73,46,92,10
-    DEFPUSHBUTTON   "OK",IDOK,73,63,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,126,63,50,14
-END
-
-IDD_FILTER_IVTC DIALOGEX 0, 0, 250, 162
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: IVTC"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "Field assembly mode",IDC_STATIC,7,7,77,10,SS_CENTERIMAGE
-    CONTROL         "&Decomb frames only",IDC_MODE_DECOMB,"Button",BS_AUTORADIOBUTTON | WS_GROUP,84,7,81,10
-    CONTROL         "&Reduce frame rate",IDC_MODE_REDUCE,"Button",BS_AUTORADIOBUTTON,84,17,76,10
-    LTEXT           "Field mode",IDC_STATIC,7,32,77,10,SS_CENTERIMAGE
-    CONTROL         "&Autodetect",IDC_FIELDORDER_AUTO,"Button",BS_AUTORADIOBUTTON | WS_GROUP,84,32,52,10
-    CONTROL         "&Top field first (TFF)",IDC_FIELDORDER_TFF,"Button",BS_AUTORADIOBUTTON,84,42,77,10
-    CONTROL         "&Bottom field first (BFF)",IDC_FIELDORDER_BFF,"Button",BS_AUTORADIOBUTTON,84,52,88,10
-    CONTROL         "B&lurred fields",IDC_FIELDORDER_BLURRED,"Button",BS_AUTORADIOBUTTON,84,62,57,10
-    CONTROL         "&Single field only (remove duplicated frame)",IDC_FIELDORDER_DUPLICATED,
-                    "Button",BS_AUTORADIOBUTTON,84,72,152,10
-    LTEXT           "Field blur &weighting",IDC_STATIC,7,85,77,8
-    CONTROL         "",IDC_BLEND_WEIGHTING,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,84,84,159,15
-    LTEXT           "Pattern phase",IDC_STATIC,7,104,77,10,SS_CENTERIMAGE
-    CONTROL         "Adapti&ve",IDC_PHASE_ADAPTIVE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,84,104,45,10
-    CONTROL         "&Manual",IDC_PHASE_MANUAL,"Button",BS_AUTORADIOBUTTON,84,114,39,10
-    LTEXT           "O&ffset of first combed frame:",IDC_STATIC,96,124,100,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_PHASE,196,124,47,12,ES_AUTOHSCROLL
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,141,50,14,WS_DISABLED
-    DEFPUSHBUTTON   "OK",IDOK,140,141,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,193,141,50,14
-END
-
 IDD_CONFIGURE_ACCELS DIALOGEX 0, 0, 400, 206
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "Configure Keyboard Shortcuts"
@@ -2711,21 +2286,6 @@ BEGIN
     DEFPUSHBUTTON   "OK",IDOK,129,42,50,14
 END
 
-IDD_FILTER_FIELDDELAY DIALOGEX 0, 0, 186, 68
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Field delay"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "&Field mode:",IDC_STATIC,7,7,38,8
-    CONTROL         "&Top field first -> bottom field first",IDC_FIELDMODE_TFFTOBFF,
-                    "Button",BS_AUTORADIOBUTTON,12,17,123,10
-    CONTROL         "&Bottom field first -> top field first",IDC_FIELDMODE_BFFTOTFF,
-                    "Button",BS_AUTORADIOBUTTON,12,27,121,10
-    PUSHBUTTON      "Show  &preview",IDC_PREVIEW,7,47,50,14
-    DEFPUSHBUTTON   "OK",IDOK,76,47,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,129,47,50,14
-END
-
 IDD_FILTER_OPTIONS DIALOGEX 0, 0, 269, 79
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter Options"
@@ -2743,18 +2303,6 @@ CAPTION "Status Dump"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_EDIT,0,0,357,227,ES_MULTILINE | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
-END
-
-IDD_FILTER_GAMMACORRECT DIALOGEX 0, 0, 186, 63
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: gamma correct"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "Conversion mode:",IDC_STATIC,7,7,59,8
-    CONTROL         "&Linear to sRGB",IDC_LINEARTOSRGB,"Button",BS_AUTORADIOBUTTON,7,18,63,10
-    CONTROL         "&sRGB to linear",IDC_SRGBTOLINEAR,"Button",BS_AUTORADIOBUTTON,7,28,61,10
-    DEFPUSHBUTTON   "OK",IDOK,77,42,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,129,42,50,14
 END
 
 IDD_OUTPUT_RAWVIDEO DIALOGEX 0, 0, 375, 119
@@ -2821,23 +2369,6 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,243,153,50,14
 END
 
-IDD_FILTER_ALIASFORMAT DIALOGEX 0, 0, 214, 113
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: alias format"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT           "Color space",IDC_STATIC_COLORSPACE,7,7,69,10,SS_CENTERIMAGE
-    CONTROL         "No change",IDC_CS_NONE,"Button",BS_AUTORADIOBUTTON,76,7,50,10
-    CONTROL         "Rec. 601 (SD)",IDC_CS_601,"Button",BS_AUTORADIOBUTTON,76,17,61,10
-    CONTROL         "Rec. 709 (HD)",IDC_CS_709,"Button",BS_AUTORADIOBUTTON,76,27,61,10
-    LTEXT           "Component range",IDC_STATIC,7,45,69,10,SS_CENTERIMAGE
-    CONTROL         "No change",IDC_CR_NONE,"Button",BS_AUTORADIOBUTTON,76,45,50,10
-    CONTROL         "Limited (Y: 16-235, C: 16-240)",IDC_CR_LIMITED,"Button",BS_AUTORADIOBUTTON,76,55,113,10
-    CONTROL         "Full (0-255)",IDC_CR_FULL,"Button",BS_AUTORADIOBUTTON,76,65,53,10
-    DEFPUSHBUTTON   "OK",IDOK,104,92,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,157,92,50,14
-END
-
 IDD_OUTPUT_CLI DIALOGEX 0, 0, 300, 186
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Export Using External Encoders"
@@ -2858,6 +2389,8 @@ BEGIN
     LTEXT           "&Program",IDC_STATIC,7,21,108,14,SS_CENTERIMAGE
     EDITTEXT        IDC_PROGRAM,115,21,261,14,ES_AUTOHSCROLL
     PUSHBUTTON      "...",IDC_BROWSE,377,21,16,14
+    LTEXT           "&Command arguments",IDC_STATIC,7,36,108,14,SS_CENTERIMAGE
+    EDITTEXT        IDC_ARGUMENTS,115,36,278,14,ES_AUTOHSCROLL
     LTEXT           "&Output filename",IDC_STATIC,7,52,108,14,SS_CENTERIMAGE
     EDITTEXT        IDC_OUTPUTFILENAME,115,52,278,14,ES_AUTOHSCROLL
     LTEXT           "&Launch parameters",IDC_STATIC,7,68,108,14,SS_CENTERIMAGE
@@ -2867,8 +2400,6 @@ BEGIN
     CONTROL         "Redirect standard error to log",IDC_LOG_STDERR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,115,91,111,10
     CONTROL         "Delete output file before starting",IDC_PREDELETE_OUTPUTFILE,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,115,101,121,10
-    LTEXT           "&Command arguments",IDC_STATIC,7,36,108,14,SS_CENTERIMAGE
-    EDITTEXT        IDC_ARGUMENTS,115,36,278,14,ES_AUTOHSCROLL
 END
 
 IDD_EXTENC_EDIT_AUDIO DIALOGEX 0, 0, 400, 97
@@ -2888,9 +2419,9 @@ EXSTYLE WS_EX_CONTROLPARENT
 CAPTION "Edit External Encoder Profile"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
+    CONTROL         "",IDC_TABS,"SysTabControl32",WS_TABSTOP,7,7,296,124
     DEFPUSHBUTTON   "OK",IDOK,201,136,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,253,136,50,14
-    CONTROL         "",IDC_TABS,"SysTabControl32",WS_TABSTOP,7,7,296,124
 END
 
 IDD_EXTENC_SETS DIALOGEX 0, 0, 373, 210
@@ -2904,9 +2435,9 @@ BEGIN
     PUSHBUTTON      "&Remove",IDC_REMOVE,58,189,50,14
     PUSHBUTTON      "Du&plicate",IDC_DUPLICATE,109,189,50,14
     PUSHBUTTON      "Edit...",IDC_EDIT,160,189,50,14
-    DEFPUSHBUTTON   "OK",IDOK,316,189,50,14
     PUSHBUTTON      "&Import...",IDC_IMPORT,211,189,50,14
     PUSHBUTTON      "&Export...",IDC_EXPORT,262,189,50,14
+    DEFPUSHBUTTON   "OK",IDOK,316,189,50,14
 END
 
 IDD_EXTENC_EDIT_SET DIALOGEX 0, 0, 283, 141
@@ -2926,10 +2457,34 @@ BEGIN
     EDITTEXT        IDC_FILEDESC,79,75,197,12,ES_AUTOHSCROLL
     LTEXT           "File &extension",IDC_STATIC,7,90,65,12,SS_CENTERIMAGE
     EDITTEXT        IDC_FILEEXT,79,90,197,12,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",IDOK,173,120,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,226,120,50,14
     CONTROL         "Replace temp video/audio paths with output path",IDC_USEOUTPUTASTEMP,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,79,104,174,10
+    DEFPUSHBUTTON   "OK",IDOK,173,120,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,226,120,50,14
+END
+
+IDD_AUTORECOVER DIALOGEX 0, 0, 289, 199
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Auto-recover"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Recover",IDOK,179,178,50,14
+    PUSHBUTTON      "Skip",IDCANCEL,232,178,50,14
+    LTEXT           "The following auto-recover files were found and may be used to recover from an earlier program failure. Choose an auto-recover file to use:",IDC_STATIC,7,7,275,19
+    PUSHBUTTON      "Delete All",IDC_DELETE_ALL,60,178,50,14
+    PUSHBUTTON      "Delete",IDC_DELETE,7,178,50,14
+    CONTROL         "",IDC_LIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_TABSTOP,7,27,275,147,WS_EX_CLIENTEDGE
+END
+
+IDD_FILTER_OUTPUT_NAME DIALOGEX 0, 0, 217, 45
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Name filter output"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Name",IDC_STATIC,7,7,24,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_NAME,34,7,176,12,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,107,24,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,160,24,50,14
 END
 
 
@@ -2992,7 +2547,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 335
         TOPMARGIN, 7
-        BOTTOMMARGIN, 195
+        BOTTOMMARGIN, 194
     END
 
     IDD_FILTER_LIST, DIALOG
@@ -3037,30 +2592,12 @@ BEGIN
     IDD_AVI_INFO, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 283
+        RIGHTMARGIN, 313
         VERTGUIDE, 15
-        VERTGUIDE, 142
-        VERTGUIDE, 275
+        VERTGUIDE, 129
+        VERTGUIDE, 305
         TOPMARGIN, 7
         BOTTOMMARGIN, 211
-    END
-
-    IDD_FILTER_SINGVAR, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 208
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 56
-        HORZGUIDE, 35
-    END
-
-    IDD_FILTER_BRIGHTCONT, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 273
-        VERTGUIDE, 51
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 91
     END
 
     IDD_FILTER_EMBOSS, DIALOG
@@ -3166,14 +2703,6 @@ BEGIN
         BOTTOMMARGIN, 51
     END
 
-    IDD_PREFERENCES, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 193
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 144
-    END
-
     IDD_SERVER, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3217,17 +2746,6 @@ BEGIN
         BOTTOMMARGIN, 78
     END
 
-    IDD_PREFS_MAIN, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        VERTGUIDE, 13
-        VERTGUIDE, 84
-        VERTGUIDE, 237
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 143
-    END
-
     IDD_EXTOPENOPTS_MPEG, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3246,39 +2764,6 @@ BEGIN
         BOTTOMMARGIN, 219
     END
 
-    IDD_PREFS_SCENE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        VERTGUIDE, 13
-        VERTGUIDE, 73
-        VERTGUIDE, 217
-        VERTGUIDE, 237
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 143
-        HORZGUIDE, 65
-    END
-
-    IDD_FILTER_TV, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 131
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 111
-    END
-
-    IDD_PREFS_CPU, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        VERTGUIDE, 13
-        VERTGUIDE, 26
-        VERTGUIDE, 84
-        VERTGUIDE, 237
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 143
-    END
-
     IDD_JOBCONTROL, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3293,16 +2778,6 @@ BEGIN
         RIGHTMARGIN, 233
         TOPMARGIN, 7
         BOTTOMMARGIN, 110
-    END
-
-    IDD_PREFS_DISPLAY, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        VERTGUIDE, 13
-        VERTGUIDE, 237
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 143
     END
 
     IDD_MPEG_INFO, DIALOG
@@ -3342,14 +2817,6 @@ BEGIN
         RIGHTMARGIN, 165
         TOPMARGIN, 7
         BOTTOMMARGIN, 95
-    END
-
-    IDD_PREFS_AVI, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 143
     END
 
     IDD_COACH, DIALOG
@@ -3425,41 +2892,6 @@ BEGIN
         VERTGUIDE, 38
         TOPMARGIN, 7
         BOTTOMMARGIN, 146
-    END
-
-    IDD_FILTER_SMOOTHER, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 263
-        VERTGUIDE, 73
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 72
-        HORZGUIDE, 35
-    END
-
-    IDD_FILTER_DEINTERLACE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 367
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 125
-    END
-
-    IDD_FILTER_ROTATE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 115
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 74
-    END
-
-    IDD_FILTER_ROTATE2, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 181
-        VERTGUIDE, 61
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 86
     END
 
     IDD_DEBUGVAL, DIALOG
@@ -3557,15 +2989,6 @@ BEGIN
         BOTTOMMARGIN, 243
     END
 
-    IDD_FILTER_BOX, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 222
-        VERTGUIDE, 57
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 88
-    END
-
     IDD_DIVX_WARNING, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3592,31 +3015,12 @@ BEGIN
         BOTTOMMARGIN, 55
     END
 
-    IDD_FILTER_TIMESMOOTH, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 179
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 42
-    END
-
     IDD_AUDIO_VOLUME, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 253
         TOPMARGIN, 7
         BOTTOMMARGIN, 62
-    END
-
-    IDD_FILTER_FIELDBOB, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 249
-        VERTGUIDE, 14
-        VERTGUIDE, 138
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 83
-        HORZGUIDE, 62
     END
 
     IDD_FILTER_LOGO, DIALOG
@@ -3626,16 +3030,6 @@ BEGIN
         VERTGUIDE, 62
         TOPMARGIN, 7
         BOTTOMMARGIN, 191
-    END
-
-    IDD_FILTER_HSV, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 265
-        VERTGUIDE, 56
-        VERTGUIDE, 228
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 77
     END
 
     IDD_JOBFINISH, DIALOG
@@ -3771,30 +3165,12 @@ BEGIN
         BOTTOMMARGIN, 43
     END
 
-    IDD_FILTER_CHROMASMOOTHER, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 186
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 101
-    END
-
     IDD_EXPERIMENTAL, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 304
         TOPMARGIN, 7
         BOTTOMMARGIN, 98
-    END
-
-    IDD_FILTER_PERSPECTIVE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 310
-        VERTGUIDE, 21
-        VERTGUIDE, 74
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 198
     END
 
     IDD_CHANGE_LOG, DIALOG
@@ -3821,28 +3197,12 @@ BEGIN
         BOTTOMMARGIN, 43
     END
 
-    IDD_FILTER_WARPRESIZE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 179
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 75
-    END
-
     IDD_AF_TIMESTRETCH, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 165
         TOPMARGIN, 7
         BOTTOMMARGIN, 43
-    END
-
-    IDD_FILTER_CONVERTFORMAT, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 233
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 112
     END
 
     IDD_EXTOPENOPTS_MP3, DIALOG
@@ -3863,23 +3223,6 @@ BEGIN
         HORZGUIDE, 6
     END
 
-    IDD_FILTER_BOBDOUBLER, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 202
-        VERTGUIDE, 86
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 107
-    END
-
-    IDD_FILTER_WARPSHARP, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 223
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 64
-    END
-
     IDD_BATCH_WIZARD, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3897,33 +3240,6 @@ BEGIN
         VERTGUIDE, 256
         TOPMARGIN, 7
         BOTTOMMARGIN, 51
-    END
-
-    IDD_FILTER_INTERPOLATE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 224
-        VERTGUIDE, 73
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 74
-    END
-
-    IDD_FILTER_INTERLACE, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 176
-        VERTGUIDE, 73
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 77
-    END
-
-    IDD_FILTER_IVTC, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        VERTGUIDE, 84
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 155
     END
 
     IDD_CONFIGURE_ACCELS, DIALOG
@@ -3946,28 +3262,12 @@ BEGIN
         BOTTOMMARGIN, 56
     END
 
-    IDD_FILTER_FIELDDELAY, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 179
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 61
-    END
-
     IDD_FILTER_OPTIONS, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 262
         TOPMARGIN, 7
         BOTTOMMARGIN, 72
-    END
-
-    IDD_FILTER_GAMMACORRECT, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 179
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 56
     END
 
     IDD_OUTPUT_RAWVIDEO, DIALOG
@@ -3995,15 +3295,6 @@ BEGIN
         RIGHTMARGIN, 293
         TOPMARGIN, 7
         BOTTOMMARGIN, 167
-    END
-
-    IDD_FILTER_ALIASFORMAT, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 207
-        VERTGUIDE, 76
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 106
     END
 
     IDD_OUTPUT_CLI, DIALOG
@@ -4056,6 +3347,22 @@ BEGIN
         VERTGUIDE, 79
         TOPMARGIN, 7
         BOTTOMMARGIN, 134
+    END
+
+    IDD_AUTORECOVER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 282
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 192
+    END
+
+    IDD_FILTER_OUTPUT_NAME, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 210
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 38
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -4225,8 +3532,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,0,0
- PRODUCTVERSION 1,10,0,0
+ FILEVERSION 1,10,1,0
+ PRODUCTVERSION 1,10,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -4242,12 +3549,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.0"
+            VALUE "FileVersion", "1.10.1"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1998-2010 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1998-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.0"
+            VALUE "ProductVersion", "1.10.1"
         END
     END
     BLOCK "VarFileInfo"
@@ -4263,8 +3570,8 @@ VS_VERSION_INFO$(_DEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,0,0
- PRODUCTVERSION 1,10,0,0
+ FILEVERSION 1,10,1,0
+ PRODUCTVERSION 1,10,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x21L
@@ -4279,15 +3586,13 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha"
-            VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet."
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.0"
+            VALUE "FileVersion", "1.10.1"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1999-2004 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1999-2012 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.0"
+            VALUE "ProductVersion", "1.10.1"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)"
         END
     END

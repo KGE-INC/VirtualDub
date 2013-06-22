@@ -658,16 +658,27 @@ public:
 		return -1;
 	}
 
-	uint32 GetFlags() { return kF_Audio | kF_PromptForOpts; }
+	uint32 GetFlags() { return kF_Audio | kF_PromptForOpts | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
-		return L"MPEG audio (*.mp3)\0*.mp3\0";
+		return L"MPEG audio (*.mp3,*.m2a,*.m1a,*.mpa)\0*.mp3;*.m2a;*.m1a;*.mpa\0";
 	}
 
 	bool DetectByFilename(const wchar_t *pszFilename) {
 		size_t l = wcslen(pszFilename);
 		if (l > 4) {
-			if (!_wcsicmp(pszFilename + l - 4, L".mp3"))
+			const wchar_t *ext3 = pszFilename + l - 4;
+
+			if (!_wcsicmp(ext3, L".mp3"))
+				return true;
+
+			if (!_wcsicmp(ext3, L".m2a"))
+				return true;
+
+			if (!_wcsicmp(ext3, L".m1a"))
+				return true;
+
+			if (!_wcsicmp(ext3, L".mpa"))
 				return true;
 		}
 

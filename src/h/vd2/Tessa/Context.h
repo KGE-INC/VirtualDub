@@ -79,7 +79,7 @@ public:
 	virtual bool CreateTexture2D(uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex) = 0;
 	virtual bool CreateVertexProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTVertexProgram **tex) = 0;
 	virtual bool CreateFragmentProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTFragmentProgram **tex) = 0;
-	virtual bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexFormat **format) = 0;
+	virtual bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexProgram *vp, IVDTVertexFormat **format) = 0;
 	virtual bool CreateVertexBuffer(uint32 size, bool dynamic, const void *initData, IVDTVertexBuffer **buffer) = 0;
 	virtual bool CreateIndexBuffer(uint32 count, bool index32, bool dynamic, const void *initData, IVDTIndexBuffer **buffer) = 0;
 

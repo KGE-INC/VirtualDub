@@ -22,40 +22,18 @@
 	#pragma once
 #endif
 
-#include <malloc.h>
-
-#include <windows.h>
-
 #include <list>
-#include <vector>
 #include <vd2/system/list.h>
-#include <vd2/system/error.h>
 #include <vd2/system/VDString.h>
-#include <vd2/system/refcount.h>
-#include <vd2/Kasumi/pixmap.h>
-#include <vd2/VDLib/win32/DIBSection.h>
-#include <vd2/VDLib/win32/FileMapping.h>
-#include <vd2/VDLib/ParameterCurve.h>
-#include "VBitmap.h"
+#include "FilterChainDesc.h"
 #include "FilterSystem.h"
 #include "filter.h"
-#include "ScriptInterpreter.h"
-#include "ScriptValue.h"
-#include "gui.h"
 
 //////////////////
 
-class IVDVideoDisplay;
-class IVDPositionControl;
-struct VDWaveFormat;
 class VDTimeline;
-struct VDXWaveFormat;
 struct VDXFilterDefinition;
 class VDExternalModule;
-
-///////////////////
-
-VDXWaveFormat *VDXCopyWaveFormat(const VDXWaveFormat *pFormat);
 
 ///////////////////
 
@@ -65,9 +43,12 @@ public:
 	~FilterDefinitionInstance();
 
 	void Assign(const FilterDefinition& def, int len);
+	void Deactivate();
 
 	const FilterDefinition& Attach();
 	void Detach();
+
+	int	GetAPIVersion() const { return mAPIVersion; }
 
 	const FilterDefinition& GetDef() const { return mDef; }
 	VDExternalModule	*GetModule() const { return mpExtModule; }
@@ -78,7 +59,8 @@ public:
 
 protected:
 	VDExternalModule	*mpExtModule;
-	FilterDefinition	mDef;
+	int					mAPIVersion;
+	VDXFilterDefinition	mDef;
 	VDAtomicInt			mRefCount;
 	VDStringA			mName;
 	VDStringA			mAuthor;
@@ -87,13 +69,14 @@ protected:
 
 //////////
 
-extern List			g_listFA;
+extern VDFilterChainDesc	g_filterChain;
 
 extern FilterSystem	filters;
 
 VDXFilterDefinition *FilterAdd(VDXFilterModule *fm, VDXFilterDefinition *pfd, int fd_len);
 void				FilterAddBuiltin(const VDXFilterDefinition *pfd);
 void				FilterRemove(VDXFilterDefinition *fd);
+void				VDFilterRemoveAll(VDExternalModule *module);
 
 struct FilterBlurb {
 	FilterDefinitionInstance	*key;
@@ -103,8 +86,5 @@ struct FilterBlurb {
 };
 
 void				FilterEnumerateFilters(std::list<FilterBlurb>& blurbs);
-
-
-bool VDFilterGetSingleValue(HWND hWnd, sint32 cVal, sint32 *result, sint32 lMin, sint32 lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData);
 
 #endif

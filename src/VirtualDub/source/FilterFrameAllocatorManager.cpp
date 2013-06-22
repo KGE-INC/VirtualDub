@@ -78,8 +78,14 @@ void VDFilterFrameAllocatorManager::AssignAllocators(VDFilterAccelEngine *accelE
 		VDFilterFrameAllocatorProxy *link = NULL;
 		VDFilterFrameAllocatorProxy *linkNext;
 		
-		while(linkNext = proxy->GetLink())
-			link = linkNext;
+		linkNext = proxy->GetLink();
+
+		if (linkNext) {
+			do {
+				link = linkNext;
+				linkNext = link->GetLink();
+			} while(linkNext);
+		}
 
 		if (link) {
 			proxy->Link(link);
@@ -138,7 +144,7 @@ void VDFilterFrameAllocatorManager::AssignAllocators(VDFilterAccelEngine *accelE
 				float mergeRatio = 0.f;
 
 				if (ent2.mMaxSize)
-					mergeRatio = (float)(ent2.mMaxSize - ent1.mMinSize) / (float)ent2.mMaxSize;
+					mergeRatio = (float)ent1.mMinSize / (float)ent2.mMaxSize;
 
 				if (mergeRatio > bestMergeRatio) {
 					bestMerge = i;

@@ -19,8 +19,7 @@ struct VDTInitData2D {
 
 enum VDTPrimitiveType {
 	kVDTPT_Triangles,
-	kVDTPT_TriangleStrip,
-	kVDTPT_TriangleFan
+	kVDTPT_TriangleStrip
 };
 
 enum VDTClearFlags {

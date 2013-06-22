@@ -19,6 +19,7 @@
 
 #include <windows.h>
 
+#include <vd2/system/thunk.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdvideofilt.h>
 
@@ -30,8 +31,10 @@
 
 #include "f_convolute.h"
 
+#ifdef VD_CPU_X86
 #define USE_ASM
 #define USE_ASM_DYNAMIC
+#endif
 
 extern "C" void asm_convolute_run(
 		void *dst,
@@ -66,8 +69,6 @@ static void inline conv_add(long& rt, long& gt, long& bt, unsigned long dv, long
 	gt += m*(0xFFUL & (dv>>8));
 	rt += m*(0xFFUL & (dv>>16));
 }
-
-/* conv_clip_tab: number of times center should be added */
 
 static unsigned long __fastcall do_conv(unsigned long *data, const ConvoluteFilterData *cfd, long sflags, long pit) {
 	long rt0=cfd->m[9], gt0=cfd->m[9], bt0=cfd->m[9];
@@ -153,7 +154,7 @@ static inline unsigned long do_conv2(unsigned long *data, const long *m, long pi
 int filter_convolute_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	unsigned long w,h;
 	unsigned long *src = (unsigned long *)fa->src.data, *dst = (unsigned long *)fa->dst.data;
-	unsigned long pitch = fa->src.pitch;
+	ptrdiff_t pitch = fa->src.pitch;
 	const ConvoluteFilterData *cfd = (ConvoluteFilterData *)fa->filter_data;
 	const long *const m = cfd->m;
 
@@ -208,7 +209,12 @@ int filter_convolute_run(const FilterActivation *fa, const FilterFunctions *ff) 
 }
 
 long filter_convolute_param(FilterActivation *fa, const FilterFunctions *ff) {
-	return FILTERPARAM_SWAP_BUFFERS;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+
+	if (pxlsrc.format != nsVDXPixmap::kPixFormat_XRGB8888)
+		return FILTERPARAM_NOT_SUPPORTED;
+
+	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_PURE_TRANSFORM;
 }
 
 //////////////////
@@ -244,7 +250,7 @@ static INT_PTR CALLBACK convoluteDlgProc( HWND hDlg, UINT message, WPARAM wParam
             if (LOWORD(wParam) == IDOK) {
 				struct ConvoluteFilterData *cfd = (struct ConvoluteFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
 
-				cfd->fClip = IsDlgButtonChecked(hDlg, IDC_ENABLE_CLIPPING);
+				cfd->fClip = !!IsDlgButtonChecked(hDlg, IDC_ENABLE_CLIPPING);
 				cfd->bias = GetDlgItemInt(hDlg, IDC_BIAS, NULL, TRUE)*256 + 128;
 
 				for(i=0; i<9; i++)
@@ -495,6 +501,7 @@ extern "C" char *asm_dynamic_convolute_codecopy(char *, int);
 extern "C" const char *const asm_const_multiply_tab[2049];
 
 int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
+#ifdef USE_ASM_DYNAMIC
 	ConvoluteFilterData *cfd = (ConvoluteFilterData *)fa->filter_data;
 	char *pptr,c;
 	const char *pcode;
@@ -505,11 +512,9 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	if (!g_dubOpts.perf.dynamicEnable) return 0;
 
-	if (!(cfd->dyna_func = allocmem(4096))) return 1;
+	if (!(cfd->dyna_func = VDAllocateThunkMemory(4096))) return 1;
 
 	pptr = (char *)cfd->dyna_func;
-
-	_RPT0(0,"Generating code.\n");
 
 	pptr = asm_dynamic_convolute_codecopy(pptr, 0);
 
@@ -517,8 +522,6 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 		for(x=0; x<3; x++) {
 			m = cfd->m[(2-y)*3+x];
 			if (!m) continue;
-
-			_RPT3(0,"Matrix (%d,%d): coefficient %ld\n", x, y, m);
 
 			// MOV eax,[esi+disp32]
 			// SHR eax,(0/8/16)
@@ -619,9 +622,6 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 			if (m<0)	pptr = DCG_emit_SUB(pptr, REG_EDI, REG_EAX);
 			else		pptr = DCG_emit_ADD(pptr, REG_EDI, REG_EAX);
-
-
-			_RPT3(0,"Finished (%d,%d) - %ld bytes of code so far\n", x, y, pptr - (char *)cfd->dyna_func);
 		}
 
 	if (cfd->bias)
@@ -636,8 +636,6 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	cfd->dyna_size = (pptr+7) - (char *)cfd->dyna_func;
 
-	VirtualProtect(cfd->dyna_func, cfd->dyna_size, PAGE_EXECUTE_READWRITE, &cfd->dyna_old_protect);
-
 	//////
 
 	if (g_dubOpts.perf.dynamicShowDisassembly) {
@@ -646,6 +644,7 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 		cdw.parse();
 		cdw.post(NULL);
 	}
+#endif
 
 	return 0;
 }
@@ -656,8 +655,7 @@ int filter_convolute_end(FilterActivation *fa, const FilterFunctions *ff) {
 	ConvoluteFilterData *cfd = (ConvoluteFilterData *)fa->filter_data;
 
 	if (cfd->dyna_func) {
-		VirtualProtect(cfd->dyna_func, cfd->dyna_size, cfd->dyna_old_protect, &cfd->dyna_old_protect);
-		freemem(cfd->dyna_func);
+		VDFreeThunkMemory(cfd->dyna_func, cfd->dyna_size);
 		cfd->dyna_func = NULL;
 	}
 

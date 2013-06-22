@@ -223,6 +223,13 @@ void VDResizeFilterData::ComputeSizes(uint32 srcw, uint32 srch, double& imgw, do
 			break;
 	}
 
+	// clamp image size to prevent excessive ratios
+	if (imgw < 0.125f)
+		imgw = 0.125f;
+
+	if (imgh < 0.125f)
+		imgh = 0.125f;
+
 	double framewf;
 	double framehf;
 
@@ -317,15 +324,21 @@ void VDResizeFilterData::ComputeSizes(uint32 srcw, uint32 srch, double& imgw, do
 				}
 			} else if (imgh < frameh) {			// Bars on top and bottom only -- expand to vertical alignment.
 
-					double imgaspect = imgw / imgh;
+				double imgaspect = imgw / imgh;
 
-					uint32 tmph = ((uint32)VDRoundToInt(imgh) + alignmentH - 1);
-					tmph -= tmph % alignmentH;
+				uint32 tmph = ((uint32)VDRoundToInt(imgh) + alignmentH - 1);
+				tmph -= tmph % alignmentH;
 
-					imgh = tmph;
-					imgw = imgh * imgaspect;
+				imgh = tmph;
+				imgw = imgh * imgaspect;
 
 			}
+
+			if (!imgw)
+				imgw = alignmentW;
+
+			if (!imgh)
+				imgh = alignmentH;
 		}
 	}
 }
@@ -693,10 +706,13 @@ INT_PTR VDVF1ResizeDlg::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
                 return TRUE;
 
 			case IDC_SAVE_AS_DEFAULT:
-				if (const char *err = mConfig.Validate())
+				if (uint32 badid = ExchangeWithDialog(false)) {
+					SetFocus(GetDlgItem(mhdlg, badid));
+					MessageBeep(MB_ICONERROR);
+				} else if (const char *err = mNewConfig.Validate())
 					MessageBox(mhdlg, err, g_szError, MB_ICONERROR | MB_OK);
 				else
-					mConfig.ExchangeWithRegistry(true);
+					mNewConfig.ExchangeWithRegistry(true);
 				return TRUE;
 
 			case IDC_WIDTH:

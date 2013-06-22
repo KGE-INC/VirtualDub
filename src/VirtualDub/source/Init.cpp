@@ -21,6 +21,7 @@
 #include <commctrl.h>
 #include <vfw.h>
 #include <shellapi.h>
+#include <shlwapi.h>
 #include <eh.h>
 #include <signal.h>
 
@@ -39,6 +40,7 @@
 #include <vd2/system/thread.h>
 #include <vd2/system/profile.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/registrymemory.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/VDString.h>
@@ -49,6 +51,7 @@
 #include <vd2/Dita/services.h>
 #include <vd2/Riza/display.h>
 #include <vd2/Riza/direct3d.h>
+#include <vd2/VDLib/PortableRegistry.h>
 #include <vd2/VDLib/win32/DebugOutputFilter.h>
 #include "crash.h"
 #include "DubSource.h"
@@ -69,8 +72,11 @@
 #include "capture.h"
 #include "captureui.h"
 #include "version.h"
+#include "AutoRecover.h"
 #include "ExternalEncoderProfile.h"
 #include "FilterInstance.h"
+
+#pragma comment(lib, "shlwapi")
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -85,10 +91,13 @@ extern void VDInitProtectedScopeHook();
 
 extern uint32 VDPreferencesGetEnabledCPUFeatures();
 extern void VDPreferencesSetFilterAccelVisualDebugEnabled(bool);
+extern bool VDPreferencesGetAutoRecoverEnabled();
 
 extern bool VDRegisterRTProfileDisplayControl2();
 
 extern void VDShutdownEventProfiler();
+
+extern void VDDisplayLicense(HWND hwndParent, bool conditional);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -131,6 +140,9 @@ bool g_fWine = false;
 bool g_bEnableVTuneProfiling;
 
 void (*g_pPostInitRoutine)();
+
+VDStringW g_portableRegistryPath;
+VDRegistryProviderMemory *g_pPortableRegistry = NULL;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -319,6 +331,33 @@ void VDInitAppResources() {
 	VDLoadResources(0, lpData, SizeofResource(NULL, hResource));
 }
 
+#ifndef PROCESS_CALLBACK_FILTER_ENABLED
+#define PROCESS_CALLBACK_FILTER_ENABLED     0x1
+#endif
+
+void VDEnableExceptionsFromUserCallbacksW32() {
+	HMODULE hmodKernel32 = GetModuleHandle("kernel32");
+
+	// SetProcessUserModeExceptionPolicy() is available in Windows 7 SP1 and in Vista/WS2008/Win7
+	// systems with the hotfix (274454 for Vista, 299104 for WS2008/Win7).
+	typedef BOOL (WINAPI *tpSetProcessUserModeExceptionPolicy)(DWORD dwFlags);
+	typedef BOOL (WINAPI *tpGetProcessUserModeExceptionPolicy)(LPDWORD pdwFlags);
+	tpSetProcessUserModeExceptionPolicy pSetProcessUserModeExceptionPolicy =
+		(tpSetProcessUserModeExceptionPolicy)GetProcAddress(hmodKernel32, "SetProcessUserModeExceptionPolicy");
+	tpGetProcessUserModeExceptionPolicy pGetProcessUserModeExceptionPolicy =
+		(tpGetProcessUserModeExceptionPolicy)GetProcAddress(hmodKernel32, "GetProcessUserModeExceptionPolicy");
+
+	if (pGetProcessUserModeExceptionPolicy && pSetProcessUserModeExceptionPolicy) {
+		DWORD dwFlags = 0;
+
+		if (pGetProcessUserModeExceptionPolicy(&dwFlags)) {
+			dwFlags &= ~PROCESS_CALLBACK_FILTER_ENABLED;
+
+			pSetProcessUserModeExceptionPolicy(dwFlags);
+		}
+	}
+}
+
 bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 //#ifdef _DEBUG
@@ -335,6 +374,8 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 		extern void VDPatchSetUnhandledExceptionFilter();
 		VDPatchSetUnhandledExceptionFilter();
 	}
+
+	VDEnableExceptionsFromUserCallbacksW32();
 
 	set_terminate(VDterminate);
 
@@ -375,6 +416,30 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	VDCHECKPOINT;
 
 	AVIFileInit();
+
+	const bool resetAll = cmdLine.FindAndRemoveSwitch(L"resetall");
+	const VDStringW portableRegPath(VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.ini"));
+
+	if (cmdLine.FindAndRemoveSwitch(L"portable") || VDDoesPathExist(portableRegPath.c_str())) {
+		g_portableRegistryPath = portableRegPath;
+		g_pPortableRegistry = new VDRegistryProviderMemory;
+		VDSetRegistryProvider(g_pPortableRegistry);
+
+		if (!resetAll && VDDoesPathExist(portableRegPath.c_str())) {
+			try {
+				VDLoadRegistry(portableRegPath.c_str());
+			} catch(const MyError& err) {
+				VDStringA message;
+
+				message.sprintf("There was an error loading the settings file:\n\n%s\n\nDo you want to continue? If so, settings will be reset to defaults and may not be saved.", err.c_str());
+				if (IDYES != MessageBox(NULL, message.c_str(), "VirtualDub Warning", MB_YESNO | MB_ICONWARNING))
+					return false;
+			}
+		}
+	} else {
+		if (resetAll)
+			SHDeleteKey(HKEY_CURRENT_USER, "Software\\VirtualDub.org\\VirtualDub");
+	}
 
 	VDRegistryAppKey::setDefaultKey("Software\\VirtualDub.org\\VirtualDub\\");
 	VDLoadFilespecSystemData();
@@ -437,6 +502,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 	// display welcome requester
 	Welcome();
+	VDDisplayLicense(NULL, true);
 
 	// Announce experimentality.
 	AnnounceExperimental();
@@ -477,8 +543,6 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 ///////////////////////////////////////////////////////////////////////////
 
 void Deinit() {
-	FilterInstance *fa;
-
 	VDCHECKPOINT;
 
 	g_project->CloseAVI();
@@ -494,11 +558,7 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
-	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
-		fa->Release();
-	}
-
-	VDCHECKPOINT;
+	g_filterChain.Clear();
 
 	VDCHECKPOINT;
 
@@ -533,6 +593,18 @@ void Deinit() {
 
 	VDShutdownExternalEncoderProfiles();
 	VDSaveFilespecSystemData();
+
+	if (g_pPortableRegistry) {
+		try {
+			VDSaveRegistry(g_portableRegistryPath.c_str());
+		} catch(const MyError&) {
+		}
+
+		VDSetRegistryProvider(NULL);
+		delete g_pPortableRegistry;
+		g_pPortableRegistry = NULL;
+	}
+
 	VDDeinitResourceSystem();
 	VDShutdownEventProfiler();
 	VDDeinitProfilingSystem();
@@ -640,6 +712,7 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 	static const wchar_t seps[] = L" \t\n\r";
 	bool fExitOnDone = false;
+	bool forceAutoRecoverScan = false;
 
 	// parse cmdline looking for switches
 	//
@@ -683,11 +756,14 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					//   12345678901234567890123456789012345678901234567890123456789012345678901234567890
 						"Command-line flags:\n"
 						"\n"
+						"  /autorecover              Scan for auto-recover files\n"
 						"  /b <src-dir> <dst-dir>    Add batch entries for a directory\n"
 						"  /blockDebugOutput         Block debug output from specific DLLs\n"
 						"         [+/-dllname,...]\n"
 						"  /c                        Clear job list\n"
 						"  /capture                  Switch to capture mode\n"
+						"  /capaudiorec [on|off]     Enable/disable capture audio recording\n"
+						"  /capaudioplay [on|off]    Enable/disable capture audio playback\n"
 						"  /capchannel <ch> [<freq>] Set capture channel (opt. frequency in MHz)\n"
 						"                            Use antenna:<n> or cable:<n> to force mode\n"
 						"  /capdevice <devname>      Set capture device\n"
@@ -708,16 +784,21 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /noStupidAntiDebugChecks  Stop lame drivers from screwing up debugging\n"
 						"                            sessions\n"
 						"  /p <src> <dst>            Add a batch entry for a file\n"
+						"  /portable                 Switch to portable settings mode\n"
 						"  /priority <pri>           Start in low, belowNormal, normal, aboveNormal,\n"
 						"                            high, or realtime priority\n"
 						"  /queryVersion             Return build number\n"
 						"  /r                        Run job queue\n"
+						"  /resetall                 Reset all settings to defaults\n"
 						"  /s <script>               Run a script\n"
 						"  /safecpu                  Do not use CPU extensions on startup\n"
 						"  /slave <file>             Join shared job queue in autostart mode\n"
 						"  /vdxadebug                Enable filter acceleration debug window\n"
 						"  /x                        Exit when complete\n"
 						);
+				}
+				else if (!wcscmp(token, L"autorecover")) {
+					forceAutoRecoverScan = true;
 				}
 				else if (!wcscmp(token, L"autotest")) {
 					g_bAutoTest = true;
@@ -742,6 +823,42 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				else if (!wcscmp(token, L"capture")) {
 					VDUIFrame *pFrame = VDUIFrame::GetFrame(g_hWnd);
 					pFrame->SetNextMode(1);
+				}
+				else if (!wcscmp(token, L"capaudiorec")) {
+					if (!g_capProjectUI)
+						throw MyError("Command line error: not in capture mode");
+
+					bool recognized = false;
+					if (cmdLine.GetNextNonSwitchArgument(it, token)) {
+						if (!wcscmp(token, L"on") || !wcscmp(token, L"true") || !wcscmp(token, L"yes")) {
+							g_capProjectUI->SetAudioCaptureEnabled(true);
+							recognized = true;
+						} else if (!wcscmp(token, L"off") || !wcscmp(token, L"false") || !wcscmp(token, L"no")) {
+							g_capProjectUI->SetAudioCaptureEnabled(false);
+							recognized = true;
+						}
+					}
+
+					if (!recognized)
+						throw MyError("Command line error: syntax is /capaudiorec on|off");
+				}
+				else if (!wcscmp(token, L"capaudioplay")) {
+					if (!g_capProjectUI)
+						throw MyError("Command line error: not in capture mode");
+
+					bool recognized = false;
+					if (cmdLine.GetNextNonSwitchArgument(it, token)) {
+						if (!wcscmp(token, L"on") || !wcscmp(token, L"true") || !wcscmp(token, L"yes")) {
+							g_capProjectUI->SetAudioPlaybackEnabled(true);
+							recognized = true;
+						} else if (!wcscmp(token, L"off") || !wcscmp(token, L"false") || !wcscmp(token, L"no")) {
+							g_capProjectUI->SetAudioPlaybackEnabled(false);
+							recognized = true;
+						}
+					}
+
+					if (!recognized)
+						throw MyError("Command line error: syntax is /capaudioplay on|off");
 				}
 				else if (!wcscmp(token, L"capchannel")) {
 					if (!g_capProjectUI)
@@ -881,7 +998,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					class D3DLock : public VDD3D9Client {
 					public:
 						D3DLock() {
-							mpMgr = VDInitDirect3D9(this);
+							mpMgr = VDInitDirect3D9(this, NULL, false);
 						}
 
 						~D3DLock() {
@@ -992,6 +1109,10 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				else if (!wcscmp(token, L"vdxadebug")) {
 					VDPreferencesSetFilterAccelVisualDebugEnabled(true);
 				}
+				else if (!wcscmp(token, L"limitmem")) {
+					for(int i=0; i<6; ++i)
+						VirtualAlloc(NULL, 256 * 1024 * 1024, MEM_RESERVE, PAGE_READWRITE);
+				}
 				else if (!wcscmp(token, L"x")) {
 					fExitOnDone = true;
 
@@ -1036,6 +1157,10 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 
 	if (fExitOnDone)
 		return 0;
+
+	if ((!argsFound && !g_consoleMode && VDPreferencesGetAutoRecoverEnabled()) || forceAutoRecoverScan) {
+		VDUICheckForAutoRecoverFiles((VDGUIHandle)g_hWnd);
+	}
 
 	return -1;
 }

@@ -17,6 +17,9 @@ public:
 
 bool ShouldBreak();
 
-#define TEST_ASSERT(condition) if (!(condition)) { ShouldBreak() ? __debugbreak() : throw AssertionException("Test assertion failed: " #condition); volatile int _x = 0; } else ((void)0)
+#define TEST_ASSERT_STRINGIFY(x) TEST_ASSERT_STRINGIFY1(x)
+#define TEST_ASSERT_STRINGIFY1(x) #x
+
+#define TEST_ASSERT(condition) if (!(condition)) { ShouldBreak() ? __debugbreak() : throw AssertionException("Test assertion failed at line " TEST_ASSERT_STRINGIFY(__LINE__) ": " #condition); volatile int _x = 0; } else ((void)0)
 
 #endif

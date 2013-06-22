@@ -45,6 +45,7 @@ void *VDFilterFrameBufferAccel::AsInterface(uint32 iid) {
 }
 
 void VDFilterFrameBufferAccel::Init(VDFilterAccelEngine *accelEngine, uint32 width, uint32 height, uint32 borderWidth, uint32 borderHeight) {
+	VDASSERT(width && height);
 	mpAccelEngine = accelEngine;
 	mWidth = width;
 	mHeight = height;

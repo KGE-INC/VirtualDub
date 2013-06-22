@@ -514,7 +514,7 @@
 				<dd>
 					The following rules apply to audio filter graphs:
 					<ul>
-						<li>There must be exactly one &quot;source&quot; node.</li>
+						<li>There must be exactly one &quot;input&quot; node.</li>
 						<li>There must be exactly one &quot;output&quot; node.</li>
 						<li>All pins must be connected.</li>
 						<li>No cycles are allowed, although parallel branching is permitted.</li>

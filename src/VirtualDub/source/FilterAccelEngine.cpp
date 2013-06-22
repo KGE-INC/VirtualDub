@@ -1,7 +1,25 @@
+//	VirtualDub - Video processing and capture application
+//	Copyright (C) 1998-2011 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
 #include "stdafx.h"
 #include <windows.h>
 #include <mmsystem.h>
 #include <vd2/system/bitmath.h>
+#include <vd2/system/cpuaccel.h>
 #include <vd2/system/profile.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Kasumi/pixmap.h>
@@ -13,6 +31,15 @@
 #include "FilterAccelEngine.inl"
 
 bool VDTCreateContextD3D9(int width, int height, int refresh, bool fullscreen, bool vsync, void *hwnd, IVDTContext **ppctx);
+bool VDTCreateContextD3D10(IVDTContext **ppctx);
+
+void VDFilterAccelInterleaveYUV_SSE2(
+		void *dst, ptrdiff_t dstpitch,
+		const void *srcY, ptrdiff_t srcYPitch, 
+		const void *srcCb, ptrdiff_t srcCbPitch, 
+		const void *srcCr, ptrdiff_t srcCrPitch,
+		uint32 w,
+		uint32 h);
 
 VDFilterAccelEngineMessage::VDFilterAccelEngineMessage()
 	: mpCleanup(NULL)
@@ -212,7 +239,7 @@ void VDFilterAccelEngineDispatchQueue::Wait(Message *msg, VDFilterAccelEngineDis
 			continue;
 		}
 	}
-	VDASSERT(sThread2.xchg(0) == VDGetCurrentThreadID());
+	VDASSERT((VDThreadID)sThread2.xchg(0) == VDGetCurrentThreadID());
 }
 
 void VDFilterAccelEngineDispatchQueue::Send(Message *msg, VDFilterAccelEngineDispatchQueue& localQueue) {
@@ -223,7 +250,7 @@ void VDFilterAccelEngineDispatchQueue::Send(Message *msg, VDFilterAccelEngineDis
 	Post(msg);
 	Wait(msg, localQueue);
 
-	VDASSERT(sThread.xchg(0) == VDGetCurrentThreadID());
+	VDASSERT((VDThreadID)sThread.xchg(0) == VDGetCurrentThreadID());
 }
 
 VDFilterAccelEngine::VDFilterAccelEngine()
@@ -322,6 +349,8 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 		return false;
 	}
 
+	VDSetThreadExecutionStateW32(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+
 	mpTP = vdpoly_cast<IVDTProfiler *>(mpTC);
 
 	static const VDTVertexElement els[]={
@@ -336,20 +365,10 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 		{ (uint32)offsetof(VDFilterAccelVertex, uv[7]), kVDTET_Float4, kVDTEU_TexCoord, 7 }
 	};
 
-	if (!mpTC->CreateVertexFormat(els, 9, &mpVF)) {
-		ShutdownCallback2();
-		return false;
-	}
-
 	static const VDTVertexElement kEls2[]={
 		{ (uint32)offsetof(VDFilterAccelClearVertex, x), kVDTET_Float2, kVDTEU_Position, 0 },
 		{ (uint32)offsetof(VDFilterAccelClearVertex, c), kVDTET_UByte4, kVDTEU_Color, 0 },
 	};
-
-	if (!mpTC->CreateVertexFormat(kEls2, 2, &mpVFC)) {
-		ShutdownCallback2();
-		return false;
-	}
 
 	if (!mpTC->CreateVertexBuffer(kVBSize, true, NULL, &mpVB)) {
 		ShutdownCallback2();
@@ -405,6 +424,16 @@ bool VDFilterAccelEngine::InitCallback2(bool visibleDebugWindow) {
 	}
 
 	if (!mpTC->CreateVertexProgram(kVDTPF_D3D9ByteCode, kVDFilterAccelVP_Clear, sizeof kVDFilterAccelVP_Clear, &mpVPClear)) {
+		ShutdownCallback2();
+		return false;
+	}
+
+	if (!mpTC->CreateVertexFormat(els, 9, mpVP, &mpVF)) {
+		ShutdownCallback2();
+		return false;
+	}
+
+	if (!mpTC->CreateVertexFormat(kEls2, 2, mpVPClear, &mpVFC)) {
 		ShutdownCallback2();
 		return false;
 	}
@@ -501,6 +530,8 @@ void VDFilterAccelEngine::ShutdownCallback2() {
 	}
 
 	vdsaferelease <<= mpTC;
+
+	VDSetThreadExecutionStateW32(ES_CONTINUOUS);
 
 	if (mhwnd) {
 		DestroyWindow(mhwnd);
@@ -666,21 +697,30 @@ void VDFilterAccelEngine::UploadCallback(VDFilterAccelEngineDispatchQueue *queue
 					const char *srcCr = msg.mpData3;
 					char *dst = (char *)lockData.mpData;
 
-					for(uint32 y = 0; y < h; ++y) {
-						char *dst2 = dst;
+					if (SSE2_enabled) {
+						VDFilterAccelInterleaveYUV_SSE2(
+							dst, lockData.mPitch,
+							srcY, msg.mPitch,
+							srcCb, msg.mPitch2,
+							srcCr, msg.mPitch3,
+							w, h);
+					} else {
+						for(uint32 y = 0; y < h; ++y) {
+							char *dst2 = dst;
 
-						for(uint32 x = 0; x < w; ++x) {
-							dst2[0] = srcCb[x];
-							dst2[1] = srcY[x];
-							dst2[2] = srcCr[x];
-							dst2[3] = (char)0xFF;
-							dst2 += 4;
+							for(uint32 x = 0; x < w; ++x) {
+								dst2[0] = srcCb[x];
+								dst2[1] = srcY[x];
+								dst2[2] = srcCr[x];
+								dst2[3] = (char)0xFF;
+								dst2 += 4;
+							}
+
+							srcY += msg.mPitch;
+							srcCb += msg.mPitch2;
+							srcCr += msg.mPitch3;
+							dst += lockData.mPitch;
 						}
-
-						srcY += msg.mPitch;
-						srcCb += msg.mPitch2;
-						srcCr += msg.mPitch3;
-						dst += lockData.mPitch;
 					}
 				} else {
 					VDMemcpyRect(lockData.mpData, lockData.mPitch, msg.mpData, msg.mPitch, 4*w, h);
@@ -764,13 +804,13 @@ bool VDFilterAccelEngine::BeginDownload(VDFilterAccelEngineDownloadMsg *msg, VDF
 	return true;
 }
 
-bool VDFilterAccelEngine::EndDownload(VDFilterAccelEngineDownloadMsg *msg) {
+VDFilterAccelStatus VDFilterAccelEngine::EndDownload(VDFilterAccelEngineDownloadMsg *msg) {
 	if (!msg->mbCompleted)
 		mWorkerQueue.Wait(msg, mCallbackQueue);
 
 	msg->mpDstBuffer->Unlock();
 
-	return msg->mbSuccess;
+	return msg->mbSuccess ? kVDFilterAccelStatus_OK : msg->mbDeviceLost ? kVDFilterAccelStatus_DeviceLost : kVDFilterAccelStatus_Failed;
 }
 
 bool VDFilterAccelEngine::Download(VDFilterFrameBuffer *dst, const VDPixmapLayout& dstLayout, VDFilterFrameBufferAccel *src, bool srcYUV, VDFilterAccelReadbackBuffer *rb) {

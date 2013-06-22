@@ -488,7 +488,7 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 			char buf[5] = "    ";
 
 			for(int i=0; i<4; ++i) {
-				uint8 c = (fcc >> (i * 8)) & 0xff;
+				uint8 c = (uint8)((fcc >> (i * 8)) & 0xff);
 
 				if ((uint8)(c - 0x20) < 0x7f)
 					buf[i] = c;
@@ -1356,6 +1356,10 @@ uint32 VDInputDriverPlugin::GetFlags() {
 
 	if (xflags & VDXInputDriverDefinition::kFlagSupportsAudio)
 		flags |= kF_Audio;
+
+	// Ugh, we can't detect this in the current API.
+	if (!(xflags & VDXInputDriverDefinition::kFlagNoOptions))
+		flags |= kF_SupportsOpts;
 
 	return flags;
 }

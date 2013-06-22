@@ -375,6 +375,8 @@ namespace {
 
 class VDCaptureFilterLumaSquish : public VDCaptureFilter {
 public:
+	VDCaptureFilterLumaSquish();
+
 	void SetBounds(bool black, bool white);
 	void Init(VDPixmapLayout& layout);
 	bool Run(VDPixmap& px);
@@ -383,6 +385,12 @@ protected:
 	int mBaseMode;
 	int	mMode;
 };
+
+VDCaptureFilterLumaSquish::VDCaptureFilterLumaSquish()
+	: mBaseMode(-1)
+	, mMode(-1)
+{
+}
 
 void VDCaptureFilterLumaSquish::SetBounds(bool black, bool white) {
 	mMode = -1;
@@ -771,7 +779,7 @@ void VDCaptureFilterChainAdapter::SetFrameRate(const VDFraction& frameRate) {
 }
 
 void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
-	filters.prepareLinearChain(&g_listFA, layout.w, layout.h, layout.format, mFrameRate, -1, VDFraction(0, 0));
+	filters.prepareLinearChain(&g_filterChain, layout.w, layout.h, layout.format, mFrameRate, -1, VDFraction(0, 0));
 
 	mpFrameSource = new VDCaptureFilterChainFrameSource;
 	mpFrameSource->Init(3, filters.GetInputLayout());
@@ -779,7 +787,7 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 	filters.SetVisualAccelDebugEnabled(false);
 	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
 	filters.SetAsyncThreadCount(-1);
-	filters.initLinearChain(NULL, VDXFilterStateInfo::kStateRealTime, &g_listFA, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
+	filters.initLinearChain(NULL, VDXFilterStateInfo::kStateRealTime, &g_filterChain, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
 	filters.ReadyFilters();
 
 	mpFrameSource->PreallocateFrames();
@@ -986,6 +994,7 @@ void VDCaptureFilterSystem::SetLumaSquish(bool enableBlack, bool enableWhite) {
 
 	if (mbInitialized) {
 		mFilterLumaSquish.SetBounds(enableBlack, enableWhite);
+		mFilterLumaSquish.Init(mPreNRLayout);
 		RebuildFilterChain();
 	}
 }

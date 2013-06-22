@@ -526,12 +526,12 @@ bool VBitmap::BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *s
 
 	// Do blit
 
-	PixOffset srcmod = -src->pitch;
-	PixOffset dstmod = pitch;
-
 	dx >>= 1;
 
 #ifdef _M_IX86
+	PixOffset srcmod = -src->pitch;
+	PixOffset dstmod = pitch;
+
 	switch(depth) {
 	case 16:
 		srcmod -= 4*dx;

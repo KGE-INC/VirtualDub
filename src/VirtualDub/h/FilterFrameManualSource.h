@@ -42,7 +42,8 @@ public:
 
 	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
 
-	void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev);
+	void VDFilterFrameManualSource::RegisterSourceAllocReqs(uint32 index, VDFilterFrameAllocatorProxy *prev);
+	void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr);
 	void SetOutputLayout(const VDPixmapLayout& layout);
 
 	bool IsAccelerated() const { return false; }

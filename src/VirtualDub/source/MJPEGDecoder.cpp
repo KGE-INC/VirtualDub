@@ -27,7 +27,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 
 #ifdef VD_COMPILER_MSVC
-	#include <intrin.h>
+	#include <vd2/system/win32/intrin.h>
 	#pragma intrinsic(__ll_lshift)
 #endif
 
@@ -660,7 +660,7 @@ const uint8 *MJPEGDecoder::decodeFrameInfo(const uint8 *psrc) {
 			mcu_height	= (raw_height + 15)/16;
 
 			if ((raw_width|raw_height) & 15)
-				throw	MyError("VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths or heights that are not "
+				throw	MyError("VirtualDub cannot decode 4:2:0 Motion JPEG frames with image widths or heights that are not "
 						"multiples of 16.  Please install a third-party Motion-JPEG codec.");
 
 			break;
@@ -1081,7 +1081,6 @@ void mb_decode(uint32& bitheap0, int& bitcnt0, const uint8 *& src0, int mcu_leng
 		// decode DC coefficient
 		int i = 0;
 		int code = 0;
-		sint32 oheap = bitheap;
 		sint32 acc = bitheap >> 30;
 		bitheap <<= 2;
 		while(i < 15) {

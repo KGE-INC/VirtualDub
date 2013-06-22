@@ -63,6 +63,10 @@ private:
 		kSamplePoints	= 32			// must be a power of two
 	};
 
+	enum {
+		MYWM_UPDATE_BACKGROUND_STATE = WM_USER + 100
+	};
+
 	SamplePoint		mSamplePoints[kSamplePoints];
 	int				mNextSamplePoint;
 	int				mSampleCount;
@@ -122,7 +126,7 @@ public:
 	bool isVisible();
 	bool isFrameVisible(bool fOutput);
 	bool ToggleFrame(bool fOutput);
-
+	void OnBackgroundStateUpdated();
 };
 
 IDubStatusHandler *CreateDubStatusHandler() {
@@ -786,6 +790,7 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				guiOffsetDlgItem(hdlg, IDC_DRAW_INPUT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_OUTPUT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_DOUTPUT, 0, yoffset);
+				guiOffsetDlgItem(hdlg, IDC_BACKGROUND, 0, yoffset);
 
 				// resize us
 
@@ -804,6 +809,15 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				CheckDlgButton(hdlg, IDC_DRAW_INPUT, thisPtr->opt->video.fShowInputFrame);
 				CheckDlgButton(hdlg, IDC_DRAW_OUTPUT, thisPtr->opt->video.fShowOutputFrame);
 				CheckDlgButton(hdlg, IDC_DRAW_DOUTPUT, thisPtr->opt->video.fShowDecompressedFrame);
+
+				if (VDIsAtLeastVistaW32())
+					CheckDlgButton(hdlg, IDC_BACKGROUND, thisPtr->pDubber->IsBackground());
+				else {
+					HWND hwndItem = GetDlgItem(hdlg, IDC_BACKGROUND);
+
+					if (hwndItem)
+						ShowWindow(hwndItem, SW_HIDE);
+				}
 
 				hwndItem = GetDlgItem(hdlg, IDC_PRIORITY);
 				SendMessage(hwndItem, CB_RESETCONTENT,0,0);
@@ -914,7 +928,8 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				}
 				break;
 
-			case IDC_LIMIT:
+			case IDC_BACKGROUND:
+				thisPtr->pDubber->SetBackground(IsDlgButtonChecked(hdlg, IDC_BACKGROUND) != 0);
 				break;
 
 			case IDC_ABORT:
@@ -952,6 +967,10 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				}
 			}
 			break;
+
+		case MYWM_UPDATE_BACKGROUND_STATE:
+			CheckDlgButton(hdlg, IDC_BACKGROUND, thisPtr->pDubber->IsBackground());
+			return TRUE;
     }
     return FALSE;
 }
@@ -1111,4 +1130,8 @@ bool DubStatus::ToggleFrame(bool fFrameOutput) {
 			PostMessage(GetDlgItem(hwndStatus, IDC_DRAW_INPUT), BM_SETCHECK, !opt->video.fShowInputFrame ? BST_CHECKED : BST_UNCHECKED, 0);
 		return opt->video.fShowInputFrame = !opt->video.fShowInputFrame;
 	}
+}
+
+void DubStatus::OnBackgroundStateUpdated() {
+	PostMessage(hwndStatus, MYWM_UPDATE_BACKGROUND_STATE, 0, 0);
 }

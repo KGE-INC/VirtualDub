@@ -67,12 +67,16 @@ class VDFilterAccelEngineDispatchQueue;
 class VDFilterAccelEngineMessage;
 
 class VDTextOutputStream;
+class VDFixedLinearAllocator;
 
 ///////////////////
 
-VDXWaveFormat *VDXCopyWaveFormat(const VDXWaveFormat *pFormat);
-
-///////////////////
+struct VDFilterStreamDesc {
+	VDPixmapLayout	mLayout;
+	VDFraction		mAspectRatio;
+	VDFraction		mFrameRate;
+	sint64			mFrameCount;
+};
 
 class VFBitmapInternal : public VBitmap {
 public:
@@ -94,6 +98,8 @@ public:
 	void CopyNullBufferParams();
 
 	void SetFrameNumber(sint64 frame);
+
+	VDFilterStreamDesc GetStreamDesc() const;
 
 public:
 	// Must match layout of VFBitmap!
@@ -141,10 +147,10 @@ struct VDFilterThreadContext {
 };
 
 class VDFilterActivationImpl {		// clone of VDXFilterActivation
-	VDFilterActivationImpl(const VDFilterActivationImpl&);
 	VDFilterActivationImpl& operator=(const VDFilterActivationImpl&);
 public:
-	VDFilterActivationImpl(VDXFBitmap& _dst, VDXFBitmap& _src, VDXFBitmap *_last);
+	VDFilterActivationImpl();
+	VDFilterActivationImpl(const VDFilterActivationImpl&);
 
 	const VDXFilterDefinition *filter;
 	void *filter_data;
@@ -167,10 +173,40 @@ public:
 
 	IVDXAContext	*mpVDXA;			// (V15+)
 
+	uint32		mSourceStreamCount;		// (V16+)
+	VDXFBitmap *const *mpSourceStreams;	// (V16+)
+
 private:
 	char mSizeCheckSentinel;
 
 	VDXFBitmap *mOutputFrameArray[1];
+
+protected:
+	void SetSourceStreamCount(uint32 n);
+
+	VFBitmapInternal	mRealSrc;
+	VFBitmapInternal	mRealDst;
+	VFBitmapInternal	mRealLast;
+
+	typedef vdfastvector<VDXFBitmap *> SourceStreamPtrArray;
+	typedef vdvector<VFBitmapInternal> SourceStreamArray;
+
+	SourceStreamPtrArray	mSourceStreamPtrArray;
+	SourceStreamArray		mSourceStreamArray;
+};
+
+class VDFilterScriptWrapper : public VDScriptObject {
+	VDFilterScriptWrapper& operator=(const VDFilterScriptWrapper&);
+public:
+	VDFilterScriptWrapper();
+	VDFilterScriptWrapper(const VDFilterScriptWrapper&);
+
+	void Init(const VDXScriptObject *src, VDScriptFunction voidfunc, VDScriptFunction intfunc, VDScriptFunction varfunc);
+
+	int GetFuncIndex(const VDScriptFunctionDef *fdef) const;
+
+protected:
+	vdfastvector<VDScriptFunctionDef>	mFuncList;
 };
 
 class IVDFilterFrameEngine {
@@ -183,7 +219,8 @@ class IVDFilterFrameSource : public IVDRefUnknown {
 public:
 	virtual const char *GetDebugDesc() const = 0;
 
-	virtual void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev) = 0;
+	virtual void RegisterSourceAllocReqs(uint32 index, VDFilterFrameAllocatorProxy *prev) = 0;
+	virtual void RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager) = 0;
 	virtual VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy() = 0;
 
 	virtual bool IsAccelerated() const = 0;
@@ -216,7 +253,60 @@ public:
 	virtual RunResult RunProcess() = 0;
 };
 
-class FilterInstance : public ListNode, protected VDFilterActivationImpl, public vdrefcounted<IVDFilterFrameSource> {
+class VDFilterConfiguration {
+public:
+	VDFilterConfiguration();
+
+	bool	IsEnabled() const { return mbEnabled; }
+	void	SetEnabled(bool enabled) { mbEnabled = enabled; }
+
+	bool	IsForceSingleFBEnabled() const { return mbForceSingleFB; }
+	void	SetForceSingleFBEnabled(bool en) { mbForceSingleFB = en; }
+
+	bool	IsCroppingEnabled() const;
+	bool	IsPreciseCroppingEnabled() const;
+	vdrect32 GetCropInsets() const;
+	void	SetCrop(int x1, int y1, int x2, int y2, bool precise);
+
+	VDParameterCurve *GetAlphaParameterCurve() const { return mpAlphaCurve; }
+	void SetAlphaParameterCurve(VDParameterCurve *p) { mpAlphaCurve = p; }
+
+protected:
+	bool	mbEnabled;
+	bool	mbForceSingleFB;
+	bool	mbPreciseCrop;
+	int		mCropX1;
+	int		mCropY1;
+	int		mCropX2;
+	int		mCropY2;
+
+	vdrefptr<VDParameterCurve> mpAlphaCurve;
+};
+
+struct VDFilterPrepareStreamInfo {
+	VFBitmapInternal	mExternalSrc;			// [prepare only] post convert (incoming)
+	VFBitmapInternal	mExternalSrcPreAlign;	// [prepare only] cropped
+	VFBitmapInternal	mExternalSrcCropped;	// [prepare only] post-align
+	bool	mbAlignOnEntry;
+};
+
+struct VDFilterPrepareInfo {
+	typedef vdvector<VDFilterPrepareStreamInfo> Streams;
+	Streams mStreams;
+
+	uint32	mLastFrameSizeRequired;
+};
+
+struct VDFilterPrepareStreamInfo2 {
+	bool	mbConvertOnEntry;
+};
+
+struct VDFilterPrepareInfo2 {
+	typedef vdfastvector<VDFilterPrepareStreamInfo2> Streams;
+	Streams mStreams;
+};
+
+class FilterInstance : protected VDFilterActivationImpl, public VDFilterConfiguration, public vdrefcounted<IVDFilterFrameSource> {
 	FilterInstance& operator=(const FilterInstance&);		// outlaw copy assignment
 
 public:
@@ -229,44 +319,35 @@ public:
 
 	FilterInstance *Clone();
 
-	bool	IsEnabled() const { return mbEnabled; }
-	void	SetEnabled(bool enabled) { mbEnabled = enabled; }
-
-	bool	IsAlignmentRequired() const { return mbAlignOnEntry; }
-	bool	IsConversionRequired() const { return mbConvertOnEntry; }
 	bool	IsInPlace() const;
 	bool	IsAcceleratable() const;
 	bool	IsAccelerated() const { return mbAccelerated; }
 
-	bool	IsForceSingleFBEnabled() const { return mbForceSingleFB; }
-	void	SetForceSingleFBEnabled(bool en) { mbForceSingleFB = en; }
-
 	const char *GetName() const;
+	const VDXFilterDefinition *GetDefinition() const;
 	uint32	GetFlags() const { return mFlags; }
 	uint32	GetFrameDelay() const { return mFlags >> 16; }
 
 	bool	GetInvalidFormatState() const { return mbInvalidFormat; }
 	bool	GetInvalidFormatHandlingState() const { return mbInvalidFormatHandling; }
-
-	bool	IsCroppingEnabled() const;
-	bool	IsPreciseCroppingEnabled() const;
-	vdrect32 GetCropInsets() const;
-	void	SetCrop(int x1, int y1, int x2, int y2, bool precise);
+	bool	GetExcessiveFrameSizeState() const { return mbExcessiveFrameSize; }
 
 	bool	IsConfigurable() const;
 	bool	Configure(VDXHWND parent, IVDXFilterPreview2 *ifp2);
 
-	uint32	Prepare(const VFBitmapInternal& input);
+	void	PrepareReset();
+	uint32	Prepare(const VFBitmapInternal *inputs, uint32 numInputs, VDFilterPrepareInfo& prepareInfo);
 
 	void	SetEngine(IVDFilterFrameEngine *engine);
 	void	Start(IVDFilterFrameEngine *engine);
-	void	Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine);
+	void	Start(uint32 flags, IVDFilterFrameSource *const *pSources, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine);
 	void	Stop();
 
 	const char *GetDebugDesc() const;
 
 	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
-	void	RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev);
+	void	RegisterSourceAllocReqs(uint32 index, VDFilterFrameAllocatorProxy *prev);
+	void	RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager);
 	bool	CreateRequest(sint64 outputFrame, bool writable, uint32 batchNumber, IVDFilterFrameClientRequest **req);
 	bool	CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, uint32 batchNumber, IVDFilterFrameClientRequest **req);
 	RunResult RunRequests(const uint32 *batchNumberLimit);
@@ -289,16 +370,11 @@ public:
 
 	const VDScriptObject *GetScriptObject() const;
 
-	uint32		GetPreCropWidth()		const { return mOrigW; }
-	uint32		GetPreCropHeight()		const { return mOrigH; }
+	IVDFilterFrameSource *GetSource(uint32 index) const { return index < mSources.size() ? mSources[index] : (IVDFilterFrameSource *)NULL; }
 
-	IVDFilterFrameSource *GetSource() const { return mpSource; }
+	VDFilterStreamDesc GetSourceDesc() const { return mRealSrc.GetStreamDesc(); }
 
-	uint32		GetSourceFrameWidth()	const { return mRealSrc.w; }
-	uint32		GetSourceFrameHeight()	const { return mRealSrc.h; }
-	VDFraction	GetSourceFrameRate()	const { return VDFraction(mRealSrc.mFrameRateHi, mRealSrc.mFrameRateLo); }
-	sint64		GetSourceFrameCount()	const { return mRealSrc.mFrameCount; }
-
+	VDFilterStreamDesc GetOutputDesc() const { return mRealDst.GetStreamDesc(); }
 	uint32		GetOutputFrameWidth()	const { return mRealDst.w; }
 	uint32		GetOutputFrameHeight()	const { return mRealDst.h; }
 	VDFraction	GetOutputFrameRate()	const { return VDFraction(mRealDst.mFrameRateHi, mRealDst.mFrameRateLo); }
@@ -307,9 +383,6 @@ public:
 
 	sint64		GetLastSourceFrame()	const { return mfsi.lCurrentSourceFrame; }
 	sint64		GetLastOutputFrame()	const { return mfsi.lCurrentFrame; }
-
-	VDParameterCurve *GetAlphaParameterCurve() const { return mpAlphaCurve; }
-	void SetAlphaParameterCurve(VDParameterCurve *p) { mpAlphaCurve = p; }
 
 protected:
 	class SamplingInfo;
@@ -323,6 +396,7 @@ protected:
 	class VideoPrefetcher;
 	void GetPrefetchInfo(sint64 frame, VideoPrefetcher& prefetcher, bool requireOutput) const;
 
+	void SetLogicError(const char *s) const;
 	void SetLogicErrorF(const char *format, ...) const;
 
 	static void ConvertParameters(VDXScriptValue *dst, const VDScriptValue *src, int argc);
@@ -355,53 +429,48 @@ protected:
 	void	DisconnectAccelBuffer(VFBitmapInternal *buf);
 
 public:
-	VDFileMappingW32	mFileMapping;
-	VFBitmapInternal	mRealSrc;
-	VFBitmapInternal	mRealDst;
-	VFBitmapInternal	mRealLast;
-	VFBitmapInternal	mExternalSrc;			// post convert
-	VFBitmapInternal	mExternalSrcPreAlign;
-	VFBitmapInternal	mExternalSrcCropped;
-	VFBitmapInternal	mExternalDst;
+	//friend class FilterSystem;
 
-	bool	mbBlitOnEntry;
-	bool	mbAlignOnEntry;
-	bool	mbConvertOnEntry;
-	bool	mbAccelerated;
+	void	CheckValidConfiguration();
+	void	InitSharedBuffers(VDFixedLinearAllocator& lastFrameAlloc);
 
-	VFBitmapInternal	mBlendTemp;
+	bool	IsAltFormatCheckRequired() const { return mAPIVersion < 16; }
+
+	VFBitmapInternal&	GetOutputStream() { return mRealDst; }
+
+	VDFilterPrepareInfo		mPrepareInfo;
+	VDFilterPrepareInfo2	mPrepareInfo2;
 
 protected:
+	VDFileMappingW32	mFileMapping;
+	VFBitmapInternal	mExternalSrcCropped;	// cropped, aligned; different from mRealSrc if entry src blit required
+
+	VFBitmapInternal	mExternalDst;			// external output; different from mRealDst if HDC/SFB active on output
+	VFBitmapInternal	mBlendTemp;
+
+	bool	mbAccelerated;
+
 	bool	mbInvalidFormat;
 	bool	mbInvalidFormatHandling;
-	bool	mbForceSingleFB;
-
-	int		mOrigW;
-	int		mOrigH;
-
-	bool	mbPreciseCrop;
-	int		mCropX1;
-	int		mCropY1;
-	int		mCropX2;
-	int		mCropY2;
+	bool	mbExcessiveFrameSize;
 
 	struct DelayInfo {
 		sint64	mSourceFrame;
 		sint64	mOutputFrame;
 	};
 
-	vdfastvector<DelayInfo>	mFsiDelayRing;
+	vdfastvector<DelayInfo>	mFsiDelayRing;	
 	uint32		mDelayRingPos;
 	VDXFilterStateInfo mfsi;
 
-	VDScriptObject	mScriptObj;
+	VDFilterScriptWrapper	mScriptWrapper;
 
 	uint32		mFlags;
 	uint32		mLag;
+	int			mAPIVersion;
 
 	VDPosition	mLastResultFrame;
 
-	bool		mbEnabled;
 	bool		mbStarted;
 	bool		mbFirstFrame;
 	bool		mbCanStealSourceBuffer;
@@ -411,16 +480,15 @@ protected:
 	FilterInstanceAutoDeinit	*mpAutoDeinit;
 	mutable VDAtomicPtr<VDFilterFrameRequestError> mpLogicError;
 
-	vdfastvector<VDScriptFunctionDef>	mScriptFunc;
-	std::vector<VFBitmapInternal> mSourceFrames;
+	vdvector<VFBitmapInternal> mSourceFrames;
 	vdfastvector<VDXFBitmap *> mSourceFrameArray;
 
 	FilterDefinitionInstance *mpFDInst;
 	IVDFilterFrameEngine *mpEngine;
 
-	vdrefptr<VDParameterCurve> mpAlphaCurve;
+	typedef vdvector<vdrefptr<IVDFilterFrameSource> > Sources;
+	Sources mSources;
 
-	vdrefptr<IVDFilterFrameSource> mpSource;
 	VDFilterFrameAllocatorProxy mSourceAllocator;
 	VDFilterFrameAllocatorProxy mResultAllocator;
 

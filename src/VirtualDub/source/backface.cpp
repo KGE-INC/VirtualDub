@@ -387,6 +387,7 @@ protected:
 	LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 	bool OnCreate();
+	void OnDestroy();
 	void OnSize();
 	LRESULT OnNotify(NMHDR *);
 
@@ -396,12 +397,14 @@ protected:
 	HWND	mhwndLog;
 	HWND	mhwndEdit;
 	HFONT	mFont;
+	HMODULE	mhmodRichEdit;
 	VDAtomicInt	mRefCount;
 };
 
 VDBackfaceConsole::VDBackfaceConsole()
 	: mRefCount(0)
 	, mFont(NULL)
+	, mhmodRichEdit(NULL)
 {
 }
 
@@ -430,8 +433,6 @@ void VDBackfaceConsole::Init() {
 }
 
 ATOM VDBackfaceConsole::RegisterWindowClass() {
-	LoadLibrary("riched32");
-
 	WNDCLASS wc;
 	wc.style			= 0;
 	wc.lpfnWndProc		= StaticWndProc;
@@ -477,6 +478,9 @@ LRESULT VDBackfaceConsole::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_CREATE:
 		return OnCreate() ? 0 : -1;
+	case WM_DESTROY:
+		OnDestroy();
+		break;
 	case WM_SIZE:
 		OnSize();
 		return 0;
@@ -491,6 +495,8 @@ LRESULT VDBackfaceConsole::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 bool VDBackfaceConsole::OnCreate() {
+	mhmodRichEdit = LoadLibrary("riched32");
+
 	if (!mFont) {
 		mFont = CreateFont(-10, 0, 0, 0, 0, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_CHARACTER_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Lucida Console");
 		if (!mFont)
@@ -515,6 +521,23 @@ bool VDBackfaceConsole::OnCreate() {
 	g_VDBackfaceService.DumpStatus(*this);
 
 	return true;
+}
+
+void VDBackfaceConsole::OnDestroy() {
+	if (mhwndLog) {
+		DestroyWindow(mhwndLog);
+		mhwndLog = NULL;
+	}
+
+	if (mhwndEdit) {
+		DestroyWindow(mhwndEdit);
+		mhwndEdit = NULL;
+	}
+
+	if (mhmodRichEdit) {
+		FreeLibrary(mhmodRichEdit);
+		mhmodRichEdit = NULL;
+	}
 }
 
 void VDBackfaceConsole::OnSize() {

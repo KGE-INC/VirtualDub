@@ -202,11 +202,10 @@ rowloop_dyna:
 
 	call	dword [esp+32+32+4]
 
-
 	pop	ebp
 
-	add	esi,[esp+20+28+4]
-	add	edi,[esp+24+28+4]
+	add	edi,[esp+20+28+4]
+	add	esi,[esp+24+28+4]
 
 	dec	ebp
 	jne	rowloop_dyna

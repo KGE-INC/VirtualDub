@@ -1195,12 +1195,24 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 	bytesPerSample = (iFormat->mChannels>1 ? 2 : 1)
 						* (iFormat->mSampleBits>8 ? 2 : 1);
 
-	_RPT2(0,"AudioStreamResampler: converting from %ldHz to %ldHz\n", iFormat->mSamplingRate, new_rate);
+	uint64 sampFrac64 = (((uint64)iFormat->mSamplingRate << 20) / new_rate + 1) >> 1;
 
-	samp_frac = MulDiv(iFormat->mSamplingRate, 0x80000L, new_rate);
+	if (sampFrac64 > 0x7FFFFFFF)
+		throw MyError("Cannot resample audio from %uHz to %uHz: the conversion ratio is too low.", iFormat->mSamplingRate, new_rate);
+
+	samp_frac = (long)sampFrac64;
+
+	if (samp_frac == 0)
+		throw MyError("Cannot resample audio from %uHz to %uHz: the conversion ratio is too high.", iFormat->mSamplingRate, new_rate);
+
 	stream_len = (sint64)VDUMulDiv64x32(stream_len, 0x80000L, samp_frac);
 
-	oFormat->mSamplingRate = MulDiv(iFormat->mSamplingRate, 0x80000L, samp_frac);
+	uint64 newSamplingRate = (((uint64)iFormat->mSamplingRate << 20) / (uint32)samp_frac + 1) >> 1;
+
+	if (!newSamplingRate || newSamplingRate > 0x7FFFFFFF)
+		throw MyError("Cannot resample audio from %uHz to %uHz: the conversion ratio is too %s.", iFormat->mSamplingRate, new_rate, newSamplingRate ? "high" : "low");
+
+	oFormat->mSamplingRate = (uint32)newSamplingRate;
 	oFormat->mDataRate = oFormat->mSamplingRate * bytesPerSample;
 	oFormat->mBlockSize = (uint16)bytesPerSample;
 
@@ -1210,17 +1222,9 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 	accum=0;
 	fHighQuality = hi_quality;
 
-	if (!(cbuffer = allocmem(bytesPerSample * BUFFER_SIZE)))
-		throw MyMemoryError();
-
-	// Initialize the buffer.
-
-	if (oFormat->mSampleBits>8)
-		memset(cbuffer, 0x00, bytesPerSample * BUFFER_SIZE);
-	else
-		memset(cbuffer, 0x80, bytesPerSample * BUFFER_SIZE);
-
 	// If this is a high-quality downsample, allocate memory for the filter bank
+
+	mBufferSize = 0;
 
 	if (hi_quality) {
 		if (samp_frac>0x80000) {
@@ -1236,16 +1240,26 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 			make_downsample_filter(filter_bank, filter_width, samp_frac);
 
-			// Clear lower samples
-
-			if (oFormat->mSampleBits>8)
-				memset(cbuffer, 0, bytesPerSample*filter_width);
-			else
-				memset(cbuffer, 0x80, bytesPerSample*filter_width);
-
 			holdover = filter_width/2;
+
+			mBufferSize = filter_width + 1;
 		}
 	}
+
+	// Initialize the buffer.
+
+	if (mBufferSize < MIN_BUFFER_SIZE)
+		mBufferSize = MIN_BUFFER_SIZE;
+
+	mBufferSize = (mBufferSize + 3) & ~3;
+
+	if (!(cbuffer = allocmem(bytesPerSample * mBufferSize)))
+		throw MyMemoryError();
+
+	if (oFormat->mSampleBits>8)
+		memset(cbuffer, 0x00, bytesPerSample * mBufferSize);
+	else
+		memset(cbuffer, 0x80, bytesPerSample * mBufferSize);
 }
 
 AudioStreamResampler::~AudioStreamResampler() {
@@ -1302,7 +1316,7 @@ long AudioStreamResampler::Upsample(void *buffer, long samples, long *lplBytes) 
 		if (fHighQuality)
 			++srcSamples;
 
-		if (srcSamples > BUFFER_SIZE-holdover) srcSamples = BUFFER_SIZE-holdover;
+		if (srcSamples > mBufferSize-holdover) srcSamples = mBufferSize-holdover;
 
 		srcSamples = source->Read((char *)cbuffer + holdover * bytesPerSample, srcSamples, &lBytes);
 
@@ -1376,10 +1390,10 @@ long AudioStreamResampler::Downsample(void *buffer, long samples, long *lplBytes
 
 		srcSamples = (long)(((__int64)samp_frac*(samples-1) + accum) >> 19) + filter_width - holdover;
 
-		// Don't exceed the buffer (BUFFER_SIZE - holdover).
+		// Don't exceed the buffer (mBufferSize - holdover).
 
-		if (srcSamples > BUFFER_SIZE - holdover)
-			srcSamples = BUFFER_SIZE - holdover;
+		if (srcSamples > mBufferSize - holdover)
+			srcSamples = mBufferSize - holdover;
 
 		// Read into buffer.
 
@@ -1460,7 +1474,7 @@ AudioCompressor::AudioCompressor(AudioStream *src, const VDWaveFormat *dst_forma
 
 	SetSource(src);
 
-	mpCodec = VDCreateAudioCompressorW32((const VDWaveFormat *)iFormat, dst_format, pShortNameHint);
+	mpCodec = VDCreateAudioCompressorW32((const VDWaveFormat *)iFormat, dst_format, pShortNameHint, true);
 
 	bytesPerInputSample = iFormat->mBlockSize;
 	bytesPerOutputSample = dst_format->mBlockSize;

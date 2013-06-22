@@ -19,6 +19,7 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/file.h>
 #include <vd2/system/int128.h>
+#include <vd2/system/linearalloc.h>
 #include <vd2/system/protscope.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
@@ -37,6 +38,9 @@ extern FilterFunctions g_VDFilterCallbacks;
 /////////////////////////////////////
 
 namespace {
+	static const uint32 kFrameAxisLimit = 1048576;			// 1Mpx
+	static const uint32 kFrameSizeLimit = 0x08000000;		// 128MB
+
 	void StructCheck() {
 		VDASSERTCT(sizeof(VDPixmap) == sizeof(VDXPixmap));
 		VDASSERTCT(sizeof(VDPixmapLayout) == sizeof(VDXPixmapLayout));
@@ -53,6 +57,31 @@ namespace {
 		VDASSERTCT(offsetof(VDPixmapLayout, w) == offsetof(VDXPixmapLayout, w));
 		VDASSERTCT(offsetof(VDPixmapLayout, h) == offsetof(VDXPixmapLayout, h));
 	}
+
+	bool VDIsVDXAFormat(int format) {
+		return format == nsVDXPixmap::kPixFormat_VDXA_RGB || format == nsVDXPixmap::kPixFormat_VDXA_YUV;
+	}
+
+	bool VDPixmapIsLayoutVectorAligned(const VDPixmapLayout& layout) {
+		const int bufcnt = VDPixmapGetInfo(layout.format).auxbufs;
+
+		switch(bufcnt) {
+		case 2:
+			if ((layout.data3 | layout.pitch3) & 15)
+				return false;
+			break;
+		case 1:
+			if ((layout.data2 | layout.pitch2) & 15)
+				return false;
+			break;
+		case 0:
+			if ((layout.data | layout.pitch) & 15)
+				return false;
+			break;
+		}
+
+		return true;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -66,9 +95,27 @@ VFBitmapInternal::VFBitmapInternal()
 	, mFrameCount(0)
 	, mpPixmap(reinterpret_cast<VDXPixmap *>(&mPixmap))
 	, mpPixmapLayout(reinterpret_cast<VDXPixmapLayout *>(&mPixmapLayout))
+	, mAspectRatioHi(0)
+	, mAspectRatioLo(0)
+	, mFrameNumber(0)
+	, mFrameTimestampStart(0)
+	, mFrameTimestampEnd(0)
+	, mCookie(0)
 	, mpBuffer(NULL)
 	, mVDXAHandle(0)
+	, mBorderWidth(0)
+	, mBorderHeight(0)
 {
+	this->data = NULL;
+	this->pitch = 0;
+	this->w = 0;
+	this->h = 0;
+	this->palette = NULL;
+	this->depth = 0;
+	this->modulo = 0;
+	this->size = 0;
+	this->offset = 0;
+
 	memset(&mPixmap, 0, sizeof mPixmap);
 	memset(&mPixmapLayout, 0, sizeof mPixmapLayout);
 }
@@ -84,8 +131,16 @@ VFBitmapInternal::VFBitmapInternal(const VFBitmapInternal& src)
 	, mpPixmapLayout(reinterpret_cast<VDXPixmapLayout *>(&mPixmapLayout))
 	, mPixmap(src.mPixmap)
 	, mPixmapLayout(src.mPixmapLayout)
+	, mAspectRatioHi(src.mAspectRatioHi)
+	, mAspectRatioLo(src.mAspectRatioLo)
+	, mFrameNumber(src.mFrameNumber)
+	, mFrameTimestampStart(src.mFrameTimestampStart)
+	, mFrameTimestampEnd(src.mFrameTimestampEnd)
+	, mCookie(src.mCookie)
 	, mpBuffer(src.mpBuffer)
 	, mVDXAHandle(src.mVDXAHandle)
+	, mBorderWidth(src.mBorderWidth)
+	, mBorderHeight(src.mBorderHeight)
 {
 	if (mpBuffer)
 		mpBuffer->AddRef();
@@ -112,6 +167,8 @@ VFBitmapInternal& VFBitmapInternal::operator=(const VFBitmapInternal& src) {
 		mFrameTimestampStart	= src.mFrameTimestampStart;
 		mFrameTimestampEnd		= src.mFrameTimestampEnd;
 		mCookie			= src.mCookie;
+		mBorderWidth	= src.mBorderWidth;
+		mBorderHeight	= src.mBorderHeight;
 
 		mDIBSection.Shutdown();
 
@@ -167,7 +224,7 @@ void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
 	h = mPixmapLayout.h;
 	palette = NULL;
 
-	if (mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+	if (VDIsVDXAFormat(mPixmapLayout.format)) {
 		depth = 0;
 		pitch = 0;
 		offset = 0;
@@ -176,7 +233,7 @@ void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
 		return;
 	}
 
-	VDASSERT(mPixmapLayout.pitch >= 0 || mPixmapLayout.pitch*(mPixmapLayout.h - 1) <= mPixmapLayout.data);
+	VDASSERT(mPixmapLayout.pitch >= 0 || (sint64)mPixmapLayout.pitch*(mPixmapLayout.h - 1) <= mPixmapLayout.data);
 
 	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mPixmapLayout.format);
 
@@ -308,19 +365,30 @@ void VFBitmapInternal::SetFrameNumber(sint64 frame) {
 	}
 }
 
+VDFilterStreamDesc VFBitmapInternal::GetStreamDesc() const {
+	VDFilterStreamDesc desc = {};
+
+	desc.mLayout = mPixmapLayout;
+	desc.mAspectRatio = VDFraction(mAspectRatioHi, mAspectRatioLo);
+	desc.mFrameRate = VDFraction(mFrameRateHi, mFrameRateLo);
+	desc.mFrameCount = mFrameCount;
+
+	return desc;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	VDFilterActivationImpl
 //
 ///////////////////////////////////////////////////////////////////////////
 
-VDFilterActivationImpl::VDFilterActivationImpl(VDXFBitmap& _dst, VDXFBitmap& _src, VDXFBitmap *_last)
+VDFilterActivationImpl::VDFilterActivationImpl()
 	: filter		(NULL)
 	, filter_data	(NULL)
-	, dst			(_dst)
-	, src			(_src)
+	, dst			((VDXFBitmap&)mRealDst)
+	, src			((VDXFBitmap&)mRealSrc)
 	, _reserved0	(NULL)
-	, last			(_last)
+	, last			((VDXFBitmap *)&mRealLast)
 	, x1			(0)
 	, y1			(0)
 	, x2			(0)
@@ -328,12 +396,60 @@ VDFilterActivationImpl::VDFilterActivationImpl(VDXFBitmap& _dst, VDXFBitmap& _sr
 	, pfsi			(NULL)
 	, ifp			(NULL)
 	, ifp2			(NULL)
+	, mSourceFrameCount(0)
+	, mpSourceFrames(NULL)
 	, mpOutputFrames(mOutputFrameArray)
 	, mpVDXA		(NULL)
+	, mRealSrc      ()
+	, mRealDst      ()
+	, mRealLast     ()
 {
 	VDASSERT(((char *)&mSizeCheckSentinel - (char *)this) == sizeof(VDXFilterActivation));
 
 	mOutputFrameArray[0] = &dst;
+
+	SetSourceStreamCount(1);
+}
+
+VDFilterActivationImpl::VDFilterActivationImpl(const VDFilterActivationImpl& src)
+	: filter		(NULL)
+	, filter_data	(NULL)
+	, dst			((VDXFBitmap&)mRealDst)
+	, src			((VDXFBitmap&)mRealSrc)
+	, _reserved0	(NULL)
+	, last			((VDXFBitmap *)&mRealLast)
+	, x1			(0)
+	, y1			(0)
+	, x2			(0)
+	, y2			(0)
+	, pfsi			(NULL)
+	, ifp			(NULL)
+	, ifp2			(NULL)
+	, mSourceFrameCount(0)
+	, mpSourceFrames(NULL)
+	, mpOutputFrames(mOutputFrameArray)
+	, mpVDXA		(NULL)
+	, mRealSrc      (src.mRealSrc)
+	, mRealDst      (src.mRealDst)
+	, mRealLast     (src.mRealLast)
+{
+	VDASSERT(((char *)&mSizeCheckSentinel - (char *)this) == sizeof(VDXFilterActivation));
+
+	mOutputFrameArray[0] = &dst;
+
+	SetSourceStreamCount(1);
+}
+
+void VDFilterActivationImpl::SetSourceStreamCount(uint32 n) {
+	mSourceStreamArray.resize(n - 1);
+	mSourceStreamPtrArray.resize(n);
+
+	mSourceStreamPtrArray[0] = (VDXFBitmap *)&mRealSrc;
+	for(uint32 i = 1; i < n; ++i)
+		mSourceStreamPtrArray[i] = (VDXFBitmap *)&mSourceStreamArray[i - 1];
+
+	mSourceStreamCount = n;
+	mpSourceStreams = mSourceStreamPtrArray.data();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -347,13 +463,13 @@ class FilterInstanceAutoDeinit : public vdrefcounted<IVDRefCount> {};
 ///////////////////////////////////////////////////////////////////////////
 class FilterInstance::VideoPrefetcher : public IVDXVideoPrefetcher {
 public:
-	VideoPrefetcher();
+	VideoPrefetcher(uint32 sourceCount);
 
 	bool operator==(const VideoPrefetcher& other) const;
 	bool operator!=(const VideoPrefetcher& other) const;
 
 	void Clear();
-	void TransformToNearestUnique(IVDFilterFrameSource *src);
+	void TransformToNearestUnique(const vdvector<vdrefptr<IVDFilterFrameSource> >& src);
 	void Finalize();
 
 	int VDXAPIENTRY AddRef() { return 2; }
@@ -375,13 +491,14 @@ public:
 	struct PrefetchInfo {
 		sint64 mFrame;
 		uint64 mCookie;
+		uint32 mSrcIndex;
 
 		bool operator==(const PrefetchInfo& other) const {
-			return mFrame == other.mFrame && mCookie == other.mCookie;
+			return mFrame == other.mFrame && mCookie == other.mCookie && mSrcIndex == other.mSrcIndex;
 		}
 
 		bool operator!=(const PrefetchInfo& other) const {
-			return mFrame != other.mFrame || mCookie != other.mCookie;
+			return mFrame != other.mFrame || mCookie != other.mCookie || mSrcIndex != other.mSrcIndex;
 		}
 	};
 
@@ -390,12 +507,18 @@ public:
 
 	sint64	mDirectFrame;
 	sint64	mSymbolicFrame;
+	uint32	mDirectFrameSrcIndex;
+	uint32	mSymbolicFrameSrcIndex;
+	uint32	mSourceCount;
 	const char *mpError;
 };
 
-FilterInstance::VideoPrefetcher::VideoPrefetcher()
+FilterInstance::VideoPrefetcher::VideoPrefetcher(uint32 sourceCount)
 	: mDirectFrame(-1)
+	, mDirectFrameSrcIndex(0)
 	, mSymbolicFrame(-1)
+	, mSymbolicFrameSrcIndex(0)
+	, mSourceCount(sourceCount)
 	, mpError(NULL)
 {
 }
@@ -414,14 +537,14 @@ void FilterInstance::VideoPrefetcher::Clear() {
 	mSourceFrames.clear();
 }
 
-void FilterInstance::VideoPrefetcher::TransformToNearestUnique(IVDFilterFrameSource *src) {
+void FilterInstance::VideoPrefetcher::TransformToNearestUnique(const vdvector<vdrefptr<IVDFilterFrameSource> >& srcs) {
 	if (mDirectFrame >= 0)
-		mDirectFrame = src->GetNearestUniqueFrame(mDirectFrame);
+		mDirectFrame = srcs[mDirectFrameSrcIndex]->GetNearestUniqueFrame(mDirectFrame);
 
 	for(SourceFrames::iterator it(mSourceFrames.begin()), itEnd(mSourceFrames.end()); it != itEnd; ++it) {
 		PrefetchInfo& info = *it;
 
-		info.mFrame = src->GetNearestUniqueFrame(info.mFrame);
+		info.mFrame = srcs[info.mSrcIndex]->GetNearestUniqueFrame(info.mFrame);
 	}
 }
 
@@ -442,7 +565,7 @@ void FilterInstance::VideoPrefetcher::Finalize() {
 }
 
 void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrame(sint32 srcIndex, sint64 frame, uint64 cookie) {
-	if (srcIndex) {
+	if (srcIndex >= mSourceCount) {
 		mpError = "An invalid source index was specified in a prefetch operation.";
 		return;
 	}
@@ -453,10 +576,11 @@ void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrame(sint32 srcIndex,
 	PrefetchInfo& info = mSourceFrames.push_back();
 	info.mFrame = frame;
 	info.mCookie = cookie;
+	info.mSrcIndex = srcIndex;
 }
 
 void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrameDirect(sint32 srcIndex, sint64 frame) {
-	if (srcIndex) {
+	if (srcIndex >= mSourceCount) {
 		mpError = "An invalid source index was specified in a prefetch operation.";
 		return;
 	}
@@ -470,11 +594,13 @@ void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrameDirect(sint32 src
 		frame = 0;
 
 	mDirectFrame = frame;
+	mDirectFrameSrcIndex = srcIndex;
 	mSymbolicFrame = frame;
+	mSymbolicFrameSrcIndex = srcIndex;
 }
 
 void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrameSymbolic(sint32 srcIndex, sint64 frame) {
-	if (srcIndex) {
+	if (srcIndex >= mSourceCount) {
 		mpError = "An invalid source index was specified in a prefetch operation.";
 		return;
 	}
@@ -488,6 +614,7 @@ void VDXAPIENTRY FilterInstance::VideoPrefetcher::PrefetchFrameSymbolic(sint32 s
 		frame = 0;
 
 	mSymbolicFrame = frame;
+	mSymbolicFrameSrcIndex = srcIndex;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -516,6 +643,101 @@ protected:
 	unsigned long	mpOldContext;
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+VDFilterConfiguration::VDFilterConfiguration()
+	: mbPreciseCrop(true)
+	, mCropX1(0)
+	, mCropY1(0)
+	, mCropX2(0)
+	, mCropY2(0)
+	, mbEnabled(true)
+	, mbForceSingleFB(false)
+{
+}
+
+bool VDFilterConfiguration::IsCroppingEnabled() const {
+	return (mCropX1 | mCropY1 | mCropX2 | mCropY2) != 0;
+}
+
+bool VDFilterConfiguration::IsPreciseCroppingEnabled() const {
+	return mbPreciseCrop;
+}
+
+vdrect32 VDFilterConfiguration::GetCropInsets() const {
+	return vdrect32(mCropX1, mCropY1, mCropX2, mCropY2);
+}
+
+void VDFilterConfiguration::SetCrop(int x1, int y1, int x2, int y2, bool precise) {
+	mCropX1 = x1;
+	mCropY1 = y1;
+	mCropX2 = x2;
+	mCropY2 = y2;
+	mbPreciseCrop = precise;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDFilterScriptWrapper::VDFilterScriptWrapper() {
+	mpName		= NULL;
+	obj_list	= NULL;
+	Lookup		= NULL;
+	func_list	= NULL;
+	pNextObject	= NULL;
+}
+
+VDFilterScriptWrapper::VDFilterScriptWrapper(const VDFilterScriptWrapper& src)
+	: mFuncList(src.mFuncList)
+{
+	mpName		= NULL;
+	obj_list	= NULL;
+	Lookup		= NULL;
+	func_list	= mFuncList.data();
+	pNextObject	= NULL;
+}
+
+void VDFilterScriptWrapper::Init(const VDXScriptObject *src, VDScriptFunction voidfunc, VDScriptFunction intfunc, VDScriptFunction varfunc) {
+	if (!src)
+		return;
+
+	const ScriptFunctionDef *pf = src->func_list;
+
+	if (pf) {
+		for(; pf->func_ptr; ++pf) {
+			VDScriptFunctionDef def;
+
+			def.arg_list	= pf->arg_list;
+			def.name		= pf->name;
+
+			switch(def.arg_list[0]) {
+			default:
+			case '0':
+				def.func_ptr	= voidfunc;
+				break;
+			case 'i':
+				def.func_ptr	= intfunc;
+				break;
+			case 'v':
+				def.func_ptr	= varfunc;
+				break;
+			}
+
+			mFuncList.push_back(def);
+		}
+
+		VDScriptFunctionDef def_end = {NULL};
+		mFuncList.push_back(def_end);
+
+		func_list	= mFuncList.data();
+	}
+}
+
+int VDFilterScriptWrapper::GetFuncIndex(const VDScriptFunctionDef *fdef) const {
+	return fdef - mFuncList.data();
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 class FilterInstance::SamplingInfo : public vdrefcounted<IVDRefCount> {
 public:
 	VDXFilterPreviewSampleCallback mpCB;
@@ -523,40 +745,26 @@ public:
 };
 
 FilterInstance::FilterInstance(const FilterInstance& fi)
-	: VDFilterActivationImpl((VDXFBitmap&)mRealDst, (VDXFBitmap&)mRealSrc, (VDXFBitmap*)&mRealLast)
-	, mRealSrc			(fi.mRealSrc)
-	, mRealDst			(fi.mRealDst)
-	, mRealLast			(fi.mRealLast)
+	: VDFilterConfiguration(fi)
 	, mbInvalidFormat	(fi.mbInvalidFormat)
 	, mbInvalidFormatHandling(fi.mbInvalidFormatHandling)
-	, mbBlitOnEntry		(fi.mbBlitOnEntry)
-	, mbConvertOnEntry	(fi.mbConvertOnEntry)
-	, mbAlignOnEntry	(fi.mbAlignOnEntry)
+	, mbExcessiveFrameSize(fi.mbExcessiveFrameSize)
 	, mbAccelerated		(fi.mbAccelerated)
-	, mbForceSingleFB	(fi.mbForceSingleFB)
-	, mOrigW			(fi.mOrigW)
-	, mOrigH			(fi.mOrigH)
-	, mbPreciseCrop		(fi.mbPreciseCrop)
-	, mCropX1			(fi.mCropX1)
-	, mCropY1			(fi.mCropY1)
-	, mCropX2			(fi.mCropX2)
-	, mCropY2			(fi.mCropY2)
-	, mScriptObj		(fi.mScriptObj)
 	, mFlags			(fi.mFlags)
-	, mbEnabled			(fi.mbEnabled)
 	, mbStarted			(fi.mbStarted)
 	, mbFirstFrame		(fi.mbFirstFrame)
 	, mFilterName		(fi.mFilterName)
 	, mpAutoDeinit		(fi.mpAutoDeinit)
 	, mpLogicError		(fi.mpLogicError)
-	, mScriptFunc		(fi.mScriptFunc)
+	, mScriptWrapper	(fi.mScriptWrapper)
 	, mpFDInst			(fi.mpFDInst)
-	, mpAlphaCurve		(fi.mpAlphaCurve)
 	, mpRequestInProgress(NULL)
 	, mbRequestFramePending(false)
 	, mbRequestFrameBeingProcessed(false)
 	, mpAccelEngine		(NULL)
 	, mpAccelContext	(NULL)
+	, mPrepareInfo()
+	, mPrepareInfo2()
 {
 	if (mpAutoDeinit)
 		mpAutoDeinit->AddRef();
@@ -565,26 +773,17 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 
 	filter = const_cast<FilterDefinition *>(&fi.mpFDInst->Attach());
 	filter_data = fi.filter_data;
+
+	mAPIVersion = fi.mpFDInst->GetAPIVersion();
+	VDASSERT(mAPIVersion);
 }
 
 FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
-	: VDFilterActivationImpl((VDXFBitmap&)mRealDst, (VDXFBitmap&)mRealSrc, (VDXFBitmap*)&mRealLast)
-	, mbInvalidFormat(true)
+	: mbInvalidFormat(true)
 	, mbInvalidFormatHandling(false)
-	, mbBlitOnEntry(false)
-	, mbConvertOnEntry(false)
-	, mbAlignOnEntry(false)
+	, mbExcessiveFrameSize(false)
 	, mbAccelerated(false)
-	, mbForceSingleFB(false)
-	, mOrigW(0)
-	, mOrigH(0)
-	, mbPreciseCrop(true)
-	, mCropX1(0)
-	, mCropY1(0)
-	, mCropX2(0)
-	, mCropY2(0)
 	, mFlags(0)
-	, mbEnabled(true)
 	, mbStarted(false)
 	, mbFirstFrame(false)
 	, mpFDInst(fdi)
@@ -596,8 +795,13 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	, mbRequestFrameBeingProcessed(false)
 	, mpAccelEngine(NULL)
 	, mpAccelContext(NULL)
+	, mPrepareInfo()
+	, mPrepareInfo2()
 {
 	filter = const_cast<FilterDefinition *>(&fdi->Attach());
+	mAPIVersion = fdi->GetAPIVersion();
+	VDASSERT(mAPIVersion);
+
 	src.hdc = NULL;
 	dst.hdc = NULL;
 	last->hdc = NULL;
@@ -638,46 +842,7 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	} else
 		filter_data = NULL;
 
-
-	// initialize script object
-	mScriptObj.mpName		= NULL;
-	mScriptObj.obj_list		= NULL;
-	mScriptObj.Lookup		= NULL;
-	mScriptObj.func_list	= NULL;
-	mScriptObj.pNextObject	= NULL;
-
-	if (filter->script_obj) {
-		const ScriptFunctionDef *pf = filter->script_obj->func_list;
-
-		if (pf) {
-			for(; pf->func_ptr; ++pf) {
-				VDScriptFunctionDef def;
-
-				def.arg_list	= pf->arg_list;
-				def.name		= pf->name;
-
-				switch(def.arg_list[0]) {
-				default:
-				case '0':
-					def.func_ptr	= ScriptFunctionThunkVoid;
-					break;
-				case 'i':
-					def.func_ptr	= ScriptFunctionThunkInt;
-					break;
-				case 'v':
-					def.func_ptr	= ScriptFunctionThunkVariadic;
-					break;
-				}
-
-				mScriptFunc.push_back(def);
-			}
-
-			VDScriptFunctionDef def_end = {NULL};
-			mScriptFunc.push_back(def_end);
-
-			mScriptObj.func_list	= &mScriptFunc[0];
-		}
-	}
+	mScriptWrapper.Init(filter->script_obj, ScriptFunctionThunkVoid, ScriptFunctionThunkInt, ScriptFunctionThunkVariadic);
 }
 
 FilterInstance::~FilterInstance() {
@@ -739,25 +904,7 @@ const char *FilterInstance::GetName() const {
 	return filter->name;
 }
 
-bool FilterInstance::IsCroppingEnabled() const {
-	return (mCropX1 | mCropY1 | mCropX2 | mCropY2) != 0;
-}
-
-bool FilterInstance::IsPreciseCroppingEnabled() const {
-	return mbPreciseCrop;
-}
-
-vdrect32 FilterInstance::GetCropInsets() const {
-	return vdrect32(mCropX1, mCropY1, mCropX2, mCropY2);
-}
-
-void FilterInstance::SetCrop(int x1, int y1, int x2, int y2, bool precise) {
-	mCropX1 = x1;
-	mCropY1 = y1;
-	mCropX2 = x2;
-	mCropY2 = y2;
-	mbPreciseCrop = precise;
-}
+const VDXFilterDefinition *FilterInstance::GetDefinition() const { return &mpFDInst->GetDef(); }
 
 bool FilterInstance::IsConfigurable() const {
 	return filter->configProc != NULL;
@@ -790,96 +937,121 @@ bool FilterInstance::Configure(VDXHWND parent, IVDXFilterPreview2 *ifp2) {
 	return success;
 }
 
-uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
+void FilterInstance::PrepareReset() {
+	mbInvalidFormatHandling = false;
+}
+
+uint32 FilterInstance::Prepare(const VFBitmapInternal *inputs, uint32 numInputs, VDFilterPrepareInfo& prepareInfo) {
+	SetSourceStreamCount(numInputs);
+
+	const VFBitmapInternal& input = inputs[0];
+
 	bool testingInvalidFormat = input.mpPixmapLayout->format == 255;
 	bool invalidCrop = false;
 
 	mbInvalidFormat	= false;
+	mbExcessiveFrameSize = false;
 
-	if (testingInvalidFormat)
-		mbInvalidFormatHandling = false;
+	// Init all of the strams.
+	prepareInfo.mStreams.resize(numInputs);
 
-	mOrigW			= input.w;
-	mOrigH			= input.h;
+	for(uint32 streamIndex = 0; streamIndex < numInputs; ++streamIndex) {
+		VDFilterPrepareStreamInfo& streamInfo = prepareInfo.mStreams[streamIndex];
+		VDPixmapLayout& preAlignLayout = streamInfo.mExternalSrcPreAlign.mPixmapLayout;
+		const VFBitmapInternal& streamInput = inputs[streamIndex];
 
-	mExternalSrc		= input;
-	mExternalSrcPreAlign	= input;
-	if (testingInvalidFormat) {
-		mExternalSrcPreAlign.mpPixmapLayout->format = nsVDXPixmap::kPixFormat_XRGB8888;
-	} else {
-		// Clamp the crop rect at this point to avoid going below 1x1.
-		// We will throw an exception later during init.
-		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV ? nsVDPixmap::kPixFormat_XRGB8888 : mExternalSrcPreAlign.mPixmapLayout.format);
-		int xmask = ~((1 << (formatInfo.qwbits + formatInfo.auxwbits)) - 1);
-		int ymask = ~((1 << (formatInfo.qhbits + formatInfo.auxhbits)) - 1);
-
-		if (mbPreciseCrop) {
-			if ((mCropX1 | mCropY1) & ~xmask)
-				invalidCrop = true;
-
-			if ((mCropX2 | mCropY2) & ~ymask)
-				invalidCrop = true;
-		}
-
-		int qx1 = (mCropX1 & xmask) >> formatInfo.qwbits;
-		int qy1 = (mCropY1 & ymask) >> formatInfo.qhbits;
-		int qx2 = (mCropX2 & xmask) >> formatInfo.qwbits;
-		int qy2 = (mCropY2 & ymask) >> formatInfo.qhbits;
-
-		int qw = input.w >> formatInfo.qwbits;
-		int qh = input.h >> formatInfo.qhbits;
-
-		if (qx1 >= qw)
-			qx1 = qw - 1;
-
-		if (qy1 >= qh)
-			qy1 = qh - 1;
-
-		if (qx1 + qx2 >= qw)
-			qx2 = (qw - qx1) - 1;
-
-		if (qy1 + qy2 >= qh)
-			qy2 = (qh - qy1) - 1;
-
-		VDASSERT(qx1 >= 0 && qy1 >= 0 && qx2 >= 0 && qy2 >= 0);
-		VDASSERT(qx1 + qx2 < qw);
-		VDASSERT(qy1 + qy2 < qh);
-
-		if (mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB) {
-			mExternalSrcPreAlign.mPixmapLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
-			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
-			mExternalSrcPreAlign.mPixmapLayout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
-		} else if (mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
-			mExternalSrcPreAlign.mPixmapLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
-			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
-			mExternalSrcPreAlign.mPixmapLayout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
+		streamInfo.mExternalSrc		= streamInput;
+		streamInfo.mExternalSrcPreAlign	= streamInput;
+		if (testingInvalidFormat) {
+			preAlignLayout.format = nsVDXPixmap::kPixFormat_XRGB8888;
 		} else {
-			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+			// Only stream 0 is cropped.
+			if (!streamIndex) {
+				const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(VDIsVDXAFormat(preAlignLayout.format) ? nsVDPixmap::kPixFormat_XRGB8888 : preAlignLayout.format);
+				int xmask = ~((1 << (formatInfo.qwbits + formatInfo.auxwbits)) - 1);
+				int ymask = ~((1 << (formatInfo.qhbits + formatInfo.auxhbits)) - 1);
+
+				if (mbPreciseCrop) {
+					if ((mCropX1 | mCropY1) & ~xmask)
+						invalidCrop = true;
+
+					if ((mCropX2 | mCropY2) & ~ymask)
+						invalidCrop = true;
+				}
+
+				int qx1 = (mCropX1 & xmask) >> formatInfo.qwbits;
+				int qy1 = (mCropY1 & ymask) >> formatInfo.qhbits;
+				int qx2 = (mCropX2 & xmask) >> formatInfo.qwbits;
+				int qy2 = (mCropY2 & ymask) >> formatInfo.qhbits;
+
+				int qw = input.w >> formatInfo.qwbits;
+				int qh = input.h >> formatInfo.qhbits;
+
+				// Clamp the crop rect at this point to avoid going below 1x1.
+				// We will throw an exception later during init.
+				if (qx1 >= qw)
+					qx1 = qw - 1;
+
+				if (qy1 >= qh)
+					qy1 = qh - 1;
+
+				if (qx1 + qx2 >= qw)
+					qx2 = (qw - qx1) - 1;
+
+				if (qy1 + qy2 >= qh)
+					qy2 = (qh - qy1) - 1;
+
+				VDASSERT(qx1 >= 0 && qy1 >= 0 && qx2 >= 0 && qy2 >= 0);
+				VDASSERT(qx1 + qx2 < qw);
+				VDASSERT(qy1 + qy2 < qh);
+
+				if (preAlignLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB) {
+					preAlignLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
+					preAlignLayout = VDPixmapLayoutOffset(preAlignLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+					preAlignLayout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
+				} else if (preAlignLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+					preAlignLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
+					preAlignLayout = VDPixmapLayoutOffset(preAlignLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+					preAlignLayout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
+				} else {
+					preAlignLayout = VDPixmapLayoutOffset(preAlignLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+				}
+
+				preAlignLayout.w -= (qx1+qx2) << formatInfo.qwbits;
+				preAlignLayout.h -= (qy1+qy2) << formatInfo.qhbits;
+			}
 		}
 
-		mExternalSrcPreAlign.mPixmapLayout.w -= (qx1+qx2) << formatInfo.qwbits;
-		mExternalSrcPreAlign.mPixmapLayout.h -= (qy1+qy2) << formatInfo.qhbits;
+		streamInfo.mExternalSrcPreAlign.ConvertPixmapLayoutToBitmapLayout();
+		streamInfo.mbAlignOnEntry = false;
 	}
 
-	mExternalSrcPreAlign.ConvertPixmapLayoutToBitmapLayout();
 	pfsi	= &mfsi;
+	memset(&mfsi, 0, sizeof mfsi);
+	mSourceFrameCount = 0;
+	mpSourceFrames = NULL;
 
 	uint32 flags = FILTERPARAM_SWAP_BUFFERS;
-	mbAlignOnEntry = false;
 
 	for(;;) {
-		mExternalSrcCropped = mExternalSrcPreAlign;
+		for(uint32 streamIndex = 0; streamIndex < numInputs; ++streamIndex) {
+			VDFilterPrepareStreamInfo& streamInfo = prepareInfo.mStreams[streamIndex];
+			VFBitmapInternal& src = streamIndex ? mSourceStreamArray[streamIndex - 1] : mRealSrc;
 
-		if (mbAlignOnEntry) {
-			VDPixmapCreateLinearLayout(mExternalSrcCropped.mPixmapLayout, mExternalSrcPreAlign.mPixmapLayout.format, mExternalSrcPreAlign.mPixmapLayout.w, mExternalSrcPreAlign.mPixmapLayout.h, 16);
-			mExternalSrcCropped.ConvertPixmapLayoutToBitmapLayout();
+			src = streamInfo.mExternalSrcPreAlign;
+
+			if (streamInfo.mbAlignOnEntry) {
+				VDPixmapCreateLinearLayout(src.mPixmapLayout, src.mPixmapLayout.format, src.mPixmapLayout.w, src.mPixmapLayout.h, 16);
+				src.ConvertPixmapLayoutToBitmapLayout();
+			}
+
+			src.dwFlags	= 0;
+			src.hdc		= NULL;
+			src.mBorderWidth = 0;
+			src.mBorderHeight = 0;
+
+			streamInfo.mExternalSrcCropped = src;
 		}
-
-		mRealSrc = mExternalSrcCropped;
-		mRealSrc.dwFlags	= 0;
-		mRealSrc.hdc		= NULL;
-		mRealSrc.mBorderWidth = 0;
-		mRealSrc.mBorderHeight = 0;
 
 		mExternalSrcCropped	= mRealSrc;
 
@@ -898,6 +1070,12 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 			mRealDst.mPixmapLayout.format = 255;
 		}
 
+		// V16+: default to flexible output pitch
+		if (mAPIVersion >= 16) {
+			mRealDst.depth = 0;
+			mRealDst.mPixmapLayout.pitch = 0;
+		}
+
 		if (filter->paramProc) {
 			VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
 
@@ -906,6 +1084,22 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 
 				flags = filter->paramProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
 			}
+
+			// Remove flags banned starting with V16+
+			if (mAPIVersion >= 16 && flags != FILTERPARAM_NOT_SUPPORTED) {
+				if (flags & FILTERPARAM_NEEDS_LAST) {
+					flags &= ~FILTERPARAM_NEEDS_LAST;
+
+					SetLogicError("A V16+ filter cannot request a last-frame buffer.");
+				}
+
+				if (!(flags & FILTERPARAM_SUPPORTS_ALTFORMATS)) {
+					flags |= FILTERPARAM_SUPPORTS_ALTFORMATS;
+
+					SetLogicError("A V16+ filter must set the ALTFORMATS flag.");
+				}
+			}
+
 		} else {
 			// We won't hit this ordinarily because the invalid format test isn't done unless FILTERPARAM_SUPPORTS_ALTFORMATS,
 			// but we'll do it anyway.
@@ -923,30 +1117,21 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 
 		// check if alignment is required
 		if (flags & FILTERPARAM_ALIGN_SCANLINES) {
-			const VDPixmapLayout& pxlsrc = mRealSrc.mPixmapLayout;
-			int bufcnt = VDPixmapGetInfo(pxlsrc.format).auxbufs;
-			bool misaligned = false;
+			bool alignmentViolationDetected = false;
 
-			switch(bufcnt) {
-			case 2:
-				if ((pxlsrc.data3 | pxlsrc.pitch3) & 15)
-					misaligned = true;
-				break;
-			case 1:
-				if ((pxlsrc.data2 | pxlsrc.pitch2) & 15)
-					misaligned = true;
-				break;
-			case 0:
-				if ((pxlsrc.data | pxlsrc.pitch) & 15)
-					misaligned = true;
-				break;
+			for(uint32 streamIndex = 0; streamIndex < numInputs; ++streamIndex) {
+				VDFilterPrepareStreamInfo& streamInfo = prepareInfo.mStreams[streamIndex];
+				VFBitmapInternal& src = streamIndex ? mSourceStreamArray[streamIndex - 1] : mRealSrc;
+
+				if (!VDIsVDXAFormat(src.mPixmapLayout.format) && !VDPixmapIsLayoutVectorAligned(src.mPixmapLayout)) {
+					VDASSERT(!streamInfo.mbAlignOnEntry);
+					streamInfo.mbAlignOnEntry = true;
+					alignmentViolationDetected = true;
+				}
 			}
 
-			if (misaligned) {
-				VDASSERT(!mbAlignOnEntry);
-				mbAlignOnEntry = true;
+			if (alignmentViolationDetected)
 				continue;
-			}
 		}
 
 		break;
@@ -961,18 +1146,37 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 	mLag = (uint32)mFlags >> 16;
 
 	mbAccelerated = false;
-	if (mRealSrc.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mRealSrc.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+	if (VDIsVDXAFormat(mRealSrc.mPixmapLayout.format))
 		mbAccelerated = true;
 
 	if (mRealDst.depth) {
+		// check if the frame size is excessive and clamp if so
+		if ((mRealDst.w | mRealDst.h) < 0 || mRealDst.w > kFrameAxisLimit || mRealDst.h > kFrameAxisLimit || (uint64)mRealDst.w * mRealDst.h > kFrameSizeLimit) {
+			mRealDst.offset = 0;
+			mRealDst.w = 128;
+			mRealDst.h = 128;
+			mRealDst.offset = 0;
+			mRealDst.pitch = 512;
+			mbExcessiveFrameSize = true;
+		}
+
 		mRealDst.modulo	= mRealDst.pitch - 4*mRealDst.w;
 		mRealDst.size	= mRealDst.offset + vdptrdiffabs(mRealDst.pitch) * mRealDst.h;
 		VDASSERT((sint32)mRealDst.size >= 0);
 
 		mRealDst.ConvertBitmapLayoutToPixmapLayout();
 	} else {
+		// check if the frame size is excessive and clamp if so
+		if ((mRealDst.mPixmapLayout.w | mRealDst.mPixmapLayout.h) < 0 || mRealDst.mPixmapLayout.w > kFrameAxisLimit || mRealDst.mPixmapLayout.h > kFrameAxisLimit || (uint64)mRealDst.mPixmapLayout.w * mRealDst.mPixmapLayout.h > kFrameSizeLimit) {
+			mRealDst.mPixmapLayout.w = 128;
+			mRealDst.mPixmapLayout.h = 128;
+			mRealDst.mPixmapLayout.data = 0;
+			mRealDst.mPixmapLayout.pitch = 512;
+			mbExcessiveFrameSize = true;
+		}
+
 		if (!mRealDst.mPixmapLayout.pitch) {
-			if (mRealDst.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mRealDst.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+			if (VDIsVDXAFormat(mRealDst.mPixmapLayout.format)) {
 				mRealDst.mPixmapLayout.data = 0;
 				mRealDst.mPixmapLayout.data2 = 0;
 				mRealDst.mPixmapLayout.data3 = 0;
@@ -1011,6 +1215,16 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		}
 	}
 
+	if (mbInvalidFormat) {
+		mRealSrc = input;
+		mRealDst = input;
+	}
+
+	prepareInfo.mLastFrameSizeRequired = 0;
+
+	if (flags & FILTERPARAM_NEEDS_LAST)
+		prepareInfo.mLastFrameSizeRequired = mRealLast.size + mRealLast.offset;
+
 	return flags;
 }
 
@@ -1023,7 +1237,7 @@ void FilterInstance::Start(IVDFilterFrameEngine *engine) {
 	throw MyError("This function is not supported.");
 }
 
-void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine) {
+void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *const *pSources, IVDFilterFrameEngine *engine, VDFilterAccelEngine *accelEngine) {
 	if (mbStarted)
 		return;
 
@@ -1043,7 +1257,8 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 			mRealSrc.mpPixmapLayout->h,
 			VDPixmapGetInfo(mRealSrc.mpPixmapLayout->format).name);
 
-	VDASSERT(!mbBlitOnEntry || mbConvertOnEntry || mbAlignOnEntry);
+	if (GetExcessiveFrameSizeState())
+		throw MyError("Cannot start filters: An instance of filter \"%s\" is producing too big of a frame.", GetName());
 
 	mfsi.flags = flags;
 
@@ -1083,19 +1298,22 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 		// Older filters use the fa->src/dst/last fields directly and need buffers
 		// bound in order to start correctly.
 		
-		if (!mRealSrc.hdc) {
-			vdrefptr<VDFilterFrameBuffer> tempSrc;
-			mSourceAllocator.Allocate(~tempSrc);
-			mRealSrc.BindToFrameBuffer(tempSrc, true);
+		if (mAPIVersion < 16) {
+			if (!mRealSrc.hdc) {
+				vdrefptr<VDFilterFrameBuffer> tempSrc;
+				mSourceAllocator.Allocate(~tempSrc);
 
-			if (!(mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc)
-				mRealDst.BindToFrameBuffer(tempSrc, false);
-		}
+				mRealSrc.BindToFrameBuffer(tempSrc, true);
 
-		if ((mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc) {
-			vdrefptr<VDFilterFrameBuffer> tempDst;
-			mResultAllocator.Allocate(~tempDst);
-			mRealDst.BindToFrameBuffer(tempDst, true);
+				if (!(mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc)
+					mRealDst.BindToFrameBuffer(tempSrc, false);
+			}
+
+			if ((mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc) {
+				vdrefptr<VDFilterFrameBuffer> tempDst;
+				mResultAllocator.Allocate(~tempDst);
+				mRealDst.BindToFrameBuffer(tempDst, true);
+			}
 		}
 	}
 
@@ -1129,7 +1347,9 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilte
 	if (!mRealDst.hdc && !mbForceSingleFB)
 		mRealDst.Unbind();
 
-	mpSource = pSource;
+	mSourceAllocator.TrimAllocator();
+
+	mSources.assign(pSources, pSources + mSourceStreamCount);
 	mbCanStealSourceBuffer = IsInPlace() && !mRealSrc.hdc;
 	mSharingPredictor.Clear();
 
@@ -1235,7 +1455,7 @@ void FilterInstance::Stop() {
 	mFrameQueueInProgress.Shutdown();
 	mFrameCache.Flush();
 
-	mpSource = NULL;
+	mSources.clear();
 	mSourceAllocator.Clear();
 	mResultAllocator.Clear();
 
@@ -1283,14 +1503,23 @@ VDFilterFrameAllocatorProxy *FilterInstance::GetOutputAllocatorProxy() {
 	return &mResultAllocator;
 }
 
-void FilterInstance::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev) {
-	mSourceAllocator.Clear();
+void FilterInstance::RegisterSourceAllocReqs(uint32 index, VDFilterFrameAllocatorProxy *prev) {
+	VFBitmapInternal& src = index ? mSourceStreamArray[index - 1] : mRealSrc;
+	prev->AddBorderRequirement(src.mBorderWidth, src.mBorderHeight);
+
+	mSourceAllocator.Link(prev);
 
 	if (!(mFlags & FILTERPARAM_SWAP_BUFFERS))
 		mResultAllocator.Link(prev);
+}
+
+void FilterInstance::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr) {
+	mSourceAllocator.Clear();
 
 	mgr->AddAllocatorProxy(&mSourceAllocator);
-	prev->AddBorderRequirement(mRealSrc.mBorderWidth, mRealSrc.mBorderHeight);
+
+	if (!mbAccelerated)
+		mSourceAllocator.AddSizeRequirement(mRealSrc.size + mRealSrc.offset);
 
 	uint32 dstSizeRequired = mRealDst.size + mRealDst.offset;
 	mResultAllocator.Clear();
@@ -1338,7 +1567,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, uint32 bat
 
 			r->SetResultBuffer(buf);
 		} else {
-			VideoPrefetcher vp;
+			VideoPrefetcher vp((uint32)mSources.size());
 
 			if (mLag) {
 				for(uint32 i=0; i<=mLag; ++i) {
@@ -1351,12 +1580,12 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, uint32 bat
 				GetPrefetchInfo(outputFrame, vp, false);
 			}
 
-			if (mpSource) {
+			if (!mSources.empty()) {
 				if (vp.mDirectFrame >= 0) {
 					r->SetSourceCount(1);
 
 					vdrefptr<IVDFilterFrameClientRequest> srcreq;
-					mpSource->CreateRequest(vp.mDirectFrame, false, batchNumber, ~srcreq);
+					mSources[vp.mDirectFrameSrcIndex]->CreateRequest(vp.mDirectFrame, false, batchNumber, ~srcreq);
 
 					srcreq->Start(NULL, 0);
 
@@ -1370,7 +1599,7 @@ bool FilterInstance::CreateRequest(sint64 outputFrame, bool writable, uint32 bat
 						bool writable = (idx == 0) && IsInPlace();
 
 						vdrefptr<IVDFilterFrameClientRequest> srcreq;
-						mpSource->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
+						mSources[prefetchInfo.mSrcIndex]->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
 
 						srcreq->Start(NULL, prefetchInfo.mCookie);
 
@@ -1422,11 +1651,11 @@ bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewS
 
 	vdrefptr<VDFilterFrameBuffer> buf;
 
-	VideoPrefetcher vp;
+	VideoPrefetcher vp((uint32)mSources.size());
 
 	GetPrefetchInfo(outputFrame, vp, false);
 
-	if (mpSource) {
+	if (!mSources.empty()) {
 		r->SetSourceCount(vp.mSourceFrames.size());
 
 		uint32 idx = 0;
@@ -1435,7 +1664,7 @@ bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewS
 			bool writable = (idx == 0) && IsInPlace();
 
 			vdrefptr<IVDFilterFrameClientRequest> srcreq;
-			mpSource->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
+			mSources[prefetchInfo.mSrcIndex]->CreateRequest(prefetchInfo.mFrame, writable, batchNumber, ~srcreq);
 
 			srcreq->Start(NULL, prefetchInfo.mCookie);
 
@@ -1662,21 +1891,22 @@ bool FilterInstance::BeginFrame(VDFilterFrameRequest& request, uint32 sourceOffs
 
 	const VDFilterFrameRequestTiming& timing = overrideTiming ? *overrideTiming : request.GetTiming();
 
-	VDASSERT(request.GetSourceCount() > 0);
-	IVDFilterFrameClientRequest *creqsrc0 = request.GetSourceRequest(sourceOffset);
-	vdrefptr<VDFilterFrameRequestError> err(creqsrc0->GetError());
-
-	if (err) {
-		request.SetError(err);
-		return false;
-	}
-
 	uint32 sourceCount = request.GetSourceCount();
-
-	VDASSERT(sourceOffset < sourceCount);
+	VDASSERT(sourceOffset <= sourceCount);
 	sourceCount -= sourceOffset;
 	if (sourceCount > sourceCountLimit)
 		sourceCount = sourceCountLimit;
+
+	IVDFilterFrameClientRequest *creqsrc0 = sourceCount ? request.GetSourceRequest(sourceOffset) : NULL;
+
+	if (creqsrc0) {
+		vdrefptr<VDFilterFrameRequestError> err(creqsrc0->GetError());
+
+		if (err) {
+			request.SetError(err);
+			return false;
+		}
+	}
 
 	VDFilterFrameBuffer *src0Buffer = request.GetSource(sourceOffset);
 
@@ -1687,7 +1917,10 @@ bool FilterInstance::BeginFrame(VDFilterFrameRequest& request, uint32 sourceOffs
 		mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
 		bltSrcOnEntry = true;
 	} else if (!IsInPlace()) {
-		mRealSrc.BindToFrameBuffer(src0Buffer, true);
+		if (src0Buffer)
+			mRealSrc.BindToFrameBuffer(src0Buffer, true);
+		else
+			mRealSrc.Unbind();
 	} else {
 		if (!resultBuffer || resultBuffer == src0Buffer) {
 			resultBuffer = src0Buffer;
@@ -1696,14 +1929,22 @@ bool FilterInstance::BeginFrame(VDFilterFrameRequest& request, uint32 sourceOffs
 		} else {
 			VDFilterFrameBuffer *buf = resultBuffer;
 			mRealSrc.BindToFrameBuffer(buf, false);
-			mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
 
-			bltSrcOnEntry = true;
+			if (src0Buffer) {
+				mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
+
+				bltSrcOnEntry = true;
+			}
 		}
 	}
 
-	mRealSrc.SetFrameNumber(creqsrc0->GetFrameNumber());
-	mRealSrc.mCookie = creqsrc0->GetCookie();
+	if (creqsrc0) {
+		mRealSrc.SetFrameNumber(creqsrc0->GetFrameNumber());
+		mRealSrc.mCookie = creqsrc0->GetCookie();
+	} else {
+		mRealSrc.SetFrameNumber(-1);
+		mRealSrc.mCookie = 0;
+	}
 
 	if (!mRealDst.hdc && !mbForceSingleFB)
 		mRealDst.BindToFrameBuffer(resultBuffer, false);
@@ -1849,7 +2090,6 @@ void FilterInstance::RunFilter() {
 		} else {
 			if (!ConnectAccelBuffers()) {
 				mRequestError.assign("One or more source frames are no longer available.");
-				return;
 			} else {
 				IVDTProfiler *vdtc = vdpoly_cast<IVDTProfiler *>(tc);
 				if (vdtc)
@@ -1900,7 +2140,7 @@ void FilterInstance::RunFilterInner() {
 	sint64 outputFrame = mRequestOutputFrame;
 	VDASSERT(outputFrame >= 0);
 
-	if (mbRequestBltSrcOnEntry) {
+	if (mbRequestBltSrcOnEntry && mRealSrc.mPixmap.data) {
 		if (!mpSourceConversionBlitter)
 			mpSourceConversionBlitter = VDPixmapCreateBlitter(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
 
@@ -1920,7 +2160,7 @@ void FilterInstance::RunFilterInner() {
 
 	const VDPixmap *blendSrc = NULL;
 
-	if (!sampleCB && alpha < 254.5f / 255.0f) {
+	if (!sampleCB && alpha < 254.5f / 255.0f && mRealSrc.mPixmap.data) {
 		if (mFlags & FILTERPARAM_SWAP_BUFFERS) {
 			if (alpha < 0.5f / 255.0f)
 				skipFilter = true;
@@ -1973,7 +2213,7 @@ void FilterInstance::RunFilterInner() {
 		}
 	}
 
-	if (!skipBlit && alpha < 254.5f / 255.0f) {
+	if (!sampleCB && !skipBlit && alpha < 254.5f / 255.0f) {
 		if (alpha > 0.5f / 255.0f)
 			VDPixmapBltAlphaConst(mRealDst.mPixmap, *blendSrc, 1.0f - alpha);
 		else
@@ -2111,7 +2351,7 @@ bool FilterInstance::GetSettingsString(VDStringA& buf) const {
 }
 
 sint64 FilterInstance::GetSourceFrame(sint64 frame) {
-	VideoPrefetcher vp;
+	VideoPrefetcher vp((uint32)mSources.size());
 	GetPrefetchInfo(frame, vp, true);
 	vp.Finalize();
 
@@ -2125,12 +2365,12 @@ sint64 FilterInstance::GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource
 	if (source == this)
 		return outputFrame;
 
-	VideoPrefetcher vp;
+	VideoPrefetcher vp((uint32)mSources.size());
 	GetPrefetchInfo(outputFrame, vp, true);
 	vp.Finalize();
 
 	if (vp.mSymbolicFrame >= 0)
-		return mpSource->GetSymbolicFrame(vp.mSymbolicFrame, source);
+		return mSources[vp.mSymbolicFrameSrcIndex]->GetSymbolicFrame(vp.mSymbolicFrame, source);
 
 	return -1;
 }
@@ -2149,13 +2389,13 @@ bool FilterInstance::IsFadedOut(sint64 outputFrame) const {
 }
 
 bool FilterInstance::GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, int& sourceIndex) {
-	VideoPrefetcher prefetcher;
+	VideoPrefetcher prefetcher((uint32)mSources.size());
 	GetPrefetchInfo(outputFrame, prefetcher, false);
 	prefetcher.Finalize();
 
 	// If the filter directly specifies a direct mapping, use it.
 	if (prefetcher.mDirectFrame >= 0)
-		return mpSource->GetDirectMapping(prefetcher.mDirectFrame, sourceFrame, sourceIndex);
+		return mSources[prefetcher.mDirectFrameSrcIndex]->GetDirectMapping(prefetcher.mDirectFrame, sourceFrame, sourceIndex);
 
 	// The filter doesn't have a direct mapping. If it doesn't pull from any source frames,
 	// then assume it is not mappable.
@@ -2167,22 +2407,22 @@ bool FilterInstance::GetDirectMapping(sint64 outputFrame, sint64& sourceFrame, i
 		return false;
 
 	// Filter's faded out, so assume we're going to map to the first source frame.
-	return mpSource->GetDirectMapping(prefetcher.mSourceFrames[0].mFrame, sourceFrame, sourceIndex);
+	return mSources[prefetcher.mSourceFrames[0].mSrcIndex]->GetDirectMapping(prefetcher.mSourceFrames[0].mFrame, sourceFrame, sourceIndex);
 }
 
 sint64 FilterInstance::GetNearestUniqueFrame(sint64 outputFrame) {
 	if (!(mFlags & FILTERPARAM_PURE_TRANSFORM))
 		return outputFrame;
 
-	VideoPrefetcher prefetcher;
+	VideoPrefetcher prefetcher((uint32)mSources.size());
 	GetPrefetchInfo(outputFrame, prefetcher, false);
-	prefetcher.TransformToNearestUnique(mpSource);
+	prefetcher.TransformToNearestUnique(mSources);
 
-	VideoPrefetcher prefetcher2;
+	VideoPrefetcher prefetcher2((uint32)mSources.size());
 	while(outputFrame >= 0) {
 		prefetcher2.Clear();
 		GetPrefetchInfo(outputFrame - 1, prefetcher2, false);
-		prefetcher2.TransformToNearestUnique(mpSource);
+		prefetcher2.TransformToNearestUnique(mSources);
 
 		if (prefetcher != prefetcher2)
 			break;
@@ -2194,7 +2434,7 @@ sint64 FilterInstance::GetNearestUniqueFrame(sint64 outputFrame) {
 }
 
 const VDScriptObject *FilterInstance::GetScriptObject() const {
-	return filter->script_obj ? &mScriptObj : NULL;
+	return filter->script_obj ? &mScriptWrapper : NULL;
 }
 
 void FilterInstance::GetPrefetchInfo(sint64 outputFrame, VideoPrefetcher& prefetcher, bool requireOutput) const {
@@ -2208,7 +2448,7 @@ void FilterInstance::GetPrefetchInfo(sint64 outputFrame, VideoPrefetcher& prefet
 
 		if (handled) {
 			if (prefetcher.mpError)
-				SetLogicErrorF("A logic error was detected in filter '%s': %s", filter->name, prefetcher.mpError);
+				SetLogicErrorF("%s", prefetcher.mpError);
 
 			if (!requireOutput || !prefetcher.mSourceFrames.empty() || prefetcher.mDirectFrame >= 0)
 				return;
@@ -2230,6 +2470,22 @@ void FilterInstance::GetPrefetchInfo(sint64 outputFrame, VideoPrefetcher& prefet
 	prefetcher.PrefetchFrame(0, VDFloorToInt64((outputFrame + 0.5f) * factor), 0);
 }
 
+void FilterInstance::SetLogicError(const char *s) const {
+	if (mpLogicError)
+		return;
+
+	vdrefptr<VDFilterFrameRequestError> error(new_nothrow VDFilterFrameRequestError);
+
+	if (error) {
+		error->mError.sprintf("A logic error was detected in filter '%s': %s", filter->name, s);
+
+		VDFilterFrameRequestError *oldError = mpLogicError.compareExchange(error, NULL);
+		
+		if (!oldError)
+			error.release();
+	}
+}
+
 void FilterInstance::SetLogicErrorF(const char *format, ...) const {
 	if (mpLogicError)
 		return;
@@ -2237,6 +2493,8 @@ void FilterInstance::SetLogicErrorF(const char *format, ...) const {
 	vdrefptr<VDFilterFrameRequestError> error(new_nothrow VDFilterFrameRequestError);
 
 	if (error) {
+		error->mError.sprintf("A logic error was detected in filter '%s': ", filter->name);
+
 		va_list val;
 		va_start(val, format);
 		error->mError.append_vsprintf(format, val);
@@ -2320,8 +2578,9 @@ namespace {
 }
 
 void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = (FilterInstance *)argv[-1].asObjectPtr();
-	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
+	FilterInstance *const thisPtr = ent->mpInstance;
+	const int funcidx = thisPtr->mScriptWrapper.GetFuncIndex(isi->GetCurrentMethod());
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	VDXScriptVoidFunctionPtr pf = (VDXScriptVoidFunctionPtr)fd.func_ptr;
@@ -2335,8 +2594,9 @@ void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScript
 }
 
 void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = (FilterInstance *)argv[-1].asObjectPtr();
-	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
+	FilterInstance *const thisPtr = ent->mpInstance;
+	const int funcidx = thisPtr->mScriptWrapper.GetFuncIndex(isi->GetCurrentMethod());
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	VDXScriptIntFunctionPtr pf = (VDXScriptIntFunctionPtr)fd.func_ptr;
@@ -2352,8 +2612,9 @@ void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptV
 }
 
 void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *const thisPtr = (FilterInstance *)argv[-1].asObjectPtr();
-	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
+	FilterInstance *const thisPtr = ent->mpInstance;
+	const int funcidx = thisPtr->mScriptWrapper.GetFuncIndex(isi->GetCurrentMethod());
 
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	ScriptFunctionPtr pf = fd.func_ptr;
@@ -2366,4 +2627,66 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 	CScriptValue v(pf(&adapt, thisPtr->AsVDXFilterActivation(), &params[0], argc));
 
 	ConvertValue(argv[0], v);
+}
+
+void FilterInstance::CheckValidConfiguration() {
+	VDASSERT(!mRealDst.GetBuffer());
+	VDASSERT(!mExternalDst.GetBuffer());
+
+	if (GetInvalidFormatHandlingState())
+		throw MyError("Cannot start filters: Filter \"%s\" is not handling image formats correctly.",
+			GetName());
+
+	if (mRealDst.w < 1 || mRealDst.h < 1)
+		throw MyError("Cannot start filter chain: The output of filter \"%s\" is smaller than 1x1.", GetName());
+
+
+	if (GetAlphaParameterCurve()) {
+		// size check
+		if (mRealSrc.w != mRealDst.w || mRealSrc.h != mRealDst.h) {
+			throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output sizes (%dx%d -> %dx%d). Input and output sizes must match."
+				, GetName()
+				, mRealSrc.w
+				, mRealSrc.h
+				, mRealDst.w
+				, mRealDst.h
+				);
+		}
+
+		// format check
+		if (mRealSrc.mPixmapLayout.format != mRealDst.mPixmapLayout.format) {
+			throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output formats. Input and output formats must match."
+				, GetName());
+		}
+	}
+}
+
+void FilterInstance::InitSharedBuffers(VDFixedLinearAllocator& lastFrameAlloc) {
+	mExternalDst = mRealDst;
+
+	VDFileMappingW32 *mapping = NULL;
+	if (((mRealSrc.dwFlags | mRealDst.dwFlags) & VFBitmapInternal::NEEDS_HDC) && !(GetFlags() & FILTERPARAM_SWAP_BUFFERS)) {
+		uint32 mapSize = std::max<uint32>(VDPixmapLayoutGetMinSize(mRealSrc.mPixmapLayout), VDPixmapLayoutGetMinSize(mRealDst.mPixmapLayout));
+
+		if (!mFileMapping.Init(mapSize))
+			throw MyMemoryError();
+
+		mapping = &mFileMapping;
+	}
+
+	mRealSrc.hdc = NULL;
+	if (mapping || (mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC))
+		mRealSrc.BindToDIBSection(mapping);
+
+	mRealDst.hdc = NULL;
+	if (mapping || (mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC))
+		mRealDst.BindToDIBSection(mapping);
+
+	mRealLast.hdc = NULL;
+	if (GetFlags() & FILTERPARAM_NEEDS_LAST) {
+		mRealLast.Fixup(lastFrameAlloc.Allocate(mRealLast.size + mRealLast.offset));
+
+		if (mRealLast.dwFlags & VDXFBitmap::NEEDS_HDC)
+			mRealLast.BindToDIBSection(NULL);
+	}
 }

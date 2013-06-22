@@ -3437,7 +3437,7 @@ public:
 		return 0;
 	}
 
-	uint32 GetFlags() { return kF_Video | kF_Audio; }
+	uint32 GetFlags() { return kF_Video | kF_Audio | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
 		return L"MPEG-1 video/systems stream (*.mpg,*.mpeg,*.mpv,*.m1v,*.dat)\0*.mpg;*.mpeg;*.mpv;*.m1v;*.dat\0";

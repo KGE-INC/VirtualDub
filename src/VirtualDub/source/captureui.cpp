@@ -103,6 +103,8 @@ static const char g_szAutoIncrement			[]="Auto-increment";
 static const char g_szStartOnLeft			[]="Start on left";
 static const char g_szDisplayPrerollDialog	[]="Display preroll dialog";
 static const char g_szHideOnCapture			[]="Hide on capture";
+static const char g_szDisplayLargeTimer		[]="Display large timer";
+static const char g_szShowVolumeMeter		[]="Show volume meter";
 extern const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szCapSettings			[]="Settings";
 static const char g_szStartupDriver			[]="Startup Driver";
@@ -332,6 +334,8 @@ public:
 	bool	SetTunerExactFrequency(uint32 freq);
 	void	SetTunerInputMode(bool cable);
 	void	SetTimeLimit(int limitsecs);
+	void	SetAudioCaptureEnabled(bool enabled);
+	void	SetAudioPlaybackEnabled(bool enabled);
 	void	Capture();
 
 protected:
@@ -732,6 +736,8 @@ void VDCaptureProjectUI::Detach() {
 	if (!mhwnd)
 		return;
 
+	SaveLocalSettings();
+
 	VDToggleCaptureNRDialog(NULL, NULL);
 
 	ShutdownTimingGraph();
@@ -757,7 +763,6 @@ void VDCaptureProjectUI::Detach() {
 	}
 
 	SaveDeviceSettings(kSaveDevOnDisconnect);
-	SaveLocalSettings();
 
 	mpProject->SetCallback(NULL);
 
@@ -799,6 +804,10 @@ bool VDCaptureProjectUI::SetDriver(const wchar_t *s) {
 	int dev = mpProject->GetDriverByName(s);
 	if (dev<0)
 		return false;
+
+	if (dev == mpProject->GetConnectedDriverIndex())
+		return true;
+
 	return mpProject->SelectDriver(dev);
 }
 
@@ -834,6 +843,14 @@ void VDCaptureProjectUI::SetTimeLimit(int limitsecs) {
 	}
 
 	mpProject->SetStopPrefs(prefs);
+}
+
+void VDCaptureProjectUI::SetAudioCaptureEnabled(bool enabled) {
+	mpProject->SetAudioCaptureEnabled(enabled);
+}
+
+void VDCaptureProjectUI::SetAudioPlaybackEnabled(bool enabled) {
+	mpProject->SetAudioPlaybackEnabled(enabled);
 }
 
 void VDCaptureProjectUI::Capture() {
@@ -958,16 +975,18 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	// How about default capture settings?
 	{
 		CAPTUREPARMS *cp;
-		DWORD dwSize, dwSizeAlloc;
 
-		if (dwSize = QueryConfigBinary(g_szCapture, g_szCapSettings, NULL, 0)) {
-			dwSizeAlloc = dwSize;
-			if (dwSize < sizeof(CAPTUREPARMS)) dwSize = sizeof(CAPTUREPARMS);
+		int size = key.getBinaryLength(g_szCapSettings);
+		if (size > 0) {
+			int sizeAlloc = size;
 
-			if (cp = (CAPTUREPARMS *)allocmem(dwSizeAlloc)) {
-				memset(cp, 0, dwSizeAlloc);
+			if (size < (int)sizeof(CAPTUREPARMS))
+				size = sizeof(CAPTUREPARMS);
 
-				if (QueryConfigBinary(g_szCapture, g_szCapSettings, (char *)cp, dwSize)) {
+			if (cp = (CAPTUREPARMS *)allocmem(sizeAlloc)) {
+				memset(cp, 0, sizeAlloc);
+
+				if (key.getBinary(g_szCapSettings, (char *)cp, size)) {
 					mpProject->SetFrameTime(cp->dwRequestMicroSecPerFrame);
 					mpProject->SetAudioCaptureEnabled(cp->fCaptureAudio != 0);
 				}
@@ -980,15 +999,15 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	// stop conditions?
 
 	{
-		DWORD dwSize;
+		int size = key.getBinaryLength(g_szStopConditions);
 
-		if (dwSize = QueryConfigBinary(g_szCapture, g_szStopConditions, NULL, 0)) {
-			vdblock<char> mem(dwSize);
+		if (size > 0) {
+			vdblock<char> mem(size);
 
-			if (QueryConfigBinary(g_szCapture, g_szStopConditions, mem.data(), dwSize)) {
+			if (key.getBinary(g_szStopConditions, mem.data(), size)) {
 				VDCaptureStopPrefs stopPrefs;
 				memset(&stopPrefs, 0, sizeof stopPrefs);
-				memcpy(&stopPrefs, mem.data(), std::min<uint32>(sizeof stopPrefs, dwSize));
+				memcpy(&stopPrefs, mem.data(), std::min<uint32>(sizeof stopPrefs, (size_t)size));
 
 				mpProject->SetStopPrefs(stopPrefs);
 			}
@@ -1016,6 +1035,12 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	mbStartOnLeft = key.getBool(g_szStartOnLeft, mbStartOnLeft);
 	mbDisplayPrerollDialog = key.getBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
 	mbHideOnCapture = key.getBool(g_szHideOnCapture, mbHideOnCapture);
+	mbDisplayLargeTimer = key.getBool(g_szDisplayLargeTimer, mbDisplayLargeTimer);
+
+	if (key.getBool(g_szShowVolumeMeter, mpVumeter != NULL))
+		InitVumeter();
+	else
+		ShutdownVumeter();
 
 	// load timing settings
 
@@ -1122,6 +1147,8 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szStartOnLeft, mbStartOnLeft);
 	key.setBool(g_szDisplayPrerollDialog, mbDisplayPrerollDialog);
 	key.setBool(g_szHideOnCapture, mbHideOnCapture);
+	key.setBool(g_szDisplayLargeTimer, mbDisplayLargeTimer);
+	key.setBool(g_szShowVolumeMeter, mpVumeter != NULL);
 
 	VDCaptureTimingSetup ts(mpProject->GetTimingSetup());
 
@@ -2298,6 +2325,8 @@ void VDCaptureProjectUI::UICaptureEnd(bool success) {
 	if (mhClockFont) {
 		DeleteObject(mhClockFont);
 		mhClockFont = NULL;
+
+		InvalidateRect((HWND)mhwnd, NULL, TRUE);
 	}
 
 	if (success) {
@@ -3141,7 +3170,13 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			}
 			break;
 		case ID_AUDIO_WINMIXER:
-			ShellExecute((HWND)mhwnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
+			{
+				OSVERSIONINFO ovi = {sizeof(OSVERSIONINFO)};
+				if (GetVersionEx(&ovi) && ovi.dwMajorVersion >= 6)
+					ShellExecute((HWND)mhwnd, NULL, "rundll32.exe", "shell32.dll,Control_RunDLL mmsys.cpl,,1", NULL, SW_SHOWNORMAL);
+				else
+					ShellExecute((HWND)mhwnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
+			}
 			break;
 		case ID_VIDEO_NODISPLAY:
 			SetDisplayMode(kDisplayNone);

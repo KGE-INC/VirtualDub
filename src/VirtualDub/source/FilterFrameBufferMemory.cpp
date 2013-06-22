@@ -44,7 +44,7 @@ void VDFilterFrameBufferMemory::Init(uint32 size) {
 	}
 
 	if (!mpBuffer)
-		throw MyMemoryError();
+		throw MyMemoryError(size);
 
 	mBufferSize = size;
 }

@@ -299,6 +299,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\PortableRegistry.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\stdafx.cpp"
 				>
 				<FileConfiguration
@@ -400,6 +404,10 @@
 			</File>
 			<File
 				RelativePath="..\h\vd2\VDLib\ParameterCurve.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\VDLib\PortableRegistry.h"
 				>
 			</File>
 			<File

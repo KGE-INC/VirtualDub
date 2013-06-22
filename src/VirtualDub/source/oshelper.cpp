@@ -43,142 +43,6 @@ void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted) {
 	DeleteObject(SelectObject(hDC, hPenOld));
 }
 
-// We follow MAME32's lead and put our keys in:
-//
-//	HKEY_CURRENT_USER\Software\Freeware\VirtualDub\
-
-HKEY OpenConfigKey(const char *szKeyName) {
-	char temp[MAX_PATH]="Software\\VirtualDub.org\\VirtualDub";
-	HKEY hkey;
-
-	if (szKeyName) {
-		strcat(temp, "\\");
-		strcat(temp, szKeyName);
-	}
-
-	return RegOpenKeyEx(HKEY_CURRENT_USER, temp, 0, KEY_ALL_ACCESS, &hkey)==ERROR_SUCCESS
-			? hkey
-			: NULL;
-}
-
-HKEY CreateConfigKey(const char *szKeyName) {
-	char temp[MAX_PATH]="Software\\VirtualDub.org\\VirtualDub";
-	HKEY hkey;
-	DWORD dwDisposition;
-
-	if (szKeyName) {
-		strcat(temp, "\\");
-		strcat(temp, szKeyName);
-	}
-
-	return RegCreateKeyEx(HKEY_CURRENT_USER, temp, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hkey, &dwDisposition)==ERROR_SUCCESS
-			? hkey
-			: NULL;
-}
-
-BOOL DeleteConfigValue(const char *szKeyName, const char *szValueName) {
-	HKEY hkey;
-	BOOL success;
-
-	if (!(hkey = OpenConfigKey(szKeyName)))
-		return FALSE;
-
-	success = (RegDeleteValue(hkey, szValueName) == ERROR_SUCCESS);
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
-BOOL QueryConfigString(const char *szKeyName, const char *szValueName, char *lpBuffer, int cbBuffer) {
-	HKEY hkey;
-	BOOL success;
-	DWORD type;
-
-	if (!(hkey = OpenConfigKey(szKeyName)))
-		return FALSE;
-
-	success = (ERROR_SUCCESS == RegQueryValueEx(hkey, szValueName, 0, &type, (LPBYTE)lpBuffer, (LPDWORD)&cbBuffer));
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
-DWORD QueryConfigBinary(const char *szKeyName, const char *szValueName, char *lpBuffer, int cbBuffer) {
-	HKEY hkey;
-	BOOL success;
-	DWORD type;
-	DWORD size = cbBuffer;
-
-	if (!(hkey = OpenConfigKey(szKeyName)))
-		return 0;
-
-	success = (ERROR_SUCCESS == RegQueryValueEx(hkey, szValueName, 0, &type, (LPBYTE)lpBuffer, (LPDWORD)&size));
-
-	RegCloseKey(hkey);
-
-	return success ? size : 0;
-}
-
-BOOL QueryConfigDword(const char *szKeyName, const char *szValueName, DWORD *lpdwData) {
-	HKEY hkey;
-	BOOL success;
-	DWORD type;
-	DWORD size = sizeof(DWORD);
-
-	if (!(hkey = OpenConfigKey(szKeyName)))
-		return 0;
-
-	success = (ERROR_SUCCESS == RegQueryValueEx(hkey, szValueName, 0, &type, (LPBYTE)lpdwData, (LPDWORD)&size));
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
-BOOL SetConfigString(const char *szKeyName, const char *szValueName, const char *lpBuffer) {
-	HKEY hkey;
-	BOOL success;
-
-	if (!(hkey = CreateConfigKey(szKeyName)))
-		return FALSE;
-
-	success = (ERROR_SUCCESS == RegSetValueEx(hkey, szValueName, 0, REG_SZ, (LPBYTE)lpBuffer, strlen(lpBuffer)+1));
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
-BOOL SetConfigBinary(const char *szKeyName, const char *szValueName, const char *lpBuffer, int cbBuffer) {
-	HKEY hkey;
-	BOOL success;
-
-	if (!(hkey = CreateConfigKey(szKeyName)))
-		return FALSE;
-
-	success = (ERROR_SUCCESS == RegSetValueEx(hkey, szValueName, 0, REG_BINARY, (LPBYTE)lpBuffer, cbBuffer));
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
-BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData) {
-	HKEY hkey;
-	BOOL success;
-
-	if (!(hkey = CreateConfigKey(szKeyName)))
-		return FALSE;
-
-	success = (ERROR_SUCCESS == RegSetValueEx(hkey, szValueName, 0, REG_DWORD, (LPBYTE)&dwData, sizeof(DWORD)));
-
-	RegCloseKey(hkey);
-
-	return success;
-}
-
 ///////////////////////////////////////////////////////////////////////////
 //
 //	help support
@@ -443,6 +307,13 @@ void VDSubstituteStrings(VDStringW& s) {
 	}
 
 	s = t;
+}
+
+uint32 VDCreateAutoSaveSignature() {
+	FILETIME ft;
+	::GetSystemTimeAsFileTime(&ft);
+
+	return GetCurrentProcessId() ^ ft.dwLowDateTime ^ ft.dwHighDateTime;
 }
 
 ///////////////////////////////////////////////////////////////////////////

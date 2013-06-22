@@ -17,7 +17,7 @@
 
 #include "stdafx.h"
 
-#if defined(_MSC_VER) && defined(_DEBUG) && defined(_M_IX86)
+#if defined(_MSC_VER) && defined(_DEBUG)
 
 #include <crtdbg.h>
 #include <dbghelp.h>
@@ -30,8 +30,13 @@ namespace {
 		CrtBlockHeader *pNext, *pPrev;
 		const char *pFilename;
 		int			line;
+#ifdef VD_CPU_AMD64
+		int			type;
+		size_t		size;
+#else
 		size_t		size;
 		int			type;
+#endif
 		unsigned	reqnum;
 		char		redzone_head[4];
 		char		data[1];
@@ -60,8 +65,12 @@ VDDbgHelpDynamicLoaderW32::VDDbgHelpDynamicLoaderW32()
 {
 	// XP DbgHelp doesn't pick up some VC8 symbols -- need DbgHelp 6.2+ for that
 	hmodDbgHelp = LoadLibrary("c:\\program files\\debugging tools for windows\\dbghelp");
-	if (!hmodDbgHelp)
-		hmodDbgHelp = LoadLibrary("dbghelp");
+	if (!hmodDbgHelp) {
+		hmodDbgHelp = LoadLibrary("c:\\program files (x86)\\debugging tools for windows\\dbghelp");
+
+		if (!hmodDbgHelp)
+			hmodDbgHelp = LoadLibrary("dbghelp");
+	}
 
 	static const char *const sFuncTbl[]={
 		"SymInitialize",
@@ -290,7 +299,11 @@ void VDDumpMemoryLeaksVC() {
 				s += wsprintf(buf, "    #%-5d %p (%8ld bytes)", pHdr->reqnum, pHdr->data, (long)pHdr->size);
 
 				if (pHdr->pFilename && !strcmp(pHdr->pFilename, "stack trace")) {
+#ifdef VD_CPU_AMD64
+					void *pRet = (void *)((size_t)pHdr->line + (size_t)&__ImageBase);
+#else
 					void *pRet = (void *)pHdr->line;
+#endif
 
 					struct {
 						IMAGEHLP_SYMBOL hdr;
@@ -339,14 +352,8 @@ void VDDumpMemoryLeaksVC() {
 	dbghelp.pSymCleanup(hProc);
 }
 
-#if 0
-	struct foo {
-		~foo() { VDDumpMemoryLeaksVC(); }
-	} bar;
-#endif
+#pragma section(".CRT$XPB",long,read)
 
-#pragma data_seg(".CRT$XPB")
-extern "C" static void (__cdecl *g_leaktrap)() = VDDumpMemoryLeaksVC;
-#pragma data_seg()
+extern "C" static __declspec(allocate(".CRT$XPB")) void (__cdecl *g_leaktrap)() = VDDumpMemoryLeaksVC;
 
 #endif

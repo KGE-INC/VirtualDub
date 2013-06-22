@@ -20,18 +20,19 @@
 
 #include <vd2/system/vdtypes.h>
 
-class VBitmap;
+struct VDPixmap;
+class VDPixmapBuffer;
 
 bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
-void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb);
+void DecodeBMP(const void *pBuffer, long cbBuffer, const VDPixmap& vb);
 
 bool DecodeTGAHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
-void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb);
+void DecodeTGA(const void *pBuffer, long cbBuffer, const VDPixmap& vb);
 
 bool VDIsJPEGHeader(const void *pv, uint32 len);
 bool VDIsMayaIFFHeader(const void *pv, uint32 len);
 
-void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha);
-void DecodeImage(const char *pszFile, VBitmap& vb, int desired_depth, bool& bHasAlpha);
+void DecodeImage(const void *pBuffer, long cbBuffer, VDPixmapBuffer& vb, int desired_format, bool& bHasAlpha);
+void DecodeImage(const char *pszFile, VDPixmapBuffer& vb, int desired_format, bool& bHasAlpha);
 
 #endif

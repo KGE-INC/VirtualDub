@@ -47,6 +47,8 @@ enum {
 
 	/// Filter supports image formats other than RGB32. Filters that support format negotiation must
 	/// set this flag for all calls to paramProc.
+	///
+	/// (API V16 - Now required)
 	FILTERPARAM_SUPPORTS_ALTFORMATS	= 0x00000004L,
 
 	/// Filter requests 16 byte alignment for source and destination buffers. This guarantees that:
@@ -180,7 +182,7 @@ public:
 
 enum {
 	// This is the highest API version supported by this header file.
-	VIRTUALDUB_FILTERDEF_VERSION		= 15,
+	VIRTUALDUB_FILTERDEF_VERSION		= 16,
 
 	// This is the absolute lowest API version supported by this header file.
 	// Note that V4 is rather old, corresponding to VirtualDub 1.2.
@@ -208,6 +210,7 @@ enum {
 // v13 (1.8.2): added mOutputFrame field to VDXFilterStateInfo
 // v14 (1.9.1): added copyProc2, prefetchProc2, input/output frame arrays
 // v15 (1.9.3): added VDXA support
+// v16 (1.10.x): added multi-source support, feature deprecation
 
 struct VDXFilterDefinition {
 	void *_next;		// deprecated - set to NULL
@@ -225,7 +228,7 @@ struct VDXFilterDefinition {
 	VDXFilterRunProc		runProc;
 	VDXFilterParamProc		paramProc;
 	VDXFilterConfigProc		configProc;
-	VDXFilterStringProc		stringProc;
+	VDXFilterStringProc		stringProc;			// DEPRECATED - ignored as of v16; use stringProc2
 	VDXFilterStartProc		startProc;
 	VDXFilterEndProc		endProc;
 
@@ -237,7 +240,7 @@ struct VDXFilterDefinition {
 	VDXFilterStringProc2	stringProc2;
 	VDXFilterSerialize		serializeProc;
 	VDXFilterDeserialize	deserializeProc;
-	VDXFilterCopy			copyProc;
+	VDXFilterCopy			copyProc;			// DEPRECATED - ignored as of v16; use copyProc2
 
 	VDXFilterPrefetch		prefetchProc;		// (V12/V1.7.4+)
 
@@ -248,6 +251,10 @@ struct VDXFilterDefinition {
 
 	// NEW - V15 / 1.9.3
 	VDXFilterAccelRunProc	accelRunProc;
+
+	// NEW - V16 / 1.10.1
+	sint32					mSourceCountLowMinus1;
+	sint32					mSourceCountHighMinus1;
 };
 
 //////////
@@ -311,7 +318,10 @@ class VDXFBitmap : public VDXBitmap {
 public:
 	enum {
 		/// Set in paramProc if the filter requires a Win32 GDI display context
-		/// for a bitmap. (Deprecated as of API V12 - do not use)
+		/// for a bitmap.
+		///
+		/// (Deprecated as of API V12 - do not use)
+		/// (Blocked as of API V16)
 		NEEDS_HDC		= 0x00000001L,
 	};
 
@@ -362,6 +372,9 @@ public:
 	VDXFBitmap *const *mpOutputFrames;	// (V14+)
 
 	IVDXAContext	*mpVDXA;			// (V15+)
+
+	uint32		mSourceStreamCount;		// (V16+)
+	VDXFBitmap *const *mpSourceStreams;	// (V16+)
 };
 
 // These flags must match those in cpuaccel.h!

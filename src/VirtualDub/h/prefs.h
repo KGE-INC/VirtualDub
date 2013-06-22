@@ -43,6 +43,7 @@ public:
 		OPTF_SSE3			= 0x100,	// (Prefs2 only)
 		OPTF_SSSE3			= 0x200,	// (Prefs2 only)
 		OPTF_SSE4_1			= 0x400,	// (Prefs2 only)
+		OPTF_AVX			= 0x800,	// (Prefs2 only)
 	};
 
 	char	iPreviewPriority;

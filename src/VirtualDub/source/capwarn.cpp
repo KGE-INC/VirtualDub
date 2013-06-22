@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include <windows.h>
+#include <vd2/system/registry.h>
 #include "oshelper.h"
 #include "helpfile.h"
 
@@ -30,14 +31,18 @@ static const char g_szCaptureWarn[]="Disabled Warnings";
 static long g_capwarnFlags = -1;
 
 static void CaptureWarnInit() {
-	if (g_capwarnFlags < 0)
-		if (!QueryConfigDword(g_szCapture, g_szCaptureWarn, (DWORD *)&g_capwarnFlags))
-			g_capwarnFlags = 0;
+	if (g_capwarnFlags < 0) {
+		VDRegistryAppKey key(g_szCapture);
+
+		g_capwarnFlags = key.getInt(g_szCaptureWarn, 0);
+	}
 }
 
 static void CaptureWarnDisable(long f) {
 	g_capwarnFlags |= f;
-	SetConfigDword(g_szCapture, g_szCaptureWarn, g_capwarnFlags);
+
+	VDRegistryAppKey key(g_szCapture);
+	key.setInt(g_szCaptureWarn, g_capwarnFlags);
 }
 
 void CaptureWarnCheckDriver(HWND hwnd, const char *s) {

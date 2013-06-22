@@ -20,7 +20,7 @@ public:
 	VDVideoDisplayMinidriverGDI();
 	~VDVideoDisplayMinidriverGDI();
 
-	bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info);
+	bool Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info);
 	void Shutdown();
 
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
@@ -78,7 +78,7 @@ VDVideoDisplayMinidriverGDI::VDVideoDisplayMinidriverGDI()
 VDVideoDisplayMinidriverGDI::~VDVideoDisplayMinidriverGDI() {
 }
 
-bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+bool VDVideoDisplayMinidriverGDI::Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info) {
 	mCachedBlitter.Invalidate();
 
 	switch(info.pixmap.format) {

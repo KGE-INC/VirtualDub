@@ -211,5 +211,15 @@ DEFINE_TEST(Vector) {
 	TEST_ASSERT(x[4] == "abc");
 	TEST_ASSERT(x.size() == 5);
 
+	x.resize(5);
+	x.clear();
+	x.insert(x.begin(), VDStringA("abc"));
+	TEST_ASSERT(x.size() == 1);
+	TEST_ASSERT(x[0] == "abc");
+	x.insert(x.begin(), VDStringA("def"));
+	TEST_ASSERT(x.size() == 2);
+	TEST_ASSERT(x[0] == "def");
+	TEST_ASSERT(x[1] == "abc");
+
 	return 0;
 }

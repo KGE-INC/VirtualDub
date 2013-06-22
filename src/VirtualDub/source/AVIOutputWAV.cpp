@@ -141,13 +141,14 @@ bool AVIOutputWAV::init(VDFileHandle h, bool pipeMode) {
 	mpFileAsync = VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode());
 	mpFileAsync->Open(h, 2, mBufferSize >> 1);
 
+	mbPipeMode = pipeMode;
+	mbAutoWriteWAVE64 = false;
+
 	WriteHeader(true);
 
 	mBytesWritten = 0;
 
 	mbHeaderOpen = true;
-	mbPipeMode = pipeMode;
-	mbAutoWriteWAVE64 = false;
 
 	return true;
 }

@@ -508,7 +508,7 @@ protected:
 	void OnTabChanged(VDUIProxyTabControl *sender, int tabIndex);
 	void OnSelChanged(VDUIProxyListView *sender, int selIndex);
 	void OnDoubleClick(VDUIProxyListView *sender, int selIndex);
-	void OnLabelChanged(VDUIProxyListView *sender, const VDUIProxyListView::LabelEventData& eventData);
+	void OnLabelChanged(VDUIProxyListView *sender, VDUIProxyListView::LabelChangedEvent *eventData);
 
 	void UpdateButtonEnables();
 	void ResortList();
@@ -592,7 +592,7 @@ VDUIDialogConfigureExternalEncoders::VDUIDialogConfigureExternalEncoders()
 	mTabControl.OnSelectionChanged() += mDelegateTabChanged.Bind(this, &VDUIDialogConfigureExternalEncoders::OnTabChanged);
 	mListView.OnItemSelectionChanged() += mDelegateSelectionChanged.Bind(this, &VDUIDialogConfigureExternalEncoders::OnSelChanged);
 	mListView.OnItemDoubleClicked() += mDelegateDoubleClick.Bind(this, &VDUIDialogConfigureExternalEncoders::OnDoubleClick);
-	mListView.OnItemLabelChanged() += mDelegateLabelChanged(this, &VDUIDialogConfigureExternalEncoders::OnLabelChanged);
+	mListView.OnItemLabelChanged() += mDelegateLabelChanged.Bind(this, &VDUIDialogConfigureExternalEncoders::OnLabelChanged);
 }
 
 VDUIDialogConfigureExternalEncoders::~VDUIDialogConfigureExternalEncoders() {
@@ -1086,34 +1086,34 @@ void VDUIDialogConfigureExternalEncoders::OnDoubleClick(VDUIProxyListView *sende
 	OnCommand(IDC_EDIT, 0);
 }
 
-void VDUIDialogConfigureExternalEncoders::OnLabelChanged(VDUIProxyListView *sender, const VDUIProxyListView::LabelEventData& eventData) {
+void VDUIDialogConfigureExternalEncoders::OnLabelChanged(VDUIProxyListView *sender, VDUIProxyListView::LabelChangedEvent *eventData) {
 	if (mbSetMode) {
-		ListSetItem *lsi = static_cast<ListSetItem *>(mListView.GetVirtualItem(eventData.mIndex));
+		ListSetItem *lsi = static_cast<ListSetItem *>(mListView.GetVirtualItem(eventData->mIndex));
 
 		if (lsi) {
 			vdrefptr<VDExtEncSet> conflictingSet;
-			VDGetExternalEncoderSetByName(eventData.mpNewLabel, ~conflictingSet);
+			VDGetExternalEncoderSetByName(eventData->mpNewLabel, ~conflictingSet);
 
 			if (conflictingSet && conflictingSet != lsi->mpSet) {
 				VDStringW msg;
 
-				msg.sprintf(L"The name \"%ls\" is already in use by another set.", eventData.mpNewLabel);
+				msg.sprintf(L"The name \"%ls\" is already in use by another set.", eventData->mpNewLabel);
 				ShowError(msg.c_str(), g_szErrorW);
 				return;
 			}
 
-			lsi->mpSet->mName = eventData.mpNewLabel;
+			lsi->mpSet->mName = eventData->mpNewLabel;
 		}
 	} else {
-		ListProfileItem *lpi = static_cast<ListProfileItem *>(mListView.GetVirtualItem(eventData.mIndex));
+		ListProfileItem *lpi = static_cast<ListProfileItem *>(mListView.GetVirtualItem(eventData->mIndex));
 		if (lpi) {
 			vdrefptr<VDExtEncProfile> conflictingProfile;
-			VDGetExternalEncoderProfileByName(eventData.mpNewLabel, ~conflictingProfile);
+			VDGetExternalEncoderProfileByName(eventData->mpNewLabel, ~conflictingProfile);
 
 			if (conflictingProfile && conflictingProfile != lpi->mpProfile) {
 				VDStringW msg;
 
-				msg.sprintf(L"The name \"%ls\" is already in use by another profile.", eventData.mpNewLabel);
+				msg.sprintf(L"The name \"%ls\" is already in use by another profile.", eventData->mpNewLabel);
 				ShowError(msg.c_str(), g_szErrorW);
 				return;
 			}
@@ -1126,20 +1126,20 @@ void VDUIDialogConfigureExternalEncoders::OnLabelChanged(VDUIProxyListView *send
 					continue;
 
 				if (eset->mVideoEncoder == lpi->mpProfile->mName)
-					eset->mVideoEncoder = eventData.mpNewLabel;
+					eset->mVideoEncoder = eventData->mpNewLabel;
 
 				if (eset->mAudioEncoder == lpi->mpProfile->mName)
-					eset->mAudioEncoder = eventData.mpNewLabel;
+					eset->mAudioEncoder = eventData->mpNewLabel;
 
 				if (eset->mMultiplexer == lpi->mpProfile->mName)
-					eset->mMultiplexer = eventData.mpNewLabel;
+					eset->mMultiplexer = eventData->mpNewLabel;
 			}
 
-			lpi->mpProfile->mName = eventData.mpNewLabel;
+			lpi->mpProfile->mName = eventData->mpNewLabel;
 		}
 	}
 
-	mListView.RefreshItem(eventData.mIndex);
+	mListView.RefreshItem(eventData->mIndex);
 	mListView.AutoSizeColumns();
 
 	ResortList();

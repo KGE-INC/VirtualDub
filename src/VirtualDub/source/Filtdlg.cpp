@@ -17,12 +17,9 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-#include <commctrl.h>
-#include <commdlg.h>
-
 #include "VideoSource.h"
 #include <vd2/system/error.h>
+#include <vd2/system/linearalloc.h>
 #include <vd2/system/list.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/strutil.h>
@@ -31,12 +28,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/VDLib/Dialog.h>
 
-#include "plugins.h"
 #include "resource.h"
-#include "oshelper.h"
-#include "PositionControl.h"
-#include "ClippingControl.h"
-#include "gui.h"
 #include "FilterPreview.h"
 
 #include "filtdlg.h"
@@ -44,20 +36,12 @@
 #include "FilterInstance.h"
 #include "FilterFrameVideoSource.h"
 
-extern HINSTANCE g_hInst;
 extern const char g_szError[];
-extern VDXFilterFunctions g_VDFilterCallbacks;
-
-extern vdrefptr<IVDVideoSource> inputVideo;
-
-enum {
-	kFileDialog_LoadPlugin		= 'plug',
-};
 
 //////////////////////////////
 
-bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS);
-void FilterLoadFilter(HWND hWnd);
+FilterDefinitionInstance *VDUIShowDialogAddFilter(VDGUIHandle hParent);
+bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, VDFilterChainDesc *pFilterChainDesc, sint64 initialTimeUS);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -96,103 +80,57 @@ void VDDialogFilterOptions::OnDataExchange(bool write) {
 ///////////////////////////////////////////////////////////////////////////
 
 
-class VDDialogFilterListW32 : public VDDialogBaseW32 {
-public:
-	inline VDDialogFilterListW32() : VDDialogBaseW32(IDD_FILTER_LIST) {}
 
-	FilterDefinitionInstance *Activate(VDGUIHandle hParent);
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoFilterOutputNameDialog : public VDDialogFrameW32 {
+public:
+	VDVideoFilterOutputNameDialog();
+
+	void SetName(const char *name) { mName = name; }
+	const char *GetName() const { return mName.c_str(); }
 
 protected:
-	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
-	void ReinitDialog();
+	void OnDataExchange(bool write);
 
-	HWND						mhwndList;
-	FilterDefinitionInstance	*mpFilterDefInst;
-	std::list<FilterBlurb>		mFilterList;
+	VDStringA mName;
 };
 
-FilterDefinitionInstance *VDDialogFilterListW32::Activate(VDGUIHandle hParent) {
-	return ActivateDialog(hParent) ? mpFilterDefInst : NULL;
+VDVideoFilterOutputNameDialog::VDVideoFilterOutputNameDialog()
+	: VDDialogFrameW32(IDD_FILTER_OUTPUT_NAME)
+{
 }
 
-void VDDialogFilterListW32::ReinitDialog() {
-	static INT tabs[]={ 175 };
+void VDVideoFilterOutputNameDialog::OnDataExchange(bool write) {
+	if (write) {
+		VDStringW s;
+		
+		if (!GetControlText(IDC_NAME, s)) {
+			FailValidation(IDC_NAME);
+			return;
+		}
 
-	mhwndList = GetDlgItem(mhdlg, IDC_FILTER_LIST);
+		for(VDStringW::const_iterator it(s.begin()), itEnd(s.end());
+			it != itEnd;
+			++it)
+		{
+			const wchar_t c = *it;
 
-	mFilterList.clear();
-	FilterEnumerateFilters(mFilterList);
-
-	int index;
-
-	SendMessage(mhwndList, LB_SETTABSTOPS, 1, (LPARAM)tabs);
-	SendMessage(mhwndList, LB_RESETCONTENT, 0, 0);
-
-	for(std::list<FilterBlurb>::const_iterator it(mFilterList.begin()), itEnd(mFilterList.end()); it!=itEnd; ++it) {
-		const FilterBlurb& fb = *it;
-		char buf[256];
-
-		wsprintf(buf,"%s\t%s", fb.name.c_str(), fb.author.c_str());
-		index = SendMessage(mhwndList, LB_ADDSTRING, 0, (LPARAM)buf);
-		SendMessage(mhwndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)&fb);
-	}
-
-	SendMessage(mhdlg, WM_NEXTDLGCTL, (WPARAM)mhwndList, TRUE);
-}
-
-INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message)
-    {
-        case WM_INITDIALOG:
-			ReinitDialog();
-            return FALSE;
-
-        case WM_COMMAND:
-			switch(HIWORD(wParam)) {
-			case LBN_SELCANCEL:
-				SendMessage(GetDlgItem(mhdlg, IDC_FILTER_INFO), WM_SETTEXT, 0, (LPARAM)"");
-				break;
-			case LBN_SELCHANGE:
-				{
-					int index;
-
-					if (LB_ERR != (index = SendMessage((HWND)lParam, LB_GETCURSEL, 0, 0))) {
-						const FilterBlurb& fb = *(FilterBlurb *)SendMessage((HWND)lParam, LB_GETITEMDATA, (WPARAM)index, 0);
-
-						SendMessage(GetDlgItem(mhdlg, IDC_FILTER_INFO), WM_SETTEXT, 0, (LPARAM)fb.description.c_str());
-					}
-				}
-				break;
-			case LBN_DBLCLK:
-				SendMessage(mhdlg, WM_COMMAND, MAKELONG(IDOK, BN_CLICKED), (LPARAM)GetDlgItem(mhdlg, IDOK));
-				break;
-			default:
-				switch(LOWORD(wParam)) {
-				case IDOK:
-					{
-						int index;
-
-						if (LB_ERR != (index = SendMessage(mhwndList, LB_GETCURSEL, 0, 0))) {
-							const FilterBlurb& fb = *(FilterBlurb *)SendMessage(mhwndList, LB_GETITEMDATA, (WPARAM)index, 0);
-
-							mpFilterDefInst = fb.key;
-
-							End(true);
-						}
-					}
-					return TRUE;
-				case IDCANCEL:
-					End(false);
-					return TRUE;
-				case IDC_LOAD:
-					FilterLoadFilter(mhdlg);
-					ReinitDialog();
-					return TRUE;
-				}
+			if ((uint32)(c - L'0') >= 10 &&
+				(uint32)(c - L'A') >= 26 &&
+				(uint32)(c - L'a') >= 26 &&
+				c != L'_')
+			{
+				ShowError(L"Names can only contain alphanumeric characters and underlines (_).", L"Naming error");
+				FailValidation(IDC_NAME);
+				return;
 			}
-            break;
-    }
-    return FALSE;
+		}
+
+		mName = VDTextWToA(s);
+	} else {
+		SetControlText(IDC_NAME, VDTextAToW(mName).c_str());
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -201,7 +139,7 @@ INT_PTR VDDialogFilterListW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoFiltersDialog : public VDDialogBaseW32 {
+class VDVideoFiltersDialog : public VDDialogFrameW32 {
 public:
 	VDVideoFiltersDialog();
 	
@@ -211,14 +149,22 @@ public:
 	VDVideoFiltersDialogResult GetResult() const { return mResult; }
 
 protected:
-	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
+	bool OnLoaded();
+	void OnDestroy();
+	bool OnOK();
+	bool OnCancel();
+	void OnSize();
+	bool OnErase(VDZHDC hdc);
+	bool OnCommand(uint32 id, uint32 extcode);
+	void OnContextMenu(uint32 id, int x, int y);
 
-	void OnInit();
-	void OnLVGetDispInfo(NMLVDISPINFO& dispInfo);
-	void OnLVItemChanged(const NMLISTVIEW& nmlv);
+	void OnItemCheckedChanged(VDUIProxyListView *sender, int item);
+	void OnItemCheckedChanging(VDUIProxyListView *sender, VDUIProxyListView::CheckedChangingEvent *event);
+	void OnItemDoubleClicked(VDUIProxyListView *sender, int item);
+	void OnItemSelectionChanged(VDUIProxyListView *sender, int item);
 
-	void MakeFilterList(List& list);
-	void EnableConfigureBox(HWND hdlg, int index = -1);
+	void MakeFilterChainDesc(VDFilterChainDesc& desc);
+	void EnableConfigureBox(int index = -1);
 	void RedoFilters();
 	void RelayoutFilterList();
 
@@ -239,18 +185,49 @@ protected:
 
 	int			mFilterEnablesUpdateLock;
 
-	HWND		mhwndList;
+	HMENU		mhContextMenus;
 
-	VDStringA	mTempStr;
-
-	typedef vdfastvector<FilterInstance *> Filters; 
-	Filters	mFilters;
-
+	VDUIProxyListView mListView;
 	VDVideoFiltersDialogResult mResult;
+
+	VDDelegate mDelItemCheckedChanging;
+	VDDelegate mDelItemCheckedChanged;
+	VDDelegate mDelItemDoubleClicked;
+	VDDelegate mDelItemSelectionChanged;
+
+	VDDialogResizerW32 mResizer;
+
+	class FilterListItemBase : public vdrefcounted<IVDUIListViewVirtualItem>, public IVDUnknown {
+	};
+
+	class FilterListItem : public FilterListItemBase {
+	public:
+		enum { kTypeID = 'fli ' };
+
+		FilterListItem(VDVideoFiltersDialog *parent, VDFilterChainEntry *ent) : mpParent(parent), mpEntry(ent) {}
+
+		void *AsInterface(uint32 id);
+
+		void GetText(int subItem, VDStringW& s) const;
+
+		VDVideoFiltersDialog *mpParent;
+		vdrefptr<VDFilterChainEntry> mpEntry;
+	};
+
+	class FilterInputListItem : public FilterListItemBase {
+	public:
+		enum { kTypeID = 'fili' };
+
+		void *AsInterface(uint32 id);
+
+		void GetText(int subItem, VDStringW& s) const;
+
+		VDStringA mName;
+	};
 };
 
 VDVideoFiltersDialog::VDVideoFiltersDialog()
-	: VDDialogBaseW32(IDD_FILTERS)
+	: VDDialogFrameW32(IDD_FILTERS)
 	, mInputWidth(320)
 	, mInputHeight(240)
 	, mInputFormat(nsVDPixmap::kPixFormat_XRGB8888)
@@ -263,10 +240,16 @@ VDVideoFiltersDialog::VDVideoFiltersDialog()
 	, mbShowAspectRatios(false)
 	, mbShowFrameRates(false)
 	, mFilterEnablesUpdateLock(0)
+	, mhContextMenus(NULL)
 {
 	mResult.mbDialogAccepted = false;
 	mResult.mbChangeDetected = false;
 	mResult.mbRescaleRequested = false;
+
+	mListView.OnItemCheckedChanged() += mDelItemCheckedChanged.Bind(this, &VDVideoFiltersDialog::OnItemCheckedChanged);
+	mListView.OnItemCheckedChanging() += mDelItemCheckedChanging.Bind(this, &VDVideoFiltersDialog::OnItemCheckedChanging);
+	mListView.OnItemDoubleClicked() += mDelItemDoubleClicked.Bind(this, &VDVideoFiltersDialog::OnItemDoubleClicked);
+	mListView.OnItemSelectionChanged() += mDelItemSelectionChanged.Bind(this, &VDVideoFiltersDialog::OnItemSelectionChanged);
 }
 
 void VDVideoFiltersDialog::Init(IVDVideoSource *pVS, VDPosition initialTime) {
@@ -293,189 +276,287 @@ void VDVideoFiltersDialog::Init(int w, int h, int format, const VDFraction& rate
 	mInitialTimeUS	= initialTime;
 }
 
-INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg)
-    {
-        case WM_INITDIALOG:
-			OnInit();
-            return FALSE;
+bool VDVideoFiltersDialog::OnLoaded() {
+	VDSetDialogDefaultIcons(mhdlg);
 
-		case WM_NOTIFY:
-			{
-				const NMHDR& hdr = *(const NMHDR *)lParam;
-				switch(hdr.idFrom) {
-				case IDC_FILTER_LIST:
-					switch(hdr.code) {
-					case LVN_ITEMCHANGED:
-						OnLVItemChanged(*(NMLISTVIEW *)lParam);
-						EnableConfigureBox(mhdlg);
-						return TRUE;
-					case LVN_GETDISPINFO:
-						OnLVGetDispInfo(*(NMLVDISPINFO *)lParam);
-						return TRUE;
-					case NM_DBLCLK:
-						SendMessage(mhdlg, WM_COMMAND, MAKELONG(IDC_CONFIGURE, BN_CLICKED), (LPARAM)GetDlgItem(mhdlg, IDC_CONFIGURE));
-						break;
+	mResizer.Init(mhdlg);
+	mResizer.Add(IDC_FILTER_LIST, VDDialogResizerW32::kMC | VDDialogResizerW32::kAvoidFlicker);
+	mResizer.Add(IDOK, VDDialogResizerW32::kTR);
+	mResizer.Add(IDCANCEL, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_ADD, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_DELETE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_MOVEUP, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_MOVEDOWN, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_CLIPPING, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_CONFIGURE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_BLENDING, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_OPTIONS, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_SHOWIMAGEFORMATS, VDDialogResizerW32::kBL);
+	mResizer.Add(IDC_SHOWFRAMERATES, VDDialogResizerW32::kBL);
+	mResizer.Add(IDC_SHOWASPECTRATIOS, VDDialogResizerW32::kBL);
+
+	AddProxy(&mListView, IDC_FILTER_LIST);
+
+	{
+		VDRegistryAppKey key("Dialogs\\Filters");
+		mbShowFormats = key.getBool("Show formats", mbShowFormats);
+		mbShowAspectRatios = key.getBool("Show aspect ratios", mbShowAspectRatios);
+		mbShowFrameRates = key.getBool("Show frame rates", mbShowFrameRates);
+	}
+
+	CheckButton(IDC_SHOWIMAGEFORMATS, mbShowFormats);
+	CheckButton(IDC_SHOWASPECTRATIOS, mbShowAspectRatios);
+	CheckButton(IDC_SHOWFRAMERATES, mbShowFrameRates);
+
+	mFilterEnablesUpdateLock = 0;
+
+	mListView.SetFullRowSelectEnabled(true);
+	mListView.SetItemCheckboxesEnabled(true);
+
+	mListView.InsertColumn(0, L"", 25);
+	mListView.InsertColumn(1, L"Input", 50);
+	mListView.InsertColumn(2, L"Output", 50);
+	mListView.InsertColumn(3, L"Filter", 200);
+
+	const VDFilterChainDesc& desc = g_filterChain;
+
+	for(VDFilterChainDesc::Entries::const_iterator it(desc.mEntries.begin()), itEnd(desc.mEntries.end());
+		it != itEnd;
+		++it)
+	{
+		const VDFilterChainEntry *src = *it;
+		vdrefptr<VDFilterChainEntry> ent(new VDFilterChainEntry);
+
+		if (src->mpInstance)
+			ent->mpInstance = src->mpInstance->Clone();
+
+		ent->mOutputName = src->mOutputName;
+
+		int index = mListView.InsertVirtualItem(-1, new FilterListItem(this, ent));
+		if (index >= 0)
+			mListView.SetItemChecked(index, !ent->mpInstance || ent->mpInstance->IsEnabled());
+
+		for(vdvector<VDStringA>::const_iterator itInput(src->mSources.begin()), itInputEnd(src->mSources.end());
+			itInput != itInputEnd;
+			++itInput)
+		{
+			const VDStringA& srcName = *itInput;
+
+			vdrefptr<FilterInputListItem> fii(new FilterInputListItem);
+
+			fii->mName = srcName;
+			int index2 = mListView.InsertVirtualItem(-1, fii);
+			if (index2 >= 0)
+				mListView.SetItemCheckedVisible(index2, false);
+		}
+	}
+
+	RedoFilters();
+
+	mhContextMenus = LoadMenu(NULL, MAKEINTRESOURCE(IDR_FILTER_LIST_CONTEXT));
+
+	mOldFrameRate	= filters.GetOutputFrameRate();
+	mOldFrameCount	= filters.GetOutputFrameCount();
+
+	SetFocusToControl(IDC_FILTER_LIST);
+
+	return true;
+}
+
+void VDVideoFiltersDialog::OnDestroy() {
+	if (mhContextMenus) {
+		DestroyMenu(mhContextMenus);
+		mhContextMenus = NULL;
+	}
+}
+
+bool VDVideoFiltersDialog::OnOK() {
+	// We must force filters to stop before we muck with the global list... in case
+	// the pane refresh restarted them.
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
+	MakeFilterChainDesc(g_filterChain);
+
+	mResult.mOldFrameRate		= mOldFrameRate;
+	mResult.mOldFrameCount		= mOldFrameCount;
+	mResult.mNewFrameRate		= filters.GetOutputFrameRate();
+	mResult.mNewFrameCount		= filters.GetOutputFrameCount();
+
+	mResult.mbRescaleRequested = false;
+	mResult.mbChangeDetected = false;
+
+	if (mResult.mOldFrameRate != mResult.mNewFrameRate || mResult.mOldFrameCount != mResult.mNewFrameCount) {
+		mResult.mbChangeDetected = true;
+		mResult.mbRescaleRequested = true;
+	}
+
+	mResult.mbDialogAccepted = true;
+	End(true);
+	return true;
+}
+
+bool VDVideoFiltersDialog::OnCancel() {
+	// We must force filters to stop before we muck with the global list... in case
+	// the pane refresh restarted them.
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
+	mResult.mbDialogAccepted = true;
+	End(false);
+	return true;
+}
+
+void VDVideoFiltersDialog::OnSize() {
+	mResizer.Relayout();
+}
+
+bool VDVideoFiltersDialog::OnErase(VDZHDC hdc) {
+	mResizer.Erase(hdc);
+	return true;
+}
+
+bool VDVideoFiltersDialog::OnCommand(uint32 id, uint32 extcode) {
+	switch(id) {
+		case IDC_ADD:
+			if (FilterDefinitionInstance *fdi = VDUIShowDialogAddFilter((VDGUIHandle)mhdlg)) {
+				try {
+					vdrefptr<VDFilterChainEntry> ent(new VDFilterChainEntry);
+					vdrefptr<FilterInstance> fa(new FilterInstance(fdi));
+
+					// Note that this call would end up disabling the filter instance if
+					// we didn't have an update lock around it.
+					fa->SetEnabled(true);
+
+					ent->mpInstance = fa;
+
+					++mFilterEnablesUpdateLock;
+					const int index = mListView.InsertVirtualItem(mListView.GetItemCount(), new FilterListItem(this, ent));
+					if (index >= 0)
+						mListView.SetItemChecked(index, true);
+					--mFilterEnablesUpdateLock;
+
+					RedoFilters();
+
+					if (fa->IsConfigurable()) {
+						VDFilterChainDesc desc;
+						bool fRemove;
+
+						if (mpVS)
+							MakeFilterChainDesc(desc);
+
+						vdrefptr<IVDVideoFilterPreviewDialog> fp;
+						if (VDCreateVideoFilterPreviewDialog(mpVS ? &desc : NULL, fa, ~fp)) {
+							if (mInitialTimeUS >= 0)
+								fp->SetInitialTime(mInitialTimeUS);
+
+							fRemove = !fa->Configure((VDXHWND)mhdlg, fp->AsIVDXFilterPreview2());
+						}
+
+						fp = NULL;
+
+						if (fRemove) {
+							mListView.DeleteItem(index);
+							break;
+						}
 					}
-					break;
+
+					RedoFilters();
+
+					mListView.SetSelectedIndex(index);
+
+					EnableConfigureBox(index);
+				} catch(const MyError& e) {
+					e.post(mhdlg, g_szError);
 				}
 			}
-			break;
+			return true;
 
-        case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDC_ADD:
-				if (FilterDefinitionInstance *fdi = VDDialogFilterListW32().Activate((VDGUIHandle)mhdlg)) {
-					try {
-						FilterInstance *fa = new FilterInstance(fdi);
-						fa->AddRef();
+		case IDC_DELETE:
+			{
+				int index = mListView.GetSelectedIndex();
+				FilterListItemBase *flib = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index));
+				FilterListItem *fli = vdpoly_cast<FilterListItem *>(flib);
 
-						mFilters.push_back(fa);
+				if (flib) {
+					mListView.DeleteItem(index);
 
-						LVITEM item;
-						item.iItem		= mFilters.size();
-						item.iSubItem	= 0;
-						item.mask		= LVIF_TEXT;
-						item.pszText	= LPSTR_TEXTCALLBACK;
+					if (fli) {
+						while(vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index))))
+							mListView.DeleteItem(index);
+					}
 
-						// Note that this call would end up disabling the filter instance if
-						// we didn't have an update lock around it.
-						++mFilterEnablesUpdateLock;
-						int index = ListView_InsertItem(mhwndList, &item);
-						--mFilterEnablesUpdateLock;
+					mListView.SetSelectedIndex(index);
 
-						item.iItem		= index;
-						item.iSubItem	= 1;
-						item.mask		= LVIF_TEXT;
-						ListView_SetItem(mhwndList, &item);
+					RedoFilters();
+				}
+			}
+			return true;
 
-						item.iSubItem	= 2;
-						ListView_SetItem(mhwndList, &item);
+		case IDC_CONFIGURE:
+			{
+				int index = mListView.GetSelectedIndex();
+				FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index))); 
 
-						item.iSubItem	= 3;
-						ListView_SetItem(mhwndList, &item);
+				if (fli) {
+					FilterInstance *fa = fli->mpEntry->mpInstance;
 
-						ListView_SetCheckState(mhwndList, index, TRUE);
-						fa->SetEnabled(true);
+					if (fa && fa->IsConfigurable()) {
+						VDFilterChainDesc desc;
 
 						RedoFilters();
 
-						if (fa->IsConfigurable()) {
-							List list;
-							bool fRemove;
+						if (mpVS)
+							MakeFilterChainDesc(desc);
 
-							MakeFilterList(list);
+						vdrefptr<IVDVideoFilterPreviewDialog> fp;
+						if (VDCreateVideoFilterPreviewDialog(mpVS ? &desc : NULL, fa, ~fp)) {
+							if (mInitialTimeUS >= 0)
+								fp->SetInitialTime(mInitialTimeUS);
 
-							vdrefptr<IVDVideoFilterPreviewDialog> fp;
-							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
-								if (mInitialTimeUS >= 0)
-									fp->SetInitialTime(mInitialTimeUS);
-
-								fRemove = !fa->Configure((VDXHWND)mhdlg, fp->AsIVDXFilterPreview2());
-							}
-
-							fp = NULL;
-
-							if (fRemove) {
-								mFilters.pop_back();
-								fa->Release();
-								ListView_DeleteItem(mhwndList, index);
-								break;
-							}
+							fa->Configure((VDXHWND)mhdlg, fp->AsIVDXFilterPreview2());
 						}
 
-						RedoFilters();
-
-						ListView_SetItemState(mhwndList, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-
-						EnableConfigureBox(mhdlg, index);
-					} catch(const MyError& e) {
-						e.post(mhdlg, g_szError);
-					}
-				}
-				break;
-
-			case IDC_DELETE:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
-
-					if ((unsigned)index < mFilters.size()) {
-						FilterInstance *fa = mFilters[index];
-						mFilters.erase(mFilters.begin() + index);
-
-						fa->Release();
-						
-						// We need to disable check updates around the delete to avoid getting the filter
-						// enables scrambled.
-						++mFilterEnablesUpdateLock;
-						ListView_DeleteItem(mhwndList, index);
-						--mFilterEnablesUpdateLock;
-
-						if ((unsigned)index < mFilters.size())
-							ListView_SetItemState(mhwndList, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+						fp = NULL;
 
 						RedoFilters();
 					}
 				}
-				break;
+			}
+			return true;
 
-			case IDC_CONFIGURE:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+		case IDC_CLIPPING:
+			{
+				int index = mListView.GetSelectedIndex();
+				FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index)));
 
-					if ((unsigned)index < mFilters.size()) {
-						FilterInstance *fa = mFilters[index];
+				if (fli) {
+					FilterInstance *fa = fli->mpEntry->mpInstance;
 
-						if (fa->IsConfigurable()) {
-							List list;
+					if (fa && fa->IsEnabled()) {
+						filters.DeinitFilters();
+						filters.DeallocateBuffers();
 
-							RedoFilters();
-							MakeFilterList(list);
+						VDFilterChainDesc desc;
+						MakeFilterChainDesc(desc);
 
-							vdrefptr<IVDVideoFilterPreviewDialog> fp;
-							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
-								if (mInitialTimeUS >= 0)
-									fp->SetInitialTime(mInitialTimeUS);
+						VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &desc, mInitialTimeUS);
 
-								fa->Configure((VDXHWND)mhdlg, fp->AsIVDXFilterPreview2());
-							}
-
-							fp = NULL;
-
-							RedoFilters();
-						}
+						RedoFilters();
 					}
 				}
-				break;
+			}
+			return true;
 
-			case IDC_CLIPPING:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+		case IDC_BLENDING:
+			{
+				int index = mListView.GetSelectedIndex();
+				FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index)));
 
-					if ((unsigned)index < mFilters.size()) {
-						FilterInstance *fa = mFilters[index];
+				if (fli) {
+					FilterInstance *fa = fli->mpEntry->mpInstance;
 
-						if (fa->IsEnabled()) {
-							filters.DeinitFilters();
-							filters.DeallocateBuffers();
-
-							List filterList;
-							MakeFilterList(filterList);
-
-							VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList, mInitialTimeUS);
-							RedoFilters();
-						}
-					}
-				}
-				break;
-
-			case IDC_BLENDING:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
-
-					if ((unsigned)index < mFilters.size()) {
-						FilterInstance *fa = mFilters[index];
-
+					if (fa) {
 						if (fa->GetAlphaParameterCurve()) {
 							fa->SetAlphaParameterCurve(NULL);
 						} else {
@@ -489,461 +570,617 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 						RedoFilters();
 					}
 				}
-				break;
+			}
+			return true;
 
-			case IDC_OPTIONS:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+		case IDC_OPTIONS:
+			{
+				int index = mListView.GetSelectedIndex();
+				FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index)));
 
-					if ((unsigned)index < mFilters.size()) {
-						FilterInstance *fa = mFilters[index];
+				if (fli) {
+					FilterInstance *fa = fli->mpEntry->mpInstance;
 
+					if (fa) {
 						VDDialogFilterOptions optdlg(fa);
 						optdlg.ShowDialog((VDGUIHandle)mhdlg);
 
 						RedoFilters();
 					}
 				}
-				break;
+			}
+			return true;
 
-			case IDC_MOVEUP:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+		case IDC_MOVEUP:
+			{
+				int index = mListView.GetSelectedIndex();
 
-					if (index > 0 && (unsigned)index < mFilters.size()) {
-						std::swap(mFilters[index - 1], mFilters[index]);
+				if (index > 0) {
+					FilterListItemBase *flib = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index));
+					FilterListItem *fli = vdpoly_cast<FilterListItem *>(flib);
+					FilterInputListItem *fii = vdpoly_cast<FilterInputListItem *>(flib);
 
-						for(int i=-1; i<=0; ++i)
-							ListView_SetCheckState(mhwndList, index + i, mFilters[index + i]->IsEnabled());
+					if (fli) {
+						int prevIndex = index;
+
+						while(prevIndex > 0) {
+							--prevIndex;
+							
+							if (!vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(prevIndex))))
+								break;
+						}
+
+						int nextIndex = index;
+						do {
+							++nextIndex;
+						} while(vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(nextIndex))));
+
+						int distance2 = nextIndex - index;
+
+						for(int i = 0; i < distance2; ++i) {
+							FilterListItemBase *flib2 = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index + i));
+							FilterListItem *fli2 = vdpoly_cast<FilterListItem *>(flib2);
+							FilterInputListItem *fii2 = vdpoly_cast<FilterInputListItem *>(flib2);
+
+							int newIdx = mListView.InsertVirtualItem(prevIndex + i, flib2);
+							if (newIdx >= 0) {
+								if (fli2) {
+									FilterInstance *fi = fli2->mpEntry->mpInstance;
+									mListView.SetItemChecked(newIdx, fi && fi->IsEnabled());
+								} else if (fii2) {
+									mListView.SetItemCheckedVisible(newIdx, false);
+								}
+							}
+
+							mListView.DeleteItem(index + i + 1);
+						}
 
 						RedoFilters();
 
-						ListView_SetItemState(mhwndList, index - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+						mListView.SetSelectedIndex(prevIndex);
+						mListView.EnsureItemVisible(prevIndex);
+					} else if (fii) {
+						FilterInputListItem *fiip = vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index - 1)));
+
+						if (fiip) {
+							int newIdx = mListView.InsertVirtualItem(index - 1, fii);
+							if (newIdx >= 0)
+								mListView.SetItemCheckedVisible(newIdx, false);
+
+							mListView.DeleteItem(index + 1);
+
+							RedoFilters();
+
+							mListView.SetSelectedIndex(index - 1);
+							mListView.EnsureItemVisible(index - 1);
+						}
 					}
 				}
-				break;
-
-			case IDC_MOVEDOWN:
-				{
-					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
-					int count = mFilters.size();
-
-					if (index >= 0 && index < count - 1) {
-						std::swap(mFilters[index], mFilters[index + 1]);
-
-						for(int i=0; i<=1; ++i)
-							ListView_SetCheckState(mhwndList, index + i, mFilters[index + i]->IsEnabled());
-
-						RedoFilters();
-
-						ListView_SetItemState(mhwndList, index + 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-					}
-				}
-				break;
-
-			case IDOK:
-				// We must force filters to stop before we muck with the global list... in case
-				// the pane refresh restarted them.
-				filters.DeinitFilters();
-				filters.DeallocateBuffers();
-
-				while(!g_listFA.IsEmpty()) {
-					FilterInstance *fi = static_cast<FilterInstance *>(g_listFA.RemoveTail());
-
-					fi->Release();
-				}
-
-				MakeFilterList(g_listFA);
-
-				mFilters.clear();
-
-				mResult.mOldFrameRate		= mOldFrameRate;
-				mResult.mOldFrameCount		= mOldFrameCount;
-				mResult.mNewFrameRate		= filters.GetOutputFrameRate();
-				mResult.mNewFrameCount		= filters.GetOutputFrameCount();
-
-				mResult.mbRescaleRequested = false;
-				mResult.mbChangeDetected = false;
-
-				if (mResult.mOldFrameRate != mResult.mNewFrameRate || mResult.mOldFrameCount != mResult.mNewFrameCount) {
-					mResult.mbChangeDetected = true;
-					mResult.mbRescaleRequested = true;
-				}
-
-				mResult.mbDialogAccepted = true;
-				End(true);
-				return TRUE;
-			case IDCANCEL:
-				// We must force filters to stop before we muck with the global list... in case
-				// the pane refresh restarted them.
-				filters.DeinitFilters();
-				filters.DeallocateBuffers();
-
-				while(!mFilters.empty()) {
-					FilterInstance *fi = mFilters.back();
-					mFilters.pop_back();
-
-					fi->Release();
-				}
-
-				mResult.mbDialogAccepted = true;
-				End(false);
-				return TRUE;
-
-			case IDC_SHOWIMAGEFORMATS:
-				{
-					bool selected = 0 != IsDlgButtonChecked(mhdlg, IDC_SHOWIMAGEFORMATS);
-
-					if (mbShowFormats != selected) {
-						mbShowFormats = selected;
-
-						VDRegistryAppKey key("Dialogs\\Filters");
-						key.setBool("Show formats", mbShowFormats);
-
-						RelayoutFilterList();
-					}
-				}
-				return TRUE;
-
-			case IDC_SHOWASPECTRATIOS:
-				{
-					bool selected = 0 != IsDlgButtonChecked(mhdlg, IDC_SHOWASPECTRATIOS);
-
-					if (mbShowAspectRatios != selected) {
-						mbShowAspectRatios = selected;
-
-						VDRegistryAppKey key("Dialogs\\Filters");
-						key.setBool("Show aspect ratios", mbShowAspectRatios);
-
-						RelayoutFilterList();
-					}
-				}
-				return TRUE;
-
-			case IDC_SHOWFRAMERATES:
-				{
-					bool selected = 0 != IsDlgButtonChecked(mhdlg, IDC_SHOWFRAMERATES);
-
-					if (mbShowFrameRates != selected) {
-						mbShowFrameRates = selected;
-
-						VDRegistryAppKey key("Dialogs\\Filters");
-						key.setBool("Show frame rates", mbShowFrameRates);
-
-						RelayoutFilterList();
-					}
-				}
-				return TRUE;
 			}
-            break;
-    }
-    return FALSE;
-}
+			return true;
 
-void VDVideoFiltersDialog::OnInit() {
-	{
-		VDRegistryAppKey key("Dialogs\\Filters");
-		mbShowFormats = key.getBool("Show formats", mbShowFormats);
-		mbShowAspectRatios = key.getBool("Show aspect ratios", mbShowAspectRatios);
-		mbShowFrameRates = key.getBool("Show frame rates", mbShowFrameRates);
-	}
+		case IDC_MOVEDOWN:
+			{
+				int index = mListView.GetSelectedIndex();
+				int count = mListView.GetItemCount();
 
-	CheckDlgButton(mhdlg, IDC_SHOWIMAGEFORMATS, mbShowFormats ? BST_CHECKED : BST_UNCHECKED);
-	CheckDlgButton(mhdlg, IDC_SHOWASPECTRATIOS, mbShowAspectRatios ? BST_CHECKED : BST_UNCHECKED);
-	CheckDlgButton(mhdlg, IDC_SHOWFRAMERATES, mbShowFrameRates ? BST_CHECKED : BST_UNCHECKED);
+				if (index >= 0 && index < count - 1) {
+					FilterListItemBase *flib = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index));
+					FilterListItem *fli = vdpoly_cast<FilterListItem *>(flib);
+					FilterInputListItem *fii = vdpoly_cast<FilterInputListItem *>(flib);
 
-	mhwndList = GetDlgItem(mhdlg, IDC_FILTER_LIST);
-	mFilterEnablesUpdateLock = 0;
+					if (fli) {
+						int nextIndex = index;
 
-	ListView_SetExtendedListViewStyle(mhwndList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+						do {
+							++nextIndex;
+						} while(vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(nextIndex))));
 
-	LVCOLUMN col;
+						if (nextIndex < count) {
+							int nextIndex2 = nextIndex;
+							do {
+								++nextIndex2;
+							} while(vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(nextIndex2))));
 
-	col.mask	= LVCF_TEXT | LVCF_WIDTH;
-	col.cx		= 25;
-	col.pszText	= "";
-	ListView_InsertColumn(mhwndList, 0, &col);
+							int distance2 = nextIndex2 - nextIndex;
 
-	col.cx		= 50;
-	col.pszText	= "Input";
-	ListView_InsertColumn(mhwndList, 1, &col);
+							for(int i=0; i<distance2; ++i) {
+								FilterListItemBase *flib2 = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(nextIndex + i));
+								FilterListItem *fli2 = vdpoly_cast<FilterListItem *>(flib2);
+								FilterInputListItem *fii2 = vdpoly_cast<FilterInputListItem *>(flib2);
 
-	col.cx		= 50;
-	col.pszText	= "Output";
-	ListView_InsertColumn(mhwndList, 2, &col);
+								int newIdx = mListView.InsertVirtualItem(index + i, flib2);
+								if (newIdx >= 0) {
+									if (fli2) {
+										FilterInstance *fi = fli2->mpEntry->mpInstance;
+										mListView.SetItemChecked(newIdx, fi && fi->IsEnabled());
+									} else if (fii2) {
+										mListView.SetItemCheckedVisible(newIdx, false);
+									}
+								}
 
-	col.cx		= 200;
-	col.pszText	= "Filter";
-	ListView_InsertColumn(mhwndList, 3, &col);
+								mListView.DeleteItem(nextIndex + i + 1);
+							}
 
-	FilterInstance *fa_list, *fa;
+							RedoFilters();
 
-	fa_list = (FilterInstance *)g_listFA.tail.next;
-
-	while(fa_list->next) {
-		try {
-			fa = fa_list->Clone();
-			fa->AddRef();
-
-			mFilters.push_back(fa);
-
-			LVITEM item;
-			item.iItem		= mFilters.size();
-			item.iSubItem	= 0;
-			item.mask		= LVIF_TEXT | LVIF_STATE;
-			item.state		= INDEXTOSTATEIMAGEMASK(1);
-			item.pszText	= LPSTR_TEXTCALLBACK;
-			int index = ListView_InsertItem(mhwndList, &item);
-
-			ListView_SetCheckState(mhwndList, index, fa->IsEnabled());
-
-			item.iSubItem	= 1;
-			item.mask		= LVIF_TEXT;
-			item.pszText	= LPSTR_TEXTCALLBACK;
-			ListView_SetItem(mhwndList, &item);
-
-			item.iSubItem	= 2;
-			item.pszText	= LPSTR_TEXTCALLBACK;
-			ListView_SetItem(mhwndList, &item);
-
-			item.iSubItem	= 3;
-			item.pszText	= LPSTR_TEXTCALLBACK;
-			ListView_SetItem(mhwndList, &item);
-
-		} catch(const MyError&) {
-			// bleah!  should really do something...
-		}
-
-		fa_list = (FilterInstance *)fa_list->next;
-	}
-
-	RedoFilters();
-
-	mOldFrameRate	= filters.GetOutputFrameRate();
-	mOldFrameCount	= filters.GetOutputFrameCount();
-
-	SetFocus(mhwndList);
-}
-
-void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
-	LVITEM& item = dispInfo.item;
-
-	if (item.mask & LVIF_TEXT) {
-		if ((unsigned)item.iItem < mFilters.size()) {
-			const FilterInstance *fi = mFilters[item.iItem];
-
-			switch(item.iSubItem) {
-			case 0:
-				if (!fi->IsEnabled())
-					item.pszText[0] = 0;
-				else
-					_snprintf(item.pszText, item.cchTextMax, "%s%s%s%s"
-								,fi->GetAlphaParameterCurve() ? "[B] " : ""
-								,fi->IsConversionRequired() ? "[C] " : fi->IsAlignmentRequired() ? "[A]" : ""
-								,fi->IsAccelerated() ? "[3D]" : ""
-								,fi->IsForceSingleFBEnabled() ? "[F]" : ""
-						);
-				break;
-			case 1:
-			case 2:
-				{
-					const VFBitmapInternal& fbm = (item.iSubItem == 2 ? fi->mRealDst : fi->mRealSrc);
-					const VDPixmapLayout& layout = fbm.mPixmapLayout;
-
-					if (!fi->IsEnabled()) {
-						vdstrlcpy(item.pszText, "-", item.cchTextMax);
-					} else {
-						mTempStr.sprintf("%ux%u", layout.w, layout.h);
-
-						if (mbShowFormats) {
-							const char *const kFormatNames[]={
-								"?",
-								"P1",
-								"P2",
-								"P4",
-								"P8",
-								"RGB15",
-								"RGB16",
-								"RGB24",
-								"RGB32",
-								"Y8",
-								"UYVY",
-								"YUYV",
-								"YUV",
-								"YUV444",
-								"YUV422",
-								"YUV420",
-								"YUV411",
-								"YUV410",
-								"YUV422C",
-								"YUV420C",
-								"YUV422-16F",
-								"V210",
-								"UYVY-709",
-								"NV12",
-								"I8",
-								"YUYV-709",
-								"YUV444-709",
-								"YUV422-709",
-								"YUV420-709",
-								"YUV411-709",
-								"YUV410-709",
-								"UYVY-FR",
-								"YUYV-FR",
-								"YUV444-FR",
-								"YUV422-FR",
-								"YUV420-FR",
-								"YUV411-FR",
-								"YUV410-FR",
-								"UYVY-709-FR",
-								"YUYV-709-FR",
-								"YUV444-709-FR",
-								"YUV422-709-FR",
-								"YUV420-709-FR",
-								"YUV411-709-FR",
-								"YUV410-709-FR",
-								"YUV420i",
-								"YUV420i-FR",
-								"YUV420i-709",
-								"YUV420i-709-FR",
-								"YUV420it",
-								"YUV420it-FR",
-								"YUV420it-709",
-								"YUV420it-709-FR",
-								"YUV420ib",
-								"YUV420ib-FR",
-								"YUV420ib-709",
-								"YUV420ib-709-FR",
-							};
-
-							VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
-
-							if (layout.format == nsVDXPixmap::kPixFormat_VDXA_RGB)
-								mTempStr += " (RGB)";
-							else if (layout.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
-								mTempStr += " (YUV)";
-							else
-								mTempStr.append_sprintf(" (%s)", kFormatNames[layout.format]);
+							mListView.SetSelectedIndex(index + distance2);
+							mListView.EnsureItemVisible(index + distance2);
 						}
+					} else if (fii) {
+						FilterInputListItem *fiip = vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(index + 1)));
 
-						if (mbShowAspectRatios && item.iSubItem == 2) {
-							if (fbm.mAspectRatioLo) {
-								VDFraction reduced = VDFraction(fbm.mAspectRatioHi, fbm.mAspectRatioLo).reduce();
+						if (fiip) {
+							int newIdx = mListView.InsertVirtualItem(index + 2, fii);
+							if (newIdx >= 0)
+								mListView.SetItemCheckedVisible(newIdx, false);
 
-								if (reduced.getLo() < 1000)
-									mTempStr.append_sprintf(" (%u:%u)", reduced.getHi(), reduced.getLo());
-								else
-									mTempStr.append_sprintf(" (%.4g)", reduced.asDouble());
-							} else
-								mTempStr += " (?)";
+							mListView.DeleteItem(index);
+
+							RedoFilters();
+
+							mListView.SetSelectedIndex(index + 1);
+							mListView.EnsureItemVisible(index + 1);
 						}
-
-						if (mbShowFrameRates && item.iSubItem == 2) {
-							mTempStr.append_sprintf(" (%.3g fps)", (double)fbm.mFrameRateHi / (double)fbm.mFrameRateLo);
-						}
-
-						vdstrlcpy(item.pszText, mTempStr.c_str(), item.cchTextMax);
 					}
 				}
-				break;
-			case 3:
-				{
-					VDStringA blurb;
-					VDStringA settings;
+			}
+			return true;
 
-					blurb = fi->GetName();
+		case IDC_SHOWIMAGEFORMATS:
+			{
+				bool selected = IsButtonChecked(IDC_SHOWIMAGEFORMATS);
 
-					if (fi->GetSettingsString(settings))
-						blurb += settings;
+				if (mbShowFormats != selected) {
+					mbShowFormats = selected;
 
-					vdstrlcpy(item.pszText, blurb.c_str(), item.cchTextMax);
+					VDRegistryAppKey key("Dialogs\\Filters");
+					key.setBool("Show formats", mbShowFormats);
+
+					RelayoutFilterList();
 				}
-				break;
+			}
+			return true;
+
+		case IDC_SHOWASPECTRATIOS:
+			{
+				bool selected = IsButtonChecked(IDC_SHOWASPECTRATIOS);
+
+				if (mbShowAspectRatios != selected) {
+					mbShowAspectRatios = selected;
+
+					VDRegistryAppKey key("Dialogs\\Filters");
+					key.setBool("Show aspect ratios", mbShowAspectRatios);
+
+					RelayoutFilterList();
+				}
+			}
+			return true;
+
+		case IDC_SHOWFRAMERATES:
+			{
+				bool selected = IsButtonChecked(IDC_SHOWFRAMERATES);
+
+				if (mbShowFrameRates != selected) {
+					mbShowFrameRates = selected;
+
+					VDRegistryAppKey key("Dialogs\\Filters");
+					key.setBool("Show frame rates", mbShowFrameRates);
+
+					RelayoutFilterList();
+				}
+			}
+			return true;
+
+		case ID_FILTERLIST_NAMEOUTPUT:
+			{
+				int idx = mListView.GetSelectedIndex();
+				if (idx >= 0) {
+					FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(idx)));
+
+					if (fli) {
+						VDVideoFilterOutputNameDialog dlg;
+
+						dlg.SetName(fli->mpEntry->mOutputName.c_str());
+						if (dlg.ShowDialog((VDGUIHandle)mhdlg)) {
+							fli->mpEntry->mOutputName = dlg.GetName();
+
+							mListView.RefreshItem(idx);
+						}
+					}
+				}
+			}
+			return true;
+
+		case ID_FILTERLIST_ADDINPUT:
+			{
+				int selIdx = mListView.GetSelectedIndex();
+
+				if (selIdx >= 0) {
+					FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(selIdx)));
+
+					if (fli) {
+						int idx = selIdx;
+
+						do {
+							++idx;
+						} while(vdpoly_cast<FilterInputListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(idx))));
+
+						vdrefptr<FilterInputListItem> fii(new FilterInputListItem);
+
+						int i = mListView.InsertVirtualItem(idx, fii);
+
+						if (i >= 0)
+							mListView.SetItemCheckedVisible(i, false);
+					}
+				}
+			}
+			return true;
+	}
+
+	return false;
+}
+
+void VDVideoFiltersDialog::OnContextMenu(uint32 id, int x, int y) {
+	if (id == IDC_FILTER_LIST) {
+		int selIdx = mListView.GetSelectedIndex();
+
+		if (selIdx >= 0) {
+			FilterListItemBase *flib = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(selIdx));
+			FilterListItem *fli = vdpoly_cast<FilterListItem *>(flib);
+			FilterInputListItem *fii = vdpoly_cast<FilterInputListItem *>(flib);
+
+			if (x == -1 && y == -1) {
+				vdrect32 sr;
+				if (mListView.GetItemScreenRect(selIdx, sr)) {
+					x = sr.left + ((uint32)(sr.right - sr.left) >> 1);
+					y = sr.top + ((uint32)(sr.bottom - sr.top) >> 1);
+				}
+			}
+
+			if (fli) {
+				if (mhContextMenus) {
+					HMENU hmenu = GetSubMenu(mhContextMenus, 0);
+					if (hmenu)
+						TrackPopupMenu(hmenu, 0, x, y, 0, (HWND)mhdlg, NULL);
+				}
+			} else if (fii) {
+				vdfastvector<const wchar_t *> items;
+				vdvector<VDStringA> bindNames;
+				VDLinearAllocator linearAlloc;
+
+				items.push_back(L"(No connection)");
+				items.push_back(L"(Source)");
+				items.push_back(L"(Previous output)");
+
+				bindNames.push_back_as("");
+				bindNames.push_back_as("$input");
+				bindNames.push_back_as("$prev");
+
+				int n = mListView.GetItemCount();
+				for(int i=0; i<n; ++i) {
+					FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetVirtualItem(i)));
+
+					if (fli) {
+						const VDStringA& outputName = fli->mpEntry->mOutputName;
+
+						if (!outputName.empty()) {
+							const VDStringW& tmp = VDTextAToW(outputName);
+							
+							wchar_t *s = (wchar_t *)linearAlloc.Allocate(sizeof(wchar_t) * (tmp.size() + 1));
+							wcscpy(s, tmp.c_str());
+
+							items.push_back(s);
+							bindNames.push_back(outputName);
+						}
+					}
+				}
+
+				items.push_back(NULL);
+
+				int bindIdx = ActivatePopupMenu(x, y, items.data());
+
+				if (bindIdx >= 0) {
+					fii->mName = bindNames[bindIdx];
+					mListView.RefreshItem(bindIdx);
+					RedoFilters();
+				}
 			}
 		}
-
-		if (item.cchTextMax)
-			item.pszText[item.cchTextMax - 1] = 0;
 	}
 }
 
-void VDVideoFiltersDialog::OnLVItemChanged(const NMLISTVIEW& nmlv) {
-	if ((unsigned)nmlv.iItem >= mFilters.size())
+void VDVideoFiltersDialog::OnItemCheckedChanging(VDUIProxyListView *sender, VDUIProxyListView::CheckedChangingEvent *event) {
+	FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(sender->GetVirtualItem(event->mIndex)));
+	if (!fli) {
+		if (event->mbNewVisible)
+			event->mbAllowChange = false;
+	}
+}
+
+void VDVideoFiltersDialog::OnItemCheckedChanged(VDUIProxyListView *sender, int index) {
+	FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(sender->GetVirtualItem(index)));
+	if (!fli)
 		return;
 
-	FilterInstance *fi = mFilters[nmlv.iItem];
+	FilterInstance *fi = fli->mpEntry->mpInstance;
+	if (!fi)
+		return;
 
-	if (nmlv.uChanged & LVIF_STATE) {
-		if (!mFilterEnablesUpdateLock) {
-			// We fetch the item state because uNewState seems hosed when ListView_SetItemState() is called
-			// with a partial mask.
-			bool enabled = ListView_GetItemState(mhwndList, nmlv.iItem, LVIS_STATEIMAGEMASK) == INDEXTOSTATEIMAGEMASK(2);
+	if (!mFilterEnablesUpdateLock) {
+		// We fetch the item state because uNewState seems hosed when ListView_SetItemState() is called
+		// with a partial mask.
+		bool enabled = mListView.IsItemChecked(index);
 
-			if (enabled != fi->IsEnabled()) {
-				fi->SetEnabled(enabled);
-				RedoFilters();
-			}
+		if (enabled != fi->IsEnabled()) {
+			fi->SetEnabled(enabled);
+			RedoFilters();
+			EnableConfigureBox(index);
 		}
 	}
 }
 
-void VDVideoFiltersDialog::MakeFilterList(List& list) {
-	VDASSERT(list.IsEmpty());
+void VDVideoFiltersDialog::OnItemDoubleClicked(VDUIProxyListView *sender, int item) {
+	OnCommand(IDC_CONFIGURE, 0);
+}
 
+void VDVideoFiltersDialog::OnItemSelectionChanged(VDUIProxyListView *sender, int item) {
+	EnableConfigureBox(item);
+}
+
+void VDVideoFiltersDialog::MakeFilterChainDesc(VDFilterChainDesc& desc) {
 	// have to do this since the filter list is intrusive
 	filters.DeinitFilters();
 	filters.DeallocateBuffers();
 
-	for(Filters::const_iterator it(mFilters.begin()), itEnd(mFilters.end()); it != itEnd; ++it) {
-		FilterInstance *fi = *it;
+	desc.Clear();
 
-		list.AddHead(fi);
+	int n = mListView.GetItemCount();
+	VDFilterChainEntry *pPrevEntry = NULL;
+	for(int i=0; i<n; ++i) {
+		FilterListItemBase *flib = static_cast<FilterListItemBase *>(mListView.GetVirtualItem(i));
+		FilterListItem *fli = vdpoly_cast<FilterListItem *>(flib);
+		FilterInputListItem *fii = vdpoly_cast<FilterInputListItem *>(flib);
+
+		if (fli) {
+			VDFilterChainEntry *pEnt = fli->mpEntry;
+			pPrevEntry = pEnt;
+			pPrevEntry->mSources.clear();
+			desc.AddEntry(pEnt);
+		} else if (fii) {
+			if (pPrevEntry)
+				pPrevEntry->mSources.push_back(fii->mName);
+		}
 	}
 }
 
-void VDVideoFiltersDialog::EnableConfigureBox(HWND hdlg, int index) {
-	if (index < 0)
-		index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
+void VDVideoFiltersDialog::EnableConfigureBox(int index) {
+	FilterListItem *fli = vdpoly_cast<FilterListItem *>(static_cast<FilterListItemBase *>(mListView.GetSelectedItem()));
+	FilterInstance *fa = NULL;
 
-	if ((unsigned)index < mFilters.size()) {
-		FilterInstance *fa = mFilters[index];
+	if (fli)
+		fa = fli->mpEntry->mpInstance;
 
-		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), fa->IsConfigurable());
-		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), fa->IsEnabled());
-		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), TRUE);
-		EnableWindow(GetDlgItem(hdlg, IDC_OPTIONS), TRUE);
+	if (fa) {
+		EnableControl(IDC_CONFIGURE, fa->IsConfigurable());
+		EnableControl(IDC_CLIPPING, fa->IsEnabled());
+		EnableControl(IDC_BLENDING, true);
+		EnableControl(IDC_OPTIONS, true);
 	} else {
-		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), FALSE);
-		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), FALSE);
-		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), FALSE);
-		EnableWindow(GetDlgItem(hdlg, IDC_OPTIONS), FALSE);
+		EnableControl(IDC_CONFIGURE, false);
+		EnableControl(IDC_CLIPPING, false);
+		EnableControl(IDC_BLENDING, false);
+		EnableControl(IDC_OPTIONS, false);
 	}
 }
 
 void VDVideoFiltersDialog::RedoFilters() {
-	List listFA;
+	VDFilterChainDesc desc;
 
-	MakeFilterList(listFA);
+	MakeFilterChainDesc(desc);
 
 	if (mInputFormat) {
 		try {
-			filters.prepareLinearChain(&listFA, mInputWidth, mInputHeight, mInputFormat, mInputRate, mInputLength, mInputPixelAspect);
+			filters.prepareLinearChain(&desc, mInputWidth, mInputHeight, mInputFormat, mInputRate, mInputLength, mInputPixelAspect);
 		} catch(const MyError&) {
 			// eat error
 		}
 	}
 
+	mListView.RefreshAllItems();
+
 	RelayoutFilterList();
 }
 
 void VDVideoFiltersDialog::RelayoutFilterList() {
-	if (!mFilters.empty()) {
-		for(int i=0; i<4; ++i)
-			ListView_SetColumnWidth(mhwndList, i, -2);
+	mListView.AutoSizeColumns();
+}
 
-		ListView_RedrawItems(mhwndList, 0, mFilters.size() - 1);
+void *VDVideoFiltersDialog::FilterListItem::AsInterface(uint32 id) {
+	if (id == FilterListItem::kTypeID)
+		return this;
+
+	return NULL;
+}
+
+void VDVideoFiltersDialog::FilterListItem::GetText(int subItem, VDStringW& s) const {
+	if (!mpEntry->mpInstance) {
+		switch(subItem) {
+			case 0:
+			case 1:
+			case 2:
+				break;
+
+			case 3:
+				s = L"<unknown entry>";
+				break;
+		}
+
+		return;
+	}
+
+	FilterInstance *fi = mpEntry->mpInstance;
+	const VDFilterPrepareInfo& prepareInfo = fi->mPrepareInfo;
+	const VDFilterPrepareStreamInfo *streamInfo = prepareInfo.mStreams.empty() ? (const VDFilterPrepareStreamInfo *)NULL : &prepareInfo.mStreams[0];
+
+	const VDFilterPrepareInfo2& prepareInfo2 = fi->mPrepareInfo2;
+	const VDFilterPrepareStreamInfo2 *streamInfo2 = prepareInfo2.mStreams.empty() ? (const VDFilterPrepareStreamInfo2 *)NULL : &prepareInfo2.mStreams[0];
+
+	switch(subItem) {
+	case 0:
+		if (fi->IsEnabled()) {
+			s.sprintf(L"%s%s%s%s"
+						, fi->GetAlphaParameterCurve() ? L"[B] " : L""
+						, streamInfo2 && streamInfo2->mbConvertOnEntry ? L"[C] " : streamInfo && streamInfo->mbAlignOnEntry ? L"[A]" : L""
+						, fi->IsAccelerated() ? L"[3D]" : L""
+						, fi->IsForceSingleFBEnabled() ? L"[F]" : L""
+				);
+		}
+		break;
+	case 1:
+	case 2:
+		{
+			const VDFilterStreamDesc desc = subItem == 2 ? fi->GetOutputDesc() : fi->GetSourceDesc();
+			const VDPixmapLayout& layout = desc.mLayout;
+
+			if (!fi->IsEnabled()) {
+				s = L"-";
+			} else if (subItem == 2 && fi->GetExcessiveFrameSizeState()) {
+				s = L"(too big)";
+			} else {
+				s.sprintf(L"%ux%u", layout.w, layout.h);
+
+				if (mpParent->mbShowFormats) {
+					const char *const kFormatNames[]={
+						"?",
+						"P1",
+						"P2",
+						"P4",
+						"P8",
+						"RGB15",
+						"RGB16",
+						"RGB24",
+						"RGB32",
+						"Y8",
+						"UYVY",
+						"YUYV",
+						"YUV",
+						"YUV444",
+						"YUV422",
+						"YUV420",
+						"YUV411",
+						"YUV410",
+						"YUV422C",
+						"YUV420C",
+						"YUV422-16F",
+						"V210",
+						"UYVY-709",
+						"NV12",
+						"I8",
+						"YUYV-709",
+						"YUV444-709",
+						"YUV422-709",
+						"YUV420-709",
+						"YUV411-709",
+						"YUV410-709",
+						"UYVY-FR",
+						"YUYV-FR",
+						"YUV444-FR",
+						"YUV422-FR",
+						"YUV420-FR",
+						"YUV411-FR",
+						"YUV410-FR",
+						"UYVY-709-FR",
+						"YUYV-709-FR",
+						"YUV444-709-FR",
+						"YUV422-709-FR",
+						"YUV420-709-FR",
+						"YUV411-709-FR",
+						"YUV410-709-FR",
+						"YUV420i",
+						"YUV420i-FR",
+						"YUV420i-709",
+						"YUV420i-709-FR",
+						"YUV420it",
+						"YUV420it-FR",
+						"YUV420it-709",
+						"YUV420it-709-FR",
+						"YUV420ib",
+						"YUV420ib-FR",
+						"YUV420ib-709",
+						"YUV420ib-709-FR",
+					};
+
+					VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
+
+					if (layout.format == nsVDXPixmap::kPixFormat_VDXA_RGB)
+						s += L" (RGB)";
+					else if (layout.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+						s += L" (YUV)";
+					else
+						s.append_sprintf(L" (%hs)", kFormatNames[layout.format]);
+				}
+
+				if (mpParent->mbShowAspectRatios && subItem == 2) {
+					if (desc.mAspectRatio.getLo()) {
+						VDFraction reduced = desc.mAspectRatio.reduce();
+
+						if (reduced.getLo() < 1000)
+							s.append_sprintf(L" (%u:%u)", reduced.getHi(), reduced.getLo());
+						else
+							s.append_sprintf(L" (%.4g)", reduced.asDouble());
+					} else
+						s += L" (?)";
+				}
+
+				if (mpParent->mbShowFrameRates && subItem == 2) {
+					s.append_sprintf(L" (%.3g fps)", desc.mFrameRate.asDouble());
+				}
+			}
+		}
+		break;
+	case 3:
+		{
+			VDStringA blurb;
+			VDStringA settings;
+
+			if (!mpEntry->mOutputName.empty()) {
+				blurb += mpEntry->mOutputName;
+				blurb += " = ";
+			}
+
+			blurb += fi->GetName();
+
+			if (fi->GetSettingsString(settings))
+				blurb += settings;
+
+			s = VDTextAToW(blurb);
+		}
+		break;
 	}
 }
+
+void *VDVideoFiltersDialog::FilterInputListItem::AsInterface(uint32 id) {
+	if (id == FilterInputListItem::kTypeID)
+		return this;
+
+	return NULL;
+}
+
+void VDVideoFiltersDialog::FilterInputListItem::GetText(int subItem, VDStringW& s) const {
+	if (subItem == 3) {
+		if (mName.empty())
+			s = L"(No connection)";
+		else if (mName == "$prev")
+			s = L"(Previous output)";
+		else if (mName == "$input")
+			s = L"(Source)";
+		else
+			s = VDTextAToW(mName);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////
 
 VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSource *pVS, VDPosition initialTime) {
 	VDVideoFiltersDialog dlg;
@@ -951,7 +1188,7 @@ VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSourc
 	if (pVS)
 		dlg.Init(pVS, initialTime);
 
-	dlg.ActivateDialog(h);
+	dlg.ShowDialog(h);
 
 	return dlg.GetResult();
 }
@@ -960,376 +1197,7 @@ VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, 
 	VDVideoFiltersDialog dlg;
 
 	dlg.Init(w, h, format, rate, length, initialTime);
-	dlg.ActivateDialog(hParent);
+	dlg.ShowDialog(hParent);
 
 	return dlg.GetResult();
 }
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	filter crop dialog
-//
-///////////////////////////////////////////////////////////////////////////
-
-
-class VDFilterClippingDialog : public VDDialogFrameW32 {
-public:
-	VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS);
-
-protected:
-	void OnDataExchange(bool write);
-	bool OnLoaded();
-
-	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
-
-	void UpdateFrame(VDPosition pos);
-
-	List			*mpFilterList;
-	FilterInstance	*mpFilterInst;
-	FilterSystem	mFilterSys;
-	IVDClippingControl	*mpClipCtrl;
-	IVDPositionControl	*mpPosCtrl;
-
-	int mMinSizeW;
-	int mMinSizeH;
-
-	sint64			mInitialTimeUS;
-
-	double			mFilterFramesToSourceFrames;
-	double			mSourceFramesToFilterFrames;
-
-	vdrefptr<VDFilterFrameVideoSource>	mpFrameSource;
-
-	VDDialogResizerW32	mResizer;
-};
-
-VDFilterClippingDialog::VDFilterClippingDialog(FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS)
-	: VDDialogFrameW32(IDD_FILTER_CLIPPING)
-	, mpFilterList(pFilterList)
-	, mpFilterInst(pFiltInst)
-	, mMinSizeW(0)
-	, mMinSizeH(0)
-	, mInitialTimeUS(initialTimeUS)
-{
-}
-
-void VDFilterClippingDialog::OnDataExchange(bool write) {
-	if (write) {
-		vdrect32 r;
-		mpClipCtrl->GetClipBounds(r);
-
-		mpFilterInst->SetCrop(r.left, r.top, r.right, r.bottom, IsButtonChecked(IDC_CROP_PRECISE));
-	} else {
-		const vdrect32& r = mpFilterInst->GetCropInsets();
-		mpClipCtrl->SetClipBounds(r);
-
-		bool precise = mpFilterInst->IsPreciseCroppingEnabled();
-		CheckButton(IDC_CROP_PRECISE, precise);
-		CheckButton(IDC_CROP_FAST, !precise);
-	}
-}
-
-bool VDFilterClippingDialog::OnLoaded()  {
-	RECT rw, rc;
-
-	VDSetDialogDefaultIcons(mhdlg);
-
-	// try to init filters
-	mFilterFramesToSourceFrames = 1.0;
-	mSourceFramesToFilterFrames = 1.0;
-
-	if (mpFilterList && inputVideo) {
-		IVDStreamSource *pVSS = inputVideo->asStream();
-		const VDAVIBitmapInfoHeader *pbih2 = inputVideo->getDecompressedFormat();
-
-		try {
-			// halt the main filter system
-			filters.DeinitFilters();
-			filters.DeallocateBuffers();
-
-			const VDPixmap& pxsrc = inputVideo->getTargetFormat();
-			mFilterSys.prepareLinearChain(
-					mpFilterList,
-					pbih2->biWidth,
-					abs(pbih2->biHeight),
-					pxsrc.format,
-					pVSS->getRate(),
-					pVSS->getLength(),
-					inputVideo->getPixelAspectRatio());
-
-			mpFrameSource = new VDFilterFrameVideoSource;
-			mpFrameSource->Init(inputVideo, mFilterSys.GetInputLayout());
-
-			// start private filter system
-			mFilterSys.initLinearChain(
-					NULL,
-					VDXFilterStateInfo::kStatePreview,
-					mpFilterList,
-					mpFrameSource,
-					pbih2->biWidth,
-					abs(pbih2->biHeight),
-					pxsrc.format,
-					pxsrc.palette,
-					pVSS->getRate(),
-					pVSS->getLength(),
-					inputVideo->getPixelAspectRatio());
-
-			mFilterSys.ReadyFilters();
-
-			double srcRate = pVSS->getRate().asDouble();
-			double dstRate = (double)mpFilterInst->mRealSrc.mFrameRateHi / (double)mpFilterInst->mRealSrc.mFrameRateLo;
-
-			mFilterFramesToSourceFrames = srcRate / dstRate;
-			mSourceFramesToFilterFrames = dstRate / srcRate;
-		} catch(const MyError&) {
-			// eat the error
-		}
-	}
-
-	HWND hwndClipping = GetDlgItem(mhdlg, IDC_BORDERS);
-	mpClipCtrl = VDGetIClippingControl((VDGUIHandle)hwndClipping);
-
-	mpClipCtrl->SetBitmapSize(mpFilterInst->GetPreCropWidth(), mpFilterInst->GetPreCropHeight());
-
-	mpPosCtrl = VDGetIPositionControlFromClippingControl((VDGUIHandle)hwndClipping);
-	mpPosCtrl->SetAutoStep(true);
-	mpPosCtrl->SetRange(0, mpFilterInst->mRealSrc.mFrameCount < 0 ? 1000 : mpFilterInst->mRealSrc.mFrameCount);
-	mpPosCtrl->SetFrameRate(VDFraction(mpFilterInst->mRealSrc.mFrameRateHi, mpFilterInst->mRealSrc.mFrameRateLo));
-
-	if (mFilterSys.isRunning()) {
-		const VDFraction& dstfr = mFilterSys.GetOutputFrameRate();
-		VDPosition timelineFrame = VDRoundToInt64(dstfr.asDouble() * (double)mInitialTimeUS * (1.0 / 1000000.0));
-
-		IVDFilterFrameSource *src = mpFilterInst->GetSource();
-		if (src) {
-			VDPosition localFrame = mFilterSys.GetSymbolicFrame(timelineFrame, src);
-
-			if (localFrame >= 0)
-				mpPosCtrl->SetPosition(localFrame);
-		}
-	}
-
-	GetWindowRect(mhdlg, &rw);
-	GetWindowRect(hwndClipping, &rc);
-	const int origW = rw.right - rw.left;
-	const int origH = rw.bottom - rw.top;
-	int padW = (rw.right - rw.left) - (rc.right - rc.left);
-	int padH = origH - (rc.bottom - rc.top);
-
-	mResizer.Init(mhdlg);
-	mResizer.Add(IDOK, VDDialogResizerW32::kBR);
-	mResizer.Add(IDCANCEL, VDDialogResizerW32::kBR);
-	mResizer.Add(IDC_STATIC_YCCCROP, VDDialogResizerW32::kBL);
-	mResizer.Add(IDC_CROP_PRECISE, VDDialogResizerW32::kBL);
-	mResizer.Add(IDC_CROP_FAST, VDDialogResizerW32::kBL);
-	mResizer.Add(IDC_BORDERS, VDDialogResizerW32::kMC);
-
-	mpClipCtrl->AutoSize(padW, padH);
-
-	GetWindowRect(hwndClipping, &rc);
-	MapWindowPoints(NULL, mhdlg, (LPPOINT)&rc, 2);
-
-	int newH = std::max<int>(origH, (rc.bottom - rc.top) + padH);
-	int newW = std::max<int>(origW, (rc.right - rc.left) + padW);
-
-	SetWindowPos(hwndClipping, NULL, 0, 0, newW - padW, newH - padH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-
-	if (origW != newW || origH != newH)
-		SetWindowPos(mhdlg, NULL, 0, 0, newW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
-
-	mMinSizeW = newW;
-	mMinSizeH = newH;
-
-	SendMessage(mhdlg, DM_REPOSITION, 0, 0);
-
-	// render first frame
-	UpdateFrame(mpPosCtrl->GetPosition());
-
-	return VDDialogFrameW32::OnLoaded();
-}
-
-INT_PTR VDFilterClippingDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message)
-    {
-        case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDC_BORDERS:
-				{
-					sint64 pos = -1;
-
-					if (inputVideo) {
-						switch(HIWORD(wParam)) {
-							case PCN_KEYPREV:
-								{
-									pos = mpPosCtrl->GetPosition();
-									sint64 srcPos = VDFloorToInt64(((double)pos + 0.5) * mFilterFramesToSourceFrames);
-
-									for(;;) {
-										sint64 newSrcPos = inputVideo->prevKey(srcPos);
-
-										if (newSrcPos < 0) {
-											pos = 0;
-											break;
-										}
-
-										sint64 newPos = VDFloorToInt64(((double)newSrcPos + 0.5) * mSourceFramesToFilterFrames);
-										if (pos != newPos) {
-											pos = newPos;
-											break;
-										}
-
-										srcPos = newSrcPos;
-									}
-
-									mpPosCtrl->SetPosition(pos);
-								}
-								break;
-							case PCN_KEYNEXT:
-								{
-									pos = mpPosCtrl->GetPosition();
-									sint64 srcPos = VDFloorToInt64(((double)pos + 0.5) * mFilterFramesToSourceFrames);
-
-									for(;;) {
-										sint64 newSrcPos = inputVideo->nextKey(srcPos);
-
-										if (newSrcPos < 0) {
-											pos = mpPosCtrl->GetRangeEnd();
-											break;
-										}
-
-										sint64 newPos = VDFloorToInt64(((double)newSrcPos + 0.5) * mSourceFramesToFilterFrames);
-										if (pos != newPos) {
-											pos = newPos;
-											break;
-										}
-
-										srcPos = newSrcPos;
-									}
-
-									mpPosCtrl->SetPosition(pos);
-								}
-								break;
-						}
-
-						UpdateFrame(mpPosCtrl->GetPosition());
-					}
-				}
-				return TRUE;
-			}
-            break;
-
-		case WM_NOTIFY:
-			if (GetWindowLong(((NMHDR *)lParam)->hwndFrom, GWL_ID) == IDC_BORDERS) {
-				VDPosition pos = guiPositionHandleNotify(lParam, mpPosCtrl);
-
-				if (pos >= 0)
-					UpdateFrame(pos);
-			}
-			break;
-
-		case WM_MOUSEWHEEL:
-			// Windows forwards all mouse wheel messages down to us, which we then forward
-			// to the clipping control.  Obviously for this to be safe the position control
-			// MUST eat the message, which it currently does.
-			{
-				HWND hwndClipping = GetDlgItem(mhdlg, IDC_BORDERS);
-				if (hwndClipping)
-					return SendMessage(hwndClipping, WM_MOUSEWHEEL, wParam, lParam);
-			}
-			break;
-
-		case WM_SIZE:
-			mResizer.Relayout();
-			return 0;
-
-		case WM_GETMINMAXINFO:
-			{
-				MINMAXINFO& mmi = *(MINMAXINFO *)lParam;
-
-				if (mmi.ptMinTrackSize.x < mMinSizeW)
-					mmi.ptMinTrackSize.x = mMinSizeW;
-
-				if (mmi.ptMinTrackSize.y < mMinSizeH)
-					mmi.ptMinTrackSize.y = mMinSizeH;
-			}
-			return TRUE;
-    }
-
-	return VDDialogFrameW32::DlgProc(message, wParam, lParam);
-}
-
-void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
-	if (mFilterSys.isRunning()) {
-		bool success = false;
-
-		sint64 frameCount = mFilterSys.GetOutputFrameCount();
-		if (pos >= 0 && pos < frameCount) {
-			try {
-				vdrefptr<IVDFilterFrameClientRequest> req;
-
-				IVDFilterFrameSource *src = mpFilterInst->GetSource();
-				const VDPixmapLayout& srcLayout = src->GetOutputLayout();
-
-				if (src->CreateRequest(pos, false, 0, ~req)) {
-					bool canBlock = false;
-					do {
-						if (IVDFilterFrameSource::kRunResult_Running == mpFrameSource->RunRequests(NULL)) {
-							canBlock = false;
-							continue;
-						}
-
-						if (FilterSystem::kRunResult_Running == mFilterSys.Run(NULL, false)) {
-							canBlock = false;
-						} else {
-							if (canBlock) {
-								mFilterSys.Block();
-								canBlock = false;
-							} else {
-								canBlock = true;
-							}
-						}
-					} while(!req->IsCompleted());
-
-					if (req->IsSuccessful()) {
-						VDFilterFrameBuffer *buf = req->GetResultBuffer();
-						VDPixmap px(VDPixmapFromLayout(srcLayout, (void *)buf->LockRead()));
-						mpClipCtrl->BlitFrame(&px);
-						buf->Unlock();
-					} else {
-						mpClipCtrl->BlitFrame(NULL);
-					}
-
-					success = true;
-				}
-			} catch(const MyError&) {
-				// eat the error
-			}
-		}
-
-		if (!success)
-			mpClipCtrl->BlitFrame(NULL);
-	} else
-		guiPositionBlit(GetDlgItem(mhdlg, IDC_BORDERS), pos, mpFilterInst->GetPreCropWidth(), mpFilterInst->GetPreCropHeight());
-}
-
-bool VDShowFilterClippingDialog(VDGUIHandle hParent, FilterInstance *pFiltInst, List *pFilterList, sint64 initialTimeUS) {
-	VDFilterClippingDialog dlg(pFiltInst, pFilterList, initialTimeUS);
-
-	return 0 != dlg.ShowDialog(hParent);
-}
-
-///////////////////////////////////////////////////////////////////////
-
-void FilterLoadFilter(HWND hWnd) {
-	const VDStringW filename(VDGetLoadFileName(kFileDialog_LoadPlugin, (VDGUIHandle)hWnd, L"Load external filter", L"VirtualDub filter (*.vdf)\0*.vdf\0Windows Dynamic-Link Library (*.dll)\0*.dll\0All files (*.*)\0*.*\0", NULL, NULL, NULL));
-
-	if (!filename.empty()) {
-		try {
-			VDAddPluginModule(filename.c_str());
-		} catch(const MyError& e) {
-			e.post(hWnd, g_szError);
-		}
-	}
-}
-
-

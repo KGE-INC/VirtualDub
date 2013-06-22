@@ -19,6 +19,7 @@
 #include <vd2/Dita/resources.h>
 #include <vd2/system/error.h>
 #include <vd2/system/log.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Riza/display.h>
 #include <vd2/Riza/videocodec.h>
@@ -44,6 +45,7 @@
 using namespace nsVDDub;
 
 bool VDPreferencesIsRenderNoAudioWarningEnabled();
+bool VDPreferencesGetRenderInhibitSystemSleepEnabled();
 
 namespace {
 	enum { kVDST_Dub = 1 };
@@ -296,6 +298,9 @@ void VDDubProcessThread::ThreadRun() {
 	mbAudioEnded = !(mbAudioPresent && mpOutputSystem->AcceptsAudio());
 	mbFirstPacket = false;
 	mbPreview = mpOutputSystem->IsRealTime();
+
+	if (VDPreferencesGetRenderInhibitSystemSleepEnabled())
+		VDSetThreadExecutionStateW32(mbPreview ? ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS : ES_SYSTEM_REQUIRED | ES_CONTINUOUS);
 
 	mVideoProcessor.SetPreview(mbPreview);
 

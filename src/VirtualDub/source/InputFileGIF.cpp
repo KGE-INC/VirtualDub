@@ -133,6 +133,7 @@ void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
 	uint32 spantotal = 0;
 	uint32 spancount = 0;
 	ImageInfo imageinfo = { 0, -1, kRestoreNone };
+	uint16 nextFrameDelay = 0;
 	for(;;) {
 		if (len - pos < 1)
 			break;
@@ -148,7 +149,7 @@ void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
 			if (len - pos < 2)
 				break;
 
-			uint8 extensionCode = src[pos++];	extensionCode;
+			uint8 extensionCode = src[pos++];
 			uint8 length = src[pos++];
 
 			if (len - pos < length)
@@ -158,16 +159,7 @@ void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
 				if (length != 4)
 					throw MyError("File \"%ls\" is an invalid GIF file. (Graphic Control Extension header size is not 4 bytes)", filename, pos);
 
-				uint16 delay = VDReadUnalignedLEU16(&src[pos + 1]);
-				if (!delay)
-					delay = 10;
-				timebase += delay;
-				presentationTimes.push_back(timebase);
-
-				if (presentationTimes.size() > 2) {
-					spantotal += timebase - *(presentationTimes.end() - 3);
-					++spancount;
-				}
+				nextFrameDelay = VDReadUnalignedLEU16(&src[pos + 1]);
 
 				uint8 flags = src[pos];
 
@@ -263,10 +255,22 @@ void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
 			pos += dataBlockLen;
 		}
 
+		if (!nextFrameDelay)
+			nextFrameDelay = 10;
+		timebase += nextFrameDelay;
+		presentationTimes.push_back(timebase);
+
+		if (presentationTimes.size() > 2) {
+			spantotal += timebase - *(presentationTimes.end() - 3);
+			++spancount;
+		}
+
 		mImages.push_back(imageinfo);
 
 		imageinfo.mTranspColor = -1;
 		imageinfo.mRestoreMode = kRestoreNone;
+
+		nextFrameDelay = 0;
 	}
 finish:
 	;
@@ -281,7 +285,7 @@ finish:
 	if (numFrames < 3) {
 		if (numFrames == 2)
 			mFrameRate.Assign(100, presentationTimes.back() - presentationTimes.front());
-	} else {
+	} else if (!presentationTimes.empty()) {
 		vdfastvector<ImageInfo> images;
 
 		uint32 startTime = presentationTimes.front();

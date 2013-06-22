@@ -88,6 +88,11 @@ public:
 
 	static const VDXScriptFunctionDef sScriptMethods[];
 
+	enum InputCountDefaults {
+		kMinInputCount = 1,
+		kMaxInputCount = 1
+	};
+
 protected:
 	void SafePrintf(char *buf, int maxbuf, const char *format, ...);
 };
@@ -188,9 +193,12 @@ public:
 		prefetchProc	= sizeof(VDXVideoFilterPrefetchOverloadTest(&T::Prefetch)) > 1 ? T::FilterPrefetch : NULL;
 		prefetchProc2	= sizeof(VDXVideoFilterPrefetch2OverloadTest(&T::Prefetch2)) > 1 || sizeof(VDXVideoFilterPrefetchOverloadTest(&T::Prefetch)) > 1 ? T::FilterPrefetch2 : NULL;
 
+		eventProc		= T::FilterEvent;
+
 		accelRunProc	= sizeof(VDXVideoFilterAccelRunOverloadTest(&T::Prefetch)) > 1 ? T::FilterAccelRun : NULL;
 
-		eventProc		= T::FilterEvent;
+		mSourceCountLowMinus1 = T::kMinInputCount - 1;
+		mSourceCountHighMinus1 = T::kMaxInputCount - 1;
 	}
 
 private:

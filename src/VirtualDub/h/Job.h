@@ -23,6 +23,8 @@ class InputFilenameNode;
 template<class T> class List2;
 struct VDAVIOutputRawVideoFormat;
 
+class VDFile;
+
 void OpenJobWindow();
 void CloseJobWindow();
 bool InitJobSystem();
@@ -35,6 +37,7 @@ void JobAddConfigurationSaveAudio(const DubOptions *opt, const wchar_t *srcFile,
 void JobAddConfigurationSaveVideo(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool includeEditList, const VDAVIOutputRawVideoFormat& format);
 void JobAddConfigurationExportViaEncoder(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool includeEditList, const wchar_t *encSetName);
 void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, bool includeEditList);
+void JobWriteAutoSave(VDFile& f, DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended);
 void JobWriteConfiguration(const wchar_t *filename, DubOptions *, bool bIncludeEditList = true, bool bIncludeTextInfo = true);
 void JobLockDubber();
 void JobUnlockDubber();

@@ -25,8 +25,10 @@
 #include <vd2/system/list.h>
 #include <vd2/system/fraction.h>
 #include <vd2/system/refcount.h>
+#include <vd2/system/vectors.h>
 #include "filter.h"
 
+class VDFilterChainDesc;
 class FilterInstance;
 class VDXFilterStateInfo;
 class FilterSystemBitmap;
@@ -38,6 +40,7 @@ class IVDFilterFrameClientRequest;
 class VDFilterFrameRequest;
 class VDFilterSystemProcessNode;
 class VDTextOutputStream;
+class VDFilterFrameAllocatorProxy;
 
 class IVDFilterSystemScheduler : public IVDRefCount {
 public:
@@ -58,8 +61,8 @@ public:
 	/// Set the number of async threads to use. -1 disables, 0 is auto.
 	void SetAsyncThreadCount(sint32 threadsToUse);
 
-	void prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
-	void initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, List *listFA, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
+	void prepareLinearChain(VDFilterChainDesc *desc, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
+	void initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, VDFilterChainDesc *desc, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
 	void ReadyFilters();
 
 	bool RequestFrame(sint64 outputFrame, uint32 batchNumber, IVDFilterFrameClientRequest **creq);
@@ -102,6 +105,17 @@ private:
 
 	struct Bitmaps;
 
+	struct StreamTail {
+		IVDFilterFrameSource *mpSrc;
+		VDFilterFrameAllocatorProxy *mpProxy;
+	};
+
+	void AppendConversionFilter(StreamTail& tail, const VDPixmapLayout& dstLayout);
+	void AppendAlignmentFilter(StreamTail& tail, const VDPixmapLayout& dstLayout, const VDPixmapLayout& srcLayout);
+	void AppendAccelUploadFilter(StreamTail& tail, const vdrect32& srcCrop);
+	void AppendAccelDownloadFilter(StreamTail& tail, const VDPixmapLayout& layout);
+	void AppendAccelConversionFilter(StreamTail& tail, int format);
+
 	bool	mbFiltersInited;
 	bool	mbFiltersError;
 	bool	mbFiltersUseAcceleration;
@@ -119,7 +133,12 @@ private:
 	long lRequiredSize;
 	uint32	mFilterStateFlags;
 
-	typedef vdfastvector<IVDFilterFrameSource *> Filters;
+	struct FilterEntry {
+		vdrefptr<IVDFilterFrameSource> mpFilter;
+		vdfastvector<IVDFilterFrameSource *> mSources;
+	};
+
+	typedef vdvector<FilterEntry> Filters;
 	Filters mFilters;
 
 	struct ActiveFilterEntry {

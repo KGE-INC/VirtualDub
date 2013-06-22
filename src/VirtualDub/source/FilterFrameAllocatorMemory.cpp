@@ -73,6 +73,15 @@ void VDFilterFrameAllocatorMemory::Shutdown() {
 
 	mIdleBuffers.splice(mIdleBuffers.end(), mActiveBuffers);
 
+	Trim();
+}
+
+void VDFilterFrameAllocatorMemory::AddSizeRequirement(uint32 bytes) {
+	if (mSizeRequired < bytes)
+		mSizeRequired = bytes;
+}
+
+void VDFilterFrameAllocatorMemory::Trim() {
 	while(!mIdleBuffers.empty()) {
 		VDFilterFrameBuffer *buf = static_cast<VDFilterFrameBuffer *>(mIdleBuffers.back());
 		mIdleBuffers.pop_back();
@@ -80,11 +89,6 @@ void VDFilterFrameAllocatorMemory::Shutdown() {
 		buf->SetAllocator(NULL);
 		buf->Release();
 	}
-}
-
-void VDFilterFrameAllocatorMemory::AddSizeRequirement(uint32 bytes) {
-	if (mSizeRequired < bytes)
-		mSizeRequired = bytes;
 }
 
 bool VDFilterFrameAllocatorMemory::Allocate(VDFilterFrameBuffer **buffer) {

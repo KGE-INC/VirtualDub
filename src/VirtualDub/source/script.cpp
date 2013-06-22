@@ -83,17 +83,17 @@ extern bool VDPreferencesGetBatchShowStatusWindow();
 
 void RunScript(const wchar_t *name, void *hwnd) {
 	static const wchar_t fileFilters[]=
-				L"All scripts (*.vcf,*.syl,*.jobs)\0"		L"*.vcf;*.syl;*.jobs\0"
-				L"VirtualDub configuration file (*.vcf)\0"	L"*.vcf\0"
-				L"Sylia script for VirtualDub (*.syl)\0"	L"*.syl\0"
-				L"VirtualDub job queue (*.jobs)\0"			L"*.jobs\0"
+				L"All scripts\0"							L"*.vdscript;*.vcf;*.syl;*.jobs\0"
+				L"VirtualDub configuration file\0"			L"*.vcf\0"
+				L"VirtualDub script\0"						L"*.vdscript;*.syl\0"
+				L"VirtualDub job queue\0"					L"*.jobs\0"
 				L"All Files (*.*)\0"						L"*.*\0"
 				;
 
 	VDStringW filenameW;
 
 	if (!name) {
-		filenameW = VDGetLoadFileName(VDFSPECKEY_SCRIPT, (VDGUIHandle)hwnd, L"Load configuration script", fileFilters, L"script", 0, 0);
+		filenameW = VDGetLoadFileName(VDFSPECKEY_SCRIPT, (VDGUIHandle)hwnd, L"Load configuration script", fileFilters, L"vdscript", 0, 0);
 
 		if (filenameW.empty())
 			return;
@@ -168,7 +168,16 @@ void RunScriptMemory(const char *mem, bool stopAtReloadMarker) {
 		}
 
 	} catch(const VDScriptError& cse) {
-		throw MyError("%s", isi->TranslateScriptError(cse));
+		int pos = isi->GetErrorLocation();
+		int prelen = std::min<int>(pos, 50);
+
+		throw MyError("Error during script execution at column %d: %s\n\n"
+						"    %.*s<!>%.50s"
+					, pos+1
+					, isi->TranslateScriptError(cse)
+					, prelen
+					, mem + pos - prelen
+					, mem + pos);
 	}
 
 	g_project->UpdateFilterList();
@@ -345,14 +354,23 @@ static const VDScriptObject obj_VDParameterCurve={
 ///////////////////////////////////////////////////////////////////////////
 
 static void func_VDVFiltInst_Remove(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
-	fa->Remove();
-	fa->Release();
+	for(VDFilterChainDesc::Entries::iterator it(g_filterChain.mEntries.begin()), itEnd(g_filterChain.mEntries.end());
+		it != itEnd;
+		++it)
+	{
+		if (*it == ent) {
+			g_project->StopFilters();
+			g_filterChain.mEntries.erase(it);
+			ent->Release();
+			break;
+		}
+	}
 }
 
 static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
 	int x1 = std::max<int>(0, argv[0].asInt());
 	int y1 = std::max<int>(0, argv[1].asInt());
@@ -363,67 +381,81 @@ static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValu
 	if (argc >= 5)
 		precise = (0 != argv[4].asInt());
 
-	fa->SetCrop(x1, y1, x2, y2, precise);
+	ent->mpInstance->SetCrop(x1, y1, x2, y2, precise);
 }
 
 static void func_VDVFiltInst_GetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
-	const vdrect32& r = fa->GetCropInsets();
+	const vdrect32& r = ent->mpInstance->GetCropInsets();
 
 	switch(argv[0].asInt()) {
 	case 0:	argv[0] = r.left; break;
 	case 1: argv[0] = r.top; break;
 	case 2: argv[0] = r.right; break;
 	case 3: argv[0] = r.bottom; break;
-	case 4: argv[0] = fa->IsPreciseCroppingEnabled(); break;
+	case 4: argv[0] = ent->mpInstance->IsPreciseCroppingEnabled(); break;
 	default:
 		argv[0] = VDScriptValue(0);
 	}
 }
 
 static void func_VDVFiltInst_AddOpacityCurve(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
 	VDParameterCurve *curve = new VDParameterCurve;
 	curve->SetYRange(0, 1);
-	fa->SetAlphaParameterCurve(curve);
+	ent->mpInstance->SetAlphaParameterCurve(curve);
 
 	argv[0] = VDScriptValue(curve, &obj_VDParameterCurve);
 }
 
 static void func_VDVFiltInst_SetEnabled(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
-	fa->SetEnabled(argv[0].asInt() != 0);
+	ent->mpInstance->SetEnabled(argv[0].asInt() != 0);
 }
 
 static void func_VDVFiltInst_SetForceSingleFBEnabled(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fi = (FilterInstance *)argv[-1].asObjectPtr();
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
 
-	fi->SetForceSingleFBEnabled(argv[0].asInt() != 0);
+	ent->mpInstance->SetForceSingleFBEnabled(argv[0].asInt() != 0);
+}
+
+static void func_VDVFiltInst_SetOutputName(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
+
+	ent->mOutputName = *argv[0].asString();
+}
+
+static void func_VDVFiltInst_AddInput(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)argv[-1].asObjectPtr();
+
+	ent->mSources.push_back_as(*argv[0].asString());
 }
 
 static VDScriptValue obj_VDVFiltInst_lookup(IVDScriptInterpreter *isi, const VDScriptObject *thisPtr, void *lpVoid, char *szName) {
-	FilterInstance *pfi = (FilterInstance *)lpVoid;
+	VDFilterChainEntry *ent = (VDFilterChainEntry *)lpVoid;
+	FilterInstance *pfi = ent->mpInstance;
+
 	if (!(strcmp(szName, "__srcwidth"))) {
 		g_project->PrepareFilters();
-		return VDScriptValue((int)pfi->GetSourceFrameWidth());
+		return VDScriptValue((int)pfi->GetSourceDesc().mLayout.w);
 	}
 
 	if (!(strcmp(szName, "__srcheight"))) {
 		g_project->PrepareFilters();
-		return VDScriptValue((int)pfi->GetSourceFrameHeight());
+		return VDScriptValue((int)pfi->GetSourceDesc().mLayout.h);
 	}
 
 	if (!(strcmp(szName, "__srcrate"))) {
 		g_project->PrepareFilters();
-		return VDScriptValue(pfi->GetSourceFrameRate().asDouble());
+		return VDScriptValue(pfi->GetSourceDesc().mFrameRate.asDouble());
 	}
 
 	if (!(strcmp(szName, "__srcframes"))) {
 		g_project->PrepareFilters();
-		return VDScriptValue((sint64)pfi->GetSourceFrameCount());
+		return VDScriptValue((sint64)pfi->GetSourceDesc().mFrameCount);
 	}
 
 	if (!(strcmp(szName, "__dstwidth"))) {
@@ -461,6 +493,8 @@ static const VDScriptFunctionDef obj_VDVFiltInst_functbl[]={
 	{ func_VDVFiltInst_AddOpacityCurve	, "AddOpacityCurve", "v" },
 	{ func_VDVFiltInst_SetEnabled		, "SetEnabled", "0i" },
 	{ func_VDVFiltInst_SetForceSingleFBEnabled, "SetForceSingleFBEnabled", "0i" },
+	{ func_VDVFiltInst_SetOutputName	, "SetOutputName", "0s" },
+	{ func_VDVFiltInst_AddInput			, "AddInput", "0s" },
 	{ NULL }
 };
 
@@ -471,15 +505,15 @@ extern const VDScriptObject obj_VDVFiltInst={
 ///////////////////
 
 static void func_VDVFilters_instance(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)g_listFA.tail.next, *fa2;
 	int index = argv[0].asInt();
 
-	while((fa2 = (FilterInstance *)fa->next) && index--)
-		fa = fa2;
+	VDFilterChainDesc& desc = g_filterChain;
 
-	if (index!=-1 || !fa->next) VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
+	if (index < 0 || (uint32)index >= desc.mEntries.size()) {
+		VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
+	}
 
-	argv[0] = VDScriptValue(fa, &obj_VDVFiltInst);
+	argv[0] = VDScriptValue(desc.mEntries[index], &obj_VDVFiltInst);
 }
 
 static const VDScriptFunctionDef obj_VDVFilters_instance_functbl[]={
@@ -492,13 +526,9 @@ static const VDScriptObject obj_VDVFilters_instance={
 };
 
 static void func_VDVFilters_Clear(IVDScriptInterpreter *, VDScriptValue *, int) {
-	FilterInstance *fa;
-
 	g_project->StopFilters();
 
-	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
-		fa->Release();
-	}
+	g_filterChain.Clear();
 }
 
 static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
@@ -508,28 +538,23 @@ static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, 
 
 	g_project->StopFilters();
 
+	const char *name = *argv[0].asString();
+
 	for(std::list<FilterBlurb>::const_iterator it(filterList.begin()), itEnd(filterList.end()); it!=itEnd; ++it) {
 		const FilterBlurb& fb = *it;
 
-		if (strfuzzycompare(fb.name.c_str(), *argv[0].asString())) {
-			FilterInstance *fa = new FilterInstance(fb.key);
+		if (strfuzzycompare(fb.name.c_str(), name)) {
+			vdrefptr<VDFilterChainEntry> ent(new_nothrow VDFilterChainEntry);
+			if (!ent) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
+			vdrefptr<FilterInstance> fa(new_nothrow FilterInstance(fb.key));
 			if (!fa) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
-			fa->AddRef();
-			g_listFA.AddHead(fa);
+			ent->mpInstance = fa;
 
-			int count = 0;
+			g_filterChain.AddEntry(ent);
 
-			FilterInstance *fa2;
-			fa = (FilterInstance *)g_listFA.tail.next;
-
-			while(fa2 = (FilterInstance *)fa->next) {
-				fa = fa2;
-				++count;
-			}
-
-			argv[0] = VDScriptValue(count-1);
+			argv[0] = (int)g_filterChain.mEntries.size() - 1;
 			return;
 		}
 	}
@@ -1645,13 +1670,15 @@ static void func_VDSubset_AddMaskedRange(IVDScriptInterpreter *isi, VDScriptValu
 }
 
 static void func_VDSubset_LookupFrameAtFilter(IVDScriptInterpreter *isi, VDScriptValue *argv, int arg_count) {
-	FilterInstance *fa = (FilterInstance *)g_listFA.tail.next, *fa2;
 	int index = argv[0].asInt();
 
-	while((fa2 = (FilterInstance *)fa->next) && index--)
-		fa = fa2;
+	if (index < 0 || (unsigned)index >= g_filterChain.mEntries.size())
+		VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 
-	if (index!=-1 || !fa->next) VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
+	FilterInstance *fi = g_filterChain.mEntries[index]->mpInstance;
+
+	if (!fi)
+		VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 
 	VDProject *p = g_project;
 	
@@ -1671,7 +1698,7 @@ static void func_VDSubset_LookupFrameAtFilter(IVDScriptInterpreter *isi, VDScrip
 	else
 		frame = s.lookupFrame(frame);
 
-	argv[0] = VDScriptValue(filters.GetSymbolicFrame(frame, fa));
+	argv[0] = VDScriptValue(filters.GetSymbolicFrame(frame, fi));
 }
 
 static const VDScriptFunctionDef obj_VDSubset_functbl[]={

@@ -21,6 +21,7 @@
 #include <vd2/system/bitmath.h>
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
+#include <vd2/system/linearalloc.h>
 #include <vd2/system/profile.h>
 #include <vd2/system/protscope.h>
 #include <vd2/system/VDScheduler.h>
@@ -228,9 +229,7 @@ void FilterSystem::SetAsyncThreadCount(sint32 threadsToUse) {
 }
 
 // prepareLinearChain(): init bitmaps in a linear filtering system
-void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect) {
-	FilterInstance *fa;
-
+void FilterSystem::prepareLinearChain(VDFilterChainDesc *desc, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect) {
 	if (mbFiltersInited)
 		return;
 
@@ -251,42 +250,99 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 	mpBitmaps->mInitialBitmap.mAspectRatioHi	= sourcePixelAspect.getHi();
 	mpBitmaps->mInitialBitmap.mAspectRatioLo	= sourcePixelAspect.getLo();
 
-	VFBitmapInternal *bmLast = &mpBitmaps->mInitialBitmap;
-
-	fa = (FilterInstance *)listFA->tail.next;
-
 	lRequiredSize = 0;
 	mbFiltersUseAcceleration = false;
 
-	VFBitmapInternal bmTemp;
-	VFBitmapInternal bmTemp2;
+	VFBitmapInternal *baseInput = &mpBitmaps->mInitialBitmap;
+	VFBitmapInternal *prevInput = baseInput;
+	vdvector<VFBitmapInternal *> inputSrcs;
+	vdvector<VFBitmapInternal> inputs;
 
-	while(fa->next) {
-		FilterInstance *fa_next = (FilterInstance *)fa->next;
+	typedef vdhashmap<VDStringA, VFBitmapInternal *> NamedInputs;
+	NamedInputs namedInputs;
 
-		if (!fa->IsEnabled()) {
-			fa = fa_next;
+	namedInputs[VDStringA("$input")] = baseInput;
+
+	for(VDFilterChainDesc::Entries::const_iterator it(desc->mEntries.begin()), itEnd(desc->mEntries.end());
+		it != itEnd;
+		++it)
+	{
+		VDFilterChainEntry *ent = *it;
+		FilterInstance *fa = ent->mpInstance;
+
+		if (!fa->IsEnabled())
 			continue;
+
+		const VDXFilterDefinition *fdef = fa->GetDefinition();
+		uint32 inputCount;
+		if (ent->mSources.empty()) {
+			inputSrcs.clear();
+			if (fdef->mSourceCountLowMinus1 < 0) {
+				inputCount = 0;
+			} else {
+				inputCount = 1;
+				inputSrcs.resize(1, prevInput);
+			}
+		} else {
+			inputCount = ent->mSources.size();
+
+			inputSrcs.resize(inputCount);
+
+			for(uint32 i=0; i<inputCount; ++i) {
+				const VDStringA& srcName = ent->mSources[i];
+
+				if (srcName == "$prev")
+					inputSrcs[i] = prevInput;
+				else {
+					NamedInputs::const_iterator it(namedInputs.find(srcName));
+
+					if (it == namedInputs.end()) {
+						// We cannot throw out of this routine, so we use the previous
+						// input instead.
+						inputSrcs[i] = prevInput;
+					} else
+						inputSrcs[i] = it->second;
+				}
+			}
 		}
 
-		fa->mbBlitOnEntry	= false;
-		fa->mbConvertOnEntry = false;
-		fa->mbAlignOnEntry	= false;
+		// check if the pin count is correct; if it is not, we need to fudge
+		if (inputCount < (fdef->mSourceCountLowMinus1 + 1) || inputCount > (fdef->mSourceCountHighMinus1 + 1)) {
+			inputSrcs.resize(fdef->mSourceCountLowMinus1 + 1, inputSrcs.empty() ? baseInput : inputSrcs.back());
+		}
 
 		// check if we need to blit
-		uint32 flags;
-		if (bmLast->mPixmapLayout.format != nsVDPixmap::kPixFormat_XRGB8888 || bmLast->mPixmapLayout.pitch > 0
-			|| VDPixmapGetInfo(bmLast->mPixmapLayout.format).palsize) {
-			bmTemp = *bmLast;
-			VDPixmapCreateLinearLayout(bmTemp.mPixmapLayout, nsVDPixmap::kPixFormat_XRGB8888, bmLast->w, bmLast->h, 16);
-			VDPixmapLayoutFlipV(bmTemp.mPixmapLayout);
-			bmTemp.ConvertPixmapLayoutToBitmapLayout();
+		VDFilterPrepareInfo& prepareInfo = fa->mPrepareInfo;
+		VDFilterPrepareInfo2& prepareInfo2 = fa->mPrepareInfo2;
 
-			flags = fa->Prepare(bmTemp);
-			fa->mbConvertOnEntry = true;
-		} else {
-			flags = fa->Prepare(*bmLast);
+		prepareInfo2.mStreams.resize(inputCount);
+		for(uint32 i=0; i<inputCount; ++i)
+			prepareInfo2.mStreams[i].mbConvertOnEntry = false;
+
+		inputs.clear();
+		inputs.resize(inputCount);
+
+		for(uint32 i = 0; i < inputCount; ++i)
+			inputs[i] = *inputSrcs[i];
+
+		const bool altFormatCheckRequired = fa->IsAltFormatCheckRequired();
+		if (altFormatCheckRequired) {
+			VFBitmapInternal& bmTemp = inputs.front();
+
+			if (bmTemp.mPixmapLayout.format != nsVDPixmap::kPixFormat_XRGB8888 || bmTemp.mPixmapLayout.pitch > 0
+				|| VDPixmapGetInfo(bmTemp.mPixmapLayout.format).palsize) {
+
+				VDPixmapCreateLinearLayout(bmTemp.mPixmapLayout, nsVDPixmap::kPixFormat_XRGB8888, bmTemp.w, bmTemp.h, 16);
+				VDPixmapLayoutFlipV(bmTemp.mPixmapLayout);
+				bmTemp.ConvertPixmapLayoutToBitmapLayout();
+
+				prepareInfo2.mStreams[0].mbConvertOnEntry = true;
+			}
 		}
+
+		fa->PrepareReset();
+
+		uint32 flags = fa->Prepare(inputs.data(), inputCount, prepareInfo);
 
 		if (flags == FILTERPARAM_NOT_SUPPORTED || (flags & FILTERPARAM_SUPPORTS_ALTFORMATS)) {
 			using namespace nsVDPixmap;
@@ -356,16 +412,23 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 			int staticOrderIndex = 0;
 
 			// test an invalid format and make sure the filter DOESN'T accept it
-			bmTemp = *bmLast;
-			bmTemp.mPixmapLayout.format = 255;
-			flags = fa->Prepare(bmTemp);
+			for(uint32 i = 0; i < inputCount; ++i)
+				inputs[i] = *inputSrcs[i];
 
-			int originalFormat = bmLast->mPixmapLayout.format;
+			inputs[0].mPixmapLayout.format = 255;
+
+			flags = fa->Prepare(inputs.data(), inputCount, prepareInfo);
+
+			inputs[0] = *inputSrcs[0];
+
+			int originalFormat = inputs[0].mPixmapLayout.format;
 			int format = originalFormat;
 			if (flags != FILTERPARAM_NOT_SUPPORTED) {
 				formatMask.reset();
 				VDASSERT(fa->GetInvalidFormatHandlingState());
 			} else {
+				bool conversionRequired = true;
+
 				if (mbAccelEnabled && fa->IsAcceleratable()) {
 					static const int kFormats[]={
 						nsVDXPixmap::kPixFormat_VDXA_RGB,
@@ -388,15 +451,25 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 					for(int i=0; i<2; ++i) {
 						format = formats[i];
 
-						bmTemp = *bmLast;
-						VDPixmapCreateLinearLayout(bmTemp.mPixmapLayout, nsVDPixmap::kPixFormat_XRGB8888, bmLast->w, bmLast->h, 16);
-						bmTemp.mPixmapLayout.format = format;
-						bmTemp.ConvertPixmapLayoutToBitmapLayout();
-						flags = fa->Prepare(bmTemp);
+						bool conversionFound = false;
+						for(uint32 j = 0; j < inputCount; ++j) {
+							inputs[j] = *inputSrcs[j];
+
+							if (inputs[j].mPixmapLayout.format != format)
+								conversionFound = true;
+
+							VDPixmapCreateLinearLayout(inputs[j].mPixmapLayout, nsVDPixmap::kPixFormat_XRGB8888, inputs[j].w, inputs[j].h, 16);
+							inputs[j].mPixmapLayout.format = format;
+							inputs[j].ConvertPixmapLayoutToBitmapLayout();
+						}
+
+						flags = fa->Prepare(inputs.data(), inputCount, prepareInfo);
 
 						if (flags != FILTERPARAM_NOT_SUPPORTED) {
 							// clear the format mask so we don't try any more formats
 							formatMask.reset();
+
+							conversionRequired = conversionFound;
 							break;
 						}
 					}
@@ -422,16 +495,30 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 				while(format && formatMask.any()) {
 					if (formatMask.test(format)) {
-						if (format == originalFormat)
-							flags = fa->Prepare(*bmLast);
-						else {
-							bmTemp = *bmLast;
-							VDPixmapCreateLinearLayout(bmTemp.mPixmapLayout, format, bmLast->w, bmLast->h, 16);
-							if (format == nsVDPixmap::kPixFormat_XRGB8888)
-								VDPixmapLayoutFlipV(bmTemp.mPixmapLayout);
-							bmTemp.ConvertPixmapLayoutToBitmapLayout();
-							flags = fa->Prepare(bmTemp);
+						if (format == originalFormat) {
+							for(uint32 j = 0; j < inputCount; ++j)
+								inputs[j] = *inputSrcs[j];
+
+							flags = fa->Prepare(inputs.data(), inputCount, prepareInfo);
+
+							if (flags != FILTERPARAM_NOT_SUPPORTED) {
+								conversionRequired = false;
+								break;
+							}
 						}
+
+						for(uint32 j = 0; j < inputCount; ++j) {
+							inputs[j] = *inputSrcs[j];
+
+							VDPixmapCreateLinearLayout(inputs[j].mPixmapLayout, format, inputs[j].w, inputs[j].h, 16);
+
+							if (altFormatCheckRequired && format == nsVDPixmap::kPixFormat_XRGB8888)
+								VDPixmapLayoutFlipV(inputs[j].mPixmapLayout);
+
+							inputs[j].ConvertPixmapLayoutToBitmapLayout();
+						}
+
+						flags = fa->Prepare(inputs.data(), inputCount, prepareInfo);
 
 						if (flags != FILTERPARAM_NOT_SUPPORTED)
 							break;
@@ -454,6 +541,34 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 							format = kPixFormat_YUV422_Planar;
 						break;
 
+					case kPixFormat_YUV422_UYVY_709:
+						if (formatMask.test(kPixFormat_YUV422_YUYV_709))
+							format = kPixFormat_YUV422_YUYV_709;
+						else
+							format = kPixFormat_YUV422_Planar_709;
+						break;
+
+					case kPixFormat_YUV422_YUYV_709:
+						if (formatMask.test(kPixFormat_YUV422_UYVY_709))
+							format = kPixFormat_YUV422_UYVY_709;
+						else
+							format = kPixFormat_YUV422_Planar_709;
+						break;
+
+					case kPixFormat_YUV422_UYVY_FR:
+						if (formatMask.test(kPixFormat_YUV422_YUYV_FR))
+							format = kPixFormat_YUV422_YUYV_FR;
+						else
+							format = kPixFormat_YUV422_Planar_FR;
+						break;
+
+					case kPixFormat_YUV422_YUYV_709_FR:
+						if (formatMask.test(kPixFormat_YUV422_UYVY_709_FR))
+							format = kPixFormat_YUV422_UYVY_709_FR;
+						else
+							format = kPixFormat_YUV422_Planar_709_FR;
+						break;
+
 					case kPixFormat_Y8:
 					case kPixFormat_YUV422_Planar:
 						format = kPixFormat_YUV444_Planar;
@@ -473,8 +588,44 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 						format = kPixFormat_YUV422_Planar;
 						break;
 
-					case kPixFormat_YUV422_UYVY_709:
-						format = kPixFormat_YUV422_UYVY;
+					case kPixFormat_Y8_FR:
+					case kPixFormat_YUV422_Planar_FR:
+						format = kPixFormat_YUV444_Planar_FR;
+						break;
+
+					case kPixFormat_YUV420_Planar_FR:
+					case kPixFormat_YUV411_Planar_FR:
+						format = kPixFormat_YUV422_Planar_FR;
+						break;
+
+					case kPixFormat_YUV410_Planar_FR:
+						format = kPixFormat_YUV420_Planar_FR;
+						break;
+
+					case kPixFormat_YUV422_Planar_709:
+						format = kPixFormat_YUV444_Planar_709;
+						break;
+
+					case kPixFormat_YUV420_Planar_709:
+					case kPixFormat_YUV411_Planar_709:
+						format = kPixFormat_YUV422_Planar_709;
+						break;
+
+					case kPixFormat_YUV410_Planar_709:
+						format = kPixFormat_YUV420_Planar_709;
+						break;
+
+					case kPixFormat_YUV422_Planar_709_FR:
+						format = kPixFormat_YUV444_Planar_709_FR;
+						break;
+
+					case kPixFormat_YUV420_Planar_709_FR:
+					case kPixFormat_YUV411_Planar_709_FR:
+						format = kPixFormat_YUV422_Planar_709_FR;
+						break;
+
+					case kPixFormat_YUV410_Planar_709_FR:
+						format = kPixFormat_YUV420_Planar_709_FR;
 						break;
 
 					case kPixFormat_XRGB1555:
@@ -503,39 +654,38 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 						break;
 					}
 				}
-			}
 
-			fa->mbConvertOnEntry = (format != originalFormat);
+				if (conversionRequired) {
+					for(uint32 j = 0; j < inputCount; ++j)
+						prepareInfo2.mStreams[j].mbConvertOnEntry = true;
+				}
+			}
 		}
 
 		if (fa->GetInvalidFormatState()) {
-			fa->mbConvertOnEntry = false;
-			fa->mRealSrc = *bmLast;
-			fa->mRealDst = fa->mRealSrc;
+			for(uint32 j = 0; j < inputCount; ++j)
+				prepareInfo2.mStreams[j].mbConvertOnEntry = false;
+
 			flags = 0;
 		}
 
-		fa->mbBlitOnEntry = fa->mbConvertOnEntry || fa->mbAlignOnEntry;
+		lRequiredSize += prepareInfo.mLastFrameSizeRequired;
 
-		if (flags & FILTERPARAM_NEEDS_LAST)
-			lRequiredSize += fa->mRealLast.size + fa->mRealLast.offset;
+		prevInput = &fa->GetOutputStream();
 
-		bmLast = &fa->mRealDst;
-
-		if (IsVDXAFormat(bmLast->mPixmapLayout.format))
+		if (IsVDXAFormat(prevInput->mPixmapLayout.format))
 			mbFiltersUseAcceleration = true;
 
-		// Next filter.
-		fa = fa_next;
+		if (!ent->mOutputName.empty())
+			namedInputs[ent->mOutputName] = prevInput;
 	}
 
 	// 2/3) Temp buffers
-	fa = (FilterInstance *)listFA->tail.next;
-
-	mOutputPixelAspect.Assign(bmLast->mAspectRatioHi, bmLast->mAspectRatioLo);
-	mOutputFrameRate.Assign(bmLast->mFrameRateHi, bmLast->mFrameRateLo);
-	mOutputFrameCount = bmLast->mFrameCount;
-	mpBitmaps->mFinalLayout = bmLast->mPixmapLayout;
+	VFBitmapInternal& final = *prevInput;
+	mOutputPixelAspect.Assign(final.mAspectRatioHi, final.mAspectRatioLo);
+	mOutputFrameRate.Assign(final.mFrameRateHi, final.mFrameRateLo);
+	mOutputFrameCount = final.mFrameCount;
+	mpBitmaps->mFinalLayout = final.mPixmapLayout;
 
 	if (IsVDXAFormat(mpBitmaps->mFinalLayout.format)) {
 		int format;
@@ -550,10 +700,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 }
 
 // initLinearChain(): prepare for a linear filtering system
-void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, List *listFA, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect) {
-	FilterInstance *fa;
-	long lLastBufPtr = 0;
-
+void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, VDFilterChainDesc *desc, IVDFilterFrameSource *src0, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect) {
 	DeinitFilters();
 	DeallocateBuffers();
 
@@ -579,7 +726,7 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 	if (palette && palSize)
 		memcpy(mPalette, palette, palSize*sizeof(uint32));
 
-	prepareLinearChain(listFA, src_width, src_height, src_format, sourceFrameRate, sourceFrameCount, sourcePixelAspect);
+	prepareLinearChain(desc, src_width, src_height, src_format, sourceFrameRate, sourceFrameCount, sourcePixelAspect);
 
 	if (mbFiltersUseAcceleration) {
 		mpBitmaps->mpAccelEngine = new VDFilterAccelEngine;
@@ -590,256 +737,193 @@ void FilterSystem::initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 f
 
 	AllocateBuffers(lRequiredSize);
 
+	VDFixedLinearAllocator lastFrameAlloc(lpBuffer, lRequiredSize);
+
 	mpBitmaps->mAllocatorManager.Shutdown();
 
-	mpBitmaps->mpSource = src;
-	mpBitmaps->mpSource->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, NULL);
+	mpBitmaps->mpSource = src0;
+	mpBitmaps->mpSource->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
 
 	mpBitmaps->mInitialBitmap.mPixmap = VDPixmap();
 
-	fa = (FilterInstance *)listFA->tail.next;
+	StreamTail inputTail;
+	inputTail.mpSrc = src0;
+	inputTail.mpProxy = src0->GetOutputAllocatorProxy();
 
-	const VFBitmapInternal *rawSrc = &mpBitmaps->mInitialBitmap;
-	VDFilterFrameAllocatorProxy *prevProxy = src->GetOutputAllocatorProxy();
+	StreamTail prevTail(inputTail);
+	vdfastvector<StreamTail> tails;
 
-	while(fa->next) {
-		FilterInstance *fa_next = (FilterInstance *)fa->next;
+	typedef vdhashmap<VDStringA, StreamTail> Tailset; 
+	Tailset tailset;
 
-		if (!fa->IsEnabled()) {
-			fa = fa_next;
+	tailset[VDStringA("$input")] = inputTail;
+
+	for(VDFilterChainDesc::Entries::const_iterator it(desc->mEntries.begin()), itEnd(desc->mEntries.end());
+		it != itEnd;
+		++it)
+	{
+		VDFilterChainEntry *ent = *it;
+		FilterInstance *fa = ent->mpInstance;
+
+		if (!fa->IsEnabled())
 			continue;
+
+		const VDXFilterDefinition *fdef = fa->GetDefinition();
+		uint32 inputCount;
+		if (ent->mSources.empty()) {
+			inputCount = 1;
+
+			tails.clear();
+
+			if (fdef->mSourceCountLowMinus1 >= 0)
+				tails.resize(1, prevTail);
+		} else {
+			inputCount = ent->mSources.size();
+
+			tails.resize(inputCount);
+
+			for(uint32 i=0; i<inputCount; ++i) {
+				const VDStringA& srcName = ent->mSources[i];
+
+				if (srcName.empty())
+					throw MyError("Cannot start filters: an instance of filter \"%s\" has an unconnected input.", fa->GetName());
+				else if (srcName == "$prev")
+					tails[i] = prevTail;
+				else {
+					Tailset::const_iterator it(tailset.find(srcName));
+
+					if (it == tailset.end())
+						throw MyError("Cannot start filters: an instance of filter \"%s\" references an unknown output name: %s", fa->GetName(), srcName.c_str());
+
+ 					tails[i] = it->second;
+				}
+			}
 		}
 
-		VDASSERT(!fa->mRealDst.GetBuffer());
-		VDASSERT(!fa->mExternalDst.GetBuffer());
-
-		if (fa->GetInvalidFormatHandlingState())
-			throw MyError("Cannot start filters: Filter \"%s\" is not handling image formats correctly.",
-				fa->GetName());
-
-		if (fa->mRealDst.w < 1 || fa->mRealDst.h < 1)
-			throw MyError("Cannot start filter chain: The output of filter \"%s\" is smaller than 1x1.", fa->GetName());
-
-
-		if (fa->GetAlphaParameterCurve()) {
-			// size check
-			if (fa->mRealSrc.w != fa->mRealDst.w || fa->mRealSrc.h != fa->mRealDst.h) {
-				throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output sizes (%dx%d -> %dx%d). Input and output sizes must match."
-					, fa->GetName()
-					, fa->mRealSrc.w
-					, fa->mRealSrc.h
-					, fa->mRealDst.w
-					, fa->mRealDst.h
-					);
-			}
-
-			// format check
-			if (fa->mRealSrc.mPixmapLayout.format != fa->mRealDst.mPixmapLayout.format) {
-				throw MyError("Cannot start filter chain: Filter \"%s\" has a blend curve attached and has differing input and output formats. Input and output formats must match."
-					, fa->GetName());
-			}
+		if (inputCount < (uint32)(fdef->mSourceCountLowMinus1 + 1)) {
+			throw MyError("Cannot start filters: an instance of filter \"%s\" has too few inputs (expected %u, got %u)", fa->GetName(), fdef->mSourceCountLowMinus1 + 1, inputCount);
+		} else if (inputCount > (uint32)(fdef->mSourceCountHighMinus1 + 1)) {
+			throw MyError("Cannot start filters: an instance of filter \"%s\" has too many inputs (expected %u, got %u)", fa->GetName(), fdef->mSourceCountHighMinus1 + 1, inputCount);
 		}
 
-		const VDPixmapLayout& srcLayout0 = src->GetOutputLayout();
-		int srcFormat = srcLayout0.format;
-		if (fa->IsConversionRequired() || (IsVDXAFormat(srcFormat) && fa->IsCroppingEnabled())) {
-			int dstFormat = fa->mExternalSrc.mPixmapLayout.format;
+		fa->CheckValidConfiguration();
 
-			vdrect32 srcCrop(fa->GetCropInsets());
-			vdrect32 srcRect(srcCrop.left, srcCrop.top, srcLayout0.w - srcCrop.right, srcLayout0.h - srcCrop.bottom);
+		const VDFilterPrepareInfo& prepareInfo = fa->mPrepareInfo;
+		const VDFilterPrepareInfo2& prepareInfo2 = fa->mPrepareInfo2;
 
-			if (IsVDXAFormat(dstFormat)) {
-				if (IsVDXAFormat(srcFormat)) {		// VDXA -> VDXA
-					vdrefptr<VDFilterAccelConverter> conv(new VDFilterAccelConverter);
+		for(uint32 i = 0; i < inputCount; ++i) {
+			StreamTail& tail = *(tails.end() - inputCount + i);
+			const VDFilterPrepareStreamInfo& streamInfo = prepareInfo.mStreams[i];
+			const VDFilterPrepareStreamInfo2& streamInfo2 = prepareInfo2.mStreams[i];
 
-					VDPixmapLayout layout;
-					VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, fa->mExternalSrcCropped.w, fa->mExternalSrcCropped.h, 16);
+			const VDPixmapLayout& srcLayout0 = tail.mpSrc->GetOutputLayout();
+			const VDPixmapLayout& extSrcLayout = streamInfo.mExternalSrc.mPixmapLayout;
+			int srcFormat = srcLayout0.format;
+			if (streamInfo2.mbConvertOnEntry || (IsVDXAFormat(srcFormat) && fa->IsCroppingEnabled())) {
+				int dstFormat = extSrcLayout.format;
 
-					layout.format = dstFormat;
+				vdrect32 srcCrop(fa->GetCropInsets());
+				vdrect32 srcRect(srcCrop.left, srcCrop.top, srcLayout0.w - srcCrop.right, srcLayout0.h - srcCrop.bottom);
 
-					conv->Init(mpBitmaps->mpAccelEngine, src, layout, &srcRect);
-					conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-					src = conv;
-					mFilters.push_back(conv.release());
-					prevProxy = src->GetOutputAllocatorProxy();
-				} else {	// CPU -> VDXA
-					// convert to 8888/888 if necessary
-					if (srcFormat != nsVDPixmap::kPixFormat_XRGB8888 && srcFormat != nsVDPixmap::kPixFormat_YUV444_Planar) {
-						vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
+				if (IsVDXAFormat(dstFormat)) {
+					if (IsVDXAFormat(srcFormat)) {		// VDXA -> VDXA
+						AppendAccelConversionFilter(tail, dstFormat);
+					} else {	// CPU -> VDXA
+						// convert to 8888/888 if necessary
+						if (srcFormat != nsVDPixmap::kPixFormat_XRGB8888 && srcFormat != nsVDPixmap::kPixFormat_YUV444_Planar) {
+							vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
 
-						VDPixmapLayout layout;
+							VDPixmapLayout layout;
 
-						if (dstFormat == nsVDXPixmap::kPixFormat_VDXA_YUV)
-							VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_YUV444_Planar, fa->mExternalSrc.w, fa->mExternalSrc.h, 16);
+							if (dstFormat == nsVDXPixmap::kPixFormat_VDXA_YUV)
+								VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_YUV444_Planar, extSrcLayout.w, extSrcLayout.h, 16);
+							else
+								VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, extSrcLayout.w, extSrcLayout.h, 16);
+
+							AppendConversionFilter(tail, layout);
+						}
+
+						// upload to accelerator
+						AppendAccelUploadFilter(tail, srcRect);
+
+						// apply conversion on VDXA side if necessary
+						if (tail.mpSrc->GetOutputLayout().format != dstFormat)
+							AppendAccelConversionFilter(tail, dstFormat);
+					}
+				} else {	// VDXA, CPU -> CPU
+					bool cpuConversionRequired = true;
+					
+					if (IsVDXAFormat(srcFormat)) {		// VDXA -> CPU
+						const VDPixmapLayout& prevLayout = tail.mpSrc->GetOutputLayout();
+
+						int targetFormat;
+						if (prevLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB)
+							targetFormat = nsVDPixmap::kPixFormat_XRGB8888;
 						else
-							VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, fa->mExternalSrc.w, fa->mExternalSrc.h, 16);
-
-						conv->Init(src, layout, NULL);
-						conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-						src = conv;
-						mFilters.push_back(conv.release());
-						prevProxy = src->GetOutputAllocatorProxy();
-						srcFormat = layout.format;
-					}
-
-					// upload to accelerator
-					{
-						vdrefptr<VDFilterAccelUploader> conv(new VDFilterAccelUploader);
+							targetFormat = nsVDPixmap::kPixFormat_YUV444_Planar;
 
 						VDPixmapLayout layout;
-						VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, fa->mExternalSrcCropped.w, fa->mExternalSrcCropped.h, 16);
-
-						bool isRGB = false;
-						if (srcFormat == nsVDXPixmap::kPixFormat_XRGB8888) {
-							layout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
-							isRGB = true;
+						if (dstFormat == targetFormat) {
+							layout = extSrcLayout;
+							cpuConversionRequired = false;
 						} else
-							layout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
+							VDPixmapCreateLinearLayout(layout, targetFormat, prevLayout.w, prevLayout.h, 16);
 
-						VDPixmapLayout srcLayout(src->GetOutputLayout());
-
-						srcLayout.data += srcCrop.top * srcLayout.pitch + (isRGB ? srcCrop.left << 2 : srcCrop.left);
-						srcLayout.data2 += srcCrop.top * srcLayout.pitch2 + srcCrop.left;
-						srcLayout.data3 += srcCrop.top * srcLayout.pitch3 + srcCrop.left;
-						srcLayout.w -= srcCrop.left + srcCrop.right;
-						srcLayout.h -= srcCrop.bottom + srcCrop.top;
-
-						conv->Init(mpBitmaps->mpAccelEngine, src, layout, &srcLayout);
-						conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-						src = conv;
-						mFilters.push_back(conv.release());
-						prevProxy = src->GetOutputAllocatorProxy();
-						srcFormat = layout.format;
+						AppendAccelDownloadFilter(tail, layout);
 					}
 
-					// apply conversion on VDXA side if necessary
-					if (srcFormat != dstFormat) {
-						vdrefptr<VDFilterAccelConverter> conv(new VDFilterAccelConverter);
-
-						VDPixmapLayout layout;
-						VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, fa->mExternalSrcCropped.w, fa->mExternalSrcCropped.h, 16);
-
-						layout.format = dstFormat;
-
-						conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
-						conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-						src = conv;
-						mFilters.push_back(conv.release());
-						prevProxy = src->GetOutputAllocatorProxy();
-					}
+					if (cpuConversionRequired)
+						AppendConversionFilter(tail, extSrcLayout);
 				}
-			} else {	// VDXA, CPU -> CPU
-				bool cpuConversionRequired = true;
-				
-				if (IsVDXAFormat(srcFormat)) {		// VDXA -> CPU
-					const VDPixmapLayout& finalLayout = src->GetOutputLayout();
+			}
 
-					int targetFormat;
-					if (finalLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB)
-						targetFormat = nsVDPixmap::kPixFormat_XRGB8888;
-					else
-						targetFormat = nsVDPixmap::kPixFormat_YUV444_Planar;
+			if (streamInfo.mbAlignOnEntry) {
+				const VDFilterStreamDesc& croppedDesc = streamInfo.mExternalSrcPreAlign.GetStreamDesc();
+				const VDFilterStreamDesc& preAlignDesc = streamInfo.mExternalSrcPreAlign.GetStreamDesc();
 
-					VDPixmapLayout layout;
-					if (dstFormat == targetFormat) {
-						layout = fa->mExternalSrc.mPixmapLayout;
-						cpuConversionRequired = false;
-					} else
-						VDPixmapCreateLinearLayout(layout, targetFormat, finalLayout.w, finalLayout.h, 16);
-
-					vdrefptr<VDFilterAccelDownloader> conv(new VDFilterAccelDownloader);
-					conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
-					conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-					src = conv;
-					prevProxy = src->GetOutputAllocatorProxy();
-					mFilters.push_back(conv.release());
-				}
-
-				if (cpuConversionRequired) {
-					vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
-
-					conv->Init(src, fa->mExternalSrc.mPixmapLayout, NULL);
-					conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-					src = conv;
-					mFilters.push_back(conv.release());
-					prevProxy = src->GetOutputAllocatorProxy();
-				}
+				AppendAlignmentFilter(tail, croppedDesc.mLayout, preAlignDesc.mLayout);
 			}
 		}
 
-		if (fa->IsAlignmentRequired()) {
-			vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
+		FilterEntry& fe = mFilters.push_back();
+		fe.mpFilter = fa;
+		fe.mSources.resize(inputCount);
 
-			conv->Init(src, fa->mExternalSrcCropped.mPixmapLayout, &fa->mExternalSrcPreAlign.mPixmapLayout);
-			conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-			src = conv;
-			mFilters.push_back(conv.release());
-			prevProxy = fa->GetOutputAllocatorProxy();
+		for(uint32 i = 0; i < inputCount; ++i) {
+			StreamTail& tail = *(tails.end() - inputCount + i);
+
+			fe.mSources[i] = tail.mpSrc;
 		}
 
-		fa->AddRef();
-		mFilters.push_back(fa);
-		src = fa;
+		fa->InitSharedBuffers(lastFrameAlloc);
+		fa->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
 
-//		fa->mExternalSrc = *rawSrc;
-		fa->mExternalDst = fa->mRealDst;
+		for(uint32 i = 0; i < inputCount; ++i) {
+			StreamTail& tail = *(tails.end() - inputCount + i);
 
-		VDFileMappingW32 *mapping = NULL;
-		if (((fa->mRealSrc.dwFlags | fa->mRealDst.dwFlags) & VFBitmapInternal::NEEDS_HDC) && !(fa->GetFlags() & FILTERPARAM_SWAP_BUFFERS)) {
-			uint32 mapSize = std::max<uint32>(VDPixmapLayoutGetMinSize(fa->mRealSrc.mPixmapLayout), VDPixmapLayoutGetMinSize(fa->mRealDst.mPixmapLayout));
-
-			if (!fa->mFileMapping.Init(mapSize))
-				throw MyMemoryError();
-
-			mapping = &fa->mFileMapping;
+			fa->RegisterSourceAllocReqs(i, tail.mpProxy);
 		}
 
-		fa->mRealSrc.hdc = NULL;
-		if (mapping || (fa->mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC))
-			fa->mRealSrc.BindToDIBSection(mapping);
+		prevTail.mpSrc = fa;
+		prevTail.mpProxy = fa->GetOutputAllocatorProxy();
 
-		fa->mRealDst.hdc = NULL;
-		if (mapping || (fa->mRealDst.dwFlags & VDXFBitmap::NEEDS_HDC))
-			fa->mRealDst.BindToDIBSection(mapping);
-
-		fa->mRealLast.hdc = NULL;
-		if (fa->GetFlags() & FILTERPARAM_NEEDS_LAST) {
-			fa->mRealLast.Fixup(lpBuffer + lLastBufPtr);
-
-			if (fa->mRealLast.dwFlags & VDXFBitmap::NEEDS_HDC)
-				fa->mRealLast.BindToDIBSection(NULL);
-
-			lLastBufPtr += fa->mRealLast.size + fa->mRealLast.offset;
-		}
-
-		fa->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-		prevProxy = fa->GetOutputAllocatorProxy();
-
-		rawSrc = &fa->mExternalDst;
-
-		fa = fa_next;
+		if (!ent->mOutputName.empty())
+			tailset[ent->mOutputName] = prevTail;
 	}
 
 	// check if the last format is accelerated, and add a downloader if necessary
-	const VDPixmapLayout& finalLayout = src->GetOutputLayout();
+	StreamTail& finalTail = prevTail;
+	const VDPixmapLayout& finalLayout = finalTail.mpSrc->GetOutputLayout();
 	if (finalLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB) {
-		vdrefptr<VDFilterAccelDownloader> conv(new VDFilterAccelDownloader);
-
 		VDPixmapLayout layout;
 		VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, finalLayout.w, finalLayout.h, 16);
 
-		conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
-		conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-		mFilters.push_back(conv.release());
+		AppendAccelDownloadFilter(finalTail, layout);
 	} else if (finalLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
-		vdrefptr<VDFilterAccelDownloader> conv(new VDFilterAccelDownloader);
-
 		VDPixmapLayout layout;
 		VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_YUV444_Planar, finalLayout.w, finalLayout.h, 16);
 
-		conv->Init(mpBitmaps->mpAccelEngine, src, layout, NULL);
-		conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager, prevProxy);
-		mFilters.push_back(conv.release());
+		AppendAccelDownloadFilter(finalTail, layout);
 	}
 }
 
@@ -882,7 +966,7 @@ void FilterSystem::ReadyFilters() {
 
 	try {
 		for(Filters::const_iterator it(mFilters.begin()), itEnd(mFilters.end()); it != itEnd; ++it) {
-			IVDFilterFrameSource *src = *it;
+			IVDFilterFrameSource *src = it->mpFilter;
 
 			ActiveFilterEntry& afe = mActiveFilters.push_back();
 
@@ -898,7 +982,7 @@ void FilterSystem::ReadyFilters() {
 
 			FilterInstance *fa = vdpoly_cast<FilterInstance *>(src);
 			if (fa)
-				fa->Start(mFilterStateFlags, pLastSource, afe.mpProcessNode, mpBitmaps->mpAccelEngine);
+				fa->Start(mFilterStateFlags, it->mSources.data(), afe.mpProcessNode, mpBitmaps->mpAccelEngine);
 			else
 				src->Start(afe.mpProcessNode);
 
@@ -976,6 +1060,7 @@ FilterSystem::RunResult FilterSystem::Run(const uint32 *batchNumberLimit, bool r
 					processed = afe.mpProcessNode->ServiceSync();
 
 				if (processed) {
+processed_sync:
 					rr = IVDFilterFrameSource::kRunResult_Running;
 					VDDEBUG_FILTERSYS_DETAIL("FilterSystem[%s]: Sync processing occurred.\n", afe.mpFrameSource->GetDebugDesc());
 				} else {
@@ -1027,6 +1112,12 @@ FilterSystem::RunResult FilterSystem::Run(const uint32 *batchNumberLimit, bool r
 				}
 
 				if (rr == IVDFilterFrameSource::kRunResult_Blocked) {
+					// If we are single threaded and we can run the processing node for this filter, do
+					// that now. This is *required* for the capture filter code to work correctly with
+					// converter stages.
+					if (!mpBitmaps->mpProcessScheduler && afe.mpProcessNode->ServiceSync())
+						goto processed_sync;
+
 					if (runToCompletion) {
 						blocked = true;
 						continue;
@@ -1116,12 +1207,7 @@ void FilterSystem::DeinitFilters() {
 		mActiveFilters.pop_back();
 	}
 
-	while(!mFilters.empty()) {
-		IVDFilterFrameSource *fi = mFilters.back();
-		mFilters.pop_back();
-
-		fi->Release();
-	}
+	mFilters.clear();
 
 	if (mpBitmaps->mpProcessScheduler) {
 		mpBitmaps->mpProcessScheduler->BeginShutdown();
@@ -1243,4 +1329,92 @@ void FilterSystem::DeallocateBuffers() {
 
 		lpBuffer = NULL;
 	}
+}
+
+void FilterSystem::AppendConversionFilter(StreamTail& tail, const VDPixmapLayout& dstLayout) {
+	vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
+
+	conv->Init(tail.mpSrc, dstLayout, NULL);
+	conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
+	conv->RegisterSourceAllocReqs(0, tail.mpProxy);
+	tail.mpSrc = conv;
+	FilterEntry& fe = mFilters.push_back();
+	fe.mpFilter = conv;
+	fe.mSources.resize(1, tail.mpSrc);
+	tail.mpProxy = tail.mpSrc->GetOutputAllocatorProxy();
+}
+
+void FilterSystem::AppendAlignmentFilter(StreamTail& tail, const VDPixmapLayout& dstLayout, const VDPixmapLayout& srcLayout) {
+	vdrefptr<VDFilterFrameConverter> conv(new VDFilterFrameConverter);
+
+	conv->Init(tail.mpSrc, dstLayout, &srcLayout);
+	conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
+	conv->RegisterSourceAllocReqs(0, tail.mpProxy);
+	tail.mpSrc = conv;
+	tail.mpProxy = conv->GetOutputAllocatorProxy();
+	FilterEntry& fe = mFilters.push_back();
+	fe.mpFilter = conv;
+	fe.mSources.resize(1, tail.mpSrc);
+}
+
+void FilterSystem::AppendAccelUploadFilter(StreamTail& tail, const vdrect32& srcRect) {
+	vdrefptr<VDFilterAccelUploader> conv(new VDFilterAccelUploader);
+	VDPixmapLayout srcLayout(tail.mpSrc->GetOutputLayout());
+
+	VDPixmapLayout layout;
+	VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, srcRect.width(), srcRect.height(), 16);
+
+	bool isRGB = false;
+	if (srcLayout.format == nsVDXPixmap::kPixFormat_XRGB8888) {
+		layout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
+		isRGB = true;
+	} else
+		layout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
+
+	srcLayout.data += srcRect.top * srcLayout.pitch + (isRGB ? srcRect.left << 2 : srcRect.left);
+	srcLayout.data2 += srcRect.top * srcLayout.pitch2 + srcRect.left;
+	srcLayout.data3 += srcRect.top * srcLayout.pitch3 + srcRect.left;
+	srcLayout.w = srcRect.width();
+	srcLayout.h = srcRect.height();
+
+	conv->Init(mpBitmaps->mpAccelEngine, tail.mpSrc, layout, &srcLayout);
+	conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
+	conv->RegisterSourceAllocReqs(0, tail.mpProxy);
+	tail.mpSrc = conv;
+	tail.mpProxy = conv->GetOutputAllocatorProxy();
+	FilterEntry& fe = mFilters.push_back();
+	fe.mpFilter = conv;
+	fe.mSources.resize(1, tail.mpSrc);
+}
+
+void FilterSystem::AppendAccelDownloadFilter(StreamTail& tail, const VDPixmapLayout& layout) {
+	vdrefptr<VDFilterAccelDownloader> conv(new VDFilterAccelDownloader);
+	conv->Init(mpBitmaps->mpAccelEngine, tail.mpSrc, layout, NULL);
+	conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
+	conv->RegisterSourceAllocReqs(0, tail.mpProxy);
+	tail.mpSrc = conv;
+	tail.mpProxy = conv->GetOutputAllocatorProxy();
+	FilterEntry& fe = mFilters.push_back();
+	fe.mpFilter = conv;
+	fe.mSources.resize(1, tail.mpSrc);
+}
+
+void FilterSystem::AppendAccelConversionFilter(StreamTail& tail, int format) {
+	vdrefptr<VDFilterAccelConverter> conv(new VDFilterAccelConverter);
+	const VDPixmapLayout& prevLayout = tail.mpSrc->GetOutputLayout();
+
+	VDPixmapLayout layout;
+	VDPixmapCreateLinearLayout(layout, nsVDPixmap::kPixFormat_XRGB8888, prevLayout.w, prevLayout.h, 16);
+
+	layout.format = format;
+
+	conv->Init(mpBitmaps->mpAccelEngine, tail.mpSrc, layout, NULL);
+	conv->RegisterAllocatorProxies(&mpBitmaps->mAllocatorManager);
+	conv->RegisterSourceAllocReqs(0, tail.mpProxy);
+	tail.mpSrc = conv;
+	tail.mpProxy = tail.mpSrc->GetOutputAllocatorProxy();
+
+	FilterEntry& fe = mFilters.push_back();
+	fe.mpFilter = conv;
+	fe.mSources.resize(1, tail.mpSrc);
 }

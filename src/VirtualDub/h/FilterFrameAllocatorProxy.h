@@ -84,11 +84,19 @@ public:
 	}
 
 	VDFilterFrameAllocatorProxy *GetLink() const { return mpLink; }
-	void Link(VDFilterFrameAllocatorProxy *prev) { mpLink = prev; }
+	void Link(VDFilterFrameAllocatorProxy *prev) {
+#ifdef _DEBUG
+		for(VDFilterFrameAllocatorProxy *p = prev; p; p = p->mpLink) {
+			VDASSERT(p != this);
+		}
+#endif
+		mpLink = prev;
+	}
 
 	void Clear();
 	void SetAllocator(IVDFilterFrameAllocator *alloc);
 
+	void TrimAllocator();
 	bool Allocate(VDFilterFrameBuffer **buffer);
 
 protected:

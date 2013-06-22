@@ -159,28 +159,34 @@ void checkfpustack(const char *file, const int line) throw() {
 extern "C" void *_ReturnAddress();
 #pragma intrinsic(_ReturnAddress)
 
+#ifdef VD_CPU_AMD64
+	#define ENCODED_RETURN_ADDRESS ((int)_ReturnAddress() - (int)&__ImageBase)
+#else
+	#define ENCODED_RETURN_ADDRESS ((int)_ReturnAddress())
+#endif
+
 void *operator new(size_t bytes) {
 	static const char fname[]="stack trace";
 
-	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, ENCODED_RETURN_ADDRESS);
 }
 
 void *operator new(size_t bytes, const std::nothrow_t&) {
 	static const char fname[]="stack trace";
 
-	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, ENCODED_RETURN_ADDRESS);
 }
 
 void *operator new[](size_t bytes) {
 	static const char fname[]="stack trace";
 
-	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, ENCODED_RETURN_ADDRESS);
 }
 
 void *operator new[](size_t bytes, const std::nothrow_t&) {
 	static const char fname[]="stack trace";
 
-	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, ENCODED_RETURN_ADDRESS);
 }
 
 #endif
@@ -1849,11 +1855,14 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 	OSVERSIONINFO ovi;
 	ovi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
+#ifndef _M_AMD64
+	HMODULE hmodKernel32 = GetModuleHandle("kernel32");
+#endif
+
 	if (GetVersionEx(&ovi)) {
 #ifdef _M_AMD64
 		const char *build = "x64";
 #else
-		HMODULE hmodKernel32 = GetModuleHandle("kernel32");
 		typedef BOOL (WINAPI *tpIsWow64Process)(HANDLE, PBOOL);
 		tpIsWow64Process pIsWow64Process = (tpIsWow64Process)GetProcAddress(hmodKernel32, "IsWow64Process");
 		const char *build = "x86";
@@ -1866,17 +1875,81 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 		}
 #endif
 
+		const char *version = "?";
+
+		if (ovi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS) {
+			if (ovi.dwMinorVersion > 0)
+				version = "98";
+			else
+				version = "95";
+		} else if (ovi.dwPlatformId == VER_PLATFORM_WIN32_NT) {
+			if (ovi.dwMajorVersion >= 6) {
+				if (ovi.dwMinorVersion > 0)
+					version = "7";
+				else
+					version = "Vista";
+			} else if (ovi.dwMajorVersion == 5) {
+				if (ovi.dwMinorVersion >= 2)
+					version = "Server 2003";
+				else if (ovi.dwMinorVersion >= 1)
+					version = "XP";
+				else
+					version = "2000";
+			} else {
+				version = "NT";
+			}
+		}
+
 		out.WriteF("Windows %d.%d (Windows %s %s build %d) [%s]\n"
 			,ovi.dwMajorVersion
 			,ovi.dwMinorVersion
-			,ovi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS
-			? (ovi.dwMinorVersion>0 ? "98" : "95")
-				: ovi.dwPlatformId == VER_PLATFORM_WIN32_NT
-					? (ovi.dwMajorVersion >= 6 ? "Vista" : ovi.dwMajorVersion >= 5 ? ovi.dwMinorVersion>0 ? "XP" : "2000" : "NT")
-					: "?"
+			,version
 			,build
 			,ovi.dwBuildNumber & 0xffff
 			,ovi.szCSDVersion);
+	}
+
+	uint64	virtualFree = 0;
+	uint64	virtualTotal = 0;
+	uint64	commitLimit = 0;
+	uint64	physicalTotal = 0;
+#ifdef _M_AMD64
+	MEMORYSTATUSEX msex = { sizeof(MEMORYSTATUSEX) };
+	if (GlobalMemoryStatusEx(&msex)) {
+		virtualFree = msex.ullAvailVirtual;
+		virtualTotal = msex.ullTotalVirtual;
+		commitLimit = msex.ullTotalPageFile;
+		physicalTotal = msex.ullTotalPhys;
+	}
+#else
+	typedef BOOL (WINAPI *tpGlobalMemoryStatusEx)(LPMEMORYSTATUSEX lpBuffer);
+	tpGlobalMemoryStatusEx pGlobalMemoryStatusEx = (tpGlobalMemoryStatusEx)GetProcAddress(hmodKernel32, "GlobalMemoryStatusEx");
+
+	MEMORYSTATUSEX msex = { sizeof(MEMORYSTATUSEX) };
+	if (pGlobalMemoryStatusEx && pGlobalMemoryStatusEx(&msex)) {
+		virtualFree = msex.ullAvailVirtual;
+		virtualTotal = msex.ullTotalVirtual;
+		commitLimit = msex.ullTotalPageFile;
+		physicalTotal = msex.ullTotalPhys;
+	} else {
+		MEMORYSTATUS ms = { sizeof(MEMORYSTATUS) };
+
+		GlobalMemoryStatus(&ms);
+
+		virtualFree = ms.dwAvailVirtual;
+		virtualTotal = ms.dwTotalVirtual;
+		commitLimit = ms.dwTotalPageFile;
+		physicalTotal = ms.dwTotalPhys;
+	}
+#endif
+
+	if (physicalTotal) {
+		out.WriteF("Memory status: virtual free %uM/%uM, commit limit %uM, physical total %uM\n"
+			, (unsigned)((virtualFree + 1048575) >> 20)
+			, (unsigned)((virtualTotal + 1048575) >> 20)
+			, (unsigned)((commitLimit + 1048575) >> 20)
+			, (unsigned)((physicalTotal + 1048575) >> 20)
+			);
 	}
 
 	out.Write("\n");

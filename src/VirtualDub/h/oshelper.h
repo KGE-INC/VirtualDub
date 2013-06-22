@@ -24,16 +24,6 @@
 
 void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted);
 
-HKEY OpenConfigKey(const char *szKeyName);
-HKEY CreateConfigKey(const char *szKeyName);
-BOOL DeleteConfigValue(const char *szKeyName, const char *szValueName);
-BOOL QueryConfigString(const char *szKeyName, const char *szValueName, char *lpBuffer, int cbBuffer);
-DWORD QueryConfigBinary(const char *szKeyName, const char *szValueName, char *lpBuffer, int cbBuffer);
-BOOL QueryConfigDword(const char *szKeyName, const char *szValueName, DWORD *lpdwData);
-BOOL SetConfigString(const char *szKeyName, const char *szValueName, const char *lpBuffer);
-BOOL SetConfigBinary(const char *szKeyName, const char *szValueName, const char *lpBuffer, int cbBuffer);
-BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData);
-
 void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
 
 bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
@@ -41,6 +31,10 @@ bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 HWND VDGetAncestorW32(HWND hwnd, UINT gaFlags);
 VDStringW VDLoadStringW32(UINT uID, bool doSubstitutions);
 void VDSubstituteStrings(VDStringW& s);
+
+// Creates a 32-bit signature from the current date, time, and process ID. Not
+// guaranteed to be unique, but reasonably non-conflicting.
+uint32 VDCreateAutoSaveSignature();
 
 void LaunchURL(const char *pURL);
 

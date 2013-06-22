@@ -63,6 +63,9 @@ public:
 	List2<ACMFormatEntry> formats;
 	ACMFORMATTAGDETAILS aftd;
 	ACMDRIVERDETAILS add;
+	HACMDRIVERID hadid;
+	bool mbSupportsAbout;
+	bool mbSupportsConfigure;
 
 	ACMTagEntry();
 	~ACMTagEntry();
@@ -168,7 +171,12 @@ BOOL /*ACMFORMATTAGENUMCB*/ CALLBACK ACMFormatTagEnumerator(HACMDRIVERID hadid, 
 			ACMTagEntry *pate = new ACMTagEntry();
 			ACMFORMATDETAILS afd;
 
+			pate->hadid = hadid;
 			pate->aftd = *paftd;
+
+			pate->mbSupportsAbout = (0 == acmDriverMessage(pData->had, ACMDM_DRIVER_ABOUT, -1L, 0));
+			pate->mbSupportsConfigure = (0 != acmDriverMessage(pData->had, DRV_QUERYCONFIGURE, 0, 0));
+
 			pData->pate = pate;
 			pData->mbCurrentFormatTagMatchesHint = false;
 
@@ -241,7 +249,7 @@ static void AudioChooseDisplaySpecs(HWND hdlg, WAVEFORMATEX *pwfex) {
 
 	if (pwfex) {
 		if (pwfex->wFormatTag == WAVE_FORMAT_PCM)
-			strcpy(buf, "0x0000 (PCM)");
+			strcpy(buf, "0x0001 (PCM)");
 		else
 			wsprintf(buf, "0x%04x", pwfex->wFormatTag);
 	} else
@@ -272,6 +280,13 @@ static void AudioChooseShowFormats(HWND hdlg, ACMTagEntry *pTag, bool fShowCompa
 		AudioChooseDisplaySpecs(hdlg, thisPtr->pwfexSrc);
 		return;
 	}
+
+	HWND hwndItem;
+	if (hwndItem = GetDlgItem(hdlg, IDC_CONFIGURE))
+		EnableWindow(hwndItem, pTag->mbSupportsConfigure);
+
+	if (hwndItem = GetDlgItem(hdlg, IDC_ABOUT))
+		EnableWindow(hwndItem, pTag->mbSupportsAbout);
 
 	AudioChooseDisplaySpecs(hdlg, NULL);
 
@@ -474,6 +489,45 @@ redisplay_formats:
 			}
 
 			break;
+
+		case IDC_CONFIGURE:
+			{
+				HWND hwndItem = GetDlgItem(hdlg, IDC_DRIVER);
+				int idx = SendMessage(hwndItem, LB_GETCURSEL, 0, 0);
+
+				if (idx < 0)
+					return TRUE;
+
+				ACMTagEntry *pTag = (ACMTagEntry *)SendMessage(hwndItem, LB_GETITEMDATA, idx, 0);
+
+				HACMDRIVER hDriver;
+				if (pTag && pTag->mbSupportsConfigure && !acmDriverOpen(&hDriver, pTag->hadid, 0)) {
+					acmDriverMessage(hDriver, DRV_CONFIGURE, (LPARAM)hdlg, NULL);
+
+					acmDriverClose(hDriver, 0);
+				}
+			}
+			break;
+
+		case IDC_ABOUT:
+			{
+				HWND hwndItem = GetDlgItem(hdlg, IDC_DRIVER);
+				int idx = SendMessage(hwndItem, LB_GETCURSEL, 0, 0);
+
+				if (idx < 0)
+					return TRUE;
+
+				ACMTagEntry *pTag = (ACMTagEntry *)SendMessage(hwndItem, LB_GETITEMDATA, idx, 0);
+
+				HACMDRIVER hDriver;
+				if (pTag && pTag->mbSupportsAbout && !acmDriverOpen(&hDriver, pTag->hadid, 0)) {
+					acmDriverMessage(hDriver, ACMDM_DRIVER_ABOUT, (LPARAM)hdlg, NULL);
+
+					acmDriverClose(hDriver, 0);
+				}
+			}
+			break;
+
 		}
 		return TRUE;
 	}

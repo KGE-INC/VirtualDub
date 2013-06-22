@@ -3,7 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 9.00
 # Visual Studio 2005
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub\VirtualDub.vcproj", "{0766DAC1-1BC2-4FC8-BDDA-E083FC2F56F4}"
 	ProjectSection(ProjectDependencies) = postProject
-		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE} = {E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5} = {6CC5D826-A36B-40B6-A40B-63733D47C4B5}
 		{146714D9-1D90-4D50-B830-F453484EC2CD} = {146714D9-1D90-4D50-B830-F453484EC2CD}
 		{A8006C9B-E3C0-436D-8046-C3180B939E7A} = {A8006C9B-E3C0-436D-8046-C3180B939E7A}
@@ -17,6 +16,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub\Vi
 		{5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283} = {5BAFC3FB-8BFA-4D01-8A71-EBD6CF056283}
 		{8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D} = {8102A7FC-A8CF-4D5A-A5D7-D858B4626D0D}
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE} = {81ADB599-84B5-4FF3-B781-FB39D5CC63EE}
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1} = {E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}
+		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE} = {E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kasumi", "Kasumi\Kasumi.vcproj", "{0D252872-7542-4232-8D02-53F9182AEE15}"
@@ -95,9 +96,14 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdlaunch", "vdlaunch\vdlaun
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdjson", "vdjson\vdjson.vcproj", "{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VDFilters", "VDFilters\VDFilters.vcproj", "{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6AA99A18-196F-4334-A3DE-D9EEA62CD5E9} = {6AA99A18-196F-4334-A3DE-D9EEA62CD5E9}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SourceCodeControl) = preSolution
-		SccNumberOfProjects = 25
+		SccNumberOfProjects = 26
 		SccLocalPath0 = .
 		SccProjectUniqueName1 = VirtualDub\\VirtualDub.vcproj
 		SccLocalPath1 = .
@@ -171,6 +177,9 @@ Global
 		SccProjectUniqueName24 = vdjson\\vdjson.vcproj
 		SccLocalPath24 = .
 		SccProjectFilePathRelativizedFromConnection24 = vdjson\\
+		SccProjectUniqueName25 = VDFilters\\VDFilters.vcproj
+		SccLocalPath25 = .
+		SccProjectFilePathRelativizedFromConnection25 = VDFilters\\
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -406,7 +415,6 @@ Global
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Debug|x64.ActiveCfg = Debug|x64
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Debug|x64.Build.0 = Debug|x64
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Helpfile|Win32.ActiveCfg = Release|Win32
-		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Helpfile|Win32.Build.0 = Release|Win32
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Helpfile|x64.ActiveCfg = Release|Win32
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Release|Win32.ActiveCfg = Release|Win32
 		{81ADB599-84B5-4FF3-B781-FB39D5CC63EE}.Release|Win32.Build.0 = Release|Win32
@@ -417,7 +425,6 @@ Global
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Debug|x64.ActiveCfg = Debug|x64
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Debug|x64.Build.0 = Debug|x64
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Helpfile|Win32.ActiveCfg = Release|Win32
-		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Helpfile|Win32.Build.0 = Release|Win32
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Helpfile|x64.ActiveCfg = Release|Win32
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Release|Win32.ActiveCfg = Release|Win32
 		{6CC5D826-A36B-40B6-A40B-63733D47C4B5}.Release|Win32.Build.0 = Release|Win32
@@ -428,12 +435,21 @@ Global
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Debug|x64.ActiveCfg = Debug|x64
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Debug|x64.Build.0 = Debug|x64
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Helpfile|Win32.ActiveCfg = Release|Win32
-		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Helpfile|Win32.Build.0 = Release|Win32
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Helpfile|x64.ActiveCfg = Release|Win32
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Release|Win32.ActiveCfg = Release|Win32
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Release|Win32.Build.0 = Release|Win32
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Release|x64.ActiveCfg = Release|x64
 		{E6FA3718-4AD2-4B58-903A-45F35CCD2FDE}.Release|x64.Build.0 = Release|x64
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Debug|Win32.Build.0 = Debug|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Debug|x64.ActiveCfg = Debug|x64
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Debug|x64.Build.0 = Debug|x64
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Helpfile|Win32.ActiveCfg = Release|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Helpfile|x64.ActiveCfg = Release|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|Win32.ActiveCfg = Release|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|Win32.Build.0 = Release|Win32
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|x64.ActiveCfg = Release|x64
+		{E256E8BB-FFDA-4D5A-A999-B796C0C97AF1}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -22,11 +22,12 @@
 #include <vd2/system/error.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/fraction.h>
+#include <vd2/VDLib/Dialog.h>
 #include "resource.h"
-#include "gui.h"
 #include "AudioFilterSystem.h"
 #include "FilterGraph.h"
 #include "plugins.h"
+#include "gui.h"
 #include "PositionControl.h"
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
@@ -59,19 +60,17 @@ public:
 	virtual void FilterDialogClosed() = 0;
 };
 
-class VDDialogAddAudioFilterW32 : public VDDialogBaseW32 {
+class VDDialogAddAudioFilterW32 : public VDDialogFrameW32 {
 public:
-	VDDialogAddAudioFilterW32(IVDDialogAddAudioFilterCallbackW32 *pParent) : VDDialogBaseW32(IDD_AF_LIST), mpSelectedFilter(NULL), mpParent(pParent) {
-		VDEnumeratePluginDescriptions(mAudioFilters, kVDXPluginType_Audio);
-	}
+	VDDialogAddAudioFilterW32(IVDDialogAddAudioFilterCallbackW32 *pParent);
 
 	const VDPluginDescription *GetFilter() const { return mpSelectedFilter; }
 
 protected:
 	INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
-	void InitDialog();
-	void DestroyModeless();
+	bool OnLoaded();
+	void OnDestroy();
 	void UpdateDescription();
 
 	std::vector<VDPluginDescription *> mAudioFilters;
@@ -82,24 +81,21 @@ protected:
 	ModelessDlgNode		mDlgNode;
 };
 
+VDDialogAddAudioFilterW32::VDDialogAddAudioFilterW32(IVDDialogAddAudioFilterCallbackW32 *pParent)
+	: VDDialogFrameW32(IDD_AF_LIST)
+	, mpSelectedFilter(NULL)
+	, mpParent(pParent)
+{
+	VDEnumeratePluginDescriptions(mAudioFilters, kVDXPluginType_Audio);
+}
+
 INT_PTR VDDialogAddAudioFilterW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
-        case WM_INITDIALOG:
-			InitDialog();
-			SetFocus(GetDlgItem(mhdlg, IDC_FILTER_LIST));
-            return FALSE;
-		case WM_DESTROY:
-			mDlgNode.Remove();
-			mpParent->FilterDialogClosed();
-			return FALSE;
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDC_ADD:
 				if (mpSelectedFilter)
 					mpParent->FilterSelected();
-				return TRUE;
-			case IDCANCEL:
-				DestroyModeless();
 				return TRUE;
 			case IDC_FILTER_LIST:
 				switch(HIWORD(wParam)) {
@@ -114,13 +110,14 @@ INT_PTR VDDialogAddAudioFilterW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lPara
 			}
 			break;
 	}
-	return FALSE;
+
+	return VDDialogFrameW32::DlgProc(msg, wParam, lParam);
 }
 
-void VDDialogAddAudioFilterW32::InitDialog() {
+bool VDDialogAddAudioFilterW32::OnLoaded() {
+	VDSetDialogDefaultIcons(mhdlg);
 
 	// reposition window
-
 	RECT r, r2;
 	GetWindowRect(GetParent(mhdlg), &r);
 	GetWindowRect(mhdlg, &r2);
@@ -159,10 +156,15 @@ void VDDialogAddAudioFilterW32::InitDialog() {
 	mDlgNode.mhAccel = NULL;
 
 	guiAddModelessDialog(&mDlgNode);
+
+	SetFocus(GetDlgItem(mhdlg, IDC_FILTER_LIST));
+
+	return true;
 }
 
-void VDDialogAddAudioFilterW32::DestroyModeless() {
-	VDDialogBaseW32::DestroyModeless();
+void VDDialogAddAudioFilterW32::OnDestroy() {
+	mDlgNode.Remove();
+	mpParent->FilterDialogClosed();
 }
 
 void VDDialogAddAudioFilterW32::UpdateDescription() {
@@ -294,23 +296,15 @@ void VDAudioFilterPreviewThread::ThreadRun() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDDialogAudioFiltersW32 : public VDDialogBaseW32, public IVDDialogAddAudioFilterCallbackW32, public IVDFilterGraphControlCallback {
+class VDDialogAudioFiltersW32 : public VDDialogFrameW32, public IVDDialogAddAudioFilterCallbackW32, public IVDFilterGraphControlCallback {
 public:
-	inline VDDialogAudioFiltersW32(VDAudioFilterGraph& afg, AudioSource *pAS)
-			: VDDialogBaseW32(IDD_AF_SETUP)
-			, mAddDialog(this)
-			, mGraph(afg)
-			, mpAudio(pAS)
-			, mbPreviewActive(false)
-	{}
-
-	void Activate(VDGUIHandle hParent) {
-		ActivateDialog(hParent);
-	}
+	VDDialogAudioFiltersW32(VDAudioFilterGraph& afg, AudioSource *pAS);
 
 protected:
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
-	void InitDialog();
+	bool OnLoaded();
+	void OnSize();
+
 	void SaveDialogSettings();
 	void FilterSelected() {
 		if (const VDPluginDescription *pDesc = mAddDialog.GetFilter()) {
@@ -373,20 +367,29 @@ protected:
 	IVDPositionControl			*mpPosition;
 	bool						mbPreviewActive;
 	bool						mbPreviewWasActive;
+
+	VDDialogResizerW32			mResizer;
 };
+
+VDDialogAudioFiltersW32::VDDialogAudioFiltersW32(VDAudioFilterGraph& afg, AudioSource *pAS)
+	: VDDialogFrameW32(IDD_AF_SETUP)
+	, mpGraphControl(NULL)
+	, mAddDialog(this)
+	, mGraph(afg)
+	, mpAudio(pAS)
+	, mpPosition(NULL)
+	, mbPreviewActive(false)
+	, mbPreviewWasActive(false)
+{
+}
 
 INT_PTR VDDialogAudioFiltersW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
-
-        case WM_INITDIALOG:
-			InitDialog();
-            return TRUE;
-
 		case WM_COMMAND:
 			switch(LOWORD(wParam)) {
 			case IDC_ADD:
-				if (!mAddDialog.IsActive()) {
-					if (mAddDialog.CreateModeless((VDGUIHandle)mhdlg))
+				if (!mAddDialog.IsCreated()) {
+					if (mAddDialog.Create((VDGUIHandle)mhdlg))
 						EnableWindow((HWND)lParam, FALSE);
 				}
 
@@ -471,7 +474,8 @@ INT_PTR VDDialogAudioFiltersW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 	}
-	return FALSE;
+
+	return VDDialogFrameW32::DlgProc(msg, wParam, lParam);
 }
 
 void VDDialogAudioFiltersW32::Preview() {
@@ -650,7 +654,23 @@ bool VDDialogAudioFiltersW32::RequeryFormats() {
 	return bFound;
 }
 
-void VDDialogAudioFiltersW32::InitDialog() {
+bool VDDialogAudioFiltersW32::OnLoaded() {
+	VDSetDialogDefaultIcons(mhdlg);
+
+	mResizer.Init(mhdlg);
+	mResizer.Add(IDOK, VDDialogResizerW32::kTR);
+	mResizer.Add(IDCANCEL, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_POSITION, VDDialogResizerW32::kBC);
+	mResizer.Add(IDC_ADD, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_DELETE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_CONFIGURE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_CLEAR, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_TEST, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_ARRANGE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_AUTOARRANGE, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_AUTOCONNECT, VDDialogResizerW32::kTR);
+	mResizer.Add(IDC_GRAPH, VDDialogResizerW32::kMC);
+
 	mpPosition = VDGetIPositionControl((VDGUIHandle)GetDlgItem(mhdlg, IDC_POSITION));
 	mpPosition->SetFrameRate(VDFraction(1000,1));
 
@@ -674,6 +694,12 @@ void VDDialogAudioFiltersW32::InitDialog() {
 	SelectionChanged(NULL);
 
 	SetTimer(mhdlg, 1, 250, NULL);
+
+	return VDDialogFrameW32::OnLoaded();
+}
+
+void VDDialogAudioFiltersW32::OnSize() {
+	mResizer.Relayout();
 }
 
 void VDDialogAudioFiltersW32::SaveDialogSettings() {
@@ -686,7 +712,7 @@ void VDDialogAudioFiltersW32::SaveDialogSettings() {
 void VDDisplayAudioFilterDialog(VDGUIHandle hParent, VDAudioFilterGraph& graph, AudioSource *pAS) {
 	VDDialogAudioFiltersW32 dlg(graph, pAS);
 
-	dlg.Activate(hParent);
+	dlg.ShowDialog(hParent);
 }
 
 ///////////////////////////////////////////////////////////////////////////

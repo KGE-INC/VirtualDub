@@ -18,7 +18,7 @@
 
 #include "stdafx.h"
 #include <windows.h>
-#include <intrin.h>
+#include <vd2/system/win32/intrin.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>

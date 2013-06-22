@@ -48,6 +48,7 @@ public:
 	virtual bool isVisible()=0;
 	virtual bool isFrameVisible(bool)=0;
 	virtual bool ToggleFrame(bool)=0;
+	virtual void OnBackgroundStateUpdated()=0;
 };
 
 IDubStatusHandler *CreateDubStatusHandler();

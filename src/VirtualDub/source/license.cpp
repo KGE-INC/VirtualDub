@@ -18,8 +18,8 @@
 #include "stdafx.h"
 
 #include <windows.h>
+#include <vd2/system/registry.h>
 #include "resource.h"
-#include "oshelper.h"
 
 // There are some truly lame people out there who would try to rip off
 // an open source program by hacking the binary!
@@ -36,12 +36,11 @@ typedef unsigned char byte;
 
 class Licensor {
 public:
-	Licensor();
-	Licensor(HWND);
+	Licensor(HWND, bool conditional);
 
 	static INT_PTR APIENTRY DProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 	static void depack(HWND hDlg);
-} g_licensor;
+};
 
 // Wouldn't be fun without some good old-fashioned string expansion and LZ77 encoding.
 
@@ -135,30 +134,26 @@ INT_PTR APIENTRY Licensor::DProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM
     return FALSE;
 }
 
-Licensor::Licensor() {
-	char str[11];
-	int i;
-	DWORD dw;
+Licensor::Licensor(HWND hwndParent, bool conditional) {
+	if (conditional) {
+		char str[11];
+		int i;
 
-	for(i=0; i<10; i++)
-		str[i] = (char)(fht_tab[i]^0xaa);
-	str[i] = 0;
+		for(i=0; i<10; i++)
+			str[i] = (char)(fht_tab[i]^0xaa);
+		str[i] = 0;
 
-	if (QueryConfigDword(NULL, str, &dw) && dw)
-		return;
+		VDRegistryAppKey key;
+		if (key.getInt(str, 0))
+			return;
 
-	SetConfigDword(NULL, str, 1);
-	if (!DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_LICENSE), NULL, DProc))
-		throw new int('budv');
-}
-
-Licensor::Licensor(HWND hwndParent) {
-
+		key.setInt(str, 1);
+	}
 
 	if (!DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_LICENSE), hwndParent, DProc))
 		throw new int('budv');
 }
 
-extern void DisplayLicense(HWND hwndParent) {
-	Licensor l(hwndParent);
+void VDDisplayLicense(HWND hwndParent, bool conditional) {
+	Licensor l(hwndParent, conditional);
 }

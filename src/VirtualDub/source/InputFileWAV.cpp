@@ -309,7 +309,7 @@ public:
 
 	DetectionConfidence DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) {
 		if (nHeaderSize >= 12) {
-			if (!memcmp(pHeader, "RIFF", 4) && !memcmp((char*)pHeader+8, "WAV ", 4))
+			if (!memcmp(pHeader, "RIFF", 4) && !memcmp((char*)pHeader+8, "WAVE", 4))
 				return kDC_High;
 
 			if (nHeaderSize >= 40) {

@@ -293,9 +293,9 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 		VDPixmapBlt(getTargetFormat(), pxIFF);
 
 	if (bIsBMP)
-		DecodeBMP(inputBuffer, data_len, mvbFrameBuffer);
+		DecodeBMP(inputBuffer, data_len, VDAsPixmap(mvbFrameBuffer));
 	if (bIsTGA)
-		DecodeTGA(inputBuffer, data_len, mvbFrameBuffer);
+		DecodeTGA(inputBuffer, data_len, VDAsPixmap(mvbFrameBuffer));
 	if (bIsPNG) {
 		if (!mpPNGDecoder)
 			mpPNGDecoder = VDCreateImageDecoderPNG();

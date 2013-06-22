@@ -20,6 +20,8 @@
 #include <windows.h>
 #include <vfw.h>
 #include <richedit.h>
+#include <vd2/system/registry.h>
+#include <vd2/system/w32assist.h>
 
 #include "resource.h"
 #include "auxdlg.h"
@@ -208,12 +210,12 @@ INT_PTR CALLBACK WelcomeDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 }
 
 void Welcome() {
-	DWORD dwSeenIt;
+	VDRegistryAppKey key;
 
-	if (!QueryConfigDword(NULL, "SeenWelcome", &dwSeenIt) || !dwSeenIt) {
+	if (!key.getInt("SeenWelcome", 0)) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_WELCOME), NULL, WelcomeDlgProc);
 
-		SetConfigDword(NULL, "SeenWelcome", 1);
+		key.setInt("SeenWelcome", 1);
 	}
 }
 
@@ -333,21 +335,21 @@ static bool DetectDriver(const char *pszName) {
 }
 
 void DetectDivX() {
-	DWORD dwSeenIt;
+	VDRegistryAppKey key;
 
-	if (!QueryConfigDword(NULL, "SeenDivXWarning", &dwSeenIt) || !dwSeenIt) {
+	if (!key.getInt("SeenDivXWarning", 0)) {
 		if (DetectDriver("divxc32.dll") || DetectDriver("divxc32f.dll")) {
 			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc, (LPARAM)g_szDivXWarning);
 
-			SetConfigDword(NULL, "SeenDivXWarning", 1);
+			key.setInt("SeenDivXWarning", 1);
 		}
 	}
-	if (!QueryConfigDword(NULL, "SeenAngelPotionWarning", &dwSeenIt) || !dwSeenIt) {
+	if (!key.getInt("SeenAngelPotionWarning", 0)) {
 		if (DetectDriver("APmpg4v1.dll")) {
 
 			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DIVX_WARNING), NULL, DivXWarningDlgProc, (LPARAM)g_szAPWarning);
 
-			SetConfigDword(NULL, "SeenAngelPotionWarning", 1);
+			key.setInt("SeenAngelPotionWarning", 1);
 		}
 	}
 }
@@ -572,13 +574,13 @@ INT_PTR CALLBACK VDShowChangeLogDlgProcW32(HWND hdlg, UINT msg, WPARAM wParam, L
 }
 
 void VDShowChangeLog(VDGUIHandle hParent) {
-	HMODULE hmod = LoadLibrary("riched32.dll");
+	HMODULE hmod = VDLoadSystemLibraryW32("riched32.dll");
 	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CHANGE_LOG), (HWND)hParent, VDShowChangeLogDlgProcW32, (LPARAM)MAKEINTRESOURCE(IDR_CHANGES));
 	FreeLibrary(hmod);
 }
 
 void VDShowReleaseNotes(VDGUIHandle hParent) {
-	HMODULE hmod = LoadLibrary("riched32.dll");
+	HMODULE hmod = VDLoadSystemLibraryW32("riched32.dll");
 	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CHANGE_LOG), (HWND)hParent, VDShowChangeLogDlgProcW32, (LPARAM)MAKEINTRESOURCE(IDR_RELEASE_NOTES));
 	FreeLibrary(hmod);
 }

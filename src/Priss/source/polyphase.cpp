@@ -1051,9 +1051,9 @@ void VDMPEGAudioPolyphaseFilterSSE::SynthesizeStereo(sint16 *dst) {
 #ifdef _M_AMD64
 	vdasm_mpegaudio_polyphase_matrixout_stereo(
 					mWindow.stereo[16],
-					&mFilter[0][(-mWindowPos)&15],
+					&mFilter[0][(-(int)mWindowPos)&15],
 					&mFilter[0][mWindowPos&15],
-					odd ? -sizeof(mWindow.stereo[0]) : +sizeof(mWindow.stereo[0]),
+					odd ? -(int)sizeof(mWindow.stereo[0]) : +sizeof(mWindow.stereo[0]),
 					odd ? invert : noinvert,
 					&dst[2],
 					mWindow.stereo[0],

@@ -32,6 +32,8 @@ public:
 	virtual bool	SetTunerExactFrequency(uint32 freq) = 0;
 	virtual void	SetTunerInputMode(bool cable) = 0;
 	virtual void	SetTimeLimit(int limitsecs) = 0;
+	virtual void	SetAudioCaptureEnabled(bool enable) = 0;
+	virtual void	SetAudioPlaybackEnabled(bool enable) = 0;
 	virtual void	Capture() = 0;
 };
 

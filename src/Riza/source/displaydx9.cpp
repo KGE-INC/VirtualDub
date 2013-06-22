@@ -86,20 +86,17 @@ public:
 		};
 
 		IDirect3DDevice9 *dev = pManager->GetDevice();
-		vdrefptr<IDirect3DTexture9> tex;
-		HRESULT hr = dev->CreateTexture(16, 16, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ~tex, NULL);
-		if (FAILED(hr))
+		vdrefptr<IVDD3D9InitTexture> tex;
+		if (!pManager->CreateInitTexture(16, 16, 1, D3DFMT_A8R8G8B8, ~tex))
 			return false;
 
-		D3DLOCKED_RECT lr;
-		hr = tex->LockRect(0, &lr, NULL, 0);
-		VDASSERT(SUCCEEDED(hr));
-		if (FAILED(hr)) {
+		VDD3D9LockInfo lockInfo;
+		if (!tex->Lock(0, lockInfo)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load horizontal even/odd texture.\n");
 			return false;
 		}
 
-		char *dst = (char *)lr.pBits;
+		char *dst = (char *)lockInfo.mpData;
 		for(int y=0; y<16; ++y) {
 			const uint8 *srcrow = dither[y];
 			uint32 *dstrow = (uint32 *)dst;
@@ -107,13 +104,12 @@ public:
 			for(int x=0; x<16; ++x)
 				dstrow[x] = 0x01010101 * srcrow[x];
 
-			dst += lr.Pitch;
+			dst += lockInfo.mPitch;
 		}
 
-		VDVERIFY(SUCCEEDED(tex->UnlockRect(0)));
+		tex->Unlock(0);
 
-		pTexture->SetD3DTexture(tex);
-		return true;
+		return pTexture->Init(tex);
 	}
 };
 
@@ -121,26 +117,22 @@ class VDD3D9TextureGeneratorHEvenOdd : public vdrefcounted<IVDD3D9TextureGenerat
 public:
 	bool GenerateTexture(VDD3D9Manager *pManager, IVDD3D9Texture *pTexture) {
 		IDirect3DDevice9 *dev = pManager->GetDevice();
-		vdrefptr<IDirect3DTexture9> tex;
-		HRESULT hr = dev->CreateTexture(16, 1, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ~tex, NULL);
-		if (FAILED(hr))
+		vdrefptr<IVDD3D9InitTexture> tex;
+		if (!pManager->CreateInitTexture(16, 1, 1, D3DFMT_A8R8G8B8, ~tex))
 			return false;
 
-		D3DLOCKED_RECT lr;
-		hr = tex->LockRect(0, &lr, NULL, 0);
-		VDASSERT(SUCCEEDED(hr));
-		if (FAILED(hr)) {
+		VDD3D9LockInfo lockInfo;
+		if (!tex->Lock(0, lockInfo)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load horizontal even/odd texture.\n");
 			return false;
 		}
 
 		for(int i=0; i<16; ++i)
-			((uint32 *)lr.pBits)[i] = (uint32)-(sint32)(i&1);
+			((uint32 *)lockInfo.mpData)[i] = (uint32)-(sint32)(i&1);
 
-		VDVERIFY(SUCCEEDED(tex->UnlockRect(0)));
+		tex->Unlock(0);
 
-		pTexture->SetD3DTexture(tex);
-		return true;
+		return pTexture->Init(tex);
 	}
 };
 
@@ -150,25 +142,21 @@ public:
 
 	bool GenerateTexture(VDD3D9Manager *pManager, IVDD3D9Texture *pTexture) {
 		IDirect3DDevice9 *dev = pManager->GetDevice();
-		vdrefptr<IDirect3DTexture9> tex;
-		HRESULT hr = dev->CreateTexture(256, 4, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ~tex, NULL);
-		if (FAILED(hr))
+		vdrefptr<IVDD3D9InitTexture> tex;
+		if (!pManager->CreateInitTexture(256, 4, 1, D3DFMT_A8R8G8B8, ~tex))
 			return false;
 
-		D3DLOCKED_RECT lr;
-		hr = tex->LockRect(0, &lr, NULL, 0);
-		VDASSERT(SUCCEEDED(hr));
-		if (FAILED(hr)) {
+		VDD3D9LockInfo lr;
+		if (!tex->Lock(0, lr)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load cubic filter texture.\n");
 			return false;
 		}
 
-		MakeCubic4Texture((uint32 *)lr.pBits, lr.Pitch, -0.75, mCubicMode);
+		MakeCubic4Texture((uint32 *)lr.mpData, lr.mPitch, -0.75, mCubicMode);
 
-		VDVERIFY(SUCCEEDED(tex->UnlockRect(0)));
+		tex->Unlock(0);
 
-		pTexture->SetD3DTexture(tex);
-		return true;
+		return pTexture->Init(tex);
 	}
 
 protected:
@@ -410,16 +398,30 @@ bool VDFontRendererD3D9::Init(VDD3D9Manager *d3dmgr) {
 
 	// create texture
 	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
-	HRESULT hr = dev->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ~mpD3DFontTexture, NULL);
+	const bool useDefault = mpD3DManager->GetDeviceEx() != NULL;
+
+	HRESULT hr = dev->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, useDefault ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, ~mpD3DFontTexture, NULL);
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to create font cache texture.\n");
 		Shutdown();
 		return false;
 	}
 
+	vdrefptr<IDirect3DTexture9> uploadtex;
+	if (useDefault) {
+		hr = dev->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, ~uploadtex, NULL);
+		if (FAILED(hr)) {
+			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to create font cache texture.\n");
+			Shutdown();
+			return false;
+		}
+	} else {
+		uploadtex = mpD3DFontTexture;
+	}
+
 	// copy into texture
 	D3DLOCKED_RECT lr;
-	hr = mpD3DFontTexture->LockRect(0, &lr, NULL, 0);
+	hr = uploadtex->LockRect(0, &lr, NULL, 0);
 	VDASSERT(SUCCEEDED(hr));
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load font cache texture.\n");
@@ -439,7 +441,16 @@ bool VDFontRendererD3D9::Init(VDD3D9Manager *d3dmgr) {
 		vdptrstep(dst, lr.Pitch);
 	}
 
-	VDVERIFY(SUCCEEDED(mpD3DFontTexture->UnlockRect(0)));
+	VDVERIFY(SUCCEEDED(uploadtex->UnlockRect(0)));
+
+	if (uploadtex != mpD3DFontTexture) {
+		hr = dev->UpdateTexture(uploadtex, mpD3DFontTexture);
+		if (FAILED(hr)) {
+			Shutdown();
+			return false;
+		}
+	}
+
 	return true;
 }
 
@@ -661,7 +672,7 @@ public:
 		bool mbHighPrecision;
 	};
 
-	VDVideoDisplayDX9Manager(VDThreadID tid);
+	VDVideoDisplayDX9Manager(VDThreadID tid, HMONITOR hmonitor, bool use9ex);
 	~VDVideoDisplayDX9Manager();
 
 	int AddRef();
@@ -676,9 +687,11 @@ public:
 	bool InitBicubicTempSurfaces(bool highPrecision);
 	void ShutdownBicubicTempSurfaces(bool highPrecision);
 
+	bool IsD3D9ExEnabled() const { return mbUseD3D9Ex; }
 	bool Is16FEnabled() const { return mbIs16FEnabled; }
 
 	VDThreadID GetThreadId() const { return mThreadId; }
+	HMONITOR GetMonitor() const { return mhMonitor; }
 
 	IVDD3D9Texture	*GetTempRTT(int i) const { return mpRTTs[i]; }
 	IVDD3D9Texture	*GetFilterTexture() const { return mpFilterTexture; }
@@ -711,8 +724,10 @@ protected:
 	int					mCubicRefCount;
 	int					mCubicTempSurfacesRefCount[2];
 	bool				mbIs16FEnabled;
+	bool				mbUseD3D9Ex;
 
 	const VDThreadID	mThreadId;
+	const HMONITOR		mhMonitor;
 	int					mRefCount;
 };
 
@@ -725,7 +740,7 @@ protected:
 static VDCriticalSection g_csVDDisplayDX9Managers;
 static vdlist<VDVideoDisplayDX9ManagerNode> g_VDDisplayDX9Managers;
 
-bool VDInitDisplayDX9(VDVideoDisplayDX9Manager **ppManager) {
+bool VDInitDisplayDX9(HMONITOR hmonitor, bool use9ex, VDVideoDisplayDX9Manager **ppManager) {
 	VDVideoDisplayDX9Manager *pMgr = NULL;
 	bool firstClient = false;
 
@@ -737,16 +752,16 @@ bool VDInitDisplayDX9(VDVideoDisplayDX9Manager **ppManager) {
 		for(; it != itEnd; ++it) {
 			VDVideoDisplayDX9Manager *mgr = static_cast<VDVideoDisplayDX9Manager *>(*it);
 
-			if (mgr->GetThreadId() == tid) {
+			if (mgr->GetThreadId() == tid && mgr->GetMonitor() == hmonitor && mgr->IsD3D9ExEnabled() == use9ex) {
 				pMgr = mgr;
 				break;
 			}
 		}
 
 		if (!pMgr) {
-			pMgr = new_nothrow VDVideoDisplayDX9Manager(tid);
+			pMgr = new_nothrow VDVideoDisplayDX9Manager(tid, hmonitor, use9ex);
 			if (!pMgr)
-				return NULL;
+				return false;
 
 			g_VDDisplayDX9Managers.push_back(pMgr);
 			firstClient = true;
@@ -769,11 +784,13 @@ bool VDInitDisplayDX9(VDVideoDisplayDX9Manager **ppManager) {
 	return true;
 }
 
-VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager(VDThreadID tid)
+VDVideoDisplayDX9Manager::VDVideoDisplayDX9Manager(VDThreadID tid, HMONITOR hmonitor, bool use9ex)
 	: mpManager(NULL)
 	, mCubicRefCount(0)
 	, mThreadId(tid)
+	, mhMonitor(hmonitor)
 	, mRefCount(0)
+	, mbUseD3D9Ex(use9ex)
 {
 	mCubicTempSurfacesRefCount[0] = 0;
 	mCubicTempSurfacesRefCount[1] = 0;
@@ -805,7 +822,7 @@ int VDVideoDisplayDX9Manager::Release() {
 
 bool VDVideoDisplayDX9Manager::Init() {
 	VDASSERT(!mpManager);
-	mpManager = VDInitDirect3D9(this);
+	mpManager = VDInitDirect3D9(this, mhMonitor, mbUseD3D9Ex);
 	if (!mpManager)
 		return false;
 
@@ -1600,32 +1617,106 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 		// render!
 		bool validDraw = true;
 
-		if (Vertex *pvx = mpManager->LockVertices(4)) {
-			const float ustep = 1.0f / (float)(int)ctx.mSourceTexW * ctx.mDefaultUVScaleCorrectionX;
-			const float vstep = 1.0f / (float)(int)ctx.mSourceTexH * ctx.mDefaultUVScaleCorrectionY;
-			const float u0 = 0.0f;
-			const float v0 = pi.mbClipPosition ? ctx.mFieldOffset * vstep * -0.25f : 0.0f;
-			const float u1 = u0 + (int)ctx.mSourceW * ustep;
-			const float v1 = v0 + (int)ctx.mSourceH * vstep;
+		if (pi.mTileMode == 0) {
+			if (Vertex *pvx = mpManager->LockVertices(4)) {
+				const float ustep = 1.0f / (float)(int)ctx.mSourceTexW * ctx.mDefaultUVScaleCorrectionX;
+				const float vstep = 1.0f / (float)(int)ctx.mSourceTexH * ctx.mDefaultUVScaleCorrectionY;
+				const float u0 = 0.0f;
+				const float v0 = pi.mbClipPosition ? ctx.mFieldOffset * vstep * -0.25f : 0.0f;
+				const float u1 = u0 + (int)ctx.mSourceW * ustep;
+				const float v1 = v0 + (int)ctx.mSourceH * vstep;
 
-			const float invVpW = 1.f / (float)vp.Width;
-			const float invVpH = 1.f / (float)vp.Height;
+				const float invVpW = 1.f / (float)vp.Width;
+				const float invVpH = 1.f / (float)vp.Height;
 
-			const float x0 = -1.f - invVpW;
-			const float y0 = 1.f + invVpH;
-			const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
-			const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
+				const float x0 = -1.f - invVpW;
+				const float y0 = 1.f + invVpH;
+				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
+				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
 
-			__try {
-				pvx[0].SetFF2(x0, y0, 0xFFFFFFFF, u0, v0, 0, 0);
-				pvx[1].SetFF2(x1, y0, 0xFFFFFFFF, u1, v0, 1, 0);
-				pvx[2].SetFF2(x0, y1, 0xFFFFFFFF, u0, v1, 0, 1);
-				pvx[3].SetFF2(x1, y1, 0xFFFFFFFF, u1, v1, 1, 1);
-			} __except(1) {
-				validDraw = false;
+				__try {
+					pvx[0].SetFF2(x0, y0, 0xFFFFFFFF, u0, v0, 0, 0);
+					pvx[1].SetFF2(x1, y0, 0xFFFFFFFF, u1, v0, 1, 0);
+					pvx[2].SetFF2(x0, y1, 0xFFFFFFFF, u0, v1, 0, 1);
+					pvx[3].SetFF2(x1, y1, 0xFFFFFFFF, u1, v1, 1, 1);
+				} __except(1) {
+					validDraw = false;
+				}
+
+				mpManager->UnlockVertices();
 			}
+		} else if (pi.mTileMode == 1) {
+			if (Vertex *pvx = mpManager->LockVertices(12)) {
+				const float ustep = 1.0f / (float)(int)ctx.mSourceTexW * ctx.mDefaultUVScaleCorrectionX;
+				const float vstep = 1.0f / (float)(int)ctx.mSourceTexH * ctx.mDefaultUVScaleCorrectionY;
+				const float u0 = 0.0f;
+				const float v0 = pi.mbClipPosition ? ctx.mFieldOffset * vstep * -0.25f : 0.0f;
+				const float u1 = u0 + (int)ctx.mSourceW * ustep;
+				const float v1 = v0 + (int)ctx.mSourceH * vstep;
 
-			mpManager->UnlockVertices();
+				const float invVpW = 1.f / (float)vp.Width;
+				const float invVpH = 1.f / (float)vp.Height;
+
+				const float x0 = -1.f - invVpW;
+				const float y0 = 1.f + invVpH;
+				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
+				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
+
+				__try {
+					pvx[ 0].SetFF2(x0, y1, 0xFFFFFFFF,  0.0f, 0, 0, 1);
+					pvx[ 1].SetFF2(x0, y0, 0xFFFFFFFF,  0.0f, 0, 0, 0);
+					pvx[ 2].SetFF2(x0, y1, 0xFFFFFFFF, +0.5f, 0, 0, 1);
+					pvx[ 3].SetFF2(x0, y0, 0xFFFFFFFF, +0.5f, 0, 0, 0);
+					pvx[ 4].SetFF2(x0, y1, 0xFFFFFFFF, +2.0f, 0, 0, 1);
+					pvx[ 5].SetFF2(x0, y0, 0xFFFFFFFF, +2.0f, 0, 0, 0);
+					pvx[ 6].SetFF2(x1, y1, 0xFFFFFFFF, -2.0f, 0, 1, 1);
+					pvx[ 7].SetFF2(x1, y0, 0xFFFFFFFF, -2.0f, 0, 1, 0);
+					pvx[ 8].SetFF2(x1, y1, 0xFFFFFFFF, -0.5f, 0, 1, 1);
+					pvx[ 9].SetFF2(x1, y0, 0xFFFFFFFF, -0.5f, 0, 1, 0);
+					pvx[10].SetFF2(x1, y1, 0xFFFFFFFF,  0.0f, 0, 1, 1);
+					pvx[11].SetFF2(x1, y0, 0xFFFFFFFF,  0.0f, 0, 1, 0);
+				} __except(1) {
+					validDraw = false;
+				}
+
+				mpManager->UnlockVertices();
+			}
+		} else if (pi.mTileMode == 2) {
+			if (Vertex *pvx = mpManager->LockVertices(12)) {
+				const float ustep = 1.0f / (float)(int)ctx.mSourceTexW * ctx.mDefaultUVScaleCorrectionX;
+				const float vstep = 1.0f / (float)(int)ctx.mSourceTexH * ctx.mDefaultUVScaleCorrectionY;
+				const float u0 = 0.0f;
+				const float v0 = pi.mbClipPosition ? ctx.mFieldOffset * vstep * -0.25f : 0.0f;
+				const float u1 = u0 + (int)ctx.mSourceW * ustep;
+				const float v1 = v0 + (int)ctx.mSourceH * vstep;
+
+				const float invVpW = 1.f / (float)vp.Width;
+				const float invVpH = 1.f / (float)vp.Height;
+
+				const float x0 = -1.f - invVpW;
+				const float y0 = 1.f + invVpH;
+				const float x1 = pi.mbClipPosition ? x0 + ctx.mOutputW * 2.0f * invVpW : 1.f - invVpW;
+				const float y1 = pi.mbClipPosition ? y0 - ctx.mOutputH * 2.0f * invVpH : -1.f + invVpH;
+
+				__try {
+					pvx[ 0].SetFF2(x1, y0, 0xFFFFFFFF, 0,  0.0f, 1, 0);
+					pvx[ 1].SetFF2(x0, y0, 0xFFFFFFFF, 0,  0.0f, 0, 0);
+					pvx[ 2].SetFF2(x1, y0, 0xFFFFFFFF, 0,  0.5f, 1, 0);
+					pvx[ 3].SetFF2(x0, y0, 0xFFFFFFFF, 0,  0.5f, 0, 0);
+					pvx[ 4].SetFF2(x1, y0, 0xFFFFFFFF, 0,  2.0f, 1, 0);
+					pvx[ 5].SetFF2(x0, y0, 0xFFFFFFFF, 0,  2.0f, 0, 0);
+					pvx[ 6].SetFF2(x1, y1, 0xFFFFFFFF, 0, -2.0f, 1, 1);
+					pvx[ 7].SetFF2(x0, y1, 0xFFFFFFFF, 0, -2.0f, 0, 1);
+					pvx[ 8].SetFF2(x1, y1, 0xFFFFFFFF, 0, -0.5f, 1, 1);
+					pvx[ 9].SetFF2(x0, y1, 0xFFFFFFFF, 0, -0.5f, 0, 1);
+					pvx[10].SetFF2(x1, y1, 0xFFFFFFFF, 0,  0.0f, 1, 1);
+					pvx[11].SetFF2(x0, y1, 0xFFFFFFFF, 0,  0.0f, 0, 1);
+				} __except(1) {
+					validDraw = false;
+				}
+
+				mpManager->UnlockVertices();
+			}
 		}
 
 		if (!validDraw) {
@@ -1636,7 +1727,12 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const Techniq
 		if (!mpManager->BeginScene())
 			return false;
 
-		hr = mpManager->DrawArrays(D3DPT_TRIANGLESTRIP, 0, 2);
+		if (pi.mTileMode) {
+			hr = mpManager->DrawArrays(D3DPT_TRIANGLESTRIP, 0, 10);
+		} else {
+			hr = mpManager->DrawArrays(D3DPT_TRIANGLESTRIP, 0, 2);
+		}
+
 		if (FAILED(hr)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to draw primitive! hr=%08x\n", hr);
 			return false;
@@ -1659,12 +1755,15 @@ public:
 
 	IDirect3DTexture9 *GetD3DTexture(int i = 0) { return mpD3DConversionTextures[0] ? mpD3DConversionTextures[i] : mpD3DImageTextures[i]; }
 
-	bool Init(const VDPixmap& source, bool allowConversion, bool highPrecision, int buffers);
+	bool Init(void *hmonitor, bool use9ex, const VDPixmap& source, bool allowConversion, bool highPrecision, int buffers);
 	void Shutdown();
 
 	bool Update(const VDPixmap& source, int fieldMask);
 
 protected:
+	bool Lock(IDirect3DTexture9 *tex, IDirect3DTexture9 *upload, D3DLOCKED_RECT *lr);
+	bool Unlock(IDirect3DTexture9 *tex, IDirect3DTexture9 *upload);
+
 	void OnPreDeviceReset();
 	void OnPostDeviceReset();
 	bool ReinitVRAMTextures();
@@ -1690,11 +1789,17 @@ protected:
 	VDPixmapCachedBlitter mCachedBlitter;
 
 	IDirect3DTexture9	*mpD3DImageTextures[3];
+	IDirect3DTexture9	*mpD3DImageTexturesUpload[3];
 	IDirect3DTexture9	*mpD3DPaletteTexture;
+	IDirect3DTexture9	*mpD3DPaletteTextureUpload;
 	IDirect3DTexture9	*mpD3DImageTexture2a;
+	IDirect3DTexture9	*mpD3DImageTexture2aUpload;
 	IDirect3DTexture9	*mpD3DImageTexture2b;
+	IDirect3DTexture9	*mpD3DImageTexture2bUpload;
 	IDirect3DTexture9	*mpD3DImageTexture2c;
+	IDirect3DTexture9	*mpD3DImageTexture2cUpload;
 	IDirect3DTexture9	*mpD3DImageTexture2d;
+	IDirect3DTexture9	*mpD3DImageTexture2dUpload;
 	IDirect3DTexture9	*mpD3DConversionTextures[3];
 };
 
@@ -1705,14 +1810,20 @@ bool VDCreateVideoUploadContextD3D9(IVDVideoUploadContextD3D9 **ppContext) {
 VDVideoUploadContextD3D9::VDVideoUploadContextD3D9()
 	: mpManager(NULL)
 	, mpD3DPaletteTexture(NULL)
+	, mpD3DPaletteTextureUpload(NULL)
 	, mpD3DImageTexture2a(NULL)
+	, mpD3DImageTexture2aUpload(NULL)
 	, mpD3DImageTexture2b(NULL)
+	, mpD3DImageTexture2bUpload(NULL)
 	, mpD3DImageTexture2c(NULL)
+	, mpD3DImageTexture2cUpload(NULL)
 	, mpD3DImageTexture2d(NULL)
+	, mpD3DImageTexture2dUpload(NULL)
 	, mbHighPrecision(false)
 {
 	for(int i=0; i<3; ++i) {
 		mpD3DImageTextures[i] = NULL;
+		mpD3DImageTexturesUpload[i] = NULL;
 		mpD3DConversionTextures[i] = NULL;
 	}
 }
@@ -1721,18 +1832,18 @@ VDVideoUploadContextD3D9::~VDVideoUploadContextD3D9() {
 	Shutdown();
 }
 
-bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion, bool highPrecision, int buffers) {
+bool VDVideoUploadContextD3D9::Init(void *hmonitor, bool use9ex, const VDPixmap& source, bool allowConversion, bool highPrecision, int buffers) {
 	mCachedBlitter.Invalidate();
 
 	mBufferCount = buffers;
 	mbHighPrecision = highPrecision;
 
 	VDASSERT(!mpManager);
-	mpManager = VDInitDirect3D9(this);
+	mpManager = VDInitDirect3D9(this, (HMONITOR)hmonitor, use9ex);
 	if (!mpManager)
 		return false;
 
-	if (!VDInitDisplayDX9(~mpVideoManager)) {
+	if (!VDInitDisplayDX9((HMONITOR)hmonitor, use9ex, ~mpVideoManager)) {
 		Shutdown();
 		return false;
 	}
@@ -1766,6 +1877,9 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 
 	mUploadMode = kUploadModeNormal;
 
+	const bool useDefault = (mpManager->GetDeviceEx() != NULL);
+	const D3DPOOL texPool = useDefault ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED;
+
 	switch(source.format) {
 		case nsVDPixmap::kPixFormat_YUV420i_Planar:
 		case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
@@ -1788,28 +1902,54 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2a, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2a, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2b, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2b, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2c, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2c, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2d, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2d, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
+				}
+
+				if (mpManager->GetDeviceEx()) {
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2aUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
+
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2bUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
+
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2cUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
+
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2dUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
 				}
 			}
 			break;
@@ -1882,16 +2022,30 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 				if (subh < 1)
 					subh = 1;
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2a, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2a, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2b, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2b, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
+				}
+
+				if (useDefault) {
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2aUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
+
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2bUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
 				}
 			}
 			break;
@@ -1932,23 +2086,45 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 					subh = 1;
 
 				if (source.format == nsVDPixmap::kPixFormat_Pal8) {
-					hr = dev->CreateTexture(256, 1, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_MANAGED, &mpD3DPaletteTexture, NULL);
+					hr = dev->CreateTexture(256, 1, 1, 0, D3DFMT_X8R8G8B8, texPool, &mpD3DPaletteTexture, NULL);
 					if (FAILED(hr)) {
 						Shutdown();
 						return false;
 					}
+
+					if (useDefault) {
+						hr = dev->CreateTexture(256, 1, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_SYSTEMMEM, &mpD3DPaletteTextureUpload, NULL);
+						if (FAILED(hr)) {
+							Shutdown();
+							return false;
+						}
+					}
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2a, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2a, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
 				}
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &mpD3DImageTexture2b, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, texPool, &mpD3DImageTexture2b, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
+				}
+
+				if (useDefault) {
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2aUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
+
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2bUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
 				}
 			}
 			break;
@@ -1969,10 +2145,18 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 				if (subh < 1)
 					subh = 1;
 
-				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_A8L8, D3DPOOL_MANAGED, &mpD3DImageTexture2a, NULL);
+				hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_A8L8, texPool, &mpD3DImageTexture2a, NULL);
 				if (FAILED(hr)) {
 					Shutdown();
 					return false;
+				}
+
+				if (useDefault) {
+					hr = dev->CreateTexture(subw, subh, 1, 0, D3DFMT_A8L8, D3DPOOL_SYSTEMMEM, &mpD3DImageTexture2aUpload, NULL);
+					if (FAILED(hr)) {
+						Shutdown();
+						return false;
+					}
 				}
 			}
 			break;
@@ -2031,15 +2215,18 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 	mTexFmt.w			= texw;
 	mTexFmt.h			= texh;
 
-	hr = dev->CreateTexture(texw, texh, 1, 0, d3dfmt, D3DPOOL_MANAGED, &mpD3DImageTextures[0], NULL);
-	if (FAILED(hr)) {
-		Shutdown();
-		return false;
-	}
+	int imageTextureCount = (mpD3DConversionTextures[0] ? buffers : 1);
 
-	if (!mpD3DConversionTextures[0]) {
-		for(int i=1; i<buffers; ++i) {
-			hr = dev->CreateTexture(texw, texh, 1, 0, d3dfmt, D3DPOOL_MANAGED, &mpD3DImageTextures[i], NULL);
+	for(int i=0; i<imageTextureCount; ++i) {
+		hr = dev->CreateTexture(texw, texh, 1, 0, d3dfmt, texPool, &mpD3DImageTextures[i], NULL);
+		if (FAILED(hr)) {
+			Shutdown();
+			return false;
+		}
+
+		if (useDefault) 
+		{
+			hr = dev->CreateTexture(texw, texh, 1, 0, d3dfmt, D3DPOOL_SYSTEMMEM, &mpD3DImageTexturesUpload[i], NULL);
 			if (FAILED(hr)) {
 				Shutdown();
 				return false;
@@ -2049,84 +2236,97 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 
 	// clear source textures
 	for(int i=0; i<buffers; ++i) {
+		if (!mpD3DImageTextures[i])
+			continue;
+
+		IDirect3DTexture9 *pDstTex = mpD3DImageTextures[i];
+		IDirect3DTexture9 *pSrcTex = mpD3DImageTexturesUpload[i];
+
+		if (!pSrcTex)
+			pSrcTex = pDstTex;
+		
 		D3DLOCKED_RECT lr;
-		if (mpD3DImageTextures[i] && SUCCEEDED(mpD3DImageTextures[i]->LockRect(0, &lr, NULL, 0))) {
-			uint32 fillValue = 0;
+		if (FAILED(pSrcTex->LockRect(0, &lr, NULL, 0)))
+			continue;
 
-			switch(source.format) {
-				case nsVDPixmap::kPixFormat_YUV422_UYVY:
-				case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0x80108010, (texw + 1) >> 1, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV422_UYVY_FR:
-				case nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0x80008000, (texw + 1) >> 1, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV422_YUYV:
-				case nsVDPixmap::kPixFormat_YUV422_YUYV_709:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0x10801080, (texw + 1) >> 1, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV422_YUYV_FR:
-				case nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0x00800080, (texw + 1) >> 1, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV444_Planar:
-				case nsVDPixmap::kPixFormat_YUV444_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV422_Planar:
-				case nsVDPixmap::kPixFormat_YUV422_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV420_Planar:
-				case nsVDPixmap::kPixFormat_YUV420_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV420i_Planar:
-				case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV420it_Planar:
-				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
-				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV411_Planar:
-				case nsVDPixmap::kPixFormat_YUV411_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV410_Planar:
-				case nsVDPixmap::kPixFormat_YUV410_Planar_709:
-				case nsVDPixmap::kPixFormat_YUV420_NV12:
-					VDMemset8Rect(lr.pBits, lr.Pitch, 0x10, texw, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV422_V210:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0x20080200, ((texw + 5) / 6) * 4, texh);
-					break;
-				case nsVDPixmap::kPixFormat_XRGB1555:
-				case nsVDPixmap::kPixFormat_RGB565:
-					VDMemset16Rect(lr.pBits, lr.Pitch, 0, texw, texh);
-					break;
-				case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
-				case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
-				case nsVDPixmap::kPixFormat_Pal8:
-				case nsVDPixmap::kPixFormat_Y8:
-				case nsVDPixmap::kPixFormat_Y8_FR:
-					VDMemset8Rect(lr.pBits, lr.Pitch, 0, texw, texh);
-					break;
-				default:
-					VDMemset32Rect(lr.pBits, lr.Pitch, 0, texw, texh);
-					break;
-			}
+		uint32 fillValue = 0;
 
-			mpD3DImageTextures[i]->UnlockRect(0);
+		switch(source.format) {
+			case nsVDPixmap::kPixFormat_YUV422_UYVY:
+			case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0x80108010, (texw + 1) >> 1, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV422_UYVY_FR:
+			case nsVDPixmap::kPixFormat_YUV422_UYVY_709_FR:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0x80008000, (texw + 1) >> 1, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV422_YUYV:
+			case nsVDPixmap::kPixFormat_YUV422_YUYV_709:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0x10801080, (texw + 1) >> 1, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV422_YUYV_FR:
+			case nsVDPixmap::kPixFormat_YUV422_YUYV_709_FR:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0x00800080, (texw + 1) >> 1, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV444_Planar:
+			case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV422_Planar:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420_Planar:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420i_Planar:
+			case nsVDPixmap::kPixFormat_YUV420i_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420it_Planar:
+			case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+			case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV411_Planar:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV410_Planar:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420_NV12:
+				VDMemset8Rect(lr.pBits, lr.Pitch, 0x10, texw, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV422_V210:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0x20080200, ((texw + 5) / 6) * 4, texh);
+				break;
+			case nsVDPixmap::kPixFormat_XRGB1555:
+			case nsVDPixmap::kPixFormat_RGB565:
+				VDMemset16Rect(lr.pBits, lr.Pitch, 0, texw, texh);
+				break;
+			case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV420i_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV420i_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_Pal8:
+			case nsVDPixmap::kPixFormat_Y8:
+			case nsVDPixmap::kPixFormat_Y8_FR:
+				VDMemset8Rect(lr.pBits, lr.Pitch, 0, texw, texh);
+				break;
+			default:
+				VDMemset32Rect(lr.pBits, lr.Pitch, 0, texw, texh);
+				break;
 		}
+
+		pSrcTex->UnlockRect(0);
+
+		if (pSrcTex != pDstTex)
+			dev->UpdateTexture(pSrcTex, pDstTex);
 	}
 
-	VDDEBUG_DX9DISP("VideoDisplay/DX9: Init successful for %dx%d source image (%s -> %s)\n", source.w, source.h, VDPixmapGetInfo(source.format).name, VDPixmapGetInfo(mTexFmt.format).name);
+	VDDEBUG_DX9DISP("VideoDisplay/DX9: Init successful for %dx%d source image (%s -> %s); monitor=%p\n", source.w, source.h, VDPixmapGetInfo(source.format).name, VDPixmapGetInfo(mTexFmt.format).name, hmonitor);
 	return true;
 }
 
@@ -2134,6 +2334,11 @@ void VDVideoUploadContextD3D9::Shutdown() {
 	if (mpD3DPaletteTexture) {
 		mpD3DPaletteTexture->Release();
 		mpD3DPaletteTexture = NULL;
+	}
+
+	if (mpD3DPaletteTextureUpload) {
+		mpD3DPaletteTextureUpload->Release();
+		mpD3DPaletteTextureUpload = NULL;
 	}
 
 	for(int i=0; i<3; ++i) {
@@ -2148,9 +2353,19 @@ void VDVideoUploadContextD3D9::Shutdown() {
 		mpD3DImageTexture2d = NULL;
 	}
 
+	if (mpD3DImageTexture2dUpload) {
+		mpD3DImageTexture2dUpload->Release();
+		mpD3DImageTexture2dUpload = NULL;
+	}
+
 	if (mpD3DImageTexture2c) {
 		mpD3DImageTexture2c->Release();
 		mpD3DImageTexture2c = NULL;
+	}
+
+	if (mpD3DImageTexture2cUpload) {
+		mpD3DImageTexture2cUpload->Release();
+		mpD3DImageTexture2cUpload = NULL;
 	}
 
 	if (mpD3DImageTexture2b) {
@@ -2158,15 +2373,30 @@ void VDVideoUploadContextD3D9::Shutdown() {
 		mpD3DImageTexture2b = NULL;
 	}
 
+	if (mpD3DImageTexture2bUpload) {
+		mpD3DImageTexture2bUpload->Release();
+		mpD3DImageTexture2bUpload = NULL;
+	}
+
 	if (mpD3DImageTexture2a) {
 		mpD3DImageTexture2a->Release();
 		mpD3DImageTexture2a = NULL;
+	}
+
+	if (mpD3DImageTexture2aUpload) {
+		mpD3DImageTexture2aUpload->Release();
+		mpD3DImageTexture2aUpload = NULL;
 	}
 
 	for(int i=0; i<3; ++i) {
 		if (mpD3DImageTextures[i]) {
 			mpD3DImageTextures[i]->Release();
 			mpD3DImageTextures[i] = NULL;
+		}
+
+		if (mpD3DImageTexturesUpload[i]) {
+			mpD3DImageTexturesUpload[i]->Release();
+			mpD3DImageTexturesUpload[i] = NULL;
 		}
 	}
 
@@ -2192,8 +2422,7 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 	HRESULT hr;
 
 	if (mpD3DPaletteTexture) {
-		hr = mpD3DPaletteTexture->LockRect(0, &lr, NULL, 0);
-		if (FAILED(hr))
+		if (!Lock(mpD3DPaletteTexture, mpD3DPaletteTextureUpload, &lr))
 			return false;
 
 		if (source.palette) {
@@ -2207,10 +2436,10 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 			}
 		}
 
-		VDVERIFY(SUCCEEDED(mpD3DPaletteTexture->UnlockRect(0)));
+		VDVERIFY(Unlock(mpD3DPaletteTexture, mpD3DPaletteTextureUpload));
 	}
 	
-	hr = mpD3DImageTextures[0]->LockRect(0, &lr, NULL, 0);
+	hr = Lock(mpD3DImageTextures[0], mpD3DImageTexturesUpload[0], &lr);
 	if (FAILED(hr))
 		return false;
 
@@ -2235,10 +2464,16 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 	} else if (mUploadMode == kUploadModeDirect8 || mUploadMode == kUploadModeDirect8Laced || mUploadMode == kUploadModeDirectNV12) {
 		VDMemcpyRect(dst.data, dst.pitch, src.data, src.pitch, src.w, src.h);
 	} else {
+		if (dst.w > src.w)
+			dst.w = src.w;
+		
+		if (dst.h > src.h)
+			dst.h = src.h;
+
 		mCachedBlitter.Blit(dst, src);
 	}
 
-	VDVERIFY(SUCCEEDED(mpD3DImageTextures[0]->UnlockRect(0)));
+	VDVERIFY(Unlock(mpD3DImageTextures[0], mpD3DImageTexturesUpload[0]));
 
 	if (mUploadMode == kUploadModeDirectNV12) {
 		uint32 subw = (source.w + 1) >> 1;
@@ -2250,13 +2485,12 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 			subh = 1;
 
 		// upload chroma plane
-		hr = mpD3DImageTexture2a->LockRect(0, &lr, NULL, 0);
-		if (FAILED(hr))
+		if (!Lock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload, &lr))
 			return false;
 
 		VDMemcpyRect(lr.pBits, lr.Pitch, source.data2, source.pitch2, subw*2, subh);
 
-		VDVERIFY(SUCCEEDED(mpD3DImageTexture2a->UnlockRect(0)));
+		VDVERIFY(Unlock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload));
 
 	} else if (mUploadMode == kUploadModeDirect8Laced) {
 		uint32 subw = (source.w + 1) >> 1;
@@ -2268,44 +2502,40 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 			const VDPixmap srcPlane1(VDPixmapExtractField(source, false));
 
 			// upload Cb plane
-			hr = mpD3DImageTexture2a->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, srcPlane1.data2, srcPlane1.pitch2, subw, subh1);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2a->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload));
 
 			// upload Cr plane
-			hr = mpD3DImageTexture2b->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2b, mpD3DImageTexture2bUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, srcPlane1.data3, srcPlane1.pitch3, subw, subh1);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2b->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2b, mpD3DImageTexture2bUpload));
 		}
 
 		if (fieldMask & 2) {
 			const VDPixmap srcPlane2(VDPixmapExtractField(source, true));
 
 			// upload Cb plane
-			hr = mpD3DImageTexture2c->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2c, mpD3DImageTexture2cUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, srcPlane2.data2, srcPlane2.pitch2, subw, subh2);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2c->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2c, mpD3DImageTexture2cUpload));
 
 			// upload Cr plane
-			hr = mpD3DImageTexture2d->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2d, mpD3DImageTexture2dUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, srcPlane2.data3, srcPlane2.pitch3, subw, subh2);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2d->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2d, mpD3DImageTexture2dUpload));
 		}
 	} else if (mUploadMode == kUploadModeDirect8) {
 		uint32 subw = source.w;
@@ -2354,22 +2584,20 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 
 		if (source.format != nsVDPixmap::kPixFormat_Pal8) {
 			// upload Cb plane
-			hr = mpD3DImageTexture2a->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, source.data2, source.pitch2, subw, subh);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2a->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2a, mpD3DImageTexture2aUpload));
 
 			// upload Cr plane
-			hr = mpD3DImageTexture2b->LockRect(0, &lr, NULL, 0);
-			if (FAILED(hr))
+			if (!Lock(mpD3DImageTexture2b, mpD3DImageTexture2bUpload, &lr))
 				return false;
 
 			VDMemcpyRect(lr.pBits, lr.Pitch, source.data3, source.pitch3, subw, subh);
 
-			VDVERIFY(SUCCEEDED(mpD3DImageTexture2b->UnlockRect(0)));
+			VDVERIFY(Unlock(mpD3DImageTexture2b, mpD3DImageTexture2bUpload));
 		}
 	}
 
@@ -2787,6 +3015,28 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 	return true;
 }
 
+bool VDVideoUploadContextD3D9::Lock(IDirect3DTexture9 *tex, IDirect3DTexture9 *upload, D3DLOCKED_RECT *lr) {
+	HRESULT hr = (upload ? upload : tex)->LockRect(0, lr, NULL, 0);
+
+	return SUCCEEDED(hr);
+}
+
+bool VDVideoUploadContextD3D9::Unlock(IDirect3DTexture9 *tex, IDirect3DTexture9 *upload) {
+	HRESULT hr;
+
+	if (upload) {
+		hr = upload->UnlockRect(0);
+		if (FAILED(hr))
+			return false;
+
+		hr = mpManager->GetDevice()->UpdateTexture(upload, tex);
+	} else {
+		hr = tex->UnlockRect(0);
+	}
+
+	return SUCCEEDED(hr);
+}
+
 void VDVideoUploadContextD3D9::OnPreDeviceReset() {
 	for(int i=0; i<3; ++i) {
 		if (mpD3DConversionTextures[i]) {
@@ -2825,11 +3075,11 @@ bool VDVideoUploadContextD3D9::ReinitVRAMTextures() {
 
 class VDVideoDisplayMinidriverDX9 : public VDVideoDisplayMinidriver, protected VDD3D9Client {
 public:
-	VDVideoDisplayMinidriverDX9(bool clipToMonitor);
+	VDVideoDisplayMinidriverDX9(bool clipToMonitor, bool use9ex);
 	~VDVideoDisplayMinidriverDX9();
 
 protected:
-	bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info);
+	bool Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info);
 	void Shutdown();
 
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
@@ -2893,6 +3143,8 @@ protected:
 	bool				mbCubicAttempted;
 	bool				mbCubicUsingHighPrecision;
 	bool				mbCubicTempSurfacesInitialized;
+	bool				mbUseD3D9Ex;
+
 	FilterMode			mPreferredFilter;
 	float				mSyncDelta;
 	VDD3DPresentHistory	mPresentHistory;
@@ -2905,11 +3157,11 @@ protected:
 	VDStringA		mDebugString;
 };
 
-IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9(bool clipToMonitor) {
-	return new VDVideoDisplayMinidriverDX9(clipToMonitor);
+IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9(bool clipToMonitor, bool use9ex) {
+	return new VDVideoDisplayMinidriverDX9(clipToMonitor, use9ex);
 }
 
-VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor)
+VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor, bool use9ex)
 	: mpManager(NULL)
 	, mpD3DDevice(NULL)
 	, mInterpFilterHSize(0)
@@ -2930,6 +3182,7 @@ VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor)
 	, mbCubicAttempted(false)
 	, mbCubicUsingHighPrecision(false)
 	, mbCubicTempSurfacesInitialized(false)
+	, mbUseD3D9Ex(use9ex)
 	, mPreferredFilter(kFilterAnySuitable)
 	, mSyncDelta(0.0f)
 {
@@ -2938,20 +3191,20 @@ VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9(bool clipToMonitor)
 VDVideoDisplayMinidriverDX9::~VDVideoDisplayMinidriverDX9() {
 }
 
-bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info) {
 	VDASSERT(!mpManager);
 	mhwnd = hwnd;
 	mSource = info;
 
 	// attempt to initialize D3D9
 	mbFullScreenSet = false;
-	mpManager = VDInitDirect3D9(this);
+	mpManager = VDInitDirect3D9(this, hmonitor, mbUseD3D9Ex);
 	if (!mpManager) {
 		Shutdown();
 		return false;
 	}
 
-	if (!VDInitDisplayDX9(~mpVideoManager)) {
+	if (!VDInitDisplayDX9(hmonitor, mbUseD3D9Ex, ~mpVideoManager)) {
 		Shutdown();
 		return false;
 	}
@@ -2974,7 +3227,7 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 	}
 
 	mpUploadContext = new_nothrow VDVideoUploadContextD3D9;
-	if (!mpUploadContext || !mpUploadContext->Init(info.pixmap, info.bAllowConversion, mbHighPrecision && mpVideoManager->Is16FEnabled(), 1)) {
+	if (!mpUploadContext || !mpUploadContext->Init(hmonitor, mbUseD3D9Ex, info.pixmap, info.bAllowConversion, mbHighPrecision && mpVideoManager->Is16FEnabled(), 1)) {
 		Shutdown();
 		return false;
 	}
@@ -3056,15 +3309,28 @@ namespace {
 			return -1;
 
 		// Check if we need to reallocate the texture.
+		HRESULT hr;
+		D3DFORMAT format = mode1_4 ? D3DFMT_A8R8G8B8 : D3DFMT_X8L8V8U8;
+		const bool useDefault = (pManager->GetDeviceEx() != NULL);
+
 		if (!pTexture || existingTexW != texw) {
-			HRESULT hr = dev->CreateTexture(texw, texh, 1, 0, mode1_4  ? D3DFMT_A8R8G8B8 : D3DFMT_X8L8V8U8, D3DPOOL_MANAGED, ~pTexture, NULL);
+			hr = dev->CreateTexture(texw, texh, 1, 0, format, useDefault ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED, ~pTexture, NULL);
 			if (FAILED(hr))
 				return -1;
 		}
 
+		vdrefptr<IDirect3DTexture9> uploadtex;
+		if (useDefault) {
+			hr = dev->CreateTexture(texw, texh, 1, 0, format, D3DPOOL_SYSTEMMEM, ~uploadtex, NULL);
+			if (FAILED(hr))
+				return -1;
+		} else {
+			uploadtex = pTexture;
+		}
+
 		// Fill the texture.
 		D3DLOCKED_RECT lr;
-		HRESULT hr = pTexture->LockRect(0, &lr, NULL, 0);
+		hr = uploadtex->LockRect(0, &lr, NULL, 0);
 		VDASSERT(SUCCEEDED(hr));
 		if (FAILED(hr)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load bicubic texture.\n");
@@ -3110,6 +3376,18 @@ namespace {
 				double green	= k1 - 1.0 + 128.0f/255.0f;
 				double red		= kx * 2;
 				double alpha	= -c3*4;
+
+				blue = fabs(c0 + c3) > 1e-9 ? c0 / (c0 + c3) : 0;
+				green = fabs(green + red) > 1e-9 ? green / (green + red) : 0;
+				red = fabs(c0 + c3);
+
+				// The rounding here is a bit tricky. Here's how we use the values:
+				//	r = p2 * (g + 0.5) + p3 * (r / 2) - p1 * (b / 4) - p4 * (a / 4)
+				//
+				// Which means we need:
+				//	g + 0.5 + r/2 - b/4 - a/4 = 1
+				//	g + r/2 - b/4 - a/4 = 0.5
+				//	g*4 + r*2 - (b + a) = 2 (510 / 1020)
 
 				uint8 ib = VDClampedRoundFixedToUint8Fast((float)blue);
 				uint8 ig = VDClampedRoundFixedToUint8Fast((float)green);
@@ -3157,7 +3435,16 @@ namespace {
 			}
 		}
 
-		VDVERIFY(SUCCEEDED(pTexture->UnlockRect(0)));
+		VDVERIFY(SUCCEEDED(uploadtex->UnlockRect(0)));
+
+		if (useDefault) {
+			hr = pManager->GetDevice()->UpdateTexture(uploadtex, pTexture);
+			if (FAILED(hr)) {
+				pTexture.clear();
+				return -1;
+			}
+		}
+
 		return texw;
 	}
 }
@@ -3231,56 +3518,67 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 }
 
 bool VDVideoDisplayMinidriverDX9::ModifySource(const VDVideoDisplaySourceInfo& info) {
-	if (mSource.pixmap.w != info.pixmap.w || mSource.pixmap.h != info.pixmap.h || mSource.pixmap.pitch != info.pixmap.pitch)
-		return false;
+	bool fastPath = false;
 
-	const int prevFormat = mSource.pixmap.format;
-	const int nextFormat = info.pixmap.format;
-	if (prevFormat != nextFormat) {
-		// Check for compatible formats.
-		switch(prevFormat) {
-			case nsVDPixmap::kPixFormat_YUV420it_Planar:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar)
+	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h) {
+		const int prevFormat = mSource.pixmap.format;
+		const int nextFormat = info.pixmap.format;
+
+		if (prevFormat != nextFormat) {
+			// Check for compatible formats.
+			switch(prevFormat) {
+				case nsVDPixmap::kPixFormat_YUV420it_Planar:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_FR)
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_FR:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_FR)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_709)
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_709)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR)
+				case nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420ib_Planar:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar)
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_FR)
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_FR:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_FR)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_709)
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_709)
+						fastPath = true;
 					break;
-				return false;
 
-			case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
-				if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR)
+				case nsVDPixmap::kPixFormat_YUV420ib_Planar_709_FR:
+					if (nextFormat == nsVDPixmap::kPixFormat_YUV420it_Planar_709_FR)
+						fastPath = true;
 					break;
-				return false;
+			}
+		} else {
+			fastPath = true;
+		}
+	}
 
-			default:
-				return false;
+	if (!fastPath) {
+		mpUploadContext.clear();
+
+		mpUploadContext = new_nothrow VDVideoUploadContextD3D9;
+		if (!mpUploadContext || !mpUploadContext->Init(mpManager->GetMonitor(), mbUseD3D9Ex, info.pixmap, info.bAllowConversion, mbHighPrecision && mpVideoManager->Is16FEnabled(), 1)) {
+			mpUploadContext.clear();
+			return false;
 		}
 	}
 
@@ -3387,21 +3685,42 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 		return false;
 
 	// Check if we need to create or resize the swap chain.
-	if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
-		mpSwapChain = NULL;
-		mSwapChainW = 0;
-		mSwapChainH = 0;
-	}
+	if (!mbFullScreen) {
+		if (mpManager->GetDeviceEx()) {
+			if (mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
+				mpSwapChain = NULL;
+				mSwapChainW = 0;
+				mSwapChainH = 0;
+			}
 
-	if (!mbFullScreen && (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
-		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
-		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+			if (!mpSwapChain || mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
+				int scw = std::min<int>(rClippedClient.right, rtw);
+				int sch = std::min<int>(rClippedClient.bottom, rth);
 
-		if (!mpManager->CreateSwapChain(scw, sch, mbClipToMonitor, ~mpSwapChain))
-			return false;
+				if (!mpManager->CreateSwapChain(mhwnd, scw, sch, mbClipToMonitor, ~mpSwapChain))
+					return false;
 
-		mSwapChainW = scw;
-		mSwapChainH = sch;
+				mSwapChainW = scw;
+				mSwapChainH = sch;
+			}
+		} else {
+			if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
+				mpSwapChain = NULL;
+				mSwapChainW = 0;
+				mSwapChainH = 0;
+			}
+
+			if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
+				int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
+				int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+
+				if (!mpManager->CreateSwapChain(mhwnd, scw, sch, mbClipToMonitor, ~mpSwapChain))
+					return false;
+
+				mSwapChainW = scw;
+				mSwapChainH = sch;
+			}
+		}
 	}
 
 	// Do we need to switch bicubic modes?
@@ -3676,7 +3995,9 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0, UpdateM
 	if (bSuccess && !mpManager->EndScene())
 		bSuccess = false;
 
-	mpManager->Flush();
+	if (updateMode & kModeVSync)
+		mpManager->Flush();
+
 	mpManager->SetSwapChainActive(NULL);
 
 	if (!bSuccess) {
@@ -3700,7 +4021,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateScreen(const RECT& rClient, UpdateMode u
 
 	HRESULT hr;
 	if (mbFullScreen) {
-		hr = mpManager->PresentFullScreen(!polling);
+		hr = mpManager->PresentFullScreen(!polling && !(updateMode & kModeDoNotWait));
 
 		if (!polling || !mbSwapChainPresentPolling) {
 			mPresentHistory.mPresentStartTime = VDGetPreciseTick();
@@ -3710,7 +4031,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateScreen(const RECT& rClient, UpdateMode u
 			mPresentHistory.mAveragePresentTime += ((VDGetPreciseTick() - mPresentHistory.mPresentStartTime)*VDGetPreciseSecondsPerTick() - mPresentHistory.mAveragePresentTime) * 0.01f;
 		}
 
-		if (hr == S_FALSE) {
+		if (hr == S_FALSE && polling) {
 			++mPresentHistory.mPollCount;
 			mPresentHistory.mbPresentPending = true;
 		} else {
@@ -3718,10 +4039,10 @@ bool VDVideoDisplayMinidriverDX9::UpdateScreen(const RECT& rClient, UpdateMode u
 		}
 
 	} else {
-		hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling || !mbSwapChainPresentPolling, polling, mSyncDelta, mPresentHistory);
+		hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling || !mbSwapChainPresentPolling, polling || (updateMode & kModeDoNotWait) != 0, mSyncDelta, mPresentHistory);
 	}
 
-	if (hr == S_FALSE) {
+	if (hr == S_FALSE && polling) {
 		mbSwapChainPresentPolling = true;
 		return true;
 	}
@@ -3771,7 +4092,13 @@ void VDVideoDisplayMinidriverDX9::DrawDebugInfo(FilterMode mode, const RECT& rCl
 	}
 
 	GetFormatString(mSource, mFormatString);
-	mDebugString.sprintf("Direct3D9 minidriver - %s (%s%s)  Average present time: %6.2fms", mFormatString.c_str(), modestr, mbHighPrecision && mpVideoManager->Is16FEnabled() ? "-16F" : "", mPresentHistory.mAveragePresentTime * 1000.0);
+	mDebugString.sprintf("Direct3D9%s minidriver - %s (%s%s)  Average present time: %6.2fms"
+		, mpManager->GetDeviceEx() ? "Ex" : ""
+		, mFormatString.c_str()
+		, modestr
+		, mbHighPrecision && mpVideoManager->Is16FEnabled() ? "-16F" : ""
+		, mPresentHistory.mAveragePresentTime * 1000.0);
+
 	mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, mDebugString.c_str());
 
 	mDebugString.sprintf("Target scanline: %7.2f  Average bracket [%7.2f,%7.2f]  Last bracket [%4d,%4d]  Poll count %5d"

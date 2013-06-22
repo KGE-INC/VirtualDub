@@ -347,11 +347,13 @@ static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 
 static long levels_param(FilterActivation *fa, const FilterFunctions *ff) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+	VDXPixmapLayout& pxldst = *fa->dst.mpPixmapLayout;
 
-	fa->dst.offset = fa->src.offset;
+	pxldst.pitch = pxlsrc.pitch;
 
 	if (mfd->bLuma) {
-		switch(fa->src.mpPixmapLayout->format) {
+		switch(pxlsrc.format) {
 			case nsVDXPixmap::kPixFormat_XRGB8888:
 			case nsVDXPixmap::kPixFormat_Y8:
 			case nsVDXPixmap::kPixFormat_YUV444_Planar:
@@ -365,10 +367,13 @@ static long levels_param(FilterActivation *fa, const FilterFunctions *ff) {
 				return FILTERPARAM_NOT_SUPPORTED;
 		}
 
-		return FILTERPARAM_SUPPORTS_ALTFORMATS;
+		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_PURE_TRANSFORM;
 	}
 
-	return 0;
+	if (pxlsrc.format != nsVDXPixmap::kPixFormat_XRGB8888)
+		return FILTERPARAM_NOT_SUPPORTED;
+
+	return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_PURE_TRANSFORM;
 }
 
 static void levelsButtonCallback(bool fNewState, void *pvData) {
@@ -922,10 +927,10 @@ static int levels_start(FilterActivation *fa, const FilterFunctions *ff) {
 	return 0;
 }
 
-static void levels_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
+static void levels_string2(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen) {
 	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 
-	sprintf(buf, " ( [%4.2f-%4.2f] > %.2f > [%4.2f-%4.2f] (%s) )",
+	_snprintf(buf, maxlen, " ( [%4.2f-%4.2f] > %.2f > [%4.2f-%4.2f] (%s) )",
 			mfd->iInputLo/(double)0xffff,
 			mfd->iInputHi/(double)0xffff,
 			mfd->rGammaCorr,
@@ -988,10 +993,11 @@ FilterDefinition filterDef_levels={
 	levels_run,
 	levels_param,
 	levels_config,
-	levels_string,
+	NULL,
 	levels_start,
 	NULL,					// end
 
 	&levels_obj,
 	levels_script_line,
+	levels_string2,
 };

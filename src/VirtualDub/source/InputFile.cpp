@@ -203,6 +203,52 @@ IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx) {
 	return NULL;
 }
 
+void VDGetInputDriverFilePatterns(uint32 flags, vdvector<VDStringW>& patterns) {
+	tVDInputDrivers drivers;
+
+	VDGetInputDrivers(drivers, flags);
+
+	patterns.clear();
+
+	VDStringW pat;
+	while(!drivers.empty()) {
+		const wchar_t *filt = drivers.back()->GetFilenamePattern();
+
+		if (filt) {
+			while(*filt) {
+				// split: descriptive_text '\0' patterns '\0'
+				while(*filt++)
+					;
+
+				VDStringRefW pats(filt);
+				while(*filt++)
+					;
+
+				VDStringRefW token;
+				VDStringW tokenStr;
+				while(!pats.empty()) {
+					if (!pats.split(L';', token)) {
+						token = pats;
+						pats.clear();
+					}
+
+					if (!token.empty()) {
+						tokenStr = token;
+						std::transform(tokenStr.begin(), tokenStr.end(), tokenStr.begin(), towlower);
+
+						vdvector<VDStringW>::iterator it(std::lower_bound(patterns.begin(), patterns.end(), tokenStr));
+
+						if (it == patterns.end() || *it != tokenStr)
+							patterns.insert(it, tokenStr);
+					}
+				}
+			}
+		}
+
+		drivers.pop_back();
+	}
+}
+
 VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>& xlat) {
 	VDStringW filter;
 	VDStringW allspecs;

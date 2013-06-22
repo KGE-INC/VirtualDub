@@ -23,6 +23,7 @@
 #include <commctrl.h>
 #include <mmsystem.h>
 
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/interface.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/fileasync.h>
@@ -60,6 +61,9 @@ namespace {
 		uint32			mRenderVideoBufferCount;
 		uint32			mRenderAudioBufferSeconds;
 		uint32			mRenderThrottlePercent;
+		bool			mbRenderBackgroundPriority;
+		bool			mbRenderInhibitSystemSleep;
+
 		VDStringW		mD3DFXFile;
 		uint32			mFileAsyncDefaultMode;
 		uint32			mAVISuperindexLimit;
@@ -70,7 +74,15 @@ namespace {
 		bool			mbDisplayAllowDirectXOverlays;
 		bool			mbDisplayEnableHighPrecision;
 		bool			mbDisplayEnableBackgroundFallback;
-		bool			mbDisplayEnableSecondaryDX;
+
+		enum DisplaySecondaryMode {
+			kDisplaySecondaryMode_Disable,
+			kDisplaySecondaryMode_ForcePrimary,
+			kDisplaySecondaryMode_AutoSwitch,
+			kDisplaySecondaryModeCount
+		};
+
+		DisplaySecondaryMode mDisplaySecondaryMode;
 
 		int				mVideoCompressionThreads;
 
@@ -84,13 +96,15 @@ namespace {
 		sint32			mFilterThreads;
 
 		bool			mbBatchStatusWindowEnabled;
+
+		bool			mbAutoRecoverEnabled;
 	} g_prefs2;
 }
 
 void VDSavePreferences(VDPreferences2& prefs);
 
 Preferences g_prefs={
-	{ 0, PreferencesMain::DEPTH_FASTEST, 0, TRUE, 0 },
+	{ 0, PreferencesMain::DEPTH_24BIT, 0, TRUE, 0 },
 	{ 50*16, 4*16 },
 };
 
@@ -123,6 +137,14 @@ public:
 					pWin->SetValue((mPrefs.mRenderThrottlePercent + 5) / 10);
 				}
 			}
+
+			if (!VDIsAtLeastVistaW32()) {
+				IVDUIWindow *w = mpBase->GetControl(105);
+				if (w)
+					w->Destroy();
+			} else
+				SetValue(105, mPrefs.mbRenderBackgroundPriority);
+
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
@@ -132,6 +154,7 @@ public:
 			mPrefs.mOldPrefs.main.iDubPriority		= (char)GetValue(102);
 			mPrefs.mOldPrefs.main.fAttachExtension	= (char)GetValue(103);
 			mPrefs.mRenderThrottlePercent			= GetValue(104) * 10;
+			mPrefs.mbRenderBackgroundPriority = GetValue(105) != 0;
 			return true;
 		}
 		return false;
@@ -158,7 +181,7 @@ public:
 			SetValue(108, mPrefs.mbDisplayEnableDebugInfo);
 			SetValue(109, mPrefs.mbDisplayEnableHighPrecision);
 			SetValue(110, mPrefs.mbDisplayEnableBackgroundFallback);
-			SetValue(111, mPrefs.mbDisplayEnableSecondaryDX);
+			SetValue(111, (VDPreferences2::kDisplaySecondaryModeCount - 1) - mPrefs.mDisplaySecondaryMode);
 			SetCaption(300, mPrefs.mD3DFXFile.c_str());
 			pBase->ExecuteAllLinks();
 			return true;
@@ -176,7 +199,9 @@ public:
 			mPrefs.mbDisplayEnableDebugInfo = GetValue(108) != 0;
 			mPrefs.mbDisplayEnableHighPrecision = GetValue(109) != 0;
 			mPrefs.mbDisplayEnableBackgroundFallback = GetValue(110) != 0;
-			mPrefs.mbDisplayEnableSecondaryDX = GetValue(111) != 0;
+
+			mPrefs.mDisplaySecondaryMode = (VDPreferences2::DisplaySecondaryMode)((VDPreferences2::kDisplaySecondaryModeCount - 1) - GetValue(111));
+
 			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
@@ -204,6 +229,7 @@ public:
 			SetValue(207, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE3));
 			SetValue(208, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSSE3));
 			SetValue(209, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_SSE4_1));
+			SetValue(210, 0 != (mPrefs.mEnabledCPUFeatures & PreferencesMain::OPTF_AVX));
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
@@ -220,6 +246,7 @@ public:
 			if (GetValue(207)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE3;
 			if (GetValue(208)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSSE3;
 			if (GetValue(209)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_SSE4_1;
+			if (GetValue(210)) mPrefs.mEnabledCPUFeatures |= PreferencesMain::OPTF_AVX;
 
 			mPrefs.mOldPrefs.main.fOptimizations = (char)mPrefs.mEnabledCPUFeatures;
 			return true;
@@ -376,11 +403,13 @@ public:
 			pBase->ExecuteAllLinks();
 			SetValue(100, mPrefs.mbConfirmRenderAbort);
 			SetValue(101, mPrefs.mbRenderWarnNoAudio);
+			SetValue(102, mPrefs.mbRenderInhibitSystemSleep);
 			return true;
 		case kEventDetach:
 		case kEventSync:
 			mPrefs.mbConfirmRenderAbort = 0 != GetValue(100);
 			mPrefs.mbRenderWarnNoAudio = 0 != GetValue(101);
+			mPrefs.mbRenderInhibitSystemSleep = 0 != GetValue(102);
 			return true;
 		}
 		return false;
@@ -588,10 +617,6 @@ public:
 		}
 		return false;
 	}
-
-protected:
-	typedef std::vector<VDStringW> PlaybackDeviceKeys;
-	PlaybackDeviceKeys mPlaybackDeviceKeys;
 };
 
 class VDDialogPreferencesBatch : public VDDialogBase {
@@ -613,11 +638,29 @@ public:
 		}
 		return false;
 	}
-
-protected:
-	typedef std::vector<VDStringW> PlaybackDeviceKeys;
-	PlaybackDeviceKeys mPlaybackDeviceKeys;
 };
+
+class VDDialogPreferencesAutoRecover : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesAutoRecover(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbAutoRecoverEnabled);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbAutoRecoverEnabled = GetValue(100) != 0;
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -646,6 +689,7 @@ public:
 				case 10:	pSubDialog->SetCallback(new VDDialogPreferencesPlayback(mPrefs), true); break;
 				case 11:	pSubDialog->SetCallback(new VDDialogPreferencesAccel(mPrefs), true); break;
 				case 12:	pSubDialog->SetCallback(new VDDialogPreferencesBatch(mPrefs), true); break;
+				case 13:	pSubDialog->SetCallback(new VDDialogPreferencesAutoRecover(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -691,15 +735,18 @@ void VDShowPreferencesDialog(VDGUIHandle h) {
 }
 
 void LoadPreferences() {
-	DWORD dwSize;
-	Preferences prefs_t;
+	VDRegistryAppKey baseKey;
 
-	dwSize = QueryConfigBinary("", g_szMainPrefs, (char *)&prefs_t, sizeof prefs_t);
+	DWORD dwSize;
+	Preferences tempPrefs(g_prefs);
+
+	dwSize = baseKey.getBinaryLength(g_szMainPrefs);
 
 	if (dwSize) {
 		if (dwSize > sizeof g_prefs) dwSize = sizeof g_prefs;
 
-		memcpy(&g_prefs, &prefs_t, dwSize);
+		if (baseKey.getBinary(g_szMainPrefs, (char *)&tempPrefs, sizeof tempPrefs))
+			memcpy(&g_prefs, &tempPrefs, dwSize);
 	}
 
 	VDRegistryAppKey key("Preferences");
@@ -726,15 +773,17 @@ void LoadPreferences() {
 	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
 	g_prefs2.mRenderAudioBufferSeconds = std::max<uint32>(1, std::min<uint32>(32, key.getInt("Render: Audio buffer seconds", 2)));
 	g_prefs2.mRenderThrottlePercent = std::max<uint32>(10, std::min<uint32>(100, key.getInt("Render: Default throttle percent", 100)));
+	g_prefs2.mbRenderInhibitSystemSleep = key.getBool("Render: Inhibit system sleep", true);
+	g_prefs2.mbRenderBackgroundPriority = key.getBool("Render: Use background priority", false);
 	g_prefs2.mFileAsyncDefaultMode = std::min<uint32>(IVDFileAsync::kModeCount-1, key.getInt("File: Async mode", IVDFileAsync::kModeAsynchronous));
 	g_prefs2.mAVISuperindexLimit = key.getInt("AVI: Superindex entry limit", 256);
 	g_prefs2.mAVISubindexLimit = key.getInt("AVI: Subindex entry limit", 8192);
 
-	g_prefs2.mbDisplayAllowDirectXOverlays = key.getBool("Display: Allow DirectX overlays", true);
+	g_prefs2.mbDisplayAllowDirectXOverlays = key.getBool("Display: Allow DirectX overlays", false);
 	g_prefs2.mbDisplayEnableDebugInfo = key.getBool("Display: Enable debug info", false);
 	g_prefs2.mbDisplayEnableHighPrecision = key.getBool("Display: Enable high precision", false);
 	g_prefs2.mbDisplayEnableBackgroundFallback = key.getBool("Display: Enable background fallback", true);
-	g_prefs2.mbDisplayEnableSecondaryDX = key.getBool("Display: Enable DirectX on secondary", false);
+	g_prefs2.mDisplaySecondaryMode = (VDPreferences2::DisplaySecondaryMode)key.getEnumInt("Display: Secondary monitor mode", VDPreferences2::kDisplaySecondaryMode_AutoSwitch);
 
 	uint32 imageSeqHi = key.getInt("Images: Frame rate numerator", 10);
 	uint32 imageSeqLo = key.getInt("Images: Frame rate denominator", 1);
@@ -753,13 +802,16 @@ void LoadPreferences() {
 
 	g_prefs2.mbBatchStatusWindowEnabled = key.getBool("Batch: Show status window", false);
 
+	g_prefs2.mbAutoRecoverEnabled = key.getBool("AutoRecover: Enabled", false);
+
 	g_prefs2.mOldPrefs = g_prefs;
 
 	VDPreferencesUpdated();
 }
 
 void VDSavePreferences(VDPreferences2& prefs) {
-	SetConfigBinary("", g_szMainPrefs, (char *)&prefs.mOldPrefs, sizeof prefs.mOldPrefs);
+	VDRegistryAppKey baseKey;
+	baseKey.setBinary(g_szMainPrefs, (char *)&prefs.mOldPrefs, sizeof prefs.mOldPrefs);
 
 	VDRegistryAppKey key("Preferences");
 	key.setString("Timeline format", prefs.mTimelineFormat.c_str());
@@ -780,6 +832,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
 	key.setInt("Render: Audio buffer seconds", prefs.mRenderAudioBufferSeconds);
 	key.setInt("Render: Default throttle percent", prefs.mRenderThrottlePercent);
+	key.setBool("Render: Inhibit system sleep", prefs.mbRenderInhibitSystemSleep);
+	key.setBool("Render: Use background priority", prefs.mbRenderBackgroundPriority);
 	key.setInt("File: Async mode", prefs.mFileAsyncDefaultMode);
 	key.setInt("AVI: Superindex entry limit", prefs.mAVISuperindexLimit);
 	key.setInt("AVI: Subindex entry limit", prefs.mAVISubindexLimit);
@@ -788,7 +842,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setBool("Display: Enable debug info", prefs.mbDisplayEnableDebugInfo);
 	key.setBool("Display: Enable high precision", prefs.mbDisplayEnableHighPrecision);
 	key.setBool("Display: Enable background fallback", prefs.mbDisplayEnableBackgroundFallback);
-	key.setBool("Display: Enable DirectX on secondary", prefs.mbDisplayEnableSecondaryDX);
+	key.setInt("Display: Secondary monitor mode", g_prefs2.mDisplaySecondaryMode);
 
 	key.setInt("Images: Frame rate numerator", prefs.mImageSequenceFrameRate.getHi());
 	key.setInt("Images: Frame rate denominator", prefs.mImageSequenceFrameRate.getLo());
@@ -804,6 +858,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("CPU: Enabled extensions", prefs.mEnabledCPUFeatures);
 
 	key.setBool("Batch: Show status window", prefs.mbBatchStatusWindowEnabled);
+
+	key.setBool("AutoRecover: Enabled", prefs.mbAutoRecoverEnabled);
 }
 
 void VDSavePreferences() {
@@ -923,6 +979,18 @@ bool VDPreferencesGetBatchShowStatusWindow() {
 	return g_prefs2.mbBatchStatusWindowEnabled;
 }
 
+bool VDPreferencesGetRenderInhibitSystemSleepEnabled() {
+	return g_prefs2.mbRenderInhibitSystemSleep;
+}
+
+bool VDPreferencesGetRenderBackgroundPriority() {
+	return g_prefs2.mbRenderBackgroundPriority;
+}
+
+bool VDPreferencesGetAutoRecoverEnabled() {
+	return g_prefs2.mbAutoRecoverEnabled;
+}
+
 void VDPreferencesUpdated() {
 	VDVideoDisplaySetFeatures(
 		!(g_prefs2.mOldPrefs.fDisplay & Preferences::kDisplayDisableDX),
@@ -937,5 +1005,6 @@ void VDPreferencesUpdated() {
 	VDVideoDisplaySetD3DFXFileName(g_prefs2.mD3DFXFile.c_str());
 	VDVideoDisplaySetDebugInfoEnabled(g_prefs2.mbDisplayEnableDebugInfo);
 	VDVideoDisplaySetBackgroundFallbackEnabled(g_prefs2.mbDisplayEnableBackgroundFallback);
-	VDVideoDisplaySetSecondaryDXEnabled(g_prefs2.mbDisplayEnableSecondaryDX);
+	VDVideoDisplaySetSecondaryDXEnabled(g_prefs2.mDisplaySecondaryMode != VDPreferences2::kDisplaySecondaryMode_Disable);
+	VDVideoDisplaySetMonitorSwitchingDXEnabled(g_prefs2.mDisplaySecondaryMode == VDPreferences2::kDisplaySecondaryMode_AutoSwitch);
 }

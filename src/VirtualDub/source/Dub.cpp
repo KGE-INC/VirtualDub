@@ -82,6 +82,14 @@
 
 using namespace nsVDDub;
 
+#ifndef PROCESS_MODE_BACKGROUND_BEGIN
+#define PROCESS_MODE_BACKGROUND_BEGIN 0x00100000
+#endif
+
+#ifndef PROCESS_MODE_BACKGROUND_END
+#define PROCESS_MODE_BACKGROUND_END 0x00200000 
+#endif
+
 /// HACK!!!!
 #define vSrc mVideoSources[0]
 #define aSrc mAudioSources[0]
@@ -352,6 +360,7 @@ private:
 	bool				mbDoAudio;
 	bool				fPreview;
 	bool				mbCompleted;
+	bool				mbBackground;
 	VDAtomicInt			mbAbort;
 	VDAtomicInt			mbUserAbort;
 	bool				fADecompressionOk;
@@ -439,9 +448,11 @@ public:
 	bool IsAborted();
 	bool isAbortedByUser();
 	bool IsPreviewing();
+	bool IsBackground();
 
 	void SetStatusHandler(IDubStatusHandler *pdsh);
 	void SetPriority(int index);
+	void SetBackground(bool background);
 	void UpdateFrames();
 	void SetThrottleFactor(float throttleFactor);
 	void GetPerfStatus(VDDubPerfStatus& status);
@@ -472,6 +483,7 @@ Dubber::Dubber(DubOptions *xopt)
 	, mProcessingThreadFailCount(0)
 	, mLastIOThreadCounter(0)
 	, mIOThreadFailCount(0)
+	, mbBackground(false)
 {
 	mOptions			= *xopt;
 
@@ -1414,7 +1426,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	// Initialize filter system.
 	const VDPixmap& px = vSrc->getTargetFormat();
 	const sint64 srcFrames = vSrc->asStream()->getLength();
-	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
+	filters.prepareLinearChain(&g_filterChain, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 
 	mpVideoFrameSource = new VDFilterFrameVideoSource;
 	mpVideoFrameSource->Init(vSrc, filters.GetInputLayout());
@@ -1424,7 +1436,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	if (mbDoVideo && mOptions.video.mode >= DubVideoOptions::M_FULL) {
 		filters.SetAsyncThreadCount(VDPreferencesGetFilterThreadCount());
-		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
+		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_filterChain, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 
 		InitVideoStreamValuesStatic2(vInfo, &mOptions, &filters, frameRateTimeline);
 		
@@ -1452,7 +1464,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	} else {
 		// We need this to correctly create the video frame map.
 		filters.SetAsyncThreadCount(-1);
-		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
+		filters.initLinearChain(mProcessThread.GetVideoFilterScheduler(), fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_filterChain, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 		filters.ReadyFilters();
 		InitVideoStreamValuesStatic2(vInfo, &mOptions, NULL, frameRateTimeline);
 	}
@@ -1767,6 +1779,9 @@ void Dubber::Stop() {
 	if (pStatusHandler && vInfo.cur_proc_src >= 0)
 		pStatusHandler->SetLastPosition(vInfo.cur_proc_src);
 
+	if (VDIsAtLeastVistaW32())
+		SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_END);
+
 	if (fError) {
 		throw err;
 		fError = false;
@@ -1817,12 +1832,32 @@ bool Dubber::IsPreviewing() {
 	return fPreview;
 }
 
+bool Dubber::IsBackground() {
+	return mbBackground;
+}
+
 void Dubber::SetPriority(int index) {
 	if (mpIOThread && mpIOThread->isThreadActive())
 		SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[index][0]);
 
 	if (mProcessThread.isThreadActive())
 		SetThreadPriority(mProcessThread.getThreadHandle(), g_iPriorities[index][1]);
+}
+
+void Dubber::SetBackground(bool background) {
+	// Requires Vista or above.
+	if (!VDIsAtLeastVistaW32())
+		return;
+
+	if (background == mbBackground)
+		return;
+
+	mbBackground = background;
+
+	SetPriorityClass(GetCurrentProcess(), background ? PROCESS_MODE_BACKGROUND_BEGIN : PROCESS_MODE_BACKGROUND_END);
+
+	if (pStatusHandler)
+		pStatusHandler->OnBackgroundStateUpdated();
 }
 
 void Dubber::UpdateFrames() {

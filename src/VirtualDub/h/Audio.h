@@ -135,7 +135,9 @@ private:
 	int filter_width;
 	bool fHighQuality;
 
-	enum { BUFFER_SIZE=512 };
+	uint32	mBufferSize;
+
+	enum { MIN_BUFFER_SIZE=512 };
 
 	long Upsample(void *buffer, long samples, long *lplBytes);
 	long Downsample(void *buffer, long samples, long *lplBytes);

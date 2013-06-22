@@ -210,7 +210,7 @@ void VDCLIOutputSinkW32::FlushBuffer() {
 class VDAutoHandleW32 {
 public:
 	VDAutoHandleW32();
-	VDAutoHandleW32(HANDLE h);
+	explicit VDAutoHandleW32(HANDLE h);
 	VDAutoHandleW32(const VDAutoHandleW32&, bool inheritable = false);
 	~VDAutoHandleW32();
 
@@ -235,6 +235,7 @@ public:
 
 	void Reset();
 	void Assign(const VDAutoHandleW32& src, bool inheritable);
+	void Duplicate(HANDLE h, bool inheritable);
 	void Swap(VDAutoHandleW32& src);
 
 protected:
@@ -274,20 +275,21 @@ void VDAutoHandleW32::Reset() {
 }
 
 void VDAutoHandleW32::Assign(const VDAutoHandleW32& src, bool inheritable) {
-	HANDLE h = src.mHandle;
+	if (mHandle != src.mHandle)
+		Duplicate(src.mHandle, inheritable);
+}
 
-	if (mHandle != h) {
-		if (h != INVALID_HANDLE_VALUE) {
-			HANDLE me = GetCurrentProcess();
-			if (!::DuplicateHandle(me, h, me, &h, 0, inheritable, DUPLICATE_SAME_ACCESS))
-				throw MyError("Unable to duplicate handle: %%s", GetLastError());
-		}
-
-		if (mHandle != INVALID_HANDLE_VALUE)
-			CloseHandle(mHandle);
-
-		mHandle = h;
+void VDAutoHandleW32::Duplicate(HANDLE h, bool inheritable) {
+	if (h != INVALID_HANDLE_VALUE) {
+		HANDLE me = GetCurrentProcess();
+		if (!::DuplicateHandle(me, h, me, &h, 0, inheritable, DUPLICATE_SAME_ACCESS))
+			throw MyError("Unable to duplicate handle: %%s", GetLastError());
 	}
+
+	if (mHandle != INVALID_HANDLE_VALUE)
+		CloseHandle(mHandle);
+
+	mHandle = h;
 }
 
 void VDAutoHandleW32::Swap(VDAutoHandleW32& src) {
@@ -300,7 +302,13 @@ class VDCLIPipeW32 {
 	VDCLIPipeW32(const VDCLIPipeW32&);
 	VDCLIPipeW32& operator=(const VDCLIPipeW32&);
 public:
+	VDCLIPipeW32();
 	VDCLIPipeW32(uint32 size, bool inputInheritable, bool outputInheritable);
+
+	void Init(uint32 size, bool inputInheritable, bool outputInheritable);
+	void Flush();
+	void Close();
+	void CloseOutput();
 
 	HANDLE GetInput() const { return mInput.GetHandle(); }
 	HANDLE GetOutput() const { return mOutput.GetHandle(); }
@@ -312,7 +320,14 @@ protected:
 	VDAutoHandleW32	mOutput;
 };
 
+VDCLIPipeW32::VDCLIPipeW32() {
+}
+
 VDCLIPipeW32::VDCLIPipeW32(uint32 size, bool inputInheritable, bool outputInheritable) {
+	Init(size, inputInheritable, outputInheritable);
+}
+
+void VDCLIPipeW32::Init(uint32 size, bool inputInheritable, bool outputInheritable) {
 	if (!CreatePipe(~mOutput, ~mInput, NULL, size))
 		throw MyError("Unable to create pipe: %%s", GetLastError());
 
@@ -325,6 +340,20 @@ VDCLIPipeW32::VDCLIPipeW32(uint32 size, bool inputInheritable, bool outputInheri
 		VDAutoHandleW32 t(mOutput, true);
 		mOutput.Swap(t);
 	}
+}
+
+void VDCLIPipeW32::Flush() {
+	if (mInput)
+		::FlushFileBuffers(mInput.GetHandle());
+}
+
+void VDCLIPipeW32::Close() {
+	mInput.Reset();
+	mOutput.Reset();
+}
+
+void VDCLIPipeW32::CloseOutput() {
+	mOutput.Reset();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -478,7 +507,7 @@ uint32 VDCLIProcessW32::GetExitCode() const {
 }
 
 void VDCLIProcessW32::Attach(HANDLE h, uint32 processId) {
-	mProcessHandle = h;
+	mProcessHandle.Attach(h);
 	mProcessId = processId;
 }
 
@@ -828,6 +857,8 @@ private:
 	VDCLIProcessW32		mVideoEncoderProcess;
 	VDCLIProcessW32		mAudioEncoderProcess;
 	VDFile				mTempOutputLock;
+	VDCLIPipeW32		mVideoPipe;
+	VDCLIPipeW32		mAudioPipe;
 
 	VDAVIOutputCLITemplate	mTemplate;
 
@@ -933,10 +964,10 @@ bool AVIOutputCLI::init(const wchar_t *pwszFile) {
 
 	bool useOutputPath = mTemplate.mbUseOutputPathAsTemp;
 	if (mpVideoOutput) {
-		VDCLIPipeW32 videoDataPipe(mBufferSize, false, true);
 		VDCLIPipeW32 videoOutputPipe(1024, true, false);
+		mVideoPipe.Init(mBufferSize, false, true);
 
-		mpVideoOutput->init(videoDataPipe.GetInput());
+		mpVideoOutput->init(mVideoPipe.GetInput());
 
 		const AVIStreamHeader_fixed& hdr = videoOut->getStreamInfo();
 
@@ -971,21 +1002,22 @@ bool AVIOutputCLI::init(const wchar_t *pwszFile) {
 
 		mVideoEncoderProcess.Run("video encoder",
 			cmdLine.c_str(),
-			videoDataPipe.GetOutput(), 
+			mVideoPipe.GetOutput(), 
 			mTemplate.mpVideoEncoderProfile->mbLogStdout ? videoOutputPipe.GetInput() : videoErrorSink.GetHandle(),
 			mTemplate.mpVideoEncoderProfile->mbLogStderr ? videoOutputPipe.GetInput() : videoErrorSink.GetHandle());
 
 		mVideoOutputSink.Init(videoOutputPipe.DetachOutput());
+		mVideoPipe.CloseOutput();
 	}
 
 	if (mpAudioOutput) {
-		VDCLIPipeW32 audioDataPipe(mBufferSize, false, true);
 		VDCLIPipeW32 audioOutputPipe(1024, true, false);
+		mAudioPipe.Init(mBufferSize, false, true);
 
 		if (mpAudioOutputWAV)
-			mpAudioOutputWAV->init(audioDataPipe.GetInput(), true);
+			mpAudioOutputWAV->init(mAudioPipe.GetInput(), true);
 		else
-			mpAudioOutputRawAudio->init(audioDataPipe.GetInput(), true);
+			mpAudioOutputRawAudio->init(mAudioPipe.GetInput(), true);
 
 		const VDWaveFormat& hdr = *(const VDWaveFormat *)audioOut->getFormat();
 
@@ -1022,11 +1054,12 @@ bool AVIOutputCLI::init(const wchar_t *pwszFile) {
 
 		mAudioEncoderProcess.Run("audio encoder",
 			cmdLine.c_str(),
-			audioDataPipe.GetOutput(), 
+			mAudioPipe.GetOutput(), 
 			mTemplate.mpAudioEncoderProfile->mbLogStdout ? audioOutputPipe.GetInput() : audioErrorSink.GetHandle(),
 			mTemplate.mpAudioEncoderProfile->mbLogStderr ? audioOutputPipe.GetInput() : audioErrorSink.GetHandle());
 
 		mAudioOutputSink.Init(audioOutputPipe.DetachOutput());
+		mAudioPipe.CloseOutput();
 	}
 
 	return true;
@@ -1133,6 +1166,11 @@ void AVIOutputCLI::Cleanup() {
 
 void AVIOutputCLI::WaitForProcesses(bool checkForErrorCodes) {
 	if (mVideoEncoderProcess.IsRunning()) {
+		// We must not close the pipes until the processes have exited, ensuring that they've
+		// read all of the data.
+		mVideoPipe.Flush();
+		mVideoPipe.Close();
+
 		mVideoEncoderProcess.Wait();
 
 		if (checkForErrorCodes && mTemplate.mpVideoEncoderProfile->mbCheckReturnCode) {
@@ -1146,6 +1184,9 @@ void AVIOutputCLI::WaitForProcesses(bool checkForErrorCodes) {
 	}
 
 	if (mAudioEncoderProcess.IsRunning()) {
+		mAudioPipe.Flush();
+		mAudioPipe.Close();
+
 		mAudioEncoderProcess.Wait();
 
 		if (checkForErrorCodes && mTemplate.mpAudioEncoderProfile->mbCheckReturnCode) {

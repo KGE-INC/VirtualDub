@@ -19,6 +19,7 @@
 #include <windows.h>
 #include "VBitmap.h"
 #include <vd2/system/error.h>
+#include <vd2/system/file.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
@@ -112,7 +113,7 @@ bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 	throw MyError("Bitmap file is in an unsupported format (not 1/2/4/8/16/24/32 bit).");
 }
 
-void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
+void DecodeBMP(const void *pBuffer, long cbBuffer, const VDPixmap& vb) {
 	// Blit the image to the framebuffer.
 
 	const BITMAPFILEHEADER *pbfh = (const BITMAPFILEHEADER *)pBuffer;
@@ -170,7 +171,7 @@ void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 		memcpy(pal, (char *)pbih + sizeof(BITMAPINFOHEADER), 4 * std::min<size_t>(palsize, 256));
 	}
 
-	VDVERIFY(VDPixmapBlt(VDAsPixmap(vb), px));
+	VDVERIFY(VDPixmapBlt(vb, px));
 }
 
 struct TGAHeader {
@@ -237,65 +238,68 @@ bool DecodeTGAHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 	return true;
 }
 
-static void BitBltAlpha(VBitmap *dst, int dx, int dy, VBitmap *src, int sx, int sy, int w, int h, bool bSrcHasAlpha) {
-	if (src->depth == 16 && dst->depth==32 && bSrcHasAlpha) {
-		typedef unsigned short Pixel16;
+static void BitBltAlpha(const VDPixmap& dst, int dx, int dy, const VDPixmap& src, int sx, int sy, int w, int h, bool bSrcHasAlpha) {
+	if (src.format == nsVDPixmap::kPixFormat_XRGB1555 && dst.format == nsVDPixmap::kPixFormat_XRGB8888 && bSrcHasAlpha) {
+		const uint16 *psrc = (const uint16 *)vdptroffset(src.data, src.pitch * sy) + sx;
+		uint32 *pdst = (uint32 *)vdptroffset(dst.data, dst.pitch * dy) + dx;
 
-		const Pixel16 *psrc = (const Pixel16 *)src->Address16(sx, sy);
-		Pixel32 *pdst = dst->Address32(dx, dy);
-
-		if (w&&h) do {
+		if (w && h) do {
 			for(int x=0; x<w; ++x) {
-				Pixel32 px = psrc[x];
-				Pixel32 px2 = ((px & 0x7c00) << 9) + ((px & 0x03e0) << 6) + ((px & 0x001f) << 3);
+				uint32 px = psrc[x];
+				uint32 px2 = ((px & 0x7c00) << 9) + ((px & 0x03e0) << 6) + ((px & 0x001f) << 3);
 
 				pdst[x] = px2 + ((px2 & 0xe0e0e0)>>5) + (px&0x8000?0xff000000:0);
 			}
 
-			psrc = (const Pixel16 *)((char *)psrc - src->pitch);
-			pdst = (Pixel32 *)((char *)pdst - dst->pitch);
-
+			vdptrstep(psrc, src.pitch);
+			vdptrstep(pdst, dst.pitch);
 		} while(--h);
 	} else
-		dst->BitBlt(dx, dy, src, sx, sy, w, h);
+		VDPixmapBlt(dst, dx, dy, src, sx, sy, w, h);
 }
 
-void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
+void DecodeTGA(const void *pBuffer, long cbBuffer, const VDPixmap& vb) {
 	const TGAHeader& hdr = *(const TGAHeader *)pBuffer;
 	const unsigned char *src = (const unsigned char *)pBuffer + sizeof(hdr) + hdr.IDLength;
 	const unsigned char *srcLimit = (const unsigned char *)pBuffer + cbBuffer;
 	const int w = hdr.WidthLo + (hdr.WidthHi << 8);
 	const int h = hdr.HeightLo + (hdr.HeightHi << 8);
 
-	VBitmap vbSrc;
+	VDPixmap vbSrc;
 	int bpp = (hdr.PixelSize+7) >> 3;		// TARGA doesn't have a 565 mode, only 555 and 1555
 	bool bSrcHasAlpha = (hdr.AttBits&0xf) != 0;
 
+	const int kFormats[3]={
+		nsVDPixmap::kPixFormat_XRGB1555,
+		nsVDPixmap::kPixFormat_RGB888,
+		nsVDPixmap::kPixFormat_XRGB8888,
+	};
+
 	if (hdr.ImgType == 2) {
-		vbSrc.data = (Pixel32 *)src;
+		vbSrc.data = (uint32 *)src;
 		vbSrc.w = w;
 		vbSrc.h = h;
-		vbSrc.depth = bpp<<3;
-		vbSrc.pitch = bpp*vbSrc.w;
-		vbSrc.modulo = 0;
+		vbSrc.format = kFormats[bpp - 2];
+		vbSrc.pitch = bpp * vbSrc.w;
 
 		if (hdr.AttBits & 0x20) {
-			vbSrc.data = (Pixel32 *)(src + vbSrc.pitch * (h-1));
-			vbSrc.modulo = -bpp*vbSrc.w - vbSrc.pitch;
+			vdptrstep(vbSrc.data, vbSrc.pitch * (h-1));
 			vbSrc.pitch = -vbSrc.pitch;
 		}
 
-		BitBltAlpha(&vb, 0, 0, &vbSrc, 0, 0, w, h, bSrcHasAlpha);
+		BitBltAlpha(vb, 0, 0, vbSrc, 0, 0, w, h, bSrcHasAlpha);
 
 	} else if (hdr.ImgType == 10) {
-		unsigned char *rowbuf = (unsigned char *)malloc(bpp * w + 1);
-		vbSrc.data = (Pixel32 *)rowbuf;
+		vdblock<uint8> rowbuffer(bpp * w + 1);
+		unsigned char *rowbuf = rowbuffer.data();
+
+		vbSrc.data = rowbuf;
 		vbSrc.w = w;
 		vbSrc.h = 1;
-		vbSrc.depth = bpp<<3;
-		vbSrc.pitch = vbSrc.modulo = 0;
+		vbSrc.format = kFormats[bpp - 2];
+		vbSrc.pitch = 0;
 
-#if 1	// This version allows RLE packets to span rows (illegal).
+		// This version allows RLE packets to span rows (illegal).
 		unsigned char *dst = rowbuf;
 		unsigned char *dstEnd = rowbuf + bpp*w;
 
@@ -324,9 +328,9 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 
 			if (dst == dstEnd) {
 				if (hdr.AttBits & 0x20)
-					BitBltAlpha(&vb, 0, y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
+					BitBltAlpha(vb, 0, y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				else
-					BitBltAlpha(&vb, 0, h-1-y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
+					BitBltAlpha(vb, 0, h-1-y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				dst = rowbuf;
 				if (++y >= h) {
 					if (c)
@@ -345,9 +349,9 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 						copysrc = rowbuf;
 					if (dst == dstEnd) {
 						if (hdr.AttBits & 0x20)
-							BitBltAlpha(&vb, 0, y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
+							BitBltAlpha(vb, 0, y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 						else
-							BitBltAlpha(&vb, 0, h-1-y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
+							BitBltAlpha(vb, 0, h-1-y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 						dst = rowbuf;
 						if (++y >= h) {
 							if (c > 1)
@@ -358,50 +362,6 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 				} while(--c);
 			}
 		}
-#else
-		for(int y=0; y<h; ++y) {
-			unsigned char *dst = rowbuf;
-			unsigned char *dstEnd = rowbuf + bpp*w;
-
-			while(dst < dstEnd) {
-				if (src >= srcLimit)
-					throw MyError("TARGA RLE decoding error");
-				unsigned c = *src++;
-				const unsigned char *copysrc;
-
-				// we always copy one pixel
-				dst[0] = src[0];
-				dst[1] = src[1];
-				src += 2;
-				dst += 2;
-				for(int k=0; k<bpp-2; ++k)
-					*dst++ = *src++;
-
-				if (c & 0x80)				// run
-					copysrc = dst - bpp;
-				else {						// lit
-					copysrc = src;
-					src += bpp * c;
-				}
-
-				if (c &= 0x7f) {
-					c *= bpp;
-					if (dst + c > dstEnd)
-						throw MyError("TARGA RLE decoding error");
-
-					do {
-						*dst++ = *copysrc++;
-					} while(--c);
-				}
-			}
-
-			if (hdr.AttBits & 0x20)
-				BitBltAlpha(&vb, 0, y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
-			else
-				BitBltAlpha(&vb, 0, h-1-y, &vbSrc, 0, 0, w, 1, bSrcHasAlpha);
-		}
-#endif
-		free(rowbuf);
 	}
 }
 
@@ -441,7 +401,7 @@ bool VDIsMayaIFFHeader(const void *pv, uint32 len) {
 	return false;
 }
 
-void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha) {
+void DecodeImage(const void *pBuffer, long cbBuffer, VDPixmapBuffer& vb, int desired_format, bool& bHasAlpha) {
 	int w, h;
 
 	bool bIsPNG = false;
@@ -471,26 +431,27 @@ void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_de
 		pDecoder->DecodeHeader(w, h);
 	}
 
-	vb.init(new Pixel32[(((w*desired_depth+31)>>5)<<2) * h], w, h, desired_depth);
-	if (!vb.data)
-		throw MyMemoryError();
+	vb.init(w, h, desired_format);
 
 	if (bIsJPG) {
 		int format;
 
-		switch(vb.depth) {
-		case 16:	format = IVDJPEGDecoder::kFormatXRGB1555;	break;
-		case 24:	format = IVDJPEGDecoder::kFormatRGB888;		break;
-		case 32:	format = IVDJPEGDecoder::kFormatXRGB8888;	break;
+		switch(vb.format) {
+			case nsVDPixmap::kPixFormat_XRGB1555:	format = IVDJPEGDecoder::kFormatXRGB1555;	break;
+			case nsVDPixmap::kPixFormat_RGB888:		format = IVDJPEGDecoder::kFormatRGB888;		break;
+			case nsVDPixmap::kPixFormat_XRGB8888:	format = IVDJPEGDecoder::kFormatXRGB8888;	break;
 		}
 
-		pDecoder->DecodeImage((char *)vb.data + vb.pitch * (vb.h - 1), -vb.pitch, format);
+		pDecoder->DecodeImage(vb.data, vb.pitch, format);
 		pDecoder->End();
 	}
+
 	if (bIsBMP)
 		DecodeBMP(pBuffer, cbBuffer, vb);
+
 	if (bIsTGA)
 		DecodeTGA(pBuffer, cbBuffer, vb);
+
 	if (bIsPNG) {
 		vdautoptr<IVDImageDecoderPNG> pPNGDecoder(VDCreateImageDecoderPNG());
 
@@ -504,49 +465,24 @@ void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_de
 			throw MyError("Error decoding PNG image: %ls", VDLoadString(0, kVDST_PNGDecodeErrors, err));
 		}
 
-		VDPixmapBlt(VDAsPixmap(vb), pPNGDecoder->GetFrameBuffer());
+		VDPixmapBlt(vb, pPNGDecoder->GetFrameBuffer());
 	}
 }
 
-void DecodeImage(const char *pszFile, VBitmap& vb, int desired_depth, bool& bHasAlpha) {
-	HANDLE h = INVALID_HANDLE_VALUE;
-	void *pBuffer = NULL;
-	long cbBuffer;
+void DecodeImage(const char *pszFile, VDPixmapBuffer& buf, int desired_format, bool& bHasAlpha) {
+	VDFile f;
 
-	try {
-		h = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-		if (h == INVALID_HANDLE_VALUE) {
-fail_read:
-			throw MyWin32Error("Failure reading image file \"%s\": %%s", GetLastError(), pszFile);
-		}
+	f.open(pszFile);
 
-		DWORD dwSizeHi, dwSizeLo, dwActual;
-		dwSizeLo = GetFileSize(h, &dwSizeHi);
-		if (dwSizeLo == 0xFFFFFFFFUL && GetLastError() != NO_ERROR)
-			goto fail_read;
+	sint64 flen = f.size();
+	if (flen > 0x7FFFFFFF)
+		throw MyError("Image file \"%s\" is too large to read (>2GB!).\n");
 
-		if (dwSizeLo > 0x7FFFFFFF || dwSizeHi) {
-			throw MyError("Image file \"%s\" is too large to read (>2GB!).\n");
-		}
+	vdblock<uint8> buffer;
+	buffer.resize((uint32)flen);
 
-		cbBuffer = dwSizeLo;
-		pBuffer = malloc(cbBuffer);
-		if (!pBuffer)
-			throw MyMemoryError();
-		
-		if (!ReadFile(h, pBuffer, dwSizeLo, &dwActual, NULL) || dwActual != dwSizeLo)
-			goto fail_read;
+	f.read(buffer.data(), buffer.size());
+	f.close();
 
-		CloseHandle(h);
-		h = INVALID_HANDLE_VALUE;
-
-		DecodeImage(pBuffer, cbBuffer, vb, desired_depth, bHasAlpha);
-
-		free(pBuffer);
-	} catch(...) {
-		free(pBuffer);
-		if (h != INVALID_HANDLE_VALUE)
-			CloseHandle(h);
-		throw;
-	}
+	DecodeImage(buffer.data(), buffer.size(), buf, desired_format, bHasAlpha);
 }

@@ -67,6 +67,11 @@ void VDFilterFrameAllocatorProxy::SetAllocator(IVDFilterFrameAllocator *alloc) {
 	}
 }
 
+void VDFilterFrameAllocatorProxy::TrimAllocator() {
+	if (mpAllocator)
+		mpAllocator->Trim();
+}
+
 bool VDFilterFrameAllocatorProxy::Allocate(VDFilterFrameBuffer **buffer) {
 	return mpAllocator && mpAllocator->Allocate(buffer);
 }

@@ -30,6 +30,12 @@ class VDFilterAccelEngineDispatchQueue;
 class VDFilterAccelReadbackBuffer;
 class VDRTProfileChannel;
 
+enum VDFilterAccelStatus {
+	kVDFilterAccelStatus_OK,
+	kVDFilterAccelStatus_Failed,
+	kVDFilterAccelStatus_DeviceLost
+};
+
 struct VDFilterAccelVertex {
 	float x;
 	float y;
@@ -126,7 +132,7 @@ public:
 
 	bool Download(VDFilterFrameBuffer *dst, const VDPixmapLayout& dstLayout, VDFilterFrameBufferAccel *src, bool srcYUV, VDFilterAccelReadbackBuffer *rb);
 	bool BeginDownload(VDFilterAccelEngineDownloadMsg *msg, VDFilterFrameBuffer *dst, const VDPixmapLayout& dstLayout, VDFilterFrameBufferAccel *src, bool srcYUV, VDFilterAccelReadbackBuffer *rb);
-	bool EndDownload(VDFilterAccelEngineDownloadMsg *msg);
+	VDFilterAccelStatus EndDownload(VDFilterAccelEngineDownloadMsg *msg);
 
 	bool Convert(VDFilterFrameBufferAccel *dst, const VDPixmapLayout& dstLayout, VDFilterFrameBufferAccel *src, const VDPixmapLayout& srcLayout, const vdrect32& srcRect);
 
@@ -178,6 +184,7 @@ protected:
 	IVDTVertexProgram *mpVPClear;
 	IVDTVertexFormat *mpVF;
 	IVDTVertexFormat *mpVFC;
+	IVDTVertexFormat *mpVFCClear;
 	IVDTVertexBuffer *mpVB;
 	IVDTIndexBuffer *mpIB;
 	IVDTRasterizerState *mpRS;

@@ -303,6 +303,18 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="D3D10"
+				>
+				<File
+					RelativePath=".\source\D3D10\Context_D3D10.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\source\D3D10\FenceManager_D3D10.cpp"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Resource Files"
@@ -348,6 +360,18 @@
 				</File>
 				<File
 					RelativePath=".\h\D3D9\FenceManager_D3D9.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="D3D10"
+				>
+				<File
+					RelativePath=".\h\D3D10\Context_D3D10.h"
+					>
+				</File>
+				<File
+					RelativePath=".\h\D3D10\FenceManager_D3D10.h"
 					>
 				</File>
 			</Filter>

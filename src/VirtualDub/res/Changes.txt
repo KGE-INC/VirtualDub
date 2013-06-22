@@ -1,6 +1,75 @@
 VirtualDub change log
 
-Build %build% (1.10.0, experimental): [%date%]
+Build %build% (1.10.1, experimental): [%date%]
+   [features added]
+   * The "audio from other file" dialog now has an extended open options option.
+   * Added m2a, m1a, and mpa as default supported extensions to the MPEG audio input module.
+   * Added commands to cycle through files.
+   * Added command to launch a new instance.
+   * Added command to close and delete the current file.
+   * Added auto-recover option.
+   * Enhanced test videos with explicit YCbCr channel tests with markers for 0-255 and 16-235 levels.
+   * Audio filters dialog is now resizable.
+   * AVI: File Information now displays audio format tag and prevents long video codec names from cutting off video tag.
+   * Display: Added option for multi-monitor display acceleration.
+   * Command line: Added /capaudiorec and /capaudioplay switches.
+   * Command line: Added /resetall.
+   * Command line: Added /portable to initialize portable settings mode.
+   * Filters: Ported all remaining x86-only filters to x64.
+   * Filters: Many internal filters are now marked as pure transforms to allow pass-through of duplicated frames.
+   * Filters: Added support for BT.709 and full range formats to many video filters.
+   * Filters: Video filters can now read from multiple input streams.
+   * Filters: Video filters can now request zero source frames in a prefetch operation.
+   * Filters: Logo filter no longer fetches source frames if the logo obscures the whole frame.
+   * Filters: 3D acceleration mode prevents the display from going into power-saving mode.
+   * Filters: 3D acceleration mode now uses Direct3D9Ex on Windows Vista/7 to run even with the display locked.
+   * Filters: Improved error reporting when a 3D accelerated video filter fails due to a display mode switch.
+   * Filters: Improved color space search rules for BT.709 and full range formats.
+   * Filters: AVX support is now detected and reported to filters.
+   * Codecs: Added About and Configure buttons to audio codec dialog.
+   * UI: Fixed goofy multiple dialogs when selecting Other... in Video Depth dialog through the keyboard.
+   * PluginAPI: Input drivers can now indicate when they have no external options dialogs.
+
+   [bugs fixed]
+   * Position control mark-in/out icons are now comctl32 v6 compatible.
+   * Fixed mouse cursor vanishing when left-clicking while right-dragging the position nub.
+   * Fixed .wav input handler using the wrong RIFF tag for signature detection.
+   * Initial padding setting was being ignored for raw video input.
+   * ExtEnc: Fixed extra data being written to audio pipe at end of stream.
+   * ExtEnc: Removed WAVE64 padding from WAVE stream written to pipe to improve compatibility with marginal WAVE parsers.
+   * ExtEnc: Fixed case where program would hang if the external encoder aborted early.
+   * BatchWizard: Re-save as AVI and Extract to WAV functions now force the .avi and .wav extensions on output filenames.
+   * Capture: "Windows Mixer" menu option now launches the Recording tab of the Sound control panel in Windows Vista and Windows 7.
+   * Capture: Fixed weird disable wonkiness with the Position and Screen Height labels in the screen capture settings dialog.
+   * Capture: Added option to allow selection of video codecs that do not support the current output format.
+   * Capture: Fixed some frame skipping problems when conversions occured between filters with the filter chain enabled.
+   * Capture: Fixed crashes when toggling black/white point extension with other capture filters active.
+   * Capture: Volume meter and large timer settings are now saved.
+   * Capture: Large timer is now erased at the end of capture.
+   * Capture: Fix for a race condition related crash when changing capture size with preview acceleration enabled.
+   * Command line: /capdevice no longer reselects a capture device if it is already the default.
+   * Command line: Improved error reporting for /cmd switch.
+   * Filters: Fixed bug in allocator merging code that was causing excessive memory usage when disparate frame sizes were used in the same filter chain.
+   * Filters: Fixed some crashes in resize filter resulting from 0 size frames.
+   * Filters: Fixed crash when sampling in the configuration dialog of a filter instance that has a blend curve attached.
+   * Filters: Fixed box blur filter with MMX disabled.
+   * Filters: The "save as default" button in the Resize filter was saving the settings from when the dialog was opened instead of the current settings.
+   * Filters: Added additional protection against crashing out with abnormally large frames (>1M pixels on one side or >128MB pixels total).
+   * Defaults: Default preview display depth is now 24-bit.
+   * Defaults: DirectX hardware video overlays are now disabled by default to avoid color space issues and driver bugs.
+   * Render: Added option to inhibit system sleep during renders (on by default).
+   * Render: Added option for background I/O priority (Vista and up only).
+   * Render: Fixed crashes in high quality audio sample rate conversion with very low or high rate values.
+   * Audio: Added workaround for audio codecs that respond to decompression requests in acmFormatSuggest() but reject them in acmStreamOpen().
+   * Audio: Compression dialog now reflects mono-left and mono-right conversion settings.
+   * Video: Fixed crash with some codecs when bringing up video codec list (64-bit version only).
+   * Display: Additional mode switch recovery fixes for Direct3D display mode.
+   * Display: DirectDraw mode now works on Windows 8 developer preview.
+   * Display: Direct3D9 mode now works on Windows 8 developer preview in software rendering mode (basic display driver).
+   * Scripting: Empty statements are now allowed.
+   * Images: Fixed crash when loading animated GIF without graphic control extension blocks.
+
+Build 33848 (1.10.0, experimental): [December 24, 2010]
    [features added]
    * Holding the Ctrl key during drag-and-drop appends instead of replaces.
    * "Scan for errors" command is now scriptable (VirtualDub.video.ScanForErrors).

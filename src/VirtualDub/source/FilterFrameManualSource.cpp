@@ -53,7 +53,10 @@ VDFilterFrameAllocatorProxy *VDFilterFrameManualSource::GetOutputAllocatorProxy(
 	return &mAllocator;
 }
 
-void VDFilterFrameManualSource::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr, VDFilterFrameAllocatorProxy *prev) {
+void VDFilterFrameManualSource::RegisterSourceAllocReqs(uint32 index, VDFilterFrameAllocatorProxy *prev) {
+}
+
+void VDFilterFrameManualSource::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr) {
 	mgr->AddAllocatorProxy(&mAllocator);
 }
 

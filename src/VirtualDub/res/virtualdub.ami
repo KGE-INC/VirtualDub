@@ -239,6 +239,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Playback";
 				listitem "3D accel";
 				listitem "Batch";
+				listitem "Auto-recover";
 			}
 
 			pageset 101 : value={@100} {
@@ -255,6 +256,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1020;
 				page 1021;
 				page 1022;
+				page 1023;
 			}
 		}
 
@@ -271,7 +273,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 
 dialog 1010, "" : fill, child {
 	now align=fill;
-	set 0 : vertical {
+	set 0 : vertical, spacing=1 {
 		group 0, "Quick preview defaults" {
 			grid 0 : spacing=2 {
 				now valign=fill;
@@ -290,6 +292,7 @@ dialog 1010, "" : fill, child {
 				nextrow;
 
 				label 0, "Process priority";
+				
 				combobox 101 {
 					listitem "Default";
 					listitem "Idle";
@@ -322,6 +325,9 @@ dialog 1010, "" : fill, child {
 					listitem "Even higher";
 					listitem "Highest";
 				}
+				
+				nextrow;
+				checkbox 105, "Background I/O priority" : column = 1;
 				
 				nextrow;
 				
@@ -363,7 +369,17 @@ dialog 1011, "" : fill, child {
 				}			
 				checkbox 104, "Use OpenGL" : enable={@101 && !@103};
 				checkbox 106, "Avoid tearing (enable vsync)";
-				checkbox 111, "Enable DirectX on secondary displays";
+				
+				set 0 : align=fill, spacing=3 {
+					now valign=center, align=left, marginl=0;
+					
+					label 0, "Multi-monitor mode:";
+					combobox 111 : align=fill {
+						listitem "Auto-switch to nearest monitor (recommended)";
+						listitem "Force primary display device";
+						listitem "Disable secondary display support";
+					}
+				}
 			}
 			checkbox 110, "Disable accelerated display when inactive";
 			checkbox 108, "Show debug information";
@@ -411,6 +427,7 @@ dialog 1013, "" : fill, child {
 				checkbox 207, "SSE3";
 				checkbox 208, "SSSE3";
 				checkbox 209, "SSE4.1";
+				checkbox 210, "AVX";
 				nextrow;
 				checkbox 205, "3DNow!";
 				checkbox 206, "3DNow! 2";
@@ -483,6 +500,7 @@ dialog 1016, "" : fill, child {
 				now valign=top, align=left;
 				checkbox 100, "Confirm when abort button is pressed";
 				checkbox 101, "Warn if no audio is written";
+				checkbox 102, "Prevent system from going to sleep during render";
 			}
 		}
 	}
@@ -581,6 +599,18 @@ dialog 1022, "" : fill, child {
 	set 0: vertical {
 		group 0, "Batch mode options" {
 			checkbox 100, "Show &status window for batch operations";
+		}
+	}
+}
+
+dialog 1023, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Auto-recover options" {
+			set 0: vertical, spacing=3 {
+				label 0, "VirtualDub can optionally save recovery information before beginning a preview or render operation. If a program failure occurs, this information can then be used to restore the project state." : readonly, multiline;
+				checkbox 100, "&Enable auto-recover";
+			}
 		}
 	}
 }
@@ -709,21 +739,23 @@ dialog 2102, "Capture device options" : aspect=140, maxw=350 {
 dialog 3000, "Create test video" : aspect=140, maxw=350 {
 	set 0 : vertical, spacing=5 {
 		grid 0 : spacing=2, align=fill {
-			now valign=fill;
+			now valign=top;
 			column 0: minw=60;
 			column 1: affinity=1;
 
 			label 0, "Video";
-			combobox 100 : minw=120 {
+			listbox 100 : minw=120, minh=100, sunken {
 				listitem "RGB color cube";
 				listitem "RGB color cube (TFF)";
 				listitem "RGB color cube (BFF)";
 				listitem "Chroma subsampling offset";
-				listitem "Channel levels";
+				listitem "Channel levels (RGB)";
 				listitem "Checkerboard";
 				listitem "Zone plates";
 				listitem "3:2 pulldown (TFF)";
 				listitem "3:2 pulldown (BFF)";
+				listitem "Channel levels (YCbCr LR)";
+				listitem "Channel levels (YCbCr FR)";
 			}
 		}
 

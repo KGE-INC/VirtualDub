@@ -48,11 +48,19 @@ bool vdstringpred::operator()(const VDStringA& s, const VDStringA& t) const {
 	return s == t;
 }
 
+bool vdstringpred::operator()(const VDStringA& s, const VDStringSpanA& t) const {
+	return s == t;
+}
+
 bool vdstringpred::operator()(const VDStringA& s, const char *t) const {
 	return s == t;
 }
 
 bool vdstringpred::operator()(const VDStringW& s, const VDStringW& t) const {
+	return s == t;
+}
+
+bool vdstringpred::operator()(const VDStringW& s, const VDStringSpanW& t) const {
 	return s == t;
 }
 

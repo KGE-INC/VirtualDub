@@ -105,6 +105,9 @@ void VDFilterAccelFrameAllocator::AddBorderRequirement(uint32 w, uint32 h) {
 		mBorderHRequired = h;
 }
 
+void VDFilterAccelFrameAllocator::Trim() {
+}
+
 bool VDFilterAccelFrameAllocator::Allocate(VDFilterFrameBuffer **buffer) {
 	vdrefptr<VDFilterFrameBufferAccel> buf;
 

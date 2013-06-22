@@ -68,11 +68,23 @@ public:
 	virtual void OnPostDeviceReset() = 0;
 };
 
+struct VDD3D9LockInfo {
+	void *mpData;
+	ptrdiff_t mPitch;
+};
+
+class IVDD3D9InitTexture : public IVDRefCount {
+public:
+	virtual bool Lock(int level, VDD3D9LockInfo& lockInfo) = 0;
+	virtual void Unlock(int level) = 0;
+};
+
 class IVDD3D9Texture : public IVDRefCount {
 public:
 	virtual int GetWidth() = 0;
 	virtual int GetHeight() = 0;
 
+	virtual bool Init(IVDD3D9InitTexture *pInitTexture) = 0;
 	virtual void SetD3DTexture(IDirect3DTexture9 *pTexture) = 0;
 	virtual IDirect3DTexture9 *GetD3DTexture() = 0;
 };
@@ -137,22 +149,26 @@ public:
 
 class VDD3D9Manager : public vdlist_node {
 public:
-	VDD3D9Manager();
+	VDD3D9Manager(HMONITOR hmonitor, bool use9ex);
 	~VDD3D9Manager();
 
 	bool Attach(VDD3D9Client *pClient);
 	bool Detach(VDD3D9Client *pClient);
 
+	bool IsD3D9ExEnabled() const { return mbUseD3D9Ex; }
+
 	VDThreadID				GetThreadID() const { return mThreadID; }
 	const D3DCAPS9&			GetCaps() const { return mDevCaps; }
 	IDirect3D9				*GetD3D() const { return mpD3D; }
 	IDirect3DDevice9		*GetDevice() const { return mpD3DDevice; }
+	IDirect3DDevice9Ex		*GetDeviceEx() const { return mpD3DDeviceEx; }
 	IDirect3DIndexBuffer9	*GetIndexBuffer() const { return mpD3DIB; }
 	IDirect3DVertexBuffer9	*GetVertexBuffer() const { return mpD3DVB; }
 	IDirect3DVertexDeclaration9	*GetVertexDeclaration() const { return mpD3DVD; }
 	const D3DPRESENT_PARAMETERS& GetPresentParms() const { return mPresentParms; }
 	UINT					GetAdapter() const { return mAdapter; }
 	D3DDEVTYPE				GetDeviceType() const { return mDevType; }
+	HMONITOR				GetMonitor() const { return mhMonitor; }
 
 	IDirect3DSurface9		*GetRenderTarget() const { return mpD3DRTMain; }
 	int			GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
@@ -195,6 +211,8 @@ public:
 
 	bool		Is3DCardLame();
 
+	bool		CreateInitTexture(UINT width, UINT height, UINT levels, D3DFORMAT format, IVDD3D9InitTexture **ppInitTexture);
+
 	typedef bool (*SharedTextureFactory)(IVDD3D9TextureGenerator **ppGenerator);
 	bool		CreateSharedTexture(const char *name, SharedTextureFactory factory, IVDD3D9Texture **ppTexture);
 
@@ -203,7 +221,7 @@ public:
 		return CreateSharedTexture(name, VDRefCountObjectFactory<T, IVDD3D9TextureGenerator>, ppTexture);
 	}
 
-	bool		CreateSwapChain(int width, int height, bool clipToMonitor, IVDD3D9SwapChain **ppSwapChain);
+	bool		CreateSwapChain(HWND hwnd, int width, int height, bool clipToMonitor, IVDD3D9SwapChain **ppSwapChain);
 	void		SetSwapChainActive(IVDD3D9SwapChain *pSwapChain);
 	HRESULT		PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT *srcRect, HWND hwndDest, bool vsync, bool newframe, bool donotwait, float& syncDelta, VDD3DPresentHistory& history);
 
@@ -213,21 +231,25 @@ protected:
 	void ShutdownVRAMResources();
 	void Shutdown();
 
-	void UpdateCachedDisplayMode();
+	bool UpdateCachedDisplayMode();
 
 	static LRESULT CALLBACK StaticDeviceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 	HMODULE				mhmodDX9;
 	IDirect3D9			*mpD3D;
+	IDirect3D9Ex		*mpD3DEx;			// no refcount held
 	IDirect3DDevice9	*mpD3DDevice;
+	IDirect3DDevice9Ex	*mpD3DDeviceEx;
 	IDirect3DSurface9	*mpD3DRTMain;
 	UINT				mAdapter;
 	D3DDEVTYPE			mDevType;
+	HMONITOR			mhMonitor;
 
 	ATOM				mDevWndClass;
 	HWND				mhwndDevice;
 	VDThreadID			mThreadID;
 
+	bool				mbUseD3D9Ex;
 	bool				mbDeviceValid;
 	bool				mbInScene;
 	bool				mbSupportsEventQueries;
@@ -267,7 +289,7 @@ protected:
 	uint32			mFenceQueueHeadIndex;
 };
 
-VDD3D9Manager *VDInitDirect3D9(VDD3D9Client *pClient);
+VDD3D9Manager *VDInitDirect3D9(VDD3D9Client *pClient, HMONITOR hmonitor, bool use9ex);
 void VDDeinitDirect3D9(VDD3D9Manager *p, VDD3D9Client *pClient);
 
 #endif

@@ -319,6 +319,7 @@ public:
 protected:
 	VDPosition	mCachedFrame;
 	uint32		mFrameSize;
+	sint64		mFrameOffset;
 	sint64		mFrameStride;
 
 	VDPixmapLayout	mLayout;
@@ -346,6 +347,7 @@ VDVideoSourceRawVideo::VDVideoSourceRawVideo(IVDInputFileRawVideo *parent, const
 	
 	sint64 fileSize = parent->GetFileSize();
 
+	mFrameOffset = options.mInitialPadding;
 	mFrameStride = (sint64)mFrameSize + options.mPostFramePadding;
 
 	if (fileSize > options.mInitialPadding)
@@ -395,7 +397,7 @@ int VDVideoSourceRawVideo::_read(VDPosition lStart, uint32 lCount, void *lpBuffe
 			if (mFrameSize > cbBuffer)
 				ret = IVDStreamSource::kBufferTooSmall;
 			else {
-				mpParent->ReadSpan(mFrameStride * lStart, lpBuffer, mFrameSize);
+				mpParent->ReadSpan(mFrameOffset + mFrameStride * lStart, lpBuffer, mFrameSize);
 			}
 		}
 	}
@@ -581,7 +583,7 @@ public:
 		return 0;
 	}
 
-	uint32 GetFlags() { return kF_Video | kF_PromptForOpts; }
+	uint32 GetFlags() { return kF_Video | kF_PromptForOpts | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
 		return L"Raw video (*.bin)\0*.bin\0";

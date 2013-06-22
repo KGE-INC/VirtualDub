@@ -37,6 +37,8 @@ public:
 	bool Lock();
 	void Unlock();
 
+	int GetVideoFilterAPIVersion() const { return mVFHighVersion; }
+
 	const VDStringW& GetFilename() const { return mFilename; }
 	VDXFilterModule& GetFilterModuleInfo() { return mModuleInfo; }
 
@@ -48,6 +50,7 @@ protected:
 	VDStringW		mFilename;
 	HMODULE			mhModule;
 	int				mModuleRefCount;
+	int				mVFHighVersion;		// video filter high version (from module init)
 	VDXFilterModule	mModuleInfo;
 };
 

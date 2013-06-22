@@ -26,6 +26,7 @@ public:
 	void AddSizeRequirement(uint32 bytes);
 	void AddBorderRequirement(uint32 w, uint32 h);
 
+	void Trim();
 	bool Allocate(VDFilterFrameBuffer **buffer);
 
 	void OnFrameBufferIdle(VDFilterFrameBuffer *buf);

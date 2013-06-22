@@ -73,7 +73,7 @@ public:
 	void *AsInterface(uint32 iid) { return NULL; }
 
 	bool Init(VDTContextD3D9 *parent, uint32 width, uint32 height, uint32 format, VDTUsage usage);
-	bool Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf);
+	bool Init(VDTContextD3D9 *parent, IDirect3DSurface9 *surf, IDirect3DSurface9 *surfsys);
 	void Shutdown();
 
 	bool Restore();
@@ -90,6 +90,7 @@ protected:
 	friend class VDTContextD3D9;
 
 	IDirect3DSurface9 *mpSurface;
+	IDirect3DSurface9 *mpSurfaceSys;
 	bool mbDefaultPool;
 	VDTSurfaceDesc mDesc;
 };
@@ -123,6 +124,7 @@ protected:
 	void ShutdownDefaultPool();
 
 	IDirect3DTexture9 *mpTexture;
+	IDirect3DTexture9 *mpTextureSys;
 	uint32	mWidth;
 	uint32	mHeight;
 	uint32	mMipCount;
@@ -320,17 +322,18 @@ public:
 	int Release();
 	void *AsInterface(uint32 id);
 
-	bool Init(IDirect3DDevice9 *dev, IVDRefUnknown *dllHolder);
+	bool Init(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVDRefUnknown *dllHolder);
 	void Shutdown();
 
 	IDirect3DDevice9 *GetDeviceD3D9() const { return mpD3DDevice; }
+	IDirect3DDevice9Ex *GetDeviceD3D9Ex() const { return mpD3DDeviceEx; }
 
 	bool CreateReadbackBuffer(uint32 width, uint32 height, uint32 format, IVDTReadbackBuffer **buffer);
 	bool CreateSurface(uint32 width, uint32 height, uint32 format, VDTUsage usage, IVDTSurface **surface);
 	bool CreateTexture2D(uint32 width, uint32 height, uint32 format, uint32 mipcount, VDTUsage usage, const VDTInitData2D *initData, IVDTTexture2D **tex);
 	bool CreateVertexProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTVertexProgram **tex);
 	bool CreateFragmentProgram(VDTProgramFormat format, const void *data, uint32 length, IVDTFragmentProgram **tex);
-	bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexFormat **format);
+	bool CreateVertexFormat(const VDTVertexElement *elements, uint32 count, IVDTVertexProgram *vp, IVDTVertexFormat **format);
 	bool CreateVertexBuffer(uint32 size, bool dynamic, const void *initData, IVDTVertexBuffer **buffer);
 	bool CreateIndexBuffer(uint32 size, bool index32, bool dynamic, const void *initData, IVDTIndexBuffer **buffer);
 
@@ -401,6 +404,7 @@ protected:
 
 	IVDRefUnknown *mpD3DHolder;
 	IDirect3DDevice9 *mpD3DDevice;
+	IDirect3DDevice9Ex *mpD3DDeviceEx;
 
 	uint32	mDeviceLossCounter;
 	bool	mbDeviceLost;
@@ -439,6 +443,6 @@ protected:
 };
 
 bool VDTCreateContextD3D9(int width, int height, int refresh, bool fullscreen, bool vsync, void *hwnd, IVDTContext **ppctx);
-bool VDTCreateContextD3D9(IDirect3DDevice9 *dev, IVDTContext **ppctx);
+bool VDTCreateContextD3D9(IDirect3DDevice9 *dev, IDirect3DDevice9Ex *dev9Ex, IVDTContext **ppctx);
 
 #endif	// f_D3D9_CONTEXT_D3D9_H

@@ -396,6 +396,8 @@ bool VDUIBatchWizard::OnCommand(uint32 id, uint32 extcode) {
 						else
 							outputFileName = VDMakePath(outputPath.c_str(), outputName);
 
+						outputFileName = VDFileSplitExtLeft(outputFileName) + L".avi";
+
 						JobAddBatchFile(item->GetFileName(), outputFileName.c_str());
 					}
 				}
@@ -425,6 +427,9 @@ bool VDUIBatchWizard::OnCommand(uint32 id, uint32 extcode) {
 							outputFileName = VDMakePath(VDFileSplitPathLeft(VDStringW(item->GetFileName())).c_str(), outputName);
 						else
 							outputFileName = VDMakePath(outputPath.c_str(), outputName);
+
+						if (id == ID_ADDTOQUEUE_EXTRACTAUDIOASWAV)
+							outputFileName = VDFileSplitExtLeft(outputFileName) + L".wav";
 
 						JobAddConfigurationSaveAudio(&g_dubOpts, item->GetFileName(), NULL, NULL, outputFileName.c_str(), raw, false);
 					}

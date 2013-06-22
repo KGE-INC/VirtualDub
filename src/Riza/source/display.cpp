@@ -151,6 +151,8 @@ protected:
 	bool CheckForMonitorChange();
 	bool IsOnSecondaryMonitor() const;
 
+	static void GetMonitorRect(RECT *r, HMONITOR hmon);
+
 protected:
 	enum {
 		kReinitDisplayTimerId = 500
@@ -160,6 +162,7 @@ protected:
 	HWND		mhwndChild;
 	HPALETTE	mhOldPalette;
 	HMONITOR	mhLastMonitor;
+	RECT		mMonitorRect;
 	RECT		mLastMonitorCheckRect;
 
 	VDCriticalSection			mMutex;
@@ -171,6 +174,7 @@ protected:
 
 	IVDVideoDisplayMinidriver *mpMiniDriver;
 	bool	mbMiniDriverSecondarySensitive;
+	bool	mbMiniDriverClearOtherMonitors;
 	UINT	mReinitDisplayTimer;
 
 	IVDVideoDisplayCallback		*mpCB;
@@ -210,6 +214,8 @@ public:
 	static bool		sbEnableHighPrecision;
 	static bool		sbEnableBackgroundFallback;
 	static bool		sbEnableSecondaryMonitorDX;
+	static bool		sbEnableMonitorSwitchingDX;
+	static bool		sbEnableD3D9Ex;
 };
 
 ATOM									VDVideoDisplayWindow::sChildWindowClass;
@@ -223,6 +229,8 @@ bool VDVideoDisplayWindow::sbEnableDebugInfo;
 bool VDVideoDisplayWindow::sbEnableHighPrecision;
 bool VDVideoDisplayWindow::sbEnableBackgroundFallback;
 bool VDVideoDisplayWindow::sbEnableSecondaryMonitorDX;
+bool VDVideoDisplayWindow::sbEnableMonitorSwitchingDX;
+bool VDVideoDisplayWindow::sbEnableD3D9Ex;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -241,6 +249,10 @@ void VDVideoDisplaySetSecondaryDXEnabled(bool enable) {
 	VDVideoDisplayWindow::sbEnableSecondaryMonitorDX = enable;
 }
 
+void VDVideoDisplaySetMonitorSwitchingDXEnabled(bool enable) {
+	VDVideoDisplayWindow::sbEnableMonitorSwitchingDX = enable;
+}
+
 void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableDirectXOverlay, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableDirect3DFX, bool enableHighPrecision) {
 	VDVideoDisplayWindow::sbEnableDX = enableDirectX;
 	VDVideoDisplayWindow::sbEnableDXOverlay = enableDirectXOverlay;
@@ -249,6 +261,10 @@ void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableDirectXOverlay, bo
 	VDVideoDisplayWindow::sbEnableOGL = enableOpenGL;
 	VDVideoDisplayWindow::sbEnableTS = enableTermServ;
 	VDVideoDisplayWindow::sbEnableHighPrecision = enableHighPrecision;
+}
+
+void VDVideoDisplaySetD3D9ExEnabled(bool enable) {
+	VDVideoDisplayWindow::sbEnableD3D9Ex = enable;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -265,7 +281,7 @@ ATOM VDVideoDisplayWindow::Register() {
 		wc.hInstance		= hInst;
 		wc.hIcon			= 0;
 		wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground	= 0;
+		wc.hbrBackground	= (HBRUSH)(BLACK_BRUSH + 1);
 		wc.lpszMenuName		= 0;
 		wc.lpszClassName	= "phaeronVideoDisplayChild";
 
@@ -305,6 +321,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& create
 	, mhOldPalette(0)
 	, mpMiniDriver(0)
 	, mbMiniDriverSecondarySensitive(false)
+	, mbMiniDriverClearOtherMonitors(false)
 	, mReinitDisplayTimer(0)
 	, mpCB(0)
 	, mInhibitRefresh(0)
@@ -324,6 +341,7 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& create
 	mSource.pixmap.data = 0;
 
 	memset(&mLastMonitorCheckRect, 0, sizeof mLastMonitorCheckRect);
+	memset(&mMonitorRect, 0, sizeof mMonitorRect);
 
 	if (createInfo.hwndParent) {
 		DWORD dwThreadId = GetWindowThreadProcessId(createInfo.hwndParent, NULL);
@@ -682,6 +700,8 @@ LRESULT VDVideoDisplayWindow::ChildWndProc(UINT msg, WPARAM wParam, LPARAM lPara
 			return HTTRANSPARENT;
 		break;
 	case WM_ERASEBKGND:
+		if (!mbMiniDriverClearOtherMonitors)
+			return TRUE;
 		return FALSE;
 
 	case WM_SETFOCUS:
@@ -720,8 +740,14 @@ void VDVideoDisplayWindow::OnChildPaint() {
 
 	if (!bDisplayOK) {
 		PAINTSTRUCT ps;
-		BeginPaint(mhwndChild, &ps);
-		EndPaint(mhwndChild, &ps);
+		HDC hdc = BeginPaint(mhwndChild, &ps);
+
+		if (hdc && ps.fErase) {
+			RECT r;
+			if (GetClientRect(mhwndChild, &r))
+				FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW + 1));
+			EndPaint(mhwndChild, &ps);
+		}
 
 		--mInhibitRefresh;
 		RequestUpdate();
@@ -738,8 +764,19 @@ void VDVideoDisplayWindow::OnChildPaint() {
 
 		GetClientRect(mhwndChild, &r);
 
-		if (mpMiniDriver && mpMiniDriver->IsValid())
+		if (mpMiniDriver && mpMiniDriver->IsValid()) {
 			VerifyDriverResult(mpMiniDriver->Paint(hdc, r, IVDVideoDisplayMinidriver::kModeAllFields));
+
+			if (mbMiniDriverClearOtherMonitors && ps.fErase) {
+				// Fill portions of the window on other monitors.
+				RECT rMon(mMonitorRect);
+				MapWindowPoints(NULL, mhwndChild, (LPPOINT)&rMon, 2);
+				ExcludeClipRect(hdc, rMon.left, rMon.top, rMon.right, rMon.bottom);
+				FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW + 1));
+			}
+		} else if (ps.fErase) {
+			FillRect(hdc, &r, (HBRUSH)(COLOR_WINDOW + 1));
+		}
 
 		EndPaint(mhwndChild, &ps);
 	}
@@ -908,10 +945,10 @@ bool VDVideoDisplayWindow::SyncSetSource(bool bAutoUpdate, const VDVideoDisplayS
 
 	if (mpMiniDriver) {
 		// Check if a monitor change has occurred (and we care).
-		if (sbEnableSecondaryMonitorDX || !CheckForMonitorChange()) {
+		if ((sbEnableSecondaryMonitorDX && !sbEnableMonitorSwitchingDX) || !CheckForMonitorChange()) {
 			// Check if the driver sensitive to secondary monitors and if we're now on the secondary
 			// monitor.
-			if (!mbMiniDriverSecondarySensitive || !IsOnSecondaryMonitor()) {
+			if (!mbMiniDriverSecondarySensitive || (!sbEnableMonitorSwitchingDX && !IsOnSecondaryMonitor())) {
 				// Check if the driver can adapt to the current format.
 				if (mpMiniDriver->ModifySource(mSource)) {
 					mpMiniDriver->SetColorOverride(0);
@@ -924,6 +961,8 @@ bool VDVideoDisplayWindow::SyncSetSource(bool bAutoUpdate, const VDVideoDisplayS
 				}
 			}
 		}
+
+		VDDEBUG_DISP("VideoDisplay: Monitor switch detected -- reinitializing display.\n");
 	}
 
 	SyncReset();
@@ -962,6 +1001,7 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh, bool bAllowNonpersistentS
 
 	VDASSERT(!mpMiniDriver);
 	mbMiniDriverSecondarySensitive = false;
+	mbMiniDriverClearOtherMonitors = false;
 
 	bool bIsForeground = VDIsForegroundTaskW32();
 
@@ -977,15 +1017,16 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh, bool bAllowNonpersistentS
 						SyncReset();
 					}
 
-					if (sbEnableSecondaryMonitorDX || !(CheckForMonitorChange(), IsOnSecondaryMonitor())) {
+					if (sbEnableSecondaryMonitorDX || sbEnableMonitorSwitchingDX || !(CheckForMonitorChange(), IsOnSecondaryMonitor())) {
 						if (!mbUseSubrect && sbEnableD3D) {
 							if (sbEnableD3DFX)
-								mpMiniDriver = VDCreateVideoDisplayMinidriverD3DFX(!sbEnableSecondaryMonitorDX);
+								mpMiniDriver = VDCreateVideoDisplayMinidriverD3DFX(!sbEnableSecondaryMonitorDX || sbEnableMonitorSwitchingDX);
 							else
-								mpMiniDriver = VDCreateVideoDisplayMinidriverDX9(!sbEnableSecondaryMonitorDX);
+								mpMiniDriver = VDCreateVideoDisplayMinidriverDX9(!sbEnableSecondaryMonitorDX || sbEnableMonitorSwitchingDX, sbEnableD3D9Ex);
 
 							if (InitMiniDriver()) {
 								mbMiniDriverSecondarySensitive = !sbEnableSecondaryMonitorDX;
+								mbMiniDriverClearOtherMonitors = sbEnableSecondaryMonitorDX || sbEnableMonitorSwitchingDX;
 								break;
 							}
 
@@ -995,6 +1036,7 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh, bool bAllowNonpersistentS
 						mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw(sbEnableDXOverlay, sbEnableSecondaryMonitorDX);
 						if (InitMiniDriver()) {
 							mbMiniDriverSecondarySensitive = !sbEnableSecondaryMonitorDX;
+							mbMiniDriverClearOtherMonitors = sbEnableSecondaryMonitorDX || sbEnableMonitorSwitchingDX;
 							break;
 						}
 						SyncReset();
@@ -1191,6 +1233,10 @@ bool VDVideoDisplayWindow::InitMiniDriver() {
 	if (!mhwndChild)
 		return false;
 
+	CheckForMonitorChange();
+
+	GetMonitorRect(&mMonitorRect, mhLastMonitor);
+
 	mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
 	mpMiniDriver->SetSubrect(mbUseSubrect ? &mSourceSubrect : NULL);
 	mpMiniDriver->SetDisplayDebugInfo(sbEnableDebugInfo);
@@ -1199,7 +1245,7 @@ bool VDVideoDisplayWindow::InitMiniDriver() {
 	mpMiniDriver->SetDestRect(mbDestRectEnabled ? &mDestRect : NULL, mBackgroundColor);
 	mpMiniDriver->Resize(r.right, r.bottom);
 
-	if (!mpMiniDriver->Init(mhwndChild, mSource)) {
+	if (!mpMiniDriver->Init(mhwndChild, mhLastMonitor, mSource)) {
 		DestroyWindow(mhwndChild);
 		mhwndChild = NULL;
 		return false;
@@ -1297,6 +1343,8 @@ bool VDVideoDisplayWindow::CheckForMonitorChange() {
 	if (hmon == mhLastMonitor)
 		return false;
 
+	VDDEBUG_DISP("VideoDisplay: Current monitor update: %p -> %p.\n", mhLastMonitor, hmon);
+
 	mhLastMonitor = hmon;
 	return true;
 }
@@ -1307,8 +1355,7 @@ bool VDVideoDisplayWindow::IsOnSecondaryMonitor() const {
 
 	typedef BOOL (WINAPI *tpGetMonitorInfo)(HMONITOR, LPMONITORINFO);
 
-	static const HMODULE shmodUser32 = GetModuleHandleA("user32");
-	static const tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(shmodUser32, "GetMonitorInfoA");
+	static const tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandleA("user32"), "GetMonitorInfoA");
 
 	if (!spGetMonitorInfo)
 		return false;
@@ -1318,6 +1365,25 @@ bool VDVideoDisplayWindow::IsOnSecondaryMonitor() const {
 		return false;
 
 	return !(monInfo.dwFlags & MONITORINFOF_PRIMARY);
+}
+
+void VDVideoDisplayWindow::GetMonitorRect(RECT *r, HMONITOR hmon) {
+	typedef BOOL (WINAPI *tpGetMonitorInfo)(HMONITOR, LPMONITORINFO);
+
+	static const tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandleA("user32"), "GetMonitorInfoA");
+
+	if (spGetMonitorInfo) {
+		MONITORINFO monInfo = {sizeof(MONITORINFO)};
+		if (spGetMonitorInfo(hmon, &monInfo)) {
+			*r = monInfo.rcMonitor;
+			return;
+		}
+	}
+
+	r->left = 0;
+	r->top = 0;
+	r->right = GetSystemMetrics(SM_CXSCREEN);
+	r->bottom = GetSystemMetrics(SM_CYSCREEN);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

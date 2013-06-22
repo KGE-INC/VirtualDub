@@ -40,6 +40,6 @@ public:
 	virtual void SetInitialTime(VDTime t) = 0;
 };
 
-bool VDCreateVideoFilterPreviewDialog(List *, FilterInstance *, IVDVideoFilterPreviewDialog **);
+bool VDCreateVideoFilterPreviewDialog(VDFilterChainDesc *, FilterInstance *, IVDVideoFilterPreviewDialog **);
 
 #endif

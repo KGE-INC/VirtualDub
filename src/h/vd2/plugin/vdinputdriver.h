@@ -67,7 +67,7 @@ struct VDXStreamSourceInfo {
 	VDXFraction		mPixelAspectRatio;
 };
 
-// V3+ (1.7.X) only
+// V3+ (1.8.0) only
 struct VDXStreamSourceInfoV3 {
 	VDXStreamSourceInfo	mInfo;
 
@@ -106,7 +106,7 @@ public:
 	virtual sint64				VDXAPIENTRY PositionToTimeVBR(sint64 samples) = 0;
 };
 
-// V3+ (1.7.X)
+// V3+ (1.8.0)
 class IVDXStreamSourceV3 : public IVDXUnknown {
 public:
 	enum { kIID = VDXMAKEFOURCC('X', 's', 't', '2') };
@@ -251,6 +251,7 @@ struct VDXInputDriverDefinition {
 		kFlagNone				= 0x00000000,
 		kFlagSupportsVideo		= 0x00000001,
 		kFlagSupportsAudio		= 0x00000002,
+		kFlagNoOptions			= 0x00000004,	// (V4+)
 		kFlagCustomSignature	= 0x00010000,
 		kFlagAll				= 0xFFFFFFFF
 	};
@@ -269,7 +270,12 @@ struct VDXInputDriverDefinition {
 enum {
 	// V1 (1.7.4.28204): Initial version
 	// V2 (1.7.5): Default I/P frame model fixed.
-	kVDXPlugin_InputDriverAPIVersion = 2
+	// V3 (1.8.0): VBR audio support.
+	//   NOTE: Due to a bug, VirtualDub never properly announced this version.
+	//         You must declare your input driver as V2 API compatible to work
+	//         on 1.8.x and 1.9.x releases.
+	// V4 (1.10.1): Added NoOptions definition flag.
+	kVDXPlugin_InputDriverAPIVersion = 4
 };
 
 #endif

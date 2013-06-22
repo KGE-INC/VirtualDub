@@ -70,6 +70,10 @@ VDRenderBufferAllocator<T>::~VDRenderBufferAllocator() {
 template<class T>
 void VDRenderBufferAllocator<T>::Init(int count) {
 	vdsynchronized(mMutex) {
+		// Prereserve the buffers array to decrease the chances that we'll hit OOM while
+		// trying to free a buffer in a dtor (leads to terminate).
+		mBuffers.reserve(count);
+
 		mBufferCount.Reset(0);
 		mOutstandingBufferCount = count;
 		mbActive = true;

@@ -861,6 +861,8 @@ bool VDDubVideoProcessor::RequestNextVideoFrame() {
 
 	vdrefptr<IVDFilterFrameClientRequest> outputReq;
 	VDDubFrameRequest req;
+	bool activateFilterPath = false;
+
 	if (frameEntry.mbDirect) {
 		req.mbDirect = true;
 		req.mSrcFrame = frameEntry.mSourceFrame;
@@ -873,6 +875,8 @@ bool VDDubVideoProcessor::RequestNextVideoFrame() {
 			mpVideoFrameSource->CreateRequest(frameEntry.mSourceFrame, false, mBatchNumber, ~outputReq);
 
 		vdrefptr<VDFilterFrameRequest> freq;
+		bool addedAnySources = false;
+
 		while(mpVideoFrameSource->GetNextRequest(NULL, ~freq)) {
 			const VDFilterFrameRequestTiming& timing = freq->GetTiming();
 
@@ -886,7 +890,11 @@ bool VDDubVideoProcessor::RequestNextVideoFrame() {
 			srcEnt.mBatchNumber = freq->GetBatchNumber();
 			mPendingSourceFrames.push_back(srcEnt);
 			freq.release();
+			addedAnySources = true;
 		}
+
+		if (!addedAnySources && mPendingOutputFrames.empty())
+			activateFilterPath = true;
 	} else {
 		req.mbDirect = false;
 		req.mSrcFrame = frameEntry.mSourceFrame;
@@ -904,6 +912,9 @@ bool VDDubVideoProcessor::RequestNextVideoFrame() {
 
 	mPendingOutputFrames.push_back(outputEntry);
 	outputReq.release();
+
+	if (activateFilterPath)
+		ActivatePaths(kPath_ProcessFilters | kPath_WriteOutputFrame);
 
 	return true;
 }

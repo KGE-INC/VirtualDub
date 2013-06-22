@@ -108,6 +108,10 @@ void VDDialogAudioConversionW32::RecomputeBandwidth() {
 	else if (IsDlgButtonChecked(mhdlg, IDC_SAMPLINGRATE_CUSTOM))
 		bps = GetDlgItemInt(mhdlg, IDC_SAMPLINGRATE_CUSTOM_VAL, NULL, FALSE);
 
+	// prevent UI overflows (this big of a value won't pass validation anyway)
+	if (bps >= 0x0FFFFFFF)
+		bps = 0;
+
 	if (IsDlgButtonChecked(mhdlg, IDC_PRECISION_NOCHANGE)) {
 		if (mbSourcePrecisionKnown && mbSource16Bit)
 			bps *= 2;
@@ -754,7 +758,12 @@ bool VDDialogSelectVideoFormatW32::FormatItemSort::operator()(const FormatItem& 
 
 class VDDialogVideoDepthW32 : public VDDialogFrameW32 {
 public:
-	inline VDDialogVideoDepthW32(DubOptions& opts) : VDDialogFrameW32(IDD_VIDEO_DEPTH), mOpts(opts) {}
+	inline VDDialogVideoDepthW32(DubOptions& opts)
+		: VDDialogFrameW32(IDD_VIDEO_DEPTH)
+		, mOpts(opts)
+		, mbInputBrowsePending(false)
+		, mbOutputBrowsePending(false)
+	{}
 
 	inline bool Activate(VDGUIHandle hParent) { return 0!=ShowDialog(hParent); }
 
@@ -768,6 +777,8 @@ protected:
 	int mInputFormat;
 	int mOutputFormat;
 	DubOptions& mOpts;
+	bool mbInputBrowsePending;
+	bool mbOutputBrowsePending;
 
 	struct FormatButtonMapping {
 		int mFormat;
@@ -808,6 +819,28 @@ INT_PTR VDDialogVideoDepthW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 					VDShowHelp(mhdlg, L"d-videocolordepth.html");
 			}
 			return TRUE;
+
+		case WM_USER + 200:
+			if (mbInputBrowsePending) {
+				mbInputBrowsePending = false;
+
+				VDDialogSelectVideoFormatW32 dlg(mInputFormat);
+				if (dlg.ShowDialog((VDGUIHandle)mhdlg))
+					mInputFormat = dlg.GetSelectedFormat();
+
+				SyncControls();
+			}
+
+			if (mbOutputBrowsePending) {
+				mbOutputBrowsePending = false;
+
+				VDDialogSelectVideoFormatW32 dlg(mOutputFormat);
+				if (dlg.ShowDialog((VDGUIHandle)mhdlg))
+					mOutputFormat = dlg.GetSelectedFormat();
+
+				SyncControls();
+			}
+			return TRUE;
     }
 
 	return VDDialogFrameW32::DlgProc(message, wParam, lParam);
@@ -832,23 +865,15 @@ bool VDDialogVideoDepthW32::OnCommand(uint32 id, uint32 extcode) {
 				break;
 
 			case IDC_INPUT_OTHER:
-				{
-					VDDialogSelectVideoFormatW32 dlg(mInputFormat);
-					if (dlg.ShowDialog((VDGUIHandle)mhdlg))
-						mInputFormat = dlg.GetSelectedFormat();
-
-					SyncControls();
-				}
+				// There are some weird issues with BN_CLICKED being sent multiple times with
+				// keyboard selection (mouse selection is OK).
+				mbInputBrowsePending = true;
+				PostMessage(mhdlg, WM_USER + 200, 0, 0);
 				return TRUE;
 
 			case IDC_OUTPUT_OTHER:
-				{
-					VDDialogSelectVideoFormatW32 dlg(mOutputFormat);
-					if (dlg.ShowDialog((VDGUIHandle)mhdlg))
-						mOutputFormat = dlg.GetSelectedFormat();
-
-					SyncControls();
-				}
+				mbOutputBrowsePending = true;
+				PostMessage(mhdlg, WM_USER + 200, 0, 0);
 				return TRUE;
 		}
 

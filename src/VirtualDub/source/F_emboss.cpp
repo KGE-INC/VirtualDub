@@ -21,11 +21,7 @@
 #include <commctrl.h>
 #include "resource.h"
 
-#include "filter.h"
 #include "f_convolute.h"
-#include "ScriptInterpreter.h"
-#include "ScriptError.h"
-#include "ScriptValue.h"
 
 extern HINSTANCE g_hInst;
 
@@ -36,7 +32,7 @@ struct MyFilterData {
 	BOOL rounded;
 };
 
-static int emboss_init(FilterActivation *fa, const FilterFunctions *ff) {
+static int emboss_init(VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
 	mfd->direction		= 0;
@@ -97,7 +93,7 @@ static INT_PTR CALLBACK embossDlgProc( HWND hDlg, UINT message, WPARAM wParam, L
 
 static const char translate[]={ 5,2,1,0,3,6,7,8 };
 
-static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
+static int emboss_config(VDXFilterActivation *fa, const VDXFilterFunctions *ff, VDXHWND hWnd) {
 //	static char translate[]={ 3,6,7,8,5,2,1,0 };
 //	static char translate[]={ 5,8,7,6,3,0,1,2 };
 	MyFilterData *mfd;
@@ -129,14 +125,14 @@ static int emboss_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWN
 	return ret;
 }
 
-static void emboss_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {
+static void emboss_string2(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int maxlen) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	sprintf(buf," (%c%c light, height %d)", "MTTTMBBB"[mfd->direction], "RRCLLLCR"[mfd->direction], mfd->height);
+	_snprintf(buf, maxlen, " (%c%c light, height %d)", "MTTTMBBB"[mfd->direction], "RRCLLLCR"[mfd->direction], mfd->height);
 }
 
-static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
-	FilterActivation *fa = (FilterActivation *)lpVoid;
+static void emboss_script_config(IVDXScriptInterpreter *isi, void *lpVoid, VDXScriptValue *argv, int argc) {
+	VDXFilterActivation *fa = (VDXFilterActivation *)lpVoid;
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
 	mfd->direction	= (char)argv[0].asInt();
@@ -147,7 +143,7 @@ static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 
 	memset(mfd->cfd.m, 0, sizeof mfd->cfd.m);
 	mfd->cfd.bias	= 128*256 + 128;
-	mfd->cfd.fClip	= TRUE;
+	mfd->cfd.fClip	= true;
 
 	mfd->cfd.m[translate[mfd->direction]] = -mfd->height;
 	mfd->cfd.m[translate[(mfd->direction+4) & 7]] = mfd->height;
@@ -159,17 +155,17 @@ static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 	}
 }
 
-static ScriptFunctionDef emboss_func_defs[]={
-	{ (ScriptFunctionPtr)emboss_script_config, "Config", "0ii" },
-	{ (ScriptFunctionPtr)emboss_script_config, NULL, "0iii" },
+static VDXScriptFunctionDef emboss_func_defs[]={
+	{ (VDXScriptFunctionPtr)emboss_script_config, "Config", "0ii" },
+	{ (VDXScriptFunctionPtr)emboss_script_config, NULL, "0iii" },
 	{ NULL },
 };
 
-static CScriptObject emboss_obj={
+static VDXScriptObject emboss_obj={
 	NULL, emboss_func_defs
 };
 
-static bool emboss_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
+static bool emboss_script_line(VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int buflen) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
 	_snprintf(buf, buflen, "Config(%d,%d,%d)", mfd->direction, mfd->height, mfd->rounded);
@@ -177,7 +173,7 @@ static bool emboss_script_line(FilterActivation *fa, const FilterFunctions *ff, 
 	return true;
 }
 
-FilterDefinition filterDef_emboss={
+VDXFilterDefinition filterDef_emboss={
 	0,0,NULL,
 	"emboss",
 	"Converts edges and gradiations in an image to shades, producing a 3D-like emboss effect.\n\n[Assembly optimized] [Dynamic compilation]",
@@ -187,9 +183,10 @@ FilterDefinition filterDef_emboss={
 	filter_convolute_run,
 	filter_convolute_param,
 	emboss_config,
-	emboss_string,
+	NULL,
 	filter_convolute_start,
 	filter_convolute_end,
 	&emboss_obj,
 	emboss_script_line,
+	emboss_string2
 };

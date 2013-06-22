@@ -592,6 +592,10 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 
 			if (PtInRect(&mThumbRect, pt)) {
 				mDragOffsetX = pt.x - mThumbRect.left;
+
+				if (mDragMode == kDragThumbSlow)
+					ShowCursor(TRUE);
+
 				mDragMode = kDragThumbFast;
 				SetCapture(mhwnd);
 
@@ -619,13 +623,21 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 			if (PtInRect(&mThumbRect, pt)) {
 				mDragOffsetX = pt.x - mThumbRect.left;
 				mDragAnchorPos = mPosition;
-				mDragMode = kDragThumbSlow;
+
+				bool hideCursor = false;
+				if (mDragMode != kDragThumbSlow) {
+					hideCursor = true;
+					mDragMode = kDragThumbSlow;
+				}
+
 				mDragAccum = 0;
 				SetCapture(mhwnd);
 
 				Notify(PCN_BEGINTRACK, VDPositionControlEventData::kEventNone);
 				InvalidateRect(mhwnd, &mThumbRect, TRUE);
-				ShowCursor(FALSE);
+
+				if (hideCursor)
+					ShowCursor(FALSE);
 			}
 		}
 		break;

@@ -1316,6 +1316,9 @@ void VDAudioDisplayControl::OnMouseMove(int x, int y, uint32 modifiers) {
 }
 
 void VDAudioDisplayControl::OnLButtonDown(int x, int y, uint32 modifiers) {
+	if (!mFailureMessage.empty())
+		return;
+
 	VDPosition pos = mWindowPosition + x * mSamplesPerPixel;
 
 	mDragAnchorX = x;

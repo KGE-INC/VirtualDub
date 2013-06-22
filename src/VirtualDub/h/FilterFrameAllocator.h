@@ -30,6 +30,7 @@ class VDFilterFrameBuffer;
 
 class IVDFilterFrameAllocator : public IVDRefCount {
 public:
+	virtual void Trim() = 0;
 	virtual bool Allocate(VDFilterFrameBuffer **buffer) = 0;
 
 	virtual void OnFrameBufferIdle(VDFilterFrameBuffer *buf) = 0;

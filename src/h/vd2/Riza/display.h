@@ -58,6 +58,7 @@ public:
 		kBobEven			= 0x0100,
 		kBobOdd				= 0x0200,
 		kSequentialFields	= 0x0400,
+		kDoNotWait			= 0x0800,
 
 		kFieldModeMax		= 0xffff,
 	};
@@ -103,10 +104,12 @@ public:
 };
 
 void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableOverlays, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableD3DFX, bool enableHighPrecision);
+void VDVideoDisplaySetD3D9ExEnabled(bool enable);
 void VDVideoDisplaySetD3DFXFileName(const wchar_t *path);
 void VDVideoDisplaySetDebugInfoEnabled(bool enable);
 void VDVideoDisplaySetBackgroundFallbackEnabled(bool enable);
 void VDVideoDisplaySetSecondaryDXEnabled(bool enable);
+void VDVideoDisplaySetMonitorSwitchingDXEnabled(bool enable);
 
 IVDVideoDisplay *VDGetIVideoDisplay(VDGUIHandle hwnd);
 bool VDRegisterVideoDisplayControl();

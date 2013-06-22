@@ -250,7 +250,7 @@ public:
 	~VDVideoDisplayMinidriverD3DFX();
 
 protected:
-	bool Init(HWND hwnd, const VDVideoDisplaySourceInfo& info);
+	bool Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info);
 	void ShutdownEffect();
 	void Shutdown();
 
@@ -464,7 +464,7 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX(bool clipToMonitor)
 VDVideoDisplayMinidriverD3DFX::~VDVideoDisplayMinidriverD3DFX() {
 }
 
-bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, HMONITOR hmonitor, const VDVideoDisplaySourceInfo& info) {
 	GetClientRect(hwnd, &mrClient);
 	mhwnd = hwnd;
 	mSource = info;
@@ -517,7 +517,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	}
 
 	// attempt to initialize D3D9
-	mpManager = VDInitDirect3D9(this);
+	mpManager = VDInitDirect3D9(this, hmonitor, false);
 	if (!mpManager) {
 		Shutdown();
 		return false;
@@ -743,7 +743,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 		return false;
 	}
 
-	if (!mpUploadContext->Init(info.pixmap, info.bAllowConversion, false, mhPrevSrc2Texture ? 3 : mhPrevSrcTexture ? 2 : 1)) {
+	if (!mpUploadContext->Init(hmonitor, false, info.pixmap, info.bAllowConversion, false, mhPrevSrc2Texture ? 3 : mhPrevSrcTexture ? 2 : 1)) {
 		Shutdown();
 		return false;
 	}
@@ -948,23 +948,46 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 		return false;
 
 	// Check if we need to create or resize the swap chain.
-	if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
-		mpSwapChain = NULL;
-		mSwapChainW = 0;
-		mSwapChainH = 0;
-	}
+	if (!mbFullScreen) {
+		if (mpManager->GetDeviceEx()) {
+			if (mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
+				mpSwapChain = NULL;
+				mSwapChainW = 0;
+				mSwapChainH = 0;
+			}
 
-	if (!mbFullScreen && (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
-		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
-		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+			if (!mpSwapChain || mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
+				int scw = std::min<int>(rClippedClient.right, rtw);
+				int sch = std::min<int>(rClippedClient.bottom, rth);
 
-		VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
+				VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
 
-		if (!mpManager->CreateSwapChain(scw, sch, mbClipToMonitor, ~mpSwapChain))
-			return false;
+				if (!mpManager->CreateSwapChain(mhwnd, scw, sch, mbClipToMonitor, ~mpSwapChain))
+					return false;
 
-		mSwapChainW = scw;
-		mSwapChainH = sch;
+				mSwapChainW = scw;
+				mSwapChainH = sch;
+			}
+		} else {
+			if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
+				mpSwapChain = NULL;
+				mSwapChainW = 0;
+				mSwapChainH = 0;
+			}
+
+			if ((!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
+				int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
+				int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+
+				VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
+
+				if (!mpManager->CreateSwapChain(mhwnd, scw, sch, mbClipToMonitor, ~mpSwapChain))
+					return false;
+
+				mSwapChainW = scw;
+				mSwapChainH = sch;
+			}
+		}
 	}
 
 	// Do we need to switch bicubic modes?

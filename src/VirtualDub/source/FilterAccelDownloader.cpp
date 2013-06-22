@@ -22,7 +22,16 @@
 #include "FilterFrameBufferAccel.h"
 #include "FilterSystem.h"
 
-//#define USE_ASYNCHRONOUS_DOWNLOAD
+void VDFilterSetAccelError(VDFilterAccelStatus status, VDFilterFrameRequest *req) {
+	if (status == kVDFilterAccelStatus_DeviceLost) {
+		vdrefptr<VDFilterFrameRequestError> err(new_nothrow VDFilterFrameRequestError);
+
+		if (err) {
+			err->mError = "A video filter operation has failed because the 3D graphics accelerator is no longer available.";
+			req->SetError(err);
+		}
+	}
+}
 
 struct VDFilterAccelDownloader::CallbackMsg : public VDFilterAccelEngineMessage {
 	VDFilterAccelDownloader *mpThis;
@@ -68,8 +77,10 @@ void VDFilterAccelDownloader::Start(IVDFilterFrameEngine *frameEngine) {
 
 void VDFilterAccelDownloader::Stop() {
 	if (mpRequest) {
-		bool succeeded = mpEngine->EndDownload(&mDownloadMsg);
-		mpRequest->MarkComplete(succeeded);
+		VDFilterAccelStatus status = mpEngine->EndDownload(&mDownloadMsg);
+
+		VDFilterSetAccelError(status, mpRequest);
+		mpRequest->MarkComplete(status == kVDFilterAccelStatus_OK);
 		CompleteRequest(mpRequest, true);
 		mpRequest = NULL;
 	}
@@ -99,9 +110,11 @@ VDFilterAccelDownloader::RunResult VDFilterAccelDownloader::RunRequests(const ui
 		if (!mDownloadMsg.mbCompleted)
 			return kRunResult_Blocked;
 
-		bool succeeded = mpEngine->EndDownload(&mDownloadMsg);
+		VDFilterAccelStatus status = mpEngine->EndDownload(&mDownloadMsg);
 
-		mpRequest->MarkComplete(succeeded);
+		VDFilterSetAccelError(status, mpRequest);
+
+		mpRequest->MarkComplete(status == kVDFilterAccelStatus_OK);
 		CompleteRequest(mpRequest, true);
 		mpRequest.clear();
 

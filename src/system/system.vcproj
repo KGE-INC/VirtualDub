@@ -418,6 +418,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\date.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\debug.cpp"
 				>
 				<FileConfiguration
@@ -754,6 +758,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\linearalloc.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\list.cpp"
 				>
 				<FileConfiguration
@@ -914,6 +922,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\process.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\profile.cpp"
 				>
 				<FileConfiguration
@@ -1040,6 +1052,10 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\source\registrymemory.cpp"
+				>
 			</File>
 			<File
 				RelativePath="source\strutil.cpp"
@@ -1527,6 +1543,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\date.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\system\debug.h"
 				>
 			</File>
@@ -1575,6 +1595,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\linearalloc.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\VD2\system\list.h"
 				>
 			</File>
@@ -1588,6 +1612,10 @@
 			</File>
 			<File
 				RelativePath="..\h\VD2\system\memory.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\process.h"
 				>
 			</File>
 			<File
@@ -1608,6 +1636,10 @@
 			</File>
 			<File
 				RelativePath="..\h\VD2\system\registry.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\system\registrymemory.h"
 				>
 			</File>
 			<File
@@ -1671,6 +1703,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\vdstl_hashset.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\system\vdstl_hashtable.h"
 				>
 			</File>
@@ -1709,6 +1745,10 @@
 			<Filter
 				Name="win32"
 				>
+				<File
+					RelativePath="..\h\vd2\system\win32\intrin.h"
+					>
+				</File>
 				<File
 					RelativePath="..\h\vd2\system\win32\miniwindows.h"
 					>
@@ -1763,6 +1803,26 @@
 		<Filter
 			Name="Assembly Files (AMD64)"
 			>
+			<File
+				RelativePath=".\source\a64_cpuaccel.asm"
+				>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="YASM"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="YASM"
+					/>
+				</FileConfiguration>
+			</File>
 			<File
 				RelativePath="source\a64_fraction.asm"
 				>

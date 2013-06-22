@@ -94,7 +94,9 @@ template<> struct vdhash<double> {
 #undef VDSTL_DECLARE_STANDARD_HASH
 
 class VDStringA;
+class VDStringSpanA;
 class VDStringW;
+class VDStringSpanW;
 
 template<> struct vdhash<VDStringA> {
 	size_t operator()(const VDStringA& s) const;
@@ -112,8 +114,10 @@ template<class T> struct vdhash<T *> {
 
 struct vdstringpred {
 	bool operator()(const VDStringA& s, const VDStringA& t) const;
+	bool operator()(const VDStringA& s, const VDStringSpanA& t) const;
 	bool operator()(const VDStringA& s, const char *t) const;
 	bool operator()(const VDStringW& s, const VDStringW& t) const;
+	bool operator()(const VDStringW& s, const VDStringSpanW& t) const;
 	bool operator()(const VDStringW& s, const wchar_t *t) const;
 };
 

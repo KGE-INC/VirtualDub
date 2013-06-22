@@ -112,6 +112,19 @@ public:
 		return p ? (size_type)((const value_type *)p - mpBegin) : npos;
 	}
 
+	size_type find_last_of(value_type c) const {
+		const value_type *s = mpEnd;
+
+		while(s != mpBegin) {
+			--s;
+
+			if (*s == c)
+				return (size_type)(s - mpBegin);
+		}
+
+		return npos;
+	}
+
 	int compare(const VDStringSpanA& s) const {
 		size_type l1 = (size_type)(mpEnd - mpBegin);
 		size_type l2 = (size_type)(s.mpEnd - s.mpBegin);
@@ -119,10 +132,33 @@ public:
 
 		int r = memcmp(mpBegin, s.mpBegin, lm);
 
-		if (!r)
+		if (!r && l1 != l2)
 			r = (int)mpBegin[lm] - (int)s.mpBegin[lm];
 
 		return r;
+	}
+
+	int comparei(const char *s) const {
+		return comparei(VDStringSpanA(s));
+	}
+
+	int comparei(const VDStringSpanA& s) const {
+		size_type l1 = (size_type)(mpEnd - mpBegin);
+		size_type l2 = (size_type)(s.mpEnd - s.mpBegin);
+		size_type lm = l1 < l2 ? l1 : l2;
+
+		const char *p = mpBegin;
+		const char *q = s.mpBegin;
+
+		while(lm--) {
+			const unsigned char c = tolower((unsigned char)*p++);
+			const unsigned char d = tolower((unsigned char)*q++);
+
+			if (c != d)
+				return (int)c - (int)d;
+		}
+
+		return (int)l1 - (int)l2;
 	}
 
 	const VDStringSpanA trim(const value_type *s) const {
@@ -700,6 +736,45 @@ public:
 		return p ? (size_type)((const value_type *)p - mpBegin) : npos;
 	}
 
+	int compare(const VDStringSpanW& s) const {
+		size_type l1 = (size_type)(mpEnd - mpBegin);
+		size_type l2 = (size_type)(s.mpEnd - s.mpBegin);
+		size_type lm = l1 < l2 ? l1 : l2;
+
+		for(size_type i = 0; i < lm; ++i) {
+			if (mpBegin[i] != s.mpBegin[i])
+				return mpBegin[i] < s.mpBegin[i] ? -1 : +1;
+		}
+
+		if (l1 == l2)
+			return 0;
+
+		return l1 < l2 ? -1 : +1;
+	}
+
+	int comparei(const wchar_t *s) const {
+		return comparei(VDStringSpanW(s));
+	}
+
+	int comparei(const VDStringSpanW& s) const {
+		size_type l1 = (size_type)(mpEnd - mpBegin);
+		size_type l2 = (size_type)(s.mpEnd - s.mpBegin);
+		size_type lm = l1 < l2 ? l1 : l2;
+
+		for(size_type i = 0; i < lm; ++i) {
+			wint_t c = towlower(mpBegin[i]);
+			wint_t d = towlower(s.mpBegin[i]);
+
+			if (c != d)
+				return c < d ? -1 : +1;
+		}
+
+		if (l1 == l2)
+			return 0;
+
+		return l1 < l2 ? -1 : +1;
+	}
+
 	// extensions
 	const VDStringSpanW subspan(size_type pos, size_type n) const {
 		size_type len = (size_type)(mpEnd - mpBegin);
@@ -730,6 +805,22 @@ inline bool operator==(const wchar_t *x, const VDStringSpanW& y) { return y == x
 inline bool operator!=(const VDStringSpanW& x, const VDStringSpanW& y) { return !(x == y); }
 inline bool operator!=(const VDStringSpanW& x, const wchar_t *y) { return !(x == y); }
 inline bool operator!=(const wchar_t *x, const VDStringSpanW& y) { return !(y == x); }
+
+inline bool operator<(const VDStringSpanW& x, const VDStringSpanW& y) {
+	return x.compare(y) < 0;
+}
+
+inline bool operator>(const VDStringSpanW& x, const VDStringSpanW& y) {
+	return x.compare(y) > 0;
+}
+
+inline bool operator<=(const VDStringSpanW& x, const VDStringSpanW& y) {
+	return x.compare(y) <= 0;
+}
+
+inline bool operator>=(const VDStringSpanW& x, const VDStringSpanW& y) {
+	return x.compare(y) >= 0;
+}
 
 class VDStringRefW : public VDStringSpanW {
 public:

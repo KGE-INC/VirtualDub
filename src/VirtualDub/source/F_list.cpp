@@ -18,6 +18,7 @@
 #include "stdafx.h"
 #include "filter.h"
 #include "filters.h"
+#include <vd2/VDFilters/VFList.h>
 
 extern const VDXFilterDefinition
 #ifdef _DEBUG
@@ -25,94 +26,26 @@ extern const VDXFilterDefinition
 	filterDef_debugcrop,
 	filterDef_showinfo,
 #endif
-	filterDef_fieldbob2,
-	filterDef_warpresize,
-	filterDef_warpsharp,
-	filterDef_blur,
-	filterDef_blurhi,
-	filterDef_brightcont,
-	filterDef_interlace,
-	filterDef_ivtc,
-	filterDef_fieldswap,
-	filterDef_interpolate,
 	filterDef_curves,
-	filterDef_fielddelay,
-	filterDef_invert,
 	filterDef_resize,
-	filterDef_test,
-	filterDef_gammacorrect,
-	filterDef_aliasformat;
-
-#ifdef _M_IX86
-extern const VDXFilterDefinition
-	filterDef_box,
-	filterDef_tv,
-	filterDef_timesmooth;
-#endif
+	filterDef_test;
 
 extern FilterDefinition
-	filterDef_chromasmoother,
-	filterDef_fieldbob,
 	filterDef_fill,
-	filterDef_null,
-	filterDef_tsoften,
-	filterDef_flipv,
-	filterDef_fliph,
-	filterDef_deinterlace,
-	filterDef_rotate,
-	filterDef_hsv,
-	filterDef_convertformat,
-	filterDef_threshold,
-	filterDef_grayscale,
 	filterDef_levels,
 	filterDef_logo,
-	filterDef_perspective
-
-#ifdef _M_IX86
-	,
-	filterDef_reduceby2,
 	filterDef_convolute,
-	filterDef_sharpen,
-	filterDef_emboss,
-	filterDef_reduce2hq,
-	filterDef_smoother,
-	filterDef_rotate2
-#endif
+	filterDef_emboss
 	;
 
 static const FilterDefinition *const builtin_filters[]={
-	&filterDef_chromasmoother,
-	&filterDef_fieldbob,
-	&filterDef_fieldbob2,
-	&filterDef_fieldswap,
 	&filterDef_fill,
-	&filterDef_invert,
-	&filterDef_null,
-	&filterDef_tsoften,
 	&filterDef_resize,
-	&filterDef_flipv,
-	&filterDef_fliph,
-	&filterDef_deinterlace,
-	&filterDef_rotate,
-	&filterDef_hsv,
-	&filterDef_warpresize,
-	&filterDef_convertformat,
-	&filterDef_threshold,
-	&filterDef_grayscale,
 	&filterDef_levels,
 	&filterDef_logo,
-	&filterDef_brightcont,
-	&filterDef_warpsharp,
-	&filterDef_perspective,
-	&filterDef_blur,
-	&filterDef_blurhi,
-	&filterDef_interlace,
-	&filterDef_ivtc,
-	&filterDef_interpolate,
-	&filterDef_fielddelay,
-	&filterDef_gammacorrect,
-	&filterDef_aliasformat,
 //	&filterDef_curves,
+	&filterDef_convolute,
+	&filterDef_emboss,
 
 #ifdef _DEBUG
 	&filterDef_debugerror,
@@ -121,18 +54,6 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_test,
 #endif
 
-#ifdef _M_IX86
-	&filterDef_reduceby2,
-	&filterDef_convolute,
-	&filterDef_sharpen,
-	&filterDef_emboss,
-	&filterDef_reduce2hq,
-	&filterDef_tv,
-	&filterDef_smoother,
-	&filterDef_rotate2,
-	&filterDef_box,
-	&filterDef_timesmooth,
-#endif
 	NULL
 };
 
@@ -140,6 +61,10 @@ void InitBuiltinFilters() {
 	const FilterDefinition *cur, *const *cpp;
 
 	cpp = builtin_filters;
+	while(cur = *cpp++)
+		FilterAddBuiltin(cur);
+
+	cpp = VDVFGetList();
 	while(cur = *cpp++)
 		FilterAddBuiltin(cur);
 }

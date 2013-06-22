@@ -24,7 +24,7 @@
 #include <ctype.h>
 
 #ifdef _MSC_VER
-	#include <intrin.h>
+	#include <vd2/system/win32/intrin.h>
 #endif
 
 #include "resource.h"
@@ -45,7 +45,7 @@
 #include "filters.h"
 #include <vd2/plugin/vdplugin.h>
 
-List			g_listFA;
+VDFilterChainDesc g_filterChain;
 FilterSystem	filters;
 
 ///////////////////////////////////////////////////////////////////////////
@@ -57,6 +57,7 @@ FilterSystem	filters;
 FilterDefinitionInstance::FilterDefinitionInstance(VDExternalModule *pfm)
 	: mpExtModule(pfm)
 	, mRefCount(0)
+	, mAPIVersion(0)
 {
 }
 
@@ -72,10 +73,29 @@ void FilterDefinitionInstance::Assign(const FilterDefinition& def, int len) {
 	mAuthor			= def.maker ? def.maker : "(internal)";
 	mDescription	= def.desc;
 
-	mDef._module	= const_cast<VDXFilterModule *>(&mpExtModule->GetFilterModuleInfo());
+	if (mpExtModule)
+		mDef._module = const_cast<VDXFilterModule *>(&mpExtModule->GetFilterModuleInfo());
+	else
+		mDef._module = NULL;
+
+	mAPIVersion = mpExtModule ? mpExtModule->GetVideoFilterAPIVersion() : VIRTUALDUB_FILTERDEF_VERSION;
+
+	if (mAPIVersion >= 16) {
+		mDef.stringProc = NULL;
+		mDef.copyProc = NULL;
+	} else {
+		mDef.mSourceCountLowMinus1 = 0;
+		mDef.mSourceCountHighMinus1 = 0;
+	}
+}
+
+void FilterDefinitionInstance::Deactivate() {
+	memset(&mDef, 0, sizeof mDef);
 }
 
 const FilterDefinition& FilterDefinitionInstance::Attach() {
+	VDASSERT(mAPIVersion);
+
 	if (mpExtModule)
 		mpExtModule->Lock();
 
@@ -127,6 +147,9 @@ FilterDefinition *FilterAdd(VDXFilterModule *fm, FilterDefinition *pfd, int fd_l
 }
 
 void FilterAddBuiltin(const FilterDefinition *pfd) {
+	VDASSERT(!pfd->stringProc || pfd->stringProc2);
+	VDASSERT(!pfd->copyProc || pfd->copyProc2);
+
 	vdautoptr<FilterDefinitionInstance> fdi(new FilterDefinitionInstance(NULL));
 	fdi->Assign(*pfd, sizeof(FilterDefinition));
 
@@ -134,19 +157,18 @@ void FilterAddBuiltin(const FilterDefinition *pfd) {
 }
 
 void FilterRemove(FilterDefinition *fd) {
-#if 0
+	// These calls are now ignored.
+}
+
+void VDFilterRemoveAll(VDExternalModule *module) {
 	List2<FilterDefinitionInstance>::fwit it(g_filterDefs.begin());
 
 	for(; it; ++it) {
-		FilterDefinitionInstance& fdi = *it;
+		FilterDefinitionInstance& fd = *it;
 
-		if (&fdi.GetDef() == fd) {
-			fdi.Remove();
-			delete &fdi;
-			return;
-		}
+		if (fd.GetModule() == module)
+			fd.Deactivate();
 	}
-#endif
 }
 
 void FilterEnumerateFilters(std::list<FilterBlurb>& blurbs) {
@@ -163,109 +185,4 @@ void FilterEnumerateFilters(std::list<FilterBlurb>& blurbs) {
 		fb.author		= fd.GetAuthor();
 		fb.description	= fd.GetDescription();
 	}
-}
-
-//////////////////
-
-class VDUIDialogFilterSingleValue : public VDDialogFrameW32 {
-public:
-	VDUIDialogFilterSingleValue(sint32 value, sint32 minValue, sint32 maxValue, IVDXFilterPreview2 *ifp2, const wchar_t *title, void (*cb)(long, void *), void *cbdata);
-
-	sint32 GetValue() const { return mValue; }
-
-protected:
-	bool OnLoaded();
-	void OnDataExchange(bool write);
-	void OnHScroll(uint32 id, int code);
-	bool OnCommand(uint32 id, uint32 extcode);
-
-	void UpdateSettingsString();
-
-	sint32 mValue;
-	sint32 mMinValue;
-	sint32 mMaxValue;
-	IVDXFilterPreview2 *mifp2;
-
-	void (*mpUpdateFunction)(long value, void *data);
-	void *mpUpdateFunctionData;
-
-	const wchar_t *mpTitle;
-};
-
-VDUIDialogFilterSingleValue::VDUIDialogFilterSingleValue(sint32 value, sint32 minValue, sint32 maxValue, IVDXFilterPreview2 *ifp2, const wchar_t *title, void (*cb)(long, void *), void *cbdata)
-	: VDDialogFrameW32(IDD_FILTER_SINGVAR)
-	, mValue(value)
-	, mMinValue(minValue)
-	, mMaxValue(maxValue)
-	, mifp2(ifp2)
-	, mpUpdateFunction(cb)
-	, mpUpdateFunctionData(cbdata)
-	, mpTitle(title)
-{
-}
-
-bool VDUIDialogFilterSingleValue::OnLoaded() {
-	TBSetRange(IDC_SLIDER, mMinValue, mMaxValue);
-	UpdateSettingsString();
-
-	if (mifp2) {
-		VDZHWND hwndPreviewButton = GetControl(IDC_PREVIEW);
-
-		if (hwndPreviewButton)
-			mifp2->InitButton((VDXHWND)hwndPreviewButton);
-	}
-
-	return VDDialogFrameW32::OnLoaded();
-}
-
-void VDUIDialogFilterSingleValue::OnDataExchange(bool write) {
-	if (!write)
-		TBSetValue(IDC_SLIDER, mValue);
-}
-
-void VDUIDialogFilterSingleValue::OnHScroll(uint32 id, int code) {
-	if (id == IDC_SLIDER) {
-		int v = TBGetValue(id);
-
-		if (v != mValue) {
-			mValue = v;
-
-			UpdateSettingsString();
-
-			if (mpUpdateFunction)
-				mpUpdateFunction(mValue, mpUpdateFunctionData);
-
-			if (mifp2)
-				mifp2->RedoFrame();
-		}
-	}
-}
-
-bool VDUIDialogFilterSingleValue::OnCommand(uint32 id, uint32 extcode) {
-	if (id == IDC_PREVIEW) {
-		if (mifp2)
-			mifp2->Toggle((VDXHWND)mhdlg);
-		return true;
-	}
-
-	return false;
-}
-
-void VDUIDialogFilterSingleValue::UpdateSettingsString() {
-	SetControlTextF(IDC_SETTING, L"%d", mValue);
-}
-
-bool VDFilterGetSingleValue(HWND hWnd, sint32 cVal, sint32 *result, sint32 lMin, sint32 lMax, char *title, IVDXFilterPreview2 *ifp2, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData) {
-	VDStringW tbuf;
-	tbuf.sprintf(L"Filter: %hs", title);
-
-	VDUIDialogFilterSingleValue dlg(cVal, lMin, lMax, ifp2, tbuf.c_str(), pUpdateFunction, pUpdateFunctionData);
-
-	if (dlg.ShowDialog((VDGUIHandle)hWnd)) {
-		*result = dlg.GetValue();
-		return true;
-	}
-
-	*result = cVal;
-	return false;
 }

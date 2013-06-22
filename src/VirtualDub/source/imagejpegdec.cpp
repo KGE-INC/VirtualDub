@@ -152,11 +152,10 @@ VDJPEGDecoder::~VDJPEGDecoder() {
 }
 
 void VDJPEGDecoder::Begin(const void *src, uint32 srclen) {
-	long cpuflags = CPUGetEnabledExtensions();
-
 #ifdef _M_AMD64
 	mpIDCT = &g_VDMPEGIDCT_sse2;
 #else
+	long cpuflags = CPUGetEnabledExtensions();
 	if (cpuflags & CPUF_SUPPORTS_SSE2)
 		mpIDCT = &g_VDMPEGIDCT_sse2;
 	else if (cpuflags & CPUF_SUPPORTS_INTEGER_SSE)

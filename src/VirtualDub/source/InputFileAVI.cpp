@@ -31,6 +31,7 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Riza/audioformat.h>
@@ -89,7 +90,7 @@ public:
 		return 0;
 	}
 
-	uint32 GetFlags() { return kF_Video | kF_Audio; }
+	uint32 GetFlags() { return kF_Video | kF_Audio | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
 		return L"Audio/video interleave (*.avi,*.divx)\0*.avi;*.divx\0";
@@ -132,7 +133,7 @@ public:
 		return -4;
 	}
 
-	uint32 GetFlags() { return kF_Video | kF_Audio; }
+	uint32 GetFlags() { return kF_Video | kF_Audio | kF_SupportsOpts; }
 
 	const wchar_t *GetFilenamePattern() {
 		return L"AVIFile input driver (compat.) (*.avs,*.vdr)\0*.avs;*.vdr\0";
@@ -726,7 +727,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 				thisPtr = pInfo->thisPtr;
 
 				if (pInfo->mpVideo) {
-					char *s;
+					char *t;
 					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
 
 					sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
@@ -737,51 +738,65 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
 
 					const sint64 length = pvs->getLength();
-					s = buf + sprintf(buf, "%I64d frames (", length);
+					t = buf + sprintf(buf, "%I64d frames (", length);
 					DWORD ticks = VDRoundToInt(1000.0*length/pvs->getRate().asDouble());
-					ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, ticks);
-					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
+					ticks_to_str(t, (buf + sizeof(buf)/sizeof(buf[0])) - t, ticks);
+					sprintf(t+strlen(t),".%02d)", (ticks/10)%100);
 					SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, buf);
 
-					strcpy(buf, "Unknown");
+					VDStringW s;
+
+					s = L"Unknown";
 
 					if (const wchar_t *name = pvs->getDecompressorName()) {
-						VDTextWToA(buf, sizeof(buf)-7, name, -1);
-						
-						char fcc[5];
-						*(long *)fcc = pvs->getImageFormat()->biCompression;
-						fcc[4] = 0;
-						for(int i=0; i<4; ++i)
-							if ((uint8)(fcc[i] - 0x20) >= 0x7f)
-								fcc[i] = ' ';
+						s = name;
 
-						sprintf(buf+strlen(buf), " (%s)", fcc);
+						if (s.size() > 30) {
+							s.resize(27);
+							s += L"...";
+						}
+						
+						uint8 fcc[4];
+						*(uint32 *)fcc = pvs->getImageFormat()->biCompression;
+
+						s += L" (";
+						for(int i=0; i<4; ++i) {
+							uint8 c = fcc[i];
+							if ((uint8)(c - 0x20) >= 0x7f)
+								c = ' ';
+
+							s += c;
+						}
+
+						s += ')';
 					} else {
 						const uint32 comp = pvs->getImageFormat()->biCompression;
 
 						if (comp == '2YUY')
-							strcpy(buf, "YCbCr 4:2:2 (YUY2)");
+							s = L"YCbCr 4:2:2 (YUY2)";
 						else if (comp == 'YVYU')
-							strcpy(buf, "YCbCr 4:2:2 (UYVY)");
+							s = L"YCbCr 4:2:2 (UYVY)";
 						else if (comp == '024I')
-							strcpy(buf, "YCbCr 4:2:0 planar (I420)");
+							s = L"YCbCr 4:2:0 planar (I420)";
 						else if (comp == 'VUYI')
-							strcpy(buf, "YCbCr 4:2:0 planar (IYUV)");
+							s = L"YCbCr 4:2:0 planar (IYUV)";
 						else if (comp == '21VY')
-							strcpy(buf, "YCbCr 4:2:0 planar (YV12)");
+							s = L"YCbCr 4:2:0 planar (YV12)";
 						else if (comp == '61VY')
-							strcpy(buf, "YCbCr 4:2:2 planar (YV16)");
+							s = L"YCbCr 4:2:2 planar (YV16)";
 						else if (comp == '9UVY')
-							strcpy(buf, "YCbCr 4:1:0 planar (YVU9)");
+							s = L"YCbCr 4:1:0 planar (YVU9)";
 						else if (comp == '  8Y')
-							strcpy(buf, "Monochrome (Y8)");
+							s = L"Monochrome (Y8)";
 						else if (comp == '008Y')
-							strcpy(buf, "Monochrome (Y800)");
+							s = L"Monochrome (Y800)";
 						else
-							sprintf(buf, "Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
+							s.sprintf(L"Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
 					}
 
-					SetDlgItemText(hDlg, IDC_VIDEO_COMPRESSION, buf);
+					HWND hwndItem = GetDlgItem(hDlg, IDC_VIDEO_COMPRESSION);
+					if (hwndItem)
+						VDSetWindowTextFW32(hwndItem, s.c_str());
 				}
 				if (pInfo->mpAudio) {
 					AudioSourceAVI *pAS = static_cast<AudioSourceAVI *>(&*pInfo->mpAudio);
@@ -829,7 +844,20 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 							sprintf(buf, "PCM (%d bits real, chmask %x)", wfe.mBitDepth, wfe.mChannelMask);
 							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
 						} else {
-							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, "Unknown extended format");
+							sprintf(buf, "Unk.: {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}"
+								, wfe.mGuid.mData1
+								, wfe.mGuid.mData2
+								, wfe.mGuid.mData3
+								, wfe.mGuid.mData4[0]
+								, wfe.mGuid.mData4[1]
+								, wfe.mGuid.mData4[2]
+								, wfe.mGuid.mData4[3]
+								, wfe.mGuid.mData4[4]
+								, wfe.mGuid.mData4[5]
+								, wfe.mGuid.mData4[6]
+								, wfe.mGuid.mData4[7]);
+
+							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
 						}
 					} else if (fmt->mTag != WAVE_FORMAT_PCM) {
 						// Retrieve maximum format size.
@@ -851,7 +879,16 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 										add.cbStruct = sizeof add;
 
 										if (!acmDriverDetails(hadid, &add, 0)) {
-											SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, add.szLongName);
+											VDStringA s;
+
+											s = add.szLongName;
+											if (s.size() > 30) {
+												s.resize(27);
+												s += "...";
+											}
+
+											s.append_sprintf(" (0x%04x)", fmt->mTag);
+											SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, s.c_str());
 
 											fSuccessful = true;
 										}

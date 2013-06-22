@@ -86,6 +86,7 @@ public:
 		kF_Video			= 1,
 		kF_Audio			= 2,
 		kF_PromptForOpts	= 4,
+		kF_SupportsOpts		= 8,
 		KF_Max				= 0xFFFFFFFFUL
 	};
 
@@ -118,6 +119,7 @@ void VDInitInputDrivers();
 void VDGetInputDrivers(tVDInputDrivers& l, uint32 flags);
 IVDInputDriver *VDGetInputDriverByName(const wchar_t *name);
 IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx);
+void VDGetInputDriverFilePatterns(uint32 flags, vdvector<VDStringW>& patterns);
 VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>& xlat);
 
 IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn, uint32 flags);
