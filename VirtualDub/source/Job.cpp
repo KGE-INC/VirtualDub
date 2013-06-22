@@ -317,12 +317,12 @@ void VDJob::Run() {
 		RunScriptMemory(script);
 
 		mLogEntries = logger.GetEntries();
-
-		g_fJobMode = false;
 	} catch(const MyError& err) {
 		iState = ERR;
 		mError = err.gets();
 	}
+
+	g_fJobMode = false;
 
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PROGRESS), FALSE);
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PERCENT), FALSE);

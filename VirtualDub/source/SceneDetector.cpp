@@ -135,10 +135,94 @@ void SceneDetector::Reset() {
 
 //////////////////////////////////////////////////////////////////////////
 
+namespace {
+	Pixel scene_lumtile32(void *src0, long w, long h, ptrdiff_t pitch) {
+		w <<= 2;
+
+		const char *src = (const char *)src0 + w;
+		uint32 rb_total = 0;
+		uint32 g_total = 0;
+
+		w = -w;
+		do {
+			long x = w;
+
+			do {
+				const uint32 px = *(uint32 *)(src + x);
+
+				rb_total += px & 0xff00ff;
+				g_total += px & 0x00ff00;
+			} while(x += 4);
+
+			src += pitch;
+		} while(--h);
+
+		return (((rb_total + 0x00200020) & 0x3fc03fc0) + ((g_total + 0x00002000) & 0x003fc000)) >> 6;
+	}
+
+	Pixel scene_lumtile24(void *src0, long w, long h, ptrdiff_t pitch) {
+		const uint8 *src = (const uint8 *)src0;
+		pitch -= 3*w;
+		uint32 r_total = 0;
+		uint32 g_total = 0;
+		uint32 b_total = 0;
+		do {
+			long x = w;
+
+			do {
+				b_total += src[0];
+				g_total += src[1];
+				r_total += src[2];
+				src += 3;
+			} while(--x);
+
+			src += pitch;
+		} while(--h);
+
+		r_total = (r_total + 0x20) >> 6;
+		g_total = (g_total + 0x20) >> 6;
+		b_total = (b_total + 0x20) >> 6;
+		return (r_total << 16) + (g_total << 8) + b_total;
+	}
+
+	Pixel scene_lumtile16(void *src0, long w, long h, ptrdiff_t pitch) {
+		w += w;
+
+		const char *src = (const char *)src0 + w;
+		uint32 r_total = 0;
+		uint32 g_total = 0;
+		uint32 b_total = 0;
+
+		w = -w;
+		do {
+			long x = w;
+
+			do {
+				const uint32 px = *(uint16 *)(src + x);
+
+				r_total += px & 0x7c00;
+				g_total += px & 0x03e0;
+				b_total += px & 0x001f;
+			} while(x += 2);
+
+			src += pitch;
+		} while(--h);
+
+		r_total = (r_total + 0x1000) << 3;
+		g_total = (g_total + 0x0080);
+		b_total = (b_total + 0x0004) >> 3;
+		return (r_total & 0xff0000) + (g_total & 0x00ff00) + (b_total & 0x0000ff);
+	}
+}
+
 #ifdef _M_IX86
-extern "C" Pixel __cdecl asm_scene_lumtile32(void *src, long w, long h, long pitch);
-extern "C" Pixel __cdecl asm_scene_lumtile24(void *src, long w, long h, long pitch);
-extern "C" Pixel __cdecl asm_scene_lumtile16(void *src, long w, long h, long pitch);
+	extern "C" Pixel __cdecl asm_scene_lumtile32(void *src, long w, long h, long pitch);
+	extern "C" Pixel __cdecl asm_scene_lumtile24(void *src, long w, long h, long pitch);
+	extern "C" Pixel __cdecl asm_scene_lumtile16(void *src, long w, long h, long pitch);
+#else
+	#define asm_scene_lumtile32 scene_lumtile32
+	#define asm_scene_lumtile24 scene_lumtile24
+	#define asm_scene_lumtile16 scene_lumtile16
 #endif
 
 void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
@@ -148,7 +232,6 @@ void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
 
 	h = (vbm->h+7)/8;
 
-#ifdef _M_IX86
 	switch(vbm->depth) {
 	case 32:
 		do {
@@ -189,19 +272,16 @@ void SceneDetector::BitmapToLummap(Pixel *lummap, VBitmap *vbm) {
 			src = src_row; src_row += vbm->pitch*8;
 			w = vbm->w/8;
 			do {
-				*lummap++ = asm_scene_lumtile16(src, 4, mh, vbm->pitch);
+				*lummap++ = asm_scene_lumtile16(src, 8, mh, vbm->pitch);
 				src += 16;
 			} while(--w);
 
 			if (vbm->w & 6) {
-				*lummap++ = asm_scene_lumtile16(src, (vbm->w&6)/2, mh, vbm->pitch);
+				*lummap++ = asm_scene_lumtile16(src, vbm->w&6, mh, vbm->pitch);
 			}
 		} while(--h);
 		break;
 	}
-#else
-#pragma vdpragma_TODO("fix this")
-#endif
 }
 
 void SceneDetector::FlipBuffers() {

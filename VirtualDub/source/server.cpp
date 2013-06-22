@@ -55,8 +55,6 @@ extern wchar_t g_szInputAVIFile[MAX_PATH];
 
 // VideoSource.cpp
 
-extern void DIBconvert(void *src, BITMAPINFOHEADER *srcfmt, void *dst, BITMAPINFOHEADER *dstfmt);
-
 ///////////////////////////////////////////////////////////////////////////
 
 enum {
@@ -116,6 +114,8 @@ private:
 	HWND				hwnd;
 	AudioSource			*aSrc;
 	VideoSource			*vSrc;
+
+	bool			mbExit;
 
 	DubAudioStreamInfo	aInfo;
 	DubVideoStreamInfo	vInfo;
@@ -256,7 +256,9 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 		if (filters.ReadyFilters(&fsi))
 			throw MyError("Error readying filters.");
 
-		VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, bmih->biWidth, bmih->biHeight, 4);
+		const VBitmap *pvb = filters.LastBitmap();
+
+		VDPixmapCreateLinearLayout(mFrameLayout, nsVDPixmap::kPixFormat_RGB888, pvb->w, pvb->h, 4);
 		VDPixmapLayoutFlipV(mFrameLayout);
 	}
 
@@ -272,6 +274,8 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 	guiSetTitle(hwnd, IDS_TITLE_FRAMESERVER);
 
 	// create dialog box
+
+	mbExit = false;
 
 	if (hwndStatus = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_SERVER), hwnd, Frameserver::StatusDlgProc, (LPARAM)this)) {
 
@@ -294,7 +298,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 			{
 				MSG msg;
 
-				for(;;) {
+				while(!mbExit) {
 					BOOL result = GetMessage(&msg, NULL, 0, 0);
 
 					if (result == (BOOL)-1)
@@ -336,9 +340,13 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 LRESULT Frameserver::WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+
 	case WM_CLOSE:
+		DestroyWindow(hWnd);
+		break;
+
 	case WM_DESTROY:                  // message: window being destroyed
-		PostQuitMessage(1);
+		mbExit = true;
 		break;
 
 	case VDSRVM_BIGGEST:
@@ -447,7 +455,7 @@ INT_PTR CALLBACK Frameserver::StatusDlgProc2( HWND hWnd, UINT message, WPARAM wP
 	case WM_COMMAND:
 		if (LOWORD(wParam) != IDOK) break;
 	case WM_CLOSE:
-		PostQuitMessage(1);
+		mbExit = true;
 		return TRUE;
 	case WM_TIMER:
 		SetDlgItemInt(hWnd, IDC_STATIC_REQCOUNT, lRequestCount, FALSE);

@@ -526,8 +526,10 @@ void MJPEGDecoder::decodeFrame(dword *output, byte *ptr, int size) {
 					bFirstField = false;
 					break;
 				case MARKER_APP_FIRST:
+					// Here we interpret 1 as odd and 2 as even. This seems backwards,
+					// but that's the way the DX8 MJPEG decoder does it, so....
 					if (bFirstField)
-						odd_field = (ptr[6] <= 0);
+						odd_field = (ptr[6] == 1);
 					else
 						odd_field = !odd_field;
 
@@ -942,11 +944,11 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 		while(mcu<mcu_count) {
 			int mcus = 4;
 
-			if (mcus > nRestartCounter)
-				mcus = nRestartCounter;
-
 			if (mcu >= mcu_count-4)
 				mcus = mcu_count - mcu;
+
+			if (mcus > nRestartCounter)
+				mcus = nRestartCounter;
 
 #ifdef PROFILE
 		__asm {

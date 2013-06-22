@@ -89,7 +89,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\ReleaseAMD64\Kasumi"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /G6 /W3 /Gm /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
-# ADD CPP /nologo /G6 /W3 /Gm /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
+# ADD CPP /nologo /G6 /W3 /Gm /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /GS- /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -112,7 +112,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\DebugAMD64\Kasumi"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /G6 /MTd /W3 /Gm /GX /Zi /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GZ /GF /c
-# ADD CPP /nologo /G6 /MTd /W3 /Gm /GX /Zi /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /G6 /MTd /W3 /Gm /GX /Zi /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe

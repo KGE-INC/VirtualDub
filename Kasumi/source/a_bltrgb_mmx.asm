@@ -665,25 +665,31 @@ _vdasm_pixblt_RGB565_to_XRGB8888_MMX	proc	near public
 @odd:
 		sub		ebp, 6
 		jz		@noodd
+		push	edi
 @oddloop:
 		movzx	eax, word ptr [ecx+ebp+6]
-		mov		ebx, 03e0h
-		mov		esi, 001fh
+		mov		ebx, 0000f800h
 		and		ebx, eax
-		and		esi, eax
-		and		eax, 07c00h
-		shl		esi, 3
-		shl		ebx, 6
-		shl		eax, 9
-		add		ebx, esi
+		mov		esi, eax
+		shl		ebx, 8
+		mov		edi, eax
+		shl		eax, 3
+		and		esi, 000007e0h
+		and		eax, 000000f8h
+		add		ebx, eax
+		shl		esi, 5
+		mov		eax, ebx
+		shr		ebx, 5
+		and		edi, 00000600h
+		shr		edi, 1
+		and		ebx, 00070007h
+		add		esi, edi
 		add		eax, ebx
-		mov		ebx, eax
-		shr		eax, 3
-		and		eax, 070707h
-		add		eax, ebx
-		mov		[edx+ebp*2+12], ax
+		add		eax, esi
+		mov		[edx+ebp*2+12], eax
 		add		ebp, 2
 		jnz		@oddloop
+		pop		edi
 @noodd:
 		add		ecx, [esp+16+16]
 		add		edx, [esp+8+16]

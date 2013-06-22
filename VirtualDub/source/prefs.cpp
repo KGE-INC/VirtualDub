@@ -42,6 +42,8 @@ namespace {
 		VDStringW		mTimelineFormat;
 		bool			mbAllowDirectYCbCrDecoding;
 		bool			mbConfirmRenderAbort;
+		bool			mbEnableAVIAlignmentThreshold;
+		uint32			mAVIAlignmentThreshold;
 	} g_prefs2;
 }
 
@@ -219,16 +221,23 @@ public:
 		switch(type) {
 		case kEventAttach:
 			mpBase = pBase;
-			pBase->ExecuteAllLinks();
 			SetValue(100, 0 != (mPrefs.mOldPrefs.fAVIRestrict1Gb));
 			SetValue(101, 0 != (mPrefs.mOldPrefs.fNoCorrectLayer3));
 			SetValue(102, mPrefs.mbAllowDirectYCbCrDecoding);
+			SetValue(103, mPrefs.mbEnableAVIAlignmentThreshold);
+			{
+				int v = mPrefs.mAVIAlignmentThreshold;
+				SetCaption(200, VDswprintf(L"%u", 1, &v));
+			}
+			pBase->ExecuteAllLinks();
 			return true;
 		case kEventDetach:
 		case kEventSync:
 			mPrefs.mOldPrefs.fAVIRestrict1Gb = 0 != GetValue(100);
 			mPrefs.mOldPrefs.fNoCorrectLayer3 = 0 != GetValue(101);
 			mPrefs.mbAllowDirectYCbCrDecoding = 0!=GetValue(102);
+			if (mPrefs.mbEnableAVIAlignmentThreshold = (0 != GetValue(103)))
+				mPrefs.mAVIAlignmentThreshold = (uint32)wcstoul(GetCaption(200).c_str(), 0, 10);
 			return true;
 		}
 		return false;
@@ -318,7 +327,9 @@ public:
 
 				VDRegistryAppKey key("Preferences");
 				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
-				key.setBool("Allow direct YCbCr decoding", g_prefs2.mbAllowDirectYCbCrDecoding);
+				key.setBool("Allow direct YCbCr decoding", mPrefs.mbAllowDirectYCbCrDecoding);
+				key.setBool("AVI: Alignment threshold enable", mPrefs.mbEnableAVIAlignmentThreshold);
+				key.setInt("AVI: Alignment threshold", mPrefs.mAVIAlignmentThreshold);
 			}
 		}
 		return false;
@@ -364,6 +375,8 @@ void LoadPreferences() {
 
 	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
 	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
+	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
+	g_prefs2.mAVIAlignmentThreshold = key.getInt("AVI: Alignment threshold", 524288);
 
 	g_prefs2.mOldPrefs = g_prefs;
 }
@@ -378,4 +391,8 @@ bool VDPreferencesIsDirectYCbCrInputEnabled() {
 
 bool VDPreferencesIsRenderAbortConfirmEnabled() {
 	return g_prefs2.mbConfirmRenderAbort;
+}
+
+uint32 VDPreferencesGetAVIAlignmentThreshold() {
+	return g_prefs2.mbEnableAVIAlignmentThreshold ? g_prefs2.mAVIAlignmentThreshold : 0;
 }

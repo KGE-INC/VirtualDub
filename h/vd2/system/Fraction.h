@@ -50,8 +50,6 @@ public:
 	bool	operator==(VDFraction b) const;
 	bool	operator!=(VDFraction b) const;
 
-	VDFraction operator+(VDFraction b) const;
-	VDFraction operator-(VDFraction b) const;
 	VDFraction operator*(VDFraction b) const;
 	VDFraction operator/(VDFraction b) const;
 

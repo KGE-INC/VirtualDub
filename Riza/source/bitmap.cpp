@@ -72,6 +72,8 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 	case 'VUYI':
 		variant = 3;
 		return kPixFormat_YUV420_Planar;
+	case '9UVY':
+		return kPixFormat_YUV410_Planar;
 	case '  8Y':
 		return kPixFormat_Y8;
 	}
@@ -207,6 +209,10 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint
 			std::swap(layout.data2, layout.data3);
 			std::swap(layout.pitch2, layout.pitch3);
 		}
+		break;
+	case kPixFormat_YUV410_Planar:
+		std::swap(layout.data2, layout.data3);
+		std::swap(layout.pitch2, layout.pitch3);
 		break;
 	}
 

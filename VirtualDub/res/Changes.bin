@@ -1,6 +1,36 @@
 VirtualDub change log
 
-Build %build% (1.6.5, experimental): [%date%]
+Build %build% (1.6.6, experimental): [%date%]
+   [features added]
+   * Added an option in Options > Preferences > AVI to force sector alignment for large uncompressed frames. This can resolve compatibility problems with some uncompressed hardware video playback units.
+
+   [bugs fixed]
+   * Capture: Video/audio format and compression and video frame rate now autosave on disconnect.
+   * Capture: Fixed some cases where the Raw Audio Format dialog didn't highlight the currently selected PCM format.
+   * Capture: Noise reduction threshold was not restored properly.
+   * Capture: Renamed Peak Meter back to Volume Meter and restored V accelerator.
+   * Frame byte size was being computed improperly for YCbCr AVIs.
+   * Fixed broken MJPEG video decoding at bottom-right corner on streams that have restart markers.
+   * Reworked MJPEG field ordering detection to be consistent with DirectShow MJPEG decoder. If this is reversed for your files, enable "swap fields" in AVI extended open options.
+   * Scene detection was busted for 16-bit RGB (very rare case).
+   * Minor status updating features, such as the current position nub moving during input preview, were broken after running a job that ended in an error.
+   * (AMD64 only) Scene detection is now implemented.
+   * (AMD64 only) Enabled some video filters that had scalar implementations: flipv, fliph, deinterlace, rotate, and HSV.
+   * Save Image Sequence dialog didn't show the "add as job" button as checked, even if it was saved as such from the last time.
+   * Fixed minor bugs in various image converters and improved accuracy of a few YCbCr-to-RGB converters.
+   * Fixed UYVY/YUY2-to-RGB converters not interpolating chroma properly.
+   * Fixed YVU9 chroma planes being swapped on write to disk and enabled YVU9 for direct input.
+
+   [regressions fixed]
+   * App would sometimes exit after stopping frameserver.
+   * Frameserver sent garbage data if the video filter chain changed the frame size.
+   * Fixed a regression in video codec negotiation for MS MPEG-4 V3 variants where a different but compatible codec was not properly detected.
+   * Doing a paste with no selection caused one frame to be deleted before doing the paste.
+   * Write open failures were being reported again when the target file couldn't be opened a second time in fast I/O mode, which happens sometimes with emulators or remote drives. The slower fallback has been reinstated.
+   * Running out of disk space at the very end of a render operation was sometimes reported as an I/O error rather than a write error.
+   * Sampling in filter preview could fail if the timeline had been edited.
+
+Build 23350 (1.6.5, experimental): [April 4, 2005]
    [features added]
    * Script: Added Sylia.Atoi(), Atol(), and Atod() functions to allow conversions from string to value.
    * Script: Added VirtualDub.Log(string) command to output to log output (or console).

@@ -541,6 +541,7 @@ INT_PTR VDSaveImageSeqDialogW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPa
 		SetDlgItemInt(mhdlg, IDC_FILENAME_DIGITS, digits, FALSE);
 		VDSetWindowTextW32(GetDlgItem(mhdlg, IDC_DIRECTORY), mDirectory.c_str());
 		CheckDlgButton(mhdlg, mFormat == AVIOutputImages::kFormatTGA ? IDC_FORMAT_TGA : mFormat == AVIOutputImages::kFormatBMP ? IDC_FORMAT_BMP : IDC_FORMAT_JPEG, BST_CHECKED);
+		CheckDlgButton(mhdlg, IDC_ADD_AS_JOB, bRunAsJob ? BST_CHECKED : BST_UNCHECKED);
 		UpdateFilenames();
 		UpdateEnables();
 		UpdateSlider();

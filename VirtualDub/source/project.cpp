@@ -413,7 +413,8 @@ void VDProject::Paste() {
 	FrameSubset& s = mTimeline.GetSubset();
 
 	BeginTimelineUpdate(VDLoadString(0, kVDST_Project, kVDM_Paste));
-	DeleteInternal(false, true);
+	if (!IsSelectionEmpty())
+		DeleteInternal(false, true);
 	s.insert(mposCurrentFrame, mClipboard);
 	EndTimelineUpdate();
 }

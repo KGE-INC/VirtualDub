@@ -17,7 +17,7 @@
 
 #include "stdafx.h"
 
-#if defined(_MSC_VER) && defined(_DEBUG)
+#if defined(_MSC_VER) && defined(_DEBUG) && defined(_M_IX86)
 
 #include <crtdbg.h>
 #include <dbghelp.h>

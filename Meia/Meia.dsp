@@ -89,7 +89,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\ReleaseAMD64\Meia"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /YX /FD /GF /GS- /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe

@@ -41,6 +41,8 @@
 #pragma warning(disable:4035)
 
 #if _MSC_VER >= 1300
+	extern unsigned long _byteswap_ulong(unsigned long v);
+	#pragma intrinsic(_byteswap_ulong)
 	static inline unsigned long bswap(unsigned long v) {
 		return _byteswap_ulong(v);
 	}

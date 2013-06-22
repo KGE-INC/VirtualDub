@@ -20,7 +20,7 @@ namespace nsVDPixmapSpanUtils {
 			}
 
 			if (!(w & 1)) {
-				*dst = src[-1];
+				*dst = src[0];
 			}
 		}
 	}
@@ -40,7 +40,7 @@ namespace nsVDPixmapSpanUtils {
 		w -= 2;
 		while(w < 0) {
 			++w;
-			*dst++ = src[-1];
+			*dst++ = src[0];
 		}
 	}
 
@@ -61,7 +61,7 @@ namespace nsVDPixmapSpanUtils {
 		w -= 4;
 		while(w < 0) {
 			++w;
-			*dst++ = src[-1];
+			*dst++ = src[0];
 		}
 	}
 
@@ -80,6 +80,9 @@ namespace nsVDPixmapSpanUtils {
 			*dst++ = (uint8)((src[0] + 2*src[1] + src[2] + 2) >> 2);
 			src += 2;
 		}
+
+		if (w >= 2)
+			*dst++ = (uint8)((src[0] + 3*src[1] + 2) >> 2);
 	}
 
 	void horiz_compress2x_centered(uint8 *dst, const uint8 *src, sint32 w) {
@@ -93,7 +96,7 @@ namespace nsVDPixmapSpanUtils {
 			return;
 		}
 
-		*dst++ = (uint8)((3*src[0] + src[1] + 2) >> 2);
+		*dst++ = (uint8)((4*src[0] + 3*src[1] + src[2] + 4) >> 3);
 		--w;
 		++src;
 
@@ -106,6 +109,9 @@ namespace nsVDPixmapSpanUtils {
 		switch(w) {
 		case 3:
 			*dst++ = (uint8)((src[0] + 3*src[1] + 4*src[2] + 4) >> 3);
+			break;
+		case 2:
+			*dst++ = (uint8)((src[0] + 7*src[1] + 4) >> 3);
 			break;
 		}
 	}
@@ -123,35 +129,70 @@ namespace nsVDPixmapSpanUtils {
 
 		*dst++ = (uint8)((11*src[0] + 4*src[1] + src[2] + 8) >> 4);
 		src += 2;
-		w -= 4;
+		w -= 2;
 
-		while(w >= 3) {
+		while(w >= 5) {
 			w -= 4;
 			*dst++ = (uint8)(((src[0] + src[4]) + 4*(src[1] + src[3]) + 6*src[2] + 8) >> 4);
 			src += 4;
 		}
+
+		switch(w) {
+		case 4:
+			*dst = (uint8)((src[0] + 4*src[1] + 6*src[2] + 5*src[3] + 8) >> 4);
+			break;
+		case 3:
+			*dst = (uint8)((src[0] + 4*src[1] + 11*src[2] + 8) >> 4);
+			break;
+		}
 	}
 
 	void horiz_compress4x_centered(uint8 *dst, const uint8 *src, sint32 w) {
-		*dst++ = (uint8)((src[3] + 6*src[2] + 15*src[1] + 42*src[0] + 32) >> 6);
-		++src;
-		w -= 3;
 
-		while(w >= 4) {
+		switch(w) {
+		case 1:
+			*dst = *src;
+			return;
+		case 2:		// 29 99
+			*dst = (uint8)((29*src[0] + 99*src[1] + 64) >> 7);
+			return;
+		case 3:		// 29 35 64
+			*dst = (uint8)((29*src[0] + 35*src[1] + 64*src[1] + 64) >> 7);
+			return;
+		case 4:		// 29 35 35 29
+			*dst = (uint8)((29*src[0] + 35*(src[1] + src[2]) + 29*src[3] + 64) >> 7);
+			return;
+		case 5:		// 29 35 35 21 8
+					//        1 7 120
+			dst[0] = (uint8)((29*src[0] + 35*(src[1] + src[2]) + 21*src[3] + 8*src[4] + 64) >> 7);
+			dst[1] = (uint8)((src[2] + 7*src[3] + 120*src[4] + 64) >> 7);
+			return;
+		}
+
+		*dst++ = (uint8)((29*src[0] + 35*(src[1] + src[2]) + 21*src[3] + 7*src[4] + src[5] + 64) >> 7);
+		src += 2;
+		w -= 2;
+
+		while(w >= 8) {
 			w -= 4;
 			*dst++ = (uint8)(((src[0] + src[7]) + 7*(src[1] + src[6]) + 21*(src[2] + src[5]) + 35*(src[3] + src[4]) + 64) >> 7);
 			src += 4;
 		}
 
 		switch(w) {
-		case 3:
-			*dst++ = (uint8)((src[0] + 7*src[1] + 21*src[2] + 35*src[3] + 64*src[4] + 64) >> 7);
+		case 4:		// 1 7 21 99
+			*dst = (uint8)((src[0] + 7*src[1] + 21*src[2] + 99*src[3] + 64) >> 7);
 			break;
-		case 2:
-			*dst++ = (uint8)((src[0] + 7*src[1] + 21*src[2] + 29*src[5] + 35*(src[3] + src[4]) + 64) >> 7);
+		case 5:		// 1 7 21 35 64
+			*dst = (uint8)((src[0] + 7*src[1] + 21*src[2] + 35*src[3] + 64*src[4] + 64) >> 7);
 			break;
-		case 1:
-			*dst++ = (uint8)((src[0] + 7*src[1] + 8*src[6] + 21*(src[2] + src[5]) + 35*(src[3] + src[4]) + 64) >> 7);
+		case 6:		// 1 7 21 35 35 29
+			*dst = (uint8)((src[0] + 7*src[1] + 21*src[2] + 29*src[5] + 35*(src[3] + src[4]) + 64) >> 7);
+			break;
+		case 7:		// 1 7 21 35 35 21 8
+					//            1 7 120
+			dst[0] = (uint8)((src[0] + 7*src[1] + 8*src[6] + 21*(src[2] + src[5]) + 35*(src[3] + src[4]) + 64) >> 7);
+			dst[1] = (uint8)((src[4] + 7*src[5] + 120*src[6] + 64) >> 7);
 			break;
 		}
 	}

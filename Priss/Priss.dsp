@@ -89,8 +89,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\ReleaseAMD64\Priss"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /Zi /Ox /Ot /Og /Oi /Ob2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# SUBTRACT CPP /Oa
+# ADD CPP /nologo /MT /W3 /Zi /Ox /Ot /Og /Oi /Ob2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /GS- /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -113,7 +112,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\DebugAMD64\Priss"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /ZI /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
-# ADD CPP /nologo /MTd /W3 /Gm /ZI /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /ZI /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe

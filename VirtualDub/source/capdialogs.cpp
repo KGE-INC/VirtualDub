@@ -715,7 +715,6 @@ class VDDialogCaptureRawAudioFormat : public VDDialogBase {
 public:
 	const std::list<vdstructex<WAVEFORMATEX> >& mFormats;
 	int mSelected;
-	bool mbSaveIt;
 
 	VDDialogCaptureRawAudioFormat(const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) : mFormats(formats), mSelected(sel) {}
 
@@ -758,7 +757,6 @@ public:
 		} else if (type == kEventSelect) {
 			if (id == 10) {
 				pBase->EndModal(GetValue(100));
-				mbSaveIt = 0 != GetValue(101);
 				return true;
 			} else if (id == 11) {
 				pBase->EndModal(-1);
@@ -769,7 +767,7 @@ public:
 	}
 };
 
-int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel, bool& saveit) {
+int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel) {
 	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
 
 	IVDUIWindow *pWin = VDCreateDialogFromResource(2100, peer);
@@ -780,8 +778,6 @@ int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<
 	pBase->SetCallback(&prefDlg, false);
 	int result = pBase->DoModal();
 	peer->Shutdown();
-
-	saveit = prefDlg.mbSaveIt;
 
 	return result;
 }
@@ -877,11 +873,6 @@ public:
 		if (type == kEventAttach) {
 			mpBase = pBase;
 
-			SetValue(100, 0 != (mOptions & kVDCapDevOptSaveCurrentAudioFormat));
-			SetValue(101, 0 != (mOptions & kVDCapDevOptSaveCurrentAudioCompFormat));
-			SetValue(102, 0 != (mOptions & kVDCapDevOptSaveCurrentVideoFormat));
-			SetValue(103, 0 != (mOptions & kVDCapDevOptSaveCurrentVideoCompFormat));
-			SetValue(104, 0 != (mOptions & kVDCapDevOptSaveCurrentFrameRate));
 			SetValue(105, 0 != (mOptions & kVDCapDevOptSaveCurrentDisplayMode));
 			SetValue(106, 0 != (mOptions & kVDCapDevOptSwitchSourcesTogether));
 			SetValue(107, 0 != (mOptions & kVDCapDevOptSlowOverlay));
@@ -892,11 +883,6 @@ public:
 			if (id == 10) {
 				mOptions = 0;
 
-				if (GetValue(100))	mOptions += kVDCapDevOptSaveCurrentAudioFormat;
-				if (GetValue(101))	mOptions += kVDCapDevOptSaveCurrentAudioCompFormat;
-				if (GetValue(102))	mOptions += kVDCapDevOptSaveCurrentVideoFormat;
-				if (GetValue(103))	mOptions += kVDCapDevOptSaveCurrentVideoCompFormat;
-				if (GetValue(104))	mOptions += kVDCapDevOptSaveCurrentFrameRate;
 				if (GetValue(105))	mOptions += kVDCapDevOptSaveCurrentDisplayMode;
 				if (GetValue(106))	mOptions += kVDCapDevOptSwitchSourcesTogether;
 				if (GetValue(107))	mOptions += kVDCapDevOptSlowOverlay;

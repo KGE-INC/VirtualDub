@@ -65,6 +65,7 @@ private:
 	int			mSegmentDigits;
 	int			mCurrentSegment;
 	int			mBufferSize;
+	int			mAlignment;
 	bool		mbInterleaved;
 	bool		mbAllowCaching;
 	bool		mbAllowIndexing;

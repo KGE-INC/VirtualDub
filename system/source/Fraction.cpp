@@ -159,21 +159,6 @@ bool VDFraction::operator>=(VDFraction b) const {
 	return (sint64)hi * b.lo >= (sint64)lo * b.hi;
 }
 
-
-VDFraction VDFraction::operator+(VDFraction b) const {
-
-	//  aH   bH   aH*bL + aL*bH
-	//  -- + -- = -------------
-	//  aL   bL       aL*bL
-
-	return reduce(hi * (sint64)b.lo + (sint64)lo * b.hi, (sint64)lo * b.lo);
-}
-
-
-VDFraction VDFraction::operator-(VDFraction b) const {
-	return reduce(hi * (sint64)b.lo - (sint64)lo * b.hi, (sint64)lo * b.lo);
-}
-
 VDFraction VDFraction::operator*(VDFraction b) const {
 	return reduce((sint64)hi * b.hi, (sint64)lo * b.lo);
 }
@@ -192,28 +177,89 @@ VDFraction VDFraction::operator/(unsigned long b) const {
 
 ///////////////////////////////////////////////////////////////////////////
 
+#ifdef _M_IX86
+	sint64 __declspec(naked) __stdcall VDFractionScale64(uint64 a, uint32 b, uint32 c, uint32& remainder) {
+		__asm {
+			push	edi
+			push	ebx
+			mov		edi, [esp+12+8]			;edi = b
+			mov		eax, [esp+4+8]			;eax = a[lo]
+			mul		edi						;edx:eax = a[lo]*b
+			mov		ecx, eax				;ecx = (a*b)[lo]
+			mov		eax, [esp+8+8]			;eax = a[hi]
+			mov		ebx, edx				;ebx = (a*b)[mid]
+			mul		edi						;edx:eax = a[hi]*b
+			add		eax, ebx
+			mov		ebx, [esp+16+8]			;ebx = c
+			adc		edx, 0
+			div		ebx						;eax = (a*b)/c [hi], edx = (a[hi]*b)%c
+			mov		edi, eax				;edi = (a[hi]*b)/c
+			mov		eax, ecx				;eax = (a*b)[lo]
+			mov		ecx, [esp+20+8]
+			div		ebx						;eax = (a*b)/c [lo], edx = (a*b)%c
+			mov		[ecx], edx
+			mov		edx, edi
+			pop		ebx
+			pop		edi
+			ret		20
+		}
+	}
+#else
+	extern "C" sint64 VDFractionScale64(uint64 a, uint64 b, uint64 c, uint32& remainder);
+#endif
+
 sint64 VDFraction::scale64t(sint64 v) const {
-	return (v*hi)/lo;
+	uint32 r;
+	return v<0 ? -VDFractionScale64(-v, hi, lo, r) : VDFractionScale64(v, hi, lo, r);
 }
 
 sint64 VDFraction::scale64u(sint64 v) const {
-	return (v*hi + lo - 1)/lo;
+	uint32 r;
+	if (v<0) {
+		v = -VDFractionScale64(-v, hi, lo, r);
+		return v;
+	} else {
+		v = +VDFractionScale64(+v, hi, lo, r);
+		return v + (r > 0);
+	}
 }
 
 sint64 VDFraction::scale64r(sint64 v) const {
-	return (v*hi + lo/2) / lo;
+	uint32 r;
+	if (v<0) {
+		v = -VDFractionScale64(-v, hi, lo, r);
+		return v - (r >= (lo>>1));
+	} else {
+		v = +VDFractionScale64(+v, hi, lo, r);
+		return v + (r >= (lo>>1));
+	}
 }
 
 sint64 VDFraction::scale64it(sint64 v) const {
-	return (v*lo)/hi;
+	uint32 r;
+	return v<0 ? -VDFractionScale64(-v, lo, hi, r) : +VDFractionScale64(+v, lo, hi, r);
 }
 
 sint64 VDFraction::scale64ir(sint64 v) const {
-	return (v*lo + hi/2) / hi;
+	uint32 r;
+	if (v<0) {
+		v = -VDFractionScale64(-v, lo, hi, r);
+		return v - (r >= (hi>>1));
+	} else {
+		v = +VDFractionScale64(+v, lo, hi, r);
+		return v + (r >= (hi>>1));
+	}
 }
 
 sint64 VDFraction::scale64iu(sint64 v) const {
-	return (v*lo + hi - 1) / hi;
+	uint32 r;
+	if (v<0) {
+		v = -VDFractionScale64(-v, lo, hi, r);
+		return v;
+	} else {
+		v = +VDFractionScale64(+v, lo, hi, r);
+		return v + (r > 0);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -233,3 +279,4 @@ VDFraction::operator double() const {
 unsigned long VDFraction::roundup32ul() const {
 	return (hi + (lo-1)) / lo;
 }
+

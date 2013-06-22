@@ -1550,30 +1550,39 @@ bool VDVideoDisplayMinidriverDirectDraw::Init(HWND hwnd, const VDVideoDisplaySou
 
 bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 	DWORD dwFourCC;
+	int minw = 1;
+	int minh = 1;
 
 	mbSwapChromaPlanes = false;
 	switch(mSource.pixmap.format) {
 	case nsVDPixmap::kPixFormat_YUV422_YUYV:
 		dwFourCC = MAKEFOURCC('Y', 'U', 'Y', '2');
+		minw = 2;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV422_UYVY:
 		dwFourCC = MAKEFOURCC('U', 'Y', 'V', 'Y');
+		minw = 2;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV420_Planar:
 		dwFourCC = MAKEFOURCC('Y', 'V', '1', '2');
 		mbSwapChromaPlanes = true;
+		minw = 2;
+		minh = 2;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
 		dwFourCC = MAKEFOURCC('Y', 'V', '1', '6');
 		mbSwapChromaPlanes = true;
+		minw = 2;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV410_Planar:
 		dwFourCC = MAKEFOURCC('Y', 'V', 'U', '9');
 		mbSwapChromaPlanes = true;
+		minw = 4;
+		minh = 4;
 		break;
 
 	case nsVDPixmap::kPixFormat_Y8:
@@ -1590,8 +1599,8 @@ bool VDVideoDisplayMinidriverDirectDraw::InitOverlay() {
 		DDSURFACEDESC ddsdOff = {sizeof(DDSURFACEDESC)};
 
 		ddsdOff.dwFlags						= DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
-		ddsdOff.dwWidth						= mSource.pixmap.w;
-		ddsdOff.dwHeight					= mSource.pixmap.h;
+		ddsdOff.dwWidth						= (mSource.pixmap.w + minw - 1) & -minw;
+		ddsdOff.dwHeight					= (mSource.pixmap.h + minh - 1) & -minh;
 		ddsdOff.ddsCaps.dwCaps				= DDSCAPS_OVERLAY | DDSCAPS_VIDEOMEMORY;
 		ddsdOff.ddpfPixelFormat.dwSize		= sizeof(DDPIXELFORMAT);
 		ddsdOff.ddpfPixelFormat.dwFlags		= DDPF_FOURCC;
@@ -1958,7 +1967,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 		dstpitch += dstpitch;
 	}
 
-	VDPixmap dstbm = { dst, NULL, source.w, source.h, dstpitch, mPrimaryFormat };
+	VDPixmap dstbm = { dst, NULL, ddsd.dwWidth, ddsd.dwHeight, dstpitch, mPrimaryFormat };
 
 	if (mpddsOverlay)
 		dstbm.format = source.format;
@@ -1969,14 +1978,14 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 		const int qw = -(-dstbm.w >> dstinfo.qwbits);
 		const int qh = -(-dstbm.h >> dstinfo.qhbits);
 
+		VDASSERT((qw << dstinfo.qwbits) == dstbm.w);
+		VDASSERT((qh << dstinfo.qhbits) == dstbm.h);
+
 		dstbm.data2		= (char *)dstbm.data + dstpitch * qh;
 		dstbm.pitch2	= dstpitch >> dstinfo.auxwbits;
 
 		if (dstinfo.auxbufs >= 2) {
-#pragma vdpragma_TODO("figure out why ATI needs the offset and NVIDIA doesn't")
-			ptrdiff_t offset = (dstinfo.auxhbits && (dstbm.h & 1)) ? dstbm.pitch2 >> 1 : 0;
-			dstbm.data3 = (char *)dstbm.data2 + dstbm.pitch2 * (dstbm.h >> dstinfo.auxhbits);// + offset;
-//			dstbm.data3 = (char *)dstbm.data2 + ((dstpitch * dstbm.h) >> (dstinfo.auxwbits + dstinfo.auxhbits));
+			dstbm.data3 = (char *)dstbm.data2 + dstbm.pitch2 * -(-dstbm.h >> dstinfo.auxhbits);
 			dstbm.pitch3 = dstbm.pitch2;
 		}
 
@@ -1985,14 +1994,6 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 			std::swap(dstbm.pitch2, dstbm.pitch3);
 		}
 	}
-
-#if 0
-	const int qw = -(-dstbm.w >> dstinfo.qwbits);
-	const int qh = -(-dstbm.h >> dstinfo.qhbits);
-
-	for(int y=0; y<qh; ++y)
-		memset((char *)dstbm.data + dstbm.pitch * y, 0xcc, qh*dstinfo.qsize);
-#endif
 
 	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8 && dstbm.format != source.format)
 		VDDitherImage(dstbm, source, mpLogicalPalette);

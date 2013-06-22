@@ -21,6 +21,11 @@
 #pragma warning(push)
 #pragma warning(disable: 4035)		// warning C4035: 'bswap': no return value
 
+#if _MSC_VER >= 1300
+	extern unsigned long _byteswap_ulong(unsigned long v);
+	#pragma intrinsic(_byteswap_ulong)
+#endif
+
 // our favorite bitreader
 class VDMPEGAudioBitReader {
 public:

@@ -37,7 +37,7 @@
 
 template<class Category, class T, class Distance = ptrdiff_t, class Pointer = T*, class Reference = T&>
 struct vditerator {
-#if defined(_MSC_VER)
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1310 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
 	typedef std::iterator<Category, T, Distance> type;
 #else
 	typedef std::iterator<Category, T, Distance, Pointer, Reference> type;
@@ -46,7 +46,7 @@ struct vditerator {
 
 template<class Iterator, class T>
 struct vdreverse_iterator {
-#if defined(_MSC_VER) && (_MSC_VER < 1310 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1310 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
 	typedef std::reverse_iterator<Iterator, T> type;
 #else
 	typedef std::reverse_iterator<Iterator> type;

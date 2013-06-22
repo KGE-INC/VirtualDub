@@ -320,7 +320,16 @@ protected:
 		kSaveDevInputs		= 0x00000200,
 		kSaveDevTunerSetup	= 0x00000400,
 		kSaveDevAudioDevice	= 0x00000800,
-		kSaveDevOnDisconnect = kSaveDevSources | kSaveDevInputs | kSaveDevTunerSetup | kSaveDevAudioDevice,
+		kSaveDevOnDisconnect	= kSaveDevSources
+								| kSaveDevInputs
+								| kSaveDevTunerSetup
+								| kSaveDevAudioDevice
+								| kSaveDevAudio
+								| kSaveDevAudioComp
+								| kSaveDevVideo
+								| kSaveDevVideoComp
+								| kSaveDevFrameRate
+								,
 		kSaveDevAll			= 0xffffffff
 	};
 
@@ -874,7 +883,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	fs.mbEnableLumaSquishWhite = key.getBool(g_szFilterEnableLumaSquishWhite, fs.mbEnableLumaSquishWhite);
 	fs.mbEnableNoiseReduction = key.getBool(g_szFilterEnableNoiseReduction, fs.mbEnableNoiseReduction);
 	fs.mbEnableRGBFiltering = key.getBool(g_szFilterEnableFilterChain, fs.mbEnableRGBFiltering);
-	fs.mNRThreshold = key.getInt(g_szFilterEnableFieldSwap, fs.mNRThreshold);
+	fs.mNRThreshold = key.getInt(g_szFilterNoiseReductionThreshold, fs.mNRThreshold);
 
 	int filterMode = key.getInt(g_szFilterVerticalSquashMode, fs.mVertSquashMode);
 
@@ -1056,6 +1065,15 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 
 		if (devkey.getBinary(g_szAudioFormat, buf.data(), buf.size()))
 			mpProject->SetAudioFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
+	}
+
+	// reload audio compression format
+	len = devkey.getBinaryLength(g_szAudioCompFormat);
+	if (len >= 0) {
+		vdblock<char> buf(len);
+
+		if (devkey.getBinary(g_szAudioCompFormat, buf.data(), buf.size()))
+			mpProject->SetAudioCompFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
 	}
 
 	// reload inputs, sources, and channel
@@ -2519,7 +2537,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			break;
 		case ID_AUDIO_RAWCAPTUREFORMAT:
 			if (mpProject->IsDriverConnected()) {
-				extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel, bool& saveit);
+				extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel);
 
 				std::list<vdstructex<WAVEFORMATEX> > aformats;
 				vdstructex<WAVEFORMATEX> currentFormat;
@@ -2539,8 +2557,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 					}
 				}
 
-				bool saveit;
-				sel = VDShowCaptureRawAudioFormatDialog(mhwnd, aformats, sel, saveit);
+				sel = VDShowCaptureRawAudioFormatDialog(mhwnd, aformats, sel);
 
 				if (sel >= 0) {
 					std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin());
@@ -2548,10 +2565,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 					std::advance(it, sel);
 
 					const vdstructex<WAVEFORMATEX>& wfex = *it;
-					if (mpProject->SetAudioFormat(*wfex, wfex.size())) {
-						if (saveit)
-							SaveDeviceSettings(kSaveDevAudio);
-					}
+					mpProject->SetAudioFormat(*wfex, wfex.size());
 				}
 			}
 			break;

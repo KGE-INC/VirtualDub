@@ -1117,9 +1117,7 @@ long FilterPreview::SampleFrames() {
 			pd.advance(lSample - first);
 			pd.check();
 
-			VDPosition srcFrame = mpTimeline->TimelineToSourceFrame(lSample);
-
-			if (FetchFrame(srcFrame)>=0) {
+			if (FetchFrame(lSample)>=0) {
 				filtsys.RunFilters(pfiThisFilter);
 				pSampleCallback(&pfiThisFilter->src, lSample-first, last-first, pvSampleCBData);
 				++lCount;

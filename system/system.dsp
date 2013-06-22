@@ -89,7 +89,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\ReleaseAMD64\system"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /GS- /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -112,7 +112,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\DebugAMD64\system"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "../h" /I ".\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
-# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "../h" /I ".\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "../h" /I ".\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -432,6 +432,45 @@ InputName=a_memory
 # Begin Group "Assembly Files (AMD64)"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\source\a64_fraction.asm
+
+!IF  "$(CFG)" == "system - Win32 Release"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+# Begin Custom Build
+IntDir=.\..\obj\ReleaseAMD64\system
+InputPath=.\source\a64_fraction.asm
+InputName=a64_fraction
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug AMD64"
+
+# Begin Custom Build
+IntDir=.\..\obj\DebugAMD64\system
+InputPath=.\source\a64_fraction.asm
+InputName=a64_fraction
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
 # Begin Source File
 
 SOURCE=.\source\a64_int128.asm

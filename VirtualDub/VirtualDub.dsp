@@ -118,8 +118,7 @@ PostBuild_Cmds=..\out\Debug\Asuka mapconv ..\out\debug\VirtualDub.map ..\out\deb
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /G6 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "NDEBUG" /D "_USE_NON_INTEL_COMPILER" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /FD /GF /c
 # SUBTRACT BASE CPP /YX /Yc /Yu
-# ADD CPP /nologo /G6 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "NDEBUG" /D "_USE_NON_INTEL_COMPILER" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /D "VD_COMPILE_AMD64" /FD /GF /c
-# SUBTRACT CPP /YX /Yc /Yu
+# ADD CPP /nologo /G6 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "NDEBUG" /D "_USE_NON_INTEL_COMPILER" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /D "VD_COMPILE_AMD64" /FD /GF /GS- /c
 # ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG" /d "WIN32_LEAN_AND_MEAN"
@@ -130,7 +129,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib comsupp.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
 # SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib comsupp.lib /nologo /subsystem:windows /map:"../out/ReleaseAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"comsupp" /out:"..\out\ReleaseAMD64/Veedub64.exe" /libpath:"../lib/ReleaseAMD64" /machine:AMD64 /opt:nowin98 /opt:ref,lbr /mapinfo:lines /release
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib comsupp.lib bufferoverflowU.lib /nologo /subsystem:windows /pdb:"..\out\ReleaseAMD64/Veedub64.pdb" /map:"../out/ReleaseAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"comsupp" /out:"..\out\ReleaseAMD64/Veedub64.exe" /libpath:"../lib/ReleaseAMD64" /machine:AMD64 /opt:nowin98 /opt:ref,lbr /mapinfo:lines /release
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
@@ -156,7 +155,7 @@ PostBuild_Cmds=..\out\Release\Asuka mapconv ..\out\ReleaseAMD64\Veedub64.map ..\
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /GZ /c
-# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /GZ /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /c
 # ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
@@ -167,7 +166,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/Debug/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /libpath:"../lib/Debug"
 # SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/DebugAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /out:"..\out\DebugAMD64/Veedub64.exe" /libpath:"../lib/DebugAMD64" /machine:AMD64
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib  bufferoverflowU.lib /nologo /subsystem:windows /map:"../out/DebugAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /out:"..\out\DebugAMD64/Veedub64.exe" /libpath:"../lib/DebugAMD64" /machine:AMD64
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\..\obj\DebugAMD64\VirtualDub
@@ -737,21 +736,6 @@ SOURCE=.\source\f_convolute.cpp
 # Begin Source File
 
 SOURCE=.\source\f_deinterlace.cpp
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ENDIF 
-
 # End Source File
 # Begin Source File
 
@@ -787,21 +771,6 @@ SOURCE=.\source\f_fill.cpp
 # Begin Source File
 
 SOURCE=.\source\f_flipv.cpp
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ENDIF 
-
 # End Source File
 # Begin Source File
 
@@ -834,13 +803,10 @@ SOURCE=.\source\f_hsv.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
-# PROP Exclude_From_Build 1
 # ADD BASE CPP /G6
 # ADD CPP /G6
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
-
-# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -944,21 +910,6 @@ SOURCE=.\source\F_resize.cpp
 # Begin Source File
 
 SOURCE=.\source\f_rotate.cpp
-
-!IF  "$(CFG)" == "VirtualDub - Win32 Release"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
-
-# PROP Exclude_From_Build 1
-
-!ENDIF 
-
 # End Source File
 # Begin Source File
 

@@ -8,7 +8,7 @@
 #include "blt_spanutils.h"
 
 #define DECLARE_YUV(x, y) void VDPixmapBlt_##x##_to_##y##_reference(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h)
-#define DECLARE_YUV_PLANAR(x, y) void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src)
+#define DECLARE_YUV_PLANAR(x, y) void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h)
 
 using namespace nsVDPixmapBitUtils;
 using namespace nsVDPixmapSpanUtils;
@@ -211,22 +211,20 @@ DECLARE_YUV(Y8, YUYV) {
 }
 
 DECLARE_YUV_PLANAR(YUV411, YV12) {
-	VDMemcpyRect(dst.data, dst.pitch, src.data, src.pitch, dst.w, dst.h);
+	VDMemcpyRect(dst.data, dst.pitch, src.data, src.pitch, w, h);
 
-	vdblock<uint8> tmprow(dst.w);
-	const vdpixsize w = dst.w;
-	vdpixsize h;
+	vdblock<uint8> tmprow(w);	
 	const uint8 *srcp = (const uint8 *)src.data2;
 	ptrdiff_t srcpitch = src.pitch2;
 	uint8 *dstp = (uint8 *)dst.data2;
 	ptrdiff_t dstpitch = dst.pitch2;
 	const uint8 *src1, *src2;
 
-	h = dst.h;
-	for(h = dst.h; h > 0; h -= 2) {
+	vdpixsize h2;
+	for(h2 = h; h2 > 0; h2 -= 2) {
 		src1 = srcp;
 		vdptrstep(srcp, srcpitch);
-		if (h > 1)
+		if (h2 > 1)
 			src2 = srcp;
 		else
 			src2 = src1;
@@ -244,11 +242,10 @@ DECLARE_YUV_PLANAR(YUV411, YV12) {
 	srcpitch = src.pitch3;
 	dstp = (uint8 *)dst.data3;
 	dstpitch = dst.pitch3;
-	h = dst.h;
-	for(h = dst.h; h > 0; h -= 2) {
+	for(h2 = h; h2 > 0; h2 -= 2) {
 		src1 = srcp;
 		vdptrstep(srcp, srcpitch);
-		if (h > 1)
+		if (h2 > 1)
 			src2 = srcp;
 		else
 			src2 = src1;

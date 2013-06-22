@@ -118,28 +118,27 @@ asm_scene_lumtile24_col:
 ;asm_scene_lumtile16(src, width, height, modulo, btotalptr);
 
 _asm_scene_lumtile16:
-	push	ebx
-	push	ecx
-	push	edx
-	push	esi
-	push	edi
 	push	ebp
+	push	edi
+	push	esi
+	push	ebx
 	sub	esp,8
-	mov	esi,[esp+4+32]
-	mov	edi,[esp+12+32]
+	mov	esi,[esp+4+24]
+	mov	edi,[esp+12+24]
 	xor	eax,eax
 	xor	ebx,ebx
+	mov	[esp], eax
+	mov	[esp+4], eax
 asm_scene_lumtile16_row:
-	mov	ebp,[esp+8+32]
+	mov	ebp,[esp+8+24]
 asm_scene_lumtile16_col:
 	mov	ecx,[esi + ebp*2 - 4]
 	mov	edx,03e07c1fh
 	and	edx,ecx
 	and	ecx,7c1f03e0h
 	shr	ecx,5
-	add	ebx,edx
-	add	eax,ecx
-	add	esi,4
+	add	eax,edx
+	add	ebx,ecx
 	sub	ebp,2
 	ja	asm_scene_lumtile16_col
 
@@ -152,62 +151,64 @@ asm_scene_lumtile16_col:
 	mov	edx,ebx
 
 	shr	edx,11
-	and	ecx,000001ffh
+	and	ecx,000001ffh		;blue1
 
-	and	edx,000001ffh
+	and	edx,000001ffh		;blue2
 	mov	ebp,eax
 
 	shl	ebp,6
-	add	ecx,edx
+	add	ecx,edx			;blue
 
 	mov	edx,ebx
-	and	ebp,07ff0000h
+	and	ebp,07ff0000h		;red1
 
 	shr	edx,5
-	add	ecx,ebp
+	add	ecx,ebp			;ecx = red1 + blue
 
-	add	ecx,edx
-	mov	ebp,eax
+	and	edx,07ff0000h		;red2
 
 	shl	ebx,8
-	and	eax,0ffe0000h
+	add	ecx,edx			;ecx = red + blue
 
-	shr	eax,9
-	and	ebx,0007ff00h
+	and	eax,0ffe00000h
+	and	ebx,0007ff00h		;green2
 
-	add	eax,ebx
-	add	esi,[esp+16+32]
+	shr	eax,13			;green1
+	add	esi,[esp+16+24]
 
-	mov	ecx,[esp]
+	add	eax,ebx			;green
+
+	mov	ebp,[esp]
 	mov	edx,[esp+4]
 
-	add	ecx,ebp		;red/blue
+	add	ebp,ecx		;red/blue
 	add	edx,eax		;green
 
-	mov	[esp],ecx
+	mov	[esp],ebp
 	mov	[esp+4],edx
 
-	dec	edi
+	xor	eax, eax
+	xor	ebx, ebx
+
+	sub	edi, 1
 	jne	asm_scene_lumtile16_row
 
 	mov	eax,[esp]
 	mov	ebx,[esp+4]
 
-	add	eax,00200020h
-	add	ebx,00002000h
-	shr	eax,6
-	and	ebx,003fc000h
-	shr	ebx,6
+	add	eax,00040004h
+	add	ebx,00000400h
+	shr	eax,3
+	and	ebx,0007f800h
+	shr	ebx,3
 	and	eax,00ff00ffh
 	add	eax,ebx
 
 	add	esp,8
-	pop	ebp
-	pop	edi
-	pop	esi
-	pop	edx
-	pop	ecx
 	pop	ebx
+	pop	esi
+	pop	edi
+	pop	ebp
 	ret
 
 	end

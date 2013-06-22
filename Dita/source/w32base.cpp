@@ -155,20 +155,23 @@ int VDUIBaseWindowW32::DoModal() {
 
 	MSG msg;
 	while(mpModal) {
-		BOOL result = GetMessage(&msg, NULL, 0, 0);
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				PostQuitMessage(msg.wParam);
+				break;
+			}
 
-		if (result == (BOOL)-1)
-			break;
-
-		if (!result) {
-			PostQuitMessage(msg.wParam);
-			break;
+			if (IsDialogMessage(mhwnd, &msg))
+				continue;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+			continue;
 		}
 
-		if (IsDialogMessage(mhwnd, &msg))
-			continue;
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		if (!mpModal)
+			break;
+
+		WaitMessage();
 	}
 
 	if (hwndParent && enabled)

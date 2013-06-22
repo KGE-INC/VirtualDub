@@ -28,6 +28,7 @@
 ///////////////////////////////////////////
 
 extern "C" unsigned long version_num;
+extern uint32 VDPreferencesGetAVIAlignmentThreshold();
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -40,6 +41,7 @@ VDAVIOutputFileSystem::VDAVIOutputFileSystem()
 	, mbAllowIndexing(true)
 	, mbUse1GBLimit(false)
 	, mCurrentSegment(0)
+	, mAlignment(0)
 {
 }
 
@@ -89,6 +91,7 @@ IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
 		IVDMediaOutputStream *pVideoOut = pOutput->createVideoStream();
 		pVideoOut->setFormat(&mVideoFormat[0], mVideoFormat.size());
 		pVideoOut->setStreamInfo(mVideoStreamInfo);
+		pOutput->setAlignment(0, mAlignment);
 	}
 
 	if (!mAudioFormat.empty()) {
@@ -146,6 +149,35 @@ void VDAVIOutputFileSystem::SetVideo(const AVIStreamHeader_fixed& asi, const voi
 	mVideoStreamInfo = asi;
 	mVideoFormat.resize(cbFormat);
 	memcpy(&mVideoFormat[0], pFormat, cbFormat);
+
+	if (uint32 alignmentThreshold = VDPreferencesGetAVIAlignmentThreshold()) {
+		const BITMAPINFOHEADER& bih = *(const BITMAPINFOHEADER *)pFormat;
+		switch(bih.biCompression) {
+		case BI_RGB:
+		case BI_BITFIELDS:
+		case 'YVYU':	// UYVY
+		case '2YUY':	// YUY2
+		case 'VYUY':	// YUYV
+		case 'UYVY':	// YVYU
+		case '21VY':	// YV12
+		case '024I':	// I420
+		case 'VUYI':	// IYUV
+		case '9UVY':	// YVU9
+		case '61VY':	// YV16
+		case '  8Y':	// Y8
+		case '112Y':	// Y211
+		case 'P14Y':	// Y41P
+		case 'VUYA':	// AYUV
+			uint32 imageSize = bih.biSizeImage;
+
+			if (!imageSize)		// This should only be true for BI_RGB, really.
+				imageSize = (((bih.biWidth * bih.biBitCount + 31) >> 5) << 2) * abs(bih.biHeight);
+
+			if (imageSize >= alignmentThreshold)
+				mAlignment = 512;
+			break;
+		}
+	}
 }
 
 void VDAVIOutputFileSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {

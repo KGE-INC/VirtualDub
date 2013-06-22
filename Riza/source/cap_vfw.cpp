@@ -630,8 +630,18 @@ bool VDCaptureDriverVFW::GetAudioFormat(vdstructex<WAVEFORMATEX>& aformat) {
 
 	aformat.resize(dwSize);
 
+	if (dwSize < sizeof(PCMWAVEFORMAT))
+		return false;
+
 	if (!capGetAudioFormat(mhwnd, aformat.data(), aformat.size()))
 		return false;
+
+	// adjust PCMWAVEFORMAT to WAVEFORMATEX
+	if (dwSize < sizeof(WAVEFORMATEX)) {
+		aformat.resize(sizeof(WAVEFORMATEX));
+
+		aformat->cbSize = 0;
+	}
 
 	return true;
 }
@@ -644,7 +654,7 @@ bool VDCaptureDriverVFW::SetAudioFormat(const WAVEFORMATEX *pwfex, uint32 size) 
 	bool success = 0 != capSetAudioFormat(mhwnd, (WAVEFORMATEX *)pwfex, size);
 	if (mbAudioAnalysisEnabled)
 		InitWaveAnalysis();
-	return true;
+	return success;
 }
 
 bool VDCaptureDriverVFW::IsDriverDialogSupported(DriverDialog dlg) {

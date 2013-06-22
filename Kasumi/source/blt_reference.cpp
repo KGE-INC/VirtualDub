@@ -6,7 +6,7 @@
 #define DECLARE_RGB(x, y) extern void VDPixmapBlt_##x##_to_##y##_reference(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h)
 #define DECLARE_YUV(x, y) extern void VDPixmapBlt_##x##_to_##y##_reference(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h)
 #define DECLARE_YUV_REV(x, y) void VDPixmapBlt_##x##_to_##y##_reference(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h)
-#define DECLARE_YUV_PLANAR(x, y) extern void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src)
+#define DECLARE_YUV_PLANAR(x, y) extern void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h)
 
 DECLARE_RGB(RGB565,	  XRGB1555);
 DECLARE_RGB(RGB888,   XRGB1555);
@@ -80,9 +80,9 @@ DECLARE_YUV_PLANAR(YUV411, RGB565);
 DECLARE_YUV_PLANAR(YUV411, RGB888);
 DECLARE_YUV_PLANAR(YUV411, XRGB8888);
 
-extern void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap& src);
-extern void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dst, const VDPixmap& src);
-extern void VDPixmapBlt_YUVPlanar_convert_reference(const VDPixmap& dst, const VDPixmap& src);
+extern void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h);
+extern void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h);
+extern void VDPixmapBlt_YUVPlanar_convert_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h);
 
 using namespace nsVDPixmap;
 
@@ -235,12 +235,6 @@ tpVDPixBltTable VDGetPixBltTableReference() {
 	sReferenceMap[kPixFormat_XRGB8888][kPixFormat_YUV410_Planar] = VDPixmapBlt_YUVPlanar_encode_reference;
 	sReferenceMap[kPixFormat_YUV422_UYVY][kPixFormat_YUV410_Planar] = VDPixmapBlt_YUVPlanar_encode_reference;
 	sReferenceMap[kPixFormat_YUV422_YUYV][kPixFormat_YUV410_Planar] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_XRGB1555][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_RGB565  ][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_RGB888  ][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_XRGB8888][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_YUV422_UYVY][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
-	sReferenceMap[kPixFormat_YUV422_YUYV][kPixFormat_Y8] = VDPixmapBlt_YUVPlanar_encode_reference;
 
 	sReferenceMap[kPixFormat_YUV444_Planar][kPixFormat_YUV422_Planar] = VDPixmapBlt_YUVPlanar_convert_reference;
 	sReferenceMap[kPixFormat_YUV444_Planar][kPixFormat_YUV420_Planar] = VDPixmapBlt_YUVPlanar_convert_reference;

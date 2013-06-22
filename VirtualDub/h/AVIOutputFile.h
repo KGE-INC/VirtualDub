@@ -26,6 +26,7 @@ public:
 	virtual void disable_extended_avi() = 0;
 	virtual void set_1Gb_limit() = 0;
 	virtual void set_capture_mode(bool b) = 0;
+	virtual void setAlignment(int stream, uint32 align) = 0;
 	virtual void setInterleaved(bool bInterleaved) = 0;
 	virtual void setBuffering(sint32 nBufferSize, sint32 nChunkSize) = 0;
 	virtual void setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, int cbBlock) = 0;

@@ -286,7 +286,7 @@ namespace {
 	}
 }
 
-void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixmap& srcbm) {
+void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixmap& srcbm, vdpixsize w, vdpixsize h) {
 	void (*cfunc)(uint8 *ydst, uint8 *cbdst, uint8 *crdst, const void *src, sint32 w) = NULL;
 	void (*hfunc)(uint8 *dst, const uint8 *src, sint32 w) = NULL;
 	void (*vfunc)(uint8 *dst, const uint8 *const *sources, sint32 w, uint8 phase) = NULL;
@@ -319,9 +319,8 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 		return;
 	}
 
-	const vdpixsize w = dstbm.w;
-	vdpixsize w2 = dstbm.w;
-	vdpixsize h = dstbm.h;
+	vdpixsize w2 = w;
+	vdpixsize h2 = h;
 	int winstep = 1;
 	int winsize = 1;
 	int winposnext = 0;
@@ -336,16 +335,16 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
 		if (halfchroma)
-			chroma_srcw >>= 1;
+			chroma_srcw = (chroma_srcw + 1) >> 1;
 		else
 			hfunc = horiz_compress2x_coaligned;
 
-		w2 >>= 1;
+		w2 = (w2+1) >> 1;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV420_Planar:
 		if (halfchroma)
-			chroma_srcw >>= 1;
+			chroma_srcw = (chroma_srcw + 1) >> 1;
 		else
 			hfunc = horiz_compress2x_coaligned;
 
@@ -353,17 +352,17 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 		winstep = 2;
 		winposnext = 3;
 		winsize = 4;
-		h >>= 1;
-		w2 >>= 1;
+		h2 = (h+1) >> 1;
+		w2 = (w2+1) >> 1;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV411_Planar:
 		if (halfchroma) {
-			chroma_srcw >>= 1;
+			chroma_srcw = (chroma_srcw + 1) >> 1;
 			hfunc = horiz_compress2x_coaligned;
 		} else
 			hfunc = horiz_compress4x_coaligned;
-		w2 >>= 2;
+		w2 = (w2+1) >> 2;
 		break;
 
 	case nsVDPixmap::kPixFormat_YUV410_Planar:
@@ -376,8 +375,8 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 		winsize = 8;
 		winposnext = 6;
 		winstep = 4;
-		h >>= 2;
-		w2 >>= 2;
+		h2 = (h+3) >> 2;
+		w2 = (w2+3) >> 2;
 		break;
 	}
 
@@ -420,7 +419,7 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 				cfunc(ydst, cbdst, crdst, src, w);
 				src += srcpitch;
 				ydst += ydstpitch;
-			} while(--h);
+			} while(--h2);
 		} else {
 			do {
 				cfunc(ydst, cbdst, crdst, src, w);
@@ -428,7 +427,7 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 				ydst += ydstpitch;
 				cbdst += cbdstpitch;
 				crdst += crdstpitch;
-			} while(--h);
+			} while(--h2);
 		}
 	} else {
 		const uint32 tmpsize = w2;
@@ -457,7 +456,7 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 			while(winpos < winposnext) {
 				winoffset = ++winpos & (winsize - 1);
 
-				bool valid = (unsigned)(winpos-1) < (srcbm.h-1);		// -1 because we generate line 0 as the first window line
+				bool valid = (unsigned)(winpos-1) < (h-1);		// -1 because we generate line 0 as the first window line
 				if (valid || firstline) {
 					if (hfunc) {
 						cfunc(ydst, cbtmp, crtmp, src, w);
@@ -471,8 +470,8 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 					firstline = false;
 				} else {
 					// dupe last generated line -- could be done by pointer swabbing, but I'm lazy
-					memcpy(cbwindow[winoffset + winsize - 1], cbwindow[winoffset + winsize - 1], w2);
-					memcpy(crwindow[winoffset + winsize - 1], crwindow[winoffset + winsize - 1], w2);
+					memcpy(cbwindow[winoffset + winsize - 1], cbwindow[winoffset + winsize - 2], w2);
+					memcpy(crwindow[winoffset + winsize - 1], crwindow[winoffset + winsize - 2], w2);
 				}
 			}
 			winposnext += winstep;
@@ -481,6 +480,6 @@ void VDPixmapBlt_YUVPlanar_encode_reference(const VDPixmap& dstbm, const VDPixma
 			vfunc(crdst, crwindow + winoffset, w2, 0);
 			cbdst += cbdstpitch;
 			crdst += crdstpitch;
-		} while(--h);
+		} while(--h2);
 	}
 }

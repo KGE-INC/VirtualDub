@@ -2,28 +2,28 @@
 setlocal enableextensions enabledelayedexpansion
 
 if "%COMPUTERNAME%"=="ATHENA64" (
-	set _ddk=c:\winddk\3790
+	set _psdk=c:\platsdk
 	set _vc6=c:\vc6\vc98
 	set _vc71=c:\vs.net\vc7
 	set _vc8=d:\vs8\vc
 	set _dx9=d:\dx9sdk
 ) else if "%COMPUTERNAME%"=="ATHENA" (
-	set _ddk=c:\winddk\3790
+	set _psdk=c:\platsdk
 	set _vc6=c:\vc6\vc98
 	set _vc71=c:\vs.net\vc7
 	set _vc8=c:\vs8\vc
 	set _dx9=i:\dx9sdk
 ) else (
-	set _ddk=c:\winddk\3790
+	set _psdk=c:\platsdk
 	set _vc6=c:\vc6\vc98
 	set _vc71=c:\vs.net\vc7
 	set _vc8=
 	set _dx9=c:\dx9sdk
 )
 
-set _amd64_bin=%_ddk%\bin\win64\x86\amd64;%_ddk%\bin\x86
-set _amd64_include=%_dx9%\include;%_ddk%\inc\crt;%_ddk%\inc\wnet;%_vc6%\include
-set _amd64_lib=%_dx9%\lib\x64;%_ddk%\lib\wnet\amd64
+set _amd64_bin=%_psdk%\bin\win64\x86\amd64;%_psdk%\bin\x86
+set _amd64_include=%_dx9%\include;%_psdk%\include;%_psdk%\include\crt
+set _amd64_lib=%_dx9%\lib\x64;%_psdk%\lib\amd64
 
 
 set _incremental=false
@@ -82,8 +82,8 @@ if "%1"=="/inc" (
 	echo     /check        do check build [allow version increment]
 	echo     /debug        build debug build
         echo     /release      build release build
-	echo     /debugamd64   build debug AMD64 build [requires DDK]
-	echo     /amd64        build AMD64 build [requires DDK]
+	echo     /debugamd64   build debug AMD64 build [requires PSDK]
+	echo     /amd64        build AMD64 build [requires PSDK]
 	echo     /helpfile     build helpfile
 	echo     /packonly     skip builds and only package
 	echo     /vc71         use Visual Studio .NET 2003 compiler for x86 build
@@ -185,13 +185,16 @@ if "%3"=="AMD64" (
 	rem ---these must be built separately as we can't run AMD64 tools on Win32
 	if "%_incremental%"=="false" (
 		msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /clean
+		msdev VirtualDub.dsw /make "test - Win32 %~1" /clean
 	)
 	if "%2"=="DebugAMD64" (
 		if not exist out\Debug\Asuka.exe (
+			msdev VirtualDub.dsw /make "system - Win32 Debug" %_project_switches%
 			msdev VirtualDub.dsw /make "Asuka - Win32 Debug" %_project_switches%
 		)
 	) else (
 		if not exist out\Release\Asuka.exe (
+			msdev VirtualDub.dsw /make "system - Win32 Release" %_project_switches%
 			msdev VirtualDub.dsw /make "Asuka - Win32 Release" %_project_switches%
 		)
 	)
@@ -205,7 +208,7 @@ if "%3"=="AMD64" (
 		call %_vc8%\bin\x86_amd64\vcvarsamd64.bat
 		set cl=%_vc8_flags% !cl!
 	) else (
-		echo ---Using prerelease DDK compiler for AMD64.
+		echo ---Using Platform SDK compiler for AMD64.
 		set path=!_amd64_bin!;!path!
 		set include=%_amd64_include%;!include!
 		set lib=%_amd64_lib%;!lib!
@@ -217,6 +220,7 @@ if "%3"=="AMD64" (
 	set include=%_dx9%\include;!include!
 	set lib=%_dx9%\lib\x64;!lib!
 	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" /useenv
+	msdev VirtualDub.dsw /make "test - Win32 %~1" /useenv
 	endlocal
 	if errorlevel 1 set _build_abort=true
 ) else (
@@ -243,6 +247,7 @@ if "%3"=="AMD64" (
 	msdev VirtualDub.dsw /make "vdremote - Win32 %~1" !_project_switches!
 	msdev VirtualDub.dsw /make "Setup - Win32 %~1" !_project_switches!
 	msdev VirtualDub.dsw /make "VirtualDub - Win32 %~1" !_project_switches!
+	msdev VirtualDub.dsw /make "test - Win32 %~1" !_project_switches!
 	endlocal
 	if errorlevel 1 set _build_abort=true
 )

@@ -138,7 +138,7 @@ namespace {
 			do {
 				*dst++ = (uint32)*cb++ + ((uint32)y[0] << 8) + ((uint32)*cr++ << 16) + ((uint32)y[1] << 24);
 				y += 2;
-			} while((sint32)(w-=2)>=0);
+			} while((sint32)(w-=2)>0);
 		}
 
 		if (!(w & 1))
@@ -152,7 +152,7 @@ namespace {
 			do {
 				*dst++ = (uint32)y[0] + ((uint32)*cb++ << 8) + ((uint32)y[1] << 16) + ((uint32)*cr++ << 24);
 				y += 2;
-			} while((sint32)(w-=2)>=0);
+			} while((sint32)(w-=2)>0);
 		}
 
 		if (!(w & 1))
@@ -359,35 +359,487 @@ namespace {
 #define DECLARE_YUV(x, y) void VDPixmapBlt_##x##_to_##y##_reference(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h)
 
 DECLARE_YUV(UYVY, XRGB1555) {
-	VDYCbCrToRGB1555Generic(dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_UYVY);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint16 *dst = (uint16 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint16 *y;
+
+		cb = src[0];
+		cr = src[2];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab15[277 + colorconv.y_tab[src[1]]];
+		*dst++ = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[4];
+				cr = src[6];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab15[277 + colorconv.y_tab[src[3]]];
+				dst[0] = (y[(rc0+rc1+1)>>1] & 0x7c00) + (y[(gc0+gc1+1)>>1] & 0x3e0) + (y[(bc0+bc1+1)>>1] & 0x001f);
+
+				y = &colorconv.cliptab15[277 + colorconv.y_tab[src[5]]];
+				dst[1] = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+
+				dst += 2;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab15[277 + colorconv.y_tab[src[3]]];
+			*dst = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(UYVY, RGB565) {
-	VDYCbCrToRGB565Generic (dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_UYVY);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint16 *dst = (uint16 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint16 *y;
+
+		cb = src[0];
+		cr = src[2];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab16[277 + colorconv.y_tab[src[1]]];
+		*dst++ = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[4];
+				cr = src[6];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab16[277 + colorconv.y_tab[src[3]]];
+				dst[0] = (y[(rc0+rc1+1)>>1] & 0xf800) + (y[(gc0+gc1+1)>>1] & 0x7e0) + (y[(bc0+bc1+1)>>1] & 0x001f);
+
+				y = &colorconv.cliptab16[277 + colorconv.y_tab[src[5]]];
+				dst[1] = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+
+				dst += 2;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab16[277 + colorconv.y_tab[src[3]]];
+			*dst = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(UYVY, RGB888) {
-	VDYCbCrToRGB888Generic (dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_UYVY);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint8 *dst = (uint8 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint8 *y;
+
+		cb = src[0];
+		cr = src[2];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab[277 + colorconv.y_tab[src[1]]];
+		dst[0] = y[bc1];
+		dst[1] = y[gc1];
+		dst[2] = y[rc1];
+		dst += 3;
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[4];
+				cr = src[6];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[3]]];
+				dst[0] = y[(bc0+bc1+1)>>1];
+				dst[1] = y[(gc0+gc1+1)>>1];
+				dst[2] = y[(rc0+rc1+1)>>1];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[5]]];
+				dst[3] = y[bc1];
+				dst[4] = y[gc1];
+				dst[5] = y[rc1];
+
+				dst += 6;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab[277 + colorconv.y_tab[src[3]]];
+			dst[0] = y[bc1];
+			dst[1] = y[gc1];
+			dst[2] = y[rc1];
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(UYVY, XRGB8888) {
-	VDYCbCrToRGB8888Generic(dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_UYVY);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint8 *dst = (uint8 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint8 *y;
+
+		cb = src[0];
+		cr = src[2];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab[277 + colorconv.y_tab[src[1]]];
+		dst[0] = y[bc1];
+		dst[1] = y[gc1];
+		dst[2] = y[rc1];
+		dst += 4;
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[4];
+				cr = src[6];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[3]]];
+				dst[0] = y[(bc0+bc1+1)>>1];
+				dst[1] = y[(gc0+gc1+1)>>1];
+				dst[2] = y[(rc0+rc1+1)>>1];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[5]]];
+				dst[4] = y[bc1];
+				dst[5] = y[gc1];
+				dst[6] = y[rc1];
+
+				dst += 8;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab[277 + colorconv.y_tab[src[3]]];
+			dst[0] = y[bc1];
+			dst[1] = y[gc1];
+			dst[2] = y[rc1];
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(YUYV, XRGB1555) {
-	VDYCbCrToRGB1555Generic(dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_YUYV);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint16 *dst = (uint16 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint16 *y;
+
+		cb = src[1];
+		cr = src[3];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab15[277 + colorconv.y_tab[src[0]]];
+		*dst++ = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[5];
+				cr = src[7];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab15[277 + colorconv.y_tab[src[2]]];
+				dst[0] = (y[(rc0+rc1+1)>>1] & 0x7c00) + (y[(gc0+gc1+1)>>1] & 0x3e0) + (y[(bc0+bc1+1)>>1] & 0x001f);
+
+				y = &colorconv.cliptab15[277 + colorconv.y_tab[src[4]]];
+				dst[1] = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+
+				dst += 2;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab15[277 + colorconv.y_tab[src[2]]];
+			*dst = (y[rc1] & 0x7c00) + (y[gc1] & 0x3e0) + (y[bc1] & 0x001f);
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(YUYV, RGB565) {
-	VDYCbCrToRGB565Generic (dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_YUYV);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint16 *dst = (uint16 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint16 *y;
+
+		cb = src[1];
+		cr = src[3];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab16[277 + colorconv.y_tab[src[0]]];
+		*dst++ = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[5];
+				cr = src[7];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab16[277 + colorconv.y_tab[src[2]]];
+				dst[0] = (y[(rc0+rc1+1)>>1] & 0xf800) + (y[(gc0+gc1+1)>>1] & 0x7e0) + (y[(bc0+bc1+1)>>1] & 0x001f);
+
+				y = &colorconv.cliptab16[277 + colorconv.y_tab[src[4]]];
+				dst[1] = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+
+				dst += 2;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab16[277 + colorconv.y_tab[src[2]]];
+			*dst = (y[rc1] & 0xf800) + (y[gc1] & 0x7e0) + (y[bc1] & 0x001f);
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(YUYV, RGB888) {
-	VDYCbCrToRGB888Generic (dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_YUYV);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint8 *dst = (uint8 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint8 *y;
+
+		cb = src[1];
+		cr = src[3];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab[277 + colorconv.y_tab[src[0]]];
+		dst[0] = y[bc1];
+		dst[1] = y[gc1];
+		dst[2] = y[rc1];
+		dst += 3;
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[5];
+				cr = src[7];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[2]]];
+				dst[0] = y[(bc0+bc1+1)>>1];
+				dst[1] = y[(gc0+gc1+1)>>1];
+				dst[2] = y[(rc0+rc1+1)>>1];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[4]]];
+				dst[3] = y[bc1];
+				dst[4] = y[gc1];
+				dst[5] = y[rc1];
+
+				dst += 6;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab[277 + colorconv.y_tab[src[2]]];
+			dst[0] = y[bc1];
+			dst[1] = y[gc1];
+			dst[2] = y[rc1];
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(YUYV, XRGB8888) {
-	VDYCbCrToRGB8888Generic(dst0, dstpitch, src0, srcpitch, src0, srcpitch, src0, srcpitch, w, h, g_formatInfo_YUV422_YUYV);
+	do {
+		const uint8 *src = (const uint8 *)src0;
+		uint8 *dst = (uint8 *)dst0;
+
+		// convert first pixel
+		int cb, cr;
+		int rc0, gc0, bc0, rc1, gc1, bc1;
+		const uint8 *y;
+
+		cb = src[1];
+		cr = src[3];
+		rc1 = colorconv.r_cr_tab[cr];
+		gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+		bc1 = colorconv.b_cb_tab[cb];
+
+		y = &colorconv.cliptab[277 + colorconv.y_tab[src[0]]];
+		dst[0] = y[bc1];
+		dst[1] = y[gc1];
+		dst[2] = y[rc1];
+		dst += 4;
+
+		// convert pairs of pixels
+		int w2 = w;
+
+		if ((w2 -= 2) > 0) {
+			do {
+				rc0 = rc1;
+				gc0 = gc1;
+				bc0 = bc1;
+
+				cb = src[5];
+				cr = src[7];
+				rc1 = colorconv.r_cr_tab[cr];
+				gc1 = colorconv.g_cr_tab[cr] + colorconv.g_cb_tab[cb];
+				bc1 = colorconv.b_cb_tab[cb];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[2]]];
+				dst[0] = y[(bc0+bc1+1)>>1];
+				dst[1] = y[(gc0+gc1+1)>>1];
+				dst[2] = y[(rc0+rc1+1)>>1];
+
+				y = &colorconv.cliptab[277 + colorconv.y_tab[src[4]]];
+				dst[4] = y[bc1];
+				dst[5] = y[gc1];
+				dst[6] = y[rc1];
+
+				dst += 8;
+				src += 4;
+			} while((w2 -= 2) > 0);
+		}
+
+		// handle oddballs
+		if (!(w2 & 1)) {
+			y = &colorconv.cliptab[277 + colorconv.y_tab[src[2]]];
+			dst[0] = y[bc1];
+			dst[1] = y[gc1];
+			dst[2] = y[rc1];
+		}
+
+		vdptrstep(src0, srcpitch);
+		vdptrstep(dst0, dstpitch);
+	} while(--h);
 }
 
 DECLARE_YUV(Y8, XRGB1555) {
@@ -467,7 +919,7 @@ DECLARE_YUV(Y8, XRGB8888) {
 	} while(--h);
 }
 
-#define DECLARE_YUV_PLANAR(x, y) void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src)
+#define DECLARE_YUV_PLANAR(x, y) void VDPixmapBlt_##x##_to_##y##_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h)
 
 
 namespace {
@@ -483,10 +935,13 @@ namespace {
 #endif
 
 
-void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap& src) {
+void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h) {
 	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(src.format);
-	const int hbits = srcinfo.auxwbits;
-	const int vbits = srcinfo.auxhbits;
+	int hbits = srcinfo.auxwbits;
+	int vbits = srcinfo.auxhbits;
+
+	if (src.format == nsVDPixmap::kPixFormat_YUV422_UYVY || src.format == nsVDPixmap::kPixFormat_YUV422_YUYV)
+		hbits = 1;
 
 	bool h_coaligned = true;
 	bool v_coaligned = true;
@@ -495,9 +950,10 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 	tpYUVPlanarHorizDecoder hfunc = NULL;
 	uint32 horiz_buffer_size = 0;
 	uint32 vert_buffer_size = 0;
+	uint32 horiz_count = 0;
 	sint32 yaccum = 8;
 	sint32 yinc = 8;
-	uint32 yleft = src.h;
+	uint32 yleft = h;
 
 	switch(vbits*2+v_coaligned) {
 	case 0:		// 4:4:4, 4:2:2
@@ -505,14 +961,14 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 		break;
 	case 3:		// 4:2:0 (centered) 
 		vfunc = vert_expand2x_centered;
-		vert_buffer_size = src.w>>1;
+		vert_buffer_size = w>>1;
 		yaccum = 6;
 		yinc = 4;
 		yleft >>= 1;
 		break;
 	case 5:		// 4:1:0 (centered)
 		vfunc = vert_expand4x_centered;
-		vert_buffer_size = src.w>>2;
+		vert_buffer_size = w>>2;
 		yaccum = 5;
 		yinc = 2;
 		yleft >>= 2;
@@ -556,31 +1012,36 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 
 	switch(hbits*2+h_coaligned) {
 	case 0:		// 4:4:4
+	case 1:
 		if (halfchroma) {
 			hfunc = horiz_compress2x_coaligned;
-			horiz_buffer_size = (src.w + 1) >> 1;
+			horiz_buffer_size = (w + 1) >> 1;
+			horiz_count = w;
 		}
 		break;
 	case 2:		// 4:2:0 MPEG-1 (centered)
-#pragma vdpragma_TODO("FIXME: chroma alignment is wrong")
 		if (!halfchroma) {
 			hfunc = horiz_expand2x_centered;
-			horiz_buffer_size = src.w;
+			horiz_buffer_size = w;
+			horiz_count = w;
 		}
 		break;
 	case 3:		// 4:2:0/4:2:2 MPEG-2 (coaligned)
 		if (!halfchroma) {
 			hfunc = horiz_expand2x_coaligned;
-			horiz_buffer_size = src.w;
+			horiz_buffer_size = w;
+			horiz_count = w;
 		}
 		break;
 	case 5:		// 4:1:1 (coaligned)
 		if (halfchroma) {
 			hfunc = horiz_expand2x_coaligned;
-			horiz_buffer_size = (src.w + 1) >> 1;
+			horiz_buffer_size = (w + 1) >> 1;
+			horiz_count = (w + 1) >> 1;
 		} else {
 			hfunc = horiz_expand4x_coaligned;
-			horiz_buffer_size = src.w;
+			horiz_buffer_size = w;
+			horiz_count = w;
 		}
 		break;
 
@@ -589,7 +1050,7 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 		return;
 	}
 
-	uint32 chroma_srcwidth = src.w >> srcinfo.auxwbits;
+	uint32 chroma_srcwidth = -(-w >> srcinfo.auxwbits);
 	horiz_buffer_size = (horiz_buffer_size + 15) & ~15;
 	vert_buffer_size = (vert_buffer_size + 15) & ~15;
 
@@ -601,8 +1062,6 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 	uint8 *const crbufv = crbufh + horiz_buffer_size;
 	uint8 *const cbbufh = crbufv + vert_buffer_size;
 	uint8 *const cbbufv = cbbufh + horiz_buffer_size;
-
-	vdpixsize h = src.h;
 
 	const uint8 *cb0 = (const uint8*)src.data2;
 	const uint8 *cr0 = (const uint8*)src.data3;
@@ -642,7 +1101,7 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 
 		// horizontal interpolation: cr
 		if (hfunc) {
-			hfunc(crbufh, cr, horiz_buffer_size);
+			hfunc(crbufh, cr, horiz_count);
 			cr = crbufh;
 		}
 
@@ -655,11 +1114,11 @@ void VDPixmapBlt_YUVPlanar_decode_reference(const VDPixmap& dst, const VDPixmap&
 
 		// horizontal interpolation: cb
 		if (hfunc) {
-			hfunc(cbbufh, cb, horiz_buffer_size);
+			hfunc(cbbufh, cb, horiz_count);
 			cb = cbbufh;
 		}
 
-		dfunc(out, y, cb, cr, src.w);
+		dfunc(out, y, cb, cr, w);
 		vdptrstep(out, outpitch);
 		vdptrstep(y, ypitch);
 
@@ -750,7 +1209,7 @@ namespace {
 		int dsth = -(-h >> dstinfo.auxhbits);
 		int srch = -(-h >> srcinfo.auxhbits);
 		int dstw = -(-w >> dstinfo.auxwbits);
-		int w2 = (w >> std::min<int>(dstinfo.auxwbits, srcinfo.auxwbits));
+		int w2 = -(-w >> std::min<int>(dstinfo.auxwbits, srcinfo.auxwbits));
 
 		int winpos = (winposnext>>8) - winsize;
 
@@ -787,20 +1246,20 @@ namespace {
 	 }
 }
 
-void VDPixmapBlt_YUVPlanar_convert_reference(const VDPixmap& dstpm, const VDPixmap& srcpm) {
+void VDPixmapBlt_YUVPlanar_convert_reference(const VDPixmap& dstpm, const VDPixmap& srcpm, vdpixsize w, vdpixsize h) {
 	VDMemcpyRect(dstpm.data, dstpm.pitch, srcpm.data, srcpm.pitch, dstpm.w, dstpm.h);
 
 	if (srcpm.format != nsVDPixmap::kPixFormat_Y8) {
 		if (dstpm.format != nsVDPixmap::kPixFormat_Y8) {
 			// YCbCr -> YCbCr
-			uvplaneblt((uint8 *)dstpm.data2, dstpm.pitch2, dstpm.format, (uint8 *)srcpm.data2, srcpm.pitch2, srcpm.format, dstpm.w, dstpm.h);
-			uvplaneblt((uint8 *)dstpm.data3, dstpm.pitch3, dstpm.format, (uint8 *)srcpm.data3, srcpm.pitch3, srcpm.format, dstpm.w, dstpm.h);
+			uvplaneblt((uint8 *)dstpm.data2, dstpm.pitch2, dstpm.format, (uint8 *)srcpm.data2, srcpm.pitch2, srcpm.format, w, h);
+			uvplaneblt((uint8 *)dstpm.data3, dstpm.pitch3, dstpm.format, (uint8 *)srcpm.data3, srcpm.pitch3, srcpm.format, w, h);
 		}
 	} else {
 		if (dstpm.format != nsVDPixmap::kPixFormat_Y8) {
 			const VDPixmapFormatInfo& info = VDPixmapGetInfo(dstpm.format);
-			VDMemset8Rect(dstpm.data2, dstpm.pitch2, 0x80, -(-dstpm.w >> info.auxwbits), -(-dstpm.h >> info.auxhbits));
-			VDMemset8Rect(dstpm.data3, dstpm.pitch3, 0x80, -(-dstpm.w >> info.auxwbits), -(-dstpm.h >> info.auxhbits));
+			VDMemset8Rect(dstpm.data2, dstpm.pitch2, 0x80, -(-w >> info.auxwbits), -(-h >> info.auxhbits));
+			VDMemset8Rect(dstpm.data3, dstpm.pitch3, 0x80, -(-w >> info.auxwbits), -(-h >> info.auxhbits));
 		}
 	}
 }
@@ -813,9 +1272,6 @@ extern "C" void vdasm_pixblt_YUV411Planar_to_RGB565_scan_ISSE(void *dst, const v
 extern "C" void vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_ISSE(void *dst, const void *y, const void *cb, const void *cr, unsigned count);
 
 DECLARE_YUV_PLANAR(YUV411, XRGB1555) {
-	vdpixsize h = dst.h;
-	vdpixsize w = dst.w;
-
 	uint16			*out	= (uint16 *)dst.data;
 	const ptrdiff_t	opitch	= dst.pitch;
 	const uint8		*yrow	= (const uint8 *)src.data;
@@ -887,9 +1343,6 @@ DECLARE_YUV_PLANAR(YUV411, XRGB1555) {
 }
 
 DECLARE_YUV_PLANAR(YUV411, RGB565) {
-	vdpixsize h = dst.h;
-	vdpixsize w = dst.w;
-
 	uint16			*out	= (uint16 *)dst.data;
 	const ptrdiff_t	opitch	= dst.pitch;
 	const uint8		*yrow	= (const uint8 *)src.data;
@@ -957,9 +1410,6 @@ DECLARE_YUV_PLANAR(YUV411, RGB565) {
 }
 
 DECLARE_YUV_PLANAR(YUV411, RGB888) {
-	vdpixsize h = dst.h;
-	vdpixsize w = dst.w;
-
 	uint8			*out	= (uint8 *)dst.data;
 	const ptrdiff_t	opitch	= dst.pitch;
 	const uint8		*yrow	= (const uint8 *)src.data;
@@ -1020,9 +1470,6 @@ DECLARE_YUV_PLANAR(YUV411, RGB888) {
 }
 
 DECLARE_YUV_PLANAR(YUV411, XRGB8888) {
-	vdpixsize h = dst.h;
-	vdpixsize w = dst.w;
-
 	uint32			*out	= (uint32 *)dst.data;
 	const ptrdiff_t	opitch	= dst.pitch;
 	const uint8		*yrow	= (const uint8 *)src.data;

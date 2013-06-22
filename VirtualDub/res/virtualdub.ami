@@ -299,6 +299,12 @@ dialog 1014, "" : fill, child {
 			checkbox 100, "Use 1GB instead of 2GB as threshold for OpenDML indexing";
 			checkbox 101, "Disable auto-correction of data rate for MPEG layer III audio streams";
 			checkbox 102, "Directly decode uncompressed YCbCr (YUV) sources";
+			checkbox 103, "Align large uncompressed frames to sector boundary";
+			set 300: spacing=3, marginl=12, enable={@103} {
+				now valign=center;
+				label 0, "Byte &threshold:";
+				textedit 200, "" : minw=60, sunken;
+			}
 		}
 	}
 }
@@ -375,7 +381,6 @@ dialog 2010, "" : fill, child {
 dialog 2100, "Select raw audio format" : minw=200, aspect=140, align=fill, valign=fill+expand {
 	set 0 : vertical, fill, spacing=3 {
 		listbox 100 : sunken, fill;
-		checkbox 101, "&Save as default for this device";
 		include template kTemplateOKCancel;
 	}
 }
@@ -403,11 +408,6 @@ dialog 2101, "Capture sync options" : aspect=140, maxw=350 {
 
 dialog 2102, "Capture device options" : aspect=140, maxw=350 {
 	set 0 : vertical {
-		checkbox 100, "Save current &audio format as default";
-		checkbox 101, "Save current audio c&ompression format as default";
-		checkbox 102, "Save current &video format as default";
-		checkbox 103, "Save current video &compression format as default";
-		checkbox 104, "Save current &frame rate as default";
 		checkbox 105, "Save current display &mode as default";
 		checkbox 106, "S&witch audio source when changing video source";
 		checkbox 107, "Disable &overlay display when displaying menus";

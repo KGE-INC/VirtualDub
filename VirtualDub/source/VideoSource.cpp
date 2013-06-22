@@ -747,6 +747,9 @@ void VideoSourceAVI::_construct() {
 				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
 				mSourceVariant = 2;
 				break;
+			case '9UVY':		// YVU9
+				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV410_Planar;
+				break;
 			case '  8Y':		// Y8
 				mSourceLayout.format = nsVDPixmap::kPixFormat_Y8;
 				break;
@@ -1548,56 +1551,6 @@ bool VideoSourceAVI::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 
 ////////////////////////////////////////////////
 
-void DIBconvert(void *src0, BITMAPINFOHEADER *srcfmt, void *dst0, BITMAPINFOHEADER *dstfmt) {
-	const DWORD srcType = srcfmt->biCompression;
-	if (srcType == '21VY') {
-		VDPixmap pxs = {0};
-		VDPixmap pxd = {0};
-
-		pxs.data		= src0;
-		pxs.w			= srcfmt->biWidth;
-		pxs.h			= srcfmt->biHeight;
-		pxs.format		= nsVDPixmap::kPixFormat_YUV420_Planar;
-		pxs.pitch		= srcfmt->biWidth;
-		pxs.data3		= (char *)pxs.data + pxs.pitch * pxs.h;
-		pxs.pitch3		= (pxs.w + 1) >> 1;
-		pxs.data2		= (char *)pxs.data3 + pxs.pitch3 * ((pxs.h+1)>>1);
-		pxs.pitch2		= pxs.pitch3;
-
-		pxd.w			= dstfmt->biWidth;
-		pxd.h			= dstfmt->biHeight;
-
-		switch(dstfmt->biBitCount) {
-		case 16:
-			pxd.format		= nsVDPixmap::kPixFormat_XRGB1555;
-			break;
-		case 24:
-			pxd.format		= nsVDPixmap::kPixFormat_RGB888;
-			break;
-		case 32:
-			pxd.format		= nsVDPixmap::kPixFormat_XRGB8888;
-			break;
-		default:
-			return;
-		}
-
-		pxd.pitch		= -((dstfmt->biWidth * dstfmt->biBitCount + 31)>>5)*4;
-		pxd.data		= (char *)dst0 - pxd.pitch * (dstfmt->biHeight - 1);
-
-		VDPixmapBlt(pxd, pxs);
-	} else {
-		VBitmap dstbm(dst0, dstfmt);
-		VBitmap srcbm(src0, srcfmt);
-
-		if (srcfmt->biCompression == '2YUY')
-			dstbm.BitBltFromYUY2(0, 0, &srcbm, 0, 0, -1, -1);
-		else if (srcfmt->biCompression == '024I')
-			VBitmap(dst0, dstfmt).BitBltFromI420(0, 0, &srcbm, 0, 0, -1, -1);
-		else
-			VBitmap(dst0, dstfmt).BitBlt(0, 0, &srcbm, 0, 0, -1, -1);
-	}
-}
-
 void VideoSourceAVI::DecompressFrame(const void *pSrc) {
 	if (!VDINLINEASSERT(mTargetFormat.format))
 		return;
@@ -1751,8 +1704,16 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 		}
 	} else {
 		const BITMAPINFOHEADER *bih = getImageFormat();
-		long nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4 * bih->biHeight;
-		void *tmpBuffer = 0;
+		void *tmpBuffer = NULL;
+		long nBytesRequired;
+
+		// RGB formats are aligned to DWORD, but YCbCr formats are not.
+		if (bih->biCompression == BI_RGB || bih->biCompression == BI_BITFIELDS)
+			nBytesRequired = ((bih->biWidth * bih->biBitCount + 31)>>5) * 4;
+		else
+			nBytesRequired = (bih->biWidth * bih->biBitCount + 7) >> 3;
+
+		nBytesRequired *= bih->biHeight;
 
 		if (data_len < nBytesRequired) {
 			if (mErrorMode != kErrorModeReportAll) {

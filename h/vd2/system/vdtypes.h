@@ -37,6 +37,48 @@
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//	compiler detection
+//
+///////////////////////////////////////////////////////////////////////////
+
+#ifndef VD_COMPILER_DETECTED
+	#define VD_COMPILER_DETECTED
+
+	#ifdef _MSC_VER
+		#define VD_COMPILER_MSVC	_MSC_VER
+
+		#if _MSC_VER >= 1400
+			#define VD_COMPILER_MSVC_VC8		1
+
+			#if _MSC_FULL_VER == 140040310
+				#define VD_COMPILER_MSVC_VC8_PSDK 1
+			#elif _MSC_FULL_VER == 14002207
+				#define VD_COMPILER_MSVC_VC8_DDK 1
+			#endif
+
+		#elif _MSC_VER >= 1310
+			#define VD_COMPILER_MSVC_VC71	1
+		#elif _MSC_VER >= 1300
+			#define VD_COMPILER_MSVC_VC7		1
+		#elif _MSC_VER >= 1200
+			#define VD_COMPILER_MSVC_VC6		1
+		#endif
+
+	#endif
+#endif
+
+#ifndef VD_CPU_DETECTED
+	#define VD_CPU_DETECTED
+
+	#ifdef _M_AMD64
+		#define VD_CPU_AMD64	1
+	#elif _M_IX86
+		#define VD_CPU_X86		1
+	#endif
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+//
 //	types
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -97,7 +139,7 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#if defined(_MSC_VER) && (_MSC_VER < 1300 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1300 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
 #define new_nothrow new
 #else
 #define new_nothrow new(std::nothrow)
@@ -109,7 +151,7 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#if _MSC_VER < 1300 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207)
+#if defined(VD_COMPILER_MSVC_VC6) || defined(VD_COMPILER_MSVC_VC8_DDK) || defined(VD_COMPILER_MSVC_VC8_PSDK)
 	// The VC6 STL was deliberately borked to avoid conflicting with
 	// Windows min/max macros.  We work around this bogosity here.  Note
 	// that NOMINMAX must be defined for these to compile properly.  Also,
@@ -136,7 +178,7 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#if _MSC_VER < 1400 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207)
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1400 || (defined(VD_COMPILER_MSVC_VC8_PSDK) || defined(VD_COMPILER_MSVC_VC8_DDK)))
 	// swprintf() is not Standard, as it turns out. For now we map swprintf()
 	// to _swprintf() under VC8; we'll fix it later when VC8 becomes the
 	// baseline compiler.
@@ -157,7 +199,7 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#if defined(_MSC_VER)
+#if defined(VD_COMPILER_MSVC)
 	#define VDINTERFACE		__declspec(novtable)
 	#define VDNORETURN		__declspec(noreturn)
 	#define VDPUREFUNC
@@ -315,7 +357,7 @@ extern void VDDebugPrint(const char *format, ...);
 // This avoids the conversion operator but unfortunately usually generates
 // an actual loop in the output.
 
-#if defined(_MSC_VER) && (_MSC_VER < 1400 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1400 || defined(VD_COMPILER_MSVC_VC8_DDK))
 #define vdobjectscope(object_def) if(object_def) VDNEVERHERE; else
 #else
 #define vdobjectscope(object_def) switch(object_def) case 0: default:
@@ -519,7 +561,7 @@ public:
 // @&#(* preprocessor doesn't view template brackets as escaping commas, so we have a slight
 // problem....
 
-#ifdef _MSC_VER
+#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1400 || defined(VD_COMPILER_MSVC_VC8_DDK))
 #define vdprotected2(actionf, type1, arg1, type2, arg2) if(VDProtectedAutoScope2<type1, type2> autoscope = VDProtectedAutoScopeData2<type1, type2>(__FILE__, __LINE__, actionf, arg1, arg2)) VDNEVERHERE; else
 #define vdprotected3(actionf, type1, arg1, type2, arg2, type3, arg3) if(VDProtectedAutoScope3<type1, type2, type3> autoscope = VDProtectedAutoScopeData3<type1, type2, type3>(__FILE__, __LINE__, actionf, arg1, arg2, arg3)) VDNEVERHERE; else
 #define vdprotected4(actionf, type1, arg1, type2, arg2, type3, arg3, type4, arg4) if(VDProtectedAutoScope4<type1, type2, type3, type4> autoscope = VDProtectedAutoScopeData4<type1, type2, type3, type4>(__FILE__, __LINE__, actionf, arg1, arg2, arg3, arg4)) VDNEVERHERE; else

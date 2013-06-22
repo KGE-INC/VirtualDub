@@ -363,6 +363,20 @@ namespace {
 				g_pVideoCodecBugTrap->OnCodecRenamingDetected(info.szDescription);
 		}
 
+		// if the result passed, check whether we have a bad MS MPEG-4 V2/V3 codec
+
+		if (result == ICERR_OK) {
+			// check for bad MPEG-4 V2/V3 codec
+
+			if (lpbiIn->biCompression == '24PM') {
+				if (!CheckMPEG4Codec(hic, false))
+					return ICERR_UNSUPPORTED;
+			} else if (lpbiIn->biCompression == '34PM') {
+				if (!CheckMPEG4Codec(hic, true))
+					return ICERR_UNSUPPORTED;
+			}
+		}
+
 		return result;
 	}
 
@@ -498,8 +512,10 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 				hicDecomp = VDSafeICOpenW32(ICTYPE_VIDEO, fcc, ICMODE_DECOMPRESS);
 
 			if (!hicDecomp || ICERR_OK!=VDSafeICDecompressQueryW32(hicDecomp, &*bmih, NULL)) {
-				if (hicDecomp)
+				if (hicDecomp) {
 					ICClose(hicDecomp);
+					hicDecomp = NULL;
+				}
 
 				// Failed. Check if it is an MPEG-4 V3 clone; if so, cycle through the known clones
 				// in order.
@@ -522,6 +538,10 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 								continue;
 
 							bmih->biCompression = kMPEG4V3Clones[j];
+							hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, NULL);
+							if (hicDecomp)
+								break;
+							bmih->biCompression = fcc;
 						}
 
 						break;
@@ -529,27 +549,14 @@ IVDVideoDecompressor *VDFindVideoDecompressor(uint32 preferredHandler, const voi
 				}
 
 				// Okay, search all installed codecs.
-				hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, NULL);
+				if (!hicDecomp)
+					hicDecomp = VDSafeICLocateDecompressW32(ICTYPE_VIDEO, NULL, &*bmih, NULL);
 			}
 		}
 	}
 
 	if (!hicDecomp)
 		return NULL;
-
-	// check for bad MPEG-4 V2/V3 codec
-
-	if (bmih->biCompression == '24PM') {
-		if (!CheckMPEG4Codec(hicDecomp, false)) {
-			ICClose(hicDecomp);
-			return NULL;
-		}
-	} else if (bmih->biCompression == '34PM') {
-		if (!CheckMPEG4Codec(hicDecomp, true)) {
-			ICClose(hicDecomp);
-			return NULL;
-		}
-	}
 
 	// All good!
 

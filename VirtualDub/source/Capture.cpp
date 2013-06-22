@@ -232,7 +232,6 @@ public:
 	uint32		mFramePeriod;
 	uint64		mLastUpdateTime;
 	long		mLastTime;
-	long		mUncompressedFrameSize;
 	int			mSegmentIndex;
 
 	vdautoptr<VideoSequenceCompressor> mpVideoCompressor;
@@ -310,7 +309,6 @@ VDCaptureData::VDCaptureData()
 	, mFramePeriod(0)
 	, mLastUpdateTime(0)
 	, mLastTime(0)
-	, mUncompressedFrameSize(0)
 	, mSegmentIndex(0)
 	, mpVideoCompressor(NULL)
 	, mpOutput(NULL)
@@ -991,7 +989,7 @@ int VDCaptureProject::GetVideoSourceIndex() {
 }
 
 int VDCaptureProject::GetVideoSourceByName(const wchar_t *name) {
-	return GetByName(GetVideoSourceCount(), GetVideoSourceName, name);
+	return GetByName(GetVideoSourceCount(), &VDCaptureProject::GetVideoSourceName, name);
 }
 
 int VDCaptureProject::GetAudioSourceCount() {
@@ -1018,7 +1016,7 @@ int VDCaptureProject::GetAudioSourceIndex() {
 }
 
 int VDCaptureProject::GetAudioSourceByName(const wchar_t *name) {
-	return GetByName(GetAudioSourceCount(), GetAudioSourceName, name);
+	return GetByName(GetAudioSourceCount(), &VDCaptureProject::GetAudioSourceName, name);
 }
 
 int VDCaptureProject::GetAudioSourceForVideoSource(int idx) {
@@ -1049,7 +1047,7 @@ int VDCaptureProject::GetAudioInputIndex() {
 }
 
 int VDCaptureProject::GetAudioInputByName(const wchar_t *name) {
-	return GetByName(GetAudioInputCount(), GetAudioInputName, name);
+	return GetByName(GetAudioInputCount(), &VDCaptureProject::GetAudioInputName, name);
 }
 
 void VDCaptureProject::SetAudioCaptureEnabled(bool b) {
@@ -1576,6 +1574,9 @@ void VDCaptureProject::Capture(bool fTest) {
 			icd.mpAudioOut = NULL;
 			if (bCaptureAudio)
 				icd.mpAudioOut = icd.mpOutput->createAudioStream();
+
+			if (!mbStripingEnabled)
+				icd.mpOutputFile->setAlignment(0, 8);
 		}
 
 		// initialize audio
@@ -1721,11 +1722,6 @@ unknown_PCM_format:
 
 		icd.mbNTSC			= ((GetFrameTime()|1) == 33367);
 		icd.mFramePeriod	= GetFrameTime();
-
-		if (!bmiInput->biBitCount)
-			icd.mUncompressedFrameSize		= ((bmiInput->biWidth * 2 + 3) & -3) * bmiInput->biHeight;
-		else
-			icd.mUncompressedFrameSize		= ((bmiInput->biWidth * ((bmiInput->biBitCount + 7)/8) + 3) & -3) * bmiInput->biHeight;
 
 		// set up resynchronizer and stats filter
 
@@ -2429,6 +2425,7 @@ void VDCaptureData::CreateNewFile() {
 			pNewFile->set_1Gb_limit();
 
 		pNewFile->set_capture_mode(true);
+		pNewFile->setAlignment(0, 8);
 
 		// copy over information to new file
 

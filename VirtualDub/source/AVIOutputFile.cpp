@@ -188,6 +188,7 @@ private:
 		sint32	mHeaderPos;				// position of stream header
 		sint32	mFormatPos;				// position of format
 		sint32	mSuperIndexPos;			// position of superindex
+		uint32	mAlignment;				///< Required alignment in bytes (power of two), or zero if no special alignment is required.
 
 		bool	mbIsVideo;
 
@@ -246,6 +247,7 @@ public:
 	void disable_extended_avi();
 	void set_1Gb_limit();
 	void set_capture_mode(bool b);
+	void setAlignment(int stream, uint32 align);
 	void setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, int cbBlock);
 	void setHiddenTag(const char *pTag);
 	void setInterleaved(bool bInterleaved) { mbInterleaved = bInterleaved; }
@@ -363,6 +365,7 @@ AVIOutputFile::StreamInfo::StreamInfo()
 	, mFirstChunkPos(0)
 	, mLastChunkPos(0)
 	, mChunkCount(0)
+	, mAlignment(0)
 {
 }
 
@@ -416,6 +419,17 @@ void AVIOutputFile::set_1Gb_limit() {
 
 void AVIOutputFile::set_capture_mode(bool b) {
 	mbCaptureMode = b;
+}
+
+void AVIOutputFile::setAlignment(int streamIdx, uint32 alignment) {
+	if (VDINLINEASSERTFALSE(streamIdx >= mStreams.size()))
+		return;
+
+	tStreams::iterator itStream(mStreams.begin());
+	std::advance(itStream, streamIdx);
+	StreamInfo& stream = *itStream;
+
+	stream.mAlignment = alignment;
 }
 
 void AVIOutputFile::setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, int cbBlock) {
@@ -927,8 +941,21 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 		BlockOpen();
 	}
 
-	// Write the chunk.
+	// Align the chunk, if an alignment was specified for this stream.
+	uint32 buf[2];
 
+	if (stream.mAlignment) {
+		int offset = (int)(mFilePosition+8) & (stream.mAlignment - 1);
+
+		if (offset) {
+			buf[0] = kChunkID_JUNK;
+			buf[1] = (-offset-8) & (stream.mAlignment - 1);
+			FastWrite(buf, 8);
+			FastWrite(NULL, buf[1]);
+		}
+	}
+
+	// Write index entry for the chunk.
 	const int idxoffset = mIndexEntries & (IndexEntryBlock::kEntries - 1);
 
 	if (!idxoffset)
@@ -944,7 +971,7 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 	++stream.mChunkCount;			// Important: This must only be done iff the entry is added or a crash will occur during index write.
 	++mIndexEntries;
 
-	uint32 buf[5];
+	// Write the chunk.
 	buf[0] = stream.mChunkID;
 	buf[1] = cbBuffer;
 	FastWrite(buf, 8);
@@ -953,42 +980,9 @@ void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBu
 
 	FastWrite(pBuffer, cbBuffer);
 
-	// Align to 8-byte boundary, not 2-byte, in capture mode.
-
-	if (mbCaptureMode) {
-		char *pp;
-		int offset = (int)mFilePosition & 7;
-
-		// offset=0:	no action
-		// offset=1/2:	[00] 'JUNK' 6 <6 bytes>
-		// offset=3/4:	[00] 'JUNK' 4 <4 bytes>
-		// offset=5/6:	[00] 'JUNK' 2 <2 bytes>
-		// offset=7:	00
-
-		if (offset) {
-			buf[0]	= 0;
-			buf[1]	= kChunkID_JUNK;
-			buf[2]	= (-offset) & 6;
-			buf[3]	= 0;
-			buf[4]	= 0;
-
-			pp = (char *)&buf[1];
-
-			if (offset & 1)
-				--pp;
-
-			FastWrite(pp, (offset & 1) + (((offset+1)&7) ? 8+buf[2] : 0));
-		}
-	} else {
-
-		// Standard AVI: use 2 bytes
-
-		if (cbBuffer & 1) {
-			char zero = 0;
-			FastWrite(&zero, 1);
-		}
-	}
-
+	// AVI chunks must be aligned to even boundaries.
+	if (cbBuffer & 1)
+		FastWrite(NULL, 1);
 }
 
 void AVIOutputFile::BlockClose() {

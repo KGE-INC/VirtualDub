@@ -4,7 +4,7 @@
 
 # TARGTYPE "Win32 (x86) Console Application" 0x0103
 
-CFG=test - Win32 Debug
+CFG=test - Win32 Debug AMD64
 !MESSAGE This is not a valid makefile. To build this project using NMAKE,
 !MESSAGE use the Export Makefile command and run
 !MESSAGE 
@@ -13,12 +13,14 @@ CFG=test - Win32 Debug
 !MESSAGE You can specify a configuration when running NMAKE
 !MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
-!MESSAGE NMAKE /f "test.mak" CFG="test - Win32 Debug"
+!MESSAGE NMAKE /f "test.mak" CFG="test - Win32 Debug AMD64"
 !MESSAGE 
 !MESSAGE Possible choices for configuration are:
 !MESSAGE 
 !MESSAGE "test - Win32 Release" (based on "Win32 (x86) Console Application")
 !MESSAGE "test - Win32 Debug" (based on "Win32 (x86) Console Application")
+!MESSAGE "test - Win32 Debug AMD64" (based on "Win32 (x86) Console Application")
+!MESSAGE "test - Win32 Release AMD64" (based on "Win32 (x86) Console Application")
 !MESSAGE 
 
 # Begin Project
@@ -76,18 +78,76 @@ LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
 # ADD LINK32 system.lib kasumi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept /libpath:"..\lib\Debug"
 
+!ELSEIF  "$(CFG)" == "test - Win32 Debug AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 1
+# PROP BASE Output_Dir "test___Win32_Debug_AMD64"
+# PROP BASE Intermediate_Dir "test___Win32_Debug_AMD64"
+# PROP BASE Ignore_Export_Lib 0
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 1
+# PROP Output_Dir "..\out\DebugAMD64"
+# PROP Intermediate_Dir "..\obj\DebugAMD64\test"
+# PROP Ignore_Export_Lib 0
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_CONSOLE" /D "_UNICODE" /D "UNICODE" /D "WIN32_LEAN_AND_MEAN" /D "VC_EXTRALEAN" /D "NOMINMAX" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_CONSOLE" /D "_UNICODE" /D "UNICODE" /D "WIN32_LEAN_AND_MEAN" /D "VC_EXTRALEAN" /D "NOMINMAX" /D "_CRT_SECURE_NO_DEPRECATE" /YX /FD /GF /c
+# ADD BASE RSC /l 0x409 /d "_DEBUG"
+# ADD RSC /l 0x409 /d "_DEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LINK32=link.exe
+# ADD BASE LINK32 system.lib kasumi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept /libpath:"..\lib\Debug"
+# ADD LINK32 system.lib kasumi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib  bufferoverflowU.lib /nologo /subsystem:console /debug /machine:IX86 /out:"..\out\DebugAMD64/test64.exe" /pdbtype:sept /libpath:"..\lib\DebugAMD64" /machine:AMD64
+# SUBTRACT LINK32 /pdb:none
+
+!ELSEIF  "$(CFG)" == "test - Win32 Release AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "test___Win32_Release_AMD64"
+# PROP BASE Intermediate_Dir "test___Win32_Release_AMD64"
+# PROP BASE Ignore_Export_Lib 0
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 0
+# PROP Output_Dir "..\out\ReleaseAMD64"
+# PROP Intermediate_Dir "..\obj\ReleaseAMD64\test"
+# PROP Ignore_Export_Lib 0
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_CONSOLE" /D "_UNICODE" /D "UNICODE" /D "WIN32_LEAN_AND_MEAN" /D "VC_EXTRALEAN" /D "NOMINMAX" /YX /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /O2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_CONSOLE" /D "_UNICODE" /D "UNICODE" /D "WIN32_LEAN_AND_MEAN" /D "VC_EXTRALEAN" /D "NOMINMAX" /D "_CRT_SECURE_NO_DEPRECATE" /YX /FD /GF /GS- /c
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LINK32=link.exe
+# ADD BASE LINK32 system.lib kasumi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:console /debug /machine:I386 /libpath:"..\lib\Release"
+# ADD LINK32 system.lib kasumi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib  bufferoverflowU.lib /nologo /subsystem:console /debug /machine:IX86 /out:"..\out\ReleaseAMD64/test64.exe" /libpath:"..\lib\ReleaseAMD64" /machine:AMD64
+# SUBTRACT LINK32 /pdb:none
+
 !ENDIF 
 
 # Begin Target
 
 # Name "test - Win32 Release"
 # Name "test - Win32 Debug"
+# Name "test - Win32 Debug AMD64"
+# Name "test - Win32 Release AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
 SOURCE=.\source\main.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\TestFraction.cpp
 # End Source File
 # Begin Source File
 

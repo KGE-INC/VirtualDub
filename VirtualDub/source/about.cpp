@@ -89,7 +89,7 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	float one_over_A;
 	float dudx, dvdx;
 	float dudy, dvdy;
-	int dudxi, dvdxi;
+	uint32 dudxi, dvdxi;
 
 	A = (pt->y - pl->y) * (pr->x - pl->x) - (pt->x - pl->x) * (pr->y - pl->y);
 	one_over_A = 1.0f / A;
@@ -98,8 +98,8 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 	dudy = ((pt->u - pl->u) * (pr->x - pl->x) - (pr->u - pl->u) * (pt->x - pl->x)) * one_over_A;
 	dvdy = ((pt->v - pl->v) * (pr->x - pl->x) - (pr->v - pl->v) * (pt->x - pl->x)) * one_over_A;
 
-	dudxi = (long)(dudx * 16777216.0f);
-	dvdxi = (long)(dvdx * 16777216.0f);
+	dudxi = (int)(dudx * 16777216.0f) << 3;
+	dvdxi = (int)(dvdx * 16777216.0f) << 3;
 	
 	// Compute edge walking parameters
 
@@ -232,7 +232,7 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 
 		int x1, x2;
 		float xf;
-		int u, v;
+		unsigned u, v;
 
 		// x_left must be less than (x+0.5) to include pixel x.
 
@@ -240,22 +240,12 @@ void RenderTriangle(Pixel16 *dst, long dstpitch, Pixel16 *tex, TriPt *pt1, TriPt
 		x2		= (int)floor(xr + 0.5f);
 		xf		= (x1+0.5f) - xl;
 		
-		u		= ((int)((ul + xf * dudx)*16777216.0f) /*>> mipmaplevel*/) + u_correct;
-		v		= ((int)((vl + xf * dvdx)*16777216.0f) /*>> mipmaplevel*/) + v_correct;
-
-/*		if (x1<0) {
-			x1=0;
-			u -= dudxi * x1;
-			v -= dvdxi * x1;
-		}
-		if (x2>160) x2=160;*/
+		u		= ((int)((ul + xf * dudx)*16777216.0f) << 3) + u_correct;
+		v		= ((int)((vl + xf * dvdx)*16777216.0f) << 3) + v_correct;
 
 		while(x1 < x2) {
-//			dst[x1++] = tex[(u>>24) + (v>>24)*64];
-			uint32 A = tex[(u>>24) + (v>>24)*32];
+			uint32 A = tex[(u>>27) + (v>>27)*32];
 			uint32 B = dst[x1];
-
-//			dst[x1] = (((A^B) & 0x7bde)>>1) + (A&B);
 
 			uint32 p0 = (((A^B ) & 0x7bde)>>1) + (A&B);
 			uint32 p  = (((A^p0) & 0x7bde)>>1) + (A&B);
@@ -299,19 +289,21 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 	char buf[4096];
 #ifdef __INTEL_COMPILER
 	const char *const s = "Intel C/C++ Compiler 6.0";
-#elif _MSC_VER >= 1400
-	#ifdef _M_AMD64
-		#if _MSC_FULL_VER <= 14002207
+#elif VD_COMPILER_MSVC >= 1400
+	#if VD_CPU_AMD64
+		#if VD_COMPILER_MSVC_VC8_DDK
 			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (DDK version)";
+		#elif VD_COMPILER_MSVC_VC8_PSDK
+			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (PSDK version)";
 		#else
 			const char *const s = "Microsoft Visual Studio .NET (2005) for AMD64";
 		#endif
 	#else
 		const char *const s = "Microsoft Visual Studio .NET (2005) for X86";
 	#endif
-#elif _MSC_VER >= 1310
+#elif VD_COMPILER_MSVC >= 1310
 	const char *const s = "Microsoft Visual Studio .NET (2003)";
-#elif _MSC_VER >= 1300
+#elif VD_COMPILER_MSVC >= 1300
 	const char *const s = "Microsoft Visual Studio .NET (2002)";
 #else
 	const char *const s = "Microsoft Visual C++ 6.0 SP5 + Processor Pack";

@@ -4,14 +4,13 @@
 		.model	flat
 		.const
 
-y_co	dq		02543254325432543h
-cr_co_r	dq		03313331333133313h
-cb_co_b	dq		0408d408d408d408dh
-cr_co_g	dq		0e5fce5fce5fce5fch
-cb_co_g	dq		0f377f377f377f377h
-r_bias	dq		0ff21ff21ff21ff21h
-g_bias	dq		00088008800880088h
-b_bias	dq		0feebfeebfeebfeebh
+y_co	dq		0004a004a004a004ah
+cr_co_r	dq		000cc00cc00cc00cch
+cb_co_b	dq		00081008100810081h		;note: divided by two
+cr_co_g	dq		0ff98ff98ff98ff98h
+cb_co_g	dq		0ffceffceffceffceh
+y_bias	dq		0fb7afb7afb7afb7ah
+c_bias	dq		0ff80ff80ff80ff80h
 interp	dq		06000400020000000h
 rb_mask_555	dq		07c1f7c1f7c1f7c1fh
 g_mask_555	dq		003e003e003e003e0h
@@ -20,7 +19,7 @@ g_mask_565	dq		007e007e007e007e0h
 
 cr_coeff	dq	000003313e5fc0000h
 cb_coeff	dq	000000000f377408dh
-bias		dq	000007f2180887eebh
+rgb_bias	dq	000007f2180887eebh
 
 msb_inv	dq		08000800080008000h
 
@@ -28,7 +27,7 @@ msb_inv	dq		08000800080008000h
 
 ;============================================================================
 
-_vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	proc	near public
+YUV411PLANAR_TO_RGB_PROLOG	macro
 		push		ebp
 		push		edi
 		push		esi
@@ -41,13 +40,17 @@ _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	proc	near public
 		mov			ebp, [esp+20+16]
 
 		pxor		mm7, mm7
+		endm
 
-@xloop:
+YUV411PLANAR_TO_RGB_CORE_MMX	macro
 		movd		mm0, dword ptr [ecx]		;mm0 = Y3Y2Y1Y0
 		add			ecx, 4
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		pmulhw		mm0, y_co
+		movq		mm1, mm0
+		pmullw		mm0, y_co
+		paddw		mm1, y_bias
+		paddsw		mm0, mm0
+		paddsw		mm0, mm1
 
 		movzx		esi, word ptr [ebx]
 		movzx		edi, word ptr [edx]
@@ -58,12 +61,14 @@ _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	proc	near public
 		movd		mm2, edi
 
 		punpcklbw	mm1, mm7
+		paddw		mm1, c_bias
 		punpcklwd	mm1, mm1
 		movq		mm3, mm1
 		punpckldq	mm1, mm1
 		punpckhdq	mm3, mm3
 
 		punpcklbw	mm2, mm7
+		paddw		mm2, c_bias
 		punpcklwd	mm2, mm2
 		movq		mm4, mm2
 		punpckldq	mm2, mm2
@@ -80,74 +85,38 @@ _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	proc	near public
 		paddw		mm1, mm3
 		paddw		mm2, mm4
 
-		psllw		mm1, 3
-		psllw		mm2, 3
-
 		movq		mm3, mm1
 		movq		mm4, mm2
 
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-		pmulhw		mm3, cr_co_g
-		pmulhw		mm4, cb_co_g
+		pmullw		mm1, cr_co_r
+		pmullw		mm2, cb_co_b
+		pmullw		mm3, cr_co_g
+		pmullw		mm4, cb_co_g
 
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
+		paddsw		mm2, mm2
+		paddsw		mm1, mm0
+		paddsw		mm3, mm4
+		paddsw		mm2, mm0
+		paddsw		mm3, mm0
 
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
+		psraw		mm1, 7
+		psraw		mm2, 7
+		psraw		mm3, 7
 
 		packuswb	mm1, mm1
 		packuswb	mm2, mm2
 		packuswb	mm3, mm3
+		endm
 
-		psrlw		mm1, 1
-		psrlw		mm2, 3
-		punpcklbw	mm2, mm1
-		punpcklbw	mm3, mm3
-		psllw		mm3, 2
-		pand		mm2, rb_mask_555
-		pand		mm3, g_mask_555
-		por			mm2, mm3
-
-		movq		[eax], mm2
-		add			eax, 8
-
-		sub			ebp, 1
-		jne			@xloop
-
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
-_vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	endp
-
-;============================================================================
-
-_vdasm_pixblt_YUV411Planar_to_RGB565_scan_MMX	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
-
-		pxor		mm7, mm7
-
-@xloop:
+YUV411PLANAR_TO_RGB_CORE_ISSE	macro
 		movd		mm0, dword ptr [ecx]		;mm0 = Y3Y2Y1Y0
 		add			ecx, 4
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		pmulhw		mm0, y_co
+		movq		mm1, mm0
+		pmullw		mm0, y_co
+		paddw		mm1, y_bias
+		paddsw		mm0, mm0
+		paddsw		mm0, mm1
 
 		movzx		esi, word ptr [ebx]
 		movzx		edi, word ptr [edx]
@@ -158,109 +127,12 @@ _vdasm_pixblt_YUV411Planar_to_RGB565_scan_MMX	proc	near public
 		movd		mm2, edi
 
 		punpcklbw	mm1, mm7
-		punpcklwd	mm1, mm1
-		movq		mm3, mm1
-		punpckldq	mm1, mm1
-		punpckhdq	mm3, mm3
-
-		punpcklbw	mm2, mm7
-		punpcklwd	mm2, mm2
-		movq		mm4, mm2
-		punpckldq	mm2, mm2
-		punpckhdq	mm4, mm4
-
-		psubw		mm3, mm1
-		psubw		mm4, mm2
-		paddw		mm3, mm3
-		paddw		mm4, mm4
-
-		pmulhw		mm3, interp
-		pmulhw		mm4, interp
-
-		paddw		mm1, mm3
-		paddw		mm2, mm4
-
-		psllw		mm1, 3
-		psllw		mm2, 3
-
-		movq		mm3, mm1
-		movq		mm4, mm2
-
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-		pmulhw		mm3, cr_co_g
-		pmulhw		mm4, cb_co_g
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
-
-		psrlw		mm2, 3
-		punpcklbw	mm2, mm1
-		punpcklbw	mm3, mm3
-		psllw		mm3, 3
-		pand		mm2, rb_mask_565
-		pand		mm3, g_mask_565
-		por			mm2, mm3
-
-		movq		[eax], mm2
-		add			eax, 8
-
-		sub			ebp, 1
-		jne			@xloop
-
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
-_vdasm_pixblt_YUV411Planar_to_RGB565_scan_MMX	endp
-
-;============================================================================
-
-_vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_MMX	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
-
-		pxor		mm7, mm7
-
-@xloop:
-		movd		mm0, dword ptr [ecx]		;mm0 = Y3Y2Y1Y0
-		add			ecx, 4
-		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		pmulhw		mm0, y_co
-
-		movzx		esi, word ptr [ebx]
-		movzx		edi, word ptr [edx]
-		add			ebx, 1
-		add			edx, 1
-
-		movd		mm1, esi
-		movd		mm2, edi
-
-		punpcklbw	mm1, mm7
+		paddw		mm1, c_bias
 		pshufw		mm3, mm1, 01010101b
 		pshufw		mm1, mm1, 00000000b
 
 		punpcklbw	mm2, mm7
+		paddw		mm2, c_bias
 		pshufw		mm4, mm2, 01010101b
 		pshufw		mm2, mm2, 00000000b
 
@@ -281,23 +153,87 @@ _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_MMX	proc	near public
 		movq		mm3, cr_co_g
 		movq		mm4, cb_co_g
 
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
+		pmullw		mm3, mm1
+		pmullw		mm4, mm2
+		pmullw		mm1, cr_co_r
+		pmullw		mm2, cb_co_b
 
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
+		paddsw		mm2, mm2
+		paddsw		mm1, mm0
+		paddsw		mm3, mm4
+		paddsw		mm2, mm0
+		paddsw		mm3, mm0
 
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
+		psraw		mm1, 7
+		psraw		mm2, 7
+		psraw		mm3, 7
 
 		packuswb	mm1, mm1
 		packuswb	mm2, mm2
 		packuswb	mm3, mm3
+		endm
+
+YUV411PLANAR_TO_RGB_EPILOG	macro
+		pop			ebx
+		pop			esi
+		pop			edi
+		pop			ebp
+		ret
+		endm
+
+_vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	proc	near public
+		YUV411PLANAR_TO_RGB_PROLOG
+@xloop:
+		YUV411PLANAR_TO_RGB_CORE_MMX
+
+		psrlw		mm1, 1
+		psrlw		mm2, 3
+		punpcklbw	mm2, mm1
+		punpcklbw	mm3, mm3
+		psllw		mm3, 2
+		pand		mm2, rb_mask_555
+		pand		mm3, g_mask_555
+		por			mm2, mm3
+
+		movq		[eax], mm2
+		add			eax, 8
+
+		sub			ebp, 1
+		jne			@xloop
+
+		YUV411PLANAR_TO_RGB_EPILOG
+_vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_MMX	endp
+
+;============================================================================
+
+_vdasm_pixblt_YUV411Planar_to_RGB565_scan_MMX	proc	near public
+		YUV411PLANAR_TO_RGB_PROLOG
+@xloop:
+		YUV411PLANAR_TO_RGB_CORE_MMX
+
+		psrlw		mm2, 3
+		punpcklbw	mm2, mm1
+		punpcklbw	mm3, mm3
+		psllw		mm3, 3
+		pand		mm2, rb_mask_565
+		pand		mm3, g_mask_565
+		por			mm2, mm3
+
+		movq		[eax], mm2
+		add			eax, 8
+
+		sub			ebp, 1
+		jne			@xloop
+
+		YUV411PLANAR_TO_RGB_EPILOG
+_vdasm_pixblt_YUV411Planar_to_RGB565_scan_MMX	endp
+
+;============================================================================
+
+_vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_MMX	proc	near public
+		YUV411PLANAR_TO_RGB_PROLOG
+@xloop:
+		YUV411PLANAR_TO_RGB_PROLOG
 
 		punpcklbw	mm2, mm1
 		punpcklbw	mm3, mm3
@@ -312,86 +248,15 @@ _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_MMX	proc	near public
 		sub			ebp, 1
 		jne			@xloop
 
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV411PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_MMX	endp
 
 ;============================================================================
 
 _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_ISSE	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
-
-		pxor		mm7, mm7
-
+		YUV411PLANAR_TO_RGB_PROLOG
 @xloop:
-		movd		mm0, dword ptr [ecx]		;mm0 = Y3Y2Y1Y0
-		add			ecx, 4
-		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		pmulhw		mm0, y_co
-
-		movzx		esi, word ptr [ebx]
-		movzx		edi, word ptr [edx]
-		add			ebx, 1
-		add			edx, 1
-
-		movd		mm1, esi
-		movd		mm2, edi
-
-		punpcklbw	mm1, mm7
-		pshufw		mm3, mm1, 01010101b
-		pshufw		mm1, mm1, 00000000b
-
-		punpcklbw	mm2, mm7
-		pshufw		mm4, mm2, 01010101b
-		pshufw		mm2, mm2, 00000000b
-
-		psubw		mm3, mm1
-		psubw		mm4, mm2
-		paddw		mm3, mm3
-		paddw		mm4, mm4
-
-		pmulhw		mm3, interp
-		pmulhw		mm4, interp
-
-		paddw		mm1, mm3
-		paddw		mm2, mm4
-
-		psllw		mm1, 3
-		psllw		mm2, 3
-
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV411PLANAR_TO_RGB_CORE_ISSE
 
 		psrlw		mm1, 1
 		psrlw		mm2, 3
@@ -408,86 +273,15 @@ _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_ISSE	proc	near public
 		sub			ebp, 1
 		jne			@xloop
 
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV411PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV411Planar_to_XRGB1555_scan_ISSE	endp
 
 ;============================================================================
 
 _vdasm_pixblt_YUV411Planar_to_RGB565_scan_ISSE	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
-
-		pxor		mm7, mm7
-
+		YUV411PLANAR_TO_RGB_PROLOG
 @xloop:
-		movd		mm0, dword ptr [ecx]		;mm0 = Y3Y2Y1Y0
-		add			ecx, 4
-		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		pmulhw		mm0, y_co
-
-		movzx		esi, word ptr [ebx]
-		movzx		edi, word ptr [edx]
-		add			ebx, 1
-		add			edx, 1
-
-		movd		mm1, esi
-		movd		mm2, edi
-
-		punpcklbw	mm1, mm7
-		pshufw		mm3, mm1, 01010101b
-		pshufw		mm1, mm1, 00000000b
-
-		punpcklbw	mm2, mm7
-		pshufw		mm4, mm2, 01010101b
-		pshufw		mm2, mm2, 00000000b
-
-		psubw		mm3, mm1
-		psubw		mm4, mm2
-		paddw		mm3, mm3
-		paddw		mm4, mm4
-
-		pmulhw		mm3, interp
-		pmulhw		mm4, interp
-
-		paddw		mm1, mm3
-		paddw		mm2, mm4
-
-		psllw		mm1, 3
-		psllw		mm2, 3
-
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV411PLANAR_TO_RGB_CORE_ISSE
 
 		psrlw		mm2, 3
 		punpcklbw	mm2, mm1
@@ -503,11 +297,7 @@ _vdasm_pixblt_YUV411Planar_to_RGB565_scan_ISSE	proc	near public
 		sub			ebp, 1
 		jne			@xloop
 
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV411PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV411Planar_to_RGB565_scan_ISSE	endp
 
 ;============================================================================
@@ -543,7 +333,7 @@ _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_ISSE	proc	near public
 		pmulhw		mm5, cr_coeff
 		pmulhw		mm6, cb_coeff
 		paddw		mm6, mm5
-		paddw		mm6, bias
+		paddw		mm6, rgb_bias
 
 @xloop:
 		movd		mm0, dword ptr [ecx];mm0 = Y3Y2Y1Y0
@@ -570,7 +360,7 @@ _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_ISSE	proc	near public
 		pmulhw		mm1, cr_coeff
 		pmulhw		mm2, cb_coeff
 		paddw		mm1, mm2
-		paddw		mm1, bias
+		paddw		mm1, rgb_bias
 
 		movq		mm2, mm1
 		pavgw		mm2, mm6			;mm2 = 1/2
@@ -597,16 +387,12 @@ _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_ISSE	proc	near public
 		sub			ebp, 1
 		jne			@xloop
 
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV411PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV411Planar_to_XRGB8888_scan_ISSE	endp
 
 ;==========================================================================
 
-_vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
+YUV444PLANAR_TO_RGB_PROLOG	macro
 		push		ebp
 		push		edi
 		push		esi
@@ -617,6 +403,52 @@ _vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
 		mov			edx, [esp+12+16]
 		mov			ebx, [esp+16+16]
 		mov			ebp, [esp+20+16]
+		endm
+
+YUV444PLANAR_TO_RGB_CORE	macro
+		movq		mm3, mm0
+		pmullw		mm0, y_co
+		paddw		mm1, c_bias
+		paddw		mm2, c_bias
+		paddw		mm0, y_bias
+		paddsw		mm0, mm0
+		paddsw		mm0, mm3
+
+		movq		mm3, cr_co_g
+		movq		mm4, cb_co_g
+
+		pmullw		mm3, mm1
+		pmullw		mm4, mm2
+		pmullw		mm1, cr_co_r
+		pmullw		mm2, cb_co_b
+
+		paddsw		mm2, mm2
+		paddsw		mm1, mm0
+		paddsw		mm3, mm4
+		paddsw		mm2, mm0
+		paddsw		mm3, mm0
+
+		psraw		mm1, 7
+		psraw		mm2, 7
+		psraw		mm3, 7
+
+		packuswb	mm1, mm1
+		packuswb	mm2, mm2
+		packuswb	mm3, mm3
+		endm
+
+YUV444PLANAR_TO_RGB_EPILOG	macro
+		pop			ebx
+		pop			esi
+		pop			edi
+		pop			ebp
+		ret
+		endm
+
+;==========================================================================
+
+_vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
+		YUV444PLANAR_TO_RGB_PROLOG
 
 		pxor		mm7, mm7
 		movq		mm5, rb_mask_555
@@ -634,31 +466,8 @@ _vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
 		punpcklbw	mm1, mm7
 		punpcklbw	mm2, mm7
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV444PLANAR_TO_RGB_CORE
 
 		psrlw		mm1, 1
 		psrlw		mm2, 3
@@ -687,32 +496,8 @@ _vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
 		add			ecx, 1
 		add			ebx, 1
 		add			edx, 1
-		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV444PLANAR_TO_RGB_CORE
 
 		psrlw		mm1, 1
 		psrlw		mm2, 3
@@ -730,26 +515,13 @@ _vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	proc	near public
 		sub			ebp, 1
 		jnz			@xloop
 @noodd:
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV444PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV444Planar_to_XRGB1555_scan_MMX	endp
 
 ;==========================================================================
 
 _vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
+		YUV444PLANAR_TO_RGB_PROLOG
 
 		pxor		mm7, mm7
 		movq		mm5, rb_mask_565
@@ -767,31 +539,8 @@ _vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX	proc	near public
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
 		punpcklbw	mm1, mm7
 		punpcklbw	mm2, mm7
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV444PLANAR_TO_RGB_CORE
 
 		psrlw		mm2, 3
 		punpcklbw	mm2, mm1
@@ -819,34 +568,8 @@ _vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX	proc	near public
 		add			ecx, 1
 		add			ebx, 1
 		add			edx, 1
-		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		punpcklbw	mm1, mm7
-		punpcklbw	mm2, mm7
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV444PLANAR_TO_RGB_CORE
 
 		psrlw		mm2, 3
 		punpcklbw	mm2, mm1
@@ -863,30 +586,15 @@ _vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX	proc	near public
 		sub			ebp, 1
 		jnz			@xloop
 @noodd:
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV444PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV444Planar_to_RGB565_scan_MMX	endp
 
 ;==========================================================================
 
 _vdasm_pixblt_YUV444Planar_to_XRGB8888_scan_MMX	proc	near public
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax, [esp+4+16]
-		mov			ecx, [esp+8+16]
-		mov			edx, [esp+12+16]
-		mov			ebx, [esp+16+16]
-		mov			ebp, [esp+20+16]
+		YUV444PLANAR_TO_RGB_PROLOG
 
 		pxor		mm7, mm7
-		movq		mm5, rb_mask_565
-		movq		mm6, g_mask_565
 
 		sub			ebp, 3
 		jbe			@oddcheck
@@ -900,31 +608,9 @@ _vdasm_pixblt_YUV444Planar_to_XRGB8888_scan_MMX	proc	near public
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
 		punpcklbw	mm1, mm7
 		punpcklbw	mm2, mm7
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
+		YUV444PLANAR_TO_RGB_CORE
 
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
 		punpcklbw	mm2, mm1
 		punpcklbw	mm3, mm3
 		movq		mm1, mm2
@@ -951,31 +637,8 @@ _vdasm_pixblt_YUV444Planar_to_XRGB8888_scan_MMX	proc	near public
 		add			ebx, 1
 		add			edx, 1
 		punpcklbw	mm0, mm7			;mm0 = Y3 | Y2 | Y1 | Y0
-		psllw		mm0, 3
-		psllw		mm1, 3
-		psllw		mm2, 3
-		pmulhw		mm0, y_co
 
-		movq		mm3, cr_co_g
-		movq		mm4, cb_co_g
-
-		pmulhw		mm3, mm1
-		pmulhw		mm4, mm2
-		pmulhw		mm1, cr_co_r
-		pmulhw		mm2, cb_co_b
-
-		paddw		mm1, mm0
-		paddw		mm3, mm4
-		paddw		mm2, mm0
-		paddw		mm3, mm0
-
-		paddw		mm1, r_bias
-		paddw		mm3, g_bias
-		paddw		mm2, b_bias
-
-		packuswb	mm1, mm1
-		packuswb	mm2, mm2
-		packuswb	mm3, mm3
+		YUV444PLANAR_TO_RGB_CORE
 
 		punpcklbw	mm2, mm1
 		punpcklbw	mm3, mm3
@@ -987,12 +650,7 @@ _vdasm_pixblt_YUV444Planar_to_XRGB8888_scan_MMX	proc	near public
 		sub			ebp, 1
 		jnz			@xloop
 @noodd:
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		ret
+		YUV444PLANAR_TO_RGB_EPILOG
 _vdasm_pixblt_YUV444Planar_to_XRGB8888_scan_MMX	endp
 
 		end
-

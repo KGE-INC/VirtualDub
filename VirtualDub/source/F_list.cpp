@@ -28,7 +28,12 @@ extern FilterDefinition
 	filterDef_invert,
 	filterDef_null,
 	filterDef_tsoften,
-	filterDef_resize
+	filterDef_resize,
+	filterDef_flipv,
+	filterDef_fliph,
+	filterDef_deinterlace,
+	filterDef_rotate,
+	filterDef_hsv
 
 #ifdef _M_IX86
 	,
@@ -40,12 +45,8 @@ extern FilterDefinition
 	filterDef_grayscale,
 	filterDef_reduce2hq,
 	filterDef_threshold,
-	filterDef_flipv,
-	filterDef_fliph,
 	filterDef_tv,
 	filterDef_smoother,
-	filterDef_deinterlace,
-	filterDef_rotate,
 	filterDef_rotate2,
 	filterDef_levels,
 	filterDef_blur,
@@ -53,7 +54,6 @@ extern FilterDefinition
 	filterDef_box,
 	filterDef_timesmooth,
 	filterDef_logo,
-	filterDef_hsv,
 	filterDef_perspective
 #endif
 	;
@@ -67,6 +67,11 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_null,
 	&filterDef_tsoften,
 	&filterDef_resize,
+	&filterDef_flipv,
+	&filterDef_fliph,
+	&filterDef_deinterlace,
+	&filterDef_rotate,
+	&filterDef_hsv,
 #ifdef _M_IX86
 	&filterDef_reduceby2,
 	&filterDef_convolute,
@@ -76,12 +81,8 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_grayscale,
 	&filterDef_reduce2hq,
 	&filterDef_threshold,
-	&filterDef_flipv,
-	&filterDef_fliph,
 	&filterDef_tv,
 	&filterDef_smoother,
-	&filterDef_deinterlace,
-	&filterDef_rotate,
 	&filterDef_rotate2,
 	&filterDef_levels,
 	&filterDef_blur,
@@ -89,7 +90,6 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_box,
 	&filterDef_timesmooth,
 	&filterDef_logo,
-	&filterDef_hsv,
 	&filterDef_perspective,
 #endif
 	NULL

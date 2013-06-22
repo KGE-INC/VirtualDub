@@ -24,6 +24,7 @@
 //		distribution.
 
 #include <windows.h>
+#include <malloc.h>
 #include <vector>
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
@@ -55,7 +56,7 @@ public:
 	void SetPreemptiveExtend(bool b) { mbPreemptiveExtend = b; }
 	bool IsPreemptiveExtendActive() { return mbPreemptiveExtend; }
 
-	bool IsOpen() { return mhFileFast != INVALID_HANDLE_VALUE; }
+	bool IsOpen() { return mhFileSlow != INVALID_HANDLE_VALUE; }
 
 	void Open(const wchar_t *pszFilename, uint32 count, uint32 bufferSize);
 	void Close();
@@ -114,11 +115,11 @@ void VDFileAsync9x::Open(const wchar_t *pszFilename, uint32 count, uint32 buffer
 	try {
 		mFilename = VDTextWToA(pszFilename);
 
-		mhFileSlow = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (mhFileSlow != INVALID_HANDLE_VALUE)
-			mhFileFast = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
-		if (mhFileFast == INVALID_HANDLE_VALUE)
+		mhFileSlow = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
+		if (mhFileSlow == INVALID_HANDLE_VALUE)
 			throw MyWin32Error("Unable to open file \"%s\" for write: %%s", GetLastError(), mFilename.c_str());
+
+		mhFileFast = CreateFile(mFilename.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 
 		mSectorSize = 4096;		// guess for now... proper way would be GetVolumeMountPoint() followed by GetDiskFreeSpace().
 
@@ -207,7 +208,7 @@ void VDFileAsync9x::Truncate(sint64 pos) {
 }
 
 void VDFileAsync9x::SafeTruncateAndClose(sint64 pos) {
-	if (mhFileFast != INVALID_HANDLE_VALUE) {
+	if (mhFileSlow != INVALID_HANDLE_VALUE) {
 		FastWrite(NULL, mSectorSize - 1);
 
 		mState = kStateFlush;
@@ -264,9 +265,10 @@ void VDFileAsync9x::ThreadRun() {
 	sint64	currentSize;
 	sint64	pos = 0;
 	uint32	bufferSize = mBlockCount * mBlockSize;
+	HANDLE  hFile = mhFileFast != INVALID_HANDLE_VALUE ? mhFileFast : mhFileSlow;
 
 	try {
-		if (!VDGetFileSizeW32(mhFileFast, currentSize))
+		if (!VDGetFileSizeW32(hFile, currentSize))
 			throw MyWin32Error("I/O error on file \"%s\": %%s", GetLastError(), mFilename.c_str());
 
 		for(;;) {
@@ -298,18 +300,18 @@ void VDFileAsync9x::ThreadRun() {
 						if (currentSize < checkpt)
 							currentSize = checkpt;
 
-						if (!VDSetFilePointerW32(mhFileFast, currentSize, FILE_BEGIN)
-							|| !SetEndOfFile(mhFileFast))
+						if (!VDSetFilePointerW32(hFile, currentSize, FILE_BEGIN)
+							|| !SetEndOfFile(hFile))
 							mbPreemptiveExtend = bPreemptiveExtend = false;
 
-						if (!VDSetFilePointerW32(mhFileFast, pos, FILE_BEGIN))
+						if (!VDSetFilePointerW32(hFile, pos, FILE_BEGIN))
 							throw MyWin32Error("Seek error occurred on file \"%s\": %%s\n", GetLastError(), mFilename.c_str());
 					}
 				}
 			}
 
 			DWORD dwActual;
-			if (!WriteFile(mhFileFast, p, actual, &dwActual, NULL) || dwActual != actual) {
+			if (!WriteFile(hFile, p, actual, &dwActual, NULL) || dwActual != actual) {
 				DWORD dwError = GetLastError();
 				throw MyWin32Error("Write error occurred on file \"%s\": %%s\n", dwError, mFilename.c_str());
 			}
@@ -339,7 +341,7 @@ struct VDFileAsyncNTBuffer : public OVERLAPPED {
 	bool	mbActive;
 	uint32	mLength;
 
-	VDFileAsyncNTBuffer() : mbActive(false) { hEvent = CreateEvent(NULL, FALSE, FALSE, NULL); }
+	VDFileAsyncNTBuffer() : mbActive(false) { hEvent = CreateEvent(NULL, TRUE, FALSE, NULL); }
 	~VDFileAsyncNTBuffer() { if (hEvent) CloseHandle(hEvent); }
 };
 
@@ -351,7 +353,7 @@ public:
 	void SetPreemptiveExtend(bool b) { mbPreemptiveExtend = b; }
 	bool IsPreemptiveExtendActive() { return mbPreemptiveExtend; }
 
-	bool IsOpen() { return mhFileFast != INVALID_HANDLE_VALUE; }
+	bool IsOpen() { return mhFileSlow != INVALID_HANDLE_VALUE; }
 
 	void Open(const wchar_t *pszFilename, uint32 count, uint32 bufferSize);
 	void Close();
@@ -364,6 +366,7 @@ public:
 	sint64 GetSize();
 
 protected:
+	void WriteZero(sint64 pos, uint32 bytes);
 	void Seek(sint64 pos);
 	bool SeekNT(sint64 pos);
 	void ThrowError();
@@ -420,10 +423,12 @@ void VDFileAsyncNT::Open(const wchar_t *pszFilename, uint32 count, uint32 buffer
 		mFilename = VDTextWToA(pszFilename);
 
 		mhFileSlow = CreateFileW(pszFilename, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (mhFileSlow != INVALID_HANDLE_VALUE)
-			mhFileFast = CreateFileW(pszFilename, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
-		if (mhFileFast == INVALID_HANDLE_VALUE)
+		if (mhFileSlow == INVALID_HANDLE_VALUE)
 			throw MyWin32Error("Unable to open file \"%s\" for write: %%s", GetLastError(), mFilename.c_str());
+
+		mhFileFast = CreateFileW(pszFilename, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+		if (mhFileFast == INVALID_HANDLE_VALUE)
+			mhFileFast = CreateFileW(pszFilename, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_OVERLAPPED, NULL);
 
 		mSectorSize = 4096;		// guess for now... proper way would be GetVolumeMountPoint() followed by GetDiskFreeSpace().
 
@@ -434,15 +439,17 @@ void VDFileAsyncNT::Open(const wchar_t *pszFilename, uint32 count, uint32 buffer
 		mWriteOffset = 0;
 		mBufferLevel = 0;
 
-		mpBlocks = new VDFileAsyncNTBuffer[count];
-		mBuffer.resize(count * bufferSize);
 		mState = kStateNormal;
+
+		if (mhFileFast != INVALID_HANDLE_VALUE) {
+			mpBlocks = new VDFileAsyncNTBuffer[count];
+			mBuffer.resize(count * bufferSize);
+			ThreadStart();
+		}
 	} catch(const MyError&) {
 		Close();
 		throw;
 	}
-
-	ThreadStart();
 }
 
 void VDFileAsyncNT::Close() {
@@ -460,9 +467,6 @@ void VDFileAsyncNT::Close() {
 		mhFileSlow = INVALID_HANDLE_VALUE;
 	}
 	if (mhFileFast != INVALID_HANDLE_VALUE) {
-		typedef BOOL (WINAPI *tpCancelIo)(HANDLE);
-		static const tpCancelIo pCancelIo = (tpCancelIo)GetProcAddress(GetModuleHandle("kernel32"), "CancelIo");
-		pCancelIo(mhFileFast);
 		CloseHandle(mhFileFast);
 		mhFileFast = INVALID_HANDLE_VALUE;
 	}
@@ -471,48 +475,55 @@ void VDFileAsyncNT::Close() {
 }
 
 void VDFileAsyncNT::FastWrite(const void *pData, uint32 bytes) {
-	if (mpError)
-		ThrowError();
+	if (mhFileFast == INVALID_HANDLE_VALUE) {
+		if (pData)
+			Write(mClientFastPointer, pData, bytes);
+		else
+			WriteZero(mClientFastPointer, bytes);
+	} else {
+		if (mpError)
+			ThrowError();
 
-	while(bytes) {
-		int actual = mBufferSize - mBufferLevel;
+		while(bytes) {
+			int actual = mBufferSize - mBufferLevel;
 
-		if (actual > bytes)
-			actual = bytes;
+			if (actual > bytes)
+				actual = bytes;
 
-		if (mWriteOffset + actual > mBufferSize)
-			actual = mBufferSize - mWriteOffset;
+			if (mWriteOffset + actual > mBufferSize)
+				actual = mBufferSize - mWriteOffset;
 
-		if (!actual) {
-			mReadOccurred.wait();
-			if (mpError)
-				ThrowError();
-			continue;
+			if (!actual) {
+				mReadOccurred.wait();
+				if (mpError)
+					ThrowError();
+				continue;
+			}
+
+			if (pData) {
+				memcpy(&mBuffer[mWriteOffset], pData, actual);
+				pData = (const char *)pData + actual;
+			} else {
+				memset(&mBuffer[mWriteOffset], 0, actual);
+			}
+
+			uint32 oldWriteOffset = mWriteOffset;
+			mWriteOffset += actual;
+			if (mWriteOffset >= mBufferSize)
+				mWriteOffset = 0;
+			mBufferLevel += actual;
+
+			// only bother signaling if the write offset crossed a block boundary
+			if (oldWriteOffset % mBlockSize + actual >= mBlockSize) {
+				mWriteOccurred.signal();
+				if (mpError)
+					ThrowError();
+			}
+
+			bytes -= actual;
 		}
-
-		if (pData) {
-			memcpy(&mBuffer[mWriteOffset], pData, actual);
-			pData = (const char *)pData + actual;
-		} else {
-			memset(&mBuffer[mWriteOffset], 0, actual);
-		}
-
-		uint32 oldWriteOffset = mWriteOffset;
-		mWriteOffset += actual;
-		if (mWriteOffset >= mBufferSize)
-			mWriteOffset = 0;
-		mBufferLevel += actual;
-
-		// only bother signaling if the write offset crossed a block boundary
-		if (oldWriteOffset % mBlockSize >= mWriteOffset % mBlockSize) {
-			mWriteOccurred.signal();
-			if (mpError)
-				ThrowError();
-		}
-
-		bytes -= actual;
 	}
-	
+		
 	mClientFastPointer += bytes;
 }
 
@@ -521,6 +532,8 @@ void VDFileAsyncNT::FastWriteEnd() {
 	mState = kStateFlush;
 	mWriteOccurred.signal();
 	ThreadWait();
+	if (mpError)
+		ThrowError();
 }
 
 void VDFileAsyncNT::Write(sint64 pos, const void *p, uint32 bytes) {
@@ -529,6 +542,20 @@ void VDFileAsyncNT::Write(sint64 pos, const void *p, uint32 bytes) {
 	DWORD dwActual;
 	if (!WriteFile(mhFileSlow, p, bytes, &dwActual, NULL) || dwActual != bytes)
 		throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());
+}
+
+void VDFileAsyncNT::WriteZero(sint64 pos, uint32 bytes) {
+	uint32 bufsize = bytes > 2048 ? 2048 : bytes;
+	void *p = _alloca(bufsize);
+	memset(p, 0, bufsize);
+
+	while(bytes > 0) {
+		uint32 tc = bytes > 2048 ? 2048 : bytes;
+
+		Write(pos, p, tc);
+		pos += tc;
+		bytes -= tc;
+	}
 }
 
 bool VDFileAsyncNT::Extend(sint64 pos) {
@@ -542,7 +569,7 @@ void VDFileAsyncNT::Truncate(sint64 pos) {
 }
 
 void VDFileAsyncNT::SafeTruncateAndClose(sint64 pos) {
-	if (mhFileFast != INVALID_HANDLE_VALUE) {
+	if (isThreadAttached()) {
 		mState = kStateAbort;
 		mWriteOccurred.signal();
 		ThreadWait();
@@ -551,7 +578,9 @@ void VDFileAsyncNT::SafeTruncateAndClose(sint64 pos) {
 			delete mpError;
 			mpError = NULL;
 		}
+	}
 
+	if (mhFileSlow != INVALID_HANDLE_VALUE) {
 		Extend(pos);
 		Close();
 	}
@@ -613,8 +642,12 @@ void VDFileAsyncNT::ThreadRun() {
 		for(;;) {
 			int state = mState;
 
-			if (state == kStateAbort)
+			if (state == kStateAbort) {
+				typedef BOOL (WINAPI *tpCancelIo)(HANDLE);
+				static const tpCancelIo pCancelIo = (tpCancelIo)GetProcAddress(GetModuleHandle("kernel32"), "CancelIo");
+				pCancelIo(mhFileFast);
 				break;
+			}
 
 			uint32 actual = mBufferLevel - pendingLevel;
 			VDASSERT((int)actual >= 0);
@@ -624,6 +657,7 @@ void VDFileAsyncNT::ThreadRun() {
 			if (actual < mBlockSize) {
 				if (state == kStateNormal) {
 					// check for blocks that have completed
+					bool blocksCompleted = false;
 					for(;;) {
 						VDFileAsyncNTBuffer& buf = mpBlocks[requestTail];
 
@@ -634,6 +668,8 @@ void VDFileAsyncNT::ThreadRun() {
 						if (!GetOverlappedResult(mhFileFast, &buf, &dwActual, TRUE))
 							throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());
 						buf.mbActive = false;
+
+						blocksCompleted = true;
 
 						if (++requestTail >= requestCount)
 							requestTail = 0;
@@ -646,8 +682,11 @@ void VDFileAsyncNT::ThreadRun() {
 						mReadOccurred.signal();
 
 					}
-					// wait for further writes
-					mWriteOccurred.wait();
+
+					if (!blocksCompleted) {
+						// wait for further writes
+						mWriteOccurred.wait();
+					}
 					continue;
 				}
 
@@ -685,6 +724,7 @@ void VDFileAsyncNT::ThreadRun() {
 			buf.OffsetHigh = (DWORD)((uint64)mFastPointer >> 32);
 			buf.mLength = actual;
 
+			ResetEvent(buf.hEvent);
 			if (!WriteFile(mhFileFast, &mBuffer[readOffset], actual, &dwActual, &buf)) {
 				if (GetLastError() != ERROR_IO_PENDING)
 					throw MyWin32Error("Write error occurred on file \"%s\": %%s", GetLastError(), mFilename.c_str());

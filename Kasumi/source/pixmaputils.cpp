@@ -88,14 +88,14 @@ VDPixmap VDPixmapOffset(const VDPixmap& src, vdpixpos x, vdpixpos y) {
 	VDPixmap temp(src);
 	const VDPixmapFormatInfo& info = VDPixmapGetInfo(temp.format);
 
-	x = -(-x >> info.qwbits);
-	y = -(-y >> info.qhbits);
+	x >>= info.qwbits;
+	y >>= info.qhbits;
 
 	switch(info.auxbufs) {
 	case 2:
-		temp.data3 = (char *)temp.data3 + -(-x >> info.auxwbits) + -(-y >> info.auxhbits)*temp.pitch3;
+		temp.data3 = (char *)temp.data3 + (x >> info.auxwbits) + (y >> info.auxhbits)*temp.pitch3;
 	case 1:
-		temp.data2 = (char *)temp.data2 + -(-x >> info.auxwbits) + -(-y >> info.auxhbits)*temp.pitch2;
+		temp.data2 = (char *)temp.data2 + (x >> info.auxwbits) + (y >> info.auxhbits)*temp.pitch2;
 	case 0:
 		temp.data = (char *)temp.data + x*info.qsize + y*temp.pitch;
 	}
@@ -128,8 +128,8 @@ uint32 VDPixmapCreateLinearLayout(VDPixmapLayout& layout, int format, vdpixsize 
 	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(format);
 	sint32		qw			= -(-w >> srcinfo.qwbits);
 	sint32		qh			= -(-h >> srcinfo.qhbits);
-	sint32		subw		= w >> srcinfo.auxwbits;
-	sint32		subh		= h >> srcinfo.auxhbits;
+	sint32		subw		= -(-w >> srcinfo.auxwbits);
+	sint32		subh		= -(-h >> srcinfo.auxhbits);
 
 	ptrdiff_t	mainpitch	= (srcinfo.qsize * qw + alignmask) & ~alignmask;
 	size_t		mainsize	= mainpitch * qh;
@@ -171,8 +171,8 @@ void VDPixmapFlipV(VDPixmap& px) {
 	sint32		h			= px.h;
 	sint32		qw			= -(-w >> srcinfo.qwbits);
 	sint32		qh			= -(-h >> srcinfo.qhbits);
-	sint32		subw		= w >> srcinfo.auxwbits;
-	sint32		subh		= h >> srcinfo.auxhbits;
+	sint32		subw		= -(-w >> srcinfo.auxwbits);
+	sint32		subh		= -(-h >> srcinfo.auxhbits);
 
 	vdptrstep(px.data, px.pitch * (qh - 1));
 	px.pitch = -px.pitch;
@@ -194,8 +194,8 @@ void VDPixmapLayoutFlipV(VDPixmapLayout& layout) {
 	sint32		h			= layout.h;
 	sint32		qw			= -(-w >> srcinfo.qwbits);
 	sint32		qh			= -(-h >> srcinfo.qhbits);
-	sint32		subw		= w >> srcinfo.auxwbits;
-	sint32		subh		= h >> srcinfo.auxhbits;
+	sint32		subw		= -(-w >> srcinfo.auxwbits);
+	sint32		subh		= -(-h >> srcinfo.auxhbits);
 
 	layout.data += layout.pitch * (qh - 1);
 	layout.pitch = -layout.pitch;
@@ -314,8 +314,8 @@ void VDPixmapBuffer::assign(const VDPixmap& src) {
 	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(src.format);
 	int qw = (src.w >> srcinfo.qwbits);
 	int qh = src.h >> srcinfo.qhbits;
-	int subw = (src.w >> srcinfo.auxwbits);
-	int subh = src.h >> srcinfo.auxhbits;
+	int subw = -(-src.w >> srcinfo.auxwbits);
+	int subh = -(-src.h >> srcinfo.auxhbits);
 
 	if (srcinfo.palsize)
 		memcpy((void *)palette, src.palette, 4 * srcinfo.palsize);

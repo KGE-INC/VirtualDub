@@ -11,7 +11,7 @@ using namespace nsVDPixmap;
 namespace {
 	typedef void (*tpPalettedBlitter)(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h, const void *pal);
 	typedef void (*tpChunkyBlitter)(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, vdpixsize w, vdpixsize h);
-	typedef void (*tpPlanarBlitter)(const VDPixmap& dst, const VDPixmap& src);
+	typedef void (*tpPlanarBlitter)(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h);
 }
 
 bool VDPixmapBltDirect(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vdpixsize h);
@@ -102,7 +102,7 @@ bool VDPixmapBltDirect(const VDPixmap& dst, const VDPixmap& src, vdpixsize w, vd
 	if (srcinfo.auxbufs > 0 || VDPixmapGetInfo(dst.format).auxbufs > 0) {
 		tpPlanarBlitter p = (tpPlanarBlitter)pBlitter;
 
-		p(dst, src);
+		p(dst, src, w, h);
 	} else if (src.format == kPixFormat_Pal1 || src.format == kPixFormat_Pal2 || src.format == kPixFormat_Pal4 || src.format == kPixFormat_Pal8) {
 		tpPalettedBlitter p = (tpPalettedBlitter)pBlitter;
 

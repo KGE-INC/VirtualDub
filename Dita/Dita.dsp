@@ -89,7 +89,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\ReleaseAMD64\Dita"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /Zi /Oa /Og /Oi /Os /Oy /Ob1 /Gy /I "h" /I "win32" /I "..\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /Oa /Og /Oi /Os /Oy /Ob1 /Gy /I "h" /I "win32" /I "..\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /c
+# ADD CPP /nologo /MT /W3 /GX /Zi /Oa /Og /Oi /Os /Oy /Ob1 /Gy /I "h" /I "win32" /I "..\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /GS- /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -112,7 +112,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\obj\DebugAMD64\Dita"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "win32" /I "h" /I "..\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /Yu"stdafx.h" /FD /GZ /GF /c
-# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "win32" /I "h" /I "..\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /Yu"stdafx.h" /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "win32" /I "h" /I "..\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "WIN32" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
