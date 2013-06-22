@@ -211,6 +211,16 @@ void VDMemset32(void *dst, uint32 value, size_t count) {
 	}
 }
 
+void VDMemset64(void *dst, uint64 value, size_t count) {
+	if (count) {
+		uint64 *dst2 = (uint64 *)dst;
+
+		do {
+			*dst2++ = value;
+		} while(--count);
+	}
+}
+
 void VDMemset128(void *dst, const void *src0, size_t count) {
 	if (count) {
 		const uint32 *src = (const uint32 *)src0;
@@ -229,6 +239,16 @@ void VDMemset128(void *dst, const void *src0, size_t count) {
 			dst2 += 4;
 		} while(--count);
 	}
+}
+
+void VDMemsetPointer(void *dst, const void *value, size_t count) {
+#if defined(_M_IX86)
+	VDMemset32(dst, (uint32)(size_t)value, count);
+#elif defined(_M_AMD64)
+	VDMemset64(dst, (uint64)(size_t)value, count);
+#else
+	#error Unknown pointer size
+#endif
 }
 
 void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h) {

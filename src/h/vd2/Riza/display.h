@@ -73,14 +73,24 @@ public:
 	virtual void SetSourceSubrect(const vdrect32 *r) = 0;
 	virtual void SetSourceSolidColor(uint32 color) = 0;
 
+	virtual void SetFullScreen(bool fs) = 0;
+
 	virtual void PostBuffer(VDVideoDisplayFrame *) = 0;
-	virtual bool RevokeBuffer(VDVideoDisplayFrame **ppFrame) = 0;
+	virtual bool RevokeBuffer(bool allowFrameSkip, VDVideoDisplayFrame **ppFrame) = 0;
 	virtual void FlushBuffers() = 0;
 
 	virtual void Update(int mode = kAllFields) = 0;
 	virtual void Cache() = 0;
 	virtual void SetCallback(IVDVideoDisplayCallback *p) = 0;
-	virtual void LockAcceleration(bool) = 0;
+
+	enum AccelerationMode {
+		kAccelOnlyInForeground,
+		kAccelResetInForeground,
+		kAccelAlways
+	};
+
+	virtual void SetAccelerationMode(AccelerationMode mode) = 0;
+
 	virtual FilterMode GetFilterMode() = 0;
 	virtual void SetFilterMode(FilterMode) = 0;
 	virtual float GetSyncDelta() const = 0;
@@ -88,6 +98,7 @@ public:
 
 void VDVideoDisplaySetFeatures(bool enableDirectX, bool enableOverlays, bool enableTermServ, bool enableOpenGL, bool enableDirect3D, bool enableD3DFX);
 void VDVideoDisplaySetD3DFXFileName(const wchar_t *path);
+void VDVideoDisplaySetDebugInfoEnabled(bool enable);
 
 IVDVideoDisplay *VDGetIVideoDisplay(VDGUIHandle hwnd);
 bool VDRegisterVideoDisplayControl();

@@ -35,13 +35,14 @@
 
 using namespace std;
 
-extern void tool_verinc(bool amd64);
-extern void tool_lookup(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
-extern void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
-extern void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
-extern void tool_makearray(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
-extern void tool_glc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
-extern void tool_fontextract(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+void tool_verinc(bool amd64);
+void tool_lookup(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches, bool amd64);
+void tool_makearray(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+void tool_glc(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+void tool_fontextract(const vdfastvector<const char *>& args, const vdfastvector<const char *>& switches);
+void tool_snapsetup();
 
 int main(int argc, char **argv) {
 	--argc;
@@ -86,6 +87,8 @@ int main(int argc, char **argv) {
 			tool_glc(args, switches);
 		} else if (!_stricmp(s, "fontextract")) {
 			tool_fontextract(args, switches);
+		} else if (!_stricmp(s, "snapsetup")) {
+			tool_snapsetup();
 		} else
 			help();
 	} catch(const char *s) {

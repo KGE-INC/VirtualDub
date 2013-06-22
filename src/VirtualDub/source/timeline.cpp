@@ -265,3 +265,7 @@ VDPosition VDTimeline::GetNextEdit(VDPosition pos) {
 VDPosition VDTimeline::TimelineToSourceFrame(VDPosition pos) {
 	return mSubset.lookupFrame(pos);
 }
+
+void VDTimeline::Rescale(const VDFraction& oldRate, sint64 oldLength, const VDFraction& newRate, sint64 newLength) {
+	mSubset.rescale(oldRate, oldLength, newRate, newLength);
+}

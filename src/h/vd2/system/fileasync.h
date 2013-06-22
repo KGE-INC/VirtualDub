@@ -26,6 +26,10 @@
 #ifndef f_VD2_SYSTEM_FILEASYNC_H
 #define f_VD2_SYSTEM_FILEASYNC_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/vdtypes.h>
 
 class VDRTProfileChannel;

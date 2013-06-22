@@ -36,4 +36,7 @@ inline char *strskipspace(char *s) throw() {
 	return const_cast<char *>(strskipspace(s));
 }
 
+size_t vdstrlcpy(char *dst, const char *src, size_t sizeChars);
+size_t vdwcslcpy(wchar_t *dst, const wchar_t *src, size_t sizeChars);
+
 #endif

@@ -44,9 +44,11 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/cmdline.h>
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/protscope.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Riza/display.h>
+#include <vd2/Riza/direct3d.h>
 #include "crash.h"
 #include "DubSource.h"
 
@@ -104,6 +106,7 @@ extern void VDInitInputDrivers();
 extern void VDShutdownInputDrivers();
 extern void VDInitExternalCallTrap();
 extern void VDInitVideoCodecBugTrap();
+extern void VDInitProtectedScopeHook();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -337,6 +340,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 //#endif
 
 	VDSetThreadDebugName(GetCurrentThreadId(), "Main");
+	VDInitProtectedScopeHook();
 
 	// setup crash traps
 	if (!cmdLine.FindAndRemoveSwitch(L"h")) {
@@ -387,7 +391,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 		// announce startup
 		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.2 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				L"VirtualDub CLI Video Processor Version 1.7.3 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 				,1
 				,&version_num));
 		VDLog(kVDLogInfo, VDswprintf(
@@ -733,7 +737,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				} else if (!wcscmp(token, L"b")) {
 					const wchar_t *path2;
 
-					if (!cmdLine.GetNextSwitchArgument(it, token) || !cmdLine.GetNextSwitchArgument(it, path2))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token) || !cmdLine.GetNextNonSwitchArgument(it, path2))
 						throw MyError("Command line error: syntax is /b <src_dir> <dst_dir>");
 
 					JobAddBatchDirectory(token, path2);
@@ -749,7 +753,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capchannel [antenna:|cable:]<channel>");
 
 					if (!wcsncmp(token, L"antenna:", 8)) {
@@ -762,14 +766,14 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 
 					g_capProjectUI->SetTunerChannel(_wtoi(token));
 
-					if (cmdLine.GetNextSwitchArgument(it, token))
+					if (cmdLine.GetNextNonSwitchArgument(it, token))
 						g_capProjectUI->SetTunerExactFrequency(VDRoundToInt(wcstod(token, NULL) * 1000000));
 				}
 				else if (!wcscmp(token, L"capdevice")) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capdevice <device>");
 
 					if (!g_capProjectUI->SetDriver(token))
@@ -779,7 +783,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capfile <filename>");
 
 					g_capProjectUI->SetCaptureFile(token);
@@ -788,7 +792,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /capfileinc <filename>");
 
 					g_capProjectUI->SetCaptureFile(token);
@@ -798,7 +802,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					if (!g_capProjectUI)
 						throw MyError("Command line error: not in capture mode");
 
-					if (cmdLine.GetNextSwitchArgument(it, token)) {
+					if (cmdLine.GetNextNonSwitchArgument(it, token)) {
 						int multiplier = 60;
 
 						if (*token && token[wcslen(token)-1] == L's')
@@ -812,7 +816,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					g_capProjectUI->Capture();
 				}
 				else if (!wcscmp(token, L"cmd")) {
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /cmd <script>");
 					VDStringW token2(token);
 					const size_t len = token2.size();
@@ -826,7 +830,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					crash();
 				}
 				else if (!wcscmp(token, L"F")) {
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /F <filter>");
 
 					VDAddPluginModule(token);
@@ -838,13 +842,13 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					SetUnhandledExceptionFilter(NULL);
 				}
 				else if (!wcscmp(token, L"hexedit")) {
-					if (cmdLine.GetNextSwitchArgument(it, token))
+					if (cmdLine.GetNextNonSwitchArgument(it, token))
 						HexEdit(NULL, VDTextWToA(token).c_str(), false);
 					else
 						HexEdit(NULL, NULL, false);
 				}
 				else if (!wcscmp(token, L"hexview")) {
-					if (cmdLine.GetNextSwitchArgument(it, token))
+					if (cmdLine.GetNextNonSwitchArgument(it, token))
 						HexEdit(NULL, VDTextWToA(token).c_str(), true);
 					else
 						HexEdit(NULL, NULL, true);
@@ -852,17 +856,35 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				else if (!wcscmp(token, L"i")) {
 					const wchar_t *filename;
 
-					if (!cmdLine.GetNextSwitchArgument(it, filename))
+					if (!cmdLine.GetNextNonSwitchArgument(it, filename))
 						throw MyError("Command line error: syntax is /i <script> [<args>...]");
 
 					g_VDStartupArguments.clear();
-					while(cmdLine.GetNextSwitchArgument(it, token))
+					while(cmdLine.GetNextNonSwitchArgument(it, token))
 						g_VDStartupArguments.push_back(VDTextWToA(token));
 
 					RunScript(filename);
 				}
 				else if (!wcscmp(token, L"lockd3d")) {
-					LoadLibraryA("d3d9");
+					// PerfHUD doesn't like it when you keep loading and unloading the device.
+					class D3DLock : public VDD3D9Client {
+					public:
+						D3DLock() {
+							mpMgr = VDInitDirect3D9(this);
+						}
+
+						~D3DLock() {
+							if (mpMgr)
+								VDDeinitDirect3D9(mpMgr, this);
+						}
+
+						void OnPreDeviceReset() {}
+						void OnPostDeviceReset() {}
+
+					protected:
+						VDD3D9Manager *mpMgr;
+					};
+					static D3DLock sD3DLock;
 				}
 				else if (!wcscmp(token, L"noStupidAntiDebugChecks")) {
 					// Note that this actually screws our ability to call IsDebuggerPresent() as well,
@@ -884,7 +906,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				else if (!wcscmp(token, L"p")) {
 					const wchar_t *path2;
 
-					if (!cmdLine.GetNextSwitchArgument(it, token) || !cmdLine.GetNextSwitchArgument(it, path2))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token) || !cmdLine.GetNextNonSwitchArgument(it, path2))
 						throw MyError("Command line error: syntax is /p <src_file> <dst_file>");
 
 					JobAddBatchFile(token, path2);
@@ -899,7 +921,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 					JobLockDubber();
 				}
 				else if (!wcscmp(token, L"s")) {
-					if (!cmdLine.GetNextSwitchArgument(it, token))
+					if (!cmdLine.GetNextNonSwitchArgument(it, token))
 						throw MyError("Command line error: syntax is /s <script>");
 
 					RunScript(token);

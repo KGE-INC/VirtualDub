@@ -52,6 +52,7 @@
 #include <vd2/Riza/capresync.h>
 #include <vd2/Riza/caplog.h>
 #include <vd2/Riza/capaudiocomp.h>
+#include <vd2/Riza/cap_dshow.h>
 
 #include "crash.h"
 #include "gui.h"
@@ -487,7 +488,7 @@ public:
 	void	SetFrameTime(sint32 lFrameTime);
 	sint32	GetFrameTime();
 
-	void	SetTimingSetup(const VDCaptureTimingSetup& timing) { mTimingSetup = timing; }
+	void	SetTimingSetup(const VDCaptureTimingSetup& timing) { mTimingSetup = timing; UpdateTimingOptions(); }
 	const VDCaptureTimingSetup&	GetTimingSetup() { return mTimingSetup; }
 
 	void	SetLoggingEnabled(bool ena);
@@ -602,6 +603,7 @@ public:
 
 protected:
 	int		GetByName(int count, const wchar_t *(VDCaptureProject::*pGetNameRout)(int), const wchar_t *name);
+	void	UpdateTimingOptions();
 	void	InitVideoAnalysis();
 	void	ShutdownVideoAnalysis();
 	static bool	AreFiltersEnabled(const VDCaptureFilterSetup&);
@@ -724,6 +726,10 @@ VDCaptureProject::VDCaptureProject()
 
 	mTimingSetup.mbUseLimitedAutoAudioLatency	= false;
 	mTimingSetup.mAutoAudioLatencyLimit	= 30;
+
+	mTimingSetup.mbUseAudioTimestamps	= false;
+	mTimingSetup.mbDisableClockForPreview	= false;
+	mTimingSetup.mbForceAudioRendererClock	= true;
 
 	mFilterSetup.mCropRect.clear();
 	mFilterSetup.mVertSquashMode		= IVDCaptureFilterSystem::kFilterDisable;
@@ -1568,10 +1574,15 @@ bool VDCaptureProject::SelectDriver(int nDriver) {
 
 	mpDriver = pSys->CreateDriver(ent.mId);
 
-	if (mpDriver && mpCB)
-		mpCB->UICaptureDriverChanging(nDriver);
+	if (mpDriver) {
+		if (mpCB)
+			mpCB->UICaptureDriverChanging(nDriver);
 
-	mpDriver->LockUpdates();
+		mpDriver->LockUpdates();
+
+		UpdateTimingOptions();
+	}
+
 	if (!mpDriver || !mpDriver->Init(mhwnd)) {
 		mpDriver = NULL;
 		MessageBox((HWND)mhwnd, "VirtualDub cannot connect to the desired capture driver.", g_szError, MB_OK);
@@ -1757,6 +1768,7 @@ unknown_PCM_format:
 		}
 
 		pResyncFilter->EnableVideoTimingCorrection(useVideoTimingCorrection);
+		pResyncFilter->EnableAudioClock(mTimingSetup.mbUseAudioTimestamps);
 
 		// initialize video
 		vdstructex<BITMAPINFOHEADER> bmiInput;
@@ -1911,6 +1923,9 @@ unknown_PCM_format:
 		// this is kinda sick
 
 		if (!fTest) {
+			if (mFilename.empty())
+				throw MyError("No capture filename has been set. Use File > Set Capture File... to choose a location for the capture file.");
+
 			if (!pStripeSystem && mDiskSettings.mbDisableWriteCache) {
 				icd.mpOutputFile->disable_os_caching();
 				icd.mpOutputFile->setBuffering(1024 * mDiskSettings.mDiskChunkSize * mDiskSettings.mDiskChunkCount, 1024 * mDiskSettings.mDiskChunkSize);
@@ -2336,6 +2351,15 @@ int	VDCaptureProject::GetByName(int count, const wchar_t *(VDCaptureProject::*pG
 	}
 
 	return best;
+}
+
+void VDCaptureProject::UpdateTimingOptions() {
+	IVDCaptureDriverDShow *pds = vdpoly_cast<IVDCaptureDriverDShow *>(mpDriver);
+
+	if (pds) {
+		pds->SetDisableClockForPreview(mTimingSetup.mbDisableClockForPreview);
+		pds->SetForceAudioRendererClock(mTimingSetup.mbForceAudioRendererClock);
+	}
 }
 
 void VDCaptureProject::InitVideoAnalysis() {

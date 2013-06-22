@@ -731,20 +731,20 @@ BEGIN
 END
 
 IDD_VIDEO_FRAMERATE DIALOGEX 0, 0, 311, 218
-STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | DS_FIXEDSYS | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Video frame rate control"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     GROUPBOX        "Source rate adjustment",IDC_STATIC,7,7,297,58
-    CONTROL         "No change",IDC_FRAMERATE_NOCHANGE,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,17,114,10
-    CONTROL         "Change to",IDC_FRAMERATE_CHANGE,"Button",BS_AUTORADIOBUTTON,15,28,46,10
+    CONTROL         "No change",IDC_FRAMERATE_NOCHANGE,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,17,282,10
+    CONTROL         "Change frame rate to (fps):",IDC_FRAMERATE_CHANGE,
+                    "Button",BS_AUTORADIOBUTTON,15,28,100,10
     CONTROL         "Change so video and audio durations match",IDC_FRAMERATE_SAMELENGTH,
                     "Button",BS_AUTORADIOBUTTON,15,39,155,11
-    EDITTEXT        IDC_FRAMERATE,63,27,48,12,ES_AUTOHSCROLL
-    LTEXT           "frames per second",IDC_STATIC,113,28,59,8
-    LTEXT           "",IDC_FRAMERATE_SAMELENGTH_VALUE,173,40,79,8
-    LTEXT           "Note: Changing the framerate will cause audio/video desynchronization.",IDC_STATIC,13,52,227,8
+    EDITTEXT        IDC_FRAMERATE,121,27,175,12,ES_AUTOHSCROLL
+    LTEXT           "",IDC_FRAMERATE_SAMELENGTH_VALUE,173,40,123,8
+    LTEXT           "Note: Changing the framerate will cause audio/video desynchronization.",IDC_STATIC,13,52,283,8
     GROUPBOX        "Frame rate conversion",IDC_STATIC,7,67,297,59
     CONTROL         "Process all frames",IDC_DECIMATE_1,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,78,73,10
     CONTROL         "Process every other frame (decimate by 2)",IDC_DECIMATE_2,
@@ -805,7 +805,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub 1.7.2 - Copyright (C) 1998-2007 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub 1.7.3 - Copyright (C) 1998-2007 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -909,18 +909,19 @@ BEGIN
     RTEXT           "",IDC_AUDIO_DATARATE,142,176,133,10,SS_SUNKEN
 END
 
-IDD_FILTER_SINGVAR DIALOGEX 0, 0, 190, 62
+IDD_FILTER_SINGVAR DIALOGEX 0, 0, 215, 63
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Dialog"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     CONTROL         "Slider1",IDC_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,7,7,176,21
-    LTEXT           "None",IDC_STATIC,7,27,80,8
-    RTEXT           "Maximum",IDC_STATIC,103,27,80,8
+    LTEXT           "None",IDC_STATIC,7,28,80,8
+    RTEXT           "Maximum",IDC_STATIC,110,28,80,8
     LTEXT           "",IDC_VALUE,7,43,59,8,WS_DISABLED
-    DEFPUSHBUTTON   "OK",IDOK,80,41,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,133,41,50,14
+    DEFPUSHBUTTON   "OK",IDOK,105,42,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,159,42,50,14
     PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,41,50,14
+    RTEXT           "Static",IDC_SETTING,183,9,25,8
 END
 
 IDD_FILTER_BRIGHTCONT DIALOGEX 0, 0, 280, 98
@@ -1370,18 +1371,19 @@ BEGIN
 END
 
 IDD_JOBCONTROL DIALOGEX 0, 0, 351, 199
-STYLE DS_SETFONT | DS_3DLOOK | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+STYLE DS_SETFONT | DS_3DLOOK | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 EXSTYLE WS_EX_CLIENTEDGE
 CAPTION "VirtualDub Job Control"
 MENU IDR_JOBS_MENU
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,294,7,50,14
     CONTROL         "List1",IDC_JOBS,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_EDITLABELS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,7,275,170
-    PUSHBUTTON      "Move &up",IDC_MOVE_UP,294,43,50,14
-    PUSHBUTTON      "Move d&own",IDC_MOVE_DOWN,294,60,50,14
-    PUSHBUTTON      "&Postpone",IDC_POSTPONE,294,99,50,14
-    PUSHBUTTON      "&Delete",IDC_DELETE,294,115,50,14
+    DEFPUSHBUTTON   "OK",IDOK,294,7,50,14
+    PUSHBUTTON      "Move &up",IDC_MOVE_UP,294,31,50,14
+    PUSHBUTTON      "Move d&own",IDC_MOVE_DOWN,294,48,50,14
+    PUSHBUTTON      "&Postpone",IDC_POSTPONE,294,74,50,14
+    PUSHBUTTON      "&Delete",IDC_DELETE,294,90,50,14
+    PUSHBUTTON      "Reload",IDC_RELOAD,294,117,50,14
     PUSHBUTTON      "Start",IDC_START,294,146,50,14
     PUSHBUTTON      "Abort",IDC_ABORT,294,162,50,14
     LTEXT           "Current job",IDC_CURRENTJOB,7,184,35,8
@@ -2506,9 +2508,9 @@ BEGIN
     IDD_FILTER_SINGVAR, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 183
+        RIGHTMARGIN, 208
         TOPMARGIN, 7
-        BOTTOMMARGIN, 55
+        BOTTOMMARGIN, 56
         HORZGUIDE, 35
     END
 
@@ -3437,8 +3439,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,7,2,0
- PRODUCTVERSION 1,7,2,0
+ FILEVERSION 1,7,3,0
+ PRODUCTVERSION 1,7,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3455,12 +3457,12 @@ BEGIN
         BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!"
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.7.2"
+            VALUE "FileVersion", "1.7.3"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2007 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.7.2"
+            VALUE "ProductVersion", "1.7.3"
         END
     END
     BLOCK "VarFileInfo"
@@ -3551,17 +3553,17 @@ IDC_MODIFYPOINT         CURSOR                  "modifypoint.cur"
 
 STRINGTABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.7.2 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.7.2"
-    IDS_TITLE_IDLE          "VirtualDub 1.7.2 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.7.2- [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.2"
+    IDS_TITLE_INITIAL       "VirtualDub 1.7.3 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.7.3"
+    IDS_TITLE_IDLE          "VirtualDub 1.7.3 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.7.3 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.3"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.7.2- serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.7.2 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.2 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.2 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.7.1 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.7.3- serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.7.3 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.3 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.3 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.7.3 - [%s] (%s)"
 END
 
 STRINGTABLE 

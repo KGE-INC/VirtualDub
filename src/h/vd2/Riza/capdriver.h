@@ -22,6 +22,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vectors.h>
 #include <vd2/system/vdstl.h>
+#include <vd2/system/unknown.h>
 #include <list>
 
 #include <windows.h>			// hmm, need to get rid of this....
@@ -122,7 +123,7 @@ public:
 };
 
 /////////////////////////////////////////////////////////////////////////////
-class VDINTERFACE IVDCaptureDriver {
+class VDINTERFACE IVDCaptureDriver : public IVDUnknown {
 public:
 	virtual ~IVDCaptureDriver() {}
 

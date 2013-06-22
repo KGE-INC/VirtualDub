@@ -1,6 +1,10 @@
 #ifndef f_VD2_KASUMI_PIXMAPOPS_H
 #define f_VD2_KASUMI_PIXMAPOPS_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/Kasumi/pixmap.h>
 
 bool VDPixmapIsBltPossible(int dst_format, int src_format);

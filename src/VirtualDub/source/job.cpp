@@ -58,6 +58,7 @@ enum {
 
 extern HWND g_hWnd;
 extern HINSTANCE g_hInst;
+extern const char g_szError[];
 extern FilterFunctions g_filterFuncs;
 extern wchar_t g_szInputAVIFile[];
 extern wchar_t g_szInputWAVFile[];
@@ -190,6 +191,7 @@ public:
 	int iState;
 	SYSTEMTIME stStart, stEnd;
 	char *script;
+	bool mbContainsReloadMarker;
 
 	typedef VDAutoLogger::tEntries tLogEntries;
 	tLogEntries	mLogEntries;
@@ -202,9 +204,8 @@ public:
 	void Add(bool force_no_update = false);
 	void Delete(bool force_no_update = false);
 	void Refresh();
-
-
 	void Run();
+	void Reload();
 
 
 	static VDJob *ListGet(int index);
@@ -235,7 +236,9 @@ bool VDJob::fModified = false;
 bool VDJob::fRunInProgress = false;
 bool VDJob::fRunAllStop;
 
-VDJob::VDJob() {
+VDJob::VDJob()
+	: mbContainsReloadMarker(false)
+{
 	szName[0]=0;
 	szInputFile[0]=0;
 	szOutputFile[0]=0;
@@ -314,7 +317,7 @@ void VDJob::Run() {
 
 		VDAutoLogger logger(kVDLogWarning);
 
-		RunScriptMemory(script);
+		RunScriptMemory(script, false);
 
 		mLogEntries = logger.GetEntries();
 	} catch(const MyUserAbortError&) {
@@ -344,6 +347,35 @@ void VDJob::Run() {
 
 		VDASSERT(false);		// But we'll at least annoy people with debuggers.
 	}
+}
+
+void VDJob::Reload() {
+	// safety guard
+	if (fRunInProgress)
+		return;
+
+	fRunInProgress	= true;
+	fRunAllStop		= false;
+
+	bool wasEnabled = !(GetWindowLong(g_hwndJobs, GWL_STYLE) & WS_DISABLED);
+	if (g_hwndJobs)
+		EnableWindow(g_hwndJobs, FALSE);
+
+	MyError err;
+	try {
+		RunScriptMemory(script, true);
+	} catch(MyError& e) {
+		err.TransferFrom(e);
+	}
+
+	fRunInProgress = false;
+
+	// re-enable job window
+	if (g_hwndJobs && wasEnabled)
+		EnableWindow(g_hwndJobs, TRUE);
+
+	if (err.gets())
+		err.post(g_hwndJobs, g_szError);
 }
 
 ////////
@@ -612,6 +644,10 @@ void VDJob::ListLoad(const char *lpszName) {
 
 				while(isspace((unsigned char)*s)) ++s;
 
+				// check for reload marker
+				if (s[0] == '/' && s[1] == '/' && strstr(s, "$reloadstop"))
+					job->mbContainsReloadMarker = true;
+
 				// don't add blank lines
 
 				if (*s)
@@ -783,6 +819,7 @@ void VDJob::RunAll() {
 	if (g_hwndJobs) {
 		SetDlgItemText(g_hwndJobs, IDC_START, "Stop");
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_ABORT), TRUE);
+		EnableWindow(GetDlgItem(g_hwndJobs, IDC_RELOAD), FALSE);
 	}
 
 	ShowWindow(g_hWnd, SW_MINIMIZE);
@@ -825,6 +862,7 @@ void VDJob::RunAll() {
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_START), TRUE);
 		SetDlgItemText(g_hwndJobs, IDC_START, "Start");
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_ABORT), FALSE);
+		EnableWindow(GetDlgItem(g_hwndJobs, IDC_RELOAD), TRUE);
 	}
 
 	if (VDRegistryAppKey().getBool(g_szRegKeyShutdownWhenFinished)) {
@@ -1143,6 +1181,7 @@ static struct ReposItem jobCtlPosData[]={
 	{ IDC_DELETE	, REPOS_MOVERIGHT },
 	{ IDC_START		, REPOS_MOVERIGHT },
 	{ IDC_ABORT		, REPOS_MOVERIGHT },
+	{ IDC_RELOAD	, REPOS_MOVERIGHT },
 	{ IDC_JOBS		, REPOS_SIZERIGHT | REPOS_SIZEDOWN },
 	{ IDC_CURRENTJOB, REPOS_MOVEDOWN },
 	{ IDC_PROGRESS	, REPOS_MOVEDOWN | REPOS_SIZERIGHT },
@@ -1150,7 +1189,7 @@ static struct ReposItem jobCtlPosData[]={
 	{ 0 }
 };
 
-POINT jobCtlPos[11];
+POINT jobCtlPos[sizeof(jobCtlPosData) / sizeof(jobCtlPosData[0]) - 1];
 
 static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam) {
 	static const char *const szColumnNames[]={ "Name","Source","Dest","Start","End","Status" };
@@ -1211,8 +1250,10 @@ static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 			if (g_dubber) {
 				EnableWindow(GetDlgItem(hdlg, IDC_START), FALSE);
 				EnableWindow(GetDlgItem(hdlg, IDC_ABORT), FALSE);
+				EnableWindow(GetDlgItem(hdlg, IDC_RELOAD), FALSE);
 			} else if (VDJob::IsRunInProgress()) {
 				SetDlgItemText(hdlg, IDC_START, "Stop");
+				EnableWindow(GetDlgItem(hdlg, IDC_RELOAD), FALSE);
 			} else {
 				EnableWindow(GetDlgItem(hdlg, IDC_ABORT), FALSE);
 			}
@@ -1287,6 +1328,7 @@ static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 					EnableWindow(GetDlgItem(hdlg, IDC_MOVE_DOWN), fSelected && nmlv->iItem<VDJob::ListSize()-1);
 					EnableWindow(GetDlgItem(hdlg, IDC_DELETE), fSelected && (!vdj || vdj->iState != VDJob::INPROGRESS));
 					EnableWindow(GetDlgItem(hdlg, IDC_POSTPONE), fSelected && (!vdj || vdj->iState != VDJob::INPROGRESS));
+					EnableWindow(GetDlgItem(hdlg, IDC_RELOAD), fSelected && vdj && !VDJob::IsRunInProgress());
 					return TRUE;
 
 				case LVN_KEYDOWN:
@@ -1480,6 +1522,17 @@ static INT_PTR CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPAR
 
 				return TRUE;
 
+			case IDC_RELOAD:
+				if (!vdj)
+					return TRUE;
+
+				if (!vdj->mbContainsReloadMarker)
+					MessageBox(hdlg, "This job was created with an older version of VirtualDub and cannot be reloaded.", g_szError, MB_ICONERROR|MB_OK);
+				else
+					vdj->Reload();
+
+				return TRUE;
+
 			}
 		}
 		break;
@@ -1584,8 +1637,9 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 	output.addf("VirtualDub.video.SetSmartRendering(%d);", opt->video.mbUseSmartRendering);
 	output.addf("VirtualDub.video.SetPreserveEmptyFrames(%d);", opt->video.mbPreserveEmptyFrames);
 
-	output.addf("VirtualDub.video.SetFrameRate(%d,%d);",
-			opt->video.frameRateNewMicroSecs,
+	output.addf("VirtualDub.video.SetFrameRate2(%u,%u,%d);",
+			opt->video.mFrameRateAdjustHi,
+			opt->video.mFrameRateAdjustLo,
 			opt->video.frameRateDecimation);
 
 	if (opt->video.frameRateTargetLo) {
@@ -1624,6 +1678,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 //				throw MyError("Bad state data returned from compressor");
 
 				// Fine then, be that way.  Stupid Pinnacle DV200 driver.
+				mem = NULL;
 			}
 
 			if (mem) {
@@ -1805,6 +1860,9 @@ void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, cons
 		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
 		JobCreateScript(output, opt, bIncludeEditList);
 
+		// Add magic flag
+		output.adds("  // -- $reloadstop --");
+
 		// Add actual run option
 
 		if (lSpillThreshold)
@@ -1821,6 +1879,7 @@ void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, cons
 		sprintf(vdj->szName, "Job %d", VDJob::job_number++);
 
 		vdj->script = output.getscript();
+		vdj->mbContainsReloadMarker = true;
 		vdj->Add();
 	} catch(...) {
 		freemem(vdj);
@@ -1898,6 +1957,7 @@ void JobLockDubber() {
 	if (g_hwndJobs) {
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_START), FALSE);
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_ABORT), FALSE);
+		EnableWindow(GetDlgItem(g_hwndJobs, IDC_RELOAD), FALSE);
 	}
 }
 
@@ -1905,6 +1965,7 @@ void JobUnlockDubber() {
 	if (g_hwndJobs) {
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_START), TRUE);
 		EnableWindow(GetDlgItem(g_hwndJobs, IDC_ABORT), TRUE);
+		EnableWindow(GetDlgItem(g_hwndJobs, IDC_RELOAD), TRUE);
 	}
 }
 

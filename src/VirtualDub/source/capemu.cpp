@@ -44,6 +44,8 @@ public:
 	VDCaptureDriverEmulation();
 	~VDCaptureDriverEmulation();
 
+	void	*AsInterface(uint32 id) { return NULL; }
+
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
 

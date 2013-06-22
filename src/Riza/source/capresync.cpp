@@ -607,6 +607,7 @@ public:
 	void SetFixedAudioLatency(int latencyInMilliseconds);
 	void SetLimitedAutoAudioLatency(int samples);
 	void SetAutoAudioLatency();
+	void EnableAudioClock(bool enable);
 
 	void GetStatus(VDCaptureResyncStatus&);
 
@@ -629,6 +630,7 @@ protected:
 	Mode		mMode;
 
 	bool		mbEnableFixedAudioLatency;
+	bool		mbEnableAudioClock;
 	int			mAutoAudioLatencyLimit;
 	double		mFixedAudioLatency;
 
@@ -683,6 +685,7 @@ VDCaptureResyncFilter::VDCaptureResyncFilter()
 	, mInsertLimit(10)
 	, mMode(kModeNone)
 	, mbEnableFixedAudioLatency(false)
+	, mbEnableAudioClock(true)
 	, mAutoAudioLatencyLimit(30)
 	, mVideoLastTime(0)
 	, mVideoLastRawTime(0)
@@ -777,6 +780,10 @@ void VDCaptureResyncFilter::SetLimitedAutoAudioLatency(int samples) {
 void VDCaptureResyncFilter::SetAutoAudioLatency() {
 	mbEnableFixedAudioLatency = false;
 	mAutoAudioLatencyLimit = 0;
+}
+
+void VDCaptureResyncFilter::EnableAudioClock(bool enable) {
+	mbEnableAudioClock = enable;
 }
 
 void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
@@ -931,7 +938,12 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			mVideoLastAccurateTime = global_clock;
 
 		} else if (stream == 1 && mMode) {
-			sint64 estimatedVideoTime = mVideoLastTime + (global_clock - mVideoLastAccurateTime);
+			sint64 estimatedVideoTime;
+			
+			if (mbEnableAudioClock && timestamp >= 0)
+				estimatedVideoTime = timestamp;
+			else
+				estimatedVideoTime = mVideoLastTime + (global_clock - mVideoLastAccurateTime);
 
 			mAudioBytes += size;
 
@@ -970,7 +982,12 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 
 					if (mVideoWindowedRateEstimator.GetSlope(videoRate) && mVideoWindowedRateEstimator.GetYIntercept(videoRate, videoYIntercept)
 						&& mAudioRealRateEstimator.GetSlope(audioRate) && mAudioRealRateEstimator.GetYIntercept(audioRate, audioYIntercept)) {
-						double videoTime = videoYIntercept + videoRate * global_clock;
+						double videoTime;
+						
+						if (mbEnableAudioClock && timestamp >= 0)
+							videoTime = timestamp;
+						else
+							videoTime = videoYIntercept + videoRate * global_clock;
 
 						// Assume we drop no audio and that audio rate is consistent.
 						// Backproject with full global>audio estimator to determine audio pos at global time 0.

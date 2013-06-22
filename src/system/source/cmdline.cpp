@@ -107,7 +107,7 @@ bool VDCommandLine::GetNextArgument(VDCommandLineIterator& it, const wchar_t *& 
 	return true;
 }
 
-bool VDCommandLine::GetNextSwitchArgument(VDCommandLineIterator& it, const wchar_t *& token) const {
+bool VDCommandLine::GetNextNonSwitchArgument(VDCommandLineIterator& it, const wchar_t *& token) const {
 	int count = (int)mTokens.size();
 
 	if (it.mIndex >= count)
@@ -120,11 +120,55 @@ bool VDCommandLine::GetNextSwitchArgument(VDCommandLineIterator& it, const wchar
 	return true;
 }
 
+bool VDCommandLine::GetNextSwitchArgument(VDCommandLineIterator& it, const wchar_t *& token) const {
+	int count = (int)mTokens.size();
+
+	if (it.mIndex >= count)
+		return false;
+
+	if (!mTokens[it.mIndex].mbIsSwitch)
+		return false;
+
+	token = mLine.data() + mTokens[it.mIndex++].mTokenIndex;
+	return true;
+}
+
 bool VDCommandLine::FindAndRemoveSwitch(const wchar_t *name) {
 	int count = (int)mTokens.size();
 
 	for(int i=1; i<count; ++i) {
 		if (mTokens[i].mbIsSwitch && !_wcsicmp(name, mLine.data() + mTokens[i].mTokenIndex + 1)) {
+			mTokens.erase(mTokens.begin() + i);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool VDCommandLine::FindAndRemoveSwitch(const wchar_t *name, const wchar_t *& token) {
+	int count = (int)mTokens.size();
+	size_t namelen = wcslen(name);
+
+	for(int i=1; i<count; ++i) {
+		if (!mTokens[i].mbIsSwitch)
+			continue;
+		
+		const wchar_t *s = mLine.data() + mTokens[i].mTokenIndex + 1;
+
+		if (!_wcsnicmp(name, s, namelen)) {
+			token = s+namelen;
+
+			switch(*token) {
+				case L':':
+					++token;
+					break;
+				case 0:
+					break;
+				default:
+					continue;
+			}
+
 			mTokens.erase(mTokens.begin() + i);
 			return true;
 		}

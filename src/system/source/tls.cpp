@@ -26,28 +26,16 @@
 #include "stdafx.h"
 #include <vd2/system/tls.h>
 
-__declspec(thread) VirtualDubTLSData g_tlsdata;
 VDThreadInitHook g_pInitHook;
 
 void VDInitThreadData(const char *pszThreadName) {
-	VirtualDubTLSData *pData = &g_tlsdata;
-
-	pData->pszDebugThreadName = pszThreadName;
-
-#ifndef _M_AMD64
-	__asm {
-		mov		eax,pData
-		mov		dword ptr fs:[14h],eax
-	}
-#endif
-
 	if (g_pInitHook)
-		g_pInitHook(true);
+		g_pInitHook(true, pszThreadName);
 }
 
 void VDDeinitThreadData() {
 	if (g_pInitHook)
-		g_pInitHook(false);
+		g_pInitHook(false, NULL);
 }
 
 void VDSetThreadInitHook(VDThreadInitHook pHook) {

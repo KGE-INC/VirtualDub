@@ -810,21 +810,38 @@ INT_PTR VDDialogVideoFrameRateW32::DlgProc(UINT message, WPARAM wParam, LPARAM l
 						newFRD = 3;
 
 					if (IsDlgButtonChecked(mhdlg, IDC_FRAMERATE_CHANGE)) {
-						double newFR;
-						char buf[128], tmp;
+						char buf[128];
 
+						buf[0] = 0;
 						GetDlgItemText(mhdlg, IDC_FRAMERATE, buf, sizeof buf);
 
-						if (1!=sscanf(buf, "%lg %c", &newFR, &tmp) || newFR<=0.0 || newFR>=1000000.0) {
+						VDFraction fr;
+						unsigned hi, lo;
+						bool failed = false;
+						if (2==sscanf(buf, " %u / %u", &hi, &lo)) {
+							if (!lo)
+								failed = true;
+							else
+								fr = VDFraction(hi, lo);
+						} else if (!fr.Parse(buf) || (double)fr >= 1000000.0) {
+							failed = true;
+						}
+
+						if (failed) {
 							SetFocus(GetDlgItem(mhdlg, IDC_FRAMERATE));
 							MessageBeep(MB_ICONQUESTION);
 							return FALSE;
 						}
 
-						mOpts.video.frameRateNewMicroSecs = (long)(1000000.0/newFR + .5);
+						mOpts.video.mFrameRateAdjustHi = fr.getHi();
+						mOpts.video.mFrameRateAdjustLo = fr.getLo();
 					} else if (IsDlgButtonChecked(mhdlg, IDC_FRAMERATE_SAMELENGTH)) {
-						mOpts.video.frameRateNewMicroSecs = DubVideoOptions::FR_SAMELENGTH;
-					} else mOpts.video.frameRateNewMicroSecs = 0;
+						mOpts.video.mFrameRateAdjustHi = DubVideoOptions::kFrameRateAdjustSameLength;
+						mOpts.video.mFrameRateAdjustLo = 0;
+					} else {
+						mOpts.video.mFrameRateAdjustHi = 0;
+						mOpts.video.mFrameRateAdjustLo = 0;
+					}
 
 					mOpts.video.frameRateDecimation = newFRD;
 					mOpts.video.frameRateTargetHi = newTarget.getHi();
@@ -914,16 +931,24 @@ void VDDialogVideoFrameRateW32::ReinitDialog() {
 			EnableWindow(GetDlgItem(mhdlg, IDC_FRAMERATE_SAMELENGTH), FALSE);
 	}
 
-	if (mOpts.video.frameRateNewMicroSecs == DubVideoOptions::FR_SAMELENGTH) {
+	if (mOpts.video.mFrameRateAdjustLo) {
+		VDFraction fr(mOpts.video.mFrameRateAdjustHi, mOpts.video.mFrameRateAdjustLo);
+		sprintf(buf, "%.4f", (double)fr);
+
+		VDFraction fr2(fr);
+		VDVERIFY(fr2.Parse(buf));
+
+		if (fr2 != fr)
+			sprintf(buf, "%u/%u (~%.7f)", fr.getHi(), fr.getLo(), (double)fr);
+
+		SetDlgItemText(mhdlg, IDC_FRAMERATE, buf);
+		CheckDlgButton(mhdlg, IDC_FRAMERATE_CHANGE, TRUE);
+	} else if (mOpts.video.mFrameRateAdjustHi == DubVideoOptions::kFrameRateAdjustSameLength) {
 		if (!mpAudio)
 			CheckDlgButton(mhdlg, IDC_FRAMERATE_NOCHANGE, TRUE);
 		else
 			CheckDlgButton(mhdlg, IDC_FRAMERATE_SAMELENGTH, TRUE);
 		EnableWindow(GetDlgItem(mhdlg, IDC_FRAMERATE), FALSE);
-	} else if (mOpts.video.frameRateNewMicroSecs) {
-		sprintf(buf, "%.3f", 1000000.0/mOpts.video.frameRateNewMicroSecs);
-		SetDlgItemText(mhdlg, IDC_FRAMERATE, buf);
-		CheckDlgButton(mhdlg, IDC_FRAMERATE_CHANGE, TRUE);
 	} else {
 		CheckDlgButton(mhdlg, IDC_FRAMERATE_NOCHANGE, TRUE);
 		EnableWindow(GetDlgItem(mhdlg, IDC_FRAMERATE), FALSE);
@@ -1175,7 +1200,7 @@ INT_PTR VDDialogAudioVolumeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPar
 				SendMessage(hwndSlider, TBM_SETRANGE, TRUE, MAKELONG(0, 600));
 				SendMessage(hwndSlider, TBM_SETTICFREQ, 10, 0);
 
-				if (mOpts.audio.mVolume > 0) {
+				if (mOpts.audio.mVolume >= 0) {
 					CheckDlgButton(mhdlg, IDC_ADJUSTVOL, BST_CHECKED);
 
 					SendMessage(hwndSlider, TBM_SETPOS, TRUE, FactorToSliderPosition(mOpts.audio.mVolume));

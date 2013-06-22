@@ -77,7 +77,8 @@ public:
 	VDStringA GetBlurb(VDBackfaceObjectBase *p);
 
 protected:
-	VDBackfaceClass *GetClassByName(const char *name);
+	VDBackfaceClass *GetClassByName(const VDStringSpanA& name);
+	VDBackfaceObjectBase *GetObjectByName(const char *name);
 
 	VDCriticalSection	mLock;
 
@@ -196,9 +197,9 @@ void VDBackfaceService::Execute(IVDBackfaceStream& out, char *s) {
 		argv[argc] = NULL;
 
 		if (argc) {
-			const char *cmd = argv[0];
+			VDStringSpanA cmd(argv[0]);
 
-			if (!strcmp(cmd, "lc")) {
+			if (cmd == "lc") {
 				operator<<("");
 				operator<<("Count    Class Name");
 				operator<<("---------------------------------------------");
@@ -209,11 +210,11 @@ void VDBackfaceService::Execute(IVDBackfaceStream& out, char *s) {
 
 					operator()("%5d    %-8s (%s)", cl.mObjectCount, cl.mpShortName, cl.mpLongName);
 				}
-			} else if (!strcmp(cmd, "lo")) {
+			} else if (cmd == "lo") {
 				const char *cname = argv[1];
 				
 				if (cname) {
-					VDBackfaceClass *cl = GetClassByName(cname);
+					VDBackfaceClass *cl = GetClassByName(VDStringSpanA(cname));
 
 					if (!cl)
 						operator()("Unknown class \"%s.\"", cname);
@@ -230,8 +231,25 @@ void VDBackfaceService::Execute(IVDBackfaceStream& out, char *s) {
 						}
 					}
 				}
+			} else if (cmd == "dump") {
+				const char *objname = argv[1];
+
+				if (objname) {
+					VDBackfaceObjectBase *obj = GetObjectByName(objname);
+
+					if (obj) {
+						operator()("Object %s | %p | %s:", objname, obj, GetBlurb(obj).c_str());
+						obj->BackfaceDumpObject(*this);
+					} else {
+						operator()("Unknown object %s.", objname);
+					}
+				}
+			} else if (cmd == "?") {
+				operator<<("lc                     List classes");
+				operator<<("lo <class>             List objects by class");
+				operator<<("dump <class>:<inst>    Dump object");
 			} else {
-				operator<<("Unrecognized command.");
+				operator<<("Unrecognized command -- ? for help.");
 			}
 		}
 
@@ -267,7 +285,10 @@ void VDBackfaceService::operator()(const char *format, ...) {
 
 VDStringA VDBackfaceService::GetTag(VDBackfaceObjectBase *p) {
 	VDStringA tag;
-	tag.sprintf("%s:%u", p->mpClass->mpShortName, p->mInstance);
+	if (p)
+		tag.sprintf("%s:%u", p->mpClass->mpShortName, p->mInstance);
+	else
+		tag = "null";
 	return tag;
 }
 
@@ -280,14 +301,42 @@ VDStringA VDBackfaceService::GetBlurb(VDBackfaceObjectBase *pObject) {
 	return s;
 }
 
-VDBackfaceClass *VDBackfaceService::GetClassByName(const char *name) {
+VDBackfaceClass *VDBackfaceService::GetClassByName(const VDStringSpanA& name) {
 	vdlist<VDBackfaceClass>::iterator it(mClasses.begin()), itEnd(mClasses.end());
 
 	for(; it!=itEnd; ++it) {
 		VDBackfaceClass *p = *it;
 
-		if (!strcmp(name, p->mpShortName) || !strcmp(name, p->mpLongName))
+		if (name == p->mpShortName || name == p->mpLongName)
 			return p;
+	}
+
+	return NULL;
+}
+
+VDBackfaceObjectBase *VDBackfaceService::GetObjectByName(const char *name) {
+	VDStringSpanA names(name);
+	VDStringSpanA::size_type colonPos = names.find(':');
+
+	if (colonPos == VDStringSpanA::npos)
+		return NULL;
+
+	const char *s = name + colonPos + 1;
+	unsigned index;
+
+	if (!*s || 1 != sscanf(s, "%u", &index))
+		return NULL;
+
+	VDBackfaceClass *cl = GetClassByName(names.subspan(0, colonPos));
+	if (!cl)
+		return NULL;
+
+	VDBackfaceObjectNode *p = cl->mObjects.mpObjNext;
+	for(; p != &cl->mObjects; p = p->mpObjNext) {
+		VDBackfaceObjectBase *pObj = static_cast<VDBackfaceObjectBase *>(p);
+
+		if (pObj->mInstance == index)
+			return pObj;
 	}
 
 	return NULL;

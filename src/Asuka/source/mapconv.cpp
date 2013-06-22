@@ -36,7 +36,7 @@ vdfastvector<char> cnambuf;
 
 ///////////////////////////////////////////////////////////////////////////
 
-void parsename(long rva, char *buf0) {
+void parsename(sint64 rva, char *buf0) {
 	char *buf = buf0;
 	char *func_name = NULL;
 	char *class_name = NULL;
@@ -218,7 +218,8 @@ void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<con
 	printf("    Deleted %d zero-size and EH stub entries from RVA table\n", i+1-j);
 	rvabuf.resize(j);
 
-	for(i=0; size_t(i)<rvabuf.size(); i++) {
+	size_t rvabufsize = rvabuf.size();
+	for(i=0; size_t(i)<rvabufsize; i++) {
 		VDSymbol& sym = rvabuf[i];
 
 		parsename(sym.rva, sym.name);
@@ -228,7 +229,7 @@ void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<con
 	vdfastvector<uint32> segbuf(segcnt * 2);
 	for(i=0; i<segcnt; i++) {
 		const VDSection *sect = syms->GetSection(i);
-		segbuf[i*2+0] = sect->mAbsStart;
+		segbuf[i*2+0] = (uint32)(sect->mAbsStart);
 		segbuf[i*2+1] = sect->mLength;
 		printf("        #%-2d  %08lx-%08lx\n", i+1, sect->mStart, sect->mStart + sect->mLength - 1);
 	}
@@ -243,11 +244,11 @@ void tool_mapconv(const vdfastvector<const char *>& args, const vdfastvector<con
 
 	vdfastvector<VDSymbol>::iterator itRVA = rvabuf.begin(), itRVAEnd = rvabuf.end();
 	vdfastvector<char> rvaout;
-	long firstrva = (*itRVA++).rva;
-	long lastrva = firstrva;
+	sint64 firstrva = (*itRVA++).rva;
+	sint64 lastrva = firstrva;
 
 	for(; itRVA != itRVAEnd; ++itRVA) {
-		long rvadiff = (*itRVA).rva - lastrva;
+		sint64 rvadiff = (*itRVA).rva - lastrva;
 
 		lastrva += rvadiff;
 

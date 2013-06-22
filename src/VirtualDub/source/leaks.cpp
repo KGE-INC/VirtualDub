@@ -57,8 +57,12 @@ public:
 };
 
 VDDbgHelpDynamicLoaderW32::VDDbgHelpDynamicLoaderW32()
-	: hmodDbgHelp(LoadLibrary("dbghelp"))
 {
+	// XP DbgHelp doesn't pick up some VC8 symbols -- need DbgHelp 6.2+ for that
+	hmodDbgHelp = LoadLibrary("c:\\program files\\debugging tools for windows\\dbghelp");
+	if (!hmodDbgHelp)
+		hmodDbgHelp = LoadLibrary("dbghelp");
+
 	static const char *const sFuncTbl[]={
 		"SymInitialize",
 		"SymCleanup",
@@ -126,6 +130,7 @@ namespace {
 		reference_type operator[](size_type i) { return pStart[i]; }
 		const_reference_type operator[](size_type i) const { return pStart[i]; }
 
+		bool empty() const { return pEnd == pStart; }
 		size_type size() const { return pEnd-pStart; }
 		size_type capacity() const { return pEndAlloc-pStart; }
 
@@ -168,9 +173,20 @@ namespace {
 
 	struct BlockInfo {
 		const CrtBlockHeader *pBlock;
-		int refcount;
+		bool marked;
 	};
 
+	bool operator<(const BlockInfo& x, const BlockInfo& y) {
+		return (uintptr)x.pBlock < (uintptr)y.pBlock;
+	}
+
+	bool operator<(uintptr x, const BlockInfo& y) {
+		return x < (uintptr)y.pBlock;
+	}
+
+	bool operator<(const BlockInfo& x, uintptr y) {
+		return (uintptr)x.pBlock < y;
+	}
 }
 
 void VDDumpMemoryLeaksVC() {
@@ -207,8 +223,6 @@ void VDDumpMemoryLeaksVC() {
 	// checkpoint the current memory layout
     _CrtMemCheckpoint(&msNow);
 
-	_RPT0(0, "\n\nDumping memory leaks:\n\n");
-
 	// traverse memory
 
 	typedef heapvector<BlockInfo> tHeapInfo;
@@ -223,63 +237,104 @@ void VDDumpMemoryLeaksVC() {
 
 		BlockInfo info = {
 			pHdr,
-			0
+			false
 		};
 
 		heapinfo.push_back(info);
 	}
 
-	for(tHeapInfo::iterator it(heapinfo.begin()), itEnd(heapinfo.end()); it!=itEnd; ++it) {
-		BlockInfo& blk = *it;
-		pHdr = blk.pBlock;
+	if (!heapinfo.empty()) {
+		_RPT0(0, "\n\n===== MEMORY LEAKS DETECTED =====\n\n");
 
-		char buf[1024], *s = buf;
+		std::sort(heapinfo.begin(), heapinfo.end());
 
-		s += wsprintf(buf, "    #%-5d %p (%8ld bytes)", pHdr->reqnum, pHdr->data, (long)pHdr->size);
+		tHeapInfo::iterator itBase(heapinfo.begin());
+		for(tHeapInfo::iterator it(itBase), itEnd(heapinfo.end()); it!=itEnd; ++it) {
+			BlockInfo& blk = *it;
+			size_t pointers = blk.pBlock->size / sizeof(void *);
+			uintptr *pp = (uintptr *)blk.pBlock->data;
 
-		if (pHdr->pFilename && !strcmp(pHdr->pFilename, "stack trace")) {
-			void *pRet = (void *)pHdr->line;
+			for(size_t i=0; i<pointers; ++i) {
+				uintptr ip = pp[i];
 
-			struct {
-				IMAGEHLP_SYMBOL hdr;
-				CHAR nameext[511];
-			} sym;
+				tHeapInfo::iterator itTarget(std::upper_bound(itBase, itEnd, ip));
 
-			sym.hdr.SizeOfStruct = sizeof(IMAGEHLP_SYMBOL);
-			sym.hdr.MaxNameLength = 512;
+				if (itTarget != itBase) {
+					BlockInfo& blk2 = *--itTarget;
 
-			if (dbghelp.pSymGetSymFromAddr(hProc, (DWORD)pRet, 0, &sym.hdr)) {
-				s += wsprintf(s, "  Allocator: %p [%s]", pRet, sym.hdr.Name);
-			} else
-				s += wsprintf(s, "  Allocator: %p", pRet);
-		}
-
-		if (pHdr->size >= sizeof(void *)) {
-			void *vtbl = *(void **)pHdr->data;
-
-			if (vtbl >= (char *)modinfo.BaseOfImage && vtbl < (char *)modinfo.BaseOfImage + modinfo.ImageSize) {
-				struct {
-					IMAGEHLP_SYMBOL hdr;
-					CHAR nameext[511];
-				} sym;
-
-				sym.hdr.SizeOfStruct = sizeof(IMAGEHLP_SYMBOL);
-				sym.hdr.MaxNameLength = 512;
-
-				char *t;
-
-				if (dbghelp.pSymGetSymFromAddr(hProc, (DWORD)vtbl, 0, &sym.hdr) && (t = strstr(sym.hdr.Name, "::`vftable'"))) {
-					*t = 0;
-					s += wsprintf(s, " [Type: %s]", sym.hdr.Name);
+					if (ip - (uintptr)blk2.pBlock->data < blk2.pBlock->size)
+						blk2.marked = true;
 				}
 			}
 		}
 
-		*s = 0;
+		for(int pass=0; pass<2; ++pass) {
+			bool test = pass ? true : false;
 
-		_RPT1(0, "%s\n", buf);
+			if (test) {
+				_RPT0(0, "\nSecondary leaks:\n\n");
+			} else {
+				_RPT0(0, "\nPrimary leaks:\n\n");
+			}
+
+			for(tHeapInfo::iterator it(heapinfo.begin()), itEnd(heapinfo.end()); it!=itEnd; ++it) {
+				BlockInfo& blk = *it;
+
+				if (blk.marked != test)
+					continue;
+
+				pHdr = blk.pBlock;
+
+				char buf[1024], *s = buf;
+
+				s += wsprintf(buf, "    #%-5d %p (%8ld bytes)", pHdr->reqnum, pHdr->data, (long)pHdr->size);
+
+				if (pHdr->pFilename && !strcmp(pHdr->pFilename, "stack trace")) {
+					void *pRet = (void *)pHdr->line;
+
+					struct {
+						IMAGEHLP_SYMBOL hdr;
+						CHAR nameext[511];
+					} sym;
+
+					sym.hdr.SizeOfStruct = sizeof(IMAGEHLP_SYMBOL);
+					sym.hdr.MaxNameLength = 512;
+
+					if (dbghelp.pSymGetSymFromAddr(hProc, (DWORD)pRet, 0, &sym.hdr)) {
+						s += wsprintf(s, "  Allocator: %p [%s]", pRet, sym.hdr.Name);
+					} else
+						s += wsprintf(s, "  Allocator: %p", pRet);
+				}
+
+				if (pHdr->size >= sizeof(void *)) {
+					void *vtbl = *(void **)pHdr->data;
+
+					if (vtbl >= (char *)modinfo.BaseOfImage && vtbl < (char *)modinfo.BaseOfImage + modinfo.ImageSize) {
+						struct {
+							IMAGEHLP_SYMBOL hdr;
+							CHAR nameext[511];
+						} sym;
+
+						sym.hdr.SizeOfStruct = sizeof(IMAGEHLP_SYMBOL);
+						sym.hdr.MaxNameLength = 512;
+
+						char *t;
+
+						if (dbghelp.pSymGetSymFromAddr(hProc, (DWORD)vtbl, 0, &sym.hdr) && (t = strstr(sym.hdr.Name, "::`vftable'"))) {
+							*t = 0;
+							s += wsprintf(s, " [Type: %s]", sym.hdr.Name);
+						}
+					}
+				}
+
+				*s = 0;
+
+				_RPT1(0, "%s\n", buf);
+			}
+		}
+
+		_RPT0(0, "\nEnd of leak dump.\n");
 	}
-	_RPT0(0, "End of leak dump.\n");
 
 	dbghelp.pSymCleanup(hProc);
 }

@@ -100,6 +100,46 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 }
 
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h) {
+	if (format == nsVDPixmap::kPixFormat_Pal8) {
+		if (src->biCompression != BI_RGB && src->biCompression != BI_RLE4 && src->biCompression != BI_RLE8)
+			return false;
+
+		if (src->biBitCount > 8)
+			return false;
+
+		uint32 clrUsed = src->biClrUsed;
+		uint32 clrImportant = src->biClrImportant;
+
+		if (clrUsed == 0)
+			clrUsed = 1 << src->biBitCount;
+		if (clrUsed >= 256)
+			clrUsed = 0;				// means 'max for type'
+		if (clrImportant >= clrUsed)
+			clrImportant = 0;			// means 'all required'
+
+		uint32 clrEntries = clrUsed;
+		if (!clrEntries)
+			clrEntries = 256;
+
+		dst.resize(sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * clrEntries);
+		dst->biSize				= sizeof(BITMAPINFOHEADER);
+		dst->biWidth			= w;
+		dst->biHeight			= h;
+		dst->biPlanes			= 1;
+		dst->biBitCount			= 8;
+		dst->biCompression		= BI_RGB;
+		dst->biSizeImage		= ((w+3)&~3)*h;
+		dst->biXPelsPerMeter	= src->biXPelsPerMeter;
+		dst->biYPelsPerMeter	= src->biYPelsPerMeter;
+		dst->biClrUsed			= src->biClrUsed;
+		dst->biClrImportant		= src->biClrImportant;
+
+		uint32 clrTableSize = sizeof(RGBQUAD)*clrEntries;
+		memcpy((char *)dst.data() + sizeof(BITMAPINFOHEADER), (const char *)src.data() + src->biSize, clrTableSize);
+
+		return true;
+	}
+
 	if (!VDMakeBitmapFormatFromPixmapFormat(dst, format, variant, w, h))
 		return false;
 
@@ -119,14 +159,6 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int f
 	dst->biPlanes			= 1;
 	dst->biXPelsPerMeter	= 0;
 	dst->biYPelsPerMeter	= 0;
-
-	if (format == kPixFormat_Pal8) {
-		dst->biBitCount		= 8;
-		dst->biCompression	= BI_RGB;
-		dst->biSizeImage	= ((w+3)&~3)*h;
-		return true;
-	}
-
 	dst->biClrUsed			= 0;
 	dst->biClrImportant		= 0;
 
@@ -249,4 +281,14 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint
 	}
 
 	return linspace;
+}
+
+VDPixmap VDGetPixmapForBitmap(const BITMAPINFOHEADER& hdr, const void *data) {
+	int variant;
+
+	int format = VDBitmapFormatToPixmapFormat(hdr, variant);
+	VDPixmapLayout layout;
+	VDMakeBitmapCompatiblePixmapLayout(layout, hdr.biWidth, hdr.biHeight, format, variant);
+
+	return VDPixmapFromLayout(layout, (void *)data);
 }

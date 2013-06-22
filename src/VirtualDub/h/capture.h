@@ -82,6 +82,10 @@ struct VDCaptureTimingSetup {
 
 	bool		mbUseLimitedAutoAudioLatency;
 	int			mAutoAudioLatencyLimit;
+
+	bool		mbUseAudioTimestamps;
+	bool		mbDisableClockForPreview;
+	bool		mbForceAudioRendererClock;
 };
 
 struct VDCaptureStatus {

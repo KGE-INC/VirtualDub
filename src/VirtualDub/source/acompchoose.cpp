@@ -24,6 +24,7 @@
 
 #include "resource.h"
 #include <vd2/system/list.h>
+#include <vd2/system/protscope.h>
 #include "gui.h"
 
 ///////////////////////////////////////////////////////////////////////////

@@ -54,6 +54,8 @@ enum {
 
 // helper functions
 
+bool		VDIsForegroundTaskW32();
+
 LPVOID		VDConvertThreadToFiberW32(LPVOID parm);
 void		VDSwitchToFiberW32(LPVOID fiber);
 
@@ -74,7 +76,14 @@ EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags);
 bool		VDSetFilePointerW32(HANDLE h, sint64 pos, DWORD dwMoveMethod);
 bool		VDGetFileSizeW32(HANDLE h, sint64& size);
 
-HMODULE		VDGetLocalModuleHandleW32();
+#if !defined(_MSC_VER) || _MSC_VER < 1300
+	HMODULE		VDGetLocalModuleHandleW32();
+#else
+	extern "C" IMAGE_DOS_HEADER __ImageBase;
+	inline HMODULE VDGetLocalModuleHandleW32() {
+		return (HINSTANCE)&__ImageBase;
+	}
+#endif
 
 bool		VDDrawTextW32(HDC hdc, const wchar_t *s, int nCount, LPRECT lpRect, UINT uFormat);
 

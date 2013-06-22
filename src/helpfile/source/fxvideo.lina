@@ -52,6 +52,7 @@
 <blockquote><pre>
 texture vd_srctexture;
 texture vd_prevsrctexture;   // new - 1.7.1
+texture vd_prevsrc2texture;  // new - 1.7.3
 texture vd_temptexture;
 texture vd_temptexture2;
 </pre></blockquote>
@@ -211,6 +212,75 @@ pass p0
 		</dd>
 	</dl>
 
+	<h2>Custom textures (1.7.3+)</h2>
+	<p>
+		Annotations can be used to control the dimensions of a texture:
+	</p>
+	<dl>
+		<dt>string ResourceType;</dt>
+		<dd>
+			Specifies the Direct3D resource type of the texture. Can be <tt>1D</tt>, <tt>2D</tt>, <tt>3D</tt>, or <tt>cube</tt>. The
+			default is 2D.
+		</dd>
+		
+		<dt>float2/3 Dimensions;</dt>
+		<dd>
+			Specifies the width, height, and depth of a texture, in texels. The texture size is automatically adjusted to
+			powers of two as needed.
+		</dd>
+		
+		<dt>string Format;</dt>
+		<dd>
+			Specifies the Direct3D format of a texture. The format name is the same as the <tt>D3DFORMAT</tt> constant name, without the
+			<tt>D3DFMT_</tt> prefix, i.e. <tt>A8R8G8B8</tt>.
+		</dd>
+		
+		<dt>string Function;</dt>
+		<dd>
+			Specifies the name of a function to use as a texture shader for initializing the texture.
+		</dd>
+		
+		<dt>int MIPLevels;</dt>
+		<dd>
+			Specifies the number of mip map levels to allocate. A value of zero means to allocate a full mip chain.
+		</dd>
+		
+		<dt>float2 ViewportRatio;</dt>
+		<dd>
+			Specifies a pair of ratios so that the size of the texture is proportional to the viewport size. If a texture shader is
+			specified, it is re-evaluated every time the texture size is updated.
+		</dd>
+		
+		<dt>int width;</dt>
+		<dd>
+			Specifies the width of the texture, in texels. This is used only if the <tt>Dimensions</tt> annotation is not present.
+		</dd>
+		
+		<dt>int height;</dt>
+		<dd>
+			Specifies the height of the texture, in texels. This is used only if the <tt>Dimensions</tt> annotation is not present.
+		</dd>
+	</dl>
+	<p>
+		The type of a texture can also be specified by semantic:
+	</p>
+	<dl>
+		<dt>RenderColorTarget</dt>
+		<dd>
+			Specifies that the texture should be allocated with Direct3D <tt>RENDERTARGET</tt> usage.
+		</dd>
+		
+		<dt>RenderDepthStencilTarget</dt>
+		<dd>
+			Specifies that the texture should be allocated with Direct3D <tt>DEPTHSTENCIL</tt> usage.
+		</dd>
+	</dl>
+	<p>
+		Whenever a custom texture is created, a mirror variable with the suffix <tt>_size</tt> with type float or vector is checked
+		for. If this variable is present, its x and y components are filled with the width and height in texels, and w and z with
+		the reciprocal width and height (note that the order is w and z, not z and w).
+	</p>
+	
 	<h2>Texture shaders</h2>
 	<p>
 		<em>D3DX texture shaders</em> can be used to precalculate a texture prior to video display. These shaders
@@ -258,6 +328,9 @@ float4 gen(float2 texcoord : POSITION,
 	return texcoord.xyxy;
 }
 	</pre></blockquote>
+	<p>
+		Starting with 1.7.3, texture shaders can be applied to volume and cube textures.
+	</p>
 
 	<h2>Caveats</h2>
 	<p>

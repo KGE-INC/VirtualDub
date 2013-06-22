@@ -19,6 +19,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/strutil.h>
 #include <vd2/system/Error.h>
+#include <vd2/system/protscope.h>
 #include <vd2/Riza/w32audiocodec.h>
 
 namespace {
@@ -402,12 +403,13 @@ bool VDAudioCodecW32::Convert(bool flush, bool requireOutput) {
 				const WAVEFORMATEX& wfsrc = *mSrcFormat;
 				const WAVEFORMATEX& wfdst = *mDstFormat;
 
-				throw MyError("The operation cannot continue as the target audio codec has jammed and is not compressing data.\n"
+				throw MyError("The operation cannot continue as the target audio codec has jammed and is not %scompressing data.\n"
 								"Codec state for driver \"%.64s\":\n"
 								"    source buffer size: %d bytes\n"
 								"    destination buffer size: %d bytes\n"
 								"    source format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
 								"    destination format: tag %04x, %dHz/%dch/%d-bit, %d bytes/sec\n"
+								, isCompression ? "" : "de"
 								, mDriverName
 								, mBufferHdr.cbSrcLength
 								, mBufferHdr.cbDstLength

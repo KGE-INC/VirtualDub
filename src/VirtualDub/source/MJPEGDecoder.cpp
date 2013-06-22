@@ -614,6 +614,9 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 	raw_height = getshort(psrc + 3);
 	raw_width = getshort(psrc + 5);
 
+	if (raw_width > width || raw_height > height)
+		throw MyError("Error: The size of this frame is inconsistent with the video stream (frame is %dx%d, stream is %dx%d)", raw_width, raw_height, width, height);
+
 	if (psrc[7] != 3)
 		throw MyError("Error: picture must be 3 component (YCC)");
 

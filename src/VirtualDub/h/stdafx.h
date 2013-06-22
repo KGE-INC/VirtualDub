@@ -65,6 +65,7 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 	#include <vd2/system/refcount.h>
 	#include <vd2/system/vdalloc.h>
 	#include <vd2/system/w32assist.h>
+	#include <vd2/system/protscope.h>
 	#include <vd2/Dita/interface.h>
 	#include <vd2/Kasumi/pixmap.h>
 	#include <vd2/Kasumi/pixmapops.h>

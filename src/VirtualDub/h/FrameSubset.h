@@ -18,8 +18,14 @@
 #ifndef f_FRAMESUBSET_H
 #define f_FRAMESUBSET_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <list>
 #include <vd2/system/list.h>
+
+class VDFraction;
 
 struct FrameSubsetNode {
 public:
@@ -125,6 +131,9 @@ public:
 		mCachedIterator = mTimeline.begin();
 		mCachedPosition = 0;
 	}
+
+	void rescale(const VDFraction& oldRate, sint64 oldLength, const VDFraction& newRate, sint64 newLength);
+
 protected:
 
 	tTimeline				mTimeline;

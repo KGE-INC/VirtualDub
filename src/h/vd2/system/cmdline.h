@@ -49,8 +49,10 @@ public:
 	const wchar_t *operator[](int index) const;
 
 	bool GetNextArgument(VDCommandLineIterator& index, const wchar_t *& token, bool& isSwitch) const;
+	bool GetNextNonSwitchArgument(VDCommandLineIterator& index, const wchar_t *& token) const;
 	bool GetNextSwitchArgument(VDCommandLineIterator& index, const wchar_t *& token) const;
 	bool FindAndRemoveSwitch(const wchar_t *name);
+	bool FindAndRemoveSwitch(const wchar_t *name, const wchar_t *& token);
 
 protected:
 	vdfastvector<wchar_t>	mLine;

@@ -120,6 +120,7 @@ protected:
 	void		SetPosition(VDPosition pos);
 	void		SetDisplayedPosition(VDPosition pos);
 	void		SetAutoPositionUpdate(bool autoUpdate);
+	void		SetAutoStep(bool autoStep);
 
 	bool		GetSelection(VDPosition& start, VDPosition& end);
 	void		SetSelection(VDPosition start, VDPosition end, bool updateNow);
@@ -128,18 +129,22 @@ protected:
 
 	void		ResetShuttle();
 
+	VDEvent<IVDPositionControl, VDPositionControlEventData>&	PositionUpdated();
+
 protected:
-	static LRESULT APIENTRY VDPositionControlW32::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	void InternalSetPosition(VDPosition pos, VDPositionControlEventData::EventType eventType);
+
+	static LRESULT APIENTRY StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT CALLBACK WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
-	static BOOL CALLBACK VDPositionControlW32::InitChildrenProc(HWND hWnd, LPARAM lParam);
+	static BOOL CALLBACK InitChildrenProc(HWND hWnd, LPARAM lParam);
 	void OnCreate();
 	void OnSize();
 	void OnPaint();
 	void UpdateString(VDPosition pos=-1);
 	void RecomputeMetrics();
 	void RecalcThumbRect(VDPosition pos, bool update = true);
-	void Notify(UINT code);
+	void Notify(UINT code, VDPositionControlEventData::EventType eventType);
 
 	inline int FrameToPixel(VDPosition pos) {
 		return VDFloorToInt(mPixelToFrameBias + mPixelsPerFrame * pos);
@@ -196,6 +201,9 @@ protected:
 	bool mbHasMarkControls;
 	bool mbHasSceneControls;
 	bool mbAutoFrame;
+	bool mbAutoStep;
+
+	VDEvent<IVDPositionControl, VDPositionControlEventData>	mPositionUpdatedEvent;
 
 	static HICON shIcons[13];
 };
@@ -259,6 +267,7 @@ VDPositionControlW32::VDPositionControlW32(HWND hwnd)
 	, mbHasMarkControls(false)
 	, mbHasSceneControls(false)
 	, mbAutoFrame(true)
+	, mbAutoStep(false)
 {
 	mBrushes[kBrushCurrentFrame] = CreateSolidBrush(RGB(255,0,0));
 	mBrushes[kBrushTick] = CreateSolidBrush(RGB(0,0,0));
@@ -316,6 +325,10 @@ VDPosition VDPositionControlW32::GetPosition() {
 }
 
 void VDPositionControlW32::SetPosition(VDPosition pos) {
+	InternalSetPosition(pos, VDPositionControlEventData::kEventJump);
+}
+
+void VDPositionControlW32::InternalSetPosition(VDPosition pos, VDPositionControlEventData::EventType eventType) {
 	if (pos < mRangeStart)
 		pos = mRangeStart;
 	if (pos > mRangeEnd)
@@ -325,6 +338,11 @@ void VDPositionControlW32::SetPosition(VDPosition pos) {
 		mPosition = pos;
 		RecalcThumbRect(pos, true);
 		UpdateString();
+
+		VDPositionControlEventData eventData;
+		eventData.mPosition = mPosition;
+		eventData.mEventType = eventType;
+		mPositionUpdatedEvent.Raise(this, eventData);
 	}
 }
 
@@ -342,6 +360,10 @@ void VDPositionControlW32::SetAutoPositionUpdate(bool autoUpdate) {
 		if (autoUpdate)
 			RecalcThumbRect(mPosition, true);
 	}
+}
+
+void VDPositionControlW32::SetAutoStep(bool autoStep) {
+	mbAutoStep = autoStep;
 }
 
 bool VDPositionControlW32::GetSelection(VDPosition& start, VDPosition& end) {
@@ -393,6 +415,10 @@ void VDPositionControlW32::ResetShuttle() {
 
 	CheckDlgButton(mhwnd, IDC_SCENEREV, BST_UNCHECKED);
 	CheckDlgButton(mhwnd, IDC_SCENEFWD, BST_UNCHECKED);
+}
+
+VDEvent<IVDPositionControl, VDPositionControlEventData>& VDPositionControlW32::PositionUpdated() {
+	return mPositionUpdatedEvent;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -483,6 +509,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 	case WM_COMMAND:
 		{
 			UINT cmd;
+			VDPositionControlEventData::EventType eventType = VDPositionControlEventData::kEventNone;
 
 			switch(LOWORD(wParam)) {
 			case IDC_STOP:			cmd = PCN_STOP;			break;
@@ -490,12 +517,40 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 			case IDC_PLAYPREVIEW:	cmd = PCN_PLAYPREVIEW;	break;
 			case IDC_MARKIN:		cmd = PCN_MARKIN;		break;
 			case IDC_MARKOUT:		cmd = PCN_MARKOUT;		break;
-			case IDC_START:			cmd = PCN_START;		break;
-			case IDC_BACKWARD:		cmd = PCN_BACKWARD;		break;
-			case IDC_FORWARD:		cmd = PCN_FORWARD;		break;
-			case IDC_END:			cmd = PCN_END;			break;
-			case IDC_KEYPREV:		cmd = PCN_KEYPREV;		break;
-			case IDC_KEYNEXT:		cmd = PCN_KEYNEXT;		break;
+
+			case IDC_START:
+				cmd = PCN_START;
+				if (mbAutoStep)
+					InternalSetPosition(mRangeStart, VDPositionControlEventData::kEventJumpToStart);
+				break;
+
+			case IDC_BACKWARD:
+				cmd = PCN_BACKWARD;
+				if (mbAutoStep)
+					InternalSetPosition(mPosition - 1, VDPositionControlEventData::kEventJumpToPrev);
+				break;
+
+			case IDC_FORWARD:
+				cmd = PCN_FORWARD;
+				if (mbAutoStep)
+					InternalSetPosition(mPosition + 1, VDPositionControlEventData::kEventJumpToNext);
+				break;
+
+			case IDC_END:
+				cmd = PCN_END;
+				if (mbAutoStep)
+					InternalSetPosition(mRangeEnd, VDPositionControlEventData::kEventJumpToEnd);
+				break;
+
+			case IDC_KEYPREV:
+				cmd = PCN_KEYPREV;
+				eventType = VDPositionControlEventData::kEventJumpToPrevKey;
+				break;
+
+			case IDC_KEYNEXT:
+				cmd = PCN_KEYNEXT;
+				eventType = VDPositionControlEventData::kEventJumpToNextKey;
+				break;
 
 			case IDC_SCENEREV:
 				cmd = PCN_SCENEREV;
@@ -516,6 +571,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 			default:
 				return 0;
 			}
+
 			SendMessage(GetParent(mhwnd), WM_COMMAND, MAKELONG(GetWindowLong(mhwnd, GWL_ID), cmd), (LPARAM)mhwnd);
 		}
 		break;
@@ -529,7 +585,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 				mDragMode = kDragThumbFast;
 				SetCapture(mhwnd);
 
-				Notify(PCN_BEGINTRACK);
+				Notify(PCN_BEGINTRACK, VDPositionControlEventData::kEventNone);
 				InvalidateRect(mhwnd, &mThumbRect, TRUE);
 			} else if (PtInRect(&mPositionArea, pt)) {
 				mPosition = (sint64)floor((pt.x - mTrack.left) * mFramesPerPixel + 0.5);
@@ -540,7 +596,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 				if (mbAutoFrame)
 					UpdateString();
 				RecalcThumbRect(mPosition);
-				Notify(PCN_THUMBPOSITION);
+				Notify(PCN_THUMBPOSITION, VDPositionControlEventData::kEventJump);
 				InvalidateRect(mhwnd, &mThumbRect, TRUE);
 			}
 		}
@@ -557,7 +613,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 				mDragAccum = 0;
 				SetCapture(mhwnd);
 
-				Notify(PCN_BEGINTRACK);
+				Notify(PCN_BEGINTRACK, VDPositionControlEventData::kEventNone);
 				InvalidateRect(mhwnd, &mThumbRect, TRUE);
 				ShowCursor(FALSE);
 			}
@@ -584,12 +640,19 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 					UpdateWindow(mhwnd);
 				}
 
-				mPosition = (sint64)floor((x - mTrack.left + mThumbWidth) * mFramesPerPixel + 0.5);
+				sint64 pos = VDRoundToInt64((x - mTrack.left + mThumbWidth) * mFramesPerPixel);
+				if (pos > mRangeEnd)
+					pos = mRangeEnd;
+				if (pos < mRangeStart)
+					pos = mRangeStart;
+				if (mPosition != pos) {
+					mPosition = pos;
 
-				if (mbAutoFrame)
-					UpdateString();
+					if (mbAutoFrame)
+						UpdateString();
 
-				Notify(PCN_THUMBTRACK);
+					Notify(PCN_THUMBTRACK, VDPositionControlEventData::kEventTracking);
+				}
 			}
 		} else if (mDragMode == kDragThumbSlow) {
 			POINT pt = {(SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam)};
@@ -600,7 +663,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 
 			if (delta) {
 				SetPosition(mDragAnchorPos += delta);
-				Notify(PCN_THUMBTRACK);
+				Notify(PCN_THUMBTRACK, VDPositionControlEventData::kEventTracking);
 			}
 			
 			pt.x = mThumbRect.left + mDragOffsetX;
@@ -622,7 +685,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 			mDragMode = kDragNone;
 			ReleaseCapture();
 
-			Notify(PCN_ENDTRACK);
+			Notify(PCN_ENDTRACK, VDPositionControlEventData::kEventNone);
 			InvalidateRect(mhwnd, &mThumbRect, TRUE);
 		}
 		break;
@@ -637,7 +700,7 @@ LRESULT CALLBACK VDPositionControlW32::WndProc(UINT msg, WPARAM wParam, LPARAM l
 				mWheelAccum -= WHEEL_DELTA * increments;
 
 				SetPosition(mPosition + increments);
-				Notify(PCN_THUMBPOSITION);
+				Notify(PCN_THUMBPOSITION, VDPositionControlEventData::kEventJump);
 			}
 		}
 		return 0;
@@ -1048,10 +1111,17 @@ void VDPositionControlW32::RecalcThumbRect(VDPosition pos, bool update) {
 	}
 }
 
-void VDPositionControlW32::Notify(UINT code) {
+void VDPositionControlW32::Notify(UINT code, VDPositionControlEventData::EventType eventType) {
 	NMHDR nm;
 	nm.hwndFrom = mhwnd;
 	nm.idFrom	= GetWindowLong(mhwnd, GWL_ID);
 	nm.code		= code;
 	SendMessage(GetParent(mhwnd), WM_NOTIFY, nm.idFrom, (LPARAM)&nm);
+
+	if (eventType) {
+		VDPositionControlEventData eventData;
+		eventData.mPosition = mPosition;
+		eventData.mEventType = eventType;
+		mPositionUpdatedEvent.Raise(this, eventData);
+	}
 }

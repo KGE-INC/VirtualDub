@@ -38,136 +38,6 @@
 #include <vd2/system/tls.h>
 #include <vd2/system/VDString.h>
 
-const wchar_t *VDFastTextAToW(const char *s) {
-	int cnt;
-
-	if (!s)
-		return NULL;
-
-	cnt = MultiByteToWideChar(CP_ACP, 0, s, -1, g_tlsdata.fastBufW, sizeof g_tlsdata.fastBufW / sizeof(wchar_t));
-
-	if (cnt)
-		return g_tlsdata.fastBufW;
-
-	if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-		cnt = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
-
-		if (cnt) {
-			g_tlsdata.pFastBufAlloc = malloc(sizeof(wchar_t) * cnt);
-
-			cnt = MultiByteToWideChar(CP_ACP, 0, s, -1, (LPWSTR)g_tlsdata.pFastBufAlloc, cnt);
-
-			if (cnt)
-				return (const wchar_t *)g_tlsdata.pFastBufAlloc;
-
-			free(g_tlsdata.pFastBufAlloc);
-			g_tlsdata.pFastBufAlloc = NULL;
-		}
-	}
-
-	return L"";
-}
-
-const char *VDFastTextWToA(const wchar_t *s) {
-	int cnt;
-
-	if (!s)
-		return NULL;
-
-	cnt = WideCharToMultiByte(CP_ACP, 0, s, -1, g_tlsdata.fastBufA, sizeof g_tlsdata.fastBufA, NULL, 0);
-
-	if (cnt)
-		return g_tlsdata.fastBufA;
-
-	if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-		cnt = WideCharToMultiByte(CP_ACP, 0, s, -1, NULL, 0, NULL, 0);
-
-		if (cnt) {
-			LPSTR dst;
-
-			if (dst = VDFastTextAllocA(cnt)) {
-				cnt = WideCharToMultiByte(CP_ACP, 0, s, -1, dst, cnt, NULL, 0);
-
-				if (cnt)
-					return dst;
-
-				VDFastTextFree();
-			}
-		}
-	}
-
-	return "";
-}
-
-const char *VDFastTextVprintfA(const char *format, va_list val) {
-	int rv;
-	const char *pRet = g_tlsdata.fastBufA;
-
-	rv = _vsnprintf(g_tlsdata.fastBufA, sizeof g_tlsdata.fastBufA, format, val);
-
-	if (rv < 0) {
-		char *pRet2 = (char *)VDFastTextAllocA(sizeof(g_tlsdata.fastBufA) * 8);
-
-		if (pRet2) {
-			_vsnprintf(pRet2, sizeof(g_tlsdata.fastBufA) * 8, format, val);
-			pRet = pRet2;
-		}
-	}
-
-	return pRet;
-}
-
-const wchar_t *VDFastTextVprintfW(const wchar_t *format, va_list val) {
-	int rv;
-	const wchar_t *pRet = g_tlsdata.fastBufW;
-
-	rv = _vsnwprintf(g_tlsdata.fastBufW, sizeof g_tlsdata.fastBufW / sizeof(wchar_t), format, val);
-
-	if (rv < 0) {
-		wchar_t *pRet2 = VDFastTextAllocW(sizeof(g_tlsdata.fastBufW) / sizeof(wchar_t) * 8);
-
-		if (pRet2) {
-			_vsnwprintf(pRet2, sizeof(g_tlsdata.fastBufA) * 8 / sizeof(wchar_t), format, val);
-			pRet = pRet2;
-		}
-	}
-
-	return pRet;
-}
-
-char *VDGetFastTextBufferA(int& maxchars) {
-	maxchars = sizeof g_tlsdata.fastBufA;
-	return g_tlsdata.fastBufA;
-}
-
-wchar_t *VDGetFastTextBufferW(int& maxchars) {
-	maxchars = sizeof g_tlsdata.fastBufW / sizeof(wchar_t);
-	return g_tlsdata.fastBufW;
-}
-
-char *VDFastTextAllocA(size_t bytes) {
-	VDASSERT(!g_tlsdata.pFastBufAlloc);
-
-	if (bytes <= sizeof g_tlsdata.fastBufA)
-		return g_tlsdata.fastBufA;
-
-	return (char *)(g_tlsdata.pFastBufAlloc = malloc(bytes));
-}
-
-wchar_t *VDFastTextAllocW(size_t chars) {
-	VDASSERT(!g_tlsdata.pFastBufAlloc);
-
-	if (chars <= sizeof g_tlsdata.fastBufW / sizeof(wchar_t))
-		return g_tlsdata.fastBufW;
-
-	return (wchar_t *)(g_tlsdata.pFastBufAlloc = malloc(chars * sizeof(wchar_t)));
-}
-
-void VDFastTextFree() {
-	free(g_tlsdata.pFastBufAlloc);
-	g_tlsdata.pFastBufAlloc = NULL;
-}
-
 int VDTextWToA(char *dst, int max_dst, const wchar_t *src, int max_src) {
 	VDASSERTPTR(dst);
 	VDASSERTPTR(src);
@@ -426,6 +296,8 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 	vdfastvector<wchar_t> out;
 	wchar_t c;
 
+	VDStringW tempConv;
+
 	while(c = *format) {
 		if (c != L'%') {
 			const wchar_t *s = format;
@@ -611,15 +483,15 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 			case L's':
 				if (size == kShort) {
 					const char *s = *(const char *const *)*argv++;
-					int maxdst;
 					int maxsrc = strlen(s);
 
 					if (precision >= 0 && precision < maxsrc)
 						maxsrc = precision;
 
-					pbuf0 = VDGetFastTextBufferW(maxdst);
+					tempConv = VDTextAToW(s, maxsrc);
+					pbuf0 = const_cast<wchar_t *>(tempConv.c_str());
 
-					pbuf = pbuf0 + VDTextAToW(pbuf0, maxdst, s, maxsrc);
+					pbuf = pbuf0 + tempConv.size();
 				} else {
 					pbuf = pbuf0 = *(wchar_t *const *)*argv++;
 
@@ -638,12 +510,11 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 			case L'G':
 				// We place an artificial limit of 256 characters on the precision value.
 				{
-					int maxlen;
-
 					if (precision > 256)
 						precision = 256;
 
-					pbuf0 = pbuf = VDGetFastTextBufferW(maxlen);
+					tempConv.resize(256);
+					pbuf0 = pbuf = const_cast<wchar_t *>(tempConv.data());
 
 					*pxf++ = '%';
 					if (flags.bPrefix)
@@ -660,9 +531,9 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 					*pxf = 0;
 
 					if (precision >= 0)
-						pbuf += swprintf(pbuf, maxlen, xf, precision, *(const double *)*argv++);
+						pbuf += swprintf(pbuf, 256, xf, precision, *(const double *)*argv++);
 					else
-						pbuf += swprintf(pbuf, maxlen, xf, *(const double *)*argv++);
+						pbuf += swprintf(pbuf, 256, xf, *(const double *)*argv++);
 				}
 				break;
 

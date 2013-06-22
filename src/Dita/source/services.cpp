@@ -691,10 +691,12 @@ const VDStringW VDGetDirectory(long nKey, VDGUIHandle ctxParent, const wchar_t *
 					BROWSEINFOA bi;
 					ITEMIDLIST *pidlBrowse;
 
+					VDStringA tempA(VDTextWToA(pszTitle));
+
 					bi.hwndOwner		= (HWND)ctxParent;
 					bi.pidlRoot			= NULL;
 					bi.pszDisplayName	= pszBuffer;
-					bi.lpszTitle		= VDFastTextWToA(pszTitle);
+					bi.lpszTitle		= tempA.c_str();
 					bi.ulFlags			= BIF_EDITBOX | /*BIF_NEWDIALOGSTYLE |*/ BIF_RETURNONLYFSDIRS | BIF_VALIDATE;
 					bi.lpfn				= NULL;
 

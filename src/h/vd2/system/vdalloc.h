@@ -26,6 +26,10 @@
 #ifndef f_VD2_SYSTEM_VDALLOC_H
 #define f_VD2_SYSTEM_VDALLOC_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <stdlib.h>
 
 // Why don't I use STL auto_ptr?  Two reasons.  First, auto_ptr has

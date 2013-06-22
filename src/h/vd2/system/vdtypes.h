@@ -1,6 +1,6 @@
 //	VirtualDub - Video processing and capture application
 //	System library component
-//	Copyright (C) 1998-2004 Avery Lee, All Rights Reserved.
+//	Copyright (C) 1998-2007 Avery Lee, All Rights Reserved.
 //
 //	Beginning with 1.6.0, the VirtualDub system library is licensed
 //	differently than the remainder of VirtualDub.  This particular file is
@@ -25,6 +25,10 @@
 
 #ifndef f_VD2_SYSTEM_VDTYPES_H
 #define f_VD2_SYSTEM_VDTYPES_H
+
+#ifdef _MSC_VER
+	#pragma once
+#endif
 
 #include <algorithm>
 #include <stdio.h>
@@ -285,10 +289,10 @@ extern void VDDebugPrint(const char *format, ...);
 		bool VDAssertHelper<lineno>::sbAssertDisabled;
 	}
 
-	#define VDASSERT(exp)		if (static bool active = true) if (exp); else switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
-	#define VDASSERTPTR(exp) 	if (static bool active = true) if (exp); else switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
-	#define VDVERIFY(exp)		if (exp); else if (static bool active = true) switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
-	#define VDVERIFYPTR(exp) 	if (exp); else if (static bool active = true) switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else
+	#define VDASSERT(exp)		if (static bool active = true) if (exp); else switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else ((void)0)
+	#define VDASSERTPTR(exp) 	if (static bool active = true) if (exp); else switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else ((void)0)
+	#define VDVERIFY(exp)		if (exp); else if (static bool active = true) switch(VDAssert   (#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else ((void)0)
+	#define VDVERIFYPTR(exp) 	if (exp); else if (static bool active = true) switch(VDAssertPtr(#exp, __FILE__, __LINE__)) { case kVDAssertBreak: VDBREAK; break; case kVDAssertIgnore: active = false; } else ((void)0)
 	#define VDASSERTCT(exp)		(void)sizeof(int[(exp)?1:-1])
 
 	#define VDINLINEASSERT(exp)			((exp)||(VDAssertHelper<__LINE__>(#exp, __FILE__),false))
@@ -399,214 +403,6 @@ extern void VDDebugPrint(const char *format, ...);
 #define vdobjectscope(object_def) if(object_def) VDNEVERHERE; else
 #else
 #define vdobjectscope(object_def) switch(object_def) case 0: default:
-#endif
-
-///////////////////////////////////////////////////////////////////////////
-//
-// Protected scope macros
-//
-// These macros allow you to define a scope which is known to the crash
-// handler -- that is, if the application crashes within a protected scope
-// the handler will report the scope information in the crash output.
-//
-
-class VDProtectedAutoScope;
-
-extern __declspec(thread) VDProtectedAutoScope *volatile g_protectedScopeLink;
-
-// The reason for this function is a bug in the Intel compiler regarding
-// construction optimization -- it stores VDProtectedAutoScope::'vtable'
-// in the vtable slot instead of VDProtectedAutoScope1<T>::'vtable', thus
-// killing the printf()s. "volatile" doesn't work to fix the problem, but
-// calling an opaque global function does.  Oh well.
-
-#ifdef __INTEL_COMPILER
-void VDProtectedAutoScopeICLWorkaround();
-#endif
-
-class IVDProtectedScopeOutput {
-public:
-	virtual void write(const char *s) = 0;
-	virtual void writef(const char *s, ...) = 0;
-};
-
-class VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope(const char *file, int line, const char *action) : mpFile(file), mLine(line), mpAction(action), mpLink(g_protectedScopeLink) {
-		// Note that the assignment to g_protectedScopeLink cannot occur here, as the
-		// derived class has not been constructed yet.  Uninitialized objects in
-		// the debugging chain are *bad*.
-	}
-
-	~VDProtectedAutoScope() {
-		g_protectedScopeLink = mpLink;
-	}
-
-	operator bool() const { return false; }
-
-	virtual void Write(IVDProtectedScopeOutput& out) {
-		out.write(mpAction);
-	}
-
-	VDProtectedAutoScope *mpLink;
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-};
-
-class VDProtectedAutoScopeData0 {
-public:
-	VDProtectedAutoScopeData0(const char *file, int line, const char *action) : mpFile(file), mLine(line), mpAction(action) {}
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-};
-
-template<class T1>
-class VDProtectedAutoScopeData1 {
-public:
-	VDProtectedAutoScopeData1(const char *file, int line, const char *action, const T1 a1) : mpFile(file), mLine(line), mpAction(action), mArg1(a1) {}
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-	const T1 mArg1;
-};
-
-template<class T1, class T2>
-class VDProtectedAutoScopeData2 {
-public:
-	VDProtectedAutoScopeData2(const char *file, int line, const char *action, const T1 a1, const T2 a2) : mpFile(file), mLine(line), mpAction(action), mArg1(a1), mArg2(a2) {}
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-	const T1 mArg1;
-	const T2 mArg2;
-};
-
-template<class T1, class T2, class T3>
-class VDProtectedAutoScopeData3 {
-public:
-	VDProtectedAutoScopeData3(const char *file, int line, const char *action, const T1 a1, const T2 a2, const T3 a3) : mpFile(file), mLine(line), mpAction(action), mArg1(a1), mArg2(a2), mArg3(a3) {}
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-	const T1 mArg1;
-	const T2 mArg2;
-	const T3 mArg3;
-};
-
-template<class T1, class T2, class T3, class T4>
-class VDProtectedAutoScopeData4 {
-public:
-	VDProtectedAutoScopeData4(const char *file, int line, const char *action, const T1 a1, const T2 a2, const T3 a3, const T4 a4) : mpFile(file), mLine(line), mpAction(action), mArg1(a1), mArg2(a2), mArg3(a3), mArg4(a4) {}
-	const char *const mpFile;
-	const int mLine;
-	const char *const mpAction;
-	const T1 mArg1;
-	const T2 mArg2;
-	const T3 mArg3;
-	const T4 mArg4;
-};
-
-class VDProtectedAutoScope0 : public VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope0(const VDProtectedAutoScopeData0& data) : VDProtectedAutoScope(data.mpFile, data.mLine, data.mpAction) {
-		g_protectedScopeLink = this;
-#ifdef __INTEL_COMPILER
-		VDProtectedAutoScopeICLWorkaround();
-#endif
-	}
-};
-
-template<class T1>
-class VDProtectedAutoScope1 : public VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope1(const VDProtectedAutoScopeData1<T1>& data) : VDProtectedAutoScope(data.mpFile, data.mLine, data.mpAction), mArg1(data.mArg1) {
-		g_protectedScopeLink = this;
-#ifdef __INTEL_COMPILER
-		VDProtectedAutoScopeICLWorkaround();
-#endif
-	}
-
-	virtual void Write(IVDProtectedScopeOutput& out) {
-		out.writef(mpAction, mArg1);
-	}
-
-	const T1 mArg1;
-};
-
-template<class T1, class T2>
-class VDProtectedAutoScope2 : public VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope2(const VDProtectedAutoScopeData2<T1,T2>& data) : VDProtectedAutoScope(data.mpFile, data.mLine, data.mpAction), mArg1(data.mArg1), mArg2(data.mArg2) {
-		g_protectedScopeLink = this;
-#ifdef __INTEL_COMPILER
-		VDProtectedAutoScopeICLWorkaround();
-#endif
-	}
-
-	virtual void Write(IVDProtectedScopeOutput& out) {
-		out.writef(mpAction, mArg1, mArg2);
-	}
-
-	const T1 mArg1;
-	const T2 mArg2;
-};
-
-template<class T1, class T2, class T3>
-class VDProtectedAutoScope3 : public VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope3(const VDProtectedAutoScopeData3<T1,T2,T3>& data) : VDProtectedAutoScope(data.mpFile, data.mLine, data.mpAction), mArg1(data.mArg1), mArg2(data.mArg2), mArg3(data.mArg3) {
-		g_protectedScopeLink = this;
-#ifdef __INTEL_COMPILER
-		VDProtectedAutoScopeICLWorkaround();
-#endif
-	}
-
-	virtual void Write(IVDProtectedScopeOutput& out) {
-		out.writef(mpAction, mArg1, mArg2, mArg3);
-	}
-
-	const T1 mArg1;
-	const T2 mArg2;
-	const T3 mArg3;
-};
-
-template<class T1, class T2, class T3, class T4>
-class VDProtectedAutoScope4 : public VDProtectedAutoScope {
-public:
-	VDProtectedAutoScope4(const VDProtectedAutoScopeData4<T1,T2,T3,T4>& data) : VDProtectedAutoScope(data.mpFile, data.mLine, data.mpAction), mArg1(data.mArg1), mArg2(data.mArg2), mArg3(data.mArg3), mArg4(data.mArg4) {
-		g_protectedScopeLink = this;
-#ifdef __INTEL_COMPILER
-		VDProtectedAutoScopeICLWorkaround();
-#endif
-	}
-
-	virtual void Write(IVDProtectedScopeOutput& out) {
-		out.writef(mpAction, mArg1, mArg2, mArg3, mArg4);
-	}
-
-	const T1 mArg1;
-	const T2 mArg2;
-	const T3 mArg3;
-	const T4 mArg4;
-};
-
-
-#define vdprotected(action) vdobjectscope(VDProtectedAutoScope0 autoscope = VDProtectedAutoScopeData0(__FILE__, __LINE__, action))
-#define vdprotected1(actionf, type1, arg1) vdobjectscope(VDProtectedAutoScope1<type1> autoscope = VDProtectedAutoScopeData1<type1>(__FILE__, __LINE__, actionf, arg1))
-
-// @&#(* preprocessor doesn't view template brackets as escaping commas, so we have a slight
-// problem....
-
-#if defined(VD_COMPILER_MSVC) && (VD_COMPILER_MSVC < 1400 || defined(VD_COMPILER_MSVC_VC8_DDK))
-#define vdprotected2(actionf, type1, arg1, type2, arg2) if(VDProtectedAutoScope2<type1, type2> autoscope = VDProtectedAutoScopeData2<type1, type2>(__FILE__, __LINE__, actionf, arg1, arg2)) VDNEVERHERE; else
-#define vdprotected3(actionf, type1, arg1, type2, arg2, type3, arg3) if(VDProtectedAutoScope3<type1, type2, type3> autoscope = VDProtectedAutoScopeData3<type1, type2, type3>(__FILE__, __LINE__, actionf, arg1, arg2, arg3)) VDNEVERHERE; else
-#define vdprotected4(actionf, type1, arg1, type2, arg2, type3, arg3, type4, arg4) if(VDProtectedAutoScope4<type1, type2, type3, type4> autoscope = VDProtectedAutoScopeData4<type1, type2, type3, type4>(__FILE__, __LINE__, actionf, arg1, arg2, arg3, arg4)) VDNEVERHERE; else
-#else
-#define vdprotected2(actionf, type1, arg1, type2, arg2) switch(VDProtectedAutoScope2<type1, type2> autoscope = VDProtectedAutoScopeData2<type1, type2>(__FILE__, __LINE__, actionf, arg1, arg2)) case 0: default:
-#define vdprotected3(actionf, type1, arg1, type2, arg2, type3, arg3) switch(VDProtectedAutoScope3<type1, type2, type3> autoscope = VDProtectedAutoScopeData3<type1, type2, type3>(__FILE__, __LINE__, actionf, arg1, arg2, arg3)) case 0: default:
-#define vdprotected4(actionf, type1, arg1, type2, arg2, type3, arg3, type4, arg4) switch(VDProtectedAutoScope4<type1, type2, type3, type4> autoscope = VDProtectedAutoScopeData4<type1, type2, type3, type4>(__FILE__, __LINE__, actionf, arg1, arg2, arg3, arg4)) case 0: default:
 #endif
 
 #endif

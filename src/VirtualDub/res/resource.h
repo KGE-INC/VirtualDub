@@ -44,6 +44,8 @@
 #define IDS_TITLE_CAPTURE3              12
 #define IDC_TEST                        12
 #define IDC_START                       13
+#define IDC_START2                      14
+#define IDC_RELOAD                      14
 #define IDC_SAVE2                       16
 #define IDC_SAVEPLUS                    17
 #define IDD_MAIN_WINDOW                 101
@@ -845,6 +847,7 @@
 #define IDC_ALIGNMENT_8                 1429
 #define IDC_STATIC_LIMIT                1429
 #define IDC_ALIGNMENT_16                1430
+#define IDC_SETTING                     1430
 #define IDC_DIR_MIDDLERIGHT             1450
 #define IDC_DIR_TOPRIGHT                1451
 #define IDC_DIR_TOPCENTER               1452
@@ -1330,7 +1333,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        272
 #define _APS_NEXT_COMMAND_VALUE         40458
-#define _APS_NEXT_CONTROL_VALUE         1430
+#define _APS_NEXT_CONTROL_VALUE         1431
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

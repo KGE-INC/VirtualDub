@@ -41,6 +41,8 @@ float4 vd_texsize;
 float4 vd_tex2size;
 float4 vd_tempsize;
 float4 vd_temp2size;
+float4 vd_interphtexsize;
+float4 vd_interpvtexsize;
 
 texture vd_srctexture;
 texture vd_src2atexture;
@@ -49,6 +51,8 @@ texture vd_temptexture;
 texture vd_temp2texture;
 texture vd_cubictexture;
 texture vd_hevenoddtexture;
+texture vd_interphtexture;
+texture vd_interpvtexture;
 
 ////////////////////////////////////////////////////////////////////////////////
 technique point {
@@ -404,144 +408,131 @@ technique bicubicFF3 {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	Pixel shader 1.1 bicubic path - 3 texture stages, 5 passes (NVIDIA GeForce3/4)
+//	Pixel shader 1.1 bicubic path - 4 texture stages, 2 passes (NVIDIA GeForce3/4)
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static const float offset = 1.0f / 128.0f;
+
 struct VertexOutputBicubic1_1 {
 	float4	pos		: POSITION;
-	float2	uvsrc0	: TEXCOORD0;
-	float2	uvfilt	: TEXCOORD1;
+	float2	uvfilt	: TEXCOORD0;
+	float2	uvsrc0	: TEXCOORD1;
 	float2	uvsrc1	: TEXCOORD2;
+	float2	uvsrc2	: TEXCOORD3;
 };
 
-VertexOutputBicubic1_1 VertexShaderBicubic1_1A(VertexInput IN, uniform float4 uvoffset, uniform float filtoffset) {
+VertexOutputBicubic1_1 VertexShaderBicubic1_1A(VertexInput IN) {
 	VertexOutputBicubic1_1 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.x * vd_srcsize.x * 0.25f;
-	OUT.uvfilt.y = filtoffset;
-	OUT.uvsrc0 = IN.uv + (uvoffset.xy - float2(1.0f/128.0f, 0))*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + (uvoffset.zw - float2(1.0f/128.0f, 0))*vd_texsize.wz;
-	
+	OUT.uvfilt.x = IN.uv2.x * vd_vpsize.x * vd_interphtexsize.w;
+	OUT.uvfilt.y = 0;
+	OUT.uvsrc0 = IN.uv + float2(-1.0f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2( 0.0f + offset, 0)*vd_texsize.wz;
+	OUT.uvsrc2 = IN.uv + float2(+1.0f + offset, 0)*vd_texsize.wz;
 	return OUT;
 }
 
-VertexOutputBicubic1_1 VertexShaderBicubic1_1B(VertexInput IN, uniform float4 uvoffset, uniform float filtoffset) {
+VertexOutputBicubic1_1 VertexShaderBicubic1_1B(VertexInput IN) {
 	VertexOutputBicubic1_1 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.y * vd_srcsize.y * 0.25f;
-	OUT.uvfilt.y = filtoffset;
+	OUT.uvfilt.x = IN.uv2.y * vd_vpsize.y * vd_interpvtexsize.w;
+	OUT.uvfilt.y = 0;
 	
 	float2 uv = IN.uv2 * float2(vd_vpsize.x, vd_srcsize.y) * vd_tempsize.wz;
-	OUT.uvsrc0 = uv + (uvoffset.xy - float2(0, 1.0f/128.0f))*vd_tempsize.wz;
-	OUT.uvsrc1 = uv + (uvoffset.zw - float2(0, 1.0f/128.0f))*vd_tempsize.wz;
-	
+	OUT.uvsrc0 = uv + float2(0, -1.0f + offset)*vd_tempsize.wz;
+	OUT.uvsrc1 = uv + float2(0,  0.0f + offset)*vd_tempsize.wz;
+	OUT.uvsrc2 = uv + float2(0, +1.0f + offset)*vd_tempsize.wz;
 	return OUT;
 }
 
-pixelshader bicubic1_1_psA = asm {
-	ps_1_1
-	tex t0
-	tex t1
-	tex t2
-	mul_d2 r0,t0,t1
-	mul_d2 r1,t2,t1.a
-	add r0,r0,r1
-};
+extern sampler samp0 : register(s0);
+extern sampler samp1 : register(s1);
+extern sampler samp2 : register(s2);
+extern sampler samp3 : register(s3);
+extern sampler samp4 : register(s4);
 
-pixelshader bicubic1_1_psB = asm {
+pixelshader PixelShaderBicubic1_1 = asm {
 	ps_1_1
-	tex t0
-	tex t1
-	tex t2
-	mul r0,t0,t1
-	mad r0,t2,t1.a,r0
+	tex t0				;displacement texture
+	texbeml t1, t0		;p0/p1 weighted
+	texbeml t2, t0		;p1/p2 weighted
+	texbeml t3, t0		;p2/p3 weighted
+	add_d2 r0, t1, t3
+	add_x2 r0, t2, -r0
 };
 
 technique bicubic1_1 {
-	pass horiz1 <
-		string vd_target = "temp";
+	pass horiz <
+		string vd_target="temp";
 		string vd_viewport="out, src";
+		string vd_bumpenvscale="vd_texsize";
 	> {
-		VertexShader = compile vs_1_1 VertexShaderBicubic1_1A(float4(0.5f, 0, -0.5f, 0), 0.375f);
-		PixelShader = <bicubic1_1_psA>;
-	
-		Texture[0] = <vd_srctexture>;
+		VertexShader = compile vs_1_1 VertexShaderBicubic1_1A();
+		PixelShader = <PixelShaderBicubic1_1>;
+		
+		Texture[0] = <vd_interphtexture>;
 		AddressU[0] = Clamp;
 		AddressV[0] = Clamp;
 		MipFilter[0] = None;
 		MinFilter[0] = Point;
 		MagFilter[0] = Point;
 
-		Texture[1] = <vd_cubictexture>;
-		AddressU[1] = Wrap;
+		Texture[1] = <vd_srctexture>;
+		AddressU[1] = Clamp;
 		AddressV[1] = Clamp;
 		MipFilter[1] = None;
-		MinFilter[1] = Point;
-		MagFilter[1] = Point;
-
+		MinFilter[1] = Linear;
+		MagFilter[1] = Linear;
+		BumpEnvMat00[1] = 0.0f;
+		BumpEnvMat01[1] = 0.0f;
+		BumpEnvMat10[1] = 0.0f;
+		BumpEnvMat11[1] = 0.0f;
+		BumpEnvLScale[1] = <0.25f*0.75f>;
+		BumpEnvLOffset[1] = 0.0f;
+		
 		Texture[2] = <vd_srctexture>;
 		AddressU[2] = Clamp;
 		AddressV[2] = Clamp;
 		MipFilter[2] = None;
-		MinFilter[2] = Point;
-		MagFilter[2] = Point;
-		
-		AlphaBlendEnable = false;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
+		BumpEnvMat00[2] = 0.0f;
+		BumpEnvMat01[2] = 0.0f;
+		BumpEnvMat10[2] = 0.25f;
+		BumpEnvMat11[2] = 0.0f;
+		BumpEnvLScale[2] = <0.25f*0.75f>;
+		BumpEnvLOffset[2] = 0.5f;
+
+		Texture[3] = <vd_srctexture>;
+		AddressU[3] = Clamp;
+		AddressV[3] = Clamp;
+		MipFilter[3] = None;
+		MinFilter[3] = Linear;
+		MagFilter[3] = Linear;
+		BumpEnvMat00[3] = 0.0f;
+		BumpEnvMat01[3] = 0.0f;
+		BumpEnvMat10[3] = 0.0f;
+		BumpEnvMat11[3] = 0.0f;
+		BumpEnvLScale[3] = <0.25f*0.75f>;
+		BumpEnvLOffset[3] = 0.0f;
 	}
 	
-	pass horiz2 <
-		string vd_viewport="out, src";
+	pass vert <
+		string vd_target="";
+		string vd_viewport="out,out";
+		string vd_bumpenvscale="vd_tempsize";
 	> {
-		VertexShader = compile vs_1_1 VertexShaderBicubic1_1A(float4(1.5f, 0, -1.5f, 0), 0.125f);
-		PixelShader = <bicubic1_1_psA>;
-	
-		AlphaBlendEnable = true;
-		SrcBlend = One;
-		DestBlend = One;
-		BlendOp = RevSubtract;
-	}
-	
-	pass vert1 <
-		string vd_target = "";
-		string vd_viewport="out, out";
-	> {
-		VertexShader = compile vs_1_1 VertexShaderBicubic1_1B(float4(0, 0.5f, 0, -0.5f), 0.375f);
-		PixelShader = <bicubic1_1_psB>;
-		
-		Texture[0] = <vd_temptexture>;
+		VertexShader = compile vs_1_1 VertexShaderBicubic1_1B();
+		PixelShader = <PixelShaderBicubic1_1>;
+		Texture[0] = <vd_interpvtexture>;
+		Texture[1] = <vd_temptexture>;
 		Texture[2] = <vd_temptexture>;
-		
-		AlphaBlendEnable = false;
-	}
-	
-	
-	pass vert2 <
-		string vd_viewport="out, out";
-	> {
-		VertexShader = compile vs_1_1 VertexShaderBicubic1_1B(float4(0, 1.5f, 0, -1.5f), 0.125f);
-		PixelShader = <bicubic1_1_psB>;
-		
-		AlphaBlendEnable = true;
-		SrcBlend = One;
-		DestBlend = One;
-		BlendOp = RevSubtract;
-	}
-	
-	pass final {
-		VertexShader = NULL;
-		PixelShader = NULL;
-		
-		FF_STAGE_DISABLE(0);
-		FF_STAGE_DISABLE(1);
-		FF_STAGE_DISABLE(2);
-		
-		AlphaBlendEnable = true;
-		SrcBlend = DestColor;
-		DestBlend = One;
-		BlendOp = Add;
+		BumpEnvMat10[2] = 0.0f;
+		BumpEnvMat11[2] = 0.25f;
+		Texture[3] = <vd_temptexture>;
 	}
 }
 
@@ -560,18 +551,17 @@ struct VertexOutputBicubic1_4 {
 	float2	uvsrc3	: TEXCOORD4;
 };
 
-static const float offset = 1.0f / 128.0f;
-
 VertexOutputBicubic1_4 VertexShaderBicubic1_4A(VertexInput IN) {
 	VertexOutputBicubic1_4 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.x * vd_srcsize.x * 0.25f - 0.5f / 256.0f;
-	OUT.uvfilt.y = 0.125f;
-	OUT.uvsrc0 = IN.uv + float2(-1.5f + offset, 0)*vd_texsize.wz;
-	OUT.uvsrc1 = IN.uv + float2(-0.5f + offset, 0)*vd_texsize.wz;
-	OUT.uvsrc2 = IN.uv + float2(+0.5f + offset, 0)*vd_texsize.wz;
-	OUT.uvsrc3 = IN.uv + float2(+1.5f + offset, 0)*vd_texsize.wz;
+	OUT.uvfilt.x = IN.uv2.x * vd_vpsize.x * vd_interphtexsize.w;
+	OUT.uvfilt.y = 0;
+
+	OUT.uvsrc0 = IN.uv + float2(-1.5f, 0)*vd_texsize.wz;
+	OUT.uvsrc1 = IN.uv + float2( 0.0f, 0)*vd_texsize.wz;
+	OUT.uvsrc2 = IN.uv + float2( 0.0f, 0)*vd_texsize.wz;
+	OUT.uvsrc3 = IN.uv + float2(+1.5f, 0)*vd_texsize.wz;
 	
 	return OUT;
 }
@@ -580,29 +570,29 @@ VertexOutputBicubic1_4 VertexShaderBicubic1_4B(VertexInput IN) {
 	VertexOutputBicubic1_4 OUT;
 	
 	OUT.pos = IN.pos;
-	OUT.uvfilt.x = -0.125f - IN.uv2.y * vd_srcsize.y * 0.25f - 0.5f / 256.0f;
-	OUT.uvfilt.y = 0.125f;
+	OUT.uvfilt.x = IN.uv2.y * vd_vpsize.y * vd_interpvtexsize.w;
+	OUT.uvfilt.y = 0;
 	
 	float2 uv = IN.uv2 * float2(vd_vpsize.x, vd_srcsize.y) * vd_tempsize.wz;
-	OUT.uvsrc0 = uv + float2(0, -1.5f + offset)*vd_tempsize.wz;
-	OUT.uvsrc1 = uv + float2(0, -0.5f + offset)*vd_tempsize.wz;
-	OUT.uvsrc2 = uv + float2(0,  0.5f + offset)*vd_tempsize.wz;
-	OUT.uvsrc3 = uv + float2(0, +1.5f + offset)*vd_tempsize.wz;
+	OUT.uvsrc0 = uv + float2(0, -1.5f)*vd_tempsize.wz;
+	OUT.uvsrc1 = uv + float2(0,  0.0f)*vd_tempsize.wz;
+	OUT.uvsrc2 = uv + float2(0,  0.0f)*vd_tempsize.wz;
+	OUT.uvsrc3 = uv + float2(0, +1.5f)*vd_tempsize.wz;
 	
 	return OUT;
 }
 
 pixelshader bicubic1_4_ps = asm {
 	ps_1_4
-	texld r0,t0
-	texld r1,t1
-	texld r2,t2
-	texld r3,t3
-	texld r4,t4
-	mul r1,r1,-r0.b
-	mad r1,r2,r0.g,r1
-	mad r1,r3,r0.r,r1
-	mad r0,r4,-r0.a,r1
+	texld r0, t0
+	texld r1, t1
+	texld r2, t2
+	texld r3, t3
+	texld r4, t4
+	mad_x4 r2, r2, r0_bias.g, r2
+	mad r2, r1, -r0.b, r2
+	mad_d2 r2, r4, -r0.a, r2
+	mad_d2 r0, r3, r0.r, r2
 };
 
 technique bicubic1_4 {
@@ -613,7 +603,7 @@ technique bicubic1_4 {
 		VertexShader = compile vs_1_1 VertexShaderBicubic1_4A();
 		PixelShader = <bicubic1_4_ps>;
 		
-		Texture[0] = <vd_cubictexture>;
+		Texture[0] = <vd_interphtexture>;
 		AddressU[0] = Wrap;
 		AddressV[0] = Clamp;
 		MipFilter[0] = None;
@@ -631,8 +621,8 @@ technique bicubic1_4 {
 		AddressU[2] = Clamp;
 		AddressV[2] = Clamp;
 		MipFilter[2] = None;
-		MinFilter[2] = Point;
-		MagFilter[2] = Point;
+		MinFilter[2] = Linear;
+		MagFilter[2] = Linear;
 		
 		Texture[3] = <vd_srctexture>;
 		AddressU[3] = Clamp;
@@ -655,6 +645,7 @@ technique bicubic1_4 {
 	> {
 		VertexShader = compile vs_1_1 VertexShaderBicubic1_4B();
 		PixelShader = <bicubic1_4_ps>;
+		Texture[0] = <vd_interpvtexture>;
 		Texture[1] = <vd_temptexture>;
 		Texture[2] = <vd_temptexture>;
 		Texture[3] = <vd_temptexture>;

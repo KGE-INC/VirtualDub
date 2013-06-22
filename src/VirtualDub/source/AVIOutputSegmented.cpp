@@ -736,6 +736,7 @@ void VDAVIOutputSegmented::ReinitInterleaver() {
 		double samplesPerFrame = invFrameRate * samplesPerSecond;
 		mStreamInterleaver.InitStream(1, wfex.nBlockAlign, preloadSamples, samplesPerFrame, mAudioInterval, 0x7FFFFFFF / wfex.nBlockAlign);
 	} else {
+		mStreamInterleaver.Init(1);
 		mStreamInterleaver.InitStream(0, 0, 0, 1, 1, 1);
 	}
 }

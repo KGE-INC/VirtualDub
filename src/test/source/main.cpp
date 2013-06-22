@@ -80,7 +80,11 @@ next:
 
 		wprintf(L"Running test: %hs\n", ent.second);
 
-		ent.first();
+		try {
+			ent.first();
+		} catch(const AssertionException& e) {
+			wprintf(L"    TEST FAILED: %hs\n", e.gets());
+		}
 	}
 
 	return 0;

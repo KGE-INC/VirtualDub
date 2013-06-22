@@ -32,6 +32,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/text.h>
 #include <vd2/system/log.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/system/cpuaccel.h>
@@ -278,12 +279,31 @@ bool VideoSource::setTargetFormatVariant(int format, int variant) {
 	mTargetFormatVariant = variant;
 
 	if(format == nsVDPixmap::kPixFormat_Pal8) {
-		mpTargetFormatHeader.assign(getImageFormat(), sizeof(BITMAPINFOHEADER));
+		int maxBytes = getFormatLen();
+		int colors = bih->biClrUsed;
+		if (!colors && (bih->biCompression == BI_RGB || bih->biCompression == BI_RLE4 || bih->biCompression == BI_RLE8) && bih->biBitCount <= 8)
+			colors = 1 << bih->biBitCount;
+		if (colors > 256)
+			colors = 256;
+
+		mpTargetFormatHeader.assign(getImageFormat(), sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * colors);
 		mpTargetFormatHeader->biSize			= sizeof(BITMAPINFOHEADER);
 		mpTargetFormatHeader->biPlanes			= 1;
 		mpTargetFormatHeader->biBitCount		= 8;
 		mpTargetFormatHeader->biCompression		= BI_RGB;
 		mpTargetFormatHeader->biSizeImage		= ((w+3)&~3)*h;
+		RGBQUAD *palette = (RGBQUAD *)(&*mpTargetFormatHeader + 1);
+
+		if (colors > 0) {
+			int maxColors = (maxBytes - bih->biSize) / sizeof(RGBQUAD);
+
+			memset(palette, 0, sizeof(RGBQUAD)*colors);
+
+			if (colors > maxColors)
+				colors = maxColors;
+
+			memcpy(palette, (char *)bih + bih->biSize, sizeof(RGBQUAD)*colors);
+		}
 
 		mTargetFormat.palette = mPalette;
 	} else {

@@ -26,6 +26,10 @@
 #ifndef f_VD2_ERROR_H
 #define f_VD2_ERROR_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/vdtypes.h>
 
 class MyError;

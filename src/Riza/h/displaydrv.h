@@ -23,6 +23,8 @@
 #include <vd2/system/vectors.h>
 #include <vd2/Kasumi/pixmap.h>
 
+class VDStringA;
+
 class IVDVideoDisplayMinidriverCallback {
 public:
 	virtual void ReleaseActiveFrame() = 0;
@@ -41,7 +43,7 @@ struct VDVideoDisplaySourceInfo {
 	IVDVideoDisplayMinidriverCallback *mpCB;
 };
 
-class IVDVideoDisplayMinidriver {
+class VDINTERFACE IVDVideoDisplayMinidriver {
 public:
 	enum UpdateMode {
 		kModeNone		= 0x00000000,
@@ -72,6 +74,9 @@ public:
 	virtual bool IsValid() = 0;
 	virtual bool IsFramePending() = 0;
 	virtual void SetFilterMode(FilterMode mode) = 0;
+	virtual void SetFullScreen(bool fullscreen) = 0;
+	virtual void SetDisplayDebugInfo(bool enable) = 0;
+	virtual void SetColorOverride(uint32 color) = 0;
 
 	virtual bool Tick(int id) = 0;
 	virtual void Poll() = 0;
@@ -84,6 +89,32 @@ public:
 	virtual void SetLogicalPalette(const uint8 *pLogicalPalette) = 0;
 
 	virtual float GetSyncDelta() const = 0;
+};
+
+class VDINTERFACE VDVideoDisplayMinidriver : public IVDVideoDisplayMinidriver {
+public:
+	VDVideoDisplayMinidriver();
+
+	virtual bool IsFramePending();
+	virtual void SetFilterMode(FilterMode mode);
+	virtual void SetFullScreen(bool fullscreen);
+	virtual void SetDisplayDebugInfo(bool enable);
+	virtual void SetColorOverride(uint32 color);
+
+	virtual bool Tick(int id);
+	virtual void Poll();
+	virtual bool Resize();
+
+	virtual bool SetSubrect(const vdrect32 *r);
+	virtual void SetLogicalPalette(const uint8 *pLogicalPalette);
+
+	virtual float GetSyncDelta() const;
+
+protected:
+	static void GetFormatString(const VDVideoDisplaySourceInfo& info, VDStringA& s);
+
+	bool	mbDisplayDebugInfo;
+	uint32	mColorOverride;
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverOpenGL();

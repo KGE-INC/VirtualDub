@@ -25,6 +25,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
 
 #include "resource.h"
 #include "oshelper.h"
@@ -1085,6 +1086,7 @@ private:
 	LRESULT Handle_WM_COMMAND(WPARAM wParam, LPARAM lParam);
 	LRESULT Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam);
 	LRESULT Handle_WM_SIZE(WPARAM wParam, LPARAM lParam);
+	LRESULT Handle_WM_DROPFILES(WPARAM wParam, LPARAM lParam);
 
 	static INT_PTR CALLBACK AskForValuesDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 	bool AskForValues(const char *title, const char *name1, const char *name2, __int64& default1, __int64& default2, int (HexEditor::*verifier)(HWND hdlg, __int64 v1, __int64 v2));
@@ -1181,6 +1183,8 @@ void HexEditor::Init() {
 		NULL);
 
 	mpView = (HexViewer *)GetWindowLongPtr(hwndView, 0);
+
+	DragAcceptFiles(hwnd, TRUE);
 }
 
 void HexEditor::Open() {
@@ -1738,6 +1742,25 @@ LRESULT HexEditor::Handle_WM_KEYDOWN(WPARAM wParam, LPARAM lParam) {
 	return 0;
 }
 
+LRESULT HexEditor::Handle_WM_DROPFILES(WPARAM wParam, LPARAM lParam) {
+	HDROP hdrop = (HDROP)wParam;
+	UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, NULL, 0);
+
+	vdfastvector<wchar_t> s;
+	if (count > 0) {
+		UINT chars = DragQueryFileW(hdrop, 0, NULL, 0);
+		s.resize(chars+1, 0);
+
+		DragQueryFileW(hdrop, 0, s.data(), chars+1);
+	}
+
+	DragFinish(hdrop);
+
+	if (!s.empty() && s[0])
+		Open(VDTextWToA(s.data()).c_str(), true);
+
+	return 0;
+}
 
 ////////////////////////////
 
@@ -2259,6 +2282,9 @@ LRESULT APIENTRY HexEditor::HexEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 			CheckMenuItem(hMenu, ID_EDIT_AVIASSIST, pcd->bEnableAVIAssist ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 		}
 		return 0;
+
+	case WM_DROPFILES:
+		return pcd->Handle_WM_DROPFILES(wParam, lParam);
 
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);

@@ -72,6 +72,42 @@ VDPixmap VDAsPixmap565(const VBitmap& bm) {
 	return pxm;
 }
 
+VBitmap VDFromPixmap(const VDPixmap& px) {
+	VBitmap vbm;
+
+	vbm.data		= (Pixel *)(vdptroffset(px.data, px.pitch * (px.h - 1)));
+	vbm.palette		= (Pixel *)px.palette;
+	vbm.w			= px.w;
+	vbm.h			= px.h;
+	vbm.pitch		= -px.pitch;
+	vbm.offset		= px.pitch > 0 ? 0 : px.pitch * (px.h - 1);
+
+	switch(px.format) {
+		case nsVDPixmap::kPixFormat_Pal8:
+			vbm.modulo = vbm.pitch - px.w;
+			vbm.depth = 8;
+			break;
+		case nsVDPixmap::kPixFormat_XRGB1555:
+			vbm.modulo = vbm.pitch - 2*px.w;
+			vbm.depth = 16;
+			break;
+		case nsVDPixmap::kPixFormat_RGB888:
+			vbm.modulo = vbm.pitch - 3*px.w;
+			vbm.depth = 24;
+			break;
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			vbm.modulo = vbm.pitch - 4*px.w;
+			vbm.depth = 32;
+			break;
+		default:
+			VDASSERT(false);
+			vbm.modulo = 0;
+			vbm.pitch = 0;
+	}
+
+	return vbm;
+}
+
 extern "C" void __cdecl asm_bitmap_xlat1(Pixel32 *dst, Pixel32 *src,
 		PixOffset dpitch, PixOffset spitch,
 		PixDim w,

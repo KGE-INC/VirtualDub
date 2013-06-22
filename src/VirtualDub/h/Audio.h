@@ -90,7 +90,7 @@ private:
 	VDAudioCodecW32	mCodec;
 
 public:
-	AudioStreamSource(AudioSource *src, sint64 first_sample, sint64 max_sample, bool allow_decompression, sint64 offset);
+	AudioStreamSource(AudioSource *src, sint64 max_sample, bool allow_decompression, sint64 offset);
 	~AudioStreamSource();
 
 	bool IsVBR() const;

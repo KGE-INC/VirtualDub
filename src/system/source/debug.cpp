@@ -129,8 +129,6 @@ VDAssertResult VDAssertPtr(const char *exp, const char *file, int line) {
 
 #endif
 
-__declspec(thread) VDProtectedAutoScope *volatile g_protectedScopeLink;
-
 void VDProtectedAutoScopeICLWorkaround() {}
 
 void VDDebugPrint(const char *format, ...) {

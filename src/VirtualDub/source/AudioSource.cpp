@@ -39,7 +39,8 @@ namespace {
 	enum {
 		kVDM_TruncatedMP3FormatFixed,
 		kVDM_VBRAudioDetected,
-		kVDM_MP3BitDepthFixed
+		kVDM_MP3BitDepthFixed,
+		kVDM_TruncatedCompressedFormatFixed
 	};
 }
 
@@ -366,6 +367,28 @@ bool AudioSourceAVI::init() {
 			pwfex->wBitsPerSample = 0;
 
 			VDLogAppMessage(kVDLogWarning, kVDST_AudioSource, kVDM_MP3BitDepthFixed, 0);
+		}
+	} else {
+		uint32 cbSize = 0;
+
+		if (format_len >= sizeof(WAVEFORMATEX))
+			cbSize = pwfex->cbSize;
+
+		uint32 requiredFormatSize = sizeof(WAVEFORMATEX) + cbSize;
+		if ((uint32)format_len < requiredFormatSize && pwfex->wFormatTag != WAVE_FORMAT_PCM) {
+			vdstructex<WAVEFORMATEX> newFormat(requiredFormatSize);
+			memset(newFormat.data(), 0, requiredFormatSize);
+			memcpy(newFormat.data(), pwfex, format_len);
+
+			if (!allocFormat(requiredFormatSize))
+				return FALSE;
+
+			pwfex = getWaveFormat();
+			memcpy(pwfex, &*newFormat, requiredFormatSize);
+
+			const int bad_len = format_len;
+			const int good_len = sizeof(WAVEFORMATEX) + cbSize;
+			VDLogAppMessage(kVDLogWarning, kVDST_AudioSource, kVDM_TruncatedCompressedFormatFixed, 2, &bad_len, &good_len);
 		}
 	}
 

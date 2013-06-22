@@ -253,6 +253,8 @@ VDProjectUI::VDProjectUI()
 	, mhwndOutputFrame(NULL)
 	, mhwndInputDisplay(NULL)
 	, mhwndOutputDisplay(NULL)
+	, mpInputDisplay(NULL)
+	, mpOutputDisplay(NULL)
 	, mhwndStatus(NULL)
 	, mhwndCurveEditor(NULL)
 	, mhwndAudioDisplay(NULL)
@@ -522,7 +524,7 @@ bool VDProjectUI::Tick() {
 
 		uint32 actualBytes = 0, actualSamples = 0;
 
-		if (!inputAudio) {
+		if (!inputAudio || !inputVideoAVI) {
 			UpdateAudioDisplay();
 			return false;
 		}
@@ -543,22 +545,32 @@ bool VDProjectUI::Tick() {
 		sint64 vframe = VDFloorToInt64(vframef);
 		double vframeoff = vframef - vframe;
 
-		sint64 len = 1;
-		sint64 vframesrc = subset.lookupRange(vframe, len);
+		for(;;) {
+			sint64 len = 1;
+			sint64 vframesrc = subset.lookupRange(vframe, len);
 
-		if (vframesrc < 0) {
-			sint64 vend;
-			if (g_dubOpts.audio.fEndAudio || subset.empty() || (vend = subset.back().end()) != inputVideoAVI->getEnd()) {
-				mbAudioDisplayReadActive = false;
-				return false;
+			if (vframesrc < 0) {
+				sint64 vend;
+				if (g_dubOpts.audio.fEndAudio || subset.empty() || (vend = subset.back().end()) != inputVideoAVI->getEnd()) {
+					mbAudioDisplayReadActive = false;
+					return false;
+				}
+
+				apos = VDRoundToInt64((double)(vend + vframef - subset.getTotalFrames()) / audioToVideoFactor);
+			} else {
+				apos = VDRoundToInt64((double)(vframesrc + vframeoff) / audioToVideoFactor);
+				sint64 alimit = VDRoundToInt64((double)(vframesrc + len) / audioToVideoFactor);
+
+				maxlen = VDClampToUint32(alimit - apos);
 			}
 
-			apos = VDRoundToInt64((double)(vend + vframef - subset.getTotalFrames()) / audioToVideoFactor);
-		} else {
-			apos = VDRoundToInt64((double)(vframesrc + vframeoff) / audioToVideoFactor);
-			sint64 alimit = VDRoundToInt64((double)(vframesrc + len) / audioToVideoFactor);
+			// check for roundoff errors when we're very close to the end of a frame
+			if (maxlen)
+				break;
 
-			maxlen = VDClampToUint32(alimit - apos);
+			++vframe;
+			vframeoff = 0;
+
 		}
 
 		apos -= inputAudio->msToSamples(g_dubOpts.audio.offset);
@@ -833,7 +845,6 @@ void VDProjectUI::LoadConfigurationAsk() {
 
 void VDProjectUI::SetVideoFiltersAsk() {
 	ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
-	RedrawWindow((HWND)mhwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 	UpdateFilterList();
 }
 
@@ -1974,7 +1985,9 @@ void VDProjectUI::UpdateAudioDisplay() {
 	if (!mpAudioDisplay)
 		return;
 
-	if (!inputAudio) {
+	// Right now, we can't display the audio display if there is no _video_ track, since we have
+	// frame markers. Besides, there wouldn't be any way for you to move.
+	if (!inputAudio || !inputVideoAVI) {
 		mpAudioDisplay->SetFailureMessage(L"Audio display is disabled because there is no audio track.");
 		mbAudioDisplayReadActive = false;
 		return;
@@ -2177,10 +2190,8 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 	if (bActive) {
 		UpdateVideoFrameLayout();
 
-#if 0
-		mpInputDisplay->LockAcceleration(bIsPreview);
-		mpOutputDisplay->LockAcceleration(bIsPreview);
-#endif
+		mpInputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelResetInForeground);
+		mpOutputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelResetInForeground);
 
 		g_dubber->SetInputDisplay(mpInputDisplay);
 		g_dubber->SetOutputDisplay(mpOutputDisplay);
@@ -2209,8 +2220,8 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 		}
 
 		// reset video displays
-		mpInputDisplay->LockAcceleration(false);
-		mpOutputDisplay->LockAcceleration(false);
+		mpInputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelOnlyInForeground);
+		mpOutputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelOnlyInForeground);
 		DisplayFrame();
 	}
 }
@@ -2221,6 +2232,9 @@ void VDProjectUI::UIRunDubMessageLoop() {
 	VDSamplingAutoProfileScope autoProfileScope;
 
 	while(g_dubber->isRunning()) {
+		// TODO: PerfHUD 5 doesn't hook GetMessage() and doesn't work unless you use PeekMessage().
+		//       Confirm if this is OK to switch.
+#if 1
 		BOOL result = GetMessage(&msg, (HWND) NULL, 0, 0);
 
 		if (result == (BOOL)-1)
@@ -2230,6 +2244,17 @@ void VDProjectUI::UIRunDubMessageLoop() {
 			PostQuitMessage(msg.wParam);
 			break;
 		}
+#else
+		if (!PeekMessage(&msg, (HWND) NULL, 0, 0, PM_REMOVE)) {
+			WaitMessage();
+			continue;
+		}
+
+		if (msg.message == WM_QUIT) {
+			PostQuitMessage(msg.wParam);
+			break;
+		}
+#endif
 
 		if (guiCheckDialogs(&msg))
 			continue;
@@ -2261,6 +2286,11 @@ void VDProjectUI::UITimelineUpdated() {
 	VDPosition start(GetSelectionStartFrame());
 	VDPosition end(GetSelectionEndFrame());
 	mpPosition->SetSelection(start, end);
+
+	if (mpAudioDisplay) {
+		UpdateAudioDisplay();
+		mpAudioDisplay->Rescan();
+	}
 }
 
 void VDProjectUI::UISelectionUpdated(bool notifyUser) {

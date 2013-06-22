@@ -535,6 +535,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\snapsetup.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\symbols.cpp"
 				>
 				<FileConfiguration

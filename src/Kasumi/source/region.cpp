@@ -1173,6 +1173,7 @@ void VDPixmapConvolveRegion(VDPixmapRegion& dst, const VDPixmapRegion& r1, const
 	const uint32 *itAE	= itA + r1.mSpans.size();
 	const uint32 *itB	= r2.mSpans.data();
 	const uint32 *itBE	= itB + r2.mSpans.size();
+	uint32 *dstp0 = dst.mSpans.data();
 	uint32 *dstp = dst.mSpans.data();
 
 	uint32 offset1 = (dy<<16) + dx1;
@@ -1246,14 +1247,27 @@ a_start:
 	}
 
 	// Copy over leftover spans.
-	memcpy(dstp, itA, itAE - itA);
+	memcpy(dstp, itA, sizeof(uint32)*(itAE - itA));
 	dstp += itAE - itA;
 
 	while(itB != itBE) {
-		dstp[0] = itB[0] + offset1;
-		dstp[1] = itB[1] + offset2;
-		dstp += 2;
+		// B span is earlier.  Use it.
+		uint32 x1 = itB[0] + offset1;
+		uint32 x2 = itB[1] + offset2;
 		itB += 2;
+
+		// B spans *can* overlap, due to the widening.
+		while(itB != itBE && itB[0]+offset1 <= x2) {
+			uint32 bx2 = itB[1] + offset2;
+			if (x2 < bx2)
+				x2 = bx2;
+
+			itB += 2;
+		}
+
+		dstp[0] = x1;
+		dstp[1] = x2;
+		dstp += 2;
 	}
 
 	dst.mSpans.resize(dstp - dst.mSpans.data());
@@ -1265,6 +1279,7 @@ void VDPixmapConvolveRegion(VDPixmapRegion& dst, const VDPixmapRegion& r1, const
 	const uint32 *src1 = r2.mSpans.data();
 	const uint32 *src2 = src1 + r2.mSpans.size();
 
+	dst.mSpans.clear();
 	while(src1 != src2) {
 		uint32 p1 = src1[0];
 		uint32 p2 = src1[1];

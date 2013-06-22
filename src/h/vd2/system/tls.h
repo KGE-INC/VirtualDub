@@ -49,12 +49,10 @@ struct VirtualDubTLSData {
 	void		*pFastBufAlloc;
 };
 
-extern __declspec(thread) VirtualDubTLSData g_tlsdata;
-
 void VDInitThreadData(const char *pszThreadName);
 void VDDeinitThreadData();
 
-typedef void (*VDThreadInitHook)(bool bInit);
+typedef void (*VDThreadInitHook)(bool init, const char *threadName);
 
 void VDSetThreadInitHook(VDThreadInitHook pHook);
 

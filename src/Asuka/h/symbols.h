@@ -23,14 +23,14 @@
 #include <vector>
 
 struct VDSymbol {
-	long rva;
+	sint64 rva;
 	int group;
 	long start;
 	char *name;
 };
 
 struct VDSection {
-	long	mAbsStart;
+	sint64	mAbsStart;
 	long	mStart;
 	long	mLength;
 	int		mGroup;
@@ -43,8 +43,8 @@ public:
 	virtual ~IVDSymbolSource() {}
 
 	virtual void Init(const wchar_t *filename) = 0;
-	virtual const VDSymbol *LookupSymbol(uint32 addr) = 0;
-	virtual const VDSection *LookupSection(uint32 addr) = 0;
+	virtual const VDSymbol *LookupSymbol(sint64 addr) = 0;
+	virtual const VDSection *LookupSection(sint64 addr) = 0;
 	virtual void GetAllSymbols(vdfastvector<VDSymbol>&) = 0;
 
 	virtual uint32 GetCodeGroupMask() = 0;
@@ -52,7 +52,7 @@ public:
 	virtual int GetSectionCount() = 0;
 	virtual const VDSection *GetSection(int sec) = 0;
 
-	virtual bool LookupLine(uint32 addr, const char *& filename, int& lineno) = 0;
+	virtual bool LookupLine(sint64 addr, const char *& filename, int& lineno) = 0;
 };
 
 IVDSymbolSource *VDCreateSymbolSourceLinkMap();

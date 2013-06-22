@@ -23,10 +23,12 @@
 #include <vd2/system/math.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/time.h>
+#include <vd2/system/error.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Riza/direct3d.h>
+#include "d3dxfx.h"
 #include "displaydrv.h"
 #include "displaydrvdx9.h"
 
@@ -77,297 +79,6 @@ namespace {
 }
 
 namespace {
-	// {017C18AC-103F-4417-8C51-6BF6EF1E56BE}
-	DEFINE_GUID(IID_ID3DXBaseEffectVersion25, 0x17c18ac, 0x103f, 0x4417, 0x8c, 0x51, 0x6b, 0xf6, 0xef, 0x1e, 0x56, 0xbe);
-
-
-	#undef INTERFACE
-	#define INTERFACE ID3DXBaseEffectVersion25
-
-	DECLARE_INTERFACE_(ID3DXBaseEffectVersion25, IUnknown)
-	{
-		// IUnknown
-		STDMETHOD(QueryInterface)(THIS_ REFIID iid, LPVOID *ppv) PURE;
-		STDMETHOD_(ULONG, AddRef)(THIS) PURE;
-		STDMETHOD_(ULONG, Release)(THIS) PURE;
-
-		// Descs
-		STDMETHOD(GetDesc)(THIS_ D3DXEFFECT_DESC* pDesc) PURE;
-		STDMETHOD(GetParameterDesc)(THIS_ D3DXHANDLE hParameter, D3DXPARAMETER_DESC* pDesc) PURE;
-		STDMETHOD(GetTechniqueDesc)(THIS_ D3DXHANDLE hTechnique, D3DXTECHNIQUE_DESC* pDesc) PURE;
-		STDMETHOD(GetPassDesc)(THIS_ D3DXHANDLE hPass, D3DXPASS_DESC* pDesc) PURE;
-		STDMETHOD(GetFunctionDesc)(THIS_ D3DXHANDLE hShader, D3DXFUNCTION_DESC* pDesc) PURE;
-
-		// Handle operations
-		STDMETHOD_(D3DXHANDLE, GetParameter)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterByName)(THIS_ D3DXHANDLE hParameter, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterBySemantic)(THIS_ D3DXHANDLE hParameter, LPCSTR pSemantic) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterElement)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechnique)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechniqueByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPass)(THIS_ D3DXHANDLE hTechnique, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPassByName)(THIS_ D3DXHANDLE hTechnique, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunction)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunctionByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotation)(THIS_ D3DXHANDLE hObject, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotationByName)(THIS_ D3DXHANDLE hObject, LPCSTR pName) PURE;
-
-		// Get/Set Parameters
-		STDMETHOD(SetValue)(THIS_ D3DXHANDLE hParameter, LPCVOID pData, UINT Bytes) PURE;
-		STDMETHOD(GetValue)(THIS_ D3DXHANDLE hParameter, LPVOID pData, UINT Bytes) PURE;
-		STDMETHOD(SetBool)(THIS_ D3DXHANDLE hParameter, BOOL b) PURE;
-		STDMETHOD(GetBool)(THIS_ D3DXHANDLE hParameter, BOOL* pb) PURE;
-		STDMETHOD(SetBoolArray)(THIS_ D3DXHANDLE hParameter, CONST BOOL* pb, UINT Count) PURE;
-		STDMETHOD(GetBoolArray)(THIS_ D3DXHANDLE hParameter, BOOL* pb, UINT Count) PURE;
-		STDMETHOD(SetInt)(THIS_ D3DXHANDLE hParameter, INT n) PURE;
-		STDMETHOD(GetInt)(THIS_ D3DXHANDLE hParameter, INT* pn) PURE;
-		STDMETHOD(SetIntArray)(THIS_ D3DXHANDLE hParameter, CONST INT* pn, UINT Count) PURE;
-		STDMETHOD(GetIntArray)(THIS_ D3DXHANDLE hParameter, INT* pn, UINT Count) PURE;
-		STDMETHOD(SetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT f) PURE;
-		STDMETHOD(GetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT* pf) PURE;
-		STDMETHOD(SetFloatArray)(THIS_ D3DXHANDLE hParameter, CONST FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(GetFloatArray)(THIS_ D3DXHANDLE hParameter, FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(SetVector)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(GetVector)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(SetVectorArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(GetVectorArray)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(SetMatrix)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrix)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetString)(THIS_ D3DXHANDLE hParameter, LPCSTR pString) PURE;
-		STDMETHOD(GetString)(THIS_ D3DXHANDLE hParameter, LPCSTR* ppString) PURE;
-		STDMETHOD(SetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 pTexture) PURE;
-		STDMETHOD(GetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 *ppTexture) PURE;
-		STDMETHOD(GetPixelShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DPIXELSHADER9 *ppPShader) PURE;
-		STDMETHOD(GetVertexShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DVERTEXSHADER9 *ppVShader) PURE;
-
-		//Set Range of an Array to pass to device
-		//Useful for sending only a subrange of an array down to the device
-		STDMETHOD(SetArrayRange)(THIS_ D3DXHANDLE hParameter, UINT uStart, UINT uEnd) PURE; 
-
-	};
-
-	// {D165CCB1-62B0-4a33-B3FA-A92300305A11}
-	DEFINE_GUID(IID_ID3DXEffectVersion25, 
-	0xd165ccb1, 0x62b0, 0x4a33, 0xb3, 0xfa, 0xa9, 0x23, 0x0, 0x30, 0x5a, 0x11);
-
-	#undef INTERFACE
-	#define INTERFACE ID3DXEffectVersion25
-
-	DECLARE_INTERFACE_(ID3DXEffectVersion25, ID3DXBaseEffectVersion25)
-	{
-		// ID3DXBaseEffect
-		STDMETHOD(QueryInterface)(THIS_ REFIID iid, LPVOID *ppv) PURE;
-		STDMETHOD_(ULONG, AddRef)(THIS) PURE;
-		STDMETHOD_(ULONG, Release)(THIS) PURE;
-
-		// Descs
-		STDMETHOD(GetDesc)(THIS_ D3DXEFFECT_DESC* pDesc) PURE;
-		STDMETHOD(GetParameterDesc)(THIS_ D3DXHANDLE hParameter, D3DXPARAMETER_DESC* pDesc) PURE;
-		STDMETHOD(GetTechniqueDesc)(THIS_ D3DXHANDLE hTechnique, D3DXTECHNIQUE_DESC* pDesc) PURE;
-		STDMETHOD(GetPassDesc)(THIS_ D3DXHANDLE hPass, D3DXPASS_DESC* pDesc) PURE;
-		STDMETHOD(GetFunctionDesc)(THIS_ D3DXHANDLE hShader, D3DXFUNCTION_DESC* pDesc) PURE;
-
-		// Handle operations
-		STDMETHOD_(D3DXHANDLE, GetParameter)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterByName)(THIS_ D3DXHANDLE hParameter, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterBySemantic)(THIS_ D3DXHANDLE hParameter, LPCSTR pSemantic) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterElement)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechnique)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechniqueByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPass)(THIS_ D3DXHANDLE hTechnique, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPassByName)(THIS_ D3DXHANDLE hTechnique, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunction)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunctionByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotation)(THIS_ D3DXHANDLE hObject, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotationByName)(THIS_ D3DXHANDLE hObject, LPCSTR pName) PURE;
-
-		// Get/Set Parameters
-		STDMETHOD(SetValue)(THIS_ D3DXHANDLE hParameter, LPCVOID pData, UINT Bytes) PURE;
-		STDMETHOD(GetValue)(THIS_ D3DXHANDLE hParameter, LPVOID pData, UINT Bytes) PURE;
-		STDMETHOD(SetBool)(THIS_ D3DXHANDLE hParameter, BOOL b) PURE;
-		STDMETHOD(GetBool)(THIS_ D3DXHANDLE hParameter, BOOL* pb) PURE;
-		STDMETHOD(SetBoolArray)(THIS_ D3DXHANDLE hParameter, CONST BOOL* pb, UINT Count) PURE;
-		STDMETHOD(GetBoolArray)(THIS_ D3DXHANDLE hParameter, BOOL* pb, UINT Count) PURE;
-		STDMETHOD(SetInt)(THIS_ D3DXHANDLE hParameter, INT n) PURE;
-		STDMETHOD(GetInt)(THIS_ D3DXHANDLE hParameter, INT* pn) PURE;
-		STDMETHOD(SetIntArray)(THIS_ D3DXHANDLE hParameter, CONST INT* pn, UINT Count) PURE;
-		STDMETHOD(GetIntArray)(THIS_ D3DXHANDLE hParameter, INT* pn, UINT Count) PURE;
-		STDMETHOD(SetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT f) PURE;
-		STDMETHOD(GetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT* pf) PURE;
-		STDMETHOD(SetFloatArray)(THIS_ D3DXHANDLE hParameter, CONST FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(GetFloatArray)(THIS_ D3DXHANDLE hParameter, FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(SetVector)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(GetVector)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(SetVectorArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(GetVectorArray)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(SetMatrix)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrix)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetString)(THIS_ D3DXHANDLE hParameter, LPCSTR pString) PURE;
-		STDMETHOD(GetString)(THIS_ D3DXHANDLE hParameter, LPCSTR* ppString) PURE;
-		STDMETHOD(SetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 pTexture) PURE;
-		STDMETHOD(GetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 *ppTexture) PURE;
-		// (!) SetPixelShader was removed relative to version 22.
-		STDMETHOD(GetPixelShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DPIXELSHADER9 *ppPShader) PURE;
-		// (!) SetVertexShader was removed relative to version 22.
-		STDMETHOD(GetVertexShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DVERTEXSHADER9 *ppVShader) PURE;
-
-		//Set Range of an Array to pass to device
-		//Usefull for sending only a subrange of an array down to the device
-		STDMETHOD(SetArrayRange)(THIS_ D3DXHANDLE hParameter, UINT uStart, UINT uEnd) PURE; 
-		// ID3DXBaseEffect
-    
-    
-		// Pool
-		STDMETHOD(GetPool)(THIS_ LPD3DXEFFECTPOOL* ppPool) PURE;
-
-		// Selecting and setting a technique
-		STDMETHOD(SetTechnique)(THIS_ D3DXHANDLE hTechnique) PURE;
-		STDMETHOD_(D3DXHANDLE, GetCurrentTechnique)(THIS) PURE;
-		STDMETHOD(ValidateTechnique)(THIS_ D3DXHANDLE hTechnique) PURE;
-		STDMETHOD(FindNextValidTechnique)(THIS_ D3DXHANDLE hTechnique, D3DXHANDLE *pTechnique) PURE;
-		STDMETHOD_(BOOL, IsParameterUsed)(THIS_ D3DXHANDLE hParameter, D3DXHANDLE hTechnique) PURE;
-
-		// Using current technique
-		// Begin           starts active technique
-		// BeginPass       begins a pass
-		// CommitChanges   updates changes to any set calls in the pass. This should be called before
-		//                 any DrawPrimitive call to d3d
-		// EndPass         ends a pass
-		// End             ends active technique
-		STDMETHOD(Begin)(THIS_ UINT *pPasses, DWORD Flags) PURE;
-		STDMETHOD(BeginPass)(THIS_ UINT Pass) PURE;
-		STDMETHOD(CommitChanges)(THIS) PURE;
-		STDMETHOD(EndPass)(THIS) PURE;
-		STDMETHOD(End)(THIS) PURE;
-
-		// Managing D3D Device
-		STDMETHOD(GetDevice)(THIS_ LPDIRECT3DDEVICE9* ppDevice) PURE;
-		STDMETHOD(OnLostDevice)(THIS) PURE;
-		STDMETHOD(OnResetDevice)(THIS) PURE;
-
-		// Logging device calls
-		STDMETHOD(SetStateManager)(THIS_ LPD3DXEFFECTSTATEMANAGER pManager) PURE;
-		STDMETHOD(GetStateManager)(THIS_ LPD3DXEFFECTSTATEMANAGER *ppManager) PURE;
-
-		// Parameter blocks
-		STDMETHOD(BeginParameterBlock)(THIS) PURE;
-		STDMETHOD_(D3DXHANDLE, EndParameterBlock)(THIS) PURE;
-		STDMETHOD(ApplyParameterBlock)(THIS_ D3DXHANDLE hParameterBlock) PURE;
-
-		// Cloning
-		STDMETHOD(CloneEffect)(THIS_ LPDIRECT3DDEVICE9 pDevice, LPD3DXEFFECT* ppEffect) PURE;
-	};
-
-	// {51B8A949-1A31-47e6-BEA0-4B30DB53F1E0}
-	DEFINE_GUID(IID_ID3DXEffectCompilerVersion25, 
-	0x51b8a949, 0x1a31, 0x47e6, 0xbe, 0xa0, 0x4b, 0x30, 0xdb, 0x53, 0xf1, 0xe0);
-
-	#undef INTERFACE
-	#define INTERFACE ID3DXEffectCompilerVersion25
-
-	DECLARE_INTERFACE_(ID3DXEffectCompilerVersion25, ID3DXBaseEffectVersion25)
-	{
-		// ID3DXBaseEffect
-		STDMETHOD(QueryInterface)(THIS_ REFIID iid, LPVOID *ppv) PURE;
-		STDMETHOD_(ULONG, AddRef)(THIS) PURE;
-		STDMETHOD_(ULONG, Release)(THIS) PURE;
-
-		// Descs
-		STDMETHOD(GetDesc)(THIS_ D3DXEFFECT_DESC* pDesc) PURE;
-		STDMETHOD(GetParameterDesc)(THIS_ D3DXHANDLE hParameter, D3DXPARAMETER_DESC* pDesc) PURE;
-		STDMETHOD(GetTechniqueDesc)(THIS_ D3DXHANDLE hTechnique, D3DXTECHNIQUE_DESC* pDesc) PURE;
-		STDMETHOD(GetPassDesc)(THIS_ D3DXHANDLE hPass, D3DXPASS_DESC* pDesc) PURE;
-		STDMETHOD(GetFunctionDesc)(THIS_ D3DXHANDLE hShader, D3DXFUNCTION_DESC* pDesc) PURE;
-
-		// Handle operations
-		STDMETHOD_(D3DXHANDLE, GetParameter)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterByName)(THIS_ D3DXHANDLE hParameter, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterBySemantic)(THIS_ D3DXHANDLE hParameter, LPCSTR pSemantic) PURE;
-		STDMETHOD_(D3DXHANDLE, GetParameterElement)(THIS_ D3DXHANDLE hParameter, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechnique)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetTechniqueByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPass)(THIS_ D3DXHANDLE hTechnique, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetPassByName)(THIS_ D3DXHANDLE hTechnique, LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunction)(THIS_ UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetFunctionByName)(THIS_ LPCSTR pName) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotation)(THIS_ D3DXHANDLE hObject, UINT Index) PURE;
-		STDMETHOD_(D3DXHANDLE, GetAnnotationByName)(THIS_ D3DXHANDLE hObject, LPCSTR pName) PURE;
-
-		// Get/Set Parameters
-		STDMETHOD(SetValue)(THIS_ D3DXHANDLE hParameter, LPCVOID pData, UINT Bytes) PURE;
-		STDMETHOD(GetValue)(THIS_ D3DXHANDLE hParameter, LPVOID pData, UINT Bytes) PURE;
-		STDMETHOD(SetBool)(THIS_ D3DXHANDLE hParameter, BOOL b) PURE;
-		STDMETHOD(GetBool)(THIS_ D3DXHANDLE hParameter, BOOL* pb) PURE;
-		STDMETHOD(SetBoolArray)(THIS_ D3DXHANDLE hParameter, CONST BOOL* pb, UINT Count) PURE;
-		STDMETHOD(GetBoolArray)(THIS_ D3DXHANDLE hParameter, BOOL* pb, UINT Count) PURE;
-		STDMETHOD(SetInt)(THIS_ D3DXHANDLE hParameter, INT n) PURE;
-		STDMETHOD(GetInt)(THIS_ D3DXHANDLE hParameter, INT* pn) PURE;
-		STDMETHOD(SetIntArray)(THIS_ D3DXHANDLE hParameter, CONST INT* pn, UINT Count) PURE;
-		STDMETHOD(GetIntArray)(THIS_ D3DXHANDLE hParameter, INT* pn, UINT Count) PURE;
-		STDMETHOD(SetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT f) PURE;
-		STDMETHOD(GetFloat)(THIS_ D3DXHANDLE hParameter, FLOAT* pf) PURE;
-		STDMETHOD(SetFloatArray)(THIS_ D3DXHANDLE hParameter, CONST FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(GetFloatArray)(THIS_ D3DXHANDLE hParameter, FLOAT* pf, UINT Count) PURE;
-		STDMETHOD(SetVector)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(GetVector)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector) PURE;
-		STDMETHOD(SetVectorArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(GetVectorArray)(THIS_ D3DXHANDLE hParameter, D3DXVECTOR4* pVector, UINT Count) PURE;
-		STDMETHOD(SetMatrix)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrix)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixPointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(GetMatrixTranspose)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix) PURE;
-		STDMETHOD(SetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposeArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX* pMatrix, UINT Count) PURE;
-		STDMETHOD(SetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, CONST D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(GetMatrixTransposePointerArray)(THIS_ D3DXHANDLE hParameter, D3DXMATRIX** ppMatrix, UINT Count) PURE;
-		STDMETHOD(SetString)(THIS_ D3DXHANDLE hParameter, LPCSTR pString) PURE;
-		STDMETHOD(GetString)(THIS_ D3DXHANDLE hParameter, LPCSTR* ppString) PURE;
-		STDMETHOD(SetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 pTexture) PURE;
-		STDMETHOD(GetTexture)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DBASETEXTURE9 *ppTexture) PURE;
-		STDMETHOD(GetPixelShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DPIXELSHADER9 *ppPShader) PURE;
-		STDMETHOD(GetVertexShader)(THIS_ D3DXHANDLE hParameter, LPDIRECT3DVERTEXSHADER9 *ppVShader) PURE;
-    
-		//Set Range of an Array to pass to device
-		//Usefull for sending only a subrange of an array down to the device
-		STDMETHOD(SetArrayRange)(THIS_ D3DXHANDLE hParameter, UINT uStart, UINT uEnd) PURE; 
-		// ID3DXBaseEffect
-
-		// Parameter sharing, specialization, and information
-		STDMETHOD(SetLiteral)(THIS_ D3DXHANDLE hParameter, BOOL Literal) PURE;
-		STDMETHOD(GetLiteral)(THIS_ D3DXHANDLE hParameter, BOOL *pLiteral) PURE;
-
-		// Compilation
-		STDMETHOD(CompileEffect)(THIS_ DWORD Flags,
-			LPD3DXBUFFER* ppEffect, LPD3DXBUFFER* ppErrorMsgs) PURE;
-
-		STDMETHOD(CompileShader)(THIS_ D3DXHANDLE hFunction, LPCSTR pTarget, DWORD Flags,
-			LPD3DXBUFFER* ppShader, LPD3DXBUFFER* ppErrorMsgs, LPD3DXCONSTANTTABLE* ppConstantTable) PURE;
-	};
-
 	typedef BOOL (WINAPI *tpD3DXCheckVersion)(UINT D3DSDKVersion, UINT D3DXSDKVersion);
 	typedef HRESULT (WINAPI *tpD3DXCreateEffectCompilerFromFileA)(
 				LPCSTR pSrcFile,
@@ -395,6 +106,8 @@ namespace {
 				ID3DXBuffer **ppCompilationErrors);
 	typedef HRESULT (WINAPI *tpD3DXCreateTextureShader)(CONST DWORD *pFunction, LPD3DXTEXTURESHADER *ppTextureShader);
 	typedef HRESULT (WINAPI *tpD3DXFillTextureTX)(LPDIRECT3DTEXTURE9 pTexture, LPD3DXTEXTURESHADER pTextureShader);
+	typedef HRESULT (WINAPI *tpD3DXFillCubeTextureTX)(LPDIRECT3DCUBETEXTURE9 pCubeTexture, LPD3DXTEXTURESHADER pTextureShader);
+	typedef HRESULT (WINAPI *tpD3DXFillVolumeTextureTX)(LPDIRECT3DVOLUMETEXTURE9 pVolumeTexture, LPD3DXTEXTURESHADER pTextureShader);
 
 	struct StdParamData {
 		float vpsize[4];			// (viewport size)			vpwidth, vpheight, 1/vpheight, 1/vpwidth
@@ -430,9 +143,76 @@ namespace {
 	};
 
 	enum { kStdParamCount = sizeof kStdParamInfo / sizeof kStdParamInfo[0] };
+
+	struct FormatInfo {
+		const char *mpName;
+		D3DFORMAT	mFormat;
+	} kFormats[]={
+#define X(name) { #name, D3DFMT_##name },
+	X(R8G8B8)
+	X(A8R8G8B8)
+	X(X8R8G8B8)
+	X(R5G6B5)
+	X(X1R5G5B5)
+	X(A1R5G5B5)
+	X(A4R4G4B4)
+	X(R3G3B2)
+	X(A8)
+	X(A8R3G3B2)
+	X(X4R4G4B4)
+	X(A2B10G10R10)
+	X(A8B8G8R8)
+	X(X8B8G8R8)
+	X(G16R16)
+	X(A2R10G10B10)
+	X(A16B16G16R16)
+	X(A8P8)
+	X(P8)
+	X(L8)
+	X(A8L8)
+	X(A4L4)
+	X(V8U8)
+	X(L6V5U5)
+	X(X8L8V8U8)
+	X(Q8W8V8U8)
+	X(V16U16)
+	X(A2W10V10U10)
+	X(UYVY)
+	X(R8G8_B8G8)
+	X(YUY2)
+	X(G8R8_G8B8)
+	X(DXT1)
+	X(DXT2)
+	X(DXT3)
+	X(DXT4)
+	X(DXT5)
+	X(D16_LOCKABLE)
+	X(D32)
+	X(D15S1)
+	X(D24S8)
+	X(D24X8)
+	X(D24X4S4)
+	X(D16)
+	X(D32F_LOCKABLE)
+	X(D24FS8)
+	X(L16)
+	X(VERTEXDATA)
+	X(INDEX16)
+	X(INDEX32)
+	X(Q16W16V16U16)
+	X(MULTI2_ARGB8)
+	X(R16F)
+	X(G16R16F)
+	X(A16B16G16R16F)
+	X(R32F)
+	X(G32R32F)
+	X(A32B32G32R32F)
+	X(CxV8U8)
+#undef X
+	};
 }
 
-class VDVideoDisplayMinidriverD3DFX : public IVDVideoDisplayMinidriver, protected VDD3D9Client {
+class VDVideoDisplayMinidriverD3DFX : public VDVideoDisplayMinidriver, protected VDD3D9Client {
 public:
 	VDVideoDisplayMinidriverD3DFX();
 	~VDVideoDisplayMinidriverD3DFX();
@@ -445,8 +225,9 @@ protected:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
-	bool IsFramePending() { return mSwapChainPresentLength != 0; }
+	bool IsFramePending() { return mbSwapChainPresentPending; }
 	void SetFilterMode(FilterMode mode);
+	void SetFullScreen(bool fs);
 
 	bool Tick(int id);
 	void Poll();
@@ -455,27 +236,68 @@ protected:
 	void Refresh(UpdateMode);
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 
-	bool SetSubrect(const vdrect32 *) { return false; }
 	void SetLogicalPalette(const uint8 *pLogicalPalette);
 	float GetSyncDelta() const { return mSyncDelta; }
 
 protected:
+	struct ParamBinding;
+
+	typedef void (VDVideoDisplayMinidriverD3DFX::*ParamUploadMethod)(const ParamBinding& binding);
+
+	struct ParamBinding {
+		D3DXHANDLE	mhParam;
+		ParamUploadMethod	mpFn;
+	};
+
 	void OnPreDeviceReset() {
+		DestroyCustomTextures(true);
+
 		mpSwapChain = NULL;
 		mSwapChainW = 0;
 		mSwapChainH = 0;
 
 		if (mpEffect)
 			mpEffect->OnLostDevice();
+
+		mpD3DTempTexture = NULL;
+		mpD3DTempSurface = NULL;
+		mpD3DTempTexture2 = NULL;
+		mpD3DTempSurface2 = NULL;
 	}
+
 	void OnPostDeviceReset() {
 		if (mpEffect)
 			mpEffect->OnResetDevice();
+
+		if (mpTempTexture) {
+			mpD3DTempTexture = mpTempTexture->GetD3DTexture();
+
+			if (mpD3DTempTexture)
+				mpD3DTempTexture->GetSurfaceLevel(0, ~mpD3DTempSurface);
+		}
+
+		if (mpTempTexture2) {
+			mpD3DTempTexture2 = mpTempTexture2->GetD3DTexture();
+
+			if (mpD3DTempTexture2)
+				mpD3DTempTexture2->GetSurfaceLevel(0, ~mpD3DTempSurface2);
+		}
+
+		CreateCustomTextures(true, NULL);
 	}
 
 	bool UpdateBackbuffer(const RECT& rClient, UpdateMode updateMode);
 	bool UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling);
 	void DisplayError();
+	void PreprocessEffectParameters();
+	void UpdateParam_RenderTargetDimensions(const ParamBinding& binding);
+	void UpdateParam_ViewportPixelSize(const ParamBinding& binding);
+	void UpdateEffectParameters(const D3DVIEWPORT9& vp, const D3DSURFACE_DESC& texdesc);
+
+	void CreateCustomTextureBindings();
+	bool CreateCustomTextures(bool vramOnly, const vdsize32 *vpsize);
+	void DestroyCustomTextures(bool vramOnly);
+	void DestroyCustomTextureBindings();
 
 	HWND				mhwnd;
 	HWND				mhwndError;
@@ -490,19 +312,21 @@ protected:
 	vdrefptr<IVDD3D9SwapChain>	mpSwapChain;
 	int					mSwapChainW;
 	int					mSwapChainH;
-	int					mSwapChainPresentLength;
+	bool				mbSwapChainPresentPending;
+	bool				mbSwapChainPresentPolling;
 	bool				mbSwapChainImageValid;
 	bool				mbFirstPresent;
+	bool				mbFullScreen;
 
 	VDAtomicInt			mTickPending;
 
 	vdrefptr<IVDD3D9Texture>	mpTempTexture;
-	IDirect3DTexture9	*mpD3DTempTexture;		// weak ref
-	IDirect3DSurface9	*mpD3DTempSurface;
+	IDirect3DTexture9			*mpD3DTempTexture;		// weak ref
+	vdrefptr<IDirect3DSurface9>	mpD3DTempSurface;
 
 	vdrefptr<IVDD3D9Texture>	mpTempTexture2;
-	IDirect3DTexture9	*mpD3DTempTexture2;		// weak ref
-	IDirect3DSurface9	*mpD3DTempSurface2;
+	IDirect3DTexture9			*mpD3DTempTexture2;		// weak ref
+	vdrefptr<IDirect3DSurface9>	mpD3DTempSurface2;
 
 	FilterMode			mPreferredFilter;
 
@@ -515,6 +339,15 @@ protected:
 	float				mSyncDelta;
 	VDD3DPresentHistory	mPresentHistory;
 
+	VDStringA			mTimingString;
+	int					mTimingStringCounter;
+	float				mLastLongestPresentTime;
+	float				mLastLongestFrameTime;
+	uint64				mLastFrameTime;
+
+	uint32				mLatencyFence;
+	uint32				mLatencyFenceNext;
+
 	VDStringW			mError;
 
 	D3DXHANDLE			mhSrcTexture;
@@ -524,6 +357,38 @@ protected:
 	D3DXHANDLE			mhTempTexture2;
 	D3DXHANDLE			mhTechniques[kFilterModeCount - 1];
 	D3DXHANDLE			mhStdParamHandles[kStdParamCount];
+
+	typedef vdfastvector<ParamBinding> ParamBindings;
+	ParamBindings mParamBindings;
+
+	struct TextureBinding {
+		IDirect3DBaseTexture9 *mpTexture;
+		ID3DXTextureShader *mpTextureShader;
+
+		D3DXHANDLE		mhParam;
+		D3DXHANDLE		mhSizeParam;
+		D3DFORMAT		mFormat;
+		D3DPOOL			mPool;
+		DWORD			mUsage;
+		D3DRESOURCETYPE	mResType;
+		float			mViewportRatioW;
+		float			mViewportRatioH;
+		int				mWidth;
+		int				mHeight;
+		int				mDepth;
+		int				mMipLevels;
+	};
+
+	typedef vdfastvector<TextureBinding> TextureBindings;
+	TextureBindings	mTextureBindings;
+
+	tpD3DXCreateEffect			mpD3DXCreateEffect;
+	tpD3DXCreateTextureShader	mpD3DXCreateTextureShader;
+	tpD3DXFillTextureTX			mpD3DXFillTextureTX;
+	tpD3DXFillCubeTextureTX		mpD3DXFillCubeTextureTX;
+	tpD3DXFillVolumeTextureTX	mpD3DXFillVolumeTextureTX;
+
+	vdrefptr<IVDFontRendererD3D9>	mpFontRenderer;
 };
 
 
@@ -539,8 +404,10 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
 	, mSwapChainW(0)
 	, mSwapChainH(0)
 	, mbSwapChainImageValid(false)
+	, mbSwapChainPresentPending(false)
+	, mbSwapChainPresentPolling(false)
 	, mbFirstPresent(false)
-	, mSwapChainPresentLength(0)
+	, mbFullScreen(false)
 	, mTickPending(0)
 	, mpD3DTempTexture(NULL)
 	, mpD3DTempTexture2(NULL)
@@ -551,6 +418,11 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
 	, mPreferredFilter(kFilterAnySuitable)
 	, mbForceFrameUpload(false)
 	, mSyncDelta(0.0f)
+	, mLastLongestPresentTime(0.0f)
+	, mLastLongestFrameTime(0.0f)
+	, mTimingStringCounter(0)
+	, mLatencyFence(0)
+	, mLatencyFenceNext(0)
 {
 	mrClient.top = mrClient.left = mrClient.right = mrClient.bottom = 0;
 }
@@ -563,6 +435,8 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	mhwnd = hwnd;
 	mSource = info;
 	mSyncDelta = 0.0f;
+
+	mLastFrameTime = VDGetPreciseTick();
 
 	// attempt to load d3dx9_25.dll
 	mhmodD3DX = LoadLibrary("d3dx9_25.dll");
@@ -597,11 +471,13 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 		}
 	}
 
-	tpD3DXCreateEffect			pD3DXCreateEffect			= (tpD3DXCreateEffect)			GetProcAddress(mhmodD3DX, "D3DXCreateEffect");
-	tpD3DXCreateTextureShader	pD3DXCreateTextureShader	= (tpD3DXCreateTextureShader)	GetProcAddress(mhmodD3DX, "D3DXCreateTextureShader");
-	tpD3DXFillTextureTX			pD3DXFillTextureTX			= (tpD3DXFillTextureTX)			GetProcAddress(mhmodD3DX, "D3DXFillTextureTX");
+	mpD3DXCreateEffect			= (tpD3DXCreateEffect)			GetProcAddress(mhmodD3DX, "D3DXCreateEffect");
+	mpD3DXCreateTextureShader	= (tpD3DXCreateTextureShader)	GetProcAddress(mhmodD3DX, "D3DXCreateTextureShader");
+	mpD3DXFillTextureTX			= (tpD3DXFillTextureTX)			GetProcAddress(mhmodD3DX, "D3DXFillTextureTX");
+	mpD3DXFillCubeTextureTX		= (tpD3DXFillCubeTextureTX)		GetProcAddress(mhmodD3DX, "D3DXFillCubeTextureTX");
+	mpD3DXFillVolumeTextureTX	= (tpD3DXFillVolumeTextureTX)	GetProcAddress(mhmodD3DX, "D3DXFillVolumeTextureTX");
 
-	if (!pD3DXCreateEffect || !pD3DXCreateTextureShader || !pD3DXFillTextureTX) {
+	if (!mpD3DXCreateEffect || !mpD3DXCreateTextureShader || !mpD3DXFillTextureTX || !mpD3DXFillCubeTextureTX || !mpD3DXFillVolumeTextureTX) {
 		Shutdown();
 		return false;
 	}
@@ -613,7 +489,20 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 		return false;
 	}
 
+	if (mbFullScreen)
+		mpManager->AdjustFullScreen(true);
+
 	mpD3DDevice = mpManager->GetDevice();
+
+	// init font renderer
+	if (mbDisplayDebugInfo) {
+		if (!VDCreateFontRendererD3D9(~mpFontRenderer)) {
+			Shutdown();
+			return false;
+		}
+
+		mpFontRenderer->Init(mpManager);		// we explicitly allow this to fail
+	}
 
 	// attempt to compile effect
 	ID3DXBuffer *pError = NULL;
@@ -651,7 +540,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 			}
 
 			// create the effect
-			hr = pD3DXCreateEffect(mpD3DDevice, pEffectBuffer->GetBufferPointer(), pEffectBuffer->GetBufferSize(), NULL, NULL, 0, NULL, &mpEffect, &pError);
+			hr = mpD3DXCreateEffect(mpD3DDevice, pEffectBuffer->GetBufferPointer(), pEffectBuffer->GetBufferSize(), NULL, NULL, 0, NULL, &mpEffect, &pError);
 
 			pEffectBuffer->Release();
 		}
@@ -680,107 +569,8 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 		return false;
 	}
 
-	int i;
-	for(i=0; i<(int)effDesc.Parameters; ++i) {
-		D3DXHANDLE hParm = mpEffect->GetParameter(NULL, i);
-		if (!hParm)
-			continue;
-
-		D3DXPARAMETER_DESC parmDesc;
-		hr = mpEffect->GetParameterDesc(hParm, &parmDesc);
-		if (FAILED(hr))
-			continue;
-
-		if (parmDesc.Type != D3DXPT_TEXTURE)
-			continue;
-
-		// look for texture shader annotations
-		D3DXHANDLE hFunctionName = mpEffect->GetAnnotationByName(hParm, "function");
-		LPCSTR pName;
-		if (SUCCEEDED(mpEffect->GetString(hFunctionName, &pName))) {
-			int w = 256;
-			int h = 256;
-			const char *profile = "tx_1_0";
-
-			D3DXHANDLE hAnno;
-			if (hAnno = mpEffect->GetAnnotationByName(hParm, "width"))
-				mpEffect->GetInt(hAnno, &w);
-			if (hAnno = mpEffect->GetAnnotationByName(hParm, "height"))
-				mpEffect->GetInt(hAnno, &h);
-			if (hAnno = mpEffect->GetAnnotationByName(hParm, "target"))
-				mpEffect->GetString(hAnno, &profile);
-
-			// check that the function exists (CompileShader just gives us the dreaded INVALIDCALL
-			// error in this case)
-#if 0
-			if (!mpEffect->GetFunctionByName(pName)) {
-				mError = VDStringW::setf(L"Couldn't create procedural texture '%hs' in effect file %ls:\nUnknown function '%hs'", parmDesc.Name, srcfile.c_str(), pName);
-				if (pError)
-					pError->Release();
-				ShutdownEffect();
-				return true;
-			}
-#endif
-
-			// create the texture
-			IDirect3DTexture9 *pTexture = NULL;
-			ID3DXTextureShader *pTextureShader = NULL;
-
-			hr = mpD3DDevice->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &pTexture, NULL);
-			if (FAILED(hr)) {
-				mError.sprintf(L"Unable to create procedural texture in effect file %ls.", srcfile.c_str());
-				DisplayError();
-				ShutdownEffect();
-				return true;
-			}
-
-			// attempt to compile the texture shader
-			hr = mpEffectCompiler->CompileShader(pName, profile, 0, &pEffectBuffer, &pError, NULL);
-			if (SUCCEEDED(hr)) {
-				if (pError)
-					pError->Release();
-
-				// create the texture shader
-				hr = pD3DXCreateTextureShader((const DWORD *)pEffectBuffer->GetBufferPointer(), &pTextureShader);
-
-				if (SUCCEEDED(hr)) {
-					// fill the texture
-					hr = pD3DXFillTextureTX(pTexture, pTextureShader);
-
-					if (SUCCEEDED(hr))
-						mpEffect->SetTexture(hParm, pTexture);
-				}
-
-				if (pTextureShader)
-					pTextureShader->Release();
-			}
-
-			if (pEffectBuffer)
-				pEffectBuffer->Release();
-
-			pTexture->Release();
-
-			if (FAILED(hr)) {
-				mError.sprintf(L"Couldn't create procedural texture '%hs' in effect file %ls:\n%hs", parmDesc.Name, srcfile.c_str(), pError ? (const char *)pError->GetBufferPointer() : "unknown error");
-				if (pError)
-					pError->Release();
-				ShutdownEffect();
-				DisplayError();
-				return true;
-			}
-
-			if (pError)
-				pError->Release();
-		}
-	}
-
-	if (mpEffectCompiler) {
-		mpEffectCompiler->Release();
-		mpEffectCompiler = NULL;
-	}
-
 	// scan for standard parameter handles (ok for these to fail)
-	for(i=0; i<sizeof kStdParamInfo/sizeof kStdParamInfo[0]; ++i)
+	for(int i=0; i<sizeof kStdParamInfo/sizeof kStdParamInfo[0]; ++i)
 		mhStdParamHandles[i] = mpEffect->GetParameterByName(NULL, kStdParamInfo[i].name);
 
 	// scan for standard techniques
@@ -794,7 +584,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 
 	D3DXHANDLE hTechniqueLastValid = NULL;
 
-	for(i=kFilterModeCount - 2; i >= 0; --i) {
+	for(int i=kFilterModeCount - 2; i >= 0; --i) {
 		const char *baseName = kTechniqueNames[i];
 		size_t baseNameLen = strlen(baseName);
 
@@ -812,11 +602,11 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 			if (FAILED(hr))
 				continue;
 
-			if (!strncmp(techDesc.Name, baseName, baseNameLen)) {
+			hTechniqueLastValid = hTechnique;
+			if (techDesc.Name && !strncmp(techDesc.Name, baseName, baseNameLen)) {
 				char c = techDesc.Name[baseNameLen];
 
 				if (!c || c=='_') {
-					hTechniqueLastValid = hTechnique;
 					for(int j=i; j < kFilterModeCount - 1 && !mhTechniques[j]; ++j)
 						mhTechniques[j] = hTechnique;
 					break;
@@ -837,7 +627,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	}
 
 	// backfill lowest level techniques that may be missing
-	for(i=0; !mhTechniques[i]; ++i)
+	for(int i=0; !mhTechniques[i]; ++i)
 		mhTechniques[i] = hTechniqueLastValid;
 
 	// check if we need the temp texture
@@ -852,7 +642,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 
 		mpD3DTempTexture = mpTempTexture->GetD3DTexture();
 
-		hr = mpD3DTempTexture->GetSurfaceLevel(0, &mpD3DTempSurface);
+		hr = mpD3DTempTexture->GetSurfaceLevel(0, ~mpD3DTempSurface);
 		if (FAILED(hr)) {
 			Shutdown();
 			return false;
@@ -873,7 +663,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 
 		mpD3DTempTexture2 = mpTempTexture2->GetD3DTexture();
 
-		hr = mpD3DTempTexture2->GetSurfaceLevel(0, &mpD3DTempSurface2);
+		hr = mpD3DTempTexture2->GetSurfaceLevel(0, ~mpD3DTempSurface2);
 		if (FAILED(hr)) {
 			Shutdown();
 			return false;
@@ -897,6 +687,22 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	mhPrevSrcTexture = mpEffect->GetParameterByName(NULL, "vd_prevsrctexture");
 	mhPrevSrc2Texture = mpEffect->GetParameterByName(NULL, "vd_prevsrc2texture");
 
+	try {
+		PreprocessEffectParameters();
+		CreateCustomTextureBindings();
+		CreateCustomTextures(false, NULL);
+	} catch(const MyError& e) {
+		mError.sprintf(L"%hs", e.gets());
+		DisplayError();
+		ShutdownEffect();
+		return true;		
+	}
+
+	if (mpEffectCompiler) {
+		mpEffectCompiler->Release();
+		mpEffectCompiler = NULL;
+	}
+
 	// create upload context
 	if (!VDCreateVideoUploadContextD3D9(~mpUploadContext)) {
 		Shutdown();
@@ -915,6 +721,9 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 }
 
 void VDVideoDisplayMinidriverD3DFX::ShutdownEffect() {
+	mParamBindings.clear();
+	DestroyCustomTextureBindings();
+
 	mpSwapChain = NULL;
 	mSwapChainW = 0;
 	mSwapChainH = 0;
@@ -938,15 +747,13 @@ void VDVideoDisplayMinidriverD3DFX::Shutdown() {
 
 	ShutdownEffect();
 
-	if (mpD3DTempSurface2) {
-		mpD3DTempSurface2->Release();
-		mpD3DTempSurface2 = NULL;
+	if (mpFontRenderer) {
+		mpFontRenderer->Shutdown();
+		mpFontRenderer = NULL;
 	}
 
-	if (mpD3DTempSurface) {
-		mpD3DTempSurface->Release();
-		mpD3DTempSurface = NULL;
-	}
+	mpD3DTempSurface2 = NULL;
+	mpD3DTempSurface = NULL;
 
 	mpD3DTempTexture2 = NULL;
 	mpTempTexture2 = NULL;
@@ -957,6 +764,8 @@ void VDVideoDisplayMinidriverD3DFX::Shutdown() {
 	mpUploadContext = NULL;
 
 	if (mpManager) {
+		if (mbFullScreen)
+			mpManager->AdjustFullScreen(false);
 		VDDeinitDirect3D9(mpManager, this);
 		mpManager = NULL;
 	}
@@ -968,8 +777,7 @@ void VDVideoDisplayMinidriverD3DFX::Shutdown() {
 }
 
 bool VDVideoDisplayMinidriverD3DFX::ModifySource(const VDVideoDisplaySourceInfo& info) {
-	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && mSource.pixmap.pitch == info.pixmap.pitch
-		&& !mSource.bPersistent) {
+	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && mSource.pixmap.pitch == info.pixmap.pitch) {
 		mSource = info;
 		return true;
 	}
@@ -984,19 +792,29 @@ void VDVideoDisplayMinidriverD3DFX::SetFilterMode(FilterMode mode) {
 	mPreferredFilter = mode;
 }
 
+void VDVideoDisplayMinidriverD3DFX::SetFullScreen(bool fs) {
+	if (mbFullScreen != fs) {
+		mbFullScreen = fs;
+
+		if (mpManager)
+			mpManager->AdjustFullScreen(fs);
+	}
+}
+
 bool VDVideoDisplayMinidriverD3DFX::Tick(int id) {
 	return true;
 }
 
 void VDVideoDisplayMinidriverD3DFX::Poll() {
-	if (mSwapChainPresentLength) {
-		UpdateScreen(mrClient, kModeVSync, false);
+	if (mbSwapChainPresentPending) {
+		UpdateScreen(mrClient, kModeVSync, true);
 	}
 }
 
 bool VDVideoDisplayMinidriverD3DFX::Resize() {
 	mbSwapChainImageValid = false;
-	mSwapChainPresentLength = 0;
+	mbSwapChainPresentPending = false;
+	mbSwapChainPresentPolling = false;
 	if (GetClientRect(mhwnd, &mrClient)) {
 		if (mhwndError)
 			SetWindowPos(mhwndError, NULL, 0, 0, mrClient.right, mrClient.bottom, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
@@ -1060,26 +878,27 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient, UpdateMo
 		return true;
 	}
 
-	return (mbSwapChainImageValid || UpdateBackbuffer(rClient, updateMode)) && UpdateScreen(rClient, updateMode, false);
+	return (mbSwapChainImageValid || UpdateBackbuffer(rClient, updateMode)) && UpdateScreen(rClient, updateMode, (updateMode & kModeVSync) != 0);
 }
 
 void VDVideoDisplayMinidriverD3DFX::SetLogicalPalette(const uint8 *pLogicalPalette) {
 }
 
 bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, UpdateMode updateMode) {
-	VDASSERT(!mSwapChainPresentLength);
+	VDASSERT(!mbSwapChainPresentPending);
 	uint64 startTime = VDGetPreciseTick();
 	RECT rClient = rClient0;
 
 	int rtw = mpManager->GetMainRTWidth();
 	int rth = mpManager->GetMainRTHeight();
+	if (mbFullScreen) {
+		rClient.right = rtw;
+		rClient.bottom = rth;
+	}
 	RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
 
-	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
-	if (!pparms.Windowed) {
-		rClient.right = rClippedClient.right = pparms.BackBufferWidth;
-		rClient.bottom = rClippedClient.bottom = pparms.BackBufferHeight;
-	}
+	vdsize32 vpsize(rClippedClient.right, rClippedClient.bottom);
+	CreateCustomTextures(false, &vpsize);
 
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
@@ -1098,7 +917,7 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 		mSwapChainH = 0;
 	}
 
-	if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
+	if (!mbFullScreen && (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
 		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
 		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
 
@@ -1117,25 +936,48 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 	if (mode == kFilterAnySuitable)
 		mode = kFilterBicubic;
 
-#if 0
-		{
-			double t = VDGetPreciseTick() * VDGetPreciseSecondsPerTick();
-			fprintf(loggf, "[%04.0f] Starting update\n", (t - floor(t)) * 1000.0);
-		}
-#endif
-	{
+	// begin rendering
+//	mLatencyFence = mLatencyFenceNext;
+//	mLatencyFenceNext = mpManager->InsertFence();
+//	mLatencyFence = mpManager->InsertFence();
+
+	if (mColorOverride) {
+		mpManager->SetSwapChainActive(mpSwapChain);
+
+		D3DRECT rClear;
+		rClear.x1 = rClient.left;
+		rClear.y1 = rClient.top;
+		rClear.x2 = rClient.right;
+		rClear.y2 = rClient.bottom;
+
+		HRESULT hr = mpD3DDevice->Clear(1, &rClear, D3DCLEAR_TARGET, mColorOverride, 0.0f, 0);
+		mpManager->SetSwapChainActive(NULL);
+
+		if (FAILED(hr))
+			return false;
+	} else {
 		D3D_AUTOBREAK(SetStreamSource(0, mpManager->GetVertexBuffer(), 0, sizeof(Vertex)));
 		D3D_AUTOBREAK(SetIndices(mpManager->GetIndexBuffer()));
 		D3D_AUTOBREAK(SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX2));
 		D3D_AUTOBREAK(SetRenderState(D3DRS_LIGHTING, FALSE));
 		D3D_AUTOBREAK(SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
+		D3D_AUTOBREAK(SetRenderState(D3DRS_ZENABLE, FALSE));
 		D3D_AUTOBREAK(SetRenderState(D3DRS_ALPHATESTENABLE, FALSE));
+		D3D_AUTOBREAK(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
+		D3D_AUTOBREAK(SetRenderState(D3DRS_STENCILENABLE, FALSE));
+		D3D_AUTOBREAK(SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD));
 
 		vdrefptr<IDirect3DSurface9> pRTMain;
-		IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
-		hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
-		if (FAILED(hr))
-			return false;
+
+		if (mpSwapChain) {
+			IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
+			hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+			if (FAILED(hr))
+				return false;
+		} else {
+			mpManager->SetSwapChainActive(NULL);
+			mpD3DDevice->GetRenderTarget(0, ~pRTMain);
+		}
 
 		mbSwapChainImageValid = false;
 
@@ -1181,120 +1023,14 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 			mpManager->UnlockIndices();
 		}
 
-		// render the effect
-		StdParamData data;
-
-		data.vpsize[0] = (float)vp.Width;
-		data.vpsize[1] = (float)vp.Height;
-		data.vpsize[2] = 1.0f / (float)vp.Height;
-		data.vpsize[3] = 1.0f / (float)vp.Width;
-		data.texsize[0] = (float)(int)texdesc.Width;
-		data.texsize[1] = (float)(int)texdesc.Height;
-		data.texsize[2] = 1.0f / (float)(int)texdesc.Height;
-		data.texsize[3] = 1.0f / (float)(int)texdesc.Width;
-		data.srcsize[0] = (float)mSource.pixmap.w;
-		data.srcsize[1] = (float)mSource.pixmap.h;
-		data.srcsize[2] = 1.0f / (float)mSource.pixmap.h;
-		data.srcsize[3] = 1.0f / (float)mSource.pixmap.w;
-		data.tempsize[0] = 1.f;
-		data.tempsize[1] = 1.f;
-		data.tempsize[2] = 1.f;
-		data.tempsize[3] = 1.f;
-		data.temp2size[0] = 1.f;
-		data.temp2size[1] = 1.f;
-		data.temp2size[2] = 1.f;
-		data.temp2size[3] = 1.f;
-		data.vpcorrect[0] = 2.0f / vp.Width;
-		data.vpcorrect[1] = 2.0f / vp.Height;
-		data.vpcorrect[2] = -1.0f / (float)vp.Height;
-		data.vpcorrect[3] = 1.0f / (float)vp.Width;
-		data.vpcorrect2[0] = 2.0f / vp.Width;
-		data.vpcorrect2[1] = -2.0f / vp.Height;
-		data.vpcorrect2[2] = 1.0f + 1.0f / (float)vp.Height;
-		data.vpcorrect2[3] = -1.0f - 1.0f / (float)vp.Width;
-		data.tvpcorrect[0] = 2.0f;
-		data.tvpcorrect[1] = 2.0f;
-		data.tvpcorrect[2] = -1.0f;
-		data.tvpcorrect[3] = 1.0f;
-		data.tvpcorrect2[0] = 2.0f;
-		data.tvpcorrect2[1] = -2.0f;
-		data.tvpcorrect2[2] = 0.f;
-		data.tvpcorrect2[3] = 2.0f;
-		data.t2vpcorrect[0] = 2.0f;
-		data.t2vpcorrect[1] = 2.0f;
-		data.t2vpcorrect[2] = -1.0f;
-		data.t2vpcorrect[3] = 1.0f;
-		data.t2vpcorrect2[0] = 2.0f;
-		data.t2vpcorrect2[1] = -2.0f;
-		data.t2vpcorrect2[2] = 0.f;
-		data.t2vpcorrect2[3] = 2.0f;
-		data.time[0] = (GetTickCount() % 30000) / 30000.0f;
-		data.time[1] = 1;
-		data.time[2] = 2;
-		data.time[3] = 3;
-
-		if (mhSrcTexture)
-			mpEffect->SetTexture(mhSrcTexture, mpUploadContext->GetD3DTexture(0));
-
-		if (mhPrevSrcTexture)
-			mpEffect->SetTexture(mhPrevSrcTexture, mpUploadContext->GetD3DTexture(1));
-
-		if (mhPrevSrc2Texture)
-			mpEffect->SetTexture(mhPrevSrc2Texture, mpUploadContext->GetD3DTexture(2));
-
-		if (mhTempTexture) {
-			mpEffect->SetTexture(mhTempTexture, mpD3DTempTexture);
-
-			float tempw = (float)mpTempTexture->GetWidth();
-			float temph = (float)mpTempTexture->GetHeight();
-
-			data.tempsize[0] = tempw;
-			data.tempsize[1] = temph;
-			data.tempsize[2] = 1.0f / temph;
-			data.tempsize[3] = 1.0f / tempw;
-			data.tvpcorrect[0] = 2.0f * data.tempsize[3];
-			data.tvpcorrect[1] = 2.0f * data.tempsize[2];
-			data.tvpcorrect[2] = -data.tempsize[2];
-			data.tvpcorrect[3] = data.tempsize[3];
-			data.tvpcorrect2[0] = 2.0f * data.tempsize[3];
-			data.tvpcorrect2[1] = -2.0f * data.tempsize[2];
-			data.tvpcorrect2[2] = 1.0f + data.tempsize[2];
-			data.tvpcorrect2[3] = -1.0f - data.tempsize[3];
-		}
-
-		if (mhTempTexture2) {
-			mpEffect->SetTexture(mhTempTexture2, mpD3DTempTexture2);
-
-			float temp2w = (float)mpTempTexture2->GetWidth();
-			float temp2h = (float)mpTempTexture2->GetHeight();
-
-			data.temp2size[0] = temp2w;
-			data.temp2size[1] = temp2h;
-			data.temp2size[2] = 1.0f / temp2h;
-			data.temp2size[3] = 1.0f / temp2w;
-			data.t2vpcorrect[0] = 2.0f * data.temp2size[3];
-			data.t2vpcorrect[1] = 2.0f * data.temp2size[2];
-			data.t2vpcorrect[2] = -data.temp2size[2];
-			data.t2vpcorrect[3] = data.temp2size[3];
-			data.t2vpcorrect2[0] = 2.0f * data.temp2size[3];
-			data.t2vpcorrect2[1] = -2.0f * data.temp2size[2];
-			data.t2vpcorrect2[2] = 1.0f + data.temp2size[2];
-			data.t2vpcorrect2[3] = -1.0f - data.temp2size[3];
-		}
-
-		for(int i=0; i<kStdParamCount; ++i) {
-			D3DXHANDLE h = mhStdParamHandles[i];
-
-			if (h)
-				mpEffect->SetVector(h, (const D3DXVECTOR4 *)((const char *)&data + kStdParamInfo[i].offset));
-		}
+		UpdateEffectParameters(vp, texdesc);
 
 		UINT passes;
 		D3DXHANDLE hTechnique = mhTechniques[mode - 1];
 		D3D_AUTOBREAK_2(mpEffect->SetTechnique(hTechnique));
 		D3D_AUTOBREAK_2(mpEffect->Begin(&passes, 0));
 
-		int lastTarget = -1;
+		IDirect3DSurface9 *pLastRT = pRTMain;
 
 		for(UINT pass=0; pass<passes; ++pass) {
 			D3DXHANDLE hPass = mpEffect->GetPass(hTechnique, pass);
@@ -1311,30 +1047,58 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 				}
 			}
 
-			int newTarget = -1;
+			vdrefptr<IDirect3DSurface9> pNewRTRef;
+			IDirect3DSurface9 *pNewRT = NULL;
 
 			if (D3DXHANDLE hTarget = mpEffect->GetAnnotationByName(hPass, "vd_target")) {
 				const char *s;
 
 				if (SUCCEEDED(mpEffect->GetString(hTarget, &s)) && s) {
 					if (!strcmp(s, "temp"))
-						newTarget = 0;
+						pNewRT = mpD3DTempSurface;
 					else if (!strcmp(s, "temp2"))
-						newTarget = 1;
+						pNewRT = mpD3DTempSurface2;
+					else if (!*s)
+						pNewRT = pRTMain;
+					else {
+						D3DXHANDLE hTextureParam = mpEffect->GetParameterByName(NULL, s);
+						if (SUCCEEDED(hr)) {
+							vdrefptr<IDirect3DBaseTexture9> pBaseTex;
+							hr = mpEffect->GetTexture(hTextureParam, ~pBaseTex);
+							if (SUCCEEDED(hr) && pBaseTex) {
+								switch(pBaseTex->GetType()) {
+									case D3DRTYPE_TEXTURE:
+										{
+											vdrefptr<IDirect3DTexture9> pTex;
+											hr = pBaseTex->QueryInterface(IID_IDirect3DTexture9, (void **)~pTex);
+											if (SUCCEEDED(hr))
+												hr = pTex->GetSurfaceLevel(0, ~pNewRTRef);
+										}
+										break;
+									case D3DRTYPE_CUBETEXTURE:
+										{
+											vdrefptr<IDirect3DCubeTexture9> pTex;
+											hr = pBaseTex->QueryInterface(IID_IDirect3DCubeTexture9, (void **)~pTex);
+											if (SUCCEEDED(hr))
+												hr = pTex->GetCubeMapSurface(D3DCUBEMAP_FACE_POSITIVE_X, 0, ~pNewRTRef);
+										}
+										break;
+								}
+
+								pNewRT = pNewRTRef;
+							}
+						}
+					}
 				}
 			}
 
-			if (lastTarget != newTarget) {
-				lastTarget = newTarget;
+			if (pNewRT && pLastRT != pNewRT) {
+				pLastRT = pNewRT;
 
-				if (newTarget == 0)
-					D3D_AUTOBREAK(SetRenderTarget(0, mpD3DTempSurface));
-				else if (newTarget == 1)
-					D3D_AUTOBREAK(SetRenderTarget(0, mpD3DTempSurface2));
-				else {
-					D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
+				D3D_AUTOBREAK(SetRenderTarget(0, pNewRT));
+
+				if (pNewRT == pRTMain)
 					D3D_AUTOBREAK(SetViewport(&vp));
-				}
 			}
 
 			if (D3DXHANDLE hClear = mpEffect->GetAnnotationByName(hPass, "vd_clear")) {
@@ -1364,65 +1128,92 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 			D3D_AUTOBREAK_2(mpEffect->EndPass());
 		}
 
-#if 0
-		D3DRECT statRect[17], attemptRect[17];
-		for(int i=0; i<17; ++i) {
-			D3DRECT& r = statRect[i];
-			r.x1 = 0;
-			r.x2 = VDRoundToInt(mPresentHistory.mSuccessProb[i] * 400.0f) + 1;
-			r.y1 = 40 + 20*i;
-			r.y2 = 40 + 20*i + 5;
+		D3D_AUTOBREAK_2(mpEffect->End());
 
-			D3DRECT& r2 = attemptRect[i];
-			r2.x1 = 0;
-			r2.x2 = VDRoundToInt(mPresentHistory.mAttemptProb[i] * 400.0f) + 1;
-			r2.y1 = 40 + 20*i + 5;
-			r2.y2 = 40 + 20*i + 10;
+		if (mbDisplayDebugInfo && mpFontRenderer) {
+			if (!(++mTimingStringCounter & 63)) {
+				mTimingString.sprintf("Longest present: %4.2fms  Longest frame: %4.2fms", mLastLongestPresentTime * 1000.0f, mLastLongestFrameTime * 1000.0f);
+				mLastLongestPresentTime = 0.0f;
+				mLastLongestFrameTime = 0.0f;
+			}
+
+			if (mpFontRenderer->Begin()) {
+				VDStringA s;
+
+				VDStringA desc;
+				GetFormatString(mSource, desc);
+				s.sprintf("D3DFX minidriver - %s", desc.c_str());
+				mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, s.c_str());
+
+				mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, mTimingString.c_str());
+				mpFontRenderer->End();
+			}
 		}
 
-		mpD3DDevice->Clear(17, statRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 255, 0, 0), 0.0f, 0);
-		mpD3DDevice->Clear(17, attemptRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 255, 0), 0.0f, 0);
-
-		D3DRECT barRect = {401, 0, 402, 340};
-		mpD3DDevice->Clear(1, &barRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 128, 128, 128), 0.0f, 0);
-
-		D3DRECT targetRect = {0, 0, 400, 0};
-		targetRect.y1 = VDRoundToInt(mPresentHistory.mScanlineTarget * 400.0f / 1200.0f);
-		targetRect.y2 = targetRect.y1 + 1;
-		mpD3DDevice->Clear(1, &targetRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 192, 192, 0), 0.0f, 0);
-#endif
-
-		D3D_AUTOBREAK_2(mpEffect->End());
 		D3D_AUTOBREAK(EndScene());
-		mpManager->Flush();
 	}
 
+	mpManager->Flush();
 	mpManager->SetSwapChainActive(NULL);
 	mbSwapChainImageValid = true;
-	++mSwapChainPresentLength;
+	mbSwapChainPresentPending = true;
+	mbSwapChainPresentPolling = false;
+//	mLatencyFence = mLatencyFenceNext;
+//	mLatencyFenceNext = mpManager->InsertFence();
 
 d3d_failed:
 	return true;
 }
 
 bool VDVideoDisplayMinidriverD3DFX::UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling) {
-	if (!mbSwapChainImageValid || !mpSwapChain)
+	if (!mbSwapChainImageValid || (!mbFullScreen && !mpSwapChain))
 		return false;
 
-	HRESULT hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling, true, mSyncDelta, mPresentHistory);
+	if (polling) {
+		if (mLatencyFence) {
+			if (!mpManager->IsFencePassed(mLatencyFence))
+				return true;
+
+			mLatencyFence = 0;
+		}
+	}
+
+	HRESULT hr;
+	if (mbFullScreen) {
+		uint64 tstart = VDGetPreciseTick();
+		hr = mpManager->PresentFullScreen(!polling);
+
+		float tdelta = (float)((VDGetPreciseTick() - tstart) * VDGetPreciseSecondsPerTick());
+
+		if (tdelta > mLastLongestPresentTime)
+			mLastLongestPresentTime = tdelta;
+	} else {
+		hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling || !mbSwapChainPresentPolling, polling, mSyncDelta, mPresentHistory);
+		mbSwapChainPresentPolling = true;
+	}
 
 	bool dec = false;
 	if (hr == S_FALSE)
 		return true;
 	else if (hr == S_OK) {
-		if (mSwapChainPresentLength) {
-			dec = true;
-			--mSwapChainPresentLength;
-		}
+		uint64 curTime = VDGetPreciseTick();
+		float ft = (curTime - mLastFrameTime) * VDGetPreciseSecondsPerTick();
+		if (mLastLongestFrameTime < ft)
+			mLastLongestFrameTime = ft;
+		mLastFrameTime = curTime;
 	}
 
+	if (mbSwapChainPresentPending) {
+		mbSwapChainPresentPending = false;
+		mbSwapChainPresentPolling = false;
+		dec = true;
+	}
+
+	mLatencyFence = mLatencyFenceNext;
+	mLatencyFenceNext = 0;
+
 	// Workaround for Windows Vista DWM composition chain not updating.
-	if (mbFirstPresent) {
+	if (!mbFullScreen && mbFirstPresent) {
 		SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
 		mbFirstPresent = false;
 	}
@@ -1453,6 +1244,545 @@ void VDVideoDisplayMinidriverD3DFX::DisplayError() {
 
 	if (mhwndError)
 		SendMessage(mhwndError, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
+}
+
+void VDVideoDisplayMinidriverD3DFX::PreprocessEffectParameters() {
+	mParamBindings.clear();
+
+	D3DXEFFECT_DESC effdesc;
+	HRESULT hr = mpEffect->GetDesc(&effdesc);
+
+	ParamBinding binding={};
+	if (VDINLINEASSERT(SUCCEEDED(hr))) {
+		for(UINT parmidx = 0; parmidx < effdesc.Parameters; ++parmidx) {
+			D3DXHANDLE hparm = mpEffect->GetParameter(NULL, parmidx);
+			if (!hparm)
+				continue;
+
+			D3DXPARAMETER_DESC parmdesc;
+			hr = mpEffect->GetParameterDesc(hparm, &parmdesc);
+			if (VDINLINEASSERTFALSE(FAILED(hr)))
+				continue;
+
+			static const struct ParamInfo {
+				D3DXPARAMETER_CLASS	mClass;
+				D3DXPARAMETER_TYPE	mType;
+				const char			*mpSemantic;
+				ParamUploadMethod	mpMethod;
+			} kParamInfo[]={
+				{ D3DXPC_VECTOR, D3DXPT_FLOAT,	"RenderTargetDimensions",	&VDVideoDisplayMinidriverD3DFX::UpdateParam_RenderTargetDimensions },
+				{ D3DXPC_VECTOR, D3DXPT_FLOAT,	"ViewportPixelSize",		&VDVideoDisplayMinidriverD3DFX::UpdateParam_ViewportPixelSize }
+			};
+
+			binding.mpFn = NULL;
+			for(int i=0; i<sizeof(kParamInfo)/sizeof(kParamInfo[0]); ++i) {
+				const ParamInfo& pi = kParamInfo[i];
+
+				if (parmdesc.Class == pi.mClass && parmdesc.Type == pi.mType && parmdesc.Semantic && !_stricmp(parmdesc.Semantic, pi.mpSemantic)) {
+					binding.mpFn = pi.mpMethod;
+					break;
+				}
+			}
+
+			if (binding.mpFn) {
+				binding.mhParam = hparm;
+				mParamBindings.push_back(binding);
+			}
+		}
+	}
+}
+
+void VDVideoDisplayMinidriverD3DFX::UpdateParam_RenderTargetDimensions(const ParamBinding& binding) {
+	vdrefptr<IDirect3DSurface9> rt;
+	HRESULT hr = mpD3DDevice->GetRenderTarget(0, ~rt);
+	if (SUCCEEDED(hr)) {
+		D3DSURFACE_DESC surfdesc;
+		hr = rt->GetDesc(&surfdesc);
+		if (SUCCEEDED(hr)) {
+			D3DXVECTOR4 v4;
+			v4.x = (float)surfdesc.Width;
+			v4.y = (float)surfdesc.Height;
+			v4.z = 0.0f;
+			v4.w = 1.0f;
+
+			mpEffect->SetVector(binding.mhParam, &v4);
+		}
+	}
+}
+
+void VDVideoDisplayMinidriverD3DFX::UpdateParam_ViewportPixelSize(const ParamBinding& binding) {
+	D3DVIEWPORT9 vp;
+	HRESULT hr = mpD3DDevice->GetViewport(&vp);
+
+	if (SUCCEEDED(hr)) {
+		D3DXVECTOR4 v4;
+		v4.x = (float)vp.Width;
+		v4.y = (float)vp.Height;
+		v4.z = 0.0f;
+		v4.w = 1.0f;
+	}
+}
+
+void VDVideoDisplayMinidriverD3DFX::UpdateEffectParameters(const D3DVIEWPORT9& vp, const D3DSURFACE_DESC& texdesc) {
+	// render the effect
+	StdParamData data;
+
+	data.vpsize[0] = (float)vp.Width;
+	data.vpsize[1] = (float)vp.Height;
+	data.vpsize[2] = 1.0f / (float)vp.Height;
+	data.vpsize[3] = 1.0f / (float)vp.Width;
+	data.texsize[0] = (float)(int)texdesc.Width;
+	data.texsize[1] = (float)(int)texdesc.Height;
+	data.texsize[2] = 1.0f / (float)(int)texdesc.Height;
+	data.texsize[3] = 1.0f / (float)(int)texdesc.Width;
+	data.srcsize[0] = (float)mSource.pixmap.w;
+	data.srcsize[1] = (float)mSource.pixmap.h;
+	data.srcsize[2] = 1.0f / (float)mSource.pixmap.h;
+	data.srcsize[3] = 1.0f / (float)mSource.pixmap.w;
+	data.tempsize[0] = 1.f;
+	data.tempsize[1] = 1.f;
+	data.tempsize[2] = 1.f;
+	data.tempsize[3] = 1.f;
+	data.temp2size[0] = 1.f;
+	data.temp2size[1] = 1.f;
+	data.temp2size[2] = 1.f;
+	data.temp2size[3] = 1.f;
+	data.vpcorrect[0] = 2.0f / vp.Width;
+	data.vpcorrect[1] = 2.0f / vp.Height;
+	data.vpcorrect[2] = -1.0f / (float)vp.Height;
+	data.vpcorrect[3] = 1.0f / (float)vp.Width;
+	data.vpcorrect2[0] = 2.0f / vp.Width;
+	data.vpcorrect2[1] = -2.0f / vp.Height;
+	data.vpcorrect2[2] = 1.0f + 1.0f / (float)vp.Height;
+	data.vpcorrect2[3] = -1.0f - 1.0f / (float)vp.Width;
+	data.tvpcorrect[0] = 2.0f;
+	data.tvpcorrect[1] = 2.0f;
+	data.tvpcorrect[2] = -1.0f;
+	data.tvpcorrect[3] = 1.0f;
+	data.tvpcorrect2[0] = 2.0f;
+	data.tvpcorrect2[1] = -2.0f;
+	data.tvpcorrect2[2] = 0.f;
+	data.tvpcorrect2[3] = 2.0f;
+	data.t2vpcorrect[0] = 2.0f;
+	data.t2vpcorrect[1] = 2.0f;
+	data.t2vpcorrect[2] = -1.0f;
+	data.t2vpcorrect[3] = 1.0f;
+	data.t2vpcorrect2[0] = 2.0f;
+	data.t2vpcorrect2[1] = -2.0f;
+	data.t2vpcorrect2[2] = 0.f;
+	data.t2vpcorrect2[3] = 2.0f;
+	data.time[0] = (GetTickCount() % 30000) / 30000.0f;
+	data.time[1] = 1;
+	data.time[2] = 2;
+	data.time[3] = 3;
+
+	if (mhSrcTexture)
+		mpEffect->SetTexture(mhSrcTexture, mpUploadContext->GetD3DTexture(0));
+
+	if (mhPrevSrcTexture)
+		mpEffect->SetTexture(mhPrevSrcTexture, mpUploadContext->GetD3DTexture(1));
+
+	if (mhPrevSrc2Texture)
+		mpEffect->SetTexture(mhPrevSrc2Texture, mpUploadContext->GetD3DTexture(2));
+
+	if (mhTempTexture) {
+		mpEffect->SetTexture(mhTempTexture, mpD3DTempTexture);
+
+		float tempw = (float)mpTempTexture->GetWidth();
+		float temph = (float)mpTempTexture->GetHeight();
+
+		data.tempsize[0] = tempw;
+		data.tempsize[1] = temph;
+		data.tempsize[2] = 1.0f / temph;
+		data.tempsize[3] = 1.0f / tempw;
+		data.tvpcorrect[0] = 2.0f * data.tempsize[3];
+		data.tvpcorrect[1] = 2.0f * data.tempsize[2];
+		data.tvpcorrect[2] = -data.tempsize[2];
+		data.tvpcorrect[3] = data.tempsize[3];
+		data.tvpcorrect2[0] = 2.0f * data.tempsize[3];
+		data.tvpcorrect2[1] = -2.0f * data.tempsize[2];
+		data.tvpcorrect2[2] = 1.0f + data.tempsize[2];
+		data.tvpcorrect2[3] = -1.0f - data.tempsize[3];
+	}
+
+	if (mhTempTexture2) {
+		mpEffect->SetTexture(mhTempTexture2, mpD3DTempTexture2);
+
+		float temp2w = (float)mpTempTexture2->GetWidth();
+		float temp2h = (float)mpTempTexture2->GetHeight();
+
+		data.temp2size[0] = temp2w;
+		data.temp2size[1] = temp2h;
+		data.temp2size[2] = 1.0f / temp2h;
+		data.temp2size[3] = 1.0f / temp2w;
+		data.t2vpcorrect[0] = 2.0f * data.temp2size[3];
+		data.t2vpcorrect[1] = 2.0f * data.temp2size[2];
+		data.t2vpcorrect[2] = -data.temp2size[2];
+		data.t2vpcorrect[3] = data.temp2size[3];
+		data.t2vpcorrect2[0] = 2.0f * data.temp2size[3];
+		data.t2vpcorrect2[1] = -2.0f * data.temp2size[2];
+		data.t2vpcorrect2[2] = 1.0f + data.temp2size[2];
+		data.t2vpcorrect2[3] = -1.0f - data.temp2size[3];
+	}
+
+	for(int i=0; i<kStdParamCount; ++i) {
+		D3DXHANDLE h = mhStdParamHandles[i];
+
+		if (h)
+			mpEffect->SetVector(h, (const D3DXVECTOR4 *)((const char *)&data + kStdParamInfo[i].offset));
+	}
+
+	ParamBindings::const_iterator it(mParamBindings.begin()), itEnd(mParamBindings.end());
+	for(; it!=itEnd; ++it) {
+		const ParamBinding& binding = *it;
+
+		(this->*binding.mpFn)(binding);
+	}
+}
+
+void VDVideoDisplayMinidriverD3DFX::CreateCustomTextureBindings() {
+	mParamBindings.clear();
+
+	D3DXEFFECT_DESC effdesc;
+	HRESULT hr = mpEffect->GetDesc(&effdesc);
+
+	TextureBinding binding = {};
+	VDStringA	sizename;
+	if (VDINLINEASSERT(SUCCEEDED(hr))) {
+		for(UINT parmidx = 0; parmidx < effdesc.Parameters; ++parmidx) {
+			D3DXHANDLE hparm = mpEffect->GetParameter(NULL, parmidx);
+			if (!hparm)
+				continue;
+
+			D3DXPARAMETER_DESC parmdesc;
+			hr = mpEffect->GetParameterDesc(hparm, &parmdesc);
+			if (VDINLINEASSERTFALSE(FAILED(hr)))
+				continue;
+
+			switch(parmdesc.Type) {
+				case D3DXPT_TEXTURE:
+				case D3DXPT_TEXTURE1D:
+				case D3DXPT_TEXTURE2D:
+					binding.mResType = D3DRTYPE_TEXTURE;
+					break;
+				case D3DXPT_TEXTURE3D:
+					binding.mResType = D3DRTYPE_VOLUMETEXTURE;
+					break;
+				case D3DXPT_TEXTURECUBE:
+					binding.mResType = D3DRTYPE_CUBETEXTURE;
+					break;
+				default:
+					continue;
+			}
+
+			D3DXHANDLE hAnnoResourceType	= mpEffect->GetAnnotationByName(hparm, "ResourceType");
+			D3DXHANDLE hAnnoDimensions		= mpEffect->GetAnnotationByName(hparm, "Dimensions");
+			D3DXHANDLE hAnnoFormat			= mpEffect->GetAnnotationByName(hparm, "Format");
+			D3DXHANDLE hAnnoFunction		= mpEffect->GetAnnotationByName(hparm, "Function");
+			D3DXHANDLE hAnnoMIPLevels		= mpEffect->GetAnnotationByName(hparm, "MIPLevels");
+			D3DXHANDLE hAnnoViewportRatio	= mpEffect->GetAnnotationByName(hparm, "ViewportRatio");
+
+			D3DXHANDLE hAnnoWidth			= mpEffect->GetAnnotationByName(hparm, "width");
+			D3DXHANDLE hAnnoHeight			= mpEffect->GetAnnotationByName(hparm, "height");
+
+			if (!hAnnoFormat)
+				hAnnoFormat = mpEffect->GetAnnotationByName(hparm, "format");
+
+			if (!hAnnoFunction)
+				hAnnoFunction = mpEffect->GetAnnotationByName(hparm, "function");
+
+			binding.mpTexture		= NULL;
+			binding.mpTextureShader	= NULL;
+			binding.mhParam			= hparm;
+			binding.mFormat			= D3DFMT_A8R8G8B8;
+			binding.mPool			= D3DPOOL_MANAGED;
+			binding.mUsage			= 0;
+			binding.mWidth			= 64;
+			binding.mHeight			= 64;
+			binding.mDepth			= 1;
+			binding.mMipLevels		= 1;
+			binding.mViewportRatioW	= 0;
+			binding.mViewportRatioH	= 0;
+
+			if (parmdesc.Semantic) {
+				if (!_stricmp(parmdesc.Semantic, "RenderColorTarget")) {
+					binding.mUsage	= D3DUSAGE_RENDERTARGET;
+					binding.mPool	= D3DPOOL_DEFAULT;
+				} else if (!_stricmp(parmdesc.Semantic, "RenderDepthStencilTarget")) {
+					binding.mUsage	= D3DUSAGE_DEPTHSTENCIL;
+					binding.mPool	= D3DPOOL_DEFAULT;
+				}
+			}
+
+			if (hAnnoResourceType) {
+				LPCSTR s;
+
+				hr = mpEffect->GetString(hAnnoResourceType, &s);
+				if (SUCCEEDED(hr)) {
+					if (!_stricmp(s, "1D"))
+						binding.mResType = D3DRTYPE_TEXTURE;
+					else if (!_stricmp(s, "2D"))
+						binding.mResType = D3DRTYPE_TEXTURE;
+					else if (!_stricmp(s, "3D"))
+						binding.mResType = D3DRTYPE_VOLUMETEXTURE;
+					else if (!_stricmp(s, "cube"))
+						binding.mResType = D3DRTYPE_CUBETEXTURE;
+					else
+						throw MyError("Texture parameter %s has an unrecognizable resource type: %s", parmdesc.Name, s);
+				}
+			}
+
+			if (hAnnoDimensions) {
+				D3DXVECTOR4 v4dim;
+
+				hr = mpEffect->GetVector(hAnnoDimensions, &v4dim);
+				if (SUCCEEDED(hr)) {
+					binding.mWidth	= VDRoundToInt(v4dim.x);
+					binding.mHeight	= VDRoundToInt(v4dim.y);
+					binding.mDepth	= VDRoundToInt(v4dim.z);
+				}
+			} else if (hAnnoWidth && hAnnoHeight) {
+				int w;
+				int h;
+				hr = mpEffect->GetInt(hAnnoWidth, &w);
+				if (SUCCEEDED(hr)) {
+					hr = mpEffect->GetInt(hAnnoHeight, &h);
+					if (SUCCEEDED(hr)) {
+						binding.mWidth = w;
+						binding.mHeight = h;
+					}
+				}
+			}
+
+			if (hAnnoFormat) {
+				LPCSTR s;
+
+				hr = mpEffect->GetString(hAnnoFormat, &s);
+				if (SUCCEEDED(hr)) {
+					for(int fidx=0; fidx<sizeof(kFormats)/sizeof(kFormats[0]); ++fidx) {
+						if (!_stricmp(s, kFormats[fidx].mpName)) {
+							binding.mFormat = kFormats[fidx].mFormat;
+							break;
+						}
+					}
+				}
+			}
+
+			if (hAnnoFunction) {
+				LPCSTR name;
+
+				hr = mpEffect->GetString(hAnnoFunction, &name);
+				if (SUCCEEDED(hr)) {
+					const char *profile = "tx_1_0";
+
+					D3DXHANDLE hAnno;
+					if (hAnno = mpEffect->GetAnnotationByName(hparm, "target"))
+						mpEffect->GetString(hAnno, &profile);
+
+					// check that the function exists (CompileShader just gives us the dreaded INVALIDCALL
+					// error in this case)
+		#if 0
+					if (!mpEffect->GetFunctionByName(pName)) {
+						mError.sprintf(L"Couldn't create procedural texture '%hs' in effect file %ls:\nUnknown function '%hs'", parmDesc.Name, srcfile.c_str(), pName);
+						if (pError)
+							pError->Release();
+						ShutdownEffect();
+						return true;
+					}
+		#endif
+
+					// attempt to compile the texture shader
+					vdrefptr<ID3DXBuffer> pEffectBuffer;
+					vdrefptr<ID3DXBuffer> pError;
+					hr = mpEffectCompiler->CompileShader(name, profile, 0, ~pEffectBuffer, ~pError, NULL);
+					if (FAILED(hr))
+						throw MyError("Couldn't compile texture shader '%hs':\n%hs", name, pError ? (const char *)pError->GetBufferPointer() : "unknown error");
+
+					// create the texture shader
+					hr = mpD3DXCreateTextureShader((const DWORD *)pEffectBuffer->GetBufferPointer(), &binding.mpTextureShader);
+					if (FAILED(hr))
+						throw MyError("Couldn't create texture shader '%hs':\n%hs", name, pError ? (const char *)pError->GetBufferPointer() : "unknown error");
+				}
+			}
+
+			if (hAnnoMIPLevels) {
+				INT mipcount;
+
+				hr = mpEffect->GetInt(hAnnoMIPLevels, &mipcount);
+				if (SUCCEEDED(hr)) {
+					binding.mMipLevels = mipcount;
+				}
+			}
+
+			if (hAnnoViewportRatio) {
+				D3DXVECTOR4 v4ratio;
+
+				hr = mpEffect->GetVector(hAnnoViewportRatio, &v4ratio);
+				if (SUCCEEDED(hr)) {
+					binding.mViewportRatioW = v4ratio.x;
+					binding.mViewportRatioH = v4ratio.y;
+				}
+			}
+
+			binding.mhSizeParam = NULL;
+
+			sizename = parmdesc.Name;
+			sizename += "_size";
+
+			D3DXHANDLE hsizeparm = mpEffect->GetParameterByName(NULL, sizename.c_str());
+			if (hsizeparm) {
+				D3DXPARAMETER_DESC sizedesc;
+				hr = mpEffect->GetParameterDesc(hsizeparm, &sizedesc);
+				if (SUCCEEDED(hr)) {
+					if (sizedesc.Class == D3DXPC_VECTOR && sizedesc.Type == D3DXPT_FLOAT)
+						binding.mhSizeParam = hsizeparm;
+				}
+			}
+
+			mTextureBindings.push_back(binding);
+		}
+	}	
+}
+
+bool VDVideoDisplayMinidriverD3DFX::CreateCustomTextures(bool vramOnly, const vdsize32 *vpsize) {
+	TextureBindings::iterator it(mTextureBindings.begin()), itEnd(mTextureBindings.end());
+	bool success = true;
+
+	for(; it!=itEnd; ++it) {
+		TextureBinding& binding = *it;
+
+		if (binding.mPool == D3DPOOL_DEFAULT || !vramOnly) {
+			HRESULT hr = E_FAIL;
+
+			if (binding.mViewportRatioW > 0 || binding.mViewportRatioH > 0) {
+				if (!vpsize)
+					continue;
+
+				int w = binding.mWidth;
+				int h = binding.mHeight;
+
+				if (binding.mViewportRatioW > 0)
+					w = VDCeilToInt((float)vpsize->w * binding.mViewportRatioW);
+				if (binding.mViewportRatioH > 0)
+					h = VDCeilToInt((float)vpsize->h * binding.mViewportRatioH);
+
+				if (binding.mpTexture) {
+					if (w == binding.mWidth && h == binding.mHeight)
+						continue;
+
+					binding.mpTexture->Release();
+					binding.mpTexture = NULL;
+				}
+
+				binding.mWidth = w;
+				binding.mHeight = h;
+			} else {
+				if (vpsize)
+					continue;
+
+				if (binding.mpTexture)
+					continue;
+			}
+			
+			switch(binding.mResType) {
+			case D3DRTYPE_TEXTURE:
+				{
+					IDirect3DTexture9 *pTexture;
+					hr = mpD3DDevice->CreateTexture(binding.mWidth, binding.mHeight, binding.mMipLevels, binding.mUsage, binding.mFormat, binding.mPool, &pTexture, NULL);
+					if (SUCCEEDED(hr)) {
+						binding.mpTexture = pTexture;
+						if (binding.mpTextureShader) {
+							// fill the texture
+							hr = mpD3DXFillTextureTX(pTexture, binding.mpTextureShader);
+
+							if (FAILED(hr))
+								success = false;
+						}
+					} else
+						success = false;
+				}
+				break;
+			case D3DRTYPE_CUBETEXTURE:
+				{
+					IDirect3DCubeTexture9 *pCubeTexture;
+					hr = mpD3DDevice->CreateCubeTexture(binding.mWidth, binding.mMipLevels, binding.mUsage, binding.mFormat, binding.mPool, &pCubeTexture, NULL);
+					if (SUCCEEDED(hr)) {
+						binding.mpTexture = pCubeTexture;
+						if (binding.mpTextureShader) {
+							// fill the texture
+							hr = mpD3DXFillCubeTextureTX(pCubeTexture, binding.mpTextureShader);
+
+							if (FAILED(hr))
+								success = false;
+						}
+					} else
+						success = false;
+				}
+				break;
+			case D3DRTYPE_VOLUMETEXTURE:
+				{
+					IDirect3DVolumeTexture9 *pVolumeTexture;
+					hr = mpD3DDevice->CreateVolumeTexture(binding.mWidth, binding.mHeight, binding.mDepth, binding.mMipLevels, binding.mUsage, binding.mFormat, binding.mPool, &pVolumeTexture, NULL);
+					if (SUCCEEDED(hr)) {
+						binding.mpTexture = pVolumeTexture;
+						if (binding.mpTextureShader) {
+							// fill the texture
+							hr = mpD3DXFillVolumeTextureTX(pVolumeTexture, binding.mpTextureShader);
+
+							if (FAILED(hr))
+								success = false;
+						}
+					} else
+						success = false;
+				}
+				break;
+			}
+
+			mpEffect->SetTexture(binding.mhParam, binding.mpTexture);
+
+			if (binding.mhSizeParam) {
+				D3DXVECTOR4 v4size;
+				v4size.x = (float)binding.mWidth;
+				v4size.y = (float)binding.mHeight;
+				v4size.z = 1.0f / (float)binding.mHeight;
+				v4size.w = 1.0f / (float)binding.mWidth;
+
+				mpEffect->SetVector(binding.mhSizeParam, &v4size);
+			}
+		}
+	}
+
+	return success;
+}
+
+void VDVideoDisplayMinidriverD3DFX::DestroyCustomTextures(bool vramOnly) {
+	TextureBindings::iterator it(mTextureBindings.begin()), itEnd(mTextureBindings.end());
+	for(; it!=itEnd; ++it) {
+		TextureBinding& binding = *it;
+
+		if (binding.mPool == D3DPOOL_DEFAULT || !vramOnly) {
+			mpEffect->SetTexture(binding.mhParam, NULL);
+
+			if (binding.mpTexture) {
+				binding.mpTexture->Release();
+				binding.mpTexture = NULL;
+			}
+		}
+	}
+}
+
+void VDVideoDisplayMinidriverD3DFX::DestroyCustomTextureBindings() {
+	while(!mTextureBindings.empty()) {
+		TextureBinding& binding = mTextureBindings.back();
+
+		if (binding.mpTextureShader)
+			binding.mpTextureShader->Release();
+
+		if (binding.mpTexture)
+			binding.mpTexture->Release();
+
+		mTextureBindings.pop_back();
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////

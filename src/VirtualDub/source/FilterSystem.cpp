@@ -19,6 +19,7 @@
 
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
+#include <vd2/system/protscope.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include "VBitmap.h"
 #include "crash.h"
@@ -628,7 +629,7 @@ void FilterSystem::DeinitFilters() {
 
 		if (fa->filter->endProc) {
 			VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
-			vdprotected1("starting filter \"%s\"", const char *, fa->filter->name) {
+			vdprotected1("stopping filter \"%s\"", const char *, fa->filter->name) {
 					fa->filter->endProc(fa, &g_filterFuncs);
 			}
 		}

@@ -61,6 +61,7 @@ stringset 6 {		// kVDST_AudioSource
 		"or processing the audio in Direct Stream Copy mode. Full Processing mode is recommended to decompress or recompress the audio. (bitrate: %.1lf ± %.1lf kbps)";
 	message 2, "AVI: A non-zero wBitsPerSample value was detected in the MP3 audio format structure. This has been corrected in-memory to zero for better compatibility "
 		"with commonly installed MP3 audio codecs.";
+	message 3, "AVI: Truncated or invalid compressed audio format detected (%d bytes, should be %d). Attempting to fix.";
 }
 
 stringset 7 {		// kVDST_ProjectUI
@@ -289,24 +290,26 @@ dialog 1011, "" : fill, child {
 			now valign=top, align=left;
 			checkbox 100, "Enable dithering for 16-bit displays";
 			checkbox 101, "Use DirectX for display panes";
-			now marginl=20, enable = {@101};
-			checkbox 102, "Use DirectX when Terminal Services is active (may cause display corruption)";
-			checkbox 107, "Use DirectX overlay surfaces";
+			using marginl=20, enable = {@101} {
+				checkbox 102, "Use DirectX when Terminal Services is active (may cause display corruption)";
+				checkbox 107, "Use DirectX overlay surfaces";
 
-			// it is NOT a good idea to enable both Direct3D and OpenGL
-			checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
-			set 200: spacing=3, marginl=40, enable={@103}, vertical, align=fill {
-				now valign=center, marginl=0;
+				// it is NOT a good idea to enable both Direct3D and OpenGL
+				checkbox 103, "Use Direct3D (requires DirectX 9)" : enable={@101 && !@104};
+				set 200: spacing=3, marginl=40, enable={@103}, vertical, align=fill {
+					now valign=center, marginl=0;
 
-				set 0 : align=fill {
-					checkbox 105, "Use effect file:";
-					textedit 300, "" : minw=60, sunken, align=fill, enable={@105};
-				}
+					set 0 : align=fill {
+						checkbox 105, "Use effect file:";
+						textedit 300, "" : minw=60, sunken, align=fill, enable={@105};
+					}
 
-				textarea 0, "Effect file support requires d3dx_25.dll (April 2005 or newer version of DirectX 9.0c runtime)." : minh=20, readonly, fill;
-			}			
-			checkbox 104, "Use OpenGL" : enable={@101 && !@103};
-			checkbox 106, "Avoid tearing (enable vsync)" : enable = {@101};
+					textarea 0, "Effect file support requires d3dx_25.dll (April 2005 or newer version of DirectX 9.0c runtime)." : minh=20, readonly, fill;
+				}			
+				checkbox 104, "Use OpenGL" : enable={@101 && !@103};
+				checkbox 106, "Avoid tearing (enable vsync)";
+			}
+			checkbox 108, "Show debug information";
 		}
 	}
 }
@@ -499,37 +502,45 @@ dialog 2100, "Select raw audio format" : minw=200, aspect=140, align=fill, valig
 
 dialog 2101, "Capture timing options" : aspect=140, maxw=350 {
 	set 0 : vertical {
-		checkbox 100, "&Drop frames when captured frames are too close together";
-		checkbox 101, "&Insert null frames when captured frames are too far apart";
-		set 400: spacing=3, marginl=12, enable={@101} {
-			now valign=center;
-			label 0, "Null frame burst &limit:";
-			textedit 300, "" : minw=30, sunken;
-		}
-		label 0, "Resync mode:" : margint=5, marginb=5;
-		set 0: marginl=10, vertical {
-			option 200, "Do &not resync between audio and video streams";
-			option 201, "Sync &video to audio by adjusting video timing";
-			option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
-		}
-		checkbox 102, "&Correct video timing for fewer frame drops/inserts" : margint=5, enable={@200 != 1};
-		checkbox 103, "Automatically disable resync when integrated audio/video capture is detected" : marginb=5;
+		group 0, "General options" : align=fill {
+			set 0 : vertical {
+				checkbox 100, "&Drop frames when captured frames are too close together";
+				checkbox 101, "&Insert null frames when captured frames are too far apart";
+				set 400: spacing=3, marginl=12, enable={@101} {
+					now valign=center;
+					label 0, "Null frame burst &limit:";
+					textedit 300, "" : minw=30, sunken;
+				}
+				label 0, "Resync mode:" : margint=5, marginb=5;
+				set 0: marginl=10, vertical {
+					option 200, "Do &not resync between audio and video streams";
+					option 201, "Sync &video to audio by adjusting video timing";
+					option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
+				}
+				checkbox 102, "&Correct video timing for fewer frame drops/inserts" : margint=5, enable={@200 != 1};
+				checkbox 103, "Automatically disable resync when integrated audio/video capture is detected" : marginb=5;
 
-		label 0, "Audio latency determination:" : margint=5, marginb=5;
-		set 0: marginl=10, vertical {
-			option 210, "Automatic";
-			set 401: spacing=3, marginl=12, enable={@210==0}, marginb=5 {
-				now valign=center;
-				label 0, "Number of audio blocks to use at start:";
-				textedit 301, "" : minw=30, sunken;
-			}
-			option 211, "Fixed";
-			set 402: spacing=3, marginl=12, enable={@210==1}, marginb=5 {
-				now valign=center;
-				label 0, "Audio start time in video time (ms):";
-				textedit 302, "" : minw=30, sunken;
+				label 0, "Audio latency determination:" : margint=5, marginb=5;
+				grid 0 : marginl = 10 {
+					now valign=center;
+					option 210, "Automatic" : column=0, row=0;
+					option 211, "Fixed" : column=0, row=1;
+					label 0, "Number of audio blocks to use at start:" : column=1, row=0, enable={@210==0};
+					textedit 301, "" : minw=30, sunken, column=2, row=0, enable={@210==0};
+					label 0, "Audio start time in video time (ms):" : column=1, row=1, enable={@210==1};
+					textedit 302, "" : minw=30, sunken, column=2, row=1, enable={@210==1};
+				}
 			}
 		}
+			
+		group 0, "DirectShow options" : align=fill, marginb = 5 {
+			set 0 : vertical {
+				checkbox 104, "Use audio timestamps when available";
+				checkbox 105, "Disable timestamps for preview";
+				checkbox 106, "Force audio clock when audio playback is enabled";
+			}
+		}
+		
 		include template kTemplateOKCancel;
 	}
 }

@@ -541,7 +541,7 @@ xit:
 
 void __declspec(naked) VDAPIENTRY VDConvertPCM16ToPCM32F_SSE(void *dst, const void *src, uint32 samples) {
 	__asm {
-		movaps		xmm1, sse_inv_32K
+		movaps		xmm4, sse_inv_32K
 		push		ebx
 		mov			eax, [esp+12+4]
 		neg			eax
@@ -550,14 +550,54 @@ void __declspec(naked) VDAPIENTRY VDConvertPCM16ToPCM32F_SSE(void *dst, const vo
 		add			eax, eax
 		mov			edx, [esp+4+4]
 		sub			ecx, eax
-lup:
+
+		;align destination
+alignloop:
+		test		edx, 15
+		jz			fastloop_start
 		movsx		ebx, word ptr [ecx+eax]
 		cvtsi2ss	xmm0, ebx
-		mulss		xmm0, xmm1
+		mulss		xmm0, xmm4
 		movss		[edx],xmm0
 		add			edx, 4
 		add			eax, 2
-		jne			lup
+		jne			alignloop
+		pop			ebx
+		ret
+
+fastloop_start:
+		add			eax, 6
+		jns			skip_fastloop
+		jmp			short fastloop
+
+		align		16
+fastloop:
+		movq		mm0, [ecx+eax-6]
+		pxor		mm1, mm1
+		punpckhwd	mm1, mm0
+		punpcklwd	mm0, mm0
+		psrad		mm0, 16
+		psrad		mm1, 16
+		cvtpi2ps	xmm0, mm0
+		cvtpi2ps	xmm1, mm1
+		movlhps		xmm0, xmm1
+		mulps		xmm0, xmm4
+		movaps		[edx], xmm0
+		add			edx, 16
+		add			eax, 8
+		jnc			fastloop
+		emms
+skip_fastloop:
+		sub			eax, 6
+		jz			xit
+tidyloop:
+		movsx		ebx, word ptr [ecx+eax]
+		cvtsi2ss	xmm0, ebx
+		mulss		xmm0, xmm4
+		movss		[edx],xmm0
+		add			edx, 4
+		add			eax, 2
+		jne			tidyloop
 xit:
 		pop			ebx
 		ret
@@ -654,94 +694,3 @@ const VDAudioFilterVtable *VDGetAudioFilterVtable() {
 
 	return &g_VDAudioFilterVtable_scalar;
 }
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	testing code
-//
-///////////////////////////////////////////////////////////////////////////
-
-#if 0 && defined(_DEBUG)
-
-#include <stdlib.h>
-#include <string.h>
-
-namespace {
-	struct Test {
-		Test() {
-			testint(VDConvertPCM8ToPCM16, VDConvertPCM8ToPCM16_MMX);
-			testint(VDConvertPCM16ToPCM8, VDConvertPCM16ToPCM8_MMX);
-			testfp1(VDConvertPCM32FToPCM16, VDConvertPCM32FToPCM16_SSE);
-			testfp1(VDConvertPCM32FToPCM8, VDConvertPCM32FToPCM8_SSE);
-			testfp2(VDConvertPCM16ToPCM32F, VDConvertPCM16ToPCM32F_SSE);
-			testfp2(VDConvertPCM8ToPCM32F, VDConvertPCM8ToPCM32F_SSE);
-		}
-
-		void testint(tpVDConvertPCM fnScalar, tpVDConvertPCM fnMMX) {
-			char buf1[256];
-			char buf2[256];
-			char buf3[256];
-			int i;
-
-			for(i=0; i<256; ++i)
-				buf1[i] = rand();
-
-			for(i=0; i<64; ++i) {
-				memcpy(buf2, buf1, sizeof buf2);
-				memcpy(buf3, buf1, sizeof buf3);
-
-				fnScalar(buf2+16, buf1+16, i);
-				fnMMX   (buf3+16, buf1+16, i);
-
-				for(int j=0; j<256; ++j)
-					VDASSERT(buf2[j] == buf3[j]);
-			}
-		}
-
-		void testfp1(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
-			float __declspec(align(16)) buf1[64];
-			char buf2[256];
-			char buf3[256];
-			int i;
-
-			for(i=0; i<64; ++i)
-				buf1[i] = (((double)rand() / RAND_MAX) - 0.5) * 2.2;
-
-			for(int o=0; o<4; ++o) {
-				for(i=0; i<32; ++i) {
-					memcpy(buf2, buf1, sizeof buf2);
-					memcpy(buf3, buf1, sizeof buf3);
-
-					fnScalar(buf2+4, buf1+4+o, i);
-					fnSSE   (buf3+4, buf1+4+o, i);
-
-					for(int j=0; j<256; ++j)
-						VDASSERT(buf2[j] == buf3[j]);
-				}
-			}
-		}
-
-		void testfp2(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
-			char buf1[256];
-			float buf2[64];
-			float buf3[64];
-			int i;
-
-			for(i=0; i<256; ++i)
-				buf1[i] = rand();
-
-			for(i=0; i<32; ++i) {
-				memcpy(buf2, buf1, sizeof buf2);
-				memcpy(buf3, buf1, sizeof buf3);
-
-				fnScalar(buf2+4, buf1+4, i);
-				fnSSE   (buf3+4, buf1+4, i);
-
-				for(int j=0; j<64; ++j)
-					VDASSERT(buf2[j] == buf3[j]);
-			}
-		}
-	} g_audioConverterTests;
-}
-
-#endif

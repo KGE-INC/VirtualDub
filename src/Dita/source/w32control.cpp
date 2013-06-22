@@ -110,7 +110,8 @@ SIZE VDUIControlW32::SizeText(int nMaxWidth, int nPadWidth, int nPadHeight) {
 	const VDStringW caption(GetCaption());
 
 	if (!VDIsWindowsNT()) {
-		const char *str = VDFastTextWToA(caption.c_str());
+		VDStringA tempA(VDTextWToA(caption.c_str()));
+		const char *str = tempA.c_str();
 		HDC hdc;
 
 		if (hdc = GetDC(mhwnd)) {

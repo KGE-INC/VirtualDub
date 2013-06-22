@@ -21,6 +21,7 @@
 #include <map>
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/system/binary.h>
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/fileasync.h>
@@ -743,6 +744,27 @@ void AVIOutputFile::finalize() {
 
 	// fast path: clean it up and resync slow path.
 	FileEndFastPath();
+
+	// Set dwMaxBytesPerSec in the AVI header according to the various streams. We need this to
+	// bypass some interesting logic in Windows Vista Explorer; setting this similarly to
+	// DirectShow makes the bitrate display somewhat reasonable. And yes, DirectShow does simply
+	// use the entire file length, although it truncates duration to seconds (which we don't do).
+	// Explorer uses dwMaxBytesPerSec as if it were dwAvgBytesPerSec, so we'd best not try to
+	// actually compute a max here.
+	{
+		tStreams::iterator it(mStreams.begin()), itEnd(mStreams.end());
+		for(; it!=itEnd; ++it) {
+			const StreamInfo& stream = *it;
+			const AVIStreamHeader_fixed& hdr = stream.mpStream->getStreamInfo();
+
+			if (hdr.fccType == VDMAKEFOURCC('v', 'i', 'd', 's')) {
+				if (stream.mChunkCount && hdr.dwScale && stream.mChunkCount)
+					mAVIHeader.dwMaxBytesPerSec = VDClampToUint32(VDRoundToInt64((double)mFilePosition / (double)stream.mChunkCount * hdr.dwRate / hdr.dwScale));
+
+				break;
+			}
+		}
+	}
 
 	HeaderSeek(mAVIHeaderPos+8);
 	HeaderWrite(&mAVIHeader, sizeof mAVIHeader);

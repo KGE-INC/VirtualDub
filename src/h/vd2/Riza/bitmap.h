@@ -22,6 +22,8 @@
 #include <windows.h>
 #include <vd2/system/vdstl.h>
 
+struct VDPixmap;
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	pixmap <-> bitmap format converters
@@ -40,5 +42,6 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h);
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int format, int variant, uint32 w, uint32 h);
 uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, sint32 w, sint32 h, int format, int variant);
+VDPixmap VDGetPixmapForBitmap(const BITMAPINFOHEADER& hdr, const void *data);
 
 #endif

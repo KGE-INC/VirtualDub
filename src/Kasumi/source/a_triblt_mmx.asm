@@ -89,7 +89,7 @@ _vdasm_triblt_span_trilinear_mmx	proc	near public
 		pxor		mm7,mm7
 @xloop:
 		movd		mm6,[edi].mipspan.u
-		punpckldq	mm6,qword ptr [edi].mipspan.v
+		punpckldq	mm6,[edi].mipspan.v
 		mov			eax,[edi].mipspan.lambda
 		shr			eax,4
 		and			eax,0fffffff0h

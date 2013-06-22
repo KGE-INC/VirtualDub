@@ -30,6 +30,7 @@
 #include <d3d9.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/vdalloc.h>
+#include <vd2/system/binary.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/math.h>
 #include <vd2/system/time.h>
@@ -38,6 +39,8 @@
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Kasumi/text.h>
+#include <vd2/Kasumi/region.h>
 
 #include <vd2/Riza/direct3d.h>
 #include "displaydrv.h"
@@ -99,7 +102,7 @@ public:
 		hr = tex->LockRect(0, &lr, NULL, 0);
 		VDASSERT(SUCCEEDED(hr));
 		if (FAILED(hr)) {
-			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load horizontal even/odd texture.\n");
+			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load cubic filter texture.\n");
 			return false;
 		}
 
@@ -229,16 +232,344 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////
 
+class VDFontRendererD3D9 : public vdrefcounted<IVDFontRendererD3D9> {
+public:
+	VDFontRendererD3D9();
+
+	bool Init(VDD3D9Manager *d3dmgr);
+	void Shutdown();
+
+	bool Begin();
+	void DrawTextLine(int x, int y, uint32 textColor, uint32 outlineColor, const char *s);
+	void End();
+
+protected:
+	VDD3D9Manager *mpD3DManager;
+	vdrefptr<IDirect3DTexture9> mpD3DFontTexture;
+
+	struct GlyphLayoutInfo {
+		int		mGlyph;
+		float	mX;
+	};
+
+	typedef vdfastvector<GlyphLayoutInfo> GlyphLayoutInfos;
+	GlyphLayoutInfos mGlyphLayoutInfos;
+
+	struct GlyphInfo {
+		vdrect32f	mPos;
+		vdrect32f	mUV;
+		float		mAdvance;
+	};
+
+	GlyphInfo mGlyphInfo[256];
+};
+
+bool VDCreateFontRendererD3D9(IVDFontRendererD3D9 **pp) {
+	*pp = new_nothrow VDFontRendererD3D9();
+	if (*pp)
+		(*pp)->AddRef();
+	return *pp != NULL;
+}
+
+VDFontRendererD3D9::VDFontRendererD3D9()
+	: mpD3DManager(NULL)
+{
+}
+
+bool VDFontRendererD3D9::Init(VDD3D9Manager *d3dmgr) {
+	mpD3DManager = d3dmgr;
+
+	vdfastvector<uint32> tempbits(256*256, 0);
+	VDPixmap temppx={0};
+	temppx.data = tempbits.data();
+	temppx.w = 256;
+	temppx.h = 256;
+	temppx.format = nsVDPixmap::kPixFormat_XRGB8888;
+	temppx.pitch = 256*sizeof(uint32);
+
+	VDTextLayoutMetrics metrics;
+	VDPixmapPathRasterizer rast;
+
+	VDPixmapRegion outlineRegion;
+	VDPixmapRegion charRegion;
+	VDPixmapRegion charOutlineRegion;
+	VDPixmapCreateRoundRegion(outlineRegion, 16.0f);
+
+	static const float kFontSize = 16.0f;
+
+	int x = 1;
+	int y = 1;
+	int lineHeight = 0;
+	GlyphInfo *pgi = mGlyphInfo;
+	for(int c=0; c<256; ++c) {
+		char s[2]={(char)c, 0};
+
+		VDPixmapGetTextExtents(NULL, kFontSize, s, metrics);
+
+		if (metrics.mExtents.valid()) {
+			int x1 = VDCeilToInt(metrics.mExtents.left * 8.0f - 0.5f);
+			int y1 = VDCeilToInt(metrics.mExtents.top * 8.0f - 0.5f);
+			int x2 = VDCeilToInt(metrics.mExtents.right * 8.0f - 0.5f);
+			int y2 = VDCeilToInt(metrics.mExtents.bottom * 8.0f - 0.5f);
+			int ix1 = x1 >> 3;
+			int iy1 = y1 >> 3;
+			int ix2 = (x2 + 7) >> 3;
+			int iy2 = (y2 + 7) >> 3;
+			int w = (ix2 - ix1) + 4;
+			int h = (iy2 - iy1) + 4;
+
+			if (x + w > 255) {
+				x = 1;
+				y += lineHeight + 1;
+				lineHeight = 0;
+			}
+
+			if (lineHeight < h) {
+				lineHeight = h;
+				VDASSERT(lineHeight+y < 255);
+			}
+
+			rast.Clear();
+			VDPixmapConvertTextToPath(rast, NULL, kFontSize * 64.0f, (float)(-ix1*64), (float)(-iy1*64), s);
+			rast.ScanConvert(charRegion);
+			VDPixmapConvolveRegion(charOutlineRegion, charRegion, outlineRegion);
+
+			VDPixmapFillRegionAntialiased8x(temppx, charOutlineRegion, x*8+16, y*8+16, 0x000000FF);
+			VDPixmapFillRegionAntialiased8x(temppx, charRegion, x*8+16, y*8+16, 0xFFFFFFFF);
+
+			pgi->mAdvance = metrics.mAdvance;
+			pgi->mPos.set((float)(ix1 - 2), (float)(iy1 - 2), (float)(ix2 + 2), (float)(iy2 + 2));
+			pgi->mUV.set((float)x, (float)y, (float)(x+w), (float)(y+h));
+			pgi->mUV.scale(1.0f / 256.0f, 1.0f / 256.0f);
+
+			x += w+1;
+		} else {
+			pgi->mAdvance = metrics.mAdvance;
+			pgi->mPos.clear();
+			pgi->mUV.clear();
+		}
+		++pgi;
+	}
+
+	// create texture
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+	HRESULT hr = dev->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ~mpD3DFontTexture, NULL);
+	if (FAILED(hr)) {
+		VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to create font cache texture.\n");
+		Shutdown();
+		return false;
+	}
+
+	// copy into texture
+	D3DLOCKED_RECT lr;
+	hr = mpD3DFontTexture->LockRect(0, &lr, NULL, 0);
+	VDASSERT(SUCCEEDED(hr));
+	if (FAILED(hr)) {
+		VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load font cache texture.\n");
+		Shutdown();
+		return false;
+	}
+	
+	uint32 *dst = (uint32 *)lr.pBits;
+	const uint32 *src = tempbits.data();
+	for(int y=0; y<256; ++y) {
+		for(int x=0; x<256; ++x) {
+			uint32 c = src[x];
+			dst[x] = ((c >> 8) & 0xff) * 0x010101 + (c << 24);
+		}
+
+		src += 256;
+		vdptrstep(dst, lr.Pitch);
+	}
+
+	VDVERIFY(SUCCEEDED(mpD3DFontTexture->UnlockRect(0)));
+	return true;
+}
+
+void VDFontRendererD3D9::Shutdown() {
+	mpD3DFontTexture = NULL;
+	mpD3DManager = NULL;
+}
+
+bool VDFontRendererD3D9::Begin() {
+	if (!mpD3DManager)
+		return false;
+
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+
+	D3DVIEWPORT9 vp;
+	HRESULT hr = dev->GetViewport(&vp);
+	if (FAILED(hr))
+		return false;
+
+	const D3DMATRIX ident={
+		1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1
+	};
+
+	dev->SetTransform(D3DTS_WORLD, &ident);
+	dev->SetTransform(D3DTS_VIEW, &ident);
+
+	const D3DMATRIX proj = {
+		2.0f / (float)vp.Width, 0.0f, 0.0f, 0.0f,
+		0.0f, -2.0f / (float)vp.Height, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f,
+		-1.0f - 1.0f / (float)vp.Width, 1.0f + 1.0f / (float)vp.Height, 0.0f, 1.0f
+	};
+
+	dev->SetTransform(D3DTS_PROJECTION, &proj);
+
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+
+	dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+
+	// Rite of passage for any 3D programmer:
+	// "Why the *&#$ didn't it draw anything!?"
+	dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+	dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	dev->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+	dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+
+	dev->SetVertexShader(NULL);
+	dev->SetVertexDeclaration(mpD3DManager->GetVertexDeclaration());
+	dev->SetPixelShader(NULL);
+	dev->SetStreamSource(0, mpD3DManager->GetVertexBuffer(), 0, sizeof(nsVDD3D9::Vertex));
+	dev->SetIndices(mpD3DManager->GetIndexBuffer());
+	dev->SetTexture(0, mpD3DFontTexture);
+	return true;
+}
+
+void VDFontRendererD3D9::DrawTextLine(int x, int y, uint32 textColor, uint32 outlineColor, const char *s) {
+	const uint32 kMaxQuads = nsVDD3D9::kVertexBufferSize / 4;
+	size_t len = strlen(s);
+
+	mGlyphLayoutInfos.clear();
+	mGlyphLayoutInfos.reserve(len);
+
+	float xpos = (float)x;
+	for(size_t i=0; i<len; ++i) {
+		char c = *s++;
+		const GlyphInfo& gi = mGlyphInfo[(int)c & 0xff];
+
+		if (!gi.mPos.empty()) {
+			mGlyphLayoutInfos.push_back();
+			GlyphLayoutInfo& gli = mGlyphLayoutInfos.back();
+			gli.mGlyph = (int)c & 0xff;
+			gli.mX = xpos;
+		}
+
+		xpos += gi.mAdvance;
+	}
+
+	float ypos = (float)y;
+
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+	for(int i=0; i<2; ++i) {
+		uint32 vertexColor;
+
+		switch(i) {
+		case 0:
+			vertexColor = outlineColor;
+			dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TEXTURE | D3DTA_ALPHAREPLICATE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+			dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+			break;
+		case 1:
+			vertexColor = textColor;
+			dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TEXTURE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+			dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+			break;
+		}
+
+		uint32 glyphCount = (uint32)mGlyphLayoutInfos.size();
+		uint32 glyphStart = 0;
+		const GlyphLayoutInfo *pgli = mGlyphLayoutInfos.data();
+		while(glyphStart < glyphCount) {
+			uint32 glyphsToRender = glyphCount - glyphStart;
+			if (glyphsToRender > kMaxQuads)
+				glyphsToRender = kMaxQuads;
+
+			nsVDD3D9::Vertex *vx = mpD3DManager->LockVertices(glyphsToRender * 4);
+			if (!vx)
+				break;
+
+			for(uint32 i=0; i<glyphsToRender; ++i) {
+				const GlyphInfo& gi = mGlyphInfo[pgli->mGlyph];
+
+				new(vx  ) nsVDD3D9::Vertex(pgli->mX + gi.mPos.left,  ypos + gi.mPos.top,    vertexColor, gi.mUV.left,  gi.mUV.top   );
+				new(vx+1) nsVDD3D9::Vertex(pgli->mX + gi.mPos.left,  ypos + gi.mPos.bottom, vertexColor, gi.mUV.left,  gi.mUV.bottom);
+				new(vx+2) nsVDD3D9::Vertex(pgli->mX + gi.mPos.right, ypos + gi.mPos.bottom, vertexColor, gi.mUV.right, gi.mUV.bottom);
+				new(vx+3) nsVDD3D9::Vertex(pgli->mX + gi.mPos.right, ypos + gi.mPos.top,    vertexColor, gi.mUV.right, gi.mUV.top   );
+				vx += 4;
+				++pgli;
+			}
+
+			mpD3DManager->UnlockVertices();
+
+			uint16 *idx = mpD3DManager->LockIndices(glyphsToRender * 6);
+			if (!idx)
+				break;
+
+			uint32 vidx = 0;
+			for(uint32 i=0; i<glyphsToRender; ++i) {
+				idx[0] = vidx;
+				idx[1] = vidx+1;
+				idx[2] = vidx+2;
+				idx[3] = vidx;
+				idx[4] = vidx+2;
+				idx[5] = vidx+3;
+				vidx += 4;
+				idx += 6;
+			}
+
+			mpD3DManager->UnlockIndices();
+
+			mpD3DManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4*glyphsToRender, 0, 2*glyphsToRender);
+
+			glyphStart += glyphsToRender;
+		}
+	}
+}
+
+void VDFontRendererD3D9::End() {
+	IDirect3DDevice9 *dev = mpD3DManager->GetDevice();
+
+	dev->SetTexture(0, NULL);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 class VDVideoDisplayDX9Manager : public IVDVideoDisplayDX9Manager, public VDD3D9Client {
 public:
 	struct EffectContext {
 		IDirect3DTexture9 *mpSourceTexture1;
 		IDirect3DTexture9 *mpSourceTexture2;
 		IDirect3DTexture9 *mpSourceTexture3;
+		IDirect3DTexture9 *mpInterpFilterH;
+		IDirect3DTexture9 *mpInterpFilterV;
 		uint32 mSourceW;
 		uint32 mSourceH;
 		uint32 mSourceTexW;
 		uint32 mSourceTexH;
+		uint32 mInterpHTexW;
+		uint32 mInterpHTexH;
+		uint32 mInterpVTexW;
+		uint32 mInterpVTexH;
 	};
 
 	VDVideoDisplayDX9Manager();
@@ -331,6 +662,7 @@ int VDVideoDisplayDX9Manager::Release() {
 }
 
 bool VDVideoDisplayDX9Manager::Init() {
+	VDASSERT(!mpManager);
 	mpManager = VDInitDirect3D9(this);
 	if (!mpManager)
 		return false;
@@ -340,8 +672,10 @@ bool VDVideoDisplayDX9Manager::Init() {
 		return false;
 	}
 
-	if (!InitEffect())
+	if (!InitEffect()) {
+		Shutdown();
 		return false;
+	}
 
 	return true;
 }
@@ -369,12 +703,14 @@ bool VDVideoDisplayDX9Manager::InitEffect() {
 		for(uint32 i=0; i<g_effect.mVertexShaderCount; ++i) {
 			const uint32 *pVertexShaderData = g_shaderData + g_effect.mVertexShaderOffsets[i];
 
-			if ((pVertexShaderData[0] & 0xffff) > caps.VertexShaderVersion)
+			if ((pVertexShaderData[0] & 0xffff) > (caps.VertexShaderVersion & 0xffff))
 				continue;
 
 			HRESULT hr = pD3DDevice->CreateVertexShader((const DWORD *)pVertexShaderData, &mVertexShaders[i]);
 			if (FAILED(hr)) {
 				VDDEBUG_DX9DISP("VideoDisplay/DX9: Unable to create vertex shader #%d.\n", i+1);
+				VDDEBUG_DX9DISP("VideoDisplay/DX9: Vertex shader version is: %x.\n", pVertexShaderData[0]);
+				VDDEBUG_DX9DISP("VideoDisplay/DX9: Supported vertex shader version is: %x.\n", caps.VertexShaderVersion);
 				return false;
 			}
 		}
@@ -386,12 +722,14 @@ bool VDVideoDisplayDX9Manager::InitEffect() {
 		for(uint32 i=0; i<g_effect.mPixelShaderCount; ++i) {
 			const uint32 *pPixelShaderData = g_shaderData + g_effect.mPixelShaderOffsets[i];
 
-			if ((pPixelShaderData[0] & 0xffff) > caps.PixelShaderVersion)
+			if ((pPixelShaderData[0] & 0xffff) > (caps.PixelShaderVersion & 0xffff))
 				continue;
 
 			HRESULT hr = pD3DDevice->CreatePixelShader((const DWORD *)pPixelShaderData, &mPixelShaders[i]);
 			if (FAILED(hr)) {
 				VDDEBUG_DX9DISP("VideoDisplay/DX9: Unable to create pixel shader #%d.\n", i+1);
+				VDDEBUG_DX9DISP("VideoDisplay/DX9: Pixel shader version is: %x.\n", pPixelShaderData[0]);
+				VDDEBUG_DX9DISP("VideoDisplay/DX9: Supported pixel shader version is: %x.\n", caps.PixelShaderVersion);
 				return false;
 			}
 		}
@@ -446,10 +784,8 @@ VDVideoDisplayDX9Manager::CubicMode VDVideoDisplayDX9Manager::InitBicubic() {
 			success = mpManager->CreateSharedTexture<VDD3D9TextureGeneratorCubicFilterFF3>("cubicfilter", ~mpFilterTexture);
 			break;
 		case kCubicUsePS1_1Path:
-			success = mpManager->CreateSharedTexture<VDD3D9TextureGeneratorCubicFilterPS1_1>("cubicfilter", ~mpFilterTexture);
-			break;
 		case kCubicUsePS1_4Path:
-			success = mpManager->CreateSharedTexture<VDD3D9TextureGeneratorCubicFilterPS1_4>("cubicfilter", ~mpFilterTexture);
+			success = true;
 			break;
 	}
 
@@ -668,7 +1004,7 @@ bool VDVideoDisplayDX9Manager::ValidateBicubicShader(CubicMode mode) {
 }
 
 bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& rClient, const TechniqueInfo& technique, IDirect3DSurface9 *pRTOverride) {
-	IDirect3DTexture9 *const textures[8]={
+	IDirect3DTexture9 *const textures[10]={
 		NULL,
 		ctx.mpSourceTexture1,
 		ctx.mpSourceTexture2,
@@ -676,7 +1012,9 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		mpRTTs[0] ? mpRTTs[0]->GetD3DTexture() : NULL,
 		mpRTTs[1] ? mpRTTs[1]->GetD3DTexture() : NULL,
 		mpFilterTexture ? mpFilterTexture->GetD3DTexture() : NULL,
-		mpHEvenOddTexture ? mpHEvenOddTexture->GetD3DTexture() : NULL
+		mpHEvenOddTexture ? mpHEvenOddTexture->GetD3DTexture() : NULL,
+		ctx.mpInterpFilterH,
+		ctx.mpInterpFilterV
 	};
 
 	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
@@ -701,6 +1039,8 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		float t2vpcorrect[4];		// (temp2 vp correction)	2/tvpwidth, 2/tvpheight, -1/tvpheight, 1/tvpwidth
 		float t2vpcorrect2[4];		// (temp2 vp correction)	2/tvpwidth, -2/tvpheight, 1+1/tvpheight, -1-1/tvpwidth
 		float time[4];				// (time)
+		float interphtexsize[4];	// (time)
+		float interpvtexsize[4];	// (time)
 	};
 
 	static const struct StdParam {
@@ -720,6 +1060,8 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 		offsetof(StdParamData, t2vpcorrect),
 		offsetof(StdParamData, t2vpcorrect2),
 		offsetof(StdParamData, time),
+		offsetof(StdParamData, interphtexsize),
+		offsetof(StdParamData, interpvtexsize),
 	};
 
 	StdParamData data;
@@ -776,6 +1118,14 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 	data.t2vpcorrect2[1] = -2.0f;
 	data.t2vpcorrect2[2] = 0.f;
 	data.t2vpcorrect2[3] = 2.0f;
+	data.interphtexsize[0] = (float)ctx.mInterpHTexW;
+	data.interphtexsize[1] = (float)ctx.mInterpHTexH;
+	data.interphtexsize[2] = ctx.mInterpHTexH ? 1.0f / (float)ctx.mInterpHTexH : 0.0f;
+	data.interphtexsize[3] = ctx.mInterpHTexW ? 1.0f / (float)ctx.mInterpHTexW : 0.0f;
+	data.interpvtexsize[0] = (float)ctx.mInterpVTexW;
+	data.interpvtexsize[1] = (float)ctx.mInterpVTexH;
+	data.interpvtexsize[2] = ctx.mInterpVTexH ? 1.0f / (float)ctx.mInterpVTexH : 0.0f;
+	data.interpvtexsize[3] = ctx.mInterpVTexW ? 1.0f / (float)ctx.mInterpVTexW : 0.0f;
 
 	uint32 t = VDGetAccurateTick();
 	data.time[0] = (t % 1000) / 1000.0f;
@@ -866,13 +1216,46 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 					hr = dev->SetRenderState((D3DRENDERSTATETYPE)tokenIndex, tokenValue);
 					break;
 				case 1:		// texture stage state
-					hr = dev->SetTextureStageState((token >> 24)&15, (D3DTEXTURESTAGESTATETYPE)tokenIndex, tokenValue);
+					switch((D3DTEXTURESTAGESTATETYPE)tokenIndex) {
+					case D3DTSS_BUMPENVMAT00:
+					case D3DTSS_BUMPENVMAT01:
+					case D3DTSS_BUMPENVMAT10:
+					case D3DTSS_BUMPENVMAT11:
+						{
+							union {
+								uint32 i;
+								float f;
+							} converter = {tokenValue};
+
+							if (pi.mBumpEnvScale) {
+								const float *param = (const float *)&data + 4*(pi.mBumpEnvScale - 1);
+
+								switch((D3DTEXTURESTAGESTATETYPE)tokenIndex) {
+								case D3DTSS_BUMPENVMAT00:
+								case D3DTSS_BUMPENVMAT10:
+									converter.f *= param[3];
+									break;
+								case D3DTSS_BUMPENVMAT01:
+								case D3DTSS_BUMPENVMAT11:
+								default:
+									converter.f *= param[2];
+									break;
+								}
+							}
+						
+							hr = dev->SetTextureStageState((token >> 24)&15, (D3DTEXTURESTAGESTATETYPE)tokenIndex, converter.i);
+						}
+						break;
+					default:
+						hr = dev->SetTextureStageState((token >> 24)&15, (D3DTEXTURESTAGESTATETYPE)tokenIndex, tokenValue);
+						break;
+					}
 					break;
 				case 2:		// sampler state
 					hr = dev->SetSamplerState((token >> 24)&15, (D3DSAMPLERSTATETYPE)tokenIndex, tokenValue);
 					break;
 				case 3:		// texture
-					VDASSERT(tokenValue < 8);
+					VDASSERT(tokenValue < 10);
 					hr = dev->SetTexture(tokenIndex, textures[tokenValue]);
 					break;
 				case 8:		// vertex bool constant
@@ -1045,6 +1428,7 @@ public:
 protected:
 	void OnPreDeviceReset();
 	void OnPostDeviceReset();
+	bool ReinitVRAMTextures();
 
 	VDD3D9Manager	*mpManager;
 	vdrefptr<VDVideoDisplayDX9Manager> mpVideoManager;
@@ -1056,6 +1440,8 @@ protected:
 	} mUploadMode;
 
 	int mBufferCount;
+	int	mConversionTexW;
+	int	mConversionTexH;
 
 	VDPixmap			mTexFmt;
 
@@ -1086,6 +1472,8 @@ VDVideoUploadContextD3D9::~VDVideoUploadContextD3D9() {
 
 bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion, int buffers) {
 	mBufferCount = buffers;
+
+	VDASSERT(!mpManager);
 	mpManager = VDInitDirect3D9(this);
 	if (!mpManager)
 		return false;
@@ -1183,22 +1571,17 @@ bool VDVideoUploadContextD3D9::Init(const VDPixmap& source, bool allowConversion
 		}
 	}
 
-	if (mUploadMode != kUploadModeNormal) {
-		for(int i=0; i<buffers; ++i) {
-			hr = dev->CreateTexture(texw, texh, 1, D3DUSAGE_RENDERTARGET, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &mpD3DConversionTextures[i], NULL);
-			if (FAILED(hr)) {
-				Shutdown();
-				return false;
-			}
+	mConversionTexW = texw;
+	mConversionTexH = texh;
+	if (!ReinitVRAMTextures()) {
+		Shutdown();
+		return false;
+	}
 
-			mpManager->ClearRenderTarget(mpD3DConversionTextures[i]);
-		}
-
-		if (mUploadMode == kUploadModeDirect16) {
-			texw = (source.w + 1) >> 1;
-			texh = source.h;
-			mpManager->AdjustTextureSize(texw, texh);
-		}
+	if (mUploadMode == kUploadModeDirect16) {
+		texw = (source.w + 1) >> 1;
+		texh = source.h;
+		mpManager->AdjustTextureSize(texw, texh);
 	}
 
 	hr = dev->CreateTexture(texw, texh, 1, 0, d3dfmt, D3DPOOL_MANAGED, &mpD3DImageTextures[0], NULL);
@@ -1258,8 +1641,10 @@ void VDVideoUploadContextD3D9::Shutdown() {
 	}
 
 	mpVideoManager = NULL;
-	if (mpManager)
+	if (mpManager) {
 		VDDeinitDirect3D9(mpManager, this);
+		mpManager = NULL;
+	}
 }
 
 bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
@@ -1378,6 +1763,23 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 		if (FAILED(hr))
 			return false;
 
+		static const uint32 kRenderStates[][2]={
+			{	D3DRS_LIGHTING,			FALSE				},
+			{	D3DRS_CULLMODE,			D3DCULL_NONE		},
+			{	D3DRS_ZENABLE,			FALSE				},
+			{	D3DRS_ALPHATESTENABLE,	FALSE				},
+			{	D3DRS_ALPHABLENDENABLE,	FALSE				},
+			{	D3DRS_STENCILENABLE,	FALSE				},
+		};
+
+		for(int i=0; i<sizeof(kRenderStates)/sizeof(kRenderStates[0]); ++i) {
+			const uint32 (&rs)[2] = kRenderStates[i];
+
+			hr = dev->SetRenderState((D3DRENDERSTATETYPE)rs[0], rs[1]);
+			if (FAILED(hr))
+				return false;
+		}
+
 		bool success = false;
 		if (mpManager->BeginScene()) {
 			success = true;
@@ -1394,10 +1796,16 @@ bool VDVideoUploadContextD3D9::Update(const VDPixmap& source, int fieldMask) {
 				ctx.mpSourceTexture1 = mpD3DImageTextures[0];
 				ctx.mpSourceTexture2 = mpD3DImageTexture2a;
 				ctx.mpSourceTexture3 = mpD3DImageTexture2b;
+				ctx.mpInterpFilterH = NULL;
+				ctx.mpInterpFilterV = NULL;
 				ctx.mSourceW = source.w;
 				ctx.mSourceH = source.h;
 				ctx.mSourceTexW = mTexFmt.w;
 				ctx.mSourceTexH = mTexFmt.h;
+				ctx.mInterpHTexW = 0;
+				ctx.mInterpHTexH = 0;
+				ctx.mInterpVTexW = 0;
+				ctx.mInterpVTexH = 0;
 
 				switch(source.format) {
 					case nsVDPixmap::kPixFormat_YUV422_UYVY:
@@ -1455,11 +1863,33 @@ void VDVideoUploadContextD3D9::OnPreDeviceReset() {
 }
 
 void VDVideoUploadContextD3D9::OnPostDeviceReset() {
+	ReinitVRAMTextures();
+}
+
+bool VDVideoUploadContextD3D9::ReinitVRAMTextures() {
+	if (mUploadMode != kUploadModeNormal) {
+		IDirect3DDevice9 *dev = mpManager->GetDevice();
+
+		for(int i=0; i<mBufferCount; ++i) {
+			if (mpD3DConversionTextures[i]) {
+				mpD3DConversionTextures[i]->Release();
+				mpD3DConversionTextures[i] = NULL;
+			}
+
+			HRESULT hr = dev->CreateTexture(mConversionTexW, mConversionTexH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &mpD3DConversionTextures[i], NULL);
+			if (FAILED(hr))
+				return false;
+
+			mpManager->ClearRenderTarget(mpD3DConversionTextures[i]);
+		}
+	}
+
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoDisplayMinidriverDX9 : public IVDVideoDisplayMinidriver, protected VDD3D9Client {
+class VDVideoDisplayMinidriverDX9 : public VDVideoDisplayMinidriver, protected VDD3D9Client {
 public:
 	VDVideoDisplayMinidriverDX9();
 	~VDVideoDisplayMinidriverDX9();
@@ -1471,8 +1901,9 @@ protected:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
-	bool IsFramePending() { return false; }
+	bool IsFramePending() { return mbSwapChainPresentPending; }
 	void SetFilterMode(FilterMode mode);
+	void SetFullScreen(bool fs);
 
 	bool Tick(int id);
 	void Poll();
@@ -1481,7 +1912,6 @@ protected:
 	void Refresh(UpdateMode);
 	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 
-	bool SetSubrect(const vdrect32 *) { return false; }
 	void SetLogicalPalette(const uint8 *pLogicalPalette);
 	float GetSyncDelta() const { return mSyncDelta; }
 
@@ -1491,6 +1921,8 @@ protected:
 
 	void InitBicubic();
 	void ShutdownBicubic();
+	bool InitBicubicPS2Filters(int w, int h);
+	void ShutdownBicubicPS2Filters();
 
 	bool UpdateBackbuffer(const RECT& rClient);
 	bool UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling);
@@ -1500,15 +1932,25 @@ protected:
 	VDD3D9Manager		*mpManager;
 	vdrefptr<VDVideoDisplayDX9Manager>	mpVideoManager;
 	IDirect3DDevice9	*mpD3DDevice;			// weak ref
+	vdrefptr<IDirect3DTexture9>	mpD3DInterpFilterTextureH;
+	vdrefptr<IDirect3DTexture9>	mpD3DInterpFilterTextureV;
+	int					mInterpFilterHSize;
+	int					mInterpFilterHTexSize;
+	int					mInterpFilterVSize;
+	int					mInterpFilterVTexSize;
 
 	vdrefptr<VDVideoUploadContextD3D9>	mpUploadContext;
+	vdrefptr<IVDFontRendererD3D9>	mpFontRenderer;
 
 	vdrefptr<IVDD3D9SwapChain>	mpSwapChain;
 	int					mSwapChainW;
 	int					mSwapChainH;
 	bool				mbSwapChainImageValid;
 	bool				mbSwapChainPresentPending;
+	bool				mbSwapChainPresentPolling;
 	bool				mbFirstPresent;
+	bool				mbFullScreen;
+	bool				mbFullScreenSet;
 
 	VDVideoDisplayDX9Manager::CubicMode	mCubicMode;
 	bool				mbCubicInitialized;
@@ -1532,11 +1974,21 @@ IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9() {
 }
 
 VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9()
-	: mpVideoManager(NULL)
+	: mpManager(NULL)
+	, mpD3DDevice(NULL)
+	, mInterpFilterHSize(0)
+	, mInterpFilterHTexSize(0)
+	, mInterpFilterVSize(0)
+	, mInterpFilterVTexSize(0)
+	, mpVideoManager(NULL)
 	, mSwapChainW(0)
 	, mSwapChainH(0)
 	, mbSwapChainImageValid(false)
 	, mbSwapChainPresentPending(false)
+	, mbSwapChainPresentPolling(false)
+	, mbFirstPresent(true)
+	, mbFullScreen(false)
+	, mbFullScreenSet(false)
 	, mbCubicInitialized(false)
 	, mbCubicAttempted(false)
 	, mPreferredFilter(kFilterAnySuitable)
@@ -1549,11 +2001,13 @@ VDVideoDisplayMinidriverDX9::~VDVideoDisplayMinidriverDX9() {
 }
 
 bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+	VDASSERT(!mpManager);
 	mhwnd = hwnd;
 	mSource = info;
 	GetClientRect(hwnd, &mrClient);
 
 	// attempt to initialize D3D9
+	mbFullScreenSet = false;
 	mpManager = VDInitDirect3D9(this);
 	if (!mpManager) {
 		Shutdown();
@@ -1565,7 +2019,22 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 		return false;
 	}
 
+	if (mbFullScreen && !mbFullScreenSet) {
+		mbFullScreenSet = true;
+		mpManager->AdjustFullScreen(true);
+	}
+
 	mpD3DDevice = mpManager->GetDevice();
+
+	// init font renderer
+	if (mbDisplayDebugInfo) {
+		if (!VDCreateFontRendererD3D9(~mpFontRenderer)) {
+			Shutdown();
+			return false;
+		}
+
+		mpFontRenderer->Init(mpManager);		// we explicitly allow this to fail
+	}
 
 	mpUploadContext = new_nothrow VDVideoUploadContextD3D9;
 	if (!mpUploadContext || !mpUploadContext->Init(info.pixmap, info.bAllowConversion, 1)) {
@@ -1581,6 +2050,7 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 
 void VDVideoDisplayMinidriverDX9::OnPreDeviceReset() {
 	ShutdownBicubic();
+	ShutdownBicubicPS2Filters();
 	mpSwapChain = NULL;
 	mSwapChainW = 0;
 	mSwapChainH = 0;
@@ -1600,7 +2070,7 @@ void VDVideoDisplayMinidriverDX9::InitBicubic() {
 				if (mCubicMode == VDVideoDisplayDX9Manager::kCubicUsePS1_4Path)
 					VDDEBUG_DX9DISP("VideoDisplay/DX9: Using pixel shader 1.4, 5 texture (RADEON 8xxx+ / GeForceFX+) pixel path.\n");
 				else if (mCubicMode == VDVideoDisplayDX9Manager::kCubicUsePS1_1Path)
-					VDDEBUG_DX9DISP("VideoDisplay/DX9: Using pixel shader 1.1, 3 texture (GeForce3/4) pixel path.\n");
+					VDDEBUG_DX9DISP("VideoDisplay/DX9: Using pixel shader 1.1, 4 texture (GeForce3/4) pixel path.\n");
 				else if (mCubicMode == VDVideoDisplayDX9Manager::kCubicUseFF3Path)
 					VDDEBUG_DX9DISP("VideoDisplay/DX9: Using fixed function, 3 texture (RADEON 7xxx) pixel path.\n");
 				else
@@ -1619,10 +2089,201 @@ void VDVideoDisplayMinidriverDX9::ShutdownBicubic() {
 	}
 }
 
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	int GeneratePS2CubicTexture(VDD3D9Manager *pManager, int w, int srcw, vdrefptr<IDirect3DTexture9>& pTexture, int existingTexW, bool mode1_4) {
+		IDirect3DDevice9 *dev = pManager->GetDevice();
+
+		// Round up to next multiple of 128 pixels to reduce reallocation.
+		int texw = (w + 127) & ~127;
+		int texh = 1;
+		pManager->AdjustTextureSize(texw, texh);
+
+		// If we can't fit the texture, bail.
+		if (texw < w)
+			return -1;
+
+		// Check if we need to reallocate the texture.
+		if (!pTexture || existingTexW != texw) {
+			HRESULT hr = dev->CreateTexture(texw, texh, 1, 0, mode1_4  ? D3DFMT_A8R8G8B8 : D3DFMT_X8L8V8U8, D3DPOOL_MANAGED, ~pTexture, NULL);
+			if (FAILED(hr))
+				return -1;
+		}
+
+		// Fill the texture.
+		D3DLOCKED_RECT lr;
+		HRESULT hr = pTexture->LockRect(0, &lr, NULL, 0);
+		VDASSERT(SUCCEEDED(hr));
+		if (FAILED(hr)) {
+			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to load bicubic texture.\n");
+			return -1;
+		}
+
+		double dudx = (double)srcw / (double)w;
+		double u = dudx * 0.5;
+		double u0 = 0.5;
+		double ud0 = 1.5;
+		double ud1 = (double)srcw - 1.5;
+		double u1 = (double)srcw - 0.5;
+		uint32 *p0 = (uint32 *)lr.pBits;
+
+		if (mode1_4) {
+			for(int x = 0; x < texw; ++x) {
+				double ut = u;
+				if (ut < u0)
+					ut = u0;
+				else if (ut > u1)
+					ut = u1;
+				int ix = VDFloorToInt(ut - 0.5);
+				double d = ut - ((double)ix + 0.5);
+
+				static const double m = -0.75;
+				double c0 = (( (m    )*d - 2.0*m    )*d +   m)*d;
+				double c1 = (( (m+2.0)*d -     m-3.0)*d      )*d + 1.0;
+				double c2 = ((-(m+2.0)*d + 2.0*m+3.0)*d -   m)*d;
+				double c3 = ((-(m    )*d +     m    )*d      )*d;
+
+				double c03		= c0+c3;
+				double k1 = d < 0.5 ? d < 1e-5 ? -m : c2 / d : d > 1-1e-5 ? -m : c1 / (1-d);
+				double kx = d < 0.5 ? c1 - k1*(1-d) : c2 - k1*d;
+
+				if (ut < ud0 || ut > ud1) {
+					c0 = 0;
+					k1 = 1.0;
+					kx = 0.0;
+					c3 = 0;
+				}
+
+				double blue		= -c0*4;
+				double green	= k1 - 1.0 + 128.0f/255.0f;
+				double red		= kx * 2;
+				double alpha	= -c3*4;
+
+				uint8 ib = VDClampedRoundFixedToUint8Fast((float)blue);
+				uint8 ig = VDClampedRoundFixedToUint8Fast((float)green);
+				uint8 ir = VDClampedRoundFixedToUint8Fast((float)red);
+				uint8 ia = VDClampedRoundFixedToUint8Fast((float)alpha);
+
+				p0[x] = (uint32)ib + ((uint32)ig << 8) + ((uint32)ir << 16) + ((uint32)ia << 24);
+
+				u += dudx;
+			}
+		} else {
+			for(int x = 0; x < texw; ++x) {
+				int ix = VDFloorToInt(u - 0.5);
+				double d = u - ((double)ix + 0.5);
+
+				static const double m = -0.75;
+				double c0 = (( (m    )*d - 2.0*m    )*d +   m)*d;
+				double c1 = (( (m+2.0)*d -     m-3.0)*d      )*d + 1.0;
+				double c2 = ((-(m+2.0)*d + 2.0*m+3.0)*d -   m)*d;
+				double c3 = ((-(m    )*d +     m    )*d      )*d;
+
+				double k0 = d*(1-d)*m;
+				double k2 = d*(1-d)*m;
+
+				double c1bi = d*k0;
+				double c2bi = (1-d)*k2;
+				double c1ex = c1-c1bi;
+				double c2ex = c2-c2bi;
+
+				double o1 = c2ex/(c1ex+c2ex)-d;
+
+				double blue		= d;							// bilinear offset - p0 and p3
+				double green	= o1*4;							// bilinear offset - p1 and p2
+				double red		= (d*(1-d))*4;					// shift factor between the two
+				double alpha	= d;							// lerp constant between p0 and p3
+
+				uint8 ib = VDClampedRoundFixedToUint8Fast((float)blue * 127.0f/255.0f + 128.0f/255.0f) ^ 0x80;
+				uint8 ig = VDClampedRoundFixedToUint8Fast((float)green * 127.0f/255.0f + 128.0f/255.0f) ^ 0x80;
+				uint8 ir = VDClampedRoundFixedToUint8Fast((float)red);
+				uint8 ia = VDClampedRoundFixedToUint8Fast((float)alpha);
+
+#if 0
+				double fb = (sint8)ib / 127.0f;
+				double fg = (sint8)ig / 127.0f;
+				double fr = (double)ir / 255.0f;
+				double fa = (double)ia / 255.0f;
+
+				double g0 = fr*0.25f*0.75f;
+				double g1 = 2*(0.5f + fr*0.25f*0.75f);
+				double d1 = 0.25f * fg + d;
+				double g2 = fr*0.25f*0.75f;
+
+				double cr0 = -g0*(1-d);
+				double cr1 = -g0*d + g1*(1-d1);
+				double cr2 = g1*d1 + -g2*(1-d);
+				double cr3 = -g2*d;
+
+				if (fabsf(cr0-c0) > 0.01f)
+					__debugbreak();
+				if (fabsf(cr1-c1) > 0.01f)
+					__debugbreak();
+				if (fabsf(cr2-c2) > 0.01f)
+					__debugbreak();
+				if (fabsf(cr3-c3) > 0.01f)
+					__debugbreak();
+#endif
+
+	//			p0[x] = (uint32)ib + ((uint32)ig << 8);
+				p0[x] = (uint32)ib + ((uint32)ig << 8) + ((uint32)ir << 16) + ((uint32)ia << 24);
+
+				u += dudx;
+			}
+		}
+
+		VDVERIFY(SUCCEEDED(pTexture->UnlockRect(0)));
+		return texw;
+	}
+}
+
+bool VDVideoDisplayMinidriverDX9::InitBicubicPS2Filters(int w, int h) {
+	// requires PS2.0 path
+	if (mCubicMode != VDVideoDisplayDX9Manager::kCubicUsePS1_1Path && mCubicMode != VDVideoDisplayDX9Manager::kCubicUsePS1_4Path)
+		return false;
+
+	bool mode1_4 = (mCubicMode == VDVideoDisplayDX9Manager::kCubicUsePS1_4Path);
+
+	// update horiz filter
+	if (!mpD3DInterpFilterTextureH || mInterpFilterHSize != w) {
+		int newtexw = GeneratePS2CubicTexture(mpManager, w, mSource.pixmap.w, mpD3DInterpFilterTextureH, mInterpFilterHSize, mode1_4);
+		if (newtexw < 0)
+			return false;
+
+		mInterpFilterHTexSize = newtexw;
+	}
+
+	// update vert filter
+	if (!mpD3DInterpFilterTextureV || mInterpFilterVSize != h) {
+		int newtexw = GeneratePS2CubicTexture(mpManager, h, mSource.pixmap.h, mpD3DInterpFilterTextureV, mInterpFilterVSize, mode1_4);
+		if (newtexw < 0)
+			return false;
+
+		mInterpFilterVTexSize = newtexw;
+	}
+	return true;
+}
+
+void VDVideoDisplayMinidriverDX9::ShutdownBicubicPS2Filters() {
+	mpD3DInterpFilterTextureH = NULL;
+	mpD3DInterpFilterTextureV = NULL;
+	mInterpFilterHSize = 0;
+	mInterpFilterHTexSize = 0;
+	mInterpFilterVSize = 0;
+	mInterpFilterVTexSize = 0;
+}
+
 void VDVideoDisplayMinidriverDX9::Shutdown() {
 	mpUploadContext = NULL;
 
+	if (mpFontRenderer) {
+		mpFontRenderer->Shutdown();
+		mpFontRenderer = NULL;
+	}
+
 	ShutdownBicubic();
+	ShutdownBicubicPS2Filters();
 
 	mpSwapChain = NULL;
 	mSwapChainW = 0;
@@ -1631,6 +2292,11 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 	mpVideoManager = NULL;
 
 	if (mpManager) {
+		if (mbFullScreenSet) {
+			mbFullScreenSet = false;
+			mpManager->AdjustFullScreen(false);
+		}
+
 		VDDeinitDirect3D9(mpManager, this);
 		mpManager = NULL;
 	}
@@ -1653,8 +2319,25 @@ bool VDVideoDisplayMinidriverDX9::IsValid() {
 void VDVideoDisplayMinidriverDX9::SetFilterMode(FilterMode mode) {
 	mPreferredFilter = mode;
 
-	if (mode != kFilterBicubic && mode != kFilterAnySuitable && mbCubicInitialized)
-		ShutdownBicubic();
+	if (mode != kFilterBicubic && mode != kFilterAnySuitable) {
+		ShutdownBicubicPS2Filters();
+
+		if (mbCubicInitialized)
+			ShutdownBicubic();
+	}
+}
+
+void VDVideoDisplayMinidriverDX9::SetFullScreen(bool fs) {
+	if (mbFullScreen != fs) {
+		mbFullScreen = fs;
+
+		if (mpManager) {
+			if (mbFullScreenSet != fs) {
+				mbFullScreenSet = fs;
+				mpManager->AdjustFullScreen(fs);
+			}
+		}
+	}
 }
 
 bool VDVideoDisplayMinidriverDX9::Tick(int id) {
@@ -1663,7 +2346,7 @@ bool VDVideoDisplayMinidriverDX9::Tick(int id) {
 
 void VDVideoDisplayMinidriverDX9::Poll() {
 	if (mbSwapChainPresentPending)
-		UpdateScreen(mrClient, kModeVSync, false);
+		UpdateScreen(mrClient, kModeVSync, true);
 }
 
 bool VDVideoDisplayMinidriverDX9::Resize() {
@@ -1697,21 +2380,28 @@ bool VDVideoDisplayMinidriverDX9::Update(UpdateMode mode) {
 }
 
 void VDVideoDisplayMinidriverDX9::Refresh(UpdateMode mode) {
-	if (mrClient.right > 0 && mrClient.bottom > 0)
+	if (mrClient.right > 0 && mrClient.bottom > 0) {
 		Paint(NULL, mrClient, mode);
+	}
 }
 
 bool VDVideoDisplayMinidriverDX9::Paint(HDC, const RECT& rClient, UpdateMode updateMode) {
-	return (mbSwapChainImageValid || UpdateBackbuffer(rClient)) && UpdateScreen(rClient, updateMode, false);
+	return (mbSwapChainImageValid || UpdateBackbuffer(rClient)) && UpdateScreen(rClient, updateMode, 0 != (updateMode & kModeVSync));
 }
 
 void VDVideoDisplayMinidriverDX9::SetLogicalPalette(const uint8 *pLogicalPalette) {
 }
 
-bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
+bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient0) {
 	int rtw = mpManager->GetMainRTWidth();
 	int rth = mpManager->GetMainRTHeight();
-	const RECT rClippedClient={0,0,std::min<int>(rClient.right, rtw), std::min<int>(rClient.bottom, rth)};
+	RECT rClient = rClient0;
+	if (mbFullScreen) {
+		rClient.right = rtw;
+		rClient.bottom = rth;
+	}
+
+	RECT rClippedClient={0,0,std::min<int>(rClient.right, rtw), std::min<int>(rClient.bottom, rth)};
 
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
@@ -1724,7 +2414,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 		mSwapChainH = 0;
 	}
 
-	if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
+	if (!mbFullScreen && (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
 		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
 		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
 
@@ -1766,11 +2456,14 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 	D3D_DO(SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX2));
 	D3D_DO(SetRenderState(D3DRS_LIGHTING, FALSE));
 	D3D_DO(SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
+	D3D_DO(SetRenderState(D3DRS_ZENABLE, FALSE));
+	D3D_DO(SetRenderState(D3DRS_ALPHATESTENABLE, FALSE));
+	D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
+	D3D_DO(SetRenderState(D3DRS_STENCILENABLE, FALSE));
 	D3D_DO(SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0));
 	D3D_DO(SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1));
 	D3D_DO(SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, 2));
 
-	bool bSuccess;
 	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
 
 	VDVideoDisplayDX9Manager::EffectContext ctx;
@@ -1778,6 +2471,8 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 	ctx.mpSourceTexture1 = mpUploadContext->GetD3DTexture();
 	ctx.mpSourceTexture2 = NULL;
 	ctx.mpSourceTexture3 = NULL;
+	ctx.mpInterpFilterH = NULL;
+	ctx.mpInterpFilterV = NULL;
 	ctx.mSourceW = mSource.pixmap.w;
 	ctx.mSourceH = mSource.pixmap.h;
 
@@ -1789,23 +2484,63 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 
 	ctx.mSourceTexW = desc.Width;
 	ctx.mSourceTexH = desc.Height;
+	ctx.mInterpHTexW = 1;
+	ctx.mInterpHTexH = 1;
+	ctx.mInterpVTexW = 1;
+	ctx.mInterpVTexH = 1;
 
 	vdrefptr<IDirect3DSurface9> pRTMain;
-	IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
-	hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
-	if (FAILED(hr))
-		return false;
+
+	mpManager->SetSwapChainActive(NULL);
+
+	if (mpSwapChain) {
+		IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
+		hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+		if (FAILED(hr))
+			return false;
+	} else {
+		mpManager->SetSwapChainActive(NULL);
+		mpD3DDevice->GetRenderTarget(0, ~pRTMain);
+	}
 
 	mbSwapChainImageValid = false;
 
-	if (mbCubicInitialized &&
+	bool bSuccess = false;
+
+	if (mColorOverride) {
+		mpManager->SetSwapChainActive(mpSwapChain);
+
+		D3DRECT rClear;
+		rClear.x1 = rClient.left;
+		rClear.y1 = rClient.top;
+		rClear.x2 = rClient.right;
+		rClear.y2 = rClient.bottom;
+		HRESULT hr = mpD3DDevice->Clear(1, &rClear, D3DCLEAR_TARGET, mColorOverride, 0.0f, 0);
+
+		bSuccess = SUCCEEDED(hr);
+	} else if (mbCubicInitialized &&
 		(uint32)rClient.right <= pparms.BackBufferWidth &&
 		(uint32)rClient.bottom <= pparms.BackBufferHeight &&
 		(uint32)mSource.pixmap.w <= pparms.BackBufferWidth &&
 		(uint32)mSource.pixmap.h <= pparms.BackBufferHeight
 		)
 	{
-		switch(mCubicMode) {
+		int cubicMode = mCubicMode;
+
+		if (cubicMode == VDVideoDisplayDX9Manager::kCubicUsePS1_1Path || cubicMode == VDVideoDisplayDX9Manager::kCubicUsePS1_4Path) {
+			if (!InitBicubicPS2Filters(rClient.right, rClient.bottom))
+				cubicMode = VDVideoDisplayDX9Manager::kCubicUseFF3Path;
+			else {
+				ctx.mpInterpFilterH = mpD3DInterpFilterTextureH;
+				ctx.mpInterpFilterV = mpD3DInterpFilterTextureV;
+				ctx.mInterpHTexW = mInterpFilterHTexSize;
+				ctx.mInterpHTexH = 1;
+				ctx.mInterpVTexW = mInterpFilterVTexSize;
+				ctx.mInterpVTexH = 1;
+			}
+		}
+
+		switch(cubicMode) {
 		case VDVideoDisplayDX9Manager::kCubicUsePS1_4Path:
 			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubic1_4, pRTMain);
 			break;
@@ -1824,11 +2559,43 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_point, pRTMain);
 		else
 			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bilinear, pRTMain);
-
-		bSuccess = true;
 	}
 
 	pRTMain = NULL;
+
+	if (mbDisplayDebugInfo && mpFontRenderer) {
+		if (mpFontRenderer->Begin()) {
+			VDStringA s;
+
+			const char *modestr = "point";
+
+			switch(mode) {
+				case kFilterBilinear:
+					modestr = "bilinear";
+					break;
+				case kFilterBicubic:
+					modestr = "bicubic";
+					break;
+			}
+
+			VDStringA desc;
+			GetFormatString(mSource, desc);
+			s.sprintf("Direct3D9 minidriver - %s (%s)  Average present time: %6.2fms", desc.c_str(), modestr, mPresentHistory.mAveragePresentTime * 1000.0);
+			mpFontRenderer->DrawTextLine(10, rClient.bottom - 40, 0xFFFFFF00, 0, s.c_str());
+
+			s.sprintf("Target scanline: %7.2f  Average bracket [%7.2f,%7.2f]  Last bracket [%4d,%4d]  Poll count %5d"
+					, mPresentHistory.mScanlineTarget
+					, mPresentHistory.mAverageStartScanline
+					, mPresentHistory.mAverageEndScanline
+					, mPresentHistory.mLastBracketY1
+					, mPresentHistory.mLastBracketY2
+					, mPresentHistory.mPollCount);
+			mPresentHistory.mPollCount = 0;
+			mpFontRenderer->DrawTextLine(10, rClient.bottom - 20, 0xFFFFFF00, 0, s.c_str());
+
+			mpFontRenderer->End();
+		}
+	}
 
 	if (bSuccess && !mpManager->EndScene())
 		bSuccess = false;
@@ -1849,6 +2616,7 @@ bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
 	} else {
 		mbSwapChainImageValid = true;
 		mbSwapChainPresentPending = true;
+		mbSwapChainPresentPolling = false;
 	}
 
 	return bSuccess;
@@ -1858,18 +2626,26 @@ bool VDVideoDisplayMinidriverDX9::UpdateScreen(const RECT& rClient, UpdateMode u
 	if (!mbSwapChainImageValid)
 		return false;
 
-	HRESULT hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling, true, mSyncDelta, mPresentHistory);
+	HRESULT hr;
+	if (mbFullScreen)
+		hr = mpManager->PresentFullScreen(!polling);
+	else {
+		hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling || !mbSwapChainPresentPolling, polling, mSyncDelta, mPresentHistory);
+		mbSwapChainPresentPolling = false;
+	}
 
 	if (hr == S_FALSE)
 		return true;
 
 	// Workaround for Windows Vista DWM composition chain not updating.
-	if (mbFirstPresent) {
+	if (!mbFullScreen && mbFirstPresent) {
 		SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
 		mbFirstPresent = false;
 	}
 
 	mbSwapChainPresentPending = false;
+	mbSwapChainPresentPolling = false;
+	VDASSERT(!mPresentHistory.mbPresentPending);
 
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");

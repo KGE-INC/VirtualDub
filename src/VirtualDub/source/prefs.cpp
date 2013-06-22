@@ -43,6 +43,7 @@ namespace {
 		Preferences		mOldPrefs;
 		VDStringW		mTimelineFormat;
 		bool			mbAllowDirectYCbCrDecoding;
+		bool			mbDisplayEnableDebugInfo;
 		bool			mbConfirmRenderAbort;
 		bool			mbEnableAVIAlignmentThreshold;
 		bool			mbPreferInternalDecoders;
@@ -128,6 +129,7 @@ public:
 			SetValue(105, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3DFX));
 			SetValue(106, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableVSync));
 			SetValue(107, mPrefs.mbDisplayAllowDirectXOverlays);
+			SetValue(108, mPrefs.mbDisplayEnableDebugInfo);
 			SetCaption(300, mPrefs.mD3DFXFile.c_str());
 			pBase->ExecuteAllLinks();
 			return true;
@@ -142,6 +144,7 @@ public:
 			if ( GetValue(105)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3DFX;
 			if ( GetValue(106)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableVSync;
 			mPrefs.mbDisplayAllowDirectXOverlays = GetValue(107) != 0;
+			mPrefs.mbDisplayEnableDebugInfo = GetValue(108) != 0;
 			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
@@ -452,6 +455,7 @@ void LoadPreferences() {
 	g_prefs2.mAVISubindexLimit = key.getInt("AVI: Subindex entry limit", 8192);
 
 	g_prefs2.mbDisplayAllowDirectXOverlays = key.getBool("Display: Allow DirectX overlays", true);
+	g_prefs2.mbDisplayEnableDebugInfo = key.getBool("Display: Enable debug info", false);
 
 	g_prefs2.mOldPrefs = g_prefs;
 
@@ -478,6 +482,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("AVI: Subindex entry limit", prefs.mAVISubindexLimit);
 
 	key.setBool("Display: Allow DirectX overlays", prefs.mbDisplayAllowDirectXOverlays);
+	key.setBool("Display: Enable debug info", g_prefs2.mbDisplayEnableDebugInfo);
 }
 
 void VDSavePreferences() {
@@ -544,4 +549,5 @@ void VDPreferencesUpdated() {
 		);
 
 	VDVideoDisplaySetD3DFXFileName(g_prefs2.mD3DFXFile.c_str());
+	VDVideoDisplaySetDebugInfoEnabled(g_prefs2.mbDisplayEnableDebugInfo);
 }

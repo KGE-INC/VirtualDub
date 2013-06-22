@@ -131,6 +131,9 @@ static const char g_szCaptureTimingUseFixedAudioLatency			[] = "Timing: Use fixe
 static const char g_szCaptureTimingAudioLatency					[] = "Timing: Fixed audio latency";
 static const char g_szCaptureTimingUseLimitedAutoAudioLatency	[] = "Timing: Use limited auto audio latency";
 static const char g_szCaptureTimingAutoAudioLatencyLimit		[] = "Timing: Auto audio latency limit";
+static const char g_szCaptureTimingUseAudioTimestamps			[] = "Timing: Use audio timestamps";
+static const char g_szCaptureTimingDisableClockForPreview		[] = "Timing: Disable clock for preview";
+static const char g_szCaptureTimingForceAudioRendererClock		[] = "Timing: Force audio renderer clock";
 
 static const char g_szFilterEnableFieldSwap			[] = "Enable field swap";
 static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish";
@@ -642,7 +645,7 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 	}
 
 	mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndDisplay);
-	mpDisplay->LockAcceleration(true);
+	mpDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelAlways);
 
 	// setup the status window
 	static const INT kStatusPartWidths[]={ 50, 100, 150, 200, 250, -1 };
@@ -696,11 +699,13 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 	SetStatusImmediate("Loading local settings....");
 	LoadLocalSettings();
 
-	if (mbInfoPanel)
-		ShowWindow(mhwndPanel, SW_SHOWNORMAL);
+	if (!mbFullScreen) {
+		if (mbInfoPanel)
+			ShowWindow(mhwndPanel, SW_SHOWNORMAL);
 
-	if (mbStatusBar)
-		ShowWindow(mhwndStatus, SW_SHOWNORMAL);
+		if (mbStatusBar)
+			ShowWindow(mhwndStatus, SW_SHOWNORMAL);
+	}
 
 	OnSize();
 
@@ -902,6 +907,8 @@ void VDCaptureProjectUI::SetFullScreen(bool fs) {
 	if (fs == mbFullScreen)
 		return;
 
+	mpDisplay->SetFullScreen(fs);
+
 	mbFullScreen = fs;
 
 	DWORD currentStyle = GetWindowLong((HWND)mhwnd, GWL_STYLE);
@@ -914,6 +921,11 @@ void VDCaptureProjectUI::SetFullScreen(bool fs) {
 			ShowWindow((HWND)mhwnd, SW_RESTORE);
 		ShowWindow((HWND)mhwnd, SW_MAXIMIZE);
 		SetMenu((HWND)mhwnd, NULL);
+
+		if (mhwndPanel)
+			ShowWindow(mhwndPanel, SW_HIDE);
+		if (mhwndStatus)
+			ShowWindow(mhwndStatus, SW_HIDE);
 	} else {
 		currentStyle &= ~WS_POPUP;
 		currentStyle |= WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
@@ -921,6 +933,11 @@ void VDCaptureProjectUI::SetFullScreen(bool fs) {
 		SetWindowPos((HWND)mhwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		ShowWindow((HWND)mhwnd, SW_RESTORE);
 		SetMenu((HWND)mhwnd, mhMenuCapture);
+
+		if (mhwndPanel && mbInfoPanel)
+			ShowWindow(mhwndPanel, SW_SHOWNORMAL);
+		if (mhwndStatus && mbStatusBar)
+			ShowWindow(mhwndStatus, SW_SHOWNORMAL);
 	}
 }
 
@@ -995,15 +1012,18 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	VDCaptureTimingSetup ts(mpProject->GetTimingSetup());
 
 	ts.mSyncMode = (VDCaptureTimingSetup::SyncMode)key.getEnumInt(g_szCaptureTimingMode, VDCaptureTimingSetup::kSyncModeCount, ts.mSyncMode);
-	ts.mbAllowEarlyDrops	= key.getBool(g_szCaptureTimingAllowEarlyDrops, ts.mbAllowEarlyDrops);
-	ts.mbAllowLateInserts	= key.getBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
-	ts.mbCorrectVideoTiming	= key.getBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
+	ts.mbAllowEarlyDrops			= key.getBool(g_szCaptureTimingAllowEarlyDrops, ts.mbAllowEarlyDrops);
+	ts.mbAllowLateInserts			= key.getBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
+	ts.mbCorrectVideoTiming			= key.getBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
 	ts.mbResyncWithIntegratedAudio	= key.getBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
-	ts.mInsertLimit			= key.getInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
-	ts.mbUseFixedAudioLatency	= key.getBool(g_szCaptureTimingUseFixedAudioLatency, ts.mbUseFixedAudioLatency);
-	ts.mAudioLatency		= key.getInt(g_szCaptureTimingAudioLatency, ts.mAudioLatency);
+	ts.mInsertLimit					= key.getInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
+	ts.mbUseFixedAudioLatency		= key.getBool(g_szCaptureTimingUseFixedAudioLatency, ts.mbUseFixedAudioLatency);
+	ts.mAudioLatency				= key.getInt(g_szCaptureTimingAudioLatency, ts.mAudioLatency);
 	ts.mbUseLimitedAutoAudioLatency	= key.getBool(g_szCaptureTimingUseLimitedAutoAudioLatency, ts.mbUseLimitedAutoAudioLatency);
-	ts.mAutoAudioLatencyLimit	= key.getInt(g_szCaptureTimingAutoAudioLatencyLimit, ts.mAutoAudioLatencyLimit);
+	ts.mAutoAudioLatencyLimit		= key.getInt(g_szCaptureTimingAutoAudioLatencyLimit, ts.mAutoAudioLatencyLimit);
+	ts.mbUseAudioTimestamps			= key.getBool(g_szCaptureTimingUseAudioTimestamps, ts.mbUseAudioTimestamps);
+	ts.mbDisableClockForPreview		= key.getBool(g_szCaptureTimingDisableClockForPreview, ts.mbDisableClockForPreview);
+	ts.mbForceAudioRendererClock	= key.getBool(g_szCaptureTimingForceAudioRendererClock, ts.mbForceAudioRendererClock);
 
 	mpProject->SetTimingSetup(ts);
 
@@ -1103,6 +1123,9 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setInt(g_szCaptureTimingAudioLatency, ts.mAudioLatency);
 	key.setBool(g_szCaptureTimingUseLimitedAutoAudioLatency, ts.mbUseLimitedAutoAudioLatency);
 	key.setInt(g_szCaptureTimingAutoAudioLatencyLimit, ts.mAutoAudioLatencyLimit);
+	key.setBool(g_szCaptureTimingUseAudioTimestamps, ts.mbUseAudioTimestamps);
+	key.setBool(g_szCaptureTimingDisableClockForPreview, ts.mbDisableClockForPreview);
+	key.setBool(g_szCaptureTimingForceAudioRendererClock, ts.mbForceAudioRendererClock);
 
 	const VDCaptureFilterSetup& fs = mpProject->GetFilterSetup();
 
@@ -1525,7 +1548,7 @@ void VDCaptureProjectUI::UpdateDisplayPos() {
 	const int yedge = GetSystemMetrics(SM_CYEDGE);
 	vdrect32 r(ComputeDisplayArea());
 
-	if (mbInfoPanel || mbStatusBar || mpVideoHistogram || mpVumeter || mpGraph) {
+	if (!mbFullScreen && (mbInfoPanel || mbStatusBar || mpVideoHistogram || mpVumeter || mpGraph)) {
 		r.left		+= xedge;
 		r.right		-= xedge;
 		r.top		+= yedge;
@@ -1553,7 +1576,7 @@ vdrect32 VDCaptureProjectUI::ComputeDisplayArea() {
 
 	GetClientRect((HWND)mhwnd, &r);
 
-	if (mbInfoPanel) {
+	if (!mbFullScreen && mbInfoPanel) {
 		RECT rPanel;
 
 		GetWindowRect(mhwndPanel, &rPanel);
@@ -1570,7 +1593,7 @@ vdrect32 VDCaptureProjectUI::ComputeDisplayArea() {
 	if (mpVideoHistogram)
 		r.bottom -= mpVideoHistogram->GetArea().height();
 
-	if (mbStatusBar) {
+	if (!mbFullScreen && mbStatusBar) {
 		RECT rStatus;
 		GetWindowRect(mhwndStatus, &rStatus);
 		r.bottom -= rStatus.bottom - rStatus.top;
@@ -2019,12 +2042,14 @@ namespace {
 		if (field2) {
 			const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
 
-			if (info.qh == 1)
-				vdptrstep(px.data, px.pitch);
+			if (px.data) {
+				if (info.qh == 1)
+					vdptrstep(px.data, px.pitch);
 
-			if (!info.auxhbits) {
-				vdptrstep(px.data2, px.pitch2);
-				vdptrstep(px.data3, px.pitch3);
+				if (!info.auxhbits) {
+					vdptrstep(px.data2, px.pitch2);
+					vdptrstep(px.data3, px.pitch3);
+				}
 			}
 		}
 
@@ -2091,11 +2116,11 @@ void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
 
 			vdrefptr<VDVideoDisplayFrame> frame;
 			vdrefptr<VDVideoDisplayFrame> frame2;
-			if (!mpDisplay->RevokeBuffer(~frame))
+			if (!mpDisplay->RevokeBuffer(true, ~frame))
 				frame = new_nothrow BufferedFrame;
 
 			if (mDisplayAccelMode == kDDP_NonInterlaced_TopFirst || mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst) {
-				if (!mpDisplay->RevokeBuffer(~frame2))
+				if (!mpDisplay->RevokeBuffer(true, ~frame2))
 					frame2 = new_nothrow BufferedFrame;
 			}
 
@@ -2465,7 +2490,7 @@ LRESULT VDCaptureProjectUI::MainWndProc(UINT msg, WPARAM wParam, LPARAM lParam) 
 			// fall through
 		case WM_LBUTTONDOWN:
 			if (mbStartOnLeft)
-				OnCommand(ID_CAPTURE_CAPTUREVIDEOINTERNAL);
+				OnCommand(ID_CAPTURE_CAPTUREVIDEO);
 			break;
 
 		case WM_HOTKEY:
@@ -2553,7 +2578,7 @@ void VDCaptureProjectUI::OnPaint() {
 
 		RECT r2={r.left,r.top,r.right,r.bottom};
 
-		if (mbInfoPanel || mbStatusBar || mpVideoHistogram || mpVumeter || mpGraph)
+		if (!mbFullScreen && (mbInfoPanel || mbStatusBar || mpVideoHistogram || mpVumeter || mpGraph))
 			DrawEdge(hdc, &r2, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
 
 		FillRect(hdc, &r2, (HBRUSH)(COLOR_3DFACE+1));
@@ -2631,16 +2656,19 @@ bool VDCaptureProjectUI::OnKeyDown(int key) {
 }
 
 void VDCaptureProjectUI::OnSize() {
-	RECT rClient, rStatus, rPanel={0,0,0,0};
+	RECT rClient, rStatus={0,0,0,0}, rPanel={0,0,0,0};
 	INT aWidth[8];
 	int nParts;
 	HDWP hdwp;
 
 	GetClientRect((HWND)mhwnd, &rClient);
-	GetWindowRect(mhwndStatus, &rStatus);
 
-	if (mbInfoPanel)
-		GetWindowRect(mhwndPanel, &rPanel);
+	if (!mbFullScreen) {
+		GetWindowRect(mhwndStatus, &rStatus);
+
+		if (mbInfoPanel)
+			GetWindowRect(mhwndPanel, &rPanel);
+	}
 
 	hdwp = BeginDeferWindowPos(2);
 
@@ -2676,10 +2704,10 @@ void VDCaptureProjectUI::OnSize() {
 
 	int y_bottom = rClient.bottom;
 
-	const int infoPanelWidth = mbInfoPanel ? rPanel.right - rPanel.left : 0;
+	const int infoPanelWidth = !mbFullScreen && mbInfoPanel ? rPanel.right - rPanel.left : 0;
 	const int statusHt = rStatus.bottom - rStatus.top;
 
-	if (mbStatusBar) {
+	if (!mbFullScreen && mbStatusBar) {
 		hdwp = guiDeferWindowPos(hdwp, mhwndStatus,
 					NULL,
 					rClient.left,
@@ -2705,7 +2733,7 @@ void VDCaptureProjectUI::OnSize() {
 		y_bottom -= vhistoHt;
 	}
 
-	if (mbInfoPanel) {
+	if (!mbFullScreen && mbInfoPanel) {
 		hdwp = guiDeferWindowPos(hdwp, mhwndPanel,
 					NULL,
 					rClient.right - (rPanel.right - rPanel.left),
@@ -2889,13 +2917,13 @@ bool VDCaptureProjectUI::OnCaptureSafeCommand(UINT id) {
 	case ID_CAPTURE_STATUSBAR:
 		mbStatusBar = !mbStatusBar;
 		OnSize();
-		ShowWindow(GetDlgItem((HWND)mhwnd, IDC_STATUS_WINDOW), mbStatusBar ? SW_SHOW : SW_HIDE);
+		ShowWindow(GetDlgItem((HWND)mhwnd, IDC_STATUS_WINDOW), !mbFullScreen && mbStatusBar ? SW_SHOW : SW_HIDE);
 		InvalidateRect((HWND)mhwnd, NULL, TRUE);
 		break;
 	case ID_CAPTURE_INFOPANEL:
 		mbInfoPanel = !mbInfoPanel;
 		OnSize();
-		ShowWindow(GetDlgItem((HWND)mhwnd, IDC_CAPTURE_PANEL), mbInfoPanel ? SW_SHOW : SW_HIDE);
+		ShowWindow(GetDlgItem((HWND)mhwnd, IDC_CAPTURE_PANEL), !mbFullScreen && mbInfoPanel ? SW_SHOW : SW_HIDE);
 		InvalidateRect((HWND)mhwnd, NULL, TRUE);
 		break;
 	case ID_CAPTURE_AUTOINCREMENT:
@@ -3434,7 +3462,7 @@ void VDCaptureProjectUI::OnUpdateVumeter() {
 }
 
 void VDCaptureProjectUI::OnUpdateStatus() {
-	if (mbInfoPanel && mhwndPanel)
+	if (!mbFullScreen &&mbInfoPanel && mhwndPanel)
 		SendMessage(mhwndPanel, WM_APP, 0, (LPARAM)&mCurStatus);
 
 	if (!mCurStatus.mFramesCaptured)
@@ -3452,27 +3480,29 @@ void VDCaptureProjectUI::OnUpdateStatus() {
 
 	char buf[1024];
 
-	if (mbInfoPanel) {
-		sprintf(buf, "%ld frames (%ld dropped), %.3fs, %ldms jitter, %ldms disp, %ld frame size, %ldK total : %.7f"
-					, mCurStatus.mFramesCaptured
-					, mCurStatus.mFramesDropped
-					, mCurStatus.mElapsedTimeMS / 1000.0
-					, jitter
-					, disp
-					, (long)(mCurStatus.mTotalVideoSize / mCurStatus.mFramesCaptured)
-					, totalSizeK
-					, mCurStatus.mVideoResamplingRate
-					);
-	} else {
-		sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d"
-					, jitter
-					, disp
-					, totalSizeK
-					, mCurStatus.mCurrentVideoSegment+1
-					);
-	}
+	if (!mbFullScreen) {
+		if (mbInfoPanel) {
+			sprintf(buf, "%ld frames (%ld dropped), %.3fs, %ldms jitter, %ldms disp, %ld frame size, %ldK total : %.7f"
+						, mCurStatus.mFramesCaptured
+						, mCurStatus.mFramesDropped
+						, mCurStatus.mElapsedTimeMS / 1000.0
+						, jitter
+						, disp
+						, (long)(mCurStatus.mTotalVideoSize / mCurStatus.mFramesCaptured)
+						, totalSizeK
+						, mCurStatus.mVideoResamplingRate
+						);
+		} else {
+			sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d"
+						, jitter
+						, disp
+						, totalSizeK
+						, mCurStatus.mCurrentVideoSegment+1
+						);
+		}
 
-	SetStatusImmediate(buf);
+		SetStatusImmediate(buf);
+	}
 
 	if (mhClockFont) {
 		int y;

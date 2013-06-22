@@ -878,6 +878,10 @@ public:
 			v = mTimingSetup.mAudioLatency;
 			SetCaption(302, VDswprintf(L"%d", 1, &v).c_str());
 
+			SetValue(104, mTimingSetup.mbUseAudioTimestamps);
+			SetValue(105, mTimingSetup.mbDisableClockForPreview);
+			SetValue(106, mTimingSetup.mbForceAudioRendererClock);
+
 			pBase->ExecuteAllLinks();
 		} else if (type == kEventSelect) {
 			if (id == 10) {
@@ -887,6 +891,9 @@ public:
 				mTimingSetup.mbCorrectVideoTiming = GetValue(102) != 0;
 				mTimingSetup.mbResyncWithIntegratedAudio = !GetValue(103);
 				mTimingSetup.mbUseFixedAudioLatency = GetValue(210) != 0;
+				mTimingSetup.mbUseAudioTimestamps = GetValue(104) != 0;
+				mTimingSetup.mbDisableClockForPreview = GetValue(105) != 0;
+				mTimingSetup.mbForceAudioRendererClock = GetValue(106) != 0;
 
 				VDStringW s(GetCaption(300));
 

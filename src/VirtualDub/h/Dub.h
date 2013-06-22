@@ -36,6 +36,7 @@ class AVIOutput;
 class DubSource;
 class AudioSource;
 class IVDVideoSource;
+class IVDVideoDisplay;
 class FrameSubset;
 class InputFile;
 class IDubStatusHandler;
@@ -84,7 +85,9 @@ public:
 		M_FULL		= 3,
 	};
 	enum {
-		FR_SAMELENGTH = -1
+		// (0,0) = no change
+		// (1,0) = adjust frame rate so audio and video streams match
+		kFrameRateAdjustSameLength = 1
 	};
 
 	int		mInputFormat;
@@ -96,7 +99,9 @@ public:
 	bool	fSyncToAudio;
 	int		frameRateDecimation;
 	uint32	frameRateTargetHi, frameRateTargetLo;
-	long	frameRateNewMicroSecs;
+
+	uint32	mFrameRateAdjustHi;
+	uint32	mFrameRateAdjustLo;
 
 	long	lStartOffsetMS;
 	long	lEndOffsetMS;

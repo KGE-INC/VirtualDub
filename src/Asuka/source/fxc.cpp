@@ -42,6 +42,8 @@ namespace
 		"vd_temp2texture",
 		"vd_cubictexture",
 		"vd_hevenoddtexture",
+		"vd_interphtexture",
+		"vd_interpvtexture"
 	};
 
 	static const char *const kParameterNames[]={
@@ -59,6 +61,8 @@ namespace
 		"vd_t2vpcorrect",
 		"vd_t2vpcorrect2",
 		"vd_time",
+		"vd_interphtexsize",
+		"vd_interpvtexsize",
 	};
 }
 
@@ -574,6 +578,7 @@ namespace {
 		int mRenderTarget;
 		uint8 mViewportW;
 		uint8 mViewportH;
+		uint8 mBumpEnvScale;
 		bool mbClipPosition;
 		bool mbRTDoClear;
 		uint32 mRTClearColor;
@@ -652,7 +657,7 @@ namespace {
 param_found:
 						break;
 					case D3DXRS_SAMPLER:
-						{
+						if (!strncmp(desc.Name, "vd_", 3)) {
 							for(int index=0; index<sizeof(kTextureNames)/sizeof(kTextureNames[0]); ++index) {
 								if (!strcmp(kTextureNames[index], desc.Name)) {
 									UINT samplerIndex = pConstants->GetSamplerIndex(hConstant);
@@ -690,6 +695,8 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 	vdrefptr<DummyD3DBaseTexture> pTemp2Texture(new DummyD3DBaseTexture(pDevice, 5));
 	vdrefptr<DummyD3DBaseTexture> pCubicTexture(new DummyD3DBaseTexture(pDevice, 6));
 	vdrefptr<DummyD3DBaseTexture> pHEvenOddTexture(new DummyD3DBaseTexture(pDevice, 7));
+	vdrefptr<DummyD3DBaseTexture> pInterpHTexture(new DummyD3DBaseTexture(pDevice, 8));
+	vdrefptr<DummyD3DBaseTexture> pInterpVTexture(new DummyD3DBaseTexture(pDevice, 9));
 
 	vdrefptr<ID3DXEffect> pEffect;
 	vdrefptr<ID3DXBuffer> pErrors;
@@ -736,6 +743,8 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 	pEffect->SetTexture("vd_temp2texture", pTemp2Texture);
 	pEffect->SetTexture("vd_cubictexture", pCubicTexture);
 	pEffect->SetTexture("vd_hevenoddtexture", pHEvenOddTexture);
+	pEffect->SetTexture("vd_interphtexture", pInterpHTexture);
+	pEffect->SetTexture("vd_interpvtexture", pInterpVTexture);
 
 	FILE *f = fopen(args[1], "w");
 	if (!f) {
@@ -754,6 +763,7 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 	fprintf(f, "\tint mRenderTarget;\n");
 	fprintf(f, "\tuint8 mViewportW;\n");
 	fprintf(f, "\tuint8 mViewportH;\n");
+	fprintf(f, "\tuint8 mBumpEnvScale;\n");
 	fprintf(f, "\tbool mbClipPosition;\n");
 	fprintf(f, "\tbool mbRTDoClear;\n");
 	fprintf(f, "\tuint32 mRTClearColor;\n");
@@ -994,6 +1004,25 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 				}
 			}
 
+			pi.mBumpEnvScale = 0;
+			D3DXHANDLE hBESAnno = pEffect->GetAnnotationByName(hPass, "vd_bumpenvscale");
+			if (hBESAnno) {
+				LPCSTR s;
+				if (SUCCEEDED(pEffect->GetString(hBESAnno, &s))) {
+					for(int i=0; i<sizeof(kParameterNames)/sizeof(kParameterNames[0]); ++i) {
+						if (!strcmp(s, kParameterNames[i])) {
+							pi.mBumpEnvScale = i+1;
+							break;
+						}
+					}
+
+					if (!pi.mBumpEnvScale) {
+						printf("Error: Unknown source for bump-map environment matrix scale: %s\n", s);
+						exit(10);
+					}
+				}
+			}
+
 			mPasses.push_back(pi);
 
 			pEffect->EndPass();
@@ -1005,7 +1034,7 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 		fprintf(f, "static const PassInfo g_technique_%s_passes[]={\n", techDesc.Name);
 		for(int i=0; i<(int)passCount; ++i) {
 			const PassInfo& pi = mPasses[i];
-			fprintf(f, "\t{ %d, %d, %d, %d, %d, %d, %d, %s, %s, 0x%08x },\n"
+			fprintf(f, "\t{ %d, %d, %d, %d, %d, %d, %d, %d, %s, %s, 0x%08x },\n"
 				, pi.mVertexShaderIndex
 				, pi.mPixelShaderIndex
 				, pi.mStateStart
@@ -1013,6 +1042,7 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 				, pi.mRenderTarget
 				, pi.mViewportW
 				, pi.mViewportH
+				, pi.mBumpEnvScale
 				, pi.mbClipPosition ? "true" : "false"
 				, pi.mbRTDoClear ? "true" : "false"
 				, pi.mRTClearColor);

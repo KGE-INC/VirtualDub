@@ -18,10 +18,14 @@
 #ifndef f_VIRTUALDUB_SCRIPT_H
 #define f_VIRTUALDUB_SCRIPT_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 bool InitScriptSystem();
 void DeinitScriptSystem();
 void RunScript(const wchar_t *name, void *hwnd=0);
-void RunScriptMemory(char *mem);
+void RunScriptMemory(char *mem, bool stopAtReloadMarker = false);
 
 void memunbase64(char *t, const char *s);
 void membase64(char *t, const char *s, long l);

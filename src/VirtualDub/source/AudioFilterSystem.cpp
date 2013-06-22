@@ -7,6 +7,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/VDScheduler.h>
 #include <vd2/system/Error.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/VDRingBuffer.h>
 #include <vd2/system/fraction.h>
 #include <vd2/plugin/vdplugin.h>

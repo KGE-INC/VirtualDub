@@ -22,6 +22,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/log.h>
 #include <vd2/system/math.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Riza/videocodec.h>

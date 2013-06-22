@@ -51,6 +51,7 @@ namespace nsVDD3D9 {
 		inline void SetFF2(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_, float v1_) {
 			x = x_;
 			y = y_;
+			z = 0;
 			diffuse = c_;
 			u0 = u0_;
 			v0 = v0_;
@@ -88,24 +89,46 @@ public:
 class VDD3DPresentHistory {
 public:
 	bool mbPresentPending;
-	bool mbPresentLoopStarted;
 	bool mbPresentBlitStarted;
 	float mPresentDelay;
 	float mVBlankSuccess;
 	uint64	mPresentStartTime;
 
+	double	mAveragePresentTime;
+	double	mAverageStartScanline;
+	double	mAverageEndScanline;
+	uint32	mPollCount;
+	uint32	mLastBracketY1;
+	uint32	mLastBracketY2;
+
 	float	mScanlineTarget;
 	sint32	mLastScanline;
+	bool	mbLastWasVBlank;
 
-	sint32 mFirstScanline;
-	uint32	mMaxScanline;
 	sint32	mScanTop;
 	sint32	mScanBottom;
 
 	float mSuccessProb[17];
 	float mAttemptProb[17];
 
-	VDD3DPresentHistory() : mPresentDelay(0.f), mVBlankSuccess(1.0f), mbPresentPending(false), mScanlineTarget(0) {
+	VDD3DPresentHistory()
+		: mbPresentPending(false)
+		, mbPresentBlitStarted(false)
+		, mPresentDelay(0.f)
+		, mVBlankSuccess(1.0f)
+		, mPresentStartTime(0)
+		, mAveragePresentTime(0)
+		, mAverageStartScanline(0)
+		, mAverageEndScanline(0)
+		, mPollCount(0)
+		, mLastBracketY1(0)
+		, mLastBracketY2(0)
+		, mScanlineTarget(0)
+		, mLastScanline(0)
+		, mbLastWasVBlank(false)
+		, mScanTop(0)
+		, mScanBottom(0)
+	{
 		memset(&mSuccessProb, 0, sizeof mSuccessProb);
 		memset(&mAttemptProb, 0, sizeof mAttemptProb);
 	}
@@ -134,6 +157,9 @@ public:
 	int			GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
 	int			GetMainRTHeight() const { return mPresentParms.BackBufferHeight; }
 
+	void		AdjustFullScreen(bool fs);
+	bool		IsFullScreen() const { return mFullScreenCount != 0; }
+
 	bool		Reset();
 	bool		CheckDevice();
 
@@ -149,12 +175,18 @@ public:
 	void		UnlockIndices();
 	bool		BeginScene();
 	bool		EndScene();
+
 	void		Flush();
 	void		Finish();
+
+	uint32		InsertFence();
+	void		WaitFence(uint32 id);
+	bool		IsFencePassed(uint32 id);
+
 	HRESULT		DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount);
 	HRESULT		DrawElements(D3DPRIMITIVETYPE type, UINT vertStart, UINT vertCount, UINT idxStart, UINT primCount);
 	HRESULT		Present(const RECT *srcRect, HWND hwndDest, bool vsync, float& syncDelta, VDD3DPresentHistory& history);
-	HRESULT		PresentFullScreen();
+	HRESULT		PresentFullScreen(bool wait);
 
 	bool		Is3DCardLame();
 
@@ -176,8 +208,9 @@ protected:
 	void ShutdownVRAMResources();
 	void Shutdown();
 
-	bool InitEffect();
-	void ShutdownEffect();
+	void UpdateCachedDisplayMode();
+
+	static LRESULT CALLBACK StaticDeviceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 	HMODULE				mhmodDX9;
 	IDirect3D9			*mpD3D;
@@ -192,6 +225,12 @@ protected:
 
 	bool				mbDeviceValid;
 	bool				mbInScene;
+	bool				mbSupportsEventQueries;
+
+	int					mFullScreenCount;
+
+	uint32				mLastPresentTime;
+	uint32				mLastPresentScanLine;
 
 	IDirect3DVertexDeclaration9	*mpD3DVD;
 	IDirect3DVertexBuffer9	*mpD3DVB;
@@ -208,12 +247,19 @@ protected:
 	D3DPRESENT_PARAMETERS	mPresentParms;
 	D3DDISPLAYMODE			mDisplayMode;
 
-	int					mRefCount;
+	int						mRefCount;
 
 	vdlist<VDD3D9Client>	mClients;
 
 	typedef vdlist<VDD3D9Texture> SharedTextures;
 	vdlist<VDD3D9Texture>	mSharedTextures;
+
+	typedef vdfastvector<IDirect3DQuery9 *> FenceQueue;
+
+	FenceQueue		mFenceQueue;
+	FenceQueue		mFenceFreeList;
+	uint32			mFenceQueueBase;
+	uint32			mFenceQueueHeadIndex;
 };
 
 VDD3D9Manager *VDInitDirect3D9(VDD3D9Client *pClient);

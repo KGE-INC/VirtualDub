@@ -687,6 +687,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\displayddraw.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\displaydrv.cpp"
 				>
 				<FileConfiguration
@@ -765,6 +769,18 @@
 						PreprocessorDefinitions=""
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\source\displaygdi.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\displaygl.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\displaymgr.cpp"
+				>
 			</File>
 			<File
 				RelativePath=".\source\opengl.cpp"
@@ -900,47 +916,7 @@
 			Filter="h;hpp;hxx;hm;inl"
 			>
 			<File
-				RelativePath="..\h\vd2\Riza\audioformat.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\audioout.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\bitmap.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capaudiocomp.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capdriver.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capdrivers.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\caplog.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capreplay.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\capresync.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\direct3d.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\display.h"
+				RelativePath=".\h\d3dxfx.h"
 				>
 			</File>
 			<File
@@ -952,15 +928,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\h\vd2\Riza\opengl.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\videocodec.h"
-				>
-			</File>
-			<File
-				RelativePath="..\h\vd2\Riza\w32audiocodec.h"
+				RelativePath=".\h\displaymgr.h"
 				>
 			</File>
 		</Filter>
@@ -1165,6 +1133,70 @@
 			</File>
 			<File
 				RelativePath=".\h\displaydx9_shader.inl"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="Interface Files"
+			>
+			<File
+				RelativePath="..\h\vd2\Riza\audioformat.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\audioout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\bitmap.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\cap_dshow.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\capaudiocomp.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\capdriver.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\capdrivers.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\caplog.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\capreplay.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\capresync.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\direct3d.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\display.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\opengl.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\videocodec.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Riza\w32audiocodec.h"
 				>
 			</File>
 		</Filter>

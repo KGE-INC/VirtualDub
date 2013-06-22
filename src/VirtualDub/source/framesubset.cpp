@@ -19,6 +19,7 @@
 
 #include "FrameSubset.h"
 #include <vd2/system/error.h>
+#include <vd2/system/fraction.h>
 
 FrameSubset::FrameSubset() {
 	invalidateCache();
@@ -489,6 +490,26 @@ void FrameSubset::dump() {
 		VDDEBUG("   start: %6I64d   len:%4I64d   bMask:%d\n", it->start, it->len, it->bMask);
 	}
 #endif
+}
+
+void FrameSubset::rescale(const VDFraction& oldRate, sint64 oldLength, const VDFraction& newRate, sint64 newLength) {
+	double rateFactor = (double)newRate / (double)oldRate;
+
+	tTimeline tmp;
+	mTimeline.swap(tmp);
+
+	for(tTimeline::const_iterator it(tmp.begin()), itEnd(tmp.end()); it!=itEnd; ++it) {
+		const FrameSubsetNode& fsn = *it;
+
+		sint64 start = fsn.start;
+		sint64 len = fsn.len;
+
+		sint64 newStart = VDCeilToInt64((double)start * rateFactor - 0.5);
+		sint64 newLen = VDCeilToInt64((double)(start + len) * rateFactor - 0.5) - newStart;
+
+		if (newLen)
+			addRange(newStart, newLen, fsn.bMask, fsn.source);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////

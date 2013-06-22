@@ -40,6 +40,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/VDRingBuffer.h>
 #include <vd2/system/profile.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Kasumi/pixmap.h>
@@ -146,7 +147,7 @@ DubOptions g_dubOpts = {
 		true,						// sync to audio
 		1,							// no frame rate decimation
 		0,0,						// no target
-		0,							// no change in frame rate
+		0,0,						// no change in frame rate
 		0,							// start offset: 0ms
 		0,							// end offset: 0ms
 		false,						// No inverse telecine
@@ -505,12 +506,13 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 
 		VDFraction framerate(pVideoStream->getRate());
 
-		if (opt->video.frameRateNewMicroSecs == DubVideoOptions::FR_SAMELENGTH) {
-			if (audio && audio->getLength()) {
-				framerate = VDFraction::reduce64(pVideoStream->getLength() * (sint64)1000, audio->samplesToMs(audio->getLength()));
+		if (opt->video.mFrameRateAdjustLo == 0) {
+			if (opt->video.mFrameRateAdjustHi == DubVideoOptions::kFrameRateAdjustSameLength) {
+				if (audio && audio->getLength())
+					framerate = VDFraction::reduce64(pVideoStream->getLength() * (sint64)1000, audio->samplesToMs(audio->getLength()));
 			}
-		} else if (opt->video.frameRateNewMicroSecs)
-			framerate = VDFraction(1000000, opt->video.frameRateNewMicroSecs);
+		} else
+			framerate = VDFraction(opt->video.mFrameRateAdjustHi, opt->video.mFrameRateAdjustLo);
 
 		// are we supposed to offset the video?
 
@@ -599,7 +601,7 @@ void Dubber::InitAudioConversionChain() {
 		} else {
 			// First, create a source.
 
-			if (!(audioStream = new_nothrow AudioStreamSource(asrc, aInfo.start_src, asrc->getEnd() - aInfo.start_src, opt->audio.mode > DubAudioOptions::M_NONE, aInfo.start_us)))
+			if (!(audioStream = new_nothrow AudioStreamSource(asrc, asrc->getEnd() - aInfo.start_src, opt->audio.mode > DubAudioOptions::M_NONE, aInfo.start_us)))
 				throw MyMemoryError();
 
 			mAudioStreams.push_back(audioStream);

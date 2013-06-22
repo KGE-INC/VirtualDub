@@ -180,10 +180,21 @@ static long sharpen_param(FilterActivation *fa, const FilterFunctions *ff) {
 	return FILTERPARAM_SWAP_BUFFERS;
 }
 
+static void sharpen_update(long value, void *pThis) {
+	ConvoluteFilterData *cfd = (ConvoluteFilterData *)pThis;
+	for(int i=0; i<9; i++)
+		if (i==4) cfd->m[4] = 256+8*value; else cfd->m[i]=-value;
+	cfd->bias = -value*4;
+}
+
+static int sharpen_init(FilterActivation *fa, const FilterFunctions *ff) {
+	sharpen_update(16, fa->filter_data);
+	return 0;
+}
+
 static int sharpen_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
 	ConvoluteFilterData *cfd;
 	LONG lv;
-	int i;
 
 	if (!fa->filter_data) {
 		if (!(fa->filter_data = (void *)new ConvoluteFilterData)) return 0;
@@ -192,22 +203,9 @@ static int sharpen_config(FilterActivation *fa, const FilterFunctions *ff, HWND 
 	}
 	cfd = (ConvoluteFilterData *)fa->filter_data;
 
-	struct local {
-		static void Update(long value, void *pThis) {
-			ConvoluteFilterData *cfd = (ConvoluteFilterData *)pThis;
-			for(int i=0; i<9; i++)
-				if (i==4) cfd->m[4] = 256+8*value; else cfd->m[i]=-value;
-			cfd->bias = -value*4;
-		}
-	};
+	lv = FilterGetSingleValue(hWnd, -cfd->m[0], 0, 64, "sharpen", fa->ifp, sharpen_update, cfd);
 
-	lv = FilterGetSingleValue(hWnd, -cfd->m[0], 0, 64, "sharpen", fa->ifp, local::Update, cfd);
-
-	for(i=0; i<9; i++)
-		if (i==4) cfd->m[4] = 256+8*lv; else cfd->m[i]=-lv;
-
-	cfd->bias = -lv*4;
-
+	sharpen_update(lv, fa->filter_data);
 	return 0;
 }
 
@@ -252,7 +250,8 @@ FilterDefinition filterDef_sharpen={
 	"Enhances contrast between adjacent elements in an image.\n\n[Assembly optimized] [MMX optimized]",
 	NULL,NULL,
 	sizeof(ConvoluteFilterData),
-	NULL,NULL,
+	sharpen_init,
+	NULL,
 	sharpen_run,
 	sharpen_param,
 	sharpen_config,

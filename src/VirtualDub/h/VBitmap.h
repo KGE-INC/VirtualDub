@@ -155,6 +155,7 @@ struct VDPixmap;
 
 VDPixmap VDAsPixmap(const VBitmap& bm);
 VDPixmap VDAsPixmap565(const VBitmap& bm);
+VBitmap VDFromPixmap(const VDPixmap& px);
 #endif
 
 #endif

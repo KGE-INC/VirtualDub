@@ -56,6 +56,9 @@ public:
 	bool Init(VDD3D9Manager *pManager, IVDD3D9TextureGenerator *pGenerator);
 	void Shutdown();
 
+	bool InitVRAMResources();
+	void ShutdownVRAMResources();
+
 	const char *GetName() const { return mName.data(); }
 	void SetName(const char *name) { mName.assign(name, name+strlen(name)+1); }
 
@@ -69,17 +72,21 @@ protected:
 	vdfastvector<char> mName;
 	IDirect3DTexture9 *mpD3DTexture;
 	IVDD3D9TextureGenerator *mpGenerator;
+	VDD3D9Manager *mpManager;
 	int mWidth;
 	int mHeight;
 	int mRefCount;
+	bool mbVRAMTexture;
 };
 
 VDD3D9Texture::VDD3D9Texture()
 	: mpD3DTexture(NULL)
 	, mpGenerator(NULL)
+	, mpManager(NULL)
 	, mWidth(0)
 	, mHeight(0)
 	, mRefCount(0)
+	, mbVRAMTexture(false)
 {
 	mListNodeNext = mListNodePrev = this;
 }
@@ -109,6 +116,7 @@ bool VDD3D9Texture::Init(VDD3D9Manager *pManager, IVDD3D9TextureGenerator *pGene
 	if (pGenerator)
 		pGenerator->AddRef();
 	mpGenerator = pGenerator;
+	mpManager = pManager;
 
 	if (mpGenerator) {
 		if (!mpGenerator->GenerateTexture(pManager, this))
@@ -119,6 +127,8 @@ bool VDD3D9Texture::Init(VDD3D9Manager *pManager, IVDD3D9TextureGenerator *pGene
 }
 
 void VDD3D9Texture::Shutdown() {
+	mpManager = NULL;
+
 	if (mpGenerator) {
 		mpGenerator->Release();
 		mpGenerator = NULL;
@@ -127,6 +137,22 @@ void VDD3D9Texture::Shutdown() {
 	if (mpD3DTexture) {
 		mpD3DTexture->Release();
 		mpD3DTexture = NULL;
+	}
+}
+
+bool VDD3D9Texture::InitVRAMResources() {
+	if (mbVRAMTexture && !mpD3DTexture && mpGenerator)
+		return mpGenerator->GenerateTexture(mpManager, this);
+
+	return true;
+}
+
+void VDD3D9Texture::ShutdownVRAMResources() {
+	if (mbVRAMTexture) {
+		if (mpD3DTexture) {
+			mpD3DTexture->Release();
+			mpD3DTexture = NULL;
+		}
 	}
 }
 
@@ -150,10 +176,13 @@ void VDD3D9Texture::SetD3DTexture(IDirect3DTexture9 *pTexture) {
 		if (SUCCEEDED(hr)) {
 			mWidth = desc.Width;
 			mHeight = desc.Height;
+			mbVRAMTexture = (desc.Pool == D3DPOOL_DEFAULT);
 		} else {
 			mWidth = 1;
 			mHeight = 1;
+			mbVRAMTexture = true;
 		}
+
 	}
 	mpD3DTexture = pTexture;
 }
@@ -246,12 +275,15 @@ VDD3D9Manager::VDD3D9Manager()
 	, mhwndDevice(NULL)
 	, mbDeviceValid(false)
 	, mbInScene(false)
+	, mFullScreenCount(0)
 	, mpD3DVB(NULL)
 	, mpD3DIB(NULL)
 	, mpD3DQuery(NULL)
 	, mpD3DVD(NULL)
 	, mpImplicitSwapChain(NULL)
 	, mRefCount(0)
+	, mFenceQueueBase(0)
+	, mFenceQueueHeadIndex(0)
 {
 }
 
@@ -264,6 +296,7 @@ VDD3D9Manager::~VDD3D9Manager() {
 bool VDD3D9Manager::Attach(VDD3D9Client *pClient) {
 	bool bSuccess = false;
 
+	VDASSERT(mClients.find(pClient) == mClients.end());
 	mClients.push_back(pClient);
 
 	if (++mRefCount == 1)
@@ -282,6 +315,7 @@ bool VDD3D9Manager::Attach(VDD3D9Client *pClient) {
 bool VDD3D9Manager::Detach(VDD3D9Client *pClient) {
 	VDASSERT(mRefCount > 0);
 
+	VDASSERT(mClients.find(pClient) != mClients.end());
 	mClients.erase(mClients.fast_find(pClient));
 
 	if (!--mRefCount) {
@@ -304,7 +338,7 @@ bool VDD3D9Manager::Init() {
 		wc.hCursor			= NULL;
 		wc.hIcon			= NULL;
 		wc.hInstance		= hInst;
-		wc.lpfnWndProc		= DefWindowProc;
+		wc.lpfnWndProc		= StaticDeviceWndProc;
 		wc.lpszClassName	= "RizaD3DDeviceWindow";
 		wc.lpszMenuName		= NULL;
 		wc.style			= 0;
@@ -362,13 +396,9 @@ bool VDD3D9Manager::Init() {
 		D3DADAPTER_IDENTIFIER9 ident;
 
 		if (SUCCEEDED(mpD3D->GetAdapterIdentifier(n, 0, &ident))) {
-			if (!strcmp(ident.Description, "NVIDIA NVPerfHUD")) {
+			if (strstr(ident.Description, "PerfHUD")) {
 				adapter = n;
 				type = D3DDEVTYPE_REF;
-
-				// trim the size a bit so we can see the controls
-				mPresentParms.BackBufferWidth -= 256;
-				mPresentParms.BackBufferHeight -= 192;
 				break;
 			}
 		}
@@ -403,11 +433,11 @@ bool VDD3D9Manager::Init() {
 	}
 
 	// Make sure we have at least X8R8G8B8 or A8R8G8B8 for a backbuffer format
-	mPresentParms.BackBufferFormat	= D3DFMT_X8R8G8B8;
-	hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, D3DFMT_X8R8G8B8);
+	mPresentParms.BackBufferFormat	= D3DFMT_A8R8G8B8;
+	hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, D3DFMT_A8R8G8B8);
 	if (FAILED(hr)) {
 		mPresentParms.BackBufferFormat	= D3DFMT_A8R8G8B8;
-		hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, D3DFMT_A8R8G8B8);
+		hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, D3DFMT_X8R8G8B8);
 
 		if (FAILED(hr)) {
 			VDDEBUG_D3D("VideoDisplay/DX9: Device does not support X8R8G8B8 or A8R8G8B8 render targets.\n");
@@ -516,9 +546,11 @@ bool VDD3D9Manager::InitVRAMResources() {
 	}
 
 	// create flush event
+	mbSupportsEventQueries = false;
 	if (!mpD3DQuery) {
 		hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, NULL);
 		if (SUCCEEDED(hr)) {
+			mbSupportsEventQueries = true;
 			hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, &mpD3DQuery);
 		}
 	}
@@ -542,14 +574,47 @@ bool VDD3D9Manager::InitVRAMResources() {
 		mpImplicitSwapChain->AddRef();
 	}
 
+	SharedTextures::iterator it(mSharedTextures.begin()), itEnd(mSharedTextures.end());
+	for(; it!=itEnd; ++it) {
+		VDD3D9Texture& texture = **it;
+
+		texture.InitVRAMResources();
+	}
+
 	return true;
 }
 
 void VDD3D9Manager::ShutdownVRAMResources() {
+	SharedTextures::iterator it(mSharedTextures.begin()), itEnd(mSharedTextures.end());
+	for(; it!=itEnd; ++it) {
+		VDD3D9Texture& texture = **it;
+
+		texture.ShutdownVRAMResources();
+	}
+
 	if (mpImplicitSwapChain) {
 		mpImplicitSwapChain->Release();
 		mpImplicitSwapChain = NULL;
 	}
+
+	mFenceQueueBase += mFenceQueue.size();
+	mFenceQueueHeadIndex = 0;
+
+	while(!mFenceQueue.empty()) {
+		IDirect3DQuery9 *pQuery = mFenceQueue.back();
+		mFenceQueue.pop_back();
+
+		if (pQuery)
+			pQuery->Release();
+	}
+
+	while(!mFenceFreeList.empty()) {
+		IDirect3DQuery9 *pQuery = mFenceFreeList.back();
+		mFenceFreeList.pop_back();
+
+		pQuery->Release();
+	}
+
 	if (mpD3DQuery) {
 		mpD3DQuery->Release();
 		mpD3DQuery = NULL;
@@ -575,6 +640,12 @@ void VDD3D9Manager::Shutdown() {
 	mbDeviceValid = false;
 
 	ShutdownVRAMResources();
+
+	for(vdlist<VDD3D9Client>::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
+		VDD3D9Client& client = **it;
+
+		client.OnPreDeviceReset();
+	}
 
 	while(!mSharedTextures.empty()) {
 		VDD3D9Texture *pTexture = mSharedTextures.back();
@@ -610,7 +681,81 @@ void VDD3D9Manager::Shutdown() {
 	}
 }
 
+void VDD3D9Manager::AdjustFullScreen(bool fs) {
+	if (fs) {
+		++mFullScreenCount;
+	} else {
+		--mFullScreenCount;
+		VDASSERT(mFullScreenCount >= 0);
+	}
+
+	bool newState = mFullScreenCount != 0;
+
+	if ((!mPresentParms.Windowed) != newState) {
+		D3DDISPLAYMODE dm;
+		mpD3DDevice->GetDisplayMode(0, &dm);
+		if (newState) {
+			UINT count = mpD3D->GetAdapterModeCount(mAdapter, D3DFMT_X8R8G8B8);
+
+			D3DDISPLAYMODE dm2;
+			D3DDISPLAYMODE dmbest={0};
+			int bestindex = -1;
+			
+			for(UINT mode=0; mode<count; ++mode) {
+				HRESULT hr = mpD3D->EnumAdapterModes(mAdapter, D3DFMT_X8R8G8B8, mode, &dm2);
+				if (FAILED(hr))
+					break;
+
+
+				if (dmbest.Width == 0 || abs((int)dm2.Width - (int)dm.Width) + abs((int)dm2.Height - (int)dm.Height) < abs((int)dmbest.Width - (int)dm.Width) + abs((int)dmbest.Height - (int)dm.Height)) {
+					dmbest = dm2;
+					bestindex = (int)mode;
+				}
+			}
+
+			if (bestindex < 0) {
+				mPresentParms.BackBufferWidth = dm.Width;
+				mPresentParms.BackBufferHeight = dm.Height;
+				mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
+			} else {
+				mPresentParms.BackBufferWidth = dmbest.Width;
+				mPresentParms.BackBufferHeight = dmbest.Height;
+				mPresentParms.BackBufferFormat = D3DFMT_X8R8G8B8;
+			}
+		} else {
+			mPresentParms.BackBufferWidth = dm.Width;
+			mPresentParms.BackBufferHeight = dm.Height;
+			mPresentParms.BackBufferFormat = D3DFMT_UNKNOWN;
+		}
+
+		mPresentParms.Windowed = !newState;
+		mPresentParms.SwapEffect = newState ? D3DSWAPEFFECT_DISCARD : D3DSWAPEFFECT_COPY;
+		mPresentParms.BackBufferCount = newState ? 1 : 1;
+		mPresentParms.PresentationInterval = newState ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
+		mPresentParms.FullScreen_RefreshRateInHz = newState ? 60 : 0;
+
+		Reset();
+	}
+}
+
 bool VDD3D9Manager::Reset() {
+	if (!mPresentParms.Windowed) {
+		HRESULT hr = mpD3DDevice->TestCooperativeLevel();
+		if (FAILED(hr))
+			return false;
+
+		// Do not reset the device if we do not have focus!
+		HWND hwndFore = GetForegroundWindow();
+		if (!hwndFore)
+			return false;
+
+		DWORD pid;
+		DWORD tid = GetWindowThreadProcessId(hwndFore, &pid);
+
+		if (GetCurrentProcessId() != pid)
+			return false;
+	}
+
 	for(vdlist<VDD3D9Client>::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
 		VDD3D9Client& client = **it;
 
@@ -663,6 +808,13 @@ void VDD3D9Manager::AdjustTextureSize(int& texw, int& texh) {
 	// use original texture size if device has no restrictions
 	if (!(mDevCaps.TextureCaps & (D3DPTEXTURECAPS_NONPOW2CONDITIONAL | D3DPTEXTURECAPS_POW2)))
 		return;
+
+	// enforce size limits
+	if ((unsigned)texw > mDevCaps.MaxTextureWidth)
+		texw = mDevCaps.MaxTextureWidth;
+
+	if ((unsigned)texh > mDevCaps.MaxTextureHeight)
+		texh = mDevCaps.MaxTextureHeight;
 
 	// make power of two
 	texw += texw - 1;
@@ -817,6 +969,77 @@ void VDD3D9Manager::Finish() {
 	}
 }
 
+uint32 VDD3D9Manager::InsertFence() {
+	IDirect3DQuery9 *pQuery = NULL;
+	if (mFenceFreeList.empty()) {
+		HRESULT hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, &pQuery);
+		if (FAILED(hr)) {
+			VDASSERT(!"Unable to create D3D query.");
+			pQuery = NULL;
+		}
+	} else {
+		pQuery = mFenceFreeList.back();
+		mFenceFreeList.pop_back();
+	}
+
+	uint32 id = (mFenceQueueBase + (uint32)mFenceQueue.size()) | 0x80000000;
+	mFenceQueue.push_back(pQuery);
+
+	if (pQuery) {
+		HRESULT hr = pQuery->Issue(D3DISSUE_END);
+		if (SUCCEEDED(hr))
+			pQuery->GetData(NULL, 0, D3DGETDATA_FLUSH);
+	}
+
+	return id;
+}
+
+void VDD3D9Manager::WaitFence(uint32 id) {
+	while(!IsFencePassed(id))
+		::Sleep(1);
+}
+
+bool VDD3D9Manager::IsFencePassed(uint32 id) {
+	if (!id)
+		return true;
+
+	uint32 offset = (id - mFenceQueueBase) & 0x7fffffff;
+
+	uint32 fenceQueueSize = (uint32)mFenceQueue.size();
+	if (offset >= fenceQueueSize)
+		return true;
+
+	IDirect3DQuery9 *pQuery = mFenceQueue[offset];
+	if (pQuery) {
+		if (S_FALSE == pQuery->GetData(NULL, 0, D3DGETDATA_FLUSH))
+			return false;
+
+		mFenceFreeList.push_back(pQuery);
+		mFenceQueue[offset] = NULL;
+	}
+
+	while(mFenceQueueHeadIndex < fenceQueueSize) {
+		IDirect3DQuery9 *pQuery = mFenceQueue[mFenceQueueHeadIndex];
+		if (pQuery) {
+			if (S_FALSE == pQuery->GetData(NULL, 0, 0))
+				break;
+
+			mFenceFreeList.push_back(pQuery);
+			mFenceQueue[mFenceQueueHeadIndex] = NULL;
+		}
+
+		++mFenceQueueHeadIndex;
+	}
+
+	if (mFenceQueueHeadIndex >= 64 && mFenceQueueHeadIndex+mFenceQueueHeadIndex >= fenceQueueSize) {
+		mFenceQueueBase += mFenceQueueHeadIndex;
+		mFenceQueue.erase(mFenceQueue.begin(), mFenceQueue.begin() + mFenceQueueHeadIndex);
+		mFenceQueueHeadIndex = 0;
+	}
+
+	return true;
+}
+
 HRESULT VDD3D9Manager::DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount) {
 	HRESULT hr = mpD3DDevice->DrawPrimitive(type, mVertexBufferPt - mVertexBufferLockSize + vertStart, primCount);
 
@@ -950,7 +1173,7 @@ HRESULT VDD3D9Manager::Present(const RECT *src, HWND hwndDest, bool vsync, float
 	return hr;
 }
 
-HRESULT VDD3D9Manager::PresentFullScreen() {
+HRESULT VDD3D9Manager::PresentFullScreen(bool wait) {
 	if (mPresentParms.Windowed)
 		return S_OK;
 
@@ -959,14 +1182,27 @@ HRESULT VDD3D9Manager::PresentFullScreen() {
 	hr = mpD3DDevice->GetSwapChain(0, &pSwapChain);
 	if (FAILED(hr))
 		return hr;
-	
+
 	for(;;) {
 		hr = pSwapChain->Present(NULL, NULL, NULL, NULL, D3DPRESENT_DONOTWAIT);
 
 		if (SUCCEEDED(hr) || hr != D3DERR_WASSTILLDRAWING)
 			break;
 
+		if (!wait)
+			return S_FALSE;
+
 		::Sleep(1);
+	}
+
+	// record raster status and time of this present
+	mLastPresentTime = VDGetAccurateTick();
+	mLastPresentScanLine = 0;
+	if (mDevCaps.Caps & D3DCAPS_READ_SCANLINE) {
+		D3DRASTER_STATUS rastStatus;
+		hr = mpD3DDevice->GetRasterStatus(0, &rastStatus);
+		if (SUCCEEDED(hr) && !rastStatus.InVBlank)
+			mLastPresentScanLine = rastStatus.InVBlank;
 	}
 
 	pSwapChain->Release();
@@ -1063,10 +1299,7 @@ void VDD3D9Manager::SetSwapChainActive(IVDD3D9SwapChain *pSwapChain) {
 	pD3DBackBuffer->Release();
 }
 
-//extern FILE *loggf=fopen("e:\\blit.log", "w");
-
 HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT *srcRect, HWND hwndDest, bool vsync, bool newframe, bool donotwait, float& syncDelta, VDD3DPresentHistory& history) {
-//		fprintf(loggf, "poll\n");
 	if (!mPresentParms.Windowed)
 		return S_OK;
 
@@ -1124,11 +1357,9 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 
 		newframe = false;
 		history.mbPresentPending = true;
-		history.mbPresentLoopStarted = false;
 		history.mbPresentBlitStarted = false;
 
-		history.mMaxScanline = 0;
-		history.mFirstScanline = -1;
+		history.mLastScanline = -1;
 		history.mPresentStartTime = VDGetPreciseTick();
 	}
 
@@ -1137,39 +1368,47 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 
 	// Poll raster status, and wait until we can safely blit. We assume that the
 	// blit can outrace the beam. 
-	D3DRASTER_STATUS rastStatus;
-
+	++history.mPollCount;
 	for(;;) {
-		hr = pD3DSwapChain->GetRasterStatus(&rastStatus);
-		if (FAILED(hr))
-			return hr;
-
+		// if we've already started the blit, skip beam-following
 		if (history.mbPresentBlitStarted)
 			break;
 
-		if (history.mFirstScanline < 0)
-			history.mFirstScanline = history.mLastScanline = rastStatus.InVBlank ? 0 : (int)rastStatus.ScanLine;
+		D3DRASTER_STATUS rastStatus;
+		hr = pD3DSwapChain->GetRasterStatus(&rastStatus);
+		if (FAILED(hr))
+			return hr;
 
 		if (rastStatus.InVBlank)
 			rastStatus.ScanLine = 0;
 
 		sint32 y1 = (sint32)history.mLastScanline;
+		if (y1 < 0) {
+			y1 = rastStatus.ScanLine;
+			history.mAverageStartScanline += ((float)y1 - history.mAverageStartScanline) * 0.01f;
+		}
+
 		sint32 y2 = (sint32)rastStatus.ScanLine;
 
-		history.mLastScanline = rastStatus.ScanLine;
+		history.mbLastWasVBlank	= rastStatus.InVBlank ? true : false;
+		history.mLastScanline	= rastStatus.ScanLine;
 
 		sint32 yt = (sint32)history.mScanlineTarget;
 
+		history.mLastBracketY1 = y1;
+		history.mLastBracketY2 = y2;
+
+		// check for yt in [y1, y2]... but we have to watch for a beam wrap (y1 > y2).
 		if (y1 <= y2) {
+			// non-wrap case
 			if (y1 <= yt && yt <= y2)
 				break;
 		} else {
-			if (y1 >= yt || yt >= y2)
+			// wrap case
+			if (y1 <= yt || yt <= y2)
 				break;
 		}
 
-		// We're in the danger zone. If the delta is greater than one tenth of the
-		// display, do a sleep.
 		if (donotwait)
 			return S_FALSE;
 
@@ -1189,6 +1428,9 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 	history.mbPresentPending = false;
 	if (FAILED(hr))
 		return hr;
+
+	history.mAverageEndScanline += ((float)history.mLastScanline - history.mAverageEndScanline) * 0.01f;
+	history.mAveragePresentTime += ((VDGetPreciseTick() - history.mPresentStartTime)*VDGetPreciseSecondsPerTick() - history.mAveragePresentTime) * 0.01f;
 
 	D3DRASTER_STATUS rastStatus2;
 	hr = pD3DSwapChain->GetRasterStatus(&rastStatus2);
@@ -1220,8 +1462,8 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 		float success = rastStatus2.InVBlank || (int)rastStatus2.ScanLine <= history.mScanTop || (int)rastStatus2.ScanLine >= history.mScanBottom ? 1.0f : 0.0f;
 
 		int zone = 0;
-		if (!rastStatus.InVBlank)
-			zone = ((int)rastStatus.ScanLine * 16) / (int)mDisplayMode.Height;
+		if (!history.mbLastWasVBlank)
+			zone = ((int)history.mLastScanline * 16) / (int)mDisplayMode.Height;
 
 		for(int i=0; i<17; ++i) {
 			if (i != zone)
@@ -1231,12 +1473,12 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 		history.mAttemptProb[zone] += (1.0f - history.mAttemptProb[zone]) * 0.01f;
 		history.mSuccessProb[zone] += (success - history.mSuccessProb[zone]) * 0.01f;
 
-		if (rastStatus.InVBlank || (int)rastStatus.ScanLine < history.mScanTop) {
+		if (history.mLastScanline < history.mScanTop) {
 			history.mVBlankSuccess += (success - history.mVBlankSuccess) * 0.01f;
 		}
 
-		if (!rastStatus.InVBlank && !rastStatus2.InVBlank && rastStatus2.ScanLine > rastStatus.ScanLine) {
-			float delta = (float)(int)(rastStatus2.ScanLine - rastStatus.ScanLine);
+		if (!history.mbLastWasVBlank && !rastStatus2.InVBlank && rastStatus2.ScanLine > history.mLastScanline) {
+			float delta = (float)(int)(rastStatus2.ScanLine - history.mLastScanline);
 
 			history.mPresentDelay += (delta - history.mPresentDelay) * 0.01f;
 		}
@@ -1245,3 +1487,27 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 	return hr;
 }
 
+LRESULT CALLBACK VDD3D9Manager::StaticDeviceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+		case WM_SETFOCUS:
+			{
+				HWND hwndOldFocus = (HWND)wParam;
+
+				// Direct3D likes to send focus to the focus window when you go full screen. Well,
+				// we don't want that since we're using a hidden window, so if the focus came from
+				// another window of ours, we send the focus back.
+				if (hwndOldFocus) {
+					DWORD pid;
+					DWORD tid = GetWindowThreadProcessId(hwndOldFocus, &pid);
+
+					if (tid == GetCurrentThreadId()) {
+						SetFocus(hwndOldFocus);
+						return 0;
+					}
+				}
+			}
+			break;
+	}
+
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}

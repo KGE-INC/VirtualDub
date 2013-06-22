@@ -18,7 +18,10 @@
 #ifndef f_AVIOUTPUT_H
 #define f_AVIOUTPUT_H
 
-#include <vector>
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/file.h>
 #include <vd2/system/unknown.h>
 

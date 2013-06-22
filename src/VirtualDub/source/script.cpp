@@ -117,9 +117,10 @@ void RunScript(const wchar_t *name, void *hwnd) {
 	}
 
 	g_project->EndTimelineUpdate();
+	g_project->UpdateFilterList();
 }
 
-void RunScriptMemory(char *mem) {
+void RunScriptMemory(char *mem, bool stopAtReloadMarker) {
 	vdautoptr<IVDScriptInterpreter> isi(VDCreateScriptInterpreter());
 
 	try {
@@ -131,6 +132,16 @@ void RunScriptMemory(char *mem) {
 		while(*s) {
 			t = s;
 			while(*t && *t!='\n') ++t;
+
+			// check for reload marker
+			if (stopAtReloadMarker) {
+				const char *u = s;
+				while(isspace((unsigned char)*u))
+					++u;
+
+				if (u[0] == '/' && u[1] == '/' && strstr(s, "$reloadstop"))
+					break;
+			}
 
 			linebuffer.resize(t+1-s);
 			memcpy(linebuffer.data(), s, t-s);
@@ -145,6 +156,8 @@ void RunScriptMemory(char *mem) {
 	} catch(const VDScriptError& cse) {
 		throw MyError("%s", isi->TranslateScriptError(cse));
 	}
+
+	g_project->UpdateFilterList();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -549,14 +562,32 @@ static void func_VDVideo_GetPreserveEmptyFrames(IVDScriptInterpreter *, VDScript
 static void func_VDVideo_GetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	switch(arglist[0].asInt()) {
 	case 0: arglist[0] = VDScriptValue(g_dubOpts.video.frameRateDecimation); return;
-	case 1: arglist[0] = VDScriptValue(g_dubOpts.video.frameRateNewMicroSecs); return;
+	case 1:
+		if (g_dubOpts.video.mFrameRateAdjustLo)
+			arglist[0] = VDScriptValue((int)VDRoundToInt((double)g_dubOpts.video.mFrameRateAdjustLo / (double)g_dubOpts.video.mFrameRateAdjustHi * 1000000.0));
+		else if (g_dubOpts.video.mFrameRateAdjustHi == DubVideoOptions::kFrameRateAdjustSameLength)
+			arglist[0] = VDScriptValue(-1);
+		else
+			arglist[0] = VDScriptValue(0);
+		return;
 	case 2: arglist[0] = VDScriptValue(g_dubOpts.video.fInvTelecine); return;
 	}
 	arglist[0] = VDScriptValue(0);
 }
 
 static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	g_dubOpts.video.frameRateNewMicroSecs = arglist[0].asInt();
+	int newrate = arglist[0].asInt();
+	if (newrate < 0) {
+		g_dubOpts.video.mFrameRateAdjustHi = DubVideoOptions::kFrameRateAdjustSameLength;
+		g_dubOpts.video.mFrameRateAdjustLo = 0;
+	} else if (newrate > 0) {
+		g_dubOpts.video.mFrameRateAdjustHi = 1000000;
+		g_dubOpts.video.mFrameRateAdjustLo = newrate;
+	} else {
+		g_dubOpts.video.mFrameRateAdjustHi = 0;
+		g_dubOpts.video.mFrameRateAdjustLo = 0;
+	}
+
 	g_dubOpts.video.frameRateDecimation = arglist[1].asInt();
 	g_dubOpts.video.frameRateTargetLo = 0;
 	g_dubOpts.video.frameRateTargetHi = 0;
@@ -571,6 +602,14 @@ static void func_VDVideo_SetFrameRate(IVDScriptInterpreter *, VDScriptValue *arg
 			g_dubOpts.video.fInvTelecine = false;
 		}
 	}
+}
+
+static void func_VDVideo_SetFrameRate2(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_dubOpts.video.mFrameRateAdjustHi = (uint32)arglist[0].asLong();
+	g_dubOpts.video.mFrameRateAdjustLo = (uint32)arglist[1].asLong();
+	g_dubOpts.video.frameRateDecimation = arglist[2].asInt();
+	g_dubOpts.video.frameRateTargetLo = 0;
+	g_dubOpts.video.frameRateTargetHi = 0;
 }
 
 static void func_VDVideo_SetTargetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -690,6 +729,7 @@ static const VDScriptFunctionDef obj_VDVideo_functbl[]={
 	{ func_VDVideo_GetFrameRate		, "GetFrameRate",	"ii" },
 	{ func_VDVideo_SetFrameRate		, "SetFrameRate",	"0ii" },
 	{ func_VDVideo_SetFrameRate		, NULL,				"0iii" },
+	{ func_VDVideo_SetFrameRate2	, "SetFrameRate2",	"0lli" },
 	{ func_VDVideo_SetTargetFrameRate, "SetTargetFrameRate", "0ii" },
 	{ func_VDVideo_GetRange			, "GetRange",		"ii" },
 	{ func_VDVideo_SetRangeEmpty	, "SetRange",		"0" },
@@ -759,7 +799,7 @@ namespace {
 
 		VDPluginPtr lock(pDesc);
 
-		const VDPluginConfigEntry *pEnt = GetFilterParamEntry(((VDVideoFilterDefinition *)lock->mpInfo->mpTypeSpecificInfo)->mpConfigInfo, idx);
+		const VDPluginConfigEntry *pEnt = GetFilterParamEntry(((VDAudioFilterDefinition *)lock->mpInfo->mpTypeSpecificInfo)->mpConfigInfo, idx);
 
 		if (!pEnt)
 			throw MyError("VDAFiltInst: Audio filter \"%s\" does not have a parameter with id %d", VDTextWToA(pFilt->mFilterName).c_str(), idx);

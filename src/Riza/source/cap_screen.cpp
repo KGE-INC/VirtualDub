@@ -66,6 +66,8 @@ public:
 	VDCaptureDriverScreen();
 	~VDCaptureDriverScreen();
 
+	void	*AsInterface(uint32 id) { return NULL; }
+
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
 
@@ -222,9 +224,9 @@ protected:
 	HGDIOBJ	mhbmCursorBufferOld;
 	uint32	*mpCursorBuffer;
 
-	VDAtomicInt	mbCaptureAsyncAbort;
 	VDAtomicInt	mbCaptureFramePending;
 	bool	mbCapturing;
+	bool	mbCaptureSetup;
 	bool	mbVisible;
 	bool	mbAudioHardwarePresent;
 	bool	mbAudioHardwareEnabled;
@@ -304,9 +306,9 @@ VDCaptureDriverScreen::VDCaptureDriverScreen()
 	, mhbmCursorBuffer(NULL)
 	, mhbmCursorBufferOld(NULL)
 	, mpCursorBuffer(NULL)
-	, mbCaptureAsyncAbort(false)
 	, mbCaptureFramePending(false)
 	, mbCapturing(false)
+	, mbCaptureSetup(false)
 	, mbVisible(false)
 	, mbAudioAnalysisEnabled(false)
 	, mbAudioAnalysisActive(false)
@@ -808,8 +810,6 @@ bool VDCaptureDriverScreen::CaptureStart() {
 	ShutdownWaveAnalysis();
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
-		mbCaptureAsyncAbort = false;
-
 		FlushFrameQueue();
 
 		if (mpCB->CapEvent(kEventPreroll, 0)) {
@@ -819,11 +819,12 @@ bool VDCaptureDriverScreen::CaptureStart() {
 
 			mGlobalTimeBase = VDGetAccurateTick();
 			mbCapturing = true;
+			mbCaptureSetup = true;
 			mCaptureTimer.Init2(this, mFramePeriod);
+		} else {
+			if (mbAudioAnalysisEnabled)
+				InitWaveAnalysis();
 		}
-
-		if (!mbCapturing && mbAudioAnalysisEnabled)
-			InitWaveAnalysis();
 	}
 
 	return mbCapturing;
@@ -835,12 +836,14 @@ void VDCaptureDriverScreen::CaptureStop() {
 
 void VDCaptureDriverScreen::CaptureAbort() {
 	SendMessage(mhwnd, WM_APP+17, 0, 0);
+	mbCapturing = false;
 }
 
 void VDCaptureDriverScreen::SyncCaptureStop() {
-	if (VDINLINEASSERT(mbCapturing)) {
+	if (VDINLINEASSERT(mbCaptureSetup)) {
 		mCaptureTimer.Shutdown();
 		mbCapturing = false;
+		mbCaptureSetup = false;
 
 		if (mCaptureError.gets()) {
 			mpCB->CapEnd(&mCaptureError);
@@ -857,16 +860,7 @@ void VDCaptureDriverScreen::SyncCaptureStop() {
 }
 
 void VDCaptureDriverScreen::SyncCaptureAbort() {
-	if (mbCapturing) {
-		mCaptureTimer.Shutdown();
-		mbCapturing = false;
-
-		if (mbAudioCaptureEnabled)
-			ShutdownWaveAnalysis();
-
-		if (mbAudioAnalysisEnabled)
-			InitWaveAnalysis();
-	}
+	SyncCaptureStop();
 }
 
 void VDCaptureDriverScreen::InitMixerSupport() {
@@ -1943,12 +1937,14 @@ void VDCaptureDriverScreen::DispatchFrame(const void *data, uint32 size, sint64 
 		try {
 			if (mpCB->CapEvent(kEventCapturing, 0))
 				mpCB->CapProcessData(0, data, size, timestamp, true, timestamp);
-			else
+			else {
 				mbCapturing = false;
+				CaptureAbort();
+			}
+
 		} catch(MyError& e) {
 			mCaptureError.TransferFrom(e);
-			PostMessage(mhwnd, WM_APP+17, 0, 0);
-			mbCaptureAsyncAbort = true;
+			CaptureAbort();
 			mbCapturing = false;
 		}
 	}
@@ -2564,14 +2560,12 @@ LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARA
 					WAVEHDR& hdr = *(WAVEHDR *)lParam;
 
 					if (pThis->mbCapturing) {
-						if (pThis->mbAudioCaptureEnabled && !pThis->mbCaptureAsyncAbort) {
+						if (pThis->mbAudioCaptureEnabled) {
 							try {
 								pThis->mpCB->CapProcessData(1, hdr.lpData, hdr.dwBytesRecorded, -1, false, pThis->ComputeGlobalTime());
 							} catch(MyError& e) {
 								pThis->mCaptureError.TransferFrom(e);
-								PostMessage(pThis->mhwnd, WM_APP+17, 0, 0);
-								pThis->mbCaptureAsyncAbort = true;
-								pThis->mbCapturing = false;
+								pThis->CaptureAbort();
 							}
 
 							waveInAddBuffer(pThis->mhWaveIn, &hdr, sizeof(WAVEHDR));
@@ -2606,7 +2600,7 @@ LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARA
 		case WM_APP+18:
 			{
 				VDCaptureDriverScreen *pThis = (VDCaptureDriverScreen *)GetWindowLongPtr(hwnd, 0);
-				if (pThis->mbCaptureFramePending && pThis->mbCapturing && !pThis->mbCaptureAsyncAbort) {
+				if (pThis->mbCaptureFramePending && pThis->mbCapturing) {
 					pThis->mbCaptureFramePending = false;
 					pThis->DoFrame();
 				}

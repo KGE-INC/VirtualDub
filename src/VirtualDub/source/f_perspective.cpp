@@ -520,10 +520,39 @@ static void perspective_script_config(IScriptInterpreter *isi, void *lpVoid, CSc
 
 	mfd->new_x	= argv[0].asInt();
 	mfd->new_y	= argv[1].asInt();
+
+	if (argc >= 12) {
+		mfd->filtermode = argv[2].asInt();
+		mfd->unproject = argv[3].asInt() & 1;
+		mfd->src[0].x = (float)argv[ 4].asDouble();
+		mfd->src[0].y = (float)argv[ 5].asDouble();
+		mfd->src[1].x = (float)argv[ 6].asDouble();
+		mfd->src[1].y = (float)argv[ 7].asDouble();
+		mfd->src[2].x = (float)argv[ 8].asDouble();
+		mfd->src[2].y = (float)argv[ 9].asDouble();
+		mfd->src[3].x = (float)argv[10].asDouble();
+		mfd->src[3].y = (float)argv[11].asDouble();
+
+		// Prevent NaNs and other baddies, which can paralyze the texture
+		// mapper.
+		//
+		// NOTE: We specifically use !(fabs(x) < T) instead of fabs(x) >= T
+		// because (NAN ?cmp? T) == false.
+		static const float kThreshold = 1e+6f;
+		if (!(fabs(mfd->src[0].x) < kThreshold)) mfd->src[0].x = -1;
+		if (!(fabs(mfd->src[0].y) < kThreshold)) mfd->src[0].y = -1;
+		if (!(fabs(mfd->src[1].x) < kThreshold)) mfd->src[1].x = +1;
+		if (!(fabs(mfd->src[1].y) < kThreshold)) mfd->src[1].y = -1;
+		if (!(fabs(mfd->src[2].x) < kThreshold)) mfd->src[2].x = -1;
+		if (!(fabs(mfd->src[2].y) < kThreshold)) mfd->src[2].y = +1;
+		if (!(fabs(mfd->src[3].x) < kThreshold)) mfd->src[3].x = +1;
+		if (!(fabs(mfd->src[3].y) < kThreshold)) mfd->src[3].y = +1;
+	}
 }
 
 static ScriptFunctionDef perspective_func_defs[]={
 	{ (ScriptFunctionPtr)perspective_script_config, "Config", "0ii" },
+	{ (ScriptFunctionPtr)perspective_script_config, NULL, "0iiiidddddddd" },
 	{ NULL },
 };
 
@@ -534,7 +563,20 @@ static CScriptObject perspective_obj={
 static bool perspective_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
 	PerspectiveFilterData *mfd = (PerspectiveFilterData *)fa->filter_data;
 
-	_snprintf(buf, buflen, "Config(%d,%d)", mfd->new_x, mfd->new_y);
+	_snprintf(buf, buflen, "Config(%d,%d,%d,%d,%g,%g,%g,%g,%g,%g,%g,%g)"
+		, mfd->new_x
+		, mfd->new_y
+		, (int)mfd->filtermode
+		, mfd->unproject
+		, mfd->src[0].x
+		, mfd->src[0].y
+		, mfd->src[1].x
+		, mfd->src[1].y
+		, mfd->src[2].x
+		, mfd->src[2].y
+		, mfd->src[3].x
+		, mfd->src[3].y
+		);
 
 	return true;
 }

@@ -136,14 +136,19 @@ void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	if (flags & kWriteThrough)	dwAttributes |= FILE_FLAG_WRITE_THROUGH;
 	if (flags & kUnbuffered)	dwAttributes |= FILE_FLAG_NO_BUFFERING;
 
+	VDStringA tempFilenameA;
+	VDStringW tempFilenameW;
+
 	if (IsWindowsNT()) {
 		if (pszFilename) {
-			pwszFilename = VDFastTextAToW(pszFilename);
+			tempFilenameW = VDTextAToW(pszFilename);
+			pwszFilename = tempFilenameW.c_str();
 			pszFilename = NULL;
 		}
 	} else {
 		if (pwszFilename) {
-			pszFilename = VDFastTextWToA(pwszFilename);
+			tempFilenameA = VDTextWToA(pwszFilename);
+			pszFilename = tempFilenameA.c_str();
 			pwszFilename = NULL;
 		}
 	}
@@ -174,8 +179,6 @@ void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 			err = GetLastError();
 		}
 	}
-
-	VDFastTextFree();
 
 	// INVALID_HANDLE_VALUE isn't NULL.  *sigh*
 
@@ -285,7 +288,7 @@ long VDFile::readData(void *buffer, long length) {
 
 void VDFile::read(void *buffer, long length) {
 	if (length != readData(buffer, length))
-		throw MyWin32Error("Cannot read from file \"%ls\": %%s", GetLastError(), mpFilename.get());
+		throw MyWin32Error("Cannot read from file \"%ls\": Premature end of file.", GetLastError(), mpFilename.get());
 }
 
 long VDFile::writeData(const void *buffer, long length) {
@@ -305,7 +308,7 @@ found_error:
 
 void VDFile::write(const void *buffer, long length) {
 	if (length != writeData(buffer, length))
-		throw MyWin32Error("Cannot write to file \"%ls\": %%s", GetLastError(), mpFilename.get());
+		throw MyWin32Error("Cannot write to file \"%ls\": Unable to write all data.", GetLastError(), mpFilename.get());
 }
 
 bool VDFile::seekNT(sint64 newPos, eSeekMode mode) {

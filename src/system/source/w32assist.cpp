@@ -28,6 +28,18 @@
 #include <vd2/system/text.h>
 #include <vd2/system/vdstl.h>
 
+bool VDIsForegroundTaskW32() {
+	HWND hwndFore = GetForegroundWindow();
+
+	if (!hwndFore)
+		return false;
+
+	DWORD dwProcessId = 0;
+	GetWindowThreadProcessId(hwndFore, &dwProcessId);
+
+	return dwProcessId == GetCurrentProcessId();
+}
+
 LPVOID VDConvertThreadToFiberW32(LPVOID parm) {
 	typedef LPVOID (WINAPI *tpConvertThreadToFiber)(LPVOID p);
 	static tpConvertThreadToFiber ctof = (tpConvertThreadToFiber)GetProcAddress(GetModuleHandle("kernel32"), "ConvertThreadToFiber");
@@ -208,12 +220,14 @@ bool VDGetFileSizeW32(HANDLE h, sint64& size) {
 	return true;
 }
 
+#if !defined(_MSC_VER) || _MSC_VER < 1300
 HMODULE VDGetLocalModuleHandleW32() {
 	MEMORY_BASIC_INFORMATION meminfo;
 	static HMODULE shmod = (VirtualQuery(&VDGetLocalModuleHandleW32, &meminfo, sizeof meminfo), (HMODULE)meminfo.AllocationBase);
 
 	return shmod;
 }
+#endif
 
 bool VDDrawTextW32(HDC hdc, const wchar_t *s, int nCount, LPRECT lpRect, UINT uFormat) {
 	RECT r;

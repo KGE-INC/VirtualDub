@@ -25,6 +25,7 @@
 
 #include "stdafx.h"
 #include <vd2/system/VDString.h>
+#include <vd2/system/vdstl.h>
 
 const VDStringSpanA::value_type VDStringSpanA::sNull[1] = {0};
 
@@ -76,11 +77,43 @@ void VDStringA::reserve_amortized_slow(size_type n, size_type current_size, size
 }
 
 VDStringA& VDStringA::sprintf(const value_type *format, ...) {
+	clear();
 	va_list val;
 	va_start(val, format);
-	assign(VDFastTextVprintfA(format, val));
+	append_vsprintf(format, val);
 	va_end(val);
-	VDFastTextFree();
+	return *this;
+}
+
+VDStringA& VDStringA::append_sprintf(const value_type *format, ...) {
+	va_list val;
+	va_start(val, format);
+	append_vsprintf(format, val);
+	va_end(val);
+	return *this;
+}
+
+VDStringA& VDStringA::append_vsprintf(const value_type *format, va_list val) {
+	char buf[2048];
+
+	int len = _vsnprintf(buf, 2048, format, val);
+	if (len >= 0)
+		append(buf, buf+len);
+	else {
+		int len;
+
+		vdfastvector<char> tmp;
+		for(int siz = 8192; siz <= 65536; siz += siz) {
+			tmp.resize(siz);
+
+			len = _vsnprintf(tmp.data(), siz, format, val);
+			if (len >= 0) {
+				append(buf, buf+len);
+				break;
+			}
+		}
+	}
+
 	return *this;
 }
 
@@ -132,10 +165,43 @@ void VDStringW::reserve_amortized_slow(size_type n, size_type current_size, size
 }
 
 VDStringW& VDStringW::sprintf(const value_type *format, ...) {
+	clear();
 	va_list val;
 	va_start(val, format);
-	assign(VDFastTextVprintfW(format, val));
+	append_vsprintf(format, val);
 	va_end(val);
-	VDFastTextFree();
+	return *this;
+}
+
+VDStringW& VDStringW::append_sprintf(const value_type *format, ...) {
+	va_list val;
+	va_start(val, format);
+	append_vsprintf(format, val);
+	va_end(val);
+	return *this;
+}
+
+VDStringW& VDStringW::append_vsprintf(const value_type *format, va_list val) {
+	wchar_t buf[1024];
+
+	int len = vswprintf(buf, 1024, format, val);
+	if (len >= 0)
+		append(buf, buf+len);
+	else {
+		int len;
+
+		vdfastvector<wchar_t> tmp;
+		for(int siz = 4096; siz <= 65536; siz += siz) {
+			tmp.resize(siz);
+
+			len = vswprintf(tmp.data(), siz, format, val);
+			if (len >= 0) {
+				append(buf, buf+len);
+				break;
+			}
+		}
+	}
+
+	va_end(val);
 	return *this;
 }

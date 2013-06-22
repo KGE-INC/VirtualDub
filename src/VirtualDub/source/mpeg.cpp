@@ -2732,8 +2732,6 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 }
 
 InputFileMPEG::~InputFileMPEG() {
-	_RPT0(0,"Destructor called\n");
-
 	EndScan();
 
 	videoSrc = NULL;

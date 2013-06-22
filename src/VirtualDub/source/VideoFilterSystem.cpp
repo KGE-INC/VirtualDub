@@ -6,6 +6,7 @@
 #include <vd2/system/cache.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/error.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/time.h>
 #include <vd2/system/refcount.h>
@@ -904,10 +905,10 @@ bool VDVideoFilterInstance::Service() {
 	} else {
 		VDVideoFilterFrameRef *pFrameRef = (VDVideoFilterFrameRef *)((char *)mContext.mpDstFrame - offsetof(VDVideoFilterFrameRef, mFrame));
 
+#ifdef DEBUG_ENABLE_FRAME_NUMBERS
 		const VDPixmap& px = *mContext.mpDstFrame->mpPixmap;
 		uint32 num = (uint32)mContext.mpOutput->mFrameNum;
 
-#ifdef DEBUG_ENABLE_FRAME_NUMBERS
 		// render text
 		int posx = px.w - 10;
 		int posy = px.h - 10;

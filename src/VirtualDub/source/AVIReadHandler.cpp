@@ -32,6 +32,7 @@
 #include <vd2/system/text.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include "Avisynth.h"
 #include "misc.h"
@@ -90,10 +91,6 @@ public:
 	sint64 i64FilePosition;
 
 	File64();
-	File64(VDFileHandle _hFile, VDFileHandle _hFileUnbuffered);
-
-	void _openFile(const char *pszFile);
-	void _closeFile();
 
 	long _readFile(void *data, long len);
 	void _readFile2(void *data, long len);
@@ -108,36 +105,7 @@ public:
 	sint64 _sizeFile();
 };
 
-File64::File64() : hFile(0), hFileUnbuffered(0) {
-}
-
-File64::File64(HANDLE _hFile, HANDLE _hFileUnbuffered)
-: hFile(_hFile), hFileUnbuffered(_hFileUnbuffered)
-{
-	i64FilePosition = 0;
-}
-
-void File64::_openFile(const char *pszFile) {
-	_closeFile();
-
-	hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-	if (INVALID_HANDLE_VALUE == hFile) {
-		hFile = NULL;
-		throw MyWin32Error("Cannot open file: %%s.", GetLastError());
-	}
-}
-
-void File64::_closeFile() {
-	if (hFile) {
-		CloseHandle(hFile);
-		hFile = NULL;
-	}
-
-	if (hFileUnbuffered) {
-		CloseHandle(hFileUnbuffered);
-		hFileUnbuffered = NULL;
-	}
+File64::File64() : hFile(INVALID_HANDLE_VALUE), hFileUnbuffered(INVALID_HANDLE_VALUE) {
 }
 
 long File64::_readFile(void *data, long len) {
@@ -1666,8 +1634,9 @@ void AVIReadHandler::_construct(const wchar_t *pszFile) {
 		AVIFileDesc *pDesc;
 
 		// open file
+		const bool isNT = VDIsWindowsNT();
 
-		if (GetVersion() < 0x80000000)
+		if (isNT)
 			hFile = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 		else
 			hFile = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
@@ -1675,7 +1644,7 @@ void AVIReadHandler::_construct(const wchar_t *pszFile) {
 		if (INVALID_HANDLE_VALUE == hFile)
 			throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), VDTextWToA(pszFile).c_str());
 
-		if (GetVersion() < 0x80000000)
+		if (isNT)
 			hFileUnbuffered = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 		else
 			hFileUnbuffered = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
@@ -1712,8 +1681,9 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 	i64FilePosition = 0;
 
 	// open file
+	bool isNT = VDIsWindowsNT();
 
-	if (GetVersion() < 0x80000000)
+	if (isNT)
 		hFile = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 	else
 		hFile = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
@@ -1723,7 +1693,7 @@ bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 		throw MyWin32Error("Couldn't append %s: %%s", err, VDTextWToA(pszFile).c_str());
 	}
 
-	if (GetVersion() < 0x80000000)
+	if (isNT)
 		hFileUnbuffered = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 	else
 		hFileUnbuffered = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
@@ -2277,7 +2247,7 @@ terminate_scan:
 					if (!_readFile(&fccType2, 4))
 						break;
 
-					if (fccType2 != 'XIVA' && fccType2 != 'ivom') {
+					if (fccType2 != 'XIVA' && fccType2 != 'ivom' && fccType2 != ' cer') {
 						if (!_skipFile2(dwLength + (dwLength&1) - 4))
 							break;
 					}
@@ -2591,9 +2561,10 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 		}
 
 		for(i=0; i<tc; i++) {
-			int stream = StreamFromFOURCC(avie[i].ckid);
+			const AVIINDEXENTRY& idxent = avie[i];
+			int stream = StreamFromFOURCC(idxent.ckid);
 
-			if (is_palette_change(avie[i].ckid)) {
+			if (is_palette_change(idxent.ckid)) {
 				mbPaletteChangesDetected = true;
 				continue;
 			}
@@ -2604,12 +2575,15 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 				pasn = pasn_next;
 
 			if (pasn && pasn_next) {
+				// It's fairly important that we not add entries with zero bytes as
+				// key frames, as these have been seen in the wild. AVIFile silently
+				// kills the key frame flag for these.
 				if (absolute_addr)
-					pasn->index.add(&avie[i]);
+					pasn->index.add(idxent.ckid, idxent.dwChunkOffset, idxent.dwChunkLength, !!(idxent.dwFlags & AVIIF_KEYFRAME));
 				else
-					pasn->index.add(avie[i].ckid, (movi_offset-4) + (sint64)avie[i].dwChunkOffset, avie[i].dwChunkLength, !!(avie[i].dwFlags & AVIIF_KEYFRAME));
+					pasn->index.add(idxent.ckid, (movi_offset-4) + (sint64)idxent.dwChunkOffset, idxent.dwChunkLength, (idxent.dwFlags & AVIIF_KEYFRAME) && idxent.dwChunkLength > 0);
 
-				pasn->bytes += avie[i].dwChunkLength;
+				pasn->bytes += idxent.dwChunkLength;
 			}
 		}
 	}
@@ -2619,10 +2593,13 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 }
 
 void AVIReadHandler::_parseExtendedIndexBlock(List2<AVIStreamNode>& streamlist, AVIStreamNode *pasn, sint64 fpos, DWORD dwLength) {
+#pragma warning(push)
+#pragma warning(disable: 4815)		// warning C4815: '$S1' : zero-sized array in stack object will have no elements (unless the object is an aggregate that has been aggregate initialized)
 	union {
 		AVISUPERINDEX idxsuper;
 		AVISTDINDEX idxstd;
 	};
+#pragma warning(pop)
 
 	union {
 		struct	_avisuperindex_entry		superent[64];
@@ -2877,7 +2854,7 @@ char *AVIReadHandler::_StreamRead(long& bytes) {
 		_SelectFile((int)(i64StreamPosition>>48));
 
 	if (sbPosition >= sbSize) {
-		if (nRealTime || (((i64StreamPosition&0x0000FFFFFFFFFFFFi64)+sbSize) & -STREAM_BLOCK_SIZE)+STREAM_SIZE > i64Size) {
+		if (hFileUnbuffered == INVALID_HANDLE_VALUE || nRealTime || (((i64StreamPosition&0x0000FFFFFFFFFFFFi64)+sbSize) & -STREAM_BLOCK_SIZE)+STREAM_SIZE > i64Size) {
 			i64StreamPosition += sbSize;
 			sbPosition = 0;
 			_seekFile(i64StreamPosition & 0x0000FFFFFFFFFFFFi64);

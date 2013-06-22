@@ -46,6 +46,6 @@ EXTERN __declspec(thread) VirtualDubThreadState g_PerThreadState;
 
 #define VDCHECKPOINT (g_PerThreadState.cp[g_PerThreadState.nNextCP++&(CHECKPOINT_COUNT-1)].set(__FILE__, __LINE__))
 
-void VDThreadInitHandler(bool);
+void VDThreadInitHandler(bool, const char *);
 
 #endif

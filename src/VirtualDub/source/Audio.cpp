@@ -26,6 +26,7 @@
 #include <vd2/system/strutil.h>
 #include <vd2/system/fraction.h>
 #include <vd2/system/math.h>
+#include <vd2/system/protscope.h>
 #include <vd2/Riza/w32audiocodec.h>
 #include "AudioFilterSystem.h"
 #include "AudioSource.h"
@@ -370,7 +371,7 @@ void AudioStream::Seek(VDPosition pos) {
 
 ////////////////////
 
-AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64 max_samples, bool allow_decompression, sint64 start_us) : AudioStream() {
+AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 max_samples, bool allow_decompression, sint64 start_us) : AudioStream() {
 	WAVEFORMATEX *iFormat = src->getWaveFormat();
 	WAVEFORMATEX *oFormat;
 
@@ -429,6 +430,8 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 		}
 	}
 
+	sint64 first_samp = src->TimeToPositionVBR(start_us);
+
 	mOffset = src->msToSamples((start_us + 500) / 1000);
 
 	mPrefill = 0;
@@ -441,7 +444,15 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, sint64 first_samp, sint64
 	stream_len = std::min<sint64>(max_samples, aSrc->getEnd() - first_samp);
 
 	if (mCodec.IsInitialized()) {
-		stream_len = (sint64)VDUMulDiv64x32(stream_len, GetFormat()->nSamplesPerSec * aSrc->getWaveFormat()->nBlockAlign, aSrc->getWaveFormat()->nAvgBytesPerSec);
+		const WAVEFORMATEX *wfexSrc = aSrc->getWaveFormat();
+		const WAVEFORMATEX *wfexDst = GetFormat();
+		double sampleRatio = (double)wfexDst->nSamplesPerSec * (double)wfexSrc->nBlockAlign / (double)wfexSrc->nAvgBytesPerSec;
+		double secOffset = (double)start_us / 1000000.0;
+		mPrefill = 0;
+		if (start_us < 0)
+			mPrefill = (sint64)VDRoundToInt64(-secOffset * wfexDst->nSamplesPerSec);
+		mOffset = (sint64)VDRoundToInt64(secOffset * wfexDst->nSamplesPerSec);
+		stream_len = (sint64)VDRoundToInt64(stream_len * sampleRatio);
 	}
 
 	mBasePos = first_samp;

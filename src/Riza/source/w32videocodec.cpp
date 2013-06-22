@@ -20,6 +20,7 @@
 #include <vfw.h>
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/vdstl.h>

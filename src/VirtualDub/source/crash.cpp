@@ -74,6 +74,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/tls.h>
 #include <vd2/system/debugx86.h>
+#include <vd2/system/protscope.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -687,6 +688,23 @@ static bool IsExecutableProtection(DWORD dwProtect) {
 
 
 ///////////////////////////////////////////////////////////////////////////
+
+VDProtectedAutoScope *__declspec(thread) volatile g_pVDProtectedScopeLink;
+
+VDProtectedAutoScope *VDGetProtectedScopeLink() {
+	return g_pVDProtectedScopeLink;
+}
+
+void VDSetProtectedScopeLink(VDProtectedAutoScope *p) {
+	g_pVDProtectedScopeLink = p;
+}
+
+void VDInitProtectedScopeHook() {
+	g_pVDGetProtectedScopeLink = VDGetProtectedScopeLink;
+	g_pVDSetProtectedScopeLink = VDSetProtectedScopeLink;
+}
+
+///////////////////////////////////////////////////////////////////////////
 //
 //	Nina's per-thread debug logs are really handy, so I back-ported
 //	them to 1.x.  These are lightweight in comparison, however.
@@ -708,7 +726,7 @@ static CRITICAL_SECTION g_csPerThreadState;
 static List2<VirtualDubThreadStateNode> g_listPerThreadState;
 static LONG g_nThreadsTrackedMinusOne = -1;
 
-void VDThreadInitHandler(bool bInitThread) {
+void VDThreadInitHandler(bool bInitThread, const char *debugName) {
 	if (bInitThread) {
 		DWORD dwThreadId = GetCurrentThreadId();
 
@@ -720,7 +738,7 @@ void VDThreadInitHandler(bool bInitThread) {
 
 		if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), (HANDLE *)&g_PerThreadState.hThread, NULL, FALSE, DUPLICATE_SAME_ACCESS)) {
 
-			g_PerThreadState.pszThreadName = g_tlsdata.pszDebugThreadName;
+			g_PerThreadState.pszThreadName = debugName;
 			g_PerThreadState.dwThreadId = dwThreadId;
 
 			g_PerThreadStateNode.pState = &g_PerThreadState;
@@ -907,7 +925,7 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 	}
 
 	__try {
-		for(VDProtectedAutoScope *pScope = g_protectedScopeLink; pScope; pScope = pScope->mpLink) {
+		for(VDProtectedAutoScope *pScope = g_pVDGetProtectedScopeLink(); pScope; pScope = pScope->mpLink) {
 			out.write("..\r\n...while ");
 			pScope->Write(out);
 			out.writef(" (%.64s:%d).", VDFileSplitPath(pScope->mpFile), pScope->mLine);

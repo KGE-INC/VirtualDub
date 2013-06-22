@@ -19,6 +19,14 @@
 #ifndef f_VD2_KASUMI_TEXT_H
 #define f_VD2_KASUMI_TEXT_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
+#include <vd2/system/vectors.h>
+
+class VDPixmapPathRasterizer;
+
 struct VDOutlineFontGlyphInfo {
 	uint16	mPointArrayStart;		// start of points (encoded as 8:8)
 	uint16	mCommandArrayStart;		// start of commands (encoded as 6:2 RLE).
@@ -43,6 +51,12 @@ struct VDOutlineFontInfo {
 	int		mLineGap;
 };
 
+struct VDTextLayoutMetrics {
+	vdrect32f	mExtents;
+	float		mAdvance;
+};
+
+void VDPixmapGetTextExtents(const VDOutlineFontInfo *font, float size, const char *pText, VDTextLayoutMetrics& out_Metrics);
 void VDPixmapConvertTextToPath(VDPixmapPathRasterizer& rast, const VDOutlineFontInfo *font, float size, float x, float y, const char *pText, const float transform[2][2] = NULL);
 
 #endif

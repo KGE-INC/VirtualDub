@@ -20,6 +20,7 @@
 
 #define NO_DSHOW_STRSAFE
 #include <vd2/Riza/capdriver.h>
+#include <vd2/Riza/cap_dshow.h>
 #include <vd2/system/vdstring.h>
 #include <vd2/system/time.h>
 #include <vd2/system/fraction.h>
@@ -1097,12 +1098,14 @@ protected:
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDCaptureDriverDS : public IVDCaptureDriver, public IVDCaptureDSCallback {
+class VDCaptureDriverDS : public IVDCaptureDriver, public IVDCaptureDriverDShow, public IVDCaptureDSCallback {
 	VDCaptureDriverDS(const VDCaptureDriverDS&);
 	VDCaptureDriverDS& operator=(const VDCaptureDriverDS&);
 public:
 	VDCaptureDriverDS(IMoniker *pVideoDevice);
 	~VDCaptureDriverDS();
+
+	void	*AsInterface(uint32 id);
 
 	bool	Init(VDGUIHandle hParent);
 	void	Shutdown();
@@ -1185,6 +1188,13 @@ public:
 	bool	CaptureStart();
 	void	CaptureStop();
 	void	CaptureAbort();
+
+public:
+	bool	GetDisableClockForPreview();
+	void	SetDisableClockForPreview(bool enabled);
+
+	bool	GetForceAudioRendererClock();
+	void	SetForceAudioRendererClock(bool enabled);
 
 protected:
 	struct InputSource;
@@ -1317,6 +1327,8 @@ protected:
 	bool mbGraphActive;					// true if the graph is currently running
 	bool mbGraphHasPreview;				// true if the graph has separate capture and preview pins
 	bool mbDisplayVisible;
+	bool mbForceAudioRendererClock;		// force the audio renderer to be the clock when present
+	bool mbDisableClockForPreview;		// disable the clock by default
 
 	// state tracking for reporting changes
 	sint32		mTrackedFramePeriod;
@@ -1363,6 +1375,8 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 	, mbGraphActive(false)
 	, mbGraphHasPreview(false)
 	, mbDisplayVisible(false)
+	, mbDisableClockForPreview(false)
+	, mbForceAudioRendererClock(true)
 	, mTrackedFramePeriod(0)
 	, mCaptureStart(0)
 	, mCaptureStopQueued(0)
@@ -1373,6 +1387,12 @@ VDCaptureDriverDS::VDCaptureDriverDS(IMoniker *pVideoDevice)
 
 VDCaptureDriverDS::~VDCaptureDriverDS() {
 	Shutdown();
+}
+
+void *VDCaptureDriverDS::AsInterface(uint32 id) {
+	if (id == IVDCaptureDriverDShow::kTypeID)
+		return static_cast<IVDCaptureDriverDShow *>(this);
+	return NULL;
 }
 
 void VDCaptureDriverDS::SetCallback(IVDCaptureDriverCallback *pCB) {
@@ -3016,6 +3036,22 @@ void VDCaptureDriverDS::CaptureAbort() {
 	CaptureStop();
 }
 
+bool VDCaptureDriverDS::GetDisableClockForPreview() {
+	return mbDisableClockForPreview;
+}
+
+void VDCaptureDriverDS::SetDisableClockForPreview(bool enabled) {
+	mbDisableClockForPreview = enabled;
+}
+
+bool VDCaptureDriverDS::GetForceAudioRendererClock() {
+	return mbForceAudioRendererClock;
+}
+
+void VDCaptureDriverDS::SetForceAudioRendererClock(bool enabled) {
+	mbForceAudioRendererClock = enabled;
+}
+
 void VDCaptureDriverDS::UpdateDisplay() {
 	if (mUpdateLocks)
 		mbUpdatePending = true;
@@ -3324,12 +3360,12 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			DS_VERIFY(mpCapGraphBuilder2->FindPin(pAudioPullFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pPinSGIn), "find sample grabber input");
 			DS_VERIFY(mpCapGraphBuilder2->FindPin(pAudioPullFilt, PINDIR_OUTPUT, NULL, NULL, TRUE, 0, ~pPinSGOut), "find sample grabber output");
 
-			// If audio analysis is enabled, try to keep the latency down to at least 1/20th of a second.
+			// If audio analysis is enabled, try to keep the latency down to at least 1/30th of a second.
 			if (mbAudioAnalysisEnabled) {
 				ALLOCATOR_PROPERTIES allocProp;
 
 				allocProp.cbAlign = -1;
-				allocProp.cbBuffer = mAudioFormat->nAvgBytesPerSec/20;
+				allocProp.cbBuffer = mAudioFormat->nAvgBytesPerSec/30;
 				if (!allocProp.cbBuffer)
 					allocProp.cbBuffer = 1;
 				allocProp.cbBuffer += mAudioFormat->nBlockAlign - 1;
@@ -3374,17 +3410,19 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 			// Reset the filter graph clock. We have to do this because when we
 			// create a capture graph a different filter may end up being the
 			// clock. For some reason the DirectSound Renderer refuses to play
-			// if we try using the system clock.
-			IMediaFilterPtr pGraphMF;
+			// if we try using the system clock. (SAA713x)
+			if (mbForceAudioRendererClock) {
+				IMediaFilterPtr pGraphMF;
 
-			if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
-				IPinPtr pAudioPinConnect;
-				if (SUCCEEDED(pAudioPin->ConnectedTo(~pAudioPinConnect))) {
-					PIN_INFO pi;
+				if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {
+					IPinPtr pAudioPinConnect;
+					if (SUCCEEDED(pAudioPin->ConnectedTo(~pAudioPinConnect))) {
+						PIN_INFO pi;
 
-					if (SUCCEEDED(pAudioPinConnect->QueryPinInfo(&pi))) {
-						bUseDefaultClock = !SetClockFromDownstream(pi.pFilter, pGraphMF);
-						pi.pFilter->Release();
+						if (SUCCEEDED(pAudioPinConnect->QueryPinInfo(&pi))) {
+							bUseDefaultClock = !SetClockFromDownstream(pi.pFilter, pGraphMF);
+							pi.pFilter->Release();
+						}
 					}
 				}
 			}
@@ -3417,7 +3455,12 @@ bool VDCaptureDriverDS::BuildGraph(bool bNeedCapture, bool bEnableAudio) {
 	}
 
 	// Set the graph clock
-	if (bUseDefaultClock) {
+	if (mbDisableClockForPreview && !bNeedCapture) {
+		IMediaFilterPtr pGraphMF;
+
+		if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF)))
+			pGraphMF->SetSyncSource(NULL);
+	} else if (bUseDefaultClock) {
 		IMediaFilterPtr pGraphMF;
 
 		if (SUCCEEDED(mpGraphBuilder->QueryInterface(IID_IMediaFilter, (void **)~pGraphMF))) {

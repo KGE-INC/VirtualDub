@@ -89,8 +89,9 @@ IVDMediaOutput *VDAVIOutputFileSystem::CreateSegment() {
 	VDStringW s(mSegmentBaseName);
 
 	if (mSegmentDigits) {
-		s += VDFastTextPrintfW(L".%0*d", mSegmentDigits, mCurrentSegment++);
-		VDFastTextFree();
+		VDStringW temp;
+		temp.sprintf(L".%0*d", mSegmentDigits, mCurrentSegment++);
+		s += temp;
 		s += mSegmentExt;
 
 		pOutput->setSegmentHintBlock(true, NULL, 1);

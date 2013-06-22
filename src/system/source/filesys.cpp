@@ -189,6 +189,54 @@ VDStringW VDFileSplitExtRight(const VDStringW& s) { return splitimpR(s, VDFileSp
 
 /////////////////////////////////////////////////////////////////////////////
 
+bool VDFileWildMatch(const char *pattern, const char *path) {
+	// What we do here is split the string into segments that are bracketed
+	// by sequences of asterisks. The trick is that the first match for a
+	// segment as the best possible match, so we can continue. So we just
+	// take each segment at a time and walk it forward until we find the
+	// first match or we fail.
+	//
+	// Time complexity is O(NM), where N=length of string and M=length of
+	// the pattern. In practice, it's rather fast.
+
+	bool star = false;
+	int i = 0;
+	for(;;) {
+		char c = (char)tolower((unsigned char)pattern[i]);
+		if (c == '*') {
+			star = true;
+			pattern += i+1;
+			if (!*pattern)
+				return true;
+			path += i;
+			i = 0;
+			continue;
+		}
+
+		char d = (char)tolower((unsigned char)path[i]);
+		++i;
+
+		if (c == '?') {		// ? matches any character but null.
+			if (!d)
+				return false;
+		} else if (c != d) {	// Literal character must match itself.
+			// If we're at the end of the string or there is no
+			// previous asterisk (anchored search), there's no other
+			// match to find.
+			if (!star || !d || !i)
+				return false;
+
+			// Restart segment search at next position in path.
+			++path;
+			i = 0;
+			continue;
+		}
+
+		if (!c)
+			return true;
+	}
+}
+
 bool VDFileWildMatch(const wchar_t *pattern, const wchar_t *path) {
 	// What we do here is split the string into segments that are bracketed
 	// by sequences of asterisks. The trick is that the first match for a
@@ -297,8 +345,7 @@ bool VDDoesPathExist(const wchar_t *fileName) {
 	if (!(GetVersion() & 0x80000000)) {
 		bExists = ((DWORD)-1 != GetFileAttributesW(fileName));
 	} else {
-		bExists = ((DWORD)-1 != GetFileAttributesA(VDFastTextWToA(fileName)));
-		VDFastTextFree();
+		bExists = ((DWORD)-1 != GetFileAttributesA(VDTextWToA(fileName).c_str()));
 	}
 
 	return bExists;
@@ -322,8 +369,7 @@ void VDCreateDirectory(const wchar_t *path) {
 	if (!(GetVersion() & 0x80000000)) {
 		succeeded = CreateDirectoryW(path, NULL);
 	} else {
-		succeeded = CreateDirectoryA(VDFastTextWToA(path), NULL);
-		VDFastTextFree();
+		succeeded = CreateDirectoryA(VDTextWToA(path).c_str(), NULL);
 	}
 
 	if (!succeeded)

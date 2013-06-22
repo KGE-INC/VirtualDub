@@ -22,7 +22,19 @@
 #include <windows.h>
 #include <d3d9.h>
 
-class IVDVideoDisplayDX9Manager : public IVDRefCount {
+class VDINTERFACE IVDFontRendererD3D9 : public IVDRefCount {
+public:
+	virtual bool Init(VDD3D9Manager *d3dmgr) = 0;
+	virtual void Shutdown() = 0;
+
+	virtual bool Begin() = 0;
+	virtual void DrawTextLine(int x, int y, uint32 textColor, uint32 outlineColor, const char *s) = 0;
+	virtual void End() = 0;
+};
+
+bool VDCreateFontRendererD3D9(IVDFontRendererD3D9 **);
+
+class VDINTERFACE IVDVideoDisplayDX9Manager : public IVDRefCount {
 public:
 	enum CubicMode {
 		kCubicNotInitialized,
@@ -35,7 +47,7 @@ public:
 	};
 };
 
-class IVDVideoUploadContextD3D9 : public IVDRefCount {
+class VDINTERFACE IVDVideoUploadContextD3D9 : public IVDRefCount {
 public:
 	virtual IDirect3DTexture9 *GetD3DTexture(int i) = 0;
 

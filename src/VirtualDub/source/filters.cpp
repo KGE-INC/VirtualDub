@@ -592,6 +592,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETRANGE, (WPARAM)FALSE, MAKELONG(fvi->lMin, fvi->lMax));
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETPOS, (WPARAM)TRUE, fvi->cVal); 
 			SetWindowLongPtr(hDlg, DWLP_USER, (LONG)fvi);
+			SetDlgItemInt(hDlg, IDC_SETTING, fvi->cVal, TRUE);
 
 			if (fvi->ifp) {
 				HWND hwndPreviewButton = GetDlgItem(hDlg, IDC_PREVIEW);
@@ -628,6 +629,7 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
 				fvi->cVal = SendMessage(hwndScroll, TBM_GETPOS, 0, 0);
 
+				SetDlgItemInt(hDlg, IDC_SETTING, fvi->cVal, TRUE);
 				if (fvi->mpUpdateFunction)
 					fvi->mpUpdateFunction(fvi->cVal, fvi->mpUpdateFunctionData);
 
@@ -938,7 +940,7 @@ void FilterPreview::OnVideoRedraw() {
 
 		if (mpDisplay) {
 			ShowWindow(mhwndDisplay, SW_SHOW);
-			mpDisplay->SetSource(false, VDAsPixmap(*filtsys.LastBitmap()));
+			mpDisplay->SetSourcePersistent(false, VDAsPixmap(*filtsys.LastBitmap()));
 			mpDisplay->Update(IVDVideoDisplay::kAllFields);
 		}
 	} catch(const MyError& e) {
@@ -998,8 +1000,8 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 	if (pFilterList) {
 		fsi.lMicrosecsPerFrame = VDRoundToInt(1000000.0 / inputVideoAVI->getRate().asDouble());
 
-		if (g_dubOpts.video.frameRateNewMicroSecs > 0)
-			fsi.lMicrosecsPerFrame = g_dubOpts.video.frameRateNewMicroSecs;
+		if (g_dubOpts.video.mFrameRateAdjustLo > 0)
+			fsi.lMicrosecsPerFrame = VDRoundToInt(1000000.0 / g_dubOpts.video.mFrameRateAdjustHi * g_dubOpts.video.mFrameRateAdjustLo);
 
 		fsi.lMicrosecsPerSrcFrame = fsi.lMicrosecsPerFrame;
 		fsi.flags = FilterStateInfo::kStatePreview;
@@ -1115,6 +1117,8 @@ void FilterPreview::RedoSystem() {
 }
 
 void FilterPreview::UndoSystem() {
+	if (mpDisplay)
+		mpDisplay->Reset();
 	filtsys.DeinitFilters();
 	filtsys.DeallocateBuffers();
 }

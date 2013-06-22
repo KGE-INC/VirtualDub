@@ -26,8 +26,13 @@
 #ifndef f_VD2_SYSTEM_VECTORS_H
 #define f_VD2_SYSTEM_VECTORS_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/vdtypes.h>
 #include <math.h>
+#include <limits>
 
 #ifndef VDFORCEINLINE
 	#define VDFORCEINLINE __forceinline
@@ -67,7 +72,7 @@ public:
 	self_type operator*(const self_type& v) const {
 		self_type result;
 
-#define DO(i,j) result.m[i].v[j] = m[i].v[0]*v.m[0].v[j] + m[i].v[1]*v.m[1].v[j] + m[i].v[2]*v.m[2].v[j]
+#define DO(i,j) result.m[i].v[j] = m[i].v[0]*v.m[0].v[j] + m[i].v[1]*v.m[1].v[j]
 		DO(0,0);
 		DO(0,1);
 		DO(1,0);
@@ -385,7 +390,6 @@ public:
 	vector_type m[4];
 };
 
-
 template<class T>
 struct VDSize {
 	typedef T value_type;
@@ -419,30 +423,137 @@ class VDRect {
 public:
 	typedef T value_type;
 
-	VDRect() {}
-	VDRect(T left_, T top_, T right_, T bottom_) : left(left_), top(top_), right(right_), bottom(bottom_) {}
+	VDRect();
+	VDRect(T left_, T top_, T right_, T bottom_);
 
-	void clear() { left = top = right = bottom = 0; }
+	bool empty() const;
+	bool valid() const;
 
-	void set(T l, T t, T r, T b) {
-		left = l;
-		top = t;
-		right = r;
-		bottom = b;
-	}
+	void clear();
+	void invalidate();
+	void set(T l, T t, T r, T b);
 
-	bool operator==(const VDRect& r) const { return left==r.left && top==r.top && right==r.right && bottom==r.bottom; }
-	bool operator!=(const VDRect& r) const { return left!=r.left || top!=r.top || right!=r.right || bottom!=r.bottom; }
+	void add(T x, T y);
+	void add(const VDRect& r);
+	void translate(T x, T y);
+	void scale(T x, T y);
 
-	T width() const { return right-left; }
-	T height() const { return bottom-top; }
-	T area() const { return (right-left)*(bottom-top); }
-	VDSize<T> size() const { return VDSize<T>(right-left, bottom-top); }
+	bool operator==(const VDRect& r) const;
+	bool operator!=(const VDRect& r) const;
 
+	T width() const;
+	T height() const;
+	T area() const;
+	VDSize<T> size() const;
+
+public:
 	T left, top, right, bottom;
 };
 
+template<class T>
+VDRect<T>::VDRect() {
+}
+
+template<class T>
+VDRect<T>::VDRect(T left_, T top_, T right_, T bottom_)
+	: left(left_)
+	, top(top_)
+	, right(right_)
+	, bottom(bottom_)
+{
+}
+
+template<class T>
+bool VDRect<T>::empty() const {
+	return left >= right || top >= bottom;
+}
+
+template<class T>
+bool VDRect<T>::valid() const {
+	return left <= right;
+}
+
+template<class T>
+void VDRect<T>::clear() {
+	left = top = right = bottom = 0;
+}
+
+template<class T>
+void VDRect<T>::invalidate() {
+	left = top = (std::numeric_limits<T>::max)();
+	right = bottom = std::numeric_limits<T>::is_signed ? -(std::numeric_limits<T>::max)() : T(0);
+}
+
+template<class T>
+void VDRect<T>::set(T l, T t, T r, T b) {
+	left = l;
+	top = t;
+	right = r;
+	bottom = b;
+}
+
+template<class T>
+void VDRect<T>::add(T x, T y) {
+	if (left > x)
+		left = x;
+	if (top > y)
+		top = y;
+	if (right < x)
+		right = x;
+	if (bottom < y)
+		bottom = y;
+}
+
+template<class T>
+void VDRect<T>::add(const VDRect& src) {
+	if (left > src.left)
+		left = src.left;
+	if (top > src.top)
+		top = src.top;
+	if (right < src.right)
+		right = src.right;
+	if (bottom < src.bottom)
+		bottom = src.bottom;
+}
+
+template<class T>
+void VDRect<T>::translate(T x, T y) {
+	left += x;
+	top += y;
+	right += x;
+	bottom += y;
+}
+
+template<class T>
+void VDRect<T>::scale(T x, T y) {
+	left *= x;
+	top *= y;
+	right *= x;
+	bottom *= y;
+}
+
+template<class T>
+bool VDRect<T>::operator==(const VDRect& r) const { return left==r.left && top==r.top && right==r.right && bottom==r.bottom; }
+
+template<class T>
+bool VDRect<T>::operator!=(const VDRect& r) const { return left!=r.left || top!=r.top || right!=r.right || bottom!=r.bottom; }
+
+template<class T>
+T VDRect<T>::width() const { return right-left; }
+
+template<class T>
+T VDRect<T>::height() const { return bottom-top; }
+
+template<class T>
+T VDRect<T>::area() const { return (right-left)*(bottom-top); }
+
+template<class T>
+VDSize<T> VDRect<T>::size() const { return VDSize<T>(right-left, bottom-top); }
+
+///////////////////////////////////////////////////////////////////////////////
 typedef VDSize<sint32>	vdsize32;
+typedef VDSize<float>	vdsize32f;
 typedef	VDRect<sint32>	vdrect32;
+typedef	VDRect<float>	vdrect32f;
 
 #endif

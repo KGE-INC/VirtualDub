@@ -81,6 +81,7 @@ public:
 	virtual void SetFixedAudioLatency(int latencyInMilliseconds) = 0;
 	virtual void SetLimitedAutoAudioLatency(int sampleLimit) = 0;
 	virtual void SetAutoAudioLatency() = 0;
+	virtual void EnableAudioClock(bool enable) = 0;
 
 	virtual void GetStatus(VDCaptureResyncStatus&) = 0;
 };

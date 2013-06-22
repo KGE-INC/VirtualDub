@@ -134,11 +134,11 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				mfd->bright = SendMessage(GetDlgItem(hDlg, IDC_BRIGHTNESS), TBM_GETPOS, 0, 0)-256;
 				mfd->cont = SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_GETPOS, 0, 0);
 
-				EndDialog(hDlg, 0);
+				EndDialog(hDlg, true);
 				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
 				return TRUE;
 			} else if (LOWORD(wParam) == IDCANCEL) {
-                EndDialog(hDlg, 1);
+                EndDialog(hDlg, false);
 				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
                 return TRUE;
 			} else if (LOWORD(wParam) == IDC_PREVIEW) {
@@ -190,11 +190,12 @@ static int brightcont_config(FilterActivation *fa, const FilterFunctions *ff, HW
 
 	MyFilterData tmp(*mfd);
 
-	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), hWnd, brightcontDlgProc, (LONG)fa->filter_data))
-		return true;
+	if (!DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), hWnd, brightcontDlgProc, (LONG)fa->filter_data)) {
+		*mfd = tmp;
+		return 1;
+	}
 
-	*mfd = tmp;
-	return false;
+	return 0;
 }
 
 static void brightcont_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

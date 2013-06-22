@@ -497,6 +497,9 @@ void VDProject::DisplayFrame(bool bDispInput) {
 	if (!mpCB)
 		return;
 
+	if (!inputVideoAVI)
+		return;
+
 	if (!g_dubOpts.video.fShowInputFrame && !g_dubOpts.video.fShowOutputFrame)
 		return;
 
@@ -515,6 +518,13 @@ void VDProject::DisplayFrame(bool bDispInput) {
 			mLastDisplayedOutputFrame = original_pos;
 
 			if (pos >= inputVideoAVI->getEnd()) {
+				mDesiredInputFrame = -1;
+				mDesiredInputSample = -1;
+				mDesiredOutputFrame = -1;
+				mDesiredNextInputFrame = -1;
+				mDesiredNextInputSample = -1;
+				mDesiredNextOutputFrame = -1;
+
 				if (g_dubOpts.video.fShowInputFrame && bDispInput)
 					mpCB->UIRefreshInputFrame(false);
 				if (bShowOutput)
@@ -545,6 +555,7 @@ void VDProject::DisplayFrame(bool bDispInput) {
 					mDesiredNextOutputFrame = -1;
 				} else {
 					mDesiredNextInputFrame	= pos;
+					mDesiredNextInputSample = inputVideoAVI->displayToStreamOrder(pos);
 					mDesiredNextOutputFrame = original_pos;
 				}
 				mbUpdateInputFrame	= bDispInput;
@@ -1587,6 +1598,8 @@ void VDProject::AbortOperation() {
 }
 
 void VDProject::UpdateFilterList() {
+	mLastDisplayedOutputFrame = -1;
+	DisplayFrame();
 	mpCB->UIVideoFiltersUpdated();
 }
 

@@ -26,6 +26,10 @@
 #ifndef VD2_SYSTEM_VDSTL_H
 #define VD2_SYSTEM_VDSTL_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/memory.h>
 
@@ -263,6 +267,10 @@ public:
 
 	vdstructex() : mpMemory(NULL), mSize(0) {}
 
+	explicit vdstructex(size_t len) : mpMemory(NULL), mSize(0) {
+		resize(len);
+	}
+
 	vdstructex(const T *pStruct, size_t len) : mSize(len), mpMemory((T*)malloc(len)) {
 		memcpy(mpMemory, pStruct, len);
 	}
@@ -380,35 +388,9 @@ public:
 
 class vdlist_base {
 public:
-	static void unlink(vdlist_node& node) {
-		vdlist_node& n1 = *node.mListNodePrev;
-		vdlist_node& n2 = *node.mListNodeNext;
-
-		n1.mListNodeNext = &n2;
-		n2.mListNodePrev = &n1;
-	}
-};
-
-template<class T>
-class vdlist : public vdlist_base {
-public:
 	typedef	vdlist_node						node;
-	typedef	T*								value_type;
-	typedef	T**								pointer;
-	typedef	const T**						const_pointer;
-	typedef	T*&								reference;
-	typedef	const T*&						const_reference;
 	typedef	size_t							size_type;
 	typedef	ptrdiff_t						difference_type;
-	typedef	vdlist_iterator<T, T>						iterator;
-	typedef vdlist_iterator<const T, T>					const_iterator;
-	typedef typename vdreverse_iterator<iterator, T>::type			reverse_iterator;
-	typedef typename vdreverse_iterator<const_iterator, const T>::type	const_reverse_iterator;
-
-	vdlist() {
-		mAnchor.mListNodePrev	= &mAnchor;
-		mAnchor.mListNodeNext	= &mAnchor;
-	}
 
 	bool empty() const {
 		return mAnchor.mListNodeNext == &mAnchor;
@@ -425,6 +407,51 @@ public:
 			} while(p != &mAnchor);
 
 		return s;
+	}
+
+	void clear() {
+		mAnchor.mListNodePrev	= &mAnchor;
+		mAnchor.mListNodeNext	= &mAnchor;
+	}
+
+	void pop_front() {
+		mAnchor.mListNodeNext = mAnchor.mListNodeNext->mListNodeNext;
+		mAnchor.mListNodeNext->mListNodePrev = &mAnchor;
+	}
+
+	void pop_back() {
+		mAnchor.mListNodePrev = mAnchor.mListNodePrev->mListNodePrev;
+		mAnchor.mListNodePrev->mListNodeNext = &mAnchor;
+	}
+
+	static void unlink(vdlist_node& node) {
+		vdlist_node& n1 = *node.mListNodePrev;
+		vdlist_node& n2 = *node.mListNodeNext;
+
+		n1.mListNodeNext = &n2;
+		n2.mListNodePrev = &n1;
+	}
+
+protected:
+	node	mAnchor;
+};
+
+template<class T>
+class vdlist : public vdlist_base {
+public:
+	typedef	T*								value_type;
+	typedef	T**								pointer;
+	typedef	const T**						const_pointer;
+	typedef	T*&								reference;
+	typedef	const T*&						const_reference;
+	typedef	vdlist_iterator<T, T>						iterator;
+	typedef vdlist_iterator<const T, T>					const_iterator;
+	typedef typename vdreverse_iterator<iterator, T>::type			reverse_iterator;
+	typedef typename vdreverse_iterator<const_iterator, const T>::type	const_reverse_iterator;
+
+	vdlist() {
+		mAnchor.mListNodePrev	= &mAnchor;
+		mAnchor.mListNodeNext	= &mAnchor;
 	}
 
 	iterator begin() {
@@ -508,11 +535,6 @@ public:
 		iterator it(p);
 	}
 
-	void clear() {
-		mAnchor.mListNodePrev	= &mAnchor;
-		mAnchor.mListNodeNext	= &mAnchor;
-	}
-
 	void push_front(T *p) {
 		node& n = *p;
 		n.mListNodePrev = &mAnchor;
@@ -527,16 +549,6 @@ public:
 		n.mListNodePrev = mAnchor.mListNodePrev;
 		n.mListNodePrev->mListNodeNext = &n;
 		mAnchor.mListNodePrev = &n;
-	}
-
-	void pop_front() {
-		mAnchor.mListNodeNext = mAnchor.mListNodeNext->mListNodeNext;
-		mAnchor.mListNodeNext->mListNodePrev = &mAnchor;
-	}
-
-	void pop_back() {
-		mAnchor.mListNodePrev = mAnchor.mListNodePrev->mListNodePrev;
-		mAnchor.mListNodePrev->mListNodeNext = &mAnchor;
 	}
 
 	iterator erase(T *p) {
@@ -604,9 +616,6 @@ public:
 			insert(dst, i1, i2);
 		}
 	}
-
-protected:
-	node	mAnchor;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -653,6 +662,14 @@ public:
 		m.end = m.begin + n;
 		m.eos = m.end;
 		memcpy(m.begin, x.m.begin, sizeof(T) * n);
+	}
+
+	vdfastvector(const value_type *p, const value_type *q) {
+		m.begin = NULL;
+		m.end = NULL;
+		m.eos = NULL;
+
+		assign(p, q);
 	}
 
 	~vdfastvector() {
@@ -729,8 +746,8 @@ public:
 	}
 
 	iterator erase(iterator it1, iterator it2) {
-		VDASSERT(it1 - m.begin < m.end - m.begin);
-		VDASSERT(it2 - m.begin < m.end - m.begin);
+		VDASSERT(it1 - m.begin <= m.end - m.begin);
+		VDASSERT(it2 - m.begin <= m.end - m.begin);
 		VDASSERT(it1 <= it2);
 
 		memmove(it1, it2, (char *)m.end - (char *)it2);
@@ -754,6 +771,25 @@ public:
 		++m.end;
 		VDASSERT(m.end <= m.eos);
 
+		return it;
+	}
+
+	iterator insert(iterator it, size_type n, const T& value) {
+		const T temp(value);		// copy in case value is inside container.
+
+		ptrdiff_t bytesToInsert = n * sizeof(T);
+
+		if ((char *)m.eos - (char *)m.end < bytesToInsert) {
+			difference_type delta = it - m.begin;
+			_reserve_always_add(bytesToInsert);
+			it = m.begin + delta;
+		}
+
+		memmove((char *)it + bytesToInsert, it, (char *)m.end - (char *)it);
+		for(size_t i=0; i<n; ++i)
+			*it++ = temp;
+		m.end += n;
+		VDASSERT(m.end <= m.eos);
 		return it;
 	}
 

@@ -26,6 +26,10 @@
 #ifndef f_VD2_SYSTEM_VDSTRING_H
 #define f_VD2_SYSTEM_VDSTRING_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -53,6 +57,12 @@ public:
 	VDStringSpanA() 
 		: mpBegin(const_cast<value_type *>(sNull))
 		, mpEnd(const_cast<value_type *>(sNull))
+	{
+	}
+
+	explicit VDStringSpanA(const value_type *s)
+		: mpBegin(const_cast<value_type *>(s))
+		, mpEnd(const_cast<value_type *>(s) + strlen(s))
 	{
 	}
 
@@ -100,12 +110,36 @@ public:
 		return p ? (const value_type *)p - mpBegin : npos;
 	}
 
+	const VDStringSpanA subspan(size_type pos = 0, size_type n = npos) const {
+		
+		size_type len = (size_type)(mpEnd - mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		value_type *p = mpBegin + pos;
+		return VDStringSpanA(p, p+n);
+	}
+
 protected:
+	friend bool operator==(const VDStringSpanA& x, const VDStringSpanA& y);
+	friend bool operator==(const VDStringSpanA& x, const char *y);
+
 	value_type *mpBegin;
 	value_type *mpEnd;
 
 	static const value_type sNull[1];
 };
+
+inline bool operator==(const VDStringSpanA& x, const VDStringSpanA& y) { VDStringSpanA::size_type len = (VDStringSpanA::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringSpanA::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(char)); }
+inline bool operator==(const VDStringSpanA& x, const char *y) { size_t len = strlen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(char)); }
+inline bool operator==(const char *x, const VDStringSpanA& y) { return y == x; }
+
+inline bool operator!=(const VDStringSpanA& x, const VDStringSpanA& y) { return !(x == y); }
+inline bool operator!=(const VDStringSpanA& x, const char *y) { return !(x == y); }
+inline bool operator!=(const char *x, const VDStringSpanA& y) { return !(y == x); }
 
 class VDStringA : public VDStringSpanA {
 public:
@@ -409,11 +443,10 @@ public:
 	const_pointer		c_str() const		{ return mpBegin; }
 
 	this_type& sprintf(const value_type *format, ...);
+	this_type& append_sprintf(const value_type *format, ...);
+	this_type& append_vsprintf(const value_type *format, va_list val);
 
 protected:
-	friend bool operator==(const VDStringA& x, const VDStringA& y);
-	friend bool operator==(const VDStringA& x, const char *y);
-
 	void push_back_extend();
 	void resize_slow(size_type n, size_type current_size);
 	void resize_slow(size_type n, size_type current_size, value_type c);
@@ -424,14 +457,6 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
-inline bool operator==(const VDStringA& x, const VDStringA& y) { VDStringA::size_type len = (VDStringA::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringA::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(char)); }
-inline bool operator==(const VDStringA& x, const char *y) { size_t len = strlen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(char)); }
-inline bool operator==(const char *x, const VDStringA& y) { return y == x; }
-
-inline bool operator!=(const VDStringA& x, const VDStringA& y) { return !(x == y); }
-inline bool operator!=(const VDStringA& x, const char *y) { return !(x == y); }
-inline bool operator!=(const char *x, const VDStringA& y) { return !(y == x); }
 
 inline VDStringA operator+(const VDStringA& str, const VDStringA& s) {
 	VDStringA result;
@@ -479,6 +504,12 @@ public:
 	{
 	}
 
+	explicit VDStringSpanW(const value_type *s)
+		: mpBegin(const_cast<value_type *>(s))
+		, mpEnd(const_cast<value_type *>(s) + wcslen(s))
+	{
+	}
+
 	VDStringSpanW(const value_type *s, const value_type *t)
 		: mpBegin(const_cast<value_type *>(s))
 		, mpEnd(const_cast<value_type *>(t))
@@ -523,12 +554,36 @@ public:
 		return p ? (const value_type *)p - mpBegin : npos;
 	}
 
+	// extensions
+	const VDStringSpanW subspan(size_type pos, size_type n) const {
+		size_type len = (size_type)(mpEnd - mpBegin);
+		VDASSERT(pos <= len);
+
+		len -= pos;
+		if (n > len)
+			n = len;
+
+		value_type *p = mpBegin + pos;
+		return VDStringSpanW(p, p+n);
+	}
+
 protected:
+	friend bool operator==(const VDStringSpanW& x, const VDStringSpanW& y);
+	friend bool operator==(const VDStringSpanW& x, const wchar_t *y);
+
 	value_type *mpBegin;
 	value_type *mpEnd;
 
 	static const value_type sNull[1];
 };
+
+inline bool operator==(const VDStringSpanW& x, const VDStringSpanW& y) { VDStringA::size_type len = (VDStringSpanW::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringSpanW::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(wchar_t)); }
+inline bool operator==(const VDStringSpanW& x, const wchar_t *y) { size_t len = wcslen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(wchar_t)); }
+inline bool operator==(const wchar_t *x, const VDStringSpanW& y) { return y == x; }
+
+inline bool operator!=(const VDStringSpanW& x, const VDStringSpanW& y) { return !(x == y); }
+inline bool operator!=(const VDStringSpanW& x, const wchar_t *y) { return !(x == y); }
+inline bool operator!=(const wchar_t *x, const VDStringSpanW& y) { return !(y == x); }
 
 class VDStringW : public VDStringSpanW {
 public:
@@ -837,11 +892,10 @@ public:
 	const_pointer		c_str() const		{ return mpBegin; }
 
 	this_type& sprintf(const value_type *format, ...);
+	this_type& append_sprintf(const value_type *format, ...);
+	this_type& append_vsprintf(const value_type *format, va_list val);
 
 protected:
-	friend bool operator==(const VDStringW& x, const VDStringW& y);
-	friend bool operator==(const VDStringW& x, const wchar_t *y);
-
 	void push_back_extend();
 	void resize_slow(size_type n, size_type current_size);
 	void reserve_slow(size_type n, size_type current_capacity);
@@ -851,14 +905,6 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
-inline bool operator==(const VDStringW& x, const VDStringW& y) { VDStringA::size_type len = (VDStringW::size_type)(x.mpEnd - x.mpBegin); return len == (VDStringW::size_type)(y.mpEnd - y.mpBegin) && !memcmp(x.mpBegin, y.mpBegin, len*sizeof(wchar_t)); }
-inline bool operator==(const VDStringW& x, const wchar_t *y) { size_t len = wcslen(y); return len == (size_t)(x.mpEnd - x.mpBegin) && !memcmp(x.mpBegin, y, len*sizeof(wchar_t)); }
-inline bool operator==(const wchar_t *x, const VDStringW& y) { return y == x; }
-
-inline bool operator!=(const VDStringW& x, const VDStringW& y) { return !(x == y); }
-inline bool operator!=(const VDStringW& x, const wchar_t *y) { return !(x == y); }
-inline bool operator!=(const wchar_t *x, const VDStringW& y) { return !(y == x); }
 
 inline VDStringW operator+(const VDStringW& str, const VDStringW& s) {
 	VDStringW result;

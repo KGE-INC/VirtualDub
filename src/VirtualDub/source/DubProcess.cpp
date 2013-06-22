@@ -572,26 +572,29 @@ void VDDubProcessThread::ThreadRun() {
 
 					const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)mpVideoCompressor->GetOutputFormat();
 					mpVideoDecompressor = VDFindVideoDecompressor(0, pbih);
-					if (!mpVideoDecompressor->SetTargetFormat(0))
-						mpVideoDecompressor = NULL;
-					else {
-						try {
-							mpVideoDecompressor->Start();
 
-							mLoopThrottle.BeginWait();
-							mpBlitter->lock(BUFFERID_OUTPUT);
-							mLoopThrottle.EndWait();
-							mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorSuccessfulCallback, mpOutputDisplay, NULL);					
-
-							int format = mpVideoDecompressor->GetTargetFormat();
-							int variant = mpVideoDecompressor->GetTargetFormatVariant();
-
-							VDPixmapLayout layout;
-							VDMakeBitmapCompatiblePixmapLayout(layout, abs(pbih->biWidth), abs(pbih->biHeight), format, variant);
-
-							mVideoDecompBuffer.init(layout);
-						} catch(const MyError&) {
+					if (mpVideoDecompressor) {
+						if (!mpVideoDecompressor->SetTargetFormat(0))
 							mpVideoDecompressor = NULL;
+						else {
+							try {
+								mpVideoDecompressor->Start();
+
+								mLoopThrottle.BeginWait();
+								mpBlitter->lock(BUFFERID_OUTPUT);
+								mLoopThrottle.EndWait();
+								mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorSuccessfulCallback, mpOutputDisplay, NULL);					
+
+								int format = mpVideoDecompressor->GetTargetFormat();
+								int variant = mpVideoDecompressor->GetTargetFormatVariant();
+
+								VDPixmapLayout layout;
+								VDMakeBitmapCompatiblePixmapLayout(layout, abs(pbih->biWidth), abs(pbih->biHeight), format, variant);
+
+								mVideoDecompBuffer.init(layout);
+							} catch(const MyError&) {
+								mpVideoDecompressor = NULL;
+							}
 						}
 					}
 

@@ -11,13 +11,13 @@ public:
 	~VDSymbolSourceLinkMap();
 
 	void Init(const wchar_t *filename);
-	const VDSymbol *LookupSymbol(uint32 addr);
-	const VDSection *LookupSection(uint32 addr);
+	const VDSymbol *LookupSymbol(sint64 addr);
+	const VDSection *LookupSection(sint64 addr);
 	void GetAllSymbols(vdfastvector<VDSymbol>&);
 	uint32 GetCodeGroupMask();
 	int GetSectionCount();
 	const VDSection *GetSection(int sec);
-	bool LookupLine(uint32 addr, const char *& filename, int& lineno);
+	bool LookupLine(sint64 addr, const char *& filename, int& lineno);
 
 protected:
 	void Init(IVDStream *pStream);
@@ -33,7 +33,7 @@ protected:
 	tLineStrings mLineStrings;
 
 	typedef std::pair<const char *, int> tLineInfo;
-	typedef std::map<unsigned, tLineInfo> tLineMap;
+	typedef std::map<sint64, tLineInfo> tLineMap;
 	tLineMap mLineMap;
 };
 
@@ -126,10 +126,11 @@ void VDSymbolSourceLinkMap::Init(IVDStream *pStream) {
 
 	textStream.GetNextLine();
 
-	std::vector<uint32> groups;
+	std::vector<sint64> groups;
 
 	while(const char *line = textStream.GetNextLine()) {
-		long grp, start, rva;
+		long grp, start;
+		sint64 rva;
 		char symname[2048];
 
 		// workaround for junk caused by VCPPCheck insertion with goofy anonymous namespace
@@ -144,7 +145,7 @@ void VDSymbolSourceLinkMap::Init(IVDStream *pStream) {
 			continue;
 		}
 
-		if (4!=sscanf(line, "%lx:%lx %s %lx", &grp, &start, symname, &rva))
+		if (4!=sscanf(line, "%lx:%lx %s %I64x", &grp, &start, symname, &rva))
 			break;
 
 		if (!(mCodeSegments & (1<<grp)))
@@ -167,10 +168,11 @@ void VDSymbolSourceLinkMap::Init(IVDStream *pStream) {
 		textStream.GetNextLine();
 
 		while(const char *line = textStream.GetNextLine()) {
-			long grp, start, rva;
+			long grp, start;
+			sint64 rva;
 			char symname[4096];
 
-			if (4!=sscanf(line, "%lx:%lx %s %lx", &grp, &start, symname, &rva))
+			if (4!=sscanf(line, "%lx:%lx %s %I64x", &grp, &start, symname, &rva))
 				break;
 
 			if (!(mCodeSegments & (1<<grp)))
@@ -257,7 +259,7 @@ void VDSymbolSourceLinkMap::Init(IVDStream *pStream) {
 	std::sort(mSymbols.begin(), mSymbols.end(), SymbolSort());
 }
 
-const VDSymbol *VDSymbolSourceLinkMap::LookupSymbol(uint32 addr) {
+const VDSymbol *VDSymbolSourceLinkMap::LookupSymbol(sint64 addr) {
 	VDSymbol s={addr, NULL};
 
 	tSymbols::iterator it(std::upper_bound(mSymbols.begin(), mSymbols.end(), s, SymbolSort()));
@@ -268,7 +270,7 @@ const VDSymbol *VDSymbolSourceLinkMap::LookupSymbol(uint32 addr) {
 	return &*--it;
 }
 
-const VDSection *VDSymbolSourceLinkMap::LookupSection(uint32 addr) {
+const VDSection *VDSymbolSourceLinkMap::LookupSection(sint64 addr) {
 	return NULL;
 }
 
@@ -288,7 +290,7 @@ const VDSection *VDSymbolSourceLinkMap::GetSection(int sec) {
 	return &mSections[sec];
 }
 
-bool VDSymbolSourceLinkMap::LookupLine(uint32 addr, const char *& filename, int& lineno) {
+bool VDSymbolSourceLinkMap::LookupLine(sint64 addr, const char *& filename, int& lineno) {
 	tLineMap::iterator it(mLineMap.upper_bound(addr));
 
 	if (it != mLineMap.begin()) {

@@ -105,7 +105,9 @@ VDStringW VDFileSplitExtRight(const VDStringW&);
 /// character, and '*' matches zero or more characters.
 ///
 /// NOTE: This is not guaranteed or intended to perfectly match the
-/// underlying OS wildcard mechanism.
+/// underlying OS wildcard mechanism. In particular, we don't try to
+/// emulate MSDOS or Windows goofiness.
+bool VDFileWildMatch(const char *pattern, const char *path);
 bool VDFileWildMatch(const wchar_t *pattern, const wchar_t *path);
 
 /////////////////////////////////////////////////////////////////////////////

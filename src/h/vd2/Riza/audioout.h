@@ -18,7 +18,6 @@
 #ifndef f_VD2_RIZA_AUDIOOUT_H
 #define f_VD2_RIZA_AUDIOOUT_H
 
-#include <windows.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/vdstl.h>
 

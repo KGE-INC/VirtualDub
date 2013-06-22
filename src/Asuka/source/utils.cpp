@@ -55,6 +55,7 @@ void help() {
 	puts("Asuka lookup       Look up address in link map");
 	puts("Asuka makearray    Convert binary file to C array");
 	puts("Asuka mapconv      Generate runtime symbol database");
+	puts("Asuka snapsetup    Temporarily change windows settings for screencaps");
 	puts("Asuka verinc       Increment version file");
 	exit(5);
 }

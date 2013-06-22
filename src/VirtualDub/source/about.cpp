@@ -289,6 +289,12 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 	char buf[4096];
 #ifdef __INTEL_COMPILER
 	const char *const s = "Intel C/C++ Compiler 6.0";
+#elif VD_COMPILER_MSVC >= 1500
+	#if VD_CPU_AMD64
+		const char *const s = "Microsoft Visual Studio 2008 for AMD64";
+	#else
+		const char *const s = "Microsoft Visual Studio 2008 for X86";
+	#endif
 #elif VD_COMPILER_MSVC >= 1400
 	#if VD_CPU_AMD64
 		#if VD_COMPILER_MSVC_VC8_DDK

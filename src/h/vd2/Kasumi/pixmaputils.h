@@ -1,6 +1,10 @@
 #ifndef f_VD2_KASUMI_PIXMAPUTILS_H
 #define f_VD2_KASUMI_PIXMAPUTILS_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/Kasumi/pixmap.h>
 
 struct VDPixmapFormatInfo {

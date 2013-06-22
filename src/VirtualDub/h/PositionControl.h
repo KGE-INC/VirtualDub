@@ -21,6 +21,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <vd2/system/refcount.h>
+#include <vd2/system/event.h>
 
 #define POSITIONCONTROLCLASS (szPositionControlName)
 
@@ -37,6 +38,26 @@ public:
 	virtual bool		GetFrameString(wchar_t *buf, size_t buflen, VDPosition frame) = 0;
 };
 
+struct VDPositionControlEventData {
+	enum EventType {
+		kEventNone,
+		kEventJump,
+		kEventJumpToStart,
+		kEventJumpToPrev,
+		kEventJumpToNext,
+		kEventJumpToPrevPage,
+		kEventJumpToNextPage,
+		kEventJumpToPrevKey,
+		kEventJumpToNextKey,
+		kEventJumpToEnd,
+		kEventTracking,
+		kEventCount
+	};
+
+	VDPosition	mPosition;
+	EventType	mEventType;	
+};
+
 class IVDPositionControl : public IVDRefCount {
 public:
 	virtual int			GetNiceHeight() = 0;
@@ -50,8 +71,11 @@ public:
 	virtual void		SetSelection(VDPosition start, VDPosition end, bool updateNow = true) = 0;
 	virtual void		SetFrameRate(const VDFraction& frameRate) = 0;
 	virtual void		SetAutoPositionUpdate(bool autoUpdate) = 0;
+	virtual void		SetAutoStep(bool autoStep) = 0;
 
 	virtual void		ResetShuttle() = 0;
+
+	virtual VDEvent<IVDPositionControl, VDPositionControlEventData>&	PositionUpdated() = 0;
 };
 
 IVDPositionControl *VDGetIPositionControl(VDGUIHandle h);

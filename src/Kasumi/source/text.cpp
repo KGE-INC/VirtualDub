@@ -22,6 +22,61 @@
 
 #include "defaultfont.inl"
 
+void VDPixmapGetTextExtents(const VDOutlineFontInfo *font, float size, const char *pText, VDTextLayoutMetrics& out_Metrics) {
+	if (!font)
+		font = &g_VDDefaultFont_FontInfo;
+
+	float invEmSquare = 1.0f / (float)font->mEmSquare;
+	float scale = 1.0f / (255.0f * 65536.0f);
+	float xscale = (float)(font->mMaxX - font->mMinX) * scale;
+	float yscale = (float)(font->mMaxY - font->mMinY) * scale;
+
+	float xinitstep = font->mMinX * 255.0f * scale;
+	float yinitstep = -(font->mMaxY * scale + font->mDescent);
+
+	float xoffset = xinitstep;
+	float yoffset = yinitstep;
+
+	vdrect32f bounds;
+	bounds.invalidate();
+
+	while(const char c = *pText++) {
+		int index = (unsigned char)c - font->mStartGlyph;
+
+		if ((unsigned)index >= (unsigned)(font->mEndGlyph - font->mStartGlyph))
+			continue;
+
+		const VDOutlineFontGlyphInfo& glyph = font->mpGlyphArray[index];
+		const VDOutlineFontGlyphInfo& glyphNext = font->mpGlyphArray[index + 1];
+		int nPoints = glyphNext.mPointArrayStart - glyph.mPointArrayStart;
+
+		if (nPoints) {
+			vdrect32 localBounds;
+			localBounds.invalidate();
+
+			const uint16 *pPoints = font->mpPointArray + glyph.mPointArrayStart;
+			for(int i=0; i<nPoints; ++i) {
+				uint16 pt = *pPoints++;
+
+				localBounds.add(pt & 255, pt >> 8);
+			}
+
+			vdrect32f localBoundsF((float)localBounds.left, -(float)localBounds.bottom, (float)localBounds.right, -(float)localBounds.top);
+			localBoundsF.scale(xscale, yscale);
+			localBoundsF.translate(xoffset, yoffset);
+			bounds.add(localBoundsF);
+		}
+
+		xoffset += glyph.mAWidth + glyph.mBWidth + glyph.mCWidth;
+	}
+
+	if (bounds.valid())
+		bounds.scale(size * invEmSquare, size * invEmSquare);
+
+	out_Metrics.mExtents = bounds;
+	out_Metrics.mAdvance = (xoffset - xinitstep) * size * invEmSquare;
+}
+
 void VDPixmapConvertTextToPath(VDPixmapPathRasterizer& rast, const VDOutlineFontInfo *pFont, float size, float x, float y, const char *pText, const float transform[2][2]) {
 	if (!pFont)
 		pFont = &g_VDDefaultFont_FontInfo;
@@ -46,7 +101,7 @@ void VDPixmapConvertTextToPath(VDPixmapPathRasterizer& rast, const VDOutlineFont
 	while(const char c = *pText++) {
 		int index = (unsigned char)c - pFont->mStartGlyph;
 
-		if (index >= pFont->mEndGlyph - pFont->mStartGlyph)
+		if ((unsigned)index >= (unsigned)(pFont->mEndGlyph - pFont->mStartGlyph))
 			continue;
 
 		const VDOutlineFontGlyphInfo& glyph = pFont->mpGlyphArray[index];

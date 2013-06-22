@@ -18,6 +18,10 @@
 #ifndef f_INPUTFILE_H
 #define f_INPUTFILE_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <windows.h>
 #include <vfw.h>
 

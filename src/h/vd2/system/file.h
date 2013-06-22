@@ -26,6 +26,10 @@
 #ifndef f_VD2_SYSTEM_FILE_H
 #define f_VD2_SYSTEM_FILE_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <limits.h>
 #include <stdarg.h>
 #include <vd2/system/vdtypes.h>

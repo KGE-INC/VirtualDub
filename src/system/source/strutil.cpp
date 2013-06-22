@@ -53,3 +53,29 @@ const char *strskipspace(const char *s) {
 
 	return s-1;
 }
+
+size_t vdstrlcpy(char *dst, const char *src, size_t size) {
+	size_t len = strlen(src);
+
+	if (size) {
+		if (size > len)
+			size = len;
+
+		memcpy(dst, src, size);
+		dst[size] = 0;
+	}
+	return len;
+}
+
+size_t vdwcslcpy(wchar_t *dst, const wchar_t *src, size_t size) {
+	size_t len = wcslen(src);
+
+	if (size) {
+		if (size > len)
+			size = len;
+
+		memcpy(dst, src, size * sizeof(wchar_t));
+		dst[size] = 0;
+	}
+	return len;
+}

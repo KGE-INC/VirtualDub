@@ -26,6 +26,12 @@
 #ifndef f_VD2_SYSTEM_BINARY_H
 #define f_VD2_SYSTEM_BINARY_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
+#include <vd2/system/vdtypes.h>
+
 #define VDMAKEFOURCC(byte1, byte2, byte3, byte4) (((uint8)byte1) + (((uint8)byte2) << 8) + (((uint8)byte3) << 16) + (((uint8)byte4) << 24))
 
 #ifdef _MSC_VER

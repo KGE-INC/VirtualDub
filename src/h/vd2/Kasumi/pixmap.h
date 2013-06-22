@@ -1,6 +1,10 @@
 #ifndef f_VD2_KASUMI_PIXMAP_H
 #define f_VD2_KASUMI_PIXMAP_H
 
+#ifdef _MSC_VER
+	#pragma once
+#endif
+
 #include <vd2/system/vdtypes.h>
 
 namespace nsVDPixmap {

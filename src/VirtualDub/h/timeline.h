@@ -22,6 +22,7 @@
 #include "FrameSubset.h"
 
 class IVDVideoSource;
+class VDFraction;
 
 class VDTimeline {
 public:
@@ -45,6 +46,8 @@ public:
 	VDPosition		GetNextEdit(VDPosition pos);
 
 	VDPosition		TimelineToSourceFrame(VDPosition pos);
+
+	void	Rescale(const VDFraction& oldRate, sint64 oldLength, const VDFraction& newRate, sint64 newLength);
 
 protected:
 	FrameSubset	mSubset;

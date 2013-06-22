@@ -58,4 +58,6 @@ const VDStringW VDGetDirectory(long nKey, VDGUIHandle ctxParent, const wchar_t *
 void VDLoadFilespecSystemData();
 void VDSaveFilespecSystemData();
 
+void VDInitFilespecSystem();
+
 #endif

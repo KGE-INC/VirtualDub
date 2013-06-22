@@ -1,6 +1,44 @@
 VirtualDub change log
 
-Build %build% (1.7.2, experimental): [%date%]
+Build %build% (1.7.3, experimental): [%date%]
+   [features added]
+   * Added display option for showing display debugging info.
+   * Frame rate adjustment can now be entered exactly, including as a rational fraction.
+   * Jobs can now be reloaded for tweaking.
+   * Capture: Added several options for fine-tuning timing issues with DirectShow-based capture drivers.
+   * D3D: Improved bicubic algorithm for ps1.1+ capable cards.
+   * D3DFX: Extended annotation and semantics support -- see help for details.
+   * Hex editor: Now supports drag and drop.
+
+   [bugs fixed]
+   * Audio volume dialog didn't display properly after setting volume adjustment to zero in script.
+   * Fixed crash when attempting to use "show decompressed output" when no decompressor is available for the output format.
+   * Added workaround for digital cameras that write incomplete u-law audio formats.
+   * Fixed crash when writing job that uses the Pinnacle DV codec.
+   * Added code to prevent crash when decoding an MJPEG stream where the JPEG images are larger than the frame size reported in the video stream. This now produces an error when the internal decoder is used.
+   * AVI recovery code can now recover AVI files with 'rec' grouping chunks.
+   * Fixed scrambled colors in filter preview with paletted video.
+   * Fixed I/O errors in rare case where an AVI file could not be opened in unbuffered I/O mode.
+   * Implemented mode 7 compression, HAM, and Halfbrite modes in IFF ANIM reader.
+   * Audio display would occasionally stop updating across certain edits.
+   * Output video pane now updates itself after filters are edited.
+   * Fixed minor bug where audio decompression errors would be reported as compression errors.
+   * Fixed a case where audio displacements didn't work with compressed audio and full processing mode.
+   * Perspective video filter now works in batch mode.
+   * Added workaround for strange bit rates being shown on output AVI files in Windows Vista Explorer.
+   * Fixed decoding of AVI files that have zero-byte frames marked as key frames (AVIFile turns these back into non-key frames).
+   * "Sharpen" video filter no longer shows black when filter preview is first opened.
+   * D3DFX: Leaving alpha blending on in an effect no longer scrambles YCbCr decoding.
+   
+   [regressions fixed]
+   * OK and Cancel behaviors on brightness/contrast video filter were swapped.
+   * Fixed crash when loading 8-bit RLE videos.
+   * D3D: Works again on video cards supporting less than pixel shader 3.0.
+   * Added setting value back to sharpen video filter configuration dialog.
+   * Fixed trippy gradient displays when trying to show a solid color for the dummy frame at the end (some display drivers don't handle 1x1 blits correctly).
+   * Capture: Left-click start option works again.
+   
+Build 27700 (1.7.2, experimental): [May 19, 2007]
    [features added]
    * Added minor frame lines to the parameter curve editor.
    * Input driver plugin support.

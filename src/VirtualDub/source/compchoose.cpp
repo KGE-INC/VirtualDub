@@ -23,6 +23,7 @@
 #include <vfw.h>
 
 #include <vd2/system/debug.h>
+#include <vd2/system/protscope.h>
 #include <vd2/system/text.h>
 
 #include "resource.h"

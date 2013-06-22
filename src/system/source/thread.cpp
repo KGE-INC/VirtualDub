@@ -31,6 +31,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/tls.h>
+#include <vd2/system/protscope.h>
 
 namespace {
 	//
