@@ -20,6 +20,7 @@
 #include <vd2/system/error.h>
 #include "VBitmap.h"
 #include "crash.h"
+#include "misc.h"
 
 #include "filters.h"
 
@@ -406,17 +407,21 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 				fa->pfsi = pfsiPrev;
 
 			VDCHECKPOINT;
-			CHECK_FPU_STACK
 
-			if (fa->filter->startProc)
+			if (fa->filter->startProc) {
 				try {
-					if (rcode = fa->filter->startProc(fa, &g_filterFuncs))
-						break;
+					VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
+
+					vdprotected1("starting filter \"%s\"", const char *, fa->filter->name) {
+						rcode = fa->filter->startProc(fa, &g_filterFuncs);
+					}
+
 				} catch(const MyError& e) {
 					throw MyError("Cannot start filter '%s': %s", fa->filter->name, e.gets());
 				}
-
-			CHECK_FPU_STACK
+				if (rcode)
+					break;
+			}
 
 			fa = (FilterInstance *)fa->next;
 		}
@@ -456,7 +461,7 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 		return -1;
 
 	if (fa->next && fa->srcbuf != 0)
-		fa->src.BitBlt(0,0,&bitmap[0],0,0,-1,-1);
+		fa->src.BitBlt(0, 0, &bitmap[0], fa->x1, fa->y1, -1, -1);
 
 	while(fa->next && fa != pfiStopPoint) {
 
@@ -510,10 +515,10 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 		// Run the filter.
 
 		VDCHECKPOINT;
-		CHECK_FPU_STACK
 
 		try {
 			vdprotected1("running filter \"%s\"", const char *, fa->filter->name) {
+				VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
 				if (rcode = fa->filter->runProc(fa, &g_filterFuncs))
 					break;
 				CHECK_FPU_STACK
@@ -523,7 +528,6 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 			throw MyError("Error running filter '%s': %s", fa->filter->name, e.gets());
 		}
 		VDCHECKPOINT;
-		CHECK_FPU_STACK
 
 		if (fa->flags & FILTERPARAM_NEEDS_LAST)
 			fa->realLast.BitBlt(0, 0, &fa->realSrc, 0, 0, -1, -1);
@@ -549,8 +553,13 @@ void FilterSystem::DeinitFilters() {
 
 	while(fa->next) {
 		VDCHECKPOINT;
-		if (fa->filter->endProc)
-			fa->filter->endProc(fa, &g_filterFuncs);
+
+		if (fa->filter->endProc) {
+			VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
+			vdprotected1("starting filter \"%s\"", const char *, fa->filter->name) {
+					fa->filter->endProc(fa, &g_filterFuncs);
+			}
+		}
 
 		delete[] fa->pfsiDelayRing;
 		fa->pfsiDelayRing = NULL;

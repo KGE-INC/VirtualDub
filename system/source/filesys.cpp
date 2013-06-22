@@ -263,3 +263,58 @@ VDStringW VDMakePath(const VDStringW& base, const VDStringW& file) {
 
 	return result;
 }
+ 
+///////////////////////////////////////////////////////////////////////////
+
+VDDirectoryIterator::VDDirectoryIterator(const wchar_t *path)
+	: mSearchPath(path)
+	, mpHandle(NULL)
+	, mbSearchComplete(false)
+{
+	mBasePath = VDFileSplitPathLeft(mSearchPath) + L"\\";
+}
+
+VDDirectoryIterator::~VDDirectoryIterator() {
+	if (mpHandle)
+		FindClose((HANDLE)mpHandle);
+}
+
+bool VDDirectoryIterator::Next() {
+	if (mbSearchComplete)
+		return false;
+
+	union {
+		WIN32_FIND_DATAA a;
+		WIN32_FIND_DATAW w;
+	} wfd;
+
+	if (GetVersion() & 0x80000000) {
+		if (mpHandle)
+			mbSearchComplete = !FindNextFileA((HANDLE)mpHandle, &wfd.a);
+		else {
+			mpHandle = FindFirstFileA(VDTextWToA(mSearchPath).c_str(), &wfd.a);
+			mbSearchComplete = !mpHandle;
+		}
+		if (mbSearchComplete)
+			return false;
+
+		mbDirectory = (wfd.a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+		mFilename = VDTextAToW(wfd.a.cFileName);
+		mFileSize = wfd.a.nFileSizeLow + ((sint64)wfd.w.nFileSizeHigh << 32);
+	} else {
+		if (mpHandle)
+			mbSearchComplete = !FindNextFileW((HANDLE)mpHandle, &wfd.w);
+		else {
+			mpHandle = FindFirstFileW(mSearchPath.c_str(), &wfd.w);
+			mbSearchComplete = !mpHandle;
+		}
+		if (mbSearchComplete)
+			return false;
+
+		mbDirectory = (wfd.w.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+		mFilename = wfd.w.cFileName;
+		mFileSize = wfd.w.nFileSizeLow + ((sint64)wfd.w.nFileSizeHigh << 32);
+	}
+
+	return true;
+}

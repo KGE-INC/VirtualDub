@@ -18,20 +18,24 @@
 #ifndef f_MRULIST_H
 #define f_MRULIST_H
 
+#include <vector>
+#include <vd2/system/VDString.h>
+
 class MRUList {
 private:
-	char *key_name;
-	char *file_order;
-	char **file_list;
-	int max_files;
-	long modified;
+	std::vector<char>			mKey;
+	std::vector<VDStringW>		mFiles;
+	const char		*mpKeyName;
+	const int		mMaxCount;
+	bool			mbDirty;
 
 public:
 	MRUList(int max_files, char *key);
 	~MRUList();
 
-	void add(char *file);
-	int get(int index, char *lpBuffer, int cbBuffer);
+	VDStringW operator[](int i);
+
+	void add(const wchar_t *file);
 	void move_to_top(int index);
 	void clear();
 	void load();

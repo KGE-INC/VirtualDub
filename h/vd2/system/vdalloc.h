@@ -55,7 +55,7 @@ public:
 	explicit vdautoptr(T *p = 0) : ptr(p) {}
 	~vdautoptr() { delete ptr; }
 
-	vdautoptr<T>& operator=(T *src) { ptr = src; return *this; }
+	vdautoptr<T>& operator=(T *src) { delete ptr; ptr = src; return *this; }
 
 	operator T*() const { return ptr; }
 	T& operator*() const { return *ptr; }

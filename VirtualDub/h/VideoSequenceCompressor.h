@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/system/VDString.h>
 
 class VideoSequenceCompressor {
 public:
@@ -56,6 +57,8 @@ private:
 
 	void		*pConfigData;
 	int			cbConfigData;
+
+	VDStringW	mDriverName;
 };
 
 #endif

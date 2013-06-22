@@ -26,101 +26,31 @@
 class IDDrawSurface;
 class VDRTProfiler;
 
-class AsyncBlitRequestDrawDib {
-public:
-	HDRAWDIB hdd;
-	HDC		hdc;
-	int		xDst, yDst;
-	int		dxDst, dyDst;
-	LPBITMAPINFOHEADER lpbi;
-	LPVOID	lpBits;
-	int		xSrc;
-	int		ySrc;
-	int		dxSrc;
-	int		dySrc;
-	UINT	wFlags;
-};
-
-class AsyncBlitRequestStretchBlt {
-public:
-	HDC		hdcDst;
-	int		xDst, yDst;
-	int		dxDst, dyDst;
-	HDC		hdcSrc;
-	int		xSrc, ySrc;
-	int		dxSrc, dySrc;
-};
-
-class AsyncBlitRequestStretchDIBits {
-public:
-	HDC		hdc;
-	int		xDst, yDst, dxDst, dyDst;
-	int		xSrc, ySrc, dxSrc, dySrc;
-	const void	*pBits;
-	const BITMAPINFO *pBitsInfo;
-	UINT	iUsage;
-	DWORD	dwRop;
-};
-
-class AsyncBlitRequestDirectDrawCopy {
-public:
-	void	*data;
-	BITMAPINFOHEADER *pbih;
-	IDDrawSurface *pDest;
-	bool	bFirst;
-	bool	bFieldBDominant;
-};
-
-class AsyncBlitRequestDirectDrawBlit {
-public:
-	IDDrawSurface *pSrc;
-	IDirectDrawSurface *pDest;
-	RECT r;
-	bool bFieldBDominant;
-	bool bFirst;
-};
-
-class AsyncBlitRequestICDraw {
-public:
-	HIC hic;
-	DWORD dwFlags;
-	LPVOID pFormat;
-	LPVOID pData;
-	DWORD cbData;
-	LONG lTime;
-};
-
 class AsyncBlitRequestAFC {
 public:
 	void (*pFunc)(void *);
 	void *pData;
 };
 
+class AsyncBlitRequestAPC {
+public:
+	bool (*pFunc)(int, void *, void *);
+	int pass;
+	void *pData1, *pData2;
+};
+
 class AsyncBlitRequest {
 public:
 	enum {
-		REQTYPE_DRAWDIB,
-		REQTYPE_STRETCHBLT,
-		REQTYPE_DIRECTDRAWCOPY,
-		REQTYPE_DIRECTDRAWBLIT,
-		REQTYPE_ICDRAW,
-		REQTYPE_STRETCHDIBITS,
 		REQTYPE_AFC,
-		REQTYPE_BITBLTLACED,
-		REQTYPE_DIRECTDRAWCOPYLACED,
-		REQTYPE_DIRECTDRAWBLITLACED,
+		REQTYPE_APC,
 	} type;
 	DWORD	bufferID;
 	DWORD	framenum;
 
 	union {
-		AsyncBlitRequestDrawDib	drawdib;
-		AsyncBlitRequestStretchBlt stretchblt;
-		AsyncBlitRequestDirectDrawCopy	ddcopy;
-		AsyncBlitRequestDirectDrawBlit	ddblit;
-		AsyncBlitRequestICDraw	icdraw;
-		AsyncBlitRequestStretchDIBits stretchdibits;
 		AsyncBlitRequestAFC afc;
+		AsyncBlitRequestAPC apc;
 	};
 };
 
@@ -148,7 +78,6 @@ private:
 	BOOL waitPulse(DWORD);
 	bool DoRequest(AsyncBlitRequest *req);
 	void ThreadRun();
-	HRGN CreateLacedRegion(int w, int h, int yo);
 
 public:
 	AsyncBlitter();
@@ -182,20 +111,16 @@ public:
 	void unlock(DWORD);
 	void nextFrame(long adv=1);
 	long getFrameDelta();
-	void post(DWORD, HDRAWDIB, HDC, int, int, int, int, LPBITMAPINFOHEADER, LPVOID, int, int, int, int, UINT);
-	void postBitBltLaced(DWORD id, HDC hdcDest, int xDst, int yDst, int dxDst, int dyDst, HDC hdcSrc, int xSrc, int ySrc, bool bFieldBDominant);
-	void postStretchBlt(DWORD id, HDC hdcDest, int xDst, int yDst, int dxDst, int dyDst, HDC hdcSrc, int xSrc, int ySrc, int dxSrc, int dySrc);
-	void postStretchDIBits(DWORD id, HDC hdc, int xDst, int yDst, int dxDst, int dyDst, int xSrc, int ySrc, int dxSrc, int dySrc, const void *pBits, const BITMAPINFO *pBitsInfo, UINT iUsage, DWORD dwRop);
-	void postDirectDrawCopy(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest);
-	void postDirectDrawCopyLaced(DWORD id, void *data, BITMAPINFOHEADER *pbih, IDDrawSurface *pDest, bool bFieldBDominant);
-	void postDirectDrawBlit(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst);
-	void postDirectDrawBlitLaced(DWORD id, IDirectDrawSurface *pDst, IDDrawSurface *pSrc, int xDst, int yDst, int dxDst, int dyDst, bool bFieldBDominant);
-	void postICDraw(DWORD id, HIC hic, DWORD dwFlags, LPVOID pFormat, LPVOID pData, DWORD cbData, LONG lTime);
-	void postAFC(DWORD id, void (*pFunc)(void *), void *pData);
+	void sendAFC(DWORD id, void (*pFunc)(void *), void *pData);
+	void postAPC(DWORD id, bool (*pFunc)(int, void *, void *), void *pData1, void *pData2);
 	void abort();
-	void flush();
+	void beginFlush();
 
 	bool ServiceRequests(bool fWait);
+
+	VDSignal *getFlushCompleteSignal() {
+		return requests ? &mEventAbort : NULL;
+	}
 };
 
 #endif

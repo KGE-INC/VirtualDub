@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/system/VDString.h>
 
 #include "DubSource.h"
 
@@ -28,8 +29,60 @@ class AVIStripeIndexLookup;
 class IMJPEGDecoder;
 class IAVIReadHandler;
 class IAVIReadStream;
+class IVDStreamSource;
 
-class VideoSource : public DubSource {
+class IVDVideoSource {
+public:
+	virtual IVDStreamSource *asStream() = 0;
+
+	virtual BITMAPINFOHEADER *getImageFormat() = 0;
+
+	virtual void *		getFrameBuffer() = 0;
+
+	virtual HANDLE		getFrameBufferObject() = 0;
+	virtual LONG		getFrameBufferOffset() = 0;
+
+	virtual bool		setDecompressedFormat(int depth) = 0;
+	virtual bool		setDecompressedFormat(BITMAPINFOHEADER *pbih) = 0;
+
+	virtual BITMAPINFOHEADER *getDecompressedFormat() = 0;
+
+	virtual void		streamSetDesiredFrame(long frame_num) = 0;
+	virtual long		streamGetNextRequiredFrame(BOOL *is_preroll) = 0;
+	virtual int			streamGetRequiredCount(long *pSize) = 0;
+	virtual void *		streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) = 0;
+
+	virtual void		streamBegin(bool fRealTime) = 0;
+
+	virtual void		invalidateFrameBuffer() = 0;
+	virtual	bool		isFrameBufferValid() = 0;
+
+	virtual void *		getFrame(LONG frameNum) = 0;
+
+	virtual char		getFrameTypeChar(long lFrameNum) = 0;
+
+	enum eDropType {
+		kDroppable		= 0,
+		kDependant,
+		kIndependent,
+	};
+
+	virtual eDropType	getDropType(long lFrameNum) = 0;
+
+	virtual bool isKey(LONG lSample) = 0;
+	virtual LONG nearestKey(LONG lSample) = 0;
+	virtual LONG prevKey(LONG lSample) = 0;
+	virtual LONG nextKey(LONG lSample) = 0;
+
+	virtual bool		isKeyframeOnly() = 0;
+	virtual bool		isType1() = 0;
+
+	virtual long		streamToDisplayOrder(long sample_num) = 0;
+	virtual long		displayToStreamOrder(long display_num) = 0;
+	virtual bool		isDecodable(long sample_num) = 0;
+};
+
+class VideoSource : public DubSource, public IVDVideoSource {
 protected:
 	HANDLE		hBufferObject;
 	LONG		lBufferOffset;
@@ -40,6 +93,8 @@ protected:
 
 	void *AllocFrameBuffer(long size);
 	void FreeFrameBuffer();
+
+	virtual bool _isKey(LONG lSample);
 
 	VideoSource();
 
@@ -55,7 +110,9 @@ public:
 
 	virtual ~VideoSource();
 
-	BITMAPINFOHEADER *getImageFormat() const {
+	IVDStreamSource *asStream() { return this; }
+
+	BITMAPINFOHEADER *getImageFormat() {
 		return (BITMAPINFOHEADER *)getFormat();
 	}
 
@@ -86,17 +143,16 @@ public:
 	virtual void streamBegin(bool fRealTime);
 
 	virtual void invalidateFrameBuffer();
-	virtual	BOOL isFrameBufferValid() = NULL;
+	virtual	bool isFrameBufferValid() = NULL;
 
 	virtual void *getFrame(LONG frameNum) = NULL;
 
 	virtual char getFrameTypeChar(long lFrameNum) = 0;
 
-	enum eDropType {
-		kDroppable		= 0,
-		kDependant,
-		kIndependent,
-	};
+	virtual bool isKey(LONG lSample);
+	virtual LONG nearestKey(LONG lSample);
+	virtual LONG prevKey(LONG lSample);
+	virtual LONG nextKey(LONG lSample);
 
 	virtual eDropType getDropType(long lFrameNum)=0;
 
@@ -149,6 +205,7 @@ private:
 	bool		mbMMXBrokenCodecDetected;
 	bool		mbConcealingErrors;
 
+	VDStringW	mDriverName;
 	char		szCodecName[128];
 
 	void _construct();
@@ -157,15 +214,16 @@ private:
 	bool AttemptCodecNegotiation(BITMAPINFOHEADER *, bool);
 	void CheckMMX();
 
+	~VideoSourceAVI();
+
 public:
 	VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys=NULL, IAVIReadHandler **stripe_files=NULL, bool use_internal=false, int mjpeg_mode=0, FOURCC fccForceVideo=0, FOURCC fccForceVideoHandler=0);
-	~VideoSourceAVI();
 
 	void Reinit();
 	void redoKeyFlags();
 
 	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead);
-	BOOL _isKey(LONG samp);
+	bool _isKey(LONG samp);
 	LONG nearestKey(LONG lSample);
 	LONG prevKey(LONG lSample);
 	LONG nextKey(LONG lSample);
@@ -173,7 +231,7 @@ public:
 	bool setDecompressedFormat(int depth);
 	bool setDecompressedFormat(BITMAPINFOHEADER *pbih);
 	void invalidateFrameBuffer();
-	BOOL isFrameBufferValid();
+	bool isFrameBufferValid();
 	bool isStreaming();
 
 	void streamBegin(bool fRealTime);

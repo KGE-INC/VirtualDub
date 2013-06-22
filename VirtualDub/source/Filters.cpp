@@ -31,6 +31,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/refcount.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/vdalloc.h>
 #include "gui.h"
@@ -43,8 +44,9 @@
 #include "optdlg.h"
 #include "dub.h"
 #include "VideoSource.h"
+#include "VideoDisplay.h"
 
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<VideoSource> inputVideoAVI;
 extern FrameSubset *inputSubset;
 
 extern HINSTANCE	g_hInst;
@@ -104,45 +106,6 @@ static long FilterGetHostVersionInfo(char *buf, int len) {
 	return version_num;
 }
 
-VDWaveFormat *VDAllocPCMWaveFormat(unsigned sampling_rate, unsigned channels, unsigned bits, bool bFloat) {
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(sizeof(VDWaveFormat));
-
-	if (pwf) {
-		pwf->mTag			= VDWaveFormat::kTagPCM;
-		pwf->mChannels		= channels;
-		pwf->mSamplingRate	= sampling_rate;
-		pwf->mDataRate		= sampling_rate * channels * (bits>>3);
-		pwf->mBlockSize		= (bits>>3) * channels;
-		pwf->mSampleBits	= bits;
-		pwf->mExtraSize		= 0;
-	}
-
-	return pwf;
-}
-
-VDWaveFormat *VDAllocCustomWaveFormat(unsigned extra_size) {
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(sizeof(VDWaveFormat) + extra_size);
-
-	if (pwf)
-		pwf->mExtraSize = extra_size;
-
-	return pwf;
-}
-
-VDWaveFormat *VDCopyWaveFormat(const VDWaveFormat *pFormat) {
-	const unsigned size = sizeof(VDWaveFormat) + pFormat->mExtraSize;
-
-	VDWaveFormat *pwf = (VDWaveFormat *)malloc(size);
-	if (pwf)
-		memcpy(pwf, pFormat, size);
-
-	return pwf;
-}
-
-void VDFreeWaveFormat(const VDWaveFormat *pFormat) {
-	free((void *)pFormat);
-}
-
 FilterFunctions g_filterFuncs={
 	FilterAdd,
 	FilterRemove,
@@ -153,10 +116,6 @@ FilterFunctions g_filterFuncs={
 	FilterThrowExcept,
 	FilterGetCPUFlags,
 	FilterGetHostVersionInfo,
-	VDAllocPCMWaveFormat,
-	VDAllocCustomWaveFormat,
-	VDCopyWaveFormat,
-	VDFreeWaveFormat
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -233,12 +192,16 @@ void FilterModuleInstance::ReleaseModule() {
 
 void FilterModuleInstance::Load() {
 	if (!mModuleInfo.hInstModule) {
-		mModuleInfo.hInstModule = LoadLibrary(VDTextWToA(mFilename).c_str());
+		VDStringA nameA(VDTextWToA(mFilename));
 
-		const VDStringA name(VDTextWToA(VDFileSplitPathRight(mFilename)));
+		{
+			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
+
+			mModuleInfo.hInstModule = LoadLibrary(nameA.c_str());
+		}
 
 		if (!mModuleInfo.hInstModule)
-			throw MyWin32Error("Cannot load filter module \"%s\": %%s", GetLastError());
+			throw MyWin32Error("Cannot load filter module \"%s\": %%s", GetLastError(), nameA.c_str());
 
 		try {
 			mModuleInfo.initProc   = (FilterModuleInitProc  )GetProcAddress(mModuleInfo.hInstModule, "VirtualdubFilterModuleInit2");
@@ -259,13 +222,13 @@ void FilterModuleInstance::Load() {
 			}
 
 			if (!mModuleInfo.initProc || !mModuleInfo.deinitProc)
-				throw MyError("Module \"%s\" does not contain VirtualDub filters.", name.c_str());
+				throw MyError("Module \"%s\" does not contain VirtualDub filters.", nameA.c_str());
 
 			int ver_hi = VIRTUALDUB_FILTERDEF_VERSION;
 			int ver_lo = VIRTUALDUB_FILTERDEF_COMPATIBLE;
 
 			if (mModuleInfo.initProc(&mModuleInfo, &g_filterFuncs, ver_hi, ver_lo))
-				throw MyError("Error initializing module \"%s\".",name.c_str());
+				throw MyError("Error initializing module \"%s\".",nameA.c_str());
 
 			if (ver_hi < VIRTUALDUB_FILTERDEF_COMPATIBLE) {
 				mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
@@ -294,7 +257,12 @@ void FilterModuleInstance::Load() {
 void FilterModuleInstance::Unload() {
 	if (mModuleInfo.hInstModule) {
 		mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
-		FreeLibrary(mModuleInfo.hInstModule);
+
+		{
+			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
+			FreeLibrary(mModuleInfo.hInstModule);
+		}
+
 		mModuleInfo.hInstModule = NULL;
 	}
 }
@@ -422,6 +390,8 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 			} catch(const MyError& e) {
 				throw MyError("Cannot initialize filter '%s': %s", filter->name, e.gets());
 			}
+
+		mFilterName = VDTextAToW(filter->name);
 	} else
 		filter_data = NULL;
 }
@@ -690,267 +660,285 @@ LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *titl
 
 #define IDC_POSITION		(500)
 
-BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG lParam) {
-	static HWND hwndTT;
+BOOL CALLBACK FilterPreview::StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	FilterPreview *fpd = (FilterPreview *)GetWindowLong(hdlg, DWL_USER);
-	HDC hdc;
-	HWND hwndItem;
 
+	if (message == WM_INITDIALOG) {
+		SetWindowLongPtr(hdlg, DWL_USER, lParam);
+		fpd = (FilterPreview *)lParam;
+		fpd->hdlg = hdlg;
+	}
+
+	return fpd && fpd->DlgProc(message, wParam, lParam);
+}
+
+BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 	switch(message) {
 	case WM_INITDIALOG:
-		SetWindowLong(hdlg, DWL_USER, lParam);
-		fpd = (FilterPreview *)lParam;
-
-		fpd->bih.biWidth = fpd->bih.biHeight = 0;
-
-		hwndItem = CreateWindow(POSITIONCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 64, hdlg, (HMENU)IDC_POSITION, g_hInst, NULL);
-
-		if (inputSubset) {
-			SendMessage(hwndItem, PCM_SETRANGEMIN, FALSE, 0);
-			SendMessage(hwndItem, PCM_SETRANGEMAX, TRUE, inputSubset->getTotalFrames()-1);
-		} else {
-			SendMessage(hwndItem, PCM_SETRANGEMIN, FALSE, inputVideoAVI->lSampleFirst);
-			SendMessage(hwndItem, PCM_SETRANGEMAX, TRUE, inputVideoAVI->lSampleLast-1);
-		}
-		SendMessage(hwndItem, PCM_SETFRAMETYPECB, (WPARAM)&PositionFrameTypeCallback, 0);
-
-		if (!inputVideoAVI->setDecompressedFormat(24))
-			if (!inputVideoAVI->setDecompressedFormat(32))
-				if (!inputVideoAVI->setDecompressedFormat(16))
-					inputVideoAVI->setDecompressedFormat(8);
-
-		hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
-				CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-				hdlg, NULL, g_hInst, NULL);
-
-		SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
-
-		{
-			TOOLINFO ti;
-
-			ti.cbSize		= sizeof(TOOLINFO);
-			ti.uFlags		= TTF_SUBCLASS;
-			ti.hwnd			= hdlg;
-			ti.uId			= 0;
-			ti.rect.left	= 0;
-			ti.rect.top		= 0;
-			ti.rect.right	= 0;
-			ti.rect.left	= 0;
-			ti.hinst		= g_hInst;
-			ti.lpszText		= LPSTR_TEXTCALLBACK;
-
-			SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
-		}
+		OnInit();
+		OnVideoResize(true);
+		return TRUE;
 
 	case WM_USER+1:		// handle new size
-		{
-			RECT r;
-			long w = 320, h = 240;
-			bool fResize;
-			TOOLINFO ti;
-			long oldw = fpd->bih.biWidth;
-			long oldh = fpd->bih.biHeight;
+		OnVideoResize(false);
+		return TRUE;
 
-			VBitmap(NULL, 320, 240, 32).MakeBitmapHeader(&fpd->bih);
-
-			try {
-				BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
-				BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
-
-				CPUTest();
-
-				fpd->filtsys.initLinearChain(
-						fpd->pFilterList,
-						(Pixel *)((char *)pbih + pbih->biSize),
-						pbih2->biWidth,
-						pbih2->biHeight,
-						pbih2->biBitCount,
-						24);
-
-				if (!fpd->filtsys.ReadyFilters(&fpd->fsi)) {
-					VBitmap *vbm = fpd->filtsys.OutputBitmap();
-					w = vbm->w;
-					h = vbm->h;
-					vbm->MakeBitmapHeader(&fpd->bih);
-				}
-			} catch(const MyError& e) {
-				fpd->mFailureReason.assign(e);
-				InvalidateRect(hdlg, NULL, TRUE);
-			}
-
-			fResize = oldw != w || oldh != h;
-
-			// if necessary, resize window
-
-			if (fResize) {
-				r.left = r.top = 0;
-				r.right = w + 8;
-				r.bottom = h + 8 + 64;
-
-				AdjustWindowRect(&r, GetWindowLong(hdlg, GWL_STYLE), FALSE);
-
-				if (message == WM_INITDIALOG) {
-					RECT rParent;
-					UINT uiFlags = SWP_NOZORDER|SWP_NOACTIVATE;
-
-					GetWindowRect(fpd->hwndParent, &rParent);
-
-					if (rParent.right + 32 >= GetSystemMetrics(SM_CXSCREEN))
-						uiFlags |= SWP_NOMOVE;
-
-					SetWindowPos(hdlg, NULL,
-							rParent.right + 16,
-							rParent.top,
-							r.right-r.left, r.bottom-r.top,
-							uiFlags);
-				} else
-					SetWindowPos(hdlg, NULL, 0, 0, r.right-r.left, r.bottom-r.top, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-
-				SetWindowPos(GetDlgItem(hdlg, IDC_POSITION), NULL, 0, h+8, w+8, 64, SWP_NOZORDER|SWP_NOACTIVATE);
-
-				InvalidateRect(hdlg, NULL, TRUE);
-
-				ti.cbSize		= sizeof(TOOLINFO);
-				ti.uFlags		= 0;
-				ti.hwnd			= hdlg;
-				ti.uId			= 0;
-				ti.rect.left	= 4;
-				ti.rect.top		= 4;
-				ti.rect.right	= 4 + w;
-				ti.rect.bottom	= 4 + h;
-
-				SendMessage(hwndTT, TTM_NEWTOOLRECT, 0, (LPARAM)&ti);
-
-			}
-
-			goto draw_new_frame;
-		}
-
+	case WM_SIZE:
+		OnResize();
 		return TRUE;
 
 	case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-
-			hdc = BeginPaint(hdlg, &ps);
-
-			if (fpd->filtsys.isRunning()) {
-				Draw3DRect(hdc,	0, 0, fpd->bih.biWidth + 8, fpd->bih.biHeight + 8, FALSE);
-				Draw3DRect(hdc,	3, 3, fpd->bih.biWidth + 2, fpd->bih.biHeight + 2, TRUE);
-			}
-
-			if (fpd->filtsys.isRunning()) {
-				VBitmap *vbm = fpd->filtsys.OutputBitmap();
-
-				DrawDibDraw(fpd->hdd, hdc, 4, 4, -1, -1, &fpd->bih, vbm->data, 0, 0, vbm->w, vbm->h, DDF_UPDATE);
-			} else {
-				RECT r;
-
-				r.left = r.top = 4;
-				r.right = 324;
-				r.bottom = 244;
-
-				FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
-				SetBkMode(hdc, TRANSPARENT);
-				SetTextColor(hdc, 0);
-
-				HGDIOBJ hgoFont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
-				char buf[1024];
-				const char *s = fpd->mFailureReason.gets();
-				_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
-				DrawText(hdc, buf, -1, &r, DT_CENTER|DT_VCENTER|DT_WORDBREAK);
-				SelectObject(hdc, hgoFont);
-			}
-
-			EndPaint(hdlg, &ps);
-		}
-		return TRUE;
-
-	case WM_PALETTECHANGED:
-		if ((HWND)wParam == hdlg)
-			break;
-	case WM_QUERYNEWPALETTE:
-		if (fpd->filtsys.isRunning()) {
-			if (fpd->hdd && (hdc = GetDC(hdlg))) {
-				if (DrawDibRealize(fpd->hdd, hdc, FALSE) > 0) {
-					VBitmap *vbm = fpd->filtsys.OutputBitmap();
-
-					DrawDibDraw(fpd->hdd, hdc, 4, 4, -1, -1, &fpd->bih, vbm->data, 0, 0, vbm->w, vbm->h, DDF_UPDATE);
-				}
-
-				ReleaseDC(hdlg, hdc);
-			}
-		}
+		OnPaint();
 		return TRUE;
 
 	case WM_NOTIFY:
-		if (((NMHDR *)lParam)->hwndFrom == hwndTT) {
+		if (((NMHDR *)lParam)->hwndFrom == mhwndToolTip) {
 			TOOLTIPTEXT *pttt = (TOOLTIPTEXT *)lParam;
 			POINT pt;
 
 			if (pttt->hdr.code == TTN_NEEDTEXT) {
-				VBitmap *vbm = fpd->filtsys.LastBitmap();
+				VBitmap *vbm = filtsys.LastBitmap();
 
 				GetCursorPos(&pt);
 				ScreenToClient(hdlg, &pt);
 
-				if (fpd->filtsys.isRunning() && pt.x>=4 && pt.y>=4 && pt.x < vbm->w+4 && pt.y < vbm->h+4) {
+				if (filtsys.isRunning() && pt.x>=4 && pt.y>=4 && pt.x < vbm->w+4 && pt.y < vbm->h+4) {
 					pttt->lpszText = pttt->szText;
 					wsprintf(pttt->szText, "pixel(%d,%d) = #%06lx", pt.x-4, pt.y-4, 0xffffff&*vbm->Address32(pt.x-4,pt.y-4));
 				} else
 					pttt->lpszText = "Preview image";
 			}
 		} else if (((NMHDR *)lParam)->idFrom == IDC_POSITION) {
-			goto draw_new_frame;
+			OnVideoRedraw();
 		}
 		return TRUE;
 
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDCANCEL) {
 
-			if (fpd->hwndButton)
-				SetWindowText(fpd->hwndButton, "Show preview");
+			if (hwndButton)
+				SetWindowText(hwndButton, "Show preview");
 
-			if (fpd->pButtonCallback)
-				fpd->pButtonCallback(false, fpd->pvButtonCBData);
+			if (pButtonCallback)
+				pButtonCallback(false, pvButtonCBData);
 
 			DestroyWindow(hdlg);
-			fpd->hdlg = NULL;
+			hdlg = NULL;
 			return TRUE;
 		} else if (LOWORD(wParam) != IDC_POSITION)
 			return TRUE;
 
 		guiPositionHandleCommand(wParam, lParam);
-
-draw_new_frame:
+		break;
 
 	case WM_USER+0:		// redraw modified frame
-		if (!fpd->filtsys.isRunning())
-			return TRUE;
-
-		fpd->FetchFrame();
-
-		fpd->filtsys.RunFilters();
-
-		fpd->filtsys.OutputBitmap()->BitBlt(0, 0, fpd->filtsys.LastBitmap(), 0, 0, -1, -1);
-
-		if (fpd->hdd && (hdc = GetDC(hdlg))) {
-			VBitmap *out = fpd->filtsys.OutputBitmap();
-
-			DrawDibDraw(fpd->hdd, hdc, 4, 4, out->w, out->h, &fpd->bih, out->data, 0, 0, out->w, out->h, 0);
-			ReleaseDC(hdlg, hdc);
-		}
-
-
+		OnVideoRedraw();
 		return TRUE;
 	}
 
 	return FALSE;
 }
 
-FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter) {
+void FilterPreview::OnInit() {
+	bih.biWidth = bih.biHeight = 0;
+
+	mhwndPosition = CreateWindow(POSITIONCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE, 0, 0, 0, 64, hdlg, (HMENU)IDC_POSITION, g_hInst, NULL);
+
+	SendMessage(mhwndPosition, PCM_SETRANGEMIN, FALSE, 0);
+	SendMessage(mhwndPosition, PCM_SETRANGEMAX, TRUE, inputSubset->getTotalFrames()-1);
+	SendMessage(mhwndPosition, PCM_SETFRAMETYPECB, (WPARAM)&PositionFrameTypeCallback, 0);
+
+	if (!inputVideoAVI->setDecompressedFormat(24))
+		if (!inputVideoAVI->setDecompressedFormat(32))
+			if (!inputVideoAVI->setDecompressedFormat(16))
+				inputVideoAVI->setDecompressedFormat(8);
+
+	mhwndDisplay = CreateWindow(VIDEODISPLAYCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, hdlg, NULL, g_hInst, NULL);
+	if (mhwndDisplay)
+		mpDisplay = VDGetIVideoDisplay(mhwndDisplay);
+
+	mhwndToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
+			CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+			hdlg, NULL, g_hInst, NULL);
+
+	SetWindowPos(mhwndToolTip, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+
+	TOOLINFO ti;
+
+	ti.cbSize		= sizeof(TOOLINFO);
+	ti.uFlags		= TTF_SUBCLASS;
+	ti.hwnd			= hdlg;
+	ti.uId			= 0;
+	ti.rect.left	= 0;
+	ti.rect.top		= 0;
+	ti.rect.right	= 0;
+	ti.rect.left	= 0;
+	ti.hinst		= g_hInst;
+	ti.lpszText		= LPSTR_TEXTCALLBACK;
+
+	SendMessage(mhwndToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+}
+
+void FilterPreview::OnResize() {
+	RECT r;
+
+	GetClientRect(hdlg, &r);
+
+	SetWindowPos(mhwndPosition, NULL, 0, r.bottom - 64, r.right, 64, SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(mhwndDisplay, NULL, 4, 4, r.right - 8, r.bottom - 72, SWP_NOZORDER|SWP_NOACTIVATE);
+
+	InvalidateRect(hdlg, NULL, TRUE);
+}
+
+void FilterPreview::OnPaint() {
+	PAINTSTRUCT ps;
+
+	HDC hdc = BeginPaint(hdlg, &ps);
+
+	if (!hdc)
+		return;
+
+	if (filtsys.isRunning()) {
+		RECT r;
+
+		GetClientRect(hdlg, &r);
+
+		Draw3DRect(hdc,	0, 0, r.right, r.bottom - 64, FALSE);
+		Draw3DRect(hdc,	3, 3, r.right - 6, r.bottom - 70, TRUE);
+	}
+
+	if (!filtsys.isRunning()) {
+		RECT r;
+
+		r.left = r.top = 4;
+		r.right = 324;
+		r.bottom = 244;
+
+		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
+		SetBkMode(hdc, TRANSPARENT);
+		SetTextColor(hdc, 0);
+
+		HGDIOBJ hgoFont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
+		char buf[1024];
+		const char *s = mFailureReason.gets();
+		_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
+		DrawText(hdc, buf, -1, &r, DT_CENTER|DT_VCENTER|DT_WORDBREAK);
+		SelectObject(hdc, hgoFont);
+	}
+
+	EndPaint(hdlg, &ps);
+}
+
+void FilterPreview::OnVideoResize(bool bInitial) {
+	RECT r;
+	long w = 320, h = 240;
+	bool fResize;
+	TOOLINFO ti;
+	long oldw = bih.biWidth;
+	long oldh = bih.biHeight;
+
+	VBitmap(NULL, 320, 240, 32).MakeBitmapHeader(&bih);
+
+	try {
+		BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
+		BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
+
+		CPUTest();
+
+		filtsys.initLinearChain(
+				pFilterList,
+				(Pixel *)((char *)pbih + pbih->biSize),
+				pbih2->biWidth,
+				pbih2->biHeight,
+				pbih2->biBitCount,
+				24);
+
+		if (!filtsys.ReadyFilters(&fsi)) {
+			VBitmap *vbm = filtsys.OutputBitmap();
+			w = vbm->w;
+			h = vbm->h;
+			vbm->MakeBitmapHeader(&bih);
+		}
+	} catch(const MyError& e) {
+		mFailureReason.assign(e);
+		InvalidateRect(hdlg, NULL, TRUE);
+	}
+
+	fResize = oldw != w || oldh != h;
+
+	// if necessary, resize window
+
+	if (fResize) {
+		r.left = r.top = 0;
+		r.right = w + 8;
+		r.bottom = h + 8 + 64;
+
+		AdjustWindowRect(&r, GetWindowLong(hdlg, GWL_STYLE), FALSE);
+
+		if (bInitial) {
+			RECT rParent;
+			UINT uiFlags = SWP_NOZORDER|SWP_NOACTIVATE;
+
+			GetWindowRect(hwndParent, &rParent);
+
+			if (rParent.right + 32 >= GetSystemMetrics(SM_CXSCREEN))
+				uiFlags |= SWP_NOMOVE;
+
+			SetWindowPos(hdlg, NULL,
+					rParent.right + 16,
+					rParent.top,
+					r.right-r.left, r.bottom-r.top,
+					uiFlags);
+		} else
+			SetWindowPos(hdlg, NULL, 0, 0, r.right-r.left, r.bottom-r.top, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+
+		ti.cbSize		= sizeof(TOOLINFO);
+		ti.uFlags		= 0;
+		ti.hwnd			= hdlg;
+		ti.uId			= 0;
+		ti.rect.left	= 4;
+		ti.rect.top		= 4;
+		ti.rect.right	= 4 + w;
+		ti.rect.bottom	= 4 + h;
+
+		SendMessage(mhwndToolTip, TTM_NEWTOOLRECT, 0, (LPARAM)&ti);
+
+	}
+
+	OnVideoRedraw();
+}
+
+void FilterPreview::OnVideoRedraw() {
+	if (!filtsys.isRunning())
+		return;
+
+	FetchFrame();
+
+	try {
+		filtsys.RunFilters();
+		filtsys.OutputBitmap()->BitBlt(0, 0, filtsys.LastBitmap(), 0, 0, -1, -1);
+
+		if (mpDisplay) {
+			VBitmap *out = filtsys.OutputBitmap();
+
+			mpDisplay->SetSource((char *)out->data + out->pitch*(out->h - 1), -out->pitch, out->w, out->h,
+					  out->depth == 16 ? IVDVideoDisplay::kFormatRGB1555
+					: out->depth == 24 ? IVDVideoDisplay::kFormatRGB888
+					:                   IVDVideoDisplay::kFormatRGB8888);
+			mpDisplay->Update(IVDVideoDisplay::kAllFields);
+		}
+	} catch(const MyError& e) {
+		mFailureReason.assign(e);
+		InvalidateRect(hdlg, NULL, TRUE);
+	}
+}
+
+FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
+	: mhwndPosition(NULL)
+	, mhwndDisplay(NULL)
+	, mpDisplay(NULL)
+{
 	hdlg					= NULL;
-	hdd						= NULL;
 	this->pFilterList		= pFilterList;
 	this->pfiThisFilter		= pfiThisFilter;
 	hwndButton				= NULL;
@@ -958,33 +946,27 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter) {
 	pSampleCallback			= NULL;
 
 	if (pFilterList) {
-		hdd = DrawDibOpen();
-
-		fsi.lMicrosecsPerFrame = MulDivUnsigned(inputVideoAVI->streamInfo.dwScale, 1000000U, inputVideoAVI->streamInfo.dwRate);
+		fsi.lMicrosecsPerFrame = VDRoundToInt(1000000.0 / inputVideoAVI->getRate().asDouble());
 
 		if (g_dubOpts.video.frameRateNewMicroSecs > 0)
 			fsi.lMicrosecsPerFrame = g_dubOpts.video.frameRateNewMicroSecs;
 
 		fsi.lMicrosecsPerSrcFrame = fsi.lMicrosecsPerFrame;
-	} else
-		hdd = NULL;
+	}
 }
 
 FilterPreview::~FilterPreview() {
 	if (hdlg)
 		DestroyWindow(hdlg);
-
-	if (hdd)
-		DrawDibClose(hdd);
 }
 
 long FilterPreview::FetchFrame() {
-	return FetchFrame(SendDlgItemMessage(hdlg, IDC_POSITION, PCM_GETPOS, 0, 0));
+	return FetchFrame(SendMessage(mhwndPosition, PCM_GETPOS, 0, 0));
 }
 
 long FilterPreview::FetchFrame(long lPos) {
 	try {
-		const VDFraction frameRate(inputVideoAVI->streamInfo.dwRate, inputVideoAVI->streamInfo.dwScale);
+		const VDFraction frameRate(inputVideoAVI->getRate());
 
 		fsi.lCurrentFrame			= lPos;
 		fsi.lCurrentSourceFrame		= inputSubset ? inputSubset->lookupFrame(lPos) : lPos;
@@ -1038,7 +1020,7 @@ void FilterPreview::Display(HWND hwndParent, bool fDisplay) {
 		UndoSystem();
 	} else if (pFilterList) {
 		this->hwndParent = hwndParent;
-		hdlg = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_PREVIEW), hwndParent, DlgProc, (LPARAM)this);
+		hdlg = CreateDialogParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_PREVIEW), hwndParent, StaticDlgProc, (LPARAM)this);
 	}
 
 	if (hwndButton)
@@ -1087,10 +1069,7 @@ bool FilterPreview::SampleCurrentFrame() {
 
 	if (pos >= 0) {
 		filtsys.RunFilters(pfiThisFilter);
-		if (inputSubset)
-			pSampleCallback(&pfiThisFilter->src, pos, inputSubset->getTotalFrames(), pvSampleCBData);
-		else
-			pSampleCallback(&pfiThisFilter->src, pos-inputVideoAVI->lSampleFirst, inputVideoAVI->lSampleLast - inputVideoAVI->lSampleLast, pvSampleCBData);
+		pSampleCallback(&pfiThisFilter->src, pos, inputSubset->getTotalFrames(), pvSampleCBData);
 	}
 
 	RedoFrame();
@@ -1154,8 +1133,8 @@ long FilterPreview::SampleFrames() {
 
 	long first, last;
 
-	first = inputVideoAVI->lSampleFirst;
-	last = inputVideoAVI->lSampleLast;
+	first = inputVideoAVI->getStart();
+	last = inputVideoAVI->getEnd();
 
 	try {
 		ProgressDialog pd(hdlg, "Sampling input video", szCaptions[iMode-1], last-first, true);

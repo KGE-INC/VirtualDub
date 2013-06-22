@@ -55,9 +55,9 @@ uint32 VDAudioFilterSplit::Prepare() {
 
 	VDWaveFormat *pwf0, *pwf1;
 
-	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
-	if (!(mpContext->mpOutputs[1]->mpFormat = pwf1 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[1]->mpFormat = pwf1 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 	return 0;
 }
@@ -120,10 +120,6 @@ sint64 VDAudioFilterSplit::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_split = {
 	sizeof(VDAudioFilterDefinition),
-	L"split",
-	NULL,
-	L"Splits an audio stream into two identical outputs.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterSplit),	1,	2,
@@ -132,4 +128,21 @@ extern const struct VDAudioFilterDefinition afilterDef_split = {
 
 	VDAudioFilterSplit::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_split = {
+	sizeof(VDPluginInfo),
+	L"split",
+	NULL,
+	L"Splits an audio stream into two identical outputs.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_split
 };

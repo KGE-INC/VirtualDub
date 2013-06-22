@@ -128,9 +128,9 @@ static BOOL InitSharedSpace() {
 
 	if (hHeap == NULL) return FALSE;
 
-	_RPT0(0,"shared heap created\n");
-
 	fInit = (GetLastError() != ERROR_ALREADY_EXISTS);
+
+	_RPT0(0,"shared heap created\n");
 
 	heap = (VDubSharedHeap *)MapViewOfFile(
 								hHeap,

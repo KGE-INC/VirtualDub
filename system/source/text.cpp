@@ -185,7 +185,7 @@ VDStringA VDTextWToA(const wchar_t *src, int srclen) {
 
 		if (l) {
 			s.resize(l);
-			VDTextWToA(&s[0], s.length()+1, src, srclen);
+			VDTextWToA((char *)s.data(), l+1, src, srclen);
 		}
 	}
 
@@ -255,11 +255,11 @@ namespace {
 	}
 
 	bool VDIsUnicodeSurrogateFirst(wchar_t c) {
-		return (c >= 0xDC00 && c < 0xDE00); 
+		return (c >= 0xD800 && c < 0xDC00); 
 	}
 
 	bool VDIsUnicodeSurrogateSecond(wchar_t c) {
-		return (c >= 0xDE00 && c < 0xE000);
+		return (c >= 0xDC00 && c < 0xE000);
 	}
 };
 
@@ -280,15 +280,13 @@ VDStringA VDTextWToU8(const wchar_t *s, int length) {
 	while(length--) {
 		wchar_t c = *s++;
 
-		if (sizeof(wchar_t) > 2) {		// wchar_t must be >16 bits for us to combine surrogates
-			if (VDIsUnicodeSurrogateFirst(c)) {
-				if (!length || !VDIsUnicodeSurrogateSecond(*s)) {
-					VDASSERT(false);
-					c = '?';
-				} else {
-					c = 0x10000 + ((c & 0x3ff)<<10) + (*s++ & 0x3ff);
-					--length;
-				}
+		if (VDIsUnicodeSurrogateFirst(c)) {
+			if (!length || !VDIsUnicodeSurrogateSecond(*s)) {
+				VDASSERT(false);
+				c = '?';
+			} else {
+				c = 0x10000 + ((c & 0x3ff)<<10) + (*s++ & 0x3ff);
+				--length;
 			}
 		}
 
@@ -375,8 +373,8 @@ VDStringW VDTextU8ToW(const char *s, int length) {
 		} else {
 			if (wc >= 0x10000) {
 				wc -= 0x10000;
-				temp.push_back(0xDC00 + ((wc & 0x3ff) >> 10));
-				wc = 0xDE00 + (wc&0x3ff);
+				temp.push_back(0xD800 + ((wc & 0x3ff) >> 10));
+				wc = 0xDC00 + (wc&0x3ff);
 			}
 		}
 		temp.push_back(wc);
@@ -580,9 +578,10 @@ VDStringW VDaswprintf(const wchar_t *format, int args, const void *const *argv) 
 				break;
 
 			case L'c':
-				if (size == kShort)
-					pbuf += VDTextAToW(pbuf, 1, (const char *)*argv++);
-				else
+				if (size == kShort) {
+					char buf[2] = {*(const char *)*argv++, 0};
+					pbuf += VDTextAToW(pbuf, 4, buf);
+				} else
 					*pbuf++ = *(const wchar_t *)*argv++;
 				break;
 

@@ -23,5 +23,6 @@
 BOOL APIENTRY ShowTextDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
 BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
 void Welcome();
+void AnnounceExperimental();
 
 #endif

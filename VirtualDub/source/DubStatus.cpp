@@ -22,6 +22,7 @@
 #include <vfw.h>
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/filesys.h>
 
 #include "resource.h"
 #include "gui.h"
@@ -68,16 +69,19 @@ private:
 	DubAudioStreamInfo	*painfo;
 	DubVideoStreamInfo	*pvinfo;
 	AudioSource			*aSrc;
-	VideoSource			*vSrc;
+	IVDVideoSource		*vSrc;
 	InputFile			*pInput;
 	AudioStream			*audioStreamSource;
 
 	IDubber				*pDubber;
 	DubOptions			*opt;
-	DubPositionCallback	positionCallback;
+	DubPositionCallback	mpPositionCallback;
+	void *				mpPositionCallbackCookie;
 	int					iPriority;				// current priority level index of processes
 
 	int					mProgress;
+
+	ModelessDlgNode		mModelessDialogNode;
 
 	static BOOL APIENTRY StatusMainDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusVideoDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
@@ -94,7 +98,7 @@ public:
 	void InitLinks(	DubAudioStreamInfo	*painfo,
 		DubVideoStreamInfo	*pvinfo,
 		AudioSource			*aSrc,
-		VideoSource			*vSrc,
+		IVDVideoSource		*vSrc,
 		InputFile			*pInput,
 		AudioStream			*audioStreamSource,
 
@@ -103,7 +107,7 @@ public:
 	HWND Display(HWND hwndParent, int iInitialPriority);
 	void Destroy();
 	bool ToggleStatus();
-	void SetPositionCallback(DubPositionCallback dpc);
+	void SetPositionCallback(DubPositionCallback dpc, void *cookie);
 	void NotifyNewFrame(long f);
 	void SetLastPosition(LONG pos);
 	void Freeze();
@@ -119,7 +123,7 @@ IDubStatusHandler *CreateDubStatusHandler() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern char g_szInputAVIFileTitle[];
+extern wchar_t g_szInputAVIFile[];
 extern HINSTANCE g_hInst;
 extern HWND g_hWnd;
 
@@ -189,7 +193,7 @@ DubStatus::DubStatus() : mProgress(0) {
 	fShowStatusWindow	= true;
 
 	hwndStatus			= NULL;
-	positionCallback	= NULL;
+	mpPositionCallback	= NULL;
 
 	fFrozen = false;
 }
@@ -201,7 +205,7 @@ DubStatus::~DubStatus() {
 void DubStatus::InitLinks(	DubAudioStreamInfo	*painfo,
 	DubVideoStreamInfo	*pvinfo,
 	AudioSource			*aSrc,
-	VideoSource			*vSrc,
+	IVDVideoSource		*vSrc,
 	InputFile			*pInput,
 	AudioStream			*audioStreamSource,
 
@@ -230,6 +234,7 @@ HWND DubStatus::Display(HWND hwndParent, int iInitialPriority) {
 		if (fShowStatusWindow = opt->fShowStatus) {
 			SetWindowLong(hwndStatus, GWL_STYLE, GetWindowLong(hwndStatus, GWL_STYLE) & ~WS_POPUP);
 			ShowWindow(hwndStatus, SW_SHOW);
+			SetFocus(GetDlgItem(hwndStatus, IDC_DRAW_INPUT));
 		}
 
 		return hwndStatus;
@@ -353,7 +358,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 		long lNewProgress = (dwProgress*25)/2048;
 
 		if (iLastTitleMode != TITLE_MINIMIZED || lLastTitleProgress != lNewProgress) {
-			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING_MINIMIZED, lNewProgress, g_szInputAVIFileTitle);
+			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING_MINIMIZED, lNewProgress, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
 
 			iLastTitleMode = TITLE_MINIMIZED;
 			lLastTitleProgress = lNewProgress;
@@ -361,7 +366,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	} else {
 		if (iLastTitleMode != TITLE_NORMAL) {
 			iLastTitleMode = TITLE_NORMAL;
-			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING, g_szInputAVIFileTitle);
+			guiSetTitle(g_hWnd, IDS_TITLE_DUBBING, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
 		}
 	}
 }
@@ -377,11 +382,11 @@ BOOL APIENTRY DubStatus::StatusMainDlgProc( HWND hdlg, UINT message, UINT wParam
 			{
 				SetWindowLong(hdlg, DWL_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
-				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE);
+				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
 				thisPtr->StatusTimerProc(hdlg);
 			}
-            return (TRUE);
+            return FALSE;
 
 		case WM_TIMER:
 			thisPtr->StatusTimerProc(hdlg);
@@ -402,12 +407,12 @@ BOOL APIENTRY DubStatus::StatusVideoDlgProc( HWND hdlg, UINT message, UINT wPara
 			{
 				SetWindowLong(hdlg, DWL_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
-				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE);
+				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
 				thisPtr->lFrameLobound = 0;
 				thisPtr->lFrameHibound = 10240;
 			}
-            return (TRUE);
+            return FALSE;
 
 		case WM_TIMER:
 			{
@@ -577,10 +582,10 @@ BOOL APIENTRY DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, UINT wParam
 			{
 				SetWindowLong(hdlg, DWL_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
-				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE);
+				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
 			}
-            return (TRUE);
+            return FALSE;
 
 		case WM_TIMER:
 			if (thisPtr->pInput) {
@@ -592,7 +597,7 @@ BOOL APIENTRY DubStatus::StatusPerfDlgProc( HWND hdlg, UINT message, UINT wParam
 
 				if (thisPtr->vSrc)
 					SetDlgItemText(hdlg, IDC_STATIC_VIDEOSTREAM,
-						thisPtr->vSrc->isStreaming() ? "Yes" : "No");
+						thisPtr->vSrc->asStream()->isStreaming() ? "Yes" : "No");
 
 				if (thisPtr->aSrc)
 					SetDlgItemText(hdlg, IDC_STATIC_AUDIOSTREAM,
@@ -613,12 +618,12 @@ BOOL APIENTRY DubStatus::StatusLogDlgProc( HWND hdlg, UINT message, UINT wParam,
 			{
 				SetWindowLong(hdlg, DWL_USER, lParam);
 				thisPtr = (DubStatus *)lParam;
-				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE);
+				SetWindowPos(hdlg, HWND_TOP, thisPtr->rStatusChild.left, thisPtr->rStatusChild.top, 0, 0, SWP_NOSIZE|SWP_NOACTIVATE);
 
 				IVDLogWindowControl *pLogWin = VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG));
 				pLogWin->AttachAsLogger(false);
 			}
-            return (TRUE);
+            return FALSE;
 
 		case WM_TIMER:
 			return TRUE;
@@ -701,7 +706,7 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 
 				OffsetRect(&r, r2.left - r.left, r2.top - r.top);
 
-				SetWindowPos(hwndItem, NULL, r.left, r.top, r.right-r.left, r.bottom-r.top, SWP_NOZORDER);
+				SetWindowPos(hwndItem, NULL, r.left, r.top, r.right-r.left, r.bottom-r.top, SWP_NOZORDER|SWP_NOACTIVATE);
 				thisPtr->rStatusChild = r;
 
 				TabCtrl_AdjustRect(hwndItem, FALSE, &thisPtr->rStatusChild);
@@ -720,7 +725,7 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 				// resize us
 
 				GetWindowRect(hdlg, &r);
-				SetWindowPos(hdlg, NULL, 0, 0, r.right-r.left + xoffset, r.bottom-r.top + yoffset, SWP_NOMOVE | SWP_NOZORDER);
+				SetWindowPos(hdlg, NULL, 0, 0, r.right-r.left + xoffset, r.bottom-r.top + yoffset, SWP_NOMOVE | SWP_NOZORDER|SWP_NOACTIVATE);
 
 				// open up child dialog
 
@@ -746,12 +751,15 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 
 				SendMessage(hwndItem, CB_SETCURSEL, thisPtr->iPriority-1, 0);
 
-				guiSetTitle(hdlg, IDS_TITLE_STATUS,  g_szInputAVIFileTitle);
+				guiSetTitle(hdlg, IDS_TITLE_STATUS, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
 
 			}
-            return (TRUE);
+			thisPtr->mModelessDialogNode.hdlg = hdlg;
+			guiAddModelessDialog(&thisPtr->mModelessDialogNode);
+            return FALSE;
 
 		case WM_DESTROY:
+			thisPtr->mModelessDialogNode.Remove();
 			thisPtr->hwndStatus = NULL;
 			if (thisPtr->statTimer)
 				KillTimer(hdlg, thisPtr->statTimer);
@@ -869,8 +877,9 @@ bool DubStatus::ToggleStatus() {
 	return fShowStatusWindow;
 }
 
-void DubStatus::SetPositionCallback(DubPositionCallback dpc) {
-	positionCallback = dpc;
+void DubStatus::SetPositionCallback(DubPositionCallback dpc, void *cookie) {
+	mpPositionCallback			= dpc;
+	mpPositionCallbackCookie	= cookie;
 }
 
 void DubStatus::NotifyNewFrame(long f) {
@@ -878,15 +887,15 @@ void DubStatus::NotifyNewFrame(long f) {
 }
 
 void DubStatus::SetLastPosition(LONG pos) {
-		if (positionCallback)
-			positionCallback(
+		if (mpPositionCallback)
+			mpPositionCallback(
 					pvinfo->start_src,
 					pos < pvinfo->start_src
 							? pvinfo->start_src
 							: pos > pvinfo->end_src
 									? pvinfo->end_src
 									: pos,
-					pvinfo->end_src, mProgress);
+					pvinfo->end_src, mProgress, mpPositionCallbackCookie);
 }
 
 void DubStatus::Freeze() {

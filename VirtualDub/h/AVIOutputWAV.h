@@ -18,8 +18,7 @@
 #ifndef f_AVIOUTPUTWAV_H
 #define f_AVIOUTPUTWAV_H
 
-#include <windows.h>
-#include <vfw.h>
+#include <vd2/system/file.h>
 
 #include "AVIOutput.h"
 
@@ -27,25 +26,29 @@ class FastWriteStream;
 
 class AVIOutputWAV : public AVIOutput {
 private:
-	HANDLE		hFile;
+	VDFile		mFile;
 	bool		fHeaderOpen;
-	DWORD		dwBytesWritten;
+	uint32		mBytesWritten;
 	FastWriteStream	*fastIO;
+	sint32		mBufferSize;
 
-	void _writeHdr(void *data, long len);
-	void _seekHdr(__int64 i64NewPos);
-	void _write(void *data, int len);
+	void _write(const void *data, int len);
 
 public:
 	AVIOutputWAV();
 	~AVIOutputWAV();
 
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	BOOL finalize();
-	BOOL isPreview();
+	IVDMediaOutputStream *createVideoStream();
+	IVDMediaOutputStream *createAudioStream();
 
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
+	void setBufferSize(sint32 nBytes) {
+		mBufferSize = nBytes;
+	}
+
+	bool init(const wchar_t *szFile);
+	void finalize();
+
+	void write(const void *pBuffer, uint32 cbBuffer);
 };
 
 #endif

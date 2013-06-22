@@ -1169,11 +1169,10 @@ void HexEditor::Commit() {
 		SetFilePointer(hFile, (LONG)pLine->address, (LONG *)&pLine->address + 1, FILE_BEGIN);
 		WriteFile(hFile, pLine->data, dwBytes, &dwActual, NULL);
 
-		i64FileReadPosition = pLine->address + 16;
-
 		delete pLine;
 	}
 
+	i64FileCacheAddr = i64FileReadPosition = -1;
 	InvalidateRect(hwnd, NULL, TRUE);
 }
 
@@ -1896,6 +1895,7 @@ void HexEditor::Find(HWND hwndParent) throw() {
 
 	i = 0;
 	j = -1;	// this causes the first char to be skipped
+	i64FileReadPosition = -1;		// invalidate cached file pos
 
 	try {
 		if (bFindReverse) {
@@ -2301,7 +2301,7 @@ void HexEditor::_RIFFScan(RIFFScanInfo &rsi, HWND hwndTV, HTREEITEM hti, __int64
 				bExpand = true;
 			}
 		} else {
-			char *dst = buf+sprintf(buf, "%08I64X [%-4.4s:%8ld]: ", pos, &chunk.ckid, chunk.size);
+			char *dst = buf+sprintf(buf, "%08I64X [%-4.4s:%8ld]: ", pos, (const char *)&chunk.ckid, chunk.size);
 
 			if (!isValidFOURCC(chunk.ckid) || chunk.size > sizeleft-8) {
 				strcpy(dst, "invalid chunk");

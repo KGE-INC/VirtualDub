@@ -16,54 +16,54 @@
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "stdafx.h"
-#include "AudioFilterSystem.h"
+#include "plugins.h"
 
-extern const VDAudioFilterDefinition
-	afilterDef_input,
-	afilterDef_lowpass,
-	afilterDef_highpass,
-	afilterDef_butterfly,
-	afilterDef_stereosplit,
-	afilterDef_stereomerge,
-	afilterDef_playback,
-	afilterDef_resample,
-	afilterDef_output,
-	afilterDef_sink,
-	afilterDef_pitchshift,
-	afilterDef_stretch,
-	afilterDef_discard,
-	afilterDef_centercut,
-	afilterDef_centermix,
-	afilterDef_gain,
-	afilterDef_stereochorus,
-	afilterDef_split,
-	afilterDef_mix,
-	afilterDef_newrate;
+extern const VDPluginInfo
+	apluginDef_input,
+	apluginDef_lowpass,
+	apluginDef_highpass,
+	apluginDef_butterfly,
+	apluginDef_stereosplit,
+	apluginDef_stereomerge,
+	apluginDef_playback,
+	apluginDef_resample,
+	apluginDef_output,
+	apluginDef_sink,
+	apluginDef_pitchshift,
+	apluginDef_stretch,
+	apluginDef_discard,
+	apluginDef_centercut,
+	apluginDef_centermix,
+	apluginDef_gain,
+	apluginDef_stereochorus,
+	apluginDef_split,
+	apluginDef_mix,
+	apluginDef_newrate;
 
-static const VDAudioFilterDefinition *const g_builtin_audio_filters[]={
-	&afilterDef_input,
-	&afilterDef_lowpass,
-	&afilterDef_highpass,
-	&afilterDef_butterfly,
-	&afilterDef_stereosplit,
-	&afilterDef_stereomerge,
-	&afilterDef_playback,
-	&afilterDef_resample,
-	&afilterDef_output,
-	&afilterDef_sink,
-	&afilterDef_pitchshift,
-	&afilterDef_stretch,
-	&afilterDef_discard,
-	&afilterDef_centercut,
-	&afilterDef_centermix,
-	&afilterDef_gain,
-	&afilterDef_stereochorus,
-	&afilterDef_split,
-	&afilterDef_mix,
-	&afilterDef_newrate,
+static const VDPluginInfo *const g_builtin_audio_filters[]={
+	&apluginDef_input,
+	&apluginDef_lowpass,
+	&apluginDef_highpass,
+	&apluginDef_butterfly,
+	&apluginDef_stereosplit,
+	&apluginDef_stereomerge,
+	&apluginDef_playback,
+	&apluginDef_resample,
+	&apluginDef_output,
+	&apluginDef_sink,
+	&apluginDef_pitchshift,
+	&apluginDef_stretch,
+	&apluginDef_discard,
+	&apluginDef_centercut,
+	&apluginDef_centermix,
+	&apluginDef_gain,
+	&apluginDef_stereochorus,
+	&apluginDef_split,
+	&apluginDef_mix,
+	&apluginDef_newrate,
+	NULL
 };
 
 void VDInitBuiltinAudioFilters() {
-	for(int i=0; i<sizeof g_builtin_audio_filters / sizeof g_builtin_audio_filters[0]; ++i)
-		VDAddAudioFilter(g_builtin_audio_filters[i]);
+	VDAddInternalPlugins(g_builtin_audio_filters);
 }

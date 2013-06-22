@@ -37,6 +37,14 @@ void *AVIStripe::operator new(size_t stSize, int iNameBytes) {
 	return malloc(stSize + iNameBytes);
 }
 
+void AVIStripe::operator delete(void *p) {
+	free(p);
+}
+
+void AVIStripe::operator delete(void *p, int iNameBytes) {
+	free(p);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	AVIStripeSystem

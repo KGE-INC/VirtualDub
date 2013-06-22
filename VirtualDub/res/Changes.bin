@@ -1,7 +1,58 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
-Build 16296 (Version 1.5.4):
+Current build (Version 1.5.5):
+   [features added]
+   * Partial Unicode support -- you can now open and save
+     files using Unicode filenames.
+   * "Chroma smoother" video filter refilters point-sampled
+     chroma with linear interpolation.
+   * Single-stream cut & paste.  (Be patient....)
+   * Improved performance of AVI parser, particularly for
+     Direct mode streaming.
+   * Improved performance of bicubic upsampler.
+   * Audio filter graph now shows intermediate audio
+     formats on connections.
+   * Audio filters can now be plugins.
+   * New MPEG-1 video core (Meia) -- full vertical
+     clipping.  Horizontal clipping is still by macroblock.
+   * Rewrote display code -- DirectDraw support is now
+     automatic.
+   * Log windows now have a context menu for clearing,
+     copying, and saving the log text.
+   * Modified AVI2 indexing to relax indexing restrictions
+     somewhat, although it's still not user configurable
+     yet.
+
+   [bugs fixed]
+   * Hex editor occasionally displayed the wrong data after
+     a find or save command.
+   * "Attach extension" option didn't work for signpost
+     save dialog.
+   * Fixed crash when I/O errors occur during a processing
+     operation, and then occur again when attempting to
+     gracefully finalize the partial output file.
+   * "Clear" didn't work in audio filter graph.
+   * Fixed I/O errors when attempting to push audio forward
+     with advanced audio filtering enabled.
+   * "Go to" command didn't handle timestamps with frac-
+     tional seconds that only had 1 or 2 decimal digits.
+   * "General convolution" generated bad code for factors
+     of 2, 4, and 8 when dynamic compilation was enabled.
+   * Interleave periods of zero are no longer allowed.
+   * Added workaround for crash or hang when compressing
+     with the "3ivx D4 4.0.4" video codec.
+   * Fixed non-interleaved save mode and made it cooperate
+     with segmentation.
+   * Added workaround for heap corruption when processing
+     audio in advanced mode sourced from some versions of
+     Avisynth.
+   * Clarified DivX warning to note that it doesn't apply
+     to the DivX 4+ codecs.
+   * Fixed filter cropping not working properly when
+     "motion blur" was the first filter in the chain.
+
+Build 16296 (Version 1.5.4):          [May 28, 2003]
    [features added]
    * Added workaround for infinite B-frame delay
      interaction with DivX 5.0.5 Pro.

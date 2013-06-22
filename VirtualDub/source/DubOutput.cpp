@@ -76,20 +76,22 @@ AVIOutput *VDAVIOutputFileSystem::CreateSegment() {
 		pOutput->setSegmentHintBlock(true, NULL, 1);
 	}
 
-	pOutput->initOutputStreams();
-
 	if (!mVideoFormat.empty()) {
-		memcpy(pOutput->videoOut->allocFormat(mVideoFormat.size()), &mVideoFormat[0], mVideoFormat.size());
-		pOutput->videoOut->setCompressed(TRUE);
-		pOutput->videoOut->streamInfo = mVideoStreamInfo;
+		IVDMediaOutputStream *pVideoOut = pOutput->createVideoStream();
+		pVideoOut->setFormat(&mVideoFormat[0], mVideoFormat.size());
+		pVideoOut->setStreamInfo(mVideoStreamInfo);
 	}
 
 	if (!mAudioFormat.empty()) {
-		memcpy(pOutput->audioOut->allocFormat(mAudioFormat.size()), &mAudioFormat[0], mAudioFormat.size());
-		pOutput->audioOut->streamInfo = mAudioStreamInfo;
+		IVDMediaOutputStream *pAudioOut = pOutput->createAudioStream();
+		pAudioOut->setFormat(&mAudioFormat[0], mAudioFormat.size());
+		pAudioOut->setStreamInfo(mAudioStreamInfo);
 	}
 
-	pOutput->init(VDTextWToA(s).c_str(), !mVideoFormat.empty(), !mAudioFormat.empty(), mBufferSize, mbInterleaved);
+	pOutput->setBuffering(mBufferSize, mBufferSize >> 2);
+	pOutput->setInterleaved(mbInterleaved);
+
+	pOutput->init(s.c_str());
 
 	return pOutput.release();
 }
@@ -207,11 +209,11 @@ VDAVIOutputWAVSystem::~VDAVIOutputWAVSystem() {
 AVIOutput *VDAVIOutputWAVSystem::CreateSegment() {
 	vdautoptr<AVIOutputWAV> pOutput(new AVIOutputWAV);
 
-	pOutput->initOutputStreams();
+	pOutput->createAudioStream()->setFormat(&mAudioFormat[0], mAudioFormat.size());
 
-	memcpy(pOutput->audioOut->allocFormat(mAudioFormat.size()), &mAudioFormat[0], mAudioFormat.size());
+	pOutput->setBufferSize(65536);
 
-	pOutput->init(VDTextWToA(mFilename).c_str(), FALSE, !mAudioFormat.empty(), 65536, false);
+	pOutput->init(mFilename.c_str());
 
 	return pOutput.release();
 }
@@ -253,19 +255,15 @@ VDAVIOutputImagesSystem::~VDAVIOutputImagesSystem() {
 }
 
 AVIOutput *VDAVIOutputImagesSystem::CreateSegment() {
-	vdautoptr<AVIOutputImages> pOutput(new AVIOutputImages(VDTextWToA(mSegmentPrefix).c_str(), VDTextWToA(mSegmentSuffix).c_str(), mSegmentDigits, mFormat));
+	vdautoptr<AVIOutputImages> pOutput(new AVIOutputImages(mSegmentPrefix.c_str(), mSegmentSuffix.c_str(), mSegmentDigits, mFormat));
 
-	pOutput->initOutputStreams();
-
-	if (!mVideoFormat.empty()) {
-		memcpy(pOutput->videoOut->allocFormat(mVideoFormat.size()), &mVideoFormat[0], mVideoFormat.size());
-		pOutput->videoOut->setCompressed(TRUE);
-	}
+	if (!mVideoFormat.empty())
+		pOutput->createVideoStream()->setFormat(&mVideoFormat[0], mVideoFormat.size());
 
 	if (!mAudioFormat.empty())
-		memcpy(pOutput->audioOut->allocFormat(mAudioFormat.size()), &mAudioFormat[0], mAudioFormat.size());
+		pOutput->createAudioStream()->setFormat(&mAudioFormat[0], mAudioFormat.size());
 
-	pOutput->init(NULL, !mVideoFormat.empty(), !mAudioFormat.empty(), 0, false);
+	pOutput->init(NULL);
 
 	return pOutput.release();
 }
@@ -322,17 +320,13 @@ VDAVIOutputPreviewSystem::~VDAVIOutputPreviewSystem() {
 AVIOutput *VDAVIOutputPreviewSystem::CreateSegment() {
 	vdautoptr<AVIOutputPreview> pOutput(new AVIOutputPreview);
 
-	pOutput->initOutputStreams();
-
-	if (!mVideoFormat.empty()) {
-		memcpy(pOutput->videoOut->allocFormat(mVideoFormat.size()), &mVideoFormat[0], mVideoFormat.size());
-		pOutput->videoOut->setCompressed(TRUE);
-	}
+	if (!mVideoFormat.empty())
+		pOutput->createVideoStream()->setFormat(&mVideoFormat[0], mVideoFormat.size());
 
 	if (!mAudioFormat.empty())
-		memcpy(pOutput->audioOut->allocFormat(mAudioFormat.size()), &mAudioFormat[0], mAudioFormat.size());
+		pOutput->createAudioStream()->setFormat(&mAudioFormat[0], mAudioFormat.size());
 
-	pOutput->init(NULL, !mVideoFormat.empty(), !mAudioFormat.empty(), 0, false);
+	pOutput->init(NULL);
 
 	return pOutput.release();
 }

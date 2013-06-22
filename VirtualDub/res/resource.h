@@ -194,8 +194,12 @@
 #define IDD_WITHERRORS                  255
 #define IDD_JOBLOG                      256
 #define IDD_DUBBING_LOG                 257
+#define IDR_DUB_KEYS                    257
 #define IDD_PROFILER                    258
 #define IDD_AF_NEWRATE                  259
+#define IDD_FILTER_CHROMASMOOTHER       260
+#define IDR_LOG_MENU                    261
+#define IDD_EXPERIMENTAL                262
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -470,6 +474,7 @@
 #define IDC_ADJUSTVOL                   1184
 #define IDC_ALPHABLEND                  1184
 #define IDC_AUTOARRANGE                 1184
+#define IDC_VERIFY                      1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -725,9 +730,15 @@
 #define IDC_PROFILE                     1403
 #define IDC_ERROR_DECODE                1404
 #define IDC_AUDIO_LENGTH                1404
+#define IDC_MODE_420MPEG1               1405
+#define IDC_MODE_420MPEG2               1406
+#define IDC_MODE_410                    1407
 #define IDS_OPTIONS_PERFORMANCE         1408
+#define IDC_MODE_411                    1408
 #define IDS_OPTIONS_DYNAMICCOMPILATION  1409
+#define IDC_MODE_422                    1409
 #define IDS_OPTIONS_DISPLAYINPUTVIDEO   1410
+#define IDC_MODE_DISABLE                1410
 #define IDS_OPTIONS_DISPLAYOUTPUTVIDEO  1411
 #define IDS_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT 1412
 #define IDS_OPTIONS_ENABLEMMX           1413
@@ -905,10 +916,15 @@
 #define ID_FILE_SAVECONFIGURATION       40159
 #define ID_FILE_LOADCONFIGURATION       40160
 #define ID_DISPLAY_QUARTER              40161
+#define ID_DISPLAY_ZOOM_25              40161
 #define ID_DISPLAY_HALF                 40162
+#define ID_DISPLAY_ZOOM_50              40162
 #define ID_DISPLAY_NORMAL               40163
+#define ID_DISPLAY_ZOOM_100             40163
 #define ID_DISPLAY_DOUBLE               40164
+#define ID_DISPLAY_ZOOM_200             40164
 #define ID_DISPLAY_QUADRUPLE            40165
+#define ID_DISPLAY_ZOOM_400             40165
 #define ID_VIDEO_STRETCH                40168
 #define ID_VIDEO_COPYOUTPUTFRAME        40169
 #define ID_CAPTURE_INFOPANEL            40170
@@ -998,6 +1014,27 @@
 #define ID_OPTIONS_SHOWPROFILER         40269
 #define ID_FILE_PREVIEWOUTPUT           40271
 #define ID_FILE_PREVIEWINPUT            40272
+#define ID_DISPLAY_ZOOM                 40274
+#define ID_DISPLAY_ASPECTRATIO          40275
+#define ID_DISPLAY_AR_PIXEL_1000        40276
+#define ID_DISPLAY_AR_FRAME_1333        40277
+#define ID_DISPLAY_AR_FRAME_1777        40278
+#define ID_DISPLAY_ZOOM_33              40279
+#define ID_DISPLAY_ZOOM_66              40280
+#define ID_DISPLAY_ZOOM_75              40281
+#define ID_DISPLAY_ZOOM_300             40282
+#define ID_DISPLAY_ZOOM_150             40283
+#define ID_EDIT_COPY                    40284
+#define ID_EDIT_CUT                     40285
+#define ID_EDIT_PASTE                   40286
+#define ID_DISPLAY_AR_FREE              40287
+#define ID_DUBINPROGRESS_ABORTFAST      40289
+#define ID_EDIT_CLEAR                   40290
+#define ID_EDIT_SELECTALL               40291
+#define ID_LOG_COPY                     40292
+#define ID_LOG_SAVEAS                   40293
+#define ID_LOG_CLEAR                    40294
+#define ID_DISPLAY_ZOOM_EXACT           40295
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1039,9 +1076,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        257
-#define _APS_NEXT_COMMAND_VALUE         40273
-#define _APS_NEXT_CONTROL_VALUE         1405
+#define _APS_NEXT_RESOURCE_VALUE        263
+#define _APS_NEXT_COMMAND_VALUE         40296
+#define _APS_NEXT_CONTROL_VALUE         1406
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

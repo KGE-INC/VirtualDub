@@ -17,10 +17,12 @@
 
 #include "stdafx.h"
 
+#include <vd2/system/error.h>
+
 #include "AVIOutput.h"
 #include "AVIOutputPreview.h"
 
-AVIAudioPreviewOutputStream::AVIAudioPreviewOutputStream(AVIOutput *out) : AVIAudioOutputStream(out) {
+AVIAudioPreviewOutputStream::AVIAudioPreviewOutputStream(AVIOutput *out) : AVIOutputStream(out) {
 	initialized = started = FALSE;
 	myAudioOut = NULL;
 	fInitialized = false;
@@ -31,14 +33,14 @@ AVIAudioPreviewOutputStream::~AVIAudioPreviewOutputStream() {
 	myAudioOut = NULL;
 }
 
-BOOL AVIAudioPreviewOutputStream::init() {
+bool AVIAudioPreviewOutputStream::init() {
 	fInitialized = true;
 
-	return TRUE;
+	return true;
 }
 
 bool AVIAudioPreviewOutputStream::initAudio() {
-	const WAVEFORMATEX *pwfex = getWaveFormat();
+	const WAVEFORMATEX *pwfex = (const WAVEFORMATEX *)getFormat();
 	int blocks;
 	int blocksin512;
 
@@ -58,44 +60,34 @@ bool AVIAudioPreviewOutputStream::initAudio() {
 	return !!myAudioOut;
 }
 
-BOOL AVIAudioPreviewOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) {
+void AVIAudioPreviewOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
 	fInitialized = true;
-	if (!myAudioOut && !initAudio()) {
-		return FALSE;
-	}
+	if (!myAudioOut && !initAudio())
+		return;
+
 	if (!initialized) {
-		if (!myAudioOut->init(getWaveFormat())) {
-#if 0
-			delete myAudioOut;
-			myAudioOut = NULL;
-			return FALSE;
-#else
+		if (!myAudioOut->init((const WAVEFORMATEX *)getFormat())) {
 			myAudioOut->go_silent();
-#endif
 		}
-		initialized = TRUE;
+		initialized = true;
 	}
 
-	myAudioOut->write(lpBuffer, cbBuffer, INFINITE);
-
-	return TRUE;
+	myAudioOut->write(pBuffer, cbBuffer, INFINITE);
 }
 
-BOOL AVIAudioPreviewOutputStream::isSilent() {
+bool AVIAudioPreviewOutputStream::isSilent() {
 	return myAudioOut == NULL || myAudioOut->isSilent();
 }
 
 void AVIAudioPreviewOutputStream::start() {
 	if (started || !fInitialized) return;
 
-	if (!getWaveFormat()) return;
-
 	if (!myAudioOut && !initAudio()) {
 		return;
 	}
 
 	if (!initialized) {
-		if (!myAudioOut->init(getWaveFormat())) {
+		if (!myAudioOut->init((const WAVEFORMATEX *)getFormat())) {
 			delete myAudioOut;
 			myAudioOut = NULL;
 			return;
@@ -119,18 +111,16 @@ void AVIAudioPreviewOutputStream::stop() {
 
 }
 
-BOOL AVIAudioPreviewOutputStream::flush() {
+void AVIAudioPreviewOutputStream::flush() {
 	_RPT0(0,"AVIAudioPreviewOutputStream: flushing...\n");
-	if (myAudioOut && started) myAudioOut->flush();
-
-	return TRUE;
+	if (myAudioOut && started)
+		myAudioOut->flush();
 }
 
-BOOL AVIAudioPreviewOutputStream::finalize() {
+void AVIAudioPreviewOutputStream::finalize() {
 	_RPT0(0,"AVIAudioPreviewOutputStream: finalizing...\n");
-	if (myAudioOut && started) return myAudioOut->finalize(INFINITE);
-
-	return TRUE;
+	if (myAudioOut && started)
+		myAudioOut->finalize(INFINITE);
 }
 
 long AVIAudioPreviewOutputStream::getPosition() {
@@ -147,8 +137,7 @@ bool AVIAudioPreviewOutputStream::isFrozen() {
 
 /////////////////////////////
 
-BOOL AVIVideoPreviewOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) {
-	return TRUE;
+void AVIVideoPreviewOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {
 }
 
 /////////////////////////////
@@ -159,27 +148,27 @@ AVIOutputPreview::AVIOutputPreview() {
 AVIOutputPreview::~AVIOutputPreview() {
 }
 
-BOOL AVIOutputPreview::initOutputStreams() {
-	if (!(audioOut = new AVIAudioPreviewOutputStream(this))) return FALSE;
-	if (!(videoOut = new AVIVideoPreviewOutputStream(this))) return FALSE;
-
-	return TRUE;
+IVDMediaOutputStream *AVIOutputPreview::createVideoStream() {
+	VDASSERT(!videoOut);
+	if (!(videoOut = new_nothrow AVIVideoPreviewOutputStream(this)))
+		throw MyMemoryError();
+	return videoOut;
 }
 
-BOOL AVIOutputPreview::init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved) {
-	return TRUE;
+IVDMediaOutputStream *AVIOutputPreview::createAudioStream() {
+	VDASSERT(!audioOut);
+	if (!(audioOut = new_nothrow AVIAudioPreviewOutputStream(this)))
+		throw MyMemoryError();
+	return audioOut;
 }
 
-BOOL AVIOutputPreview::finalize() {
+bool AVIOutputPreview::init(const wchar_t *szFile) {
+	return true;
+}
+
+void AVIOutputPreview::finalize() {
 	_RPT0(0,"AVIOutputPreview: Finalizing...\n");
 
-	if (audioOut && !audioOut->finalize())
-		return FALSE;
-
-	return TRUE;
-}
-
-BOOL AVIOutputPreview::isPreview() { return TRUE; }
-
-void AVIOutputPreview::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer) {
+	if (audioOut)
+		static_cast<AVIAudioPreviewOutputStream *>(audioOut)->finalize();
 }

@@ -62,6 +62,21 @@ void VDThread::ThreadFinish() {
 	_endthreadex(0);
 }
 
+void *VDThread::ThreadLocation() const {
+	if (!isThreadAttached())
+		return NULL;
+
+	CONTEXT ctx;
+
+	ctx.ContextFlags = CONTEXT_CONTROL;
+
+	SuspendThread(mhThread);
+	GetThreadContext(mhThread, &ctx);
+	ResumeThread(mhThread);
+
+	return (void *)ctx.Eip;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 // This apparently came from one a talk by one of the Visual Studio

@@ -34,6 +34,7 @@
 //////////////////
 
 struct CScriptObject;
+class IVDVideoDisplay;
 
 //////////////////
 
@@ -73,6 +74,8 @@ public:
 	int nDelayRingPos;
 	int nDelayRingSize;
 
+	VDStringW	mFilterName;
+
 	///////
 
 	FilterInstance(const FilterInstance& fi);
@@ -91,7 +94,10 @@ class FilterPreview : public IFilterPreview {
 private:
 	HWND hdlg, hwndButton;
 	HWND hwndParent;
-	HDRAWDIB hdd;
+	HWND	mhwndPosition;
+	HWND	mhwndDisplay;
+	IVDVideoDisplay *mpDisplay;
+	HWND	mhwndToolTip;
 	FilterSystem filtsys;
 	BITMAPINFOHEADER bih;
 	FilterStateInfo fsi;
@@ -105,7 +111,15 @@ private:
 
 	MyError		mFailureReason;
 
-	static BOOL CALLBACK DlgProc(HWND hdlg, UINT message, UINT wParam, LONG lParam);
+	static BOOL CALLBACK StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam);
+	BOOL DlgProc(UINT message, WPARAM wParam, LPARAM lParam);
+
+	void OnInit();
+	void OnResize();
+	void OnPaint();
+	void OnVideoResize(bool bInitial);
+	void OnVideoRedraw();
+
 	long FetchFrame();
 	long FetchFrame(long);
 

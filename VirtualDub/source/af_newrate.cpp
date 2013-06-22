@@ -114,7 +114,7 @@ uint32 VDAudioFilterNewRate::Prepare() {
 	if (inFormat.mTag != VDWaveFormat::kTagPCM)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -203,10 +203,6 @@ void __cdecl VDAudioFilterNewRate::InitProc(const VDAudioFilterContext *pContext
 
 extern const struct VDAudioFilterDefinition afilterDef_newrate = {
 	sizeof(VDAudioFilterDefinition),
-	L"new rate",
-	NULL,
-	L"Changes the sampling rate on an audio stream without actually changing the audio data.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterNewRate),	1,	1,
@@ -215,4 +211,21 @@ extern const struct VDAudioFilterDefinition afilterDef_newrate = {
 
 	VDAudioFilterNewRate::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_newrate = {
+	sizeof(VDPluginInfo),
+	L"new rate",
+	NULL,
+	L"Changes the sampling rate on an audio stream without actually changing the audio data.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_newrate
 };

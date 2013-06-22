@@ -190,7 +190,7 @@ public:
 
 	sint32			GetFileCount();
 	const FileInfo&	GetFileInfo(sint32 idx);
-	IVDStream		*OpenRaw(sint32 idx);
+	IVDStream		*OpenRawStream(sint32 idx);
 
 protected:
 	struct FileInfoInternal : public FileInfo {

@@ -86,38 +86,38 @@ public:
 
 	//////
 
-	VBitmap() throw() {
+	VBitmap() {
 #ifdef VDEXT_VIDEO_FILTER
 		init();
 #endif
 	}
-	VBitmap(void *data, PixDim w, PixDim h, int depth) throw();
-	VBitmap(void *data, BITMAPINFOHEADER *) throw();
+	VBitmap(void *data, PixDim w, PixDim h, int depth);
+	VBitmap(void *data, BITMAPINFOHEADER *);
 
 #ifdef VDEXT_VIDEO_FILTER
-	void init() throw() { *(void **)this = g_vtbls.pvtblVBitmap; }
+	void init() { *(void **)this = g_vtbls.pvtblVBitmap; }
 #endif
 
-	virtual VBitmap& init(void *data, PixDim w, PixDim h, int depth) throw();
-	virtual VBitmap& init(void *data, BITMAPINFOHEADER *) throw();
+	virtual VBitmap& init(void *data, PixDim w, PixDim h, int depth);
+	virtual VBitmap& init(void *data, BITMAPINFOHEADER *);
 
-	virtual void MakeBitmapHeader(BITMAPINFOHEADER *bih) const throw();
+	virtual void MakeBitmapHeader(BITMAPINFOHEADER *bih) const;
 
-	virtual void AlignTo4() throw();
-	virtual void AlignTo8() throw();
+	virtual void AlignTo4();
+	virtual void AlignTo8();
 
-	virtual void BitBlt(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
-	virtual void BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy, bool to565) const throw();
-	virtual void BitBlt565(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const throw();
+	virtual void BitBlt(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const;
+	virtual void BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy, bool to565) const;
+	virtual void BitBlt565(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const;
 
-	virtual bool BitBltXlat1(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel8 *tbl) const throw();
-	virtual bool BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel32 *tbl) const throw();
+	virtual bool BitBltXlat1(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel8 *tbl) const;
+	virtual bool BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel32 *tbl) const;
 
-	virtual bool StretchBltNearestFast(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const VBitmap *src, double x2, double y2, double dx1, double dy1) const throw();
+	virtual bool StretchBltNearestFast(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const VBitmap *src, double x2, double y2, double dx1, double dy1) const;
 
-	virtual bool StretchBltBilinearFast(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const VBitmap *src, double x2, double y2, double dx1, double dy1) const throw();
+	virtual bool StretchBltBilinearFast(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const VBitmap *src, double x2, double y2, double dx1, double dy1) const;
 
-	virtual bool RectFill(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, Pixel32 c) const throw();
+	virtual bool RectFill(PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, Pixel32 c) const;
 
 	enum {
 		HISTO_LUMA,
@@ -127,23 +127,23 @@ public:
 		HISTO_BLUE,
 	};
 
-	virtual bool Histogram(PixCoord x, PixCoord y, PixCoord dx, PixCoord dy, long *pHisto, int iHistoType) const throw();
+	virtual bool Histogram(PixCoord x, PixCoord y, PixCoord dx, PixCoord dy, long *pHisto, int iHistoType) const;
 
 	//// NEW AS OF VIRTUALDUB V1.2B
 
-	virtual bool BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
-	virtual bool BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
+	virtual bool BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const;
+	virtual bool BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const;
 
 	//// NEW AS OF VIRTUALDUB V1.4C
 
-	virtual void MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const throw();
+	virtual void MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const;
 
 	///////////
 
-	bool BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw();
+	bool BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const;
 
 private:
-	bool dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCoord& x1, PixCoord& y1, PixDim& dx, PixDim& dy) const throw();
+	bool dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCoord& x1, PixCoord& y1, PixDim& dx, PixDim& dy) const;
 };
 
 #undef NOVTABLE

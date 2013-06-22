@@ -47,6 +47,8 @@ public:
 	operator unsigned long() const;
 	operator double() const;
 
+	double asDouble() const { return (double)*this; }
+
 	unsigned long roundup32ul() const;
 
 	unsigned long getHi() const { return hi; }

@@ -23,12 +23,21 @@
 #include <vd2/system/VDString.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/log.h>
+#include <vd2/system/file.h>
+#include <vd2/system/error.h>
+#include <vd2/dita/services.h>
 #include <vector>
 #include <list>
 #include <algorithm>
 
+#include "resource.h"
 #include "oshelper.h"
 #include "LogWindow.h"
+
+
+enum {
+	kFileDialog_Log				= 'log '
+};
 
 extern HINSTANCE g_hInst;
 extern const char g_szError[];
@@ -59,16 +68,18 @@ protected:
 	void OnSize(int w, int h);
 	void OnPaint();
 	void OnSetFont(HFONT hfont, bool bRedraw);
+	void OnCommand(int cmd);
 	bool OnKey(INT wParam);
 	void OnTimer();
 	int OnScroll(int type, int action, bool bForceExtreme);
 	void ScrollTo(sint32 pos);
 
-protected:	// interface routines
+	void CreateBuffer(std::vector<char>& buffer);
 
 protected:	// internal functions
 	const HWND mhwnd;
 	HFONT mhfont;
+	HMENU mhmenu;
 
 	struct Entry {
 		sint32		mPos;
@@ -85,7 +96,8 @@ protected:	// internal functions
 
 	typedef std::vector<Entry> tLineArray;
 	tLineArray				mLineArray;
-	std::list<VDStringW>	mTextArray;
+	typedef std::list<VDStringW> tTextArray;
+	tTextArray				mTextArray;
 
 	VDCriticalSection		mcsPending;
 	tLineArray				mLineArrayPending;
@@ -125,6 +137,8 @@ VDLogWindowControl::VDLogWindowControl(HWND hwnd)
 	mBrushes[1] = CreateSolidBrush(RGB(192,255,0));
 	mBrushes[2] = CreateSolidBrush(RGB(255,224,0));
 	mBrushes[3] = CreateSolidBrush(RGB(255,0,0));
+
+	mhmenu = LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_LOG_MENU));
 }
 
 VDLogWindowControl::~VDLogWindowControl() {
@@ -134,6 +148,9 @@ VDLogWindowControl::~VDLogWindowControl() {
 	for(int i=0; i<kBrushCount; ++i)
 		if (mBrushes[i])
 			DeleteObject(mBrushes[i]);
+
+	if (mhmenu)
+		DestroyMenu(mhmenu);
 }
 
 VDLogWindowControl *VDLogWindowControl::Create(HWND hwndParent, int x, int y, int cx, int cy, UINT id) {
@@ -254,6 +271,15 @@ LRESULT VDLogWindowControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		return 0;
 	case WM_TIMER:
 		OnTimer();
+		return 0;
+
+	case WM_COMMAND:
+		OnCommand(LOWORD(wParam));
+		return 0;
+
+	case WM_CONTEXTMENU:
+		if (mhmenu)
+			TrackPopupMenu(GetSubMenu(mhmenu, 0), TPM_LEFTALIGN|TPM_TOPALIGN|TPM_RIGHTBUTTON, (short)LOWORD(lParam), (short)HIWORD(lParam), 0, mhwnd, NULL);
 		return 0;
 	}
 	return DefWindowProc(mhwnd, msg, wParam, lParam);
@@ -395,6 +421,68 @@ void VDLogWindowControl::OnSetFont(HFONT hfont, bool bRedraw) {
 
 		if (hOldFont)
 			SelectObject(hdc, mhfont);
+	}
+}
+
+void VDLogWindowControl::OnCommand(int cmd) {
+	switch(cmd) {
+	case ID_LOG_CLEAR:
+		{
+			Entry e = {0,0};
+			mLineArray.clear();
+			mLineArray.push_back(e);
+			mTextArray.clear();
+			SizeEntries(mLineArray.begin());
+			InvalidateRect(mhwnd, NULL, TRUE);
+		}
+		break;
+	case ID_LOG_SAVEAS:
+		{
+			const VDStringW fname(VDGetSaveFileName(kFileDialog_Log, (VDGUIHandle)mhwnd, L"Save log", L"Text file (*.txt)\0*.txt\0", L"txt", NULL, NULL));
+
+			if (!fname.empty()) {
+				std::vector<char> buffer;
+
+				CreateBuffer(buffer);
+
+				try {
+					VDFile file(fname.c_str(), nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
+
+					file.write(&buffer[0], buffer.size());
+					file.close();
+				} catch(const MyError& e) {
+					e.post(mhwnd, g_szError);
+				}
+			}		
+		}
+		break;
+	case ID_LOG_COPY:
+		if (OpenClipboard(mhwnd)) {
+			if (EmptyClipboard()) {
+				std::vector<char> buffer;
+
+				CreateBuffer(buffer);
+
+				HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, buffer.size() + 1);
+
+				if (hMem) {
+					LPVOID ptr = GlobalLock(hMem);
+
+					if (ptr) {
+						memcpy(ptr, &buffer[0], buffer.size());
+						((char *)ptr)[buffer.size()] = 0;
+						GlobalUnlock(hMem);
+						if (SetClipboardData(CF_TEXT, hMem))
+							hMem = NULL;
+					}
+
+					if (hMem)
+						GlobalFree(hMem);
+				}
+			}
+			CloseClipboard();
+		}
+		break;
 	}
 }
 
@@ -648,6 +736,75 @@ void VDLogWindowControl::Draw(HDC hdc, const VDStringW& s, RECT& r, bool bSizeOn
 	if (bSizeOnly)
 		r.bottom = y;
 #endif
+}
+
+void VDLogWindowControl::CreateBuffer(std::vector<char>& buffer) {
+	buffer.clear();
+
+	tLineArray::const_iterator it(mLineArray.begin()), itEnd(mLineArray.end());
+
+	// don't process marker
+	if (itEnd != it)
+		--itEnd;
+
+	for(; it!=itEnd; ++it) {
+		const Entry& e = *it;
+		const VDStringW& s = *e.mpText;
+
+		// sigh... more word wrapping code....	
+		VDStringW::size_type nPos = 0;
+		const VDStringW::size_type nChars = s.size();
+
+		while(nPos < nChars) {
+			VDStringW::size_type nLineEnd = s.find(L'\n', nPos);
+
+			if (nLineEnd == VDStringW::npos)
+				nLineEnd = nChars;
+
+			while(nPos < nLineEnd) {
+				const int nMaxChars = std::min<int>(74, nLineEnd - nPos);
+				int nEnd = nPos + nMaxChars;
+
+				if (!nMaxChars) {
+					// If no characters fit, force one.
+					++nEnd;
+				} else {
+					// check for split in word
+					if (nEnd < nLineEnd && s.data()[nEnd] != L' ') {
+						while(nEnd > nPos && s.data()[nEnd-1] != L' ')
+							--nEnd;
+
+						// check for one-long-word case
+						if (nEnd == nPos)
+							nEnd += nMaxChars;		// hack the word
+					}
+				}
+
+				const char *t = VDFastTextWToA(s.c_str());
+				int alen = VDTextWToALength(s.data() + nPos, nEnd - nPos);
+				int blen = buffer.size();
+
+				buffer.resize(blen + alen + 6, ' ');
+				if (!nPos) {
+					buffer[blen] = '[';
+					buffer[blen+1] = "i*!E"[e.mSeverity];
+					buffer[blen+2] = ']';
+				}
+				VDTextWToA(&buffer[blen + 4], alen, s.data() + nPos, nEnd-nPos);
+				buffer[blen+alen+4] = '\r';
+				buffer[blen+alen+5] = '\n';
+
+				nPos = nEnd;
+				while(nPos < nLineEnd && s.data()[nPos] == L' ')
+					++nPos;
+			}
+
+			nPos = nLineEnd + 1;
+		}
+
+		buffer.push_back('\r');
+		buffer.push_back('\n');
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////

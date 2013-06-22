@@ -13,12 +13,12 @@ public:
 	VDAtomicInt(int v) : n(v) {}
 
 	bool operator!() const { return !n; }
-	bool operator!=(int v) const { return n!=v; }
-	bool operator==(int v) const { return n==v; }
-	bool operator<=(int v) const { return n<=v; }
-	bool operator>=(int v) const { return n>=v; }
-	bool operator<(int v) const { return n<v; }
-	bool operator>(int v) const { return n>v; }
+	bool operator!=(volatile int v) const  { return n!=v; }
+	bool operator==(volatile int v) const { return n==v; }
+	bool operator<=(volatile int v) const { return n<=v; }
+	bool operator>=(volatile int v) const { return n>=v; }
+	bool operator<(volatile int v) const { return n<v; }
+	bool operator>(volatile int v) const { return n>v; }
 
 	///////////////////////////////
 

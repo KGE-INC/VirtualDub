@@ -20,6 +20,8 @@
 
 #include <windows.h>
 
+#include <vd2/system/VDString.h>
+
 void Draw3DRect(HDC hDC, LONG x, LONG y, LONG dx, LONG dy, BOOL inverted);
 
 HKEY OpenConfigKey(const char *szKeyName);
@@ -32,11 +34,14 @@ BOOL SetConfigString(const char *szKeyName, const char *szValueName, const char 
 BOOL SetConfigBinary(const char *szKeyName, const char *szValueName, const char *lpBuffer, int cbBuffer);
 BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData);
 
+VDStringW VDGetProgramPath();
+
 void VDShowHelp(HWND hwnd, const wchar_t *filename = 0);
 
 char *SplitPathRoot(char *dst, const char *path);
 char *MergePath(char *path, const char *fn);
 bool IsFilenameOnFATVolume(const char *pszFilename);
+bool IsFilenameOnFATVolume(const wchar_t *pszFilename);
 
 void LaunchURL(const char *pURL);
 

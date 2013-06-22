@@ -36,7 +36,7 @@ class AVIPipe;
 class AVIOutput;
 class DubSource;
 class AudioSource;
-class VideoSource;
+class IVDVideoSource;
 class FrameSubset;
 class InputFile;
 class IDubStatusHandler;
@@ -181,18 +181,20 @@ public:
 	virtual void SetAudioCompression(WAVEFORMATEX *wf, LONG cb)	=0;
 	virtual void SetInputFile(InputFile *)=0;
 	virtual void SetPhantomVideoMode()=0;
+	virtual void SetInputDisplay(IVDVideoDisplay *pDisplay) = 0;
+	virtual void SetOutputDisplay(IVDVideoDisplay *pDisplay) = 0;
 	virtual void SetFrameRectangles(RECT *prInput, RECT *prOutput)=0;
 	virtual void SetAudioFilterGraph(const VDAudioFilterGraph& graph)=0;
 	virtual void EnableSpill(__int64 size, long lFrameLimit)=0;
-	virtual void Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem *out, HDC hDC, COMPVARS *videoCompVars) = 0;
+	virtual void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *out, COMPVARS *videoCompVars) = 0;
 	virtual void Go(int iPriority = 0) = 0;
+	virtual void Stop() = 0;
 
 	virtual void RealizePalette()	=0;
 	virtual void Abort()			=0;
+	virtual bool isRunning()		=0;
 	virtual bool isAbortedByUser()	=0;
 	virtual bool IsPreviewing()		=0;
-	virtual void Tag(int x, int y)	=0;
-	virtual void SetClientRectOffset(int x, int y) = 0;
 
 	virtual void SetStatusHandler(IDubStatusHandler *pdsh)		=0;
 	virtual void SetPriority(int index)=0;
@@ -200,7 +202,7 @@ public:
 };
 
 IDubber *CreateDubber(DubOptions *xopt);
-void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, VideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs=NULL);
+void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs=NULL);
 
 #ifndef f_DUB_CPP
 

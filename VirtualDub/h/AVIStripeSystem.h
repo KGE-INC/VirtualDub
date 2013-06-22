@@ -47,6 +47,8 @@ public:
 	char	szName[];
 
 	void *operator new(size_t stSize, int iNameBytes);
+	void operator delete(void *p);
+	void operator delete(void *p, int iNameBytes);		// for exception unwinding
 
 	BOOL isIndex() { return !!(cStripeMode & FLAG_INDEX); }
 	BOOL isVideo() { return !!(cStripeMode & FLAG_VIDEO); }

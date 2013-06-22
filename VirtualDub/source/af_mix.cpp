@@ -66,7 +66,7 @@ uint32 VDAudioFilterMix::Prepare() {
 
 	VDWaveFormat *pwf0;
 
-	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 
 	pwf0->mChannels		= format0.mChannels;
@@ -158,10 +158,6 @@ sint64 VDAudioFilterMix::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_mix = {
 	sizeof(VDAudioFilterDefinition),
-	L"mix",
-	NULL,
-	L"Mixes two streams together linearly.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterMix),	2, 1,
@@ -172,3 +168,19 @@ extern const struct VDAudioFilterDefinition afilterDef_mix = {
 	&VDAudioFilterBase::sVtbl,
 };
 
+extern const struct VDPluginInfo apluginDef_mix = {
+	sizeof(VDPluginInfo),
+	L"mix",
+	NULL,
+	L"Mixes two streams together linearly.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_mix
+};

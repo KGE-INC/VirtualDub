@@ -19,6 +19,8 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <vd2/system/refcount.h>
+
 #include "VideoSource.h"
 #include "ClippingControl.h"
 
@@ -31,7 +33,7 @@
 #include "ScriptError.h"
 
 extern HINSTANCE g_hInst;
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<VideoSource> inputVideoAVI;
 
 ///////////////////////
 
@@ -184,26 +186,7 @@ static BOOL APIENTRY fillDlgProc(HWND hDlg, UINT message, UINT wParam, LONG lPar
 
 			case IDC_PICK_COLOR:
 				mfd = (MyFilterData *)GetWindowLong(hDlg, DWL_USER);
-/*
-				{
-					CHOOSECOLOR cc;                 // common dialog box structure 
-					static COLORREF acrCustClr[16]; // array of custom colors 
 
-					// Initialize CHOOSECOLOR
-					memset(&cc, 0, sizeof(CHOOSECOLOR));
-					cc.lStructSize	= sizeof(CHOOSECOLOR);
-					cc.hwndOwner	= hDlg;
-					cc.lpCustColors	= (LPDWORD) acrCustClr;
-					cc.rgbResult	= mfd->color_temp;
-					cc.Flags		= CC_FULLOPEN | CC_RGBINIT;
-
-					if (ChooseColor(&cc)==TRUE) {
-						DeleteObject(mfd->hbrColor);
-						mfd->hbrColor = CreateSolidBrush(mfd->color_temp = cc.rgbResult);
-						RedrawWindow(GetDlgItem(hDlg, IDC_COLOR), NULL, NULL, RDW_ERASE|RDW_INVALIDATE|RDW_UPDATENOW);
-					}
-				}
-*/
 				if (guiChooseColor(hDlg, mfd->color_temp)) {
 					DeleteObject(mfd->hbrColor);
 					mfd->hbrColor = CreateSolidBrush(mfd->color_temp);

@@ -25,13 +25,30 @@ enum {
 	VDFSPECKEY_SCRIPT			= 402
 };
 
+
+struct VDFileDialogOption {
+	enum {
+		kEnd,
+		kBool,
+		kInt,
+		kEnabledInt,
+		kReadOnly,
+		kSelectedFilter
+	};
+
+	int				mType;
+	int				mDstIdx;
+	const wchar_t	*mpLabel;
+	int				mMin;
+	int				mMax;
+};
+
 class IVDUIContext;
 
 IVDUIContext *VDGetUIContext();
 
-const VDStringW VDGetLoadFileName			(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt);
-const VDStringW VDGetLoadFileNameReadOnly	(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt, bool& bReadOnly);
-const VDStringW VDGetSaveFileName			(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt);
+const VDStringW VDGetLoadFileName(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt, const VDFileDialogOption *pOptions = NULL, int *pOptVals = NULL);
+const VDStringW VDGetSaveFileName(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt, const VDFileDialogOption *pOptions = NULL, int *pOptVals = NULL);
 const VDStringW VDGetDirectory(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle);
 
 #endif

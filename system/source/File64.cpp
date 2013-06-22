@@ -83,6 +83,10 @@ bool VDFile::open(const wchar_t *pwszFilename, uint32 flags) {
 bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags) {
 	close();
 
+	mpFilename = strdup(VDFileSplitPath(pszFilename?pszFilename:VDTextWToA(VDStringW(pwszFilename)).c_str()));
+	if (!mpFilename)
+		throw MyMemoryError();
+
 	// At least one of the read/write flags must be set.
 	VDASSERT(flags & (kRead | kWrite));
 
@@ -147,9 +151,7 @@ bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 		if (err == ERROR_PATH_NOT_FOUND && creationType == kOpenExisting)
 			return false;
 
-		VDStringA fname(VDFileSplitPathRight(pszFilename?VDString(pszFilename):VDTextWToA(VDStringW(pwszFilename))));
-
-		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, fname.c_str());
+		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, mpFilename.get());
 	}
 
 	mFilePosition = 0;
@@ -169,7 +171,7 @@ bool VDFile::closeNT() {
 
 void VDFile::close() {
 	if (!closeNT())
-		throw MyWin32Error("Error closing file: %%s", GetLastError());
+		throw MyWin32Error("Cannot complete file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 bool VDFile::truncateNT() {
@@ -178,14 +180,14 @@ bool VDFile::truncateNT() {
 
 void VDFile::truncate() {
 	if (!truncateNT())
-		throw MyWin32Error("Error truncating file: %%s", GetLastError());
+		throw MyWin32Error("Cannot truncate file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 long VDFile::readData(void *buffer, long length) {
 	DWORD dwActual;
 
 	if (!ReadFile(mhFile, buffer, (DWORD)length, &dwActual, NULL))
-		throw MyWin32Error("Read error: %%s", GetLastError());
+		throw MyWin32Error("Cannot read from file \"%s\": %%s", GetLastError(), mpFilename.get());
 
 	mFilePosition += dwActual;
 
@@ -194,14 +196,14 @@ long VDFile::readData(void *buffer, long length) {
 
 void VDFile::read(void *buffer, long length) {
 	if (length != readData(buffer, length))
-		throw MyError("Read error: file truncated");
+		throw MyError("Cannot read from file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 long VDFile::writeData(const void *buffer, long length) {
 	DWORD dwActual;
 
 	if (!WriteFile(mhFile, buffer, (DWORD)length, &dwActual, NULL) || dwActual != (DWORD)length)
-		throw MyWin32Error("Write error: %%s", GetLastError());
+		throw MyWin32Error("Cannot write to file \"%s\": %%s", GetLastError(), mpFilename.get());
 
 	mFilePosition += dwActual;
 
@@ -210,7 +212,7 @@ long VDFile::writeData(const void *buffer, long length) {
 
 void VDFile::write(const void *buffer, long length) {
 	if (length != writeData(buffer, length))
-		throw MyError("Read error: file truncated");
+		throw MyError("Cannot read from file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 bool VDFile::seekNT(sint64 newPos, eSeekMode mode) {
@@ -247,7 +249,7 @@ bool VDFile::seekNT(sint64 newPos, eSeekMode mode) {
 
 void VDFile::seek(sint64 newPos, eSeekMode mode) {
 	if (!seekNT(newPos, mode))
-		throw MyWin32Error("Seek error: %%s", GetLastError());
+		throw MyWin32Error("Cannot seek within file \"%s\": %%s", GetLastError(), mpFilename.get());
 }
 
 bool VDFile::skipNT(sint64 delta) {
@@ -270,7 +272,7 @@ void VDFile::skip(sint64 delta) {
 
 	if (delta <= sizeof buf) {
 		if ((long)delta != readData(buf, (long)delta))
-			throw MyWin32Error("Seek error: %%s", GetLastError());
+			throw MyWin32Error("Cannot seek within file \"%s\": %%s", GetLastError(), mpFilename.get());
 	} else
 		seek(delta, kSeekCur);
 }
@@ -286,7 +288,7 @@ sint64 VDFile::size() {
 	DWORD err;
 
 	if (u.l[0] == (DWORD)-1L && (err = GetLastError()) != NO_ERROR)
-		throw MyWin32Error("Error retrieving file size: %%s", err);
+		throw MyWin32Error("Cannot retrieve size of file \"%s\": %%s", GetLastError(), mpFilename.get());
 
 	return (sint64)u.siz;
 }

@@ -33,7 +33,6 @@
 #include <vd2/system/text.h>
 #include <vd2/Dita/services.h>
 #include "InputFile.h"
-#include "vector.h"
 #include "AudioFilterSystem.h"
 
 #include "gui.h"
@@ -56,9 +55,8 @@ enum {
 extern HWND g_hWnd;
 extern HINSTANCE g_hInst;
 extern FilterFunctions g_filterFuncs;
-extern char g_szInputAVIFile[];
-extern char g_szInputWAVFile[];
-extern char g_szInputAVIFileTitle[];
+extern wchar_t g_szInputAVIFile[];
+extern wchar_t g_szInputWAVFile[];
 extern InputFileOptions *g_pInputOpts;
 
 HWND g_hwndJobs;
@@ -301,8 +299,7 @@ void VDJob::Run() {
 	Refresh();
 	Flush();
 
-	strcpy(g_szInputAVIFile, szInputFile);
-	strcpy(g_szInputAVIFileTitle, szInputFileTitle);
+	wcscpy(g_szInputAVIFile, VDTextAToW(szInputFile).c_str());
 
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PROGRESS), TRUE);
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PERCENT), TRUE);
@@ -470,7 +467,7 @@ void VDJob::ListLoad(const char *lpszName) {
 
 		ListClear(true);
 
-		Vector<char> linebuffer;
+		std::vector<char> linebuffer;
 		int c;
 
 		do {
@@ -916,12 +913,8 @@ static void JobProcessDirectory(HWND hDlg) {
 	if (!srcDir.empty()) {
 		const VDStringW dstDir(VDGetDirectory(kFileDialog_ProcessDirOut, (VDGUIHandle)hDlg, L"Select target directory"));
 
-		if (!dstDir.empty()) {
-			const VDStringA srcDirA(VDTextWToA(srcDir));
-			const VDStringA dstDirA(VDTextWToA(dstDir));
-
-			JobAddBatchDirectory(srcDirA.c_str(), dstDirA.c_str());
-		}
+		if (!dstDir.empty())
+			JobAddBatchDirectory(srcDir.c_str(), dstDir.c_str());
 	}
 }
 
@@ -1420,7 +1413,7 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 	switch(audioInputMode) {
 	case AUDIOIN_WAVE:
-		output.addf("VirtualDub.audio.SetSource(\"%s\");", strCify(g_szInputWAVFile));
+		output.addf("VirtualDub.audio.SetSource(\"%s\");", VDEncodeScriptString(VDStringW(g_szInputWAVFile)).c_str());
 		break;
 
 	default:
@@ -1643,22 +1636,20 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 	// Add subset information
 
 	if (inputSubset) {
-		FrameSubsetNode *pfsn;
-
 		output.addf("VirtualDub.subset.Clear();");
 
-		if (pfsn = inputSubset->getFirstFrame())
-			do {
-				output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", pfsn->bMask ? "Masked" : "", pfsn->start, pfsn->len);
-			} while(pfsn = inputSubset->getNextFrame(pfsn));
+		for(FrameSubset::const_iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it)
+			output.addf("VirtualDub.subset.Add%sRange(%ld,%ld);", it->bMask ? "Masked" : "", it->start, it->len);
 	} else
 		output.addf("VirtualDub.subset.Delete();");
 
 
 }
 
-void JobAddConfigurationInputs(JobScriptOutput& output, const char *szFileInput, int iFileMode, List2<InputFilenameNode> *pListAppended) {
+void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInput, const wchar_t *pszInputDriver, List2<InputFilenameNode> *pListAppended) {
 	do {
+		const VDStringA filename(strCify(VDTextWToU8(VDStringW(szFileInput)).c_str()));
+
 		if (g_pInputOpts) {
 			int l;
 			char buf[256];
@@ -1667,12 +1658,15 @@ void JobAddConfigurationInputs(JobScriptOutput& output, const char *szFileInput,
 
 			if (l) {
 				membase64(buf+l, (char *)buf, l);
-				output.addf("VirtualDub.Open(\"%s\",%d,0,\"%s\");",strCify(szFileInput), iFileMode, buf+l);
+
+				const VDStringA filename(strCify(VDTextWToU8(VDStringW(szFileInput)).c_str()));
+
+				output.addf("VirtualDub.Open(\"%s\",\"%s\",0,\"%s\");", filename.c_str(), pszInputDriver?strCify(VDTextWToU8(VDStringW(pszInputDriver)).c_str()):"", buf+l);
 				break;
 			}
 		}
 
-		output.addf("VirtualDub.Open(\"%s\",%d,0);",strCify(szFileInput), iFileMode);
+		output.addf("VirtualDub.Open(\"%s\",\"%s\",0);", filename.c_str(), pszInputDriver?strCify(VDTextWToU8(VDStringW(pszInputDriver)).c_str()):"");
 
 	} while(false);
 
@@ -1687,26 +1681,26 @@ void JobAddConfigurationInputs(JobScriptOutput& output, const char *szFileInput,
 	}
 }
 
-void JobAddConfiguration(const DubOptions *opt, const char *szFileInput, int iFileMode, const char *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold) {
+void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold) {
 	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
 	try {
-		JobAddConfigurationInputs(output, szFileInput, iFileMode, pListAppended);
+		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
 		JobCreateScript(output, opt);
 
 		// Add actual run option
 
 		if (lSpillThreshold)
-			output.addf("VirtualDub.SaveSegmentedAVI(\"%s\", %d, %d);", strCify(szFileOutput), lSpillThreshold, lSpillFrameThreshold);
+			output.addf("VirtualDub.SaveSegmentedAVI(\"%s\", %d, %d);", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()), lSpillThreshold, lSpillFrameThreshold);
 		else
-			output.addf("VirtualDub.Save%sAVI(\"%s\");", fCompatibility ? "Compatible" : "", strCify(szFileOutput));
+			output.addf("VirtualDub.Save%sAVI(\"%s\");", fCompatibility ? "Compatible" : "", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()));
 		output.adds("VirtualDub.Close();");
 
 		///////////////////
 
-		strncpy(vdj->szInputFile, szFileInput, sizeof vdj->szInputFile);
-		strncpy(vdj->szOutputFile, szFileOutput, sizeof vdj->szOutputFile);
+		VDTextWToA(vdj->szInputFile, sizeof vdj->szInputFile, szFileInput, -1);
+		VDTextWToA(vdj->szOutputFile, sizeof vdj->szOutputFile, szFileOutput, -1);
 		sprintf(vdj->szName, "Job %d", VDJob::job_number++);
 
 		vdj->script = output.getscript();
@@ -1717,36 +1711,31 @@ void JobAddConfiguration(const DubOptions *opt, const char *szFileInput, int iFi
 	}
 }
 
-void JobAddConfigurationImages(const DubOptions *opt, const char *szFileInput, int iFileMode, const char *szFilePrefix, const char *szFileSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended) {
+void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended) {
 	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
-	char *s = NULL;
 
 	try {
-		JobAddConfigurationInputs(output, szFileInput, iFileMode, pListAppended);
+		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
 		JobCreateScript(output, opt);
 
 		// Add actual run option
 
-		s = strdup(strCify(szFilePrefix));		// I swear I will clean this mess up in 1.5....
+		VDStringA s(strCify(VDTextWToU8(VDStringW(szFilePrefix)).c_str()));
 
-		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d);", s, strCify(szFileSuffix), minDigits, imageFormat);
-
-		free(s);
-		s = NULL;
+		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d);", s.c_str(), strCify(VDTextWToU8(VDStringW(szFileSuffix)).c_str()), minDigits, imageFormat);
 
 		output.adds("VirtualDub.Close();");
 
 		///////////////////
 
-		strncpy(vdj->szInputFile, szFileInput, sizeof vdj->szInputFile);
-		_snprintf(vdj->szOutputFile, sizeof vdj->szOutputFile, "%s*%s", szFilePrefix, szFileSuffix);
+		VDTextWToA(vdj->szInputFile, sizeof vdj->szInputFile, szFileInput, -1);
+		_snprintf(vdj->szOutputFile, sizeof vdj->szOutputFile, "%s*%s", VDTextWToA(szFilePrefix).c_str(), VDTextWToA(szFileSuffix).c_str());
 		sprintf(vdj->szName, "Job %d", VDJob::job_number++);
 
 		vdj->script = output.getscript();
 		vdj->Add();
 	} catch(...) {
-		free(s);
 		freemem(vdj);
 		throw;
 	}
@@ -1805,7 +1794,7 @@ void JobUnlockDubber() {
 	}
 }
 
-void JobPositionCallback(LONG start, LONG cur, LONG end, int progress) {
+void JobPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie) {
 	char buf[8];
 
 	if (g_hwndJobs) {
@@ -1823,20 +1812,20 @@ void JobRunList() {
 	VDJob::RunAll();
 }
 
-void JobAddBatchFile(const char *lpszSrc, const char *lpszDst) {
+void JobAddBatchFile(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
 	JobAddConfiguration(&g_dubOpts, lpszSrc, 0, lpszDst, false, NULL, 0, 0);
 }
 
-void JobAddBatchDirectory(const char *lpszSrc, const char *lpszDst) {
+void JobAddBatchDirectory(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
 	// Scan source directory
 
 	HANDLE				h;
 	WIN32_FIND_DATA		wfd;
-	char *s, *t;
-	char szSourceDir[MAX_PATH], szDestDir[MAX_PATH];
+	wchar_t *s, *t;
+	wchar_t szSourceDir[MAX_PATH], szDestDir[MAX_PATH];
 
-	strcpy(szSourceDir, lpszSrc);
-	strcpy(szDestDir, lpszDst);
+	wcscpy(szSourceDir, lpszSrc);
+	wcscpy(szDestDir, lpszDst);
 
 	s = szSourceDir;
 	t = szDestDir;
@@ -1848,8 +1837,8 @@ void JobAddBatchDirectory(const char *lpszSrc, const char *lpszDst) {
 
 		while(*s) ++s;
 
-		if ((s==szSourceDir || s[-1]!='\\') && (!isalpha(szSourceDir[0]) || szSourceDir[1]!=':' || szSourceDir[2]))
-			*s++ = '\\';
+		if ((s==szSourceDir || s[-1]!=L'\\') && (!isalpha(szSourceDir[0]) || szSourceDir[1]!=L':' || szSourceDir[2]))
+			*s++ = L'\\';
 
 	}
 	
@@ -1860,22 +1849,22 @@ void JobAddBatchDirectory(const char *lpszSrc, const char *lpszDst) {
 
 		while(*t) ++t;
 
-		if ((t==szDestDir || t[-1]!='\\') && (!isalpha(szDestDir[0]) || szDestDir[1]!=':' || szDestDir[2]))
-			*t++ = '\\';
+		if ((t==szDestDir || t[-1]!=L'\\') && (!isalpha(szDestDir[0]) || szDestDir[1]!=L':' || szDestDir[2]))
+			*t++ = L'\\';
 
 	}
 
-	strcpy(s,"*.*");
+	wcscpy(s, L"*.*");
 
-	h = FindFirstFile(szSourceDir,&wfd);
+	h = FindFirstFile(VDTextWToA(szSourceDir).c_str(),&wfd);
 
 	if (INVALID_HANDLE_VALUE != h) {
 		do {
 			if (!(wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-				char *t2, *dot = NULL;
+				wchar_t *t2, *dot = NULL;
 
-				strcpy(s, wfd.cFileName);
-				strcpy(t, wfd.cFileName);
+				VDTextAToW(s, (szSourceDir+MAX_PATH) - s, wfd.cFileName, -1);
+				VDTextAToW(t, (szDestDir+MAX_PATH) - t, wfd.cFileName, -1);
 
 				// Replace extension with .avi
 
@@ -1883,9 +1872,9 @@ void JobAddBatchDirectory(const char *lpszSrc, const char *lpszDst) {
 				while(*t2) if (*t2++ == '.') dot = t2;
 
 				if (dot)
-					strcpy(dot, "avi");
+					wcscpy(dot, L"avi");
 				else
-					strcpy(t2, ".avi");
+					wcscpy(t2, L".avi");
 
 				// Add job!
 

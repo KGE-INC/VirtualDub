@@ -59,14 +59,14 @@ public:
 	AVIAudioOutput(long bufsize, int maxbufs);
 	~AVIAudioOutput();
 
-	BOOL init(WAVEFORMATEX *wf);
+	BOOL init(const WAVEFORMATEX *wf);
 	void go_silent();
 	BOOL isSilent();
 	BOOL start();
 	BOOL checkBuffers();
 	BOOL waitBuffers(DWORD timeout);
 	long avail();
-	BOOL write(void *data, long len, DWORD timeout);
+	BOOL write(const void *data, long len, DWORD timeout);
 	BOOL stop();
 	BOOL finalize(DWORD timeout);
 	void flush();

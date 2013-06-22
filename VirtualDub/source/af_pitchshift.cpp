@@ -132,7 +132,7 @@ uint32 VDAudioFilterPitchShift::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -213,6 +213,7 @@ uint32 VDAudioFilterPitchShift::Run() {
 		sint16 *bufp = &mPitchBuffer[2048 * ch];
 
 		static const int offsets[32]={
+#if 0
 			0x03f0,			0x0410,
 			0x03d0,			0x0430,
 			0x03b0,			0x0450,
@@ -229,6 +230,24 @@ uint32 VDAudioFilterPitchShift::Run() {
 			0x0250,			0x05b0,
 			0x0230,			0x05d0,
 			0x0210,			0x05f0,
+#else
+			0x03f8,			0x0408,
+			0x03e8,			0x0418,
+			0x03d8,			0x0428,
+			0x03c8,			0x0438,
+			0x03b8,			0x0448,
+			0x03a8,			0x0458,
+			0x0398,			0x0468,
+			0x0388,			0x0478,
+			0x0378,			0x0488,
+			0x0368,			0x0498,
+			0x0358,			0x04a8,
+			0x0348,			0x04b8,
+			0x0338,			0x04c8,
+			0x0328,			0x04d8,
+			0x0318,			0x04e8,
+			0x0308,			0x04f8,
+#endif
 		};
 
 		struct sign {
@@ -354,11 +373,6 @@ sint64 VDAudioFilterPitchShift::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {
 	sizeof(VDAudioFilterDefinition),
-	L"ratty pitch shift",
-	NULL,
-	L"Scales the pitch of audio by a fixed ratio. This filter uses an awful time-domain based algorithm "
-		L"that may result in some clicks.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterPitchShift),	1,	1,
@@ -367,4 +381,22 @@ extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {
 
 	VDAudioFilterPitchShift::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_pitchshift = {
+	sizeof(VDPluginInfo),
+	L"ratty pitch shift",
+	NULL,
+	L"Scales the pitch of audio by a fixed ratio. This filter uses an awful time-domain based algorithm "
+		L"that may result in some clicks.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_pitchshift
 };

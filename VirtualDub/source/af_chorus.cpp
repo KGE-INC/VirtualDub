@@ -65,7 +65,7 @@ uint32 VDAudioFilterStereoChorus::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -215,10 +215,6 @@ sint64 VDAudioFilterStereoChorus::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_stereochorus = {
 	sizeof(VDAudioFilterDefinition),
-	L"stereo chorus",
-	NULL,
-	L"Applies feedback to a stream using delays driven from a quadrature-phase LFO to simulate or enhance stereo.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterStereoChorus),	1,	1,
@@ -227,4 +223,21 @@ extern const struct VDAudioFilterDefinition afilterDef_stereochorus = {
 
 	VDAudioFilterStereoChorus::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_stereochorus = {
+	sizeof(VDPluginInfo),
+	L"stereo chorus",
+	NULL,
+	L"Applies feedback to a stream using delays driven from a quadrature-phase LFO to simulate or enhance stereo.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_stereochorus
 };

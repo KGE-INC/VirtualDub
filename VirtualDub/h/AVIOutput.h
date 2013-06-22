@@ -21,6 +21,7 @@
 #include <windows.h>
 #include <vfw.h>
 #include <vector>
+#include <vd2/system/file.h>
 
 #include "Fixes.h"
 
@@ -32,103 +33,93 @@ class AVIIndexEntry2;
 typedef struct _avisuperindex_chunk AVISUPERINDEX;
 struct _avisuperindex_entry;
 
-//////////////////////////
+class IVDMediaOutputStream {
+public:
+	virtual ~IVDMediaOutputStream() {}		// shouldn't be here but need to get rid of common delete in root destructor
 
-class AVIOutputStream {
+	virtual void *	getFormat() = 0;
+	virtual int		getFormatLen() = 0;
+	virtual void	setFormat(const void *pFormat, int len) = 0;
+
+	virtual const AVIStreamHeader_fixed& getStreamInfo() = 0;
+	virtual void	setStreamInfo(const AVIStreamHeader_fixed& hdr) = 0;
+
+	virtual void	write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;
+	virtual void	flush() = 0;
+};
+
+class AVIOutputStream : public IVDMediaOutputStream {
 private:
-	LONG				formatLen;
-	void				*format;
+	std::vector<char>	mFormat;
 
 protected:
 	class AVIOutput		*output;
-	BOOL _write(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
-
-public:
 	AVIStreamHeader_fixed		streamInfo;
 
+public:
 	AVIOutputStream(class AVIOutput *output);
 	virtual ~AVIOutputStream();
 
-	void *allocFormat(LONG len) {
-		if (format && formatLen == len) return format;
-
-		delete format;
-		return format = new char[formatLen = len];
+	virtual void setFormat(const void *pFormat, int len) {
+		mFormat.resize(len);
+		memcpy(&mFormat[0], pFormat, len);
 	}
-	void *getFormat() { return format; }
-	LONG getFormatLen() { return formatLen; }
 
-	virtual BOOL write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) = 0;
-	virtual BOOL finalize();
+	virtual void *getFormat() { return &mFormat[0]; }
+	virtual int getFormatLen() { return mFormat.size(); }
 
-	LONG msToSamples(LONG lMs) {
-		return (LONG)(((__int64)lMs * streamInfo.dwRate) / ((__int64)1000 * streamInfo.dwScale));
+	virtual const AVIStreamHeader_fixed& getStreamInfo() {
+		return streamInfo;
 	}
-	LONG samplesToMs(LONG lSamples) {
-		return (LONG)((((__int64)lSamples * streamInfo.dwScale) * 1000) / streamInfo.dwScale);
+
+	virtual void setStreamInfo(const AVIStreamHeader_fixed& hdr) {
+		streamInfo = hdr;
+		streamInfo.dwLength = 0;
+		streamInfo.dwSuggestedBufferSize = 0;
 	}
-};
 
-class AVIAudioOutputStream : public AVIOutputStream {
-public:
-	LONG lTotalSamplesWritten;
-
-	AVIAudioOutputStream(class AVIOutput *out);
-
-	WAVEFORMATEX *getWaveFormat() { return (WAVEFORMATEX *)getFormat(); }
-
-	BOOL write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples);
-	virtual BOOL finalize();
-	virtual BOOL flush();
-};
-
-class AVIVideoOutputStream : public AVIOutputStream {
-public:
-	LONG lTotalSamplesWritten;
-	FOURCC id;
-
-	AVIVideoOutputStream(class AVIOutput *out);
-
-	BITMAPINFOHEADER *getImageFormat() { return (BITMAPINFOHEADER *)getFormat(); }
-
-	void setCompressed(BOOL x) { id = x ? mmioFOURCC('0','0','d','c') : mmioFOURCC('0','0','d','b'); }
-	BOOL isCompressed() { return id == mmioFOURCC('0','0','d','c'); }
-
-	BOOL write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples);
-	virtual BOOL finalize();
+	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) = 0;
+	virtual void flush() {}
 };
 
 class AVIOutput {
 protected:
-	static char szME[];
-public:
-	AVIAudioOutputStream	*audioOut;
-	AVIVideoOutputStream	*videoOut;
+	IVDMediaOutputStream	*audioOut;
+	IVDMediaOutputStream	*videoOut;
 
+public:
 	AVIOutput();
 	virtual ~AVIOutput();
 
-	virtual BOOL initOutputStreams()=0;
-	virtual BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved)=0;
-	virtual BOOL finalize()=0;
-	virtual BOOL isPreview()=0;
+	virtual bool init(const wchar_t *szFile)=0;
+	virtual void finalize()=0;
 
-	virtual void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer)=0;
+	virtual IVDMediaOutputStream *createAudioStream() = 0;
+	virtual IVDMediaOutputStream *createVideoStream() = 0;
+	virtual IVDMediaOutputStream *getAudioOutput() { return audioOut; }
+	virtual IVDMediaOutputStream *getVideoOutput() { return videoOut; }
 };
 
 class AVIOutputFile : public AVIOutput {
 private:
-	enum { MAX_AVIBLOCKS = 64, MAX_SUPERINDEX_ENTRIES=256, MAX_INDEX_ENTRIES=3072 };
+	enum {
+		kDefaultSuperIndexEntries		= 256,			// Maximum number of OpenDML first-level entries -- the AVI file can never grow past 4GB x this value.
+		kDefaultSubIndexEntries			= 8192			// Maximum number of OpenDML second-level entries -- the AVI file can never contain more than the product of these values in sample chunks.
+	};
 
 	FastWriteStream *fastIO;
-	HANDLE		hFile;
-	__int64		i64FilePosition;
-	__int64		i64XBufferLevel;
+	VDFile		mFile;
+	sint64		i64FilePosition;
+	sint64		i64XBufferLevel;
 
-	__int64		avi_movi_pos[64];
-	__int64		avi_movi_len[64];
-	__int64		avi_riff_pos[64];
-	__int64		avi_riff_len[64];
+	struct AVIBlock {
+		sint64		riff_pos;		// position of 'RIFF' chunk
+		sint64		movi_pos;		// position of 'movi' chunk
+		uint32		riff_len;		// length of 'RIFF' chunk
+		uint32		movi_len;		// length of 'movi' chunk
+	};
+
+	std::vector<AVIBlock>	mBlocks;
 	int			xblock;
 
 	long		strl_pos;
@@ -144,12 +135,16 @@ private:
 
 	int			chunkFlags;
 
+	uint32		mSuperIndexLimit;
+	uint32		mSubIndexLimit;
+
 	AVIIndex	*index, *index_audio, *index_video;
 	std::vector<char>	mHeaderBlock;
 
 	MainAVIHeader		avihdr;
 
-	long		lChunkSize;
+	sint32		mBufferSize;
+	sint32		mChunkSize;
 	long		lAVILimit;
 	int			iPadOffset;
 
@@ -157,40 +152,40 @@ private:
 	bool		fExtendedAVI;
 	bool		fCaptureMode;
 	bool		fInitComplete;
+	bool		mbInterleaved;
 
 	char *		pSegmentHint;
 	int			cbSegmentHint;
 
-	__int64		i64EndOfFile;
-	__int64		i64FarthestWritePoint;
+	sint64		i64EndOfFile;
+	sint64		i64FarthestWritePoint;
 	long		lLargestIndexDelta[2];
-	__int64		i64FirstIndexedChunk[2];
-	__int64		i64LastIndexedChunk[2];
+	sint64		i64FirstIndexedChunk[2];
+	sint64		i64LastIndexedChunk[2];
 	bool		fLimitTo4Gb;
 	long		lIndexedChunkCount[2];
 	long		lIndexSize;
 	bool		fPreemptiveExtendFailed;
 
-	BOOL		_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved, bool fThreaded);
+	bool		_init(const wchar_t *szFile, bool fThreaded);
 
-	__int64		_writeHdr(void *data, long len);
-	__int64		_beginList(FOURCC ckid);
-	__int64		_writeHdrChunk(FOURCC ckid, void *data, long len);
-	void		_closeList(__int64 pos);
+	sint64		_writeHdr(const void *data, long len);
+	sint64		_beginList(FOURCC ckid);
+	sint64		_writeHdrChunk(FOURCC ckid, const void *data, long len);
+	void		_closeList(sint64 pos);
 	void		_flushHdr();
-	__int64		_getPosition();
-	void		_seekHdr(__int64 i64NewPos);
-	bool		_extendFile(__int64 i64NewPoint);
-	void		_seekDirect(__int64 i64NewPos);
-	__int64		_writeDirect(void *data, long len);
+	sint64		_getPosition();
+	void		_seekHdr(sint64 i64NewPos);
+	bool		_extendFile(sint64 i64NewPoint);
+	sint64		_writeDirect(const void *data, long len);
 
-	void		_write(void *data, int len);
+	void		_write(const void *data, int len);
 	void		_closeXblock();
 	void		_openXblock();
 	void		_writeLegacyIndex(bool use_fastIO);
 
 	void		_createNewIndices(AVIIndex *index, AVISUPERINDEX *asi, _avisuperindex_entry *asie, bool is_audio);
-	int			_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEntry2 *avie2, int size, FOURCC fcc, DWORD dwChunkId, DWORD dwSampleSize);
+	void		_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEntry2 *avie2, int size, FOURCC fcc, DWORD dwChunkId, DWORD dwSampleSize);
 public:
 	AVIOutputFile();
 	virtual ~AVIOutputFile();
@@ -198,18 +193,24 @@ public:
 	void disable_os_caching();
 	void disable_extended_avi();
 	void set_1Gb_limit();
-	void set_chunk_size(long cs);
 	void set_capture_mode(bool b);
 	void setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, int cbBlock);
+	void setInterleaved(bool bInterleaved) { mbInterleaved = bInterleaved; }
+	void setBuffering(sint32 nBufferSize, sint32 nChunkSize);
+	void setIndexingLimits(sint32 nMaxSuperIndexEntries, sint32 nMaxSubIndexEntries) {
+		mSuperIndexLimit = nMaxSuperIndexEntries;
+		mSubIndexLimit = nMaxSubIndexEntries;
+	}
 
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	FastWriteStream *initCapture(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
+	IVDMediaOutputStream *createAudioStream();
+	IVDMediaOutputStream *createVideoStream();
 
-	BOOL finalize();
-	BOOL isPreview();
+	bool init(const wchar_t *szFile);
+	FastWriteStream *initCapture(const wchar_t *szFile);
 
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
+	void finalize();
+
+	void writeIndexedChunk(FOURCC ckid, uint32 flags, const void *pBuffer, uint32 cbBuffer);
 
 	LONG bufferStatus(LONG *lplBufferSize);
 };

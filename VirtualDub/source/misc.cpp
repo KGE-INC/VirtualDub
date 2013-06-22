@@ -24,6 +24,7 @@
 
 #include "misc.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/log.h>
 
 long __declspec(naked) MulDivTrunc(long a, long b, long c) {
 	__asm {
@@ -98,6 +99,14 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 		return (tagword != 0xffff);
 	}
 
+	bool IsFPUStateOK() {
+		unsigned ctlword = 0;
+
+		__asm fnstcw ctlword
+
+		return ctlword == 0x027f;
+	}
+
 	void ClearMMXState() {
 		if (MMX_enabled)
 			__asm emms
@@ -115,6 +124,86 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 		}
 	}
 
+	void ResetFPUState() {
+		static const unsigned ctlword = 0x027f;
+
+		__asm fnclex
+		__asm fldcw ctlword
+	}
+
+	void VDClearEvilCPUStates() {
+		ResetFPUState();
+		ClearMMXState();
+	}
+
+	void VDPreCheckExternalCodeCall(const char *file, int line) {
+		bool bMMXStateBad = IsMMXState();
+		bool bFPUStateBad = !IsFPUStateOK();
+
+		if (bMMXStateBad || bFPUStateBad) {
+			ClearMMXState();
+			ResetFPUState();
+		}
+
+		if (bMMXStateBad) {
+			VDLog(kVDLogError, VDswprintf(L"Internal error: MMX state was active before entry to external code. "
+										L"This indicates an uncaught bug either in an external driver or in VirtualDub itself "
+										L"that could cause application instability.  Please report this problem to the author!",
+										2,
+										&file,
+										&line
+										));
+		}
+		if (bFPUStateBad) {
+			VDLog(kVDLogError, VDswprintf(L"Internal error: Floating-point state was bad before entry to external code at (%s:%d). "
+										L"This indicates an uncaught bug either in an external driver or in VirtualDub itself "
+										L"that could cause application instability.  Please report this problem to the author!",
+										2,
+										&file,
+										&line
+										));
+		}
+	}
+
+	void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine) {
+		bool bMMXStateBad = IsMMXState();
+		bool bFPUStateBad = !IsFPUStateOK();
+		bool bBadState = bMMXStateBad || bFPUStateBad;
+
+		static bool sbDisableFurtherWarnings = false;
+
+		if (bBadState) {
+			ClearMMXState();
+			ResetFPUState();
+		}
+
+		if (sbDisableFurtherWarnings)
+			return;
+
+		if (bMMXStateBad) {
+			VDLog(kVDLogWarning, VDswprintf(L"%ls returned to VirtualDub with the CPU's MMX unit still active. "
+											L"This indicates a bug in that module which could cause application instability. "
+											L"Please check with the module vendor for an updated version which addresses this problem. "
+											L"(Trap location: %hs:%d)",
+											3,
+											&mpContext,
+											&mpFile,
+											&mLine));
+			sbDisableFurtherWarnings = true;
+		}
+		if (bFPUStateBad) {
+			VDLog(kVDLogWarning, VDswprintf(L"%ls returned to VirtualDub with the floating-point unit in an abnormal state. "
+											L"This indicates a bug in that module which could cause application instability. "
+											L"Please check with the module vendor for an updated version which addresses this problem. "
+											L"(Trap location: %hs:%d)",
+											3,
+											&mpContext,
+											&mpFile,
+											&mLine));
+			sbDisableFurtherWarnings = true;
+		}
+	}
+
 #else
 
 	bool IsMMXState() {
@@ -122,6 +211,15 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 	}
 
 	void ClearMMXState() {
+	}
+
+	void VDClearEvilCPUStates() {
+	}
+
+	void VDPreCheckExternalCodeCall(const char *file, int line) {
+	}
+
+	void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine) {
 	}
 
 #endif
@@ -142,4 +240,26 @@ char *strCify(const char *s) {
 	*t=0;
 
 	return buf;
+}
+
+VDStringA VDEncodeScriptString(const VDStringW& sw) {
+	const VDStringA sa(VDTextWToU8(sw));
+	VDStringA out;
+
+	// this is not very fast, but it's only used during script serialization
+	for(VDStringA::const_iterator it(sa.begin()), itEnd(sa.end()); it != itEnd; ++it) {
+		char c = *it;
+		char buf[16];
+
+		if (!isprint((unsigned char)c)) {
+			sprintf(buf, "\\x%02x", (int)c & 0xff);
+			out.append(buf);
+		} else {
+			if (c == '"' || c=='\\')
+				out += '\\';
+			out += c;
+		}
+	}
+
+	return out;
 }

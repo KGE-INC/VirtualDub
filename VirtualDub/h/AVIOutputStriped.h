@@ -54,14 +54,14 @@ public:
 	void disable_os_caching();
 	void set_1Gb_limit();
 
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	BOOL finalize();
-	BOOL isPreview();
+	IVDMediaOutputStream *createVideoStream();
+	IVDMediaOutputStream *createAudioStream();
 
-	void writeChunk(BOOL is_audio, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer,
-											LONG lSampleFirst, LONG lSampleCount);
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
+	bool init(const wchar_t *szFile);
+	void finalize();
+
+	void writeChunk(bool is_audio, uint32 flags, const void *pBuffer, uint32 cbBuffer,
+											uint32 lSampleFirst, uint32 lSampleCount);
 };
 
 #endif

@@ -18,7 +18,7 @@
 #ifndef f_DUBSTATUS_H
 #define f_DUBSTATUS_H
 
-typedef void (*DubPositionCallback)(LONG start_pos, LONG cur_pos, LONG end_pos, int nProgress);
+typedef void (*DubPositionCallback)(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);
 
 class DubAudioStreamInfo;
 class DubVideoStreamInfo;
@@ -35,7 +35,7 @@ public:
 	virtual void InitLinks(DubAudioStreamInfo	*painfo,
 		DubVideoStreamInfo	*pvinfo,
 		AudioSource			*aSrc,
-		VideoSource			*vSrc,
+		IVDVideoSource		*vSrc,
 		InputFile			*pInput,
 		AudioStream			*audioStreamSource,
 
@@ -44,7 +44,7 @@ public:
 	virtual void NotifyNewFrame(long lSize)=0;
 	virtual HWND Display(HWND hwndParent, int iInitialPriority)=0;
 	virtual void Destroy()=0;
-	virtual void SetPositionCallback(DubPositionCallback dpc)	=0;
+	virtual void SetPositionCallback(DubPositionCallback dpc, void *cookie)=0;
 	virtual bool ToggleStatus()=0;
 	virtual void SetLastPosition(LONG pos)=0;
 	virtual void Freeze()=0;

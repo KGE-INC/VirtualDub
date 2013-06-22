@@ -95,7 +95,7 @@ AVIAudioOutput::~AVIAudioOutput() {
 		CloseHandle(hEventBuffersFree);
 }
 
-BOOL AVIAudioOutput::init(WAVEFORMATEX *wf) {
+BOOL AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 	MMRESULT res;
 	AVIAudioOutputBuffer *aaob;
 
@@ -237,7 +237,7 @@ long AVIAudioOutput::avail() {
 	return lAvailSpace;
 }
 
-BOOL AVIAudioOutput::write(void *data, long len, DWORD timeout) {
+BOOL AVIAudioOutput::write(const void *data, long len, DWORD timeout) {
 	AVIAudioOutputBuffer *aaob;
 	long tc;
 

@@ -18,20 +18,27 @@
 #ifndef f_FRAMESUBSET_H
 #define f_FRAMESUBSET_H
 
+#include <list>
 #include <vd2/system/list.h>
 
-class FrameSubsetNode : public ListNode2<FrameSubsetNode> {
-friend class FrameSubset;
+struct FrameSubsetNode {
 public:
 	int start, len;
 	bool bMask;			// if set, all frames map to the previous frame
 
-	FrameSubsetNode() {};
+	FrameSubsetNode() {}
 	FrameSubsetNode(int _s, int _l, bool _bMask) : start(_s), len(_l), bMask(_bMask) {}
 };
 
 class FrameSubset {
+	typedef std::list<FrameSubsetNode> tTimeline;
 public:
+	typedef tTimeline::value_type			value_type;
+	typedef tTimeline::reference			reference;
+	typedef tTimeline::iterator				iterator;
+	typedef tTimeline::const_reference		const_reference;
+	typedef tTimeline::const_iterator		const_iterator;
+
 	FrameSubset();
 	FrameSubset(int length);
 	~FrameSubset();
@@ -58,32 +65,34 @@ public:
 	void deleteInputRange(int start, int len);	// in source coordinates
 	void deleteRange(int start, int len);	// in translated coordinates
 	void setRange(int start, int len, bool bMask);	// translated coordinates
-	void clipToRange(int start, int len);
 	void clip(int start, int len);
 	void offset(int off);
-	FrameSubsetNode *getFirstFrame() {
-		FrameSubsetNode *fsn = list.AtHead();
 
-		if (fsn->NextFromHead())
-			return fsn;
-		else
-			return 0;
-	}
-	FrameSubsetNode *getNextFrame(FrameSubsetNode *fsn) {
-		fsn = fsn->NextFromHead();
+	////////////////////
 
-		if (fsn->NextFromHead())
-			return fsn;
-		else
-			return 0;
-	}
+	bool					empty() const		{ return mTimeline.empty(); }
+	iterator				begin()				{ return mTimeline.begin(); }
+	const_iterator			begin() const		{ return mTimeline.begin(); }
+	iterator				end()				{ return mTimeline.end(); }
+	const_iterator			end() const			{ return mTimeline.end(); }
+	reference				front()				{ return mTimeline.front(); }
+	const_reference			front() const		{ return mTimeline.front(); }
+	reference				back()				{ return mTimeline.back(); }
+	const_reference			back() const		{ return mTimeline.back(); }
 
-	FrameSubsetNode *findNode(int& poffset, int iDstFrame);
+	void assign(const FrameSubset& src, int start, int len);
+	iterator erase(iterator it) { return mTimeline.erase(it); }
+	iterator erase(iterator it1, iterator it2) { return mTimeline.erase(it1, it2); }
+	void insert(iterator it, const value_type& v) { mTimeline.insert(it, v); }
+	void insert(iterator it, const FrameSubset& src);
+	void insert(int insertionPoint, const FrameSubset& src);
 
-private:
-	List2<FrameSubsetNode> list;
+	iterator findNode(int& poffset, int iDstFrame);
 
-	void deleteNode(FrameSubsetNode *pfsn);
+	void dump();
+
+protected:
+	tTimeline mTimeline;
 };
 
 #endif

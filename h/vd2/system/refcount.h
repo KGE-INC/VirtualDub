@@ -60,12 +60,14 @@ public:
 	}
 
 	inline virtual int Release() {
-		int rv = mRefCount.dec();
-
-		if (!rv)
+		if (mRefCount == 1) {		// We are the only reference, so there is no threading issue.  Don't decrement to zero as this can cause double destruction with a temporary addref/release in destruction.
 			delete this;
+			return 0;
+		}
 
-		return rv;
+		VDASSERT(mRefCount > 1);
+
+		return mRefCount.dec();
 	}
 
 protected:
@@ -85,7 +87,7 @@ public:
 			p->AddRef();
 	}
 
-	explicit vdrefptr(const self_type& src) {
+	vdrefptr(const self_type& src) {
 		ptr = src.ptr;
 		if (ptr)
 			ptr->AddRef();

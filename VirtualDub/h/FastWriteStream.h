@@ -19,6 +19,8 @@
 #define f_FASTWRITESTREAM_H
 
 #include <vd2/system/profile.h>
+#include <vd2/system/atomic.h>
+#include <vd2/system/VDString.h>
 
 class FastWriteStream {
 private:
@@ -29,7 +31,7 @@ private:
 	void *lpBuffer;
 	long lReadPointer;
 	long lWritePointer;
-	volatile long lDataPoint;
+	VDAtomicInt lDataPoint;
 
 	HANDLE hThread;
 	HANDLE hEventOkRead, hEventOkWrite;
@@ -40,8 +42,11 @@ private:
 	bool fSynchronous;
 
 	VDRTProfileChannel mProfileChannel;
+	VDStringA		mErrorFilename;
 
 	/////////
+
+	bool open(const wchar_t *pFilename, DWORD flags);
 
 	void _construct(bool);
 	void _destruct();
@@ -53,12 +58,12 @@ private:
 	void BackgroundThread();
 
 public:
-	FastWriteStream(const char *lpszFile, long lBufferSize, long lChunkSize, bool fLaunchThread = true);
+	FastWriteStream(const wchar_t *pFilename, long lBufferSize, long lChunkSize, bool fLaunchThread = true);
 	FastWriteStream(HANDLE hFile, long lBufferSize, long lChunkSize, bool fLaunchThread = true);
 	~FastWriteStream();
 
-	void _Put(void *data, long len);
-	void Put(void *data, long len);
+	void _Put(const void *data, long len);
+	void Put(const void *data, long len);
 	void Putc(char c);
 	void Putl(long l);
 	long Flush1();

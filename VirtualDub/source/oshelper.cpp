@@ -231,7 +231,7 @@ void VDUnpackHelp(const VDStringW& path) {
 		VDZipArchive			helpzip;
 		helpzip.Init(&helpzipfile);
 		const VDZipArchive::FileInfo& fi = helpzip.GetFileInfo(0);
-		VDZipStream				zipstream(helpzip.OpenRaw(0), fi.mCompressedSize, !fi.mbPacked);
+		VDZipStream				zipstream(helpzip.OpenRawStream(0), fi.mCompressedSize, !fi.mbPacked);
 
 		innerzipdata.resize(fi.mUncompressedSize);
 
@@ -276,7 +276,7 @@ void VDUnpackHelp(const VDStringW& path) {
 
 		// unpack the file
 
-		VDZipStream unpackstream(innerzip.OpenRaw(idx), fi.mCompressedSize, !fi.mbPacked);
+		VDZipStream unpackstream(innerzip.OpenRawStream(idx), fi.mCompressedSize, !fi.mbPacked);
 
 		std::vector<char> fileData(fi.mUncompressedSize);
 		unpackstream.Read(&fileData.front(), fileData.size());
@@ -398,7 +398,7 @@ bool IsFilenameOnFATVolume(const char *pszFilename) {
 	DWORD dwFSFlags;
 	char szFilesystem[MAX_PATH];
 
-	if (!GetVolumeInformation(SplitPathRoot(szFileRoot, pszFilename),
+	if (!GetVolumeInformationA(SplitPathRoot(szFileRoot, pszFilename),
 			NULL, 0,		// Volume name buffer
 			NULL,			// Serial number buffer
 			&dwMaxComponentLength,
@@ -408,6 +408,31 @@ bool IsFilenameOnFATVolume(const char *pszFilename) {
 		return false;
 
 	return !strnicmp(szFilesystem, "FAT", 3);
+}
+
+bool IsFilenameOnFATVolume(const wchar_t *pszFilename) {
+	if (GetVersion() & 0x80000000)
+		return IsFilenameOnFATVolume(VDTextWToA(pszFilename).c_str());
+
+	wchar_t szFileRoot[MAX_PATH];
+	DWORD dwMaxComponentLength;
+	DWORD dwFSFlags;
+	wchar_t szFilesystem[MAX_PATH];
+
+	wcscpy(szFileRoot, pszFilename);
+	*const_cast<wchar_t *>(VDFileSplitRoot(szFileRoot)) = 0;
+
+	if (!GetVolumeInformationW(*szFileRoot ? szFileRoot : NULL,
+			NULL, 0,		// Volume name buffer
+			NULL,			// Serial number buffer
+			&dwMaxComponentLength,
+			&dwFSFlags,
+			szFilesystem,
+			MAX_PATH))
+		return false;
+
+	return !wcsnicmp(szFilesystem, L"FAT", 3);
+
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -18,31 +18,44 @@
 #include "stdafx.h"
 
 #include <windows.h>
-#include <commdlg.h>
+
+#include <map>
 
 #include "vdserver.h"
 
 #include "AudioSource.h"
 #include "VideoSource.h"
 #include <vd2/system/error.h>
+#include <vd2/system/file.h>
+#include <vd2/system/filesys.h>
+#include <vd2/Dita/services.h>
 #include "FrameSubset.h"
 
 #include "filters.h"
 #include "dub.h"
+#include "DubUtils.h"
 #include "gui.h"
 #include "audio.h"
 #include "command.h"
+#include "prefs.h"
 
 #include "server.h"
 #include "resource.h"
 
 extern HINSTANCE g_hInst;
 extern HWND g_hWnd;
-extern char g_szInputAVIFileTitle[MAX_PATH];
+
+extern wchar_t g_szInputAVIFile[MAX_PATH];
 
 // VideoSource.cpp
 
 extern void DIBconvert(void *src, BITMAPINFOHEADER *srcfmt, void *dst, BITMAPINFOHEADER *dstfmt);
+
+///////////////////////////////////////////////////////////////////////////
+
+enum {
+	kFileDialog_Signpost		= 'sign'
+};
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -100,29 +113,25 @@ private:
 
 	DubAudioStreamInfo	aInfo;
 	DubVideoStreamInfo	vInfo;
-	FrameSubset			videoset;
 	FrameSubset			audioset;
 	long				lVideoSamples;
 	long				lAudioSamples;
 	FilterStateInfo		fsi;
+	VDRenderFrameMap	mVideoFrameMap;
 
-	DWORD			dwUserSave;
-	DWORD			dwProcSave;
-
-	unsigned char	*tempBuffer, *outputBuffer;
-	HANDLE			hFileShared;
-	BOOL			fFiltersOk;
+	DWORD_PTR			dwUserSave;
+	DWORD_PTR			dwProcSave;
 
 	long			lRequestCount, lFrameCount, lAudioSegCount;
 
 	HWND			hwndStatus;
 
-	char *input_buffer;
-	long input_buffer_size;
+	std::vector<char>	mInputBuffer;
+
+	typedef std::map<uint32, FrameserverSession *> tSessions;
+	tSessions	mSessions;
 
 	char *lpszFsname;
-
-	FrameserverSession *session_list;
 
 public:
 	Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent, DubOptions *xopt);
@@ -153,72 +162,54 @@ Frameserver::Frameserver(VideoSource *video, AudioSource *audio, HWND hwndParent
 	aSrc			= audio;
 	vSrc			= video;
 
-	tempBuffer		= NULL;
-	hFileShared		= INVALID_HANDLE_VALUE;
-	fFiltersOk		= FALSE;
-	session_list	= NULL;
-
-	input_buffer	= NULL;
-	input_buffer_size = 0;
-
 	lFrameCount = lRequestCount = lAudioSegCount = 0;
 
 	InitStreamValuesStatic(vInfo, aInfo, video, audio, opt);
 
+	mVideoFrameMap.Init(video, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRate, inputSubset, vInfo.end_dst, false);
+
 	long lOffsetStart = video->msToSamples(opt->video.lStartOffsetMS);
 	long lOffsetEnd = video->msToSamples(opt->video.lEndOffsetMS);
 
-	if (inputSubset)
-		videoset.addFrom(*inputSubset);
-	else
-		videoset.addRange(video->lSampleFirst, video->lSampleLast-video->lSampleFirst, false);
+	FrameSubset			videoset(*inputSubset);
 
 	if (opt->audio.fEndAudio)
-		videoset.clip(0, videoset.getTotalFrames() - lOffsetEnd);
+		videoset.deleteRange(videoset.getTotalFrames() - lOffsetEnd, videoset.getTotalFrames());
 
 	if (opt->audio.fStartAudio)
-		videoset.clip(lOffsetStart, videoset.getTotalFrames() - lOffsetStart);
+		videoset.deleteRange(0, lOffsetStart);
+
+	VDDEBUG("Video subset:\n");
+	videoset.dump();
 
 	if (audio)
 		AudioTranslateVideoSubset(audioset, videoset, vInfo.frameRateIn, audio->getWaveFormat());
 
-	if (!opt->audio.fEndAudio)
-		videoset.clip(0, videoset.getTotalFrames() - lOffsetEnd);
-
-	if (!opt->audio.fStartAudio)
-		videoset.clip(lOffsetStart, videoset.getTotalFrames() - lOffsetStart);
+	VDDEBUG("Audio subset:\n");
+	audioset.dump();
 
 	if (audio) {
 		audioset.offset(audio->msToSamples(-opt->audio.offset));
-		audioset.clipToRange(-0x40000000, audio->lSampleLast - audio->lSampleFirst+0x40000000);
 		lAudioSamples = audioset.getTotalFrames();
 	} else
 		lAudioSamples = 0;
 
-	lVideoSamples = videoset.getTotalFrames();
+	lVideoSamples = mVideoFrameMap.size();
 }
 
 Frameserver::~Frameserver() {
-	if (session_list) {
-		FrameserverSession *next;
+	{
+		for(tSessions::iterator it(mSessions.begin()), itEnd(mSessions.end()); it!=itEnd; ++it) {
+			FrameserverSession *pSession = (*it).second;
 
-		while(session_list) {
-			next = session_list->next;
-
-			delete session_list;
-
-			session_list = next;
+			delete pSession;
 		}
+
+		mSessions.clear();
 	}
 
-//	if (fFiltersOk)			{ DeinitFilters(filters); }
 	filters.DeinitFilters();
 	filters.DeallocateBuffers();
-
-	if (tempBuffer)							{ UnmapViewOfFile(tempBuffer); tempBuffer = NULL; }
-	if (hFileShared!=INVALID_HANDLE_VALUE)	{ CloseHandle(hFileShared); hFileShared = INVALID_HANDLE_VALUE; }
-
-	freemem(input_buffer);
 }
 
 void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
@@ -253,8 +244,6 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 		if (filters.ReadyFilters(&fsi))
 			throw MyError("Error readying filters.");
-
-		fFiltersOk = TRUE;
 	}
 
 	if (aSrc)
@@ -262,10 +251,10 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	// usurp the window
 
-	dwUserSave = GetWindowLong(hwnd, GWL_USERDATA);
-	dwProcSave = GetWindowLong(hwnd, GWL_WNDPROC );
-	SetWindowLong(hwnd, GWL_USERDATA, (DWORD)this);
-	SetWindowLong(hwnd, GWL_WNDPROC	, (DWORD)Frameserver::WndProc);
+	dwUserSave = GetWindowLongPtr(hwnd, GWL_USERDATA);
+	dwProcSave = GetWindowLongPtr(hwnd, GWL_WNDPROC );
+	SetWindowLongPtr(hwnd, GWL_USERDATA, (DWORD)this);
+	SetWindowLongPtr(hwnd, GWL_WNDPROC	, (DWORD)Frameserver::WndProc);
 	guiSetTitle(hwnd, IDS_TITLE_FRAMESERVER);
 
 	// create dialog box
@@ -313,8 +302,8 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	// restore everything
 
-	SetWindowLong(hwnd, GWL_WNDPROC	, dwProcSave);
-	SetWindowLong(hwnd, GWL_USERDATA, dwUserSave);
+	SetWindowLongPtr(hwnd, GWL_WNDPROC	, dwProcSave);
+	SetWindowLongPtr(hwnd, GWL_USERDATA, dwUserSave);
 
 	if (vSrc) {
 		vSrc->streamEnd();
@@ -459,13 +448,10 @@ BOOL APIENTRY Frameserver::StatusDlgProc2( HWND hWnd, UINT message, UINT wParam,
 ////////////////////////////////////////////////////////
 
 FrameserverSession *Frameserver::SessionLookup(LPARAM lParam) {
-	FrameserverSession *fs = session_list;
+	tSessions::const_iterator it(mSessions.find(lParam));
 
-	while(fs) {
-		if (fs->id == lParam) return fs;
-
-		fs = fs->next;
-	}
+	if (it != mSessions.end())
+		return (*it).second;
 
 	_RPT1(0,"Session lookup failed on %08lx\n", lParam);
 
@@ -478,10 +464,7 @@ LRESULT Frameserver::SessionOpen(LPARAM mmapID, WPARAM arena_len) {
 
 	if (fs = new FrameserverSession()) {
 		if (id = fs->Init(arena_len, mmapID)) {
-			if (session_list) session_list->prev = fs;
-			fs->next = session_list;
-			session_list = fs;
-
+			mSessions[id] = fs;
 			return id;
 		}
 		delete fs;
@@ -495,10 +478,7 @@ LRESULT Frameserver::SessionClose(LPARAM lParam) {
 
 	if (!fs) return VDSRVERR_BADSESSION;
 
-	if (fs->prev) fs->prev->next = fs->next; else session_list = fs->next;
-	if (fs->next) fs->next->prev = fs->prev;
-
-	delete fs;
+	mSessions.erase(lParam);
 
 	return VDSRVERR_OK;
 }
@@ -516,22 +496,14 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 		if (!vSrc) return VDSRVERR_NOSTREAM;
 
 		*(long *)(fs->arena+0) = 0;										//vSrc->lSampleFirst;
-		*(long *)(fs->arena+4) = lVideoSamples/opt->video.frameRateDecimation;			//vSrc->lSampleLast;
-		memcpy(lpasi, &vSrc->streamInfo, sizeof(AVISTREAMINFO));
+		*(long *)(fs->arena+4) = lVideoSamples;			//vSrc->lSampleLast;
+		memcpy(lpasi, &vSrc->getStreamInfo(), sizeof(AVISTREAMINFO));
 
 		lpasi->fccHandler	= ' BID';
 		lpasi->dwLength		= *(long *)(fs->arena+4);
-		if (opt->video.frameRateNewMicroSecs) {
-			lpasi->dwRate			= 1000000;
-			lpasi->dwScale			= vInfo.usPerFrame; //opt->video.frameRateNewMicroSecs;
-		} else {
-			// Dividing dwRate isn't good if we get a fraction like 10/1!
+		lpasi->dwRate		= vInfo.frameRate.getHi();
+		lpasi->dwScale		= vInfo.frameRate.getLo();
 
-			if (lpasi->dwScale > 0x7FFFFFFF / opt->video.frameRateDecimation)
-				lpasi->dwRate			/= opt->video.frameRateDecimation;
-			else
-				lpasi->dwScale			*= opt->video.frameRateDecimation;
-		}
 		SetRect(&lpasi->rcFrame, 0, 0, filters.OutputBitmap()->w, filters.OutputBitmap()->h);
 
 		lpasi->dwSuggestedBufferSize = filters.OutputBitmap()->size;
@@ -541,7 +513,7 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 
 		*(long *)(fs->arena+0) = 0;
 		*(long *)(fs->arena+4) = lAudioSamples;
-		memcpy(fs->arena+8, &aSrc->streamInfo, sizeof(AVISTREAMINFO));
+		memcpy(fs->arena+8, &aSrc->getStreamInfo(), sizeof(AVISTREAMINFO));
 
 		((AVISTREAMINFO *)(fs->arena+8))->dwLength = audioset.getTotalFrames();
 	}
@@ -608,15 +580,11 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 		if (fs->arena_size < ((filters.LastBitmap()->w*3+3)&-4)*filters.LastBitmap()->h)
 			return VDSRVERR_TOOBIG;
 
-		sample *= opt->video.frameRateDecimation;
+		sample = mVideoFrameMap.DisplayFrame(sample);
 
-		if (sample < 0 || sample >= videoset.getTotalFrames())
+		if (sample < 0)
 			return VDSRVERR_FAILED;
 
-		sample = videoset.lookupFrame(sample);
-#if 0
-		if (!(ptr = vSrc->getFrame(sample))) return VDSRVERR_FAILED;
-#else
 		vSrc->streamSetDesiredFrame(sample);
 
 		frame = vSrc->streamGetNextRequiredFrame(&is_preroll);
@@ -632,29 +600,19 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM sample) {
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				if (!input_buffer || input_buffer_size < lSize) {
-					char *newblock;
-					long new_size;
+				mInputBuffer.reserve((lSize + 65535) & ~65535);
+				mInputBuffer.resize(lSize);
 
-					new_size = (lSize + 65535) & -65536;
-
-					if (!(newblock = (char *)reallocmem(input_buffer, new_size)))
-						return VDSRVERR_FAILED;
-
-					input_buffer = newblock;
-					input_buffer_size = new_size;
-				}
-
-				hr = vSrc->read(frame, 1, input_buffer, input_buffer_size, &lSize, NULL); 
+				hr = vSrc->read(frame, 1, &mInputBuffer[0], lSize, &lSize, NULL); 
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				ptr = vSrc->streamGetFrame(input_buffer, lSize, vSrc->isKey(frame), is_preroll, frame);
+				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, vSrc->isKey(frame), is_preroll, frame);
 			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(&is_preroll)));
 
 		} else
 			ptr = vSrc->streamGetFrame(NULL, 0, vSrc->isKey(sample), FALSE, vSrc->displayToStreamOrder(sample));
-#endif
+
 		if (!g_listFA.IsEmpty()) {
 			VBitmap vbm = *filters.OutputBitmap();
 
@@ -719,13 +677,13 @@ LRESULT Frameserver::SessionAudio(LPARAM lParam, WPARAM lStart) {
 
 			// Translate range.
 
-			start = audioset.lookupRange(lStart, len) + aSrc->lSampleFirst;
+			start = audioset.lookupRange(lStart, len);
 
 			if (len > lCount)
 				len = lCount;
 
-			if (start < aSrc->lSampleFirst) {
-				start = aSrc->lSampleFirst;
+			if (start < aSrc->getStart()) {
+				start = aSrc->getStart();
 				len = 1;
 			}
 
@@ -769,7 +727,6 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 	LONG lCount = *(LONG *)fs->arena;
 	LONG cbBuffer = *(LONG *)(fs->arena+4);
 
-#if 1
 	if (lStart < 0)
 		return VDSRVERR_FAILED;
 
@@ -781,36 +738,14 @@ LRESULT Frameserver::SessionAudioInfo(LPARAM lParam, WPARAM lStart) {
 
 	*(LONG *)(fs->arena + 0) = aSrc->getWaveFormat()->nBlockAlign * lCount;
 	*(LONG *)(fs->arena + 4) = lCount;
-#else
-	if (cbBuffer > fs->arena_size - 8) cbBuffer = fs->arena_size - 8;
-
-	lStart += aInfo.start_src;
-	if (lStart >= aInfo.end_src) return VDSRVERR_FAILED;
-
-	if (lStart+lCount > aInfo.end_src)
-		lCount = aInfo.end_src - lStart;
-
-	try {
-		switch(aSrc->read(lStart, lCount, NULL, cbBuffer, (LONG *)(fs->arena+0), (LONG *)(fs->arena+4))) {
-		case AVIERR_OK:
-			break;
-		case AVIERR_BUFFERTOOSMALL:
-			return VDSRVERR_TOOBIG;
-		default:
-			return VDSRVERR_FAILED;
-		}
-	} catch(const MyError& e) {
-		return VDSRVERR_FAILED;
-	}
-#endif
 
 	return VDSRVERR_OK;
 }
 
 //////////////////////////////////////////////////////////////////////////
 
-extern AudioSource *inputAudio;
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<AudioSource> inputAudio;
+extern vdrefptr<VideoSource> inputVideoAVI;
 
 static HMODULE hmodServer;
 static IVDubServerLink *ivdsl;
@@ -845,7 +780,7 @@ BOOL CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 
 			SetDlgItemText(hDlg, IDC_COMPUTER_NAME, buf);
 		}
-		SetDlgItemText(hDlg, IDC_FSNAME, g_szInputAVIFileTitle);
+		SetDlgItemText(hDlg, IDC_FSNAME, VDTextWToA(VDFileSplitPath(g_szInputAVIFile)).c_str());
 		SetWindowLong(hDlg, DWL_USER, lParam);
 		return TRUE;
 	case WM_COMMAND:
@@ -865,12 +800,10 @@ BOOL CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 }
 
 void ActivateFrameServerDialog(HWND hwnd) {
-	static char fileFilters[]=
-		"VirtualDub AVIFile signpost (*.vdr)\0"		"*.vdr\0"
+	static wchar_t fileFilters[]=
+		L"VirtualDub AVIFile signpost (*.vdr)\0"		L"*.vdr\0"
 		;
 
-	OPENFILENAME ofn;
-	char szFile[MAX_PATH];
 	char szServerName[128];
 
 	if (!InitServerDLL()) return;
@@ -881,27 +814,12 @@ void ActivateFrameServerDialog(HWND hwnd) {
 	try {
 		Frameserver fs(inputVideoAVI, inputAudio, hwnd, &g_dubOpts);
 
-		szFile[0]=0;
-		memset(&ofn, 0, sizeof ofn);
-		ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
-		ofn.hwndOwner			= hwnd;
-		ofn.lpstrFilter			= fileFilters;
-		ofn.lpstrCustomFilter	= NULL;
-		ofn.nFilterIndex		= 1;
-		ofn.lpstrFile			= szFile;
-		ofn.nMaxFile			= sizeof szFile;
-		ofn.lpstrFileTitle		= NULL;
-		ofn.nMaxFileTitle		= 0;
-		ofn.lpstrInitialDir		= NULL;
-		ofn.lpstrTitle			= "Save .VDR signpost for AVIFile handler";
-		ofn.Flags				= OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_ENABLESIZING;
-		ofn.lpstrDefExt			= NULL;
+		const VDStringW fname(VDGetSaveFileName(kFileDialog_Signpost, (VDGUIHandle)hwnd, L"Save .VDR signpost for AVIFile handler", fileFilters, g_prefs.main.fAttachExtension ? L"vdr" : NULL, 0, 0));
 
-		if (GetSaveFileName(&ofn)) {
+		if (!fname.empty()) {
 			long buf[5];
 			char sname[128];
 			int slen;
-			FILE *f;
 
 			ivdsl->GetComputerName(sname);
 			strcat(sname,"/");
@@ -915,15 +833,14 @@ void ActivateFrameServerDialog(HWND hwnd) {
 			buf[3] = 'HTAP';
 			buf[4] = slen;
 
-			if (!(f = fopen(szFile, "wb"))) throw MyError("couldn't open signpost file");
-			if (1!=fwrite(buf, 20, 1, f)
-				|| 1!=fwrite(sname, strlen(sname), 1, f))
-				throw MyError("couldn't write to signpost file");
+			VDFile file(fname.c_str(), nsVDFile::kWrite | nsVDFile::kDenyRead | nsVDFile::kCreateAlways);
 
-			if (strlen(sname)&1)
-				fputc(0, f);
+			file.write(buf, 20);
+			file.write(sname, strlen(sname));
+			if (strlen(sname) & 1)
+				file.write("", 1);
 
-			if (fclose(f)) throw MyError("couldn't finish signpost file");
+			file.close();
 		}
 
 		_RPT0(0,"Attempting to initialize frameserver...\n");

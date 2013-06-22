@@ -68,7 +68,7 @@ uint32 VDAudioFilterCenterMix::Prepare() {
 
 	VDWaveFormat *pwf0;
 
-	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 
 	pwf0->mChannels		= 2;
@@ -162,10 +162,6 @@ sint64 VDAudioFilterCenterMix::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_centermix = {
 	sizeof(VDAudioFilterDefinition),
-	L"center mix",
-	NULL,
-	L"Mixes a stereo stream with a mono stream.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterCenterMix),	2, 1,
@@ -176,3 +172,20 @@ extern const struct VDAudioFilterDefinition afilterDef_centermix = {
 	&VDAudioFilterBase::sVtbl,
 };
 
+
+extern const struct VDPluginInfo apluginDef_centermix = {
+	sizeof(VDPluginInfo),
+	L"center mix",
+	NULL,
+	L"Mixes a stereo stream with a mono stream.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_centermix
+};

@@ -15,10 +15,11 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_FILE_H
-#define f_FILE_H
+#ifndef f_VD2_SYSTEM_FILE_H
+#define f_VD2_SYSTEM_FILE_H
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/vdalloc.h>
 
 #ifdef WIN32
 	typedef void *VDFileHandle;				// this needs to match wtypes.h definition for HANDLE
@@ -61,6 +62,7 @@ class VDFile {
 protected:
 	VDFileHandle	mhFile;
 	sint64			mFilePosition;
+	vdautoptr2<char>	mpFilename;
 
 private:
 	VDFile(const VDFile&);

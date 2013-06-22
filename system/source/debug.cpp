@@ -59,7 +59,7 @@ __declspec(thread) VDProtectedAutoScope *volatile g_protectedScopeLink;
 
 void VDProtectedAutoScopeICLWorkaround() {}
 
-#ifdef _DEBUG
+#if 0			//def _DEBUG
 static VDCriticalSection g_csDebug;
 static VDSignal g_signalDebug;
 static VDSignal g_signalDebugReturn;

@@ -20,13 +20,14 @@
 
 #include <windows.h>
 #include <vfw.h>
+#include <vd2/system/VDString.h>
 
 class VideoSource;
 
 class AVIOutputImages : public AVIOutput {
 protected:
-	char mszFilePrefix[MAX_PATH];
-	char mszFileSuffix[MAX_PATH];
+	VDStringW mPrefix;
+	VDStringW mSuffix;
 	int iDigits;
 	bool mbSaveAsTARGA;
 
@@ -36,15 +37,14 @@ public:
 		kFormatTGA
 	};
 
-	AVIOutputImages(const char *pszPrefix, const char *pszSuffix, int iDigits, int format);
+	AVIOutputImages(const wchar_t *pszPrefix, const wchar_t *pszSuffix, int iDigits, int format);
 	~AVIOutputImages();
 
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	BOOL finalize();
-	BOOL isPreview();
+	IVDMediaOutputStream *createVideoStream();
+	IVDMediaOutputStream *createAudioStream();
 
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
+	bool init(const wchar_t *szFile);
+	void finalize();
 };
 
 #endif

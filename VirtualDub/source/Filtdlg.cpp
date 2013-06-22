@@ -37,7 +37,7 @@ extern HINSTANCE g_hInst;
 extern const char g_szError[];
 extern FilterFunctions g_filterFuncs;
 
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<VideoSource> inputVideoAVI;
 
 //////////////////////////////
 
@@ -161,11 +161,9 @@ void MakeFilterList(List& list, HWND hWndList) {
 
 	if (LB_ERR == (count = SendMessage(hWndList, LB_GETCOUNT, 0, 0))) return;
 
-	_RPT0(0,"MFL start\n");
 	for(ind=count-1; ind>=0; ind--) {
 		fa = (FilterInstance *)SendMessage(hWndList, LB_GETITEMDATA, (WPARAM)ind, 0);
 
-		_RPT1(0,"adding: %p\n", fa);
 		list.AddTail(fa);
 	}
 }
@@ -449,7 +447,6 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 					fa = (FilterInstance *)g_listFA.tail.next;
 
 					while(fa2 = (FilterInstance *)fa->next) {
-						_RPT1(0,"Deleting %p\n", fa);
 						if (!fa->filter->copyProc)
 							fa->ForceNoDeinit();
 

@@ -89,6 +89,8 @@ protected:
 		int srcpin;
 		Filter *pDst;
 		int dstpin;
+
+		VDStringW mFormat;
 	};
 
 	struct Filter {
@@ -146,6 +148,8 @@ protected:	// internal functions
 	void SerializeFilter(std::vector<VDFilterGraphNode>& filters, std::vector<VDFilterGraphConnection>& connections, Filter& f);
 	void GetFilterGraph(std::vector<VDFilterGraphNode>& filters, std::vector<VDFilterGraphConnection>& connections);
 	void SetFilterGraph(const std::vector<VDFilterGraphNode>& filters, const std::vector<VDFilterGraphConnection>& connections);
+	void SetConnectionLabel(IVDRefCount *pInstance, int outpin, const wchar_t *pLabel);
+	void RequeryFormats();
 
 	typedef std::list<Filter> tFilterList;
 	tFilterList	mFilters;
@@ -446,6 +450,16 @@ void VDFilterGraphControl::OnPaint() {
 					RenderArrow(hdc, x1, y1, x2, y2);
 				} else
 					RenderArrow(hdc, x1, y1, x2, y2);
+
+				if (!conn.mFormat.empty()) {
+					SetBkMode(hdc, TRANSPARENT);
+					SetBkColor(hdc, GetSysColor(COLOR_3DFACE));
+					SetTextAlign(hdc, TA_LEFT | TA_BASELINE);
+
+					VDStringA label(VDTextWToA(conn.mFormat));
+
+					TextOut(hdc, rs.right, y1, label.data(), label.size());
+				}
 			}
 		}
 
@@ -581,6 +595,7 @@ void VDFilterGraphControl::OnLButtonUp(int x, int y) {
 				Connect(pSrcFilter, srcPin, pDstFilter, dstPin);
 				if (mbAutoArrange)
 					Arrange();
+				RequeryFormats();
 			}
 		}
 
@@ -753,6 +768,8 @@ void VDFilterGraphControl::ConfigureSelection() {
 	if (mpSelectedFilter) {
 		if (!mpCB || !mpSelectedFilter->pInstance || !mpCB->Configure((VDGUIHandle)mhwnd, mpSelectedFilter->pInstance))
 			MessageBox(mhwnd, "No options are available for the selected filter.", g_szError, MB_OK|MB_ICONINFORMATION);
+		else
+			RequeryFormats();
 	}
 }
 
@@ -888,6 +905,7 @@ void VDFilterGraphControl::AddFilter(const wchar_t *name, int inpins, int outpin
 				break;
 			}
 		}
+		RequeryFormats();
 	}
 
 	if (mbAutoArrange)
@@ -943,6 +961,9 @@ terminate_search:
 	}
 
 	SelectFilter(pSelect);
+
+	if (mbAutoConnect)
+		RequeryFormats();
 }
 
 VDFilterGraphControl::Filter *VDFilterGraphControl::AddFilter2(const wchar_t *name, int inpins, int outpins, bool bProtected, IVDRefCount *pInstance) {
@@ -1225,6 +1246,11 @@ void VDFilterGraphControl::GetFilterGraph(std::vector<VDFilterGraphNode>& filter
 }
 
 void VDFilterGraphControl::SetFilterGraph(const std::vector<VDFilterGraphNode>& filters, const std::vector<VDFilterGraphConnection>& connections) {
+	mpSelectedFilter = NULL;
+	mpSelectedConnection = NULL;
+	mFilters.clear();
+	mConnections.clear();
+
 	int nFilters = filters.size();
 	int nConnections = connections.size();
 	int conn = 0;
@@ -1260,6 +1286,49 @@ void VDFilterGraphControl::SetFilterGraph(const std::vector<VDFilterGraphNode>& 
 	}
 
 	Arrange();
+	RequeryFormats();
 	RecomputeWorkspace();
 	InvalidateRect(mhwnd, NULL, TRUE);
+}
+
+void VDFilterGraphControl::SetConnectionLabel(IVDRefCount *pInstance, int outpin, const wchar_t *pLabel) {
+	vdforeach(tFilterList, mFilters) {
+		Filter& f = *it;
+		
+		if (f.pInstance != pInstance)
+			continue;
+
+		if (outpin<0 || outpin >= f.outputs) {
+			VDASSERT(false);
+			return;
+		}
+
+		PinConnection *pConn = f.outpins[outpin];
+		if (!pConn) {
+			VDASSERT(false);
+			return;
+		}
+
+		pConn->mFormat = pLabel;
+		return;
+	}
+}
+
+void VDFilterGraphControl::RequeryFormats() {
+	bool bChange = false;
+
+	vdforeach(tConnectionList, mConnections) {
+		PinConnection& conn = *it;
+
+		if (!conn.mFormat.empty())
+			bChange = true;
+
+		conn.mFormat.clear();
+	}
+
+	if (mpCB)
+		bChange |= mpCB->RequeryFormats();
+
+	if (bChange)
+		InvalidateRect(mhwnd, NULL, TRUE);
 }

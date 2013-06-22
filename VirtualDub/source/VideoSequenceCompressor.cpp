@@ -116,6 +116,9 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 	if (!res)
 		throw MyError("Unable to retrieve video compressor information.");
 
+	const wchar_t *pName = info.szDescription;
+	mDriverName = VDswprintf(L"The video codec \"%s\"", 1, &pName);
+
 	// Analyze compressor.
 
 	this->dwFlags = info.dwFlags;
@@ -136,7 +139,10 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 
 	// Allocate destination buffer
 
-	lMaxPackedSize = ICCompressGetSize(hic, pbiInput, pbiOutput);
+	{
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+		lMaxPackedSize = ICCompressGetSize(hic, pbiInput, pbiOutput);
+	}
 
 	// Work around a bug in Huffyuv.  Ben tried to save some memory
 	// and specified a "near-worst-case" bound in the codec instead
@@ -174,20 +180,28 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 	//
 	// Stupid fscking Matrox driver returns -1!!!
 
-	cbConfigData = ICGetStateSize(hic);
+	{
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+		cbConfigData = ICGetStateSize(hic);
+	}
 
 	if (cbConfigData > 0) {
 		if (!(pConfigData = new char[cbConfigData]))
 			throw MyMemoryError();
 
-		cbConfigData = ICGetState(hic, pConfigData, cbConfigData);
+		{
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+			cbConfigData = ICGetState(hic, pConfigData, cbConfigData);
+		}
 
 		// As odd as this may seem, if this isn't done, then the Indeo5
 		// compressor won't allow data rate control until the next
 		// compression operation!
 
-		if (cbConfigData)
+		if (cbConfigData) {
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 			ICSetState(hic, pConfigData, cbConfigData);
+		}
 	}
 
 	lMaxFrameSize = 0;
@@ -227,7 +241,10 @@ void VideoSequenceCompressor::setDataRate(long lDataRate, long lUsPerFrame, long
 		icf.dwRate		= 1000000;
 		icf.dwScale		= lUsPerFrame;
 
-		ICSendMessage(hic, ICM_COMPRESS_FRAMES_INFO, (WPARAM)&icf, sizeof(ICCOMPRESSFRAMES));
+		{
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+			ICSendMessage(hic, ICM_COMPRESS_FRAMES_INFO, (WPARAM)&icf, sizeof(ICCOMPRESSFRAMES));
+		}
 	}
 }
 
@@ -253,7 +270,10 @@ void VideoSequenceCompressor::start() {
 	vdprotected("passing start message to video compressor") {
 		// Start compression process
 
-		res = ICCompressBegin(hic, pbiInput, pbiOutput);
+		{
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+			res = ICCompressBegin(hic, pbiInput, pbiOutput);
+		}
 
 		if (res != ICERR_OK)
 			throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
@@ -261,10 +281,17 @@ void VideoSequenceCompressor::start() {
 		// Start decompression process if necessary
 
 		if (pPrevBuffer) {
-			res = ICDecompressBegin(hic, pbiOutput, pbiInput);
+			{
+				VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+				res = ICDecompressBegin(hic, pbiOutput, pbiInput);
+			}
 
 			if (res != ICERR_OK) {
-				ICCompressEnd(hic);
+				{
+					VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+					ICCompressEnd(hic);
+				}
+
 				throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
 			}
 		}
@@ -278,17 +305,23 @@ void VideoSequenceCompressor::finish() {
 	if (!fCompressionStarted)
 		return;
 
-	if (pPrevBuffer)
-		ICDecompressEnd(hic);
+	{
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 
-	ICCompressEnd(hic);
+		if (pPrevBuffer)
+			ICDecompressEnd(hic);
+
+		ICCompressEnd(hic);
+	}
 
 	fCompressionStarted = false;
 
 	// Reset MPEG-4 compressor
 
-	if (cbConfigData && pConfigData)
+	if (cbConfigData && pConfigData) {
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 		ICSetState(hic, pConfigData, cbConfigData);
+	}
 }
 
 void VideoSequenceCompressor::dropFrame() {
@@ -353,29 +386,24 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	if (dwFlagsIn)
 		dwFlags = AVIIF_KEYFRAME;
 
-	if (IsMMXState())
-		throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
-
 	VDCHECKPOINT;
-
-	vdprotected3("compressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer) {
-		res = ICCompress(hic, dwFlagsIn,
-				(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
-				(LPBITMAPINFOHEADER)pbiInput, pBits,
-				&dwChunkId,
-				&dwFlags,
-				lFrameNum,
-				lFrameNum ? lAllowableFrameSize : 0xFFFFFF,
-				lQuality,
-				dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
-				dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
+	{
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+		vdprotected3("compressing frame %u from %08x to %08x", unsigned, lFrameNum, unsigned, (unsigned)pBits, unsigned, (unsigned)pOutputBuffer) {
+			res = ICCompress(hic, dwFlagsIn,
+					(LPBITMAPINFOHEADER)pbiOutput, pOutputBuffer,
+					(LPBITMAPINFOHEADER)pbiInput, pBits,
+					&dwChunkId,
+					&dwFlags,
+					lFrameNum,
+					lFrameNum ? lAllowableFrameSize : 0xFFFFFF,
+					lQuality,
+					dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : (LPBITMAPINFOHEADER)pbiInput,
+					dwFlagsIn & ICCOMPRESS_KEYFRAME ? NULL : pPrevBuffer);
+		}
 	}
 
 	VDCHECKPOINT;
-
-	if (IsMMXState())
-		ClearMMXState();
-
 
 	// Special handling for DivX 5 and XviD codecs:
 	//

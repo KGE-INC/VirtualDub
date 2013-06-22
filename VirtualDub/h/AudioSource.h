@@ -41,11 +41,12 @@ private:
 	LONG				lCurrentSample;
 	LONG				bytesPerSample;
 
-public:
-	AudioSourceWAV(const char *fn, LONG inputBufferSize);
 	~AudioSourceWAV();
 
-	BOOL init();
+public:
+	AudioSourceWAV(const wchar_t *fn, LONG inputBufferSize);
+
+	bool init();
 	virtual int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
 };
 
@@ -57,9 +58,12 @@ private:
 
 	BOOL _isKey(LONG lSample);
 
+	~AudioSourceAVI();
+
 public:
 	AudioSourceAVI(IAVIReadHandler *pAVIFile, bool bAutomated);
-	~AudioSourceAVI();
+
+	void setRate(const VDFraction& f) { streamInfo.dwRate = f.getHi(); streamInfo.dwScale = f.getLo(); }
 
 	void Reinit();
 	bool isStreaming();
@@ -67,7 +71,7 @@ public:
 	void streamBegin(bool fRealTime);
 	void streamEnd();
 
-	BOOL init();
+	bool init();
 	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
 };
 

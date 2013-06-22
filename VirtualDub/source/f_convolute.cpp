@@ -532,7 +532,7 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 			// If the coefficient is 2, 4, or 8, generate a compact LEA sequence
 
 			if (m==2 || m==4 || m==8) {
-				int scale = m>>2;
+				int scale = (m>>2)+1;
 
 				// v MOV eax,[esi+disp32]
 				// u MOV ebx,eax

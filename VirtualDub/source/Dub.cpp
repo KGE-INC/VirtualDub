@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2003 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -28,7 +28,6 @@
 
 #include <windows.h>
 #include <vfw.h>
-#include <ddraw.h>
 
 #include "resource.h"
 
@@ -46,7 +45,6 @@
 #include "convert.h"
 #include "filters.h"
 #include "gui.h"
-#include "ddrawsup.h"
 #include "prefs.h"
 #include "command.h"
 #include "misc.h"
@@ -61,7 +59,6 @@
 #include "AVIOutputWAV.h"
 #include "AVIOutputImages.h"
 #include "AVIOutputStriped.h"
-#include "Histogram.h"
 #include "AudioSource.h"
 #include "VideoSource.h"
 #include "AVIPipe.h"
@@ -69,17 +66,21 @@
 #include "FrameSubset.h"
 #include "InputFile.h"
 #include "VideoTelecineRemover.h"
+#include "VideoDisplay.h"
 
 #include "Dub.h"
 #include "DubOutput.h"
 #include "DubStatus.h"
+#include "DubUtils.h"
+#include "DubIO.h"
+
+using namespace nsVDDub;
 
 ///////////////////////////////////////////////////////////////////////////
 
 extern const char g_szError[];
-extern bool g_syncroBlit, g_vertical;
+extern bool g_syncroBlit;
 extern HWND g_hWnd;
-extern HINSTANCE g_hInst;
 extern bool g_fWine;
 
 ///////////////////////////////////////////////////////////////////////////
@@ -167,7 +168,7 @@ static const int g_iPriorities[][2]={
 };
 
 /////////////////////////////////////////////////
-void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, AVISTREAMINFO *src) {
+void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, const AVISTREAMINFO *src) {
 	dest->fccType			= src->fccType;
 	dest->fccHandler		= src->fccHandler;
 	dest->dwFlags			= src->dwFlags;
@@ -190,1050 +191,28 @@ void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, AVISTREAMINFO *
 }
 
 ///////////////////////////////////////////////////////////////////////////
-//
-//	VDMappedBitmap
-//
-///////////////////////////////////////////////////////////////////////////
-
-class VDMappedBitmap {
-public:
-	VDMappedBitmap();
-	~VDMappedBitmap();
-
-	void InitDrawDib(HDC hdc, const BITMAPINFOHEADER *bih);
-	void InitGDI(HDC hdc, const BITMAPINFOHEADER *bih, HANDLE hMapObj, LONG nMapOffset);
-	void Shutdown();
-
-	HDRAWDIB	GetHDD() const { return mhdd; }
-	HDC			GetHDC() const { return mhdc; }
-
-protected:
-	HDC			mhdc;
-	HBITMAP		mhbm;
-	HGDIOBJ		mhbmOld;
-	HDRAWDIB	mhdd;
-	void		*mpvBits;
-};
-
-VDMappedBitmap::VDMappedBitmap()
-	: mhdc(NULL)
-	, mhbm(NULL)
-	, mhdd(NULL)
-{
-}
-
-VDMappedBitmap::~VDMappedBitmap() {
-	Shutdown();
-}
-
-void VDMappedBitmap::InitDrawDib(HDC hdc, const BITMAPINFOHEADER *bih) {
-	VDASSERT(!mhdd && !mhdc);
-
-	mhdd = DrawDibOpen();
-	if (!mhdd)
-		throw MyError("Failed to create display.");
-
-	if (!DrawDibBegin(mhdd, hdc, bih->biWidth, bih->biHeight, (BITMAPINFOHEADER *)bih, bih->biWidth, bih->biHeight, 0))
-		throw MyError("Failed to initialize display.");
-}
-
-void VDMappedBitmap::InitGDI(HDC hdc, const BITMAPINFOHEADER *bih, HANDLE hMapObj, LONG nMapOffset) {
-	VDASSERT(!mhdd && !mhdc);
-
-	mhdc = CreateCompatibleDC(hdc);
-	if (!mhdc)
-		throw MyWin32Error("Failed to create display:\n%%s", GetLastError());
-
-	mhbm = CreateDIBSection(mhdc, (const BITMAPINFO *)bih, DIB_RGB_COLORS, &mpvBits, hMapObj, nMapOffset);
-	if (!mhbm)
-		throw MyWin32Error("Failed to create display:\n%%s", GetLastError());
-
-	mhbmOld = SelectObject(mhdc, mhbm);
-}
-
-void VDMappedBitmap::Shutdown() {
-	if (mhdd) {
-		DrawDibClose(mhdd);
-		mhdd = NULL;
-	}
-
-	if (mhbm) {
-		DeleteObject(SelectObject(mhdc, mhbmOld));
-
-		// Explicitly unmap the view.  NT4's GDI leaks memory if you create
-		// a DIBSection with a mapping offset >64K and don't explicitly
-		// unmap it.
-		UnmapViewOfFile(mpvBits);
-
-		mhbm = NULL;
-	}
-
-	if (mhdc) {
-		DeleteDC(mhdc);
-		mhdc = NULL;
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	VDFormatStruct
-//
-///////////////////////////////////////////////////////////////////////////
-
-template<class T>
-class VDFormatStruct {
-public:
-	typedef size_t			size_type;
-	typedef T				value_type;
-
-	VDFormatStruct() : mpMemory(NULL), mSize(0) {}
-
-	VDFormatStruct(const T *pStruct, size_t len) : mSize(len), mpMemory(new char[len])) {
-		memcpy(mpMemory, pStruct, len);
-	}
-
-	VDFormatStruct(const VDFormatStruct<T>& src) : mSize(src.mSize), mpMemory(new char[src.mSize]) {
-		memcpy(mpMemory, pStruct, len);
-	}
-
-	~VDFormatStruct() {
-		delete[] mpMemory;
-	}
-
-	bool		empty() const		{ return !mpMemory; }
-	size_type	size() const		{ return mSize; }
-
-	T&	operator *() const	{ return *(T *)mpMemory; }
-	T*	operator->() const	{ return (T *)mpMemory; }
-
-	VDFormatStruct<T>& operator=(const VDFormatStruct<T>& src) {
-		assign(pStruct, len);
-	}
-
-	void assign(const T *pStruct, size_type len) {
-		if (mSize < len) {
-			delete[] mpMemory;
-			mpMemory = NULL;
-			mpMemory = (T *)new char[len];
-			mSize = len;
-		}
-
-		memcpy(mpMemory, pStruct, len);
-	}
-
-	void clear() {
-		delete[] mpMemory;
-		mpMemory = NULL;
-		mSize = 0;
-	}
-
-	void resize(size_type len) {
-		if (mSize < len) {
-			delete[] mpMemory;
-			mpMemory = NULL;
-			mpMemory = (T *)new char[len];
-			mSize = len;
-		}
-	}
-
-protected:
-	size_type	mSize;
-	T *mpMemory;
-};
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	VDStreamInterleaver
-//
-///////////////////////////////////////////////////////////////////////////
-
-class IVDStreamInterleaverCutEstimator {
-public:
-	virtual bool EstimateCutPoint(int stream, sint64 start, sint64 target, sint64& framesToNextPoint, sint64& bytesToNextPoint) = 0;
-};
-
-class VDStreamInterleaver {
-public:
-	enum Action {
-		kActionWrite,
-		kActionNextSegment,
-		kActionFinish
-	};
-
-	void Init(int streams);
-	void SetSegmentFrameLimit(sint64 frames);
-	void SetSegmentByteLimit(sint64 bytes, sint32 nPerFrameOverhead);
-	void SetCutEstimator(int stream, IVDStreamInterleaverCutEstimator *pEstimator);
-	void InitStream(int stream, uint32 nSampleSize, sint32 nPreload, double nSamplesPerFrame, double nInterval);
-	void EndStream(int stream);
-	void AddVBRCorrection(int stream, sint32 actual);
-	void AddCBRCorrection(int stream, sint32 actual);
-
-	Action GetNextAction(int& streamID, sint32& samples);
-
-	bool HasSegmentOverflowed() const { return mbSegmentOverflowed; }
-
-protected:
-	struct Stream {
-		sint64		mSamplesWrittenToSegment;
-		sint32		mSamplesToWrite;
-		sint32		mMaxSampleSize;
-		double		mSamplesPerFrame;
-		sint64		mBytesPerFrame;
-		sint32		mIntervalMicroFrames;
-		sint32		mPreloadMicroFrames;
-		sint64		mEstimatedSamples;
-		bool		mbActive;
-	};
-
-	std::vector<Stream>	mStreams;
-
-	sint64	mCurrentSize;
-	sint64	mSegmentCutFrame;		// Frame at which we have begun cutting segment.  Once this is set we cannot push
-									// the limit forward even if there is space, as some streams have already been cut.
-	sint64	mFramesPerSegment;		// Maximum number of frames per segment.
-	sint64	mBytesPerSegment;		// Maximum number of bytes per segment.
-	sint64	mBytesPerFrame;			// Current estimate of # of bytes per frame.
-	sint64	mSegmentStartFrame;
-	sint64	mSegmentOkFrame;		// # of frames that we know we can write, based on frame and size limits
-	sint32	mPerFrameOverhead;
-
-	int	mNextStream;
-	sint32	mFrames;
-
-	IVDStreamInterleaverCutEstimator	*mpCutEstimator;
-	int		mCutStream;
-
-	bool	mbSegmentOverflowed;
-	bool	mbForceBreakNext;
-};
-
-void VDStreamInterleaver::Init(int streams) {
-	mStreams.resize(streams);
-	mNextStream = 0;
-	mFrames = 0;
-
-	mFramesPerSegment	= 0;
-	mBytesPerSegment	= 0;
-	mSegmentCutFrame	= 0;
-	mSegmentStartFrame	= 0;
-	mSegmentOkFrame		= 0x7fffffffffffffff;
-	mPerFrameOverhead	= 0;
-	mCurrentSize		= 0;
-	mBytesPerFrame		= 0;
-	mpCutEstimator		= 0;
-	mCutStream			= -1;
-	mbSegmentOverflowed	= false;
-	mbForceBreakNext	= false;
-}
-
-void VDStreamInterleaver::SetSegmentFrameLimit(sint64 frames) {
-	mFramesPerSegment	= frames;
-	mSegmentCutFrame	= frames;
-	mSegmentOkFrame		= 0;
-}
-
-void VDStreamInterleaver::SetSegmentByteLimit(sint64 bytes, sint32 nOverheadPerFrame) {
-	mBytesPerSegment	= bytes;
-	mBytesPerFrame		+= nOverheadPerFrame;
-	mSegmentOkFrame		= 0;
-	mPerFrameOverhead	= nOverheadPerFrame;
-}
-
-void VDStreamInterleaver::SetCutEstimator(int stream, IVDStreamInterleaverCutEstimator *pEstimator) {
-	mpCutEstimator = pEstimator;
-	mCutStream	= stream;
-}
-
-void VDStreamInterleaver::InitStream(int stream, uint32 nSampleSize, sint32 nPreload, double nSamplesPerFrame, double nInterval) {
-	VDASSERT(stream>=0 && stream<mStreams.size());
-
-	Stream& streaminfo = mStreams[stream];
-
-	streaminfo.mSamplesWrittenToSegment = 0;
-	streaminfo.mMaxSampleSize		= nSampleSize;
-	streaminfo.mPreloadMicroFrames	= (sint64)((double)nPreload / nSamplesPerFrame * 65536);
-	streaminfo.mSamplesPerFrame		= nSamplesPerFrame;
-	streaminfo.mBytesPerFrame		= (sint64)ceil(nSampleSize * nSamplesPerFrame);
-	streaminfo.mIntervalMicroFrames	= (sint64)(65536.0 / nInterval);
-	streaminfo.mbActive				= true;
-
-	mBytesPerFrame += streaminfo.mBytesPerFrame;
-}
-
-void VDStreamInterleaver::EndStream(int stream) {
-	Stream& streaminfo = mStreams[stream];
-
-	if (streaminfo.mbActive) {
-		streaminfo.mbActive		= false;
-		streaminfo.mSamplesToWrite	= 0;
-		mBytesPerFrame -= streaminfo.mBytesPerFrame;
-	}
-}
-
-void VDStreamInterleaver::AddVBRCorrection(int stream, sint32 bytes) {
-	VDASSERT(stream >= 0 && stream < mStreams.size());
-	VDASSERT(bytes >= 0 && bytes <= mStreams[stream].mBytesPerFrame);
-	mCurrentSize += bytes - mStreams[stream].mBytesPerFrame;
-
-//	VDDEBUG("Dub/Interleaver: CurrentSize = %lu\n", (unsigned long)mCurrentSize);
-	VDASSERT(mCurrentSize >= 0);
-}
-
-void VDStreamInterleaver::AddCBRCorrection(int stream, sint32 actual) {
-	VDASSERT(stream >= 0 && stream < mStreams.size());
-	VDASSERT(actual >= 0 && actual <= mStreams[stream].mSamplesToWrite);
-	mCurrentSize += mStreams[stream].mMaxSampleSize * (actual - mStreams[stream].mSamplesToWrite);
-//	VDDEBUG("Dub/Interleaver: CurrentSize = %lu\n", (unsigned long)mCurrentSize);
-	VDASSERT(mCurrentSize >= 0);
-}
-
-VDStreamInterleaver::Action VDStreamInterleaver::GetNextAction(int& streamID, sint32& samples) {
-	const int nStreams = mStreams.size();
-
-	for(;;) {
-		if (!mNextStream) {
-			if (mbForceBreakNext) {
-				mCurrentSize = 0;
-				mSegmentStartFrame += mFrames;
-				mFrames = 0;
-				if (mFramesPerSegment)
-					mSegmentCutFrame = mFramesPerSegment;
-				else
-					mSegmentCutFrame = 0;
-				mSegmentOkFrame = 0;
-				mbSegmentOverflowed = false;
-				mbForceBreakNext = false;
-				return kActionNextSegment;
-			}
-
-			int nActive = 0;
-			sint64 minframe = 0x7fffffffffffffff;
-			sint64 microFrames = (sint64)mFrames << 16;
-
-//			mBytesPerSegment ? mFrames + (mBytesPerSegment - mCurrentSize) / mBytesPerFrame : 0x7fffffffffffffff;
-
-			if (mSegmentCutFrame && mSegmentOkFrame > mSegmentCutFrame)
-				mSegmentOkFrame = mSegmentCutFrame;
-
-			for(int i=0; i<nStreams; ++i) {
-				Stream& streaminfo = mStreams[i];
-
-				if (!streaminfo.mbActive)
-					continue;
-
-				sint64 microFrameOffset = microFrames;
-				
-				if (streaminfo.mIntervalMicroFrames != 65536) {
-					microFrameOffset += streaminfo.mIntervalMicroFrames - 1;
-					microFrameOffset -= microFrameOffset % streaminfo.mIntervalMicroFrames;
-				}
-
-				microFrameOffset += streaminfo.mPreloadMicroFrames;
-
-				sint64 iframe = (microFrameOffset + 65535) >> 16;
-				double frame;
-
-				if (iframe > mSegmentOkFrame) {
-					VDASSERT(iframe > 0);
-
-					// If using a byte limit and no cut point has been established,
-					// try to push the limit forward.
-					if (mBytesPerSegment && !mSegmentCutFrame) {
-						VDASSERT(mSegmentOkFrame >= mFrames - 1);
-
-						sint64 targetFrame = iframe;
-						if (mFramesPerSegment && iframe > mFramesPerSegment)
-							targetFrame = mFramesPerSegment;
-
-						// If the cut stream (usually video) is still active, use its estimator
-						// to place the cut.
-
-						sint64 projectedSize = mCurrentSize;
-						sint64 projectedTarget = mSegmentOkFrame;
-						int j;
-
-						for(j=0; j<nStreams; ++j)
-							mStreams[j].mEstimatedSamples = mStreams[j].mSamplesWrittenToSegment;
-
-						if (mpCutEstimator && mStreams[mCutStream].mbActive)
-							projectedTarget = std::min<sint64>(projectedTarget, mStreams[mCutStream].mEstimatedSamples - mSegmentStartFrame);
-
-						while(projectedTarget < targetFrame) {
-							if (mpCutEstimator && mStreams[mCutStream].mbActive) {
-								sint64 framesToNextCutPoint;
-								sint64 bytesToNextCutPoint;
-
-								if (mpCutEstimator->EstimateCutPoint(mCutStream, mStreams[mCutStream].mEstimatedSamples, targetFrame+mSegmentStartFrame, framesToNextCutPoint, bytesToNextCutPoint)) {
-									projectedSize += bytesToNextCutPoint;
-									projectedSize += mPerFrameOverhead * framesToNextCutPoint;
-									projectedTarget = (mStreams[mCutStream].mEstimatedSamples += framesToNextCutPoint) - mSegmentStartFrame;
-								} else {
-									++projectedTarget;
-									projectedSize += mPerFrameOverhead;
-								}
-							} else {
-								++projectedTarget;
-								projectedSize += mPerFrameOverhead;
-							}
-
-							for(j=0; j<nStreams; ++j) {
-								if (j == mCutStream)
-									continue;
-
-								Stream& sinfo = mStreams[j];
-								if (sinfo.mbActive) {
-									sint64 diff = (sint64)ceil(sinfo.mSamplesPerFrame * (projectedTarget + mSegmentStartFrame)) - sinfo.mEstimatedSamples;
-
-									if (diff > 0) {
-										sinfo.mEstimatedSamples += diff;
-										projectedSize += diff * sinfo.mMaxSampleSize;
-									}
-								}
-							}
-
-							if (projectedSize > mBytesPerSegment)
-								break;
-
-							mSegmentOkFrame = projectedTarget;
-						}
-
-//						VDDEBUG("Dub/Interleaver: Projecting frame %ld -> %ld (size %ld + %ld < %ld)\n", (long)mFrames, (long)mSegmentOkFrame, (long)mCurrentSize, (long)projectedSize - (long)mCurrentSize, (long)mBytesPerSegment);
-
-						if (mSegmentOkFrame <= 0) {
-							mbSegmentOverflowed = true;
-							mSegmentOkFrame = 1;
-						}
-					}
-
-					// If still above limit, then we must force a segment break.
-					if (iframe > mSegmentOkFrame) {
-						mSegmentCutFrame = mSegmentOkFrame;
-						frame = iframe = mSegmentCutFrame;
-					} else
-						frame = microFrameOffset / 65536.0;
-				} else
-					frame = microFrameOffset / 65536.0;
-
-				if (iframe < minframe)
-					minframe = iframe;
-
-				sint64 toread = (sint64)ceil(streaminfo.mSamplesPerFrame * (frame + mSegmentStartFrame)) - streaminfo.mSamplesWrittenToSegment;
-
-				if (toread < 0)
-					toread = 0;
-			
-				VDASSERT((sint32)toread == toread);
-				streaminfo.mSamplesToWrite = (sint32)toread;
-
-				++nActive;
-			}
-
-			if (!nActive)
-				return kActionFinish;
-
-			if (mSegmentCutFrame && minframe >= mSegmentCutFrame) {
-				mbForceBreakNext = true;
-			}
-		}
-
-		VDASSERT(!mBytesPerSegment || mCurrentSize <= mBytesPerSegment);
-
-		for(; mNextStream<nStreams; ++mNextStream) {
-			Stream& streaminfo = mStreams[mNextStream];
-
-			if (streaminfo.mSamplesToWrite > 0) {
-				samples = streaminfo.mSamplesToWrite;
-				streamID = mNextStream++;
-				VDASSERT(samples < 2147483647);
-				mCurrentSize += samples * streaminfo.mMaxSampleSize;
-//	VDDEBUG("Dub/Interleaver: stream %d, CurrentSize = %lu\n", (int)streamID, (unsigned long)mCurrentSize);
-				streaminfo.mSamplesWrittenToSegment += samples;
-				return kActionWrite;
-			}
-		}
-
-		mCurrentSize += mPerFrameOverhead;
-
-		VDASSERT(!mBytesPerSegment || mCurrentSize <= mBytesPerSegment);
-
-		mNextStream = 0;
-		if (!mbForceBreakNext)
-			++mFrames;
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-class VDRenderFrameMap {
-public:
-	void		Init(VideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect);
-
-	VDPosition	TimelineFrame(VDPosition outFrame) const {
-		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[outFrame].first : -1;
-	}
-
-	VDPosition	DisplayFrame(VDPosition outFrame) const {
-		return outFrame>=0 && outFrame<mMaxFrame ? mFrameMap[outFrame].second : -1;
-	}
-
-protected:
-	std::vector<std::pair<VDPosition, VDPosition> > mFrameMap;
-	VDPosition mMaxFrame;
-};
-
-void VDRenderFrameMap::Init(VideoSource *pVS, VDPosition nSrcStart, VDFraction srcStep, FrameSubset *pSubset, VDPosition nFrameCount, bool bDirect) {
-	VDPosition directLast = -1;
-
-	for(VDPosition frame = 0; frame < nFrameCount; ++frame) {
-		VDPosition timelineFrame = nSrcStart + srcStep.scale64t(frame);
-		VDPosition srcFrame = timelineFrame;
-
-		if (pSubset) {
-			srcFrame = pSubset->lookupFrame(srcFrame);
-			if (srcFrame < 0)
-				break;
-		} else {
-			if (srcFrame < 0 || srcFrame >= pVS->lSampleLast)
-				break;
-		}
-
-		if (bDirect) {
-			VDPosition key = pVS->nearestKey((LONG)srcFrame);
-
-			if (directLast < key)
-				directLast = key;
-			else if (directLast > srcFrame)
-				directLast = key;
-			else if (directLast < srcFrame)
-				++directLast;
-
-			srcFrame = directLast;
-		}
-
-		mFrameMap.push_back(std::make_pair(timelineFrame, srcFrame));
-	}
-
-	mMaxFrame = mFrameMap.size();
-};
-
-class VDRenderFrameIterator : public IVDStreamInterleaverCutEstimator {
-public:
-	VDRenderFrameIterator(const VDRenderFrameMap& frameMap) : mFrameMap(frameMap) {}
-
-	void		Init(VideoSource *pVS, bool bDirect);
-	void		Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll);
-
-	bool		EstimateCutPoint(int stream, sint64 start, sint64 target, sint64& framesToNextPoint, sint64& bytesToNextPoint);
-
-protected:
-	bool		Reload();
-	void		ReloadQueue(sint32 nCount);
-	long		ConvertToIdealRawFrame(sint64 frame);
-
-	const VDRenderFrameMap&	mFrameMap;
-
-	VDPosition	mSrcTimelineFrame;
-	VDPosition	mSrcDisplayFrame;
-	VDPosition	mLastSrcDisplayFrame;
-	VDPosition	mDstFrame;
-	VDPosition	mDstFrameQueueNext;
-
-	VideoSource	*mpVideoSource;
-
-	bool		mbDirect;
-	bool		mbFirstSourceFrame;
-	bool		mbFinished;
-};
-
-void VDRenderFrameIterator::Init(VideoSource *pVS, bool bDirect) {
-	mpVideoSource	= pVS;
-	mbDirect		= bDirect;
-	mDstFrame		= 0;
-	mSrcDisplayFrame	= -1;
-	mLastSrcDisplayFrame = -1;
-	mbFinished		= false;
-
-	Reload();
-}
-
-void VDRenderFrameIterator::Next(VDPosition& srcFrame, VDPosition& displayFrame, VDPosition& timelineFrame, bool& bIsPreroll) {
-	while(!mbFinished) {
-		BOOL b;
-		long f = -1;
-
-		if (mSrcDisplayFrame >= 0) {
-			f = mpVideoSource->streamGetNextRequiredFrame(&b);
-			bIsPreroll = (b!=0) && !mbDirect;
-		} else {
-			f = -1;
-			bIsPreroll = false;
-		}
-
-		if (f!=-1 || mbFirstSourceFrame) {
-			mbFirstSourceFrame = false;
-
-			srcFrame = f;
-			displayFrame = mSrcDisplayFrame;
-			timelineFrame = mSrcTimelineFrame;
-
-			if (mbDirect)
-				if (!Reload())
-					mbFinished = true;
-//			VDDEBUG("Dub/RenderFrameIterator: Issuing %lu\n", (unsigned long)displayFrame);
-			return;
-		}
-
-		if (!Reload())
-			break;
-	}		
-
-	srcFrame = -1;
-	timelineFrame = mSrcTimelineFrame;
-	displayFrame = mSrcDisplayFrame;
-	bIsPreroll = false;
-	mbFinished = true;
-}
-
-bool VDRenderFrameIterator::Reload() {
-	mSrcTimelineFrame	= mFrameMap.TimelineFrame(mDstFrame);
-	if (mSrcTimelineFrame < 0)
-		return false;
-	VDPosition nextDisplay = mFrameMap.DisplayFrame(mDstFrame);
-
-	if (mbDirect && nextDisplay == mLastSrcDisplayFrame)
-		nextDisplay = -1;
-	else {
-		mpVideoSource->streamSetDesiredFrame((LONG)nextDisplay);
-		mLastSrcDisplayFrame = nextDisplay;
-	}
-
-	mSrcDisplayFrame = nextDisplay;
-	++mDstFrame;
-
-	mbFirstSourceFrame = true;
-	return true;
-}
-
-bool VDRenderFrameIterator::EstimateCutPoint(int stream, sint64 start, sint64 target, sint64& framesToNextPoint, sint64& bytesToNextPoint) {
-	VDASSERT(mbDirect);		// We shouldn't be used as an estimator in non-direct mode.
-
-//	VDDEBUG("Dub/RenderFrameIterator: Mapping %lu -> %lu\n", (unsigned long)start, (unsigned long)rawFrame);
-
-	VDPosition rangeLo = -1, rangeHi;
-
-	framesToNextPoint = 0;
-	bytesToNextPoint = 0;
-	for(;;) {
-		VDPosition srcFrame = mFrameMap.DisplayFrame(start);
-
-		if (srcFrame < 0) {
-			if (start < target)
-				framesToNextPoint += target-start;
-			break;
-		}
-
-		if (rangeLo < 0) {
-			rangeLo = mpVideoSource->nearestKey((LONG)srcFrame);
-			if (rangeLo < 0)
-				rangeLo = 0;
-			rangeHi = mpVideoSource->nextKey((LONG)rangeLo);
-			if (rangeHi < 0)
-				rangeHi = mpVideoSource->lSampleLast;
-		} else if (srcFrame < rangeLo || srcFrame >= rangeHi)
-			break;
-
-		LONG lSize;
-
-		++framesToNextPoint;
-
-		if (start > 0 && mFrameMap.DisplayFrame(start-1) == srcFrame) {
-			lSize = 0;		// frame duplication -- special case
-		} else {
-			int hr = mpVideoSource->read((LONG)srcFrame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
-			if (hr) {
-				VDASSERT(false);
-				break;	// shouldn't happen
-			}
-		}
-
-		bytesToNextPoint += lSize;
-		++start;
-	}
-
-	return true;
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	VDDubIOThread
-//
-///////////////////////////////////////////////////////////////////////////
 
 namespace {
-	enum {
-		kBufferFlagDelta		= 1,
-		kBufferFlagPreload		= 2
-	};
-}
+	bool VDIsDC565(HDC hdc) {
+		bool bIs565 = false;
 
+		int bitsPerPel = GetDeviceCaps(hdc, BITSPIXEL);
 
-class VDDubIOThread : public VDThread {
-public:
-	VDDubIOThread(
-		bool				bPhantom,
-		bool				bRealTime,
-		VideoSource			*pVideo,
-		VDRenderFrameIterator& videoFrameIterator,
-		AudioStream			*pAudio,
-		AVIPipe				*const pVideoPipe,
-		VDRingBuffer<char>	*const pAudioPipe,
-		VDSignal&			sigAudioPipeRead,
-		VDSignal&			sigAudioPipeWrite,
-		AudioL3Corrector	*const pAudioStreamCorrector,
-		volatile bool&		bAudioPipeFinalized,
-		volatile bool&		bAudioPipeFinalizeAcked,
-		volatile bool&		bAbort,
-		DubAudioStreamInfo&	_aInfo,
-		DubVideoStreamInfo& _vInfo,
-		VDAtomicInt&		threadCounter
-		);
-	~VDDubIOThread();
+		if (bitsPerPel==15 || bitsPerPel==16) {
+			COLORREF crTmp;
+			crTmp = GetPixel(hdc, 0,0);
+			SetPixel(hdc, 0, 0, RGB(0x80, 0x88, 0x80));
 
-	bool GetError(MyError& e) {
-		if (mbError) {
-			e.TransferFrom(mError);
-			return true;
-		}
-		return false;
-	}
+			if (GetPixel(hdc,0,0) == RGB(0x80, 0x88, 0x80))
+				bIs565 = true;
 
-protected:
-	void ThreadRun();
-	void ReadVideoFrame(VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload);
-	void ReadNullVideoFrame(VDPosition displayFrame, VDPosition timelineFrame);
-	bool MainAddVideoFrame();
-	bool MainAddAudioFrame();
-
-	MyError				mError;
-	bool				mbError;
-
-	// config vars (ick)
-
-	bool				mbPhantom;
-	bool				mbRealTime;
-	VideoSource			*const mpVideo;
-	VDRenderFrameIterator& mVideoFrameIterator;
-	AudioStream			*const mpAudio;
-	AVIPipe				*const mpVideoPipe;
-	VDRingBuffer<char>	*const mpAudioPipe;
-	VDSignal&			msigAudioPipeRead;
-	VDSignal&			msigAudioPipeWrite;
-	AudioL3Corrector	*const mpAudioStreamCorrector;
-	volatile bool&		mbAudioPipeFinalized;
-	volatile bool&		mbAudioPipeFinalizeAcked;
-	volatile bool&		mbAbort;
-	DubAudioStreamInfo&	aInfo;
-	DubVideoStreamInfo& vInfo;
-	VDAtomicInt&		mThreadCounter;
-};
-
-VDDubIOThread::VDDubIOThread(
-		bool				bPhantom,
-		bool				bRealTime,
-		VideoSource			*pVideo,
-		VDRenderFrameIterator& videoFrameIterator,
-		AudioStream			*pAudio,
-		AVIPipe				*const pVideoPipe,
-		VDRingBuffer<char>	*const pAudioPipe,
-		VDSignal&			sigAudioPipeRead,
-		VDSignal&			sigAudioPipeWrite,
-		AudioL3Corrector	*const pAudioStreamCorrector,
-		volatile bool&		bAudioPipeFinalized,
-		volatile bool&		bAudioPipeFinalizeAcked,
-		volatile bool&		bAbort,
-		DubAudioStreamInfo&	_aInfo,
-		DubVideoStreamInfo& _vInfo,
-		VDAtomicInt&		threadCounter
-							 )
-	: VDThread("Dub-I/O")
-	, mbError(false)
-	, mbPhantom(bPhantom)
-	, mbRealTime(bRealTime)
-	, mpVideo(pVideo)
-	, mVideoFrameIterator(videoFrameIterator)
-	, mpAudio(pAudio)
-	, mpVideoPipe(pVideoPipe)
-	, mpAudioPipe(pAudioPipe)
-	, msigAudioPipeRead(sigAudioPipeRead)
-	, msigAudioPipeWrite(sigAudioPipeWrite)
-	, mpAudioStreamCorrector(pAudioStreamCorrector)
-	, mbAudioPipeFinalized(bAudioPipeFinalized)
-	, mbAudioPipeFinalizeAcked(bAudioPipeFinalizeAcked)
-	, mbAbort(bAbort)
-	, aInfo(_aInfo)
-	, vInfo(_vInfo)
-	, mThreadCounter(threadCounter)
-{
-}
-
-VDDubIOThread::~VDDubIOThread() {
-}
-
-void VDDubIOThread::ThreadRun() {
-
-	///////////
-
-	VDDEBUG("Dub/Main: Start.\n");
-
-	VDRTProfileChannel profchan("I/O");		// sensei?
-
-	try {
-		try {
-			bool bAudioActive = (mpAudio != 0);
-			bool bVideoActive = (mpVideo != 0);
-
-			while(!mbAbort && (bAudioActive || bVideoActive)) { 
-				bool bBlocked = true;
-
-				++mThreadCounter;
-
-				if (bVideoActive && !mpVideoPipe->full()) {
-					bBlocked = false;
-
-					profchan.Begin(0xffe0e0, "Video");
-
-					if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
-						bVideoActive = false;
-						mpVideoPipe->finalize();
-					}
-
-					profchan.End();
-				}
-
-				if (bAudioActive && !mpAudioPipe->full()) {
-					bBlocked = false;
-
-					profchan.Begin(0xe0e0ff, "Audio");
-
-					if (!MainAddAudioFrame() && mpAudio->isEnd()) {
-						bAudioActive = false;
-						mbAudioPipeFinalized = true;
-						msigAudioPipeWrite.signal();
-					}
-
-					profchan.End();
-				}
-
-				if (bBlocked) {
-					if (bAudioActive && mbAudioPipeFinalizeAcked) {
-						bAudioActive = false;
-						continue;
-					}
-
-					if (bVideoActive && mpVideoPipe->isFinalizeAcked()) {
-						bVideoActive = false;
-						continue;
-					}
-
-					mpVideoPipe->getReadSignal().wait(&msigAudioPipeRead);
-				}
-			}
-		} catch(MyError& e) {
-			if (!mbError) {
-				mError.TransferFrom(e);
-				mbError = true;
-			}
-//			e.post(NULL, "Dub Error (will attempt to finalize)");
+			SetPixel(hdc, 0, 0, crTmp);
 		}
 
-		// wait for the pipelines to clear...
-
-		if (!mbAbort) {
-			mbAudioPipeFinalized = true;
-			msigAudioPipeWrite.signal();
-			mpVideoPipe->finalizeAndWait();
-			while(!mbAudioPipeFinalizeAcked)
-				msigAudioPipeRead.wait();
-		}
-
-		// kill everyone else...
-
-		mbAbort = true;
-
-	} catch(MyError& e) {
-//		e.post(NULL,"Dub Error");
-
-		if (!mbError) {
-			mError.TransferFrom(e);
-			mbError = true;
-		}
-		mbAbort = true;
-	}
-
-	// All done, time to get the pooper-scooper and clean up...
-
-	VDDEBUG("Dub/Main: End.\n");
-}
-
-void VDDubIOThread::ReadVideoFrame(VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload) {
-	LONG lActualBytes;
-	int hr;
-
-	void *buffer;
-	int handle;
-
-	LONG lSize;
-
-	if (mbPhantom) {
-		buffer = mpVideoPipe->getWriteBuffer(0, &handle);
-		if (!buffer) return;	// hmm, aborted...
-
-		bool bIsKey = !!mpVideo->isKey(display_frame);
-
-		mpVideoPipe->postBuffer(0, stream_frame, display_frame, timeline_frame,
-			(bIsKey ? 0 : kBufferFlagDelta)
-			+(preload ? kBufferFlagPreload : 0),
-			0,
-			handle);
-
-		return;
-	}
-
-//	VDDEBUG("Reading frame %ld (%s)\n", lVStreamPos, preload ? "preload" : "process");
-
-	hr = mpVideo->read(stream_frame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
-	if (hr) {
-		if (hr == AVIERR_FILEREAD)
-			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
-		else
-			throw MyAVIError("Dub/IO-Video", hr);
-	}
-
-	// Add 4 bytes -- otherwise, we can get crashes with uncompressed video because
-	// the bitmap routines expect to be able to read 4 bytes out.
-
-	buffer = mpVideoPipe->getWriteBuffer(lSize+4, &handle);
-	if (!buffer) return;	// hmm, aborted...
-
-	hr = mpVideo->read(stream_frame, 1, buffer, lSize,	&lActualBytes,NULL); 
-	if (hr) {
-		if (hr == AVIERR_FILEREAD)
-			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
-		else
-			throw MyAVIError("Dub/IO-Video", hr);
-	}
-
-	display_frame = mpVideo->streamToDisplayOrder(stream_frame);
-
-	mpVideoPipe->postBuffer(lActualBytes, stream_frame, display_frame, timeline_frame,
-		(mpVideo->isKey(display_frame) ? 0 : kBufferFlagDelta)
-		+(preload ? kBufferFlagPreload : 0),
-		mpVideo->getDropType(display_frame),
-		handle);
-
-
-}
-
-void VDDubIOThread::ReadNullVideoFrame(VDPosition displayFrame, VDPosition timelineFrame) {
-	void *buffer;
-	int handle;
-
-	buffer = mpVideoPipe->getWriteBuffer(1, &handle);
-	if (!buffer) return;	// hmm, aborted...
-
-	if (displayFrame >= 0) {
-		VDPosition streamFrame = mpVideo->displayToStreamOrder((long)displayFrame);
-		bool bIsKey = mpVideo->isKey((long)displayFrame);
-
-		mpVideoPipe->postBuffer(0, streamFrame, displayFrame, timelineFrame,
-			(bIsKey ? 0 : kBufferFlagDelta),
-			mpVideo->getDropType((long)displayFrame),
-			handle);
-	} else {
-		mpVideoPipe->postBuffer(0, displayFrame, displayFrame, timelineFrame,
-			kBufferFlagDelta,
-			AVIPipe::kDroppable,
-			handle);
+		return bIs565;
 	}
 }
 
-//////////////////////
-
-bool VDDubIOThread::MainAddVideoFrame() {
-	if (vInfo.cur_dst >= vInfo.end_dst)
-		return false;
-
-	VDPosition streamFrame, displayFrame, timelineFrame;
-	bool bIsPreroll;
-	
-	mVideoFrameIterator.Next(streamFrame, displayFrame, timelineFrame, bIsPreroll);
-
-	vInfo.cur_src = vInfo.start_src + timelineFrame;
-
-	if (streamFrame<0)
-		ReadNullVideoFrame(displayFrame, timelineFrame);
-	else
-		ReadVideoFrame(streamFrame, displayFrame, timelineFrame, bIsPreroll);
-
-	if (!bIsPreroll)
-		++vInfo.cur_dst;
-
-	return true;
-}
-
-bool VDDubIOThread::MainAddAudioFrame() {
-	LONG lActualBytes=0;
-	LONG lActualSamples=0;
-
-	const int blocksize = mpAudio->GetFormat()->nBlockAlign;
-	int samples = mpAudioPipe->getSpace();
-
-	while(samples > 0) {
-		int len = samples * blocksize;
-
-		int tc;
-		void *dst;
-		
-		dst = mpAudioPipe->LockWrite(len, tc);
-
-		if (!tc)
-			break;
-
-		if (mbAbort)
-			break;
-
-		LONG ltActualBytes, ltActualSamples;
-		ltActualSamples = mpAudio->Read(dst, tc / blocksize, &ltActualBytes);
-
-		if (ltActualSamples <= 0)
-			break;
-
-		int residue = ltActualBytes % blocksize;
-
-		if (residue) {
-			VDASSERT(false);	// This is bad -- it means the input file has partial samples.
-
-			ltActualBytes += blocksize - residue;
-		}
-
-		if (mpAudioStreamCorrector)
-			mpAudioStreamCorrector->Process(dst, ltActualBytes);
-
-		mpAudioPipe->UnlockWrite(ltActualBytes);
-		msigAudioPipeWrite.signal();
-
-		aInfo.total_size += ltActualBytes;
-		aInfo.cur_src += ltActualSamples;
-
-		lActualBytes += ltActualBytes;
-		lActualSamples += ltActualSamples;
-
-		samples -= ltActualSamples;
-	}
-
-	return lActualSamples > 0;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -1266,12 +245,13 @@ private:
 
 	DubOptions			*opt;
 	AudioSource			*aSrc;
-	VideoSource			*vSrc;
+	IVDVideoSource		*vSrc;
 	InputFile			*pInput;
 	AVIOutput			*AVIout;
+	IVDMediaOutputStream		*mpAudioOut;			// alias: AVIout->audioOut
+	IVDMediaOutputStream		*mpVideoOut;			// alias: AVIout->videoOut
 	IVDDubberOutputSystem	*mpOutputSystem;
 	COMPVARS			*compVars;
-	HDC					hDCWindow;
 
 	DubAudioStreamInfo	aInfo;
 	DubVideoStreamInfo	vInfo;
@@ -1294,35 +274,26 @@ private:
 	VideoSequenceCompressor	*pVideoPacker;
 
 	AVIPipe *			mpVideoPipe;
-	VDRingBuffer<char>	mAudioPipe;
-	VDSignal			msigAudioPipeRead;
-	VDSignal			msigAudioPipeWrite;
-
-	volatile bool		mbAudioPipeFinalized;
-	volatile bool		mbAudioPipeFinalizeAcked;
+	VDAudioPipeline		mAudioPipe;
 
 	AsyncBlitter *		blitter;
 
 	HIC					outputDecompressor;
 
-	VDMappedBitmap		mInputDisplay, mOutputDisplay;
-
-	int					x_client, y_client;
-	RECT				rInputFrame, rOutputFrame, rInputHistogram, rOutputHistogram;
+	IVDVideoDisplay *	mpInputDisplay;
+	IVDVideoDisplay *	mpOutputDisplay;
+	bool				mbInputDisplayInitialized;
 	bool				fShowDecompressedFrame;
 	bool				fDisplay565;
-	IDDrawSurface		*pdsInput;
-	IDDrawSurface		*pdsOutput;
 
 	int					iOutputDepth;
-	BITMAPINFO			*compressorVideoFormat;
-	BITMAPINFO			compressorVideoDIBFormat;
-	BITMAPV4HEADER		bihDisplayFormat;
+	VDFormatStruct<BITMAPINFOHEADER>	mpCompressorVideoFormat;
+	VDFormatStruct<BITMAPINFOHEADER>	mpDisplayFormat;
 
 	std::vector<AudioStream *>	mAudioStreams;
 	AudioStream			*audioStream, *audioTimingStream;
 	AudioStream			*audioStatusStream;
-	AudioL3Corrector	*audioCorrector;
+	AudioStreamL3Corrector	*audioCorrector;
 	vdautoptr<VDAudioFilterGraph> mpAudioFilterGraph;
 
 	FrameSubset				*inputSubsetActive;
@@ -1331,8 +302,6 @@ private:
 	int					nVideoLagPreload;
 
 	VDFormatStruct<WAVEFORMATEX> mAudioCompressionFormat;
-
-	Histogram			*inputHisto, *outputHisto;
 
 	VDAtomicInt			mRefreshFlag;
 	HWND				hwndStatus;
@@ -1377,35 +346,32 @@ public:
 
 	void SetAudioCompression(WAVEFORMATEX *wf, LONG cb);
 	void SetPhantomVideoMode();
+	void SetInputDisplay(IVDVideoDisplay *);
+	void SetOutputDisplay(IVDVideoDisplay *);
 	void SetInputFile(InputFile *pInput);
 	void SetFrameRectangles(RECT *prInput, RECT *prOutput);
-	void SetClientRectOffset(int x, int y);
 	void SetAudioFilterGraph(const VDAudioFilterGraph& graph);
 	void EnableSpill(sint64 threshold, long framethreshold);
-
-	static void Dubber::SetClientRectOffset2(void *pv);
-	static void Dubber::SetFrameRectangles2(void *pv);
-
 
 	void InitAudioConversionChain();
 	void InitOutputFile();
 	bool AttemptInputOverlay(BITMAPINFOHEADER *pbih);
-	void AttemptInputOverlays();
-	static void AttemptInputOverlays2(void *pThis);
+	bool AttemptInputOverlays();
 
-	bool AttemptOutputOverlay();
 	void InitDirectDraw();
-	void InitDisplay();
+	void InitInputDisplay();
+	void InitOutputDisplay();
 	bool NegotiateFastFormat(BITMAPINFOHEADER *pbih);
 	bool NegotiateFastFormat(int depth);
 	void InitSelectInputFormat();
-	void Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem *outsys, HDC hDC, COMPVARS *videoCompVars);
+	void Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *outsys, COMPVARS *videoCompVars);
 	void Go(int iPriority = 0);
 	void Stop();
 
 	void RealizePalette();
 	void Abort();
 	void ForceAbort();
+	bool isRunning();
 	bool isAbortedByUser();
 	bool IsPreviewing();
 	void Tag(int x, int y);
@@ -1432,8 +398,6 @@ Dubber::Dubber(DubOptions *xopt)
 	, mpAudioFilterGraph(NULL)
 	, mStopLock(0)
 	, mpVideoPipe(NULL)
-	, mbAudioPipeFinalized(false)
-	, mbAudioPipeFinalizeAcked(false)
 	, mSegmentByteLimit(0)
 	, mVideoFrameIterator(mVideoFrameMap)
 	, mProcessingThreadCounter(0)
@@ -1469,9 +433,6 @@ Dubber::Dubber(DubOptions *xopt)
 	aInfo.total_size	= 0;
 	vInfo.fAudioOnly	= false;
 
-	pdsInput			= NULL;
-	pdsOutput			= NULL;
-
 	audioStream			= NULL;
 	audioStatusStream	= NULL;
 	audioCorrector		= NULL;
@@ -1479,14 +440,13 @@ Dubber::Dubber(DubOptions *xopt)
 	inputSubsetActive	= NULL;
 	inputSubsetAlloc	= NULL;
 
-	inputHisto			= NULL;
-	outputHisto			= NULL;
-
 	fPhantom = false;
 
 	pInvTelecine		= NULL;
 
 	AVIout				= NULL;
+	mpVideoOut			= NULL;
+	mpAudioOut			= NULL;
 	fEnableSpill		= false;
 
 	lSegmentFrameLimit	= 0;
@@ -1524,76 +484,23 @@ void Dubber::SetStatusHandler(IDubStatusHandler *pdsh) {
 
 /////////////
 
-struct DubberSetFrameRectangles {
-	IDDrawSurface *pDD;
-	RECT *pr;
+void Dubber::SetInputDisplay(IVDVideoDisplay *pDisplay) {
+	mpInputDisplay = pDisplay;
+}
 
-	DubberSetFrameRectangles(IDDrawSurface *_pDD, RECT *_pr) : pDD(_pDD), pr(_pr) {}
-};
-
-void Dubber::SetFrameRectangles2(void *pv) {
-	DubberSetFrameRectangles *pData = (DubberSetFrameRectangles *)pv;
-
-	pData->pDD->SetOverlayPos(pData->pr);
+void Dubber::SetOutputDisplay(IVDVideoDisplay *pDisplay) {
+	mpOutputDisplay = pDisplay;
 }
 
 void Dubber::SetFrameRectangles(RECT *prInput, RECT *prOutput) {
-	rInputFrame = *prInput;
-	rOutputFrame = *prOutput;
+//	rInputFrame = *prInput;
+//	rOutputFrame = *prOutput;
 
-	if (g_vertical) {
-		rInputHistogram.left	= rInputFrame.right + 6;
-		rInputHistogram.top		= rInputFrame.top;
-		rOutputHistogram.left	= rOutputFrame.right + 6;
-		rOutputHistogram.top	= rOutputFrame.top;
-	} else {
-		rInputHistogram.left	= rInputFrame.left;
-		rInputHistogram.top		= rInputFrame.bottom + 6;
-		rOutputHistogram.left	= rOutputFrame.left;
-		rOutputHistogram.top	= rOutputFrame.bottom + 6;
-	}
-
-	rInputHistogram.right	= rInputHistogram.left + 256;
-	rInputHistogram.bottom	= rInputHistogram.top  + 128;
-
-	rOutputHistogram.right	= rOutputHistogram.left + 256;
-	rOutputHistogram.bottom	= rOutputHistogram.top  + 128;
-
-	if (pdsInput) {
-		RECT r = rInputFrame;
-
-		r.left += x_client;
-		r.right += x_client;
-		r.top += y_client;
-		r.bottom += y_client;
-
-		blitter->postAFC(0x80000000, SetFrameRectangles2, &DubberSetFrameRectangles(pdsInput, &r));
-	}
+//	mInputDisplay.SetDestRect(rInputFrame.left, rInputFrame.top, rInputFrame.right-rInputFrame.left, rInputFrame.bottom - rInputFrame.top);
+//	mOutputDisplay.SetDestRect(rOutputFrame.left, rOutputFrame.top, rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom - rOutputFrame.top);
 }
 
 /////////////
-
-struct DubberSetClientRectOffset {
-	IDDrawSurface *pDD;
-	long x,y;
-
-	DubberSetClientRectOffset(IDDrawSurface *_pDD, long _x, long _y) : pDD(_pDD), x(_x), y(_y) {}
-};
-
-
-void Dubber::SetClientRectOffset2(void *pv) {
-	DubberSetClientRectOffset *pData = (DubberSetClientRectOffset *)pv;
-
-	pData->pDD->MoveOverlay(pData->x, pData->y);
-}
-
-void Dubber::SetClientRectOffset(int x, int y) {
-	x_client = x;
-	y_client = y;
-
-	if (pdsInput)
-		blitter->postAFC(0x80000000, SetClientRectOffset2, &DubberSetClientRectOffset(pdsInput, x + rInputFrame.left, y + rInputFrame.top));
-}
 
 void Dubber::EnableSpill(sint64 segsize, long framecnt) {
 	fEnableSpill = true;
@@ -1605,18 +512,21 @@ void Dubber::SetAudioFilterGraph(const VDAudioFilterGraph& graph) {
 	mpAudioFilterGraph = new VDAudioFilterGraph(graph);
 }
 
-void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, VideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs) {
+void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo, IVDVideoSource *video, AudioSource *audio, DubOptions *opt, FrameSubset *pfs) {
 	if (!pfs)
 		pfs = inputSubset;
 
+	IVDStreamSource *pVideoStream = 0;
+	
 	if (video) {
+		pVideoStream = video->asStream();
 
 		if (pfs) {
 			vInfo.start_src		= 0;
 			vInfo.end_src		= pfs->getTotalFrames();
 		} else {
-			vInfo.start_src		= video->lSampleFirst;
-			vInfo.end_src		= video->lSampleLast;
+			vInfo.start_src		= pVideoStream->getStart();
+			vInfo.end_src		= pVideoStream->getEnd();
 		}
 	} else {
 		vInfo.start_src		= 0;
@@ -1628,8 +538,8 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 	vInfo.end_proc_dst	= 0;
 
 	if (audio) {
-		aInfo.start_src		= audio->lSampleFirst;
-		aInfo.end_src		= audio->lSampleLast;
+		aInfo.start_src		= audio->getStart();
+		aInfo.end_src		= audio->getEnd();
 	} else {
 		aInfo.start_src		= 0;
 		aInfo.end_src		= aInfo.end_dst		= 0;
@@ -1641,11 +551,11 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 	if (video) {
 		// compute new frame rate
 
-		VDFraction framerate(video->streamInfo.dwRate, video->streamInfo.dwScale);
+		VDFraction framerate(pVideoStream->getRate());
 
 		if (opt->video.frameRateNewMicroSecs == DubVideoOptions::FR_SAMELENGTH) {
-			if (audio && audio->streamInfo.dwLength) {
-				framerate = VDFraction::reduce64(video->streamInfo.dwLength * (sint64)1000, audio->samplesToMs(audio->streamInfo.dwLength));
+			if (audio && audio->getLength()) {
+				framerate = VDFraction::reduce64(pVideoStream->getLength() * (sint64)1000, audio->samplesToMs(audio->getLength()));
 			}
 		} else if (opt->video.frameRateNewMicroSecs)
 			framerate = VDFraction(1000000, opt->video.frameRateNewMicroSecs);
@@ -1653,11 +563,11 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 		// are we supposed to offset the video?
 
 		if (opt->video.lStartOffsetMS) {
-			vInfo.start_src += video->msToSamples(opt->video.lStartOffsetMS); 
+			vInfo.start_src += pVideoStream->msToSamples(opt->video.lStartOffsetMS); 
 		}
 
 		if (opt->video.lEndOffsetMS)
-			vInfo.end_src -= video->msToSamples(opt->video.lEndOffsetMS);
+			vInfo.end_src -= pVideoStream->msToSamples(opt->video.lEndOffsetMS);
 
 		vInfo.frameRateIn	= framerate;
 
@@ -1685,7 +595,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 		aInfo.start_us = -1000*opt->audio.offset;
 
 		if (video) {
-			const sint64 video_start	= vInfo.start_src - video->lSampleFirst;
+			const sint64 video_start	= vInfo.start_src - pVideoStream->getStart();
 			const sint64 video_length	= vInfo.end_src - vInfo.start_src;
 
 
@@ -1704,7 +614,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 			const sint64 video_length	= vInfo.end_src - vInfo.start_src;
 			long lMaxLength;
 
-			const VDFraction audiorate(audio->streamInfo.dwRate, audio->streamInfo.dwScale);
+			const VDFraction audiorate(audio->getRate());
 
 			lMaxLength = (long)(audiorate / vInfo.frameRateIn).scale64r(video_length);
 
@@ -1736,7 +646,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 			}
 		}
 
-		aInfo.cur_src		= audio->nearestKey(aInfo.start_src);
+		aInfo.cur_src		= aInfo.start_src;
 		aInfo.cur_dst		= 0;
 	}
 
@@ -1760,7 +670,9 @@ void Dubber::InitAudioConversionChain() {
 
 	// Initialize audio conversion chain
 
-	if (opt->audio.mode > DubAudioOptions::M_NONE && mpAudioFilterGraph) {
+	bool bUseAudioFilterGraph = (opt->audio.mode > DubAudioOptions::M_NONE && mpAudioFilterGraph);
+
+	if (bUseAudioFilterGraph) {
 		audioStream = new_nothrow AudioFilterSystemStream(*mpAudioFilterGraph, aInfo.start_us);
 		if (!audioStream)
 			throw MyMemoryError();
@@ -1769,11 +681,27 @@ void Dubber::InitAudioConversionChain() {
 	} else {
 		// First, create a source.
 
-		if (!(audioStream = new_nothrow AudioStreamSource(aSrc, aInfo.start_src, aSrc->lSampleLast - aInfo.start_src, opt->audio.mode > DubAudioOptions::M_NONE)))
+		if (!(audioStream = new_nothrow AudioStreamSource(aSrc, aInfo.start_src, aSrc->getEnd() - aInfo.start_src, opt->audio.mode > DubAudioOptions::M_NONE)))
 			throw MyMemoryError();
 
 		mAudioStreams.push_back(audioStream);
+	}
 
+	// Tack on a subset filter as well...
+
+	if (inputSubsetActive) {
+		sint64 offset = 0;
+		
+		if (opt->audio.fStartAudio)
+			offset = vInfo.frameRateIn.scale64ir((sint64)1000000 * vInfo.start_src);
+
+		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset)))
+			throw MyMemoryError();
+
+		mAudioStreams.push_back(audioStream);
+	}
+
+	if (!bUseAudioFilterGraph) {
 		// Attach a converter if we need to...
 
 		if (aInfo.converting) {
@@ -1805,20 +733,6 @@ void Dubber::InitAudioConversionChain() {
 
 			mAudioStreams.push_back(audioStream);
 		}
-	}
-
-	// Tack on a subset filter as well...
-
-	if (inputSubsetActive) {
-		sint64 offset = 0;
-		
-		if (opt->audio.fStartAudio)
-			offset = vInfo.frameRateIn.scale64ir((sint64)1000000 * vInfo.start_src);
-
-		if (!(audioStream = new_nothrow AudioSubset(audioStream, inputSubsetActive, vInfo.frameRateIn, offset)))
-			throw MyMemoryError();
-
-		mAudioStreams.push_back(audioStream);
 	}
 
 	// Make sure we only get what we want...
@@ -1853,8 +767,11 @@ void Dubber::InitAudioConversionChain() {
 	if (!fEnableSpill && !g_prefs.fNoCorrectLayer3 && pCompressor && pCompressor->GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
 		pCompressor->CompensateForMP3();
 
-		if (!(audioCorrector = new_nothrow AudioL3Corrector()))
+		if (!(audioCorrector = new_nothrow AudioStreamL3Corrector(audioStream)))
 			throw MyMemoryError();
+
+		audioStream = audioCorrector;
+		mAudioStreams.push_back(audioStream);
 	}
 
 }
@@ -1868,7 +785,7 @@ void Dubber::InitOutputFile() {
 
 		AVIStreamHeader_fixed	hdr;
 
-		AVISTREAMINFOtoAVIStreamHeader(&hdr, &aSrc->streamInfo);
+		AVISTREAMINFOtoAVIStreamHeader(&hdr, &aSrc->getStreamInfo());
 		hdr.dwStart			= 0;
 		hdr.dwInitialFrames	= opt->audio.preload ? 1 : 0;
 
@@ -1886,16 +803,16 @@ void Dubber::InitOutputFile() {
 	// Do video.
 
 	if (vSrc && mpOutputSystem->AcceptsVideo()) {
-		VBitmap *outputBitmap;
+		VBitmap outputBitmap;
 		
 		if (opt->video.mode >= DubVideoOptions::M_FULL)
-			outputBitmap = filters.OutputBitmap();
+			outputBitmap = *filters.OutputBitmap();
 		else
-			outputBitmap = filters.InputBitmap();
+			outputBitmap.init(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
 
 		AVIStreamHeader_fixed hdr;
 
-		AVISTREAMINFOtoAVIStreamHeader(&hdr, &vSrc->streamInfo);
+		AVISTREAMINFOtoAVIStreamHeader(&hdr, &vSrc->asStream()->getStreamInfo());
 
 		hdr.dwSampleSize = 0;
 
@@ -1914,28 +831,35 @@ void Dubber::InitOutputFile() {
 
 		hdr.rcFrame.left	= 0;
 		hdr.rcFrame.top		= 0;
-		hdr.rcFrame.right	= (short)outputBitmap->w;
-		hdr.rcFrame.bottom	= (short)outputBitmap->h;
+		hdr.rcFrame.right	= (short)outputBitmap.w;
+		hdr.rcFrame.bottom	= (short)outputBitmap.h;
 
 		// initialize compression
 
 		if (opt->video.mode >= DubVideoOptions::M_FASTREPACK) {
-			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK)
-				compressorVideoFormat = (BITMAPINFO *)vSrc->getDecompressedFormat();
-			else {
-				memset(&compressorVideoDIBFormat, 0, sizeof compressorVideoDIBFormat);
-				compressorVideoDIBFormat.bmiHeader.biSize			= sizeof(BITMAPINFOHEADER);
-				compressorVideoDIBFormat.bmiHeader.biWidth			= outputBitmap->w;
-				compressorVideoDIBFormat.bmiHeader.biHeight			= outputBitmap->h;
-				compressorVideoDIBFormat.bmiHeader.biPlanes			= 1;
-				compressorVideoDIBFormat.bmiHeader.biBitCount		= iOutputDepth;
-				compressorVideoDIBFormat.bmiHeader.biCompression	= BI_RGB;
-				compressorVideoDIBFormat.bmiHeader.biSizeImage		= outputBitmap->pitch * outputBitmap->h;
+			if (opt->video.mode <= DubVideoOptions::M_SLOWREPACK) {
+				const BITMAPINFOHEADER *pFormat = vSrc->getDecompressedFormat();
 
-				compressorVideoFormat = &compressorVideoDIBFormat;
+				mpCompressorVideoFormat.assign(pFormat, VDGetSizeOfBitmapHeaderW32(pFormat));
+			} else {
+				mpCompressorVideoFormat.resize(sizeof(BITMAPINFOHEADER));
+
+				mpCompressorVideoFormat->biSize				= sizeof(BITMAPINFOHEADER);
+				mpCompressorVideoFormat->biWidth			= outputBitmap.w;
+				mpCompressorVideoFormat->biHeight			= outputBitmap.h;
+				mpCompressorVideoFormat->biPlanes			= 1;
+				mpCompressorVideoFormat->biBitCount			= iOutputDepth;
+				mpCompressorVideoFormat->biCompression		= BI_RGB;
+				mpCompressorVideoFormat->biSizeImage		= outputBitmap.pitch * outputBitmap.h;
+				mpCompressorVideoFormat->biXPelsPerMeter	= 0;
+				mpCompressorVideoFormat->biYPelsPerMeter	= 0;
+				mpCompressorVideoFormat->biClrUsed			= 0;
+				mpCompressorVideoFormat->biClrImportant		= 0;
 			}
 		} else {
-			compressorVideoFormat = (BITMAPINFO *)vSrc->getImageFormat();
+			const BITMAPINFOHEADER *pFormat = vSrc->getImageFormat();
+
+			mpCompressorVideoFormat.assign(pFormat, vSrc->asStream()->getFormatLen());
 		}
 
 		// Initialize output compressor.
@@ -1948,7 +872,7 @@ void Dubber::InitOutputFile() {
 			LONG formatSize;
 			DWORD icErr;
 
-			formatSize = ICCompressGetFormatSize(compVars->hic, compressorVideoFormat);
+			formatSize = ICCompressGetFormatSize(compVars->hic, (LPBITMAPINFO)&*mpCompressorVideoFormat);
 			if (formatSize < ICERR_OK)
 				throw "Error getting compressor output format size.";
 
@@ -1961,14 +885,14 @@ void Dubber::InitOutputFile() {
 			memset(&*outputFormat, 0, outputFormat.size());
 
 			if (ICERR_OK != (icErr = ICCompressGetFormat(compVars->hic,
-								compressorVideoFormat,
+								&*mpCompressorVideoFormat,
 								&*outputFormat)))
 				throw MyICError("Output compressor", icErr);
 
 			if (!(pVideoPacker = new VideoSequenceCompressor()))
 				throw MyMemoryError();
 
-			pVideoPacker->init(compVars->hic, compressorVideoFormat, (BITMAPINFO *)&*outputFormat, compVars->lQ, compVars->lKey);
+			pVideoPacker->init(compVars->hic, (LPBITMAPINFO)&*mpCompressorVideoFormat, (BITMAPINFO *)&*outputFormat, compVars->lQ, compVars->lKey);
 			pVideoPacker->setDataRate(compVars->lDataRate*1024, vInfo.usPerFrame, vInfo.end_src - vInfo.start_src);
 			pVideoPacker->start();
 
@@ -1985,14 +909,14 @@ void Dubber::InitOutputFile() {
 							'CDIV',
 							hdr.fccHandler,
 							&*outputFormat,
-							&compressorVideoFormat->bmiHeader, ICMODE_DECOMPRESS))) {
+							&*mpCompressorVideoFormat, ICMODE_DECOMPRESS))) {
 
 					MyError("Output video warning: Could not locate output decompressor.").post(NULL,g_szError);
 
 				} else if (ICERR_OK != (err = ICDecompressBegin(
 						outputDecompressor,
 						&*outputFormat,
-						&compressorVideoFormat->bmiHeader))) {
+						&*mpCompressorVideoFormat))) {
 
 					MyICError("Output video warning", err).post(NULL,g_szError);
 
@@ -2010,14 +934,19 @@ void Dubber::InitOutputFile() {
 					throw MyError("The source video stream uses a compression algorithm which is not compatible with AVI files. "
 								"Direct stream copy cannot be used with this video stream.");
 
-				outputFormat.assign(vSrc->getImageFormat(), vSrc->getFormatLen());
+				IVDStreamSource *pVideoStream = vSrc->asStream();
+
+				outputFormat.assign(vSrc->getImageFormat(), pVideoStream->getFormatLen());
 
 				// cheese
+				const VDPosition videoFrameStart	= pVideoStream->getStart();
+				const VDPosition videoFrameEnd		= pVideoStream->getEnd();
+
 				lVideoSizeEstimate = 0;
-				for(long frame = vSrc->lSampleFirst; frame < vSrc->lSampleLast; ++frame) {
+				for(VDPosition frame = videoFrameStart; frame < videoFrameEnd; ++frame) {
 					long bytes = 0;
 
-					if (!vSrc->read(frame, 1, 0, 0, &bytes, 0))
+					if (!pVideoStream->read(frame, 1, 0, 0, &bytes, 0))
 						if (lVideoSizeEstimate < bytes)
 							lVideoSizeEstimate = bytes;
 				}
@@ -2026,10 +955,10 @@ void Dubber::InitOutputFile() {
 
 				if (opt->video.mode == DubVideoOptions::M_FULL) {
 					outputFormat->biCompression= BI_RGB;
-					outputFormat->biWidth		= outputBitmap->w;
-					outputFormat->biHeight		= outputBitmap->h;
+					outputFormat->biWidth		= outputBitmap.w;
+					outputFormat->biHeight		= outputBitmap.h;
 					outputFormat->biBitCount	= iOutputDepth;
-					outputFormat->biSizeImage	= outputBitmap->pitch * outputBitmap->h;
+					outputFormat->biSizeImage	= outputBitmap.pitch * outputBitmap.h;
 				}
 
 				lVideoSizeEstimate = outputFormat->biSizeImage;
@@ -2043,198 +972,85 @@ void Dubber::InitOutputFile() {
 	VDDEBUG("Dub: Creating output file.\n");
 
 	AVIout = mpOutputSystem->CreateSegment();
+	mpVideoOut = AVIout->getVideoOutput();
+	mpAudioOut = AVIout->getAudioOutput();
 }
 
 bool Dubber::AttemptInputOverlay(BITMAPINFOHEADER *pbih) {
-	if (vSrc->setDecompressedFormat(pbih)) {
-		DDSURFACEDESC ddsdOverlay;
-		DDPIXELFORMAT ddpf;
-		IDirectDrawSurface *lpddsOverlay;
-		HRESULT res;
+//	return vSrc->setDecompressedFormat(pbih) && mInputDisplay.InitDirectDrawYUVOverlay(mhwndInputDisplay, pbih, vSrc->getFrameBuffer());
 
-		memset(&ddpf, 0, sizeof ddpf);
-		ddpf.dwSize			= sizeof ddpf;
-		ddpf.dwFlags		= DDPF_FOURCC;
-		ddpf.dwFourCC		= pbih->biCompression;
-		ddpf.dwYUVBitCount	= pbih->biBitCount;
+	if (!vSrc->setDecompressedFormat(pbih))
+		return false;
 
-		memset(&ddsdOverlay, 0, sizeof ddsdOverlay);
-		ddsdOverlay.dwSize = sizeof(ddsdOverlay);
-		ddsdOverlay.dwFlags= DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
-		ddsdOverlay.ddsCaps.dwCaps = DDSCAPS_OVERLAY | DDSCAPS_VIDEOMEMORY;
-		ddsdOverlay.dwWidth  = vSrc->getImageFormat()->biWidth;
-		ddsdOverlay.dwHeight = vSrc->getImageFormat()->biHeight;
-		ddsdOverlay.ddpfPixelFormat = ddpf;
-		
-		res = DDrawObtainInterface()->CreateSurface(&ddsdOverlay, &lpddsOverlay, NULL);
+	int format;
 
-		if (DD_OK == res) {
-			if (!(pdsInput = CreateDDrawSurface(lpddsOverlay))) {
-				lpddsOverlay->Release();
-				throw MyMemoryError();
-			}
-
-			RECT r = rInputFrame;
-
-			pdsInput->SetOverlayPos(&r);
-
-			return true;
-		}
+	switch(pbih->biCompression) {
+		case 'YVYU':
+			format = IVDVideoDisplay::kFormatYUV422_UYVY;
+			break;
+		case '2YUY':
+			format = IVDVideoDisplay::kFormatYUV422_YUYV;
+			break;
+		default:
+			return false;
 	}
 
-	return false;
+	return mpInputDisplay->SetSource(vSrc->getFrameBuffer(), (pbih->biWidth*2 + 3) & ~3, pbih->biWidth, pbih->biHeight, format, 0, 0, false, opt->video.nPreviewFieldMode>0);
 }
 
-void Dubber::AttemptInputOverlays() {
-	if (DDrawInitialize(g_hWnd)) {
-		BITMAPINFOHEADER bih;
+bool Dubber::AttemptInputOverlays() {
+	BITMAPINFOHEADER bih;
 
-		memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
+	memcpy(&bih, vSrc->getImageFormat(), sizeof(BITMAPINFOHEADER));
 
-		bih.biSize			= sizeof(BITMAPINFOHEADER);
-		bih.biPlanes		= 1;
-		bih.biBitCount		= 16;
-		bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
-		bih.biXPelsPerMeter	= 0;
-		bih.biYPelsPerMeter	= 0;
-		bih.biClrUsed		= 0;
-		bih.biClrImportant	= 0;
+	bih.biSize			= sizeof(BITMAPINFOHEADER);
+	bih.biPlanes		= 1;
+	bih.biBitCount		= 16;
+	bih.biSizeImage		= (bih.biWidth+(bih.biWidth&1))*2*bih.biHeight;
+	bih.biXPelsPerMeter	= 0;
+	bih.biYPelsPerMeter	= 0;
+	bih.biClrUsed		= 0;
+	bih.biClrImportant	= 0;
 
-		do {
-			//---- begin 16-bit YUV negotiation ----
+	//---- begin 16-bit YUV negotiation ----
 
-			// Attempt CYUV (YUV 4:2:2, Y?Y? ordering)
+	// Attempt CYUV (YUV 4:2:2, Y?Y? ordering)
 
-			bih.biCompression = 'VUYC';
+//	bih.biCompression = 'VUYC';
+//	if (AttemptInputOverlay(&bih))
+//		break;
 
-			if (AttemptInputOverlay(&bih))
-				break;
+	// Attempt UYVY (YUV 4:2:2)
 
-			// Attempt UYVY (YUV 4:2:2)
+	bih.biCompression = 'YVYU';
+	if (AttemptInputOverlay(&bih))
+		return true;
 
-			bih.biCompression = 'YVYU';
+	// Attempt YUYV (YUV 4:2:2)
+//	bih.biCompression = 'VYUY';
+//	if (AttemptInputOverlay(&bih))
+//		break;
 
-			if (AttemptInputOverlay(&bih))
-				break;
+	// Attempt YUY2 (YUV 4:2:2, YUYV ordering)
 
-			// Attempt YUYV (YUV 4:2:2)
+	bih.biCompression = '2YUY';
 
-			bih.biCompression = 'VYUY';
+	if (AttemptInputOverlay(&bih))
+		return true;
 
-			if (AttemptInputOverlay(&bih))
-				break;
-
-			// Attempt YUY2 (YUV 4:2:2, YUYV ordering)
-
-			bih.biCompression = '2YUY';
-
-			if (AttemptInputOverlay(&bih))
-				break;
-
-			//---- begin 12-bit YUV negotiation ----
+	//---- begin 12-bit YUV negotiation ----
 #if 0
-			// Attempt YV12 (YUV 4:2:0)
+	// Attempt YV12 (YUV 4:2:0)
 
-			bih.biCompression = '21VY';
-			bih.biSizeImage		= (bih.biWidth/2)*(bih.biHeight/2)*6;
-			bih.biBitCount		= 12;
+	bih.biCompression = '21VY';
+	bih.biSizeImage		= (bih.biWidth/2)*(bih.biHeight/2)*6;
+	bih.biBitCount		= 12;
 
-			if (AttemptInputOverlay(&bih))
-				break;
+	if (AttemptInputOverlay(&bih))
+		return true;
 #endif
 
-			DDrawDeinitialize();
-		} while(0);
-
-	}
-}
-
-void Dubber::AttemptInputOverlays2(void *pThis) {
-	((Dubber *)pThis)->AttemptInputOverlays();
-}
-
-bool Dubber::AttemptOutputOverlay() {
-
-	if (!DDrawInitialize(g_hWnd))
-		return false;
-
-	// Try and get the pixel format for the primary surface.
-
-	DDPIXELFORMAT ddpf;
-
-	memset(&ddpf, 0, sizeof ddpf);
-	ddpf.dwSize		= sizeof ddpf;
-
-	if (DD_OK != DDrawObtainPrimary()->GetPixelFormat(&ddpf))
-		return false;
-
-	// Check output pixel format; we can support:
-	//
-	//	15-bit RGB	00007c00	000003e0	0000001f
-	//	16-bit RGB	0000f800	000007e0	0000001f
-	//	24-bit RGB	00ff0000	0000ff00	000000ff
-	//	32-bit RGB	00ff0000	0000ff00	000000ff
-
-	if (!(ddpf.dwFlags & DDPF_RGB))
-		return false;
-
-	const VBitmap *outputBitmap = filters.OutputBitmap();
-
-	memset(&compressorVideoDIBFormat, 0, sizeof compressorVideoDIBFormat);
-	bihDisplayFormat.bV4Size			= sizeof(BITMAPINFOHEADER);
-	bihDisplayFormat.bV4Width			= outputBitmap->w;
-	bihDisplayFormat.bV4Height			= outputBitmap->h;
-	bihDisplayFormat.bV4Planes			= 1;
-	bihDisplayFormat.bV4BitCount		= (WORD)ddpf.dwRGBBitCount;
-	bihDisplayFormat.bV4V4Compression	= BI_RGB;
-	bihDisplayFormat.bV4SizeImage		= outputBitmap->pitch * outputBitmap->h;
-
-	switch(ddpf.dwRGBBitCount) {
-	case 16:
-		if (ddpf.dwRBitMask == 0xf800 && ddpf.dwGBitMask == 0x07e0 && ddpf.dwBBitMask == 0x001f) {
-			bihDisplayFormat.bV4Size			= sizeof(BITMAPV4HEADER);
-			bihDisplayFormat.bV4V4Compression	= BI_BITFIELDS;
-			bihDisplayFormat.bV4RedMask			= 0xf800;
-			bihDisplayFormat.bV4GreenMask		= 0x07e0;
-			bihDisplayFormat.bV4BlueMask		= 0x001f;
-			bihDisplayFormat.bV4AlphaMask		= 0x0000;
-			bihDisplayFormat.bV4CSType			= 0;
-			fDisplay565 = true;
-		} else if (ddpf.dwRBitMask != 0x7c00 || ddpf.dwGBitMask != 0x03e0 || ddpf.dwBBitMask != 0x001f)
-			return false;
-
-		break;
-
-	case 24:
-	case 32:
-		if (ddpf.dwRBitMask != 0x00FF0000) return false;
-		if (ddpf.dwGBitMask != 0x0000FF00) return false;
-		if (ddpf.dwBBitMask != 0x000000FF) return false;
-		break;
-	}
-
-	// Create off-screen surface.
-
-	DDSURFACEDESC ddsdOverlay;
-	IDirectDrawSurface *lpddsOutput;
-
-	memset(&ddsdOverlay, 0, sizeof ddsdOverlay);
-	ddsdOverlay.dwSize			= sizeof(ddsdOverlay);
-	ddsdOverlay.dwFlags			= DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
-	ddsdOverlay.ddsCaps.dwCaps	= DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY;
-	ddsdOverlay.dwWidth			= bihDisplayFormat.bV4Width;
-	ddsdOverlay.dwHeight		= bihDisplayFormat.bV4Height;
-	ddsdOverlay.ddpfPixelFormat = ddpf;
-
-	if (DD_OK != DDrawObtainInterface()->CreateSurface(&ddsdOverlay, &lpddsOutput, NULL))
-		return false;
-
-	if (!(pdsOutput = CreateDDrawSurface(lpddsOutput))) {
-		lpddsOutput->Release();
-		throw MyMemoryError();
-	}
-
-	return true;
+	return false;
 }
 
 void Dubber::InitDirectDraw() {
@@ -2245,19 +1061,13 @@ void Dubber::InitDirectDraw() {
 	// Should we try and establish a DirectDraw overlay?
 
 	if (opt->video.mode == DubVideoOptions::M_SLOWREPACK) {
-		blitter->postAFC(0x80000000, AttemptInputOverlays2, this);
+//		blitter->sendAFC(0x80000000, AttemptInputOverlays2, this);
+		if (AttemptInputOverlays())
+			mbInputDisplayInitialized = true;
 	}
-
-	// How about DirectShow output acceleration?
-
-	if (opt->video.mode == DubVideoOptions::M_FULL)
-		AttemptOutputOverlay();
-
-	if (pdsInput || pdsOutput)
-		SetClientRectOffset(x_client, y_client);
 }
 
-void Dubber::InitDisplay() {
+void Dubber::InitInputDisplay() {
 	VDDEBUG("Dub: Initializing input window display.\n");
 
 
@@ -2270,72 +1080,77 @@ void Dubber::InitDisplay() {
 	// Okay, never mind... WINE still doesn't support DIBSection
 	// windows. :(
 
-	int bitsPerPel;
+	const BITMAPINFOHEADER& hdr = *vSrc->getDecompressedFormat();
+	const void *pFB = vSrc->getFrameBuffer();
+	const ptrdiff_t stride = ((hdr.biWidth * hdr.biBitCount + 31) >> 3) & ~3;
+	int format = 0;
 
-	bitsPerPel = GetDeviceCaps(hDCWindow, BITSPIXEL);
+	if (hdr.biCompression == BI_RGB && hdr.biBitCount == 16)
+		format = IVDVideoDisplay::kFormatRGB1555;
+	else if (hdr.biCompression == BI_RGB && hdr.biBitCount == 24)
+		format = IVDVideoDisplay::kFormatRGB888;
+	else if (hdr.biCompression == BI_RGB && hdr.biBitCount == 32)
+		format = IVDVideoDisplay::kFormatRGB8888;
+	else if (hdr.biCompression == BI_BITFIELDS && hdr.biBitCount == 16)
+		format = IVDVideoDisplay::kFormatRGB565;
 
-	if (!pdsInput && opt->video.mode > DubVideoOptions::M_FASTREPACK && !g_fWine) {
-		if (bitsPerPel < 15 || vSrc->getDecompressedFormat()->biBitCount < 15
-				|| !vSrc->getFrameBufferObject()) {
+	mpInputDisplay->SetSource((const char *)pFB + stride * (hdr.biHeight-1), -stride, hdr.biWidth, hdr.biHeight, format, 0, 0, true, opt->video.nPreviewFieldMode>0);
 
-			mInputDisplay.InitDrawDib(hDCWindow, vSrc->getDecompressedFormat());
-		} else {
-			mInputDisplay.InitGDI(hDCWindow, vSrc->getDecompressedFormat(), vSrc->getFrameBufferObject(), vSrc->getFrameBufferOffset());
-		}
-	}
+//	mInputDisplay.SetInterlacing(opt->video.nPreviewFieldMode != 0, opt->video.nPreviewFieldMode > 1);
+}
 
+void Dubber::InitOutputDisplay() {
 	VDDEBUG("Dub: Initializing output window display.\n");
+
 	if (opt->video.mode == DubVideoOptions::M_FULL) {
-		if (!pdsOutput && !g_fWine) {
-			if (bitsPerPel < 15) {
-				mOutputDisplay.InitDrawDib(hDCWindow, &compressorVideoFormat->bmiHeader);
-			} else {
-				// check to see if DC is 565 16-bit, the only mode that does not support a line
-				// of grays... hmm... is 15 possible for bitsPerPel?
+		mpDisplayFormat = mpCompressorVideoFormat;
 
-				COLORREF crTmp;
+		// check to see if DC is 565 16-bit, the only mode that does not support a line
+		// of grays... hmm... is 15 possible for bitsPerPel?
 
-				fDisplay565 = false;
-
-				if (bitsPerPel==15 || bitsPerPel==16) {
-					crTmp = GetPixel(hDCWindow, 0,0);
-					SetPixel(hDCWindow,0,0,RGB(0x80, 0x88, 0x80));
-
-					if (GetPixel(hDCWindow,0,0) == RGB(0x80, 0x88, 0x80)) {
-						fDisplay565 = true;
-
-						VDDEBUG("Display is 5-6-5 16-bit\n");
-					}
-					SetPixel(hDCWindow, 0, 0, crTmp);
-				}
-
-				memcpy(&bihDisplayFormat, compressorVideoFormat, sizeof(BITMAPINFOHEADER));
-				if (fDisplay565 && fPreview && bihDisplayFormat.bV4BitCount == 16) {
-					bihDisplayFormat.bV4Size			= sizeof(BITMAPV4HEADER);
-					bihDisplayFormat.bV4V4Compression	= BI_BITFIELDS;
-					bihDisplayFormat.bV4RedMask			= 0xf800;
-					bihDisplayFormat.bV4GreenMask		= 0x07e0;
-					bihDisplayFormat.bV4BlueMask		= 0x001f;
-					bihDisplayFormat.bV4AlphaMask		= 0x0000;
-					bihDisplayFormat.bV4CSType			= 0;
-				}
-
-				HANDLE hMapObject;
-				LONG lMapOffset;
-
-				filters.getOutputMappingParams(hMapObject, lMapOffset);
-
-				mOutputDisplay.InitGDI(hDCWindow, &compressorVideoFormat->bmiHeader, hMapObject, lMapOffset);
-			}
-
+		fDisplay565 = false;
+		if (HDC hdc = GetDC(NULL)) {
+			fDisplay565 = VDIsDC565(hdc);
+			ReleaseDC(NULL, hdc);
 		}
 
-		if (opt->video.fHistogram) {
-			inputHisto = new Histogram(hDCWindow, 128);
-			outputHisto = new Histogram(hDCWindow, 128);
+		if (fDisplay565 && fPreview && mpDisplayFormat->biBitCount == 16) {
+			mpDisplayFormat.resize(sizeof(BITMAPV4HEADER));
+
+			BITMAPV4HEADER *pV4Hdr = (BITMAPV4HEADER *)&*mpDisplayFormat;
+
+			pV4Hdr->bV4Size				= sizeof(BITMAPV4HEADER);
+			pV4Hdr->bV4V4Compression	= BI_BITFIELDS;
+			pV4Hdr->bV4RedMask			= 0xf800;
+			pV4Hdr->bV4GreenMask		= 0x07e0;
+			pV4Hdr->bV4BlueMask			= 0x001f;
+			pV4Hdr->bV4AlphaMask		= 0x0000;
+			pV4Hdr->bV4CSType			= 0;
 		}
+
+		HANDLE hMapObject;
+		LONG lMapOffset;
+
+		filters.getOutputMappingParams(hMapObject, lMapOffset);
+
+		int format = 0;
+		if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 16)
+			format = IVDVideoDisplay::kFormatRGB1555;
+		else if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 24)
+			format = IVDVideoDisplay::kFormatRGB888;
+		else if (mpDisplayFormat->biCompression == BI_RGB && mpDisplayFormat->biBitCount == 32)
+			format = IVDVideoDisplay::kFormatRGB8888;
+		else if (mpDisplayFormat->biCompression == BI_BITFIELDS && mpDisplayFormat->biBitCount == 16)
+			format = IVDVideoDisplay::kFormatRGB565;
+
+		const VBitmap& vbm = *filters.OutputBitmap();
+
+		mpOutputDisplay->SetSource((const char *)vbm.data + vbm.pitch * (vbm.h - 1), -vbm.pitch, vbm.w, vbm.h, format, hMapObject, lMapOffset, true, opt->video.nPreviewFieldMode>0);
+
+//		mOutputDisplay.InitGDI(mhwndOutputDisplay, &*mpCompressorVideoFormat, hMapObject, lMapOffset);
 	}
 
+//	mOutputDisplay.SetInterlacing(opt->video.nPreviewFieldMode != 0, opt->video.nPreviewFieldMode > 1);
 }
 
 bool Dubber::NegotiateFastFormat(BITMAPINFOHEADER *pbih) {
@@ -2422,7 +1237,7 @@ void Dubber::InitSelectInputFormat() {
 						throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 }
 
-void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem *pOutputSystem, HDC hDC, COMPVARS *videoCompVars) {
+void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSystem *pOutputSystem, COMPVARS *videoCompVars) {
 
 	aSrc				= audio;
 	vSrc				= video;
@@ -2431,7 +1246,6 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 	fPreview			= mpOutputSystem->IsRealTime();
 
 	compVars			= videoCompVars;
-	hDCWindow			= hDC;
 	fUseVideoCompression = !fPreview && opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic;
 //	fUseVideoCompression = opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic;
 
@@ -2442,42 +1256,59 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 		inputSubsetActive = inputSubset;
 
 		if (opt->video.mode == DubVideoOptions::M_NONE) {
-			FrameSubsetNode *pfsn;
-
 			if (!(inputSubsetActive = inputSubsetAlloc = new FrameSubset()))
 				throw MyMemoryError();
 
-			pfsn = inputSubset->getFirstFrame();
-			while(pfsn) {
-				long end = pfsn->start + pfsn->len;
-				long start = vSrc->nearestKey(pfsn->start + vSrc->lSampleFirst) - vSrc->lSampleFirst;
+			IVDStreamSource *pVideoStream = vSrc->asStream();
 
-				VDDEBUG("   subset: %5d[%5d]-%-5d\n", pfsn->start, start, pfsn->start+pfsn->len-1);
-				inputSubsetActive->addRange(pfsn->start, pfsn->len, pfsn->bMask);
+			const VDPosition videoFrameStart	= pVideoStream->getStart();
+
+			for(FrameSubset::iterator it(inputSubset->begin()), itEnd(inputSubset->end()); it!=itEnd; ++it) {
+				long end = it->start + it->len;
+				long start = vSrc->nearestKey(it->start + videoFrameStart) - videoFrameStart;
+
+				VDDEBUG("   subset: %5d[%5d]-%-5d\n", it->start, start, it->start+it->len-1);
+				inputSubsetActive->addRange(it->start, it->len, it->bMask);
 
 				// Mask ranges never need to be extended backwards, because they don't hold any
 				// data of their own.  If an include range needs to be extended backwards, though,
 				// it may need to extend into a previous merge range.  To avoid this problem,
 				// we do a delete of the range before adding the tail.
 
-				if (!pfsn->bMask) {
-					if (start < pfsn->start) {
-						inputSubsetActive->deleteInputRange(start, pfsn->start-start);
-						inputSubsetActive->addRangeMerge(start, pfsn->start-start, false);
+				if (!it->bMask) {
+					if (start < it->start) {
+						FrameSubset::iterator it2(it);
+
+						while(it2 != inputSubset->begin()) {
+							--it2;
+
+							long prevtail = it2->start + it2->len;
+
+							if (prevtail < start || prevtail > it->start + it->len)
+								break;
+
+							if (it2->start >= start || !it2->bMask) {	// within extension range: absorb
+								it->len += it->start - it2->start;
+								it->start = it2->start;
+								it2 = inputSubset->erase(it2);
+							} else {									// before extension range and masked: split merge
+								int offset = start - it->start;
+								it2->len -= offset;
+								it->start -= offset;
+								it->len += offset;
+								break;
+							}
+						}
+
+						int left = it->start - start;
+						
+						if (left > 0) {
+							it->start = start;
+							it->len += left;
+						}
 					}
 				}
-
-				pfsn = inputSubset->getNextFrame(pfsn);
 			}
-
-#ifdef _DEBUG
-			pfsn = inputSubsetActive->getFirstFrame();
-
-			while(pfsn) {
-				VDDEBUG("   padded subset: %8d-%-8d\n", pfsn->start, pfsn->start+pfsn->len-1);
-				pfsn = inputSubsetActive->getNextFrame(pfsn);
-			}
-#endif
 		}
 	}
 
@@ -2509,11 +1340,18 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 
 	blitter->pulse();
 
+	// initialize directdraw display if in preview
+
+	mbInputDisplayInitialized = false;
+	if (fPreview)
+		InitDirectDraw();
+
 	// Select an appropriate input format.  This is really tricky...
 
 	vInfo.fAudioOnly = true;
 	if (vSrc && mpOutputSystem->AcceptsVideo()) {
-		InitSelectInputFormat();
+		if (!mbInputDisplayInitialized)
+			InitSelectInputFormat();
 		vInfo.fAudioOnly = false;
 	}
 
@@ -2553,11 +1391,6 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 	nVideoLagPreload = nVideoLagOutput;
 	vInfo.cur_dst = -nVideoLagTimeline;
 
-	// initialize directdraw display if in preview
-
-	if (fPreview)
-		InitDirectDraw();
-
 	// initialize input decompressor
 
 	if (vSrc && mpOutputSystem->AcceptsVideo()) {
@@ -2576,16 +1409,30 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 	if (aSrc && mpOutputSystem->AcceptsAudio())
 		InitAudioConversionChain();
 
+	// Initialize input window display.
+
+	if (!mbInputDisplayInitialized) {
+		if (vSrc && mpOutputSystem->AcceptsVideo())
+			InitInputDisplay();
+	}
+
 	// initialize output parameters and output file
 
 	InitOutputFile();
+
+	// Initialize output window display.
+
+	if (vSrc && mpOutputSystem->AcceptsVideo())
+		InitOutputDisplay();
+
 
 	// initialize interleaver
 
 	bool bAudio = aSrc && mpOutputSystem->AcceptsAudio();
 
 	mInterleaver.Init(bAudio ? 2 : 1);
-	mInterleaver.InitStream(0, lVideoSizeEstimate, 0, 1, 1);
+	mInterleaver.EnableInterleaving(opt->audio.enabled);
+	mInterleaver.InitStream(0, lVideoSizeEstimate, 0, 1, 1, 1);
 
 	if (bAudio) {
 		Fraction audioBlocksPerVideoFrame;
@@ -2607,7 +1454,7 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 
 		double samplesPerFrame = (double)samplesPerSec / (double)vInfo.frameRate;
 
-		mInterleaver.InitStream(1, pwfex->nBlockAlign, preload, samplesPerFrame, (double)audioBlocksPerVideoFrame);
+		mInterleaver.InitStream(1, pwfex->nBlockAlign, preload, samplesPerFrame, (double)audioBlocksPerVideoFrame, 262144);		// don't write TOO many samples at once
 	}
 
 	if (fEnableSpill) {
@@ -2630,11 +1477,6 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 		mInterleaver.EndStream(0);
 	}
 
-	// Initialize input window display.
-
-	if (vSrc && mpOutputSystem->AcceptsVideo())
-		InitDisplay();
-
 	// Create data pipes.
 
 	if (!(mpVideoPipe = new_nothrow AVIPipe(opt->perf.pipeBufferCount, 16384)))
@@ -2645,7 +1487,7 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, IVDDubberOutputSystem 
 
 		uint32 bytes = pwfex->nAvgBytesPerSec * 2;		// 2 seconds
 
-		mAudioPipe.Init(bytes -= bytes % pwfex->nBlockAlign);
+		mAudioPipe.Init(bytes - bytes % pwfex->nBlockAlign);
 	}
 }
 
@@ -2690,17 +1532,11 @@ void Dubber::Go(int iPriority) {
 
 	if (!(mpIOThread = new_nothrow VDDubIOThread(
 				fPhantom,
-				mpOutputSystem->IsRealTime(),
 				mpOutputSystem->AcceptsVideo() ? vSrc : NULL,
 				mVideoFrameIterator,
 				audioStream,
 				mpVideoPipe,
 				&mAudioPipe,
-				msigAudioPipeRead,
-				msigAudioPipeWrite,
-				audioCorrector,
-				mbAudioPipeFinalized,
-				mbAudioPipeFinalizeAcked,
 				fAbort,
 				aInfo,
 				vInfo,
@@ -2718,39 +1554,10 @@ void Dubber::Go(int iPriority) {
 
 	pStatusHandler->InitLinks(&aInfo, &vInfo, aSrc, vSrc, pInput, audioStatusStream, this, opt);
 
-	if (hwndStatus = pStatusHandler->Display(NULL, iPriority)) {
-		MSG msg;
-
-		// NOTE: WM_QUIT messages seem to get blocked if the window is dragging/sizing
-		//		 or has a menu.
-		while (!fAbort && GetMessage(&msg, (HWND) NULL, 0, 0)) { 
-			if (guiCheckDialogs(&msg)) continue;
-			if (!IsWindow(hwndStatus) || !IsDialogMessage(hwndStatus, &msg)) { 
-				TranslateMessage(&msg); 
-			    DispatchMessage(&msg); 
-			}
-	    }
-
-	}
-
-	Stop();
-
-	if (fError)
-		throw err;
-
-	pStatusHandler->SetLastPosition(vInfo.cur_proc_src);
-//	if (positionCallback)
-//		positionCallback(vInfo.start_src, vInfo.cur_proc_src < vInfo.start_src ? vInfo.start_src : vInfo.cur_proc_src > vInfo.end_src ? vInfo.end_src : vInfo.cur_proc_src, vInfo.end_src);
-
-	VDDEBUG("Dub: exit.\n");
+	pStatusHandler->Display(NULL, iPriority);
 }
 
 //////////////////////////////////////////////
-
-static void DestroyIDDrawSurface(void *pv) {
-	delete (IDDrawSurface *)pv;
-	DDrawDeinitialize();
-}
 
 void Dubber::Stop() {
 	bool fSkipDXShutdown = false;
@@ -2765,43 +1572,59 @@ void Dubber::Stop() {
 	if (mpVideoPipe)
 		mpVideoPipe->abort();
 
-	msigAudioPipeRead.signal();
-	msigAudioPipeWrite.signal();
+	mAudioPipe.Abort();
 
 	if (blitter)
-		blitter->flush();
+		blitter->beginFlush();
 
 	VDDEBUG("Dub: Killing threads.\n");
 
-	int nThreadsToWaitOn = 0;
-	HANDLE hThreads[2];
+	int nObjectsToWaitOn = 0;
+	HANDLE hObjects[3];
+
+	if (VDSignal *pBlitterSigComplete = blitter->getFlushCompleteSignal())
+		hObjects[nObjectsToWaitOn++] = pBlitterSigComplete->getHandle();
 
 	if (this->isThreadAttached())
-		hThreads[nThreadsToWaitOn++] = this->getThreadHandle();
+		hObjects[nObjectsToWaitOn++] = this->getThreadHandle();
 
 	if (mpIOThread && mpIOThread->isThreadAttached())
-		hThreads[nThreadsToWaitOn++] = mpIOThread->getThreadHandle();
+		hObjects[nObjectsToWaitOn++] = mpIOThread->getThreadHandle();
 
-	while(nThreadsToWaitOn > 0) {
+	uint32 startTime = VDGetCurrentTick();
+
+	while(nObjectsToWaitOn > 0) {
 		DWORD dwRes;
 
-		dwRes = MsgWaitForMultipleObjects(nThreadsToWaitOn, hThreads, FALSE, 10000, QS_ALLINPUT);
+		dwRes = MsgWaitForMultipleObjects(nObjectsToWaitOn, hObjects, FALSE, 10000, QS_ALLINPUT);
 
-		if (WAIT_OBJECT_0 + nThreadsToWaitOn == dwRes)
+		if (WAIT_OBJECT_0 + nObjectsToWaitOn == dwRes) {
 			guiDlgMessageLoop(hwndStatus);
-		else if (WAIT_TIMEOUT == dwRes) {
+			continue;
+		}
+		
+		uint32 currentTime = VDGetCurrentTick();
+
+		if ((dwRes -= WAIT_OBJECT_0) < nObjectsToWaitOn) {
+			if (dwRes+1 < nObjectsToWaitOn)
+				hObjects[dwRes] = hObjects[nObjectsToWaitOn - 1];
+			--nObjectsToWaitOn;
+			startTime = currentTime;
+			continue;
+		}
+
+		if (currentTime - startTime > 10000) {
 			if (IDOK == MessageBox(g_hWnd, "Something appears to be stuck while trying to stop (thread deadlock). Abort operation and exit program?", "VirtualDub Internal Error", MB_ICONEXCLAMATION|MB_OKCANCEL)) {
 				vdprotected("aborting process due to a thread deadlock") {
 					ExitProcess(0);
 				}
 			}
-		} else if ((dwRes -= WAIT_OBJECT_0) < nThreadsToWaitOn) {
-			if (dwRes+1 < nThreadsToWaitOn)
-				hThreads[dwRes] = hThreads[nThreadsToWaitOn - 1];
-			--nThreadsToWaitOn;
+
+			startTime = currentTime;
 		}
 
-		VDDEBUG("\tDub: %ld threads active\n", nThreadsToWaitOn);
+
+		VDDEBUG("\tDub: %ld threads active\n", nObjectsToWaitOn);
 
 #ifdef _DEBUG
 		if (blitter) VDDEBUG("\t\tBlitter locks active: %08lx\n", blitter->lock_state);
@@ -2815,7 +1638,7 @@ void Dubber::Stop() {
 	mpIOThread = 0;
 
 	if (blitter)
-		blitter->flush();
+		blitter->abort();
 
 	VDDEBUG("Dub: Freezing status handler.\n");
 
@@ -2834,14 +1657,6 @@ void Dubber::Stop() {
 		pVideoPacker = NULL;
 	}
 
-	if (pdsInput) {
-		VDDEBUG("Dub: Destroying input overlay.\n");
-
-		blitter->postAFC(0x80000000, DestroyIDDrawSurface, (void *)pdsInput);
-		pdsInput = NULL;
-		fSkipDXShutdown = true;
-	}
-
 	VDDEBUG("Dub: Deallocating resources.\n");
 
 	if (mpVideoPipe)	{ delete mpVideoPipe; mpVideoPipe = NULL; }
@@ -2849,14 +1664,10 @@ void Dubber::Stop() {
 
 	if (blitter)		{ delete blitter; blitter=NULL; }
 
-	GdiFlush();
-
 	filters.DeinitFilters();
 
-	if (fVDecompressionOk)	{ vSrc->streamEnd(); }
+	if (fVDecompressionOk)	{ vSrc->asStream()->streamEnd(); }
 	if (fADecompressionOk)	{ aSrc->streamEnd(); }
-
-	if (audioCorrector)			{ delete audioCorrector; audioCorrector = NULL; }
 
 	{
 		std::vector<AudioStream *>::const_iterator it(mAudioStreams.begin()), itEnd(mAudioStreams.end());
@@ -2871,19 +1682,7 @@ void Dubber::Stop() {
 
 	VDDEBUG("Dub: Releasing display elements.\n");
 
-	if (inputHisto)				{ delete inputHisto; inputHisto = NULL; }
-	if (outputHisto)			{ delete outputHisto; outputHisto = NULL; }
-
 	// deinitialize DirectDraw
-
-	VDDEBUG("Dub: Deinitializing DirectDraw.\n");
-
-	if (pdsOutput)	delete pdsOutput;	pdsOutput = NULL;
-
-	if (!fSkipDXShutdown)	DDrawDeinitialize();
-
-	mInputDisplay.Shutdown();
-	mOutputDisplay.Shutdown();
 
 	filters.DeallocateBuffers();
 	
@@ -2898,6 +1697,16 @@ void Dubber::Stop() {
 	if (AVIout) {
 		delete AVIout;
 		AVIout = NULL;
+		mpAudioOut = NULL;
+		mpVideoOut = NULL;
+	}
+
+	if (pStatusHandler)
+		pStatusHandler->SetLastPosition(vInfo.cur_proc_src);
+
+	if (fError) {
+		throw err;
+		fError = false;
 	}
 }
 
@@ -2905,30 +1714,34 @@ void Dubber::Stop() {
 
 void Dubber::TimerCallback() {
 	if (opt->video.fSyncToAudio) {
-		long lActualPoint;
-		AVIAudioPreviewOutputStream *pAudioOut = (AVIAudioPreviewOutputStream *)AVIout->audioOut;
+		if (mpAudioOut) {
+			long lActualPoint;
+			AVIAudioPreviewOutputStream *pAudioOut = static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut);
 
-		lActualPoint = pAudioOut->getPosition();
+			lActualPoint = pAudioOut->getPosition();
 
-		if (!pAudioOut->isFrozen()) {
-			if (opt->video.nPreviewFieldMode) {
-				mPulseClock = MulDiv(lActualPoint, 2000, vInfo.usPerFrame);
-			} else {
-				mPulseClock = MulDiv(lActualPoint, 1000, vInfo.usPerFrame);
-			}
+			if (!pAudioOut->isFrozen()) {
+				if (opt->video.nPreviewFieldMode) {
+					mPulseClock = MulDiv(lActualPoint, 2000, vInfo.usPerFrame);
+				} else {
+					mPulseClock = MulDiv(lActualPoint, 1000, vInfo.usPerFrame);
+				}
 
-			if (mPulseClock<0)
-				mPulseClock = 0;
+				if (mPulseClock<0)
+					mPulseClock = 0;
 
-			if (lActualPoint != -1) {
-				blitter->setPulseClock(mPulseClock);
-				fSyncToAudioEvenClock = false;
-				mbAudioFrozen = false;
-				return;
+				if (lActualPoint != -1) {
+					blitter->setPulseClock(mPulseClock);
+					fSyncToAudioEvenClock = false;
+					mbAudioFrozen = false;
+					return;
+				}
 			}
 		}
 
-		// Hmm... we have no clock!
+		// Audio's frozen, so we have to free-run.  When 'sync to audio' is on
+		// and field-based preview is off, we have to divide the 2x clock down
+		// to 1x.
 
 		mbAudioFrozen = true;
 
@@ -2943,8 +1756,9 @@ void Dubber::TimerCallback() {
 		return;
 	}
 
-
-	if (blitter) blitter->pulse();
+	// When 'sync to audio' is off we use a 1x clock.
+	if (blitter)
+		blitter->pulse();
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -2953,11 +1767,31 @@ void Dubber::NextSegment() {
 	vdautoptr<AVIOutput> AVIout_new(mpOutputSystem->CreateSegment());
 	mpOutputSystem->CloseSegment(AVIout, false);
 	AVIout = AVIout_new.release();
+	mpAudioOut = AVIout->getAudioOutput();
+	mpVideoOut = AVIout->getVideoOutput();
 }
 
 #define BUFFERID_INPUT (1)
 #define BUFFERID_OUTPUT (2)
-#define BUFFERID_PACKED (4)
+
+namespace {
+	bool AsyncUpdateCallback(int pass, void *pDisplayAsVoid, void *pInterlaced) {
+		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
+		int nFieldMode = *(int *)pInterlaced;
+
+		if (nFieldMode) {
+			if ((pass^nFieldMode)&1)
+				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly);
+			else
+				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly);
+
+			return !pass;
+		} else {
+			pVideoDisplay->Update(IVDVideoDisplay::kAllFields);
+			return false;
+		}
+	}
+}
 
 Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition display_num, VDPosition timeline_num) {
 	LONG dwBytes;
@@ -2974,6 +1808,8 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 	// Anime song played during development of this feature: "Trust" from the
 	// Vandread OST.
 
+//	VDDEBUG2("writing sample %d (display %d), type = %s, drop = %d\n", (int)sample_num, (int)display_num, droptype==AVIPipe::kDroppable ? "droppable" : droptype == AVIPipe::kDependant ? "dependant" : "independent", lDropFrames);
+
 	if (fPreview && opt->perf.fDropFrames) {
 
 		// If audio is frozen, force frames to be dropped.
@@ -2981,9 +1817,23 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		bool bDrop = true;
 
 		bDrop = !vSrc->isDecodable(sample_num);
+//		if (bDrop)
+//			VDDEBUG2("Dubber: Forced drop (undecodable)\n");
 
 		if (mbAudioFrozen && mbAudioFrozenValid) {
 			lDropFrames = 1;
+		}
+
+		if (lDropFrames) {
+			long lCurrentDelta = blitter->getFrameDelta();
+			if (opt->video.nPreviewFieldMode)
+				lCurrentDelta >>= 1;
+			if (lDropFrames > lCurrentDelta) {
+				lDropFrames = lCurrentDelta;
+				if (lDropFrames < 0)
+					lDropFrames = 0;
+//				VDDEBUG2("Dubber: Dropping frame skip to %d\n", lDropFrames);
+			}
 		}
 
 		if (lDropFrames && !bDrop) {
@@ -3004,10 +1854,11 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 				// Do a blind drop if we know a keyframe will arrive within two frames.
 
-				if (indep == 0x3FFFFFFF && vSrc->nearestKey(display_num + opt->video.frameRateDecimation*2) > display_num)
+				if (indep == 0x3FFFFFFF && vSrc->streamToDisplayOrder(vSrc->nearestKey(vSrc->displayToStreamOrder(display_num) + opt->video.frameRateDecimation*2)) > display_num)
 					indep = 0;
 
-				if (indep < lDropFrames) {
+				if (indep > 0 && indep < lDropFrames) {
+//					VDDEBUG2("Dubber: Proactive drop (%d < %d)\n", indep, lDropFrames);
 					bDrop = true;
 				}
 			}
@@ -3016,6 +1867,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		if (bDrop) {
 			if (!(exdata&2)) {
 				blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
+//				VDDEBUG2("Dubber: skipped frame\n");
 			}
 			++fsi.lCurrentFrame;
 			if (lDropFrames)
@@ -3030,8 +1882,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 	// With Direct mode, write video data directly to output.
 
 	if (opt->video.mode == DubVideoOptions::M_NONE || fPhantom) {
-		if (!AVIout->videoOut->write((exdata & 1) ? 0 : AVIIF_KEYFRAME, (char *)buffer, lastSize, 1))
-			throw MyError("Error writing video frame.");
+		mpVideoOut->write((exdata & 1) ? 0 : AVIIF_KEYFRAME, (char *)buffer, lastSize, 1);
 
 		vInfo.total_size += lastSize + 24;
 		++vInfo.processed;
@@ -3045,7 +1896,9 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 	// Slow Repack: Decompress data and send to compressor.
 	// Full:		Decompress, process, filter, convert, send to compressor.
 
+	mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock1");
 	blitter->lock(BUFFERID_INPUT);
+	mProcessingProfileChannel.End();
 
 	if (exdata & kBufferFlagPreload)
 		mProcessingProfileChannel.Begin(0xfff0f0, "V-Preload");
@@ -3070,6 +1923,8 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		blitter->unlock(BUFFERID_INPUT);
 		blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 		++fsi.lCurrentFrame;
+
+//		VDDEBUG2("Dubber: skipped frame\n");
 		--lDropFrames;
 
 		pStatusHandler->NotifyNewFrame(0);
@@ -3086,7 +1941,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		VBitmap destbm;
 		long lInputFrameNum, lInputFrameNum2;
 
-		lInputFrameNum = display_num - vSrc->lSampleFirst;
+		lInputFrameNum = display_num - vSrc->asStream()->getStart();
 
 		if (pInvTelecine) {
 			lInputFrameNum2 = pInvTelecine->ProcessOut(initialBitmap);
@@ -3100,12 +1955,6 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 			}
 		} else
 			initialBitmap->BitBlt(0, 0, &VBitmap(vSrc->getFrameBuffer(), vSrc->getDecompressedFormat()), 0, 0, -1, -1);
-
-
-		if (inputHisto) {
-			inputHisto->Zero();
-			inputHisto->Process(filters.InputBitmap());
-		}
 
 		// process frame
 
@@ -3126,28 +1975,32 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		}
 
 
+		mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
 		blitter->lock(BUFFERID_OUTPUT);
+		mProcessingProfileChannel.End();
 
 //		if (!outputDecompressor)
 //			outputBitmap.data = outputBuffer;
 
 		do {
-			if (pdsOutput) {
-				if (!pdsOutput->LockInverted(&destbm))
-					break;
-
-				outputBitmap = &destbm;
-			}
+//			IDDrawSurface *pds = mOutputDisplay.GetDD();
+//
+//			if (pds) {
+//				if (!pds->LockInverted(&destbm))
+//					break;
+//
+//				outputBitmap = &destbm;
+//			}
 
 			if (fPreview && g_prefs.fDisplay & Preferences::DISPF_DITHER16)
 				outputBitmap->BitBltDither(0, 0, lastBitmap, 0, 0, -1, -1, fDisplay565);
-			else if (bihDisplayFormat.bV4V4Compression == BI_BITFIELDS)
+			else if (mpDisplayFormat->biCompression == BI_BITFIELDS)
 				outputBitmap->BitBlt565(0, 0, lastBitmap, 0, 0, -1, -1);
 			else
 				outputBitmap->BitBlt(0, 0, lastBitmap, 0, 0, -1, -1);
 
-			if (pdsOutput)
-				pdsOutput->Unlock();
+//			if (pds)
+//				pds->Unlock();
 
 		} while(false);
 	}
@@ -3177,38 +2030,37 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 			CHECK_FPU_STACK
 
-			DWORD dwSize = compressorVideoFormat->bmiHeader.biSizeImage;
+			DWORD dwSize = mpCompressorVideoFormat->biSizeImage;
 
-			compressorVideoFormat->bmiHeader.biSizeImage = dwBytes;
+			mpCompressorVideoFormat->biSizeImage = dwBytes;
 
 			VDCHECKPOINT;
 			if (ICERR_OK != (err = ICDecompress(outputDecompressor,
 				isKey ? 0 : ICDECOMPRESS_NOTKEYFRAME,
-				AVIout->videoOut->getImageFormat(),
+				(BITMAPINFOHEADER *)mpVideoOut->getFormat(),
 				lpCompressedData,
-				&compressorVideoFormat->bmiHeader,
+				&*mpCompressorVideoFormat,
 				outputBuffer
 				)))
 
 				fShowDecompressedFrame = false;
 			VDCHECKPOINT;
 
-			compressorVideoFormat->bmiHeader.biSizeImage = dwSize;
+			mpCompressorVideoFormat->biSizeImage = dwSize;
 
 			CHECK_FPU_STACK
 		}
 
-		if (!AVIout->videoOut->write(isKey ? AVIIF_KEYFRAME : 0, (char *)lpCompressedData, dwBytes, 1))
-			throw "Error writing video frame.";
+		mpVideoOut->write(isKey ? AVIIF_KEYFRAME : 0, (char *)lpCompressedData, dwBytes, 1);
 
 	} else {
 
+		dwBytes = ((const BITMAPINFOHEADER *)mpVideoOut->getFormat())->biSizeImage;
+
 		VDCHECKPOINT;
-		if (!AVIout->videoOut->write(AVIIF_KEYFRAME, (char *)frameBuffer, AVIout->videoOut->getImageFormat()->biSizeImage, 1))
-			throw MyError("Error writing video frame.");
+		mpVideoOut->write(AVIIF_KEYFRAME, (char *)frameBuffer, dwBytes, 1);
 		VDCHECKPOINT;
 
-		dwBytes = AVIout->videoOut->getImageFormat()->biSizeImage;
 		isKey = true;
 	}
 
@@ -3219,162 +2071,17 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 	if (fPreview || mRefreshFlag.xchg(0)) {
 		if (opt->video.fShowInputFrame) {
-			if (inputHisto) {
-				inputHisto->Draw(hDCWindow, &rInputHistogram);
-			}
-
-			if (pdsInput) {
-				if (opt->video.nPreviewFieldMode)
-					blitter->postDirectDrawCopyLaced(
-							BUFFERID_INPUT,
-							vSrc->getFrameBuffer(),
-							vSrc->getDecompressedFormat(),
-							pdsInput,
-							opt->video.nPreviewFieldMode>=2
-					);
-				else
-					blitter->postDirectDrawCopy(
-							BUFFERID_INPUT,
-							vSrc->getFrameBuffer(),
-							vSrc->getDecompressedFormat(),
-							pdsInput
-					);
-			} else if (HDC hdcInput = mInputDisplay.GetHDC()) {
-				if (opt->video.nPreviewFieldMode)
-					blitter->postBitBltLaced(
-							BUFFERID_INPUT,
-							hDCWindow,
-							rInputFrame.left, rInputFrame.top,
-							rInputFrame.right-rInputFrame.left, rInputFrame.bottom-rInputFrame.top,
-							hdcInput,
-							0,0,
-							opt->video.nPreviewFieldMode>=2
-					);
-				else
-					blitter->postStretchBlt(
-							BUFFERID_INPUT,
-							hDCWindow,
-							rInputFrame.left, rInputFrame.top,
-							rInputFrame.right-rInputFrame.left, rInputFrame.bottom-rInputFrame.top,
-							hdcInput,
-							0,0,
-							vSrc->getDecompressedFormat()->biWidth,vSrc->getDecompressedFormat()->biHeight
-					);
-			} else if (HDRAWDIB hddInput = mInputDisplay.GetHDD())
-				blitter->post(
-						BUFFERID_INPUT,
-						hddInput,
-						hDCWindow,
-						rInputFrame.left, rInputFrame.top,
-						rInputFrame.right-rInputFrame.left, rInputFrame.bottom-rInputFrame.top,
-						vSrc->getDecompressedFormat(),
-						vSrc->getFrameBuffer(),
-						0,0,
-						vSrc->getDecompressedFormat()->biWidth,vSrc->getDecompressedFormat()->biHeight,
-						DDF_SAME_HDC | DDF_SAME_DRAW
-					);
-			else if (g_fWine)
-				blitter->postStretchDIBits(
-						BUFFERID_INPUT,
-						hDCWindow,
-						rInputFrame.left, rInputFrame.top,
-						rInputFrame.right-rInputFrame.left, rInputFrame.bottom-rInputFrame.top,
-						0,0,
-						vSrc->getDecompressedFormat()->biWidth,vSrc->getDecompressedFormat()->biHeight,
-						vSrc->getFrameBuffer(),
-						(LPBITMAPINFO)vSrc->getDecompressedFormat(),
-						DIB_RGB_COLORS,
-						SRCCOPY
-					);
-			else
-				blitter->unlock(BUFFERID_INPUT);
+			blitter->postAPC(BUFFERID_INPUT, AsyncUpdateCallback, mpInputDisplay, &opt->video.nPreviewFieldMode);
 		} else
 			blitter->unlock(BUFFERID_INPUT);
 
 		if (opt->video.mode == DubVideoOptions::M_FULL && opt->video.fShowOutputFrame && (!outputDecompressor || dwBytes)) {
-			if (outputHisto) {
-				outputHisto->Zero();
-				outputHisto->Process(filters.LastBitmap());
-
-				outputHisto->Draw(hDCWindow, &rOutputHistogram);
-			}
-
-			if (pdsOutput) {
-				if (opt->video.nPreviewFieldMode)
-					blitter->postDirectDrawBlitLaced(
-							BUFFERID_OUTPUT,
-							DDrawObtainPrimary(),
-							pdsOutput,
-							rOutputFrame.left+x_client, rOutputFrame.top+y_client,
-							rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top,
-							opt->video.nPreviewFieldMode>=2
-							);
-				else
-					blitter->postDirectDrawBlit(
-							BUFFERID_OUTPUT,
-							DDrawObtainPrimary(),
-							pdsOutput,
-							rOutputFrame.left+x_client, rOutputFrame.top+y_client,
-							rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top);
-			} else if (HDC hdcOutput = mOutputDisplay.GetHDC()) {
-				if (opt->video.nPreviewFieldMode)
-					blitter->postBitBltLaced(
-							BUFFERID_OUTPUT,
-							hDCWindow,
-							rOutputFrame.left, rOutputFrame.top,
-							rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top,
-							hdcOutput,
-							0,0,
-							opt->video.nPreviewFieldMode>=2
-					);
-				else
-					blitter->postStretchBlt(
-							BUFFERID_OUTPUT,
-							hDCWindow,
-							rOutputFrame.left, rOutputFrame.top,
-							rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top,
-							hdcOutput,
-							0,0,
-							filters.OutputBitmap()->w,
-							filters.OutputBitmap()->h
-					);
-			} else if (HDRAWDIB hddOutput = mOutputDisplay.GetHDD())
-				blitter->post(
-						BUFFERID_OUTPUT,
-						hddOutput,
-						hDCWindow,
-						rOutputFrame.left, rOutputFrame.top,
-						rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top,
-						&compressorVideoFormat->bmiHeader,
-						filters.OutputBitmap()->data, //outputBuffer,
-						0,0,
-						filters.OutputBitmap()->w,
-						filters.OutputBitmap()->h,
-						DDF_SAME_HDC | DDF_SAME_DRAW
-				);
-			else if (g_fWine)
-				blitter->postStretchDIBits(
-						BUFFERID_OUTPUT,
-						hDCWindow,
-						rOutputFrame.left, rOutputFrame.top,
-						rOutputFrame.right-rOutputFrame.left, rOutputFrame.bottom-rOutputFrame.top,
-						0,0,
-						filters.OutputBitmap()->w,
-						filters.OutputBitmap()->h,
-						filters.OutputBitmap()->data, //outputBuffer,
-						(LPBITMAPINFO)&compressorVideoFormat->bmiHeader,
-						DIB_RGB_COLORS,
-						SRCCOPY
-					);
-			else
-				blitter->unlock(BUFFERID_OUTPUT);
-
+			blitter->postAPC(BUFFERID_OUTPUT, AsyncUpdateCallback, mpOutputDisplay, &opt->video.nPreviewFieldMode);
 		} else
 			blitter->unlock(BUFFERID_OUTPUT);
 	} else {
 		blitter->unlock(BUFFERID_OUTPUT);
 		blitter->unlock(BUFFERID_INPUT);
-		blitter->unlock(BUFFERID_PACKED);
 	}
 
 	if (opt->perf.fDropFrames && fPreview) {
@@ -3389,6 +2096,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		
 		if (lFrameDelta > 0) {
 			lDropFrames = lFrameDelta;
+//			VDDEBUG2("Dubber: Skipping %d frames\n", lDropFrames);
 		}
 	}
 
@@ -3406,8 +2114,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 void Dubber::WriteAudio(void *buffer, long lActualBytes, long lActualSamples) {
 	if (!lActualBytes) return;
 
-	if (!AVIout->audioOut->write(AVIIF_KEYFRAME, (char *)buffer, lActualBytes, lActualSamples))
-		throw MyError("Error writing audio data.");
+	mpAudioOut->write(AVIIF_KEYFRAME, (char *)buffer, lActualBytes, lActualSamples);
 
 	aInfo.cur_proc_src += lActualBytes;
 }
@@ -3454,7 +2161,7 @@ void Dubber::ThreadRun() {
 				if (stream == 0) {
 					if (vInfo.cur_proc_dst >= vInfo.end_proc_dst) {
 						if (fPreview && aSrc) {
-							((AVIAudioPreviewOutputStream *)AVIout->audioOut)->start();
+							static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->start();
 							mbAudioFrozenValid = true;
 						}
 						mInterleaver.EndStream(0);
@@ -3535,7 +2242,7 @@ void Dubber::ThreadRun() {
 							bVideoNonDelayedFrameReceived = true;
 
 							if (fPreview && aSrc) {
-								((AVIAudioPreviewOutputStream *)AVIout->audioOut)->start();
+								static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->start();
 								mbAudioFrozenValid = true;
 							}
 
@@ -3564,35 +2271,36 @@ void Dubber::ThreadRun() {
 							goto abort_requested;
 
 						if (!tc) {
-							if (mbAudioPipeFinalized) {
+							if (mAudioPipe.isInputClosed()) {
+								mAudioPipe.CloseOutput();
 								bytesread -= bytesread % nBlockAlign;
 								count = bytesread / nBlockAlign;
 								mInterleaver.AddCBRCorrection(1, count);
 								mInterleaver.EndStream(1);
-								mbAudioPipeFinalizeAcked = true;
 								bAudioEnded = true;
 								break;
 							}
 
-							msigAudioPipeWrite.wait();
+							mAudioPipe.ReadWait();
 						}
 
 						bytesread += tc;
 					}
 
+					mProcessingProfileChannel.End();
 					if (count > 0) {
+						mProcessingProfileChannel.Begin(0xe0e0ff, "A-Write");
 						WriteAudio(&audioBuffer.front(), bytesread, count);
-						msigAudioPipeRead.signal();
 
 						if (firstPacket && fPreview) {
-							AVIout->audioOut->flush();
+							mpAudioOut->flush();
 							blitter->enablePulsing(true);
 							firstPacket = false;
 							mbAudioFrozen = false;
 						}
+						mProcessingProfileChannel.End();
 					}
 
-					mProcessingProfileChannel.End();
 				} else {
 					VDNEVERHERE;
 				}
@@ -3619,32 +2327,43 @@ abort_requested:
 	}
 
 	mpVideoPipe->finalizeAck();
-	mbAudioPipeFinalizeAcked = true;
-	msigAudioPipeRead.signal();
+	mAudioPipe.CloseOutput();
 
-	// if preview mode, choke the audio
+	// attempt a graceful shutdown at this point...
+	try {
+		// if preview mode, choke the audio
 
-	if (AVIout && mpOutputSystem->AcceptsAudio() && mpOutputSystem->IsRealTime())
-		((AVIAudioPreviewOutputStream *)AVIout->audioOut)->stop();
+		if (mpAudioOut && mpOutputSystem->IsRealTime())
+			static_cast<AVIAudioPreviewOutputStream *>(mpAudioOut)->stop();
 
-	// finalize the output.. if it's not a preview...
-	if (!mpOutputSystem->IsRealTime()) {
-		// update audio rate...
+		// finalize the output.. if it's not a preview...
+		if (!mpOutputSystem->IsRealTime()) {
+			// update audio rate...
 
-		if (audioCorrector) {
-			WAVEFORMATEX *wfex = AVIout->audioOut->getWaveFormat();
-			
-			wfex->nAvgBytesPerSec = audioCorrector->ComputeByterate(wfex->nSamplesPerSec);
+			if (audioCorrector) {
+				VDFormatStruct<WAVEFORMATEX> wfex((const WAVEFORMATEX *)mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+				
+				wfex->nAvgBytesPerSec = audioCorrector->ComputeByterate(wfex->nSamplesPerSec);
 
-			AVIout->audioOut->streamInfo.dwRate = wfex->nAvgBytesPerSec
-				* AVIout->audioOut->streamInfo.dwScale;
+				mpAudioOut->setFormat(&*wfex, wfex.size());
+
+				AVIStreamHeader_fixed hdr(mpAudioOut->getStreamInfo());
+				hdr.dwRate = wfex->nAvgBytesPerSec * hdr.dwScale;
+				mpAudioOut->setStreamInfo(hdr);
+			}
+
+			// finalize avi
+			mpOutputSystem->CloseSegment(AVIout, true);
+			AVIout = NULL;
+			mpAudioOut = NULL;
+			mpVideoOut = NULL;
+			VDDEBUG("Dub/Processor: finalized.\n");
 		}
-
-		// finalize avi
-
-		mpOutputSystem->CloseSegment(AVIout, true);
-		AVIout = NULL;
-		VDDEBUG("Dub/Processor: finalized.\n");
+	} catch(MyError& e) {
+		if (!fError) {
+			err.TransferFrom(e);
+			fError = true;
+		}
 	}
 
 	VDDEBUG("Dub/Processor: end\n");
@@ -3655,10 +2374,13 @@ abort_requested:
 void Dubber::Abort() {
 	fUserAbort = true;
 	fAbort = true;
-	msigAudioPipeRead.signal();
-	msigAudioPipeWrite.signal();
+	mAudioPipe.Abort();
 	mpVideoPipe->abort();
 	PostMessage(g_hWnd, WM_USER, 0, 0);
+}
+
+bool Dubber::isRunning() {
+	return !fAbort;
 }
 
 bool Dubber::isAbortedByUser() {
@@ -3669,26 +2391,9 @@ bool Dubber::IsPreviewing() {
 	return fPreview;
 }
 
-void Dubber::Tag(int x, int y) {
-	POINT p;
-
-	p.x = x;
-	p.y = y;
-
-	if (PtInRect(&rInputFrame, p))
-		opt->video.fShowInputFrame = !opt->video.fShowInputFrame;
-	else if (PtInRect(&rOutputFrame, p))
-		opt->video.fShowOutputFrame = !opt->video.fShowOutputFrame;
-	else if (PtInRect(&rInputHistogram, p)) {
-		if (inputHisto) inputHisto->SetMode(Histogram::MODE_NEXT);
-	} else if (PtInRect(&rOutputHistogram, p)) {
-		if (outputHisto) outputHisto->SetMode(Histogram::MODE_NEXT);
-	}
-}
-
 void Dubber::RealizePalette() {
-	if (HDRAWDIB hddOutput = mOutputDisplay.GetHDD())
-		DrawDibRealize(hddOutput, hDCWindow, FALSE);
+//	if (HDRAWDIB hddOutput = mOutputDisplay.GetHDD())
+//		DrawDibRealize(hddOutput, hDCWindow, FALSE);
 }
 
 void Dubber::SetPriority(int index) {
@@ -3709,8 +2414,10 @@ void Dubber::UpdateFrames() {
 			mLastIOThreadCounter = iocount;
 			mIOThreadFailCount = curTime;
 		} else if (mLastIOThreadCounter && (curTime - mIOThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
-			if (mpIOThread->isThreadActive())
-				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_IOThreadLivelock);
+			if (mpIOThread->isThreadActive()) {
+				void *eip = ThreadLocation();
+				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_IOThreadLivelock, 1, &eip);
+			}
 			mLastIOThreadCounter = 0;
 		}
 
@@ -3718,8 +2425,18 @@ void Dubber::UpdateFrames() {
 			mLastProcessingThreadCounter = prcount;
 			mProcessingThreadFailCount = curTime;
 		} else if (mLastProcessingThreadCounter && (curTime - mProcessingThreadFailCount - 10000) < 3600000) {		// 10s to 1hr
-			if (isThreadActive())
-				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_ProcessingThreadLivelock);
+			if (isThreadActive()) {
+				void *eip = ThreadLocation();
+				VDLogAppMessage(kVDLogWarning, kVDST_Dub, kVDM_ProcessingThreadLivelock, 1, &eip);
+
+				HANDLE h = (HANDLE)getThreadHandle();
+
+				CONTEXT ctx;
+				ctx.ContextFlags = CONTEXT_CONTROL;
+				SuspendThread(h);
+				ctx.Eip = 0;
+				ResumeThread(h);
+			}
 			mLastProcessingThreadCounter = 0;
 		}
 	}

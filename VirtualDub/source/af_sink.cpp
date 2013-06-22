@@ -32,7 +32,7 @@ public:
 	uint32 Run();
 	void Start();
 
-	uint32 Read(void *dst, uint32 samples);
+	uint32 ReadSamples(void *dst, uint32 samples);
 	const void *GetFormat();
 	int GetFormatLen();
 	sint64 GetLength();
@@ -81,7 +81,7 @@ uint32 VDAudioFilterSink::Run() {
 	return 0;
 }
 
-uint32 VDAudioFilterSink::Read(void *dst, uint32 samples) {
+uint32 VDAudioFilterSink::ReadSamples(void *dst, uint32 samples) {
 	VDAudioFilterPin& pin = *mpContext->mpInputs[0];
 	const VDWaveFormat& format = *pin.mpFormat;
 
@@ -111,10 +111,6 @@ bool VDAudioFilterSink::IsEnded() {
 
 extern const struct VDAudioFilterDefinition afilterDef_sink = {
 	sizeof(VDAudioFilterDefinition),
-	L"*sink",
-	NULL,
-	L"",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterSink),	1,	0,
@@ -123,6 +119,23 @@ extern const struct VDAudioFilterDefinition afilterDef_sink = {
 
 	VDAudioFilterSink::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_sink = {
+	sizeof(VDPluginInfo),
+	L"*sink",
+	NULL,
+	L"",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_sink
 };
 
 IVDAudioFilterSink *VDGetAudioFilterSinkInterface(void *p) {
@@ -171,10 +184,6 @@ uint32 VDAudioFilterOutput::Run() {
 
 extern const struct VDAudioFilterDefinition afilterDef_output = {
 	sizeof(VDAudioFilterDefinition),
-	L"output",
-	NULL,
-	L"Generic output sink for audio graph representing file output or playback filter.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterOutput),	1,	0,
@@ -185,12 +194,25 @@ extern const struct VDAudioFilterDefinition afilterDef_output = {
 	&VDAudioFilterBase::sVtbl,
 };
 
+extern const struct VDPluginInfo apluginDef_output = {
+	sizeof(VDPluginInfo),
+	L"output",
+	NULL,
+	L"Generic output sink for audio graph representing file output or playback filter.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_output
+};
+
 extern const struct VDAudioFilterDefinition afilterDef_discard = {
 	sizeof(VDAudioFilterDefinition),
-	L"discard",
-	NULL,
-	L"Discards all input.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterOutput),	1,	0,
@@ -199,4 +221,21 @@ extern const struct VDAudioFilterDefinition afilterDef_discard = {
 
 	VDAudioFilterOutput::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_discard = {
+	sizeof(VDPluginInfo),
+	L"discard",
+	NULL,
+	L"Discards all input.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_discard
 };

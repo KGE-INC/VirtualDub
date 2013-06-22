@@ -26,15 +26,15 @@ void OpenJobWindow();
 void CloseJobWindow();
 bool InitJobSystem();
 void DeinitJobSystem();
-void JobAddConfiguration(const DubOptions *, const char *szFileInput, int iFileMode, const char *szFileOutput, bool fUseCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold);
-void JobAddConfigurationImages(const DubOptions *opt, const char *szFileInput, int iFileMode, const char *szFileOutputPrefix, const char *szFileOutputSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended);
+void JobAddConfiguration(const DubOptions *, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fUseCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold);
+void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutputPrefix, const wchar_t *szFileOutputSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended);
 void JobWriteConfiguration(FILE *f, DubOptions *);
 void JobLockDubber();
 void JobUnlockDubber();
-void JobPositionCallback(LONG start, LONG cur, LONG end, int progress);
+void JobPositionCallback(VDPosition start, VDPosition cur, VDPosition end, int progress, void *cookie);
 void JobClearList();
 void JobRunList();
-void JobAddBatchFile(const char *srcDir, const char *dstDir);
-void JobAddBatchDirectory(const char *srcDir, const char *dstDir);
+void JobAddBatchFile(const wchar_t *srcDir, const wchar_t *dstDir);
+void JobAddBatchDirectory(const wchar_t *srcDir, const wchar_t *dstDir);
 
 #endif

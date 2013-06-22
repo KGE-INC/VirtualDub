@@ -57,6 +57,8 @@ public:
 		return mThreadID;
 	}
 
+	void *ThreadLocation() const;				// retrieve current EIP of thread (use only for debug purposes -- may not return reliable information on syscall, etc.)
+
 	// thread-local functions
 
 	virtual void ThreadRun() = 0;				// thread, come to life

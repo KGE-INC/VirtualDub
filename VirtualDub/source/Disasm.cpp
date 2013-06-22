@@ -720,7 +720,12 @@ BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 
 	if (lpdis->CtlType != ODT_LISTBOX) return FALSE;
 	if (!(lpdis->itemAction & ODA_DRAWENTIRE)) return FALSE;
-	if (lpdis->itemID < 0) return FALSE;
+
+	// MSDN docs say that itemID can be -1 for an empty listbox or combobox that
+	// needs a focus rect drawn.  Intel C/C++ caught the fact that itemID is a
+	// UINT.  Hmm....
+	if ((INT)lpdis->itemID < 0)
+		return FALSE;
 
 //	ipd = (lbent *)lpdis->itemData;
 	ipd = &lbents[lpdis->itemID];

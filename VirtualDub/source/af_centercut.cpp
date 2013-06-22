@@ -82,9 +82,9 @@ uint32 VDAudioFilterCenterCut::Prepare() {
 
 	VDWaveFormat *pwf0, *pwf1;
 
-	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[0]->mpFormat = pwf0 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
-	if (!(mpContext->mpOutputs[1]->mpFormat = pwf1 = mpContext->mpServices->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
+	if (!(mpContext->mpOutputs[1]->mpFormat = pwf1 = mpContext->mpAudioCallbacks->CopyWaveFormat(mpContext->mpInputs[0]->mpFormat)))
 		mpContext->mpServices->ExceptOutOfMemory();
 
 	pwf0->mChannels		= 2;
@@ -307,10 +307,6 @@ sint64 VDAudioFilterCenterCut::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_centercut = {
 	sizeof(VDAudioFilterDefinition),
-	L"center cut",
-	NULL,
-	L"Splits a stereo stream into stereo-side and mono-center outputs using phase analysis.",
-	0,
 	kVFAF_Zero,
 
 	sizeof(VDAudioFilterCenterCut),	1,	2,
@@ -319,4 +315,21 @@ extern const struct VDAudioFilterDefinition afilterDef_centercut = {
 
 	VDAudioFilterCenterCut::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_centercut = {
+	sizeof(VDPluginInfo),
+	L"center cut",
+	NULL,
+	L"Splits a stereo stream into stereo-side and mono-center outputs using phase analysis.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_centercut
 };

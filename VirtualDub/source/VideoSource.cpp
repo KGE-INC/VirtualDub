@@ -54,7 +54,8 @@ namespace {
 		kVDM_DecodingError,
 		kVDM_FrameTooShort,
 		kVDM_CodecMMXError,
-		kVDM_FixingHugeVideoFormat
+		kVDM_FixingHugeVideoFormat,
+		kVDM_CodecRenamingDetected
 	};
 }
 
@@ -106,7 +107,10 @@ static bool CheckMPEG4Codec(HIC hic, bool isV3) {
 
 	HANDLE h;
 
-	h = ICImageDecompress(hic, 0, (BITMAPINFO *)&bih, frame, NULL);
+	{
+		VDSilentExternalCodeBracket bracket;
+		h = ICImageDecompress(hic, 0, (BITMAPINFO *)&bih, frame, NULL);
+	}
 
 	if (h) {
 		GlobalFree(h);
@@ -243,6 +247,29 @@ int VideoSource::streamGetRequiredCount(long *pSize) {
 void VideoSource::invalidateFrameBuffer() {
 }
 
+bool VideoSource::isKey(LONG lSample) {
+	if (lSample<lSampleFirst || lSample>=lSampleLast)
+		return true;
+
+	return _isKey(lSample);
+}
+
+bool VideoSource::_isKey(LONG lSample) {
+	return true;
+}
+
+LONG VideoSource::nearestKey(LONG lSample) {
+	return lSample;
+}
+
+LONG VideoSource::prevKey(LONG lSample) {
+	return lSample <= lSampleFirst ? -1 : lSample-1;
+}
+
+LONG VideoSource::nextKey(LONG lSample) {
+	return lSample+1 >= lSampleFirst ? -1 : lSample+1;
+}
+
 bool VideoSource::isKeyframeOnly() {
    return false;
 }
@@ -309,7 +336,10 @@ void VideoSourceAVI::_destruct() {
 	}
 
 	if (bmihTemp) freemem(bmihTemp);
-	if (hicDecomp) ICClose(hicDecomp);
+	if (hicDecomp) {
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+		ICClose(hicDecomp);
+	}
 
 	if (pAVIStream) delete pAVIStream;
 
@@ -634,7 +664,10 @@ void VideoSourceAVI::_construct() {
 			ICINFO ici;
 
 			szCodecName[0] = 0;
+			mDriverName.clear();
 			if (SUCCEEDED(ICGetInfo(hicDecomp, &ici, sizeof ici))) {
+				const wchar_t *pName = ici.szDescription;
+				mDriverName = VDswprintf(L"Video codec \"%ls\"", 1, &pName);
 				VDTextWToA(szCodecName, sizeof szCodecName, ici.szDescription, -1);
 			}
 		}
@@ -665,9 +698,16 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 				if (hicDecomp)
 					ICClose(hicDecomp);
 
-				// AngelPotion f*cks us over here and overwrites our format if we keep this in.
-				// So let's write protect the format.  You'll see a nice C0000005 error when
-				// the AP DLL tries to modify it.
+				// AngelPotion overwrites its input format with biCompression='MP43' and doesn't
+				// restore it, which leads to video codec lookup errors.  So what we do here is
+				// make a copy of the format in nice, safe memory and feed that in instead.
+
+				// We used to write protect the format here, but apparently some versions of Windows
+				// have certain functions accepting (BITMAPINFOHEADER *) that actually call
+				// IsBadWritePtr() to verify the incoming pointer, even though those functions
+				// don't actually need to write to the format.  It would be nice if someone learned
+				// what 'const' was for.  AngelPotion doesn't crash because it has a try/catch
+				// handler wrapped around its code.
 
 //				hicDecomp = ICLocate(ICTYPE_VIDEO, NULL, getImageFormat(), NULL, ICMODE_DECOMPRESS);
 
@@ -676,12 +716,20 @@ bool VideoSourceAVI::AttemptCodecNegotiation(BITMAPINFOHEADER *bmih, bool is_mjp
 				BITMAPINFOHEADER *pbih_protected = (BITMAPINFOHEADER *)VirtualAlloc(NULL, siz, MEM_COMMIT, PAGE_READWRITE);
 
 				if (pbih_protected) {
-					DWORD dwOldProtect;
-
 					memcpy(pbih_protected, bmih, siz);
-					VirtualProtect(pbih_protected, siz, PAGE_READONLY, &dwOldProtect);
 
 					hicDecomp = ICLocate(ICTYPE_VIDEO, NULL, pbih_protected, NULL, ICMODE_DECOMPRESS);
+
+					static bool sbBadCodecDetected = false;		// we only need one warning, not a billion....
+					if (!sbBadCodecDetected && memcmp(pbih_protected, bmih, siz)) {
+						ICINFO info = {sizeof(ICINFO)};
+
+						ICGetInfo(hicDecomp, &info, sizeof info);
+
+						const wchar_t *ppName = info.szDescription;
+						VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_CodecRenamingDetected, 1, &ppName);
+						sbBadCodecDetected = true;
+					}
 
 					VirtualFree(pbih_protected, 0, MEM_RELEASE);
 				}
@@ -1182,7 +1230,7 @@ int VideoSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 	}
 }
 
-BOOL VideoSourceAVI::_isKey(LONG samp) {
+bool VideoSourceAVI::_isKey(LONG samp) {
 	if ((mjpeg_mode & -2) == IFMODE_SPLIT1)
 		samp = lSampleFirst + (samp - lSampleFirst)/2;
 
@@ -1362,13 +1410,16 @@ void DIBconvert(void *src0, BITMAPINFOHEADER *srcfmt, void *dst0, BITMAPINFOHEAD
 ////////////////////////////////////////////////
 
 void VideoSourceAVI::invalidateFrameBuffer() {
-	if (lLastFrame != -1 && hicDecomp)
+	if (lLastFrame != -1 && hicDecomp) {
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 		ICDecompressEnd(hicDecomp);
+	}
+
 	lLastFrame = -1;
 	mbConcealingErrors = false;
 }
 
-BOOL VideoSourceAVI::isFrameBufferValid() {
+bool VideoSourceAVI::isFrameBufferValid() {
 	return lLastFrame != -1;
 }
 
@@ -1435,6 +1486,8 @@ void VideoSourceAVI::streamBegin(bool fRealTime) {
 	if (hicDecomp) {
 		BITMAPINFOHEADER *bih_src = bmihTemp;
 		BITMAPINFOHEADER *bih_dst = getDecompressedFormat();
+
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 
 		if (ICERR_OK != (err = ICDecompressBegin(
 					hicDecomp,
@@ -1508,41 +1561,40 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 
 			bmihTemp->biSizeImage = data_len;
 
-			if (IsMMXState())
-				throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
-
 			VDCHECKPOINT;
 
-			vdprotected3("decompressing video frame %d with \"%.64s\" [biCompression=%08x]", unsigned, frame_num, const char *, szCodecName, unsigned, getImageFormat()->biCompression) {
-				if (use_ICDecompressEx)
-					err = 	ICDecompressEx(
-								hicDecomp,
-		//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
-		//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
-								  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
-								bih_src,
-								inputBuffer,
-								0,0,
-								bih_src->biWidth, bih_src->biHeight,
-								bih_dst,
-								lpvBuffer,
-								0,0,
-								bih_dst->biWidth, bih_dst->biHeight
-								);
+			{
+				VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+				vdprotected3("decompressing video frame %d with \"%.64s\" [biCompression=%08x]", unsigned, frame_num, const char *, szCodecName, unsigned, getImageFormat()->biCompression) {
+					if (use_ICDecompressEx)
+						err = 	ICDecompressEx(
+									hicDecomp,
+			//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
+			//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
+									  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
+									bih_src,
+									inputBuffer,
+									0,0,
+									bih_src->biWidth, bih_src->biHeight,
+									bih_dst,
+									lpvBuffer,
+									0,0,
+									bih_dst->biWidth, bih_dst->biHeight
+									);
 
-				else
-					err = 	ICDecompress(
-								hicDecomp,
-		//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
-		//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
-								  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
-								bih_src,
-								inputBuffer,
-								bih_dst,
-								lpvBuffer
-								);
+					else
+						err = 	ICDecompress(
+									hicDecomp,
+			//						  (is_preroll ? ICDECOMPRESS_PREROLL : 0) |
+			//						  | (data_len ? 0 : ICDECOMPRESS_NULLFRAME)
+									  (is_key ? 0 : ICDECOMPRESS_NOTKEYFRAME),
+									bih_src,
+									inputBuffer,
+									bih_dst,
+									lpvBuffer
+									);
+				}
 			}
-			CheckMMX();
 
 			VDCHECKPOINT;
 
@@ -1619,6 +1671,7 @@ void VideoSourceAVI::streamEnd() {
 	// there ever really an error?
 
 	if (hicDecomp) {
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 		if (use_ICDecompressEx)
 			ICDecompressExEnd(hicDecomp);
 		else
@@ -1663,6 +1716,8 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 		// tell VCM we're going to do a little decompression...
 
 		if (lLastFrame == -1) {
+			VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
+
 			err = ICDecompressBegin(hicDecomp, getImageFormat(), getDecompressedFormat());
 			if (err != ICERR_OK) throw MyICError("VideoSourceAVI", err);
 		}
@@ -1713,8 +1768,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 				if (lBytesRead) {
 					VDCHECKPOINT;
 
-					if (IsMMXState())
-						throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+					VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 
 					vdprotected3("decompressing video frame %d with \"%.64s\" [biCompression=%08x]", unsigned, lFrameNum, const char *, szCodecName, unsigned, getImageFormat()->biCompression) {
 						if (ICERR_OK != (err = 	ICDecompress(
@@ -1729,8 +1783,6 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 							throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", lFrameNum, (int)err);
 					}
-
-					CheckMMX();
 
 					VDCHECKPOINT;
 				}
@@ -1770,6 +1822,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 	} catch(const MyError&) {
 		if (dataBuffer) freemem(dataBuffer);
+		VDExternalCodeBracket bracket(mDriverName.c_str(), __FILE__, __LINE__);
 		ICDecompressEnd(hicDecomp);
 		lLastFrame = -1;
 		throw;

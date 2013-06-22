@@ -26,7 +26,7 @@ DubSource::~DubSource() {
 	if (format) delete format;
 }
 
-BOOL DubSource::init() {
+bool DubSource::init() {
 	return TRUE;
 }
 
@@ -53,28 +53,6 @@ int DubSource::read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LO
 	if (lCount>0 && lCount > lSampleLast - lStart) lCount = lSampleLast - lStart;
 
 	return _read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
-}
-
-BOOL DubSource::isKey(LONG lSample) {
-	if (lSample<lSampleFirst || lSample>=lSampleLast) return TRUE;
-
-	return _isKey(lSample);
-}
-
-BOOL DubSource::_isKey(LONG lSample) {
-	return TRUE;
-}
-
-LONG DubSource::nearestKey(LONG lSample) {
-	return lSample;
-}
-
-LONG DubSource::prevKey(LONG lSample) {
-	return lSample <= lSampleFirst ? -1 : lSample-1;
-}
-
-LONG DubSource::nextKey(LONG lSample) {
-	return lSample+1 >= lSampleFirst ? -1 : lSample+1;
 }
 
 void DubSource::streamBegin(bool fRealTime) {

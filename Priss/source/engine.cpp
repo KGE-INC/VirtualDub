@@ -31,6 +31,7 @@ VDMPEGAudioDecoder::VDMPEGAudioDecoder()
 }
 
 VDMPEGAudioDecoder::~VDMPEGAudioDecoder() {
+	delete mpPolyphaseFilter;
 }
 
 void VDMPEGAudioDecoder::Destroy() {

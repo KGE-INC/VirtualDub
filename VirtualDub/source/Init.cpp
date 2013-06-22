@@ -21,6 +21,7 @@
 #include <commctrl.h>
 #include <vfw.h>
 #include <shellapi.h>
+#include <eh.h>
 
 #include "resource.h"
 #include "job.h"
@@ -33,9 +34,11 @@
 #include "command.h"
 #include "ddrawsup.h"
 #include "script.h"
+#include <vd2/system/vdalloc.h>
 #include <vd2/system/tls.h>
 #include <vd2/system/profile.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/filesys.h>
 #include <vd2/Dita/resources.h>
 #include "crash.h"
 
@@ -45,16 +48,21 @@
 #include "HexViewer.h"
 #include "FilterGraph.h"
 #include "LogWindow.h"
+#include "VideoWindow.h"
 #include "AudioDisplay.h"
 #include "VideoDisplay.h"
 #include "RTProfileDisplay.h"
-#include "MRUList.h"
+#include "plugins.h"
+
+#include "project.h"
+#include "projectui.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
 extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
 extern void VDInitAppStringTables();
+extern void VDInitInputDrivers();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -65,7 +73,7 @@ extern void DetectDivX();
 
 bool InitApplication(HINSTANCE hInstance);
 bool InitInstance( HANDLE hInstance, int nCmdShow);
-void ParseCommandLine(char *lpCmdLine);
+void ParseCommandLine(const wchar_t *lpCmdLine);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -75,16 +83,26 @@ extern "C" unsigned long version_num;
 
 extern HINSTANCE	g_hInst;
 extern HWND			g_hWnd;
-extern HMENU		hMenuNormal, hMenuDub, g_hmenuDisplay;
 extern HACCEL		g_hAccelMain;
-extern MRUList		*mru_list;
 
-extern char g_szFile[MAX_PATH];
+extern VDProject *g_project;
+extern vdautoptr<VDProjectUI> g_projectui;
+
+extern wchar_t g_szFile[MAX_PATH];
 
 static const char szAppName[]="VirtualDub";
+static const wchar_t szAppNameW[]=L"VirtualDub";
 extern const char g_szError[];
 
 bool g_fWine = false;
+
+///////////////////////////////////////////////////////////////////////////
+
+void VDterminate() {
+	vdprotected("processing call to terminate() (probably caused by exception within destructor)") {
+		__asm int 3
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -225,14 +243,15 @@ exchandler:
 #endif
 }
 
-bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
+bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
 
 //#ifdef _DEBUG
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_LEAK_CHECK_DF);
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
 //#endif
 
-	// setup crash trap
+	// setup crash traps
 	SetUnhandledExceptionFilter(CrashHandler);
+	set_terminate(VDterminate);
 
 	// initialize globals
     g_hInst = hInstance;
@@ -265,17 +284,17 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 	VDCHECKPOINT;
 
 	AVIFileInit();
+
 	VDRegistryAppKey::setDefaultKey("Software\\Freeware\\VirtualDub\\");
 
 	// initialize filters, job system, MRU list, help system
 
 	InitBuiltinFilters();
 	VDInitBuiltinAudioFilters();
+	VDInitInputDrivers();
 
 	if (!InitJobSystem())
 		return FALSE;
-
-	if (!(mru_list = new MRUList(4, "MRU List"))) return false;
 
 	LoadPreferences();
 
@@ -287,8 +306,10 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
             return (FALSE);              
 
 	// display welcome requester
-
 	Welcome();
+
+	// Announce experimentality.
+	AnnounceExperimental();
 
     // Create the main window.
 
@@ -304,6 +325,8 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 	vdprotected("autoloading filters at startup") {
 		int f, s;
 
+		VDLoadPlugins(VDMakePath(VDGetProgramPath(), VDStringW(L"plugins")));
+
 		s = FilterAutoloadModules(f);
 
 		if (s || f)
@@ -314,16 +337,10 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	DetectDivX();
 
-	// attempt to initialize DirectDraw 2, if we have it
+	while(iswspace(*lpCmdLine))
+		++lpCmdLine;
 
-#ifdef ENABLE_DIRECTDRAW_SUPPORT
-	EnableMenuItem(GetMenu(g_hWnd),ID_OPTIONS_ENABLEDIRECTDRAW, (DDrawDetect() ? (MF_BYCOMMAND|MF_ENABLED) : (MF_BYCOMMAND|MF_GRAYED)));
-#endif
-
-	_RPT1(0,"[%s]\n",lpCmdLine);
-
-	while(isspace(*lpCmdLine)) ++lpCmdLine;
-
+#if 0
 	if (*lpCmdLine=='&') {
 		ICRemove(ICTYPE_VIDEO, 'TSDV', 0);
 		compInstalled = ICInstall(ICTYPE_VIDEO, 'TSDV', (LPARAM)(lpCmdLine+1), 0, ICINSTALL_DRIVER);
@@ -349,16 +366,9 @@ bool Init(HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow) {
 				}
 			}
 		}
-	} else if (*lpCmdLine == '!') {
-		try {
-			FilterLoadModule(lpCmdLine+1);
-
-			guiSetStatus("Loaded external filter module: %s", 255, lpCmdLine+1);
-		} catch(const MyError& e) {
-			e.post(g_hWnd, g_szError);
-		}
 	} else
-		ParseCommandLine(lpCmdLine);
+#endif
+	ParseCommandLine(lpCmdLine);
 
 	// All done!
 
@@ -374,6 +384,9 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
+	g_projectui->Detach();
+	g_projectui = 0;
+	g_project = 0;
 	DragAcceptFiles(g_hWnd, FALSE);
 
 	filters.DeinitFilters();
@@ -387,6 +400,7 @@ void Deinit() {
 	VDCHECKPOINT;
 
 	FilterUnloadAllModules();
+	VDDeinitPluginSystem();
 
 	VDCHECKPOINT;
 
@@ -414,8 +428,6 @@ void Deinit() {
 
 	AVIFileExit();
 
-	delete mru_list;
-
 	_CrtCheckMemory();
 
 	VDCHECKPOINT;
@@ -428,9 +440,18 @@ void Deinit() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool InitApplication(HINSTANCE hInstance) {
-    WNDCLASS  wc;
+LRESULT APIENTRY DummyWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message) {
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
+	}
 
+	return IsWindowUnicode(hWnd) ? DefWindowProcW(hWnd, message, wParam, lParam) : DefWindowProcA(hWnd, message, wParam, lParam);
+}
+
+bool InitApplication(HINSTANCE hInstance) {
 	// register controls
 
 	InitCommonControls();
@@ -440,33 +461,41 @@ bool InitApplication(HINSTANCE hInstance) {
 	if (!RegisterLevelControl()) return false;
 	if (!RegisterHexEditor()) return false;
 	if (!RegisterAudioDisplayControl()) return false;
-	if (!RegisterVideoDisplayControl()) return false;
+	if (!VDRegisterVideoDisplayControl()) return false;
 	if (!RegisterFilterGraphControl()) return false;
 	if (!RegisterLogWindowControl()) return false;
 	if (!RegisterRTProfileDisplayControl()) return false;
-
-	// Load menus.
-
-	if (!(hMenuNormal	= LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_MAIN_MENU    )))) return false;
-	if (!(hMenuDub		= LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_DUB_MENU     )))) return false;
-	if (!(g_hmenuDisplay= LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_DISPLAY_MENU )))) return false;
+	if (!RegisterVideoWindow()) return false;
 
 	// Load accelerators.
 
 	if (!(g_hAccelMain = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_IDLE_KEYS)))) return false;
 
-    wc.style = CS_OWNDC;
-    wc.lpfnWndProc = (WNDPROC)MainWndProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = hInstance;
-    wc.hIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_VIRTUALDUB));
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE+1); //GetStockObject(LTGRAY_BRUSH); 
-    wc.lpszMenuName = MAKEINTRESOURCE(IDR_MAIN_MENU);
-    wc.lpszClassName = szAppName;
+	union {
+		WNDCLASSA a;
+		WNDCLASSW w;
+	} wc;
 
-    return !!RegisterClass(&wc);
+    wc.a.style			= CS_OWNDC;
+    wc.a.lpfnWndProc	= DummyWndProc;
+    wc.a.cbClsExtra		= 0;
+    wc.a.cbWndExtra		= 0;
+    wc.a.hInstance		= hInstance;
+    wc.a.hIcon			= LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_VIRTUALDUB));
+    wc.a.hCursor		= LoadCursor(NULL, IDC_ARROW);
+    wc.a.hbrBackground	= (HBRUSH)(COLOR_3DFACE+1); //GetStockObject(LTGRAY_BRUSH); 
+
+	if (GetVersion() < 0x80000000) {
+	    wc.w.lpszMenuName	= MAKEINTRESOURCEW(IDR_MAIN_MENU);
+		wc.w.lpszClassName	= szAppNameW;
+
+		return !!RegisterClassW(&wc.w);
+	} else {
+	    wc.a.lpszMenuName	= MAKEINTRESOURCEA(IDR_MAIN_MENU);
+		wc.a.lpszClassName	= szAppName;
+
+		return !!RegisterClassA(&wc.a);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -488,29 +517,49 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 		);
 
     // Create a main window for this application instance. 
-    g_hWnd = CreateWindow(
-        szAppName,
-        "",
-        WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
-        CW_USEDEFAULT,                  // Default horizontal position.
-        CW_USEDEFAULT,                  // Default vertical position.
-        CW_USEDEFAULT,                  // Default width.
-        CW_USEDEFAULT,                  // Default height.
-        NULL,                           // Overlapped windows have no parent.
-        NULL,                           // Use the window class menu.
-        g_hInst,                        // This instance owns this window.
-        NULL                            // Pointer not needed.
-    );
+	if (GetVersion() < 0x80000000) {
+		g_hWnd = CreateWindowW(
+			szAppNameW,
+			L"",
+			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
+			CW_USEDEFAULT,                  // Default horizontal position.
+			CW_USEDEFAULT,                  // Default vertical position.
+			CW_USEDEFAULT,                  // Default width.
+			CW_USEDEFAULT,                  // Default height.
+			NULL,                           // Overlapped windows have no parent.
+			NULL,                           // Use the window class menu.
+			g_hInst,                        // This instance owns this window.
+			NULL                            // Pointer not needed.
+		);
+	} else {
+		g_hWnd = CreateWindowA(
+			szAppName,
+			"",
+			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
+			CW_USEDEFAULT,                  // Default horizontal position.
+			CW_USEDEFAULT,                  // Default vertical position.
+			CW_USEDEFAULT,                  // Default width.
+			CW_USEDEFAULT,                  // Default height.
+			NULL,                           // Overlapped windows have no parent.
+			NULL,                           // Use the window class menu.
+			g_hInst,                        // This instance owns this window.
+			NULL                            // Pointer not needed.
+		);
+	}
 
     // If window could not be created, return "failure".
     if (!g_hWnd)
         return (FALSE);
 
+	g_projectui = new VDProjectUI;
+	g_project = &*g_projectui;
+	g_projectui->Attach(g_hWnd);
+
     // Make the window visible; update its client area; and return "success".
     ShowWindow(g_hWnd, nCmdShow);  
     UpdateWindow(g_hWnd);          
 
-	SendMessage(g_hWnd, WM_SETTEXT, 0, (LPARAM)buf);
+	SetWindowText(g_hWnd, buf);
 
     return (TRUE);               
 
@@ -518,12 +567,22 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-void ParseCommandLine(char *lpCmdLine) {
-	char *const cmdline = strdup(lpCmdLine);
+void ParseCommandLine(const wchar_t *lpCmdLine) {
+
+	// skip program name
+	if (*lpCmdLine == L'"') {
+		++lpCmdLine;
+		while(*lpCmdLine && *lpCmdLine++ != '"')
+			;
+	} else
+		while(*lpCmdLine && !iswspace(*lpCmdLine))
+			++lpCmdLine;
+
+	wchar_t *const cmdline = wcsdup(lpCmdLine);
 	if (!cmdline) return;
 
-	char *token, *s;
-	static const char *seps = " \t\n\r";
+	wchar_t *token, *s;
+	static const wchar_t seps[] = L" \t\n\r";
 	bool fExitOnDone = false;
 
 	// parse cmdline looking for switches
@@ -540,7 +599,7 @@ void ParseCommandLine(char *lpCmdLine) {
 
 	try {
 		while(*s) {
-			char *t;
+			wchar_t *t;
 			bool quoted = false;
 			bool restore_slash = false;
 
@@ -551,42 +610,41 @@ void ParseCommandLine(char *lpCmdLine) {
 
 			token = s;
 
-			if (*s == '"') {
+			if (*s == L'"') {
 				s = ++token;
 
-				while(*s && *s!='"')
+				while(*s && *s!=L'"')
 					++s;
 
 				if (*s)
 					*s++=0;
 
 			} else {
-				if (*s == '/')
+				if (*s == L'/')
 					++s;
 
-				while(*s && (quoted || (!isspace(*s) && *s!='/'))) {
-					if (*s == '"')
+				while(*s && (quoted || (!isspace(*s) && *s!=L'/'))) {
+					if (*s == L'"')
 						quoted = !quoted;
 
 					++s;
 				}
 
 				if (*s) {
-					restore_slash = (*s=='/');
+					restore_slash = (*s==L'/');
 					*s++ = 0;
 				}
 			}
 
 			_RPT1(0,"token [%s]\n", token);
-
-			if (*token == '-' || *token == '/') {
+			if (*token == L'-' || *token == L'/') {
 				switch(token[1]) {
 				case 's':
 
 					t = token + 2;
-					if (*t == '"') {
+					if (*t == L'"') {
 						++t;
-						while(*t && *t != '"')
+						while(*t && *t != L'"')
 							++t;
 						*t = 0;
 
@@ -611,22 +669,22 @@ void ParseCommandLine(char *lpCmdLine) {
 					break;
 				case 'p':
 					{
-						char *arg1, *arg2;
+						const wchar_t *arg1, *arg2;
 
 						// dequote first token
 
 						t = token+2;
 
-						if (*t == '"') {
+						if (*t == L'"') {
 							arg1 = ++t;
-							while(*t && *t!='"')
+							while(*t && *t!=L'"')
 								++t;
 
 							if (*t)
 								*t++ = 0;
 						} else {
 							arg1 = t;
-							while(*t && *t!=',')
+							while(*t && *t!=L',')
 								++t;
 						}
 
@@ -637,16 +695,16 @@ void ParseCommandLine(char *lpCmdLine) {
 
 						arg2 = t;
 
-						if (*t == '"') {
+						if (*t == L'"') {
 							arg2 = ++t;
 
-							while(*t && *t!='"')
+							while(*t && *t!=L'"')
 								++t;
 
 							if (*t)
 								*t++ = 0;
 						} else {
-							while(*t && *t!=',')
+							while(*t && *t!=L',')
 								++t;
 						}
 
@@ -658,42 +716,42 @@ void ParseCommandLine(char *lpCmdLine) {
 					break;
 				case 'b':
 					{
-						char *arg1, *arg2;
+						wchar_t *arg1, *arg2;
 
 						// dequote first token
 
 						t = token+2;
 
-						if (*t == '"') {
+						if (*t == L'"') {
 							arg1 = ++t;
-							while(*t && *t!='"')
+							while(*t && *t!=L'"')
 								++t;
 
 							if (*t)
 								*t++ = 0;
 						} else {
 							arg1 = t;
-							while(*t && *t!=',')
+							while(*t && *t!=L',')
 								++t;
 						}
 
-						if (*t++ != ',')
+						if (*t++ != L',')
 							throw "Command line error: /b format is /b<src_dir>,<dst_dir>";
 
 						// dequote second token
 
 						arg2 = t;
 
-						if (*t == '"') {
+						if (*t == L'"') {
 							arg2 = ++t;
 
-							while(*t && *t!='"')
+							while(*t && *t!=L'"')
 								++t;
 
 							if (*t)
 								*t++ = 0;
 						} else {
-							while(*t && *t!=',')
+							while(*t && *t!=L',')
 								++t;
 						}
 
@@ -708,18 +766,28 @@ void ParseCommandLine(char *lpCmdLine) {
 					break;
 
 				case 'f':
-					if (!stricmp(token+2, "sck"))
+					if (!wcsicmp(token+2, L"sck"))
 						crash();
 					break;
 
+				case 'F':
+					try {
+						const VDStringA filenameA(VDTextWToA(token+2));
+						FilterLoadModule(filenameA.c_str());
+
+						guiSetStatus("Loaded external filter module: %s", 255, filenameA.c_str());
+					} catch(const MyError& e) {
+						e.post(g_hWnd, g_szError);
+					}
+					break;
 				}
 			} else
-				strcpy(g_szFile, token);
+				wcscpy(g_szFile, token);
 
 			if (restore_slash)
-				*--s='/';
+				*--s=L'/';
 		}
-	} catch(char *s) {
+	} catch(const char *s) {
 		MessageBox(NULL, s, g_szError, MB_OK);
 	}
 

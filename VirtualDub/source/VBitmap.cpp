@@ -78,17 +78,17 @@ extern "C" void __cdecl asm_bitmap_xlat3(Pixel32 *dst, Pixel32 *src,
 
 ///////////////////////////////////////////////////////////////////////////
 
-VBitmap::VBitmap(void *lpData, BITMAPINFOHEADER *bmih) throw() {
+VBitmap::VBitmap(void *lpData, BITMAPINFOHEADER *bmih) {
 	init(lpData, bmih);
 }
 
-VBitmap::VBitmap(void *data, PixDim w, PixDim h, int depth) throw() {
+VBitmap::VBitmap(void *data, PixDim w, PixDim h, int depth) {
 	init(data, w, h, depth);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-VBitmap& VBitmap::init(void *lpData, BITMAPINFOHEADER *bmih) throw() {
+VBitmap& VBitmap::init(void *lpData, BITMAPINFOHEADER *bmih) {
 	data			= (Pixel *)lpData;
 	palette			= (Pixel *)(bmih+1);
 	depth			= bmih->biBitCount;
@@ -100,7 +100,7 @@ VBitmap& VBitmap::init(void *lpData, BITMAPINFOHEADER *bmih) throw() {
 	return *this;
 }
 
-VBitmap& VBitmap::init(void *data, PixDim w, PixDim h, int depth) throw() {
+VBitmap& VBitmap::init(void *data, PixDim w, PixDim h, int depth) {
 	this->data		= (Pixel32 *)data;
 	this->palette	= NULL;
 	this->depth		= depth;
@@ -112,7 +112,7 @@ VBitmap& VBitmap::init(void *data, PixDim w, PixDim h, int depth) throw() {
 	return *this;
 }
 
-void VBitmap::MakeBitmapHeader(BITMAPINFOHEADER *bih) const throw() {
+void VBitmap::MakeBitmapHeader(BITMAPINFOHEADER *bih) const {
 	bih->biSize				= sizeof(BITMAPINFOHEADER);
 	bih->biBitCount			= depth;
 	bih->biPlanes			= 1;
@@ -131,7 +131,7 @@ void VBitmap::MakeBitmapHeader(BITMAPINFOHEADER *bih) const throw() {
 	bih->biYPelsPerMeter	= 0;
 }
 
-void VBitmap::MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const throw() {
+void VBitmap::MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const {
 	bih->biSize				= sizeof(BITMAPINFOHEADER);
 	bih->biBitCount			= depth;
 	bih->biPlanes			= 1;
@@ -145,13 +145,13 @@ void VBitmap::MakeBitmapHeaderNoPadding(BITMAPINFOHEADER *bih) const throw() {
 	bih->biYPelsPerMeter	= 0;
 }
 
-void VBitmap::AlignTo4() throw() {
+void VBitmap::AlignTo4() {
 	pitch		= PitchAlign4();
 	modulo		= Modulo();
 	size		= Size();
 }
 
-void VBitmap::AlignTo8() throw() {
+void VBitmap::AlignTo8() {
 	pitch		= PitchAlign8();
 	modulo		= Modulo();
 	size		= Size();
@@ -159,7 +159,7 @@ void VBitmap::AlignTo8() throw() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool VBitmap::dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCoord& x1, PixCoord& y1, PixDim& dx, PixDim& dy) const throw() {
+bool VBitmap::dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCoord& x1, PixCoord& y1, PixDim& dx, PixDim& dy) const {
 	if (dx == -1) dx = src->w;
 	if (dy == -1) dy = src->h;
 
@@ -187,7 +187,7 @@ bool VBitmap::dualrectclip(PixCoord& x2, PixCoord& y2, const VBitmap *src, PixCo
 
 ///////////////////////////////////////////////////////////////////////////
 
-void VBitmap::BitBlt(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const throw() {
+void VBitmap::BitBlt(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const {
 	static void (*converters[3][3])(void *dest, long dest_pitch, void *src, long src_pitch, long width, long height) = {
 		{ DIBconvert_16_to_16, DIBconvert_24_to_16, DIBconvert_32_to_16, },
 		{ DIBconvert_16_to_24, DIBconvert_24_to_24, DIBconvert_32_to_24, },
@@ -229,7 +229,7 @@ void VBitmap::BitBlt(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, Pi
 	CHECK_FPU_STACK
 }
 
-void VBitmap::BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy, bool to565) const throw() {
+void VBitmap::BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy, bool to565) const {
 
 	// Right now, we can only dither 32->16
 
@@ -262,11 +262,71 @@ void VBitmap::BitBltDither(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim 
 	CHECK_FPU_STACK
 }
 
-void VBitmap::BitBlt565(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const throw() {
+namespace {
+	void DIBconvert_8_to_16_565(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, int w, int h, const Pixel32 pal[256]) {
+		uint16 *dst = (uint16 *)dst0 + w;
+		const uint8 *src = (const uint8 *)src0 + w;
 
-	// Right now, we can only convert 32->16/565
+		do {
+			int w2 = -w;
 
-	if (src->depth != 32 || depth != 16) {
+			do {
+				const unsigned px = pal[src[w2]];
+
+				dst[w2] = (uint16)(((px>>8)&0xf800) + ((px>>5)&0x07e0) + ((px>>3)&0x001f));
+			} while(++w2);
+
+			src = (const uint8 *)((const char *)src + srcpitch);
+			dst = (uint16 *)((const char *)dst + dstpitch);
+		} while(--h);
+	}
+
+	void DIBconvert_16_to_16_565(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, int w, int h) {
+		uint16 *dst = (uint16 *)dst0 + w;
+		const uint16 *src = (const uint16 *)src0 + w;
+
+		do {
+			int w2 = -w;
+
+			do {
+				const unsigned px = src[w2];
+
+				dst[w2] = (uint16)(px + (px & 0x7fe0) + ((px >> 4)&0x20));
+			} while(++w2);
+
+			src = (const uint16 *)((const char *)src + srcpitch);
+			dst = (uint16 *)((const char *)dst + dstpitch);
+		} while(--h);
+	}
+
+	void DIBconvert_24_to_16_565(void *dst0, ptrdiff_t dstpitch, const void *src0, ptrdiff_t srcpitch, int w, int h) {
+		uint16 *dst = (uint16 *)dst0 + w;
+		const uint8 *src = (const uint8 *)src0;
+
+		const ptrdiff_t srcmodulo = srcpitch - w*3;
+
+		do {
+			int w2 = -w;
+
+			do {
+				const unsigned r = ((uint32)src[2] & 0xf8) << 8;
+				const unsigned g = ((uint32)src[1] & 0xfc) << 3;
+				const unsigned b = ((uint32)src[0] & 0xf8) >> 3;
+				src += 3;
+
+				dst[w2] = (uint16)(r+g+b);
+			} while(++w2);
+
+			src = (const uint8 *)((const char *)src + srcmodulo);
+			dst = (uint16 *)((const char *)dst + dstpitch);
+		} while(--h);
+	}
+
+}
+
+void VBitmap::BitBlt565(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1, PixDim y1, PixDim dx, PixDim dy) const {
+
+	if (depth != 16) {
 		BitBlt(x2, y2, src, x1, y1, dx, dy);
 		return;
 	}
@@ -291,12 +351,25 @@ void VBitmap::BitBlt565(PixCoord x2, PixCoord y2, const VBitmap *src, PixDim x1,
 
 	CHECK_FPU_STACK
 
-	DIBconvert_32_to_16_565(dstp, pitch, srcp, src->pitch, dx, dy);
+	switch(src->depth) {
+	case 8:
+		DIBconvert_8_to_16_565(dstp, pitch, srcp, src->pitch, dx, dy, src->palette);
+		break;
+	case 16:
+		DIBconvert_16_to_16_565(dstp, pitch, srcp, src->pitch, dx, dy);
+		break;
+	case 24:
+		DIBconvert_24_to_16_565(dstp, pitch, srcp, src->pitch, dx, dy);
+		break;
+	case 32:
+		DIBconvert_32_to_16_565(dstp, pitch, srcp, src->pitch, dx, dy);
+		break;
+	}
 
 	CHECK_FPU_STACK
 }
 
-bool VBitmap::BitBltXlat1(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel8 *tbl) const throw() {
+bool VBitmap::BitBltXlat1(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel8 *tbl) const {
 	if (depth != 32)
 		return false;
 
@@ -315,7 +388,7 @@ bool VBitmap::BitBltXlat1(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord
 	return true;
 }
 
-bool VBitmap::BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel32 *tbl) const throw() {
+bool VBitmap::BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy, const Pixel32 *tbl) const {
 	if (depth != 32)
 		return false;
 
@@ -337,7 +410,7 @@ bool VBitmap::BitBltXlat3(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord
 ///////////////////////////////////////////////////////////////////////////
 
 bool VBitmap::StretchBltNearestFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim dy,
-						const VBitmap *src, double x1, double y1, double dx1, double dy1) const throw() {
+						const VBitmap *src, double x1, double y1, double dx1, double dy1) const {
 
 	// No format conversions!!
 
@@ -423,7 +496,7 @@ bool VBitmap::StretchBltNearestFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim 
 }
 
 bool VBitmap::StretchBltBilinearFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim dy,
-						const VBitmap *src, double x1, double y1, double dx1, double dy1) const throw() {
+						const VBitmap *src, double x1, double y1, double dx1, double dy1) const {
 
 	// No format conversions!!
 
@@ -513,7 +586,7 @@ bool VBitmap::StretchBltBilinearFast(PixCoord x2, PixCoord y2, PixDim dx, PixDim
 	return true;
 }
 
-bool VBitmap::RectFill(PixCoord x, PixCoord y, PixDim dx, PixDim dy, Pixel32 c) const throw() {
+bool VBitmap::RectFill(PixCoord x, PixCoord y, PixDim dx, PixDim dy, Pixel32 c) const {
 
 	if (depth != 32)
 		return false;
@@ -556,7 +629,7 @@ bool VBitmap::RectFill(PixCoord x, PixCoord y, PixDim dx, PixDim dy, Pixel32 c) 
 	return true;
 }
 
-bool VBitmap::Histogram(PixCoord x, PixCoord y, PixCoord dx, PixCoord dy, long *pHisto, int iHistoType) const throw() {
+bool VBitmap::Histogram(PixCoord x, PixCoord y, PixCoord dx, PixCoord dy, long *pHisto, int iHistoType) const {
 	static const unsigned short pixmasks[3]={
 		0x7c00,
 		0x03e0,
@@ -665,7 +738,7 @@ extern "C" void asm_convert_yuy2_fullscale_bgr32(void *dst, void *src, int w, in
 extern "C" void asm_convert_yuy2_fullscale_bgr32_MMX(void *dst, void *src, int w, int h, long dstmod, long srcmod);
 
 
-bool VBitmap::BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw() {
+bool VBitmap::BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const {
 	unsigned char *srcp, *dstp;
 
 	if (depth != 32 && depth != 24 && depth != 16)
@@ -840,7 +913,7 @@ bool VBitmap::BitBltFromYUY2(PixCoord x2, PixCoord y2, const VBitmap *src, PixCo
 	return true;
 }
 
-bool VBitmap::BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw() {
+bool VBitmap::BitBltFromYUY2Fullscale(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const {
 	unsigned char *srcp, *dstp;
 
 	if (depth != 32 && depth != 24 && depth != 16)
@@ -945,7 +1018,7 @@ extern "C" void asm_YUVtoRGB16_row(
 		long width
 		);
 
-bool VBitmap::BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const throw() {
+bool VBitmap::BitBltFromI420(PixCoord x2, PixCoord y2, const VBitmap *src, PixCoord x1, PixCoord y1, PixDim dx, PixDim dy) const {
 	unsigned char *srcy, *srcu, *srcv, *dstp;
 
 	if (depth != 32 && depth != 24 && depth != 16)

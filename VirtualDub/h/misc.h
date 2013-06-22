@@ -20,6 +20,9 @@
 
 #include <mmsystem.h>
 
+#include <vd2/system/VDString.h>
+#include <vd2/system/text.h>
+
 long MulDivTrunc(long a, long b, long c);
 int NearestLongValue(long v, const long *array, int array_size);
 unsigned __stdcall MulDivUnsigned(unsigned a, unsigned b, unsigned c);
@@ -45,6 +48,40 @@ FOURCC toupperFOURCC(FOURCC fcc);
 bool IsMMXState();
 void ClearMMXState();
 
+void VDClearEvilCPUStates();
+
+void VDPreCheckExternalCodeCall(const char *file, int line);
+void VDPostCheckExternalCodeCall(const wchar_t *mpContext, const char *mpFile, int mLine);
+
+struct VDSilentExternalCodeBracket {
+	VDSilentExternalCodeBracket() {
+		VDClearEvilCPUStates();
+	}
+
+	~VDSilentExternalCodeBracket() {
+		VDClearEvilCPUStates();
+	}
+};
+
+struct VDExternalCodeBracket {
+	VDExternalCodeBracket(const wchar_t *pContext, const char *file, const int line)
+		: mpContext(pContext)
+		, mpFile(file)
+		, mLine(line)
+	{
+		VDPreCheckExternalCodeCall(file, line);
+	}
+
+	~VDExternalCodeBracket() {
+		VDPostCheckExternalCodeCall(mpContext, mpFile, mLine);
+	}
+
+	const wchar_t *mpContext;
+	const char *mpFile;
+	const int mLine;
+};
+
 char *strCify(const char *s);
+VDStringA VDEncodeScriptString(const VDStringW& sw);
 
 #endif

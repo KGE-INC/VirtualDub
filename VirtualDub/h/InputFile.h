@@ -21,10 +21,13 @@
 #include <windows.h>
 #include <vfw.h>
 
+#include <vector>
 #include <vd2/system/list.h>
+#include <vd2/system/refcount.h>
+#include <vd2/system/VDString.h>
+#include "AudioSource.h"
+#include "VideoSource.h"
 
-class AudioSource;
-class VideoSource;
 class AVIStripeSystem;
 class IAVIReadHandler;
 class IAVIReadStream;
@@ -45,15 +48,17 @@ public:
 	~InputFilenameNode();
 };
 
-class InputFile {
+class InputFile : public vdrefcounted<IVDRefCount> {
+protected:
+	virtual ~InputFile();
+
 public:
-	AudioSource *audioSrc;
-	VideoSource *videoSrc;
+	vdrefptr<AudioSource> audioSrc;
+	vdrefptr<VideoSource> videoSrc;
 	List2<InputFilenameNode> listFiles;
 
-	virtual ~InputFile();
-	virtual void Init(const char *szFile) = 0;
-	virtual bool Append(const char *szFile);
+	virtual void Init(const wchar_t *szFile) = 0;
+	virtual bool Append(const wchar_t *szFile);
 
 	virtual void setOptions(InputFileOptions *);
 	virtual void setAutomated(bool);
@@ -65,49 +70,40 @@ public:
 	virtual bool isStreaming();
 
 protected:
-	void AddFilename(const char *lpszFile);
+	void AddFilename(const wchar_t *lpszFile);
 };
 
-class InputFileAVI : public InputFile {
-private:
-	IAVIReadHandler *pAVIFile;
-	IAVIReadStream *pAVIStreamAudio, *pAVIStreamVideo;
-
-	AVIStripeSystem *stripesys;
-	IAVIReadHandler **stripe_files;
-	int stripe_count;
-	bool isASF;
-	bool fAutomated;
-
-	bool fCompatibilityMode, fRedoKeyFlags, fInternalMJPEG, fDisableFastIO, fAcceptPartial, fAutoscanSegments;
-	int iMJPEGMode;
-	FOURCC fccForceVideo;
-	FOURCC fccForceVideoHandler;
-	long lForceAudioHz;
-
-	static char szME[];
-
-	static void _InfoDlgThread(void *pvInfo);
-	static BOOL APIENTRY _InfoDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam);
+class VDINTERFACE IVDInputDriver : public IVDRefCount {
 public:
-	InputFileAVI(bool isASF);
-	~InputFileAVI();
+	enum Flags {
+		kF_None				= 0,
+		kF_Video			= 1,
+		kF_Audio			= 2,
+		KF_Max				= 0xFFFFFFFFUL
+	};
 
-	void Init(const char *szFile);
-	void InitStriped(const char *szFile);
-	bool Append(const char *szFile);
+	enum OpenFlags {
+		kOF_None			= 0,
+		kOF_Quiet			= 1,
+		kOF_AutoSegmentScan	= 2,
+		kOF_Max				= 0xFFFFFFFFUL
+	};
 
-	bool isOptimizedForRealtime();
-	bool isStreaming();
-
-	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
-	InputFileOptions *promptForOptions(HWND hwnd);
-	void EnableSegmentAutoscan();
-	void ForceCompatibility();
-   void setAutomated(bool fAuto);
-
-	void InfoDialog(HWND hwndParent);
+	virtual int				GetDefaultPriority() = 0;
+	virtual const wchar_t *	GetSignatureName() = 0;
+	virtual uint32			GetFlags() = 0;
+	virtual const wchar_t *	GetFilenamePattern() = 0;
+	virtual bool			DetectByFilename(const wchar_t *pszFilename) = 0;
+	virtual int				DetectBySignature(const void *pHeader, sint32 nHeaderSize, const void *pFooter, sint32 nFooterSize, sint64 nFileSize) = 0;
+	virtual InputFile *		CreateInputFile(uint32 flags) = 0;
 };
+
+typedef std::vector<vdrefptr<IVDInputDriver> > tVDInputDrivers;
+
+void VDInitInputDrivers();
+void VDGetInputDrivers(tVDInputDrivers& l, uint32 flags);
+IVDInputDriver *VDGetInputDriverByName(const wchar_t *name);
+IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx);
+VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>& xlat);
 
 #endif

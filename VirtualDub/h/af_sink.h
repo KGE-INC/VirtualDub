@@ -20,7 +20,7 @@
 
 class IVDAudioFilterSink {
 public:
-	virtual uint32 Read(void *dst, uint32 samples) = 0;
+	virtual uint32 ReadSamples(void *dst, uint32 samples) = 0;
 	virtual const void *GetFormat()=0;
 	virtual int GetFormatLen()=0;
 	virtual sint64 GetLength()=0;

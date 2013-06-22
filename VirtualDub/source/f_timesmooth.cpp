@@ -176,7 +176,7 @@ timeloop:
 		psllq		mm2,48
 
 		paddw		mm4,mm2					;add scale to scale accumulator
-		dec			edx
+		sub			edx,1
 		paddw		mm4,mm0					;add scaled pixel to pixel accumulator
 		jne			timeloop
 

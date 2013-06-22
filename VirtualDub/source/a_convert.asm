@@ -19,6 +19,12 @@
 	.mmx
 	.xmm
 	.model	flat
+	.const
+
+x7c007c007c007c00	dq	7c007c007c007c00h
+x03e003e003e003e0	dq	03e003e003e003e0h
+x001f001f001f001f	dq	001f001f001f001fh
+
 	.code
 
 	extern _MMX_enabled : byte
@@ -75,13 +81,13 @@ DIBconvert832@x:
 	mov	ebx,[eax*4+edx]	
 	mov	[edi],ebx
 	add	edi,4
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert832@x
 
 	add	esi,[esp+16+28]
 	add	edi,[esp+8+28]
 
-	dec	ecx
+	sub	ecx,1
 	jne	DIBconvert832@y
 
 	pop	eax
@@ -133,13 +139,13 @@ DIBconvert824@x:
 	mov	ebx,[eax*4+edx]	
 	mov	[edi],ebx
 	add	edi,3
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert824@x
 
 	add	esi,[esp+16+28]
 	add	edi,[esp+8+28]
 
-	dec	ecx
+	sub	ecx,1
 	jne	DIBconvert824@y
 
 	pop	eax
@@ -227,7 +233,7 @@ DIBconvert816@x:
 	or	eax,ecx			;u
 	or	edx,ebx			;v
 	or	edx,eax			;u
-	dec	ebp			;v
+	sub	ebp,1			;v
 	mov	[edi-4],edx		;u
 	jne	DIBconvert816@x		;v
 DIBconvert816@x2:
@@ -259,7 +265,7 @@ DIBconvert816@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert816@y
 
 	pop	eax
@@ -281,6 +287,9 @@ DIBconvert816@x3:
 ;	ulong height);		[ESP+24]
 
 _DIBconvert_16_to_32:
+	test	byte ptr _ISSE_enabled,1
+	jne	DIBconvert_16_to_32_ISSE
+
 	push	ebp
 	push	edi
 	push	esi
@@ -331,7 +340,7 @@ DIBconvert1632@x:
 	or	ebx,ecx
 	mov	[edi-8],eax
 	or	edx,ebx
-	dec	ebp
+	sub	ebp,1
 	mov	[edi-4],edx
 	jne	DIBconvert1632@x
 DIBconvert1632@x2:
@@ -361,7 +370,7 @@ DIBconvert1632@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert1632@y
 
 	pop	eax
@@ -373,6 +382,108 @@ DIBconvert1632@x3:
 	pop	ebp
 
 	ret
+
+DIBconvert_16_to_32_ISSE	proc near
+	push		ebp
+	push		edi
+	push		esi
+	push		ebx
+
+	mov			eax, [esp+20+16]
+	mov			ecx, [esp+12+16]
+	mov			ebx, eax
+	mov			edx, [esp+4+16]
+	neg			ebx
+	sub			eax, 3
+	mov			esi, [esp+16+16]
+	mov			edi, [esp+8+16]
+	mov			ebp, [esp+24+16]
+	mov			[esp+20+16], eax
+	lea			esi, [esi+ebx*2]
+	lea			edi, [edi+ebx*4]
+	mov			[esp+16+16], esi
+	mov			[esp+8+16], edi
+
+	movq		mm6, x7c007c007c007c00
+	movq		mm5, x001f001f001f001f
+	movq		mm7, x03e003e003e003e0
+
+vloop:
+	mov			eax, [esp+20+16]
+	test		eax, eax
+	jle			leftovers
+
+hloop:
+	movq		mm0, [ecx]		;mm0 = p3 | p2 | p1 | p0
+	movq		mm1, mm6
+
+	movq		mm2, mm7
+	pand		mm1, mm0		;mm1 = r3 | r2 | r1 | r0
+
+	pand		mm2, mm0		;mm2 = g3 | g2 | g1 | g0
+	psrlw		mm1, 7			;align r to top
+
+	pand		mm0, mm5		;mm0 = b3 | b2 | b1 | b0
+	psllw		mm2, 6			;align g to top
+
+	psllw		mm0, 3			;align b to top
+	movq		mm3, mm2
+
+	punpcklwd	mm2, mm2		;mm2 = G1 | G1 | G0 | G0
+	movq		mm4, mm0
+
+	punpcklwd	mm0, mm1		;mm0 = R1 | B1 | R0 | B0
+	add			edx, 16
+
+	punpckhwd	mm3, mm3		;mm3 = G3 | G3 | G2 | G2
+	paddd		mm0, mm2		;mm0 = G1R1G1B1|G0R0R0B0
+
+	punpckhwd	mm4, mm1		;mm4 = R3 | B3 | R2 | B2
+	add			ecx, 8
+
+	paddd		mm4, mm3
+	movntq		[edx-16], mm0
+
+	nop
+	sub			eax, 4
+
+	movntq		[edx-8], mm4
+	ja			hloop
+
+	add			eax, 3
+	jz			noleftovers
+leftovers:
+	movzx		esi, word ptr [ecx]
+	add			ecx, 2
+	mov			edi, esi
+	mov			ebx, esi
+	shl			esi, 9
+	and			edi, 000003e0h
+	shl			edi, 6
+	and			ebx, 0000001fh
+	shl			ebx, 3
+	and			esi, 00ff0000h
+	add			ebx, edi
+	add			ebx, esi
+	mov			[edx], ebx
+	add			edx, 4
+	add			eax, 1
+	jne			leftovers
+noleftovers:
+	add			ecx, [esp+16+16]
+	add			edx, [esp+8+16]
+
+	sub			ebp, 1
+	jne			vloop
+
+	emms
+	pop			ebx
+	pop			esi
+	pop			edi
+	pop			ebp
+
+	ret
+DIBconvert_16_to_32_ISSE	endp
 
 ;***************************************************
 ;
@@ -436,7 +547,7 @@ DIBconvert2432@x1:
 	mov	[edi+12-16],ebx
 
 	or	edx,ecx			;EDX: b3r2g2b2
-	dec	ebp
+	sub	ebp,1
 
 	mov	[edi+8-16],edx
 	jne	DIBconvert2432@x1
@@ -453,14 +564,14 @@ DIBconvert2432@x3:
 	mov	[edi+2],cl
 	add	esi,3
 	add	edi,4
-	dec	ebx
+	sub	ebx,1
 	jne	DIBconvert2432@x3
 DIBconvert2432@x4:
 
 	add	esi,[esp+16+24]
 	add	edi,[esp+ 8+24]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert2432@y
 
 	pop	ebx
@@ -549,7 +660,7 @@ DIBconvert2432ISSE@x1:
 	movntq		[edi+24],mm0
 		
 	add	edi,32
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert2432ISSE@x1
 
 DIBconvert2432ISSE@x2:
@@ -564,7 +675,7 @@ DIBconvert2432ISSE@x3:
 	mov	[edi+2],al
 	add	esi,3
 	add	edi,4
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert2432ISSE@x3
 	
 	movd	eax,mm7
@@ -572,7 +683,7 @@ DIBconvert2432ISSE@x4:
 	add	esi,ecx
 	add	edi,eax
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert2432ISSE@y
 	emms
 	sfence
@@ -648,7 +759,7 @@ DIBconvert1624@x:
 	or	ebx,ecx
 	mov	[edi-6],eax
 	or	edx,ebx
-	dec	ebp
+	sub	ebp,1
 	mov	[edi-3],edx
 	jne	DIBconvert1624@x
 DIBconvert1624@x2:
@@ -679,7 +790,7 @@ DIBconvert1624@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert1624@y
 
 	pop	eax
@@ -735,7 +846,7 @@ DIBconvert2424@y:
 	add	esi,[esp+16+24]
 	add	edi,[esp+ 8+24]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert2424@y
 
 	pop	eax
@@ -789,7 +900,7 @@ DIBconvert1616@y:
 	add	esi,[esp+16+24]
 	add	edi,[esp+ 8+24]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert1616@y
 
 	pop	eax
@@ -867,7 +978,7 @@ DIBconvert2416@x:
 	or	eax,ecx			;u
 	or	edx,ebx			;v
 	or	edx,eax			;u
-	dec	ebp			;v
+	sub	ebp,1			;v
 	mov	[edi-4],edx		;u
 	jne	DIBconvert2416@x	;v
 DIBconvert2416@x2:
@@ -896,7 +1007,7 @@ DIBconvert2416@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert2416@y
 
 	pop	eax

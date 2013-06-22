@@ -21,7 +21,10 @@
 #include <windows.h>
 #include <vfw.h>
 
+#include <vd2/system/refcount.h>
+
 class InputFile;
+class IVDInputDriver;
 class AVIOutput;
 class VideoSource;
 class AudioSource;
@@ -30,13 +33,13 @@ class DubOptions;
 class FrameSubset;
 struct VDAudioFilterGraph;
 
-extern InputFile			*inputAVI;
+extern vdrefptr<InputFile>		inputAVI;
 
-extern VideoSource			*inputVideoAVI;
+extern vdrefptr<VideoSource>	inputVideoAVI;
 
-extern AudioSource			*inputAudio;
-extern AudioSource			*inputAudioAVI;
-extern AudioSource			*inputAudioWAV;
+extern vdrefptr<AudioSource>	inputAudio;
+extern vdrefptr<AudioSource>	inputAudioAVI;
+extern vdrefptr<AudioSource>	inputAudioWAV;
 
 extern FrameSubset			*inputSubset;
 
@@ -58,34 +61,21 @@ extern VDAudioFilterGraph	g_audioFilterGraph;
 extern bool				g_drawDecompressedFrame;
 extern bool				g_showStatusWindow;
 extern bool				g_syncroBlit;
-extern bool				g_vertical;
 
 ///////////////////////////
 
-enum {
-	FILETYPE_AUTODETECT		= 0,
-	FILETYPE_AVI			= 1,
-	FILETYPE_MPEG			= 2,
-	FILETYPE_ASF			= 3,
-	FILETYPE_STRIPEDAVI		= 4,
-	FILETYPE_AVICOMPAT		= 5,
-	FILETYPE_IMAGE			= 6,
-	FILETYPE_AUTODETECT2	= 7,
-};
-
-void OpenAVI(const char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet=false, bool fAutoscan=false, const char *pInputOpts=0);
-void AppendAVI(const char *pszFile);
-void AppendAVIAutoscan(const char *pszFile);
+void AppendAVI(const wchar_t *pszFile);
+void AppendAVIAutoscan(const wchar_t *pszFile);
 void SetAudioSource();
 void CloseAVI();
-void OpenWAV(const char *szFile);
+void OpenWAV(const wchar_t *szFile);
 void CloseWAV();
-void SaveWAV(const char *szFilename, bool fProp = false, DubOptions *quick_opts=NULL);
-void SaveAVI(const char *szFilename, bool fProp = false, DubOptions *quick_opts=NULL, bool fCompatibility=false);
-void SaveStripedAVI(const char *szFile);
-void SaveStripeMaster(const char *szFile);
-void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
-void SaveImageSequence(const char *szPrefix, const char *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat);
+void SaveWAV(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_opts=NULL);
+void SaveAVI(const wchar_t *szFilename, bool fProp = false, DubOptions *quick_opts=NULL, bool fCompatibility=false);
+void SaveStripedAVI(const wchar_t *szFile);
+void SaveStripeMaster(const wchar_t *szFile);
+void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
+void SaveImageSequence(const wchar_t *szPrefix, const wchar_t *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat);
 void SetSelectionStart(long ms);
 void SetSelectionEnd(long ms);
 void RemakePositionSlider();

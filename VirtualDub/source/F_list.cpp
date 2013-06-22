@@ -40,7 +40,8 @@ extern FilterDefinition filterDef_reduceby2,
 						filterDef_timesmooth,
 						filterDef_fieldbob,
 						filterDef_logo,
-						filterDef_hsv;
+						filterDef_hsv,
+						filterDef_chromasmoother;
 
 static FilterDefinition *const builtin_filters[]={
 	&filterDef_reduceby2,
@@ -72,6 +73,7 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_fieldbob,
 	&filterDef_logo,
 	&filterDef_hsv,
+	&filterDef_chromasmoother,
 	NULL
 };
 

@@ -68,7 +68,7 @@ DIBconvert3232@y:
 	add	esi,[esp+16+24]
 	add	edi,[esp+ 8+24]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3232@y
 
 	pop	eax
@@ -139,7 +139,7 @@ DIBconvert3224@x:
 	mov	[edi+4-12],ebp
 	add	esi,16
 	mov	[edi+8-12],eax
-	dec	ecx
+	sub	ecx,1
 	jne	DIBconvert3224@x
 DIBconvert3224@x2:
 	pop	edx
@@ -153,14 +153,14 @@ DIBconvert3224@x4:
 	shr	eax,16
 	mov	[edi+2],al
 	add	edi,3
-	dec	ecx
+	sub	ecx,1
 	jnz	DIBconvert3224@x4
 DIBconvert3224@x3:
 
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3224@y
 
 	pop	eax
@@ -258,7 +258,7 @@ DIBconvert3224ISSE@x:
 	por	mm4,mm3			;mm4 = r7g7b7r6g6b6r5g5
 	
 	add	esi,32
-	dec	ecx
+	sub	ecx,1
 	
 	movntq	[edi+16],mm4		;mm3
 
@@ -277,14 +277,14 @@ DIBconvert3224ISSE@x4:
 	shr	eax,16
 	mov	[edi+2],al
 	add	edi,3
-	dec	ecx
+	sub	ecx,1
 	jnz	DIBconvert3224ISSE@x4
 	movd	eax,mm0
 DIBconvert3224ISSE@x3:
 	add	esi,eax
 	add	edi,ebx
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3224ISSE@y
 
 	emms
@@ -367,7 +367,7 @@ DIBconvert3216@x:
 	or	eax,ecx			;u
 	or	edx,ebx			;v
 	or	edx,eax			;u
-	dec	ebp			;v
+	sub	ebp,1			;v
 	mov	[edi-4],edx		;u
 	jne	DIBconvert3216@x	;v
 DIBconvert3216@x2:
@@ -396,7 +396,7 @@ DIBconvert3216@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216@y
 
 	pop	eax
@@ -479,7 +479,7 @@ DIBconvert3216565@x:
 	or	eax,ecx			;u
 	or	edx,ebx			;v
 	or	edx,eax			;u
-	dec	ebp			;v
+	sub	ebp,1			;v
 	mov	[edi-4],edx		;u
 	jne	DIBconvert3216565@x	;v
 DIBconvert3216565@x2:
@@ -508,7 +508,7 @@ DIBconvert3216565@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216565@y
 
 	pop	eax
@@ -703,7 +703,7 @@ DIBconvert3216MMX@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216MMX@y
 
 	pop	eax
@@ -898,7 +898,7 @@ DIBconvert3216565MMX@x3:
 	add	esi,[esp+16+28]
 	add	edi,[esp+ 8+28]
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216565MMX@y
 
 	pop	eax
@@ -1120,7 +1120,7 @@ DIBconvert3216dithered@even:
 	mov	[esp+0],eax
 	mov	[esp+4],ebx
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216dithered@y
 
 	pop	eax
@@ -1301,7 +1301,7 @@ DIBconvert3216ditheredMMX@xleftover:
 	mov	[edi+1],bh
 	add	edi,2
 
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert3216ditheredMMX@xleftover
 DIBconvert3216ditheredMMX@x3:
 
@@ -1323,7 +1323,7 @@ DIBconvert3216ditheredMMX@even:
 	pxor	mm4,mm0
 	pxor	mm5,mm0
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216ditheredMMX@y
 
 	pop	eax
@@ -1552,7 +1552,7 @@ DIBconvert3216565dithered@even:
 	mov	[esp+0],eax
 	mov	[esp+4],ebx
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216565dithered@y
 
 	pop	eax
@@ -1721,7 +1721,7 @@ DIBconvert3216565ditheredMMX@xleftover:
 	mov	[edi+1],bh
 	add	edi,2
 
-	dec	ebp
+	sub	ebp,1
 	jne	DIBconvert3216565ditheredMMX@xleftover
 DIBconvert3216565ditheredMMX@x3:
 
@@ -1743,7 +1743,7 @@ DIBconvert3216565ditheredMMX@even:
 	pxor	mm4,mm0
 	pxor	mm5,mm0
 
-	dec	edx
+	sub	edx,1
 	jne	DIBconvert3216565ditheredMMX@y
 
 	pop	eax

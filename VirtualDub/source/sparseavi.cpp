@@ -33,23 +33,10 @@ struct SparseAVIHeader {
 
 };
 
-void CreateSparseAVI(const char *pszIn, const char *pszOut) {
-	HANDLE h1 = INVALID_HANDLE_VALUE;
-	HANDLE h2 = INVALID_HANDLE_VALUE;
-	
+void CreateSparseAVI(const char *pszIn, const char *pszOut) {	
 	try {
-		h1 = CreateFile(pszIn, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-		if (h1 == INVALID_HANDLE_VALUE)
-			throw GetLastError();
-
-		h2 = CreateFile(pszOut, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-		if (h2 == INVALID_HANDLE_VALUE)
-			throw GetLastError();
-
-		VDFile infile(h1);
-		VDFile outfile(h2);
+		VDFile infile(pszIn);
+		VDFile outfile(pszOut, nsVDFile::kWrite | nsVDFile::kCreateAlways);
 
 		// Generate header
 
@@ -203,28 +190,13 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 
 	} catch(DWORD err) {
 		throw MyWin32Error("Error creating sparse AVI: %%s", err);
-	} catch(const MyError&) {
-		throw;
 	}
 }
 
 void ExpandSparseAVI(HWND hwndParent, const char *pszIn, const char *pszOut) {
-	HANDLE h1 = INVALID_HANDLE_VALUE;
-	HANDLE h2 = INVALID_HANDLE_VALUE;
-	
 	try {
-		h1 = CreateFile(pszIn, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-		if (h1 == INVALID_HANDLE_VALUE)
-			throw GetLastError();
-
-		h2 = CreateFile(pszOut, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-		if (h2 == INVALID_HANDLE_VALUE)
-			throw GetLastError();
-
-		VDFile infile(h1);
-		VDFile outfile(h2);
+		VDFile infile(pszIn);
+		VDFile outfile(pszOut, nsVDFile::kWrite | nsVDFile::kCreateAlways);
 
 		// Read header
 

@@ -37,16 +37,17 @@ private:
 		VDPosition	rawFrame;
 		VDPosition	displayFrame;
 		VDPosition	timelineFrame;
-		long	id;
 		int		iExdata;
 		int		droptype;
+		bool	bFinal;
 	} *pBuffers;
 
 	int		num_buffers;
 	long	round_size;
 
-	long	cur_read;
-	long	cur_write;
+	int		mReadPt;
+	int		mWritePt;
+	int		mLevel;
 
 	VDAtomicInt		mState;
 
@@ -80,7 +81,7 @@ public:
 	bool full();
 
 	void *getWriteBuffer(long len, int *handle_ptr);
-	void postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int handle);
+	void postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int handle, bool bIsFinal);
 	void *getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displayFrame, VDPosition& timelineFrame, int *exdata_ptr, int *droptype_ptr, int *handle_ptr);
 	void releaseBuffer(int handle);
 	void finalize();
@@ -90,6 +91,7 @@ public:
 	bool sync();
 	void syncack();
 	void getDropDistances(int& dependant, int& independent);
+	void getQueueInfo(int& total, int& finals);
 };
 
 #endif

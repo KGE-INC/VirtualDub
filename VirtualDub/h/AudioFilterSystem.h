@@ -8,6 +8,8 @@
 #include <vd2/system/VDString.h>
 #include "filter.h"
 
+struct VDPluginInfo;
+struct VDPluginDescription;
 struct VDAudioFilterDefinition;
 class VDAudioFilterInstance;
 
@@ -82,11 +84,13 @@ typedef std::map<unsigned, VDFilterConfigVariant> VDFilterConfig;
 
 class IVDAudioFilterInstance {
 public:
+	virtual const VDPluginInfo *GetPluginInfo() = 0;
 	virtual const VDAudioFilterDefinition *GetDefinition() = 0;
 	virtual bool Configure(VDGUIHandle hParent) = 0;
 	virtual void DeserializeConfig(const VDFilterConfig&) = 0;
 	virtual void SerializeConfig(VDFilterConfig&) = 0;
 	virtual void *GetObject() = 0;
+	virtual bool GetOutputPinFormats(std::vector<VDWaveFormat>& formats) = 0;
 };
 
 struct VDAudioFilterGraph {
@@ -114,7 +118,7 @@ public:
 	VDAudioFilterSystem();
 	~VDAudioFilterSystem();
 
-	IVDAudioFilterInstance *Create(const VDAudioFilterDefinition *);
+	IVDAudioFilterInstance *Create(VDPluginDescription *);
 	void Destroy(IVDAudioFilterInstance *);
 
 	void Connect(IVDAudioFilterInstance *pFilterIn, unsigned nPinIn, IVDAudioFilterInstance *, unsigned nPinOut);
@@ -141,17 +145,5 @@ protected:
 };
 
 void VDAddAudioFilter(const VDAudioFilterDefinition *);
-
-struct VDAudioFilterBlurb {
-	const VDAudioFilterDefinition	*pDef;
-	VDStringW					name;
-	VDStringW					author;
-	VDStringW					description;
-};
-
-void VDEnumerateAudioFilters(std::list<VDAudioFilterBlurb>& blurbs);
-const VDAudioFilterDefinition *VDLookupAudioFilterByName(const wchar_t *name);
-bool VDLockAudioFilter(const VDAudioFilterDefinition *);		// Lock audio filter module in memory so vtbl is valid.
-void VDUnlockAudioFilter(const VDAudioFilterDefinition *);		// Release audio filter module.
 
 #endif

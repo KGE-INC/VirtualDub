@@ -33,12 +33,13 @@
 
 AVIPipe::AVIPipe(int buffers, long roundup_size)
 	: mState(0)
+	, mReadPt(0)
+	, mWritePt(0)
+	, mLevel(0)
 {
 	pBuffers		= new struct AVIPipeBuffer[buffers];
 	num_buffers		= buffers;
 	round_size		= roundup_size;
-	cur_read		= 1;
-	cur_write		= 1;
 
 	if (pBuffers)
 		memset((void *)pBuffers, 0, sizeof(struct AVIPipeBuffer)*buffers);
@@ -103,57 +104,67 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr) {
 	++mcsQueue;
 
 	for(;;) {
-
 		if (mState & kFlagAborted) {
 			--mcsQueue;
 			return NULL;
 		}
 
-		// look for a handle without a buffer
+		// try the buffer right under us
+		if (mLevel < num_buffers) {
+			h = mWritePt;
+			if (pBuffers[h].size >= len)
+				break;
+		}
 
-		for(h=0; h<num_buffers; h++)
+		int nBufferWithoutAllocation = -1;
+		int nBufferWithSmallAllocation = -1;
+
+		h = mWritePt;
+		for(int cnt = num_buffers - mLevel; cnt>0; --cnt) {
 			if (!pBuffers[h].size)
-				if (pBuffers[h].data = VirtualAlloc(NULL, len, MEM_COMMIT, PAGE_READWRITE)) {
-					pBuffers[h].size = len;
-#ifdef AVIPIPE_PERFORMANCE_MESSAGES
-					_RPT2(0,"Allocated #%d: %ld bytes\n", h+1, len);
-#endif
-					break;
-				}
-		
-		if (h<num_buffers) break;
+				nBufferWithoutAllocation = h;
+			else if (pBuffers[h].size < len)
+				nBufferWithSmallAllocation = h;
+			else
+				goto buffer_found;
 
-		// look for a handle with a free buffer that's large enough
-		
-		for(h=0; h<num_buffers; h++)
-			if (!pBuffers[h].len && pBuffers[h].size>=len) break;
+			if (++h >= num_buffers)
+				h = 0;
+		}
 
-		if (h<num_buffers) break;
+		if (nBufferWithoutAllocation >= 0)
+			h = nBufferWithoutAllocation;
+		else if (nBufferWithSmallAllocation >= 0)
+			h = nBufferWithSmallAllocation;
+		else {
+			--mcsQueue;
+			msigRead.wait();
+			++mcsQueue;
+			continue;
+		}
 
-		// look for a handle with a free buffer
+buffer_found:
 
-		for(h=0; h<num_buffers; h++)
-			if (!pBuffers[h].len && pBuffers[h].size) {
+		if (pBuffers[h].size < len) {
+			if (pBuffers[h].data) {
 				VirtualFree(pBuffers[h].data, 0, MEM_RELEASE);
 				pBuffers[h].data = NULL;
 				pBuffers[h].size = 0;
-
-				if (pBuffers[h].data = VirtualAlloc(NULL, len, MEM_COMMIT, PAGE_READWRITE)) {
-					pBuffers[h].size = len;
-#ifdef AVIPIPE_PERFORMANCE_MESSAGES
-					_RPT2(0,"Reallocated #%d: %ld bytes\n", h+1, len);
-#endif
-					break;
-				}
 			}
 
-		if (h<num_buffers) break;
+			VDASSERT(!pBuffers[h].data);
+			if (pBuffers[h].data = VirtualAlloc(NULL, len, MEM_COMMIT, PAGE_READWRITE)) {
+				pBuffers[h].size = len;
+#ifdef AVIPIPE_PERFORMANCE_MESSAGES
+				_RPT2(0,"Reallocated #%d: %ld bytes\n", h+1, len);
+#endif
+			}
+		}
 
-		--mcsQueue;
-
-		msigRead.wait();
-
-		++mcsQueue;
+		if (h != mWritePt) {
+			std::swap(pBuffers[h].data, pBuffers[mWritePt].data);
+			std::swap(pBuffers[h].size, pBuffers[mWritePt].size);
+		}
 	}
 
 	--mcsQueue;
@@ -163,18 +174,22 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr) {
 	return pBuffers[h].data;
 }
 
-void AVIPipe::postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int h) {
+void AVIPipe::postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int h, bool bFinal) {
+
+	VDASSERT(h == mWritePt);
 
 	++mcsQueue;
-
 	pBuffers[h].len		= len+1;
 	pBuffers[h].rawFrame		= rawFrame;
 	pBuffers[h].displayFrame	= displayFrame;
 	pBuffers[h].timelineFrame	= timelineFrame;
 	pBuffers[h].iExdata			= exdata;
 	pBuffers[h].droptype		= droptype;
-	pBuffers[h].id				= cur_write++;
+	pBuffers[h].bFinal			= bFinal;
 
+	if (++mWritePt >= num_buffers)
+		mWritePt = 0;
+	++mLevel;
 	--mcsQueue;
 
 	msigWrite.signal();
@@ -183,15 +198,14 @@ void AVIPipe::postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame,
 }
 
 void AVIPipe::getDropDistances(int& total, int& indep) {
-	int h;
-
 	total = 0;
 	indep = 0x3FFFFFFF;
 
 	++mcsQueue;
 
-	for(h=0; h<num_buffers; h++) {
-		int ahead = pBuffers[h].id - cur_read;
+	int h = mReadPt;
+	for(int cnt = mLevel; cnt>0; --cnt) {
+		int ahead = total;
 
 		if (pBuffers[h].len>1) {
 			if (pBuffers[h].droptype == kIndependent && ahead >= 0 && ahead < indep)
@@ -199,6 +213,27 @@ void AVIPipe::getDropDistances(int& total, int& indep) {
 		}
 
 		++total;
+		if (++h >= num_buffers)
+			h = 0;
+	}
+
+	--mcsQueue;
+}
+
+void AVIPipe::getQueueInfo(int& total, int& finals) {
+	total = 0;
+	finals = 0;
+	++mcsQueue;
+
+	int h = mReadPt;
+	for(int cnt = mLevel; cnt>0; --cnt) {
+		if (pBuffers[h].len>0) {
+			++total;
+			if (pBuffers[h].bFinal)
+				++finals;
+		}
+		if (++h >= num_buffers)
+			h = 0;
 	}
 
 	--mcsQueue;
@@ -212,12 +247,10 @@ void *AVIPipe::getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displa
 	for(;;) {
 //		_RPT1(0,"Scouring buffers for ID %08lx\n",cur_read);
 
-		for(h=0; h<num_buffers; h++) {
-//			_RPT2(0,"Buffer %ld: ID %08lx\n", h, lpBufferID[h]);
-			if (pBuffers[h].id == cur_read) break;
+		if (mLevel) {
+			h = mReadPt;
+			break;
 		}
-
-		if (h<num_buffers) break;
 
 		if (mState & kFlagSyncTriggered) {
 			mState |= kFlagSyncAcknowledged;
@@ -246,8 +279,6 @@ void *AVIPipe::getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displa
 	_RPT1(0,"[#%d] ", h+1);
 #endif
 
-	++cur_read;
-
 	--mcsQueue;
 
 	len			= pBuffers[h].len-1;
@@ -262,11 +293,13 @@ void *AVIPipe::getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displa
 }
 
 void AVIPipe::releaseBuffer(int handle) {
+	VDASSERT(handle == mReadPt);
 
 	++mcsQueue;
-
 	pBuffers[handle].len = 0;
-
+	--mLevel;
+	if (++mReadPt >= num_buffers)
+		mReadPt = 0;
 	--mcsQueue;
 
 	msigRead.signal();

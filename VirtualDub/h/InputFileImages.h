@@ -27,7 +27,7 @@ public:
 	InputFileImages();
 	~InputFileImages();
 
-	void Init(const char *szFile);
+	void Init(const wchar_t *szFile);
 
 	void setOptions(InputFileOptions *_ifo);
 	InputFileOptions *createOptions(const char *buf);

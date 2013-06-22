@@ -21,7 +21,8 @@
 #include <vector>
 #include <vd2/system/VDString.h>
 
-#include "filter.h"
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdaudiofilt.h>
 
 namespace nsVDAudioFilterBase {
 	typedef uint32				Type_U32;
@@ -70,8 +71,8 @@ public:
 	virtual uint32 Prepare();
 	virtual void Start();
 	virtual void Stop();
-	virtual unsigned Serialize(void *dst, unsigned size);
-	virtual void Deserialize(const void *src, unsigned size);
+	virtual unsigned Suspend(void *dst, unsigned size);
+	virtual void Resume(const void *src, unsigned size);
 	virtual unsigned GetParam(unsigned idx, void *dst, unsigned size);
 	virtual void SetParam(unsigned idx, const void *src, unsigned size);
 	virtual bool Config(HWND hwnd);
@@ -86,11 +87,11 @@ public:
 	static void		__cdecl DestroyProc				(const VDAudioFilterContext *pContext);
 	static uint32	__cdecl RunProc					(const VDAudioFilterContext *pContext);
 	static sint64	__cdecl SeekProc				(const VDAudioFilterContext *pContext, sint64 microsecs);
-	static uint32		__cdecl PrepareProc				(const VDAudioFilterContext *pContext);
+	static uint32	__cdecl PrepareProc				(const VDAudioFilterContext *pContext);
 	static void		__cdecl StartProc				(const VDAudioFilterContext *pContext);
 	static void		__cdecl StopProc				(const VDAudioFilterContext *pContext);
-	static unsigned	__cdecl SerializeProc			(const VDAudioFilterContext *pContext, void *dst, unsigned size);
-	static void		__cdecl DeserializeProc			(const VDAudioFilterContext *pContext, const void *src, unsigned size);
+	static unsigned	__cdecl SuspendProc				(const VDAudioFilterContext *pContext, void *dst, unsigned size);
+	static void		__cdecl ResumeProc				(const VDAudioFilterContext *pContext, const void *src, unsigned size);
 	static unsigned	__cdecl GetParamProc			(const VDAudioFilterContext *pContext, unsigned idx, void *dst, unsigned size);
 	static void		__cdecl SetParamProc			(const VDAudioFilterContext *pContext, unsigned idx, const void *src, unsigned size);
 	static bool		__cdecl ConfigProc				(const VDAudioFilterContext *pContext, HWND hwnd);
@@ -101,7 +102,7 @@ public:
 protected:
 	const nsVDAudioFilterBase::ConfigEntryExt *GetParamEntry(const unsigned idx);
 
-	const VDAudioFilterContext *mpContext;
+	const VDAudioFilterContext		*mpContext;
 };
 
 #endif

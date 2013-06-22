@@ -25,7 +25,7 @@ public:
 	~VideoSourceImages();
 
 	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lBytesRead, LONG *lSamplesRead);
-	BOOL _isKey(LONG samp)					{ return true; }
+	bool _isKey(LONG samp)					{ return true; }
 	LONG nearestKey(LONG lSample)			{ return lSample; }
 	LONG prevKey(LONG lSample)				{ return lSample>0 ? lSample-1 : -1; }
 	LONG nextKey(LONG lSample)				{ return lSample<lSampleLast ? lSample+1 : -1; }
@@ -34,7 +34,7 @@ public:
 	bool setDecompressedFormat(BITMAPINFOHEADER *pbih);
 
 	void invalidateFrameBuffer()			{ mCachedFrame = -1; }
-	BOOL isFrameBufferValid()				{ return mCachedFrame >= 0; }
+	bool isFrameBufferValid()				{ return mCachedFrame >= 0; }
 	bool isStreaming()						{ return false; }
 
 	void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num);

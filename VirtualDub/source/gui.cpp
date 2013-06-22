@@ -242,7 +242,7 @@ void guiSetTitle(HWND hWnd, UINT uID, ...) {
 	vsprintf(buf2, buf1, val);
 	va_end(val);
 
-	SendMessage(hWnd, WM_SETTEXT, 0, (LPARAM)buf2);
+	SetWindowText(hWnd, buf2);
 }
 
 void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, UINT *iTranslator) {
@@ -306,14 +306,16 @@ void guiSubclassWindow(HWND hwnd, WNDPROC newproc) {
 
 ///////////////////////////////////////
 
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<VideoSource> inputVideoAVI;
 
 void guiPositionInitFromStream(HWND hWndPosition) {
 	if (!inputVideoAVI) return;
 
-	SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputVideoAVI->lSampleFirst);
-	SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputVideoAVI->lSampleLast);
-	SendMessage(hWndPosition, PCM_SETFRAMERATE, inputVideoAVI->streamInfo.dwRate, inputVideoAVI->streamInfo.dwScale);
+	const VDFraction videoRate(inputVideoAVI->getRate());
+
+	SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputVideoAVI->getStart());
+	SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputVideoAVI->getEnd());
+	SendMessage(hWndPosition, PCM_SETFRAMERATE, videoRate.getHi(), videoRate.getLo());
 }
 
 LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
@@ -321,13 +323,13 @@ LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
 
 	switch(HIWORD(wParam)) {
 		case PCN_START:
-			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->lSampleFirst);
-			return inputVideoAVI->lSampleFirst;
+			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->getStart());
+			return inputVideoAVI->getStart();
 		case PCN_BACKWARD:
 			{
 				LONG lSample = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
 
-				if (lSample > inputVideoAVI->lSampleFirst) {
+				if (lSample > inputVideoAVI->getStart()) {
 					SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample-1);
 					return lSample-1;
 				}
@@ -337,22 +339,22 @@ LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
 			{
 				LONG lSample = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
 
-				if (lSample < inputVideoAVI->lSampleLast) {
+				if (lSample < inputVideoAVI->getEnd()) {
 					SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample+1);
 					return lSample+1;
 				}
 			}
 			break;
 		case PCN_END:
-			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->lSampleLast);
-			return inputVideoAVI->lSampleLast;
+			SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, inputVideoAVI->getEnd());
+			return inputVideoAVI->getEnd();
 			break;
 
 		case PCN_KEYPREV:
 			{
 				LONG lSample = inputVideoAVI->prevKey(SendMessage((HWND)lParam, PCM_GETPOS, 0, 0));
 
-				if (lSample < 0) lSample = inputVideoAVI->lSampleFirst;
+				if (lSample < 0) lSample = inputVideoAVI->getStart();
 
 				SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample);
 				return lSample;
@@ -362,7 +364,7 @@ LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {
 			{
 				LONG lSample = inputVideoAVI->nextKey(SendMessage((HWND)lParam, PCM_GETPOS, 0, 0));
 
-				if (lSample < 0) lSample = inputVideoAVI->lSampleLast;
+				if (lSample < 0) lSample = inputVideoAVI->getEnd();
 
 				SendMessage((HWND)lParam, PCM_SETPOS, (WPARAM)TRUE, lSample);
 				return lSample;
@@ -400,7 +402,7 @@ void guiPositionBlit(HWND hWndClipping, LONG lFrame, int w, int h) {
 
 		dcf = inputVideoAVI->getDecompressedFormat();
 
-		if (lFrame < inputVideoAVI->lSampleFirst || lFrame >= inputVideoAVI->lSampleLast)
+		if (lFrame < inputVideoAVI->getStart() || lFrame >= inputVideoAVI->getEnd())
 			SendMessage(hWndClipping, CCM_BLITFRAME, (WPARAM)NULL, (LPARAM)NULL);
       else {
          Pixel32 *tmpmem;

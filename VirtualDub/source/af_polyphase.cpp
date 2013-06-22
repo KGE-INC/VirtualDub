@@ -134,7 +134,7 @@ uint32 VDAudioFilterSymmetricFIR::Prepare() {
 
 	mpContext->mpInputs[0]->mDelay			= (sint64)(mFilterSize*1000000) * inFormat.mBlockSize / inFormat.mDataRate;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -275,7 +275,7 @@ uint32 VDAudioFilterPolyphase::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -549,10 +549,6 @@ void __cdecl VDAudioFilterHighpassInitProc(const VDAudioFilterContext *pContext)
 
 extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	sizeof(VDAudioFilterDefinition),
-	L"lowpass",
-	NULL,
-	L"Removes frequency components above a given cutoff using a windowed-sinc filter.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterXpass),	1,	1,
@@ -563,12 +559,25 @@ extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	&VDAudioFilterBase::sVtbl,
 };
 
+extern const struct VDPluginInfo apluginDef_lowpass = {
+	sizeof(VDPluginInfo),
+	L"lowpass",
+	NULL,
+	L"Removes frequency components above a given cutoff using a windowed-sinc filter.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_lowpass
+};
+
 extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 	sizeof(VDAudioFilterDefinition),
-	L"highpass",
-	NULL,
-	L"Removes frequency components below a given cutoff using a windowed-sinc filter.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterXpass),	1,	1,
@@ -577,6 +586,23 @@ extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 
 	VDAudioFilterHighpassInitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_highpass = {
+	sizeof(VDPluginInfo),
+	L"highpass",
+	NULL,
+	L"Removes frequency components below a given cutoff using a windowed-sinc filter.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_highpass
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -732,10 +758,6 @@ int VDAudioFilterResample::GenerateFilterBank(int freq) {
 
 extern const struct VDAudioFilterDefinition afilterDef_resample = {
 	sizeof(VDAudioFilterDefinition),
-	L"resample",
-	NULL,
-	L"Resamples audio to a new sampling frequency using a 32-phase filter bank.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterResample),	1,	1,
@@ -744,6 +766,23 @@ extern const struct VDAudioFilterDefinition afilterDef_resample = {
 
 	VDAudioFilterResample::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_resample = {
+	sizeof(VDPluginInfo),
+	L"resample",
+	NULL,
+	L"Resamples audio to a new sampling frequency using a 32-phase filter bank.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_resample
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -776,7 +815,7 @@ public:
 				{
 					double v;
 
-					if (!GetDlgItemText(mhdlg, IDC_RATIO, buf, sizeof buf) || (v=atof(buf))<0.5 || (v>2.0)) {
+					if (!GetDlgItemText(mhdlg, IDC_RATIO, buf, sizeof buf) || (v=atof(buf))<0.1 || (v>10.0)) {
 						MessageBeep(MB_ICONEXCLAMATION);
 						SetFocus(GetDlgItem(mhdlg, IDC_RATIO));
 						return TRUE;
@@ -869,10 +908,6 @@ int VDAudioFilterStretch::GenerateFilterBank(int freq) {
 
 extern const struct VDAudioFilterDefinition afilterDef_stretch = {
 	sizeof(VDAudioFilterDefinition),
-	L"stretch",
-	NULL,
-	L"Resamples audio to a different length without changing sampling frequency, using a 32-phase, 129-tap filter bank.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterStretch),	1,	1,
@@ -881,4 +916,21 @@ extern const struct VDAudioFilterDefinition afilterDef_stretch = {
 
 	VDAudioFilterStretch::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_stretch = {
+	sizeof(VDPluginInfo),
+	L"stretch",
+	NULL,
+	L"Resamples audio to a different length without changing sampling frequency, using a 32-phase, 129-tap filter bank.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_stretch
 };

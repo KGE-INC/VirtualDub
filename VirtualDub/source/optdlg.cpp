@@ -36,8 +36,8 @@
 
 extern HINSTANCE g_hInst;
 
-extern AudioSource *inputAudio;
-extern VideoSource *inputVideoAVI;
+extern vdrefptr<AudioSource> inputAudio;
+extern vdrefptr<VideoSource> inputVideoAVI;
 
 extern void SetAudioSource();
 
@@ -267,7 +267,7 @@ BOOL APIENTRY AudioInterleaveDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					}
 
 					dopt->audio.interval = GetDlgItemInt(hDlg, IDC_INTERVAL, NULL, TRUE);
-					if (dopt->audio.interval<0 || dopt->audio.interval>3600000) {
+					if (dopt->audio.interval<=0 || dopt->audio.interval>3600000) {
 						SetFocus(GetDlgItem(hDlg, IDC_INTERVAL));
 						MessageBeep(MB_ICONQUESTION);
 						break;
@@ -594,11 +594,11 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 				}
 
 				if (inputVideoAVI) {
-					sprintf(buf, "No change (current: %.3f fps)", (double)inputVideoAVI->streamInfo.dwRate / inputVideoAVI->streamInfo.dwScale);
+					sprintf(buf, "No change (current: %.3f fps)", inputVideoAVI->getRate().asDouble());
 					SetDlgItemText(hDlg, IDC_FRAMERATE_NOCHANGE, buf);
 
-					if (inputAudio && inputAudio->streamInfo.dwLength) {
-						sprintf(buf, "(%.3f fps)", (inputVideoAVI->streamInfo.dwLength*1000.0) / inputAudio->samplesToMs(inputAudio->streamInfo.dwLength));
+					if (inputAudio && inputAudio->getLength()) {
+						sprintf(buf, "(%.3f fps)", (inputVideoAVI->getLength()*1000.0) / inputAudio->samplesToMs(inputAudio->getLength()));
 						SetDlgItemText(hDlg, IDC_FRAMERATE_SAMELENGTH_VALUE, buf);
 					} else
 						EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_SAMELENGTH), FALSE);
@@ -808,11 +808,11 @@ static void VideoClippingDlgMSToFrames(HWND hDlg, UINT idFrames, UINT idMS) {
 	videoClippingDlgEditReentry = TRUE;
 	SetDlgItemInt(hDlg, idFrames, lFrames=inputVideoAVI->msToSamples(lv), FALSE);
 	SetDlgItemInt(hDlg, IDC_LENGTH_MS,
-				inputVideoAVI->samplesToMs(inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)
+				inputVideoAVI->samplesToMs(inputVideoAVI->getLength())
 				-GetDlgItemInt(hDlg, IDC_END_MS, NULL, FALSE)
 				-GetDlgItemInt(hDlg, IDC_START_MS, NULL, FALSE), TRUE);
 	SetDlgItemInt(hDlg, IDC_LENGTH_FRAMES,
-				inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst
+				inputVideoAVI->getLength()
 				-GetDlgItemInt(hDlg, IDC_END_FRAMES, NULL, FALSE)
 				-GetDlgItemInt(hDlg, IDC_START_FRAMES, NULL, FALSE), TRUE);
 	videoClippingDlgEditReentry = FALSE;
@@ -829,11 +829,11 @@ static void VideoClippingDlgFramesToMS(HWND hDlg, UINT idMS, UINT idFrames) {
 	videoClippingDlgEditReentry = TRUE;
 	SetDlgItemInt(hDlg, idMS, lMS = inputVideoAVI->samplesToMs(lv), FALSE);
 	SetDlgItemInt(hDlg, IDC_LENGTH_MS,
-				inputVideoAVI->samplesToMs(inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)
+				inputVideoAVI->samplesToMs(inputVideoAVI->getLength())
 				-GetDlgItemInt(hDlg, IDC_END_MS, NULL, FALSE)
 				-GetDlgItemInt(hDlg, IDC_START_MS, NULL, FALSE), TRUE);
 	SetDlgItemInt(hDlg, IDC_LENGTH_FRAMES,
-				inputVideoAVI->streamInfo.dwLength
+				inputVideoAVI->getLength()
 				-GetDlgItemInt(hDlg, IDC_END_FRAMES, NULL, FALSE)
 				-GetDlgItemInt(hDlg, IDC_START_FRAMES, NULL, FALSE), TRUE);
 	videoClippingDlgEditReentry = FALSE;
@@ -850,11 +850,11 @@ static void VideoClippingDlgLengthFrames(HWND hDlg) {
 	videoClippingDlgEditReentry = TRUE;
 	SetDlgItemInt(hDlg, IDC_LENGTH_MS, lMS = inputVideoAVI->samplesToMs(lv), FALSE);
 	SetDlgItemInt(hDlg, IDC_END_MS,
-				inputVideoAVI->samplesToMs(inputVideoAVI->streamInfo.dwLength)
+				inputVideoAVI->samplesToMs(inputVideoAVI->getLength())
 				-lMS
 				-GetDlgItemInt(hDlg, IDC_START_MS, NULL, TRUE), TRUE);
 	SetDlgItemInt(hDlg, IDC_END_FRAMES,
-				inputVideoAVI->streamInfo.dwLength
+				inputVideoAVI->getLength()
 				-lv
 				-GetDlgItemInt(hDlg, IDC_START_FRAMES, NULL, TRUE), TRUE);
 	videoClippingDlgEditReentry = FALSE;
@@ -871,11 +871,11 @@ static void VideoClippingDlgLengthMS(HWND hDlg) {
 	videoClippingDlgEditReentry = TRUE;
 	SetDlgItemInt(hDlg, IDC_LENGTH_FRAMES, lFrames=inputVideoAVI->msToSamples(lv), FALSE);
 	SetDlgItemInt(hDlg, IDC_END_MS,
-				inputVideoAVI->samplesToMs(inputVideoAVI->streamInfo.dwLength)
+				inputVideoAVI->samplesToMs(inputVideoAVI->getLength())
 				-lv
 				-GetDlgItemInt(hDlg, IDC_START_MS, NULL, TRUE), TRUE);
 	SetDlgItemInt(hDlg, IDC_END_FRAMES,
-				inputVideoAVI->streamInfo.dwLength
+				inputVideoAVI->getLength()
 				-lFrames
 				-GetDlgItemInt(hDlg, IDC_START_FRAMES, NULL, TRUE), TRUE);
 	videoClippingDlgEditReentry = FALSE;
@@ -1044,7 +1044,7 @@ BOOL APIENTRY AudioVolumeDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lPa
 }
 
 BOOL CALLBACK VideoJumpDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	char buf[32];
+	char buf[64];
 
 	switch(msg) {
 	case WM_INITDIALOG:
@@ -1089,33 +1089,33 @@ BOOL CALLBACK VideoJumpDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam
 
 				EndDialog(hdlg, uiFrame);
 			} else {
-				unsigned int hr, min, sec, ms=0;
+				unsigned int hr, min;
+				double sec = 0;
 				int n;
 
 				GetDlgItemText(hdlg, IDC_FRAMETIME, buf, sizeof buf);
 
-				n = sscanf(buf, "%u:%u:%u.%u", &hr, &min, &sec, &ms);
+				n = sscanf(buf, "%u:%u:%lf", &hr, &min, &sec);
 
 				if (n < 3) {
 					hr = 0;
-					n = sscanf(buf, "%u:%u.%u", &min, &sec, &ms);
+					n = sscanf(buf, "%u:%lf", &min, &sec);
 				}
 
 				if (n < 2) {
 					min = 0;
-					n = sscanf(buf, "%u.%u", &sec, &ms);
+					n = sscanf(buf, "%lf", &sec);
 				}
 
-				if (n < 1) {
+				if (n < 1 || sec < 0) {
 					SetFocus(GetDlgItem(hdlg, IDC_FRAMETIME));
 					MessageBeep(MB_ICONEXCLAMATION);
 					return TRUE;
 				}
 
-				while(ms > 1000)
-					ms /= 10;
+				unsigned ms = VDRoundToInt(1000.0 * sec);
 
-				EndDialog(hdlg, inputVideoAVI->msToSamples(ms+sec*1000+min*60000+hr*3600000));
+				EndDialog(hdlg, inputVideoAVI->msToSamples(ms+min*60000+hr*3600000));
 			}
 			break;
 		case IDC_FRAMENUMBER:

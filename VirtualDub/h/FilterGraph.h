@@ -31,6 +31,7 @@ class IVDFilterGraphControlCallback {
 public:
 	virtual void SelectionChanged(IVDRefCount *pNewSelection) = 0;
 	virtual bool Configure(VDGUIHandle hParent, IVDRefCount *pInstance) = 0;
+	virtual bool RequeryFormats() = 0;
 };
 
 
@@ -45,6 +46,7 @@ public:
 	virtual void AddFilter(const wchar_t *name, int inpins, int outpins, bool bProtected, IVDRefCount *pInstance) = 0;
 	virtual void GetFilterGraph(std::vector<VDFilterGraphNode>& filters, std::vector<VDFilterGraphConnection>& connections) = 0;
 	virtual void SetFilterGraph(const std::vector<VDFilterGraphNode>& filters, const std::vector<VDFilterGraphConnection>& connections) = 0;
+	virtual void SetConnectionLabel(IVDRefCount *pInstance, int outpin, const wchar_t *pLabel) = 0;
 
 	virtual IVDRefCount *GetSelection() = 0;
 };

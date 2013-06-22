@@ -50,9 +50,9 @@ public:
 	AVIIndexChain();
 	~AVIIndexChain();
 
-	bool add(AVIINDEXENTRY *avie);
-	bool add(AVIIndexEntry2 *avie2);
-	bool add(FOURCC ckid, __int64 pos, long len, bool is_keyframe);
+	void add(AVIINDEXENTRY *avie);
+	void add(AVIIndexEntry2 *avie2);
+	void add(FOURCC ckid, __int64 pos, long len, bool is_keyframe);
 	void put(AVIINDEXENTRY *avietbl);
 	void put(AVIIndexEntry2 *avie2tbl);
 	void put(AVIIndexEntry3 *avie3tbl, __int64 offset);
@@ -73,29 +73,21 @@ protected:
 		return index2 = new AVIIndexEntry2[index_len = total_entries];
 	}
 
-	AVIIndexEntry3 *allocateIndex3(int total_entries) {
-		return index3 = new AVIIndexEntry3[index_len = total_entries];
-	}
-
 public:
 	AVIIndex();
 	~AVIIndex();
 
-	bool makeIndex();
-	bool makeIndex2();
-	bool makeIndex3(__int64 offset);
+	void makeIndex();
+	void makeIndex2();
+	void makeIndex3(__int64 offset);
 	void clear();
 
-	AVIINDEXENTRY *indexPtr() {
+	AVIINDEXENTRY *indexPtr() const {
 		return index;
 	}
 
-	AVIIndexEntry2 *index2Ptr() {
+	AVIIndexEntry2 *index2Ptr() const {
 		return index2;
-	}
-
-	AVIIndexEntry3 *index3Ptr() {
-		return index3;
 	}
 
 	AVIIndexEntry2 *takeIndex2() {

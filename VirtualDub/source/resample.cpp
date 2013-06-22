@@ -122,7 +122,7 @@ extern "C" void asm_resize_interp_col_run(
 			unsigned long width,
 			unsigned long yaccum);
 
-extern "C" void asm_resize_ccint(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, long xaccum, long xint, const int *table);
+extern "C" void asm_resize_ccint_MMX(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, long xaccum, long xint, const int *table);
 extern "C" void asm_resize_ccint_col(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
 extern "C" void asm_resize_ccint_col_MMX(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
 extern "C" void asm_resize_ccint_col_SSE2(Pixel *dst, const Pixel *src1, const Pixel *src2, const Pixel *src3, const Pixel *src4, long count, const int *table);
@@ -826,7 +826,7 @@ void cc_row(Pixel *dst, const Pixel *src, long w, long xs_left2, long xs_left, l
 			xaccum&=0xffff;
 		} while(--w);
 	} else {
-		asm_resize_ccint(dst, src-1, src, src+1, src+2, w, xaccum, xinc, table+1024);
+		asm_resize_ccint_MMX(dst, src-1, src, src+1, src+2, w, xaccum, xinc, table+1024);
 
 		dst += w;
 

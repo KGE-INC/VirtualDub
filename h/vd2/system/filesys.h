@@ -2,6 +2,7 @@
 #define f_VD2_SYSTEM_FILESYS_H
 
 #include <wchar.h>
+#include <vector>
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>
@@ -70,5 +71,44 @@ bool VDDoesPathExist(const VDStringW& fileName);
 VDStringW VDGetFullPath(const VDStringW& partialPath);
 
 VDStringW VDMakePath(const VDStringW& base, const VDStringW& file);
+
+/////////////////////////////////////////////////////////////////////////////
+
+class VDDirectoryIterator {
+	VDDirectoryIterator(const VDDirectoryIterator&);
+	VDDirectoryIterator& operator=(VDDirectoryIterator&);
+public:
+	VDDirectoryIterator(const wchar_t *path);
+	~VDDirectoryIterator();
+
+	bool Next();
+
+	bool IsDirectory() const {
+		return mbDirectory;
+	}
+
+	const wchar_t *GetName() const {
+		return &mFilename[0];
+	}
+
+	const VDStringW GetFullPath() const {
+		return VDStringW(mBasePath + mFilename);
+	}
+
+	const sint64 GetSize() const {
+		return mFileSize;
+	}
+
+protected:
+	void *mpHandle;
+	bool mbSearchComplete;
+
+	VDStringW	mSearchPath;
+	VDStringW	mBasePath;
+
+	VDStringW	mFilename;
+	sint64		mFileSize;
+	bool		mbDirectory;
+};
 
 #endif

@@ -17,9 +17,12 @@ public:
 	void setSchedulerNode(VDSchedulerNode *pSchedulerNode);
 
 	bool Run();
-	void Reschedule(VDSchedulerNode *);
-	void Add(VDSchedulerNode *pNode);
-	void Remove(VDSchedulerNode *pNode);
+	void Lock();
+	void Unlock();
+	void Reschedule(VDSchedulerNode *);				// Move node to Ready if Waiting.
+	void RescheduleFast(VDSchedulerNode *);			// Same as Reschedule(), but assumes the scheduler is already locked.
+	void Add(VDSchedulerNode *pNode);				// Add node to scheduler.
+	void Remove(VDSchedulerNode *pNode);			// Remove node from scheduler.
 
 protected:
 	void Repost(VDSchedulerNode *, bool);

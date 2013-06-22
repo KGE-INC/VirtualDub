@@ -546,7 +546,7 @@ const VDZipArchive::FileInfo& VDZipArchive::GetFileInfo(sint32 idx) {
 	return mDirectory[idx];
 }
 
-IVDStream *VDZipArchive::OpenRaw(sint32 idx) {
+IVDStream *VDZipArchive::OpenRawStream(sint32 idx) {
 	const FileInfoInternal& fi = mDirectory[idx];
 
 	mpStream->Seek(fi.mDataStart);

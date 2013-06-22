@@ -60,11 +60,14 @@
 	.xmm
 	.model	flat
 
+	assume fs:_DATA
+
 	.const
 
 x0002000200020002	dq	0002000200020002h
 x0004000400040004	dq	0004000400040004h
 x0008000800080008	dq	0008000800080008h
+x0000200000002000	dq	0000200000002000h
 
 	.code
 
@@ -325,7 +328,7 @@ colloop_interp_col:
 	mov	[esp+4+28+8],edx	;[data write ] v
 	add	esi,4
 
-	dec	ebp
+	sub	ebp,1
 	jne	colloop_interp_col
 
 	add	esp,8
@@ -403,15 +406,11 @@ colloop_interp_col_MMX:
 
 ;--------------------------------------------------------------------------
 
-	public	_asm_resize_ccint
+	public	_asm_resize_ccint_MMX
 
-	align	16
+;asm_resize_ccint_MMX(dst, src1, src2, src3, src4, count, xaccum, xinc, tbl);
 
-x0000200000002000	dq	0000200000002000h
-
-;asm_resize_ccint(dst, src1, src2, src3, src4, count, xaccum, xinc, tbl);
-
-_asm_resize_ccint:
+_asm_resize_ccint_MMX:
 	push	ebx
 	push	esi
 	push	edi
@@ -419,8 +418,6 @@ _asm_resize_ccint:
 
 	mov	ebx,[esp + 4 + 16]	;ebx = dest addr
 	mov	ecx,[esp + 24 + 16]	;ecx = count
-	shl	ecx,2			;ecx = count*4
-	add	ecx,ebx			;ecx = dst limit
 
 	mov	ebp,[esp + 32 + 16]	;ebp = increment
 	mov	edi,ebp			;edi = increment
@@ -434,83 +431,111 @@ _asm_resize_ccint:
 	mov	[esp + 28 + 16], ebp	;xaccum = fraction
 
 	mov	eax,[esp + 8 + 16]
-	mov	[esp + 8 + 16],ecx	;src1 = dest limit
-	mov	ebx,[esp + 12 + 16]
-	mov	ecx,[esp + 16 + 16]
-	mov	edx,[esp + 20 + 16]
 
 	shr	ebp,24			;ebp = fraction (0...255)
 	mov	[esp + 20 + 16],edi	;src4 = integer increment
 	shl	ebp,4			;ebp = fraction*16
-	mov	edi,[esp + 36 + 16]	;edi = coefficient table
-	add	edi,ebp
+	mov	edi,ebp
 	mov	ebp,[esp + 4 + 16]	;ebp = destination
+
+	shr	eax, 2
+	add	eax, esi
+	shl	ecx, 2			;ecx = count*4
+	lea	ebp, [ebp+ecx-4]
+	neg	ecx			;ecx = -count*4
 
 	movq		mm6,x0000200000002000
 	pxor		mm7,mm7
 
-ccint_loop_MMX:
-	movd		mm0,[eax+esi*4]
-	;<xxx>
+	mov		edx,[esp+28+16]		;edx = fractional accumulator
+	mov		esi,[esp+32+16]		;esi = fractional increment
 
-	movd		mm1,[ebx+esi*4]
+	mov		ebx,[esp+20+16]		;ebx = integer increment
+
+	movd		mm1,[eax*4+4]
 	punpcklbw	mm0,mm7				;mm0 = [a1][r1][g1][b1]
 
-	movd		mm2,[ecx+esi*4]
+	;borrow stack pointer
+	push		0				;don't crash
+	push		fs:dword ptr [0]
+	mov		fs:dword ptr [0], esp
+	mov		esp,[esp+36+16+8]
+	jmp		short ccint_loop_MMX_start
+
+	;EAX	source pointer / 4
+	;EBX	integer increment
+	;ECX	count
+	;EDX	fractional accumulator
+	;ESI	fractional increment
+	;EDI	coefficient offset
+	;ESP	coefficient pointer
+	;EBP	destination pointer
+
+	align		16
+ccint_loop_MMX:
+	movd		mm0,[eax*4]
+	packuswb	mm2,mm2				;mm0 = [a][r][g][b][a][r][g][b]
+
+	movd		mm1,[eax*4+4]
+	punpcklbw	mm0,mm7				;mm0 = [a1][r1][g1][b1]
+
+	movd		[ebp+ecx],mm2
+ccint_loop_MMX_start:
+	movq		mm4,mm0				;mm0 = [a1][r1][g1][b1]
+
+	movd		mm2,[eax*4+8]
 	punpcklbw	mm1,mm7				;mm1 = [a2][r2][g2][b2]
 
-	movd		mm3,[edx+esi*4]
+	movd		mm3,[eax*4+12]
 	punpcklbw	mm2,mm7				;mm2 = [a3][r3][g3][b3]
 
 	punpcklbw	mm3,mm7				;mm3 = [a4][r4][g4][b4]
-	movq		mm4,mm0				;mm0 = [a1][r1][g1][b1]
-
-	punpcklwd	mm0,mm1				;mm0 = [g2][g1][b2][b1]
 	movq		mm5,mm2				;mm2 = [a3][r3][g3][b3]
 
-	pmaddwd		mm0,[edi]
+	add		edx,esi				;add fractional incrmeent
+	punpcklwd	mm0,mm1				;mm0 = [g2][g1][b2][b1]
+
+	pmaddwd		mm0,[esp+edi]
 	punpcklwd	mm2,mm3				;mm2 = [g4][g3][b4][b3]
 
-	pmaddwd		mm2,[edi+8]
+	pmaddwd		mm2,[esp+edi+8]
 	punpckhwd	mm4,mm1				;mm4 = [a2][a1][r2][r1]
 
-	pmaddwd		mm4,[edi]
+	pmaddwd		mm4,[esp+edi]
 	punpckhwd	mm5,mm3				;mm5 = [a4][a3][b4][b3]
 
-	pmaddwd		mm5,[edi+8]
-	paddd		mm0,mm2				;mm0 = [ g ][ b ]
-
+	pmaddwd		mm5,[esp+edi+8]
 	paddd		mm0,mm6
-	mov		edi,[esp + 28 + 16]		;edi = fractional accumulator
 
+	adc		eax,ebx				;add integer increment and fractional bump to offset
+	mov		edi,0ff000000h
+
+	paddd		mm2,mm0				;mm0 = [ g ][ b ]
 	paddd		mm4,mm6
-	psrad		mm0,14
 
+	psrad		mm2,14
 	paddd		mm4,mm5				;mm4 = [ a ][ r ]
-	add		edi,[esp + 32 + 16]		;add fractional incrmeent
 
-	adc		esi,[esp + 20 + 16]		;add integer increment and fractional bump to offset
+	and		edi,edx
 	psrad		mm4,14
 
-	packssdw	mm0,mm4				;mm0 = [ a ][ r ][ g ][  b ]
-	mov		[esp + 28 + 16],edi		;save fractional accumulator
+	shr		edi,20				;edi = fraction (0...255)*16
+	add		ecx,4
 
-	shr		edi,24				;edi = fraction (0...255)
-	packuswb	mm0,mm0				;mm0 = [a][r][g][b][a][r][g][b]
+	packssdw	mm2,mm4				;mm0 = [ a ][ r ][ g ][  b ]
+	jnc		ccint_loop_MMX
 
-	shl		edi,4				;edi = fraction (0...255)*16
-	add		ebp,4
+	packuswb	mm2,mm2				;mm0 = [a][r][g][b][a][r][g][b]
+	movd		[ebp],mm2
 
-	add		edi,[esp + 36 + 16]		;edi = pointer to coefficient entry
-	cmp		ebp,[esp + 8 + 16]
+	mov		esp, fs:dword ptr [0]
+	pop		fs:dword ptr [0]
+	pop		eax
 
-	movd		[ebp-4],mm0
-	jne		ccint_loop_MMX
-
-	pop	ebp
-	pop	edi
-	pop	esi
-	pop	ebx
+	pop		ebp
+	pop		edi
+	pop		esi
+	pop		ebx
 	ret
 
 ;------------------------------------------------------
@@ -858,7 +883,7 @@ ccint_col_loop_SSE2:
 	pmaddwd		xmm2,xmm5
 	pmaddwd		xmm3,xmm5
 	paddd		xmm0,xmm6
-	paddd		xmm2,xmm6
+	paddd		xmm1,xmm6
 	paddd		xmm0,xmm2
 	paddd		xmm1,xmm3
 	psrad		xmm0,14
@@ -1218,7 +1243,7 @@ coeff_loop:
 	pmaddwd		mm0,[edx]
 	pmaddwd		mm1,[edx]
 	add		edx,8
-	dec		ecx
+	sub		ecx,1
 	jne		coeff_loop
 
 	paddd		mm7,mm0			;accumulate alpha/red (pixels 2/3)
@@ -1334,7 +1359,7 @@ coeffloop_unaligned_even_pairs:
 	add		edx,16
 
 	add		esi,16
-	dec		ecx
+	sub		ecx,1
 
 	jne		coeffloop_unaligned_even_pairs
 
@@ -1348,7 +1373,7 @@ coeffloop_unaligned_even_pairs:
 	add		edi,4
 
 	packuswb	mm6,mm6
-	dec		ebp
+	sub		ebp,1
 
 	mov	esi,eax
 	mov	edx,eax
@@ -1418,7 +1443,7 @@ coeffloop_unaligned_odd_pairs:
 	add		edx,16
 
 	add		esi,16
-	dec		ecx
+	sub		ecx,1
 
 	jne		coeffloop_unaligned_odd_pairs
 
@@ -1451,7 +1476,7 @@ coeffloop_unaligned_odd_pairs:
 	add		edi,4
 
 	packuswb	mm6,mm6
-	dec		ebp
+	sub		ebp,1
 
 	mov		esi,eax
 	mov		edx,eax
@@ -1531,7 +1556,7 @@ coeffloop:
 	pmaddwd		mm1,[edx]
 	add		edx,8
 
-	dec		ecx
+	sub		ecx,1
 	jne		coeffloop
 
 	paddd		mm6,mm0
@@ -1543,7 +1568,7 @@ coeffloop:
 	packssdw	mm6,mm7
 	add		ebx,4
 	packuswb	mm6,mm6
-	dec		ebp
+	sub		ebp,1
 
 	mov		ecx,[esp + 16 + 24]		;ecx = filter width counter
 	mov		edx,[esp + 12 + 24]		;edx = filter bank pointer

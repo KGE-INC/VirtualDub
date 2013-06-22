@@ -32,8 +32,13 @@
 #include <vd2/Dita/resources.h>
 #include "Avisynth.h"
 #include "misc.h"
+#include <vector>
 
-//#define STREAMING_DEBUG
+//#define VDTRACE_AVIREADCACHE VDDEBUG
+#define VDTRACE_AVIREADCACHE (void)sizeof
+
+//#define VDTRACE_AVISTREAMING VDDEBUG
+#define VDTRACE_AVISTREAMING (void)sizeof
 
 // HACK!!!!
 
@@ -157,24 +162,45 @@ public:
 	~AVIReadCache();
 
 	void ResetStatistics();
-	bool WriteBegin(__int64 pos, long len);
-	void Write(void *buffer, long len);
+	bool WriteBegin(sint64 pos, uint32 len);
+	void Write(const void *buffer, uint32 len);
 	void WriteEnd();
-	long Read(void *dest, __int64 chunk_pos, __int64 pos, long len);
+	long Read(void *dest, sint64 chunk_pos, sint64 pos, uint32 len);
 
 	long getMaxRead() {
-		return (lines_max - 1) << 4;
+		return (long)mSize;
 	}
 
 private:
+	struct IndexBlockEntry {
+		sint64 pos;
+		uint32 start;
+		uint32 len;
+	};
+
+	struct IndexBlock {
+		enum { kBlocksPerIndex = 64 };
+
+		int		mHead;
+		int		mTail;
+		IndexBlockEntry mBlocks[kBlocksPerIndex];
+	};
+
 	AVIStreamNode *psnData;
-	__int64 (*buffer)[2];
-	int lines_max, lines;
-	long read_tail, write_tail, write_hdr;
-	int write_offset;
+
+	std::vector<char> mBuffer;
+
+	typedef std::list<IndexBlock> tIndexBlockList;
+	tIndexBlockList mActiveIndices;
+	tIndexBlockList mFreeIndices;
+
+	int mSize, mFree;
+	int mWritePos;
 	int stream;
 	AVIReadHandler *source;
 };
+
+///////////////////////////////////////////////////////////////////////////
 
 class AVIStreamNode : public ListNode2<AVIStreamNode> {
 public:
@@ -293,7 +319,7 @@ class AVIReadHandler : public IAVIReadHandler, private File64 {
 public:
 	bool		fDisableFastIO;
 
-	AVIReadHandler(const char *);
+	AVIReadHandler(const wchar_t *);
 	AVIReadHandler(PAVIFILE);
 	~AVIReadHandler();
 
@@ -304,7 +330,7 @@ public:
 	bool isOptimizedForRealtime();
 	bool isStreaming();
 	bool isIndexFabricated();
-	bool AppendFile(const char *pszFile);
+	bool AppendFile(const wchar_t *pszFile);
 	bool getSegmentHint(const char **ppszPath);
 
 	void EnableStreaming(int stream);
@@ -344,7 +370,7 @@ private:
 	List2<AVIStreamNode>		listStreams;
 	List2<AVIFileDesc>			listFiles;
 
-	void		_construct(const char *pszFile);
+	void		_construct(const wchar_t *pszFile);
 	void		_parseFile(List2<AVIStreamNode>& streams);
 	bool		_parseStreamHeader(List2<AVIStreamNode>& streams, DWORD dwLengthLeft, bool& bIndexDamaged);
 	bool		_parseIndexBlock(List2<AVIStreamNode>& streams, int count, __int64);
@@ -360,28 +386,25 @@ IAVIReadHandler *CreateAVIReadHandler(PAVIFILE paf) {
 	return new AVIReadHandler(paf);
 }
 
-IAVIReadHandler *CreateAVIReadHandler(const char *pszFile) {
+IAVIReadHandler *CreateAVIReadHandler(const wchar_t *pszFile) {
 	return new AVIReadHandler(pszFile);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-AVIReadCache::AVIReadCache(int nlines, int nstream, AVIReadHandler *root, AVIStreamNode *psnData) {
-	buffer = new __int64[nlines][2];
-	if (!buffer) throw MyMemoryError();
-
+AVIReadCache::AVIReadCache(int nlines, int nstream, AVIReadHandler *root, AVIStreamNode *psnData)
+	: mBuffer(nlines * 16)
+	, mSize(nlines*16)
+	, mFree(nlines*16)
+	, mWritePos(0)
+{
 	this->psnData	= psnData;
-	lines		= 0;
-	lines_max	= nlines;
-	read_tail	= 0;
-	write_tail	= 0;
 	stream		= nstream;
 	source		= root;
 	ResetStatistics();
 }
 
 AVIReadCache::~AVIReadCache() {
-	delete[] buffer;
 }
 
 void AVIReadCache::ResetStatistics() {
@@ -389,85 +412,86 @@ void AVIReadCache::ResetStatistics() {
 	cache_hit_bytes	= cache_miss_bytes = 0;
 }
 
-bool AVIReadCache::WriteBegin(__int64 pos, long len) {
+bool AVIReadCache::WriteBegin(sint64 pos, uint32 len) {
 	int needed;
 
 	// delete lines as necessary to make room
 
-	needed = 1 + (len+15)/16;
+	needed = (len+7) & ~7;
 
-	if (needed > lines_max)
+	if (needed > mSize)
 		return false;
 
-	while(lines+needed > lines_max) {
-		int siz = (int)((buffer[read_tail][1]+15)/16 + 1);
-		read_tail += siz;
-		lines -= siz;
-		if (read_tail >= lines_max)
-			read_tail -= lines_max;
+	while(mFree < needed) {
+		VDASSERT(!mActiveIndices.empty());
+
+		IndexBlock& idxblock = mActiveIndices.front();
+
+		VDASSERT(idxblock.mHead != idxblock.mTail);
+
+		for(;;) {
+			mFree += (idxblock.mBlocks[idxblock.mHead++].len + 7) & ~7;
+
+			if (idxblock.mHead == idxblock.mTail)
+				break;
+			
+			if (mFree >= needed)
+				goto have_space;
+		}
+
+		mFreeIndices.splice(mFreeIndices.begin(), mActiveIndices, mActiveIndices.begin());
 	}
 
+have_space:
+
 	// write in header
+	if (mActiveIndices.empty() || mActiveIndices.back().mTail >= IndexBlock::kBlocksPerIndex) {
+		if (mFreeIndices.empty()) {
+			mActiveIndices.push_back(IndexBlock());
+		} else
+			mActiveIndices.splice(mActiveIndices.end(), mFreeIndices, mFreeIndices.begin());
+		mActiveIndices.back().mHead = 0;
+		mActiveIndices.back().mTail = 0;
+	}
 
-//	_RPT1(0,"\tbeginning write at line %ld\n", write_tail);
+	IndexBlock& writeblock = mActiveIndices.back();
+	IndexBlockEntry& writeent = writeblock.mBlocks[writeblock.mTail++];
 
-	write_hdr = write_tail;
-	write_offset = 0;
+	writeent.pos	= pos;
+	writeent.len	= len;
+	writeent.start	= mWritePos;
 
-	buffer[write_tail][0] = pos;
-	buffer[write_tail][1] = 0;
-
-	if (++write_tail >= lines_max)
-		write_tail = 0;
+	mFree -= (len + 7) & ~7;
 
 	return true;
 }
 
-void AVIReadCache::Write(void *src, long len) {
-	long dest;
+#pragma function(memcpy)
 
+void AVIReadCache::Write(const void *src, uint32 len) {
 	// copy in data
+	if (mWritePos + len > mSize) {		// split write
+		uint32 fraction = mSize - mWritePos;
 
-	buffer[write_hdr][1] += len;
+		memcpy(&mBuffer[mWritePos], src, fraction);
+		memcpy(&mBuffer.front(), (const char *)src + fraction, len - fraction);
+		mWritePos = len - fraction;
+	} else {							// single write
+		memcpy(&mBuffer[mWritePos], src, len);
 
-	dest = write_tail + (len + write_offset + 15)/16;
-
-	if (dest > lines_max) {
-		int tc = (lines_max - write_tail)*16 - write_offset;
-
-		memcpy((char *)&buffer[write_tail][0] + write_offset, src, tc);
-		memcpy(&buffer[0][0], (char *)src + tc, len - tc);
-
-		write_tail = (len-tc)/16;
-		write_offset = (len-tc)&15;
-
-	} else {
-		memcpy((char *)&buffer[write_tail][0] + write_offset, src, len);
-		write_tail += (len+write_offset)/16;
-		if (write_tail >= lines_max)
-			write_tail = 0;
-
-		write_offset = (len+write_offset) & 15;
+		mWritePos += len;
+		if (mWritePos >= mSize)
+			mWritePos = 0;
 	}
 }
 
 void AVIReadCache::WriteEnd() {
-	long cnt = (long)(1 + (buffer[write_hdr][1]+15)/16);
-	lines += cnt;
-	write_tail = write_hdr + cnt;
-
-	if (write_tail >= lines_max)
-		write_tail -= lines_max;
-
-//	_RPT3(0,"\twrite complete -- header at line %d, size %ld, next line %ld\n", write_hdr, (long)buffer[write_hdr][1], write_tail);
+	mWritePos = (mWritePos + 7) & ~7;
+	if (mWritePos >= mSize)
+		mWritePos = 0;
 }
 
-#pragma function(memcpy)
-
-long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
-	long ptr;
-	__int64 offset;
-
+long AVIReadCache::Read(void *dest, sint64 chunk_pos, sint64 pos, uint32 len) {
 //	_RPT3(0,"Read request: chunk %16I64, pos %16I64d, %ld bytes\n", chunk_pos, pos, len);
 
 	++reads;
@@ -475,51 +499,35 @@ long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
 	do {
 		// scan buffer looking for a range that contains data
 
-		ptr = read_tail;
-		while(ptr != write_tail) {
-			offset = pos - buffer[ptr][0];
+		for(tIndexBlockList::reverse_iterator it(mActiveIndices.rbegin()), itEnd(mActiveIndices.rend()); it!=itEnd; ++it) {
+			const IndexBlock& ib = *it;
 
-//		_RPT4(0,"line %8d: pos %16I64d, len %ld bytes (%ld lines)\n", ptr, buffer[ptr][0], (long)buffer[ptr][1], (long)(buffer[ptr][1]+15)/16);
+			for(int i = ib.mHead; i < ib.mTail; ++i) {
+				const IndexBlockEntry& ibe = ib.mBlocks[i];
 
-			if (offset>=0 && offset < buffer[ptr][1]) {
-				long end;
+				if (ibe.pos == pos) {
+					if (len > ibe.len)
+						len = ibe.len;
 
-				// cache hit
+					cache_hit_bytes += len;
 
-//				_RPT1(0, "cache hit (offset %I64d)\n", chunk_pos);
+					while (cache_hit_bytes > 16777216) {
+						cache_miss_bytes >>= 1;
+						cache_hit_bytes >>= 1;
+					}
 
-				cache_hit_bytes += len;
+					if (ibe.start + len >= mSize) {			// split read
+						uint32 fraction = mSize - ibe.start;
+						memcpy(dest, &mBuffer[ibe.start], fraction);
+						memcpy((char *)dest + fraction, &mBuffer.front(), len - fraction);
+					} else {								// single read
+						memcpy(dest, &mBuffer[ibe.start], len);
+					}
 
-				while (cache_hit_bytes > 16777216) {
-					cache_miss_bytes >>= 1;
-					cache_hit_bytes >>= 1;
+					VDTRACE_AVIREADCACHE("AVIReadCache: cache hit\n");
+					return (long)len;
 				}
-
-				if (len > (long)(buffer[ptr][1]*16 - offset))
-					len = (long)(buffer[ptr][1]*16 - offset);
-
-				ptr += 1+((long)offset>>4);
-				if (ptr >= lines_max)
-					ptr -= lines_max;
-
-				end = ptr + ((len+((long)offset&15)+15)>>4);
-
-				if (end > lines_max) {
-					long tc = (lines_max - ptr)*16 - ((long)offset&15);
-					memcpy(dest, (char *)&buffer[ptr][0] + ((long)offset&15), tc);
-					memcpy((char *)dest + tc, (char *)&buffer[0][0], len-tc);
-				} else {
-					memcpy(dest, (char *)&buffer[ptr][0] + ((long)offset&15), len);
-				}
-
-				return len;
 			}
-
-//		_RPT4(0,"[x] line %8d: pos %16I64d, len %ld bytes (%ld lines)\n", ptr, buffer[ptr][0], (long)buffer[ptr][1], (long)(buffer[ptr][1]+15)/16);
-			ptr += (long)(1+(buffer[ptr][1] + 15)/16);
-
-			if (ptr >= lines_max)
-				ptr -= lines_max;
 		}
 
 		if (source->getStreamPtr() > chunk_pos)
@@ -529,6 +537,8 @@ long AVIReadCache::Read(void *dest, __int64 chunk_pos, __int64 pos, long len) {
 
 //	OutputDebugString("cache miss\n");
 //	_RPT1(0, "cache miss (offset %I64d)\n", chunk_pos);
+
+	VDTRACE_AVIREADCACHE("AVIReadCache: cache miss\n");
 
 	cache_miss_bytes += len;
 
@@ -603,12 +613,10 @@ bool AVIReadTunnelStream::IsKeyFrame(long lFrame) {
 HRESULT AVIReadTunnelStream::Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
 	HRESULT hr;
 
-	if (IsMMXState())
-		throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
-
-	hr = AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
-
-	ClearMMXState();
+	{
+		VDExternalCodeBracket(pAvisynthClipInfo ? L"Avisynth" : L"An AVIFile input stream driver", __FILE__, __LINE__);
+		hr = AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+	}
 
 	if (pAvisynthClipInfo) {
 		const char *pszErr;
@@ -738,8 +746,8 @@ AVIReadStream::AVIReadStream(AVIReadHandler *parent, AVIStreamNode *psnData, int
 
 AVIReadStream::~AVIReadStream() {
 	EndStreaming();
-	parent->Release();
 	Remove();
+	parent->Release();
 }
 
 void AVIReadStream::Reinit() {
@@ -947,19 +955,14 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 								parent->EnableStreaming(streamno);
 							}
 
-#ifdef STREAMING_DEBUG
-							OutputDebugString("[a] streaming enabled\n");
-#endif
+							VDTRACE_AVISTREAMING("[a] streaming enabled\n");
 						}
 					} else {
-#ifdef STREAMING_DEBUG
-						OutputDebugString("[a] streaming detected\n");
-#endif
+						VDTRACE_AVISTREAMING("[a] streaming detected\n");
 					}
 				} else {
-#ifdef STREAMING_DEBUG
-					OutputDebugString("[a] streaming disabled\n");
-#endif
+					VDTRACE_AVISTREAMING("[a] streaming disabled\n");
+
 					iStreamTrackCount = 0;
 
 					if (fStreamingActive) {
@@ -1047,20 +1050,16 @@ HRESULT AVIReadStream::Read(long lStart, long lSamples, void *lpBuffer, long cbB
 								parent->EnableStreaming(streamno);
 							}
 
-#ifdef STREAMING_DEBUG
-							OutputDebugString("[v] streaming activated\n");
-#endif
+							VDTRACE_AVISTREAMING("[v] streaming activated\n");
 						}
 					} else {
-#ifdef STREAMING_DEBUG
-						OutputDebugString("[v] streaming detected\n");
-#endif
+						VDTRACE_AVISTREAMING("[v] streaming detected\n");
 					}
 				} else {
 					iStreamTrackCount = 0;
-#ifdef STREAMING_DEBUG
-					OutputDebugString("[v] streaming disabled\n");
-#endif
+
+					VDTRACE_AVISTREAMING("[v] streaming disabled\n");
+
 					if (lStreamTrackValue>=0 && lStart > lStreamTrackValue) {
 						lStreamTrackInterval = lStart - lStreamTrackValue;
 					} else
@@ -1221,7 +1220,7 @@ bool AVIReadStream::getVBRInfo(double& bitrate_mean, double& bitrate_stddev, dou
 
 ///////////////////////////////////////////////////////////////////////////
 
-AVIReadHandler::AVIReadHandler(const char *s)
+AVIReadHandler::AVIReadHandler(const wchar_t *s)
 : pAvisynthClipInfo(0)
 , mbFileIsDamaged(false)
 {
@@ -1278,27 +1277,25 @@ AVIReadHandler::~AVIReadHandler() {
 	_destruct();
 }
 
-void AVIReadHandler::_construct(const char *pszFile) {
+void AVIReadHandler::_construct(const wchar_t *pszFile) {
 
 	try {
 		AVIFileDesc *pDesc;
 
 		// open file
 
-		hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+		if (GetVersion() < 0x80000000)
+			hFile = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+		else
+			hFile = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 
 		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), pszFile);
+			throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), VDTextWToA(pszFile).c_str());
 
-		hFileUnbuffered = CreateFile(
-				pszFile,
-				GENERIC_READ,
-				FILE_SHARE_READ,
-				NULL,
-				OPEN_EXISTING,
-				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING,
-				NULL
-			);
+		if (GetVersion() < 0x80000000)
+			hFileUnbuffered = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
+		else
+			hFileUnbuffered = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 
 		i64FilePosition = 0;
 
@@ -1323,7 +1320,7 @@ void AVIReadHandler::_construct(const char *pszFile) {
 	}
 }
 
-bool AVIReadHandler::AppendFile(const char *pszFile) {
+bool AVIReadHandler::AppendFile(const wchar_t *pszFile) {
 	List2<AVIStreamNode> newstreams;
 	AVIStreamNode *pasn_old, *pasn_new, *pasn_old_next=NULL, *pasn_new_next=NULL;
 	AVIFileDesc *pDesc;
@@ -1332,20 +1329,18 @@ bool AVIReadHandler::AppendFile(const char *pszFile) {
 
 	// open file
 
-	hFile = CreateFile(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+	if (GetVersion() < 0x80000000)
+		hFile = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+	else
+		hFile = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 
 	if (INVALID_HANDLE_VALUE == hFile)
-		throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), pszFile);
+		throw MyWin32Error("Couldn't open %s: %%s", GetLastError(), VDTextWToA(pszFile).c_str());
 
-	hFileUnbuffered = CreateFile(
-			pszFile,
-			GENERIC_READ,
-			FILE_SHARE_READ,
-			NULL,
-			OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING,
-			NULL
-		);
+	if (GetVersion() < 0x80000000)
+		hFileUnbuffered = CreateFileW(pszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
+	else
+		hFileUnbuffered = CreateFileA(VDTextWToA(pszFile).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL);
 
 	try {
 		_parseFile(newstreams);
@@ -1813,8 +1808,7 @@ terminate_scan:
 
 	int nStream = 0;
 	while(pasn_next = pasn->NextFromHead()) {
-		if (!pasn->index.makeIndex2())
-			throw MyMemoryError();
+		pasn->index.makeIndex2();
 
 		pasn->frames = pasn->index.indexLen();
 
@@ -2543,9 +2537,9 @@ void AVIReadHandler::FixCacheProblems(AVIReadStream *arse) {
 
 	if (stream_leader && stream_leader->stream_bytes*2 < arse->psnData->stream_bytes
 		&& stream_leader->stream_push_pos >= arse->psnData->stream_push_pos+524288) {
-#ifdef STREAMING_DEBUG
-		OutputDebugString("caching disabled on fast puny leader\n");
-#endif
+
+		VDTRACE_AVISTREAMING("caching disabled on fast puny leader\n");
+
 		delete stream_leader->cache;
 		stream_leader->cache = NULL;
 
@@ -2554,9 +2548,8 @@ void AVIReadHandler::FixCacheProblems(AVIReadStream *arse) {
 		i64StreamPosition = -1;
 		sbPosition = sbSize = 0;
 	} else {
-#ifdef STREAMING_DEBUG
-		OutputDebugString("disabling caching at request of client\n");
-#endif
+
+		VDTRACE_AVISTREAMING("disabling caching at request of client\n");
 
 		arse->EndStreaming();
 

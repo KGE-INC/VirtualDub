@@ -128,7 +128,7 @@ uint32 VDAudioFilterGain::Prepare() {
 		)
 		return kVFAPrepare_BadFormat;
 
-	VDWaveFormat *pwf = mpContext->mpServices->CopyWaveFormat(&inFormat);
+	VDWaveFormat *pwf = mpContext->mpAudioCallbacks->CopyWaveFormat(&inFormat);
 
 	if (!pwf)
 		mpContext->mpServices->ExceptOutOfMemory();
@@ -221,10 +221,6 @@ sint64 VDAudioFilterGain::Seek(sint64 us) {
 
 extern const struct VDAudioFilterDefinition afilterDef_gain = {
 	sizeof(VDAudioFilterDefinition),
-	L"gain",
-	NULL,
-	L"Adjust signal amplitude (volume) by a fixed factor.",
-	0,
 	kVFAF_HasConfig,
 
 	sizeof(VDAudioFilterGain),	1,	1,
@@ -233,4 +229,21 @@ extern const struct VDAudioFilterDefinition afilterDef_gain = {
 
 	VDAudioFilterGain::InitProc,
 	&VDAudioFilterBase::sVtbl,
+};
+
+extern const struct VDPluginInfo apluginDef_gain = {
+	sizeof(VDPluginInfo),
+	L"gain",
+	NULL,
+	L"Adjust signal amplitude (volume) by a fixed factor.",
+	0,
+	kVDPluginType_Audio,
+	0,
+
+	kVDPlugin_APIVersion,
+	kVDPlugin_APIVersion,
+	kVDPlugin_AudioAPIVersion,
+	kVDPlugin_AudioAPIVersion,
+
+	&afilterDef_gain
 };

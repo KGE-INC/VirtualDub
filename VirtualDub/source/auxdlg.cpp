@@ -211,27 +211,57 @@ void Welcome() {
 	}
 }
 
+BOOL APIENTRY AnnounceExperimentalDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
+{
+    switch (message)
+    {
+        case WM_COMMAND:
+			switch(LOWORD(wParam)) {
+			case IDOK: case IDCANCEL:
+                EndDialog(hDlg, TRUE);  
+                return TRUE;
+			case IDC_VERIFY:
+				EnableWindow(GetDlgItem(hDlg, IDOK), IsDlgButtonChecked(hDlg, IDC_VERIFY));
+				return TRUE;
+            }
+            break;
+    }
+    return FALSE;
+}
+
+void AnnounceExperimental() {
+	DWORD dwSeenIt;
+
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.5.5", &dwSeenIt) || !dwSeenIt) {
+		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
+
+		SetConfigDword(NULL, "SeenExperimental 1.5.5", 1);
+	}
+}
+
 static const char g_szDivXWarning[]=
-	"\"DivX\" codec detected\0"
-	"One or more of the \"DivX\" drivers have been detected on your system. These drivers are illegal binary hacks "
+	"VirtualDub warning: \"DivX\" codec detected\0"
+	"One or more of the \"DivX 3\" drivers have been detected on your system. These drivers are illegal binary hacks "
 	"of legitimate drivers:\r\n"
 	"\r\n"
-	"* DivX low motion/fast motion: Microsoft MPEG-4 V3 video\r\n"
+	"* DivX 3 low motion/fast motion: Microsoft MPEG-4 V3 video\r\n"
 	"* DivX audio: Microsoft Windows Media Audio\r\n"
 	"* \"Radium\" MP3: Fraunhofer-IIS MPEG layer III audio\r\n"
 	"\r\n"
-	"Hacked drivers are known to cause serious problems, including "
-	"crashes and interference with the original drivers. When these drivers are loaded, the author cannot "
-	"make any guarantees as to the stability of VirtualDub. Please do not "
-	"forward crash dumps involving these drivers, as the author has no control "
-	"of the original third-party drivers or the binary hacks applied to them.\r\n"
+	"These drivers are known to be problematic, with stability issues and interference "
+	"with the original drivers. VirtualDub's stability cannot be guaranteed when "
+	"these drivers. Please do not notify the author of crashes involving these drivers "
+	"as the problems cannot be corrected in VirtualDub itself.\r\n"
 	"\r\n"
 	"This is only a warning. Aside from bug workarounds and warnings, VirtualDub does not take "
-	"further action in response to DivX being loaded."
+	"further action in response to DivX being loaded.\r\n"
+	"\r\n"
+	"NOTE: This warning does NOT apply to the DivX 4.0 and later releases, which are completely "
+	"different codecs."
 	;
 
 static const char g_szAPWarning[]=
-	"\"AngelPotion Definitive\" codec detected\0"
+	"VirtualDub warning: \"AngelPotion Definitive\" codec detected\0"
 	"The \"AngelPotion Definitive\" codec has been detected on your system. This driver is an illegal binary hack "
 	"of the following legitimate drivers:\r\n"
 	"\r\n"

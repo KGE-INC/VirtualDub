@@ -36,11 +36,11 @@ void VDAudioFilterBase::Start() {
 void VDAudioFilterBase::Stop() {
 }
 
-unsigned VDAudioFilterBase::Serialize(void *dst, unsigned size) {
+unsigned VDAudioFilterBase::Suspend(void *dst, unsigned size) {
 	return 0;
 }
 
-void VDAudioFilterBase::Deserialize(const void *src, unsigned size) {
+void VDAudioFilterBase::Resume(const void *src, unsigned size) {
 }
 
 const nsVDAudioFilterBase::ConfigEntryExt *VDAudioFilterBase::GetParamEntry(const unsigned idx) {
@@ -184,14 +184,14 @@ void __cdecl VDAudioFilterBase::StopProc(const VDAudioFilterContext *pContext) {
 	((VDAudioFilterBase *)pContext->mpFilterData)->Stop();
 }
 
-unsigned __cdecl VDAudioFilterBase::SerializeProc(const VDAudioFilterContext *pContext, void *dst, unsigned size) {
+unsigned __cdecl VDAudioFilterBase::SuspendProc(const VDAudioFilterContext *pContext, void *dst, unsigned size) {
 	((VDAudioFilterBase *)pContext->mpFilterData)->mpContext = pContext;
-	return ((VDAudioFilterBase *)pContext->mpFilterData)->Serialize(dst, size);
+	return ((VDAudioFilterBase *)pContext->mpFilterData)->Suspend(dst, size);
 }
 
-void __cdecl VDAudioFilterBase::DeserializeProc(const VDAudioFilterContext *pContext, const void *src, unsigned size) {
+void __cdecl VDAudioFilterBase::ResumeProc(const VDAudioFilterContext *pContext, const void *src, unsigned size) {
 	((VDAudioFilterBase *)pContext->mpFilterData)->mpContext = pContext;
-	((VDAudioFilterBase *)pContext->mpFilterData)->Deserialize(src, size);
+	((VDAudioFilterBase *)pContext->mpFilterData)->Resume(src, size);
 }
 
 unsigned __cdecl VDAudioFilterBase::GetParamProc(const VDAudioFilterContext *pContext, unsigned idx, void *dst, unsigned size) {
@@ -217,6 +217,7 @@ uint32 __cdecl VDAudioFilterBase::ReadProc(const VDAudioFilterContext *pContext,
 ///////////////////////////////////////////////////////////////////////////
 
 const VDAudioFilterVtbl VDAudioFilterBase::sVtbl = {
+	sizeof(VDAudioFilterVtbl),
 	DestroyProc,
 	PrepareProc,
 	StartProc,
@@ -224,8 +225,8 @@ const VDAudioFilterVtbl VDAudioFilterBase::sVtbl = {
 	RunProc,
 	ReadProc,
 	SeekProc,
-	SerializeProc,
-	DeserializeProc,
+	SuspendProc,
+	ResumeProc,
 	GetParamProc,
 	SetParamProc,
 	ConfigProc,

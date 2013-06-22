@@ -191,8 +191,8 @@ MyMemoryError::MyMemoryError() {
 }
 
 MyWin32Error::MyWin32Error(const char *format, DWORD err, ...) {
-	char szError[128];
-	char szTemp[256];
+	char szError[1024];
+	char szTemp[1024];
 	va_list val;
 
 	FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,

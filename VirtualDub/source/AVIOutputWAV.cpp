@@ -25,45 +25,60 @@
 #include "FastWriteStream.h"
 
 //////////////////////////////////////////////////////////////////////
-//																	//
-//		AVIOutputWAV (WAV output with AVI interface)				//
-//																	//
+//
+// AVIAudioOutputStreamWAV
+//
+//////////////////////////////////////////////////////////////////////
+
+class AVIAudioOutputStreamWAV : public AVIOutputStream {
+public:
+	AVIAudioOutputStreamWAV(class AVIOutput *out);
+
+	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
+};
+
+AVIAudioOutputStreamWAV::AVIAudioOutputStreamWAV(class AVIOutput *out) : AVIOutputStream(out) {
+}
+
+void AVIAudioOutputStreamWAV::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
+	static_cast<AVIOutputWAV *>(output)->write(pBuffer, cbBuffer);
+}
+
+//////////////////////////////////////////////////////////////////////
+//
+// AVIOutputWAV
+//
 //////////////////////////////////////////////////////////////////////
 
 AVIOutputWAV::AVIOutputWAV() {
-	hFile				= INVALID_HANDLE_VALUE;
 	fHeaderOpen			= false;
-	dwBytesWritten		= 0;
+	mBytesWritten		= 0;
 	fastIO				= NULL;
+	mBufferSize			= 65536;
 }
 
 AVIOutputWAV::~AVIOutputWAV() {
-	finalize();
 }
 
-BOOL AVIOutputWAV::initOutputStreams() {
-	if (!(audioOut = new AVIAudioOutputStream(this))) return FALSE;
-
-	return TRUE;
+IVDMediaOutputStream *AVIOutputWAV::createVideoStream() {
+	return NULL;
 }
 
-BOOL AVIOutputWAV::init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved) {
+IVDMediaOutputStream *AVIOutputWAV::createAudioStream() {
+	VDASSERT(!audioOut);
+	if (!(audioOut = new_nothrow AVIAudioOutputStreamWAV(this)))
+		throw MyMemoryError();
+	return audioOut;
+}
+
+bool AVIOutputWAV::init(const wchar_t *pwszFile) {
 	DWORD dwHeader[5];
 
-	if (!audioOut) return FALSE;
+	if (!audioOut) return false;
 
-	hFile = CreateFile(szFile,
-			GENERIC_WRITE,
-			FILE_SHARE_READ|FILE_SHARE_WRITE,
-			NULL,
-			OPEN_ALWAYS,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
-			NULL);
+	mFile.open(pwszFile, nsVDFile::kWrite | nsVDFile::kOpenAlways | nsVDFile::kSequential);
 
-	if (hFile == INVALID_HANDLE_VALUE)
-		throw MyWin32Error("AVIOutputWAV: %%s", GetLastError());
-
-	fastIO = new FastWriteStream(szFile, bufferSize, bufferSize/2);
+	fastIO = new FastWriteStream(pwszFile, mBufferSize, mBufferSize/2);
 
 	dwHeader[0]	= FOURCC_RIFF;
 	dwHeader[1] = 0x7F000000;
@@ -83,7 +98,7 @@ BOOL AVIOutputWAV::init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG buf
 	// and the size of the compressed data -- check the output of Sound
 	// Recorder -- but we must write it out anyway.
 
-	if (audioOut->getWaveFormat()->wFormatTag != WAVE_FORMAT_PCM) {
+	if (((const WAVEFORMATEX *)audioOut->getFormat())->wFormatTag != WAVE_FORMAT_PCM) {
 		dwHeader[0] = mmioFOURCC('f', 'a', 'c', 't');
 		dwHeader[1] = 4;
 		dwHeader[2] = 0;		// This will be filled in later.
@@ -100,102 +115,68 @@ BOOL AVIOutputWAV::init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG buf
 	return TRUE;
 }
 
-BOOL AVIOutputWAV::finalize() {
+void AVIOutputWAV::finalize() {
 	long len = audioOut->getFormatLen();
 
-	if (hFile != INVALID_HANDLE_VALUE) {
-		DWORD dwTemp;
+	if (!mFile.isOpen())
+		return;
 
-		if (fastIO) {
-			fastIO->Flush1();
-			fastIO->Flush2(hFile);
-			delete fastIO;
-			fastIO = NULL;
-		}
+	DWORD dwTemp;
 
-		if (fHeaderOpen) {
-			const WAVEFORMATEX& wfex = *audioOut->getWaveFormat();
-			len = (len+1)&-2;
-
-			if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
-				dwTemp = dwBytesWritten + len + 20;
-				_seekHdr(4);
-				_writeHdr(&dwTemp, 4);
-
-				_seekHdr(24 + len);
-				_writeHdr(&dwBytesWritten, 4);
-			} else {
-				dwTemp = dwBytesWritten + len + 32;
-				_seekHdr(4);
-				_writeHdr(&dwTemp, 4);
-
-				DWORD dwHeaderRewrite[3];
-
-				dwHeaderRewrite[0] = (DWORD)((__int64)dwBytesWritten * wfex.nSamplesPerSec / wfex.nAvgBytesPerSec);
-				dwHeaderRewrite[1] = mmioFOURCC('d', 'a', 't', 'a');
-				dwHeaderRewrite[2] = dwBytesWritten;
-
-				_seekHdr(28 + len);
-				_writeHdr(dwHeaderRewrite, 12);
-
-				len += 12;		// offset the end of file by length of 'fact' chunk
-			}
-
-			fHeaderOpen = false;
-		}
-
-		LONG lLo = dwBytesWritten + len + 28;
-		LONG lHi = 0;
-		DWORD dwError;
-
-		if (0xFFFFFFFF != SetFilePointer(hFile, (LONG)lLo, &lHi, FILE_BEGIN)
-			|| (dwError = GetLastError()) != NO_ERROR) {
-
-			SetEndOfFile(hFile);
-		}
-
-		HANDLE hFileTemp = hFile;
-		hFile = INVALID_HANDLE_VALUE;
-		if (!CloseHandle(hFileTemp))
-			throw MyWin32Error("AVIOutputWAV: %%s", GetLastError());
+	if (fastIO) {
+		fastIO->Flush1();
+		fastIO->Flush2((HANDLE)mFile.getRawHandle());
+		delete fastIO;
+		fastIO = NULL;
 	}
 
-	return TRUE;
+	if (fHeaderOpen) {
+		const WAVEFORMATEX& wfex = *(const WAVEFORMATEX *)audioOut->getFormat();
+		len = (len+1)&-2;
+
+		if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
+			dwTemp = mBytesWritten + len + 20;
+			mFile.seek(4);
+			mFile.write(&dwTemp, 4);
+
+			mFile.seek(24 + len);
+			mFile.write(&mBytesWritten, 4);
+		} else {
+			dwTemp = mBytesWritten + len + 32;
+			mFile.seek(4);
+			mFile.write(&dwTemp, 4);
+
+			DWORD dwHeaderRewrite[3];
+
+			dwHeaderRewrite[0] = (DWORD)((sint64)mBytesWritten * wfex.nSamplesPerSec / wfex.nAvgBytesPerSec);
+			dwHeaderRewrite[1] = mmioFOURCC('d', 'a', 't', 'a');
+			dwHeaderRewrite[2] = mBytesWritten;
+
+			mFile.seek(28 + len);
+			mFile.write(dwHeaderRewrite, 12);
+
+			len += 12;		// offset the end of file by length of 'fact' chunk
+		}
+
+		fHeaderOpen = false;
+	}
+
+	mFile.seek(mBytesWritten + len + 28);
+	mFile.truncate();
+	mFile.close();
 }
 
-BOOL AVIOutputWAV::isPreview() { return FALSE; }
+void AVIOutputWAV::write(const void *pBuffer, uint32 cbBuffer) {
+	_write(pBuffer, cbBuffer);
 
-void AVIOutputWAV::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer) {
-	if (ckid != mmioFOURCC('0','1','w','b')) return;
-
-	_write(lpBuffer, cbBuffer);
-
-	dwBytesWritten += cbBuffer;
+	mBytesWritten += cbBuffer;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-void AVIOutputWAV::_writeHdr(void *data, long len) {
-	DWORD dwActual;
-
-	if (!WriteFile(hFile, data, len, &dwActual, NULL)
-		|| (long)dwActual != len)
-
-		throw MyWin32Error("%s: %%s", GetLastError(), szME);
-}
-
-void AVIOutputWAV::_seekHdr(__int64 i64NewPos) {
-	LONG lHi = (LONG)(i64NewPos>>32);
-	DWORD dwError;
-
-	if (0xFFFFFFFF == SetFilePointer(hFile, (LONG)i64NewPos, &lHi, FILE_BEGIN))
-		if ((dwError = GetLastError()) != NO_ERROR)
-			throw MyWin32Error("%s: %%s", dwError, szME);
-}
-
-void AVIOutputWAV::_write(void *data, int len) {
+void AVIOutputWAV::_write(const void *data, int len) {
 	if (fastIO) {
 		fastIO->Put(data,len);
 	} else
-		_writeHdr(data,len);
+		mFile.write(data,len);
 }

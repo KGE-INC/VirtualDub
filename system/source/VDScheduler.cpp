@@ -54,9 +54,21 @@ bool VDScheduler::Run() {
 	return true;
 }
 
+void VDScheduler::Lock() {
+	++csScheduler;
+}
+
+void VDScheduler::Unlock() {
+	--csScheduler;
+}
+
 void VDScheduler::Reschedule(VDSchedulerNode *pNode) {
 	VDCriticalSection::AutoLock lock(csScheduler);
 
+	RescheduleFast(pNode);
+}
+
+void VDScheduler::RescheduleFast(VDSchedulerNode *pNode) {
 	if (pNode->bReady)
 		return;
 

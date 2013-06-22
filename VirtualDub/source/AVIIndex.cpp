@@ -17,6 +17,8 @@
 
 #include "stdafx.h"
 
+#include <vd2/system/error.h>
+
 #include "AVIIndex.h"
 
 ///////////////////////////////////////////////////////////////////////////
@@ -101,48 +103,34 @@ AVIIndexChain::~AVIIndexChain() {
 	delete_chain();
 }
 
-bool AVIIndexChain::add(AVIINDEXENTRY *avie) {
+void AVIIndexChain::add(AVIINDEXENTRY *avie) {
 	if (!tail || !tail->add(avie->ckid, avie->dwChunkOffset, avie->dwChunkLength, !!(avie->dwFlags & AVIIF_KEYFRAME))) {
 		AVIIndexChainNode *aicn = new AVIIndexChainNode();
 
 		if (tail) tail->next = aicn; else head=aicn;
 		tail = aicn;
 
-		if (tail->add(avie->ckid, avie->dwChunkOffset, avie->dwChunkLength, !!(avie->dwFlags & AVIIF_KEYFRAME))) {
-			++total_ents;
-			return true;
-		}
-
-		return false;
+		tail->add(avie->ckid, avie->dwChunkOffset, avie->dwChunkLength, !!(avie->dwFlags & AVIIF_KEYFRAME));
 	}
 
 	++total_ents;
-
-	return true;
 }
 
-bool AVIIndexChain::add(AVIIndexEntry2 *avie2) {
-	return add(avie2->ckid, avie2->pos, avie2->size & 0x7FFFFFFF, !!(avie2->size & 0x80000000));
+void AVIIndexChain::add(AVIIndexEntry2 *avie2) {
+	add(avie2->ckid, avie2->pos, avie2->size & 0x7FFFFFFF, !!(avie2->size & 0x80000000));
 }
 
-bool AVIIndexChain::add(FOURCC ckid, __int64 pos, long size, bool is_keyframe) {
+void AVIIndexChain::add(FOURCC ckid, __int64 pos, long size, bool is_keyframe) {
 	if (!tail || !tail->add(ckid, pos, size, is_keyframe)) {
 		AVIIndexChainNode *aicn = new AVIIndexChainNode();
 
 		if (tail) tail->next = aicn; else head=aicn;
 		tail = aicn;
 
-		if (tail->add(ckid, pos, size, is_keyframe)) {
-			++total_ents;
-			return true;
-		}
-
-		return false;
+		tail->add(ckid, pos, size, is_keyframe);
 	}
 
 	++total_ents;
-
-	return true;
 }
 
 void AVIIndexChain::put(AVIINDEXENTRY *avietbl) {
@@ -190,28 +178,18 @@ AVIIndex::~AVIIndex() {
 	delete[] index3;
 }
 
-bool AVIIndex::makeIndex() {
-	if (!allocateIndex(total_ents)) return false;
+void AVIIndex::makeIndex() {
+	if (!allocateIndex(total_ents))
+		throw MyMemoryError();
 
 	put(indexPtr());
-
-	return true;
 }
 
-bool AVIIndex::makeIndex2() {
-	if (!allocateIndex2(total_ents)) return false;
+void AVIIndex::makeIndex2() {
+	if (!allocateIndex2(total_ents))
+		throw MyMemoryError();
 
 	put(index2Ptr());
-
-	return true;
-}
-
-bool AVIIndex::makeIndex3(__int64 offset) {
-	if (!allocateIndex3(total_ents)) return false;
-
-	put(index3Ptr(), offset);
-
-	return true;
 }
 
 void AVIIndex::clear() {

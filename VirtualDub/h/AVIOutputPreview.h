@@ -21,10 +21,10 @@
 #include "AVIOutput.h"
 #include "AVIAudioOutput.h"
 
-class AVIAudioPreviewOutputStream : public AVIAudioOutputStream {
+class AVIAudioPreviewOutputStream : public AVIOutputStream {
 private:
 	AVIAudioOutput *myAudioOut;
-	BOOL initialized, started;
+	bool initialized, started;
 	bool fInitialized;
 
 	bool initAudio();
@@ -32,23 +32,23 @@ public:
 	AVIAudioPreviewOutputStream(AVIOutput *out);
 	~AVIAudioPreviewOutputStream();
 
-	BOOL init();
-	BOOL write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples);
+	bool init();
+	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
 	void start();
-	BOOL finalize();
-	BOOL flush();
+	void finalize();
+	void flush();
 	long getPosition();
 	long getAvailable();
 	bool isFrozen();
-	BOOL isSilent();
+	bool isSilent();
 	void stop();
 };
 
-class AVIVideoPreviewOutputStream : public AVIVideoOutputStream {
+class AVIVideoPreviewOutputStream : public AVIOutputStream {
 public:
-	AVIVideoPreviewOutputStream(AVIOutput *out) : AVIVideoOutputStream(out) { };
+	AVIVideoPreviewOutputStream(AVIOutput *out) : AVIOutputStream(out) { };
 
-	BOOL write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples);
+	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
 };
 
 class AVIOutputPreview : public AVIOutput {
@@ -57,12 +57,11 @@ public:
 	AVIOutputPreview();
 	~AVIOutputPreview();
 
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	BOOL finalize();
-	BOOL isPreview();
+	IVDMediaOutputStream *createVideoStream();
+	IVDMediaOutputStream *createAudioStream();
 
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
+	bool init(const wchar_t *szFile);
+	void finalize();
 };
 
 #endif

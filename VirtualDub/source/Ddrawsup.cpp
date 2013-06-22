@@ -309,23 +309,67 @@ void DDrawSurface::SetColorKey(COLORREF rgb) {
 }
 
 void DDrawSurface::MoveOverlay(long x, long y) {
-	lpdds->SetOverlayPosition(x, y);
+	if (FAILED(lpdds->SetOverlayPosition(x, y)))
+		VDASSERT(false);
 }
 
 void DDrawSurface::SetOverlayPos(RECT *pr) {
-	RECT r2 = *pr;
+	RECT rDst = *pr;
 	HRESULT res;
 
-//	--r2.right;
-//	--r2.bottom;
+	DDSURFACEDESC ddsdOverlay = { sizeof(DDSURFACEDESC) };
+	DDSURFACEDESC ddsdPrimary = { sizeof(DDSURFACEDESC) };
+	if (FAILED(lpdds->GetSurfaceDesc(&ddsdOverlay)))
+		return;
+	if (FAILED(DDrawObtainPrimary()->GetSurfaceDesc(&ddsdPrimary)))
+		return;
 
-	res = lpdds->UpdateOverlay(NULL, lpddsPrimary, &r2, DDOVER_SHOW, NULL);
-	if (res == DDERR_SURFACELOST) {
-		res = lpdds->Restore();
+	do {
+		const int dw = rDst.right - rDst.left;
+		const int dh = rDst.bottom - rDst.top;
 
-		if (!FAILED(res))
-			res = lpdds->UpdateOverlay(NULL, lpddsPrimary, &r2, DDOVER_SHOW, NULL);
-	}
+		if (dw<=0 || dh<=0)
+			res = lpdds->UpdateOverlay(NULL, lpddsPrimary, NULL, DDOVER_HIDE, NULL);
+		else {
+			int clipX1		= rDst.left;
+			int clipY1		= rDst.top;
+			int clipX2		= (int)ddsdPrimary.dwWidth - rDst.right;
+			int clipY2		= (int)ddsdPrimary.dwHeight - rDst.bottom;
+
+			if ((clipX1 | clipY1 | clipX2 | clipY2) >= 0)
+				res = lpdds->UpdateOverlay(NULL, lpddsPrimary, &rDst, DDOVER_SHOW, NULL);
+			else {
+				const int sw = (int)ddsdOverlay.dwWidth;
+				const int sh = (int)ddsdOverlay.dwHeight;
+
+				clipX1 &= clipX1>>31;
+				clipX2 &= clipX2>>31;
+				clipY1 &= clipY1>>31;
+				clipY2 &= clipY2>>31;
+
+				RECT rDstClipped = {
+					rDst.left - clipX1,
+					rDst.top - clipY1,
+					rDst.right + clipX2,
+					rDst.bottom + clipY2
+				};
+
+				RECT rSrcClipped = {
+					(-clipX1 * sw + (dw>>1)) / dw,
+					(-clipY1 * sh + (dh>>1)) / dh,
+					sw + (clipX2 * sw + (dw>>1)) / dw,
+					sh + (clipY2 * sh + (dh>>1)) / dh,
+				};
+
+				res = lpdds->UpdateOverlay(&rSrcClipped, lpddsPrimary, &rDstClipped, DDOVER_SHOW, NULL);
+			}
+		}
+
+		if (res == DDERR_SURFACELOST)
+			res = lpdds->Restore();
+		else
+			break;
+	} while(SUCCEEDED(res));
 }
 
 IDirectDrawSurface *DDrawSurface::getSurface() {

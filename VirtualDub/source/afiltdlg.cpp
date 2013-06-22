@@ -25,14 +25,16 @@
 #include "gui.h"
 #include "AudioFilterSystem.h"
 #include "FilterGraph.h"
-#include "filter.h"
+#include "plugins.h"
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdaudiofilt.h>
 
 extern const char g_szError[];
 extern const char g_szWarning[];
 
 class AudioSource;
 
-extern AudioSource *inputAudio;
+extern vdrefptr<AudioSource> inputAudio;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -79,10 +81,10 @@ public:
 class VDDialogAddAudioFilterW32 : public VDDialogBaseW32 {
 public:
 	VDDialogAddAudioFilterW32(IVDDialogAddAudioFilterCallbackW32 *pParent) : VDDialogBaseW32(IDD_AF_LIST), mpSelectedFilter(NULL), mpParent(pParent) {
-		VDEnumerateAudioFilters(mAudioFilters);
+		VDEnumeratePluginDescriptions(mAudioFilters, kVDPluginType_Audio);
 	}
 
-	const VDAudioFilterDefinition *GetFilter() const { return mpSelectedFilter; }
+	const VDPluginDescription *GetFilter() const { return mpSelectedFilter; }
 
 protected:
 	BOOL DlgProc(UINT message, UINT wParam, LONG lParam);
@@ -91,8 +93,8 @@ protected:
 	void DestroyModeless();
 	void UpdateDescription();
 
-	std::list<VDAudioFilterBlurb> mAudioFilters;
-	const VDAudioFilterDefinition *mpSelectedFilter;
+	std::vector<VDPluginDescription *> mAudioFilters;
+	const VDPluginDescription *mpSelectedFilter;
 
 	IVDDialogAddAudioFilterCallbackW32 *mpParent;
 };
@@ -152,13 +154,13 @@ void VDDialogAddAudioFilterW32::InitDialog() {
 	INT tabs[]={ 175 };
 	SendMessage(hwndList, LB_SETTABSTOPS, 1, (LPARAM)tabs);
 
-	for(std::list<VDAudioFilterBlurb>::const_iterator it(mAudioFilters.begin()), itEnd(mAudioFilters.end()); it!=itEnd; ++it) {
-		const VDAudioFilterBlurb& b = *it;
+	for(std::vector<VDPluginDescription *>::const_iterator it(mAudioFilters.begin()), itEnd(mAudioFilters.end()); it!=itEnd; ++it) {
+		const VDPluginDescription& b = **it;
 
-		if (b.name[0] != '*') {
+		if (b.mName[0] != '*') {
 			char buf[1024];
 
-			sprintf(buf, "%ls\t%ls", b.name.c_str(), b.author.c_str());
+			sprintf(buf, "%ls\t%ls", b.mName.c_str(), b.mAuthor.c_str());
 			int idx = SendMessage(hwndList, LB_ADDSTRING, 0, (LPARAM)buf);
 
 			if (idx != LB_ERR)
@@ -186,9 +188,9 @@ void VDDialogAddAudioFilterW32::UpdateDescription() {
 
 	mpSelectedFilter = NULL;
 	if (sel >= 0)
-		if (const VDAudioFilterBlurb *pb = (const VDAudioFilterBlurb *)SendMessage(hwndList, LB_GETITEMDATA, sel, 0)) {
-			SetDlgItemText(mhdlg, IDC_FILTER_INFO, VDTextWToA(pb->description).c_str());
-			mpSelectedFilter = pb->pDef;
+		if (const VDPluginDescription *pb = (const VDPluginDescription *)SendMessage(hwndList, LB_GETITEMDATA, sel, 0)) {
+			SetDlgItemText(mhdlg, IDC_FILTER_INFO, VDTextWToA(pb->mDescription).c_str());
+			mpSelectedFilter = pb;
 		}
 }
 
@@ -273,14 +275,15 @@ protected:
 	void InitDialog();
 	void SaveDialogSettings();
 	void FilterSelected() {
-		if (const VDAudioFilterDefinition *pDef = mAddDialog.GetFilter()) {
+		if (const VDPluginDescription *pDesc = mAddDialog.GetFilter()) {
+			const VDAudioFilterDefinition *pDef = reinterpret_cast<const VDAudioFilterDefinition *>(pDesc->mpInfo->mpTypeSpecificInfo);
 			vdrefptr<AudioFilterData> afd(new_nothrow AudioFilterData);
 
 			if (afd) {
-				afd->mName				= pDef->pszName;
+				afd->mName				= pDesc->mName;
 				afd->mbHasConfigDialog	= 0 != (pDef->mFlags & kVFAF_HasConfig);
 
-				mpGraphControl->AddFilter(pDef->pszName, pDef->mInputPins, pDef->mOutputPins, false, afd);
+				mpGraphControl->AddFilter(pDesc->mName.c_str(), pDef->mInputPins, pDef->mOutputPins, false, afd);
 			}
 		}
 	}
@@ -290,18 +293,19 @@ protected:
 	}
 
 	void SelectionChanged(IVDRefCount *pInstance);
+	bool RequeryFormats();
 
 	bool Configure(VDGUIHandle hParent, IVDRefCount *pInstance) {
 		try {
 			AudioFilterData *pd = static_cast<AudioFilterData *>(pInstance);
 			VDAudioFilterSystem afs;
 
-			const VDAudioFilterDefinition *pDef = VDLookupAudioFilterByName(pd->mName.c_str());
+			VDPluginDescription *pDesc = VDGetPluginDescription(pd->mName.c_str(), kVDPluginType_Audio);
 
-			if (!pDef)
+			if (!pDesc)
 				throw MyError("Audio filter \"%s\" is not loaded.", VDTextWToA(pd->mName).c_str());
 
-			IVDAudioFilterInstance *pInst = afs.Create(pDef);
+			IVDAudioFilterInstance *pInst = afs.Create(pDesc);
 
 			if (pInst) {
 				pInst->DeserializeConfig(pd->mConfigBlock);
@@ -492,6 +496,61 @@ void VDDialogAudioFiltersW32::SelectionChanged(IVDRefCount *pInstance) {
 
 	EnableWindow(GetDlgItem(mhdlg, IDC_DELETE), pd != 0);
 	EnableWindow(GetDlgItem(mhdlg, IDC_CONFIGURE), pd && pd->mbHasConfigDialog);
+}
+
+bool VDDialogAudioFiltersW32::RequeryFormats() {
+	VDAudioFilterSystem			filterSys;
+	VDAudioFilterGraph graph;
+	SaveGraph(graph, mpGraphControl);
+
+	// this is wasteful just to get the instances, but oh well
+	std::vector<VDFilterGraphNode> nodes;
+	std::vector<VDFilterGraphConnection> connections;
+	mpGraphControl->GetFilterGraph(nodes, connections);
+
+	VDAudioFilterGraph::FilterList::iterator it(graph.mFilters.begin()), itEnd(graph.mFilters.end());
+
+	for(; it!=itEnd; ++it) {
+		VDAudioFilterGraph::FilterEntry& filt = *it;
+
+		if (filt.mFilterName == L"output")
+			filt.mFilterName = L"*playback";
+	}
+
+	std::vector<IVDAudioFilterInstance *> filterPtrs;
+
+	try {
+		filterSys.LoadFromGraph(graph, filterPtrs);
+		filterSys.Prepare();
+	} catch(const MyError&) {
+		// ignore errors
+	}
+
+	int nFilters = filterPtrs.size();
+	std::vector<VDWaveFormat> formats;
+	bool bFound = false;
+
+	for(int i=0; i<nFilters; ++i) {
+		formats.clear();
+
+		if (filterPtrs[i]->GetOutputPinFormats(formats)) {
+			int nPins = formats.size();
+
+			for(int j=0; j<nPins; ++j) {
+				const VDWaveFormat& fmt = formats[j];
+				const int freq = fmt.mSamplingRate / 1000;
+				const char chans = fmt.mChannels > 2 ? '+' : fmt.mChannels > 1 ? 's' : 'm';
+				const int bits = fmt.mSampleBits;
+
+				VDStringW label(VDswprintf(L"%d/%d%hc", 3, &freq, &bits, &chans));
+
+				mpGraphControl->SetConnectionLabel(nodes[i].pInstance, j, label.c_str());
+				bFound = true;
+			}
+		}
+	}
+
+	return bFound;
 }
 
 void VDDialogAudioFiltersW32::InitDialog() {

@@ -24,6 +24,9 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/tls.h>
 #include <vd2/system/profile.h>
+#include <vd2/system/VDString.h>
+#include <vd2/system/text.h>
+#include <vd2/system/filesys.h>
 
 #include <vd2/system/error.h>
 
@@ -34,37 +37,21 @@ extern bool g_disklockinited;
 
 //////////////////////////////////////////////////////////////////////
 
-FastWriteStream::FastWriteStream(const char *lpszFile, long lBufferSize, long lChunkSize, bool fLaunchThread)
+FastWriteStream::FastWriteStream(const wchar_t *pwszFilename, long lBufferSize, long lChunkSize, bool fLaunchThread)
 	: mProfileChannel("FastWrite")
 {
+	mErrorFilename = VDFileSplitPathRight(VDTextWToA(pwszFilename));
 
-	hFile = hFileClose = CreateFile(
-			lpszFile,
-			GENERIC_READ | GENERIC_WRITE,
-			FILE_SHARE_WRITE,
-			NULL,
-			OPEN_ALWAYS,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_NO_BUFFERING,
-			NULL
-		);
+	hFileClose = INVALID_HANDLE_VALUE;
 
-	if (INVALID_HANDLE_VALUE == hFile) {
-
+	if (!open(pwszFilename, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_NO_BUFFERING)) {
 		// ARGH.  Attempt open without FILE_FLAG_NO_BUFFERING
 
-		hFile = hFileClose = CreateFile(
-				lpszFile,
-				GENERIC_READ | GENERIC_WRITE,
-				FILE_SHARE_WRITE,
-				NULL,
-				OPEN_ALWAYS,
-				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_SEQUENTIAL_SCAN,
-				NULL
-			);
-
-		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyWin32Error("FastWriteStream: couldn't open \"%s\": %%s.", GetLastError(), lpszFile);
+		if (!open(pwszFilename, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_SEQUENTIAL_SCAN))
+			throw MyWin32Error("FastWriteStream: couldn't open \"%s\": %%s.", GetLastError(), VDTextWToA(pwszFilename).c_str());
 	}
+
+	hFileClose = hFile;
 
 	this->lBufferSize		= lBufferSize;
 	this->lChunkSize		= lChunkSize;
@@ -81,6 +68,19 @@ FastWriteStream::FastWriteStream(HANDLE hFile, long lBufferSize, long lChunkSize
 	this->hFileClose		= NULL;
 
 	_construct(fLaunchThread);
+}
+
+bool FastWriteStream::open(const wchar_t *pFilename, DWORD flags) {
+	if (GetVersion() & 0x80000000) {
+		hFile = CreateFileA(VDFastTextWToA(pFilename), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, flags, NULL);
+		DWORD err = GetLastError();
+		VDFastTextFree();
+		SetLastError(err);
+	} else {
+		hFile = CreateFileW(pFilename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, flags, NULL);
+	}
+
+	return hFile != INVALID_HANDLE_VALUE;
 }
 
 void FastWriteStream::_construct(bool fLaunchThread) {
@@ -181,13 +181,12 @@ FastWriteStream::~FastWriteStream() {
 //////////////////////////////////////////////////////////////////////
 
 void FastWriteStream::ThrowError() {
-//	throw MyError("FastWriteStream: write error %08lx\n", dwErrorRet);
-	throw MyWin32Error("FastWriteStream: %%s\n", dwErrorRet);
+	throw MyWin32Error("Cannot write to file \"%s\": %%s\n", dwErrorRet, mErrorFilename.c_str());
 }
 
 #pragma function(memcpy)
 
-void FastWriteStream::_Put(void *data, long len) {
+void FastWriteStream::_Put(const void *data, long len) {
 
 	if (dwErrorRet) ThrowError();
 
@@ -219,10 +218,7 @@ void FastWriteStream::_Put(void *data, long len) {
 			lWritePointer -= lBufferSize;
 
 		// atomic add
-
-		__asm mov eax,this
-		__asm mov ebx,buffree
-		__asm lock add [eax]FastWriteStream.lDataPoint,ebx
+		lDataPoint += buffree;
 
 		// Signal the background thread if there might be enough to write.
 		//
@@ -231,12 +227,12 @@ void FastWriteStream::_Put(void *data, long len) {
 		// happens, well, it just did what we wanted it to anyway, so why
 		// bother signalling it?
 
-		if (lDataPoint >= lChunkSize)
+		if (lDataPoint >= (int)lChunkSize)
 			SetEvent(hEventOkRead);
 	}
 }
 
-void FastWriteStream::Put(void *lpData, long len) {
+void FastWriteStream::Put(const void *lpData, long len) {
 	_Put(lpData, len);
 }
 
@@ -252,7 +248,7 @@ long FastWriteStream::Flush1() {
 
 	if (dwErrorRet) ThrowError();
 
-	while(lDataPoint >= lChunkSize) {
+	while(lDataPoint >= (int)lChunkSize) {
 
 		if (fSynchronous)
 			BackgroundCheck();
@@ -367,7 +363,7 @@ void FastWriteStream::BackgroundWrite(HANDLE hFile, long lOffset, long lSize) {
 bool FastWriteStream::BackgroundCheck() {
 	// If we can, write an integral number of chunks to disk
 
-	if ((lDataPoint < lChunkSize) && (!fFlush || !lDataPoint))
+	if ((lDataPoint < (int)lChunkSize) && (!fFlush || !lDataPoint))
 		return false;
 
 	if (dwErrorRet) {
@@ -389,8 +385,6 @@ bool FastWriteStream::BackgroundCheck() {
 
 	if (fFlush) {
 		len = lDataPoint;
-
-		VDASSERT(!len || len >= 2048);
 
 		if (len >= 2048)
 			len -= len % 2048;
@@ -448,9 +442,7 @@ bool FastWriteStream::BackgroundCheck() {
 
 	// Atomically update data point and signal write thread
 
-	__asm mov eax,this
-	__asm mov ebx,len
-	__asm lock sub [eax]FastWriteStream.lDataPoint,ebx
+	lDataPoint -= len;
 
 	SetEvent(hEventOkWrite);
 

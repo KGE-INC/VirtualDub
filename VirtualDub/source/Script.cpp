@@ -18,7 +18,6 @@
 #include "stdafx.h"
 
 #include <windows.h>
-#include <commdlg.h>
 #include <mmsystem.h>
 
 #include "indeo_if.h"
@@ -27,9 +26,14 @@
 #include "ScriptValue.h"
 #include "ScriptError.h"
 #include <vd2/system/error.h>
+#include <vd2/system/vdalloc.h>
+#include <vd2/Dita/services.h>
+#include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdaudiofilt.h>
 #include "VideoSource.h"
-#include "vector.h"
 #include "AudioFilterSystem.h"
+#include "InputFile.h"
+#include "project.h"
 
 #include "command.h"
 #include "dub.h"
@@ -37,6 +41,7 @@
 #include "prefs.h"
 #include "resource.h"
 #include "script.h"
+#include "plugins.h"
 
 extern DubOptions g_dubOpts;
 extern HWND g_hWnd;
@@ -44,8 +49,9 @@ extern HWND g_hWnd;
 extern const char g_szError[];
 extern bool g_fJobMode;
 
+extern VDProject *g_project;
+
 extern HINSTANCE g_hInst;
-static char g_szScriptFile[MAX_PATH];
 
 extern IScriptInterpreter *CreateScriptInterpreter();
 
@@ -61,51 +67,42 @@ void DeinitScriptSystem() {
 
 ///////////////////////////////////////////////
 
-void RunScript(char *name, void *hwnd) {
-	static char fileFilters[]=
-				"All scripts (*.vcf,*.syl,*.jobs)\0"		"*.vcf;*.syl;*.jobs\0"
-				"VirtualDub configuration file (*.vcf)\0"	"*.vcf\0"
-				"Sylia script for VirtualDub (*.syl)\0"		"*.syl\0"
-				"VirtualDub job queue (*.jobs)\0"			"*.jobs\0"
-				"All Files (*.*)\0"							"*.*\0"
+void RunScript(const wchar_t *name, void *hwnd) {
+	static wchar_t fileFilters[]=
+				L"All scripts (*.vcf,*.syl,*.jobs)\0"		L"*.vcf;*.syl;*.jobs\0"
+				L"VirtualDub configuration file (*.vcf)\0"	L"*.vcf\0"
+				L"Sylia script for VirtualDub (*.syl)\0"	L"*.syl\0"
+				L"VirtualDub job queue (*.jobs)\0"			L"*.jobs\0"
+				L"All Files (*.*)\0"						L"*.*\0"
 				;
-	OPENFILENAME ofn;
+
 	IScriptInterpreter *isi = NULL;
 	FILE *f = NULL;
+	VDStringW filenameW;
 
 	if (!name) {
-		ofn.lStructSize			= OPENFILENAME_SIZE_VERSION_400;
-		ofn.hwndOwner			= (HWND)hwnd;
-		ofn.lpstrFilter			= fileFilters;
-		ofn.lpstrCustomFilter	= NULL;
-		ofn.nFilterIndex		= 1;
-		ofn.lpstrFile			= g_szScriptFile;
-		ofn.nMaxFile			= sizeof g_szScriptFile;
-		ofn.lpstrFileTitle		= NULL;
-		ofn.nMaxFileTitle		= 0;
-		ofn.lpstrInitialDir		= NULL;
-		ofn.lpstrTitle			= "Load configuration script";
-		ofn.Flags				= OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_ENABLESIZING;
-		ofn.lpstrDefExt			= NULL;
-		ofn.hInstance			= g_hInst;
+		filenameW = VDGetLoadFileName(VDFSPECKEY_SCRIPT, (VDGUIHandle)hwnd, L"Load configuration script", fileFilters, L"script", 0, 0);
 
-		if (!GetOpenFileName(&ofn)) return;
+		if (filenameW.empty())
+			return;
 
-		name = g_szScriptFile;
+		name = filenameW.c_str();
 	}
+
+	VDStringA filenameA(VDTextWToA(name));
 
 	if (!InitScriptSystem())
 		return;
 
 	try {
-		Vector<char> linebuffer;
+		std::vector<char> linebuffer;
 
 		isi = CreateScriptInterpreter();
 		if (!isi) throw MyError("Not enough memory to create script interpreter");
 
 		isi->SetRootHandler(RootHandler, NULL);
 
-		if (!(f=fopen(name, "r")))
+		if (!(f=fopen(filenameA.c_str(), "r")))
 			throw MyError("Can't open script file");
 
 		int c;
@@ -142,7 +139,7 @@ void RunScriptMemory(char *mem) {
 		return;
 
 	try {
-		Vector<char> linebuffer;
+		std::vector<char> linebuffer;
 		char *s=mem, *t;
 
 		isi = CreateScriptInterpreter();
@@ -674,12 +671,14 @@ namespace {
 	void SetFilterParam(void *lpVoid, unsigned idx, const VDFilterConfigVariant& v) {
 		VDAudioFilterGraph::FilterEntry *pFilt = (VDAudioFilterGraph::FilterEntry *)lpVoid;
 
-		const VDAudioFilterDefinition *pDef = VDLookupAudioFilterByName(pFilt->mFilterName.c_str());
+		VDPluginDescription *pDesc = VDGetPluginDescription(pFilt->mFilterName.c_str(), kVDPluginType_Audio);
 
-		if (!pDef)
+		if (!pDesc)
 			throw MyError("VDAFiltInst: Unknown audio filter: \"%s\"", VDTextWToA(pFilt->mFilterName).c_str());
 
-		const VDFilterConfigEntry *pEnt = GetFilterParamEntry(pDef->mpConfigInfo, idx);
+		VDAutolockPlugin<VDAudioFilterDefinition> lock(pDesc);
+
+		const VDFilterConfigEntry *pEnt = GetFilterParamEntry(lock->mpConfigInfo, idx);
 
 		if (!pEnt)
 			throw MyError("VDAFiltInst: Audio filter \"%s\" does not have a parameter with id %d", VDTextWToA(pFilt->mFilterName).c_str(), idx);
@@ -853,10 +852,12 @@ static int func_VDAFilters_Add(IScriptInterpreter *isi, CScriptObject *, CScript
 
 	filt.mFilterName = VDTextU8ToW(*argv[0].asString(), -1);
 
-	const VDAudioFilterDefinition *pDef = VDLookupAudioFilterByName(filt.mFilterName.c_str());
+	VDPluginDescription *pDesc = VDGetPluginDescription(filt.mFilterName.c_str(), kVDPluginType_Audio);
 
-	if (!pDef)
+	if (!pDesc)
 		throw MyError("VDAFilters.Add(): Unknown audio filter: \"%s\"", VDTextWToA(filt.mFilterName).c_str());
+
+	const VDAudioFilterDefinition *pDef = reinterpret_cast<const VDAudioFilterDefinition *>(pDesc->mpInfo->mpTypeSpecificInfo);
 
 	filt.mInputPins = pDef->mInputPins;
 	filt.mOutputPins = pDef->mOutputPins;
@@ -1005,7 +1006,7 @@ static void func_VDAudio_SetSource(IScriptInterpreter *, CScriptObject *, CScrip
 	if (arglist[0].isInt())
 		audioInputMode = !!arglist[0].asInt();
 	else {
-		OpenWAV(*arglist[0].asString());
+		OpenWAV(VDTextU8ToW(VDStringA(*arglist[0].asString())).c_str());
 		audioInputMode = AUDIOIN_WAVE;
 	}
 }
@@ -1192,24 +1193,44 @@ static void func_VirtualDub_SetStatus(IScriptInterpreter *, CScriptObject *, CSc
 	guiSetStatus("%s", 255, *arglist[0].asString());
 }
 
-static void func_VirtualDub_Open(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+static void func_VirtualDub_OpenOld(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	VDStringW filename(VDTextAToW(*arglist[0].asString()));
+	IVDInputDriver *pDriver = VDGetInputDriverForLegacyIndex(arglist[1].asInt());
+
 	if (arg_count > 3) {
 		long l = ((strlen(*arglist[3].asString())+3)/4)*3;
 		char buf[64];
 
 		memunbase64(buf, *arglist[3].asString(), l);
 
-		OpenAVI(*arglist[0].asString(), arglist[1].asInt(), !!arglist[2].asInt(), true, false, buf);
+		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false, buf);
 	} else
-		OpenAVI(*arglist[0].asString(), arglist[1].asInt(), !!arglist[2].asInt(), true, false);
+		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
+}
+
+static void func_VirtualDub_Open(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	IVDInputDriver *pDriver = VDGetInputDriverByName(VDTextAToW(*arglist[1].asString()).c_str());
+
+	if (arg_count > 3) {
+		long l = ((strlen(*arglist[3].asString())+3)/4)*3;
+		char buf[64];
+
+		memunbase64(buf, *arglist[3].asString(), l);
+
+		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false, buf);
+	} else
+		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
 }
 
 static void func_VirtualDub_Append(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	AppendAVI(*arglist[0].asString());
+	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
+	AppendAVI(filename.c_str());
 }
 
 static void func_VirtualDub_Close(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	CloseAVI();
+	g_project->Close();
 }
 
 static void func_VirtualDub_Preview(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
@@ -1217,6 +1238,8 @@ static void func_VirtualDub_Preview(IScriptInterpreter *, CScriptObject *, CScri
 }
 
 static void func_VirtualDub_SaveAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
 	if (g_fJobMode) {
 		DubOptions opts(g_dubOpts);
 
@@ -1226,12 +1249,14 @@ static void func_VirtualDub_SaveAVI(IScriptInterpreter *, CScriptObject *, CScri
 		opts.video.fShowOutputFrame	= false;
 		opts.video.fShowDecompressedFrame	= false;
 
-		SaveAVI(*arglist[0].asString(), true, &opts, false);
+		SaveAVI(filename.c_str(), true, &opts, false);
 	} else
-		SaveAVI(*arglist[0].asString(), true, NULL, false);
+		SaveAVI(filename.c_str(), true, NULL, false);
 }
 
 static void func_VirtualDub_SaveCompatibleAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
 	if (g_fJobMode) {
 		DubOptions opts(g_dubOpts);
 
@@ -1241,12 +1266,14 @@ static void func_VirtualDub_SaveCompatibleAVI(IScriptInterpreter *, CScriptObjec
 		opts.video.fShowOutputFrame	= false;
 		opts.video.fShowDecompressedFrame	= false;
 
-		SaveAVI(*arglist[0].asString(), true, &opts, true);
+		SaveAVI(filename.c_str(), true, &opts, true);
 	} else
-		SaveAVI(*arglist[0].asString(), true, NULL, true);
+		SaveAVI(filename.c_str(), true, NULL, true);
 }
 
 static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
 	if (g_fJobMode) {
 		DubOptions opts(g_dubOpts);
 
@@ -1256,12 +1283,15 @@ static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject
 		opts.video.fShowOutputFrame	= false;
 		opts.video.fShowDecompressedFrame	= false;
 
-		SaveSegmentedAVI(*arglist[0].asString(), true, &opts, arglist[1].asInt(), arglist[2].asInt());
+		SaveSegmentedAVI(filename.c_str(), true, &opts, arglist[1].asInt(), arglist[2].asInt());
 	} else
-		SaveSegmentedAVI(*arglist[0].asString(), true, NULL, arglist[1].asInt(), arglist[2].asInt());
+		SaveSegmentedAVI(filename.c_str(), true, NULL, arglist[1].asInt(), arglist[2].asInt());
 }
 
 static void func_VirtualDub_SaveImageSequence(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	const VDStringW prefix(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+	const VDStringW suffix(VDTextU8ToW(VDStringA(*arglist[1].asString())));
+
 	if (g_fJobMode) {
 		DubOptions opts(g_dubOpts);
 
@@ -1271,13 +1301,15 @@ static void func_VirtualDub_SaveImageSequence(IScriptInterpreter *, CScriptObjec
 		opts.video.fShowOutputFrame	= false;
 		opts.video.fShowDecompressedFrame	= false;
 
-		SaveImageSequence(*arglist[0].asString(), *arglist[1].asString(), arglist[2].asInt(), true, &opts, arglist[3].asInt());
+		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, &opts, arglist[3].asInt());
 	} else
-		SaveImageSequence(*arglist[0].asString(), *arglist[1].asString(), arglist[2].asInt(), true, NULL, arglist[3].asInt());
+		SaveImageSequence(prefix.c_str(), suffix.c_str(), arglist[2].asInt(), true, NULL, arglist[3].asInt());
 }
 
 static void func_VirtualDub_SaveWAV(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
-	SaveWAV(*arglist[0].asString());
+	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
+	SaveWAV(filename.c_str());
 }
 
 extern "C" unsigned long version_num;
@@ -1313,8 +1345,10 @@ static CScriptValue obj_VirtualDub_lookup(IScriptInterpreter *isi, CScriptObject
 
 static ScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ (ScriptFunctionPtr)func_VirtualDub_SetStatus,			"SetStatus",			"0s" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Open,				"Open",					"0sii" },
-	{ (ScriptFunctionPtr)func_VirtualDub_Open,				NULL,					"0siis" },
+	{ (ScriptFunctionPtr)func_VirtualDub_OpenOld,			"Open",					"0sii" },
+	{ (ScriptFunctionPtr)func_VirtualDub_OpenOld,			NULL,					"0siis" },
+	{ (ScriptFunctionPtr)func_VirtualDub_Open,				NULL,					"0ssi" },
+	{ (ScriptFunctionPtr)func_VirtualDub_Open,				NULL,					"0ssis" },
 	{ (ScriptFunctionPtr)func_VirtualDub_Append,			"Append",				"0s" },
 	{ (ScriptFunctionPtr)func_VirtualDub_Close,				"Close",				"0" },
 	{ (ScriptFunctionPtr)func_VirtualDub_Preview,			"Preview",				"0" },

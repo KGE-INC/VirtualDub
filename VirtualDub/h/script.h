@@ -20,7 +20,7 @@
 
 bool InitScriptSystem();
 void DeinitScriptSystem();
-void RunScript(char *name, void *hwnd=0);
+void RunScript(const wchar_t *name, void *hwnd=0);
 void RunScriptMemory(char *mem);
 
 void memunbase64(char *t, const char *s);

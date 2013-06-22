@@ -41,20 +41,20 @@ namespace {
 
 //////////////////////////////////////////////////////////////////////////////
 
-AudioSourceWAV::AudioSourceWAV(const char *szFile, LONG inputBufferSize)
+AudioSourceWAV::AudioSourceWAV(const wchar_t *szFile, LONG inputBufferSize)
 {
 	MMIOINFO mmi;
 
 	memset(&mmi,0,sizeof mmi);
 	mmi.cchBuffer	= inputBufferSize;
-	hmmioFile		= mmioOpen((char *)szFile, &mmi, MMIO_READ | MMIO_ALLOCBUF);
+	hmmioFile		= mmioOpen((char *)VDTextWToA(szFile).c_str(), &mmi, MMIO_READ | MMIO_ALLOCBUF);
 }
 
 AudioSourceWAV::~AudioSourceWAV() {
 	mmioClose(hmmioFile, 0);
 }
 
-BOOL AudioSourceWAV::init() {
+bool AudioSourceWAV::init() {
 	if (!hmmioFile) return FALSE;
 
 	chunkRIFF.fccType = mmioFOURCC('W','A','V','E');
@@ -136,7 +136,7 @@ AudioSourceAVI::~AudioSourceAVI() {
 		delete pAVIStream;
 }
 
-BOOL AudioSourceAVI::init() {
+bool AudioSourceAVI::init() {
 	LONG format_len;
 
 	pAVIStream = pAVIFile->GetStream(streamtypeAUDIO, 0);

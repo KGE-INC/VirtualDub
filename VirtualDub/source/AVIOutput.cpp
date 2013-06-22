@@ -33,7 +33,7 @@ extern "C" unsigned long version_num;
 
 ///////////////////////////////////////////
 
-typedef __int64 QUADWORD;
+typedef sint64 QUADWORD;
 
 // The following comes from the OpenDML 1.0 spec for extended AVI files
 
@@ -65,6 +65,7 @@ typedef __int64 QUADWORD;
 
 #pragma pack(push)
 #pragma pack(2)
+#pragma warning(disable: 4200)		// warning C4200: nonstandard extension used : zero-sized array in struct/union
 
 typedef struct _avisuperindex_chunk {
 	FOURCC fcc;					// ’ix##’
@@ -99,78 +100,66 @@ typedef struct _avistdindex_chunk {
 
 AVIOutputStream::AVIOutputStream(class AVIOutput *output) {
 	this->output = output;
-	format = NULL;
 }
 
 AVIOutputStream::~AVIOutputStream() {
-	delete format;
-}
-
-BOOL AVIOutputStream::_write(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer) {
-	output->writeIndexedChunk(ckid, dwIndexFlags, lpBuffer, cbBuffer);
-//	output->writeIndexedChunk('bd00', dwIndexFlags, lpBuffer, cbBuffer);
-	return TRUE;
-}
-
-BOOL AVIOutputStream::finalize() {
-	return TRUE;
 }
 
 ////////////////////////////////////
+
+class AVIAudioOutputStream : public AVIOutputStream {
+public:
+	AVIAudioOutputStream(class AVIOutput *out);
+
+	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
+};
 
 AVIAudioOutputStream::AVIAudioOutputStream(class AVIOutput *out) : AVIOutputStream(out) {
-	lTotalSamplesWritten = 0;
 }
 
-BOOL AVIAudioOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) {
-	BOOL success;
+void AVIAudioOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
+	static_cast<AVIOutputFile *>(output)->writeIndexedChunk(mmioFOURCC('0','1','w','b'), flags, pBuffer, cbBuffer);
 
-	success = _write(mmioFOURCC('0','1','w','b'), dwIndexFlags, lpBuffer, cbBuffer);
+	// ActiveMovie/WMP requires a non-zero dwSuggestedBufferSize for
+	// hierarchial indexing.  So we continually bump it up to the
+	// largest chunk size.
 
-	if (success) lTotalSamplesWritten += lSamples;
+	if (streamInfo.dwSuggestedBufferSize < cbBuffer)
+		streamInfo.dwSuggestedBufferSize = cbBuffer;
 
-	return success;
-}
-
-BOOL AVIAudioOutputStream::finalize() {
-	if (!lTotalSamplesWritten)
-		streamInfo.dwLength = 1;
-	else
-		streamInfo.dwLength = lTotalSamplesWritten;
-	return TRUE;
-}
-
-BOOL AVIAudioOutputStream::flush() {
-	return TRUE;
+	streamInfo.dwLength += samples;
 }
 
 ////////////////////////////////////
+
+class AVIVideoOutputStream : public AVIOutputStream {
+public:
+	FOURCC id;
+
+	AVIVideoOutputStream(class AVIOutput *out);
+
+	void setCompressed(bool x) { id = x ? mmioFOURCC('0','0','d','c') : mmioFOURCC('0','0','d','b'); }
+
+	virtual void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples);
+};
 
 AVIVideoOutputStream::AVIVideoOutputStream(class AVIOutput *out) : AVIOutputStream(out) {
-	lTotalSamplesWritten = 0;
 }
 
-BOOL AVIVideoOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) {
-	BOOL success;
+void AVIVideoOutputStream::write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 samples) {
+	static_cast<AVIOutputFile *>(output)->writeIndexedChunk(id, flags, pBuffer, cbBuffer);
 
-	success = _write(id, dwIndexFlags, lpBuffer, cbBuffer);
+	// ActiveMovie/WMP requires a non-zero dwSuggestedBufferSize for
+	// hierarchial indexing.  So we continually bump it up to the
+	// largest chunk size.
 
-	if (success) lTotalSamplesWritten += lSamples;
+	if (streamInfo.dwSuggestedBufferSize < cbBuffer)
+		streamInfo.dwSuggestedBufferSize = cbBuffer;
 
-	return success;
-}
-
-BOOL AVIVideoOutputStream::finalize() {
-	if (!lTotalSamplesWritten)
-		streamInfo.dwLength = 1;
-	else
-		streamInfo.dwLength = lTotalSamplesWritten;
-	return TRUE;
+	streamInfo.dwLength += samples;
 }
 
 ////////////////////////////////////
-
-char AVIOutput::szME[]="AVIOutput";
 
 AVIOutput::AVIOutput() {
 	audioOut			= NULL;
@@ -183,7 +172,6 @@ AVIOutput::~AVIOutput() {
 }
 
 AVIOutputFile::AVIOutputFile() {
-	hFile				= NULL;
 	fastIO				= NULL;
 	index				= NULL;
 	index_audio			= NULL;
@@ -199,6 +187,11 @@ AVIOutputFile::AVIOutputFile() {
 	pSegmentHint		= NULL;
 	cbSegmentHint		= 0;
 	fInitComplete		= false;
+	mbInterleaved		= true;
+	mBufferSize			= 1048576;				// reasonable default: 1MB buffer, 256K chunks
+	mChunkSize			= mBufferSize >> 2;
+	mSuperIndexLimit	= kDefaultSuperIndexEntries;
+	mSubIndexLimit		= kDefaultSubIndexEntries;
 
 	mHeaderBlock.reserve(16384);
 	i64FarthestWritePoint	= 0;
@@ -220,35 +213,36 @@ AVIOutputFile::~AVIOutputFile() {
 	delete index_video;
 	delete pSegmentHint;
 
-	if (hFile) {
-		LONG lHi = (LONG)(i64FarthestWritePoint>>32);
-		DWORD dwError;
+	if (mFile.isOpen()) {
+		if (mFile.seekNT(i64FarthestWritePoint))
+			mFile.truncateNT();
 
-		if (0xFFFFFFFF != SetFilePointer(hFile, (LONG)i64FarthestWritePoint, &lHi, FILE_BEGIN)
-			|| (dwError = GetLastError()) != NO_ERROR) {
-
-			SetEndOfFile(hFile);
-		}
+		mFile.closeNT();
 	}
 
 	delete fastIO;
-
-	if (hFile)
-		CloseHandle(hFile);
 }
 
 //////////////////////////////////
 
-BOOL AVIOutputFile::initOutputStreams() {
-	if (!(audioOut = new AVIAudioOutputStream(this))) return FALSE;
-	if (!(videoOut = new AVIVideoOutputStream(this))) return FALSE;
+IVDMediaOutputStream *AVIOutputFile::createVideoStream() {
+	VDASSERT(!videoOut);
+	if (!(videoOut = new_nothrow AVIVideoOutputStream(this)))
+		throw MyMemoryError();
 
-	return TRUE;
+	return videoOut;
+}
+
+IVDMediaOutputStream *AVIOutputFile::createAudioStream() {
+	VDASSERT(!audioOut);
+	if (!(audioOut = new_nothrow AVIAudioOutputStream(this)))
+		throw MyMemoryError();
+
+	return audioOut;
 }
 
 void AVIOutputFile::disable_os_caching() {
 	fCaching = FALSE;
-	lChunkSize = 0;
 }
 
 void AVIOutputFile::disable_extended_avi() {
@@ -257,10 +251,6 @@ void AVIOutputFile::disable_extended_avi() {
 
 void AVIOutputFile::set_1Gb_limit() {
 	lAVILimit = 0x3F000000L;
-}
-
-void AVIOutputFile::set_chunk_size(long l) {
-	lChunkSize = l;
 }
 
 void AVIOutputFile::set_capture_mode(bool b) {
@@ -279,6 +269,16 @@ void AVIOutputFile::setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, 
 	pSegmentHint[0] = !fIsFinal;
 	if (pszNextPath)
 		strcpy(pSegmentHint+1, pszNextPath);
+}
+
+void AVIOutputFile::setBuffering(sint32 nBufferSize, sint32 nChunkSize) {
+	VDASSERT(!(mBufferSize & (mBufferSize-1)));
+	VDASSERT(!(mChunkSize & (mChunkSize-1)));
+	VDASSERT(mChunkSize >= 4096);
+	VDASSERT(mBufferSize >= mChunkSize);
+
+	mBufferSize = nBufferSize;
+	mChunkSize = nChunkSize;
 }
 
 // I don't like to bitch about other programs (well, okay, so I do), but
@@ -306,77 +306,74 @@ void AVIOutputFile::setSegmentHintBlock(bool fIsFinal, const char *pszNextPath, 
 // Basically, supporting WMP (or as I like to call it, WiMP) was an
 // absolute 100% pain in the ass.
 
-BOOL AVIOutputFile::init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved) {
-	return _init(szFile, videoIn, audioIn, bufferSize, is_interleaved, true);
+bool AVIOutputFile::init(const wchar_t *szFile) {
+	return _init(szFile, true);
 }
 
-FastWriteStream *AVIOutputFile::initCapture(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved) {
-	return _init(szFile, videoIn, audioIn, bufferSize, is_interleaved, false)
-		? fastIO : NULL;
+FastWriteStream *AVIOutputFile::initCapture(const wchar_t *szFile) {
+	return _init(szFile, false)	? fastIO : NULL;
 }
 
-BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved, bool fThreaded) {
+bool AVIOutputFile::_init(const wchar_t *pwszFile, bool fThreaded) {
 	AVISUPERINDEX asi={0};
-	struct _avisuperindex_entry asie_dumb[MAX_SUPERINDEX_ENTRIES];
+	struct _avisuperindex_entry asie_dummy = {0};
 
-	fLimitTo4Gb = IsFilenameOnFATVolume(szFile);
+	fLimitTo4Gb = IsFilenameOnFATVolume(pwszFile);
 
-	if (audioIn) {
-		if (!audioOut) return FALSE;
-	} else {
-		delete audioOut;
-		audioOut = NULL;
-	}
-
-	if (!videoOut) return FALSE;
+	if (!videoOut)
+		return false;
 
 	// Allocate indexes
 
-	if (!(index = new AVIIndex())) return FALSE;
+	if (!(index = new_nothrow AVIIndex()))
+		throw MyMemoryError();
 
 	if (fExtendedAVI) {
-		if (!(index_audio = new AVIIndex())) return FALSE;
-		if (!(index_video = new AVIIndex())) return FALSE;
+		if (!(index_audio = new_nothrow AVIIndex()))
+			throw MyMemoryError();
+		if (!(index_video = new_nothrow AVIIndex()))
+			throw MyMemoryError();
 	}
 
 	// Initialize main AVI header (avih)
 
-	memset(&avihdr, 0, sizeof avihdr);
-	avihdr.dwMicroSecPerFrame		= MulDivUnsigned(videoOut->streamInfo.dwScale, 1000000U, videoOut->streamInfo.dwRate);
-	avihdr.dwMaxBytesPerSec			= 0;
-	avihdr.dwPaddingGranularity		= 0;
-	avihdr.dwFlags					= AVIF_HASINDEX | (is_interleaved ? AVIF_ISINTERLEAVED : 0);
-	avihdr.dwTotalFrames			= videoOut->streamInfo.dwLength;
-	avihdr.dwInitialFrames			= 0;
-	avihdr.dwStreams				= audioIn ? 2 : 1;
-	avihdr.dwSuggestedBufferSize	= 0;
-	avihdr.dwWidth					= videoOut->getImageFormat()->biWidth;
-	avihdr.dwHeight					= videoOut->getImageFormat()->biHeight;
+	{
+		const AVIStreamHeader_fixed& vhdr = videoOut->getStreamInfo();
+
+		const BITMAPINFOHEADER *pVF = (const BITMAPINFOHEADER *)videoOut->getFormat();
+
+		memset(&avihdr, 0, sizeof avihdr);
+		avihdr.dwMicroSecPerFrame		= MulDivUnsigned(vhdr.dwScale, 1000000U, vhdr.dwRate);
+		avihdr.dwMaxBytesPerSec			= 0;
+		avihdr.dwPaddingGranularity		= 0;
+		avihdr.dwFlags					= AVIF_HASINDEX | (mbInterleaved ? AVIF_ISINTERLEAVED : 0);
+		avihdr.dwTotalFrames			= vhdr.dwLength;
+		avihdr.dwInitialFrames			= 0;
+		avihdr.dwStreams				= audioOut ? 2 : 1;
+		avihdr.dwSuggestedBufferSize	= 0;
+		avihdr.dwWidth					= pVF->biWidth;
+		avihdr.dwHeight					= pVF->biHeight;
+
+		static_cast<AVIVideoOutputStream *>(videoOut)->setCompressed(pVF->biCompression == BI_RGB);
+	}
 
 	// Initialize file
 
 	if (!fCaching) {
+		mFile.open(pwszFile, nsVDFile::kWrite | nsVDFile::kDenyNone | nsVDFile::kOpenAlways | nsVDFile::kSequential);
 
-		hFile = CreateFile(szFile, GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-
-		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyWin32Error("%s: %%s", GetLastError(), szME);
-
-		if (!(fastIO = new FastWriteStream(szFile, bufferSize, lChunkSize ? lChunkSize : bufferSize/4, fThreaded)))
+		if (!(fastIO = new FastWriteStream(pwszFile, mBufferSize, mChunkSize, fThreaded)))
 			throw MyMemoryError();
 	} else {
-		hFile = CreateFile(szFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_WRITE_THROUGH, NULL);
-
-		if (INVALID_HANDLE_VALUE == hFile)
-			throw MyWin32Error("%s: %%s", GetLastError(), szME);
+		mFile.open(pwszFile, nsVDFile::kWrite | nsVDFile::kDenyWrite | nsVDFile::kOpenAlways | nsVDFile::kSequential | nsVDFile::kWriteThrough);
 	}
 
 	i64FilePosition = 0;
 
 	////////// Initialize the first 'AVI ' chunk //////////
 
-	__int64 hdrl_pos;
-	__int64 odml_pos;
+	sint64 hdrl_pos;
+	sint64 odml_pos;
 
 	DWORD dw[64];
 
@@ -402,36 +399,35 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 
 	// write out video stream header and format
 
-	video_hdr_pos	= _writeHdrChunk(ckidSTREAMHEADER, &videoOut->streamInfo, sizeof videoOut->streamInfo);
+	video_hdr_pos	= _writeHdrChunk(ckidSTREAMHEADER, &videoOut->getStreamInfo(), sizeof(AVIStreamHeader_fixed));
 	_writeHdrChunk(ckidSTREAMFORMAT, videoOut->getFormat(), videoOut->getFormatLen());
 
 	// write out video superindex (but make it a JUNK chunk for now).
 
 	if (fExtendedAVI) {
-		memset(asie_dumb, 0, sizeof asie_dumb);
 		video_indx_pos = _getPosition();
 		asi.fcc = ckidAVIPADDING;
-		asi.cb = (sizeof asi)-8 + MAX_SUPERINDEX_ENTRIES*sizeof(_avisuperindex_entry);
+		asi.cb = (sizeof asi)-8 + mSuperIndexLimit*sizeof(_avisuperindex_entry);
 		_writeHdr(&asi, sizeof asi);
-		_writeHdr(asie_dumb, MAX_SUPERINDEX_ENTRIES*sizeof(_avisuperindex_entry));
+
+		for(int i=0; i<mSuperIndexLimit; ++i)
+			_writeHdr(&asie_dummy, sizeof(_avisuperindex_entry));
 	}
 
 	// finish video stream header
 
 	_closeList(strl_pos);
 
-	videoOut->streamInfo.dwSuggestedBufferSize = 0;
-
 	// if there is audio...
 
-	if (audioIn) {
+	if (audioOut) {
 		// start audio stream headers
 
 		strl_pos = _beginList(listtypeSTREAMHEADER);
 
 		// write out audio stream header and format
 
-		audio_hdr_pos	= _writeHdrChunk(ckidSTREAMHEADER, &audioOut->streamInfo, sizeof audioOut->streamInfo);
+		audio_hdr_pos	= _writeHdrChunk(ckidSTREAMHEADER, &audioOut->getStreamInfo(), sizeof(AVIStreamHeader_fixed));
 		audio_format_pos = _writeHdrChunk(ckidSTREAMFORMAT, audioOut->getFormat(), audioOut->getFormatLen());
 
 		_RPT1(0,"Audio header is at %08lx\n", audio_hdr_pos);
@@ -441,16 +437,15 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 		if (fExtendedAVI) {
 			audio_indx_pos = _getPosition();
 			asi.fcc = ckidAVIPADDING;
-			asi.cb = (sizeof asi)-8 + MAX_SUPERINDEX_ENTRIES*sizeof(_avisuperindex_entry);
+			asi.cb = (sizeof asi)-8 + mSuperIndexLimit*sizeof(_avisuperindex_entry);
 			_writeHdr(&asi, sizeof asi);
-			_writeHdr(asie_dumb, MAX_SUPERINDEX_ENTRIES*sizeof(_avisuperindex_entry));
+			for(int i=0; i<mSuperIndexLimit; ++i)
+				_writeHdr(&asie_dummy, sizeof(_avisuperindex_entry));
 		}
 
 		// finish audio stream header
 
 		_closeList(strl_pos);
-
-		audioOut->streamInfo.dwSuggestedBufferSize = 0;
 	}
 
 	// write out dmlh header (indicates real # of frames)
@@ -482,7 +477,6 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 	//			chunk to start beyond 8K to solve this problem.
 
 	{
-		char *s;
 		sint32	curpos = (sint32)_getPosition();
 
 		if (curpos < 8192 || (curpos & 2047)) {
@@ -521,46 +515,34 @@ BOOL AVIOutputFile::_init(const char *szFile, BOOL videoIn, BOOL audioIn, LONG b
 	_openXblock();
 
 
-	{
-		DWORD dwLo, dwHi;
-
-		dwLo = GetFileSize(hFile, &dwHi);
-
-		if (dwLo != 0xFFFFFFFF || GetLastError()==NO_ERROR)
-			i64EndOfFile = dwLo | ((__int64)dwHi << 32);
-		else
-			i64EndOfFile = 0;
-	}
+	i64EndOfFile = mFile.size();
 
 	fInitComplete = true;
 
 	return TRUE;
 }
 
-BOOL AVIOutputFile::finalize() {
+void AVIOutputFile::finalize() {
 	VDDEBUG("AVIOutputFile: Beginning finalize.\n");
 
 	AVISUPERINDEX asi_video;
 	AVISUPERINDEX asi_audio;
-	struct _avisuperindex_entry asie_video[MAX_SUPERINDEX_ENTRIES];
-	struct _avisuperindex_entry asie_audio[MAX_SUPERINDEX_ENTRIES];
+	std::vector<_avisuperindex_entry> asie_video(mSuperIndexLimit);
+	std::vector<_avisuperindex_entry> asie_audio(mSuperIndexLimit);
 	DWORD dw;
 	int i;
 
 	if (!fInitComplete)
-		return TRUE;
-
-	if (videoOut) if (!videoOut->finalize()) return FALSE;
-	if (audioOut) if (!audioOut->finalize()) return FALSE;
+		return;
 
 	// fast path: clean it up and resync slow path.
 
 	// create extended indices
 
 	if (fExtendedAVI && xblock != 0) {
-		_createNewIndices(index_video, &asi_video, asie_video, false);
+		_createNewIndices(index_video, &asi_video, &asie_video[0], false);
 		if (audioOut)
-			_createNewIndices(index_audio, &asi_audio, asie_audio, true);
+			_createNewIndices(index_audio, &asi_audio, &asie_audio[0], true);
 	}
 
 	// finish last Xblock
@@ -580,27 +562,24 @@ BOOL AVIOutputFile::finalize() {
 		// flush fast path, get disk position
 
 		fastIO->Flush1();
-		fastIO->Flush2(hFile);
+		fastIO->Flush2((HANDLE)mFile.getRawHandle());
 
 		// seek slow path up
+		mFile.seek(i64FilePosition);
+	}
 
-		_seekDirect(i64FilePosition);
-
-	}	
-
-	// truncate file
-
-	SetEndOfFile(hFile);
+	// truncate file (ok to fail)
+	mFile.truncateNT();
 
 	_seekHdr(main_hdr_pos+8);
 	_writeHdr(&avihdr, sizeof avihdr);
 
 	_seekHdr(video_hdr_pos+8);
-	_writeHdr(&videoOut->streamInfo, sizeof(AVIStreamHeader_fixed));
+	_writeHdr(&videoOut->getStreamInfo(), sizeof(AVIStreamHeader_fixed));
 
 	if (audioOut) {
 		_seekHdr(audio_hdr_pos+8);
-		_writeHdr(&audioOut->streamInfo, sizeof(AVIStreamHeader_fixed));
+		_writeHdr(&audioOut->getStreamInfo(), sizeof(AVIStreamHeader_fixed));
 
 		// we have to rewrite the audio format, in case someone
 		// fixed fields in the format afterward (MPEG-1/L3)
@@ -611,19 +590,19 @@ BOOL AVIOutputFile::finalize() {
 
 	if (fExtendedAVI) {
 		_seekHdr(dmlh_pos+8);
-		dw = videoOut->streamInfo.dwLength;
+		dw = videoOut->getStreamInfo().dwLength;
 		_writeHdr(&dw, 4);
 
 		if (xblock > 1) {
 
 			_seekHdr(video_indx_pos);
 			_writeHdr(&asi_video, sizeof asi_video);
-			_writeHdr(asie_video, sizeof(_avisuperindex_entry)*MAX_SUPERINDEX_ENTRIES);
+			_writeHdr(&asie_video[0], sizeof(_avisuperindex_entry)*mSuperIndexLimit);
 
 			if (audioOut) {
 				_seekHdr(audio_indx_pos);
 				_writeHdr(&asi_audio, sizeof asi_audio);
-				_writeHdr(asie_audio, sizeof(_avisuperindex_entry)*MAX_SUPERINDEX_ENTRIES);
+				_writeHdr(&asie_audio[0], sizeof(_avisuperindex_entry)*mSuperIndexLimit);
 			}
 		}
 	}
@@ -636,35 +615,19 @@ BOOL AVIOutputFile::finalize() {
 	_flushHdr();
 
 	for(i=0; i<xblock; i++) {
-		DWORD dwLen;
-		
-		dwLen = (DWORD)avi_riff_len[i];
-		_seekDirect(avi_riff_pos[i]+4);
-		_writeDirect(&dwLen, 4);
+		AVIBlock& blockinfo = mBlocks[i];
 
-		dwLen = (DWORD)avi_movi_len[i];
-		_seekDirect(avi_movi_pos[i]+4);
-		_writeDirect(&dwLen, 4);
+		mFile.seek(blockinfo.riff_pos+4);
+		mFile.write(&blockinfo.riff_len, 4);
+
+		mFile.seek(blockinfo.movi_pos+4);
+		mFile.write(&blockinfo.movi_len, 4);
 	}
 
-//	if (!FlushFileBuffers(hFile))
-//		throw MyWin32Error("%s: %%s", GetLastError(), szME);
-
-	// What do you do when a close fails?
-
-	if (!CloseHandle(hFile)) {
-		hFile = NULL;
-		throw MyWin32Error("%s: %%s", GetLastError(), szME);
-	}
-
-	hFile = NULL;
+	mFile.close();
 
 	VDDEBUG("AVIOutputFile: Finalize was successful.\n");
-
-	return TRUE;
 }
-
-BOOL AVIOutputFile::isPreview() { return FALSE; }
 
 long AVIOutputFile::bufferStatus(long *lplBufferSize) {
 	if (fastIO) {
@@ -676,7 +639,7 @@ long AVIOutputFile::bufferStatus(long *lplBufferSize) {
 
 ////////////////////////////
 
-__int64 AVIOutputFile::_writeHdr(void *data, long len) {
+sint64 AVIOutputFile::_writeHdr(const void *data, long len) {
 	long writepos = (long)i64FilePosition;
 	int cursize = mHeaderBlock.size();
 
@@ -691,7 +654,7 @@ __int64 AVIOutputFile::_writeHdr(void *data, long len) {
 	return i64FilePosition - len;
 }
 
-__int64 AVIOutputFile::_beginList(FOURCC ckid) {
+sint64 AVIOutputFile::_beginList(FOURCC ckid) {
 	DWORD dw[3];
 
 	dw[0] = FOURCC_LIST;
@@ -701,9 +664,9 @@ __int64 AVIOutputFile::_beginList(FOURCC ckid) {
 	return _writeHdr(dw, 12);
 }
 
-__int64 AVIOutputFile::_writeHdrChunk(FOURCC ckid, void *data, long len) {
+sint64 AVIOutputFile::_writeHdrChunk(FOURCC ckid, const void *data, long len) {
 	DWORD dw[2];
-	__int64 pos;
+	sint64 pos;
 
 	dw[0] = ckid;
 	dw[1] = len;
@@ -721,9 +684,9 @@ __int64 AVIOutputFile::_writeHdrChunk(FOURCC ckid, void *data, long len) {
 	return pos;
 }
 
-void AVIOutputFile::_closeList(__int64 pos) {
+void AVIOutputFile::_closeList(sint64 pos) {
 	DWORD dw;
-	__int64 i64FPSave = i64FilePosition;
+	sint64 i64FPSave = i64FilePosition;
 	
 	dw = i64FilePosition - (pos+8);
 
@@ -733,64 +696,25 @@ void AVIOutputFile::_closeList(__int64 pos) {
 }
 
 void AVIOutputFile::_flushHdr() {
-	DWORD dwActual;
-	DWORD dwError;
-
-	if (0xFFFFFFFF == SetFilePointer(hFile, 0, NULL, FILE_BEGIN))
-		if ((dwError = GetLastError()) != NO_ERROR)
-			throw MyWin32Error("%s: %%s", dwError, szME);
-
+	mFile.seek(0);
 	i64FilePosition = 0;
 
-	if (!WriteFile(hFile, &mHeaderBlock.front(), mHeaderBlock.size(), &dwActual, NULL)
-		|| dwActual != mHeaderBlock.size())
-
-		throw MyWin32Error("%s: %%s", GetLastError(), szME);
-
+	mFile.write(&mHeaderBlock.front(), mHeaderBlock.size());
 	i64FilePosition = mHeaderBlock.size();
 
-	if (i64FilePosition > i64FarthestWritePoint)
+	if (i64FarthestWritePoint < i64FilePosition)
 		i64FarthestWritePoint = i64FilePosition;
 }
 
-__int64 AVIOutputFile::_getPosition() {
+sint64 AVIOutputFile::_getPosition() {
 	return i64FilePosition;
 }
 
-void AVIOutputFile::_seekHdr(__int64 i64NewPos) {
+void AVIOutputFile::_seekHdr(sint64 i64NewPos) {
 	i64FilePosition = i64NewPos;
 }
 
-void AVIOutputFile::_seekDirect(__int64 i64NewPos) {
-	LONG lHi = (LONG)(i64NewPos>>32);
-	DWORD dwError;
-
-//	_RPT1(0,"Seeking to %I64d\n", i64NewPos);
-
-	if (0xFFFFFFFF == SetFilePointer(hFile, (LONG)i64NewPos, &lHi, FILE_BEGIN))
-		if ((dwError = GetLastError()) != NO_ERROR)
-			throw MyWin32Error("%s: %%s", dwError, szME);
-
-	i64FilePosition = i64NewPos;
-}
-
-__int64 AVIOutputFile::_writeDirect(void *data, long len) {
-	DWORD dwActual;
-
-	if (!WriteFile(hFile, data, len, &dwActual, NULL)
-		|| dwActual != len)
-
-		throw MyWin32Error("%s: %%s", GetLastError(), szME);
-
-	i64FilePosition += len;
-
-	if (i64FilePosition > i64FarthestWritePoint)
-		i64FarthestWritePoint = i64FilePosition;
-
-	return i64FilePosition - len;
-}
-
-bool AVIOutputFile::_extendFile(__int64 i64NewPoint) {
+bool AVIOutputFile::_extendFile(sint64 i64NewPoint) {
 	bool fSuccess;
 
 	// Have we already extended the file past that point?
@@ -800,11 +724,11 @@ bool AVIOutputFile::_extendFile(__int64 i64NewPoint) {
 
 	// Attempt to extend the file.
 
-	__int64 i64Save = i64FilePosition;
+	sint64 i64Save = i64FilePosition;
 
-	_seekDirect(i64NewPoint);
-	fSuccess = !!SetEndOfFile(hFile);
-	_seekDirect(i64Save);
+	mFile.seek(i64NewPoint);
+	fSuccess = mFile.truncateNT();
+	mFile.seek(i64Save);
 
 	if (fSuccess) {
 		i64EndOfFile = i64NewPoint;
@@ -816,7 +740,7 @@ bool AVIOutputFile::_extendFile(__int64 i64NewPoint) {
 	return fSuccess;
 }
 
-void AVIOutputFile::_write(void *data, int len) {
+void AVIOutputFile::_write(const void *data, int len) {
 
 	if (!fPreemptiveExtendFailed && i64FilePosition + len + lIndexSize > i64EndOfFile - 8388608) {
 		fPreemptiveExtendFailed = !_extendFile((i64FilePosition + len + lIndexSize + 16777215) & -8388608);
@@ -825,14 +749,19 @@ void AVIOutputFile::_write(void *data, int len) {
 	if (fastIO) {
 		fastIO->Put(data,len);
 		i64FilePosition += len;
-		if (i64FilePosition > i64FarthestWritePoint)
+		if (i64FarthestWritePoint < i64FilePosition)
 			i64FarthestWritePoint = i64FilePosition;
-	} else
-//		_writeHdr(data,len);
-		_writeDirect(data, len);
+	} else {
+		mFile.write(data, len);
+
+		sint64 pos = mFile.tell();
+
+		if (i64FarthestWritePoint < pos)
+			i64FarthestWritePoint = pos;
+	}
 }
 
-void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer) {
+void AVIOutputFile::writeIndexedChunk(FOURCC ckid, uint32 flags, const void *pBuffer, uint32 cbBuffer) {
 	AVIIndexEntry2 avie;
 	long buf[5];
 	static char zero = 0;
@@ -865,10 +794,10 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 	//
 	// Take the largest separation between data blocks,
 
-	__int64 chunkloc;
+	sint64 chunkloc;
 	int idxblocksize;
 	int idxblocks;
-	__int64 maxpoint;
+	sint64 maxpoint;
 
 	chunkloc = i64FilePosition;
 	if (fOpenNewBlock)
@@ -888,14 +817,14 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 
 	if (lLargestIndexDelta[0]) {
 		idxblocksize = (int)(0x100000000i64 / lLargestIndexDelta[0]);
-		if (idxblocksize > MAX_INDEX_ENTRIES)
-			idxblocksize = MAX_INDEX_ENTRIES;
+		if (idxblocksize > mSubIndexLimit)
+			idxblocksize = mSubIndexLimit;
 		idxblocks = (lIndexedChunkCount[0] + idxblocksize - 1) / idxblocksize;
 	}
 	if (lLargestIndexDelta[1]) {
 		idxblocksize = (int)(0x100000000i64 / lLargestIndexDelta[1]);
-		if (idxblocksize > MAX_INDEX_ENTRIES)
-			idxblocksize = MAX_INDEX_ENTRIES;
+		if (idxblocksize > mSubIndexLimit)
+			idxblocksize = mSubIndexLimit;
 		idxblocks += (lIndexedChunkCount[1] + idxblocksize - 1) / idxblocksize;
 	}
 
@@ -933,10 +862,10 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 	// Write the chunk.
 
 	avie.ckid	= ckid;
-	avie.pos	= i64FilePosition - (avi_movi_pos[0]+8); //chunkMisc.dwDataOffset - 2064;
+	avie.pos	= i64FilePosition - (mBlocks[0].movi_pos+8); //chunkMisc.dwDataOffset - 2064;
 	avie.size	= cbBuffer;
 
-	if (dwIndexFlags & AVIIF_KEYFRAME)
+	if (flags & AVIIF_KEYFRAME)
 		avie.size |= 0x80000000L;
 
 	buf[0] = ckid;
@@ -946,29 +875,18 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 
 	i64XBufferLevel += siz;
 
-	// ActiveMovie/WMP requires a non-zero dwSuggestedBufferSize for
-	// hierarchial indexing (piece of sh*t player).  So we continually
-	// bump it up to the largest chunk size;
-
-
 	if ((unsigned short)ckid == '10') {
-		if (cbBuffer > audioOut->streamInfo.dwSuggestedBufferSize)
-			audioOut->streamInfo.dwSuggestedBufferSize = cbBuffer;
-
 		if (fExtendedAVI)
-			if (!index_audio->add(&avie)) throw MyError("%s error: couldn't add audio chunk to index",szME);
+			index_audio->add(&avie);
 	} else {
-		if (cbBuffer > videoOut->streamInfo.dwSuggestedBufferSize)
-			videoOut->streamInfo.dwSuggestedBufferSize = cbBuffer;
-
 		if (fExtendedAVI)
-			if (!index_video->add(&avie)) throw MyError("%s error: couldn't add video chunk to index",szME);
+			index_video->add(&avie);
 	}
 
 	if (index)
-		if (!index->add(&avie)) throw MyError("%s error: couldn't add chunk to index",szME);
+		index->add(&avie);
 
-	_write(lpBuffer, cbBuffer);
+	_write(pBuffer, cbBuffer);
 
 	// Align to 8-byte boundary, not 2-byte, in capture mode.
 
@@ -1010,14 +928,16 @@ void AVIOutputFile::writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpB
 }
 
 void AVIOutputFile::_closeXblock() {
-	avi_movi_len[xblock] = i64FilePosition - (avi_movi_pos[xblock]+8);
+	AVIBlock& blockinfo = mBlocks[xblock];
+
+	blockinfo.movi_len = i64FilePosition - (blockinfo.movi_pos+8);
 
 	if (!xblock) {
-		avihdr.dwTotalFrames = videoOut->lTotalSamplesWritten;
+		avihdr.dwTotalFrames = videoOut->getStreamInfo().dwLength;
 		_writeLegacyIndex(true);
 	}
 
-	avi_riff_len[xblock] = i64FilePosition - (avi_riff_pos[xblock]+8);
+	blockinfo.riff_len = i64FilePosition - (blockinfo.riff_pos+8);
 
 	++xblock;
 
@@ -1027,28 +947,31 @@ void AVIOutputFile::_closeXblock() {
 void AVIOutputFile::_openXblock() {
 	DWORD dw[8];
 
-	if (xblock >= MAX_AVIBLOCKS)
-		throw MyError("%s: Exceeded maximum RIFF count (%d)", szME, MAX_AVIBLOCKS);
-
 	// If we're in capture mode, keep this stuff aligned to 8-byte boundaries!
+
+	mBlocks.push_back(AVIBlock());
+
+	VDASSERT(mBlocks.size() == xblock+1);
+
+	AVIBlock& blockinfo = mBlocks.back();
 
 	if (xblock != 0) {
 
-		avi_riff_pos[xblock] = i64FilePosition;
+		blockinfo.riff_pos = i64FilePosition;
 
 		dw[0] = FOURCC_RIFF;
 		dw[1] = 0x7F000000;
-		dw[2] = xblock ? 'XIVA' : ' IVA';
+		dw[2] = 'XIVA';
 		dw[3] = FOURCC_LIST;
 		dw[4] = 0x7F000000;
 		dw[5] = 'ivom';	// movi
 		_write(dw,24);
 
-		avi_movi_pos[xblock] = i64FilePosition - 12;
+		blockinfo.movi_pos = i64FilePosition - 12;
 	} else {
-		avi_riff_pos[xblock] = 0;
+		blockinfo.riff_pos = 0;
 
-		avi_movi_pos[xblock] = i64FilePosition;
+		blockinfo.movi_pos = i64FilePosition;
 
 		dw[0] = FOURCC_LIST;
 		dw[1] = 0x7FFFFFFF;
@@ -1073,8 +996,7 @@ void AVIOutputFile::_writeLegacyIndex(bool use_fastIO) {
 	if (!index)
 		return;
 
-	if (!index->makeIndex())
-		throw MyMemoryError();
+	index->makeIndex();
 
 //	if (use_fastIO && fastIO) {
 		DWORD dw[2];
@@ -1093,98 +1015,88 @@ void AVIOutputFile::_writeLegacyIndex(bool use_fastIO) {
 void AVIOutputFile::_createNewIndices(AVIIndex *index, AVISUPERINDEX *asi, _avisuperindex_entry *asie, bool is_audio) {
 	AVIIndexEntry2 *asie2;
 	int size;
-	int actual;
 	int indexnum=0;
 	int blocksize;
 
 	if (!index || !index->size())
 		return;
 
-	if (!index->makeIndex2())
-		throw MyMemoryError();
+	index->makeIndex2();
 
 	size = index->indexLen();
 	asie2 = index->index2Ptr();
 
-	memset(asie, 0, sizeof(_avisuperindex_entry)*MAX_SUPERINDEX_ENTRIES);
+	memset(asie, 0, sizeof(_avisuperindex_entry)*mSuperIndexLimit);
 
 	// Now we run into a bit of a problem.  DirectShow's AVI2 parser requires
 	// that all index blocks have the same # of entries (except the last),
 	// which is a problem since we also have to guarantee that each block
 	// has offsets <4Gb.
 
-	// For now, use a O(n^2) algorithm to find the optimal size.  This isn't
-	// really a problem because this routine won't ever be called in time
-	// critical circumstances, like streaming video capture.
+	// For now, use a O(n^2) algorithm to find the optimal size.
 
-	blocksize = MAX_INDEX_ENTRIES;
+	blocksize = mSubIndexLimit;
 
-	{
-		while(blocksize > 1) {
-			int i;
-			int nextblock = 0;
-			__int64 offset;
+	while(blocksize > 1) {
+		int i;
+		int nextblock = 0;
+		sint64 offset;
 
-			for(i=0; i<size; i++) {
-				if (i == nextblock) {
-					nextblock += blocksize;
-					offset = asie2[i].pos;
-				}
-
-				if (asie2[i].pos >= offset + 0x100000000i64)
-					break;
+		for(i=0; i<size; i++) {
+			if (i == nextblock) {
+				nextblock += blocksize;
+				offset = asie2[i].pos;
 			}
 
-			if (i >= size)
+			if (asie2[i].pos >= offset + 0x100000000i64)
 				break;
-
-			--blocksize;
 		}
-	}
 
+		if (i >= size)
+			break;
+
+		--blocksize;
+	}
+	
+	int blockcount = (size - 1) / blocksize + 1;
+
+	if (blockcount > mSuperIndexLimit)
+		throw MyError("AVIOutput: Not enough superindex entries to index AVI file.  (%d slots required, %d slots preallocated)",
+			blockcount, mSuperIndexLimit);
+	
 	// Write out the actual index blocks.
+	const DWORD indexID = is_audio ? '10xi' : '00xi';
+	const DWORD chunkID = is_audio ? 'bw10' : static_cast<AVIVideoOutputStream *>(videoOut)->id;
+	const DWORD dwSampleSize = is_audio ? audioOut->getStreamInfo().dwSampleSize : videoOut->getStreamInfo().dwSampleSize;
 
 	while(size > 0) {
-		if (indexnum >= MAX_SUPERINDEX_ENTRIES)
-			throw MyError("Maximum number of extended AVI indices exceeded (%d)\n", MAX_SUPERINDEX_ENTRIES);
+		int tc = std::min<int>(size, blocksize);
 
-		actual = _writeNewIndex(&asie[indexnum], asie2, std::min<int>(size, blocksize),
-			is_audio ? '10xi' : '00xi', is_audio ? 'bw10' : videoOut->id, is_audio ? audioOut->streamInfo.dwSampleSize : videoOut->streamInfo.dwSampleSize);
+		_writeNewIndex(&asie[indexnum++], asie2, tc, indexID, chunkID, dwSampleSize);
 
-		asie2 += actual;
-		size -= actual;
-		++indexnum;
+		asie2 += tc;
+		size -= tc;
 	}
 
 	memset(asi, 0, sizeof(AVISUPERINDEX));
 	asi->fcc			= 'xdni';
-	asi->cb				= sizeof(AVISUPERINDEX)-8 + sizeof(_avisuperindex_entry)*MAX_SUPERINDEX_ENTRIES;
+	asi->cb				= sizeof(AVISUPERINDEX)-8 + sizeof(_avisuperindex_entry)*mSuperIndexLimit;
 	asi->wLongsPerEntry	= 4;
 	asi->bIndexSubType	= 0;
 	asi->bIndexType		= AVI_INDEX_OF_INDEXES;
 	asi->nEntriesInUse	= indexnum;
-	asi->dwChunkId		= is_audio ? 'bw10' : videoOut->id;
+	asi->dwChunkId		= chunkID;
 }
 
-int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEntry2 *avie2, int size, FOURCC fcc, DWORD dwChunkId, DWORD dwSampleSize) {
+void AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEntry2 *avie2, int size, FOURCC fcc, DWORD dwChunkId, DWORD dwSampleSize) {
 	AVISTDINDEX asi;
 	AVIIndexEntry3 asie3[64];
-	__int64 offset = avie2->pos;
-	int tc;
-	int i;
-	int size0;
+	sint64 offset = avie2->pos;
 
-	// Scan, ascertain how many we can handle without exceeding 4Gb offset
-
-	for(i=0; i<size; i++) {
-		if (avie2[i].pos - offset >= 0x100000000i64)
-			break;
-	}
-
-	size0 = size = i;
+	VDASSERT(size>0);
+	VDASSERT(avie2[size-1].pos - avie2[0].pos < VD64(0x100000000));
 
 	// Check to see if we need to open a new AVIX block
-
 	if (i64XBufferLevel + sizeof(AVISTDINDEX) + size*sizeof(_avistdindex_entry) > (xblock ? 0x7F000000 : lAVILimit)) {
 		_closeXblock();
 		_openXblock();
@@ -1196,7 +1108,7 @@ int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEnt
 	asie->dwSize	= sizeof(AVISTDINDEX) + size*sizeof(_avistdindex_entry);
 
 	if (dwSampleSize) {
-		__int64 total_bytes = 0;
+		sint64 total_bytes = 0;
 
 		for(int i=0; i<size; i++)
 			total_bytes += avie2[i].size & 0x7FFFFFFF;
@@ -1217,12 +1129,16 @@ int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEnt
 
 	_write(&asi, sizeof asi);
 
+	// stored entries are relative to the start of the movi chunk and to the start of the data chunk
+	// instead of absolute to the data payload, so we have to correct
+	sint64 delta = mBlocks[0].movi_pos + 16 - offset;
+
 	while(size > 0) {
-		tc = size;
+		int tc = size;
 		if (tc>64) tc=64;
 
-		for(i=0; i<tc; i++) {
-			asie3[i].dwOffset	= (DWORD)(avie2->pos - offset + avi_movi_pos[0] + 16);
+		for(int i=0; i<tc; i++) {
+			asie3[i].dwOffset	= (DWORD)(avie2->pos + delta);
 			asie3[i].dwSizeKeyframe		= avie2->size;
 			++avie2;
 		}
@@ -1231,6 +1147,4 @@ int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEnt
 
 		size -= tc;
 	}
-
-	return size0;
 }

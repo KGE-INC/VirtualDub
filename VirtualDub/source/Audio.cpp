@@ -354,6 +354,14 @@ BOOL AudioStream::_isEnd() {
 	return FALSE;
 }
 
+void AudioStream::Seek(VDPosition pos) {
+	VDASSERT(pos >= 0);
+
+	if (pos > 0) {
+		VDASSERT(Skip((long)pos - GetSampleCount()));
+	}
+}
+
 ////////////////////
 
 AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max_samples, BOOL allow_decompression) : AudioStream() {
@@ -468,8 +476,14 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 		}
 	}
 
+	mPrefill = 0;
+	if (first_samp < 0) {
+		first_samp = -mPrefill;
+		mPrefill = 0;
+	}
+
 	aSrc = src;
-	stream_len = std::min<long>(max_samples, aSrc->lSampleLast - first_samp);
+	stream_len = std::min<long>(max_samples, aSrc->getEnd() - first_samp);
 
 	if (hACStream) {
 		stream_len = MulDiv(stream_len, GetFormat()->nSamplesPerSec * aSrc->getWaveFormat()->nBlockAlign, aSrc->getWaveFormat()->nAvgBytesPerSec);
@@ -502,8 +516,8 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 	// add filler samples as necessary
 
-	if (cur_samp < 0) {
-		long tc = -cur_samp;
+	if (mPrefill > 0) {
+		long tc = mPrefill;
 		const int nBlockAlign = aSrc->getWaveFormat()->nBlockAlign;
 
 		if (tc > max_samples)
@@ -519,8 +533,10 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 		max_samples -= tc;
 		lAddedBytes = tc*nBlockAlign;
 		lAddedSamples = tc;
-		cur_samp += tc;
+		mPrefill -= tc;
 	}
+
+	VDASSERT(cur_samp >= 0);
 
 	// read actual samples
 
@@ -671,6 +687,16 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 bool AudioStreamSource::Skip(long samples) {
 
+	if (mPrefill > 0) {
+		long tc = std::min<long>(mPrefill, samples);
+
+		mPrefill -= tc;
+		samples -= tc;
+
+		if (samples <= 0)
+			return true;
+	}
+
 	// nBlockAlign = bytes per block.
 	//
 	// nAvgBytesPerSec / nBlockAlign = blocks per second.
@@ -718,6 +744,36 @@ bool AudioStreamSource::Skip(long samples) {
 
 BOOL AudioStreamSource::_isEnd() {
 	return (cur_samp >= end_samp || fZeroRead) && (!hACStream || !ashBuffer.cbDstLengthUsed);
+}
+
+void AudioStreamSource::Seek(VDPosition pos) {
+	mPrefill = 0;
+	if (pos < 0) {
+		mPrefill = -pos;
+		pos = 0;
+	}
+
+	fZeroRead = false;
+	lPreskip = 0;
+
+	if (hACStream) {
+		const WAVEFORMATEX *pwfex = aSrc->getWaveFormat();
+
+		// flush decompression buffers
+		ashBuffer.cbDstLengthUsed = 0;
+		ashBuffer.cbSrcLength = 0;
+		fStart = true;
+
+		// recompute new position
+		cur_samp = (long)(pos * (sint64)pwfex->nAvgBytesPerSec / ((sint64)pwfex->nBlockAlign*pwfex->nSamplesPerSec));
+
+		lPreskip = pwfex->nBlockAlign * (long)(pos - cur_samp * ((sint64)pwfex->nBlockAlign*pwfex->nSamplesPerSec) / (sint64)pwfex->nAvgBytesPerSec);
+	} else {
+		cur_samp = pos;
+	}
+
+	if (cur_samp > end_samp)
+		cur_samp = end_samp;
 }
 
 
@@ -1796,7 +1852,6 @@ void AudioL3Corrector::Process(void *buffer, long bytes) {
 ///////////////////////////////////////////////////////////////////////////
 
 long AudioTranslateVideoSubset(FrameSubset& dst, FrameSubset& src, const VDFraction& videoFrameRate, WAVEFORMATEX *pwfex) {
-	FrameSubsetNode *fsn = src.getFirstFrame();
 	const long lSampPerSec = pwfex->nSamplesPerSec;
 	const long nBytesPerSec = pwfex->nAvgBytesPerSec;
 	const int nBlockAlign = pwfex->nBlockAlign;
@@ -1814,7 +1869,7 @@ long AudioTranslateVideoSubset(FrameSubset& dst, FrameSubset& src, const VDFract
 	sint64 nRound		= nDivisor/2;
 	long nTotalFramesAccumulated = 0;
 
-	while(fsn) {
+	for(FrameSubset::iterator it = src.begin(), itEnd = src.end(); it != itEnd; ++it) {
 		long start, end;
 
 		// Compute error.
@@ -1829,16 +1884,14 @@ long AudioTranslateVideoSubset(FrameSubset& dst, FrameSubset& src, const VDFract
 
 		// Add a block.
 
-		start = ((__int64)fsn->start * nMultiplier + nRound + nError) / nDivisor;
-		end = ((__int64)(fsn->start + fsn->len) * nMultiplier + nRound) / nDivisor;
+		start = ((__int64)it->start * nMultiplier + nRound + nError) / nDivisor;
+		end = ((__int64)(it->start + it->len) * nMultiplier + nRound) / nDivisor;
 
-		nTotalFramesAccumulated += fsn->len;
+		nTotalFramesAccumulated += it->len;
 
 		dst.addRange(start, end-start, false);
 
 		total += end-start;
-
-		fsn = src.getNextFrame(fsn);
 	}
 
 	return total;
@@ -1859,7 +1912,7 @@ AudioSubset::AudioSubset(AudioStream *src, FrameSubset *pfs, const VDFraction& v
 
 	SetLimit(total);
 
-	pfsnCur = subset.getFirstFrame();
+	pfsnCur = subset.begin();
 	iOffset = 0;
 	lSrcPos = 0;
 	lSkipSize = sizeof skipBuffer / pSrcFormat->nBlockAlign;
@@ -1869,15 +1922,24 @@ AudioSubset::~AudioSubset() {
 }
 
 long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
-	int offset, actual;
+	int actual;
 
-	if (!pfsnCur) {
+	if (pfsnCur == subset.end()) {
 		*lplBytes = 0;
 		return 0;
 	}
 
-	while ((offset = pfsnCur->start - lSrcPos) > 0) {
+	const FrameSubsetNode& node = *pfsnCur;
+
+	while (lSrcPos != node.start + iOffset) {
+		long offset = node.start - lSrcPos;
 		long t;
+
+		if (offset < 0) {
+			source->Seek(node.start);
+			lSrcPos = node.start + iOffset;
+			break;
+		}
 
 		if (source->Skip(offset)) {
 			lSrcPos += offset;
@@ -1896,23 +1958,23 @@ long AudioSubset::_Read(void *buffer, long samples, long *lplBytes) {
 		lSrcPos += actual;
 	}
 
-	if (samples > pfsnCur->len - iOffset)
-		samples = pfsnCur->len - iOffset;
+	if (samples > node.len - iOffset)
+		samples = node.len - iOffset;
 
 	samples = source->Read(buffer, samples, lplBytes);
 
 	iOffset += samples;
 	lSrcPos += samples;
-	while (pfsnCur && iOffset >= pfsnCur->len) {
+	while (pfsnCur != subset.end() && iOffset >= pfsnCur->len) {
 		iOffset -= pfsnCur->len;
-		pfsnCur = subset.getNextFrame(pfsnCur);
+		++pfsnCur;
 	}
 
 	return samples;
 }
 
 BOOL AudioSubset::_isEnd() {
-	return !pfsnCur || source->isEnd();
+	return pfsnCur != subset.end() || source->isEnd();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1988,6 +2050,46 @@ bool AudioStreamAmplifier::Skip(long samples) {
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//	AudioStreamL3Corrector
+//
+///////////////////////////////////////////////////////////////////////////
+
+AudioStreamL3Corrector::AudioStreamL3Corrector(AudioStream *src){
+	WAVEFORMATEX *iFormat = src->GetFormat();
+	WAVEFORMATEX *oFormat;
+
+	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
+
+	SetSource(src);
+}
+
+AudioStreamL3Corrector::~AudioStreamL3Corrector() {
+}
+
+long AudioStreamL3Corrector::_Read(void *buffer, long samples, long *lplBytes) {
+	long lActualSamples=0;
+	long lBytes;
+
+	lActualSamples = source->Read(buffer, samples, &lBytes);
+
+	Process(buffer, lBytes);
+
+	if (lplBytes)
+		*lplBytes = lBytes;
+
+	return lActualSamples;
+}
+
+BOOL AudioStreamL3Corrector::_isEnd() {
+	return source->isEnd();
+}
+
+bool AudioStreamL3Corrector::Skip(long samples) {
+	return source->Skip(samples);
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
 //	AudioFilterSystemStream
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -2046,7 +2148,7 @@ long AudioFilterSystemStream::_Read(void *buffer, long samples, long *lplBytes) 
 		char *dst = (char *)buffer;
 
 		while(!mpFilterIF->IsEnded()) {
-			uint32 actual = mpFilterIF->Read(dst, samples - total_samples);
+			uint32 actual = mpFilterIF->ReadSamples(dst, samples - total_samples);
 
 			if (actual) {
 				total_samples += actual;
@@ -2057,7 +2159,8 @@ long AudioFilterSystemStream::_Read(void *buffer, long samples, long *lplBytes) 
 			if (total_samples >= samples)
 				break;
 
-			mFilterSystem.Run();
+			if (!mFilterSystem.Run())
+				break;
 		}
 	}
 
@@ -2087,3 +2190,13 @@ bool AudioFilterSystemStream::Skip(long samples) {
 
 	return true;
 }
+
+void AudioFilterSystemStream::Seek(VDPosition pos) {
+	const WAVEFORMATEX *pFormat = GetFormat();
+
+	// reseek
+	mSamplePos = pos;
+
+	mFilterSystem.Seek(mStartTime + (mSamplePos * pFormat->nBlockAlign * 1000000) / pFormat->nAvgBytesPerSec);
+}
+

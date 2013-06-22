@@ -66,6 +66,8 @@ public:
 	virtual void SetLimit(long limit);
 	virtual BOOL isEnd();
 	virtual BOOL _isEnd();
+
+	virtual void Seek(VDPosition pos);
 };
 
 class AudioStreamSource : public AudioStream {
@@ -80,6 +82,7 @@ private:
 	void *outputBuffer;
 	char *outputBufferPtr;
 	long lPreskip;
+	long mPrefill;
 	bool fZeroRead;
 	bool fStart;
 
@@ -94,6 +97,7 @@ public:
 	long _Read(void *buffer, long max_samples, long *lplBytes);
 	bool Skip(long samples);
 	BOOL _isEnd();
+	void Seek(VDPosition);
 };
 
 class AudioStreamConverter : public AudioStream {
@@ -183,10 +187,20 @@ public:
 	void Process(void *buffer, long bytes);
 };
 
+class AudioStreamL3Corrector : public AudioStream, public AudioL3Corrector {
+public:
+	AudioStreamL3Corrector(AudioStream *src);
+	~AudioStreamL3Corrector();
+
+	long _Read(void *buffer, long max_samples, long *lplBytes);
+	BOOL _isEnd();
+	bool Skip(long);
+};
+
 class AudioSubset : public AudioStream {
 private:
 	FrameSubset subset;
-	FrameSubsetNode *pfsnCur;
+	FrameSubset::const_iterator pfsnCur;
 	int iOffset;
 	long lSrcPos;
 	long lSkipSize;
@@ -221,6 +235,7 @@ public:
 	long _Read(void *buffer, long max_samples, long *lplBytes);
 	BOOL _isEnd();
 	bool Skip(long);
+	void Seek(VDPosition);
 
 protected:
 	IVDAudioFilterSink *mpFilterIF;

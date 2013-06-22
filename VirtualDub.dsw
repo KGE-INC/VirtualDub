@@ -51,6 +51,22 @@ Package=<4>
 
 ###############################################################################
 
+Project: "Meia"=.\Meia\Meia.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Meia
+    .
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "Priss"=.\Priss\Priss.dsp - Package Owner=<4>
 
 Package=<5>
@@ -141,6 +157,12 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name vdremote
     End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name Meia
+    End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name samplefilter
+    End Project Dependency
 }}}
 
 ###############################################################################
@@ -152,6 +174,22 @@ Package=<5>
     begin source code control
     Perforce Project
     .\disasm
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "filtsdk2"=.\filtsdk2\filtsdk2.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    filtsdk2
+    .\filtsdk2
     end source code control
 }}}
 
@@ -187,6 +225,22 @@ Package=<5>
     begin source code control
     Perforce Project
     .\mapconv
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "samplefilter"=.\samplefilter\samplefilter.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    samplefilter
+    .\samplefilter
     end source code control
 }}}
 

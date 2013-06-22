@@ -28,72 +28,48 @@ FrameSubset::FrameSubset(int length) {
 }
 
 FrameSubset::~FrameSubset() {
-	clear();
 }
 
 void FrameSubset::clear() {
-	FrameSubsetNode *pfsn;
-
-	while(pfsn = list.RemoveHead())
-		delete pfsn;
+	mTimeline.clear();
 }
 
 void FrameSubset::addFrom(FrameSubset& src) {
-	FrameSubsetNode *pfsn_next, *pfsn = src.list.AtHead();
-
-	while(pfsn_next = pfsn->NextFromHead()) {
-		addRangeMerge(pfsn->start, pfsn->len, pfsn->bMask);
-		pfsn = pfsn_next;
-	}
+	for(iterator it(src.begin()), itEnd(src.end()); it!=itEnd; ++it)
+		addRangeMerge(it->start, it->len, it->bMask);
 }
 
 void FrameSubset::addRange(int start, int len, bool bMask) {
-	FrameSubsetNode *pfsn = new FrameSubsetNode(start, len, bMask);
-
-	if (!pfsn)
-		throw MyMemoryError();
-
-	list.AddTail(pfsn);
+	mTimeline.push_back(FrameSubsetNode(start, len, bMask));
 }
 
 void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
-	FrameSubsetNode *pfsn_next, *pfsn = list.AtHead();
+	tTimeline::iterator it(begin()), itEnd(end());
 
-	while(pfsn_next = pfsn->NextFromHead()) {
-		if (start + len < pfsn->start) {				// Isolated -- insert
-			FrameSubsetNode *pfsn_new = new FrameSubsetNode(start, len, bMask);
-
-			if (!pfsn_new)
-				throw MyMemoryError();
-
-			pfsn_new->InsertBefore(pfsn);
+	while(it != itEnd) {
+		if (start + len < it->start) {				// Isolated -- insert
+			mTimeline.insert(it, FrameSubsetNode(start, len, bMask));
 			return;
-		} else if (start + len >= pfsn->start && start <= pfsn->start+pfsn->len) {		// Overlap!
+		} else if (start + len >= it->start && start <= it->start+it->len) {		// Overlap!
 
-			if (start+len > pfsn->start+pfsn->len) {	// < A [ B ] > or [ B <] A > cases
+			if (start+len > it->start+it->len) {	// < A [ B ] > or [ B <] A > cases
 				// If the types are compatible, accumulate.  Otherwise, write out
 				// the head portion if it exists, and trim to the tail.
 
-				if (bMask != pfsn->bMask) {
-					if (start < pfsn->start) {
-						FrameSubsetNode *pfsn_new = new FrameSubsetNode(start, pfsn->start - start, bMask);
+				if (bMask != it->bMask) {
+					if (start < it->start)
+						mTimeline.insert(it, FrameSubsetNode(start, it->start - start, bMask));
 
-						if (!pfsn_new)
-							throw MyMemoryError();
-
-						pfsn_new->InsertBefore(pfsn);
-					}
-
-					len -= (pfsn->start + pfsn->len - start);
-					start = pfsn->start + pfsn->len;
+					len -= (it->start + it->len - start);
+					start = it->start + it->len;
 				} else {
-					if (pfsn->start < start) {
-						len += (start - pfsn->start);
-						start = pfsn->start;
+					if (it->start < start) {
+						len += (start - it->start);
+						start = it->start;
 					}
 
-					pfsn->Remove();
-					delete pfsn;
+					it = mTimeline.erase(it);
+					continue;
 				}
 			} else {									// < A [> B ], <A | B>, or [ <A> B ] cases
 
@@ -101,21 +77,16 @@ void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
 				// the blocks and be done.  If the types are different, trim the
 				// new block.
 
-				if (bMask != pfsn->bMask) {
-					len = pfsn->start - start;
+				if (bMask != it->bMask) {
+					len = it->start - start;
 
-					if (len > 0) {
-						FrameSubsetNode *pfsn_new = new FrameSubsetNode(start, len, bMask);
+					if (len > 0)
+						mTimeline.insert(it, FrameSubsetNode(start, len, bMask));
 
-						if (!pfsn_new)
-							throw MyMemoryError();
-
-						pfsn_new->InsertBefore(pfsn);
-					}
 					return;
-				} else if (pfsn->start > start) {
-					pfsn->len += (pfsn->start - start);
-					pfsn->start = start;
+				} else if (it->start > start) {
+					it->len += (it->start - start);
+					it->start = start;
 				}
 #ifdef _DEBUG
 				goto check_list;
@@ -125,7 +96,7 @@ void FrameSubset::addRangeMerge(int start, int len, bool bMask) {
 			}
 		}
 
-		pfsn = pfsn_next;
+		++it;
 	}
 
 	// List is empty or element falls after last element
@@ -137,30 +108,23 @@ check_list:
 	int lastpt = -1;
 	bool bLastWasMasked;
 
-	pfsn = list.AtHead();
-	while(pfsn_next = pfsn->NextFromHead()) {
-		if (pfsn->start <= lastpt && bLastWasMasked == pfsn->bMask) {
-			throw MyError("addRangeMerge: FAILED!!  %d <= %d\n", pfsn->start, lastpt);
+	for(it = begin(); it!=itEnd; ++it) {
+		if (it->start <= lastpt && bLastWasMasked == it->bMask) {
+			throw MyError("addRangeMerge: FAILED!!  %d <= %d\n", it->start, lastpt);
 		}
 
-		lastpt = pfsn->start + pfsn->len;
-		bLastWasMasked = pfsn->bMask;
-
-		pfsn = pfsn_next;
+		lastpt = it->start + it->len;
+		bLastWasMasked = it->bMask;
 	}
 
 #endif
 }
 
 int FrameSubset::getTotalFrames() {
-	FrameSubsetNode *pfsn_next, *pfsn = list.AtHead();
 	int iFrames = 0;
 
-	while(pfsn_next = pfsn->NextFromHead()) {
-		iFrames += pfsn->len;
-
-		pfsn = pfsn_next;
-	}
+	for(const_iterator it(mTimeline.begin()), itEnd(mTimeline.end()); it!=itEnd; ++it)
+		iFrames += it->len;
 
 	return iFrames;
 }
@@ -172,18 +136,15 @@ int FrameSubset::lookupFrame(int frame, bool& bMasked) {
 }
 
 int FrameSubset::revLookupFrame(int frame, bool& bMasked) {
-	FrameSubsetNode *pfsn_next, *pfsn = list.AtHead();
 	int iSrcFrame = 0;
 
-	while(pfsn_next = pfsn->NextFromHead()) {
-		if (frame >= pfsn->start && frame < pfsn->start+pfsn->len) {
-			bMasked = pfsn->bMask;
-			return iSrcFrame + (frame - pfsn->start);
+	for(const_iterator it(begin()), itEnd(end()); it!=itEnd; ++it) {
+		if (frame >= it->start && frame < it->start+it->len) {
+			bMasked = it->bMask;
+			return iSrcFrame + (frame - it->start);
 		}
 
-		iSrcFrame += pfsn->len;
-
-		pfsn = pfsn_next;
+		iSrcFrame += it->len;
 	}
 
 	return -1;
@@ -191,305 +152,231 @@ int FrameSubset::revLookupFrame(int frame, bool& bMasked) {
 
 int FrameSubset::lookupRange(int start, int& len, bool& bMasked) {
 	int offset;
-	FrameSubsetNode *pfsn = findNode(offset, start);
+	const_iterator it = findNode(offset, start);
 
-	if (!pfsn) return -1;
+	if (it == end()) return -1;
 
-	bMasked = pfsn->bMask;
-
-	if (pfsn->bMask) {
-		FrameSubsetNode *pfsnNext;
-
-		while(pfsn->bMask && (pfsnNext = pfsn->NextFromTail()) && pfsnNext->NextFromTail()) {
-			pfsn = pfsnNext;
-		}
-
+	bMasked = it->bMask;
+	if (it->bMask) {
 		len = 1;
 
-		if (pfsnNext)
-			return pfsn->start + pfsn->len - 1;
-		else {
-			// First range is masked... this is bad.  Oh well, just
-			// return the first frame in the first range.
+		while(it->bMask) {
+			if (it == begin()) {
+				// First range is masked... this is bad.  Oh well, just
+				// return the first frame in the first range.
 
-			return pfsn->start;
+				return it->start;
+			}
+
+			--it;
 		}
+
+		return it->start + it->len - 1;
 	} else {
-		len = pfsn->len - offset;
-		return pfsn->start + offset;
+		len = it->len - offset;
+		return it->start + offset;
 	}
 }
 
 void FrameSubset::deleteInputRange(int start, int len) {
-	FrameSubsetNode *pfsn = list.AtHead(), *pfsn_t;
-
-	if (!pfsn)
-		return;
-
-	while(pfsn_t = pfsn->NextFromHead()) {
-		if (pfsn->start >= start+len)
+	for(iterator it(begin()), itEnd(end()); it != itEnd; ++it) {
+		if (it->start >= start+len)
 			break;
 
-		if (pfsn->start + pfsn->len >= start && pfsn->start < start+len) {
-			bool bSectionBeforeDelete = pfsn->start < start;
-			bool bSectionAfterDelete = pfsn->start + pfsn->len > start + len;
+		if (it->start + it->len >= start && it->start < start+len) {
+			bool bSectionBeforeDelete = it->start < start;
+			bool bSectionAfterDelete = it->start + it->len > start + len;
 
 			if (bSectionAfterDelete) {
-				if (bSectionBeforeDelete) {
-					// Split the section.
+				if (bSectionBeforeDelete)
+					mTimeline.insert(it, FrameSubsetNode(it->start, start - it->start, it->bMask));
 
-					FrameSubsetNode *pfsn_new = new FrameSubsetNode(start+len, pfsn->start+pfsn->len - (start+len), pfsn->bMask);
-
-					if (!pfsn_new)
-						throw MyMemoryError();
-
-					pfsn_new->InsertAfter(pfsn);
-
-					pfsn->len = start - pfsn->start;
-
-				} else {
-					// After only.
-
-					pfsn->len = (pfsn->start + pfsn->len) - start+len;
-					pfsn->start = start+len;
-				}
+				it->len = (it->start + it->len) - (start+len);
+				it->start = start+len;
 				break;
 			} else {
-				if (bSectionBeforeDelete) {
-					// Before only.
-
-					pfsn->len = start - pfsn->start;
-				} else {
-
-					// Absorbed.
-
-					pfsn->Remove();
-					delete pfsn;
+				if (bSectionBeforeDelete)			// before only
+					it->len = start - it->start;
+				else {								// absorbed
+					it = mTimeline.erase(it);
+					continue;
 				}
 			}
 		}
 
-		pfsn = pfsn_t;
+		++it;
 	}
 }
 
 void FrameSubset::deleteRange(int start, int len) {
 	int offset;
-	FrameSubsetNode *pfsn = findNode(offset, start), *pfsn_t;
+	iterator it = findNode(offset, start), itEnd = end();
 
-	if (!pfsn)
-		return;
-
-	while((pfsn_t = pfsn->NextFromHead()) && len>0) {
-		if (pfsn->len - offset > len) {
+	while(it != itEnd && len>0) {
+		if (len+offset < it->len) {
 			if (offset) {
 				FrameSubsetNode *pfsn2 = new FrameSubsetNode;
 
 				if (!pfsn2) throw MyMemoryError();
 
-				pfsn2->start	= pfsn->start + offset + len;
-				pfsn2->len		= pfsn->len - (offset + len);
-				pfsn2->bMask	= pfsn->bMask;
-				pfsn->len		= offset;
-				pfsn2->InsertAfter(pfsn);
-			} else {
-				pfsn->start += len;
-				pfsn->len -= len;
+				mTimeline.insert(it, FrameSubsetNode(it->start, start - it->start, it->bMask));
 			}
+
+			it->start += (offset+len);
+			it->len -= (offset+len);
 
 			break;
 		} else {
 			if (offset) {
-				len -= pfsn->len - offset;
-				pfsn->len = offset;
+				len -= it->len - offset;
+				it->len = offset;
+				offset = 0;
+				++it;
 			} else {
-				len -= pfsn->len;
-				deleteNode(pfsn);
+				len -= it->len;
+				it = mTimeline.erase(it);
+				continue;
 			}
 		}
-
-		offset = 0;
-		pfsn = pfsn_t;
 	}
-
-#ifdef _DEBUG
-	{
-		FrameSubsetNode *pfsn;
-
-		_RPT0(0,"Subset dump:\n");
-
-		if (pfsn = getFirstFrame())
-			do {
-				_RPT2(0,"\tNode: start %ld, len %ld\n", pfsn->start, pfsn->len);
-			} while(pfsn = getNextFrame(pfsn));
-
-	}
-#endif
+	dump();
 }
 
 void FrameSubset::setRange(int start, int len, bool bMask) {
 	int offset;
-	FrameSubsetNode *pfsn = findNode(offset, start), *pfsn_t;
+	iterator it = findNode(offset, start), itEnd(end());
 
-	if (!pfsn)
-		return;
+	while(it != itEnd && len>0) {
+		if (len+offset < it->len) {
+			if (it->bMask != bMask) {
+				if (offset)
+					mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
 
-	while((pfsn_t = pfsn->NextFromHead()) && len>0) {
-		if (pfsn->len - offset > len) {
-			if (pfsn->bMask != bMask) {
-				if (offset) {
-					FrameSubsetNode *pfsn2;
-					
-					pfsn2 = new FrameSubsetNode;
+				mTimeline.insert(it, FrameSubsetNode(it->start + offset, len, bMask));
 
-					if (!pfsn2) throw MyMemoryError();
-
-					pfsn2->start	= pfsn->start;
-					pfsn2->len		= offset;
-					pfsn2->bMask	= pfsn->bMask;
-					pfsn2->InsertBefore(pfsn);
-
-					pfsn2 = new FrameSubsetNode;
-
-					if (!pfsn2) throw MyMemoryError();
-
-					pfsn2->start	= pfsn->start + offset + len;
-					pfsn2->len		= pfsn->len - (offset + len);
-					pfsn2->bMask	= pfsn->bMask;
-					pfsn2->InsertAfter(pfsn);
-
-					pfsn->start		+= offset;
-					pfsn->len		= len;
-					pfsn->bMask		= bMask;
-				} else {
-					FrameSubsetNode *pfsn2;
-					
-					pfsn2 = new FrameSubsetNode;
-
-					if (!pfsn2) throw MyMemoryError();
-
-					pfsn2->start	= pfsn->start + len;
-					pfsn2->len		= pfsn->len - len;
-					pfsn2->bMask	= pfsn->bMask;
-					pfsn->len		= len;
-					pfsn->bMask		= bMask;
-					pfsn2->InsertAfter(pfsn);
-				}
+				it->start += (offset+len);
+				it->len -= (offset+len);
 			}
 
 			break;
 		} else {
 			if (offset) {
-				if (pfsn->bMask != bMask) {
-					FrameSubsetNode *pfsn2 = new FrameSubsetNode;
+				if (it->bMask != bMask) {
+					mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
 
-					if (!pfsn2) throw MyMemoryError();
-
-					pfsn2->start	= pfsn->start + offset;
-					pfsn2->len		= pfsn->len - offset;
-					pfsn2->bMask	= bMask;
-					pfsn->len		= offset;
-					pfsn2->InsertAfter(pfsn);
+					it->start += offset;
+					it->len -= offset;
+					it->bMask = bMask;
 				}
 
-				len -= pfsn->len;
+				len -= it->len;
+				offset = 0;
 			} else {
-				pfsn->bMask = bMask;
-				len -= pfsn->len;
-				deleteNode(pfsn);
+				it->bMask = bMask;
+				len -= it->len;
+				it = mTimeline.erase(it);
 			}
 		}
 
-		offset = 0;
-		pfsn = pfsn_t;
-	}
-
-#ifdef _DEBUG
-	{
-		FrameSubsetNode *pfsn;
-
-		_RPT0(0,"Subset dump:\n");
-
-		if (pfsn = getFirstFrame())
-			do {
-				_RPT2(0,"\tNode: start %ld, len %ld\n", pfsn->start, pfsn->len);
-			} while(pfsn = getNextFrame(pfsn));
-
-	}
-#endif
-}
-
-void FrameSubset::clipToRange(int start, int len) {
-	FrameSubsetNode *pfsn = list.AtHead(), *pfsn_t;
-
-	if (!pfsn)
-		return;
-
-	while(pfsn_t = pfsn->NextFromHead()) {
-		if (pfsn->start >= start) {
-			if (pfsn->start > start+len)
-				deleteNode(pfsn);
-			else {
-				if (pfsn->start+pfsn->len > start+len)
-					pfsn->len = start+len - pfsn->start;
-
-				if (pfsn->start < start) {
-					pfsn->len += pfsn->start - start;
-					pfsn->start = start;
-				}
-			}
-		} else if (pfsn->start + pfsn->len >= start) {
-			pfsn->len += pfsn->start - start;
-			pfsn->start = start;
-		} else
-			deleteNode(pfsn);
-
-		pfsn = pfsn_t;
+		++it;
 	}
 }
 
 void FrameSubset::clip(int start, int len) {
 	deleteRange(0, start);
-	deleteRange(len, 0x7FFFFFFF);
+	deleteRange(len, 0x7FFFFFFF - len);
 }
 
 void FrameSubset::offset(int off) {
-	FrameSubsetNode *pfsn = list.AtHead(), *pfsn_t;
+	for(iterator it = begin(), itEnd = end(); it != itEnd; ++it)
+		it->start += off;
+}
 
-	if (!pfsn)
+void FrameSubset::assign(const FrameSubset& src, int start, int len) {
+	mTimeline = src.mTimeline;
+	clip(start, len);
+}
+
+void FrameSubset::insert(iterator it, const FrameSubset& src) {
+	if (src.empty())
 		return;
 
-	while(pfsn_t = pfsn->NextFromHead()) {
-		pfsn->start += off;
+	const_iterator itSrc(src.begin()), itSrcEnd(src.end());
 
-		pfsn = pfsn_t;
+	iterator itFront = mTimeline.insert(it, *itSrc);
+	iterator itBack = itFront;
+	++itSrc;
+
+	for(; itSrc != itSrcEnd; ++itSrc)
+		itBack = mTimeline.insert(++itBack, *itSrc);
+
+	// check for merge in front
+
+	if (itFront != begin()) {
+		iterator itBeforeFront = itFront;
+		--itBeforeFront;
+		if (itBeforeFront->bMask == itFront->bMask && itBeforeFront->start + itBeforeFront->len == itFront->start) {
+			itFront->len += itBeforeFront->len;
+			itFront->start -= itBeforeFront->len;
+			mTimeline.erase(itBeforeFront);
+		}
 	}
+
+	// check for merge in back
+	iterator itAfterBack = itBack;
+	++itAfterBack;
+	if (itAfterBack != end()) {
+		if (itBack->bMask != itAfterBack->bMask && itBack->start + itBack->len == itAfterBack->start) {
+			itBack->len += itAfterBack->len;
+			mTimeline.erase(itAfterBack);
+		}
+	}
+
+	dump();
 }
 
-void FrameSubset::deleteNode(FrameSubsetNode *pfsn) {
-	pfsn->Remove();
-	delete pfsn;
+void FrameSubset::insert(int insertionPoint, const FrameSubset& src) {
+	int offset;
+	FrameSubset::iterator it;
+	
+	if (insertionPoint < 0)
+		it = begin();
+	else
+		it = findNode(offset, insertionPoint);
 
+	if (it != end() && offset > 0) {
+		mTimeline.insert(it, FrameSubsetNode(it->start, offset, it->bMask));
+		it->start += offset;
+		it->len -= offset;
+	}
+
+	insert(it, src);
 }
 
-FrameSubsetNode *FrameSubset::findNode(int& poffset, int iDstFrame) {
-	FrameSubsetNode *pfsn_next, *pfsn = list.AtHead();
-
+FrameSubset::iterator FrameSubset::findNode(int& poffset, int iDstFrame) {
 	if (iDstFrame<0)
-		return NULL;
+		return end();
 
-	while((pfsn_next = pfsn->NextFromHead()) && iDstFrame>=0) {
-		if (iDstFrame < pfsn->len) {
+	for(iterator it(begin()), itEnd(end()); it!=itEnd && iDstFrame >= 0; ++it) {
+		if (iDstFrame < it->len) {
 			poffset = iDstFrame;
-			return pfsn;
+			return it;
 		}
 
-		iDstFrame -= pfsn->len;
-
-		pfsn = pfsn_next;
+		iDstFrame -= it->len;
 	}
 
-	return NULL;
+	poffset = 0;
+	return end();
+}
+
+void FrameSubset::dump() {
+#ifdef _DEBUG
+	VDDEBUG("Frame subset dump:\n");
+	for(const_iterator it(begin()), itEnd(end()); it!=itEnd; ++it) {
+		VDDEBUG("   start: %6d   len:%4d   bMask:%d\n", it->start, it->len, it->bMask);
+	}
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -499,16 +386,16 @@ class FrameSubsetClassVerifier {
 public:
 	void check(FrameSubset& fs, int test, ...) {
 		va_list val;
-		FrameSubsetNode *pfsn = fs.getFirstFrame();
+		FrameSubset::iterator pfsn = fs.begin();
 
 		va_start(val, test);
-		while(pfsn) {
+		while(pfsn != fs.end()) {
 			if (pfsn->start != va_arg(val, int))
 				throw MyError("fail test #%dA", test);
 			if (pfsn->len != va_arg(val, int))
 				throw MyError("fail test #%dB", test);
 
-			pfsn = fs.getNextFrame(pfsn);
+			++pfsn;
 		}
 		if (va_arg(val, int) != -1)
 			throw MyError("fail test #%dC", test);
