@@ -192,7 +192,7 @@ mb_loop:
 	mov	[esp + p_dctptrarray+ 4],ebx
 
 	mov	eax,[esp+l_quantptr+4]
-	add	eax,63*8
+	add	eax,64*8
 	mov	[esp + l_quantlimit+4], eax
 
 	pop	eax
@@ -230,13 +230,12 @@ DC_decode_loop_term:
 	add	ebx,ecx
 	jz	no_DC_difference
 
-	mov	eax,ebx
+	mov	ecx,ebx
 
 	;sign-extend DC difference
 
 	cmp	ebp,80000000h
 	sbb	ebx,ebx
-	mov	cl,al
 
 	mov	eax,ebx
 	shld	eax,ebp,cl
@@ -312,7 +311,7 @@ AC_decode_coefficient:
 
 	cmp	ecx,63*2
 	jne	AC_loop
-	jmp	AC_exit
+	jmp	AC_exit_clamp
 
 	ALIGN16
 AC_reload:
@@ -371,9 +370,9 @@ AC_do_long:
 
 	shr	eax,4			;eax = skip
 
-	lea	ebx,[ebx+eax*8]
+	lea	ebx,[ebx+eax*8+8]
 	cmp	ebx,[esp + l_quantlimit]
-	jae	AC_exit
+	jae	AC_exit_clamp
 
 	cmp	ebp,80000000h
 	sbb	eax,eax
@@ -385,16 +384,17 @@ AC_do_long:
 	add	dl,cl
 
 	mov	edi,[esp + l_dctptr]
-	mov	ecx,[ebx+4]
-	imul	eax,[ebx]
+	mov	ecx,[ebx-4]
+	imul	eax,[ebx-8]
 	mov	[edi + ecx],ax
-	add	ebx,8
 
 	;end of AC coefficient loop
 
 	cmp	ecx,63*2
 	jne	AC_loop
-	jmp	AC_exit
+AC_exit_clamp:
+	mov	ebx,63
+	jmp	AC_exit_nocomputelast
 
 	ALIGN16
 AC_exit:
@@ -403,6 +403,7 @@ AC_exit:
 
 	and	ebx,63		;just in case
 
+AC_exit_nocomputelast:
 	;all done with this macroblock!
 
 	mov	eax,[esp + p_blocks]

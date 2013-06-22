@@ -1,14 +1,44 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 13720 (Version 1.4.9):
+   [features added]
+   * Capture: Added wraparound workaround for 2^31 us (35m)
+     wrap as well as 2^32 us (71m) timing wrap.
+   * Added more verbose error messages.
+   * Added some PIII instructions to crash disassembler.
+
+   [bug fixes]
+   * Fixed scanline alignment and invalid format errors in
+     image source reader.
+   * Fixed Ctrl-W shortcut for "Close AVI."
+   * Fixed title bar not being correct after exiting capture
+     mode [regression in 1.4.8].
+   * Temporal smoother now initializes its window from the
+     first frame it receives rather than to black.
+   * IVTC no longer drops last 8 or so frames when no audio
+     is present.
+   * Fixed deadlock on MP3 audio codecs that report a codec
+     delay of 0 (LameACM).
+   * Fixed sfence-related crash and decompression errors
+     in MJPEG decoder [regression in 1.4.8].
+   * Fast recompress no longer aligns frame subsets to
+     keyframe boundaries.
+   * "Scan for bad frames" would sometimes not mark the
+     correct frames.
+   * Scene scan sometimes wouldn't display the frame it had
+     stopped on.
+   * Fixed line of green pixels on right side of frame when
+     using 3x3 TV filter.
+
 Build 13719 (Version 1.4.8):
    [features added]
    * Motion JPEG decoder has improved heuristics for field
      order determination, support for restart markers, and
-	 supports 4:4:4 as well as 4:2:0 and standard 4:2:2.
+     supports 4:4:4 as well as 4:2:0 and standard 4:2:2.
    * An error is now thrown if a third-party driver leaves
      the CPU in MMX state when returning, which previously
-	 could cause floating-point code to malfunction.
+     could cause floating-point code to malfunction.
    * Added workaround for ASUS ASV1 driver crashing under
      Windows NT platforms.
    * MPEG-1 files with small amounts of junk at the
@@ -22,7 +52,7 @@ Build 13719 (Version 1.4.8):
      YUY2.
    * AVI handler can now recover OpenDML segments from
      truncated files and has more aggressive recovery
-	 methods.
+     methods.
    * AVI handler recognizes 'bt20' as a format that does not
      have delta frames.
    * Added workaround for audio sync problems caused by
@@ -44,7 +74,7 @@ Build 13719 (Version 1.4.8):
      generated script exceeds 16K.
    * Fixed codec issues caused by script system not handling
      long strings produced from codec data.  Thanks to the
-	 DivX 4 team for reporting this one.
+     DivX 4 team for reporting this one.
    * IVTC no longer causes bitrates for CBR video codecs
      to drop by 20%.
    * Fixed output files being generated with type 'ivas'
@@ -59,7 +89,7 @@ Build 13719 (Version 1.4.8):
      it's supposed to.
    * The audio compression dialog was passing bad precision
      values to audio codecs and only querying for real-time
-	 compression.
+     compression.
    * Corrected crashes or errors on uncompressed video
      streams that have a zero or incorrect biSizeImage field.
    * Capture: Multisegment and info panel settings saved
@@ -656,7 +686,7 @@ Build 7538 (Version 1.0a):
      files to PLUGINS\ in the VirtualDub program directory.
    * Added MPEG motion vector checking.  Hopefully this will
      solve crashes with some of those fscked up MPEGs people
-	 seem to have.
+     seem to have.
    * Finally implemented Abort button in the load progress
      boxes.
    * Implemented basic DirectDraw acceleration for output
@@ -675,8 +705,8 @@ Build 7538 (Version 1.0a):
      unloaded before being deinitialized.
    * Fixed abort-on-right flipping on during Internal capture
      when 'hit Ok' enabled.  Now, only if you have 'abort on
-	 left' enabled with that option, does it flip to
-	 abort-on-right.  (Abort-on-left catches the OK click.)
+     left' enabled with that option, does it flip to
+     abort-on-right.  (Abort-on-left catches the OK click.)
    * Most-recently-used list on menu now updates correctly
      when file loads fail.
    * ASF frame timing algorithm changed again; this one
@@ -1010,7 +1040,7 @@ Build 1482 (Public Release 1):
    * AVI length write fixed
      (NOTE: If you have files which give errors at the end
             of processing, trim the end back and turn on
-	    Audio clipping.)
+        Audio clipping.)
    * Audio interleaving fixed.
    * Preview mode audio playback no longer cut off.
    * Miscellaneous bug fixes.

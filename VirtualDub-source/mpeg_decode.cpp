@@ -2813,7 +2813,7 @@ MPEGDecoderVerifier::MPEGDecoderVerifier() {
 			_RPT2(0,"full/half: average error %.4lf, %.4lf\n", (double)err[0][1][0] / (16.0*16.0*256.0), (double)err[1][1][0] / (16.0*16.0*64.0));
 			_RPT2(0,"half/half: average error %.4lf, %.4lf\n", (double)err[0][1][1] / (16.0*16.0*256.0), (double)err[1][1][1] / (16.0*16.0*64.0));
 
-			CPUEnableExtensions(MMX_enabled ? ISSE_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX);
+			CPUEnableExtensions(CPUGetAvailableExtensions() & (MMX_enabled ? ISSE_enabled ? 0 : CPUF_SUPPORTS_MMX|CPUF_SUPPORTS_INTEGER_SSE : CPUF_SUPPORTS_MMX));
 		} while(MMX_enabled || ISSE_enabled);
 	} catch(const MyError& e) {
 		e.post(NULL, "MPEG-1 decoder verification error");

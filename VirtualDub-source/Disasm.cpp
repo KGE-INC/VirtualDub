@@ -114,6 +114,7 @@ enum {
 	ADDR_GS,
 
 	ADDR_1,
+	ADDR_3,
 	ADDR_Ap,	// direct address
 	ADDR_Cd,	// reg of mod r/m selects control register
 	ADDR_Dd,	// reg of mod r/m selects debug register
@@ -291,7 +292,6 @@ static const char op_imul		[]="imul";
 static const char op_inc		[]="inc";
 static const char op_in			[]="in";
 static const char op_int		[]="int";
-static const char op_int3		[]="int\t3";
 static const char op_into		[]="into";
 static const char op_insb		[]="insb";
 static const char op_insd		[]="insd";
@@ -336,7 +336,7 @@ static const char op_lodsb		[]="lodsb";
 static const char op_lodsd		[]="lodsd";
 static const char op_loop		[]="loop";
 static const char op_loope		[]="loope";
-static const char op_loopn		[]="loopn";
+static const char op_loopne		[]="loopne";
 static const char op_lsl		[]="lsl";
 static const char op_lss		[]="lss";
 static const char op_ltr		[]="ltr";
@@ -484,6 +484,7 @@ static const char op_pminub		[]="pminub";
 static const char op_pmulhuw	[]="pmulhuw";
 static const char op_psadbw		[]="psadbw";
 static const char op_pshufw		[]="pshufw";
+static const char op_movntq		[]="movntq";
 
 // AMD 3DNow! instructions
 
@@ -719,7 +720,7 @@ static const struct x86op singops[]={
 /* c9 */	op_leave,		0,
 /* ca */	op_retf,		ADDR_Iw,
 /* cb */	op_retf,		0,
-/* cc */	op_int3,		0,
+/* cc */	op_int,			ADDR_3,
 /* cd */	op_int,			ADDR_Ib,
 /* ce */	op_into,		0,
 /* cf */	op_iret,		0,
@@ -739,7 +740,7 @@ static const struct x86op singops[]={
 /* dd */	NULL,			GROUP(18),
 /* de */	NULL,			GROUP(19),
 /* df */	NULL,			GROUP(20),
-/* e0 */	op_loopn,		ADDR_Jb,
+/* e0 */	op_loopne,		ADDR_Jb,
 /* e1 */	op_loope,		ADDR_Jb,
 /* e2 */	op_loop,		ADDR_Jb,
 /* e3 */	op_jecxz,		ADDR_Jb,
@@ -798,7 +799,7 @@ static const struct x86op prefix0f_ops[]={
 /* 15 */	NULL,			0,
 /* 16 */	NULL,			0,
 /* 17 */	NULL,			0,
-/* 18 */	NULL,			0,
+/* 18 */	NULL,			GROUP(23),
 /* 19 */	NULL,			0,
 /* 1a */	NULL,			0,
 /* 1b */	NULL,			0,
@@ -948,7 +949,7 @@ static const struct x86op prefix0f_ops[]={
 /* ab */	op_bts,			ADDR2(ADDR_Ev,ADDR_Gv),
 /* ac */	op_shrd,		ADDR3(ADDR_Ev,ADDR_Gv,ADDR_Ib),
 /* ad */	op_shrd,		ADDR3(ADDR_Ev,ADDR_Gv,ADDR_CL),
-/* ae */	NULL,			0,
+/* ae */	NULL,			GROUP(22),			// lfence/mfence/sfence
 /* af */	op_imul,		ADDR2(ADDR_Gv,ADDR_Ev),
 /* b0 */	op_cmpxchg,		ADDR2(ADDR_Eb,ADDR_Gb),
 /* b1 */	op_cmpxchg,		ADDR2(ADDR_Ev,ADDR_Gv),
@@ -1005,7 +1006,7 @@ static const struct x86op prefix0f_ops[]={
 /* e4 */	op_pmulhuw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* e5 */	op_pmulhw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* e6 */	NULL,			0,
-/* e7 */	NULL,			0,
+/* e7 */	op_movntq,		ADDR2(ADDR_Qq,ADDR_Pq),
 /* e8 */	op_psubsb,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* e9 */	op_psubsw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* ea */	op_pminsw,		ADDR2(ADDR_Pq,ADDR_Qq),
@@ -1263,6 +1264,28 @@ static const struct x86op group_3DNow_PREFETCH[]={
 /* 111 */	NULL,				0,
 };
 
+static const struct x86op group_fence[]={
+/* 000 */	NULL,				0,
+/* 001 */	NULL,				0,
+/* 010 */	NULL,				0,
+/* 011 */	NULL,				0,
+/* 100 */	NULL,				0,
+/* 101 */	"lfence",			0,
+/* 110 */	"mfence",			0,
+/* 111 */	"sfence",			0,
+};
+
+static const struct x86op group_prefetch[]={
+/* 000 */	"prefetchnta",		ADDR_M,
+/* 001 */	"prefetcht0",		ADDR_M,
+/* 010 */	"prefetcht1",		ADDR_M,
+/* 011 */	"prefetcht2",		ADDR_M,
+/* 100 */	NULL,				0,
+/* 101 */	NULL,				0,
+/* 110 */	NULL,				0,
+/* 111 */	NULL,				0,
+};
+
 static const struct x86op * const groups[]={
 	group1_ops,
 	group2_ops,
@@ -1285,6 +1308,8 @@ static const struct x86op * const groups[]={
 	group_fpDE,
 	group_fpDF,
 	group_3DNow_PREFETCH,
+	group_fence,
+	group_prefetch,
 };
 
 static const char fp_format_st0_stn[]="st(0),st(%d)";
@@ -1396,6 +1421,7 @@ static const char * const reg8[]={ "al","cl","dl","bl","ah","ch","dh","bh" };
 static const char * const reg16[]={ "ax","cx","dx","bx","sp","bp","si","di" };
 static const char * const reg32[]={ "eax","ecx","edx","ebx","esp","ebp","esi","edi" };
 static const char * const regmmx[]={ "mm0","mm1","mm2","mm3","mm4","mm5","mm6","mm7" };
+static const char * const regxmm[]={ "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7" };
 static const char * const sregs[]={ "es", "cs", "ss", "ds", "fs", "gs" };
 
 static char *strtack(char *d, const char *s) {
@@ -1406,24 +1432,9 @@ static char *strtack(char *d, const char *s) {
 	return d;
 }
 
-static long regmask_modify, regmask_access, regmask_address;
 static int pipe_force;
 static char *ptr_insert;
 static const char *ptr_insert_type;
-
-#define PIPE_UV (0)
-#define PIPE_U (1)
-#define PIPE_V (2)
-
-#define PIPE_RESET_UV() (pipe_force = PIPE_UV)
-#define PIPE_FORCE_U() (pipe_force = PIPE_U)
-#define PIPE_FORCE_V() (pipe_force = PIPE_V)
-
-#define DATA_ACCESS_32(r) (regmask_access |= 0x1L<<(r))
-#define DATA_ACCESS_FP(r) (regmask_access |= 0x100L<<(r))
-#define DATA_ACCESS_MMX DATA_ACCESS_FP
-#define DATA_ACCESS_SEGMENT(r) (regmask_access |= 0x10000L<<(r))
-#define ADDRESS_ACCESS_32(r) (regmask_address |= 0x1L<<(r))
 
 static void disasm_modrm(unsigned char *&sptr, BOOL big, char *&buf, BOOL is_32_op, BOOL is_32_addr, const char *ptrtype, const char *segoverride) {
 	const char *const *regs = big==2 ? regmmx : big ? is_32_op ? reg32 : reg16 : reg8;
@@ -1452,7 +1463,6 @@ static void disasm_modrm(unsigned char *&sptr, BOOL big, char *&buf, BOOL is_32_
 
 			if ((sib&7) != 5 || modrm>=0x40) {
 				strcpy(buf, reg32[sib&7]);
-				ADDRESS_ACCESS_32(sib&7);
 				buf+=3;
 				needplus = true;
 			}
@@ -1465,7 +1475,6 @@ static void disasm_modrm(unsigned char *&sptr, BOOL big, char *&buf, BOOL is_32_
 					*buf++ = '+';
 
 				strcpy(buf, reg32[(sib>>3)&7]);
-				ADDRESS_ACCESS_32((sib>>3)&7);
 				buf+=3;
 
 				if (sib>=0x40) {
@@ -1497,23 +1506,19 @@ static void disasm_modrm(unsigned char *&sptr, BOOL big, char *&buf, BOOL is_32_
 				sptr+=4;
 			} else {
 				sprintf(buf,"[%s]",reg32[modrm&7]);
-				ADDRESS_ACCESS_32(modrm&7);
 			}
 			break;
 		case 0x40:
 			ptr_insert = buf;
 			sprintf(buf,"[%s%+d]",reg32[modrm&7], (signed char)*sptr++);
-			ADDRESS_ACCESS_32(modrm&7);
 			break;
 		case 0x80:
 			ptr_insert = buf;
 			sprintf(buf,"[%s+0%lxh]",reg32[modrm&7],*(long *)sptr);
-			ADDRESS_ACCESS_32(modrm&7);
 			sptr += 4;
 			break;
 		case 0xc0:
 			strcpy(buf,regs[modrm&7]);
-			DATA_ACCESS_32(modrm&7);
 			break;
 		}
 	}
@@ -1530,10 +1535,10 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 	char *large_ptr_type, *ptr_ptr_type;
 	long flags;
 	const char *const *regx;
+	char *const buf0 = buf;
 
 	unsigned char esave;
 
-	regmask_modify = regmask_access = regmask_address=0;
 	ptr_insert = NULL;
 
 	for(;;) {
@@ -1591,9 +1596,12 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 		} else if (GETGROUP(flags)) {
 			opdata = &groups[GETGROUP(flags)-1][(*sptr>>3)&7];
 			flags |= opdata->flags;
-		}
 
-		PIPE_FORCE_U();		// Pentium: all prefixes except 0fh force u-pipe
+			// special handling for prefetch to skip modrm byte
+
+			if (!(flags & ~GROUP_MASK))
+				++sptr;
+		}
 
 		switch(GETTYPE(flags)) {
 		case TYPE_cs_override:	segment_override = "cs:"; continue;
@@ -1610,14 +1618,15 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 			*buf++=' ';
 			continue;
 		default:
-			PIPE_RESET_UV();
 			break;
 		}
 
 		if (opdata->name) {
 			strcpy(buf, opdata->name);
-			while(*buf) ++buf;
-		}
+		} else
+			strcpy(buf, "???");
+
+		while(*buf) ++buf;
 
 		if (!is_32_op) switch(GETMOD(opdata->flags)) {
 			case MOD16_take_d_off:
@@ -1645,20 +1654,28 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 
 			if (amode==ADDR_Idep) amode=op&1 ? ADDR_Iv : ADDR_Ib;
 
-			if (i) *buf++=','; else *buf++='\t';
+			if (i)
+				*buf++=',';
+			else {
+				while(buf < buf0+9)
+					*buf++ = ' ';
+
+				*buf++=' ';
+			}
 
 			switch(amode) {
-			case ADDR_AL:	buf=strtack(buf,reg8[0]);			DATA_ACCESS_32(0);			break;
-			case ADDR_CL:	buf=strtack(buf,reg8[1]);			DATA_ACCESS_32(1);			break;
-			case ADDR_DX:	buf=strtack(buf,reg16[2]);			DATA_ACCESS_32(2);			break;
-			case ADDR_EAX:	buf=strtack(buf,regx[0]);			DATA_ACCESS_32(0);			break;
-			case ADDR_CS:	buf=strtack(buf,"cs");				DATA_ACCESS_SEGMENT(1);		break;
-			case ADDR_DS:	buf=strtack(buf,"ds");				DATA_ACCESS_SEGMENT(3);		break;
-			case ADDR_SS:	buf=strtack(buf,"ss");				DATA_ACCESS_SEGMENT(2);		break;
-			case ADDR_ES:	buf=strtack(buf,"es");				DATA_ACCESS_SEGMENT(0);		break;
-			case ADDR_FS:	buf=strtack(buf,"fs");				DATA_ACCESS_SEGMENT(4);		break;
-			case ADDR_GS:	buf=strtack(buf,"gs");				DATA_ACCESS_SEGMENT(5);		break;
+			case ADDR_AL:	buf=strtack(buf,reg8[0]);			break;
+			case ADDR_CL:	buf=strtack(buf,reg8[1]);			break;
+			case ADDR_DX:	buf=strtack(buf,reg16[2]);			break;
+			case ADDR_EAX:	buf=strtack(buf,regx[0]);			break;
+			case ADDR_CS:	buf=strtack(buf,"cs");				break;
+			case ADDR_DS:	buf=strtack(buf,"ds");				break;
+			case ADDR_SS:	buf=strtack(buf,"ss");				break;
+			case ADDR_ES:	buf=strtack(buf,"es");				break;
+			case ADDR_FS:	buf=strtack(buf,"fs");				break;
+			case ADDR_GS:	buf=strtack(buf,"gs");				break;
 			case ADDR_1:	*buf++='1'; break;
+			case ADDR_3:	*buf++='3'; break;
 			case ADDR_Ap:
 				if (is_32_addr) {
 					buf+=sprintf(buf,"%04x:%08lx",*(unsigned short *)(sptr+4), *(unsigned long *)sptr);
@@ -1684,8 +1701,8 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 							break;
 			case ADDR_Ex:	disasm_modrm(sptr, TRUE, buf, TRUE, is_32_addr, "tbyte ptr ", segment_override);
 							break;
-			case ADDR_Gb:	buf=strtack(buf,reg8[(esave>>3)&7]);	DATA_ACCESS_32((esave>>3)&7);	break;
-			case ADDR_Gv:	buf=strtack(buf,regx[(esave>>3)&7]);	DATA_ACCESS_32((esave>>3)&7);	break;
+			case ADDR_Gb:	buf=strtack(buf,reg8[(esave>>3)&7]);	break;
+			case ADDR_Gv:	buf=strtack(buf,regx[(esave>>3)&7]);	break;
 			case ADDR_Ib:	buf+=sprintf(buf,"%02x",*sptr++);
 							break;
 			case ADDR_Ib2:	buf+=sprintf(buf,"%d",sptr[1]);
@@ -1742,27 +1759,22 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 							}
 							break;
 			case ADDR_Pd:	// fall through
-			case ADDR_Pq:	buf[0]='m'; buf[1]='m'; buf[2]='0'+((esave>>3)&7); buf += 3; DATA_ACCESS_MMX((esave>>3)&7);
+			case ADDR_Pq:	buf[0]='m'; buf[1]='m'; buf[2]='0'+((esave>>3)&7); buf += 3;
 				break;
-			case ADDR_Pq2:	buf[0]='m'; buf[1]='m'; buf[2]='0'+(*sptr&7); buf += 3; DATA_ACCESS_MMX(*sptr&7);
+			case ADDR_Pq2:	buf[0]='m'; buf[1]='m'; buf[2]='0'+(*sptr&7); buf += 3;
 				break;
 			case ADDR_Qd:	// fall through
 			case ADDR_Qq:	disasm_modrm(sptr, 2, buf, is_32_op, is_32_addr, "", segment_override);
 							break;
-			case ADDR_Rd:	buf = strtack(buf, reg32[*sptr++ & 7]);				DATA_ACCESS_32(sptr[-1]&7);		break;
-			case ADDR_Sw:	buf = strtack(buf, sregs[(esave>>3)&7]); break;
-			case ADDR_Xb:	buf+=sprintf(buf,"%sbyte ptr [%s]",segment_override,regx[6]);			DATA_ACCESS_32(6);	break;
-			case ADDR_Xv:	buf+=sprintf(buf,"%s%s [%s]",segment_override,large_ptr_type,regx[6]);	DATA_ACCESS_32(6);	break;
-			case ADDR_Yb:	buf+=sprintf(buf,"%sbyte ptr [%s]",segment_override,regx[7]);			DATA_ACCESS_32(7);	break;
-			case ADDR_Yv:	buf+=sprintf(buf,"%s%s [%s]",segment_override,large_ptr_type,regx[7]);	DATA_ACCESS_32(7);	break;
+			case ADDR_Rd:	buf = strtack(buf, reg32[*sptr++ & 7]);			break;
+			case ADDR_Sw:	buf = strtack(buf, sregs[(esave>>3)&7]);		break;
+			case ADDR_Xb:	buf+=sprintf(buf,"%sbyte ptr [%s]",segment_override,regx[6]);			break;
+			case ADDR_Xv:	buf+=sprintf(buf,"%s%s [%s]",segment_override,large_ptr_type,regx[6]);	break;
+			case ADDR_Yb:	buf+=sprintf(buf,"%sbyte ptr [%s]",segment_override,regx[7]);			break;
+			case ADDR_Yv:	buf+=sprintf(buf,"%s%s [%s]",segment_override,large_ptr_type,regx[7]);	break;
 
-			case ADDR_reg8:	buf = strtack(buf, reg8[op&7]);						DATA_ACCESS_32(op&7);			break;
-			case ADDR_reg32: buf = strtack(buf, regx[op&7]);					DATA_ACCESS_32(op&7);			break;
-			}
-
-			if (!i) {
-				regmask_modify = regmask_access;
-				regmask_access = 0;
+			case ADDR_reg8:	buf = strtack(buf, reg8[op&7]);		break;
+			case ADDR_reg32: buf = strtack(buf, regx[op&7]);	break;
 			}
 
 		}
@@ -1770,11 +1782,6 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 		break;
 	}
 	buf[0]=0;
-
-	if (!((regmask_modify|regmask_access) & 0xff) && ptr_insert) {
-		memmove(ptr_insert + strlen(ptr_insert_type), ptr_insert, strlen(ptr_insert)+1);
-		memcpy(ptr_insert, ptr_insert_type, strlen(ptr_insert_type));
-	}
 
 	return sptr;
 }
@@ -1788,10 +1795,7 @@ static unsigned char *disasm_inst(unsigned char *sptr, unsigned char *sbase, cha
 void CodeDisassemblyWindow::parse() {
 	unsigned char *ip = (unsigned char *)code, *ip_start;
 	unsigned char *ipend = ip + length;
-	lbent *ipd = lbents, *ipd_last = NULL;
-	long regmask_last_clock_modify = 0;
-	long regmask_last_inst_modify = 0;
-	long penalty_flags;
+	lbent *ipd = lbents;
 	int	cnt=0;
 
 	if (!ipd) {
@@ -1804,79 +1808,13 @@ void CodeDisassemblyWindow::parse() {
 
 		ip = disasm_inst(ip, (unsigned char *)code, buf, TRUE);
 
-		// penalties?
-
-		penalty_flags = 0;
-
-		if (regmask_last_clock_modify & regmask_address)
-			penalty_flags |= PENALTY_AGI;
-
-		if (ipd_last && pipe_force!=PIPE_U) {
-			if (regmask_last_inst_modify & regmask_address)
-				penalty_flags |= PENALTY_AGI | PENALTY_RAW;
-
-			if (regmask_last_inst_modify & regmask_access)
-				penalty_flags |= PENALTY_RAW;
-
-			if (regmask_last_inst_modify & regmask_modify)
-				penalty_flags |= PENALTY_WAW;
-		}
-
 		// pairable in V-pipe?
 
-		if (ipd_last && pipe_force!=PIPE_U && !(penalty_flags & (PENALTY_RAW | PENALTY_WAW))) {
-
-			ipd_last->ip_v = ip_start;
-			ipd_last->flags |= penalty_flags;
-			ipd_last = NULL;
-
-			regmask_last_clock_modify |= regmask_modify;
-
-		} else {
-
-			// pairable in U-pipe?
-
-			if (pipe_force != PIPE_V) {
-				ipd->ip_u = ip_start;
-				ipd->ip_v = NULL;
-				ipd_last = ipd;
-				regmask_last_inst_modify = regmask_modify;
-			} else {
-				ipd->ip_u = NULL;
-				ipd->ip_v = ip_start;
-				ipd_last = NULL;
-				regmask_last_inst_modify = 0;
-			}
-			ipd->flags = penalty_flags;
-
-			++ipd;
-
-			regmask_last_clock_modify = regmask_modify;
-		}
+		ipd->ip = ip_start;
+		++ipd;
 	}
 
 	num_ents = ipd-lbents;
-}
-
-char *CodeDisassemblyWindow::penalty_string(long f) {
-	char *bp = buf;
-
-	if (f & PENALTY_RAW)
-		bp = strtack(bp, "RAW");
-
-	if (f & PENALTY_WAW) {
-		if (bp>buf) bp=strtack(bp,", ");
-		bp = strtack(bp, "WAW");
-	}
-
-	if (f & PENALTY_AGI) {
-		if (bp>buf) bp=strtack(bp,", ");
-		bp = strtack(bp, "AGI");
-	}
-
-	*bp=0;
-
-	return buf;
 }
 
 BOOL CodeDisassemblyWindow::post(HWND hWnd) {
@@ -1891,16 +1829,11 @@ long CodeDisassemblyWindow::getInstruction(char *buf, long val) {
 	lbent *ipd;
 	unsigned char *ip;
 
-	if ((val>>1) >= num_ents)
+	if (val >= num_ents)
 		return 0;
 
-	ipd = &lbents[val>>1];
-	ip = val&1 ? ipd->ip_v : ipd->ip_u;
-
-	if (!ip) {
-		val |= 1;
-		ip = ipd->ip_v;
-	}
+	ipd = &lbents[val];
+	ip = ipd->ip;
 
 	wsprintf(buf, "%08lx: ", ip - (unsigned char *)code + (unsigned char *)abase);
 	disasm_inst(ip, (unsigned char *)rbase, buf+10, TRUE);
@@ -1909,9 +1842,6 @@ long CodeDisassemblyWindow::getInstruction(char *buf, long val) {
 		strcat(buf, "      <-- FAULT");
 
 	++val;
-
-	if (val&1 && !ipd->ip_v)
-		++val;
 
 	return val;
 }
@@ -1925,15 +1855,13 @@ void CodeDisassemblyWindow::DoInitListbox(HWND hwndList) {
 
 BOOL CodeDisassemblyWindow::DoMeasureItem(LPARAM lParam) {
 	if (((LPMEASUREITEMSTRUCT)lParam)->CtlType != ODT_LISTBOX) return FALSE;
-	((LPMEASUREITEMSTRUCT)lParam)->itemHeight = 23;
+	((LPMEASUREITEMSTRUCT)lParam)->itemHeight = 11;
 	return TRUE;
 }
 
 BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 	LPDRAWITEMSTRUCT lpdis = (LPDRAWITEMSTRUCT)lParam;
 	lbent *ipd;
-	HBRUSH hbrBack;
-	HPEN hPenOld;
 
 	if (lpdis->CtlType != ODT_LISTBOX) return FALSE;
 	if (!(lpdis->itemAction & ODA_DRAWENTIRE)) return FALSE;
@@ -1942,36 +1870,20 @@ BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 //	ipd = (lbent *)lpdis->itemData;
 	ipd = &lbents[lpdis->itemID];
 
-	if (hbrBack = CreateSolidBrush(RGB(0xe8,0xff,0xe8))) {
-		RECT r;
+	if (ipd->ip) {
+		SetBkMode(lpdis->hDC, TRANSPARENT);
+		SetTextColor(lpdis->hDC, RGB(0x00,0x00,0x00));
 
-		r.left = lpdis->rcItem.left;
-		r.top = lpdis->rcItem.top+11;
-		r.right = lpdis->rcItem.right;
-		r.bottom = lpdis->rcItem.bottom;
+		if (ipd->ip - (unsigned char *)code + (unsigned char *)abase == pFault) {
+			HBRUSH hbr = CreateSolidBrush(RGB(0xff,0xa0,0x60));
+			if (hbr) {
+				FillRect(lpdis->hDC, &lpdis->rcItem, hbr);
+				DeleteObject(hbr);
+			}
+		}
 
-		FillRect(lpdis->hDC, &r, hbrBack);
-		DeleteObject(hbrBack);
-	}
-	if (hbrBack = CreateSolidBrush(RGB(0xe8,0xe8,0xff))) {
-		RECT r;
-
-		r.left = lpdis->rcItem.left;
-		r.top = lpdis->rcItem.top;
-		r.right = lpdis->rcItem.right;
-		r.bottom = lpdis->rcItem.top+11;
-
-		FillRect(lpdis->hDC, &r, hbrBack);
-
-		DeleteObject(hbrBack);
-	}
-
-	SetBkMode(lpdis->hDC, TRANSPARENT);
-	SetTextColor(lpdis->hDC, RGB(0x00,0x00,0x00));
-
-	if (ipd->ip_u) {
-		wsprintf(buf, "%08lx: ", ipd->ip_u - (unsigned char *)code + (unsigned char *)abase);
-		disasm_inst(ipd->ip_u, (unsigned char *)rbase, buf+10, TRUE);
+		wsprintf(buf, "%08lx: ", ipd->ip - (unsigned char *)code + (unsigned char *)abase);
+		disasm_inst(ipd->ip, (unsigned char *)rbase, buf+10, TRUE);
 
 		TabbedTextOut(	lpdis->hDC,
 						lpdis->rcItem.left,
@@ -1984,37 +1896,6 @@ BOOL CodeDisassemblyWindow::DoDrawItem(LPARAM lParam) {
 						);
 
 	}
-
-	if (ipd->flags) {
-		penalty_string(ipd->flags);				
-		TextOut(lpdis->hDC,
-				(lpdis->rcItem.left+3*lpdis->rcItem.right)/4,
-				lpdis->rcItem.top+2,
-				buf,
-				strlen(buf)
-				);
-	}
-//			SetTextColor(lpdis->hDC, RGB(0x80,0x00,0x00));
-
-	if (ipd->ip_v) {
-		wsprintf(buf, "%08lx: ", ipd->ip_v - (unsigned char *)code + (unsigned char *)abase);
-		disasm_inst(ipd->ip_v, (unsigned char *)rbase, buf+10, TRUE);
-
-		TabbedTextOut(	lpdis->hDC,
-						lpdis->rcItem.left,
-						lpdis->rcItem.top+11,
-						buf,
-						strlen(buf),
-						0,
-						NULL,
-						0
-						);
-	}
-
-	hPenOld = (HPEN)SelectObject(lpdis->hDC, GetStockObject(BLACK_PEN));
-	MoveToEx(lpdis->hDC, lpdis->rcItem.left, lpdis->rcItem.bottom-1, NULL);
-	LineTo(lpdis->hDC, lpdis->rcItem.right, lpdis->rcItem.bottom-1);
-	DeleteObject(SelectObject(lpdis->hDC, hPenOld));
 
 	return TRUE;
 }

@@ -891,7 +891,7 @@ static const char *CrashGetModuleBaseName(HMODULE hmod, char *pszBaseName) {
 	return pszBaseName;
 }
 
-static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTERS *const pExc, bool fExtra) {
+static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTERS *const pExc) {
 	const CONTEXT *const pContext = (const CONTEXT *)pExc->ContextRecord;
 	HANDLE hprMe = GetCurrentProcess();
 	char *lpAddr = (char *)pContext->Esp;
@@ -969,7 +969,7 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 	// Walk up the stack.  Hopefully it wasn't fscked.
 
 	if (*(long *)debug_data != version_num) {
-		Report(hwnd, hFile, "Wrong VIRTUALDUB.DBG file (build %d)", *(long *)debug_data);
+		Report(hwnd, hFile, "Incorrect VIRTUALDUB.DBG file (build %d) for this version of VirtualDub -- call stack unavailable.", *(long *)debug_data);
 	} else {
 		data = pContext->Eip;
 		do {
@@ -979,7 +979,6 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 			char buf[7];
 			int len;
 			MEMORY_BASIC_INFORMATION meminfo;
-			long parm1=0, parm2=0;
 
 			VirtualQuery((void *)data, &meminfo, sizeof meminfo);
 			
@@ -995,11 +994,6 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 					--len;
 
 				fValid &= IsValidCall(buf+7, len);
-
-				if (fValid) {
-					ReadProcessMemory(GetCurrentProcess(), (void *)(lpAddr+0), &parm1, 4, NULL);
-					ReadProcessMemory(GetCurrentProcess(), (void *)(lpAddr+4), &parm2, 4, NULL);
-				}
 			}
 			
 
@@ -1038,11 +1032,11 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 						const char *pExportName = CrashLookupExport((HMODULE)mi.base, data, fnbase);
 
 						if (pExportName)
-							Report(hwnd, hFile, "%08lx: %s!%s(%lx, %lx) [%08lx+%lx+%lx]", data, mi.name, pExportName, parm1, parm2, mi.base, fnbase, (data-mi.base-fnbase));
+							Report(hwnd, hFile, "%08lx: %s!%s [%08lx+%lx+%lx]", data, mi.name, pExportName, mi.base, fnbase, (data-mi.base-fnbase));
 						else
-							Report(hwnd, hFile, "%08lx: %s!%08lx(%lx, %lx)", data, mi.name, data - mi.base, parm1, parm2);
+							Report(hwnd, hFile, "%08lx: %s!%08lx", data, mi.name, data - mi.base);
 					} else
-						Report(hwnd, hFile, "%08lx: %08lx(%lx, %lx)", data, data, parm1, parm2);
+						Report(hwnd, hFile, "%08lx: %08lx", data, data);
 
 					--limit;
 				} else {
@@ -1091,40 +1085,10 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 								fn_name = "(special)";
 						}
 
-						Report(hwnd, hFile, "%08lx: %s%s%s%s(%lx, %lx)", data, class_name?class_name:"", class_name?"::":"", prefix, fn_name, parm1, parm2);
+						Report(hwnd, hFile, "%08lx: %s%s%s%s", data, class_name?class_name:"", class_name?"::":"", prefix, fn_name);
 						--limit;
 					} else fValid = false;
 				}
-			}
-
-			if (fValid && fExtra) {
-				char c;
-				char buf[80];
-				char *dst = (char *)parm1;
-				int j;
-
-				// xxxxxxxx: xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx ................
-
-				for(j=0; j<2; j++) {
-					wsprintf(buf, "%08lx:%65c", dst, ' ');
-
-					for(i=0; i<16; i++)
-						if (ReadProcessMemory(GetCurrentProcess(), dst+i, &c, 1, NULL)) {
-							wsprintf(buf+10+3*i, "%02x", (int)(unsigned char)c);
-							buf[12+3*i]=' ';
-							buf[58+i]=isprint(c)?c:'.';
-						} else {
-							buf[10+3*i]='?';
-							buf[11+3*i]='?';
-							buf[58+i]='?';
-						}
-
-					Report(hwnd, hFile, "\t%s", buf);
-
-					dst = (char *)parm2;
-				}
-				Report(hwnd, hFile, "");
-
 			}
 
 			lpAddr += 4;
@@ -1139,7 +1103,7 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 	return true;
 }
 
-void DoSave(const EXCEPTION_POINTERS *pExc, bool fSaveExtra) {
+void DoSave(const EXCEPTION_POINTERS *pExc) {
 	HANDLE hFile;
 	char szModName2[MAX_PATH];
 	char tbuf[256];
@@ -1190,7 +1154,7 @@ void DoSave(const EXCEPTION_POINTERS *pExc, bool fSaveExtra) {
 
 	Report(NULL, hFile, "");
 
-	ReportCrashCallStack(NULL, hFile, pExc, fSaveExtra);
+	ReportCrashCallStack(NULL, hFile, pExc);
 
 	Report(NULL, hFile, "\r\n-- End of report");
 
@@ -1230,7 +1194,7 @@ BOOL APIENTRY CrashDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 				SendMessage(hwndList3, WM_SETFONT, SendMessage(hwndList1, WM_GETFONT, 0, 0), MAKELPARAM(TRUE, 0));
 
 				ReportCrashData(hwndList2, hwndReason, NULL, pExc);
-				s_bHaveCallstack = ReportCrashCallStack(hwndList3, NULL, pExc, false);
+				s_bHaveCallstack = ReportCrashCallStack(hwndList3, NULL, pExc);
 
 			}
 			return TRUE;
@@ -1240,7 +1204,6 @@ BOOL APIENTRY CrashDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 			case IDCANCEL: case IDOK:
 				EndDialog(hDlg, FALSE);
 				return TRUE;
-			case IDC_SAVEPLUS:
 			case IDC_SAVE2:
 				if (!s_bHaveCallstack)
 					if (IDOK != MessageBox(hDlg,
@@ -1250,7 +1213,7 @@ BOOL APIENTRY CrashDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 						"VirtualDub warning", MB_OK|MB_ICONEXCLAMATION))
 						return TRUE;
 
-				DoSave(s_pExc, LOWORD(wParam)==IDC_SAVEPLUS);
+				DoSave(s_pExc);
 				return TRUE;
 			case IDC_HELP2:
 				DoHelp(hDlg);

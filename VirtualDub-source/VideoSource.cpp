@@ -235,11 +235,11 @@ long VideoSource::streamGetNextRequiredFrame(BOOL *is_preroll) {
 int VideoSource::streamGetRequiredCount(long *pSize) {
 
 	if (pSize) {
-		long current = stream_current_frame;
+		long current = stream_current_frame + 1;
 		long size = 0, onesize;
 		long samp;
 
-		while(current < stream_desired_frame) {
+		while(current <= stream_desired_frame) {
 			if (AVIERR_OK == read(current, 1, NULL, NULL, &onesize, &samp))
 				size += onesize;
 
@@ -1453,7 +1453,7 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 			VDCHECKPOINT;
 
 			if (ICERR_OK != err)
-				throw MyICError(use_ICDecompressEx ? "VideoSourceAVI [ICDecompressEx]" : "VideoSourceAVI [ICDecompress]", err);
+				throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", frame_num, (int)err);
 
 
 			if (IsMMXState()) {
@@ -1612,7 +1612,7 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 									getDecompressedFormat(),
 									lpvBuffer)))
 
-						throw MyICError("VideoSourceAVI", err);
+						throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", lFrameNum, (int)err);
 					VDCHECKPOINT;
 				}
 			} else if (mdec) {

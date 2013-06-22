@@ -637,7 +637,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.8 - Copyright (C) 1998-2001 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.9 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1050,18 +1050,18 @@ BEGIN
     LTEXT           "",IDC_COLOR,7,18,40,14,SS_SUNKEN
 END
 
-IDD_PROGRESS DIALOG DISCARDABLE  0, 0, 186, 58
-STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
-    WS_SYSMENU
-CAPTION "Sailor Moon vs Fushigi Yuugi"
+IDD_PROGRESS DIALOG DISCARDABLE  0, 0, 187, 58
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+CAPTION "Rebooting Yggrasil...."
 FONT 8, "MS Sans Serif"
 BEGIN
-    PUSHBUTTON      "Abort",IDCANCEL,129,37,50,14
-    LTEXT           "Miaka sounds a lot like Chibi Usa, you know.",
-                    IDC_STATIC_MESSAGE,7,7,172,8
+    PUSHBUTTON      "Abort",IDCANCEL,130,37,50,14
+    LTEXT           "Calibrating delay loop.... 577 BogoMIPS",
+                    IDC_STATIC_MESSAGE,7,7,173,8
     CONTROL         "Progress1",IDC_PROGRESS,"msctls_progress32",PBS_SMOOTH,
-                    7,20,172,11
-    LTEXT           "",IDC_CURRENT_VALUE,7,35,114,8
+                    7,20,173,11
+    LTEXT           "",IDC_CURRENT_VALUE,7,40,114,8
 END
 
 IDD_PREFERENCES DIALOGEX 0, 0, 200, 151
@@ -1711,7 +1711,6 @@ BEGIN
     LISTBOX         IDC_CALL_STACK,7,139,230,38,LBS_NOINTEGRALHEIGHT | 
                     WS_VSCROLL | WS_TABSTOP
     LTEXT           "Estimated call stack",IDC_STATIC,7,128,64,8
-    PUSHBUTTON      "Save+",IDC_SAVEPLUS,239,180,50,14
 END
 
 IDD_DUBBING_PERF DIALOG DISCARDABLE  0, 0, 172, 102
@@ -2077,15 +2076,15 @@ BEGIN
                     WS_TABSTOP,4,160,173,10
 END
 
-IDD_LICENSE DIALOG DISCARDABLE  0, 0, 420, 271
+IDD_LICENSE DIALOG DISCARDABLE  0, 0, 420, 250
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "GNU General Public License"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDCANCEL,187,250,50,14
+    DEFPUSHBUTTON   "OK",IDCANCEL,187,229,50,14
     LTEXT           "Please read the license agreement below in its entirely.  It describes the only conditions under which you may redistribute and modify VirtualDub, and that this program comes with no warranty.",
                     IDC_STATIC,7,7,406,19
-    EDITTEXT        IDC_LICENSE,7,29,406,214,ES_MULTILINE | ES_AUTOVSCROLL | 
+    EDITTEXT        IDC_LICENSE,7,29,406,194,ES_MULTILINE | ES_AUTOVSCROLL | 
                     ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
 END
 
@@ -2521,7 +2520,7 @@ BEGIN
     IDD_PROGRESS, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 179
+        RIGHTMARGIN, 180
         TOPMARGIN, 7
         BOTTOMMARGIN, 51
     END
@@ -2976,7 +2975,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 413
         TOPMARGIN, 7
-        BOTTOMMARGIN, 264
+        BOTTOMMARGIN, 243
     END
 
     IDD_FILTER_BOX, DIALOG
@@ -3093,7 +3092,7 @@ BEGIN
     VK_RIGHT,       ID_VIDEO_SEEK_END,      VIRTKEY, CONTROL, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, ALT, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_KEYNEXT,  VIRTKEY, SHIFT, NOINVERT
-    "W",            ID_FILE_CLOSE,          VIRTKEY, CONTROL, NOINVERT
+    "W",            ID_FILE_CLOSEAVI,       VIRTKEY, CONTROL, NOINVERT
     "[",            ID_VIDEO_SEEK_SELSTART, ASCII,  NOINVERT
     "]",            ID_VIDEO_SEEK_SELEND,   ASCII,  NOINVERT
     "{",            ID_VIDEO_SEEK_PREVDROP, ASCII,  NOINVERT
@@ -3136,8 +3135,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,8,0
- PRODUCTVERSION 1,4,8,0
+ FILEVERSION 1,4,9,0
+ PRODUCTVERSION 1,4,9,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3155,14 +3154,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.8\0"
+            VALUE "FileVersion", "1.4.9\0"
             VALUE "InternalName", "VirtualDub\0"
-            VALUE "LegalCopyright", "Copyright © 1999-2001 by Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.8\0"
+            VALUE "ProductVersion", "1.4.9\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3198,14 +3197,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4.6\0"
+            VALUE "FileVersion", "1.4.9\0"
             VALUE "InternalName", "VirtualDub\0"
-            VALUE "LegalCopyright", "Copyright © 1999, 2000 by Avery Lee, All Rights Reserved.\0"
+            VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.6\0"
+            VALUE "ProductVersion", "1.4.9\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -3248,17 +3247,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.8 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.8"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.8 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.8 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.8"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.9 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.9"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.9 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.9 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.9"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.8 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.8 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.8 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.8 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.8 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.9 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.9 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.9 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.9 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.9 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

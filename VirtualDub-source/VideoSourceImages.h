@@ -37,9 +37,7 @@ public:
 	BOOL isFrameBufferValid()				{ return mCachedFrame >= 0; }
 	bool isStreaming()						{ return false; }
 
-	void streamBegin(bool fRealTime)		{}
 	void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num);
-	void streamEnd()						{}
 
 	void *getFrame(LONG frameNum);
 

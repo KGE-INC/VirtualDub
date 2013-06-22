@@ -630,7 +630,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 				++lMaskedFrames;
 
 			if (bValid ^ bLastValid) {
-				if (bValid)
+				if (!bValid)
 					lRangeFirst = lFrame;
 				else
 					pSubset->setRange(lRangeFirst, lFrame - lRangeFirst, true);

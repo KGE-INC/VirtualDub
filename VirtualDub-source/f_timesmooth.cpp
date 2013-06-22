@@ -215,6 +215,25 @@ static int timesmooth_run(const FilterActivation *fa, const FilterFunctions *ff)
 	int offset1 = sfd->framecount;
 	int offset2 = ((sfd->framecount+KERNEL-(KERNEL/2))%KERNEL);
 
+	if (!sfd->framecount) {
+		PixDim w = fa->src.w, x;
+		PixDim y = fa->src.h;
+		Pixel32 *srcdst = fa->src.data;
+		Pixel32 *accum = sfd->accum;
+
+		do {
+			x = w;
+
+			do {
+				accum[0] = accum[1] = accum[2] = accum[3] =
+					accum[4] = accum[5] = accum[6] = *srcdst++;				
+			} while(--x);
+
+			srcdst = (Pixel32 *)((char *)srcdst + fa->src.modulo);
+
+		} while(--y);
+	}
+
 	if (MMX_enabled)
 		asm_timesmooth_run_MMX(fa->src.data, sfd->accum, fa->src.w, fa->src.h, fa->src.modulo, KERNEL, offset1*4, offset2*4, sfd->strength+32);
 	else {

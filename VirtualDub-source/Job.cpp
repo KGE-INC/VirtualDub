@@ -850,7 +850,7 @@ static void Job_GetDispInfo(NMLVDISPINFO *nldi) {
 static void JobProcessDirectory(HWND hDlg) {
 	char szSourceDir[MAX_PATH];
 	char szDestDir[MAX_PATH];
-	char *lpszFileName;
+	char *lpszFileName = NULL;
 	BROWSEINFO bi;
 	LPITEMIDLIST pidlBrowse;
 	LPMALLOC pMalloc;
@@ -872,16 +872,24 @@ static void JobProcessDirectory(HWND hDlg) {
 					fAbort = true;
 
 				pMalloc->Free(pidlBrowse);
+			} else
+				fAbort = true;
+
+
+			if (!fAbort) {
+				bi.lpszTitle		= "Select destination directory";
+
+				if (pidlBrowse = SHBrowseForFolder(&bi)) {
+					if (SHGetPathFromIDList(pidlBrowse, lpszFileName))
+						strcpy(szDestDir, lpszFileName);
+					else
+						fAbort = true;
+
+					pMalloc->Free(pidlBrowse);
+				} else
+					fAbort = true;
 			}
 
-			bi.lpszTitle		= "Select destination directory";
-
-			if (!fAbort && (pidlBrowse = SHBrowseForFolder(&bi))) {
-				if (SHGetPathFromIDList(pidlBrowse, lpszFileName))
-					strcpy(szDestDir, lpszFileName);
-
-				pMalloc->Free(pidlBrowse);
-			}
 			pMalloc->Free(lpszFileName);
 		}
 	}

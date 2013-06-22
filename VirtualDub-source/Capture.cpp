@@ -3909,17 +3909,27 @@ static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd
 	// overflows past 2^32.  This results in a wraparound from 4294967ms (1h 11m 34s) to 0ms.
 	// We must detect this and add 4294967ms to the count.  This will be off by 1ms every three
 	// times this occurs, but 1ms of error every 3.5 hours is not that big of a deal.
+	//
+	// Some Matrox drivers wrap at 2^31 too....
 
 	lTimeStamp = lpVHdr->dwTimeCaptured;
 
-	if (lTimeStamp < icd->lLastVideoUncorrectedMS && lTimeStamp < 10000 && icd->lLastVideoUncorrectedMS >= 4285000) {
+	if (lTimeStamp < icd->lLastVideoUncorrectedMS && lTimeStamp < 10000 && icd->lLastVideoUncorrectedMS >= 2138000) {
 
 		// Perform sanity checks.  We should be within ten seconds of the last frame.
 
-		long lNewTimeStamp = lTimeStamp + 4294967;
+		long lNewTimeStamp;
+		long bias;
+		
+		if (icd->lLastVideoUncorrectedMS >= 4285000)
+			bias = 4294967;	// 71 minute bug
+		else
+			bias = 2147484;	// 35 minute bug
+
+		lNewTimeStamp = lTimeStamp + bias;
 
 		if (lNewTimeStamp < icd->lLastVideoUncorrectedMS + 5000 && lNewTimeStamp >= icd->lLastVideoUncorrectedMS - 5000) {
-			icd->lVideoMSBias += 4294967;
+			icd->lVideoMSBias += bias;
 
 			icd->fWarnVideoCaptureTiming1 = true;
 		}
@@ -4796,7 +4806,7 @@ _RPT0(0,"Capture has stopped.\n");
 		if (!QueryConfigDword(g_szCapture, g_szWarnTiming1, &dw) || !dw) {
 			if (IDYES != MessageBox(hWnd,
 					"VirtualDub has detected, and compensated for, a possible bug in your video capture drivers that is causing "
-					"its timing information to wrap around at 71 minutes.  Your capture should be okay, but you may want "
+					"its timing information to wrap around at 35 or 71 minutes.  Your capture should be okay, but you may want "
 					"to try upgrading your video capture drivers anyway, since this can cause video capture to halt in "
 					"other applications.\n"
 					"\n"

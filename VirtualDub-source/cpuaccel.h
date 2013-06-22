@@ -28,6 +28,7 @@
 #define CPUF_SUPPORTS_3DNOW_EXT		(0x00000080L)
 
 long CPUCheckForExtensions();
+long CPUGetAvailableExtensions();
 long CPUEnableExtensions(long lEnableFlags);
 long CPUGetEnabledExtensions();
 

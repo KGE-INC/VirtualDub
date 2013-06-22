@@ -61,7 +61,7 @@ static int blur_stop(FilterActivation *fa, const FilterFunctions *ff) {
 	FilterBlurData *pfbd = (FilterBlurData *)fa->filter_data;
 
 	delete pfbd->effect;
-	pfbd->effect;
+	pfbd->effect = NULL;
 
 	return 0;
 }

@@ -1508,13 +1508,13 @@ void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *
 	fUseVideoCompression = !fPreview && opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic;
 //	fUseVideoCompression = opt->video.mode>DubVideoOptions::M_NONE && compVars && (compVars->dwFlags & ICMF_COMPVARS_VALID) && compVars->hic;
 
-	// check the mode; if we're using DirectStreamCopy or Fast mode, we'll need to
+	// check the mode; if we're using DirectStreamCopy mode, we'll need to
 	// align the subset to keyframe boundaries!
 
 	if (vSrc && inputSubset) {
 		inputSubsetActive = inputSubset;
 
-		if (inputSubset && opt->video.mode < DubVideoOptions::M_SLOWREPACK) {
+		if (opt->video.mode == DubVideoOptions::M_NONE) {
 			FrameSubsetNode *pfsn;
 
 			if (!(inputSubsetActive = inputSubsetAlloc = new FrameSubset()))
@@ -2421,7 +2421,9 @@ void Dubber::MainAddVideoFrame() {
 
 		// If we're using an input subset, translate the frame.
 
-		if (inputSubsetActive)
+		if (vInfo.cur_src >= vInfo.end_src)
+			lFrame = -1;		// force null read
+		else if (inputSubsetActive)
 			lFrame = inputSubsetActive->lookupFrame(vInfo.cur_src) + vSrc->lSampleFirst;
 
 		if (lFrame >= vSrc->lSampleFirst && lFrame < vSrc->lSampleLast) {
@@ -2443,7 +2445,8 @@ void Dubber::MainAddVideoFrame() {
 						fRead = TRUE;
 					}
 
-					if (!fRead) ReadNullVideoFrame(lFrame);
+					if (!fRead)
+						ReadNullVideoFrame(lFrame);
 				}
 			} else {
 
@@ -2622,7 +2625,7 @@ void Dubber::MainThread() {
 					}
 
 				if (vSrc && AVIout->videoOut)
-					while(!fAbort && vInfo.cur_src < vInfo.end_src) { 
+					while(!fAbort && vInfo.cur_src < vInfo.end_src+nVideoLag) { 
 						BOOL fRead = FALSE;
 						long lFrame = vInfo.cur_src;
 

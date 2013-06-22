@@ -150,6 +150,10 @@ long CPUEnableExtensions(long lEnableFlags) {
 	return g_lCPUExtensionsEnabled;
 }
 
+long CPUGetAvailableExtensions() {
+	return g_lCPUExtensionsAvailable;
+}
+
 long CPUGetEnabledExtensions() {
 	return g_lCPUExtensionsEnabled;
 }

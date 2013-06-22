@@ -26,17 +26,27 @@ VideoSourceImages::VideoSourceImages(const char *pszBaseFormat)
 void VideoSourceImages::_construct(const char *pszBaseFormat) {
 	// Attempt to discern path format.
 	//
-	// First, find the start of the filename.  Then find the
-	// last digit until the end or a period is found.
+	// First, find the start of the filename.  Then skip
+	// backwards until the first period is found, then to the
+	// beginning of the first number.
 
 	const char *pszFileBase = SplitPathName(pszBaseFormat);
 	const char *s = pszFileBase;
 	const char *pszLastDigit = NULL;
 
-	while(*s && *s!='.') {
-		if (isdigit((unsigned char)*s))
-			pszLastDigit = s;
+	while(*s)
 		++s;
+
+	while(s > pszFileBase && s[-1] != '.')
+		--s;
+
+	while(s > pszFileBase) {
+		--s;
+
+		if (isdigit((unsigned char)*s)) {
+			pszLastDigit = s;
+			break;
+		}
 	}
 
 	if (!pszLastDigit)
@@ -223,6 +233,7 @@ bool VideoSourceImages::setDecompressedFormat(int depth) {
 		invalidateFrameBuffer();
 
 		mvbFrameBuffer.init(getFrameBuffer(), bmihDecompressedFormat->biWidth, bmihDecompressedFormat->biHeight, depth);
+		mvbFrameBuffer.AlignTo4();
 
 		return true;
 	}
@@ -240,6 +251,11 @@ bool VideoSourceImages::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
 
 void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
 	const BITMAPFILEHEADER *pbfh = (const BITMAPFILEHEADER *)inputBuffer;
+
+	// We may get a zero-byte frame if we already have the image.
+
+	if (!data_len)
+		return getFrameBuffer();
 
 	// Check file header.
 

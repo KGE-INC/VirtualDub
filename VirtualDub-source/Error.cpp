@@ -80,30 +80,50 @@ void MyError::TransferFrom(MyError& err) {
 	err.buf = NULL;
 }
 
-MyICError::MyICError(const char *s, DWORD icErr) {
-	const char *err = "(Unknown)";
+/////////////////////////////////////////////////////////////////////////////
+
+static const char *GetVCMErrorString(DWORD icErr) {
+	const char *err = "(unknown)";
+
+	// Does anyone have the *real* text strings for this?
 
 	switch(icErr) {
-	case ICERR_OK:				err = "no error"; break;
-	case ICERR_UNSUPPORTED:		err = "unsupported"; break;
-	case ICERR_BADFORMAT:		err = "bad format"; break;
-	case ICERR_MEMORY:			err = "out of memory"; break;
-	case ICERR_INTERNAL:		err = "internal error"; break;
-	case ICERR_BADFLAGS:		err = "bad flags"; break;
-	case ICERR_BADPARAM:		err = "bad parameters"; break;
-	case ICERR_BADSIZE:			err = "bad data size"; break;
-	case ICERR_BADHANDLE:		err = "bad handle"; break;
-	case ICERR_CANTUPDATE:		err = "can't update"; break;
-	case ICERR_ABORT:			err = "aborted by user"; break;
-	case ICERR_ERROR:			err = "unspecified error"; break;
-	case ICERR_BADBITDEPTH:		err = "can't handle bit depth"; break;
-	case ICERR_BADIMAGESIZE:	err = "bad image size"; break;
+	case ICERR_OK:				err = "The operation completed successfully."; break;		// sorry, couldn't resist....
+	case ICERR_UNSUPPORTED:		err = "The operation is not supported."; break;
+	case ICERR_BADFORMAT:		err = "The source image format is not acceptable."; break;
+	case ICERR_MEMORY:			err = "Not enough memory."; break;
+	case ICERR_INTERNAL:		err = "An internal error occurred."; break;
+	case ICERR_BADFLAGS:		err = "An invalid flag was specified."; break;
+	case ICERR_BADPARAM:		err = "An invalid parameter was specified."; break;
+	case ICERR_BADSIZE:			err = "An invalid size was specified."; break;
+	case ICERR_BADHANDLE:		err = "The handle is invalid."; break;
+	case ICERR_CANTUPDATE:		err = "Cannot update the destination image."; break;
+	case ICERR_ABORT:			err = "The operation was aborted by the user."; break;
+	case ICERR_ERROR:			err = "An unknown error occurred (may be corrupt data)."; break;
+	case ICERR_BADBITDEPTH:		err = "The source color depth is not acceptable."; break;
+	case ICERR_BADIMAGESIZE:	err = "The source image size is not acceptable."; break;
 	default:
-		if (icErr <= ICERR_CUSTOM) err = "<custom error>";
+		if (icErr <= ICERR_CUSTOM) err = "A codec-specific error occurred.";
 		break;
 	}
 
-	setf("%s error: %s (%ld)", s, err, icErr);
+	return err;
+}
+
+MyICError::MyICError(const char *s, DWORD icErr) {
+	setf("%s error: %s (error code %ld)", s, GetVCMErrorString(icErr), icErr);
+}
+
+MyICError::MyICError(DWORD icErr, const char *format, ...) throw() {
+	char tmpbuf[1024];
+
+	va_list val;
+	va_start(val, format);
+	tmpbuf[sizeof tmpbuf - 1] = 0;
+	_vsnprintf(tmpbuf, sizeof tmpbuf, format, val);
+	va_end(val);
+
+	setf(tmpbuf, GetVCMErrorString(icErr));
 }
 
 MyMMIOError::MyMMIOError(const char *s, DWORD mmioerr) {

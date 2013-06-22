@@ -333,6 +333,20 @@ enum {
 //
 ///////////////////////////////////////////////////////////////////////////
 
+
+static bool mmxtest() {
+	bool supportsMMX = true;
+
+	__try {
+		__asm pand mm0,mm0
+		__asm emms
+	} __except(1) {
+		supportsMMX = false;
+	}
+
+	return supportsMMX;
+}
+
 MJPEGDecoder::MJPEGDecoder(int w, int h)
 	: width(w)
 	, height(h)
@@ -370,6 +384,12 @@ MJPEGDecoder::MJPEGDecoder(int w, int h)
 
 		_RPT2(0,"Code length for table %d: %04x\n", tbl, base);
 	}
+
+	// instruction test
+
+	if (!mmxtest())
+		throw MyError("VirtualDub cannot decode your Motion JPEG video because your CPU does not support "
+				"MMX instructions. Please install a third-party codec with non-MMX support.");
 }
 
 MJPEGDecoder::~MJPEGDecoder() {
@@ -615,6 +635,10 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mChromaMode = kYCrCb444;
 			mcu_width	= (raw_width + 7)/8;
 			mcu_height	= (raw_height + 7)/8;
+
+			if (raw_width & 7)
+				throw	"VirtualDub cannot decode 4:4:4 Motion JPEG frames with image widths that are not "
+						"multiples of 8.  Please install a third-party Motion-JPEG codec.";
 			break;
 		}
 
@@ -624,6 +648,11 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mChromaMode = kYCrCb422;
 			mcu_width	= (raw_width + 15)/16;
 			mcu_height	= (raw_height + 7)/8;
+
+			if (raw_width & 15)
+				throw	"VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths that are not "
+						"multiples of 16.  Please install a third-party Motion-JPEG codec.";
+
 			break;
 		}
 
@@ -633,6 +662,11 @@ byte *MJPEGDecoder::decodeFrameInfo(byte *psrc) {
 			mChromaMode = kYCrCb420;
 			mcu_width	= (raw_width + 15)/16;
 			mcu_height	= (raw_height + 15)/16;
+
+			if ((raw_width|raw_height) & 15)
+				throw	"VirtualDub cannot decode 4:2:2 Motion JPEG frames with image widths or heights that are not "
+						"multiples of 16.  Please install a third-party Motion-JPEG codec.";
+
 			break;
 		}
 
@@ -945,8 +979,13 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 		}
 #endif
 
+		if (ISSE_enabled)
+			for(int i=0; i<mcu_length*mcus; i++) {
+				IDCT_isse(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
+			}
+		else
 			for(int i=0; i<mcu_length*mcus; i++)
-				IDCT_isse(dct_coeff[i], dct_coeff[i], 16, 2, blocks[i].ac_last);
+				IDCT_mmx(dct_coeff_ptrs[i], dct_coeff_ptrs[i], 16, 2, blocks[i].ac_last);
 
 #ifdef PROFILE
 		__asm {
@@ -957,7 +996,7 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 			sbb dword ptr cvt_cycles+4,edx
 		}
 #endif
-			for(i=0; i<mcus; i++) {
+			for(int i=0; i<mcus; i++) {
 				short *dct_coeffs = (short *)&dct_coeff[mcu_length * i];
 
 				pColorConverter(pixptr, dct_coeffs, dst_pitch, lines);
@@ -989,7 +1028,9 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 		// This ain't good, folks
 
 		__asm emms
-		__asm sfence
+
+		if (ISSE_enabled)
+			__asm sfence
 
 		throw MyError("MJPEG decoder: Access violation caught.  Source may be corrupted.");
 	}

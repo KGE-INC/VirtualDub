@@ -376,7 +376,8 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 
 		if (s_nLastFrame != pos || !inputVideoAVI->isFrameBufferValid() || (bShowOutput && !filters.isRunning())) {
 
-			s_nLastFrame = pos;
+			if (bDispInput)
+				s_nLastFrame = pos;
 
 			dcf = inputVideoAVI->getDecompressedFormat();
 
@@ -451,7 +452,19 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 
 	} catch(const MyError& e) {
 //		e.post(hWnd, szError);
-		guiSetStatus("Error fetching frame %ld: %s", 255, pos, e.gets());
+		const char *src = e.gets();
+		char *dst = strdup(src);
+
+		if (!dst)
+			guiSetStatus("%s", 255, e.gets());
+		else {
+			for(char *t = dst; *t; ++t)
+				if (*t == '\n')
+					*t = ' ';
+
+			guiSetStatus("%s", 255, dst);
+			free(dst);
+		}
 		SceneShuttleStop();
 	}
 }
@@ -732,6 +745,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 			Capture(hWnd);
 			MenuMRUListUpdate(hWnd);
 			RecalcFrameSizes();		// necessary because filters can be changed in capture mode
+			SetTitleByFile(hWnd);
 			break;
 		case ID_FILE_SAVECONFIGURATION:
 			SaveConfiguration(hWnd);
@@ -1429,6 +1443,8 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 		if (!(hDCWindow = GetDC(hWnd))) return -1;
 		if (!(hDDWindow = DrawDibOpen())) return -1;
 		if (!(hDDWindow2 = DrawDibOpen())) return -1;
+
+		SetStretchBltMode(hDCWindow, STRETCH_DELETESCANS);
 
 		{
 			HWND hwndItem;

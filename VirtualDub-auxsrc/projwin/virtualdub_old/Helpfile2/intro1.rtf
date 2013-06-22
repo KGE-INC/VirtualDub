@@ -1,0 +1,117 @@
+{\rtf1\ansi \deff5\deflang1033{\fonttbl{\f5\fswiss\fcharset0\fprq2 Arial;}{\f24\fmodern\fcharset0\fprq1 Lucida Console;}}{\colortbl;\red0\green0\blue0;\red0\green0\blue255;\red0\green255\blue255;\red0\green255\blue0;
+\red255\green0\blue255;\red255\green0\blue0;\red255\green255\blue0;\red255\green255\blue255;\red0\green0\blue128;\red0\green128\blue128;\red0\green128\blue0;\red128\green0\blue128;\red128\green0\blue0;\red128\green128\blue0;\red128\green128\blue128;
+\red192\green192\blue192;}{\stylesheet{\widctlpar \f5\fs18 \snext0 Normal;}{\*\cs10 \additive Default Paragraph Font;}{\s15\widctlpar \f24\fs18 \sbasedon0\snext15 footnote text;}{\*\cs16 \additive\super \sbasedon10 footnote reference;}{
+\s17\sa120\widctlpar \b\f5\fs18 \sbasedon0\snext0 Heading;}{\s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \sbasedon19\snext0 Header (topic);}{\s19\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs18 \sbasedon0\snext19 header;}{\s20\sa120\widctlpar \b\f5\fs18 
+\sbasedon0\snext21 Glossary topic;}{\s21\sa240\widctlpar\tx360 \f5\fs18 \sbasedon0\snext20 Glossary topic text;}}{\info{\author Avery Lee}{\operator Avery Lee}{\creatim\yr1998\mo7\dy2\hr13\min43}{\revtim\yr1999\mo3\dy27\hr16\min19}{\version2}{\edmins16}
+{\nofpages6}{\nofwords1352}{\nofchars7709}{\*\company  }{\vern57431}}\widowctrl\ftnbj\aenddoc\hyphcaps0\formshade \fet0\sectd \sbknone\linex0\endnhere {\*\pnseclvl1\pnucrm\pnstart1\pnindent720\pnhang{\pntxta .}}{\*\pnseclvl2
+\pnucltr\pnstart1\pnindent720\pnhang{\pntxta .}}{\*\pnseclvl3\pndec\pnstart1\pnindent720\pnhang{\pntxta .}}{\*\pnseclvl4\pnlcltr\pnstart1\pnindent720\pnhang{\pntxta )}}{\*\pnseclvl5\pndec\pnstart1\pnindent720\pnhang{\pntxtb (}{\pntxta )}}{\*\pnseclvl6
+\pnlcltr\pnstart1\pnindent720\pnhang{\pntxtb (}{\pntxta )}}{\*\pnseclvl7\pnlcrm\pnstart1\pnindent720\pnhang{\pntxtb (}{\pntxta )}}{\*\pnseclvl8\pnlcltr\pnstart1\pnindent720\pnhang{\pntxtb (}{\pntxta )}}{\*\pnseclvl9\pnlcrm\pnstart1\pnindent720\pnhang
+{\pntxtb (}{\pntxta )}}\pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_pixelsandimages}} Pixels and images
+\par \pard\plain \widctlpar \f5\fs18 
+\par {\i Pixel} stands for {\i picture element}.  Any image (picture) on a computer is made up of a grid of pixels arranged in rows and columns:
+\par 
+\par \pard \widctlpar\tqr\tx3960 \{bmc A-lo-large.bmp\} Enlarged \tab Normal \{bmc A-lo-small.bmp\}
+\par \pard \widctlpar 
+\par Each square pixel holds a single color or shade of grey.  The number of pixels determines an image\rquote s {\i dimensions}: the above image is 16x16, because it has 16 columns and 16 rows.  How large the pixels are determines the image\rquote s {\i 
+resolution}: how finely detailed the image is.
+\par 
+\par \pard \widctlpar\tqr\tx3960 \{bmc A-hi-large.bmp\} Enlarged \tab Normal size \{bmc A-hi-small.bmp\}
+\par \pard \widctlpar 
+\par Here we have doubled the image\rquote s resolution, and the image looks better as a result.  Because the image is the same size, the image\rquote s dimensions have also been doubled to 32x32.
+\par \pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \page {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_framesandframerates}} Frames and framerates
+\par \pard\plain \widctlpar \f5\fs18 
+\par Digitally stored video consists of a series of images, or {\i frames}.  By playing a series of frames in sequence like a flipbook, we can simulate motion:
+\par 
+\par \{bmc frames.bmp\}
+\par 
+\par The speed at which successive frames are played is measured in {\i frames per second (fps)}
+.  The more frames per second, the smoother the video is; professional movies are filmed at 24 or 48 fps, and television runs at 25 or 30 fps.  Because high framerates take a {\i lot}
+ of space for all the individual frames, a lot of computer video only runs at 10 or 15 frames per second, which may look a bit jerky to some people.
+\par \pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \page {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_keyframesvsdeltaframes}} Keyframes vs. delta frames
+\par \pard\plain \widctlpar \f5\fs18 
+\par Playing a bunch of individual frames is fine, but it\rquote s a lot of trouble to keep track of all the separate frames.  For instance, take these two frames:
+\par 
+\par \{bmc delta-frame1.bmp\} \{bmc delta-frame2.bmp\}
+\par 
+\par The only difference between these two frames is that the red A moved down and to the right, and yet we have to store the whole picture for both frames -- including the blue triangle and green square which don\rquote t change.  But 
+what if we stored the frames like this:
+\par 
+\par \{bmc delta-frame1.bmp\} \{bmc delta-framediff.bmp\}
+\par 
+\par The first frame hasn\rquote t changed, but instead of storing the second frame, we make a {\i delta frame}
+ that only stores the differences between the two frames, and store the delta frame instead.  Now the second frame only takes up a tiny bit of space, because only a small part of the frame changed.  The first frame is now a {\i keyframe}
+, because it is the key to decoding the second.  When we add a third frame, we can do the same trick and store the differences between the second and third frames.
+\par 
+\par So what\rquote s the drawback to delta frames?
+\par 
+\par \{bmc keyframes.bmp\}
+\par 
+\par The drawback is that to decode a delta frame, we need to have the frame before it.  But if that frame is also a delta frame, we need to know the frame before that, and so on.  In fact, we\rquote 
+d need to go all the way to the last keyframe, and start decoding delta frames one-by-one until we got to the frame we wanted.  For instance, let\rquote s say we wanted frame 8.  Frame 8 is a delta f
+rame, so we need to decode frame 7.  Frame 7 is also a delta frame, so we need 6.  We\rquote d need to decode frames 1-6 before we could get to frame 7.  There\rquote 
+s another keyframe at frame 10, though, so if we needed frame 12, only 10 and 11 would need to be fetc
+hed.  We can reduce the problem by putting in keyframes more often, but keyframes are usually bigger, and so our video file would get bigger as well.  Most video files have keyframes every 5-30 frames.
+\par 
+\par There\rquote s another reason to watch the keyframe interval.  Delta frames aren\rquote 
+t normally stored exactly; they approximately reconstruct the original frame.  This saves a lot of space, because tiny details that take up a lot of space can be tossed.  Unfortunately, this sometimes means that the image degrades as m
+ore and more delta frames are generated, and so the longer the keyframe interval, the worse the image gets between keyframes.
+\par \pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \page {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_itallseemssobig}} It all seems so big\'85
+\par \pard\plain \widctlpar \f5\fs18 
+\par \'85and it is.  Raw, uncompressed video takes anywhere from 1-3 bytes per pixel, and so a single 320x240 frame takes from 77K to 230K of space.  16-bit uncompressed video is common and takes 2 bytes per pixel, so that\rquote 
+s a whopping 2.3 megabytes of space per {\i second}.  That\rquote s a ton of space!
+\par 
+\par There are three ways to save space.  The first is to shrink the picture.  Shrinking a video file from 320x240 to 160x120 makes it look half-size (or half-resolution) and so it doesn\rquote t look as good.  But you have half the columns {\i and}
+ half the rows, so it actually takes {\i one-fourth} the space.  Unfortunately, it also works the other way around: \lquote doubling\rquote 
+ the size to 640x480 takes four times the space.  Nowadays, any reducing video below 240x180 is usually too small to use, and 320x240 or 352x240 is the norm.  Above 320x240, video very quickly takes too much space and computing powe
+r to process.  There is no way you\rquote re going to store your full-screen 800x600 Quake II game on disk as a video file.
+\par 
+\par The second is to reduce the framerate.  There are no tricks here; half the framerate leads to half the data.  However, the more you reduce the framerate, the more quickly people notice.  People won\rquote 
+t notice if you drop half the frames in a 30fps video and make a 15fps one instead.  But they\rquote ll cry murder if you drop half the frames again and make a 7.5fps video.  You can\rquote t cleanly drop the f
+ramerate by a fraction; for instance, reducing a 15fps video to 10fps doesn\rquote 
+t work so well because you have to drop one frame out of every three, making a jerky video.  The best solution is simply to figure what framerate you want, and work at that framerate to begin with.
+\par 
+\par The third is compression.  We\rquote ll cover that next.
+\par \pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \page {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_videocompression}} Video compression
+\par \pard\plain \widctlpar \f5\fs18 
+\par You can\rquote t take raw video and throw it through ZIP or RAR.  Regular compression algorithms are {\i lossless}
+ and have to give back exactly what they packed; it would be very bad if a program file came out different than when it went in.  But lossless compression doesn\rquote t work for video; even though your eye can\rquote t tell the difference, there\rquote 
+s often a little noise or tiny details that the computer knows about.  Lossless compression algorithms usually can\rquote t pack video down to less than one-half original size.
+\par 
+\par The solution is {\i lossy compression}; figure out what the eye doesn\rquote t care about, and throw it away.  Then figure out the best way to store what\rquote s left.  Instead of one-half, we can now compress down to {\i one-tenth to one-twentieth}
+ original size.  The decompressed picture doesn\rquote t exactly match the original, but it\rquote s close enough and so much smaller than basically every video compression algorithm is lossy, including Intel Indeo, MPEG, Cinepak, Sorenson, and MJPEG.
+
+\par 
+\par There\rquote 
+s another big advantage to lossy compression: you can control how big you want the video file, by controlling how much data is thrown out.  Of course, the more you compress, the lousier the data looks.  At a certain point, more compression isn\rquote 
+t worth it, because reducing the video size by even 10% makes it look 10 times worse.  The {\i compression artifacts} that result from high levels of compression vary from algorithm to algorithm.  Some methods cause the picture to
+ get blurry, and others add edges and specks to the picture.
+\par 
+\par One quick note: sometimes you\rquote ll see MPEG advertised as getting 100:1 or similar ridiculous compression ratios.  This is complete B.S.; realistic ratios for MPEG are around 26:1, according to people who {\i created}
+ the MPEG standard.  Real 100:1 compression results in video that looks more like colored bathroom tiles.
+\par \pard\plain \s18\widctlpar\tqc\tx4320\tqr\tx8640 \f5\fs32 \page {\cs16\super #{\footnote \pard\plain \s15\widctlpar \f24\fs18 {\cs16\super #} intro1_compressionartifacts}} Compression artifacts
+\par \pard\plain \widctlpar \f5\fs18 
+\par \pard \widctlpar You\rquote ve taken a 100Mb raw video masterpiece, and packed it down into a 5Mb file using Intel Indeo or some oth
+er compression codec.  When you play it back, though, some parts are too blurry to see, and other areas have blocky edges, and large, flat gradients have stairsteps on them.  What happened?
+\par \pard \widctlpar 
+\par \pard \widctlpar The compression algorithm threw out a bit too much data.  The codec couldn\rquote 
+t store all the information about the gradients, edges, and shapes in the picture, so it started discarding parts of the picture until it could.  All of the artifacts in the compressed video are a result of this discarding.
+\par \pard \widctlpar 
+\par \pard \widctlpar {\b Blurriness}
+\par \pard \widctlpar 
+\par \pard \widctlpar Blurring 
+an image simplifies it, because sharp details become smooth shapes and curves.  As a result, when a compression algorithm is short on space, it usually tries to figure out which details in the picture are the most important and should be saved, and blurs 
+less important details.  If a particular spot in the picture frame has sharp details but doesn\rquote 
+t change for several seconds, some compression algorithms will figure that out and only encode the details once.  But if that spot moves, the algorithm might not be able to efficiently detect or store the movement, and just blurs it instead.
+\par \pard \widctlpar 
+\par \pard \widctlpar {\b Stairstepping and blockiness}
+\par \pard \widctlpar 
+\par \{bmc blocky-before.bmp\} \{bmc blocky-after.bmp\}
+\par 
+\par \pard \widctlpar What happened here?  The artifacts in the compressed image are the result of {\i tiling} or {\i blocking}; most compression algorithms split the picture into 4x4 or 8x8 pixel tiles to speed up compression.  Tile boundaries don\rquote 
+t become visible until you lower the compression quality greatly; then the compressor starts to drop so much data that adjacent tiles change very differently, resulting in a visible boundary between them.
+\par \pard \widctlpar 
+\par \pard \widctlpar 
+Stairstepping is an extreme case, where the codec discards all the data about a tile except for the average color of all the pixels in the tile, reducing any detail in the tile down to a flat block of color.  Large, flat gradients of color, like sky, tend
+ to be reduced to blocky stairsteps at high compression ratios.
+\par \pard \widctlpar 
+\par }

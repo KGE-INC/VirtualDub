@@ -23,7 +23,6 @@
 class CodeDisassemblyWindow {
 private:
 	void parse();
-	char *penalty_string(long f);
 	static BOOL CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
 
 	void *code, *rbase, *abase;
@@ -32,9 +31,7 @@ private:
 
 	class lbent {
 	public:
-		unsigned char *ip_u;
-		unsigned char *ip_v;
-		long flags;
+		unsigned char *ip;
 	} *lbents;
 	int num_ents;
 

@@ -40,6 +40,7 @@ ProgressDialog::ProgressDialog(HWND hwndParent, const char *szTitle, const char 
 	,hwndProgressBar(NULL)
 	,hwndValue(NULL)
 	,hwndDialog(NULL)
+	,mhwndParent(hwndParent)
 {
 	dwLastTime = GetTickCount();
 
@@ -76,16 +77,16 @@ void ProgressDialog::check() {
 
 	mSparseCount = mSparseInterval;
 
-	if (dwTime < dwLastTime + 100) {
+	if (dwTime < dwLastTime + 50) {
 		++mSparseInterval;
-	} else if (dwTime > dwLastTime + 200) {
+	} else if (dwTime > dwLastTime + 150) {
 		if (mSparseInterval>1)
 			--mSparseInterval;
 	}
 
 	dwLastTime = dwTime;
 
-	while(PeekMessage(&msg, hwndDialog, 0, 0, PM_REMOVE)) {
+	while(PeekMessage(&msg, mhwndParent ? NULL : hwndDialog, 0, 0, PM_REMOVE)) {
 		if (!IsWindow(hwndDialog) || !IsDialogMessage(hwndDialog, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -122,9 +123,20 @@ BOOL CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wParam
 
 			thisPtr->hwndDialog = hDlg;
 
+			if (thisPtr->mhwndParent) {
+				thisPtr->mbPreviouslyEnabled = !!IsWindowEnabled(thisPtr->mhwndParent);
+				EnableWindow(thisPtr->mhwndParent, FALSE);
+			}
+
 			SetTimer(hDlg, 1, 500, NULL);
 
 			break;
+
+		case WM_DESTROY:
+			if (thisPtr->mhwndParent)
+				EnableWindow(thisPtr->mhwndParent, thisPtr->mbPreviouslyEnabled);
+
+			return FALSE;
 
 		case WM_TIMER:
 			newval2 = MulDiv(thisPtr->newval, 16384, thisPtr->maxval);

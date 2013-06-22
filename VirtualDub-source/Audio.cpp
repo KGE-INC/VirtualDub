@@ -1525,24 +1525,29 @@ void AudioCompressor::CompensateForMP3() {
 
 	if (GetFormat()->wFormatTag == WAVE_FORMAT_MPEGLAYER3) {
 		long lSamplesToRead = ((MPEGLAYER3WAVEFORMAT *)GetFormat())->nCodecDelay;
-		long ltActualBytes, ltActualSamples;
-		int nBlockAlign = source->GetFormat()->nBlockAlign;
 
-		do {
-			long tc;
+		// Note: LameACM does not have a codec delay!
 
-			tc = lSamplesToRead;
-			if (tc > INPUT_BUFFER_SIZE / nBlockAlign)
-				tc = INPUT_BUFFER_SIZE / nBlockAlign;
+		if (lSamplesToRead) {
+			long ltActualBytes, ltActualSamples;
+			int nBlockAlign = source->GetFormat()->nBlockAlign;
 
-			ltActualSamples = source->Read((char *)inputBuffer, tc,
-						&ltActualBytes);
+			do {
+				long tc;
 
-			lSamplesToRead -= ltActualSamples;
-		} while(lSamplesToRead>0 && ltActualBytes);
+				tc = lSamplesToRead;
+				if (tc > INPUT_BUFFER_SIZE / nBlockAlign)
+					tc = INPUT_BUFFER_SIZE / nBlockAlign;
 
-		if (!ltActualBytes || source->isEnd())
-			fStreamEnded = TRUE;
+				ltActualSamples = source->Read((char *)inputBuffer, tc,
+							&ltActualBytes);
+
+				lSamplesToRead -= ltActualSamples;
+			} while(lSamplesToRead>0 && ltActualBytes);
+
+			if (!ltActualBytes || source->isEnd())
+				fStreamEnded = TRUE;
+		}
 	}
 }
 

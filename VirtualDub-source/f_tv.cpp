@@ -192,13 +192,12 @@ static void rb_average_row3(Pixel *_src, IQPixel *_dst, int _count) {
 		*dst	= ((((src[-1]&0x00ff00ff) + (src[0]&0x00ff00ff)*2 + (src[1]&0x00ff00ff))>>2)&0x00ff00ff)
 				| ((((src[-1]&0x0000ff00) + (src[0]&0x0000ff00)*2 + (src[1]&0x0000ff00))>>2)&0x0000ff00);
 		++src;
-
-		dst++;
+		++dst;
 
 	} while(++count);
 
-	*dst	= ((((src[-1]&0x00ff00ff)*3 + (src[0]&0x00ff00ff)*3)>>2)&0x00ff00ff)
-			| ((((src[-1]&0x0000ff00)*3 + (src[0]&0x0000ff00)*3)>>2)&0x0000ff00);
+	*dst	= ((((src[-1]&0x00ff00ff) + (src[0]&0x00ff00ff)*3)>>2)&0x00ff00ff)
+			| ((((src[-1]&0x0000ff00) + (src[0]&0x0000ff00)*3)>>2)&0x0000ff00);
 }
 
 static void rb_average_row5(Pixel *_src, IQPixel *_dst, int _count) {

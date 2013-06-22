@@ -236,7 +236,7 @@ void VideoSequenceCompressor::start() {
 	res = ICCompressBegin(hic, pbiInput, pbiOutput);
 
 	if (res != ICERR_OK)
-		throw MyICError("Unable to start video compression", res);
+		throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
 
 	// Start decompression process if necessary
 
@@ -245,7 +245,7 @@ void VideoSequenceCompressor::start() {
 
 		if (res != ICERR_OK) {
 			ICCompressEnd(hic);
-			throw MyICError("Unable to start video compression", res);
+			throw MyICError(res, "Cannot start video compression:\n\n%%s\n(error code %d)", (int)res);
 		}
 	}
 

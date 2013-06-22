@@ -47,6 +47,7 @@ public:
 class MyICError : public MyError {
 public:
 	MyICError(const char *s, DWORD icErr) throw();
+	MyICError(DWORD icErr, const char *format, ...) throw();
 };
 
 class MyMMIOError : public MyError {

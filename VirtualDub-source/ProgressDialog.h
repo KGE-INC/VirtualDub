@@ -22,13 +22,14 @@
 
 class ProgressDialog {
 private:
-	HWND hwndProgressBar, hwndDialog, hwndValue;
+	HWND hwndProgressBar, hwndDialog, hwndValue, mhwndParent;
 	long newval, curval, maxval;
 	int mSparseCount;
 	int mSparseInterval;
 	DWORD dwLastTime;
 	bool fAbortEnabled;
 	bool fAbort;
+	bool mbPreviouslyEnabled;
 
 	const char *lpszTitle, *lpszCaption, *lpszValueFormat;
 
