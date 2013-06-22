@@ -630,7 +630,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.6 - Copyright (C) 1998-2001 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.7 - Copyright (C) 1998-2001 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -807,7 +807,7 @@ END
 
 IDD_FILTER_EMBOSS DIALOG DISCARDABLE  0, 0, 307, 106
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: embross"
+CAPTION "Filter: emboss"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,195,85,50,14
@@ -829,12 +829,12 @@ BEGIN
     CONTROL         "BR",IDC_DIR_BOTTOMRIGHT,"Button",BS_AUTORADIOBUTTON | 
                     BS_PUSHLIKE,62,51,17,14
     GROUPBOX        "Light source direction ",IDC_STATIC,7,7,94,72
-    GROUPBOX        "Embross options",IDC_STATIC,112,7,188,72
+    GROUPBOX        "Emboss options",IDC_STATIC,112,7,188,72
     CONTROL         "Slider1",IDC_HEIGHT,"msctls_trackbar32",TBS_AUTOTICKS | 
                     WS_TABSTOP,149,17,142,20
     LTEXT           "Height",IDC_STATIC,118,21,22,8
-    CONTROL         "More rounded embross",IDC_ROUNDED,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,124,57,88,10
+    CONTROL         "More rounded emboss",IDC_ROUNDED,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,124,57,86,10
     LTEXT           "Minimum",IDC_STATIC,144,36,28,8
     LTEXT           "Maximum",IDC_STATIC,267,36,30,8
 END
@@ -3122,8 +3122,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,6,0
- PRODUCTVERSION 1,4,6,0
+ FILEVERSION 1,4,7,0
+ PRODUCTVERSION 1,4,7,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3141,14 +3141,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.6\0"
+            VALUE "FileVersion", "1.4.7\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2001 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.6\0"
+            VALUE "ProductVersion", "1.4.7\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3234,17 +3234,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.6 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.6"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.6 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.6 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.6"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.7 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.7"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.7 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.7 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.7"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.6 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.6 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.6 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.6 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.6 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.7 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.7 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.7 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.7 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.7 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

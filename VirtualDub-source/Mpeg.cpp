@@ -804,9 +804,6 @@ int VideoSourceMPEG::streamGetRequiredCount(long *pSize) {
 void *VideoSourceMPEG::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
 	int buffer;
 
-	if (data_len<=1 && frame_num < lSampleLast)
-		frame_num = translate_frame(renumber_frame(frame_num));
-
 //	_RPT2(0,"Attempting to fetch frame %d [%c].\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type]);
 
 	if (is_preroll || (buffer = mpeg_lookup_frame(frame_num))<0) {

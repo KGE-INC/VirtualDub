@@ -63,6 +63,7 @@ static BOOL APIENTRY embossDlgProc( HWND hDlg, UINT message, UINT wParam, LONG l
 				SendMessage(hWnd, TBM_SETRANGE, (WPARAM)TRUE, MAKELONG(1, 256));
 				SendMessage(hWnd, TBM_SETPOS, (WPARAM)TRUE, mfd->height);
 				CheckDlgButton(hDlg, IDC_DIR_MIDDLERIGHT+mfd->direction, TRUE);
+				CheckDlgButton(hDlg, IDC_ROUNDED, !!mfd->rounded);
 
 				SetWindowLong(hDlg, DWL_USER, (LONG)mfd);
 			}
@@ -141,6 +142,9 @@ static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 	mfd->direction	= argv[0].asInt();
 	mfd->height		= argv[1].asInt();
 
+	if (argc>2)
+		mfd->rounded	= !!argv[2].asInt();
+
 	memset(mfd->cfd.m, 0, sizeof mfd->cfd.m);
 	mfd->cfd.bias	= 128*256 + 128;
 	mfd->cfd.fClip	= TRUE;
@@ -157,6 +161,7 @@ static void emboss_script_config(IScriptInterpreter *isi, void *lpVoid, CScriptV
 
 static ScriptFunctionDef emboss_func_defs[]={
 	{ (ScriptFunctionPtr)emboss_script_config, "Config", "0ii" },
+	{ (ScriptFunctionPtr)emboss_script_config, NULL, "0iii" },
 	{ NULL },
 };
 
@@ -167,7 +172,7 @@ static CScriptObject emboss_obj={
 static bool emboss_script_line(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen) {
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	_snprintf(buf, buflen, "Config(%d,%d)", mfd->direction, mfd->height);
+	_snprintf(buf, buflen, "Config(%d,%d,%d)", mfd->direction, mfd->height, mfd->rounded);
 
 	return true;
 }

@@ -1,6 +1,14 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 13130 (Version 1.4.7):
+   [bug fixes]
+   * Fixed MAJOR bug in MPEG-1 decoder that I introduced
+     in V1.4.6 that caused I and P frames to decode
+     improperly during a preview/save.
+   * Corrected typos and resetting of "rounded" option in
+     emboss filter (thanks to Donald Graft).
+
 Build 13110 (Version 1.4.6):
    [features added]
    * Enhanced error concealment in MPEG-1 video decoder

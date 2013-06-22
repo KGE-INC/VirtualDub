@@ -161,8 +161,10 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 				}
 
 				RedoFilters(hWndList);
+
+				SetFocus(hWndList);
 			}
-            return (TRUE);
+            return FALSE;
 
         case WM_COMMAND:
 			switch(LOWORD(wParam)) {
@@ -392,6 +394,8 @@ void AddFilterDlgInit(HWND hDlg) {
 		SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)fd);
 		fd=fd->next;
 	}
+
+	SetFocus(hWndList);
 }
 
 BOOL APIENTRY AddFilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
@@ -400,7 +404,7 @@ BOOL APIENTRY AddFilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lPara
     {
         case WM_INITDIALOG:
 			AddFilterDlgInit(hDlg);
-            return (TRUE);
+            return FALSE;
 
         case WM_COMMAND:
 			switch(HIWORD(wParam)) {
