@@ -1267,7 +1267,12 @@ bool VideoSourceAVI::_construct(int streamIndex) {
 			palEnts = 1 << bmih->biBitCount;
 	}
 
-	if (bmih->biClrUsed > 0) {
+	if (palEnts) {
+		int maxColors = (format_len - bmih->biSize) / sizeof(VDAVIRGBQuad);
+
+		if (palEnts > maxColors)
+			palEnts = maxColors;
+
 		memset(mPalette, 0, sizeof mPalette);
 		memcpy(mPalette, (const uint32 *)((const char *)bmih + bmih->biSize), std::min<size_t>(256, palEnts) * 4);
 	}

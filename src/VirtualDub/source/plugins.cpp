@@ -4,6 +4,7 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/log.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/vdalloc.h>
 
@@ -113,13 +114,31 @@ VDPluginDescription *VDGetPluginDescription(const wchar_t *pName, uint32 type) {
 void VDConnectPluginDescription(const VDPluginInfo *pInfo, VDExternalModule *pModule) {
 	VDShadowedPluginDescription *pDesc = static_cast<VDShadowedPluginDescription *>(VDGetPluginDescription(pInfo->mpName, pInfo->mType));
 
+	if (pInfo->mAPIVersionRequired > kVDXPlugin_APIVersion)
+		throw MyError("Plugin requires a newer plugin API version (v%u > v%u)", pInfo->mAPIVersionRequired, kVDXPlugin_APIVersion);
+
+	if (pInfo->mAPIVersionUsed < 1)
+		throw MyError("Plugin uses too old of a plugin API version (v%u < v%u)", pInfo->mAPIVersionUsed, 1);
+
 	if (!pDesc) {
 		switch(pInfo->mType) {
 			case kVDXPluginType_Audio:
+				if (pInfo->mTypeAPIVersionRequired > kVDPlugin_AudioAPIVersion)
+					throw MyError("Plugin requires a newer audio API version (v%u > v%u)", pInfo->mTypeAPIVersionRequired, kVDPlugin_AudioAPIVersion);
+
+				if (pInfo->mTypeAPIVersionUsed < 1)
+					throw MyError("Plugin uses too old of an audio API version (v%u < v%u)", pInfo->mAPIVersionUsed, 1);
+
 				pDesc = new VDShadowedAudioFilterDescription;
 				break;
 
 			case kVDXPluginType_Input:
+				if (pInfo->mTypeAPIVersionRequired > kVDPlugin_AudioAPIVersion)
+					throw MyError("Plugin requires a newer input API version (v%u > v%u)", pInfo->mTypeAPIVersionRequired, kVDXPlugin_InputDriverAPIVersion);
+
+				if (pInfo->mTypeAPIVersionUsed < 1)
+					throw MyError("Plugin uses too old of an API version (v%u < v%u)", pInfo->mAPIVersionUsed, 1);
+
 				pDesc = new VDShadowedInputDriverDescription;
 				break;
 		}
@@ -134,9 +153,22 @@ void VDConnectPluginDescription(const VDPluginInfo *pInfo, VDExternalModule *pMo
 	pDesc->mpShadowedInfo = &pDesc->mShadowedInfo;
 }
 
-void VDConnectPluginDescriptions(const VDPluginInfo *const *ppInfos, VDExternalModule *pModule) {
-	while(const VDPluginInfo *pInfo = *ppInfos++)
-		VDConnectPluginDescription(pInfo, pModule);
+bool VDConnectPluginDescriptions(const VDPluginInfo *const *ppInfos, VDExternalModule *pModule) {
+	bool allOk = true;
+
+	while(const VDPluginInfo *pInfo = *ppInfos++) {
+		try {
+			VDConnectPluginDescription(pInfo, pModule);
+		} catch(const MyError& e) {
+			VDStringW msg;
+			msg.sprintf(L"Error loading plugin \"%ls\" from module %ls: %hs.", pInfo->mpName, VDFileSplitPath(pModule->GetFilename().c_str()), e.gets());
+
+			VDLog(kVDLogWarning, msg);
+			allOk = false;
+		}
+	}
+
+	return allOk;
 }
 
 void VDDisconnectPluginDescriptions(VDExternalModule *pModule) {
@@ -175,7 +207,9 @@ VDExternalModule::VDExternalModule(const VDStringW& filename)
 VDExternalModule::~VDExternalModule() {
 }
 
-void VDExternalModule::Lock() {
+bool VDExternalModule::Lock() {
+	bool allOk = true;
+
 	if (!mhModule) {
 		{
 			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
@@ -190,9 +224,12 @@ void VDExternalModule::Lock() {
 			throw MyWin32Error("Cannot load plugin module \"%ls\": %%s", GetLastError(), mFilename.c_str());
 
 		ReconnectOldPlugins();
-		ReconnectPlugins();
+		allOk = ReconnectPlugins();
 	}
+
 	++mModuleRefCount;
+
+	return allOk;
 }
 
 void VDExternalModule::Unlock() {
@@ -275,14 +312,15 @@ void VDExternalModule::ReconnectOldPlugins() {
 	}
 }
 
-void VDExternalModule::ReconnectPlugins() {
+bool VDExternalModule::ReconnectPlugins() {
 	tpVDXGetPluginInfo pVDGetPluginInfo = (tpVDXGetPluginInfo)GetProcAddress(mhModule, "VDGetPluginInfo");
 
-	if (pVDGetPluginInfo) {
-		const VDXPluginInfo *const *ppPluginInfo = pVDGetPluginInfo();
+	if (!pVDGetPluginInfo)
+		return true;
 
-		VDConnectPluginDescriptions(ppPluginInfo, this);
-	}
+	const VDXPluginInfo *const *ppPluginInfo = pVDGetPluginInfo();
+
+	return VDConnectPluginDescriptions(ppPluginInfo, this);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -302,7 +340,7 @@ void VDDeinitPluginSystem() {
 	}
 }
 
-void VDAddPluginModule(const wchar_t *pFilename) {
+bool VDAddPluginModule(const wchar_t *pFilename) {
 	VDStringW path(VDGetFullPath(pFilename));
 
 	if (path.empty())
@@ -315,7 +353,7 @@ void VDAddPluginModule(const wchar_t *pFilename) {
 		VDExternalModule *pModule = *it;
 
 		if (pModule->GetFilename() == pFilename)
-			return;
+			return true;
 	}
 
 	g_pluginModules.push_back(new VDExternalModule(path));
@@ -324,8 +362,11 @@ void VDAddPluginModule(const wchar_t *pFilename) {
 	// lock the module to bring in the plugin descriptions -- this may bomb
 	// if the plugin doesn't exist or couldn't load
 
+	bool allOk = true;
 	try {
-		pModule->Lock();
+		if (!pModule->Lock())
+			allOk = false;
+
 		pModule->Unlock();
 	} catch(...) {
 		g_pluginModules.pop_back();
@@ -333,6 +374,7 @@ void VDAddPluginModule(const wchar_t *pFilename) {
 		throw;
 	}
 
+	return allOk;
 }
 
 void VDAddInternalPlugins(const VDPluginInfo *const *ppInfo) {
@@ -380,10 +422,12 @@ void VDLoadPlugins(const VDStringW& path, int& succeeded, int& failed) {
 			VDDEBUG("Plugins: Attempting to load \"%ls\"\n", it.GetFullPath().c_str());
 			VDStringW path(it.GetFullPath());
 			try {
-				VDAddPluginModule(path.c_str());
-				++succeeded;
+				if (VDAddPluginModule(path.c_str()))
+					++succeeded;
+				else
+					++failed;
 			} catch(const MyError& e) {
-				VDDEBUG("Plugins: Failed to load \"%ls\": %s\n", it.GetFullPath().c_str(), e.gets());
+				VDLog(kVDLogWarning, VDStringW().sprintf(L"Plugins: Failed to load \"%ls\": %hs", it.GetFullPath().c_str(), e.gets()));
 				++failed;
 			}
 		}

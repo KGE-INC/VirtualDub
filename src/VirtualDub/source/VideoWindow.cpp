@@ -399,7 +399,8 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			GetClientRect(mhwnd, &r);
 
-			if (mSourceHeight > 0 && !mInhibitParamUpdateLocks) {
+			const WINDOWPOS& wp = *(const WINDOWPOS *)lParam;
+			if (mSourceHeight > 0 && !mInhibitParamUpdateLocks && !(wp.flags & SWP_NOSIZE)) {
 				mZoom = (double)r.bottom / mSourceHeight;
 
 				if (mAspectRatio < 0 && !mbUseSourcePAR && r.right && r.bottom)
@@ -597,8 +598,8 @@ void VDVideoWindow::OnCommand(int cmd) {
 void VDVideoWindow::OnContextMenu(int x, int y) {
 	HMENU hmenu = GetSubMenu(mhmenu, 0);
 
-	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_25, fabs(mZoom - 0.0625) < 1e-5);
-	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_25, fabs(mZoom - 0.125) < 1e-5);
+	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_6, fabs(mZoom - 0.0625) < 1e-5);
+	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_12, fabs(mZoom - 0.125) < 1e-5);
 	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_25, fabs(mZoom - 0.25) < 1e-5);
 	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_33, fabs(mZoom - 1.0/3.0) < 1e-5);
 	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_ZOOM_50, fabs(mZoom - 0.5) < 1e-5);

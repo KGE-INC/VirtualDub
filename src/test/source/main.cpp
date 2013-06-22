@@ -43,7 +43,7 @@ void help() {
 	for(Tests::const_iterator it(g_tests.begin()), itEnd(g_tests.end()); it!=itEnd; ++it) {
 		const TestInfo& ent = *it;
 
-		wprintf(L"\t%hs%s\n", ent.mpName, ent.mbAutoRun ? "" : "*");
+		wprintf(L"\t%hs%s\n", ent.mpName, ent.mbAutoRun ? L"" : L"*");
 	}
 	wprintf(L"\tAll\n");
 }

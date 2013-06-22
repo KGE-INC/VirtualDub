@@ -34,7 +34,7 @@ public:
 	VDExternalModule(const VDStringW& filename);
 	~VDExternalModule();
 
-	void Lock();
+	bool Lock();
 	void Unlock();
 
 	const VDStringW& GetFilename() const { return mFilename; }
@@ -43,7 +43,7 @@ public:
 protected:
 	void DisconnectOldPlugins();
 	void ReconnectOldPlugins();
-	void ReconnectPlugins();
+	bool ReconnectPlugins();
 
 	VDStringW		mFilename;
 	HMODULE			mhModule;
@@ -53,7 +53,7 @@ protected:
 
 void					VDDeinitPluginSystem();
 
-void					VDAddPluginModule(const wchar_t *pFilename);
+bool					VDAddPluginModule(const wchar_t *pFilename);
 void					VDAddInternalPlugins(const VDPluginInfo *const *ppInfo);
 
 VDExternalModule *		VDGetExternalModuleByFilterModule(const VDXFilterModule *);

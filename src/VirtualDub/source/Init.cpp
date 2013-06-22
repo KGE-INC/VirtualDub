@@ -449,8 +449,10 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	// Autoload filters.
 
 	VDCHECKPOINT;
-	if (pluginsSucceeded || pluginsFailed)
-		guiSetStatus("Autoloaded %d filters (%d failed).", 255, pluginsSucceeded, pluginsFailed);
+	if (pluginsFailed)
+		guiSetStatus("Autoloaded %d filter(s) (%d failed). Check the log for details.", 255, pluginsSucceeded, pluginsFailed);
+	else if (pluginsSucceeded)
+		guiSetStatus("Autoloaded %d filter(s).", 255, pluginsSucceeded);
 
 	// Detect DivX.
 

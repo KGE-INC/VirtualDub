@@ -691,7 +691,7 @@ FE modrm64128:		"paddd " $2[3-5]rmx ", " $3s
 58-5F:				"pop " $1[0-2]r163264
 
 62 modrm32:			"bound " $2[3-5]r32 "," $3s
-63 modrm32:			"movsxd " $2[3-5]r16 ", " $3s
+63 modrm32:			"movsxd " $2[3-5]r163264 ", " $3s
 64:					$p_fs
 65:					$p_gs
 

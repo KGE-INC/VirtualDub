@@ -85,6 +85,7 @@ public:
 protected:
 	VDZINT_PTR DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lParam);
 	bool OnLoaded();
+	void OnDestroy();
 	void OnSize();
 	bool OnCommand(uint32 id, uint32 extcode);
 	void OnDropFiles(IVDUIDropFileList *dropFileList);
@@ -143,6 +144,12 @@ bool VDUIBatchWizard::OnLoaded() {
 		CheckButton(IDC_OUTPUT_ABSOLUTE, true);
 
 	return false;
+}
+
+void VDUIBatchWizard::OnDestroy() {
+	mList.Clear();
+
+	VDDialogFrameW32::OnDestroy();
 }
 
 void VDUIBatchWizard::OnSize() {

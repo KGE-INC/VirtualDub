@@ -2431,15 +2431,16 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			int h0 = px.h;
 			int w = w0;
 			int h = h0;
+			VDFraction inputPAR(inputVideo->getPixelAspectRatio());
 
 			IVDVideoWindow *inputWin = VDGetIVideoWindow(mhwndInputFrame);
 			inputWin->SetSourceSize(w, h);
-			inputWin->SetSourcePAR(inputVideo->getPixelAspectRatio());
+			inputWin->SetSourcePAR(inputPAR);
 
 			// figure out output size too
 
 			int w2 = w0, h2 = h0;
-			VDFraction outputPAR(0, 0);
+			VDFraction outputPAR(inputPAR);
 
 			if (!g_listFA.IsEmpty()) {
 				if (!filters.isRunning()) {

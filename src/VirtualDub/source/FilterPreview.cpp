@@ -581,9 +581,6 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 				pVSS->getLength(),
 				srcPAR);
 
-		if (mFiltSys.GetOutputFrameRate() == srcRate)
-			len = mpTimeline->GetLength();
-
 		mpVideoFrameSource = new VDFilterFrameVideoSource;
 		mpVideoFrameSource->Init(inputVideo, mFiltSys.GetInputLayout());
 
@@ -611,7 +608,10 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		mpVideoWindow->SetSourceSize(w, h);
 		mpVideoWindow->SetSourcePAR(mFiltSys.GetOutputPixelAspect());
 
-		mpPosition->SetRange(0, mFiltSys.GetOutputFrameCount());
+		if (mFiltSys.GetOutputFrameRate() == srcRate)
+			mpPosition->SetRange(0, mpTimeline->GetLength());
+		else
+			mpPosition->SetRange(0, mFiltSys.GetOutputFrameCount());
 
 		if (mInitialTimeUS >= 0) {
 			const VDFraction outputRate(mFiltSys.GetOutputFrameRate());
@@ -757,8 +757,11 @@ VDPosition FilterPreview::FetchFrame(VDPosition pos) {
 		// timeline isn't updated for the new frame rate.
 		if (mFiltSys.GetOutputFrameRate() != frameRate)
 			mLastOutputFrame = pos;
-		else
+		else {
 			mLastOutputFrame = mpTimeline->TimelineToSourceFrame(pos);
+			if (mLastOutputFrame < 0)
+				mLastOutputFrame = mFiltSys.GetOutputFrameCount();
+		}
 		
 		mLastTimelineFrame	= pos;
 		mLastTimelineTimeMS	= VDRoundToInt64(mFiltSys.GetOutputFrameRate().AsInverseDouble() * 1000.0 * (double)pos);
@@ -890,8 +893,12 @@ bool FilterPreview::SampleCurrentFrame() {
 			// This hack is for consistency with FetchFrame().
 			sint64 frame = pos;
 
-			if (mFiltSys.GetOutputFrameRate() == frameRate)
+			if (mFiltSys.GetOutputFrameRate() == frameRate) {
 				frame = mpTimeline->TimelineToSourceFrame(frame);
+
+				if (frame < 0)
+					frame = mFiltSys.GetOutputFrameCount();
+			}
 
 			frame = mFiltSys.GetSymbolicFrame(frame, mpThisFilter);
 

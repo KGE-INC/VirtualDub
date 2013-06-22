@@ -66,6 +66,10 @@ VDFilterFrameVideoSource::RunResult VDFilterFrameVideoSource::RunRequests() {
 
 			VDPosition frame = mpRequest->GetTiming().mOutputFrame;
 
+			VDPosition limit = mpVS->asStream()->getLength();
+			if (frame >= limit)
+				frame = limit - 1;
+
 			if (frame < 0)
 				frame = 0;
 

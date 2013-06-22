@@ -369,6 +369,8 @@ bool VDDubVideoProcessor::WriteVideo() {
 					mbFlushingCompressor = false;
 					if (mpThreadedVideoCompressor)
 						mpThreadedVideoCompressor->SetFlush(false);
+
+					mpHeldCompressionInputBuffer.clear();
 				}
 			}
 			break;
@@ -1047,6 +1049,12 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::WriteFinishedVideoFra
 		if (!gotFrame)
 			return kVideoWriteDelayed;
 
+		// If we don't have frames queued up, then release the held frame, as we don't need it
+		// anymore. This is important to keep fast recompress from locking up, since only one
+		// FB is available.
+		if (!mVideoFramesDelayed)
+			mpHeldCompressionInputBuffer.clear();
+
 		frameBuffer = pNewBuffer->mOutputBuffer.data();
 		dwBytes = pNewBuffer->mOutputSize;
 		isKey = pNewBuffer->mbOutputIsKey;
@@ -1152,6 +1160,8 @@ VDDubVideoProcessor::VideoWriteResult VDDubVideoProcessor::DecodeVideoFrame(cons
 
 	mpProcessingProfileChannel->Begin(0xe0e0e0, "V-Lock1");
 	bool bLockSuccessful;
+
+	VDASSERT(!mbInputLocked);
 
 	mpLoopThrottle->BeginWait();
 	do {

@@ -34,13 +34,18 @@
 
 #pragma intrinsic(__ll_lshift)
 
+//#define SEARCH_BASED_DECODE
+
 namespace {
 	struct HuffmanDecodeTable {
 		uint32 mBaseLen;
+
+#ifdef SEARCH_BASED_DECODE
 		const uint8 (*mCodeBase[32])[2];
 		uint32 mCodeStart[32];
 		uint32 mCodeLimit[32];
 		uint8 mCodeTable[256][2];
+#endif
 
 		uintptr mBsrLenTable[32];
 		uint8 mBsrShiftTable[32];
@@ -78,6 +83,7 @@ namespace {
 		const uint8 *limit = src + len;
 		uint8 tab[256];
 
+		// decompress table of bit lengths per code
 		int i=0;
 		while(i < 256) {
 			if (src >= limit)
@@ -113,15 +119,16 @@ namespace {
 		for(int i=0; i<32; ++i)
 			mBsrShiftTable[i] = 32;
 
+		// assign bit patterns starting at 0 to codes by decreasing bit length
 		i = 0;
 		for(uint32 len=32; len >= 1; --len) {
-			uint32 lencount = 0;
-
 			if (!i)
 				mBaseLen = len;
 
+#ifdef SEARCH_BASED_DECODE
 			mCodeBase[len - 1] = mCodeTable + i;
 			mCodeStart[len - 1] = base;
+#endif
 
 			uint32 inc = 0x80000000 >> (len - 1);
 
@@ -132,10 +139,11 @@ namespace {
 					if (i >= 256)
 						throw MyError("Decompression error: Invalid VLC table detected in Huffyuv format.");
 
+#ifdef SEARCH_BASED_DECODE
 					mCodeTable[i][0] = j;
 					mCodeTable[i][1] = len;
+#endif
 					++i;
-					++lencount;
 
 					int firstidx = VDFindHighestSetBit(base | 1);
 					base += inc;
@@ -167,6 +175,7 @@ namespace {
 					int decrepeat = 1 << (32 - mBsrShiftTable[curdecidx] - len);
 					if (declimit - decdst < 2*decrepeat)
 						throw MyError("Internal error: Insufficient space for Huffman decoding table.");
+
 					while(decrepeat--) {
 						*decdst++ = (uint8)j;
 						*decdst++ = (uint8)len;
@@ -186,7 +195,9 @@ namespace {
 				}
 			}
 
+#ifdef SEARCH_BASED_DECODE
 			mCodeLimit[len - 1] = base - 1;
+#endif
 		}
 
 		if (base)
@@ -200,20 +211,20 @@ namespace {
 
 #define CONSUME(bits) (pos += (bits))
 
-#if 0
-#define DECODE(result, table)	\
-	{	\
-		const uint32 posidx = (pos >> 5);	\
-		const uint32 bitpos = pos & 31;	\
-		uint32 code = (src32[posidx] << bitpos) + ((src32[posidx + 1] >> (31-bitpos)) >> 1); \
-		for(int bitlen = table->mBaseLen; bitlen >= 1; --bitlen) {	\
-			if (code <= table->mCodeLimit[bitlen - 1]) {	\
-				result = table->mCodeBase[bitlen - 1][(code - table->mCodeStart[bitlen - 1]) >> (32 - bitlen)][0];	\
-				CONSUME(bitlen);	\
-				break;	\
+#ifdef SEARCH_BASED_DECODE
+	#define DECODE(result, table)	\
+		{	\
+			const uint32 posidx = (pos >> 5);	\
+			const uint32 bitpos = pos & 31;	\
+			uint32 code = (src32[posidx] << bitpos) + ((src32[posidx + 1] >> (31-bitpos)) >> 1); \
+			for(int bitlen = table->mBaseLen; bitlen >= 1; --bitlen) {	\
+				if (code <= table->mCodeLimit[bitlen - 1]) {	\
+					result = table->mCodeBase[bitlen - 1][(code - table->mCodeStart[bitlen - 1]) >> (32 - bitlen)][0];	\
+					CONSUME(bitlen);	\
+					break;	\
+				}	\
 			}	\
-		}	\
-	}
+		}
 #else
 #ifdef _M_IX86
 	#define LSHIFT(x, y) __ll_lshift((x), (y))
@@ -640,8 +651,8 @@ namespace {
 
 		do {
 			a = srcTC[0];
-			b = srcL[2];
-			c = a + b - srcTL[2];
+			b = srcL[0];
+			c = a + b - srcTL[0];
 
 			MEDIAN(y, a, b, c);
 
@@ -805,29 +816,6 @@ void VDVideoDecoderHuffyuv::Init(uint32 w, uint32 h, uint32 depth, const uint8 *
 		default:
 			throw MyError("The Huffyuv video stream uses an unsupported bit depth (%d).", depth);
 	}
-
-	// Compute size of safe decode area.
-	//
-	// We need up to:
-	//	4 bytes for the first pixel
-	//	N bits for VLC coding for each pixel in the row
-	//	31 bits of VLC padding
-	//	32 bits for readover
-	uint32 safeDecAreaSize = sizeof(uint32);
-	uint32 maxBitsChannel0 = mTables[0].mBaseLen;
-	uint32 maxBitsChannel1 = mTables[1].mBaseLen;
-	uint32 maxBitsChannel2 = mTables[2].mBaseLen;
-	uint32 blocks = w;
-
-	if (mFormatMode == kFormatMode_YUY2 || mFormatMode == kFormatMode_YV12) {
-		maxBitsChannel0 += maxBitsChannel0;
-		blocks >>= 1;
-	}
-
-	uint32 maxBitsInRow = (maxBitsChannel0 + maxBitsChannel1 + maxBitsChannel2) * blocks;
-	uint32 maxDwordsInRow = ((maxBitsInRow + 31) >> 5) + 2;
-
-	mSafeDecodeArea.resize(maxDwordsInRow);
 }
 
 void VDVideoDecoderHuffyuv::DecompressFrame(const void *src, uint32 len) {
@@ -1022,46 +1010,25 @@ void VDVideoDecoderHuffyuv::DecompressFrame(const void *src, uint32 len) {
 					break;
 			}
 		} else if (mFormatMode == kFormatMode_YV12) {
-			if (y & 1) {
-				switch(mPredictMode) {
-					case kPredictMode_Left:
+			switch(mPredictMode) {
+				case kPredictMode_Left:
+					if (y & 1)
 						pos = DecodeY8PredictLeft(dst, src32, pos, w, mTables, predictors);
-						break;
+					else {
+						pos = DecodeYV12PredictLeft(dst, dstU, dstV, src32, pos, y ? w : w - 1, mTables, predictors);
 
-					case kPredictMode_Gradient:
+						dstrowU += dstpitchU;
+						dstrowV += dstpitchV;
+					}
+					break;
+
+				case kPredictMode_Gradient:
+					if (y & 1) {
 						pos = DecodeY8PredictLeft(dst, src32, pos, w, mTables, predictors);
 
 						if (y >= verticalPredictionStart)
 							DecodeVerticalPrediction(dstrow, dstrow + verticalPredDelta, w*2);
-						break;
-
-					case kPredictMode_Median:
-						if (y < verticalPredictionStart) {
-							pos = DecodeY8PredictLeft(dst, src32, pos, w, mTables, predictors);
-						} else {
-							pos = DecodeY8(dst, src32, pos, w, mTables);
-
-							if (y > verticalPredictionStart) {
-								DecodeMedianPredictionY8(dstrow, dstrow - dstpitch + w*2 - 2, dstrow + verticalPredDelta, dstrow + verticalPredDelta - dstpitch + w*2 - 2, 2);
-								DecodeMedianPredictionY8(dstrow + 2, dstrow, dstrow + verticalPredDelta + 2, dstrow + verticalPredDelta, w - 1);
-							} else {
-								dstrow[0] += predictors[0];
-								dstrow[1] += dstrow[0];
-								dstrow[2] += dstrow[1];
-								dstrow[3] += dstrow[2];
-								
-								DecodeMedianPredictionY8(dstrow + 4, dstrow + 2, dstrow + verticalPredDelta + 8, dstrow + verticalPredDelta + 4, w*2 - 4);
-							}
-						}
-						break;
-				}
-			} else {
-				switch(mPredictMode) {
-					case kPredictMode_Left:
-						pos = DecodeYV12PredictLeft(dst, dstU, dstV, src32, pos, y ? w : w - 1, mTables, predictors);
-						break;
-
-					case kPredictMode_Gradient:
+					} else {
 						pos = DecodeYV12PredictLeft(dst, dstU, dstV, src32, pos, y ? w : w - 1, mTables, predictors);
 
 						if (y >= verticalPredictionStart) {
@@ -1069,47 +1036,69 @@ void VDVideoDecoderHuffyuv::DecompressFrame(const void *src, uint32 len) {
 							DecodeVerticalPrediction(dstrowU, dstrowU + verticalPredDeltaU, w);
 							DecodeVerticalPrediction(dstrowV, dstrowV + verticalPredDeltaV, w);
 						}
-						break;
 
-					case kPredictMode_Median:
-						if (y < verticalPredictionStart) {
-							pos = DecodeYV12PredictLeft(dst, dstU, dstV, src32, pos, y ? w : w - 1, mTables, predictors);
-						} else {
-							pos = DecodeYV12(dst, dstU, dstV, src32, pos, w, mTables);
+						dstrowU += dstpitchU;
+						dstrowV += dstpitchV;
+					}
+					break;
 
-							if (y > verticalPredictionStart) {
-								DecodeMedianPredictionY8(dstrow, dstrow - dstpitch + w*2 - 2, dstrow + verticalPredDelta, dstrow + verticalPredDelta - dstpitch + w*2 - 2, 2);
-								DecodeMedianPredictionY8(dstrow + 2, dstrow, dstrow + verticalPredDelta + 2, dstrow + verticalPredDelta, 2*w - 2);
+				case kPredictMode_Median:
+					// Whoever created the median mode for the YV12 variant was clearly smoking crack, because
+					// chroma is interleaved with luma at approximately every other line, but there is an anomaly
+					// at the beginning of the file where either the first two or four lines of the stream are
+					// all YCbCr lines, followed by two or four lines of just Y.
 
-								DecodeMedianPredictionY8(dstrowU, dstrowU - dstpitchU + w*2 - 2, dstrowU + verticalPredDeltaU, dstrowU + verticalPredDelta - dstpitch + w*2 - 2, 1);
-								DecodeMedianPredictionY8(dstrowU + 1, dstrowU, dstrowU + verticalPredDeltaU + 1, dstrowU + verticalPredDeltaU, w - 1);
+					if (y < verticalPredictionStart) {
+						// The first line (non-interlaced) or two lines (interlaced) are just left predicted but
+						// fully YCbCr encoded.
+						pos = DecodeYV12PredictLeft(dst, dstU, dstV, src32, pos, y ? w : w - 1, mTables, predictors);
+						dstrowU += dstpitchU;
+						dstrowV += dstpitchV;
+					} else if (y == verticalPredictionStart) {
+						// Line 1 (ni) or 2 (i) is left predicted for the first four pixels, then median encoded.
+						// Full YCbCr encoding.
+						pos = DecodeYV12(dst, dstU, dstV, src32, pos, w, mTables);
 
-								DecodeMedianPredictionY8(dstrowV, dstrowV - dstpitchV + w*2 - 2, dstrowV + verticalPredDeltaV, dstrowV + verticalPredDelta - dstpitch + w*2 - 2, 1);
-								DecodeMedianPredictionY8(dstrowV + 1, dstrowV, dstrowV + verticalPredDeltaV + 1, dstrowV + verticalPredDeltaV, w - 1);
-							} else {
-								dstrow[0] += predictors[0];
-								dstrow[1] += dstrow[0];
-								dstrow[2] += dstrow[1];
-								dstrow[3] += dstrow[2];
-								
-								DecodeMedianPredictionY8(dstrow + 4, dstrow + 2, dstrow + verticalPredDelta + 8, dstrow + verticalPredDelta + 4, w*2 - 4);
+						dstrow[0] += predictors[0];
+						dstrow[1] += dstrow[0];
+						dstrow[2] += dstrow[1];
+						dstrow[3] += dstrow[2];
+						
+						DecodeMedianPredictionY8(dstrow + 4, dstrow + 3, dstrow + verticalPredDelta + 4, dstrow + verticalPredDelta + 3, w*2 - 4);
 
-								dstrowU[0] += predictors[1];
-								dstrowU[1] += dstrowU[0];
-								
-								DecodeMedianPredictionY8(dstrowU + 2, dstrowU + 1, dstrowU + verticalPredDeltaU + 4, dstrowU + verticalPredDeltaU + 2, w - 2);
+						dstrowU[0] += predictors[1];
+						dstrowU[1] += dstrowU[0];
+						
+						DecodeMedianPredictionY8(dstrowU + 2, dstrowU + 1, dstrowU + verticalPredDeltaU + 2, dstrowU + verticalPredDeltaU + 1, w - 2);
 
-								dstrowV[0] += predictors[2];
-								dstrowV[1] += dstrowV[0];
-								
-								DecodeMedianPredictionY8(dstrowV + 2, dstrowV + 1, dstrowV + verticalPredDeltaV + 4, dstrowV + verticalPredDeltaV + 2, w - 2);
-							}
-						}
-						break;
-				}
+						dstrowV[0] += predictors[2];
+						dstrowV[1] += dstrowV[0];
+						
+						DecodeMedianPredictionY8(dstrowV + 2, dstrowV + 1, dstrowV + verticalPredDeltaV + 2, dstrowV + verticalPredDeltaV + 1, w - 2);
 
-				dstrowU += dstpitchU;
-				dstrowV += dstpitchV;
+						dstrowU += dstpitchU;
+						dstrowV += dstpitchV;
+					} else if ((y & 1) || y < verticalPredictionStart * 2 + 2) {
+						pos = DecodeY8(dst, src32, pos, w, mTables);
+
+						DecodeMedianPredictionY8(dstrow, dstrow - dstpitch + w*2 - 1, dstrow + verticalPredDelta, dstrow + verticalPredDelta - dstpitch + w*2 - 1, 1);
+						DecodeMedianPredictionY8(dstrow + 1, dstrow, dstrow + verticalPredDelta + 1, dstrow + verticalPredDelta, w*2 - 1);
+					} else {
+						pos = DecodeYV12(dst, dstU, dstV, src32, pos, w, mTables);
+
+						DecodeMedianPredictionY8(dstrow, dstrow - dstpitch + w*2 - 1, dstrow + verticalPredDelta, dstrow + verticalPredDelta - dstpitch + w*2 - 1, 1);
+						DecodeMedianPredictionY8(dstrow + 1, dstrow, dstrow + verticalPredDelta + 1, dstrow + verticalPredDelta, 2*w - 1);
+
+						DecodeMedianPredictionY8(dstrowU, dstrowU - dstpitchU + w - 1, dstrowU + verticalPredDeltaU, dstrowU + verticalPredDeltaU - dstpitchU + w - 1, 1);
+						DecodeMedianPredictionY8(dstrowU + 1, dstrowU, dstrowU + verticalPredDeltaU + 1, dstrowU + verticalPredDeltaU, w - 1);
+
+						DecodeMedianPredictionY8(dstrowV, dstrowV - dstpitchV + w - 1, dstrowV + verticalPredDeltaV, dstrowV + verticalPredDeltaV - dstpitchV + w - 1, 1);
+						DecodeMedianPredictionY8(dstrowV + 1, dstrowV, dstrowV + verticalPredDeltaV + 1, dstrowV + verticalPredDeltaV, w - 1);
+
+						dstrowU += dstpitchU;
+						dstrowV += dstpitchV;
+					}
+					break;
 			}
 		} else {
 			switch(mPredictMode) {
@@ -1178,6 +1167,29 @@ uint32 VDVideoDecoderHuffyuv::LoadAdaptiveTables(const void *src, uint32 len) {
 	extradata = mTables[0].Init(extradata, limit - extradata);
 	extradata = mTables[1].Init(extradata, limit - extradata);
 	extradata = mTables[2].Init(extradata, limit - extradata);
+
+	// Compute size of safe decode area.
+	//
+	// We need up to:
+	//	4 bytes for the first pixel
+	//	N bits for VLC coding for each pixel in the row
+	//	31 bits of VLC padding
+	//	32 bits for readover
+	uint32 safeDecAreaSize = sizeof(uint32);
+	uint32 maxBitsChannel0 = mTables[0].mBaseLen;
+	uint32 maxBitsChannel1 = mTables[1].mBaseLen;
+	uint32 maxBitsChannel2 = mTables[2].mBaseLen;
+	uint32 blocks = mFrameBuffer.w;
+
+	if (mFormatMode == kFormatMode_YUY2 || mFormatMode == kFormatMode_YV12) {
+		maxBitsChannel0 += maxBitsChannel0;
+		blocks >>= 1;
+	}
+
+	uint32 maxBitsInRow = (maxBitsChannel0 + maxBitsChannel1 + maxBitsChannel2) * blocks;
+	uint32 maxDwordsInRow = ((maxBitsInRow + 31) >> 5) + 2;
+
+	mSafeDecodeArea.resize(maxDwordsInRow);
 
 	return extradata - (const uint8 *)tmpArea;
 }

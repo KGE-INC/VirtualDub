@@ -472,8 +472,12 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 	}
 
 	if (!mpXVDec) {
+		uint32 fcc = 0;
+
 		if (format) {
 			const VDAVIBitmapInfoHeader *hdr = (const VDAVIBitmapInfoHeader *)format;
+			fcc = hdr->biCompression;
+
 			IVDVideoDecompressor *dec = VDFindVideoDecompressorEx(mSSInfo.mfccHandler, hdr, formatLen, VDPreferencesIsPreferInternalVideoDecodersEnabled());
 
 			if (dec)
@@ -481,18 +485,20 @@ VDVideoSourcePlugin::VDVideoSourcePlugin(IVDXVideoSource *pVS, VDInputDriverCont
 		}
 
 		if (!mpXVDec) {
-			if (mSSInfo.mfccHandler) {
-				const char *s = LookupVideoCodec(mSSInfo.mfccHandler);
+			char buf[5] = "    ";
 
-				throw MyError("Unable to locate a video codec to decompress the video format '%c%c%c%c' (%s)."
-							,(mSSInfo.mfccHandler    ) & 0xff
-							,(mSSInfo.mfccHandler>> 8) & 0xff
-							,(mSSInfo.mfccHandler>>16) & 0xff
-							,(mSSInfo.mfccHandler>>24) & 0xff
-							,s ? s : "unknown");
-			} else {
-				throw MyError("Unable to locate a video codec to decompress the video track.");
+			for(int i=0; i<4; ++i) {
+				uint8 c = (fcc >> (i * 8)) & 0xff;
+
+				if ((uint8)(c - 0x20) < 0x7f)
+					buf[i] = c;
 			}
+
+			const char *s = LookupVideoCodec(mSSInfo.mfccHandler);
+
+			throw MyError("Unable to locate a video codec to decompress the video format '%s' (%s)."
+						, buf
+						,s ? s : "unknown");
 		}
 	}
 

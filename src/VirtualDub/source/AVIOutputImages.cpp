@@ -81,7 +81,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 	if (mFormat != AVIOutputImages::kFormatBMP && (bih.biCompression != BI_RGB ||
 			(bih.biBitCount != 16 && bih.biBitCount != 24 && bih.biBitCount != 32))) {
-		throw MyError("Output settings must be 16/24/32-bit RGB, uncompressed in order to save a TARGA or JPEG sequence.");
+		throw MyError("Output settings must be 16/24/32-bit RGB, uncompressed in order to save a TARGA, JPEG, or PNG sequence.");
 	}
 
 	swprintf(szFileName, MAX_PATH, L"%ls%0*d%ls", mpszPrefix, mDigits, dwFrame++, mpszSuffix);

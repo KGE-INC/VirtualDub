@@ -1446,6 +1446,9 @@ bool FilterInstance::RunRequest(VDFilterFrameRequest& req) {
 
 			if (!Run(req, sourceOffset, 1, &overrideTiming))
 				return false;
+
+			// We need to correct this due to the clamping.
+			mLastResultFrame = currentFrame;
 		} else {
 			if (!Run(req, 0, 0xffff, NULL))
 				return false;

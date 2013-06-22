@@ -695,6 +695,9 @@ void InitVideoStreamValuesStatic(DubVideoStreamInfo& vInfo, IVDVideoSource *vide
 	vInfo.mFrameRateIVTCFactor = VDFraction(1, 1);
 
 	// Post-filter frame rate cannot be computed yet.
+
+	// This may be changed post-filter.
+	vInfo.mTimelineSourceLength = video->asStream()->getLength();
 }
 
 void InitVideoStreamValuesStatic2(DubVideoStreamInfo& vInfo, const DubOptions *opt, const FilterSystem *filtsys, const VDFraction& frameRateTimeline) {
@@ -821,7 +824,7 @@ void Dubber::InitAudioConversionChain() {
 
 	bool applyTail = false;
 
-	if (!opt->audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vSrc->asStream()->getEnd()))
+	if (!opt->audio.fEndAudio && (inputSubsetActive->empty() || inputSubsetActive->back().end() >= vInfo.mTimelineSourceLength))
 		applyTail = true;
 
 	if (!(audioStream = new_nothrow AudioSubset(sourceStreams, inputSubsetActive, vInfo.mFrameRateTimeline, offset, applyTail)))
@@ -1331,7 +1334,8 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	// Initialize filter system.
 	const VDPixmap& px = vSrc->getTargetFormat();
-	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, vSrc->asStream()->getLength(), vSrc->getPixelAspectRatio());
+	const sint64 srcFrames = vSrc->asStream()->getLength();
+	filters.prepareLinearChain(&g_listFA, px.w, px.h, px.format, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 
 	mpVideoFrameSource = new VDFilterFrameVideoSource;
 	mpVideoFrameSource->Init(vSrc, filters.GetInputLayout());
@@ -1340,7 +1344,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
 
 	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
-		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
+		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 
 		InitVideoStreamValuesStatic2(vInfo, opt, &filters, frameRateTimeline);
 		
@@ -1360,10 +1364,12 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 		filters.ReadyFilters();
 	} else {
 		// We need this to correctly create the video frame map.
-		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
+		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, srcFrames, vSrc->getPixelAspectRatio());
 		filters.ReadyFilters();
 		InitVideoStreamValuesStatic2(vInfo, opt, NULL, frameRateTimeline);
 	}
+
+	vInfo.mTimelineSourceLength = filters.GetOutputFrameCount();
 
 	if (vInfo.end_dst > 0)
 		vInfo.cur_dst = 0;

@@ -325,7 +325,7 @@ LRESULT CCompRemote::GetInfo(ICINFO *lpicinfo, DWORD cbSize) {
 	lpicinfo->dwFlags		= 0;
 	lpicinfo->dwVersion		= 1;
 	lpicinfo->dwVersionICM	= ICVERSION;
-	wcscpy(lpicinfo->szName, L"VirtualDub remote");
+	wcscpy(lpicinfo->szName, L"vdremote");
 	wcscpy(lpicinfo->szDescription, L"VirtualDub remote frameclient");
 
 	return sizeof(ICINFO);

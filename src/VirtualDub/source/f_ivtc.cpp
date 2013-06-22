@@ -614,6 +614,10 @@ namespace {
 		t.pitch += t.pitch;
 		t.pitch2 += t.pitch2;
 		t.pitch3 += t.pitch3;
+
+		if (!field2)
+			++t.h;
+
 		t.h >>= 1;
 
 		return t;

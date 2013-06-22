@@ -150,7 +150,15 @@ const JobScriptOutput::Script& JobScriptOutput::getscript() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bIncludeEditList = true, bool bIncludeTextInfo = true) {
+namespace {
+	enum VDJobEditListMode {
+		kVDJobEditListMode_Omit,
+		kVDJobEditListMode_Include,
+		kVDJobEditListMode_Reset
+	};
+}
+
+void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, VDJobEditListMode editListMode = kVDJobEditListMode_Include, bool bIncludeTextInfo = true) {
 	char *mem= NULL;
 	char buf[4096];
 	long l;
@@ -420,22 +428,33 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt, bool bInclu
 
 	// Add subset information
 
-	if (bIncludeEditList) {
-		const FrameSubset& fs = g_project->GetTimeline().GetSubset();
+	switch(editListMode) {
+		case kVDJobEditListMode_Include:
+			{
+				const FrameSubset& fs = g_project->GetTimeline().GetSubset();
 
-		output.addf("VirtualDub.subset.Clear();");
+				output.addf("VirtualDub.subset.Clear();");
 
-		for(FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end()); it!=itEnd; ++it)
-			output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
+				for(FrameSubset::const_iterator it(fs.begin()), itEnd(fs.end()); it!=itEnd; ++it)
+					output.addf("VirtualDub.subset.Add%sRange(%I64d,%I64d);", it->bMask ? "Masked" : "", it->start, it->len);
 
-		// Note that this must be AFTER the subset (we used to place it before, which was a bug).
-		if (g_project->IsSelectionPresent()) {
-			output.addf("VirtualDub.video.SetRangeFrames(%I64d,%I64d);",
-				g_project->GetSelectionStartFrame(),
-				g_project->GetSelectionEndFrame());
-		} else {
-			output.addf("VirtualDub.video.SetRange();");
-		}
+				// Note that this must be AFTER the subset (we used to place it before, which was a bug).
+				if (g_project->IsSelectionPresent()) {
+					output.addf("VirtualDub.video.SetRangeFrames(%I64d,%I64d);",
+						g_project->GetSelectionStartFrame(),
+						g_project->GetSelectionEndFrame());
+				} else {
+					output.addf("VirtualDub.video.SetRange();");
+				}
+			}
+			break;
+
+		case kVDJobEditListMode_Reset:
+			output.addf("VirtualDub.subset.Delete();");
+			break;
+
+		case kVDJobEditListMode_Omit:
+			break;
 	}
 
 	// Add text information
@@ -504,7 +523,7 @@ void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, cons
 	JobScriptOutput output;
 
 	JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
-	JobCreateScript(output, opt, bIncludeEditList);
+	JobCreateScript(output, opt, bIncludeEditList ? kVDJobEditListMode_Include : kVDJobEditListMode_Reset);
 	JobAddReloadMarker(output);
 
 	// Add actual run option
@@ -557,7 +576,7 @@ void JobAddConfigurationSaveAudio(const DubOptions *opt, const wchar_t *srcFile,
 	JobScriptOutput output;
 
 	JobAddConfigurationInputs(output, srcFile, srcInputDriver, pListAppended);
-	JobCreateScript(output, opt, includeEditList);
+	JobCreateScript(output, opt, includeEditList ? kVDJobEditListMode_Include : kVDJobEditListMode_Reset);
 	JobAddReloadMarker(output);
 
 	// Add actual run option
@@ -580,7 +599,7 @@ void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_
 	JobScriptOutput output;
 
 	JobAddConfigurationInputs(output, srcFile, srcInputDriver, pListAppended);
-	JobCreateScript(output, opt, includeEditList);
+	JobCreateScript(output, opt, includeEditList ? kVDJobEditListMode_Include : kVDJobEditListMode_Reset);
 	JobAddReloadMarker(output);
 
 	// Add actual run option
@@ -601,7 +620,7 @@ void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_
 void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList, bool bIncludeTextInfo) {
 	JobScriptOutput output;
 
-	JobCreateScript(output, opt, bIncludeEditList, bIncludeTextInfo);
+	JobCreateScript(output, opt, bIncludeEditList ? kVDJobEditListMode_Include : kVDJobEditListMode_Omit, bIncludeTextInfo);
 
 	VDFile f(filename, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
 	f.write(output.data(), output.size());

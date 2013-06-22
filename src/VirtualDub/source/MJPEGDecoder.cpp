@@ -909,8 +909,8 @@ const uint8 *MJPEGDecoder::decodeMCUs(const uint8 *ptr, bool odd_field) {
 				// Reset all DC coefficients
 
 				comp_last_dc[0] = 128*8;
-				comp_last_dc[1] = 0;
-				comp_last_dc[2] = 0;
+				comp_last_dc[1] = 128*8;
+				comp_last_dc[2] = 128*8;
 			}
 
 			short **dct_src = dct_coeff_ptrs;

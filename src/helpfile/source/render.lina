@@ -297,7 +297,7 @@
 		</li>
 		<li>
 			<p>
-				<em>Slow recompress</em>: Video is decompressed and then recompressed using the desired output codec.
+				<em>Normal recompress</em>: Video is decompressed and then recompressed using the desired output codec.
 				This is similar to Fast Recompress except that the input and output formats can be chosen
 				in the <a href="d-videocolordepth.html">Video color depth</a> dialog, and the two can be different,
 				requiring a conversion in between.
@@ -412,7 +412,7 @@
 			<lina:note>
 				In previous versions of VirtualDub, enabling full processing mode would always force a conversion to 32-bit
 				RGB. This is no longer the case &mdash; if no video filters are used, this conversion step is omitted
-				and the video is directly converted to the output format as in Slow Recompress mode.
+				and the video is directly converted to the output format as in Normal Recompress mode.
 			</lina:note>
 		</dd>
 

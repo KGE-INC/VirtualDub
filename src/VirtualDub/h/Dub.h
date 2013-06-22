@@ -192,6 +192,7 @@ public:
 	VDFraction	mFrameRateTimeline;
 	VDFraction	mFrameRate;
 	VDFraction	mFrameRateIVTCFactor;
+	sint64		mTimelineSourceLength;
 	long	processed;
 	uint32	lastProcessedTimestamp;
 	bool	fAudioOnly;
