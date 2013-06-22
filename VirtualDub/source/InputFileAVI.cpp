@@ -45,6 +45,8 @@ extern HINSTANCE g_hInst;
 extern const wchar_t fileFiltersAppend[];
 extern HWND g_hWnd;
 
+bool VDPreferencesIsPreferInternalDecodersEnabled();
+
 namespace {
 	enum { kVDST_InputFileAVI = 4 };
 
@@ -166,7 +168,7 @@ InputFileAVI::InputFileAVI() {
 	fAutomated	= false;
 
 	fAcceptPartial = false;
-	fInternalMJPEG = false;
+	fInternalDecoder = VDPreferencesIsPreferInternalDecodersEnabled();
 	fDisableFastIO = false;
 	iMJPEGMode = 0;
 	fccForceVideo = 0;
@@ -213,7 +215,7 @@ public:
 		bool fCompatibilityMode;
 		bool fAcceptPartial;
 		bool fRedoKeyFlags;
-		bool fInternalMJPEG;
+		bool fInternalDecoder;
 		bool fDisableFastIO;
 	} opts;
 		
@@ -271,7 +273,7 @@ INT_PTR APIENTRY InputFileAVIOptions::SetupDlgProc( HWND hDlg, UINT message, WPA
 
 				thisPtr->opts.fCompatibilityMode = !!IsDlgButtonChecked(hDlg, IDC_AVI_COMPATIBILITYMODE);
 				thisPtr->opts.fRedoKeyFlags = !!IsDlgButtonChecked(hDlg, IDC_AVI_REKEY);
-				thisPtr->opts.fInternalMJPEG = !!IsDlgButtonChecked(hDlg, IDC_AVI_INTERNALMJPEG);
+				thisPtr->opts.fInternalDecoder = !!IsDlgButtonChecked(hDlg, IDC_AVI_INTERNALDECODER);
 				thisPtr->opts.fDisableFastIO = !!IsDlgButtonChecked(hDlg, IDC_AVI_DISABLEOPTIMIZEDIO);
 
 				if (IsDlgButtonChecked(hDlg, IDC_IF_NORMAL))
@@ -355,7 +357,7 @@ void InputFileAVI::setOptions(InputFileOptions *_ifo) {
 	fCompatibilityMode	= ifo->opts.fCompatibilityMode;
 	fAcceptPartial		= ifo->opts.fAcceptPartial;
 	fRedoKeyFlags		= ifo->opts.fRedoKeyFlags;
-	fInternalMJPEG		= ifo->opts.fInternalMJPEG;
+	fInternalDecoder	= ifo->opts.fInternalDecoder;
 	fDisableFastIO		= ifo->opts.fDisableFastIO;
 	iMJPEGMode			= ifo->opts.iMJPEGMode;
 	fccForceVideo		= ifo->opts.fccForceVideo;
@@ -436,7 +438,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 	if (fDisableFastIO)
 		pAVIFile->EnableFastIO(false);
 
-	if (!(videoSrc = new VideoSourceAVI(pAVIFile,NULL,NULL,fInternalMJPEG, iMJPEGMode, fccForceVideo, fccForceVideoHandler)))
+	if (!(videoSrc = new VideoSourceAVI(pAVIFile, NULL, NULL, fInternalDecoder, iMJPEGMode, fccForceVideo, fccForceVideoHandler)))
 		throw MyMemoryError();
 
 	if (!videoSrc->init())
@@ -580,7 +582,7 @@ void InputFileAVI::InitStriped(const char *szFile) {
 			index_file = stripe_files[i];
 	}
 
-	if (!(videoSrc = new VideoSourceAVI(index_file, stripesys, stripe_files, fInternalMJPEG, iMJPEGMode, fccForceVideo)))
+	if (!(videoSrc = new VideoSourceAVI(index_file, stripesys, stripe_files, fInternalDecoder, iMJPEGMode, fccForceVideo)))
 		throw MyMemoryError();
 
 	if (!videoSrc->init())

@@ -233,28 +233,19 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
-#if 0
+#if 1
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.12", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.6.4", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.12", 1);
 	}
 #endif
 }
 
 
 void AnnounceCaptureExperimental(VDGUIHandle h) {
-#if 0
-	DWORD dwSeenIt;
-
-	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.4", &dwSeenIt) || !dwSeenIt) {
-		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BROKEN), (HWND)h, AnnounceExperimentalDlgProc);
-
-		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.4", 1);
-	}
-#endif
 }
 
 static const char g_szDivXWarning[]=

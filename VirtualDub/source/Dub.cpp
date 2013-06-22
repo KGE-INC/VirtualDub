@@ -85,7 +85,7 @@ using namespace nsVDDub;
 extern const char g_szError[];
 extern HWND g_hWnd;
 extern bool g_fWine;
-
+extern uint32& VDPreferencesGetRenderVideoBufferCount();
 ///////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -152,9 +152,6 @@ DubOptions g_dubOpts = {
 	},
 
 	{
-		2097152,				// 2Mb AVI output buffer
-		65536,					// 64K WAV input buffer
-		32,						// 32 pipe buffers
 		true,					// dynamic enable
 		false,
 		false,					// directdraw,
@@ -891,7 +888,7 @@ void Dubber::InitOutputFile() {
 
 		hdr.dwRate			= vInfo.frameRate.getHi();
 		hdr.dwScale			= vInfo.frameRate.getLo();
-		hdr.dwLength		= vInfo.end_dst ? 0xFFFFFFFFUL : (DWORD)vInfo.end_dst;
+		hdr.dwLength		= vInfo.end_dst >= 0xFFFFFFFFUL ? 0xFFFFFFFFUL : (DWORD)vInfo.end_dst;
 
 		hdr.rcFrame.left	= 0;
 		hdr.rcFrame.top		= 0;
@@ -978,7 +975,7 @@ void Dubber::InitOutputFile() {
 				throw MyMemoryError();
 
 			pVideoPacker->init(compVars->hic, (LPBITMAPINFO)&*mpCompressorVideoFormat, (BITMAPINFO *)&*outputFormat, compVars->lQ, compVars->lKey);
-			pVideoPacker->setDataRate(compVars->lDataRate*1024, vInfo.usPerFrame, vInfo.end_src - vInfo.start_src);
+			pVideoPacker->setDataRate(compVars->lDataRate*1024, vInfo.usPerFrame, vInfo.end_dst);
 			pVideoPacker->start();
 
 			lVideoSizeEstimate = pVideoPacker->getMaxSize();
@@ -1493,7 +1490,7 @@ void Dubber::Init(IVDVideoSource *video, AudioSource *audio, IVDDubberOutputSyst
 
 	// Create data pipes.
 
-	if (!(mpVideoPipe = new_nothrow AVIPipe(opt->perf.pipeBufferCount, 16384)))
+	if (!(mpVideoPipe = new_nothrow AVIPipe(VDPreferencesGetRenderVideoBufferCount(), 16384)))
 		throw MyMemoryError();
 
 	if (aSrc && mpOutputSystem->AcceptsAudio()) {
@@ -1797,15 +1794,20 @@ namespace {
 		IVDVideoDisplay *pVideoDisplay = (IVDVideoDisplay *)pDisplayAsVoid;
 		int nFieldMode = *(int *)pInterlaced;
 
+		uint32 baseFlags = IVDVideoDisplay::kVisibleOnly;
+
+		if (g_prefs.fDisplay & Preferences::kDisplayEnableVSync)
+			baseFlags |= IVDVideoDisplay::kVSync;
+
 		if (nFieldMode) {
 			if ((pass^nFieldMode)&1)
-				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kVisibleOnly);
+				pVideoDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | baseFlags);
 			else
-				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kVisibleOnly);
+				pVideoDisplay->Update(IVDVideoDisplay::kOddFieldOnly | baseFlags);
 
 			return !pass;
 		} else {
-			pVideoDisplay->Update(IVDVideoDisplay::kAllFields | IVDVideoDisplay::kVisibleOnly);
+			pVideoDisplay->Update(IVDVideoDisplay::kAllFields | baseFlags);
 			return false;
 		}
 	}
@@ -1903,6 +1905,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		mpVideoOut->write((exdata & 1) ? 0 : AVIIF_KEYFRAME, (char *)buffer, lastSize, 1);
 
 		vInfo.total_size += lastSize + 24;
+		vInfo.lastProcessedTimestamp = VDGetCurrentTick();
 		++vInfo.processed;
 		pStatusHandler->NotifyNewFrame(lastSize | (exdata&1 ? 0x80000000 : 0));
 		mInterleaver.AddVBRCorrection(0, lastSize);
@@ -1966,9 +1969,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		VBitmap *initialBitmap = filters.InputBitmap();
 		VBitmap *lastBitmap = filters.LastBitmap();
 		VBitmap destbm;
-		long lInputFrameNum, lInputFrameNum2;
-
-		lInputFrameNum = display_num - vSrc->asStream()->getStart();
+		VDPosition startOffset = vSrc->asStream()->getStart();
 
 		if (!pInvTelecine && filters.isEmpty()) {
 			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
@@ -1978,21 +1979,26 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 		} else {
 			if (pInvTelecine) {
 				VBitmap srcbm((void *)vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
-				lInputFrameNum2 = pInvTelecine->ProcessOut(initialBitmap);
-				pInvTelecine->ProcessIn(&srcbm, lInputFrameNum);
 
-				lInputFrameNum = lInputFrameNum2;
+				VDPosition timelineFrameOut, srcFrameOut;
+				bool valid = pInvTelecine->ProcessOut(initialBitmap, srcFrameOut, timelineFrameOut);
 
-				if (lInputFrameNum < 0) {
+				pInvTelecine->ProcessIn(&srcbm, display_num, timeline_num);
+
+				if (!valid) {
 					blitter->unlock(BUFFERID_INPUT);
 					return kVideoWriteBuffered;
 				}
+
+				timeline_num = timelineFrameOut;
+				display_num = srcFrameOut;
 			} else
 				VDPixmapBlt(VDAsPixmap(*initialBitmap), vSrc->getTargetFormat());
 
 			// process frame
 
-			fsi.lCurrentSourceFrame	= lInputFrameNum;
+			fsi.lCurrentSourceFrame	= (long)(display_num - startOffset);
+			fsi.lCurrentFrame		= (long)timeline_num;
 			fsi.lSourceFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentSourceFrame * (sint64)1000);
 			fsi.lDestFrameMS		= (long)vInfo.frameRateIn.scale64ir(fsi.lCurrentFrame * (sint64)1000);
 
@@ -2123,6 +2129,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 
 	blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 
+	vInfo.lastProcessedTimestamp = VDGetCurrentTick();
 	++vInfo.processed;
 
 	pStatusHandler->NotifyNewFrame(isKey ? dwBytes : dwBytes | 0x80000000);

@@ -302,6 +302,7 @@ void VDAddPluginModule(const wchar_t *pFilename) {
 		pModule->Unlock();
 	} catch(...) {
 		g_pluginModules.pop_back();
+		delete pModule;
 		throw;
 	}
 

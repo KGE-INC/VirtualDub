@@ -296,10 +296,10 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 		#elif VD_COMPILER_MSVC_VC8_PSDK
 			const char *const s = "Microsoft Visual C++ 8.0 for AMD64 (PSDK version)";
 		#else
-			const char *const s = "Microsoft Visual Studio .NET (2005) for AMD64";
+			const char *const s = "Microsoft Visual Studio 2005 for AMD64";
 		#endif
 	#else
-		const char *const s = "Microsoft Visual Studio .NET (2005) for X86";
+		const char *const s = "Microsoft Visual Studio 2005 for X86";
 	#endif
 #elif VD_COMPILER_MSVC >= 1310
 	const char *const s = "Microsoft Visual Studio .NET (2003)";

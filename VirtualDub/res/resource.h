@@ -19,6 +19,7 @@
 #define IDC_SAMPLE                      4
 #define IDC_DEL                         4
 #define IDC_ARRANGE                     4
+#define IDC_ALTOK                       4
 #define IDC_MOVEUP                      5
 #define IDS_TITLE_DUBBING_MINIMIZED     5
 #define IDC_SAMPLE_MULTIPLE             5
@@ -514,6 +515,7 @@
 #define IDC_AUTOARRANGE                 1184
 #define IDC_VERIFY                      1184
 #define IDC_UNPROJECT                   1184
+#define IDC_AVI_INTERNALDECODER         1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -1136,6 +1138,7 @@
 #define ID_FILE_RUNVIDEOANALYSISPASS    40340
 #define ID_VIDEO_SEEK_PREVSCENE         40341
 #define ID_VIDEO_SEEK_NEXTSCENE         40342
+#define ID_CAPTURE_TIMINGGRAPH          40344
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1144,10 +1147,18 @@
 #define ID_AUDIOMODE_22KHZ_8STEREO      41005
 #define ID_AUDIOMODE_22KHZ_16MONO       41006
 #define ID_AUDIOMODE_22KHZ_16STEREO     41007
-#define ID_AUDIOMODE_44KHZ_8MONO        41008
-#define ID_AUDIOMODE_44KHZ_8STEREO      41009
-#define ID_AUDIOMODE_44KHZ_16MONO       41010
-#define ID_AUDIOMODE_44KHZ_16STEREO     41011
+#define ID_AUDIOMODE_32KHZ_8MONO        41008
+#define ID_AUDIOMODE_32KHZ_8STEREO      41009
+#define ID_AUDIOMODE_32KHZ_16MONO       41010
+#define ID_AUDIOMODE_32KHZ_16STEREO     41011
+#define ID_AUDIOMODE_44KHZ_8MONO        41012
+#define ID_AUDIOMODE_44KHZ_8STEREO      41013
+#define ID_AUDIOMODE_44KHZ_16MONO       41014
+#define ID_AUDIOMODE_44KHZ_16STEREO     41015
+#define ID_AUDIOMODE_48KHZ_8MONO        41016
+#define ID_AUDIOMODE_48KHZ_8STEREO      41017
+#define ID_AUDIOMODE_48KHZ_16MONO       41018
+#define ID_AUDIOMODE_48KHZ_16STEREO     41019
 #define ID_FRAMERATE_6000FPS            41050
 #define ID_FRAMERATE_3000FPS            41051
 #define ID_FRAMERATE_2500FPS            41052
@@ -1182,7 +1193,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        269
-#define _APS_NEXT_COMMAND_VALUE         40343
+#define _APS_NEXT_COMMAND_VALUE         40353
 #define _APS_NEXT_CONTROL_VALUE         1413
 #define _APS_NEXT_SYMED_VALUE           111
 #endif

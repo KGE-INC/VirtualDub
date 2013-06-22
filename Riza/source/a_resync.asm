@@ -78,7 +78,8 @@ xloop:
 		jne			xloop
 
 		mov			esp, fs:dword ptr [0]
-		add			esp, 8
+		pop			fs:dword ptr [0]
+		pop			eax
 
 		emms
 		pop			ebx

@@ -129,7 +129,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			continue;
 		}
 
-		if (c == ' ' || c == '\t')
+		if (!quoted && (c == ' ' || c == '\t'))
 			break;
 
 		++cmdLine;

@@ -20,6 +20,7 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/math.h>
 #include <vd2/system/profile.h>
+#include <vd2/system/time.h>
 #include <vd2/Riza/capresync.h>
 #include <vd2/Priss/convert.h>
 
@@ -102,6 +103,7 @@ namespace {
 }
 
 ///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
 
 void VDCaptureAudioRateEstimator::Reset() {
 	mX = 0;
@@ -114,7 +116,7 @@ void VDCaptureAudioRateEstimator::Reset() {
 void VDCaptureAudioRateEstimator::AddSample(sint64 x, sint64 y) {
 	++mSamples;
 
-	int128 x2, y2;
+	int128 x2;
 	x2.setSquare(x);
 
 	mX	+= x;
@@ -148,6 +150,104 @@ bool VDCaptureAudioRateEstimator::GetYIntercept(double slope, double& yintercept
 	return true;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	template<unsigned N>
+	class VDCaptureWindowedRegressionEstimator {
+	public:
+		VDCaptureWindowedRegressionEstimator() { Reset(); }
+
+		void Reset();
+		void AddSample(sint64 x, sint64 y);
+		bool GetSlope(double& slope) const;
+		bool GetXIntercept(double slope, double& xintercept) const;
+		bool GetYIntercept(double slope, double& yintercept) const;
+
+	protected:
+		struct Sample {
+			sint64	x;
+			sint64	y;
+			int128	x2;
+			int128	xy;
+		};
+
+		int		mSamples;
+		int		mWindowOffset;
+
+		Sample	mTotal;
+		Sample	mWindow[N];
+	};
+
+	template<unsigned N>
+	void VDCaptureWindowedRegressionEstimator<N>::Reset() {
+		mSamples = 0;
+		mWindowOffset = 0;
+
+		memset(&mTotal, 0, sizeof mTotal + sizeof mWindow);
+	}
+
+	template<unsigned N>
+	void VDCaptureWindowedRegressionEstimator<N>::AddSample(sint64 x, sint64 y) {
+		Sample& sa = mWindow[mWindowOffset];
+
+		if (++mSamples > N) {
+			--mSamples;
+
+			mTotal.x -= sa.x;
+			mTotal.y -= sa.y;
+			mTotal.x2 -= sa.x2;
+			mTotal.xy -= sa.xy;
+		}
+
+		int128 x2;
+		x2.setSquare(x);
+
+		sa.x = x;
+		sa.y = y;
+		sa.x2 = x2;
+		sa.xy = (int128)x * (int128)y;
+
+		mTotal.x += sa.x;
+		mTotal.y += sa.y;
+		mTotal.x2 += sa.x2;
+		mTotal.xy += sa.xy;
+
+		if (++mWindowOffset >= N)
+			mWindowOffset = 0;
+	}
+
+	template<unsigned N>
+	bool VDCaptureWindowedRegressionEstimator<N>::GetSlope(double& slope) const {
+		if (mSamples < N)
+			return false;
+
+		const double x	= (double)mTotal.x;
+		const double y	= (double)mTotal.y;
+		const double x2	= mTotal.x2;
+		const double xy	= mTotal.xy;
+		const double n	= mSamples;
+
+		slope = (n*xy - x*y) / (n*x2 - x*x);
+
+		return true;
+	}
+
+	template<unsigned N>
+	bool VDCaptureWindowedRegressionEstimator<N>::GetXIntercept(double slope, double& xintercept) const {
+		xintercept = ((double)mTotal.x - (double)mTotal.y/slope) / mSamples;
+		return true;
+	}
+
+	template<unsigned N>
+	bool VDCaptureWindowedRegressionEstimator<N>::GetYIntercept(double slope, double& yintercept) const {
+		yintercept = ((double)mTotal.y - (double)mTotal.x*slope) / mSamples;
+		return true;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 namespace {
 	template<class T, unsigned N>
 	class MovingAverage {
@@ -155,6 +255,7 @@ namespace {
 		MovingAverage()
 			: mPos(0)
 			, mSum(0)
+			, mbInited(false)
 		{
 			for(unsigned i=0; i<N; ++i)
 				mArray[i] = 0;
@@ -162,6 +263,14 @@ namespace {
 
 
 		T operator()(T v) {
+			if (!mbInited) {
+				for(int i=0; i<N; ++i)
+					mArray[i] = v;
+
+				mbInited = true;
+				return v;
+			}
+
 			mArray[mPos] = v;
 			if (++mPos >= N)
 				mPos = 0;
@@ -181,9 +290,299 @@ namespace {
 
 	protected:
 		unsigned mPos;
+		bool mbInited;
 		T mSum;
 		T mArray[N];
 	};
+
+	class VDCaptureVideoTimingController {
+	public:
+		void Init(double fps, IVDCaptureProfiler *pProfiler);
+
+		sint64	Run(sint64 timeIn);
+		void	PostUpdate(double frameError);
+
+		double	GetProjectionRate() const { return mProjectionRate; }
+
+	protected:
+		sint64		mFirstTime;
+		sint64		mAccumTime;
+		sint64		mLastTime;
+		double		mPeriod;
+		sint64		mPeriodInt;
+		double		mInvPeriod;
+		sint64		mDropThreshold;
+		int			mProportionalControllerKillTime;
+		int			mIntegralControllerKillTime;
+
+		double		mProjectedTime;
+		double		mProjectionRate;
+		double		mPeriodAverage;
+		double		mOffsetErrorAverage;
+
+		IVDCaptureProfiler *mpProfiler;
+		int			mProfileResampleRate;
+		int			mProfileOffsetError;
+	};
+
+	void VDCaptureVideoTimingController::Init(double fps, IVDCaptureProfiler *pProfiler) {
+		mAccumTime		= -1;
+		mLastTime		= -1;
+		mPeriod			= 1000000.0 / fps;
+		mPeriodInt		= VDRoundToInt64(mPeriod);
+		mInvPeriod		= fps / 1000000.0;
+		mDropThreshold	= mPeriodInt*3/4;
+		mIntegralControllerKillTime = 0;
+		mProportionalControllerKillTime = 0;
+
+		mProjectedTime		= 0;
+		mProjectionRate		= 1.0;
+		mPeriodAverage		= 1.0;
+		mOffsetErrorAverage	= 0;
+
+		mpProfiler		= pProfiler;
+		mProfileResampleRate = -1;
+		if (pProfiler) {
+			mProfileResampleRate	= pProfiler->RegisterStatsChannel("Video resampling rate");
+			mProfileOffsetError		= pProfiler->RegisterStatsChannel("Video offset error");
+		}
+	}
+
+	sint64 VDCaptureVideoTimingController::Run(sint64 t) {
+		// Apply smoothing.
+		if (mLastTime < 0) {
+			mLastTime = 0;
+			mFirstTime = t;
+			mAccumTime = 0;
+			mProjectedTime = 0;
+			return 0;
+		}
+
+		t -= mFirstTime;
+
+		sint64 delta = t - (mLastTime + mPeriodInt);
+
+		// Check if we have a large or small delta that indicates an irregularity
+		// in the stream timing. If one is present, most likely due to a drop, do
+		// not average the delta -- pass it right through -- and temporarily kill
+		// the proportional controller to prevent it from kicking the resampling
+		// factor.
+		if (abs((long)delta) < mDropThreshold)
+			delta = (t - mPeriodInt - mAccumTime)/32;
+		else
+			mProportionalControllerKillTime = 8;
+
+		delta += mPeriodInt;
+
+		mAccumTime += delta;
+
+		mLastTime = t;
+		t = mAccumTime;
+
+		// Forward project next time.
+		double projectedDelta = delta * mProjectionRate;
+		mProjectedTime += projectedDelta;
+		t = VDRoundToInt64(mProjectedTime);
+
+		// Compute period error and average
+		if (!mProportionalControllerKillTime)
+			mPeriodAverage += (delta*mInvPeriod - mPeriodAverage) * 0.001;
+		double periodError = mPeriodAverage * mProjectionRate - 1.0;
+
+//		VDDEBUG2("periodError = %g %g\n", periodError, delta*mInvPeriod);
+
+		// Apply proportional controller. The proportional controller, classically,
+		// is responsible for killing slope errors. Our process value is a bit
+		// noisy for that, but here it mainly helps kill the oscillation from the
+		// integral controller.
+		const double Kp = -0.05;
+
+		if (mProportionalControllerKillTime)
+			--mProportionalControllerKillTime;
+		else
+			mProjectionRate += Kp * periodError;
+
+		return t;
+	}
+
+	void VDCaptureVideoTimingController::PostUpdate(double offsetError) {
+		// Compute smoothed offset error
+		offsetError = (mOffsetErrorAverage += (offsetError - mOffsetErrorAverage)*0.1);
+		if (mpProfiler)
+			mpProfiler->AddDataPoint(mProfileOffsetError, offsetError);
+
+		// Apply integral controller. The integral controller, classically, is
+		// responsible for pushing the steady-state error to zero. In our case
+		// we use a modified I controller that is based off of the offset error
+		// instead of the period error instead, since we want to push the frame
+		// offset error to zero.
+		const double Ki = -0.001;
+
+		mProjectionRate += Ki * offsetError;
+
+		if (mProjectionRate < 0.8)
+			mProjectionRate = 0.8;
+
+		if (mProjectionRate > 1.2)
+			mProjectionRate = 1.2;
+
+		if (mpProfiler) {
+			// Use a log scale such at a +1.0 delta is 1% faster/slower.
+			mpProfiler->AddDataPoint(mProfileResampleRate, log(mProjectionRate) * 100.49917080713052880106636866079);
+		}
+	}
+
+	class VDPIDController {
+	public:
+		VDPIDController() { Reset(); }
+
+		void Reset();
+
+		void SetControlValueRange(double cvMin, double cvMax) {
+			mCVMin = cvMin;
+			mCVMax = cvMax;
+		}
+
+		void SetControlValue(double cv) {
+			mCV = mCVPD = cv;
+			mCVI = 0;
+		}
+
+		void SetSetPoint(double sp) {
+			mSP = sp;
+		}
+
+		void SetIntegralLimit() {
+			mILimit = 1e+30f;
+		}
+
+		void SetIntegralLimit(double limit) {
+			mILimit = limit;
+		}
+
+		void SetProportionalHysteresis(double hys, double hysbleed) {
+			mPHysteresis = hys;
+			mPHysBleed = hysbleed;
+		}
+
+		void SetProportionalLimit(double limit) {
+			mPLimit = limit;
+		}
+
+		void SetResponse(double p, double i, double d);
+
+		double Run(double pv, double pvi, double t);
+
+		double GetControlValue() const { return mCV; }
+
+	protected:
+		int		mPreload;		///< Delay before starting controller to prime process value history.
+		double	mCVPD;			///< Current control value (proportional/derivative).
+		double	mCVI;			///< Current control value (integral).
+		double	mCV;			///< Current control valeu (P+I+D).
+		double	mCVMin;			///< Hard minimum for control value.
+		double	mCVMax;			///< Hard maximum for control value.
+		double	mPHysteresis;	///< Proportional controller hysteresis.
+		double	mPHysBleed;		///< Proportional controller hysteresis bleed/interval.
+		double	mPHysAccum;		///< Proportional controller hysteresis accumulator.
+		double	mPLimit;		///< Proportional controller limit.
+		double	mILimit;		///< Integral controller limit.
+		double	mSP;			///< Set point.
+		double	mKp;			///< Proportional control constant.
+		double	mKi;			///< Integral control constant.
+		double	mKd;			///< Derivative control constant.
+		double	mPV1;			///< Previous process value.
+		double	mPV2;			///< Prev-prev process value.
+	};
+
+	void VDPIDController::Reset() {
+		mPreload = 2;
+		mCVPD	= 0;
+		mCVI	= 0;
+		mCVMin	= 0;
+		mCVMax	= 0;
+		mPHysteresis = 0;
+		mPHysAccum = 0;
+		mPHysBleed = 0;
+		mPLimit	= 1e+20f;
+		mILimit	= 1e+30f;
+		mSP		= 0;
+		mKp		= 0;
+		mKi		= 0;
+		mKd		= 0;
+		mPV1	= 0;
+		mPV2	= 0;
+	}
+
+	void VDPIDController::SetResponse(double p, double i, double d) {
+		mKp = p;
+		mKi = i;
+		mKd = d;
+	}
+
+	double VDPIDController::Run(double pv0, double pvi, double t) {
+		if (mPreload) {
+			--mPreload;
+			return mCVPD + mCVI;
+		}
+
+		// Apply hysteresis to the PV input to the P controller to avoid
+		// bumping the CV on routine noise. Apply a limiter to prevent
+		// a hard kick to the error from trashing the output.
+		double Pk = 0;
+		double PLimit = mPLimit * t;
+		mPHysAccum += (mPV1 - pv0);
+		if (mPHysAccum < -mPHysteresis) {
+			Pk = mPHysAccum + mPHysteresis;
+			if (Pk < -PLimit)
+				Pk = -PLimit;
+		} else if (mPHysAccum > +mPHysteresis) {
+			Pk = mPHysAccum - mPHysteresis;
+			if (Pk > PLimit)
+				Pk = PLimit;
+		}
+
+		mPHysAccum -= Pk;
+
+		Pk += mPHysAccum * mPHysBleed;
+		mPHysAccum *= (1.0 - mPHysBleed);
+
+		Pk *= mKp;
+
+		double Ik = (mKi * t) * (mSP - pvi);
+		double Dk = (mKd / t) * (2*mPV1 - (pv0 + mPV2));
+
+		mPV2 = mPV1;
+		mPV1 = pv0;
+
+		mCVPD += Pk + Dk;
+		mCVI += Ik;
+
+		double IToPD = mCVI * 0.01f;
+		mCVPD += IToPD;
+		mCVI -= IToPD;
+
+		// clamp proportional/derivative contribution
+		if (!(mCVPD >= mCVMin))
+			mCVPD = mCVMin;
+		if (!(mCVPD <= mCVMax))
+			mCVPD = mCVMax;
+
+		// clamp integral contribution
+
+		if (fabs(mCVI) > mILimit)
+			mCVI = (mCVI<0) ? -mILimit : mILimit;
+
+		// clamp output
+		mCV = mCVPD + mCVI;
+
+		if (!(mCV >= mCVMin))
+			mCV = mCVMin;
+		if (!(mCV <= mCVMax))
+			mCV = mCVMax;
+
+		return mCV;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -194,46 +593,68 @@ public:
 	~VDCaptureResyncFilter();
 
 	void SetChildCallback(IVDCaptureDriverCallback *pChild);
+	void SetProfiler(IVDCaptureProfiler *pProfiler);
 	void SetVideoRate(double fps);
 	void SetAudioRate(double bytesPerSec);
 	void SetAudioChannels(int chans);
 	void SetAudioFormat(VDAudioSampleType type);
 	void SetResyncMode(Mode mode);
 	void EnableVideoTimingCorrection(bool en);
+	void EnableVideoDrops(bool enable);
+	void EnableVideoInserts(bool enable);
+	void SetVideoInsertLimit(int insertLimit);
+	void SetFixedAudioLatency(int latencyInMilliseconds);
+	void SetLimitedAutoAudioLatency(int samples);
+	void SetAutoAudioLatency();
 
 	void GetStatus(VDCaptureResyncStatus&);
 
 	void CapBegin(sint64 global_clock);
 	void CapEnd(const MyError *pError);
-	bool CapEvent(nsVDCapture::DriverEvent event);
+	bool CapEvent(nsVDCapture::DriverEvent event, int data);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
-	void ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock);
+	void ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock, double resampling_rate);
 	void UnpackSamples(sint16 *dst, ptrdiff_t dstStride, const void *src, uint32 samples, uint32 channels);
 
 	IVDCaptureDriverCallback *mpCB;
+	IVDCaptureProfiler *mpProfiler;
 
 	bool		mbAdjustVideoTime;
+	bool		mbAllowDrops;
+	bool		mbAllowInserts;
+	int			mInsertLimit;
 	Mode		mMode;
+
+	bool		mbEnableFixedAudioLatency;
+	int			mAutoAudioLatencyLimit;
+	double		mFixedAudioLatency;
+
+	double		mLastSyncError;
 
 	sint64		mGlobalClockBase;
 	sint64		mVideoLastTime;
 	sint64		mVideoLastRawTime;
+	sint64		mVideoLastAccurateTime;
 	sint64		mVideoTimingWrapAdjust;
 	sint64		mVideoTimingAdjust;
+	sint64		mVideoFramesWritten;
 	sint64		mAudioBytes;
 	sint64		mAudioWrittenBytes;
 	double		mVideoTimeLastAudioBlock;
 	double		mInvAudioRate;
 	double		mVideoRate;
-	double		mVideoRateScale;
+	double		mInvVideoRate;
 	double		mAudioRate;
-	double		mAudioResamplingRate;
-	double		mAudioTrackingRate;
+	VDCaptureVideoTimingController	mVideoTimingController;
+	VDPIDController		mAudioResamplingController;
 	int			mChannels;
 	VDCaptureAudioRateEstimator	mVideoRealRateEstimator;
+	VDCaptureAudioRateEstimator	mAudioRealRateEstimator;
 	VDCaptureAudioRateEstimator	mAudioRelativeRateEstimator;
+	VDCaptureWindowedRegressionEstimator<11>	mVideoWindowedRateEstimator;
+	VDCaptureWindowedRegressionEstimator<11>	mAudioRelativeWindowedRateEstimator;
 	VDCriticalSection	mcsLock;
 
 	tpVDConvertPCM	mpAudioDecoder16;
@@ -247,20 +668,32 @@ protected:
 	vdblock<char>	mEncodingBuffer;
 
 	MovingAverage<double, 8>	mCurrentLatencyAverage;
+	MovingAverage<double, 8>	mAudioStartAverage;
 
+	int			mProfileSyncError;
 	VDRTProfileChannel	mProfileChannel;
 };
 
 VDCaptureResyncFilter::VDCaptureResyncFilter()
-	: mbAdjustVideoTime(true)
+	: mpCB(NULL)
+	, mpProfiler(NULL)
+	, mbAdjustVideoTime(true)
+	, mbAllowDrops(true)
+	, mbAllowInserts(true)
+	, mInsertLimit(10)
 	, mMode(kModeNone)
+	, mbEnableFixedAudioLatency(false)
+	, mAutoAudioLatencyLimit(30)
 	, mVideoLastTime(0)
 	, mVideoLastRawTime(0)
+	, mVideoLastAccurateTime(0)
 	, mVideoTimingWrapAdjust(0)
 	, mVideoTimingAdjust(0)
 	, mAudioBytes(0)
 	, mAudioRate(0)
 	, mInvAudioRate(0)
+	, mVideoRate(1)
+	, mInvVideoRate(1)
 	, mChannels(0)
 	, mProfileChannel("Resynchronizer")
 {
@@ -277,8 +710,13 @@ void VDCaptureResyncFilter::SetChildCallback(IVDCaptureDriverCallback *pChild) {
 	mpCB = pChild;
 }
 
+void VDCaptureResyncFilter::SetProfiler(IVDCaptureProfiler *pProfiler) {
+	mpProfiler = pProfiler;
+}
+
 void VDCaptureResyncFilter::SetVideoRate(double fps) {
 	mVideoRate = fps;
+	mInvVideoRate = 1.0 / fps;
 }
 
 void VDCaptureResyncFilter::SetAudioRate(double bytesPerSec) {
@@ -311,17 +749,45 @@ void VDCaptureResyncFilter::EnableVideoTimingCorrection(bool en) {
 	mbAdjustVideoTime = en;
 }
 
+void VDCaptureResyncFilter::EnableVideoDrops(bool enable) {
+	mbAllowDrops = enable;
+}
+
+void VDCaptureResyncFilter::EnableVideoInserts(bool enable) {
+	mbAllowInserts = enable;
+}
+
+void VDCaptureResyncFilter::SetVideoInsertLimit(int insertLimit) {
+	mInsertLimit = insertLimit;
+}
+
+void VDCaptureResyncFilter::SetFixedAudioLatency(int latencyInMilliseconds) {
+	mbEnableFixedAudioLatency = true;
+	mFixedAudioLatency = latencyInMilliseconds / 1000.0f;
+}
+
+void VDCaptureResyncFilter::SetLimitedAutoAudioLatency(int samples) {
+	mbEnableFixedAudioLatency = false;
+	mAutoAudioLatencyLimit = samples;
+}
+
+void VDCaptureResyncFilter::SetAutoAudioLatency() {
+	mbEnableFixedAudioLatency = false;
+	mAutoAudioLatencyLimit = 0;
+}
+
 void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
 	vdsynchronized(mcsLock) {
 		double rate, latency;
 		status.mVideoTimingAdjust	= mVideoTimingAdjust;
-		status.mVideoRateScale		= mVideoRateScale;
-		status.mAudioResamplingRate	= (float)mAudioResamplingRate;
-		status.mCurrentLatency		= -mCurrentLatencyAverage();
+		status.mVideoResamplingRate	= (float)mVideoTimingController.GetProjectionRate();
+		status.mAudioResamplingRate	= (float)mAudioResamplingController.GetControlValue();
+		status.mCurrentLatency		= 0.f;
 		status.mMeasuredLatency		= 0.f;
 
 		if (mAudioRelativeRateEstimator.GetSlope(rate) && mAudioRelativeRateEstimator.GetXIntercept(rate, latency)) {
-			status.mMeasuredLatency = -latency;
+			status.mMeasuredLatency = mAudioStartAverage() * 1e+6f;
+			status.mCurrentLatency	= mLastSyncError;
 		}
 	}
 }
@@ -329,12 +795,28 @@ void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
 void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
 	mInputLevel = 0;
 	mAccum = 0;
-	mAudioResamplingRate = 1.0;
-	mAudioTrackingRate = 1.0;
-	mAudioWrittenBytes = 0;
-	mVideoRateScale		= 1.0;
+	mAudioWrittenBytes		= 0;
 	mVideoTimeLastAudioBlock = 0;
-	mVideoLastRawTime	= 0;
+	mVideoLastTime			= 0;
+	mVideoLastAccurateTime	= 0;
+	mVideoLastRawTime		= 0;
+	mVideoFramesWritten		= 0;
+
+	mLastSyncError			= 0;
+
+	mAudioResamplingController.SetControlValue(1.0);
+	mAudioResamplingController.SetControlValueRange(0.1, 10.0);
+	mAudioResamplingController.SetSetPoint(0);
+	mAudioResamplingController.SetResponse(0.1, 0.01, 0);
+	mAudioResamplingController.SetIntegralLimit(0.1f);				// in resampling ratio
+	mAudioResamplingController.SetProportionalHysteresis(0.010, 0.1);	// apply 10ms of hysteresis, 10% bleedoff per interval
+	mAudioResamplingController.SetProportionalLimit(1.0);			// limit to 1s of error response per 1s period
+
+	mVideoTimingController.Init(mVideoRate, mpProfiler);
+
+	mProfileSyncError = -1;
+	if (mpProfiler)
+		mProfileSyncError = mpProfiler->RegisterStatsChannel("Sync error");
 
 	mInputBuffer.resize(4096 * mChannels);
 	memset(mInputBuffer.data(), 0, mInputBuffer.size() * sizeof(mInputBuffer[0]));
@@ -350,12 +832,11 @@ void VDCaptureResyncFilter::CapEnd(const MyError *pError) {
 	mpCB->CapEnd(pError);
 }
 
-bool VDCaptureResyncFilter::CapEvent(nsVDCapture::DriverEvent event) {
-	return mpCB->CapEvent(event);
+bool VDCaptureResyncFilter::CapEvent(nsVDCapture::DriverEvent event, int data) {
+	return mpCB->CapEvent(event, data);
 }
 
 void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock)  {
-
 	if (stream == 0) {
 		// Correct for one form of the 71-minute bug.
 		//
@@ -387,6 +868,9 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 		timestamp += mVideoTimingWrapAdjust;
 	}
 
+	double audioResamplingRate;
+	bool frameKill = false;
+
 	vdsynchronized(mcsLock) {
 		if (stream == 0) {
 			int vcount = mVideoRealRateEstimator.GetCount();
@@ -395,85 +879,70 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			mVideoRealRateEstimator.AddSample(global_clock, timestamp);
 
 			// apply video timing correction
-			if (mbAdjustVideoTime) {
-				timestamp = VDRoundToInt64((double)timestamp * mVideoRateScale);
-
-				double estimatedVideoToRealTimeSlope;
-				if (vcount > 8 && mVideoRealRateEstimator.GetSlope(estimatedVideoToRealTimeSlope)) {
-					double desiredVideoScale = 1.0 / estimatedVideoToRealTimeSlope;
-
-					// gradually lerp correction up over first 100 samples
-					if (vcount < 108)
-						desiredVideoScale += (1.0 - desiredVideoScale) * ((108-vcount) * (1.0 / 100.0));
-
-					// apply low-pass to damp correction (error decays to 10% in 229 samples)
-					double correctionDelta = (desiredVideoScale - mVideoRateScale) * 0.01;
-
-					// clamp change to 0.5ms per frame
-					double maxDelta = 500.0 / timestamp;
-
-					if (fabs(correctionDelta) > maxDelta)
-						correctionDelta = (correctionDelta < 0) ? -maxDelta : maxDelta;
-
-					// apply delta
-					mVideoRateScale += correctionDelta;
-
-					// clamp delta to within 20%
-					if (mVideoRateScale < 0.8)
-						mVideoRateScale = 0.8;
-					else if (mVideoRateScale > 1.2)
-						mVideoRateScale = 1.2;
-				}
-			}
+			if (mbAdjustVideoTime)
+				timestamp = mVideoTimingController.Run(timestamp);
 
 			// apply video timing adjustment (AV sync by video time bump)
 			mVideoLastTime = timestamp;
 			timestamp += mVideoTimingAdjust;
 
+			// compute frame error
+			double frame = timestamp * mVideoRate * (1.0 / 1000000.0);
+			double frameError = frame - mVideoFramesWritten;
+
+			if (frameError < -0.75 && mbAllowDrops) {
+				mpCB->CapEvent(nsVDCapture::kEventVideoFramesDropped, 1);
+				frameKill = true;
+			} else {
+				// Don't allow inserts before the first frame.
+				if (frameError > +0.75 && mbAllowInserts && mVideoFramesWritten) {
+					int framesToInsert = VDRoundToInt(frameError);
+
+					if (framesToInsert > mInsertLimit)
+						framesToInsert = mInsertLimit;
+
+					mpCB->CapEvent(nsVDCapture::kEventVideoFramesInserted, framesToInsert);
+					frameError -= framesToInsert;
+					mVideoFramesWritten += framesToInsert;
+				}
+
+				++mVideoFramesWritten;
+			}
+
+			// update video timing controller
+			if (mbAdjustVideoTime)
+				mVideoTimingController.PostUpdate(frameError);
+
+			mVideoWindowedRateEstimator.AddSample(global_clock, timestamp);
+
+			mVideoLastAccurateTime = global_clock;
+
 		} else if (stream == 1 && mMode) {
+			double estimatedVideoTime = mVideoLastTime + (global_clock - mVideoLastAccurateTime);
+
 			mAudioBytes += size;
 
-			if (mbAdjustVideoTime)
-				mAudioRelativeRateEstimator.AddSample(global_clock, mAudioBytes);
-			else
-				mAudioRelativeRateEstimator.AddSample(mVideoLastTime, mAudioBytes);
+			mAudioRelativeRateEstimator.AddSample(estimatedVideoTime, mAudioBytes);
+			mAudioRealRateEstimator.AddSample(global_clock, mAudioBytes);
 
-			double estimatedVideoTimeSlope, estimatedVideoTimeIntercept;
-			double estimatedVideoTime;
+			double estimatedVideoTimeSlope;
 
 			bool videoTimingOK = mVideoRealRateEstimator.GetSlope(estimatedVideoTimeSlope);
 
 			if (videoTimingOK) {
-				// Are we using the video clock or global clock as the time base?
-				if (mbAdjustVideoTime) {
-					// Project the video trend back to video time zero to get the global time start.
-					videoTimingOK = mVideoRealRateEstimator.GetXIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept);
-
-					if (videoTimingOK)
-						estimatedVideoTime = global_clock;
-				} else {
-					// Project the video trend back to global time zero to get the video time start.
-					videoTimingOK = mVideoRealRateEstimator.GetYIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept);
-
-					// Estimate interpolated video clock from global clock.
-					if (videoTimingOK)
-						estimatedVideoTime = global_clock * estimatedVideoTimeSlope + estimatedVideoTimeIntercept;
-				}
-			}
-
-			if (videoTimingOK) {
-				double rate, latency;
-
-				int count = mAudioRelativeRateEstimator.GetCount();
-
-				if (count > 8 && mAudioRelativeRateEstimator.GetSlope(rate) && mAudioRelativeRateEstimator.GetXIntercept(rate, latency)) {
-					if (mMode == kModeResampleVideo) {
+				if (mMode == kModeResampleVideo) {
+					int count = mAudioRelativeRateEstimator.GetCount();
+					double rate;
+					if (count > 8 && mAudioRelativeRateEstimator.GetSlope(rate)) {
 						double adjustedRate = rate * ((double)(mVideoLastTime + mVideoTimingAdjust) / mVideoLastTime);
 						double audioBytesPerSecond = adjustedRate * 1000000.0;
 						double audioSecondsPerSecond = audioBytesPerSecond * mInvAudioRate;
 						double errorSecondsPerSecond = audioSecondsPerSecond - 1.0;
-						double errorSeconds = errorSecondsPerSecond * mVideoLastTime / 1000000.0;
+						double errorMicroseconds = errorSecondsPerSecond * mVideoLastTime;
+						double errorSeconds = errorMicroseconds / 1000000.0;
 						double errorFrames = errorSeconds * mVideoRate;
+
+						mLastSyncError = errorMicroseconds;
 
 						if (fabs(errorFrames) >= 0.8) {
 							sint32 errorAdj = -(sint32)(errorFrames / mVideoRate * 1000000.0);
@@ -481,54 +950,67 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 							VDDEBUG("Applying delta of %d us -- total delta %d us\n", errorAdj, (sint32)mVideoTimingAdjust);
 							mVideoTimingAdjust += errorAdj;
 						}
-					} else if (mMode == kModeResampleAudio) {
-						double currentLatency = mCurrentLatencyAverage(mVideoTimeLastAudioBlock - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
-						double latencyError = currentLatency - latency;			// negative means too much data; positive means too little data
-						double targetRate = mAudioTrackingRate - (1e-7)*latencyError;
+					}
+				} else if (mMode == kModeResampleAudio) {
+					double videoRate, videoYIntercept;
+					double audioRate, audioYIntercept;
 
-						double resamplingRateFactor = 0.1;
-						double trackingRateFactor = 0.002;
+					if (mVideoWindowedRateEstimator.GetSlope(videoRate) && mVideoWindowedRateEstimator.GetYIntercept(videoRate, videoYIntercept)
+						&& mAudioRealRateEstimator.GetSlope(audioRate) && mAudioRealRateEstimator.GetYIntercept(audioRate, audioYIntercept)) {
+						double videoTime = videoYIntercept + videoRate * global_clock;
 
-						// interpolate gradually over 100 samples
-						if (count < 100) {
-							resamplingRateFactor *= count/100.0;
-							trackingRateFactor *= count/100.0;
+						// Assume we drop no audio and that audio rate is consistent.
+						// Backproject with full global>audio estimator to determine audio pos at global time 0.
+						// Compute appropriate audio position given video time, extrapolated using local global>video
+						// estimator from global time, and add audio offset.
+						// Use controller to drive byte delta to zero.
+
+						double audioTimeAtVideoTimeZero;
+						
+						if (mbEnableFixedAudioLatency)
+							audioTimeAtVideoTimeZero = mFixedAudioLatency;
+						else {
+							audioTimeAtVideoTimeZero = (audioYIntercept + audioRate * (global_clock - videoTime)) * mInvAudioRate;
+
+							if (mAutoAudioLatencyLimit && mAudioRealRateEstimator.GetCount() >= mAutoAudioLatencyLimit) {
+								mFixedAudioLatency = audioTimeAtVideoTimeZero;
+								mbEnableFixedAudioLatency = true;
+							}
 						}
 
-						mAudioResamplingRate += resamplingRateFactor * (targetRate - mAudioResamplingRate);
-						mAudioTrackingRate += trackingRateFactor * (rate*1000000.0*mInvAudioRate - mAudioTrackingRate);
+						double currentLatency = mCurrentLatencyAverage(videoTime * 1e-6 - (mAudioWrittenBytes+size) * mInvAudioRate);
+						double latencyError = currentLatency + mAudioStartAverage(audioTimeAtVideoTimeZero);
+						int count = mAudioRealRateEstimator.GetCount();
 
-						if (mAudioResamplingRate < 0.1)
-							mAudioResamplingRate = 0.1;
-						else if (mAudioResamplingRate > 10.0)
-							mAudioResamplingRate = 10.0;
+						mLastSyncError = latencyError * 1e+6f;
 
-#if 0
-//						static int counter=0;
-//						if (!(counter += 0x04000000))
-						VDDEBUG("audio rate: %.2fHz (%.2fHz), latency: %.2fms (latency error: %+.2fms; current rate: %.6g; target: %.6g)\n"
-								, rate * 1000000.0 / 4.0
-								, mAudioRate * mAudioTrackingRate / 4.0
-								, latency / 1000.0
-								, latencyError / 1000.0
-								, mAudioResamplingRate
-								, targetRate);
-#endif
+						if (mpProfiler)
+							mpProfiler->AddDataPoint(mProfileSyncError, latencyError * mVideoRate);
+
+						// interpolate gradually over 100 samples
+						if (count < 100)
+							latencyError *= count/100.0;
+
+						mAudioResamplingController.Run(latencyError, latencyError, size * mInvAudioRate);
 					}
 				}
 
 				mVideoTimeLastAudioBlock = estimatedVideoTime;
 			}
+
+			audioResamplingRate = mAudioResamplingController.GetControlValue();
 		}
 	}
 
-	if (stream == 1 && mMode == kModeResampleAudio)
-		ResampleAndDispatchAudio(data, size, key, global_clock);
-	else
-		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+	if (!frameKill) {
+		if (stream == 1 && mMode == kModeResampleAudio)
+			ResampleAndDispatchAudio(data, size, key, global_clock, audioResamplingRate);
+		else
+			mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+	}
 }
 
-void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock) {
+void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 size, bool key, sint64 global_clock, double audioResamplingRate) {
 	int samples = size / (mChannels * mBytesPerInputSample);
 
 	while(samples > 0) {
@@ -544,7 +1026,7 @@ void VDCaptureResyncFilter::ResampleAndDispatchAudio(const void *data, uint32 si
 		mInputLevel += tc;
 
 		// resample
-		uint32 inc = VDRoundToInt(mAudioResamplingRate * 65536.0);
+		uint32 inc = VDRoundToInt(audioResamplingRate * 65536.0);
 		int limit = 0;
 
 		const int chans = mChannels;

@@ -85,8 +85,10 @@ HDWP guiDeferWindowPos(HDWP hdwp, HWND hwnd, HWND hwndInsertAfter, int x, int y,
 void guiEndDeferWindowPos(HDWP hdwp);
 int guiMessageBoxF(HWND hwnd, LPCTSTR lpCaption, UINT uType, const char *format, ...);
 
-void ticks_to_str(char *dst, DWORD ticks);
-void size_to_str(char *dst, __int64 i64Bytes);
+void ticks_to_str(char *dst, uint32 ticks);
+void ticks_to_str(wchar_t *dst, uint32 ticks);
+void size_to_str(char *dst, sint64 bytes);
+void size_to_str(wchar_t *dst, sint64 bytes);
 
 int guiListboxInsertSortedString(HWND, const char *);
 

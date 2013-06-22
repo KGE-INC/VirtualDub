@@ -38,8 +38,9 @@ public:
 
 protected:
 	int GetItemCount();
-	void AddItem(const wchar_t *text, uintptr data);
+	int AddItem(const wchar_t *text, uintptr data);
 	void AddColumn(const wchar_t *name, int width, int affinity);
+	void SetItemChecked(int item, bool checked);
 	bool IsItemChecked(int item);
 	void OnNotifyCallback(const NMHDR *);
 	void OnResize();
@@ -126,39 +127,42 @@ int VDUIListViewW32::GetItemCount() {
 	return (int)ListView_GetItemCount(mhwnd);
 }
 
-void VDUIListViewW32::AddItem(const wchar_t *text, uintptr data) {
+int VDUIListViewW32::AddItem(const wchar_t *text, uintptr data) {
 	DWORD dwMask = LVIF_PARAM | LVIF_TEXT;
 
 	if (mbCheckable)
 		dwMask |= LVIF_STATE;
 
+	int item;
 	if (VDIsWindowsNT()) {
 		LVITEMW lviw={0};
 
 		lviw.mask		= dwMask;
-		lviw.iItem		= 0;
+		lviw.iItem		= 0x1FFFFFFF;
 		lviw.iSubItem	= 0;
 		lviw.state		= 0x1000;
 		lviw.stateMask	= (UINT)-1;
 		lviw.pszText	= (LPWSTR)text;
 		lviw.lParam		= (LPARAM)data;
 
-		SendMessageW(mhwnd, LVM_INSERTITEMW, 0, (LPARAM)&lviw);
+		item = (int)SendMessageW(mhwnd, LVM_INSERTITEMW, 0, (LPARAM)&lviw);
 	} else {
 		LVITEMA lvia={0};
 
 		VDStringA textA(VDTextWToA(text));
 
 		lvia.mask		= dwMask;
-		lvia.iItem		= 0;
+		lvia.iItem		= 0x1FFFFFFF;
 		lvia.iSubItem	= 0;
 		lvia.state		= 0x1000;
 		lvia.stateMask	= (UINT)-1;
 		lvia.pszText	= (LPSTR)textA.c_str();
 		lvia.lParam		= (LPARAM)data;
 
-		SendMessageA(mhwnd, LVM_INSERTITEMA, 0, (LPARAM)&lvia);
+		item = (int)SendMessageA(mhwnd, LVM_INSERTITEMA, 0, (LPARAM)&lvia);
 	}
+
+	return item;
 }
 
 void VDUIListViewW32::AddColumn(const wchar_t *name, int width, int affinity) {
@@ -196,6 +200,11 @@ void VDUIListViewW32::AddColumn(const wchar_t *name, int width, int affinity) {
 	OnResize();
 }
 
+void VDUIListViewW32::SetItemChecked(int item, bool checked) {
+	ListView_SetItemState(mhwnd, item, checked ? INDEXTOSTATEIMAGEMASK(1) : 0, LVIS_STATEIMAGEMASK);
+	ListView_RedrawItems(mhwnd, item, item);
+}
+
 bool VDUIListViewW32::IsItemChecked(int item) {
 	UINT oldState = ListView_GetItemState(mhwnd, item, -1);
 
@@ -216,23 +225,41 @@ void VDUIListViewW32::OnNotifyCallback(const NMHDR *pHdr) {
    				mpBase->DispatchEvent(this, mID, IVDUICallback::kEventSelect, mSelected);
    			}
    		}
-	} else if ((pHdr->code == NM_CLICK || pHdr->code == NM_DBLCLK) && mbCheckable) {
-		DWORD pos = GetMessagePos();
+	} else if (mbCheckable) {
+		if (pHdr->code == LVN_KEYDOWN && ((const NMLVKEYDOWN *)pHdr)->wVKey == VK_SPACE) {
+			int idx = -1;
+			bool first = true;
+			bool select = false;
 
-		LVHITTESTINFO lvhi = {0};
+			while((idx = ListView_GetNextItem(mhwnd, idx, LVNI_SELECTED)) >= 0) {
+				if (first) {
+					UINT oldState = ListView_GetItemState(mhwnd, idx, -1);
 
-		lvhi.pt.x = (SHORT)LOWORD(pos);
-		lvhi.pt.y = (SHORT)HIWORD(pos);
+					select = !(oldState & INDEXTOSTATEIMAGEMASK(1));
+					first = false;
+				}
 
-		ScreenToClient(mhwnd, &lvhi.pt);
+				ListView_SetItemState(mhwnd, idx, select ? INDEXTOSTATEIMAGEMASK(1) : 0, LVIS_STATEIMAGEMASK);
+				ListView_RedrawItems(mhwnd, idx, idx);
+			}
+		} else if (pHdr->code == NM_CLICK || pHdr->code == NM_DBLCLK) {
+ 			DWORD pos = GetMessagePos();
 
-		int idx = ListView_HitTest(mhwnd, &lvhi);
+			LVHITTESTINFO lvhi = {0};
 
-		if (idx >= 0) {
-			UINT oldState = ListView_GetItemState(mhwnd, idx, -1);
+			lvhi.pt.x = (SHORT)LOWORD(pos);
+			lvhi.pt.y = (SHORT)HIWORD(pos);
 
-			ListView_SetItemState(mhwnd, idx, oldState ^ INDEXTOSTATEIMAGEMASK(1), LVIS_STATEIMAGEMASK);
-			ListView_RedrawItems(mhwnd, idx, idx);
+			ScreenToClient(mhwnd, &lvhi.pt);
+
+			int idx = ListView_HitTest(mhwnd, &lvhi);
+
+			if (idx >= 0) {
+				UINT oldState = ListView_GetItemState(mhwnd, idx, -1);
+
+				ListView_SetItemState(mhwnd, idx, oldState ^ INDEXTOSTATEIMAGEMASK(1), LVIS_STATEIMAGEMASK);
+				ListView_RedrawItems(mhwnd, idx, idx);
+			}
 		}
 	}
 }

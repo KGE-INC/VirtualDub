@@ -69,6 +69,7 @@ public:
 	sint64 GetSize();
 
 protected:
+	void WriteZero(sint64 pos, uint32 bytes);
 	void Seek(sint64 pos);
 	bool SeekNT(sint64 pos);
 	void ThrowError();
@@ -79,6 +80,7 @@ protected:
 	uint32		mBlockSize;
 	uint32		mBlockCount;
 	uint32		mSectorSize;
+	sint64		mClientFastPointer;
 
 	volatile bool	mbPreemptiveExtend;
 
@@ -103,6 +105,7 @@ protected:
 VDFileAsync9x::VDFileAsync9x()
 	: mhFileSlow(INVALID_HANDLE_VALUE)
 	, mhFileFast(INVALID_HANDLE_VALUE)
+	, mClientFastPointer(0)
 	, mpError(NULL)
 {
 }
@@ -152,30 +155,39 @@ void VDFileAsync9x::Close() {
 }
 
 void VDFileAsync9x::FastWrite(const void *pData, uint32 bytes) {
-	if (mpError)
-		ThrowError();
+	if (mhFileFast == INVALID_HANDLE_VALUE) {
+		if (pData)
+			Write(mClientFastPointer, pData, bytes);
+		else
+			WriteZero(mClientFastPointer, bytes);
+	} else {
+		if (mpError)
+			ThrowError();
 
-	while(bytes) {
-		int actual;
-		void *p = mBuffer.LockWrite(bytes, actual);
+		while(bytes) {
+			int actual;
+			void *p = mBuffer.LockWrite(bytes, actual);
 
-		if (!actual) {
-			mReadOccurred.wait();
-			if (mpError)
-				ThrowError();
-			continue;
+			if (!actual) {
+				mReadOccurred.wait();
+				if (mpError)
+					ThrowError();
+				continue;
+			}
+
+			if (pData) {
+				memcpy(p, pData, actual);
+				pData = (const char *)pData + actual;
+			} else {
+				memset(p, 0, actual);
+			}
+			mBuffer.UnlockWrite(actual);
+			mWriteOccurred.signal();
+			bytes -= actual;
 		}
-
-		if (pData) {
-			memcpy(p, pData, actual);
-			pData = (const char *)pData + actual;
-		} else {
-			memset(p, 0, actual);
-		}
-		mBuffer.UnlockWrite(actual);
-		mWriteOccurred.signal();
-		bytes -= actual;
 	}
+
+	mClientFastPointer += bytes;
 }
 
 void VDFileAsync9x::FastWriteEnd() {
@@ -195,6 +207,20 @@ void VDFileAsync9x::Write(sint64 pos, const void *p, uint32 bytes) {
 	DWORD dwActual;
 	if (!WriteFile(mhFileSlow, p, bytes, &dwActual, NULL) || dwActual != bytes)
 		throw MyWin32Error("Write error occurred on file \"%s\": %%s\n", GetLastError(), mFilename.c_str());
+}
+
+void VDFileAsync9x::WriteZero(sint64 pos, uint32 bytes) {
+	uint32 bufsize = bytes > 2048 ? 2048 : bytes;
+	void *p = _alloca(bufsize);
+	memset(p, 0, bufsize);
+
+	while(bytes > 0) {
+		uint32 tc = bytes > 2048 ? 2048 : bytes;
+
+		Write(pos, p, tc);
+		pos += tc;
+		bytes -= tc;
+	}
 }
 
 bool VDFileAsync9x::Extend(sint64 pos) {
@@ -253,6 +279,11 @@ void VDFileAsync9x::ThrowError() {
 	MyError *e = mpError.xchg(NULL);
 
 	if (e) {
+		if (mhFileFast != INVALID_HANDLE_VALUE) {
+			CloseHandle(mhFileFast);
+			mhFileFast = INVALID_HANDLE_VALUE;
+		}
+
 		MyError tmp;
 		tmp.TransferFrom(*e);
 		delete e;
@@ -619,6 +650,11 @@ void VDFileAsyncNT::ThrowError() {
 	MyError *e = mpError.xchg(NULL);
 
 	if (e) {
+		if (mhFileFast != INVALID_HANDLE_VALUE) {
+			CloseHandle(mhFileFast);
+			mhFileFast = INVALID_HANDLE_VALUE;
+		}
+
 		MyError tmp;
 		tmp.TransferFrom(*e);
 		delete e;
@@ -661,7 +697,18 @@ void VDFileAsyncNT::ThreadRun() {
 					for(;;) {
 						VDFileAsyncNTBuffer& buf = mpBlocks[requestTail];
 
-						if (!buf.mbActive)
+						if (!buf.mbActive) {
+							if (!blocksCompleted) {
+								// wait for further writes
+								mWriteOccurred.wait();
+							}
+							break;
+						}
+
+						HANDLE h[2] = {buf.hEvent, mWriteOccurred.getHandle()};
+						DWORD waitResult = WaitForMultipleObjects(2, h, FALSE, INFINITE);
+
+						if (waitResult == WAIT_OBJECT_0+1)	// write pending
 							break;
 
 						DWORD dwActual;
@@ -681,11 +728,6 @@ void VDFileAsyncNT::ThreadRun() {
 
 						mReadOccurred.signal();
 
-					}
-
-					if (!blocksCompleted) {
-						// wait for further writes
-						mWriteOccurred.wait();
 					}
 					continue;
 				}

@@ -248,7 +248,7 @@ public:
 	enum { kTypeID = 'list' };
 
 	virtual int GetItemCount() = 0;
-	virtual void AddItem(const wchar_t *text, uintptr data = 0) = 0;
+	virtual int AddItem(const wchar_t *text, uintptr data = 0) = 0;
 };
 
 class VDINTERFACE IVDUIListView : public IVDUnknown {
@@ -256,6 +256,7 @@ public:
 	enum { kTypeID = 'lsvw' };
 
 	virtual void AddColumn(const wchar_t *name, int width, int affinity) = 0;
+	virtual void SetItemChecked(int item, bool checked) = 0;
 	virtual bool IsItemChecked(int item) = 0;
 };
 

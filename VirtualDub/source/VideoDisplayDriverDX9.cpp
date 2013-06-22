@@ -40,6 +40,7 @@
 
 #include "VideoDisplayDrivers.h"
 #include "VideoDisplayDriverDX9.h"
+#include "prefs.h"
 
 // enable if using NVIDIA's NVPerfHUD to profile (set coolbits in Registry, then
 // enable via driver config)
@@ -753,6 +754,66 @@ HRESULT VDVideoDisplayDX9Manager::DrawElements(D3DPRIMITIVETYPE type, UINT vertS
 	return hr;
 }
 
+HRESULT VDVideoDisplayDX9Manager::Present(const RECT *src, HWND hwndDest, bool vsync) {
+	HRESULT hr;
+
+	if (vsync && (mDevCaps.Caps & D3DCAPS_READ_SCANLINE)) {
+		RECT r;
+		if (GetWindowRect(hwndDest, &r)) {
+			int top = 0;
+			int bottom = GetSystemMetrics(SM_CYSCREEN);
+
+			// GetMonitorInfo() requires Windows 98. We might never fail on this because
+			// I think DirectX 9.0c requires 98+, but we have to dynamically link anyway
+			// to avoid a startup link failure on 95.
+			typedef BOOL (APIENTRY *tpGetMonitorInfo)(HMONITOR mon, LPMONITORINFO lpmi);
+			static tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandle("user32"), "GetMonitorInfo");
+
+			if (spGetMonitorInfo) {
+				HMONITOR hmon = mpD3D->GetAdapterMonitor(mAdapter);
+				MONITORINFO monInfo = {sizeof(MONITORINFO)};
+				if (spGetMonitorInfo(hmon, &monInfo)) {
+					top = monInfo.rcMonitor.top;
+					bottom = monInfo.rcMonitor.bottom;
+				}
+			}
+
+			if (r.top < top)
+				r.top = top;
+			if (r.bottom > bottom)
+				r.bottom = bottom;
+
+			r.top -= top;
+			r.bottom -= top;
+
+			// Poll raster status, and wait until we can safely blit. We assume that the
+			// blit can outrace the beam. 
+			D3DRASTER_STATUS rastStatus;
+			UINT maxScanline = 0;
+			while(SUCCEEDED(mpD3DDevice->GetRasterStatus(0, &rastStatus))) {
+				if (rastStatus.InVBlank)
+					break;
+
+				// Check if we have wrapped around without seeing the VBlank. If this
+				// occurs, force an exit. This prevents us from potentially burning a lot
+				// of CPU time if the CPU becomes busy and can't poll the beam in a timely
+				// manner.
+				if (rastStatus.ScanLine < maxScanline)
+					break;
+
+				// Check if we're outside of the danger zone.
+				if (rastStatus.ScanLine < r.top || rastStatus.ScanLine >= r.bottom)
+					break;
+
+				maxScanline = rastStatus.ScanLine;
+			}
+		}
+	}
+
+	hr = mpD3DDevice->Present(src, NULL, hwndDest, NULL);
+	return hr;
+}
+
 int VDVideoDisplayDX9Manager::GetBicubicShaderStages(CubicMode mode) {
 	switch(mode) {
 	case kCubicUseFF2Path:
@@ -1144,9 +1205,9 @@ protected:
 
 	bool Tick(int id);
 	bool Resize();
-	bool Update(FieldMode);
-	void Refresh(FieldMode);
-	bool Paint(HDC hdc, const RECT& rClient);
+	bool Update(UpdateMode);
+	void Refresh(UpdateMode);
+	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 
 	bool SetSubrect(const vdrect32 *) { return false; }
 	void SetLogicalPalette(const uint8 *pLogicalPalette);
@@ -1361,7 +1422,7 @@ bool VDVideoDisplayMinidriverDX9::Resize() {
 	return true;
 }
 
-bool VDVideoDisplayMinidriverDX9::Update(FieldMode) {
+bool VDVideoDisplayMinidriverDX9::Update(UpdateMode) {
 	D3DLOCKED_RECT lr;
 	HRESULT hr;
 	
@@ -1379,12 +1440,16 @@ bool VDVideoDisplayMinidriverDX9::Update(FieldMode) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverDX9::Refresh(FieldMode) {
-	InvalidateRect(mhwnd, NULL, FALSE);
-	UpdateWindow(mhwnd);
+void VDVideoDisplayMinidriverDX9::Refresh(UpdateMode mode) {
+	if (HDC hdc = GetDC(mhwnd)) {
+		RECT r;
+		GetClientRect(mhwnd, &r);
+		Paint(hdc, r, mode);
+		ReleaseDC(mhwnd, hdc);
+	}
 }
 
-bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
+bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode updateMode) {
 	const RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
 
 	// Make sure the device is sane.
@@ -1580,7 +1645,7 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 	HRESULT hr = E_FAIL;
 
 	if (bSuccess)
-		hr = mpD3DDevice->Present(&rClient, NULL, mhwnd, NULL);
+		hr = mpManager->Present(&rClient, mhwnd, (updateMode & kModeVSync) != 0);
 
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");

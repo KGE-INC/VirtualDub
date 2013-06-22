@@ -62,7 +62,7 @@ inline sint32 VDRoundToIntFastFullRange(double x) {
 	}
 #else
 	#pragma warning(push)
-	#pragma warning(disable: 4035)		// warning C4035: 'VDFloorToIntFast' : no return value
+	#pragma warning(disable: 4035)		// warning C4035: 'VDFloorToInt' : no return value
 	inline sint32 VDFloorToInt(double x) {
 		sint32 temp;
 
@@ -75,6 +75,30 @@ inline sint32 VDRoundToIntFastFullRange(double x) {
 			fstp temp
 			cmp	temp, 80000001h
 			adc eax, -1
+		}
+	}
+	#pragma warning(pop)
+#endif
+
+#ifdef _M_AMD64
+	inline sint32 VDCeilToInt(double x) {
+		return (sint32)ceil(x);
+	}
+#else
+	#pragma warning(push)
+	#pragma warning(disable: 4035)		// warning C4035: 'VDCeilToInt' : no return value
+	inline sint32 VDCeilToInt(double x) {
+		sint32 temp;
+
+		__asm {
+			fld x
+			fist temp
+			fild temp
+			mov eax, temp
+			fsubr
+			fstp temp
+			cmp	temp, 80000001h
+			sbb eax, -1
 		}
 	}
 	#pragma warning(pop)

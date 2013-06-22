@@ -94,13 +94,13 @@ extern bool				g_fSwapPanes;
 extern bool				g_bExit;
 
 extern bool g_fJobMode;
-extern bool g_fJobAborted;
 
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
 
 extern void CPUTest();
 extern void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
+extern uint32& VDPreferencesGetRenderWaveBufferSize();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -788,7 +788,7 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 			}
 
 			if (nFiles > 1)
-				guiSetStatus("Autoloaded %d segments (last was \"%s\")", 255, nFiles, pnode->NextFromTail()->name);
+				guiSetStatus("Autoloaded %d segments (last was \"%ls\")", 255, nFiles, pnode->NextFromTail()->name);
 		}
 
 		// Retrieve info text
@@ -926,7 +926,7 @@ void VDProject::Reopen() {
 }
 
 void VDProject::OpenWAV(const wchar_t *szFile) {
-	vdrefptr<AudioSourceWAV> pNewAudio(new AudioSourceWAV(szFile, g_dubOpts.perf.waveBufferSize));
+	vdrefptr<AudioSourceWAV> pNewAudio(new AudioSourceWAV(szFile, VDPreferencesGetRenderWaveBufferSize()));
 	if (!pNewAudio->init())
 		throw MyError("The sound file \"%s\" could not be processed. Please check that it is a valid WAV file.", VDTextWToA(szFile).c_str());
 
@@ -1403,6 +1403,7 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 		throw MyError("No source has been loaded to process.");
 
 	bool fError = false;
+	bool bUserAbort = false;
 	MyError prop_err;
 	DubOptions *opts;
 
@@ -1494,7 +1495,7 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 		g_dubber->Stop();
 
 		if (g_dubber->isAbortedByUser()) {
-			g_fJobAborted = true;
+			bUserAbort = true;
 		} else if (!fPropagateErrors)
 			disp.Post(mhwnd);
 
@@ -1535,8 +1536,12 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 	if (g_bExit)
 		PostQuitMessage(0);
-	else if (fError && fPropagateErrors)
-		throw prop_err;
+	else if (fPropagateErrors) {
+		if (fError)
+			throw prop_err;
+		else if (bUserAbort)
+			throw MyUserAbortError();
+	}
 }
 
 void VDProject::AbortOperation() {

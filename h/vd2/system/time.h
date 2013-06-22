@@ -32,14 +32,23 @@
 
 // VDGetCurrentTick: Retrieve current process timer, in milliseconds.  Should only
 // be used for sparsing updates/checks, and not for precision timing.  Approximate
-// resolution is 55ms under Win9x and 10ms under WinNT.
+// resolution is 55ms under Win9x and 10-15ms under WinNT. The advantage of this
+// call is that it is usually extremely fast (just reading from the PEB).
 uint32 VDGetCurrentTick();
 
 // VDGetPreciseTick: Retrieves high-performance timer (QueryPerformanceCounter in
-// Win32).
+// Win32). This is very precise, often <1us, but often suffers from various bugs.
+// that make it undesirable for high-accuracy requirements. On x64 Windows it
+// can run at 1/2 speed when CPU throttling is enabled, and on some older buggy
+// chipsets it can skip around occasionally.
 uint64 VDGetPreciseTick();
 double VDGetPreciseTicksPerSecond();
 double VDGetPreciseSecondsPerTick();
+
+// VDGetAccurateTick: Reads a timer with good precision and accuracy, in
+// milliseconds. On Win9x, it has 1ms precision; on WinNT, it may have anywhere
+// from 1ms to 10-15ms, although 1ms can be forced with timeBeginPeriod().
+uint32 VDGetAccurateTick();
 
 // VDCallbackTimer is an abstraction of the Windows multimedia timer.  As such, it
 // is rather expensive to instantiate, and should only be used for critical timing

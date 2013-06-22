@@ -57,18 +57,48 @@ namespace nsVDCapture {
 		kEventCapturing,
 		kEventVideoFormatChanged,
 		kEventVideoFrameRateChanged,
+		kEventVideoFramesDropped,
+		kEventVideoFramesInserted,
 		kEventCount
 	};
 };
 
+/////////////////////////////////////////////////////////////////////////////
+/// \class IVDCaptureDriverCallback
+///
+/// Callback class for event data from a capture device. This is called with
+/// one-time event information (start, stop, frame rate change, drop/insert,
+/// etc.) as well as frame and wave data. This may be called from an
+/// alternate thread and thus must be thread-safe.
 class VDINTERFACE IVDCaptureDriverCallback {
 public:
 	virtual void CapBegin(sint64 global_clock) = 0;
 	virtual void CapEnd(const MyError *pError) = 0;
-	virtual bool CapEvent(nsVDCapture::DriverEvent event) = 0;
+	virtual bool CapEvent(nsVDCapture::DriverEvent event, int data) = 0;
+
 	virtual void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock) = 0;
+	///< Delivers captured audio and video data. Both a video and audio block
+	///< may be delivered concurrently, so this function must be both
+	///< reentrant and thread-safe.
+	///<
+	///< \param stream			0 for video, 1 for audio, -1 for preview video.
+	///< \param data			Pointer to captured data.
+	///< \param size			Linear byte size of captured data.
+	///< \param timestamp		Stream timestamp of sample start in microseconds.
+	///< \param key				True if the video frame is a key frame.
+	///< \param global_clock	System time of sample start in microseconds.
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+class VDINTERFACE IVDCaptureProfiler {
+public:
+	virtual void Clear() = 0;
+	virtual int RegisterStatsChannel(const char *name) = 0;
+	virtual void AddDataPoint(int channel, float value) = 0;
+};
+
+/////////////////////////////////////////////////////////////////////////////
 class VDINTERFACE IVDCaptureDriver {
 public:
 	virtual ~IVDCaptureDriver() {}
@@ -89,7 +119,7 @@ public:
 	virtual vdrect32	GetDisplayRectAbsolute() = 0;
 	virtual void	SetDisplayVisibility(bool vis) = 0;
 
-	virtual void	SetFramePeriod(sint32 ms) = 0;
+	virtual void	SetFramePeriod(sint32 framePeriod100nsUnits) = 0;
 	virtual sint32	GetFramePeriod() = 0;
 
 	virtual uint32	GetPreviewFrameCount() = 0;

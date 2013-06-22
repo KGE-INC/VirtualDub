@@ -41,20 +41,6 @@ namespace {
 	}
 }
 
-int VDCaptureIsCatchableException(uint32 ec) {
-	if (!VDIsDebuggerPresent()) {
-		switch(ec) {
-		case EXCEPTION_ACCESS_VIOLATION:
-		case EXCEPTION_PRIV_INSTRUCTION:
-		case EXCEPTION_INT_DIVIDE_BY_ZERO:
-		case EXCEPTION_BREAKPOINT:
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
 long VDCaptureHashDriverName(const char *name) {
 	long hash;
 	int len=0;

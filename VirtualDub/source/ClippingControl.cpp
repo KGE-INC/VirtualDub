@@ -41,11 +41,12 @@ static const char szClippingControlOverlayName[]="birdyClippingControlOverlay";
 class VDClippingControlOverlay {
 public:
 	VDClippingControlOverlay(HWND hwnd);
-	~VDClippingControlOverlay() throw();
+	~VDClippingControlOverlay();
 
 	static VDClippingControlOverlay *Create(HWND hwndParent, int x, int y, int cx, int cy, UINT id);
 
 	void SetImageRect(int x, int y, int cx, int cy);
+	void SetSourceSize(int w, int h);
 	void SetBounds(int x1, int y1, int x2, int y2);
 
 	HWND GetHwnd() const { return mhwnd; }
@@ -57,11 +58,16 @@ private:
 	void OnMouseMove(int x, int y);
 	void OnLButtonDown(int x, int y);
 	LRESULT OnNcHitTest(int x, int y);
+	bool OnSetCursor(UINT htcode, UINT mousemsg);
 	void PoleHitTest(int& x, int& y);
 
 	const HWND mhwnd;
 
+	HPEN	mBorderPen;
+
 	int		mX, mY, mWidth, mHeight;
+	int		mSourceWidth, mSourceHeight;
+	double	mInvSourceWidth, mInvSourceHeight;
 
 	double	mXBounds[2], mYBounds[2];
 
@@ -72,18 +78,27 @@ private:
 
 VDClippingControlOverlay::VDClippingControlOverlay(HWND hwnd)
 	: mhwnd(hwnd)
+	, mBorderPen(::CreatePen(PS_DOT, 0, RGB(128, 128, 128)))
 	, mX(0)
 	, mY(0)
 	, mWidth(0)
 	, mHeight(0)
+	, mSourceWidth(0)
+	, mSourceHeight(0)
+	, mInvSourceWidth(0.0)
+	, mInvSourceHeight(0.0)
 	, mDragPoleX(-1)
 	, mDragPoleY(-1)
 {
 	mXBounds[0] = mYBounds[0] = 0.0;
 	mXBounds[1] = mYBounds[1] = 1.0;
+
+	if (!mBorderPen)
+		mBorderPen = (HPEN)GetStockObject(WHITE_PEN);
 }
 
-VDClippingControlOverlay::~VDClippingControlOverlay() throw() {
+VDClippingControlOverlay::~VDClippingControlOverlay() {
+	DeleteObject(mBorderPen);
 }
 
 VDClippingControlOverlay *VDClippingControlOverlay::Create(HWND hwndParent, int x, int y, int cx, int cy, UINT id) {
@@ -102,11 +117,18 @@ void VDClippingControlOverlay::SetImageRect(int x, int y, int cx, int cy) {
 	mHeight = cy;
 }
 
+void VDClippingControlOverlay::SetSourceSize(int w, int h) {
+	mSourceWidth		= w;
+	mSourceHeight		= h;
+	mInvSourceWidth		= w ? 1.0 / (double)w : 0.0;
+	mInvSourceHeight	= h ? 1.0 / (double)h : 0.0;
+}
+
 void VDClippingControlOverlay::SetBounds(int x1, int y1, int x2, int y2) {
-	mXBounds[0] = x1 / (double)mWidth;
-	mXBounds[1] = 1.0 - x2 / (double)mWidth;
-	mYBounds[0] = y1 / (double)mHeight;
-	mYBounds[1] = 1.0 - y2 / (double)mHeight;
+	mXBounds[0] = x1 * mInvSourceWidth;
+	mXBounds[1] = 1.0 - x2 * mInvSourceWidth;
+	mYBounds[0] = y1 * mInvSourceHeight;
+	mYBounds[1] = 1.0 - y2 * mInvSourceHeight;
 
 	InvalidateRect(mhwnd, NULL, FALSE);
 }
@@ -149,6 +171,8 @@ LRESULT VDClippingControlOverlay::WndProc(UINT msg, WPARAM wParam, LPARAM lParam
 		mDragPoleX = mDragPoleY = -1;
 		ReleaseCapture();
 		return 0;
+	case WM_SETCURSOR:
+		return OnSetCursor(LOWORD(lParam), HIWORD(lParam));
 	}
 	return DefWindowProc(mhwnd, msg, wParam, lParam);
 }
@@ -158,33 +182,34 @@ void VDClippingControlOverlay::OnPaint() {
 	HDC hdc = BeginPaint(mhwnd, &ps);
 
 	if (hdc) {
-		HGDIOBJ hgoOld = SelectObject(hdc, GetStockObject(BLACK_PEN));
+		HGDIOBJ hgoOld = SelectObject(hdc, mBorderPen);
 		int i;
 
 		RECT r;
 		GetClientRect(mhwnd, &r);
 		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
 
+		::SetBkMode(hdc, OPAQUE);
+		::SetBkColor(hdc, RGB(0, 0, 0));
+
 		// draw horizontal lines
 		static const int adjust[2]={-1,0};
 		for(i=0; i<2; ++i) {
-			long y = mY + VDRoundToLong(mYBounds[i] * mHeight);
+			long y = mY + VDCeilToInt(mYBounds[i] * mHeight - 0.5) + adjust[i];
 
-			if (y > mY && y < mY+mHeight) {
-				int y2 = y+adjust[i];
-				MoveToEx(hdc, mX, y2, NULL);
-				LineTo(hdc, mX + mWidth, y2);
+			if (y >= mY && y < mY+mHeight) {
+				MoveToEx(hdc, mX, y, NULL);
+				LineTo(hdc, mX + mWidth, y);
 			}
 		}
 
 		// draw vertical lines
 		for(i=0; i<2; ++i) {
-			long x = mX + VDRoundToLong(mXBounds[i] * mWidth);
+			long x = mX + VDCeilToInt(mXBounds[i] * mWidth - 0.5) + adjust[i];
 
-			if (x > mX && x < mX+mWidth) {
-				int x2 = x+adjust[i];
-				MoveToEx(hdc, x2, mY, NULL);
-				LineTo(hdc, x2, mY + mHeight);
+			if (x >= mX && x < mX+mWidth) {
+				MoveToEx(hdc, x, mY, NULL);
+				LineTo(hdc, x, mY + mHeight);
 			}
 		}
 
@@ -205,7 +230,7 @@ void VDClippingControlOverlay::OnMouseMove(int x, int y) {
 
 		VDDEBUG("(%d,%d)\n", x, y);
 		if (mDragPoleX>=0) {
-			double v = std::min<double>(std::max<double>(0.0, (x-mX) / (double)mWidth), 1.0);
+			double v = std::min<double>(std::max<double>(0.0, (x-mX+1) / (double)(mWidth + 1)), 1.0);
 			int i;
 
 			mXBounds[mDragPoleX] = v;
@@ -218,7 +243,7 @@ void VDClippingControlOverlay::OnMouseMove(int x, int y) {
 		}
 
 		if (mDragPoleY>=0) {
-			double v = std::min<double>(std::max<double>(0.0, (y-mY) / (double)mHeight), 1.0);
+			double v = std::min<double>(std::max<double>(0.0, (y-mY+1) / (double)(mHeight + 1)), 1.0);
 			int i;
 
 			mYBounds[mDragPoleY] = v;
@@ -236,25 +261,17 @@ void VDClippingControlOverlay::OnMouseMove(int x, int y) {
 		MapWindowPoints(NULL, hwndParent, (LPPOINT)&r, 2);
 		ClippingControlBounds ccb;
 
-		ccb.x1 = VDRoundToLong(mWidth * mXBounds[0]);
-		ccb.x2 = VDRoundToLong(mWidth * (1.0 - mXBounds[1]));
-		ccb.y1 = VDRoundToLong(mHeight * mYBounds[0]);
-		ccb.y2 = VDRoundToLong(mHeight * (1.0 - mYBounds[1]));
+		ccb.x1 = VDRoundToLong(mSourceWidth * mXBounds[0]);
+		ccb.x2 = VDRoundToLong(mSourceWidth * (1.0 - mXBounds[1]));
+		ccb.y1 = VDRoundToLong(mSourceHeight * mYBounds[0]);
+		ccb.y2 = VDRoundToLong(mSourceHeight * (1.0 - mYBounds[1]));
 
 		SendMessage(hwndParent, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
 		InvalidateRect(hwndParent, &r, TRUE);
-	} else {
-		PoleHitTest(x, y);
-
-		static const LPCTSTR sCursor[3][3]={
-			{ IDC_ARROW,  IDC_SIZENS, IDC_SIZENS },
-			{ IDC_SIZEWE, IDC_SIZENWSE, IDC_SIZENESW },
-			{ IDC_SIZEWE, IDC_SIZENESW, IDC_SIZENWSE },
-		};
-
-		SetCursor(LoadCursor(NULL, sCursor[x+1][y+1]));
 	}
+
+	OnSetCursor(HTCLIENT, WM_MOUSEMOVE);
 }
 
 void VDClippingControlOverlay::OnLButtonDown(int x, int y) {
@@ -278,6 +295,27 @@ LRESULT VDClippingControlOverlay::OnNcHitTest(int x, int y) {
 	PoleHitTest(x, y);
 
 	return (x&y) < 0 ? HTTRANSPARENT : HTCLIENT;
+}
+
+bool VDClippingControlOverlay::OnSetCursor(UINT htcode, UINT mousemsg) {
+	DWORD ptdword = GetMessagePos();
+	POINT pt = { (SHORT)LOWORD(ptdword), (SHORT)HIWORD(ptdword) };
+
+	ScreenToClient(mhwnd, &pt);
+
+	int x = pt.x;
+	int y = pt.y;
+
+	PoleHitTest(x, y);
+
+	static const LPCTSTR sCursor[3][3]={
+		{ IDC_ARROW,  IDC_SIZENS, IDC_SIZENS },
+		{ IDC_SIZEWE, IDC_SIZENWSE, IDC_SIZENESW },
+		{ IDC_SIZEWE, IDC_SIZENESW, IDC_SIZENWSE },
+	};
+
+	SetCursor(LoadCursor(NULL, sCursor[x+1][y+1]));
+	return true;
 }
 
 void VDClippingControlOverlay::PoleHitTest(int& x, int& y) {
@@ -320,9 +358,10 @@ void VDClippingControlOverlay::PoleHitTest(int& x, int& y) {
 
 class VDClippingControl : public IVDClippingControl, public IVDVideoDisplayCallback {
 public:
-	void SetBitmapSize(int w, int h);
+	void SetBitmapSize(int sourceW, int sourceH);
 	void SetClipBounds(const vdrect32& r);
 	void GetClipBounds(vdrect32& r);
+	void AutoSize(int borderw, int borderh);
 	void BlitFrame(const VDPixmap *);
 
 	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -354,8 +393,15 @@ private:
 	bool VerifyParams();
 	LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
-	long lWidth, lHeight;
-	long xRect, yRect;
+	void	OnSize(int w, int h);
+
+	long mDisplayWidth, mDisplayHeight;
+	long mOverlayX, mOverlayY;
+
+	long	mSourceWidth;
+	long	mSourceHeight;
+	double	mInvSourceWidth;
+	double	mInvSourceHeight;
 
 	long x1,y1,x2,y2;
 
@@ -399,6 +445,10 @@ ATOM RegisterClippingControl() {
 
 VDClippingControl::VDClippingControl(HWND hwnd)
 	: mhwnd(hwnd)
+	, x1(0)
+	, y1(0)
+	, x2(0)
+	, y2(0)
 {
 }
 
@@ -415,47 +465,34 @@ IVDPositionControl *VDGetIPositionControlFromClippingControl(VDGUIHandle h) {
 	return VDGetIPositionControl((VDGUIHandle)hwndPosition);
 }
 
-void VDClippingControl::SetBitmapSize(int w, int h) {
+void VDClippingControl::SetBitmapSize(int sourceW, int sourceH) {
 	LONG du, duX, duY;
-	HWND hwndItem, hWndPosition;
+	HWND hwndItem;
 
 	du = GetDialogBaseUnits();
 	duX = LOWORD(du);
 	duY = HIWORD(du);
 
-	lWidth = w;
-	lHeight = h;
+	mSourceWidth		= sourceW;
+	mSourceHeight		= sourceH;
+	mInvSourceWidth		= sourceW ? 1.0 / sourceW : 0.0;
+	mInvSourceHeight	= sourceH ? 1.0 / sourceH : 0.0;
 
-	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_STATIC), NULL, xRect + lWidth + 8 - (48*duX)/4, (2*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_EDIT  ), NULL, xRect + lWidth + 8 - (24*duX)/4, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_STATIC), NULL, ( 0*duX)/4, yRect + 8 + lHeight - ( 9*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_EDIT  ), NULL, (24*duX)/4, yRect + 8 + lHeight - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-
-	if (hWndPosition = GetDlgItem(mhwnd, IDC_POSITION))
-		SetWindowPos(hWndPosition, NULL, 0, yRect + lHeight + 8, xRect + lWidth + 8, 64, SWP_NOZORDER | SWP_NOACTIVATE);
-
-	SendMessage(GetDlgItem(mhwnd, IDC_X1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(lWidth,0));
-	SendMessage(GetDlgItem(mhwnd, IDC_Y1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(0,lHeight));
+	SendMessage(GetDlgItem(mhwnd, IDC_X1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceW,0));
+	SendMessage(GetDlgItem(mhwnd, IDC_Y1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(0,sourceH));
 
 	hwndItem = GetDlgItem(mhwnd, IDC_X2_SPIN);
-	SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_X2_EDIT), 0);
-	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(lWidth,0));
+	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceW,0));
 
 	hwndItem = GetDlgItem(mhwnd, IDC_Y2_SPIN);
-	SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_Y2_EDIT), 0);
-	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(lHeight,0));
+	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceH,0));
 
 	EnumChildWindows(mhwnd, ShowChildrenProc, 0);
-
-	int w2 = xRect + lWidth + 8;
-	int h2 = (hWndPosition?64:0) + yRect + lHeight + 8;
-	SetWindowPos(mhwnd, NULL, 0, 0, w2, h2, SWP_NOMOVE|SWP_NOACTIVATE|SWP_NOCOPYBITS);
 
 	hwndItem = GetDlgItem(mhwnd, IDC_VIDEODISPLAY);
 	ShowWindow(hwndItem, SW_HIDE);
 
-	SetWindowPos(pOverlay->GetHwnd(), NULL, xRect, yRect, lWidth+8, lHeight+8, SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOZORDER);
-	pOverlay->SetImageRect(4, 4, lWidth, lHeight);
+	pOverlay->SetSourceSize(sourceW, sourceH);
 
 	ResetDisplayBounds();
 }
@@ -483,6 +520,34 @@ void VDClippingControl::GetClipBounds(vdrect32& r) {
 	r.top		= y1;
 	r.right		= x2;
 	r.bottom	= y2;
+}
+
+void VDClippingControl::AutoSize(int borderw, int borderh) {
+	int w2 = mSourceWidth;
+	int h2 = mSourceHeight;
+
+	int wpad = mOverlayX + 8;
+	int hpad = (GetDlgItem(mhwnd, IDC_POSITION)?64:0) + mOverlayY + 8;
+
+	RECT rWorkArea;
+	if (SystemParametersInfo(SPI_GETWORKAREA, 0, &rWorkArea, FALSE)) {
+		int limitW = rWorkArea.right - rWorkArea.left - wpad - borderw;
+		int limitH = rWorkArea.bottom - rWorkArea.top - hpad - borderh;
+
+		if (limitW < 1)
+			limitW = 1;
+
+		if (limitH < 1)
+			limitH = 1;
+
+		if (w2 > limitW)
+			w2 = limitW;
+
+		if (h2 > limitH)
+			h2 = limitH;
+	}
+
+	SetWindowPos(mhwnd, NULL, 0, 0, w2 + wpad, h2 + hpad, SWP_NOMOVE|SWP_NOACTIVATE|SWP_NOCOPYBITS);
 }
 
 void VDClippingControl::BlitFrame(const VDPixmap *px) {
@@ -525,13 +590,19 @@ void VDClippingControl::ResetDisplayBounds() {
 	HWND hwndDisplay = GetDlgItem(mhwnd, IDC_VIDEODISPLAY);
 	IVDVideoDisplay *pVD = VDGetIVideoDisplay(hwndDisplay);
 
-	if (x1+x2 >= lWidth || y1+y2 >= lHeight)
+	// scale bounds to actual display size
+	int scaledx1 = VDCeilToInt(x1 * mInvSourceWidth  * mDisplayWidth  - 0.5);
+	int scaledy1 = VDCeilToInt(y1 * mInvSourceHeight * mDisplayHeight - 0.5);
+	int scaledx2 = VDCeilToInt((1.0 - x2*mInvSourceWidth ) * mDisplayWidth  - 0.5);
+	int scaledy2 = VDCeilToInt((1.0 - y2*mInvSourceHeight) * mDisplayHeight - 0.5);
+
+	if (scaledx1 >= scaledx2 || scaledy1 >= scaledy2)
 		ShowWindow(hwndDisplay, SW_HIDE);
 	else {
 		ShowWindow(hwndDisplay, SW_SHOWNA);
-		vdrect32 r(x1, y1, lWidth-x2, lHeight-y2);
+		vdrect32 r(x1, y1, mSourceWidth - x2, mSourceHeight - y2);
 		pVD->SetSourceSubrect(&r);
-		SetWindowPos(hwndDisplay, NULL, xRect+4+x1, yRect+4+y1, lWidth-(x1+x2), lHeight-(y1+y2), SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOZORDER);
+		SetWindowPos(hwndDisplay, NULL, mOverlayX+4+scaledx1, mOverlayY+4+scaledy1, scaledx2-scaledx1, scaledy2-scaledy1, SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOZORDER);
 	}
 }
 
@@ -603,8 +674,8 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			duX = LOWORD(du);
 			duY = HIWORD(du);
 
-			xRect = (53*duX)/4;
-			yRect = (14*duY)/8;
+			mOverlayX = (53*duX)/4;
+			mOverlayY = (14*duY)/8;
 
 			fInhibitRefresh = true;
 			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,( 0*duX)/4, ( 2*duY)/8, (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)IDC_X1_STATIC	, g_hInst, NULL);
@@ -620,6 +691,11 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,0         , 0         , (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y2_EDIT	, g_hInst, NULL);
 			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT	,0         , 0         , ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y2_SPIN	, g_hInst, NULL);
 			HWND hwndDisplay = CreateWindowEx(0,       VIDEODISPLAYCONTROLCLASS,NULL,WS_CHILD, 0, 0, 0, 0, mhwnd, (HMENU)IDC_VIDEODISPLAY, g_hInst, NULL);
+
+			HWND hwndItem = GetDlgItem(mhwnd, IDC_X2_SPIN);
+			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_X2_EDIT), 0);
+			hwndItem = GetDlgItem(mhwnd, IDC_Y2_SPIN);
+			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_Y2_EDIT), 0);
 
 			if (GetWindowLong(mhwnd, GWL_STYLE) & CCS_POSITION)
 				CreateWindowEx(0,POSITIONCONTROLCLASS,NULL,WS_CHILD									,0,0,0,64,mhwnd,(HMENU)IDC_POSITION,g_hInst,NULL);
@@ -637,6 +713,10 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 
+	case WM_SIZE:
+		OnSize(LOWORD(lParam), HIWORD(lParam));
+		return 0;
+
 	case WM_ERASEBKGND:
 		{
 			HBRUSH hbrBackground = (HBRUSH)GetClassLongPtr(mhwnd, GCLP_HBRBACKGROUND);
@@ -646,21 +726,21 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			GetClientRect(mhwnd, &r);
 
 			r2 = r;
-			r2.bottom = yRect;
+			r2.bottom = mOverlayY;
 			FillRect(hdc, &r2, hbrBackground);
 
 			r2 = r;
-			r2.top = yRect;
-			r2.bottom = yRect + lHeight + 8;
-			r2.right = xRect;
+			r2.top = mOverlayY;
+			r2.bottom = mOverlayY + mDisplayHeight + 8;
+			r2.right = mOverlayX;
 			FillRect(hdc, &r2, hbrBackground);
 
-			r2.left = xRect + lWidth + 8;
+			r2.left = mOverlayX + mDisplayWidth + 8;
 			r2.right = r.right;
 			FillRect(hdc, &r2, hbrBackground);
 
 			r2 = r;
-			r2.top = yRect + lHeight + 8;
+			r2.top = mOverlayY + mDisplayHeight + 8;
 			FillRect(hdc, &r2, hbrBackground);
 		}
 		return TRUE;
@@ -674,10 +754,10 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (!fInhibitRefresh)
 				if (VerifyParams()) {
 					RECT r;
-					r.left		= xRect + 4;
-					r.top		= yRect + 4;
-					r.right		= r.left + lWidth;
-					r.bottom	= r.top + lHeight;
+					r.left		= mOverlayX + 4;
+					r.top		= mOverlayY + 4;
+					r.right		= r.left + mDisplayWidth;
+					r.bottom	= r.top + mDisplayHeight;
 					InvalidateRect(mhwnd, &r, TRUE);
 
 					pOverlay->SetBounds(x1, y1, x2, y2);
@@ -710,6 +790,7 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	case CCM_SETBITMAPSIZE:
 		SetBitmapSize(LOWORD(lParam), HIWORD(lParam));
+		AutoSize(0, 0);
 		break;
 
 	case CCM_SETCLIPBOUNDS:
@@ -747,4 +828,44 @@ void VDClippingControl::DisplayRequestUpdate(IVDVideoDisplay *pDisp) {
 	nm.code = CCN_REFRESHFRAME;
 
 	SendMessage(GetParent(mhwnd), WM_NOTIFY, (WPARAM)nm.idFrom, (LPARAM)&nm);
+}
+
+void VDClippingControl::OnSize(int w, int h) {
+	LONG du, duX, duY;
+
+	du = GetDialogBaseUnits();
+	duX = LOWORD(du);
+	duY = HIWORD(du);
+
+	HWND hwndPosition = GetDlgItem(mhwnd, IDC_POSITION);
+	if (hwndPosition) {
+		h -= 64;
+		SetWindowPos(hwndPosition, NULL, 0, h, w, 64, SWP_NOZORDER | SWP_NOACTIVATE);
+	}
+
+	int overlayW = std::max<int>(9, w - mOverlayX);
+	int overlayH = std::max<int>(9, h - mOverlayY);
+
+	mDisplayWidth = overlayW - 8;
+	mDisplayHeight = overlayH - 8;
+
+	HWND hwndSpinX2 = GetDlgItem(mhwnd, IDC_X2_SPIN);
+	HWND hwndSpinY2 = GetDlgItem(mhwnd, IDC_Y2_SPIN);
+	RECT r;
+
+	GetWindowRect(hwndSpinX2, &r);
+	int spinX2Width = r.right - r.left;
+	GetWindowRect(hwndSpinY2, &r);
+	int spinY2Width = r.right - r.left;
+
+	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_STATIC),	NULL, w - (48*duX)/4, (2*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_EDIT  ),	NULL, w - (24*duX)/4, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(hwndSpinX2,						NULL, w - ( 2*duX)/4 - spinX2Width, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_STATIC),	NULL, ( 0*duX)/4, h - ( 9*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_EDIT  ),	NULL, (24*duX)/4, h - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(hwndSpinY2,						NULL, (48*duX)/4 - spinY2Width, h - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+
+	pOverlay->SetImageRect(4, 4, mDisplayWidth, mDisplayHeight);
+	SetWindowPos(pOverlay->GetHwnd(), NULL, mOverlayX, mOverlayY, overlayW, overlayH, SWP_NOACTIVATE|SWP_NOCOPYBITS|SWP_NOZORDER);
+	ResetDisplayBounds();
 }

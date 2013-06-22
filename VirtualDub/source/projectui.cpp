@@ -100,7 +100,6 @@ extern bool				g_fSwapPanes;
 extern bool				g_bExit;
 
 extern bool g_fJobMode;
-extern bool g_fJobAborted;
 
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
@@ -712,6 +711,7 @@ void VDProjectUI::JumpToFrameAsk() {
 
 bool VDProjectUI::MenuHit(UINT id) {
 	bool bFilterReinitialize = !g_dubber;
+	bool bJobActive = !!g_dubber;
 
 	if (bFilterReinitialize) {
 		switch(id) {
@@ -738,8 +738,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 		}
 	}
 
-	JobLockDubber();
-	DragAcceptFiles((HWND)mhwnd, FALSE);
+	if (!bJobActive) {
+		JobLockDubber();
+		DragAcceptFiles((HWND)mhwnd, FALSE);
+	}
 
 	try {
 		switch(id) {
@@ -997,8 +999,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 		e.post((HWND)mhwnd, g_szError);
 	}
 
-	JobUnlockDubber();
-	DragAcceptFiles((HWND)mhwnd, TRUE);
+	if (!bJobActive) {
+		JobUnlockDubber();
+		DragAcceptFiles((HWND)mhwnd, TRUE);
+	}
 
 	return true;
 }

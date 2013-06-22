@@ -236,7 +236,7 @@ IVDUIWindow *VDUIWindow::GetNextChild(IVDUIWindow *pWindow) {
 	if (it == mChildren.end())
 		return NULL;
 
-	if (++it != mChildren.end())
+	if (++it == mChildren.end())
 		return NULL;
 
 	return *it;

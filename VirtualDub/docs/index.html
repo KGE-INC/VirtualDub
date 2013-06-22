@@ -2,14 +2,15 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
 <style>
-BODY { background: #ffffff; color: #000000 }
-H1 { font-weight: normal; background: #c0e0ff; font-family: Arial }
-H2 { font-weight: normal; border-width: 0; border-bottom-width: 4px; border-color: #60c040; border-style: solid; font-family: Arial }
+BODY { background: #ffffff; color: #000000; font-family: Verdana, Arial; font-size: 12px }
+H1 { font-weight: normal; font-size: 24px; background: #c0e0ff; font-family: Arial }
+H2 { font-weight: normal; font-size: 20px; border-width: 0; border-bottom-width: 4px; border-color: #60c040; border-style: solid; font-family: Arial }
 U { text-decoration: none; color: #800000 }
 TT { font-family: Lucida Console, monospace }
 PRE { font-family: Lucida Console, monospace }
 DT { color: #800000; margin-top: 4px; margin-bottom: 4px; font-style: italic }
 DD { color: #000000 }
+TD { font-family: Verdana, Arial; font-size: 12px }
 </style>
 <title>VirtualDub source code - build notes</title>
 </head>
@@ -38,7 +39,8 @@ It won't auto-display. Look in the <tt>Docs</tt> project for this file and other
 <ul>
 	<li>Microsoft Windows NT 4.0, 2000, or XP.  You can build under 95/98/ME, but you will need to modify the
 		build process.</li>
-	<li>Microsoft Visual C++ 6.0 or Microsoft Visual Studio .NET (2002).  Intel C/C++ 6.0/7.0 is optional.</li>
+	<li>Microsoft Visual C++ 6.0 or Microsoft Visual Studio .NET (2003).</li>
+	<li><a href="http://msdn.microsoft.com/directx/sdk/">Microsoft DirectX 9.0c Software Development Kit.</a></li>
 	<li>Info-ZIP for Win32 (<tt>zip.exe</tt>).</li>
 </ul>
 
@@ -64,68 +66,9 @@ active project and starting a build. Special project directories:
 Make sure you're not releasing debug builds!
 </p>
 
-<h2>Stylistic changes from V1.4</h2>
-<p>
-V1.5 contains a number of stylistic changes from V1.4 that may be annoying to those
-attempting a reintegration with an earlier fork. Among the changes:
-</p>
-
-<ul>
-	<li>NekoAmp has been rewritten and no longer contains any third party code -- in particular,
-		it no longer contains GPL'ed code from the FreeAmp project. It has also been renamed to
-		Priss (anime fans will know why -- the benefit of hobbies is that frivolousness is
-		permitted even when it annoys everyone else).</li>
-	<li>The <u>system</u> library contains core classes and functions that were previously
-		in the main project. The primary components of <u>system</u> to be aware of:
-		<ul>
-			<li><tt>&lt;vd2/system/vdtypes.h&gt;</tt> is the global include.</li>
-			<li><tt>&lt;vd2/system/File64.h&gt;</tt> provides unbuffered file I/O.</li>
-			<li><tt>&lt;vd2/system/thread.h&gt;</tt> provides threading services.</li>
-			<li><tt>&lt;vd2/system/filesys.h&gt;</tt> does basic path manipulation.</li>
-			<li><tt>&lt;vd2/system/text.h&gt;</tt> transforms strings between ANSI and Unicode.</li>
-			<li><tt>&lt;vd2/system/VDString.h&gt;</tt> is the VirtualDub string class.</li>
-		</ul>
-	</li>
-	<li>Use of Microsoft Windows specific types in app code (DWORD, LONG, etc.) is deprecated
-		in favor of sized types (uint8, sint32), and int/unsigned for known small numbers.</li>
-	<li>A few code modules are now Unicode-aware. For instance, VDFile can be fed a wide filename (const wchar_t *)
-		and will use CreateFileW() under Windows NT.</li>
-	<li>The Visual C++ _RPTx() macros have been replaced by the VDDEBUG() macro, which supports
-		printf semantics. A VDDEBUG2() macro is available for release-mode debugging, and VDASSERT()
-		is available for compile-time asserts.</li>
-	<li>The C++ language is extended with two giant-size hacks:
-		<ul>
-			<li>The <tt>vdsynchronized</tt> macro implements Java-style block scoping for lock acquisition and release:
-				<blockquote><pre>
-vdsynchronized(mFooLock) {
-    DoStuff(mFoo);
-}
-</pre></blockquote>
-				</li>
-			<li><tt>vdprotected</tt> implements a processing context to be reported on a crash:
-				<blockquote><pre>
-vdprotected("doing foo") {
-    for(int i=0; i&lt;10; ++i)
-       vdprotected("in foo iteration %d", int, i)
-           if (i == 5)
-               *(char *)0 = 0;
-}
-</pre></blockquote>
-				Current scopes are indicated on a crash:
-<blockquote><pre>
-An out-of-bounds memory access (access violation) occurred in module 'VirtualDub'...
-...while in foo iteration 5 (Init.cpp:111)...
-...while deliberately trying to crash (Init.cpp:132).
-</pre></blockquote>
-		</ul>
-		Both constructs are unbrace-friendly (single controlled statement without braces works fine) and
-		exception-handling friendly (finalization still occurs if an exception is thrown).
-	</li>
-</ul>
-
 <h2>Tools</h2>
 <p>
-Four build tools are included in the workspace:
+Three build tools are included in the workspace:
 </p>
 <blockquote>
 <dl>
@@ -135,19 +78,20 @@ Four build tools are included in the workspace:
 		by default, since the disassembly module rarely changes.
 	</dd>
 
-	<dt>mapconv</dt>
+	<dt>Asuka</dt>
 	<dd>
-		Parses the map output from the Microsoft linker and produces an address-to-function symbol
-		lookup table. This is built and run automatically as part of the build process and combines
-		the <tt>virtualdub.map</tt> and <tt>ia32.vdi</tt> to produce <tt>virtualdub.vdi</tt>.
-	</dd>
-
-	<dt>verinc</dt>
-	<dd>
-		Performs build number incrementing. Build information is held in <tt>version2.bin</tt> and
-		reflected into <tt>version.bin</tt> for mapconv compatibility. Build counts are tracked by
-		hostname, so development can occur on multiple machines and the source code control system
-		in use can merge the <tt>version2.bin</tt> files to maintain the cumulative build count.
+		General build tool, which has two primary functions:
+		<li>
+			Parses the map output from the Microsoft linker and produces an address-to-function symbol
+			lookup table. This is built and run automatically as part of the build process and combines
+			the <tt>virtualdub.map</tt> and <tt>ia32.vdi</tt> to produce <tt>virtualdub.vdi</tt>.
+		</li>
+		<li>
+			Performs build number incrementing. Build information is held in <tt>version2.bin</tt> and
+			reflected into <tt>version.bin</tt> for mapconv compatibility. Build counts are tracked by
+			hostname, so development can occur on multiple machines and the source code control system
+			in use can merge the <tt>version2.bin</tt> files to maintain the cumulative build count.
+		</li>
 	</dd>
 
 	<dt>Lina</dt>
@@ -157,14 +101,16 @@ Four build tools are included in the workspace:
 </dl>
 </blockquote>
 
-<h2>Building under Microsoft Visual C++ 6.0</h2>
+<h2>Building under Microsoft Visual C++ 6.0 (primary compiler)</h2>
 <p>
 In order to compile VirtualDub with Visual C++ 6.0, you <b>must</b> have the following updates
 from Microsoft:
 </p>
 <ul>
 	<li><a href="http://msdn.microsoft.com/vstudio/downloads/tools/ppack/default.asp">Visual C++ 6.0 Processor Pack</a></li>
-	<li><a href="http://msdn.microsoft.com/vstudio/downloads/updates/sp/vs6/sp5/default.asp">Visual C++ 6.0 Service Pack 5</a></li>
+	<li><a href="http://msdn.microsoft.com/vstudio/downloads/updates/sp/vs6/sp5/default.asp">Visual C++ 6.0 Service Pack 5</a>
+		<p><b>Important</b> Do not install Visual C++ 6.0 Service Pack 6. This will render you unable to install the Processor Pack.</p>
+	</li>
 </ul>
 <p>
 You will also need updated include files from the Platform SDK. You do not need
@@ -174,10 +120,11 @@ in the retail version of Windows 95.
 <ul>
 	<li>
 		<a href="http://www.microsoft.com/msdownload/platformsdk/sdkupdate/">Platform SDK website</a></li>
-			<br/>
+		<p>
 		<b>Important</b>&nbsp; Use the Download link on the toolbar to install only the Build Environment from
 		the Core SDK. If you click Install this SDK! from the Core SDK link, you will forced to install all 100MB+
 		of the Core SDK instead of 30MB.
+		</p>
 	</li>
 	<li>
 		<a href="http://www.microsoft.com/msdownload/platformsdk/sdkupdate/psdk-full.htm">Entire Platform SDK by regular HTTP.</a>
@@ -186,85 +133,77 @@ in the retail version of Windows 95.
 	</li>
 </ul>
 <p>
-You may want to stash your C2.DLL from SP5 before
-installing the Processor Pack, as you can swap it out with the C2.DLL
-from the Processor Pack to work around any back-end code generation
-problems you may have on other projects. In case you forgot to do so,
-the various versions of C2.DLL are hidden in the self-extracting cabinet
-files of the Service Pack 5 install.
-</p>
-<p>
 MASM 6.15 or later (ML.EXE) is required to compile the assembly modules.
 You should already have this from the Processor Pack.
 </p>
+<p>
+	Newer versions of the DirectX SDK are not compatible with Visual C++ 6.0, so you will need an older version to
+	link. The Summer 2004 version is recommended, which is available as of this date from:
+</p>
+<a href="http://www.microsoft.com/downloads/details.aspx?FamilyID=fd044a42-9912-42a3-9a9e-d857199f888e&DisplayLang=en">http://www.microsoft.com/downloads/details.aspx?FamilyID=fd044a42-9912-42a3-9a9e-d857199f888e&DisplayLang=en</a>
 
 <h2>Building under Microsoft Visual Studio .NET (2002)</h2>
 <p>
-Visual Studio .NET automatically installs MASM 7.0, so you do not need to
-manually install an assembler.
-</p>
-<p>
-Projects imported from Visual C++ 6.0 have Buffer Security Checks
-(/GS) enabled by default.  Disable this flag, as it will hinder
-performance and may destabilize the app.
-</p>
-<p>
-Do not link any VirtualDub DLLs with the Multithreaded DLL (/MD)
-code generation setting in VC7.  The reason is that Visual Studio .NET
-now uses its own MSVCR70.DLL instead of the operating system MSVCRT.DLL,
-thus negating the advantage of doing a DLL CRT link.  Use the static
-multithreaded C runtime library (/MT) instead.
-</p>
-<p>
-Don't expect significant performance increases by using .NET -- VirtualDub
-has a fairly simple class hierarchy, leaving fewer opportunities for
-global inlining optimization, and virtually the only difference between
-the SP5+PP code generator and the VC7 code generator is loop unrolling,
-which is seldom effective in this case.
-</p>
-<p>
-Although Visual Studio .NET (2002) will work for compiling VirtualDub,
-the official compiler target is still Visual C++ 6.0 SP5+PP; this will
-not change until the VS.NET IDE sucks less.<sup>*</sup>
+	Building VirtualDub under Microsoft Visual Studio .NET (2002) is not supported.
 </p>
 
+<h2>Building under Microsoft Visual Studio .NET (2003)</h2>
 <p>
-<font size="-1">*with apologies to J.Carmack</font>
+	Visual Studio .NET automatically installs MASM 7.10, so you do not need to
+	manually install an assembler.
+</p>
+<p>
+	After importing the VC6 .dsp and .dsw files, you should make the following changes to the imported
+	project files:
+</p>
+<ul>
+	<li><b>C/C++, Code Generation, Buffer Security Check</b>: No</li>
+	<li><b>C/C++, Code Generation, Runtime Library</b>: Multi-threaded (/MT) or Multi-threaded Debug (/MTd)</li>
+	<li><b>C/C++, Language, Treat wchar_t as Built-in Type</b>: Yes</li>
+	<li><b>C/C++, Language, For Compliance In For Loop Scope</b>: Yes</li>
+</ul>
+
+<h2>Building under Microsoft Visual Studio 2005</h2>
+<p>
+	After importing the VC6 .dsp and .dsw files, you should make the following changes to the imported
+	project files:
+</p>
+<ul>
+	<li><b>C/C++, Preprocessor, Preprocessor Definitions</b>: Add <tt>_CRT_SECURE_NO_DEPRECATE</tt> and <tt>_SCL_SECURE_NO_DEPRECATE</tt></li>
+	<li><b>C/C++, Code Generation, Buffer Security Check</b>: No</li>
+	<li><b>C/C++, Code Generation, Runtime Library</b>: Multi-threaded (/MT) or Multi-threaded Debug (/MTd)</li>
+</ul>
+<p>
+<p>
+	If you are using Standard or Express,
+	then you will need to find a version of the Microsoft Macro Assembler (MASM) to use. Either MASM 6.15 from the VC6 Processor Pack or MASM 7.10 from VS.NET
+	2003 will work fine.
+</p>
+<p>
+	If you are using the Professional version, you already have MASM 8.0. However, a few changes need to be made to the
+	assembly language files in order to assemble with MASM 8 &mdash; namely, MOVD and MOVQ instructions need to be changed
+	as follows:
+</p>
+<table>
+	<tr>
+		<td><tt>MOVD mmreg, mem32</tt></td><td><tt>MOVD mmreg, DWORD PTR mem32</tt></td>
+	</tr>
+	<tr>
+		<td><tt>MOVD mem32, mmreg</tt></td><td><tt>MOVD DWORD PTR mem32, mmreg</tt></td>
+	</tr>
+	<tr>
+		<td><tt>MOVQ xmmreg, mem64</tt></td><td><tt>MOVQ xmmreg, QWORD PTR mem64</tt></td>
+	</tr>
+	<tr>
+		<td><tt>MOVQ mem64, xmmreg</tt></td><td><tt>MOVQ QWORD PTR mem64, xmmreg</tt></td>
+	</tr>
+</table>
+<p>
+	Finally, a couple of locations may assert in the debug build due to technically incorrect usage of the Standard
+	Template Library (STL). To fix these, replace expressions of the form <tt>(&amp;myVector[0])</tt> with
+	<tt>(myVector.empty() ? NULL : &amp;myVector[0])</tt>.
 </p>
 
-
-<h2>Notes for building under Intel C/C++ Compiler 6.0</h2>
-
-<p>
-The P4 build of version 1.5.0 is built with Intel C/C++ 6.0 and Visual C++ 6.0 SP5+PP;
-Visual Studio .NET 2002 can be used as well provided that the projects and workspace
-are suitably converted as described above. To build the P4 release, simply choose
-<u>Win32 Release ICL</u> as the build target. The frameserver libraries are not
-built under this configuration, so you will need to build them from the regular
-<u>Win32 Release</u> target; also, a few of the framework libraries -- Dita, Sylia,
-and system -- are still built under Visual C++. The reason is that Intel C++'s /O1
-(optimize for size) code generation produces code that is larger than VC6's /O1 and slower
-than VC6's /O2 (optimize for speed). Note that even with these libraries built VC6,
-the ICL executable is still ~30% bigger.
-</p>
-<p>
-As of this writing, mpeg_idct.cpp does not build properly under the
-Intel compiler, and will bomb with an intentional #error if you attempt
-to do so.  The reason is a couple of bugs in the compiler's inline
-assembly support.  The Visual Studio .NET project included in this archive
-already has the Intel compiler disabled for that module.
-</p>
-<p>
-Building VirtualDub under the Intel compiler will result in an executable
-that runs only under Intel Pentium 4 processors and other processors that
-support SSE2 -- the initialization code will display a message box and
-abort otherwise.
-</p>
-<p>
-If you get link errors with _pow when compiling with Intel C/C++, find out which
-module is pulling in the Visual C++ pow() function, and switch it to the Intel
-compiler. NekoAmp 2.0 (Priss), in particular, needs to be compiled ICL.
-</p>
 
 <h2>Final notes</h2>
 <p>

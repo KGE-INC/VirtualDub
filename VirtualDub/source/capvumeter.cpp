@@ -229,8 +229,8 @@ void VDUICaptureVumeterW32::OnPaint() {
 		GetClientRect(mhwnd, &r);
 
 		// compute peak falloff
-		uint64 t = VDGetPreciseTick();
-		double invfreq = VDGetPreciseSecondsPerTick() * 0.1f;
+		uint64 t = VDGetAccurateTick();
+		double invfreq = 0.1 / 1000.0;
 
 		if (!mLastPeakL)
 			mLastPeakL = t;

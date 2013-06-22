@@ -79,6 +79,8 @@ extern VDProject *g_project;
 bool				g_drawDecompressedFrame	= FALSE;
 bool				g_showStatusWindow		= TRUE;
 
+extern uint32& VDPreferencesGetRenderOutputBufferSize();
+
 ///////////////////////////////////////////////////////////////////////////
 
 void AppendAVI(const wchar_t *pszFile) {
@@ -178,7 +180,7 @@ void SaveAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts, bool
 	fileout.SetCaching(false);
 	fileout.SetIndexing(!fCompatibility);
 	fileout.SetFilename(szFilename);
-	fileout.SetBuffer(g_dubOpts.perf.outputBufferSize);
+	fileout.SetBuffer(VDPreferencesGetRenderOutputBufferSize());
 	fileout.SetTextInfo(g_project->GetTextInfo());
 
 	g_project->RunOperation(&fileout, FALSE, quick_opts, g_prefs.main.iDubPriority, fProp);
@@ -214,7 +216,7 @@ void SaveSegmentedAVI(const wchar_t *szFilename, bool fProp, DubOptions *quick_o
 
 	outfile.SetIndexing(false);
 	outfile.SetCaching(false);
-	outfile.SetBuffer(g_dubOpts.perf.outputBufferSize);
+	outfile.SetBuffer(VDPreferencesGetRenderOutputBufferSize());
 
 	const VDStringW filename(szFilename);
 	outfile.SetFilenamePattern(VDFileSplitExtLeft(filename).c_str(), VDFileSplitExtRight(filename).c_str(), 2);

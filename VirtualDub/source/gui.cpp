@@ -725,7 +725,7 @@ int guiMessageBoxF(HWND hwnd, LPCTSTR lpCaption, UINT uType, const char *format,
 
 ///////////////////////////////////////////////////////////////////////////
 
-void ticks_to_str(char *dst, DWORD ticks) {
+void ticks_to_str(char *dst, uint32 ticks) {
 	int sec, min, hr, day;
 
 	ticks /= 1000;
@@ -735,38 +735,51 @@ void ticks_to_str(char *dst, DWORD ticks) {
 	day	= ticks;
 
 	if (day)
-		wsprintf(dst,"%d:%02d:%02d:%02d",day,hr,min,sec);
+		sprintf(dst, "%d:%02d:%02d:%02d",day,hr,min,sec);
 	else if (hr)
-		wsprintf(dst,"%d:%02d:%02d",hr,min,sec);
+		sprintf(dst, "%d:%02d:%02d",hr,min,sec);
 	else
-		wsprintf(dst,"%d:%02d",min,sec);
+		sprintf(dst, "%d:%02d",min,sec);
 }
 
-void size_to_str(char *dst, __int64 i64Bytes) {
-	if (i64Bytes < 65536) {
-		sprintf(dst, "%lu bytes", (unsigned long)i64Bytes);
-	} else if (i64Bytes < (1L<<24)) {
-		sprintf(dst, "%luKB", (unsigned long)((i64Bytes+512) / 1024));
-	} else if ((unsigned long)i64Bytes == i64Bytes) {
-		i64Bytes += 52429;
+void ticks_to_str(wchar_t *dst, uint32 ticks) {
+	int sec, min, hr, day;
 
-		sprintf(dst, "%lu.%cMB", (unsigned long)(i64Bytes >> 20), (char)('0' + (( ((unsigned long)i64Bytes & 1048575) * 10)>>20)));
-	} else {
-		i64Bytes += (long)((1L<<30) / 200);
+	ticks /= 1000;
+	sec	= ticks %  60; ticks /=  60;
+	min	= ticks %  60; ticks /=  60;
+	hr	= ticks %  24; ticks /=  24;
+	day	= ticks;
 
-		sprintf(dst, "%I64u.%02dGB",
-				i64Bytes>>30,
-				(int)(
-					(
-						(
-							(i64Bytes >> 10) & 1048575
-						)*100
-					) >> 20
-				)
-		);
-	}
+	if (day)
+		swprintf(dst, L"%d:%02d:%02d:%02d",day,hr,min,sec);
+	else if (hr)
+		swprintf(dst, L"%d:%02d:%02d",hr,min,sec);
+	else
+		swprintf(dst, L"%d:%02d",min,sec);
 }
 
+void size_to_str(char *dst, sint64 bytes) {
+	if (bytes < 65536)
+		sprintf(dst, "%lu bytes", (unsigned long)bytes);
+	else if (bytes < (1L<<24))
+		sprintf(dst, "%.0fKB", (double)bytes * (1.0f / 1024.0));
+	else if ((unsigned long)bytes == bytes)
+		sprintf(dst, "%.1fMB", (double)bytes * (1.0f / 1048576.0));
+	else
+		sprintf(dst, "%.2fGB", (double)bytes * (1.0f / 1073741824.0));
+}
+
+void size_to_str(wchar_t *dst, __int64 bytes) {
+	if (bytes < 65536)
+		swprintf(dst, L"%lu bytes", (unsigned long)bytes);
+	else if (bytes < (1L<<24))
+		swprintf(dst, L"%.0fKB", (double)bytes * (1.0f / 1024.0));
+	else if ((unsigned long)bytes == bytes)
+		swprintf(dst, L"%.1fMB", (double)bytes * (1.0f / 1048576.0));
+	else
+		swprintf(dst, L"%.2fGB", (double)bytes * (1.0f / 1073741824.0));
+}
 
 
 

@@ -1,5 +1,6 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	A/V interface library
+//	Copyright (C) 1998-2005 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,16 +16,25 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_VIDEOTELECINEREMOVER_H
-#define f_VIDEOTELECINEREMOVER_H
+#ifndef f_VD2_RIZA_CAPREPLAY_H
+#define f_VD2_RIZA_CAPREPLAY_H
 
-class __declspec(novtable) VideoTelecineRemover {
+#include <vd2/system/vdtypes.h>
+
+class IVDCaptureDriverCallback;
+
+class VDINTERFACE IVDCaptureReplayDriver {
 public:
-	virtual ~VideoTelecineRemover() = 0;
-	virtual void ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame) = 0;
-	virtual bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame) = 0;
+	virtual ~IVDCaptureReplayDriver() {}
+
+	virtual void SetChildCallback(IVDCaptureDriverCallback *pChild) = 0;
+
+	virtual void Init(const wchar_t *filename) = 0;
+	virtual bool ReplayNext() = 0;
+
 };
 
-VideoTelecineRemover *CreateVideoTelecineRemover(VBitmap *pFormat, bool fDecomb, int iOffset, bool fInvertedPolarity);
+IVDCaptureReplayDriver *VDCreateCaptureReplayDriver();
+
 
 #endif

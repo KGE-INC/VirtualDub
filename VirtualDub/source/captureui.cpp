@@ -39,6 +39,7 @@
 #include "caphisto.h"
 #include "capvumeter.h"
 #include "capdialogs.h"
+#include "capgraph.h"
 #include "resource.h"
 #include "oshelper.h"
 #include "filtdlg.h"
@@ -67,7 +68,9 @@ namespace {
 	enum { kVDST_CaptureUI = 8 };
 
 	enum {
-		kVDM_CannotDisplayFormat
+		kVDM_CannotDisplayFormat,
+		kVDMBase_CapInfoLabels		= 100,
+		kVDMBase_CapInfoTypeLabels	= 200
 	};
 }
 
@@ -114,6 +117,10 @@ static const char g_szCaptureTimingCorrectVideoTiming			[] = "Timing: Correct vi
 static const char g_szCaptureTimingResyncWithIntegratedAudio	[] = "Timing: Resync with integrated audio";
 static const char g_szCaptureTimingEnableLog					[] = "Timing: Enable log";
 static const char g_szCaptureTimingInsertLimit					[] = "Timing: Insert limit";
+static const char g_szCaptureTimingUseFixedAudioLatency			[] = "Timing: Use fixed audio latency";
+static const char g_szCaptureTimingAudioLatency					[] = "Timing: Fixed audio latency";
+static const char g_szCaptureTimingUseLimitedAutoAudioLatency	[] = "Timing: Use limited auto audio latency";
+static const char g_szCaptureTimingAutoAudioLatencyLimit		[] = "Timing: Auto audio latency limit";
 
 static const char g_szFilterEnableFieldSwap			[] = "Enable field swap";
 static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish";
@@ -141,7 +148,6 @@ extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHE
 extern void FreeCompressor(COMPVARS *pCompVars);
 
 static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CapturePreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 static INT_PTR CALLBACK CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
 extern INT_PTR CALLBACK CaptureSpillDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -158,6 +164,7 @@ extern void CaptureCloseBT848Tweaker();
 extern void CaptureDisplayBT848Tweaker(HWND hwndParent);
 
 IVDUIWindow *VDCreateUICaptureVumeter();
+IVDUIWindow *VDCreateUICaptureGraph();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -229,27 +236,27 @@ static const UINT iCaptureMenuHelpTranslator[]={
 	NULL,NULL,
 };
 
-#define FRAMERATE(x) ((LONG)((1000000 + (x)/2.0) / (x)))
+#define FRAMERATE(x) ((LONG)((10000000 + (x)/2.0) / (x)))
 
 static const LONG g_predefFrameRates[]={
-	100003000/6000,
-	100001500/3000,
-	100001250/2500,
-	100001000/2000,
-	100000750/1500,
-	100000600/1200,
-	100000500/1000,
-	100000250/ 500,
-	100002997/5994,
-	100001998/2997,
-	100000999/1998,
-	100000749/1499,
-	100000599/1199,
-	100000499/ 999,
-	FRAMERATE(30.303),
-	FRAMERATE(29.412),
-	66000,		//FRAMERATE(15.151),
-	67000,		//FRAMERATE(14.925),
+	FRAMERATE(60.000),
+	FRAMERATE(30.000),
+	FRAMERATE(25.000),
+	FRAMERATE(20.000),
+	FRAMERATE(15.000),
+	FRAMERATE(12.000),
+	FRAMERATE(10.000),
+	FRAMERATE( 5.000),
+	FRAMERATE(60000.0/1001.0),
+	FRAMERATE(30000.0/1001.0),
+	FRAMERATE(20000.0/1001.0),
+	FRAMERATE(15000.0/1001.0),
+	FRAMERATE(12000.0/1001.0),
+	FRAMERATE(10000.0/1001.0),
+	330000,		//FRAMERATE(30.303),
+	340000,		//FRAMERATE(29.412),
+	660000,		//FRAMERATE(15.151),
+	670000,		//FRAMERATE(14.925),
 };
 
 #define CAPDRV_DISPLAY_OVERLAY	(0)
@@ -345,6 +352,8 @@ protected:
 	void	ShutdownVumeter();
 	bool	InitVideoHistogram();
 	void	ShutdownVideoHistogram();
+	bool	InitTimingGraph();
+	void	ShutdownTimingGraph();
 
 	// callbacks
 	void	UICaptureDriversUpdated();
@@ -397,6 +406,8 @@ protected:
 	void	OnUpdateVumeter();
 	void	SyncAudioSourceToVideoSource();
 	void	OnUpdateAccelDisplay();
+	void	RebuildPanel();
+	void	UpdatePanel(VDCaptureStatus& status);
 
 	static INT_PTR CALLBACK StaticPanelDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	INT_PTR PanelDlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -412,6 +423,7 @@ protected:
 	HMENU	mhMenuAuxCapture;
 	HACCEL	mhAccelCapture;
 	bool	mbCaptureActive;
+	bool	mbCaptureIsTest;
 	HFONT	mhClockFont;
 
 	uint32	mDeviceDisplayOptions;
@@ -428,6 +440,7 @@ protected:
 	bool	mbSwitchSourcesTogether;
 	bool	mbStretchToWindow;
 	bool	mbInfoPanel;
+	bool	mbTimingGraph;
 	bool	mbStartOnLeft;
 	bool	mbDisplayLargeTimer;
 	bool	mbHideOnCapture;
@@ -451,6 +464,8 @@ protected:
 	sint32			mVideoUncompressedSize;
 	sint32			mAudioUncompressedRate;
 
+	std::vector<HWND>	mInfoPanelChildren;
+
 	UINT			mUpdateTimer;
 	uint32			mLastPreviewFrameCount;
 
@@ -458,8 +473,11 @@ protected:
 
 	vdautoptr<IVDUIWindow>	mpVideoHistogram;
 	vdautoptr<IVDUIWindow>	mpVumeter;
+	vdautoptr<IVDUIWindow>	mpGraph;
 
 	VDUIPeerW32		mUIPeer;
+
+	VDCapturePreferences	mPreferences;
 
 	VDAtomicInt		mRefCount;
 };
@@ -474,6 +492,7 @@ VDCaptureProjectUI::VDCaptureProjectUI()
 	, mhMenuCapture(NULL)
 	, mhMenuAuxCapture(NULL)
 	, mbCaptureActive(false)
+	, mbCaptureIsTest(false)
 	, mhClockFont(NULL)
 	, mDeviceDisplayOptions(0)
 	, mDisplayModeShadow(kDisplayNone)
@@ -483,6 +502,7 @@ VDCaptureProjectUI::VDCaptureProjectUI()
 	, mbSwitchSourcesTogether(true)
 	, mbStretchToWindow(false)
 	, mbInfoPanel(true)
+	, mbTimingGraph(false)
 	, mbStartOnLeft(false)
 	, mbDisplayLargeTimer(false)
 	, mbHideOnCapture(false)
@@ -618,6 +638,8 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 	if (!mpProject->IsDriverConnected())
 		SetStatusImmediate("");
 
+	SetFocus((HWND)mhwnd);
+
 	return true;
 }
 
@@ -627,6 +649,7 @@ void VDCaptureProjectUI::Detach() {
 
 	VDToggleCaptureNRDialog(NULL, NULL);
 
+	ShutdownTimingGraph();
 	ShutdownVideoHistogram();
 	ShutdownVumeter();
 
@@ -717,6 +740,7 @@ void VDCaptureProjectUI::SetTimeLimit(int limitsecs) {
 }
 
 void VDCaptureProjectUI::Capture() {
+	mbCaptureIsTest = false;
 	mpProject->Capture(false);
 }
 
@@ -792,13 +816,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	// If the user has selected a default capture file, use it; if not, 
 	VDRegistryAppKey key(g_szCapture);
 
-	VDStringW fn;
-	if (key.getString(g_szDefaultCaptureFile, fn)) {
-		mpProject->SetCaptureFile(fn.c_str(), false);
-	}
-
 	// How about default capture settings?
-
 	{
 		CAPTUREPARMS *cp;
 		DWORD dwSize, dwSizeAlloc;
@@ -869,6 +887,10 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	ts.mbCorrectVideoTiming	= key.getBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
 	ts.mbResyncWithIntegratedAudio	= key.getBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
 	ts.mInsertLimit			= key.getInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
+	ts.mbUseFixedAudioLatency	= key.getBool(g_szCaptureTimingUseFixedAudioLatency, ts.mbUseFixedAudioLatency);
+	ts.mAudioLatency		= key.getInt(g_szCaptureTimingAudioLatency, ts.mAudioLatency);
+	ts.mbUseLimitedAutoAudioLatency	= key.getBool(g_szCaptureTimingUseLimitedAutoAudioLatency, ts.mbUseLimitedAutoAudioLatency);
+	ts.mAutoAudioLatencyLimit	= key.getInt(g_szCaptureTimingAutoAudioLatencyLimit, ts.mAutoAudioLatencyLimit);
 
 	mpProject->SetTimingSetup(ts);
 
@@ -898,8 +920,22 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	mpProject->SetFilterSetup(fs);
 
 	// Spill settings?
-
 	CapSpillRestoreFromRegistry();
+
+	// Load other preferences
+	VDCaptureLoadPreferences(mPreferences);
+	RebuildPanel();
+
+	// Load desired capture filename.
+	//
+	// Note that we must do this after we've loaded the mbAudioIncrementAfterCapture setting.
+	VDStringW fn;
+	if (key.getString(g_szDefaultCaptureFile, fn)) {
+		mpProject->SetCaptureFile(fn.c_str(), false);
+		if (mbAutoIncrementAfterCapture)
+			mpProject->IncrementFileIDUntilClear();
+	}
+
 
 	// Attempt to load preferred driver
 	//
@@ -913,6 +949,14 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 
 			for(int i=0; i<nDrivers; ++i) {
 				const wchar_t *name = mpProject->GetDriverName(i);
+
+				// do not autostart the emulation driver
+				size_t namelen = wcslen(name);
+				static const wchar_t prefix[]=L" (Emulation)";
+				enum { kPrefixLen = sizeof prefix / sizeof prefix[0] - 1 };
+				if (namelen >= kPrefixLen && !wcsicmp(name + namelen - kPrefixLen, prefix))
+					continue;
+
 				if (!wcsicmp(name, preferredDriver.c_str())) {
 					mpProject->SelectDriver(i);
 					break;
@@ -940,6 +984,10 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
 	key.setBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
 	key.setInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
+	key.setBool(g_szCaptureTimingUseFixedAudioLatency, ts.mbUseFixedAudioLatency);
+	key.setInt(g_szCaptureTimingAudioLatency, ts.mAudioLatency);
+	key.setBool(g_szCaptureTimingUseLimitedAutoAudioLatency, ts.mbUseLimitedAutoAudioLatency);
+	key.setInt(g_szCaptureTimingAutoAudioLatencyLimit, ts.mAutoAudioLatencyLimit);
 
 	const VDCaptureFilterSetup& fs = mpProject->GetFilterSetup();
 
@@ -1047,7 +1095,7 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	int frden = devkey.getInt(g_szCapFrameRateDenominator, 0);
 
 	if (frnum && frden)
-		mpProject->SetFrameTime(VDRoundToIntFastFullRange(1000000.0 * (double)frden / (double)frnum));
+		mpProject->SetFrameTime(VDRoundToIntFastFullRange(10000000.0 * (double)frden / (double)frnum));
 
 	// reload audio source
 	VDStringW s;
@@ -1190,7 +1238,7 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 	}
 
 	if (mask & kSaveDevFrameRate) {
-		devkey.setInt(g_szCapFrameRateNumerator, 1000000);
+		devkey.setInt(g_szCapFrameRateNumerator, 10000000);
 		devkey.setInt(g_szCapFrameRateDenominator, mpProject->GetFrameTime());
 	}
 
@@ -1342,6 +1390,9 @@ vdrect32 VDCaptureProjectUI::ComputeDisplayArea() {
 
 	if (mpVumeter)
 		r.bottom -= mpVumeter->GetArea().height();
+
+	if (mpGraph)
+		r.bottom -= mpGraph->GetArea().height();
 
 	if (mpVideoHistogram)
 		r.bottom -= mpVideoHistogram->GetArea().height();
@@ -1538,6 +1589,38 @@ void VDCaptureProjectUI::ShutdownVideoHistogram() {
 	}
 }
 
+extern IVDCaptureProfiler *g_pCaptureProfiler;		// a bit of a cheat for now
+
+bool VDCaptureProjectUI::InitTimingGraph() {
+	if (mpGraph)
+		return true;
+
+	mpGraph = VDCreateUICaptureGraph();
+	mpGraph->SetParent(&mUIPeer);
+	VDUIParameters vumParams;
+	vumParams.SetB(nsVDUI::kUIParam_Sunken, true);
+	if (!mpGraph->Create(&vumParams)) {
+		ShutdownTimingGraph();
+		return false;
+	}
+
+	g_pCaptureProfiler = vdpoly_cast<IVDUICaptureGraph *>(mpGraph)->AsICaptureProfiler();
+
+	OnSize();
+	return true;
+}
+
+void VDCaptureProjectUI::ShutdownTimingGraph() {
+	g_pCaptureProfiler = NULL;
+
+	if (mpGraph) {
+		mpGraph->Destroy();
+		mpGraph = NULL;
+
+		OnSize();
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////
 //
 // callbacks
@@ -1645,20 +1728,20 @@ void VDCaptureProjectUI::UICaptureDriverChanged(int driver) {
 }
 
 void VDCaptureProjectUI::UICaptureFileUpdated() {
-	const char *pszAppend;
-	const VDStringA nameA(VDTextWToA(mpProject->GetCaptureFile()));
+	const wchar_t *pszAppend;
+	const VDStringW& name = mpProject->GetCaptureFile();
 	
 	if (mbCaptureActive)
-		pszAppend = " [capture in progress]";
-	else if (0xFFFFFFFFUL != GetFileAttributes(nameA.c_str()))
-		pszAppend = " [FILE EXISTS]";
+		pszAppend = L" [capture in progress]";
+	else if (VDDoesPathExist(name.c_str()))
+		pszAppend = L" [FILE EXISTS]";
 	else
-		pszAppend = "";
+		pszAppend = L"";
 
 	if (mpProject->IsStripingEnabled())
-		guiSetTitle((HWND)mhwnd, IDS_TITLE_CAPTURE2, nameA.c_str(), pszAppend);
+		guiSetTitleW((HWND)mhwnd, IDS_TITLE_CAPTURE2, name.c_str(), pszAppend);
 	else
-		guiSetTitle((HWND)mhwnd, IDS_TITLE_CAPTURE, nameA.c_str(), pszAppend);
+		guiSetTitleW((HWND)mhwnd, IDS_TITLE_CAPTURE, name.c_str(), pszAppend);
 }
 
 void VDCaptureProjectUI::UICaptureVideoHistoBegin() {
@@ -1713,7 +1796,7 @@ void VDCaptureProjectUI::UICaptureParmsUpdated() {
 	strcpy(bufv,"(unknown)");
 
 	long framePeriod = mpProject->GetFrameTime();
-	double fps = 1000000.0f / (double)framePeriod;
+	double fps = 10000000.0f / (double)framePeriod;
 	sint32 bandwidth = 0;
 
 	sprintf(bufv, "%.02f fps", fps);
@@ -1802,6 +1885,10 @@ void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
 			mDisplayAccelImage.assign(px);
 		}
 
+		// It's pretty important that we not block against the main thread here.
+		// The reason is that the capture engine takes the video filter lock
+		// when calling us, so if the main thread is in the process of trying
+		// to modify the filtering parameters, we'd deadlock.
 		PostMessage((HWND)mhwnd, WM_APP+2, 0, 0);
 	}
 }
@@ -1864,6 +1951,9 @@ void VDCaptureProjectUI::UICaptureStart() {
 	}
 
 	mCPUReader.Init();
+
+	// reset preview rate status
+	SendMessage(mhwndStatus, SB_SETTEXT, 3, (LPARAM)L"");
 }
 
 bool VDCaptureProjectUI::UICapturePreroll() {
@@ -1898,8 +1988,24 @@ void VDCaptureProjectUI::UICaptureEnd(bool success) {
 		mhClockFont = NULL;
 	}
 
-	if (success && mbAutoIncrementAfterCapture)
-		mpProject->IncrementFileID();
+	if (success) {
+		if (mbAutoIncrementAfterCapture && !mbCaptureIsTest) {
+			mpProject->IncrementFileID();
+			mpProject->IncrementFileIDUntilClear();
+		}
+
+		if (mpProject->IsLoggingEnabled() && mpProject->IsLogAvailable()) {
+			const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
+
+			if (!logfile.empty()) {
+				try {
+					mpProject->SaveLog(logfile.c_str());
+				} catch(const MyError& e) {
+					e.post((HWND)mhwnd, g_szError);
+				}
+			}
+		}
+	}
 }
 
 LRESULT CALLBACK VDCaptureProjectUI::StaticStatusWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2109,12 +2215,12 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HIDEONCAPTURE,	mbHideOnCapture);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_DISPLAYLARGETIMER, mbDisplayLargeTimer);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_INFOPANEL,		mbInfoPanel);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_TIMINGGRAPH,		mbTimingGraph);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLESPILL,		mpProject->IsSpillEnabled());
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_AUTOINCREMENT,	mbAutoIncrementAfterCapture);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_STARTONLEFT,		mbStartOnLeft);
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_ENABLETIMINGLOG,	mpProject->IsLoggingEnabled());
-	VDEnableMenuItemByCommandW32(hMenu, ID_CAPTURE_SAVETIMINGLOG,	mpProject->IsLogAvailable());
 
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_NONE,	mDisplayAccelMode == kDDP_Off);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_TOP,		mDisplayAccelMode == kDDP_Top);
@@ -2171,14 +2277,25 @@ void VDCaptureProjectUI::DoChannelSwitch() {
 }
 
 bool VDCaptureProjectUI::OnChar(int ch) {
-	if (ch >= '0' && ch <= '9') {
+	if (ch >= '0' && ch <= '9' || ch == '\b') {
 		if (mNextChannel < 0)
 			mNextChannel = 0;
 
-		mNextChannel = (mNextChannel * 10) + (ch - '0');
+		if (ch == '\b') {
+			if (!mNextChannel)
+				mNextChannel = -1;
+			else
+				mNextChannel /= 10;
+		} else
+			mNextChannel = (mNextChannel * 10) + (ch - '0');
+
 		mNextChannelSwitchTime = VDGetCurrentTick() + 2000;
 
-		SetStatusF("Channel: %u_", mNextChannel);
+		if (mNextChannel < 0)
+			SetStatusF("Channel: _");
+		else
+			SetStatusF("Channel: %u_", mNextChannel);
+
 		return true;
 	}
 
@@ -2211,6 +2328,11 @@ void VDCaptureProjectUI::OnSize() {
 	int vhistoHt = 0;
 	if (mpVideoHistogram) {
 		vhistoHt = 128;
+	}
+
+	int vgraphHt = 0;
+	if (mpGraph) {
+		vgraphHt = 128;
 	}
 
 	int vumeterHt = 0;
@@ -2251,6 +2373,11 @@ void VDCaptureProjectUI::OnSize() {
 	if (mpVumeter) {
 		mpVumeter->SetArea(vduirect(rClient.left, y_bottom - vumeterHt, rClient.right, y_bottom));
 		y_bottom -= vumeterHt;
+	}
+
+	if (mpGraph) {
+		mpGraph->SetArea(vduirect(rClient.left, y_bottom - vgraphHt, rClient.right - infoPanelWidth, y_bottom));
+		y_bottom -= vgraphHt;
 	}
 
 	if (mpVideoHistogram) {
@@ -2727,25 +2854,23 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		case ID_CAPTURE_SETTINGS:
 			{
-				extern bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, CAPTUREPARMS& parms);
-
 				SuspendDisplay(mbDisplayAccelActive);
 
-				CAPTUREPARMS cp={0};
+				VDCaptureSettings cs;
 				int videoCount=0, audioCount=0, audioSize=0;
 
 				mpProject->GetHardwareBuffering(videoCount, audioCount, audioSize);
 
-				cp.dwRequestMicroSecPerFrame = mpProject->GetFrameTime();
-				cp.wNumVideoRequested = videoCount;
-				cp.wNumAudioRequested = audioCount;
-				cp.dwAudioBufferSize = audioSize;
-				cp.fMakeUserHitOKToCapture = mbDisplayPrerollDialog;
+				cs.mFramePeriod = mpProject->GetFrameTime();
+				cs.mVideoBufferCount = videoCount;
+				cs.mAudioBufferCount = audioCount;
+				cs.mAudioBufferSize = audioSize;
+				cs.mbDisplayPrerollDialog = mbDisplayPrerollDialog;
 
-				if (VDShowCaptureSettingsDialog(mhwnd, cp)) {
-					mpProject->SetHardwareBuffering(cp.wNumVideoRequested, cp.wNumAudioRequested, cp.dwAudioBufferSize);
-					mpProject->SetFrameTime(cp.dwRequestMicroSecPerFrame);
-					mbDisplayPrerollDialog = !!cp.fMakeUserHitOKToCapture;
+				if (VDShowCaptureSettingsDialog(mhwnd, cs)) {
+					mpProject->SetHardwareBuffering(cs.mVideoBufferCount, cs.mAudioBufferCount, cs.mAudioBufferSize);
+					mpProject->SetFrameTime(cs.mFramePeriod);
+					mbDisplayPrerollDialog = !!cs.mbDisplayPrerollDialog;
 				}
 
 				ResumeDisplay();
@@ -2754,11 +2879,11 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		case ID_CAPTURE_PREFERENCES:
 			SuspendDisplay();
-	#pragma vdpragma_TODO("FIXME")
-	//		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREFERENCES), (HWND)mhwnd, CapturePreferencesDlgProc, (LPARAM)hWndCapture);
-			extern void VDShowCapturePreferencesDialog(VDGUIHandle h);
 
-			VDShowCapturePreferencesDialog(mhwnd);
+			if (VDShowCapturePreferencesDialog(mhwnd, mPreferences)) {
+				VDCaptureSavePreferences(mPreferences);
+				RebuildPanel();
+			}
 			ResumeDisplay();
 			break;
 
@@ -2791,10 +2916,12 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			break;
 
 		case ID_CAPTURE_CAPTUREVIDEO:
+			mbCaptureIsTest = false;
 			mpProject->Capture(false);
 			break;
 
 		case ID_CAPTURE_TEST:
+			mbCaptureIsTest = true;
 			mpProject->Capture(true);
 			break;
 
@@ -2809,6 +2936,14 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		case ID_CAPTURE_DISPLAYLARGETIMER:
 			mbDisplayLargeTimer = !mbDisplayLargeTimer;
+			break;
+
+		case ID_CAPTURE_TIMINGGRAPH:
+			mbTimingGraph = !mbTimingGraph;
+			if (mbTimingGraph)
+				InitTimingGraph();
+			else
+				ShutdownTimingGraph();
 			break;
 
 		case ID_CAPTURE_ENABLESPILL:
@@ -2835,20 +2970,6 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			mpProject->SetLoggingEnabled(!mpProject->IsLoggingEnabled());
 			break;
 
-		case ID_CAPTURE_SAVETIMINGLOG:
-			if (mpProject->IsLogAvailable()) {
-				const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
-
-				if (!logfile.empty()) {
-					try {
-						mpProject->SaveLog(logfile.c_str());
-					} catch(const MyError& e) {
-						e.post((HWND)mhwnd, g_szError);
-					}
-				}
-			}
-			break;
-
 		default:
 			if (id >= ID_VIDEO_CAPTURE_DRIVER && id < ID_VIDEO_CAPTURE_DRIVER+50) {
 				mpProject->SelectDriver(id - ID_VIDEO_CAPTURE_DRIVER);
@@ -2864,10 +2985,17 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 				if (mbSwitchSourcesTogether)
 					SyncAudioSourceToVideoSource();
-			} else if (id >= ID_AUDIOMODE_11KHZ_8MONO && id <= ID_AUDIOMODE_44KHZ_16STEREO) {
+			} else if (id >= ID_AUDIOMODE_11KHZ_8MONO && id <= ID_AUDIOMODE_48KHZ_16STEREO) {
+				static const int kSamplingRates[]={
+					11025,
+					22050,
+					32000,
+					44100,
+					48000
+				};
 				id -= ID_AUDIOMODE_11KHZ_8MONO;
 				SetPCMAudioFormat(
-						11025<<(id/4),
+						kSamplingRates[id >> 2],
 						0 != (id & 2),
 						0 != (id & 1));
 			} else if (id >= ID_FRAMERATE_6000FPS && id <= ID_FRAMERATE_1493FPS) {
@@ -2907,7 +3035,13 @@ void VDCaptureProjectUI::OnUpdateAccelDisplay() {
 	if (mpDisplay && mbDisplayAccelActive) {
 		vdsynchronized(mDisplayAccelImageLock) {
 			if (mDisplayAccelImage.data && mDisplayAccelImage.format && mbDisplayAccelImagePending) {
-				mpDisplay->SetSource(true, mDisplayAccelImage);
+				// Do not allow VSync when capture is active, to get better timing.
+				if (mbCaptureActive || !(g_prefs.fDisplay & Preferences::kDisplayEnableVSync))
+					mpDisplay->SetSource(true, mDisplayAccelImage);
+				else {
+					mpDisplay->SetSource(false, mDisplayAccelImage);
+					mpDisplay->Update(IVDVideoDisplay::kAllFields | IVDVideoDisplay::kVSync);
+				}
 				mbDisplayAccelImagePending = false;
 			}
 		}
@@ -2942,14 +3076,14 @@ void VDCaptureProjectUI::OnUpdateStatus() {
 					, disp
 					, (long)(mCurStatus.mTotalVideoSize / mCurStatus.mFramesCaptured)
 					, totalSizeK
-					, mCurStatus.mVideoRateScale
+					, mCurStatus.mVideoResamplingRate
 					);
 	} else {
 		sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d"
 					, jitter
 					, disp
 					, totalSizeK
-					, mCurStatus.mCurrentSegment+1
+					, mCurStatus.mCurrentVideoSegment+1
 					);
 	}
 
@@ -2990,6 +3124,320 @@ void VDCaptureProjectUI::OnUpdateStatus() {
 	mLastStatus = mCurStatus;
 }
 
+namespace {
+	enum {
+		kVDCaptureInfoType_Misc,
+		kVDCaptureInfoType_Video,
+		kVDCaptureInfoType_Audio,
+		kVDCaptureInfoType_Sync,
+		kVDCaptureInfoType_Count
+	};
+
+	int GetCaptureInfoType(uint32 infoid) {
+		switch(infoid) {
+		case kVDCaptureInfo_VideoSize:
+		case kVDCaptureInfo_VideoAverageRate:
+		case kVDCaptureInfo_VideoDataRate:
+		case kVDCaptureInfo_VideoCompressionRatio:
+		case kVDCaptureInfo_VideoAverageFrameSize:
+		case kVDCaptureInfo_VideoFramesDropped:
+		case kVDCaptureInfo_VideoFramesInserted:
+		case kVDCaptureInfo_VideoResamplingFactor:
+			return kVDCaptureInfoType_Video;
+
+		case kVDCaptureInfo_AudioSize:
+		case kVDCaptureInfo_AudioAverageRate:
+		case kVDCaptureInfo_AudioRelativeRate:
+		case kVDCaptureInfo_AudioDataRate:
+		case kVDCaptureInfo_AudioCompressionRatio:
+		case kVDCaptureInfo_AudioResamplingFactor:
+			return kVDCaptureInfoType_Audio;
+
+		case kVDCaptureInfo_SyncVideoTimingAdjust:
+		case kVDCaptureInfo_SyncRelativeLatency:
+		case kVDCaptureInfo_SyncCurrentLatency:
+			return kVDCaptureInfoType_Sync;
+		}
+
+		return kVDCaptureInfoType_Misc;
+	}
+}
+
+void VDCaptureProjectUI::RebuildPanel() {
+	if (!mhwndPanel)
+		return;
+
+	// Delete all the children
+	mInfoPanelChildren.clear();
+	while(HWND hwndChild = GetWindow(mhwndPanel, GW_CHILD))
+		DestroyWindow(hwndChild);
+
+	// Determine placement parameters
+	RECT rClient = {0,0,0,0};
+	GetClientRect(mhwndPanel, &rClient);
+
+	RECT rPadding = {0, 2, 7, 7};
+	RECT rSpacing = {0, 5, 6, 10};
+	MapDialogRect(mhwndPanel, &rPadding);
+	MapDialogRect(mhwndPanel, &rSpacing);
+
+	const int x1 = rPadding.right;
+	const int x2 = rClient.right - rPadding.right;
+	int y = rPadding.bottom;
+
+	HFONT hfont = (HFONT)SendMessage(mhwndPanel, WM_GETFONT, 0, 0);
+	for(int type=0; type<kVDCaptureInfoType_Count; ++type) {
+		VDCapturePreferences::InfoItems::const_iterator it(mPreferences.mInfoItems.begin()), itEnd(mPreferences.mInfoItems.end());
+
+		int xpos = x1;
+		int xwidth = x2 - x1;
+
+		if (type) {
+			y += rPadding.top;
+			xpos += rSpacing.right;
+			xwidth -= rSpacing.right * 2;
+		}
+
+		bool groupOpen = false;
+		int groupY = y;
+
+		for(; it != itEnd; ++it) {
+			uint32 infoid = *it;
+
+			if (GetCaptureInfoType(infoid) != type)
+				continue;
+
+			if (type && !groupOpen) {
+				y += rSpacing.bottom;
+				groupOpen = true;
+			}
+
+			HWND hwndLabel, hwndChild;
+			const wchar_t *itemLabel = VDLoadString(0, kVDST_CaptureUI, kVDMBase_CapInfoLabels + infoid);
+
+			if (VDIsWindowsNT()) {
+				hwndLabel = CreateWindowW(L"STATIC", itemLabel, WS_CHILD|WS_VISIBLE|SS_CENTERIMAGE|SS_NOPREFIX|SS_LEFT, xpos, y, xwidth, rSpacing.bottom, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+				hwndChild = CreateWindowW(L"STATIC", L"", WS_CHILD|WS_VISIBLE|SS_CENTERIMAGE|SS_NOPREFIX|SS_RIGHT, xpos, y, xwidth, rSpacing.bottom, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+			} else {
+				hwndLabel = CreateWindowA("STATIC", VDTextWToA(itemLabel).c_str(), WS_CHILD|WS_VISIBLE|SS_CENTERIMAGE|SS_NOPREFIX|SS_LEFT, xpos, y, xwidth, rSpacing.bottom, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+				hwndChild = CreateWindowA("STATIC", "", WS_CHILD|WS_VISIBLE|SS_CENTERIMAGE|SS_NOPREFIX|SS_RIGHT, xpos, y, xwidth, rSpacing.bottom, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+			}
+
+			if (hwndLabel) {
+				SendMessage(hwndLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+				if (hwndChild) {
+					SIZE sz;
+					BOOL success = FALSE;
+
+					if (HDC hdc = GetDC(hwndLabel)) {
+						if (int id = SaveDC(hdc)) {
+							SelectObject(hdc, hfont);
+
+							if (VDIsWindowsNT())
+								success = GetTextExtentPoint32W(hdc, itemLabel, wcslen(itemLabel), &sz);
+							else
+								success = GetTextExtentPoint32A(hdc, VDTextWToA(itemLabel).c_str(), wcslen(itemLabel), &sz);
+
+							RestoreDC(hdc, id);
+						}
+
+						ReleaseDC(hwndLabel, hdc);
+					}
+
+					if (success) {
+						int offset = sz.cx + 2;
+						SetWindowPos(hwndLabel, NULL, 0, 0, offset, rSpacing.bottom, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+						SetWindowPos(hwndChild, NULL, xpos + offset, y, xwidth - offset, rSpacing.bottom, SWP_NOZORDER|SWP_NOACTIVATE);
+					}
+				}
+			}
+
+			if (hwndChild)
+				SendMessage(hwndChild, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+			y += rSpacing.bottom;
+
+			// must do this even on NULL to maintain order relative to mInfoItems
+			mInfoPanelChildren.push_back(hwndChild);
+		}
+
+		if (groupOpen) {
+			y += rSpacing.top;
+
+			HWND hwndGroup;
+			const wchar_t *groupLabel = VDLoadString(0, kVDST_CaptureUI, kVDMBase_CapInfoTypeLabels + type);
+			
+			if (VDIsWindowsNT())
+				hwndGroup = CreateWindowW(L"BUTTON", groupLabel, WS_CHILD|WS_VISIBLE|BS_GROUPBOX, x1, groupY, x2-x1, y - groupY, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+			else
+				hwndGroup = CreateWindowA("BUTTON", VDTextWToA(groupLabel).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, x1, groupY, x2-x1, y - groupY, mhwndPanel, (HMENU)-1, g_hInst, NULL);
+
+			if (hwndGroup)
+				SendMessage(hwndGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
+		}
+	}
+}
+
+void VDCaptureProjectUI::UpdatePanel(VDCaptureStatus& status) {
+	const int n = std::min<int>((int)mPreferences.mInfoItems.size(), mInfoPanelChildren.size());
+
+	const int video_time_diff = status.mVideoLastFrameTimeMS - status.mVideoFirstFrameTimeMS;
+	long video_rate = 0;
+	long audio_rate = 0;
+
+	if (video_time_diff >= 1000)
+		video_rate = (long)((status.mTotalVideoSize*1000 + video_time_diff/2) / video_time_diff);
+
+	// bytes -> samples/sec
+	// bytes / (bytes/sec) = sec
+	// bytes / (bytes/sec) * (samples/sec) / sec = avg-samples/sec
+	if (status.mAudioLastFrameTimeMS >= 1000)
+		audio_rate = (long)((status.mTotalAudioSize*1000 + status.mElapsedTimeMS/2) / status.mAudioLastFrameTimeMS);
+
+	wchar_t buf[256];
+	for(int i=0; i<n; ++i) {
+		const HWND hwndChild = mInfoPanelChildren[i];
+
+		if (!hwndChild)
+			continue;
+
+		const uint32 infoid = mPreferences.mInfoItems[i];
+
+		buf[0] = 0;
+
+		switch(infoid) {
+			case kVDCaptureInfo_FramesCaptured:
+				swprintf(buf, L"%ld", status.mFramesCaptured);
+				break;
+
+			case kVDCaptureInfo_TotalTime:
+				ticks_to_str(buf, status.mElapsedTimeMS);
+				break;
+
+			case kVDCaptureInfo_TimeLeft:
+				if (video_rate + audio_rate > 16) {
+					sint64 diskSpace = status.mDiskFreeSpace;
+					if (diskSpace < 0)
+						diskSpace = 0;
+
+					ticks_to_str(buf, (long)(diskSpace * 1000 / (video_rate + audio_rate)));
+				}
+				break;
+
+			case kVDCaptureInfo_TotalFileSize:
+				size_to_str(buf, 4096 + status.mTotalVideoSize + status.mTotalAudioSize);
+				break;
+
+			case kVDCaptureInfo_DiskSpaceFree:
+				if (status.mDiskFreeSpace >= 0)
+					size_to_str(buf, status.mDiskFreeSpace);
+				break;
+
+			case kVDCaptureInfo_CPUUsage:
+				{
+					int cpuUsage = mCPUReader.read();
+
+					if (cpuUsage >= 0)
+						_swprintf(buf, L"%d%%", cpuUsage);
+				}
+				break;
+
+			case kVDCaptureInfo_SpillStatus:
+				if (status.mCurrentAudioSegment < status.mCurrentVideoSegment)
+					_swprintf(buf, L"pending audio #%u", status.mCurrentAudioSegment + 1);
+				else if (status.mCurrentVideoSegment < status.mCurrentAudioSegment)
+					_swprintf(buf, L"pending video #%u", status.mCurrentVideoSegment + 1);
+				else
+					_swprintf(buf, L"writing #%u", status.mCurrentVideoSegment + 1);
+				break;
+
+			case kVDCaptureInfo_VideoSize:
+				size_to_str(buf, status.mTotalVideoSize);
+				break;
+
+			case kVDCaptureInfo_VideoAverageRate:
+				if (video_time_diff >= 1000 && status.mFramesCaptured >= 2)
+					swprintf(buf, L"%.05f fps", (status.mFramesCaptured-1) * 1000.0 / (double)video_time_diff);
+				break;
+
+			case kVDCaptureInfo_VideoDataRate:
+				swprintf(buf, L"%ldKB/s", (video_rate+1023) >> 10);
+				break;
+
+			case kVDCaptureInfo_VideoCompressionRatio:
+				if (status.mTotalVideoSize && status.mFramesCaptured >= 2) {
+					double ratio = (double)mVideoUncompressedSize * (status.mFramesCaptured-1) / (double)status.mTotalVideoSize;
+
+					swprintf(buf, L"%.1f:1", ratio);
+				}
+				break;
+
+			case kVDCaptureInfo_VideoAverageFrameSize:
+				if (status.mTotalVideoSize && status.mFramesCaptured >= 2)
+					swprintf(buf, L"%ld", (long)(status.mTotalVideoSize / (status.mFramesCaptured-1)) - 24);
+				break;
+
+			case kVDCaptureInfo_VideoFramesDropped:
+				swprintf(buf, L"%d", status.mFramesDropped);
+				break;
+
+			case kVDCaptureInfo_VideoFramesInserted:
+				swprintf(buf, L"%d", status.mFramesInserted);
+				break;
+
+			case kVDCaptureInfo_VideoResamplingFactor:
+				swprintf(buf, L"%.5fx", status.mVideoResamplingRate);
+				break;
+
+			case kVDCaptureInfo_AudioSize:
+				size_to_str(buf, status.mTotalAudioSize);
+				break;
+
+			case kVDCaptureInfo_AudioAverageRate:
+				if (status.mActualAudioHz > 0)
+					swprintf(buf, L"%.2fHz", status.mActualAudioHz);
+				break;
+			case kVDCaptureInfo_AudioRelativeRate:
+				if (status.mRelativeAudioHz > 0)
+					swprintf(buf, L"%.2fHz", status.mRelativeAudioHz);
+				break;
+			case kVDCaptureInfo_AudioDataRate:
+				swprintf(buf, L"%ldKB/s", (audio_rate+1023)/1024);
+				break;
+			case kVDCaptureInfo_AudioCompressionRatio:
+				if (status.mAudioLastFrameTimeMS >= 1000) {
+					if (!mAudioUncompressedRate)
+						wcscpy(buf, L"1.0:1");
+					else if (status.mTotalAudioDataSize > status.mAudioFirstSize) {
+						double timeDelta = (double)(status.mAudioLastFrameTimeMS - status.mAudioFirstFrameTimeMS) / 1000.0;
+						double sizeDelta = (double)(status.mTotalAudioDataSize - status.mAudioFirstSize);
+						double ratio = (timeDelta / sizeDelta) * mAudioUncompressedRate;
+
+						swprintf(buf, L"%.1f", ratio);
+					}
+				}
+				break;
+			case kVDCaptureInfo_AudioResamplingFactor:
+				swprintf(buf, L"%+.3f s.t.", log(status.mAudioResamplingRate) * 17.312340490667560888319096172023);
+				break;
+			case kVDCaptureInfo_SyncVideoTimingAdjust:
+				swprintf(buf, L"%+ld ms", status.mVideoTimingAdjustMS);
+				break;
+			case kVDCaptureInfo_SyncRelativeLatency:
+				swprintf(buf, L"%.0f ms", status.mAudioRelativeLatency/1000.0f);
+				break;
+			case kVDCaptureInfo_SyncCurrentLatency:
+				swprintf(buf, L"%.0f ms", status.mAudioCurrentLatency/1000.0f);
+				break;
+			default:
+				continue;
+		}
+
+		VDSetWindowTextW32(hwndChild, buf);
+	}
+}
+
 INT_PTR CALLBACK VDCaptureProjectUI::StaticPanelDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	VDCaptureProjectUI *pThis;
 	
@@ -3014,118 +3462,8 @@ INT_PTR VDCaptureProjectUI::PanelDlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_APP+0:
 		{
 			VDCaptureStatus& status = *(VDCaptureStatus *)lParam;
-			char buf[256];
-			long l, time_diff;
-			long lVideoRate, lAudioRate;
 
-			sprintf(buf, "%ld", status.mFramesCaptured);
-			SetDlgItemText(mhwndPanel, IDC_FRAMES, buf);
-
-			ticks_to_str(buf, status.mElapsedTimeMS);
-			SetDlgItemText(mhwndPanel, IDC_TIME_TOTAL, buf);
-
-			l = mCPUReader.read();
-
-			if (l >= 0) {
-				sprintf(buf, "%ld%%", l);
-				SetDlgItemText(mhwndPanel, IDC_CPU_USAGE, buf);
-			}
-
-			////////
-
-			size_to_str(buf, status.mTotalVideoSize);
-			SetDlgItemText(mhwndPanel, IDC_VIDEO_SIZE, buf);
-
-			time_diff = status.mVideoLastFrameTimeMS - status.mVideoFirstFrameTimeMS;
-
-			if (time_diff >= 1000 && status.mFramesCaptured >= 2) {
-				l = MulDiv(status.mFramesCaptured - 1, 100000000, time_diff);
-				if (l<0) l=0;
-				sprintf(buf, "%ld.%05ld fps", l/100000, l%100000);
-				SetDlgItemText(mhwndPanel, IDC_VIDEO_RATE, buf);
-			}
-
-			if (time_diff >= 1000)
-				lVideoRate = (long)((status.mTotalVideoSize*1000 + time_diff/2) / time_diff);
-			else
-				lVideoRate = 0;
-			sprintf(buf, "%ldKB/s", (lVideoRate+1023)/1024);
-			SetDlgItemText(mhwndPanel, IDC_VIDEO_DATARATE, buf);
-
-			if (status.mTotalVideoSize && status.mFramesCaptured >= 2) {
-				double ratio = (double)mVideoUncompressedSize * (status.mFramesCaptured-1) / (double)status.mTotalVideoSize;
-
-				sprintf(buf, "%.1f:1", ratio);
-				SetDlgItemText(mhwndPanel, IDC_VIDEO_RATIO, buf);
-
-				sprintf(buf, "%ld", (long)(status.mTotalVideoSize / (status.mFramesCaptured-1)) - 24);
-				SetDlgItemText(mhwndPanel, IDC_VIDEO_AVGFRAMESIZE, buf);
-			}
-
-			sprintf(buf, "%ld", status.mFramesDropped);
-			SetDlgItemText(mhwndPanel, IDC_VIDEO_DROPPED, buf);
-
-			/////////
-
-			size_to_str(buf, status.mTotalAudioSize);
-			SetDlgItemText(mhwndPanel, IDC_AUDIO_SIZE, buf);
-
-			// bytes -> samples/sec
-			// bytes / (bytes/sec) = sec
-			// bytes / (bytes/sec) * (samples/sec) / sec = avg-samples/sec
-
-			if (status.mAudioLastFrameTimeMS >= 1000) {
-				if (status.mActualAudioHz > 0) {
-					sprintf(buf, "%.2fHz", status.mActualAudioHz);
-					SetDlgItemText(mhwndPanel, IDC_AUDIO_RATE, buf);
-				}
-
-				if (!mAudioUncompressedRate)
-					SetDlgItemText(mhwndPanel, IDC_AUDIO_RATIO, "1.0:1");
-				else if (status.mTotalAudioDataSize > status.mAudioFirstSize) {
-					double timeDelta = (double)(status.mAudioLastFrameTimeMS - status.mAudioFirstFrameTimeMS) / 1000.0;
-					double sizeDelta = (double)(status.mTotalAudioDataSize - status.mAudioFirstSize);
-					double ratio = (timeDelta / sizeDelta) * mAudioUncompressedRate;
-
-					sprintf(buf, "%.1f", ratio);
-					SetDlgItemText(mhwndPanel, IDC_AUDIO_RATIO, buf);
-				}
-
-				lAudioRate = (long)((status.mTotalAudioSize*1000 + status.mElapsedTimeMS/2) / status.mAudioLastFrameTimeMS);
-				sprintf(buf,"%ldKB/s", (lAudioRate+1023)/1024);
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_DATARATE, buf);
-
-				sprintf(buf,"%+ld ms", status.mVideoTimingAdjustMS);
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_CORRECTIONS, buf);
-
-				sprintf(buf, "%+.3f s.t.", log(status.mAudioResamplingRate) * 17.312340490667560888319096172023);
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_RESAMPLERATE, buf);
-
-				sprintf(buf, "%.0f ms", status.mAudioLatency/1000.0f);
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_LATENCY, buf);
-			} else {
-				lAudioRate = 0;
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_RATE, "(n/a)");
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_RATIO, "(n/a)");
-				SetDlgItemText(mhwndPanel, IDC_AUDIO_DATARATE, "(n/a)");
-			}
-
-			if (status.mDiskFreeSpace >= 0) {
-				size_to_str(buf, status.mDiskFreeSpace);
-				SetDlgItemText(mhwndPanel, IDC_DISK_FREE, buf);
-			}
-
-			if (lVideoRate + lAudioRate > 16) {
-				sint64 diskSpace = status.mDiskFreeSpace;
-				if (diskSpace < 0)
-					diskSpace = 0;
-
-				ticks_to_str(buf, (long)(diskSpace * 1000 / (lVideoRate + lAudioRate)));
-				SetDlgItemText(mhwndPanel, IDC_TIME_LEFT, buf);
-			}
-
-			size_to_str(buf, 4096 + status.mTotalVideoSize + status.mTotalAudioSize);
-			SetDlgItemText(mhwndPanel, IDC_FILE_SIZE, buf);
+			UpdatePanel(status);
 		}
 		return TRUE;
 	}

@@ -61,6 +61,7 @@ enum {
 
 HINSTANCE	g_hInst;
 HWND		g_hWnd =NULL;
+int			g_returnCode;
 
 bool				g_fDropFrames			= false;
 bool				g_fSwapPanes			= false;
@@ -171,7 +172,7 @@ wm_quit_detected:
 
 	VDCHECKPOINT;
 
-    return (msg.wParam);           // Returns the value from PostQuitMessage.
+    return g_returnCode ? g_returnCode : msg.wParam;           // Returns the value from PostQuitMessage.
 
 }
 
@@ -456,7 +457,7 @@ void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp)
 void CPUTest() {
 	long lEnableFlags;
 
-	lEnableFlags = g_prefs.main.fOptimizations;
+	lEnableFlags = g_prefs.main.fOptimizations & CPUF_SUPPORTS_MASK;
 
 	if (!(g_prefs.main.fOptimizations & PreferencesMain::OPTF_FORCE)) {
 		SYSTEM_INFO si;

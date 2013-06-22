@@ -82,8 +82,7 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     {
         case WM_INITDIALOG:
 			{
-				ClippingControlBounds ccb;
-				LONG hborder, hspace;
+				LONG hspace;
 				RECT rw, rc, rcok, rccancel, rcpickcolor, rccolor;
 				HWND hWnd, hWndCancel, hWndPickColor, hWndColor;
 				long x,y;
@@ -92,32 +91,36 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
 
 				hWnd = GetDlgItem(hDlg, IDC_BORDERS);
-				ccb.x1	= mfd->x1;
-				ccb.x2	= mfd->x2;
-				ccb.y1	= mfd->y1;
-				ccb.y2	= mfd->y2;
+				IVDClippingControl *pClipCtrl = VDGetIClippingControl((VDGUIHandle)hWnd);
 
 				mfd->color_temp = mfd->color;
 				mfd->hbrColor = CreateSolidBrush(mfd->color);
 
 				if (inputVideoAVI) {
 					BITMAPINFOHEADER *bmi = inputVideoAVI->getImageFormat();
-					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(bmi->biWidth,bmi->biHeight));
+					pClipCtrl->SetBitmapSize(bmi->biWidth,bmi->biHeight);
 				} else
-					SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));
+					pClipCtrl->SetBitmapSize(320, 240);
 
-				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
+
+				pClipCtrl->SetClipBounds(vdrect32(mfd->x1, mfd->y1, mfd->x2, mfd->y2));
+
+				GetWindowRect(hDlg, &rw);
+				GetWindowRect(hWnd, &rc);
+				int origH = (rw.bottom - rw.top);
+				int padW = (rw.right - rw.left) - (rc.right - rc.left);
+				int padH = origH - (rc.bottom - rc.top);
+				pClipCtrl->AutoSize(padW, padH);
 
 				IVDPositionControl *pc = VDGetIPositionControlFromClippingControl((VDGUIHandle)hWnd);
 				guiPositionInitFromStream(pc);
 
-				GetWindowRect(hDlg, &rw);
 				GetWindowRect(hWnd, &rc);
-				hborder = rc.left - rw.left;
-				ScreenToClient(hDlg, (LPPOINT)&rc.left);
-				ScreenToClient(hDlg, (LPPOINT)&rc.right);
+				MapWindowPoints(NULL, hDlg, (LPPOINT)&rc, 2);
 
-				SetWindowPos(hDlg, NULL, 0, 0, (rc.right - rc.left) + hborder*2, (rw.bottom-rw.top)+(rc.bottom-rc.top), SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+				const int newH = (rc.bottom - rc.top) + padH;
+				SetWindowPos(hDlg, NULL, 0, 0, (rc.right - rc.left) + padW, newH, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOMOVE);
+				SendMessage(hDlg, DM_REPOSITION, 0, 0);
 
 				hWndCancel = GetDlgItem(hDlg, IDCANCEL);
 				hWnd = GetDlgItem(hDlg, IDOK);
@@ -128,17 +131,13 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 				GetWindowRect(hWndPickColor, &rcpickcolor);
 				GetWindowRect(hWndColor, &rccolor);
 				hspace = rccancel.left - rcok.right;
-				ScreenToClient(hDlg, (LPPOINT)&rcok.left);
-				ScreenToClient(hDlg, (LPPOINT)&rcok.right);
-				ScreenToClient(hDlg, (LPPOINT)&rccancel.left);
-				ScreenToClient(hDlg, (LPPOINT)&rccancel.right);
-				ScreenToClient(hDlg, (LPPOINT)&rcpickcolor.left);
-				ScreenToClient(hDlg, (LPPOINT)&rcpickcolor.right);
-				ScreenToClient(hDlg, (LPPOINT)&rccolor.left);
-				ScreenToClient(hDlg, (LPPOINT)&rccolor.right);
+				MapWindowPoints(NULL, hDlg, (LPPOINT)&rcok, 2);
+				MapWindowPoints(NULL, hDlg, (LPPOINT)&rccancel, 2);
+				MapWindowPoints(NULL, hDlg, (LPPOINT)&rcpickcolor, 2);
+				MapWindowPoints(NULL, hDlg, (LPPOINT)&rccolor, 2);
 
 				x = rc.right;
-				y = rc.bottom - rc.top;
+				y = newH - origH;
 
 				x -= (rccancel.right - rccancel.left);
 				SetWindowPos(hWndCancel	, NULL, x           ,    rccancel.top + y, 0,0,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);

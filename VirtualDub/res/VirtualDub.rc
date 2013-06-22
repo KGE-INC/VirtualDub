@@ -244,7 +244,7 @@ BEGIN
     BEGIN
         MENUITEM "Job control...\tF4",          ID_FILE_JOBCONTROL
         MENUITEM SEPARATOR
-        MENUITEM "&Abort dub\tSpace",           ID_DUBINPROGRESS_ABORT
+        MENUITEM "&Abort dub",                  ID_DUBINPROGRESS_ABORT
     END
     POPUP "&Options"
     BEGIN
@@ -394,7 +394,6 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Settings...\tF9",            ID_CAPTURE_SETTINGS
         MENUITEM "&Preferences...\tF10",        ID_CAPTURE_PREFERENCES
-        , GRAYED
         MENUITEM "Stop conditions...",          ID_CAPTURE_STOPCONDITIONS
         MENUITEM "Timing...",                   ID_CAPTURE_TIMING
         MENUITEM "Disk I/O...",                 ID_CAPTURE_DISKIO
@@ -403,6 +402,7 @@ BEGIN
         MENUITEM "&Hide display on capture",    ID_CAPTURE_HIDEONCAPTURE
         MENUITEM "Display large timer",         ID_CAPTURE_DISPLAYLARGETIMER
         MENUITEM "Show information panel",      ID_CAPTURE_INFOPANEL
+        MENUITEM "Timing graph",                ID_CAPTURE_TIMINGGRAPH
         MENUITEM "Enable multisegment capture", ID_CAPTURE_ENABLESPILL
         MENUITEM "Start capture on left-click in pane", 
                                                 ID_CAPTURE_STARTONLEFT
@@ -410,7 +410,6 @@ BEGIN
                                                 ID_CAPTURE_AUTOINCREMENT
         MENUITEM SEPARATOR
         MENUITEM "Enable timing log",           ID_CAPTURE_ENABLETIMINGLOG
-        MENUITEM "Save timing log...",          ID_CAPTURE_SAVETIMINGLOG
     END
     POPUP "&Help"
     BEGIN
@@ -432,10 +431,20 @@ BEGIN
         MENUITEM "22.05 KHz, 16-bit, mono",     ID_AUDIOMODE_22KHZ_16MONO
         MENUITEM "22.05 KHz, 16-bit, stereo",   ID_AUDIOMODE_22KHZ_16STEREO
         MENUITEM SEPARATOR
+        MENUITEM "32.00 KHz, 8-bit, mono",      ID_AUDIOMODE_32KHZ_8MONO
+        MENUITEM "32.00 KHz, 8-bit, stereo",    ID_AUDIOMODE_32KHZ_8STEREO
+        MENUITEM "32.00 KHz, 16-bit, mono",     ID_AUDIOMODE_32KHZ_16MONO
+        MENUITEM "32.00 KHz, 16-bit, stereo",   ID_AUDIOMODE_32KHZ_16STEREO
+        MENUITEM SEPARATOR
         MENUITEM "44.10 KHz, 8-bit, mono",      ID_AUDIOMODE_44KHZ_8MONO
         MENUITEM "44.10 KHz, 8-bit, stereo",    ID_AUDIOMODE_44KHZ_8STEREO
         MENUITEM "44.10 KHz, 16-bit, mono",     ID_AUDIOMODE_44KHZ_16MONO
         MENUITEM "44.10 KHz, 16-bit, stereo",   ID_AUDIOMODE_44KHZ_16STEREO
+        MENUITEM SEPARATOR
+        MENUITEM "48.00 KHz, 8-bit, mono",      ID_AUDIOMODE_48KHZ_8MONO
+        MENUITEM "48.00 KHz, 8-bit, stereo",    ID_AUDIOMODE_48KHZ_8STEREO
+        MENUITEM "48.00 KHz, 16-bit, mono",     ID_AUDIOMODE_48KHZ_16MONO
+        MENUITEM "48.00 KHz, 16-bit, stereo",   ID_AUDIOMODE_48KHZ_16STEREO
     END
     POPUP "framerate"
     BEGIN
@@ -826,7 +835,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.11 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.12 - Copyright (C) 1998-2005 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1409,12 +1418,12 @@ BEGIN
     EDITTEXT        IDC_AUDIORATE,119,67,45,12,ES_RIGHT | ES_AUTOHSCROLL | 
                     ES_NUMBER | WS_DISABLED
     LTEXT           "Hz",IDC_STATIC,168,70,10,8
-    GROUPBOX        "Motion-JPEG (MJPEG) options",IDC_STATIC_MJPEGOPTS,7,96,
-                    266,101
-    CONTROL         "Use VirtualDub routines for MJPEG (disables any hardware decompression)",
-                    IDC_AVI_INTERNALMJPEG,"Button",BS_AUTOCHECKBOX | 
-                    WS_TABSTOP,13,107,251,10
-    LTEXT           "Interlaced frame mode:",IDC_STATIC_IFMODE,13,122,73,8
+    GROUPBOX        "Decoder options",IDC_STATIC_MJPEGOPTS,7,96,266,101
+    CONTROL         "Use internal decoders for Motion JPEG and DV",
+                    IDC_AVI_INTERNALDECODER,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,107,164,10
+    LTEXT           "Interlaced frame mode (Motion JPEG only):",
+                    IDC_STATIC_IFMODE,13,122,135,8
     CONTROL         "Normal",IDC_IF_NORMAL,"Button",BS_AUTORADIOBUTTON,19,
                     132,132,9
     CONTROL         "Split interlaced frames into two fields (unswapped) and double framerate",
@@ -1540,8 +1549,7 @@ BEGIN
     DEFPUSHBUTTON   "OK",IDOK,94,96,50,14
     LTEXT           "Job stopped with the following error:",IDC_STATIC,7,7,
                     114,8
-    EDITTEXT        IDC_ERROR,7,17,226,75,ES_MULTILINE | ES_AUTOVSCROLL | 
-                    ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_ERROR,7,17,226,75,ES_MULTILINE | ES_AUTOVSCROLL
 END
 
 IDD_PREFS_DISPLAY DIALOG DISCARDABLE  0, 0, 250, 150
@@ -2453,14 +2461,14 @@ CAPTION "VirtualDub Program Failure"
 FONT 8, "MS Shell Dlg"
 BEGIN
     PUSHBUTTON      "Exit program",IDOK,314,7,50,14
+    PUSHBUTTON      "Save...",IDC_SAVE,314,24,50,14
     PUSHBUTTON      "Advanced...",IDCANCEL,314,41,50,14
+    PUSHBUTTON      "Help...",IDC_HELP2,314,58,50,14
+    LTEXT           "",IDC_CRASH_HELP,7,7,300,38
     GROUPBOX        "Crash details (best guess as to cause)",IDC_STATIC,7,49,
                     300,101
     EDITTEXT        IDC_CRASH_DETAILS,12,59,291,85,ES_MULTILINE | 
                     ES_READONLY | NOT WS_BORDER
-    LTEXT           "",IDC_CRASH_HELP,7,7,300,38
-    PUSHBUTTON      "Save...",IDC_SAVE,314,24,50,14
-    PUSHBUTTON      "Help...",IDC_HELP2,314,58,50,14
 END
 
 IDD_AF_SETUP DIALOGEX 0, 0, 350, 270
@@ -2731,18 +2739,6 @@ BEGIN
     CONTROL         "",IDC_TEXT,"RICHEDIT",ES_MULTILINE | ES_AUTOVSCROLL | 
                     ES_READONLY | WS_BORDER | WS_VSCROLL | WS_TABSTOP,7,7,
                     336,166
-END
-
-IDD_CAPTURE_BROKEN DIALOG DISCARDABLE  0, 0, 250, 61
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Capture subsystem warning"
-FONT 8, "MS Sans Serif"
-BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,193,40,50,14,WS_DISABLED
-    CONTROL         "I understand.",IDC_VERIFY,"Button",BS_AUTOCHECKBOX | 
-                    WS_TABSTOP,7,40,106,14
-    LTEXT           "The capture system is being rewritten at the moment to support DirectShow (WDM) capture, audio resampling, and other requested features. As a result it's pretty broken at the moment. Please don't email me about it.",
-                    IDC_STATIC,7,7,236,34
 END
 
 IDD_FILE_SETTEXTINFO DIALOGEX 0, 0, 290, 181
@@ -3641,14 +3637,6 @@ BEGIN
         BOTTOMMARGIN, 192
     END
 
-    IDD_CAPTURE_BROKEN, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 243
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 54
-    END
-
     IDD_FILE_SETTEXTINFO, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -3802,8 +3790,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,11,0
- PRODUCTVERSION 1,6,11,0
+ FILEVERSION 1,6,12,0
+ PRODUCTVERSION 1,6,12,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3821,14 +3809,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.11\0"
+            VALUE "FileVersion", "1.6.12\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1998-2005 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.11\0"
+            VALUE "ProductVersion", "1.6.12\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3914,17 +3902,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.11 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.11"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.11 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.11 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.11"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.12 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.12"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.12 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.12 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.12"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.11 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.11 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.11 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.11 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.11 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.12 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.12 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.12 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.12 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.12 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

@@ -101,7 +101,8 @@ extern void VDInitVideoCodecBugTrap();
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern LONG __stdcall CrashHandler(struct _EXCEPTION_POINTERS *ExceptionInfo);
+extern LONG __stdcall CrashHandlerHook(EXCEPTION_POINTERS *pExc);
+extern LONG __stdcall CrashHandler(struct _EXCEPTION_POINTERS *ExceptionInfo, bool allowForcedExit);
 extern void FreeCompressor(COMPVARS *pCompVars);
 extern LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam);
 extern void DetectDivX();
@@ -187,7 +188,7 @@ __emit 0x42
 __emit 0x0e
 __emit 0x10
 		}
-	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
+	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info(), true)) {
 	}
 }
 #else
@@ -207,7 +208,7 @@ static void crash3() {
 static void crash2() {
 	__try {
 		crash3();
-	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
+	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info(), true)) {
 	}
 }
 
@@ -324,7 +325,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 	VDSetThreadDebugName(GetCurrentThreadId(), "Main");
 
 	// setup crash traps
-	SetUnhandledExceptionFilter(CrashHandler);
+	SetUnhandledExceptionFilter(CrashHandlerHook);
 	set_terminate(VDterminate);
 
 	VDInitExternalCallTrap();
@@ -345,7 +346,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
-			L"VirtualDub CLI Video Processor Version 1.6.11 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+			L"VirtualDub CLI Video Processor Version 1.6.12 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 			,1
 			,&version_num));
 	VDLog(kVDLogInfo, VDswprintf(
@@ -756,6 +757,7 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 						"  /capdevice <devname>      Set capture device\n"
 						"  /capfile <filename>       Set capture filename\n"
 						"  /capstart [<timelimit>]   Capture (w/opt timelimit in minutes)\n"
+						"  /cmd <command>			 Run quick script command\n"
 						"  /F <filter>               Load filter\n"
 						"  /h                        Disable exception filter\n"
 						"  /i <script> [<args...>]   Invoke script with arguments\n"
@@ -832,6 +834,16 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					VDAttachLogger(&g_VDConsoleLogger, false, true);
 					// don't count the /console flag as an argument that does work
 					--argsFound;
+				}
+				else if (token == L"cmd") {
+					if (!ParseArgument(s, token))
+						throw MyError("Command line error: syntax is /cmd <script>");
+					const size_t len = token.size();
+					for(int i=0; i<len; ++i)
+						if (token[i] == '\'')
+							token[i] = '"';
+					token.append(L';');
+					RunScriptMemory((char *)VDTextWToA(token).c_str());
 				}
 				else if (token == L"fsck") {
 					crash();
@@ -916,6 +928,12 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				"Usage: "VD_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
 				"       "VD_CLIEXE_NAMEA" /? for help\n");
 
+	} catch(const MyUserAbortError&) {
+		if (consoleMode) {
+			VDLog(kVDLogInfo, VDStringW(L"Operation was aborted by user."));
+
+			rc = 1;
+		}
 	} catch(const MyError& e) {
 		if (consoleMode) {
 			const char *err = e.gets();

@@ -31,7 +31,7 @@ private:
 	bool isASF;
 	bool fAutomated;
 
-	bool fCompatibilityMode, fRedoKeyFlags, fInternalMJPEG, fDisableFastIO, fAcceptPartial, fAutoscanSegments;
+	bool fCompatibilityMode, fRedoKeyFlags, fInternalDecoder, fDisableFastIO, fAcceptPartial, fAutoscanSegments;
 	int iMJPEGMode;
 	FOURCC fccForceVideo;
 	FOURCC fccForceVideoHandler;

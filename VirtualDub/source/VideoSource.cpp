@@ -849,26 +849,40 @@ void VideoSourceAVI::_construct() {
 			const int w = bihSrc->biWidth;
 			const int h = bihSrc->biHeight;
 
+			// AMD64 currently does not have a working MJPEG decoder. Should fix this.
+#ifndef _M_AMD64
 			if (is_mjpeg) {
 				vdautoptr<VDVideoDecompressorMJPEG> pDecoder(new_nothrow VDVideoDecompressorMJPEG);
 				pDecoder->Init(w, h);
 
 				mpDecompressor = pDecoder.release();
-			} else if (is_dv && w==720 && (h == 480 || h == 576)) {
+			} else
+#endif
+			if (is_dv && w==720 && (h == 480 || h == 576)) {
 				mpDecompressor = VDCreateVideoDecompressorDV(w, h);
 			} else {
-				const char *s = LookupVideoCodec(fccOriginalCodec);
 
-				throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)\n"
-								"\n"
-								"VirtualDub requires a Video for Windows (VFW) compatible codec to decompress "
-								"video. DirectShow codecs, such as those used by Windows Media Player, are not "
-								"suitable."
-							,(fccOriginalCodec    ) & 0xff
-							,(fccOriginalCodec>> 8) & 0xff
-							,(fccOriginalCodec>>16) & 0xff
-							,(fccOriginalCodec>>24) & 0xff
-							,s ? s : "unknown");
+				// if we were asked to use an internal decoder and failed, try external decoders
+				// now
+				if (use_internal) {
+					mpDecompressor = VDFindVideoDecompressor(streamInfo.fccHandler, bmih);
+					bFailed = !mpDecompressor;
+				}
+
+				if (bFailed) {
+					const char *s = LookupVideoCodec(fccOriginalCodec);
+
+					throw MyError("Couldn't locate decompressor for format '%c%c%c%c' (%s)\n"
+									"\n"
+									"VirtualDub requires a Video for Windows (VFW) compatible codec to decompress "
+									"video. DirectShow codecs, such as those used by Windows Media Player, are not "
+									"suitable."
+								,(fccOriginalCodec    ) & 0xff
+								,(fccOriginalCodec>> 8) & 0xff
+								,(fccOriginalCodec>>16) & 0xff
+								,(fccOriginalCodec>>24) & 0xff
+								,s ? s : "unknown");
+				}
 			}
 		}
 	}

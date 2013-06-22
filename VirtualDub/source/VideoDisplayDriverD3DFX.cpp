@@ -391,9 +391,9 @@ protected:
 
 	bool Tick(int id);
 	bool Resize();
-	bool Update(FieldMode);
-	void Refresh(FieldMode);
-	bool Paint(HDC hdc, const RECT& rClient);
+	bool Update(UpdateMode);
+	void Refresh(UpdateMode);
+	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 
 	bool SetSubrect(const vdrect32 *) { return false; }
 	void SetLogicalPalette(const uint8 *pLogicalPalette);
@@ -944,7 +944,7 @@ bool VDVideoDisplayMinidriverD3DFX::Resize() {
 	return true;
 }
 
-bool VDVideoDisplayMinidriverD3DFX::Update(FieldMode fieldMode) {
+bool VDVideoDisplayMinidriverD3DFX::Update(UpdateMode mode) {
 	if (!mpEffect)
 		return true;
 
@@ -961,12 +961,13 @@ bool VDVideoDisplayMinidriverD3DFX::Update(FieldMode fieldMode) {
 	VDPixmap dst(mTexFmt);
 	VDPixmap src(mSource.pixmap);
 
-	if (fieldMode == kEvenFieldsOnly) {
+	const uint32 fieldMode = mode & kModeFieldMask;
+	if (fieldMode == kModeEvenField) {
 		dst.pitch *= 2;
 		dst.h = (dst.h + 1) >> 1;
 		src.pitch *= 2;
 		src.h = (src.h + 1) >> 1;
-	} else if (fieldMode == kOddFieldsOnly) {
+	} else if (fieldMode == kModeOddField) {
 		dst.data = vdptroffset(dst.data, dst.pitch);
 		dst.pitch *= 2;
 		dst.h >>= 1;
@@ -982,12 +983,16 @@ bool VDVideoDisplayMinidriverD3DFX::Update(FieldMode fieldMode) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverD3DFX::Refresh(FieldMode) {
-	InvalidateRect(mhwnd, NULL, FALSE);
-	UpdateWindow(mhwnd);
+void VDVideoDisplayMinidriverD3DFX::Refresh(UpdateMode mode) {
+	if (HDC hdc = GetDC(mhwnd)) {
+		RECT r;
+		GetClientRect(mhwnd, &r);
+		Paint(hdc, r, mode);
+		ReleaseDC(mhwnd, hdc);
+	}
 }
 
-bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient) {
+bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient, UpdateMode updateMode) {
 	if (!mpEffect) {
 		SetTextColor(hdc, GetSysColor(COLOR_BTNTEXT));
 		SetBkColor(hdc, GetSysColor(COLOR_3DFACE));
@@ -1129,14 +1134,14 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient) {
 			data.tempsize[1] = (float)rttInfo.mHeight;
 			data.tempsize[2] = rttInfo.mInvHeight;
 			data.tempsize[3] = rttInfo.mInvWidth;
-			data.tvpcorrect[0] = 2.0f * data.tempsize[2];
-			data.tvpcorrect[1] = 2.0f * data.tempsize[3];
-			data.tvpcorrect[2] = -data.tempsize[3];
-			data.tvpcorrect[3] = data.tempsize[2];
-			data.tvpcorrect2[0] = 2.0f * data.tempsize[2];
-			data.tvpcorrect2[1] = -2.0f * data.tempsize[3];
-			data.tvpcorrect2[2] = 1.0f + data.tempsize[3];
-			data.tvpcorrect2[3] = -1.0f - data.tempsize[2];
+			data.tvpcorrect[0] = 2.0f * data.tempsize[3];
+			data.tvpcorrect[1] = 2.0f * data.tempsize[2];
+			data.tvpcorrect[2] = -data.tempsize[2];
+			data.tvpcorrect[3] = data.tempsize[3];
+			data.tvpcorrect2[0] = 2.0f * data.tempsize[3];
+			data.tvpcorrect2[1] = -2.0f * data.tempsize[2];
+			data.tvpcorrect2[2] = 1.0f + data.tempsize[2];
+			data.tvpcorrect2[3] = -1.0f - data.tempsize[3];
 		}
 
 		if (mhTempTexture2) {
@@ -1147,14 +1152,14 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient) {
 			data.temp2size[1] = (float)rttInfo.mHeight;
 			data.temp2size[2] = rttInfo.mInvHeight;
 			data.temp2size[3] = rttInfo.mInvWidth;
-			data.t2vpcorrect[0] = 2.0f * data.tempsize[2];
-			data.t2vpcorrect[1] = 2.0f * data.tempsize[3];
-			data.t2vpcorrect[2] = -data.tempsize[3];
-			data.t2vpcorrect[3] = data.tempsize[2];
-			data.t2vpcorrect2[0] = 2.0f * data.tempsize[2];
-			data.t2vpcorrect2[1] = -2.0f * data.tempsize[3];
-			data.t2vpcorrect2[2] = 1.0f + data.tempsize[3];
-			data.t2vpcorrect2[3] = -1.0f - data.tempsize[2];
+			data.t2vpcorrect[0] = 2.0f * data.tempsize[3];
+			data.t2vpcorrect[1] = 2.0f * data.tempsize[2];
+			data.t2vpcorrect[2] = -data.tempsize[2];
+			data.t2vpcorrect[3] = data.tempsize[3];
+			data.t2vpcorrect2[0] = 2.0f * data.tempsize[3];
+			data.t2vpcorrect2[1] = -2.0f * data.tempsize[2];
+			data.t2vpcorrect2[2] = 1.0f + data.tempsize[2];
+			data.t2vpcorrect2[3] = -1.0f - data.tempsize[3];
 		}
 
 		for(int i=0; i<kStdParamCount; ++i) {
@@ -1230,7 +1235,7 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient) {
 		D3D_AUTOBREAK_2(mpEffect->End());
 		D3D_AUTOBREAK(EndScene());
 
-		hr = mpD3DDevice->Present(&rClient, NULL, mhwnd, NULL);
+		hr = mpManager->Present(&rClient, mhwnd, (updateMode & kModeVSync) != 0);
 
 		if (FAILED(hr)) {
 			VDDEBUG_D3DFXDISP("VideoDisplay/D3DFX: Render failed -- applying boot to the head.\n");

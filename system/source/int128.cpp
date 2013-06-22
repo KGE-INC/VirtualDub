@@ -112,6 +112,24 @@
 		}
 	}
 
+	const int128 __declspec(naked)& int128::operator-=(const int128& x) {
+		__asm {
+			mov		edx,[esp+4]
+
+			mov		eax,[edx+0]
+			sub		[ecx+0],eax
+			mov		eax,[edx+4]
+			sbb		[ecx+4],eax
+			mov		eax,[edx+8]
+			sbb		[ecx+8],eax
+			mov		eax,[edx+12]
+			sbb		[ecx+12],eax
+
+			mov		eax,ecx
+			ret		4
+		}
+	}
+
 	const int128 __declspec(naked) int128::operator-(const int128& x) const {
 		__asm {
 			push	ebx

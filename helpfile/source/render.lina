@@ -845,6 +845,23 @@
 		along that axis.
 	</p>
 
+	<h2>Tearing</h2>
+	<p>
+		During times of smooth motion, it may be possible to see a momentary rip in the video, where the
+		top and bottom portions of the video do not update together. This happens when VirtualDub attempts to
+		update the displayed frame while the screen itself is updating that portion, and is known as <em>tearing</em>.
+		This effect is purely a display effect and does not imply a problem with the source video or any
+		rendered output. It also only happens on video that is moving or changing; it is not visible on
+		a static frame.
+	</p>
+	<p>
+		Tearing can be mitigated or avoided under <em>Options &gt; Preferences &gt; Displays &gt; Avoid tearing (enable vsync)</em>.
+		This will cause VirtualDub to schedule display updates to be non-visible if possible. However, it only works
+		with the DirectX (DirectDraw) and Direct3D display minidrivers, and can consume additional CPU when enabled.
+		The anti-tearing code is automatically disabled during video capture and during renders to avoid consuming
+		CPU during these lengthy operations.
+	</p>
+
 </lina:create>
 
 <lina:create file="frameserver.html" title="Processing: Frameserver">

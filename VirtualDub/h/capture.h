@@ -27,6 +27,7 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include "capfilter.h"
+#include <vector>
 
 struct VDPixmap;
 
@@ -75,23 +76,32 @@ struct VDCaptureTimingSetup {
 	bool		mbAllowEarlyDrops;
 	bool		mbAllowLateInserts;
 	int			mInsertLimit;
+
+	bool		mbUseFixedAudioLatency;
+	int			mAudioLatency;
+
+	bool		mbUseLimitedAutoAudioLatency;
+	int			mAutoAudioLatencyLimit;
 };
 
 struct VDCaptureStatus {
 	sint32		mFramesCaptured;
 	sint32		mFramesDropped;
+	sint32		mFramesInserted;
 	sint32		mTotalJitter;
 	sint32		mTotalDisp;
 	sint64		mTotalVideoSize;
 	sint64		mTotalAudioSize;
-	sint32		mCurrentSegment;
+	sint32		mCurrentVideoSegment;
+	sint32		mCurrentAudioSegment;
 	uint32		mElapsedTimeMS;
 	sint64		mDiskFreeSpace;
 
 	sint32		mVideoTimingAdjustMS;
-	float		mVideoRateScale;
+	float		mVideoResamplingRate;
 	float		mAudioResamplingRate;
-	float		mAudioLatency;
+	float		mAudioRelativeLatency;
+	float		mAudioCurrentLatency;
 
 	sint32		mVideoFirstFrameTimeMS;
 	sint32		mVideoLastFrameTimeMS;
@@ -100,7 +110,40 @@ struct VDCaptureStatus {
 	sint32		mAudioFirstSize;
 	sint64		mTotalAudioDataSize;
 
-	double		mActualAudioHz;
+	double		mActualAudioHz;				///< Estimated audio rate relative to global clock.
+	double		mRelativeAudioHz;			///< Estimated audio rate relative to video clock.
+};
+
+enum VDCaptureInfoId {
+	kVDCaptureInfo_FramesCaptured,
+	kVDCaptureInfo_TotalTime,
+	kVDCaptureInfo_TimeLeft,
+	kVDCaptureInfo_TotalFileSize,
+	kVDCaptureInfo_DiskSpaceFree,
+	kVDCaptureInfo_CPUUsage,
+	kVDCaptureInfo_SpillStatus,
+	kVDCaptureInfo_VideoSize,
+	kVDCaptureInfo_VideoAverageRate,
+	kVDCaptureInfo_VideoDataRate,
+	kVDCaptureInfo_VideoCompressionRatio,
+	kVDCaptureInfo_VideoAverageFrameSize,
+	kVDCaptureInfo_VideoFramesDropped,
+	kVDCaptureInfo_VideoFramesInserted,
+	kVDCaptureInfo_VideoResamplingFactor,
+	kVDCaptureInfo_AudioSize,
+	kVDCaptureInfo_AudioAverageRate,
+	kVDCaptureInfo_AudioRelativeRate,
+	kVDCaptureInfo_AudioDataRate,
+	kVDCaptureInfo_AudioCompressionRatio,
+	kVDCaptureInfo_AudioResamplingFactor,
+	kVDCaptureInfo_SyncVideoTimingAdjust,
+	kVDCaptureInfo_SyncRelativeLatency,
+	kVDCaptureInfo_SyncCurrentLatency
+};
+
+struct VDCapturePreferences {
+	typedef std::vector<uint32> InfoItems;
+	InfoItems	mInfoItems;
 };
 
 class VDINTERFACE IVDCaptureProjectCallback {
@@ -280,6 +323,7 @@ public:
 
 	virtual void	IncrementFileID() = 0;
 	virtual void	DecrementFileID() = 0;
+	virtual void	IncrementFileIDUntilClear() = 0;
 
 	virtual void	ScanForDrivers() = 0;
 	virtual int		GetDriverCount() = 0;

@@ -226,9 +226,16 @@ void VDUIOptionW32::SetValue(int i) {
 		mpBase->ProcessValueChange(this, mID);
 
 		if (mhwnd) {
-			int id = GetWindowLong(mhwnd, GWL_ID);
+			// change me
+			SendMessage(mhwnd, BM_SETCHECK, (i==0) ? BST_CHECKED : BST_UNCHECKED, 0);
 
-			CheckRadioButton(::GetParent(mhwnd), id, id+mnItems-1, id+i);
+			// change others
+			for(IVDUIWindow *win = this; win; win = mpParent->GetNextChild(win)) {
+				VDUIOptionW32 *opt = vdpoly_cast<VDUIOptionW32 *>(win);
+
+				if (opt && opt->mpBaseOption == this)
+					SendMessage(opt->mhwnd, BM_SETCHECK, opt->mID - mID == i ? BST_CHECKED : BST_UNCHECKED, 0);
+			}
 		}
 	}
 }
@@ -239,7 +246,7 @@ void VDUIOptionW32::OnCommandCallback(UINT code) {
 			int val = 0;
 			
 			if (mpBaseOption) {
-				val = GetWindowLong(mhwnd, GWL_ID) - GetWindowLong(mpBaseOption->mhwnd, GWL_ID);
+				val = mID - mpBaseOption->mID;
 
 				mpBaseOption->mnSelected = val;
 				mpBase->ProcessValueChange(mpBaseOption, mpBaseOption->mID);

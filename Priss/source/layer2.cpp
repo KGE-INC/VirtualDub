@@ -109,7 +109,7 @@ bool VDMPEGAudioDecoder::DecodeLayerII() {
 	int bitalloc_table = is_mpeg2 ? 4 : g_L2BitAllocTableSelector[stereo][mSamplingRateIndex][mBitrateIndex];
 
 	if (bitalloc_table < 0)
-		throw (int)ERR_INTERNAL;		// combination not permitted by standard
+		throw (int)ERR_INVALIDDATA;		// combination not permitted by standard
 
 	// read in bit allocations (max: 188 bits)
 	//

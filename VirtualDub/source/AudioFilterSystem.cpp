@@ -1131,10 +1131,8 @@ void VDAudioFilterSystem::Start() {
 }
 
 bool VDAudioFilterSystem::Run() {
-	if (!mFilterScheduler.Run()) {
-		mFilterScheduler.DumpStatus();
+	if (!mFilterScheduler.Run())
 		return false;
-	}
 
 	return true;
 }

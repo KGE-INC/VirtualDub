@@ -44,15 +44,16 @@ extern const char szClippingControlName[];
 
 class VDINTERFACE IVDClippingControl {
 public:
-	virtual void SetBitmapSize(int w, int h) = 0;
+	virtual void SetBitmapSize(int sourceW, int sourceH) = 0;
 	virtual void SetClipBounds(const vdrect32& r) = 0;
 	virtual void GetClipBounds(vdrect32& r) = 0;
+	virtual void AutoSize(int borderW, int borderH);
 	virtual void BlitFrame(const VDPixmap *px) = 0;
 };
 
-typedef struct ClippingControlBounds {
-	LONG x1,y1,x2,y2;
-} ClippingControlBounds;
+struct ClippingControlBounds {
+	sint32 x1, y1, x2, y2;
+};
 
 ATOM RegisterClippingControl();
 

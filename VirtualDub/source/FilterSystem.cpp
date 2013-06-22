@@ -96,11 +96,18 @@ void FilterSystem::prepareLinearChain(List *listFA, Pixel *src_pal, PixDim src_w
 		fa->origw		= fa->realSrc.w;
 		fa->origh		= fa->realSrc.h;
 
-		fa->realSrc.w		-= fa->x1 + fa->x2;
-		fa->realSrc.h		-= fa->y1 + fa->y2;
+		// Clamp the crop rect at this point to avoid going below 1x1.
+		// We will throw an exception later during init.
+		int realx1 = std::min<int>(fa->x1, fa->origw - 1);
+		int realy2 = std::min<int>(fa->y2, fa->origh - 1);
+		int realx2 = std::min<int>(fa->x2, (fa->origw - 1) - realx1);
+		int realy1 = std::min<int>(fa->y1, (fa->origh - 1) - realy2);
+
+		fa->realSrc.w		-= realx1 + realx2;
+		fa->realSrc.h		-= realy1 + realy2;
 		fa->realSrc.depth	= 32;
 		fa->realSrc.modulo	= fa->realSrc.pitch - 4*fa->realSrc.w;
-		fa->realSrc.offset	+= fa->y2 * fa->realSrc.pitch + fa->x1*4;
+		fa->realSrc.offset	+= realy2 * fa->realSrc.pitch + realx1*4;
 		fa->realSrc.size	= fa->realSrc.pitch * fa->realSrc.h;
 
 		fa->realLast.w		= fa->realSrc.w;
@@ -246,7 +253,9 @@ void FilterSystem::initLinearChain(List *listFA, Pixel *src_pal, PixDim src_widt
 	fa = (FilterInstance *)listFA->tail.next;
 
 	while(fa->next) {
-		_RPT2(0,"src/data: %d/%d\n", fa->srcbuf, fa->dstbuf);
+		if (fa->origw <= fa->x1 + fa->x2 || fa->origh <= fa->y1 + fa->y2)
+			throw MyError("Cannot start filter chain: The input crop rectangle to filter \"%s\" is smaller than 1x1.", fa->filter->name);
+
 		fa->realSrc.data		= (Pixel32 *)((char *)bitmap[fa->srcbuf].data + fa->realSrc.offset);
 		fa->realDst.data		= (Pixel32 *)((char *)bitmap[fa->dstbuf].data + fa->realDst.offset);
 

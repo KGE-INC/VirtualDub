@@ -420,7 +420,7 @@ void VDVideoDisplayWindow::OnPaint() {
 	if (mpMiniDriver) {
 		if (mpMiniDriver->IsValid())
 			bDisplayOK = true;
-		else if (mSource.pixmap.data && mSource.bPersistent && !mpMiniDriver->Update(IVDVideoDisplayMinidriver::kAllFields))
+		else if (mSource.pixmap.data && mSource.bPersistent && !mpMiniDriver->Update(IVDVideoDisplayMinidriver::kModeAllFields))
 			bDisplayOK = true;
 	}
 
@@ -440,7 +440,7 @@ void VDVideoDisplayWindow::OnPaint() {
 		GetClientRect(mhwnd, &r);
 
 		if (mpMiniDriver && mpMiniDriver->IsValid())
-			VerifyDriverResult(mpMiniDriver->Paint(hdc, r));
+			VerifyDriverResult(mpMiniDriver->Paint(hdc, r, IVDVideoDisplayMinidriver::kModeAllFields));
 		else {
 			FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE + 1));
 			if (!mMessage.empty()) {
@@ -597,9 +597,9 @@ void VDVideoDisplayWindow::SyncUpdate(int mode) {
 				return;
 		}
 
-		if (mpMiniDriver->Update((IVDVideoDisplayMinidriver::FieldMode)mode)) {
+		if (mpMiniDriver->Update((IVDVideoDisplayMinidriver::UpdateMode)mode)) {
 			if (!mInhibitRefresh)
-				mpMiniDriver->Refresh((IVDVideoDisplayMinidriver::FieldMode)mode);
+				mpMiniDriver->Refresh((IVDVideoDisplayMinidriver::UpdateMode)mode);
 		}
 	}
 }

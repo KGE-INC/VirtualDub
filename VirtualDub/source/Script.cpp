@@ -51,6 +51,7 @@ extern HWND g_hWnd;
 
 extern const char g_szError[];
 extern bool g_fJobMode;
+extern int g_returnCode;
 
 extern VDProject *g_project;
 
@@ -657,6 +658,8 @@ static VDScriptValue obj_VirtualDub_video_lookup(IVDScriptInterpreter *isi, cons
 		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biWidth : 0);
 	else if (!strcmp(szName, "height"))
 		return VDScriptValue(inputVideoAVI ? inputVideoAVI->getImageFormat()->biHeight : 0);
+	else if (!strcmp(szName, "length"))
+		return VDScriptValue(inputVideoAVI ? inputVideoAVI->asStream()->getLength() : 0);
 
 	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }
@@ -1197,8 +1200,15 @@ static const VDScriptFunctionDef obj_VDSubset_functbl[]={
 	{ NULL }
 };
 
+static VDScriptValue obj_VDSubset_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
+	if (!strcmp(szName, "length"))
+		return VDScriptValue(g_project->GetTimeline().GetLength());
+
+	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
+}
+
 static const VDScriptObject obj_VDSubset={
-	NULL, obj_VDSubset_functbl
+	obj_VDSubset_lookup, obj_VDSubset_functbl
 };
 
 
@@ -1420,6 +1430,11 @@ static void func_VirtualDub_Log(IVDScriptInterpreter *, VDScriptValue *arglist, 
 	VDLog(kVDLogInfo, text);
 }
 
+static void func_VirtualDub_Exit(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_returnCode = arglist[0].asInt();
+	PostQuitMessage(0);
+}
+
 extern "C" unsigned long version_num;
 
 static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
@@ -1473,6 +1488,7 @@ static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ func_VirtualDub_SaveImageSequence,	NULL,					"0ssiii" },
 	{ func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
 	{ func_VirtualDub_Log,				"Log",					"0s" },
+	{ func_VirtualDub_Exit,				"Exit",					"0i" },
 	{ NULL }
 };
 

@@ -284,9 +284,9 @@ static int deinterlace_run(const FilterActivation *fa, const FilterFunctions *ff
 		break;
 	case MODE_DUP2:
 		src = (Pixel *)((char *)src + fa->src.pitch);
-		dst = (Pixel *)((char *)src - fa->dst.pitch);
+		dst = (Pixel *)((char *)dst - fa->dst.pitch);
 	case MODE_DUP1:
-		dst = (Pixel *)((char *)src + fa->dst.pitch);
+		dst = (Pixel *)((char *)dst + fa->dst.pitch);
 
 		if (h>>=1)
 			do {
@@ -342,11 +342,17 @@ static long deinterlace_param(FilterActivation *fa, const FilterFunctions *ff) {
 
 	case MODE_DUP1:
 	case MODE_DUP2:
+		fa->dst.offset = fa->src.offset;
 		break;
 
 	case MODE_DISCARD1:
 		fa->dst.offset	= fa->src.offset + fa->dst.pitch;
+		fa->dst.h		>>= 1;
+		fa->dst.pitch	<<= 1;
+		fa->dst.modulo	= fa->dst.pitch - 4*fa->dst.w;
+		break;
 	case MODE_DISCARD2:
+		fa->dst.offset	= fa->src.offset;
 		fa->dst.h		>>= 1;
 		fa->dst.pitch	<<= 1;
 		fa->dst.modulo	= fa->dst.pitch - 4*fa->dst.w;

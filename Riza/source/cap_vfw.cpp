@@ -23,6 +23,7 @@
 #include <vd2/Riza/capdriver.h>
 #include <vd2/system/vdstring.h>
 #include <vd2/system/error.h>
+#include <vd2/system/time.h>
 #include <windows.h>
 #include <vfw.h>
 #include <vector>
@@ -143,6 +144,7 @@ protected:
 	void	ShutdownMixerSupport();
 	bool	InitWaveAnalysis();
 	void	ShutdownWaveAnalysis();
+	sint64	ComputeGlobalTime();
 
 	static LRESULT CALLBACK ErrorCallback(HWND hWnd, int nID, LPCSTR lpsz);
 	static LRESULT CALLBACK StatusCallback(HWND hWnd, int nID, LPCSTR lpsz);
@@ -170,6 +172,7 @@ protected:
 
 	IVDCaptureDriverCallback	*mpCB;
 	DisplayMode			mDisplayMode;
+	uint32	mGlobalTimeBase;
 
 	int		mDriverIndex;
 	UINT	mPreviewFrameTimer;
@@ -273,7 +276,6 @@ bool VDCaptureDriverVFW::Init(VDGUIHandle hParent) {
 	capSetUserData(mhwnd, this);
 	capSetCallbackOnError(mhwnd, ErrorCallback);
 	capSetCallbackOnStatus(mhwnd, StatusCallback);
-	capSetCallbackOnFrame(mhwnd, PreviewCallback);
 	capSetCallbackOnCapControl(mhwnd, ControlCallback);
 	capSetCallbackOnVideoStream(mhwnd, VideoCallback);
 	capSetCallbackOnWaveStream(mhwnd, WaveCallback);
@@ -336,23 +338,28 @@ void VDCaptureDriverVFW::SetDisplayMode(DisplayMode mode) {
 
 	switch(mode) {
 	case kDisplayNone:
+		capSetCallbackOnFrame(mhwnd, NULL);
 		capPreview(mhwnd, FALSE);
 		capOverlay(mhwnd, FALSE);
 		ShowWindow(mhwnd, SW_HIDE);
 		break;
 	case kDisplayHardware:
+		// we have to kill this callback or dual-field overlay may not work
+		capSetCallbackOnFrame(mhwnd, NULL);
 		capPreview(mhwnd, FALSE);
 		capOverlay(mhwnd, TRUE);
 		if (mbVisible)
 			ShowWindow(mhwnd, SW_SHOWNA);
 		break;
 	case kDisplaySoftware:
+		capSetCallbackOnFrame(mhwnd, PreviewCallback);
 		capOverlay(mhwnd, FALSE);
 		capPreview(mhwnd, TRUE);
 		if (mbVisible)
 			ShowWindow(mhwnd, SW_SHOWNA);
 		break;
 	case kDisplayAnalyze:
+		capSetCallbackOnFrame(mhwnd, PreviewCallback);
 		capOverlay(mhwnd, FALSE);
 		capPreview(mhwnd, FALSE);
 		if (!mPreviewFrameTimer)
@@ -386,16 +393,16 @@ void VDCaptureDriverVFW::SetDisplayVisibility(bool vis) {
 	ShowWindow(mhwnd, vis && mDisplayMode != kDisplayAnalyze ? SW_SHOWNA : SW_HIDE);
 }
 
-void VDCaptureDriverVFW::SetFramePeriod(sint32 ms) {
+void VDCaptureDriverVFW::SetFramePeriod(sint32 framePeriod100nsUnits) {
 	CAPTUREPARMS cp;
 
 	if (capCaptureGetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS))) {
-		cp.dwRequestMicroSecPerFrame = ms;
+		cp.dwRequestMicroSecPerFrame = (framePeriod100nsUnits + 5) / 10;
 
 		capCaptureSetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS));
 
 		if (mpCB)
-			mpCB->CapEvent(kEventVideoFrameRateChanged);
+			mpCB->CapEvent(kEventVideoFrameRateChanged, 0);
 	}
 }
 
@@ -403,13 +410,16 @@ sint32 VDCaptureDriverVFW::GetFramePeriod() {
 	CAPTUREPARMS cp;
 
 	if (VDINLINEASSERT(capCaptureGetSetup(mhwnd, &cp, sizeof(CAPTUREPARMS))))
-		return cp.dwRequestMicroSecPerFrame;
+		return cp.dwRequestMicroSecPerFrame*10;
 
-	return 1000000 / 15;
+	return 10000000 / 15;
 }
 
 uint32 VDCaptureDriverVFW::GetPreviewFrameCount() {
-	return mPreviewFrameCount;
+	if (mDisplayMode == kDisplaySoftware || mDisplayMode == kDisplayAnalyze)
+		return mPreviewFrameCount;
+
+	return 0;
 }
 
 bool VDCaptureDriverVFW::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat) {
@@ -427,7 +437,7 @@ bool VDCaptureDriverVFW::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 siz
 	mbBlockVideoFrames = true;
 	if (capSetVideoFormat(mhwnd, (BITMAPINFOHEADER *)pbih, size)) {
 		if (mpCB)
-			mpCB->CapEvent(kEventVideoFormatChanged);
+			mpCB->CapEvent(kEventVideoFormatChanged, 0);
 		success = true;
 	}
 	mbBlockVideoFrames = false;
@@ -686,7 +696,7 @@ void VDCaptureDriverVFW::DisplayDriverDialog(DriverDialog dlg) {
 			capDlgVideoFormat(mhwnd);
 			GetVideoFormat(newFormat);
 			if (oldFormat != newFormat && mpCB)
-				mpCB->CapEvent(kEventVideoFormatChanged);
+				mpCB->CapEvent(kEventVideoFormatChanged, 0);
 			mbBlockVideoFrames = false;
 		}
 		break;
@@ -720,6 +730,7 @@ bool VDCaptureDriverVFW::CaptureStart() {
 	}
 
 	if (!VDINLINEASSERTFALSE(mbCapturing)) {
+		mGlobalTimeBase = VDGetAccurateTick();
 		mbCapturing = !!capCaptureSequenceNoFile(mhwnd);
 
 		if (!mbCapturing && mbAudioAnalysisEnabled)
@@ -945,6 +956,12 @@ void VDCaptureDriverVFW::ShutdownWaveAnalysis() {
 	mWaveBuffer.clear();
 }
 
+sint64 VDCaptureDriverVFW::ComputeGlobalTime() {
+	// AVICap internally seems to use timeGetTime() when queried via capGetStatus(), but
+	// this isn't guaranteed anywhere.
+	return (sint64)((uint64)(VDGetAccurateTick() - mGlobalTimeBase) * 1000);
+}
+
 #pragma vdpragma_TODO("Need to find some way to propagate these errors back nicely")
 
 LRESULT CALLBACK VDCaptureDriverVFW::ErrorCallback(HWND hwnd, int nID, LPCSTR lpsz) {
@@ -1035,9 +1052,9 @@ LRESULT CALLBACK VDCaptureDriverVFW::ControlCallback(HWND hwnd, int nState) {
 	if (pThis->mpCB) {
 		switch(nState) {
 		case CONTROLCALLBACK_PREROLL:
-			return pThis->mpCB->CapEvent(kEventPreroll);
+			return pThis->mpCB->CapEvent(kEventPreroll, 0);
 		case CONTROLCALLBACK_CAPTURING:
-			return pThis->mpCB->CapEvent(kEventCapturing);
+			return pThis->mpCB->CapEvent(kEventCapturing, 0);
 		}
 	}
 
@@ -1060,12 +1077,9 @@ LRESULT CALLBACK VDCaptureDriverVFW::PreviewCallback(HWND hwnd, VIDEOHDR *lpVHdr
 LRESULT CALLBACK VDCaptureDriverVFW::VideoCallback(HWND hwnd, LPVIDEOHDR lpVHdr) {
 	VDCaptureDriverVFW *pThis = (VDCaptureDriverVFW *)capGetUserData(hwnd);
 
-	CAPSTATUS capStatus;
-	capGetStatus(hwnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
-
 	if (pThis->mpCB && !pThis->mbBlockVideoFrames) {
 		try {
-			pThis->mpCB->CapProcessData(0, lpVHdr->lpData, lpVHdr->dwBytesUsed, (sint64)lpVHdr->dwTimeCaptured * 1000, 0 != (lpVHdr->dwFlags & VHDR_KEYFRAME), (sint64)capStatus.dwCurrentTimeElapsedMS * 1000);
+			pThis->mpCB->CapProcessData(0, lpVHdr->lpData, lpVHdr->dwBytesUsed, (sint64)lpVHdr->dwTimeCaptured * 1000, 0 != (lpVHdr->dwFlags & VHDR_KEYFRAME), pThis->ComputeGlobalTime());
 		} catch(MyError& e) {
 			pThis->mCaptureError.TransferFrom(e);
 			capCaptureAbort(hwnd);
@@ -1078,12 +1092,9 @@ LRESULT CALLBACK VDCaptureDriverVFW::VideoCallback(HWND hwnd, LPVIDEOHDR lpVHdr)
 LRESULT CALLBACK VDCaptureDriverVFW::WaveCallback(HWND hwnd, LPWAVEHDR lpWHdr) {
 	VDCaptureDriverVFW *pThis = (VDCaptureDriverVFW *)capGetUserData(hwnd);
 
-	CAPSTATUS capStatus;
-	capGetStatus(hwnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
-
 	if (pThis->mpCB) {
 		try {
-			pThis->mpCB->CapProcessData(1, lpWHdr->lpData, lpWHdr->dwBytesRecorded, -1, false, (sint64)capStatus.dwCurrentTimeElapsedMS * 1000);
+			pThis->mpCB->CapProcessData(1, lpWHdr->lpData, lpWHdr->dwBytesRecorded, -1, false, pThis->ComputeGlobalTime());
 		} catch(MyError& e) {
 			pThis->mCaptureError.TransferFrom(e);
 			capCaptureAbort(hwnd);

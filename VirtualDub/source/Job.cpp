@@ -65,7 +65,6 @@ extern VDProject *g_project;
 HWND g_hwndJobs;
 
 bool g_fJobMode;
-bool g_fJobAborted;
 
 static const char g_szRegKeyShutdownWhenFinished[] = "Shutdown after jobs finish";
 
@@ -310,13 +309,14 @@ void VDJob::Run() {
 
 	try {
 		g_fJobMode = true;
-		g_fJobAborted = false;
 
 		VDAutoLogger logger(kVDLogWarning);
 
 		RunScriptMemory(script);
 
 		mLogEntries = logger.GetEntries();
+	} catch(const MyUserAbortError&) {
+		iState = ABORTED;
 	} catch(const MyError& err) {
 		iState = ERR;
 		mError = err.gets();
@@ -327,12 +327,9 @@ void VDJob::Run() {
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PROGRESS), FALSE);
 	EnableWindow(GetDlgItem(g_hwndJobs, IDC_PERCENT), FALSE);
 
-	if (iState == INPROGRESS) {
-		if (g_fJobAborted)
-			iState = ABORTED;
-		else
-			iState = DONE;
-	}
+	if (iState == INPROGRESS)
+		iState = DONE;
+
 	GetLocalTime(&stEnd);
 	Refresh();
 
@@ -383,11 +380,14 @@ long VDJob::ListSize() {
 // Clears all jobs from the list.
 
 void VDJob::ListClear(bool force_no_update) {
-	VDJob *vdj;
+	VDJob *vdj = (VDJob *)job_list.tail.next, *vdj_next;
 
-	while((vdj = (VDJob *)job_list.tail.next)->next) {
-		vdj->Delete(true);
-		delete vdj;
+	while(vdj_next = (VDJob *)vdj->next) {
+		if (vdj->iState != INPROGRESS) {
+			vdj->Delete(true);
+			delete vdj;
+		}
+		vdj = vdj_next;
 	}
 
 	if (!force_no_update) SetModified();

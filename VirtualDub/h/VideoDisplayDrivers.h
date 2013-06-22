@@ -36,10 +36,14 @@ struct VDVideoDisplaySourceInfo {
 
 class IVDVideoDisplayMinidriver {
 public:
-	enum FieldMode {
-		kAllFields,
-		kEvenFieldsOnly,
-		kOddFieldsOnly
+	enum UpdateMode {
+		kModeNone		= 0x00000000,
+		kModeEvenField	= 0x00000001,
+		kModeOddField	= 0x00000002,
+		kModeAllFields	= 0x00000003,
+		kModeFieldMask	= 0x00000003,
+		kModeVSync		= 0x00000004,
+		kModeAll		= 0x00000007
 	};
 
 	enum FilterMode {
@@ -62,9 +66,9 @@ public:
 
 	virtual bool Tick(int id) = 0;
 	virtual bool Resize() = 0;
-	virtual bool Update(FieldMode) = 0;
-	virtual void Refresh(FieldMode) = 0;
-	virtual bool Paint(HDC hdc, const RECT& rClient) = 0;
+	virtual bool Update(UpdateMode) = 0;
+	virtual void Refresh(UpdateMode) = 0;
+	virtual bool Paint(HDC hdc, const RECT& rClient, UpdateMode lastUpdateMode) = 0;
 
 	virtual bool SetSubrect(const vdrect32 *r) = 0;
 	virtual void SetLogicalPalette(const uint8 *pLogicalPalette) = 0;

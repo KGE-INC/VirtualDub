@@ -155,6 +155,10 @@ SOURCE=.\source\caplog.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\capreplay.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\capresync.cpp
 # End Source File
 # Begin Source File
@@ -192,6 +196,10 @@ SOURCE=..\h\vd2\Riza\capdrivers.h
 # Begin Source File
 
 SOURCE=..\h\vd2\Riza\caplog.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\h\vd2\Riza\capreplay.h
 # End Source File
 # Begin Source File
 

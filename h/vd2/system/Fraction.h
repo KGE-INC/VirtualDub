@@ -34,7 +34,7 @@ friend VDFraction operator*(int b, const VDFraction f);
 private:
 	unsigned long	hi, lo;
 
-	static VDFraction reduce(sint64 hi, sint64 lo);
+	static VDFraction reduce(uint64 hi, uint64 lo);
 
 public:
 	VDFraction() {}

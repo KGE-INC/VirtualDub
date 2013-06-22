@@ -115,10 +115,6 @@ public:
 
 class DubPerfOptions {
 public:
-	long	outputBufferSize;
-	long	waveBufferSize;
-	long	pipeBufferCount;
-
 	bool	dynamicEnable;
 	bool	dynamicShowDisassembly;
 	bool	useDirectDraw;
@@ -171,6 +167,7 @@ public:
 	long	usPerFrameIn;
 	long	usPerFrameNoTelecine;
 	long	processed;
+	uint32	lastProcessedTimestamp;
 	bool	fAudioOnly;
 };
 

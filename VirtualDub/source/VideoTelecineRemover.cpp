@@ -28,13 +28,14 @@ public:
 	CVideoTelecineRemover(VBitmap *pInFormat, bool, int, bool);
 	~CVideoTelecineRemover();
 
-	void ProcessIn(VBitmap *pIn, long);
-	long ProcessOut(VBitmap *pOut);
+	void ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame);
+	bool ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame);
 
 private:
 	char *	pMemBlock;
 	long	nCombVals[10][2];
-	long	lFrameNums[10];
+	VDPosition	mSourceFrameNums[10];
+	VDPosition	mTimelineFrameNums[10];
 	VBitmap	vb;
 	int		nCurrentIn, nCurrentOut;
 	int		nCombOffset1, nCombOffset2;
@@ -258,7 +259,7 @@ static long computeScanImprovement(Pixel8 *src1, Pixel8 *src2, PixOffset pitch, 
 	return imp;
 }
 
-void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
+void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, VDPosition srcFrame, VDPosition timelineFrame) {
 	Pixel8 *src1, *src2;
 	PixDim h;
 	__int64 field1=0, field2=0;
@@ -267,7 +268,8 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 
 	vb.BitBlt(0, 0, pIn, 0, 0, -1, -1);
 
-	lFrameNums[nCurrentIn] = lFrameNum;
+	mSourceFrameNums[nCurrentIn] = srcFrame;
+	mTimelineFrameNums[nCurrentIn] = timelineFrame;
 
 	if (fOffsetLocked) {
 		if (++nCurrentIn == 10)
@@ -477,14 +479,14 @@ xloop:
 }
 #endif
 
-long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
+bool CVideoTelecineRemover::ProcessOut(VBitmap *pOut, VDPosition& srcFrame, VDPosition& timelineFrame) {
 
 	if (++nCurrentOut >= 10)
 		nCurrentOut = 0;
 
 	if (nLag) {
 		--nLag;
-		return -1;
+		return false;
 	}
 
 	// Input frames:	[A1/A2] [A1/B2] [B1/C2] [C1/C2] [D1/D2]
@@ -541,11 +543,13 @@ long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
 #pragma vdpragma_TODO("Need scalar version of this for AMD64")
 		}
 
-		return lFrameNums[nCurrentOut];
+		srcFrame = mSourceFrameNums[nCurrentOut];
+		timelineFrame = mTimelineFrameNums[nCurrentOut];
+		return true;
 
 	} else if (nCurrentOut == nCombOffset2 || nCurrentOut == nCombOffset2+5) {
 		// Second combed frame; drop.
-		return -1;
+		return false;
 	} else {
 		// Uncombed, unduplicated frame.
 
@@ -553,6 +557,8 @@ long CVideoTelecineRemover::ProcessOut(VBitmap *pOut) {
 
 		pOut->BitBlt(0, 0, &vb, 0, 0, -1, -1);
 
-		return lFrameNums[nCurrentOut];
+		srcFrame = mSourceFrameNums[nCurrentOut];
+		timelineFrame = mTimelineFrameNums[nCurrentOut];
+		return true;
 	}
 }

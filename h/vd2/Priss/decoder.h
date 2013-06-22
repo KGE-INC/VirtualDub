@@ -28,6 +28,7 @@ public:
 		ERR_SYNC			= 6,
 		ERR_INTERNAL		= 7,
 		ERR_INCOMPLETEFRAME	= 8,
+		ERR_INVALIDDATA		= 9
 	};
 
 	virtual void	Destroy()=0;

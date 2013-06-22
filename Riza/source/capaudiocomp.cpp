@@ -40,7 +40,7 @@ public:
 
 	void CapBegin(sint64 global_clock);
 	void CapEnd(const MyError *pError);
-	bool CapEvent(nsVDCapture::DriverEvent event);
+	bool CapEvent(nsVDCapture::DriverEvent event, int data);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
@@ -89,8 +89,8 @@ void VDCaptureAudioCompFilter::CapEnd(const MyError *pError) {
 	mpCB->CapEnd(pError);
 }
 
-bool VDCaptureAudioCompFilter::CapEvent(nsVDCapture::DriverEvent event) {
-	return mpCB->CapEvent(event);
+bool VDCaptureAudioCompFilter::CapEvent(nsVDCapture::DriverEvent event, int data) {
+	return mpCB->CapEvent(event, data);
 }
 
 void VDCaptureAudioCompFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock)  {

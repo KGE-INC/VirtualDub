@@ -88,7 +88,11 @@
 #endif
 
 extern HINSTANCE g_hInst;
-extern "C" unsigned long version_num;
+extern "C" {
+	extern unsigned long version_num;
+	extern const char version_time[];
+	extern const char version_buildmachine[];
+}
 
 static CodeDisassemblyWindow *g_pcdw;
 
@@ -111,8 +115,8 @@ static VDDebugInfoContext g_debugInfo;
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
-bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo);
+bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit);
+bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -836,8 +840,9 @@ protected:
 
 static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeOutput& out) {
 	const char *pszExceptionName;
+	const EXCEPTION_RECORD& exr = *pExc->ExceptionRecord;
 
-	switch(pExc->ExceptionRecord->ExceptionCode) {
+	switch(exr.ExceptionCode) {
 	case EXCEPTION_ACCESS_VIOLATION:
 		pszExceptionName = "An out-of-bounds memory access (access violation) occurred";
 		break;
@@ -887,6 +892,13 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 		out.writef(" at "PTR_08lx".", pExc->ContextRecord->Eip);
 #endif
 
+	if (exr.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && exr.NumberParameters >= 2) {
+		if (exr.ExceptionInformation[0])
+			out.writef("..\r\n...writing address %p.", (void *)exr.ExceptionInformation[1]);
+		else
+			out.writef("..\r\n...reading address %p.", (void *)exr.ExceptionInformation[1]);
+	}
+
 	__try {
 		for(VDProtectedAutoScope *pScope = g_protectedScopeLink; pScope; pScope = pScope->mpLink) {
 			out.write("..\r\n...while ");
@@ -899,10 +911,11 @@ static void VDDebugDumpCrashContext(EXCEPTION_POINTERS *pExc, IVDProtectedScopeO
 
 class VDCrashUIThread : public VDThread {
 public:
-	VDCrashUIThread(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *scopeinfo)
+	VDCrashUIThread(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *scopeinfo, bool allowForcedExit)
 		: mhThread(hThread)
 		, mpExc(pExc)
 		, mpScopeInfo(scopeinfo)
+		, mbAllowForcedExit(allowForcedExit)
 	{
 	}
 
@@ -912,18 +925,22 @@ protected:
 	HANDLE mhThread;
 	const EXCEPTION_POINTERS *mpExc;
 	const char *mpScopeInfo;
+	const bool mbAllowForcedExit;
 };
 
 void VDCrashUIThread::ThreadRun() {
-	if (VDDisplayFriendlyCrashDialog(NULL, mhThread, mpExc, mpScopeInfo))
+	if (VDDisplayFriendlyCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit)) {
+		if (!mbAllowForcedExit)
+			return;
 		TerminateProcess(GetCurrentProcess(), 0);
+	}
 
 	// Display "advanced" crash dialog.
 
-	VDDisplayAdvancedCrashDialog(NULL, mhThread, mpExc, mpScopeInfo);
+	VDDisplayAdvancedCrashDialog(NULL, mhThread, mpExc, mpScopeInfo, mbAllowForcedExit);
 }
 
-LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
+LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc, bool allowForcedExit) {
 	SetUnhandledExceptionFilter(NULL);
 
 	/////////////////////////
@@ -1016,7 +1033,7 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 	VDVERIFY(DuplicateHandle(hProcess, GetCurrentThread(), hProcess, &hThread, 0, FALSE, DUPLICATE_SAME_ACCESS));
 
-	VDCrashUIThread crashThread(hThread, pExc, scopeinfo.c_str());
+	VDCrashUIThread crashThread(hThread, pExc, scopeinfo.c_str(), allowForcedExit);
 
 	crashThread.ThreadStart();
 	crashThread.ThreadWait();
@@ -1044,9 +1061,14 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 	// invoke normal OS handler
 
-	UnhandledExceptionFilter(pExc);
+	if (allowForcedExit)
+		UnhandledExceptionFilter(pExc);
 
 	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+LONG __stdcall CrashHandlerHook(EXCEPTION_POINTERS *pExc) {
+	return CrashHandler(pExc, true);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1710,6 +1732,10 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 
 	out.Write("\n");
 
+	out.WriteF("Built on %s on %s using compiler version %d\n", version_buildmachine, version_time, _MSC_VER);
+
+	out.Write("\n");
+
 	// Detect operating system.
 
 	OSVERSIONINFO ovi;
@@ -1722,7 +1748,7 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 			,ovi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS
 			? (ovi.dwMinorVersion>0 ? "98" : "95")
 				: ovi.dwPlatformId == VER_PLATFORM_WIN32_NT
-					? (ovi.dwMajorVersion >= 5 ? ovi.dwMinorVersion>0 ? "XP" : "2000" : "NT")
+					? (ovi.dwMajorVersion >= 6 ? "Vista" : ovi.dwMajorVersion >= 5 ? ovi.dwMinorVersion>0 ? "XP" : "2000" : "NT")
 					: "?"
 			,ovi.dwBuildNumber & 0xffff
 			,ovi.szCSDVersion);
@@ -1761,10 +1787,11 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 
 class VDCrashDialog {
 protected:
-	VDCrashDialog(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
+	VDCrashDialog(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit)
 		: mhThread(hThread)
 		, mpExc(pExc)
 		, mpszScopeInfo(pszScopeInfo)
+		, mbAllowForcedExit(allowForcedExit)
 	{
 	}
 
@@ -1819,12 +1846,13 @@ protected:
 	HANDLE mhThread;
 	const EXCEPTION_POINTERS *mpExc;
 	const char *mpszScopeInfo;
+	const bool mbAllowForcedExit;
 };
 
 class VDCrashDialogAdvanced : public VDCrashDialog {
 public:
-	VDCrashDialogAdvanced(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
-		: VDCrashDialog(hThread, pExc, pszScopeInfo) {}
+	VDCrashDialogAdvanced(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit)
+		: VDCrashDialog(hThread, pExc, pszScopeInfo, allowForcedExit) {}
 
 	bool Display(HWND hwndParent) {
 		return Display2(MAKEINTRESOURCE(IDD_DISASM_CRASH), hwndParent);
@@ -1895,8 +1923,8 @@ protected:
 
 class VDCrashDialogFriendly : public VDCrashDialog {
 public:
-	VDCrashDialogFriendly(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo)
-		: VDCrashDialog(hThread, pExc, pszScopeInfo) {}
+	VDCrashDialogFriendly(HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit)
+		: VDCrashDialog(hThread, pExc, pszScopeInfo, allowForcedExit) {}
 
 	bool Display(HWND hwndParent) {
 		return Display2(MAKEINTRESOURCE(IDD_CRASH), hwndParent);
@@ -1918,6 +1946,9 @@ protected:
 
 		if (hwndInfo)
 			SetWindowText(hwndInfo, mpszScopeInfo);
+
+		if (!mbAllowForcedExit)
+			SetWindowText(GetDlgItem(mhdlg, IDOK), "OK");
 	}
 
 	BOOL DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1942,11 +1973,11 @@ protected:
 	}
 };
 
-bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
-	return VDCrashDialogFriendly(hThread, pExc, pszScopeInfo).Display(hwndParent);
+bool VDDisplayFriendlyCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit) {
+	return VDCrashDialogFriendly(hThread, pExc, pszScopeInfo, allowForcedExit).Display(hwndParent);
 }
 
-bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo) {
-	return VDCrashDialogAdvanced(hThread, pExc, pszScopeInfo).Display(hwndParent);
+bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTION_POINTERS *pExc, const char *pszScopeInfo, bool allowForcedExit) {
+	return VDCrashDialogAdvanced(hThread, pExc, pszScopeInfo, allowForcedExit).Display(hwndParent);
 }
 

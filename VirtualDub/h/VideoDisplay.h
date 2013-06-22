@@ -28,10 +28,10 @@ public:
 	};
 
 	enum FieldMode {
-		kAllFields,
-		kEvenFieldOnly,
-		kOddFieldOnly,
-
+		kEvenFieldOnly		= 1,
+		kOddFieldOnly		= 2,
+		kAllFields			= 3,
+		kVSync				= 4,
 		kVisibleOnly		= 16,
 
 		kFieldModeMax		= 255

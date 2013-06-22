@@ -614,8 +614,6 @@ bool VideoSourceMPEG::init() {
 	w = (parentPtr->width+15) & -16;
 	h = parentPtr->height;
 
-	VDDEBUG2("dimensions are %dx%d\n", parentPtr->width, parentPtr->height);
-
 	if (!AllocFrameBuffer(w * h * 4 + 4))
 		throw MyMemoryError();
 
@@ -929,10 +927,14 @@ VDPosition VideoSourceMPEG::streamGetNextRequiredFrame(bool& is_preroll) {
 			break;
 	}
 
+	// Reorder backward/forward frames so that they are in the correct order -- the
+	// closest frame less than the current frame should be the backward prediction
+	// source (fwd < rev < current).
+	if (frame_forw - (uint32)stream_desired_frame > frame_back - (uint32)stream_desired_frame)
+		std::swap(frame_forw, frame_back);
+
 	// stream_current_frame beyond the end at this point.
 
-	if (frame_forw > frame_back)
-		std::swap(frame_forw, frame_back);
 
 	switch(parentPtr->video_sample_list[stream_current_frame].frame_type) {
 		case MPEG_FRAME_TYPE_I:
@@ -1043,7 +1045,7 @@ const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data
 //			VDDEBUG("MPEG-1: Decoding %c-frame %u (broken link)\n", "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type], frame_num);
 			mpDecoder->CopyFrameBuffer(dstbuffer, revbuffer, frame_num);
 		} else {
-//			VDDEBUG("MPEG-1: Decoding %c-frame %u\n", "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type], frame_num);
+//			VDDEBUG("MPEG-1: Decoding %c-frame %-4u (%u > %u < %u)\n", "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type], frame_num, fwdbuffer, dstbuffer, revbuffer);
 			mpDecoder->DecodeFrame((char *)inputBuffer+4, data_len-4, frame_num, dstbuffer, fwdbuffer, revbuffer);
 		}
 	} else {
@@ -2627,8 +2629,6 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 		static const unsigned char finish_tag[]={ 0, 0, 1, 0xff };
 
 		videoParser.Parse(finish_tag, 4, &video_stream_samples);
-
-		VDDEBUG2("dimensions are %dx%d\n", videoParser.width, videoParser.height);
 
 		this->width = videoParser.width;
 		this->height = videoParser.height;

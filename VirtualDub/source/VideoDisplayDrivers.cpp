@@ -624,9 +624,9 @@ public:
 
 	bool Tick(int id) { return true; }
 	bool Resize();
-	bool Update(FieldMode);
-	void Refresh(FieldMode);
-	bool Paint(HDC hdc, const RECT& rClient) { return true; }
+	bool Update(UpdateMode);
+	void Refresh(UpdateMode);
+	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode) { return true; }
 	bool SetSubrect(const vdrect32 *r) {
 		return false;
 	}
@@ -774,7 +774,7 @@ bool VDVideoDisplayMinidriverOpenGL::Resize() {
 	return true;
 }
 
-bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
+bool VDVideoDisplayMinidriverOpenGL::Update(UpdateMode mode) {
 	if (!mpgl)
 		return false;
 
@@ -786,7 +786,9 @@ bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
 		VDASSERT(mpgl->pglGetError() == GL_NO_ERROR);
 
 		if (mSource.bInterlaced) {
-			if (fieldmode == kAllFields || fieldmode == kEvenFieldsOnly) {
+			uint32 fieldmode = (mode & kModeFieldMask);
+
+			if (fieldmode == kModeAllFields || fieldmode == kModeEvenField) {
 				VDPixmap evenFieldSrc(mSource.pixmap);
 
 				evenFieldSrc.h = (evenFieldSrc.h+1) >> 1;
@@ -794,7 +796,7 @@ bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
 
 				Upload(evenFieldSrc, mTexPattern[0]);
 			}
-			if (fieldmode == kAllFields || fieldmode == kOddFieldsOnly) {
+			if (fieldmode == kModeAllFields || fieldmode == kModeOddField) {
 				VDPixmap oddFieldSrc(mSource.pixmap);
 
 				oddFieldSrc.data = (char *)oddFieldSrc.data + oddFieldSrc.pitch;
@@ -820,7 +822,7 @@ bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverOpenGL::Refresh(FieldMode) {
+void VDVideoDisplayMinidriverOpenGL::Refresh(UpdateMode) {
 	if (mbValid) {
 		InvalidateRect(mhwndOGL, NULL, FALSE);
 		UpdateWindow(mhwndOGL);
@@ -1428,9 +1430,9 @@ public:
 
 	bool Tick(int id);
 	bool Resize();
-	bool Update(FieldMode);
-	void Refresh(FieldMode);
-	bool Paint(HDC hdc, const RECT& rClient);
+	bool Update(UpdateMode);
+	void Refresh(UpdateMode);
+	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
 
@@ -1451,8 +1453,8 @@ protected:
 	bool InitOverlay();
 	bool InitOffscreen();
 	void ShutdownDisplay();
-	void InternalRefresh(const RECT& rClient, FieldMode mode);
-	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc);
+	void InternalRefresh(const RECT& rClient, UpdateMode mode);
+	bool InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, UpdateMode mode);
 
 	HWND		mhwnd;
 	IVDDirectDrawManager	*mpddman;
@@ -1482,7 +1484,7 @@ protected:
 };
 
 IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDirectDraw() {
-	return new VDVideoDisplayMinidriverDirectDraw;
+	return new VDVideoDisplayMinidriverDirectDraw();
 }
 
 VDVideoDisplayMinidriverDirectDraw::VDVideoDisplayMinidriverDirectDraw()
@@ -1913,7 +1915,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Resize() {
 	return !mbReset;
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
+bool VDVideoDisplayMinidriverDirectDraw::Update(UpdateMode mode) {
 	if (!mSource.pixmap.data)
 		return false;
 
@@ -1963,8 +1965,10 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 	char *dst = (char *)ddsd.lpSurface;
 	ptrdiff_t dstpitch = ddsd.lPitch;
 
-	if (mSource.bInterlaced && fieldmode != kAllFields) {
-		if (fieldmode == kOddFieldsOnly) {
+	uint32 fieldmode = mode & kModeFieldMask;
+
+	if (mSource.bInterlaced && fieldmode != kModeAllFields) {
+		if (fieldmode == kModeOddField) {
 			source.data = (char *)source.data + source.pitch;
 			source.h >>= 1;
 			dst += dstpitch;
@@ -2016,7 +2020,7 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
 	return !mbReset;
 }
 
-void VDVideoDisplayMinidriverDirectDraw::Refresh(FieldMode mode) {
+void VDVideoDisplayMinidriverDirectDraw::Refresh(UpdateMode mode) {
 	if (mbValid) {
 		if (mpddsOverlay) {
 			Tick(kOverlayUpdateTimerId);
@@ -2032,14 +2036,14 @@ void VDVideoDisplayMinidriverDirectDraw::Refresh(FieldMode mode) {
 	}
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient) {
+bool VDVideoDisplayMinidriverDirectDraw::Paint(HDC hdc, const RECT& rClient, UpdateMode mode) {
 	if (mpddsOverlay) {
 		if (mChromaKey) {
 			SetBkColor(hdc, mChromaKey);
 			ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rClient, "", 0, NULL);
 		}
 	} else {
-		InternalRefresh(rClient, kAllFields);
+		InternalRefresh(rClient, mode);
 	}
 
 	return !mbReset;
@@ -2055,7 +2059,7 @@ bool VDVideoDisplayMinidriverDirectDraw::SetSubrect(const vdrect32 *r) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, FieldMode mode) {
+void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, UpdateMode mode) {
 	RECT rDst = rClient;
 
 	// DirectX doesn't like null rects.
@@ -2071,9 +2075,9 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 	if (!mSource.bInterlaced) {
 		if (mbUseSubrect) {
 			RECT rSrc = { mSubrect.left, mSubrect.top, mSubrect.right, mSubrect.bottom };
-			InternalBlt(pDest, &rDst, &rSrc);
+			InternalBlt(pDest, &rDst, &rSrc, mode);
 		} else
-			InternalBlt(pDest, &rDst, NULL);
+			InternalBlt(pDest, &rDst, NULL, mode);
 	} else {
 		const VDPixmap& source = mSource.pixmap;
 		vdrect32 r;
@@ -2082,11 +2086,13 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 		else
 			r.set(0, 0, source.w, source.h);
 
+		const uint32 fieldmode = mode & kModeFieldMask;
+
 		uint32 vinc		= (r.height() << 16) / rClient.bottom;
 		uint32 vaccum	= (vinc >> 1) + (r.top << 16);
 		uint32 vtlimit	= (((source.h + 1) >> 1) << 17) - 1;
-		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
-		int ystep		= (mode == kAllFields) ? 1 : 2;
+		int fieldbase	= (fieldmode == kModeOddField ? 1 : 0);
+		int ystep		= (fieldmode == kModeAllFields) ? 1 : 2;
 
 		vaccum += vinc*fieldbase;
 		vinc *= ystep;
@@ -2110,7 +2116,7 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 			RECT rDstTemp = { rDst.left, rDst.top+y, rDst.right, rDst.top+y+1 };
 			RECT rSrcTemp = { r.left, v, r.width(), v+1 };
 
-			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp))
+			if (!InternalBlt(pDest, &rDstTemp, &rSrcTemp, mode))
 				break;
 
 			vaccum += vinc;
@@ -2121,10 +2127,42 @@ void VDVideoDisplayMinidriverDirectDraw::InternalRefresh(const RECT& rClient, Fi
 		pDest->SetClipper(NULL);
 }
 
-bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc) {
+bool VDVideoDisplayMinidriverDirectDraw::InternalBlt(IDirectDrawSurface2 *&pDest, RECT *prDst, RECT *prSrc, UpdateMode mode) {
 	HRESULT hr;
 
-	while(FAILED(hr = pDest->Blt(prDst, mpddsBitmap, prSrc, DDBLT_ASYNC | DDBLT_WAIT, NULL))) {
+	for(;;) {
+		// DDBLTFX_NOTEARING is ignored by DirectDraw in 2K/XP.
+
+		if (mode & kModeVSync) {
+			IDirectDraw2 *pDD = mpddman->GetDDraw();
+			DWORD maxScan = 0;
+			
+			for(;;) {
+				DWORD scan;
+				hr = pDD->GetScanLine(&scan);
+
+				// Check if GetScanLine() failed -- it will do so if we're in VBlank.
+				if (FAILED(hr))
+					break;
+
+				// Check if we are outside of the danger zone.
+				if (scan < prDst->top || scan >= prDst->bottom)
+					break;
+
+				// Check if we have looped around, which may mean the system is too
+				// busy to poll the beam reliably.
+				if (scan < maxScan)
+					break;
+
+				maxScan = scan;
+			}
+		}
+
+		hr = pDest->Blt(prDst, mpddsBitmap, prSrc, DDBLT_ASYNC | DDBLT_WAIT, NULL);
+
+		if (SUCCEEDED(hr))
+			break;
+
 		if (hr != DDERR_SURFACELOST)
 			break;
 
@@ -2169,9 +2207,9 @@ public:
 
 	bool Tick(int id) { return true; }
 	bool Resize() { return true; }
-	bool Update(FieldMode);
-	void Refresh(FieldMode);
-	bool Paint(HDC hdc, const RECT& rClient);
+	bool Update(UpdateMode);
+	void Refresh(UpdateMode);
+	bool Paint(HDC hdc, const RECT& rClient, UpdateMode mode);
 	bool SetSubrect(const vdrect32 *r);
 	void SetLogicalPalette(const uint8 *pLogicalPalette) { mpLogicalPalette = pLogicalPalette; }
 
@@ -2195,7 +2233,7 @@ protected:
 
 	VDVideoDisplaySourceInfo	mSource;
 
-	void InternalRefresh(HDC hdc, const RECT& rClient, FieldMode mode);
+	void InternalRefresh(HDC hdc, const RECT& rClient, UpdateMode mode);
 	static int GetScreenIntermediatePixmapFormat(HDC);
 };
 
@@ -2416,7 +2454,7 @@ bool VDVideoDisplayMinidriverGDI::ModifySource(const VDVideoDisplaySourceInfo& i
 	return false;
 }
 
-bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
+bool VDVideoDisplayMinidriverGDI::Update(UpdateMode mode) {
 	if (!mSource.pixmap.data)
 		return false;
 
@@ -2428,8 +2466,8 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 		char *dst = (char *)mpBitmapBits + mPitch*(source.h - 1);
 		ptrdiff_t dstpitch = -mPitch;
 
-		if (mSource.bInterlaced && fieldmode != kAllFields) {
-			if (fieldmode == kOddFieldsOnly) {
+		if (mSource.bInterlaced && (mode & kModeFieldMask) != kModeAllFields) {
+			if ((mode & kModeFieldMask) == kModeOddField) {
 				source.data = (char *)source.data + source.pitch;
 				source.h >>= 1;
 				dst += dstpitch;
@@ -2470,7 +2508,7 @@ bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverGDI::Refresh(FieldMode mode) {
+void VDVideoDisplayMinidriverGDI::Refresh(UpdateMode mode) {
 	if (mbValid) {
 		if (HDC hdc = GetDC(mhwnd)) {
 			RECT r;
@@ -2482,8 +2520,8 @@ void VDVideoDisplayMinidriverGDI::Refresh(FieldMode mode) {
 	}
 }
 
-bool VDVideoDisplayMinidriverGDI::Paint(HDC hdc, const RECT& rClient) {
-	InternalRefresh(hdc, rClient, kAllFields);
+bool VDVideoDisplayMinidriverGDI::Paint(HDC hdc, const RECT& rClient, UpdateMode mode) {
+	InternalRefresh(hdc, rClient, mode);
 	return true;
 }
 
@@ -2497,7 +2535,7 @@ bool VDVideoDisplayMinidriverGDI::SetSubrect(const vdrect32 *r) {
 	return true;
 }
 
-void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, FieldMode mode) {
+void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, UpdateMode mode) {
 	SetStretchBltMode(hdc, COLORONCOLOR);
 
 	const VDPixmap& source = mSource.pixmap;
@@ -2512,8 +2550,8 @@ void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, 
 		uint32 vinc		= (r.height() << 16) / rClient.bottom;
 		uint32 vaccum	= (vinc >> 1) + (r.top << 16);
 		uint32 vtlimit	= (((r.height() + 1) >> 1) << 17) - 1;
-		int fieldbase	= (mode == kOddFieldsOnly ? 1 : 0);
-		int ystep		= (mode == kAllFields) ? 1 : 2;
+		int fieldbase	= (mode == kModeOddField ? 1 : 0);
+		int ystep		= (mode == kModeAllFields) ? 1 : 2;
 
 		vaccum += vinc*fieldbase;
 		vinc *= ystep;

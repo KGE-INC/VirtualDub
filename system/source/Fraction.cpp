@@ -39,13 +39,13 @@ VDFraction::VDFraction(double d) {
 		hi = 0;
 		lo = 1;
 	} else if (xp >= 0) {
-		*this = reduce((sint64)(0.5 + ldexp(mant, 62)), 1i64<<(62-xp));
+		*this = reduce((uint64)(0.5 + ldexp(mant, 62)), 1i64<<(62-xp));
 	} else {
-		*this = reduce((sint64)(0.5 + ldexp(mant, xp+62)), 1i64<<62);
+		*this = reduce((uint64)(0.5 + ldexp(mant, xp+62)), 1i64<<62);
 	}
 }
 
-VDFraction VDFraction::reduce(sint64 hi, sint64 lo) {
+VDFraction VDFraction::reduce(uint64 hi, uint64 lo) {
 
 	// Check for undefined.
 
@@ -89,7 +89,7 @@ VDFraction VDFraction::reduce(sint64 hi, sint64 lo) {
 	// divisible by D.  From this, we can repeat the subtraction,
 	// giving C = (x % y)D = A % B being divisible by D.
 
-	sint64 A, B, C;
+	uint64 A, B, C;
 
 	A = hi;
 	B = lo;
@@ -117,7 +117,7 @@ VDFraction VDFraction::reduce(sint64 hi, sint64 lo) {
 
 	// Reduce the fraction in range, crudely.
 
-//	return VDFraction(((sint64)hi * 0xFFFFFFFFUL + lo/2) / lo, 0xFFFFFFFFUL);
+//	return VDFraction(((uint64)hi * 0xFFFFFFFFUL + lo/2) / lo, 0xFFFFFFFFUL);
 
 	while(lo != (unsigned)lo || hi != (unsigned)hi) {
 		lo >>= 1;
@@ -136,43 +136,43 @@ VDFraction VDFraction::reduce(sint64 hi, sint64 lo) {
 // aH*bL (cond) aL*bH
 
 bool VDFraction::operator==(VDFraction b) const {
-	return (sint64)hi * b.lo == (sint64)lo * b.hi;
+	return (uint64)hi * b.lo == (uint64)lo * b.hi;
 }
 
 bool VDFraction::operator!=(VDFraction b) const {
-	return (sint64)hi * b.lo != (sint64)lo * b.hi;
+	return (uint64)hi * b.lo != (uint64)lo * b.hi;
 }
 
 bool VDFraction::operator< (VDFraction b) const {
-	return (sint64)hi * b.lo < (sint64)lo * b.hi;
+	return (uint64)hi * b.lo < (uint64)lo * b.hi;
 }
 
 bool VDFraction::operator<=(VDFraction b) const {
-	return (sint64)hi * b.lo <= (sint64)lo * b.hi;
+	return (uint64)hi * b.lo <= (uint64)lo * b.hi;
 }
 
 bool VDFraction::operator> (VDFraction b) const {
-	return (sint64)hi * b.lo > (sint64)lo * b.hi;
+	return (uint64)hi * b.lo > (uint64)lo * b.hi;
 }
 
 bool VDFraction::operator>=(VDFraction b) const {
-	return (sint64)hi * b.lo >= (sint64)lo * b.hi;
+	return (uint64)hi * b.lo >= (uint64)lo * b.hi;
 }
 
 VDFraction VDFraction::operator*(VDFraction b) const {
-	return reduce((sint64)hi * b.hi, (sint64)lo * b.lo);
+	return reduce((uint64)hi * b.hi, (uint64)lo * b.lo);
 }
 
 VDFraction VDFraction::operator/(VDFraction b) const {
-	return reduce((sint64)hi * b.lo, (sint64)lo * b.hi);
+	return reduce((uint64)hi * b.lo, (uint64)lo * b.hi);
 }
 
 VDFraction VDFraction::operator*(unsigned long b) const {
-	return reduce((sint64)hi * b, lo);
+	return reduce((uint64)hi * b, lo);
 }
 
 VDFraction VDFraction::operator/(unsigned long b) const {
-	return reduce(hi, (sint64)lo * b);
+	return reduce(hi, (uint64)lo * b);
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -49,8 +49,8 @@ protected:
 
 struct VDCaptureResyncStatus {
 	sint32		mVideoTimingAdjust;
-	float		mVideoRateScale;
 	float		mAudioResamplingRate;
+	float		mVideoResamplingRate;
 	float		mMeasuredLatency;
 	float		mCurrentLatency;
 };
@@ -68,12 +68,19 @@ public:
 	virtual ~IVDCaptureResyncFilter() {}
 
 	virtual void SetChildCallback(IVDCaptureDriverCallback *pChild) = 0;
+	virtual void SetProfiler(IVDCaptureProfiler *pProfiler) = 0;
 	virtual void SetVideoRate(double fps) = 0;
 	virtual void SetAudioRate(double bytesPerSec) = 0;
 	virtual void SetAudioChannels(int chans) = 0;
 	virtual void SetAudioFormat(VDAudioSampleType sampleType) = 0;
 	virtual void SetResyncMode(Mode mode) = 0;
 	virtual void EnableVideoTimingCorrection(bool en) = 0;
+	virtual void EnableVideoDrops(bool enable) = 0;
+	virtual void EnableVideoInserts(bool enable) = 0;
+	virtual void SetVideoInsertLimit(int insertLimit) = 0;
+	virtual void SetFixedAudioLatency(int latencyInMilliseconds) = 0;
+	virtual void SetLimitedAutoAudioLatency(int sampleLimit) = 0;
+	virtual void SetAutoAudioLatency() = 0;
 
 	virtual void GetStatus(VDCaptureResyncStatus&) = 0;
 };

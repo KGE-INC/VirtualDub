@@ -349,7 +349,7 @@ namespace {
 		}
 	}
 
-	void DestroySubgraph(IFilterGraph *pGraph, IBaseFilter *pFilt) {
+	void DestroySubgraph(IFilterGraph *pGraph, IBaseFilter *pFilt, IBaseFilter *pKeepFilter) {
 		IEnumPins *pEnum;
 
 		if (!pFilt)
@@ -381,9 +381,11 @@ namespace {
 						PIN_INFO pi;
 
 						if (SUCCEEDED(pPin2->QueryPinInfo(&pi))) {
-							DestroySubgraph(pGraph, pi.pFilter);
+							DestroySubgraph(pGraph, pi.pFilter, pKeepFilter);
 
-							VDVERIFY(SUCCEEDED(pGraph->RemoveFilter(pi.pFilter)));
+							if (!pKeepFilter || pi.pFilter != pKeepFilter)
+								VDVERIFY(SUCCEEDED(pGraph->RemoveFilter(pi.pFilter)));
+
 							pi.pFilter->Release();
 						}
 
@@ -523,13 +525,14 @@ namespace {
 			IMoniker *pM;
 			ULONG cFetched;
 
-			while(SUCCEEDED(pEm->Next(1, &pM, &cFetched)) && cFetched==1) {
+			while(S_OK == pEm->Next(1, &pM, &cFetched) && cFetched==1) {
 				IPropertyBag *pPropBag;
 
 				if (SUCCEEDED(pM->BindToStorage(0, 0, IID_IPropertyBag, (void **)&pPropBag))) {
 					VARIANT varName;
 
 					varName.vt = VT_BSTR;
+					varName.bstrVal = NULL;
 
 					if (SUCCEEDED(pPropBag->Read(L"FriendlyName", &varName, 0))) {
 						VDStringW name(varName.bstrVal);
@@ -1032,7 +1035,7 @@ public:
 	vdrect32	GetDisplayRectAbsolute();
 	void	SetDisplayVisibility(bool vis);
 
-	void	SetFramePeriod(sint32 ms);
+	void	SetFramePeriod(sint32 framePeriod100nsUnits);
 	sint32	GetFramePeriod();
 
 	uint32	GetPreviewFrameCount();
@@ -1127,6 +1130,7 @@ protected:
 
 	// Pointers to filters and pins in the graph.
 	IBaseFilterPtr		mpCapFilt;
+	IBaseFilterPtr		mpCapSplitFilt;			// DV Splitter, if INTERLEAVED is detected
 	IPinPtr				mpRealCapturePin;		// the one on the cap filt
 	IPinPtr				mpRealPreviewPin;		// the one on the cap filt
 	IPinPtr				mpRealAudioPin;			// the one on the cap filt
@@ -1311,13 +1315,37 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 
 	// Find the capture pin first.  If we don't have one of these, we
 	// might as well give up.
+	bool interleaved = true;
 
-	DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 0, ~mpRealCapturePin), "find capture pin");
+	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Interleaved, TRUE, 0, ~mpRealCapturePin);
+	if (SUCCEEDED(hr)) {
+		// We got one, so attach a DV splitter now.
+		DS_VERIFY(mpCapSplitFilt.CreateInstance(CLSID_DVSplitter, NULL, CLSCTX_INPROC_SERVER), "create DV splitter");
+		DS_VERIFY(mpGraphBuilder->AddFilter(mpCapSplitFilt, L"DV splitter"), "add DV splitter");
+
+		IPinPtr pCapSplitIn;
+		IPinPtr pCapSplitOutVideo;
+		IPinPtr pCapSplitOutAudio;
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapSplitFilt, PINDIR_INPUT, NULL, NULL, TRUE, 0, ~pCapSplitIn), "find DV splitter input");
+		DS_VERIFY(mpGraphBuilder->Connect(mpRealCapturePin, pCapSplitIn), "connect capture -> dv splitter");
+
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapSplitFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Video, TRUE, 0, ~pCapSplitOutVideo), "find DV splitter video output");
+		DS_VERIFY(mpCapGraphBuilder2->FindPin(mpCapSplitFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~pCapSplitOutAudio), "find DV splitter audio output");
+
+		// Treat the outputs of the DV splitter as the "real" audio and video capture pins.
+		mpRealCapturePin = pCapSplitOutVideo;
+		mpRealAudioPin = pCapSplitOutAudio;
+	} else {
+		hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 0, ~mpRealCapturePin);
+
+		DS_VERIFY(hr, "find capture pin");
+
+		interleaved = false;
+	}
 
 	// Look for a preview pin.  It's actually likely that we won't get
 	// one if someone has a USB webcam, so we have to be prepared for
 	// it.
-
 	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, TRUE, 0, ~mpRealPreviewPin);
 	mbGraphHasPreview = SUCCEEDED(hr);
 
@@ -1350,7 +1378,8 @@ bool VDCaptureDriverDS::Init(VDGUIHandle hParent) {
 
 	// Look for an audio pin. We may need to attach a null renderer to
 	// it for smooth previews.
-	hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpRealAudioPin);
+	if (!interleaved)
+		hr = mpCapGraphBuilder2->FindPin(mpCapFilt, PINDIR_OUTPUT, NULL, &MEDIATYPE_Audio, TRUE, 0, ~mpRealAudioPin);
 
 	// Get video format configurator
 
@@ -1495,6 +1524,7 @@ void VDCaptureDriverDS::Shutdown() {
 	mpAudioConfig		= NULL;
 
 	mpCapFilt			= NULL;
+	mpCapSplitFilt		= NULL;
 	mpRealCapturePin	= NULL;
 	mpRealPreviewPin	= NULL;
 	mpCapFiltVideoPortPin	= NULL;
@@ -1596,7 +1626,7 @@ vdrect32 VDCaptureDriverDS::GetDisplayRectAbsolute() {
 void VDCaptureDriverDS::SetDisplayVisibility(bool vis) {
 }
 
-void VDCaptureDriverDS::SetFramePeriod(sint32 ms) {
+void VDCaptureDriverDS::SetFramePeriod(sint32 framePeriod100nsUnits) {
 	AM_MEDIA_TYPE *past;
 	VDFraction pf;
 	bool bRet = false;
@@ -1607,9 +1637,10 @@ void VDCaptureDriverDS::SetFramePeriod(sint32 ms) {
 		if (past->formattype == FORMAT_VideoInfo) {
 			VIDEOINFOHEADER *pvih = (VIDEOINFOHEADER *)past->pbFormat;
 
-			pvih->AvgTimePerFrame = ms*10;
+			pvih->AvgTimePerFrame = framePeriod100nsUnits;
 
 			bRet = SUCCEEDED(mpVideoConfigCap->SetFormat(past));
+			VDASSERT(bRet);
 		}
 
 		RizaDeleteMediaType(past);
@@ -1619,9 +1650,10 @@ void VDCaptureDriverDS::SetFramePeriod(sint32 ms) {
 		if (past->formattype == FORMAT_VideoInfo) {
 			VIDEOINFOHEADER *pvih = (VIDEOINFOHEADER *)past->pbFormat;
 
-			pvih->AvgTimePerFrame = ms*10;
+			pvih->AvgTimePerFrame = framePeriod100nsUnits;
 
 			bRet = SUCCEEDED(mpVideoConfigPrv->SetFormat(past));
+			VDASSERT(bRet);
 		}
 
 		RizaDeleteMediaType(past);
@@ -1629,7 +1661,7 @@ void VDCaptureDriverDS::SetFramePeriod(sint32 ms) {
 
 	CheckForChanges();
 
-	VDDEBUG("Desired frame period = %u us, actual = %u us\n", ms, GetFramePeriod());
+	VDDEBUG("Desired frame period = %u*100ns, actual = %u*100ns\n", framePeriod100nsUnits, GetFramePeriod());
 
 	StartGraph();
 
@@ -1645,22 +1677,22 @@ sint32 VDCaptureDriverDS::GetFramePeriod() {
 		if (past->formattype == FORMAT_VideoInfo || past->formattype == FORMAT_MPEGVideo) {
 			const VIDEOINFOHEADER *pvih = (const VIDEOINFOHEADER *)past->pbFormat;
 
-			rate = (pvih->AvgTimePerFrame + 5) / 10;
+			rate = pvih->AvgTimePerFrame;
 
 			bRet = true;
 		} else if (past->formattype == FORMAT_VideoInfo2 || past->formattype == FORMAT_MPEG2Video) {
 			const VIDEOINFOHEADER2 *pvih = (const VIDEOINFOHEADER2 *)past->pbFormat;
 
-			rate = (pvih->AvgTimePerFrame + 5) / 10;
+			rate = pvih->AvgTimePerFrame;
 
 			bRet = true;
 		} else if (past->formattype == FORMAT_DvInfo) {
 			const DVINFO& dvi = *(const DVINFO *)past->pbFormat;
 
 			if (dvi.dwDVVAuxSrc & 0x200000)
-				rate = 40000;	// PAL
+				rate = 400000;	// PAL
 			else
-				rate = 33367;	// NTSC
+				rate = 333667;	// NTSC
 
 			bRet = true;
 		}
@@ -1670,7 +1702,7 @@ sint32 VDCaptureDriverDS::GetFramePeriod() {
 
 	if (!bRet) {
 		VDASSERT(false);
-		return 1000000/15;
+		return 10000000/15;
 	}
 
 	return rate;
@@ -1689,7 +1721,26 @@ uint32 VDCaptureDriverDS::GetPreviewFrameCount() {
 
 bool VDCaptureDriverDS::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& vformat) {
 	AM_MEDIA_TYPE *pmt = NULL;
-	if (SUCCEEDED(mpVideoConfigCap->GetFormat(&pmt))) {
+	// If the DV splitter is in use, we need to query what its video pin outputs and
+	// not the capture filter itself.
+	if (mpCapSplitFilt) {
+		IEnumMediaTypesPtr pEnum;
+
+		if (SUCCEEDED(mpRealCapturePin->EnumMediaTypes(~pEnum))) {
+			ULONG cFetched;
+
+			if (S_OK == pEnum->Next(1, &pmt, &cFetched)) {
+				if (pmt->majortype == MEDIATYPE_Video
+					&& pmt->formattype == FORMAT_VideoInfo) {
+					vformat.assign(&((VIDEOINFOHEADER *)pmt->pbFormat)->bmiHeader, pmt->cbFormat - offsetof(VIDEOINFOHEADER, bmiHeader));
+					RizaDeleteMediaType(pmt);
+					return true;
+				}
+
+				RizaDeleteMediaType(pmt);
+			}
+		}
+	} else if (SUCCEEDED(mpVideoConfigCap->GetFormat(&pmt))) {
 		if (pmt->majortype == MEDIATYPE_Video
 			&& pmt->formattype == FORMAT_VideoInfo) {
 			vformat.assign(&((VIDEOINFOHEADER *)pmt->pbFormat)->bmiHeader, pmt->cbFormat - offsetof(VIDEOINFOHEADER, bmiHeader));
@@ -1934,7 +1985,7 @@ bool VDCaptureDriverDS::SetAudioDevice(int idx) {
 
 	// Kill an existing device.
 	if (mpAudioCapFilt) {
-		DestroySubgraph(mpGraphBuilder, mpAudioCapFilt);
+		DestroySubgraph(mpGraphBuilder, mpAudioCapFilt, NULL);
 		VDVERIFY(SUCCEEDED(mpGraphBuilder->RemoveFilter(mpAudioCapFilt)));
 		mpAudioCapFilt = NULL;
 	}
@@ -2430,14 +2481,14 @@ bool VDCaptureDriverDS::CaptureStart() {
 		if (mpAudioGrabber)
 			mpAudioGrabber->SetCallback(&mAudioCallback, 0);
 
-		mCaptureStart = VDGetPreciseTick();
+		mCaptureStart = VDGetAccurateTick();
 		mCaptureStopQueued = false;
 
 		// Kick the graph into PAUSED state.
 		
 		HRESULT hr = mpGraphControl->Pause();
 
-		if (SUCCEEDED(hr) && (!mpCB || mpCB->CapEvent(kEventPreroll))) {
+		if (SUCCEEDED(hr) && (!mpCB || mpCB->CapEvent(kEventPreroll, 0))) {
 			bool success = false;
 			if (mpCB) {
 				try {
@@ -2523,14 +2574,14 @@ bool VDCaptureDriverDS::StopGraph() {
 	mbStartPending = false;
 
 #ifdef _DEBUG
-	uint64 startTime = VDGetPreciseTick();
+	uint32 startTime = VDGetAccurateTick();
 	VDDEBUG("Riza/CapDShow: Filter graph stopping...\n");
 #endif
 
 	HRESULT hr = mpGraphControl->Stop();
 
 #ifdef _DEBUG
-	VDDEBUG("Riza/CapDShow: Filter graph stopped in %.0f ms.\n", (VDGetPreciseTick() - startTime) * 1000.0 / VDGetPreciseTicksPerSecond());
+	VDDEBUG("Riza/CapDShow: Filter graph stopped in %d ms.\n", VDGetAccurateTick() - startTime);
 #endif
 
 	return SUCCEEDED(hr);
@@ -2934,8 +2985,8 @@ void VDCaptureDriverDS::TearDownGraph() {
 	}
 
 	// destroy downstreams
-	DestroySubgraph(mpGraphBuilder, mpCapFilt);
-	DestroySubgraph(mpGraphBuilder, mpAudioCapFilt);
+	DestroySubgraph(mpGraphBuilder, mpCapFilt, mpCapSplitFilt);
+	DestroySubgraph(mpGraphBuilder, mpAudioCapFilt, NULL);
 
 	VDASSERT(!mpRealAudioPin || !VDIsPinConnectedDShow(mpRealAudioPin));
 	VDASSERT(!mpAudioPin || !VDIsPinConnectedDShow(mpAudioPin));
@@ -3053,7 +3104,7 @@ void VDCaptureDriverDS::CheckForChanges() {
 		if (mTrackedFramePeriod != fp) {
 			mTrackedFramePeriod = fp;
 
-			keepGoing &= mpCB->CapEvent(kEventVideoFrameRateChanged);
+			keepGoing &= mpCB->CapEvent(kEventVideoFrameRateChanged, 0);
 		}
 
 		vdstructex<BITMAPINFOHEADER> vf;
@@ -3062,7 +3113,7 @@ void VDCaptureDriverDS::CheckForChanges() {
 		if (mTrackedVideoFormat != vf) {
 			mTrackedVideoFormat = vf;
 
-			keepGoing &= mpCB->CapEvent(kEventVideoFormatChanged);
+			keepGoing &= mpCB->CapEvent(kEventVideoFormatChanged, 0);
 		}
 
 		if (!keepGoing && mCaptureThread)
@@ -3190,12 +3241,12 @@ void VDCaptureDriverDS::CapProcessData(int stream, const void *data, uint32 size
 		return;
 
 	if (mpCB) {
-		sint64 reltime = (sint64)((sint64)(VDGetPreciseTick() - mCaptureStart) * 1000000.0 / VDGetPreciseTicksPerSecond());
+		sint64 reltime = (sint64)(VDGetAccurateTick() - mCaptureStart) * 1000;
 
 		try {
 			if (!mCaptureStopQueued) {
 				if (mCaptureThread) {
-					if (!mpCB->CapEvent(kEventCapturing)) {
+					if (!mpCB->CapEvent(kEventCapturing, 0)) {
 						if (!mCaptureStopQueued.xchg(1))
 							PostMessage(mhwndEventSink, WM_APP+1, 0, 0);
 

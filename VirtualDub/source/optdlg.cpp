@@ -42,6 +42,11 @@ extern HINSTANCE g_hInst;
 
 #define VD_FOURCC(fcc) (((fcc&0xff000000)>>24)+((fcc&0xff0000)>>8)+((fcc&0xff00)<<8)+((fcc&0xff)<<24))
 
+uint32& VDPreferencesGetRenderOutputBufferSize();
+uint32& VDPreferencesGetRenderWaveBufferSize();
+uint32& VDPreferencesGetRenderVideoBufferCount();
+void VDSavePreferences();
+
 ///////////////////////////////////////////
 
 void ActivateDubDialog(HINSTANCE hInst, LPCTSTR lpResource, HWND hDlg, DLGPROC dlgProc) {
@@ -558,15 +563,15 @@ INT_PTR CALLBACK PerformanceOptionsDlgProc( HWND hDlg, UINT message, WPARAM wPar
 
 			hWndItem = GetDlgItem(hDlg, IDC_OUTPUT_BUFFER);
 			SendMessage(hWndItem, TBM_SETRANGE, FALSE, MAKELONG(0,sizeof outputBufferSizeArray / sizeof outputBufferSizeArray[0] - 1));
-			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(dopt->perf.outputBufferSize, outputBufferSizeArray, ELEMENTS(outputBufferSizeArray)));
+			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(VDPreferencesGetRenderOutputBufferSize(), outputBufferSizeArray, ELEMENTS(outputBufferSizeArray)));
 			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hWndItem);
 			hWndItem = GetDlgItem(hDlg, IDC_WAVE_INPUT_BUFFER);
 			SendMessage(hWndItem, TBM_SETRANGE, FALSE, MAKELONG(0,sizeof waveBufferSizeArray / sizeof waveBufferSizeArray[0] - 1));
-			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(dopt->perf.waveBufferSize, waveBufferSizeArray, ELEMENTS(waveBufferSizeArray)));
+			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(VDPreferencesGetRenderWaveBufferSize(), waveBufferSizeArray, ELEMENTS(waveBufferSizeArray)));
 			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hWndItem);
 			hWndItem = GetDlgItem(hDlg, IDC_PIPE_BUFFERS);
 			SendMessage(hWndItem, TBM_SETRANGE, FALSE, MAKELONG(0,sizeof pipeBufferCountArray / sizeof pipeBufferCountArray[0] - 1));
-			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(dopt->perf.pipeBufferCount, pipeBufferCountArray, ELEMENTS(pipeBufferCountArray)));
+			SendMessage(hWndItem, TBM_SETPOS, TRUE, NearestLongValue(VDPreferencesGetRenderVideoBufferCount(), pipeBufferCountArray, ELEMENTS(pipeBufferCountArray)));
 			SendMessage(hDlg, WM_HSCROLL, 0, (LPARAM)hWndItem);
             return (TRUE);
 
@@ -610,13 +615,15 @@ INT_PTR CALLBACK PerformanceOptionsDlgProc( HWND hDlg, UINT message, WPARAM wPar
 					long index;
 
 					index = SendMessage(GetDlgItem(hDlg, IDC_OUTPUT_BUFFER), TBM_GETPOS, 0, 0);
-					dopt->perf.outputBufferSize = outputBufferSizeArray[index];
+					VDPreferencesGetRenderOutputBufferSize() = outputBufferSizeArray[index];
 
 					index = SendMessage(GetDlgItem(hDlg, IDC_WAVE_INPUT_BUFFER), TBM_GETPOS, 0, 0);
-					dopt->perf.waveBufferSize = waveBufferSizeArray[index];
+					VDPreferencesGetRenderWaveBufferSize() = waveBufferSizeArray[index];
 
 					index = SendMessage(GetDlgItem(hDlg, IDC_PIPE_BUFFERS), TBM_GETPOS, 0, 0);
-					dopt->perf.pipeBufferCount = pipeBufferCountArray[index];
+					VDPreferencesGetRenderVideoBufferCount() = pipeBufferCountArray[index];
+
+					VDSavePreferences();
 				}
 				EndDialog(hDlg, TRUE);
 				return TRUE;
@@ -772,7 +779,7 @@ INT_PTR VDDialogVideoFrameRateW32::DlgProc(UINT message, WPARAM wParam, LPARAM l
 
 						GetDlgItemText(mhdlg, IDC_FRAMERATE_TARGET, buf, sizeof buf);
 
-						if (1!=sscanf(buf, "%lg %c", &newFR, &tmp) || newFR<=0.0 || newFR>=200.0) {
+						if (1!=sscanf(buf, "%lg %c", &newFR, &tmp) || newFR<=0.0) {
 							SetFocus(GetDlgItem(mhdlg, IDC_FRAMERATE));
 							MessageBeep(MB_ICONQUESTION);
 							return FALSE;
@@ -804,7 +811,7 @@ INT_PTR VDDialogVideoFrameRateW32::DlgProc(UINT message, WPARAM wParam, LPARAM l
 
 						GetDlgItemText(mhdlg, IDC_FRAMERATE, buf, sizeof buf);
 
-						if (1!=sscanf(buf, "%lg %c", &newFR, &tmp) || newFR<=0.0 || newFR>=200.0) {
+						if (1!=sscanf(buf, "%lg %c", &newFR, &tmp) || newFR<=0.0 || newFR>=1000000.0) {
 							SetFocus(GetDlgItem(mhdlg, IDC_FRAMERATE));
 							MessageBeep(MB_ICONQUESTION);
 							return FALSE;

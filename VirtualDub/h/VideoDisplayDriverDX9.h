@@ -162,6 +162,7 @@ public:
 	void		UnlockIndices();
 	HRESULT		DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount);
 	HRESULT		DrawElements(D3DPRIMITIVETYPE type, UINT vertStart, UINT vertCount, UINT idxStart, UINT primCount);
+	HRESULT		Present(const RECT *srcRect, HWND hwndDest, bool vsync);
 
 	HRESULT DisableTextureStage(UINT stage);
 	HRESULT SetTextureStageOp(UINT stage, DWORD color1, DWORD colorop, DWORD color2, DWORD alpha1, DWORD alphaop, DWORD alpha2, DWORD output = D3DTA_CURRENT);

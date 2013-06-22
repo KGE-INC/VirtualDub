@@ -372,7 +372,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 
 		if (prevPt.mFramesProcessed != (uint32)nFramesProcessed) {
 			SamplePoint& currentPt = mSamplePoints[mNextSamplePoint];
-			currentPt.mTicks				= dwTicks;
+			currentPt.mTicks				= pvinfo->lastProcessedTimestamp - mStartTime;
 			currentPt.mFramesProcessed		= (uint32)nFramesProcessed;		// Yes, this truncates.  We'll be okay as long as no more than 2^32-1 frames are processed per interval.
 
 			if (mSampleCount < kSamplePoints)

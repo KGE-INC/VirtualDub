@@ -30,4 +30,17 @@ enum {
 	kVDCapDevOptSlowPreview = 0x100
 };
 
+struct VDCaptureSettings {
+	uint32	mFramePeriod;
+	int		mVideoBufferCount;
+	int		mAudioBufferCount;
+	int		mAudioBufferSize;
+	bool	mbDisplayPrerollDialog;
+};
+
+bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, VDCaptureSettings& parms);
+bool VDShowCapturePreferencesDialog(VDGUIHandle h, VDCapturePreferences& prefs);
+void VDCaptureLoadPreferences(VDCapturePreferences& prefs);
+void VDCaptureSavePreferences(const VDCapturePreferences& prefs);
+
 #endif

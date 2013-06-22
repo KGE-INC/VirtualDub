@@ -1,7 +1,57 @@
 VirtualDub change log
 
-Build %build% (1.6.11, stable): [%date%]
-   [features fixed]
+Build %build% (1.6.12, experimental): [%date%]
+   [features added]
+   * Performance settings are now auto-saved.
+   * Cropping dialogs now auto-scale video that is too large to display and use a dashed crop border for better visibility.
+   * Added /cmd flag to quickly invoke a script command from the command-line.
+   * There is now an option to avoid tearing in the video display panes.
+   * Script: Added VirtualDub.Exit(int) command to end the program with a specific error code.
+   * Script: Added VirtualDub.subset.length property for current length of subset in frames (timeline).
+   * Script: Added VirtualDub.video.length property for current length of source video in frames.
+   * Capture: The list of statistics displayed in the info panel has been expanded and can be filtered from the Preferences dialog.
+   * Capture: Modified option to adjust video timing based on drift from ideal stream timing rather than real-time.
+   * Capture: Reworked video timing interpolation to be less sensitive to discontinuities in the system timer.
+   * Capture: "Autoincrement filename" option now automatically skips over existing files as well.
+   * Capture: Added timing graph to visualize behavior of resync engine.
+   * Capture: Timing logs, if enabled, are automatically saved at the end of capture.
+   * Capture: Increased precision of frame period selection from 1us to 100ns to reduce frame dropping at device level when using DirectShow drivers.
+   * Capture: Capture from DV sources to type-2 DV AVI using the DirectShow DV driver is now supported.
+   * Capture: Backspace now works when entering channel numbers.
+
+   [bugs fixed]
+   * Increased precision of processing fps estimate.
+   * "Space" is no longer listed as an accelerator for "abort dub" since it doesn't work as such when rendering to disk. It still works for preview.
+   * Fixed job control re-enabling itself if a menu command is chosen while a job is running, leading to possible reentrancy crashes.
+   * Clearing the current job list or loading a new one while a job was in progress led to a crash.
+   * Invalid MPEG-1 layer II frame headers display a slightly less confusing error than "internal error."
+   * Renamed "use internal MJPEG decoder" in AVI extended open options to "use internal decoders," since it happened to force the internal DV decoder too. Added a sticky option in Preferences for this.
+   * Filters were receiving inconsistent output frame numbers when using input preview or saving with a starting offset.
+   * Fixed crash when crop rectangle reduced filter input to smaller than 1x1.
+   * Fixed crash when using deinterlace filter in "duplicate field 2" mode.
+   * Fixed broken cropping in some modes of deinterlace filter.
+   * Manually stopping a save operation will now also stop a running script, and cause a command-line task to return with an error code.
+   * CLI tool didn't work properly when path to vdub.exe/vdub64.exe contained spaces.
+   * Removed some hard-coded limits on frame rates in the Frame Rate dialog box.
+   * Fixed minor memory leak when plugins fail to load.
+   * Fixed a case where an I/O error on the output AVI file could cause a hang instead of an error to be displayed.
+   * MPEG-1: Fixed yet another rare frame decoding error when seeking randomly in the timeline.
+   * MPEG-1: Fixed crash when opening file with all CPU optimizations forced on.
+   * D3DFX: vd_tvpcorrect, vd_t2vpcorrect, vd_tvpcorrect2, and vd_t2vpcorrect2 constants were computed with U and V sizes swapped.
+   * Capture: VFW devices sometimes didn't display overlay properly with full-height frame sizes and consumed additional CPU due to the preview hook being left enabled.
+   * Capture: The Video File (emulation) test capture driver is no longer a candidate for being saved as the driver to auto-start the next time capture mode is entered.
+   * Capture: Unicode filenames are now displayed properly in the title bar.
+   * Capture: Fixed 0.03%% sync error when using NTSC frame rates.
+   * Capture: Fixed random crash when modifying filter parameters with a WDM capture driver active in accelerated preview mode.
+   * Capture: Fixed keyboard focus on startup so that entering channel numbers works again.
+   * Capture: Fixed instability on reporting errors when audio resampler is enabled.
+   * (AMD64 only) Fixed crash when opening a Motion JPEG file with no MJPEG codec installed. Note that the internal MJPEG codec still isn't implemented for this platform.
+
+   [regressions fixed]
+   * Capture: Fixed normal errors sometimes being reported as internal errors.
+
+Build 23774 (1.6.11, stable): [October 2, 2005]
+   [features added]
    * Added support for using D3D .fx files for hardware-assisted display. This requires d3dx_25.dll (DirectX 9.0c April 2005) to work.
    * Added keyboard shortcuts for scene forward/backward.
 

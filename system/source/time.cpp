@@ -61,6 +61,10 @@ double VDGetPreciseSecondsPerTick() {
 	return secondsPerTick;
 }
 
+uint32 VDGetAccurateTick() {
+	return timeGetTime();
+}
+
 VDCallbackTimer::VDCallbackTimer()
 	: mTimerID(NULL)
 	, mTimerPeriod(0)
@@ -95,10 +99,23 @@ bool VDCallbackTimer::Init(IVDTimerCallback *pCB, int period_ms) {
 	if (mpExitSucceeded) {
 		UINT accuracy = period_ms / 2;
 
+		TIMECAPS tc;
+		if (TIMERR_NOERROR == timeGetDevCaps(&tc, sizeof tc)) {
+			if (accuracy < tc.wPeriodMin)
+				accuracy = tc.wPeriodMin;
+			if (accuracy > tc.wPeriodMax)
+				accuracy = tc.wPeriodMax;
+
+			if (period_ms < tc.wPeriodMin)
+				period_ms = tc.wPeriodMin;
+			if (period_ms > tc.wPeriodMax)
+				period_ms = tc.wPeriodMax;
+		}
+
 		if (TIMERR_NOERROR == timeBeginPeriod(accuracy)) {
 			mTimerPeriod = accuracy;
 
-			mTimerID = timeSetEvent(period_ms, period_ms, StaticTimerCallback, (DWORD_PTR)this, TIME_CALLBACK_FUNCTION | TIME_PERIODIC);
+			mTimerID = timeSetEvent(period_ms, 0, StaticTimerCallback, (DWORD_PTR)this, TIME_CALLBACK_FUNCTION | TIME_PERIODIC);
 
 			return mTimerID != 0;
 		}

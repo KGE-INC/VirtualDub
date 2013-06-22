@@ -92,6 +92,8 @@ extern void FreeCompressor(COMPVARS *pCompVars);
 
 IVDCaptureSystem *VDCreateCaptureSystemEmulation();
 
+IVDCaptureProfiler *g_pCaptureProfiler;		// a bit of a cheat for now
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	structs
@@ -112,7 +114,7 @@ public:
 
 	void CapBegin(sint64 global_clock);
 	void CapEnd(const MyError *pError);
-	bool CapEvent(DriverEvent event);
+	bool CapEvent(DriverEvent event, int data);
 	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 
 protected:
@@ -128,6 +130,7 @@ protected:
 
 	// audio sampling rate estimation
 	VDCaptureAudioRateEstimator	mAudioRateEstimator;
+	VDCaptureAudioRateEstimator	mAudioRelativeRateEstimator;
 
 	VDCriticalSection	mcsLock;
 };
@@ -159,6 +162,10 @@ void VDCaptureStatsFilter::GetStats(VDCaptureStatus& status) {
 		status.mActualAudioHz = 0;
 		if (mAudioRateEstimator.GetSlope(slope))
 			status.mActualAudioHz = slope * mAudioSamplesPerByteX1000;
+
+		status.mRelativeAudioHz = 0;
+		if (mAudioRelativeRateEstimator.GetSlope(slope))
+			status.mRelativeAudioHz = slope * mAudioSamplesPerByteX1000;
 	}
 }
 
@@ -172,6 +179,7 @@ void VDCaptureStatsFilter::CapBegin(sint64 global_clock) {
 	mTotalAudioDataSize		= 0;
 
 	mAudioRateEstimator.Reset();
+	mAudioRelativeRateEstimator.Reset();
 
 	if (mpCB)
 		mpCB->CapBegin(global_clock);
@@ -182,9 +190,9 @@ void VDCaptureStatsFilter::CapEnd(const MyError *pError) {
 		mpCB->CapEnd(pError);
 }
 
-bool VDCaptureStatsFilter::CapEvent(DriverEvent event) {
+bool VDCaptureStatsFilter::CapEvent(DriverEvent event, int data) {
 	if (mpCB)
-		return mpCB->CapEvent(event);
+		return mpCB->CapEvent(event, data);
 
 	return true;
 }
@@ -210,6 +218,9 @@ void VDCaptureStatsFilter::CapProcessData(int stream, const void *data, uint32 s
 
 			mTotalAudioDataSize += size;
 			mAudioRateEstimator.AddSample(dwTime, mTotalAudioDataSize);
+
+			if (mVideoFramesCaptured)
+				mAudioRelativeRateEstimator.AddSample(mVideoLastCapTime, mTotalAudioDataSize);
 		}
 	}
 
@@ -229,10 +240,13 @@ public:
 	sint64		mDiskFreeBytes;
 	long		mTotalFramesCaptured;
 	uint32		mFramesDropped;
+	uint32		mFramesInserted;
 	uint32		mFramePeriod;
 	uint64		mLastUpdateTime;
 	long		mLastTime;
 	int			mSegmentIndex;
+	int			mVideoSegmentIndex;
+	int			mAudioSegmentIndex;
 
 	vdautoptr<VideoSequenceCompressor> mpVideoCompressor;
 	IVDMediaOutput			*volatile mpOutput;
@@ -241,7 +255,6 @@ public:
 	IVDMediaOutputStream	*volatile mpVideoOut;
 	IVDMediaOutputStream	*volatile mpAudioOut;
 	int				mAudioSampleSize;
-	uint32			mLastCapturedFrame;
 	vdautoptr<MyError>		mpError;
 	VDAtomicPtr<MyError>	mpSpillError;
 	const wchar_t	*mpszFilename;
@@ -261,6 +274,8 @@ public:
 	VDCaptureStatsFilter	*mpStatsFilter;
 	IVDCaptureResyncFilter	*mpResyncFilter;
 	IVDCaptureAudioCompFilter *mpAudioCompFilter;
+
+	int				mStatsChannelVTJitter;
 
 	VDCaptureTimingSetup	mTimingSetup;
 
@@ -288,6 +303,8 @@ public:
 
 	bool VideoCallback(const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 	bool WaveCallback(const void *data, uint32 size, sint64 global_clock);
+	void OnFramesDropped(int framesDropped);
+	void OnFramesInserted(int framesInserted);
 protected:
 	void ThreadRun();
 	void CreateNewFile();
@@ -306,10 +323,13 @@ VDCaptureData::VDCaptureData()
 	, mDiskFreeBytes(0)
 	, mTotalFramesCaptured(0)
 	, mFramesDropped(0)
+	, mFramesInserted(0)
 	, mFramePeriod(0)
 	, mLastUpdateTime(0)
 	, mLastTime(0)
 	, mSegmentIndex(0)
+	, mVideoSegmentIndex(0)
+	, mAudioSegmentIndex(0)
 	, mpVideoCompressor(NULL)
 	, mpOutput(NULL)
 	, mpOutputFile(NULL)
@@ -317,7 +337,6 @@ VDCaptureData::VDCaptureData()
 	, mpVideoOut(NULL)
 	, mpAudioOut(NULL)
 	, mAudioSampleSize(0)
-	, mLastCapturedFrame(0)
 	, mpError(NULL)
 	, mpSpillError(NULL)
 	, mpszFilename(NULL)
@@ -344,46 +363,40 @@ VDCaptureData::~VDCaptureData() {
 	delete mpSpillError;
 }
 
-#if 0
-extern LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc);
+extern LONG __stdcall CrashHandler(struct _EXCEPTION_POINTERS *ExceptionInfo, bool allowForcedExit);
+
 #define CAPINT_FATAL_CATCH_START	\
 		__try {
 
 #define CAPINT_FATAL_CATCH_END(msg)	\
-		} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info()), 1) {		\
-		}
-#else
-#define CAPINT_FATAL_CATCH_START	\
-		__try {
-
-#define CAPINT_FATAL_CATCH_END(msg)	\
-		} __except(VDCaptureIsCatchableException(GetExceptionCode())) {		\
-			CaptureInternalHandleException(icd, msg, GetExceptionCode());				\
+		} __except(((EXCEPTION_POINTERS *)_exception_info())->ExceptionRecord->ExceptionCode == 0xe06d7363		\
+				? false																							\
+				: CrashHandler((EXCEPTION_POINTERS *)_exception_info(), false)) {		\
+			icd->mpError = new MyUserAbortError();				\
+			mpDriver->CaptureAbort();		\
 		}
 
-static void CaptureInternalHandleException(VDCaptureData *icd, char *op, DWORD ec) {
-	if (!icd->mpError) {
-		char *s;
-
-		switch(ec) {
-		case EXCEPTION_ACCESS_VIOLATION:
-			s = "Access Violation";
-			break;
-		case EXCEPTION_PRIV_INSTRUCTION:
-			s = "Privileged Instruction";
-			break;
-		case EXCEPTION_INT_DIVIDE_BY_ZERO:
-			s = "Integer Divide By Zero";
-			break;
-		case EXCEPTION_BREAKPOINT:
-			s = "User Breakpoint";
-			break;
+namespace
+{
+	class VDCaptureTimingAccuracyBooster {
+	public:
+		VDCaptureTimingAccuracyBooster()
+			: mPeriod(0)
+		{
+			TIMECAPS tc;
+			if (TIMERR_NOERROR == timeGetDevCaps(&tc, sizeof tc) && TIMERR_NOERROR == timeBeginPeriod(tc.wPeriodMin))
+				mPeriod = tc.wPeriodMin;
 		}
 
-		icd->mpError = new MyError("Internal program error during %s handling: %s.", op, s);
-	}
+		~VDCaptureTimingAccuracyBooster() {
+			if (mPeriod)
+				timeEndPeriod(mPeriod);
+		}
+
+	protected:
+		int mPeriod;
+	};
 }
-#endif
 
 //////////////////////////////////////////////////////////////////////
 
@@ -571,6 +584,7 @@ public:
 
 	void	IncrementFileID();
 	void	DecrementFileID();
+	void	IncrementFileIDUntilClear();
 
 	void	ScanForDrivers();
 	int		GetDriverCount();
@@ -599,7 +613,7 @@ protected:
 
 	void	CapBegin(sint64 global_clock);
 	void	CapEnd(const MyError *pError);
-	bool	CapEvent(DriverEvent event);
+	bool	CapEvent(DriverEvent event, int data);
 	void	CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
 protected:
 
@@ -697,6 +711,12 @@ VDCaptureProject::VDCaptureProject()
 	mTimingSetup.mbCorrectVideoTiming	= false;
 	mTimingSetup.mbResyncWithIntegratedAudio	= true;
 	mTimingSetup.mInsertLimit			= 10;
+
+	mTimingSetup.mbUseFixedAudioLatency	= false;
+	mTimingSetup.mAudioLatency			= 0;
+
+	mTimingSetup.mbUseLimitedAutoAudioLatency	= false;
+	mTimingSetup.mAutoAudioLatencyLimit	= 30;
 
 	mFilterSetup.mCropRect.clear();
 	mFilterSetup.mVertSquashMode		= IVDCaptureFilterSystem::kFilterDisable;
@@ -896,7 +916,7 @@ void VDCaptureProject::SetFrameTime(sint32 lFrameTime) {
 
 sint32 VDCaptureProject::GetFrameTime() {
 	if (!VDINLINEASSERT(mpDriver))
-		return 1000000/15;
+		return 10000000/15;
 
 	return mpDriver->GetFramePeriod();
 }
@@ -1386,6 +1406,11 @@ void VDCaptureProject::IncrementFileID() {
 		mpCB->UICaptureFileUpdated();
 }
 
+void VDCaptureProject::IncrementFileIDUntilClear() {
+	while(VDDoesPathExist(mFilename.c_str()))
+		IncrementFileID();
+}
+
 void VDCaptureProject::ScanForDrivers() {
 	tSystems::const_iterator itSys(mSystems.begin()), itSysEnd(mSystems.end());
 	int systemID = 0;
@@ -1583,12 +1608,32 @@ void VDCaptureProject::Capture(bool fTest) {
 		vdstructex<WAVEFORMATEX> wfexInput;
 		vdstructex<WAVEFORMATEX>& wfexOutput = mAudioCompFormat.empty() ? wfexInput : mAudioCompFormat;
 
-		pResyncFilter->SetVideoRate(1000000.0 / mpDriver->GetFramePeriod());
-		pResyncFilter->EnableVideoTimingCorrection(mTimingSetup.mbCorrectVideoTiming);
+		uint32 period = mpDriver->GetFramePeriod();
+		if ((period|1) == 333667)
+			pResyncFilter->SetVideoRate(30000.0 / 1001.0);
+		else
+			pResyncFilter->SetVideoRate(10000000.0 / mpDriver->GetFramePeriod());
+		pResyncFilter->EnableVideoDrops(mTimingSetup.mbAllowEarlyDrops);
+		pResyncFilter->EnableVideoInserts(mTimingSetup.mbAllowLateInserts);
+		pResyncFilter->SetVideoInsertLimit(mTimingSetup.mInsertLimit);
+
+		if (mTimingSetup.mbUseFixedAudioLatency)
+			pResyncFilter->SetFixedAudioLatency(mTimingSetup.mAudioLatency);
+		else if (mTimingSetup.mbUseLimitedAutoAudioLatency)
+			pResyncFilter->SetLimitedAutoAudioLatency(mTimingSetup.mAutoAudioLatencyLimit);
+		else
+			pResyncFilter->SetAutoAudioLatency();
+
+		if (g_pCaptureProfiler) {
+			g_pCaptureProfiler->Clear();
+			pResyncFilter->SetProfiler(g_pCaptureProfiler);
+		}
+
+		bool useVideoTimingCorrection = mTimingSetup.mbCorrectVideoTiming;
 
 		if (bCaptureAudio) {
 			if (!GetAudioFormat(wfexInput)) {
-#pragma vdpragma_TODO("Should probably give user feedback when audio capture isn't available.");
+#pragma vdpragma_TODO("Should probably give user feedback when audio capture isn't available.")
 				bCaptureAudio = false;
 			} else {
 				pResyncFilter->SetAudioRate(wfexInput->nAvgBytesPerSec);
@@ -1616,13 +1661,18 @@ void VDCaptureProject::Capture(bool fTest) {
 					case VDCaptureTimingSetup::kSyncVideoToAudio:
 unknown_PCM_format:
 						pResyncFilter->SetResyncMode(IVDCaptureResyncFilter::kModeResampleVideo);
+						useVideoTimingCorrection = false;
 						break;
 					}
+				} else {
+					useVideoTimingCorrection = false;
 				}
 			}
 		} else {
 			pResyncFilter->SetAudioChannels(0);
 		}
+
+		pResyncFilter->EnableVideoTimingCorrection(useVideoTimingCorrection);
 
 		// initialize video
 		vdstructex<BITMAPINFOHEADER> bmiInput;
@@ -1684,6 +1734,9 @@ unknown_PCM_format:
 
 		// set up output file headers and formats
 
+		icd.mFramePeriod	= GetFrameTime();
+		icd.mbNTSC			= ((icd.mFramePeriod|1) == 333667);
+
 		if (!fTest) {
 			// setup stream headers
 
@@ -1691,8 +1744,15 @@ unknown_PCM_format:
 
 			vstrhdr.fccType					= streamtypeVIDEO;
 			vstrhdr.fccHandler				= bmiToFile->biCompression;
+
 			vstrhdr.dwScale					= GetFrameTime();
-			vstrhdr.dwRate					= 1000000;
+			vstrhdr.dwRate					= 10000000;
+
+			if (icd.mbNTSC) {
+				vstrhdr.dwScale = 1001;
+				vstrhdr.dwRate = 30000;
+			}
+
 			vstrhdr.dwSuggestedBufferSize	= 0;
 			vstrhdr.dwQuality				= g_compression.hic ? g_compression.lQ : (unsigned long)-1;
 			vstrhdr.rcFrame.left			= 0;
@@ -1726,9 +1786,6 @@ unknown_PCM_format:
 		icd.mCaptureRoot	= VDFileSplitPathLeft(mFilename);
 		icd.mpszPath		= icd.mCaptureRoot.c_str();
 
-		icd.mbNTSC			= ((GetFrameTime()|1) == 33367);
-		icd.mFramePeriod	= GetFrameTime();
-
 		// set up resynchronizer and stats filter
 
 		if (bCaptureAudio && !mAudioCompFormat.empty()) {
@@ -1759,6 +1816,11 @@ unknown_PCM_format:
 
 		icd.mpStatsFilter	= &statsFilt;
 		icd.mpResyncFilter	= pResyncFilter;
+
+		icd.mStatsChannelVTJitter = -1;
+		if (g_pCaptureProfiler)
+			icd.mStatsChannelVTJitter = g_pCaptureProfiler->RegisterStatsChannel("Video time jitter");
+
 
 		// initialize the file
 		//
@@ -1808,28 +1870,32 @@ unknown_PCM_format:
 		if (mpCB)
 			mpCB->UICaptureStart();
 
-		if (mpDriver->CaptureStart()) {
-			VDSamplingAutoProfileScope autoVTProfile;
+		{
+			VDCaptureTimingAccuracyBooster timingBooster;
 
-			MSG msg;
+			if (mpDriver->CaptureStart()) {
+				VDSamplingAutoProfileScope autoVTProfile;
 
-			for(;;) {
-				BOOL result = GetMessage(&msg, NULL, 0, 0);
+				MSG msg;
 
-				if (result == (BOOL)-1)
-					break;
+				for(;;) {
+					BOOL result = GetMessage(&msg, NULL, 0, 0);
 
-				if (!result) {
-					PostQuitMessage(msg.wParam);
-					break;
-				}
+					if (result == (BOOL)-1)
+						break;
 
-				if (!msg.hwnd && msg.message == WM_APP+100)
-					break;
+					if (!result) {
+						PostQuitMessage(msg.wParam);
+						break;
+					}
 
-				if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
-					TranslateMessage(&msg);
-					DispatchMessage(&msg);
+					if (!msg.hwnd && msg.message == WM_APP+100)
+						break;
+
+					if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
+						TranslateMessage(&msg);
+						DispatchMessage(&msg);
+					}
 				}
 			}
 		}
@@ -1959,7 +2025,7 @@ void VDCaptureProject::CapEnd(const MyError *pError) {
 	PostThreadMessage(mMainThreadId, WM_APP+100, 0, 0);
 }
 
-bool VDCaptureProject::CapEvent(DriverEvent event) {
+bool VDCaptureProject::CapEvent(DriverEvent event, int data) {
 	switch(event) {
 	case kEventPreroll:
 		if (mpCB && !mpCB->UICapturePreroll())
@@ -1984,7 +2050,7 @@ bool VDCaptureProject::CapEvent(DriverEvent event) {
 					return false;
 
 			if (mStopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
-				if (cd->mTotalFramesCaptured > 50 && cd->mFramesDropped*100 > mStopPrefs.lMaxDropRate*cd->mTotalFramesCaptured)
+				if (cd->mTotalFramesCaptured > 50 && (cd->mFramesDropped + cd->mFramesInserted)*100 > mStopPrefs.lMaxDropRate*cd->mTotalFramesCaptured)
 					return false;
 		}
 		break;
@@ -2002,6 +2068,16 @@ bool VDCaptureProject::CapEvent(DriverEvent event) {
 		if (mDisplayMode == kDisplayAnalyze)
 			InitVideoAnalysis();
 		break;
+
+	case kEventVideoFramesDropped:
+		if (mpCaptureData)
+			mpCaptureData->OnFramesDropped(data);
+		break;
+
+	case kEventVideoFramesInserted:
+		if (mpCaptureData)
+			mpCaptureData->OnFramesInserted(data);
+		break;
 	}
 
 	return true;
@@ -2016,9 +2092,11 @@ void VDCaptureProject::CapProcessData(int stream, const void *data, uint32 size,
 				++mVideoFilterLock;
 					if (mpFilterSys)
 						mpFilterSys->Run(px);
-				--mVideoFilterLock;
 
-				DispatchAnalysis(px);
+					// Must do this under lock so that a filter target bitmap is not deleted while
+					// display is happening.
+					DispatchAnalysis(px);
+				--mVideoFilterLock;
 			} else {
 				if (mAudioAnalysisFormat.wFormatTag == WAVE_FORMAT_PCM) {
 					float l=0, r=0;
@@ -2588,7 +2666,7 @@ void VDCaptureData::DoSpill() {
 		if (mbNTSC)
 			nAudioFromVideo = int64divround(mVideoBlocks * 1001i64 * mwfex.nAvgBytesPerSec, mAudioSampleSize * 30000i64);
 		else
-			nAudioFromVideo = int64divround(mVideoBlocks * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 1000000i64);
+			nAudioFromVideo = int64divround(mVideoBlocks * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 10000000i64);
 
 		if (nAudioFromVideo < mAudioBlocks) {
 
@@ -2599,8 +2677,8 @@ void VDCaptureData::DoSpill() {
 				nVideoFromAudio = int64divroundup(mAudioBlocks * mAudioSampleSize * 30000i64, mwfex.nAvgBytesPerSec * 1001i64);
 				nAudioFromVideo = int64divround(nVideoFromAudio * 1001i64 * mwfex.nAvgBytesPerSec, mAudioSampleSize * 30000i64);
 			} else {
-				nVideoFromAudio = int64divroundup(mAudioBlocks * mAudioSampleSize * 1000000i64, mwfex.nAvgBytesPerSec * (__int64)mFramePeriod);
-				nAudioFromVideo = int64divround(nVideoFromAudio * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 1000000i64);
+				nVideoFromAudio = int64divroundup(mAudioBlocks * mAudioSampleSize * 10000000i64, mwfex.nAvgBytesPerSec * (__int64)mFramePeriod);
+				nAudioFromVideo = int64divround(nVideoFromAudio * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 10000000i64);
 			}
 
 			mVideoSwitchPt = nVideoFromAudio;
@@ -2621,6 +2699,7 @@ void VDCaptureData::DoSpill() {
 
 			mSegmentVideoSize = 0;
 			mpVideoOut = mpOutputFilePending->getVideoOutput();
+			++mVideoSegmentIndex;
 
 			return;
 
@@ -2635,6 +2714,8 @@ void VDCaptureData::DoSpill() {
 	mpVideoOut = pOutputPending->getVideoOutput();
 	mpAudioOut = pOutputPending->getAudioOutput();
 	mSegmentAudioSize = mSegmentVideoSize = 0;
+	++mVideoSegmentIndex;
+	++mAudioSegmentIndex;
 
 	PostFinalizeRequest();
 }
@@ -2645,6 +2726,7 @@ void VDCaptureData::CheckVideoAfter() {
 	if (mVideoSwitchPt && mVideoBlocks == mVideoSwitchPt) {
 
 		mpVideoOut = mpOutputFilePending->getVideoOutput();
+		++mVideoSegmentIndex;
 
 		if (!mAudioSwitchPt) {
 			PostFinalizeRequest();
@@ -2687,112 +2769,88 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 		timestamp64 = 0;
 	}
 
+	uint32 microFrame;		// 1/64th frames
 	uint32 dwCurrentFrame;
-	if (mbNTSC)
-		dwCurrentFrame = (DWORD)((timestamp64 * 30 + 500000) / 1001000);
-	else
-		dwCurrentFrame = (DWORD)((timestamp64 + mFramePeriod/2) / mFramePeriod);
-
-	long jitter = (long)(timestamp64 % mFramePeriod);
-
-	if (jitter >= mFramePeriod/2)
-		jitter -= mFramePeriod;
+	long jitter;
+	if (mbNTSC) {
+		microFrame = (uint32)((timestamp64 * 3 * 64) / 100100);
+		dwCurrentFrame = (microFrame + 32) >> 6;
+		jitter = (long)(timestamp64 - (sint64)((sint64)dwCurrentFrame * 100100 / 3));
+	} else {
+		microFrame = (uint32)((timestamp64 * 640) / mFramePeriod);
+		dwCurrentFrame = (microFrame + 32) >> 6;
+		jitter = (long)(timestamp64 - ((sint64)dwCurrentFrame * mFramePeriod + 5) / 10);
+	}
 
 	mTotalDisp += abs(jitter);
 	mTotalJitter += jitter;
+
+	if (g_pCaptureProfiler)
+		g_pCaptureProfiler->AddDataPoint(mStatsChannelVTJitter, (float)jitter / (float)mFramePeriod * 0.2f);
 
 	++mTotalFramesCaptured;
 
 	mLastTime = (uint32)(global_clock / 1000);
 
-	// Is the frame too early?
+	// Run the frame through the filterer.
 
-	if (mTimingSetup.mbAllowEarlyDrops && mLastCapturedFrame > dwCurrentFrame+1) {
-		++mFramesDropped;
-		VDDEBUG("Dropping early frame at %ld ms\n", (long)(timestamp64 / 1000));
-	} else {
-		// Run the frame through the filterer.
+	uint32 dwBytesUsed = size;
+	void *pFilteredData = (void *)data;
 
-		uint32 dwBytesUsed = size;
-		void *pFilteredData = (void *)data;
+	VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
 
-		VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
-
-		// We don't need to lock here as it is illegal to change the filter
-		// mode while capture is running.
-		if (mpFilterSys) {
-			vdsynchronized(mpProject->mVideoFilterLock) {
-				mVideoProfileChannel.Begin(0x008000, "V-Filter");
-				mpFilterSys->Run(px);
-				mVideoProfileChannel.End();
-				pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
-				dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
-			}
+	// We don't need to lock here as it is illegal to change the filter
+	// mode while capture is running.
+	if (mpFilterSys) {
+		vdsynchronized(mpProject->mVideoFilterLock) {
+			mVideoProfileChannel.Begin(0x008000, "V-Filter");
+			mpFilterSys->Run(px);
+			mVideoProfileChannel.End();
+			pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
+			dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
 		}
+	}
 
-		mpProject->DispatchAnalysis(px);
+	mpProject->DispatchAnalysis(px);
 
-		// While we are early, write dropped frames (grr)
-		//
-		// Don't do this for the first frame, since we don't
-		// have any frames preceding it!
+	// While we are early, write padding frames (grr)
+	//
+	// Don't do this for the first frame, since we don't
+	// have any frames preceding it!
 
-		if (mTimingSetup.mbAllowLateInserts && mTotalFramesCaptured > 1) {
-			int dropsleft = mTimingSetup.mInsertLimit;
+	if (mpVideoCompressor) {
+		bool isKey;
+		long lBytes = 0;
+		void *lpCompressedData;
 
-			while(mLastCapturedFrame < dwCurrentFrame && dropsleft--) {
-				if (mpOutputFile)
-					mpVideoOut->write(0, pFilteredData, 0, 1);
+		mVideoProfileChannel.Begin(0x80c080, "V-Compress");
+		lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
+		mVideoProfileChannel.End();
 
-				++mLastCapturedFrame;
-				++mFramesDropped;
-				VDDEBUG("Late frame detected at %ld ms\n", (long)(timestamp64 / 1000));
-				mTotalVideoSize += 24;
-				mSegmentVideoSize += 24;
-
-				if (mpVideoCompressor)
-					mpVideoCompressor->dropFrame();
-
-				if (mpOutputFile)
-					CheckVideoAfter();
-			}
-		}
-
-		if (mpVideoCompressor) {
-			bool isKey;
-			long lBytes = 0;
-			void *lpCompressedData;
-
-			mVideoProfileChannel.Begin(0x80c080, "V-Compress");
-			lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
+		if (mpOutputFile) {
+			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
+			mpVideoOut->write(
+					isKey ? AVIIF_KEYFRAME : 0,
+					lpCompressedData,
+					lBytes, 1);
 			mVideoProfileChannel.End();
 
-			if (mpOutputFile) {
-				mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
-				mpVideoOut->write(
-						isKey ? AVIIF_KEYFRAME : 0,
-						lpCompressedData,
-						lBytes, 1);
-				mVideoProfileChannel.End();
-
-				CheckVideoAfter();
-			}
-
-			mLastVideoSize = lBytes + 24;
-		} else {
-			if (mpOutputFile) {
-				mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
-				mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
-				mVideoProfileChannel.End();
-				CheckVideoAfter();
-			}
-
-			mLastVideoSize = dwBytesUsed + 24;
+			CheckVideoAfter();
 		}
 
-		++mLastCapturedFrame;
-		mSegmentVideoSize += mLastVideoSize;
+		mLastVideoSize = lBytes + 24;
+	} else {
+		if (mpOutputFile) {
+			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
+			mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
+			mVideoProfileChannel.End();
+			CheckVideoAfter();
+		}
+
+		mLastVideoSize = dwBytesUsed + 24;
 	}
+
+	mSegmentVideoSize += mLastVideoSize;
 
 	if (global_clock - mLastUpdateTime > 500000)
 	{
@@ -2820,11 +2878,15 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 
 		status.mFramesCaptured	= mTotalFramesCaptured;
 		status.mFramesDropped	= mFramesDropped;
+		status.mFramesInserted	= mFramesInserted;
 		status.mTotalJitter		= mTotalJitter;
 		status.mTotalDisp		= mTotalDisp;
 		status.mTotalVideoSize	= mTotalVideoSize;
 		status.mTotalAudioSize	= mTotalAudioSize;
-		status.mCurrentSegment	= mSegmentIndex;
+
+		status.mCurrentVideoSegment	= mVideoSegmentIndex;
+		status.mCurrentAudioSegment	= mAudioSegmentIndex;
+
 		status.mElapsedTimeMS	= (uint32)(global_clock / 1000);
 		status.mDiskFreeSpace	= mDiskFreeBytes;
 
@@ -2838,19 +2900,21 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 		if (mpStatsFilter)
 			mpStatsFilter->GetStats(status);
 
-		status.mVideoRateScale		= 1.0f;
+		status.mVideoResamplingRate	= 1.0f;
 		status.mVideoTimingAdjustMS = 0;
 		status.mAudioResamplingRate	= 0;
-		status.mAudioLatency		= 0;
+		status.mAudioRelativeLatency= 0;
+		status.mAudioCurrentLatency	= 0;
 		if (mpResyncFilter) {
 			VDCaptureResyncStatus rstat;
 
 			mpResyncFilter->GetStatus(rstat);
 
-			status.mVideoRateScale		= rstat.mVideoRateScale;
 			status.mVideoTimingAdjustMS = rstat.mVideoTimingAdjust;
+			status.mVideoResamplingRate	= rstat.mVideoResamplingRate;
 			status.mAudioResamplingRate = rstat.mAudioResamplingRate;
-			status.mAudioLatency		= rstat.mCurrentLatency;
+			status.mAudioCurrentLatency	= rstat.mCurrentLatency;
+			status.mAudioRelativeLatency= rstat.mMeasuredLatency;
 		}
 
 		if (mpProject->mpCB)
@@ -2904,6 +2968,7 @@ bool VDCaptureData::WaveCallback(const void *data, uint32 size, sint64 global_cl
 
 					mAudioSwitchPt = 0;
 					mSegmentAudioSize = 0;
+					++mAudioSegmentIndex;
 				}
 
 				left -= tc;
@@ -2922,4 +2987,29 @@ bool VDCaptureData::WaveCallback(const void *data, uint32 size, sint64 global_cl
 	}
 
 	return true;
+}
+
+void VDCaptureData::OnFramesDropped(int framesDropped) {
+	VDCriticalSection::AutoLock lock(mCallbackLock);
+
+	mFramesDropped += framesDropped;
+}
+
+void VDCaptureData::OnFramesInserted(int framesInserted) {
+	VDCriticalSection::AutoLock lock(mCallbackLock);
+
+	mFramesInserted += framesInserted;
+	mTotalVideoSize += 24 * framesInserted;
+	mSegmentVideoSize += 24 * framesInserted;
+
+	while(framesInserted-->0) {
+		if (mpOutputFile)
+			mpVideoOut->write(0, "", 0, 1);
+
+		if (mpVideoCompressor)
+			mpVideoCompressor->dropFrame();
+
+		if (mpOutputFile)
+			CheckVideoAfter();
+	}
 }

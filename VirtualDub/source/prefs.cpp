@@ -43,10 +43,16 @@ namespace {
 		bool			mbAllowDirectYCbCrDecoding;
 		bool			mbConfirmRenderAbort;
 		bool			mbEnableAVIAlignmentThreshold;
+		bool			mbPreferInternalDecoders;
 		uint32			mAVIAlignmentThreshold;
+		uint32			mRenderOutputBufferSize;
+		uint32			mRenderWaveBufferSize;
+		uint32			mRenderVideoBufferCount;
 		VDStringW		mD3DFXFile;
 	} g_prefs2;
 }
+
+void VDSavePreferences(VDPreferences2& prefs);
 
 Preferences g_prefs={
 	{ 0, PreferencesMain::DEPTH_FASTEST, 0, TRUE, 0 },
@@ -74,10 +80,10 @@ public:
 			return true;
 		case kEventSync:
 		case kEventDetach:
-			mPrefs.mOldPrefs.main.iPreviewDepth		= GetValue(100);
-			mPrefs.mOldPrefs.main.iPreviewPriority	= GetValue(101);
-			mPrefs.mOldPrefs.main.iDubPriority		= GetValue(102);
-			mPrefs.mOldPrefs.main.fAttachExtension	= GetValue(103);
+			mPrefs.mOldPrefs.main.iPreviewDepth		= (char)GetValue(100);
+			mPrefs.mOldPrefs.main.iPreviewPriority	= (char)GetValue(101);
+			mPrefs.mOldPrefs.main.iDubPriority		= (char)GetValue(102);
+			mPrefs.mOldPrefs.main.fAttachExtension	= (char)GetValue(103);
 			return true;
 		}
 		return false;
@@ -99,6 +105,7 @@ public:
 			SetValue(103, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3D));
 			SetValue(104, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableOpenGL));
 			SetValue(105, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3DFX));
+			SetValue(106, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableVSync));
 			SetCaption(300, mPrefs.mD3DFXFile);
 			pBase->ExecuteAllLinks();
 			return true;
@@ -111,6 +118,7 @@ public:
 			if ( GetValue(103)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3D;
 			if ( GetValue(104)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableOpenGL;
 			if ( GetValue(105)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableD3DFX;
+			if ( GetValue(106)) mPrefs.mOldPrefs.fDisplay |= Preferences::kDisplayEnableVSync;
 			mPrefs.mD3DFXFile = GetCaption(300);
 			return true;
 		}
@@ -234,6 +242,7 @@ public:
 				int v = mPrefs.mAVIAlignmentThreshold;
 				SetCaption(200, VDswprintf(L"%u", 1, &v));
 			}
+			SetValue(104, mPrefs.mbPreferInternalDecoders);
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventDetach:
@@ -243,6 +252,7 @@ public:
 			mPrefs.mbAllowDirectYCbCrDecoding = 0!=GetValue(102);
 			if (mPrefs.mbEnableAVIAlignmentThreshold = (0 != GetValue(103)))
 				mPrefs.mAVIAlignmentThreshold = (uint32)wcstoul(GetCaption(200).c_str(), 0, 10);
+			mPrefs.mbPreferInternalDecoders = 0!=GetValue(104);
 			return true;
 		}
 		return false;
@@ -328,14 +338,7 @@ public:
 				if (pSubDialog)
 					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);
 
-				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs.mOldPrefs, sizeof mPrefs.mOldPrefs);
-
-				VDRegistryAppKey key("Preferences");
-				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
-				key.setBool("Allow direct YCbCr decoding", mPrefs.mbAllowDirectYCbCrDecoding);
-				key.setBool("AVI: Alignment threshold enable", mPrefs.mbEnableAVIAlignmentThreshold);
-				key.setInt("AVI: Alignment threshold", mPrefs.mAVIAlignmentThreshold);
-				key.setString("Direct3D FX file", mPrefs.mD3DFXFile.c_str());
+				VDSavePreferences(mPrefs);
 			}
 		}
 		return false;
@@ -386,8 +389,31 @@ void LoadPreferences() {
 	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
 	g_prefs2.mbEnableAVIAlignmentThreshold = key.getBool("AVI: Alignment threshold enable", false);
 	g_prefs2.mAVIAlignmentThreshold = key.getInt("AVI: Alignment threshold", 524288);
+	g_prefs2.mbPreferInternalDecoders = key.getBool("AVI: Prefer internal decoders", false);
+	g_prefs2.mRenderOutputBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Output buffer size", 2097152)));
+	g_prefs2.mRenderWaveBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Wave buffer size", 65536)));
+	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
 
 	g_prefs2.mOldPrefs = g_prefs;
+}
+
+void VDSavePreferences(VDPreferences2& prefs) {
+	SetConfigBinary("", g_szMainPrefs, (char *)&prefs.mOldPrefs, sizeof prefs.mOldPrefs);
+
+	VDRegistryAppKey key("Preferences");
+	key.setString("Timeline format", prefs.mTimelineFormat.c_str());
+	key.setBool("Allow direct YCbCr decoding", prefs.mbAllowDirectYCbCrDecoding);
+	key.setBool("AVI: Alignment threshold enable", prefs.mbEnableAVIAlignmentThreshold);
+	key.setInt("AVI: Alignment threshold", prefs.mAVIAlignmentThreshold);
+	key.setBool("AVI: Prefer internal decoders", prefs.mbPreferInternalDecoders);
+	key.setString("Direct3D FX file", prefs.mD3DFXFile.c_str());
+	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
+	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
+	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
+}
+
+void VDSavePreferences() {
+	VDSavePreferences(g_prefs2);
 }
 
 const VDStringW& VDPreferencesGetTimelineFormat() {
@@ -406,6 +432,22 @@ uint32 VDPreferencesGetAVIAlignmentThreshold() {
 	return g_prefs2.mbEnableAVIAlignmentThreshold ? g_prefs2.mAVIAlignmentThreshold : 0;
 }
 
+bool VDPreferencesIsPreferInternalDecodersEnabled() {
+	return g_prefs2.mbPreferInternalDecoders;
+}
+
 const VDStringW& VDPreferencesGetD3DFXFile() {
 	return g_prefs2.mD3DFXFile;
+}
+
+uint32& VDPreferencesGetRenderOutputBufferSize() {
+	return g_prefs2.mRenderOutputBufferSize;
+}
+
+uint32& VDPreferencesGetRenderWaveBufferSize() {
+	return g_prefs2.mRenderWaveBufferSize;
+}
+
+uint32& VDPreferencesGetRenderVideoBufferCount() {
+	return g_prefs2.mRenderVideoBufferCount;
 }

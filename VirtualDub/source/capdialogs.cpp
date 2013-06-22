@@ -274,48 +274,28 @@ void VDToggleCaptureNRDialog(VDGUIHandle hwndParent, IVDCaptureProject *pProject
 
 class VDDialogCaptureSettings : public VDDialogBaseW32 {
 public:
-	VDDialogCaptureSettings(CAPTUREPARMS& parms) : VDDialogBaseW32(IDD_CAPTURE_SETTINGS), mParms(parms) {}
+	VDDialogCaptureSettings(VDCaptureSettings& parms) : VDDialogBaseW32(IDD_CAPTURE_SETTINGS), mParms(parms) {}
 
 protected:
 	INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 	ModelessDlgNode mDlgNode;
-	CAPTUREPARMS&	mParms;
+	VDCaptureSettings&	mParms;
 };
 
 INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 		case WM_INITDIALOG:
 			{
-				LONG lV;
 				char buf[32];
 
-				lV = (long)((10000000000+mParms.dwRequestMicroSecPerFrame/2) / mParms.dwRequestMicroSecPerFrame);
-				wsprintf(buf, "%ld.%04d", lV/10000, lV%10000);
+				sprintf(buf, "%.4f", 10000000.0 / mParms.mFramePeriod);
 				SendMessage(GetDlgItem(mhdlg, IDC_CAPTURE_FRAMERATE), WM_SETTEXT, 0, (LPARAM)buf);
 
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_DROP_LIMIT, mParms.wPercentDropForError, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_MAX_INDEX, mParms.dwIndexSize, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, mParms.wNumVideoRequested, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS, mParms.wNumAudioRequested, FALSE);
-				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, mParms.dwAudioBufferSize, FALSE);
-				CheckDlgButton(mhdlg, IDC_CAPTURE_AUDIO, mParms.fCaptureAudio ? 1 : 0);
-				CheckDlgButton(mhdlg, IDC_CAPTURE_ON_OK, mParms.fMakeUserHitOKToCapture ? 1 : 0);
-				CheckDlgButton(mhdlg, IDC_CAPTURE_ABORT_ON_LEFT, mParms.fAbortLeftMouse ? 1 : 0);
-				CheckDlgButton(mhdlg, IDC_CAPTURE_ABORT_ON_RIGHT, mParms.fAbortRightMouse ? 1 : 0);
-				CheckDlgButton(mhdlg, IDC_CAPTURE_LOCK_TO_AUDIO, mParms.AVStreamMaster == AVSTREAMMASTER_AUDIO ? 1 : 0);
-
-				switch(mParms.vKeyAbort) {
-				case VK_ESCAPE:
-					CheckDlgButton(mhdlg, IDC_CAPTURE_ABORT_ESCAPE, TRUE);
-					break;
-				case VK_SPACE:
-					CheckDlgButton(mhdlg, IDC_CAPTURE_ABORT_SPACE, TRUE);
-					break;
-				default:
-					CheckDlgButton(mhdlg, IDC_CAPTURE_ABORT_NONE, TRUE);
-					break;
-				};
+				SetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, mParms.mVideoBufferCount, FALSE);
+				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS, mParms.mAudioBufferCount, FALSE);
+				SetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, mParms.mAudioBufferSize, FALSE);
+				CheckDlgButton(mhdlg, IDC_CAPTURE_ON_OK, mParms.mbDisplayPrerollDialog ? 1 : 0);
 			}	
 			return TRUE;
 
@@ -352,7 +332,7 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_FRAMERATE));
 						return TRUE;
 					}
-					mParms.dwRequestMicroSecPerFrame = (DWORD)(1000000.0 / dFrameRate);
+					mParms.mFramePeriod = (DWORD)(10000000.0 / dFrameRate);
 
 					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS, &fOkay, FALSE);
 					if (!fOkay || lV<0) {
@@ -360,7 +340,7 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_VIDEO_BUFFERS));
 						return TRUE;
 					}
-					mParms.wNumVideoRequested = lV;
+					mParms.mVideoBufferCount = lV;
 
 					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS, &fOkay, FALSE);
 					if (!fOkay || lV<0) {
@@ -368,7 +348,7 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_AUDIO_BUFFERS));
 						return TRUE;
 					}
-					mParms.wNumAudioRequested = lV;
+					mParms.mAudioBufferCount = lV;
 
 					lV = GetDlgItemInt(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, &fOkay, FALSE);
 					if (!fOkay || lV<0) {
@@ -376,10 +356,9 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 						SetFocus(GetDlgItem(mhdlg, IDC_CAPTURE_AUDIO_BUFFERSIZE));
 						return TRUE;
 					}
-					mParms.dwAudioBufferSize = lV;
+					mParms.mAudioBufferSize = lV;
 
-					mParms.fCaptureAudio				= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_AUDIO);
-					mParms.fMakeUserHitOKToCapture		= IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ON_OK);
+					mParms.mbDisplayPrerollDialog = !!IsDlgButtonChecked(mhdlg, IDC_CAPTURE_ON_OK);
 				}
 				End(true);
 				break;
@@ -402,7 +381,7 @@ INT_PTR VDDialogCaptureSettings::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	return FALSE;
 }
 
-bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, CAPTUREPARMS& parms) {
+bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, VDCaptureSettings& parms) {
 	VDDialogCaptureSettings dlg(parms);
 
 	return 0 != dlg.ActivateDialog(hwndParent);
@@ -609,14 +588,42 @@ bool VDShowCaptureStopPrefsDialog(VDGUIHandle hwndParent, VDCaptureStopPrefs& pr
 //
 //////////////////////////////////////////////////////////////////////////////
 
-struct VDCapturePreferences {} g_capPrefs;
-
-class VDDialogCapturePreferencesSidePanel : public VDDialogBase {
+class VDDialogCapturePreferencesInfoPanel : public VDDialogBase {
 public:
 	VDCapturePreferences& mPrefs;
-	VDDialogCapturePreferencesSidePanel(VDCapturePreferences& p) : mPrefs(p) {}
+	VDDialogCapturePreferencesInfoPanel(VDCapturePreferences& p) : mPrefs(p) {}
 
 	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		static const struct CaptureItem {
+			const wchar_t *name;
+			uint32 id;
+		} kItems[]={
+			{ L"Frames captured",			kVDCaptureInfo_FramesCaptured },
+			{ L"Total time",				kVDCaptureInfo_TotalTime },
+			{ L"Time left",					kVDCaptureInfo_TimeLeft },
+			{ L"Total file size",			kVDCaptureInfo_TotalFileSize },
+			{ L"Disk space free",			kVDCaptureInfo_DiskSpaceFree },
+			{ L"CPU usage",					kVDCaptureInfo_CPUUsage },
+			{ L"Spill status",				kVDCaptureInfo_SpillStatus },
+			{ L"Video: Size",				kVDCaptureInfo_VideoSize },
+			{ L"Video: Average rate",		kVDCaptureInfo_VideoAverageRate },
+			{ L"Video: Data rate",			kVDCaptureInfo_VideoDataRate },
+			{ L"Video: Compression ratio",	kVDCaptureInfo_VideoCompressionRatio },
+			{ L"Video: Average frame size",	kVDCaptureInfo_VideoAverageFrameSize },
+			{ L"Video: Frames dropped",		kVDCaptureInfo_VideoFramesDropped },
+			{ L"Video: Frames inserted",	kVDCaptureInfo_VideoFramesInserted },
+			{ L"Video: Resampling factor",	kVDCaptureInfo_VideoResamplingFactor },
+			{ L"Audio: Size",				kVDCaptureInfo_AudioSize },
+			{ L"Audio: Average rate",		kVDCaptureInfo_AudioAverageRate },
+			{ L"Audio: Relative rate",		kVDCaptureInfo_AudioRelativeRate },
+			{ L"Audio: Data rate",			kVDCaptureInfo_AudioDataRate },
+			{ L"Audio: Compression ratio",	kVDCaptureInfo_AudioCompressionRatio },
+			{ L"Audio: Resampling factor",	kVDCaptureInfo_AudioResamplingFactor },
+			{ L"Sync: Video timing adjust",	kVDCaptureInfo_SyncVideoTimingAdjust },
+			{ L"Sync: Estimated relative audio/video latency",	kVDCaptureInfo_SyncRelativeLatency },
+			{ L"Sync: Estimated current audio/video error",	kVDCaptureInfo_SyncCurrentLatency },
+		};
+
 		switch(type) {
 		case kEventAttach:
 			mpBase = pBase;
@@ -625,9 +632,13 @@ public:
 				IVDUIList *pList = vdpoly_cast<IVDUIList *>(pBase->GetControl(100));
 				IVDUIListView *pListView = vdpoly_cast<IVDUIListView *>(pList);
 				if (pListView) {
-					pListView->AddColumn(L"Blah", 0, 1);
-					pList->AddItem(L"Audio resampling rate");
-					pList->AddItem(L"Audio relative rate");
+					pListView->AddColumn(L"Item", 0, 1);
+
+					for(int i=0; i<sizeof kItems / sizeof kItems[0]; ++i) {
+						int idx = pList->AddItem(kItems[i].name, kItems[i].id);
+						if (idx >= 0)
+							pListView->SetItemChecked(idx, std::find(mPrefs.mInfoItems.begin(), mPrefs.mInfoItems.end(), kItems[i].id) != mPrefs.mInfoItems.end());
+					}
 				}
 			}
 
@@ -635,6 +646,16 @@ public:
 			return true;
 		case kEventSync:
 		case kEventDetach:
+			mPrefs.mInfoItems.clear();
+			{
+				IVDUIList *pList = vdpoly_cast<IVDUIList *>(pBase->GetControl(100));
+				IVDUIListView *pListView = vdpoly_cast<IVDUIListView *>(pList);
+
+				for(int i=0; i<sizeof kItems / sizeof kItems[0]; ++i) {
+					if (pListView->IsItemChecked(i))
+						mPrefs.mInfoItems.push_back(i);
+				}
+			}
 			return true;
 		}
 		return false;
@@ -656,15 +677,7 @@ public:
 
 			if (pSubDialog) {
 				switch(item) {
-				case 0:	pSubDialog->SetCallback(new VDDialogCapturePreferencesSidePanel(mPrefs), true); break;
-#if 0
-				case 1:	pSubDialog->SetCallback(new VDDialogPreferencesDisplay(mPrefs), true); break;
-				case 2:	pSubDialog->SetCallback(new VDDialogPreferencesScene(mPrefs), true); break;
-				case 3:	pSubDialog->SetCallback(new VDDialogPreferencesCPU(mPrefs), true); break;
-				case 4:	pSubDialog->SetCallback(new VDDialogPreferencesAVI(mPrefs), true); break;
-				case 5:	pSubDialog->SetCallback(new VDDialogPreferencesTimeline(mPrefs), true); break;
-				case 6:	pSubDialog->SetCallback(new VDDialogPreferencesDub(mPrefs), true); break;
-#endif
+				case 0:	pSubDialog->SetCallback(new VDDialogCapturePreferencesInfoPanel(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -674,30 +687,17 @@ public:
 			} else if (id == 11) {
 				pBase->EndModal(false);
 				return true;
-			} else if (id == 12) {
-				IVDUIBase *pSubDialog = vdpoly_cast<IVDUIBase *>(pBase->GetControl(101)->GetStartingChild());
-
-				if (pSubDialog)
-					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);
-
-#if 0
-				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs.mOldPrefs, sizeof mPrefs.mOldPrefs);
-
-				VDRegistryAppKey key("Preferences");
-				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
-				key.setBool("Allow direct YCbCr decoding", g_prefs2.mbAllowDirectYCbCrDecoding);
-#endif
 			}
 		}
 		return false;
 	}
 };
 
-void VDShowCapturePreferencesDialog(VDGUIHandle h) {
+bool VDShowCapturePreferencesDialog(VDGUIHandle h, VDCapturePreferences& prefs) {
 	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(h));
 
 	IVDUIWindow *pWin = VDCreateDialogFromResource(2000, peer);
-	VDCapturePreferences temp(g_capPrefs);
+	VDCapturePreferences temp(prefs);
 	VDDialogCapturePreferences prefDlg(temp);
 
 	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
@@ -708,8 +708,54 @@ void VDShowCapturePreferencesDialog(VDGUIHandle h) {
 	peer->Shutdown();
 
 	if (result) {
-		g_capPrefs = temp;
+		prefs = temp;
+		return true;
 	}
+
+	return false;
+}
+
+void VDCaptureSavePreferences(const VDCapturePreferences& prefs) {
+	VDRegistryAppKey key(g_szCapture);
+	
+	key.setBinary("Capture: Info panel items", prefs.mInfoItems.empty() ? "" : (const char *)&prefs.mInfoItems[0], prefs.mInfoItems.size() * 4);
+}
+
+void VDCaptureLoadPreferences(VDCapturePreferences& prefs) {
+	VDRegistryAppKey key(g_szCapture);
+
+	int len = key.getBinaryLength("Capture: Info panel items") >> 2;
+	if (len >= 0) {
+		prefs.mInfoItems.resize(len);
+		if (len)
+			key.getBinary("Capture: Info panel items", (char *)&prefs.mInfoItems[0], len * 4);
+	} else {
+		static const uint32 kDefaultInfoItems[]={
+			kVDCaptureInfo_FramesCaptured,
+			kVDCaptureInfo_TotalTime,
+			kVDCaptureInfo_TimeLeft,
+			kVDCaptureInfo_TotalFileSize,
+			kVDCaptureInfo_DiskSpaceFree,
+			kVDCaptureInfo_CPUUsage,
+			kVDCaptureInfo_VideoSize,
+			kVDCaptureInfo_VideoAverageRate,
+			kVDCaptureInfo_VideoDataRate,
+			kVDCaptureInfo_VideoCompressionRatio,
+			kVDCaptureInfo_VideoAverageFrameSize,
+			kVDCaptureInfo_VideoFramesDropped,
+			kVDCaptureInfo_VideoFramesInserted,
+			kVDCaptureInfo_VideoResamplingFactor,
+			kVDCaptureInfo_AudioSize,
+			kVDCaptureInfo_AudioRelativeRate,
+			kVDCaptureInfo_AudioDataRate,
+			kVDCaptureInfo_AudioCompressionRatio,
+			kVDCaptureInfo_AudioResamplingFactor,
+			kVDCaptureInfo_SyncVideoTimingAdjust,
+			kVDCaptureInfo_SyncCurrentLatency
+		};
+
+		prefs.mInfoItems.assign(kDefaultInfoItems, kDefaultInfoItems + sizeof kDefaultInfoItems / sizeof kDefaultInfoItems[0]);
+	} 
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -807,36 +853,66 @@ public:
 			SetValue(101, mTimingSetup.mbAllowLateInserts);
 			SetValue(102, mTimingSetup.mbCorrectVideoTiming);
 			SetValue(103, !mTimingSetup.mbResyncWithIntegratedAudio);
+			SetValue(210, mTimingSetup.mbUseFixedAudioLatency);
 
 			SetValue(200, mTimingSetup.mSyncMode);
 
 			int v = mTimingSetup.mInsertLimit;
 			SetCaption(300, VDswprintf(L"%d", 1, &v));
 
+			v = mTimingSetup.mAutoAudioLatencyLimit;
+			SetCaption(301, VDswprintf(L"%d", 1, &v));
+
+			v = mTimingSetup.mAudioLatency;
+			SetCaption(302, VDswprintf(L"%d", 1, &v));
+
 			pBase->ExecuteAllLinks();
 		} else if (type == kEventSelect) {
 			if (id == 10) {
-				const VDStringW s(GetCaption(300));
-				const wchar_t *t = s.c_str();
-
-				int v = wcstoul(t, (wchar_t **)&t, 10);
-
-				while(iswspace(*t))
-					++t;
-
-				if (*t) {
-					MessageBeep(MB_ICONEXCLAMATION);
-					SetFocus(vdpoly_cast<VDUIPeerW32 *>(pBase->GetControl(300))->GetHandleW32());
-					return true;
-				}
-
-				mTimingSetup.mInsertLimit = v;
-
 				mTimingSetup.mSyncMode = (VDCaptureTimingSetup::SyncMode)GetValue(200);
 				mTimingSetup.mbAllowEarlyDrops = GetValue(100) != 0;
 				mTimingSetup.mbAllowLateInserts = GetValue(101) != 0;
 				mTimingSetup.mbCorrectVideoTiming = GetValue(102) != 0;
 				mTimingSetup.mbResyncWithIntegratedAudio = !GetValue(103);
+				mTimingSetup.mbUseFixedAudioLatency = GetValue(210) != 0;
+
+				VDStringW s(GetCaption(300));
+
+				int v;
+				char dummy;
+				
+				if (1 != swscanf(s.c_str(), L" %d %c", &v, &dummy)) {
+					if (mTimingSetup.mbAllowLateInserts) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(vdpoly_cast<VDUIPeerW32 *>(pBase->GetControl(300))->GetHandleW32());
+						return true;
+					}
+				} else
+					mTimingSetup.mInsertLimit = v;
+
+				s = GetCaption(302);
+
+				if (1 != swscanf(s.c_str(), L" %d %c", &v, &dummy)) {
+					if (mTimingSetup.mbUseFixedAudioLatency) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(vdpoly_cast<VDUIPeerW32 *>(pBase->GetControl(302))->GetHandleW32());
+						return true;
+					}
+				} else
+					mTimingSetup.mAudioLatency = v;
+
+				s = GetCaption(301);
+
+				if (1 != swscanf(s.c_str(), L" %d %c", &v, &dummy)) {
+					if (!mTimingSetup.mbUseFixedAudioLatency) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(vdpoly_cast<VDUIPeerW32 *>(pBase->GetControl(301))->GetHandleW32());
+						return true;
+					}
+				} else
+					mTimingSetup.mAutoAudioLatencyLimit = v;
+
+				mTimingSetup.mbUseLimitedAutoAudioLatency = !mTimingSetup.mbUseFixedAudioLatency && mTimingSetup.mAutoAudioLatencyLimit > 0;
 
 				pBase->EndModal(true);
 				return true;

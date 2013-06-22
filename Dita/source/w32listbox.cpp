@@ -37,7 +37,7 @@ public:
 
 protected:
 	int GetItemCount();
-	void AddItem(const wchar_t *text, uintptr data = 0);
+	int AddItem(const wchar_t *text, uintptr data = 0);
 
 	void OnCommandCallback(UINT code);
 
@@ -72,7 +72,7 @@ int VDUIListBoxW32::GetItemCount() {
 	return lr == LB_ERR ? 0 : (int)lr;
 }
 
-void VDUIListBoxW32::AddItem(const wchar_t *text, uintptr data) {
+int VDUIListBoxW32::AddItem(const wchar_t *text, uintptr data) {
 	int idx;
 
 	if (VDIsWindowsNT())
@@ -82,6 +82,8 @@ void VDUIListBoxW32::AddItem(const wchar_t *text, uintptr data) {
 
 	if (idx >= 0)
 		SendMessage(mhwnd, LB_SETITEMDATA, (WPARAM)idx, (LPARAM)data);
+
+	return idx;
 }
 
 void VDUIListBoxW32::OnCommandCallback(UINT code) {
@@ -124,7 +126,7 @@ public:
 
 protected:
 	int GetItemCount();
-	void AddItem(const wchar_t *text, uintptr data);
+	int AddItem(const wchar_t *text, uintptr data);
 
 	void OnCommandCallback(UINT code);
 
@@ -174,7 +176,7 @@ int VDUIComboBoxW32::GetItemCount() {
 	return (lr == CB_ERR) ? 0 : (int)lr;
 }
 
-void VDUIComboBoxW32::AddItem(const wchar_t *text, uintptr data) {
+int VDUIComboBoxW32::AddItem(const wchar_t *text, uintptr data) {
 	int sel;
 
 	if (VDIsWindowsNT())
@@ -184,6 +186,8 @@ void VDUIComboBoxW32::AddItem(const wchar_t *text, uintptr data) {
 
 	if (sel >= 0)
 		SendMessage(mhwnd, CB_SETITEMDATA, (WPARAM)sel, (LPARAM)data);
+
+	return sel;
 }
 
 void VDUIComboBoxW32::OnCommandCallback(UINT code) {

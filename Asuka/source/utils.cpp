@@ -68,7 +68,7 @@ void canonicalize_name(string& name) {
 
 	*it = toupper(*it);
 	++it;
-	transform(it, name.end(), it, tolower);
+	transform(it, name.end(), it, name.find('-') != string::npos ? toupper : tolower);
 }
 
 string get_name() {

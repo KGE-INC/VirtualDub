@@ -294,11 +294,11 @@
 			<tr><td>32-bit RGB</td>	<td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>   </td><td>Yes</td></tr>
 			<tr><td>UYVY</td>		<td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
 			<tr><td>YUY2</td>		<td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
-			<tr><td>YV16</td>		<td>Yes</td><td>Yes</td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
-			<tr><td>YV12</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
-			<tr><td>I420</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
-			<tr><td>IYUV</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
-			<tr><td>YVU9</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
+			<tr><td>YV16</td>		<td>Yes</td><td>Yes</td><td>   </td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+			<tr><td>YV12</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+			<tr><td>I420</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+			<tr><td>IYUV</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+			<tr><td>YVU9</td>		<td>Yes</td><td>   </td><td>   </td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
 			<tr><td>Y41P</td>		<td>Yes</td><td>Yes</td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
 			<tr><td>Y8</td>			<td>Yes</td><td>Yes</td><td>   </td><td>Yes</td><td>   </td><td>Yes</td></tr>
 		</table>
@@ -731,7 +731,7 @@
 	</blockquote>
 	<p>
 		The information panel shows current disk, video, and audio status during a video capture. It is toggled through the <i>Option &gt; Show information panel</i>
-		menu command.
+		menu command. Not all entries are always shown; the subset that is displayed can be changed in Preferences.
 	</p>
 	<dl>
 		<dt>Frames captured</dt>
@@ -759,6 +759,14 @@
 			</lina:note>
 		</dd>
 
+		<dt>Spill status</dt>
+		<dd>
+			Current status of a multi-segment capture operation. Normally this will indicate which segment number
+			is currently being written; it will also indicate when the capture engine is in the process of spilling
+			over from one segment to the next. If the spill takes a long time or never completes, this can prevent
+			VirtualDub from switching files and may be indicative of a bad audio/video timing problem.
+		</dd>
+
 		<dt>Video: Size</dt>
 		<dd>Total amount of video data written to disk.</dd>
 
@@ -783,13 +791,37 @@
 		</dd>
 
 		<dt>Video: Frames dropped</dt>
-		<dd>This refers to the number of aberrations in the video stream, caused by video frames that were dropped
-			by the video capture device (too many frames), or placeholder frames inserted by VirtualDub to stand in
-			for missing ones (too few frames). Fewer is better.
+		<dd>This refers to the number of aberrations in the video stream which caused VirtualDub to drop a frame
+			in the video stream due to them being crowded too close together (too fast). Fewer is better, although
+			it is normal for frame drops to occur where there are disruptions in the video stream, such as the
+			start of a new recording on a tape.
+		</dd>
+
+		<dt>Video: Frames inserted</dt>
+		<dd>This refers to the number of aberrations in the video stream which caused VirtualDub to insert a placeholder frame
+			into the video stream due to there being too few frames in that area (too slow). Fewer is better, although
+			it is normal for frame inserts to occur where there are disruptions in the video stream, such as the
+			start of a new recording on a tape.
+		</dd>
+
+		<dt>Video: Resampling factor</dt>
+		<dd>When video timing correction is enabled, this indicates the factor by which "video time" is being accelerated
+			or slowed to match the expected output rate. This is only active if video timing correction is enabled. Unlike
+			audio resampling, video resampling only affects the assignment of frame numbers to incoming video frames; a
+			number other than 1x does not mean that video frames are being interpolated.
 		</dd>
 
 		<dt>Audio: Size</dt>
 		<dd>Total amount of audio data written to disk.</dd>
+
+		<dt>Audio: Average rate</dt>
+		<dd>
+			The average rate of the raw PCM data in the audio stream, relative to real time. This is the estimated actual
+			frequency of the incoming audio data. Small discrepancies in this value from expected are normal, as all clocks
+			have some error; however, large discrepancies in this value from the specified sampling rate may
+			indicate that the sound card has an audio clock with poor accuracy. Audio resampling can be used to stretch
+			the audio to compensate.
+		</dd>
 
 		<dt>Audio: Relative rate</dt>
 		<dd>The average rate of the raw PCM data in the audio stream, relative to the <i>corrected</i> video stream.
@@ -805,13 +837,6 @@
 
 		<dt>Audio: Compression</dt>
 		<dd>The overall audio compression ratio; larger ratios mean smaller audio on disk.
-		</dd>
-
-		<dt>Audio: VT adjust</dt>
-		<dd>Amount of adjustment, in milliseconds, applied to the video stream caused by detected differences from audio timing. This
-			is only pertinent if the timing setting is "sync video to audio." Positive values mean the video stream
-			is being sped up; negative values mean it is being slowed down. It is normal for this value to increment or decrement
-			occasionally over the course of a video capture session.
 		</dd>
 
 		<dt>Audio: Resample</dt>
@@ -831,7 +856,14 @@
 			</p>
 		</dd>
 
-		<dt>Audio: Latency</dt>
+		<dt>Sync: Video timing adjust</dt>
+		<dd>Amount of adjustment, in milliseconds, applied to the video stream caused by detected differences from audio timing. This
+			is only pertinent if the timing setting is "sync video to audio." Positive values mean the video stream
+			is being sped up; negative values mean it is being slowed down. It is normal for this value to increment or decrement
+			occasionally over the course of a video capture session.
+		</dd>
+
+		<dt>Sync: Relative latency</dt>
 		<dd>Estimated difference in arrival time, in milliseconds, between the audio and video streams. This is the difference between when VirtualDub sees
 			a video frame and the audio that corresponds to that frame, not necessarily a sync error in the output. Positive values
 			indicate the audio is arriving later, whereas negative values indicate it is arriving earlier. This value will typically be
@@ -840,6 +872,12 @@
 			<p>
 			An abnormally large value here, particularly in the range of seconds or more, likely indicates a timing problem.
 			</p>
+		</dd>
+
+		<dt>Sync: Current error</dt>
+		<dd>Estimated sync error between the audio and video streams; zero means that the audio and video streams are in sync. This is only
+			calculated if the sync mode is "sync audio to video." The audio resync controller continually adjusts the audio resampling rate
+			in an attempt to drive this error as close to zero as possible.
 		</dd>
 	</dl>
 </lina:create>
@@ -860,7 +898,11 @@
 			<p>
 				If enabled, VirtualDub discards frames that are spaced too close together for the output frame rate. For instance, three frames with
 				timestamps 10ms apart (100 fps) cannot fit into a 29.97 fps stream. If this option is disabled, all captured frames are written
-				to the output stream, which will result in desync from the audio unless frames are missing in other parts of the video.
+				to the output stream.
+			</p>
+			<p>
+				Unless the audio resampler is enabled (see below), disabling this option can result in desynchronization of the audio and
+				video streams.
 			</p>
 			<p>
 				This option is enabled by default.
@@ -873,8 +915,11 @@
 				If enabled, VirtualDub inserts dummy frames into the output video whenever captured frames are spaced too far apart for the output
 				frame rate. For example, two captured frames spaced 66ms apart would have a dummy frame between them in a 29.97 fps stream.
 				This dummy frame is identifiable in the video stream as a zero-byte frame and displays the same image as the previous non-dummy
-				frame. If this option is disabled, frames arriving slower than normal will cause the video to lag behind the audio unless that is
-				balanced by another portion of the captured stream has frames arriving too quickly.
+				frame.
+			</p>
+			<p>
+				Unless the audio resampler is enabled (see below), disabling this option can result in desynchronization of the audio and
+				video streams.
 			</p>
 			<p>
 				This option is enabled by default.
@@ -933,14 +978,26 @@
 			<p>
 				This mode is selected by default.
 			</p>
+			<p>
+				The behavior of the audio resampler was significantly changed for 1.6.12.
+			</p>
 		</dd>
 
-		<dt>Correct video timing if it is off from real-time</dt>
+		<dt>Correct video timing rate errors</dt>
 		<dd>
 			<p>
-				If enabled, the video timestamps are correlated against the real-time clock, and scaled accordingly if the capture timestamps are
-				faster or slower than real-time. This can sometimes reduce the number of frame inserts and drops if the capture driver or hardware
-				is using a time base that is not calibrated correctly.
+				If enabled, VirtualDub will attempt to adjust video timing to compensate for frames arriving slightly faster or slower than expected.
+				This can reduce the number of frame drops or inserts incurred during video capture, at the expense of making the video clip play slightly
+				faster or slower than real-time. This option is meant to be used with the <em>sync audio to video</em> resync mode, or when audio
+				is not being captured.
+			</p>
+			<p>
+				Video timing correction is automatically disabled if the resync mode is set to <em>sync video to audio</em> or if the resync mode is automatically
+				forced to that mode because <em>sync audio to video</em> can't be used due to compressed audio. It is also automatically disabled if
+				integrated A/V capture is detected and resync disabling is enabled (see below).
+			</p>
+			<p>
+				The behavior of the video timing corrector was significantly changed for 1.6.12.
 			</p>
 		</dd>
 

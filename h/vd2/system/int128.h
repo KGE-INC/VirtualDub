@@ -110,6 +110,11 @@ public:
 		return t;
 	}
 
+	const int128& operator-=(const int128& x) {
+		vdasm_int128_sub(v, v, x.v);
+		return *this;
+	}
+
 	const int128 operator*(const int128& x) const {
 		int128 t;
 		vdasm_int128_mul(t.v, v, x.v);
@@ -160,6 +165,7 @@ public:
 	const int128 operator+(const int128& x) const;
 	const int128& operator+=(const int128& x);
 	const int128 operator-(const int128& x) const;
+	const int128& operator-=(const int128& x);
 	const int128 operator*(const int128& x) const;
 	const int128 operator<<(int v) const;
 	const int128 operator>>(int v) const;

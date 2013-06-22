@@ -253,12 +253,10 @@ void VDAudioFilterPreviewThread::Stop() {
 }
 
 void VDAudioFilterPreviewThread::Seek(sint64 us) {
-	VDDEBUG2("starting seek\n");
 	mbSuspend = true;
 	mFilterSys.Seek(us);
 	mbResume = true;
 	msigResumed.wait();
-	VDDEBUG2("stopping seek\n");
 }
 
 void VDAudioFilterPreviewThread::ThreadRun() {

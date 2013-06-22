@@ -142,6 +142,7 @@ if "%_build_releaseAMD64%"=="true" (
 if "%_check%"=="false" (
 	echo --- building final archives
 
+	if exist VirtualDub\autobuild.lock del /q VirtualDub\autobuild.lock
 	rd /s /q out\Distribution
 	md out\Distribution
 	zip -0 -X -r out\Distribution\src.zip * -x lib\* obj\* out\* *.ncb *.opt *.old *.vcproj *.vspscc *.sln *.plg *.aps *.pch *.pdb *.obj *.tmp disasm2\*

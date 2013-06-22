@@ -141,6 +141,7 @@ char *VDMPEGAudioDecoder::getErrorString(int err) {
 	case ERR_SYNC:				return "sync error";
 	case ERR_INTERNAL:			return "internal error";
 	case ERR_INCOMPLETEFRAME:	return "incomplete frame";
+	case ERR_INVALIDDATA:		return "invalid or out-of-spec data encountered";
 	default:					return "unknown error code";
 	}
 }

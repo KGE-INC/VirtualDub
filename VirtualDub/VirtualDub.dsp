@@ -242,6 +242,10 @@ SOURCE=.\source\test_pal8.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\source\test_videodecode.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\source\timeline.cpp
 # End Source File
 # Begin Source File
@@ -263,10 +267,6 @@ SOURCE=.\source\vf_base.cpp
 # Begin Source File
 
 SOURCE=.\vf_input.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\VideoDisplayDriverDX9.cpp
 # End Source File
 # Begin Source File
 
@@ -600,6 +600,14 @@ SOURCE=.\source\capfilter.cpp
 # Begin Source File
 
 SOURCE=.\h\capfilter.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\capgraph.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\capgraph.h
 # End Source File
 # Begin Source File
 
@@ -2561,6 +2569,10 @@ SOURCE=.\source\VideoDisplay.cpp
 # Begin Source File
 
 SOURCE=.\source\VideoDisplayDriverD3DFX.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\VideoDisplayDriverDX9.cpp
 # End Source File
 # Begin Source File
 
