@@ -1644,6 +1644,9 @@ terminate_scan:
 		bool bStopWhenLengthExhausted = !hyperindexed && !bAggressive;
 
 		for(;;) {
+			pd.advance((long)((_posFile() - i64ChunkMoviPos)/1024));
+			pd.check();
+
 			// Exit if we are out of movi chunk -- except for OpenDML files.
 
 			if (!bStopWhenLengthExhausted && dwLengthLeft < 8)
@@ -1746,9 +1749,6 @@ terminate_scan:
 				}
 
 			}
-
-			pd.advance((long)((_posFile() - i64ChunkMoviPos)/1024));
-			pd.check();
 		}
 	}
 

@@ -57,8 +57,8 @@ SceneDetector::~SceneDetector() {
 //////////////////////////////////////////////////////////////////////////
 
 void SceneDetector::SetThresholds(int cut_threshold, int fade_threshold) {
-	this->cut_threshold		= (cut_threshold * tile_w * tile_h)/16;
-	this->fade_threshold	= (fade_threshold * tile_w * tile_h * 3)/16.0;
+	this->cut_threshold		= (cut_threshold * tile_w * tile_h)/16.0;
+	this->fade_threshold	= (fade_threshold * tile_w * tile_h)/16.0;
 }
 
 BOOL SceneDetector::Submit(VBitmap *vbm) {
@@ -67,7 +67,7 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 	double lum_sq_total = 0.0;
 	long len = tile_w * tile_h;
 
-	if (vbm->w > tile_w*8 || vbm->h > tile_h*8 || !cut_threshold || !fade_threshold)
+	if (vbm->w > tile_w*8 || vbm->h > tile_h*8 || (!cut_threshold && !fade_threshold))
 		return FALSE;
 
 	FlipBuffers();
@@ -80,16 +80,15 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 
 /////////////
 
-	Pixel *t1 = cur_lummap, *t2 = last_lummap;
-	BOOL is_fade;
+	const Pixel *t1 = cur_lummap, *t2 = last_lummap;
 
 	do {
 		Pixel c1 = *t1++;
 		Pixel c2 = *t2++;
 
-		last_frame_diffs +=	  abs((int)(c2>>16)-(int)(c1>>16))
-							+ abs((int)((c2>>8)&255) -(int)((c1>>8)&255))
-							+ abs((int)(c2&255)-(int)(c1&255));
+		last_frame_diffs +=(   54*abs((int)(c2>>16)-(int)(c1>>16))
+							+ 183*abs((int)((c2>>8)&255) -(int)((c1>>8)&255))
+							+  19*abs((int)(c2&255)-(int)(c1&255))) >> 8;
 
 		long lum = ((c1>>16)*54 + ((c1>>8)&255)*183 + (c1&255)*19 + 128)>>8;
 
@@ -97,24 +96,32 @@ BOOL SceneDetector::Submit(VBitmap *vbm) {
 		lum_sq_total += (double)lum * (double)lum;
 	} while(--len);
 
-	lum_sq_total *= tile_w*tile_h;
+	const double tile_count = tile_w * tile_h;
 
 //	_RPT3(0,"Last frame diffs=%ld, lum(linear)=%ld, lum(rms)=%f\n",last_frame_diffs,lum_total,sqrt(lum_sq_total));
 
 	if (fade_threshold) {
-		is_fade = fabs(sqrt(lum_sq_total) - (double)lum_total) < fade_threshold;
+		// Var(X)	= E(X^2) - E(X)^2 
+		//			= sum(X^2)/N - sum(X)^2 / N^2
+		// SD(X)	= sqrt(N * sum(X^2) - sum(X)^2)) / N
+
+		bool is_fade = sqrt(lum_sq_total * tile_count - (double)lum_total * lum_total) < fade_threshold;
 
 		if (first_diff) {
 			last_fade_state = is_fade;
+			first_diff = false;
 		} else {
 			// If we've encountered a new fade, return 'scene changed'
 
-			if (!last_fade_state && is_fade) return TRUE;
+			if (!last_fade_state && is_fade) {
+				last_fade_state = true;
+				return true;
+			}
 
 			// Hit the end of an initial fade?
 
 			if (last_fade_state && !is_fade)
-				last_fade_state = FALSE;
+				last_fade_state = false;
 		}
 	}
 

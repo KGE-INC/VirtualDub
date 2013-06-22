@@ -32,6 +32,19 @@ long __declspec(naked) MulDivTrunc(long a, long b, long c) {
 	}
 }
 
+unsigned __declspec(naked) __stdcall MulDivUnsigned(unsigned a, unsigned b, unsigned c) {
+	__asm {
+		mov		eax,[esp+4]
+		mov		ecx,[esp+12]
+		mul		dword ptr [esp+8]
+		shr		ecx,1
+		add		eax,ecx
+		adc		edx,0
+		div		dword ptr [esp+12]
+		ret		12
+	}
+}
+
 int NearestLongValue(long v, const long *array, int array_size) {
 	int i;
 

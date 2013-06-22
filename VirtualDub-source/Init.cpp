@@ -87,6 +87,7 @@ void crash() {
 		__asm xor ebx,ebx
 		__asm mov eax,dword ptr [ebx]
 		__asm mov dword ptr [ebx],eax
+		__asm lock add dword ptr cs:[00000000h], 12345678h
 	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
 	}
 }
@@ -498,10 +499,10 @@ void ParseCommandLine(char *lpCmdLine) {
 					g_fWine = true;
 					break;
 
-            case 'f':
-               if (!stricmp(token+2, "sck"))
-                  __asm int 3;
-               break;
+				case 'f':
+					if (!stricmp(token+2, "sck"))
+						crash();
+					break;
 
 				}
 			} else

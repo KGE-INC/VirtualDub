@@ -162,7 +162,7 @@ char *AutodetectFile(VideoSource *pvs) {
 	while(pae->iWidth) {
 		if (pae->iWidth == pvs->getImageFormat()->biWidth
 			&& pae->iHeight == pvs->getImageFormat()->biHeight
-			&& abs(pae->lMicroSecsPerFrame - MulDiv(pvs->streamInfo.dwScale, 1000000, pvs->streamInfo.dwRate))<100
+			&& abs(pae->lMicroSecsPerFrame - MulDivUnsigned(pvs->streamInfo.dwScale, 1000000, pvs->streamInfo.dwRate))<100
 			&& pae->lFrames == (pvs->lSampleLast - pvs->lSampleFirst)
 			)
 

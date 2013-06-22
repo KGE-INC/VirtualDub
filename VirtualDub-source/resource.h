@@ -921,6 +921,10 @@
 #define ID_VIDEO_SCANFORERRORS          40253
 #define ID_EDIT_PREVRANGE               40256
 #define ID_EDIT_NEXTRANGE               40257
+#define ID_CAPTURE_STARTONLEFT          40258
+#define ID_CAPTURE_AUTOINCREMENT        40259
+#define ID_FILE_DECREMENT               40260
+#define ID_FILE_INCREMENT               40261
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -963,7 +967,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        241
-#define _APS_NEXT_COMMAND_VALUE         40258
+#define _APS_NEXT_COMMAND_VALUE         40262
 #define _APS_NEXT_CONTROL_VALUE         1380
 #define _APS_NEXT_SYMED_VALUE           107
 #endif

@@ -20,9 +20,37 @@
 
 #include <windows.h>
 
+
+struct VDDisassemblyContext {
+	const unsigned char **pRuleSystem;
+	long (*pSymLookup)(VDDisassemblyContext *pctx, unsigned long virtAddr, char *buf, int buf_len);
+
+	bool bSizeOverride;			// 66
+	bool bAddressOverride;		// 67
+	bool bRepnePrefix;			// F2
+	bool bRepePrefix;			// F3
+	const char *pszSegmentOverride;
+
+	long	physToVirtOffset;
+
+	void	*pRawBlock;
+	char	*heap;
+	char	*heap_limit;
+	int		*stack;
+
+	void	*pExtraData;
+	int		cbExtraData;
+};
+
+
+bool VDDisasmInit(VDDisassemblyContext *, const char *, const char *);
+void VDDisasmDeinit(VDDisassemblyContext *);
+char *VDDisassemble(VDDisassemblyContext *pvdc, const unsigned char *source, int bytes, int& count);
+
+
+
 class CodeDisassemblyWindow {
 private:
-	void parse();
 	static BOOL CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
 
 	void *code, *rbase, *abase;
@@ -32,6 +60,7 @@ private:
 	class lbent {
 	public:
 		unsigned char *ip;
+		int len;
 	} *lbents;
 	int num_ents;
 
@@ -40,12 +69,15 @@ private:
 	char buf[256];
 
 public:
+	VDDisassemblyContext vdc;
+
 	CodeDisassemblyWindow(void *code, long, void *, void *);
 	~CodeDisassemblyWindow();
 
 	void DoInitListbox(HWND hwndList);
 	BOOL DoMeasureItem(LPARAM lParam);
 	BOOL DoDrawItem(LPARAM lParam);
+	void parse();
 	BOOL post(HWND);
 	long getInstruction(char *buf, long val);
 

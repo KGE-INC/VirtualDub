@@ -25,6 +25,10 @@
 #include "crash.h"
 #include "misc.h"
 
+// XviD VFW extensions
+
+#define VFW_EXT_RESULT			1
+
 //////////////////////////////////////////////////////////////////////////////
 //
 //	IMITATING WIN2K AVISAVEV() BEHAVIOR IN 0x7FFFFFFF EASY STEPS
@@ -231,6 +235,22 @@ void VideoSequenceCompressor::setDataRate(long lDataRate, long lUsPerFrame, long
 void VideoSequenceCompressor::start() {
 	LRESULT	res;
 
+	// Query for VFW extensions (XviD)
+
+#if 0
+	BITMAPINFOHEADER bih = {0};
+
+	bih.biCompression = 0xFFFFFFFF;
+
+	res = ICCompressQuery(hic, &bih, NULL);
+
+	mVFWExtensionMessageID = 0;
+
+	if ((LONG)res >= 0) {
+		mVFWExtensionMessageID = res;
+	}
+#endif
+
 	// Start compression process
 
 	res = ICCompressBegin(hic, pbiInput, pbiOutput);
@@ -284,6 +304,8 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 	DWORD sizeImage;
 	long lAllowableFrameSize=0;//xFFFFFF;	// yes, this is illegal according
 											// to the docs (see below)
+
+	long lKeyRateCounterSave = lKeyRateCounter;
 
 	// Figure out if we should force a keyframe.  If we don't have any
 	// keyframe interval, force only the first frame.  Otherwise, make
@@ -357,6 +379,47 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 			"the vendor of the codec and check if an updated version is available."
 			);
 	}
+
+
+	// Special handling for DivX 5 codec:
+	//
+	// A one-byte frame starting with 0x7f should be discarded
+	// (lag for B-frame).
+
+	bool bNoOutputProduced = false;
+
+	if (pbiOutput->bmiHeader.biCompression == '05xd' || pbiOutput->bmiHeader.biCompression == '05XD') {
+		if (pbiOutput->bmiHeader.biSizeImage == 1 && *(char *)pOutputBuffer == 0x7f) {
+			bNoOutputProduced = true;
+		}
+	}
+
+	// Special handling for XviD codec:
+	//
+	// Query codec for extended status.
+
+#if 0
+	if (mVFWExtensionMessageID) {
+		struct {
+			DWORD input_consumed;
+			DWORD output_produced;
+		} result;
+
+		if (ICERR_OK == ICSendMessage(hic, mVFWExtensionMessageID, VFW_EXT_RESULT, (LPARAM)&result)) {
+
+			if (!result.output_produced) {
+				bNoOutputProduced = true;
+			}
+		}
+	}
+#endif
+
+	if (bNoOutputProduced) {
+		pbiOutput->bmiHeader.biSizeImage = sizeImage;
+		lKeyRateCounter = lKeyRateCounterSave;
+		return NULL;
+	}
+
 
 	_RPT2(0,"Compressed frame %d: %d bytes\n", lFrameNum, pbiOutput->bmiHeader.biSizeImage);
 

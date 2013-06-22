@@ -229,6 +229,9 @@ BEGIN
         MENUITEM "Set striping system...",      ID_FILE_SETSTRIPINGSYSTEM
         MENUITEM "&Allocate disk space...",     ID_FILE_ALLOCATEDISKSPACE
         MENUITEM SEPARATOR
+        MENUITEM "&Previous file ID\t[",        ID_FILE_DECREMENT
+        MENUITEM "&Next file ID\t]",            ID_FILE_INCREMENT
+        MENUITEM SEPARATOR
         MENUITEM "E&xit capture mode",          ID_FILE_EXITCAPTUREMODE
     END
     POPUP "&Audio"
@@ -301,6 +304,11 @@ BEGIN
         MENUITEM "Display large timer",         ID_CAPTURE_DISPLAYLARGETIMER
         MENUITEM "Show information panel",      ID_CAPTURE_INFOPANEL
         MENUITEM "Enable multisegment capture", ID_CAPTURE_ENABLESPILL
+        MENUITEM "Start capture on left-click in pane", 
+                                                ID_CAPTURE_STARTONLEFT
+        MENUITEM "&Autoincrement filename after capture", 
+                                                ID_CAPTURE_AUTOINCREMENT
+        MENUITEM SEPARATOR
         POPUP "Enable DirectDraw acceleration"
         BEGIN
             MENUITEM "Off",                         ID_CAPTURE_HWACCEL_NONE
@@ -637,7 +645,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.9 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.10 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -987,9 +995,9 @@ CAPTION "Dynamic code disassembly"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,263,180,50,14
-    LISTBOX         IDC_ASMBOX,7,7,306,170,LBS_OWNERDRAWFIXED | 
-                    LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | LBS_NODATA | 
-                    LBS_NOSEL | WS_VSCROLL | WS_TABSTOP
+    LISTBOX         IDC_ASMBOX,7,7,306,170,LBS_OWNERDRAWVARIABLE | 
+                    LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | LBS_NOSEL | 
+                    WS_VSCROLL | WS_TABSTOP
     LTEXT           "<whee>",IDC_STATIC,8,182,245,8
 END
 
@@ -1688,27 +1696,27 @@ BEGIN
                     ES_NUMBER
 END
 
-IDD_DISASM_CRASH DIALOG DISCARDABLE  0, 0, 350, 233
+IDD_DISASM_CRASH DIALOG DISCARDABLE  0, 0, 399, 234
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "VirtualDub Program Failure"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,293,212,50,14
-    LISTBOX         IDC_ASMBOX,7,19,230,100,LBS_OWNERDRAWFIXED | 
+    DEFPUSHBUTTON   "OK",IDOK,342,213,50,14
+    LISTBOX         IDC_ASMBOX,7,19,279,100,LBS_OWNERDRAWVARIABLE | 
                     LBS_USETABSTOPS | LBS_NOINTEGRALHEIGHT | LBS_NODATA | 
                     LBS_NOSEL | WS_VSCROLL | WS_TABSTOP
     LTEXT           "crash reason: programmer needs good whack on head",
                     IDC_STATIC_BOMBREASON,8,182,219,8
-    LISTBOX         IDC_REGDUMP,242,19,101,158,NOT LBS_NOTIFY | 
+    LISTBOX         IDC_REGDUMP,291,19,101,158,NOT LBS_NOTIFY | 
                     LBS_NOINTEGRALHEIGHT | LBS_NOSEL | WS_VSCROLL | 
                     WS_HSCROLL | WS_TABSTOP
     LTEXT           "Program disassembly",IDC_STATIC,7,7,66,8
-    LTEXT           "CPU registers",IDC_STATIC,242,7,44,8
+    LTEXT           "CPU registers",IDC_STATIC,293,7,44,8
     LTEXT           "VirtualDub has crashed due to a program error.  Please hit Save to dump diagnostic information to a file called 'crashinfo.txt' in the VirtualDub program directory, and then OK to bring up the normal crash box.  Click Help for more details.",
-                    IDC_STATIC,7,198,274,25
-    PUSHBUTTON      "Save",IDC_SAVE2,293,180,50,14
-    PUSHBUTTON      "Help",IDC_HELP2,293,197,50,14
-    LISTBOX         IDC_CALL_STACK,7,139,230,38,LBS_NOINTEGRALHEIGHT | 
+                    IDC_STATIC,7,198,319,25
+    PUSHBUTTON      "Save",IDC_SAVE2,342,180,50,14
+    PUSHBUTTON      "Help",IDC_HELP2,342,197,50,14
+    LISTBOX         IDC_CALL_STACK,7,139,279,38,LBS_NOINTEGRALHEIGHT | 
                     WS_VSCROLL | WS_TABSTOP
     LTEXT           "Estimated call stack",IDC_STATIC,7,128,64,8
 END
@@ -2783,9 +2791,10 @@ BEGIN
     IDD_DISASM_CRASH, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 343
+        RIGHTMARGIN, 392
+        VERTGUIDE, 286
         TOPMARGIN, 7
-        BOTTOMMARGIN, 226
+        BOTTOMMARGIN, 227
     END
 
     IDD_DUBBING_PERF, DIALOG
@@ -3120,6 +3129,8 @@ BEGIN
     VK_F6,          ID_CAPTURE_CAPTUREVIDEOINTERNAL, VIRTKEY, NOINVERT
     VK_F7,          ID_CAPTURE_TEST,        VIRTKEY, NOINVERT
     VK_F9,          ID_CAPTURE_SETTINGS,    VIRTKEY, NOINVERT
+    "[",            ID_FILE_DECREMENT,      ASCII,  NOINVERT
+    "]",            ID_FILE_INCREMENT,      ASCII,  NOINVERT
 END
 
 
@@ -3135,8 +3146,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,9,0
- PRODUCTVERSION 1,4,9,0
+ FILEVERSION 1,4,10,0
+ PRODUCTVERSION 1,4,10,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3154,14 +3165,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.9\0"
+            VALUE "FileVersion", "1.4.10\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.9\0"
+            VALUE "ProductVersion", "1.4.10\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3247,17 +3258,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.9 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.9"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.9 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.9 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.9"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.10 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.10"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.10 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.10 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.10"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.9 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.9 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.9 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.9 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.9 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.10 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.10 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.10 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.10 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.10 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

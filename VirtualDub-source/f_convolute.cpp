@@ -638,7 +638,7 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 	*(long *)(pptr+2) = (char *)cfd->dyna_func - (pptr+6);
 	pptr[6] = (char)0xc3;	// RET
 
-	cfd->dyna_size = (pptr+6) - (char *)cfd->dyna_func;
+	cfd->dyna_size = (pptr+7) - (char *)cfd->dyna_func;
 
 	VirtualProtect(cfd->dyna_func, cfd->dyna_size, PAGE_EXECUTE_READWRITE, &cfd->dyna_old_protect);
 
@@ -647,6 +647,7 @@ int filter_convolute_start(FilterActivation *fa, const FilterFunctions *ff) {
 	if (g_dubOpts.perf.dynamicShowDisassembly) {
 		CodeDisassemblyWindow cdw(cfd->dyna_func, cfd->dyna_size, cfd->dyna_func, cfd->dyna_func);
 
+		cdw.parse();
 		cdw.post(NULL);
 	}
 

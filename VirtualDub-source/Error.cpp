@@ -246,5 +246,5 @@ MyInternalError::MyInternalError(const char *format, ...) {
 	_vsnprintf(buf, sizeof buf, format, val);
 	va_end(val);
 
-	vsetf("Internal error: %s", buf);
+	setf("Internal error: %s", buf);
 }

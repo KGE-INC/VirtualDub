@@ -34,6 +34,7 @@
 
 #include "gui.h"
 #include "resource.h"
+#include "misc.h"
 
 #define MAX_STATUS_PARTS (8)
 
@@ -305,7 +306,7 @@ void guiPositionInitFromStream(HWND hWndPosition) {
 
 	SendMessage(hWndPosition, PCM_SETRANGEMIN, (BOOL)FALSE, inputVideoAVI->lSampleFirst);
 	SendMessage(hWndPosition, PCM_SETRANGEMAX, (BOOL)TRUE , inputVideoAVI->lSampleLast);
-	SendMessage(hWndPosition, PCM_SETFRAMERATE, 0, MulDiv(1000000, inputVideoAVI->streamInfo.dwScale, inputVideoAVI->streamInfo.dwRate));
+	SendMessage(hWndPosition, PCM_SETFRAMERATE, 0, MulDivUnsigned(1000000, inputVideoAVI->streamInfo.dwScale, inputVideoAVI->streamInfo.dwRate));
 }
 
 LONG guiPositionHandleCommand(WPARAM wParam, LPARAM lParam) {

@@ -22,6 +22,7 @@
 
 long MulDivTrunc(long a, long b, long c);
 int NearestLongValue(long v, const long *array, int array_size);
+unsigned __stdcall MulDivUnsigned(unsigned a, unsigned b, unsigned c);
 
 // only works properly when d1,d2>0!!
 

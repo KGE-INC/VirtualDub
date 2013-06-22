@@ -34,6 +34,7 @@
 #include "cpuaccel.h"
 #include "gui.h"
 #include "oshelper.h"
+#include "misc.h"
 
 #define f_FILTER_GLOBALS
 #include "filter.h"
@@ -49,6 +50,7 @@ extern HINSTANCE	g_hInst;
 extern "C" unsigned long version_num;
 
 extern char PositionFrameTypeCallback(HWND hwnd, void *pvData, long pos);
+extern void CPUTest();
 
 /////////////////////////////////////
 
@@ -488,6 +490,8 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 				BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
 				BITMAPINFOHEADER *pbih2 = inputVideoAVI->getDecompressedFormat();
 
+				CPUTest();
+
 				fpd->filtsys.initLinearChain(
 						fpd->pFilterList,
 						(Pixel *)((char *)pbih + pbih->biSize),
@@ -685,7 +689,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter) {
 	if (pFilterList) {
 		hdd = DrawDibOpen();
 
-		fsi.lMicrosecsPerFrame = MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
+		fsi.lMicrosecsPerFrame = MulDivUnsigned(inputVideoAVI->streamInfo.dwScale, 1000000U, inputVideoAVI->streamInfo.dwRate);
 
 		if (g_dubOpts.video.frameRateNewMicroSecs > 0)
 			fsi.lMicrosecsPerFrame = g_dubOpts.video.frameRateNewMicroSecs;

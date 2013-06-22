@@ -524,7 +524,7 @@ LRESULT Frameserver::SessionStreamInfo(LPARAM lParam, WPARAM stream) {
 		lpasi->fccHandler	= ' BID';
 		lpasi->dwLength		= *(long *)(fs->arena+4);
 		if (opt->video.frameRateNewMicroSecs) {
-			lpasi->dwRate			= 1000000L;
+			lpasi->dwRate			= 1000000;
 			lpasi->dwScale			= vInfo.usPerFrame; //opt->video.frameRateNewMicroSecs;
 		} else {
 			// Dividing dwRate isn't good if we get a fraction like 10/1!

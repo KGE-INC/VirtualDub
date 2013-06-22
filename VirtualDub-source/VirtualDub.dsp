@@ -61,7 +61,7 @@ SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
 PreLink_Cmds=verinc	ml /c /coff /nologo /Fo$(IntDir)\verstub.obj verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=i:\projwin\mapconv\release\mapconv release\VirtualDub.map release\VirtualDub.dbg
+PostBuild_Cmds=t:\projects\mapconv\main\release\mapconv release\VirtualDub.map release\VirtualDub.vdi t:\ia32.vdi
 # End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
@@ -96,7 +96,7 @@ SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
 PreLink_Cmds=verinc	ml /c /coff /nologo /Fo$(IntDir)\verstub.obj verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=i:\projwin\mapconv\release\mapconv debug\VirtualDub.map debug\VirtualDub.dbg
+PostBuild_Cmds=t:\projects\mapconv\main\release\mapconv debug\VirtualDub.map debug\VirtualDub.vdi t:\ia32.vdi
 # End Special Build Tool
 
 !ENDIF 

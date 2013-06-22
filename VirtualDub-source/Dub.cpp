@@ -320,8 +320,10 @@ private:
 	long				lSegmentFrameStart;
 
 	// This is used to keep track of the last video frame when decimating in DSC mode.
-
 	long				mDSCLastVideoFrame;
+
+	volatile int		mFramesDelayedByCodec;
+	volatile int		mFramesPushedToFlushCodec;
 
 	///////
 
@@ -377,7 +379,10 @@ IDubber *CreateDubber(DubOptions *xopt) {
 	return new Dubber(xopt);
 }
 
-Dubber::Dubber(DubOptions *xopt) {
+Dubber::Dubber(DubOptions *xopt)
+	: mFramesDelayedByCodec(0)
+	, mFramesPushedToFlushCodec(0)
+{
 	opt				= xopt;
 	aSrc			= NULL;
 	vSrc			= NULL;
@@ -615,7 +620,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 	if (video) {
 		// compute new frame rate
 
-		vInfo.usPerFrame	= MulDiv(video->streamInfo.dwScale,1000000,video->streamInfo.dwRate);
+		vInfo.usPerFrame	= MulDivUnsigned(video->streamInfo.dwScale,1000000U,video->streamInfo.dwRate);
 
 		if (opt->video.frameRateNewMicroSecs == DubVideoOptions::FR_SAMELENGTH) {
 			if (audio && audio->streamInfo.dwLength)
@@ -843,6 +848,8 @@ void Dubber::InitOutputFile(char *szFile) {
 			outputBitmap = filters.InputBitmap();
 
 		AVISTREAMINFOtoAVIStreamHeader(&AVIout->videoOut->streamInfo, &vSrc->streamInfo);
+		AVIout->videoOut->streamInfo.dwSampleSize = 0;
+
 		if (opt->video.mode > DubVideoOptions::M_NONE) {
 			if (fUseVideoCompression) {
 				AVIout->videoOut->streamInfo.fccHandler	= compVars->fccHandler;
@@ -852,7 +859,7 @@ void Dubber::InitOutputFile(char *szFile) {
 			}
 		}
 		if (opt->video.frameRateNewMicroSecs || pInvTelecine) {
-			AVIout->videoOut->streamInfo.dwRate		= 1000000L; // / opt->video.frameRateDecimation;
+			AVIout->videoOut->streamInfo.dwRate		= 1000000U; // / opt->video.frameRateDecimation;
 			AVIout->videoOut->streamInfo.dwScale	= vInfo.usPerFrame; //opt->video.frameRateNewMicroSecs;
 		} else {
 
@@ -960,7 +967,7 @@ void Dubber::InitOutputFile(char *szFile) {
 		} else {
 			BITMAPINFOHEADER *outputVideoFormat;
 
-			if (opt->video.mode < DubVideoOptions::M_SLOWREPACK) {
+			if (opt->video.mode < DubVideoOptions::M_FASTREPACK) {
 
 				if (vSrc->getImageFormat()->biCompression == 0xFFFFFFFF)
 					throw MyError("The source video stream uses a compression algorithm which is not compatible with AVI files. "
@@ -2145,11 +2152,18 @@ void Dubber::ReadNullVideoFrame(long display_frame) {
 	buffer = pipe->getWriteBuffer(1, &handle, INFINITE);
 	if (!buffer) return;	// hmm, aborted...
 
-	pipe->postBuffer(0, vSrc->displayToStreamOrder(display_frame), display_frame,
-		(vSrc->isKey(display_frame) ? 0 : 1),
-//		+((lVStreamPos % opt->video.frameRateDecimation)? 2 : 0),
-		vSrc->getDropType(display_frame),
-		handle);
+	if (display_frame >= 0) {
+		pipe->postBuffer(0, vSrc->displayToStreamOrder(display_frame), display_frame,
+			(vSrc->isKey(display_frame) ? 0 : 1),
+//			+((lVStreamPos % opt->video.frameRateDecimation)? 2 : 0),
+			vSrc->getDropType(display_frame),
+			handle);
+	} else {
+		pipe->postBuffer(0, display_frame, display_frame,
+			0,
+			AVIPipe::kDroppable,
+			handle);
+	}
 
 	i64SegmentSize += 24 + lVideoSizeEstimate;
 
@@ -2485,6 +2499,9 @@ void Dubber::MainAddVideoFrame() {
 
 			ReadNullVideoFrame(lFrame);
 		}
+	} else if (mFramesPushedToFlushCodec < mFramesDelayedByCodec) {
+		ReadNullVideoFrame(-1);
+		++mFramesPushedToFlushCodec;
 	}
 
 	vInfo.cur_src += opt->video.frameRateDecimation;
@@ -2598,7 +2615,7 @@ void Dubber::MainThread() {
 
 				_RPT0(0,"Dub/Main: Taking the **Interleaved** path.\n");
 
-				while(!fAbort && (vInfo.cur_src<vInfo.end_src+nVideoLag || !audioStream->isEnd())) { 
+				while(!fAbort && (vInfo.cur_src<vInfo.end_src+nVideoLag || !audioStream->isEnd() || mFramesPushedToFlushCodec < mFramesDelayedByCodec)) { 
 					BOOL doAudio = TRUE;
 
 					CHECK_STACK(sp);
@@ -2607,7 +2624,7 @@ void Dubber::MainThread() {
 						MainAddVideoFrame();
 
 					if ((!lSpillAudioPoint || aInfo.cur_src < lSpillAudioPoint) && audioStream && !audioStream->isEnd()) {
-						MainAddAudioFrame(nVideoLag);
+						MainAddAudioFrame(nVideoLag + mFramesDelayedByCodec);
 					}
 
 					if (lSpillVideoPoint && vInfo.cur_src == lSpillVideoPoint && aInfo.cur_src == lSpillAudioPoint)
@@ -2625,7 +2642,7 @@ void Dubber::MainThread() {
 					}
 
 				if (vSrc && AVIout->videoOut)
-					while(!fAbort && vInfo.cur_src < vInfo.end_src+nVideoLag) { 
+					while(!fAbort && (vInfo.cur_src < vInfo.end_src+nVideoLag || mFramesPushedToFlushCodec < mFramesDelayedByCodec)) { 
 						BOOL fRead = FALSE;
 						long lFrame = vInfo.cur_src;
 
@@ -2731,7 +2748,10 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSi
 
 		// If audio is frozen, force frames to be dropped.
 
-		bool bDrop = !vSrc->isDecodable(sample_num);
+		bool bDrop = true;
+
+		if (!(exdata & 4))
+			bDrop = !vSrc->isDecodable(sample_num);
 
 		if (mbAudioFrozen && mbAudioFrozenValid) {
 			lDropFrames = 1;
@@ -2809,10 +2829,14 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSi
 
 //	_RPT2(0,"Sample %ld (keyframe: %d)\n", sample_num, !(exdata &1));
 
-	VDCHECKPOINT;
-	CHECK_FPU_STACK
-	vSrc->streamGetFrame(buffer, lastSize, !(exdata&1), FALSE, sample_num);
-	CHECK_FPU_STACK
+	// I promise these stupid exdata flags will be gone in 1.5.0.
+
+	if (!(exdata & 4)) {
+		VDCHECKPOINT;
+		CHECK_FPU_STACK
+		vSrc->streamGetFrame(buffer, lastSize, !(exdata&1), FALSE, sample_num);
+		CHECK_FPU_STACK
+	}
 	VDCHECKPOINT;
 
 //	guiSetStatus("Pulse clock: %ld, Delta: %ld\n", g_lPulseClock, blitter->getFrameDelta());
@@ -2930,6 +2954,16 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSi
 		CHECK_FPU_STACK
 		lpCompressedData = pVideoPacker->packFrame(frameBuffer, &isKey, &dwBytes);
 		CHECK_FPU_STACK
+
+		// Check if codec buffered a frame.
+
+		if (!lpCompressedData) {
+			if (hicOutput)
+				blitter->unlock(BUFFERID_PACKED);
+
+			++mFramesDelayedByCodec;
+			return;
+		}
 
 		if (fShowDecompressedFrame && outputDecompressor && dwBytes) {
 			DWORD err;

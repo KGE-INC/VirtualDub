@@ -44,6 +44,7 @@ public:
 private:
 	HIC			hic;
 	DWORD		dwFlags;
+	DWORD		mVFWExtensionMessageID;
 	BITMAPINFO	*pbiInput, *pbiOutput;
 	char		*pOutputBuffer, *pPrevBuffer;
 	long		lFrameNum, lKeyRate, lQuality;

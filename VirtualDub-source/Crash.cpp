@@ -41,6 +41,23 @@ extern "C" unsigned long version_num;
 
 static CodeDisassemblyWindow *g_pcdw;
 
+struct VDDebugInfoContext {
+	void *pRawBlock;
+
+	int nBuildNumber;
+
+	const unsigned char *pRVAHeap;
+	unsigned	nFirstRVA;
+
+	const char *pClassNameHeap;
+	const char *pFuncNameHeap;
+	const unsigned long (*pSegments)[2];
+	int		nSegments;
+};
+
+
+static VDDebugInfoContext g_debugInfo;
+
 ///////////////////////////////////////////////////////////////////////////
 
 BOOL APIENTRY CrashDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -203,6 +220,27 @@ static const struct ExceptionLookup {
 	{	NULL	},
 };
 
+long VDDebugInfoLookupRVA(VDDebugInfoContext *pctx, unsigned rva, char *buf, int buflen);
+bool VDDebugInfoInitFromMemory(VDDebugInfoContext *pctx, const void *_src);
+bool VDDebugInfoInitFromFile(VDDebugInfoContext *pctx, const char *pszFilename);
+void VDDebugInfoDeinit(VDDebugInfoContext *pctx);
+
+static void SpliceProgramPath(char *buf, int bufsiz, const char *fn) {
+	char tbuf[MAX_PATH];
+	char *pszFile;
+
+	GetModuleFileName(NULL, tbuf, sizeof tbuf);
+	GetFullPathName(tbuf, bufsiz, buf, &pszFile);
+	strcpy(pszFile, fn);
+}
+
+long CrashSymLookup(VDDisassemblyContext *pctx, unsigned long virtAddr, char *buf, int buf_len) {
+	if (!g_debugInfo.pRVAHeap)
+		return -1;
+
+	return VDDebugInfoLookupRVA(&g_debugInfo, virtAddr, buf, buf_len);
+}
+
 LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 	SetUnhandledExceptionFilter(NULL);
 
@@ -255,7 +293,27 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 
 	cdw.setFaultAddress(lpBaseAddress);
 
+	// Attempt to read debug file.
+
+	bool bSuccess;
+
+	if (cdw.vdc.pExtraData) {
+		bSuccess = VDDebugInfoInitFromMemory(&g_debugInfo, cdw.vdc.pExtraData);
+	} else {
+		SpliceProgramPath(buf, sizeof buf, "VirtualDub.vdi");
+		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
+		if (!bSuccess) {
+			SpliceProgramPath(buf, sizeof buf, "VirtualD.vdi");
+			bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
+		}
+	}
+
+	cdw.vdc.pSymLookup = CrashSymLookup;
+
+	cdw.parse();
+
 	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_DISASM_CRASH), NULL, CrashDlgProc, (LPARAM)pExc);
+	VDDebugInfoDeinit(&g_debugInfo);
 
 	UnhandledExceptionFilter(pExc);
 
@@ -386,15 +444,6 @@ static const char *GetNameFromHeap(const char *heap, int idx) {
 	return heap;
 }
 
-static void SpliceProgramPath(char *buf, int bufsiz, const char *fn) {
-	char tbuf[MAX_PATH];
-	char *pszFile;
-
-	GetModuleFileName(NULL, tbuf, sizeof tbuf);
-	GetFullPathName(tbuf, bufsiz, buf, &pszFile);
-	strcpy(pszFile, fn);
-}
-
 //////////////////////////////////////////////////////////////////////////////
 
 static bool IsValidCall(char *buf, int len) {
@@ -465,7 +514,6 @@ typedef BOOL (WINAPI *PMODULE32NEXT)(HANDLE, LPMODULEENTRY32);
 
 static ModuleInfo *CrashGetModules(void *&ptr) {
 	void *pMem = VirtualAlloc(NULL, 65536, MEM_COMMIT, PAGE_READWRITE);
-	char szName[MAX_PATH];
 
 	if (!pMem) {
 		ptr = NULL;
@@ -891,74 +939,186 @@ static const char *CrashGetModuleBaseName(HMODULE hmod, char *pszBaseName) {
 	return pszBaseName;
 }
 
-static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTERS *const pExc) {
+
+///////////////////////////////////////////////////////////////////////////
+
+bool VDDebugInfoInitFromMemory(VDDebugInfoContext *pctx, const void *_src) {
+	const unsigned char *src = (const unsigned char *)_src;
+
+	pctx->pRVAHeap = NULL;
+
+	// Check type string
+
+	if (!memcmp((char *)src + 6, "] VirtualDub disasm", 19))
+		src += *(long *)(src + 64) + 72;
+
+	if (src[0] != '[' || src[3] != '|')
+		return false;
+
+	if (memcmp((char *)src + 6, "] VirtualDub symbolic debug information", 39))
+		return false;
+
+	// Check version number
+
+	int write_version = (src[1]-'0')*10 + (src[2] - '0');
+	int compat_version = (src[4]-'0')*10 + (src[5] - '0');
+
+	if (compat_version > 1)
+		return false;	// resource is too new for us to load
+
+	// Extract fields
+
+	src += 64;
+
+	pctx->nBuildNumber		= *(int *)src;
+	pctx->pRVAHeap			= (const unsigned char *)(src + 24);
+	pctx->nFirstRVA			= *(const long *)(src + 20);
+	pctx->pClassNameHeap	= (const char *)pctx->pRVAHeap - 4 + *(const long *)(src + 4);
+	pctx->pFuncNameHeap		= pctx->pClassNameHeap + *(const long *)(src + 8);
+	pctx->pSegments			= (unsigned long (*)[2])(pctx->pFuncNameHeap + *(const long *)(src + 12));
+	pctx->nSegments			= *(const long *)(src + 16);
+
+	return true;
+}
+
+void VDDebugInfoDeinit(VDDebugInfoContext *pctx) {
+	if (pctx->pRawBlock) {
+		VirtualFree(pctx->pRawBlock, 0, MEM_RELEASE);
+		pctx->pRawBlock = NULL;
+	}
+}
+
+bool VDDebugInfoInitFromFile(VDDebugInfoContext *pctx, const char *pszFilename) {
+	pctx->pRawBlock = NULL;
+	pctx->pRVAHeap = NULL;
+
+	HANDLE h = CreateFile(pszFilename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (INVALID_HANDLE_VALUE == h) {
+		return false;
+	}
+
+	do {
+		DWORD dwFileSize = GetFileSize(h, NULL);
+
+		if (dwFileSize == 0xFFFFFFFF)
+			break;
+
+		pctx->pRawBlock = VirtualAlloc(NULL, dwFileSize, MEM_COMMIT, PAGE_READWRITE);
+		if (!pctx->pRawBlock)
+			break;
+
+		DWORD dwActual;
+		if (!ReadFile(h, pctx->pRawBlock, dwFileSize, &dwActual, NULL) || dwActual != dwFileSize)
+			break;
+
+		if (VDDebugInfoInitFromMemory(pctx, pctx->pRawBlock)) {
+			CloseHandle(h);
+			return true;
+		}
+
+		VirtualFree(pctx->pRawBlock, 0, MEM_RELEASE);
+
+	} while(false);
+
+	VDDebugInfoDeinit(pctx);
+	CloseHandle(h);
+	return false;
+}
+
+long VDDebugInfoLookupRVA(VDDebugInfoContext *pctx, unsigned rva, char *buf, int buflen) {
+	int i;
+
+	for(i=0; i<pctx->nSegments; ++i) {
+		if (rva >= pctx->pSegments[i][0] && rva < pctx->pSegments[i][0] + pctx->pSegments[i][1])
+			break;
+	}
+
+	if (i >= pctx->nSegments)
+		return -1;
+
+	const unsigned char *pr = pctx->pRVAHeap;
+	const unsigned char *pr_limit = (const unsigned char *)pctx->pClassNameHeap;
+	int idx = 0;
+
+	// Linearly unpack RVA deltas and find lower_bound
+
+	rva -= pctx->nFirstRVA;
+
+	if ((signed)rva < 0)
+		return -1;
+
+	while(pr < pr_limit) {
+		unsigned char c;
+		unsigned diff = 0;
+
+		do {
+			c = *pr++;
+
+			diff = (diff << 7) | (c & 0x7f);
+		} while(c & 0x80);
+
+		rva -= diff;
+
+		if ((signed)rva < 0) {
+			rva += diff;
+			break;
+		}
+
+		++idx;
+	}
+
+	// Decompress name for RVA
+
+	if (pr < pr_limit) {
+		const char *fn_name = GetNameFromHeap(pctx->pFuncNameHeap, idx);
+		const char *class_name = NULL;
+		const char *prefix = "";
+
+		if (*fn_name < 32) {
+			int class_idx;
+
+			class_idx = ((unsigned)fn_name[0] - 1)*128 + ((unsigned)fn_name[1] - 1);
+			class_name = GetNameFromHeap(pctx->pClassNameHeap, class_idx);
+
+			fn_name += 2;
+
+			if (*fn_name == 1) {
+				fn_name = class_name;
+			} else if (*fn_name == 2) {
+				fn_name = class_name;
+				prefix = "~";
+			} else if (*fn_name < 32)
+				fn_name = "(special)";
+		}
+
+		// ehh... where's my wsnprintf?  _snprintf() might allocate memory or locks....
+		return wsprintf(buf, "%s%s%s%s", class_name?class_name:"", class_name?"::":"", prefix, fn_name) >= 0
+				? rva
+				: -1;
+	}
+
+	return -1;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTERS *const pExc, const void *pDebugSrc) {
 	const CONTEXT *const pContext = (const CONTEXT *)pExc->ContextRecord;
 	HANDLE hprMe = GetCurrentProcess();
 	char *lpAddr = (char *)pContext->Esp;
 	int limit = 100;
-	unsigned long data, first_rva;
-	const char *debug_data = NULL;
-	const char *fnname_heap, *classname_heap, *rva_heap;
-	const unsigned long (*seg_heap)[2];
-	int seg_cnt;
+	unsigned long data;
+	char buf[512];
 
-	// Attempt to read debug file.
+	if (!g_debugInfo.pRVAHeap) {
+		Report(hwnd, hFile, "Could not open debug resource file (VirtualDub.vdi).");
+		return false;
+	}
 
-	{
-		char szPath[MAX_PATH];
-
-		SpliceProgramPath(szPath, sizeof szPath, "VirtualDub.dbg");
-
-		HANDLE hFile2;
-		bool fSuccessful = false;
-		LONG lFileSize;
-		DWORD dwActual;
-
-		do {
-			hFile2 = CreateFile(szPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-			if (INVALID_HANDLE_VALUE == hFile2) {
-				SpliceProgramPath(szPath, sizeof szPath, "VirtualD.dbg");
-				hFile2 = CreateFile(szPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-			}
-
-			if (INVALID_HANDLE_VALUE == hFile2)
-				break;
-
-			lFileSize = GetFileSize(hFile2, NULL);
-
-			if (0xFFFFFFFF == lFileSize)
-				break;
-
-			debug_data = (const char *)VirtualAlloc(NULL, lFileSize, MEM_COMMIT, PAGE_READWRITE);
-			if (!debug_data)
-				break;
-
-			if (!ReadFile(hFile2, (void *)debug_data, lFileSize, &dwActual, NULL) || dwActual!=lFileSize)
-				break;
-
-			fSuccessful = true;
-		} while(0);
-
-		if (hFile2 != INVALID_HANDLE_VALUE)
-			CloseHandle(hFile2);
-
-		if (!fSuccessful) {
-			if (debug_data)
-				VirtualFree((void *)debug_data, 0, MEM_RELEASE);
-
-			Report(hwnd, hFile, "Could not open debug resource file.");
-			return false;
-		}
-
-		rva_heap = debug_data + 20;
-		classname_heap = rva_heap + ((long *)debug_data)[1];
-		fnname_heap = classname_heap + ((long *)debug_data)[2];
-		seg_heap = (unsigned long (*)[2])(fnname_heap + ((long *)debug_data)[3]);
-		seg_cnt = ((long *)debug_data)[4];
-
-		first_rva = *(long *)rva_heap;
-		rva_heap += 4;
+	if (g_debugInfo.nBuildNumber != version_num) {
+		Report(hwnd, hFile, "Incorrect VirtualDub.vdi file (build %d) for this version of VirtualDub -- call stack unavailable.", g_debugInfo.nBuildNumber);
+		return false;
 	}
 
 	// Get some module names.
@@ -966,139 +1126,98 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 	void *pModuleMem;
 	ModuleInfo *pModules = CrashGetModules(pModuleMem);
 
+	// Retrieve stack pointers.
+	// Not sure if NtCurrentTeb() is available on Win95....
+
+	NT_TIB *pTib;
+
+	__asm {
+		mov	eax, fs:[0]_NT_TIB.Self
+		mov pTib, eax
+	}
+
+	char *pStackBase = (char *)pTib->StackBase;
+
 	// Walk up the stack.  Hopefully it wasn't fscked.
 
-	if (*(long *)debug_data != version_num) {
-		Report(hwnd, hFile, "Incorrect VIRTUALDUB.DBG file (build %d) for this version of VirtualDub -- call stack unavailable.", *(long *)debug_data);
-	} else {
-		data = pContext->Eip;
-		do {
-			int i;
+	data = pContext->Eip;
+	do {
+		bool fValid = true;
+		int len;
+		MEMORY_BASIC_INFORMATION meminfo;
 
-			bool fValid = true;
-			char buf[7];
-			int len;
-			MEMORY_BASIC_INFORMATION meminfo;
-
-			VirtualQuery((void *)data, &meminfo, sizeof meminfo);
-			
-			if (!IsExecutableProtection(meminfo.Protect) || meminfo.State!=MEM_COMMIT) {
+		VirtualQuery((void *)data, &meminfo, sizeof meminfo);
+		
+		if (!IsExecutableProtection(meminfo.Protect) || meminfo.State!=MEM_COMMIT) {
 //				Report(hwnd, hFile, "Rejected: %08lx (%08lx)", data, meminfo.Protect);
-				fValid = false;
-			}
+			fValid = false;
+		}
 
-			if (data != pContext->Eip) {
-				len = 7;
+		if (data != pContext->Eip) {
+			len = 7;
 
-				while(len > 0 && !ReadProcessMemory(GetCurrentProcess(), (void *)(data-len), buf+7-len, len, NULL))
-					--len;
+			*(long *)(buf + 0) = *(long *)(buf + 4) = 0;
 
-				fValid &= IsValidCall(buf+7, len);
-			}
-			
+			while(len > 0 && !ReadProcessMemory(GetCurrentProcess(), (void *)(data-len), buf+7-len, len, NULL))
+				--len;
 
-			if (fValid) {
-				for(i=0; i<seg_cnt; i++)
-					if (data >= seg_heap[i][0] && data < seg_heap[i][0] + seg_heap[i][1])
-						break;
+			fValid &= IsValidCall(buf+7, len);
+		}
+		
+		if (fValid) {
+			if (VDDebugInfoLookupRVA(&g_debugInfo, data, buf, sizeof buf) >= 0) {
+				Report(hwnd, hFile, "%08lx: %s()", data, buf);
+				--limit;
+			} else {
+				ModuleInfo *pMods = pModules;
+				ModuleInfo mi;
+				char szName[MAX_PATH];
 
-				if (i>=seg_cnt) {
-					ModuleInfo *pMods = pModules;
-					ModuleInfo mi;
-					char szName[MAX_PATH];
+				mi.name = NULL;
 
-					mi.name = NULL;
+				if (pMods) {
+					while(pMods->name) {
+						if (data >= pMods->base && (data - pMods->base) < pMods->size)
+							break;
 
-					if (pMods) {
-						while(pMods->name) {
-							if (data >= pMods->base && (data - pMods->base) < pMods->size)
-								break;
-
-							++pMods;
-						}
-
-						mi = *pMods;
-					} else {
-
-						// Well, something failed, or we didn't have either PSAPI.DLL or ToolHelp
-						// to play with.  So we'll use a nastier method instead.
-
-						mi.base = (unsigned long)meminfo.AllocationBase;
-						mi.name = CrashGetModuleBaseName((HMODULE)mi.base, szName);
+						++pMods;
 					}
 
-					if (mi.name) {
-						unsigned long fnbase;
-						const char *pExportName = CrashLookupExport((HMODULE)mi.base, data, fnbase);
-
-						if (pExportName)
-							Report(hwnd, hFile, "%08lx: %s!%s [%08lx+%lx+%lx]", data, mi.name, pExportName, mi.base, fnbase, (data-mi.base-fnbase));
-						else
-							Report(hwnd, hFile, "%08lx: %s!%08lx", data, mi.name, data - mi.base);
-					} else
-						Report(hwnd, hFile, "%08lx: %08lx", data, data);
-
-					--limit;
+					mi = *pMods;
 				} else {
-					int idx = -1;
-					const char *pp = rva_heap;
-					long rva = data;
-					long diff = 0;
 
-					// scan down the RVAs
+					// Well, something failed, or we didn't have either PSAPI.DLL or ToolHelp
+					// to play with.  So we'll use a nastier method instead.
 
-					rva -= first_rva;
-
-					while(rva >= 0 && pp<classname_heap) {
-						char c;
-
-						diff = 0;
-						do {
-							c = *pp++;
-
-							diff = (diff<<7) | (c & 0x7f);
-						} while(c & 0x80);
-
-						rva -= diff;
-						++idx;
-					}
-
-					if (pp<classname_heap && idx>=0) {
-						const char *fn_name = GetNameFromHeap(fnname_heap, idx);
-						const char *class_name = NULL;
-						const char *prefix = "";
-
-						if (*fn_name < 32) {
-							int class_idx;
-
-							class_idx = ((unsigned)fn_name[0] - 1)*128 + ((unsigned)fn_name[1] - 1);
-							class_name = GetNameFromHeap(classname_heap, class_idx);
-
-							fn_name += 2;
-
-							if (*fn_name == 1) {
-								fn_name = class_name;
-							} else if (*fn_name == 2) {
-								fn_name = class_name;
-								prefix = "~";
-							} else if (*fn_name < 32)
-								fn_name = "(special)";
-						}
-
-						Report(hwnd, hFile, "%08lx: %s%s%s%s", data, class_name?class_name:"", class_name?"::":"", prefix, fn_name);
-						--limit;
-					} else fValid = false;
+					mi.base = (unsigned long)meminfo.AllocationBase;
+					mi.name = CrashGetModuleBaseName((HMODULE)mi.base, szName);
 				}
-			}
 
-			lpAddr += 4;
-		} while(limit > 0 && ReadProcessMemory(hprMe, lpAddr-4, &data, 4, NULL));
-	}
+				if (mi.name) {
+					unsigned long fnbase;
+					const char *pExportName = CrashLookupExport((HMODULE)mi.base, data, fnbase);
+
+					if (pExportName)
+						Report(hwnd, hFile, "%08lx: %s!%s [%08lx+%lx+%lx]", data, mi.name, pExportName, mi.base, fnbase, (data-mi.base-fnbase));
+					else
+						Report(hwnd, hFile, "%08lx: %s!%08lx", data, mi.name, data - mi.base);
+				} else
+					Report(hwnd, hFile, "%08lx: %08lx", data, data);
+
+				--limit;
+			}
+		}
+
+		if (lpAddr >= pStackBase)
+			break;
+
+		lpAddr += 4;
+	} while(limit > 0 && ReadProcessMemory(hprMe, lpAddr-4, &data, 4, NULL));
+
+	// All done, close up shop and exit.
 
 	if (pModuleMem)
 		VirtualFree(pModuleMem, 0, MEM_RELEASE);
-
-	VirtualFree((void *)debug_data, 0, MEM_RELEASE);
 
 	return true;
 }
@@ -1106,7 +1225,7 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 void DoSave(const EXCEPTION_POINTERS *pExc) {
 	HANDLE hFile;
 	char szModName2[MAX_PATH];
-	char tbuf[256];
+	char tbuf[2048];
 	long idx;
 
 	SpliceProgramPath(szModName2, sizeof szModName2, "crashinfo.txt");
@@ -1154,7 +1273,7 @@ void DoSave(const EXCEPTION_POINTERS *pExc) {
 
 	Report(NULL, hFile, "");
 
-	ReportCrashCallStack(NULL, hFile, pExc);
+	ReportCrashCallStack(NULL, hFile, pExc, g_pcdw->vdc.pExtraData);
 
 	Report(NULL, hFile, "\r\n-- End of report");
 
@@ -1194,7 +1313,7 @@ BOOL APIENTRY CrashDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 				SendMessage(hwndList3, WM_SETFONT, SendMessage(hwndList1, WM_GETFONT, 0, 0), MAKELPARAM(TRUE, 0));
 
 				ReportCrashData(hwndList2, hwndReason, NULL, pExc);
-				s_bHaveCallstack = ReportCrashCallStack(hwndList3, NULL, pExc);
+				s_bHaveCallstack = ReportCrashCallStack(hwndList3, NULL, pExc, g_pcdw->vdc.pExtraData);
 
 			}
 			return TRUE;

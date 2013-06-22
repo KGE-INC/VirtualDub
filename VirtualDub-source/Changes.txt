@@ -1,6 +1,30 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 13870 (Version 1.4.10):
+   [features added]
+   * Capture mode can now apply filters against I420/IYUV
+     video.
+   * Capture: "Start on click" added.
+   * Capture: File autoincrement added.
+   * Crash disassembler has now been totally rewritten;
+     now supports all IA-32 instructions through Pentium 4
+     and Athlon.
+   * Special support added for DivX 5.x B-frame mode.
+     NOTE: Interleaving may be a little funny.
+
+   [bugs fixed]
+   * Volume adjustments were active during input preview.
+   * dwSampleSize was being copied from source video
+     streams even if it was incorrect.
+   * AVI2 output code was crashing if the source video
+     stream dwSampleSize!=0 and no audio was attached.
+   * Confirmation dialog for "Reset video stream" didn't
+     have a cancel button. ^^;;
+   * Several places were using signed division for frame
+     rate fractions -- fixes "can't initialize timer"
+     errors.
+
 Build 13720 (Version 1.4.9):
    [features added]
    * Capture: Added wraparound workaround for 2^31 us (35m)

@@ -72,6 +72,7 @@ extern const char g_szError[];
 extern List g_listFA;
 extern long g_lSpillMinSize;
 extern long g_lSpillMaxSize;
+extern HWND			g_hWnd;
 
 extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
 extern void FreeCompressor(COMPVARS *pCompVars);
@@ -81,6 +82,16 @@ extern LRESULT CALLBACK VCMDriverProc(DWORD dwDriverID, HDRVR hDriver, UINT uiMe
 extern void CaptureDisplayBT848Tweaker(HWND hwndParent);
 extern void CaptureCloseBT848Tweaker();
 extern void CaptureBT848Reassert();
+
+extern "C" void asm_YUVtoRGB32_row(
+		unsigned long *ARGB1_pointer,
+		unsigned long *ARGB2_pointer,
+		const unsigned char *Y1_pointer,
+		const unsigned char *Y2_pointer,
+		const unsigned char *U_pointer,
+		const unsigned char *V_pointer,
+		long width
+		);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -257,6 +268,8 @@ static const char g_szCompressorData		[]="Compressor Data";
 static const char g_szStopConditions		[]="Stop Conditions";
 static const char g_szHideInfoPanel			[]="Hide InfoPanel";
 static const char g_szMultisegment			[]="Multisegment";
+static const char g_szAutoIncrement			[]="Auto-increment";
+static const char g_szStartOnLeft			[]="Start on left";
 
 static const char g_szAdjustVideoTiming		[]="AdjustVideoTiming";
 
@@ -330,6 +343,9 @@ static bool			g_fRestricted = false;
 static CaptureLog g_capLog;
 static bool			g_fLogEvents = false;
 
+static bool			g_bAutoIncrementAfterCapture = false;
+static bool			g_bStartOnLeft = false;
+
 static enum {
 	kDDP_Off = 0,
 	kDDP_Top,
@@ -350,6 +366,8 @@ extern void CaptureWarnCheckDriver(HWND hwnd, const char *s);
 extern void CaptureWarnCheckDrivers(HWND hwnd);
 static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable);
 static void CaptureSetPreview(HWND, bool);
+static bool CaptureSetCaptureFile(HWND hwndCapture);
+static void CaptureShowFile(HWND hwnd, HWND hwndCapture, bool fCaptureActive);
 
 static LRESULT CALLBACK CaptureYieldCallback(HWND hwnd);
 
@@ -456,6 +474,64 @@ static int CaptureIsCatchableException(DWORD ec) {
 	}
 
 	return 0;
+}
+
+
+static void CaptureDecrementFileID(HWND hwndCapture) {
+	char buf[MAX_PATH];
+
+	strcpy(buf, g_szCaptureFile);
+
+	char *ext = (char *)SplitPathExt(buf);
+	
+	while(--ext >= buf) {
+		if (isdigit((unsigned char)*ext)) {
+			if (*ext == '0')
+				*ext = '9';
+			else {
+				--*ext;
+				strcpy(g_szCaptureFile, buf);
+				CaptureSetCaptureFile(hwndCapture);
+				CaptureShowFile(g_hWnd, hwndCapture, false);
+				return;
+			}
+		} else
+			break;
+	}
+
+	guiSetStatus("Can't decrement filename any farther.", 0);
+}
+
+static void CaptureIncrementFileID(HWND hwndCapture) {
+	char buf[MAX_PATH];
+
+	strcpy(buf, g_szCaptureFile);
+
+	char *ext = (char *)SplitPathExt(buf);
+	
+	while(--ext >= buf) {
+		if (isdigit((unsigned char)*ext)) {
+			if (*ext == '9')
+				*ext = '0';
+			else {
+				++*ext;
+				strcpy(g_szCaptureFile, buf);
+				CaptureSetCaptureFile(hwndCapture);
+				CaptureShowFile(g_hWnd, hwndCapture, false);
+				return;
+			}
+		} else
+			break;
+	}
+
+	int head_len = (ext+1) - buf;
+
+	memcpy(g_szCaptureFile, buf, head_len);
+	g_szCaptureFile[head_len] = '1';
+	strcpy(g_szCaptureFile + head_len + 1, ext+1);
+
+	CaptureSetCaptureFile(hwndCapture);
+	CaptureShowFile(g_hWnd, hwndCapture, false);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -859,7 +935,14 @@ static void CaptureSetFrameTime(HWND hWndCapture, LONG lFrameTime) {
 }
 
 static void CaptureShowFile(HWND hwnd, HWND hwndCapture, bool fCaptureActive) {
-	const char *pszAppend = fCaptureActive ? " [capture in progress]" : "";
+	const char *pszAppend;
+	
+	if (fCaptureActive)
+		pszAppend = " [capture in progress]";
+	else if (0xFFFFFFFFUL != GetFileAttributes(g_szCaptureFile))
+		pszAppend = " [FILE EXISTS]";
+	else
+		pszAppend = "";
 
 	if (g_capStripeSystem)
 		guiSetTitle(hwnd, IDS_TITLE_CAPTURE2, g_szStripeFile, pszAppend);
@@ -1018,6 +1101,8 @@ static void CaptureInitMenu(HWND hWnd, HMENU hMenu) {
 	CheckMenuItem(hMenu, ID_CAPTURE_INFOPANEL, g_fInfoPanel ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_CAPTURE_ENABLESPILL, g_fEnableSpill ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_CAPTURE_ENABLELOGGING, g_fLogEvents ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_CAPTURE_AUTOINCREMENT, g_bAutoIncrementAfterCapture ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
+	CheckMenuItem(hMenu, ID_CAPTURE_STARTONLEFT, g_bStartOnLeft ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 
 	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_NONE, g_nCaptureDDraw == kDDP_Off ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_TOP, g_nCaptureDDraw == kDDP_Top ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
@@ -1045,6 +1130,15 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREALLOCATE), hWnd, CaptureAllocateDlgProc, (LPARAM)hWndCapture);
 		CaptureExitSlowPeriod(hWnd);
 		break;
+
+	case ID_FILE_INCREMENT:
+		CaptureIncrementFileID(hWndCapture);
+		break;
+
+	case ID_FILE_DECREMENT:
+		CaptureDecrementFileID(hWndCapture);
+		break;
+
 	case ID_FILE_EXITCAPTUREMODE:
 		PostQuitMessage(1);
 		break;
@@ -1292,6 +1386,14 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 
 	case ID_CAPTURE_ENABLELOGGING:
 		g_fLogEvents = !g_fLogEvents;
+		break;
+
+	case ID_CAPTURE_STARTONLEFT:
+		g_bStartOnLeft = !g_bStartOnLeft;
+		break;
+
+	case ID_CAPTURE_AUTOINCREMENT:
+		g_bAutoIncrementAfterCapture = !g_bAutoIncrementAfterCapture;
 		break;
 
 	case ID_CAPTURE_HWACCEL_NONE:
@@ -1679,6 +1781,15 @@ static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, UINT wParam, LONG 
 
 	case WM_DESTROY:		// doh!!!!!!!
 		PostQuitMessage(0);
+		break;
+
+	case WM_PARENTNOTIFY:
+		if (LOWORD(wParam) != WM_LBUTTONDOWN)
+			break;
+		// fall through
+	case WM_LBUTTONDOWN:
+		if (g_bStartOnLeft)
+			CaptureMenuHit(hWnd, ID_CAPTURE_CAPTUREVIDEOINTERNAL);
 		break;
 
 	case WM_PAINT:
@@ -2179,6 +2290,12 @@ void Capture(HWND hWnd) {
 
 			if (QueryConfigDword(g_szCapture, g_szMultisegment, &dw))
 				g_fEnableSpill = !!dw;
+
+			if (QueryConfigDword(g_szCapture, g_szAutoIncrement, &dw))
+				g_bAutoIncrementAfterCapture = !!dw;
+
+			if (QueryConfigDword(g_szCapture, g_szStartOnLeft, &dw))
+				g_bStartOnLeft = !!dw;
 		}
 
 		// Spill settings?
@@ -2250,6 +2367,12 @@ void Capture(HWND hWnd) {
 
 			if (!QueryConfigDword(g_szCapture, g_szMultisegment, &dw) || !!dw != g_fEnableSpill)
 				SetConfigDword(g_szCapture, g_szMultisegment, g_fEnableSpill);
+
+			if (!QueryConfigDword(g_szCapture, g_szAutoIncrement, &dw) || !!dw != g_bAutoIncrementAfterCapture)
+				SetConfigDword(g_szCapture, g_szAutoIncrement, g_bAutoIncrementAfterCapture);
+
+			if (!QueryConfigDword(g_szCapture, g_szStartOnLeft, &dw) || !!dw != g_bStartOnLeft)
+				SetConfigDword(g_szCapture, g_szStartOnLeft, g_bStartOnLeft);
 		}
 
 	} catch(MyUserAbortError e) {
@@ -2785,9 +2908,26 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 	}
 
 	if (g_fEnableRGBFiltering) {
+		const FOURCC fcc = icd->bihFiltered.biCompression;
+		const int w = icd->bihFiltered.biWidth;
+		const int h = icd->bihFiltered.biHeight;
 
-		if (icd->bihFiltered.biCompression != BI_RGB && (!fPermitSizeAlteration || (icd->bihFiltered.biCompression != '2YUY' && icd->bihFiltered.biCompression != 'YUYV')))
-			throw MyError("%sThe capture video format must be RGB, YUY2, or VYUY.", g_szCannotFilter);
+		if (fcc != BI_RGB && (!fPermitSizeAlteration || (fcc != '2YUY' && fcc != 'YUYV' && fcc != 'VUYI' && fcc != '024I')))
+			throw MyError("%sThe capture video format must be RGB, YUY2, VYUY, I420, or IYUV.", g_szCannotFilter);
+
+
+		if (fcc == '2YUY' || fcc == 'YUYV') {
+			if (w&1)
+				throw MyError("%sImage width must be even for YUY2 / VYUY images.", g_szCannotFilter);
+		}
+
+		if (fcc == 'VUYI' || fcc == '024I') {
+			if (w&15)
+				throw MyError("%sImage width must be a multiple of 16 for I420 / IYUV images.", g_szCannotFilter);
+
+			if (h&1)
+				throw MyError("%sImage height must be even for I420 / IYUV images.", g_szCannotFilter);
+		}
 
 		if (fPermitSizeAlteration)
 			icd->bihFiltered2.biBitCount		= 24;
@@ -3208,7 +3348,45 @@ static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlac
 		vbmSrc.modulo = vbmSrc.Modulo();
 		vbmSrc.size = bpr*vbmSrc.h;
 
-		if (icd->bihFiltered.biCompression == '2YUY' || icd->bihFiltered.biCompression == 'YUYV')
+		if (icd->bihFiltered.biCompression == 'VUYI' || icd->bihFiltered.biCompression == '024I') {
+			const int ypitch = vbmSrc.w;
+			const int uvpitch = vbmSrc.w >> 1;
+			const int w = vbmSrc.w >> 1;
+			int h = vbmSrc.h >> 1;
+			const unsigned char *yptr = (const unsigned char *)vbmSrc.data;
+			const unsigned char *uptr = yptr + ypitch * (h*2);
+			const unsigned char *vptr = uptr + uvpitch * h;
+			VBitmap *pvbDst = filters.InputBitmap();
+			const int dstpitch = pvbDst->pitch;
+			unsigned long *dst1 = (unsigned long *)pvbDst->Address32(0, 0);
+			unsigned long *dst2 = (unsigned long *)pvbDst->Address32(0, 1);
+
+			if (h) {
+				do {
+					asm_YUVtoRGB32_row(
+							dst1,
+							dst2,
+							yptr,
+							yptr + ypitch,
+							uptr,
+							vptr,
+							w);
+
+					yptr += ypitch*2;
+					uptr += uvpitch;
+					vptr += uvpitch;
+					dst1 = (unsigned long *)((char *)dst1 - dstpitch*2);
+					dst2 = (unsigned long *)((char *)dst2 - dstpitch*2);
+				} while(--h);
+
+				if (MMX_enabled)
+					__asm emms
+
+				if (ISSE_enabled)
+					__asm sfence
+			}
+
+		} else if (icd->bihFiltered.biCompression == '2YUY' || icd->bihFiltered.biCompression == 'YUYV')
 			filters.InputBitmap()->BitBltFromYUY2(0, 0, &vbmSrc, 0, 0, -1, -1);
 		else
 			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
@@ -3483,6 +3661,9 @@ static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
 		capSetCallbackOnCapControl(hWndCapture, NULL);
 		capSetCallbackOnWaveStream(hWndCapture, NULL);
 		capSetCallbackOnVideoStream(hWndCapture, NULL);
+
+		if (g_bAutoIncrementAfterCapture)
+			CaptureIncrementFileID(hWndCapture);
 	} catch(const MyError& e) {
 		e.post(hWnd, "Capture error");
 	}
@@ -4747,6 +4928,9 @@ _RPT0(0,"Capture has stopped.\n");
 		}
 
 		_RPT0(0,"Yatta!!!\n");
+
+		if (g_bAutoIncrementAfterCapture)
+			CaptureIncrementFileID(hWndCapture);
 
 	} catch(const MyError& e) {
 		e.post(hWnd, "Capture error");

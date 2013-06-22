@@ -2144,7 +2144,9 @@ BOOL APIENTRY HexEditor::FindDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				char *text = new char[pcd->nFindLength*3];
 
 				if (text) {
-					for(int i=0; i<pcd->nFindLength; ++i) {
+					int i;
+
+					for(i=0; i<pcd->nFindLength; ++i) {
 						int c = (unsigned char)pcd->pszFindString[i];
 
 						text[i*3+0] = hexdig[c>>4];

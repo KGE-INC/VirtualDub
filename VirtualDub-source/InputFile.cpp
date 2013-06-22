@@ -32,6 +32,7 @@
 #include "gui.h"
 #include "oshelper.h"
 #include "prefs.h"
+#include "misc.h"
 
 #include "resource.h"
 
@@ -700,11 +701,11 @@ BOOL APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam, 
 							thisPtr->videoSrc->getImageFormat()->biWidth,
 							thisPtr->videoSrc->getImageFormat()->biHeight,
 							(float)thisPtr->videoSrc->streamInfo.dwRate / thisPtr->videoSrc->streamInfo.dwScale,
-							MulDiv(thisPtr->videoSrc->streamInfo.dwScale, 1000000L, thisPtr->videoSrc->streamInfo.dwRate));
+							MulDivUnsigned(thisPtr->videoSrc->streamInfo.dwScale, 1000000U, thisPtr->videoSrc->streamInfo.dwRate));
 				SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, g_msgBuf);
 
 				s = g_msgBuf + sprintf(g_msgBuf, "%ld (", thisPtr->videoSrc->streamInfo.dwLength);
-				ticks_to_str(s, MulDiv(1000L*thisPtr->videoSrc->streamInfo.dwLength, thisPtr->videoSrc->streamInfo.dwScale, thisPtr->videoSrc->streamInfo.dwRate));
+				ticks_to_str(s, MulDivUnsigned(1000*thisPtr->videoSrc->streamInfo.dwLength, thisPtr->videoSrc->streamInfo.dwScale, thisPtr->videoSrc->streamInfo.dwRate));
 				strcat(s,")");
 				SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, g_msgBuf);
 

@@ -895,17 +895,53 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 
 	switch(parentPtr->video_sample_list[frameNum].frame_type) {
 
-	// if it's a B-frame, back off from the current frame; if the previous I/P frame
-	// is an I, we will need to back off again
+	// B-frame:
+	//
+	// We need the last two I/P frames.
 
 	case MPEG_FRAME_TYPE_B:
-		lKey = frameNum;
+		{
+			int forw_buffer = -1, back_buffer = -1;
+			long forw_frame, back_frame;
 
-		while(lKey > lCurrent && parentPtr->video_sample_list[lKey].frame_type == MPEG_FRAME_TYPE_B) --lKey;
+			// Look for backward prediction frame and swap to backward buffer.
+			back_frame = prev_IP(frameNum);
+			back_buffer = mpeg_lookup_frame(back_frame);
+			if (back_buffer >= 0)
+				mpeg_swap_buffers(back_buffer, MPEG_BUFFER_FORWARD);
 
-		if (is_I(lKey))
-			if (-1 != (lKey = prev_I(lKey)))
-				lCurrent = lKey;
+			// Look for forward prediction frame and swap to forward buffer.
+			forw_frame = prev_IP(back_frame);
+			forw_buffer = mpeg_lookup_frame(forw_frame);
+			if (forw_buffer >= 0)
+				mpeg_swap_buffers(forw_buffer, MPEG_BUFFER_BACKWARD);
+
+			forw_buffer = mpeg_lookup_frame(forw_frame);
+			back_buffer = mpeg_lookup_frame(back_frame);
+
+			// If we are missing the backward frame, decode off the forward frame.
+			// If we are missing the forward frame, decode from prev I/P of the
+			// forward frame.
+
+			if (forw_buffer < 0) {
+
+				for(lCurrent = forw_frame; lCurrent >= 0 && !is_I(lCurrent); --lCurrent)
+					if (parentPtr->video_sample_list[lCurrent].frame_type != MPEG_FRAME_TYPE_B) {
+						if ((buffer = mpeg_lookup_frame(lCurrent))>=0) {
+							mpeg_swap_buffers(buffer, MPEG_BUFFER_FORWARD);
+							++lCurrent;
+							break;
+						}
+					}
+
+				if (lCurrent < 0)
+					lCurrent = 0;
+			} else if (back_buffer < 0) {
+				lCurrent = forw_frame + 1;
+				mpeg_swap_buffers(forw_buffer, MPEG_BUFFER_FORWARD);
+			} else
+				lCurrent = frameNum;
+		}
 		break;
 
 	// P-frame: start backing up from the current frame to the last I-frame.  If we find
@@ -913,20 +949,16 @@ void *VideoSourceMPEG::getFrame(LONG frameNum) {
 	//			buffer and start predicting off of that.
 
 	case MPEG_FRAME_TYPE_P:
-		lKey = lCurrent;
-		buffer = -1;
-		while(lKey < frameNum) {
+		for(lKey = frameNum-1; lKey > lCurrent; --lKey) {
 			if (parentPtr->video_sample_list[lKey].frame_type != MPEG_FRAME_TYPE_B)
-				if ((buffer = mpeg_lookup_frame(lKey))>=0)
+				if ((buffer = mpeg_lookup_frame(lKey))>=0) {
+					mpeg_swap_buffers(buffer, MPEG_BUFFER_FORWARD);
+					++lKey;
 					break;
-			++lKey;
+				}
 		}
 
-		if (buffer>=0) {
-			lCurrent = lKey+1;
-			if (buffer != MPEG_BUFFER_FORWARD)
-				mpeg_swap_buffers(buffer, MPEG_BUFFER_FORWARD);
-		}
+		lCurrent = lKey;
 		break;
 	}
 
@@ -2621,11 +2653,11 @@ BOOL APIENTRY InputFileMPEG::_InfoDlgProc( HWND hDlg, UINT message, UINT wParam,
 							thisPtr->width,
 							thisPtr->height,
 							(float)thisPtr->videoSrc->streamInfo.dwRate / thisPtr->videoSrc->streamInfo.dwScale,
-							MulDiv(thisPtr->videoSrc->streamInfo.dwScale, 1000000L, thisPtr->videoSrc->streamInfo.dwRate));
+							MulDivUnsigned(thisPtr->videoSrc->streamInfo.dwScale, 1000000U, thisPtr->videoSrc->streamInfo.dwRate));
 				SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, g_msgBuf);
 
 				s = g_msgBuf + sprintf(g_msgBuf, "%ld (", thisPtr->videoSrc->streamInfo.dwLength);
-				ticks_to_str(s, MulDiv(1000L*thisPtr->videoSrc->streamInfo.dwLength, thisPtr->videoSrc->streamInfo.dwScale, thisPtr->videoSrc->streamInfo.dwRate));
+				ticks_to_str(s, MulDivUnsigned(1000*thisPtr->videoSrc->streamInfo.dwLength, thisPtr->videoSrc->streamInfo.dwScale, thisPtr->videoSrc->streamInfo.dwRate));
 				strcat(s,")");
 				SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, g_msgBuf);
 			}

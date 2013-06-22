@@ -26,6 +26,7 @@
 #include "Error.h"
 #include "AVIOutput.h"
 #include "oshelper.h"
+#include "misc.h"
 
 ///////////////////////////////////////////
 
@@ -352,7 +353,7 @@ BOOL AVIOutputFile::_init(const char *szFile, LONG xSize, LONG ySize, BOOL video
 	// Initialize main AVI header (avih)
 
 	memset(&avihdr, 0, sizeof avihdr);
-	avihdr.dwMicroSecPerFrame		= MulDiv(videoOut->streamInfo.dwScale, 1000000L, videoOut->streamInfo.dwRate);
+	avihdr.dwMicroSecPerFrame		= MulDivUnsigned(videoOut->streamInfo.dwScale, 1000000U, videoOut->streamInfo.dwRate);
 	avihdr.dwMaxBytesPerSec			= 0;
 	avihdr.dwPaddingGranularity		= 0;
 	avihdr.dwFlags					= AVIF_HASINDEX | (is_interleaved ? AVIF_ISINTERLEAVED : 0);
@@ -1219,7 +1220,7 @@ int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEnt
 		for(int i=0; i<size; i++)
 			total_bytes += avie2->size & 0x7FFFFFFF;
 
-		asie->dwDuration = (DWORD)(total_bytes / audioOut->streamInfo.dwSampleSize);
+		asie->dwDuration = (DWORD)(total_bytes / dwSampleSize);
 	} else
 		asie->dwDuration = size;
 

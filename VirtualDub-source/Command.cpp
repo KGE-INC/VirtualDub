@@ -157,7 +157,9 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 
 				// Second pass for MPEG.  This time, scan the first 64 bytes for 00 00 01 BA.
 
-				for(int i=0; i<60; ++i)
+				int i;
+
+				for(i=0; i<60; ++i)
 					if (*(long *)(buf+i) == 0xba010000 || *(long *)(buf+i)==0xb3010000)
 						break;
 

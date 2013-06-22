@@ -54,6 +54,7 @@
 #include "job.h"
 #include "autodetect.h"
 #include "crash.h"
+#include "misc.h"
 
 #include "AudioSource.h"
 #include "VideoSource.h"
@@ -421,9 +422,9 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 					}
 
 					fsi.lCurrentFrame				= original_pos;
-					fsi.lMicrosecsPerFrame			= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
+					fsi.lMicrosecsPerFrame			= MulDivUnsigned(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
 					fsi.lCurrentSourceFrame			= pos;
-					fsi.lMicrosecsPerSrcFrame		= MulDiv(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
+					fsi.lMicrosecsPerSrcFrame		= MulDivUnsigned(inputVideoAVI->streamInfo.dwScale, 1000000, inputVideoAVI->streamInfo.dwRate);
 					fsi.lSourceFrameMS				= MulDiv(fsi.lCurrentSourceFrame, fsi.lMicrosecsPerSrcFrame, 1000);
 					fsi.lDestFrameMS				= MulDiv(fsi.lCurrentFrame, fsi.lMicrosecsPerFrame, 1000);
 
@@ -1214,7 +1215,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 
 		case ID_EDIT_RESET:
 			if (inputAVI && inputSubset) {
-				if (IDOK == MessageBox(g_hWnd, "Discard edits and reset timeline?", g_szWarning, MB_OK|MB_TASKMODAL|MB_SETFOREGROUND)) {
+				if (IDOK == MessageBox(g_hWnd, "Discard edits and reset timeline?", g_szWarning, MB_OKCANCEL|MB_TASKMODAL|MB_SETFOREGROUND)) {
 					delete inputSubset;
 					inputSubset = NULL;
 					RemakePositionSlider();
@@ -1551,6 +1552,7 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 							dubOpt->audio.new_rate				= 0;
 							dubOpt->audio.newPrecision			= DubAudioOptions::P_NOCHANGE;
 							dubOpt->audio.newChannels			= DubAudioOptions::C_NOCHANGE;
+							dubOpt->audio.volume				= 0;
 
 							switch(g_prefs.main.iPreviewDepth) {
 							case PreferencesMain::DEPTH_DISPLAY:

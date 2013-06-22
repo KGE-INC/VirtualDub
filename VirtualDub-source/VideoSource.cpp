@@ -506,7 +506,11 @@ void VideoSourceAVI::_construct() {
 			pbih->biHeight /= 2;
 
 			if (mjpeg_mode == IFMODE_SPLIT1 || mjpeg_mode == IFMODE_SPLIT2) {
-				streamInfo.dwRate *= 2;
+				if (streamInfo.dwRate >= 0x7FFFFFFF)
+					streamInfo.dwScale >>= 1;
+				else
+					streamInfo.dwRate *= 2;
+
 				streamInfo.dwLength *= 2;
 				lSampleLast = lSampleLast*2 - lSampleFirst;
 			}
@@ -696,7 +700,11 @@ void VideoSourceAVI::Reinit() {
 	lSampleFirst = pAVIStream->Start();
 
 	if (mjpeg_mode==IFMODE_SPLIT1 || mjpeg_mode==IFMODE_SPLIT2) {
-		streamInfo.dwRate *= 2;
+		if (streamInfo.dwRate >= 0x7FFFFFFF)
+			streamInfo.dwScale >>= 1;
+		else
+			streamInfo.dwRate *= 2;
+
 		lSampleLast = pAVIStream->End() * 2 - lSampleFirst;
 	} else
 		lSampleLast = pAVIStream->End();

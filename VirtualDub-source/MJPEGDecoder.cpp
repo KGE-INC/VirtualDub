@@ -944,8 +944,9 @@ byte *MJPEGDecoder::decodeMCUs(byte *ptr, bool odd_field) {
 			nRestartCounter -= mcus;
 			if (!nRestartCounter && mcu < mcu_count) {
 				unsigned tag = 0xd0ff + nRestartOffset;
+				int i;
 
-				for(int i=0; i<8; ++i) {
+				for(i=0; i<8; ++i) {
 					if (*(unsigned short *)ptr  == tag)
 						break;
 
