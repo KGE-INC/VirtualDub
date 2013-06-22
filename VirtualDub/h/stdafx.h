@@ -17,6 +17,8 @@
 
 #ifndef f_STDAFX_H
 
+#include <wchar.h>
+
 #ifdef _MSC_VER
 #pragma warning(disable: 4786)
 struct MSVC_C4786_Workaround { MSVC_C4786_Workaround() {} };

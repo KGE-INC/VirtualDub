@@ -13,7 +13,7 @@ if not "%1"=="norebuild" (
 )
 rd /s /q out\Distribution
 md out\Distribution
-zip -0 -X -r out\Distribution\src.zip * -x lib\* obj\* out\* *.ncb *.opt *.old *.vcproj *.vspscc *.sln *.plg *.aps *.pch *.pdb *.obj
+zip -0 -X -r out\Distribution\src.zip * -x lib\* obj\* out\* *.ncb *.opt *.old *.vcproj *.vspscc *.sln *.plg *.aps *.pch *.pdb *.obj *.tmp
 bzip2 -9 out\Distribution\src.zip
 md out\Distribution\bindist
 copy out\Release\VirtualDub.exe out\Distribution\bindist

@@ -1070,7 +1070,7 @@ void VDFilterGraphControl::RenderArrow(HDC hdc, int x1, int y1, int x2, int y2) 
 	MoveToEx(hdc, x1, y1, NULL);
 	LineTo(hdc, x2, y2);
 
-	const double inv_len = 10.0 / sqrt(dx*dx + dy*dy);
+	const double inv_len = 10.0 / sqrt((double)(dx*dx + dy*dy));
 	const double cos_f = 0.92387953251128675612818318939679 * inv_len;
 	const double sin_f = 0.3826834323650897717284599840304 * inv_len;
 

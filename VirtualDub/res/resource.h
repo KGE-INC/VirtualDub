@@ -486,8 +486,10 @@
 #define IDC_LUMANOTCHODD                1185
 #define IDC_CASELESS                    1185
 #define IDC_AUTOCONNECT                 1185
+#define IDC_ENABLE_DIRECTX              1185
 #define IDC_PERFOPT_SSE                 1186
 #define IDC_CHROMAAGCENEVEN             1186
+#define IDC_FORCE_DXWITHTS              1186
 #define IDC_PERFOPT_3DNOW               1187
 #define IDC_CHROMAAGCENODD              1187
 #define IDC_PERFOPT_SSEPARTIAL          1188

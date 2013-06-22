@@ -1,4 +1,4 @@
-#include <wchar.h>
+#include <ctype.h>
 #include <string.h>
 
 #include <vd2/system/VDString.h>

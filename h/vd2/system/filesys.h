@@ -1,7 +1,7 @@
 #ifndef f_VD2_SYSTEM_FILESYS_H
 #define f_VD2_SYSTEM_FILESYS_H
 
-#include <wchar.h>
+#include <ctype.h>
 #include <vector>
 
 #include <vd2/system/vdtypes.h>

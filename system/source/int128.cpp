@@ -336,6 +336,6 @@ positive:
 
 int128::operator double() const throw() {
 	return (double)(unsigned long)v[0]
-		+ ldexp((unsigned long)((unsigned __int64)v[0]>>32), 32)
+		+ ldexp((double)(unsigned long)((unsigned __int64)v[0]>>32), 32)
 		+ ldexp((double)v[1], 64);
 }

@@ -983,7 +983,7 @@ BOOL APIENTRY AudioVolumeDlgProc( HWND hdlg, UINT message, UINT wParam, LONG lPa
 				if (dopt->audio.volume) {
 					CheckDlgButton(hdlg, IDC_ADJUSTVOL, BST_CHECKED);
 
-					SendMessage(hwndSlider, TBM_SETPOS, TRUE, (int)(32.5 - 80.0 + log(dopt->audio.volume)/(log2/10.0)));
+					SendMessage(hwndSlider, TBM_SETPOS, TRUE, (int)(32.5 - 80.0 + log((double)dopt->audio.volume)/(log2/10.0)));
 
 					AudioVolumeDlgProc(hdlg, WM_HSCROLL, 0, (LPARAM)hwndSlider);
 				} else {

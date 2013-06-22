@@ -1,7 +1,7 @@
 #ifndef f_VD2_DITA_SERVICES_H
 #define f_VD2_DITA_SERVICES_H
 
-#include <wchar.h>
+#include <ctype.h>
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>

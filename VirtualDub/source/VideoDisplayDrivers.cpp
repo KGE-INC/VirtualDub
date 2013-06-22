@@ -1044,7 +1044,7 @@ void VDVideoDisplayMinidriverOpenGL::Upload(VDVideoDisplaySourceInfo& source, VD
 
 	texPattern.GetTileInfo(pTiles, nTiles);
 
-	for(int tile=0; tile<nTiles; ++tile) {
+	for(int tileno=0; tileno<nTiles; ++tileno) {
 		VDVideoTextureTilePatternOpenGL::TileInfo& tile = *pTiles++;
 
 		mpgl->pglBindTexture(GL_TEXTURE_2D, tile.mTextureID);
@@ -1256,7 +1256,7 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 			for(int field=0; field<2; ++field) {
 				mTexPattern[field].GetTileInfo(pTiles, nTiles);
 
-				for(int tile=0; tile<nTiles; ++tile) {
+				for(int tileno=0; tileno<nTiles; ++tileno) {
 					VDVideoTextureTilePatternOpenGL::TileInfo& tile = *pTiles++;		
 
 					double	xbase	= tile.mSrcX;
@@ -1324,7 +1324,7 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 			mpgl->pglLoadMatrixd(viewmat);
 
 			mTexPattern[0].GetTileInfo(pTiles, nTiles);
-			for(int tile=0; tile<nTiles; ++tile) {
+			for(int tileno=0; tileno<nTiles; ++tileno) {
 				VDVideoTextureTilePatternOpenGL::TileInfo& tile = *pTiles++;		
 
 				double	xbase	= tile.mSrcX;

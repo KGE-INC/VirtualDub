@@ -63,7 +63,9 @@ public:
 	PreferencesScene scene;
 
 	enum {
-		DISPF_DITHER16	= 0x01,
+		kDisplayDither16	= 0x01,
+		kDisplayDisableDX	= 0x02,
+		kDisplayUseDXWithTS	= 0x04
 	};
 
 	char fDisplay;

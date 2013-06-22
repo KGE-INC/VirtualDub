@@ -54,7 +54,7 @@ typedef	struct __VDGUIHandle *VDGUIHandle;
 // enforce wchar_t under Visual C++
 
 #if defined(_MSC_VER) && !defined(_WCHAR_T_DEFINED)
-	#include <wchar.h>
+	#include <ctype.h>
 #endif
 
 #include <algorithm>

@@ -175,6 +175,18 @@ static BOOL CALLBACK PositionControlInitChildrenProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+static void PositionControlRedoTicks(HWND hwndTrackbar) {
+	RECT wndr;
+	DWORD range = SendMessage(hwndTrackbar, TBM_GETRANGEMAX, 0, 0) - SendMessage(hwndTrackbar, TBM_GETRANGEMIN, 0, 0);
+
+	GetClientRect(GetParent(hwndTrackbar), &wndr);
+
+	if (range > wndr.right - wndr.left)
+		SendMessage(hwndTrackbar, TBM_CLEARTICS, 0, 0);
+	else
+		SendMessage(hwndTrackbar, TBM_SETTICFREQ, 1, 0);
+}
+
 static void PositionControlReposChildren(HWND hWnd, PositionControlData *pcd) {
 	RECT wndr;
 	UINT id;
@@ -186,7 +198,10 @@ static void PositionControlReposChildren(HWND hWnd, PositionControlData *pcd) {
 	y = wndr.bottom - 24;
 	x = 0;
 
-	SetWindowPos(GetDlgItem(hWnd, IDC_TRACKBAR), NULL, 0, 0, wndr.right - wndr.left, y-wndr.top, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOZORDER);
+	HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
+	PositionControlRedoTicks(hwndTrackbar);
+
+	SetWindowPos(hwndTrackbar, NULL, 0, 0, wndr.right - wndr.left, y-wndr.top, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOZORDER);
 
 	if (pcd->fHasPlaybackControls) {
 		for(id = IDC_STOP; id < IDC_START; id++) {
@@ -401,6 +416,8 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 				}
 				nm.code = PCN_THUMBTRACK;
 				break;
+			case TB_ENDTRACK:
+				return 0;		// block this message as it can be sent when the trackbar sees the keyup for our accelerators
 			default:				nm.code = PCN_THUMBPOSITION;	break;
 			}
 
@@ -470,13 +487,24 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 		break;
 
 	case PCM_SETRANGEMIN:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_SETRANGEMIN, wParam, lParam);
-		PositionControlUpdateString(hWnd, pcd);
+		{
+			HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
+			SendMessage(hwndTrackbar, TBM_SETRANGEMIN, wParam, lParam);
+			PositionControlUpdateString(hWnd, pcd);
+			PositionControlRedoTicks(hwndTrackbar);
+		}
 		break;
 
 	case PCM_SETRANGEMAX:
-		SendMessage(GetDlgItem(hWnd, IDC_TRACKBAR), TBM_SETRANGEMAX, wParam, lParam);
-		PositionControlUpdateString(hWnd, pcd);
+		{
+			HWND hwndTrackbar = GetDlgItem(hWnd, IDC_TRACKBAR);
+			if (lParam != SendMessage(hwndTrackbar, TBM_GETRANGEMAX, 0, 0)) {
+				SendMessage(hwndTrackbar, TBM_SETTICFREQ, 10000000, 0);
+				SendMessage(hwndTrackbar, TBM_SETRANGEMAX, wParam, lParam);
+				PositionControlUpdateString(hWnd, pcd);
+				PositionControlRedoTicks(hwndTrackbar);
+			}
+		}
 		break;
 
 	case PCM_GETPOS:

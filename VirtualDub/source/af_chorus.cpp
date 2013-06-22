@@ -155,7 +155,7 @@ uint32 VDAudioFilterStereoChorus::Run() {
 		if (ch)
 			lfopos += 0x40000000;
 
-		for(uint32 v=0; v<samples; ++v) {
+		for(uint32 idx=0; idx<samples; ++idx) {
 			sint32 delval = (sint32)(delaycen + delayamp * sin(lfopos * (3.1415926535 / 2147483648.0)));
 			sint32 idelval = delval >> 8;
 			sint32 fdelval = delval & 255;

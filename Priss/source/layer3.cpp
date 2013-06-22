@@ -1156,7 +1156,7 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 							if ((unsigned)(x+32) < 64)
 								recon[ch][i] = pow43_tab[x+32] * gain;
 							else {
-								double y = pow(fabs(x), 4.0/3.0) * gain;
+								double y = pow(fabs((double)x), 4.0/3.0) * gain;
 
 								if (freq[i]<0)
 									y = -y;
@@ -1188,7 +1188,7 @@ bool VDMPEGAudioDecoder::DecodeLayerIII() {
 							unsigned j = pShortBands[sfb]*3 + window;
 
 							while(j < pShortBands[sfb+1]*3) {
-								double y = pow(fabs(freq[i]), 4.0/3.0) * gain;
+								double y = pow(fabs((double)freq[i]), 4.0/3.0) * gain;
 
 								VDASSERT(abs(freq[i]) < 8192);
 

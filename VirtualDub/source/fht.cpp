@@ -66,7 +66,7 @@ void VDCreateRaisedCosineWindow(float *dst, int n, float power) {
 	const double scalefac = 1.0 / n;
 
 	for(int i=0; i<n; ++i) {
-		dst[i] = scalefac * pow(0.5*(1.0 - cos(twopi_over_n * (i+0.5))), power);
+		dst[i] = scalefac * pow(0.5*(1.0 - cos(twopi_over_n * (i+0.5))), (double)power);
 	}
 }
 

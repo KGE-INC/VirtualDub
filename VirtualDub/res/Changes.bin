@@ -1,7 +1,35 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
-Current build (1.5.8, stable):
+Current build (1.5.9, stable):
+   [features added]
+   * Made 'autodetect additional segments by filename'
+     option sticky.
+   * Removed trackbar ticks when ticks are a solid bar
+     to speed up edits on very long timelines.
+   * Added option to disable use of DirectX in video
+     displays under Preferences/Display.
+
+   [bugs fixed]
+   * Fixed odd lock-to-keyframe behavior with edit lists
+     that have out of order segments.
+   * Fixed move-to-next-keyframe command at end of time-
+     line.
+   * Fixed decompression of 1-bit and 4-bit uncompressed
+     AVI files under Windows 95/98.
+   * Audio compression dialog showed the wrong set of
+     valid formats if a precision was selected under
+     Audio Conversion.
+   * The current edit list is no longer applied to batch
+     jobs created from entire directories.
+
+   [regressions fixed]
+   * Fixed display crashes with odd-width images.
+   * Segment loading wasn't hopping across drives to pick
+     up segments from a multisegment capture, as directed
+     by the AVI's segment hint block.
+
+Current build (1.5.8, stable):   [November 3, 2003]
    [features added]
    * DirectDraw support is disabled when Terminal Services
      or Remote Desktop clients are detected to work around

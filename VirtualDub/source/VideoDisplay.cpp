@@ -26,6 +26,8 @@
 #include "VideoDisplay.h"
 #include "VideoDisplayDrivers.h"
 
+#include "prefs.h"			// for display preferences
+
 extern HINSTANCE g_hInst;
 
 static const char g_szVideoDisplayControlName[] = "phaeronVideoDisplay";
@@ -409,7 +411,7 @@ bool VDVideoDisplayWindow::SyncInit() {
 	bool bIsForeground = VDIsForegroundTask();
 
 	do {
-		if (!VDIsTerminalServicesClient()) {
+		if ((g_prefs.fDisplay & Preferences::kDisplayUseDXWithTS) || !VDIsTerminalServicesClient()) {
 			if (mbLockAcceleration || bIsForeground) {
 #if 0
 				mpMiniDriver = VDCreateVideoDisplayMinidriverOpenGL();
@@ -418,10 +420,12 @@ bool VDVideoDisplayWindow::SyncInit() {
 				SyncReset();
 #endif
 
-				mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
-				if (mpMiniDriver->Init(mhwnd, mSource))
-					break;
-				SyncReset();
+				if (!(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
+					mpMiniDriver = VDCreateVideoDisplayMinidriverDirectDraw();
+					if (mpMiniDriver->Init(mhwnd, mSource))
+						break;
+					SyncReset();
+				}
 
 			} else {
 				VDDEBUG("VideoDisplay: Application in background -- disabling accelerated preview.\n");

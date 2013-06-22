@@ -71,6 +71,7 @@ public:
 	void MoveToEnd();
 	void MoveToSelectionStart();
 	void MoveToSelectionEnd();
+	void MoveToNearestKey(VDPosition pos);
 	void MoveToPreviousKey();
 	void MoveToNextKey();
 	void MoveBackSome();

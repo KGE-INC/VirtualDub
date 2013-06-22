@@ -42,23 +42,6 @@ static char g_szMainPrefs[]="Main prefs";
 
 ////////////////////////////////////////////////////////////////
 
-static DWORD dwPrefsHelpLookup[]={
-	IDC_OUTPUT_DEPTH,			IDH_PREFS_MAIN_OUTPUTCOLORDEPTH,
-	IDC_PREVIEW_PRIORITY,		IDH_PREFS_MAIN_PROCESSPRIORITY,
-	IDC_DUB_PRIORITY,			IDH_PREFS_MAIN_PROCESSPRIORITY,
-	IDC_TACK_EXTENSION,			IDH_PREFS_MAIN_ADDEXTENSION,		
-	IDC_ENABLE_16DITHERING,		IDH_PREFS_DISPLAY_16BITDITHER,
-	IDC_INTERFRAME_SLIDER,		IDH_PREFS_SCENE_INTERFRAME,
-	IDC_INTRAFRAME_SLIDER,		IDH_PREFS_SCENE_INTRAFRAME,
-	IDC_PERFOPT_DEFAULT,		IDH_PREFS_CPU_OPTIMIZATIONS,
-	IDC_PERFOPT_FORCE,			IDH_PREFS_CPU_OPTIMIZATIONS,
-	IDC_PERFOPT_FPU,			IDH_PREFS_CPU_OPTIMIZATIONS,
-	IDC_PERFOPT_MMX,			IDH_PREFS_CPU_OPTIMIZATIONS,
-	IDC_RESTRICT_AVI_1GB,		IDH_PREFS_AVI_RESTRICT_1GB,
-	IDC_AUTOCORRECT_L3,			IDH_PREFS_AVI_AUTOCORRECT_L3,
-	0
-};
-
 typedef struct PrefsDlgData {
 	Preferences prefs;
 
@@ -139,12 +122,21 @@ static BOOL APIENTRY PreferencesDisplayDlgProc( HWND hDlg, UINT message, UINT wP
 
 			//////////////
 
-			CheckDlgButton(hDlg, IDC_ENABLE_16DITHERING, !!(pdd->prefs.fDisplay & Preferences::DISPF_DITHER16));
+			CheckDlgButton(hDlg, IDC_ENABLE_16DITHERING, !!(pdd->prefs.fDisplay & Preferences::kDisplayDither16));
+			CheckDlgButton(hDlg, IDC_ENABLE_DIRECTX, !(pdd->prefs.fDisplay & Preferences::kDisplayDisableDX));
+			CheckDlgButton(hDlg, IDC_FORCE_DXWITHTS, !!(pdd->prefs.fDisplay & Preferences::kDisplayUseDXWithTS));
 
 			return TRUE;
 
 		case WM_DESTROY:
-			pdd->prefs.fDisplay = IsDlgButtonChecked(hDlg, IDC_ENABLE_16DITHERING) ? Preferences::DISPF_DITHER16 : 0;
+			pdd->prefs.fDisplay = 0;
+			
+			if (IsDlgButtonChecked(hDlg, IDC_ENABLE_16DITHERING))
+				pdd->prefs.fDisplay += Preferences::kDisplayDither16;
+			if (!IsDlgButtonChecked(hDlg, IDC_ENABLE_DIRECTX))
+				pdd->prefs.fDisplay += Preferences::kDisplayDisableDX;
+			if (IsDlgButtonChecked(hDlg, IDC_FORCE_DXWITHTS))
+				pdd->prefs.fDisplay += Preferences::kDisplayUseDXWithTS;
 			return TRUE;
 	}
 

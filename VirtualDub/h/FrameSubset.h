@@ -83,7 +83,11 @@ public:
 	void assign(const FrameSubset& src, int start, int len);
 	iterator erase(iterator it) { return mTimeline.erase(it); }
 	iterator erase(iterator it1, iterator it2) { return mTimeline.erase(it1, it2); }
-	void insert(iterator it, const value_type& v) { mTimeline.insert(it, v); }
+	void insert(iterator it, const value_type& v) {
+		FrameSubset tmp;
+		tmp.mTimeline.push_back(v);
+		insert(it, tmp);
+	}
 	void insert(iterator it, const FrameSubset& src);
 	void insert(int insertionPoint, const FrameSubset& src);
 

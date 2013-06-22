@@ -488,7 +488,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 
 					if (!VDDoesPathExist(sPath)) {
 						if (pszPathHint && *pszPathHint) {
-							sPathBase = VDTextAToW(pszPathHint) + sPathTail;
+							sPathPattern = VDTextAToW(pszPathHint) + sPathTail;
 						}
 
 						sPath = (sPathPattern + VDswprintf(L".%02d.avi", 1, &nSegment));

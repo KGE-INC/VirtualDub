@@ -2024,7 +2024,7 @@ Dubber::VideoWriteResult Dubber::WriteVideoFrame(void *buffer, int exdata, int d
 //				outputBitmap = &destbm;
 //			}
 
-			if (fPreview && g_prefs.fDisplay & Preferences::DISPF_DITHER16)
+			if (fPreview && g_prefs.fDisplay & Preferences::kDisplayDither16)
 				outputBitmap->BitBltDither(0, 0, lastBitmap, 0, 0, -1, -1, fDisplay565);
 			else if (mpDisplayFormat->biCompression == BI_BITFIELDS)
 				outputBitmap->BitBlt565(0, 0, lastBitmap, 0, 0, -1, -1);

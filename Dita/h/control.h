@@ -1,7 +1,7 @@
 #ifndef f_VD2_DITA_CONTROL_H
 #define f_VD2_DITA_CONTROL_H
 
-#include <wchar.h>
+#include <ctype.h>
 
 #include <vd2/system/vdtypes.h>
 

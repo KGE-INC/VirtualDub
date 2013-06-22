@@ -1682,13 +1682,13 @@ void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInp
 	}
 }
 
-void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold) {
+void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold, bool bIncludeEditList) {
 	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
 	try {
 		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
-		JobCreateScript(output, opt);
+		JobCreateScript(output, opt, bIncludeEditList);
 
 		// Add actual run option
 
@@ -1814,7 +1814,7 @@ void JobRunList() {
 }
 
 void JobAddBatchFile(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
-	JobAddConfiguration(&g_dubOpts, lpszSrc, 0, lpszDst, false, NULL, 0, 0);
+	JobAddConfiguration(&g_dubOpts, lpszSrc, 0, lpszDst, false, NULL, 0, 0, false);
 }
 
 void JobAddBatchDirectory(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
@@ -1879,7 +1879,7 @@ void JobAddBatchDirectory(const wchar_t *lpszSrc, const wchar_t *lpszDst) {
 
 				// Add job!
 
-				JobAddConfiguration(&g_dubOpts, szSourceDir, 0, szDestDir, false, NULL, 0, 0);
+				JobAddConfiguration(&g_dubOpts, szSourceDir, 0, szDestDir, false, NULL, 0, 0, false);
 			}
 		} while(FindNextFile(h,&wfd));
 		FindClose(h);

@@ -309,10 +309,10 @@ void CVideoTelecineRemover::ProcessIn(VBitmap *pIn, long lFrameNum) {
 	if (field2 < 0)
 		field2 = 0;
 
-	_RPT2(0,"%16d %16d\n", (long)sqrt(field1), (long)sqrt(field2));
+	VDDEBUG("%16d %16d\n", (long)sqrt((double)field1), (long)sqrt((double)field2));
 
-	nCombVals[(nCurrentIn+9)%10][0] = (long)sqrt(field1);
-	nCombVals[(nCurrentIn+9)%10][1] = (long)sqrt(field2);
+	nCombVals[(nCurrentIn+9)%10][0] = (long)sqrt((double)field1);
+	nCombVals[(nCurrentIn+9)%10][1] = (long)sqrt((double)field2);
 
 	if (++nCurrentIn == 10)
 		nCurrentIn = 0;

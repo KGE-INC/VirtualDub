@@ -1,11 +1,3 @@
-// bug workaround in VC6:
-// LIBCMTD.lib(_wctype.obj) : error LNK2005: _iswdigit already defined in system.lib(text.obj)
-// ..\out\Debug/VirtualDub_old.exe : fatal error LNK1169: one or more multiply defined symbols found
-
-#ifdef _MSC_VER
-#define _WCTYPE_INLINE_DEFINED
-#endif
-
 #include <vector>
 #include <algorithm>
 

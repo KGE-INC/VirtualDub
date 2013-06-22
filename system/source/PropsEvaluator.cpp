@@ -612,7 +612,7 @@ const char *PropsEvaluator::lookupvar(const char *s) {
 				if (stack[sp].type == PropDef::kDouble)
 					stack[sp].v.d = fabs(stack[sp].v.d);
 				else
-					stack[sp].v.i = fabs(stack[sp].v.i);
+					stack[sp].v.i = abs(stack[sp].v.i);
 				break;
 
 			case 2:

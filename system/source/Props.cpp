@@ -110,8 +110,9 @@ int Props::lookup(const char *s) const throw() {
 
 char *Props::serialize(long& len) const throw() {
 	int bytes = 0;
+	int i;
 
-	for(int i=0; i<nItems; i++) {
+	for(i=0; i<nItems; i++) {
 		switch(getType(i)) {
 		case PropDef::kInt:
 			bytes += 4 + (-bytes & 3);

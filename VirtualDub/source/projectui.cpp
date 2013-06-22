@@ -20,6 +20,7 @@
 #include <commctrl.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/registry.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/resources.h>
 #include "projectui.h"
@@ -114,6 +115,10 @@ extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
 
 extern const wchar_t fileFiltersAppend[];
+
+// need to do this directly in Dita....
+static const char g_szRegKeyPersistence[]="Persistence";
+static const char g_szRegKeyAutoAppendByName[]="Auto-append by name";
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -474,12 +479,17 @@ void VDProjectUI::AppendAsk() {
 		{0}
 	};
 
-	int optVals[1]={true};
+	VDRegistryAppKey key(g_szRegKeyPersistence);
+	int optVals[1]={
+		key.getBool(g_szRegKeyAutoAppendByName, true)
+	};
 
 	VDStringW fname(VDGetLoadFileName(VDFSPECKEY_LOADVIDEOFILE, (VDGUIHandle)mhwnd, L"Append AVI segment", fileFiltersAppend, NULL, sOptions, optVals));
 
 	if (fname.empty())
 		return;
+
+	key.setBool(g_szRegKeyAutoAppendByName, !!optVals[0]);
 
 	VDAutoLogDisplay logDisp;
 
@@ -629,7 +639,7 @@ void VDProjectUI::SetAudioCompressionAsk() {
 		case DubAudioOptions::P_16BIT:	wfex.wBitsPerSample = 16; break;
 		}
 
-		switch(g_dubOpts.audio.newPrecision) {
+		switch(g_dubOpts.audio.newChannels) {
 		case DubAudioOptions::C_MONO:	wfex.wf.nChannels = 1; break;
 		case DubAudioOptions::C_STEREO:	wfex.wf.nChannels = 2; break;
 		}
@@ -1142,21 +1152,15 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, UINT wParam, LONG lParam) {
 
 					if (inputVideoAVI) {
 						if (GetKeyState(VK_SHIFT)<0) {
-							long lSample2;
-							bool bMasked;
+							MoveToNearestKey(pos);
 
-							lSample2 = inputSubset->lookupFrame(pos);
+							pos = (LONG)GetCurrentFrame();
 
-							lSample2 = inputVideoAVI->nearestKey(lSample2);
-							pos = inputSubset->revLookupFrame(lSample2, bMasked);
-							if (bMasked)
-								pos = -1;
-
-							if (nmh->code != PCN_THUMBTRACK && pos >= 0)
+							if (nmh->code == PCN_THUMBTRACK)
+								SendMessage(nmh->hwndFrom, PCM_SETDISPFRAME, 0, pos);
+							else
 								SendMessage(nmh->hwndFrom, PCM_SETPOS, TRUE, pos);
-						}
-
-						if (pos >= 0) {
+						} else if (pos >= 0) {
 							if (nmh->code == PCN_THUMBTRACK)
 								SendMessage(nmh->hwndFrom, PCM_SETDISPFRAME, 0, pos);
 

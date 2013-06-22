@@ -1546,8 +1546,10 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 		if (!hbmLame)
 			throw MyError("Insufficient GDI resources to convert frame.");
 
-		SetDIBits(NULL, hbmLame, 0, getDecompressedFormat()->biHeight, inputBuffer, (BITMAPINFO *)getFormat(),
-			DIB_RGB_COLORS);
+		// Windows 95/98 need a DC for this.
+		HDC hdc = GetDC(0);
+		SetDIBits(hdc, hbmLame, 0, getDecompressedFormat()->biHeight, inputBuffer, (BITMAPINFO *)getFormat(), DIB_RGB_COLORS);
+		ReleaseDC(0,hdc);
 		GdiFlush();
 	} else if (hicDecomp && !bDirectDecompress) {
 		// Asus ASV1 crashes with zero byte frames!!!

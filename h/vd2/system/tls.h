@@ -18,7 +18,7 @@
 #ifndef f_SYSTEM_TLS_H
 #define f_SYSTEM_TLS_H
 
-#include <wchar.h>
+#include <ctype.h>
 
 class IProgress;
 class VDAtomicInt;

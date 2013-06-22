@@ -725,6 +725,56 @@ void VDProject::MoveToSelectionEnd() {
 	}
 }
 
+void VDProject::MoveToNearestKey(VDPosition pos) {
+	if (!inputVideoAVI)
+		return;
+
+	LONG lSample = (LONG)pos;
+
+	if (lSample <= 0)
+		lSample = 0;
+	else {
+		int offset;
+		FrameSubset::iterator it(inputSubset->findNode(offset, lSample)), itBegin(inputSubset->begin()), itEnd(inputSubset->end());
+
+		do {
+			if (it!=itEnd) {
+				const FrameSubsetNode& fsn0 = *it;
+
+				if (!fsn0.bMask) {
+					lSample = inputVideoAVI->nearestKey(fsn0.start + offset) - fsn0.start;
+
+					if (lSample >= 0)
+						break;
+				}
+			}
+
+			while(it != itBegin) {
+				--it;
+				const FrameSubsetNode& fsn = *it;
+
+				if (!fsn.bMask) {
+					lSample = inputVideoAVI->nearestKey(fsn.start + fsn.len - 1) - fsn.start;
+
+					if (lSample >= 0)
+						break;
+				}
+
+				lSample = 0;
+			}
+		} while(false);
+
+		while(it != itBegin) {
+			--it;
+			const FrameSubsetNode& fsn2 = *it;
+
+			lSample += fsn2.len;
+		}
+	}
+
+	MoveToFrame(lSample);
+}
+
 void VDProject::MoveToPreviousKey() {
 	if (!inputVideoAVI)
 		return;
@@ -802,6 +852,8 @@ void VDProject::MoveToNextKey() {
 
 				if (lSample >= 0 && lSample < fsn0.len)
 					break;
+
+				lSample = 0;
 			}
 
 			while(++it != itEnd) {

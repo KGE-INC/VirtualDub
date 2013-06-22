@@ -69,6 +69,7 @@ _VDFastMemcpyPartialMMX2	proc	near public
 		sub		eax, 7
 		jz		@nooddballs
 		mov		ecx, eax
+		neg		ecx
 		mov		esi, edx
 		mov		edi, ebx
 		rep		movsb

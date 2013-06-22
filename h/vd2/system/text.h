@@ -1,7 +1,7 @@
 #ifndef f_VD2_SYSTEM_TEXT_H
 #define f_VD2_SYSTEM_TEXT_H
 
-#include <wchar.h>
+#include <ctype.h>
 #include <stdarg.h>
 
 template<class T> class VDBasicString;
