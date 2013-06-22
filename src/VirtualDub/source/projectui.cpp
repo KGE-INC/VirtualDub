@@ -778,7 +778,7 @@ void VDProjectUI::SaveRawAudioAsk() {
 	if (!inputAudio)
 		throw MyError("No input audio stream to extract.");
 
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_RawAudioOut, mhwnd, L"Save raw audio", L"Raw audio (*.bin)\0*.bin\0", NULL));
+	const VDStringW filename(VDGetSaveFileName(kFileDialog_RawAudioOut, mhwnd, L"Save raw audio", L"All types\0*.bin;*.mp3\0Raw audio (*.bin)\0*.bin\0MPEG layer III audio (*.mp3)\0*.mp3\0", NULL));
 	if (!filename.empty()) {
 		SaveRawAudio(filename.c_str());
 	}
@@ -851,9 +851,24 @@ void VDProjectUI::SetVideoDepthOptionsAsk() {
 }
 
 void VDProjectUI::SetVideoRangeOptionsAsk() {
-	extern bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, IVDVideoSource *pVS);
+	extern bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, const VDFraction& frameRate, VDPosition frameCount, VDPosition& startSel, VDPosition& endSel);
 
-	VDDisplayVideoRangeDialog(mhwnd, g_dubOpts, inputVideo);
+	if (inputVideo) {
+		UpdateTimelineRate();
+
+		VDPosition len = mTimeline.GetLength();
+		VDPosition startSel = 0;
+		VDPosition endSel = len;
+
+		if (IsSelectionPresent()) {
+			startSel = GetSelectionStartFrame();
+			endSel = GetSelectionEndFrame();
+		}
+
+		if (VDDisplayVideoRangeDialog(mhwnd, g_dubOpts, mVideoTimelineFrameRate, len, startSel, endSel)) {
+			SetSelection(startSel, endSel);
+		}
+	}
 }
 
 void VDProjectUI::SetVideoCompressionAsk() {
@@ -2561,6 +2576,10 @@ void VDProjectUI::UISourceFileUpdated() {
 
 		VDSetLastLoadSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, (fileName + L".avi").c_str());
 		VDSetLastLoadSaveFileName(kFileDialog_WAVAudioOut, (fileName + L".wav").c_str());
+
+		bool isMP3 = inputAudio && inputAudio->getWaveFormat()->mTag == 0x55;
+		VDSetLastLoadSaveFileName(kFileDialog_RawAudioOut, (fileName + (isMP3 ? L".mp3" : L".bin")).c_str());
+
 		VDSetLastLoadSaveFileName(kFileDialog_GIFOut, (fileName + L".gif").c_str());
 
 		const wchar_t *s = VDFileSplitPath(g_szInputAVIFile);

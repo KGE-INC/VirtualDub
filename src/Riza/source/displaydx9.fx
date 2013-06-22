@@ -677,7 +677,7 @@ void VS_UYVY_to_RGB_1_1(
 }
 
 technique uyvy_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_UYVY_to_RGB_1_1();
 
 		PixelShader = asm {
@@ -725,7 +725,7 @@ technique uyvy_to_rgb_1_1 {
 }
 
 technique yuy2_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_UYVY_to_RGB_1_1();
 
 		PixelShader = asm {
@@ -816,7 +816,7 @@ pixelshader PS_YCbCr_to_RGB_1_1 = asm {
 };
 
 technique yvu9_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.25, 0.25), float2(0, 0));
 		PixelShader = <PS_YCbCr_to_RGB_1_1>;
 		
@@ -841,7 +841,7 @@ technique yvu9_to_rgb_1_1 {
 }
 
 technique yv12_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.5, 0.5), float2(-0.25, 0));
 		PixelShader = <PS_YCbCr_to_RGB_1_1>;
 		
@@ -866,7 +866,7 @@ technique yv12_to_rgb_1_1 {
 }
 
 technique yv16_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(0.5, 1), float2(-0.25, 0));
 		PixelShader = <PS_YCbCr_to_RGB_1_1>;
 		
@@ -891,7 +891,7 @@ technique yv16_to_rgb_1_1 {
 }
 
 technique yv24_to_rgb_1_1 {
-	pass {
+	pass < string vd_viewport = "unclipped,unclipped"; > {
 		VertexShader = compile vs_1_1 VS_YCbCr_to_RGB_1_1(float2(1, 1), float2(0, 0));
 		PixelShader = <PS_YCbCr_to_RGB_1_1>;
 		

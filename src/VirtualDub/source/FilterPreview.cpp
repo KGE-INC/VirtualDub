@@ -301,6 +301,7 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 	case WM_INITDIALOG:
 		OnInit();
 		OnVideoResize(true);
+		VDSetDialogDefaultIcons(mhdlg);
 		return TRUE;
 
 	case WM_DESTROY:

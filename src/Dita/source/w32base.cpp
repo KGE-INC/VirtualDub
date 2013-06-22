@@ -285,6 +285,21 @@ bool VDUIBaseWindowW32::DispatchEvent(IVDUIWindow *pWin, uint32 id, IVDUICallbac
 	return false;
 }
 
+namespace {
+	BOOL CALLBACK SetApplicationIconOnDialog(HMODULE hModule, LPCTSTR lpszType, LPTSTR lpszName, LONG_PTR lParam) {
+		HWND hdlg = (HWND)lParam;
+		HANDLE hLargeIcon = LoadImage((HINSTANCE)hModule, lpszName, IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED);
+		if (hLargeIcon)
+			SendMessage(hdlg, WM_SETICON, ICON_BIG, (LPARAM)hLargeIcon);
+
+		HANDLE hSmallIcon = LoadImage((HINSTANCE)hModule, lpszName, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
+		if (hSmallIcon)
+			SendMessage(hdlg, WM_SETICON, ICON_SMALL, (LPARAM)hSmallIcon);
+
+		return FALSE;
+	}
+}
+
 LRESULT VDUIBaseWindowW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 		case WM_INITDIALOG:
@@ -298,9 +313,16 @@ LRESULT VDUIBaseWindowW32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 				mArea.bottom = r.bottom;
 
 				DispatchEvent(this, mID, IVDUICallback::kEventCreate, 0);
-				if (!(GetWindowLong(mhwnd, GWL_STYLE) & DS_CONTROL)) {
-					Relayout();
+
+				DWORD dwStyle = GetWindowLong(mhwnd, GWL_STYLE);
+
+				if (dwStyle & WS_THICKFRAME) {
+					EnumResourceNames(VDGetLocalModuleHandleW32(), RT_GROUP_ICON, SetApplicationIconOnDialog, (LONG_PTR)mhwnd);
 				}
+
+				if (!(dwStyle & DS_CONTROL))
+					Relayout();
+
 				ExecuteAllLinks();
 			}
 			return FALSE;

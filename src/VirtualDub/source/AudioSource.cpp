@@ -302,6 +302,9 @@ AudioSourceDV::AudioSourceDV(InputFileAVI *pParent, IAVIReadStream *pStream, boo
 	, mpStream(pStream)
 	, mLastFrame(-1)
 	, mErrorMode(kErrorModeReportAll)
+	, mbGatherTabInited(false)
+	, mbGatherTabInitedAsPAL(false)
+	, mbGatherTabInitedAs16Bit(false)
 {
 	bQuiet = bAutomated;	// ugh, this needs to go... V1.5.0.
 }
@@ -376,9 +379,7 @@ bool AudioSourceDV::init() {
 	}
 
 	// check for 12-bit quantization
-	unsigned bytesPerSample = (aaux_as_pc4 & 7) ? 3 : 2;
-
-	mTempBuffer.resize(isPAL ? 144000 : 120000);
+	mTempBuffer.resize(144000);		// always use PAL worst case
 
 	pwfex->wFormatTag		= WAVE_FORMAT_PCM;
 	pwfex->nChannels		= 2;
@@ -390,28 +391,7 @@ bool AudioSourceDV::init() {
 
 	mGatherTab.resize(1960);
 	memset(mGatherTab.data(), 0, mGatherTab.size() * sizeof mGatherTab[0]);
-
-	if (isPAL) {
-		for(int i=0; i<1944; ++i) {
-			int dif_sequence	= ((i/3)+2*(i%3))%6;
-			int dif_block		= 6 + 16*(3*(i%3) + ((i%54)/18));
-			int byte_offset		= 8 + bytesPerSample*(i/54);
-
-			mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
-		}
-
-		mRightChannelOffset = 12000*6;	// left channel is first 6 DIF sequences
-	} else {
-		for(int i=0; i<1620; ++i) {
-			int dif_sequence	= ((i/3)+2*(i%3))%5;
-			int dif_block		= 6 + 16*(3*(i%3) + ((i%45)/15));
-			int byte_offset		= 8 + bytesPerSample*(i/45);
-
-			mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
-		}
-
-		mRightChannelOffset	= 12000*5;	// left channel is first 5 DIF sequences
-	}
+	mbGatherTabInited = false;
 
 	if (mpStream->Info(&streamInfo))
 		return false;
@@ -585,7 +565,7 @@ zero_fill:
 
 				if ((pAAUX[4] & 7) == 1) {	// 1: 12-bit nonlinear
 					const uint8 *src0 = (const uint8 *)mTempBuffer.data();
-					sint32 *pOffsets = mGatherTab.data();
+					const sint32 *pOffsets = GetGatherTab(isPAL, false);
 
 					sint16 *dst16 = (sint16 *)dst;
 					dst += 4*n;
@@ -633,8 +613,8 @@ zero_fill:
 					}
 				} else {					// 0: 16-bit linear
 					const uint8 *src0 = (const uint8 *)mTempBuffer.data();
-					const ptrdiff_t rightOffset = mRightChannelOffset;
-					sint32 *pOffsets = mGatherTab.data();
+					const ptrdiff_t rightOffset = isPAL ? 12000*6 : 12000*5;	// left channel is first 5/6 DIF sequences
+					const sint32 *pOffsets = GetGatherTab(isPAL, true);
 
 					for(int i=0; i<n; ++i) {
 						const ptrdiff_t pos = *pOffsets++;
@@ -680,8 +660,8 @@ zero_fill:
 
 				sint32 a0 = src2[0];
 				sint32 b0 = src2[1];
-				sint32 da = src2[2] - a0;
-				sint32 db = src2[3] - b0;
+				sint32 da = (sint32)src2[2] - a0;
+				sint32 db = (sint32)src2[3] - b0;
 
 				dst[0] = (sint16)(a0 + ((da*f + 0x800) >> 12));
 				dst[1] = (sint16)(b0 + ((db*f + 0x800) >> 12));
@@ -706,4 +686,33 @@ zero_fill:
 void AudioSourceDV::FlushCache() {
 	for(int i=0; i<kCacheLines; ++i)
 		mCacheLinePositions[i] = -1;
+}
+
+const sint32 *AudioSourceDV::GetGatherTab(bool pal, bool sixteenBit) {
+	if (!mbGatherTabInited || mbGatherTabInitedAsPAL != pal || mbGatherTabInitedAs16Bit != sixteenBit) {
+		mbGatherTabInited = true;
+		mbGatherTabInitedAsPAL = pal;
+		mbGatherTabInitedAs16Bit = sixteenBit;
+
+		unsigned bytesPerSample = sixteenBit ? 2 : 3;
+		if (pal) {
+			for(int i=0; i<1944; ++i) {
+				int dif_sequence	= ((i/3)+2*(i%3))%6;
+				int dif_block		= 6 + 16*(3*(i%3) + ((i%54)/18));
+				int byte_offset		= 8 + bytesPerSample*(i/54);
+
+				mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
+			}
+		} else {
+			for(int i=0; i<1620; ++i) {
+				int dif_sequence	= ((i/3)+2*(i%3))%5;
+				int dif_block		= 6 + 16*(3*(i%3) + ((i%45)/15));
+				int byte_offset		= 8 + bytesPerSample*(i/45);
+
+				mGatherTab[i] = 12000*dif_sequence + 80*dif_block + byte_offset;
+			}
+		}
+	}
+
+	return mGatherTab.data();
 }

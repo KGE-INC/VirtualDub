@@ -1389,8 +1389,8 @@ bool VDVideoDisplayDX9Manager::RunEffect(const EffectContext& ctx, const RECT& r
 				D3DSURFACE_DESC desc;
 				hr = rt->GetDesc(&desc);
 				if (SUCCEEDED(hr)) {
-					const DWORD hsizes[3]={ desc.Width, ctx.mSourceW, clippedWidth };
-					const DWORD vsizes[3]={ desc.Height, ctx.mSourceH, clippedHeight };
+					const DWORD hsizes[4]={ desc.Width, ctx.mSourceW, clippedWidth, rClient.right };
+					const DWORD vsizes[4]={ desc.Height, ctx.mSourceH, clippedHeight, rClient.bottom };
 
 					vp.X = 0;
 					vp.Y = 0;

@@ -529,6 +529,9 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
 		JobCreateScript(output, opt);
 
+		// Add magic flag
+		output.adds("  // -- $reloadstop --");
+
 		// Add actual run option
 
 		VDStringA s(strCify(VDTextWToU8(VDStringW(szFilePrefix)).c_str()));
@@ -542,7 +545,7 @@ void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput
 
 		vdj->SetInputFile(VDTextWToA(szFileInput).c_str());
 		VDStringA outputFile;
-		outputFile.sprintf("%hs*%hs", szFilePrefix, szFileSuffix);
+		outputFile.sprintf("%ls*%ls", szFilePrefix, szFileSuffix);
 		vdj->SetOutputFile(outputFile.c_str());
 
 		const JobScriptOutput::Script& script = output.getscript();

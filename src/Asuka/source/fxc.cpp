@@ -956,7 +956,11 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 							pi.mViewportW = 1;
 						else if (hvp == "out")
 							pi.mViewportW = 2;
-						else if (hvp != "full")
+						else if (hvp == "unclipped")
+							pi.mViewportW = 3;
+						else if (hvp == "full")
+							pi.mViewportW = 0;
+						else
 							valid = false;
 					}
 
@@ -969,7 +973,11 @@ void tool_fxc(const vdfastvector<const char *>& args, const vdfastvector<const c
 							pi.mViewportH = 1;
 						else if (!strcmp(brk, "out"))
 							pi.mViewportH = 2;
-						else if (strcmp(brk, "full"))
+						else if (!strcmp(brk, "unclipped"))
+							pi.mViewportH = 3;
+						else if (!strcmp(brk, "full"))
+							pi.mViewportH = 0;
+						else
 							valid = false;
 					}
 

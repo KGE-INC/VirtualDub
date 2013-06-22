@@ -140,7 +140,7 @@ static const TechniqueInfo g_technique_bicubic1_4={
 	2.f,
 };
 static const PassInfo g_technique_uyvy_to_rgb_1_1_passes[]={
-	{ 18, 2, 324, 341, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 18, 2, 324, 341, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_uyvy_to_rgb_1_1={
 	g_technique_uyvy_to_rgb_1_1_passes, 1,
@@ -155,7 +155,7 @@ static const TechniqueInfo g_technique_uyvy_to_rgb_1_1={
 	1.f,
 };
 static const PassInfo g_technique_yuy2_to_rgb_1_1_passes[]={
-	{ 18, 3, 341, 358, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 18, 3, 341, 358, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_yuy2_to_rgb_1_1={
 	g_technique_yuy2_to_rgb_1_1_passes, 1,
@@ -170,7 +170,7 @@ static const TechniqueInfo g_technique_yuy2_to_rgb_1_1={
 	1.f,
 };
 static const PassInfo g_technique_yvu9_to_rgb_1_1_passes[]={
-	{ 19, 4, 358, 375, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 19, 4, 358, 375, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_yvu9_to_rgb_1_1={
 	g_technique_yvu9_to_rgb_1_1_passes, 1,
@@ -185,7 +185,7 @@ static const TechniqueInfo g_technique_yvu9_to_rgb_1_1={
 	1.f,
 };
 static const PassInfo g_technique_yv12_to_rgb_1_1_passes[]={
-	{ 20, 4, 375, 392, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 20, 4, 375, 392, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_yv12_to_rgb_1_1={
 	g_technique_yv12_to_rgb_1_1_passes, 1,
@@ -200,7 +200,7 @@ static const TechniqueInfo g_technique_yv12_to_rgb_1_1={
 	1.f,
 };
 static const PassInfo g_technique_yv16_to_rgb_1_1_passes[]={
-	{ 21, 4, 392, 409, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 21, 4, 392, 409, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_yv16_to_rgb_1_1={
 	g_technique_yv16_to_rgb_1_1_passes, 1,
@@ -215,7 +215,7 @@ static const TechniqueInfo g_technique_yv16_to_rgb_1_1={
 	1.f,
 };
 static const PassInfo g_technique_yv24_to_rgb_1_1_passes[]={
-	{ 22, 4, 409, 426, 0, 2, 2, 0, false, false, 0x00000000 },
+	{ 22, 4, 409, 426, 0, 3, 3, 0, false, false, 0x00000000 },
 };
 static const TechniqueInfo g_technique_yv24_to_rgb_1_1={
 	g_technique_yv24_to_rgb_1_1_passes, 1,

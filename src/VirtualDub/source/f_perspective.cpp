@@ -265,7 +265,7 @@ namespace {
 					mFrame.top		= r.top + VDRoundToInt(1.00 * (r.bottom - r.top) / 4.0) + 1;
 					mFrame.bottom	= r.top + VDRoundToInt(3.00 * (r.bottom - r.top) / 4.0) + 1;
 
-					mFrameBuffer.resize((mFrame.right - mFrame.left) * (mFrame.bottom - mFrame.top));
+					mFrameBuffer.resize((mFrame.right - mFrame.left) * (mFrame.bottom - mFrame.top), 0);
 				}
 				return (TRUE);
 

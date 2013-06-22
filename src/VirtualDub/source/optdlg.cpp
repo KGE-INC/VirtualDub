@@ -994,7 +994,7 @@ bool VDDisplayVideoFrameRateDialog(VDGUIHandle hParent, DubOptions& opts, IVDVid
 
 class VDDialogVideoRangeW32 : public VDDialogBaseW32 {
 public:
-	inline VDDialogVideoRangeW32(DubOptions& opts, IVDVideoSource *pVS) : VDDialogBaseW32(IDD_VIDEO_CLIPPING), mOpts(opts), mpVideo(pVS), mbReentry(false) {}
+	VDDialogVideoRangeW32(DubOptions& opts, const VDFraction& frameRate, VDPosition frameCount, VDPosition& startSel, VDPosition& endSel);
 
 	inline bool Activate(VDGUIHandle hParent) { return 0 != ActivateDialog(hParent); }
 
@@ -1008,17 +1008,35 @@ protected:
 	void LengthMS();
 
 	DubOptions& mOpts;
-	IVDVideoSource *const mpVideo;
+	VDPosition& mSelStart;
+	VDPosition& mSelEnd;
+	VDFraction mFrameRate;
+	VDPosition mFrameCount;
+	VDTime mTotalTimeMS;
 
 	bool mbReentry;
 };
+
+VDDialogVideoRangeW32::VDDialogVideoRangeW32(DubOptions& opts, const VDFraction& frameRate, VDPosition frameCount, VDPosition& startSel, VDPosition& endSel)
+	: VDDialogBaseW32(IDD_VIDEO_CLIPPING)
+	, mOpts(opts)
+	, mSelStart(startSel)
+	, mSelEnd(endSel)
+	, mFrameRate(frameRate)
+	, mFrameCount(frameCount)
+	, mTotalTimeMS(0)
+	, mbReentry(false)
+{
+	if (mFrameRate.getLo())
+		mTotalTimeMS = VDRoundToInt64(mFrameCount * mFrameRate.AsInverseDouble() * 1000.0);
+}
 
 void VDDialogVideoRangeW32::MSToFrames(UINT idFrames, UINT idMS) {
 	VDPosition frames;
 	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo)
+	if (!mFrameRate.getLo())
 		return;
 
 	ms = GetDlgItemInt(mhdlg, idMS, &ok, FALSE);
@@ -1026,15 +1044,14 @@ void VDDialogVideoRangeW32::MSToFrames(UINT idFrames, UINT idMS) {
 		return;
 	mbReentry = true;
 
-	IVDStreamSource *pVSS = mpVideo->asStream();
-	frames = pVSS->msToSamples(ms);
+	frames = VDRoundToInt64((double)ms * mFrameRate.asDouble() / 1000.0);
 	SetDlgItemInt(mhdlg, idFrames, (UINT)frames, FALSE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_MS,
-				(UINT)(pVSS->samplesToMs(pVSS->getLength())
+				(UINT)(mTotalTimeMS
 				-GetDlgItemInt(mhdlg, IDC_END_MS, NULL, FALSE)
 				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES,
-				(UINT)(pVSS->getLength()
+				(UINT)(mFrameCount
 				-GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE)
 				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE)), TRUE);
 	mbReentry = false;
@@ -1045,22 +1062,21 @@ void VDDialogVideoRangeW32::FramesToMS(UINT idMS, UINT idFrames) {
 	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo)
+	if (!mFrameRate.getLo())
 		return;
 
 	frames = GetDlgItemInt(mhdlg, idFrames, &ok, FALSE);
 	if (!ok) return;
 	mbReentry = true;
 
-	IVDStreamSource *pVSS = mpVideo->asStream();
-	ms = pVSS->samplesToMs(frames);
+	ms = VDRoundToInt64((double)frames * mFrameRate.AsInverseDouble() * 1000.0);
 	SetDlgItemInt(mhdlg, idMS, (UINT)ms, FALSE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_MS,
-				(UINT)(pVSS->samplesToMs(pVSS->getLength())
+				(UINT)(mTotalTimeMS
 				-GetDlgItemInt(mhdlg, IDC_END_MS, NULL, FALSE)
 				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES,
-				(UINT)(pVSS->getLength()
+				(UINT)(mFrameCount
 				-GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE)
 				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE)), TRUE);
 	mbReentry = false;
@@ -1071,21 +1087,20 @@ void VDDialogVideoRangeW32::LengthFrames() {
 	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo) return;
+	if (!mFrameRate.getLo()) return;
 
 	frames = GetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, &ok, TRUE);
 	if (!ok) return;
 	mbReentry = true;
 
-	IVDStreamSource *pVSS = mpVideo->asStream();
-	ms = pVSS->samplesToMs(frames);
+	ms = VDRoundToInt64((double)frames * mFrameRate.AsInverseDouble() * 1000.0);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_MS, (UINT)ms, FALSE);
 	SetDlgItemInt(mhdlg, IDC_END_MS,
-				(UINT)(pVSS->samplesToMs(pVSS->getLength())
+				(UINT)(mTotalTimeMS
 				-ms
 				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_END_FRAMES,
-				(UINT)(pVSS->getLength()
+				(UINT)(mFrameCount
 				-frames
 				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE)), TRUE);
 	mbReentry = false;
@@ -1096,21 +1111,20 @@ void VDDialogVideoRangeW32::LengthMS() {
 	VDTime ms;
 	BOOL ok;
 
-	if (!mpVideo) return;
+	if (!mFrameRate.getLo()) return;
 
 	ms = GetDlgItemInt(mhdlg, IDC_LENGTH_MS, &ok, TRUE);
 	if (!ok) return;
 	mbReentry = TRUE;
 
-	IVDStreamSource *pVSS = mpVideo->asStream();
-	frames = pVSS->msToSamples(ms);
+	frames = VDRoundToInt64((double)ms * mFrameRate.asDouble() / 1000.0);
 	SetDlgItemInt(mhdlg, IDC_LENGTH_FRAMES, (UINT)frames, FALSE);
 	SetDlgItemInt(mhdlg, IDC_END_MS,
-				(UINT)(pVSS->samplesToMs(pVSS->getLength())
+				(UINT)(mTotalTimeMS
 				-ms
 				-GetDlgItemInt(mhdlg, IDC_START_MS, NULL, TRUE)), TRUE);
 	SetDlgItemInt(mhdlg, IDC_END_FRAMES,
-				(UINT)(pVSS->getLength()
+				(UINT)(mFrameCount
 				-frames
 				-GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, TRUE)), TRUE);
 	mbReentry = FALSE;
@@ -1119,10 +1133,13 @@ void VDDialogVideoRangeW32::LengthMS() {
 INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_INITDIALOG:
-			EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_MS), !!mpVideo);
-			EnableWindow(GetDlgItem(mhdlg, IDC_START_FRAMES), !!mpVideo);
-			EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_FRAMES), !!mpVideo);
-			EnableWindow(GetDlgItem(mhdlg, IDC_END_FRAMES), !!mpVideo);
+			{
+				bool videoPresent = mFrameRate.getLo() != 0;
+				EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_MS), videoPresent);
+				EnableWindow(GetDlgItem(mhdlg, IDC_START_FRAMES), videoPresent);
+				EnableWindow(GetDlgItem(mhdlg, IDC_LENGTH_FRAMES), videoPresent);
+				EnableWindow(GetDlgItem(mhdlg, IDC_END_FRAMES), videoPresent);
+			}
 			SetDlgItemInt(mhdlg, IDC_START_MS, mOpts.video.lStartOffsetMS, FALSE);
 			SetDlgItemInt(mhdlg, IDC_END_MS, mOpts.video.lEndOffsetMS, FALSE);
 			CheckDlgButton(mhdlg, IDC_OFFSET_AUDIO, mOpts.audio.fStartAudio);
@@ -1165,8 +1182,8 @@ INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
 					LengthFrames();
 				break;
 			case IDOK:
-				mOpts.video.lStartOffsetMS	= GetDlgItemInt(mhdlg, IDC_START_MS, NULL, FALSE);
-				mOpts.video.lEndOffsetMS	= GetDlgItemInt(mhdlg, IDC_END_MS, NULL, FALSE);
+				mSelStart = GetDlgItemInt(mhdlg, IDC_START_FRAMES, NULL, FALSE);
+				mSelEnd = mFrameCount - GetDlgItemInt(mhdlg, IDC_END_FRAMES, NULL, FALSE);
 				mOpts.audio.fStartAudio		= !!IsDlgButtonChecked(mhdlg, IDC_OFFSET_AUDIO);
 				mOpts.audio.fEndAudio		= !!IsDlgButtonChecked(mhdlg, IDC_CLIP_AUDIO);
 				End(true);
@@ -1180,8 +1197,8 @@ INT_PTR VDDialogVideoRangeW32::DlgProc(UINT message, WPARAM wParam, LPARAM lPara
     return FALSE;
 }
 
-bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, IVDVideoSource *pVS) {
-	VDDialogVideoRangeW32 dlg(opts, pVS);
+bool VDDisplayVideoRangeDialog(VDGUIHandle hParent, DubOptions& opts, const VDFraction& frameRate, VDPosition frameCount, VDPosition& startSel, VDPosition& endSel) {
+	VDDialogVideoRangeW32 dlg(opts, frameRate, frameCount, startSel, endSel);
 
 	return dlg.Activate(hParent);
 }

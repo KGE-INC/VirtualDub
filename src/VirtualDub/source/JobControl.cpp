@@ -859,7 +859,7 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 
 			uint32 revision = mLastRevision + 1;
 
-			Save(&outputStream, signature, revision);
+			Save(&outputStream, signature, revision, false);
 
 			mbModified = false;
 			mbOrderModified = false;
@@ -882,13 +882,13 @@ bool VDJobQueue::Flush(const wchar_t *fileName) {
 	} else {
 		VDFileStream outputStream(fileName, nsVDFile::kWrite | nsVDFile::kDenyAll | nsVDFile::kCreateAlways);
 		
-		Save(&outputStream, 0, 0);
+		Save(&outputStream, 0, 1, true);
 	}
 
 	return true;
 }
 
-void VDJobQueue::Save(IVDStream *stream, uint64 signature, uint32 revision) {
+void VDJobQueue::Save(IVDStream *stream, uint64 signature, uint32 revision, bool resetJobRevisions) {
 	VDTextOutputStream output(stream);
 
 	output.PutLine("// VirtualDub job list (Sylia script format)");
@@ -910,7 +910,9 @@ void VDJobQueue::Save(IVDStream *stream, uint64 signature, uint32 revision) {
 		output.FormatLine("// $output \"%s\""	, vdj->GetOutputFile());
 		output.FormatLine("// $state %d"		, state);
 		output.FormatLine("// $id %llx"			, vdj->mId);
-		output.FormatLine("// $revision %x %x", vdj->mCreationRevision ? vdj->mCreationRevision : revision, vdj->mChangeRevision ? vdj->mChangeRevision : revision);
+
+		if (!resetJobRevisions)
+			output.FormatLine("// $revision %x %x", vdj->mCreationRevision ? vdj->mCreationRevision : revision, vdj->mChangeRevision ? vdj->mChangeRevision : revision);
 
 		if (state == VDJob::kStateInProgress || state == VDJob::kStateAborting || state == VDJob::kStateCompleted || state == VDJob::kStateError) {
 			output.FormatLine("// $runner_id %llx", vdj->mRunnerId);

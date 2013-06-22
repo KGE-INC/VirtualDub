@@ -94,6 +94,7 @@ protected:
 
 	const CacheLine *LoadSet(VDPosition set);
 	void FlushCache();
+	const sint32 *GetGatherTab(bool pal, bool sixteenBit);
 	bool _isKey(VDPosition lSample);
 
 	vdblock<uint8> mTempBuffer;
@@ -102,11 +103,14 @@ protected:
 	bool bQuiet;
 	ErrorMode	mErrorMode;
 	uint32	mSamplesPerSet;
-	sint32	mRightChannelOffset;
 	VDPosition mLastFrame;
 	VDPosition	mRawFrames;
 	VDPosition	mRawStart;
 	VDPosition	mRawEnd;
+
+	bool mbGatherTabInited;
+	bool mbGatherTabInitedAsPAL;
+	bool mbGatherTabInitedAs16Bit;
 
 	vdblock<sint32>	mGatherTab;
 

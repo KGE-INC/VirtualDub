@@ -1154,6 +1154,8 @@ HexEditor::~HexEditor() {
 void HexEditor::Init() {
 	HDC hdc;
 
+	VDSetDialogDefaultIcons(hwnd);
+
 	if (hdc = GetDC(hwnd)) {
 		TEXTMETRIC tm;
 		HGDIOBJ hfOld;

@@ -363,6 +363,10 @@ VDCaptureDriverScreen::VDCaptureDriverScreen()
 	mbGLOcclusionValid[0] = false;
 	mbGLOcclusionValid[1] = false;
 	mbGLOcclusionPrevFrameValid = false;
+
+	memset(mGLTextures, 0, sizeof mGLTextures);
+	memset(mGLBuffers, 0, sizeof mGLBuffers);
+	memset(mbFrameValid, 0, sizeof mbFrameValid);
 }
 
 VDCaptureDriverScreen::~VDCaptureDriverScreen() {
@@ -2529,13 +2533,26 @@ void VDCaptureDriverScreen::LoadSettings() {
 
 	mbTrackCursor = key.getBool("Track cursor", mbTrackCursor);
 	mbTrackActiveWindow = key.getBool("Track active window", mbTrackActiveWindow);
-	mbTrackActiveWindowClient = key.getBool("Track active window client area", mbTrackActiveWindowClient);
+	mbTrackActiveWindowClient = key.getBool("Track active window client", mbTrackActiveWindowClient);
 	mbDrawMousePointer = key.getBool("Draw mouse pointer", mbDrawMousePointer);
 	mbRescaleImage = key.getBool("Rescale image", mbRescaleImage);
 	mbOpenGLMode = key.getBool("OpenGL mode", mbOpenGLMode);
 	mbRemoveDuplicates = key.getBool("Remove duplicates", mbRemoveDuplicates);
 	mRescaleW = key.getInt("Rescale width", mRescaleW);
 	mRescaleH = key.getInt("Rescale height", mRescaleH);
+
+	if (mRescaleW < 1)
+		mRescaleW = 1;
+
+	if (mRescaleW > 32768)
+		mRescaleW = 32768;
+
+	if (mRescaleH < 1)
+		mRescaleH = 1;
+
+	if (mRescaleH > 32768)
+		mRescaleH = 32768;
+
 	mTrackOffsetX = key.getInt("Position X", mTrackOffsetX);
 	mTrackOffsetY = key.getInt("Position Y", mTrackOffsetY);
 }

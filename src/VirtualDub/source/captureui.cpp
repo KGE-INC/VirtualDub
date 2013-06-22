@@ -1163,11 +1163,16 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	mpProject->LockUpdates();
 
 	len = devkey.getBinaryLength(g_szVideoFormat);
-	if (len >= 0) {
+	if (len >= sizeof(VDAVIBitmapInfoHeader)) {
 		vdblock<char> buf(len);
 
-		if (devkey.getBinary(g_szVideoFormat, buf.data(), buf.size()))
-			mpProject->SetVideoFormat(*(const VDAVIBitmapInfoHeader *)buf.data(), buf.size());
+		if (devkey.getBinary(g_szVideoFormat, buf.data(), buf.size())) {
+			const VDAVIBitmapInfoHeader& hdr = *(const VDAVIBitmapInfoHeader *)buf.data();
+
+			// do some very basic validation
+			if (hdr.biSize >= sizeof(VDAVIBitmapInfoHeader) && hdr.biSize < 0x100000 && hdr.biWidth >= 1 && hdr.biHeight >= 1)
+				mpProject->SetVideoFormat(hdr, buf.size());
+		}
 	}
 
 	VDCaptureCompressionSpecs cs;
@@ -2071,7 +2076,7 @@ bool VDCaptureProjectUI::UICaptureAnalyzeBegin(const VDPixmap& px) {
 }
 
 void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
-	if (format.format) {
+	if (format.format && !IsIconic((HWND)mhwnd)) {
 		VDPixmap px(format);
 
 		vdsynchronized(mDisplayAccelImageLock) {
@@ -4135,10 +4140,23 @@ static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM 
 					}
 
 				} else {
-					w = s_widths[SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_GETITEMDATA,
-							SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_GETCURSEL, 0, 0), 0)];
-					h = s_heights[SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_GETITEMDATA,
-							SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_GETCURSEL, 0, 0), 0)];
+					int widthIdx = SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_GETCURSEL, 0, 0);
+					int heightIdx = SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_GETCURSEL, 0, 0);
+
+					if ((unsigned)widthIdx >= sizeof s_widths / sizeof s_widths[0]) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(hdlg, IDC_FRAME_WIDTH));
+						return TRUE;
+					}
+
+					if ((unsigned)heightIdx >= sizeof s_heights / sizeof s_heights[0]) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(hdlg, IDC_FRAME_HEIGHT));
+						return TRUE;
+					}
+
+					w = s_widths[widthIdx];
+					h = s_heights[heightIdx];
 				}
 
 				f = SendDlgItemMessage(hdlg, IDC_FORMATS, LB_GETITEMDATA,

@@ -103,7 +103,7 @@ public:
 
 protected:
 	bool Load(IVDStream *stream, bool skipIfSignatureSame);
-	void Save(IVDStream *stream, uint64 signature, uint32 revision);
+	void Save(IVDStream *stream, uint64 signature, uint32 revision, bool resetJobRevisions);
 
 	void NotifyStatus();
 	uint64 CreateListSignature();

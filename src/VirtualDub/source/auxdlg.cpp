@@ -24,6 +24,7 @@
 #include "resource.h"
 #include "auxdlg.h"
 #include "oshelper.h"
+#include "gui.h"
 
 #include <vd2/Priss/decoder.h>
 #include <vd2/system/thread.h>
@@ -64,6 +65,7 @@ public:
 		case WM_INITDIALOG:
 			VDGetILogWindowControl(GetDlgItem(hdlg, IDC_LOG))->AttachAsLogger(false);
 			g_hwndLogWindow = hdlg;
+			VDSetDialogDefaultIcons(hdlg);
 		case WM_SIZE:
 			{
 				RECT r;
@@ -115,6 +117,7 @@ public:
 		case WM_INITDIALOG:
 			g_hwndProfileWindow = hdlg;
 			VDGetIRTProfileDisplayControl(GetDlgItem(hdlg, IDC_PROFILE))->SetProfiler(VDGetRTProfiler());
+			VDSetDialogDefaultIcons(hdlg);
 		case WM_SIZE:
 			{
 				RECT r;

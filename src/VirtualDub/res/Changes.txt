@@ -1,6 +1,26 @@
 VirtualDub change log
 
-Build %build% (1.8.3, stable): [%date%]
+Build %build% (1.8.4, stable): [%date%]
+   [features added]
+   * Export > Raw Audio defaults to .mp3 extension when the audio track is in MPEG layer III format.
+   * Capture: Optimized display code slightly when main window is minimized.
+
+   [bugs fixed]
+   * Fixed another crash with uncompressed paletted video.
+   * Fixed several dialogs that had placeholder icons.
+   * "Open shared job list" dialog now shows the correct title.
+   * Fixed shared job list sync errors when using a job file originally saved from non-shared mode.
+   * Image sequence export jobs didn't reload properly.
+   * Perspective filter no longer shows garbage preview frame before a frame is sampled.
+   * Capture: The "track active window client area" setting of the screencap driver is now saved properly.
+   * Capture: Fixed crash when exiting Set Custom Format dialog with no width or height selected.
+   * DV: Fixed noise when audio switches between 12-bit and 16-bit encoding.
+   * D3D: Fixed wrong-boxing of video when source frame is YCbCr and larger than screen.
+   
+   [regressions fixed]
+   * Video > Select Range dialog now works again. It now sets the selection.
+
+Build 29896 (1.8.3, stable): [July 20, 2008]
    [regressions fixed]
    * Fixed issue where main window failed to appear on first start on some systems.
 

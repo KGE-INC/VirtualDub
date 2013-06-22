@@ -53,6 +53,8 @@ void VDUIRestoreListViewColumnsW32(HWND hwnd, const char *name);
 
 void VDUISetListViewColumnsW32(HWND hwnd, const float *relwidths, int count);
 
+void VDSetDialogDefaultIcons(HWND hdlg);
+
 void guiSetStatus(char *format, int nPart, ...);
 void guiSetTitle(HWND hWnd, UINT uID, ...);
 void guiSetTitleW(HWND hWnd, UINT uID, ...);

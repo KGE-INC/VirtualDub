@@ -410,14 +410,14 @@ void VDSubstituteStrings(VDStringW& s) {
 			case L'k':
 				#if VD_COMPILER_MSVC >= 1500
 					#if VD_CPU_AMD64
-						t.append("Microsoft Visual Studio 2008 for AMD64");
+						t.append(L"Microsoft Visual Studio 2008 for AMD64");
 					#else
-						t.append("Microsoft Visual Studio 2008 for X86");
+						t.append(L"Microsoft Visual Studio 2008 for X86");
 					#endif
 				#elif VD_COMPILER_MSVC >= 1400
 					#if VD_CPU_AMD64
 						#if VD_COMPILER_MSVC_VC8_DDK
-							t.append("Microsoft Visual C++ 8.0 for AMD64 (DDK version)");
+							t.append(L"Microsoft Visual C++ 8.0 for AMD64 (DDK version)");
 						#elif VD_COMPILER_MSVC_VC8_PSDK
 							t.append(L"Microsoft Visual C++ 8.0 for AMD64 (PSDK version)");
 						#else

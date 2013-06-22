@@ -640,7 +640,7 @@ public:
 	VDVideoDecompressorDIB();
 	~VDVideoDecompressorDIB();
 
-	void Init(const VDPixmapLayout& srcLayout, const uint32 *palette);
+	void Init(const VDPixmapLayout& srcLayout, const uint32 *palette, uint32 maxPaletteEntries);
 
 	bool QueryTargetFormat(int format);
 	bool QueryTargetFormat(const void *format);
@@ -662,6 +662,8 @@ protected:
 	int		mDstFormatVariant;
 	VDPixmapLayout	mSrcLayout;
 	VDPixmapLayout	mDstLayout;
+
+	uint32	mPalette[256];
 };
 
 VDVideoDecompressorDIB::VDVideoDecompressorDIB()
@@ -678,11 +680,24 @@ VDVideoDecompressorDIB::VDVideoDecompressorDIB()
 VDVideoDecompressorDIB::~VDVideoDecompressorDIB() {
 }
 
-void VDVideoDecompressorDIB::Init(const VDPixmapLayout& srcLayout, const uint32 *palette) {
+void VDVideoDecompressorDIB::Init(const VDPixmapLayout& srcLayout, const uint32 *palette, uint32 maxPaletteEntries) {
 	mWidth = srcLayout.w;
 	mHeight = srcLayout.h;
 	mSrcLayout = srcLayout;
 	mSrcLinSize = VDPixmapLayoutGetMinSize(mSrcLayout);
+
+	uint32 palEnts = VDPixmapGetInfo(srcLayout.format).palsize;
+
+	if (palEnts) {
+		if (palEnts > maxPaletteEntries)
+			palEnts = maxPaletteEntries;
+
+		uint32 toCopy = sizeof(uint32)*palEnts;
+		memcpy(mPalette, palette, toCopy);
+		memset(mPalette + palEnts, 0, sizeof mPalette - toCopy);
+
+		mSrcLayout.palette = mPalette;
+	}
 }
 
 bool VDVideoDecompressorDIB::QueryTargetFormat(int format) {
@@ -773,7 +788,8 @@ IVDVideoDecompressor *VDFindVideoDecompressorEx(uint32 fccHandler, const VDAVIBi
 			VDPixmapLayout layout;
 			VDMakeBitmapCompatiblePixmapLayout(layout, hdr.biWidth, hdr.biHeight, format, variant);
 
-			static_cast<VDVideoDecompressorDIB *>(dec)->Init(layout, (const uint32 *)(&hdr + 1));
+			const uint32 *palette = (const uint32 *)(&hdr + 1);
+			static_cast<VDVideoDecompressorDIB *>(dec)->Init(layout, palette, hdrSize >= sizeof(VDAVIBitmapInfoHeader) ? (hdrSize - sizeof(VDAVIBitmapInfoHeader)) >> 2 : 0);
 			return dec;
 		}
 	}

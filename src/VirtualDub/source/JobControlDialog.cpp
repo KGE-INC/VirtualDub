@@ -171,6 +171,8 @@ VDUIJobControlDialog::~VDUIJobControlDialog() {
 }
 
 bool VDUIJobControlDialog::OnLoaded() {
+	VDSetDialogDefaultIcons(mhdlg);
+
 	mStandardCaption = VDGetWindowTextW32(mhdlg);
 
 	static const char *const szColumnNames[]={ "Name","Source","Dest","Start","End","Status" };
@@ -412,7 +414,7 @@ bool VDUIJobControlDialog::OnMenuHit(uint32 id) {
 
 					int optvals[]={ false };
 
-					VDStringW filename(VDGetSaveFileName(kFileDialog_JobList, (VDGUIHandle)mhdlg, L"Save job list", fileFilters, NULL, opts, optvals));
+					VDStringW filename(VDGetSaveFileName(kFileDialog_JobList, (VDGUIHandle)mhdlg, L"Use shared job list", fileFilters, NULL, opts, optvals));
 
 					if (!filename.empty()) {
 						if (!_wcsicmp(filename.c_str(), g_VDJobQueue.GetDefaultJobFilePath())) {

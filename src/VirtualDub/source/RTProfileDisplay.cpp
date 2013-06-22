@@ -26,6 +26,7 @@
 #include <list>
 #include <algorithm>
 
+#include "gui.h"
 #include "oshelper.h"
 #include "RTProfileDisplay.h"
 
@@ -158,6 +159,7 @@ LRESULT VDRTProfileDisplay::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_CREATE:
 		OnSetFont(NULL, FALSE);
 		SetTimer(mhwnd, 1, 1000, NULL);
+		VDSetDialogDefaultIcons(mhwnd);
 		return 0;
 	case WM_SIZE:
 		OnSize(LOWORD(lParam), HIWORD(lParam));
