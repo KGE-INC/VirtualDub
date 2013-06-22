@@ -1635,7 +1635,14 @@ void *AudioCompressor::Compress(long lInputSamples, long *lplSrcInputSamples, lo
 			ashBuffer.cbSrcLength = 0;
 
 		// chuck all pending data to the hold buffer
+		//
+		// NOTE: Microsoft ADPCM appears to write a partial block when the
+		//       last part of the input stream is insufficient to end with
+		//		 a full block.  We can't write partial blocks to the AVI
+		//		 file, as AVIFile will ignore it.  So we cut it off.
 
+		if (fStreamEnded)
+			ashBuffer.cbDstLengthUsed -= ashBuffer.cbDstLengthUsed % format->nBlockAlign;
 		WriteToHoldBuffer(outputBuffer, ashBuffer.cbDstLengthUsed);
 	}
 
@@ -1813,7 +1820,9 @@ AudioSubset::AudioSubset(AudioStream *src, FrameSubset *pfs, long usPerFrame, lo
 	}
 #endif
 
-	subset.deleteRange(0, MulDiv(preskew, src->GetFormat()->nSamplesPerSec, 1000));
+	const WAVEFORMATEX *pSrcFormat = src->GetFormat();
+
+	subset.deleteRange(0, MulDiv(preskew, pSrcFormat->nAvgBytesPerSec, 1000*pSrcFormat->nBlockAlign));
 
 	stream_len = total;
 

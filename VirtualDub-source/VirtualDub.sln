@@ -1,0 +1,77 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Setup", "Setup\Setup.vcproj", "{6274D071-163C-49DE-AA6C-809E01190BE1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualDub", "VirtualDub.vcproj", "{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdicmdrv", "vdicmdrv\vdicmdrv.vcproj", "{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdremote", "vdremote\vdremote.vcproj", "{22EFB23B-299F-428A-9539-9858C5ED2A42}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vdsvrlnk", "vdsvrlnk\vdsvrlnk.vcproj", "{3913F6FE-6221-4610-999B-A8A92CC5558E}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 6
+		SccProjectUniqueName0 = Setup\\Setup.vcproj
+		SccProjectName0 = Setup
+		SccLocalPath0 = Setup
+		CanCheckoutShared = true
+		SccProjectUniqueName1 = VirtualDub.vcproj
+		SccProjectName1 = VirtualDub
+		SccLocalPath1 = .
+		CanCheckoutShared = true
+		SccProjectUniqueName2 = vdicmdrv\\vdicmdrv.vcproj
+		SccProjectName2 = vdicmdrv
+		SccLocalPath2 = vdicmdrv
+		CanCheckoutShared = true
+		SccProjectUniqueName3 = vdremote\\vdremote.vcproj
+		SccProjectName3 = vdremote
+		SccLocalPath3 = vdremote
+		CanCheckoutShared = true
+		SccProjectUniqueName4 = vdsvrlnk\\vdsvrlnk.vcproj
+		SccProjectName4 = vdsvrlnk
+		SccLocalPath4 = vdsvrlnk
+		CanCheckoutShared = true
+		SccProjectName5 = --\u0020using\u0020Perforce\u0020--
+		SccLocalPath5 = .
+		SccProvider5 = MSSCCI:Perforce\u0020SCM
+		CanCheckoutShared = true
+		SolutionUniqueID = {ED57E005-779A-4D7E-B4D8-DA7622E87231}
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.0 = {3913F6FE-6221-4610-999B-A8A92CC5558E}
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.1 = {6274D071-163C-49DE-AA6C-809E01190BE1}
+		{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}.0 = {3913F6FE-6221-4610-999B-A8A92CC5558E}
+		{22EFB23B-299F-428A-9539-9858C5ED2A42}.0 = {3913F6FE-6221-4610-999B-A8A92CC5558E}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{6274D071-163C-49DE-AA6C-809E01190BE1}.Debug.ActiveCfg = Debug|Win32
+		{6274D071-163C-49DE-AA6C-809E01190BE1}.Debug.Build.0 = Debug|Win32
+		{6274D071-163C-49DE-AA6C-809E01190BE1}.Release.ActiveCfg = Release|Win32
+		{6274D071-163C-49DE-AA6C-809E01190BE1}.Release.Build.0 = Release|Win32
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.Debug.ActiveCfg = Debug|Win32
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.Debug.Build.0 = Debug|Win32
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.Release.ActiveCfg = Release|Win32
+		{4D77490A-0987-4D33-B228-1FA8D0C5A4BD}.Release.Build.0 = Release|Win32
+		{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}.Debug.ActiveCfg = Debug|Win32
+		{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}.Debug.Build.0 = Debug|Win32
+		{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}.Release.ActiveCfg = Release|Win32
+		{C5E62637-4CEE-43E5-B3CB-5D427B203FFA}.Release.Build.0 = Release|Win32
+		{22EFB23B-299F-428A-9539-9858C5ED2A42}.Debug.ActiveCfg = Debug|Win32
+		{22EFB23B-299F-428A-9539-9858C5ED2A42}.Debug.Build.0 = Debug|Win32
+		{22EFB23B-299F-428A-9539-9858C5ED2A42}.Release.ActiveCfg = Release|Win32
+		{22EFB23B-299F-428A-9539-9858C5ED2A42}.Release.Build.0 = Release|Win32
+		{3913F6FE-6221-4610-999B-A8A92CC5558E}.Debug.ActiveCfg = Debug|Win32
+		{3913F6FE-6221-4610-999B-A8A92CC5558E}.Debug.Build.0 = Debug|Win32
+		{3913F6FE-6221-4610-999B-A8A92CC5558E}.Release.ActiveCfg = Release|Win32
+		{3913F6FE-6221-4610-999B-A8A92CC5558E}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

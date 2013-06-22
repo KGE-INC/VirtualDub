@@ -300,12 +300,17 @@ LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc) {
 	if (cdw.vdc.pExtraData) {
 		bSuccess = VDDebugInfoInitFromMemory(&g_debugInfo, cdw.vdc.pExtraData);
 	} else {
+#ifdef __INTEL_COMPILER		// P4 build
+		SpliceProgramPath(buf, sizeof buf, "VeedubP4.vdi");
+		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
+#else						// General build
 		SpliceProgramPath(buf, sizeof buf, "VirtualDub.vdi");
 		bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
 		if (!bSuccess) {
 			SpliceProgramPath(buf, sizeof buf, "VirtualD.vdi");
 			bSuccess = VDDebugInfoInitFromFile(&g_debugInfo, buf);
 		}
+#endif
 	}
 
 	cdw.vdc.pSymLookup = CrashSymLookup;
@@ -1075,7 +1080,9 @@ long VDDebugInfoLookupRVA(VDDebugInfoContext *pctx, unsigned rva, char *buf, int
 		const char *class_name = NULL;
 		const char *prefix = "";
 
-		if (*fn_name < 32) {
+		if (!*fn_name) {
+			fn_name = "(special)";
+		} else if (*fn_name < 32) {
 			int class_idx;
 
 			class_idx = ((unsigned)fn_name[0] - 1)*128 + ((unsigned)fn_name[1] - 1);
@@ -1112,7 +1119,11 @@ static bool ReportCrashCallStack(HWND hwnd, HANDLE hFile, const EXCEPTION_POINTE
 	char buf[512];
 
 	if (!g_debugInfo.pRVAHeap) {
+#ifdef __INTEL_COMPILER
+		Report(hwnd, hFile, "Could not open debug resource file (VeedubP4.vdi).");
+#else
 		Report(hwnd, hFile, "Could not open debug resource file (VirtualDub.vdi).");
+#endif
 		return false;
 	}
 

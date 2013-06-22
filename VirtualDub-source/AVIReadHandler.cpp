@@ -1792,7 +1792,7 @@ terminate_scan:
 
 			pasn->hdr.dwSampleSize = nBlockAlign;
 
-			for(int i=0; i<pasn->frames; ++i) {
+			for(int i=0; i<pasn->frames-1; ++i) {
 				long s = pIdx[i].size & 0x7FFFFFFF;
 
 				if (s && s < nBlockAlign) {

@@ -269,7 +269,7 @@ DIBconvert3224ISSE@x2:
 	mov	ecx,ebp
 	and	ecx,7
 	jz	DIBconvert3224ISSE@x3
-	movd	mm7,eax
+	movd	mm0,eax
 DIBconvert3224ISSE@x4:
 	mov	eax,[esi]
 	add	esi,4
@@ -279,7 +279,7 @@ DIBconvert3224ISSE@x4:
 	add	edi,3
 	dec	ecx
 	jnz	DIBconvert3224ISSE@x4
-	movd	eax,mm7
+	movd	eax,mm0
 DIBconvert3224ISSE@x3:
 	add	esi,eax
 	add	edi,ebx

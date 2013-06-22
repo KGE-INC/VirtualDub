@@ -374,14 +374,18 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 		ClearMMXState();
 
 
-	// Special handling for DivX 5 codec:
+	// Special handling for DivX 5 and XviD codecs:
 	//
 	// A one-byte frame starting with 0x7f should be discarded
 	// (lag for B-frame).
 
 	bool bNoOutputProduced = false;
 
-	if (pbiOutput->bmiHeader.biCompression == '05xd' || pbiOutput->bmiHeader.biCompression == '05XD') {
+	if (pbiOutput->bmiHeader.biCompression == '05xd' ||
+		pbiOutput->bmiHeader.biCompression == '05XD' ||
+		pbiOutput->bmiHeader.biCompression == 'divx' ||
+		pbiOutput->bmiHeader.biCompression == 'DIVX'
+		) {
 		if (pbiOutput->bmiHeader.biSizeImage == 1 && *(char *)pOutputBuffer == 0x7f) {
 			bNoOutputProduced = true;
 		}

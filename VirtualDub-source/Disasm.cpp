@@ -564,11 +564,16 @@ CodeDisassemblyWindow::CodeDisassemblyWindow(void *_code, long _length, void *_r
 
 	SpliceProgramPath(buf, sizeof buf, "ia32.vdi");
 	if (!VDDisasmInit(&vdc, buf)) {
+#ifdef __INTEL_COMPILER
+		SpliceProgramPath(buf, sizeof buf, "VeedubP4.vdi");
+		VDDisasmInit(&vdc, buf);
+#else
 		SpliceProgramPath(buf, sizeof buf, "VirtualDub.vdi");
 		if (!VDDisasmInit(&vdc, buf)) {
 			SpliceProgramPath(buf, sizeof buf, "VirtualD.vdi");
 			VDDisasmInit(&vdc, buf);
 		}
+#endif
 	}
 
 	lbents = (lbent *)VirtualAlloc(NULL, sizeof(lbent)*MAX_INSTRUCTIONS, MEM_COMMIT, PAGE_READWRITE);
@@ -608,6 +613,7 @@ CodeDisassemblyWindow::~CodeDisassemblyWindow() {
 
 
 void CodeDisassemblyWindow::parse() {
+	num_ents = 0;
 	if (!vdc.pRuleSystem)
 		return;
 
@@ -617,7 +623,6 @@ void CodeDisassemblyWindow::parse() {
 	int	cnt=0;
 
 	if (!ipd) {
-		num_ents = 0;
 		return;
 	}
 

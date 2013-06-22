@@ -861,6 +861,7 @@ Resampler::Resampler()
 	, ytable(0)
 	, rows(0)
 	, rowmem(0)
+	, rowmemalloc(0)
 {
 }
 
@@ -932,6 +933,10 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 		GetStandardCubic4Table();
 		xfiltwidth = 4;
 		break;
+	case eFilter::kLanzcos3:
+		xtable = _CreateLanzcos3DecimateTable(dx, sx, xfiltwidth);
+		rowcount = xfiltwidth;
+		break;
 	}
 
 	switch(vert_filt) {
@@ -983,6 +988,10 @@ void Resampler::Init(eFilter horiz_filt, eFilter vert_filt, double dx, double dy
 		GetStandardCubic4Table();
 		yfiltwidth = 4;
 		rowcount = 4;
+		break;
+	case eFilter::kLanzcos3:
+		ytable = _CreateLanzcos3DecimateTable(dy, sy, yfiltwidth);
+		rowcount = yfiltwidth;
 		break;
 	}
 
@@ -1352,6 +1361,12 @@ static void normalize_table(int *table, int filtwidth) {
 
 		v2 = 0x4000 - v2;
 
+#if 0
+		for(j=0; j<filtwidth; j++)
+			_RPT3(0, "table[%04x+%02x] = %04x\n", i, j, table[i+j]);
+		Sleep(1);
+#endif
+
 		if (MMX_enabled) {
 			for(j=0; j<filtwidth; j+=2) {
 				int a = table[i+j];
@@ -1364,7 +1379,7 @@ static void normalize_table(int *table, int filtwidth) {
 			}
 		}
 
-		_RPT2(0,"table_error[%02x] = %04x\n", i, v2);
+//		_RPT2(0,"table_error[%02x] = %04x\n", i, v2);
 	}
 }
 
@@ -1376,6 +1391,8 @@ int *Resampler::_CreateLinearDecimateTable(double dx, double sx, int& filtwidth)
 	int *table;
 
 	filtwidth_fracd = sx*256.0/dx;
+	if (filtwidth_fracd < 256.0)
+		filtwidth_fracd = 256.0;
 
 	filtwidth_frac = (long)ceil(filtwidth_fracd);
 	filtwidth = ((filtwidth_frac + 255) >> 8)<<1;
@@ -1385,7 +1402,10 @@ int *Resampler::_CreateLinearDecimateTable(double dx, double sx, int& filtwidth)
 
 	table[filtwidth-1] = 0;
 
-	filt_max = (dx*16384.0)/sx;
+	if (sx <= dx)
+		filt_max = 16384.0;
+	else
+		filt_max = (dx*16384.0)/sx;
 
 	for(i=0; i<128*filtwidth; i++) {
 		int y = 0;
@@ -1412,6 +1432,8 @@ int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, 
 	int *table;
 
 	filtwidth_fracd = sx*256.0/dx;
+	if (filtwidth_fracd < 256.0)
+		filtwidth_fracd = 256.0;
 	filtwidth_frac = (long)ceil(filtwidth_fracd);
 	filtwidth = ((filtwidth_frac + 255) >> 8)<<2;
 
@@ -1420,7 +1442,10 @@ int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, 
 
 	table[filtwidth-1] = 0;
 
-	filt_max = (dx*16384.0)/sx;
+	if (sx <= dx)
+		filt_max = 16384.0;
+	else
+		filt_max = (dx*16384.0)/sx;
 
 	for(i=0; i<128*filtwidth; i++) {
 		int y = 0;
@@ -1430,6 +1455,53 @@ int *Resampler::_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, 
 			y = (int)floor(0.5 + (1.0 - (A+3.0)*d*d + (A+2.0)*d*d*d) * filt_max);
 		else if (d < 2.0)
 			y = (int)floor(0.5 + (-4.0*A + 8.0*A*d - 5.0*A*d*d + A*d*d*d) * filt_max);
+
+		table[permute_index(128*filtwidth + i, filtwidth)]
+			= table[permute_index(128*filtwidth - i, filtwidth)]
+			= y;
+	}
+
+	normalize_table(table, filtwidth);
+
+	return table;
+}
+
+static inline double sinc(double x) {
+	return fabs(x) < 1e-9 ? 1.0 : sin(x) / x;
+}
+
+int *Resampler::_CreateLanzcos3DecimateTable(double dx, double sx, int& filtwidth) { 
+	int i;
+	long filtwidth_frac;
+	double filtwidth_fracd;
+	double filt_max;
+	int *table;
+
+	filtwidth_fracd = sx*256.0/dx;
+	if (filtwidth_fracd < 256.0)
+		filtwidth_fracd = 256.0;
+
+	filtwidth_frac = (long)ceil(filtwidth_fracd);
+	filtwidth = ((filtwidth_frac + 255) >> 8)*6;
+
+	if (!(table = new int[256 * filtwidth]))
+		return NULL;
+
+	table[filtwidth-1] = 0;
+
+	if (sx <= dx)
+		filt_max = 16384.0;
+	else
+		filt_max = (dx*16384.0)/sx;
+
+	for(i=0; i<128*filtwidth; i++) {
+		static const double pi  = 3.1415926535897932384626433832795;	// pi
+		static const double pi3 = 1.0471975511965977461542144610932;	// pi/3
+		int y = 0;
+		double d = (double)i / filtwidth_fracd;
+
+		if (d < 3.0)
+			y = (int)floor(0.5 + sinc(pi*d) * sinc(pi3*d) * filt_max);
 
 		table[permute_index(128*filtwidth + i, filtwidth)]
 			= table[permute_index(128*filtwidth - i, filtwidth)]

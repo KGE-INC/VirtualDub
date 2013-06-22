@@ -46,6 +46,7 @@ enum {
 	FILTER_TABLEBICUBIC075	= 4,
 	FILTER_TABLEBICUBIC060	= 5,
 	FILTER_TABLEBICUBIC100	= 6,
+	FILTER_LANZCOS3			= 7
 };
 
 static char *filter_names[]={
@@ -56,6 +57,7 @@ static char *filter_names[]={
 	"Precise bicubic (A=-0.75)",
 	"Precise bicubic (A=-0.60)",
 	"Precise bicubic (A=-1.00)",
+	"Lanzcos3"
 };
 
 typedef struct MyFilterData {
@@ -472,6 +474,7 @@ static int resize_start(FilterActivation *fa, const FilterFunctions *ff) {
 	case FILTER_TABLEBICUBIC060:	fmode = Resampler::eFilter::kCubicDecimate060; break;
 	case FILTER_TABLEBICUBIC075:	fmode = Resampler::eFilter::kCubicDecimate075; break;
 	case FILTER_TABLEBICUBIC100:	fmode = Resampler::eFilter::kCubicDecimate100; break;
+	case FILTER_LANZCOS3:			fmode = Resampler::eFilter::kLanzcos3; break;
 	}
 
 	mfd->resampler = new Resampler();

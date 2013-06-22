@@ -786,6 +786,7 @@ ccint_col_loop_MMX@entry:
 	packssdw	mm0,mm2
 	jne		ccint_col_loop_MMX
 	
+	packuswb	mm0,mm0
 	movd		[ebp-4],mm0
 
 	pop	ebp

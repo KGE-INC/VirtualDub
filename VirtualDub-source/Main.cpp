@@ -1652,7 +1652,10 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 							long lSample2;
 							bool bMasked;
 
-							lSample2 = inputSubset->lookupFrame(lSample);
+							if (lSample >= inputSubset->getTotalFrames())
+								lSample2 = inputVideoAVI->lSampleLast;
+							else
+								lSample2 = inputSubset->lookupFrame(lSample);
 
 							do {
 								lSample2 = inputVideoAVI->prevKey(lSample2);

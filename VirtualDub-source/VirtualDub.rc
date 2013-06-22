@@ -651,7 +651,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.12 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.13 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -3259,8 +3259,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,12,0
- PRODUCTVERSION 1,4,12,0
+ FILEVERSION 1,4,13,0
+ PRODUCTVERSION 1,4,13,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3278,14 +3278,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.12\0"
+            VALUE "FileVersion", "1.4.13\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.12\0"
+            VALUE "ProductVersion", "1.4.13\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3321,14 +3321,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4.11\0"
+            VALUE "FileVersion", "1.4.13\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.11\0"
+            VALUE "ProductVersion", "1.4.13\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -3371,17 +3371,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.12 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.12"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.12 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.12 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.12"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.13 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.13"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.13 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.13 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.13"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.12 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.12 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.12 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.12 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.12 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.13 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.13 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.13 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.13 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.13 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

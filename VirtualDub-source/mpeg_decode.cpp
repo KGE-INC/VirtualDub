@@ -2766,7 +2766,7 @@ static void video_add_backward_prediction(int x_pos, int y_pos, bool fchrom) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-#if 1
+#if 0
 #ifdef _DEBUG
 
 class MPEGDecoderVerifier {

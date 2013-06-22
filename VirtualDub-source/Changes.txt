@@ -1,6 +1,34 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 14328 (Version 1.4.13):          [November 29, 2002]
+   [features added]
+   * Added frequently-requested Lanzcos3 kernel to resize
+     filter. Can't see any difference whatsoever.
+
+   [bug fixes]
+   * Fixed nasty resize filter bug and RGB24<->RGB32
+     conversion errors on odd bitmap widths.
+     (Regressions in 1.4.12)
+   * Fixed audio desynchronization when processing
+     compressed audio in direct stream copy mode with both
+     a start offset and deleted segments.  Thanks to Cyrius
+     for the bug report and fix.
+   * Audio compression system now drops a final partial
+     block from an audio codec -- Microsoft ADPCM was
+     producing these, resulting in a runt AVI stream
+     sample. The new behavior matches that of Sound
+     Recorder.
+   * A partial final block no longer triggers the VBR audio
+     adjustment routine.
+   * "Previous keyframe" from beyond the end no longer
+     seeks to start if frames have been deleted or masked.
+     Also thanks to Cyrius.
+   * Fixed crash in MPEG-1 decoder when playing or saving a
+     video stream with D-frames or invalid frame types.
+   * B-frame audio skew support is now also enabled for the
+     'XVID' video format.
+
 Build 14303 (Version 1.4.12):          [November 23, 2002]
    [features added]
    * Parts of the MPEG-1 decoder, some color conversion
@@ -22,7 +50,7 @@ Build 14279 (Version 1.4.11):          [October 31, 2002]
    * Added support for reading and writing TARGA (.tga)
      sequences, with optional RLE compression.
    * Added simple logo filter.
-   * Added (not-quite-optimzed) HSV filter.
+   * Added (not-quite-optimized) HSV filter.
    * The "Save Image Sequence" command is now batchable
      and scriptable.
 

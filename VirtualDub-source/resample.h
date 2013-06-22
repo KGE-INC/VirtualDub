@@ -58,6 +58,7 @@ public:
 		kCubicDecimate075	= 4,
 		kCubicDecimate060	= 5,
 		kCubicDecimate100	= 6,
+		kLanzcos3		= 8
 	};
 
 	Resampler();
@@ -82,6 +83,7 @@ protected:
 	void _DoRow(Pixel32 *dstp, const Pixel32 *srcp, long srcw);
 	static int *_CreateLinearDecimateTable(double dx, double sx, int& filtwidth);
 	static int *_CreateCubicDecimateTable(double dx, double sx, int& filtwidth, double A);
+	static int *_CreateLanzcos3DecimateTable(double dx, double sx, int& filtwidth);
 };
 
 #endif

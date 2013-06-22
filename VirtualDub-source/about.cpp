@@ -304,7 +304,7 @@ static void AboutSetCompilerBuild(HWND hwnd) {
 	if (t) {
 		int l = strlen(s);
 
-		memmove(t+l, t+1, strlen(t)-1);
+		memmove(t+l, t+1, strlen(t));
 		memcpy(t, s, l);
 		SetWindowText(hwnd, buf);
 	}

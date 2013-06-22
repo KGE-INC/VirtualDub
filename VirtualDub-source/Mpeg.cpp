@@ -746,6 +746,8 @@ long VideoSourceMPEG::streamGetNextRequiredFrame(BOOL *is_preroll) {
 			break;
 	}
 
+	// stream_current_frame beyond the end at this point.
+
 	switch(parentPtr->video_sample_list[stream_current_frame].frame_type) {
 		case MPEG_FRAME_TYPE_I:
 		case MPEG_FRAME_TYPE_P:
@@ -1720,8 +1722,15 @@ void MPEGVideoParser::Parse(const void *pData, int len, DataVector *dst) {
 		if ((header&0xffffff00) == 0x00000100) {
 			header &= 0xff;
 			if (fPicturePending && (header<VIDPKT_TYPE_SLICE_START_MIN || header>VIDPKT_TYPE_SLICE_START_MAX) && header != VIDPKT_TYPE_USER_START) {
-				msi.size = (int)(bytepos + (src - (unsigned char *)pData) - 4 - msi.stream_pos);
-				dst->Add(&msi);
+				// only add frame types we can decode: I, P, B.
+				switch(msi.frame_type) {
+				case MPEG_FRAME_TYPE_I:
+				case MPEG_FRAME_TYPE_P:
+				case MPEG_FRAME_TYPE_B:
+					msi.size = (int)(bytepos + (src - (unsigned char *)pData) - 4 - msi.stream_pos);
+					dst->Add(&msi);
+					break;
+				}
 				fPicturePending = false;
 			}
 
