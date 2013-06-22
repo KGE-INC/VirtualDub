@@ -58,28 +58,27 @@ namespace {
 
 	struct Vertex {
 		float x, y, z;
-		uint32 diffuse, specular;
+		uint32 diffuse;
 		float u0, v0, u1, v1, u2, v2, u3, v3, u4, v4;
 
-		Vertex(float x_, float y_, float z_, uint32 c_, uint32 d_, float u0_, float v0_, float u1_=0.f, float v1_=0.f) : x(x_), y(y_), z(z_), diffuse(c_), specular(d_), u0(u0_), v0(v0_), u1(u1_), v1(v1_)
+		Vertex(float x_, float y_, float z_, uint32 c_, uint32 d_, float u0_, float v0_, float u1_=0.f, float v1_=0.f) : x(x_), y(y_), z(z_), diffuse(c_), u0(u0_), v0(v0_), u1(u1_), v1(v1_)
 			, u2(0), v2(0), u3(0), v3(0), u4(0), v4(0) {}
 
 		inline void SetFF1(float x_, float y_, float u0_, float v0_) {
 			x = x_;
 			y = y_;
 			z = 0.f;
-			diffuse = specular = 0xffffffff;
+			diffuse = 0xffffffff;
 			u0 = u0_;
 			v0 = v0_;
 			u1 = v1 = u2 = v2 = u3 = v3 = u4 = v4 = 0.f;
 		}
 
-		inline void SetFF2(float x_, float y_, uint32 c_, uint32 d_, float u0_, float v0_, float u1_, float v1_) {
+		inline void SetFF2(float x_, float y_, uint32 c_, float u0_, float v0_, float u1_, float v1_) {
 			x = x_;
 			y = y_;
 			z = 0.f;
 			diffuse = c_;
-			specular = d_;
 			u0 = u0_;
 			v0 = v0_;
 			u1 = u1_;
@@ -91,7 +90,7 @@ namespace {
 			x = x_;
 			y = y_;
 			z = 0.f;
-			diffuse = specular = 0xffffffff;
+			diffuse = 0xffffffff;
 			u0 = u0_;
 			v0 = v0_;
 			u1 = u1_;
@@ -106,7 +105,7 @@ namespace {
 			x = x_;
 			y = y_;
 			z = 0.f;
-			diffuse = specular = 0xffffffff;
+			diffuse = 0xffffffff;
 			u0 = u0_;
 			v0 = v0_;
 			u1 = u1_;
@@ -395,7 +394,26 @@ bool VDVideoDisplayDX9Manager::Init() {
 
 	HRESULT hr;
 
-	hr = mpD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, g_hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE | D3DCREATE_FPU_PRESERVE, &mPresentParms, &mpD3DDevice);
+	// Look for the NVPerfHUD 2.0 driver
+	
+	const DWORD dwFlags = D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE | D3DCREATE_FPU_PRESERVE;
+	const UINT adapters = mpD3D->GetAdapterCount();
+	UINT adapter = D3DADAPTER_DEFAULT;
+	D3DDEVTYPE type = D3DDEVTYPE_HAL;
+
+	for(UINT n=0; n<adapters; ++n) {
+		D3DADAPTER_IDENTIFIER9 ident;
+
+		if (SUCCEEDED(mpD3D->GetAdapterIdentifier(n, 0, &ident))) {
+			if (!strcmp(ident.Description, "NVIDIA NVPerfHUD")) {
+				adapter = n;
+				type = D3DDEVTYPE_REF;
+				break;
+			}
+		}
+	}
+
+	hr = mpD3D->CreateDevice(adapter, type, g_hWnd, dwFlags, &mPresentParms, &mpD3DDevice);
 	if (FAILED(hr)) {
 		Shutdown();
 		return false;
@@ -437,7 +455,7 @@ bool VDVideoDisplayDX9Manager::InitVRAMResources() {
 
 	// create vertex buffer
 	if (!mpD3DVB) {
-		HRESULT hr = mpD3DDevice->CreateVertexBuffer(kVertexBufferSize * sizeof(Vertex), D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY, D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_SPECULAR | D3DFVF_TEX5, D3DPOOL_DEFAULT, &mpD3DVB, NULL);
+		HRESULT hr = mpD3DDevice->CreateVertexBuffer(kVertexBufferSize * sizeof(Vertex), D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY, D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX5, D3DPOOL_DEFAULT, &mpD3DVB, NULL);
 		if (FAILED(hr)) {
 			VDDEBUG_DX9DISP("VideoDisplay/DX9: Failed to create vertex buffer.\n");
 			ShutdownVRAMResources();
@@ -599,6 +617,12 @@ VDVideoDisplayDX9Manager::CubicMode VDVideoDisplayDX9Manager::InitBicubic() {
 		return mCubicMode;
 
 	HRESULT hr;
+
+	hr = mpD3DDevice->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX5);
+	if (FAILED(hr)) {
+		ShutdownBicubic();
+		return mCubicMode = kCubicNotPossible;
+	}
 
 //	mCubicMode = kMaxCubicMode;
 	mCubicMode = kCubicUseFF3Path;
@@ -796,7 +820,7 @@ Vertex *VDVideoDisplayDX9Manager::LockVertices(unsigned vertices) {
 	void *p;
 	HRESULT hr;
 	for(;;) {
-		hr = mpD3DVB->Lock(mVertexBufferPt * sizeof(Vertex), mVertexBufferLockSize * sizeof(Vertex), &p, (mVertexBufferPt ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD) + D3DLOCK_DONOTWAIT);
+		hr = mpD3DVB->Lock(mVertexBufferPt * sizeof(Vertex), mVertexBufferLockSize * sizeof(Vertex), &p, mVertexBufferPt ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD);
 		if (hr != D3DERR_WASSTILLDRAWING)
 			break;
 		Sleep(1);
@@ -826,7 +850,7 @@ uint16 *VDVideoDisplayDX9Manager::LockIndices(unsigned indices) {
 	void *p;
 	HRESULT hr;
 	for(;;) {
-		hr = mpD3DIB->Lock(mIndexBufferPt * sizeof(uint16), mIndexBufferLockSize * sizeof(uint16), &p, (mIndexBufferPt ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD) + D3DLOCK_DONOTWAIT);
+		hr = mpD3DIB->Lock(mIndexBufferPt * sizeof(uint16), mIndexBufferLockSize * sizeof(uint16), &p, mIndexBufferPt ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD);
 		if (hr != D3DERR_WASSTILLDRAWING)
 			break;
 		Sleep(1);
@@ -1020,7 +1044,7 @@ HRESULT VDVideoDisplayDX9Manager::SetBicubicShader(CubicMode mode, int stage) {
 			D3D_DO(SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_POINT));
 			D3D_DO(SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_POINT));
 			SetTextureStageOp(0, D3DTA_TEXTURE, D3DTOP_MULTIPLYADD, D3DTA_DIFFUSE, D3DTA_TEXTURE, D3DTOP_MODULATE, D3DTA_DIFFUSE);
-			D3D_DO(SetTextureStageState(0, D3DTSS_COLORARG0, D3DTA_SPECULAR));
+			D3D_DO(SetTextureStageState(0, D3DTSS_COLORARG0, D3DTA_DIFFUSE | D3DTA_ALPHAREPLICATE));
 			SetTextureStageOp(1, D3DTA_CURRENT, D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_CURRENT, D3DTOP_MODULATE, D3DTA_TEXTURE);
 			DisableTextureStage(2);
 			D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
@@ -1476,7 +1500,7 @@ bool VDVideoDisplayMinidriverDX9::Update(FieldMode) {
 	D3DLOCKED_RECT lr;
 	HRESULT hr;
 	
-	hr = mpD3DImageTexture->LockRect(0, &lr, NULL, D3DLOCK_DISCARD | D3DLOCK_DONOTWAIT);
+	hr = mpD3DImageTexture->LockRect(0, &lr, NULL, 0);
 	if (FAILED(hr))
 		return false;
 
@@ -1592,7 +1616,7 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 
 	D3D_DO(SetStreamSource(0, mpManager->GetVertexBuffer(), 0, sizeof(Vertex)));
 	D3D_DO(SetIndices(mpManager->GetIndexBuffer()));
-	D3D_DO(SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_SPECULAR | D3DFVF_TEX5));
+	D3D_DO(SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX5));
 	D3D_DO(SetRenderState(D3DRS_LIGHTING, FALSE));
 
 	bool bSuccess;
@@ -1674,6 +1698,8 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 
 		D3D_DO(SetTexture(0, NULL));
 		D3D_DO(EndScene());
+
+		bSuccess = true;
 	}
 
 	HRESULT hr = E_FAIL;
@@ -1704,17 +1730,6 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetRenderState(D3DRS_LIGHTING, FALSE));
 
-	if (uint16 *dst = mpManager->LockIndices(6)) {
-		dst[0] = 0;
-		dst[1] = 2;
-		dst[2] = 1;
-		dst[3] = 0;
-		dst[4] = 3;
-		dst[5] = 2;
-
-		mpManager->UnlockIndices();
-	}
-
 	// PASS 1: Horizontal filtering
 
 	IDirect3DSurface9 *pRTSurface;
@@ -1724,39 +1739,31 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 
 	D3D_DO(BeginScene());
 
-	if (Vertex *pvx = mpManager->LockVertices(16)) {
+	if (Vertex *pvx = mpManager->LockVertices(12)) {
 		const float ustep = 1.0f / (float)mTexFmt.w;
 		const float vstep = 1.0f / (float)mTexFmt.h;
 		const float u0 = -0.5f * ustep;
-		const float v0 = 0.0f;
-		const float u1 = u0 + mSource.pixmap.w * ustep;
-		const float v1 = v0 + mSource.pixmap.h * vstep;
+		const float u1 = u0 + mSource.pixmap.w * ustep * 2;
+		const float v0 = -mSource.pixmap.h * vstep;
+		const float v1 = +mSource.pixmap.h * vstep;
 		const float f0 = -0.125f;
-		const float f1 = f0 + mSource.pixmap.w / 4.0f;
-		const float x0 = -1.f;
-		const float y0 = 1.f - mSource.pixmap.h * (2.0f * mRTHorizVScale);
-		const float x1 = -1.f + rClient.right * (2.0f * mRTHorizUScale);
-		const float y1 = 1.f;
+		const float f1 = f0 + mSource.pixmap.w / 2.0f;
 
-		pvx[ 0].SetFF2(x0, y1, 0x80808080, 0x40404040, u0 - 1*ustep, v0, f0, 0.125f);
-		pvx[ 1].SetFF2(x0, y0, 0x80808080, 0x40404040, u0 - 1*ustep, v1, f0, 0.125f);
-		pvx[ 2].SetFF2(x1, y0, 0x80808080, 0x40404040, u1 - 1*ustep, v1, f1, 0.125f);
-		pvx[ 3].SetFF2(x1, y1, 0x80808080, 0x40404040, u1 - 1*ustep, v0, f1, 0.125f);
+		pvx[ 0].SetFF2(-1, +3, 0x40808080, u0 - 1*ustep, v0, f0, 0.125f);
+		pvx[ 1].SetFF2(+3, -1, 0x40808080, u1 - 1*ustep, v1, f1, 0.125f);
+		pvx[ 2].SetFF2(-1, -1, 0x40808080, u0 - 1*ustep, v1, f0, 0.125f);
 
-		pvx[ 4].SetFF2(x0, y1, 0x80808080, 0x40404040, u0 + 0*ustep, v0, f0, 0.375f);
-		pvx[ 5].SetFF2(x0, y0, 0x80808080, 0x40404040, u0 + 0*ustep, v1, f0, 0.375f);
-		pvx[ 6].SetFF2(x1, y0, 0x80808080, 0x40404040, u1 + 0*ustep, v1, f1, 0.375f);
-		pvx[ 7].SetFF2(x1, y1, 0x80808080, 0x40404040, u1 + 0*ustep, v0, f1, 0.375f);
+		pvx[ 3].SetFF2(-1, +3, 0x40808080, u0 + 0*ustep, v0, f0, 0.375f);
+		pvx[ 4].SetFF2(+3, -1, 0x40808080, u1 + 0*ustep, v1, f1, 0.375f);
+		pvx[ 5].SetFF2(-1, -1, 0x40808080, u0 + 0*ustep, v1, f0, 0.375f);
 
-		pvx[ 8].SetFF2(x0, y1, 0x80808080, 0x40404040, u0 + 1*ustep, v0, f0, 0.625f);
-		pvx[ 9].SetFF2(x0, y0, 0x80808080, 0x40404040, u0 + 1*ustep, v1, f0, 0.625f);
-		pvx[10].SetFF2(x1, y0, 0x80808080, 0x40404040, u1 + 1*ustep, v1, f1, 0.625f);
-		pvx[11].SetFF2(x1, y1, 0x80808080, 0x40404040, u1 + 1*ustep, v0, f1, 0.625f);
+		pvx[ 6].SetFF2(-1, +3, 0x40808080, u0 + 1*ustep, v0, f0, 0.625f);
+		pvx[ 7].SetFF2(+3, -1, 0x40808080, u1 + 1*ustep, v1, f1, 0.625f);
+		pvx[ 8].SetFF2(-1, -1, 0x40808080, u0 + 1*ustep, v1, f0, 0.625f);
 
-		pvx[12].SetFF2(x0, y1, 0x80808080, 0x40404040, u0 + 2*ustep, v0, f0, 0.875f);
-		pvx[13].SetFF2(x0, y0, 0x80808080, 0x40404040, u0 + 2*ustep, v1, f0, 0.875f);
-		pvx[14].SetFF2(x1, y0, 0x80808080, 0x40404040, u1 + 2*ustep, v1, f1, 0.875f);
-		pvx[15].SetFF2(x1, y1, 0x80808080, 0x40404040, u1 + 2*ustep, v0, f1, 0.875f);
+		pvx[ 9].SetFF2(-1, +3, 0x40808080, u0 + 2*ustep, v0, f0, 0.875f);
+		pvx[10].SetFF2(+3, -1, 0x40808080, u1 + 2*ustep, v1, f1, 0.875f);
+		pvx[11].SetFF2(-1, -1, 0x40808080, u0 + 2*ustep, v1, f0, 0.875f);
 
 		mpManager->UnlockVertices();
 	}
@@ -1764,8 +1771,8 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3DVIEWPORT9 vphoriz = {
 		0,
 		0,
-		mRTHorizUSize,
-		mRTHorizVSize,
+		rClient.right,
+		mSource.pixmap.h,
 		0.f,
 		1.f
 	};
@@ -1777,14 +1784,14 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTexture(1, mpManager->GetFilterTexture()));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 0);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 4, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 3, 1);
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 1);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 8, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 6, 1);
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 2);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 12, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 0, 1);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 9, 1);
 
 	D3D_DO(EndScene());
 
@@ -1797,35 +1804,31 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(BeginScene());
 	D3D_DO(SetTransform(D3DTS_PROJECTION, &mWholeProjection));
 
-	if (Vertex *pvx = mpManager->LockVertices(16)) {
+	if (Vertex *pvx = mpManager->LockVertices(12)) {
 		const float ustep = mRTHorizUScale;
 		const float vstep = mRTHorizVScale;
 		const float u0 = 0.0f;
-		const float v0 = -0.5f * vstep;
-		const float u1 = u0 + rClient.right * ustep;
-		const float v1 = v0 + mSource.pixmap.h * vstep;
+		const float v0 = -(mSource.pixmap.h + 0.5f) * vstep;
+		const float u1 = rClient.right * ustep * 2;
+		const float v1 = (mSource.pixmap.h - 0.5f) * vstep;
 		const float f0 = 0.125f;
-		const float f1 = f0 + mSource.pixmap.h / 4.0f;
+		const float f1 = f0 + mSource.pixmap.h / 2.0f;
 
-		pvx[ 0].SetFF2(-1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v0 - 1*vstep, f0, 0.125f);
-		pvx[ 1].SetFF2(-1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v1 - 1*vstep, f1, 0.125f);
-		pvx[ 2].SetFF2(+1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v1 - 1*vstep, f1, 0.125f);
-		pvx[ 3].SetFF2(+1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v0 - 1*vstep, f0, 0.125f);
+		pvx[ 0].SetFF2(-1, +3, 0xFFFFFFFF, u0, v0 - 1*vstep, f0, 0.125f);
+		pvx[ 1].SetFF2(+3, -1, 0xFFFFFFFF, u1, v1 - 1*vstep, f1, 0.125f);
+		pvx[ 2].SetFF2(-1, -1, 0xFFFFFFFF, u0, v1 - 1*vstep, f1, 0.125f);
 
-		pvx[ 4].SetFF2(-1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v0 + 0*vstep, f0, 0.375f);
-		pvx[ 5].SetFF2(-1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v1 + 0*vstep, f1, 0.375f);
-		pvx[ 6].SetFF2(+1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v1 + 0*vstep, f1, 0.375f);
-		pvx[ 7].SetFF2(+1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v0 + 0*vstep, f0, 0.375f);
+		pvx[ 3].SetFF2(-1, +3, 0xFFFFFFFF, u0, v0 + 0*vstep, f0, 0.375f);
+		pvx[ 4].SetFF2(+3, -1, 0xFFFFFFFF, u1, v1 + 0*vstep, f1, 0.375f);
+		pvx[ 5].SetFF2(-1, -1, 0xFFFFFFFF, u0, v1 + 0*vstep, f1, 0.375f);
 
-		pvx[ 8].SetFF2(-1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v0 + 1*vstep, f0, 0.625f);
-		pvx[ 9].SetFF2(-1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v1 + 1*vstep, f1, 0.625f);
-		pvx[10].SetFF2(+1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v1 + 1*vstep, f1, 0.625f);
-		pvx[11].SetFF2(+1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v0 + 1*vstep, f0, 0.625f);
+		pvx[ 6].SetFF2(-1, +3, 0xFFFFFFFF, u0, v0 + 1*vstep, f0, 0.625f);
+		pvx[ 7].SetFF2(+3, -1, 0xFFFFFFFF, u1, v1 + 1*vstep, f1, 0.625f);
+		pvx[ 8].SetFF2(-1, -1, 0xFFFFFFFF, u0, v1 + 1*vstep, f1, 0.625f);
 
-		pvx[12].SetFF2(-1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v0 + 2*vstep, f0, 0.875f);
-		pvx[13].SetFF2(-1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u0, v1 + 2*vstep, f1, 0.875f);
-		pvx[14].SetFF2(+1, -1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v1 + 2*vstep, f1, 0.875f);
-		pvx[15].SetFF2(+1, +1, 0xFFFFFFFF, 0xFFFFFFFF, u1, v0 + 2*vstep, f0, 0.875f);
+		pvx[ 9].SetFF2(-1, +3, 0xFFFFFFFF, u0, v0 + 2*vstep, f0, 0.875f);
+		pvx[10].SetFF2(+3, -1, 0xFFFFFFFF, u1, v1 + 2*vstep, f1, 0.875f);
+		pvx[11].SetFF2(-1, -1, 0xFFFFFFFF, u0, v1 + 2*vstep, f1, 0.875f);
 
 		mpManager->UnlockVertices();
 	}
@@ -1846,14 +1849,14 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTexture(1, mpManager->GetFilterTexture()));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 3);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 4, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 3, 1);
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 4);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 8, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 6, 1);
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 5);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 12, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 0, 1);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 9, 1);
 
 	D3D_DO(SetTexture(1, NULL));
 	D3D_DO(SetTexture(0, NULL));
@@ -1872,18 +1875,17 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	};
 	VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vpmain)));
 
-	if (Vertex *pvx = mpManager->LockVertices(4)) {
+	if (Vertex *pvx = mpManager->LockVertices(3)) {
 		const float ustep = mpManager->GetVertUScale();
 		const float vstep = mpManager->GetVertVScale();
 		const float u0 = 0.0f;
-		const float v0 = 0.0f;
-		const float u1 = u0 + rClient.right * ustep;
-		const float v1 = v0 + rClient.bottom * vstep;
+		const float v0 = -rClient.bottom * vstep;
+		const float u1 = rClient.right * ustep * 2;
+		const float v1 = rClient.bottom * vstep;
 
-		pvx[ 0].SetFF2(-1, +1, 0x40404040, 0xFFFFFFFF, u0, v0, 0.f, 0.f);
-		pvx[ 1].SetFF2(-1, -1, 0x40404040, 0xFFFFFFFF, u0, v1, 0.f, 0.f);
-		pvx[ 2].SetFF2(+1, -1, 0x40404040, 0xFFFFFFFF, u1, v1, 0.f, 0.f);
-		pvx[ 3].SetFF2(+1, +1, 0x40404040, 0xFFFFFFFF, u1, v0, 0.f, 0.f);
+		pvx[ 0].SetFF2(-1, +3, 0x40404040, u0, v0, 0.f, 0.f);
+		pvx[ 1].SetFF2(+3, -1, 0x40404040, u1, v1, 0.f, 0.f);
+		pvx[ 2].SetFF2(-1, -1, 0x40404040, u0, v1, 0.f, 0.f);
 
 		mpManager->UnlockVertices();
 	}
@@ -1891,7 +1893,7 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTexture(0, mpManager->GetVertRenderTexture()));
 
 	mpManager->SetBicubicShader(VDVideoDisplayDX9Manager::kCubicUseFF2Path, 6);
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
+	mpManager->DrawArrays(D3DPT_TRIANGLELIST, 0, 1);
 
 	D3D_DO(SetTexture(0, NULL));
 	D3D_DO(EndScene());
@@ -2005,13 +2007,12 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2_Fast(HDC hdc, const RECT& rClient) {
 			if (Vertex *pvx = mpManager->LockVertices(ncols * 4)) {
 				for(int limit = col + ncols; col < limit; ++col) {
 					uint32 coeff0 = (coeffs[(filtaccum>>10)&63] & 0xfefefefe)>>1;
-					uint32 coeff1 = 0;
 					float u = ((filtaccum>>16) + 0.5 + (hpass?-2.0:-1.0)) * ufactor;
 
-					pvx[0].SetFF2(x0, y1, coeff0, coeff1, u, v0, u+udelta, v0);
-					pvx[1].SetFF2(x0, y0, coeff0, coeff1, u, v1, u+udelta, v1);
-					pvx[2].SetFF2(x1, y0, coeff0, coeff1, u, v1, u+udelta, v1);
-					pvx[3].SetFF2(x1, y1, coeff0, coeff1, u, v0, u+udelta, v0);
+					pvx[0].SetFF2(x0, y1, coeff0, u, v0, u+udelta, v0);
+					pvx[1].SetFF2(x0, y0, coeff0, u, v1, u+udelta, v1);
+					pvx[2].SetFF2(x1, y0, coeff0, u, v1, u+udelta, v1);
+					pvx[3].SetFF2(x1, y1, coeff0, u, v0, u+udelta, v0);
 
 					x0 += xstep;
 					x1 += xstep;
@@ -2122,13 +2123,12 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2_Fast(HDC hdc, const RECT& rClient) {
 			if (Vertex *pvx = mpManager->LockVertices(nrows * 4)) {
 				for(int limit = row + nrows; row < limit; ++row) {
 					uint32 coeff0 = coeffs[(filtaccum>>10)&63];
-					uint32 coeff1 = 0;
 					float v = ((filtaccum>>16) + 0.5 + (vpass?-2.0:-1.0)) * vfactor;
 
-					pvx[0].SetFF2(x0, y1, coeff0, coeff1, u0, v, u0, v+vdelta);
-					pvx[1].SetFF2(x1, y1, coeff0, coeff1, u1, v, u1, v+vdelta);
-					pvx[2].SetFF2(x1, y0, coeff0, coeff1, u1, v, u1, v+vdelta);
-					pvx[3].SetFF2(x0, y0, coeff0, coeff1, u0, v, u0, v+vdelta);
+					pvx[0].SetFF2(x0, y1, coeff0, u0, v, u0, v+vdelta);
+					pvx[1].SetFF2(x1, y1, coeff0, u1, v, u1, v+vdelta);
+					pvx[2].SetFF2(x1, y0, coeff0, u1, v, u1, v+vdelta);
+					pvx[3].SetFF2(x0, y0, coeff0, u0, v, u0, v+vdelta);
 
 					y0 -= ystep;
 					y1 -= ystep;
@@ -2201,10 +2201,10 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2_Fast(HDC hdc, const RECT& rClient) {
 		const float u1 = u0 + rClient.right * ustep;
 		const float v1 = v0 + rClient.bottom * vstep;
 
-		pvx[ 0].SetFF2(-1, +1, 0x40404040, 0xFFFFFFFF, u0, v0, 0.f, 0.f);
-		pvx[ 1].SetFF2(-1, -1, 0x40404040, 0xFFFFFFFF, u0, v1, 0.f, 0.f);
-		pvx[ 2].SetFF2(+1, -1, 0x40404040, 0xFFFFFFFF, u1, v1, 0.f, 0.f);
-		pvx[ 3].SetFF2(+1, +1, 0x40404040, 0xFFFFFFFF, u1, v0, 0.f, 0.f);
+		pvx[ 0].SetFF2(-1, +1, 0x40404040, u0, v0, 0.f, 0.f);
+		pvx[ 1].SetFF2(-1, -1, 0x40404040, u0, v1, 0.f, 0.f);
+		pvx[ 2].SetFF2(+1, -1, 0x40404040, u1, v1, 0.f, 0.f);
+		pvx[ 3].SetFF2(+1, +1, 0x40404040, u1, v0, 0.f, 0.f);
 
 		mpManager->UnlockVertices();
 	}

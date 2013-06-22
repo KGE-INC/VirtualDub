@@ -708,8 +708,8 @@ void VDJob::Flush(const char *lpszFileName) {
 
 				// handle CR, CR/LF, LF, and NUL terminators
 
-				if (c == '\r') ++t;
-				if (c == '\n') ++t;
+				if (*t == '\r') ++t;
+				if (*t == '\n') ++t;
 
 				s=t;
 			}

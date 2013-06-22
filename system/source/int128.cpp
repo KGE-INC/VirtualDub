@@ -28,6 +28,46 @@
 #include <vd2/system/int128.h>
 
 #ifndef _M_AMD64
+	void __declspec(naked) int128::setSquare(sint64 v) {
+		__asm {
+			push	edi
+			push	esi
+			push	ebx
+			mov		eax, [esp+20]
+			cdq
+			mov		esi, eax
+			mov		eax, [esp+16]
+			xor		eax, edx
+			xor		esi, edx
+			sub		eax, edx
+			sbb		esi, edx
+			mov		ebx, eax
+			mul		eax
+			mov		[ecx], eax
+			mov		edi, edx
+			mov		eax, ebx
+			mul		esi
+			mov		ebx, 0
+			add		eax, eax
+			adc		edx, edx
+			add		eax, edi
+			adc		edx, 0
+			mov		edi, edx
+			adc		ebx, 0
+			mov		[ecx+4], eax
+			mov		eax, esi
+			mul		esi
+			add		eax, edi
+			adc		edx, ebx
+			mov		[ecx+8], eax
+			mov		[ecx+12], edx
+			pop		ebx
+			pop		esi
+			pop		edi
+			ret		8
+		}
+	}
+
 	const int128 __declspec(naked) int128::operator+(const int128& x) const {
 		__asm {
 			push	ebx
@@ -133,9 +173,9 @@
 		int128 X = x.abs();
 		int128 Y = abs();
 
-		mult64x64(&ad, (unsigned __int64)(X >> 64), (unsigned __int64)(Y      ));
-		mult64x64(&bc, (unsigned __int64)(X      ), (unsigned __int64)(Y >> 64));
-		mult64x64(&bd, (unsigned __int64)(X      ), (unsigned __int64)(Y      ));
+		mult64x64(&ad, X.v[1], Y.v[0]);
+		mult64x64(&bc, X.v[0], Y.v[1]);
+		mult64x64(&bd, X.v[0], Y.v[0]);
 
 		return (v[1]^x.v[1])<0 ? -(bd + ((ad + bc)<<64)) : bd + ((ad + bc)<<64);
 	}
@@ -152,7 +192,7 @@
 
 			mov		ecx,[esp+24]
 			cmp		ecx,128
-			ja		zeroit
+			jae		zeroit
 
 			mov		eax,[esi+12]
 			mov		ebx,[esi+8]
@@ -214,11 +254,11 @@
 			mov		esi,ecx
 			mov		edx,[esp+20]
 
-			mov		ecx,[esp+24]
-			cmp		ecx,128
-			ja		zeroit
-
 			mov		eax,[esi+12]
+			mov		ecx,[esp+24]
+			cmp		ecx,127
+			jae		clearit
+
 			mov		ebx,[esi+8]
 			mov		edi,[esi+4]
 			mov		ebp,[esi]
@@ -252,8 +292,8 @@
 			mov		eax,[esp+4]
 			ret		8
 
-	zeroit:
-			xor		eax,eax
+	clearit:
+			sar		eax, 31
 			mov		[edx+0],eax
 			mov		[edx+4],eax
 			mov		[edx+8],eax

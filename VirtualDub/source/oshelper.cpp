@@ -508,7 +508,7 @@ void LaunchURL(const char *pURL) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool EnableCPUTracking() {
+bool VDEnableCPUTracking() {
 	HKEY hOpen;
 	DWORD cbData;
 	DWORD dwType;
@@ -540,7 +540,7 @@ bool EnableCPUTracking() {
 	return fSuccess;
 }
 
-bool DisableCPUTracking() {
+bool VDDisableCPUTracking() {
 	HKEY hOpen;
 	DWORD cbData;
 	DWORD dwType;
@@ -572,7 +572,16 @@ bool DisableCPUTracking() {
 	return fSuccess;
 }
 
-CPUUsageReader::CPUUsageReader() {
+VDCPUUsageReader::VDCPUUsageReader()
+	: hkeyKernelCPU(NULL)
+{
+}
+
+VDCPUUsageReader::~VDCPUUsageReader() {
+	Shutdown();
+}
+
+void VDCPUUsageReader::Init() {
 	FILETIME ftCreate, ftExit;
 
 	hkeyKernelCPU = NULL;
@@ -591,24 +600,24 @@ CPUUsageReader::CPUUsageReader() {
 
 		HKEY hkey;
 
-		if (EnableCPUTracking()) {
+		if (VDEnableCPUTracking()) {
 
 			if (ERROR_SUCCESS == RegOpenKeyEx(HKEY_DYN_DATA, "PerfStats\\StatData", 0, KEY_READ, &hkey)) {
 				hkeyKernelCPU = hkey;
 			} else
-				DisableCPUTracking();
+				VDDisableCPUTracking();
 		}
 	}
 }
 
-CPUUsageReader::~CPUUsageReader() {
+void VDCPUUsageReader::Shutdown() {
 	if (hkeyKernelCPU) {
 		RegCloseKey(hkeyKernelCPU);
-		DisableCPUTracking();
+		VDDisableCPUTracking();
 	}
 }
 
-int CPUUsageReader::read() {
+int VDCPUUsageReader::read() {
 
 	if (hkeyKernelCPU) {
 		DWORD type;

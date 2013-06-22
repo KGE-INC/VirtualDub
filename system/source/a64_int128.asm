@@ -30,7 +30,7 @@ vdasm_int128_add	proc public
 		add		rax, [r8]
 		mov		[rcx], rax
 		mov		rax, [rdx+8]
-		add		rax, [r8+8]
+		adc		rax, [r8+8]
 		mov		[rcx+8], rax
 		ret
 vdasm_int128_add	endp
@@ -40,47 +40,34 @@ vdasm_int128_sub	proc public
 		sub		rax, [r8]
 		mov		[rcx], rax
 		mov		rax, [rdx+8]
-		sub		rax, [r8+8]
+		sbb		rax, [r8+8]
 		mov		[rcx+8], rax
 		ret
 vdasm_int128_sub	endp
 
-vdasm_int128_mul	proc public
-		int		3
+vdasm_int128_mul	proc public frame
+		mov		[esp+8], rbx
+		.savereg	rbx, 8
+		mov		[esp+16], rsi
+		.savereg	rsi, 16
+		.endprolog
+
+		mov		rbx, rdx			;rbx = src1
+		mov		rax, [rdx]			;rax = src1a
+		mov		rsi, [r8]			;rsi = src2a
+		mul		rsi					;rdx:rax = src1a*src2a
+		mov		[rcx], rax			;write low result
+		mov		r9, rdx				;r9 = (src1a*src2a).hi
+		mov		rax, [rbx+8]		;rax = src1b
+		mul		rsi					;rdx:rax = src1b*src2a
+		add		r9, rax				;r9 = (src1a*src2a).hi + (src1b*src2a).lo
+		mov		rax, [rbx]			;rax = src1a
+		mul		qword ptr [r8+8]	;rdx:rax = src1a*src2b
+		add		rax, r9				;rax = (src1a*src2b).lo + (src1b*src2a).lo + (src1a*src2a).hi
+		mov		[rcx+8], rax		;write high result
+		mov		rsi, [esp+16]
+		mov		rbx, [esp+8]
 		ret
 vdasm_int128_mul	endp
-
-vdasm_int128_shl	proc public
-		mov		rax, [rdx]
-		mov		r9, [rdx+8]
-		mov		r10, rcx
-		mov		ecx, r8d
-		shld	r9, rax, cl
-		shl		rax, cl
-		mov		[r10], rax
-		mov		[r10+8], r9
-		ret
-vdasm_int128_shl	endp
-
-vdasm_int128_sar	proc public
-		mov		r9, [rdx+8]
-		mov		r10, rcx
-		mov		ecx, r8d
-		test	cl, 64
-		jnz		@highshift
-		mov		rax, [rdx]
-		shrd	rax, r9, cl
-		sar		r9, cl
-		mov		[r10], rax
-		mov		[r10+8], r9
-		ret
-@highshift:
-		mov		rax, r9
-		sar		r9, 31
-		sar		rax, cl
-		mov		[r10], rax
-		mov		[r10+8], r9
-		ret
-vdasm_int128_sar	endp
 
 		end

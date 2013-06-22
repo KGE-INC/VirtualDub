@@ -189,18 +189,18 @@ pos_tab	db	 1 dup (8*8)		;pos 0:     DC only
 ;-----------------------------------------------------------------------------
 
 DCT_8_INV_ROW_1_SSE2 MACRO INP:REQ, OUT:REQ, TABLE:REQ
-		movdqa		xmm0, mptr [INP]		;xmm0 = x7 x5 x3 x1 x6 x4 x2 x0
+		movdqa		xmm0, [INP]	;xmm0 = x7 x5 x3 x1 x6 x4 x2 x0
 		pshufd		xmm1, xmm0, 00010001b	;xmm1 = x2 x0 x6 x4 x2 x0 x6 x4
 		pshufd		xmm2, xmm0, 11101110b	;xmm2 = x7 x5 x3 x1 x7 x5 x3 x1
 		pshufd		xmm3, xmm0, 10111011b	;xmm3 = x3 x1 x7 x5 x3 x1 x7 x5
 		pshufd		xmm0, xmm0, 01000100b	;xmm0 = x6 x4 x2 x0 x6 x4 x2 x0
 
-		pmaddwd		xmm0, mptr [TABLE+00h]
-		pmaddwd		xmm1, mptr [TABLE+10h]
-		pmaddwd		xmm2, mptr [TABLE+20h]
-		pmaddwd		xmm3, mptr [TABLE+30h]
+		pmaddwd		xmm0, [TABLE+00h]
+		pmaddwd		xmm1, [TABLE+10h]
+		pmaddwd		xmm2, [TABLE+20h]
+		pmaddwd		xmm3, [TABLE+30h]
 
-		paddd		xmm0, mptr [rax + (round_inv_row - tabbase)]
+		paddd		xmm0, [rax + (round_inv_row - tabbase)]
 		paddd		xmm0, xmm1				;xmm0 = y3 y2 y1 y0
 		paddd		xmm2, xmm3				;xmm2 = y4 y5 y6 y7
 		movdqa		xmm1, xmm0
@@ -211,16 +211,16 @@ DCT_8_INV_ROW_1_SSE2 MACRO INP:REQ, OUT:REQ, TABLE:REQ
 		packssdw	xmm0, xmm1
 		pshufhw		xmm0, xmm0, 00011011b
 
-		movdqa		mptr [OUT], xmm0
+		movdqa		[OUT], xmm0
 ENDM
 
 DCT_8_INV_ROW_1_SSE2_SHORT MACRO INP:REQ, OUT:REQ, TABLE:REQ
-		movdqa		xmm0, mptr [INP]		;xmm0 = -- -- x3 x1 -- -- x2 x0
+		movdqa		xmm0, [INP]		;xmm0 = -- -- x3 x1 -- -- x2 x0
 		pshufd		xmm2, xmm0, 10101010b	;xmm2 = x3 x1 x3 x1 x3 x1 x3 x1
 		pshufd		xmm0, xmm0, 00000000b	;xmm0 = x2 x0 x2 x0 x2 x0 x2 x0
-		pmaddwd		xmm0, mptr [TABLE+00h]	;xmm0 = y3 y2 y1 y0
-		pmaddwd		xmm2, mptr [TABLE+10h]	;xmm2 = y4 y5 y6 y7
-		paddd		xmm0, mptr [rax + (round_inv_row - tabbase)]
+		pmaddwd		xmm0, [TABLE+00h]	;xmm0 = y3 y2 y1 y0
+		pmaddwd		xmm2, [TABLE+10h]	;xmm2 = y4 y5 y6 y7
+		paddd		xmm0, [rax + (round_inv_row - tabbase)]
 		movdqa		xmm1, xmm0
 		paddd		xmm0, xmm2				;xmm0 = z3 z2 z1 z0
 		psubd		xmm1, xmm2				;xmm1 = z4 z5 z6 z7
@@ -229,7 +229,7 @@ DCT_8_INV_ROW_1_SSE2_SHORT MACRO INP:REQ, OUT:REQ, TABLE:REQ
 		packssdw	xmm0, xmm1
 		pshufhw		xmm0, xmm0, 00011011b
 
-		movdqa		mptr [OUT], xmm0
+		movdqa		[OUT], xmm0
 ENDM
 
 
@@ -363,9 +363,9 @@ y7	equ	[OUT + 7*16]
 
 	;ODD ELEMENTS
 
-	movdqa	xmm0,mptr [rax + (tg_1_16 - tabbase)]
+	movdqa	xmm0, [rax + (tg_1_16 - tabbase)]
 
-	movdqa	xmm2,mptr [rax + (tg_3_16 - tabbase)]
+	movdqa	xmm2, [rax + (tg_3_16 - tabbase)]
 	movdqa	xmm3,xmm0
 
 	movdqa	xmm1,x7
@@ -389,7 +389,7 @@ y7	equ	[OUT + 7*16]
 	paddw	xmm2,xmm7
 	psubw	xmm3,xmm1
 
-	paddw	xmm0,mptr [rax + (one_corr - tabbase)]
+	paddw	xmm0, [rax + (one_corr - tabbase)]
 	paddw	xmm6,xmm7
 
 	;E8T butterfly - odd elements
@@ -412,31 +412,31 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm3,x4
 	movdqa	xmm6,xmm2			;[F8T]
 
-	pmulhw	xmm2,qword ptr [rax + (cos_4_16 - tabbase)]	;[F8T]
+	pmulhw	xmm2, [rax + (cos_4_16 - tabbase)]	;[F8T]
 	movdqa	xmm7,xmm1			;[F8T]
 
-	pmulhw	xmm1,qword ptr [rax + (cos_4_16 - tabbase)]	;[F8T]
+	pmulhw	xmm1, [rax + (cos_4_16 - tabbase)]	;[F8T]
 	paddw	xmm3,xmm4			;[B8T1] xmm3 = x0 = tmp[0] + tmp[1]
 
-	paddw	xmm3,mptr [rax + (round_inv_corr - tabbase)]	;[E8T]
+	paddw	xmm3, [rax + (round_inv_corr - tabbase)]	;[E8T]
 	;<v-pipe>
 
 	psubw	xmm4,x4			;[B8T1] xmm4 = x1 = tmp[0] - tmp[1]
 	paddw	xmm2,xmm6			;[F8T]
 
-	por	xmm1,mword ptr one_corr	;[F8T]
+	por	xmm1,xmmword ptr one_corr	;[F8T]
 	;<v-pipe>
 
 	movdqa	xmm6,x6			;[B8T2] xmm7 = tmp[3]
 	paddw	xmm1,xmm7			;[F8T] xmm1 = o1' = (o1 + o2)*LAMBDA(4)
 
-	pmulhw	xmm6,qword ptr [rax + (tg_2_16 - tabbase)]	;xmm7 = tmp[3] * TAN(2)
+	pmulhw	xmm6, [rax + (tg_2_16 - tabbase)]	;xmm7 = tmp[3] * TAN(2)
 	;<v-pipe>
 
-	movdqa	xmm7,mptr [rax + (one_corr - tabbase)]
+	movdqa	xmm7, [rax + (one_corr - tabbase)]
 	;<v-pipe>
 
-	paddw	xmm4,mptr [rax + (round_inv_col - tabbase)]	;[out]
+	paddw	xmm4, [rax + (round_inv_col - tabbase)]	;[out]
 	psubw	xmm2,xmm7			;[F8T] xmm2 = o2' = (o1 - o2)*LAMBDA(4)
 
 	paddw	xmm6,x2			;[B8T2] xmm7 = x2 = tmp[2] + tmp[3]*TAN(2)
@@ -465,13 +465,13 @@ y7	equ	[OUT + 7*16]
 	movdqa	y7,xmm6
 	psraw	xmm3,SHIFT_INV_COL
 
-	pmulhw	xmm7,qword ptr [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = tmp[2] * TAN(2)
+	pmulhw	xmm7, [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = tmp[2] * TAN(2)
 	psraw	xmm0,SHIFT_INV_COL
 
 	movdqa	y3,xmm3
 	movdqa	xmm6,xmm4				;[E8T]
 
-	psubw	xmm6,mptr [rax + (one_corr - tabbase)]
+	psubw	xmm6, [rax + (one_corr - tabbase)]
 	;<v-pipe>
 
 
@@ -619,17 +619,17 @@ y7	equ	[OUT + 7*16]
 
 	;ODD ELEMENTS
 
-	movdqa	xmm3,qword ptr [rax + (tg_1_16 - tabbase)]
+	movdqa	xmm3, [rax + (tg_1_16 - tabbase)]
 
 	movdqa	xmm0,x1
-	movdqa	xmm6,qword ptr [rax + (tg_3_16 - tabbase)]
+	movdqa	xmm6, [rax + (tg_3_16 - tabbase)]
 
 	movdqa	xmm2,x3
 	pmulhw	xmm3,xmm0
 
 	pmulhw	xmm6,xmm2
 
-	paddw	xmm0,qword ptr [rax + (one_corr - tabbase)]
+	paddw	xmm0, [rax + (one_corr - tabbase)]
 	paddw	xmm6,xmm2
 
 	;E8T butterfly - odd elements
@@ -652,21 +652,21 @@ y7	equ	[OUT + 7*16]
 	movdqa	xmm6,xmm2					;[F8T]
 	movdqa	xmm7,xmm1					;[F8T]
 
-	pmulhw	xmm2,qword ptr [rax + (cos_4_16 - tabbase)]	;[F8T]
+	pmulhw	xmm2, [rax + (cos_4_16 - tabbase)]	;[F8T]
 	movdqa	xmm3,xmm4					;[B8T1] xmm3 = x0 = x1 = tmp[0]
 
-	pmulhw	xmm1,qword ptr [rax + (cos_4_16 - tabbase)]	;[F8T]
+	pmulhw	xmm1, [rax + (cos_4_16 - tabbase)]	;[F8T]
 
-	paddw	xmm3,mptr [rax + (round_inv_corr - tabbase)]	;[E8T]
+	paddw	xmm3, [rax + (round_inv_corr - tabbase)]	;[E8T]
 	;<v-pipe>
 
-	paddw	xmm4,qword ptr [rax + (round_inv_col - tabbase)]	;[out]
+	paddw	xmm4, [rax + (round_inv_col - tabbase)]	;[out]
 	paddw	xmm2,xmm6					;[F8T]
 
-	por		xmm1,qword ptr [rax + (one_corr - tabbase)]	;[F8T]
+	por		xmm1, [rax + (one_corr - tabbase)]	;[F8T]
 	;<v-pipe>
 
-	psubw	xmm2,qword ptr [rax + (one_corr - tabbase)]		;[F8T] xmm2 = o2' = (o1 - o2)*LAMBDA(4)
+	psubw	xmm2, [rax + (one_corr - tabbase)]		;[F8T] xmm2 = o2' = (o1 - o2)*LAMBDA(4)
 	paddw	xmm1,xmm7					;[F8T] xmm1 = o1' = (o1 + o2)*LAMBDA(4)
 
 	movdqa	xmm6,x2					;[B8T2] xmm7 = x2 = tmp[2]
@@ -695,13 +695,13 @@ y7	equ	[OUT + 7*16]
 	movdqa	y7,xmm6
 	psraw	xmm3,SHIFT_INV_COL
 
-	pmulhw	xmm7,qword ptr [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = x3 = tmp[2] * TAN(2)
+	pmulhw	xmm7, [rax + (tg_2_16 - tabbase)]		;[B8T] xmm6 = x3 = tmp[2] * TAN(2)
 	psraw	xmm0,SHIFT_INV_COL
 
 	movdqa	y3,xmm3
 	movdqa	xmm6,xmm4				;[E8T]
 
-	psubw	xmm6,mptr [rax + (one_corr - tabbase)]
+	psubw	xmm6, [rax + (one_corr - tabbase)]
 	;<v-pipe>
 
 
@@ -752,9 +752,9 @@ IDCT_sse2:
 	movsxd	r9, r9d
 	movsxd	r10, dword ptr [rsp+40]
 	lea		rax, tabbase
-	movzx	r11,byte ptr [rax+r10+(pos_tab - tabbase)]
+	movzx	r11, byte ptr [rax+r10+(pos_tab - tabbase)]
 
-	jmp		qword ptr [rax+r11+(rowstart_tbl2 - tabbase)]
+	jmp	qword ptr [rax+r11+(rowstart_tbl2 - tabbase)]
 
 	align	16
 dorow_3is:
@@ -872,17 +872,17 @@ do_ac_sse2@loop:
 
 do_dc_mjpeg:
 	pshufd		xmm0, xmm0, 0
-	movdqa		qword ptr [rdx],xmm0			;row 0
+	movdqa		[rdx], xmm0			;row 0
 	lea			rax,[rcx+r8*2]
-	movdqa		qword ptr [rdx+r8],xmm0		;row 1
+	movdqa		[rdx+r8],xmm0		;row 1
 	add			rax,rdx
-	movdqa		qword ptr [rdx+r8*2],xmm0		;row 2
+	movdqa		[rdx+r8*2],xmm0		;row 2
 	lea			rdx,[rdx+r8*2]
-	movdqa		qword ptr [rax],xmm0			;row 3
-	movdqa		qword ptr [rdx+r8*2],xmm0		;row 4
-	movdqa		qword ptr [rax+r8*2],xmm0		;row 5
-	movdqa		qword ptr [rdx+r8*4],xmm0		;row 6
-	movdqa		qword ptr [rax+r8*4],xmm0		;row 7
+	movdqa		[rax],xmm0			;row 3
+	movdqa		[rdx+r8*2],xmm0		;row 4
+	movdqa		[rax+r8*2],xmm0		;row 5
+	movdqa		[rdx+r8*4],xmm0		;row 6
+	movdqa		[rax+r8*4],xmm0		;row 7
 	ret
 
 	end

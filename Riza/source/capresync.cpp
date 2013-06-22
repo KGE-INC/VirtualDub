@@ -1,0 +1,441 @@
+//	VirtualDub - Video processing and capture application
+//	A/V interface library
+//	Copyright (C) 1998-2004 Avery Lee
+//
+//	This program is free software; you can redistribute it and/or modify
+//	it under the terms of the GNU General Public License as published by
+//	the Free Software Foundation; either version 2 of the License, or
+//	(at your option) any later version.
+//
+//	This program is distributed in the hope that it will be useful,
+//	but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	GNU General Public License for more details.
+//
+//	You should have received a copy of the GNU General Public License
+//	along with this program; if not, write to the Free Software
+//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+#include <vd2/system/thread.h>
+#include <vd2/system/cpuaccel.h>
+#include <vd2/system/math.h>
+#include <vd2/Riza/capresync.h>
+
+///////////////////////////////////////////////////////////////////////////
+
+extern "C" __declspec(align(16)) const sint16 gVDCaptureAudioResamplingKernel[32][8] = {
+	{+0x0000,+0x0000,+0x0000,+0x4000,+0x0000,+0x0000,+0x0000,+0x0000 },
+	{-0x000a,+0x0052,-0x0179,+0x3fe2,+0x019f,-0x005b,+0x000c,+0x0000 },
+	{-0x0013,+0x009c,-0x02cc,+0x3f86,+0x0362,-0x00c0,+0x001a,+0x0000 },
+	{-0x001a,+0x00dc,-0x03f9,+0x3eef,+0x054a,-0x012c,+0x002b,+0x0000 },
+	{-0x001f,+0x0113,-0x0500,+0x3e1d,+0x0753,-0x01a0,+0x003d,+0x0000 },
+	{-0x0023,+0x0141,-0x05e1,+0x3d12,+0x097c,-0x021a,+0x0050,-0x0001 },
+	{-0x0026,+0x0166,-0x069e,+0x3bd0,+0x0bc4,-0x029a,+0x0066,-0x0001 },
+	{-0x0027,+0x0182,-0x0738,+0x3a5a,+0x0e27,-0x031f,+0x007d,-0x0002 },
+	{-0x0028,+0x0197,-0x07b0,+0x38b2,+0x10a2,-0x03a7,+0x0096,-0x0003 },
+	{-0x0027,+0x01a5,-0x0807,+0x36dc,+0x1333,-0x0430,+0x00af,-0x0005 },
+	{-0x0026,+0x01ab,-0x083f,+0x34db,+0x15d5,-0x04ba,+0x00ca,-0x0007 },
+	{-0x0024,+0x01ac,-0x085b,+0x32b3,+0x1886,-0x0541,+0x00e5,-0x0008 },
+	{-0x0022,+0x01a6,-0x085d,+0x3068,+0x1b40,-0x05c6,+0x0101,-0x000b },
+	{-0x001f,+0x019c,-0x0846,+0x2dfe,+0x1e00,-0x0644,+0x011c,-0x000d },
+	{-0x001c,+0x018e,-0x0819,+0x2b7a,+0x20c1,-0x06bb,+0x0136,-0x0010 },
+	{-0x0019,+0x017c,-0x07d9,+0x28e1,+0x2380,-0x0727,+0x014f,-0x0013 },
+	{-0x0016,+0x0167,-0x0788,+0x2637,+0x2637,-0x0788,+0x0167,-0x0016 },
+	{-0x0013,+0x014f,-0x0727,+0x2380,+0x28e1,-0x07d9,+0x017c,-0x0019 },
+	{-0x0010,+0x0136,-0x06bb,+0x20c1,+0x2b7a,-0x0819,+0x018e,-0x001c },
+	{-0x000d,+0x011c,-0x0644,+0x1e00,+0x2dfe,-0x0846,+0x019c,-0x001f },
+	{-0x000b,+0x0101,-0x05c6,+0x1b40,+0x3068,-0x085d,+0x01a6,-0x0022 },
+	{-0x0008,+0x00e5,-0x0541,+0x1886,+0x32b3,-0x085b,+0x01ac,-0x0024 },
+	{-0x0007,+0x00ca,-0x04ba,+0x15d5,+0x34db,-0x083f,+0x01ab,-0x0026 },
+	{-0x0005,+0x00af,-0x0430,+0x1333,+0x36dc,-0x0807,+0x01a5,-0x0027 },
+	{-0x0003,+0x0096,-0x03a7,+0x10a2,+0x38b2,-0x07b0,+0x0197,-0x0028 },
+	{-0x0002,+0x007d,-0x031f,+0x0e27,+0x3a5a,-0x0738,+0x0182,-0x0027 },
+	{-0x0001,+0x0066,-0x029a,+0x0bc4,+0x3bd0,-0x069e,+0x0166,-0x0026 },
+	{-0x0001,+0x0050,-0x021a,+0x097c,+0x3d12,-0x05e1,+0x0141,-0x0023 },
+	{+0x0000,+0x003d,-0x01a0,+0x0753,+0x3e1d,-0x0500,+0x0113,-0x001f },
+	{+0x0000,+0x002b,-0x012c,+0x054a,+0x3eef,-0x03f9,+0x00dc,-0x001a },
+	{+0x0000,+0x001a,-0x00c0,+0x0362,+0x3f86,-0x02cc,+0x009c,-0x0013 },
+	{+0x0000,+0x000c,-0x005b,+0x019f,+0x3fe2,-0x0179,+0x0052,-0x000a },
+};
+
+#ifdef _M_IX86
+	extern "C" void __cdecl vdasm_capture_resample16_MMX(sint16 *d, int stride, const sint16 *s, uint32 count, uint64 accum, sint64 inc);
+#endif
+
+namespace {
+	uint64 resample16(sint16 *d, int stride, const sint16 *s, uint32 count, uint64 accum, sint64 inc) {
+#ifdef _M_IX86
+		if (MMX_enabled) {
+			vdasm_capture_resample16_MMX(d, stride, s, count, accum, inc);
+		}
+#endif
+
+		do {
+			const sint16 *s2 = s + (accum >> 32);
+			const sint16 *f = gVDCaptureAudioResamplingKernel[(uint32)accum >> 27];
+
+			accum += inc;
+
+			uint32 v= (sint32)s2[0]*(sint32)f[0]
+					+ (sint32)s2[1]*(sint32)f[1]
+					+ (sint32)s2[2]*(sint32)f[2]
+					+ (sint32)s2[3]*(sint32)f[3]
+					+ (sint32)s2[4]*(sint32)f[4]
+					+ (sint32)s2[5]*(sint32)f[5]
+					+ (sint32)s2[6]*(sint32)f[6]
+					+ (sint32)s2[7]*(sint32)f[7]
+					+ 0x20002000;
+
+			v >>= 14;
+
+			if (v >= 0x10000)
+				v = ~v >> 31;
+
+			*d = (sint16)(v - 0x8000);
+			d += stride;
+		} while(--count);
+
+		return accum;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void VDCaptureAudioRateEstimator::Reset() {
+	mX = 0;
+	mY = 0;
+	mX2 = 0;
+	mXY = 0;
+	mSamples = 0;
+}
+
+void VDCaptureAudioRateEstimator::AddSample(sint64 x, sint64 y) {
+	++mSamples;
+
+	int128 x2, y2;
+	x2.setSquare(x);
+
+	mX	+= x;
+	mX2	+= x2;
+	mY	+= y;
+	mXY	+= (int128)x * (int128)y;
+}
+
+bool VDCaptureAudioRateEstimator::GetSlope(double& slope) const {
+	if (mSamples < 4)
+		return false;
+
+	const double x	= (double)mX;
+	const double y	= (double)mY;
+	const double x2	= mX2;
+	const double xy	= mXY;
+	const double n	= mSamples;
+
+	slope = (n*xy - x*y) / (n*x2 - x*x);
+
+	return true;
+}
+
+bool VDCaptureAudioRateEstimator::GetXIntercept(double slope, double& xintercept) const {
+	xintercept = ((double)mX - (double)mY/slope) / mSamples;
+	return true;
+}
+
+bool VDCaptureAudioRateEstimator::GetYIntercept(double slope, double& yintercept) const {
+	yintercept = ((double)mY - (double)mX*slope) / mSamples;
+	return true;
+}
+
+namespace {
+	template<class T, unsigned N>
+	class MovingAverage {
+	public:
+		MovingAverage()
+			: mPos(0)
+			, mSum(0)
+		{
+			for(unsigned i=0; i<N; ++i)
+				mArray[i] = 0;
+		}
+
+		T operator()(T v) {
+			mArray[mPos] = v;
+			if (++mPos >= N)
+				mPos = 0;
+
+			// Note: This is an O(n) sum rather than an O(1) sum table approach
+			// because the latter is unsafe with floating-point values.
+			T sum(0);
+			for(unsigned i=0; i<N; ++i)
+				sum += mArray[i];
+
+			return sum * (T(1)/N);
+		}
+
+	protected:
+		unsigned mPos;
+		T mSum;
+		T mArray[N];
+	};
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDCaptureResyncFilter : public IVDCaptureResyncFilter {
+public:
+	VDCaptureResyncFilter();
+	~VDCaptureResyncFilter();
+
+	void SetChildCallback(IVDCaptureDriverCallback *pChild);
+	void SetVideoRate(double fps);
+	void SetAudioRate(double bytesPerSec);
+	void SetAudioChannels(int chans);
+
+	void GetStatus(VDCaptureResyncStatus&);
+
+	void CapBegin(sint64 global_clock);
+	void CapEnd();
+	bool CapControl(bool is_preroll);
+	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
+
+protected:
+	IVDCaptureDriverCallback *mpCB;
+
+	bool		mbCapturing;
+	sint64		mGlobalClockBase;
+	sint64		mVideoLastTime;
+	sint64		mVideoLastRawTime;
+	sint64		mVideoTimingWrapAdjust;
+	sint64		mVideoTimingAdjust;
+	sint64		mAudioBytes;
+	sint64		mAudioWrittenBytes;
+	double		mVideoTimeLastAudioBlock;
+	double		mInvAudioRate;
+	double		mVideoRate;
+	double		mAudioRate;
+	double		mAudioResamplingRate;
+	double		mAudioTrackingRate;
+	int			mChannels;
+	VDCaptureAudioRateEstimator	mVideoRealRateEstimator;
+	VDCaptureAudioRateEstimator	mAudioRelativeRateEstimator;
+	VDCriticalSection	mcsLock;
+
+	sint32		mInputLevel;
+	uint32		mAccum;
+	vdblock<sint16>	mInputBuffer;
+	vdblock<sint16>	mOutputBuffer;
+
+	MovingAverage<double, 8>	mCurrentLatencyAverage;
+};
+
+VDCaptureResyncFilter::VDCaptureResyncFilter()
+	: mbCapturing(false)
+	, mVideoLastTime(0)
+	, mVideoLastRawTime(0)
+	, mVideoTimingWrapAdjust(0)
+	, mVideoTimingAdjust(0)
+	, mAudioBytes(0)
+{
+}
+
+VDCaptureResyncFilter::~VDCaptureResyncFilter() {
+}
+
+IVDCaptureResyncFilter *VDCreateCaptureResyncFilter() {
+	return new VDCaptureResyncFilter;
+}
+
+void VDCaptureResyncFilter::SetChildCallback(IVDCaptureDriverCallback *pChild) {
+	mpCB = pChild;
+}
+
+void VDCaptureResyncFilter::SetVideoRate(double fps) {
+	mVideoRate = fps;
+}
+
+void VDCaptureResyncFilter::SetAudioRate(double bytesPerSec) {
+	mAudioRate = bytesPerSec;
+	mInvAudioRate = 1.0 / bytesPerSec;
+}
+
+void VDCaptureResyncFilter::SetAudioChannels(int chans) {
+	mChannels = chans;
+}
+
+void VDCaptureResyncFilter::GetStatus(VDCaptureResyncStatus& status) {
+	status.mVideoTimingAdjust = mVideoTimingAdjust;
+	status.mAudioResamplingRate = (float)mAudioResamplingRate;
+}
+
+void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
+	mInputLevel = 0;
+	mAccum = 0;
+	mAudioResamplingRate = 1.0;
+	mAudioTrackingRate = 1.0;
+	mAudioWrittenBytes = 0;
+	mVideoTimeLastAudioBlock = 0;
+
+	mInputBuffer.resize(4096 * mChannels);
+	memset(mInputBuffer.data(), 0, mInputBuffer.size() * sizeof(mInputBuffer[0]));
+	mOutputBuffer.resize(4096 * mChannels);
+
+	mpCB->CapBegin(global_clock);
+}
+
+void VDCaptureResyncFilter::CapEnd() {
+	mpCB->CapEnd();
+}
+
+bool VDCaptureResyncFilter::CapControl(bool is_preroll) {
+	return mpCB->CapControl(is_preroll);
+}
+
+void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock)  {
+	if (stream == 0) {
+		// Correct for one form of the 71-minute bug.
+		//
+		// The video capture driver apparently computes a time in microseconds and then divides by
+		// 1000 to convert to milliseconds, but doesn't compensate for when the microsecond counter
+		// overflows past 2^32.  This results in a wraparound from 4294967ms (1h 11m 34s) to 0ms.
+		// We must detect this and compensate for the wrap.
+		//
+		// Some Matrox drivers wrap at 2^31 too....
+
+		if (timestamp < mVideoLastRawTime && timestamp < 10000000 && mVideoLastRawTime >= VD64(2138000000)) {
+
+			// Perform sanity checks.  We should be within ten seconds of the last frame.
+			sint64 bias;
+			
+			if (mVideoLastRawTime >= VD64(4285000))
+				bias = VD64(4294967296);	// 71 minute bug
+			else
+				bias = VD64(2147483648);	// 35 minute bug
+
+			sint64 newtimestamp = timestamp + bias;
+
+			if (newtimestamp < mVideoLastRawTime + 5000000 && newtimestamp >= mVideoLastRawTime - 5000000)
+				mVideoTimingWrapAdjust += bias;
+		}
+
+		timestamp += mVideoTimingWrapAdjust;
+	}
+
+	vdsynchronized(mcsLock) {
+		if (stream == 0) {
+			mVideoLastTime = timestamp;
+			timestamp += mVideoTimingAdjust;
+
+			mVideoRealRateEstimator.AddSample(global_clock, timestamp);
+		} else {
+			mAudioBytes += size;
+			mAudioRelativeRateEstimator.AddSample(mVideoLastTime, mAudioBytes);
+
+			double estimatedVideoTimeSlope, estimatedVideoTimeIntercept;
+
+			if (mVideoRealRateEstimator.GetSlope(estimatedVideoTimeSlope) && mVideoRealRateEstimator.GetYIntercept(estimatedVideoTimeSlope, estimatedVideoTimeIntercept)) {
+				// estimate video clock from RT clock
+				double estimatedVideoTime = global_clock * estimatedVideoTimeSlope + estimatedVideoTimeIntercept;
+
+				if (estimatedVideoTime < mVideoLastTime)
+					estimatedVideoTime = mVideoLastTime;
+
+				double currentLatency = mCurrentLatencyAverage(mVideoTimeLastAudioBlock - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
+//				double currentLatency = mCurrentLatencyAverage(mVideoLastTime - mAudioWrittenBytes * mInvAudioRate * 1000000.0);
+
+				mVideoTimeLastAudioBlock = estimatedVideoTime;
+
+				double rate, latency;
+
+				if (mAudioRelativeRateEstimator.GetCount() > 8 && mAudioRelativeRateEstimator.GetSlope(rate) && mAudioRelativeRateEstimator.GetXIntercept(rate, latency)) {
+					double adjustedRate = rate * ((double)(mVideoLastTime + mVideoTimingAdjust) / mVideoLastTime);
+					double audioBytesPerSecond = adjustedRate * 1000000.0;
+					double audioSecondsPerSecond = audioBytesPerSecond * mInvAudioRate;
+					double errorSecondsPerSecond = audioSecondsPerSecond - 1.0;
+					double errorSeconds = errorSecondsPerSecond * mVideoLastTime / 1000000.0;
+					double errorFrames = errorSeconds * mVideoRate;
+
+					double latencyError = currentLatency - latency;			// negative means too much data; positive means too little data
+
+					double targetRate = mAudioTrackingRate - (1e-7)*latencyError;
+					mAudioResamplingRate += 0.1 * (targetRate - mAudioResamplingRate);
+					mAudioTrackingRate += 0.01*(rate*1000000.0*mInvAudioRate - mAudioTrackingRate);
+
+#if 0
+					if (fabs(errorFrames) >= 0.8) {
+						sint32 errorAdj = -(sint32)(errorFrames / mVideoRate * 1000000.0);
+
+						VDDEBUG("Applying delta of %d us -- total delta %d us\n", errorAdj, (sint32)mVideoTimingAdjust);
+						mVideoTimingAdjust += errorAdj;
+					}
+#endif
+
+					VDDEBUG("audio rate: %.2fHz (%.2fHz), latency: %.2fms (latency error: %+.2fms; current rate: %.6g; target: %.6g)\n"
+							, rate * 1000000.0 / 4.0
+							, mAudioRate * mAudioTrackingRate / 4.0
+							, latency / 1000.0
+							, latencyError / 1000.0
+							, mAudioResamplingRate
+							, targetRate);
+				}
+			}
+		}
+	}
+
+	if (stream == 1) {
+		int samples = (size >> 1) / mChannels;
+
+		while(samples > 0) {
+			int tc = 4096 - mInputLevel;
+
+			if (tc > samples)
+				tc = samples;
+
+			int base = mInputLevel;
+
+			samples -= tc;
+			mInputLevel += tc;
+
+			// resample
+			uint32 inc = VDRoundToInt(mAudioResamplingRate * 65536.0);
+			int limit = 0;
+
+			const int chans = mChannels;
+			if (mInputLevel >= 8) {
+				limit = ((mInputLevel << 16)-0x70000-mAccum + (inc-1)) / inc;
+				if (limit > 4096)
+					limit = 4096;
+
+				uint32 accum0 = mAccum;
+
+				for(int chan=0; chan<chans; ++chan) {
+					const sint16 *src = (const sint16 *)data + chan;
+					sint16 *dst = mInputBuffer.data() + 4096*chan + base;
+
+					for(int idx=0; idx<tc; ++idx) {
+						*dst++ = *src;
+						src += chans;
+					}
+
+					src = mInputBuffer.data() + 4096*chan;
+					dst = mOutputBuffer.data() + chan;
+
+					mAccum = (uint32)(resample16(dst, chans, src, limit, (uint64)accum0<<16, (sint64)inc<<16) >> 16);
+
+					int pos = mAccum >> 16;
+
+					memmove(&mInputBuffer[4096*chan], &mInputBuffer[4096*chan + pos], (mInputLevel - pos)*2);
+				}
+			}
+
+			mInputLevel -= mAccum >> 16;
+			mAccum &= 0xffff;
+
+			mAudioWrittenBytes += limit*chans*2;
+
+			mpCB->CapProcessData(stream, mOutputBuffer.data(), limit*chans*2, 0, key, global_clock);
+
+			data = (char *)data + 2*chans*tc;
+		}
+	} else
+		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+}

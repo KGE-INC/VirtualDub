@@ -22,6 +22,40 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 	/* YUV410_Planar */	{ "YUV410",		1, 1, 0, 0, 1, 2, 2, 2,   0 },
 };
 
+#ifdef _DEBUG
+	bool VDIsValidPixmapPlane(const void *p, ptrdiff_t pitch, vdpixsize w, vdpixsize h) {
+		bool isvalid;
+
+		if (pitch < 0)
+			isvalid = VDIsValidReadRegion((const char *)p + pitch*(h-1), (-pitch)*(h-1)+w);
+		else
+			isvalid = VDIsValidReadRegion(p, pitch*(h-1)+w);
+
+		return isvalid;
+	}
+
+	bool VDAssertValidPixmap(const VDPixmap& px) {
+		const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
+
+		if (px.format) {
+			VDASSERT(VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w >> info.qwbits)*info.qsize, -(-px.h >> info.qhbits)));
+
+			if (info.palsize)
+				VDASSERT(VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize));
+
+			if (info.auxbufs) {
+				const vdpixsize auxw = -(-px.w >> info.auxwbits);
+				const vdpixsize auxh = -(-px.h >> info.auxhbits);
+
+				VDASSERT(VDIsValidPixmapPlane(px.data2, px.pitch2, auxw, auxh));
+
+				if (info.auxbufs > 2)
+					VDASSERT(VDIsValidPixmapPlane(px.data3, px.pitch3, auxw, auxh));
+			}
+		}
+	}
+#endif
+
 VDPixmap VDPixmapOffset(const VDPixmap& src, vdpixpos x, vdpixpos y) {
 	VDPixmap temp(src);
 	const VDPixmapFormatInfo& info = VDPixmapGetInfo(temp.format);
@@ -36,6 +70,25 @@ VDPixmap VDPixmapOffset(const VDPixmap& src, vdpixpos x, vdpixpos y) {
 		temp.data2 = (char *)temp.data2 + -(-x >> info.auxwbits) + -(-y >> info.auxhbits)*temp.pitch2;
 	case 0:
 		temp.data = (char *)temp.data + x*info.qsize + y*temp.pitch;
+	}
+
+	return temp;
+}
+
+VDPixmapLayout VDPixmapLayoutOffset(const VDPixmapLayout& src, vdpixpos x, vdpixpos y) {
+	VDPixmapLayout temp(src);
+	const VDPixmapFormatInfo& info = VDPixmapGetInfo(temp.format);
+
+	x = -(-x >> info.qwbits);
+	y = -(-y >> info.qhbits);
+
+	switch(info.auxbufs) {
+	case 2:
+		temp.data3 += -(-x >> info.auxwbits) + -(-y >> info.auxhbits)*temp.pitch3;
+	case 1:
+		temp.data2 += -(-x >> info.auxwbits) + -(-y >> info.auxhbits)*temp.pitch2;
+	case 0:
+		temp.data += x*info.qsize + y*temp.pitch;
 	}
 
 	return temp;

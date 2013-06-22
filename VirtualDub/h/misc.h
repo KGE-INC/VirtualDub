@@ -98,7 +98,9 @@ struct VDPixmapLayout;
 
 int VDGetPixmapToBitmapVariants(int format);
 int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr);
+int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant);
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant);
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h);
 uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint32 h, int format, int variant);
 
 

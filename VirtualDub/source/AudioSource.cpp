@@ -355,11 +355,32 @@ bool AudioSourceDV::init() {
 	if (FAILED(mpStream->ReadFormat(0, format.data(), &size)))
 		return false;
 
-	bool isPAL = 0 != (format[18] & 0x20);
+	uint8 aaux_as_pc4 = format[3];
+	uint8 vaux_vs_pc3 = format[18];
+
+	// Sometimes the values in the DVINFO block are wrong, so attempt
+	// to extract from the first frame instead.
+	const VDPosition streamStart = mpStream->Start();
+	const VDPosition streamEnd = mpStream->End();
+	
+	if (streamEnd > streamStart) {
+		long bytes, samples;
+
+		if (!mpStream->Read(streamStart, 1, NULL, 0, &bytes, &samples) && bytes >= 120000) {
+			vdblock<uint8> tmp(bytes);
+
+			if (!mpStream->Read(streamStart, 1, tmp.data(), tmp.size(), &bytes, &samples)) {
+				aaux_as_pc4 = tmp[80*(3*150 + 6) + 7];		// DIF sequence 3, block 6, AAUX pack 0
+				vaux_vs_pc3 = tmp[80*(1*150 + 3) + 6];		// DIF sequence 1, block 3, VAUX pack 0
+			}
+		}
+	}
+
+	bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
 
 	sint32 samplingRate;
 
-	switch(format[3] & 0x38) {
+	switch(aaux_as_pc4 & 0x38) {
 	case 0x00:
 		samplingRate = 48000;
 		mSamplesPerSet		= isPAL ? 19200 : 16016;
@@ -380,7 +401,7 @@ bool AudioSourceDV::init() {
 	}
 
 	// check for 12-bit quantization
-	unsigned bytesPerSample = (format[3] & 7) ? 3 : 2;
+	unsigned bytesPerSample = (aaux_as_pc4 & 7) ? 3 : 2;
 
 	mTempBuffer.resize(isPAL ? 144000 : 120000);
 
@@ -526,7 +547,7 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 			if (err)
 				return NULL;
 
-			const uint8 *pAAUX = &mTempBuffer[80*(3*16 + 6) + 3];
+			const uint8 *pAAUX = &mTempBuffer[80*(1*150 + 6) + 3];
 
 			const uint32 n = mMinimumFrameSize + (pAAUX[1] & 0x3f);
 

@@ -46,7 +46,7 @@ struct vditerator {
 
 template<class Iterator, class T>
 struct vdreverse_iterator {
-#if defined(_MSC_VER) && (_MSC_VER < 1400 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
+#if defined(_MSC_VER) && (_MSC_VER < 1310 || (_MSC_VER == 1400 && _MSC_FULL_VER <= 14002207))
 	typedef std::reverse_iterator<Iterator, T> type;
 #else
 	typedef std::reverse_iterator<Iterator> type;
@@ -312,21 +312,22 @@ struct vdlist_node {
 	vdlist_node *mListNodeNext, *mListNodePrev;
 };
 
-template<class T>
+template<class T, class T_Nonconst>
 class vdlist_iterator : public vditerator<std::bidirectional_iterator_tag, T, ptrdiff_t>::type {
 public:
 	vdlist_iterator() {}
 	vdlist_iterator(vdlist_node *p) : mp(p) {}
+	vdlist_iterator(const vdlist_iterator<T_Nonconst, T_Nonconst>& src) : mp(src.mp) {}
 
 	T* operator *() const {
 		return static_cast<T*>(mp);
 	}
 
-	bool operator==(const vdlist_iterator<T>& x) const {
+	bool operator==(const vdlist_iterator<T, T_Nonconst>& x) const {
 		return mp == x.mp;
 	}
 
-	bool operator!=(const vdlist_iterator<T>& x) const {
+	bool operator!=(const vdlist_iterator<T, T_Nonconst>& x) const {
 		return mp != x.mp;
 	}
 
@@ -366,8 +367,8 @@ public:
 	typedef	const T*&						const_reference;
 	typedef	size_t							size_type;
 	typedef	ptrdiff_t						difference_type;
-	typedef	vdlist_iterator<T>							iterator;
-	typedef vdlist_iterator<const T>					const_iterator;
+	typedef	vdlist_iterator<T, T>						iterator;
+	typedef vdlist_iterator<const T, T>					const_iterator;
 	typedef typename vdreverse_iterator<iterator, T>::type			reverse_iterator;
 	typedef typename vdreverse_iterator<const_iterator, const T>::type	const_reverse_iterator;
 
@@ -472,6 +473,14 @@ public:
 
 	const_iterator fast_find(T *p) const {
 		iterator it(p);
+	}
+
+	void clear() {
+		while(!empty()) {
+			T *p = back();
+			erase(p);
+			pop_back();
+		}
 	}
 
 	void push_front(T *p) {

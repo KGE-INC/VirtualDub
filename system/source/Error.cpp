@@ -27,6 +27,7 @@
 #include <stdarg.h>
 #include <crtdbg.h>
 #include <windows.h>
+#include <vfw.h>
 
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/Error.h>
@@ -203,13 +204,16 @@ MyWin32Error::MyWin32Error(const char *format, DWORD err, ...) {
 	char szTemp[1024];
 	va_list val;
 
-	FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+	if (!FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 			0,
 			err,
 			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 			szError,
 			sizeof szError,
-			NULL);
+			NULL))
+	{
+		szError[0] = 0;
+	}
 
 	if (szError[0]) {
 		long l = strlen(szError);

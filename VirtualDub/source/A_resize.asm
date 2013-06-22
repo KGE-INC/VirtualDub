@@ -2085,7 +2085,7 @@ _resize_table_col_SSE2	proc	near
 
 	punpcklbw	xmm0, xmm7
 
-	movq		xmm2, [edx]
+	movq		xmm2, qword ptr [edx]
 	pshufd		xmm2, xmm2, 01000100b
 
 	pmaddwd		xmm0, xmm2
@@ -2136,8 +2136,8 @@ _resize_table_col_SSE2	proc	near
 	;EDI	destination
 	;EBP	counter
 	;
-	movq		xmm4, [edx]				;xmm4 = coeff 0/1
-	movq		xmm5, [edx+8]			;xmm5 = coeff 2/3
+	movq		xmm4, qword ptr [edx]				;xmm4 = coeff 0/1
+	movq		xmm5, qword ptr [edx+8]			;xmm5 = coeff 2/3
 	punpcklqdq	xmm4, xmm4
 	punpcklqdq	xmm5, xmm5
 
@@ -2199,9 +2199,9 @@ _resize_table_col_SSE2	proc	near
 
 
 @accel_6coeff:
-	movq		xmm4, [edx]				;xmm4 = coeff 0/1
-	movq		xmm5, [edx+8]			;xmm5 = coeff 2/3
-	movq		xmm6, [edx+16]			;xmm5 = coeff 4/5
+	movq		xmm4, qword ptr [edx]				;xmm4 = coeff 0/1
+	movq		xmm5, qword ptr [edx+8]			;xmm5 = coeff 2/3
+	movq		xmm6, qword ptr [edx+16]			;xmm5 = coeff 4/5
 	punpcklqdq	xmm4, xmm4
 	punpcklqdq	xmm5, xmm5
 	punpcklqdq	xmm6, xmm6

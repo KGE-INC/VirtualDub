@@ -303,12 +303,12 @@ void guiSetTitleW(HWND hWnd, UINT uID, ...) {
 		SetWindowText(hWnd, VDTextWToA(buf2).c_str());
 }
 
-void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, UINT *iTranslator) {
+void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, const UINT *iTranslator) {
 	HWND hwndStatus = GetDlgItem(hwnd, IDC_STATUS_WINDOW);
 	char msgbuf[256];
 
 	if (!(HIWORD(wParam) & MF_POPUP) && !(HIWORD(wParam) & MF_SYSMENU)) {
-		UINT *idPtr = iTranslator;
+		const UINT *idPtr = iTranslator;
 
 		while(idPtr[0]) {
 			if (idPtr[0] == LOWORD(wParam)) {
@@ -854,6 +854,9 @@ INT_PTR CALLBACK VDDialogBaseW32::StaticDlgProc(HWND hwnd, UINT msg, WPARAM wPar
 		SetWindowLongPtr(hwnd, DWLP_USER, lParam);
 		pThis = (VDDialogBaseW32 *)lParam;
 		pThis->mhdlg = hwnd;
+	} else if (msg == WM_NCDESTROY) {
+		if (pThis)
+			pThis->PreNCDestroy();
 	}
 
 	return pThis ? pThis->DlgProc(msg, wParam, lParam) : FALSE;

@@ -141,6 +141,10 @@ protected:
 	void RecalcThumbRect(VDPosition pos, bool update = true);
 	void Notify(UINT code);
 
+	inline int FrameToPixel(VDPosition pos) {
+		return VDFloorToInt(mPixelToFrameBias + mPixelsPerFrame * pos);
+	}
+
 	const HWND			mhwnd;
 	HFONT				mFrameFont;
 	int					nFrameCtlHeight;
@@ -170,10 +174,12 @@ protected:
 
 	RECT				mPositionArea;			// track, ticks, bar, and numbers
 	RECT				mTrackArea;				// track, ticks, and bar
+	RECT				mTickArea;				// just ticks
 	RECT				mTrack;					// just the track
 	RECT				mThumbRect;
 	int					mThumbWidth;
 	double				mPixelsPerFrame;
+	double				mPixelToFrameBias;
 	double				mFramesPerPixel;
 
 	int					mWheelAccum;
@@ -243,8 +249,9 @@ VDPositionControlW32::VDPositionControlW32(HWND hwnd)
 	, mRangeStart(0)
 	, mRangeEnd(0)
 	, mSelectionStart(0)
-	, mSelectionEnd(0)
+	, mSelectionEnd(-1)
 	, mPixelsPerFrame(0)
+	, mPixelToFrameBias(0)
 	, mFramesPerPixel(0)
 	, mWheelAccum(0)
 	, mDragMode(kDragNone)
@@ -348,33 +355,29 @@ bool VDPositionControlW32::GetSelection(VDPosition& start, VDPosition& end) {
 }
 
 void VDPositionControlW32::SetSelection(VDPosition start, VDPosition end, bool updateNow) {
+	const int tickHeight = mTickArea.bottom - mTickArea.top;
+
 	// wipe old selection
-	if (mSelectionStart < mSelectionEnd) {
-		int selx1 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionStart);
-		int selx2 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionEnd);
+	if (mSelectionStart <= mSelectionEnd) {
+		int selx1 = FrameToPixel(mSelectionStart);
+		int selx2 = FrameToPixel(mSelectionEnd);
 
-		if (selx2 == selx1)
-			++selx2;
+		RECT rOld = { selx1 - tickHeight, mTrack.top, selx2 + tickHeight, mTickArea.bottom };
 
-		RECT rOld = { selx1, mTrack.top, selx2, mTrack.bottom };
-
-		InvalidateRect(mhwnd, &rOld, FALSE);
+		InvalidateRect(mhwnd, &rOld, TRUE);
 	}
 
 	// render new selection
 	mSelectionStart	= start;
 	mSelectionEnd	= end;
 
-	if (mSelectionStart < mSelectionEnd) {
-		int selx1 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionStart);
-		int selx2 = mTrack.left + VDRoundToInt(mPixelsPerFrame * mSelectionEnd);
+	if (mSelectionStart <= mSelectionEnd) {
+		int selx1 = FrameToPixel(mSelectionStart);
+		int selx2 = FrameToPixel(mSelectionEnd);
 
-		if (selx2 == selx1)
-			++selx2;
+		RECT rNew = { selx1 - tickHeight, mTrack.top, selx2 + tickHeight, mTickArea.bottom };
 
-		RECT rNew = { selx1, mTrack.top, selx2, mTrack.bottom };
-
-		InvalidateRect(mhwnd, &rNew, FALSE);
+		InvalidateRect(mhwnd, &rNew, TRUE);
 	}
 }
 
@@ -758,7 +761,6 @@ void VDPositionControlW32::OnCreate() {
 
 void VDPositionControlW32::UpdateString(VDPosition pos) {
 	wchar_t buf[512];
-	int l;
 
 	if (pos < 0)
 		pos = mPosition;
@@ -849,25 +851,9 @@ void VDPositionControlW32::OnPaint() {
 
 	VDVERIFY(GetClientRect(mhwnd, &rClient));
 
-	int trackLeft = mTrack.left;
 	int trackRight = mTrack.right;
-	int trackTop = mTrack.top;
-	int trackBottom = mTrack.bottom;
 
 	HGDIOBJ hOldPen = SelectObject(hdc, GetStockObject(BLACK_PEN));
-
-	// Fill the track.  We draw the track borders later so they're always on top.
-	FillRect(hdc, &mTrack, mBrushes[kBrushTrack]);
-
-	if (mSelectionEnd > mSelectionStart) {
-		int selx1 = VDRoundToInt(mTrack.left + mPixelsPerFrame * mSelectionStart);
-		int selx2 = VDRoundToInt(mTrack.left + mPixelsPerFrame * mSelectionEnd);
-		if (selx1 == selx2)
-			++selx2;
-
-		RECT rSel={selx1, mTrack.top, selx2, mTrack.bottom};
-		FillRect(hdc, &rSel, mBrushes[kBrushSelection]);
-	}
 
 	// Determine digit spacing.
 	int labelDigits = mRangeEnd > 0 ? (int)floor(log10((double)mRangeEnd)) + 1 : 1;
@@ -897,9 +883,9 @@ void VDPositionControlW32::OnPaint() {
 	bool bDrawLabels = ps.rcPaint.bottom >= mTrackArea.bottom;
 
 	while(frame < mRangeEnd) {
-		int x = trackLeft + VDRoundToInt((frame - mRangeStart) * mPixelsPerFrame);
+		int x = FrameToPixel(frame);
 
-		const RECT rTick = { x, mTrack.bottom, x+1, mTrackArea.bottom };
+		const RECT rTick = { x, mTickArea.top, x+1, mTickArea.bottom };
 		FillRect(hdc, &rTick, mBrushes[kBrushTick]);
 
 		if (x > trackRight - labelWidth)
@@ -919,6 +905,49 @@ void VDPositionControlW32::OnPaint() {
 	if (bDrawLabels) {
 		sprintf(buf, "%I64d", mRangeEnd);
 		TextOut(hdc, trackRight, mTrackArea.bottom, buf, strlen(buf));
+	}
+
+	// Fill the track.  We draw the track borders later so they're always on top.
+	FillRect(hdc, &mTrack, mBrushes[kBrushTrack]);
+
+	// Draw selection and ticks.
+	if (mSelectionEnd >= mSelectionStart) {
+		int selx1 = FrameToPixel(mSelectionStart);
+		int selx2 = FrameToPixel(mSelectionEnd);
+
+		RECT rSel={selx1, mTrack.top, selx2, mTrack.bottom};
+
+		if (rSel.right == rSel.left)
+			++rSel.right;
+
+		FillRect(hdc, &rSel, mBrushes[kBrushSelection]);
+
+		if (HPEN hNullPen = CreatePen(PS_NULL, 0, 0)) {
+			SelectObject(hdc, hNullPen);
+
+			if (HGDIOBJ hOldBrush = SelectObject(hdc, GetStockObject(BLACK_BRUSH))) {
+				const int tickHeight = mTickArea.bottom - mTickArea.top;
+
+				const POINT pts1[3]={
+					{ selx1+1, mTickArea.top },
+					{ selx1+1, mTickArea.bottom },
+					{ selx1+1-tickHeight, mTickArea.top },
+				};
+
+				const POINT pts2[3]={
+					{ selx2, mTickArea.top },
+					{ selx2, mTickArea.bottom },
+					{ selx2+tickHeight, mTickArea.top },
+				};
+
+				Polygon(hdc, pts1, 3);
+				Polygon(hdc, pts2, 3);
+
+				SelectObject(hdc, hOldBrush);
+			}
+
+			DeleteObject(hNullPen);
+		}
 	}
 
 	// Draw track border.
@@ -968,13 +997,26 @@ void VDPositionControlW32::RecomputeMetrics() {
 	mTrack.right		= mTrackArea.right - labelSpace;
 	mTrack.bottom		= mTrackArea.bottom - trackRailHeight;
 
+	mTickArea.top		= mTrack.bottom + 1*GetSystemMetrics(SM_CYEDGE);
+	mTickArea.bottom	= mTrackArea.bottom;
+
+	const int tickHeight = mTickArea.bottom - mTickArea.top;
+
+	mTickArea.left		= mTrack.left - tickHeight;
+	mTickArea.right		= mTrack.right + tickHeight;
+
+	// (left+0.5) -> mRangeStart
+	// (right-0.5) -> mRangeEnd
+
 	if (mRangeEnd > mRangeStart)
-		mPixelsPerFrame = (double)(mTrack.right - mTrack.left) / (double)(mRangeEnd - mRangeStart);
+		mPixelsPerFrame = (double)(mTrack.right - mTrack.left - 1) / (double)(mRangeEnd - mRangeStart);
 	else
 		mPixelsPerFrame = 0.0;
 
-	if (mTrack.right > mTrack.left)
-		mFramesPerPixel = (double)(mRangeEnd - mRangeStart) / (double)(mTrack.right - mTrack.left);
+	mPixelToFrameBias = mTrack.left + 0.5 - mPixelsPerFrame*mRangeStart;
+
+	if (mTrack.right > mTrack.left + 1)
+		mFramesPerPixel = (double)(mRangeEnd - mRangeStart) / (double)(mTrack.right - mTrack.left - 1);
 	else
 		mFramesPerPixel = 0.0;
 
@@ -987,7 +1029,7 @@ void VDPositionControlW32::RecomputeMetrics() {
 void VDPositionControlW32::RecalcThumbRect(VDPosition pos, bool update) {
 	RECT rOld(mThumbRect);
 
-	mThumbRect.left		= mTrack.left + VDRoundToInt(mPixelsPerFrame * (pos - mRangeStart)) - mThumbWidth;
+	mThumbRect.left		= FrameToPixel(pos) - mThumbWidth;
 	mThumbRect.right	= mThumbRect.left + 2*mThumbWidth;
 	mThumbRect.top		= mTrackArea.top;
 	mThumbRect.bottom	= mTrackArea.bottom;

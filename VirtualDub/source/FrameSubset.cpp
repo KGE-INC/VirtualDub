@@ -28,7 +28,19 @@ FrameSubset::FrameSubset(sint64 length) {
 	addRange(0, length, false);
 }
 
+FrameSubset::FrameSubset(const FrameSubset& src)
+	: mTimeline(src.mTimeline)
+{
+	invalidateCache();
+}
+
 FrameSubset::~FrameSubset() {
+}
+
+FrameSubset& FrameSubset::operator=(const FrameSubset& src) {
+	mTimeline = src.mTimeline;
+	invalidateCache();
+	return *this;
 }
 
 void FrameSubset::clear() {

@@ -8,7 +8,7 @@ Project: "Ami"=.\Ami\Ami.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Ami"
     .\ami
     end source code control
 }}}
@@ -24,7 +24,7 @@ Project: "Dita"=.\Dita\Dita.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Dita"
     .\dita
     end source code control
 }}}
@@ -40,7 +40,7 @@ Project: "Docs"=.\VirtualDub\docs\Docs.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/VirtualDub/docs"
     .\virtualdub\docs
     end source code control
 }}}
@@ -56,7 +56,7 @@ Project: "Kasumi"=.\Kasumi\Kasumi.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Kasumi"
     .\kasumi
     end source code control
 }}}
@@ -72,7 +72,7 @@ Project: "Lina"=.\Lina\Lina.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Lina"
     .\lina
     end source code control
 }}}
@@ -88,7 +88,7 @@ Project: "Meia"=.\Meia\Meia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main"
     .
     end source code control
 }}}
@@ -104,8 +104,24 @@ Project: "Priss"=.\Priss\Priss.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Priss"
     .\priss
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "Riza"=.\Riza\Riza.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    "//depot/VirtualDub/1.x/main/Riza"
+    .\riza
     end source code control
 }}}
 
@@ -120,7 +136,7 @@ Project: "Setup"=.\Setup\Setup.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Setup"
     .\setup
     end source code control
 }}}
@@ -136,7 +152,7 @@ Project: "Sylia"=.\Sylia\Sylia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/Sylia"
     .\sylia
     end source code control
 }}}
@@ -152,7 +168,7 @@ Project: "VirtualDub"=.\VirtualDub\VirtualDub.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/VirtualDub"
     .\virtualdub
     end source code control
 }}}
@@ -186,6 +202,9 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name Ami
     End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name Riza
+    End Project Dependency
 }}}
 
 ###############################################################################
@@ -195,24 +214,8 @@ Project: "disasm"=.\disasm\disasm.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/disasm"
     .\disasm
-    end source code control
-}}}
-
-Package=<4>
-{{{
-}}}
-
-###############################################################################
-
-Project: "filtsdk2"=.\filtsdk2\filtsdk2.dsp - Package Owner=<4>
-
-Package=<5>
-{{{
-    begin source code control
-    Perforce Project
-    .\filtsdk2
     end source code control
 }}}
 
@@ -227,7 +230,7 @@ Project: "helpfile"=.\helpfile\helpfile.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/helpfile"
     .\helpfile
     end source code control
 }}}
@@ -246,7 +249,7 @@ Project: "mapconv"=.\mapconv\mapconv.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/mapconv"
     .\mapconv
     end source code control
 }}}
@@ -262,7 +265,7 @@ Project: "samplefilter"=.\samplefilter\samplefilter.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/samplefilter"
     .\samplefilter
     end source code control
 }}}
@@ -278,7 +281,7 @@ Project: "system"=.\system\system.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/system"
     .\system
     end source code control
 }}}
@@ -294,7 +297,7 @@ Project: "vdicmdrv"=.\vdicmdrv\vdicmdrv.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/vdicmdrv"
     .\vdicmdrv
     end source code control
 }}}
@@ -313,7 +316,7 @@ Project: "vdremote"=.\vdremote\vdremote.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/vdremote"
     .\vdremote
     end source code control
 }}}
@@ -332,7 +335,7 @@ Project: "vdsvrlnk"=.\vdsvrlnk\vdsvrlnk.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/vdsvrlnk"
     .\vdsvrlnk
     end source code control
 }}}
@@ -348,7 +351,7 @@ Project: "verinc"=.\verinc\verinc.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    Perforce Project
+    "//depot/VirtualDub/1.x/main/verinc"
     .\verinc
     end source code control
 }}}

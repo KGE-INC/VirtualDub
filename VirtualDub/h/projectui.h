@@ -25,10 +25,11 @@
 #include "MRUList.h"
 #include "VideoDisplay.h"
 #include "PositionControl.h"
+#include "uiframe.h"
 
 class IVDPositionControl;
 
-class VDProjectUI : public VDProject, protected IVDVideoDisplayCallback, public IVDPositionControlCallback {
+class VDProjectUI : public VDProject, public vdrefcounted<IVDUIFrameClient>, protected IVDVideoDisplayCallback, public IVDPositionControlCallback {
 public:
 	VDProjectUI();
 	~VDProjectUI();
@@ -65,7 +66,7 @@ public:
 	void JumpToFrameAsk();
 
 protected:
-	static LRESULT CALLBACK StaticWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 	void HandleDragDrop(HDROP hdrop);
@@ -117,11 +118,14 @@ protected:
 	HMENU		mhMenuDub;
 	HMENU		mhMenuDisplay;
 	HACCEL		mhAccelDub;
+	HACCEL		mhAccelMain;
 
 	RECT		mrInputFrame;
 	RECT		mrOutputFrame;
 
 	WNDPROC		mOldWndProc;
+
+	bool		mbDubActive;
 
 	MRUList		mMRUList;
 };

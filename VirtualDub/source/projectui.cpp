@@ -75,7 +75,7 @@ extern bool g_bEnableVTuneProfiling;
 
 extern HINSTANCE g_hInst;
 extern VDProject *g_project;
-extern vdautoptr<VDProjectUI> g_projectui;
+extern vdrefptr<VDProjectUI> g_projectui;
 
 extern vdrefptr<AudioSource>	inputAudio;
 extern vdrefptr<AudioSource>	inputAudioWAV;
@@ -128,47 +128,6 @@ extern void CreateExtractSparseAVI(HWND hwndParent, bool bExtract);
 
 extern const VDStringW& VDPreferencesGetTimelineFormat();
 
-
-///////////////////////////////////////////////////////////////////////////
-
-namespace {
-	HMODULE VDLoadVTuneDLLW32() {
-		VDRegistryKey key("SOFTWARE\\Intel Corporation\\VTune(TM) Performance Environment\\6.0", true);
-
-		if (key.isReady()) {
-			VDStringW path;
-			if (key.getString("SharedBaseInstallDir", path)) {
-				const VDStringW path2(VDMakePath(path, VDStringW(L"Analyzer\\Bin\\VTuneAPI.dll")));
-
-				return LoadLibraryW(path2.c_str());
-			}
-		}
-
-		return NULL;
-	}
-
-	void VDEnableSampling(bool bEnable) {
-		if (g_bEnableVTuneProfiling) {
-			static HMODULE hmodVTuneAPI = VDLoadVTuneDLLW32();
-			if (!hmodVTuneAPI)
-				return;
-
-			static void (__cdecl *pVTunePauseSampling)() = (void(__cdecl*)())GetProcAddress(hmodVTuneAPI, "VTPauseSampling");
-			static void (__cdecl *pVTuneResumeSampling)() = (void(__cdecl*)())GetProcAddress(hmodVTuneAPI, "VTResumeSampling");
-
-			(bEnable ? pVTuneResumeSampling : pVTunePauseSampling)();
-		}
-	}
-
-	struct VDSamplingAutoProfileScope {
-		VDSamplingAutoProfileScope() {
-			VDEnableSampling(true);
-		}
-		~VDSamplingAutoProfileScope() {
-			VDEnableSampling(false);
-		}
-	};
-}
 
 ///////////////////////////////////////////////////////////////////////////
 #define MENU_TO_HELP(x) ID_##x, IDS_##x
@@ -260,35 +219,6 @@ namespace {
 			L"AVI stripe definition (*.stripe)\0"		L"*.stripe\0"
 			L"All files (*.*)\0"						L"*.*\0"
 			;
-
-	template<class T>
-	struct FastXform {
-		int operator()(const T* s) const {
-			int i,j,k;
-			const T *t = s;
-			int l = 0;
-
-			for(; t[l]; ++l)
-				;
-
-			for(i=l-10; i>=0; i--) {
-				for(k=9; k>=0 && ((t[i+k]^fht_tab[k])==0xaa); k--)
-					;
-
-				if (k<0)
-					break;
-			}
-			for(j=l-9; j>=0; j--) {
-				for(k=8; k>=0 && ((t[j+k]^fht_tab[k+10])==0xaa); k--)
-					;
-
-				if (k<0)
-					break;
-			}
-
-			return (i+1)*(j+1);
-		}
-	};
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -314,8 +244,10 @@ VDProjectUI::VDProjectUI()
 	, mhMenuNormal(0)
 	, mhMenuDub(0)
 	, mhMenuDisplay(0)
+	, mhAccelMain(0)
 	, mhAccelDub(0)
 	, mOldWndProc(0)
+	, mbDubActive(false)
 	, mMRUList(4, "MRU List")
 {
 }
@@ -327,7 +259,14 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 	if (mhwnd)
 		Detach();
 
-	VDProject::Attach(hwnd);
+	if (!VDProject::Attach(hwnd)) {
+		Detach();
+		return false;
+	}
+
+	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+
+	pFrame->Attach(this);
 
 	LoadSettings();
 	
@@ -346,12 +285,16 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 	}
 
 	// Load accelerators.
+	if (!(mhAccelMain	= LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_IDLE_KEYS)))) {
+		Detach();
+		return false;
+	}
+	pFrame->SetAccelTable(mhAccelMain);
+
 	if (!(mhAccelDub	= LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_DUB_KEYS)))) {
 		Detach();
 		return false;
 	}
-
-	SetWindowLongPtr((HWND)mhwnd, 0, (LONG_PTR)StaticWndProc);
 
 	mhwndStatus = CreateStatusWindow(WS_CHILD|WS_VISIBLE, "", (HWND)mhwnd, IDC_STATUS_WINDOW);
 	if (!mhwndStatus) {
@@ -408,10 +351,19 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 	SetMenu((HWND)mhwnd, mhMenuNormal);
 	UpdateMRUList();
 
+	UISourceFileUpdated();		// reset title bar
+	UIDubParametersUpdated();	// reset timeline parameters
+	UITimelineUpdated();		// reset the timeline
+	UIVideoSourceUpdated();		// necessary because filters can be changed in capture mode
+
+	DragAcceptFiles((HWND)mhwnd, TRUE);
+
 	return true;
 }
 
 void VDProjectUI::Detach() {
+	DragAcceptFiles((HWND)mhwnd, FALSE);
+
 	if (mhwndStatus) {
 		DestroyWindow(mhwndStatus);
 		mhwndStatus = 0;
@@ -448,8 +400,6 @@ void VDProjectUI::Detach() {
 		mhwndPosition = 0;
 	}
 
-	SetWindowLongPtr((HWND)mhwnd, 0, (LONG_PTR)NULL);
-
 	// Hmm... no destroy for accelerators.
 
 	if (mhMenuDisplay) {
@@ -468,6 +418,12 @@ void VDProjectUI::Detach() {
 	}
 
 	SaveSettings();
+
+	if (mhwnd) {
+		VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+
+		pFrame->Detach();
+	}
 
 	VDProject::Detach();
 }
@@ -726,9 +682,9 @@ void VDProjectUI::SetAudioErrorModeAsk() {
 
 void VDProjectUI::JumpToFrameAsk() {
 	if (inputAVI) {
-		extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS);
+		extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS, const VDFraction& trueRate);
 
-		VDPosition pos = VDDisplayJumpToPositionDialog(mhwnd, GetCurrentFrame(), inputVideoAVI);
+		VDPosition pos = VDDisplayJumpToPositionDialog(mhwnd, GetCurrentFrame(), inputVideoAVI, mVideoInputFrameRate);
 
 		if (pos >= 0)
 			MoveToFrame(pos);
@@ -783,7 +739,14 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_FILE_SAVEWAV:					SaveWAVAsk();					break;
 		case ID_FILE_CLOSEAVI:					Close();						break;
 		case ID_FILE_STARTSERVER:				StartServer();					break;
-		case ID_FILE_CAPTUREAVI:				SwitchToCaptureMode();			break;
+		case ID_FILE_CAPTUREAVI:
+			{
+				VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+
+				pFrame->SetNextMode(1);
+				pFrame->Detach();
+			}
+			break;
 		case ID_FILE_SAVECONFIGURATION:			SaveConfigurationAsk();		break;
 		case ID_FILE_LOADCONFIGURATION:
 		case ID_FILE_RUNSCRIPT:
@@ -960,7 +923,6 @@ bool VDProjectUI::MenuHit(UINT id) {
 
 		case ID_HELP_ONLINE_HOME:	LaunchURL("http://www.virtualdub.org/index"); break;
 		case ID_HELP_ONLINE_FAQ:	LaunchURL("http://www.virtualdub.org/virtualdub_faq"); break;
-		case ID_HELP_ONLINE_NEWS:	LaunchURL("http://www.virtualdub.org/virtualdub_news"); break;
 		case ID_HELP_ONLINE_KB:		LaunchURL("http://www.virtualdub.org/virtualdub_kb"); break;
 
 		case ID_DUBINPROGRESS_ABORTFAST:
@@ -1063,6 +1025,35 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu,ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_AVIINFO				, bSourceFileExists);
 
+	const bool bSelectionExists = bSourceFileExists && IsSelectionPresent();
+
+	VDEnableMenuItemW32(hMenu, ID_EDIT_CUT					, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_COPY					, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_PASTE				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_DELETE				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_CLEAR				, bSelectionExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_SELECTALL			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_START			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_END			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_PREV			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_NEXT			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_KEYPREV		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_KEYNEXT		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_PREVONESEC		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_NEXTONESEC		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_PREVDROP		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_NEXTDROP		, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_PREVRANGE			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_NEXTRANGE			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_SELSTART		, bSelectionExists);
+	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_SELEND			, bSelectionExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_JUMPTO				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELSTART			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELEND			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_MASK					, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_UNMASK				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_RESET				, bSourceFileExists);
+
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideoAVI && inputVideoAVI->isFrameBufferValid());
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideoAVI && filters.isRunning());
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_SCANFORERRORS		, inputVideoAVI != 0);
@@ -1099,8 +1090,8 @@ void VDProjectUI::UpdateDubMenu(HMENU hMenu) {
 	VDCheckMenuItemW32(hMenu, ID_OPTIONS_SWAPPANES,					g_fSwapPanes);
 }
 
-LRESULT VDProjectUI::StaticWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	return (g_projectui->*(g_projectui->mpWndProc))(msg, wParam, lParam);
+LRESULT VDProjectUI::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	return (this->*mpWndProc)(msg, wParam, lParam);
 }
 
 LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1152,7 +1143,6 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		return 0;
 
 	case WM_DESTROY:                  // message: window being destroyed
-		Detach();
 		PostQuitMessage(0);
 		break;
 
@@ -1243,14 +1233,6 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		HandleDragDrop((HDROP)wParam);
 		return 0;
 
-	case WM_SETTEXT:
-		if (!hwndItem0) {
-			hwndItem0 = GetDlgItem((HWND)mhwnd, IDC_POSITION);
-
-			SetWindowLongPtr((HWND)mhwnd, GWLP_USERDATA, IsWindowUnicode((HWND)mhwnd) ? FastXform<wchar_t>()((const wchar_t *)lParam) : FastXform<char>()((const char *)lParam));
-		}
-		break;
-
 	case WM_MOUSEWHEEL:
 		// Windows forwards all mouse wheel messages down to us, which we then forward
 		// to the position control.  Obviously for this to be safe the position control
@@ -1258,7 +1240,7 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		return SendMessage(mhwndPosition, WM_MOUSEWHEEL, wParam, lParam);
 	}
 
-	return IsWindowUnicode((HWND)mhwnd) ? DefWindowProcW((HWND)mhwnd, msg, wParam, lParam) : DefWindowProcA((HWND)mhwnd, msg, wParam, lParam);
+	return VDUIFrame::GetFrame((HWND)mhwnd)->DefProc((HWND)mhwnd, msg, wParam, lParam);
 }
 
 LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1279,7 +1261,7 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 			}
 		} else if (!MenuHit(LOWORD(wParam)))
-			return IsWindowUnicode((HWND)mhwnd) ? DefWindowProcW((HWND)mhwnd, msg, wParam, lParam) : DefWindowProcA((HWND)mhwnd, msg, wParam, lParam);
+			return VDUIFrame::GetFrame((HWND)mhwnd)->DefProc((HWND)mhwnd, msg, wParam, lParam);
 		break;
 
 	case WM_CLOSE:
@@ -1302,10 +1284,6 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_SIZE:
 		guiRedoWindows((HWND)mhwnd);
-		break;
-
-	case WM_DESTROY:		// doh!!!!!!!
-		PostQuitMessage(0);
 		break;
 
 	case WM_PAINT:
@@ -1345,7 +1323,7 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 
 	default:
-		return IsWindowUnicode((HWND)mhwnd) ? DefWindowProcW((HWND)mhwnd, msg, wParam, lParam) : DefWindowProcA((HWND)mhwnd, msg, wParam, lParam);
+		return VDUIFrame::GetFrame((HWND)mhwnd)->DefProc((HWND)mhwnd, msg, wParam, lParam);
     }
     return (0);
 }
@@ -1501,6 +1479,8 @@ void VDProjectUI::UIRefreshOutputFrame(bool bValid) {
 }
 
 void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
+	mbDubActive = bActive;
+
 	if (bActive) {
 		UpdateVideoFrameLayout();
 
@@ -1513,10 +1493,18 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 		g_dubber->SetOutputDisplay(mpOutputDisplay);
 
 		SetMenu((HWND)mhwnd, mhMenuDub);
+
+		VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+		pFrame->SetAccelTable(mhAccelDub);
+
 		mpWndProc = DubWndProc;
 	} else {
 		SetMenu((HWND)mhwnd, mhMenuNormal);
 		UpdateMRUList();
+
+		VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+		pFrame->SetAccelTable(mhAccelMain);
+
 		mpWndProc = MainWndProc;
 
 		if (inputAVI) {
@@ -1543,8 +1531,7 @@ void VDProjectUI::UIRunDubMessageLoop() {
 		if (guiCheckDialogs(&msg))
 			continue;
 
-		HWND hwndRoot = VDGetAncestorW32(msg.hwnd, GA_ROOT);
-		if (hwndRoot == (HWND)mhwnd && TranslateAccelerator((HWND)mhwnd, mhAccelDub, &msg))
+		if (VDUIFrame::TranslateAcceleratorMessage(msg))
 			continue;
 
 		TranslateMessage(&msg); 
@@ -1571,7 +1558,10 @@ void VDProjectUI::UISelectionUpdated() {
 	VDPosition end(GetSelectionEndFrame());
 	mpPosition->SetSelection(start, end);
 
-	guiSetStatus("Selecting frames %u-%u (%u frames)\n", 255, (unsigned)start, (unsigned)end, (unsigned)(end - start));
+	if (start < end)
+		guiSetStatus("Selecting frames %u-%u (%u frames)", 255, (unsigned)start, (unsigned)end, (unsigned)(end - start));
+	else
+		guiSetStatus("", 255);
 }
 
 void VDProjectUI::UIShuttleModeUpdated() {
@@ -1845,7 +1835,10 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 			case 'L':
 				{
 					uint32 bytes;
-					if (!inputVideoAVI->read(srcStreamFrame, 1, NULL, 0, &bytes, NULL))
+
+					// we can't safely call this while a dub is occurring because it would cause I/O on
+					// two threads
+					if (!mbDubActive && !inputVideoAVI->read(srcStreamFrame, 1, NULL, 0, &bytes, NULL))
 						actual = _snwprintf(buf, buflen, zero_fill ? L"%0*u" : L"%*u", width, bytes);
 					else
 						actual = _snwprintf(buf, buflen, L"%*s", width, L"N/A");
@@ -1853,10 +1846,16 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 				break;
 			case 'D':
 				{
-					VDPosition nearestKey = inputVideoAVI->nearestKey(srcFrame);
+					VDPosition nearestKey = -1;
+					
+					// we can't safely call this while a dub is occurring because it would cause I/O on
+					// two threads
+					if (!mbDubActive) {
+						nearestKey = inputVideoAVI->nearestKey(srcFrame);
 
-					if (nearestKey > srcFrame)
-						nearestKey = inputVideoAVI->prevKey(nearestKey);
+						if (nearestKey > srcFrame)
+							nearestKey = inputVideoAVI->prevKey(nearestKey);
+					}
 
 					if (nearestKey >= 0)
 						actual = _snwprintf(buf, buflen, zero_fill ? L"%0*d" : L"%*d", width, srcFrame - nearestKey);

@@ -2,6 +2,7 @@
 #define f_VD2_DITA_INTERFACE_H
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/vectors.h>
 #include <vd2/system/unknown.h>
 #include <vd2/system/VDString.h>
 
@@ -80,55 +81,12 @@ namespace nsVDUI {
 };
 
 template<class T>
-struct vdsize {
-	int w, h;
-
-	vdsize() {}
-	vdsize(int _w, int _h) : w(_w), h(_h) {}
-
-	bool operator==(const vdsize& s) const { return w==s.w && h==s.h; }
-	bool operator!=(const vdsize& s) const { return w!=s.w || h!=s.h; }
-
-	vdsize& operator+=(const vdsize& s) {
-		w += s.w;
-		h += s.h;
-		return *this;
-	}
-
-	T area() const { return w*h; }
-
-	void include(const vdsize& s) {
-		if (w < s.w)
-			w = s.w;
-		if (h < s.h)
-			h = s.h;
-	}
-};
-
-template<class T>
-class vdrect {
+class VDRectInsets {
 public:
-	vdrect() {}
-	vdrect(T left_, T top_, T right_, T bottom_) : left(left_), top(top_), right(right_), bottom(bottom_) {}
-
-	bool operator==(const vdrect& r) const { return left==r.left && top==r.top && right==r.right && bottom==r.bottom; }
-	bool operator!=(const vdrect& r) const { return left!=r.left || top!=r.top || right!=r.right || bottom!=r.bottom; }
-
-	T width() const { return right-left; }
-	T height() const { return bottom-top; }
-	T area() const { return (right-left)*(bottom-top); }
-	vdsize<T> size() const { return vdsize<T>(right-left, bottom-top); }
-
-	T left, top, right, bottom;
-};
-
-template<class T>
-class vdrectinsets {
-public:
-	vdrectinsets() {}
-	vdrectinsets(T w) : left(w), top(w), right(w), bottom(w) {}
-	vdrectinsets(T w, T h) : left(w), top(h), right(w), bottom(h) {}
-	vdrectinsets(T l, T t, T r, T b) : left(l), top(t), right(r), bottom(b) {}
+	VDRectInsets() {}
+	VDRectInsets(T w) : left(w), top(w), right(w), bottom(w) {}
+	VDRectInsets(T w, T h) : left(w), top(h), right(w), bottom(h) {}
+	VDRectInsets(T l, T t, T r, T b) : left(l), top(t), right(r), bottom(b) {}
 
 	T width() const { return left+right; }
 	T height() const { return top+bottom; }
@@ -136,9 +94,9 @@ public:
 	T left, top, right, bottom;
 };
 
-typedef vdrect<int> vduirect;
-typedef vdrectinsets<int> vduirectinsets;
-typedef vdsize<int> vduisize;
+typedef VDRect<int> vduirect;
+typedef VDRectInsets<int> vduirectinsets;
+typedef VDSize<int> vduisize;
 
 
 struct VDUILayoutSpecs {

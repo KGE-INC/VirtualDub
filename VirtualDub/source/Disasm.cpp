@@ -93,8 +93,161 @@ static const char kTarget_p_F2		= (char)233;
 static const char kTarget_p_F3		= (char)234;
 static const char kTarget_p_rex		= (char)235;
 
-void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
-	const unsigned char *src_limit = src + src_len;
+#ifdef _DEBUG
+#undef new
+#undef malloc
+#include <string>
+std::string decode_pattern(const unsigned char *pat, int patlen) {
+	char buf[16];
+	std::string tmp;
+
+	while(patlen > 0) {
+		unsigned char c = *pat++;
+		unsigned char d = *pat++;
+
+		patlen -= 2;
+
+		if (!tmp.empty())
+			tmp += ' ';
+
+		if (!d) {
+			if (c & 0x80) {
+				int count = c & 0x3f;
+
+
+				if (c & 0x40)
+					tmp += '!';
+
+				sprintf(buf, "ruleset(%d)", count);
+
+				tmp += buf;
+			} else if (c < 16) {
+				for(int i=0; i<c; ++i)
+					tmp += i ? " *" : "*";
+			} else {
+				switch(c) {
+				case 16:	tmp += "[66]"; break;
+				case 17:	tmp += "[67]"; break;
+				case 18:	tmp += "[F2]"; break;
+				case 19:	tmp += "[F3]"; break;
+				case 20:	tmp += "[!s]"; break;
+				case 21:	tmp += "[q]"; break;
+				}
+			}
+		} else {
+			if (d != 0xff)
+				sprintf(buf, "%02x-%02x", c, c|d);
+			else
+				sprintf(buf, "%02x", c);
+
+			tmp += buf;
+		}
+	}
+
+	return tmp;
+}
+
+std::string decode_result(const unsigned char *result) {
+	const unsigned char *result_limit = result + result[0]+1;
+	std::string tmp;
+	char buf[32];
+
+	++result;
+
+	while(result < result_limit) {
+		char c = *result++;
+
+		if ((unsigned char)(c&0x7f) < 32) {
+			if (c & 0x80) {
+				c &= 0x7f;
+				tmp += ' ';
+			}
+
+			static const unsigned char static_bitfields[8]={
+				0x80, 0x30, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00
+			};
+
+			unsigned char control_byte = (unsigned char)*result++;
+			unsigned char bitfield = static_bitfields[control_byte >> 5];
+
+			if (!bitfield)
+				bitfield = (unsigned char)*result++;
+
+			int bf_start = bitfield & 15;
+			int bf_siz = bitfield>>4;
+
+			sprintf(buf, "$%d", c);
+			tmp += buf;
+
+			if (bf_start > 0 || bf_siz < 8) {
+				sprintf(buf, "[%d-%d]", bf_start, bf_start+bf_siz-1);
+				tmp += buf;
+			}
+
+			control_byte &= 0x1f;
+
+			if (control_byte < 10) {
+				switch(control_byte-1) {
+				case 0: tmp += "reg32"; break;
+				case 1: tmp += "reg16"; break;
+				case 2: tmp += "reg8"; break;
+				case 3: tmp += "regmmx"; break;
+				case 4: tmp += "regxmm"; break;
+				case 5: tmp += "regcrn"; break;
+				case 6: tmp += "regdrn"; break;
+				case 7: tmp += "regseg"; break;
+				case 8: tmp += "regf"; break;
+				}
+			} else {
+				switch(control_byte) {
+				case kTarget_r1632:		tmp += "r1632"; break;
+				case kTarget_rmx:		tmp += "rmx"; break;
+				case kTarget_lx:		tmp += "lx"; break;
+				case kTarget_hx:		tmp += "hx"; break;
+				case kTarget_x:			tmp += "x"; break;
+				case kTarget_lo:		tmp += "lo"; break;
+				case kTarget_ho:		tmp += "ho"; break;
+				case kTarget_o:			tmp += "o"; break;
+				case kTarget_la:		tmp += "la"; break;
+				case kTarget_ha:		tmp += "ha"; break;
+				case kTarget_a:			tmp += "a"; break;
+				case kTarget_s:			tmp += "s"; break;
+				case kTarget_r3264:		tmp += "r3264"; break;
+				case kTarget_r163264:		tmp += "r163264"; break;
+				case kTarget_ext:
+					switch(*result++) {
+					case kTarget_ext_r3264rexX:	tmp += "r3264rexX"; break;
+					case kTarget_ext_r3264rexB:	tmp += "r3264rexB"; break;
+					}
+					break;
+				}
+			}
+		} else if ((unsigned char)c >= 0xe0) {
+			switch(c) {
+			case kTarget_ap:	tmp += "$p_ap"; break;
+			case kTarget_p_cs:	tmp += "$p_cs"; break;
+			case kTarget_p_ss:	tmp += "$p_ss"; break;
+			case kTarget_p_ds:	tmp += "$p_ds"; break;
+			case kTarget_p_es:	tmp += "$p_es"; break;
+			case kTarget_p_fs:	tmp += "$p_fs"; break;
+			case kTarget_p_gs:	tmp += "$p_gs"; break;
+			case kTarget_p_66:	tmp += "$p_66"; break;
+			case kTarget_p_67:	tmp += "$p_67"; break;
+			case kTarget_p_F2:	tmp += "$p_f2"; break;
+			case kTarget_p_F3:	tmp += "$p_f3"; break;
+			case kTarget_p_rex:	tmp += "$p_rex"; break;
+			}
+		} else
+			tmp += c;
+	}
+
+	return tmp;
+}
+
+#endif
+
+
+void *VDDisasmDecompress(void *_dst, const unsigned char *src, int /*src_len*/) {
 	unsigned char *dst = (unsigned char *)_dst;
 
 	// read ruleset count
@@ -122,7 +275,7 @@ void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
 			int postmatch = ((packctl>>3) & 7) * 2;
 			int literal = (*src++ - 1) * 2;
 
-			*dst++ = literal + prematch + postmatch;
+			*dst++ = (unsigned char)(literal + prematch + postmatch);
 
 			const unsigned char *pattern_start = dst;
 
@@ -154,7 +307,7 @@ void *VDDisasmDecompress(void *_dst, const unsigned char *src, int src_len) {
 			postmatch = ((packctl>>3) & 7);
 			literal = (*src++ - 1);
 
-			*dst++ = prematch + postmatch + literal;
+			*dst++ = (unsigned char)(prematch + postmatch + literal);
 
 			const unsigned char *result_start = dst;
 
@@ -279,8 +432,8 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 					break;
 				case kTarget_ho:
 					{
-						short x =  ((unsigned char)sp_base[c  ] << 8)
-								+  (unsigned char)sp_base[c-1];
+						int x =  ((unsigned char)sp_base[c  ] << 8)
+								+ (unsigned char)sp_base[c-1];
 
 						s += sprintf(s, "%c%02lx", x<0 ? '-' : '+', abs(x));
 					}
@@ -354,7 +507,7 @@ void VDDisasmExpandRule(VDDisassemblyContext *pContext, char *s, const unsigned 
 			case kTarget_p_67:	pContext->bAddressOverride = true;			break;
 			case kTarget_p_F2:	pContext->bRepnePrefix = true;				break;
 			case kTarget_p_F3:	pContext->bRepePrefix = true;				break;
-			case kTarget_p_rex:	pContext->rex = sp_base[0];					break;
+			case kTarget_p_rex:	pContext->rex = (unsigned char)sp_base[0];	break;
 			}
 		} else
 			*s++ = c;
@@ -374,6 +527,8 @@ char *VDDisasmApplyRuleset(VDDisassemblyContext *pContext, const unsigned char *
 		hpr = VDDisasmMatchRule(pContext, source, rs+1, rs[0]>>1, bytes, sp, hp, src_end);
 
 		if (hpr) {
+//			VDDEBUG("Rule match: addr=%p (end: %p), rule: %s\n", (uintptr)source + pContext->physToVirtOffset, (uintptr)source + pContext->physToVirtOffset + bytes, decode_pattern(rs+1, rs[0]).c_str());
+//			VDDEBUG("Rule apply: addr=%p, result: %s\n", (uintptr)source + pContext->physToVirtOffset, decode_result(result).c_str());
 			VDDisasmExpandRule(pContext, hpr, result, sp, src_end);
 
 			source_end = src_end;
@@ -387,13 +542,15 @@ char *VDDisasmApplyRuleset(VDDisassemblyContext *pContext, const unsigned char *
 }
 
 char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *source, const unsigned char *pattern, int pattern_len, int bytes, ptrdiff_t *sp, char *hp, const unsigned char *&source_end) {
-	while(bytes && pattern_len) {
+	while(pattern_len) {
 		if (!pattern[1] && pattern[0]) {
 			if (pattern[0] & 0x80) {
 				int count = pattern[0] & 0x3f;
 
-				if (pattern[0] & 0x40)
+				if (pattern[0] & 0x40) {
 					--source;
+					++bytes;
+				}
 			
 				const unsigned char *src_end;
 
@@ -405,8 +562,10 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 				*sp++ = *source;
 				*sp++ = (ptrdiff_t)hp;
 
-				while(*hp++);
+				while(*hp++)
+					;
 
+				bytes -= (src_end - source);
 				source = src_end;
 			} else if (pattern[0] < 16) {
 				if (pattern[0] > bytes)
@@ -416,7 +575,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 					*sp++ = *source++;
 				}
 
-				bytes -= pattern[0]-1;
+				bytes -= pattern[0];
 			} else {
 				switch(pattern[0]) {
 				case 16:	if (!pContext->bSizeOverride)		return NULL;	break;
@@ -428,19 +587,23 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 				}
 			}
 		} else {
+			if (!bytes)
+				return NULL;
+
 			unsigned char b = *source++;
 
 			if ((b & pattern[1]) != pattern[0])
 				return NULL;
 
 			*sp++ = b;
+			--bytes;
 		}
 		pattern += 2;
-		--bytes;
 		--pattern_len;
 	}
 
 	if (!pattern_len) {
+//		VDDEBUG("success; bytes left = %d\n", bytes);
 		source_end = source;
 		return hp;
 	}

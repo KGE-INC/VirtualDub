@@ -22,6 +22,7 @@
 
 INT_PTR CALLBACK ShowTextDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK AboutDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+#define WM_MOVE_ WM_SETTEXT
 void Welcome();
 void AnnounceExperimental();
 

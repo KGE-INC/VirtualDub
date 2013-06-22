@@ -41,7 +41,6 @@ VDRESTORE	macro	reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8
 
 	ifnb <reg1>
 		pop			reg1
-		.pushreg	reg1
 
 		VDRESTORE		reg2, reg3, reg4, reg5, reg6, reg7, reg8
 	endif
@@ -60,7 +59,7 @@ VDSAVEXMM128	macro	regstart, regend
 
 	while reg le regend
 		foo textequ %reg
-		movq [rsp+stkoffset], @CatStr(xmm, %(foo))
+		movq qword ptr [rsp+stkoffset], @CatStr(xmm, %(foo))
 
 		stkoffset = stkoffset+8
 		reg = reg+1
@@ -77,7 +76,7 @@ VDRESTOREXMM128	macro	regstart, regend
 	while regstart le reg
 		foo textequ %reg
 		stkoffset = stkoffset-8
-		movq @CatStr(xmm, %(foo)), [rsp+stkoffset]
+		movq @CatStr(xmm, %(foo)), qword ptr [rsp+stkoffset]
 
 		reg = reg-1
 	endm
@@ -96,7 +95,7 @@ VDRESTOREXMM128	macro	regstart, regend
 ;		long accum,			// [rsp+48]
 ;		long frac);			// [rsp+56]
 ;
-vdasm_resize_table_row_SSE2	proc	near frame
+vdasm_resize_table_row_SSE2	proc	frame
 
 	VDSAVE			rbx, rsi, rdi, rbp, r12, r13, r14, r15
 	VDSAVEXMM128	6, 15
@@ -162,17 +161,17 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	lea			rdx, [rsi*4]
 	lea			rax, [r9-8]
 @coeffloop_odd_pairs:
-	movd		xmm0, [rdx]			;xmm0 = p0
-	movd		xmm1, [rdx+4]		;xmm1 = p1
-	movd		xmm2, [rdx+8]		;xmm2 = p2
-	movd		xmm3, [rdx+12]		;xmm3 = p3
+	movd		xmm0, dword ptr [rdx]			;xmm0 = p0
+	movd		xmm1, dword ptr [rdx+4]		;xmm1 = p1
+	movd		xmm2, dword ptr [rdx+8]		;xmm2 = p2
+	movd		xmm3, dword ptr [rdx+12]		;xmm3 = p3
 	add			rdx, 16
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
 	punpcklbw	xmm0, xmm5
 	punpcklbw	xmm2, xmm5
-	movq		xmm1, [rbx]
-	movq		xmm3, [rbx+8]
+	movq		xmm1, qword ptr [rbx]
+	movq		xmm3, qword ptr [rbx+8]
 	add			rbx, 16
 	pshufd		xmm1, xmm1, 01000100b
 	pshufd		xmm3, xmm3, 01000100b
@@ -183,11 +182,11 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	sub			eax, 16
 	jnz			@coeffloop_odd_pairs
 
-	movd		xmm0, [rdx]			;xmm0 = p0
-	movd		xmm1, [rdx+4]		;xmm1 = p1
+	movd		xmm0, dword ptr [rdx]			;xmm0 = p0
+	movd		xmm1, dword ptr [rdx+4]		;xmm1 = p1
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm0, xmm5
-	movq		xmm1, [rbx]
+	movq		xmm1, qword ptr [rbx]
 	pshufd		xmm1, xmm1, 01000100b
 	pmaddwd		xmm0, xmm1
 	paddd		xmm4, xmm0
@@ -199,7 +198,7 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	add			edi, ebp
 	adc			rsi, r11
 
-	movd		[rcx+r10], xmm4
+	movd		dword ptr [rcx+r10], xmm4
 	add			r10, 4
 	jnz			@pixelloop_odd_pairs
 	jmp			@xit
@@ -215,17 +214,17 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	lea			rdx, [rsi*4]
 	mov			eax, r9d
 @coeffloop_even_pairs:
-	movd		xmm0, [rdx]			;xmm0 = p0
-	movd		xmm1, [rdx+4]		;xmm1 = p1
-	movd		xmm2, [rdx+8]		;xmm2 = p2
-	movd		xmm3, [rdx+12]		;xmm3 = p3
+	movd		xmm0, dword ptr [rdx]			;xmm0 = p0
+	movd		xmm1, dword ptr [rdx+4]		;xmm1 = p1
+	movd		xmm2, dword ptr [rdx+8]		;xmm2 = p2
+	movd		xmm3, dword ptr [rdx+12]		;xmm3 = p3
 	add			rdx, 16
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
 	punpcklbw	xmm0, xmm5
 	punpcklbw	xmm2, xmm5
-	movq		xmm1, [rbx]
-	movq		xmm3, [rbx+8]
+	movq		xmm1, qword ptr [rbx]
+	movq		xmm3, qword ptr [rbx+8]
 	add			rbx, 16
 	pshufd		xmm1, xmm1, 01000100b
 	pshufd		xmm3, xmm3, 01000100b
@@ -243,7 +242,7 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	add			edi, ebp
 	adc			rsi, r11
 
-	movd		[rcx+r10], xmm4
+	movd		dword ptr [rcx+r10], xmm4
 	add			r10, 4
 	jnz			@pixelloop_even_pairs
 
@@ -263,16 +262,16 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	shr			eax, 20
 	lea			rbx, [r8+rax]
 
-	movd		xmm0, [rdx]			;xmm0 = p0
-	movd		xmm1, [rdx+4]		;xmm1 = p1
-	movd		xmm2, [rdx+8]		;xmm2 = p2
-	movd		xmm3, [rdx+12]		;xmm3 = p3
+	movd		xmm0, dword ptr [rdx]			;xmm0 = p0
+	movd		xmm1, dword ptr [rdx+4]		;xmm1 = p1
+	movd		xmm2, dword ptr [rdx+8]		;xmm2 = p2
+	movd		xmm3, dword ptr [rdx+12]		;xmm3 = p3
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
 	punpcklbw	xmm0, xmm5
 	punpcklbw	xmm2, xmm5
-	movq		xmm1, [rbx]
-	movq		xmm3, [rbx+8]
+	movq		xmm1, qword ptr [rbx]
+	movq		xmm3, qword ptr [rbx+8]
 	pshufd		xmm1, xmm1, 01000100b
 	pshufd		xmm3, xmm3, 01000100b
 	pmaddwd		xmm0, xmm1
@@ -287,7 +286,7 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	add			edi, ebp
 	adc			rsi, r11
 
-	movd		[rcx+r10], xmm4
+	movd		dword ptr [rcx+r10], xmm4
 	add			r10, 4
 	jnz			@pixelloop_4coeff
 	jmp			@xit
@@ -303,21 +302,21 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	lea			rax, [rax+rax*2]
 	lea			rbx, [r8+rax*8]
 
-	movd		xmm0, [rdx]			;xmm0 = p0
-	movd		xmm1, [rdx+4]		;xmm1 = p1
-	movd		xmm2, [rdx+8]		;xmm2 = p2
-	movd		xmm3, [rdx+12]		;xmm3 = p3
-	movd		xmm8, [rdx+16]		;xmm6 = p4
-	movd		xmm9, [rdx+20]		;xmm7 = p5
+	movd		xmm0, dword ptr [rdx]			;xmm0 = p0
+	movd		xmm1, dword ptr [rdx+4]		;xmm1 = p1
+	movd		xmm2, dword ptr [rdx+8]		;xmm2 = p2
+	movd		xmm3, dword ptr [rdx+12]		;xmm3 = p3
+	movd		xmm8, dword ptr [rdx+16]		;xmm6 = p4
+	movd		xmm9, dword ptr [rdx+20]		;xmm7 = p5
 	punpcklbw	xmm0, xmm1
 	punpcklbw	xmm2, xmm3
 	punpcklbw	xmm8, xmm9
 	punpcklbw	xmm0, xmm5
 	punpcklbw	xmm2, xmm5
 	punpcklbw	xmm8, xmm5
-	movq		xmm1, [rbx]
-	movq		xmm3, [rbx+8]
-	movq		xmm9, [rbx+16]
+	movq		xmm1, qword ptr [rbx]
+	movq		xmm3, qword ptr [rbx+8]
+	movq		xmm9, qword ptr [rbx+16]
 	pshufd		xmm1, xmm1, 01000100b
 	pshufd		xmm3, xmm3, 01000100b
 	pshufd		xmm9, xmm9, 01000100b
@@ -335,7 +334,7 @@ vdasm_resize_table_row_SSE2	proc	near frame
 	add			edi, ebp
 	adc			rsi, r11
 
-	movd		[rcx+r10], xmm4
+	movd		dword ptr [rcx+r10], xmm4
 	add			r10, 4
 	jnz			@pixelloop_6coeff
 	jmp			@xit
@@ -353,7 +352,7 @@ vdasm_resize_table_row_SSE2	endp
 ;		PixDim w,			// [rsp+40] -> r10d
 ;		);
 ;
-vdasm_resize_table_col_SSE2	proc	near frame
+vdasm_resize_table_col_SSE2	proc	frame
 	VDSAVE			rbx, rsi, rdi, rbp, r12, r13, r14, r15
 	VDSAVEXMM128	6, 15
 	.endprolog
@@ -391,7 +390,7 @@ vdasm_resize_table_col_SSE2	proc	near frame
 
 	punpcklbw	xmm0, xmm5
 
-	movq		xmm1, [rdi]
+	movq		xmm1, qword ptr [rdi]
 	pshufd		xmm1, xmm1, 01000100b
 
 	pmaddwd		xmm0, xmm1
@@ -423,9 +422,9 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	mov			r13, [rdx+8]
 	mov			r14, [rdx+16]
 	mov			r15, [rdx+24]
-	movq		xmm8, [r8]
+	movq		xmm8, qword ptr [r8]
 	punpcklqdq	xmm8, xmm8
-	movq		xmm9, [r8+8]
+	movq		xmm9, qword ptr [r8+8]
 	punpcklqdq	xmm9, xmm9
 
 	sub			r10d, 1
@@ -462,7 +461,7 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	packssdw	xmm0, xmm1
 	packuswb	xmm0, xmm0
 
-	movq		[rcx], xmm0
+	movq		qword ptr [rcx], xmm0
 	add			rcx, 8
 	add			rbx, 8
 	sub			r10d, 2
@@ -489,7 +488,7 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	packssdw	xmm0, xmm0
 	packuswb	xmm0, xmm0
 
-	movd		[rcx], xmm0
+	movd		dword ptr [rcx], xmm0
 
 	jmp			@xit
 
@@ -500,11 +499,11 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	mov			r15, [rdx+24]
 	mov			rsi, [rdx+32]
 	mov			rdx, [rdx+40]
-	movq		xmm10, [r8]
+	movq		xmm10, qword ptr [r8]
 	punpcklqdq	xmm10, xmm10
-	movq		xmm11, [r8+8]
+	movq		xmm11, qword ptr [r8+8]
 	punpcklqdq	xmm11, xmm11
-	movq		xmm12, [r8+16]
+	movq		xmm12, qword ptr [r8+16]
 	punpcklqdq	xmm12, xmm12
 
 	sub			r10d, 1
@@ -551,7 +550,7 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	packssdw	xmm0, xmm1
 	packuswb	xmm0, xmm0
 
-	movq		[rcx], xmm0
+	movq		qword ptr [rcx], xmm0
 	add			rcx, 8
 	add			rbx, 8
 	sub			r10d, 2
@@ -584,7 +583,7 @@ vdasm_resize_table_col_SSE2	proc	near frame
 	packssdw	xmm0, xmm0
 	packuswb	xmm0, xmm0
 
-	movd		[rcx], xmm0
+	movd		dword ptr [rcx], xmm0
 
 	jmp			@xit
 

@@ -21,6 +21,7 @@
 #include "InputFile.h"
 #include <vd2/system/error.h>
 #include <vd2/system/VDString.h>
+#include <vd2/system/file.h>
 
 /////////////////////////////////////////////////////////////////////
 
@@ -210,4 +211,67 @@ VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>
 	finalfilter += L'\0';
 
 	return finalfilter;
+}
+
+IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn) {
+	char buf[64];
+	char endbuf[64];
+	DWORD dwActual;
+
+	memset(buf, 0, sizeof buf);
+	memset(endbuf, 0, sizeof endbuf);
+
+	VDFile file(fn);
+
+	dwActual = file.readData(buf, 64);
+
+	if (dwActual <= 64)
+		memcpy(endbuf, buf, dwActual);
+	else {
+		file.seek(-64, nsVDFile::kSeekEnd);
+		file.read(endbuf, 64);
+	}
+
+	// The Avisynth script:
+	//
+	//	Version
+	//
+	// is only 9 bytes...
+
+	if (!dwActual)
+		throw MyError("Can't open \"%ls\": The file is empty.", fn);
+
+	file.closeNT();
+
+	// attempt detection
+
+	tVDInputDrivers inputDrivers;
+	VDGetInputDrivers(inputDrivers, IVDInputDriver::kF_Video);
+
+	tVDInputDrivers::const_iterator it(inputDrivers.begin()), itEnd(inputDrivers.end());
+
+	int fitquality = -1000;
+	IVDInputDriver *pSelectedDriver = NULL;
+
+	for(; it!=itEnd; ++it) {
+		IVDInputDriver *pDriver = *it;
+
+		int result = pDriver->DetectBySignature(buf, dwActual, endbuf, dwActual, 0);
+
+		if (result > 0 && fitquality < 1) {
+			pSelectedDriver = pDriver;
+			fitquality = 1;
+		} else if (!result && fitquality < 0) {
+			pSelectedDriver = pDriver;
+			fitquality = 0;
+		} else if (fitquality < -1 && pDriver->DetectByFilename(fn)) {
+			pSelectedDriver = pDriver;
+			fitquality = -1;
+		}
+	}
+
+	if (!pSelectedDriver)
+		throw MyError("Cannot detect file type of \"%ls\".", fn);
+
+	return pSelectedDriver;
 }

@@ -35,11 +35,11 @@ AVIAudioOutputBuffer::~AVIAudioOutputBuffer() {
 	delete hdr.lpData;
 }
 
-BOOL AVIAudioOutputBuffer::init(HWAVEOUT hWaveOut) {
+bool AVIAudioOutputBuffer::init(HWAVEOUT hWaveOut) {
 	return MMSYSERR_NOERROR == waveOutPrepareHeader(hWaveOut,&hdr,sizeof(WAVEHDR));
 }
 
-BOOL AVIAudioOutputBuffer::post(HWAVEOUT hWaveOut) {
+bool AVIAudioOutputBuffer::post(HWAVEOUT hWaveOut) {
 	MMRESULT res;
 
 	res = waveOutWrite(hWaveOut,&hdr,sizeof(WAVEHDR));
@@ -68,34 +68,10 @@ AVIAudioOutput::AVIAudioOutput(long bufsize, int maxbufs) {
 }
 
 AVIAudioOutput::~AVIAudioOutput() {
-	AVIAudioOutputBuffer *nb;
-
-	DeleteCriticalSection(&mcsWaveDevice);
-
-	if (curState == STATE_SILENT) return;
-
-	stop();
-
-	while(nb = pending) {
-		pending = pending->next;
-		nb->deinit(hWaveOut);
-		delete nb;
-	}
-
-	while(nb = active) {
-		active = active->next;
-		nb->deinit(hWaveOut);
-		delete nb;
-	}
-
-	if (curState >= STATE_OPENED)
-		waveOutClose(hWaveOut);
-
-	if (hEventBuffersFree)
-		CloseHandle(hEventBuffersFree);
+	shutdown();
 }
 
-BOOL AVIAudioOutput::init(const WAVEFORMATEX *wf) {
+bool AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 	MMRESULT res;
 	AVIAudioOutputBuffer *aaob;
 
@@ -104,7 +80,7 @@ BOOL AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 			fill_byte = (char)0x80;
 
 	if (MMSYSERR_NOERROR != (res = waveOutOpen(&hWaveOut, WAVE_MAPPER, wf, (DWORD)hEventBuffersFree, 0, CALLBACK_EVENT)))
-		return FALSE;
+		return false;
 
 	curState = STATE_OPENED;
 	nSamplesPerSec = wf->nSamplesPerSec;
@@ -120,7 +96,7 @@ BOOL AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 		if (!aaob->init(hWaveOut)) {
 			_RPT0(0,"Init failed\n");
 			delete aaob;
-			return FALSE;
+			return false;
 		}
 
 #if 0
@@ -144,50 +120,81 @@ BOOL AVIAudioOutput::init(const WAVEFORMATEX *wf) {
 
 	waveOutPause(hWaveOut);
 
-	return TRUE;
+	return true;
+}
+
+void AVIAudioOutput::shutdown() {
+	AVIAudioOutputBuffer *nb;
+
+	DeleteCriticalSection(&mcsWaveDevice);
+
+	if (curState == STATE_SILENT)
+		return;
+
+	stop();
+
+	while(nb = pending) {
+		pending = pending->next;
+		nb->deinit(hWaveOut);
+		delete nb;
+	}
+
+	while(nb = active) {
+		active = active->next;
+		nb->deinit(hWaveOut);
+		delete nb;
+	}
+
+	if (curState >= STATE_OPENED)
+		waveOutClose(hWaveOut);
+
+	if (hEventBuffersFree)
+		CloseHandle(hEventBuffersFree);
+
+	curState = STATE_NONE;
 }
 
 void AVIAudioOutput::go_silent() {
 	curState = STATE_SILENT;
 }
 
-BOOL AVIAudioOutput::isSilent() {
+bool AVIAudioOutput::isSilent() {
 	return curState == STATE_SILENT;
 }
 
-BOOL AVIAudioOutput::start() {
-	if (curState == STATE_SILENT) return TRUE;
+bool AVIAudioOutput::start() {
+	if (curState == STATE_SILENT) return true;
 
-	if (curState < STATE_OPENED) return FALSE;
+	if (curState < STATE_OPENED) return false;
 
 	if (MMSYSERR_NOERROR != waveOutRestart(hWaveOut))
-		return FALSE;
+		return false;
 
 	curState = STATE_PLAYING;
 
-	return TRUE;
+	return true;
 }
 
-BOOL AVIAudioOutput::stop() {
-	if (curState == STATE_SILENT) return TRUE;
+bool AVIAudioOutput::stop() {
+	if (curState == STATE_SILENT) return true;
 
 	if (curState >= STATE_OPENED) {
 		if (MMSYSERR_NOERROR != waveOutReset(hWaveOut))
-			return FALSE;
+			return false;
 
 		curState = STATE_OPENED;
 
 		checkBuffers();
 	}
 
-	return TRUE;
+	return true;
 }
 
-BOOL AVIAudioOutput::checkBuffers() {
+bool AVIAudioOutput::checkBuffers() {
 	AVIAudioOutputBuffer *aaob,*aaob2;
 	int found = 0;
 
-	if (curState == STATE_SILENT) return TRUE;
+	if (curState == STATE_SILENT) return true;
 
 	aaob = active;
 	while(aaob) {
@@ -218,16 +225,16 @@ BOOL AVIAudioOutput::checkBuffers() {
 	return found>0;
 }
 
-BOOL AVIAudioOutput::waitBuffers(DWORD timeout) {
-	if (curState == STATE_SILENT) return TRUE;
+bool AVIAudioOutput::waitBuffers(DWORD timeout) {
+	if (curState == STATE_SILENT) return true;
 
 	if (hEventBuffersFree && timeout) {
 		for(;;) {
 			if (WAIT_OBJECT_0 != WaitForSingleObject(hEventBuffersFree, timeout))
-				return FALSE;
+				return false;
 
 			if (checkBuffers())
-				return TRUE;
+				return true;
 		}
 	}
 
@@ -239,11 +246,11 @@ long AVIAudioOutput::avail() {
 	return lAvailSpace;
 }
 
-BOOL AVIAudioOutput::write(const void *data, long len, DWORD timeout) {
+bool AVIAudioOutput::write(const void *data, long len, DWORD timeout) {
 	AVIAudioOutputBuffer *aaob;
 	long tc;
 
-	if (curState == STATE_SILENT) return TRUE;
+	if (curState == STATE_SILENT) return true;
 
 	checkBuffers();
 //	_RPT1(0,"writing %ld bytes\n",len);
@@ -253,7 +260,7 @@ BOOL AVIAudioOutput::write(const void *data, long len, DWORD timeout) {
 
 			if (!waitBuffers(0) && timeout) {
 				if (!waitBuffers(timeout)) {
-					return FALSE;
+					return false;
 				}
 				continue;
 			}
@@ -280,14 +287,14 @@ BOOL AVIAudioOutput::write(const void *data, long len, DWORD timeout) {
 				OutputDebugString(buf);
 			}
 #endif
-			if (!postBuffer(aaob)) return FALSE;
+			if (!postBuffer(aaob)) return false;
 		}
 
 		len -= tc;
 		data = (char *)data + tc;
 	}
 
-	return TRUE;
+	return true;
 }
 
 void AVIAudioOutput::flush() {
@@ -295,8 +302,8 @@ void AVIAudioOutput::flush() {
 		postBuffer(pending_tail);
 }
 
-BOOL AVIAudioOutput::finalize(DWORD timeout) {
-	if (curState == STATE_SILENT) return TRUE;
+bool AVIAudioOutput::finalize(DWORD timeout) {
+	if (curState == STATE_SILENT) return true;
 
 	_RPT0(0,"AVIAudioOutput: finalizing output\n");
 
@@ -305,14 +312,14 @@ BOOL AVIAudioOutput::finalize(DWORD timeout) {
 	while(checkBuffers(), active)
 		if (hEventBuffersFree != INVALID_HANDLE_VALUE)
 			if (WAIT_OBJECT_0 != WaitForSingleObject(hEventBuffersFree, timeout))
-				return FALSE;
+				return false;
 
 	_RPT0(0,"AVIAudioOutput: finalized.\n");
 
-	return TRUE;
+	return true;
 }
 
-BOOL AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
+bool AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
 	// delink from pending list
 
 	if (aaob->prev) aaob->prev->next = aaob->next; else pending=aaob->next;
@@ -333,7 +340,7 @@ BOOL AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
 
 	if (!bResult) {
 		_RPT0(0,"post failed!\n");
-		return FALSE;
+		return false;
 	}
 
 	// link to active list
@@ -345,7 +352,7 @@ BOOL AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
 
 	++iBuffersActive;
 
-	return TRUE;
+	return true;
 }
 
 long AVIAudioOutput::position() {

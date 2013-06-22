@@ -222,7 +222,7 @@ vdasm_mpegaudio_polyphase_matrixout_stereo	proc public
 
 		;compute first sample (0)
 
-		movaps	xmm5, invother
+		movaps	xmm5, xmmword ptr invother
 		movups	xmm0, [rdx]				;load window samples 0-3
 		xorps	xmm0, xmm5				;toggle signs on odd window samples
 		movaps	xmm1, xmm0

@@ -29,12 +29,18 @@
 #include <vd2/system/vdtypes.h>
 
 #ifdef _M_AMD64
+	extern "C" __int64 _mul128(__int64 x, __int64 y, __int64 *hiresult);
+	extern "C" unsigned __int64 __shiftleft128(unsigned __int64 low, unsigned __int64 high, unsigned char shift);
+	extern "C" unsigned __int64 __shiftright128(unsigned __int64 low, unsigned __int64 high, unsigned char shift);
+
+	#pragma intrinsic(_mul128)
+	#pragma intrinsic(_shiftleft128)
+	#pragma intrinsic(_shiftright128)
+
 	extern "C" {
 		void vdasm_int128_add(sint64 *dst, const sint64 x[2], const sint64 y[2]);
 		void vdasm_int128_sub(sint64 *dst, const sint64 x[2], const sint64 y[2]);
 		void vdasm_int128_mul(sint64 *dst, const sint64 x[2], const sint64 y[2]);
-		void vdasm_int128_shl(sint64 *dst, const sint64 x[2], int shift);
-		void vdasm_int128_sar(sint64 *dst, const sint64 x[2], int shift);
 	}
 #endif
 
@@ -70,6 +76,9 @@ public:
 		v[0] = x;
 	}
 
+	sint64 getHi() const { return v[1]; }
+	uint64 getLo() const { return v[0]; }
+
 	operator double() const;
 	operator sint64() const {
 		return (sint64)v[0];
@@ -79,6 +88,11 @@ public:
 	}
 
 #ifdef _M_AMD64
+	void setSquare(sint64 v) {
+		const int128 v128(v);
+		operator=(v128*v128);
+	}
+
 	const int128 operator+(const int128& x) const {
 		int128 t;
 		vdasm_int128_add(t.v, v, x.v);
@@ -104,14 +118,30 @@ public:
 
 	const int128 operator<<(int count) const {
 		int128 t;
-		vdasm_int128_shl(t.v, v, count);
-		return *this;
+
+		if (count >= 64) {
+			t.v[0] = 0;
+			t.v[1] = v[0] << (count-64);
+		} else {
+			t.v[0] = v[0] << count;
+			t.v[1] = __shiftleft128(v[0], v[1], count);
+		}
+
+		return t;
 	}
 
 	const int128 operator>>(int count) const {
 		int128 t;
-		vdasm_int128_sar(t.v, v, count);
-		return *this;
+
+		if (count >= 64) {
+			t.v[0] = v[1] >> (count-64);
+			t.v[1] = v[1] >> 63;
+		} else {
+			t.v[0] = __shiftright128(v[0], v[1], count);
+			t.v[1] = v[1] >> count;
+		}
+
+		return t;
 	}
 
 	const int128 operator-() const {
@@ -124,8 +154,9 @@ public:
 		int128 t(0);
 		return t.v[1] < 0 ? -t : t;
 	}
-
 #else
+	void setSquare(sint64 v);
+
 	const int128 operator+(const int128& x) const;
 	const int128& operator+=(const int128& x);
 	const int128 operator-(const int128& x) const;

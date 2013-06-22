@@ -106,4 +106,6 @@ IVDInputDriver *VDGetInputDriverByName(const wchar_t *name);
 IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx);
 VDStringW VDMakeInputDriverFileFilter(const tVDInputDrivers& l, std::vector<int>& xlat);
 
+IVDInputDriver *VDAutoselectInputDriverForFile(const wchar_t *fn);
+
 #endif

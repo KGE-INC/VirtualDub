@@ -20,6 +20,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/math.h>
 
 #define OPTDLG_STATICS
 #include "optdlg.h"
@@ -1204,7 +1205,7 @@ INT_PTR CALLBACK AudioVolumeDlgProc( HWND hdlg, UINT message, WPARAM wParam, LPA
 
 class VDDialogJumpToPositionW32 : public VDDialogBaseW32 {
 public:
-	inline VDDialogJumpToPositionW32(VDPosition currentFrame, VideoSource *pVS) : VDDialogBaseW32(IDD_JUMPTOFRAME), mFrame(currentFrame), mpVideo(pVS) {}
+	inline VDDialogJumpToPositionW32(VDPosition currentFrame, VideoSource *pVS, const VDFraction& realRate) : VDDialogBaseW32(IDD_JUMPTOFRAME), mFrame(currentFrame), mpVideo(pVS), mRealRate(realRate) {}
 
 	VDPosition Activate(VDGUIHandle hParent) { return ActivateDialog(hParent) ? mFrame : -1; }
 
@@ -1214,6 +1215,7 @@ protected:
 
 	VDPosition mFrame;
 	VideoSource *const mpVideo;
+	VDFraction	mRealRate;
 };
 
 INT_PTR VDDialogJumpToPositionW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1268,9 +1270,7 @@ INT_PTR VDDialogJumpToPositionW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lPara
 					return TRUE;
 				}
 
-				unsigned ms = VDRoundToInt(1000.0 * sec);
-
-				mFrame = mpVideo->msToSamples(ms+min*60000+hr*3600000);
+				mFrame = VDRoundToInt64((double)mRealRate * (sec + min*60 + hr*3600));
 
 				End(true);
 			}
@@ -1294,7 +1294,7 @@ INT_PTR VDDialogJumpToPositionW32::DlgProc(UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 void VDDialogJumpToPositionW32::ReinitDialog() {
-	long ticks = mpVideo->samplesToMs((LONG)mFrame);
+	long ticks = VDRoundToLong(mFrame * 1000.0 / (double)mRealRate);
 	long ms, sec, min;
 	char buf[64];
 
@@ -1316,8 +1316,8 @@ void VDDialogJumpToPositionW32::ReinitDialog() {
 	SetDlgItemText(mhdlg, IDC_FRAMETIME, buf);
 }
 
-VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS) {
-	VDDialogJumpToPositionW32 dlg(currentFrame, pVS);
+VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS, const VDFraction& realRate) {
+	VDDialogJumpToPositionW32 dlg(currentFrame, pVS, realRate);
 
 	return dlg.Activate(hParent);
 }

@@ -171,8 +171,27 @@ struct RVASorter {
 	}
 };
 
+int read_version() {
+	FILE *f = fopen("version2.bin","r");
+
+	if (!f)
+		return 0;
+
+	char linebuf[2048];
+	unsigned build = 0;
+
+	while(fgets(linebuf, sizeof linebuf, f)) {
+		int local_builds, local_name_start, local_name_end;
+		if (1==sscanf(linebuf, "host: \"%*[^\"]\" builds: %d", &local_builds)) {
+			build += local_builds;
+		} else if (linebuf[0] != '\n')
+			printf("    warning: line ignored: %s", linebuf);
+	}
+
+	return build;
+}
+
 int main(int argc, char **argv) {
-	int ver=0;
 	int i;
 
 	if (argc<4) {
@@ -180,10 +199,8 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 
-	if (f=fopen("version.bin", "rb")) {
-		fread(&ver,4,1,f);
-		fclose(f);
-	} else {
+	int ver = read_version();
+	if (!ver) {
 		printf("    can't read version file\n");
 		return 20;
 	}

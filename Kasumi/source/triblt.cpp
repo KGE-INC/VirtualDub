@@ -668,8 +668,8 @@ namespace {
 					} while(++x < x2);
 				} else {
 					do {
-						int utexel = VDFloorToIntFast(u * w);
-						int vtexel = VDFloorToIntFast(v * w);
+						int utexel = VDFloorToInt(u * w);
+						int vtexel = VDFloorToInt(v * w);
 
 						spanp[0] = utexel;
 						spanp[1] = vtexel;

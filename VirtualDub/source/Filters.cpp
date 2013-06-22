@@ -350,6 +350,35 @@ void FilterInstance::ForceNoDeinit() {
 	fNoDeinit = true;
 }
 
+void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc) {
+	while(argc-->0) {
+		const VDScriptValue& v = *src++;
+
+		switch(v.type) {
+			case VDScriptValue::T_INT:
+				*dst = CScriptValue(v.asInt());
+				break;
+			case VDScriptValue::T_STR:
+				*dst = CScriptValue(v.asString());
+				break;
+			case VDScriptValue::T_LONG:
+				*dst = CScriptValue(v.asLong());
+				break;
+			case VDScriptValue::T_DOUBLE:
+				*dst = CScriptValue(v.asDouble());
+				break;
+			case VDScriptValue::T_VOID:
+				*dst = CScriptValue();
+				break;
+			default:
+				VDASSERT(false);
+				break;
+		}
+
+		++dst;
+	}
+}
+
 void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
 	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
@@ -357,7 +386,11 @@ void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScript
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	ScriptVoidFunctionPtr pf = (ScriptVoidFunctionPtr)fd.func_ptr;
 
-	pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc);
+	std::vector<CScriptValue> params(argc ? argc : 1);
+
+	ConvertParameters(&params[0], argv, argc);
+
+	pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
 }
 
 void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
@@ -367,7 +400,11 @@ void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptV
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	ScriptIntFunctionPtr pf = (ScriptIntFunctionPtr)fd.func_ptr;
 
-	int rval = pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc);
+	std::vector<CScriptValue> params(argc ? argc : 1);
+
+	ConvertParameters(&params[0], argv, argc);
+
+	int rval = pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
 
 	argv[0] = rval;
 }
@@ -379,7 +416,11 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 	const ScriptFunctionDef& fd = thisPtr->filter->script_obj->func_list[funcidx];
 	ScriptFunctionPtr pf = fd.func_ptr;
 
-	CScriptValue v(pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), (CScriptValue *)argv, argc));
+	std::vector<CScriptValue> params(argc ? argc : 1);
+
+	ConvertParameters(&params[0], argv, argc);
+
+	CScriptValue v(pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc));
 
 	argv[0] = (VDScriptValue&)v;
 }
@@ -817,9 +858,9 @@ bool FilterPreview::OnCommand(UINT cmd) {
 
 	case ID_EDIT_JUMPTO:
 		{
-			extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS);
+			extern VDPosition VDDisplayJumpToPositionDialog(VDGUIHandle hParent, VDPosition currentFrame, VideoSource *pVS, const VDFraction& realRate);
 
-			VDPosition pos = VDDisplayJumpToPositionDialog((VDGUIHandle)hdlg, mpPosition->GetPosition(), inputVideoAVI);
+			VDPosition pos = VDDisplayJumpToPositionDialog((VDGUIHandle)hdlg, mpPosition->GetPosition(), inputVideoAVI, g_project->GetInputFrameRate());
 
 			mpPosition->SetPosition(pos);
 			OnVideoRedraw();

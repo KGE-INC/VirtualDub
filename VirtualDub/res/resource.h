@@ -205,6 +205,7 @@
 #define IDD_FILTER_TRIRESIZE            263
 #define IDD_FILTER_PERSPECTIVE          264
 #define IDD_CHANGE_LOG                  265
+#define IDD_CAPTURE_BROKEN              266
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -576,6 +577,7 @@
 #define IDC_BALANCE                     1227
 #define IDC_AUDIO_CORRECTIONS           1227
 #define IDC_STATIC_VOLUME               1228
+#define IDC_AUDIO_RESAMPLERATE          1228
 #define IDC_STATIC_BALANCE              1229
 #define IDC_TABS                        1230
 #define IDC_STATIC_PROGRESS             1231
@@ -843,6 +845,7 @@
 #define IDS_CAP_VIDEO_SOURCE            2307
 #define IDS_CAP_VIDEO_DISPLAY           2308
 #define IDS_CAP_VIDEO_COMPRESSION_AVICAP 2309
+#define IDS_CAP_VIDEO_COMPRESSION       2309
 #define IDS_CAP_VIDEO_COMPRESSION_INTERNAL 2310
 #define IDS_CAP_VIDEO_HISTOGRAM         2311
 #define IDS_CAP_VIDEO_FILTERS           2312
@@ -1099,6 +1102,16 @@
 #define ID_DISPLAY_AR_PIXEL_2185        40309
 #define ID_DISPLAY_AR_PIXEL_1000        40310
 #define ID_DISPLAY_AR_FRAME_1364        40311
+#define ID_CAPTURE_STOP                 40312
+#define ID_VIDEO_CAPTUREPIN             40313
+#define ID_VIDEO_PREVIEWPIN             40314
+#define ID_VIDEO_CAPTUREFILTER          40315
+#define ID_VIDEO_CROSSBAR               40316
+#define ID_VIDEO_CROSSBAR2              40317
+#define ID_VIDEO_TUNER                  40318
+#define ID_VIDEO_DISCONNECT             40319
+#define ID_AUDIO_ENABLE                 40320
+#define ID_VIDEO_NODISPLAY              40321
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1140,8 +1153,8 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        264
-#define _APS_NEXT_COMMAND_VALUE         40312
+#define _APS_NEXT_RESOURCE_VALUE        267
+#define _APS_NEXT_COMMAND_VALUE         40322
 #define _APS_NEXT_CONTROL_VALUE         1412
 #define _APS_NEXT_SYMED_VALUE           108
 #endif

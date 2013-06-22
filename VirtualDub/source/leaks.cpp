@@ -235,7 +235,7 @@ void VDDumpMemoryLeaksVC() {
 
 		char buf[1024], *s = buf;
 
-		s += wsprintf(buf, "    %p (%8ld bytes)", pHdr->data, (long)pHdr->size);
+		s += wsprintf(buf, "    #%-5d %p (%8ld bytes)", pHdr->reqnum, pHdr->data, (long)pHdr->size);
 
 		if (pHdr->pFilename && !strcmp(pHdr->pFilename, "stack trace")) {
 			void *pRet = (void *)pHdr->line;

@@ -24,9 +24,13 @@ VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
 	// backwards until the first period is found, then to the
 	// beginning of the first number.
 
+	mBaseName = pszBaseFormat;
+	pszBaseFormat = mBaseName.c_str();
+
 	const wchar_t *pszFileBase = VDFileSplitPath(pszBaseFormat);
 	const wchar_t *s = pszFileBase;
-	const wchar_t *pszLastDigit = NULL;
+
+	mLastDigitPos = -1;
 
 	while(*s)
 		++s;
@@ -38,33 +42,10 @@ VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
 		--s;
 
 		if (iswdigit(*s)) {
-			pszLastDigit = s;
+			mLastDigitPos = s - pszBaseFormat;
 			break;
 		}
 	}
-
-//	Explicitly allow no sequence number to open a single image.
-//
-//	if (!pszLastDigit)
-//		throw MyError("Cannot load image sequence: unable to find sequence number in base filename:\n\"%s\"", pszBaseFormat);
-
-	if (!pszLastDigit) {
-		mImageBaseNumber = 0;
-		wcscpy(mszPathFormat, pszBaseFormat);
-	} else {
-		const wchar_t *pszFirstDigit = pszLastDigit;
-
-		while(pszFirstDigit > pszBaseFormat && iswdigit(pszFirstDigit[-1]))
-			--pszFirstDigit;
-
-		// Compute # of digits and first number.
-
-		mImageBaseNumber = wcstol(pszFirstDigit, NULL, 10);
-
-		swprintf(mszPathFormat, L"%.*s%%0%dd%s", pszFirstDigit - pszBaseFormat, pszBaseFormat, pszLastDigit+1 - pszFirstDigit, pszLastDigit+1);
-	}
-
-	// Continue on.
 
 	mSampleFirst = 0;
 
@@ -80,15 +61,15 @@ VideoSourceImages::VideoSourceImages(const wchar_t *pszBaseFormat)
 
 	// Stat as many files as we can until we get an error.
 
-	if (pszLastDigit) {
-		VDStringA statusFormat(VDTextWToA(mszPathFormat + (pszFileBase - pszBaseFormat)));
+	if (mLastDigitPos >= 0) {
+		VDStringA statusFormat("Scanning frame %lu");
 		try {
 			ProgressDialog pd(g_hWnd, "Image import filter", "Scanning for images", 0x3FFFFFFF, true);
 
 			pd.setValueFormat(statusFormat.c_str());
 
 			while(!_read(mSampleLast, 1, NULL, 0x7FFFFFFF, NULL, NULL)) {
-				pd.advance(mSampleLast + mImageBaseNumber);
+				pd.advance(mSampleLast);
 				pd.check();
 				++mSampleLast;
 			}
@@ -129,16 +110,14 @@ int VideoSourceImages::_read(VDPosition lStart, uint32 lCount, void *lpBuffer, u
 	if (plSamplesRead)
 		*plSamplesRead = 0;
 
-	wchar_t buf[512];
-
-	if (_snwprintf(buf, sizeof buf / sizeof buf[0], mszPathFormat, lStart + mImageBaseNumber) < 0)
-		return 0;
+	const wchar_t *buf = ComputeFilename(mPathBuf, lStart);
 
 	// Check if we already have the file handle cached.  If not, open the file.
 	
 	if (lStart == mCachedHandleFrame) {
 		mCachedFile.seek(0);
 	} else{
+		mCachedHandleFrame = -1;
 		mCachedFile.closeNT();
 		mCachedFile.open(buf, nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);
 		mCachedHandleFrame = lStart;
@@ -232,9 +211,12 @@ const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 da
 	BITMAPINFOHEADER *pFormat = getImageFormat();
 
 	if (getFrameBuffer()) {
-		if (w != pFormat->biWidth || h != pFormat->biHeight)
-			throw MyError("Image %lu (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
-					, (unsigned long)(frame_num + mImageBaseNumber), w, h, pFormat->biWidth, pFormat->biHeight);
+		if (w != pFormat->biWidth || h != pFormat->biHeight) {
+			std::vector<wchar_t> errBuf;
+
+			throw MyError("Image \"%ls\" (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
+					, ComputeFilename(errBuf, frame_num), w, h, pFormat->biWidth, pFormat->biHeight);
+		}
 
 	} else {
 		AllocFrameBuffer(w * h * 4);
@@ -305,3 +287,43 @@ const void *VideoSourceImages::getFrame(VDPosition frameNum) {
 	return pFrame;
 }
 
+const wchar_t *VideoSourceImages::ComputeFilename(std::vector<wchar_t>& pathBuf, VDPosition pos) {
+	const wchar_t *fn = mBaseName.c_str();
+
+	if (mLastDigitPos < 0)
+		return fn;
+
+	pathBuf.assign(fn, fn + mBaseName.size() + 1);
+
+	char buf[32];
+
+	sprintf(buf, "%I64d", pos);
+
+	int srcidx = strlen(buf) - 1;
+	int dstidx = mLastDigitPos;
+	int v = 0;
+
+	do {
+		if (srcidx >= 0)
+			v += buf[srcidx--] - '0';
+
+		if (dstidx < 0 || (unsigned)(pathBuf[dstidx] - '0') >= 10) {
+			pathBuf.insert(pathBuf.begin() + (dstidx + 1), '0');
+			++dstidx;
+		}
+
+		wchar_t& c = pathBuf[dstidx--];
+
+		int result = v + (c - L'0');
+		v = 0;
+
+		if (result >= 10) {
+			result -= 10;
+			v = 1;
+		}
+
+		c = L'0' + result;
+	} while(v || srcidx >= 0);
+
+	return &pathBuf[0];
+}

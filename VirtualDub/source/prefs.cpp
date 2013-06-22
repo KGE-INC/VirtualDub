@@ -41,6 +41,7 @@ namespace {
 		Preferences		mOldPrefs;
 		VDStringW		mTimelineFormat;
 		bool			mbAllowDirectYCbCrDecoding;
+		bool			mbConfirmRenderAbort;
 	} g_prefs2;
 }
 
@@ -283,6 +284,27 @@ public:
 	}
 };
 
+class VDDialogPreferencesDub : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesDub(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbConfirmRenderAbort);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbConfirmRenderAbort = 0 != GetValue(100);
+			return true;
+		}
+		return false;
+	}
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -304,6 +326,7 @@ public:
 				case 3:	pSubDialog->SetCallback(new VDDialogPreferencesCPU(mPrefs), true); break;
 				case 4:	pSubDialog->SetCallback(new VDDialogPreferencesAVI(mPrefs), true); break;
 				case 5:	pSubDialog->SetCallback(new VDDialogPreferencesTimeline(mPrefs), true); break;
+				case 6:	pSubDialog->SetCallback(new VDDialogPreferencesDub(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -319,7 +342,7 @@ public:
 				if (pSubDialog)
 					pSubDialog->DispatchEvent(vdpoly_cast<IVDUIWindow *>(mpBase), 0, IVDUICallback::kEventSync, 0);
 
-				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs, sizeof mPrefs);
+				SetConfigBinary("", g_szMainPrefs, (char *)&mPrefs.mOldPrefs, sizeof mPrefs.mOldPrefs);
 
 				VDRegistryAppKey key("Preferences");
 				key.setString("Timeline format", mPrefs.mTimelineFormat.c_str());
@@ -368,6 +391,7 @@ void LoadPreferences() {
 		g_prefs2.mTimelineFormat = L"Frame %f (%h:%02m:%02s.%03t) [%c]";
 
 	g_prefs2.mbAllowDirectYCbCrDecoding = key.getBool("Allow direct YCbCr decoding", true);
+	g_prefs2.mbConfirmRenderAbort = key.getBool("Confirm render abort", true);
 
 	g_prefs2.mOldPrefs = g_prefs;
 }
@@ -378,4 +402,8 @@ const VDStringW& VDPreferencesGetTimelineFormat() {
 
 bool VDPreferencesIsDirectYCbCrInputEnabled() {
 	return g_prefs2.mbAllowDirectYCbCrDecoding;
+}
+
+bool VDPreferencesIsRenderAbortConfirmEnabled() {
+	return g_prefs2.mbConfirmRenderAbort;
 }

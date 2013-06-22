@@ -383,6 +383,10 @@ InputFileOptions *InputFileAVI::promptForOptions(HWND hwnd) {
 	DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_EXTOPENOPTS_AVI),
 			hwnd, InputFileAVIOptions::SetupDlgProc, (LPARAM)ifo);
 
+	// if we were forced to AVIFile mode (possibly due to an Avisynth script),
+	// propagate that condition to the options
+	ifo->opts.fCompatibilityMode |= fCompatibilityMode;
+
 	return ifo;
 }
 
@@ -438,7 +442,7 @@ void InputFileAVI::Init(const wchar_t *szFile) {
 		throw MyError("%s: problem opening video stream", szME);
 
 	if (fRedoKeyFlags)
-		((VideoSourceAVI *)&*videoSrc)->redoKeyFlags();
+		static_cast<VideoSourceAVI *>(&*videoSrc)->redoKeyFlags();
 	else if (pAVIFile->isIndexFabricated() && !videoSrc->isKeyframeOnly()) {
 		VDLogAppMessage(kVDLogWarning, kVDST_InputFileAVI, kVDM_RekeyNotSpecified);
 	}
@@ -528,9 +532,9 @@ bool InputFileAVI::Append(const wchar_t *szFile) {
 
 	if (pAVIFile->AppendFile(szFile)) {
 		if (videoSrc)
-			((VideoSourceAVI *)&*videoSrc)->Reinit();
+			static_cast<VideoSourceAVI *>(&*videoSrc)->Reinit();
 		if (audioSrc)
-			((AudioSourceAVI *)&*audioSrc)->Reinit();
+			static_cast<VDAudioSourceAVISourced *>(&*audioSrc)->Reinit();
 
 		AddFilename(szFile);
 
@@ -581,7 +585,8 @@ void InputFileAVI::InitStriped(const char *szFile) {
 	if (!videoSrc->init())
 		throw MyError("%s: problem opening video stream", szME);
 
-	if (fRedoKeyFlags) ((VideoSourceAVI *)&*videoSrc)->redoKeyFlags();
+	if (fRedoKeyFlags)
+		static_cast<VideoSourceAVI *>(&*videoSrc)->redoKeyFlags();
 
 	if (!(audioSrc = new AudioSourceAVI(index_file, fAutomated)))
 		throw MyMemoryError();
@@ -629,8 +634,8 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 	MyFileInfo *pInfo = (MyFileInfo *)pvInfo;
 	VDPosition i;
 	uint32 lActualBytes, lActualSamples;
-	VideoSourceAVI *inputVideoAVI = (VideoSourceAVI *)&*pInfo->thisPtr->videoSrc;
-	AudioSourceAVI *inputAudioAVI = (AudioSourceAVI *)&*pInfo->thisPtr->audioSrc;
+	VideoSourceAVI *inputVideoAVI = static_cast<VideoSourceAVI *>(&*pInfo->thisPtr->videoSrc);
+	AudioSource *inputAudioAVI = pInfo->thisPtr->audioSrc;
 
 	pInfo->lVideoCMinSize = 0x7FFFFFFF;
 	pInfo->lVideoKMinSize = 0x7FFFFFFF;
@@ -684,7 +689,7 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 			i += lActualSamples;
 
 			if (inputAudioAVI->getStreamInfo().dwInitialFrames == pInfo->lAudioFrames)
-				pInfo->lAudioPreload = i - audioFrameStart;
+				pInfo->lAudioPreload = (long)(i - audioFrameStart);
 
 			pInfo->i64AudioTotalSize += lActualBytes;
 			if (lActualBytes < pInfo->lAudioMinSize) pInfo->lAudioMinSize = lActualBytes;
@@ -719,7 +724,7 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 				if (thisPtr->videoSrc) {
 					char *s;
-					VideoSourceAVI *pvs = (VideoSourceAVI *)&*thisPtr->videoSrc;
+					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*thisPtr->videoSrc);
 
 					sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
 								thisPtr->videoSrc->getImageFormat()->biWidth,
@@ -728,8 +733,8 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 								VDRoundToLong(1000000.0 / thisPtr->videoSrc->getRate().asDouble()));
 					SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
 
-					const sint32 length = thisPtr->videoSrc->getLength();
-					s = buf + sprintf(buf, "%ld frames (", length);
+					const sint64 length = thisPtr->videoSrc->getLength();
+					s = buf + sprintf(buf, "%I64d frames (", length);
 					DWORD ticks = VDRoundToInt(1000.0*length/thisPtr->videoSrc->getRate().asDouble());
 					ticks_to_str(s, ticks);
 					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
@@ -775,10 +780,10 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 					} else
 						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, "N/A");
 
-					long len = thisPtr->audioSrc->getLength();
+					sint64 len = thisPtr->audioSrc->getLength();
 					const WAVEFORMATEX *pWaveFormat = thisPtr->audioSrc->getWaveFormat();
 
-					char *s = buf + sprintf(buf, "%ld samples (", len);
+					char *s = buf + sprintf(buf, "%I64d samples (", len);
 					DWORD ticks = VDRoundToInt(1000.0*len*pWaveFormat->nBlockAlign/pWaveFormat->nAvgBytesPerSec);
 					ticks_to_str(s, ticks);
 					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
@@ -915,10 +920,10 @@ INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wPa
 
 				double totalVideoFrames = (double)pInfo->lVideoKFrames + (sint64)pInfo->lVideoCFrames;
 				if (totalVideoFrames > 0) {
-					VideoSourceAVI *pvs = (VideoSourceAVI *)&*thisPtr->videoSrc;
+					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*thisPtr->videoSrc);
 					const double seconds = (double)pvs->getLength() / (double)pvs->getRate().asDouble();
 					const double rawOverhead = (24.0 * totalVideoFrames);
-					const double totalSize = (pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
+					const double totalSize = (double)(pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
 					const double videoRate = (1.0 / 125.0) * totalSize / seconds;
 					const double videoOverhead = 100.0 * rawOverhead / (rawOverhead + totalSize);
 					sprintf(buf, "%.0f kbps (%.2f%% overhead)", videoRate, videoOverhead);

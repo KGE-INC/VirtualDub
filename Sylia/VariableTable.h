@@ -19,8 +19,7 @@ private:
 	VariableTableEntry	**lpHashTable;
 	VectorHeap			varheap;
 
-	long Hash(char *szName);
-	VariableTableEntry *Allocate(long lNameLen);
+	long Hash(const char *szName);
 
 public:
 	VariableTable(int);
@@ -28,8 +27,8 @@ public:
 
 	void MarkStrings(VDScriptStringHeap& heap);
 
-	VariableTableEntry *Lookup(char *szName);
-	VariableTableEntry *Declare(char *szName);
+	VariableTableEntry *Lookup(const char *szName);
+	VariableTableEntry *Declare(const char *szName);
 };
 
 #endif

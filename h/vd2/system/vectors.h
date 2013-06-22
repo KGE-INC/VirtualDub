@@ -1,23 +1,32 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	System library component
+//	Copyright (C) 1998-2004 Avery Lee, All Rights Reserved.
 //
-//	This program is free software; you can redistribute it and/or modify
-//	it under the terms of the GNU General Public License as published by
-//	the Free Software Foundation; either version 2 of the License, or
-//	(at your option) any later version.
+//	Beginning with 1.6.0, the VirtualDub system library is licensed
+//	differently than the remainder of VirtualDub.  This particular file is
+//	thus licensed as follows (the "zlib" license):
 //
-//	This program is distributed in the hope that it will be useful,
-//	but WITHOUT ANY WARRANTY; without even the implied warranty of
-//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//	GNU General Public License for more details.
+//	This software is provided 'as-is', without any express or implied
+//	warranty.  In no event will the authors be held liable for any
+//	damages arising from the use of this software.
 //
-//	You should have received a copy of the GNU General Public License
-//	along with this program; if not, write to the Free Software
-//	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//	Permission is granted to anyone to use this software for any purpose,
+//	including commercial applications, and to alter it and redistribute it
+//	freely, subject to the following restrictions:
+//
+//	1.	The origin of this software must not be misrepresented; you must
+//		not claim that you wrote the original software. If you use this
+//		software in a product, an acknowledgment in the product
+//		documentation would be appreciated but is not required.
+//	2.	Altered source versions must be plainly marked as such, and must
+//		not be misrepresented as being the original software.
+//	3.	This notice may not be removed or altered from any source
+//		distribution.
 
 #ifndef f_VD2_SYSTEM_VECTORS_H
 #define f_VD2_SYSTEM_VECTORS_H
 
+#include <vd2/system/vdtypes.h>
 #include <math.h>
 
 #ifndef VDFORCEINLINE
@@ -67,6 +76,9 @@ public:
 	T v[2];
 };
 
+template<class T>
+VDFORCEINLINE VDVector2<T> operator*(const T s, const VDVector2<T>& v) { return v*s; }
+
 ///////////////////////////////////////////////////////////////////////////
 
 template<class T>
@@ -114,9 +126,6 @@ public:
 template<class T>
 VDFORCEINLINE VDVector3<T> operator*(const T s, const VDVector3<T>& v) { return v*s; }
 
-template<class T>
-VDFORCEINLINE VDVector3<T> operator/(const T s, const VDVector3<T>& v) { return v/s; }
-
 ///////////////////////////////////////////////////////////////////////////
 
 template<class T>
@@ -155,6 +164,9 @@ public:
 
 	T v[4];
 };
+
+template<class T>
+VDFORCEINLINE VDVector4<T> operator*(const T s, const VDVector4<T>& v) { return v*s; }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -509,5 +521,65 @@ typedef VDMatrix4<float>	vdmatrix4f;
 typedef VDMatrix2<double>	vdmatrix2d;
 typedef VDMatrix3<double>	vdmatrix3d;
 typedef VDMatrix4<double>	vdmatrix4d;
+
+
+template<class T>
+struct VDSize {
+	typedef T value_type;
+
+	int w, h;
+
+	VDSize() {}
+	VDSize(int _w, int _h) : w(_w), h(_h) {}
+
+	bool operator==(const VDSize& s) const { return w==s.w && h==s.h; }
+	bool operator!=(const VDSize& s) const { return w!=s.w || h!=s.h; }
+
+	VDSize& operator+=(const VDSize& s) {
+		w += s.w;
+		h += s.h;
+		return *this;
+	}
+
+	T area() const { return w*h; }
+
+	void include(const VDSize& s) {
+		if (w < s.w)
+			w = s.w;
+		if (h < s.h)
+			h = s.h;
+	}
+};
+
+template<class T>
+class VDRect {
+public:
+	typedef T value_type;
+
+	VDRect() {}
+	VDRect(T left_, T top_, T right_, T bottom_) : left(left_), top(top_), right(right_), bottom(bottom_) {}
+
+	void clear() { left = top = right = bottom = 0; }
+
+	void set(T l, T t, T r, T b) {
+		left = l;
+		top = t;
+		right = r;
+		bottom = b;
+	}
+
+	bool operator==(const VDRect& r) const { return left==r.left && top==r.top && right==r.right && bottom==r.bottom; }
+	bool operator!=(const VDRect& r) const { return left!=r.left || top!=r.top || right!=r.right || bottom!=r.bottom; }
+
+	T width() const { return right-left; }
+	T height() const { return bottom-top; }
+	T area() const { return (right-left)*(bottom-top); }
+	VDSize<T> size() const { return VDSize<T>(right-left, bottom-top); }
+
+	T left, top, right, bottom;
+};
+
+typedef VDSize<sint32>	vdsize32;
+typedef	VDRect<sint32>	vdrect32;
 
 #endif

@@ -31,6 +31,7 @@ namespace {
 		{ VDScriptError::FCALL_OUT_OF_RANGE,			"argument out of range" },
 		{ VDScriptError::FCALL_INVALID_PTYPE,			"argument has wrong type" },
 		{ VDScriptError::FCALL_UNKNOWN_STR,				"string argument not recognized" },
+		{ VDScriptError::ARRAY_INDEX_OUT_OF_BOUNDS,		"array index out of bounds" },
 		{ 0, 0 },
 	};
 }

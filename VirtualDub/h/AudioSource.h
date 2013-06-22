@@ -52,7 +52,12 @@ public:
 	virtual int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
 };
 
-class AudioSourceAVI : public AudioSource {
+class VDAudioSourceAVISourced : public AudioSource{
+public:
+	virtual void Reinit() = 0;
+};
+
+class AudioSourceAVI : public VDAudioSourceAVISourced {
 private:
 	IAVIReadHandler *pAVIFile;
 	IAVIReadStream *pAVIStream;
@@ -77,7 +82,7 @@ public:
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
 };
 
-class AudioSourceDV : public AudioSource {
+class AudioSourceDV : public VDAudioSourceAVISourced {
 public:
 	AudioSourceDV(IAVIReadStream *pAVIStream, bool bAutomated);
 

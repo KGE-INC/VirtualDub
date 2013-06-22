@@ -452,22 +452,13 @@ INT_PTR CALLBACK CaptureVumeterDlgProc( HWND hDlg, UINT message, WPARAM wParam, 
 		case WM_INITDIALOG:
 			try {
 				HWND hWndLeft, hWndRight;
-				LONG fsize;
-				WAVEFORMATEX *wf;
 
 				////
 
 				if (!(vdd = new VumeterDlgData)) throw MyError("Out of memory");
 				memset(vdd, 0, sizeof(VumeterDlgData));
 
-				if (fsize = capGetAudioFormatSize((HWND)lParam)) {
-					if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
-						if (capGetAudioFormat((HWND)lParam, wf, fsize)) {
-							vdd->fStereo = wf->nChannels>1 ? TRUE : FALSE;
-						}
-						freemem(wf);
-					}
-				}
+				vdd->fStereo = lParam ? TRUE : FALSE;
 
 				if (!(vdd->buffer = allocmem(vdd->fStereo?1024 + 2048 : 512 + 1024))) throw MyError("Out of memory");
 				if (!(vdd->pfht_left = new Fht(1024))

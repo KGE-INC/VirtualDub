@@ -1,0 +1,1981 @@
+<root>
+	<lina:set-option name="output-dir" target="../out/filtsdk2"/>
+	<lina:set-option name="link-truncate" baseurl="" notruncate/>
+
+	<lina:macro name="create">
+		<lina:tag name="lina:write">
+			<lina:attrib name="file"><lina:arg name="file"/></lina:attrib>
+			<html>
+				<head>
+					<style>
+						body { background: #fff; text-color: #000; font-size: 12pt; padding: 0; margin: 0 }
+						h1 { font-family: Arial, Helvetica; font-size: 20pt; background: #c0e0ff; padding: 0 4px }
+						h2 { font-family: Arial, Helvetica; font-size: 14pt; background: #c0ffe0; padding: 0 4px }
+						h3 { font-family: Arial, Helvetica; font-size: 12pt; background: none; padding: 0 4px; margin: 0; border-bottom: 2px solid #f0e0c0 }
+						td { vertical-align: top }
+						td.pageleft { padding: 4px; background: #e0e0e0 }
+						td.pagetop { font-family: Arial, Helvetica; padding: 0 4px; background: #e0e0e0 }
+						dt { color: #246; margin: 16px 0 6px 4px }
+						.dtitle { font-style: italic }
+						em { font-weight: normal; color: #800 }
+						.codeex { background: #ffe0c0; padding: 8px }
+					</style>
+					<title>
+						VirtualDub filter SDK V1.5<lina:if-arg name="title"> - <lina:arg name="title"/></lina:if-arg>
+					</title>
+				</head>
+				<body>
+					<table width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
+						<tr height="1">
+							<td colspan="2" class="pagetop">
+								<div style="font-size: 20pt; font-weight: normal; font-decoration: none">
+									VirtualDub filter SDK 1.5<lina:if-arg name="title"> - <lina:arg name="title"/></lina:if-arg>
+								</div>
+							</td>
+						</tr>
+						<tr height="*">
+							<td width="20%" class="pageleft">
+								<lina:for-each name="/pages/page">
+									<lina:tag name="a">
+										<lina:attrib name="href"><lina:arg name="filename"/></lina:attrib>
+										<lina:arg name="name"/>
+									</lina:tag>
+									<br/>
+								</lina:for-each>
+							</td>
+							<td style="padding: 8px">
+								<lina:body/>
+							</td>
+						</tr>
+					</table>
+				</body>
+			</html>
+		</lina:tag>
+	</lina:macro>
+
+	<lina:macro name="note">
+		<table border="0" cellpadding="0" cellspacing="0" style="padding: 1px; margin: 16px 0px">
+			<tr>
+				<td style="padding-right: 20px"><span style="border: 0 solid red; border-bottom-width: 1px">Note</span></td>
+				<td width="*"><lina:body/></td>
+			</tr>
+		</table>
+	</lina:macro>
+
+	<lina:macro name="dt">
+		<dt><span class="dtitle"><lina:body/></span></dt>
+	</lina:macro>
+
+	<lina:macro name="image">
+		<lina:tag name="lina:fireball">
+			<lina:attrib name="src">source/<lina:arg name="src"/></lina:attrib>
+			<lina:attrib name="dst"><lina:arg name="src"/></lina:attrib>
+		</lina:tag>
+		<lina:tag name="img">
+			<lina:attrib name="src"><lina:arg name="src"/></lina:attrib>
+		</lina:tag>
+	</lina:macro>
+
+	<lina:macro name="codeex">
+		<blockquote><pre class="codeex"><lina:body/></pre></blockquote>
+	</lina:macro>
+
+	<lina:create file="index.html">
+		<p>
+			Filter SDK for VirtualDub 1.5.5+
+		</p>
+
+		<p>
+			The old help file used to have some general tips on how to create video, but I've come
+			to the conclusion that such a help file is too much effort to maintain and that my efforts
+			in this area are better spent explaining what the options do rather than how to use them.
+			So, currently, this help file currently consists of comprehensive explanations of what
+			various settings dialogs in VirtualDub do.
+		</p>
+
+
+	</lina:create>
+
+	<lina:macro name="func">
+		<h2><lina:pull name="name"/></h2>
+		<dl>
+			<dt>Purpose</dt>
+			<dd><lina:pull name="purpose"/></dd>
+			<dt>Prototype</dt>
+			<dd><tt><lina:pull name="prototype"/></tt></dd>
+			<dt>Intended filter response</dt>
+			<dd><lina:pull name="action"/></dd>
+			<dt>Timing</dt>
+			<dd><lina:pull name="timing"/></dd>
+			<dt>Exceptions</dt>
+			<dd>
+				<lina:if-present name="exceptions-allowed">
+					API exceptions may be thrown from this function.
+				</lina:if-present>
+				<lina:if-not-present name="exceptions-allowed">
+					No exceptions may be thrown from this function.
+				</lina:if-not-present>
+			</dd>
+			<lina:if-present name="comments">
+				<dt>Comments</dt>
+				<dd>
+					<lina:pull name="comments"/>
+				</dd>
+			</lina:if-present>
+		</dl>
+	</lina:macro>
+
+	<pages>
+		<page filename="audioapi.html" name="audio api reference">
+			<lina:apply name="func">
+				<func>
+					<name>
+						startProc
+					</name>
+					<purpose>
+						Initializes audio filter for active processing.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY startProc(const VDAudioFilterContext *pContext);				
+					</prototype>
+					<action>
+						Filter should allocate output buffers, initialize temporary and working variables, and compute lengths
+						for output streams.
+					</action>
+					<timing>
+						Called immediately before active filtering begins.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							<tt>startProc</tt>'s primary purpose is to allocate output buffers.  Filters must allocate the minimum
+							size requested in the <tt>mBufferSize</tt> parameter, but may allocate larger buffers.  One reason to
+							do so is to achieve a minimum alignment for block processing without having to deal with wrapping
+							in ring buffers.
+						</p>
+						<p>
+							Input format validation must take place in <tt>prepareProc</tt> &mdash; <tt>startProc</tt> is too
+							late for filters to signal that they cannot handle their input parameters.  Generally, <tt>startProc</tt>
+							should only bail due to resource allocation failures.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						prepareProc
+					</name>
+					<purpose>
+						Computes output parameters for the given input parameters.
+					</purpose>
+					<prototype>
+						uint32 VDAPIENTRY prepareProc(const VDAudioFilterContext *pContext);
+					</prototype>
+					<action>
+						Filter should set feed parameters on all pins and compute formats for output pins, then return <tt>kVFAPrepare_OK</tt> on success
+						or <tt>kVFAPrepare_BadFormat</tt> if the input parameters are not usable.
+					</action>
+					<timing>
+						Called frequently before start phase.  Guaranteed to be called at least once after configuration parameters
+						are set and before <tt>startProc</tt> is called.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							<tt>prepareProc</tt> needs to be moderately fast as it is called often during graph construction
+							for display purposes, so large-scale loading is discouraged.
+						</p>
+						<p>
+							The granularity and delay parameters on pins <b>must</b> be set properly. Setting either too low can cause the audio filter
+							system to deadlock on parallel paths, i.e. one path is empty while another is full.
+						</p>
+						<p>
+							Exceptions may be thrown for bad configuration parameters, but should not be thrown for
+							unsupported format combinations on input pins.  Return <tt>kVFAPrepare_BadFormat</tt> on those
+							so VirtualDub can flag the problem appropriately.
+						</p>
+						<p>
+							When input parameters are unusable, it is acceptable to exit prematurely without setting up all output
+							pins with valid parameters.
+						</p>
+						<p>
+							The default configuration for all pins on entry is granularity=1, VBR=false, and delay=0.  Also, <tt>mpFormat</tt>
+							is guaranteed to be <tt>NULL</tt> on entry so that filters do not have to worry about deallocation of an existing
+							wave format.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						seekProc
+					</name>
+					<purpose>
+						Repositions output stream to a new location.
+					</purpose>
+					<prototype>
+						sint64 VDAPIENTRY seekProc(const VDAudioFilterContext *pContext, sint64 microsecs);
+					</prototype>
+					<action>
+						Filter should flush output buffers, reset internal variables to reflect new position and return new position for upstream filters.
+					</action>
+					<timing>
+						May be called multiple times once filter is started; not guaranteed to be called at all.
+					</timing>
+					<comments>
+						<p>
+							The vast majority of filters simply return the <tt>microsecs</tt> default, as their inputs and outputs
+							are matched.
+						</p>
+						<p>
+							It is possible to create an acyclic filter graph that requires a filter to output from two distinct
+							locations simultaneously, due to different seek locations being issued on different output pins.  Such
+							configurations are not supported by VirtualDub and filters are not required to accommodate such a
+							situation.
+						</p>
+						<p>
+							With infinite response algorithms, it may be impossible to implement a true seek.  In these cases
+							the filter should seek back a short distance and "prime" its algorithm to return a reasonable
+							approximation.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						suspendProc
+					</name>
+					<purpose>
+						Dumps internal filter state to a memory block.
+					</purpose>
+					<prototype>
+						unsigned suspendProc(const VDAudioFilterContext *pContext, void *dst, unsigned size);
+					</prototype>
+					<action>
+						Filter should store configuration data to given memory block if there is enough room, and then return the
+						required size &mdash; <tt>&lt;= size</tt> if enough space was available and data was stored, or <tt>&gt;size</tt>
+						when there is not enough space.
+					</action>
+					<timing>
+						Called while filter is running.  Filter execution is automatically serialized so that no other functions are
+						invoked while serialization is in progress.
+					</timing>
+					<comments>
+						<p>
+							All internal filter state must be serialized, including the contents of
+							output buffers.  Configuration data and pin configurations are handled by the host and do not need to be
+							serialized.
+						</p>
+						<p>
+							It is a good idea to version information in the serialized data so incompatible version matches can be
+							detected on deserialization.  A filter may support resumes from records saved by other versions of itself,
+							but this is not required.
+						</p>
+						<p>
+							This does not need to be a super-efficient function, so a quick-and-dirty implementation method is to serialize
+							first into a private <tt>vector</tt>, then move that into the given memory block if there is enough space.
+							VirtualDub's internal filters use this method.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						resumeProc
+					</name>
+					<purpose>
+						Reads internal filter state from a memory block.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY resumeProc(const VDAudioFilterContext *pContext, const void *src, unsigned size);
+					</prototype>
+					<action>
+						Filter should read configuration data from the given memory block.
+					</action>
+					<timing>
+						Called while filter is running.  Filter execution is automatically serialized so that no other functions are
+						invoked while serialization is in progress.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							The host will automatically restore the exact same configuration data through <tt>setParamProc</tt>
+							and start the filter with the original pin configuration before invoking <tt>resumeProc</tt>.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						runProc
+					</name>
+					<purpose>
+						Processes data from input buffers to output buffers.
+					</purpose>
+					<prototype>
+						uint32 VDAPIENTRY runProc(const VDAudioFilterContext *pContext);
+					</prototype>
+					<action>
+						Filters should process some amount of data from input buffers into output buffers, update fullness levels for
+						those buffers, and then return a bitmask
+						indicating the current state of the filter:
+						<ul>
+							<li><tt>kVFARun_OK</tt>: Nothing special occurred.</li>
+							<li><tt>kVFARun_Finished</tt>: No more output data will be produced by this filter on any output pins in the current state.</li>
+							<li><tt>kVFARun_InternalWork</tt>: Filter should be called again even though no input was consumed and no output was produced.</li>
+						</ul>
+					</action>
+					<timing>
+						May be called asynchronously during active state on a single thread.  <b>Must be thread-safe.</b>
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							Filters <b>must</b> properly handle <tt>runProc</tt> and <tt>readProc</tt> accessing the same output buffer
+							simultaneously from two different threads.  This can be done through locking, or through atomic operations (preferred).
+							The <tt>VDAudioRingBuffer</tt> template is suitable for this task.  However, <tt>runProc</tt> is always serialized
+							and never runs simultaneously by itself on two different threads.
+						</p>
+						<p>
+							<tt>kVFARun_Finished</tt> indicates to VirtualDub that your <tt>runProc</tt> does not need to be run anymore unless
+							a seek occurs &mdash; failure to return it at the properly can cause VirtualDub to livelock waiting for your filter
+							to finish.  It should be returned as soon as no more output data can be produced even if data is sitting in the
+							output buffer; VirtualDub will not consider your output stream "finished" until your filter has signalled <tt>kVFARun_Finished</tt>
+							<i>and</i> its output buffers are drained.
+						</p>
+						<p>
+							VirtualDub will monitor the state of your filter's input and output buffers and try not to call <tt>runProc</tt>
+							unless your filter has enough data and space to process some data.  If enough input data and output space exists
+							according to the filter's granularities specified in <tt>prepareProc</tt>, it <b>must</b> drain input or produce output
+							when called, or it can deadlock the filter system.  If <tt>runProc</tt> is called when buffer levels prohibit
+							processing any data, the filter should simply exit without processing data.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						readProc
+					</name>
+					<purpose>
+						Retrieves data from a filter's output buffer.
+					</purpose>
+					<prototype>
+						uint32 VDAPIENTRY readProc(const VDAudioFilterContext *pContext, unsigned pin, void *dst, uint32 samples);
+					</prototype>
+					<action>
+						Filter should transfer data from the specified output pin, update buffer level for that pin, and
+						return the actual number of samples read.
+					</action>
+					<timing>
+						May be called asynchronously during active state on multiple threads.  <b>Must be thread-safe and reentrant.</b>
+					</timing>
+					<comments>
+						<p>
+							If <tt>dst</tt> is NULL, simply omit the copy, returning <tt>max(samples, available)</tt>.
+						</p>
+						<p>
+							Although <tt>readProc</tt> may be called simultaneously by several threads, it is guaranteed that only
+							one thread will execute it with a particular output pin.  Therefore, filters do not need to synchronize
+							individual output buffers for multiple simultaneous read requests.  However, it <b>is</b> likely that
+							<tt>readProc</tt> may be called while <tt>runProc</tt> is also executing on a different CPU.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						extProc
+					</name>
+					<purpose>
+						Returns alternative interfaces not covered by the core VirtualDub audio filter API.
+					</purpose>
+					<prototype>
+						void * VDAPIENTRY extProc(const VDAudioFilterContext *pContext, const char *pInterfaceName);
+					</prototype>
+					<action>
+						Filter should return a vtable for the given interface of the filter, or <tt>NULL</tt> if the interface
+						is not supported.
+					</action>
+					<timing>
+						May be called asynchronously from any thread and state.  <b>Must be thread-safe and reentrant.</b>
+					</timing>
+					<comments>
+						<p>
+							Returned pointers should be in the form of the standard VirtualDub plugin vtable, i.e. size in bytes followed by
+							a list of function pointers.  This should be <tt>static const</tt> data as it must persist for the entire life of the
+							filter instance; however, it need not be writable.
+						</p>
+						<p>
+							Interface names are case-sensitive and should follow C++ identifier conventions.  Names beginning with <tt>VD</tt> or <tt>IVD</tt>
+							are reserved for future versions of
+							VirtualDub.  Ambiguous or potentially conflicting names such as "<tt>interface</tt>" or "<tt>debug</tt>"
+							should be avoided as interface names should be globally unique.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						getParamProc
+					</name>
+					<purpose>
+						Retrieves a configuration parameter from a filter.
+					</purpose>
+					<prototype>
+						unsigned VDAPIENTRY getParamProc(const VDAudioFilterContext *pContext, unsigned idx, void *dst, unsigned size);
+					</prototype>
+					<action>
+						Filter should transfer the requested parameter into the output buffer if there is enough room, and then return
+						the actual size of the parameter &mdash; less than or equal to <tt>size</tt> if a transfer occurred, or greater than
+						<tt>size</tt> if there was not enough room.
+					</action>
+					<timing>
+						Only called when filter is not started.
+					</timing>
+					<comments>
+						<p>
+							<tt>idx</tt> will always correspond to a parameter specified by the filter's configuration tables &mdash; filters
+							need not check for invalid indices.
+						</p>
+						<p>
+							<tt>getParamProc</tt> need not return the exact values specified to <tt>setParamProc</tt>, particularly if
+							internal storage formats incur some loss.  However, once a result has been rounded or transformed in this
+							fashion, it should not be rounded again when set.  In other words, repeated saving and restoring of a parameter
+							should not cause its value to degrade repeatedly.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						setParamProc
+					</name>
+					<purpose>
+						Sets a configuration parameter of a filter.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY setParamProc(const VDAudioFilterContext *pContext, unsigned idx, const void *src, unsigned variant_count);
+					</prototype>
+					<action>
+						Filter should transfer the given configuration parameter to internal storage.
+					</action>
+					<timing>
+						Only called when filter is not started.
+					</timing>
+					<comments>
+						<p>
+							<tt>idx</tt> will always correspond to a parameter specified by the filter's configuration tables &mdash; filters
+							need not check for invalid indices.
+						</p>
+						<p>
+							If a given setting cannot be supported, it should be flagged in <tt>prepareProc</tt> and not here.  In particular,
+							clients must be able to set parameters in any order even if certain orders result in temporarily illegal configurations.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						configProc
+					</name>
+					<purpose>
+						Displays a graphical UI for configuring filter parameters.
+					</purpose>
+					<prototype>
+						bool VDAPIENTRY configProc(const VDAudioFilterContext *pContext, HWND hwnd);
+					</prototype>
+					<action>
+						Filter should display a UI for configuration parameters, if it has one, using <tt>hwnd</tt> as the parent and
+						returning <tt>true</tt> if the user selected OK and <tt>false</tt> on Cancel.  <tt>hwnd==NULL</tt> indicates
+						a dialog check, in which case the filter should return whether a configuration dialog exists, without
+						actually displaying one.
+					</action>
+					<timing>
+						Only called when filter is not started.
+					</timing>
+					<comments>
+						<p>
+							All parameters configurable by the dialog <b>must</b> be restorable via <tt>getParamProc/setParamProc</tt>.
+							Unlike the original VirtualDub video filter API, audio filter instances are not kept in memory &mdash; they
+							are discarded the minute the audio filter graph is closed, and then new ones created using the stored parameters
+							when processing starts.  Any volatile parameters kept in instance data but not exposed via parameters is
+							lost.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						VDAudioFilterPin::Read (mpReadProc)
+					</name>
+					<purpose>
+						Retrieves data from an input pin.
+					</purpose>
+					<prototype>
+						uint32 Read(void *dst, uint32 samples, bool bAllowFill, int format);<br/>
+						uint32 VDAPIENTRY mpReadProc(VDAudioFilterPin *pPin, void *dst, uint32 samples, bool bAllowFill, int format);
+					</prototype>
+					<action>
+						Reads up to <i>samples</i> worth of data from the specified input pin, in the requested format; returns the
+						number of samples actually read.
+					</action>
+					<timing>
+						Can only be called from within a filter's <tt>runProc</tt> procedure.
+					</timing>
+					<comments>
+						<p>
+							<tt>Read()</tt> is an inline wrapper for <tt>mpReadProc</tt>, the actual API callback.
+						</p>
+						<p>
+							It is OK to request more samples than can ever fit into the other filter's output buffer; the sample count
+							is automatically reduced to the number of samples actually available.  It is also OK to request zero samples.
+						</p>
+						<p>
+							If <tt>kVFARead_Native</tt> is specified as the input format, no conversion takes place.  Otherwise, VirtualDub
+							will convert data as necessary from the output pin format to the input pin format.  Only PCM-to-PCM conversions
+							are allowed; PCM-to-native or native-to-PCM conversions will fail.  VirtualDub will automatically detect if no
+							conversion is needed even if one is requested, so there is no performance penalty to requesting a conversion
+							when one is not required.
+						</p>
+						<p>
+							When <tt>bAllowFill</tt> is set, VirtualDub will supply zero samples to backfill the output buffer
+							when the output pin has ended.  In this case <tt>Read</tt> will <i>always</i> return the requested number
+							of samples.  This is useful for pins with multiple inputs since it eliminates the case where one input pin
+							has ended and the other hasn't.  Note that <tt>readProc</tt> does not receive <tt>bAllowFill</tt> as it
+							is transparent to upstream filters, and that backfilling is not available for non-PCM formats.
+						</p>
+					</comments>
+				</func>
+			</lina:apply>
+		</page>
+
+		<page filename="vfilt_tutorial1.html" name="video filter tutorial">
+			<h2>A trivial filter</h2>
+			<p>
+				Let's begin with a very simple filter:
+			</p>
+
+			<lina:codeex>
+int tutorial_null_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    // We are an in-place filter, so the source and dest buffers are
+    // already the same.  For now, do nothing.
+    return 0;
+}
+
+long tutorial_null_param(FilterActivation *fa, const FilterFunctions *ff) {
+    fa-&gt;dst.offset   = fa-&gt;src.offset;    // make source and destination buffers the same
+    return 0;                                   // do not set FILTERPARAM_SWAP_BUFFERS
+}
+
+FilterDefinition filterDef_tutorial_null={
+    0,0,NULL,               // next, prev, module (reserved)
+    "tutorial: null",       // name
+    "Does nothing.",        // desc
+    "Avery Lee",            // author
+    NULL,                   // private data
+    0,                      // inst_data_size
+    NULL,NULL,              // initProc, deinitProc
+    tutorial_null_run,      // runProc
+    tutorial_null_param,    // paramProc
+};
+			</lina:codeex>
+			<p>
+				This is a minimalist filter that does absolutely nothing.  It only implements two of the filter functions
+				as it needs no configuration or initialization, has no special needs for batch mode, and has no instance
+				data.  VirtualDub automatically supplies defaults for routines that are not supplied, so this filter only
+				needs to supply <tt>paramProc</tt>, which specifies the filter's output, and <tt>runProc</tt>, which does
+				the actual filtering.
+			</p>
+			<p>
+				<tt>paramProc</tt> tells VirtualDub what the filter outputs.  On entry, <tt>fa-&gt;dst</tt>, which specifies
+				the output buffer, is set to be the same as <tt>fa-&gt;src</tt>, which is the input buffer.  The adjustment
+				to <tt>offset</tt> simply specifies that the two also start in the same place in memory.  This way, the
+				output buffer (<tt>dst</tt>) is already the same as the input buffer (<tt>src</tt>) when filtering, which
+				simplies our job considerably &mdash; and, in fact, our <tt>runProc</tt> need not do anything in order to
+				pass the same video through.
+			</p>
+
+			<h2>Linking the filter into VirtualDub</h2>
+			<p>
+				At this point our <tt>tutorial: null</tt> filter is complete, but missing the linkage into VirtualDub.
+				To solve this, we simply need to create a DLL with the filter code and this glue:
+			</p>
+			<lina:codeex>
+namespace {
+    FilterDefinition *const g_filters[]={
+        &filterDef_tutorial_null
+    };
+
+    enum {
+        kFilterCount = sizeof g_filters / sizeof g_filters[0]
+    };
+
+    FilterDefinition *g_installedFilters[kFilterCount];
+}
+
+////////////////////////////////////////////////////////////
+
+extern "C" int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm,
+        const FilterFunctions *ff, int&amp; vdfd_ver, int&amp; vdfd_compat);
+extern "C" void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm,
+        const FilterFunctions *ff);
+
+int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm,
+        const FilterFunctions *ff, int&amp; vdfd_ver, int&amp; vdfd_compat)
+{
+
+    for(int i=0; i&lt;kFilterCount; ++i)
+        g_installedFilters[i] = ff->addFilter(fm, g_filters[i], sizeof(FilterDefinition));
+
+    vdfd_ver = VIRTUALDUB_FILTERDEF_VERSION;
+    vdfd_compat = VIRTUALDUB_FILTERDEF_COMPATIBLE;
+
+    return 0;
+}
+
+void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm,
+                                                                const FilterFunctions *ff) {
+    for(int i=0; i&lt;kFilterCount; ++i)
+        if (g_installedFilters[i]) {
+            ff->removeFilter(g_installedFilters[i]);
+            g_installedFilters[i] = 0;
+        }
+}
+			</lina:codeex>
+			<p>
+				This code may look nasty, but it's not as bad as it looks.  There are two exported functions from a filter DLL:
+			</p>
+			<ul>
+				<li>
+					<b>VirtualdubFilterModuleInit2</b> initializes a filter DLL.  It hooks filters from the DLL into VirtualDub's global
+					filter list, and then tells VirtualDub which range of filter APIs the filter supports.  VirtualDub automatically
+					manages this list and also checks that its filter API version is compatible with the filter.
+				</li>
+				<li>
+					<b>VirtualdubFilterModuleDeinit</b> deinitializes a filter DLL, removing the DLL's filters from VirtualDub's global
+					filter list.
+				</li>
+			</ul>
+			<p>
+				The above code simplies the job slightly by keeping the list of filter definitions in a pointer array, so
+				filters can be added to the DLL simply by linking in the code and then adding an entry to the global list.
+				Any number of video filters can thus be packed into a single DLL.
+			</p>
+			<lina:note>
+				There are two versions returned back to VirtualDub via the <tt>vdfd_ver</tt> and <tt>vdfd_compat</tt> parameters:
+				the highest API version used by the filter, and the lowest compatible version supported.  VirtualDub has its own
+				internal values for these parameters as well, and will not load your filter if one of these conditions occurs:
+				<ul>
+					<li>VirtualDub's filter API version is lower than the filter's compatible API version. (VirtualDub is too old)</li>
+					<li>The filter's API version is lower than VirtualDub's compatible API version. (filter is too old)</li>
+				</ul>
+				The sample filter code included with this guide hardcodes <tt>9</tt> rather than <tt>VIRTUALDUB_FILTERDEF_COMPATIBLE</tt>;
+				this is because API version 9 (VirtualDub 1.4.12+) is required for <tt>copyProc</tt> support, which makes filter
+				authoring much easier.  If you are writing a very simple filter, using <tt>VIRTUALDUB_FILTERDEF_COMPATIBLE</tt> allows
+				your filter to be loaded by VirtualDub versions as old as 1.2.
+			</lina:note>
+			<lina:note>
+				Starting with VirtualDub 1.5, filters are not kept loaded in memory unless they are being used, i.e. instances of the filter
+				are in a filter list.  This means that filter DLLs are loaded once at startup to retrieve information on the filters,
+				then immediately unloaded, and then loaded again when they are actually used.  This is invisible to most filters.
+			</lina:note>
+
+			<h2>Testing your filter</h2>
+			<p>
+				Once you have made a filter DLL, you can test it by using the Load button on the Add Filter dialog in VirtualDub.
+				However, there is a slightly simpler way.  Start VirtualDub with this command-line:
+			</p>
+			<lina:codeex>virtualdub.exe /!<i>filter-filename-and-path</i></lina:codeex>
+			<p>
+				This causes the filter to be automatically loaded on startup.  (In 1.5.5+, use <tt>/F <i>filename</i></tt> instead.)
+				Alternatively, link your filter into the <tt>plugins</tt> directory in VirtualDub's program folder, and it will
+				also be loaded automatically.
+			</p>
+
+			<h2>In closing</h2>
+			<p>
+				The philosophy behind VirtualDub's filter API design is that much of the work should be done by default in the host
+				so that simple filters can be made with little effort.  As seen above, less than a page of code is required to
+				make a trivial video filter.  However, the video filter doesn't do anything interesting yet.  Let's fix that.
+			</p>
+			<a href="vfilt_tutorial2.html">Adding image processing to the video filter</a>
+		</page>
+
+
+		<page filename="vfilt_tutorial2.html" name="video filter tutorial, part 2">
+			<h2>VirtualDub bitmaps</h2>
+			<p>
+				All bitmaps passed through VirtualDub filters are 32-bit xRGB, with 8 bits for each of the red, green, and blue
+				channels, and with the upper 8 bits unused.  This trades off some performance and versatility for greatly
+				simplified filter design, as all pixels can be addressed simply using 32-bit integers, without the need to color
+				convert or pack pixels, and without the hassles of color subsampling, as would be the case with most YCbCr (YUV)
+				formats.
+			</p>
+			<p>
+				Video filters receive two bitmaps through their <tt>FilterActivation *fa</tt> parameter, <tt>src</tt> and <tt>dst</tt>.
+				Both are 2D arrays that are addressed through four parameters:
+			</p>
+			<ul>
+				<li><tt>w</tt> and <tt>h</tt> specify the width and height of the bitmap in pixels.</li>
+				<li><tt>data</tt> points to the leftmost pixel of the <b>bottom-left</b> corner of the bitmap.</li>
+				<li><tt>pitch</tt> is the distance between the start of adjacent rows, in bytes.</li>
+			</ul>
+			<p>
+				Note that the <tt>pitch</tt> parameter is also very important.  For one thing, it allows bitmaps to have some space
+				between adjacent rows, which means that the bitmap you receive may actually be part of a bigger bitmap.  Also,
+				<tt>pitch</tt> may be negative, which indicates a bitmap that is stored upside-down from normal orientation.
+				This means that a bitmap can be cropped and vertically flipped in-place with zero copying.  Finally, note that
+				<tt>pitch</tt> is in <i>bytes</i> and not <i>pixels</i>.  You can step between rows with a bit of casting:
+			</p>
+			<lina:codeex>p = (uint32 *)((char *)p + pitch);</lina:codeex>
+			<p>
+				This can be simplified a bit using a macro from <tt>&lt;vdvideoutil.h&gt;</tt>:
+			</p>
+			<lina:codeex>p = vd_ptroffset(p, pitch);</lina:codeex>
+			<lina:note>
+				If it bothers you that the bitmaps are stored top-down, there is an easy solution: copy the <tt>src</tt> and <tt>dst</tt>
+				bitmap structures, replace <tt>data</tt> with the address of the top line, and negate <tt>pitch</tt>.  Now you have
+				top-down bitmaps.  Note that you <b>cannot</b> request top-down storage in your filter's <tt>paramProc</tt> procedure.
+			</lina:note>
+
+			<h2>Processing images in <tt>runProc</tt></h2>
+			<p>
+				Now that we know how the bitmaps are stored, let's make a simple filter: one that converts color video
+				into grayscale.  Rename the <tt>null</tt> filter to <tt>grayscale</tt>, and replace <tt>runProc</tt> as
+				follows:
+			</p>
+<lina:codeex>
+int tutorial_grayscale_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    const int w = fa-&gt;dst.w;
+    const int h = fa-&gt;dst.h;
+    const ptrdiff_t dstpitch = fa-&gt;dst.pitch;
+    uint32 *row = (uint32 *)fa-&gt;dst.data;
+
+    for(int y = 0; y &lt; h; ++y) {         // for each row....
+        for(int x = 0; x &lt; w; ++x) {     // for each pixel within that row...
+           const uint32 px = row[x];     // fetch pixel
+           int r = (px &gt;&gt; 16) & 255;     // extract red from bits 16-23
+           int g = (px &gt;&gt;  8) & 255;     // extract green from bits 8-15
+           int b = (px      ) & 255;     // extract blue from bits 0-7
+
+           // compute luminance ("brightness") of pixel
+           //
+           // In this case, we compute luma = 21% red, 72% green, 7% blue.
+
+           const int luma = ((r*54 + g*183 + b*19 + 128) &gt;&gt; 8);
+
+           // put luma into red/green/blue channels, and put back into bitmap
+           row[x] = 0x010101 * luma;
+        }
+
+        // advance to next row
+        row = vd_ptroffset(row, dstpitch);
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				Since we are an in-place filter, <tt>src</tt> and <tt>dst</tt> are the same as we can just work on <tt>dst</tt>.
+				We extract the red, green, and blue channel from each pixel, mix them together into a single luma value, then
+				blast that back out to all three channels and move onto the next pixel.
+			</p>
+			<p>
+				Some notes on conventions here:
+			</p>
+			<ul>
+				<li>The pixels are 32-bit, so the type <tt>uint32</tt> is used.  <tt>uint32</tt> is defined in <tt>&lt;vdplugin.h&gt;</tt>.  If you have
+					other types you'd like to use, any will do as long as they're 32-bit (and preferably unsigned).</li>
+				<li>Red, green, and blue range from 0-255, where 0 is nothing (black) and 255 is max (full color).  Black is all 0 and white is all 255.</li>
+				<li>Additive colors are used, so red+green makes yellow, green+blue makes cyan, red+blue makes magenta, etc.</li>
+				<li>The alpha channel (bits 24-31) have no meaning; they can have any value on entry to your filter and may have any
+					value, same or different, on exit.</li>
+			</ul>
+			<p>
+				You may have noticed that the unpacking of color components out of the 32-bit pixels is a bit nasty.  <tt>&lt;vdvideoutil.h&gt;</tt>
+				has a couple of macros that make this easier:
+			</p>
+<lina:codeex>
+int tutorial_grayscale_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    const int w = fa-&gt;dst.w;
+    const int h = fa-&gt;dst.h;
+    const ptrdiff_t dstpitch = fa-&gt;dst.pitch;
+    uint32 *row = (uint32 *)fa-&gt;dst.data;
+
+    for(int y = 0; y &lt; h; ++y) {         // for each row....
+        for(int x = 0; x &lt; w; ++x) {     // for each pixel within that row...
+<font color=red>           int r, g, b;
+
+           vd_pixunpack(px, r, g, b);</font>
+
+           const int luma = ((r*54 + g*183 + b*19 + 128) &gt;&gt; 8);
+
+           row[x] = 0x010101 * luma;
+        }
+
+        // advance to next row
+        row = vd_ptroffset(row, dstpitch);
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				Finally, although you should know how to iterate over a bitmap by hand, the <tt>vd_transform_pixmap_inplace</tt> macro
+				makes it especially easy:
+			</p>
+<lina:codeex>
+int tutorial_grayscale_run(const FilterActivation *fa, const FilterFunctions *ff) {
+<font color=red>    vd_transform_pixmap_inplace(fa->dst) {</font>
+        int r, g, b;
+
+        vd_pixunpack(px, r, g, b);
+
+        px = 0x010101 * ((r*54 + g*183 + b*19 + 128) >> 8);
+<font color=red>    }</font>
+
+    return 0;
+}
+</lina:codeex>
+
+			<h2>In the end....</h2>
+			<p>
+				If you look at the actual implementation in the <tt>samplefilter</tt> project, you'll find that it is slightly
+				different than the versions posted here.  In particular, it uses additional macros to (1) use table lookup instead
+				of multiplication for the luma computation, and (2) average with the original pixel to produce a desaturated
+				output rather than a totally colorless version.  There are a lot of transformations that can be performed with
+				this setup, and you can play around with some of your own to get more experience.
+			</p>
+			<p>
+				You can only do so much with a simple in-place transform, though, so next we'll do a slightly more complex filter.
+			</p>
+			<a href="vfilt_tutorial3.html">Video filter tutorial, part 3: Double sizee</a>
+
+		</page>
+
+		<page filename="vfilt_tutorial3.html" name="video filter tutorial, part 3">
+			<h2>A pixel doubling filter</h2>
+			<p>
+				One of the simplest image filters is <i>pixel doubling</i> &mdash; this is where you double the size of an
+				image by repeating each pixel in a 2x2 block. (It's also known as the <i>cheesy-way-to-make-a-game-run-in-high-res</i>
+				filter.)  We're going to make a filter that does such an operation, converting, for instance, a 320x240 image
+				to 640x480.  It won't be the highest quality, but we have to start somewhere, ne?
+			</p>
+			<h2>Implementation</h2>
+			<p>
+				Start by taking a copy of <i>tutorial: grayscale</i> and renaming it to <i>tutorial: pixeldouble</i>.
+				We can't work in-place anymore, obviously, so our <tt>paramProc</tt> has to change slightly:
+			</p>
+<lina:codeex>
+long tutorial_pixeldouble_param(FilterActivation *fa, const FilterFunctions *ff) {
+    fa->dst.w *= 2;                     // double the width
+    fa->dst.h *= 2;                     // double the height
+    fa->dst.AlignTo8();                 // recompute the pitch
+    return FILTERPARAM_SWAP_BUFFERS;    // request separate input and output buffers
+}
+</lina:codeex>
+			<p>
+				Note that the <tt>pitch</tt> must be specified; filters can set the pitch manually in order to satisfy special conditions,
+				such as a required specific alignment for fast memory tricks.  We simply use <tt>VFBitmap::AlignTo8()</tt> to compute
+				a pitch and round it up to an 8-byte multiple, for a nice, general alignment, then set <tt>FILTERPARAM_SWAP_BUFFERS</tt>
+				on the return value to request a separate output buffer.  (You could do pixel doubling in-place, but this requires very
+				careful attention to the order in which you process pixels, which is too much to cover here.)  Now we have to do
+				<tt>runProc</tt> itself:
+			</p>
+<lina:codeex>
+int tutorial_pixeldouble_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    vd_pixrow_iter srcrow(fa-&gt;src);
+    vd_pixrow_iter dstrow1(fa-&gt;dst, 0, 0);
+    vd_pixrow_iter dstrow2(fa-&gt;dst, 0, 1);
+
+    dstrow1.mulstep(2);
+    dstrow2.mulstep(2);
+
+    const int srcw = fa->src.w;
+    const int srch = fa->src.h;
+
+    for(int y=0; y&lt;srch; ++y) {
+        for(int x=0; x&lt;srcw; ++x) {
+            dstrow1[x*2] = dstrow1[x*2+1] = dstrow2[x*2] = dstrow2[x*2+1] = srcrow[x];
+        }
+
+        ++dstrow1;
+        ++dstrow2;
+        ++srcrow;
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				This example makes use of another <tt>&lt;vdvideoutil.h&gt;</tt> macro called <tt>vd_pixrow_iter</tt>, which stands
+				for <i>pixel row iterator</i>.  Given a bitmap and an optional starting location, it steps down the bitmap a row at
+				a time, or if <tt>mulstep()</tt> is called, <tt>n</tt> rows at a time.  It automatically handles the initial offset
+				and <tt>pitch</tt> arithmetic for you, and can be accessed like an array for the pixels within each row.  In this
+				case, we create one iterator for the source bitmap, and a pair of iterators that step down corresponding pairs of rows
+				in the destination bitmap.  Once we have that working, all that remains is to take each source pixel and blast it
+				into a 2x2 square in the destination bitmap.
+			</p>
+			<h2>Smoothing it out a bit</h2>
+			<p>
+				The pixel doubler works, but it doesn't look very good, does it?  The reason is that it doesn't <i>interpolate</i>,
+				that is, it doesn't compute intermediate values for locations <i>between</i> the source pixels.  We'll avoid discussing
+				<i>basis functions</i> or <i>low pass filtering</i> here, but simply explain a method called <i>bilinear interpolation</i>
+				to address this problem.
+			</p>
+			<p>
+				<i>Linear interpolation</i> means that you interpret any location between two points as being on a straight line
+				between them.  That is, if you have black at pixel 0 and white at pixel 1, the pixel halfway between them is the average
+				of the two colors.  The formula for linear interpolation is usually called <i>lerp</i> and has the following form:
+			</p>
+<lina:codeex>
+// a = value of first point
+// b = value of second point
+// f = fractional distance from first point to desired point
+lerp(a, b, f) = a*(1-f) + b*f = a + (b-a)*f
+</lina:codeex>
+			<p>
+				<i>Bilinear interpolation</i> is simply the extension of linear interpolation to two axes.  It is equivalent to
+				linear interpolation in one axis, followed by the other, in any order:
+			</p>
+<lina:codeex>
+// a = value of top-left point
+// b = value of top-right point
+// c = value of bottom-left point
+// d = value of bottom-right point
+// xf = horizontal fractional distance from first point to desired point
+// yf = vertical fractional distance from first point to desired point
+bilerp(a, b, xf, yf) = lerp(lerp(a,b,xf), lerp(c,d,xf), yf)
+                     = lerp(lerp(a,c,yf), lerp(b,d,yf), xf)
+</lina:codeex>
+			<p>
+				So given a desired pixel location, simply determine 2x2 group of pixels that contains it, compute the fractional
+				offset from the top-left pixel of that block, then bilinearly interpolate the desired pixel.
+			</p>
+			<p>
+				The only question that remains is how to handle this for RGB pixels, where you have three values per pixel, instead of
+				one.  Simply do the interpolation three times, one for each channel.
+			</p>
+
+			<h2>Smooth implementation</h2>
+			<p>
+				The method we'll use to do the actual linear interpolation is <i>reverse mapping</i>: for each destination pixel,
+				compute the source pixel that we want and interpolate it.  This ensures that we have no holes in the output and
+				that we process each destination pixel exactly once.  Unfortunately it's a bit more complicated:
+			</p>
+<lina:codeex>
+inline double lerp(double a, double b, double f) {
+    return a + (b-a)*f;
+}
+
+inline uint32 bilinear_fetch(const VFBitmap&amp; src, double x, double y) {
+    // top, left clipping
+    if (x &lt; 0)
+        x = 0;
+    if (y &lt; 0)
+        y = 0;
+
+    // compute anchor pixel (top-left) and fractional offsets
+    int xi = (int)x;
+    int yi = (int)y;
+    double xf = x - xi;
+    double yf = y - yi;
+
+    // bottom, right clipping
+    if (xi &gt;= src.w - 1) {
+        xi = src.w - 2;
+        xf = 1;
+    }
+
+    if (yi &gt;= src.h - 1) {
+        yi = src.h - 2;
+        yf = 1;
+    }
+
+    // fetch 2x2 pixel square from source and unpack to RGB
+    vd_pixrow_iter row1(src, xi, yi);
+    vd_pixrow_iter row2(src, xi, yi+1);
+
+    int r1, g1, b1, r2, g2, b2, r3, g3, b3, r4, g4, b4;
+
+    vd_pixunpack(row1[0], r1, g1, b1);
+    vd_pixunpack(row1[1], r2, g2, b2);
+    vd_pixunpack(row2[0], r3, g3, b3);
+    vd_pixunpack(row2[1], r4, g4, b4);
+
+    // compute interpolated pixel and repack
+    int r_out = (int)lerp(lerp(r1, r2, xf), lerp(r3, r4, xf), yf);
+    int g_out = (int)lerp(lerp(g1, g2, xf), lerp(g3, g4, xf), yf);
+    int b_out = (int)lerp(lerp(b1, b2, xf), lerp(b3, b4, xf), yf);
+
+    return vd_pixpack(r_out, g_out, b_out);
+}
+
+int tutorial_pixeldouble_filtered_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    vd_pixrow_iter dstrow(fa-&gt;dst, 0, 0);
+
+    const int dstw = fa-&gt;dst.w;
+    const int dsth = fa-&gt;dst.h;
+
+    for(int y=0; y&lt;dsth; ++y) {
+        for(int x=0; x&lt;dstw; ++x)
+            dstrow[x] = bilinear_fetch(fa-&gt;src, x*0.5-0.25, y*0.5-0.25);
+
+        ++dstrow;
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				The nastiest part of a filter like this is usually not the actual pixel arithmetic itself, but handling the edge conditions.
+				As it turns out, with an exact 2:1 mapping, some of the interpolated pixels will always be outside of the source bitmap.
+				How this is handled differs between resamplers.  This particular filter uses <i>clamp</i>, where the coordinates are pushed
+				back in bounds, while some others use <i>mirror</i>, where out-of-range coordinates are reflected across the border back
+				in range.  About half the code above simply deals with clipping, which is quite a lot.  Often the way clipping is handled
+				is to use a fast "no-clip" routine for most of the bitmap, and use a slower, clipped routine for the edges.  Sometimes there
+				are other tricks that can be used to reduce the amount of code necessary, such as passing the same border row to a routine
+				twice, fiddling with row pitches, etc.  However, these are quite specific to the algorithm in use.
+			</p>
+			<p>
+				I must confess to being particular embarrassed at the above routine &mdash; it's probably the slowest bilinear sampling
+				code I have ever written.  Replacing the floating-point arithmetic with fixed-point, doing the lerp on red and blue
+				simultaneously, and doing the clipping on a per-row basis rather than per-pixel would speed this routine up immensely.
+				The <tt>resize</tt> filter in VirtualDub uses all of these tricks and executes orders of magnitude faster than above.
+				However, it's not nearly as versatile:
+			</p>
+<lina:codeex>
+int tutorial_pixeldouble_rotated_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    vd_pixrow_iter dstrow(fa-&gt;dst, 0, 0);
+
+    const int dstw = fa-&gt;dst.w;
+    const int dsth = fa-&gt;dst.h;
+
+    static const double s = sin(10 * 3.1415926535897932 / 180.0);
+    static const double c = cos(10 * 3.1415926535897932 / 180.0);
+
+    const double xcen = fa-&gt;src.w*0.5 - 0.5;
+    const double ycen = fa-&gt;src.h*0.5 - 0.5;
+
+    for(int y=0; y&lt;dsth; ++y) {
+        for(int x=0; x&lt;dstw; ++x) {
+            double xc = x*0.5 - 0.25 - xcen;
+            double yc = y*0.5 - 0.25 - ycen;
+
+            double x2 = xcen + xc*c + yc*s;
+            double y2 = ycen - xc*s + yc*c;
+
+            dstrow[x] = bilinear_fetch(fa-&gt;src, x2, y2);
+        }
+
+        ++dstrow;
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				Now the code does a ten-degree rotation, too!
+			</p>
+			<h2>For another time</h2>
+			<p>
+				An awful lot of effects can be created using the bilinear sampling routine given above, just by changing
+				the formula used to generate the coordinates.  Some of the more interesting are <i>displacement map</i>
+				effects, generated by making the source coordinates equal to the destination coordinates plus a pair of
+				per-pixel offsets, which come from the displacement map.  (This is also known as <i>bump mapping</i> if
+				the displacement map is generated from a map of normals to a surface.)  Applying a uniform affine transform
+				to the coordinates instead gives you shearing, rotation, flipping, scaling, and translation from a single
+				2x3 matrix, and results in <i>affine texture mapping</i>.  Generalizing this to a 3x3 matrix
+				with homogeneous coordinates results in <i>per-pixel perspective-correct texture mapping</i>, which, as
+				you may have guessed, is the foundation of all modern 3D video accelerators.
+			</p>
+			<p>
+				The filtering algorithm used above, 2x2 bilinear interpolation, is adequate for a lot of tasks, but better
+				quality can be obtained with more complex algorithms.  A bicubic (4x4) source matrix produces slightly better
+				results, at the cost of more computation; for cases where the source is locally being shrunk, a larger
+				<i>decimation kernel</i>, either bilinear or bicubic, reduces the sparkling caused by aliasing.  The
+				<i>precise bilinear</i> mode of VirtualDub's resize filter does this.
+			</p>
+			<p>
+				Note that the filters we have created so far do not have any user configurable parameters.  We will
+				fix this in the next lesson.
+			</p>
+			<a href="vfilt_tutorial4.html">Video filter tutorial, part 4: In search of user configurability</a>
+
+		</page>
+
+		<page filename="vfilt_tutorial4.html" name="video filter tutorial, part 4">
+			<h2>A saturation filter</h2>
+			<p>
+				Remember that grayscale filter we made in part 1?  We are now going to turn it into a saturation filter.
+				The source image has "full color" while the output image has "no color," so if we interpolate between
+				them the result will have "some color."  Which is exactly what a saturation filter does.  We'll want
+				the saturation value to be configurable, so first we'll need to inform VirtualDub that we have per-instance
+				data to store, and that we have a procedure to initialize it:
+			</p>
+<lina:codeex>
+struct TutorialSaturationFilterData {
+    double saturation;
+};
+
+int tutorial_saturation_init(const FilterActivation *fa, const FilterFunctions *ff) {
+    TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)fa-&gt;filter_data;
+
+    pfd-&gt;saturation = 0.5;
+    return 0;
+}
+
+FilterDefinition filterDef_tutorial_saturation={
+    0,0,NULL,
+    "tutorial: saturation",
+    "Adjusts a video's saturation.",
+    "Avery Lee",
+    NULL,
+    sizeof(TutorialSaturationFilterData),
+    tutorial_saturation_init,
+    NULL,
+    tutorial_saturation_run,
+    tutorial_saturation_param,
+    NULL,
+    NULL,
+};
+</lina:codeex>
+			<p>
+				Now we'll modify the grayscale filter's <tt>runProc</tt> to control saturation instead.  However, I refuse
+				to use floating-point in an inner loop this time, so we'll be using fixed-point for speed:
+			</p>
+<lina:codeex>
+int tutorial_saturation_run(const FilterActivation *fa, const FilterFunctions *ff) {
+    TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)fa-&gt;filter_data;
+
+    const int isat          = (int)((1.0 - pfd-&gt;saturation) * 256.0);
+    const int inv_isat_256  = (256-isat) * 256;
+
+    vd_transform_pixmap_inplace(fa-&gt;dst) {
+        int r, g, b;
+        vd_pixunpack(px, r, g, b);
+
+        const int y = (r*54 + g*183 + b*19 + 128) * isat;
+
+        r = (r * inv_isat_256 + y + 32768) &gt;&gt; 16;
+        g = (g * inv_isat_256 + y + 32768) &gt;&gt; 16;
+        b = (b * inv_isat_256 + y + 32768) &gt;&gt; 16;
+
+        px = vd_pixpack(r, g, b);
+    }
+
+    return 0;
+}
+</lina:codeex>
+			<p>
+				Compile and run the new filter in VirtualDub, and you'll find it generates desaturated video.  There are
+				some minor issues such as shifts in perceived luma due to a lack of gamma correction, but we'll ignore that
+				in the interest of simplicity.
+			</p>
+
+			<h2>Any amount of saturation you want, as long as it's 50%</h2>
+			<p>
+				Wait... we hardcoded the saturation value at 0.5, didn't we?  That's not very configurable.  We should add
+				a configuration dialog to allow the user to change it.  That's where <tt>configProc</tt> comes in, which
+				lets a filter display a custom configuration dialog:
+			</p>
+<lina:codeex>
+BOOL CALLBACK tutorial_saturation_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+    TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)
+                                        GetWindowLongPtr(hdlg, DWL_USER);
+
+    switch(msg) {
+        case WM_INITDIALOG:
+            SetWindowLongPtr(hdlg, DWL_USER, lParam);
+            pfd = (TutorialSaturationFilterData *)lParam;
+
+            SetDlgItemInt(hdlg, IDC_VALUE, (int)(0.5 + pfd-&gt;saturation*100), FALSE);
+            return TRUE;
+
+        case WM_COMMAND:
+            switch(LOWORD(wParam)) {
+            case IDOK:
+                {
+                    BOOL bValid;
+                    UINT v = GetDlgItemInt(hdlg, IDC_VALUE, &bValid, FALSE);
+
+                    if (!bValid || v &gt; 100) {
+                        MessageBeep(MB_ICONEXCLAMATION);
+                        SetFocus(GetDlgItem(hdlg, IDC_VALUE));
+                        return FALSE;
+                    }
+
+                    pfd-&gt;saturation = (int)v / 100.0;
+                }
+                EndDialog(hdlg, TRUE);
+                return TRUE;
+
+            case IDCANCEL:
+                EndDialog(hdlg, FALSE);
+                return TRUE;
+            }
+            break;
+
+    }
+    return FALSE;
+}
+
+int tutorial_saturation_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
+    return !DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_TUTORIAL_SATURATION), hWnd,
+                           tutorial_saturation_dlgproc, (LPARAM)fa-&gt;filter_data);
+}
+
+<font color=gray>
+FilterDefinition filterDef_tutorial_saturation={
+    0,0,NULL,
+    "tutorial: saturation",
+    "Adjusts a video's saturation.",
+    "Avery Lee",
+    NULL,
+    sizeof(TutorialSaturationFilterData),
+    tutorial_saturation_init,
+    NULL,
+    tutorial_saturation_run,
+    tutorial_saturation_param,
+    </font>tutorial_saturation_config,<font color=gray>
+    NULL,
+};</font>
+</lina:codeex>
+			<p>
+				Creating <tt>configProc</tt> requires knowledge of Win32 dialog box programming, which is unfortunately beyond the scope
+				of this document.  However, the linkage to VirtualDub is pretty simple: create your dialog, and when it returns, return
+				<tt>TRUE</tt> if the user hit OK and possibly changed something, or <tt>FALSE</tt> if the user hit Cancel and nothing
+				was changed.
+			</p>
+
+			<p>
+				One issue is that the filter chain list in VirtualDub doesn't offer a clue as to what the setting of the filter is.
+				That's simple to fix, as the <tt>stringProc2</tt> entry point allows the filter to produce a short text blurb of the
+				current settings.  (<tt>stringProc</tt> is the older function for doing this; newer versions of VirtualDub don't need
+				it, but we will implement it using <tt>stringProc2</tt> for compatibility.)
+			</p>
+<lina:codeex>
+void tutorial_saturation_string(const FilterActivation *fa, const FilterFunctions *ff,
+                                char *buf) {
+	fa-&gt;filter-&gt;stringProc2(fa, ff, buf, 100);
+}
+
+void tutorial_saturation_string2(const FilterActivation *fa, const FilterFunctions *ff,
+                                 char *buf, int maxlen) {
+	TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)fa-&gt;filter_data;
+
+	_snprintf(buf, maxlen, " (%d%%)", (int)(0.5 + 100.0*pfd-&gt;saturation));
+}
+<font color=gray>
+FilterDefinition filterDef_tutorial_saturation={
+	0,0,NULL,
+	"tutorial: saturation",
+	"Adjusts a video's saturation.",
+	"Avery Lee",
+	NULL,
+	sizeof(TutorialSaturationFilterData),
+	tutorial_saturation_init,
+	NULL,
+	tutorial_saturation_run,
+	tutorial_saturation_param,
+	tutorial_saturation_config,</font>
+	tutorial_saturation_string,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	tutorial_saturation_string2<font color=gray>
+};</font>
+</lina:codeex>
+
+			<p>
+				Now we have a way to adjust the saturation constant, and can vary it anywhere from 0% to 100% through a graphical interface.
+				However, we still have a problem: we can't see what the result looks like until we quit out of the filter dialog, which
+				is annoying.  VirtualDub's <i>filter preview</i> feature offers a way around this.
+			</p>
+
+			<h2>Let me see what I'm doing</h2>
+			<p>
+				The <tt>ifp</tt> member of the <tt>FilterActivation</tt> object points to a <tt>IFilterPreview</tt> interface that
+				can be used to show the user the results of configuration parameters while the dialog is still visible.  It consists
+				of 12 member functions, the most important of which are the following:
+			</p>
+			<ul>
+				<li><b>InitButton()</b> associates a button on the dialog with the filter preview; it is normally labeled "Show Preview."
+					This button is automatically enabled and toggled as the filter preview is displayed and hidden.</li>
+				<li><b>Toggle()</b> displays or hides the filter preview, and is normally called by the filter dialog procedure when
+					the "Show Preview" button is pressed.</li>
+				<li><b>RedoFrame()</b> tells VirtualDub to recompute the current frame, causing the filter to be run again.</li>
+				<li><b>UndoSystem()</b> and <b>RedoSystem()</b> tell VirtualDub to stop and restart the entire filter chain, respectively,
+					and recompute the current frame.  This is required when a configuration change results in the filter's output frame
+					spec changing, such as a different frame size.</li>
+			</ul>
+			<p>
+				In order to support filter preview, we have to change the dialog procedure so that it writes changes by the user
+				into the live filter configuration immediately, and then roll them back when Cancel is hit.  Also, we have to trigger
+				the filter preview when the saturation parameter changes and when the Preview button is hit:
+			</p>
+<lina:codeex>
+<font color=gray>BOOL CALLBACK tutorial_saturation_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+    TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)
+                                        GetWindowLongPtr(hdlg, DWL_USER);
+
+    switch(msg) {
+        case WM_INITDIALOG:
+            SetWindowLongPtr(hdlg, DWL_USER, lParam);
+            pfd = (TutorialSaturationFilterData *)lParam;
+</font>
+            if (pfd-&gt;ifp)
+                pfd-&gt;ifp-&gt;InitButton(GetDlgItem(hdlg, IDC_PREVIEW));
+<font color=gray>
+            SetDlgItemInt(hdlg, IDC_VALUE, (int)(0.5 + pfd-&gt;saturation*100), FALSE);
+            return TRUE;
+
+        case WM_COMMAND:
+            switch(LOWORD(wParam)) {
+            case IDOK:
+                {
+                    BOOL bValid;
+                    UINT v = GetDlgItemInt(hdlg, IDC_VALUE, &bValid, FALSE);
+
+                    if (!bValid || v &gt; 100) {
+                        MessageBeep(MB_ICONEXCLAMATION);
+                        SetFocus(GetDlgItem(hdlg, IDC_VALUE));
+                        return FALSE;
+                    }
+
+                    pfd-&gt;saturation = (int)v / 100.0;
+                }
+                EndDialog(hdlg, TRUE);
+                return TRUE;
+
+            case IDCANCEL:
+                EndDialog(hdlg, FALSE);
+                return TRUE;
+</font>
+            case IDC_VALUE:
+                if (HIWORD(wParam) == EN_KILLFOCUS) {
+                    BOOL bValid;
+                    UINT v = GetDlgItemInt(hdlg, IDC_VALUE, &bValid, FALSE);
+
+                    if (bValid && v &lt;= 100) {
+                        pfd-&gt;saturation = (int)v / 100.0;
+                        if (pfd-&gt;ifp)
+                            pfd-&gt;ifp-&gt;RedoFrame();
+                    }
+                }
+                return TRUE;
+
+            case IDC_PREVIEW:
+                if (pfd-&gt;ifp)
+                    pfd-&gt;ifp-&gt;Toggle(hdlg);
+                return TRUE;<font color=gray>
+            }
+            break;
+
+    }
+    return FALSE;
+}
+
+int tutorial_saturation_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {</font>
+    TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)fa-&gt;filter_data;
+
+    // cache filter preview interface
+    pfd-&gt;ifp = fa-&gt;ifp;
+
+    // cache original configuration
+    TutorialSaturationFilterData fd_temp(*pfd);
+
+    // display dialog
+    if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_TUTORIAL_SATURATION),
+                       hWnd, tutorial_saturation_dlgproc, (LPARAM)fa-&gt;filter_data)) {
+        // user hit cancel -- rollback changes
+        *pfd = fd_temp;
+        return TRUE;
+    }
+
+    return FALSE;
+<font color=gray>}</font>
+</lina:codeex>
+
+			<p>
+				Edit boxes are a bit of a problem.  You don't want to refresh the video frame every time the user hits
+				a character, as this can take a significant amount of time with a large image or a slow filter chain.
+				The other problem is that the box might have invalid values while the user's editing it &mdash; if the
+				user types "640" before deleting the "320" after it, you don't want to reinit the filter chain with
+				a 640,320 pixel wide bitmap!  Sliders are nicer for this as they're easier to adjust and don't have
+				the same problem, but are harder to set quickly to predefined values.  In any case, you will want to
+				add some input validation and sanity checking to the input values.
+			</p>
+
+			<h2>Hey, what happened to my settings?</h2>
+			<p>
+				If you try running <tt>tutorial: saturation</tt> in batch mode, you'll discover a problem with it:
+				your settings aren't used!  This is because we haven't implemented the code to save and restore those
+				settings to the batch job configuration.  That's next.
+			</p>
+			<a href="vfilt_tutorial5.html">Video filter tutorial, part 5: batch configuration</a>
+
+		</page>
+
+		<page filename="vfilt_tutorial5.html" name="video filter tutorial, part 5">
+			<h2>Getting batch mode working</h2>
+			<p>
+				In the last part, we discovered that our filter configuration isn't saved to batch jobs, and so
+				in batch mode our <tt>saturation</tt> filter always comes up with default values.  So now we need
+				to add the hooks to do so.  The key to doing this is the <tt>fssProc</tt> and <tt>script_obj</tt>
+				members of the <tt>FilterDefinition</tt> structure: they allow the filter to export configuration
+				settings to VirtualDub's job script.
+			</p>
+			<p>
+				The <tt>fssProc</tt> procedure creates the command in the batch file that reconfigures the filter
+				with its original settings.  It produces a string of the form:
+			</p>
+<lina:codeex>
+Config(<i>arg</i>[,<i>arg</i>][,<i>arg</i>]...)
+</lina:codeex>
+			<p>
+				There can be from 1-16 <i>arg</i>s, where each is either an ANSI string or a 32-bit signed integer.
+				The syntax for both string and integer constants is the same as C/C++ &mdash; in particular, hex
+				notation may be used for integers, and strings may contain C escapes.  Win32 file paths must <i>not</i>
+				be written to the script line without escaping backslashes.  Also, control characters (<tt>00-1F</tt>)
+				should not be written directly, either &mdash; they should be escaped using <tt>\x<i>nn</i></tt> syntax.
+			</p>
+			<p>
+				The other half of the puzzle is getting the arguments back in on load.  This is done via the <tt>script_obj</tt>
+				parameter, which specifies a script object.  This object should specify one or more <tt>Config</tt> functions,
+				to match the <tt>fssProc</tt> output:
+			</p>
+<lina:codeex>
+bool tutorial_saturation_fss(FilterActivation *fa, const FilterFunctions *ff,
+                             char *buf, int maxlen) {
+	TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)
+                                        fa-&gt;filter_data;
+
+	_snprintf(buf, maxlen, "Config(%d)", (int)(0.5 + 10000.0*pfd-&gt;saturation));
+	return true;
+}
+
+static void tutorial_saturation_script_config(IScriptInterpreter *isi, void *lpVoid,
+                                              CScriptValue *argv, int argc) {
+	FilterActivation *fa = (FilterActivation *)lpVoid;
+	TutorialSaturationFilterData *pfd = (TutorialSaturationFilterData *)
+                                        fa-&gt;filter_data;
+
+	pfd-&gt;saturation = argv[0].asInt() / 10000.0;
+}
+
+static ScriptFunctionDef tutorial_saturation_func_defs[]={
+	{ (ScriptFunctionPtr)tutorial_saturation_script_config, "Config", "0i" },
+	{ NULL },
+};
+
+static CScriptObject tutorial_saturation_obj={
+	NULL, tutorial_saturation_func_defs
+};
+<font color=gray>
+FilterDefinition filterDef_tutorial_saturation={
+	0,0,NULL,
+	"tutorial: saturation",
+	"Adjusts a video's saturation.",
+	"Avery Lee",
+	NULL,
+	sizeof(TutorialSaturationFilterData),
+	tutorial_saturation_init,
+	NULL,
+	tutorial_saturation_run,
+	tutorial_saturation_param,
+	tutorial_saturation_config,
+	tutorial_saturation_string,
+	NULL,
+	NULL,</font>
+	&tutorial_saturation_obj,
+	tutorial_saturation_fss,<font color=gray>
+	tutorial_saturation_string2
+};</font>
+</lina:codeex>
+			<p>
+				Because the script cannot take floating-point numbers, we multiply the <tt>saturation</tt> value by 10,000 and save it as
+				an integer.  In order to accept the <tt>Config</tt> line back in during loading, <tt>saturation</tt> exports a single
+				script object with one <tt>Config</tt> method.  (The original intention of this mechanism was to allow filters to export
+				an entire family of control functions.  It is now recommended that you export only <tt>Config()</tt> in this simple manner
+				for compatibility.)  The <tt>Config()</tt> method receives a list of variants via the <tt>argv</tt> and <tt>argc</tt>
+				arguments, from which it pulls out the <tt>saturation</tt> argument.
+			</p>
+			<p>
+				Filters that have more arguments or that need to support older configuration strings can export more than one <tt>Config</tt>
+				method.  Check the <a href="videoapiold_ref.html">video API reference</a> for information on how to do this.
+			</p>
+
+			<h2>The end</h2>
+			<p>
+				Well, that's all. There are a number of useful features of the VirtualDub filter API that are not covered by this tutorial, such as:
+			</p>
+			<ul>
+				<li>assembly language support (CPU feature identification)</li>
+				<li>sampling</li>
+				<li>complex filter object support (startProc/endProc/copyProc)</li>
+				<li>delayed filters</li>
+			</ul>
+			<p>
+				These are covered in the API reference, for those who are interested.
+			</p>
+		</page>
+
+
+		<page filename="videoapiold_preview.html" name="video api: preview">
+			<h2>Preview</h2>
+			<p>
+				The <tt>IFilterPreview</tt> interface pointed to by the <tt>fa-&gt;ifp</tt> member of the <tt>FilterActivation</tt>
+				structure allows filters to display a preview window while the user is tweaking parameters.  VirtualDub handles the
+				vast majority of work for the preview, and in the simplest incarnation, the filter need only display a button and
+				notify VirtualDub when the button is clicked.
+			</p>
+			<lina:note>
+				For an example of using the <tt>IFilterPreview</tt> interface, consult the sources for VirtualDub's <i>levels</i>
+				filter (<tt>f_levels.cpp</tt>).
+			</lina:note>
+			<lina:note>
+				Filter preview is not available when no video is loaded &mdash; make sure you check for <tt>fa-&gt;ifp</tt> being NULL
+				and disable your Preview button if so.
+			</lina:note>
+			<h3>Button management</h3>
+			<p>
+				At the beginning of the filter dialog, call <tt>ifp-&gt;InitButton(hwnd)</tt>.  This will enable your filter's
+				"Show preview" button and attach it to the preview system so that its label automatically changes when the
+				filter preview is shown or hidden by the user.  It helps to have the button disabled in the dialog template
+				so that if <tt>ifp</tt> is <tt>NULL</tt>, the button stays disabled.  Whenever the button is clicked, call
+				<tt>ifp-&gt;Toggle(hdlg)</tt> with the dialog handle; this will automatically display or hide the Preview pane,
+				change the Preview button label as appropriate, and position the Preview pane next to the filter's dialog if
+				possible.
+			</p>
+			<p>
+				For filters that want to do manual management of the preview display, <tt>ifp-&gt;isPreviewEnabled()</tt>
+				tells if preview is available, while <tt>ifp-&gt;Display(hdlg, bDisplay)</tt> and <tt>ifp-&gt;Close()</tt> allow
+				direct control over the visibility of the preview.  <tt>ifp-&gt;SetButtonCallback()</tt> can be used to register
+				a callback that allows your filter to change its Preview button state manually, rather than letting VirtualDub
+				handle it.
+			</p>
+			<h3>Propagating changes</h3>
+			<p>
+				While the filter preview is active, the filter is started, run, and stopped while its configuration dialog
+				is still displayed.  As such, you must be careful that the filter's dialog procedure and its operational portions
+				do not conflict.  It is guaranteed that the filter dialog procedure never runs concurrently with the filter
+				chain, so synchronization is not required.  However, it does require that changes made by the user are propagated
+				directly into the filter configuration structure, so that they can be picked up by the filter chain, and thus
+				the filter's <tt>configProc</tt> must contain code to back out those changes if Cancel is pressed.
+			</p>
+			<p>
+				When changes are made, there are two methods for a filter to update the preview.  <tt>ifp-&gt;RedoFrame()</tt>
+				causes the current input frame to be pushed through the pipeline again, allowing the filter to re-process it
+				with updated settings.  This is the faster and preferred method of updating the preview.  When the filter needs
+				to make changes that alter its output frame specification, <tt>ifp-&gt;UndoSystem()</tt> and <tt>ifp-&gt;RedoSystem()</tt>
+				allow the configuration dialog to tear down and restart the entire filter chain, and thus causing frame size
+				negotiation to reoccur.  An example of where this is required is the <tt>resize</tt> filter, which allows
+				the user to change the desired video size.  <tt>ifp-&gt;RedoSystem</tt> is expensive and should be used sparingly.
+			</p>
+			<p>
+				Note that when multiple filters are present in a filter chain, the preview includes all filters prior to the
+				filter being configured.  This means that the preview code may have to do significantly more work than that
+				required by your filter alone, which may cause it to be somewhat slow when expensive or many filters are involved.
+				As such it is a good idea to reduce the number of re-renders your filter requests to avoid redundant or extraneous
+				refreshes, particularly if your filter itself is somewhat slow at updating.
+			</p>
+
+			<h2>Sampling</h2>
+			<p>
+				Sampling allows a video filter to display a profile of its video input for the user's use during filter configuration.
+				An example is VirtualDub's <i>levels</i> filter, which can display a histogram of the current video frame for easier
+				adjustment.  To use sampling, a video filter must the filter preview displayed during its configuration dialog.
+			</p>
+			<p>
+				To support sampling, first install a sampling callback via <tt>ifp-&gt;SetSamplingCallback()</tt>.  This callback
+				receives a pointer to a bitmap, a frame number, and a cookie of your choice, and is where your filter should
+				process frames.  When multiple filters are involved, sampling always examines the input to your filter from
+				the previous filters in the chain.  Then add two buttons to your filter dialog, for sampling the current frame and
+				for sampling the video stream.  Call <tt>ifp-&gt;SampleCurrentFrame()</tt> or <tt>ifp-&gt;SampleFrames()</tt>
+				when requested by the user.  These functions are synchronous and do not return until sampling has finished.
+			</p>
+			<p>
+				Note that the filter does not have control over which frames are sampled, or even if sampling occurs.  Sampling
+				is thus a user assist and should not be relied upon for automated configuration of filter parameters.  The flip side
+				is that VirtualDub handles most of the work for you, including requesting how often the video stream should be
+				sampled, displaying a progress dialog, and fetching the frames.  One exception is that it does not manage the button
+				enabled states like it does for the "Show Preview" button &mdash; you must install a button callback via
+				<tt>ifp-&gt;SetButtonCallback()</tt> in order to appropriately enable and disable the sampling buttons.
+			</p>
+		</page>
+
+		<page filename="videoapiold_ref.html" name="video api: reference">
+			<lina:apply name="func">
+				<func>
+					<name>
+						initProc
+					</name>
+					<purpose>
+						Creates video filter instance.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY initProc(FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should initialize the memory pointed to by <tt>fa-&gt;filter_data</tt> with instance data.
+					</action>
+					<timing>
+						First function called with a new activation record.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							Initialization is usually performed using <i>placement new</i>:
+						</p>
+						<blockquote><pre>
+new(fa-&gt;filter_data) MyClass;
+						</pre></blockquote>
+						<p>
+							VirtualDub allocates the memory pointed to by <tt>fa-&gt;filter_data</tt> &mdash; do <b>not</b> do
+							this:
+						</p>
+						<blockquote><pre>
+fa-&gt;filter_data = new MyClass;
+						</pre></blockquote>
+						<p>
+							Note that if your filter structure is not a <i>plain old data</i> (POD) type, you <b>must</b> specify
+							a copy constructor for your filter via the <tt>copyProc</tt> entry.  A POD-struct in C++ is a structure
+							that has no pointers to members, no user-defined copy constructor or destructor, and does not contain
+							or derive from non-POD structs or unions.  Essentially, if your filter object cannot be copied with
+							<tt>memcpy()</tt>, you must supply <tt>copyProc</tt>.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						deinitProc
+					</name>
+					<purpose>
+						Destroys video filter instance.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY deinitProc(FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should initialize the memory pointed to by <tt>fa-&gt;filter_data</tt> with instance data.
+					</action>
+					<timing>
+						Last function called with an activation record.
+					</timing>
+					<comments>
+						<p>
+							Initialization is usually performed through a direct call to a destructor:
+						</p>
+						<blockquote><pre>
+((MyClass *)fa-&gt;filter_data)-&gt;~MyClass();
+						</pre></blockquote>
+						<p>
+							VirtualDub automatically deallocates the memory pointed to by <tt>fa-&gt;filter_data</tt>, so do <b>not</b> use
+							<tt>delete</tt>.  For filters that do not require a non-trivial copy constructor, <tt>deinitProc</tt> can be
+							omitted.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						runProc
+					</name>
+					<purpose>
+						Processes a frame of image data.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY runProc(const FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should store a processed frame into the buffer referenced by <tt>fa-&gt;dst</tt>.
+					</action>
+					<timing>
+						Called while filter is in running state.  May be called while a filter's <tt>configProc</tt> is active
+						if filter preview is supported, in the same thread.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						
+					</comments>
+				</func>
+				<func>
+					<name>
+						paramProc
+					</name>
+					<purpose>
+						Computes output image parameters for a filter given input image parameters.
+					</purpose>
+					<prototype>
+						long VDAPIENTRY paramProc(FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should initialize <tt>fa-&gt;dst</tt> with the filter's output bitmap parameters, and return
+						a bitmask indicating the behavior of the filter:
+						<ul>
+							<li><tt>FILTERPARAM_SWAP_BUFFERS</tt>: <tt>src</tt> and <tt>dst</tt> should be distinct buffers.  Otherwise, the two are collapsed
+								into a single buffer.
+							</li>
+							<li><tt>FILTERPARAM_NEEDS_LAST</tt>: If set, VirtualDub will cache the previous input frame and provide it as <tt>fa-&gt;last</tt>.
+							</li>
+							<li><tt>FILTERPARAM_HAS_LAG(n)</tt>: Indicates that the filter's output lags its input by <tt>n</tt> frames.  This causes VirtualDub
+								to queue frame timings by <tt>n</tt> frames -- it is up to the filter itself to provide the delay.
+							</li>
+						</ul>
+					</action>
+					<timing>
+						Always called at least once during idle state before a filter transitions to running state.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							On entry, <tt>fa-&gt;dst</tt> is preinitialized with the same image size as <tt>fa-&gt;src</tt>, so filters do not have
+							to copy all entries.  However, <tt>fa-&gt;dst.offset</tt> is set to zero, so in-place filters should reinitialize <tt>offset</tt>
+							with the source offset, or else input cropping will break.
+						</p>
+						<p>
+							This function may be called relatively frequently during UI, so it should not be overly slow, and it definitely should
+							not invoke complex operations such as displaying filter-specific UI.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						configProc
+					</name>
+					<purpose>
+						Displays graphical UI for a filter's configuration.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY configProc(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd);
+					</prototype>
+					<action>
+						Filter should display its configuration dialog using <tt>hwnd</tt> as the parent window.  The procedure should
+						return a non-zero value if the user clicked <tt>Cancel</tt>, or zero if the user clicked <tt>OK</tt>.
+					</action>
+					<timing>
+						Only called in idle state.
+					</timing>
+					<comments>
+						<p>
+							VirtualDub automatically displays a filter's configuration dialog, if it has one, when an instance of
+							the filter is added to the filter chain.  If the user clicks Cancel, the filter instance is automatically
+							deleted.  Except for the return value from <tt>configProc</tt>, this is transparent to the filter itself.
+						</p>
+						<p>
+							On entry, <tt>fa-&gt;ifp</tt> will be non-<tt>NULL</tt> if VirtualDub supports active filter preview; this
+							indicates that a UI can be displayed for actively showing a filter's output to the user during configuration.
+							If this is supported by the filter, the filter's configuration dialog must update configuration parameters
+							directly in the filter instance, meaning that it must also handle rollback if the user hits Cancel.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						stringProc
+					</name>
+					<purpose>
+						Produces a user-readable text description of a filter's current configuration.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY stringProc(const FilterActivation *fa, const FilterFunctions *ff, char *buf);
+					</prototype>
+					<action>
+						Filter should produce a string describing its current configuration.  This is normally of the form "<tt> (...)</tt>"
+						as it immediately follows the filter name.
+					</action>
+					<timing>
+						Only called in idle state.
+					</timing>
+					<comments>
+						<p>
+							The size of the buffer is not supplied to <tt>stringProc</tt>; to prevent buffer overflow no more than 128
+							bytes should be written to the buffer.  Newer filters should implement <tt>stringProc2</tt> instead and
+							implement <tt>stringProc</tt> as <tt>stringProc2(fa, ff, buf, 128)</tt>.
+						</p>
+						<p>
+							VirtualDub's filter dialog only has a very limited space to display configuration strings, so the
+							strings should be concise.  Not all parameters need to be exposed to the user in the blurb.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						startProc
+					</name>
+					<purpose>
+						Prepares a filter for active image filtering.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY startProc(FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should allocate any necessary buffers required to process image data.
+					</action>
+					<timing>
+						Called when transitioning from idle to running state.  <tt>paramProc</tt> is always called at least once
+						after initialization or configuration before <tt>startProc</tt>.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+					</comments>
+				</func>
+				<func>
+					<name>
+						endProc
+					</name>
+					<purpose>
+						Allows filter cleanup after end of video processing.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY endProc(FilterActivation *fa, const FilterFunctions *ff);
+					</prototype>
+					<action>
+						Filter should deallocate image buffers and other resources required to process image data.
+					</action>
+					<timing>
+						Called when transitioning from running state to idle state, after a video stream has been processed.
+					</timing>
+					<comments>
+					</comments>
+				</func>
+				<func>
+					<name>
+						scriptStrProc
+					</name>
+					<purpose>
+						Stores filter parameters in a configuration string for batch processing.
+					</purpose>
+					<prototype>
+						bool scriptStrProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxsize);
+					</prototype>
+					<action>
+						Filter should produce a configuration command of the form <tt>.Config(...)</tt> and return <tt>true</tt>,
+						or else return <tt>false</tt> if it has no such configuration command.
+					</action>
+					<timing>
+						Called during idle state.
+					</timing>
+					<comments>
+						<p>
+							<tt>maxsize</tt> may be quite small on older versions of VirtualDub, as small as 200 bytes.  It is
+							significantly higher in newer versions at about 2K, but config strings should still be kept short.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						stringProc2
+					</name>
+					<purpose>
+						Produces a user-readable text description of a filter's current configuration.
+					</purpose>
+					<prototype>
+						void stringProc2(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen);
+					</prototype>
+					<action>
+						Filter should produce a string describing its current configuration.  This is normally of the form "<tt> (...)</tt>"
+						as it immediately follows the filter name.
+					</action>
+					<timing>
+						Only called in idle state.
+					</timing>
+					<comments>
+						<p>
+							This is a revised version of <tt>stringProc</tt> designed to address buffer overflow issues with
+							the original procedure; all newer versions of VirtualDub will call <tt>stringProc2</tt> instead
+							of <tt>stringProc</tt> when possible.
+						</p>
+					</comments>
+				</func>
+				<func>
+					<name>
+						serializeProc
+					</name>
+					<purpose>
+						Saves a filter's current running state into a memory buffer.
+					</purpose>
+					<prototype>
+						int VDAPIENTRY serializeProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxbuf);
+					</prototype>
+					<action>
+						Filter should dump its current internal state to the given memory block and return the size of the state.
+						If <tt>buf</tt> is NULL or <tt>maxbuf</tt> is below the required number of bytes, the filter should return
+						the required number of bytes without storing any data.
+					</action>
+					<timing>
+						May be called at any time.
+					</timing>
+					<comments>
+					</comments>
+				</func>
+				<func>
+					<name>
+						deserializeProc
+					</name>
+					<purpose>
+						Restores a filter's current running state from a memory buffer.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY deserializeProc(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen);
+					</prototype>
+					<action>
+						Filter should restore its internal state from the memory block pointed to by <tt>buf</tt>.
+					</action>
+					<timing>
+						May be called at any time.
+					</timing>
+					<comments>
+					</comments>
+				</func>
+				<func>
+					<name>
+						copyProc
+					</name>
+					<purpose>
+						Clones a filter.
+					</purpose>
+					<prototype>
+						void VDAPIENTRY copyProc(FilterActivation *fa, const FilterFunctions *ff, void *dst);
+					</prototype>
+					<action>
+						Filter should clone a copy of its <tt>fa-&gt;filter_data</tt> structure into the memory pointed to by <tt>dst</tt>.
+					</action>
+					<timing>
+						Only called in idle state.
+					</timing>
+					<exceptions-allowed/>
+					<comments>
+						<p>
+							<tt>copyProc</tt> is usually implemented using <i>placement new</i>:
+						</p>
+						<blockquote><pre>
+#include &lt;new&gt;
+
+new(dst) MyClass(*(MyClass *)fa-&gt;filter_data);
+						</pre></blockquote>
+					</comments>
+				</func>
+			</lina:apply>
+		</page>
+
+		<page filename="videoapiold_ref.html" name="video api: deprecation">
+			<h2>Features on the chopping block</h2>
+			<p>
+				The following features are deprecated and may not be available in future versions of VirtualDub.  The
+				applicable definitions have already been removed from the v10 API headers.
+			</p>
+			<ul>
+				<li>Scripting methods other than <tt>Config()</tt> and script expressions in configuration strings.</li>
+				<li>GDI support via the <tt>hdc</tt> members of bitmaps.</li>
+				<li>All virtual methods in <tt>VBitmap</tt>.</li>
+				<li>Support for stackless storage in assembly language routines via the <tt>fs:14h</tt> member (use the SEH chain instead).</li>
+				<li>Private storage in the <tt>FilterModule</tt> and <tt>FilterDefinition</tt> members.</li>
+			</ul>
+			<p>
+				These features are largely not supported by third-party implementations of the VirtualDub video filter API anyway,
+				so avoiding these also raises the availability of your filter.
+			</p>
+		</page>
+	</pages>
+
+	<lina:for-each name="/pages/page">
+		<lina:tag name="lina:create">
+			<lina:attrib name="file"><lina:arg name="filename"/></lina:attrib>
+			<lina:attrib name="title"><lina:arg name="name"/></lina:attrib>
+			<lina:body/>
+		</lina:tag>
+	</lina:for-each>
+
+</root>

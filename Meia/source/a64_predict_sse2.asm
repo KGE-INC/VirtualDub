@@ -64,8 +64,8 @@ predict_Y_quadpel_SSE2:
 	movlhps	xmm14, xmm6
 	movlhps	xmm15, xmm7
 
-	movdqa	xmm6,SSE2_02b
-	movdqa	xmm7,SSE2_fcb
+	movdqa	xmm6, xmmword ptr SSE2_02b
+	movdqa	xmm7, xmmword ptr SSE2_fcb
 	mov	r9,16
 	
 	movdqu	xmm0,[rdx]
@@ -401,8 +401,8 @@ predict_add_Y_quadpel_SSE2:
 	movlhps	xmm14, xmm6
 	movlhps	xmm15, xmm7
 
-	movdqa	xmm6,SSE2_02b
-	movdqa	xmm7,SSE2_fcb
+	movdqa	xmm6, xmmword ptr SSE2_02b
+	movdqa	xmm7, xmmword ptr SSE2_fcb
 	mov		r9,16
 	
 	movdqu	xmm0,[rdx]

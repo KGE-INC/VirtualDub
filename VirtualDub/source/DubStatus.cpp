@@ -233,9 +233,6 @@ void DubStatus::InitLinks(	DubAudioStreamInfo	*painfo,
 
 	this->pDubber			= pDubber;
 	this->opt				= opt;
-
-	if (!GetWindowLongPtr(g_hWnd, GWLP_USERDATA))
-		DestroyWindow(g_hWnd);
 }
 
 
@@ -885,11 +882,17 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				break;
 
 			case IDC_ABORT:
-				SendMessage(hdlg, WM_SETTEXT, 0, (LPARAM)"Aborting...");
-				EnableWindow((HWND)lParam, FALSE);
-				thisPtr->pDubber->Abort();
-				thisPtr->hwndStatus = NULL;
-				DestroyWindow(hdlg);
+				extern bool VDPreferencesIsRenderAbortConfirmEnabled();
+
+				if (thisPtr->pDubber->IsPreviewing() || !VDPreferencesIsRenderAbortConfirmEnabled() ||
+					IDOK == MessageBox(hdlg, "Stop the operation at this point?", "VirtualDub Warning", MB_ICONEXCLAMATION|MB_OKCANCEL))
+				{
+					SendMessage(hdlg, WM_SETTEXT, 0, (LPARAM)"Aborting...");
+					EnableWindow((HWND)lParam, FALSE);
+					thisPtr->pDubber->Abort();
+					thisPtr->hwndStatus = NULL;
+					DestroyWindow(hdlg);
+				}
 				break;
 
 			case IDCANCEL:

@@ -76,19 +76,13 @@ using namespace nsVDFile;
 VDFile::VDFile(const char *pszFileName, uint32 flags)
 	: mhFile(NULL)
 {
-	if (!open_internal(pszFileName, NULL, flags)) {
-		const DWORD err = GetLastError();
-		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, VDFileSplitPathRight(VDString(pszFileName)).c_str());
-	}
+	open_internal(pszFileName, NULL, flags);
 }
 
 VDFile::VDFile(const wchar_t *pwszFileName, uint32 flags)
 	: mhFile(NULL)
 {
-	if (!open_internal(NULL, pwszFileName, flags)) {
-		const DWORD err = GetLastError();
-		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, VDFileSplitPathRight(VDTextWToA(VDStringW(pwszFileName))).c_str());
-	}
+	open_internal(NULL, pwszFileName, flags);
 }
 
 VDFile::VDFile(HANDLE h)
@@ -105,15 +99,15 @@ VDFile::~VDFile() {
 	closeNT();
 }
 
-bool VDFile::open(const char *pszFilename, uint32 flags) {
-	return open_internal(pszFilename, NULL, flags);
+void VDFile::open(const char *pszFilename, uint32 flags) {
+	open_internal(pszFilename, NULL, flags);
 }
 
-bool VDFile::open(const wchar_t *pwszFilename, uint32 flags) {
-	return open_internal(NULL, pwszFilename, flags);
+void VDFile::open(const wchar_t *pwszFilename, uint32 flags) {
+	open_internal(NULL, pwszFilename, flags);
 }
 
-bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags) {
+void VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags) {
 	close();
 
 	mpFilename = strdup(VDFileSplitPath(pszFilename?pszFilename:VDTextWToA(VDStringW(pwszFilename)).c_str()));
@@ -149,7 +143,7 @@ bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	case kTruncateExisting:	dwCreationDisposition = TRUNCATE_EXISTING; break;
 	default:
 		VDNEVERHERE;
-		return false;
+		return;
 	}
 
 	VDASSERT((flags & (kSequential | kRandomAccess)) != (kSequential | kRandomAccess));
@@ -207,18 +201,10 @@ bool VDFile::open_internal(const char *pszFilename, const wchar_t *pwszFilename,
 	if (mhFile == INVALID_HANDLE_VALUE) {
 		mhFile = NULL;
 
-		if (err == ERROR_FILE_NOT_FOUND)
-			return false;
-
-		if (err == ERROR_PATH_NOT_FOUND && creationType == kOpenExisting)
-			return false;
-
 		throw MyWin32Error("Cannot open file \"%s\":\n%%s", err, mpFilename.get());
 	}
 
 	mFilePosition = 0;
-
-	return true;
 }
 
 bool VDFile::closeNT() {
@@ -260,44 +246,49 @@ bool VDFile::extendValidNT(sint64 pos) {
 		return false;
 	}
 
-	// SetFileValidData() requires the SE_MANAGE_VOLUME_NAME privilege, so we must temporarily
-	// enable it on our thread token.
-	bool bSuccessful = false;
-	DWORD err;
-
-	HANDLE h;
-	if (OpenThreadToken(GetCurrentThread(), TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY, FALSE, &h)) {
-		LUID luid;
-
-		if (LookupPrivilegeValue(NULL, "SeShutdownPrivilege", &luid)) {
-			TOKEN_PRIVILEGES tp;
-			tp.PrivilegeCount = 1;
-			tp.Privileges[0].Luid = luid;
-			tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-			if (AdjustTokenPrivileges(h, FALSE, &tp, 0, NULL, NULL)) {
-				if (pSetFileValidData(mhFile, pos))
-					bSuccessful = true;
-				else
-					err = GetLastError();
-
-				tp.Privileges[0].Attributes = 0;
-				AdjustTokenPrivileges(h, FALSE, &tp, 0, NULL, NULL);
-			}
-		}
-
-		CloseHandle(h);
-	}
-
-	if (!bSuccessful)
-		SetLastError(err);
-
-	return bSuccessful;
+	return 0 != pSetFileValidData(mhFile, pos);
 }
 
 void VDFile::extendValid(sint64 pos) {
 	if (!extendValidNT(pos))
 		throw MyWin32Error("Cannot extend file \"%s\": %%s", GetLastError(), mpFilename.get());
+}
+
+bool VDFile::enableExtendValid() {
+	if (GetVersion() & 0x80000000)
+		return true;				// Not Windows NT, no privileges involved
+
+	// SetFileValidData() requires the SE_MANAGE_VOLUME_NAME privilege, so we must enable it
+	// on the process token. We don't attempt to strip the privilege afterward as that would
+	// introduce race conditions.
+	bool bSuccessful = false;
+	DWORD err = 0;
+
+	SetLastError(0);
+
+	HANDLE h;
+	if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY, &h)) {
+		LUID luid;
+
+		if (LookupPrivilegeValue(NULL, SE_MANAGE_VOLUME_NAME, &luid)) {
+			TOKEN_PRIVILEGES tp;
+			tp.PrivilegeCount = 1;
+			tp.Privileges[0].Luid = luid;
+			tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+			if (AdjustTokenPrivileges(h, FALSE, &tp, 0, NULL, NULL))
+				bSuccessful = true;
+			else
+				err = GetLastError();
+		}
+
+		CloseHandle(h);
+	}
+
+	if (!bSuccessful && err)
+		SetLastError(err);
+
+	return bSuccessful;
 }
 
 long VDFile::readData(void *buffer, long length) {
@@ -573,7 +564,7 @@ const char *VDTextStream::GetNextLine() {
 						return &mLineBuffer[0];
 					}
 				} while(mBufferPos < mBufferLimit);
-				mLineBuffer.insert(mLineBuffer.end(), mFileBuffer.begin() + base, mFileBuffer.end());
+				mLineBuffer.insert(mLineBuffer.end(), mFileBuffer.begin() + base, mFileBuffer.begin() + mBufferLimit);
 				break;
 		}
 	}

@@ -29,7 +29,6 @@
 #include "capclip.h"
 
 extern HINSTANCE g_hInst;
-extern RECT g_rCaptureClip;
 
 extern LRESULT CALLBACK CaptureStatusCallback(HWND hWnd, int nID, LPCSTR lpsz);
 
@@ -196,21 +195,18 @@ LRESULT CALLBACK CaptureClippingFrameProc(HWND hWnd, VIDEOHDR *vhdr) {
 	return 0;
 }
 
-INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	HWND hwndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
+#pragma vdpragma_TODO("The code below is really, really wrong")
+RECT g_rCaptureClip;
 
+INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message)
     {
         case WM_INITDIALOG:
 			{
-				CAPSTATUS cs;
 				ClippingControlBounds ccb;
 				LONG hborder, hspace;
 				RECT rw, rc, rcok, rccancel;
 				HWND hWnd, hWndCancel;
-				hwndCapture = (HWND)lParam;
-
-				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
 
 				g_hwndClippingDisplay = hWnd = GetDlgItem(hDlg, IDC_BORDERS);
 				ccb.x1	= g_rCaptureClip.left;
@@ -218,8 +214,9 @@ INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, 
 				ccb.y1	= g_rCaptureClip.top;
 				ccb.y2	= g_rCaptureClip.bottom;
 
-				capGetStatus(hwndCapture, &cs, sizeof cs);
-				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(cs.uiImageWidth,cs.uiImageHeight));
+//				capGetStatus(hwndCapture, &cs, sizeof cs);
+//				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(cs.uiImageWidth,cs.uiImageHeight));
+				SendMessage(hWnd, CCM_SETBITMAPSIZE, 0, MAKELONG(320,240));
 				SendMessage(hWnd, CCM_SETCLIPBOUNDS, 0, (LPARAM)&ccb);
 
 				GetWindowRect(hDlg, &rw);
@@ -244,8 +241,8 @@ INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, 
 
 				SetTimer(hDlg, 1, 500, NULL);
 
-				if (g_pClippingDecoder)
-					capSetCallbackOnFrame(hwndCapture, CaptureClippingFrameProc);
+//				if (g_pClippingDecoder)
+//					capSetCallbackOnFrame(hwndCapture, CaptureClippingFrameProc);
 			}
 
             return (TRUE);
@@ -261,12 +258,12 @@ INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, 
 					g_rCaptureClip.top = ccb.y1;
 					g_rCaptureClip.right = ccb.x2;
 					g_rCaptureClip.bottom = ccb.y2;
-					capSetCallbackOnFrame(hwndCapture, NULL);
+//					capSetCallbackOnFrame(hwndCapture, NULL);
 					EndDialog(hDlg, TRUE);
 				}
 				return TRUE;
 			case IDCANCEL:
-				capSetCallbackOnFrame(hwndCapture, NULL);
+//				capSetCallbackOnFrame(hwndCapture, NULL);
 				EndDialog(hDlg, FALSE);
 				return TRUE;
 			case IDC_BORDERS:
@@ -276,7 +273,7 @@ INT_PTR CALLBACK CaptureClippingDlgProc(HWND hDlg, UINT message, WPARAM wParam, 
             break;
 
 		case WM_TIMER:
-			capGrabFrameNoStop(hwndCapture);
+//			capGrabFrameNoStop(hwndCapture);
 			break;
 
 		case WM_NOTIFY:

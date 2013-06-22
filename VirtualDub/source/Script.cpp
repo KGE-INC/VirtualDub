@@ -28,6 +28,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/file.h>
+#include <vd2/system/VDString.h>
 #include <vd2/Dita/services.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
@@ -53,6 +54,8 @@ extern bool g_fJobMode;
 extern VDProject *g_project;
 
 extern HINSTANCE g_hInst;
+
+extern const char *VDGetStartupArgument(int index);
 
 extern void FreeCompressor(COMPVARS *pCompVars);
 static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *lpData);
@@ -195,21 +198,21 @@ static bool strfuzzycompare(const char *s, const char *t) {
 		c = *s++;
 
 		if (isalpha(c))
-			c=toupper(c);
+			c=(char)toupper((unsigned char)c);
 
-		else if (isspace(c)) {
+		else if (isspace((unsigned char)c)) {
 			c = ' ';
-			while(*s && isspace(*s)) ++s;
+			while(*s && isspace((unsigned char)*s)) ++s;
 		} else if (c)
 			c = '_';
 
 		d = *t++;
 
 		if (isalpha(d))
-			d=toupper(d);
-		else if (isspace(d)) {
+			d=(char)toupper((unsigned char)d);
+		else if (isspace((unsigned char)d)) {
 			d = ' ';
-			while(*t && isspace(*t)) ++t;
+			while(*t && isspace((unsigned char)*t)) ++t;
 		} else if (d)
 			d = '_';
 
@@ -315,14 +318,14 @@ void membase64(char *t, const char *s, long l) {
 ///////////////////////////////////////////////////////////////////////////
 
 static void func_VDVFiltInst_Remove(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)argv[-1].thisPtr;
+	FilterInstance *fa = (FilterInstance *)argv[-1].asObjectPtr();
 
 	fa->Remove();
 	fa->Destroy();
 }
 
 static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].thisPtr;
+	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].asObjectPtr();
 
 	fa->x1	= argv[0].asInt();
 	fa->y1	= argv[1].asInt();
@@ -331,7 +334,7 @@ static void func_VDVFiltInst_SetClipping(IVDScriptInterpreter *isi, VDScriptValu
 }
 
 static void func_VDVFiltInst_GetClipping(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
-	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].thisPtr;
+	FilterInstance *fa = (FilterInstance *)(FilterActivation *)argv[-1].asObjectPtr();
 
 	switch(argv[0].asInt()) {
 	case 0:	argv[0] = (int)fa->x1; break;
@@ -515,7 +518,7 @@ static void func_VDVideo_SetMode(IVDScriptInterpreter *, VDScriptValue *arglist,
 	int new_mode = arglist[0].asInt();
 
 	if (new_mode>=0 && new_mode<4)
-		g_dubOpts.video.mode = new_mode;
+		g_dubOpts.video.mode = (char)new_mode;
 }
 
 static void func_VDVideo_GetFrameRate(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -553,6 +556,12 @@ static void func_VDVideo_SetTargetFrameRate(IVDScriptInterpreter *, VDScriptValu
 
 static void func_VDVideo_GetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	arglist[0] = VDScriptValue(arglist[0].asInt() ? g_dubOpts.video.lEndOffsetMS : g_dubOpts.video.lStartOffsetMS);
+}
+
+static void func_VDVideo_SetRangeEmpty(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_project->ClearSelection();
+	g_dubOpts.video.lStartOffsetMS = 0;
+	g_dubOpts.video.lEndOffsetMS = 0;
 }
 
 static void func_VDVideo_SetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -651,24 +660,25 @@ static void func_VDVideo_SetIVTC(IVDScriptInterpreter *, VDScriptValue *arglist,
 }
 
 static const VDScriptFunctionDef obj_VDVideo_functbl[]={
-	{ func_VDVideo_GetDepth			, "GetDepth", "ii" },
-	{ func_VDVideo_SetDepth			, "SetDepth", "0ii" },
-	{ func_VDVideo_GetMode			, "GetMode", "i" },
-	{ func_VDVideo_SetMode			, "SetMode", "0i" },
-	{ func_VDVideo_GetFrameRate		, "GetFrameRate", "ii" },
-	{ func_VDVideo_SetFrameRate		, "SetFrameRate", "0ii" },
-	{ func_VDVideo_SetFrameRate		, NULL, "0iii" },
+	{ func_VDVideo_GetDepth			, "GetDepth",		"ii" },
+	{ func_VDVideo_SetDepth			, "SetDepth",		"0ii" },
+	{ func_VDVideo_GetMode			, "GetMode",		"i" },
+	{ func_VDVideo_SetMode			, "SetMode",		"0i" },
+	{ func_VDVideo_GetFrameRate		, "GetFrameRate",	"ii" },
+	{ func_VDVideo_SetFrameRate		, "SetFrameRate",	"0ii" },
+	{ func_VDVideo_SetFrameRate		, NULL,				"0iii" },
 	{ func_VDVideo_SetTargetFrameRate, "SetTargetFrameRate", "0ii" },
-	{ func_VDVideo_GetRange			, "GetRange", "ii" },
-	{ func_VDVideo_SetRange			, "SetRange", "0ii" },
-	{ func_VDVideo_GetCompression	, "GetCompression"	, "ii" },
-	{ func_VDVideo_SetCompression	, "SetCompression"	, "0siii" },
-	{ func_VDVideo_SetCompression	, NULL				, "0iiii" },
-	{ func_VDVideo_SetCompression	, NULL				, "0" },
-	{ func_VDVideo_SetCompData		, "SetCompData", "0is" },
-	{ func_VDVideo_EnableIndeoQC		, "EnableIndeoQC", "0i" },
-	{ func_VDVideo_SetIVTC			, "SetIVTC", "0iiii" },
-	{ func_VDVideo_SetInputFormat	, "SetInputFormat", "0i" },
+	{ func_VDVideo_GetRange			, "GetRange",		"ii" },
+	{ func_VDVideo_SetRangeEmpty	, "SetRange",		"0" },
+	{ func_VDVideo_SetRange			, NULL,				"0ii" },
+	{ func_VDVideo_GetCompression	, "GetCompression",	"ii" },
+	{ func_VDVideo_SetCompression	, "SetCompression",	"0siii" },
+	{ func_VDVideo_SetCompression	, NULL,				"0iiii" },
+	{ func_VDVideo_SetCompression	, NULL,				"0" },
+	{ func_VDVideo_SetCompData		, "SetCompData",	"0is" },
+	{ func_VDVideo_EnableIndeoQC	, "EnableIndeoQC",	"0i" },
+	{ func_VDVideo_SetIVTC			, "SetIVTC",		"0iiii" },
+	{ func_VDVideo_SetInputFormat	, "SetInputFormat",	"0i" },
 	{ func_VDVideo_SetOutputFormat	, "SetOutputFormat", "0i" },
 	{ NULL }
 };
@@ -1050,8 +1060,8 @@ static void func_VDAudio_GetConversion(IVDScriptInterpreter *, VDScriptValue *ar
 
 static void func_VDAudio_SetConversion(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_dubOpts.audio.new_rate		= arglist[0].asInt();
-	g_dubOpts.audio.newPrecision	= arglist[1].asInt();
-	g_dubOpts.audio.newChannels		= arglist[2].asInt();
+	g_dubOpts.audio.newPrecision	= (char)arglist[1].asInt();
+	g_dubOpts.audio.newChannels		= (char)arglist[2].asInt();
 
 	if (arg_count >= 5) {
 		g_dubOpts.audio.integral_rate	= !!arglist[3].asInt();
@@ -1060,11 +1070,13 @@ static void func_VDAudio_SetConversion(IVDScriptInterpreter *, VDScriptValue *ar
 }
 
 static void func_VDAudio_SetSource(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
-	if (arglist[0].isInt())
-		audioInputMode = !!arglist[0].asInt();
-	else {
+	if (arglist[0].isInt()) {
+		if (arglist[0].asInt())
+			g_project->SetAudioSourceNormal();
+		else
+			g_project->SetAudioSourceNone();
+	} else {
 		g_project->OpenWAV(VDTextU8ToW(VDStringA(*arglist[0].asString())).c_str());
-		audioInputMode = AUDIOIN_WAVE;
 	}
 }
 
@@ -1075,11 +1087,11 @@ static void func_VDAudio_SetCompressionPCM(IVDScriptInterpreter *isi, VDScriptVa
 
 	pwf->wf.wFormatTag			= WAVE_FORMAT_PCM;
 	pwf->wf.nSamplesPerSec		= arglist[0].asInt();
-	pwf->wf.nChannels			= arglist[1].asInt();
-	pwf->   wBitsPerSample		= arglist[2].asInt();
-	pwf->wf.nBlockAlign		= (pwf->wBitsPerSample/8) * pwf->wf.nChannels;
-	pwf->wf.nAvgBytesPerSec	= pwf->wf.nSamplesPerSec * pwf->wf.nBlockAlign;
-	g_ACompressionFormatSize = sizeof(PCMWAVEFORMAT);
+	pwf->wf.nChannels			= (WORD)arglist[1].asInt();
+	pwf->   wBitsPerSample		= (WORD)arglist[2].asInt();
+	pwf->wf.nBlockAlign			= (WORD)((pwf->wBitsPerSample/8) * pwf->wf.nChannels);
+	pwf->wf.nAvgBytesPerSec		= pwf->wf.nSamplesPerSec * pwf->wf.nBlockAlign;
+	g_ACompressionFormatSize	= sizeof(PCMWAVEFORMAT);
 	freemem(g_ACompressionFormat);
 	g_ACompressionFormat = (WAVEFORMATEX *)pwf;
 }
@@ -1104,12 +1116,12 @@ static void func_VDAudio_SetCompression(IVDScriptInterpreter *isi, VDScriptValue
 	if (!(wfex = (WAVEFORMATEX *)allocmem(sizeof(WAVEFORMATEX) + ex_data)))
 		VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
-	wfex->wFormatTag		= arglist[0].asInt();
+	wfex->wFormatTag		= (WORD)arglist[0].asInt();
 	wfex->nSamplesPerSec	= arglist[1].asInt();
-	wfex->nChannels			= arglist[2].asInt();
-	wfex->wBitsPerSample	= arglist[3].asInt();
+	wfex->nChannels			= (WORD)arglist[2].asInt();
+	wfex->wBitsPerSample	= (WORD)arglist[3].asInt();
 	wfex->nAvgBytesPerSec	= arglist[4].asInt();
-	wfex->nBlockAlign		= arglist[5].asInt();
+	wfex->nBlockAlign		= (WORD)arglist[5].asInt();
 	wfex->cbSize			= (WORD)ex_data;
 
 	if (arg_count > 6) {
@@ -1225,6 +1237,36 @@ static const VDScriptObject obj_VDSubset={
 	NULL, obj_VDSubset_functbl
 };
 
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	Object: VirtualDub.params
+//
+///////////////////////////////////////////////////////////////////////////
+
+static void func_VDParams(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
+	const int index = argv[0].asInt();
+	const char *s = VDGetStartupArgument(index);
+
+	if (!s)
+		VDSCRIPT_EXT_ERROR(ARRAY_INDEX_OUT_OF_BOUNDS);
+
+	const long l = strlen(s);
+	char **h = isi->AllocTempString(l);
+
+	strcpy(*h, s);
+
+	argv[0] = VDScriptValue(h);
+}
+
+static const VDScriptFunctionDef obj_VDParams_functbl[]={
+	{ func_VDParams		, "[]", "vi" },
+	{ NULL }
+};
+
+static const VDScriptObject obj_VDParams={
+	NULL, obj_VDParams_functbl, NULL	
+};
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -1389,6 +1431,8 @@ static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDSc
 		return VDScriptValue(NULL, &obj_VDAudio);
 	else if (!strcmp(szName, "subset"))
 		return VDScriptValue(NULL, &obj_VDSubset);
+	else if (!strcmp(szName, "params"))
+		return VDScriptValue(NULL, &obj_VDParams);
 
 	VDSCRIPT_EXT_ERROR(MEMBER_NOT_FOUND);
 }

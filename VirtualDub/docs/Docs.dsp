@@ -19,7 +19,6 @@ CFG=Docs - Win32 Debug
 !MESSAGE 
 !MESSAGE "Docs - Win32 Release" (based on "Win32 (x86) Generic Project")
 !MESSAGE "Docs - Win32 Debug" (based on "Win32 (x86) Generic Project")
-!MESSAGE "Docs - Win32 Release ICL" (based on "Win32 (x86) Generic Project")
 !MESSAGE 
 
 # Begin Project
@@ -54,26 +53,12 @@ MTL=midl.exe
 # PROP Intermediate_Dir "."
 # PROP Target_Dir ""
 
-!ELSEIF  "$(CFG)" == "Docs - Win32 Release ICL"
-
-# PROP BASE Use_MFC 0
-# PROP BASE Use_Debug_Libraries 0
-# PROP BASE Output_Dir "Release ICL"
-# PROP BASE Intermediate_Dir "Release ICL"
-# PROP BASE Target_Dir ""
-# PROP Use_MFC 0
-# PROP Use_Debug_Libraries 0
-# PROP Output_Dir "."
-# PROP Intermediate_Dir "."
-# PROP Target_Dir ""
-
 !ENDIF 
 
 # Begin Target
 
 # Name "Docs - Win32 Release"
 # Name "Docs - Win32 Debug"
-# Name "Docs - Win32 Release ICL"
 # Begin Group "Source Files"
 
 # PROP Default_Filter ".cpp"
@@ -103,8 +88,6 @@ InputPath=.\index.html
 	exit 10 
 	
 # End Custom Build
-
-!ELSEIF  "$(CFG)" == "Docs - Win32 Release ICL"
 
 !ENDIF 
 

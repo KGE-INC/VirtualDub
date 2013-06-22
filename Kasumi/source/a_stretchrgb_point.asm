@@ -4,6 +4,8 @@
 		.mmx
 		.code
 
+		assume fs:_DATA
+
 scaleinfo	struct
 dst			dd			?	
 src			dd			?
@@ -71,7 +73,7 @@ _vdasm_resize_point32_MMX	proc near
 		add		ebp, 4
 		jz		@odd
 @dualloop:
-		movd		mm0,[ecx*4]
+		movd		mm0, dword ptr [ecx*4]
 		punpckldq	mm0,[edx*4]
 		add		eax,esp
 		adc		ecx,esi

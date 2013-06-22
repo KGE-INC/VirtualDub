@@ -40,6 +40,7 @@
 #include <vd2/system/registry.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/system/VDString.h>
 #include <vd2/Dita/resources.h>
 #include "crash.h"
 #include "DubSource.h"
@@ -84,18 +85,15 @@ extern "C" unsigned long version_num;
 
 extern HINSTANCE	g_hInst;
 extern HWND			g_hWnd;
-extern HACCEL		g_hAccelMain;
 
 extern VDProject *g_project;
-extern vdautoptr<VDProjectUI> g_projectui;
+vdrefptr<VDProjectUI> g_projectui;
 
 extern DubSource::ErrorMode	g_videoErrorMode;
 extern DubSource::ErrorMode	g_audioErrorMode;
 
 extern wchar_t g_szFile[MAX_PATH];
 
-static const char szAppName[]="VirtualDub";
-static const wchar_t szAppNameW[]=L"VirtualDub";
 extern const char g_szError[];
 
 bool g_fWine = false;
@@ -104,6 +102,24 @@ bool g_bEnableVTuneProfiling;
 void (*g_pPostInitRoutine)();
 
 ///////////////////////////////////////////////////////////////////////////
+
+namespace {
+	typedef std::list<VDStringA> tArguments;
+
+	tArguments g_VDStartupArguments;
+}
+
+const char *VDGetStartupArgument(int index) {
+	tArguments::const_iterator it(g_VDStartupArguments.begin()), itEnd(g_VDStartupArguments.end());
+
+	for(; it!=itEnd && index; ++it, --index)
+		;
+
+	if (it == itEnd)
+		return NULL;
+
+	return (*it).c_str();
+}
 
 void VDterminate() {
 	vdprotected("processing call to terminate() (probably caused by exception within destructor)") {
@@ -354,8 +370,6 @@ bool Init(HINSTANCE hInstance, LPCWSTR lpCmdLine, int nCmdShow) {
     if (!InitInstance(hInstance, nCmdShow))
         return (FALSE);
 
-	DragAcceptFiles(g_hWnd, TRUE);
-
 	// Autoload filters.
 
 	VDCHECKPOINT;
@@ -427,9 +441,10 @@ void Deinit() {
 	g_project->CloseWAV();
 
 	g_projectui->Detach();
-	g_projectui = 0;
-	g_project = 0;
-	DragAcceptFiles(g_hWnd, FALSE);
+	g_projectui = NULL;
+	g_project = NULL;
+
+	VDUIFrame::DestroyAll();
 
 	filters.DeinitFilters();
 
@@ -447,6 +462,8 @@ void Deinit() {
 
 	CloseJobWindow();
 	DeinitJobSystem();
+
+	g_VDStartupArguments.clear();
 
 	VDCHECKPOINT;
 
@@ -480,24 +497,6 @@ void Deinit() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-LRESULT APIENTRY BaseWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message) {
-	case WM_NCCREATE:
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR)NULL);
-		break;
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		break;
-	}
-
-	WNDPROC wp = (WNDPROC)GetWindowLongPtr(hWnd, 0);
-
-	if (!wp)
-		wp = IsWindowUnicode(hWnd) ? DefWindowProcW : DefWindowProcA;
-
-	return wp(hWnd, message, wParam, lParam);
-}
-
 bool InitApplication(HINSTANCE hInstance) {
 	// register controls
 
@@ -514,35 +513,10 @@ bool InitApplication(HINSTANCE hInstance) {
 	if (!RegisterRTProfileDisplayControl()) return false;
 	if (!RegisterVideoWindow()) return false;
 
-	// Load accelerators.
+	extern bool VDRegisterUIFrameWindow();
+	if (!VDRegisterUIFrameWindow()) return false;
 
-	if (!(g_hAccelMain = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_IDLE_KEYS)))) return false;
-
-	union {
-		WNDCLASSA a;
-		WNDCLASSW w;
-	} wc;
-
-    wc.a.style			= CS_OWNDC;
-    wc.a.lpfnWndProc	= BaseWndProc;
-    wc.a.cbClsExtra		= 0;
-    wc.a.cbWndExtra		= sizeof(void *);
-    wc.a.hInstance		= hInstance;
-    wc.a.hIcon			= LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_VIRTUALDUB));
-    wc.a.hCursor		= LoadCursor(NULL, IDC_ARROW);
-    wc.a.hbrBackground	= (HBRUSH)(COLOR_3DFACE+1); //GetStockObject(LTGRAY_BRUSH); 
-
-	if (false && GetVersion() < 0x80000000) {
-	    wc.w.lpszMenuName	= MAKEINTRESOURCEW(IDR_MAIN_MENU);
-		wc.w.lpszClassName	= szAppNameW;
-
-		return !!RegisterClassW(&wc.w);
-	} else {
-	    wc.a.lpszMenuName	= MAKEINTRESOURCEA(IDR_MAIN_MENU);
-		wc.a.lpszClassName	= szAppName;
-
-		return !!RegisterClassA(&wc.a);
-	}
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -565,9 +539,9 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 		);
 
     // Create a main window for this application instance. 
-	if (false && GetVersion() < 0x80000000) {
+	if (GetVersion() < 0x80000000) {
 		g_hWnd = CreateWindowW(
-			szAppNameW,
+			(LPCWSTR)VDUIFrame::Class(),
 			L"",
 			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
 			CW_USEDEFAULT,                  // Default horizontal position.
@@ -581,7 +555,7 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 		);
 	} else {
 		g_hWnd = CreateWindowA(
-			szAppName,
+			(LPCSTR)VDUIFrame::Class(),
 			"",
 			WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,            // Window style.
 			CW_USEDEFAULT,                  // Default horizontal position.
@@ -615,6 +589,55 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+namespace {
+	bool ParseArgument(const wchar_t *&s, VDStringW& parm, bool bTightParse) {
+		while(*s == L' ')
+			++s;
+
+		if (!*s || *s == L'/')
+			return false;
+
+		const wchar_t *start;
+		const wchar_t *end;
+
+		if (*s == L'"') {
+			start = ++s;
+
+			while(*s && *s != L'"')
+				++s;
+
+			end = s;
+
+			if (*s)
+				++s;
+		} else {
+			start = s;
+			while(*s && *s != L' ' && *s != L'/' && (!bTightParse || *s != L','))
+				++s;
+			end = s;
+		}
+
+		if (*s == L',')
+			++s;
+
+		parm.assign(start, end);
+		return true;
+	}
+
+	bool CheckForSwitch(const wchar_t *&s, const wchar_t *token) {
+		const size_t len = wcslen(token);
+		if (wcsncmp(s, token, len))
+			return false;
+
+		const wchar_t c = s[len];
+
+		if (c == L' ' || c == L'"' || c == L'/')
+			return false;
+
+		return true;
+	}
+}
+
 void ParseCommandLine(const wchar_t *lpCmdLine) {
 
 	// skip program name
@@ -626,16 +649,16 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 		while(*lpCmdLine && !iswspace(*lpCmdLine))
 			++lpCmdLine;
 
-	wchar_t *const cmdline = wcsdup(lpCmdLine);
-	if (!cmdline) return;
+	const wchar_t *const cmdline = lpCmdLine;
 
-	wchar_t *token, *s;
+	const wchar_t *s;
 	static const wchar_t seps[] = L" \t\n\r";
 	bool fExitOnDone = false;
 
 	// parse cmdline looking for switches
 	//
 	//	/s						run script
+	//	/i <script> <params...>	run script with parameters
 	//	/c						clear job list
 	//	/b<srcdir>,<dstdir>		add directory batch process to job list
 	//	/r						run job list
@@ -647,62 +670,35 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 	s = cmdline;
 	g_szFile[0] = 0;
 
+	VDStringW token;
+
 	try {
 		while(*s) {
-			wchar_t *t;
-			bool quoted = false;
-			bool restore_slash = false;
-
-			while(isspace(*s))
+			while(iswspace(*s))
 				++s;
 
 			if (!*s) break;
 
-			token = s;
+			if (*s == L'-' || *s == L'/') {
+				++s;
 
-			if (*s == L'"') {
-				s = ++token;
+				const wchar_t c = *s;
 
-				while(*s && *s!=L'"')
-					++s;
+				if (!c)
+					break;
 
-				if (*s)
-					*s++=0;
+				++s;
 
-			} else {
-				if (*s == L'/')
-					++s;
+				bool tight = (*s != L' ' && *s != L'/');
 
-				while(*s && (quoted || (!isspace(*s) && *s!=L'/'))) {
-					if (*s == L'"')
-						quoted = !quoted;
-
-					++s;
-				}
-
-				if (*s) {
-					restore_slash = (*s==L'/');
-					*s++ = 0;
-				}
-			}
-
-			_RPT1(0,"token [%s]\n", token);
-			if (*token == L'-' || *token == L'/') {
-				switch(token[1]) {
+				switch(c) {
 				case 's':
 
-					t = token + 2;
-					if (*t == L'"') {
-						++t;
-						while(*t && *t != L'"')
-							++t;
-						*t = 0;
-
-						t = token+3;
-					}
+					if (!ParseArgument(s, token, tight))
+						throw "Command line error: syntax is /s <script>";
 
 					JobLockDubber();
-					RunScript(t);
+					RunScript(token.c_str());
 					JobUnlockDubber();
 					break;
 				case 'c':
@@ -719,96 +715,22 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 					break;
 				case 'p':
 					{
-						const wchar_t *arg1, *arg2;
+						VDStringW path2;
 
-						// dequote first token
+						if (!ParseArgument(s, token, tight) || !ParseArgument(s, path2, tight))
+							throw "Command line error: syntax is /p <src_file> <dst_file>";
 
-						t = token+2;
-
-						if (*t == L'"') {
-							arg1 = ++t;
-							while(*t && *t!=L'"')
-								++t;
-
-							if (*t)
-								*t++ = 0;
-						} else {
-							arg1 = t;
-							while(*t && *t!=L',')
-								++t;
-						}
-
-						if (*t++ != ',')
-							throw "Command line error: /p format is /p<src_file>,<dst_file>";
-
-						// dequote second token
-
-						arg2 = t;
-
-						if (*t == L'"') {
-							arg2 = ++t;
-
-							while(*t && *t!=L'"')
-								++t;
-
-							if (*t)
-								*t++ = 0;
-						} else {
-							while(*t && *t!=L',')
-								++t;
-						}
-
-						if (!*arg2)
-							throw "Command line error: /p format is /p<src_file>,<dst_file>";
-
-						JobAddBatchFile(arg1, arg2);
+						JobAddBatchFile(token.c_str(), path2.c_str());
 					}
 					break;
 				case 'b':
 					{
-						wchar_t *arg1, *arg2;
+						VDStringW path2;
 
-						// dequote first token
+						if (!ParseArgument(s, token, tight) || !ParseArgument(s, path2, tight))
+							throw "Command line error: syntax is /b <src_dir> <dst_dir>";
 
-						t = token+2;
-
-						if (*t == L'"') {
-							arg1 = ++t;
-							while(*t && *t!=L'"')
-								++t;
-
-							if (*t)
-								*t++ = 0;
-						} else {
-							arg1 = t;
-							while(*t && *t!=L',')
-								++t;
-						}
-
-						if (*t++ != L',')
-							throw "Command line error: /b format is /b<src_dir>,<dst_dir>";
-
-						// dequote second token
-
-						arg2 = t;
-
-						if (*t == L'"') {
-							arg2 = ++t;
-
-							while(*t && *t!=L'"')
-								++t;
-
-							if (*t)
-								*t++ = 0;
-						} else {
-							while(*t && *t!=L',')
-								++t;
-						}
-
-						if (!*arg2)
-							throw "Command line error: /b format is /b<src_dir>,<dst_dir>";
-
-						JobAddBatchDirectory(arg1, arg2);
+						JobAddBatchDirectory(token.c_str(), path2.c_str());
 					}
 					break;
 				case 'w':
@@ -816,36 +738,53 @@ void ParseCommandLine(const wchar_t *lpCmdLine) {
 					break;
 
 				case 'f':
-					if (!wcsicmp(token+2, L"sck"))
+					if (CheckForSwitch(s, L"sck"))
 						crash();
 					break;
 
 				case 'F':
-					try {
-						VDAddPluginModule(token + 2);
+					if (!ParseArgument(s, token, tight))
+						throw "Command line error: syntax is /F <filter>";
 
-						guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token+2).c_str());
-					} catch(const MyError& e) {
-						e.post(g_hWnd, g_szError);
-					}
+					VDAddPluginModule(token.c_str());
+
+					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token).c_str());
 					break;
 
 				case L'v':
-					if (!wcscmp(token+2, L"tprofile"))
+					if (CheckForSwitch(s, L"tprofile"))
 						g_bEnableVTuneProfiling = true;
 					break;
-				}
-			} else
-				wcscpy(g_szFile, token);
 
-			if (restore_slash)
-				*--s=L'/';
+				case L'i':
+					{
+						VDStringW filename;
+
+						if (!ParseArgument(s, filename, false))
+							throw "Command line error: syntax is /i <script> [<args>...]";
+
+						g_VDStartupArguments.clear();
+						while(ParseArgument(s, token, false))
+							g_VDStartupArguments.push_back(VDTextWToA(token));
+
+						JobLockDubber();
+						RunScript(filename.c_str());
+						JobUnlockDubber();
+					}
+					break;
+				}
+			} else {
+				if (ParseArgument(s, token, false))
+					g_project->Open(token.c_str());
+				else
+					++s;
+			}
 		}
 	} catch(const char *s) {
 		MessageBox(NULL, s, g_szError, MB_OK);
+	} catch(const MyError& e) {
+		e.post(g_hWnd, g_szError);
 	}
-
-	free(cmdline);
 
 	if (fExitOnDone) {
 		Deinit();

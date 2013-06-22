@@ -499,11 +499,11 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 crunch_complete:
 		;
 
-		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes, iterations = %d, range = [%5d, %5d, %5d]\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize, packs, mQualityLo, mQualityLast, mQualityHi);
+//		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes, iterations = %d, range = [%5d, %5d, %5d]\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize, packs, mQualityLo, mQualityLast, mQualityHi);
 	} else {	// No crunching or crunch directly supported
 		PackFrameInternal(lAllowableFrameSize, lQuality, pBits, dwFlagsIn, dwFlagsOut, bytes);
 
-		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize);
+//		VDDEBUG("VideoSequenceCompressor: Packed frame %5d to %6u bytes; target=%d bytes / %d bytes\n", lFrameNum, bytes, lAllowableFrameSize, lMaxFrameSize);
 	}
 
 	// Special handling for DivX 5 and XviD codecs:

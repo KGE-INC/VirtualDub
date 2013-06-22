@@ -74,6 +74,7 @@ protected:
 	bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
 	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
 	void Update(int);
+	void PostUpdate(int);
 	void Reset();
 	void Cache();
 	void SetCallback(IVDVideoDisplayCallback *pcb);
@@ -264,6 +265,10 @@ bool VDVideoDisplayWindow::SetSourcePersistent(bool bAutoUpdate, const VDPixmap&
 
 void VDVideoDisplayWindow::Update(int fieldmode) {
 	SendMessage(mhwnd, MYWM_UPDATE, fieldmode, 0);
+}
+
+void VDVideoDisplayWindow::PostUpdate(int fieldmode) {
+	PostMessage(mhwnd, MYWM_UPDATE, fieldmode, 0);
 }
 
 void VDVideoDisplayWindow::Cache() {

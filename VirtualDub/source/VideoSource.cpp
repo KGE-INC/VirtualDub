@@ -45,6 +45,12 @@
 
 #include <vd2/Meia/MPEGIDCT.h>
 
+#if defined(_M_AMD64)
+	#define VDPROT_PTR	"%p"
+#else
+	#define VDPROT_PTR	"%08x"
+#endif
+
 ///////////////////////////
 
 extern const char *LookupVideoCodec(FOURCC);
@@ -219,6 +225,8 @@ bool VDVideoDecompressorMJPEG::SetTargetFormat(const void *format) {
 }
 
 void VDVideoDecompressorMJPEG::Start() {
+	if (!mFormat)
+		throw MyError("Cannot find compatible target format for video decompression.");
 }
 
 void VDVideoDecompressorMJPEG::Stop() {
@@ -238,6 +246,8 @@ void VDVideoDecompressorMJPEG::DecompressFrame(void *dst, const void *src, uint3
 	case nsVDPixmap::kPixFormat_YUV422_YUYV:
 		mpDecoder->decodeFrameYUY2((unsigned long *)dst, (unsigned char *)src, srcSize);
 		break;
+	default:
+		throw MyError("Cannot find compatible target format for video decompression.");
 	}
 }
 
@@ -355,6 +365,8 @@ bool VDVideoDecompressorDV::SetTargetFormat(const void *format) {
 }
 
 void VDVideoDecompressorDV::Start() {
+	if (!mFormat)
+		throw MyError("Cannot find compatible target format for video decompression.");
 }
 
 void VDVideoDecompressorDV::Stop() {
@@ -905,6 +917,9 @@ namespace {
 }
 
 void VDVideoDecompressorDV::DecompressFrame(void *dst, const void *src, uint32 srcSize, bool keyframe, bool preroll) {
+	if (!mFormat)
+		throw MyError("Cannot find compatible target format for video decompression.");
+
 	if ((mHeight == 480 && srcSize != 120000) || (mHeight == 576 && srcSize != 144000))
 		throw MyError("DV frame data is wrong size (truncated or corrupted)");
 
@@ -1309,6 +1324,9 @@ bool VDVideoDecompressorVCM::SetTargetFormat(const void *format) {
 }
 
 void VDVideoDecompressorVCM::Start() {
+	if (mDstFormat.empty())
+		throw MyError("Cannot find compatible target format for video decompression.");
+
 	if (!mbActive) {
 		BITMAPINFO *pSrcFormat = (BITMAPINFO *)mSrcFormat.data();
 		BITMAPINFO *pDstFormat = (BITMAPINFO *)mDstFormat.data();
@@ -1467,8 +1485,6 @@ bool VideoSource::setTargetFormatVariant(int format, int variant) {
 		mpTargetFormatHeader->biCompression		= BI_RGB;
 		mpTargetFormatHeader->biSizeImage		= ((w+3)&~3)*h;
 
-		memset(mPalette, 0, sizeof mPalette);
-		memcpy(mPalette, (const uint32 *)(bih + bih->biSize), std::min<size_t>(256, bih->biClrUsed) * 4);
 		mTargetFormat.palette = mPalette;
 	} else {
 		const vdstructex<BITMAPINFOHEADER> src(bih, getFormatLen());
@@ -1495,9 +1511,13 @@ bool VideoSource::setDecompressedFormat(int depth) {
 bool VideoSource::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 	const BITMAPINFOHEADER *bih = getImageFormat();
 
-	if (pbih->biCompression == BI_RGB && pbih->biWidth == bih->biWidth && pbih->biHeight == bih->biHeight) {
-		setDecompressedFormat(pbih->biBitCount);
-		return true;
+	if (pbih->biWidth == bih->biWidth && pbih->biHeight == bih->biHeight) {
+		int variant;
+
+		int format = VDBitmapFormatToPixmapFormat(*pbih, variant);
+
+		if (format && variant <= 1)
+			return setTargetFormat(format);
 	}
 
 	return false;
@@ -1812,6 +1832,13 @@ void VideoSourceAVI::_construct() {
 	}
 
 	mpTargetFormatHeader.resize(format_len);
+
+	// initialize pixmap palette
+	if (bmih->biClrUsed > 0) {
+		memset(mPalette, 0, sizeof mPalette);
+		memcpy(mPalette, (const uint32 *)((const char *)bmih + bmih->biSize), std::min<size_t>(256, bmih->biClrUsed) * 4);
+	}
+
 
 	// Some Dazzle drivers apparently do not set biSizeImage correctly.  Also,
 	// zero is a valid value for BI_RGB, but it's annoying!
@@ -2818,6 +2845,8 @@ bool VideoSourceAVI::setTargetFormat(int format) {
 
 	if (format && format == mSourceLayout.format) {
 		if (VideoSource::setTargetFormatVariant(format, mSourceVariant)) {
+			if (format == kPixFormat_Pal8)
+				mTargetFormat.palette = mPalette;
 			bDirectDecompress = true;
 			return true;
 		}
@@ -2869,6 +2898,10 @@ bool VideoSourceAVI::setTargetFormat(int format) {
 						mpTargetFormatHeader = srcFormat;
 
 						VDVERIFY(VideoSource::setTargetFormatVariant(format, variant));
+
+						if (format == kPixFormat_Pal8)
+							mTargetFormat.palette = mPalette;
+
 						bDirectDecompress = true;
 
 						invalidateFrameBuffer();
@@ -2912,6 +2945,8 @@ bool VideoSourceAVI::setDecompressedFormat(const BITMAPINFOHEADER *pbih) {
 				mTargetFormat = VDPixmapFromLayout(mSourceLayout, lpvBuffer);
 			else
 				mTargetFormat.format = 0;
+
+			mTargetFormat.palette = mPalette;
 
 			bDirectDecompress = true;
 
@@ -3060,14 +3095,16 @@ bool VideoSourceAVI::isType1() {
 }
 
 void VideoSourceAVI::streamBegin(bool fRealTime) {
+	// must reset prevframe in any case  so that dsc renders don't pick up the last
+	// preview frame
+	stream_current_frame	= -1;
+
 	if (mbDecodeStarted)
 		return;
 
-	stream_current_frame	= -1;
-
 	pAVIStream->BeginStreaming(mSampleFirst, mSampleLast, fRealTime ? 1000 : 2000);
 
-	if (mpDecompressor)
+	if (mpDecompressor && !bDirectDecompress)
 		mpDecompressor->Start();
 
 	mbDecodeStarted = true;
@@ -3094,7 +3131,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
 				to_copy = data_len;
 			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, getImageFormat()->biSizeImage, data_len);
+				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, to_copy, data_len);
 		}
 		
 		memcpy((void *)getFrameBuffer(), inputBuffer, to_copy);
@@ -3112,8 +3149,8 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 
 		if (data_len) {
 			try {
-				vdprotected2("using output buffer at %p-%p", void *, lpvBuffer, void *, (char *)lpvBuffer + mFrameBufferSize - 1) {
-					vdprotected2("using input buffer at %p-%p", const void *, inputBuffer, const void *, (const char *)inputBuffer + data_len - 1) {
+				vdprotected2("using output buffer at "VDPROT_PTR"-"VDPROT_PTR, void *, lpvBuffer, void *, (char *)lpvBuffer + mFrameBufferSize - 1) {
+					vdprotected2("using input buffer at "VDPROT_PTR"-"VDPROT_PTR, const void *, inputBuffer, const void *, (const char *)inputBuffer + data_len - 1) {
 						vdprotected1("decompressing video frame %I64d", uint64, frame_num) {
 							mpDecompressor->DecompressFrame(lpvBuffer, inputBuffer, data_len, _isKey(frame_num), is_preroll);
 						}
@@ -3151,7 +3188,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 
 				inputBuffer = tmpBuffer;
 			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, nBytesRequired, data_len);
+				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", (unsigned)frame_num, nBytesRequired, data_len);
 		}
 
 		DecompressFrame(inputBuffer);
@@ -3175,7 +3212,7 @@ void VideoSourceAVI::streamEnd() {
 	// If an error occurs, but no one is there to hear it, was
 	// there ever really an error?
 
-	if (mpDecompressor)
+	if (mpDecompressor && !bDirectDecompress)
 		mpDecompressor->Stop();
 
 	pAVIStream->EndStreaming();

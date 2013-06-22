@@ -774,6 +774,9 @@ bool VDVideoDisplayMinidriverOpenGL::Update(FieldMode fieldmode) {
 	if (!mpgl)
 		return false;
 
+	if (!mSource.pixmap.data)
+		return false;
+
 	if (HDC hdc = GetDC(mhwndOGL)) {
 		mpgl->pwglMakeCurrent(hdc, mhglrc);
 		VDASSERT(mpgl->pglGetError() == GL_NO_ERROR);
@@ -1760,7 +1763,7 @@ bool VDVideoDisplayMinidriverDirectDraw::ModifySource(const VDVideoDisplaySource
 	if (!mpddsBitmap && !mpddsOverlay)
 		return false;
 
-	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && !mSource.bPersistent) {
+	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format) {
 		mSource = info;
 		return true;
 	}
@@ -1893,6 +1896,9 @@ bool VDVideoDisplayMinidriverDirectDraw::Resize() {
 }
 
 bool VDVideoDisplayMinidriverDirectDraw::Update(FieldMode fieldmode) {
+	if (!mSource.pixmap.data)
+		return false;
+
 	HRESULT hr;
 	DDSURFACEDESC ddsd = { sizeof(DDSURFACEDESC) };
 
@@ -2349,6 +2355,9 @@ bool VDVideoDisplayMinidriverGDI::ModifySource(const VDVideoDisplaySourceInfo& i
 }
 
 bool VDVideoDisplayMinidriverGDI::Update(FieldMode fieldmode) {
+	if (!mSource.pixmap.data)
+		return false;
+
 	if (!mSource.pSharedObject) {
 		GdiFlush();
 

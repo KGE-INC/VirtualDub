@@ -24,7 +24,7 @@
 #include <windows.h>
 #endif
 
-#include <vd2/system/VDAtomic.h>
+#include <vd2/system/atomic.h>
 #include <vd2/system/memory.h>
 #include <vd2/Meia/MPEGDecoder.h>
 #include <vd2/Meia/MPEGPredict.h>

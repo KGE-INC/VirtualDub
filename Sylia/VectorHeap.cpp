@@ -24,7 +24,7 @@ VectorHeap::~VectorHeap() {
 void *VectorHeap::Allocate(long lBytes) {
 	long lp;
 
-	assert(lBytes <= lChunkSize - offsetof(VectorHeapHeader, heap));
+	lBytes = (lBytes + 7) & ~7;
 
 	if (!last || last->lSize - last->lPoint < lBytes) {
 		VectorHeapHeader *vhh;

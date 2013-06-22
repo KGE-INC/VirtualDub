@@ -2,21 +2,12 @@
 #define f_VIDEOSOURCEIMAGES_H
 
 #include <vd2/system/file.h>
+#include <vector>
 
 #include "VideoSource.h"
 #include "VBitmap.h"
 
 class VideoSourceImages : public VideoSource {
-private:
-	long	mCachedFrame;
-	int		mImageBaseNumber;
-	VBitmap	mvbFrameBuffer;
-
-	long	mCachedHandleFrame;
-	VDFile	mCachedFile;
-
-	wchar_t	mszPathFormat[512];
-
 public:
 	VideoSourceImages(const wchar_t *pszBaseFormat);
 	~VideoSourceImages();
@@ -42,6 +33,20 @@ public:
 	bool isKeyframeOnly()					{ return true; }
 	bool isType1()							{ return false; }
 	bool isDecodable(VDPosition sample_num)		{ return true; }
+
+private:
+	const wchar_t *ComputeFilename(std::vector<wchar_t>& buf, VDPosition pos);
+
+	std::vector<wchar_t> mPathBuf;
+	int		mLastDigitPos;
+
+	VDPosition	mCachedFrame;
+	VBitmap	mvbFrameBuffer;
+
+	VDPosition	mCachedHandleFrame;
+	VDFile	mCachedFile;
+
+	VDStringW	mBaseName;
 };
 
 #endif

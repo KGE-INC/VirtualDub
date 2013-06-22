@@ -43,6 +43,7 @@
 #include "SceneDetector.h"
 #include "oshelper.h"
 #include "resource.h"
+#include "uiframe.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -258,15 +259,24 @@ VDPosition VDProject::GetFrameCount() {
 	return mTimeline.GetLength();
 }
 
+VDFraction VDProject::GetInputFrameRate() {
+	return mVideoInputFrameRate;
+}
+
 void VDProject::ClearSelection() {
-	mposSelectionStart = mposSelectionEnd = 0;
+	mposSelectionStart = 0;
+	mposSelectionEnd = -1;
 	g_dubOpts.video.lStartOffsetMS = 0;
 	g_dubOpts.video.lEndOffsetMS = 0;
 	UISelectionUpdated();
 }
 
 bool VDProject::IsSelectionEmpty() {
-	return mposSelectionStart == mposSelectionEnd;
+	return mposSelectionStart >= mposSelectionEnd;
+}
+
+bool VDProject::IsSelectionPresent() {
+	return mposSelectionStart <= mposSelectionEnd;
 }
 
 VDPosition VDProject::GetSelectionStartFrame() {
@@ -420,6 +430,23 @@ bool VDProject::UpdateFrame() {
 	if (mDesiredInputFrame < 0)
 		return false;
 
+	if (!inputVideoAVI) {
+		if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
+			UIRefreshInputFrame(false);
+
+		if (mbUpdateOutputFrame)
+			UIRefreshOutputFrame(false);
+
+		if (mbUpdateLong)
+			guiSetStatus("", 255);
+
+		mDesiredInputFrame = -1;
+		mDesiredOutputFrame = -1;
+		mDesiredNextInputFrame = -1;
+		mDesiredNextOutputFrame = -1;
+		return false;
+	}
+
 	uint32 startTime = VDGetCurrentTick();
 
 	try {
@@ -542,7 +569,10 @@ void VDProject::RefilterFrame() {
 ///////////////////////////////////////////////////////////////////////////
 
 void VDProject::Quit() {
-	DestroyWindow((HWND)mhwnd);
+	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+
+	if (VDINLINEASSERT(pFrame))
+		pFrame->Destroy();
 }
 
 void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, bool fExtendedOpen, bool fQuiet, bool fAutoscan, const char *pInputOpts) {
@@ -554,63 +584,7 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		VDStringW filename(VDGetFullPath(VDStringW(pFilename)));
 
 		if (!pSelectedDriver) {
-			char buf[64];
-			char endbuf[64];
-			DWORD dwActual;
-
-			memset(buf, 0, sizeof buf);
-			memset(endbuf, 0, sizeof endbuf);
-
-			VDFile file(filename.c_str());
-
-			dwActual = file.readData(buf, 64);
-
-			if (dwActual <= 64)
-				memcpy(endbuf, buf, dwActual);
-			else {
-				file.seek(-64, nsVDFile::kSeekEnd);
-				file.read(endbuf, 64);
-			}
-
-			// The Avisynth script:
-			//
-			//	Version
-			//
-			// is only 9 bytes...
-
-			if (!dwActual)
-				throw MyError("Can't open \"%s\": The file is empty.", VDTextWToA(filename).c_str());
-
-			file.closeNT();
-
-			// attempt detection
-
-			tVDInputDrivers inputDrivers;
-			VDGetInputDrivers(inputDrivers, IVDInputDriver::kF_Video);
-
-			tVDInputDrivers::const_iterator it(inputDrivers.begin()), itEnd(inputDrivers.end());
-
-			int fitquality = -1000;
-
-			for(; it!=itEnd; ++it) {
-				IVDInputDriver *pDriver = *it;
-
-				int result = pDriver->DetectBySignature(buf, dwActual, endbuf, dwActual, 0);
-
-				if (result > 0 && fitquality < 1) {
-					pSelectedDriver = pDriver;
-					fitquality = 1;
-				} else if (!result && fitquality < 0) {
-					pSelectedDriver = pDriver;
-					fitquality = 0;
-				} else if (fitquality < -1 && pDriver->DetectByFilename(filename.c_str())) {
-					pSelectedDriver = pDriver;
-					fitquality = -1;
-				}
-			}
-
-			if (!pSelectedDriver)
-				throw MyError("Cannot detect file type of \"%s\".", VDTextWToA(filename).c_str());
+			pSelectedDriver = VDAutoselectInputDriverForFile(filename.c_str());
 		}
 
 		// open file
@@ -690,7 +664,7 @@ void VDProject::OpenWAV(const wchar_t *szFile) {
 	wcscpy(g_szInputWAVFile, szFile);
 
 	audioInputMode = AUDIOIN_WAVE;
-	inputAudioWAV = pNewAudio;
+	inputAudio = inputAudioWAV = pNewAudio;
 }
 
 void VDProject::CloseWAV() {
@@ -830,25 +804,6 @@ void VDProject::StartServer() {
 	ActivateFrameServerDialog((HWND)hwnd);
 
 	Attach(hwnd);
-	UIVideoSourceUpdated();
-	UISourceFileUpdated();
-	UIDubParametersUpdated();
-	UITimelineUpdated();
-}
-
-void VDProject::SwitchToCaptureMode() {
-	CPUTest();
-
-	VDGUIHandle hwnd = mhwnd;
-
-	Detach();
-	Capture((HWND)hwnd);
-	Attach(hwnd);
-
-	UISourceFileUpdated();		// reset title bar
-	UIDubParametersUpdated();	// reset timeline parameters
-	UITimelineUpdated();		// reset the timeline
-	UIVideoSourceUpdated();		// necessary because filters can be changed in capture mode
 }
 
 void VDProject::ShowInputInfo() {
@@ -961,7 +916,7 @@ void VDProject::MoveToEnd() {
 }
 
 void VDProject::MoveToSelectionStart() {
-	if (inputVideoAVI) {
+	if (inputVideoAVI && IsSelectionPresent()) {
 		VDPosition pos = GetSelectionStartFrame();
 
 		if (pos >= 0)
@@ -970,7 +925,7 @@ void VDProject::MoveToSelectionStart() {
 }
 
 void VDProject::MoveToSelectionEnd() {
-	if (inputVideoAVI) {
+	if (inputVideoAVI && IsSelectionPresent()) {
 		VDPosition pos = GetSelectionEndFrame();
 
 		if (pos >= 0)
@@ -1098,6 +1053,10 @@ void VDProject::ScanForErrors() {
 }
 
 void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOptions *pOptions, int iPriority, bool fPropagateErrors, long lSpillThreshold, long lSpillFrameThreshold) {
+
+	if (!inputAVI)
+		throw MyError("No source has been loaded to process.");
+
 	bool fError = false;
 	MyError prop_err;
 	DubOptions *opts;

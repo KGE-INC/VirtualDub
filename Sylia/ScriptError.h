@@ -36,7 +36,9 @@ public:
 
 		FCALL_OUT_OF_RANGE,
 		FCALL_INVALID_PTYPE,
-		FCALL_UNKNOWN_STR
+		FCALL_UNKNOWN_STR,
+
+		ARRAY_INDEX_OUT_OF_BOUNDS
 	};
 
 	VDScriptError(int err_num) : err(err_num) { }

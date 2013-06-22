@@ -4,7 +4,7 @@
 
 # TARGTYPE "Win32 (x86) Application" 0x0101
 
-CFG=VirtualDub - Win32 Release
+CFG=VirtualDub - Win32 Debug AMD64
 !MESSAGE This is not a valid makefile. To build this project using NMAKE,
 !MESSAGE use the Export Makefile command and run
 !MESSAGE 
@@ -13,14 +13,14 @@ CFG=VirtualDub - Win32 Release
 !MESSAGE You can specify a configuration when running NMAKE
 !MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
-!MESSAGE NMAKE /f "VirtualDub.mak" CFG="VirtualDub - Win32 Release"
+!MESSAGE NMAKE /f "VirtualDub.mak" CFG="VirtualDub - Win32 Debug AMD64"
 !MESSAGE 
 !MESSAGE Possible choices for configuration are:
 !MESSAGE 
 !MESSAGE "VirtualDub - Win32 Release" (based on "Win32 (x86) Application")
 !MESSAGE "VirtualDub - Win32 Debug" (based on "Win32 (x86) Application")
-!MESSAGE "VirtualDub - Win32 Release ICL" (based on "Win32 (x86) Application")
 !MESSAGE "VirtualDub - Win32 Release AMD64" (based on "Win32 (x86) Application")
+!MESSAGE "VirtualDub - Win32 Debug AMD64" (based on "Win32 (x86) Application")
 !MESSAGE 
 
 # Begin Project
@@ -102,44 +102,6 @@ PostBuild_Desc=Compiling function location database...
 PostBuild_Cmds=..\out\Debug\mapconv ..\out\debug\VirtualDub.map ..\out\debug\VirtualDub.vdi res\ia32.vdi
 # End Special Build Tool
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# PROP BASE Use_MFC 0
-# PROP BASE Use_Debug_Libraries 0
-# PROP BASE Output_Dir "VirtualDub___Win32_Release_ICL"
-# PROP BASE Intermediate_Dir "VirtualDub___Win32_Release_ICL"
-# PROP BASE Ignore_Export_Lib 0
-# PROP BASE Target_Dir ""
-# PROP Use_MFC 0
-# PROP Use_Debug_Libraries 0
-# PROP Output_Dir "..\out\ReleaseICL"
-# PROP Intermediate_Dir "..\obj\ReleaseICL\VirtualDub"
-# PROP Ignore_Export_Lib 0
-# PROP Target_Dir ""
-# ADD BASE CPP /nologo /G6 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "NDEBUG" /D "_USE_NON_INTEL_COMPILER" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /FD /GF /c
-# SUBTRACT BASE CPP /YX /Yc /Yu
-# ADD CPP /nologo /G6 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "NDEBUG" /D "_USE_INTEL_COMPILER" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /FD /GF /QxW /c
-# ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
-# ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
-# ADD BASE RSC /l 0x409 /d "NDEBUG" /d "WIN32_LEAN_AND_MEAN"
-# ADD RSC /l 0x409 /d "NDEBUG" /d "WIN32_LEAN_AND_MEAN"
-BSC32=bscmake.exe
-# ADD BASE BSC32 /nologo
-# ADD BSC32 /nologo
-LINK32=link.exe
-# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
-# SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/ReleaseICL/VeedubP4.map" /debug /machine:I386 /nodefaultlib:"libc" /out:"..\out\ReleaseICL/VeedubP4.exe" /libpath:"../lib/ReleaseICL" /opt:nowin98 /opt:ref /mapinfo:lines
-# SUBTRACT LINK32 /pdb:none
-# Begin Special Build Tool
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-SOURCE="$(InputPath)"
-PreLink_Desc=Updating build number information...
-PreLink_Cmds=..\out\Release\verinc	ml /c /coff /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
-PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=..\out\Release\mapconv ..\out\ReleaseICL\VeedubP4.map ..\out\ReleaseICL\VeedubP4.vdi res\ia32.vdi
-# End Special Build Tool
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # PROP BASE Use_MFC 0
@@ -166,9 +128,9 @@ BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LINK32=link.exe
-# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
+# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib comsupp.lib /nologo /entry:"VeedubWinMain" /subsystem:windows /map:"../out/Release/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /libpath:"../lib/Release" /opt:nowin98 /opt:ref /mapinfo:lines
 # SUBTRACT BASE LINK32 /pdb:none
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/ReleaseAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"comsupp" /out:"..\out\ReleaseAMD64/Veedub64.exe" /libpath:"../lib/ReleaseAMD64" /machine:AMD64 /opt:nowin98 /opt:ref,lbr /mapinfo:lines /release
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib comsupp.lib /nologo /subsystem:windows /map:"../out/ReleaseAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"comsupp" /out:"..\out\ReleaseAMD64/Veedub64.exe" /libpath:"../lib/ReleaseAMD64" /machine:AMD64 /opt:nowin98 /opt:ref,lbr /mapinfo:lines /release
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
@@ -179,14 +141,51 @@ PostBuild_Desc=Compiling function location database...
 PostBuild_Cmds=..\out\Release\mapconv ..\out\ReleaseAMD64\Veedub64.map ..\out\ReleaseAMD64\Veedub64.vdi res\amd64.vdi
 # End Special Build Tool
 
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 1
+# PROP BASE Output_Dir "VirtualDub___Win32_Debug_AMD64"
+# PROP BASE Intermediate_Dir "VirtualDub___Win32_Debug_AMD64"
+# PROP BASE Ignore_Export_Lib 0
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 1
+# PROP Output_Dir "..\out\DebugAMD64"
+# PROP Intermediate_Dir "..\obj\DebugAMD64\VirtualDub"
+# PROP Ignore_Export_Lib 0
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /GZ /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I ".\h" /I ".\res" /I "..\h" /I "..\vdsvrlnk" /I "..\sylia" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /D "NOMINMAX" /Yu"stdafx.h" /FD /GF /GZ /c
+# ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /win32
+# ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
+# ADD BASE RSC /l 0x409 /d "_DEBUG"
+# ADD RSC /l 0x409 /d "_DEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LINK32=link.exe
+# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/Debug/VirtualDub.map" /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /libpath:"../lib/Debug"
+# SUBTRACT BASE LINK32 /pdb:none
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj priss.lib sylia.lib system.lib dita.lib meia.lib kasumi.lib /nologo /subsystem:windows /map:"../out/DebugAMD64/Veedub64.map" /debug /machine:IX86 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /out:"..\out\DebugAMD64/Veedub64.exe" /libpath:"../lib/DebugAMD64" /machine:AMD64
+# SUBTRACT LINK32 /pdb:none
+# Begin Special Build Tool
+IntDir=.\..\obj\DebugAMD64\VirtualDub
+SOURCE="$(InputPath)"
+PreLink_Desc=Updating build number information...
+PreLink_Cmds=..\out\Debug\verinc amd64	ml64 /c /nologo /Fo"$(IntDir)\verstub.obj" verstub.asm
+PostBuild_Desc=Compiling function location database...
+PostBuild_Cmds=..\out\Debug\mapconv ..\out\DebugAMD64\Veedub64.map ..\out\DebugAMD64\VirtualDub.vdi res\amd64.vdi
+# End Special Build Tool
+
 !ENDIF 
 
 # Begin Target
 
 # Name "VirtualDub - Win32 Release"
 # Name "VirtualDub - Win32 Debug"
-# Name "VirtualDub - Win32 Release ICL"
 # Name "VirtualDub - Win32 Release AMD64"
+# Name "VirtualDub - Win32 Debug AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat;for;f90"
@@ -245,6 +244,10 @@ SOURCE=.\source\SceneDetector.cpp
 # Begin Source File
 
 SOURCE=.\source\timeline.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\uiframe.cpp
 # End Source File
 # Begin Source File
 
@@ -388,6 +391,10 @@ SOURCE=.\h\timeline.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\h\uiframe.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\h\VBitmap.h
 # End Source File
 # Begin Source File
@@ -514,18 +521,6 @@ InputPath=.\res\virtualdub.ami
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-TargetDir=\p4root\dev\out\ReleaseICL
-InputPath=.\res\virtualdub.ami
-
-"$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	$(TargetDir)\ami $(InputPath) $(IntDir)\virtualdub.vdres
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # Begin Custom Build
@@ -534,6 +529,18 @@ InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	..\out\Release\ami $(InputPath) $(IntDir)\virtualdub.vdres
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# Begin Custom Build
+IntDir=.\..\obj\DebugAMD64\VirtualDub
+TargetDir=\p4root\dev\out\DebugAMD64
+InputPath=.\res\virtualdub.ami
+
+"$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	$(TargetDir)\ami $(InputPath) $(IntDir)\virtualdub.vdres
 
 # End Custom Build
 
@@ -555,15 +562,15 @@ SOURCE=.\res\VirtualDub.rc
 # ADD BASE RSC /l 0x409 /i "res"
 # ADD RSC /l 0x409 /i "res" /i "../obj/Debug/VirtualDub"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE RSC /l 0x409 /i "res"
-# ADD RSC /l 0x409 /i "res" /i "../obj/ReleaseICL/VirtualDub"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE RSC /l 0x409 /i "res"
 # ADD RSC /l 0x409 /i "res" /i "../obj/ReleaseAMD64/VirtualDub"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE RSC /l 0x409 /i "res" /i "../obj/Debug/VirtualDub"
+# ADD RSC /l 0x409 /i "res" /i "../obj/Debug/VirtualDub"
 
 !ENDIF 
 
@@ -594,19 +601,27 @@ SOURCE=.\h\capclip.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\source\caphisto.cpp
+SOURCE=.\source\capdialogs.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\capemu.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\capfilter.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\capfilter.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\Caphisto.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=.\h\caphisto.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\caplog.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\h\caplog.h
 # End Source File
 # Begin Source File
 
@@ -623,6 +638,18 @@ SOURCE=.\source\capture.cpp
 # Begin Source File
 
 SOURCE=.\h\capture.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\captureui.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\source\caputils.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\h\caputils.h
 # End Source File
 # Begin Source File
 
@@ -644,9 +671,11 @@ SOURCE=.\source\F_blur.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -661,9 +690,11 @@ SOURCE=.\source\f_boxblur.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -678,9 +709,11 @@ SOURCE=.\source\f_brightcont.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -699,9 +732,11 @@ SOURCE=.\source\f_convolute.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -716,9 +751,11 @@ SOURCE=.\source\f_deinterlace.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -733,9 +770,11 @@ SOURCE=.\source\f_emboss.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -762,9 +801,11 @@ SOURCE=.\source\f_flipv.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -779,9 +820,11 @@ SOURCE=.\source\f_grayscale.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -798,16 +841,15 @@ SOURCE=.\source\f_hsv.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /G6
-# ADD CPP /G6
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # PROP Exclude_From_Build 1
 # ADD BASE CPP /G6
 # ADD CPP /G6
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -824,9 +866,11 @@ SOURCE=.\source\f_levels.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -845,9 +889,11 @@ SOURCE=.\source\f_logo.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -870,9 +916,11 @@ SOURCE=.\source\f_reduce2.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -887,9 +935,11 @@ SOURCE=.\source\f_reducehq.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -908,9 +958,11 @@ SOURCE=.\source\f_rotate.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -925,9 +977,11 @@ SOURCE=.\source\f_rotate2.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -942,9 +996,11 @@ SOURCE=.\source\f_sharpen.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -961,16 +1017,15 @@ SOURCE=.\source\f_smoother.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Ox /Ot /Oa /Og /Oi /Oy
-# ADD CPP /Ox /Ot /Oa /Og /Oi /Oy
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # PROP Exclude_From_Build 1
 # ADD BASE CPP /Ox /Ot /Oa /Og /Oi /Oy
 # ADD CPP /Ox /Ot /Oa /Og /Oi /Oy
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# PROP Exclude_From_Build 1
 
 !ENDIF 
 
@@ -983,9 +1038,11 @@ SOURCE=.\source\f_threshold.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -1000,18 +1057,16 @@ SOURCE=.\source\f_timesmooth.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
 !ENDIF 
 
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\f_triresize.cpp
 # End Source File
 # Begin Source File
 
@@ -1025,9 +1080,11 @@ SOURCE=.\source\f_tv.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -1048,15 +1105,12 @@ SOURCE=.\source\MJPEGDecoder.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Ob2
-# ADD CPP /Ob2
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ob2
 # ADD CPP /Ob2
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -1071,15 +1125,12 @@ SOURCE=.\source\Mpeg.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Ob2
-# ADD CPP /Ob2
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ob2
 # ADD CPP /Ob2
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -1132,7 +1183,7 @@ InputName=Changes
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # Begin Custom Build - Building resource text...
 InputDir=.\res
@@ -1144,7 +1195,7 @@ InputName=Changes
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # Begin Custom Build - Building resource text...
 InputDir=.\res
@@ -1191,7 +1242,7 @@ InputName=rel_notes
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # Begin Custom Build - Building resource text...
 InputDir=.\res
@@ -1203,7 +1254,7 @@ InputName=rel_notes
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # Begin Custom Build - Building resource text...
 InputDir=.\res
@@ -1240,19 +1291,19 @@ SOURCE=.\source\ClippingControl.cpp
 # ADD CPP /Od /Ob0
 # SUBTRACT CPP /YX /Yc /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Os
 # SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
 # ADD CPP /Os
 # SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# SUBTRACT BASE CPP /YX /Yc /Yu
+# ADD CPP /Od /Ob0
+# SUBTRACT CPP /YX /Yc /Yu
 
 !ENDIF 
 
@@ -1275,19 +1326,19 @@ SOURCE=.\source\HexViewer.cpp
 # ADD CPP /Od /Ob0
 # SUBTRACT CPP /YX /Yc /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Os
 # SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
 # ADD CPP /Os
 # SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# SUBTRACT BASE CPP /YX /Yc /Yu
+# ADD CPP /Od /Ob0
+# SUBTRACT CPP /YX /Yc /Yu
 
 !ENDIF 
 
@@ -1306,19 +1357,19 @@ SOURCE=.\source\LevelControl.cpp
 # ADD CPP /Od /Ob0
 # SUBTRACT CPP /YX /Yc /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Os
 # SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
 # ADD CPP /Os
 # SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# SUBTRACT BASE CPP /YX /Yc /Yu
+# ADD CPP /Od /Ob0
+# SUBTRACT CPP /YX /Yc /Yu
 
 !ENDIF 
 
@@ -1341,19 +1392,19 @@ SOURCE=.\source\PositionControl.cpp
 # ADD CPP /Od /Ob0
 # SUBTRACT CPP /YX /Yc /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Os
 # SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
 # ADD CPP /Os
 # SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# SUBTRACT BASE CPP /YX /Yc /Yu
+# ADD CPP /Od /Ob0
+# SUBTRACT CPP /YX /Yc /Yu
 
 !ENDIF 
 
@@ -1372,19 +1423,19 @@ SOURCE=.\source\ProgressDialog.cpp
 # ADD CPP /Od /Ob0
 # SUBTRACT CPP /YX /Yc /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Os
 # SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
 # ADD CPP /Os
 # SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# SUBTRACT BASE CPP /YX /Yc /Yu
+# ADD CPP /Od /Ob0
+# SUBTRACT CPP /YX /Yc /Yu
 
 !ENDIF 
 
@@ -1498,19 +1549,17 @@ SOURCE=.\source\acompchoose.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1528,14 +1577,17 @@ SOURCE=.\source\afiltdlg.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1553,14 +1605,17 @@ SOURCE=.\source\AudioFilterSystem.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1578,19 +1633,17 @@ SOURCE=.\source\autodetect.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1608,19 +1661,17 @@ SOURCE=.\source\auxdlg.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1638,19 +1689,17 @@ SOURCE=.\source\AVIAudioOutput.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -1668,19 +1717,17 @@ SOURCE=.\source\AVIPipe.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -1698,14 +1745,17 @@ SOURCE=.\source\AVIStripeSystem.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1723,19 +1773,17 @@ SOURCE=.\source\Command.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1753,19 +1801,17 @@ SOURCE=.\source\compchoose.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1783,19 +1829,17 @@ SOURCE=.\source\Crash.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1813,19 +1857,17 @@ SOURCE=.\source\ddrawsup.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -1843,19 +1885,17 @@ SOURCE=.\source\Disasm.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1873,19 +1913,17 @@ SOURCE=.\source\Dub.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1900,9 +1938,12 @@ SOURCE=.\source\DubIO.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1917,9 +1958,12 @@ SOURCE=.\source\DubOutput.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1937,19 +1981,17 @@ SOURCE=.\source\DubStatus.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -1964,9 +2006,12 @@ SOURCE=.\source\DubUtils.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -1984,19 +2029,17 @@ SOURCE=.\source\FastReadStream.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -2014,19 +2057,17 @@ SOURCE=.\source\Filtdlg.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2044,19 +2085,17 @@ SOURCE=.\source\Filters.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2074,19 +2113,17 @@ SOURCE=.\source\FilterSystem.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -2104,19 +2141,17 @@ SOURCE=.\source\gui.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2134,19 +2169,17 @@ SOURCE=.\source\Init.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2164,19 +2197,17 @@ SOURCE=.\source\Job.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2198,19 +2229,17 @@ SOURCE=.\source\license.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2228,19 +2257,17 @@ SOURCE=.\source\Main.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2258,19 +2285,17 @@ SOURCE=.\source\memcheck.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -2288,19 +2313,17 @@ SOURCE=.\source\misc.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2318,19 +2341,17 @@ SOURCE=.\source\MonoBitmap.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -2348,19 +2369,17 @@ SOURCE=.\source\MRUList.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2378,19 +2397,17 @@ SOURCE=.\source\optdlg.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2408,19 +2425,17 @@ SOURCE=.\source\oshelper.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2442,19 +2457,17 @@ SOURCE=.\source\prefs.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2469,9 +2482,12 @@ SOURCE=.\source\project.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -2486,9 +2502,12 @@ SOURCE=.\source\projectui.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -2506,19 +2525,17 @@ SOURCE=.\source\Script.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2536,19 +2553,17 @@ SOURCE=.\source\server.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2566,19 +2581,17 @@ SOURCE=.\source\sparseavi.cpp
 
 # ADD CPP /Od /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0
+# ADD CPP /Od /Ob0
 
 !ENDIF 
 
@@ -2612,19 +2625,17 @@ SOURCE=.\source\VideoSequenceCompressor.cpp
 
 # ADD CPP /Od /Ob0 /Yu
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot /YX /Yc /Yu
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot /YX /Yc /Yu
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa /YX /Yc /Yu
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa /YX /Yc /Yu
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od /Ob0 /Yu
+# ADD CPP /Od /Ob0 /Yu
 
 !ENDIF 
 
@@ -2814,19 +2825,11 @@ InputName=a_bitmap
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_bitmap.asm
-InputName=a_bitmap
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -2861,19 +2864,11 @@ InputName=a_chromasmoother
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_chromasmoother.asm
-InputName=a_chromasmoother
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -2908,19 +2903,11 @@ InputName=a_convertout
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_convertout.asm
-InputName=a_convertout
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -2955,19 +2942,11 @@ InputName=a_fastdisplay
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_fastdisplay.asm
-InputName=a_fastdisplay
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3002,19 +2981,11 @@ InputName=a_histogram
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_histogram.asm
-InputName=a_histogram
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3049,19 +3020,11 @@ InputName=a_scene
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_scene.asm
-InputName=a_scene
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3096,19 +3059,11 @@ InputName=a_yuv422torgb
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_yuv422torgb.asm
-InputName=a_yuv422torgb
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3147,19 +3102,11 @@ InputName=a_brightcont
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_brightcont.asm
-InputName=a_brightcont
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3194,19 +3141,11 @@ InputName=a_cmult
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_cmult.asm
-InputName=a_cmult
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3241,19 +3180,11 @@ InputName=a_convolute
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_convolute.asm
-InputName=a_convolute
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3288,19 +3219,11 @@ InputName=a_grayscale
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_grayscale.asm
-InputName=a_grayscale
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3335,19 +3258,11 @@ InputName=a_reduce
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_reduce.asm
-InputName=a_reduce
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3382,19 +3297,11 @@ InputName=A_resize
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\A_resize.asm
-InputName=A_resize
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3429,19 +3336,11 @@ InputName=a_rotate
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_rotate.asm
-InputName=a_rotate
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3476,19 +3375,11 @@ InputName=a_sharpen
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_sharpen.asm
-InputName=a_sharpen
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3523,19 +3414,11 @@ InputName=a_threshold
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_threshold.asm
-InputName=a_threshold
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3570,19 +3453,11 @@ InputName=a_tv
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_tv.asm
-InputName=a_tv
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3621,19 +3496,11 @@ InputName=a_mjpgdec
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_mjpgdec.asm
-InputName=a_mjpgdec
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3668,19 +3535,11 @@ InputName=a_yuv2rgbhq
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_yuv2rgbhq.asm
-InputName=a_yuv2rgbhq
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3715,19 +3574,11 @@ InputName=a_yuvtable
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\VirtualDub
-InputPath=.\source\a_yuvtable.asm
-InputName=a_yuvtable
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -3859,19 +3710,17 @@ SOURCE=.\source\DubSource.cpp
 
 # ADD CPP /Od
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# ADD BASE CPP /Os /Oy /Ob1
-# SUBTRACT BASE CPP /Ox /Ot
-# ADD CPP /Os /Oy /Ob1
-# SUBTRACT CPP /Ox /Ot
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Od
+# ADD CPP /Od
 
 !ENDIF 
 
@@ -3887,14 +3736,14 @@ SOURCE=.\source\InputFile.cpp
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -3932,14 +3781,17 @@ SOURCE=.\source\VideoSourceImages.cpp
 
 # ADD CPP /Ob0
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
 # ADD BASE CPP /Ow /Os /Oy /Ob1
 # SUBTRACT BASE CPP /Ox /Ot /Oa
 # ADD CPP /Ow /Os /Oy /Ob1
 # SUBTRACT CPP /Ox /Ot /Oa
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# ADD BASE CPP /Ob0
+# ADD CPP /Ob0
 
 !ENDIF 
 
@@ -4048,19 +3900,28 @@ SOURCE=.\source\a64_resize.asm
 
 # PROP Exclude_From_Build 1
 
-!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release ICL"
-
-# PROP Exclude_From_Build 1
-
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Release AMD64"
 
-# Begin Custom Build
+# Begin Custom Build -
 IntDir=.\..\obj\ReleaseAMD64\VirtualDub
 InputPath=.\source\a64_resize.asm
 InputName=a64_resize
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml64 /c /Zi /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug AMD64"
+
+# PROP BASE Exclude_From_Build 1
+# Begin Custom Build -
+IntDir=.\..\obj\DebugAMD64\VirtualDub
+InputPath=.\source\a64_resize.asm
+InputName=a64_resize
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
 
 # End Custom Build
 

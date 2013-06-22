@@ -8,7 +8,7 @@
 #include <set>
 
 #include <vd2/system/vdtypes.h>
-#include <vd2/system/VDAtomic.h>
+#include <vd2/system/atomic.h>
 #include <vd2/system/file.h>
 #include <vd2/system/Progress.h>
 

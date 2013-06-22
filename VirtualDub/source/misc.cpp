@@ -24,7 +24,9 @@
 
 #include "misc.h"
 #include <vd2/system/cpuaccel.h>
+#include <vd2/system/filesys.h>
 #include <vd2/system/log.h>
+#include <vd2/system/registry.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmaputils.h>
 
@@ -289,16 +291,26 @@ VDStringA VDEncodeScriptString(const VDStringW& sw) {
 }
 
 int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr) {
+	int variant;
+
+	return VDBitmapFormatToPixmapFormat(hdr, variant);
+}
+
+int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr, int& variant) {
 	using namespace nsVDPixmap;
+
+	variant = 1;
 
 	switch(hdr.biCompression) {
 	case BI_RGB:
-		if (hdr.biBitCount == 16)
-			return kPixFormat_XRGB1555;
-		else if (hdr.biBitCount == 24)
-			return kPixFormat_RGB888;
-		else if (hdr.biBitCount == 32)
-			return kPixFormat_XRGB8888;
+		if (hdr.biPlanes == 1) {
+			if (hdr.biBitCount == 16)
+				return kPixFormat_XRGB1555;
+			else if (hdr.biBitCount == 24)
+				return kPixFormat_RGB888;
+			else if (hdr.biBitCount == 32)
+				return kPixFormat_XRGB8888;
+		}
 		break;
 	case BI_BITFIELDS:
 		{
@@ -322,9 +334,13 @@ int VDBitmapFormatToPixmapFormat(const BITMAPINFOHEADER& hdr) {
 		return kPixFormat_YUV422_UYVY;
 	case '2YUY':
 		return kPixFormat_YUV422_YUYV;
-	case 'VUYI':
-	case '024I':
 	case '21VY':
+		return kPixFormat_YUV420_Planar;
+	case '024I':
+		variant = 2;
+		return kPixFormat_YUV420_Planar;
+	case 'VUYI':
+		variant = 3;
 		return kPixFormat_YUV420_Planar;
 	case '  8Y':
 		return kPixFormat_Y8;
@@ -340,21 +356,31 @@ int VDGetPixmapToBitmapVariants(int format) {
 }
 
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant) {
+	return VDMakeBitmapFormatFromPixmapFormat(dst, src, format, variant, src->biWidth, src->biHeight);
+}
+
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h) {
+	using namespace nsVDPixmap;
+
 	dst = src;
-
-	const uint32 w = src->biWidth;
-	const uint32 h = src->biHeight;
-
 	dst->biSize				= sizeof(BITMAPINFOHEADER);
 	dst->biWidth			= w;
 	dst->biHeight			= h;
 	dst->biPlanes			= 1;
 	dst->biXPelsPerMeter	= src->biXPelsPerMeter;
 	dst->biYPelsPerMeter	= src->biYPelsPerMeter;
+
+	if (format == kPixFormat_Pal8) {
+		dst->biBitCount		= 8;
+		dst->biCompression	= BI_RGB;
+		dst->biSizeImage	= ((w+3)&~3)*h;
+		return true;
+	}
+
+	dst.resize(sizeof(BITMAPINFOHEADER));
+
 	dst->biClrUsed			= 0;
 	dst->biClrImportant		= 0;
-
-	using namespace nsVDPixmap;
 
 	switch(format) {
 	case kPixFormat_XRGB1555:
@@ -455,4 +481,34 @@ uint32 VDMakeBitmapCompatiblePixmapLayout(VDPixmapLayout& layout, uint32 w, uint
 	}
 
 	return linspace;
+}
+
+
+HMODULE VDLoadVTuneDLLW32() {
+	VDRegistryKey key("SOFTWARE\\Intel Corporation\\VTune(TM) Performance Environment\\6.0", true);
+
+	if (key.isReady()) {
+		VDStringW path;
+		if (key.getString("SharedBaseInstallDir", path)) {
+			const VDStringW path2(VDMakePath(path, VDStringW(L"Analyzer\\Bin\\VTuneAPI.dll")));
+
+			return LoadLibraryW(path2.c_str());
+		}
+	}
+
+	return NULL;
+}
+
+extern bool g_bEnableVTuneProfiling;
+void VDEnableSampling(bool bEnable) {
+	if (g_bEnableVTuneProfiling) {
+		static HMODULE hmodVTuneAPI = VDLoadVTuneDLLW32();
+		if (!hmodVTuneAPI)
+			return;
+
+		static void (__cdecl *pVTunePauseSampling)() = (void(__cdecl*)())GetProcAddress(hmodVTuneAPI, "VTPauseSampling");
+		static void (__cdecl *pVTuneResumeSampling)() = (void(__cdecl*)())GetProcAddress(hmodVTuneAPI, "VTResumeSampling");
+
+		(bEnable ? pVTuneResumeSampling : pVTunePauseSampling)();
+	}
 }

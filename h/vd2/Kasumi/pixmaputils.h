@@ -21,6 +21,12 @@ inline const VDPixmapFormatInfo& VDPixmapGetInfo(sint32 format) {
 	return g_vdPixmapFormats[format];
 }
 
+#ifdef _DEBUG
+	bool VDAssertValidPixmap(const VDPixmap& px);
+#else
+	inline bool VDAssertValidPixmap(const VDPixmap& px) { return true; }
+#endif
+
 inline VDPixmap VDPixmapFromLayout(const VDPixmapLayout& layout, void *p) {
 	VDPixmap px;
 
@@ -38,9 +44,26 @@ inline VDPixmap VDPixmapFromLayout(const VDPixmapLayout& layout, void *p) {
 	return px;
 }
 
+inline VDPixmapLayout VDPixmapToLayout(const VDPixmap& px, void *&p) {
+	VDPixmapLayout layout;
+	p = px.data;
+	layout.data		= 0;
+	layout.data2	= (char *)px.data2 - (char *)px.data;
+	layout.data3	= (char *)px.data3 - (char *)px.data;
+	layout.format	= px.format;
+	layout.w		= px.w;
+	layout.h		= px.h;
+	layout.palette	= px.palette;
+	layout.pitch	= px.pitch;
+	layout.pitch2	= px.pitch2;
+	layout.pitch3	= px.pitch3;
+	return layout;
+}
+
 uint32 VDPixmapCreateLinearLayout(VDPixmapLayout& layout, int format, vdpixsize w, vdpixsize h, int alignment);
 
 VDPixmap VDPixmapOffset(const VDPixmap& src, vdpixpos x, vdpixpos y);
+VDPixmapLayout VDPixmapLayoutOffset(const VDPixmapLayout& src, vdpixpos x, vdpixpos y);
 
 #ifndef VDPTRSTEP_DECLARED
 	template<class T>

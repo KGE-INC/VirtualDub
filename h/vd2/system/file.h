@@ -89,8 +89,8 @@ public:
 	// The "NT" functions are non-throwing and return success/failure; the regular functions throw exceptions
 	// when something bad happens.
 
-	bool	open(const char *pszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
-	bool	open(const wchar_t *pwszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
+	void	open(const char *pszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
+	void	open(const wchar_t *pwszFileName, uint32 flags = nsVDFile::kRead | nsVDFile::kDenyWrite | nsVDFile::kOpenExisting);	// false if failed due to not found or already exists
 	bool	closeNT();
 	void	close();
 	bool	truncateNT();
@@ -106,9 +106,13 @@ public:
 	//
 	// As such, it shouldn't normally be relied upon, and extendValidNT() should be the call
 	// of choice.
+	//
+	// enableExtendValid() must be called beforehand, as SeVolumeNamePrivilege must be
+	// enabled on the process before the file is opened!
 
 	bool	extendValidNT(sint64 pos);
 	void	extendValid(sint64 pos);
+	static bool enableExtendValid();
 
 	sint64	size();
 	void	read(void *buffer, long length);
@@ -129,7 +133,7 @@ public:
 	static void FreeUnbuffer(void *p);
 
 protected:
-	bool	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags);
+	void	open_internal(const char *pszFilename, const wchar_t *pwszFilename, uint32 flags);
 };
 
 ///////////////////////////////////////////////////////////////////////////

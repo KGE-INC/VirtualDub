@@ -39,6 +39,8 @@
 #include "project.h"
 #include "projectui.h"
 #include "crash.h"
+#include "capture.h"
+#include "uiframe.h"
 #include <vd2/system/strutil.h>
 
 #include "InputFile.h"
@@ -56,14 +58,16 @@ enum {
 
 HINSTANCE	g_hInst;
 HWND		g_hWnd =NULL;
-HACCEL		g_hAccelMain;
 
 bool				g_fDropFrames			= false;
 bool				g_fSwapPanes			= false;
 bool				g_bExit					= false;
 
-vdautoptr<VDProjectUI> g_projectui;
 VDProject *g_project;
+extern vdrefptr<VDProjectUI> g_projectui;
+
+vdrefptr<IVDCaptureProject> g_capProject;
+vdrefptr<IVDCaptureProjectUI> g_capProjectUI;
 
 wchar_t g_szInputAVIFile[MAX_PATH];
 wchar_t g_szInputWAVFile[MAX_PATH];
@@ -103,16 +107,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 {
 	MSG msg;
 
-	Init(hInstance, GetCommandLineW(), nCmdShow);
-
-	// Load a file on the command line.
-
-	if (*g_szFile)
-		try {
-			g_project->Open(g_szFile);
-		} catch(const MyError& e) {
-			e.post(g_hWnd, g_szError);
-		}
+	if (!Init(hInstance, GetCommandLineW(), nCmdShow))
+		return 10;
 
     // Acquire and dispatch messages until a WM_QUIT message is received.
 
@@ -124,9 +120,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			if (guiCheckDialogs(&msg))
 				continue;
 
-			HWND hwndRoot = VDGetAncestorW32(msg.hwnd, GA_ROOT);
-
-			if (hwndRoot == g_hWnd && TranslateAccelerator(g_hWnd, g_hAccelMain, &msg))
+			if (VDUIFrame::TranslateAcceleratorMessage(msg))
 				continue;
 
 			TranslateMessage(&msg);
@@ -138,12 +132,55 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	}
 wm_quit_detected:
 
+	if (g_capProjectUI) {
+		g_capProjectUI->Detach();
+		g_capProjectUI = NULL;
+	}
+
+	if (g_capProject) {
+		g_capProject->Detach();
+		g_capProject = NULL;
+	}
+
 	Deinit();
 
 	VDCHECKPOINT;
 
     return (msg.wParam);           // Returns the value from PostQuitMessage.
 
+}
+
+
+void VDSwitchUIFrameMode(HWND hwnd, int nextMode) {
+	if (g_capProjectUI) {
+		g_capProjectUI->Detach();
+		g_capProjectUI = NULL;
+	}
+
+	if (g_capProject) {
+		g_capProject->Detach();
+		g_capProject = NULL;
+	}
+
+	switch(nextMode) {
+	case 1:
+		g_capProject = VDCreateCaptureProject();
+		if (g_capProject->Attach((VDGUIHandle)hwnd)) {
+			g_capProjectUI = VDCreateCaptureProjectUI();
+			if (g_capProjectUI->Attach((VDGUIHandle)hwnd, g_capProject)) {
+				break;
+			}
+			g_capProjectUI = NULL;
+
+			g_capProject->Detach();
+			g_capProject = NULL;
+		}
+
+		// uh oh... better reconnect the main project. *fall through*
+	case 2:
+		g_projectui->Attach((VDGUIHandle)hwnd);
+		break;
+	}
 }
 
 

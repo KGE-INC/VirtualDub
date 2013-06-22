@@ -71,7 +71,7 @@ void AVIVideoImageOutputStream::write(uint32 flags, const void *pBuffer, uint32 
 
 	const BITMAPINFOHEADER& bih = *(const BITMAPINFOHEADER *)getFormat();
 
-	if (mFormat != AVIOutputImages::kFormatJPEG && (bih.biCompression != BI_RGB ||
+	if (mFormat != AVIOutputImages::kFormatBMP && (bih.biCompression != BI_RGB ||
 			(bih.biBitCount != 16 && bih.biBitCount != 24 && bih.biBitCount != 32))) {
 		throw MyError("Output settings must be 16/24/32-bit RGB, uncompressed in order to save a TARGA or JPEG sequence.");
 	}

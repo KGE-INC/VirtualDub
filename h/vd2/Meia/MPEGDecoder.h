@@ -21,7 +21,7 @@
 #include <stddef.h>
 
 #include <vd2/system/vdtypes.h>
-#include <vd2/system/VDRefCount.h>
+#include <vd2/system/refcount.h>
 
 struct VDMPEGPredictorSet;
 struct VDMPEGConverterSet;

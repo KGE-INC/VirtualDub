@@ -810,7 +810,8 @@ void AVIOutputFile::FileClose() {
 }
 
 void AVIOutputFile::FileSafeTruncateAndClose(sint64 pos) {
-	mpFileAsync->SafeTruncateAndClose(pos);
+	if (mpFileAsync)
+		mpFileAsync->SafeTruncateAndClose(pos);
 }
 
 void AVIOutputFile::writeIndexedChunk(int nStream, uint32 flags, const void *pBuffer, uint32 cbBuffer) {

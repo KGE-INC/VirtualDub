@@ -71,99 +71,92 @@ void VDDubIOThread::ThreadRun() {
 	double nAudioRate = bAudioActive ? mpAudio->GetFormat()->nAvgBytesPerSec : 0;
 
 	try {
-		try {
-			mpCurrentAction = "running main loop";
+		mpCurrentAction = "running main loop";
 
-			while(!mbAbort && (bAudioActive || bVideoActive)) { 
-				bool bBlocked = true;
+		while(!mbAbort && (bAudioActive || bVideoActive)) { 
+			bool bBlocked = true;
 
-				++mThreadCounter;
+			++mThreadCounter;
 
-				bool bCanWriteVideo = bVideoActive && !mpVideoPipe->full();
-				bool bCanWriteAudio = bAudioActive && !mpAudioPipe->full();
+			bool bCanWriteVideo = bVideoActive && !mpVideoPipe->full();
+			bool bCanWriteAudio = bAudioActive && !mpAudioPipe->full();
 
-				if (bCanWriteVideo && bCanWriteAudio) {
-					const int nAudioLevel = mpAudioPipe->getLevel();
-					int nVideoTotal, nVideoFinalQueued;
-					mpVideoPipe->getQueueInfo(nVideoTotal, nVideoFinalQueued);
+			if (bCanWriteVideo && bCanWriteAudio) {
+				const int nAudioLevel = mpAudioPipe->getLevel();
+				int nVideoTotal, nVideoFinalQueued;
+				mpVideoPipe->getQueueInfo(nVideoTotal, nVideoFinalQueued);
 
-					if (nAudioLevel * nVideoRate < nVideoFinalQueued * nAudioRate)
-						bCanWriteVideo = false;
+				if (nAudioLevel * nVideoRate < nVideoFinalQueued * nAudioRate)
+					bCanWriteVideo = false;
+			}
+
+			if (bCanWriteVideo) {
+				bBlocked = false;
+
+				VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
+
+				profchan.Begin(0xffe0e0, "Video");
+
+				if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
+					bVideoActive = false;
+					mpVideoPipe->finalize();
 				}
 
-				if (bCanWriteVideo) {
-					bBlocked = false;
+				profchan.End();
+				continue;
+			}
 
-					VDDubAutoThreadLocation loc(mpCurrentAction, "reading video data");
+			if (bCanWriteAudio) {
+				bBlocked = false;
 
-					profchan.Begin(0xffe0e0, "Video");
+				VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
 
-					if (!MainAddVideoFrame() && vInfo.cur_dst >= vInfo.end_dst) {
-						bVideoActive = false;
-						mpVideoPipe->finalize();
-					}
+				profchan.Begin(0xe0e0ff, "Audio");
 
-					profchan.End();
+				if (!MainAddAudioFrame() && mpAudio->isEnd()) {
+					bAudioActive = false;
+					mpAudioPipe->CloseInput();
+				}
+
+				profchan.End();
+				continue;
+			}
+
+			if (bBlocked) {
+				if (bAudioActive && mpAudioPipe->isOutputClosed()) {
+					bAudioActive = false;
 					continue;
 				}
 
-				if (bCanWriteAudio) {
-					bBlocked = false;
-
-					VDDubAutoThreadLocation loc(mpCurrentAction, "reading audio data");
-
-					profchan.Begin(0xe0e0ff, "Audio");
-
-					if (!MainAddAudioFrame() && mpAudio->isEnd()) {
-						bAudioActive = false;
-						mpAudioPipe->CloseInput();
-					}
-
-					profchan.End();
+				if (bVideoActive && mpVideoPipe->isFinalizeAcked()) {
+					bVideoActive = false;
 					continue;
 				}
 
-				if (bBlocked) {
-					if (bAudioActive && mpAudioPipe->isOutputClosed()) {
-						bAudioActive = false;
-						continue;
-					}
+				VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
 
-					if (bVideoActive && mpVideoPipe->isFinalizeAcked()) {
-						bVideoActive = false;
-						continue;
-					}
+				profchan.Begin(0xe0e0e0, "Idle");
+				if (bAudioActive) {
+					if (bVideoActive)
+						mpVideoPipe->getReadSignal().wait(&mpAudioPipe->getReadSignal());
+					else
+						mpAudioPipe->getReadSignal().wait();
+				} else
+					mpVideoPipe->getReadSignal().wait();
 
-					VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
-
-					profchan.Begin(0xe0e0e0, "Idle");
-					if (bAudioActive) {
-						if (bVideoActive)
-							mpVideoPipe->getReadSignal().wait(&mpAudioPipe->getReadSignal());
-						else
-							mpAudioPipe->getReadSignal().wait();
-					} else
-						mpVideoPipe->getReadSignal().wait();
-
-					profchan.End();
-				}
+				profchan.End();
 			}
-		} catch(MyError& e) {
-			if (!mbError) {
-				mError.TransferFrom(e);
-				mbError = true;
-			}
-//			e.post(NULL, "Dub Error (will attempt to finalize)");
 		}
-
 	} catch(MyError& e) {
-//		e.post(NULL,"Dub Error");
-
 		if (!mbError) {
 			mError.TransferFrom(e);
 			mbError = true;
 		}
+
 		mbAbort = true;
+
+		mpAudioPipe->CloseInput();
+		mpVideoPipe->finalize();
 	}
 
 	// All done, time to get the pooper-scooper and clean up...

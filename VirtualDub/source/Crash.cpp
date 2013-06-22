@@ -118,6 +118,7 @@ bool VDDisplayAdvancedCrashDialog(HWND hwndParent, HANDLE hThread, const EXCEPTI
 #ifdef _DEBUG
 
 void checkfpustack(const char *file, const int line) throw() {
+#ifndef _M_AMD64
 	static const char szFPUProblemCaption[]="FPU/MMX internal problem";
 	static const char szFPUProblemMessage[]="The FPU stack wasn't empty!  Tagword = %04x\nFile: %s, line %d";
 	static bool seenmsg=false;
@@ -137,27 +138,16 @@ void checkfpustack(const char *file, const int line) throw() {
 		MessageBox(NULL, buf, szFPUProblemCaption, MB_OK);
 		seenmsg=true;
 	}
-
+#endif
 }
 
-void __declspec(naked) *operator new(size_t bytes) {
+extern "C" void *_ReturnAddress();
+#pragma intrinsic(_ReturnAddress)
+
+void *operator new(size_t bytes) {
 	static const char fname[]="stack trace";
 
-	__asm {
-		push	ebp
-		mov		ebp,esp
-
-		push	[ebp+4]				;return address
-		push	offset fname		;'filename'
-		push	_NORMAL_BLOCK		;block type
-		push	[ebp+8]				;allocation size
-
-		call	_malloc_dbg
-		add		esp,16
-
-		pop		ebp
-		ret
-	}
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
 }
 
 #endif

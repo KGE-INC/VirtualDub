@@ -43,7 +43,7 @@ DECLARE_RGB(RGB888, XRGB1555) {
 		do {
 			const uint32 r = ((uint32)src[2] & 0xf8) << 7;
 			const uint32 g = ((uint32)src[1] & 0xf8) << 2;
-			const uint32 b = (uint32)src[0];
+			const uint32 b = (uint32)src[0] >> 3;
 			src += 3;
 
 			*dst++ = (uint16)(r + g + b);

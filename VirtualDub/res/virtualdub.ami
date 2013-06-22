@@ -101,6 +101,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "CPU";
 				listitem "AVI";
 				listitem "Timeline";
+				listitem "Render";
 			}
 
 			pageset 101 : value={@100} {
@@ -110,6 +111,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1013;
 				page 1014;
 				page 1015;
+				page 1016;
 			}
 		}
 
@@ -279,6 +281,15 @@ dialog 1015, "" : fill, child {
 	}
 }
 
+dialog 1016, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "Render options" {
+			now valign=top, align=left;
+			checkbox 100, "Confirm when abort button is pressed";
+		}
+	}
+}
 
 
 // output window for resampler benchmark

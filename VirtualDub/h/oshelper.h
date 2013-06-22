@@ -48,10 +48,14 @@ VDStringW VDLoadStringW32(UINT uID);
 
 void LaunchURL(const char *pURL);
 
-class CPUUsageReader {
+class VDCPUUsageReader {
 public:
-	CPUUsageReader();
-	~CPUUsageReader();
+	VDCPUUsageReader();
+	~VDCPUUsageReader();
+
+	void Init();
+	void Shutdown();
+
 	int read();
 
 private:
@@ -61,6 +65,17 @@ private:
 	unsigned __int64 kt_last;
 	unsigned __int64 ut_last;
 	unsigned __int64 st_last;
+};
+
+void VDEnableSampling(bool bEnable);
+
+struct VDSamplingAutoProfileScope {
+	VDSamplingAutoProfileScope() {
+		VDEnableSampling(true);
+	}
+	~VDSamplingAutoProfileScope() {
+		VDEnableSampling(false);
+	}
 };
 
 #endif

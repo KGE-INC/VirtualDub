@@ -28,8 +28,8 @@ public:
 
 	AVIAudioOutputBuffer(long bsize);
 	~AVIAudioOutputBuffer();
-	BOOL init(HWAVEOUT hWaveOut);
-	BOOL post(HWAVEOUT hWaveOut);
+	bool init(HWAVEOUT hWaveOut);
+	bool post(HWAVEOUT hWaveOut);
 	void deinit(HWAVEOUT hWaveOut);
 };
 
@@ -54,21 +54,23 @@ private:
 		STATE_SILENT	= 10,
 	} curState;
 
-	BOOL postBuffer(AVIAudioOutputBuffer *aaob);
+	bool postBuffer(AVIAudioOutputBuffer *aaob);
 public:
 	AVIAudioOutput(long bufsize, int maxbufs);
 	~AVIAudioOutput();
 
-	BOOL init(const WAVEFORMATEX *wf);
+	void setBuffering(long bufsize, int maxbufs) { this->bufsize = bufsize; this->maxbufs = maxbufs; }
+	bool init(const WAVEFORMATEX *wf);
+	void shutdown();
 	void go_silent();
-	BOOL isSilent();
-	BOOL start();
-	BOOL checkBuffers();
-	BOOL waitBuffers(DWORD timeout);
+	bool isSilent();
+	bool start();
+	bool checkBuffers();
+	bool waitBuffers(DWORD timeout);
 	long avail();
-	BOOL write(const void *data, long len, DWORD timeout);
-	BOOL stop();
-	BOOL finalize(DWORD timeout);
+	bool write(const void *data, long len, DWORD timeout);
+	bool stop();
+	bool finalize(DWORD timeout);
 	void flush();
 	long position();
 	bool isFrozen();

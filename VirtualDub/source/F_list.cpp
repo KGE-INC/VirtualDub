@@ -54,8 +54,7 @@ extern FilterDefinition
 	filterDef_timesmooth,
 	filterDef_logo,
 	filterDef_hsv,
-	filterDef_perspective,
-	filterDef_triresize
+	filterDef_perspective
 #endif
 	;
 
@@ -92,7 +91,6 @@ static FilterDefinition *const builtin_filters[]={
 	&filterDef_logo,
 	&filterDef_hsv,
 	&filterDef_perspective,
-	&filterDef_triresize,
 #endif
 	NULL
 };

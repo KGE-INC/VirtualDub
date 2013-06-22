@@ -4,7 +4,7 @@
 
 # TARGTYPE "Win32 (x86) Static Library" 0x0104
 
-CFG=system - Win32 Debug
+CFG=system - Win32 Debug AMD64
 !MESSAGE This is not a valid makefile. To build this project using NMAKE,
 !MESSAGE use the Export Makefile command and run
 !MESSAGE 
@@ -13,14 +13,14 @@ CFG=system - Win32 Debug
 !MESSAGE You can specify a configuration when running NMAKE
 !MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
-!MESSAGE NMAKE /f "system.mak" CFG="system - Win32 Debug"
+!MESSAGE NMAKE /f "system.mak" CFG="system - Win32 Debug AMD64"
 !MESSAGE 
 !MESSAGE Possible choices for configuration are:
 !MESSAGE 
 !MESSAGE "system - Win32 Release" (based on "Win32 (x86) Static Library")
 !MESSAGE "system - Win32 Debug" (based on "Win32 (x86) Static Library")
-!MESSAGE "system - Win32 Release ICL" (based on "Win32 (x86) Static Library")
 !MESSAGE "system - Win32 Release AMD64" (based on "Win32 (x86) Static Library")
+!MESSAGE "system - Win32 Debug AMD64" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
@@ -76,29 +76,6 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
-!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
-
-# PROP BASE Use_MFC 0
-# PROP BASE Use_Debug_Libraries 0
-# PROP BASE Output_Dir "system___Win32_Release_ICL"
-# PROP BASE Intermediate_Dir "system___Win32_Release_ICL"
-# PROP BASE Target_Dir ""
-# PROP Use_MFC 0
-# PROP Use_Debug_Libraries 0
-# PROP Output_Dir "..\lib\ReleaseICL"
-# PROP Intermediate_Dir "..\obj\ReleaseICL\system"
-# PROP Target_Dir ""
-# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /Ob2 /I "..\h" /I ".\h" /D "NDEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD BASE RSC /l 0x409 /d "NDEBUG"
-# ADD RSC /l 0x409 /d "NDEBUG"
-BSC32=bscmake.exe
-# ADD BASE BSC32 /nologo
-# ADD BSC32 /nologo
-LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
-
 !ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
 
 # PROP BASE Use_MFC 0
@@ -122,14 +99,37 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
+!ELSEIF  "$(CFG)" == "system - Win32 Debug AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 1
+# PROP BASE Output_Dir "system___Win32_Debug_AMD64"
+# PROP BASE Intermediate_Dir "system___Win32_Debug_AMD64"
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 1
+# PROP Output_Dir "..\lib\DebugAMD64"
+# PROP Intermediate_Dir "..\obj\DebugAMD64\system"
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "../h" /I ".\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "../h" /I ".\h" /D "_DEBUG" /D "_MBCS" /D "_LIB" /D "WIN32" /D "NOMINMAX" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD BASE RSC /l 0x409 /d "_DEBUG"
+# ADD RSC /l 0x409 /d "_DEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LIB32=link.exe -lib
+# ADD BASE LIB32 /nologo
+# ADD LIB32 /nologo
+
 !ENDIF 
 
 # Begin Target
 
 # Name "system - Win32 Release"
 # Name "system - Win32 Debug"
-# Name "system - Win32 Release ICL"
 # Name "system - Win32 Release AMD64"
+# Name "system - Win32 Debug AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
@@ -216,10 +216,6 @@ SOURCE=.\source\time.cpp
 # Begin Source File
 
 SOURCE=.\source\tls.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\VDAtomic.cpp
 # End Source File
 # Begin Source File
 
@@ -347,19 +343,11 @@ SOURCE=..\h\VD2\system\vdalloc.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\h\VD2\system\VDAtomic.h
-# End Source File
-# Begin Source File
-
 SOURCE=..\h\VD2\system\VDNamespace.h
 # End Source File
 # Begin Source File
 
 SOURCE=..\h\VD2\system\VDQueue.h
-# End Source File
-# Begin Source File
-
-SOURCE=..\h\VD2\system\VDRefCount.h
 # End Source File
 # Begin Source File
 
@@ -425,19 +413,11 @@ InputName=a_memory
 
 # End Custom Build
 
-!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
-
-# Begin Custom Build
-IntDir=.\..\obj\ReleaseICL\system
-InputPath=.\source\a_memory.asm
-InputName=a_memory
-
-"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml /c /Zi /coff /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
-
-# End Custom Build
-
 !ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+# PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug AMD64"
 
 # PROP Exclude_From_Build 1
 
@@ -460,10 +440,6 @@ SOURCE=.\source\a64_int128.asm
 
 # PROP Exclude_From_Build 1
 
-!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
-
-# PROP Exclude_From_Build 1
-
 !ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
 
 # Begin Custom Build
@@ -472,7 +448,20 @@ InputPath=.\source\a64_int128.asm
 InputName=a64_int128
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	ml64 /c /Zi /nologo /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug AMD64"
+
+# PROP BASE Exclude_From_Build 1
+# Begin Custom Build
+IntDir=.\..\obj\DebugAMD64\system
+InputPath=.\source\a64_int128.asm
+InputName=a64_int128
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
 
 # End Custom Build
 
@@ -493,9 +482,9 @@ SOURCE=.\source\stdafx.cpp
 
 !ELSEIF  "$(CFG)" == "system - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "system - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "system - Win32 Release AMD64"
+
+!ELSEIF  "$(CFG)" == "system - Win32 Debug AMD64"
 
 !ENDIF 
 

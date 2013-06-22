@@ -40,5 +40,10 @@ int			VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr);
 void		VDSetWindowTextW32(HWND hwnd, const wchar_t *s);
 VDStringW	VDGetWindowTextW32(HWND hwnd);
 void		VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
+void		VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
+
+LRESULT		VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags);
 
 #endif

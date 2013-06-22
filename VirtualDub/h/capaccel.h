@@ -18,42 +18,8 @@
 #ifndef f_VD2_RYDIA_ACCELDISPLAY_H
 #define f_VD2_RYDIA_ACCELDISPLAY_H
 
-#include <ddraw.h>
-
 bool RydiaInitAVICapHotPatch();
 void RydiaEnableAVICapPreview(bool b);
 void RydiaEnableAVICapInvalidate(bool b);
-
-class RydiaDirectDrawContext {
-private:
-	IDirectDraw2 *mpdd;
-	IDirectDrawSurface3 *mpddsOverlay;
-	IDirectDrawSurface3 *mpddsPrimary;
-
-	int nOverlayBPP;
-	int nAlignX;
-	int nAlignW;
-	int mnColorKey;
-	int mnWidth;
-	int mnHeight;
-
-	bool mbSupportsColorKey;
-	bool mbSupportsArithStretchY;
-	bool mbCOMInitialized;
-
-public:
-	RydiaDirectDrawContext();
-	~RydiaDirectDrawContext();
-
-	int getColorKey() { return mnColorKey >= 0 ? 0xFFFF00 : -1; }
-
-	bool Init();
-	bool Shutdown();
-	bool isReady();
-	bool CreateOverlay(int w, int h, int bitcount, DWORD fcc);
-	void DestroyOverlay();
-	bool PositionOverlay(int x, int y, int w, int h);
-	bool LockAndLoad(const void *src0, int yoffset, int yjump);
-};
 
 #endif

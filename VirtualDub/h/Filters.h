@@ -108,6 +108,7 @@ public:
 	void ForceNoDeinit();
 
 protected:
+	static void ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc);
 	static void ScriptFunctionThunkVoid(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkInt(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkVariadic(IVDScriptInterpreter *, VDScriptValue *, int);

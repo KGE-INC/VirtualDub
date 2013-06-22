@@ -34,6 +34,7 @@
 
 extern "C" unsigned long version_num;
 extern "C" char version_time[];
+extern "C" char version_date[];
 
 extern HINSTANCE g_hInst;
 
@@ -232,13 +233,26 @@ INT_PTR CALLBACK AnnounceExperimentalDlgProc( HWND hDlg, UINT message, WPARAM wP
 }
 
 void AnnounceExperimental() {
-#if 1		// 1.6.0 is experimental
+#if 1		// 1.6.1 is experimental
 	DWORD dwSeenIt;
 
-	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.0", &dwSeenIt) || !dwSeenIt) {
+	if (!QueryConfigDword(NULL, "SeenExperimental 1.6.1", &dwSeenIt) || !dwSeenIt) {
 		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_EXPERIMENTAL), NULL, AnnounceExperimentalDlgProc);
 
-		SetConfigDword(NULL, "SeenExperimental 1.6.0", 1);
+		SetConfigDword(NULL, "SeenExperimental 1.6.1", 1);
+	}
+#endif
+}
+
+
+void AnnounceCaptureExperimental(VDGUIHandle h) {
+#if 1		// 1.6.1 capture is experimental
+	DWORD dwSeenIt;
+
+	if (!QueryConfigDword(NULL, "SeenCaptureExperimental 1.6.1", &dwSeenIt) || !dwSeenIt) {
+		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_BROKEN), (HWND)h, AnnounceExperimentalDlgProc);
+
+		SetConfigDword(NULL, "SeenCaptureExperimental 1.6.1", 1);
 	}
 #endif
 }
@@ -384,11 +398,37 @@ namespace {
 		while(string != stringEnd) {
 			const char *s = string;
 
+			if (*s == '%') {
+				const char *varbase = ++s;
+
+				while(s != stringEnd && *s != '%')
+					++s;
+
+				const ptrdiff_t len = s - varbase;
+
+				if (len == 5 && !memcmp(varbase, "build", 5)) {
+					char buf[32];
+					stream.insert(stream.end(), buf, buf+sprintf(buf, "%u", version_num));
+				} else if (len == 4 && !memcmp(varbase, "date", 4)) {
+					stream.insert(stream.end(), version_date, version_date + strlen(version_date));
+				} else if (!len) {
+					stream.push_back('%');
+				} else {
+					VDASSERT(false);
+				}
+
+				if (s != stringEnd)
+					++s;
+
+				string = s;
+				continue;
+			}
+
 			if (*s == '{' || *s == '\\' || *s == '}')
 				stream.push_back('\\');
 
 			++s;
-			while(s != stringEnd && *s != '{' && *s != '\\' && *s != '}')
+			while(s != stringEnd && *s != '{' && *s != '\\' && *s != '}' && *s != '%')
 				++s;
 
 			stream.insert(stream.end(), string, s);

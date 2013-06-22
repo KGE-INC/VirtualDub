@@ -21,6 +21,7 @@
 
 #include <windows.h>
 #include <commdlg.h>
+#include <mmsystem.h>
 
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
@@ -39,9 +40,9 @@ struct SparseAVIHeader {
 
 	unsigned long		ckid;
 	unsigned long		size;				// == size of this structure minus 8
-	__int64				original_size;		// original file size, in bytes
-	__int64				copied_size;		// amount of original data included (total size - sparsed data if no errors occur)
-	__int64				error_point;		// number of source bytes processed before error or EOF occurred
+	sint64				original_size;		// original file size, in bytes
+	sint64				copied_size;		// amount of original data included (total size - sparsed data if no errors occur)
+	sint64				error_point;		// number of source bytes processed before error or EOF occurred
 	unsigned long		error_bytes;		// number of bytes copied beyond error point
 	unsigned short		signature_length;	// length of name signature, without null terminating character
 
@@ -59,10 +60,10 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 
 		char buf[4096]={0};
 		SparseAVIHeader spah;
-		__int64 insize = infile.size();
+		sint64 insize = infile.size();
 		unsigned long ckidbuf[2][256];
 		int ckidcount = 0;
-		__int64 ckidpos = 0;
+		sint64 ckidpos = 0;
 
 		int l = sprintf(buf, "VirtualDub build %d/%s", version_num,
 #ifdef _DEBUG
@@ -85,7 +86,7 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 		outfile.write(&spah, 8 + SparseAVIHeader::kChunkSize);
 		outfile.write(buf, (l+2)&~1);
 
-		__int64 copy_start = outfile.size();
+		sint64 copy_start = outfile.size();
 
 		// Sparse the AVI file!
 
@@ -93,7 +94,7 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 		pd.setValueFormat("%ldK of %ldK");
 
 		for(;;) {
-			__int64 pos = infile.tell();
+			sint64 pos = infile.tell();
 			FOURCC fcc;
 			DWORD dwLen;
 
@@ -107,7 +108,7 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 					|| pos+dwLen+8 > insize) {
 
 				if (ckidcount) {
-					__int64 pos2 = outfile.tell();
+					sint64 pos2 = outfile.tell();
 
 					outfile.seek(ckidpos);
 					outfile.write(ckidbuf, sizeof ckidbuf);
@@ -145,7 +146,7 @@ void CreateSparseAVI(const char *pszIn, const char *pszOut) {
 			ckidbuf[1][ckidcount] = dwLen;
 
 			if (++ckidcount >= 256) {
-				__int64 pos2 = outfile.tell();
+				sint64 pos2 = outfile.tell();
 
 				outfile.seek(ckidpos);
 				outfile.write(ckidbuf, sizeof ckidbuf);

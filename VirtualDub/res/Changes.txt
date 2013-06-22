@@ -1,5 +1,37 @@
 VirtualDub change log
-Build 21538 (1.6.0, experimental): [September 7, 2004]
+
+Build %build% (1.6.1, experimental): [%date%]
+   [features added]
+   * Rewrote command line parsing so that arguments to /s, /p, and /b no longer require the parameters to be adjacent to the switch.
+   * New /i (invoke) command line flag runs a script and passes additional parameters to it, which are available as VirtualDub.params[n].
+   * Unescaped, native-coded strings can now be embedded in a script using U"..." syntax. In particular, this allows filenames to be inserted directly from a batch file.
+   * The Abort button on the dub status dialog now confirms by default for non-preview operations; this can be disabled in Preferences.
+
+   [bugs fixed]
+   * "AVIFile compatibility mode" no longer needs to be manually checked in extended AVI options when opening Avisynth scripts.
+   * JPEG output mode now properly checks that the output format is set to 16-bit, 24-bit, or 32-bit RGB.
+   * Fixed incompatibilities with some custom UI shells that subclass application windows.
+   * DV audio settings are now derived from the first frame rather than the header, which is sometimes incorrect.
+   * Fixed crash when attempting to append or check info on a DV type-1 AVI file.
+   * Removed prototype "triangular resize" filter.
+   * Jump To Frame dialog now takes source rate adjustments into account.
+   * Fixed some errant cases of "invalid handle" errors when files could not be found.
+   * Fixed decoding errors when rendering from an image sequence and the timeline format was customized to have frame byte size information.
+   * Image sequences didn't load properly if the numeric part of the filename was too large (>2^31).
+   * (AMD64 only) Fixed incorrect RGB888-to-XRGB1555 conversion.
+   * (AMD64 only) Fixed crash when loading scripts with filters that had more than one configuration parameter.
+
+   [regressions fixed]
+   * Fix for timeline sometimes getting trashed after starting the frame server.
+   * Fix for erroneous first frame if first frame is displayed when starting Direct-mode render.
+   * Fix for bad parameters being sent down to video codec if codec's native decompression format is paletted or no compatible RGB format is supported.
+   * Preference settings common to 1.5.10 or earlier weren't saving properly in the Registry.
+   * Wave sources weren't taking effect immediately.
+   * Fixed crash on filter crop set script commands.
+   * Added the selection start/end markers to the new timeline control (sheesh).
+   * Fixed volume setting warping when saving job entries.
+
+Build 21540 (1.6.0, experimental): [September 7, 2004]
    [features added]
    * Native AMD64 build (see Release Notes for restrictions).
    * New "perspective" video filter can deproject subimages that are displayed obliquely in a scene.
@@ -32,7 +64,7 @@ Build 21538 (1.6.0, experimental): [September 7, 2004]
    * Fixed crash when opening file for first time with output pane disabled.
    * Fixed crash when displaying odd-width 16-bit video on a 32-bit display.
    * Corrected asymmetry in response of TV filter in 5x5 chroma blur + tsoften mode.
-   * A low frame rate video with no audio could cause the blitter thread to consume 100% CPU at high priority, virtually locking the system.
+   * A low frame rate video with no audio could cause the blitter thread to consume 100%% CPU at high priority, virtually locking the system.
    * Enabling error concealment prevented the bad video frame scan from working.
    * Fixed crash when changing priority in the middle of render termination.
    * Fixed 3072 sample delay in "center cut" audio filter.
@@ -630,7 +662,7 @@ Build 13719 (Version 1.4.8):
      long strings produced from codec data.  Thanks to the
      DivX 4 team for reporting this one.
    * IVTC no longer causes bitrates for CBR video codecs
-     to drop by 20%.
+     to drop by 20%%.
    * Fixed output files being generated with type 'ivas'
      when the source was a type-1 DV file.
    * Fixed diagonal stripe or crash with MMX version of
@@ -687,7 +719,7 @@ Build 13110 (Version 1.4.6):
      preview mode instead.
    * Fixed problem with hardware accelerated preview in
      capture mode with some ATI video cards.
-   * No more of "1057% complete" in Job Control.
+   * No more of "1057%% complete" in Job Control.
    * Changed some of the more embarrassingly bad error
      messages.
 
@@ -1251,7 +1283,7 @@ Build 7538 (Version 1.0a):
    * Start and end offsets now reset when new file is loaded.
 
    [bug fixes]
-   * Fixed +/-100% brightness adjustment on brightness/
+   * Fixed +/-100%% brightness adjustment on brightness/
      contrast filter in MMX mode.
    * Error now thrown if a script/job attempts to load
      a filter which is not available.
@@ -1470,7 +1502,7 @@ Build 4150 (Version 1.0 alpha):
 
    [optimizations]
    * Bicubic resizes optimized for MMX.
-   * MPEG decoding much faster (by about 50%), and MMX
+   * MPEG decoding much faster (by about 50%%), and MMX
      optimized.
    * 16-bit RGB MPEG decoding.
 

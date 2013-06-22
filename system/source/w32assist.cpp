@@ -88,3 +88,24 @@ VDStringW VDGetWindowTextW32(HWND hwnd) {
 void VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
 	CheckMenuItem(hmenu, cmd, checked ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
 }
+
+void VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
+	EnableMenuItem(hmenu, cmd, checked ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
+}
+
+LRESULT VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	return IsWindowUnicode(hwnd) ? DefWindowProcW(hwnd, msg, wParam, lParam) : DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags) {
+	EXECUTION_STATE es = 0;
+
+	// SetThreadExecutionState(): requires Windows 98+/2000+.
+	typedef EXECUTION_STATE (WINAPI *tSetThreadExecutionState)(EXECUTION_STATE);
+	static tSetThreadExecutionState pFunc = (tSetThreadExecutionState)GetProcAddress(GetModuleHandle("kernel32"), "SetThreadExecutionState");
+
+	if (pFunc)
+		es = pFunc(esFlags);
+
+	return es;
+}

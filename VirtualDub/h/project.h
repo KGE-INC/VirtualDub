@@ -30,9 +30,11 @@ public:
 
 	VDPosition GetCurrentFrame();
 	VDPosition GetFrameCount();
+	VDFraction GetInputFrameRate();
 
 	void ClearSelection();
 	bool IsSelectionEmpty();
+	bool IsSelectionPresent();
 	void SetSelectionStart();
 	void SetSelectionStart(VDPosition);
 	void SetSelectionEnd();
@@ -64,7 +66,6 @@ public:
 	void CloseAVI();			// to be removed later....
 	void Close();
 	void StartServer();
-	void SwitchToCaptureMode();
 	void ShowInputInfo();
 	void SetVideoMode(int mode);
 	void CopySourceFrameToClipboard();

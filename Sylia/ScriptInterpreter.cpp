@@ -1,4 +1,6 @@
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/text.h>
+#include <vd2/system/VDString.h>
 #include <vector>
 #include <string.h>
 #include <stdlib.h>
@@ -68,6 +70,8 @@ private:
 
 	const VDScriptFunctionDef *mpCurrentInvocationMethod;
 	int mMethodArgumentCount;
+
+	VDStringA mErrorExtraToken;
 
 	////////
 
@@ -142,6 +146,8 @@ void VDScriptInterpreter::ExecuteLine(const char *s) {
 	int t;
 
 	VDDEBUG("Sylia: executing \"%s\"\n", s);
+
+	mErrorExtraToken.clear();
 
 	TokenBegin(s);
 
@@ -238,9 +244,14 @@ const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) 
 	case VDScriptError::MEMBER_NOT_FOUND:
 		sprintf(szError, "Member '%s' not found", szIdent);
 		return szError;
-	default:
-		return ::VDScriptTranslateError(cse);
+	case VDScriptError::VAR_NOT_FOUND:
+		if (!mErrorExtraToken.empty()) {
+			sprintf(szError, "Variable '%s' not found", mErrorExtraToken.c_str());
+			return szError;
+		}
+		break;
 	}
+	return ::VDScriptTranslateError(cse);
 }
 
 char **VDScriptInterpreter::AllocTempString(long l) {
@@ -499,7 +510,10 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptObject *obj, const char *na
 }
 
 void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcount) {
-	VDScriptValue *const params = &mStack[mStack.size() - pcount];
+	VDScriptValue *params = NULL;
+	
+	if (pcount)
+		params = &mStack[mStack.size() - pcount];
 
 	mpCurrentInvocationMethod = sfd;
 	mMethodArgumentCount = pcount;
@@ -556,13 +570,15 @@ arglist_nomatch:
 
 arglist_match:
 	// Make sure there is room for the return value.
-	if (!pcount) {
-		++pcount;
+	int stackcount = pcount;
+
+	if (!stackcount) {
+		++stackcount;
 		mStack.push_back(VDScriptValue());
 	}
 
 	// coerce arguments
-	VDScriptValue *const argv = &*(mStack.end() - pcount);
+	VDScriptValue *const argv = &*(mStack.end() - stackcount);
 	const char *const argdesc = sfd->arg_list + 1;
 
 	for(int i=0; i<pcount; ++i) {
@@ -605,10 +621,23 @@ VDScriptValue VDScriptInterpreter::LookupRootVariable(char *szName) {
 	if (!strcmp(szName, "Sylia"))
 		return VDScriptValue(NULL, &obj_Sylia);
 
-	if (lpRoothandler)
-		return lpRoothandler(this, szName, lpRoothandlerData);
-	else
-		SCRIPT_ERROR(VAR_NOT_FOUND);
+	const char *volatile _szName = szName;		// needed to fix exception handler, for some reason
+
+	VDScriptValue ret;
+
+	try {
+		if (!lpRoothandler)
+			SCRIPT_ERROR(VAR_NOT_FOUND);
+
+		ret = lpRoothandler(this, szName, lpRoothandlerData);
+	} catch(const VDScriptError& e) {
+		if (e.err == VDScriptError::VAR_NOT_FOUND) {
+			mErrorExtraToken = _szName;
+			throw;
+		}
+	}
+
+	return ret;
 }
 
 VDScriptValue VDScriptInterpreter::LookupObjectMember(const VDScriptObject *obj, void *lpVoid, char *szIdent) {
@@ -786,6 +815,31 @@ int VDScriptInterpreter::Token() {
 #ifdef DEBUG_TOKEN
 		VDDEBUG("Literal: [%s]\n", *tokslit);
 #endif
+
+		return TOK_STRING;
+	}
+
+	// unescaped string?
+	if ((c=='u' || c=='U') && *tokstr == '"') {
+		const char *s = ++tokstr;
+
+		while((c=*tokstr++) && c != '"')
+			;
+
+		if (!c) {
+			--tokstr;
+			SCRIPT_ERROR(PARSE_ERROR);
+		}
+
+		size_t len = tokstr - s - 1;
+
+		const VDStringA strA(VDTextWToU8(VDTextAToW(s, len)));
+
+		len = strA.size();
+
+		tokslit = strheap.Allocate(len);
+		memcpy(*tokslit, strA.data(), len);
+		(*tokslit)[len] = 0;
 
 		return TOK_STRING;
 	}

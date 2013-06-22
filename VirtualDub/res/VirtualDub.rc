@@ -219,7 +219,6 @@ BEGIN
         BEGIN
             MENUITEM "VirtualDub home page",        ID_HELP_ONLINE_HOME
             MENUITEM "Frequently Asked Questions",  ID_HELP_ONLINE_FAQ
-            MENUITEM "News",                        ID_HELP_ONLINE_NEWS
             MENUITEM "Knowledge base",              ID_HELP_ONLINE_KB
         END
         MENUITEM SEPARATOR
@@ -286,12 +285,15 @@ BEGIN
     END
     POPUP "&Audio"
     BEGIN
+        MENUITEM "&Enable audio capture",       ID_AUDIO_ENABLE, CHECKED
+        MENUITEM SEPARATOR
         MENUITEM "&Compression...\tA",          ID_AUDIO_COMPRESSION
         MENUITEM "&Volume meter...\tV",         ID_AUDIO_VOLUMEMETER
         MENUITEM "Windows &mixer...",           ID_AUDIO_WINMIXER
     END
     POPUP "&Video"
     BEGIN
+        MENUITEM "No display",                  ID_VIDEO_NODISPLAY
         MENUITEM "&Overlay\tO",                 ID_VIDEO_OVERLAY, CHECKED
         MENUITEM "&Preview\tP",                 ID_VIDEO_PREVIEW
         MENUITEM "Pre&view w/ histogram\tShift-P", ID_VIDEO_PREVIEWHISTOGRAM
@@ -299,10 +301,13 @@ BEGIN
         MENUITEM "&Format...\tF",               ID_VIDEO_FORMAT
         MENUITEM "&Source...\tS",               ID_VIDEO_SOURCE
         MENUITEM "&Display...\tD",              ID_VIDEO_DISPLAY
-        MENUITEM "Co&mpression...\tShift-C",    ID_VIDEO_COMPRESSION_INTERNAL
-
-        MENUITEM "&Compression (compatibility)...\tC", 
-                                                ID_VIDEO_COMPRESSION_AVICAP
+        MENUITEM "Capture pin...",              ID_VIDEO_CAPTUREPIN
+        MENUITEM "Preview pin...",              ID_VIDEO_PREVIEWPIN
+        MENUITEM "Capture filter...",           ID_VIDEO_CAPTUREFILTER
+        MENUITEM "Crossbar...",                 ID_VIDEO_CROSSBAR
+        MENUITEM "Crossbar 2...",               ID_VIDEO_CROSSBAR2
+        MENUITEM "Tuner...",                    ID_VIDEO_TUNER
+        MENUITEM "&Compression...\tC",          ID_VIDEO_COMPRESSION
         MENUITEM SEPARATOR
         POPUP "Cropping"
         BEGIN
@@ -332,14 +337,13 @@ BEGIN
         MENUITEM "&Histogram...\tH",            ID_VIDEO_HISTOGRAM
         MENUITEM "BT8X8 Tweaker...",            ID_VIDEO_BT8X8TWEAKER
         MENUITEM SEPARATOR
+        MENUITEM "Disconnect",                  ID_VIDEO_DISCONNECT
     END
     POPUP "&Capture"
     BEGIN
-        MENUITEM "&Capture video\tF6",          ID_CAPTURE_CAPTUREVIDEOINTERNAL
-
-        MENUITEM "Capture &video (compatibility mode)\tF5", 
-                                                ID_CAPTURE_CAPTUREVIDEO
+        MENUITEM "Capture &video \tF5",         ID_CAPTURE_CAPTUREVIDEO
         MENUITEM "Test video capture (Internal)\tF7", ID_CAPTURE_TEST
+        MENUITEM "Stop capture\tEsc",           ID_CAPTURE_STOP
         MENUITEM SEPARATOR
         MENUITEM "&Settings...\tF9",            ID_CAPTURE_SETTINGS
         MENUITEM "&Preferences...\tF10",        ID_CAPTURE_PREFERENCES
@@ -347,9 +351,6 @@ BEGIN
         MENUITEM "Timing...",                   ID_CAPTURE_TIMING
         MENUITEM "Disk I/O...",                 ID_CAPTURE_DISKIO
         MENUITEM "Capture drives...",           ID_CAPTURE_SPILLSYSTEM
-        MENUITEM SEPARATOR
-        MENUITEM "Log events",                  ID_CAPTURE_ENABLELOGGING
-        MENUITEM "Display capture log...",      ID_CAPTURE_DISPLAYCAPTURELOG
         MENUITEM SEPARATOR
         MENUITEM "&Hide on capture",            ID_CAPTURE_HIDEONCAPTURE
         MENUITEM "Display large timer",         ID_CAPTURE_DISPLAYLARGETIMER
@@ -603,7 +604,7 @@ IDD_VIDEO_DEPTH DIALOGEX 0, 0, 354, 159
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Video Color Depth"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     GROUPBOX        "Decompression format ",IDC_STATIC,7,7,168,124
     CONTROL         "Autoselect",IDC_INPUT_AUTOSELECT,"Button",
@@ -783,7 +784,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.6.0 - Copyright (C) 1998-2004 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.6.1 - Copyright (C) 1998-2004 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1159,7 +1160,7 @@ END
 IDD_FILTER_RESIZE DIALOGEX 0, 0, 217, 159
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter: resize"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     LTEXT           "New &width",IDC_STATIC,7,8,34,8
     EDITTEXT        IDC_WIDTH,54,7,139,12,ES_AUTOHSCROLL
@@ -1617,14 +1618,14 @@ BEGIN
     RTEXT           "",IDC_AUDIO_SIZE,155,127,120,10,SS_SUNKEN
 END
 
-IDD_CAPTURE_PANEL DIALOG DISCARDABLE  0, 0, 120, 221
+IDD_CAPTURE_PANEL DIALOG DISCARDABLE  0, 0, 120, 241
 STYLE DS_3DLOOK | WS_CHILD
 FONT 8, "MS Shell Dlg"
 BEGIN
     GROUPBOX        "Video",IDC_STATIC,7,68,106,73
     LTEXT           "Size",IDC_STATIC,15,78,14,8
     LTEXT           "Average rate",IDC_STATIC,15,88,42,8
-    GROUPBOX        "Audio",IDC_STATIC,7,143,106,64
+    GROUPBOX        "Audio",IDC_STATIC,7,143,106,91
     LTEXT           "Size",IDC_STATIC,15,153,14,8
     LTEXT           "Relative rate",IDC_STATIC,15,164,41,8
     LTEXT           "Data rate",IDC_STATIC,15,98,30,8
@@ -1657,6 +1658,8 @@ BEGIN
     RTEXT           "",IDC_FILE_SIZE,59,37,54,8
     LTEXT           "VT adjust",IDC_STATIC,15,194,31,8
     RTEXT           "",IDC_AUDIO_CORRECTIONS,59,194,46,8
+    LTEXT           "Resample",IDC_STATIC,15,204,32,8
+    RTEXT           "",IDC_AUDIO_RESAMPLERATE,59,204,46,8
 END
 
 IDD_DUBBING_MAIN DIALOG DISCARDABLE  0, 0, 172, 102
@@ -2095,19 +2098,6 @@ BEGIN
                     TBS_AUTOTICKS | WS_TABSTOP,7,7,189,16
     LTEXT           "Minimum",IDC_STATIC,2,27,28,8
     LTEXT           "Maximum",IDC_STATIC,174,27,30,8
-END
-
-IDD_CAPTURE_EVENTLOG DIALOG DISCARDABLE  0, 0, 360, 220
-STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
-    WS_SYSMENU
-CAPTION "Capture event log"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    CONTROL         "List1",IDC_EVENTS,"SysListView32",LVS_REPORT | 
-                    LVS_SINGLESEL | LVS_ALIGNLEFT | LVS_NOSORTHEADER | 
-                    WS_BORDER | WS_TABSTOP,7,7,346,188
-    PUSHBUTTON      "Save...",IDC_SAVE,249,199,50,14
-    DEFPUSHBUTTON   "OK",IDOK,303,199,50,14
 END
 
 IDD_AUDIOCOMPRESSION DIALOG DISCARDABLE  0, 0, 350, 230
@@ -2778,6 +2768,18 @@ BEGIN
                     336,166
 END
 
+IDD_CAPTURE_BROKEN DIALOG DISCARDABLE  0, 0, 250, 61
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Capture subsystem warning"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,193,40,50,14,WS_DISABLED
+    CONTROL         "I understand.",IDC_VERIFY,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,40,106,14
+    LTEXT           "The capture system is being rewritten at the moment to support DirectShow (WDM) capture, audio resampling, and other requested features. As a result it's pretty broken at the moment. Please don't email me about it.",
+                    IDC_STATIC,7,7,236,34
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -3175,7 +3177,7 @@ BEGIN
         VERTGUIDE, 59
         VERTGUIDE, 105
         TOPMARGIN, 7
-        BOTTOMMARGIN, 214
+        BOTTOMMARGIN, 234
     END
 
     IDD_DUBBING_MAIN, DIALOG
@@ -3375,14 +3377,6 @@ BEGIN
         RIGHTMARGIN, 196
         TOPMARGIN, 7
         BOTTOMMARGIN, 33
-    END
-
-    IDD_CAPTURE_EVENTLOG, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 353
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 213
     END
 
     IDD_AUDIOCOMPRESSION, DIALOG
@@ -3687,6 +3681,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 192
     END
+
+    IDD_CAPTURE_BROKEN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 243
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 54
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -3760,8 +3762,7 @@ END
 IDR_CAPTURE_KEYS ACCELERATORS DISCARDABLE 
 BEGIN
     "A",            ID_AUDIO_COMPRESSION,   VIRTKEY, NOINVERT
-    "C",            ID_VIDEO_COMPRESSION_AVICAP, VIRTKEY, NOINVERT
-    "C",            ID_VIDEO_COMPRESSION_INTERNAL, VIRTKEY, SHIFT, NOINVERT
+    "C",            ID_VIDEO_COMPRESSION,   VIRTKEY, NOINVERT
     "D",            ID_VIDEO_DISPLAY,       VIRTKEY, NOINVERT
     "F",            ID_VIDEO_FORMAT,        VIRTKEY, NOINVERT
     "F",            ID_VIDEO_CUSTOMFORMAT,  VIRTKEY, SHIFT, NOINVERT
@@ -3771,11 +3772,11 @@ BEGIN
     "P",            ID_VIDEO_PREVIEWHISTOGRAM, VIRTKEY, SHIFT, NOINVERT
     "S",            ID_VIDEO_SOURCE,        VIRTKEY, NOINVERT
     "V",            ID_AUDIO_VOLUMEMETER,   VIRTKEY, NOINVERT
+    VK_ESCAPE,      ID_CAPTURE_STOP,        VIRTKEY, NOINVERT
     VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
     VK_F10,         ID_CAPTURE_PREFERENCES, VIRTKEY, NOINVERT
     VK_F2,          ID_FILE_SETCAPTUREFILE, VIRTKEY, NOINVERT
     VK_F5,          ID_CAPTURE_CAPTUREVIDEO, VIRTKEY, NOINVERT
-    VK_F6,          ID_CAPTURE_CAPTUREVIDEOINTERNAL, VIRTKEY, NOINVERT
     VK_F7,          ID_CAPTURE_TEST,        VIRTKEY, NOINVERT
     VK_F9,          ID_CAPTURE_SETTINGS,    VIRTKEY, NOINVERT
     "[",            ID_FILE_DECREMENT,      ASCII,  NOINVERT
@@ -3822,8 +3823,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,6,0,0
- PRODUCTVERSION 1,6,0,0
+ FILEVERSION 1,6,1,0
+ PRODUCTVERSION 1,6,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3841,14 +3842,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.6.0\0"
+            VALUE "FileVersion", "1.6.1\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.6.0\0"
+            VALUE "ProductVersion", "1.6.1\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3934,17 +3935,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.6.0 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.6.0"
-    IDS_TITLE_IDLE          "VirtualDub 1.6.0 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.6.0 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.0"
+    IDS_TITLE_INITIAL       "VirtualDub 1.6.1 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.6.1"
+    IDS_TITLE_IDLE          "VirtualDub 1.6.1 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.6.1 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.6.1"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.6.0 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.6.0 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.0 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.0 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.6.0 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.6.1 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.6.1 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.6.1 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.6.1 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.6.1 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 
@@ -4053,10 +4054,8 @@ BEGIN
     IDS_CAP_VIDEO_FORMAT    "Bring up driver-specific video format dialog box."
     IDS_CAP_VIDEO_SOURCE    "Bring up driver-specific video source dialog box."
     IDS_CAP_VIDEO_DISPLAY   "Bring up driver-specific video display dialog box."
-    IDS_CAP_VIDEO_COMPRESSION_AVICAP 
-                            "Set video compression mode for compatibility-mode captures (AVICap)."
-    IDS_CAP_VIDEO_COMPRESSION_INTERNAL 
-                            "Set video compression mode for captures using VirtualDub's I/O system."
+    IDS_CAP_VIDEO_COMPRESSION 
+                            "Set video compression mode for compatibility-mode captures."
     IDS_CAP_VIDEO_HISTOGRAM "Display real-time histogram of incoming video."
     IDS_CAP_VIDEO_FILTERS   "Configure filters for on-the-fly video filtering (RGB capture only)."
     IDS_CAP_VIDEO_ENABLEFILTERING 

@@ -42,7 +42,10 @@ public:
 
 	FrameSubset();
 	FrameSubset(sint64 length);
+	FrameSubset(const FrameSubset&);
 	~FrameSubset();
+
+	FrameSubset& operator=(const FrameSubset&);
 
 	void clear();
 	void addFrom(FrameSubset&);

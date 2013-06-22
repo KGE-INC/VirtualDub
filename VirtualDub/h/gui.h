@@ -49,7 +49,7 @@ void guiRedoWindows(HWND hWnd);
 void guiSetStatus(char *format, int nPart, ...);
 void guiSetTitle(HWND hWnd, UINT uID, ...);
 void guiSetTitleW(HWND hWnd, UINT uID, ...);
-void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, UINT *iTranslator);
+void guiMenuHelp(HWND hwnd, WPARAM wParam, WPARAM part, const UINT *iTranslator);
 void guiOffsetDlgItem(HWND hdlg, UINT id, LONG xDelta, LONG yDelta);
 void guiResizeDlgItem(HWND hdlg, UINT id, LONG x, LONG y, LONG dx, LONG dy);
 void guiSubclassWindow(HWND hwnd, WNDPROC newproc);
@@ -109,6 +109,8 @@ protected:
 class VDDialogBaseW32 {
 public:
 	bool IsActive() { return mhdlg != 0; }
+	HWND	GetHandle() const { return mhdlg; }
+
 	LRESULT ActivateDialog(VDGUIHandle hParent);
 	LRESULT ActivateDialogDual(VDGUIHandle hParent);
 	bool CreateModeless(VDGUIHandle hParent);
@@ -118,6 +120,8 @@ protected:
 	static INT_PTR CALLBACK StaticDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	virtual INT_PTR DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
 	void End(LRESULT res);
+
+	virtual void PreNCDestroy() {}
 
 	HWND		mhdlg;
 	LPCTSTR		mpszDialogName;

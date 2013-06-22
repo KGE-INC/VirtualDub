@@ -2,7 +2,7 @@
 #define f_VD2_MEIA_MPEGFILE_H
 
 #include <vd2/system/vdtypes.h>
-#include <vd2/system/VDRefCount.h>
+#include <vd2/system/refcount.h>
 
 struct VDMPEGSequenceHeader {
 	int		width;

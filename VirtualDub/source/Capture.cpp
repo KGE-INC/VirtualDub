@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2003 Avery Lee
+//	Copyright (C) 1998-2004 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -29,6 +29,12 @@
 
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/int128.h>
+#include <vd2/system/registry.h>
+#include <vd2/system/thread.h>
+#include <vd2/system/tls.h>
+#include <vd2/system/cpuaccel.h>
+#include <vd2/system/w32assist.h>
 #include "AVIOutput.h"
 #include "AVIOutputFile.h"
 #include "Histogram.h"
@@ -36,11 +42,15 @@
 #include "AVIOutputStriped.h"
 #include "AVIStripeSystem.h"
 #include "VideoSequenceCompressor.h"
-#include <vd2/system/int128.h>
 #include <vd2/Dita/services.h>
+#include <vd2/Kasumi/pixmap.h>
+#include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
+#include <vd2/Riza/capdriver.h>
+#include <vd2/Riza/capdrivers.h>
+#include <vd2/Riza/capresync.h>
 
 #include "crash.h"
-#include <vd2/system/tls.h>
 #include "gui.h"
 #include "oshelper.h"
 #include "filters.h"
@@ -53,13 +63,12 @@
 #include "caphisto.h"
 #include "optdlg.h"
 #include "filtdlg.h"
-#include <vd2/system/cpuaccel.h>
-#include "caplog.h"
 #include "capaccel.h"
+#include "caputils.h"
+#include "capfilter.h"
+#include "uiframe.h"
 
-#define TAG2(x) OutputDebugString("At line " #x "\n")
-#define TAG1(x) TAG2(x)
-#define TAG TAG1(__LINE__)
+using namespace nsVDCapture;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -74,24 +83,10 @@ extern long g_lSpillMinSize;
 extern long g_lSpillMaxSize;
 extern HWND			g_hWnd;
 
-extern void ChooseCompressor(HWND hwndParent, COMPVARS *lpCompVars, BITMAPINFOHEADER *bihInput);
+extern void CaptureBT848Reassert();
 extern void FreeCompressor(COMPVARS *pCompVars);
 
-extern LRESULT CALLBACK VCMDriverProc(DWORD dwDriverID, HDRVR hDriver, UINT uiMessage, LPARAM lParam1, LPARAM lParam2);
-
-extern void CaptureDisplayBT848Tweaker(HWND hwndParent);
-extern void CaptureCloseBT848Tweaker();
-extern void CaptureBT848Reassert();
-
-extern "C" void asm_YUVtoRGB32_row(
-		unsigned long *ARGB1_pointer,
-		unsigned long *ARGB2_pointer,
-		const unsigned char *Y1_pointer,
-		const unsigned char *Y2_pointer,
-		const unsigned char *U_pointer,
-		const unsigned char *V_pointer,
-		long width
-		);
+IVDCaptureSystem *VDCreateCaptureSystemEmulation();
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -99,186 +94,291 @@ extern "C" void asm_YUVtoRGB32_row(
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class CaptureCompressionSpecs {
-public:
-	DWORD	fccType;
-	DWORD	fccHandler;
-	LONG	lKey;
-	LONG	lDataRate;
-	LONG	lQ;
-};
+#define VDCM_EXIT		(WM_APP+0)
+#define VDCM_SWITCH_FIN (WM_APP+1)
 
-class CaptureVars {
+class VDCaptureProject;
+
+class VDCaptureStatsFilter : public IVDCaptureDriverCallback {
 public:
-	WAVEFORMATEX	wfex;
-	HWND			hwndStatus, hwndPanel;
-	__int64		total_jitter, total_disp, total_video_size, total_audio_size, total_audio_data_size, audio_first_size;
-	__int64		last_video_size;
-	__int64		disk_free;
-	long		total_cap, last_cap, total_audio_cap;
-	DWORD		dropped;
-	DWORD		interval;
-	DWORD		lastMessage;
-	long		lCurrentMS;
-	long		lVideoFirstMS, lVideoLastMS;
-	long		lAudioFirstMS, lAudioLastMS;
-	long		uncompressed_frame_size;
-	int			iSpillNumber;
-	char		szCaptureRoot[MAX_PATH];
-	char		*pNoiseReductionBuffer;
-	char		*pVertRowBuffer;
-	long		bpr;
-	ptrdiff_t			pdClipOffset;
-	int					rowdwords;
-	bool				fClipping;
+	VDCaptureStatsFilter();
+
+	void Init(IVDCaptureDriverCallback *pCB, const WAVEFORMATEX *pwfex);
+	void GetStats(VDCaptureStatus& stats);
+
+	void CapBegin(sint64 global_clock);
+	void CapEnd();
+	bool CapControl(bool is_preroll);
+	void CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
+
+protected:
+	IVDCaptureDriverCallback *mpCB;
+
+	long		mVideoFramesCaptured;
+	long		mVideoFirstCapTime, mVideoLastCapTime;
+	long		mAudioFirstCapTime, mAudioLastCapTime;
+	sint32		mAudioFirstSize;
+	sint64		mTotalAudioDataSize;
+
+	double		mAudioSamplesPerByteX1000;
 
 	// audio sampling rate estimation
+	VDCaptureAudioRateEstimator	mAudioRateEstimator;
 
-	__int64		i64AudioHzX;
-	__int64		i64AudioHzY;
-	int128		i64AudioHzX2;
-	int128		i64AudioHzY2;
-	int128		i64AudioHzXY;
-	int			iAudioHzSamples;
-
-	// video timing correction (non-compat only)
-
-	long			lVideoAdjust;
-
-
-	CaptureVars() { memset(this, 0, sizeof *this); }
+	VDCriticalSection	mcsLock;
 };
 
-class CaptureData : public CaptureVars {
+VDCaptureStatsFilter::VDCaptureStatsFilter()
+	: mpCB(NULL)
+{
+}
+
+void VDCaptureStatsFilter::Init(IVDCaptureDriverCallback *pCB, const WAVEFORMATEX *pwfex) {
+	mpCB = pCB;
+
+	mAudioSamplesPerByteX1000 = 0.0;
+	if (pwfex)
+		mAudioSamplesPerByteX1000 = 1000.0 * ((double)pwfex->nSamplesPerSec / (double)pwfex->nAvgBytesPerSec);
+}
+
+void VDCaptureStatsFilter::GetStats(VDCaptureStatus& status) {
+	vdsynchronized(mcsLock) {
+		status.mVideoFirstFrameTimeMS	= mVideoFirstCapTime;
+		status.mVideoLastFrameTimeMS	= mVideoLastCapTime;
+		status.mAudioFirstFrameTimeMS	= mAudioFirstCapTime;
+		status.mAudioLastFrameTimeMS	= mAudioLastCapTime;
+		status.mAudioFirstSize			= mAudioFirstSize;
+		status.mTotalAudioDataSize		= mTotalAudioDataSize;
+
+		// slope is in (bytes/ms), which we must convert to samples/sec.
+		double slope;
+		status.mActualAudioHz = 0;
+		if (mAudioRateEstimator.GetSlope(slope))
+			status.mActualAudioHz = slope * mAudioSamplesPerByteX1000;
+	}
+}
+
+void VDCaptureStatsFilter::CapBegin(sint64 global_clock) {
+	mVideoFramesCaptured	= 0;
+	mVideoFirstCapTime		= 0;
+	mVideoLastCapTime		= 0;
+	mAudioFirstCapTime		= 0;
+	mAudioLastCapTime		= 0;
+	mAudioFirstSize			= 0;
+	mTotalAudioDataSize		= 0;
+
+	mAudioRateEstimator.Reset();
+
+	if (mpCB)
+		mpCB->CapBegin(global_clock);
+}
+
+void VDCaptureStatsFilter::CapEnd() {
+	if (mpCB)
+		mpCB->CapEnd();
+}
+
+bool VDCaptureStatsFilter::CapControl(bool is_preroll) {
+	if (mpCB)
+		return mpCB->CapControl(is_preroll);
+
+	return true;
+}
+
+void VDCaptureStatsFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock) {
+	vdsynchronized(mcsLock) {
+		if (stream == 0) {
+			long lTimeStamp = timestamp / 1000;
+
+			if (!mVideoFramesCaptured)
+				mVideoFirstCapTime = lTimeStamp;
+			mVideoLastCapTime = lTimeStamp;
+
+			++mVideoFramesCaptured;
+		} else if (stream == 1) {
+			uint32 dwTime = (uint32)(global_clock / 1000);
+
+			if (!mAudioFirstSize) {
+				mAudioFirstSize = size;
+				mAudioFirstCapTime = dwTime;
+			}
+			mAudioLastCapTime = dwTime;
+
+			mTotalAudioDataSize += size;
+			mAudioRateEstimator.AddSample(dwTime, mTotalAudioDataSize);
+		}
+	}
+
+	if (mpCB)
+		mpCB->CapProcessData(stream, data, size, timestamp, key, global_clock);
+}
+
+class VDCaptureData : public VDThread {
 public:
-	CPUUsageReader		CPU;
-	FilterStateInfo		fsi;
-	BITMAPINFOHEADER	bihInputFormat;
-	BITMAPINFOHEADER	bihFiltered, bihFiltered2;
-	BITMAPINFOHEADER	bihClipFormat;
+	VDCaptureProject	*mpProject;
+	WAVEFORMATEX	mwfex;
+	sint32		mTotalJitter;
+	sint32		mTotalDisp;
+	sint64		mTotalVideoSize;
+	sint64		mTotalAudioSize;
+	sint64		mLastVideoSize;
+	sint64		mDiskFreeBytes;
+	long		mTotalFramesCaptured;
+	uint32		mFramesDropped;
+	uint32		mFramePeriod;
+	uint64		mLastUpdateTime;
+	long		mLastTime;
+	long		mUncompressedFrameSize;
+	int			mSegmentIndex;
+
+	vdautoptr<VideoSequenceCompressor> mpVideoCompressor;
+	IVDMediaOutput			*volatile mpOutput;
+	IVDMediaOutputAVIFile	*volatile mpOutputFile;
+	IVDMediaOutputAVIFile	*volatile mpOutputFilePending;
+	IVDMediaOutputStream	*volatile mpVideoOut;
+	IVDMediaOutputStream	*volatile mpAudioOut;
+	int				mAudioSampleSize;
+	uint32			mLastCapturedFrame;
+	vdautoptr<MyError>		mpError;
+	VDAtomicPtr<MyError>	mpSpillError;
+	const char	*	mpszFilename;
+	const char	*	mpszPath;
+	const char	*	mpszNewPath;
+	sint64			mSegmentAudioSize;
+	sint64			mSegmentVideoSize;
+	sint64			mAudioBlocks;
+	sint64			mAudioSwitchPt;
+	sint64			mVideoBlocks;
+	sint64			mVideoSwitchPt;
+	long			mSizeThreshold;
+	long			mSizeThresholdPending;
+
+	VDCaptureStatsFilter	*mpStatsFilter;
+	IVDCaptureResyncFilter	*mpResyncFilter;
+
+	bool			mbDoSwitch;
+	bool			mbAllFull;
+	bool			mbNTSC;
+
+	IVDCaptureFilterSystem *mpFilterSys;
+	VDPixmapLayout			mInputLayout;
+
+	char		mCaptureRoot[MAX_PATH];
+
+	VDCaptureData();
+	~VDCaptureData();
+
+	void PostFinalizeRequest() {
+		PostThreadMessage(getThreadID(), VDCM_SWITCH_FIN, 0, 0);
+	}
+	void PostExitRequest() {
+		PostThreadMessage(getThreadID(), VDCM_EXIT, 0, 0);
+	}
+
+	bool VideoCallback(const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
+	bool WaveCallback(const void *data, uint32 size, sint64 global_clock);
+protected:
+	void ThreadRun();
+	void CreateNewFile();
+	void FinalizeOldFile();
+	void DoSpill();
+	void CheckVideoAfter();
 };
 
-#define	CAPSTOP_TIME			(0x00000001L)
-#define	CAPSTOP_FILESIZE		(0x00000002L)
-#define	CAPSTOP_DISKSPACE		(0x00000004L)
-#define	CAPSTOP_DROPRATE		(0x00000008L)
+VDCaptureData::VDCaptureData()
+	: VDThread("Capture spill")
+	, mTotalJitter(0)
+	, mTotalDisp(0)
+	, mTotalVideoSize(0)
+	, mTotalAudioSize(0)
+	, mLastVideoSize(0)
+	, mDiskFreeBytes(0)
+	, mTotalFramesCaptured(0)
+	, mFramesDropped(0)
+	, mFramePeriod(0)
+	, mLastUpdateTime(0)
+	, mLastTime(0)
+	, mUncompressedFrameSize(0)
+	, mSegmentIndex(0)
+	, mpVideoCompressor(NULL)
+	, mpOutput(NULL)
+	, mpOutputFile(NULL)
+	, mpOutputFilePending(NULL)
+	, mpVideoOut(NULL)
+	, mpAudioOut(NULL)
+	, mAudioSampleSize(0)
+	, mLastCapturedFrame(0)
+	, mpError(NULL)
+	, mpSpillError(NULL)
+	, mpszFilename(NULL)
+	, mpszPath(NULL)
+	, mpszNewPath(NULL)
+	, mSegmentAudioSize(0)
+	, mSegmentVideoSize(0)
+	, mAudioBlocks(0)
+	, mAudioSwitchPt(0)
+	, mVideoBlocks(0)
+	, mVideoSwitchPt(0)
+	, mSizeThreshold(0)
+	, mSizeThresholdPending(0)
+	, mbDoSwitch(0)
+	, mbAllFull(0)
+	, mbNTSC(0)
+{
+	mCaptureRoot[0] = 0;
+}
 
-struct CaptureStopPrefs {
-	long		fEnableFlags;
-	long		lTimeLimit;
-	long		lSizeLimit;
-	long		lDiskSpaceThreshold;
-	long		lMaxDropRate;
-};
+VDCaptureData::~VDCaptureData() {
+	delete mpSpillError;
+}
 
-///////////////////////////////////////////////////////////////////////////
-//
-//	statics
-//
-///////////////////////////////////////////////////////////////////////////
+#if 0
+extern LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc);
+#define CAPINT_FATAL_CATCH_START	\
+		__try {
 
-static CAPTUREPARMS g_defaultCaptureParms={
-	1000000/15,		//15fps
-	FALSE,
-	10,
-	FALSE,			// callbacks won't work if Yield is TRUE
-	324000,			// we like index entries
-	4,
-	FALSE,
-	10,
-	TRUE,
-	0,
-	VK_ESCAPE,
-	TRUE,
-	FALSE,
-	FALSE,
-	0,
-	FALSE,
-	FALSE,
-	0,0,
-	FALSE,
-	10,
-	0,
-	FALSE,
-	AVSTREAMMASTER_NONE,				//	AVSTREAMMASTER_AUDIO
-};
+#define CAPINT_FATAL_CATCH_END(msg)	\
+		} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info()), 1) {		\
+		}
+#else
+#define CAPINT_FATAL_CATCH_START	\
+		__try {
 
-#define FRAMERATE(x) ((LONG)((1000000 + (x)/2.0) / (x)))
+#define CAPINT_FATAL_CATCH_END(msg)	\
+		} __except(VDCaptureIsCatchableException(GetExceptionCode())) {		\
+			CaptureInternalHandleException(icd, msg, GetExceptionCode());				\
+		}
 
-static LONG g_predefFrameRates[]={
-	100003000/6000,
-	100001500/3000,
-	100001250/2500,
-	100001000/2000,
-	100000750/1500,
-	100000600/1200,
-	100000500/1000,
-	100000250/ 500,
-	100002997/5994,
-	100001998/2997,
-	100000999/1998,
-	100000749/1499,
-	100000599/1199,
-	100000499/ 999,
-	FRAMERATE(30.303),
-	FRAMERATE(29.412),
-	66000,		//FRAMERATE(15.151),
-	67000,		//FRAMERATE(14.925),
-};
+static void CaptureInternalHandleException(VDCaptureData *icd, char *op, DWORD ec) {
+	if (!icd->mpError) {
+		char *s;
+
+		switch(ec) {
+		case EXCEPTION_ACCESS_VIOLATION:
+			s = "Access Violation";
+			break;
+		case EXCEPTION_PRIV_INSTRUCTION:
+			s = "Privileged Instruction";
+			break;
+		case EXCEPTION_INT_DIVIDE_BY_ZERO:
+			s = "Integer Divide By Zero";
+			break;
+		case EXCEPTION_BREAKPOINT:
+			s = "User Breakpoint";
+			break;
+		}
+
+		icd->mpError = new MyError("Internal program error during %s handling: %s.", op, s);
+	}
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////
 
-#define MENU_TO_HELP(x) ID_##x, IDS_CAP_##x
-
-static UINT iCaptureMenuHelpTranslator[]={
-	MENU_TO_HELP(FILE_SETCAPTUREFILE),
-	MENU_TO_HELP(FILE_ALLOCATEDISKSPACE),
-	MENU_TO_HELP(FILE_EXITCAPTUREMODE),
-	MENU_TO_HELP(AUDIO_COMPRESSION),
-	MENU_TO_HELP(AUDIO_VOLUMEMETER),
-	MENU_TO_HELP(VIDEO_OVERLAY),
-	MENU_TO_HELP(VIDEO_PREVIEW),
-	MENU_TO_HELP(VIDEO_PREVIEWHISTOGRAM),
-	MENU_TO_HELP(VIDEO_FORMAT),
-	MENU_TO_HELP(VIDEO_SOURCE),
-	MENU_TO_HELP(VIDEO_DISPLAY),
-	MENU_TO_HELP(VIDEO_COMPRESSION_AVICAP),
-	MENU_TO_HELP(VIDEO_COMPRESSION_INTERNAL),
-	MENU_TO_HELP(VIDEO_CUSTOMFORMAT),
-	MENU_TO_HELP(VIDEO_FILTERS),
-	MENU_TO_HELP(VIDEO_ENABLEFILTERING),
-	MENU_TO_HELP(VIDEO_HISTOGRAM),
-	MENU_TO_HELP(CAPTURE_SETTINGS),
-	MENU_TO_HELP(CAPTURE_PREFERENCES),
-	MENU_TO_HELP(CAPTURE_CAPTUREVIDEO),
-	MENU_TO_HELP(CAPTURE_CAPTUREVIDEOINTERNAL),
-	MENU_TO_HELP(CAPTURE_HIDEONCAPTURE),
-	NULL,NULL,
-};
-
 extern const char g_szCapture				[]="Capture";
-static const char g_szStartupDriver			[]="Startup Driver";
-static const char g_szDefaultCaptureFile	[]="Capture File";
-static const char g_szCapSettings			[]="Settings";
-static const char g_szAudioFormat			[]="Audio Format";
-static const char g_szVideoFormat			[]="Video Format";
-static const char g_szDrvOpts				[]="DrvOpts %08lx";
-static const char g_szCompression			[]="Compression";
-static const char g_szCompressorData		[]="Compressor Data";
-static const char g_szStopConditions		[]="Stop Conditions";
-static const char g_szHideInfoPanel			[]="Hide InfoPanel";
-static const char g_szMultisegment			[]="Multisegment";
-static const char g_szAutoIncrement			[]="Auto-increment";
-static const char g_szStartOnLeft			[]="Start on left";
+extern const char g_szStartupDriver			[]="Startup Driver";
 
-static const char g_szAdjustVideoTiming		[]="AdjustVideoTiming";
-
-static const char g_szChunkSize				[]="Chunk size";
-static const char g_szChunkCount			[]="Chunk count";
-static const char g_szDisableBuffering		[]="Disable buffering";
 static const char g_szWarnTiming1			[]="Warn Timing1";
-
-static const char g_szCannotFilter[]="Cannot use video filtering: ";
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -286,75 +386,9 @@ static const char g_szCannotFilter[]="Cannot use video filtering: ";
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static HMENU g_hMenuAuxCapture = NULL;
-static HACCEL g_hAccelCapture = NULL;
-static char g_szCaptureFile[MAX_PATH];
-static char g_szStripeFile[MAX_PATH];
-
-static bool g_fHideOnCapture = false;
-static bool g_fDisplayLargeTimer = false;
-static bool g_fEnableSpill = false;
-static bool g_fStretch = false;
-static bool g_fInfoPanel = true;
-
-#define CAPDRV_DISPLAY_OVERLAY	(0)
-#define	CAPDRV_DISPLAY_PREVIEW	(1)
-#define CAPDRV_DISPLAY_NONE		(2)
-#define	CAPDRV_DISPLAY_MASK		(15)
-
-#define CAPDRV_CRAPPY_PREVIEW	(0x00000010L)
-#define	CAPDRV_CRAPPY_OVERLAY	(0x00000020L)
-
-static DWORD g_drvOpts[10];
-static long g_drvHashes[10];
-static DWORD g_driver_options;
-static int g_current_driver;
-static BOOL g_fCrappyMode;
-
-static AVIStripeSystem *g_capStripeSystem = NULL;
-static COMPVARS g_compression;
-
-static CaptureStopPrefs			g_stopPrefs;
-
-static long			g_diskChunkSize		= 512;
-static int			g_diskChunkCount	= 2;
-static DWORD		g_diskDisableBuffer	= 1;
+COMPVARS g_compression;
 
 static CaptureHistogram	*g_pHistogram;
-
-static bool			g_fEnableClipping = false;
-RECT				g_rCaptureClip;
-
-static bool			g_fEnableRGBFiltering = false;
-static bool			g_fEnableNoiseReduction = false;
-static bool			g_fEnableLumaSquish = false;
-static bool			g_fAdjustVideoTimer	= true;
-static bool			g_fSwapFields		= false;
-static enum {
-	VERTSQUASH_NONE			=0,
-	VERTSQUASH_BY2LINEAR	=1,
-	VERTSQUASH_BY2CUBIC		=2
-} g_iVertSquash = VERTSQUASH_NONE;
-
-static int			g_iNoiseReduceThreshold = 16;
-
-static bool			g_fRestricted = false;
-
-static CaptureLog g_capLog;
-static bool			g_fLogEvents = false;
-
-static bool			g_bAutoIncrementAfterCapture = false;
-static bool			g_bStartOnLeft = false;
-
-static enum {
-	kDDP_Off = 0,
-	kDDP_Top,
-	kDDP_Bottom,
-	kDDP_Both,
-} g_nCaptureDDraw;
-static bool			g_bCaptureDDrawActive;
-static RydiaDirectDrawContext	g_DDContext;
-static WNDPROC		g_pCapWndProc;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -363,1100 +397,8 @@ static WNDPROC		g_pCapWndProc;
 ///////////////////////////////////////////////////////////////////////////
 
 extern void CaptureWarnCheckDriver(HWND hwnd, const char *s);
-extern void CaptureWarnCheckDrivers(HWND hwnd);
-static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable);
-static void CaptureSetPreview(HWND, bool);
-static bool CaptureSetCaptureFile(HWND hwndCapture);
-static void CaptureShowFile(HWND hwnd, HWND hwndCapture, bool fCaptureActive);
 
-static LRESULT CALLBACK CaptureYieldCallback(HWND hwnd);
-
-extern INT_PTR CALLBACK CaptureVumeterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-extern INT_PTR CALLBACK CaptureHistogramDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-extern INT_PTR CALLBACK CaptureSpillDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-static INT_PTR CALLBACK CaptureAllocateDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CaptureSettingsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-
-static INT_PTR CALLBACK CapturePreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static INT_PTR CALLBACK CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam);
-
-static void CaptureAVICap(HWND hWnd, HWND hWndCapture);
 static void CaptureInternal(HWND, HWND hWndCapture, bool fTest);
-static void CaptureInternalSelectCompression(HWND);
-static void CaptureInternalLoadFromRegistry();
-
-LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
-LRESULT CALLBACK CaptureOverlayFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
-static void CaptureToggleNRDialog(HWND);
-void CaptureShowClippingDialog(HWND hwndCapture);
-static bool CaptureMoveWindow(HWND);
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	misc
-//
-///////////////////////////////////////////////////////////////////////////
-
-// SetThreadExecutionState() is only available under Windows 98+/2000+.
-
-EXECUTION_STATE VDSetThreadExecutionStateW32(EXECUTION_STATE esFlags) {
-	HMODULE hmod = LoadLibrary("kernel32.dll");
-	EXECUTION_STATE es = 0;
-
-	if (hmod) {
-		typedef EXECUTION_STATE (WINAPI *tSetThreadExecutionState)(EXECUTION_STATE);
-
-		tSetThreadExecutionState pFunc = (tSetThreadExecutionState)GetProcAddress(hmod, "SetThreadExecutionState");
-
-		if (pFunc)
-			es = pFunc(esFlags);
-
-		FreeLibrary(hmod);
-	}
-
-	return es;
-}
-
-// time to abuse C++
-
-class CapturePriorityWhacker {
-private:
-	HWND hwndCapture;
-	BOOL fPowerOffState;
-	BOOL fLowPowerState;
-	BOOL fScreenSaverState;
-
-public:
-	CapturePriorityWhacker(HWND);
-	~CapturePriorityWhacker();
-};
-
-CapturePriorityWhacker::CapturePriorityWhacker(HWND hwnd) : hwndCapture(hwnd) {
-
-	SystemParametersInfo(SPI_GETSCREENSAVEACTIVE, 0, &fScreenSaverState, FALSE);
-	SystemParametersInfo(SPI_GETLOWPOWERACTIVE, 0, &fLowPowerState, FALSE);
-	SystemParametersInfo(SPI_GETPOWEROFFACTIVE, 0, &fPowerOffState, FALSE);
-
-	SystemParametersInfo(SPI_SETPOWEROFFACTIVE, fPowerOffState, FALSE, FALSE);
-	SystemParametersInfo(SPI_SETLOWPOWERACTIVE, fLowPowerState, FALSE, FALSE);
-	SystemParametersInfo(SPI_SETSCREENSAVEACTIVE, fScreenSaverState, FALSE, FALSE);
-
-	if (g_fHideOnCapture)
-		ShowWindow(hwndCapture, SW_HIDE);
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-}
-
-CapturePriorityWhacker::~CapturePriorityWhacker() {
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
-	SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
-	if (g_fHideOnCapture)
-		ShowWindow(hwndCapture, SW_SHOWNA);
-
-	SystemParametersInfo(SPI_SETPOWEROFFACTIVE, fPowerOffState, NULL, FALSE);
-	SystemParametersInfo(SPI_SETLOWPOWERACTIVE, fLowPowerState, NULL, FALSE);
-	SystemParametersInfo(SPI_SETSCREENSAVEACTIVE, fScreenSaverState, NULL, FALSE);
-}
-
-
-
-static int CaptureIsCatchableException(DWORD ec) {
-	switch(ec) {
-	case EXCEPTION_ACCESS_VIOLATION:
-	case EXCEPTION_PRIV_INSTRUCTION:
-	case EXCEPTION_INT_DIVIDE_BY_ZERO:
-	case EXCEPTION_BREAKPOINT:
-		return 1;
-	}
-
-	return 0;
-}
-
-
-static void CaptureDecrementFileID(HWND hwndCapture) {
-	char buf[MAX_PATH];
-
-	strcpy(buf, g_szCaptureFile);
-
-	char *ext = (char *)VDFileSplitExt(buf);
-	
-	while(--ext >= buf) {
-		if (isdigit((unsigned char)*ext)) {
-			if (*ext == '0')
-				*ext = '9';
-			else {
-				--*ext;
-				strcpy(g_szCaptureFile, buf);
-				CaptureSetCaptureFile(hwndCapture);
-				CaptureShowFile(g_hWnd, hwndCapture, false);
-				return;
-			}
-		} else
-			break;
-	}
-
-	guiSetStatus("Can't decrement filename any farther.", 0);
-}
-
-static void CaptureIncrementFileID(HWND hwndCapture) {
-	char buf[MAX_PATH];
-
-	strcpy(buf, g_szCaptureFile);
-
-	char *ext = (char *)VDFileSplitExt(buf);
-	
-	while(--ext >= buf) {
-		if (isdigit((unsigned char)*ext)) {
-			if (*ext == '9')
-				*ext = '0';
-			else {
-				++*ext;
-				strcpy(g_szCaptureFile, buf);
-				CaptureSetCaptureFile(hwndCapture);
-				CaptureShowFile(g_hWnd, hwndCapture, false);
-				return;
-			}
-		} else
-			break;
-	}
-
-	int head_len = (ext+1) - buf;
-
-	memcpy(g_szCaptureFile, buf, head_len);
-	g_szCaptureFile[head_len] = '1';
-	strcpy(g_szCaptureFile + head_len + 1, ext+1);
-
-	CaptureSetCaptureFile(hwndCapture);
-	CaptureShowFile(g_hWnd, hwndCapture, false);
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	driver schtuff
-//
-///////////////////////////////////////////////////////////////////////////
-
-static long CaptureHashDriverName(char *name) {
-	long hash;
-	int len=0;
-	char c;
-
-	// We don't want to have to deal with hash collisions in the Registry,
-	// so instead we use the Prayer method, in conjunction with a careful
-	// hash algorithm.  LMSB is the length of the string, clamped at 255;
-	// LSB is the first byte of the string.  The upper 2 bytes are the
-	// modulo sum of all the bytes in the string.  This way, two drivers
-	// would have to start with the same letter and have description
-	// strings of the exact same length in order to collide.
-	//
-	// It's impossible to distinguish two identical capture cards this way,
-	// but what moron puts two exact same cards in his system?  Besides,
-	// this way if someone yanks a card and alters the driver numbers, we
-	// can still find the right config for each driver.
-
-	hash = (long)(unsigned char)name[0];
-
-	while(c=*name++) {
-		hash += (long)(unsigned char)c << 16;
-		++len;
-	}
-	if (len>255) len=255;
-	hash |= (len<<8);
-
-	// If some idiot driver gives us no name, we have a hash of zero.
-	// We do not like zero hashes.
-
-	if (!hash) ++hash;
-
-	return hash;
-}
-
-static int CaptureAddDrivers(HWND hwnd, HMENU hMenu) {
-	int i, firstDriver=-1, nDriver=-1;
-	char szName[128];
-	char szMenu[128];
-	char szDesiredDriver[128];
-	DWORD dwDrvOpts;
-	long hash;
-
-	if (!QueryConfigString(g_szCapture, g_szStartupDriver, szDesiredDriver, sizeof szDesiredDriver))
-		szDesiredDriver[0] = 0;
-
-	memset(g_drvOpts, 0, sizeof g_drvOpts);
-	memset(g_drvHashes, 0, sizeof g_drvHashes);
-
-	for(i=0; i<10; i++) {
-		if (capGetDriverDescription(i, szName, sizeof szName, NULL, 0)) {
-			wsprintf(szMenu, "&%c %s", '0'+i, szName);
-			AppendMenu(hMenu, nDriver<0 ? MF_ENABLED|MF_CHECKED:MF_ENABLED, ID_VIDEO_CAPTURE_DRIVER+i, szMenu);
-
-			if (firstDriver<0) firstDriver = i;
-			if (nDriver<0 && !stricmp(szName, szDesiredDriver)) nDriver = i;
-
-			// check for a problematic driver
-
-			CaptureWarnCheckDriver(hwnd, szName);
-
-			// config?
-
-			g_drvHashes[i] = hash = CaptureHashDriverName(szName);
-			wsprintf(szName, g_szDrvOpts, hash);
-			if (QueryConfigDword(g_szCapture, szName, &dwDrvOpts))
-				g_drvOpts[i] = dwDrvOpts;
-		}
-	}
-
-	return nDriver==-1 ? firstDriver : nDriver;
-}
-
-static bool CaptureSelectDriver(HWND hWnd, HWND hWndCapture, int nDriver) {
-	HMENU hMenu = GetMenu(hWnd);
-	CAPDRIVERCAPS cdc;
-
-	CaptureEnablePreviewHistogram(hWndCapture, false);
-
-	if (!capDriverConnect(hWndCapture, nDriver)) {
-		MessageBox(hWnd, "VirtualDub cannot connect to the desired capture driver. Trying all available drivers.", g_szError, MB_OK);
-
-		int nDriverOriginal = nDriver;
-
-		nDriver = 0;
-		while(nDriver < 10) {
-			if (nDriver != nDriverOriginal && capGetDriverDescription(nDriver, NULL, 0, NULL, 0) && capDriverConnect(hWndCapture, nDriver))
-				break;
-
-			++nDriver;
-		}
-
-		if (nDriver >= 10) {
-			MessageBox(hWnd, "PANIC: VirtualDub cannot connect to any capture drivers!", g_szError, MB_OK);
-			return false;
-		}
-	}
-
-	CheckMenuRadioItem(hMenu, ID_VIDEO_CAPTURE_DRIVER, ID_VIDEO_CAPTURE_DRIVER+9, ID_VIDEO_CAPTURE_DRIVER+nDriver, MF_BYCOMMAND);
-
-	g_driver_options = g_drvOpts[nDriver];
-	g_current_driver = nDriver;
-
-	cdc.fHasOverlay = TRUE;
-
-	if (capDriverGetCaps(hWndCapture, &cdc, sizeof(CAPDRIVERCAPS))) {
-		EnableMenuItem(hMenu, ID_VIDEO_OVERLAY, cdc.fHasOverlay ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
-		EnableMenuItem(hMenu, ID_VIDEO_SOURCE, cdc.fHasDlgVideoSource ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
-		EnableMenuItem(hMenu, ID_VIDEO_FORMAT, cdc.fHasDlgVideoFormat ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
-		EnableMenuItem(hMenu, ID_VIDEO_DISPLAY, cdc.fHasDlgVideoDisplay ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
-	}
-
-	switch(g_driver_options & CAPDRV_DISPLAY_MASK) {
-	case CAPDRV_DISPLAY_PREVIEW:
-		CaptureSetPreview(hWndCapture, true);
-		break;
-	case CAPDRV_DISPLAY_OVERLAY:
-		if (cdc.fHasOverlay) capOverlay(hWndCapture, TRUE);
-		break;
-	}
-
-	return true;
-}
-
-static void CaptureEnablePreviewHistogram(HWND hWndCapture, bool fEnable) {
-	if (fEnable) {
-		if (!g_pHistogram) {
-			if (g_bCaptureDDrawActive)
-				CaptureSetPreview(hWndCapture, false);
-
-			try {
-				g_pHistogram = new CaptureHistogram(hWndCapture, NULL, 128);
-
-				if (!g_pHistogram)
-					throw MyMemoryError();
-
-				capSetCallbackOnFrame(hWndCapture, (LPVOID)CaptureHistoFrameCallback);
-
-			} catch(const MyError& e) {
-				guiSetStatus("Cannot initialize histogram: %s", 0, e.gets());
-			}
-		}
-
-		capPreview(hWndCapture, true);
-	} else {
-		if (g_pHistogram) {
-			CaptureSetPreview(hWndCapture, true);
-			delete g_pHistogram;
-			g_pHistogram = NULL;
-			InvalidateRect(GetParent(hWndCapture), NULL, TRUE);
-		}
-	}
-	CaptureBT848Reassert();
-}
-
-static void CaptureSetPreview(HWND hwndCapture, bool b) {
-	capSetCallbackOnFrame(hwndCapture, NULL);
-
-	if (!b) {
-		RydiaEnableAVICapPreview(false);
-		g_bCaptureDDrawActive = false;
-
-		if (g_pHistogram) {
-			delete g_pHistogram;
-			g_pHistogram = NULL;
-			InvalidateRect(GetParent(hwndCapture), NULL, TRUE);
-		}
-
-		capPreview(hwndCapture, FALSE);
-		g_DDContext.DestroyOverlay();
-	} else {
-		if (g_nCaptureDDraw) {
-			BITMAPINFOHEADER *bih;
-			LONG fsize;
-
-			g_bCaptureDDrawActive = false;
-
-			if (g_DDContext.isReady() || g_DDContext.Init()) {
-				if (fsize = capGetVideoFormatSize(hwndCapture)) {
-					if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
-						if (capGetVideoFormat(hwndCapture, bih, fsize)) {
-							if (g_DDContext.CreateOverlay(bih->biWidth, g_nCaptureDDraw==kDDP_Both ? bih->biHeight : bih->biHeight/2, bih->biBitCount, bih->biCompression)) {
-								g_bCaptureDDrawActive = true;
-
-								// Try showing the window.  We may not be able to if the
-								// overlay is already in use (ATI with integrated capture).
-
-								if (CaptureMoveWindow(hwndCapture)) {
-									RydiaInitAVICapHotPatch();
-									RydiaEnableAVICapPreview(true);
-									capSetCallbackOnFrame(hwndCapture, CaptureOverlayFrameCallback);
-								} else {
-									g_DDContext.DestroyOverlay();
-									g_bCaptureDDrawActive = false;
-								}
-							}
-						}
-						freemem(bih);
-					}
-				}
-			}
-		}
-		capPreview(hwndCapture, TRUE);
-	}
-}
-///////////////////////////////////////////////////////////////////////////
-//
-//	'gooey' (interface)
-//
-///////////////////////////////////////////////////////////////////////////
-
-static int g_cap_modeBeforeSlow;
-
-static void CaptureEnterSlowPeriod(HWND hwnd) {
-	HWND hwndCapture = GetDlgItem(hwnd, IDC_CAPTURE_WINDOW);
-	CAPSTATUS cs;
-
-	if (!(g_driver_options & (CAPDRV_CRAPPY_OVERLAY | CAPDRV_CRAPPY_PREVIEW))) return;
-
-	g_cap_modeBeforeSlow = 0;
-
-	if (capGetStatus(hwndCapture, &cs, sizeof cs)) {
-		if (cs.fOverlayWindow && (g_driver_options & CAPDRV_CRAPPY_OVERLAY)) {
-			g_cap_modeBeforeSlow = 1;
-			capOverlay(hwndCapture, FALSE);
-		}
-		if (cs.fLiveWindow && (g_driver_options & CAPDRV_CRAPPY_PREVIEW)) {
-			g_cap_modeBeforeSlow |= 2;
-			CaptureSetPreview(hwndCapture, false);
-		}
-	}
-}
-
-static void CaptureAbortSlowPeriod() {
-	g_cap_modeBeforeSlow = 0;
-}
-
-static void CaptureExitSlowPeriod(HWND hwnd) {
-	HWND hwndCapture = GetDlgItem(hwnd, IDC_CAPTURE_WINDOW);
-
-	if (g_cap_modeBeforeSlow & 1) capOverlay(hwndCapture, TRUE);
-	if (g_cap_modeBeforeSlow & 2) CaptureSetPreview(hwndCapture, TRUE);
-
-	CaptureBT848Reassert();
-}
-
-static bool CaptureMoveWindow(HWND hwnd) {
-	if (!g_bCaptureDDrawActive)
-		return false;
-
-	RECT r;
-
-	GetClientRect(hwnd, &r);
-	ClientToScreen(hwnd, (LPPOINT)&r+0);
-	ClientToScreen(hwnd, (LPPOINT)&r+1);
-
-	return g_DDContext.PositionOverlay(r.left, r.top, r.right-r.left, r.bottom-r.top);
-}
-
-static void CaptureResizeWindow(HWND hWnd) {
-	CAPSTATUS cs;
-
-	if (!capGetStatus(hWnd, &cs, sizeof(CAPSTATUS)))
-		return;
-
-//	MoveWindow(hWnd, 0, 0, cs.uiImageWidth, cs.uiImageHeight, TRUE);
-
-	HWND hwndParent = GetParent(hWnd);
-	HWND hwndPanel = GetDlgItem(hwndParent, IDC_CAPTURE_PANEL);
-	HWND hwndStatus = GetDlgItem(hwndParent, IDC_STATUS_WINDOW);
-	RECT r;
-	int		xedge = GetSystemMetrics(SM_CXEDGE);
-	int		yedge = GetSystemMetrics(SM_CYEDGE);
-	int		sx, sy;
-
-	if (g_fInfoPanel) {
-		GetWindowRect(hwndPanel, &r);
-		ScreenToClient(hwndParent, (LPPOINT)&r + 0);
-		ScreenToClient(hwndParent, (LPPOINT)&r + 1);
-	} else {
-		GetClientRect(hwndParent, &r);
-		r.left = r.right;
-	}
-
-	sx = r.left-xedge*2;
-
-	GetWindowRect(hwndStatus, &r);
-	ScreenToClient(hwndParent, (LPPOINT)&r);
-
-	sy = r.top-yedge*2;
-
-	if (!g_fStretch) {
-		if (sx > cs.uiImageWidth)
-			sx = cs.uiImageWidth;
-
-		if (sy > cs.uiImageHeight)
-			sy = cs.uiImageHeight;
-	}
-
-	SetWindowPos(hWnd, NULL, xedge, yedge, sx, sy, SWP_NOZORDER|SWP_NOACTIVATE);
-
-	CaptureMoveWindow(hWnd);
-
-}
-
-static void CaptureShowParms(HWND hWnd) {
-	HWND hWndCapture = GetDlgItem(hWnd, IDC_CAPTURE_WINDOW);
-	HWND hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
-	CAPTUREPARMS cp;
-	char bufv[64], bufa[64];
-	WAVEFORMATEX *wf;
-	BITMAPINFOHEADER *bih;
-	LONG fsize;
-	LONG bandwidth = 0;
-
-	strcpy(bufv,"(unknown)");
-	strcpy(bufa, "(unknown)");
-
-	if (capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS))) {
-		LONG fps100 = (100000000 + cp.dwRequestMicroSecPerFrame/2)/ cp.dwRequestMicroSecPerFrame;
-
-		wsprintf(bufv, "%d.%02d fps", fps100/100, fps100%100);
-
-		if (fsize = capGetVideoFormatSize(hWndCapture)) {
-			if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
-				if (capGetVideoFormat(hWndCapture, bih, fsize)) {
-					DWORD size = bih->biSizeImage;
-
-					if (!size)
-						size = bih->biHeight*bih->biPlanes * (((bih->biWidth * bih->biBitCount + 31)/32) * 4);
-
-					bandwidth += MulDiv(
-									8 + size,
-									1000000,
-									cp.dwRequestMicroSecPerFrame);
-				}
-				freemem(bih);
-			}
-		}
-
-		if (!cp.fCaptureAudio) {
-			strcpy(bufa, "No audio");
-		} else {
-			if (fsize = capGetAudioFormatSize(hWndCapture)) {
-				if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
-					if (capGetAudioFormat(hWndCapture, wf, fsize)) {
-						if (wf->wFormatTag != WAVE_FORMAT_PCM) {
-							wsprintf(bufa, "%d.%03dKHz", wf->nSamplesPerSec/1000, wf->nSamplesPerSec%1000);
-						} else {
-							PCMWAVEFORMAT *pwf = (PCMWAVEFORMAT *)wf;
-
-							wsprintf(bufa, "%dK/%d/%c", (pwf->wf.nSamplesPerSec+500)/1000, pwf->wBitsPerSample, pwf->wf.nChannels>1?'s':'m');
-						}
-
-						bandwidth += 8 + wf->nAvgBytesPerSec;
-					}
-					freemem(wf);
-				}
-			}
-		}
-	}
-
-	SendMessage(hWndStatus, SB_SETTEXT, 2 | SBT_POPOUT, (LPARAM)bufv);
-	SendMessage(hWndStatus, SB_SETTEXT, 1 | SBT_POPOUT, (LPARAM)bufa);
-
-	wsprintf(bufv, "%ldKB/s", (bandwidth+1023)>>10);
-	SendMessage(hWndStatus, SB_SETTEXT, 3, (LPARAM)bufv);
-}
-
-static void CaptureSetPCMAudioFormat(HWND hWndCapture, LONG sampling_rate, BOOL is_16bit, BOOL is_stereo) {
-	WAVEFORMATEX wf;
-
-	_RPT3(0,"Setting format %d/%d/%s\n", sampling_rate, is_16bit?16:8, is_stereo?"stereo":"mono");
-
-	wf.wFormatTag		= WAVE_FORMAT_PCM;
-	wf.nChannels		= (WORD)(is_stereo ? 2 : 1);
-	wf.nSamplesPerSec	= sampling_rate;
-	wf.wBitsPerSample	= (WORD)(is_16bit ? 16 : 8);
-	wf.nAvgBytesPerSec	= sampling_rate * wf.nChannels * wf.wBitsPerSample/8;
-	wf.nBlockAlign		= (WORD)(wf.nChannels * (wf.wBitsPerSample>>3));
-	wf.cbSize			= 0;
-
-	if (!capSetAudioFormat(hWndCapture, &wf, sizeof(WAVEFORMATEX)))
-		VDDEBUG("Couldn't set audio format!\n");
-}
-
-static void CaptureSetFrameTime(HWND hWndCapture, LONG lFrameTime) {
-	CAPTUREPARMS cp;
-
-	if (capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS))) {
-		cp.dwRequestMicroSecPerFrame = lFrameTime;
-
-		_RPT1(0,"Setting %ld microseconds per frame.\n", lFrameTime);
-
-		capCaptureSetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS));
-	}
-}
-
-static void CaptureShowFile(HWND hwnd, HWND hwndCapture, bool fCaptureActive) {
-	const char *pszAppend;
-	
-	if (fCaptureActive)
-		pszAppend = " [capture in progress]";
-	else if (0xFFFFFFFFUL != GetFileAttributes(g_szCaptureFile))
-		pszAppend = " [FILE EXISTS]";
-	else
-		pszAppend = "";
-
-	if (g_capStripeSystem)
-		guiSetTitle(hwnd, IDS_TITLE_CAPTURE2, g_szStripeFile, pszAppend);
-	else
-		guiSetTitle(hwnd, IDS_TITLE_CAPTURE, g_szCaptureFile, pszAppend);
-}
-
-static bool CaptureSetCaptureFile(HWND hwndCapture) {
-	if (!capFileSetCaptureFile(hwndCapture, g_szCaptureFile)) {
-		guiMessageBoxF(GetParent(hwndCapture),
-				"VirtualDub warning", 
-				MB_OK,
-				"Unable to set file \"%s\" as the capture file.  It may be open in VirtualDub's editor or another program "
-				"may be using it."
-				,
-				g_szCaptureFile);
-
-		capFileGetCaptureFile(hwndCapture, g_szCaptureFile, sizeof g_szCaptureFile);
-
-		return false;
-	}
-
-	return true;
-}
-
-static void CaptureSetFile(HWND hWnd, HWND hWndCapture) {
-	const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, (VDGUIHandle)hWnd, L"Set Capture File", L"Audio-Video Interleave (*.avi)\0*.avi\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"avi" : NULL));
-
-	if (!capfile.empty()) {
-		VDTextWToA(g_szCaptureFile, sizeof g_szCaptureFile, capfile.c_str(), -1);
-
-		if (g_capStripeSystem) {
-			delete g_capStripeSystem;
-			g_capStripeSystem = NULL;
-		}
-
-		CaptureSetCaptureFile(hWndCapture);
-		_RPT1(0,"Capture file: [%s]\n", g_szCaptureFile);
-		CaptureShowFile(hWnd, hWndCapture, false);
-	}
-}
-
-static void CaptureSetStripingSystem(HWND hwnd, HWND hwndCapture) {
-	const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, (VDGUIHandle)hwnd, L"Select Striping System for Internal Capture", L"AVI Stripe System (*.stripe)\0*.stripe\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"stripe" : NULL));
-
-	if (!capfile.empty()) {
-		VDTextWToA(g_szStripeFile, sizeof g_szStripeFile, capfile.c_str(), -1);
-
-		try {
-			if (g_capStripeSystem) {
-				delete g_capStripeSystem;
-				g_capStripeSystem = NULL;
-			}
-
-			if (!(g_capStripeSystem = new AVIStripeSystem(g_szStripeFile)))
-				throw MyMemoryError();
-
-			CaptureShowFile(hwnd, hwndCapture, false);
-		} catch(const MyError& e) {
-			e.post(hwnd, g_szError);
-		}
-	}
-}
-
-static void CaptureChooseAudioCompression(HWND hWnd, HWND hWndCapture) {
-	ACMFORMATCHOOSE afc;
-	DWORD dwFormatSize1, dwFormatSize2;
-	WAVEFORMATEX *wf;
-
-	dwFormatSize1 = capGetAudioFormatSize(hWndCapture);
-	if (acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, &dwFormatSize2))
-		return;
-
-	if (dwFormatSize2 > dwFormatSize1) dwFormatSize1 = dwFormatSize2;
-
-	if (!(wf = (WAVEFORMATEX *)allocmem(dwFormatSize1)))
-		return;
-
-	memset(&afc, 0, sizeof afc);
-	afc.cbStruct		= sizeof(ACMFORMATCHOOSE);
-	afc.fdwStyle		= ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT;
-	afc.hwndOwner		= hWnd;
-	afc.pwfx			= wf;
-	afc.cbwfx			= dwFormatSize1;
-	afc.pszTitle		= "Set Audio Compression";
-	afc.fdwEnum			= ACM_FORMATENUMF_INPUT;
-	afc.pwfxEnum		= NULL;
-	afc.hInstance		= NULL;
-	afc.pszTemplateName	= NULL;
-
-	if (!capGetAudioFormat(hWndCapture, wf, dwFormatSize1))
-		afc.fdwStyle = 0;
-
-	if (MMSYSERR_NOERROR == acmFormatChoose(&afc)) {
-		capSetAudioFormat(hWndCapture, wf, sizeof(WAVEFORMATEX) + wf->cbSize);
-	}
-
-	freemem(wf);
-}
-
-static void CaptureInitMenu(HWND hWnd, HMENU hMenu) {
-	HWND hWndCapture = GetDlgItem(hWnd, IDC_CAPTURE_WINDOW);
-	CAPSTATUS cs;
-
-	if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
-		bool fOverlay = cs.fOverlayWindow || (g_cap_modeBeforeSlow & 1);
-		bool fPreview = cs.fLiveWindow || (g_cap_modeBeforeSlow & 2);
-		bool fPreviewNormal = fPreview && !g_pHistogram;
-		bool fPreviewHisto = fPreview && g_pHistogram;
-
-		CheckMenuItem(hMenu, ID_VIDEO_OVERLAY, fOverlay ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_VIDEO_PREVIEW, fPreviewNormal ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_VIDEO_PREVIEWHISTOGRAM, fPreviewHisto ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	}
-	CheckMenuItem(hMenu, ID_VIDEO_STRETCH, g_fStretch ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_CLIPPING, g_fEnableClipping ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_ENABLEFILTERING, g_fEnableRGBFiltering ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_NOISEREDUCTION, g_fEnableNoiseReduction ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_SWAPFIELDS, g_fSwapFields ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_SQUISH_RANGE, g_fEnableLumaSquish ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-
-	CheckMenuItem(hMenu, ID_VIDEO_VRNONE, g_iVertSquash == VERTSQUASH_NONE ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_VR2LINEAR, g_iVertSquash == VERTSQUASH_BY2LINEAR ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_VIDEO_VR2CUBIC, g_iVertSquash == VERTSQUASH_BY2CUBIC ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-
-	CheckMenuItem(hMenu, ID_CAPTURE_HIDEONCAPTURE, g_fHideOnCapture ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_DISPLAYLARGETIMER, g_fDisplayLargeTimer ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_INFOPANEL, g_fInfoPanel ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_ENABLESPILL, g_fEnableSpill ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_ENABLELOGGING, g_fLogEvents ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_AUTOINCREMENT, g_bAutoIncrementAfterCapture ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_STARTONLEFT, g_bStartOnLeft ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-
-	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_NONE, g_nCaptureDDraw == kDDP_Off ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_TOP, g_nCaptureDDraw == kDDP_Top ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_BOTTOM, g_nCaptureDDraw == kDDP_Bottom ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-	CheckMenuItem(hMenu, ID_CAPTURE_HWACCEL_BOTH, g_nCaptureDDraw == kDDP_Both ? MF_BYCOMMAND|MF_CHECKED : MF_BYCOMMAND|MF_UNCHECKED);
-}
-
-static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
-	HWND hWndCapture = GetDlgItem(hWnd, IDC_CAPTURE_WINDOW);
-
-	switch(id) {
-	case ID_FILE_SETCAPTUREFILE:
-		CaptureEnterSlowPeriod(hWnd);
-		CaptureSetFile(hWnd, hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-	case ID_FILE_SETSTRIPINGSYSTEM:
-		CaptureEnterSlowPeriod(hWnd);
-		CaptureSetStripingSystem(hWnd, hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_FILE_ALLOCATEDISKSPACE:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREALLOCATE), hWnd, CaptureAllocateDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_FILE_INCREMENT:
-		CaptureIncrementFileID(hWndCapture);
-		break;
-
-	case ID_FILE_DECREMENT:
-		CaptureDecrementFileID(hWndCapture);
-		break;
-
-	case ID_FILE_EXITCAPTUREMODE:
-		PostQuitMessage(1);
-		break;
-	case ID_AUDIO_COMPRESSION:
-		CaptureEnterSlowPeriod(hWnd);
-		CaptureChooseAudioCompression(hWnd, hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-	case ID_AUDIO_VOLUMEMETER:
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_AUDIO_VUMETER), hWnd, CaptureVumeterDlgProc, (LPARAM)hWndCapture);
-		break;
-	case ID_AUDIO_WINMIXER:
-		ShellExecute(hWnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
-		break;
-	case ID_VIDEO_OVERLAY:
-		{
-			CAPSTATUS cs;
-			BOOL fNewMode = TRUE;
-
-			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS)))
-				fNewMode = !cs.fOverlayWindow;
-
-			CaptureSetPreview(hWndCapture, false);
-			capOverlay(hWndCapture, fNewMode);
-			CaptureAbortSlowPeriod();
-			CaptureEnablePreviewHistogram(hWndCapture, false);
-		}
-		break;
-	case ID_VIDEO_PREVIEWHISTOGRAM:
-	case ID_VIDEO_PREVIEW:
-		{
-			CAPSTATUS cs;
-			BOOL fNewMode = TRUE;
-
-			if (!((id==ID_VIDEO_PREVIEWHISTOGRAM)^!!g_pHistogram) && capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS)))
-				fNewMode = !cs.fLiveWindow;
-
-			capPreviewRate(hWndCapture, 1000 / 15);
-
-			if (fNewMode) {
-				if (id == ID_VIDEO_PREVIEWHISTOGRAM) {
-					CaptureSetPreview(hWndCapture, false);
-					CaptureAbortSlowPeriod();
-					CaptureEnablePreviewHistogram(hWndCapture, true);
-				} else {
-					CaptureSetPreview(hWndCapture, true);
-					CaptureAbortSlowPeriod();
-					CaptureEnablePreviewHistogram(hWndCapture, false);
-				}
-			} else {
-				CaptureSetPreview(hWndCapture, false);
-			}
-		}
-		break;
-
-	case ID_VIDEO_STRETCH:
-		g_fStretch = !g_fStretch;
-		break;
-
-	case ID_VIDEO_FORMAT:
-	case ID_VIDEO_CUSTOMFORMAT:
-		{
-			bool fHistoEnabled = !!g_pHistogram;
-			bool bAccelPreview = g_bCaptureDDrawActive;
-
-			CaptureEnablePreviewHistogram(hWndCapture, false);
-			if (bAccelPreview)
-				CaptureSetPreview(hWndCapture, false);
-
-			if (id == ID_VIDEO_CUSTOMFORMAT)
-				DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_CUSTOMVIDEO), hWnd, CaptureCustomVidSizeDlgProc, (LPARAM)hWndCapture);
-			else
-				capDlgVideoFormat(hWndCapture);
-
-			if (bAccelPreview)
-				CaptureSetPreview(hWndCapture, true);
-			if (fHistoEnabled)
-				CaptureEnablePreviewHistogram(hWndCapture, true);
-		}
-		break;
-
-	case ID_VIDEO_SOURCE:
-		capDlgVideoSource(hWndCapture);
-		break;
-	case ID_VIDEO_DISPLAY:
-		capDlgVideoDisplay(hWndCapture);
-		break;
-	case ID_VIDEO_COMPRESSION_AVICAP:
-		CaptureEnterSlowPeriod(hWnd);
-		capDlgVideoCompression(hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_VIDEO_COMPRESSION_INTERNAL:
-		CaptureEnterSlowPeriod(hWnd);
-		CaptureInternalSelectCompression(hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_VIDEO_FILTERS:
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, FilterDlgProc);
-		break;
-
-	case ID_VIDEO_ENABLEFILTERING:
-		g_fEnableRGBFiltering = !g_fEnableRGBFiltering;
-		break;
-
-	case ID_VIDEO_NOISEREDUCTION:
-		g_fEnableNoiseReduction = !g_fEnableNoiseReduction;
-		break;
-	case ID_VIDEO_NOISEREDUCTION_THRESHOLD:
-		CaptureToggleNRDialog(hWnd);
-		break;
-
-	case ID_VIDEO_SWAPFIELDS:
-		g_fSwapFields = !g_fSwapFields;
-		break;
-
-	case ID_VIDEO_SQUISH_RANGE:
-		g_fEnableLumaSquish = !g_fEnableLumaSquish;
-		break;
-
-	case ID_VIDEO_VRNONE:		g_iVertSquash = VERTSQUASH_NONE;		break;
-	case ID_VIDEO_VR2LINEAR:	g_iVertSquash = VERTSQUASH_BY2LINEAR;	break;
-	case ID_VIDEO_VR2CUBIC:		g_iVertSquash = VERTSQUASH_BY2CUBIC;	break;
-
-	case ID_VIDEO_CLIPPING:		g_fEnableClipping = !g_fEnableClipping;	break;
-	case ID_VIDEO_CLIPPING_SET:
-		{
-			bool fHistoEnabled = !!g_pHistogram;
-
-			CaptureEnablePreviewHistogram(hWndCapture, false);
-
-			CaptureShowClippingDialog(hWndCapture);
-
-			if (fHistoEnabled)
-				CaptureEnablePreviewHistogram(hWndCapture, true);
-		}
-		break;
-
-	case ID_VIDEO_HISTOGRAM:
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_HISTOGRAM), hWnd, CaptureHistogramDlgProc, (LPARAM)hWndCapture);
-		break;
-
-	case ID_VIDEO_BT8X8TWEAKER:
-		CaptureDisplayBT848Tweaker(hWnd);
-		break;
-
-	case ID_CAPTURE_SETTINGS:
-		{
-			bool b = g_bCaptureDDrawActive;
-
-			if (b)
-				CaptureSetPreview(hWndCapture, false);
-			else
-				CaptureEnterSlowPeriod(hWnd);
-
-			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SETTINGS), hWnd, CaptureSettingsDlgProc, (LPARAM)hWndCapture);
-
-			if (b)
-				CaptureSetPreview(hWndCapture, true);
-			else
-				CaptureExitSlowPeriod(hWnd);
-		}
-		break;
-
-	case ID_CAPTURE_PREFERENCES:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREFERENCES), hWnd, CapturePreferencesDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_STOPCONDITIONS:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_STOPCOND), hWnd, CaptureStopConditionsDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_TIMING:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_TIMING), hWnd, CaptureTimingDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_DISKIO:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_DISKIO), hWnd, CaptureDiskIODlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_SPILLSYSTEM:
-		CaptureEnterSlowPeriod(hWnd);
-		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SPILLSETUP), hWnd, CaptureSpillDlgProc, (LPARAM)hWndCapture);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_DISPLAYCAPTURELOG:
-		CaptureEnterSlowPeriod(hWnd);
-		g_capLog.Display(hWnd);
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case ID_CAPTURE_CAPTUREVIDEO:
-		if (g_capStripeSystem) {
-			MessageBox(hWnd, "Cannot capture to a striped AVI system in compatibility mode.", g_szError, MB_OK);
-		} else if (g_fEnableSpill) {
-			MessageBox(hWnd, "Cannot capture to multiple segments in compatibility mode.", g_szError, MB_OK);
-		} else {
-			CapturePriorityWhacker cpw(hWndCapture);
-
-			CaptureAVICap(hWnd, hWndCapture);
-		}
-		break;
-
-	case ID_CAPTURE_CAPTUREVIDEOINTERNAL:
-		{
-			CapturePriorityWhacker cpw(hWndCapture);
-
-			CaptureInternal(hWnd, hWndCapture, false);
-		}
-		break;
-
-	case ID_CAPTURE_TEST:
-		{
-			CapturePriorityWhacker cpw(hWndCapture);
-
-			CaptureInternal(hWnd, hWndCapture, true);
-		}
-		break;
-
-	case ID_CAPTURE_HIDEONCAPTURE:
-		g_fHideOnCapture = !g_fHideOnCapture;
-		break;
-
-	case ID_CAPTURE_DISPLAYLARGETIMER:
-		g_fDisplayLargeTimer = !g_fDisplayLargeTimer;
-		break;
-
-	case ID_CAPTURE_INFOPANEL:
-		g_fInfoPanel = !g_fInfoPanel;
-		ShowWindow(GetDlgItem(hWnd, IDC_CAPTURE_PANEL), g_fInfoPanel ? SW_SHOW : SW_HIDE);
-		InvalidateRect(hWnd, NULL, TRUE);
-		break;
-
-	case ID_CAPTURE_ENABLESPILL:
-		g_fEnableSpill = !g_fEnableSpill;
-		break;
-
-	case ID_CAPTURE_ENABLELOGGING:
-		g_fLogEvents = !g_fLogEvents;
-		break;
-
-	case ID_CAPTURE_STARTONLEFT:
-		g_bStartOnLeft = !g_bStartOnLeft;
-		break;
-
-	case ID_CAPTURE_AUTOINCREMENT:
-		g_bAutoIncrementAfterCapture = !g_bAutoIncrementAfterCapture;
-		break;
-
-	case ID_CAPTURE_HWACCEL_NONE:
-		if (g_bCaptureDDrawActive)
-			CaptureSetPreview(hWndCapture, false);
-
-		g_nCaptureDDraw = kDDP_Off;
-		g_DDContext.Shutdown();
-		break;
-
-	case ID_CAPTURE_HWACCEL_TOP:
-		{
-			CAPSTATUS cs;
-
-			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, false);
-
-				g_nCaptureDDraw = kDDP_Top;
-
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, true);
-			}
-		}
-		break;
-
-	case ID_CAPTURE_HWACCEL_BOTTOM:
-		{
-			CAPSTATUS cs;
-
-			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, false);
-
-				g_nCaptureDDraw = kDDP_Bottom;
-
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, true);
-			}
-		}
-		break;
-
-	case ID_CAPTURE_HWACCEL_BOTH:
-		{
-			CAPSTATUS cs;
-
-			if (capGetStatus(hWndCapture, &cs, sizeof(CAPSTATUS))) {
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, false);
-
-				g_nCaptureDDraw = kDDP_Both;
-
-				if (cs.fLiveWindow)
-					CaptureSetPreview(hWndCapture, true);
-			}
-		}
-		break;
-
-	case ID_HELP_CONTENTS:
-		VDShowHelp(hWnd);
-		break;
-
-	default:
-		if (id >= ID_VIDEO_CAPTURE_DRIVER && id < ID_VIDEO_CAPTURE_DRIVER+10) {
-			CaptureSelectDriver(hWnd, hWndCapture, id - ID_VIDEO_CAPTURE_DRIVER);
-			CaptureAbortSlowPeriod();
-		} else if (id >= ID_AUDIOMODE_11KHZ_8MONO && id <= ID_AUDIOMODE_44KHZ_16STEREO) {
-			id -= ID_AUDIOMODE_11KHZ_8MONO;
-			CaptureSetPCMAudioFormat(hWndCapture,
-					11025<<(id/4),
-					id & 2,
-					id & 1);
-		} else if (id >= ID_FRAMERATE_6000FPS && id <= ID_FRAMERATE_1493FPS) {
-			CaptureSetFrameTime(hWndCapture, g_predefFrameRates[id - ID_FRAMERATE_6000FPS]);
-		} else
-			return FALSE;
-
-		break;
-	}
-	CaptureResizeWindow(hWndCapture);
-	CaptureShowParms(hWnd);
-
-	return TRUE;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -1464,37 +406,7 @@ static BOOL CaptureMenuHit(HWND hWnd, UINT id) {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-static const struct {
-	int id;
-	const char *szError;
-} g_betterCaptureErrors[]={
-	{ 434,	"Warning: No frames captured.\n"
-			"\n"
-			"Make sure your capture card is functioning correctly and that a valid video source "
-			"is connected.  You might also try turning off overlay, reducing the image size, or "
-			"reducing the image depth to 24 or 16-bit." },
-	{ 439,	"Error: Cannot find a driver to draw this non-RGB image format.  Preview and histogram functions will be unavailable." },
-};
-
-LRESULT CALLBACK CaptureErrorCallback(HWND hWnd, int nID, LPCSTR lpsz) {
-	char buf[256];
-	int i;
-
-	if (!nID) return 0;
-
-	for(i=0; i<sizeof g_betterCaptureErrors/sizeof g_betterCaptureErrors[0]; i++)
-		if (g_betterCaptureErrors[i].id == nID) {
-			MessageBox(GetParent(hWnd), g_betterCaptureErrors[i].szError, "VirtualDub capture error", MB_OK);
-			return 0;
-		}
-
-	wsprintf(buf, "Error %d: %s", nID, lpsz);
-	MessageBox(GetParent(hWnd), buf, "VirtualDub capture error", MB_OK);
-	_RPT1(0,"%s\n",buf);
-
-	return 0;
-}
-
+#if 0
 LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr) {
 	CAPSTATUS cs;
 	RECT r;
@@ -1535,3051 +447,689 @@ LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr) {
 
 	return 0;
 }
-
-LRESULT CALLBACK CaptureOverlayFrameCallback(HWND hWnd, VIDEOHDR *lpVHdr) {
-	if (g_bCaptureDDrawActive) {
-		switch(g_nCaptureDDraw) {
-		case kDDP_Top:
-			g_DDContext.LockAndLoad(lpVHdr->lpData, 0, 2);
-			break;
-		case kDDP_Bottom:
-			g_DDContext.LockAndLoad(lpVHdr->lpData, 1, 2);
-			break;
-		case kDDP_Both:
-			g_DDContext.LockAndLoad(lpVHdr->lpData, 0, 1);
-			break;
-		}
-	}
-
-	return 0;
-}
-
-LRESULT CALLBACK CaptureStatusCallback(HWND hWnd, int nID, LPCSTR lpsz) {
-	char buf[256];
-
-	// Intercept nID=510 (per frame info)
-
-	if (nID == 510)
-		return 0;
-
-	if (nID) {
-		wsprintf(buf, "Status %d: %s", nID, lpsz);
-		SendMessage(GetDlgItem(GetParent(hWnd), IDC_STATUS_WINDOW), SB_SETTEXT, 0, (LPARAM)buf);
-		_RPT1(0,"%s\n",buf);
-	} else {
-		SendMessage(GetDlgItem(GetParent(hWnd), IDC_STATUS_WINDOW), SB_SETTEXT, 0, (LPARAM)"");
-	}
-
-	return 0;
-}
-
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	window procedures
-//
-///////////////////////////////////////////////////////////////////////////
-
-#define MYWM_STATUSBAR_HIT	(WM_USER+100)
-
-void CaptureRedoWindows(HWND hWnd) {
-	HWND hWndStatus = GetDlgItem(hWnd, IDC_STATUS_WINDOW);
-	HWND hWndPanel = GetDlgItem(hWnd, IDC_CAPTURE_PANEL);
-	HWND hwndCapture = GetDlgItem(hWnd, IDC_CAPTURE_WINDOW);
-	RECT rClient, rStatus, rPanel, rCapture;
-	INT aWidth[8];
-	int nParts;
-	HDWP hdwp;
-	HDC hdc;
-	int		xedge = GetSystemMetrics(SM_CXEDGE);
-	int		yedge = GetSystemMetrics(SM_CYEDGE);
-
-	GetClientRect(hWnd, &rClient);
-	GetWindowRect(hWndStatus, &rStatus);
-	GetWindowRect(hWndPanel, &rPanel);
-	GetWindowRect(hwndCapture, &rCapture);
-
-	hdwp = BeginDeferWindowPos(3);
-
-	guiDeferWindowPos(hdwp, hWndStatus,
-				NULL,
-				rClient.left,
-				rClient.bottom - (rStatus.bottom-rStatus.top),
-				rClient.right-rClient.left,
-				rStatus.bottom-rStatus.top,
-				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
-
-	guiDeferWindowPos(hdwp, hWndPanel,
-				NULL,
-				rClient.right - (rPanel.right - rPanel.left),
-				rClient.top,
-				rPanel.right - rPanel.left,
-				rClient.bottom - (rStatus.bottom-rStatus.top),
-				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
-
-	if (g_fStretch) {
-		guiDeferWindowPos(hdwp, GetDlgItem(hWnd, IDC_CAPTURE_WINDOW),
-				NULL,
-				xedge, yedge,
-				rClient.right - (g_fInfoPanel ? (rPanel.right-rPanel.left) : 0) - xedge*2,
-				rClient.bottom - (g_fInfoPanel ? (rStatus.bottom-rStatus.top) : 0) - yedge*2,
-				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
-
-	} else {
-		int sx = rClient.right - (g_fInfoPanel ? (rPanel.right-rPanel.left) : 0) - xedge*2; 
-		int sy = rClient.bottom - (g_fInfoPanel ? (rStatus.bottom-rStatus.top) : 0) - yedge*2;
-		CAPSTATUS cs;
-
-		capGetStatus(hwndCapture, &cs, sizeof(CAPSTATUS));
-
-		if (sx > cs.uiImageWidth)
-			sx = cs.uiImageWidth;
-
-		if (sy > cs.uiImageHeight)
-			sy = cs.uiImageHeight;
-
-		guiDeferWindowPos(hdwp, GetDlgItem(hWnd, IDC_CAPTURE_WINDOW),
-				NULL,
-				xedge, yedge,
-				sx, sy,
-				SWP_NOACTIVATE|SWP_NOZORDER/*|SWP_NOCOPYBITS*/);
-	}
-
-	guiEndDeferWindowPos(hdwp);
-
-	CaptureMoveWindow(hwndCapture);
-
-	if ((nParts = SendMessage(hWndStatus, SB_GETPARTS, 0, 0))>1) {
-		int i;
-		INT xCoord = (rClient.right-rClient.left) - (rStatus.bottom-rStatus.top);
-
-		aWidth[nParts-2] = xCoord;
-
-		for(i=nParts-3; i>=0; i--) {
-			xCoord -= 60;
-			aWidth[i] = xCoord;
-		}
-		aWidth[nParts-1] = -1;
-
-		SendMessage(hWndStatus, SB_SETPARTS, nParts, (LPARAM)aWidth);
-	}
-
-	if (hdc = GetDC(hWnd)) {
-		RECT r;
-
-		r.left = r.top = 0;
-		r.right = rClient.right;
-		r.bottom = rClient.bottom;
-
-		if (g_fInfoPanel) {
-			r.right -= (rPanel.right - rPanel.left);
-			r.bottom -= (rStatus.bottom-rStatus.top);
-		}
-
-		DrawEdge(hdc, &r, EDGE_SUNKEN, BF_RECT);
-
-		// Yes, this is lame, but oh well.
-
-		r.left = xedge;
-		r.top = yedge;
-		r.right -= xedge;
-		r.bottom -= yedge;
-
-		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
-
-		ReleaseDC(hWnd, hdc);
-	}
-}
-
-static LONG APIENTRY CaptureWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	if (g_fRestricted) {
-		switch (message) {
-
-		case WM_COMMAND:
-			break;
-
-		case WM_CLOSE:
-			break;
-
-		case WM_DESTROY:		// doh!!!!!!!
-			PostQuitMessage(0);
-			break;
-
-		case WM_NCHITTEST:
-			return HTCLIENT;
-
-		default:
-			return IsWindowUnicode(hWnd) ? DefWindowProcW(hWnd, message, wParam, lParam) : DefWindowProcA(hWnd, message, wParam, lParam);
-		}
-		return (0);
-	}
-
-    switch (message) {
-
-	case WM_ENTERMENULOOP:
-		CaptureEnterSlowPeriod(hWnd);
-		break;
-
-	case WM_EXITMENULOOP:
-		CaptureExitSlowPeriod(hWnd);
-		break;
-
-	case WM_INITMENU:
-		CaptureInitMenu(hWnd, (HMENU)wParam);
-		break;
-
-	case WM_COMMAND:
-		if (!CaptureMenuHit(hWnd, LOWORD(wParam)))
-			return (IsWindowUnicode(hWnd) ? DefWindowProcW(hWnd, message, wParam, lParam) : DefWindowProcA(hWnd, message, wParam, lParam));
-		break;
-
-	case WM_MENUSELECT:
-		guiMenuHelp(hWnd, wParam, 0, iCaptureMenuHelpTranslator);
-		break;
-
-	case MYWM_STATUSBAR_HIT:
-		TrackPopupMenu(
-				GetSubMenu(g_hMenuAuxCapture, wParam),
-				TPM_CENTERALIGN | TPM_LEFTBUTTON,
-				LOWORD(lParam), HIWORD(lParam),
-				0, hWnd, NULL);
-		break;
-
-	case WM_MOVE:
-		CaptureMoveWindow(GetDlgItem(hWnd, IDC_CAPTURE_WINDOW));
-		break;
-
-	case WM_SIZE:
-		CaptureRedoWindows(hWnd);
-		break;
-
-	case WM_CLOSE:
-		DestroyWindow(hWnd);
-		break;
-
-	case WM_DESTROY:		// doh!!!!!!!
-		PostQuitMessage(0);
-		break;
-
-	case WM_PARENTNOTIFY:
-		if (LOWORD(wParam) != WM_LBUTTONDOWN)
-			break;
-		// fall through
-	case WM_LBUTTONDOWN:
-		if (g_bStartOnLeft)
-			CaptureMenuHit(hWnd, ID_CAPTURE_CAPTUREVIDEOINTERNAL);
-		break;
-
-	case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hdc;
-
-			if (hdc = BeginPaint(hWnd, &ps)) {
-				RECT r;
-
-				if (g_fInfoPanel) {
-					GetWindowRect(GetDlgItem(hWnd, IDC_CAPTURE_PANEL), &r);
-					ScreenToClient(hWnd, (LPPOINT)&r + 0);
-					ScreenToClient(hWnd, (LPPOINT)&r + 1);
-
-					r.right = r.left;
-					r.left = 0;
-				} else {
-					GetClientRect(hWnd, &r);
-				}
-
-				DrawEdge(hdc, &r, EDGE_SUNKEN, BF_RECT);
-				EndPaint(hWnd, &ps);
-			}
-		}
-		return 0;
-
-	default:
-		return IsWindowUnicode(hWnd) ? DefWindowProcW(hWnd, message, wParam, lParam) : DefWindowProcA(hWnd, message, wParam, lParam);
-    }
-    return (0);
-}
-
-static LONG APIENTRY CaptureStatusWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	switch(message) {
-	case WM_LBUTTONDOWN:
-		if (wParam & MK_LBUTTON) {
-			RECT r;
-			POINT pt;
-			int i;
-
-			pt.x = LOWORD(lParam);
-			pt.y = HIWORD(lParam);
-
-			for(i=0; i<2; i++) {
-				if (SendMessage(hWnd, SB_GETRECT, i+1, (LPARAM)&r)) {
-					if (PtInRect(&r, pt)) {
-						ClientToScreen(hWnd, &pt);
-						SendMessage(GetParent(hWnd), MYWM_STATUSBAR_HIT, i, (LPARAM)MAKELONG(pt.x, pt.y));
-					}
-				}
-			}
-		}
-		break;
-
-	case WM_NCHITTEST:
-		if (g_fRestricted)
-			return HTCLIENT;
-	default:
-		return CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, message, wParam, lParam);
-	}
-	return 0;
-}
-
-
-static INT_PTR CALLBACK CapturePanelDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_INITDIALOG:
-		return TRUE;
-
-	case WM_APP+0:
-		{
-			CaptureData *pcd = (CaptureData *)lParam;
-			char buf[256];
-			long l, time_diff;
-			long lVideoRate, lAudioRate;
-			__int64 i64;
-
-			sprintf(buf, "%ld", pcd->total_cap);
-			SetDlgItemText(hdlg, IDC_FRAMES, buf);
-
-			ticks_to_str(buf, pcd->lCurrentMS);
-			SetDlgItemText(hdlg, IDC_TIME_TOTAL, buf);
-
-			l = pcd->CPU.read();
-
-			if (l >= 0) {
-				sprintf(buf, "%ld%%", l);
-				SetDlgItemText(hdlg, IDC_CPU_USAGE, buf);
-			}
-
-			////////
-
-			size_to_str(buf, pcd->total_video_size);
-			SetDlgItemText(hdlg, IDC_VIDEO_SIZE, buf);
-
-			time_diff = pcd->lVideoLastMS - pcd->lVideoFirstMS;
-
-#if 1
-			if (time_diff >= 1000 && pcd->total_cap >= 2) {
-				l = MulDiv(pcd->total_cap-1, 100000000, time_diff);
-				if (l<0) l=0;
-				sprintf(buf, "%ld.%05ld fps", l/100000, l%100000);
-				SetDlgItemText(hdlg, IDC_VIDEO_RATE, buf);
-			}
-#else
-			if (time_diff >= 1000 && pcd->total_cap >= 2) {
-				double d = ((double)time_diff*1000.0 / (pcd->total_cap-1));
-
-				sprintf(buf, "%.2lf us", d);
-				SetDlgItemText(hdlg, IDC_VIDEO_RATE, buf);
-			}
 #endif
 
-			if (time_diff >= 1000)
-				lVideoRate = (long)((pcd->total_video_size*1000 + time_diff/2) / time_diff);
-			else
-				lVideoRate = 0;
-			sprintf(buf, "%ldKB/s", (lVideoRate+1023)/1024);
-			SetDlgItemText(hdlg, IDC_VIDEO_DATARATE, buf);
-
-			if (pcd->total_video_size && pcd->total_cap>=2) {
-				long l;
-
-				l = (long)(((__int64)pcd->uncompressed_frame_size * (pcd->total_cap-1) * 10 + pcd->total_video_size/2) / pcd->total_video_size);
-				sprintf(buf, "%ld.%c:1", l/10, (char)('0' + l%10));
-				SetDlgItemText(hdlg, IDC_VIDEO_RATIO, buf);
-
-				l = (long)(pcd->total_video_size / (pcd->total_cap-1) - 24);
-				sprintf(buf, "%ld", l);
-				SetDlgItemText(hdlg, IDC_VIDEO_AVGFRAMESIZE, buf);
-			}
-
-			sprintf(buf, "%ld", pcd->dropped);
-			SetDlgItemText(hdlg, IDC_VIDEO_DROPPED, buf);
-
-			/////////
-
-			size_to_str(buf, pcd->total_audio_size);
-			SetDlgItemText(hdlg, IDC_AUDIO_SIZE, buf);
-
-			// bytes -> samples/sec
-			// bytes / (bytes/sec) = sec
-			// bytes / (bytes/sec) * (samples/sec) / sec = avg-samples/sec
-
-			if (pcd->lAudioLastMS >= 1000) {
-				long ratio;
-
-				if (pcd->iAudioHzSamples >= 4) {
-
-					// m = [n(sumXY) - (sumX)(sumY)] / [n(sumX^2)-(sumX)^2)]
-					//
-					// this m would be a ratio in (bytes/ms).
-					//
-					// (bytes/ms) * 1000 = actual bytes/sec
-					// multiply by nSamplesPerSec/nAvgBytesPerSec -> actual samples/sec
-					//
-					// *sigh* we need doubles here...
-
-					double x = (double)pcd->i64AudioHzX;
-					double y = (double)pcd->i64AudioHzY;
-					double x2 = pcd->i64AudioHzX2;
-//					double y2 = pcd->i64AudioHzY2;
-					double xy = pcd->i64AudioHzXY;
-					double n = pcd->iAudioHzSamples;
-
-					l = VDRoundToLong( 
-								((n*xy - x*y) * (100.0 * 1000 * pcd->wfex.nSamplesPerSec))
-								/
-								((n*x2 - x*x) * pcd->wfex.nAvgBytesPerSec)
-						);
-
-					sprintf(buf, "%d.%02dHz", l/100, l%100
-
-								
-
-//							int64divto32(
-//								(pcd->total_audio_data_size-pcd->audio_first_size) * pcd->wfex.nSamplesPerSec * 1000,
-//								(__int64)pcd->wfex.nAvgBytesPerSec * (pcd->lAudioLastMS-pcd->lAudioFirstMS)
-//								)
-							);
-					SetDlgItemText(hdlg, IDC_AUDIO_RATE, buf);
-				}
-
-				if (pcd->wfex.wFormatTag == WAVE_FORMAT_PCM)
-					SetDlgItemText(hdlg, IDC_AUDIO_RATIO, "1.0:1");
-				else if (pcd->lAudioLastMS > pcd->lAudioFirstMS) {
-					ratio = int64divto32(
-							(__int64)(pcd->lAudioLastMS-pcd->lAudioFirstMS) * pcd->wfex.nChannels * pcd->wfex.nSamplesPerSec,
-							(pcd->total_audio_data_size-pcd->audio_first_size) * 50
-						);
-
-					sprintf(buf, "%ld.%c:1", ratio/10, (char)(ratio%10 + '0'));
-					SetDlgItemText(hdlg, IDC_AUDIO_RATIO, buf);
-				}
-
-				lAudioRate = (long)((pcd->total_audio_size*1000 + pcd->lCurrentMS/2) / pcd->lAudioLastMS);
-				sprintf(buf,"%ldKB/s", (lAudioRate+1023)/1024);
-				SetDlgItemText(hdlg, IDC_AUDIO_DATARATE, buf);
-
-				sprintf(buf,"%+ld ms", pcd->lVideoAdjust);
-				SetDlgItemText(hdlg, IDC_AUDIO_CORRECTIONS, buf);
-			} else {
-				lAudioRate = 0;
-				SetDlgItemText(hdlg, IDC_AUDIO_RATE, "(n/a)");
-				SetDlgItemText(hdlg, IDC_AUDIO_RATIO, "(n/a)");
-				SetDlgItemText(hdlg, IDC_AUDIO_DATARATE, "(n/a)");
-			}
-
-			///////////////
-
-			if (g_fEnableSpill)
-				i64 = CapSpillGetFreeSpace();
-			else {
-				if (pcd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(pcd->szCaptureRoot)));
-				else
-					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
-			}
-
-			if (i64>=0) {
-				size_to_str(buf, i64);
-				SetDlgItemText(hdlg, IDC_DISK_FREE, buf);
-
-				if (i64)
-					pcd->disk_free = i64;
-				else
-					pcd->disk_free = -1;
-			}
-
-			if (lVideoRate + lAudioRate > 16) {
-
-				// 2Gb restriction lifted
-
-//				l = 0x7FFFFFFF - 2048 - pcd->total_video_size - pcd->total_audio_size;
-				if (i64 < 0) i64=0;
-//				if (i64 > l) i64 = l;
-
-				ticks_to_str(buf, (long)(i64 * 1000 / (lVideoRate + lAudioRate)));
-				SetDlgItemText(hdlg, IDC_TIME_LEFT, buf);
-			}
-
-			size_to_str(buf, 4096 + pcd->total_video_size + pcd->total_audio_size);
-			SetDlgItemText(hdlg, IDC_FILE_SIZE, buf);
-		}
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
-
-
-static LONG APIENTRY CaptureSubWndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	if (g_bCaptureDDrawActive) {
-		switch(message) {
-		case WM_ERASEBKGND:
-			return 0;
-
-		case WM_PAINT:
-			{
-				int key = g_DDContext.getColorKey();
-				PAINTSTRUCT ps;
-				HDC hdc;
-
-				hdc = BeginPaint(hWnd, &ps);
-
-				if (key >= 0) {
-					HBRUSH hbrColorKey;
-					RECT r;
-
-					if (hbrColorKey = CreateSolidBrush((COLORREF)key)) {
-						GetClientRect(hWnd, &r);
-						FillRect(hdc, &r, hbrColorKey);
-						DeleteObject(hbrColorKey);
-					}
-				}
-
-				EndPaint(hWnd, &ps);
-			}
-			return 0;
-
-		case WM_TIMER:
-			RydiaEnableAVICapInvalidate(true);
-			CallWindowProc(g_pCapWndProc, hWnd, message, wParam, lParam);
-			RydiaEnableAVICapInvalidate(false);
-			return 0;
-		}
-	}
-	return CallWindowProc(g_pCapWndProc, hWnd, message, wParam, lParam);
-}
-
 ///////////////////////////////////////////////////////////////////////////
 //
-//	entry point
+//	VDCaptureProject
 //
 ///////////////////////////////////////////////////////////////////////////
 
+class VDCaptureProject : public IVDCaptureProject, public IVDCaptureDriverCallback, public IVDUIFrameEngine {
+	friend class VDCaptureData;
+public:
+	VDCaptureProject();
+	~VDCaptureProject();
 
-static LRESULT CaptureMsgPump(HWND hWnd) {
-	MSG msg;
+	int		AddRef();
+	int		Release();
 
-	__try {
+	bool	Attach(VDGUIHandle hwnd);
+	void	Detach();
 
-	    while (GetMessage(&msg,NULL,0,0)) {
-			if (guiCheckDialogs(&msg)) continue;
-			if (!TranslateAccelerator(hWnd, g_hAccelCapture, &msg)) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-		}
-	} __except(CaptureIsCatchableException(GetExceptionCode())) {
-		throw MyCrashError(
-				"%s in capture routine.\n\nVirtualDub has intercepted a crash condition in one of its "
-				"routines. You should save any remaining data and exit VirtualDub immediately. If you "
-				"are running Windows 95/98, you should also reboot afterward.", GetExceptionCode());
-	}
+	void	SetCallback(IVDCaptureProjectCallback *pCB);
 
-	return msg.wParam;
+	void	SetDisplayMode(DisplayMode mode);
+	DisplayMode	GetDisplayMode();
+	void	SetDisplayChromaKey(int key) { mDisplayChromaKey = key; }
+	void	SetDisplayRect(const vdrect32& r);
+	vdrect32 GetDisplayRectAbsolute();
+	void	SetDisplayVisibility(bool vis);
+
+	void	SetFrameTime(sint32 lFrameTime);
+	sint32	GetFrameTime();
+
+	void	SetSyncMode(SyncMode mode) { mSyncMode = mode; }
+	SyncMode	GetSyncMode() { return mSyncMode; }
+
+	void	SetAudioCaptureEnabled(bool ena);
+	bool	IsAudioCaptureEnabled();
+
+	void	SetHardwareBuffering(int videoBuffers, int audioBuffers, int audioBufferSize);
+	bool	GetHardwareBuffering(int& videoBuffers, int& audioBuffers, int& audioBufferSize);
+
+	bool	IsDriverDialogSupported(DriverDialog dlg);
+	void	DisplayDriverDialog(DriverDialog dlg);
+
+	void	GetPreviewImageSize(sint32& w, sint32& h);
+
+	void	SetFilterSetup(const VDCaptureFilterSetup& setup);
+	const VDCaptureFilterSetup& GetFilterSetup();
+
+	void	SetStopPrefs(const VDCaptureStopPrefs& prefs);
+	const VDCaptureStopPrefs& GetStopPrefs();
+
+	void	SetDiskSettings(const VDCaptureDiskSettings& sets);
+	const VDCaptureDiskSettings& GetDiskSettings();
+
+	uint32	GetPreviewFrameCount();
+
+	bool	SetVideoFormat(const BITMAPINFOHEADER& bih, LONG cbih);
+	bool	GetVideoFormat(vdstructex<BITMAPINFOHEADER>& bih);
+
+	bool	SetAudioFormat(const WAVEFORMATEX& wfex, LONG cbwfex);
+	bool	GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex);
+
+	void		SetCaptureFile(const VDStringW& filename, bool bIsStripeSystem);
+	VDStringW	GetCaptureFile();
+	bool		IsStripingEnabled();
+
+	void	SetSpillSystem(bool enable);
+	bool	IsSpillEnabled();
+
+	void	IncrementFileID();
+	void	DecrementFileID();
+
+	void	ScanForDrivers();
+	int		GetDriverCount();
+	const char *GetDriverName(int i);
+	bool	SelectDriver(int nDriver);
+
+	void	Capture(bool bTest);
+	void	CaptureStop();
+
+protected:
+	void	EnablePreviewHistogram(bool enable);
+	void	SetPreview(bool b);
+
+	bool	InitFilter();
+	void	ShutdownFilter();
+
+	void	CapBegin(sint64 global_clock);
+	void	CapEnd();
+	bool	CapControl(bool is_preroll);
+	void	CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock);
+protected:
+
+	vdautoptr<IVDCaptureDriver>	mpDriver;
+	VDGUIHandle	mhwnd;
+
+	IVDCaptureProjectCallback	*mpCB;
+
+	DisplayMode	mDisplayMode;
+	SyncMode	mSyncMode;
+
+	VDStringW	mFilename;
+	bool		mbStripingEnabled;
+
+	int			mDisplayChromaKey;
+
+	bool		mbEnableSpill;
+
+	vdautoptr<IVDCaptureFilterSystem>	mpFilterSys;
+	VDPixmapLayout			mFilterInputLayout;
+	VDPixmapLayout			mFilterOutputLayout;
+
+	VDCaptureData	*mpCaptureData;
+	DWORD		mMainThreadId;
+
+	struct DriverEntry {
+		VDStringA	mName;
+		int			mSystemId;
+		int			mId;
+
+		DriverEntry(const char *name, int system, int id) : mName(name), mSystemId(system), mId(id) {}
+	};
+
+	typedef std::list<IVDCaptureSystem *>	tSystems;
+	tSystems	mSystems;
+
+	typedef std::list<DriverEntry>	tDrivers;
+	tDrivers	mDrivers;
+
+	VDCaptureFilterSetup	mFilterSetup;
+	VDCaptureStopPrefs		mStopPrefs;
+	VDCaptureDiskSettings	mDiskSettings;
+
+	uint32		mFilterPalette[256];
+
+	VDAtomicInt	mRefCount;
+};
+
+IVDCaptureProject *VDCreateCaptureProject() { return new VDCaptureProject; }
+
+VDCaptureProject::VDCaptureProject()
+	: mhwnd(NULL)
+	, mpCB(NULL)
+	, mDisplayMode(kDisplayNone)
+	, mSyncMode(kSyncToVideo)
+	, mbStripingEnabled(false)
+	, mbEnableSpill(false)
+	, mRefCount(0)
+{
+	mFilterSetup.mCropRect.clear();
+	mFilterSetup.mVertSquashMode		= IVDCaptureFilterSystem::kFilterDisable;
+	mFilterSetup.mNRThreshold			= 16;
+
+	mFilterSetup.mbEnableCrop			= false;
+	mFilterSetup.mbEnableRGBFiltering	= false;
+	mFilterSetup.mbEnableNoiseReduction	= false;
+	mFilterSetup.mbEnableLumaSquish		= false;
+	mFilterSetup.mbEnableFieldSwap		= false;
+
+	mStopPrefs.fEnableFlags = 0;
+
+	mDiskSettings.mDiskChunkSize		= 512;
+	mDiskSettings.mDiskChunkCount		= 2;
+	mDiskSettings.mbDisableWriteCache	= 1;
+
+	mSystems.push_back(VDCreateCaptureSystemVFW());
+	mSystems.push_back(VDCreateCaptureSystemDS());
+	mSystems.push_back(VDCreateCaptureSystemEmulation());
 }
 
-void Capture(HWND hWnd) {
-	static INT aWidths[]={ 50, 100, 150, 200, -1 };
-
-	HMENU	hMenuCapture	= NULL;
-	LONG_PTR	dwOldStatusWndProc	= 0;
-	HWND	hWndCapture		= NULL;
-	HWND	hWndStatus;
-	HWND	hwndItem;
-	int		nDriver;
-	bool	fCodecInstalled;
-
-	int		xedge = GetSystemMetrics(SM_CXEDGE);
-	int		yedge = GetSystemMetrics(SM_CYEDGE);
-
-	// Mark starting point.
-
-	// ICInstall() is a stupid function.  Really, it's a moron.
-
-	VDCHECKPOINT;
-
-	fCodecInstalled = !!ICInstall(ICTYPE_VIDEO, 'BUDV', (LPARAM)VCMDriverProc, NULL, ICINSTALL_FUNCTION);
-
-	VDSetThreadExecutionStateW32(ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS);
-
-	try {
-		hWndStatus = CreateStatusWindow(WS_CHILD|WS_VISIBLE, "", hWnd, IDC_STATUS_WINDOW);
-		guiRedoWindows(hWnd);
-
-		SendMessage(hWndStatus, SB_SETTEXT, 0, (LPARAM)"Initializing Capture Mode...");
-		UpdateWindow(hWndStatus);
-
-		// load menus & accelerators
-
-		if (	!(g_hMenuAuxCapture = LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_CAPTURE_AUXMENU)))
-			||	!(hMenuCapture = LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_CAPTURE_MENU))))
-
-			throw MyError("Can't load capture menus.");
-
-		if (!(g_hAccelCapture = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_CAPTURE_KEYS))))
-			throw MyError("Can't load accelerators.");
-
-		// ferret out drivers
-
-		VDCHECKPOINT;
-
-		if ((nDriver = CaptureAddDrivers(hWnd, GetSubMenu(hMenuCapture,2))) < 0)
-			throw MyError("No capture driver available.");
-
-		CaptureWarnCheckDrivers(hWnd);
-
-		SetMenu(hWnd, hMenuCapture);
-
-		VDCHECKPOINT;
-
-		if (!(hWndCapture = capCreateCaptureWindow((LPSTR)"Capture window", WS_VISIBLE|WS_CHILD, xedge, yedge, 160, 120, hWnd, IDC_CAPTURE_WINDOW)))
-			throw MyError("Can't create capture window.");
-
-		// subclass the capture window
-
-		g_pCapWndProc = (WNDPROC)GetWindowLongPtr(hWndCapture, GWLP_WNDPROC);
-
-		SetWindowLongPtr(hWndCapture, GWLP_WNDPROC, (LONG)CaptureSubWndProc);
-
-		capSetCallbackOnError(hWndCapture, (LPVOID)CaptureErrorCallback);
-		capSetCallbackOnStatus(hWndCapture, (LPVOID)CaptureStatusCallback);
-		capSetCallbackOnYield(hWndCapture, (LPVOID)CaptureYieldCallback);
-
-		VDCHECKPOINT;
-
-		if (!CaptureSelectDriver(hWnd, hWndCapture, nDriver))
-			throw MyUserAbortError();
-
-		capCaptureSetSetup(hWndCapture, &g_defaultCaptureParms, sizeof(CAPTUREPARMS));
-		
-		// If the user has selected a default capture file, use it; if not, 
-
-		if (QueryConfigString(g_szCapture, g_szDefaultCaptureFile, g_szCaptureFile, sizeof g_szCaptureFile) && g_szCaptureFile[0])
-			CaptureSetCaptureFile(hWndCapture);
-		else
-			capFileGetCaptureFile(hWndCapture, g_szCaptureFile, sizeof g_szCaptureFile);
-
-		// How about default capture settings?
-
-		VDCHECKPOINT;
-
-		CaptureInternalLoadFromRegistry();
-
-		{
-			CAPTUREPARMS *cp;
-			DWORD dwSize, dwSizeAlloc;
-
-			if (dwSize = QueryConfigBinary(g_szCapture, g_szCapSettings, NULL, 0)) {
-				dwSizeAlloc = dwSize;
-				if (dwSize < sizeof(CAPTUREPARMS)) dwSize = sizeof(CAPTUREPARMS);
-
-				if (cp = (CAPTUREPARMS *)allocmem(dwSizeAlloc)) {
-					memset(cp, 0, dwSizeAlloc);
-
-					if (QueryConfigBinary(g_szCapture, g_szCapSettings, (char *)cp, dwSize)) {
-						cp->fYield = FALSE;
-						cp->fMCIControl = FALSE;
-
-						capCaptureSetSetup(hWndCapture, cp, dwSize);
-					}
-
-					freemem(cp);
-				}
-			}
-		}
-
-		// And default video parameters?
-
-		{
-			BITMAPINFOHEADER *bih;
-			DWORD dwSize;
-
-			if (dwSize = QueryConfigBinary(g_szCapture, g_szVideoFormat, NULL, 0)) {
-				if (bih = (BITMAPINFOHEADER *)allocmem(dwSize)) {
-					if (QueryConfigBinary(g_szCapture, g_szVideoFormat, (char *)bih, dwSize))
-						capSetVideoFormat(hWndCapture, bih, dwSize);
-
-					freemem(bih);
-				}
-			}
-		}
-
-		// Audio?
-
-		{
-			WAVEFORMATEX *wfex;
-			DWORD dwSize;
-
-			if (dwSize = QueryConfigBinary(g_szCapture, g_szAudioFormat, NULL, 0)) {
-				if (wfex = (WAVEFORMATEX *)allocmem(dwSize)) {
-					if (QueryConfigBinary(g_szCapture, g_szAudioFormat, (char *)wfex, dwSize))
-						capSetAudioFormat(hWndCapture, wfex, dwSize);
-
-					freemem(wfex);
-				}
-			}
-		}
-
-		// stop conditions?
-
-		{
-			void *mem;
-			DWORD dwSize;
-
-			if (dwSize = QueryConfigBinary(g_szCapture, g_szStopConditions, NULL, 0)) {
-				if (mem = (WAVEFORMATEX *)allocmem(dwSize)) {
-					if (QueryConfigBinary(g_szCapture, g_szStopConditions, (char *)mem, dwSize)) {
-						memset(&g_stopPrefs, 0, sizeof g_stopPrefs);
-						memcpy(&g_stopPrefs, mem, std::min<uint32>(sizeof g_stopPrefs, dwSize));
-					}
-
-					freemem(mem);
-				}
-			}
-		}
-
-		// Disk I/O settings?
-
-		QueryConfigDword(g_szCapture, g_szChunkSize, (DWORD *)&g_diskChunkSize);
-		QueryConfigDword(g_szCapture, g_szChunkCount, (DWORD *)&g_diskChunkCount);
-		QueryConfigDword(g_szCapture, g_szDisableBuffering, (DWORD *)&g_diskDisableBuffer);
-
-		{
-			DWORD dw;
-
-			// panel, timing?
-
-			if (QueryConfigDword(g_szCapture, g_szHideInfoPanel, &dw))
-				g_fInfoPanel = !!dw;
-
-			if (QueryConfigDword(g_szCapture, g_szAdjustVideoTiming, &dw))
-				g_fAdjustVideoTimer = !!dw;
-
-			// multisegment?
-
-			if (QueryConfigDword(g_szCapture, g_szMultisegment, &dw))
-				g_fEnableSpill = !!dw;
-
-			if (QueryConfigDword(g_szCapture, g_szAutoIncrement, &dw))
-				g_bAutoIncrementAfterCapture = !!dw;
-
-			if (QueryConfigDword(g_szCapture, g_szStartOnLeft, &dw))
-				g_bStartOnLeft = !!dw;
-		}
-
-		// Spill settings?
-
-		CapSpillRestoreFromRegistry();
-
-		VDCHECKPOINT;
-
-		// Setup the status window.
-
-		SendMessage(hWndStatus, SB_SIMPLE, (WPARAM)FALSE, 0);
-		SendMessage(hWndStatus, SB_SETPARTS, (WPARAM)5, (LPARAM)(LPINT)aWidths);
-		SendMessage(hWndStatus, SB_SETTEXT, 4 | SBT_NOBORDERS, (LPARAM)"");
-
-		// Subclass the status window.
-
-		dwOldStatusWndProc = GetWindowLongPtr(hWndStatus, GWLP_WNDPROC);
-		SetWindowLongPtr(hWndStatus, GWLP_USERDATA, (LONG_PTR)dwOldStatusWndProc);
-		SetWindowLongPtr(hWndStatus, GWLP_WNDPROC, (LONG_PTR)CaptureStatusWndProc);
-
-		// Update status
-
-		VDCHECKPOINT;
-
-		CaptureResizeWindow(hWndCapture);
-		CaptureShowParms(hWnd);
-		CaptureShowFile(hWnd, hWndCapture, false);
-
-		// Create capture panel
-
-		VDCHECKPOINT;
-
-		hwndItem = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PANEL), hWnd, CapturePanelDlgProc);
-		if (hwndItem) {
-			SetWindowLong(hwndItem, GWL_ID, IDC_CAPTURE_PANEL);
-
-			if (g_fInfoPanel)
-				ShowWindow(hwndItem, SW_SHOWNORMAL);
-		}
-
-		// Subclass the main window.
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR)CaptureWndProc);
-
-		VDCHECKPOINT;
-
-		CaptureRedoWindows(hWnd);
-
-		SendMessage(hWndStatus, SB_SETTEXT, 0, (LPARAM)"Capture mode ready.");
-
-		VDCHECKPOINT;
-
-		if (!CaptureMsgPump(hWnd)) PostQuitMessage(0);
-
-		VDCHECKPOINT;
-
-		// save settings
-
-		{
-			DWORD dw;
-
-			if (!QueryConfigDword(g_szCapture, g_szHideInfoPanel, &dw) || !!dw != g_fInfoPanel)
-				SetConfigDword(g_szCapture, g_szHideInfoPanel, g_fInfoPanel);
-
-			if (!QueryConfigDword(g_szCapture, g_szMultisegment, &dw) || !!dw != g_fEnableSpill)
-				SetConfigDword(g_szCapture, g_szMultisegment, g_fEnableSpill);
-
-			if (!QueryConfigDword(g_szCapture, g_szAutoIncrement, &dw) || !!dw != g_bAutoIncrementAfterCapture)
-				SetConfigDword(g_szCapture, g_szAutoIncrement, g_bAutoIncrementAfterCapture);
-
-			if (!QueryConfigDword(g_szCapture, g_szStartOnLeft, &dw) || !!dw != g_bStartOnLeft)
-				SetConfigDword(g_szCapture, g_szStartOnLeft, g_bStartOnLeft);
-		}
-
-	} catch(MyUserAbortError e) {
-		/* nothing */
-	} catch(const MyError& e) {
-		e.post(hWnd, g_szError);
+VDCaptureProject::~VDCaptureProject() {
+	while(!mSystems.empty()) {
+		delete mSystems.back();
+		mSystems.pop_back();
+	}
+}
+
+int VDCaptureProject::AddRef() {
+	return ++mRefCount;
+}
+
+int VDCaptureProject::Release() {
+	if (mRefCount == 1) {
+		delete this;
+		return 0;
 	}
 
-	VDSetThreadExecutionStateW32(ES_CONTINUOUS);
+	return --mRefCount;
+}
 
-	// close up shop
+bool VDCaptureProject::Attach(VDGUIHandle hwnd) {
+	if (mhwnd == hwnd)
+		return true;
 
-	VDCHECKPOINT;
+	if (mhwnd)
+		Detach();
 
-	CaptureCloseBT848Tweaker();
+	extern void AnnounceCaptureExperimental(VDGUIHandle h);
+	AnnounceCaptureExperimental(hwnd);
 
-	if (g_pHistogram)
-		CaptureEnablePreviewHistogram(hWndCapture, false);
+	mhwnd = hwnd;
 
-	if (hwndItem = GetDlgItem(hWnd, IDC_CAPTURE_PANEL))
-		DestroyWindow(hwndItem);
+	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)hwnd);
+	pFrame->AttachEngine(this);
 
-	if (hWndStatus)
-		DestroyWindow(hWndStatus);
+	return true;
+}
 
-	SetWindowLongPtr(hWnd, 0, NULL);
+void VDCaptureProject::Detach() {
+	if (!mhwnd)
+		return;
 
-	VDCHECKPOINT;
-
-	if (hWndCapture) {
-		capOverlay(hWndCapture, FALSE);
-		capPreview(hWndCapture, FALSE);
-		capDriverDisconnect(hWndCapture);
-		DestroyWindow(hWndCapture);
-	}
-
-	g_DDContext.Shutdown();
-
-	if (hMenuCapture)	DestroyMenu(hMenuCapture);
-	if (g_hMenuAuxCapture)	{ DestroyMenu(g_hMenuAuxCapture); g_hMenuAuxCapture=NULL; }
+	mpDriver = NULL;
 
 	FreeCompressor(&g_compression);
 
-	InvalidateRect(hWnd, NULL, TRUE);
+	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
+	pFrame->DetachEngine();
 
-	if (fCodecInstalled)
-		ICRemove(ICTYPE_VIDEO, 'BUDV', 0);
-
-	g_capLog.Dispose();
-
-	VDCHECKPOINT;
+	mhwnd = NULL;
 }
 
-///////////////////////////////////////////////////////////////////////////
-//
-//	'Allocate disk space' dialog
-//
-///////////////////////////////////////////////////////////////////////////
+void VDCaptureProject::SetCallback(IVDCaptureProjectCallback *pCB) {
+	mpCB = pCB;
 
-static INT_PTR APIENTRY CaptureAllocateDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	HWND hWndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
-
-	switch(message) {
-
-		case WM_INITDIALOG:
-			{
-				char *pb = (char *)allocmem(MAX_PATH*2);
-
-				if (!pb) return FALSE;
-
-				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)lParam);
-				hWndCapture = (HWND)lParam;
-
-				if (capFileGetCaptureFile(hWndCapture, pb, MAX_PATH)) {
-					__int64 client_free = VDGetDiskFreeSpace(VDTextAToW(VDString(pb)));
-
-					if (!SplitPathRoot(pb, pb))
-						strcpy(pb+MAX_PATH, "Free disk space:");
-					else
-						wsprintf(pb+MAX_PATH, "Free disk space on %s:", pb);
-
-					SetDlgItemText(hDlg, IDC_STATIC_DISK_FREE_SPACE, pb+MAX_PATH);
-
-					if (client_free>=0) {
-						wsprintf(pb, "%ld MB ", client_free>>20);
-						SendMessage(GetDlgItem(hDlg, IDC_DISK_FREE_SPACE), WM_SETTEXT, 0, (LPARAM)pb);
-					}
-
-
-				}
-
-				freemem(pb);
-
-				SetFocus(GetDlgItem(hDlg, IDC_DISK_SPACE_ALLOCATE));
-			}	
-
-			return TRUE;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDOK:
-				{
-					LONG lAllocate;
-					BOOL fOkay;
-
-					lAllocate = GetDlgItemInt(hDlg, IDC_DISK_SPACE_ALLOCATE, &fOkay, FALSE);
-
-					if (!fOkay || lAllocate<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_DISK_SPACE_ALLOCATE));
-						return TRUE;
-					}
-
-					capFileAlloc(hWndCapture, lAllocate<<20);
-				}
-
-				EndDialog(hDlg, TRUE);
-				return TRUE;
-			case IDCANCEL:
-				EndDialog(hDlg, FALSE);
-				return TRUE;
-			}
-			break;
+	if (pCB) {
+		pCB->UICaptureFileUpdated();
+		pCB->UICaptureVideoFormatUpdated();
 	}
-
-	return FALSE;
 }
 
-///////////////////////////////////////////////////////////////////////////
-//
-//	'Settings...' dialog
-//
-///////////////////////////////////////////////////////////////////////////
-
-static INT_PTR CALLBACK CaptureSettingsDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	HWND hWndCapture = (HWND)GetWindowLongPtr(hDlg, DWLP_USER);
-
-	switch(message) {
-
-		case WM_INITDIALOG:
-			{
-				CAPTUREPARMS cp;
-				LONG lV;
-				char buf[32];
-
-				SetWindowLongPtr(hDlg, DWLP_USER, (DWORD)lParam);
-				hWndCapture = (HWND)lParam;
-
-				if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
-					return FALSE;
-
-				lV = (long)((10000000000+cp.dwRequestMicroSecPerFrame/2) / cp.dwRequestMicroSecPerFrame);
-				wsprintf(buf, "%ld.%04d", lV/10000, lV%10000);
-				SendMessage(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE), WM_SETTEXT, 0, (LPARAM)buf);
-
-				SetDlgItemInt(hDlg, IDC_CAPTURE_DROP_LIMIT, cp.wPercentDropForError, FALSE);
-				SetDlgItemInt(hDlg, IDC_CAPTURE_MAX_INDEX, cp.dwIndexSize, FALSE);
-				SetDlgItemInt(hDlg, IDC_CAPTURE_VIDEO_BUFFERS, cp.wNumVideoRequested, FALSE);
-				SetDlgItemInt(hDlg, IDC_CAPTURE_AUDIO_BUFFERS, cp.wNumAudioRequested, FALSE);
-				SetDlgItemInt(hDlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, cp.dwAudioBufferSize, FALSE);
-				CheckDlgButton(hDlg, IDC_CAPTURE_AUDIO, cp.fCaptureAudio ? 1 : 0);
-				CheckDlgButton(hDlg, IDC_CAPTURE_ON_OK, cp.fMakeUserHitOKToCapture ? 1 : 0);
-				CheckDlgButton(hDlg, IDC_CAPTURE_ABORT_ON_LEFT, cp.fAbortLeftMouse ? 1 : 0);
-				CheckDlgButton(hDlg, IDC_CAPTURE_ABORT_ON_RIGHT, cp.fAbortRightMouse ? 1 : 0);
-				CheckDlgButton(hDlg, IDC_CAPTURE_LOCK_TO_AUDIO, cp.AVStreamMaster == AVSTREAMMASTER_AUDIO ? 1 : 0);
-
-				switch(cp.vKeyAbort) {
-				case VK_ESCAPE:
-					CheckDlgButton(hDlg, IDC_CAPTURE_ABORT_ESCAPE, TRUE);
-					break;
-				case VK_SPACE:
-					CheckDlgButton(hDlg, IDC_CAPTURE_ABORT_SPACE, TRUE);
-					break;
-				default:
-					CheckDlgButton(hDlg, IDC_CAPTURE_ABORT_NONE, TRUE);
-					break;
-				};
-
-			}	
-
-			return TRUE;
-
-		case WM_HELP:
-			{
-				HELPINFO *lphi = (HELPINFO *)lParam;
-
-				if (lphi->iContextType == HELPINFO_WINDOW)
-					VDShowHelp(hDlg, L"d-capturesettings.html");
-			}
-			return TRUE;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-
-			case IDC_ROUND_FRAMERATE:
-				{
-					double dFrameRate;
-					char buf[32];
-
-					SendMessage(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE), WM_GETTEXT, sizeof buf, (LPARAM)buf);
-					if (1!=sscanf(buf, " %lg ", &dFrameRate) || dFrameRate<=0.01 || dFrameRate>1000.0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE));
-						return TRUE;
-					}
-
-					// Man, the LifeView driver really sucks...
-
-					sprintf(buf, "%.4lf", floor(10000000.0 / floor(1000.0 / dFrameRate + .5))/10000.0);
-					SetDlgItemText(hDlg, IDC_CAPTURE_FRAMERATE, buf);
-				}
-				return TRUE;
-
-			case IDOK:
-				do {
-					CAPTUREPARMS cp;
-					LONG lV;
-					BOOL fOkay;
-					double dFrameRate;
-					char buf[32];
-
-					if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
-						break;
-
-					SendMessage(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE), WM_GETTEXT, sizeof buf, (LPARAM)buf);
-					if (1!=sscanf(buf, " %lg ", &dFrameRate) || dFrameRate<=0.01 || dFrameRate>1000.0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_FRAMERATE));
-						return TRUE;
-					}
-					cp.dwRequestMicroSecPerFrame = (DWORD)(1000000.0 / dFrameRate);
-
-					lV = GetDlgItemInt(hDlg, IDC_CAPTURE_DROP_LIMIT, &fOkay, FALSE);
-					if (!fOkay || lV<0 || lV>100) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_DROP_LIMIT));
-						return TRUE;
-					}
-					cp.wPercentDropForError = lV;
-
-					lV = GetDlgItemInt(hDlg, IDC_CAPTURE_MAX_INDEX, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_MAX_INDEX));
-						return TRUE;
-					}
-					cp.dwIndexSize = lV;
-
-					lV = GetDlgItemInt(hDlg, IDC_CAPTURE_VIDEO_BUFFERS, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_VIDEO_BUFFERS));
-						return TRUE;
-					}
-					cp.wNumVideoRequested = lV;
-
-					lV = GetDlgItemInt(hDlg, IDC_CAPTURE_AUDIO_BUFFERS, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_AUDIO_BUFFERS));
-						return TRUE;
-					}
-					cp.wNumAudioRequested = lV;
-
-					lV = GetDlgItemInt(hDlg, IDC_CAPTURE_AUDIO_BUFFERSIZE, &fOkay, FALSE);
-					if (!fOkay || lV<0) {
-						MessageBeep(MB_ICONQUESTION);
-						SetFocus(GetDlgItem(hDlg, IDC_CAPTURE_AUDIO_BUFFERSIZE));
-						return TRUE;
-					}
-					cp.dwAudioBufferSize = lV;
-
-					cp.fCaptureAudio				= IsDlgButtonChecked(hDlg, IDC_CAPTURE_AUDIO);
-					cp.fMakeUserHitOKToCapture		= IsDlgButtonChecked(hDlg, IDC_CAPTURE_ON_OK);
-					cp.fAbortLeftMouse				= IsDlgButtonChecked(hDlg, IDC_CAPTURE_ABORT_ON_LEFT);
-					cp.fAbortRightMouse				= IsDlgButtonChecked(hDlg, IDC_CAPTURE_ABORT_ON_RIGHT);
-					cp.AVStreamMaster				= IsDlgButtonChecked(hDlg, IDC_CAPTURE_LOCK_TO_AUDIO) ? AVSTREAMMASTER_AUDIO : AVSTREAMMASTER_NONE;
-
-					if (IsDlgButtonChecked(hDlg, IDC_CAPTURE_ABORT_NONE))
-						cp.vKeyAbort = 0;
-					else if (IsDlgButtonChecked(hDlg, IDC_CAPTURE_ABORT_ESCAPE))
-						cp.vKeyAbort = VK_ESCAPE;
-					else if (IsDlgButtonChecked(hDlg, IDC_CAPTURE_ABORT_SPACE))
-						cp.vKeyAbort = VK_SPACE;
-
-					cp.fMCIControl = false;
-
-					capCaptureSetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS));
-				} while(0);
-
-				EndDialog(hDlg, TRUE);
-				return TRUE;
-			case IDCANCEL:
-				EndDialog(hDlg, FALSE);
-				return TRUE;
-			}
-			break;
-	}
-
-	return FALSE;
-}
-
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	Capture control hook
-//
-///////////////////////////////////////////////////////////////////////////
-
-static LRESULT CALLBACK CaptureControlCallbackProc(HWND hwnd, int nState) {
-	if (nState == CONTROLCALLBACK_CAPTURING) {
-		CaptureData *cd = (CaptureData *)capGetUserData(hwnd);
-
-		if (g_stopPrefs.fEnableFlags & CAPSTOP_TIME)
-			if (cd->lCurrentMS >= g_stopPrefs.lTimeLimit*1000)
-				return FALSE;
-
-		if (g_stopPrefs.fEnableFlags & CAPSTOP_FILESIZE)
-			if ((long)((cd->total_video_size + cd->total_audio_size + 2048)>>20) > g_stopPrefs.lSizeLimit)
-				return FALSE;
-
-		if (g_stopPrefs.fEnableFlags & CAPSTOP_DISKSPACE)
-			if (cd->disk_free && (long)(cd->disk_free>>20) < g_stopPrefs.lDiskSpaceThreshold)
-				return FALSE;
-
-		if (g_stopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
-			if (cd->total_cap > 50 && cd->dropped*100 > g_stopPrefs.lMaxDropRate*cd->total_cap)
-				return FALSE;
-	} else if (nState == CONTROLCALLBACK_PREROLL) {
-		CaptureBT848Reassert();
-	}
-
-	return TRUE;
-}
-
-
-
-
-
-
-
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	Common capture routines
-//
-///////////////////////////////////////////////////////////////////////////
-
-static LRESULT CALLBACK CaptureYieldCallback(HWND hwnd) {
-	MSG msg;
-
-	if (PeekMessage(&msg,NULL,0,0,PM_REMOVE)) {
-		if (!guiCheckDialogs(&msg)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
-
-	return TRUE;
-}
-
-static void CaptureUpdateAudioTiming(CaptureData *icd, HWND hwnd, DWORD dwTime) {
-	if (!icd->total_cap)
+void VDCaptureProject::SetDisplayMode(DisplayMode mode) {
+	if (mDisplayMode == mode)
 		return;
 
-//	CAPSTATUS cs;
-
-//	capGetStatus(hwnd, &cs, sizeof cs);
-
-//	DWORD dwTime = icd->lVideoLastMS;
-
-//	DWORD dwTime = cs.dwCurrentTimeElapsedMS;
-
-	// Update statistics variables for audio stream, so we can correllate
-	// audio samples to time.  This includes sums for X, Y, X^2, Y^2, and
-	// XY.
-
-	++icd->iAudioHzSamples;
-	icd->i64AudioHzX	+= dwTime;
-	icd->i64AudioHzX2	+= (__int64)dwTime * dwTime;
-	icd->i64AudioHzY	+= icd->total_audio_data_size;
-	icd->i64AudioHzY2	+= (int128)icd->total_audio_data_size*(int128)icd->total_audio_data_size;
-	icd->i64AudioHzXY	+= (int128)icd->total_audio_data_size * (int128)dwTime;
-}
-
-static struct CapClipFormats {
-	FOURCC fcc;
-	int nBits;
-	int nHorizAlign;
-	int nBytesPerGroup;
-	bool fInverted;
-} g_capClipFormats[]={
-	{ BI_RGB,	8,	4, 4, true },
-	{ BI_RGB,	16,	2, 4, true },
-	{ BI_RGB,	24,	4, 12, true },
-	{ BI_RGB,	32,	1, 4, true },
-	{ '2YUY',	16,	2, 4, false },
-	{ 'YUYV',	16, 2, 4, false },			// VYUY: ATi All-in-Blunder clone of YUY2
-	{ 'YVYU',	16, 2, 4, false },
-	{ 'UYVY',	16, 2, 4, false },
-	{ 'P14Y',	12, 8, 12, false }, 
-};
-
-#define NUM_CLIP_FORMATS (sizeof g_capClipFormats / sizeof g_capClipFormats[0])
-
-static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER *bihInput, DWORD dwRequestMicroSecPerFrame, bool fPermitSizeAlteration) {
-	BITMAPINFOHEADER *bihOut = &icd->bihClipFormat;
-	bool fFormatAltered = false;
-
-	icd->bihInputFormat	= *bihInput;
-	icd->bihInputFormat.biSize = sizeof(BITMAPINFOHEADER);
-
-	icd->bihClipFormat = icd->bihInputFormat;
-	icd->pNoiseReductionBuffer = NULL;
-	icd->pVertRowBuffer = NULL;
-	icd->bpr = ((icd->bihInputFormat.biWidth * icd->bihInputFormat.biBitCount + 31)>>5) * 4;
-	icd->rowdwords = icd->bpr/4;
-	icd->pdClipOffset = 0;
-
-	icd->fClipping = false;
-
-	if (g_fEnableClipping) {
-		int i;
-
-		for(i=0; i<NUM_CLIP_FORMATS; i++)
-			if (icd->bihInputFormat.biCompression == g_capClipFormats[i].fcc
-				&& icd->bihInputFormat.biBitCount == g_capClipFormats[i].nBits)
-				break;
-
-		if (i >= NUM_CLIP_FORMATS)
-			throw MyError("Frame clipping is only supported for: RGB8, RGB16, RGB24, RGB32, YUY2, YVYU, UYVY, Y41P.");
-
-		int x1, y1, x2, y2;
-
-		x1 = g_rCaptureClip.left;	x1 -= x1 % g_capClipFormats[i].nHorizAlign;
-		x2 = g_rCaptureClip.right;	x2 -= x2 % g_capClipFormats[i].nHorizAlign;
-		y1 = g_rCaptureClip.top;
-		y2 = g_rCaptureClip.bottom;
-
-		icd->bihClipFormat.biHeight = bihInput->biHeight - y1 - y2;
-		icd->bihClipFormat.biWidth = bihInput->biWidth - x1 - x2;
-
-		icd->rowdwords = (g_capClipFormats[i].nBytesPerGroup * icd->bihClipFormat.biWidth / g_capClipFormats[i].nHorizAlign)/4;
-
-		icd->bihClipFormat.biSizeImage = icd->rowdwords * 4 * icd->bihClipFormat.biHeight;
-
-		if (g_capClipFormats[i].fInverted)
-			icd->pdClipOffset = y2*icd->bpr;
-		else
-			icd->pdClipOffset = y1*icd->bpr;
-
-		icd->pdClipOffset += (x1 / g_capClipFormats[i].nHorizAlign) * g_capClipFormats[i].nBytesPerGroup;
-
-		icd->fClipping = true;
-		fFormatAltered = true;
+	if (mDisplayMode == kDisplayAnalyze) {
+		if (mpCB)
+			mpCB->UICaptureAnalyzeEnd();
+		ShutdownFilter();
 	}
 
-	if (g_fEnableNoiseReduction) {
-
-		// We can only accept 24-bit and 32-bit RGB, and YUY2.
-
-		do {
-			if (bihInput->biCompression == BI_RGB && (bihInput->biBitCount == 24 || bihInput->biBitCount == 32))
-				break;
-
-			if (bihInput->biCompression == '2YUY' && bihInput->biBitCount == 16)
-				break;
-
-			if (bihInput->biCompression == 'YUYV' && bihInput->biBitCount == 16)
-				break;
-
-			if (bihInput->biCompression == 'YVYU' && bihInput->biBitCount == 16)
-				break;
-
-			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2/UYVY/VYUY).");
-
-		} while(false);
-
-		// Allocate the NR buffer.
-
-		if (!(icd->pNoiseReductionBuffer = new char [icd->bihClipFormat.biSizeImage]))
-			throw MyMemoryError();
-	}
-
-	if (g_fEnableLumaSquish) {
-
-		// Right now, only YUY2 is supported.
-
-		if (bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU')
-			throw MyError("Luma squishing is only supported for YUY2 and UYVY.");
-	}
-
-	if (g_fSwapFields) {
-
-		// We can swap all RGB formats and some YUV ones.
-
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY' && bihInput->biCompression!='YUYV')
-			throw MyError("Field swapping is only supported for RGB, YUY2, UYVY, YUYV, and VYUY formats.");
-	}
-
-	icd->bihFiltered	= icd->bihClipFormat;
-
-	if (g_iVertSquash) {
-		if (bihInput->biCompression != BI_RGB && bihInput->biCompression != '2YUY' && bihInput->biCompression != 'YUYV' && bihInput->biCompression != 'YVYU' && bihInput->biCompression!='VYUY')
-			throw MyError("2:1 vertical reduction is only supported for RGB, YUY2, VYUY, UYVY, and YUYV formats.");
-
-		// Allocate temporary row buffer in bicubic mode.
-
-		if (g_iVertSquash == VERTSQUASH_BY2CUBIC)
-			if (!(icd->pVertRowBuffer = new char[icd->bpr * 3]))
-				throw MyMemoryError();
-
-		icd->bihFiltered.biHeight >>= 1;
-		icd->bihFiltered.biSizeImage = icd->bpr * icd->bihFiltered.biHeight;
-		bihOut = &icd->bihFiltered;
-		fFormatAltered = true;
-	}
-
-	if (g_fEnableRGBFiltering) {
-		const FOURCC fcc = icd->bihFiltered.biCompression;
-		const int w = icd->bihFiltered.biWidth;
-		const int h = icd->bihFiltered.biHeight;
-
-		if (fcc != BI_RGB && (!fPermitSizeAlteration || (fcc != '2YUY' && fcc != 'YUYV' && fcc != 'VUYI' && fcc != '024I')))
-			throw MyError("%sThe capture video format must be RGB, YUY2, VYUY, I420, or IYUV.", g_szCannotFilter);
-
-
-		if (fcc == '2YUY' || fcc == 'YUYV') {
-			if (w&1)
-				throw MyError("%sImage width must be even for YUY2 / VYUY images.", g_szCannotFilter);
-		}
-
-		if (fcc == 'VUYI' || fcc == '024I') {
-			if (w&15)
-				throw MyError("%sImage width must be a multiple of 16 for I420 / IYUV images.", g_szCannotFilter);
-
-			if (h&1)
-				throw MyError("%sImage height must be even for I420 / IYUV images.", g_szCannotFilter);
-		}
-
-		if (fPermitSizeAlteration)
-			icd->bihFiltered2.biBitCount		= 24;
-		else
-			icd->bihFiltered2.biBitCount		= bihOut->biBitCount;
-
-		filters.initLinearChain(&g_listFA, (Pixel *)((char *)bihInput + bihInput->biSize), bihOut->biWidth, bihOut->biHeight, icd->bihFiltered2.biBitCount);
-
-		icd->fsi.lCurrentFrame		= 0;
-		icd->fsi.lMicrosecsPerFrame	= dwRequestMicroSecPerFrame;
-		icd->fsi.lCurrentSourceFrame	= 0;
-		icd->fsi.lMicrosecsPerSrcFrame	= dwRequestMicroSecPerFrame;
-		icd->fsi.flags					= FilterStateInfo::kStateRealTime;
-
-		if (filters.ReadyFilters(&icd->fsi))
-			throw MyError("%sUnable to initialize filters.", g_szCannotFilter);
-
-		icd->bihFiltered2.biSize			= sizeof(BITMAPINFOHEADER);
-		icd->bihFiltered2.biPlanes			= 1;
-		icd->bihFiltered2.biCompression		= BI_RGB;
-		icd->bihFiltered2.biWidth			= filters.LastBitmap()->w;
-		icd->bihFiltered2.biHeight			= filters.LastBitmap()->h;
-		icd->bihFiltered2.biSizeImage		= (((icd->bihFiltered2.biWidth*icd->bihFiltered2.biBitCount+31)&-32)>>3)*icd->bihFiltered2.biHeight;
-		icd->bihFiltered2.biClrUsed			= 0;
-		icd->bihFiltered2.biClrImportant	= 0;
-		icd->bihFiltered2.biXPelsPerMeter	= 0;
-		icd->bihFiltered2.biYPelsPerMeter	= 0;
-		bihOut = &icd->bihFiltered2;
-		fFormatAltered = true;
-	} else
-		icd->bihFiltered2 = icd->bihFiltered;
-
-	if (!fPermitSizeAlteration && (icd->bihFiltered2.biWidth != bihInput->biWidth
-		|| icd->bihFiltered2.biHeight != bihInput->biHeight))
-		throw MyError("%sThe filtered frame size must match the input in compatibility (AVICap) mode.", g_szCannotFilter);
-
-	return fFormatAltered ? bihOut : bihInput;
-}
-
-
-#ifdef _M_IX86
-
-void __declspec(naked) dodnrMMX(Pixel32 *dst, Pixel32 *src, PixDim w, PixDim h, PixOffset dstmodulo, PixOffset srcmodulo, __int64 thresh1, __int64 thresh2) {
-static const __int64 bythree = 0x5555555555555555i64;
-static const __int64 round2 = 0x0002000200020002i64;
-static const __int64 three = 0x0003000300030003i64;
-
-	__asm {
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
-
-		mov		edi,[esp+4+16]
-		mov		esi,[esp+8+16]
-		mov		edx,[esp+12+16]
-		mov		ecx,[esp+16+16]
-		mov		ebx,[esp+20+16]
-		mov		eax,[esp+24+16]
-		movq	mm6,[esp+36+16]
-		movq	mm5,[esp+28+16]
-
-yloop:
-		mov		ebp,edx
-xloop:
-		movd	mm0,[esi]		;previous
-		pxor	mm7,mm7
-
-		movd	mm1,[edi]		;current
-		punpcklbw	mm0,mm7
-
-		punpcklbw	mm1,mm7
-		movq	mm2,mm0
-
-		movq	mm4,mm1
-		movq	mm3,mm1
-
-		movq	mm7,mm0
-		paddw	mm4,mm4
-
-		pmullw	mm0,three
-		psubusb	mm2,mm1
-
-		paddw	mm4,mm7
-		psubusb	mm3,mm7
-
-		pmulhw	mm4,bythree
-		por		mm2,mm3
-
-		movq	mm3,mm2
-		paddw	mm0,mm1
-
-		paddw	mm0,round2
-		pcmpgtw	mm2,mm5			;set if diff > thresh1
-
-		pcmpgtw	mm3,mm6			;set if diff > thresh2
-		psrlw	mm0,2
-
-
-		;	mm2		mm3		meaning						mm1		mm0		mm4
-		;	FALSE	FALSE	diff <= thresh1				off		on		off
-		;	FALSE	TRUE	impossible
-		;	TRUE	FALSE	thresh1 < diff <= thresh2	off		off		on
-		;	TRUE	TRUE	diff > thresh2				on		off		off
-
-		pand	mm1,mm3			;keep pixels exceeding threshold2
-		pand	mm4,mm2			;	average pixels <= threshold2...
-		pandn	mm2,mm0			;replace pixels below threshold1
-		pandn	mm3,mm4			;	but >= threshold1...
-		por		mm1,mm2
-		add		esi,4
-		por		mm1,mm3
-		add		edi,4
-		packuswb	mm1,mm1
-		dec		ebp
-
-		movd	[esi-4],mm1		;store to both
-		movd	[edi-4],mm1
-		jne		xloop
-
-		add		esi,eax
-		add		edi,ebx
-		dec		ecx
-		jne		yloop
-
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
-		emms
-		ret
-	}
-}
-
-static void __declspec(naked) swaprows(void *dst1, void *dst2, ptrdiff_t pitch1, ptrdiff_t pitch2, long w, long h) {
-	__asm {
-		push	ebp
-		push	edi
-		push	esi
-		push	ebx
-
-		mov		ecx,[esp+24+16]
-		mov		esi,[esp+4+16]
-		mov		edi,[esp+8+16]
-
-		mov		ebp,[esp+20+16]
-		shl		ebp,2
-		add		esi,ebp
-		add		edi,ebp
-		neg		ebp
-		mov		[esp+20+16],ebp
-
-yloop:
-		mov		ebp,[esp+20+16]
-xloop:
-		mov		eax,[esi+ebp]
-		mov		ebx,[edi+ebp]
-		mov		[esi+ebp],ebx
-		mov		[edi+ebp],eax
-		add		ebp,4
-		jne		xloop
-
-		add		esi,[esp+12+16]
-		add		edi,[esp+16+16]
-
-		dec		ecx
-		jne		yloop
-
-		pop		ebx
-		pop		esi
-		pop		edi
-		pop		ebp
-		ret
-	}
-}
-
-
-// Squish 0...255 range to 16...235.
-//
-// The bIsUYVY value MUST be either 0 (false) or 1 (true) ....
-
-static void __declspec(naked) __cdecl lumasquish_MMX(void *dst, ptrdiff_t pitch, long w2, long h, int bIsUYVY) {
-	static const __int64 scalers[2] = {
-		0x40003b0040003b00i64,		// YUY2
-		0x3b0040003b004000i64,		// UYVY
-	};
-	static const __int64 biases[2] = {
-		0x0000000500000005i64,		// YUY2
-		0x0005000000050000i64,		// UYVY
-	};
-
-	__asm {
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		mov			eax,[esp+20+16]
-
-		movq		mm6,qword ptr [scalers+eax*8]
-		movq		mm5,qword ptr [biases+eax*8]
-
-		mov			ecx,[esp+12+16]
-		mov			esi,[esp+4+16]
-		mov			ebx,[esp+16+16]
-		mov			eax,[esp+8+16]
-		mov			edx,ecx
-		shl			edx,2
-		sub			eax,edx
-
-yloop:
-		mov			edx,ecx
-		test		esi,4
-		jz			xloop_aligned_start
-
-		movd		mm0,[esi]
-		pxor		mm7,mm7
-		punpcklbw	mm0,mm7
-		add			esi,4
-		psllw		mm0,2
-		dec			edx
-		paddw		mm0,mm5
-		pmulhw		mm0,mm6
-		packuswb	mm0,mm0
-		movd		[esi-4],mm0
-		jz			xloop_done
-
-xloop_aligned_start:
-		sub			edx,3
-		jbe			xloop_done
-xloop_aligned:
-		movq		mm0,[esi]
-		pxor		mm7,mm7
-
-		movq		mm2,[esi+8]
-		movq		mm1,mm0
-
-		punpcklbw	mm0,mm7
-		movq		mm3,mm2
-
-		psllw		mm0,2
-		add			esi,16
-
-		paddw		mm0,mm5
-		punpckhbw	mm1,mm7
-
-		psllw		mm1,2
-		pmulhw		mm0,mm6
-
-		paddw		mm1,mm5
-		punpcklbw	mm2,mm7
-
-		pmulhw		mm1,mm6
-		psllw		mm2,2
-
-		punpckhbw	mm3,mm7
-		paddw		mm2,mm5
-
-		psllw		mm3,2
-		pmulhw		mm2,mm6
-
-		paddw		mm3,mm5
-		packuswb	mm0,mm1
-
-		pmulhw		mm3,mm6
-		sub			edx,4
-
-		movq		[esi-16],mm0
-
-		packuswb	mm2,mm3
-
-		movq		[esi-8],mm2
-		ja			xloop_aligned
-
-		add			edx,3
-		jz			xloop_done
-
-xloop_tail:
-		movd		mm0,[esi]
-		pxor		mm7,mm7
-		punpcklbw	mm0,mm7
-		add			esi,4
-		psllw		mm0,2
-		dec			edx
-		paddw		mm0,mm5
-		pmulhw		mm0,mm6
-		packuswb	mm0,mm0
-		movd		[esi-4],mm0
-		jne			xloop_tail
-
-xloop_done:
-		add			esi,eax
-
-		dec			ebx
-		jne			yloop
-
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		emms
-		ret
-	}
-}
-
-extern "C" long resize_table_col_by2linear_MMX(Pixel *out, Pixel **in_table, PixDim w);
-extern "C" long resize_table_col_by2cubic_MMX(Pixel *out, Pixel **in_table, PixDim w);
-
-
-static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlace, DWORD& dwFrameSize) {
-	long bpr = icd->bpr;
-	long rowdwords = icd->rowdwords;
-	void *pSrc = lpVHdr->lpData + icd->pdClipOffset;
-
-	if (g_fEnableNoiseReduction) {
-		__int64 thresh1 = 0x0001000100010001i64*((g_iNoiseReduceThreshold>>1)+1);
-		__int64 thresh2 = 0x0001000100010001i64*(g_iNoiseReduceThreshold);
-
-		if (!g_iNoiseReduceThreshold)
-			thresh1 = thresh2;
-
-		dodnrMMX((Pixel32 *)pSrc,
-			(Pixel32 *)icd->pNoiseReductionBuffer,
-			icd->rowdwords,
-			icd->bihClipFormat.biHeight,
-			bpr - rowdwords*4,
-			0,
-			thresh1,
-			thresh2);
-	}
-
-	if (g_fEnableLumaSquish)
-		lumasquish_MMX(pSrc, bpr, ((icd->bihClipFormat.biWidth+1) & ~1)/2, icd->bihClipFormat.biHeight, icd->bihClipFormat.biCompression == 'YVYU');
-
-	if (g_fSwapFields) {
-		swaprows(pSrc, (char *)pSrc + bpr, bpr*2, bpr*2, bpr/4, icd->bihClipFormat.biHeight/2);
-	}
-
-	switch(g_iVertSquash) {
-	case VERTSQUASH_BY2CUBIC:
-		{
-			char *src[8], *dst;
-			int y = icd->bihClipFormat.biHeight/2;
-			char *srclimit = (char *)pSrc + bpr * (icd->bihClipFormat.biHeight - 1);
-
-			memcpy(icd->pVertRowBuffer + rowdwords*4*0, (char *)pSrc + bpr*0, rowdwords*4);
-			memcpy(icd->pVertRowBuffer + rowdwords*4*1, (char *)pSrc + bpr*1, rowdwords*4);
-			memcpy(icd->pVertRowBuffer + rowdwords*4*2, (char *)pSrc + bpr*2, rowdwords*4);
-
-			dst = (char *)pSrc;
-			src[0] = icd->pVertRowBuffer;
-			src[1] = src[0] + rowdwords*4;
-			src[2] = src[1] + rowdwords*8;
-
-			src[3] = dst + 3*bpr;
-			src[4] = src[3] + bpr;
-			src[5] = src[4] + bpr;
-			src[6] = src[5] + bpr;
-			src[7] = src[6] + bpr;
-
-			while(y--) {
-				resize_table_col_by2cubic_MMX((Pixel *)dst, (Pixel **)src, rowdwords);
-
-				dst += bpr;
-				src[0] = src[2];
-				src[1] = src[3];
-				src[2] = src[4];
-				src[3] = src[5];
-				src[4] = src[6];
-				src[5] = src[7];
-				src[6] += bpr*2;
-				src[7] += bpr*2;
-
-				if (src[6] >= srclimit)
-					src[6] = srclimit;
-				if (src[7] >= srclimit)
-					src[7] = srclimit;
+	mDisplayMode = mode;
+
+	if (g_pHistogram && mode != kDisplayAnalyze)
+		EnablePreviewHistogram(false);
+
+	if (g_pHistogram && mode < kDisplaySoftware)
+		SetPreview(false);
+
+	if (mpDriver) {
+		if (mDisplayMode == kDisplayAnalyze) {
+			InitFilter();
+
+			if (mpCB) {
+				VDPixmap px;
+				
+				px.data		= NULL;
+				px.data2	= NULL;
+				px.data3	= NULL;
+				px.format	= mFilterInputLayout.format;
+				px.w		= mFilterInputLayout.w;
+				px.h		= mFilterInputLayout.h;
+				px.palette	= mFilterInputLayout.palette;
+				px.pitch	= mFilterInputLayout.pitch;
+				px.pitch2	= mFilterInputLayout.pitch2;
+				px.pitch3	= mFilterInputLayout.pitch3;
+
+				mpCB->UICaptureAnalyzeBegin(px);
 			}
-			__asm emms
-
-			dwFrameSize = MulDiv(dwFrameSize, icd->bihClipFormat.biHeight/2, icd->bihClipFormat.biHeight);
-		}
-		break;
-
-	case VERTSQUASH_BY2LINEAR:
-		{
-			char *src[4], *dst;
-			int y = icd->bihClipFormat.biHeight/2;
-			char *srclimit = (char *)pSrc + bpr * (icd->bihClipFormat.biHeight - 1);
-
-			src[1] = (char *)pSrc;
-			src[2] = src[1];
-			src[3] = src[2] + bpr;
-
-			dst = src[1];
-
-			while(y--) {
-				resize_table_col_by2linear_MMX((Pixel *)dst, (Pixel **)src, rowdwords);
-
-				dst += bpr;
-				src[1] = src[3];
-				src[2] += bpr*2;
-				src[3] += bpr*2;
-
-				if (src[2] >= srclimit)
-					src[2] = srclimit;
-				if (src[3] >= srclimit)
-					src[3] = srclimit;
-			}
-			__asm emms
-
-			dwFrameSize = MulDiv(dwFrameSize, icd->bihClipFormat.biHeight/2, icd->bihClipFormat.biHeight);
-		}
-		break;
-
-	}
-
-	if (g_fEnableRGBFiltering) {
-		VBitmap vbmSrc(pSrc, &icd->bihFiltered);
-
-		vbmSrc.pitch = bpr;
-		vbmSrc.modulo = vbmSrc.Modulo();
-		vbmSrc.size = bpr*vbmSrc.h;
-
-		if (icd->bihFiltered.biCompression == 'VUYI' || icd->bihFiltered.biCompression == '024I') {
-			const int ypitch = vbmSrc.w;
-			const int uvpitch = vbmSrc.w >> 1;
-			const int w = vbmSrc.w >> 1;
-			int h = vbmSrc.h >> 1;
-			const unsigned char *yptr = (const unsigned char *)vbmSrc.data;
-			const unsigned char *uptr = yptr + ypitch * (h*2);
-			const unsigned char *vptr = uptr + uvpitch * h;
-			VBitmap *pvbDst = filters.InputBitmap();
-			const int dstpitch = pvbDst->pitch;
-			unsigned long *dst1 = (unsigned long *)pvbDst->Address32(0, 0);
-			unsigned long *dst2 = (unsigned long *)pvbDst->Address32(0, 1);
-
-			if (h) {
-				do {
-					asm_YUVtoRGB32_row(
-							dst1,
-							dst2,
-							yptr,
-							yptr + ypitch,
-							uptr,
-							vptr,
-							w);
-
-					yptr += ypitch*2;
-					uptr += uvpitch;
-					vptr += uvpitch;
-					dst1 = (unsigned long *)((char *)dst1 - dstpitch*2);
-					dst2 = (unsigned long *)((char *)dst2 - dstpitch*2);
-				} while(--h);
-
-				if (MMX_enabled)
-					__asm emms
-
-				if (ISSE_enabled)
-					__asm sfence
-			}
-
-		} else if (icd->bihFiltered.biCompression == '2YUY' || icd->bihFiltered.biCompression == 'YUYV')
-			filters.InputBitmap()->BitBltFromYUY2(0, 0, &vbmSrc, 0, 0, -1, -1);
-		else
-			filters.InputBitmap()->BitBlt(0, 0, &vbmSrc, 0, 0, -1, -1);
-
-		filters.RunFilters();
-
-		icd->fsi.lSourceFrameMS				= icd->fsi.lCurrentSourceFrame * icd->fsi.lMicrosecsPerSrcFrame;
-		icd->fsi.lDestFrameMS				= icd->fsi.lCurrentFrame * icd->fsi.lMicrosecsPerFrame;
-
-		if (fInPlace)
-			vbmSrc.BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1);
-		else {
-			filters.OutputBitmap()->BitBlt(0, 0, filters.LastBitmap(), 0, 0, -1, -1);
-			dwFrameSize = filters.OutputBitmap()->size;
-			pSrc = filters.OutputBitmap()->data;
 		}
 
-		++icd->fsi.lCurrentFrame;
-		++icd->fsi.lCurrentSourceFrame;
-	} else if (icd->fClipping) {
-		int y = icd->bihFiltered.biHeight;
-		char *src = (char *)pSrc;
-		char *dst = (char *)lpVHdr->lpData;
-
-		pSrc = dst;
-		dwFrameSize = rowdwords*4*y;
-
-		do {
-			memmove(dst, src, rowdwords*4);
-			dst += rowdwords*4;
-			src += bpr;
-		} while(--y);
-	}
-
-	return pSrc;
-}
-#else
-
-#pragma vdpragma_TODO("Need scalar implementations for this stuff")
-
-static void *CaptureDoFiltering(CaptureData *icd, VIDEOHDR *lpVHdr, bool fInPlace, DWORD& dwFrameSize) {
-	return lpVHdr->lpData;
-}
-
-#endif
-
-static void CaptureDeinitFiltering(CaptureData *icd) {
-	filters.DeinitFilters();
-	filters.DeallocateBuffers();
-
-	if (icd->pVertRowBuffer) {
-		delete icd->pVertRowBuffer;
-		icd->pVertRowBuffer = NULL;
-	}
-
-	if (icd->pNoiseReductionBuffer) {
-		delete icd->pNoiseReductionBuffer;
-		icd->pNoiseReductionBuffer = NULL;
+		mpDriver->SetDisplayMode(mode);
 	}
 }
 
-
-
-
-
-
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	Stupid capture (AVICap)
-//
-///////////////////////////////////////////////////////////////////////////
-
-static LRESULT CALLBACK CaptureAVICapVideoCallbackProc(HWND hWnd, LPVIDEOHDR lpVHdr)
-{
-	CaptureData *icd = (CaptureData *)capGetUserData(hWnd);
-	CAPSTATUS capStatus;
-	char buf[128];
-	__int64 jitter;
-	DWORD dwFrameSize = lpVHdr->dwBytesUsed;
-
-	capGetStatus(hWnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
-
-	try {		// FIXME
-		CaptureDoFiltering(icd, lpVHdr, true, dwFrameSize);
-	} catch(const MyError&) {
-	}
-
-	if (!icd->total_cap)
-		icd->lVideoFirstMS = lpVHdr->dwTimeCaptured;
-
-	icd->lVideoLastMS = lpVHdr->dwTimeCaptured;
-
-	icd->total_video_size += icd->last_video_size;
-	icd->last_video_size = 0;
-
-	jitter = (long)(((lpVHdr->dwTimeCaptured - icd->lVideoFirstMS)*1000i64) % icd->interval);
-
-	if (jitter >= icd->interval/2) {
-		jitter -= icd->interval;
-		icd->total_disp -= jitter;
-	} else {
-		icd->total_disp += jitter;
-	}
-	icd->total_jitter += jitter;
-	++icd->total_cap;
-	++icd->last_cap;
-
-	icd->lCurrentMS = capStatus.dwCurrentTimeElapsedMS;
-
-	icd->last_video_size = lpVHdr->dwBytesUsed + 24;
-
-	icd->dropped = capStatus.dwCurrentVideoFramesDropped;
-
-	if (capStatus.dwCurrentTimeElapsedMS - icd->lastMessage > 500) {
-		if (g_fInfoPanel) {
-			if (icd->hwndPanel)
-				SendMessage(icd->hwndPanel, WM_APP, 0, (LPARAM)(CaptureData *)icd);
-
-			wsprintf(buf, "%ldms jitter, %ldms disp, %ldK total"
-						,icd->last_cap ? (long)(icd->total_jitter/(icd->last_cap*1000)) : 0
-						,icd->last_cap ? (long)(icd->total_disp/(icd->last_cap*1000)) : 0
-						,(long)((icd->total_video_size + icd->total_audio_size + 1023)/1024)
-						);
-		} else {
-			__int64 i64;
-
-			if (g_fEnableSpill)
-				i64 = CapSpillGetFreeSpace();
-			else {
-				if (icd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(icd->szCaptureRoot)));
-				else
-					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
-			}
-
-			if (i64>=0) {
-				if (i64)
-					icd->disk_free = i64;
-				else
-					icd->disk_free = -1;
-			}
-
-			wsprintf(buf, "%ld frames (%ld dropped), %d.%03ds, %ldms jitter, %ldms disp, %ld frame size, %ldK total"
-						,capStatus.dwCurrentVideoFrame
-						,icd->dropped
-						,capStatus.dwCurrentTimeElapsedMS/1000
-						,capStatus.dwCurrentTimeElapsedMS%1000
-						,icd->last_cap ? (long)(icd->total_jitter/(icd->last_cap*1000)) : 0
-						,icd->last_cap ? (long)(icd->total_disp/(icd->last_cap*1000)) : 0
-						,(long)(icd->total_video_size/icd->total_cap)
-						,(long)((icd->total_video_size + icd->total_audio_size + 1023)/1024));
-		}
-
-		SendMessage(icd->hwndStatus, SB_SETTEXT, 0, (LPARAM)buf);
-		RedrawWindow(icd->hwndStatus, NULL, NULL, RDW_INVALIDATE|RDW_UPDATENOW);
-
-		icd->lastMessage = capStatus.dwCurrentTimeElapsedMS - capStatus.dwCurrentTimeElapsedMS%500;
-		icd->last_cap	= 0;
-		icd->total_jitter = icd->total_disp = 0;
-	};
-
-	if (g_bCaptureDDrawActive)
-		CaptureOverlayFrameCallback(hWnd, lpVHdr);
-
-	return 0;
+DisplayMode VDCaptureProject::GetDisplayMode() {
+	return mDisplayMode;
 }
 
-/* this is called in Internal capture mode to handle frame timing */
-
-static LRESULT CALLBACK CaptureAVICapWaveCallbackProc(HWND hWnd, LPWAVEHDR lpWHdr)
-{
-	CaptureData *icd = (CaptureData *)capGetUserData(hWnd);
-	CAPSTATUS capStatus;
-
-	capGetStatus(hWnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
-
-	icd->lAudioLastMS = capStatus.dwCurrentTimeElapsedMS;
-
-	if (!icd->audio_first_size) {
-		icd->audio_first_size = lpWHdr->dwBytesRecorded;
-		icd->lAudioFirstMS = capStatus.dwCurrentTimeElapsedMS;
+void VDCaptureProject::SetDisplayRect(const vdrect32& r) {
+	if (mpDriver) {
+		mpDriver->SetDisplayRect(r);
 	}
-
-	++icd->total_audio_cap;
-
-	icd->total_audio_data_size += lpWHdr->dwBytesRecorded;
-	icd->total_audio_size += lpWHdr->dwBytesRecorded + 24;
-
-	CaptureUpdateAudioTiming(icd, hWnd, capStatus.dwCurrentTimeElapsedMS);
-
-    return 0;
 }
 
-static void CaptureAVICap(HWND hWnd, HWND hWndCapture) {
-	char fname[MAX_PATH];
-	LRESULT lRes;
-	BITMAPINFO *bmi = NULL, *bmiTemp = NULL;
-	WAVEFORMAT *wf = NULL, *wfTemp = NULL;
-	LPARAM biSize, wfSize;
+vdrect32 VDCaptureProject::GetDisplayRectAbsolute() {
+	return mpDriver ? mpDriver->GetDisplayRectAbsolute() : vdrect32(0,0,0,0);
+}
+
+void VDCaptureProject::SetDisplayVisibility(bool vis) {
+	if (mpDriver)
+		mpDriver->SetDisplayVisibility(vis);
+}
+
+void VDCaptureProject::SetFrameTime(sint32 lFrameTime) {
+	if (mpDriver)
+		mpDriver->SetFramePeriod(lFrameTime);
+}
+
+sint32 VDCaptureProject::GetFrameTime() {
+	if (!VDINLINEASSERT(mpDriver))
+		return 1000000/15;
+
+	return mpDriver->GetFramePeriod();
+}
+
+void VDCaptureProject::SetAudioCaptureEnabled(bool b) {
+	if (mpDriver)
+		mpDriver->SetAudioCaptureEnabled(b);
+}
+
+bool VDCaptureProject::IsAudioCaptureEnabled() {
+	return mpDriver && mpDriver->IsAudioCaptureEnabled();
+}
+
+void VDCaptureProject::SetHardwareBuffering(int videoBuffers, int audioBuffers, int audioBufferSize) {
+#if 0
 	CAPTUREPARMS cp;
-	CaptureData cd;
 
-//	memset(&cd, 0, sizeof cd);
+	if (capCaptureGetSetup(mhwndCapture, &cp, sizeof(CAPTUREPARMS))) {
+		cp.wNumVideoRequested = videoBuffers;
+		cp.wNumAudioRequested = audioBuffers;
+		cp.dwAudioBufferSize = audioBufferSize;
 
-	g_capLog.Dispose();
-
-	try {
-		// get the input filename
-
-		if (!capFileGetCaptureFile(hWndCapture, fname, sizeof fname))
-			throw MyError("Couldn't get capture filename.");
-
-		// get capture parms
-
-		if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
-			throw MyError("Couldn't get capture setup info.");
-
-		// copy over time limit information
-
-		if (g_stopPrefs.fEnableFlags & CAPSTOP_TIME) {
-			cp.fLimitEnabled	= true;
-			cp.wTimeLimit		= g_stopPrefs.lTimeLimit;
-		} else
-			cp.fLimitEnabled	= false;
-
-		if (!capCaptureSetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
-			throw MyError("Couldn't set capture setup info.");
-
-		// get audio format
-
-		bool bCaptureAudio = (0 != cp.fCaptureAudio);
-
-		if (bCaptureAudio) {
-			wfSize = capGetAudioFormatSize(hWndCapture);
-
-			if (!(wfTemp = wf = (WAVEFORMAT *)allocmem(wfSize))) throw MyMemoryError();
-
-			if (!capGetAudioFormat(hWndCapture, wf, wfSize))
-				throw MyError("Couldn't get audio format");
-		}
-
-		// initialize video compression
-
-		biSize = capGetVideoFormatSize(hWndCapture);
-
-		if (!(bmi = bmiTemp = (BITMAPINFO *)allocmem(biSize)))
-			throw MyMemoryError();
-
-		if (!capGetVideoFormat(hWndCapture, bmiTemp, biSize))
-			throw MyError("Couldn't get video format");
-
-		// Setup capture structure
-
-		if (bCaptureAudio)
-			memcpy(&cd.wfex, wf, std::min<unsigned>(wfSize, sizeof cd.wfex));
-
-		cd.hwndStatus	= GetDlgItem(hWnd, IDC_STATUS_WINDOW);
-		cd.hwndPanel	= GetDlgItem(hWnd, IDC_CAPTURE_PANEL);
-		cd.interval		= cp.dwRequestMicroSecPerFrame;
-
-		if (!bmi->bmiHeader.biBitCount)
-			cd.uncompressed_frame_size		= ((bmi->bmiHeader.biWidth * 2 + 3) & -3) * bmi->bmiHeader.biHeight;
-		else
-			cd.uncompressed_frame_size		= ((bmi->bmiHeader.biWidth * ((bmi->bmiHeader.biBitCount + 7)/8) + 3) & -3) * bmi->bmiHeader.biHeight;
-
-		CaptureInitFiltering(&cd, &bmi->bmiHeader, cp.dwRequestMicroSecPerFrame, false);
-
-		if (!SplitPathRoot(cd.szCaptureRoot, fname)) {
-			cd.szCaptureRoot[0] = 0;
-		}
-
-		// capture!!
-
-		capSetUserData(hWndCapture, (LPARAM)&cd);
-		capSetCallbackOnVideoStream(hWndCapture, CaptureAVICapVideoCallbackProc);
-		if (bCaptureAudio)
-			capSetCallbackOnWaveStream(hWndCapture, CaptureAVICapWaveCallbackProc);
-		capSetCallbackOnCapControl(hWndCapture, CaptureControlCallbackProc);
-
-		CaptureShowFile(hWnd, hWndCapture, true);
-		g_fRestricted = true;
-		lRes = capCaptureSequence(hWndCapture);
-		g_fRestricted = false;
-		CaptureShowFile(hWnd, hWndCapture, false);
-
-		capSetCallbackOnCapControl(hWndCapture, NULL);
-		capSetCallbackOnWaveStream(hWndCapture, NULL);
-		capSetCallbackOnVideoStream(hWndCapture, NULL);
-
-		if (g_bAutoIncrementAfterCapture)
-			CaptureIncrementFileID(hWndCapture);
-	} catch(const MyError& e) {
-		e.post(hWnd, "Capture error");
+		capCaptureSetSetup(mhwndCapture, &cp, sizeof(CAPTUREPARMS));
 	}
-
-	CaptureDeinitFiltering(&cd);
-
-	freemem(bmiTemp);
-	freemem(wfTemp);
-
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//	Internal capture
-//
-///////////////////////////////////////////////////////////////////////////
-
-class InternalCapVars {
-public:
-	VideoSequenceCompressor *pvsc;
-	IVDMediaOutput		*mpOutput;
-	IVDMediaOutputAVIFile	*mpOutputFile;
-	IVDMediaOutputAVIFile	*mpOutputFilePending;
-	IVDMediaOutputStream	*mpVideoOut;
-	IVDMediaOutputStream	*mpAudioOut;
-	int				blockAlign;
-	DWORD			lastFrame;
-	MyError *		fatal_error;
-	MyError *		fatal_error_2;
-	HFONT			hFont;
-	const char	*	pszFilename;
-	const char	*	pszPath;
-	const char	*	pszNewPath;
-	__int64			segment_audio_size, segment_video_size;
-	__int64			nAudioBlocks;
-	__int64			nAudioSwitchPt;
-	__int64			nVideoBlocks;
-	__int64			nVideoSwitchPt;
-	long			lDiskThresh;
-	long			lDiskThresh2;
-	long			lVideoMSBias;			// Compensates for 71 minute flipping on some drivers
-	long			lLastVideoUncorrectedMS;
-
-	HANDLE			hIOThread;
-	DWORD			dwThreadID;
-	bool			fDoSwitch;
-	bool			fAllFull;
-	bool			fNTSC;
-	bool			fWarnVideoCaptureTiming1;	// 71 minute bug #1 found
-
-	// video clock correction
-
-	long			lFirstVideoPt;
-
-	InternalCapVars() {
-		memset(this, 0, sizeof *this);
-	}
-};
-
-class InternalCapData : public CaptureData, public InternalCapVars {
-public:
-};
-
-////////////////
-
-extern LONG __stdcall CrashHandler(EXCEPTION_POINTERS *pExc);
-
-#if 0
-#define CAPINT_FATAL_CATCH_START	\
-		__try {
-
-#define CAPINT_FATAL_CATCH_END(msg)	\
-		} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info()), 1) {		\
-		}
-#else
-#define CAPINT_FATAL_CATCH_START	\
-		__try {
-
-#define CAPINT_FATAL_CATCH_END(msg)	\
-		} __except(CaptureIsCatchableException(GetExceptionCode())) {		\
-			CaptureInternalHandleException(icd, msg, GetExceptionCode());				\
-		}
-
-static void CaptureInternalHandleException(InternalCapData *icd, char *op, DWORD ec) {
-	if (!icd->fatal_error) {
-		char *s;
-
-		switch(ec) {
-		case EXCEPTION_ACCESS_VIOLATION:
-			s = "Access Violation";
-			break;
-		case EXCEPTION_PRIV_INSTRUCTION:
-			s = "Privileged Instruction";
-			break;
-		case EXCEPTION_INT_DIVIDE_BY_ZERO:
-			s = "Integer Divide By Zero";
-			break;
-		case EXCEPTION_BREAKPOINT:
-			s = "User Breakpoint";
-			break;
-		}
-
-		icd->fatal_error = new MyError("Internal program error during %s handling: %s.", op, s);
-	}
-}
 #endif
+}
 
-static void CaptureInternalSpillNewFile(InternalCapData *const icd) {
-	IVDMediaOutputAVIFile *pNewFile = NULL;
-	BITMAPINFO *bmi;
-	char fname[MAX_PATH];
-	CapSpillDrive *pcsd;
+bool VDCaptureProject::GetHardwareBuffering(int& videoBuffers, int& audioBuffers, int& audioBufferSize) {
+#if 0
+	CAPTUREPARMS cp;
 
-	pcsd = CapSpillPickDrive(false);
-	if (!pcsd) {
-		icd->fAllFull = true;
-		return;
+	if (VDINLINEASSERT(capCaptureGetSetup(mhwndCapture, &cp, sizeof(CAPTUREPARMS)))) {
+		videoBuffers = cp.wNumVideoRequested;
+		audioBuffers = cp.wNumAudioRequested;
+		audioBufferSize = cp.dwAudioBufferSize;
+		return true;
 	}
+#endif
+	return false;
+}
 
-	icd->pszNewPath = pcsd->path;
+bool VDCaptureProject::IsDriverDialogSupported(DriverDialog dlg) {
+	return mpDriver && mpDriver->IsDriverDialogSupported(dlg);
+}
 
-	try {
-		pNewFile = VDCreateMediaOutputAVIFile();
-		if (!pNewFile)
-			throw MyMemoryError();
+void VDCaptureProject::DisplayDriverDialog(DriverDialog dlg) {
+	if (mpDriver)
+		mpDriver->DisplayDriverDialog(dlg);
+}
 
-		pNewFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
+void VDCaptureProject::GetPreviewImageSize(sint32& w, sint32& h) {
+	w = 320;
+	h = 240;
 
-		IVDMediaOutputStream *pNewVideo = pNewFile->createVideoStream();
-		IVDMediaOutputStream *pNewAudio = NULL;
+	vdstructex<BITMAPINFOHEADER> vformat;
+	if (GetVideoFormat(vformat)) {
+		w = vformat->biWidth;
+		h = vformat->biHeight;
+	}
+}
+
+void VDCaptureProject::SetFilterSetup(const VDCaptureFilterSetup& setup) {
+	bool analyze = (mDisplayMode == kDisplayAnalyze);
+
+	if (analyze)
+		SetDisplayMode(kDisplayNone);
+	VDASSERT(!mpFilterSys);
+	mFilterSetup = setup;
+	if (analyze)
+		SetDisplayMode(kDisplayAnalyze);
+}
+
+const VDCaptureFilterSetup& VDCaptureProject::GetFilterSetup() {
+	return mFilterSetup;
+}
+
+void VDCaptureProject::SetStopPrefs(const VDCaptureStopPrefs& prefs) {
+	mStopPrefs = prefs;
+}
+
+const VDCaptureStopPrefs& VDCaptureProject::GetStopPrefs() {
+	return mStopPrefs;
+}
+
+void VDCaptureProject::SetDiskSettings(const VDCaptureDiskSettings& sets) {
+	mDiskSettings = sets;
+}
+
+const VDCaptureDiskSettings& VDCaptureProject::GetDiskSettings() {
+	return mDiskSettings;
+}
+
+uint32 VDCaptureProject::GetPreviewFrameCount() {
+	return mpDriver ? mpDriver->GetPreviewFrameCount() : 0;
+}
+
+bool VDCaptureProject::SetVideoFormat(const BITMAPINFOHEADER& bih, LONG cbih) {
+	if (!mpDriver)
+		return false;
+
+	if (!mpDriver->SetVideoFormat(&bih, cbih))
+		return false;
 		
-		if (icd->mpAudioOut)
-			pNewAudio = pNewFile->createAudioStream();
+	if (mpCB)
+		mpCB->UICaptureVideoFormatUpdated();
 
-		if (g_prefs.fAVIRestrict1Gb)
-			pNewFile->set_1Gb_limit();
-
-		pNewFile->set_capture_mode(true);
-
-		// copy over information to new file
-
-		pNewVideo->setStreamInfo(icd->mpVideoOut->getStreamInfo());
-		pNewVideo->setFormat(icd->mpVideoOut->getFormat(), icd->mpVideoOut->getFormatLen());
-
-		if (icd->mpAudioOut) {
-			pNewAudio->setStreamInfo(icd->mpAudioOut->getStreamInfo());
-			pNewAudio->setFormat(icd->mpAudioOut->getFormat(), icd->mpAudioOut->getFormatLen());
-		} 
-
-		// init the new file
-
-		if (!g_capStripeSystem && g_diskDisableBuffer) {
-			pNewFile->disable_os_caching();
-			pNewFile->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
-		}
-
-		bmi = (BITMAPINFO *)icd->mpVideoOut->getFormat();
-
-		pcsd->makePath(fname, icd->pszFilename);
-
-		// edit the filename up
-
-		sprintf((char *)VDFileSplitExt(fname), ".%02d.avi", icd->iSpillNumber+1);
-
-		// init the file
-
-		pNewFile->init(VDTextAToW(fname).c_str());
-
-		icd->mpOutputFilePending = pNewFile;
-
-		*(char *)VDFileSplitPath(fname) = 0;
-
-		icd->mpOutputFile->setSegmentHintBlock(false, fname, MAX_PATH);
-
-		++icd->iSpillNumber;
-		icd->lDiskThresh2 = pcsd->threshold;
-
-	} catch(const MyError&) {
-		delete pNewFile;
-		throw;
-	}
+	return true;
 }
 
-static void CaptureInternalSpillFinalizeOld(InternalCapData *const icd) {
-	IVDMediaOutput *ao = icd->mpOutput;
-
-	icd->mpOutputFile	= icd->mpOutputFilePending;
-	icd->mpOutput		= icd->mpOutputFile;
-	ao->finalize();
-	delete ao;
-	icd->pszPath = icd->pszNewPath;
-	icd->lDiskThresh = icd->lDiskThresh2;
+bool VDCaptureProject::SetAudioFormat(const WAVEFORMATEX& wfex, LONG cbwfex) {
+	return mpDriver && mpDriver->SetAudioFormat(&wfex, cbwfex);
 }
 
-#define VDCM_EXIT		(WM_APP+0)
-#define VDCM_SWITCH_FIN (WM_APP+1)
-
-static unsigned __stdcall CaptureInternalSpillThread(void *pp) {
-	InternalCapData *const icd = (InternalCapData *)pp;
-	MSG msg;
-	bool fSwitch = false;
-	DWORD dwTimer = GetTickCount();
-	bool fTimerActive = true;
-
-	VDInitThreadData("Capture spill");
-
-	for(;;) {
-		bool fSuccess = false;
-
-		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-			if (msg.message == VDCM_EXIT)
-				return 0;
-			else if (msg.message == VDCM_SWITCH_FIN) {
-				fSwitch = true;
-				if (!fTimerActive) {
-					fTimerActive = true;
-					dwTimer = GetTickCount();
-				}
-			}
-
-			if (msg.message)
-				fSuccess = true;
-		}
-
-		// We'd like to do this stuff while the system is idle, but it's
-		// possible the system is so busy that it's never idle -- so force
-		// processing to take place if the timeout expires.  Right now,
-		// we set it to 10 seconds.
-
-		if (!fSuccess || (fTimerActive && (GetTickCount()-dwTimer) > 10000) ) {
-
-			// Kill timer.
-
-			fTimerActive = false;
-
-			// Time to initialize new output file?
-
-			if (!icd->fatal_error_2) try {
-
-				if (icd->mpOutputFile && !icd->mpOutputFilePending && !icd->fAllFull) {
-					CaptureInternalSpillNewFile(icd);
-				}
-
-				// Finalize old output?
-
-				if (fSwitch) {
-					CaptureInternalSpillFinalizeOld(icd);
-					fSwitch = false;
-
-					// Restart timer for new file to open.
-
-					dwTimer = GetTickCount();
-					fTimerActive = true;
-				}
-			} catch(const MyError& e) {
-				icd->fatal_error_2 = new MyError(e);
-			}
-		}
-
-		if (!fSuccess)
-			WaitMessage();
-	}
-
-	VDDeinitThreadData();
+bool VDCaptureProject::GetVideoFormat(vdstructex<BITMAPINFOHEADER>& bih) {
+	return mpDriver && mpDriver->GetVideoFormat(bih);
 }
 
-static void CaptureInternalDoSpill(InternalCapData *icd) {
-	if (!g_fEnableSpill) return;
-
-	__int64 nAudioFromVideo;
-	__int64 nVideoFromAudio;
-
-	if (icd->fAllFull)
-		throw MyError("Capture stopped: All assigned spill drives are full.");
-
-	// If there is no audio, then switch now.
-
-	if (icd->mpAudioOut) {
-
-		// Find out if the audio or video stream is ahead, and choose a stop point.
-
-		if (icd->fNTSC)
-			nAudioFromVideo = int64divround(icd->nVideoBlocks * 1001i64 * icd->wfex.nAvgBytesPerSec, icd->blockAlign * 30000i64);
-		else
-			nAudioFromVideo = int64divround(icd->nVideoBlocks * (__int64)icd->interval * icd->wfex.nAvgBytesPerSec, icd->blockAlign * 1000000i64);
-
-		if (nAudioFromVideo < icd->nAudioBlocks) {
-
-			// Audio is ahead of the corresponding video point.  Figure out how many frames ahead
-			// we need to trigger from now.
-
-			if (icd->fNTSC) {
-				nVideoFromAudio = int64divroundup(icd->nAudioBlocks * icd->blockAlign * 30000i64, icd->wfex.nAvgBytesPerSec * 1001i64);
-				nAudioFromVideo = int64divround(nVideoFromAudio * 1001i64 * icd->wfex.nAvgBytesPerSec, icd->blockAlign * 30000i64);
-			} else {
-				nVideoFromAudio = int64divroundup(icd->nAudioBlocks * icd->blockAlign * 1000000i64, icd->wfex.nAvgBytesPerSec * (__int64)icd->interval);
-				nAudioFromVideo = int64divround(nVideoFromAudio * (__int64)icd->interval * icd->wfex.nAvgBytesPerSec, icd->blockAlign * 1000000i64);
-			}
-
-			icd->nVideoSwitchPt = nVideoFromAudio;
-			icd->nAudioSwitchPt = nAudioFromVideo;
-
-			_RPT4(0,"SPILL: (%I64d,%I64d) > trigger at > (%I64d,%I64d)\n", icd->nVideoBlocks, icd->nAudioBlocks, icd->nVideoSwitchPt, icd->nAudioSwitchPt);
-
-			return;
-
-		} else if (nAudioFromVideo > icd->nAudioBlocks) {
-
-			// Audio is behind the corresponding video point, so switch the video stream now
-			// and post a trigger for audio.
-
-			icd->nAudioSwitchPt = nAudioFromVideo;
-
-			_RPT3(0,"SPILL: video frozen at %I64d, audio(%I64d) trigger at (%I64d)\n", icd->nVideoBlocks, icd->nAudioBlocks, icd->nAudioSwitchPt);
-
-			icd->segment_video_size = 0;
-			icd->mpVideoOut = icd->mpOutputFilePending->getVideoOutput();
-
-			return;
-
-		}
-	}
-
-	// Hey, they're exactly synched!  Well then, let's switch them now!
-
-	_RPT2(0,"SPILL: exact sync switch at %I64d, %I64d\n", icd->nVideoBlocks, icd->nAudioBlocks);
-
-	IVDMediaOutput *pOutputPending = icd->mpOutputFilePending;
-	icd->mpVideoOut = pOutputPending->getVideoOutput();
-	icd->mpAudioOut = pOutputPending->getAudioOutput();
-	icd->segment_audio_size = icd->segment_video_size = 0;
-
-	PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
+bool VDCaptureProject::GetAudioFormat(vdstructex<WAVEFORMATEX>& wfex) {
+	return mpDriver && mpDriver->GetAudioFormat(wfex);
 }
 
-static void CaptureInternalCheckVideoAfter(InternalCapData *icd) {
-	++icd->nVideoBlocks;
+void VDCaptureProject::SetCaptureFile(const VDStringW& filename, bool bIsStripeSystem) {
+	mFilename = filename;
+	mbStripingEnabled = bIsStripeSystem;
+	if (mpCB)
+		mpCB->UICaptureFileUpdated();
+}
+
+VDStringW VDCaptureProject::GetCaptureFile() {
+	return mFilename;
+}
+
+bool VDCaptureProject::IsStripingEnabled() {
+	return mbStripingEnabled;
+}
+
+void VDCaptureProject::SetSpillSystem(bool enable) {
+	mbEnableSpill = enable;
+}
+
+bool VDCaptureProject::IsSpillEnabled() {
+	return mbEnableSpill;
+}
+
+void VDCaptureProject::DecrementFileID() {
+	VDStringW name(mFilename);
+	const wchar_t *s = name.data();
+
+	VDStringW::size_type pos = VDFileSplitExt(s) - s;
 	
-	if (icd->nVideoSwitchPt && icd->nVideoBlocks == icd->nVideoSwitchPt) {
-
-		icd->mpVideoOut = icd->mpOutputFilePending->getVideoOutput();
-
-		if (!icd->nAudioSwitchPt) {
-			PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
-
-			_RPT0(0,"VIDEO: Triggering finalize & switch.\n");
-		} else
-			_RPT2(0,"VIDEO: Switching stripes, waiting for audio to reach sync point (%I64d < %I64d)\n", icd->nAudioBlocks, icd->nAudioSwitchPt);
-
-		icd->nVideoSwitchPt = 0;
-		icd->segment_video_size = 0;
-	}
-}
-
-static long g_dropforward=0, g_dropback=0;
-
-#if 0
-class xyzinitobject {
-public:
-	xyzinitobject() {
-		_CrtSetReportFile(0, CreateFile("f:\\log.txt", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
-		_CrtSetReportMode(0, _CRTDBG_MODE_FILE); 
-	}
-} g_xyzinitobject;
-#endif
-
-static LRESULT CaptureInternalVideoCallbackProc2(InternalCapData *icd, HWND hWnd, LPVIDEOHDR lpVHdr)
-{
-	CAPSTATUS capStatus;
-	char buf[256];
-	DWORD dwTime;
-	DWORD dwCurrentFrame;
-	long	lTimeStamp;
-	__int64 jitter;
-
-	// Has the I/O thread successfully completed the switch?
-
-	if (icd->mpOutputFile == icd->mpOutputFilePending)
-		icd->mpOutputFilePending = NULL;
-
-	// Get timestamp
-
-	capGetStatus(hWnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
-
-	// Log event
-
-	if (g_fLogEvents)
-		g_capLog.LogVideo(capStatus.dwCurrentTimeElapsedMS, lpVHdr->dwBytesUsed, lpVHdr->dwTimeCaptured);
-
-	// Correct for one form of the 71-minute bug.
-	//
-	// The video capture driver apparently computes a time in microseconds and then divides by
-	// 1000 to convert to milliseconds, but doesn't compensate for when the microsecond counter
-	// overflows past 2^32.  This results in a wraparound from 4294967ms (1h 11m 34s) to 0ms.
-	// We must detect this and add 4294967ms to the count.  This will be off by 1ms every three
-	// times this occurs, but 1ms of error every 3.5 hours is not that big of a deal.
-	//
-	// Some Matrox drivers wrap at 2^31 too....
-
-	lTimeStamp = lpVHdr->dwTimeCaptured;
-
-	if (lTimeStamp < icd->lLastVideoUncorrectedMS && lTimeStamp < 10000 && icd->lLastVideoUncorrectedMS >= 2138000) {
-
-		// Perform sanity checks.  We should be within ten seconds of the last frame.
-
-		long lNewTimeStamp;
-		long bias;
-		
-		if (icd->lLastVideoUncorrectedMS >= 4285000)
-			bias = 4294967;	// 71 minute bug
-		else
-			bias = 2147484;	// 35 minute bug
-
-		lNewTimeStamp = lTimeStamp + bias;
-
-		if (lNewTimeStamp < icd->lLastVideoUncorrectedMS + 5000 && lNewTimeStamp >= icd->lLastVideoUncorrectedMS - 5000) {
-			icd->lVideoMSBias += bias;
-
-			icd->fWarnVideoCaptureTiming1 = true;
-		}
-
-	}
-
-	icd->lLastVideoUncorrectedMS = lTimeStamp;
-
-	lTimeStamp += icd->lVideoMSBias;
-
-	// Determine what frame we are *supposed* to be on.
-	//
-	// Let's say our capture interval is 500ms:
-	//		Frame 0: 0-249ms
-	//		Frame 1: 250-749ms
-	//		Frame 2: 750-1249ms
-	//		...and so on.
-	//
-	// We have to do this because AVICap doesn't keep track
-	// of dropped frames in no-file capture mode.
-
-//_RPT1(0,"%d\n", lpVHdr->dwTimeCaptured);
-
-	if (g_fAdjustVideoTimer) {
-		if (icd->lVideoAdjust < 0 && (DWORD)-icd->lVideoAdjust > lTimeStamp)
-			lTimeStamp = 0;
-		else
-			lTimeStamp += icd->lVideoAdjust;
-	}
-
-	if (!icd->total_cap)
-		icd->lVideoFirstMS = lTimeStamp;
-
-//	dwTime = lpVHdr->dwTimeCaptured - icd->lVideoFirstMS;
-//	dwTime = lTimeStamp - icd->lVideoFirstMS;
-	dwTime = lTimeStamp;
-
-	icd->lVideoLastMS = lTimeStamp;
-
-	icd->total_video_size += icd->last_video_size;
-	icd->last_video_size = 0;
-
-	////////////////////////////
-
-	if (icd->fNTSC)
-		dwCurrentFrame = (DWORD)(((__int64)dwTime * 30 + 500) / 1001);
-	else
-		dwCurrentFrame = (DWORD)(((__int64)dwTime * 1000 + icd->interval/2) / icd->interval);
-
-	if (dwCurrentFrame) --dwCurrentFrame;
-
-//	_RPT2(0,"lastFrame=%d, dwCurrentFrame=%d\n", icd->lastFrame, dwCurrentFrame);
-
-//	jitter = ((__int64)lTimeStasmp*1000 - (__int64)icd->lastFrame*icd->interval);
-
-//	jitter = (long)(((lTimeStamp - icd->lVideoFirstMS)*1000i64) % icd->interval);
-	jitter = (long)((dwTime*1000i64) % icd->interval);
-
-//	_RPT1(0,"jitter: %ld\n", jitter);
-
-	if (jitter >= icd->interval/2) {
-		jitter -= icd->interval;
-		icd->total_disp -= jitter;
-	} else {
-		icd->total_disp += jitter;
-	}
-	icd->total_jitter += jitter;
-	++icd->total_cap;
-	++icd->last_cap;
-
-	icd->lCurrentMS = capStatus.dwCurrentTimeElapsedMS;
-
-	// Is the frame too early?
-
-	if (icd->lastFrame > dwCurrentFrame+1) {
-		++icd->dropped;
-++g_dropforward;
-_RPT2(0,"Drop forward at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTimeStamp);
-		return 0;
-	}
-
-	// Run the frame through the filterer.
-
-	DWORD dwBytesUsed = lpVHdr->dwBytesUsed;
-	void *pFilteredData = CaptureDoFiltering(icd, lpVHdr, false, dwBytesUsed);
-
-	if (icd->mpOutputFile) {
-		try {
-			// While we are early, write dropped frames (grr)
-			//
-			// Don't do this for the first frame, since we don't
-			// have any frames preceding it!
-
-			if (icd->total_cap > 1)
-				while(icd->lastFrame < dwCurrentFrame) {
-					icd->mpVideoOut->write(0, lpVHdr->lpData, 0, 1);
-					++icd->lastFrame;
-					++icd->dropped;
-_RPT2(0,"Drop back at %ld ms (%ld ms corrected)\n", lpVHdr->dwTimeCaptured, lTimeStamp);
-++g_dropback;
-					icd->total_video_size += 24;
-					icd->segment_video_size += 24;
-
-					if (icd->pvsc)
-						icd->pvsc->dropFrame();
-
-					CaptureInternalCheckVideoAfter(icd);
-				}
-
-			if (icd->pvsc) {
-				bool isKey;
-				long lBytes = 0;
-				void *lpCompressedData;
-
-				lpCompressedData = icd->pvsc->packFrame(pFilteredData, &isKey, &lBytes);
-
-				icd->mpVideoOut->write(
-						isKey ? AVIIF_KEYFRAME : 0,
-						lpCompressedData,
-						lBytes, 1);
-
-				CaptureInternalCheckVideoAfter(icd);
-
-				icd->last_video_size = lBytes + 24;
-			} else {
-				icd->mpVideoOut->write(lpVHdr->dwFlags & VHDR_KEYFRAME ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
-				CaptureInternalCheckVideoAfter(icd);
-
-				icd->last_video_size = dwBytesUsed + 24;
-			}
-		} catch(const MyError& e) {
-			if (!icd->fatal_error)
-				icd->fatal_error = new MyError(e);
-
-			capCaptureAbort(hWnd);
-
-			return FALSE;
-		}
-	} else {
-		// testing
-
-		while(icd->lastFrame < dwCurrentFrame) {
-			++icd->lastFrame;
-			++icd->dropped;
-++g_dropback;
-			icd->total_video_size += 24;
-			icd->segment_video_size += 24;
-		}
-
-		if (icd->pvsc) {
-			bool isKey;
-			long lBytes = 0;
-			void *lpCompressedData;
-
-			lpCompressedData = icd->pvsc->packFrame(pFilteredData, &isKey, &lBytes);
-
-			icd->last_video_size = lBytes + 24;
-		} else {
-			icd->last_video_size = dwBytesUsed + 24;
-		}
-	}
-
-	++icd->lastFrame;
-	icd->segment_video_size += icd->last_video_size;
-
-	if (capStatus.dwCurrentTimeElapsedMS - icd->lastMessage > 500)
-	{
-
-		if (icd->mpOutputFilePending && !icd->nAudioSwitchPt && !icd->nVideoSwitchPt && g_fEnableSpill) {
-			if (icd->segment_video_size + icd->segment_audio_size >= ((__int64)g_lSpillMaxSize<<20)
-				|| VDGetDiskFreeSpace(VDTextAToW(VDString(icd->pszPath))) < ((__int64)icd->lDiskThresh << 20))
-
-				CaptureInternalDoSpill(icd);
-		}
-
-		if (g_fInfoPanel) {
-			if (icd->hwndPanel)
-				SendMessage(icd->hwndPanel, WM_APP, 0, (LPARAM)(CaptureData *)icd);
-
-			sprintf(buf, "%ldus jitter, %ldus disp, %ldK total, spill seg #%d, %d/%d"
-						,icd->last_cap ? (long)(icd->total_jitter/(icd->last_cap*1)) : 0
-						,icd->last_cap ? (long)(icd->total_disp/(icd->last_cap*1)) : 0
-						,(long)((icd->total_video_size + icd->total_audio_size + 1023)/1024)
-						,icd->iSpillNumber+1
-						,g_dropback, g_dropforward
-						);
-		} else {
-			__int64 i64;
-
-			if (g_fEnableSpill)
-				i64 = CapSpillGetFreeSpace();
+	while(pos > 0) {
+		--pos;
+
+		if (iswdigit(name[pos])) {
+			if (name[pos] == L'0')
+				name[pos] = L'9';
 			else {
-				if (icd->szCaptureRoot[0])
-					i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(icd->szCaptureRoot)));
-				else
-					i64 = VDGetDiskFreeSpace(VDStringW(L"."));
+				--name[pos];
+				SetCaptureFile(name, mbStripingEnabled);
+				if (mpCB)
+					mpCB->UICaptureFileUpdated();
+				return;
 			}
+		} else
+			break;
+	}
 
-			if (i64>=0) {
-				if (i64)
-					icd->disk_free = i64;
-				else
-					icd->disk_free = -1;
-			}
-
-			wsprintf(buf, "%ld frames (%ld dropped), %d.%03ds, %ldms jitter, %ldms disp, %ld frame size, %ldK total"
-						,icd->total_cap
-						,icd->dropped
-						,capStatus.dwCurrentTimeElapsedMS/1000
-						,capStatus.dwCurrentTimeElapsedMS%1000
-						,icd->last_cap ? (long)(icd->total_jitter/(icd->last_cap*1000)) : 0
-						,icd->last_cap ? (long)(icd->total_disp/(icd->last_cap*1000)) : 0
-						,(long)(icd->total_video_size/icd->total_cap)
-						,(long)((icd->total_video_size + icd->total_audio_size + 1023)/1024));
-		}
-
-		SendMessage(icd->hwndStatus, SB_SETTEXT, 0, (LPARAM)buf);
-		RedrawWindow(icd->hwndStatus, NULL, NULL, RDW_INVALIDATE|RDW_UPDATENOW);
-
-		if (icd->hFont) {
-			HWND hwndParent = GetParent(hWnd);
-			RECT r;
-			HDC hdc;
-
-			GetWindowRect(icd->hwndStatus, &r);
-			ScreenToClient(hwndParent, (LPPOINT)&r);
-
-			if (hdc = GetDC(hwndParent)) {
-				HGDIOBJ hgoOld;
-				long tm = capStatus.dwCurrentTimeElapsedMS/1000;
-
-				hgoOld = SelectObject(hdc, icd->hFont);
-				SetTextAlign(hdc, TA_BASELINE | TA_LEFT);
-				SetBkColor(hdc, GetSysColor(COLOR_3DFACE));
-				wsprintf(buf, "%d:%02d", tm/60, tm%60);
-				TextOut(hdc, 50, r.top - 50, buf, strlen(buf));
-				SelectObject(hdc, hgoOld);
-			}
-		}
-
-		icd->lastMessage = capStatus.dwCurrentTimeElapsedMS - capStatus.dwCurrentTimeElapsedMS%500;
-		icd->last_cap	= 0;
-		icd->total_jitter = icd->total_disp = 0;
-	};
-
-	return TRUE;
+	guiSetStatus("Can't decrement filename any farther.", 0);
 }
 
-static int inline square(int x) { return x*x; }
+void VDCaptureProject::IncrementFileID() {
+	VDStringW name(mFilename);
+	const wchar_t *s = name.data();
 
-static LRESULT CaptureInternalWaveCallbackProc2(InternalCapData *icd, HWND hWnd, LPWAVEHDR lpWHdr)
-{
-	CAPSTATUS capStatus;
-	DWORD dwTime, dwOTime;
+	int pos = VDFileSplitExt(s) - s;
+	
+	while(--pos >= 0) {
+		if (iswdigit(name[pos])) {
+			if (name[pos] == '9')
+				name[pos] = '0';
+			else {
+				++name[pos];
+				SetCaptureFile(name, mbStripingEnabled);
+				if (mpCB)
+					mpCB->UICaptureFileUpdated();
+				return;
+			}
+		} else
+			break;
+	}
 
-	// Get current timestamp
+	name.insert(pos+1, L'1');
+	SetCaptureFile(name, mbStripingEnabled);
 
-	capGetStatus(hWnd, (LPARAM)&capStatus, sizeof(CAPSTATUS));
+	if (mpCB)
+		mpCB->UICaptureFileUpdated();
+}
 
-	dwOTime = dwTime = capStatus.dwCurrentTimeElapsedMS;
+void VDCaptureProject::ScanForDrivers() {
+	tSystems::const_iterator itSys(mSystems.begin()), itSysEnd(mSystems.end());
+	int systemID = 0;
 
-	if (!icd->total_audio_cap)
-		icd->lFirstVideoPt = icd->lastFrame;
+	for(; itSys != itSysEnd; ++itSys, ++systemID) {
+		IVDCaptureSystem *pSystem = *itSys;
 
+		pSystem->EnumerateDrivers();
+
+		const int nDevices = pSystem->GetDeviceCount();
+		for(int dev=0; dev<nDevices; ++dev) {
+			VDStringA name(VDTextWToA(pSystem->GetDeviceName(dev)));
+			mDrivers.push_back(DriverEntry(name.c_str(), systemID, dev));
+		}
+	}
+
+	if (mpCB)
+		mpCB->UICaptureDriversUpdated();
+}
+
+int VDCaptureProject::GetDriverCount() {
+	return mDrivers.size();
+}
+
+const char *VDCaptureProject::GetDriverName(int i) {
+	tDrivers::const_iterator it(mDrivers.begin()), itEnd(mDrivers.end());
+
+	while(i>0 && it!=itEnd) {
+		--i;
+		++it;
+	}
+
+	if (it != itEnd)
+		return (*it).mName.c_str();
+
+	return NULL;
+}
+
+bool VDCaptureProject::SelectDriver(int nDriver) {
+	SetDisplayMode(kDisplayNone);
+
+	mpDriver = NULL;
+
+	VDASSERT(nDriver == -1 || (unsigned)nDriver < mDrivers.size());
+
+	if ((unsigned)nDriver >= mDrivers.size())
+		return false;
+
+	tDrivers::const_iterator it(mDrivers.begin());
+	std::advance(it, nDriver);
+
+	const DriverEntry& ent = *it;
+
+	tSystems::const_iterator itSys(mSystems.begin());
+
+	std::advance(itSys, ent.mSystemId);
+
+	IVDCaptureSystem *pSys = *itSys;
+
+	mpDriver = pSys->CreateDriver(ent.mId);
+
+	if (!mpDriver || !mpDriver->Init(mhwnd)) {
+		mpDriver = NULL;
+		MessageBox((HWND)mhwnd, "VirtualDub cannot connect to the desired capture driver.", g_szError, MB_OK);
+		return false;
+	}
+
+	mpDriver->SetCallback(this);
+
+	mDisplayMode = kDisplayNone;
+
+	if (mpCB) {
+		mpCB->UICaptureDriverChanged(nDriver);
+		mpCB->UICaptureParmsUpdated();
+		mpCB->UICaptureVideoFormatUpdated();
+	}
+
+	mpDriver->SetDisplayVisibility(true);
+
+	return true;
+}
+
+void VDCaptureProject::EnablePreviewHistogram(bool fEnable) {
 #if 0
-	char buf[256];
-		wsprintf(buf,"time: %ld ms  freq: %ld hz\n", capStatus.dwCurrentTimeElapsedMS, MulDiv(icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded, 2997, (icd->lastFrame - icd->lFirstVideoPt)*400));
-		SendMessage(icd->hwndStatus, SB_SETTEXT, 0, (LPARAM)buf);
-		RedrawWindow(icd->hwndStatus, NULL, NULL, RDW_INVALIDATE|RDW_UPDATENOW);
-#endif
+	if (fEnable) {
+		if (!g_pHistogram) {
+			if (mbPreviewAnalysisEnabled)
+				SetPreview(false);
 
-	// Adjust video timing
+			try {
+				g_pHistogram = new CaptureHistogram(mhwndCapture, NULL, 128);
 
-	dwTime += icd->lVideoAdjust;
+				if (!g_pHistogram)
+					throw MyMemoryError();
 
-	if (g_fAdjustVideoTimer && icd->total_audio_cap) {
-		long lDesiredVideoFrame;
-		long lDelta;
+				capSetCallbackOnFrame(mhwndCapture, (LPVOID)CaptureHistoFrameCallback);
 
-		// Truncate the division, then accept desired or desired+1.
-
-		if (icd->fNTSC)
-			lDesiredVideoFrame = (long)(icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 30000i64) / (icd->wfex.nAvgBytesPerSec*1001i64));
-		else
-			lDesiredVideoFrame = (long)(icd->lFirstVideoPt + ((icd->total_audio_data_size - icd->audio_first_size + lpWHdr->dwBytesRecorded) * 1000000i64) / (icd->wfex.nAvgBytesPerSec*(__int64)icd->interval));
-
-		lDelta = (long)icd->lastFrame - lDesiredVideoFrame;
-
-		if (lDelta > 1) {
-			icd->lVideoAdjust -= lDelta-1;
-//			icd->lVideoAdjust -= icd->interval/1000;
-_RPT2(0,"Timing reverse at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
-		} else if (lDelta < 0) {
-			icd->lVideoAdjust -= lDelta;
-//			icd->lVideoAdjust += icd->interval/1000;
-_RPT2(0,"Timing forward at %ld ms (%ld ms corrected)\n", dwOTime, dwTime);
-		}
-
-	}
-
-	if (g_fLogEvents)
-		g_capLog.LogAudio(dwTime, lpWHdr->dwBytesRecorded, 0);
-
-	// Has the I/O thread successfully completed the switch?
-
-	if (icd->mpOutputFile == icd->mpOutputFilePending)
-		icd->mpOutputFilePending = NULL;
-
-	icd->lAudioLastMS = capStatus.dwCurrentTimeElapsedMS;
-
-	++icd->total_audio_cap;
-
-	if (icd->mpOutput) {
-		try {
-			if (g_fEnableSpill) {
-				char *pSrc = (char *)lpWHdr->lpData;
-				long left = (long)lpWHdr->dwBytesRecorded;
-
-				// If there is a switch point, write up to it.  Otherwise, write it all!
-
-				while(left > 0) {
-					long tc;
-
-					tc = left;
-
-					if (icd->nAudioSwitchPt && icd->nAudioBlocks+tc/icd->blockAlign >= icd->nAudioSwitchPt)
-						tc = (long)((icd->nAudioSwitchPt - icd->nAudioBlocks) * icd->blockAlign);
-
-					icd->mpAudioOut->write(0, pSrc, tc, tc / icd->blockAlign);
-					icd->total_audio_size += tc + 24;
-					icd->segment_audio_size += tc + 24;
-					icd->nAudioBlocks += tc / icd->blockAlign;
-
-					if (icd->nAudioSwitchPt && icd->nAudioBlocks == icd->nAudioSwitchPt) {
-						// Switch audio to next stripe.
-
-						icd->mpAudioOut = icd->mpOutputFilePending->getAudioOutput();
-
-						if (!icd->nVideoSwitchPt) {
-							PostThreadMessage(icd->dwThreadID, VDCM_SWITCH_FIN, 0, 0);
-							_RPT0(0,"AUDIO: Triggering finalize & switch.\n");
-						} else
-							_RPT2(0,"AUDIO: Switching to next, waiting for video to reach sync point (%I64d < %I64d)\n", icd->nVideoBlocks, icd->nVideoSwitchPt);
-
-						icd->nAudioSwitchPt = 0;
-						icd->segment_audio_size = 0;
-					}
-
-					left -= tc;
-					pSrc += tc;
-				}
-			} else {
-				icd->mpAudioOut->write(0, lpWHdr->lpData, lpWHdr->dwBytesRecorded, lpWHdr->dwBytesRecorded / icd->blockAlign);
-				icd->total_audio_size += lpWHdr->dwBytesRecorded + 24;
-				icd->segment_audio_size += lpWHdr->dwBytesRecorded + 24;
+			} catch(const MyError& e) {
+				guiSetStatus("Cannot initialize histogram: %s", 0, e.gets());
 			}
-		} catch(const MyError& e) {
-			if (!icd->fatal_error)
-				icd->fatal_error = new MyError(e);
-
-			capCaptureAbort(hWnd);
-
-			return FALSE;
 		}
+
+		capPreview(mhwndCapture, true);
 	} else {
-		icd->total_audio_size += lpWHdr->dwBytesRecorded + 24;
-		icd->segment_audio_size += lpWHdr->dwBytesRecorded + 24;
-	}
-
-	if (!icd->audio_first_size) {
-		icd->audio_first_size = lpWHdr->dwBytesRecorded;
-		icd->lAudioFirstMS = capStatus.dwCurrentTimeElapsedMS;
-	}
-
-	icd->total_audio_data_size += lpWHdr->dwBytesRecorded;
-
-	CaptureUpdateAudioTiming(icd, hWnd, dwTime);
-
-    return TRUE;
-}
-
-//////
-
-static LRESULT CALLBACK CaptureInternalVideoCallbackProc(HWND hWnd, LPVIDEOHDR lpVHdr)
-{
-	InternalCapData *icd = (InternalCapData *)capGetUserData(hWnd);
-	LRESULT lr = 0;
-
-	if (icd->fatal_error) return 0;
-	if (icd->fatal_error_2) {
-		icd->fatal_error = icd->fatal_error_2;
-		icd->fatal_error_2 = NULL;
-		capCaptureAbort(hWnd);
-		return 0;
-	}
-
-	////////////////////////
-	CAPINT_FATAL_CATCH_START
-	////////////////////////
-
-	lr = CaptureInternalVideoCallbackProc2(icd, hWnd, lpVHdr);
-
-	if (g_bCaptureDDrawActive)
-		CaptureOverlayFrameCallback(hWnd, lpVHdr);
-
-	///////////////////////////////
-	CAPINT_FATAL_CATCH_END("video")
-	///////////////////////////////
-
-	return lr;
-}
-
-static LRESULT CALLBACK CaptureInternalWaveCallbackProc(HWND hWnd, LPWAVEHDR lpWHdr)
-{
-	InternalCapData *icd = (InternalCapData *)capGetUserData(hWnd);
-	LRESULT lr = 0;
-
-	if (icd->fatal_error) return 0;
-	if (icd->fatal_error_2) {
-		icd->fatal_error = icd->fatal_error_2;
-		icd->fatal_error_2 = NULL;
-		capCaptureAbort(hWnd);
-		return 0;
-	}
-
-	////////////////////////
-	CAPINT_FATAL_CATCH_START
-	////////////////////////
-
-	lr = CaptureInternalWaveCallbackProc2(icd, hWnd, lpWHdr);
-
-	///////////////////////////////
-	CAPINT_FATAL_CATCH_END("audio")
-	///////////////////////////////
-
-	return lr;
-}
-
-//////
-
-static INT_PTR CALLBACK CaptureInternalHitOKDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_INITDIALOG:
-		{
-			CAPSTATUS cs;
-
-			memset(&cs, 0, sizeof cs);
-
-			capGetStatus((HWND)lParam, &cs, sizeof cs);
-
-			SetDlgItemInt(hDlg, IDC_AUDIO_BUFFERS, cs.wNumAudioAllocated, FALSE);
-			SetDlgItemInt(hDlg, IDC_VIDEO_BUFFERS, cs.wNumVideoAllocated, FALSE);
-		}
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			EndDialog(hDlg, TRUE);
-			return TRUE;
-		case IDCANCEL:
-			EndDialog(hDlg, FALSE);
-			return TRUE;
+		if (g_pHistogram) {
+			SetPreview(true);
+			delete g_pHistogram;
+			g_pHistogram = NULL;
+			InvalidateRect((HWND)mhwnd, NULL, TRUE);
 		}
 	}
-
-	return FALSE;
+	CaptureBT848Reassert();
+#endif
 }
 
-static LRESULT CALLBACK CaptureInternalControlCallbackProc(HWND hwnd, int nState) {
-	if (nState == CONTROLCALLBACK_PREROLL) {
-//		InternalCapData *icd = (InternalCapData *)capGetUserData(hwnd);
+void VDCaptureProject::SetPreview(bool b) {
+#if 0
+	capSetCallbackOnFrame(mhwndCapture, NULL);
 
-		return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_HITOK), hwnd, CaptureInternalHitOKDlgProc, (LPARAM)hwnd)
-			&& CaptureControlCallbackProc(hwnd, nState);
-	} else
-		return CaptureControlCallbackProc(hwnd, nState);
+	if (!b) {
+		RydiaEnableAVICapPreview(false);
+		mbPreviewAnalysisEnabled = false;
 
-//	return TRUE;
+		if (g_pHistogram) {
+			delete g_pHistogram;
+			g_pHistogram = NULL;
+			InvalidateRect(mhwndCapture, NULL, TRUE);
+		}
+
+		capPreview(mhwndCapture, FALSE);
+	} else {
+		if (mpCB) {
+			RydiaEnableAVICapPreview(false);
+			if (mpCB->UICaptureBeginAnalyze()) {
+				mbPreviewAnalysisEnabled = true;
+				RydiaInitAVICapHotPatch();
+				RydiaEnableAVICapPreview(true);
+				capSetCallbackOnFrame(mhwndCapture, OverlayFrameCallback);
+			}
+		}
+		capPreview(mhwndCapture, TRUE);
+	}
+	CaptureBT848Reassert();
+#endif
 }
 
-static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
-	char fname[MAX_PATH];
-	LRESULT lRes;
-	LONG biSize, biSizeToFile, wfSize;
-	CAPTUREPARMS cp, cp_back;
-	InternalCapData icd;
+void VDCaptureProject::Capture(bool fTest) {
+	VDCaptureAutoPriority cpw;
 
-	BITMAPINFO *bmiInput = NULL, *bmiOutput = NULL, *bmiToFile;
-	WAVEFORMATEX *wfexInput = NULL;
+	LONG biSizeToFile;
+	VDCaptureData icd;
+
 	bool fMainFinalized = false, fPendingFinalized = false;
 
-//	memset(&icd, 0, sizeof icd);
+	icd.mpProject = this;
+	icd.mpError	= NULL;
 
-	icd.fatal_error	= NULL;
+	vdautoptr<AVIStripeSystem> pStripeSystem;
 
-	g_capLog.Dispose();
+	VDCaptureStatsFilter statsFilt;
+	vdautoptr<IVDCaptureResyncFilter> pResyncFilter(VDCreateCaptureResyncFilter());
 
 	try {
 		// get the input filename
+		VDStringA fname(VDTextWToA(mFilename));
 
-		if (!capFileGetCaptureFile(hWndCapture, fname, sizeof fname))
-			throw MyError("Couldn't get capture filename.");
-
-		icd.pszFilename = VDFileSplitPath(fname);
+		icd.mpszFilename = VDFileSplitPath(fname.c_str());
 
 		// get capture parms
 
-		if (!capCaptureGetSetup(hWndCapture, &cp, sizeof(CAPTUREPARMS)))
-			throw MyError("Couldn't get capture setup info.");
-
-		const bool bCaptureAudio = (0 != cp.fCaptureAudio);
+		const bool bCaptureAudio = IsAudioCaptureEnabled();
 
 		// create an output file object
 
 		if (!fTest) {
-			if (g_capStripeSystem) {
-				if (g_fEnableSpill)
+			if (mbStripingEnabled) {
+				pStripeSystem = new AVIStripeSystem(fname.c_str());
+
+				if (mbEnableSpill)
 					throw MyError("Sorry, striping and spilling are not compatible.");
 
-				icd.mpOutput = new_nothrow AVIOutputStriped(g_capStripeSystem);
+				icd.mpOutput = new_nothrow AVIOutputStriped(pStripeSystem);
 				if (!icd.mpOutput)
 					throw MyMemoryError();
 
@@ -4606,33 +1156,39 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 		}
 
 		// initialize audio
+		vdstructex<WAVEFORMATEX> wfexInput;
 
 		if (bCaptureAudio) {
-			wfSize = capGetAudioFormatSize(hWndCapture);
+			GetAudioFormat(wfexInput);
 
-			if (!(wfexInput = (WAVEFORMATEX *)allocmem(wfSize)))
-				throw MyMemoryError();
-
-			if (!capGetAudioFormat(hWndCapture, wfexInput, wfSize))
-				throw MyError("Couldn't get audio format");
+			pResyncFilter->SetVideoRate(1000000.0 / mpDriver->GetFramePeriod());
+			pResyncFilter->SetAudioRate(wfexInput->nAvgBytesPerSec);
+			pResyncFilter->SetAudioChannels(wfexInput->nChannels);
 		}
 
 		// initialize video
-
-		biSize = capGetVideoFormatSize(hWndCapture);
-
-		if (!(bmiInput = (BITMAPINFO *)allocmem(biSize)))
-			throw MyMemoryError();
-
-		if (!capGetVideoFormat(hWndCapture, bmiInput, biSize))
-			throw MyError("Couldn't get video format");
+		vdstructex<BITMAPINFOHEADER> bmiInput;
+		GetVideoFormat(bmiInput);
 
 		// initialize filtering
+		vdstructex<BITMAPINFOHEADER> filteredFormat;
+		BITMAPINFOHEADER *bmiToFile = bmiInput.data();
+		biSizeToFile = bmiInput.size();
 
-		bmiToFile = (BITMAPINFO *)CaptureInitFiltering(&icd, &bmiInput->bmiHeader, cp.dwRequestMicroSecPerFrame, true);
-		biSizeToFile = bmiToFile->bmiHeader.biSize;
+		icd.mInputLayout.format = 0;
+
+		if (InitFilter()) {
+			icd.mpFilterSys = mpFilterSys;
+			icd.mInputLayout = mFilterInputLayout;
+
+			VDMakeBitmapFormatFromPixmapFormat(filteredFormat, bmiInput, mFilterOutputLayout.format, 0, mFilterOutputLayout.w, mFilterOutputLayout.h);
+
+			bmiToFile = &*filteredFormat;
+			biSizeToFile = filteredFormat.size();
+		}
 
 		// initialize video compression
+		vdstructex<BITMAPINFOHEADER> bmiOutput;
 
 		if (g_compression.hic) {
 			LONG formatSize;
@@ -4642,20 +1198,19 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 			if (formatSize < ICERR_OK)
 				throw MyError("Error getting compressor output format size.");
 
-			if (!(bmiOutput = (BITMAPINFO *)allocmem(formatSize)))
-				throw MyMemoryError();
+			bmiOutput.resize(formatSize);
 
-			if (ICERR_OK != (icErr = ICCompressGetFormat(g_compression.hic, &bmiToFile->bmiHeader, bmiOutput)))
+			if (ICERR_OK != (icErr = ICCompressGetFormat(g_compression.hic, bmiToFile, (BITMAPINFO *)bmiOutput.data())))
 				throw MyICError("Video compressor",icErr);
 
-			if (!(icd.pvsc = new VideoSequenceCompressor()))
+			if (!(icd.mpVideoCompressor = new VideoSequenceCompressor()))
 				throw MyMemoryError();
 
-			icd.pvsc->init(g_compression.hic, bmiToFile, bmiOutput, g_compression.lQ, g_compression.lKey);
-			icd.pvsc->setDataRate(g_compression.lDataRate*1024, cp.dwRequestMicroSecPerFrame, 0x0FFFFFFF);
-			icd.pvsc->start();
+			icd.mpVideoCompressor->init(g_compression.hic, (BITMAPINFO *)bmiToFile, (BITMAPINFO *)bmiOutput.data(), g_compression.lQ, g_compression.lKey);
+			icd.mpVideoCompressor->setDataRate(g_compression.lDataRate*1024, GetFrameTime(), 0x0FFFFFFF);
+			icd.mpVideoCompressor->start();
 
-			bmiToFile = bmiOutput;
+			bmiToFile = bmiOutput.data();
 			biSizeToFile = formatSize;
 		}
 
@@ -4667,15 +1222,15 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 			AVIStreamHeader_fixed vstrhdr={0};
 
 			vstrhdr.fccType					= streamtypeVIDEO;
-			vstrhdr.fccHandler				= bmiToFile->bmiHeader.biCompression;
-			vstrhdr.dwScale					= cp.dwRequestMicroSecPerFrame;
+			vstrhdr.fccHandler				= bmiToFile->biCompression;
+			vstrhdr.dwScale					= GetFrameTime();
 			vstrhdr.dwRate					= 1000000;
 			vstrhdr.dwSuggestedBufferSize	= 0;
 			vstrhdr.dwQuality				= g_compression.hic ? g_compression.lQ : (unsigned long)-1;
 			vstrhdr.rcFrame.left			= 0;
 			vstrhdr.rcFrame.top				= 0;
-			vstrhdr.rcFrame.right			= (short)bmiToFile->bmiHeader.biWidth;
-			vstrhdr.rcFrame.bottom			= (short)bmiToFile->bmiHeader.biHeight;
+			vstrhdr.rcFrame.right			= (short)bmiToFile->biWidth;
+			vstrhdr.rcFrame.bottom			= (short)bmiToFile->biHeight;
 
 			icd.mpVideoOut->setFormat(bmiToFile, biSizeToFile);
 			icd.mpVideoOut->setStreamInfo(vstrhdr);
@@ -4689,65 +1244,55 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 				astrhdr.dwQuality			= (unsigned long)-1;
 				astrhdr.dwSampleSize		= wfexInput->nBlockAlign; 
 
-				icd.mpAudioOut->setFormat(wfexInput, wfSize);
+				icd.mpAudioOut->setFormat(wfexInput.data(), wfexInput.size());
 				icd.mpAudioOut->setStreamInfo(astrhdr);
 			}
 		}
 
 		// Setup capture structure
-
 		if (bCaptureAudio) {
-			memcpy(&icd.wfex, wfexInput, std::min<unsigned>(wfSize, sizeof icd.wfex));
-			icd.blockAlign	= wfexInput->nBlockAlign;
+			memcpy(&icd.mwfex, wfexInput.data(), std::min<unsigned>(wfexInput.size(), sizeof icd.mwfex));
+			icd.mAudioSampleSize	= wfexInput->nBlockAlign;
 		}
 
-		icd.hwndStatus	= GetDlgItem(hWnd, IDC_STATUS_WINDOW);
-		icd.hwndPanel	= GetDlgItem(hWnd, IDC_CAPTURE_PANEL);
-		icd.pszPath		= icd.szCaptureRoot;
+		icd.mpszPath		= icd.mCaptureRoot;
 
-		icd.fNTSC = ((cp.dwRequestMicroSecPerFrame|1) == 33367);
-		icd.interval	= cp.dwRequestMicroSecPerFrame;
+		icd.mbNTSC = ((GetFrameTime()|1) == 33367);
+		icd.mFramePeriod	= GetFrameTime();
 
-		icd.lVideoAdjust		= 0;
-
-		if (!bmiInput->bmiHeader.biBitCount)
-			icd.uncompressed_frame_size		= ((bmiInput->bmiHeader.biWidth * 2 + 3) & -3) * bmiInput->bmiHeader.biHeight;
+		if (!bmiInput->biBitCount)
+			icd.mUncompressedFrameSize		= ((bmiInput->biWidth * 2 + 3) & -3) * bmiInput->biHeight;
 		else
-			icd.uncompressed_frame_size		= ((bmiInput->bmiHeader.biWidth * ((bmiInput->bmiHeader.biBitCount + 7)/8) + 3) & -3) * bmiInput->bmiHeader.biHeight;
+			icd.mUncompressedFrameSize		= ((bmiInput->biWidth * ((bmiInput->biBitCount + 7)/8) + 3) & -3) * bmiInput->biHeight;
 
-		// create font
-
-		if (g_fDisplayLargeTimer)
-			icd.hFont = CreateFont(200, 0,
-									0, 0, 0,
-									FALSE, FALSE, FALSE,
-									ANSI_CHARSET,
-									OUT_DEFAULT_PRECIS,
-									CLIP_DEFAULT_PRECIS,
-									DEFAULT_QUALITY,
-									FF_DONTCARE|DEFAULT_PITCH,
-									"Arial");
-
-		if (!SplitPathRoot(icd.szCaptureRoot, fname)) {
-			icd.szCaptureRoot[0] = 0;
+		if (!SplitPathRoot(icd.mCaptureRoot, fname.c_str())) {
+			icd.mCaptureRoot[0] = 0;
 		}
+
+		// set up resynchronizer and stats filter
+		pResyncFilter->SetChildCallback(this);
+		statsFilt.Init(pResyncFilter, bCaptureAudio ? &icd.mwfex : NULL);
+		mpDriver->SetCallback(&statsFilt);
+
+		icd.mpStatsFilter	= &statsFilt;
+		icd.mpResyncFilter	= pResyncFilter;
 
 		// initialize the file
 		//
 		// this is kinda sick
 
 		if (!fTest) {
-			if (!g_capStripeSystem && g_diskDisableBuffer) {
+			if (!pStripeSystem && mDiskSettings.mbDisableWriteCache) {
 				icd.mpOutputFile->disable_os_caching();
-				icd.mpOutputFile->setBuffering(1024 * g_diskChunkSize * g_diskChunkCount, 1024 * g_diskChunkSize);
+				icd.mpOutputFile->setBuffering(1024 * mDiskSettings.mDiskChunkSize * mDiskSettings.mDiskChunkCount, 1024 * mDiskSettings.mDiskChunkSize);
 			}
 
-			if (g_fEnableSpill) {
+			if (mbEnableSpill) {
 				char szNameFirst[MAX_PATH];
 
 				icd.mpOutputFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
 
-				strcpy(szNameFirst, fname);
+				strcpy(szNameFirst, fname.c_str());
 				strcpy((char *)VDFileSplitExt(szNameFirst), ".00.avi");
 
 				icd.mpOutputFile->init(VDTextAToW(szNameFirst).c_str());
@@ -4758,9 +1303,9 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 				CapSpillDrive *pcsd;
 
 				if (pcsd = CapSpillFindDrive(szNameFirst))
-					icd.lDiskThresh = pcsd->threshold;
+					icd.mSizeThreshold = pcsd->threshold;
 				else
-					icd.lDiskThresh = 50;
+					icd.mSizeThreshold = 50;
 			} else
 				if (!icd.mpOutput->init(VDTextAToW(fname).c_str()))
 					throw MyError("Error initializing capture file.");
@@ -4768,112 +1313,84 @@ static void CaptureInternal(HWND hWnd, HWND hWndCapture, bool fTest) {
 
 		// Allocate audio buffer and begin IO thread.
 
-		if (g_fEnableSpill) {
-			HANDLE hTemp;
-
-			hTemp = (HANDLE)_beginthreadex(NULL, 0, CaptureInternalSpillThread, (void *)&icd, CREATE_SUSPENDED, (unsigned *)&icd.dwThreadID);
-
-			if (!hTemp)
+		if (mbEnableSpill) {
+			if (!icd.ThreadStart())
 				throw MyWin32Error("Can't start I/O thread: %%s", GetLastError());
-
-			if (!DuplicateHandle(GetCurrentProcess(), hTemp, GetCurrentProcess(), &icd.hIOThread, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-				ResumeThread(hTemp);
-				while(!PostThreadMessage(icd.dwThreadID, VDCM_EXIT, 0, 0))
-					Sleep(100);
-				WaitForSingleObject(hTemp, INFINITE);
-				CloseHandle(hTemp);
-				throw MyWin32Error("Can't start I/O thread: %%s", GetLastError());
-			}
-
-			CloseHandle(hTemp);
-			ResumeThread(icd.hIOThread);
 		}
 
 		// capture!!
 
-		cp_back = cp;
+		mpCaptureData = &icd;
+		mMainThreadId = GetCurrentThreadId();
 
-		if (cp.fMakeUserHitOKToCapture) {
-			if (cp.fAbortLeftMouse && !cp.fAbortRightMouse) {
-				cp.fAbortLeftMouse = FALSE;
-				cp.fAbortRightMouse = TRUE;
+		if (mpCB)
+			mpCB->UICaptureStart();
 
+		if (mpDriver->CaptureStart()) {
+			VDSamplingAutoProfileScope autoVTProfile;
+
+			MSG msg;
+
+			while(GetMessage(&msg, NULL, 0, 0)) {
+				if (!msg.hwnd && msg.message == WM_APP+100)
+					break;
+
+				if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
+				}
 			}
-			capSetCallbackOnCapControl(hWndCapture, CaptureInternalControlCallbackProc);
-		} else
-			capSetCallbackOnCapControl(hWndCapture, CaptureControlCallbackProc);
-
-		// Turn off time limiting!!
-
-		cp.fLimitEnabled = false;
-
-		capCaptureSetSetup(hWndCapture, &cp, sizeof cp);
-		capSetUserData(hWndCapture, (LPARAM)&icd);
-		capSetCallbackOnVideoStream(hWndCapture, CaptureInternalVideoCallbackProc);
-		if (bCaptureAudio)
-			capSetCallbackOnWaveStream(hWndCapture, CaptureInternalWaveCallbackProc);
-
-		CaptureShowFile(hWnd, hWndCapture, true);
-		g_fRestricted = true;
-		lRes = capCaptureSequenceNoFile(hWndCapture);
-		g_fRestricted = false;
-		CaptureShowFile(hWnd, hWndCapture, false);
-
-		capSetCallbackOnCapControl(hWndCapture, NULL);
-		capSetCallbackOnWaveStream(hWndCapture, NULL);
-		capSetCallbackOnVideoStream(hWndCapture, NULL);
-
-_RPT0(0,"Capture has stopped.\n");
-
-		capCaptureSetSetup(hWndCapture, &cp_back, sizeof cp_back);
-
-		if (icd.fatal_error)
-			throw *icd.fatal_error;
-
-		if (icd.hIOThread) {
-			PostThreadMessage(icd.dwThreadID, VDCM_EXIT, 0, 0);
-			WaitForSingleObject(icd.hIOThread, INFINITE);
-			CloseHandle(icd.hIOThread);
-			icd.hIOThread = NULL;
 		}
 
-		if (icd.pvsc)
-			icd.pvsc->finish();
+		mpDriver->CaptureAbort();
+
+		if (mpCB)
+			mpCB->UICaptureEnd(!icd.mpError);
+
+VDDEBUG("Capture has stopped.\n");
+
+		if (icd.mpError)
+			throw *icd.mpError;
+
+		if (icd.isThreadAttached()) {
+			icd.PostExitRequest();
+			icd.ThreadWait();
+		}
+
+		if (icd.mpVideoCompressor)
+			icd.mpVideoCompressor->finish();
 
 		// finalize files
 
 		if (!fTest) {
-			_RPT0(0,"Finalizing main file.\n");
+			VDDEBUG("Finalizing main file.\n");
 
 			fMainFinalized = true;
 			icd.mpOutput->finalize();
 
 			fPendingFinalized = true;
 			if (icd.mpOutputFilePending && icd.mpOutputFilePending != icd.mpOutputFile) {
-				_RPT0(0,"Finalizing pending file.\n");
+				VDDEBUG("Finalizing pending file.\n");
 
 				icd.mpOutputFilePending->finalize();
 			}
 		}
 
-		_RPT0(0,"Yatta!!!\n");
-
-		if (g_bAutoIncrementAfterCapture)
-			CaptureIncrementFileID(hWndCapture);
-
+		VDDEBUG("Yatta!!!\n");
 	} catch(const MyError& e) {
-		e.post(hWnd, "Capture error");
+		e.post((HWND)mhwnd, "Capture error");
 	}
 
-	CaptureDeinitFiltering(&icd);
+	if (icd.mpFilterSys) {
+		icd.mpFilterSys->Shutdown();
+		icd.mpFilterSys = NULL;
+	}
 
 	// Kill the I/O thread.
 
-	if (icd.hIOThread) {
-		PostThreadMessage(icd.dwThreadID, VDCM_EXIT, 0, 0);
-		WaitForSingleObject(icd.hIOThread, INFINITE);
-		CloseHandle(icd.hIOThread);
-		icd.hIOThread = NULL;
+	if (icd.isThreadAttached()) {
+		icd.PostExitRequest();
+		icd.ThreadWait();
 	}
 
 	// Might as well try and finalize anyway.  If we're finalizing here,
@@ -4889,15 +1406,7 @@ _RPT0(0,"Capture has stopped.\n");
 		} catch(const MyError&) {
 		}
 
-	if (icd.fatal_error) delete icd.fatal_error;
-	if (icd.fatal_error_2) delete icd.fatal_error_2;
-	if (icd.hFont)
-		DeleteObject(icd.hFont);
-	freemem(bmiInput);
-	freemem(bmiOutput);
-	freemem(wfexInput);
-	if (icd.pvsc)
-		delete icd.pvsc;
+	icd.mpVideoCompressor = NULL;
 
 	if (icd.mpOutputFilePending && icd.mpOutputFilePending == icd.mpOutputFile)
 		icd.mpOutputFilePending = NULL;
@@ -4905,13 +1414,17 @@ _RPT0(0,"Capture has stopped.\n");
 	delete icd.mpOutput;
 	delete icd.mpOutputFilePending;
 
+	// restore the callback
+	mpDriver->SetCallback(this);
+
 	// any warnings?
 
+#if 0
 	DWORD dw;
 
-	if (icd.fWarnVideoCaptureTiming1) {
+	if (icd.mbVideoTimingWrapDetected) {
 		if (!QueryConfigDword(g_szCapture, g_szWarnTiming1, &dw) || !dw) {
-			if (IDYES != MessageBox(hWnd,
+			if (IDYES != MessageBox((HWND)mhwnd,
 					"VirtualDub has detected, and compensated for, a possible bug in your video capture drivers that is causing "
 					"its timing information to wrap around at 35 or 71 minutes.  Your capture should be okay, but you may want "
 					"to try upgrading your video capture drivers anyway, since this can cause video capture to halt in "
@@ -4923,875 +1436,724 @@ _RPT0(0,"Capture has stopped.\n");
 				SetConfigDword(g_szCapture, g_szWarnTiming1, 1);
 		}
 	}
+#endif
 }
 
-void CaptureInternalSelectCompression(HWND hwndCapture) {
-	HWND hwnd = GetParent(hwndCapture);
-	BITMAPINFOHEADER *bih;
-	DWORD fsize;
-
-	if (!(g_compression.dwFlags & ICMF_COMPVARS_VALID)) {
-		memset(&g_compression, 0, sizeof g_compression);
-		g_compression.dwFlags |= ICMF_COMPVARS_VALID;
-		g_compression.lQ = 10000;
-	}
-
-	g_compression.cbSize = sizeof(COMPVARS);
-
-	if (fsize = capGetVideoFormatSize(hwndCapture)) {
-		if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
-			if (capGetVideoFormat(hwndCapture, bih, fsize)) {
-//				ICCompressorChoose(hwnd, ICMF_CHOOSE_DATARATE | ICMF_CHOOSE_KEYFRAME, (void *)bih, NULL, &g_compression, "Video compression (internal mode)");
-				ChooseCompressor(hwnd, &g_compression, bih);
-				freemem(bih);
-				return;
-			}
-			freemem(bih);
-		}
-	}
-	ChooseCompressor(hwnd, &g_compression, NULL);
-//	ICCompressorChoose(hwnd, ICMF_CHOOSE_ALLCOMPRESSORS | ICMF_CHOOSE_DATARATE | ICMF_CHOOSE_KEYFRAME, NULL, NULL, &g_compression, "Video compression (internal mode)");
+void VDCaptureProject::CaptureStop() {
+	PostThreadMessage(mMainThreadId, WM_APP+100, 0, 0);
 }
 
-
-static void CaptureInternalLoadFromRegistry() {
-	CaptureCompressionSpecs cs;
-
-	memset(&g_compression, 0, sizeof g_compression);
-
-	if (QueryConfigBinary(g_szCapture, g_szCompression, (char *)&cs, sizeof cs)) {
-		void *lpData;
-		DWORD dwSize;
-
-		if (cs.fccType != 'CDIV' || !cs.fccHandler) {
-			// err... bad config data.
-
-			DeleteConfigValue(g_szCapture, g_szCompression);
-			DeleteConfigValue(g_szCapture, g_szCompressorData);
-			return;
-		}
-
-		g_compression.cbSize		= sizeof(COMPVARS);
-		g_compression.dwFlags		= ICMF_COMPVARS_VALID;
-		g_compression.hic			= ICOpen(cs.fccType, cs.fccHandler, ICMODE_COMPRESS);
-		g_compression.fccType		= cs.fccType;
-		g_compression.fccHandler	= cs.fccHandler;
-		g_compression.lKey			= cs.lKey;
-		g_compression.lDataRate		= cs.lDataRate;
-		g_compression.lQ			= cs.lQ;
-
-		if (g_compression.hic) {
-			if (dwSize = QueryConfigBinary(g_szCapture, g_szCompressorData, NULL, 0)) {
-
-				if (lpData = allocmem(dwSize)) {
-					memset(lpData, 0, dwSize);
-
-					if (QueryConfigBinary(g_szCapture, g_szCompressorData, (char *)lpData, dwSize))
-						ICSetState(g_compression.hic, lpData, dwSize);
-
-					freemem(lpData);
-				}
-			}
-		} else
-			g_compression.dwFlags = 0;
-	}
+void VDCaptureProject::CapBegin(sint64 global_clock) {
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	preferences
-//
-////////////////////////////////////////////////////////////////////////////
-
-static DWORD g_dialog_drvopts[10];
-static DWORD *g_dialog_drvoptptr;
-
-static void CapturePreferencesLoadDriverOpts(HWND hDlg) {
-	CheckDlgButton(hDlg, IDC_INITIAL_NODISPLAY, (*g_dialog_drvoptptr & CAPDRV_DISPLAY_MASK) == CAPDRV_DISPLAY_NONE);
-	CheckDlgButton(hDlg, IDC_INITIAL_PREVIEW, (*g_dialog_drvoptptr & CAPDRV_DISPLAY_MASK) == CAPDRV_DISPLAY_PREVIEW);
-	CheckDlgButton(hDlg, IDC_INITIAL_OVERLAY, (*g_dialog_drvoptptr & CAPDRV_DISPLAY_MASK) == CAPDRV_DISPLAY_OVERLAY);
-	CheckDlgButton(hDlg, IDC_SLOW_PREVIEW, !!(*g_dialog_drvoptptr & CAPDRV_CRAPPY_PREVIEW));
-	CheckDlgButton(hDlg, IDC_SLOW_OVERLAY, !!(*g_dialog_drvoptptr & CAPDRV_CRAPPY_OVERLAY));
+void VDCaptureProject::CapEnd() {
+	CaptureStop();
 }
 
-static BOOL CapturePreferencesDlgInit(HWND hDlg) {
-	HWND hwndCombo = GetDlgItem(hDlg, IDC_DEFAULT_DRIVER);
-	HWND hwndCombo2 = GetDlgItem(hDlg, IDC_DRIVER_TO_SET);
-	char buf[MAX_PATH];
-	int index;
-
-	g_dialog_drvoptptr = NULL;
-	memcpy(g_dialog_drvopts, g_drvOpts, sizeof g_dialog_drvopts);
-
-	// Set up 'default driver' combo box
-
-	if (QueryConfigString(g_szCapture, g_szStartupDriver, buf, (sizeof buf)-12)) {
-		strcat(buf, " (no change)");
-		index = SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)buf);
-		if (index>=0) SendMessage(hwndCombo, CB_SETITEMDATA, index, 0);
-	}
-
-	index = SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)"First available");
-	if (index>=0) SendMessage(hwndCombo, CB_SETITEMDATA, index, 1);
-
-	for(int i=0; i<10; i++) {
-		wsprintf(buf, "Driver %d - ", i);
-		if (capGetDriverDescription(i, buf+11, (sizeof buf)-11, NULL, 0)) {
-			index = SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)buf);
-			if (index>=0) SendMessage(hwndCombo, CB_SETITEMDATA, index, i+16);
-
-			index = SendMessage(hwndCombo2, CB_ADDSTRING, 0, (LPARAM)buf);
-			if (index>=0) SendMessage(hwndCombo2, CB_SETITEMDATA, index, i);
-
-			if (!g_dialog_drvoptptr)
-				g_dialog_drvoptptr = &g_dialog_drvopts[i];
-
-		}
-	}
-
-	if (!g_dialog_drvoptptr) g_dialog_drvoptptr = &g_dialog_drvopts[0];
-
-	SendMessage(hwndCombo, CB_SETCURSEL, (WPARAM)0, 0); 
-	SendMessage(hwndCombo2, CB_SETCURSEL, (WPARAM)0, 0); 
-	CapturePreferencesLoadDriverOpts(hDlg);
-
-	// Set up 'default capture file'
-
-	if (QueryConfigString(g_szCapture, g_szDefaultCaptureFile, buf, sizeof buf))
-		SetDlgItemText(hDlg, IDC_DEFAULT_CAPFILE, buf);
-
-	EnableWindow(GetDlgItem(hDlg, IDC_SAVE_COMPRESSION), !!(g_compression.dwFlags & ICMF_COMPVARS_VALID));
-	return TRUE;
-}
-
-static void CapturePreferencesDlgStore(HWND hDlg, HWND hwndCapture) {
-	HWND hwndCombo = GetDlgItem(hDlg, IDC_DEFAULT_DRIVER);
-	char buf[MAX_PATH];
-	int index;
-	DWORD fsize;
-	BITMAPINFOHEADER *bih;
-	WAVEFORMATEX *wf;
-
-	index = SendMessage(hwndCombo, CB_GETCURSEL, 0, 0);
-
-	if (index>=0) {
-		DWORD dwDriver = SendMessage(hwndCombo, CB_GETITEMDATA, index, 0);
-
-		if (dwDriver==1)
-			SetConfigString(g_szCapture, g_szStartupDriver, "");
-		else if (dwDriver>=16 && dwDriver<256) {
-			if (capGetDriverDescription(dwDriver-16, buf, sizeof buf, NULL, 0))
-				SetConfigString(g_szCapture, g_szStartupDriver, buf);
-		}
-	}
-
-	SendDlgItemMessage(hDlg, IDC_DEFAULT_CAPFILE, WM_GETTEXT, sizeof buf, (LPARAM)buf);
-	SetConfigString(g_szCapture, g_szDefaultCaptureFile, buf);
-
-	if (IsDlgButtonChecked(hDlg, IDC_SAVE_CAPSETTINGS)) {
+bool VDCaptureProject::CapControl(bool is_preroll) {
+	if (is_preroll) {
+#if 0
 		CAPTUREPARMS cp;
+		if (capCaptureGetSetup(hwnd, &cp, sizeof(CAPTUREPARMS)) && cp.fMakeUserHitOKToCapture) {
+			if (pThis->mpCB)
+				return pThis->mpCB->UICapturePreroll();
+		}
+#endif
 
-		if (capCaptureGetSetup(hwndCapture, &cp, sizeof cp))
-			SetConfigBinary(g_szCapture, g_szCapSettings, (char *)&cp, sizeof cp);
+		CaptureBT848Reassert();
+	} else {
+		VDCaptureData *const cd = mpCaptureData;
+
+		if (mStopPrefs.fEnableFlags & CAPSTOP_TIME)
+			if (cd->mLastTime >= mStopPrefs.lTimeLimit*1000)
+				return false;
+
+		if (mStopPrefs.fEnableFlags & CAPSTOP_FILESIZE)
+			if ((long)((cd->mTotalVideoSize + cd->mTotalAudioSize + 2048)>>20) > mStopPrefs.lSizeLimit)
+				return false;
+
+		if (mStopPrefs.fEnableFlags & CAPSTOP_DISKSPACE)
+			if (cd->mDiskFreeBytes && (long)(cd->mDiskFreeBytes>>20) < mStopPrefs.lDiskSpaceThreshold)
+				return false;
+
+		if (mStopPrefs.fEnableFlags & CAPSTOP_DROPRATE)
+			if (cd->mTotalFramesCaptured > 50 && cd->mFramesDropped*100 > mStopPrefs.lMaxDropRate*cd->mTotalFramesCaptured)
+				return false;
 	}
 
-	if (IsDlgButtonChecked(hDlg, IDC_SAVE_VIDEOFORMAT)) {
-		if (fsize = capGetVideoFormatSize(hwndCapture)) {
-			if (bih = (BITMAPINFOHEADER *)allocmem(fsize)) {
-				if (capGetVideoFormat(hwndCapture, bih, fsize)) {
-					SetConfigBinary(g_szCapture, g_szVideoFormat, (char *)bih, fsize);
-				}
-				freemem(bih);
-			}
-		}
-	}
-
-	if (IsDlgButtonChecked(hDlg, IDC_SAVE_AUDIOFORMAT)) {
-		if (fsize = capGetAudioFormatSize(hwndCapture)) {
-			if (wf = (WAVEFORMATEX *)allocmem(fsize)) {
-				if (capGetAudioFormat(hwndCapture, wf, fsize)) {
-					SetConfigBinary(g_szCapture, g_szAudioFormat, (char *)wf, fsize);
-				}
-				freemem(wf);
-			}
-		}
-	}
-
-	if (IsDlgButtonChecked(hDlg, IDC_SAVE_COMPRESSION)) {
-		CaptureCompressionSpecs cs;
-		DWORD dwSize;
-		void *mem;
-
-		if ((g_compression.dwFlags & ICMF_COMPVARS_VALID) && g_compression.fccHandler) {
-			cs.fccType		= g_compression.fccType;
-			cs.fccHandler	= g_compression.fccHandler;
-			cs.lKey			= g_compression.lKey;
-			cs.lDataRate	= g_compression.lDataRate;
-			cs.lQ			= g_compression.lQ;
-
-			SetConfigBinary(g_szCapture, g_szCompression, (char *)&cs, sizeof cs);
-
-			if (g_compression.hic
-					&& ((dwSize = ICGetStateSize(g_compression.hic))>0)
-					&& (mem = allocmem(dwSize))
-					) {
-
-				ICGetState(g_compression.hic, mem, dwSize);
-				SetConfigBinary(g_szCapture, g_szCompressorData, (char *)mem, dwSize);
-				freemem(mem);
-
-			} else
-				DeleteConfigValue(g_szCapture, g_szCompressorData);
-		} else {
-			DeleteConfigValue(g_szCapture, g_szCompression);
-			DeleteConfigValue(g_szCapture, g_szCompressorData);
-		}
-	}
-
-	// Save driver-specific settings
-
-	for(int i=0; i<10; i++)
-		if (g_drvHashes[i]) {
-			wsprintf(buf, g_szDrvOpts, g_drvHashes[i]);
-			SetConfigDword(g_szCapture, buf, g_dialog_drvopts[i]);
-			g_drvOpts[i] = g_dialog_drvopts[i];
-			if (g_current_driver == i) g_driver_options = g_drvOpts[i];
-		}
+	return true;
 }
 
-static void CapturePreferencesDlgBrowse(HWND hDlg) {
-	extern const wchar_t fileFilters0[];
-
-	VDStringW fname(VDGetSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, (VDGUIHandle)hDlg, L"Select default capture file", fileFilters0, L"avi", 0, 0));
-
-	if (!fname.empty())
-		SetDlgItemText(hDlg, IDC_DEFAULT_CAPFILE, VDTextWToA(fname).c_str());
-}
-
-static INT_PTR CALLBACK CapturePreferencesDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	switch(message) {
-		case WM_INITDIALOG:
-			SetWindowLongPtr(hDlg, DWLP_USER, lParam);
-			return CapturePreferencesDlgInit(hDlg);
-
-		case WM_HELP:
-			{
-				HELPINFO *lphi = (HELPINFO *)lParam;
-
-				if (lphi->iContextType == HELPINFO_WINDOW)
-					VDShowHelp(hDlg, L"d-capturepreferences.html");
-			}
-			return TRUE;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDOK:
-				CapturePreferencesDlgStore(hDlg, (HWND)GetWindowLongPtr(hDlg, DWLP_USER));
-			case IDCANCEL:
-				EndDialog(hDlg, 0);
-				return TRUE;
-
-			case IDC_SELECT_CAPTURE_FILE:
-				CapturePreferencesDlgBrowse(hDlg);
-				return TRUE;
-
-			case IDC_USE_CURRENT_FILE:
-				SetDlgItemText(hDlg, IDC_DEFAULT_CAPFILE, g_szCaptureFile);
-				return TRUE;
-
-			case IDC_INITIAL_NODISPLAY:
-				*g_dialog_drvoptptr = (*g_dialog_drvoptptr & ~CAPDRV_DISPLAY_MASK) | CAPDRV_DISPLAY_NONE;
-				return TRUE;
-
-			case IDC_INITIAL_PREVIEW:
-				*g_dialog_drvoptptr = (*g_dialog_drvoptptr & ~CAPDRV_DISPLAY_MASK) | CAPDRV_DISPLAY_PREVIEW;
-				return TRUE;
-
-			case IDC_INITIAL_OVERLAY:
-				*g_dialog_drvoptptr = (*g_dialog_drvoptptr & ~CAPDRV_DISPLAY_MASK) | CAPDRV_DISPLAY_OVERLAY;
-				return TRUE;
-
-			case IDC_SLOW_PREVIEW:
-				if (SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED)
-					*g_dialog_drvoptptr |= CAPDRV_CRAPPY_PREVIEW;
-				else
-					*g_dialog_drvoptptr &= ~CAPDRV_CRAPPY_PREVIEW;
-				return TRUE;
-
-			case IDC_SLOW_OVERLAY:
-				if (SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED)
-					*g_dialog_drvoptptr |= CAPDRV_CRAPPY_OVERLAY;
-				else
-					*g_dialog_drvoptptr &= ~CAPDRV_CRAPPY_OVERLAY;
-				return TRUE;
-
-			case IDC_DRIVER_TO_SET:
-				{
-					int index = SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0);
-
-					if (index>=0) {
-						g_dialog_drvoptptr = &g_dialog_drvopts[SendMessage((HWND)lParam, CB_GETITEMDATA, index, 0)];
-						CapturePreferencesLoadDriverOpts(hDlg);
-					}
-				}
-				return TRUE;
-			}
-	}
-
-	return FALSE;
-}
-
-
-
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	stop conditions
-//
-////////////////////////////////////////////////////////////////////////////
-
-static INT_PTR CALLBACK CaptureStopConditionsDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-
-	case WM_INITDIALOG:
-		EnableWindow(GetDlgItem(hdlg, IDC_TIMELIMIT_SETTING), g_stopPrefs.fEnableFlags & CAPSTOP_TIME);
-		EnableWindow(GetDlgItem(hdlg, IDC_FILELIMIT_SETTING), g_stopPrefs.fEnableFlags & CAPSTOP_FILESIZE);
-		EnableWindow(GetDlgItem(hdlg, IDC_DISKLIMIT_SETTING), g_stopPrefs.fEnableFlags & CAPSTOP_DISKSPACE);
-		EnableWindow(GetDlgItem(hdlg, IDC_DROPLIMIT_SETTING), g_stopPrefs.fEnableFlags & CAPSTOP_DROPRATE);
-
-		CheckDlgButton(hdlg, IDC_TIMELIMIT, g_stopPrefs.fEnableFlags & CAPSTOP_TIME ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(hdlg, IDC_FILELIMIT, g_stopPrefs.fEnableFlags & CAPSTOP_FILESIZE ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(hdlg, IDC_DISKLIMIT, g_stopPrefs.fEnableFlags & CAPSTOP_DISKSPACE ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(hdlg, IDC_DROPLIMIT, g_stopPrefs.fEnableFlags & CAPSTOP_DROPRATE ? BST_CHECKED : BST_UNCHECKED);
-
-		SetDlgItemInt(hdlg, IDC_TIMELIMIT_SETTING, g_stopPrefs.lTimeLimit, FALSE);
-		SetDlgItemInt(hdlg, IDC_FILELIMIT_SETTING, g_stopPrefs.lSizeLimit, FALSE);
-		SetDlgItemInt(hdlg, IDC_DISKLIMIT_SETTING, g_stopPrefs.lDiskSpaceThreshold, FALSE);
-		SetDlgItemInt(hdlg, IDC_DROPLIMIT_SETTING, g_stopPrefs.lMaxDropRate, FALSE);
-
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-		case IDC_ACCEPT:
-			g_stopPrefs.lTimeLimit = GetDlgItemInt(hdlg, IDC_TIMELIMIT_SETTING, NULL, FALSE);
-			g_stopPrefs.lSizeLimit = GetDlgItemInt(hdlg, IDC_FILELIMIT_SETTING, NULL, FALSE);
-			g_stopPrefs.lDiskSpaceThreshold = GetDlgItemInt(hdlg, IDC_DISKLIMIT_SETTING, NULL, FALSE);
-			g_stopPrefs.lMaxDropRate = GetDlgItemInt(hdlg, IDC_DROPLIMIT_SETTING, NULL, FALSE);
-			g_stopPrefs.fEnableFlags = 0;
-
-			if (IsDlgButtonChecked(hdlg, IDC_TIMELIMIT))
-				g_stopPrefs.fEnableFlags |= CAPSTOP_TIME;
-
-			if (IsDlgButtonChecked(hdlg, IDC_FILELIMIT))
-				g_stopPrefs.fEnableFlags |= CAPSTOP_FILESIZE;
-
-			if (IsDlgButtonChecked(hdlg, IDC_DISKLIMIT))
-				g_stopPrefs.fEnableFlags |= CAPSTOP_DISKSPACE;
-
-			if (IsDlgButtonChecked(hdlg, IDC_DROPLIMIT))
-				g_stopPrefs.fEnableFlags |= CAPSTOP_DROPRATE;
-
-			if (LOWORD(wParam) == IDOK)
-				SetConfigBinary(g_szCapture, g_szStopConditions, (char *)&g_stopPrefs, sizeof g_stopPrefs);
-
-		case IDCANCEL:
-			EndDialog(hdlg, 0);
-			return TRUE;
-
-		case IDC_TIMELIMIT:
-			EnableWindow(GetDlgItem(hdlg, IDC_TIMELIMIT_SETTING), SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED);
-			return TRUE;
-
-		case IDC_FILELIMIT:
-			EnableWindow(GetDlgItem(hdlg, IDC_FILELIMIT_SETTING), SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED);
-			return TRUE;
-
-		case IDC_DISKLIMIT:
-			EnableWindow(GetDlgItem(hdlg, IDC_DISKLIMIT_SETTING), SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED);
-			return TRUE;
-
-		case IDC_DROPLIMIT:
-			EnableWindow(GetDlgItem(hdlg, IDC_DROPLIMIT_SETTING), SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED);
-			return TRUE;
-		}
-		break;
-	}
-	return FALSE;
-}
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	disk I/O dialog
-//
-////////////////////////////////////////////////////////////////////////////
-
-
-static INT_PTR CALLBACK CaptureDiskIODlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-
-	static const long sizes[]={
-		64,
-		128,
-		256,
-		512,
-		1*1024,
-		2*1024,
-		4*1024,
-		6*1024,
-		8*1024,
-		12*1024,
-		16*1024,
-	};
-
-	static const char *size_names[]={
-		"64K",
-		"128K",
-		"256K",
-		"512K",
-		"1MB",
-		"2MB",
-		"4MB",
-		"6MB",
-		"8MB",
-		"12MB",
-		"16MB",
-	};
-
-	switch(msg) {
-	case WM_INITDIALOG:
-		{
-			int i;
-			HWND hwndItem;
-
-			hwndItem = GetDlgItem(hdlg, IDC_CHUNKSIZE);
-			for(i=0; i<sizeof sizes/sizeof sizes[0]; i++)
-				SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)size_names[i]);
-			SendMessage(hwndItem, CB_SETCURSEL, NearestLongValue(g_diskChunkSize, sizes, sizeof sizes/sizeof sizes[0]), 0);
-
-			SendDlgItemMessage(hdlg, IDC_CHUNKS_UPDOWN, UDM_SETBUDDY, (WPARAM)GetDlgItem(hdlg, IDC_CHUNKS), 0);
-			SendDlgItemMessage(hdlg, IDC_CHUNKS_UPDOWN, UDM_SETRANGE, 0, MAKELONG(256, 1));
-
-			SetDlgItemInt(hdlg, IDC_CHUNKS, g_diskChunkCount, FALSE);
-			CheckDlgButton(hdlg, IDC_DISABLEBUFFERING, g_diskDisableBuffer ? BST_CHECKED : BST_UNCHECKED);
-		}
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-		case IDC_ACCEPT:
-			{
-				BOOL fOk;
-				int chunks;
-
-				chunks = GetDlgItemInt(hdlg, IDC_CHUNKS, &fOk, FALSE);
-
-				if (!fOk || chunks<1 || chunks>256) {
-					SetFocus(GetDlgItem(hdlg, IDC_CHUNKS));
-					MessageBeep(MB_ICONQUESTION);
-					return TRUE;
-				}
-
-				g_diskChunkCount = chunks;
-				g_diskChunkSize = sizes[SendDlgItemMessage(hdlg, IDC_CHUNKSIZE, CB_GETCURSEL, 0, 0)];
-				g_diskDisableBuffer = IsDlgButtonChecked(hdlg, IDC_DISABLEBUFFERING);
-
-				if (LOWORD(wParam) == IDOK) {
-					SetConfigDword(g_szCapture, g_szChunkCount, g_diskChunkCount);
-					SetConfigDword(g_szCapture, g_szChunkSize, g_diskChunkSize);
-					SetConfigDword(g_szCapture, g_szDisableBuffering, g_diskDisableBuffer);
-				}
-			}
-		case IDCANCEL:
-			EndDialog(hdlg, 0);
-			return TRUE;
-
-		case IDC_CHUNKS:
-		case IDC_CHUNKSIZE:
-			{
-				BOOL fOk;
-				int chunks;
-				int cs;
-
-				chunks = GetDlgItemInt(hdlg, IDC_CHUNKS, &fOk, FALSE);
-
-				if (fOk) {
-					char buf[64];
-
-					cs = SendDlgItemMessage(hdlg, IDC_CHUNKSIZE, CB_GETCURSEL, 0, 0);
-
-					sprintf(buf, "Total buffer: %ldK", sizes[cs] * chunks);
-					SetDlgItemText(hdlg, IDC_STATIC_BUFFERSIZE, buf);
-				} else
-					SetDlgItemText(hdlg, IDC_STATIC_BUFFERSIZE, "Total buffer: ---");
-			}
-			return TRUE;
-		}
-		return FALSE;
-	}
-
-	return FALSE;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	custom size dialog
-//
-////////////////////////////////////////////////////////////////////////////
-
-
-static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-
-	static const int s_widths[]={
-		160,
-		176,
-		180,
-		192,
-		240,
-		320,
-		352,
-		360,
-		384,
-		400,
-		480,
-		640,
-		704,
-		720,
-		768,
-	};
-
-	static const int s_heights[]={
-		120,
-		144,
-		180,
-		240,
-		288,
-		300,
-		360,
-		480,
-		576,
-	};
-
-#define RV(x) ((((x)>>24)&0xff) | (((x)>>8)&0xff00) | (((x)<<8)&0xff0000) | (((x)<<24)&0xff000000))
-
-	static const struct {
-		FOURCC fcc;
-		int bpp;
-		const char *name;
-	} s_formats[]={
-		{ BI_RGB,		16, "16-bit RGB" },
-		{ BI_RGB,		24, "24-bit RGB" },
-		{ BI_RGB,		32, "32-bit ARGB" },
-		{ RV('CYUV'),	16, "CYUV\tInverted YUV 4:2:2" },
-		{ RV('UYVY'),	16, "UYVY\tYUV 4:2:2 interleaved" },
-		{ RV('YUYV'),	16, "YUYV\tYUV 4:2:2 interleaved" },
-		{ RV('YUY2'),	16, "YUY2\tYUV 4:2:2 interleaved" },
-		{ RV('YV12'),	12, "YV12\tYUV 4:2:0 planar" },
-		{ RV('I420'),	12, "I420\tYUV 4:2:0 planar" },
-		{ RV('IYUV'),	12, "IYUV\tYUV 4:2:0 planar" },
-		{ RV('Y41P'),	12, "Y41P\tYUV 4:1:1 planar" },
-		{ RV('YVU9'),	9, "YVU9\t9-bit YUV planar" },
-		{ RV('MJPG'),	16, "MJPG\tMotion JPEG" },
-		{ RV('dmb1'),	16, "dmb1\tMatrox MJPEG" },
-	};
-#undef RV
-
-	static FOURCC s_fcc;
-	static int s_bpp;
-	char buf[64];
-	HWND hwndItem, hwndCapture;
-	int i;
-	int ind;
-
-	switch(msg) {
-	case WM_INITDIALOG:
-		{
-			BITMAPINFOHEADER *pbih;
-			int w = 320, h = 240;
-			int found_w = -1, found_h = -1, found_f = -1;
-
-			SetWindowLongPtr(hdlg, DWLP_USER, lParam);
-
-			hwndCapture = (HWND)lParam;
-
-			s_fcc = BI_RGB;
-			s_bpp = 16;
-			i = capGetVideoFormatSize(hwndCapture);
-			if (pbih = (BITMAPINFOHEADER *)allocmem(i)) {
-				if (capGetVideoFormat(hwndCapture, pbih, i)) {
-					s_fcc = pbih->biCompression;
-					w = pbih->biWidth;
-					h = pbih->biHeight;
-					s_bpp = pbih->biBitCount;
-				}
-				freemem(pbih);
-			}
-
-			hwndItem = GetDlgItem(hdlg, IDC_FRAME_WIDTH);
-			for(i=0; i<sizeof s_widths/sizeof s_widths[0]; i++) {
-				sprintf(buf, "%d", s_widths[i]);
-				ind = SendMessage(hwndItem, LB_ADDSTRING, 0, (LPARAM)buf);
-				SendMessage(hwndItem, LB_SETITEMDATA, ind, i);
-
-				if (s_widths[i] == w)
-					found_w = i;
-			}
-
-			hwndItem = GetDlgItem(hdlg, IDC_FRAME_HEIGHT);
-			for(i=0; i<sizeof s_heights/sizeof s_heights[0]; i++) {
-				sprintf(buf, "%d", s_heights[i]);
-				ind = SendMessage(hwndItem, LB_ADDSTRING, 0, (LPARAM)buf);
-				SendMessage(hwndItem, LB_SETITEMDATA, ind, i);
-
-				if (s_heights[i] == h)
-					found_h = i;
-			}
-
-			hwndItem = GetDlgItem(hdlg, IDC_FORMATS);
-
-			{
-				int tabw = 50;
-
-				SendMessage(hwndItem, LB_SETTABSTOPS, 1, (LPARAM)&tabw);
-			}
-
-			for(i=0; i<sizeof s_formats/sizeof s_formats[0]; i++) {
-				ind = SendMessage(hwndItem, LB_ADDSTRING, 0, (LPARAM)s_formats[i].name);
-				SendMessage(hwndItem, LB_SETITEMDATA, ind, i+1);
-
-				if (s_formats[i].fcc == s_fcc && s_formats[i].bpp == s_bpp)
-					found_f = i;
-			}
-
-			if (found_f >= 0) {
-				SendMessage(hwndItem, LB_SETCURSEL, found_f, 0);
-			} else {
-				union {
-					char fccbuf[5];
-					FOURCC fcc;
-				};
-
-				fccbuf[4] = 0;
-				fcc = s_fcc;
-
-				sprintf(buf, "[Current: %s, %d bits per pixel]", fccbuf, s_bpp);
-
-				ind = SendMessage(hwndItem, LB_INSERTSTRING, 0, (LPARAM)buf);
-				SendMessage(hwndItem, LB_SETITEMDATA, ind, 0);
-				SendMessage(hwndItem, LB_SETCURSEL, 0, 0);
-			}
-
-			if (found_w >=0 && found_h >=0) {
-				SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_SETCURSEL, found_w, 0);
-				SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_SETCURSEL, found_h, 0);
-			} else {
-				SetDlgItemInt(hdlg, IDC_WIDTH, w, FALSE);
-				SetDlgItemInt(hdlg, IDC_HEIGHT, h, FALSE);
-
-				CheckDlgButton(hdlg, IDC_CUSTOM, BST_CHECKED);
-			}
-
-			PostMessage(hdlg, WM_COMMAND, IDC_CUSTOM, (LPARAM)GetDlgItem(hdlg, IDC_CUSTOM));
-		}
-
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			do {
-				int w, h, f, cb;
-				BOOL b;
-				BITMAPINFOHEADER bih;
-				BITMAPINFOHEADER *pbih;
-
-				hwndCapture = (HWND)GetWindowLongPtr(hdlg, DWLP_USER);
-
-				if (IsDlgButtonChecked(hdlg, IDC_CUSTOM)) {
-
-					w = GetDlgItemInt(hdlg, IDC_WIDTH, &b, FALSE);
-					if (!b || !w) {
-						MessageBeep(MB_ICONEXCLAMATION);
-						SetFocus(GetDlgItem(hdlg, IDC_WIDTH));
-						return TRUE;
-					}
-
-					h = GetDlgItemInt(hdlg, IDC_HEIGHT, &b, FALSE);
-					if (!b || !h) {
-						MessageBeep(MB_ICONEXCLAMATION);
-						SetFocus(GetDlgItem(hdlg, IDC_HEIGHT));
-						return TRUE;
-					}
-
-				} else {
-					w = s_widths[SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_GETITEMDATA,
-							SendDlgItemMessage(hdlg, IDC_FRAME_WIDTH, LB_GETCURSEL, 0, 0), 0)];
-					h = s_heights[SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_GETITEMDATA,
-							SendDlgItemMessage(hdlg, IDC_FRAME_HEIGHT, LB_GETCURSEL, 0, 0), 0)];
-				}
-
-				f = SendDlgItemMessage(hdlg, IDC_FORMATS, LB_GETITEMDATA,
-						SendDlgItemMessage(hdlg, IDC_FORMATS, LB_GETCURSEL, 0, 0), 0);
-
-				pbih = &bih;
-				cb = sizeof(BITMAPINFOHEADER);
-
-				if (!f) {
-					cb = capGetVideoFormatSize(hwndCapture);
-					if (pbih = (BITMAPINFOHEADER *)allocmem(cb)) {
-						if (!capGetVideoFormat(hwndCapture, pbih, cb)) {
-							freemem(pbih);
-							pbih = &bih;
-						}
-					} else
-						break;
-				} else {
-					pbih->biSize			= sizeof(BITMAPINFOHEADER);
-					pbih->biCompression		= s_formats[f-1].fcc;
-					pbih->biBitCount		= (WORD)s_formats[f-1].bpp;
-				}
-
-				pbih->biWidth			= w;
-				pbih->biHeight			= h;
-				pbih->biPlanes			= 1;
-				pbih->biSizeImage		= h * ((w * pbih->biBitCount + 31) / 32) * 4 * pbih->biPlanes;
-				pbih->biXPelsPerMeter	= 80;
-				pbih->biYPelsPerMeter	= 80;
-				pbih->biClrUsed			= 0;
-				pbih->biClrImportant	= 0;
-
-				capSetVideoFormat(hwndCapture, (BITMAPINFO *)pbih, cb);
-
-				if (pbih != &bih)
-					freemem(pbih);
-
-			} while(false);
-
-			EndDialog(hdlg, 1);
-			return TRUE;
-
-		case IDCANCEL:
-			EndDialog(hdlg, 0);
-			return TRUE;
-
-		case IDC_CUSTOM:
-			{
-				BOOL fEnabled = SendMessage((HWND)lParam, BM_GETSTATE, 0, 0) & BST_CHECKED;
-
-				EnableWindow(GetDlgItem(hdlg, IDC_WIDTH), fEnabled);
-				EnableWindow(GetDlgItem(hdlg, IDC_HEIGHT), fEnabled);
-
-				EnableWindow(GetDlgItem(hdlg, IDC_FRAME_WIDTH), !fEnabled);
-				EnableWindow(GetDlgItem(hdlg, IDC_FRAME_HEIGHT), !fEnabled);
-			}
-			return TRUE;
-
-		}
-		return FALSE;
-	}
-
-	return FALSE;
-}
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	timing dialog
-//
-////////////////////////////////////////////////////////////////////////////
-
-
-static INT_PTR CALLBACK CaptureTimingDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-	case WM_INITDIALOG:
-		CheckDlgButton(hdlg, IDC_ADJUSTVIDEOTIMING, g_fAdjustVideoTimer);
-
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam)) {
-		case IDOK:
-			g_fAdjustVideoTimer = !!IsDlgButtonChecked(hdlg, IDC_ADJUSTVIDEOTIMING);
-
-			SetConfigDword(g_szCapture, g_szAdjustVideoTiming, g_fAdjustVideoTimer);
-
-			EndDialog(hdlg, 1);
-			return TRUE;
-
-		case IDCANCEL:
-			EndDialog(hdlg, 0);
-			return TRUE;
-		}
-		return FALSE;
-	}
-
-	return FALSE;
-}
-
-////////////////////////////////////////////////////////////////////////////
-//
-//	noise reduction threshold dlg
-//
-////////////////////////////////////////////////////////////////////////////
-
-static ModelessDlgNode g_mdnCapNRThreshold(NULL);
-
-static INT_PTR CALLBACK CaptureNRThresholdDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hwndItem;
-	switch(msg) {
-		case WM_INITDIALOG:
-			hwndItem = GetDlgItem(hdlg, IDC_THRESHOLD);
-			SendMessage(hwndItem, TBM_SETRANGE, FALSE, MAKELONG(0, 64));
-			SendMessage(hwndItem, TBM_SETPOS, TRUE, g_iNoiseReduceThreshold);
-			return TRUE;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam)) {
-			case IDCANCEL:
-				DestroyWindow(hdlg);
-				break;
-			}
-			return TRUE;
-
-		case WM_CLOSE:
-			DestroyWindow(hdlg);
-			break;
-
-		case WM_DESTROY:
-			g_mdnCapNRThreshold.Remove();
-			g_mdnCapNRThreshold.hdlg = NULL;
-			return TRUE;
-
-		case WM_HSCROLL:
-			g_iNoiseReduceThreshold = SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
-			return TRUE;
-	}
-
-	return FALSE;
-}
-
-static void CaptureToggleNRDialog(HWND hwndParent) {
-	if (!hwndParent) {
-		if (g_mdnCapNRThreshold.hdlg) {
-			DestroyWindow(g_mdnCapNRThreshold.hdlg);
+void VDCaptureProject::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock) {
+	if (stream < 0) {
+		if (mpCB) {
+			VDPixmap px(VDPixmapFromLayout(mFilterInputLayout, (void *)data));
+
+			if (mpFilterSys)
+				mpFilterSys->Run(px);
+
+			mpCB->UICaptureAnalyzeFrame(px);
 		}
 		return;
 	}
 
-	if (g_mdnCapNRThreshold.hdlg)
-		SetForegroundWindow(g_mdnCapNRThreshold.hdlg);
+	VDCaptureData *const icd = mpCaptureData;
+
+	if (icd->mpError)
+		return;
+
+	if (MyError *e = icd->mpSpillError.xchg(NULL)) {
+		icd->mpError = e;
+		mpDriver->CaptureAbort();
+		return;
+	}
+
+	bool success;
+
+	////////////////////////
+	CAPINT_FATAL_CATCH_START
+	////////////////////////
+
+	if (stream > 0)
+		success = icd->WaveCallback(data, size, global_clock);
 	else {
-		g_mdnCapNRThreshold.hdlg = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_NOISEREDUCTION), hwndParent, CaptureNRThresholdDlgProc);
-		guiAddModelessDialog(&g_mdnCapNRThreshold);
+		if (!stream)
+			success = icd->VideoCallback(data, size, timestamp, key, global_clock);
+	}
+
+	///////////////////////////////
+	CAPINT_FATAL_CATCH_END("video")
+	///////////////////////////////
+
+	return;
+}
+
+bool VDCaptureProject::InitFilter() {
+	if (mpFilterSys)
+		return true;
+
+	mFilterInputLayout.format = 0;
+
+	vdstructex<BITMAPINFOHEADER> vformat;
+
+	if (!GetVideoFormat(vformat))
+		return false;
+
+	int variant;
+	int format = VDBitmapFormatToPixmapFormat(*vformat, variant);
+
+	VDMakeBitmapCompatiblePixmapLayout(mFilterInputLayout, vformat->biWidth, vformat->biHeight, format, variant);
+
+	if (!mFilterSetup.mbEnableCrop
+		&& !mFilterSetup.mbEnableRGBFiltering
+		&& !mFilterSetup.mbEnableLumaSquish
+		&& !mFilterSetup.mbEnableFieldSwap
+		&& !mFilterSetup.mVertSquashMode
+		&& !mFilterSetup.mbEnableNoiseReduction)
+	{
+		return false;
+	}
+
+	uint32 palEnts = 0;
+
+	memset(mFilterPalette, 0, sizeof mFilterPalette);
+
+	if (vformat->biCompression == BI_RGB && vformat->biBitCount <= 8)
+		palEnts = vformat->biClrUsed;
+
+	int palOffset = VDGetSizeOfBitmapHeaderW32(vformat.data());
+	int realPalEnts = (vformat.size() - palOffset) >> 2;
+
+	if (realPalEnts > 0) {
+		if (palEnts > (uint32)realPalEnts)
+			palEnts = realPalEnts;
+
+		if (palEnts > 256)
+			palEnts = 256;
+
+		memcpy(mFilterPalette, (char *)vformat.data() + palOffset, sizeof(uint32)*palEnts);
+	}
+
+	mFilterInputLayout.palette = mFilterPalette;
+
+	mpFilterSys = VDCreateCaptureFilterSystem();
+
+	if (mFilterSetup.mbEnableCrop)
+		mpFilterSys->SetCrop(mFilterSetup.mCropRect.left,
+								mFilterSetup.mCropRect.top,
+								mFilterSetup.mCropRect.right,
+								mFilterSetup.mCropRect.bottom);
+
+	if (mFilterSetup.mbEnableNoiseReduction)
+		mpFilterSys->SetNoiseReduction(mFilterSetup.mNRThreshold);
+
+	mpFilterSys->SetLumaSquish(mFilterSetup.mbEnableLumaSquish);
+	mpFilterSys->SetFieldSwap(mFilterSetup.mbEnableFieldSwap);
+	mpFilterSys->SetVertSquashMode(mFilterSetup.mVertSquashMode);
+	mpFilterSys->SetChainEnable(mFilterSetup.mbEnableRGBFiltering);
+
+	mFilterOutputLayout = mFilterInputLayout;
+	mpFilterSys->Init(mFilterOutputLayout, GetFrameTime());
+
+	return true;
+}
+
+void VDCaptureProject::ShutdownFilter() {
+	mpFilterSys = NULL;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	Internal capture
+//
+///////////////////////////////////////////////////////////////////////////
+
+void VDCaptureData::CreateNewFile() {
+	IVDMediaOutputAVIFile *pNewFile = NULL;
+	BITMAPINFO *bmi;
+	char fname[MAX_PATH];
+	CapSpillDrive *pcsd;
+
+	pcsd = CapSpillPickDrive(false);
+	if (!pcsd) {
+		mbAllFull = true;
+		return;
+	}
+
+	mpszNewPath = pcsd->path;
+
+	try {
+		pNewFile = VDCreateMediaOutputAVIFile();
+		if (!pNewFile)
+			throw MyMemoryError();
+
+		pNewFile->setSegmentHintBlock(true, NULL, MAX_PATH+1);
+
+		IVDMediaOutputStream *pNewVideo = pNewFile->createVideoStream();
+		IVDMediaOutputStream *pNewAudio = NULL;
+		
+		if (mpAudioOut)
+			pNewAudio = pNewFile->createAudioStream();
+
+		if (g_prefs.fAVIRestrict1Gb)
+			pNewFile->set_1Gb_limit();
+
+		pNewFile->set_capture_mode(true);
+
+		// copy over information to new file
+
+		pNewVideo->setStreamInfo(mpVideoOut->getStreamInfo());
+		pNewVideo->setFormat(mpVideoOut->getFormat(), mpVideoOut->getFormatLen());
+
+		if (mpAudioOut) {
+			pNewAudio->setStreamInfo(mpAudioOut->getStreamInfo());
+			pNewAudio->setFormat(mpAudioOut->getFormat(), mpAudioOut->getFormatLen());
+		} 
+
+		// init the new file
+
+		if (mpProject->IsStripingEnabled()) {
+			const VDCaptureDiskSettings& sets = mpProject->GetDiskSettings();
+
+			if (sets.mbDisableWriteCache) {
+				pNewFile->disable_os_caching();
+				pNewFile->setBuffering(1024 * sets.mDiskChunkSize * sets.mDiskChunkCount, 1024 * sets.mDiskChunkSize);
+			}
+		}
+
+		bmi = (BITMAPINFO *)mpVideoOut->getFormat();
+
+		pcsd->makePath(fname, mpszFilename);
+
+		// edit the filename up
+
+		sprintf((char *)VDFileSplitExt(fname), ".%02d.avi", mSegmentIndex+1);
+
+		// init the file
+
+		pNewFile->init(VDTextAToW(fname).c_str());
+
+		mpOutputFilePending = pNewFile;
+
+		*(char *)VDFileSplitPath(fname) = 0;
+
+		mpOutputFile->setSegmentHintBlock(false, fname, MAX_PATH);
+
+		++mSegmentIndex;
+		mSizeThresholdPending = pcsd->threshold;
+
+	} catch(const MyError&) {
+		delete pNewFile;
+		throw;
 	}
 }
 
+void VDCaptureData::FinalizeOldFile() {
+	IVDMediaOutput *ao = mpOutput;
+
+	mpOutputFile	= mpOutputFilePending;
+	mpOutput		= mpOutputFile;
+	ao->finalize();
+	delete ao;
+	mpszPath = mpszNewPath;
+	mSizeThreshold = mSizeThresholdPending;
+}
+
+void VDCaptureData::ThreadRun() {
+	MSG msg;
+	bool fSwitch = false;
+	DWORD dwTimer = GetTickCount();
+	bool fTimerActive = true;
+
+	for(;;) {
+		bool fSuccess = false;
+
+		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+			if (msg.message == VDCM_EXIT)
+				return;
+			else if (msg.message == VDCM_SWITCH_FIN) {
+				fSwitch = true;
+				if (!fTimerActive) {
+					fTimerActive = true;
+					dwTimer = GetTickCount();
+				}
+			}
+
+			if (msg.message)
+				fSuccess = true;
+		}
+
+		// We'd like to do this stuff while the system is idle, but it's
+		// possible the system is so busy that it's never idle -- so force
+		// processing to take place if the timeout expires.  Right now,
+		// we set it to 10 seconds.
+
+		if (!fSuccess || (fTimerActive && (GetTickCount()-dwTimer) > 10000) ) {
+
+			// Kill timer.
+
+			fTimerActive = false;
+
+			// Time to initialize new output file?
+
+			if (!mpSpillError) try {
+
+				if (mpOutputFile && !mpOutputFilePending && !mbAllFull)
+					CreateNewFile();
+
+				// Finalize old output?
+
+				if (fSwitch) {
+					FinalizeOldFile();
+					fSwitch = false;
+
+					// Restart timer for new file to open.
+
+					dwTimer = GetTickCount();
+					fTimerActive = true;
+				}
+			} catch(const MyError& e) {
+				mpSpillError = new MyError(e);
+			}
+		}
+
+		if (!fSuccess)
+			WaitMessage();
+	}
+
+	VDDeinitThreadData();
+}
+
+////////////////
+
+void VDCaptureData::DoSpill() {
+	if (!mpProject->IsSpillEnabled()) return;
+
+	sint64 nAudioFromVideo;
+	sint64 nVideoFromAudio;
+
+	if (mbAllFull)
+		throw MyError("Capture stopped: All assigned spill drives are full.");
+
+	// If there is no audio, then switch now.
+
+	if (mpAudioOut) {
+
+		// Find out if the audio or video stream is ahead, and choose a stop point.
+
+		if (mbNTSC)
+			nAudioFromVideo = int64divround(mVideoBlocks * 1001i64 * mwfex.nAvgBytesPerSec, mAudioSampleSize * 30000i64);
+		else
+			nAudioFromVideo = int64divround(mVideoBlocks * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 1000000i64);
+
+		if (nAudioFromVideo < mAudioBlocks) {
+
+			// Audio is ahead of the corresponding video point.  Figure out how many frames ahead
+			// we need to trigger from now.
+
+			if (mbNTSC) {
+				nVideoFromAudio = int64divroundup(mAudioBlocks * mAudioSampleSize * 30000i64, mwfex.nAvgBytesPerSec * 1001i64);
+				nAudioFromVideo = int64divround(nVideoFromAudio * 1001i64 * mwfex.nAvgBytesPerSec, mAudioSampleSize * 30000i64);
+			} else {
+				nVideoFromAudio = int64divroundup(mAudioBlocks * mAudioSampleSize * 1000000i64, mwfex.nAvgBytesPerSec * (__int64)mFramePeriod);
+				nAudioFromVideo = int64divround(nVideoFromAudio * (__int64)mFramePeriod * mwfex.nAvgBytesPerSec, mAudioSampleSize * 1000000i64);
+			}
+
+			mVideoSwitchPt = nVideoFromAudio;
+			mAudioSwitchPt = nAudioFromVideo;
+
+			VDDEBUG("SPILL: (%I64d,%I64d) > trigger at > (%I64d,%I64d)\n", mVideoBlocks, mAudioBlocks, mVideoSwitchPt, mAudioSwitchPt);
+
+			return;
+
+		} else if (nAudioFromVideo > mAudioBlocks) {
+
+			// Audio is behind the corresponding video point, so switch the video stream now
+			// and post a trigger for audio.
+
+			mAudioSwitchPt = nAudioFromVideo;
+
+			VDDEBUG("SPILL: video frozen at %I64d, audio(%I64d) trigger at (%I64d)\n", mVideoBlocks, mAudioBlocks, mAudioSwitchPt);
+
+			mSegmentVideoSize = 0;
+			mpVideoOut = mpOutputFilePending->getVideoOutput();
+
+			return;
+
+		}
+	}
+
+	// Hey, they're exactly synched!  Well then, let's switch them now!
+
+	VDDEBUG("SPILL: exact sync switch at %I64d, %I64d\n", mVideoBlocks, mAudioBlocks);
+
+	IVDMediaOutput *pOutputPending = mpOutputFilePending;
+	mpVideoOut = pOutputPending->getVideoOutput();
+	mpAudioOut = pOutputPending->getAudioOutput();
+	mSegmentAudioSize = mSegmentVideoSize = 0;
+
+	PostFinalizeRequest();
+}
+
+void VDCaptureData::CheckVideoAfter() {
+	++mVideoBlocks;
+	
+	if (mVideoSwitchPt && mVideoBlocks == mVideoSwitchPt) {
+
+		mpVideoOut = mpOutputFilePending->getVideoOutput();
+
+		if (!mAudioSwitchPt) {
+			PostFinalizeRequest();
+
+			VDDEBUG("VIDEO: Triggering finalize & switch.\n");
+		} else
+			VDDEBUG("VIDEO: Switching stripes, waiting for audio to reach sync point (%I64d < %I64d)\n", mAudioBlocks, mAudioSwitchPt);
+
+		mVideoSwitchPt = 0;
+		mSegmentVideoSize = 0;
+	}
+}
+
+bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestamp64, bool key, sint64 global_clock) {
+	// Has the I/O thread successfully completed the switch?
+	if (mpOutputFile == mpOutputFilePending)
+		mpOutputFilePending = NULL;
+
+	// Determine what frame we are *supposed* to be on.
+	//
+	// Let's say our capture interval is 500ms:
+	//		Frame 0: 0-249ms
+	//		Frame 1: 250-749ms
+	//		Frame 2: 750-1249ms
+	//		...and so on.
+	//
+	// We have to do this because AVICap doesn't keep track
+	// of dropped frames in no-file capture mode.
+
+	long lTimeStamp = timestamp64 / 1000;
+
+	mTotalVideoSize += mLastVideoSize;
+	mLastVideoSize = 0;
+
+	////////////////////////////
+
+	uint32 dwCurrentFrame;
+	if (mbNTSC)
+		dwCurrentFrame = (DWORD)(((__int64)lTimeStamp * 30 + 500) / 1001);
+	else
+		dwCurrentFrame = (DWORD)(((__int64)lTimeStamp * 1000 + mFramePeriod/2) / mFramePeriod);
+
+	if (dwCurrentFrame)
+		--dwCurrentFrame;
+
+	long jitter = (long)((lTimeStamp*1000i64) % mFramePeriod);
+
+	if (jitter >= mFramePeriod/2)
+		jitter -= mFramePeriod;
+
+	mTotalDisp += abs(jitter);
+	mTotalJitter += jitter;
+
+	++mTotalFramesCaptured;
+
+	mLastTime = (uint32)(global_clock / 1000);
+
+	// Is the frame too early?
+
+	if (mLastCapturedFrame > dwCurrentFrame+1) {
+		++mFramesDropped;
+		VDDEBUG("Drop forward at %ld ms (%ld ms corrected)\n", (long)(timestamp64 / 1000), lTimeStamp);
+		return 0;
+	}
+
+	// Run the frame through the filterer.
+
+	uint32 dwBytesUsed = size;
+	void *pFilteredData = (void *)data;
+
+	VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
+
+	if (mpFilterSys) {
+		mpFilterSys->Run(px);
+#pragma vdpragma_TODO("this is pretty wrong")
+		pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
+		dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+	}
+
+	if (mpProject->mDisplayMode == kDisplayAnalyze) {
+		if (mpProject->mpCB)
+			mpProject->mpCB->UICaptureAnalyzeFrame(px);
+	}
+
+	try {
+		// While we are early, write dropped frames (grr)
+		//
+		// Don't do this for the first frame, since we don't
+		// have any frames preceding it!
+
+		if (mTotalFramesCaptured > 1) {
+			while(mLastCapturedFrame < dwCurrentFrame) {
+				if (mpOutputFile)
+					mpVideoOut->write(0, pFilteredData, 0, 1);
+
+				++mLastCapturedFrame;
+				++mFramesDropped;
+				VDDEBUG("Drop back at %ld ms (%ld ms corrected)\n", (long)(timestamp64 / 1000), lTimeStamp);
+				mTotalVideoSize += 24;
+				mSegmentVideoSize += 24;
+
+				if (mpVideoCompressor)
+					mpVideoCompressor->dropFrame();
+
+				if (mpOutputFile)
+					CheckVideoAfter();
+			}
+		}
+
+		if (mpVideoCompressor) {
+			bool isKey;
+			long lBytes = 0;
+			void *lpCompressedData;
+
+			lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
+
+			if (mpOutputFile) {
+				mpVideoOut->write(
+						isKey ? AVIIF_KEYFRAME : 0,
+						lpCompressedData,
+						lBytes, 1);
+
+				CheckVideoAfter();
+			}
+
+			mLastVideoSize = lBytes + 24;
+		} else {
+			if (mpOutputFile) {
+				mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
+				CheckVideoAfter();
+			}
+
+			mLastVideoSize = dwBytesUsed + 24;
+		}
+	} catch(const MyError& e) {
+		if (!mpError)
+			mpError = new MyError(e);
+
+		return false;
+	}
+
+	++mLastCapturedFrame;
+	mSegmentVideoSize += mLastVideoSize;
+
+	if (global_clock - mLastUpdateTime > 500000)
+	{
+
+		if (mpOutputFilePending && !mAudioSwitchPt && !mVideoSwitchPt && mpProject->IsSpillEnabled()) {
+			if (mSegmentVideoSize + mSegmentAudioSize >= ((__int64)g_lSpillMaxSize<<20)
+				|| VDGetDiskFreeSpace(VDTextAToW(VDString(mpszPath))) < ((__int64)mSizeThreshold << 20))
+
+				DoSpill();
+		}
+
+		sint64 i64;
+		if (mpProject->IsSpillEnabled())
+			i64 = CapSpillGetFreeSpace();
+		else {
+			if (mCaptureRoot[0])
+				i64 = VDGetDiskFreeSpace(VDTextAToW(VDString(mCaptureRoot)));
+			else
+				i64 = VDGetDiskFreeSpace(VDStringW(L"."));
+		}
+
+		mDiskFreeBytes = i64;
+
+		VDCaptureStatus status;
+
+		status.mFramesCaptured	= mTotalFramesCaptured;
+		status.mFramesDropped	= mFramesDropped;
+		status.mTotalJitter		= mTotalJitter;
+		status.mTotalDisp		= mTotalDisp;
+		status.mTotalVideoSize	= mTotalVideoSize;
+		status.mTotalAudioSize	= mTotalAudioSize;
+		status.mCurrentSegment	= mSegmentIndex;
+		status.mElapsedTimeMS	= (uint32)(global_clock / 1000);
+		status.mDiskFreeSpace	= mDiskFreeBytes;
+
+		status.mVideoFirstFrameTimeMS	= 0;
+		status.mVideoLastFrameTimeMS	= 0;
+		status.mAudioFirstFrameTimeMS	= 0;
+		status.mAudioLastFrameTimeMS	= 0;
+		status.mAudioFirstSize			= 0;
+		status.mTotalAudioDataSize		= 0;
+		status.mActualAudioHz			= 0;
+		if (mpStatsFilter)
+			mpStatsFilter->GetStats(status);
+
+		status.mVideoTimingAdjustMS = 0;
+		status.mAudioResamplingRate	= 0;
+		if (mpResyncFilter) {
+			VDCaptureResyncStatus rstat;
+
+			mpResyncFilter->GetStatus(rstat);
+
+			status.mVideoTimingAdjustMS = rstat.mVideoTimingAdjust;
+			status.mAudioResamplingRate = rstat.mAudioResamplingRate;
+		}
+
+		if (mpProject->mpCB)
+			mpProject->mpCB->UICaptureStatusUpdated(status);
+
+		mLastUpdateTime = global_clock - global_clock % 500000;
+		mTotalJitter = mTotalDisp = 0;
+	};
+
+	return true;
+}
+
+bool VDCaptureData::WaveCallback(const void *data, uint32 size, sint64 global_clock) {
+	// Has the I/O thread successfully completed the switch?
+
+	if (mpOutputFile == mpOutputFilePending)
+		mpOutputFilePending = NULL;
+
+	if (mpOutput) {
+		try {
+			if (mpProject->IsSpillEnabled()) {
+				const char *pSrc = (const char *)data;
+				long left = (long)size;
+
+				// If there is a switch point, write up to it.  Otherwise, write it all!
+
+				while(left > 0) {
+					long tc;
+
+					tc = left;
+
+					if (mAudioSwitchPt && mAudioBlocks+tc/mAudioSampleSize >= mAudioSwitchPt)
+						tc = (long)((mAudioSwitchPt - mAudioBlocks) * mAudioSampleSize);
+
+					mpAudioOut->write(0, pSrc, tc, tc / mAudioSampleSize);
+					mTotalAudioSize += tc + 24;
+					mSegmentAudioSize += tc + 24;
+					mAudioBlocks += tc / mAudioSampleSize;
+
+					if (mAudioSwitchPt && mAudioBlocks == mAudioSwitchPt) {
+						// Switch audio to next stripe.
+
+						mpAudioOut = mpOutputFilePending->getAudioOutput();
+
+						if (!mVideoSwitchPt) {
+							PostFinalizeRequest();
+							VDDEBUG("AUDIO: Triggering finalize & switch.\n");
+						} else
+							VDDEBUG("AUDIO: Switching to next, waiting for video to reach sync point (%I64d < %I64d)\n", mVideoBlocks, mVideoSwitchPt);
+
+						mAudioSwitchPt = 0;
+						mSegmentAudioSize = 0;
+					}
+
+					left -= tc;
+					pSrc += tc;
+				}
+			} else {
+				mpAudioOut->write(0, data, size, size / mAudioSampleSize);
+				mTotalAudioSize += size + 24;
+				mSegmentAudioSize += size + 24;
+			}
+		} catch(const MyError& e) {
+			if (!mpError)
+				mpError = new MyError(e);
+
+			return false;
+		}
+	} else {
+		mTotalAudioSize += size + 24;
+		mSegmentAudioSize += size + 24;
+	}
+
+	return true;
+}

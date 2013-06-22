@@ -4,7 +4,7 @@
 
 # TARGTYPE "Win32 (x86) Static Library" 0x0104
 
-CFG=Priss - Win32 Debug
+CFG=Priss - Win32 Debug AMD64
 !MESSAGE This is not a valid makefile. To build this project using NMAKE,
 !MESSAGE use the Export Makefile command and run
 !MESSAGE 
@@ -13,14 +13,14 @@ CFG=Priss - Win32 Debug
 !MESSAGE You can specify a configuration when running NMAKE
 !MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
-!MESSAGE NMAKE /f "Priss.mak" CFG="Priss - Win32 Debug"
+!MESSAGE NMAKE /f "Priss.mak" CFG="Priss - Win32 Debug AMD64"
 !MESSAGE 
 !MESSAGE Possible choices for configuration are:
 !MESSAGE 
 !MESSAGE "Priss - Win32 Release" (based on "Win32 (x86) Static Library")
 !MESSAGE "Priss - Win32 Debug" (based on "Win32 (x86) Static Library")
-!MESSAGE "Priss - Win32 Release ICL" (based on "Win32 (x86) Static Library")
 !MESSAGE "Priss - Win32 Release AMD64" (based on "Win32 (x86) Static Library")
+!MESSAGE "Priss - Win32 Debug AMD64" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
@@ -76,29 +76,6 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
-# PROP BASE Use_MFC 0
-# PROP BASE Use_Debug_Libraries 0
-# PROP BASE Output_Dir "Priss___Win32_Release_ICL"
-# PROP BASE Intermediate_Dir "Priss___Win32_Release_ICL"
-# PROP BASE Target_Dir ""
-# PROP Use_MFC 0
-# PROP Use_Debug_Libraries 0
-# PROP Output_Dir "..\lib\ReleaseICL"
-# PROP Intermediate_Dir "..\obj\ReleaseICL\Priss"
-# PROP Target_Dir ""
-# ADD BASE CPP /nologo /W3 /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
-# ADD CPP /nologo /MT /W3 /Zi /Ox /Ot /Oa /Og /Oi /Ob2 /I "h" /I "..\h" /D "NDEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /D "_USE_INTEL_COMPILER" /YX /FD /GF /QxW /c
-# ADD BASE RSC /l 0x409 /d "NDEBUG"
-# ADD RSC /l 0x409 /d "NDEBUG"
-BSC32=bscmake.exe
-# ADD BASE BSC32 /nologo
-# ADD BSC32 /nologo
-LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # PROP BASE Use_MFC 0
@@ -123,14 +100,37 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 1
+# PROP BASE Output_Dir "Priss___Win32_Debug_AMD64"
+# PROP BASE Intermediate_Dir "Priss___Win32_Debug_AMD64"
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 1
+# PROP Output_Dir "..\lib\DebugAMD64"
+# PROP Intermediate_Dir "..\obj\DebugAMD64\Priss"
+# PROP Target_Dir ""
+# ADD BASE CPP /nologo /MTd /W3 /Gm /ZI /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD CPP /nologo /MTd /W3 /Gm /ZI /Od /I "h" /I "..\h" /D "_DEBUG" /D "WIN32" /D "_MBCS" /D "_LIB" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GZ /GF /c
+# ADD BASE RSC /l 0x409 /d "_DEBUG"
+# ADD RSC /l 0x409 /d "_DEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LIB32=link.exe -lib
+# ADD BASE LIB32 /nologo
+# ADD LIB32 /nologo
+
 !ENDIF 
 
 # Begin Target
 
 # Name "Priss - Win32 Release"
 # Name "Priss - Win32 Debug"
-# Name "Priss - Win32 Release ICL"
 # Name "Priss - Win32 Release AMD64"
+# Name "Priss - Win32 Debug AMD64"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
@@ -142,11 +142,11 @@ SOURCE=.\source\engine.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -159,11 +159,11 @@ SOURCE=.\source\layer1.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -176,11 +176,11 @@ SOURCE=.\source\layer2.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -193,11 +193,11 @@ SOURCE=.\source\layer3.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -210,11 +210,11 @@ SOURCE=.\source\layer3tables.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -227,11 +227,11 @@ SOURCE=.\source\polyphase.cpp
 
 !ELSEIF  "$(CFG)" == "Priss - Win32 Debug"
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
 # SUBTRACT CPP /Oa
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
 
 !ENDIF 
 
@@ -276,19 +276,28 @@ SOURCE=.\source\a64_polyphase.asm
 
 # PROP Exclude_From_Build 1
 
-!ELSEIF  "$(CFG)" == "Priss - Win32 Release ICL"
-
-# PROP Exclude_From_Build 1
-
 !ELSEIF  "$(CFG)" == "Priss - Win32 Release AMD64"
 
-# Begin Custom Build -
+# Begin Custom Build
 IntDir=.\..\obj\ReleaseAMD64\Priss
 InputPath=.\source\a64_polyphase.asm
 InputName=a64_polyphase
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "Priss - Win32 Debug AMD64"
+
+# PROP BASE Exclude_From_Build 1
+# Begin Custom Build -
+IntDir=.\..\obj\DebugAMD64\Priss
+InputPath=.\source\a64_polyphase.asm
+InputName=a64_polyphase
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml64 /nologo /c /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
 
 # End Custom Build
 
