@@ -2768,6 +2768,7 @@ void VDProjectUI::UpdateCurveList() {
 
 		bool curvesFound = false;
 		int index = 1;
+		int comboIndex = 0;
 		int currentSelect = -1;
 
 		FilterInstance *fa = (FilterInstance *)g_listFA.tail.next;
@@ -2779,7 +2780,11 @@ void VDProjectUI::UpdateCurveList() {
 				curvesFound = true;
 
 				if (pc == pcSelected)
-					currentSelect = index - 1;
+					currentSelect = comboIndex;
+				else if (currentSelect < 0)
+					currentSelect = 0;
+
+				++comboIndex;
 			}
 
 			fa = (FilterInstance *)fa->next;

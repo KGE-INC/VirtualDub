@@ -710,6 +710,8 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 
 				thisPtr->hwndStatus = hdlg;
 
+				VDSetDialogDefaultIcons(hdlg);
+
 				// must do this before any timer requests occur
 				thisPtr->mStartTime		= VDGetCurrentTick();
 

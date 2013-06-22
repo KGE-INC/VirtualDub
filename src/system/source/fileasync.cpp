@@ -739,8 +739,7 @@ void VDFileAsyncNT::ThreadRun() {
 
 					}
 
-					if (state == kStateNormal)
-						continue;
+					continue;
 				}
 
 				VDASSERT(state == kStateFlush);

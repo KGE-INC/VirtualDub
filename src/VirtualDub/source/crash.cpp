@@ -171,6 +171,18 @@ void *operator new(size_t bytes, const std::nothrow_t&) {
 	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
 }
 
+void *operator new[](size_t bytes) {
+	static const char fname[]="stack trace";
+
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+}
+
+void *operator new[](size_t bytes, const std::nothrow_t&) {
+	static const char fname[]="stack trace";
+
+	return _malloc_dbg(bytes, _NORMAL_BLOCK, fname, (int)_ReturnAddress());
+}
+
 #endif
 
 #if 0
@@ -820,8 +832,7 @@ void VDThreadInitHandler(bool bInitThread, const char *debugName) {
 
 		LeaveCriticalSection(&g_csPerThreadState);
 
-		if (g_PerThreadState.pszThreadName)
-			CloseHandle((HANDLE)g_PerThreadState.hThread);
+		CloseHandle((HANDLE)g_PerThreadState.hThread);
 
 		InterlockedDecrement(&g_nThreadsTrackedMinusOne);
 	}

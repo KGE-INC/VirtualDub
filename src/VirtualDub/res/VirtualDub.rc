@@ -3911,12 +3911,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.9.9"
+            VALUE "FileVersion", "1.9.10"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2010 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.9.9"
+            VALUE "ProductVersion", "1.9.10"
         END
     END
     BLOCK "VarFileInfo"
@@ -4149,7 +4149,7 @@ STRINGTABLE
 BEGIN
     IDS_VIDEO_SEEK_START    "Move to the beginning of the video file."
     IDS_VIDEO_SEEK_END      "Move to the end of the video file."
-    IDS_VIDEO_SEEK_PREV     "Move to the next frame in the video."
+    IDS_VIDEO_SEEK_PREV     "Move to the previous frame in the video."
     IDS_VIDEO_SEEK_NEXT     "Move to the next frame in the video."
     IDS_VIDEO_SEEK_KEYPREV  "Move to the previous keyframe in the video."
     IDS_VIDEO_SEEK_KEYNEXT  "Move to the next keyframe in the video."

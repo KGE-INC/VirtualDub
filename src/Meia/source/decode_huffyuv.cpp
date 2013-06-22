@@ -779,14 +779,16 @@ void VDVideoDecoderHuffyuv::Init(uint32 w, uint32 h, uint32 depth, const uint8 *
 			}
 		}
 
-		if (extralen > 4 && !mbAdaptiveHuffman) {
+		if (extralen >= 4 && !mbAdaptiveHuffman) {
 			extradata += 4;
 
-			const uint8 *limit = extradata + extralen;
+			const uint8 *limit = extradata + extralen - 4;
 			extradata = mTables[0].Init(extradata, extralen);
 			extradata = mTables[1].Init(extradata, limit - extradata);
 			extradata = mTables[2].Init(extradata, limit - extradata);
 		}
+	} else {
+		throw MyError("The Huffyuv video stream uses an unsupported old format that lacks embedded encoding tables.");
 	}
 
 	if (!mPredictMode)

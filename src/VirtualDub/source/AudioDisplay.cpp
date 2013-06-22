@@ -766,7 +766,7 @@ VDAudioDisplayControl::VDAudioDisplayControl(HWND hwnd)
 	, mReadPosition(-1)
 	, mbSpectrumMode(false)
 	, mbPointsDirty(false)
-	, mbSolidWaveform(true)
+	, mbSolidWaveform(false)
 	, mSpectralBoost(0)
 	, mUpdateX1(INT_MAX)
 	, mUpdateX2(INT_MIN)
@@ -1526,7 +1526,7 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 	} else {
 		if (HPEN hpen = CreatePen(PS_SOLID, 0, RGB(255, 0, 0))) {
 			if (HGDIOBJ hOldPen = SelectObject(hdc, hpen)) {
-				float yscale = (float)mChanHeight / 256.0f;
+				float yscale = (float)(mChanHeight - 1) / 256.0f;
 
 				if (mbSolidWaveform) {
 					if (mbPointsDirty) {
@@ -1544,6 +1544,8 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 								uint32 x = 0;
 								const uint8 *src = &mImage[ch];
 								int yoffset = mChanHeight * ch;
+
+								uint32 basePtIdx = j;
 								for(uint32 i=0; i<count; i += mSamplesPerPixel) {
 									uint8 minval = 0xff;
 									uint8 maxval = 0x00;
@@ -1560,8 +1562,23 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 									mPoints[j+0].x = x;
 									mPoints[j+0].y = VDRoundToIntFast((float)minval * yscale) + yoffset;
 									mPoints[j+1].x = x++;
-									mPoints[j+1].y = VDRoundToIntFast((float)maxval * yscale) + yoffset;
+									mPoints[j+1].y = VDRoundToIntFast((float)maxval * yscale) + yoffset + 1;
 									j += 2;
+								}
+
+								// Do another run through the points, and extend ranges to touch whenever needed.
+								for(uint32 k = basePtIdx; k + 2 < j; k += 2) {
+									POINT& pt0 = mPoints[k+0];
+									POINT& pt1 = mPoints[k+1];
+									POINT& pt2 = mPoints[k+2];
+									POINT& pt3 = mPoints[k+3];
+
+									// Check for the two disjoint cases and connect the spans at the midpoint
+									// if so.
+									if (pt1.y < pt2.y)
+										pt1.y = pt2.y = (pt1.y + pt2.y) >> 1;
+									else if (pt0.y > pt3.y)
+										pt0.y = pt3.y = (pt0.y + pt3.y) >> 1;
 								}
 							}
 						}
@@ -1583,20 +1600,24 @@ void VDAudioDisplayControl::OnPaint(HDC hdc, const PAINTSTRUCT& ps) {
 					if (mbPointsDirty) {
 						mbPointsDirty = false;
 
-						size_t count = mImage.size();
+						size_t count = mImage.size() / mChanCount;
 
 						mPoints.resize(count);
 
-						for(uint32 i=0; i<count; ++i) {
-							mPoints[i].x = VDRoundToIntFast((float)(i * mPixelsPerSample));
-							mPoints[i].y = VDRoundToIntFast((float)mImage[i] * yscale);
+						if (count > 1) {
+							for(uint32 ch=0; ch<mChanCount; ++ch) {
+								const uint8 *src = &mImage[ch];
+								int yoffset = mChanHeight * ch;
+
+								for(uint32 i=0; i<count; ++i) {
+									mPoints[i].x = VDRoundToIntFast((float)(i * mPixelsPerSample));
+									mPoints[i].y = VDRoundToIntFast((float)src[i * mChanCount] * yscale + yoffset);
+								}
+
+								Polyline(hdc, mPoints.data(), count - 1);
+							}
 						}
 					}
-
-					int w = std::min<int>(mSamplesPerPixel, mImage.size() / mChanWidth);
-
-					for(int x=0; x<w; x += 128)
-						Polyline(hdc, &mPoints[x], std::min<int>(w-x, 128));
 				}
 
 				SelectObject(hdc, hOldPen);

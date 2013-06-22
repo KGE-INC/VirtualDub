@@ -186,10 +186,10 @@ static const int g_iPriorities[][2]={
 void AVISTREAMINFOtoAVIStreamHeader(AVIStreamHeader_fixed *dest, const VDAVIStreamInfo *src) {
 	dest->fccType			= src->fccType;
 	dest->fccHandler		= src->fccHandler;
-	dest->dwFlags			= src->dwFlags;
+	dest->dwFlags			= 0;
 	dest->wPriority			= src->wPriority;
 	dest->wLanguage			= src->wLanguage;
-	dest->dwInitialFrames	= src->dwInitialFrames;
+	dest->dwInitialFrames	= 0;
 	dest->dwStart			= src->dwStart;
 	dest->dwScale			= src->dwScale;
 	dest->dwRate			= src->dwRate;
@@ -922,7 +922,6 @@ void Dubber::InitOutputFile() {
 
 		AVISTREAMINFOtoAVIStreamHeader(&hdr, &aSrc->getStreamInfo());
 		hdr.dwStart			= 0;
-		hdr.dwInitialFrames	= opt->audio.preload ? 1 : 0;
 
 		if (opt->audio.mode > DubAudioOptions::M_NONE) {
 			const VDWaveFormat *outputAudioFormat = audioStream->GetFormat();

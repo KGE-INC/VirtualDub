@@ -518,7 +518,7 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 				case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
 					do {
 						*lummap++ = scene_lumtileUYVY(src, 8, mh, pxsrc.pitch);
-						src += 32;
+						src += 16;
 					} while(--w);
 
 					if (pxsrc.w & 6) {
@@ -529,7 +529,7 @@ void SceneDetector::BitmapToLummap(uint32 *lummap, const VDPixmap& pxsrc) {
 				case nsVDPixmap::kPixFormat_YUV422_YUYV:
 					do {
 						*lummap++ = scene_lumtileYUY2(src, 8, mh, pxsrc.pitch);
-						src += 32;
+						src += 16;
 					} while(--w);
 
 					if (pxsrc.w & 6) {
