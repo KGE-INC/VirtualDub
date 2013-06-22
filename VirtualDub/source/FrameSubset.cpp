@@ -200,7 +200,7 @@ int FrameSubset::lookupRange(int start, int& len, bool& bMasked) {
 	if (pfsn->bMask) {
 		FrameSubsetNode *pfsnNext;
 
-		while(pfsn->bMask && (pfsnNext = pfsn->NextFromTail())) {
+		while(pfsn->bMask && (pfsnNext = pfsn->NextFromTail()) && pfsnNext->NextFromTail()) {
 			pfsn = pfsnNext;
 		}
 
@@ -371,7 +371,7 @@ void FrameSubset::setRange(int start, int len, bool bMask) {
 					pfsn2->start	= pfsn->start + len;
 					pfsn2->len		= pfsn->len - len;
 					pfsn2->bMask	= pfsn->bMask;
-					pfsn->len		= offset;
+					pfsn->len		= len;
 					pfsn->bMask		= bMask;
 					pfsn2->InsertAfter(pfsn);
 				}

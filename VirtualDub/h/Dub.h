@@ -141,8 +141,9 @@ public:
 	long	cur_proc_src;
 	long	end_src;
 	long	cur_dst;
-	long	cur_proc_dst;
 	long	end_dst;
+	long	cur_proc_dst;
+	long	end_proc_dst;
 	sint64	total_size;
 };
 
@@ -170,7 +171,6 @@ public:
 	long	usPerFrameIn;
 	long	usPerFrameNoTelecine;
 	long	processed;
-	int		nLag;
 	bool	fAudioOnly;
 };
 
@@ -190,6 +190,7 @@ public:
 	virtual void RealizePalette()	=0;
 	virtual void Abort()			=0;
 	virtual bool isAbortedByUser()	=0;
+	virtual bool IsPreviewing()		=0;
 	virtual void Tag(int x, int y)	=0;
 	virtual void SetClientRectOffset(int x, int y) = 0;
 

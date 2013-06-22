@@ -78,7 +78,7 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define MRU_LIST_POSITION		(22)
+#define MRU_LIST_POSITION		(24)
 
 enum {
 	kFileDialog_AVIStripe		= 'stri',
@@ -111,6 +111,7 @@ static int			g_sceneShuttleCounter	= 0;
 
 bool				g_fDropFrames			= false;
 bool				g_fSwapPanes			= false;
+bool				g_bExit					= false;
 
 static IDubStatusHandler	*g_dubStatus			= NULL;
 
@@ -150,6 +151,7 @@ void RecalcFrameSizes();
 void SetAudioSource();
 void OpenAVI(int index, bool extended_opt);
 void AppendAVI();
+void PreviewInline(bool bOutput);
 void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 void SaveAVI(HWND, bool);
 void SaveSegmentedAVI(HWND);
@@ -860,6 +862,12 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 		case ID_FILE_APPENDSEGMENT:
 			AppendAVI();
 			break;
+		case ID_FILE_PREVIEWINPUT:
+			PreviewInline(false);
+			break;
+		case ID_FILE_PREVIEWOUTPUT:
+			PreviewInline(true);
+			break;
 		case ID_FILE_PREVIEWAVI:
 			PreviewAVI(hWnd, NULL, g_prefs.main.iPreviewPriority);
 			break;
@@ -1389,6 +1397,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 					if (pfsn_prev->NextFromTail()) {
 						lSample -= offset;
 						SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lSample - pfsn_prev->len);
+						DisplayFrame(g_hWnd, lSample - pfsn_prev->len);
 						guiSetStatus("Previous output range %d-%d: %sed source frames %d-%d", 255, lSample - pfsn_prev->len, lSample-1, pfsn_prev->bMask ? "mask" : "includ", pfsn_prev->start, pfsn_prev->start + pfsn_prev->len - 1);
 						break;
 					}
@@ -1410,6 +1419,7 @@ BOOL MenuHit(HWND hWnd, UINT id) {
 					if (pfsn_next->NextFromHead()) {
 						lSample = lSample - offset + pfsn->len;
 						SendDlgItemMessage(g_hWnd, IDC_POSITION, PCM_SETPOS, TRUE, lSample);
+						DisplayFrame(g_hWnd, lSample);
 						guiSetStatus("Next output range %d-%d: %sed source frames %d-%d", 255, lSample, lSample+pfsn_next->len-1, pfsn_next->bMask ? "mask" : "includ", pfsn_next->start, pfsn_next->start + pfsn_next->len - 1);
 						break;
 					}
@@ -1621,6 +1631,8 @@ static void DoInitMenu(HMENU hMenu) {
 
 	const bool bSourceFileExists = (inputAVI != 0);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWAVI			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWINPUT			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWOUTPUT			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVECOMPATIBLEAVI		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVESTRIPEDAVI		, bSourceFileExists);
@@ -1706,86 +1718,10 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 			case IDC_POSITION:
 				if (inputVideoAVI) switch(HIWORD(wParam)) {
 				case PCN_PLAY:
+					PreviewInline(false);
+					break;
 				case PCN_PLAYPREVIEW:
-					SetAudioSource();
-
-					try {
-						LONG lStart = SendMessage((HWND)lParam, PCM_GETPOS, 0, 0);
-						DubOptions *dubOpt = new DubOptions(g_dubOpts);
-						LONG preload = inputAudio && inputAudio->getWaveFormat()->wFormatTag != WAVE_FORMAT_PCM ? 1000 : 500;
-
-						if (!dubOpt) throw MyMemoryError();
-
-						if (dubOpt->audio.preload > preload)
-							dubOpt->audio.preload = preload;
-
-						dubOpt->audio.enabled				= TRUE;
-						dubOpt->audio.interval				= 1;
-						dubOpt->audio.is_ms					= FALSE;
-						dubOpt->video.lStartOffsetMS		= inputVideoAVI->samplesToMs(lStart);
-
-						if (HIWORD(wParam) != PCN_PLAYPREVIEW) {
-							dubOpt->audio.fStartAudio			= TRUE;
-							dubOpt->audio.new_rate				= 0;
-							dubOpt->audio.newPrecision			= DubAudioOptions::P_NOCHANGE;
-							dubOpt->audio.newChannels			= DubAudioOptions::C_NOCHANGE;
-							dubOpt->audio.volume				= 0;
-							dubOpt->audio.bUseAudioFilterGraph	= false;
-
-							switch(g_prefs.main.iPreviewDepth) {
-							case PreferencesMain::DEPTH_DISPLAY:
-								{
-									DEVMODE dm;
-									dm.dmSize = sizeof(DEVMODE);
-									dm.dmDriverExtra = 0;
-									if (!EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm))
-										dm.dmBitsPerPel = 16;
-
-									switch(dm.dmBitsPerPel) {
-									case 24:
-									case 32:
-										dubOpt->video.inputDepth = DubVideoOptions::D_24BIT;
-										break;
-									default:
-										dubOpt->video.inputDepth = DubVideoOptions::D_16BIT;
-										break;
-									}
-								}
-								break;
-							case PreferencesMain::DEPTH_FASTEST:
-							case PreferencesMain::DEPTH_16BIT:
-								dubOpt->video.inputDepth = DubVideoOptions::D_16BIT;
-								break;
-							case PreferencesMain::DEPTH_24BIT:
-								dubOpt->video.inputDepth = DubVideoOptions::D_24BIT;
-								break;
-
-							// Ignore: PreferencesMain::DEPTH_OUTPUT
-
-							};
-							dubOpt->video.outputDepth			= dubOpt->video.inputDepth;
-
-							dubOpt->video.mode					= DubVideoOptions::M_SLOWREPACK;
-							dubOpt->video.fShowInputFrame		= TRUE;
-							dubOpt->video.fShowOutputFrame		= FALSE;
-							dubOpt->video.frameRateDecimation	= 1;
-							dubOpt->video.lEndOffsetMS			= 0;
-
-							dubOpt->audio.mode					= DubAudioOptions::M_FULL;
-						}
-
-						dubOpt->fShowStatus = false;
-						dubOpt->fMoveSlider = true;
-
-						if (lStart < inputVideoAVI->lSampleLast) {
-							PreviewAVI(hWnd, dubOpt, g_prefs.main.iPreviewPriority);
-							MenuMRUListUpdate(hWnd);
-						}
-
-						delete dubOpt;
-					} catch(const MyError& e) {
-						e.post(hWnd, g_szError);
-					}
+					PreviewInline(true);
 					break;
 				case PCN_MARKIN:
 					SendMessage(hWnd, WM_COMMAND, ID_EDIT_SETSELSTART, 0);
@@ -2055,16 +1991,21 @@ LONG APIENTRY DubWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 		break;
 
 	case WM_CLOSE:
-		if (!g_showStatusWindow)
-			MenuHit(hWnd, ID_OPTIONS_SHOWSTATUSWINDOW);
+		if (g_dubber->IsPreviewing()) {
+			g_dubber->Abort();
+			g_bExit = true;
+		} else {
+			if (!g_showStatusWindow)
+				MenuHit(hWnd, ID_OPTIONS_SHOWSTATUSWINDOW);
 
-		if (IDYES == MessageBox(hWnd,
-				"A dub operation is currently in progress. Forcing VirtualDub to abort "
-				"will leave the output file unusable and may have undesirable side effects. "
-				"Do you really want to do this?"
-				,"VirtualDub warning", MB_YESNO))
+			if (IDYES == MessageBox(hWnd,
+					"A dub operation is currently in progress. Forcing VirtualDub to abort "
+					"will leave the output file unusable and may have undesirable side effects. "
+					"Do you really want to do this?"
+					,"VirtualDub warning", MB_YESNO))
 
-				ExitProcess(1000);
+					ExitProcess(1000);
+		}
 		break;
 
 	case WM_MOVE:
@@ -2663,6 +2604,88 @@ void SaveStripeMaster(HWND hWnd) {
 	delete stripe_def;
 }
 
+void PreviewInline(bool bOutput) {
+	SetAudioSource();
+
+	try {
+		LONG lStart = SendMessage(GetDlgItem(g_hWnd, IDC_POSITION), PCM_GETPOS, 0, 0);
+		DubOptions *dubOpt = new DubOptions(g_dubOpts);
+		LONG preload = inputAudio && inputAudio->getWaveFormat()->wFormatTag != WAVE_FORMAT_PCM ? 1000 : 500;
+
+		if (!dubOpt) throw MyMemoryError();
+
+		if (dubOpt->audio.preload > preload)
+			dubOpt->audio.preload = preload;
+
+		dubOpt->audio.enabled				= TRUE;
+		dubOpt->audio.interval				= 1;
+		dubOpt->audio.is_ms					= FALSE;
+		dubOpt->video.lStartOffsetMS		= inputVideoAVI->samplesToMs(lStart);
+
+		if (!bOutput) {
+			dubOpt->audio.fStartAudio			= TRUE;
+			dubOpt->audio.new_rate				= 0;
+			dubOpt->audio.newPrecision			= DubAudioOptions::P_NOCHANGE;
+			dubOpt->audio.newChannels			= DubAudioOptions::C_NOCHANGE;
+			dubOpt->audio.volume				= 0;
+			dubOpt->audio.bUseAudioFilterGraph	= false;
+
+			switch(g_prefs.main.iPreviewDepth) {
+			case PreferencesMain::DEPTH_DISPLAY:
+				{
+					DEVMODE dm;
+					dm.dmSize = sizeof(DEVMODE);
+					dm.dmDriverExtra = 0;
+					if (!EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm))
+						dm.dmBitsPerPel = 16;
+
+					switch(dm.dmBitsPerPel) {
+					case 24:
+					case 32:
+						dubOpt->video.inputDepth = DubVideoOptions::D_24BIT;
+						break;
+					default:
+						dubOpt->video.inputDepth = DubVideoOptions::D_16BIT;
+						break;
+					}
+				}
+				break;
+			case PreferencesMain::DEPTH_FASTEST:
+			case PreferencesMain::DEPTH_16BIT:
+				dubOpt->video.inputDepth = DubVideoOptions::D_16BIT;
+				break;
+			case PreferencesMain::DEPTH_24BIT:
+				dubOpt->video.inputDepth = DubVideoOptions::D_24BIT;
+				break;
+
+			// Ignore: PreferencesMain::DEPTH_OUTPUT
+
+			};
+			dubOpt->video.outputDepth			= dubOpt->video.inputDepth;
+
+			dubOpt->video.mode					= DubVideoOptions::M_SLOWREPACK;
+			dubOpt->video.fShowInputFrame		= TRUE;
+			dubOpt->video.fShowOutputFrame		= FALSE;
+			dubOpt->video.frameRateDecimation	= 1;
+			dubOpt->video.lEndOffsetMS			= 0;
+
+			dubOpt->audio.mode					= DubAudioOptions::M_FULL;
+		}
+
+		dubOpt->fShowStatus = false;
+		dubOpt->fMoveSlider = true;
+
+		if (lStart < inputVideoAVI->lSampleLast) {
+			PreviewAVI(g_hWnd, dubOpt, g_prefs.main.iPreviewPriority);
+			MenuMRUListUpdate(g_hWnd);
+		}
+
+		delete dubOpt;
+	} catch(const MyError& e) {
+		e.post(g_hWnd, g_szError);
+	}
+}
+
 void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp) {
 	SetAudioSource();
 
@@ -2829,7 +2852,9 @@ void InitDubAVI(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOnly, DubOption
 
 	VDLog(kVDLogMarker, VDStringW(L"Ending operation."));
 
-	if (fError && fPropagateErrors)
+	if (g_bExit)
+		PostQuitMessage(0);
+	else if (fError && fPropagateErrors)
 		throw prop_err;
 }
 

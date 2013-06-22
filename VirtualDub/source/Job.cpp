@@ -311,7 +311,7 @@ void VDJob::Run() {
 		g_fJobMode = true;
 		g_fJobAborted = false;
 
-		VDAutoLogger logger(kVDLogMarker);
+		VDAutoLogger logger(kVDLogWarning);
 
 		RunScriptMemory(script);
 
@@ -1214,6 +1214,7 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 					//	Previous state		Next state		Action
 					//	--------------		----------		------
 					//	Error				Waiting			Show error message
+					//	Done (warnings)		Done			Show log
 					//	Done				Waiting
 					//	Postponed			Waiting
 					//	Aborted				Waiting
@@ -1234,6 +1235,9 @@ static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM 
 							if (!vdj->mLogEntries.empty()) {
 								DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_JOBLOG), hdlg, JobLogDlgProc, (LPARAM)&vdj->mLogEntries);
 								vdj->mLogEntries.clear();
+								vdj->Refresh();
+								VDJob::SetModified();
+								break;
 							}
 						case VDJob::ABORTED:
 							vdj->iState = VDJob::WAITING;
@@ -1531,7 +1535,13 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 			if (mem) {
 				membase64(mem+l, mem, l);
-				output.addf("VirtualDub.video.SetCompData(%d,\"%s\");", l, mem+l);
+				// urk... Windows Media 9 VCM uses a very large configuration struct (~7K pre-BASE64).
+				sprintf(buf, "VirtualDub.video.SetCompData(%d,\"", l);
+
+				VDStringA line(buf);
+				line += (mem+l);
+				line += "\");";
+				output.adds(line.c_str());
 				freemem(mem);
 			}
 		}

@@ -64,7 +64,9 @@ BEGIN
     BEGIN
         MENUITEM "&Open video file...\tCtrl+O", ID_FILE_OPENAVI
         MENUITEM "Append AVI segment...",       ID_FILE_APPENDSEGMENT
-        MENUITEM "Pre&view...\tF5",             ID_FILE_PREVIEWAVI
+        MENUITEM "Preview input...\tSpace",     ID_FILE_PREVIEWINPUT
+        MENUITEM "Preview filtered...\tEnter",  ID_FILE_PREVIEWOUTPUT
+        MENUITEM "Pre&view output from start...\tF5", ID_FILE_PREVIEWAVI
         MENUITEM "Save &as AVI...\tF7",         ID_FILE_SAVEAVI
         MENUITEM "Save old format AVI...\tShift+F7", 
                                                 ID_FILE_SAVECOMPATIBLEAVI
@@ -671,7 +673,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.5.2 - Copyright (C) 1998-2003 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.5.3 - Copyright (C) 1998-2003 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -3558,10 +3560,12 @@ BEGIN
     VK_LEFT,        ID_VIDEO_SEEK_START,    VIRTKEY, CONTROL, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_PREVONESEC, VIRTKEY, ALT, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_KEYPREV,  VIRTKEY, SHIFT, NOINVERT
+    VK_RETURN,      ID_FILE_PREVIEWOUTPUT,  VIRTKEY, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_NEXT,     VIRTKEY, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_END,      VIRTKEY, CONTROL, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_NEXTONESEC, VIRTKEY, ALT, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_KEYNEXT,  VIRTKEY, SHIFT, NOINVERT
+    VK_SPACE,       ID_FILE_PREVIEWINPUT,   VIRTKEY, NOINVERT
     "W",            ID_FILE_CLOSEAVI,       VIRTKEY, CONTROL, NOINVERT
     "[",            ID_VIDEO_SEEK_SELSTART, ASCII,  NOINVERT
     "]",            ID_VIDEO_SEEK_SELEND,   ASCII,  NOINVERT
@@ -3607,8 +3611,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,5,2,0
- PRODUCTVERSION 1,5,2,0
+ FILEVERSION 1,5,3,0
+ PRODUCTVERSION 1,5,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3626,14 +3630,14 @@ BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!\0"
             VALUE "CompanyName", "\0"
             VALUE "FileDescription", "VirtualDub\0"
-            VALUE "FileVersion", "1.5.2\0"
+            VALUE "FileVersion", "1.5.3\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2003 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.5.2\0"
+            VALUE "ProductVersion", "1.5.3\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -3719,17 +3723,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.5.2 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.5.2"
-    IDS_TITLE_IDLE          "VirtualDub 1.5.2 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.5.2 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.2"
+    IDS_TITLE_INITIAL       "VirtualDub 1.5.3 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.5.3"
+    IDS_TITLE_IDLE          "VirtualDub 1.5.3 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.5.3 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.5.3"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.5.2 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.5.2 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.2 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.2 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.5.2 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.5.3 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.5.3 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.5.3 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.5.3 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.5.3 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

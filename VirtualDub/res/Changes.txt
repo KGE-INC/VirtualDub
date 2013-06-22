@@ -1,6 +1,48 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 16250 (Version 1.5.3):          [May 19, 2003]
+   [features added]
+   * Added preview input/output commands to menu and
+     accelerator tables.
+   * Program close allowed during a preview operation.
+
+   [changes]
+   * Tweaked job control behavior for jobs that complete
+     with warnings, to be a bit more intuitive.
+
+   [bugs fixed]
+   * Frame marking didn't always mark the correct range and
+     could cause "Scan for bad frames" to fail.
+   * Fixed invalid batch scripts produced when video codec
+     has a config struct larger than ~6K (Windows Media 9
+     VCM).
+   * Status markers were being logged as warnings in jobs.
+   * Conversion to a higher frame rate produced amusing
+     results in Direct video mode.  It now produces source
+     frames interspersed with drop frames for nearly zero-
+     cost point upsampling of video.
+   * Dubber pretended there was a input-to-output lag if
+     such filters existed in the video chain (temporal
+     smoother), even if the filters weren't active.  This
+     resulting in duplicated frames (fast/normal) or
+     erroneous zero-byte keyframes (direct) at the end of
+     the output.
+   * Arbitrary framerate conversion option wasn't disabled
+     in the UI when IVTC was enabled (the two are mutually
+     exclusive).
+   * Edit point seeks (<, >) didn't update the frame
+     windows.
+
+   [regression bugs fixed]
+   * Fixed pipeline not getting flushed at end of
+     operation, resulting in some frames getting lost.
+   * Fixed subset code pulling in wrong frames in direct
+     mode.
+   * Interleaving values were inverted and thus always
+     forced one-per-frame.
+   * Position slider wasn't updating properly around cuts.
+
 Build 16188 (Version 1.5.2):          [April 30, 2003]
    [features added]
    * Converted help from WinHelp to HTML and updated dialog

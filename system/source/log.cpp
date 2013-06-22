@@ -132,7 +132,7 @@ VDAutoLogger::VDAutoLogger(int min_severity)
 	: mbAttached(true)
 	, mMinSeverity(min_severity)
 {
-	VDAttachLogger(this, true, false);
+	VDAttachLogger(this, false, false);
 }
 
 VDAutoLogger::~VDAutoLogger() {

@@ -34,8 +34,9 @@ private:
 		void	*data;
 		long	size;
 		long	len;
-		long	sample;
-		long	displayframe;
+		VDPosition	rawFrame;
+		VDPosition	displayFrame;
+		VDPosition	timelineFrame;
 		long	id;
 		int		iExdata;
 		int		droptype;
@@ -78,8 +79,8 @@ public:
 	bool full();
 
 	void *getWriteBuffer(long len, int *handle_ptr);
-	void postBuffer(long len, long samples, long dframe, int exdata, int droptype, int handle);
-	void *getReadBuffer(long *len_ptr, long *samples_ptr, long *dframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr);
+	void postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int handle);
+	void *getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displayFrame, VDPosition& timelineFrame, int *exdata_ptr, int *droptype_ptr, int *handle_ptr);
 	void releaseBuffer(int handle);
 	void finalize();
 	void finalizeAndWait();

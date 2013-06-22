@@ -161,16 +161,17 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr) {
 	return pBuffers[h].data;
 }
 
-void AVIPipe::postBuffer(long len, long samples, long dframe, int exdata, int droptype, int h) {
+void AVIPipe::postBuffer(long len, VDPosition rawFrame, VDPosition displayFrame, VDPosition timelineFrame, int exdata, int droptype, int h) {
 
 	++mcsQueue;
 
 	pBuffers[h].len		= len+1;
-	pBuffers[h].sample	= samples;
-	pBuffers[h].displayframe = dframe;
-	pBuffers[h].iExdata	= exdata;
-	pBuffers[h].droptype = droptype;
-	pBuffers[h].id		= cur_write++;
+	pBuffers[h].rawFrame		= rawFrame;
+	pBuffers[h].displayFrame	= displayFrame;
+	pBuffers[h].timelineFrame	= timelineFrame;
+	pBuffers[h].iExdata			= exdata;
+	pBuffers[h].droptype		= droptype;
+	pBuffers[h].id				= cur_write++;
 
 	--mcsQueue;
 
@@ -201,7 +202,7 @@ void AVIPipe::getDropDistances(int& total, int& indep) {
 	--mcsQueue;
 }
 
-void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr) {
+void *AVIPipe::getReadBuffer(long& len, VDPosition& rawFrame, VDPosition& displayFrame, VDPosition& timelineFrame, int *exdata_ptr, int *droptype_ptr, int *handle_ptr) {
 	int h;
 
 	++mcsQueue;
@@ -247,9 +248,10 @@ void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayfram
 
 	--mcsQueue;
 
-	*len_ptr			= pBuffers[h].len-1;
-	*samples_ptr		= pBuffers[h].sample;
-	*displayframe_ptr	= pBuffers[h].displayframe;
+	len			= pBuffers[h].len-1;
+	rawFrame		= pBuffers[h].rawFrame;
+	displayFrame	= pBuffers[h].displayFrame;
+	timelineFrame	= pBuffers[h].timelineFrame;
 	*exdata_ptr			= pBuffers[h].iExdata;
 	*droptype_ptr		= pBuffers[h].droptype;
 	*handle_ptr			= h;

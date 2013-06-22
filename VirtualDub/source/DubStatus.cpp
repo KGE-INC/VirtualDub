@@ -252,8 +252,7 @@ void DubStatus::StatusTimerProc(HWND hWnd) {
 	__int64 lProjSize;
 	char buf[256];
 
-	LONG	totalVSamples	= pvinfo->end_dst;
-//	LONG	totalASamples	= painfo->end_src - painfo->start_src;
+	LONG	totalVSamples	= pvinfo->end_proc_dst;
 	LONG	totalASamples	= audioStreamSource ? audioStreamSource->GetLength() : 0;
 	LONG	curVSample		= pvinfo->cur_proc_dst;
 	LONG	curASample		= audioStreamSource ? audioStreamSource->GetSampleCount() : 0;
@@ -771,9 +770,8 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 			{
 				DWORD dwProgress;
 
-				LONG	totalVSamples	= thisPtr->pvinfo->end_dst;
+				LONG	totalVSamples	= thisPtr->pvinfo->end_proc_dst;
 				LONG	totalASamples	= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetLength() : 0;
-//				LONG	totalASamples	= thisPtr->painfo->end_src - thisPtr->painfo->start_src;
 				LONG	curVSample		= thisPtr->pvinfo->cur_proc_dst;
 				LONG	curASample		= thisPtr->audioStreamSource ? thisPtr->audioStreamSource->GetSampleCount() : 0;
 

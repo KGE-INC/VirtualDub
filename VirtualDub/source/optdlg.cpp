@@ -570,6 +570,8 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_3), FALSE);
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_N), FALSE);
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), FALSE);
+					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_TARGET), FALSE);
+					EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), FALSE);
 				}
 
 				if (dopt->video.frameRateDecimation==1 && dopt->video.frameRateTargetLo)
@@ -686,6 +688,8 @@ BOOL APIENTRY VideoDecimationDlgProc( HWND hDlg, UINT message, UINT wParam, LONG
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_3), f);
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_N), f);
 					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_VALUE), f && IsDlgButtonChecked(hDlg, IDC_DECIMATE_N));
+					EnableWindow(GetDlgItem(hDlg, IDC_DECIMATE_TARGET), f);
+					EnableWindow(GetDlgItem(hDlg, IDC_FRAMERATE_TARGET), f && IsDlgButtonChecked(hDlg, IDC_DECIMATE_N));
 					VideoDecimationRedoIVTCEnables(hDlg);
 				}
 				break;
