@@ -386,7 +386,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 
 				while(*hp++);
 
-				bytes -= (src_end - source)-1;
+				bytes -= (src_end - source);
 				source = src_end;
 			} else if (pattern[0] < 16) {
 				if (pattern[0] > bytes)
@@ -396,7 +396,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 					*sp++ = *source++;
 				}
 
-				bytes -= pattern[0]-1;
+				bytes -= pattern[0];
 			} else {
 				switch(pattern[0]) {
 				case 16:	if (!pContext->bSizeOverride)		return NULL;	break;
@@ -411,6 +411,7 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 				return NULL;
 
 			unsigned char b = *source++;
+			--bytes;
 
 			if ((b & pattern[1]) != pattern[0])
 				return NULL;
@@ -418,7 +419,6 @@ char *VDDisasmMatchRule(VDDisassemblyContext *pContext, const unsigned char *sou
 			*sp++ = b;
 		}
 		pattern += 2;
-		--bytes;
 		--pattern_len;
 	}
 

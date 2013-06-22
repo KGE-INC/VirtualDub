@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2002 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,31 +15,18 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_AVIOUTPUT_IMAGES_H
-#define f_AVIOUTPUT_IMAGES_H
+#ifndef f_IMAGE_H
+#define f_IMAGE_H
 
-#include <windows.h>
-#include <vfw.h>
+class VBitmap;
 
-class VideoSource;
+bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
+void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb);
 
-class AVIOutputImages : public AVIOutput {
-private:
-	char mszFilePrefix[MAX_PATH];
-	char mszFileSuffix[MAX_PATH];
-	int iDigits;
-	bool mbSaveAsTARGA;
+bool DecodeTGAHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha);
+void DecodeTGA(const void *pBuffer, long cbBuffer, VBitmap& vb);
 
-public:
-	AVIOutputImages(const char *pszPrefix, const char *pszSuffix, int iDigits, bool bSaveAsTGA);
-	~AVIOutputImages();
-
-	BOOL initOutputStreams();
-	BOOL init(const char *szFile, LONG xSize, LONG ySize, BOOL videoIn, BOOL audioIn, LONG bufferSize, BOOL is_interleaved);
-	BOOL finalize();
-	BOOL isPreview();
-
-	void writeIndexedChunk(FOURCC ckid, LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer);
-};
+void DecodeImage(const void *pBuffer, long cbBuffer, VBitmap& vb, int desired_depth, bool& bHasAlpha);
+void DecodeImage(const char *pszFile, VBitmap& vb, int desired_depth, bool& bHasAlpha);
 
 #endif

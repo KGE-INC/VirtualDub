@@ -370,15 +370,8 @@ void *VideoSequenceCompressor::packFrame(void *pBits, bool *pfKeyframe, long *pl
 
 	VDCHECKPOINT;
 
-	if (IsMMXState()) {
+	if (IsMMXState())
 		ClearMMXState();
-
-		throw MyError(
-			"The current video compressor returned to VirtualDub with a non-empty FPU state. "
-			"This is generally caused by MMX code with a missing EMMS instruction. Contact "
-			"the vendor of the codec and check if an updated version is available."
-			);
-	}
 
 
 	// Special handling for DivX 5 codec:

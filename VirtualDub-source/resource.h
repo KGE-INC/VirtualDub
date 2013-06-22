@@ -174,6 +174,8 @@
 #define IDD_AUDIO_VOLUME                238
 #define IDD_HEXVIEWER_RIFFLIST          239
 #define IDD_FILTER_FIELDBOB             240
+#define IDD_FILTER_LOGO                 241
+#define IDD_FILTER_HSV                  243
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -360,6 +362,7 @@
 #define IDC_IVTCOFFSET                  1152
 #define IDC_WARNING                     1152
 #define IDC_STRING                      1152
+#define IDC_ALPHAFILE                   1152
 #define IDS_VIDEO_FRAMERATE             1153
 #define IDC_DEFAULT_DRIVER              1153
 #define IDC_FILELIMIT_SETTING           1153
@@ -367,11 +370,13 @@
 #define IDC_AUDIORATE                   1153
 #define IDC_EDIT2                       1153
 #define IDC_EDIT_FRAMELIMIT             1153
+#define IDC_XPOS                        1153
 #define IDS_VIDEO_COLORDEPTH            1154
 #define IDC_SELECT_CAPTURE_FILE         1154
 #define IDC_DISKLIMIT_SETTING           1154
 #define IDC_INPUTHI                     1154
 #define IDC_FOURCC2                     1154
+#define IDC_YPOS                        1154
 #define IDS_VIDEO_COMPRESSION           1155
 #define IDC_USE_CURRENT_FILE            1155
 #define IDC_DROPLIMIT_SETTING           1155
@@ -437,6 +442,7 @@
 #define IDC_LUMANOTCHEVEN               1184
 #define IDC_HEX                         1184
 #define IDC_ADJUSTVOL                   1184
+#define IDC_ALPHABLEND                  1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -542,8 +548,10 @@
 #define IDS_AUDIO_SOURCE_NONE           1282
 #define IDC_BUTTON1                     1282
 #define IDC_PICKCOLOR                   1282
+#define IDC_LOGOFILE_BROWSE             1282
 #define IDS_AUDIO_SOURCE_AVI            1283
 #define IDC_REGDUMP                     1283
+#define IDC_ALPHAFILE_BROWSE            1283
 #define IDS_AUDIO_SOURCE_WAV            1284
 #define IDC_STATIC_BOMBREASON           1284
 #define IDS_AUDIO_COMPRESSION           1285
@@ -648,17 +656,31 @@
 #define IDC_EVEN_NONE                   1379
 #define IDC_SLIDER_RIGHT                1380
 #define IDC_EVEN_SMOOTH                 1380
+#define IDC_SECONDARYALPHA              1380
 #define IDC_SLIDER_LEFT                 1381
 #define IDC_EVEN_HALFUP                 1381
+#define IDC_LOGOFILE                    1381
 #define IDC_SLIDER_AGCDELAY             1382
 #define IDC_EVEN_HALFDOWN               1382
+#define IDC_FORMAT_TGA                  1382
+#define IDC_PREMULTALPHA                1382
 #define IDC_SLIDER_BURSTDELAY           1383
 #define IDC_ODD_NONE                    1383
+#define IDC_FORMAT_BMP                  1383
 #define IDC_SLIDER_WHITEDOWN            1384
 #define IDC_ODD_SMOOTH                  1384
 #define IDC_SLIDER_WHITEUP              1385
 #define IDC_ODD_HALFUP                  1385
 #define IDC_ODD_HALFDOWN                1386
+#define IDC_HUE                         1386
+#define IDC_SATURATION                  1387
+#define IDC_STATIC_HUE                  1388
+#define IDC_STATIC_SATURATION           1389
+#define IDC_SPIN_XOFFSET                1389
+#define IDC_STATIC_VALUE                1390
+#define IDC_SPIN_YOFFSET                1390
+#define IDC_OPACITY                     1391
+#define IDC_STATIC_OPACITY              1392
 #define IDC_PRECISION_NOCHANGE          1400
 #define IDC_PRECISION_8BIT              1401
 #define IDC_PRECISION_16BIT             1402
@@ -690,6 +712,7 @@
 #define IDC_DIR_BOTTOMLEFT              1455
 #define IDC_DIR_BOTTOMCENTER            1456
 #define IDC_DIR_BOTTOMRIGHT             1457
+#define IDC_DIR_MIDDLECENTER            1458
 #define IDS_HELP_CONTENTS               1536
 #define IDS_HELP_CHANGELOG              1537
 #define IDS_HELP_RELEASENOTES           1538
@@ -966,9 +989,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        241
+#define _APS_NEXT_RESOURCE_VALUE        244
 #define _APS_NEXT_COMMAND_VALUE         40262
-#define _APS_NEXT_CONTROL_VALUE         1380
+#define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           107
 #endif
 #endif

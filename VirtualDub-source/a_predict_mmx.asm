@@ -221,10 +221,10 @@ predict_Y_halfpelY_MMX@loop_unaligned:
 	psrlq	mm2,mm7
 
 	psllq	mm3,mm6
-	por	mm0,mm1
+	por	mm0,mm1			;[1]
 
 	movq	mm4,[ecx+esi]
-	por	mm2,mm3
+	por	mm2,mm3			;[2]
 
 	movq	mm1,[ecx+esi+8]
 	psrlq	mm4,mm7
@@ -236,88 +236,77 @@ predict_Y_halfpelY_MMX@loop_unaligned:
 	psrlq	mm5,mm7
 
 	psllq	mm3,mm6
-	por	mm4,mm1
+	por	mm4,mm1			;[1]
 
-	por	mm5,mm3
-	movq	mm1,mm0
+	por	mm5,mm3			;[2]
+	movq	mm1,mm0			;[1]
 
-	movq	mm3,mm2
-	por	mm1,mm4
+	pxor	mm1,mm4			;[1]
+	por	mm0,mm4			;[1]
 
-	pand	mm0,MMX_feb
-	por	mm3,mm5
+	pand	mm1,MMX_feb		;[1]
+	movq	mm3,mm2			;[2]
 
-	pand	mm2,MMX_feb
-	psrlq	mm0,1
-	pand	mm4,MMX_feb
-	psrlq	mm2,1
-	pand	mm5,MMX_feb
-	psrlq	mm4,1
-	pand	mm1,MMX_01b
-	psrlq	mm5,1
-	pand	mm3,MMX_01b
-	paddb	mm0,mm4
+	psrlq	mm1,1			;[1]
+	pxor	mm3,mm5			;[2]
 
-	paddb	mm2,mm5
-	paddb	mm0,mm1
+	pand	mm3,MMX_feb		;[2]
+	por	mm2,mm5			;[2]
 
-	paddb	mm2,mm3
+	psubb	mm0,mm1			;[1]
+	psrlq	mm3,1			;[2]
+
 	add	ecx,esi
 
-	movq	[edx],mm0
-	movq	[edx+8],mm2
-	add	edx,esi
+	movq	[edx],mm0		;[1]
+	psubb	mm2,mm3			;[2]
+
 	dec	edi
+
+	movq	[edx+8],mm2		;[2]
+	lea	edx,[edx+esi]
 	jne	predict_Y_halfpelY_MMX@loop_unaligned
 	ret
 
 predict_Y_halfpelY_MMX@loop_aligned:
-	movq	mm0,[ecx]
-	movq	mm1,[ecx+esi]
-	movq	mm3,mm0
-	movq	mm2,[ecx+esi*2]
-	movq	mm4,mm1
-	por	mm3,mm1			;mm3: carry for r0+r1
-	por	mm4,mm2			;mm4: carry for r1+r2
-	pand	mm0,mm7
-	pand	mm1,mm7
-	psrlq	mm0,1
-	pand	mm2,mm7
-	psrlq	mm1,1
-	pand	mm3,mm6
-	psrlq	mm2,1
-	pand	mm4,mm6
-	paddb	mm0,mm3
-	paddb	mm2,mm4
-	paddb	mm0,mm1
-	paddb	mm1,mm2
-	movq	[edx],mm0
-	movq	[edx+esi],mm1
-
-	movq	mm0,[ecx+8]
-	movq	mm1,[ecx+esi+8]
-	movq	mm3,mm0
-	movq	mm2,[ecx+esi*2+8]
-	movq	mm4,mm1
-	por	mm3,mm1			;mm3: carry for r0+r1
-	por	mm4,mm2			;mm4: carry for r1+r2
-	pand	mm0,mm7
-	pand	mm1,mm7
-	psrlq	mm0,1
-	pand	mm2,mm7
-	psrlq	mm1,1
-	pand	mm3,mm6
-	psrlq	mm2,1
-	pand	mm4,mm6
-	paddb	mm0,mm3
-	paddb	mm2,mm4
-	paddb	mm0,mm1
-	paddb	mm1,mm2
+	movq	mm0,[ecx]		;[1]
+	movq	mm1,[ecx+esi]		;[1]
+	movq	mm3,mm0			;[1]
+	movq	mm2,[ecx+esi*2]		;[1]
+	movq	mm4,mm1			;[1]
+	pxor	mm3,mm1			;[1]
+	por	mm0,mm1			;[1]
+	pand	mm3,mm7			;[1]
+	movq	mm4,mm1			;[1]
+	psrlq	mm3,1			;[1]
+	pxor	mm4,mm2			;[1]
+	psubb	mm0,mm3			;[1]
+	pand	mm4,mm7			;[1]
+	movq	mm3,[ecx+8]		;[2]
+	psrlq	mm4,1			;[1]
+	movq	[edx],mm0		;[1]
+	por	mm1,mm2			;[1]
+	movq	mm0,[ecx+esi+8]		;[2]
+	psubb	mm1,mm4			;[1]
+	movq	[edx+esi],mm1		;[1]
+	movq	mm1,mm3			;[2]
+	movq	mm2,[ecx+esi*2+8]	;[2]
+	movq	mm4,mm0			;[2]
+	pxor	mm1,mm0			;[2]
+	por	mm3,mm0			;[2]
+	pand	mm1,mm7			;[2]
+	movq	mm4,mm0			;[2]
+	psrlq	mm1,1			;[2]
+	pxor	mm4,mm2			;[2]
+	psubb	mm3,mm1			;[2]
+	pand	mm4,mm7			;[2]
+	psrlq	mm4,1			;[2]
 	lea	ecx,[ecx+esi*2]
+	por	mm0,mm2			;[2]
 	dec	edi
-	movq	[edx+8],mm0
-	movq	[edx+esi+8],mm1
-
+	movq	[edx+8],mm3		;[2]
+	psubb	mm0,mm4			;[2]
+	movq	[edx+esi+8],mm0		;[2]
 	lea	edx,[edx+esi*2]
 	jne	predict_Y_halfpelY_MMX@loop_aligned
 
@@ -342,6 +331,7 @@ predict_Y_halfpelX_MMX:
 
 predict_Y_halfpelX_MMX@loop:
 	movq	mm0,[ecx]						;left
+
 	add	edx,esi
 
 	movq	mm1,[ecx+8]						;left
@@ -351,7 +341,7 @@ predict_Y_halfpelX_MMX@loop:
 	movq	mm3,mm1							;left
 
 	psrlq	mm2,qword ptr [ebx+predict_Y_halfpelX_table+16]		;left
-	movq	mm4,mm3							;right
+	movq	mm4,mm1							;right
 
 	psllq	mm3,qword ptr [ebx+predict_Y_halfpelX_table+24]		;left
 	movq	mm5,mm4							;right
@@ -372,38 +362,30 @@ predict_Y_halfpelX_MMX@loop:
 	por	mm5,mm1							;right
 
 	movq	mm1,mm0							;left
+	pxor	mm0,mm2							;left
+
+	por	mm1,mm2							;left
+	pand	mm0,mm6							;left
+
+	psrlq	mm0,1							;left
 	por	mm4,mm3							;right
 
+	psubb	mm1,mm0							;left
 	movq	mm3,mm4							;right
-	por	mm1,mm2							;left
 
-	pand	mm0,mm6							;left
-	por	mm3,mm5							;right
+	pxor	mm4,mm5							;right
+	por	mm5,mm3							;right
 
-	pand	mm2,mm6							;left
-	psrlq	mm0,1							;left
-
+	movq	[edx],mm1						;left
 	pand	mm4,mm6							;right
-	psrlq	mm2,1							;left
 
-	pand	mm5,mm6							;right
 	psrlq	mm4,1							;right
-
-	psrlq	mm5,1							;right
-	paddb	mm0,mm2							;left
-
-	pand	mm1,MMX_01b						;left
-	paddb	mm4,mm5							;right
-
-	pand	mm3,MMX_01b						;right
-	paddb	mm0,mm1							;left
-
-	paddb	mm4,mm3							;right
-
 	add	ecx,esi
+
+	psubb	mm5,mm4							;right
 	dec	edi
-	movq	[edx],mm0						;left
-	movq	[edx+8],mm4						;right
+
+	movq	[edx+8],mm5						;right
 	jne	predict_Y_halfpelX_MMX@loop
 
 	ret
@@ -520,7 +502,7 @@ _video_add_prediction_Y_MMX:
 
 	align 16
 predict_add_Y_quadpel_MMX:
-	movq	mm6,MMX_04w
+	movq	mm6,MMX_02w
 
 	pxor	mm7,mm7
 	mov	edi,16
@@ -528,74 +510,69 @@ add_Y_quadpel_MMX@loop:
 	mov	eax,2
 add_Y_quadpel_MMX@loop2:
 	movq	mm0,[ecx]
-
 	movd	mm1,[ecx+8]
 	movq	mm4,mm0
+	psrlq	mm4,8
+	psllq	mm1,56
+	por	mm1,mm4
 
 	movq	mm2,[ecx+esi]
-	psrlq	mm4,8
-
 	movd	mm3,[ecx+esi+8]
-	psllq	mm1,56
-
-	por	mm1,mm4
 	movq	mm5,mm2
-
 	psrlq	mm5,8
-	movq	mm4,mm0
-
 	psllq	mm3,56
-	punpcklbw mm0,mm7
-
 	por	mm3,mm5
-	punpckhbw mm4,mm7
+
+	movq	mm4,mm0
+	punpcklbw mm0,mm7
 
 	movq	mm5,mm1
 	punpcklbw mm1,mm7
 
-	punpckhbw mm5,mm7
+	punpckhbw mm4,mm7
 	paddw	mm0,mm1		;mm0: low total
 
-	paddw	mm4,mm5		;mm4: high total
+	punpckhbw mm5,mm7
 	movq	mm1,mm2
 
-	movq	mm5,mm3
+	paddw	mm4,mm5		;mm4: high total
 	punpcklbw mm2,mm7
 
+	movq	mm5,mm3
 	punpcklbw mm3,mm7
-	add	edx,8
 
 	punpckhbw mm1,mm7
 	paddw	mm2,mm3
 
-	movq	mm3,[edx-8]
 	punpckhbw mm5,mm7
-
-	paddw	mm1,mm5
 	paddw	mm0,mm2
 
-	movq	mm5,mm3
-	paddw	mm4,mm1
-
-	punpcklbw mm3,mm7
-	add	ecx,8
-
+	paddw	mm1,mm5
 	paddw	mm0,mm6
+
+	paddw	mm4,mm1
+	psrlw	mm0,2
+
+	movq	mm3,[edx]
 	paddw	mm4,mm6
 
-	psllw	mm3,2
-	punpckhbw mm5,mm7
+	psrlw	mm4,2
+	movq	mm5,mm3
 
-	psllw	mm5,2
-	paddw	mm0,mm3
+	pand	mm3,MMX_feb
+	packuswb	mm0,mm4
 
-	paddw	mm4,mm5
-	psrlw	mm0,3
+	por		mm5,mm0
+	psrlq	mm3,1
 
-	psrlw	mm4,3
-	dec	eax
-
-	packuswb mm0,mm4
+	pand	mm0,MMX_feb
+	psrlq	mm0,1
+	pand	mm5,MMX_01b
+	paddb	mm0,mm3
+	add		edx,8
+	paddb	mm0,mm5
+	add		ecx, 8
+	dec		eax
 
 	movq	[edx-8],mm0
 	jne	add_Y_quadpel_MMX@loop2
@@ -620,17 +597,17 @@ predict_add_Y_halfpelY_MMX:
 	movq	mm7,MMX_feb
 	mov	edi,16
 predict_add_Y_halfpelY_MMX@loop:
-	movq	mm0,[ecx]
-	movq	mm3,mm6
+	movq	mm3,[ecx]
+	movq	mm0,mm7
 
 	movq	mm1,[ecx+esi]
-	pand	mm3,mm0
+	pand	mm0,mm3
 
-	pand	mm3,mm1
-	pand	mm0,mm7
-
-	pand	mm1,mm7
+	por		mm3,mm1
 	psrlq	mm0,1
+
+	pand	mm3,mm6
+	pand	mm1,mm7
 
 	psrlq	mm1,1
 	paddb	mm0,mm3
@@ -654,12 +631,12 @@ predict_add_Y_halfpelY_MMX@loop:
 	paddb	mm4,mm0			;[1]
 	
 	movq	mm0,[ecx+esi+8]		;[2]
-	movq	mm3,mm6			;[2]
+	movq	mm3,mm1			;[2]
 
 	movq	[edx],mm4		;[1]
-	pand	mm3,mm1			;[2]
+	por		mm3,mm0			;[2]
 
-	pand	mm3,mm0
+	pand	mm3,mm6
 	pand	mm1,mm7
 
 	pand	mm0,mm7
@@ -708,22 +685,22 @@ predict_add_Y_halfpelX_MMX:
 	mov	edi,16
 predict_add_Y_halfpelX_MMX@loop:
 	movq	mm0,[ecx]
-	movq	mm3,mm6
 
 	movd	mm1,[ecx+8]
 	movq	mm2,mm0
 
 	psrlq	mm2,8
-	pand	mm3,mm0
+	movq	mm3,mm0
 
 	psllq	mm1,56
-
-	por	mm1,mm2
-
-	pand	mm3,mm1
 	pand	mm0,mm7
 
+	por		mm1,mm2
+
+	por		mm3,mm1
 	pand	mm1,mm7
+
+	pand	mm3,mm6
 	psrlq	mm0,1
 
 	psrlq	mm1,1
@@ -748,23 +725,22 @@ predict_add_Y_halfpelX_MMX@loop:
 	paddb	mm4,mm0			;[1]
 
 	movd	mm0,[ecx+16]		;[2]
-	movq	mm3,mm6			;[2]
-
-	movq	[edx],mm4		;[1]
 	movq	mm2,mm1			;[2]
 
-	psrlq	mm2,8
-	pand	mm3,mm1
+	movq	[edx],mm4		;[1]
+	psrlq	mm2,8			;[2]
 
+	movq	mm3,mm1			;[2]
 	psllq	mm0,56
 
-	por	mm0,mm2
-
-	pand	mm3,mm0
 	pand	mm1,mm7
+	por		mm0,mm2
 
-	pand	mm0,mm7
 	psrlq	mm1,1
+	por		mm3,mm0
+
+	pand	mm3,mm6
+	pand	mm0,mm7
 
 	psrlq	mm0,1
 	paddb	mm1,mm3
@@ -1226,7 +1202,7 @@ _video_add_prediction_C_MMX:
 
 	align 16
 predict_add_C_quadpel_MMX:
-	movq	mm6,MMX_04w
+	movq	mm6,MMX_02w
 
 	pxor	mm7,mm7
 	mov	edi,8
@@ -1246,53 +1222,56 @@ add_C_quadpel_MMX@loop:
 	por	mm3,mm5
 
 	movq	mm4,mm0
-	movq	mm5,mm1
-
 	punpcklbw mm0,mm7
+
+	movq	mm5,mm1
 	punpcklbw mm1,mm7
+
 	punpckhbw mm4,mm7
-	punpckhbw mm5,mm7
-
 	paddw	mm0,mm1		;mm0: low total
-	paddw	mm4,mm5		;mm4: high total
 
-	movq	mm1,mm2
-	movq	mm5,mm3
-
-	punpcklbw mm2,mm7
-	punpcklbw mm3,mm7
-	punpckhbw mm1,mm7
 	punpckhbw mm5,mm7
+	movq	mm1,mm2
 
+	paddw	mm4,mm5		;mm4: high total
+	punpcklbw mm2,mm7
+
+	movq	mm5,mm3
+	punpcklbw mm3,mm7
+
+	punpckhbw mm1,mm7
 	paddw	mm2,mm3
-	paddw	mm1,mm5
 
-	movq	mm3,[edx]
+	punpckhbw mm5,mm7
 	paddw	mm0,mm2
 
-	movq	mm5,mm3
-	paddw	mm4,mm1
-
-	punpcklbw mm3,mm7
+	paddw	mm1,mm5
 	paddw	mm0,mm6
 
-	punpckhbw mm5,mm7
+	paddw	mm4,mm1
+	psrlw	mm0,2
+
+	movq	mm3,[edx]
 	paddw	mm4,mm6
 
-	psllw	mm3,2
-	psllw	mm5,2
+	psrlw	mm4,2
+	movq	mm5,mm3
 
-	paddw	mm0,mm3
-	paddw	mm4,mm5
+	pand	mm3,MMX_feb
+	packuswb	mm0,mm4
 
-	psrlw	mm0,3
-	psrlw	mm4,3
+	por		mm5,mm0
+	psrlq	mm3,1
 
-	packuswb mm0,mm4
+	pand	mm0,MMX_feb
+	psrlq	mm0,1
+	pand	mm5,MMX_01b
+	paddb	mm0,mm3
+	add		ecx,esi
+	paddb	mm0,mm5
 
 	movq	[edx],mm0
 
-	add	ecx,esi
 	add	edx,esi
 
 	dec	edi
@@ -1313,28 +1292,29 @@ predict_add_C_halfpelY_MMX:
 	mov	edi,8
 predict_add_C_halfpelY_MMX@loop:
 	movq	mm0,[ecx]
-	movq	mm3,mm6
 
 	movq	mm1,[ecx+esi]
-	pand	mm3,mm0
+	movq	mm3,mm0
 
-	pand	mm3,mm1
+	por		mm3,mm1
 	pand	mm0,mm7
 
-	pand	mm1,mm7
+	pand	mm3,mm6
 	psrlq	mm0,1
 
-	psrlq	mm1,1
+	pand	mm1,mm7
 	paddb	mm0,mm3
 
 	movq	mm4,[edx]
+	psrlq	mm1,1
+
 	paddb	mm0,mm1
 
 	movq	mm2,mm0
 	pand	mm0,mm7
 
 	psrlq	mm0,1
-	por	mm2,mm4
+	por		mm2,mm4
 
 	pand	mm4,mm7
 	pand	mm2,mm6
@@ -1367,23 +1347,23 @@ predict_add_C_halfpelX_MMX:
 	mov	edi,8
 predict_add_C_halfpelX_MMX@loop:
 	movq	mm0,[ecx]
-	movq	mm3,mm6
 
 	movd	mm1,[ecx+8]
 	movq	mm2,mm0
 
-	psrlq	mm2,8
-	pand	mm3,mm0
-
+	movq	mm3,mm0
 	psllq	mm1,56
 
-	por	mm1,mm2
-
-	pand	mm3,mm1
+	psrlq	mm2,8
 	pand	mm0,mm7
 
-	pand	mm1,mm7
+	por		mm1,mm2
 	psrlq	mm0,1
+
+	por		mm3,mm1
+	pand	mm1,mm7
+
+	pand	mm3,mm6
 
 	psrlq	mm1,1
 	paddb	mm0,mm3
@@ -1395,7 +1375,7 @@ predict_add_C_halfpelX_MMX@loop:
 	pand	mm0,mm7
 
 	psrlq	mm0,1
-	por	mm2,mm4
+	por		mm2,mm4
 
 	pand	mm2,mm6
 	pand	mm4,mm7

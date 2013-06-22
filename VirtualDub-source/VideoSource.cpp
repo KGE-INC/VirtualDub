@@ -281,6 +281,7 @@ VideoSourceAVI::VideoSourceAVI(IAVIReadHandler *pAVI, AVIStripeSystem *stripesys
 	hbmLame = NULL;
 	fUseGDI = false;
 	bDirectDecompress = false;
+	bInvertFrames = false;
 	lLastFrame = -1;
 
 	// striping...
@@ -475,6 +476,13 @@ void VideoSourceAVI::_construct() {
 
 			bmih->biSizeImage = nPitch;
 		}
+
+		// Check for an inverted DIB.  If so, silently flip it around.
+
+		if ((long)bmih->biHeight < 0) {
+			bmih->biHeight = abs((long)bmih->biHeight);
+			bInvertFrames = true;
+		}
 	}
 
 	// We can handle RGB8/16/24/32 and YUY2.
@@ -540,7 +548,9 @@ void VideoSourceAVI::_construct() {
 
 	hicDecomp = NULL;
 
-	if (bmih->biCompression == BI_BITFIELDS || bmih->biCompression == BI_RLE8 || bmih->biCompression == BI_RLE4
+	// NOTE: Don't handle RLE4/RLE8 here.  RLE is slightly different in AVI files!
+
+	if (bmih->biCompression == BI_BITFIELDS
 		|| (bmih->biCompression == BI_RGB && bmih->biBitCount<16 && bmih->biBitCount != 8)) {
 
 		// Ugh.  It's one of them weirdo formats.  Let GDI handle it!
@@ -1096,22 +1106,34 @@ int VideoSourceAVI::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuff
 		}
 
 	} else {
+		LONG samplesRead, bytesRead;
 
-		if (IsMMXState())
-			throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+		int rv = pSource->Read(lStart, lCount, lpBuffer, cbBuffer, &bytesRead, &samplesRead);
 
-		int rv = pSource->Read(lStart, lCount, lpBuffer, cbBuffer, lBytesRead, lSamplesRead);
+		if (lSamplesRead)
+			*lSamplesRead = samplesRead;
+		if (lBytesRead)
+			*lBytesRead = bytesRead;
 
-		// Check for improper MMX state.
+		if (lpBuffer && bInvertFrames && !rv && samplesRead) {
+			const BITMAPINFOHEADER& hdr = *getImageFormat();
+			const long dpr = ((hdr.biWidth * hdr.biBitCount + 31)>>5);
 
-		if (IsMMXState()) {
-			ClearMMXState();
+			if (bytesRead >= dpr * 4 * hdr.biHeight) {		// safety check
+				const int h2 = hdr.biHeight >> 1;
+				long *p0 = (long *)lpBuffer;
+				long *p1 = (long *)lpBuffer + dpr * (hdr.biHeight - 1);
 
-			throw MyError(
-				"The AVIFile input driver returned to VirtualDub with a non-empty FPU state. "
-				"This is generally caused by MMX code with a missing EMMS instruction. Contact "
-				"the vendor of the AVIFile driver and check if an updated version is available."
-				);
+				for(int y=0; y<h2; ++y) {
+					for(int x=0; x<dpr; ++x) {
+						long t = p0[x];
+						p0[x] = p1[x];
+						p1[x] = t;
+					}
+					p0 += dpr;
+					p1 -= dpr;
+				}
+			}
 		}
 
 		return rv;
@@ -1464,15 +1486,8 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
 				throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", frame_num, (int)err);
 
 
-			if (IsMMXState()) {
+			if (IsMMXState())
 				ClearMMXState();
-
-				throw MyError(
-					"The current video decompressor returned to VirtualDub with a non-empty FPU state. "
-					"This is generally caused by MMX code with a missing EMMS instruction. Contact "
-					"the vendor of the codec and check if an updated version is available."
-					);
-			}
 		}
 
 	} else if (mdec) {
@@ -1610,6 +1625,10 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 
 				if (lBytesRead) {
 					VDCHECKPOINT;
+
+					if (IsMMXState())
+						throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
 					if (ICERR_OK != (err = 	ICDecompress(
 									hicDecomp,
 //									  (lFrameNum<lFrameDesired ? ICDECOMPRESS_PREROLL : 0) |
@@ -1621,6 +1640,10 @@ void *VideoSourceAVI::getFrame(LONG lFrameDesired) {
 									lpvBuffer)))
 
 						throw MyICError(err, "Error decompressing video frame %d:\n\n%%s\n(error code %d)", lFrameNum, (int)err);
+
+					if (IsMMXState())
+						ClearMMXState();
+
 					VDCHECKPOINT;
 				}
 			} else if (mdec) {

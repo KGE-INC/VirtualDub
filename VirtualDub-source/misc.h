@@ -45,4 +45,6 @@ FOURCC toupperFOURCC(FOURCC fcc);
 bool IsMMXState();
 void ClearMMXState();
 
+char *strCify(const char *s);
+
 #endif

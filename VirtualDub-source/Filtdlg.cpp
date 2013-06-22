@@ -35,7 +35,6 @@
 #include "filters.h"
 
 extern HINSTANCE g_hInst;
-extern char g_msgBuf[];
 extern const char g_szError[];
 extern FilterFunctions g_filterFuncs;
 
@@ -87,9 +86,9 @@ static void RedoFilters(HWND hWndList) {
 	List listFA;
 	int ind, ind2, l;
 	FilterInstance *fa;
-   int sel;
+	int sel;
 
-   sel = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
+	sel = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
 
 	MakeFilterList(listFA, hWndList);
 
@@ -107,16 +106,20 @@ static void RedoFilters(HWND hWndList) {
 	ind = 0;
 	fa = (FilterInstance *)listFA.tail.next;
 	while(fa->next) {
-		l = wsprintf(g_msgBuf, "%dx%d\t%dx%d\t%s"
+		char buf[2048];
+		l = wsprintf(buf, "%dx%d\t%dx%d\t%s"
 				,fa->src.w
 				,fa->src.h
 				,fa->dst.w
 				,fa->dst.h
 				,fa->filter->name);
 
-		if (fa->filter->stringProc) fa->filter->stringProc(fa, &g_filterFuncs, g_msgBuf+l);
+		if (fa->filter->stringProc2)
+			fa->filter->stringProc2(fa, &g_filterFuncs, buf+l, (sizeof buf) - l);
+		else if (fa->filter->stringProc)
+			fa->filter->stringProc(fa, &g_filterFuncs, buf+l);
 
-		if (LB_ERR == (ind2 = SendMessage(hWndList, LB_INSERTSTRING, (WPARAM)ind, (LPARAM)g_msgBuf)))
+		if (LB_ERR == (ind2 = SendMessage(hWndList, LB_INSERTSTRING, (WPARAM)ind, (LPARAM)buf)))
 			return;
 
 		SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)ind2, (LPARAM)fa);
@@ -342,7 +345,8 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 					while(fa2 = (FilterInstance *)fa->next) {
 						_RPT1(0,"Deleting %p\n", fa);
-						fa->ForceNoDeinit();
+						if (!fa->filter->copyProc)
+							fa->ForceNoDeinit();
 
 						delete fa;
 
@@ -365,7 +369,8 @@ BOOL APIENTRY FilterDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 					fa = (FilterInstance *)list.tail.next;
 					while(fa2 = (FilterInstance *)fa->next) {
-						fa->ForceNoDeinit();
+						if (!fa->filter->copyProc)
+							fa->ForceNoDeinit();
 						delete fa;
 						fa = fa2;
 					}
@@ -389,8 +394,10 @@ void AddFilterDlgInit(HWND hDlg) {
 	SendMessage(hWndList, LB_RESETCONTENT, 0, 0);
 
 	while(fd) {
-		wsprintf(g_msgBuf,"%s\t%s",fd->name,fd->maker?fd->maker:"(internal)");
-		index = SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)g_msgBuf);
+		char buf[2048];
+
+		wsprintf(buf,"%s\t%s",fd->name,fd->maker?fd->maker:"(internal)");
+		index = SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)buf);
 		SendMessage(hWndList, LB_SETITEMDATA, (WPARAM)index, (LPARAM)fd);
 		fd=fd->next;
 	}

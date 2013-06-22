@@ -1956,13 +1956,13 @@ extern const char fileFiltersAppend[]=
 		;
 
 static const char fileFilters[]=
-		"All usable types\0"						"*.avi;*.avs;*.mpg;*.mpeg;*.mpv;*.m1v;*.dat;*.stripe;*.vdr;*.bmp\0"
+		"All usable types\0"						"*.avi;*.avs;*.mpg;*.mpeg;*.mpv;*.m1v;*.dat;*.stripe;*.vdr;*.bmp;*.tga\0"
 		"Audio-Video Interleave (*.avi)\0"			"*.avi\0"
 		"MPEG-1 video file (*.mpeg,*.mpg,*.mpv,*.dat)\0"	"*.mpg;*.mpeg;*.mpv;*.m1v;*.dat\0"
 		"AVI stripe definition (*.stripe)\0"		"*.stripe\0"
 		"VirtualDub remote signpost (*.vdr)\0"		"*.vdr\0"
 		"AVI (compatibility mode) (*.avi,*.avs)\0"	"*.avi;*.avs\0"
-		"DIB image sequence (*.bmp)\0"				"*.bmp\0"
+		"Image sequence (*.bmp,*.tga)\0"			"*.bmp;*.tga\0"
 		"All files (*.*)\0"							"*.*\0"
 		;
 
@@ -2052,7 +2052,7 @@ void OpenAVI(int index, bool ext_opt) {
 
 		switch(ofn.nFilterIndex) {
 		case 2:
-		case 5:	iFileType = FILETYPE_AVI; break;
+		case 5:	iFileType = FILETYPE_AVICOMPAT; break;
 		case 4: iFileType = FILETYPE_STRIPEDAVI; break;
 		case 3: iFileType = FILETYPE_MPEG; break;
 //		case 4: iFileType = FILETYPE_ASF; break;
@@ -2708,6 +2708,8 @@ typedef struct SaveImageSeqDlgData {
 	char szFormat[MAX_PATH];
 	int digits;
 	long lFirstFrame, lLastFrame;
+	bool bSaveAsTGA;
+	bool bRunAsJob;
 } SaveImageSeqDlgData;
 
 static void SaveImageSeqShowFilenames(HWND hDlg) {
@@ -2757,6 +2759,7 @@ static BOOL CALLBACK SaveImageSeqDlgProc(HWND hDlg, UINT message, WPARAM wParam,
 		SetDlgItemText(hDlg, IDC_FILENAME_SUFFIX, sisdd->szPostfix);
 		SetDlgItemInt(hDlg, IDC_FILENAME_DIGITS, sisdd->digits, FALSE);
 		SetDlgItemText(hDlg, IDC_DIRECTORY, sisdd->szDirectory);
+		CheckDlgButton(hDlg, sisdd->bSaveAsTGA ? IDC_FORMAT_TGA : IDC_FORMAT_BMP, BST_CHECKED);
 		SetWindowLong(hDlg, DWL_USER, lParam);
 		SaveImageSeqShowFilenames(hDlg);
 
@@ -2819,6 +2822,28 @@ static BOOL CALLBACK SaveImageSeqDlgProc(HWND hDlg, UINT message, WPARAM wParam,
 			}
 			return TRUE;
 
+		case IDC_FORMAT_TGA:
+			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+				sisdd->bSaveAsTGA = true;
+				if (!stricmp(sisdd->szPostfix, ".bmp")) {
+					SetDlgItemText(hDlg, IDC_FILENAME_SUFFIX, ".tga");
+				}
+			}
+			return TRUE;
+
+		case IDC_FORMAT_BMP:
+			if (SendMessage((HWND)lParam, BM_GETCHECK, 0, 0)) {
+				sisdd->bSaveAsTGA = false;
+				if (!stricmp(sisdd->szPostfix, ".tga")) {
+					SetDlgItemText(hDlg, IDC_FILENAME_SUFFIX, ".bmp");
+				}
+			}
+			return TRUE;
+
+		case IDC_ADD_AS_JOB:
+			sisdd->bRunAsJob = !!SendMessage((HWND)lParam, BM_GETCHECK, 0, 0);
+			return TRUE;
+
 		case IDOK:
 			EndDialog(hDlg, TRUE);
 			return TRUE;
@@ -2843,17 +2868,21 @@ void SaveImageSeq(HWND hwnd) {
 
 	memset(&sisdd, 0, sizeof sisdd);
 
-	strcpy(sisdd.szPostfix,".bmp");
+	sisdd.bSaveAsTGA = true;
+	strcpy(sisdd.szPostfix,".tga");
 	sisdd.lFirstFrame	= inputVideoAVI->lSampleFirst;
 	sisdd.lLastFrame	= inputVideoAVI->lSampleLast-1;
 
 	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_AVIOUTPUTIMAGES_FORMAT), hwnd, SaveImageSeqDlgProc, (LPARAM)&sisdd)) {
 		SetAudioSource();
 
-		if (!(outputAVI = new AVIOutputImages(sisdd.szFormat, sisdd.digits)))
-			MessageBox(NULL,g_szOutOfMemory,g_szError,MB_OK);
-		else {
-			InitDubAVI(NULL, FALSE, NULL, g_prefs.main.iDubPriority);
+		try {
+			if (sisdd.bRunAsJob)
+				JobAddConfigurationImages(&g_dubOpts, g_szInputAVIFile, FILETYPE_AUTODETECT, sisdd.szPrefix, sisdd.szPostfix, sisdd.digits, sisdd.bSaveAsTGA, &inputAVI->listFiles);
+			else
+				SaveImageSequence(sisdd.szPrefix, sisdd.szPostfix, sisdd.digits, false, NULL, sisdd.bSaveAsTGA);
+		} catch(const MyError& e) {
+			e.post(NULL, g_szError);
 		}
 	}
 }

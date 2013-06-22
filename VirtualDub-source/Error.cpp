@@ -44,6 +44,11 @@ MyError::~MyError() {
 	delete[] buf;
 }
 
+void MyError::assign(const MyError& e) {
+	delete[] buf;
+	buf = strdup(e.buf);
+}
+
 void MyError::setf(const char *f, ...) {
 	va_list val;
 

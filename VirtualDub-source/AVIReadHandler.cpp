@@ -586,7 +586,12 @@ bool AVIReadTunnelStream::IsKeyFrame(long lFrame) {
 HRESULT AVIReadTunnelStream::Read(long lStart, long lSamples, void *lpBuffer, long cbBuffer, long *plBytes, long *plSamples) {
 	HRESULT hr;
 
+	if (IsMMXState())
+		throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
 	hr = AVIStreamRead(pas, lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+
+	ClearMMXState();
 
 	if (pAvisynthClipInfo) {
 		const char *pszErr;
@@ -1519,6 +1524,15 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 		case FOURCC_LIST:
 			_readFile2(&fccType, 4);
 
+			// If we find a LIST/movi chunk with zero size, jump straight to reindexing
+			// (unclosed AVIFile output).
+
+			if (!dwLength && fccType == 'ivom') {
+				i64ChunkMoviPos = _posFile();
+				dwChunkMoviLength = 0xFFFFFFF0;
+				goto terminate_scan;
+			}
+
 			// Some idiot Premiere plugin is writing AVI files with an invalid
 			// size field in the LIST/hdrl chunk.
 
@@ -1548,8 +1562,9 @@ void AVIReadHandler::_parseFile(List2<AVIStreamNode>& streamlist) {
 					goto terminate_scan;
 
 				break;
-			case listtypeAVIHEADER:
-				dwLength = 0;	// silently enter the header block
+			case ' cer':				// silently enter grouping blocks
+			case listtypeAVIHEADER:		// silently enter header blocks
+				dwLength = 0;
 				break;
 			case listtypeSTREAMHEADER:
 				if (!_parseStreamHeader(streamlist, dwLength, bScanRequired))
@@ -1734,7 +1749,7 @@ terminate_scan:
 
 					pasn = streamlist.AtHead();
 
-					while(stream-- && (pasn_next = pasn->NextFromHead()))
+					while((pasn_next = pasn->NextFromHead()) && stream--)
 						pasn = pasn_next;
 
 					if (pasn && pasn_next) {
@@ -2114,7 +2129,12 @@ IAVIReadStream *AVIReadHandler::GetStream(DWORD fccType, LONG lParam) {
 		PAVISTREAM pas;
 		HRESULT hr;
 
+		if (IsMMXState())
+			throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
 		hr = AVIFileGetStream(paf, &pas, fccType, lParam);
+
+		ClearMMXState();
 
 		if (hr)
 			return NULL;

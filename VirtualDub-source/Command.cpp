@@ -25,6 +25,7 @@
 #include "VideoSource.h"
 #include "AVIOutput.h"
 #include "AVIOutputWAV.h"
+#include "AVIOutputImages.h"
 #include "AVIOutputStriped.h"
 #include "Dub.h"
 #include "Error.h"
@@ -99,9 +100,11 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 		if (iFileType == FILETYPE_AUTODETECT || iFileType == FILETYPE_AUTODETECT2) {
 			HANDLE hFile;
 			char buf[64];
+			char endbuf[64];
 			DWORD dwActual;
 
 			memset(buf, 0, sizeof buf);
+			memset(endbuf, 0, sizeof endbuf);
 
 			hFile = CreateFile(szFile, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 
@@ -110,6 +113,16 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 
 			if (!ReadFile(hFile, buf, 64, &dwActual, NULL))
 				throw MyWin32Error("Error reading \"%s\": %%s", GetLastError(), szFile);
+
+			if (dwActual <= 64)
+				memcpy(endbuf + 64 - dwActual, buf, dwActual);
+			else {
+				if (0xFFFFFFFF == SetFilePointer(hFile, -64, NULL, FILE_END))
+					throw MyWin32Error("Error reading \"%s\": %%s", GetLastError(), szFile);
+
+				if (!ReadFile(hFile, endbuf, 64, &dwActual, NULL))
+					throw MyWin32Error("Error reading \"%s\": %%s", GetLastError(), szFile);
+			}
 
 			// The Avisynth script:
 			//
@@ -153,7 +166,10 @@ void OpenAVI(char *szFile, int iFileType, bool fExtendedOpen, bool fQuiet, bool 
 				iFileType = FILETYPE_ASF;
 			else if (buf[0] == 'B' && buf[1] == 'M')
 				iFileType = FILETYPE_IMAGE;
-			else {
+			else if ((strlen(szFile)>4 && !stricmp(szFile + strlen(szFile) - 4, ".tga"))
+				|| !memcmp(endbuf + sizeof endbuf - 18, "TRUEVISION-XFILE.", 18)) {
+				iFileType = FILETYPE_IMAGE;
+			} else {
 
 				// Second pass for MPEG.  This time, scan the first 64 bytes for 00 00 01 BA.
 
@@ -505,6 +521,18 @@ void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long
 	CloseNewAVI();
 }
 
+void SaveImageSequence(const char *szPrefix, const char *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat) {
+	try {
+		if (!(outputAVI = new AVIOutputImages(szPrefix, szSuffix, minDigits, targetFormat>0)))
+			throw MyMemoryError();
+		
+		InitDubAVI(NULL, FALSE, quick_opts, g_prefs.main.iDubPriority);
+	} catch(...) {
+		CloseNewAVI();
+		throw;
+	}
+	CloseNewAVI();
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -541,7 +569,7 @@ void RemakePositionSlider() {
 
 	if (g_dubOpts.video.lStartOffsetMS || g_dubOpts.video.lEndOffsetMS) {
 		SendMessage(hwndPosition, PCM_SETSELSTART, (BOOL)FALSE, inputVideoAVI->msToSamples(g_dubOpts.video.lStartOffsetMS));
-		SendMessage(hwndPosition, PCM_SETSELEND, (BOOL)TRUE , (inputSubset ? inputSubset->getTotalFrames() : (inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)) - inputVideoAVI->msToSamples(g_dubOpts.video.lStartOffsetMS));
+		SendMessage(hwndPosition, PCM_SETSELEND, (BOOL)TRUE , (inputSubset ? inputSubset->getTotalFrames() : (inputVideoAVI->lSampleLast - inputVideoAVI->lSampleFirst)) - inputVideoAVI->msToSamples(g_dubOpts.video.lEndOffsetMS));
 	} else {
 		SendMessage(hwndPosition, PCM_CLEARSEL, (BOOL)TRUE, 0);
 	}
@@ -553,8 +581,13 @@ void RecalcPositionTimeConstant() {
 	DubVideoStreamInfo vInfo;
 	DubAudioStreamInfo aInfo;
 
-	InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
-	SendMessage(hwndPosition, PCM_SETFRAMERATE, 0, vInfo.usPerFrame);
+	try {
+		InitStreamValuesStatic(vInfo, aInfo, inputVideoAVI, inputAudio, &g_dubOpts, NULL);
+		SendMessage(hwndPosition, PCM_SETFRAMERATE, 0, vInfo.usPerFrame);
+	} catch(const MyError&) {
+		// The input stream may throw an error here trying to obtain the nearest key.
+		// If so, bail.
+	}
 }
 
 void EnsureSubset() {

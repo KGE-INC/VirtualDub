@@ -426,7 +426,7 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 									// Initialize cube vertices.
 
 									{
-										int i,j;
+										int i;
 										double rs;
 
 										if (r.right > r.bottom)
@@ -530,9 +530,6 @@ BOOL APIENTRY AboutDlgProc( HWND hDlg, UINT message, UINT wParam, LONG lParam)
 
 		case WM_APP:
 			if (g_pvAboutDisplayBack && bRender) {
-				HDC hdc;
-				PAINTSTRUCT ps;
-
 				static double theta = 0.0;
 				double xt, yt, zt;
 

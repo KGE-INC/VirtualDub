@@ -62,7 +62,7 @@ bool InitScriptSystem() {
 	g_hInstSylia = LoadLibrary("Sylia.dll");
 
 	if (GetLastError() == ERROR_DLL_NOT_FOUND || GetLastError() == ERROR_MOD_NOT_FOUND)
-		g_hInstSylia = LoadLibrary("i:\\projwin\\sylia\\release\\sylia.dll");
+		g_hInstSylia = LoadLibrary("\\p4root\\sylia\\main\\release\\sylia.dll");
 
 	if (!g_hInstSylia) {
 		strcpy(buf, "Cannot load Sylia scripting language (SYLIA.DLL):\n\n");
@@ -319,12 +319,12 @@ void membase64(char *t, const char *s, long l) {
 		}
 
 		t[0] = base64[(c1 >> 2) & 0x3f];
-		if (l<1) {
+		if (l<2) {
 			t[1] = base64[(c1<<4)&0x3f];
 			t[2] = t[3] = '=';
 		} else {
 			t[1] = base64[((c1<<4)|(c2>>4))&0x3f];
-			if (l<2) {
+			if (l<3) {
 				t[2] = base64[(c2<<2)&0x3f];
 				t[3] = '=';
 			} else {
@@ -997,6 +997,21 @@ static void func_VirtualDub_SaveSegmentedAVI(IScriptInterpreter *, CScriptObject
 		SaveSegmentedAVI(*arglist[0].asString(), true, NULL, arglist[1].asInt(), arglist[2].asInt());
 }
 
+static void func_VirtualDub_SaveImageSequence(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
+	if (g_fJobMode) {
+		DubOptions opts(g_dubOpts);
+
+		opts.fShowStatus			= false;
+		opts.fMoveSlider			= true;
+		opts.video.fShowInputFrame	= false;
+		opts.video.fShowOutputFrame	= false;
+		opts.video.fShowDecompressedFrame	= false;
+
+		SaveImageSequence(*arglist[0].asString(), *arglist[1].asString(), arglist[2].asInt(), true, &opts, arglist[3].asInt());
+	} else
+		SaveImageSequence(*arglist[0].asString(), *arglist[1].asString(), arglist[2].asInt(), true, NULL, arglist[3].asInt());
+}
+
 static void func_VirtualDub_SaveWAV(IScriptInterpreter *, CScriptObject *, CScriptValue *arglist, int arg_count) {
 	SaveWAV(*arglist[0].asString());
 }
@@ -1043,6 +1058,7 @@ static ScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
+	{ (ScriptFunctionPtr)func_VirtualDub_SaveImageSequence,	"SaveImageSequence",	"0ssii" },
 	{ (ScriptFunctionPtr)func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
 	{ NULL }
 };

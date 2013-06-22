@@ -8,6 +8,7 @@
 #include "Error.h"
 #include "ProgressDialog.h"
 #include "VideoSourceImages.h"
+#include "image.h"
 
 extern HWND g_hWnd;
 
@@ -148,7 +149,7 @@ int VideoSourceImages::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbB
 	
 	if (lStart == mCachedHandleFrame) {
 		h = mCachedHandle;
-		if (INVALID_SET_FILE_POINTER == SetFilePointer(h, 0, NULL, FILE_BEGIN))
+		if (0xFFFFFFFF == SetFilePointer(h, 0, NULL, FILE_BEGIN))
 			goto read_fail;
 	} else{
 		h = CreateFile(buf, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
@@ -249,45 +250,37 @@ bool VideoSourceImages::setDecompressedFormat(BITMAPINFOHEADER *pbih) {
 	return false;
 }
 
-void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
-	const BITMAPFILEHEADER *pbfh = (const BITMAPFILEHEADER *)inputBuffer;
+///////////////////////////////////////////////////////////////////////////
 
+void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num) {
 	// We may get a zero-byte frame if we already have the image.
 
 	if (!data_len)
 		return getFrameBuffer();
 
-	// Check file header.
+	int w, h;
+	bool bHasAlpha;
+	bool bIsBMP = DecodeBMPHeader(inputBuffer, data_len, w, h, bHasAlpha);
+	bool bIsTGA = !bIsBMP && DecodeTGAHeader(inputBuffer, data_len, w, h, bHasAlpha);
 
-	if (data_len < sizeof(BITMAPFILEHEADER) + sizeof(DWORD) || pbfh->bfType != 'MB')
-		throw MyError("Image file must be in Windows BMP format.");
-
-	if (pbfh->bfSize > data_len || pbfh->bfOffBits > data_len)
-		throw MyError("Image file is too short.");
-
-	const BITMAPINFOHEADER *pbih = (const BITMAPINFOHEADER *)((char *)inputBuffer + sizeof(BITMAPFILEHEADER));
+	if (!bIsBMP && !bIsTGA)
+		throw MyError("Image file must be in Windows BMP or truecolor TARGA format.");
 
 	// Check image header.
-
-	if (pbih->biSize + sizeof(BITMAPFILEHEADER) > data_len)
-		throw MyError("Image file is too short.");
-
-	if (pbih->biPlanes > 1 || pbih->biCompression != BI_RGB || (pbih->biBitCount != 16 && pbih->biBitCount != 24 && pbih->biBitCount != 32))
-		throw MyError("Image file is in an unsupported format.");
 
 	BITMAPINFOHEADER *pFormat = getImageFormat();
 
 	if (getFrameBuffer()) {
-		if (pbih->biWidth != pFormat->biWidth || pbih->biHeight != pFormat->biHeight)
+		if (w != pFormat->biWidth || h != pFormat->biHeight)
 			throw MyError("Image %d (%dx%d) doesn't match the image dimensions of the first image (%dx%d)."
-					, frame_num + mImageBaseNumber, pbih->biWidth, pbih->biHeight, pFormat->biWidth, pFormat->biHeight);
+					, frame_num + mImageBaseNumber, w, h, pFormat->biWidth, pFormat->biHeight);
 
 	} else {
-		void *pFrameBuffer = AllocFrameBuffer(pbih->biWidth * pbih->biHeight * 4);
+		void *pFrameBuffer = AllocFrameBuffer(w * h * 4);
 
 		pFormat->biSize				= sizeof(BITMAPINFOHEADER);
-		pFormat->biWidth			= pbih->biWidth;
-		pFormat->biHeight			= pbih->biHeight;
+		pFormat->biWidth			= w;
+		pFormat->biHeight			= h;
 		pFormat->biPlanes			= 1;
 		pFormat->biCompression		= 0xFFFFFFFFUL;
 		pFormat->biBitCount			= 0;
@@ -302,14 +295,10 @@ void *VideoSourceImages::streamGetFrame(void *inputBuffer, long data_len, BOOL i
 
 	}
 
-	// Verify that the image is all there.
-
-	if (pbfh->bfOffBits + ((pbih->biWidth*pbih->biBitCount+31)>>5)*4*pbih->biHeight > data_len)
-		throw MyError("Image file is too short.");
-
-	// Blit the image to the framebuffer.
-
-	mvbFrameBuffer.BitBlt(0, 0, &VBitmap((char *)inputBuffer + pbfh->bfOffBits, (BITMAPINFOHEADER *)pbih), 0, 0, -1, -1);
+	if (bIsBMP)
+		DecodeBMP(inputBuffer, data_len, mvbFrameBuffer);
+	if (bIsTGA)
+		DecodeTGA(inputBuffer, data_len, mvbFrameBuffer);
 
 	mCachedFrame = frame_num;
 

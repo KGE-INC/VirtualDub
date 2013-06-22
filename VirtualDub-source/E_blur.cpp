@@ -474,6 +474,7 @@ static void __declspec(naked) dorow2_MMX(Pixel32 *dst, Pixel32 *src, PixDim w) {
 		pmullw		mm1,mmx_by6
 		psllw		mm0,2
 		paddw		mm0,mm2
+		paddw		mm0,mm5
 		paddw		mm0,mmx_offset8
 		paddw		mm0,mm1
 		psraw		mm0,4

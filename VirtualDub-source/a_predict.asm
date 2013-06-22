@@ -17,36 +17,14 @@
 
 ;****************************************************
 ;
-;	There is an algorithm used here for MPEG motion prediction which is
-;	hard to understand from the source code alone.  It is:
+; This module now uses a new algorithm that was suggested to me in email:
 ;
-;		mov	edi,[ecx]
-;		mov	ebx,[edx]
-;		mov	eax,edi
-;		xor	edi,ebx
-;		shr	edi,1
-;		adc	eax,ebx
-;		rcr	eax,1
-;		and	edi,00808080h
-;		add	eax,edi
-;		mov	[edx],eax
+;    result = (((x^y) & 0xfefefefe)>>1) + (x&y);
 ;
-;	EDI holds a correction factor which compensates for odd LSB sum bits
-;	that got added onto the MSB of the lower byte sum.  The ADD/RCR
-;	does the addition; EDI is then added on to correct for 0/1 or 1/0
-;	LSB sum bits.  The lowest bit is handled through the ADC:
+; The formula rounds down, but it can be reversed to round according to
+; MPEG:
 ;
-;	A-LSB	B-LSB	XOR	Sum
-;	  0	  0	 0	00
-;	  0	  1	 1	10
-;	  1	  0	 1	10
-;	  1	  1	 0	10
-;
-;	This produces a fully correct MPEG-1 average of four pairs of samples
-;	in only 5 clocks.  It is difficult to use, however, because the
-;	SHR/ADC/RCR instructions all must issue in the U-pipe (port 0 on
-;	the PII), and the carry must be undisturbed between the SHR and the
-;	ADC
+;    result = (x|y) - (((x^y) & 0xfefefefe)>>1);
 ;
 ;****************************************************
 
@@ -211,56 +189,49 @@ quadpel_move	macro	off
 
 	align	16
 predict_Y_halfpelY:
-	push	16
+	mov	ebp,16
 loop_Y1_halfpelV:
-	mov	edi,[ecx+0]
-	mov	ebx,[ecx+esi+0]
-	mov	eax,edi
-	xor	edi,ebx
-	shr	edi,1			;u
-	mov	ebp,[ecx+4]
-	adc	eax,ebx			;u
-	mov	ebx,[ecx+esi+4]
-	rcr	eax,1			;u
-	and	edi,00808080h		;v
-	add	eax,edi			;u
-	xor	ebp,ebx
-	shr	ebp,1			;u
-	mov	edi,[ecx+4]
-	adc	edi,ebx			;u
-	mov	[edx+0],eax
-	rcr	edi,1			;u
-	and	ebp,00808080h
-	add	edi,ebp
-	mov	ebx,[ecx+esi+8]
-	mov	[edx+4],edi
-	mov	edi,[ecx+8]
-	mov	eax,edi
-	xor	edi,ebx
-	shr	edi,1			;u
-	mov	ebp,[ecx+12]
-	adc	eax,ebx			;u
-	mov	ebx,[ecx+esi+12]
-	rcr	eax,1			;u
-	and	edi,00808080h		;v
-	add	eax,edi			;u
-	xor	ebp,ebx
-	shr	ebp,1			;u
-	mov	edi,[ecx+12]
-	adc	edi,ebx			;u
-	mov	[edx+8],eax
-	rcr	edi,1			;u
-	and	ebp,00808080h
-	add	edi,ebp
-	mov	eax,[esp]
+	mov	edi,[ecx+0]		;[1]
+	mov	ebx,[ecx+esi+0]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+esi+4]		;[2]
+	mov	[edx+0],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	edi,[ecx+8]		;[3]
+	sub	eax,ebx			;[2]
+	mov	ebx,[ecx+esi+8]		;[3]
+	mov	[edx+4],eax		;[2]
+	mov	eax,ebx			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	eax,edi			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	edi,[ecx+12]		;[4]
+	sub	eax,ebx			;[3]
+	mov	ebx,[ecx+esi+12]	;[4]
+	mov	[edx+8],eax		;[3]
+	mov	eax,ebx			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	eax,edi			;[4]
+	and	ebx,7f7f7f7fh		;[4]
 	add	ecx,esi
-	mov	[edx+12],edi
-	add	edx,esi
-	dec	eax
-	mov	[esp],eax
+	sub	eax,ebx			;[4]
+	dec	ebp
+	mov	[edx+12],eax		;[4]
+	lea	edx,[edx+esi]
 	jne	loop_Y1_halfpelV
 
-	pop	eax
 	ret
 
 ;*********************************************************
@@ -271,125 +242,48 @@ loop_Y1_halfpelV:
 
 	align	16
 predict_Y_halfpelX:
-	mov	edi,16
-	sub	edx,esi
+	mov	ebp,16
 loop_Y1_halfpelX:
-
-		mov	eax,[ecx]
-		mov	ebx,[ecx+4]
-
-		shl	ebx,24
-		mov	ebp,eax
-
-		shr	ebp,8
-		;<-->
-
-		or	ebx,ebp
-		mov	ebp,eax
-
-		or	ebp,ebx
-		and	eax,0fefefefeh
-
-		shr	eax,1
-		and	ebp,01010101h
-
-		shr	ebx,1
-		add	eax,ebp
-
-		and	ebx,07f7f7f7fh
-		add	eax,ebx
-
-		mov	[edx+esi],eax
-
-		;<---------------------->
-
-		mov	eax,[ecx+4]
-		mov	ebx,[ecx+8]
-
-		shl	ebx,24
-		mov	ebp,eax
-
-		shr	ebp,8
-
-		or	ebx,ebp
-		mov	ebp,eax
-
-		and	eax,0fefefefeh
-		or	ebp,ebx
-
-		shr	eax,1
-		and	ebp,01010101h
-
-		shr	ebx,1
-		add	eax,ebp
-
-		and	ebx,07f7f7f7fh
-		add	eax,ebx
-
-		mov	[edx+esi+4],eax
-
-
-
-
-
-		mov	eax,[ecx+8]
-		mov	ebx,[ecx+12]
-
-		shl	ebx,24
-		mov	ebp,eax
-
-		shr	ebp,8
-		;<-->
-
-		or	ebx,ebp
-		mov	ebp,eax
-
-		and	eax,0fefefefeh
-		or	ebp,ebx
-
-		shr	eax,1
-		and	ebp,01010101h
-
-		shr	ebx,1
-		add	eax,ebp
-
-		and	ebx,07f7f7f7fh
-		add	eax,ebx
-
-		mov	[edx+esi+8],eax
-
-		;<---------------------->
-
-		mov	eax,[ecx+12]
-		mov	ebx,[ecx+16]
-
-		shl	ebx,24
-		mov	ebp,eax
-
-		shr	ebp,8
-		add	edx,esi
-
-		or	ebx,ebp
-		mov	ebp,eax
-
-		and	eax,0fefefefeh
-		or	ebp,ebx
-
-		shr	eax,1
-		and	ebp,01010101h
-
-		shr	ebx,1
-		add	eax,ebp
-
-		and	ebx,07f7f7f7fh
-		add	eax,ebx
-
-		mov	[edx+12],eax
-		add	ecx,esi
-
-		dec	edi
-		jne	loop_Y1_halfpelX
-
+	mov	edi,[ecx+0]		;[1]
+	mov	ebx,[ecx+1]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+5]		;[2]
+	mov	[edx+0],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	edi,[ecx+8]		;[3]
+	sub	eax,ebx			;[2]
+	mov	ebx,[ecx+9]		;[3]
+	mov	[edx+4],eax		;[2]
+	mov	eax,ebx			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	eax,edi			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	edi,[ecx+12]		;[4]
+	sub	eax,ebx			;[3]
+	mov	ebx,[ecx+13]		;[4]
+	mov	[edx+8],eax		;[3]
+	mov	eax,ebx			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	eax,edi			;[4]
+	and	ebx,7f7f7f7fh		;[4]
+	add	ecx,esi
+	sub	eax,ebx			;[4]
+	dec	ebp
+	mov	[edx+12],eax		;[4]
+	lea	edx,[edx+esi]
+	jne	loop_Y1_halfpelX
 
 	ret
 
@@ -625,142 +519,76 @@ ENDIF
 
 	align	16
 predict_add_Y_halfpelY:
-	push	16
+	mov	ebp,16
 add_loop_Y1_halfpelV:
-	mov	eax,[ecx]
-	mov	ebx,[edx]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx],eax
-
-	mov	eax,[ecx+4]
-	mov	ebx,[edx+4]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi+4]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx+4],eax
-
-	mov	eax,[ecx+8]
-	mov	ebx,[edx+8]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi+8]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx+8],eax
-
-	mov	eax,[ecx+12]
-	mov	ebx,[edx+12]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi+12]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx+12],eax
-
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+esi]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	edi,eax			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	eax,[edx]		;[1]
+	sub	edi,ebx			;[1]
+	mov	ebx,eax			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+esi+4]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	edi,eax			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	eax,[edx+4]		;[2]
+	sub	edi,ebx			;[2]
+	mov	ebx,eax			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	edi,[ecx+8]		;[3]
+	sub	eax,ebx			;[2]
+	mov	ebx,[ecx+esi+8]		;[3]
+	mov	[edx+4],eax		;[2]
+	mov	eax,ebx			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	edi,eax			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	eax,[edx+8]		;[3]
+	sub	edi,ebx			;[3]
+	mov	ebx,eax			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	eax,edi			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	edi,[ecx+12]		;[4]
+	sub	eax,ebx			;[3]
+	mov	ebx,[ecx+esi+12]	;[4]
+	mov	[edx+8],eax		;[3]
+	mov	eax,ebx			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	edi,eax			;[4]
+	and	ebx,7f7f7f7fh		;[4]
+	mov	eax,[edx+12]		;[4]
+	sub	edi,ebx			;[4]
+	mov	ebx,eax			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	eax,edi			;[4]
+	and	ebx,7f7f7f7fh		;[4]
 	add	ecx,esi
-	add	edx,esi
-
-	dec	dword ptr [esp]
+	sub	eax,ebx			;[4]
+	dec	ebp
+	mov	[edx+12],eax		;[4]
+	lea	edx,[edx+esi]
 	jne	add_loop_Y1_halfpelV
-	pop	eax
 	ret
 
 
@@ -772,111 +600,75 @@ add_loop_Y1_halfpelV:
 
 	align	16
 predict_add_Y_halfpelX:
-	mov	edi,16
-	sub	edx,esi
+	mov	ebp,16
 add_loop_Y1_halfpelX:
-	mov	eax,[ecx]
-	mov	ebx,[ecx+1]
-	mov	ebp,ebx
-	add	edx,esi
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx]
-
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx],eax
-
-
-	mov	eax,[ecx+4]
-	mov	ebx,[ecx+5]
-	mov	ebp,ebx
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx+4]
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx+4],eax
-
-
-
-
-
-	mov	eax,[ecx+8]
-	mov	ebx,[ecx+9]
-	mov	ebp,ebx
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx+8]
-
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx+8],eax
-
-
-	mov	eax,[ecx+12]
-	mov	ebx,[ecx+13]
-	mov	ebp,ebx
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+1]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	edi,eax			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	eax,[edx]		;[1]
+	sub	edi,ebx			;[1]
+	mov	ebx,eax			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+5]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	edi,eax			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	eax,[edx+4]		;[2]
+	sub	edi,ebx			;[2]
+	mov	ebx,eax			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	edi,[ecx+8]		;[3]
+	sub	eax,ebx			;[2]
+	mov	ebx,[ecx+9]		;[3]
+	mov	[edx+4],eax		;[2]
+	mov	eax,ebx			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	edi,eax			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	eax,[edx+8]		;[3]
+	sub	edi,ebx			;[3]
+	mov	ebx,eax			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	eax,edi			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	edi,[ecx+12]		;[4]
+	sub	eax,ebx			;[3]
+	mov	ebx,[ecx+13]		;[4]
+	mov	[edx+8],eax		;[3]
+	mov	eax,ebx			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	edi,eax			;[4]
+	and	ebx,7f7f7f7fh		;[4]
+	mov	eax,[edx+12]		;[4]
+	sub	edi,ebx			;[4]
+	mov	ebx,eax			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	eax,edi			;[4]
+	and	ebx,7f7f7f7fh		;[4]
 	add	ecx,esi
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx+12]
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx+12],eax
-
-
-	
-
-	dec	edi
+	sub	eax,ebx			;[4]
+	dec	ebp
+	mov	[edx+12],eax		;[4]
+	lea	edx,[edx+esi]
 	jne	add_loop_Y1_halfpelX
 	ret
 
@@ -894,56 +686,48 @@ add_loop_Y1_halfpelX:
 
 	align	16
 predict_add_Y_normal:
-	push	16
-add_loop_Y1_addX:
-	mov	edi,[ecx+0]		;u
-	mov	ebx,[edx+0]		;v
-	mov	eax,edi			;u
-	xor	edi,ebx			;v
-	shr	edi,1			;u
-	mov	ebp,[ecx+4]		;v
-	adc	eax,ebx			;u
-	mov	ebx,[edx+4]		;v
-	rcr	eax,1			;u
-	and	edi,00808080h		;v
-	add	eax,edi			;u
-	xor	ebp,ebx			;v
-	shr	ebp,1			;u
-	mov	edi,[ecx+4]		;v
-	adc	edi,ebx			;u
-	mov	[edx+0],eax		;v
-	rcr	edi,1			;u
-	and	ebp,00808080h		;v
-	add	edi,ebp			;u
-	mov	ebx,[edx+8]		;v
-	mov	[edx+4],edi		;u
-	mov	edi,[ecx+8]		;v
-	mov	eax,edi			;u
-	xor	edi,ebx			;v
-	shr	edi,1			;u
-	mov	ebp,[ecx+12]		;v
-	adc	eax,ebx			;u
-	mov	ebx,[edx+12]		;v
-	rcr	eax,1			;u
-	and	edi,00808080h		;v
-	add	eax,edi			;u
-	xor	ebp,ebx			;v
-	shr	ebp,1			;u
-	mov	edi,[ecx+12]		;v
-	adc	edi,ebx			;u
-	mov	[edx+8],eax		;v
-	rcr	edi,1			;u
-	and	ebp,00808080h		;v
-	add	edi,ebp			;u
-	mov	eax,[esp+0]		;v
-	add	ecx,esi			;u
-	mov	[edx+12],edi		;v
-	add	edx,esi			;u
-	dec	eax			;v
-	mov	[esp+0],eax		;u
-	jne	add_loop_Y1_addX	;v
-
-	pop	eax
+	mov	ebp, 16
+add_loop_Y1_normal:
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[edx]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[edx+4]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	edi,[ecx+8]		;[3]
+	sub	eax,ebx			;[2]
+	mov	ebx,[edx+8]		;[3]
+	mov	[edx+4],eax		;[2]
+	mov	eax,ebx			;[3]
+	xor	ebx,edi			;[3]
+	shr	ebx,1			;[3]
+	or	eax,edi			;[3]
+	and	ebx,7f7f7f7fh		;[3]
+	mov	edi,[ecx+12]		;[4]
+	sub	eax,ebx			;[3]
+	mov	ebx,[edx+12]		;[4]
+	mov	[edx+8],eax		;[3]
+	mov	eax,ebx			;[4]
+	xor	ebx,edi			;[4]
+	shr	ebx,1			;[4]
+	or	eax,edi			;[4]
+	and	ebx,7f7f7f7fh		;[4]
+	sub	eax,ebx			;[4]
+	add	ecx,esi
+	mov	[edx+12],eax		;[4]
+	add	edx,esi
+	dec	ebp
+	jne	add_loop_Y1_normal
 
 	ret
 
@@ -1084,42 +868,29 @@ quadpel_move	macro	off
 
 	align	16
 predict_C_halfpelY:
-	mov	edi,8
+	mov	ebp,8
 loop_C1_halfpelV:
-
-	mov	eax,[ecx]
-	mov	ebx,[ecx+esi]
-	mov	ebp,eax
-	and	eax,0fefefefeh
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	eax,1
-	and	ebp,01010101h
-	shr	ebx,1
-	add	eax,ebp
-	add	ebx,eax
-
-	mov	eax,[ecx+4]
-	mov	[edx],ebx
-	
-	mov	ebx,[ecx+esi+4]
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+esi]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+esi+4]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
 	add	ecx,esi
-
-	mov	ebp,eax
-	and	eax,0fefefefeh
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	eax,1
-	and	ebp,01010101h
-	shr	ebx,1
-	add	eax,ebp
-
-	add	eax,ebx
-	dec	edi
-
-	mov	[edx+4],eax
+	sub	eax,ebx			;[2]
+	dec	ebp
+	mov	[edx+4],eax		;[2]
 	lea	edx,[edx+esi]
-
 	jne	loop_C1_halfpelV
 
 	ret
@@ -1133,66 +904,29 @@ loop_C1_halfpelV:
 
 	align	16
 predict_C_halfpelX:
-	mov	edi,8
-	sub	edx,esi
+	mov	ebp,8
 loop_C1_halfpelX:
-
-	mov	eax,[ecx]
-	mov	ebx,[ecx+4]
-
-	shl	ebx,24
-	mov	ebp,eax
-
-	shr	ebp,8
-	;<-->
-
-	or	ebx,ebp
-	mov	ebp,eax
-
-	or	ebp,ebx
-	and	eax,0fefefefeh
-
-	shr	eax,1
-	and	ebp,01010101h
-
-	shr	ebx,1
-	add	eax,ebp
-
-	and	ebx,07f7f7f7fh
-	add	eax,ebx
-
-	mov	[edx+esi],eax
-
-	;<---------------------->
-
-	mov	eax,[ecx+4]
-	mov	ebx,[ecx+8]
-
-	shl	ebx,24
-	mov	ebp,eax
-
-	shr	ebp,8
-	add	edx,esi
-
-	or	ebx,ebp
-	mov	ebp,eax
-
-	or	ebp,ebx
-	and	eax,0fefefefeh
-
-	shr	eax,1
-	and	ebp,01010101h
-
-	shr	ebx,1
-	add	eax,ebp
-
-	and	ebx,07f7f7f7fh
-	add	eax,ebx
-
-	mov	[edx+4],eax
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+1]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+5]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
 	add	ecx,esi
-
-	dec	edi
+	sub	eax,ebx			;[2]
+	dec	ebp
+	mov	[edx+4],eax		;[2]
+	lea	edx,[edx+esi]
 	jne	loop_C1_halfpelX
 	ret
 
@@ -1429,79 +1163,44 @@ ENDIF
 
 	align	16
 predict_add_C_halfpelY:
-	push	8
+	mov	ebp,8
 add_loop_C1_halfpelV:
-	mov	eax,[ecx]
-	mov	ebx,[edx]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx],eax
-
-	mov	eax,[ecx+4]
-	mov	ebx,[edx+4]
-	mov	edi,eax
-	mov	ebp,ebx
-	and	eax,00ff00ffh
-	and	ebx,00ff00ffh
-	and	edi,0ff00ff00h
-	and	ebp,0ff00ff00h
-	shr	edi,8
-	shr	ebp,8
-	add	ebx,ebx
-	add	ebp,ebp
-	add	eax,ebx
-	add	edi,ebp
-
-	mov	ebx,[ecx+esi+4]
-	mov	ebp,ebx
-	and	ebx,00ff00ffh
-	and	ebp,0ff00ff00h
-	shr	ebp,8
-	add	eax,ebx
-	add	edi,ebp
-
-	add	eax,00020002h
-	add	edi,00020002h
-	shl	edi,6
-	shr	eax,2
-	and	eax,00ff00ffh
-	and	edi,0ff00ff00h
-	or	eax,edi
-	mov	[edx+4],eax
-
-
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+esi]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	edi,eax			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	eax,[edx]		;[1]
+	sub	edi,ebx			;[1]
+	mov	ebx,eax			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+esi+4]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	edi,eax			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	eax,[edx+4]		;[2]
+	sub	edi,ebx			;[2]
+	mov	ebx,eax			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
 	add	ecx,esi
-	add	edx,esi
-
-	dec	dword ptr [esp]
+	sub	eax,ebx			;[2]
+	dec	ebp
+	mov	[edx+4],eax		;[2]
+	lea	edx,[edx+esi]
 	jne	add_loop_C1_halfpelV
-	pop	eax
 	ret
 
 
@@ -1513,61 +1212,43 @@ add_loop_C1_halfpelV:
 
 	align	16
 predict_add_C_halfpelX:
-	mov	edi,8
-	sub	edx,esi
+	mov	ebp,8
 add_loop_C1_halfpelX:
-	mov	eax,[ecx]
-	mov	ebx,[ecx+1]
-	mov	ebp,ebx
-	add	edx,esi
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx]
-
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx],eax
-
-
-	mov	eax,[ecx+4]
-	mov	ebx,[ecx+5]
-	mov	ebp,ebx
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[ecx+1]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	edi,eax			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	eax,[edx]		;[1]
+	sub	edi,ebx			;[1]
+	mov	ebx,eax			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[ecx+5]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	edi,eax			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	mov	eax,[edx+4]		;[2]
+	sub	edi,ebx			;[2]
+	mov	ebx,eax			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
 	add	ecx,esi
-
-	shr	ebx,2
-	or	ebp,eax
-	shr	eax,2
-	and	ebx,03f3f3f3fh
-	and	eax,03f3f3f3fh
-	shr	ebp,1
-	add	eax,ebx
-
-	mov	ebx,[edx+4]
-	or	ebp,ebx
-	and	ebx,0fefefefeh
-	shr	ebx,1
-	and	ebp,01010101h
-	add	eax,ebx
-
-	add	eax,ebp
-	mov	[edx+4],eax
-
-
-	
-
-	dec	edi
+	sub	eax,ebx			;[2]
+	dec	ebp
+	mov	[edx+4],eax		;[2]
+	lea	edx,[edx+esi]
 	jne	add_loop_C1_halfpelX
 	ret
 
@@ -1582,37 +1263,29 @@ add_loop_C1_halfpelX:
 
 	align	16
 predict_add_C_normal:
-	mov	edi,8
+	mov	ebp,8
 add_loop_C1_addX:
-
-	mov	eax,[ecx]
-	mov	ebx,[edx]
-	mov	ebp,eax
-	and	eax,0fefefefeh
-	shr	eax,1
-	or	ebp,ebx
-	shr	ebx,1
-	and	ebp,001010101h
-	and	ebx,07f7f7f7fh
-	add	ebp,eax
-	add	ebx,ebp
-	mov	eax,[ecx+4]
-	mov	[edx],ebx
-	mov	ebx,[edx+4]
-	mov	ebp,eax
-	and	eax,0fefefefeh
-	shr	eax,1
-	or	ebp,ebx
-	shr	ebx,1
-	and	ebp,001010101h
-	and	ebx,07f7f7f7fh
-	add	ebp,eax
-	add	ebx,ebp
+	mov	edi,[ecx]		;[1]
+	mov	ebx,[edx]		;[1]
+	mov	eax,ebx			;[1]
+	xor	ebx,edi			;[1]
+	shr	ebx,1			;[1]
+	or	eax,edi			;[1]
+	and	ebx,7f7f7f7fh		;[1]
+	mov	edi,[ecx+4]		;[2]
+	sub	eax,ebx			;[1]
+	mov	ebx,[edx+4]		;[2]
+	mov	[edx],eax		;[1]
+	mov	eax,ebx			;[2]
+	xor	ebx,edi			;[2]
+	shr	ebx,1			;[2]
+	or	eax,edi			;[2]
+	and	ebx,7f7f7f7fh		;[2]
+	sub	eax,ebx			;[2]
 	add	ecx,esi
-	mov	[edx+4],ebx
+	mov	[edx+4],eax		;[2]
 	add	edx,esi
-
-	dec	edi
+	dec	ebp
 	jne	add_loop_C1_addX
 	ret
 

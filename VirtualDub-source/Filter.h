@@ -64,6 +64,10 @@ typedef void (*FilterStringProc   )(const FilterActivation *fa, const FilterFunc
 typedef int  (*FilterStartProc    )(FilterActivation *fa, const FilterFunctions *ff);
 typedef int  (*FilterEndProc      )(FilterActivation *fa, const FilterFunctions *ff);
 typedef bool (*FilterScriptStrProc)(FilterActivation *fa, const FilterFunctions *, char *, int);
+typedef void (*FilterStringProc2  )(const FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxlen);
+typedef int  (*FilterSerialize    )(FilterActivation *fa, const FilterFunctions *ff, char *buf, int maxbuf);
+typedef void (*FilterDeserialize  )(FilterActivation *fa, const FilterFunctions *ff, const char *buf, int maxbuf);
+typedef void (*FilterCopy         )(FilterActivation *fa, const FilterFunctions *ff, void *dst);
 
 typedef int (__cdecl *FilterModuleInitProc)(struct FilterModule *fm, const FilterFunctions *ff, int& vdfd_ver, int& vdfd_compat);
 typedef void (__cdecl *FilterModuleDeinitProc)(struct FilterModule *fm, const FilterFunctions *ff);
@@ -92,14 +96,15 @@ public:
 
 //////////
 
-#define VIRTUALDUB_FILTERDEF_VERSION		(7)
+#define VIRTUALDUB_FILTERDEF_VERSION		(8)
 #define	VIRTUALDUB_FILTERDEF_COMPATIBLE		(4)
 
 // v3: added lCurrentSourceFrame to FrameStateInfo
 // v4 (1.2): lots of additions (VirtualDub 1.2)
 // v5 (1.3d): lots of bugfixes - stretchblt bilinear, and non-zero startproc
 // v6 (1.4): added error handling functions
-// v7 (1.4d): added frame lag, 
+// v7 (1.4d): added frame lag, exception handling
+// v8 (1.4.11):
 
 typedef struct FilterModule {
 	struct FilterModule *next, *prev;
@@ -113,9 +118,9 @@ typedef struct FilterDefinition {
 	struct FilterDefinition *next, *prev;
 	FilterModule *module;
 
-	char *				name;
-	char *				desc;
-	char *				maker;
+	const char *		name;
+	const char *		desc;
+	const char *		maker;
 	void *				private_data;
 	int					inst_data_size;
 
@@ -132,6 +137,11 @@ typedef struct FilterDefinition {
 
 	FilterScriptStrProc	fssProc;
 
+	// NEW - 1.4.11
+	FilterStringProc2	stringProc2;
+	FilterSerialize		serializeProc;
+	FilterDeserialize	deserializeProc;
+	FilterCopy			copyProc;
 } FilterDefinition;
 
 //////////

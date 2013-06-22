@@ -27,6 +27,7 @@
 #include "VBitmap.h"
 #include "FilterSystem.h"
 #include "filter.h"
+#include "error.h"
 
 //////////////////
 
@@ -89,6 +90,8 @@ private:
 	void							*pvButtonCBData;
 	FilterPreviewSampleCallback		pSampleCallback;
 	void							*pvSampleCBData;
+
+	MyError		mFailureReason;
 
 	static BOOL CALLBACK DlgProc(HWND hdlg, UINT message, UINT wParam, LONG lParam);
 	long FetchFrame();

@@ -80,7 +80,7 @@ bool g_fWine = false;
 
 ///////////////////////////////////////////////////////////////////////////
 
-#if 1
+#if 0
 
 void crash() {
 	__try {
@@ -88,6 +88,17 @@ void crash() {
 		__asm mov eax,dword ptr [ebx]
 		__asm mov dword ptr [ebx],eax
 		__asm lock add dword ptr cs:[00000000h], 12345678h
+		__asm movq xmm0, qword ptr [eax]
+		__asm {
+__emit 0x66
+__emit 0x0f
+__emit 0x6f
+__emit 0x2d
+__emit 0xf0
+__emit 0x42
+__emit 0x0e
+__emit 0x10
+		}
 	} __except(CrashHandler((EXCEPTION_POINTERS*)_exception_info())) {
 	}
 }
@@ -499,10 +510,10 @@ void ParseCommandLine(char *lpCmdLine) {
 					g_fWine = true;
 					break;
 
-				case 'f':
-					if (!stricmp(token+2, "sck"))
-						crash();
-					break;
+//				case 'f':
+//					if (!stricmp(token+2, "sck"))
+//						crash();
+//					break;
 
 				}
 			} else

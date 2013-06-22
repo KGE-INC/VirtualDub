@@ -206,7 +206,10 @@ FilterInstance *FilterInstance::Clone() {
 		if (!fi->filter_data)
 			throw MyMemoryError();
 
-		memcpy(fi->filter_data, filter_data, fi->filter->inst_data_size);
+		if (fi->filter->copyProc)
+			fi->filter->copyProc(fi, &g_filterFuncs, fi->filter_data);
+		else
+			memcpy(fi->filter_data, filter_data, fi->filter->inst_data_size);
 	}
 
 	return fi;
@@ -350,6 +353,7 @@ FilterDefinition *FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len)
 	FilterDefinition *fd = new FilterDefinition;
 
 	if (fd) {
+		memset(fd, 0, sizeof(FilterDefinition));
 		memcpy(fd, pfd, min(fd_len, sizeof(FilterDefinition)));
 		fd->module	= fm;
 		fd->prev	= NULL;
@@ -482,9 +486,13 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 	case WM_USER+1:		// handle new size
 		{
 			RECT r;
-			long w, h;
+			long w = 320, h = 240;
 			bool fResize;
 			TOOLINFO ti;
+			long oldw = fpd->bih.biWidth;
+			long oldh = fpd->bih.biHeight;
+
+			VBitmap(NULL, 320, 240, 32).MakeBitmapHeader(&fpd->bih);
 
 			try {
 				BITMAPINFOHEADER *pbih = inputVideoAVI->getImageFormat();
@@ -500,22 +508,18 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 						pbih2->biBitCount,
 						24);
 
-				if (fpd->filtsys.ReadyFilters(&fpd->fsi)) {
-					w = 320;
-					h = 240;
-
-					fResize = fpd->bih.biWidth != 320 || fpd->bih.biHeight != 240;
-					VBitmap(NULL, 320, 240, 32).MakeBitmapHeader(&fpd->bih);
-				} else {
+				if (!fpd->filtsys.ReadyFilters(&fpd->fsi)) {
 					VBitmap *vbm = fpd->filtsys.OutputBitmap();
 					w = vbm->w;
 					h = vbm->h;
-					fResize = fpd->bih.biWidth != w || fpd->bih.biHeight != h;
 					vbm->MakeBitmapHeader(&fpd->bih);
 				}
-			} catch(const MyError&) {
-				return TRUE;
+			} catch(const MyError& e) {
+				fpd->mFailureReason.assign(e);
+				InvalidateRect(hdlg, NULL, TRUE);
 			}
+
+			fResize = oldw != w || oldh != h;
 
 			// if necessary, resize window
 
@@ -571,8 +575,10 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 
 			hdc = BeginPaint(hdlg, &ps);
 
-			Draw3DRect(hdc,	0, 0, fpd->bih.biWidth + 8, fpd->bih.biHeight + 8, FALSE);
-			Draw3DRect(hdc,	3, 3, fpd->bih.biWidth + 2, fpd->bih.biHeight + 2, TRUE);
+			if (fpd->filtsys.isRunning()) {
+				Draw3DRect(hdc,	0, 0, fpd->bih.biWidth + 8, fpd->bih.biHeight + 8, FALSE);
+				Draw3DRect(hdc,	3, 3, fpd->bih.biWidth + 2, fpd->bih.biHeight + 2, TRUE);
+			}
 
 			if (fpd->filtsys.isRunning()) {
 				VBitmap *vbm = fpd->filtsys.OutputBitmap();
@@ -588,7 +594,13 @@ BOOL CALLBACK FilterPreview::DlgProc(HWND hdlg, UINT message, UINT wParam, LONG 
 				FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE+1));
 				SetBkMode(hdc, TRANSPARENT);
 				SetTextColor(hdc, 0);
-				DrawText(hdc, "Unable to initialize filter chain.", -1, &r, DT_CENTER|DT_VCENTER);
+
+				HGDIOBJ hgoFont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
+				char buf[1024];
+				const char *s = fpd->mFailureReason.gets();
+				_snprintf(buf, sizeof buf, "Unable to start filters:\n%s", s?s:"(unknown)");
+				DrawText(hdc, buf, -1, &r, DT_CENTER|DT_VCENTER|DT_WORDBREAK);
+				SelectObject(hdc, hgoFont);
 			}
 
 			EndPaint(hdlg, &ps);
@@ -881,13 +893,8 @@ long FilterPreview::SampleFrames() {
 
 	long first, last;
 
-	if (inputSubset) {
-		first = 0;
-		last = inputSubset->getTotalFrames();
-	} else {
-		first = inputVideoAVI->lSampleFirst;
-		last = inputVideoAVI->lSampleLast;
-	}
+	first = inputVideoAVI->lSampleFirst;
+	last = inputVideoAVI->lSampleLast;
 
 	try {
 		ProgressDialog pd(hdlg, "Sampling input video", szCaptions[iMode-1], last-first, true);
@@ -903,7 +910,14 @@ long FilterPreview::SampleFrames() {
 			pd.advance(lSample - first);
 			pd.check();
 
-			if (FetchFrame(inputSubset ? inputSubset->lookupFrame(lSample) : lSample)>=0) {
+			long lSampleInSubset = lSample;
+
+			if (inputSubset) {
+				bool bMasked;
+				lSampleInSubset = inputSubset->revLookupFrame(lSample, bMasked);
+			}
+
+			if (FetchFrame(lSampleInSubset)>=0) {
 				filtsys.RunFilters(pfiThisFilter);
 				pSampleCallback(&pfiThisFilter->src, lSample-first, last-first, pvSampleCBData);
 				++lCount;

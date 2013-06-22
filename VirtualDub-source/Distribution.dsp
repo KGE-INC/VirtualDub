@@ -42,14 +42,14 @@ MTL=midl.exe
 
 SOURCE=.\binary.lst
 # PROP Ignore_Default_Tool 1
-USERDEP__BINAR="i:\projwin\virtualdub_old\release\virtualdub.exe"	
+USERDEP__BINAR="t:\projects\virtualdub_old\main\release\virtualdub.exe"	
 # Begin Custom Build - Constructing binary archive...
 InputPath=.\binary.lst
 
-"j:\istore\shared\virtualdub\current\VirtualDub.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	del j:\istore\shared\virtualdub\current\VirtualDub.zip 
-	zip j:\istore\shared\virtualdub\current\VirtualDub.zip -X -9 -j -@ < binary.lst 
-	zip -X -9 -j j:\istore\shared\virtualdub\current\linkmap.zip release\virtualdub.map 
+"s:\jstore\istore\shared\virtualdub\current\VirtualDub.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub.zip 
+	zip s:\jstore\istore\shared\virtualdub\current\VirtualDub.zip -X -9 -j -@ < binary.lst 
+	zip -X -9 -j s:\jstore\istore\shared\virtualdub\current\linkmap.zip release\virtualdub.map 
 	
 # End Custom Build
 # End Source File
@@ -60,12 +60,12 @@ SOURCE=.\source.lst
 # Begin Custom Build - Constructing source archive...
 InputPath=.\source.lst
 
-"j:\istore\shared\virtualdub\current\VirtualDub-source.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	del j:\istore\shared\virtualdub\current\VirtualDub-source.zip 
-	del j:\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
-	zip -X j:\istore\shared\virtualdub\current\VirtualDub-source-tar.zip -0 -@ < source.lst 
-	zip -X -9 -j j:\istore\shared\virtualdub\current\VirtualDub-source.zip j:\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
-	del j:\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
+"s:\jstore\istore\shared\virtualdub\current\VirtualDub-source.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-source.zip 
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
+	zip -X s:\jstore\istore\shared\virtualdub\current\VirtualDub-source-tar.zip -0 -@ < source.lst 
+	zip -X -9 -j s:\jstore\istore\shared\virtualdub\current\VirtualDub-source.zip s:\jstore\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-source-tar.zip 
 	
 # End Custom Build
 # End Source File
@@ -76,12 +76,12 @@ SOURCE=.\source2.lst
 # Begin Custom Build - Constructing source2 archive...
 InputPath=.\source2.lst
 
-"j:\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	del j:\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip 
-	del j:\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
-	zip -X j:\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip -0 -@ < source2.lst 
-	zip -X -9 -j j:\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip j:\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
-	del j:\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
+"s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip 
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
+	zip -X s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip -0 -@ < source2.lst 
+	zip -X -9 -j s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc.zip s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
+	del s:\jstore\istore\shared\virtualdub\current\VirtualDub-auxsrc-tar.zip 
 	
 # End Custom Build
 # End Source File

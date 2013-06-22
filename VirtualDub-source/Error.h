@@ -23,8 +23,7 @@
 
 class MyError {
 private:
-	// I swear I'll implement this someday.
-	const MyError& operator=(const MyError&);
+	const MyError& operator=(const MyError&);		// protect against accidents
 
 protected:
 	char *buf;
@@ -34,6 +33,7 @@ public:
 	MyError(const MyError& err) throw();
 	MyError(const char *f, ...) throw();
 	~MyError() throw();
+	void assign(const MyError& e) throw();
 	void setf(const char *f, ...) throw();
 	void vsetf(const char *f, va_list val) throw();
 	void post(HWND hWndParent, const char *title) const throw();

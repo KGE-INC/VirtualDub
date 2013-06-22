@@ -366,7 +366,15 @@ void InputFileAVI::Init(char *szFile) {
 	AddFilename(szFile);
 
 	if (fCompatibilityMode) {
-		if (err = AVIFileOpen(&paf, szFile, OF_READ, NULL))
+		
+		if (IsMMXState())
+			throw MyInternalError("MMX state left on: %s:%d", __FILE__, __LINE__);
+
+		err = AVIFileOpen(&paf, szFile, OF_READ, NULL);
+
+		ClearMMXState();
+
+		if (err)
 			throw MyAVIError(szME, err);
 
 		if (!(pAVIFile = CreateAVIReadHandler(paf))) {

@@ -85,6 +85,7 @@ void SaveAVI(char *szFilename, bool fProp = false, DubOptions *quick_opts=NULL, 
 void SaveStripedAVI(char *szFile);
 void SaveStripeMaster(char *szFile);
 void SaveSegmentedAVI(char *szFilename, bool fProp, DubOptions *quick_opts, long lSpillThreshold, long lSpillFrameThreshold);
+void SaveImageSequence(const char *szPrefix, const char *szSuffix, int minDigits, bool fProp, DubOptions *quick_opts, int targetFormat);
 void SetSelectionStart(long ms);
 void SetSelectionEnd(long ms);
 void RemakePositionSlider();

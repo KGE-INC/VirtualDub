@@ -130,6 +130,7 @@ private:
 	bool		fAllKeyFrames;
 	bool		bIsType1;
 	bool		bDirectDecompress;
+	bool		bInvertFrames;
 
 	IAVIReadStream *format_stream;
 

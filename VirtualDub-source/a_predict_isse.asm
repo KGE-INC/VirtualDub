@@ -460,7 +460,7 @@ _video_add_prediction_Y_ISSE:
 
 	align 16
 predict_add_Y_quadpel_ISSE:
-	movq	mm6,ISSE_04w
+	movq	mm6,ISSE_02w
 
 	pxor	mm7,mm7
 	mov	edi,16
@@ -509,34 +509,25 @@ add_Y_quadpel_ISSE@loop2:
 	punpckhbw mm1,mm7
 	paddw	mm2,mm3
 
-	movq	mm3,[edx-8]
 	punpckhbw mm5,mm7
 
 	paddw	mm1,mm5
 	paddw	mm0,mm2
 
-	movq	mm5,mm3
 	paddw	mm4,mm1
 
-	punpcklbw mm3,mm7
 	add	ecx,8
 
 	paddw	mm0,mm6
 	paddw	mm4,mm6
 
-	psllw	mm3,2
-	punpckhbw mm5,mm7
-
-	psllw	mm5,2
-	paddw	mm0,mm3
-
-	paddw	mm4,mm5
-	psrlw	mm0,3
-
-	psrlw	mm4,3
-	dec	eax
+	psrlw	mm0,2
+	psrlw	mm4,2
 
 	packuswb mm0,mm4
+
+	pavgb	mm0,[edx-8]
+	dec	eax
 
 	movq	[edx-8],mm0
 	jne	add_Y_quadpel_ISSE@loop2
@@ -975,7 +966,7 @@ _video_add_prediction_C_ISSE:
 
 	align 16
 predict_add_C_quadpel_ISSE:
-	movq	mm6,ISSE_04w
+	movq	mm6,ISSE_02w
 
 	pxor	mm7,mm7
 	mov	edi,8
@@ -1016,28 +1007,19 @@ add_C_quadpel_ISSE@loop:
 	paddw	mm2,mm3
 	paddw	mm1,mm5
 
-	movq	mm3,[edx]
 	paddw	mm0,mm2
 
-	movq	mm5,mm3
 	paddw	mm4,mm1
 
-	punpcklbw mm3,mm7
 	paddw	mm0,mm6
-
-	punpckhbw mm5,mm7
 	paddw	mm4,mm6
 
-	psllw	mm3,2
-	psllw	mm5,2
-
-	paddw	mm0,mm3
-	paddw	mm4,mm5
-
-	psrlw	mm0,3
-	psrlw	mm4,3
+	psrlw	mm0,2
+	psrlw	mm4,2
 
 	packuswb mm0,mm4
+
+	pavgb	mm0,[edx]
 
 	movq	[edx],mm0
 

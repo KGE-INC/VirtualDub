@@ -38,6 +38,7 @@
 #include "command.h"
 #include "dub.h"
 #include "script.h"
+#include "misc.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -57,26 +58,6 @@ bool g_fJobAborted;
 ///////////////////////////////////////////////////////////////////////////
 
 static BOOL CALLBACK JobCtlDlgProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam);
-
-///////////////////////////////////////////////////////////////////////////
-
-static char *strCify(const char *s) {
-	static char buf[2048];
-	char c,*t = buf;
-
-	while(c=*s++) {
-		if (!isprint((unsigned char)c))
-			t += sprintf(t, "\\x%02x", (int)c & 0xff);
-		else {
-			if (c=='"' || c=='\\')
-				*t++ = '\\';
-			*t++ = c;
-		}
-	}
-	*t=0;
-
-	return buf;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1561,40 +1542,42 @@ void JobCreateScript(JobScriptOutput& output, const DubOptions *opt) {
 
 }
 
+void JobAddConfigurationInputs(JobScriptOutput& output, const char *szFileInput, int iFileMode, List2<InputFilenameNode> *pListAppended) {
+	do {
+		if (g_pInputOpts) {
+			int l;
+			char buf[256];
+
+			l = g_pInputOpts->write(buf, (sizeof buf)/7*3);
+
+			if (l) {
+				membase64(buf+l, (char *)buf, l);
+				output.addf("VirtualDub.Open(\"%s\",%d,0,\"%s\");",strCify(szFileInput), iFileMode, buf+l);
+				break;
+			}
+		}
+
+		output.addf("VirtualDub.Open(\"%s\",%d,0);",strCify(szFileInput), iFileMode);
+
+	} while(false);
+
+	if (pListAppended) {
+		InputFilenameNode *ifn = pListAppended->AtHead(), *ifn_next;
+
+		if (ifn = ifn->NextFromHead())
+			while(ifn_next = ifn->NextFromHead()) {
+				output.addf("VirtualDub.Append(\"%s\");", strCify(ifn->name));
+				ifn = ifn_next;
+			}
+	}
+}
+
 void JobAddConfiguration(const DubOptions *opt, const char *szFileInput, int iFileMode, const char *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold) {
 	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
 	try {
-
-		do {
-			if (g_pInputOpts) {
-				int l;
-				char buf[256];
-
-				l = g_pInputOpts->write(buf, (sizeof buf)/7*3);
-
-				if (l) {
-					membase64(buf+l, (char *)buf, l);
-					output.addf("VirtualDub.Open(\"%s\",%d,0,\"%s\");",strCify(szFileInput), iFileMode, buf+l);
-					break;
-				}
-			}
-
-			output.addf("VirtualDub.Open(\"%s\",%d,0);",strCify(szFileInput), iFileMode);
-
-		} while(false);
-
-		if (pListAppended) {
-			InputFilenameNode *ifn = pListAppended->AtHead(), *ifn_next;
-
-			if (ifn = ifn->NextFromHead())
-				while(ifn_next = ifn->NextFromHead()) {
-					output.addf("VirtualDub.Append(\"%s\");", strCify(ifn->name));
-					ifn = ifn_next;
-				}
-		}
-
+		JobAddConfigurationInputs(output, szFileInput, iFileMode, pListAppended);
 		JobCreateScript(output, opt);
 
 		// Add actual run option
@@ -1614,6 +1597,41 @@ void JobAddConfiguration(const DubOptions *opt, const char *szFileInput, int iFi
 		vdj->script = output.getscript();
 		vdj->Add();
 	} catch(...) {
+		freemem(vdj);
+		throw;
+	}
+}
+
+void JobAddConfigurationImages(const DubOptions *opt, const char *szFileInput, int iFileMode, const char *szFilePrefix, const char *szFileSuffix, int minDigits, int imageFormat, List2<InputFilenameNode> *pListAppended) {
+	VDJob *vdj = new VDJob;
+	JobScriptOutput output;
+	char *s = NULL;
+
+	try {
+		JobAddConfigurationInputs(output, szFileInput, iFileMode, pListAppended);
+		JobCreateScript(output, opt);
+
+		// Add actual run option
+
+		s = strdup(strCify(szFilePrefix));		// I swear I will clean this mess up in 1.5....
+
+		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d);", s, strCify(szFileSuffix), minDigits, imageFormat);
+
+		free(s);
+		s = NULL;
+
+		output.adds("VirtualDub.Close();");
+
+		///////////////////
+
+		strncpy(vdj->szInputFile, szFileInput, sizeof vdj->szInputFile);
+		_snprintf(vdj->szOutputFile, sizeof vdj->szOutputFile, "%s*%s", szFilePrefix, szFileSuffix);
+		sprintf(vdj->szName, "Job %d", VDJob::job_number++);
+
+		vdj->script = output.getscript();
+		vdj->Add();
+	} catch(...) {
+		free(s);
 		freemem(vdj);
 		throw;
 	}

@@ -645,7 +645,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.10 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.11 - Copyright (C) 1998-2002 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1172,7 +1172,7 @@ BEGIN
     LTEXT           """Stupid driver"" settings:",IDC_STATIC,135,130,75,8
 END
 
-IDD_AVIOUTPUTIMAGES_FORMAT DIALOG DISCARDABLE  0, 0, 317, 141
+IDD_AVIOUTPUTIMAGES_FORMAT DIALOG DISCARDABLE  0, 0, 317, 183
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Image output filter: filename format"
 FONT 8, "MS Sans Serif"
@@ -1188,14 +1188,22 @@ BEGIN
     LTEXT           "&Directory to hold images:",IDC_STATIC,7,48,78,8
     EDITTEXT        IDC_DIRECTORY,7,58,287,12,ES_AUTOHSCROLL
     PUSHBUTTON      "&...",IDC_SELECT_DIR,296,58,14,13
-    DEFPUSHBUTTON   "OK",IDOK,207,120,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,260,120,50,14
-    LTEXT           "First frame filename:",IDC_STATIC,7,89,63,8
-    LTEXT           "Last frame filename:",IDC_STATIC,7,103,64,8
+    LTEXT           "First frame filename:",IDC_STATIC,7,83,63,8
     LTEXT           "Magic Knights Rayearth 0000.bmp",
-                    IDC_STATIC_FIRSTFRAMENAME,130,88,180,10,SS_SUNKEN
+                    IDC_STATIC_FIRSTFRAMENAME,130,82,180,10,SS_SUNKEN
+    LTEXT           "Last frame filename:",IDC_STATIC,7,97,64,8
     LTEXT           "Magic Knights Rayearth 2251.bmp",
-                    IDC_STATIC_LASTFRAMENAME,130,102,180,10,SS_SUNKEN
+                    IDC_STATIC_LASTFRAMENAME,130,96,180,10,SS_SUNKEN
+    LTEXT           "Output format",IDC_STATIC,7,115,44,10,SS_CENTERIMAGE
+    CONTROL         "Windows &BMP",IDC_FORMAT_BMP,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,130,115,63,10
+    CONTROL         "&TARGA",IDC_FORMAT_TGA,"Button",BS_AUTORADIOBUTTON,130,
+                    127,41,10
+    DEFPUSHBUTTON   "OK",IDOK,207,162,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,260,162,50,14
+    CONTROL         "Don't run this job now; &add it to job control so I can run it in batch mode.",
+                    IDC_ADD_AS_JOB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    145,241,10
 END
 
 IDD_CAPTURE_HITOK DIALOG DISCARDABLE  0, 0, 186, 85
@@ -1418,9 +1426,9 @@ STYLE DS_3DLOOK | DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS
 FONT 8, "MS Sans Serif"
 BEGIN
     LTEXT           "",1119,0,0,285,145
-    CONTROL         "Add operation to job list and defer processing",
+    CONTROL         "Don't run this job now; add it to job control so I can run it in batch mode.",
                     IDC_ADD_AS_JOB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,
-                    149,157,10
+                    149,241,10
 END
 
 IDD_JOBERROR DIALOG DISCARDABLE  0, 0, 186, 82
@@ -1949,9 +1957,9 @@ STYLE DS_3DLOOK | DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS
 FONT 8, "MS Sans Serif"
 BEGIN
     LTEXT           "",1119,0,0,285,145
-    CONTROL         "Add operation to job list and defer processing",
+    CONTROL         "Don't run this job now; add it to job control so I can run it in batch mode.",
                     IDC_ADD_AS_JOB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,
-                    148,157,10
+                    148,241,10
     CONTROL         "Limit number of video frames per segment to",
                     IDC_FRAMELIMIT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,
                     162,154,10
@@ -2303,6 +2311,86 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,199,69,50,14
 END
 
+IDD_FILTER_LOGO DIALOG DISCARDABLE  0, 0, 302, 198
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "filter: logo"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "&Logo image",IDC_STATIC,7,7,55,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_LOGOFILE,62,7,218,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_LOGOFILE_BROWSE,281,7,14,12
+    CONTROL         "Enable per-pixel alpha &blending using alpha channel",
+                    IDC_ALPHABLEND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,62,
+                    22,179,10
+    CONTROL         "Use pre&multiplied alpha\nPremultiplied alpha is best when the alpha channel is created with the image; blend the color channel against black when creating the logo.  Non-premultiplied alpha is better if the alpha channel is created separately.",
+                    IDC_PREMULTALPHA,"Button",BS_AUTOCHECKBOX | BS_TOP | 
+                    BS_MULTILINE | WS_TABSTOP,62,32,233,44
+    CONTROL         "Use gray channel of &secondary image for alpha channel",
+                    IDC_SECONDARYALPHA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    62,75,191,10
+    LTEXT           "&Alpha image",IDC_STATIC,7,75,55,10,SS_CENTERIMAGE
+    EDITTEXT        IDC_ALPHAFILE,62,87,218,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_ALPHAFILE_BROWSE,281,87,14,12
+    LTEXT           "&X offset",IDC_STATIC,163,128,32,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_XPOS,196,128,60,12,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN_XOFFSET,"msctls_updown32",
+                    UDS_SETBUDDYINT | UDS_AUTOBUDDY | UDS_ARROWKEYS | 
+                    UDS_HORZ | UDS_NOTHOUSANDS,256,128,16,12
+    LTEXT           "&Y offset",IDC_STATIC,163,145,32,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_YPOS,196,145,60,12,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN_YOFFSET,"msctls_updown32",
+                    UDS_SETBUDDYINT | UDS_AUTOBUDDY | UDS_ARROWKEYS | 
+                    UDS_NOTHOUSANDS,256,143,11,16
+    LTEXT           "&Justification",IDC_STATIC,7,128,54,12,SS_CENTERIMAGE
+    CONTROL         "TL",IDC_DIR_TOPLEFT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE | WS_GROUP | WS_TABSTOP,63,128,17,14
+    CONTROL         "TC",IDC_DIR_TOPCENTER,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,81,128,17,14
+    CONTROL         "TR",IDC_DIR_TOPRIGHT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,99,128,17,14
+    CONTROL         "ML",IDC_DIR_MIDDLELEFT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,63,142,17,14
+    CONTROL         "MC",IDC_DIR_MIDDLECENTER,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,81,142,17,14
+    CONTROL         "MR",IDC_DIR_MIDDLERIGHT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,99,142,17,14
+    CONTROL         "BL",IDC_DIR_BOTTOMLEFT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,63,157,17,14
+    CONTROL         "BC",IDC_DIR_BOTTOMCENTER,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,81,157,17,14
+    CONTROL         "BR",IDC_DIR_BOTTOMRIGHT,"Button",BS_AUTORADIOBUTTON | 
+                    BS_PUSHLIKE,99,157,17,14
+    DEFPUSHBUTTON   "Show &preview",IDC_PREVIEW,7,177,50,14
+    DEFPUSHBUTTON   "OK",IDOK,191,177,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,245,177,50,14
+    LTEXT           "&Opacity",IDC_STATIC,7,104,55,16,SS_CENTERIMAGE
+    CONTROL         "Slider1",IDC_OPACITY,"msctls_trackbar32",WS_TABSTOP,62,
+                    104,203,18
+    RTEXT           "100%",IDC_STATIC_OPACITY,266,104,19,16,SS_CENTERIMAGE
+END
+
+IDD_FILTER_HSV DIALOG DISCARDABLE  0, 0, 272, 84
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "filter: HSV Adjust"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "&Hue",IDC_STATIC,7,7,49,16,SS_CENTERIMAGE
+    CONTROL         "Slider1",IDC_HUE,"msctls_trackbar32",TBS_BOTH | 
+                    TBS_NOTICKS | WS_TABSTOP,56,7,172,16
+    LTEXT           "&Saturation",IDC_STATIC,7,23,49,16,SS_CENTERIMAGE
+    CONTROL         "Slider1",IDC_SATURATION,"msctls_trackbar32",TBS_BOTH | 
+                    TBS_NOTICKS | WS_TABSTOP,56,23,172,16
+    LTEXT           "&Value",IDC_STATIC,7,39,49,16,SS_CENTERIMAGE
+    CONTROL         "Slider1",IDC_VALUE,"msctls_trackbar32",TBS_BOTH | 
+                    TBS_NOTICKS | WS_TABSTOP,56,39,172,16
+    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,63,50,14
+    DEFPUSHBUTTON   "OK",IDOK,162,63,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,215,63,50,14
+    RTEXT           "",IDC_STATIC_HUE,228,7,37,16,SS_CENTERIMAGE
+    RTEXT           "",IDC_STATIC_SATURATION,228,23,37,16,SS_CENTERIMAGE
+    RTEXT           "",IDC_STATIC_VALUE,228,39,37,16,SS_CENTERIMAGE
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -2580,7 +2668,7 @@ BEGIN
         RIGHTMARGIN, 310
         VERTGUIDE, 130
         TOPMARGIN, 7
-        BOTTOMMARGIN, 134
+        BOTTOMMARGIN, 176
     END
 
     IDD_CAPTURE_HITOK, DIALOG
@@ -3048,6 +3136,25 @@ BEGIN
         BOTTOMMARGIN, 83
         HORZGUIDE, 62
     END
+
+    IDD_FILTER_LOGO, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 295
+        VERTGUIDE, 62
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 191
+    END
+
+    IDD_FILTER_HSV, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 265
+        VERTGUIDE, 56
+        VERTGUIDE, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 77
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -3146,8 +3253,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,10,0
- PRODUCTVERSION 1,4,10,0
+ FILEVERSION 1,4,11,0
+ PRODUCTVERSION 1,4,11,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3165,14 +3272,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.10\0"
+            VALUE "FileVersion", "1.4.11\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.10\0"
+            VALUE "ProductVersion", "1.4.11\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3208,14 +3315,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4.9\0"
+            VALUE "FileVersion", "1.4.11\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2002 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.9\0"
+            VALUE "ProductVersion", "1.4.11\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -3258,17 +3365,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.10 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.10"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.10 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.10 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.10"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.11 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.11"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.11 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.11 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.11"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.10 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.10 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.10 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.10 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.10 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.11 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.11 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.11 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.11 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.11 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 
@@ -3329,7 +3436,6 @@ BEGIN
                             "Toggle display of output video (right pane)."
     IDS_OPTIONS_DISPLAYDECOMPRESSEDOUTPUT 
                             "Toggles between display pre- and post-compression output."
-    IDS_OPTIONS_ENABLEMMX   "Enable MultiMedia eXtensions (MMX) support (don't try to deny it, it is an acronym)."
     IDS_OPTIONS_SHOWSTATUSWINDOW 
                             "Toggle display of status window during processing."
     IDS_OPTIONS_SYNCHRONOUSBLIT 
@@ -3338,7 +3444,7 @@ BEGIN
                             "Display output panel below input panel instead of to the right."
     IDS_OPTIONS_DRAWHISTOGRAMS "Toggle intensity histogram displays."
     IDS_OPTIONS_SYNCTOAUDIO "Locks video playback to audio stream (affects preview only)."
-    IDS_OPTIONS_PREFERENCES "Sets preferences.  (What?  Everyone doesn't like the same things I do?)"
+    IDS_OPTIONS_PREFERENCES "Set preferences."
     IDS_OPTIONS_DROPFRAMES  "Allow VirtualDub to skip frames during preview to catch up when behind."
     IDS_OPTIONS_ENABLEDIRECTDRAW 
                             "Enable DirectDraw acceleration for preview windows."
@@ -3346,10 +3452,10 @@ END
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_HELP_CONTENTS       "No, don't do that... oh please, no...  Awwwwww...."
-    IDS_HELP_CHANGELOG      "Hmm... what got screwed up in this release? :-)"
-    IDS_HELP_RELEASENOTES   "Oh, this contains all the stuff that I was too lazy to type up in a nicer format."
-    IDS_HELP_ABOUT          "This is where all the not-so-important stuff goes, like, um, the license, and the copyright... oops..."
+    IDS_HELP_CONTENTS       "Display help file."
+    IDS_HELP_CHANGELOG      "Show change history for this and past versions of VirtualDub."
+    IDS_HELP_RELEASENOTES   "Display last-minute release notes for this version."
+    IDS_HELP_ABOUT          "Displays credits, copyright notice, and thanks."
 END
 
 STRINGTABLE DISCARDABLE 

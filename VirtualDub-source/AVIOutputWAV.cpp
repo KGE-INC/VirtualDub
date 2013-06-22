@@ -75,6 +75,19 @@ BOOL AVIOutputWAV::init(const char *szFile, LONG xSize, LONG ySize, BOOL videoIn
 	if (dwHeader[4] & 1)
 		_write("", 1);
 
+	// The 'fact' chunk is required for compressed WAVs and indicates the
+	// number of uncompressed samples in the audio.  It is in fact rather
+	// useless as it is usually computed from the ratios in the wave header
+	// and the size of the compressed data -- check the output of Sound
+	// Recorder -- but we must write it out anyway.
+
+	if (audioOut->getWaveFormat()->wFormatTag != WAVE_FORMAT_PCM) {
+		dwHeader[0] = mmioFOURCC('f', 'a', 'c', 't');
+		dwHeader[1] = 4;
+		dwHeader[2] = 0;		// This will be filled in later.
+		_write(dwHeader, 12);
+	}
+
 	dwHeader[0] = mmioFOURCC('d', 'a', 't', 'a');
 	dwHeader[1] = 0x7E000000;
 
@@ -100,15 +113,33 @@ BOOL AVIOutputWAV::finalize() {
 		}
 
 		if (fHeaderOpen) {
-
+			const WAVEFORMATEX& wfex = *audioOut->getWaveFormat();
 			len = (len+1)&-2;
 
-			dwTemp = dwBytesWritten + len + 20;
-			_seekHdr(4);
-			_writeHdr(&dwTemp, 4);
+			if (wfex.wFormatTag == WAVE_FORMAT_PCM) {
+				dwTemp = dwBytesWritten + len + 20;
+				_seekHdr(4);
+				_writeHdr(&dwTemp, 4);
 
-			_seekHdr(24 + len);
-			_writeHdr(&dwBytesWritten, 4);
+				_seekHdr(24 + len);
+				_writeHdr(&dwBytesWritten, 4);
+			} else {
+				dwTemp = dwBytesWritten + len + 32;
+				_seekHdr(4);
+				_writeHdr(&dwTemp, 4);
+
+				DWORD dwHeaderRewrite[3];
+
+				dwHeaderRewrite[0] = (DWORD)((__int64)dwBytesWritten * wfex.nSamplesPerSec / wfex.nAvgBytesPerSec);
+				dwHeaderRewrite[1] = mmioFOURCC('d', 'a', 't', 'a');
+				dwHeaderRewrite[2] = dwBytesWritten;
+
+				_seekHdr(28 + len);
+				_writeHdr(dwHeaderRewrite, 12);
+
+				len += 12;		// offset the end of file by length of 'fact' chunk
+			}
+
 			fHeaderOpen = false;
 		}
 

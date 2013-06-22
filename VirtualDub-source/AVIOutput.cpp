@@ -1218,7 +1218,7 @@ int AVIOutputFile::_writeNewIndex(struct _avisuperindex_entry *asie, AVIIndexEnt
 		__int64 total_bytes = 0;
 
 		for(int i=0; i<size; i++)
-			total_bytes += avie2->size & 0x7FFFFFFF;
+			total_bytes += avie2[i].size & 0x7FFFFFFF;
 
 		asie->dwDuration = (DWORD)(total_bytes / dwSampleSize);
 	} else

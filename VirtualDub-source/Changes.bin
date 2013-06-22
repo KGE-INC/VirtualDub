@@ -1,6 +1,49 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 14279 (Version 1.4.11):          [October 31, 2002]
+   [features added]
+   * Added support for reading and writing TARGA (.tga)
+     sequences, with optional RLE compression.
+   * Added simple logo filter.
+   * Added (not-quite-optimzed) HSV filter.
+   * The "Save Image Sequence" command is now batchable
+     and scriptable.
+
+   [bug fixes]
+   * Fixed OpenDML files having bad duration values in
+     their index if video frames weren't all the same
+     size.
+   * Fixed some subset-related position slider glitches.
+   * RLE AVI files weren't being decompressed correctly
+     (GDI's RLE isn't the same as AVI's RLE).
+   * Fixed crash disassembler not disassembling some
+     instructions properly.
+   * Fixed glitches in the first three frames of the
+     temporal smoother's output.
+   * Fix for some MPEG rounding errors (arrgh).
+   * AVI parser now accepts and reindexes LIST/movi chunks
+     with 0 sizes.
+   * AVI parser no longer drops stream 0 samples at the
+     start of a file when reindexing.
+   * AVI video reader detects and flips inverted RGB DIBs.
+   * Fixed 1/16th darkened line on left side of "blur more"
+     filter.
+   * Added support for properly cloned filter data
+     structures.
+   * Allowed position control font to enlarge slightly
+     according to screen dpi and fixed font leak.
+   * Fixed MIME BASE64 encoding errors at end of codec
+     configuration blocks that probably caused some codec
+	 crashes or configuration funniness.
+   * Calls to video codecs now eat MMX errors rather than
+     reporting them, to workaround a bug in the MSMPEG4V3
+	 codec that will probably never be fixed.
+   * WAV writer now writes out the required 'fact' chunk
+     for compressed WAVs.
+   * Filter preview dialog now sanely reports errors in a
+     non-ugly font.
+
 Build 13870 (Version 1.4.10):
    [features added]
    * Capture mode can now apply filters against I420/IYUV

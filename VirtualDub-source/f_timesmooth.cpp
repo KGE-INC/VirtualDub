@@ -39,6 +39,7 @@ public:
    int strength;
    int *square_table;
    IFilterPreview *ifp;
+   bool bIsFirstFrame;
 };
 
 /////////////////////////////////////////////////////////////
@@ -64,6 +65,8 @@ int timesmooth_start(FilterActivation *fa, const FilterFunctions *ff) {
 
 	for(i=0; i<=510; ++i)
 		mfd->square_table[i] = (i-255)*(i-255);
+
+	mfd->bIsFirstFrame = true;
 
 	return 0;
 }
@@ -215,7 +218,7 @@ static int timesmooth_run(const FilterActivation *fa, const FilterFunctions *ff)
 	int offset1 = sfd->framecount;
 	int offset2 = ((sfd->framecount+KERNEL-(KERNEL/2))%KERNEL);
 
-	if (!sfd->framecount) {
+	if (sfd->bIsFirstFrame) {
 		PixDim w = fa->src.w, x;
 		PixDim y = fa->src.h;
 		Pixel32 *srcdst = fa->src.data;
@@ -226,12 +229,20 @@ static int timesmooth_run(const FilterActivation *fa, const FilterFunctions *ff)
 
 			do {
 				accum[0] = accum[1] = accum[2] = accum[3] =
-					accum[4] = accum[5] = accum[6] = *srcdst++;				
+					accum[4] = accum[5] = accum[6] = *srcdst++ & 0xffffff;
+
+				accum += 7;
 			} while(--x);
 
 			srcdst = (Pixel32 *)((char *)srcdst + fa->src.modulo);
 
 		} while(--y);
+
+		sfd->bIsFirstFrame = false;
+
+		sfd->framecount = 1;
+
+		return 0;
 	}
 
 	if (MMX_enabled)

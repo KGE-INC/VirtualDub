@@ -57,6 +57,7 @@ static const UINT uIconIDs[13]={
 
 typedef struct PositionControlData {
 	HFONT				hFont;
+	int					nFrameCtlHeight;
 	LONG				usPerFrame;
 	PosCtlFTCallback	pFTCallback;
 	void				*pvFTCData;
@@ -210,7 +211,7 @@ static void PositionControlReposChildren(HWND hWnd, PositionControlData *pcd) {
 		x+=8;
 	}
 
-	SetWindowPos(GetDlgItem(hWnd, IDC_FRAME), NULL, x, y+2, min(wndr.right - x, 320), 18, SWP_NOACTIVATE|SWP_NOZORDER);
+	SetWindowPos(GetDlgItem(hWnd, IDC_FRAME), NULL, x, y+12-(pcd->nFrameCtlHeight>>1), min(wndr.right - x, 320), pcd->nFrameCtlHeight, SWP_NOACTIVATE|SWP_NOZORDER);
 
 }
 
@@ -273,7 +274,37 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 			pcd->fHasMarkControls		= !!(dwStyles & PCS_MARK);
 			pcd->fHasSceneControls		= !!(dwStyles & PCS_SCENE);
 
-			pcd->hFont = CreateFont(8, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "MS Sans Serif");
+			pcd->hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+			pcd->nFrameCtlHeight = 18;
+			
+			if (pcd->hFont) {
+				if (HDC hdc = GetDC(hWnd)) {
+					TEXTMETRIC tm;
+					int pad = 2*GetSystemMetrics(SM_CYEDGE);
+					int availHeight = 24 - pad;
+					HGDIOBJ hgoFont = SelectObject(hdc, pcd->hFont);
+
+					if (GetTextMetrics(hdc, &tm)) {
+						LOGFONT lf;
+
+						pcd->nFrameCtlHeight = tm.tmHeight + tm.tmInternalLeading + pad;
+
+						if (tm.tmHeight > availHeight && GetObject(pcd->hFont, sizeof lf, &lf)) {
+							lf.lfHeight = availHeight;
+							pcd->nFrameCtlHeight = 24;
+
+							HFONT hFont = CreateFontIndirect(&lf);
+							if (hFont)
+								pcd->hFont = hFont;		// the old font was a stock object, so it doesn't need to be deleted
+						}
+					}
+
+					pcd->nFrameCtlHeight = (pcd->nFrameCtlHeight+1) & ~1;
+
+					SelectObject(hdc, hgoFont);
+					ReleaseDC(hWnd, hdc);
+				}
+			}
 
 			CreateWindowEx(0,TRACKBAR_CLASS,NULL,WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS|TBS_ENABLESELRANGE,0,0,0,0,hWnd, (HMENU)IDC_TRACKBAR, g_hInst, NULL);
 
@@ -302,7 +333,8 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 				CreateWindowEx(0				,"BUTTON"		,NULL,WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_ICON			,0,0,24,24,hWnd, (HMENU)IDC_MARKOUT	, g_hInst, NULL);
 			}
 
-			EnumChildWindows(hWnd, (WNDENUMPROC)PositionControlInitChildrenProc, (LPARAM)pcd->hFont);
+			if (pcd->hFont)
+				EnumChildWindows(hWnd, (WNDENUMPROC)PositionControlInitChildrenProc, (LPARAM)pcd->hFont);
 
 			// Create tooltip control.
 
@@ -334,7 +366,9 @@ static LRESULT APIENTRY PositionControlWndProc(HWND hWnd, UINT msg, WPARAM wPara
 		PositionControlReposChildren(hWnd, pcd);
 		break;
 
-	case WM_DESTROY:
+	case WM_NCDESTROY:
+		if (pcd->hFont)
+			DeleteObject(pcd->hFont);
 		delete pcd;
 		SetWindowLong(hWnd, 0, 0);
 		break;

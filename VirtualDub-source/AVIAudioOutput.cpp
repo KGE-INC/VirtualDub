@@ -328,7 +328,7 @@ BOOL AVIAudioOutput::postBuffer(AVIAudioOutputBuffer *aaob) {
 	aaob->hdr.dwFlags &= ~WHDR_DONE;
 
 	EnterCriticalSection(&mcsWaveDevice);
-	bool bResult = aaob->post(hWaveOut);
+	bool bResult = 0 != aaob->post(hWaveOut);
 	LeaveCriticalSection(&mcsWaveDevice);
 
 	if (!bResult) {

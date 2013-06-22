@@ -43,7 +43,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /Zm1000 /c
+# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /Ox /Ot /Oa /Og /Oi /I ".\vdsvrlnk" /I "..\..\nekoamp\main" /I "..\..\sylia\main" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WIN32_LEAN_AND_MEAN" /YX /FD /GF /c
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -53,7 +53,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98 /mapinfo:lines
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\..\NekoAmp\main\release\amplib.lib /nologo /subsystem:windows /map /debug /machine:I386 /nodefaultlib:"libc" /opt:nowin98,ref /mapinfo:lines
 # SUBTRACT LINK32 /pdb:none
 # Begin Special Build Tool
 IntDir=.\Release
@@ -61,7 +61,7 @@ SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
 PreLink_Cmds=verinc	ml /c /coff /nologo /Fo$(IntDir)\verstub.obj verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=t:\projects\mapconv\main\release\mapconv release\VirtualDub.map release\VirtualDub.vdi t:\ia32.vdi
+PostBuild_Cmds=..\..\mapconv\main\release\mapconv release\VirtualDub.map release\VirtualDub.vdi ia32.vdi
 # End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
@@ -96,7 +96,7 @@ SOURCE="$(InputPath)"
 PreLink_Desc=Updating build number information...
 PreLink_Cmds=verinc	ml /c /coff /nologo /Fo$(IntDir)\verstub.obj verstub.asm
 PostBuild_Desc=Compiling function location database...
-PostBuild_Cmds=t:\projects\mapconv\main\release\mapconv debug\VirtualDub.map debug\VirtualDub.vdi t:\ia32.vdi
+PostBuild_Cmds=..\..\mapconv\main\release\mapconv debug\VirtualDub.map debug\VirtualDub.vdi ia32.vdi
 # End Special Build Tool
 
 !ENDIF 
@@ -400,6 +400,10 @@ SOURCE=.\Histogram.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\image.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\InputFile.cpp
 # End Source File
 # Begin Source File
@@ -585,6 +589,10 @@ SOURCE=.\helpfile.h
 # Begin Source File
 
 SOURCE=.\Histogram.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\image.h
 # End Source File
 # Begin Source File
 
@@ -1197,6 +1205,19 @@ SOURCE=.\f_grayscale.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\f_hsv.cpp
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# ADD CPP /G6
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
 SOURCE=.\f_invert.cpp
 # End Source File
 # Begin Source File
@@ -1206,6 +1227,10 @@ SOURCE=.\f_levels.cpp
 # Begin Source File
 
 SOURCE=.\f_list.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\f_logo.cpp
 # End Source File
 # Begin Source File
 

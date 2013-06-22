@@ -19,6 +19,7 @@
 
 #include <wtypes.h>
 #include <mmsystem.h>
+#include <stdio.h>
 
 #include "misc.h"
 #include "cpuaccel.h"
@@ -123,3 +124,21 @@ FOURCC toupperFOURCC(FOURCC fcc) {
 	}
 
 #endif
+
+char *strCify(const char *s) {
+	static char buf[2048];
+	char c,*t = buf;
+
+	while(c=*s++) {
+		if (!isprint((unsigned char)c))
+			t += sprintf(t, "\\x%02x", (int)c & 0xff);
+		else {
+			if (c=='"' || c=='\\')
+				*t++ = '\\';
+			*t++ = c;
+		}
+	}
+	*t=0;
+
+	return buf;
+}
