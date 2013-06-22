@@ -19,9 +19,10 @@
 #define f_VD2_FILTERFRAME_H
 
 #include <vd2/system/refcount.h>
+#include <vd2/system/unknown.h>
 #include <vd2/system/vdstl.h>
 
-class VDFilterFrameAllocator;
+class IVDFilterFrameAllocator;
 class VDFilterFrameCache;
 
 struct VDFilterFrameBufferCacheLinkNode : public vdlist_node {
@@ -36,7 +37,7 @@ struct VDFilterFrameBufferCacheLinkNode : public vdlist_node {
 
 struct VDFilterFrameBufferAllocatorNode : public vdlist_node {};
 
-class VDFilterFrameBuffer	: public vdrefcounted<IVDRefCount>
+class VDFilterFrameBuffer	: public vdrefcounted<IVDRefUnknown>
 							, public VDFilterFrameBufferAllocatorNode
 {
 	VDFilterFrameBuffer(const VDFilterFrameBuffer&);
@@ -46,16 +47,17 @@ public:
 
 	int AddRef();
 	int Release();
+	void *AsInterface(uint32 iid);
 
-	void Init(uint32 size);
-	void Shutdown();
+	virtual void Shutdown();
 
-	void SetAllocator(VDFilterFrameAllocator *allocator);
+	void SetAllocator(IVDFilterFrameAllocator *allocator);
 
-	void *GetBasePointer() { return mpBuffer; }
-	const void *GetBasePointer() const { return mpBuffer; }
+	virtual void *LockWrite() = 0;
+	virtual const void *LockRead() const = 0;
+	virtual void Unlock() = 0;
 
-	uint32 GetSize() const { return mBufferSize; }
+	virtual uint32 GetSize() const = 0;
 
 	void AddCacheReference(VDFilterFrameBufferCacheLinkNode *cacheLink);
 	void RemoveCacheReference(VDFilterFrameBufferCacheLinkNode *cacheLink);
@@ -65,13 +67,9 @@ public:
 	void EvictFromCaches();
 
 protected:
-	~VDFilterFrameBuffer();
+	virtual ~VDFilterFrameBuffer();
 
-	void *mpBuffer;
-	uint32 mBufferSize;
-	bool	mbVirtAlloc;
-
-	VDFilterFrameAllocator *mpAllocator;
+	IVDFilterFrameAllocator *mpAllocator;
 
 	typedef vdlist<VDFilterFrameBufferCacheLinkNode> Caches;
 	Caches mCaches;

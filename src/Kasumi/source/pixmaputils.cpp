@@ -52,7 +52,7 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 		if (px.format) {
 			if (!VDIsValidPixmapPlane(px.data, px.pitch, -(-px.w / info.qw)*info.qsize, -(-px.h >> info.qhbits))) {
 				VDDEBUG("Kasumi: Invalid primary plane detected in pixmap.\n"
-						"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+						"        Pixmap info: format=%d (%s), dimensions=%dx%d\n", px.format, info.name, px.w, px.h);
 				VDASSERT(!"Kasumi: Invalid primary plane detected in pixmap.\n");
 				return false;
 			}
@@ -60,7 +60,7 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 			if (info.palsize)
 				if (!VDIsValidReadRegion(px.palette, sizeof(uint32) * info.palsize)) {
 					VDDEBUG("Kasumi: Invalid palette detected in pixmap.\n"
-							"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+							"        Pixmap info: format=%d (%s), dimensions=%dx%d\n", px.format, info.name, px.w, px.h);
 					VDASSERT(!"Kasumi: Invalid palette detected in pixmap.\n");
 					return false;
 				}
@@ -71,7 +71,7 @@ extern VDPixmapFormatInfo g_vdPixmapFormats[] = {
 
 				if (!VDIsValidPixmapPlane(px.data2, px.pitch2, auxw * info.auxsize, auxh)) {
 					VDDEBUG("Kasumi: Invalid Cb plane detected in pixmap.\n"
-							"        Pixmap info: format=%d, dimensions=%dx%d\n", px.format, px.w, px.h);
+							"        Pixmap info: format=%d (%s), dimensions=%dx%d\n", px.format, info.name, px.w, px.h);
 					VDASSERT(!"Kasumi: Invalid Cb plane detected in pixmap.\n");
 					return false;
 				}

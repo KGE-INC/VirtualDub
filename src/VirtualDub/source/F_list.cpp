@@ -36,6 +36,8 @@ extern const VDXFilterDefinition
 	filterDef_interpolate,
 	filterDef_curves,
 	filterDef_fielddelay,
+	filterDef_invert,
+	filterDef_resize,
 	filterDef_test;
 
 #ifdef _M_IX86
@@ -49,10 +51,8 @@ extern FilterDefinition
 	filterDef_chromasmoother,
 	filterDef_fieldbob,
 	filterDef_fill,
-	filterDef_invert,
 	filterDef_null,
 	filterDef_tsoften,
-	filterDef_resize,
 	filterDef_flipv,
 	filterDef_fliph,
 	filterDef_deinterlace,

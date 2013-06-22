@@ -270,7 +270,7 @@ const void *VDVideoSourceANIM::getFrame(VDPosition lFrameDesired64) {
 	lFrameNum = lFrameKey = (long)nearestKey(lFrameDesired);
 
 	if (mCachedFrame > lFrameKey && mCachedFrame < lFrameDesired)
-		lFrameNum = mCachedFrame+1;
+		lFrameNum = (long)mCachedFrame+1;
 
 	try {
 		do {

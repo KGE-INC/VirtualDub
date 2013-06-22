@@ -17,12 +17,12 @@
 
 #include "stdafx.h"
 
-#include <windows.h>
-#include <commctrl.h>
-
 #include "resource.h"
 #include "filter.h"
-#include "VBitmap.h"
+#include <vd2/VDXFrame/VideoFilter.h>
+#include <vd2/plugin/vdvideoaccel.h>
+
+#include "f_invert.inl"
 
 extern HINSTANCE g_hInst;
 
@@ -80,7 +80,7 @@ namespace {
 		};
 	}
 #else
-	void VDInvertRect32(Pixel32 *data, long w, long h, ptrdiff_t pitch) {
+	void VDInvertRect32(uint32 *data, long w, long h, ptrdiff_t pitch) {
 		pitch -= 4*w;
 
 		do {
@@ -90,39 +90,82 @@ namespace {
 				++data;
 			} while(--wt);
 
-			data = (Pixel32 *)((char *)data + pitch);
+			data = (uint32 *)((char *)data + pitch);
 		} while(--h);
 	}
 #endif
 }
 
-///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
-int invert_run(const FilterActivation *fa, const FilterFunctions *ff) {	
+class VDVideoFilterInvert : public VDXVideoFilter {
+public:
+	VDVideoFilterInvert();
+
+	uint32 GetParams();
+	void Run();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void StopAccel(IVDXAContext *vdxa);
+
+protected:
+	uint32 mAccelFP;
+};
+
+VDVideoFilterInvert::VDVideoFilterInvert()
+	: mAccelFP(0)
+{
+}
+
+uint32 VDVideoFilterInvert::GetParams() {
+	switch(fa->src.mpPixmapLayout->format) {
+		case nsVDXPixmap::kPixFormat_XRGB8888:
+			fa->dst.offset = fa->src.offset;
+			return FILTERPARAM_SUPPORTS_ALTFORMATS;
+
+		case nsVDXPixmap::kPixFormat_VDXA_RGB:
+		case nsVDXPixmap::kPixFormat_VDXA_YUV:
+			return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_SUPPORTS_ALTFORMATS;
+
+		default:
+			return FILTERPARAM_NOT_SUPPORTED;
+	}
+}
+
+void VDVideoFilterInvert::Run() {
 	VDInvertRect32(
 			fa->src.data,
 			fa->src.w,
 			fa->src.h,
 			fa->src.pitch
 			);
-
-	return 0;
 }
 
-long invert_param(FilterActivation *fa, const FilterFunctions *ff) {
-	fa->dst.offset = fa->src.offset;
-	return 0;
+void VDVideoFilterInvert::StartAccel(IVDXAContext *vdxa) {
+	mAccelFP = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterInvertPS, sizeof kVDFilterInvertPS);
 }
 
-FilterDefinition filterDef_invert={
-	0,0,NULL,
-	"invert",
-	"Inverts the colors in the image.\n\n[Assembly optimized]",
-	NULL,NULL,
-	0,
-	NULL,NULL,
-	invert_run,
-	invert_param,
-	NULL,
-	NULL,
-};
+void VDVideoFilterInvert::RunAccel(IVDXAContext *vdxa) {
+	vdxa->SetTextureMatrix(0, fa->src.mVDXAHandle, 0, 0, NULL);
+	vdxa->SetSampler(0, fa->src.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mAccelFP, NULL);
+}
+
+void VDVideoFilterInvert::StopAccel(IVDXAContext *vdxa) {
+	if (mAccelFP) {
+		vdxa->DestroyObject(mAccelFP);
+		mAccelFP = 0;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+extern const VDXFilterDefinition filterDef_invert = VDXVideoFilterDefinition<VDVideoFilterInvert>(
+		NULL,
+		"invert",
+		"Inverts the colors in the image.\n\n[Assembly optimized]");
+
+#ifdef _MSC_VER
+	#pragma warning(disable: 4505)	// warning C4505: 'VDXVideoFilter::[thunk]: __thiscall VDXVideoFilter::`vcall'{48,{flat}}' }'' : unreferenced local function has been removed
+#endif

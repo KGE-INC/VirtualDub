@@ -50,20 +50,25 @@ public:
 
 	static ATOM RegisterControl();
 
+	void GetSourceSize(int& w, int& h);
 	void SetSourceSize(int w, int h);
 	void GetFrameSize(int& w, int& h);
 	void Resize();
 	void SetChild(HWND hwnd);
 	void SetDisplay(IVDVideoDisplay *pDisplay);
+	const VDFraction GetSourcePAR();
 	void SetSourcePAR(const VDFraction& fr);
 	void SetResizeParentEnabled(bool enabled);
+	double GetMaxZoomForArea(int w, int h);
 
 private:
 	HWND mhwnd;
 	HWND mhwndChild;
 	HMENU mhmenu;
+	int	mInhibitParamUpdateLocks;
 	int mSourceWidth;
 	int mSourceHeight;
+	VDFraction mSourcePARFrac;
 	double mSourcePAR;
 	double mSourceAspectRatio;
 	double mZoom;
@@ -109,6 +114,7 @@ VDVideoWindow::VDVideoWindow(HWND hwnd)
 	: mhwnd(hwnd)
 	, mhwndChild(NULL)
 	, mhmenu(LoadMenu(g_hInst, MAKEINTRESOURCE(IDR_DISPLAY_MENU)))
+	, mInhibitParamUpdateLocks(0)
 	, mSourceWidth(0)
 	, mSourceHeight(0)
 	, mSourcePAR(0.0)
@@ -147,6 +153,11 @@ ATOM VDVideoWindow::RegisterControl() {
 	wc.lpszClassName	= g_szVideoWindowClass;
 
 	return RegisterClass(&wc);
+}
+
+void VDVideoWindow::GetSourceSize(int& w, int& h) {
+	w = mSourceWidth;
+	h = mSourceHeight;
 }
 
 void VDVideoWindow::SetSourceSize(int w, int h) {
@@ -197,6 +208,38 @@ void VDVideoWindow::SetZoom(double zoom) {
 	Resize();
 }
 
+double VDVideoWindow::GetMaxZoomForArea(int w, int h) {
+	double frameAspect;
+
+	w -= 8;
+	if (w <= 0)
+		return 0;
+
+	h -= 8;
+	if (h <= 0)
+		return 0;
+
+	if (mbUseSourcePAR) {
+		double par = 1.0;
+		if (mSourcePAR > 0)
+			par = mSourcePAR;
+
+		if (mSourceHeight > 0)
+			frameAspect = par * (double)mSourceWidth / (double)mSourceHeight;
+		else
+			frameAspect = par;
+	} else if (mAspectRatio < 0) {
+		frameAspect = mFreeAspectRatio * mSourceAspectRatio;
+	} else {
+		frameAspect = mAspectRatio;
+
+		if (!mbAspectIsFrameBased)
+			frameAspect *= mSourceAspectRatio;
+	}
+
+	return std::min<double>((double)w / ((double)mSourceHeight * frameAspect), (double)h / (double)mSourceHeight);
+}
+
 void VDVideoWindow::Resize() {
 	if (mSourceWidth > 0 && mSourceHeight > 0) {
 		int w, h;
@@ -222,7 +265,9 @@ void VDVideoWindow::Resize() {
 		if (h < 1)
 			h = 1;
 
+		++mInhibitParamUpdateLocks;
 		SetWindowPos(mhwnd, NULL, 0, 0, w+8, h+8, SWP_NOZORDER|SWP_NOMOVE|SWP_NOACTIVATE);
+		--mInhibitParamUpdateLocks;
 	}
 }
 
@@ -234,14 +279,16 @@ void VDVideoWindow::SetDisplay(IVDVideoDisplay *pDisplay) {
 	mpDisplay = pDisplay;
 }
 
+const VDFraction VDVideoWindow::GetSourcePAR() {
+	return mSourcePARFrac;
+}
+
 void VDVideoWindow::SetSourcePAR(const VDFraction& fr) {
 	mSourcePAR = 0;
 	if (fr.getLo())
 		mSourcePAR = fr.asDouble();
+	mSourcePARFrac = fr;
 	UpdateSourcePARMenuItem();
-}
-
-void VDVideoWindow::SetResizeParentEnabled(bool enabled) {
 }
 
 LRESULT CALLBACK VDVideoWindow::WndProcStatic(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -345,10 +392,10 @@ LRESULT VDVideoWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			GetClientRect(mhwnd, &r);
 
-			if (mSourceHeight > 0) {
+			if (mSourceHeight > 0 && !mInhibitParamUpdateLocks) {
 				mZoom = (double)r.bottom / mSourceHeight;
 
-				if (mAspectRatio < 0 && !mbUseSourcePAR)
+				if (mAspectRatio < 0 && !mbUseSourcePAR && r.right && r.bottom)
 					mFreeAspectRatio = r.right / (r.bottom * mSourceAspectRatio);
 			}
 

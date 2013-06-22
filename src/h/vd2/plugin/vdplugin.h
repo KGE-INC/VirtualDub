@@ -136,6 +136,13 @@ struct VDXPluginConfigEntry {
 	const wchar_t *desc;	
 };
 
+struct VDXRect {
+	sint32	left;
+	sint32	top;
+	sint32	right;
+	sint32	bottom;
+};
+
 struct VDXPixmap {
 	void			*data;
 	const uint32	*palette;
@@ -180,7 +187,10 @@ namespace nsVDXPixmap {
 		kPixFormat_YUV422_Planar	= 14,
 		kPixFormat_YUV420_Planar	= 15,
 		kPixFormat_YUV411_Planar	= 16,
-		kPixFormat_YUV410_Planar	= 17
+		kPixFormat_YUV410_Planar	= 17,
+
+		kPixFormat_VDXA_RGB			= 0x10001,
+		kPixFormat_VDXA_YUV			= 0x10002
 	};
 };
 

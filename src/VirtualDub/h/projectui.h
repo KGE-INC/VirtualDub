@@ -48,6 +48,15 @@ public:
 
 	void SetTitle(int nTitleString, int nArgs, ...);
 
+	enum PaneLayoutMode {
+		kPaneLayoutDual,
+		kPaneLayoutInput,
+		kPaneLayoutOutput,
+		kPaneLayoutModeCount
+	};
+
+	void SetPaneLayout(PaneLayoutMode layout);
+
 	void OpenAsk();
 	void AppendAsk();
 	void SaveAVIAsk(bool batchMode);
@@ -126,6 +135,8 @@ protected:
 	void SetStatus(const wchar_t *s);
 
 	void DisplayRequestUpdate(IVDVideoDisplay *pDisp);
+	void RefreshInputPane();
+	void RefreshOutputPane();
 
 	bool GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFrame);
 
@@ -179,6 +190,10 @@ protected:
 	bool		mbStatusBarVisible;
 
 	bool		mbLockPreviewRestart;
+
+	PaneLayoutMode	mPaneLayoutMode;
+	bool		mbPaneLayoutBusy;
+	bool		mbAutoSizePanes;
 
 	VDThreadID	mThreadId;
 

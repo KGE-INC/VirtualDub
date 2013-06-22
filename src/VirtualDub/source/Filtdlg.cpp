@@ -427,16 +427,16 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 					int index = ListView_GetNextItem(mhwndList, -1, LVNI_SELECTED);
 
 					if ((unsigned)index < mFilters.size()) {
-						RedoFilters();
 						FilterInstance *fa = mFilters[index];
 
-						filters.DeinitFilters();
-						filters.DeallocateBuffers();
+						if (fa->IsEnabled()) {
+							filters.DeinitFilters();
+							filters.DeallocateBuffers();
 
-						List filterList;
-						MakeFilterList(filterList);
+							List filterList;
+							MakeFilterList(filterList);
 
-						if (VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList)) {
+							VDShowFilterClippingDialog((VDGUIHandle)mhdlg, fa, &filterList);
 							RedoFilters();
 
 							ListView_SetItemState(mhwndList, -1, 0, LVIS_SELECTED);
@@ -700,9 +700,10 @@ void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
 				if (!fi->IsEnabled())
 					item.pszText[0] = 0;
 				else
-					_snprintf(item.pszText, item.cchTextMax, "%s%s"
+					_snprintf(item.pszText, item.cchTextMax, "%s%s%s"
 								,fi->GetAlphaParameterCurve() ? "[B] " : ""
 								,fi->IsConversionRequired() ? "[C] " : fi->IsAlignmentRequired() ? "[A]" : ""
+								,fi->IsAccelerated() ? "[3D]" : ""
 						);
 				break;
 			case 1:
@@ -746,7 +747,12 @@ void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
 
 							VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
 
-							mTempStr.append_sprintf(" (%s)", kFormatNames[layout.format]);
+							if (layout.format == nsVDXPixmap::kPixFormat_VDXA_RGB)
+								mTempStr += " (RGB)";
+							else if (layout.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+								mTempStr += " (YUV)";
+							else
+								mTempStr.append_sprintf(" (%s)", kFormatNames[layout.format]);
 						}
 
 						if (mbShowAspectRatios && item.iSubItem == 2) {
@@ -832,7 +838,7 @@ void VDVideoFiltersDialog::EnableConfigureBox(HWND hdlg, int index) {
 		FilterInstance *fa = mFilters[index];
 
 		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), fa->IsConfigurable());
-		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), TRUE);
+		EnableWindow(GetDlgItem(hdlg, IDC_CLIPPING), fa->IsEnabled());
 		EnableWindow(GetDlgItem(hdlg, IDC_BLENDING), TRUE);
 	} else {
 		EnableWindow(GetDlgItem(hdlg, IDC_CONFIGURE), FALSE);
@@ -977,6 +983,8 @@ bool VDFilterClippingDialog::OnLoaded()  {
 
 			// start private filter system
 			mFilterSys.initLinearChain(
+					NULL,
+					VDXFilterStateInfo::kStatePreview,
 					mpFilterList,
 					mpFrameSource,
 					pbih2->biWidth,
@@ -987,7 +995,7 @@ bool VDFilterClippingDialog::OnLoaded()  {
 					pVSS->getLength(),
 					inputVideo->getPixelAspectRatio());
 
-			mFilterSys.ReadyFilters(VDXFilterStateInfo::kStatePreview);
+			mFilterSys.ReadyFilters();
 
 			double srcRate = pVSS->getRate().asDouble();
 			double dstRate = (double)mpFilterInst->mRealSrc.mFrameRateHi / (double)mpFilterInst->mRealSrc.mFrameRateLo;
@@ -1173,12 +1181,14 @@ void VDFilterClippingDialog::UpdateFrame(VDPosition pos) {
 				if (src->CreateRequest(pos, false, ~req)) {
 					do {
 						mpFrameSource->RunRequests();
-						mFilterSys.RunToCompletion();
+						mFilterSys.Run(true);
 					} while(!req->IsCompleted());
 
 					if (req->IsSuccessful()) {
-						VDPixmap px(VDPixmapFromLayout(srcLayout, req->GetResultBuffer()->GetBasePointer()));
+						VDFilterFrameBuffer *buf = req->GetResultBuffer();
+						VDPixmap px(VDPixmapFromLayout(srcLayout, (void *)buf->LockRead()));
 						mpClipCtrl->BlitFrame(&px);
+						buf->Unlock();
 					} else {
 						mpClipCtrl->BlitFrame(NULL);
 					}

@@ -28,7 +28,10 @@ struct VDResamplerAxis {
 
 class IVDResamplerFilter {
 public:
+	virtual ~IVDResamplerFilter() {}
+
 	virtual int GetFilterWidth() const = 0;
+	virtual double EvaluateFilter(double offset) const = 0;
 	virtual void GenerateFilter(float *dst, double offset) const = 0;
 	virtual void GenerateFilterBank(float *dst) const = 0;
 };
@@ -39,6 +42,7 @@ public:
 
 	int GetFilterWidth() const;
 
+	double EvaluateFilter(double offset) const;
 	void GenerateFilter(float *dst, double offset) const;
 	void GenerateFilterBank(float *dst) const;
 
@@ -53,6 +57,7 @@ public:
 
 	int GetFilterWidth() const;
 
+	double EvaluateFilter(double offset) const;
 	void GenerateFilter(float *dst, double offset) const;
 	void GenerateFilterBank(float *dst) const;
 
@@ -74,6 +79,7 @@ public:
 
 	int GetFilterWidth() const;
 
+	double EvaluateFilter(double offset) const;
 	void GenerateFilter(float *dst, double offset) const;
 	void GenerateFilterBank(float *dst) const;
 

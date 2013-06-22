@@ -1575,20 +1575,31 @@ void VDCaptureProjectUI::UpdateDisplayPos() {
 		r.bottom	-= yedge;
 	}
 
+	vdrect32 rUnfiltered  = r;
+	vdrect32 rFiltered = r;
+
 	if (!mbStretchToWindow) {
 		sint32 w, h;
 
 		mpProject->GetPreviewImageSize(w, h);
 
-		if (r.width() > w)
-			r.right = r.left + w;
-		if (r.height() > h)
-			r.bottom = r.top + h;
+		if (rFiltered.width() > w)
+			rFiltered.right = rFiltered.left + w;
+		if (rFiltered.height() > h)
+			rFiltered.bottom = rFiltered.top + h;
+
+		vdstructex<VDAVIBitmapInfoHeader> hdr;
+		if (mpProject->GetVideoFormat(hdr)) {
+			if (rUnfiltered.width() > hdr->biWidth)
+				rUnfiltered.right = rUnfiltered.left + hdr->biWidth;
+			if (rUnfiltered.height() > hdr->biHeight)
+				rUnfiltered.bottom = rUnfiltered.top + hdr->biHeight;
+		}
 	}
 
-	mpProject->SetDisplayRect(r);
+	mpProject->SetDisplayRect(rUnfiltered);
 
-	SetWindowPos(mhwndDisplay, NULL, r.left, r.top, r.width(), r.height(), SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(mhwndDisplay, NULL, rFiltered.left, rFiltered.top, rFiltered.width(), rFiltered.height(), SWP_NOZORDER|SWP_NOACTIVATE);
 }
 
 vdrect32 VDCaptureProjectUI::ComputeDisplayArea() {

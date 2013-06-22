@@ -47,6 +47,9 @@ bool VDXVideoFilter::Init() {
 void VDXVideoFilter::Start() {
 }
 
+void VDXVideoFilter::Run() {
+}
+
 void VDXVideoFilter::End() {
 }
 
@@ -77,6 +80,15 @@ bool VDXVideoFilter::Prefetch2(sint64 frame, IVDXVideoPrefetcher *prefetcher) {
 	return true;
 }
 
+void VDXVideoFilter::StartAccel(IVDXAContext *vdxa) {
+}
+
+void VDXVideoFilter::RunAccel(IVDXAContext *vdxa) {
+}
+
+void VDXVideoFilter::StopAccel(IVDXAContext *vdxa) {
+}
+
 bool VDXVideoFilter::OnEvent(uint32 event, const void *eventData) {
 	switch(event) {
 		case kVDXVFEvent_InvalidateCaches:
@@ -101,7 +113,6 @@ int  __cdecl VDXVideoFilter::FilterRun      (const VDXFilterActivation *fa, cons
 	VDXVideoFilter *pThis = *reinterpret_cast<VDXVideoFilter **>(fa->filter_data);
 
 	pThis->fa		= const_cast<VDXFilterActivation *>(fa);
-
 	pThis->Run();
 	return 0;
 }
@@ -127,7 +138,11 @@ int  __cdecl VDXVideoFilter::FilterStart    (VDXFilterActivation *fa, const VDXF
 
 	pThis->fa		= fa;
 
-	pThis->Start();
+	if (fa->mpVDXA)
+		pThis->StartAccel(fa->mpVDXA);
+	else
+		pThis->Start();
+
 	return 0;
 }
 
@@ -136,7 +151,11 @@ int  __cdecl VDXVideoFilter::FilterEnd      (VDXFilterActivation *fa, const VDXF
 
 	pThis->fa		= fa;
 
-	pThis->End();
+	if (fa->mpVDXA)
+		pThis->StopAccel(fa->mpVDXA);
+	else
+		pThis->End();
+
 	return 0;
 }
 
@@ -205,6 +224,14 @@ bool __cdecl VDXVideoFilter::FilterEvent(const VDXFilterActivation *fa, const VD
 	pThis->fa		= const_cast<VDXFilterActivation *>(fa);
 
 	return pThis->OnEvent(event, eventData);
+}
+
+void  __cdecl VDXVideoFilter::FilterAccelRun(const VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
+	VDXVideoFilter *pThis = *reinterpret_cast<VDXVideoFilter **>(fa->filter_data);
+
+	pThis->fa		= const_cast<VDXFilterActivation *>(fa);
+
+	pThis->RunAccel(fa->mpVDXA);
 }
 
 void VDXVideoFilter::SafePrintf(char *buf, int maxbuf, const char *format, ...) {

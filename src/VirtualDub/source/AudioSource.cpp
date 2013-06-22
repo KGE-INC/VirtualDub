@@ -343,40 +343,46 @@ bool AudioSourceDV::init() {
 	// to extract from the first frame instead.
 	const VDPosition streamStart = mpStream->Start();
 	const VDPosition streamEnd = mpStream->End();
+	VDPosition streamTestPos = streamStart;
+	sint32 samplingRate;
 	
-	if (streamEnd > streamStart) {
-		long bytes, samples;
+	for(int i=0; i<5; ++i) {
+		if (streamTestPos < streamEnd) {
+			long bytes, samples;
 
-		if (!mpStream->Read(streamStart, 1, NULL, 0, &bytes, &samples) && bytes >= 120000) {
-			vdblock<uint8> tmp(bytes);
+			if (!mpStream->Read(streamTestPos, 1, NULL, 0, &bytes, &samples) && bytes >= 120000) {
+				vdblock<uint8> tmp(bytes);
 
-			if (!mpStream->Read(streamStart, 1, tmp.data(), tmp.size(), &bytes, &samples)) {
-				aaux_as_pc4 = tmp[80*(3*150 + 6) + 7];		// DIF sequence 3, block 6, AAUX pack 0
-				vaux_vs_pc3 = tmp[80*(1*150 + 3) + 6];		// DIF sequence 1, block 3, VAUX pack 0
+				if (!mpStream->Read(streamTestPos, 1, tmp.data(), tmp.size(), &bytes, &samples)) {
+					aaux_as_pc4 = tmp[80*(3*150 + 6) + 7];		// DIF sequence 3, block 6, AAUX pack 0
+					vaux_vs_pc3 = tmp[80*(1*150 + 3) + 6];		// DIF sequence 1, block 3, VAUX pack 0
+				}
 			}
 		}
+
+		bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
+
+		switch(aaux_as_pc4 & 0x38) {
+		case 0x00:
+			samplingRate = 48000;
+			mSamplesPerSet		= isPAL ? 19200 : 16016;
+			goto open_ok;
+		case 0x08:
+			samplingRate = 44100;
+			mSamplesPerSet		= isPAL ? 17640 : 14715;
+			goto open_ok;
+		case 0x10:
+			samplingRate = 32000;
+			mSamplesPerSet		= isPAL ? 12800 : 10677;
+			goto open_ok;
+		default:
+			break;
+		}
+
+		streamTestPos += (uint64)(1 << i);
 	}
 
-	bool isPAL = 0 != (vaux_vs_pc3 & 0x20);
-
-	sint32 samplingRate;
-
-	switch(aaux_as_pc4 & 0x38) {
-	case 0x00:
-		samplingRate = 48000;
-		mSamplesPerSet		= isPAL ? 19200 : 16016;
-		break;
-	case 0x08:
-		samplingRate = 44100;
-		mSamplesPerSet		= isPAL ? 17640 : 14715;
-		break;
-	case 0x10:
-		samplingRate = 32000;
-		mSamplesPerSet		= isPAL ? 12800 : 10677;
-		break;
-	default:
-		return false;
-	}
+open_ok:
 
 	// check for 12-bit quantization
 	mTempBuffer.resize(144000);		// always use PAL worst case

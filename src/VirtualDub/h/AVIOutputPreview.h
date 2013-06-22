@@ -41,6 +41,7 @@ public:
 	void partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples);
 	void partialWrite(const void *pBuffer, uint32 cbBuffer);
 	void partialWriteEnd();
+	void finish();
 	void finalize();
 	void flush();
 
@@ -67,6 +68,10 @@ private:
 	sint64	mTotalBytes;
 	sint64	mTotalSamples;
 	uint32	mBufferLevel;
+
+	uint32	mLastPlayTime;
+	uint32	mLastCPUTime;
+	VDAtomicInt mbFinished;
 
 	VDCriticalSection	mLock;
 };

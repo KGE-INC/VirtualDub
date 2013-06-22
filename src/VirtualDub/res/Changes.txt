@@ -1,5 +1,32 @@
 VirtualDub change log
-Build %build% (1.9.2, experimental): [%date%]
+Build %build% (1.9.3, experimental): [%date%]
+   [features added]
+   * UI: Added options to display only one of the panes and to autosize them.
+   * Filters: Added support for 3D hardware acceleration.
+   * Filters: Invert, warp sharp, blur, blur more, brightness/contrast, deinterlace, and resize support hardware acceleration.
+   
+   [bugs fixed]
+   * Drag and drop onto the batch wizard now works in Windows Vista and Windows 7.
+   * Go To Prev/Next Drop command now works after the timeline has been edited.
+   * Fixed random frame codes on the one-after frame.
+   * AVI: fccHandler header value for newly generated uncompressed videos with non-RGB formats is now set to the FOURCC to work around encoders that don't accept DIB.
+   * AVI: Fixed bug where zero-byte pad frames were lost if the video stream had a non-zero dwSampleSize value set.
+   * Filters: Cropping button is now grayed out for disabled filters, since the input size is unknown.
+   * Filters: Fill filter now shows correct input size when there are earlier filters (although, currently, the image is still incorrect).
+   * Filters: Fixed bug where crop bounds weren't recorded correctly if the up/down buttons were clicked and a thousands separator appeared.
+   * Filters: Fixed random crash in interlace filter when switching formats.
+   * Filters: The manual field order options in the IVTC filter were flipped.
+   * Filters: Resize no longer forces a conversion to YV24 when resizing YV16 input in interlaced mode.
+   * Display: Fixed crash in GDI minidriver when displaying interlaced video with a 0x0 pane.
+   * DV: Fall back to subsequent frames if the first frame has invalid audio metadata.
+   * Capture: Fixed preview window being the wrong size when filtering/cropping is enabled and preview acceleration is off.
+   * Capture: Fixed inconsistency in capture timing defaults. This only matters if you haven't already run VirtualDub in capture mode once.
+   * Capture: The AVI superindex/subindex settings now also apply to captures.
+   
+   [regressions fixed]
+   * Filters: Fixed error in IVTC computations for RGB32, YUY2, and UYVY formats (since 1.9.1).
+
+Build 31953 (1.9.2, experimental): [May 7, 2009]
    [features added]
    * UI: Added support for configuring keyboard shortcuts in edit mode.
    * UI: Added Always on Top to window menu.
@@ -30,6 +57,7 @@ Build %build% (1.9.2, experimental): [%date%]
    [regressions fixed]
    * UI: Timeline scrubbing is more responsive again when dealing with files that have long delta frame runs (since 1.9.1).
    * Render: Fixed hang if there is a string of duplicate frames longer than the video pipeline (since 1.9.1).
+   * Render: Fixed playback stopping at the end of the audio stream even if the video stream is longer.
    * Filters: Fixed some caching and frame numbering issues with filters that have non-zero lag (since 1.9.1).
 
 Build 31536 (1.9.1, experimental): [March 28, 2009]

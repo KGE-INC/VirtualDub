@@ -56,7 +56,7 @@ void testfp2(tpVDConvertPCM fnScalar, tpVDConvertPCM fnSSE) {
 	int i;
 
 	for(i=0; i<64; ++i)
-		buf0[i] = rand();
+		buf0[i] = (float)rand();
 
 	for(i=0; i<256; ++i)
 		buf1[i] = rand();

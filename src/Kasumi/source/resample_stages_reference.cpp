@@ -2,7 +2,7 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/Kasumi/pixmaputils.h>
 #include "resample_stages_reference.h"
-#include "resample_kernels.h"
+#include <vd2/Kasumi/resample_kernels.h>
 #include "blt_spanutils.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

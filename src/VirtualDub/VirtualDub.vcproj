@@ -21,6 +21,9 @@
 		<ToolFile
 			RelativePath="..\YASM.rules"
 		/>
+		<ToolFile
+			RelativePath="..\PSA.rules"
+		/>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
@@ -35,10 +38,14 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
-				Name="YASM"
+				Name="PixelShaderAssembler"
+				OutputPath="$(ProjectDir)\autogen\"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -58,7 +65,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia"
+				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia,autogen"
 				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				MinimalRebuild="true"
@@ -140,10 +147,14 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
-				Name="YASM"
+				Name="PixelShaderAssembler"
+				OutputPath="$(ProjectDir)\autogen\"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -163,7 +174,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia"
+				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia,autogen"
 				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				MinimalRebuild="true"
@@ -243,10 +254,14 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
-				Name="YASM"
+				Name="PixelShaderAssembler"
+				OutputPath="$(ProjectDir)\autogen\"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -265,7 +280,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia"
+				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia,autogen"
 				PreprocessorDefinitions="NDEBUG;_USE_NON_INTEL_COMPILER;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -348,10 +363,14 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="YASM"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
 			/>
 			<Tool
-				Name="YASM"
+				Name="PixelShaderAssembler"
+				OutputPath="$(ProjectDir)\autogen\"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -370,7 +389,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia"
+				AdditionalIncludeDirectories=".\h,.\res,..\h,..\vdsvrlnk,..\sylia,autogen"
 				PreprocessorDefinitions="NDEBUG;_USE_NON_INTEL_COMPILER;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -1393,6 +1412,34 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\FilterAccelContext.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelConverter.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelDownloader.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelEngine.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelFrameAllocator.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelReadbackBuffer.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterAccelUploader.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\FilterCallbacks.cpp"
 				>
 			</File>
@@ -1409,7 +1456,19 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\FilterFrameAllocatorMemory.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\FilterFrameAllocatorProxy.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterFrameBufferAccel.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\FilterFrameBufferMemory.cpp"
 				>
 			</File>
 			<File
@@ -2966,7 +3025,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\source\DubProcessVideo.h"
+				RelativePath=".\h\DubProcessVideo.h"
 				>
 			</File>
 			<File
@@ -3006,6 +3065,34 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\FilterAccelContext.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelConverter.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelDownloader.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelEngine.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelFrameAllocator.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelReadbackBuffer.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterAccelUploader.h"
+				>
+			</File>
+			<File
 				RelativePath=".\h\FilterFrame.h"
 				>
 			</File>
@@ -3018,7 +3105,19 @@
 				>
 			</File>
 			<File
+				RelativePath=".\h\FilterFrameAllocatorMemory.h"
+				>
+			</File>
+			<File
 				RelativePath=".\h\FilterFrameAllocatorProxy.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterFrameBufferAccel.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\FilterFrameBufferMemory.h"
 				>
 			</File>
 			<File
@@ -6760,6 +6859,10 @@
 					</FileConfiguration>
 				</File>
 				<File
+					RelativePath=".\source\f_resize_config.cpp"
+					>
+				</File>
+				<File
 					RelativePath="source\f_rotate.cpp"
 					>
 					<FileConfiguration
@@ -7939,6 +8042,10 @@
 			<Filter
 				Name="Headers - Filters"
 				>
+				<File
+					RelativePath=".\h\f_resize_config.h"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="Interface headers - plugins"
@@ -7956,11 +8063,75 @@
 					>
 				</File>
 				<File
+					RelativePath="..\h\vd2\plugin\vdvideoaccel.h"
+					>
+				</File>
+				<File
 					RelativePath="..\h\vd2\plugin\vdvideofilt.h"
 					>
 				</File>
 				<File
 					RelativePath="..\h\vd2\plugin\vdvideoutil.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="Pixel Shader Files"
+				>
+				<File
+					RelativePath=".\source\f_blur.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_brightcont.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_deinterlace.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_invert.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_resize.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_warpsharp.vdshaders"
+					>
+				</File>
+				<File
+					RelativePath=".\source\FilterAccelEngine.vdshaders"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="Compiled Pixel Shaders"
+				>
+				<File
+					RelativePath=".\autogen\f_blur.inl"
+					>
+				</File>
+				<File
+					RelativePath=".\autogen\f_deinterlace.inl"
+					>
+				</File>
+				<File
+					RelativePath=".\autogen\f_invert.inl"
+					>
+				</File>
+				<File
+					RelativePath=".\autogen\f_resize.inl"
+					>
+				</File>
+				<File
+					RelativePath=".\autogen\f_warpsharp.inl"
+					>
+				</File>
+				<File
+					RelativePath=".\autogen\FilterAccelEngine.inl"
 					>
 				</File>
 			</Filter>

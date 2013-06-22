@@ -18,7 +18,8 @@
 #include "stdafx.h"
 #include "FilterFrameAllocatorManager.h"
 #include "FilterFrameAllocatorProxy.h"
-#include "FilterFrameAllocator.h"
+#include "FilterFrameAllocatorMemory.h"
+#include "FilterAccelFrameAllocator.h"
 
 struct VDFilterFrameAllocatorManager::ProxyEntrySort {
 	bool operator()(ProxyEntry *x, ProxyEntry *y) const {
@@ -27,6 +28,7 @@ struct VDFilterFrameAllocatorManager::ProxyEntrySort {
 };
 
 VDFilterFrameAllocatorManager::VDFilterFrameAllocatorManager() {
+	VDASSERTCT(sizeof(mProxies)/sizeof(mProxies[0]) == VDFilterFrameAllocatorProxy::kAccelModeCount);
 }
 
 VDFilterFrameAllocatorManager::~VDFilterFrameAllocatorManager() {
@@ -34,29 +36,43 @@ VDFilterFrameAllocatorManager::~VDFilterFrameAllocatorManager() {
 }
 
 void VDFilterFrameAllocatorManager::Shutdown() {
-	while(!mProxies.empty()) {
-		ProxyEntry& ent = mProxies.back();
+	for(int mode=0; mode<3; ++mode) {
+		Proxies& proxies = mProxies[mode];
 
-		if (ent.mpAllocator)
-			ent.mpAllocator->Release();
+		while(!proxies.empty()) {
+			ProxyEntry& ent = proxies.back();
 
-		mProxies.pop_back();
+			if (ent.mpAllocator)
+				ent.mpAllocator->Release();
+
+			proxies.pop_back();
+		}
 	}
 }
 
 void VDFilterFrameAllocatorManager::AddAllocatorProxy(VDFilterFrameAllocatorProxy *proxy) {
-	ProxyEntry& ent = mProxies.push_back();
+	ProxyEntry& ent = mProxies[proxy->GetAccelerationRequirement()].push_back();
 
 	ent.mpProxy = proxy;
 	ent.mpAllocator = NULL;
 	ent.mMinSize = 0;
 	ent.mMaxSize = 0;
+	ent.mBorderWidth = 0;
+	ent.mBorderHeight = 0;
 	ent.mpParent = NULL;
 }
 
-void VDFilterFrameAllocatorManager::AssignAllocators() {
+void VDFilterFrameAllocatorManager::AssignAllocators(VDFilterAccelEngine *accelEngine) {
+	AssignAllocators(NULL, 0);
+	AssignAllocators(accelEngine, 1);
+	AssignAllocators(accelEngine, 2);
+}
+
+void VDFilterFrameAllocatorManager::AssignAllocators(VDFilterAccelEngine *accelEngine, int accelMode) {
+	Proxies& proxies = mProxies[accelMode];
+
 	// Push down all size requirements through links.
-	for(Proxies::iterator it(mProxies.begin()), itEnd(mProxies.end()); it != itEnd; ++it) {
+	for(Proxies::iterator it(proxies.begin()), itEnd(proxies.end()); it != itEnd; ++it) {
 		ProxyEntry& ent = *it;
 		VDFilterFrameAllocatorProxy *proxy = ent.mpProxy;
 		VDFilterFrameAllocatorProxy *link = NULL;
@@ -67,36 +83,38 @@ void VDFilterFrameAllocatorManager::AssignAllocators() {
 
 		if (link) {
 			proxy->Link(link);
-			link->AddSizeRequirement(proxy->GetSizeRequirement());
+			link->AddRequirements(proxy);
 		}
 	}
 
 	// Push size requirements back up through links. This has to be a separate pass
 	// since multiple proxies may have the same link and we won't know the requirement
 	// on the master.
-	for(Proxies::iterator it(mProxies.begin()), itEnd(mProxies.end()); it != itEnd; ++it) {
+	for(Proxies::iterator it(proxies.begin()), itEnd(proxies.end()); it != itEnd; ++it) {
 		ProxyEntry& ent = *it;
 		VDFilterFrameAllocatorProxy *proxy = ent.mpProxy;
 		VDFilterFrameAllocatorProxy *link = proxy->GetLink();
 		
 		if (link)
-			proxy->AddSizeRequirement(link->GetSizeRequirement());
+			proxy->AddRequirements(link);
 	}
 
-	for(Proxies::iterator it(mProxies.begin()), itEnd(mProxies.end()); it != itEnd; ++it) {
+	for(Proxies::iterator it(proxies.begin()), itEnd(proxies.end()); it != itEnd; ++it) {
 		ProxyEntry& ent = *it;
 
 		uint32 req = ent.mpProxy->GetSizeRequirement();
 		ent.mMinSize = req;
 		ent.mMaxSize = req;
+		ent.mBorderWidth = ent.mpProxy->GetBorderWidth();
+		ent.mBorderHeight = ent.mpProxy->GetBorderHeight();
 	}
 
 	typedef vdfastvector<ProxyEntry *> ProxyRefs;
-	ProxyRefs proxyRefs(mProxies.size());
+	ProxyRefs proxyRefs(proxies.size());
 
-	int n = mProxies.size();
+	int n = proxies.size();
 	for(int i=0; i<n; ++i) {
-		proxyRefs[i] = &mProxies[i];
+		proxyRefs[i] = &proxies[i];
 	}
 
 	std::sort(proxyRefs.begin(), proxyRefs.end(), ProxyEntrySort());
@@ -109,16 +127,23 @@ void VDFilterFrameAllocatorManager::AssignAllocators() {
 			ProxyEntry& ent1 = *proxyRefs[i];
 			ProxyEntry& ent2 = *proxyRefs[i+1];
 
-			VDASSERT(ent1.mMaxSize <= ent2.mMinSize);
+			if (accelMode) {
+				if (ent1.mMinSize == ent2.mMaxSize) {
+					bestMerge = i;
+					break;
+				}
+			} else {
+				VDASSERT(ent1.mMaxSize <= ent2.mMinSize);
 
-			float mergeRatio = 0.f;
+				float mergeRatio = 0.f;
 
-			if (ent2.mMaxSize)
-				mergeRatio = (float)(ent2.mMaxSize - ent1.mMinSize) / (float)ent2.mMaxSize;
+				if (ent2.mMaxSize)
+					mergeRatio = (float)(ent2.mMaxSize - ent1.mMinSize) / (float)ent2.mMaxSize;
 
-			if (mergeRatio > bestMergeRatio) {
-				bestMerge = i;
-				bestMergeRatio = mergeRatio;
+				if (mergeRatio > bestMergeRatio) {
+					bestMerge = i;
+					bestMergeRatio = mergeRatio;
+				}
 			}
 		}
 
@@ -133,6 +158,12 @@ void VDFilterFrameAllocatorManager::AssignAllocators() {
 		src.mpParent = &dst;
 		dst.mMaxSize = src.mMaxSize;
 
+		if (dst.mBorderWidth < src.mBorderWidth)
+			dst.mBorderWidth = src.mBorderWidth;
+
+		if (dst.mBorderHeight < src.mBorderHeight)
+			dst.mBorderHeight = src.mBorderHeight;
+
 		proxyRefs.erase(proxyRefs.begin() + bestMerge + 1);
 		--n;
 	}
@@ -141,15 +172,24 @@ void VDFilterFrameAllocatorManager::AssignAllocators() {
 	for(int i=0; i<n; ++i) {
 		ProxyEntry& ent = *proxyRefs[i];
 
-		ent.mpAllocator = new VDFilterFrameAllocator;
-		ent.mpAllocator->AddRef();
+		if (accelMode) {
+			vdrefptr<VDFilterAccelFrameAllocator> allocMem(new VDFilterAccelFrameAllocator);
+			allocMem->AddSizeRequirement(ent.mMaxSize);
+			allocMem->AddBorderRequirement(ent.mBorderWidth, ent.mBorderHeight);
+			allocMem->Init(0, 0x7fffffff, accelEngine);
 
-		ent.mpAllocator->AddSizeRequirement(ent.mMaxSize);
-		ent.mpAllocator->Init(0, 0x7fffffff);
+			ent.mpAllocator = allocMem.release();
+		} else {
+			vdrefptr<VDFilterFrameAllocatorMemory> allocMem(new VDFilterFrameAllocatorMemory);
+			allocMem->AddSizeRequirement(ent.mMaxSize);
+			allocMem->Init(0, 0x7fffffff);
+
+			ent.mpAllocator = allocMem.release();
+		}
 	}
 
 	// set allocators for all proxies
-	for(Proxies::iterator it(mProxies.begin()), itEnd(mProxies.end()); it != itEnd; ++it) {
+	for(Proxies::iterator it(proxies.begin()), itEnd(proxies.end()); it != itEnd; ++it) {
 		ProxyEntry& ent = *it;
 		ProxyEntry *src = &ent;
 

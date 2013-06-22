@@ -37,6 +37,7 @@
 int VDCountBits(uint32 v);
 int VDFindLowestSetBit(uint32 v);
 int VDFindHighestSetBit(uint32 v);
+uint32 VDCeilToPow2(uint32 v);
 
 ///////////////////////////////////////////////////////////////////////////////
 

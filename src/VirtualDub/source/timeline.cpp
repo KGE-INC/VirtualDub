@@ -207,7 +207,9 @@ VDPosition VDTimeline::GetPrevDrop(VDPosition pos) {
 		return -1;
 
 	while(--pos >= 0) {
-		if (mpTiming->IsNullSample(pos))
+		VDPosition srcPos = mSubset.lookupFrame(pos);
+
+		if (mpTiming->IsNullSample(srcPos))
 			return pos;
 	}
 
@@ -221,7 +223,9 @@ VDPosition VDTimeline::GetNextDrop(VDPosition pos) {
 	const VDPosition len = mSubset.getTotalFrames();
 
 	while(++pos < len) {
-		if (mpTiming->IsNullSample(pos))
+		VDPosition srcPos = mSubset.lookupFrame(pos);
+
+		if (mpTiming->IsNullSample(srcPos))
 			return pos;
 	}
 

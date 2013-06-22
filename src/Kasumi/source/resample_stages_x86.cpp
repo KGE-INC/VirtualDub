@@ -1,7 +1,7 @@
 #include <numeric>
 #include "blt_spanutils_x86.h"
 #include "resample_stages_x86.h"
-#include "resample_kernels.h"
+#include <vd2/Kasumi/resample_kernels.h>
 
 #ifdef _MSC_VER
 	#pragma warning(disable: 4799)		// warning C4799: function 'vdasm_resize_table_row_8_k8_4x_MMX' has no EMMS instruction

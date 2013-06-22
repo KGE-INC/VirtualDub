@@ -49,7 +49,7 @@ public:
 	virtual bool Init();
 	virtual uint32 GetParams()=0;
 	virtual void Start();
-	virtual void Run() = 0;
+	virtual void Run();
 	virtual void End();
 	virtual bool Configure(VDXHWND hwnd);
 	virtual void GetSettingString(char *buf, int maxlen);
@@ -58,6 +58,10 @@ public:
 	virtual int Deserialize(const char *buf, int maxbuf);
 	virtual sint64 Prefetch(sint64 frame);
 	virtual bool Prefetch2(sint64 frame, IVDXVideoPrefetcher *prefetcher);
+
+	virtual void StartAccel(IVDXAContext *vdxa);
+	virtual void RunAccel(IVDXAContext *vdxa);
+	virtual void StopAccel(IVDXAContext *vdxa);
 
 	virtual bool OnEvent(uint32 event, const void *eventData);
 	virtual bool OnInvalidateCaches();
@@ -75,6 +79,7 @@ public:
 	static void __cdecl FilterDeserialize  (VDXFilterActivation *fa, const VDXFilterFunctions *ff, const char *buf, int maxbuf);
 	static sint64 __cdecl FilterPrefetch(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, sint64 frame);
 	static bool __cdecl FilterPrefetch2(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, sint64 frame, IVDXVideoPrefetcher *prefetcher);
+	static void __cdecl FilterAccelRun(const VDXFilterActivation *fa, const VDXFilterFunctions *ff);
 	static bool __cdecl FilterEvent(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, uint32 event, const void *eventData);
 
 	// member variables
@@ -117,6 +122,8 @@ extern char VDXVideoFilterPrefetchOverloadTest(sint64 (VDXVideoFilter::*)(sint64
 extern double VDXVideoFilterPrefetchOverloadTest(...);
 extern char VDXVideoFilterPrefetch2OverloadTest(bool (VDXVideoFilter::*)(sint64, IVDXVideoPrefetcher *));
 extern double VDXVideoFilterPrefetch2OverloadTest(...);
+extern char VDXVideoFilterAccelRunOverloadTest(bool (VDXVideoFilter::*)(IVDXAContext *));
+extern double VDXVideoFilterAccelRunOverloadTest(...);
 
 template<class T, void (T::*T_Method)(IVDXScriptInterpreter *, const VDXScriptValue *, int)>
 class VDXVideoFilterScriptAdapter
@@ -180,6 +187,8 @@ public:
 
 		prefetchProc	= sizeof(VDXVideoFilterPrefetchOverloadTest(&T::Prefetch)) > 1 ? T::FilterPrefetch : NULL;
 		prefetchProc2	= sizeof(VDXVideoFilterPrefetch2OverloadTest(&T::Prefetch2)) > 1 || sizeof(VDXVideoFilterPrefetchOverloadTest(&T::Prefetch)) > 1 ? T::FilterPrefetch2 : NULL;
+
+		accelRunProc	= sizeof(VDXVideoFilterAccelRunOverloadTest(&T::Prefetch)) > 1 ? T::FilterAccelRun : NULL;
 
 		eventProc		= T::FilterEvent;
 	}

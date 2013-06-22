@@ -354,7 +354,7 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 			int yoffset = pt.y - mDisplayY;
 
 			if ((wParam & MK_SHIFT) && mFiltSys.isRunning() && mpVideoFrameBuffer && (unsigned)xoffset < (unsigned)mDisplayW && (unsigned)yoffset < (unsigned)mDisplayH) {
-				const VDPixmap& output = VDPixmapFromLayout(mFiltSys.GetOutputLayout(), mpVideoFrameBuffer->GetBasePointer());
+				const VDPixmap& output = VDPixmapFromLayout(mFiltSys.GetOutputLayout(), (void *)mpVideoFrameBuffer->LockRead());
 				uint32 pixels[7][7];
 				int x = VDFloorToInt((xoffset + 0.5) * (double)output.w / (double)mDisplayW);
 				int y = VDFloorToInt((yoffset + 0.5) * (double)output.h / (double)mDisplayH);
@@ -364,6 +364,8 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 						pixels[i][j] = 0xFFFFFF & VDPixmapSample(output, x+j-3, y+3-i);
 					}
 				}
+
+				mpVideoFrameBuffer->Unlock();
 
 				POINT pts = pt;
 				ClientToScreen(mhdlg, &pts);
@@ -573,6 +575,8 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		mpVideoFrameSource->Init(inputVideo, mFiltSys.GetInputLayout());
 
 		mFiltSys.initLinearChain(
+				NULL,
+				VDXFilterStateInfo::kStatePreview,
 				mpFilterList,
 				mpVideoFrameSource,
 				pbih2->biWidth,
@@ -583,7 +587,7 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 				len,
 				srcPAR);
 
-		mFiltSys.ReadyFilters(VDXFilterStateInfo::kStatePreview);
+		mFiltSys.ReadyFilters();
 
 		const VDPixmapLayout& output = mFiltSys.GetOutputLayout();
 		w = output.w;
@@ -649,11 +653,16 @@ void FilterPreview::OnVideoRedraw() {
 
 		FetchFrame();
 
+		if (mpVideoFrameBuffer) {
+			mpVideoFrameBuffer->Unlock();
+			mpVideoFrameBuffer = NULL;
+		}
+
 		vdrefptr<IVDFilterFrameClientRequest> req;
 		if (mFiltSys.RequestFrame(mLastOutputFrame, ~req)) {
 			while(!req->IsCompleted()) {
 				mpVideoFrameSource->RunRequests();
-				mFiltSys.RunToCompletion();
+				mFiltSys.Run(true);
 			}
 
 			success = req->IsSuccessful();
@@ -664,10 +673,11 @@ void FilterPreview::OnVideoRedraw() {
 
 			if (success) {
 				mpVideoFrameBuffer = req->GetResultBuffer();
+				const void *p = mpVideoFrameBuffer->LockRead();
 
 				const VDPixmapLayout& layout = mFiltSys.GetOutputLayout();
 
-				mpDisplay->SetSourcePersistent(false, VDPixmapFromLayout(layout, mpVideoFrameBuffer->GetBasePointer()));
+				mpDisplay->SetSourcePersistent(false, VDPixmapFromLayout(layout, (void *)p));
 			} else {
 				VDFilterFrameRequestError *err = req->GetError();
 
@@ -830,7 +840,10 @@ void FilterPreview::UndoSystem() {
 	if (mpDisplay)
 		mpDisplay->Reset();
 
-	mpVideoFrameBuffer = NULL;
+	if (mpVideoFrameBuffer) {
+		mpVideoFrameBuffer->Unlock();
+		mpVideoFrameBuffer = NULL;
+	}
 	mFiltSys.DeinitFilters();
 	mFiltSys.DeallocateBuffers();
 	mpVideoFrameSource = NULL;
@@ -861,7 +874,7 @@ bool FilterPreview::SampleCurrentFrame() {
 			vdrefptr<IVDFilterFrameClientRequest> req;
 			if (mpThisFilter->CreateSamplingRequest(pos, mpSampleCallback, mpvSampleCBData, ~req)) {
 				while(!req->IsCompleted()) {
-					mFiltSys.RunToCompletion();
+					mFiltSys.Run(true);
 					mpVideoFrameSource->RunRequests();
 				}
 			}
@@ -979,7 +992,7 @@ long FilterPreview::SampleFrames() {
 
 			if (mpThisFilter->CreateSamplingRequest(frame, mpSampleCallback, mpvSampleCBData, ~req)) {
 				while(!req->IsCompleted()) {
-					mFiltSys.RunToCompletion();
+					mFiltSys.Run(true);
 					mpVideoFrameSource->RunRequests();
 				}
 

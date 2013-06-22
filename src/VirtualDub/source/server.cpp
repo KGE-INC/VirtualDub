@@ -55,7 +55,7 @@ extern VDProject *g_project;
 
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 
-// VideoSource.cpp
+extern bool VDPreferencesGetFilterAccelEnabled();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -219,9 +219,12 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 
 	mpVideoFrameSource = new VDFilterFrameVideoSource;
 	mpVideoFrameSource->Init(vSrc, filters.GetInputLayout());
-	filters.initLinearChain(&g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, srcFAR);
 
-	filters.ReadyFilters(0);
+	filters.SetVisualAccelDebugEnabled(false);
+	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+	filters.initLinearChain(NULL, 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, srcFAR);
+
+	filters.ReadyFilters();
 
 	InitVideoStreamValuesStatic2(vInfo, opt, &filters, frameRateTimeline);
 
@@ -613,12 +616,14 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 
 		while(!creq->IsCompleted()) {
 			mpVideoFrameSource->RunRequests();
-			filters.RunToCompletion();
+			filters.Run(false);
 		}
 
 		VDPixmap pxdst(VDPixmapFromLayout(mFrameLayout, fs->arena));
 
-		VDPixmapBlt(pxdst, VDPixmapFromLayout(filters.GetOutputLayout(), creq->GetResultBuffer()->GetBasePointer()));
+		VDFilterFrameBuffer *buf = creq->GetResultBuffer();
+		VDPixmapBlt(pxdst, VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead()));
+		buf->Unlock();
 	} catch(const MyError&) {
 		return VDSRVERR_FAILED;
 	}

@@ -24,6 +24,7 @@
 
 #include <vd2/system/list.h>
 #include <vd2/system/fraction.h>
+#include <vd2/system/refcount.h>
 #include "filter.h"
 
 class FilterInstance;
@@ -36,17 +37,35 @@ class IVDFilterFrameSource;
 class IVDFilterFrameClientRequest;
 class VDFilterFrameRequest;
 
+class IVDFilterSystemScheduler : public IVDRefCount {
+public:
+	virtual void Reschedule() = 0;
+	virtual bool Block() = 0;
+};
+
 class FilterSystem {
+	FilterSystem(const FilterSystem&);
+	FilterSystem& operator=(const FilterSystem&);
 public:
 	FilterSystem();
 	~FilterSystem();
+
+	void SetAccelEnabled(bool enable);
+	void SetVisualAccelDebugEnabled(bool enable);
+
 	void prepareLinearChain(List *listFA, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
-	void initLinearChain(List *listFA, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
-	void ReadyFilters(uint32 flags);
+	void initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, List *listFA, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
+	void ReadyFilters();
 
 	bool RequestFrame(sint64 outputFrame, IVDFilterFrameClientRequest **creq);
-	void AbortFrame();
-	bool RunToCompletion();
+
+	enum RunResult {
+		kRunResult_Idle,		// All filters are idle.
+		kRunResult_Running,		// There are still filters to run, and some can be run on this thread.
+		kRunResult_Blocked		// There are still filters to run, but all are waiting for asynchronous operation.
+	};
+
+	RunResult Run(bool runToCompletion);
 
 	void InvalidateCachedFrames(FilterInstance *startingFilter);
 
@@ -54,8 +73,8 @@ public:
 	void DeallocateBuffers();
 	const VDPixmapLayout& GetInputLayout() const;
 	const VDPixmapLayout& GetOutputLayout() const;
-	bool isRunning();
-	bool isEmpty() const { return listFilters->IsEmpty(); }
+	bool isRunning() const;
+	bool isEmpty() const;
 
 	bool GetDirectFrameMapping(VDPosition outputFrame, VDPosition& sourceFrame, int& sourceIndex) const;
 	sint64	GetSourceFrame(sint64 outframe) const;
@@ -72,12 +91,11 @@ private:
 
 	struct Bitmaps;
 
-	enum {
-		FILTERS_INITIALIZED = 0x00000001L,
-		FILTERS_ERROR		= 0x00000002L,
-	};
-
-	uint32 dwFlags;
+	bool	mbFiltersInited;
+	bool	mbFiltersError;
+	bool	mbFiltersUseAcceleration;
+	bool	mbAccelDebugVisual;
+	bool	mbAccelEnabled;
 
 	VDFraction	mOutputFrameRate;
 	VDFraction	mOutputPixelAspect;
@@ -85,13 +103,9 @@ private:
 
 	Bitmaps *mpBitmaps;
 
-	VFBitmapInternal *bmLast;
-	List *listFilters;
-	int mFrameDelayLeft;
-	bool mbFirstFrame;
-
 	unsigned char *lpBuffer;
 	long lRequiredSize;
+	uint32	mFilterStateFlags;
 
 	typedef vdfastvector<IVDFilterFrameSource *> Filters;
 	Filters mFilters;

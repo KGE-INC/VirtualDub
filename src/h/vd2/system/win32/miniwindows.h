@@ -40,11 +40,14 @@
 
 typedef struct HWND__	*VDZHWND;
 typedef unsigned		VDZUINT;
+typedef unsigned short	VDZWORD;
 typedef unsigned long	VDZDWORD;
 typedef VDZUINT_PTR		VDZWPARAM;
 typedef VDZLONG_PTR		VDZLPARAM;
 typedef VDZLONG_PTR		VDZLRESULT;
 typedef struct HDROP__	*VDZHDROP;
 typedef struct HACCEL__	*VDZHACCEL;
+
+typedef VDZWORD			VDZATOM;
 
 #endif

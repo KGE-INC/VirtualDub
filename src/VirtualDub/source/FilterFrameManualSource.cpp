@@ -39,10 +39,14 @@ void VDFilterFrameManualSource::SetOutputLayout(const VDPixmapLayout& layout) {
 	mLayout = layout;
 	mAllocator.Clear();
 
-	uint32 size = VDPixmapLayoutGetMinSize(layout);
+	if (layout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || layout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+		mAllocator.AddSizeRequirement((layout.h << 16) + layout.w);
+	} else {
+		uint32 size = VDPixmapLayoutGetMinSize(layout);
 
-	size = (size + 15) & ~15U;
-	mAllocator.AddSizeRequirement(size);
+		size = (size + 15) & ~15U;
+		mAllocator.AddSizeRequirement(size);
+	}
 }
 
 VDFilterFrameAllocatorProxy *VDFilterFrameManualSource::GetOutputAllocatorProxy() {

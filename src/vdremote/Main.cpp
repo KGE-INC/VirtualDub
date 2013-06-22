@@ -259,8 +259,9 @@ HRESULT CAVIStreamRemote::Create(const CLSID& rclsid, const IID& riid, void **pp
 
 	hresult = pUnknown->QueryInterface(riid, ppv);
 	pAVIStreamRemote->Release();
-	if (FAILED(GetScode(hresult)))
+	if (FAILED(GetScode(hresult))) {
 		_RPT0(0,"Failed!\n");
+	}
 
 	_RPT0(0,"CAVIStreamRemote::Create() exit\n");
 

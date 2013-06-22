@@ -83,6 +83,7 @@ extern void VDInitVideoCodecBugTrap();
 extern void VDInitProtectedScopeHook();
 
 extern uint32 VDPreferencesGetEnabledCPUFeatures();
+extern void VDPreferencesSetFilterAccelVisualDebugEnabled(bool);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -703,6 +704,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						"  /s <script>               Run a script\n"
 						"  /safecpu                  Do not use CPU extensions on startup\n"
 						"  /slave <file>             Join shared job queue in autostart mode\n"
+						"  /vdxadebug                Enable filter acceleration debug window\n"
 						"  /x                        Exit when complete\n"
 						);
 				}
@@ -975,6 +977,9 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				}
 				else if (!wcscmp(token, L"w")) {
 					g_fWine = true;
+				}
+				else if (!wcscmp(token, L"vdxadebug")) {
+					VDPreferencesSetFilterAccelVisualDebugEnabled(true);
 				}
 				else if (!wcscmp(token, L"x")) {
 					fExitOnDone = true;

@@ -39,7 +39,7 @@ public:
 
 	void Init(IVDVideoSource *vs, const VDPixmapLayout& layout);
 
-	bool RunRequests();
+	RunResult RunRequests();
 
 public:	// IVDFilterFrameSource
 	virtual sint64 GetNearestUniqueFrame(sint64 outputFrame);

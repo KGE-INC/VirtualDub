@@ -230,10 +230,6 @@ uint32 VDVideoFilterCurves::GetParams() {
 #else
 			const float s = (1.0f/6.0f) * dx * dx;
 			const float t = (x - x0) / dx;
-			const float A = 1.0f - t;
-			const float B = t;
-			const float C = (A*A*A - A);	// - 2t + 3t^2 - t^3
-			const float D = (t*t*t - t);	// t^3 - t
 			const float k0 = s*r[pos];
 			const float k1 = s*r[pos+1];
 

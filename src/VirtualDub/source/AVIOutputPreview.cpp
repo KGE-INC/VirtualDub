@@ -38,6 +38,9 @@ AVIAudioPreviewOutputStream::AVIAudioPreviewOutputStream()
 	, mTotalSamples(0)
 	, mTotalBytes(0)
 	, mBufferLevel(0)
+	, mLastPlayTime(0)
+	, mLastCPUTime(VDGetAccurateTick())
+	, mbFinished(false)
 {
 	VDRTProfiler *profiler = VDGetRTProfiler();
 	if (profiler) {
@@ -53,9 +56,26 @@ AVIAudioPreviewOutputStream::~AVIAudioPreviewOutputStream() {
 }
 
 uint32 AVIAudioPreviewOutputStream::GetPreviewTime() {
+	uint32 cpuTime = VDGetAccurateTick();
 	sint32 t = mpAudioOut->GetPosition();
+	uint32 t2 = t < 0 ? 0 : t;
 
-	return t < 0 ? 0 : t;
+	if (t2 == mLastPlayTime && mbFinished) {
+		t2 += (cpuTime - mLastCPUTime);
+
+		if (t2 < mLastPlayTime)
+			t2 = mLastPlayTime;
+
+		return t2;
+	}
+
+	if (t2 < mLastPlayTime)
+		t2 = mLastPlayTime;
+
+	mLastPlayTime = t2;
+	mLastCPUTime = cpuTime;
+
+	return t2;
 }
 
 void AVIAudioPreviewOutputStream::initAudio() {
@@ -139,6 +159,10 @@ void AVIAudioPreviewOutputStream::stop() {
 void AVIAudioPreviewOutputStream::flush() {
 	if (mpAudioOut && mbStarted)
 		mpAudioOut->Flush();
+}
+
+void AVIAudioPreviewOutputStream::finish() {
+	mbFinished = true;
 }
 
 void AVIAudioPreviewOutputStream::finalize() {

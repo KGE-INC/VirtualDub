@@ -20,7 +20,10 @@
 #include "FilterFrameAllocator.h"
 
 VDFilterFrameAllocatorProxy::VDFilterFrameAllocatorProxy(const VDFilterFrameAllocatorProxy& src)
-	: mSizeRequired(0)
+	: mSizeRequired(src.mSizeRequired)
+	, mBorderWRequired(src.mBorderWRequired)
+	, mBorderHRequired(src.mBorderHRequired)
+	, mAccelMode(src.mAccelMode)
 	, mpAllocator(src.mpAllocator)
 	, mpLink(NULL)
 {
@@ -36,6 +39,9 @@ VDFilterFrameAllocatorProxy& VDFilterFrameAllocatorProxy::operator=(const VDFilt
 	if (&src != this) {
 		SetAllocator(src.mpAllocator);
 		mSizeRequired = src.mSizeRequired;
+		mBorderWRequired = src.mBorderWRequired;
+		mBorderHRequired = src.mBorderHRequired;
+		mAccelMode = src.mAccelMode;
 		mpLink = src.mpLink;
 	}
 
@@ -45,10 +51,13 @@ VDFilterFrameAllocatorProxy& VDFilterFrameAllocatorProxy::operator=(const VDFilt
 void VDFilterFrameAllocatorProxy::Clear() {
 	SetAllocator(NULL);
 	mSizeRequired = 0;
+	mBorderWRequired = 0;
+	mBorderHRequired = 0;
+	mAccelMode = kAccelModeNone;
 	mpLink = NULL;
 }
 
-void VDFilterFrameAllocatorProxy::SetAllocator(VDFilterFrameAllocator *alloc) {
+void VDFilterFrameAllocatorProxy::SetAllocator(IVDFilterFrameAllocator *alloc) {
 	if (alloc != mpAllocator) {
 		if (alloc)
 			alloc->AddRef();

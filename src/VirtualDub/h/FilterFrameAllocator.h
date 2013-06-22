@@ -19,10 +19,8 @@
 #define f_VD2_FILTERFRAMEALLOCATOR_H
 
 #include <vd2/system/refcount.h>
-#include <vd2/system/vdstl.h>
 
 class VDFilterFrameBuffer;
-struct VDFilterFrameBufferAllocatorNode;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -30,41 +28,12 @@ struct VDFilterFrameBufferAllocatorNode;
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDFilterFrameAllocator : public vdrefcounted<IVDRefCount> {
-	VDFilterFrameAllocator(const VDFilterFrameAllocator&);
-	VDFilterFrameAllocator& operator=(const VDFilterFrameAllocator&);
+class IVDFilterFrameAllocator : public IVDRefCount {
 public:
-	VDFilterFrameAllocator();
-	~VDFilterFrameAllocator();
+	virtual bool Allocate(VDFilterFrameBuffer **buffer) = 0;
 
-	uint32 GetFrameSize() const { return mSizeRequired; }
-
-	void Init(uint32 minFrames, uint32 maxFrames);
-	void Shutdown();
-
-	void AddSizeRequirement(uint32 bytes);
-
-	bool Allocate(VDFilterFrameBuffer **buffer);
-
-	void OnFrameBufferIdle(VDFilterFrameBuffer *buf);
-	void OnFrameBufferActive(VDFilterFrameBuffer *buf);
-
-protected:
-	uint32	mSizeRequired;
-	uint32	mMinFrames;
-	uint32	mMaxFrames;
-	uint32	mAllocatedFrames;
-	uint32	mAllocatedBytes;
-	uint32	mActiveFrames;
-	uint32	mActiveBytes;
-
-	uint32	mTrimCounter;
-	uint32	mTrimPeriod;
-	uint32	mCurrentWatermark;
-
-	typedef vdlist<VDFilterFrameBufferAllocatorNode> Buffers;
-	Buffers mActiveBuffers;
-	Buffers mIdleBuffers;
+	virtual void OnFrameBufferIdle(VDFilterFrameBuffer *buf) = 0;
+	virtual void OnFrameBufferActive(VDFilterFrameBuffer *buf) = 0;
 };
 
 #endif

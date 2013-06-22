@@ -73,6 +73,9 @@ namespace {
 		VDStringW		mAudioPlaybackDeviceKey;
 
 		uint32			mEnabledCPUFeatures;
+
+		bool			mbFilterAccelEnabled;
+		bool			mbFilterAccelDebugEnabled;		// NOT saved
 	} g_prefs2;
 }
 
@@ -543,6 +546,31 @@ protected:
 	PlaybackDeviceKeys mPlaybackDeviceKeys;
 };
 
+class VDDialogPreferencesAccel : public VDDialogBase {
+public:
+	VDPreferences2& mPrefs;
+	VDDialogPreferencesAccel(VDPreferences2& p) : mPrefs(p) {}
+
+	bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+		switch(type) {
+		case kEventAttach:
+			mpBase = pBase;
+			pBase->ExecuteAllLinks();
+			SetValue(100, mPrefs.mbFilterAccelEnabled);
+			return true;
+		case kEventDetach:
+		case kEventSync:
+			mPrefs.mbFilterAccelEnabled = GetValue(100) != 0;
+			return true;
+		}
+		return false;
+	}
+
+protected:
+	typedef std::vector<VDStringW> PlaybackDeviceKeys;
+	PlaybackDeviceKeys mPlaybackDeviceKeys;
+};
+
 class VDDialogPreferences : public VDDialogBase {
 public:
 	VDPreferences2& mPrefs;
@@ -569,6 +597,7 @@ public:
 				case 8:	pSubDialog->SetCallback(new VDDialogPreferencesImages(mPrefs), true); break;
 				case 9:	pSubDialog->SetCallback(new VDDialogPreferencesThreading(mPrefs), true); break;
 				case 10:	pSubDialog->SetCallback(new VDDialogPreferencesPlayback(mPrefs), true); break;
+				case 11:	pSubDialog->SetCallback(new VDDialogPreferencesAccel(mPrefs), true); break;
 				}
 			}
 		} else if (type == kEventSelect) {
@@ -664,6 +693,8 @@ void LoadPreferences() {
 
 	key.getString("Playback: Default audio device", g_prefs2.mAudioPlaybackDeviceKey);
 
+	g_prefs2.mbFilterAccelEnabled = key.getBool("Filters: Enable 3D hardware acceleration", false);
+
 	g_prefs2.mEnabledCPUFeatures = key.getInt("CPU: Enabled extensions", 0);
 
 	g_prefs2.mOldPrefs = g_prefs;
@@ -705,6 +736,8 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Threading: Video compression threads", prefs.mVideoCompressionThreads);
 
 	key.setString("Playback: Default audio device", prefs.mAudioPlaybackDeviceKey.c_str());
+
+	key.setBool("Filters: Enable 3D hardware acceleration", prefs.mbFilterAccelEnabled);
 
 	key.setInt("CPU: Enabled extensions", prefs.mEnabledCPUFeatures);
 }
@@ -792,6 +825,18 @@ uint32 VDPreferencesGetEnabledCPUFeatures() {
 
 const VDStringW& VDPreferencesGetAudioPlaybackDeviceKey() {
 	return g_prefs2.mAudioPlaybackDeviceKey;
+}
+
+bool VDPreferencesGetFilterAccelEnabled() {
+	return g_prefs2.mbFilterAccelEnabled;
+}
+
+void VDPreferencesSetFilterAccelVisualDebugEnabled(bool enabled) {
+	g_prefs2.mbFilterAccelDebugEnabled = enabled;
+}
+
+bool VDPreferencesGetFilterAccelVisualDebugEnabled() {
+	return g_prefs2.mbFilterAccelDebugEnabled;
 }
 
 void VDPreferencesUpdated() {

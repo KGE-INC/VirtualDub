@@ -45,7 +45,7 @@ void VDFilterFrameVideoSource::Init(IVDVideoSource *vs, const VDPixmapLayout& la
 	SetOutputLayout(layout);
 }
 
-bool VDFilterFrameVideoSource::RunRequests() {
+VDFilterFrameVideoSource::RunResult VDFilterFrameVideoSource::RunRequests() {
 	if (!mpVS->streamOwn(this)) {
 		mpVS->streamBegin(false, true);
 	}
@@ -60,7 +60,7 @@ bool VDFilterFrameVideoSource::RunRequests() {
 
 		if (!mpRequest) {
 			if (!GetNextRequest(&mpRequest))
-				return false;
+				return kRunResult_Idle;
 
 			VDVERIFY(AllocateRequestBuffer(mpRequest));
 
@@ -82,19 +82,22 @@ bool VDFilterFrameVideoSource::RunRequests() {
 			if (mbFirstSample)
 				mpVS->streamGetFrame(NULL, 0, false, -1, mTargetSample);
 
+			VDFilterFrameBuffer *buf = mpRequest->GetResultBuffer();
 			const VDPixmap& pxsrc = mpVS->getTargetFormat();
-			const VDPixmap& pxdst = VDPixmapFromLayout(mLayout, mpRequest->GetResultBuffer()->GetBasePointer());
+			const VDPixmap& pxdst = VDPixmapFromLayout(mLayout, buf->LockWrite());
 
 			if (!mpBlitter)
 				mpBlitter = VDPixmapCreateBlitter(pxdst, pxsrc);
 
 			mpBlitter->Blit(pxdst, pxsrc);
 
+			buf->Unlock();
+
 			mpRequest->MarkComplete(true);
 			CompleteRequest(mpRequest, true);
 			mpRequest->Release();
 			mpRequest = NULL;
-			return true;
+			return kRunResult_Running;
 		}
 
 		IVDStreamSource *ss = mpVS->asStream();
@@ -136,7 +139,7 @@ bool VDFilterFrameVideoSource::RunRequests() {
 		}
 	}
 
-	return true;
+	return kRunResult_Running;
 }
 
 sint64 VDFilterFrameVideoSource::GetNearestUniqueFrame(sint64 outputFrame) {

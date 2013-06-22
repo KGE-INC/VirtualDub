@@ -57,8 +57,14 @@ class FilterDefinitionInstance;
 class VDFilterFrameBuffer;
 class VDFilterFrameRequest;
 class IVDFilterFrameClientRequest;
+class IVDFilterSystemScheduler;
 
 class VDFilterFrameAllocatorManager;
+
+class VDFilterAccelContext;
+class VDFilterAccelEngine;
+class VDFilterAccelEngineDispatchQueue;
+class VDFilterAccelEngineMessage;
 
 ///////////////////
 
@@ -74,13 +80,16 @@ public:
 
 	VFBitmapInternal& operator=(const VFBitmapInternal&);
 
+	VDFilterFrameBuffer *GetBuffer() const { return mpBuffer; }
+
 	void Unbind();
 	void Fixup(void *base);
 	void ConvertBitmapLayoutToPixmapLayout();
 	void ConvertPixmapLayoutToBitmapLayout();
 	void ConvertPixmapToBitmap();
 	void BindToDIBSection(const VDFileMappingW32 *mapping);
-	void BindToFrameBuffer(VDFilterFrameBuffer *buffer);
+	void BindToFrameBuffer(VDFilterFrameBuffer *buffer, bool readOnly);
+	void CopyNullBufferParams();
 
 	void SetFrameNumber(sint64 frame);
 
@@ -107,6 +116,11 @@ public:
 	sint64	mFrameTimestampStart;		///< Starting timestamp of frame, in 100ns units.
 	sint64	mFrameTimestampEnd;			///< Ending timestamp of frame, in 100ns units.
 	sint64	mCookie;					///< Cookie supplied when frame was requested.
+
+	uint32	mVDXAHandle;				///< Acceleration handle to be used with VDXA routines.
+
+	uint32	mBorderWidth;
+	uint32	mBorderHeight;
 
 public:
 	VDDIBSectionW32	mDIBSection;
@@ -149,6 +163,8 @@ public:
 	VDXFBitmap *const *mpSourceFrames;	// (V14+)
 	VDXFBitmap *const *mpOutputFrames;	// (V14+)
 
+	IVDXAContext	*mpVDXA;			// (V15+)
+
 private:
 	char mSizeCheckSentinel;
 
@@ -170,7 +186,14 @@ public:
 	virtual void InvalidateAllCachedFrames() = 0;
 
 	virtual void Stop() = 0;
-	virtual bool RunRequests() = 0;
+
+	enum RunResult {
+		kRunResult_Idle,
+		kRunResult_Running,
+		kRunResult_Blocked
+	};
+
+	virtual RunResult RunRequests() = 0;
 };
 
 class FilterInstance : public ListNode, protected VDFilterActivationImpl, public vdrefcounted<IVDFilterFrameSource> {
@@ -192,6 +215,8 @@ public:
 	bool	IsAlignmentRequired() const { return mbAlignOnEntry; }
 	bool	IsConversionRequired() const { return mbConvertOnEntry; }
 	bool	IsInPlace() const;
+	bool	IsAcceleratable() const;
+	bool	IsAccelerated() const { return mbAccelerated; }
 
 	const char *GetName() const;
 	uint32	GetFlags() const { return mFlags; }
@@ -210,20 +235,14 @@ public:
 
 	uint32	Prepare(const VFBitmapInternal& input);
 
-	void	Start(uint32 flags, IVDFilterFrameSource *pSource);
+	void	Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterSystemScheduler *scheduler, VDFilterAccelEngine *accelEngine);
 	void	Stop();
 
 	VDFilterFrameAllocatorProxy *GetOutputAllocatorProxy();
 	void	RegisterAllocatorProxies(VDFilterFrameAllocatorManager *manager, VDFilterFrameAllocatorProxy *prev);
 	bool	CreateRequest(sint64 outputFrame, bool writable, IVDFilterFrameClientRequest **req);
 	bool	CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, IVDFilterFrameClientRequest **req);
-	bool	RunRequests();
-
-	bool	Run(VDFilterFrameRequest& request);
-	bool	Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
-	void	Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData);
-
-	void	RunSamplingCallback(long frame, long frameCount, VDXFilterPreviewSampleCallback cb, void *cbdata);
+	RunResult RunRequests();
 
 	void	InvalidateAllCachedFrames();
 
@@ -264,6 +283,7 @@ public:
 
 protected:
 	class SamplingInfo;
+	struct StopStartMessage;
 
 	~FilterInstance();
 
@@ -281,6 +301,28 @@ protected:
 	static void ScriptFunctionThunkInt(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkVariadic(IVDScriptInterpreter *, VDScriptValue *, int);
 
+	bool	RunRequest(VDFilterFrameRequest& request);
+	bool	Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
+	bool	BeginRequest(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming);
+	void	EndRequest();
+
+	bool	AllocateResultBuffer(VDFilterFrameRequest& request, int srcIndex);
+
+	struct RunMessage;
+
+	static void StartFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
+	void StartInner();
+
+	static void StopFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
+	void StopInner();
+
+	static void RunFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message);
+	void	RunFilter(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, bool bltSrcOnEntry);
+	bool	ConnectAccelBuffers();
+	void	DisconnectAccelBuffers();
+	bool	ConnectAccelBuffer(VFBitmapInternal *buf, bool bindAsRenderTarget);
+	void	DisconnectAccelBuffer(VFBitmapInternal *buf);
+
 public:
 	VDFileMappingW32	mFileMapping;
 	VFBitmapInternal	mRealSrc;
@@ -294,6 +336,7 @@ public:
 	bool	mbBlitOnEntry;
 	bool	mbAlignOnEntry;
 	bool	mbConvertOnEntry;
+	bool	mbAccelerated;
 
 	VFBitmapInternal	mBlendTemp;
 
@@ -354,6 +397,9 @@ protected:
 	VDFilterFrameSharingPredictor	mSharingPredictor;
 
 	vdautoptr<IVDPixmapBlitter>	mpSourceConversionBlitter;
+
+	VDFilterAccelEngine		*mpAccelEngine;
+	VDFilterAccelContext	*mpAccelContext;
 
 	VDFilterThreadContext	mThreadContext;
 };

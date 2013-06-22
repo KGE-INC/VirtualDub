@@ -1410,14 +1410,17 @@ void VideoSourceAVI::Reinit() {
 	if (nOldFrames != nNewFrames && mjpeg_mode) {
 		// We have to resize the mjpeg_splits array.
 
-		long *pNewSplits = new long[nNewFrames];
+		if (nNewFrames > (size_t)-1)
+			throw MyMemoryError();
+
+		long *pNewSplits = new long[(size_t)nNewFrames];
 
 		if (!pNewSplits)
 			throw MyMemoryError();
 
 		VDPosition i;
 
-		memcpy(pNewSplits, mjpeg_splits, sizeof(long)*nOldFrames);
+		memcpy(pNewSplits, mjpeg_splits, sizeof(long)*(size_t)nOldFrames);
 
 		for(i=nOldFrames; i<nNewFrames; i++)
 			pNewSplits[i] = -1;
@@ -1457,7 +1460,7 @@ void VideoSourceAVI::redoKeyFlags(vdfastvector<uint32>& newFlags) {
 	bool fStreamBegun = false;
 	long *pFrameSums;
 
-	uint32 maskWords = (mSampleLast-mSampleFirst+31) >> 5;
+	uint32 maskWords = (uint32)((mSampleLast-mSampleFirst+31) >> 5);
 	newFlags.resize(maskWords, 0);
 
 	// Find maximum frame
@@ -1482,7 +1485,7 @@ void VideoSourceAVI::redoKeyFlags(vdfastvector<uint32>& newFlags) {
 	if (!(lpInputBuffer = new char[((lMaxFrame+7)&-8) + lMaxFrame]))
 		throw MyMemoryError();
 
-	if (!(pFrameSums = new long[mSampleLast - mSampleFirst])) {
+	if (!(pFrameSums = new long[(size_t)(mSampleLast - mSampleFirst)])) {
 		delete[] lpInputBuffer;
 		throw MyMemoryError();
 	}
@@ -1567,7 +1570,7 @@ rekey_error:
 
 
 			if (lWhiteTotal == pFrameSums[lSample - mSampleFirst])
-				newFlags[(lSample - mSampleFirst)>>5] |= 1<<((lSample-mSampleFirst)&31);
+				newFlags[(size_t)((lSample - mSampleFirst)>>5)] |= 1<<(((uint32)lSample - (uint32)mSampleFirst)&31);
 
 rekey_error2:
 			if (lSample == mSampleFirst)

@@ -30,10 +30,9 @@
 #include <vd2/system/memory.h>
 #include <vd2/VDLib/Dialog.h>
 #include <vd2/VDXFrame/VideoFilter.h>
+#include <vd2/plugin/vdvideoaccel.h>
 
-#include "ScriptInterpreter.h"
-#include "ScriptValue.h"
-#include "ScriptError.h"
+#include "f_deinterlace.inl"
 
 extern HINSTANCE g_hInst;
 
@@ -2901,10 +2900,24 @@ void VDVideoFilterDeinterlaceDialog::OnDataExchange(bool write) {
 
 class VDVideoFilterDeinterlace : public VDXVideoFilter {
 public:
+	VDVideoFilterDeinterlace()
+		: mVDXAFP_ELA1(0)
+		, mVDXAFP_ELA2(0)
+		, mVDXAFP_Final(0)
+		, mVDXART_ELA1(0)
+		, mVDXART_ELA2(0)
+	{
+	}
+
 	uint32 GetParams();
 	void Start();
 	void End();
 	void Run();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void StopAccel(IVDXAContext *vdxa);
+
 	bool Configure(VDXHWND hwnd);
 	void GetSettingString(char *buf, int maxlen);
 	void GetScriptString(char *buf, int maxlen);
@@ -2979,6 +2992,12 @@ protected:
 	Buffer	mBuffers[3][kMaxBuffers];
 
 	vdblock<uint8, vdaligned_alloc<uint8> > mElaBuffer;
+
+	uint32	mVDXAFP_ELA1;
+	uint32	mVDXAFP_ELA2;
+	uint32	mVDXAFP_Final;
+	uint32	mVDXART_ELA1;
+	uint32	mVDXART_ELA2;
 };
 
 VDXVF_BEGIN_SCRIPT_METHODS(VDVideoFilterDeinterlace)
@@ -3022,6 +3041,11 @@ uint32 VDVideoFilterDeinterlace::GetParams() {
 			mChromaRowBytes = pxldst.w >> 2;
 			break;
 
+		case nsVDXPixmap::kPixFormat_VDXA_YUV:
+			if (mConfig.mMode != VDVideoFilterDeinterlaceConfig::kModeYadif)
+				return FILTERPARAM_NOT_SUPPORTED;
+			break;
+
 		default:
 			return FILTERPARAM_NOT_SUPPORTED;
 	}
@@ -3046,7 +3070,10 @@ uint32 VDVideoFilterDeinterlace::GetParams() {
 
 	switch(mConfig.mMode) {
 	case VDVideoFilterDeinterlaceConfig::kModeYadif:
-		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_ALIGN_SCANLINES | FILTERPARAM_SWAP_BUFFERS;
+		if (pxlsrc.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+			return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_SWAP_BUFFERS;
+		else
+			return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_ALIGN_SCANLINES | FILTERPARAM_SWAP_BUFFERS;
 
 	case VDVideoFilterDeinterlaceConfig::kModeELA:
 		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_ALIGN_SCANLINES;
@@ -3520,6 +3547,111 @@ bool VDVideoFilterDeinterlace::Configure(VDXHWND hwnd) {
 
 	mConfig = cfg;
 	return false;
+}
+
+void VDVideoFilterDeinterlace::StartAccel(IVDXAContext *vdxa) {
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+
+	mVDXAFP_ELA1 = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterDeinterlaceFP_ELA1, sizeof kVDFilterDeinterlaceFP_ELA1);
+	mVDXAFP_ELA2 = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterDeinterlaceFP_ELA2, sizeof kVDFilterDeinterlaceFP_ELA2);
+	mVDXAFP_Final = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterDeinterlaceFP_Final, sizeof kVDFilterDeinterlaceFP_Final);
+	mVDXART_ELA1 = vdxa->CreateRenderTexture(pxlsrc.w, pxlsrc.h >> 1, 0, 0, kVDXAF_Unknown, false);
+	mVDXART_ELA2 = vdxa->CreateRenderTexture(pxlsrc.w, pxlsrc.h >> 1, 0, 0, kVDXAF_Unknown, false);
+}
+
+void VDVideoFilterDeinterlace::RunAccel(IVDXAContext *vdxa) {
+	bool interpolatingBottomField = mConfig.mTFF;
+
+	if (mConfig.mDoubleRate && (((int)fa->mpOutputFrames[0]->mFrameNumber) & 1) != 0)
+		interpolatingBottomField = !interpolatingBottomField;
+
+	const bool interpolatingSecondField = mConfig.mTFF ? interpolatingBottomField : !interpolatingBottomField;
+	const bool interpolatingTopField = !interpolatingBottomField;
+
+	const VDXFBitmap& frame0 = *fa->mpSourceFrames[0];
+	const VDXFBitmap& frame1 = *fa->mpSourceFrames[1];
+	const VDXFBitmap& frame2 = *fa->mpSourceFrames[2];
+	const VDXFBitmap& field0 = frame0;
+	const VDXFBitmap& field1 = interpolatingSecondField ? frame1 : frame0;
+	const VDXFBitmap& field2 = frame1;
+	const VDXFBitmap& field3 = interpolatingSecondField ? frame2 : frame1;
+	const VDXFBitmap& field4 = frame2;
+
+	const float y0 = interpolatingTopField ? -1.5f : -0.5f;
+	const float y1 = interpolatingTopField ? +0.5f : +1.5f;
+
+	vdxa->SetSampler(0, field2.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetTextureMatrixDual(0, field2.mVDXAHandle, -3.0f, y0, -3.0f, y1);
+	vdxa->SetTextureMatrixDual(1, field2.mVDXAHandle, -2.0f, y0, -2.0f, y1);
+	vdxa->SetTextureMatrixDual(2, field2.mVDXAHandle, -1.0f, y0, -1.0f, y1);
+	vdxa->SetTextureMatrixDual(3, field2.mVDXAHandle,  0.0f, y0,  0.0f, y1);
+	vdxa->SetTextureMatrixDual(4, field2.mVDXAHandle, +1.0f, y0, +1.0f, y1);
+	vdxa->SetTextureMatrixDual(5, field2.mVDXAHandle, +2.0f, y0, +2.0f, y1);
+	vdxa->SetTextureMatrix(6, field2.mVDXAHandle, +3.0f, y0, NULL);
+	vdxa->SetTextureMatrix(7, field2.mVDXAHandle, +3.0f, y1, NULL);
+	vdxa->DrawRect(mVDXART_ELA1, mVDXAFP_ELA1, NULL);
+
+	vdxa->SetSampler(0, mVDXART_ELA1, kVDXAFilt_Point);
+	vdxa->SetSampler(1, field2.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetTextureMatrix(0, mVDXART_ELA1, 0, 0, NULL);
+	vdxa->SetTextureMatrix(1, field2.mVDXAHandle, 0, y0, NULL);
+	vdxa->SetTextureMatrix(2, field2.mVDXAHandle, 0, y1, NULL);
+
+	VDXATextureDesc desc;
+	vdxa->GetTextureDesc(mVDXART_ELA1, desc);
+	float v[4] = { 1.0f / (float)desc.mTexWidth, 0, 0, 0 };
+	vdxa->SetFragmentProgramConstF(0, 1, v);
+
+	vdxa->DrawRect(mVDXART_ELA2, mVDXAFP_ELA2, NULL);
+
+	vdxa->SetSampler(0, field0.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetSampler(1, field1.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetSampler(2, field2.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetSampler(3, field3.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetSampler(4, field4.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetSampler(5, mVDXART_ELA2, kVDXAFilt_Point);
+	vdxa->SetTextureMatrix(0, field2.mVDXAHandle, 0.0f, -2.0f, NULL);
+	vdxa->SetTextureMatrix(1, field2.mVDXAHandle, 0.0f, -1.0f, NULL);
+	vdxa->SetTextureMatrix(2, field2.mVDXAHandle, 0.0f,  0.0f, NULL);
+	vdxa->SetTextureMatrix(3, field2.mVDXAHandle, 0.0f, +1.0f, NULL);
+	vdxa->SetTextureMatrix(4, field2.mVDXAHandle, 0.0f, +2.0f, NULL);
+	vdxa->SetTextureMatrix(5, mVDXART_ELA2, 0.0f, interpolatingBottomField ? -0.25f : 0.25f, NULL);
+
+	const float mx[12]={
+		0, 0, 0, 0,
+		(float)(fa->dst.h >> 1), 0, 0, 0,
+		interpolatingBottomField ? 0.0f : 0.5f, 0, 0, 0
+	};
+	vdxa->SetTextureMatrix(6, 0, 0, 0, mx);
+
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mVDXAFP_Final, NULL);
+}
+
+void VDVideoFilterDeinterlace::StopAccel(IVDXAContext *vdxa) {
+	if (mVDXART_ELA2) {
+		vdxa->DestroyObject(mVDXART_ELA2);
+		mVDXART_ELA2 = 0;
+	}
+
+	if (mVDXART_ELA1) {
+		vdxa->DestroyObject(mVDXART_ELA1);
+		mVDXART_ELA1 = 0;
+	}
+
+	if (mVDXAFP_Final) {
+		vdxa->DestroyObject(mVDXAFP_Final);
+		mVDXAFP_Final = 0;
+	}
+
+	if (mVDXAFP_ELA2) {
+		vdxa->DestroyObject(mVDXAFP_ELA2);
+		mVDXAFP_ELA2 = 0;
+	}
+
+	if (mVDXAFP_ELA1) {
+		vdxa->DestroyObject(mVDXAFP_ELA1);
+		mVDXAFP_ELA1 = 0;
+	}
 }
 
 void VDVideoFilterDeinterlace::GetSettingString(char *buf, int maxlen) {

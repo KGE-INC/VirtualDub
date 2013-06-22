@@ -96,10 +96,12 @@ bool VDFilterFrameQueue::PeekNextRequest(VDFilterFrameRequest **req) {
 		}
 
 		bool anyFailed;
-		if (!r->AreSourcesReady(&anyFailed))
+		VDFilterFrameRequestError *error;
+		if (!r->AreSourcesReady(&anyFailed, &error))
 			return false;
 
 		if (anyFailed) {
+			r->SetError(error);
 			r->MarkComplete(false);
 			continue;
 		}
@@ -130,10 +132,12 @@ bool VDFilterFrameQueue::GetNextRequest(VDFilterFrameRequest **req) {
 		}
 
 		bool anyFailed;
-		if (!r->AreSourcesReady(&anyFailed))
+		VDFilterFrameRequestError *error;
+		if (!r->AreSourcesReady(&anyFailed, &error))
 			return false;
 
 		if (anyFailed) {
+			r->SetError(error);
 			r->MarkComplete(false);
 			continue;
 		}

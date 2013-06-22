@@ -172,7 +172,7 @@ bool VDFilterFrameRequest::IsSuccessful() const {
 	return mbSuccessful;
 }
 
-bool VDFilterFrameRequest::AreSourcesReady(bool *anyFailed) const {
+bool VDFilterFrameRequest::AreSourcesReady(bool *anyFailed, VDFilterFrameRequestError **error) const {
 	bool failed = false;
 
 	for(SourceRequests::const_iterator it(mSourceRequests.begin()), itEnd(mSourceRequests.end()); it != itEnd; ++it) {
@@ -182,8 +182,10 @@ bool VDFilterFrameRequest::AreSourcesReady(bool *anyFailed) const {
 			if (!creq->IsCompleted())
 				return false;
 
-			if (!creq->IsSuccessful())
-				failed = false;
+			if (!creq->IsSuccessful()) {
+				failed = true;
+				*error = creq->GetError();
+			}
 		}
 	}
 
@@ -224,7 +226,9 @@ VDFilterFrameBuffer *VDFilterFrameRequest::GetSource(uint32 index) {
 
 		if (creq) {
 			buf = creq->GetResultBuffer();
-			buf->AddRef();
+
+			if (buf)
+				buf->AddRef();
 
 			mSources[index] = buf;
 		}

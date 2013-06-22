@@ -92,6 +92,8 @@ using namespace nsVDDub;
 extern const char g_szError[];
 extern HWND g_hWnd;
 extern uint32& VDPreferencesGetRenderVideoBufferCount();
+extern bool VDPreferencesGetFilterAccelVisualDebugEnabled();
+extern bool VDPreferencesGetFilterAccelEnabled();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -419,7 +421,6 @@ public:
 
 	void InitAudioConversionChain();
 	void InitOutputFile();
-	bool AttemptInputOverlays();
 
 	void InitDirectDraw();
 	bool NegotiateFastFormat(const BITMAPINFOHEADER& bih);
@@ -955,12 +956,14 @@ void Dubber::InitOutputFile() {
 
 		hdr.dwSampleSize = 0;
 
+		bool selectFcchandlerBasedOnFormat = false;
 		if (opt->video.mode > DubVideoOptions::M_NONE && !opt->video.mbUseSmartRendering) {
 			if (mpVideoCompressor) {
 				hdr.fccHandler	= compVars->fccHandler;
 				hdr.dwQuality	= compVars->lQ;
 			} else {
-				hdr.fccHandler	= mmioFOURCC('D','I','B',' ');
+				hdr.fccHandler	= VDMAKEFOURCC('D','I','B',' ');
+				selectFcchandlerBasedOnFormat = true;
 			}
 		}
 
@@ -1078,6 +1081,15 @@ void Dubber::InitOutputFile() {
 			}
 		}
 
+		if (selectFcchandlerBasedOnFormat) {
+			// It's been reported that Cinemacraft HDe does not like YCbCr formats whose
+			// fccHandler is set to DIB, but it does accept the FOURCC code.
+
+			if (outputFormat->biCompression >= 0x20000000) {
+				hdr.fccHandler = outputFormat->biCompression;
+			}
+		}
+
 		mpOutputSystem->SetVideo(hdr, &*outputFormat, outputFormat.size());
 
 		if(opt->video.mode >= DubVideoOptions::M_FULL) {
@@ -1092,43 +1104,37 @@ void Dubber::InitOutputFile() {
 	}
 }
 
-bool Dubber::AttemptInputOverlays() {
-	static const int kFormats[]={
-		nsVDPixmap::kPixFormat_YUV420_Planar,
-		nsVDPixmap::kPixFormat_YUV422_UYVY,
-		nsVDPixmap::kPixFormat_YUV422_YUYV
-	};
-
-	for(int i=0; i<sizeof(kFormats)/sizeof(kFormats[0]); ++i) {
-		const int format = kFormats[i];
-
-		VideoSources::const_iterator it(mVideoSources.begin()), itEnd(mVideoSources.end());
-		for(; it!=itEnd; ++it) {
-			IVDVideoSource *vs = *it;
-
-			if (!vs->setTargetFormat(format))
-				break;
-		}
-
-		if (it == itEnd) {
-			if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, opt->video.previewFieldMode>0))
-				return true;
-		}
-	}
-
-	return false;
-}
-
 void Dubber::InitDirectDraw() {
-
-	if (!opt->perf.useDirectDraw)
+	if (!opt->perf.useDirectDraw || !mpInputDisplay)
 		return;
 
 	// Should we try and establish a DirectDraw overlay?
 
 	if (opt->video.mode == DubVideoOptions::M_SLOWREPACK) {
-		if (AttemptInputOverlays())
-			mbInputDisplayInitialized = true;
+		static const int kFormats[]={
+			nsVDPixmap::kPixFormat_YUV420_Planar,
+			nsVDPixmap::kPixFormat_YUV422_UYVY,
+			nsVDPixmap::kPixFormat_YUV422_YUYV
+		};
+
+		for(int i=0; i<sizeof(kFormats)/sizeof(kFormats[0]); ++i) {
+			const int format = kFormats[i];
+
+			VideoSources::const_iterator it(mVideoSources.begin()), itEnd(mVideoSources.end());
+			for(; it!=itEnd; ++it) {
+				IVDVideoSource *vs = *it;
+
+				if (!vs->setTargetFormat(format))
+					break;
+			}
+
+			if (it == itEnd) {
+				if (mpInputDisplay->SetSource(false, mVideoSources.front()->getTargetFormat(), 0, 0, false, opt->video.previewFieldMode>0)) {
+					mbInputDisplayInitialized = true;
+					break;
+				}
+			}
+		}
 	}
 }
 
@@ -1201,7 +1207,9 @@ void Dubber::InitSelectInputFormat() {
 	if (opt->video.mode == DubVideoOptions::M_FASTREPACK && mpVideoCompressor) {
 		// Attempt source format.
 		if (NegotiateFastFormat(bih)) {
-			mpInputDisplay->Reset();
+			if (mpInputDisplay)
+				mpInputDisplay->Reset();
+
 			mbInputDisplayInitialized = true;
 			return;
 		}
@@ -1213,21 +1221,24 @@ void Dubber::InitSelectInputFormat() {
 
 		if (!(bih.biWidth & 1)) {
 			if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV422_UYVY)) {
-				mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
+				if (mpInputDisplay)
+					mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 				mbInputDisplayInitialized = true;
 				return;
 			}
 
 			// Attempt YUY2.
 			if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV422_YUYV)) {
-				mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
+				if (mpInputDisplay)
+					mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 				mbInputDisplayInitialized = true;
 				return;
 			}
 
 			if (!(bih.biHeight & 1)) {
 				if (NegotiateFastFormat(nsVDPixmap::kPixFormat_YUV420_Planar)) {
-					mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
+					if (mpInputDisplay)
+						mpInputDisplay->SetSource(false, vSrc->getTargetFormat());
 					mbInputDisplayInitialized = true;
 					return;
 				}
@@ -1325,8 +1336,11 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	mpVideoFrameSource = new VDFilterFrameVideoSource;
 	mpVideoFrameSource->Init(vSrc, filters.GetInputLayout());
 
+	filters.SetVisualAccelDebugEnabled(VDPreferencesGetFilterAccelVisualDebugEnabled());
+	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+
 	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
-		filters.initLinearChain(&g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
+		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
 
 		InitVideoStreamValuesStatic2(vInfo, opt, &filters, frameRateTimeline);
 		
@@ -1343,11 +1357,11 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 			throw MyError("The output frame size is not compatible with the selected output format. (%dx%d, %s)", output.w, output.h, formatInfo.name);
 		}
 
-		filters.ReadyFilters(fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0);
+		filters.ReadyFilters();
 	} else {
 		// We need this to correctly create the video frame map.
-		filters.initLinearChain(&g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
-		filters.ReadyFilters(fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0);
+		filters.initLinearChain(NULL, fPreview ? VDXFilterStateInfo::kStateRealTime | VDXFilterStateInfo::kStatePreview : 0, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, vInfo.mFrameRatePreFilter, -1, vSrc->getPixelAspectRatio());
+		filters.ReadyFilters();
 		InitVideoStreamValuesStatic2(vInfo, opt, NULL, frameRateTimeline);
 	}
 

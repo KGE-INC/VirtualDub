@@ -993,10 +993,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\h\resample_kernels.h"
-				>
-			</File>
-			<File
 				RelativePath=".\h\resample_stages.h"
 				>
 			</File>
@@ -1572,6 +1568,10 @@
 			>
 			<File
 				RelativePath="..\h\vd2\Kasumi\blitter.h"
+				>
+			</File>
+			<File
+				RelativePath="..\h\vd2\Kasumi\resample_kernels.h"
 				>
 			</File>
 		</Filter>

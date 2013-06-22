@@ -15,7 +15,6 @@
 #define IDC_SAVEASDEFAULT               3
 #define IDOK2                           3
 #define IDC_ADDTOQUEUE                  3
-#define IDCANCEL2                       3
 #define IDC_REMOVE                      4
 #define IDS_TITLE_DUBBING               4
 #define IDC_MOVE_DOWN                   4
@@ -1402,6 +1401,13 @@
 #define ID_OPTIONS_KEYBOARDSHORTCUTS    40508
 #define ID_ALWAYSONTOP                  40509
 #define ID_SYSTEM_ALWAYSONTOP           40510
+#define ID_VIEW_PANELAYOUT              40511
+#define ID_PANELAYOUT_INPUTPANEONLY     40512
+#define ID_PANELAYOUT_OUTPUTPANEONLY    40513
+#define ID_PANELAYOUT_BOTHPLANES        40514
+#define ID_PANELAYOUT_BOTHPANES         40515
+#define ID_PANELAYOUT_AUTO              40516
+#define ID_PANELAYOUT_AUTOSIZE          40517
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1457,7 +1463,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        288
-#define _APS_NEXT_COMMAND_VALUE         40511
+#define _APS_NEXT_COMMAND_VALUE         40518
 #define _APS_NEXT_CONTROL_VALUE         1482
 #define _APS_NEXT_SYMED_VALUE           111
 #endif

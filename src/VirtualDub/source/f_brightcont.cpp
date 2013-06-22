@@ -19,11 +19,14 @@
 
 #include <vd2/VDXFrame/VideoFilter.h>
 #include <vd2/VDLib/Dialog.h>
+#include <vd2/plugin/vdvideoaccel.h>
 #include <vd2/plugin/vdvideofilt.h>
 #include <windows.h>
 #include <commctrl.h>
 
 #include "resource.h"
+
+#include "f_brightcont.inl"
 
 extern HINSTANCE g_hInst;
 
@@ -111,7 +114,7 @@ void VDVFilterBrightContConfig::RedoTables() {
 	float bias = bright - 0.5f;
 	float scale = (float)cont / 16.0f;
 	GenTable(mLookup, bias, (float)scale);
-	GenTable(mYLookup, 16.0f*(1.0f - scale) + bias*0.858824f, scale);
+	GenTable(mYLookup, 16.0f*(1.0f - scale) + bias*(219.0f / 255.0f), scale);
 	GenTable(mCLookup, 128.0f*(1.0f - scale), scale);
 }
 
@@ -135,9 +138,16 @@ void VDVFilterBrightContConfig::GenTable(uint8 table[256], float fy0, float fdyd
 
 class VDVFilterBrightCont : public VDXVideoFilter {
 public:
+	VDVFilterBrightCont();
+
 	uint32 GetParams();
 	void Start();
 	void Run();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void StopAccel(IVDXAContext *vdxa);
+
 	bool Configure(VDXHWND hwnd);
 	void GetSettingString(char *buf, int maxlen);
 	void GetScriptString(char *buf, int maxlen);
@@ -147,7 +157,14 @@ public:
 
 protected:
 	VDVFilterBrightContConfig mConfig;
+
+	uint32 mVDXAFP;
 };
+
+VDVFilterBrightCont::VDVFilterBrightCont()
+	: mVDXAFP(0)
+{
+}
 
 void VDVFilterBrightCont::Run() {	
 	const VDXPixmap& pxdst = *fa->dst.mpPixmap;
@@ -244,6 +261,10 @@ uint32 VDVFilterBrightCont::GetParams() {
 		case nsVDXPixmap::kPixFormat_YUV410_Planar:
 			break;
 
+		case nsVDXPixmap::kPixFormat_VDXA_RGB:
+		case nsVDXPixmap::kPixFormat_VDXA_YUV:
+			return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_SWAP_BUFFERS;
+
 		default:
 			return FILTERPARAM_NOT_SUPPORTED;
 	}
@@ -251,6 +272,50 @@ uint32 VDVFilterBrightCont::GetParams() {
 	dstLayout.format = srcLayout.format;
 
 	return FILTERPARAM_SUPPORTS_ALTFORMATS;
+}
+
+void VDVFilterBrightCont::StartAccel(IVDXAContext *vdxa) {
+	mVDXAFP = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterBrightContFP, sizeof kVDFilterBrightContFP);
+}
+
+void VDVFilterBrightCont::RunAccel(IVDXAContext *vdxa) {
+	float scale = mConfig.cont / 16.0f;
+	float biasag = mConfig.bright / 255.0f;
+	float biasrb = biasag;
+
+	if (fa->src.mpPixmapLayout->format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+		// y *= 255;
+		// y = (y - 16) * 255 / 219;
+		// y = a*y + b;
+		// y = y * 219 / 255 + 16;
+		// y /= 255;
+		biasag = biasag * (219.0f / 255.0f) + (16.0f / 255.0f) * (1.0f - scale);
+
+		// y *= 255;
+		// y = (y - 128) * 255 / 224;
+		// y = a*y + b;
+		// y = y * 224 / 255 + 16;
+		// y /= 255;
+		biasrb = (128.0f / 255.0f) * (1.0f - scale);
+	}
+
+	float v[4];
+	v[0] = scale;
+	v[1] = biasag;
+	v[2] = biasrb;
+	v[3] = 0;
+	vdxa->SetFragmentProgramConstF(0, 1, v);
+
+	vdxa->SetSampler(0, fa->src.mVDXAHandle, kVDXAFilt_Point);
+	vdxa->SetTextureMatrix(0, fa->src.mVDXAHandle, 0, 0, NULL);
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mVDXAFP, NULL);
+}
+
+void VDVFilterBrightCont::StopAccel(IVDXAContext *vdxa) {
+	if (mVDXAFP) {
+		vdxa->DestroyObject(mVDXAFP);
+		mVDXAFP = 0;
+	}
 }
 
 //////////////////

@@ -21,7 +21,6 @@
 
 #include <vd2/system/refcount.h>
 
-#include "VideoSource.h"
 #include "ClippingControl.h"
 
 #include "resource.h"
@@ -34,7 +33,6 @@
 #include "ScriptError.h"
 
 extern HINSTANCE g_hInst;
-extern vdrefptr<IVDVideoSource> inputVideo;
 
 ///////////////////////
 
@@ -42,6 +40,9 @@ typedef struct MyFilterData {
 	long x1, y1, x2, y2;
 	COLORREF color, color_temp;
 	HBRUSH hbrColor;
+
+	sint32 mSourceWidth;
+	sint32 mSourceHeight;
 } MyFilterData;
 
 static int fill_run(const FilterActivation *fa, const FilterFunctions *ff) {
@@ -97,13 +98,7 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 				mfd->color_temp = mfd->color;
 				mfd->hbrColor = CreateSolidBrush(mfd->color);
 
-				if (inputVideo) {
-					VDAVIBitmapInfoHeader *bmi = inputVideo->getImageFormat();
-					pClipCtrl->SetBitmapSize(bmi->biWidth, abs(bmi->biHeight));
-				} else
-					pClipCtrl->SetBitmapSize(320, 240);
-
-
+				pClipCtrl->SetBitmapSize(mfd->mSourceWidth, mfd->mSourceHeight);
 				pClipCtrl->SetClipBounds(vdrect32(mfd->x1, mfd->y1, mfd->x2, mfd->y2));
 
 				GetWindowRect(hDlg, &rw);
@@ -218,7 +213,11 @@ static INT_PTR CALLBACK fillDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 }
 
 static int fill_config(FilterActivation *fa, const FilterFunctions *ff, VDXHWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FILL), (HWND)hWnd, fillDlgProc, (LPARAM)fa->filter_data);
+	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	mfd->mSourceWidth = fa->src.w;
+	mfd->mSourceHeight = fa->src.h;
+
+	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_FILL), (HWND)hWnd, fillDlgProc, (LPARAM)mfd);
 }
 
 static void fill_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

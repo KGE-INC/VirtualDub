@@ -26,6 +26,7 @@
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/vdstl.h>
 #include <vd2/plugin/vdplugin.h>
+#include <vd2/plugin/vdvideoaccel.h>
 #include <vd2/vdlib/Dialog.h>
 #include <vd2/VDXFrame/VideoFilter.h>
 
@@ -33,6 +34,8 @@
 #include "e_blur.h"
 #include "resource.h"
 #include "VBitmap.h"
+
+#include "f_warpsharp.inl"
 
 #if defined(_MSC_VER) && defined(_M_IX86)
 	#pragma warning(disable: 4799)
@@ -100,6 +103,11 @@ public:
 	void Start();
 	void Run();
 	void End();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void StopAccel(IVDXAContext *vdxa);
+
 	bool Configure(VDXHWND hwnd);
 	void GetSettingString(char *buf, int maxlen);
 	void GetScriptString(char *buf, int maxlen);
@@ -114,6 +122,12 @@ protected:
 	VEffect *veffBlur;
 	VBitmap vbmBump;
 
+	uint32 mVDXAPSGradient;
+	uint32 mVDXAPSBlur;
+	uint32 mVDXAPSFinal;
+	uint32 mVDXARTGradientBuffer1;
+	uint32 mVDXARTGradientBuffer2;
+
 	vdfastvector<int>	mDisplacementRowMap;
 
 	VDVFilterConfigWarpSharp mConfig;
@@ -126,7 +140,13 @@ VDXVF_BEGIN_SCRIPT_METHODS(VDVFilterWarpSharp)
 	VDXVF_DEFINE_SCRIPT_METHOD(VDVFilterWarpSharp, ScriptConfig, "ii")
 VDXVF_END_SCRIPT_METHODS()
 
-VDVFilterWarpSharp::VDVFilterWarpSharp() {
+VDVFilterWarpSharp::VDVFilterWarpSharp()
+	: mVDXAPSGradient(0)
+	, mVDXAPSBlur(0)
+	, mVDXAPSFinal(0)
+	, mVDXARTGradientBuffer1(0)
+	, mVDXARTGradientBuffer2(0)
+{
 }
 
 VDVFilterWarpSharp::~VDVFilterWarpSharp() {
@@ -135,10 +155,15 @@ VDVFilterWarpSharp::~VDVFilterWarpSharp() {
 uint32 VDVFilterWarpSharp::GetParams() {
 	const VDXPixmapLayout& pxsrc = *fa->src.mpPixmapLayout;
 
+	fa->src.mBorderWidth = 1;
+	fa->src.mBorderHeight = 1;
+
 	switch(pxsrc.format) {
 		case nsVDXPixmap::kPixFormat_XRGB8888:
 		case nsVDXPixmap::kPixFormat_Y8:
 		case nsVDXPixmap::kPixFormat_YUV444_Planar:
+		case nsVDXPixmap::kPixFormat_VDXA_RGB:
+		case nsVDXPixmap::kPixFormat_VDXA_YUV:
 			return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_SUPPORTS_ALTFORMATS;
 	}
 
@@ -950,6 +975,78 @@ void VDVFilterWarpSharp::End() {
 		delete veffBlur;
 		veffBlur = NULL;
 	}
+}
+
+void VDVFilterWarpSharp::StartAccel(IVDXAContext *vdxa) {
+	if (fa->src.mpPixmap->format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+		mVDXAPSGradient = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterWarpSharpPS_GradientYUV, sizeof kVDFilterWarpSharpPS_GradientYUV);
+	else
+		mVDXAPSGradient = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterWarpSharpPS_GradientRGB, sizeof kVDFilterWarpSharpPS_GradientRGB);
+
+	mVDXAPSBlur = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterWarpSharpPS_Blur, sizeof kVDFilterWarpSharpPS_Blur);
+	mVDXAPSFinal = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterWarpSharpPS_Final, sizeof kVDFilterWarpSharpPS_Final);
+	mVDXARTGradientBuffer1 = vdxa->CreateRenderTexture(fa->dst.w, fa->dst.h, 1, 1, kVDXAF_Unknown, false);
+	mVDXARTGradientBuffer2 = vdxa->CreateRenderTexture(fa->dst.w, fa->dst.h, 1, 1, kVDXAF_Unknown, false);
+}
+
+void VDVFilterWarpSharp::RunAccel(IVDXAContext *vdxa) {
+	vdxa->SetSampler(0, fa->src.mVDXAHandle, kVDXAFilt_Bilinear);
+	vdxa->SetTextureMatrix(0, fa->src.mVDXAHandle, -0.5f, -0.5f, NULL);
+	vdxa->SetTextureMatrix(1, fa->src.mVDXAHandle, +0.5f, -0.5f, NULL);
+	vdxa->SetTextureMatrix(2, fa->src.mVDXAHandle, -0.5f, +0.5f, NULL);
+	vdxa->SetTextureMatrix(3, fa->src.mVDXAHandle, +0.5f, +0.5f, NULL);
+	vdxa->DrawRect(mVDXARTGradientBuffer1, mVDXAPSGradient, NULL);
+
+	for(int pass=0; pass<=mConfig.mBlurLevel; ++pass) {
+		vdxa->SetSampler(0, mVDXARTGradientBuffer1, kVDXAFilt_Bilinear);
+		vdxa->SetTextureMatrix(0, mVDXARTGradientBuffer1, -0.5f, -0.5f, NULL);
+		vdxa->SetTextureMatrix(1, mVDXARTGradientBuffer1, +0.5f, -0.5f, NULL);
+		vdxa->SetTextureMatrix(2, mVDXARTGradientBuffer1, -0.5f, +0.5f, NULL);
+		vdxa->SetTextureMatrix(3, mVDXARTGradientBuffer1, +0.5f, +0.5f, NULL);
+		vdxa->DrawRect(mVDXARTGradientBuffer2, mVDXAPSBlur, NULL);
+
+		std::swap(mVDXARTGradientBuffer1, mVDXARTGradientBuffer2);
+	}
+
+	vdxa->SetSampler(0, mVDXARTGradientBuffer1, kVDXAFilt_Bilinear);
+	vdxa->SetSampler(1, fa->src.mVDXAHandle, kVDXAFilt_Bilinear);
+	vdxa->SetTextureMatrix(0, mVDXARTGradientBuffer1, +1.0f,  0.0f, NULL);
+	vdxa->SetTextureMatrix(1, mVDXARTGradientBuffer1, -1.0f,  0.0f, NULL);
+	vdxa->SetTextureMatrix(2, mVDXARTGradientBuffer1,  0.0f, +1.0f, NULL);
+	vdxa->SetTextureMatrix(3, mVDXARTGradientBuffer1,  0.0f, -1.0f, NULL);
+	vdxa->SetTextureMatrix(4, fa->src.mVDXAHandle, 0, 0, NULL);
+
+	VDXATextureDesc desc;
+	vdxa->GetTextureDesc(fa->src.mVDXAHandle, desc);
+
+	const float depth = mConfig.mDepth*(mConfig.mBlurLevel + 1) / 256.0f;
+	const float v[4] = {
+		depth * desc.mInvTexWidth,
+		depth * desc.mInvTexHeight,
+		0,
+		0
+	};
+
+	vdxa->SetFragmentProgramConstF(0, 1, v);
+
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mVDXAPSFinal, NULL);
+}
+
+void VDVFilterWarpSharp::StopAccel(IVDXAContext *vdxa) {
+	vdxa->DestroyObject(mVDXAPSGradient);
+	mVDXAPSGradient = 0;
+
+	vdxa->DestroyObject(mVDXAPSBlur);
+	mVDXAPSBlur = 0;
+
+	vdxa->DestroyObject(mVDXAPSFinal);
+	mVDXAPSFinal = 0;
+
+	vdxa->DestroyObject(mVDXARTGradientBuffer1);
+	mVDXARTGradientBuffer1 = 0;
+
+	vdxa->DestroyObject(mVDXARTGradientBuffer2);
+	mVDXARTGradientBuffer2 = 0;
 }
 
 class VDVFilterDialogWarpSharp : public VDDialogFrameW32 {

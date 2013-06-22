@@ -19,10 +19,13 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdvideofilt.h>
+#include <vd2/plugin/vdvideoaccel.h>
 #include <vd2/VDXFrame/VideoFilter.h>
 
 #include "Effect.h"
 #include "e_blur.h"
+
+#include "f_blur.inl"
 
 class VDVFilterBlurBase : public VDXVideoFilter {
 public:
@@ -35,8 +38,22 @@ protected:
 };
 
 uint32 VDVFilterBlurBase::GetParams() {
-	fa->dst.offset = fa->src.offset;
-	return 0;
+	const VDXPixmapLayout& pxlsrc = *fa->src.mpPixmapLayout;
+
+	switch(pxlsrc.format) {
+		case nsVDXPixmap::kPixFormat_XRGB8888:
+			fa->dst.offset = fa->src.offset;
+			return FILTERPARAM_SUPPORTS_ALTFORMATS;
+
+		case nsVDXPixmap::kPixFormat_VDXA_RGB:
+		case nsVDXPixmap::kPixFormat_VDXA_YUV:
+			fa->src.mBorderWidth = 1;
+			fa->src.mBorderHeight = 1;
+			return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_SUPPORTS_ALTFORMATS;
+
+		default:
+			return FILTERPARAM_NOT_SUPPORTED;
+	}
 }
 
 void VDVFilterBlurBase::End() {
@@ -52,8 +69,22 @@ void VDVFilterBlurBase::Run() {
 
 class VDVFilterBlur : public VDVFilterBlurBase {
 public:
+	VDVFilterBlur();
+
 	void Start();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void EndAccel(IVDXAContext *vdxa);
+
+protected:
+	uint32 mAccelFP;
 };
+
+VDVFilterBlur::VDVFilterBlur()
+	: mAccelFP(0)
+{
+}
 
 void VDVFilterBlur::Start() {
 	mpEffect = VCreateEffectBlur((VBitmap *)&fa->dst);
@@ -61,17 +92,105 @@ void VDVFilterBlur::Start() {
 		ff->ExceptOutOfMemory();
 }
 
+void VDVFilterBlur::StartAccel(IVDXAContext *vdxa) {
+	mAccelFP = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterBlurPS, sizeof kVDFilterBlurPS);
+}
+
+void VDVFilterBlur::RunAccel(IVDXAContext *vdxa) {
+	uint32 hsrc = fa->src.mVDXAHandle;
+	vdxa->SetSampler(0, hsrc, kVDXAFilt_Bilinear);
+	vdxa->SetTextureMatrix(0, hsrc, -0.5f, -0.5f, NULL);
+	vdxa->SetTextureMatrix(1, hsrc, +0.5f, -0.5f, NULL);
+	vdxa->SetTextureMatrix(2, hsrc, -0.5f, +0.5f, NULL);
+	vdxa->SetTextureMatrix(3, hsrc, +0.5f, +0.5f, NULL);
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mAccelFP, NULL);
+}
+
+void VDVFilterBlur::EndAccel(IVDXAContext *vdxa) {
+	if (mAccelFP) {
+		vdxa->DestroyObject(mAccelFP);
+		mAccelFP = 0;
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 class VDVFilterBlurHi : public VDVFilterBlurBase {
 public:
+	VDVFilterBlurHi();
+
 	void Start();
+
+	void StartAccel(IVDXAContext *vdxa);
+	void RunAccel(IVDXAContext *vdxa);
+	void EndAccel(IVDXAContext *vdxa);
+
+protected:
+	uint32 mAccelFP;
 };
+
+VDVFilterBlurHi::VDVFilterBlurHi()
+	: mAccelFP(0)
+{
+}
 
 void VDVFilterBlurHi::Start() {
 	mpEffect = VCreateEffectBlurHi((VBitmap *)&fa->dst);
 	if (!mpEffect)
 		ff->ExceptOutOfMemory();
+}
+
+void VDVFilterBlurHi::StartAccel(IVDXAContext *vdxa) {
+	mAccelFP = vdxa->CreateFragmentProgram(kVDXAPF_D3D9ByteCodePS20, kVDFilterBlurMorePS, sizeof kVDFilterBlurMorePS);
+}
+
+void VDVFilterBlurHi::RunAccel(IVDXAContext *vdxa) {
+	uint32 hsrc = fa->src.mVDXAHandle;
+	vdxa->SetSampler(0, hsrc, kVDXAFilt_Bilinear);
+
+	//	1	4	6	4	1
+	//	4	16	24	16	4
+	//	6	24	36	24	6
+	//	4	16	24	16	4
+	//	1	4	6	4	1
+	//	/256
+
+	VDXATextureDesc desc;
+	vdxa->GetTextureDesc(hsrc, desc);
+
+	const float m[12]={
+		(float)desc.mImageWidth * desc.mInvTexWidth,
+		0.0f,
+		0.0f,
+		(float)desc.mImageWidth * desc.mInvTexWidth,
+
+		0.0f,
+		(float)desc.mImageHeight * desc.mInvTexHeight,
+		(float)desc.mImageHeight * desc.mInvTexHeight,
+		0.0f,
+
+		-1.2f * desc.mInvTexWidth,
+		-1.2f * desc.mInvTexHeight,
+		0.0f,
+		0.0f
+	};
+
+	vdxa->SetTextureMatrix(0, NULL, 0, 0, m);
+	vdxa->SetTextureMatrix(1, hsrc, +1.2f, -1.2f, NULL);
+	vdxa->SetTextureMatrix(2, hsrc, -1.2f, +1.2f, NULL);
+	vdxa->SetTextureMatrix(3, hsrc, +1.2f, +1.2f, NULL);
+	vdxa->SetTextureMatrix(4, hsrc, +1.2f,  0.0f, NULL);
+	vdxa->SetTextureMatrix(5, hsrc, -1.2f,  0.0f, NULL);
+	vdxa->SetTextureMatrix(6, hsrc,  0.0f, +1.2f, NULL);
+	vdxa->SetTextureMatrix(7, hsrc,  0.0f, -1.2f, NULL);
+	vdxa->DrawRect(fa->dst.mVDXAHandle, mAccelFP, NULL);
+}
+
+void VDVFilterBlurHi::EndAccel(IVDXAContext *vdxa) {
+	if (mAccelFP) {
+		vdxa->DestroyObject(mAccelFP);
+		mAccelFP = 0;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

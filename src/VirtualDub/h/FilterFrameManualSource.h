@@ -50,7 +50,7 @@ public:
 	const VDPixmapLayout& GetOutputLayout() { return mLayout; }
 	void InvalidateAllCachedFrames();
 	void Stop() {}
-	bool RunRequests() { return false; }
+	RunResult RunRequests() { return kRunResult_Idle; }
 
 	bool PeekNextRequestFrame(VDPosition& pos);
 	bool GetNextRequest(VDFilterFrameRequest **ppReq);

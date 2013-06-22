@@ -998,6 +998,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\source\refcount.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\registry.cpp"
 				>
 				<FileConfiguration

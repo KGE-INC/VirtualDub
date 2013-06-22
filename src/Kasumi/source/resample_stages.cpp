@@ -1,6 +1,6 @@
 #include <vd2/system/math.h>
 #include <vd2/system/vdstl.h>
-#include "resample_kernels.h"
+#include <vd2/Kasumi/resample_kernels.h>
 #include "resample_stages.h"
 
 VDSteppedAllocator::VDSteppedAllocator(size_t initialSize)

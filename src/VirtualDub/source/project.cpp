@@ -107,6 +107,7 @@ extern char g_serverName[256];
 
 extern uint32 VDPreferencesGetRenderThrottlePercent();
 extern int VDPreferencesGetVideoCompressionThreadCount();
+extern bool VDPreferencesGetFilterAccelEnabled();
 
 int VDRenderSetVideoSourceInputFormat(IVDVideoSource *vsrc, int format);
 
@@ -724,18 +725,22 @@ bool VDProject::UpdateFrame() {
 
 	uint32 startTime = VDGetCurrentTick();
 
-	bool workCompleted = false;
+	bool workCompleted;
 
 	try {
 		for(;;) {
+			workCompleted = false;
+
 			if (mpPendingInputFrame && mpPendingInputFrame->IsCompleted()) {
 				mpCurrentInputFrame = mpPendingInputFrame;
 				mpPendingInputFrame = NULL;
 
 				if (mpCB) {
 					if (mpCurrentInputFrame->IsSuccessful()) {
-						VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
+						VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
+						VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)buf->LockRead()));
 						mpCB->UIRefreshInputFrame(&px);
+						buf->Unlock();
 					} else {
 						mpCB->UIRefreshInputFrame(NULL);
 					}
@@ -744,7 +749,7 @@ bool VDProject::UpdateFrame() {
 
 			if (mbPendingOutputFrameValid) {
 				if (mpPendingOutputFrame)
-					filters.RunToCompletion();
+					workCompleted = (filters.Run(false) != FilterSystem::kRunResult_Idle);
 
 				if (!mpPendingOutputFrame || mpPendingOutputFrame->IsCompleted()) {
 					mpCurrentOutputFrame = mpPendingOutputFrame;
@@ -766,8 +771,10 @@ bool VDProject::UpdateFrame() {
 						if (!mpCurrentOutputFrame) {
 							mpCB->UIRefreshOutputFrame(NULL);
 						} else if (mpCurrentOutputFrame->IsSuccessful()) {
-							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+							VDFilterFrameBuffer *buf = mpCurrentOutputFrame->GetResultBuffer();
+							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead()));
 							mpCB->UIRefreshOutputFrame(&px);
+							buf->Unlock();
 						} else {
 							const VDFilterFrameRequestError *err = mpCurrentOutputFrame->GetError();
 
@@ -779,10 +786,13 @@ bool VDProject::UpdateFrame() {
 				}
 			}
 
-			if (!mpVideoFrameSource || !mpVideoFrameSource->RunRequests())
-				break;
+			if (mpVideoFrameSource) {
+				if (mpVideoFrameSource->RunRequests() == IVDFilterFrameSource::kRunResult_Running)
+					workCompleted = true;
+			}
 
-			workCompleted = true;
+			if (!workCompleted)
+				return false;
 
 			uint32 nCurrentTime = VDGetCurrentTick();
 
@@ -846,8 +856,10 @@ bool VDProject::RefilterFrame(VDPosition timelinePos) {
 		return false;
 	} else {
 		if (mpCB) {
-			VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+			VDFilterFrameBuffer *buf = mpCurrentOutputFrame->GetResultBuffer();
+			VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead()));
 			mpCB->UIRefreshOutputFrame(&px);
+			buf->Unlock();
 		}
 		return true;
 	}
@@ -1411,14 +1423,18 @@ void VDProject::CopySourceFrameToClipboard() {
 	if (!inputVideo || !mpCurrentInputFrame)
 		return;
 
-	CopyFrameToClipboard((HWND)mhwnd, VDPixmapFromLayout(mpVideoFrameSource->GetOutputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
+	VDFilterFrameBuffer *buf = mpCurrentInputFrame->GetResultBuffer();
+	CopyFrameToClipboard((HWND)mhwnd, VDPixmapFromLayout(mpVideoFrameSource->GetOutputLayout(), (void *)buf->LockRead()));
+	buf->Unlock();
 }
 
 void VDProject::CopyOutputFrameToClipboard() {
 	if (!filters.isRunning() || !mpCurrentOutputFrame)
 		return;
 
-	CopyFrameToClipboard((HWND)mhwnd, VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+	VDFilterFrameBuffer *buf = mpCurrentOutputFrame->GetResultBuffer();
+	CopyFrameToClipboard((HWND)mhwnd, VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead()));
+	buf->Unlock();
 }
 
 int VDProject::GetAudioSourceCount() const {
@@ -1914,13 +1930,14 @@ void VDProject::AbortOperation() {
 }
 
 void VDProject::StopFilters() {
-	filters.DeinitFilters();
-	filters.DeallocateBuffers();
-
 	mpCurrentInputFrame = NULL;
 	mpCurrentOutputFrame = NULL;
 	mpPendingInputFrame = NULL;
 	mpPendingOutputFrame = NULL;
+
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
 	mpVideoFrameSource = NULL;
 }
 
@@ -1958,10 +1975,13 @@ void VDProject::StartFilters() {
 		mpVideoFrameSource = new VDFilterFrameVideoSource;
 		mpVideoFrameSource->Init(inputVideo, filters.GetInputLayout());
 
-		// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
-		filters.initLinearChain(&g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
+		filters.SetVisualAccelDebugEnabled(false);
+		filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
 
-		filters.ReadyFilters(VDXFilterStateInfo::kStatePreview);
+		// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
+		filters.initLinearChain(NULL, VDXFilterStateInfo::kStatePreview, &g_listFA, mpVideoFrameSource, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength(), srcPAR);
+
+		filters.ReadyFilters();
 	}
 }
 

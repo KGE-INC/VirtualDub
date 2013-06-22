@@ -8,7 +8,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Kasumi/resample.h>
 
-#include "resample_kernels.h"
+#include <vd2/Kasumi/resample_kernels.h>
 #include "resample_stages_x86.h"
 #include "uberblit_resample.h"
 

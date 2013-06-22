@@ -1,5 +1,5 @@
 #include <math.h>
-#include "resample_kernels.h"
+#include <vd2/Kasumi/resample_kernels.h>
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -122,6 +122,12 @@ int VDResamplerLinearFilter::GetFilterWidth() const {
 	return mTaps;
 }
 
+double VDResamplerLinearFilter::EvaluateFilter(double t) const {
+	t = 1.0f - fabs(t)*mScale;
+
+	return t + fabs(t);
+}
+
 void VDResamplerLinearFilter::GenerateFilter(float *dst, double offset) const {
 	double pos = -((double)((mTaps>>1)-1) + offset) * mScale;
 
@@ -161,6 +167,17 @@ VDResamplerCubicFilter::VDResamplerCubicFilter(double twofc, double A)
 
 int VDResamplerCubicFilter::GetFilterWidth() const { return mTaps; }
 
+double VDResamplerCubicFilter::EvaluateFilter(double t) const {
+	t = fabs(t)*mScale;
+
+	if (t < 1.0)
+		return mA0 + (t*t)*(mA2 + t*mA3);
+	else if (t < 2.0)
+		return mB0 + t*(mB1 + t*(mB2 + t*mB3));
+	else
+		return 0;
+}
+
 void VDResamplerCubicFilter::GenerateFilter(float *dst, double offset) const {
 	double pos = -((double)((mTaps>>1)-1) + offset) * mScale;
 
@@ -199,6 +216,18 @@ VDResamplerLanczos3Filter::VDResamplerLanczos3Filter(double twofc)
 
 int VDResamplerLanczos3Filter::GetFilterWidth() const {
 	return mTaps;
+}
+
+double VDResamplerLanczos3Filter::EvaluateFilter(double t) const {
+	static const double pi  = 3.1415926535897932384626433832795;	// pi
+	static const double pi3 = 1.0471975511965977461542144610932;	// pi/3
+
+	t *= mScale;
+
+	if (fabs(t) < 3.0)
+		return sinc(pi*t) * sinc(pi3*t);
+	else
+		return 0.0;
 }
 
 void VDResamplerLanczos3Filter::GenerateFilter(float *dst, double offset) const {

@@ -169,8 +169,9 @@ static void ranko() {
 
 static void ranma() {
 	_RPT1(0,"server: unlock mutex %p\n", hMutex);
-	if (!ReleaseMutex(hMutex))
+	if (!ReleaseMutex(hMutex)) {
 		_RPT0(0,"Hey!  I didn't own the mutex!\n");
+	}
 }
 
 ////////////////////////////////////////////

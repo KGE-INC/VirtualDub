@@ -24,7 +24,10 @@
 #include "ScriptInterpreter.h"
 #include "FilterFrame.h"
 #include "FilterFrameAllocatorManager.h"
+#include "FilterFrameBufferAccel.h"
 #include "FilterFrameRequest.h"
+#include "FilterAccelContext.h"
+#include "FilterAccelEngine.h"
 #include "FilterInstance.h"
 #include "filters.h"
 
@@ -63,6 +66,7 @@ VFBitmapInternal::VFBitmapInternal()
 	, mpPixmap(reinterpret_cast<VDXPixmap *>(&mPixmap))
 	, mpPixmapLayout(reinterpret_cast<VDXPixmapLayout *>(&mPixmapLayout))
 	, mpBuffer(NULL)
+	, mVDXAHandle(0)
 {
 	memset(&mPixmap, 0, sizeof mPixmap);
 	memset(&mPixmapLayout, 0, sizeof mPixmapLayout);
@@ -80,6 +84,7 @@ VFBitmapInternal::VFBitmapInternal(const VFBitmapInternal& src)
 	, mPixmap(src.mPixmap)
 	, mPixmapLayout(src.mPixmapLayout)
 	, mpBuffer(src.mpBuffer)
+	, mVDXAHandle(src.mVDXAHandle)
 {
 	if (mpBuffer)
 		mpBuffer->AddRef();
@@ -122,12 +127,15 @@ VFBitmapInternal& VFBitmapInternal::operator=(const VFBitmapInternal& src) {
 }
 
 void VFBitmapInternal::Unbind() {
+	VDASSERT(!mVDXAHandle);
+
 	data = NULL;
 	mPixmap.data = NULL;
 	mPixmap.data2 = NULL;
 	mPixmap.data3 = NULL;
 
 	if (mpBuffer) {
+		mpBuffer->Unlock();
 		mpBuffer->Release();
 		mpBuffer = NULL;
 	}
@@ -154,9 +162,22 @@ void VFBitmapInternal::ConvertBitmapLayoutToPixmapLayout() {
 }
 
 void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
-	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mPixmapLayout.format);
 	w = mPixmapLayout.w;
 	h = mPixmapLayout.h;
+	palette = NULL;
+
+	if (mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+		depth = 0;
+		pitch = 0;
+		offset = 0;
+		modulo = 0;
+		size = 0;
+		return;
+	}
+
+	VDASSERT(mPixmapLayout.pitch >= 0 || mPixmapLayout.pitch*(mPixmapLayout.h - 1) <= mPixmapLayout.data);
+
+	const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mPixmapLayout.format);
 
 	switch(mPixmapLayout.format) {
 		case nsVDPixmap::kPixFormat_XRGB8888:
@@ -168,7 +189,6 @@ void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
 			break;
 	}
 
-	palette = NULL;
 	pitch	= -mPixmapLayout.pitch;
 	offset	= mPixmapLayout.pitch < 0 ? mPixmapLayout.data + mPixmapLayout.pitch*(h - 1) : mPixmapLayout.data;
 
@@ -214,21 +234,63 @@ void VFBitmapInternal::BindToDIBSection(const VDFileMappingW32 *mapping) {
 	ConvertPixmapToBitmap();
 }
 
-void VFBitmapInternal::BindToFrameBuffer(VDFilterFrameBuffer *buffer) {
+void VFBitmapInternal::BindToFrameBuffer(VDFilterFrameBuffer *buffer, bool readOnly) {
 	if (mpBuffer == buffer)
 		return;
 
+	Unbind();
+
 	if (buffer)
 		buffer->AddRef();
-	if (mpBuffer)
-		mpBuffer->Release();
+
 	mpBuffer = buffer;
 
 	if (buffer) {
-		VDASSERT(buffer->GetSize() >= VDPixmapLayoutGetMinSize(mPixmapLayout));
-		Fixup(buffer->GetBasePointer());
-	} else {
-		Unbind();
+		VDFilterFrameBufferAccel *accelbuf = vdpoly_cast<VDFilterFrameBufferAccel *>(buffer);
+
+		if (accelbuf) {
+			mPixmap.pitch = 0;
+			mPixmap.pitch2 = 0;
+			mPixmap.pitch3 = 0;
+			mPixmap.data = NULL;
+			mPixmap.data2 = NULL;
+			mPixmap.data3 = NULL;
+			mPixmap.w = accelbuf->GetWidth();
+			mPixmap.h = accelbuf->GetHeight();
+
+			data = NULL;
+			palette = NULL;
+			depth = 0;
+			w = mPixmap.w;
+			h = mPixmap.h;
+			pitch = 0;
+			modulo = 0;
+			size = 0;
+			offset = 0;
+		} else {
+			VDASSERT(buffer->GetSize() >= VDPixmapLayoutGetMinSize(mPixmapLayout));
+
+			void *p = readOnly ? (void *)buffer->LockRead() : buffer->LockWrite();
+			Fixup(p);
+		}
+	}
+}
+
+void VFBitmapInternal::CopyNullBufferParams() {
+	mPixmap.w = mPixmapLayout.w;
+	mPixmap.h = mPixmapLayout.h;
+	mPixmap.format = mPixmapLayout.format;
+	w = mPixmapLayout.w;
+	h = mPixmapLayout.h;
+
+	switch(mPixmap.format) {
+		case nsVDPixmap::kPixFormat_XRGB8888:
+			depth = 32;
+			break;
+
+		default:
+			depth = 0;
+			break;
 	}
 }
 
@@ -266,6 +328,7 @@ VDFilterActivationImpl::VDFilterActivationImpl(VDXFBitmap& _dst, VDXFBitmap& _sr
 	, ifp			(NULL)
 	, ifp2			(NULL)
 	, mpOutputFrames(mOutputFrameArray)
+	, mpVDXA		(NULL)
 {
 	VDASSERT(((char *)&mSizeCheckSentinel - (char *)this) == sizeof(VDXFilterActivation));
 
@@ -467,6 +530,7 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, mbBlitOnEntry		(fi.mbBlitOnEntry)
 	, mbConvertOnEntry	(fi.mbConvertOnEntry)
 	, mbAlignOnEntry	(fi.mbAlignOnEntry)
+	, mbAccelerated		(fi.mbAccelerated)
 	, mOrigW			(fi.mOrigW)
 	, mOrigH			(fi.mOrigH)
 	, mbPreciseCrop		(fi.mbPreciseCrop)
@@ -485,6 +549,8 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, mScriptFunc		(fi.mScriptFunc)
 	, mpFDInst			(fi.mpFDInst)
 	, mpAlphaCurve		(fi.mpAlphaCurve)
+	, mpAccelEngine		(NULL)
+	, mpAccelContext	(NULL)
 {
 	if (mpAutoDeinit)
 		mpAutoDeinit->AddRef();
@@ -502,6 +568,7 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	, mbBlitOnEntry(false)
 	, mbConvertOnEntry(false)
 	, mbAlignOnEntry(false)
+	, mbAccelerated(false)
 	, mOrigW(0)
 	, mOrigH(0)
 	, mbPreciseCrop(true)
@@ -516,6 +583,8 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	, mpFDInst(fdi)
 	, mpAutoDeinit(NULL)
 	, mpLogicError(NULL)
+	, mpAccelEngine(NULL)
+	, mpAccelContext(NULL)
 {
 	filter = const_cast<FilterDefinition *>(&fdi->Attach());
 	src.hdc = NULL;
@@ -685,6 +754,10 @@ bool FilterInstance::IsInPlace() const {
 	return (mFlags & FILTERPARAM_SWAP_BUFFERS) == 0;
 }
 
+bool FilterInstance::IsAcceleratable() const {
+	return filter->accelRunProc != NULL;
+}
+
 bool FilterInstance::Configure(VDXHWND parent, IVDXFilterPreview2 *ifp2) {
 	VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
 	bool success;
@@ -723,7 +796,7 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 	} else {
 		// Clamp the crop rect at this point to avoid going below 1x1.
 		// We will throw an exception later during init.
-		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mExternalSrcPreAlign.mPixmapLayout.format);
+		const VDPixmapFormatInfo& formatInfo = VDPixmapGetInfo(mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV ? nsVDPixmap::kPixFormat_XRGB8888 : mExternalSrcPreAlign.mPixmapLayout.format);
 		int xmask = ~((1 << (formatInfo.qwbits + formatInfo.auxwbits)) - 1);
 		int ymask = ~((1 << (formatInfo.qhbits + formatInfo.auxhbits)) - 1);
 
@@ -759,7 +832,18 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		VDASSERT(qx1 + qx2 < qw);
 		VDASSERT(qy1 + qy2 < qh);
 
-		mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+		if (mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB) {
+			mExternalSrcPreAlign.mPixmapLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
+			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+			mExternalSrcPreAlign.mPixmapLayout.format = nsVDXPixmap::kPixFormat_VDXA_RGB;
+		} else if (mExternalSrcPreAlign.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+			mExternalSrcPreAlign.mPixmapLayout.format = nsVDPixmap::kPixFormat_XRGB8888;
+			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+			mExternalSrcPreAlign.mPixmapLayout.format = nsVDXPixmap::kPixFormat_VDXA_YUV;
+		} else {
+			mExternalSrcPreAlign.mPixmapLayout = VDPixmapLayoutOffset(mExternalSrcPreAlign.mPixmapLayout, qx1 << formatInfo.qwbits, qy1 << formatInfo.qhbits);
+		}
+
 		mExternalSrcPreAlign.mPixmapLayout.w -= (qx1+qx2) << formatInfo.qwbits;
 		mExternalSrcPreAlign.mPixmapLayout.h -= (qy1+qy2) << formatInfo.qhbits;
 	}
@@ -781,6 +865,8 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		mRealSrc = mExternalSrcCropped;
 		mRealSrc.dwFlags	= 0;
 		mRealSrc.hdc		= NULL;
+		mRealSrc.mBorderWidth = 0;
+		mRealSrc.mBorderHeight = 0;
 
 		mExternalSrcCropped	= mRealSrc;
 
@@ -791,6 +877,8 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		mRealDst			= mRealSrc;
 		mRealDst.dwFlags	= 0;
 		mRealDst.hdc		= NULL;
+		mRealDst.mBorderWidth = 0;
+		mRealDst.mBorderHeight = 0;
 
 		if (testingInvalidFormat) {
 			mRealSrc.mPixmapLayout.format = 255;
@@ -859,6 +947,10 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 	mFlags = flags;
 	mLag = (uint32)mFlags >> 16;
 
+	mbAccelerated = false;
+	if (mRealSrc.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mRealSrc.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV)
+		mbAccelerated = true;
+
 	if (mRealDst.depth) {
 		mRealDst.modulo	= mRealDst.pitch - 4*mRealDst.w;
 		mRealDst.size	= mRealDst.offset + vdptrdiffabs(mRealDst.pitch) * mRealDst.h;
@@ -867,10 +959,19 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 		mRealDst.ConvertBitmapLayoutToPixmapLayout();
 	} else {
 		if (!mRealDst.mPixmapLayout.pitch) {
-			VDPixmapCreateLinearLayout(mRealDst.mPixmapLayout, mRealDst.mPixmapLayout.format, mRealDst.mPixmapLayout.w, mRealDst.mPixmapLayout.h, 16);
+			if (mRealDst.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_RGB || mRealDst.mPixmapLayout.format == nsVDXPixmap::kPixFormat_VDXA_YUV) {
+				mRealDst.mPixmapLayout.data = 0;
+				mRealDst.mPixmapLayout.data2 = 0;
+				mRealDst.mPixmapLayout.data3 = 0;
+				mRealDst.mPixmapLayout.pitch = 0;
+				mRealDst.mPixmapLayout.pitch2 = 0;
+				mRealDst.mPixmapLayout.pitch3 = 0;
+			} else {
+				VDPixmapCreateLinearLayout(mRealDst.mPixmapLayout, mRealDst.mPixmapLayout.format, mRealDst.mPixmapLayout.w, mRealDst.mPixmapLayout.h, 16);
 
-			if (mRealDst.mPixmapLayout.format == nsVDPixmap::kPixFormat_XRGB8888)
-				VDPixmapLayoutFlipV(mRealDst.mPixmapLayout);
+				if (mRealDst.mPixmapLayout.format == nsVDPixmap::kPixFormat_XRGB8888)
+					VDPixmapLayoutFlipV(mRealDst.mPixmapLayout);
+			}
 		}
 
 		mRealDst.ConvertPixmapLayoutToBitmapLayout();
@@ -900,9 +1001,17 @@ uint32 FilterInstance::Prepare(const VFBitmapInternal& input) {
 	return flags;
 }
 
-void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource) {
+struct FilterInstance::StopStartMessage : public VDFilterAccelEngineMessage {
+	FilterInstance *mpThis;
+	MyError mError;
+};
+
+void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource, IVDFilterSystemScheduler *scheduler, VDFilterAccelEngine *accelEngine) {
 	if (mbStarted)
 		return;
+
+	if (mbAccelerated && accelEngine)
+		mpAccelEngine = accelEngine;
 
 	if (GetInvalidFormatHandlingState())
 		throw MyError("Cannot start filters: Filter \"%s\" is not handling image formats correctly.",
@@ -938,32 +1047,84 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource) {
 
 			mBlendTemp.mPixmapLayout = mRealDst.mPixmapLayout;
 			mBlendTemp.ConvertPixmapLayoutToBitmapLayout();
-			mBlendTemp.BindToFrameBuffer(blendbuf);
+			mBlendTemp.BindToFrameBuffer(blendbuf, false);
 		}
 	}
 
-	if (mFlags & FILTERPARAM_NEEDS_LAST) {
-		vdrefptr<VDFilterFrameBuffer> last;
-		mSourceAllocator.Allocate(~last);
-		mRealLast.BindToFrameBuffer(last);
+	if (mbAccelerated) {
+		mRealSrc.CopyNullBufferParams();
+		mRealDst.CopyNullBufferParams();
+	} else {
+		if (mFlags & FILTERPARAM_NEEDS_LAST) {
+			vdrefptr<VDFilterFrameBuffer> last;
+			mSourceAllocator.Allocate(~last);
+			mRealLast.BindToFrameBuffer(last, false);
+		}
+
+		// Older filters use the fa->src/dst/last fields directly and need buffers
+		// bound in order to start correctly.
+		
+		if (!mRealSrc.hdc) {
+			vdrefptr<VDFilterFrameBuffer> tempSrc;
+			mSourceAllocator.Allocate(~tempSrc);
+			mRealSrc.BindToFrameBuffer(tempSrc, true);
+
+			if (!(mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc)
+				mRealDst.BindToFrameBuffer(tempSrc, false);
+		}
+
+		if ((mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc) {
+			vdrefptr<VDFilterFrameBuffer> tempDst;
+			mResultAllocator.Allocate(~tempDst);
+			mRealDst.BindToFrameBuffer(tempDst, true);
+		}
 	}
 
-	// Older filters use the fa->src/dst/last fields directly and need buffers
-	// bound in order to start correctly.
+	if (mbAccelerated) {
+		StopStartMessage msg;
+		msg.mpCallback = StartFilterCallback;
+		msg.mpThis = this;
+
+		mpAccelEngine->SyncCall(&msg);
+
+		if (msg.mError.gets())
+			throw MyError(msg.mError);
+	} else {
+		StartInner();
+	}
+
+	if (!mRealSrc.hdc)
+		mRealSrc.Unbind();
+
+	if (!mRealDst.hdc)
+		mRealDst.Unbind();
+
+	mpSource = pSource;
+	mbCanStealSourceBuffer = IsInPlace() && !mRealSrc.hdc;
+	mSharingPredictor.Clear();
+
+	if (mpLogicError)
+		throw MyError("Cannot start filter '%s': %s", mpLogicError->mError.c_str());
+
+	VDASSERT(mRealDst.mBorderWidth < 10000000 && mRealDst.mBorderHeight < 10000000);
+}
+
+void FilterInstance::StartFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
+	StopStartMessage& msg = *static_cast<StopStartMessage *>(message);
 	
-	if (!mRealSrc.hdc) {
-		vdrefptr<VDFilterFrameBuffer> tempSrc;
-		mSourceAllocator.Allocate(~tempSrc);
-		mRealSrc.BindToFrameBuffer(tempSrc);
-
-		if (!(mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc)
-			mRealDst.BindToFrameBuffer(tempSrc);
+	try {
+		msg.mpThis->StartInner();
+	} catch(MyError& err) {
+		msg.mError.swap(err);
 	}
+}
 
-	if ((mFlags & FILTERPARAM_SWAP_BUFFERS) && !mRealDst.hdc) {
-		vdrefptr<VDFilterFrameBuffer> tempDst;
-		mResultAllocator.Allocate(~tempDst);
-		mRealDst.BindToFrameBuffer(tempDst);
+void FilterInstance::StartInner() {
+	if (mpAccelEngine) {
+		mpAccelContext = new VDFilterAccelContext;
+		mpAccelContext->AddRef();
+		mpAccelContext->Init(*mpAccelEngine);
+		mpVDXA = mpAccelContext;
 	}
 
 	if (filter->startProc) {
@@ -988,19 +1149,6 @@ void FilterInstance::Start(uint32 flags, IVDFilterFrameSource *pSource) {
 
 		mbFirstFrame = true;
 	}
-
-	if (!mRealSrc.hdc)
-		mRealSrc.Unbind();
-
-	if (!mRealDst.hdc)
-		mRealDst.Unbind();
-
-	mpSource = pSource;
-	mbCanStealSourceBuffer = IsInPlace() && !mRealSrc.hdc;
-	mSharingPredictor.Clear();
-
-	if (mpLogicError)
-		throw MyError("Cannot start filter '%s': %s", mpLogicError->mError.c_str());
 }
 
 void FilterInstance::Stop() {
@@ -1009,13 +1157,17 @@ void FilterInstance::Stop() {
 
 	mbStarted = false;
 
-	if (filter->endProc) {
-		VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
-		vdprotected1("stopping filter \"%s\"", const char *, filter->name) {
-			VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+	if (mbAccelerated) {
+		StopStartMessage msg;
+		msg.mpCallback = StopFilterCallback;
+		msg.mpThis = this;
 
-			filter->endProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
-		}
+		mpAccelEngine->SyncCall(&msg);
+
+		if (msg.mError.gets())
+			throw MyError(msg.mError);
+	} else {
+		StopInner();
 	}
 
 	mFsiDelayRing.clear();
@@ -1039,6 +1191,35 @@ void FilterInstance::Stop() {
 	mResultAllocator.Clear();
 
 	mpSourceConversionBlitter = NULL;
+
+	mpAccelEngine = NULL;
+}
+
+void FilterInstance::StopFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
+	StopStartMessage& msg = *static_cast<StopStartMessage *>(message);
+	
+	try {
+		msg.mpThis->StopInner();
+	} catch(MyError& err) {
+		msg.mError.swap(err);
+	}
+}
+
+void FilterInstance::StopInner() {
+	if (filter->endProc) {
+		VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+		vdprotected1("stopping filter \"%s\"", const char *, filter->name) {
+			VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+			filter->endProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
+		}
+	}
+
+	if (mpAccelContext) {
+		mpVDXA = NULL;
+		mpAccelContext->Release();
+		mpAccelContext = NULL;
+	}
 }
 
 VDFilterFrameAllocatorProxy *FilterInstance::GetOutputAllocatorProxy() {
@@ -1052,10 +1233,18 @@ void FilterInstance::RegisterAllocatorProxies(VDFilterFrameAllocatorManager *mgr
 		mResultAllocator.Link(prev);
 
 	mgr->AddAllocatorProxy(&mSourceAllocator);
+	prev->AddBorderRequirement(mRealSrc.mBorderWidth, mRealSrc.mBorderHeight);
 
 	uint32 dstSizeRequired = mRealDst.size + mRealDst.offset;
 	mResultAllocator.Clear();
-	mResultAllocator.AddSizeRequirement(dstSizeRequired);
+
+	if (mbAccelerated) {
+		mResultAllocator.SetAccelerationRequirement(VDFilterFrameAllocatorProxy::kAccelModeRender);
+		mResultAllocator.AddSizeRequirement((mRealDst.h << 16) + mRealDst.w);
+	} else {
+		mResultAllocator.AddSizeRequirement(dstSizeRequired);
+	}
+
 	mgr->AddAllocatorProxy(&mResultAllocator);
 }
 
@@ -1205,114 +1394,123 @@ bool FilterInstance::CreateSamplingRequest(sint64 outputFrame, VDXFilterPreviewS
 	return true;
 }
 
-bool FilterInstance::RunRequests() {
+FilterInstance::RunResult FilterInstance::RunRequests() {
 	vdrefptr<VDFilterFrameRequest> req;
-	if (mFrameQueueWaiting.GetNextRequest(~req)) {
-		mFrameQueueInProgress.Add(req);
+	if (!mFrameQueueWaiting.GetNextRequest(~req))
+		return kRunResult_Idle;
 
-		const SamplingInfo *samplingInfo = static_cast<const SamplingInfo *>(req->GetExtraInfo());
-
-		if (samplingInfo || !mLag) {
-			vdrefptr<VDFilterFrameBuffer> buf;
-			bool stolen = false;
-
-			if (mbCanStealSourceBuffer && req->GetSourceCount()) {
-				IVDFilterFrameClientRequest *creqsrc0 = req->GetSourceRequest(0);
-
-				if (!creqsrc0 || creqsrc0->IsResultBufferStealable()) {
-					VDFilterFrameBuffer *srcbuf = req->GetSource(0);
-					uint32 srcRefs = 1;
-
-					if (creqsrc0)
-						++srcRefs;
-
-					if (srcbuf->Steal(srcRefs)) {
-						buf = srcbuf;
-						stolen = true;
-					}
-				}
-			}
-
-			if (stolen || mResultAllocator.Allocate(~buf)) {
-				req->SetResultBuffer(buf);
-				if (Run(*req)) {
-					req->MarkComplete(true);
-
-					if (!samplingInfo)
-						mFrameCache.Add(buf, req->GetTiming().mOutputFrame);
-				} else {
-					req->MarkComplete(false);
-				}
-			} else {
-				req->MarkComplete(false);
-			}
-		} else {
-			VDPosition targetFrame = req->GetTiming().mOutputFrame;
-			VDPosition startFrame = targetFrame;
-			VDPosition endFrame = targetFrame + mLag;
-
-			bool enableIntermediateFrameCaching = false;
-			if (startFrame <= mLastResultFrame + 1 && mLastResultFrame < endFrame) {
-				startFrame = mLastResultFrame + 1;
-				enableIntermediateFrameCaching = true;
-			} else {
-				mbFirstFrame = true;
-			}
-
-			vdrefptr<VDFilterFrameBuffer> buf;
-			if (mResultAllocator.Allocate(~buf)) {
-				req->SetResultBuffer(buf);
-
-				for(VDPosition currentFrame = startFrame; currentFrame <= endFrame; ++currentFrame) {
-					const uint32 sourceOffset = (uint32)currentFrame - (uint32)targetFrame;
-					VDPosition resultFrameUnlagged = currentFrame - mLag;
-					VDPosition sourceFrame = req->GetSourceRequest(sourceOffset)->GetFrameNumber();
-
-					VDPosition clampedOutputFrame = currentFrame;
-
-					if (clampedOutputFrame >= mRealDst.mFrameCount && mRealDst.mFrameCount > 0)
-						clampedOutputFrame = mRealDst.mFrameCount - 1;
-
-					VDFilterFrameRequestTiming overrideTiming;
-					overrideTiming.mSourceFrame = sourceFrame;
-					overrideTiming.mOutputFrame = clampedOutputFrame;
-
-					if (!Run(*req, sourceOffset, 1, &overrideTiming)) {
-						req->MarkComplete(false);
-						break;
-					}
-
-					if (currentFrame == endFrame) {
-						mFrameCache.Add(buf, targetFrame);
-						req->MarkComplete(true);
-					} else if (enableIntermediateFrameCaching && resultFrameUnlagged >= 0) {
-						mFrameCache.Add(buf, resultFrameUnlagged);
-						mFrameQueueWaiting.CompleteRequests(resultFrameUnlagged, buf);
-
-						if (!mResultAllocator.Allocate(~buf))
-							break;
-
-						req->SetResultBuffer(buf);
-					}
-				}
-			} else {
-				req->MarkComplete(false);
-			}
-		}
-
-		mFrameQueueInProgress.Remove(req);
-
-		return true;
-	}
-
-	return false;
+	mFrameQueueInProgress.Add(req);
+	req->MarkComplete(RunRequest(*req));
+	mFrameQueueInProgress.Remove(req);
+	return kRunResult_Running;
 }
 
-bool FilterInstance::Run(VDFilterFrameRequest& request) {
-	return Run(request, 0, 0xffff, NULL);
+bool FilterInstance::RunRequest(VDFilterFrameRequest& req) {
+	const SamplingInfo *samplingInfo = static_cast<const SamplingInfo *>(req.GetExtraInfo());
+
+	if (samplingInfo) {
+		if (!AllocateResultBuffer(req, 0))
+			return false;
+
+		return Run(req, 0, 0xffff, NULL);
+	}
+
+	const VDPosition targetFrame = req.GetTiming().mOutputFrame;
+	VDPosition startFrame = targetFrame;
+	VDPosition endFrame = targetFrame + mLag;
+
+	bool enableIntermediateFrameCaching = false;
+	if (startFrame <= mLastResultFrame + 1 && mLastResultFrame < endFrame) {
+		startFrame = mLastResultFrame + 1;
+		enableIntermediateFrameCaching = true;
+	} else {
+		mbFirstFrame = true;
+	}
+
+	for(VDPosition currentFrame = startFrame; currentFrame <= endFrame; ++currentFrame) {
+		const uint32 sourceOffset = (uint32)currentFrame - (uint32)targetFrame;
+		if (!AllocateResultBuffer(req, sourceOffset))
+			return false;
+
+		if (mLag) {
+			VDPosition sourceFrame = req.GetSourceRequest(sourceOffset)->GetFrameNumber();
+			VDPosition clampedOutputFrame = currentFrame;
+
+			if (clampedOutputFrame >= mRealDst.mFrameCount && mRealDst.mFrameCount > 0)
+				clampedOutputFrame = mRealDst.mFrameCount - 1;
+
+			VDFilterFrameRequestTiming overrideTiming;
+			overrideTiming.mSourceFrame = sourceFrame;
+			overrideTiming.mOutputFrame = clampedOutputFrame;
+
+			if (!Run(req, sourceOffset, 1, &overrideTiming))
+				return false;
+		} else {
+			if (!Run(req, 0, 0xffff, NULL))
+				return false;
+		}
+
+		VDPosition resultFrameUnlagged = currentFrame - mLag;
+		if (currentFrame != endFrame) {
+			if (enableIntermediateFrameCaching && resultFrameUnlagged >= 0) {
+				VDFilterFrameBuffer *buf = req.GetResultBuffer();
+				mFrameCache.Add(buf, resultFrameUnlagged);
+				mFrameQueueWaiting.CompleteRequests(resultFrameUnlagged, buf);
+			} else {
+				req.SetResultBuffer(NULL);
+			}
+		}
+	}
+
+	mFrameCache.Add(req.GetResultBuffer(), targetFrame);
+
+	return true;
+}
+
+bool FilterInstance::AllocateResultBuffer(VDFilterFrameRequest& req, int srcIndex) {
+	vdrefptr<VDFilterFrameBuffer> buf;
+	bool stolen = false;
+
+	if (mbCanStealSourceBuffer && req.GetSourceCount()) {
+		IVDFilterFrameClientRequest *creqsrc0 = req.GetSourceRequest(srcIndex);
+
+		if (!creqsrc0 || creqsrc0->IsResultBufferStealable()) {
+			VDFilterFrameBuffer *srcbuf = req.GetSource(srcIndex);
+			uint32 srcRefs = 1;
+
+			if (creqsrc0)
+				++srcRefs;
+
+			if (srcbuf->Steal(srcRefs)) {
+				buf = srcbuf;
+				stolen = true;
+			}
+		}
+	}
+
+	// allocate a new result buffer if the source buffer wasn't stolen
+	if (!stolen && !mResultAllocator.Allocate(~buf))
+		return false;
+
+	req.SetResultBuffer(buf);
+	return true;
 }
 
 bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming) {
+	bool result = BeginRequest(request, sourceOffset, sourceCountLimit, overrideTiming);
+	EndRequest();
+
+	return result;
+}
+
+struct FilterInstance::RunMessage : public VDFilterAccelEngineMessage {
+	FilterInstance *mpThis;
+	VDPosition mSourceFrame;
+	VDPosition mOutputFrame;
+	MyError mError;
+};
+
+bool FilterInstance::BeginRequest(VDFilterFrameRequest& request, uint32 sourceOffset, uint32 sourceCountLimit, const VDFilterFrameRequestTiming *overrideTiming) {
 	VDFilterFrameRequestError *logicError = mpLogicError;
 	if (logicError) {
 		request.SetError(logicError);
@@ -1340,41 +1538,35 @@ bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uin
 	VDFilterFrameBuffer *src0Buffer = request.GetSource(sourceOffset);
 
 	VDFilterFrameBuffer *resultBuffer = request.GetResultBuffer();
-	bool unbindSrcOnExit = false;
+	bool bltSrcOnEntry = false;
+
 	if (mRealSrc.hdc) {
-		mExternalSrcCropped.BindToFrameBuffer(src0Buffer);
+		mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
+		bltSrcOnEntry = true;
+	} else if (!IsInPlace()) {
+		mRealSrc.BindToFrameBuffer(src0Buffer, true);
 	} else {
-		if (IsInPlace()) {
-			if (!resultBuffer || resultBuffer == src0Buffer) {
-				resultBuffer = src0Buffer;
+		if (!resultBuffer || resultBuffer == src0Buffer) {
+			resultBuffer = src0Buffer;
 
-				mRealSrc.BindToFrameBuffer(resultBuffer);				
-			} else {
-				VDFilterFrameBuffer *buf = resultBuffer;
-				mRealSrc.BindToFrameBuffer(buf);
-				mExternalSrcCropped.BindToFrameBuffer(src0Buffer);
-
-				if (!mpSourceConversionBlitter)
-					mpSourceConversionBlitter = VDPixmapCreateBlitter(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
-
-				mpSourceConversionBlitter->Blit(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
-				mExternalSrcCropped.Unbind();
-			}
+			mRealSrc.BindToFrameBuffer(resultBuffer, false);
 		} else {
-			mRealSrc.BindToFrameBuffer(src0Buffer);
-		}
+			VDFilterFrameBuffer *buf = resultBuffer;
+			mRealSrc.BindToFrameBuffer(buf, false);
+			mExternalSrcCropped.BindToFrameBuffer(src0Buffer, true);
 
-		unbindSrcOnExit = true;
+			bltSrcOnEntry = true;
+		}
 	}
 
 	mRealSrc.SetFrameNumber(creqsrc0->GetFrameNumber());
 	mRealSrc.mCookie = creqsrc0->GetCookie();
 
 	if (!mRealDst.hdc)
-		mRealDst.BindToFrameBuffer(resultBuffer);
+		mRealDst.BindToFrameBuffer(resultBuffer, false);
 
 	mRealDst.SetFrameNumber(timing.mOutputFrame);
-	mExternalDst.BindToFrameBuffer(resultBuffer);
+	mExternalDst.BindToFrameBuffer(resultBuffer, false);
 
 	mSourceFrameArray.resize(sourceCount);
 	mSourceFrames.resize(sourceCount);
@@ -1400,7 +1592,7 @@ bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uin
 		VDFilterFrameBuffer *fb = request.GetSource(sourceOffset + i);
 
 		bm.mPixmapLayout = mExternalSrcCropped.mPixmapLayout;
-		bm.BindToFrameBuffer(fb);
+		bm.BindToFrameBuffer(fb, true);
 
 		bm.mFrameCount = mRealSrc.mFrameCount;
 		bm.mFrameRateLo = mRealSrc.mFrameRateLo;
@@ -1411,27 +1603,80 @@ bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uin
 
 	const SamplingInfo *sampInfo = (const SamplingInfo *)request.GetExtraInfo();
 
+	mLastResultFrame = -1;
+	VDPosition sourceFrame = timing.mSourceFrame;
+	VDPosition outputFrame = timing.mOutputFrame;
+
 	try {
-		Run(timing.mSourceFrame,
-			timing.mOutputFrame,
-			sampInfo ? sampInfo->mpCB : NULL,
-			sampInfo ? sampInfo->mpCBData : NULL);
+
+		// If the filter has a delay ring...
+		DelayInfo di;
+
+		di.mSourceFrame		= sourceFrame;
+		di.mOutputFrame		= outputFrame;
+
+		if (!mFsiDelayRing.empty()) {
+			if (mbFirstFrame)
+				std::fill(mFsiDelayRing.begin(), mFsiDelayRing.end(), di);
+
+			DelayInfo diOut = mFsiDelayRing[mDelayRingPos];
+			mFsiDelayRing[mDelayRingPos] = di;
+
+			if (++mDelayRingPos >= mFsiDelayRing.size())
+				mDelayRingPos = 0;
+
+			sourceFrame		= diOut.mSourceFrame;
+			outputFrame		= diOut.mOutputFrame;
+		}
+
+		// Update FilterStateInfo structure.
+		mfsi.lCurrentSourceFrame	= VDClampToSint32(di.mSourceFrame);
+		mfsi.lCurrentFrame			= VDClampToSint32(di.mOutputFrame);
+		mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mSourceFrame * (double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0));
+		mfsi.lDestFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mOutputFrame * (double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0));
+		mfsi.mOutputFrame			= VDClampToSint32(outputFrame);
+
+		if (mpVDXA) {
+			RunMessage msg;
+			msg.mpCallback = RunFilterCallback;
+			msg.mpThis = this;
+			msg.mSourceFrame = sourceFrame;
+			msg.mOutputFrame = outputFrame;
+
+			mpAccelEngine->SyncCall(&msg);
+
+			if (msg.mError.gets())
+				throw MyError(msg.mError);
+		} else {
+			RunFilter(sourceFrame,
+				outputFrame,
+				sampInfo ? sampInfo->mpCB : NULL,
+				sampInfo ? sampInfo->mpCBData : NULL,
+				bltSrcOnEntry);
+		}
 	} catch(const MyError& e) {
 		err = new_nothrow VDFilterFrameRequestError;
 
 		if (err)
-			err->mError = e.gets();
+			err->mError.sprintf("Error processing frame %lld with filter '%s': %s", outputFrame, filter->name, e.gets());
 
 		success = false;
 	}
 
-	request.SetError(err);
+	if (success)
+		mLastResultFrame = timing.mOutputFrame;
 
+	request.SetError(err);
+	return success;
+}
+
+void FilterInstance::EndRequest() {
+	uint32 sourceCount = mSourceFrames.size();
 	for(uint32 i=1; i<sourceCount; ++i) {
 		mSourceFrames[i].Unbind();
 	}
 
-	if (unbindSrcOnExit)
+	if (!mRealSrc.hdc)
 		mRealSrc.Unbind();
 
 	mExternalSrcCropped.Unbind();
@@ -1440,47 +1685,55 @@ bool FilterInstance::Run(VDFilterFrameRequest& request, uint32 sourceOffset, uin
 		mRealDst.Unbind();
 
 	mExternalDst.Unbind();
-
-	mLastResultFrame = timing.mOutputFrame;
-	return success;
 }
 
-void FilterInstance::Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData) {
+void FilterInstance::RunFilterCallback(VDFilterAccelEngineDispatchQueue *queue, VDFilterAccelEngineMessage *message) {
+	RunMessage& msg = *static_cast<RunMessage *>(message);
+	IVDTContext *tc = msg.mpThis->mpAccelEngine->GetContext();
+	const uint32 counter = tc->GetDeviceLossCounter();
+	bool deviceLost = false;
+
+	if (tc->IsDeviceLost()) {
+		deviceLost = true;
+	} else {
+		if (!msg.mpThis->ConnectAccelBuffers()) {
+			msg.mError.assign("One or more source frames are no longer available.");
+			return;
+		}
+
+		IVDTProfiler *vdtc = vdpoly_cast<IVDTProfiler *>(tc);
+		if (vdtc)
+			VDTBeginScopeF(vdtc, 0xe0ffe0, "Run filter '%ls'", msg.mpThis->mFilterName.c_str());
+		
+		try {
+			msg.mpThis->RunFilter(msg.mSourceFrame, msg.mOutputFrame, NULL, NULL, false);
+		} catch(MyError& err) {
+			msg.mError.swap(err);
+		}
+
+		if (vdtc)
+			vdtc->EndScope();
+
+		msg.mpThis->DisconnectAccelBuffers();
+		msg.mpThis->mpAccelEngine->UpdateProfilingDisplay();
+
+		if (tc->IsDeviceLost() || counter != tc->GetDeviceLossCounter())
+			deviceLost = true;
+	}
+
+	if (deviceLost)
+		msg.mError.assign("The 3D accelerator is no longer available.");
+}
+
+void FilterInstance::RunFilter(sint64 sourceFrame, sint64 outputFrame, VDXFilterPreviewSampleCallback sampleCB, void *sampleCBData, bool bltSrcOnEntry) {
 	VDASSERT(outputFrame >= 0);
 
-	if (mRealSrc.dwFlags & VDXFBitmap::NEEDS_HDC) {
+	if (bltSrcOnEntry) {
 		if (!mpSourceConversionBlitter)
 			mpSourceConversionBlitter = VDPixmapCreateBlitter(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
 
 		mpSourceConversionBlitter->Blit(mRealSrc.mPixmap, mExternalSrcCropped.mPixmap);
 	}
-
-	// If the filter has a delay ring...
-	DelayInfo di;
-
-	di.mSourceFrame		= sourceFrame;
-	di.mOutputFrame		= outputFrame;
-
-	if (!mFsiDelayRing.empty()) {
-		if (mbFirstFrame)
-			std::fill(mFsiDelayRing.begin(), mFsiDelayRing.end(), di);
-
-		DelayInfo diOut = mFsiDelayRing[mDelayRingPos];
-		mFsiDelayRing[mDelayRingPos] = di;
-
-		if (++mDelayRingPos >= mFsiDelayRing.size())
-			mDelayRingPos = 0;
-
-		sourceFrame		= diOut.mSourceFrame;
-		outputFrame		= diOut.mOutputFrame;
-	}
-
-	// Update FilterStateInfo structure.
-	mfsi.lCurrentSourceFrame	= VDClampToSint32(di.mSourceFrame);
-	mfsi.lCurrentFrame			= VDClampToSint32(di.mOutputFrame);
-	mfsi.lSourceFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mSourceFrame * (double)mRealSrc.mFrameRateLo / (double)mRealSrc.mFrameRateHi * 1000.0));
-	mfsi.lDestFrameMS			= VDClampToSint32(VDRoundToInt64((double)di.mOutputFrame * (double)mRealDst.mFrameRateLo / (double)mRealDst.mFrameRateHi * 1000.0));
-	mfsi.mOutputFrame			= VDClampToSint32(outputFrame);
 
 	// Compute alpha blending value.
 	float alpha = 1.0f;
@@ -1517,8 +1770,15 @@ void FilterInstance::Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPrevie
 	}
 
 	if (!skipFilter) {
-		try {
-			VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+		VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
+
+		if (mpVDXA) {
+			vdprotected1("running accelerated filter \"%s\"", const char *, filter->name) {
+				VDFilterThreadContextSwapper autoSwap(&mThreadContext);
+
+				filter->accelRunProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
+			}
+		} else {
 			vdprotected1("running filter \"%s\"", const char *, filter->name) {
 				VDFilterThreadContextSwapper autoSwap(&mThreadContext);
 
@@ -1530,9 +1790,8 @@ void FilterInstance::Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPrevie
 					filter->runProc(AsVDXFilterActivation(), &g_VDFilterCallbacks);
 				}
 			}
-		} catch(const MyError& e) {
-			throw MyError("Error processing frame %lld with filter '%s': %s", outputFrame, filter->name, e.gets());
 		}
+
 
 		if (mRealDst.hdc) {
 			::GdiFlush();
@@ -1553,10 +1812,56 @@ void FilterInstance::Run(sint64 sourceFrame, sint64 outputFrame, VDXFilterPrevie
 	mbFirstFrame = false;
 }
 
-void FilterInstance::RunSamplingCallback(long frame, long frameCount, VDXFilterPreviewSampleCallback cb, void *cbdata) {
-	VDExternalCodeBracket bracket(mFilterName.c_str(), __FILE__, __LINE__);
-	vdprotected1("running filter \"%s\"", const char *, filter->name) {
-		cb(&src, frame, frameCount, cbdata);
+bool FilterInstance::ConnectAccelBuffers() {
+	for(uint32 i=0; i<mSourceFrameCount; ++i) {
+		if (!ConnectAccelBuffer((VFBitmapInternal *)mpSourceFrames[i], false)) {
+			DisconnectAccelBuffers();
+			return false;
+		}
+	}
+
+	if (!ConnectAccelBuffer((VFBitmapInternal *)mpOutputFrames[0], true)) {
+		DisconnectAccelBuffers();
+		return false;
+	}
+
+	return true;
+}
+
+void FilterInstance::DisconnectAccelBuffers() {
+	for(uint32 i=0; i<mSourceFrameCount; ++i)
+		DisconnectAccelBuffer((VFBitmapInternal *)mpSourceFrames[i]);
+
+	DisconnectAccelBuffer((VFBitmapInternal *)mpOutputFrames[0]);
+}
+
+bool FilterInstance::ConnectAccelBuffer(VFBitmapInternal *buf, bool bindAsRenderTarget) {
+	VDFilterFrameBufferAccel *fbuf = vdpoly_cast<VDFilterFrameBufferAccel *>(buf->GetBuffer());
+	if (!fbuf)
+		return false;
+
+	if (!mpAccelEngine->CommitBuffer(fbuf, bindAsRenderTarget))
+		return false;
+
+	IVDTTexture2D *tex = fbuf->GetTexture();
+	if (!tex)
+		return false;
+
+	if (bindAsRenderTarget) {
+		IVDTSurface *surf = tex->GetLevelSurface(0);
+
+		buf->mVDXAHandle = mpAccelContext->RegisterRenderTarget(surf, buf->w, buf->h, fbuf->GetBorderWidth(), fbuf->GetBorderHeight());
+	} else {
+		buf->mVDXAHandle = mpAccelContext->RegisterTexture(tex, buf->w, buf->h);
+	}
+
+	return true;
+}
+
+void FilterInstance::DisconnectAccelBuffer(VFBitmapInternal *buf) {
+	if (buf->mVDXAHandle) {
+		mpAccelContext->DestroyObject(buf->mVDXAHandle);
+		buf->mVDXAHandle = 0;
 	}
 }
 

@@ -195,6 +195,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				listitem "Images";
 				listitem "Threading";
 				listitem "Playback";
+				listitem "3D accel";
 			}
 
 			pageset 101 : value={@100} {
@@ -209,6 +210,7 @@ dialog 1000, "Preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 				page 1018;
 				page 1019;
 				page 1020;
+				page 1021;
 			}
 		}
 
@@ -490,6 +492,14 @@ dialog 1020, "" : fill, child {
 	}
 }
 
+dialog 1021, "" : fill, child {
+	now align=fill;
+	set 0: vertical {
+		group 0, "3D hardware acceleration options" {
+			checkbox 100, "Enable 3D video &filter acceleration (VDXA)";
+		}
+	}
+}
 
 dialog 2000, "Capture preferences" : minw=350, maxw=350, aspect=140, valign=top+expand {
 	set 0: vertical, spacing=5 {

@@ -297,6 +297,10 @@ namespace {
 		{ ID_VIEW_AUDIODISPLAY,			"View.ToggleAudioDisplay" },
 		{ ID_OPTIONS_SHOWLOG,			"View.ShowLogWindow" },
 		{ ID_OPTIONS_SHOWPROFILER,		"View.ShowProfilerWindow" },
+		{ ID_PANELAYOUT_INPUTPANEONLY,	"View.PaneLayout.ShowInputOnly" },
+		{ ID_PANELAYOUT_OUTPUTPANEONLY,	"View.PaneLayout.ShowOutputOnly" },
+		{ ID_PANELAYOUT_BOTHPANES,		"View.PaneLayout.ShowBoth" },
+		{ ID_PANELAYOUT_AUTOSIZE,		"View.PaneLayout.ToggleAutoSize" },
 		{ ID_VIDEO_SCANFORERRORS,		"Video.ScanForErrors" },
 		{ ID_VIDEO_FILTERS,				"Video.ShowFiltersDialog" },
 		{ ID_VIDEO_FRAMERATE,			"Video.ShowFrameRateDialog" },
@@ -397,6 +401,9 @@ VDProjectUI::VDProjectUI()
 	, mOldWndProc(NULL)
 	, mbDubActive(false)
 	, mbLockPreviewRestart(false)
+	, mPaneLayoutMode(kPaneLayoutDual)
+	, mbPaneLayoutBusy(false)
+	, mbAutoSizePanes(false)
 	, mMRUList(4, "MRU List")
 {
 }
@@ -737,6 +744,25 @@ void VDProjectUI::SetTitle(int nTitleString, int nArgs, ...) {
 	} else {
 		SetWindowTextA((HWND)mhwnd, VDTextWToA(title).c_str());
 	}
+}
+
+void VDProjectUI::SetPaneLayout(PaneLayoutMode layout) {
+	if (layout == mPaneLayoutMode)
+		return;
+
+	mPaneLayoutMode = layout;
+
+	bool videoPresent = inputVideo != NULL;
+	::ShowWindow(mhwndInputFrame, mPaneLayoutMode != kPaneLayoutOutput && videoPresent);
+	::ShowWindow(mhwndOutputFrame, mPaneLayoutMode != kPaneLayoutInput && videoPresent);
+
+	RepositionPanes();
+
+	mpInputDisplay->Reset();
+	mpOutputDisplay->Reset();
+
+	RefreshInputPane();
+	RefreshOutputPane();
 }
 
 void VDProjectUI::OpenAsk() {
@@ -1253,6 +1279,10 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_EDIT_JUMPTO:
 		case ID_VIDEO_COPYSOURCEFRAME:
 		case ID_VIDEO_COPYOUTPUTFRAME:
+		case ID_PANELAYOUT_INPUTPANEONLY:
+		case ID_PANELAYOUT_OUTPUTPANEONLY:
+		case ID_PANELAYOUT_BOTHPANES:
+		case ID_PANELAYOUT_AUTOSIZE:
 			break;
 		default:
 			StopFilters();
@@ -1381,6 +1411,23 @@ bool VDProjectUI::MenuHit(UINT id) {
 				CloseAudioDisplay();
 			else
 				OpenAudioDisplay();
+			break;
+
+		case ID_PANELAYOUT_INPUTPANEONLY:
+			SetPaneLayout(kPaneLayoutInput);
+			break;
+
+		case ID_PANELAYOUT_OUTPUTPANEONLY:
+			SetPaneLayout(kPaneLayoutOutput);
+			break;
+
+		case ID_PANELAYOUT_BOTHPANES:
+			SetPaneLayout(kPaneLayoutDual);
+			break;
+
+		case ID_PANELAYOUT_AUTOSIZE:
+			mbAutoSizePanes = !mbAutoSizePanes;
+			RepositionPanes();
 			break;
 
 		case ID_VIDEO_SEEK_START:
@@ -1687,6 +1734,12 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDCheckMenuItemW32(hMenu, ID_VIEW_CURVEEDITOR, mpCurveEditor != NULL);
 	VDCheckMenuItemW32(hMenu, ID_VIEW_AUDIODISPLAY, mpAudioDisplay != NULL);
 
+	VDCheckRadioMenuItemByCommandW32(hMenu, ID_PANELAYOUT_INPUTPANEONLY, mPaneLayoutMode == kPaneLayoutInput);
+	VDCheckRadioMenuItemByCommandW32(hMenu, ID_PANELAYOUT_OUTPUTPANEONLY, mPaneLayoutMode == kPaneLayoutOutput);
+	VDCheckRadioMenuItemByCommandW32(hMenu, ID_PANELAYOUT_BOTHPANES, mPaneLayoutMode == kPaneLayoutDual);
+
+	VDCheckMenuItemW32(hMenu, ID_PANELAYOUT_AUTOSIZE, mbAutoSizePanes);
+
 	int audioSourceMode = GetAudioSourceMode();
 	VDCheckRadioMenuItemByCommandW32(hMenu, ID_AUDIO_SOURCE_NONE, audioSourceMode == kVDAudioSourceMode_None);
 	VDCheckRadioMenuItemByCommandW32(hMenu, ID_AUDIO_SOURCE_WAV, audioSourceMode == kVDAudioSourceMode_External);
@@ -1946,19 +1999,24 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 						GetClientRect(nmh->hwndFrom, &mrOutputFrame);
 					}
 
-					RepositionPanes();
+					if (!mbPaneLayoutBusy)
+						RepositionPanes();
 					break;
 				case VWN_REQUPDATE:
 					if (nmh->idFrom == 1) {
 						if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
-							VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
+							VDFilterFrameBuffer *srcFrame = mpCurrentInputFrame->GetResultBuffer();
+							VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)srcFrame->LockRead()));
 							UIRefreshInputFrame(&px);
+							srcFrame->Unlock();
 						} else
 							UIRefreshInputFrame(NULL);
 					} else {
 						if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
-							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
+							VDFilterFrameBuffer *dstFrame = mpCurrentOutputFrame->GetResultBuffer();
+							VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), (void *)dstFrame->LockRead()));
 							UIRefreshOutputFrame(&px);
+							dstFrame->Unlock();
 						} else
 							UIRefreshOutputFrame(NULL);
 					}
@@ -1991,19 +2049,10 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		if (!g_dubber) {
 			IVDVideoDisplay *pDisp = wParam ? mpOutputDisplay : mpInputDisplay;
 
-			if (!wParam) {
-				if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
-					VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), mpCurrentInputFrame->GetResultBuffer()->GetBasePointer()));
-					UIRefreshInputFrame(&px);
-				} else
-					UIRefreshInputFrame(NULL);
-			} else {
-				if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
-					VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), mpCurrentOutputFrame->GetResultBuffer()->GetBasePointer()));
-					UIRefreshOutputFrame(&px);
-				} else
-					UIRefreshOutputFrame(NULL);
-			}
+			if (!wParam)
+				RefreshInputPane();
+			else
+				RefreshOutputPane();
 
 			pDisp->Cache();
 		}
@@ -2110,7 +2159,9 @@ LRESULT VDProjectUI::DubWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 					} else {
 						GetClientRect(nmh->hwndFrom, &mrOutputFrame);
 					}
-					RepositionPanes();
+
+					if (!mbPaneLayoutBusy)
+						RepositionPanes();
 					break;
 				case VWN_REQUPDATE:
 					// eat it
@@ -2202,6 +2253,8 @@ void VDProjectUI::OnSize() {
 	if (mpUIBase)
 		mpUIBase->Layout(vduirect(0, 0, rClient.right, y));
 
+	RepositionPanes();
+
 	guiEndDeferWindowPos(hdwp);
 
 	int nParts = SendMessage(mhwndStatus, SB_GETPARTS, 0, 0);
@@ -2272,27 +2325,108 @@ void VDProjectUI::OnPositionNotify(int code) {
 }
 
 void VDProjectUI::RepositionPanes() {
-	HWND hwndPane1 = mhwndInputFrame;
-	HWND hwndPane2 = mhwndOutputFrame;
+	VDASSERT(!mbPaneLayoutBusy);
+	mbPaneLayoutBusy = true;
 
-	if (g_fSwapPanes)
-		std::swap(hwndPane1, hwndPane2);
+	HWND panes[2];
+	int n = 0;
 
-	RECT r;
-	GetWindowRect(hwndPane1, &r);
-	ScreenToClient((HWND)mhwnd, (LPPOINT)&r + 1);
+	switch(mPaneLayoutMode) {
+		case kPaneLayoutInput:
+			panes[n++] = mhwndInputFrame;
+			break;
 
-	SetWindowPos(hwndPane1, NULL, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+		case kPaneLayoutOutput:
+			panes[n++] = mhwndOutputFrame;
+			break;
 
-	if (g_vertical)
-		SetWindowPos(hwndPane2, NULL, 0, r.bottom + 8, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
-	else
-		SetWindowPos(hwndPane2, NULL, r.right+8, 0, 0, 0, SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE);
+		case kPaneLayoutDual:
+			if (g_fSwapPanes) {
+				panes[n++] = mhwndOutputFrame;
+				panes[n++] = mhwndInputFrame;
+			} else {
+				panes[n++] = mhwndInputFrame;
+				panes[n++] = mhwndOutputFrame;
+			}
+			break;
+	}
+
+	const int n2 = n;
+	n = 0;
+
+	for(int i=0; i<n2; ++i) {
+		HWND h = panes[i];
+		if (h)
+			panes[n++] = h;
+	}
+
+	if (mbAutoSizePanes) {
+		vdsize32 size = mpUIPaneSet->GetArea().size();
+
+		double weightTotal = 0;
+		double weights[2];
+
+		for(int i=0; i<n; ++i) {
+			IVDVideoWindow *w = VDGetIVideoWindow(panes[i]);
+
+			int srcw;
+			int srch;
+			w->GetSourceSize(srcw, srch);
+
+			if (g_vertical) {
+				weights[i] = (double)(srch + 8);
+				weightTotal += (double)(srch + 8);
+			} else {
+				const VDFraction srcpar = w->GetSourcePAR();
+
+				double srcw2 = (double)srcw;
+				if (srcpar.getLo())
+					srcw2 *= srcpar.asDouble();
+
+				weights[i] = (double)(srcw2 + 8);
+				weightTotal += (double)(srcw2 + 8);
+			}
+		}
+
+		if (weightTotal > 0) {
+			for(int i=0; i<n; ++i) {
+				IVDVideoWindow *w = VDGetIVideoWindow(panes[i]);
+
+				if (g_vertical)
+					w->SetZoom(w->GetMaxZoomForArea(size.w, VDFloorToInt((double)size.h * weights[i] / weightTotal)));
+				else
+					w->SetZoom(w->GetMaxZoomForArea(VDFloorToInt((double)size.w * weights[i] / weightTotal), size.h));
+
+				int frameW;
+				int frameH;
+				w->GetFrameSize(frameW, frameH);
+			}
+		}
+	}
+
+	int x = 0;
+	int y = 0;
+
+	for(int i=0; i<n; ++i) {
+		HWND hwndPane = panes[i];
+
+		RECT r;
+		GetWindowRect(hwndPane, &r);
+
+		SetWindowPos(hwndPane, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+		if (g_vertical)
+			y += r.bottom - r.top;
+		else
+			x += r.right - r.left;
+	}
+
+	mbPaneLayoutBusy = false;
 }
 
 void VDProjectUI::UpdateVideoFrameLayout() {
-	memset(&mrInputFrame, 0, sizeof(RECT));
-	memset(&mrOutputFrame, 0, sizeof(RECT));
+	bool inputVisible = (mPaneLayoutMode != kPaneLayoutOutput) && inputVideo;
+	bool outputVisible = (mPaneLayoutMode != kPaneLayoutInput) && inputVideo;
 
 	if (inputVideo) {
 		const VDAVIBitmapInfoHeader *formatIn = inputVideo->getImageFormat();
@@ -2307,12 +2441,6 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			IVDVideoWindow *inputWin = VDGetIVideoWindow(mhwndInputFrame);
 			inputWin->SetSourceSize(w, h);
 			inputWin->SetSourcePAR(inputVideo->getPixelAspectRatio());
-			inputWin->GetFrameSize(w, h);
-
-			mrInputFrame.left = 0;
-			mrInputFrame.top = 0;
-			mrInputFrame.right = w;
-			mrInputFrame.bottom = h;
 
 			// figure out output size too
 
@@ -2334,14 +2462,18 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 			IVDVideoWindow *outputWin = VDGetIVideoWindow(mhwndOutputFrame);
 			outputWin->SetSourceSize(w2, h2);
 			outputWin->SetSourcePAR(outputPAR);
-			outputWin->GetFrameSize(w2, h2);
-
-			mrOutputFrame.left = 0;
-			mrOutputFrame.top = 0;
-			mrOutputFrame.right = w2;
-			mrOutputFrame.bottom = h2;
 		}
 	}
+
+	if (inputVisible)
+		ShowWindow(mhwndInputFrame, SW_SHOWNOACTIVATE);
+	else
+		ShowWindow(mhwndInputFrame, SW_HIDE);
+
+	if (outputVisible)
+		ShowWindow(mhwndOutputFrame, SW_SHOWNOACTIVATE);
+	else
+		ShowWindow(mhwndOutputFrame, SW_HIDE);
 }
 
 void VDProjectUI::OpenAudioDisplay() {
@@ -2722,6 +2854,9 @@ void VDProjectUI::UpdateCurveEditorPosition() {
 }
 
 void VDProjectUI::UIRefreshInputFrame(const VDPixmap *px) {
+	if (mPaneLayoutMode == kPaneLayoutOutput)
+		return;
+
 	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
 	if (px) {
 		pDisp->SetSource(true, *px);
@@ -2731,6 +2866,9 @@ void VDProjectUI::UIRefreshInputFrame(const VDPixmap *px) {
 }
 
 void VDProjectUI::UIRefreshOutputFrame(const VDPixmap *px) {
+	if (mPaneLayoutMode == kPaneLayoutInput)
+		return;
+
 	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
 	if (px) {
 		pDisp->SetSource(true, *px);
@@ -2748,8 +2886,15 @@ void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
 		mpInputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelResetInForeground);
 		mpOutputDisplay->SetAccelerationMode(IVDVideoDisplay::kAccelResetInForeground);
 
-		g_dubber->SetInputDisplay(mpInputDisplay);
-		g_dubber->SetOutputDisplay(mpOutputDisplay);
+		if (mPaneLayoutMode == kPaneLayoutInput || mPaneLayoutMode == kPaneLayoutDual)
+			g_dubber->SetInputDisplay(mpInputDisplay);
+		else
+			g_dubber->SetInputDisplay(NULL);
+
+		if (mPaneLayoutMode == kPaneLayoutOutput || mPaneLayoutMode == kPaneLayoutDual)
+			g_dubber->SetOutputDisplay(mpOutputDisplay);
+		else
+			g_dubber->SetOutputDisplay(NULL);
 
 		SetMenu((HWND)mhwnd, mhMenuDub);
 
@@ -2916,14 +3061,7 @@ void VDProjectUI::UIAudioSourceUpdated() {
 }
 
 void VDProjectUI::UIVideoSourceUpdated() {
-	if (inputVideo) {
-		UpdateVideoFrameLayout();
-		ShowWindow(mhwndInputFrame, SW_SHOW);
-		ShowWindow(mhwndOutputFrame, SW_SHOW);
-	} else {
-		ShowWindow(mhwndInputFrame, SW_HIDE);
-		ShowWindow(mhwndOutputFrame, SW_HIDE);
-	}
+	UpdateVideoFrameLayout();
 }
 
 void VDProjectUI::UIVideoFiltersUpdated() {
@@ -3053,6 +3191,32 @@ void VDProjectUI::DisplayRequestUpdate(IVDVideoDisplay *pDisp) {
 	PostMessage((HWND)mhwnd, WM_USER + 100, pDisp == mpOutputDisplay, 0);
 }
 
+void VDProjectUI::RefreshInputPane() {
+	if (mbDubActive)
+		return;
+
+	if (mpCurrentInputFrame && mpCurrentInputFrame->IsSuccessful()) {
+		VDFilterFrameBuffer *srcFrame = mpCurrentInputFrame->GetResultBuffer();
+		VDPixmap px(VDPixmapFromLayout(filters.GetInputLayout(), (void *)srcFrame->LockRead()));
+		UIRefreshInputFrame(&px);
+		srcFrame->Unlock();
+	} else
+		UIRefreshInputFrame(NULL);
+}
+
+void VDProjectUI::RefreshOutputPane() {
+	if (mbDubActive)
+		return;
+
+	if (mpCurrentOutputFrame && mpCurrentOutputFrame->IsSuccessful()) {
+		VDFilterFrameBuffer *dstFrame = mpCurrentOutputFrame->GetResultBuffer();
+		VDPixmap px(VDPixmapFromLayout(filters.GetOutputLayout(), (void *)dstFrame->LockRead()));
+		UIRefreshOutputFrame(&px);
+		dstFrame->Unlock();
+	} else
+		UIRefreshOutputFrame(NULL);
+}
+
 //////////////////////////////////////////////////////////////////////
 
 bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFrame) {
@@ -3064,7 +3228,7 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 	const wchar_t *end = s + format.length();
 
 	try {
-		bool bMasked;
+		bool bMasked = false;
 		int source;
 		VDPosition srcFrame = mTimeline.GetSubset().lookupFrame(dstFrame, bMasked, source);
 
@@ -3226,7 +3390,10 @@ bool VDProjectUI::GetFrameString(wchar_t *buf, size_t buflen, VDPosition dstFram
 					break;
 				}
 			case 'C':
-				*buf = inputVideo->getFrameTypeChar(srcFrame);
+				if (srcFrame >= 0 && srcFrame < pVSS->getLength())
+					*buf = inputVideo->getFrameTypeChar(srcFrame);
+				else
+					*buf = ' ';
 				actual = 1;
 				break;
 
@@ -3272,6 +3439,8 @@ void VDProjectUI::LoadSettings() {
 	g_dubOpts.video.fShowOutputFrame	= key.getBool("Update output pane", g_dubOpts.video.fShowOutputFrame);
 	g_dubOpts.video.fSyncToAudio		= key.getBool("Preview audio sync", g_dubOpts.video.fSyncToAudio);
 	g_dubOpts.perf.useDirectDraw		= key.getBool("Accelerate preview", g_dubOpts.perf.useDirectDraw);
+	mPaneLayoutMode						= (PaneLayoutMode)key.getEnumInt("Pane layout mode", kPaneLayoutModeCount, mPaneLayoutMode);
+	mbAutoSizePanes						= key.getBool("Auto-size panes", mbAutoSizePanes);
 
 	// these are only saved from the Video Depth dialog.
 	VDRegistryAppKey keyPrefs("Preferences");
@@ -3298,6 +3467,8 @@ void VDProjectUI::SaveSettings() {
 	key.setBool("Update output pane", g_dubOpts.video.fShowOutputFrame);
 	key.setBool("Preview audio sync", g_dubOpts.video.fSyncToAudio);
 	key.setBool("Accelerate preview", g_dubOpts.perf.useDirectDraw);
+	key.setInt("Pane layout mode", mPaneLayoutMode);
+	key.setInt("Auto-size panes", mbAutoSizePanes);
 }
 
 bool VDProjectUI::HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {

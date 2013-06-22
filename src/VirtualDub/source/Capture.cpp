@@ -94,6 +94,8 @@ IVDCaptureSystem *VDCreateCaptureSystemEmulation();
 
 IVDCaptureProfiler *g_pCaptureProfiler;		// a bit of a cheat for now
 
+extern void VDPreferencesGetAVIIndexingLimits(uint32& superindex, uint32& subindex);
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	structs
@@ -731,7 +733,7 @@ VDCaptureProject::VDCaptureProject()
 	mTimingSetup.mbUseFixedAudioLatency	= false;
 	mTimingSetup.mAudioLatency			= 0;
 
-	mTimingSetup.mbUseLimitedAutoAudioLatency	= false;
+	mTimingSetup.mbUseLimitedAutoAudioLatency	= true;
 	mTimingSetup.mAutoAudioLatencyLimit	= 30;
 
 	mTimingSetup.mbUseAudioTimestamps	= false;
@@ -1747,6 +1749,11 @@ void VDCaptureProject::Capture(bool fTest) {
 				if (g_prefs.fAVIRestrict1Gb)
 					icd.mpOutputFile->set_1Gb_limit();
 
+				uint32 superIndexLimit, subIndexLimit;
+				VDPreferencesGetAVIIndexingLimits(superIndexLimit, subIndexLimit);
+
+				icd.mpOutputFile->setIndexingLimits(superIndexLimit, subIndexLimit);
+
 				icd.mpOutputFile->set_capture_mode(true);
 				icd.mpOutput = icd.mpOutputFile;
 			}
@@ -2761,6 +2768,11 @@ void VDCaptureData::CreateNewFile() {
 
 		if (g_prefs.fAVIRestrict1Gb)
 			pNewFile->set_1Gb_limit();
+
+		uint32 superIndexLimit, subIndexLimit;
+		VDPreferencesGetAVIIndexingLimits(superIndexLimit, subIndexLimit);
+
+		pNewFile->setIndexingLimits(superIndexLimit, subIndexLimit);
 
 		pNewFile->set_capture_mode(true);
 		pNewFile->setAlignment(0, 8);

@@ -36,7 +36,7 @@ public:
 	sint64 GetSymbolicFrame(sint64 outputFrame, IVDFilterFrameSource *source);
 	sint64 GetNearestUniqueFrame(sint64 outputFrame);
 
-	bool RunRequests();
+	RunResult RunRequests();
 
 protected:
 	bool InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable);

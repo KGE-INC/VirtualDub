@@ -383,6 +383,9 @@ bool VDVideoDisplayMinidriverGDI::SetSubrect(const vdrect32 *r) {
 }
 
 void VDVideoDisplayMinidriverGDI::InternalRefresh(HDC hdc, const RECT& rClient, UpdateMode mode) {
+	if (rClient.right <= 0 || rClient.bottom <= 0)
+		return;
+
 	SetStretchBltMode(hdc, COLORONCOLOR);
 
 	const VDPixmap& source = mSource.pixmap;

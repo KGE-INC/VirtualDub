@@ -113,6 +113,7 @@ uint32 VDVideoFilterInterlace::GetParams() {
 	else
 		pxldst.h &= ~1;
 
+	mChromaWidth = 0;
 	mLumaWidth = pxldst.w;
 
 	switch(pxldst.format) {
@@ -145,7 +146,7 @@ uint32 VDVideoFilterInterlace::GetParams() {
 	}
 
 	fa->dst.depth = 0;
-	fa->dst.pitch = 0;
+	fa->dst.mpPixmapLayout->pitch = 0;
 
 	return FILTERPARAM_SWAP_BUFFERS | FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_PURE_TRANSFORM;
 }

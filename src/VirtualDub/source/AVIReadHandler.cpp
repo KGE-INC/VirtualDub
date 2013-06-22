@@ -1594,11 +1594,6 @@ terminate_scan:
 
 		pasn->frames = pasn->mIndex.GetChunkCount();
 
-		// Clear sample size for video streams!
-
-		if (pasn->hdr.fccType == kAVIStreamTypeVideo)
-			pasn->hdr.dwSampleSize=0;
-
 		// Attempt to fix invalid dwRate/dwScale fractions (can result from unclosed
 		// AVI files being written by DirectShow).
 
@@ -1690,6 +1685,10 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, uint32
 			dwLength = 0;
 
 			pasn->keyframe_only = false;
+
+			// Clear sample size for video streams!
+			if (pasn->hdr.fccType == kAVIStreamTypeVideo)
+				pasn->hdr.dwSampleSize=0;
 
 			break;
 

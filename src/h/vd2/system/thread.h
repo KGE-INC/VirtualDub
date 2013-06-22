@@ -240,6 +240,10 @@ public:
 	VDSemaphore(int initial);
 	~VDSemaphore();
 
+	void *GetHandle() const {
+		return mKernelSema;
+	}
+
 	void Reset(int count);
 
 	void Wait() {

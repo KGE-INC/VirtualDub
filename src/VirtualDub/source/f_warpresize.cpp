@@ -1484,3 +1484,6 @@ void WarpResizeFilter::ScriptConfigFunc(IVDXScriptInterpreter *, const VDXScript
 VDXVF_BEGIN_SCRIPT_METHODS(WarpResizeFilter)
 	VDXVF_DEFINE_SCRIPT_METHOD(WarpResizeFilter, ScriptConfigFunc, "iii")
 VDXVF_END_SCRIPT_METHODS()
+
+// warning C4505: 'VDXVideoFilter::[thunk]: __thiscall VDXVideoFilter::`vcall'{24,{flat}}' }'' : unreferenced local function has been removed
+#pragma warning(disable: 4505)

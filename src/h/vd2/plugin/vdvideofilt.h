@@ -96,6 +96,7 @@ class VDXFilterActivation;
 struct VDXFilterFunctions;
 struct VDXFilterModule;
 class IVDXVideoPrefetcher;
+class IVDXAContext;
 
 enum {
 	kVDXVFEvent_None				= 0,
@@ -119,6 +120,7 @@ typedef sint64 (__cdecl *VDXFilterPrefetch   )(const VDXFilterActivation *fa, co
 typedef void (__cdecl *VDXFilterCopy2Proc    )(VDXFilterActivation *fa, const VDXFilterFunctions *ff, void *dst, VDXFilterActivation *fa2, const VDXFilterFunctions *ff2);
 typedef bool (__cdecl *VDXFilterPrefetch2Proc)(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, sint64 frame, IVDXVideoPrefetcher *prefetcher);
 typedef bool (__cdecl *VDXFilterEventProc	 )(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, uint32 event, const void *eventData);
+typedef void (__cdecl *VDXFilterAccelRunProc )(const VDXFilterActivation *fa, const VDXFilterFunctions *ff);
 
 typedef int (__cdecl *VDXFilterModuleInitProc)(VDXFilterModule *fm, const VDXFilterFunctions *ff, int& vdfd_ver, int& vdfd_compat);
 typedef void (__cdecl *VDXFilterModuleDeinitProc)(VDXFilterModule *fm, const VDXFilterFunctions *ff);
@@ -178,7 +180,7 @@ public:
 
 enum {
 	// This is the highest API version supported by this header file.
-	VIRTUALDUB_FILTERDEF_VERSION		= 14,
+	VIRTUALDUB_FILTERDEF_VERSION		= 15,
 
 	// This is the absolute lowest API version supported by this header file.
 	// Note that V4 is rather old, corresponding to VirtualDub 1.2.
@@ -205,6 +207,7 @@ enum {
 // v12 (1.7.4): support for frame alteration
 // v13 (1.8.2): added mOutputFrame field to VDXFilterStateInfo
 // v14 (1.9.1): added copyProc2, prefetchProc2, input/output frame arrays
+// v15 (1.9.3): added VDXA support
 
 struct VDXFilterDefinition {
 	void *_next;		// deprecated - set to NULL
@@ -242,6 +245,9 @@ struct VDXFilterDefinition {
 	VDXFilterCopy2Proc		copyProc2;
 	VDXFilterPrefetch2Proc	prefetchProc2;
 	VDXFilterEventProc		eventProc;
+
+	// NEW - V15 / 1.9.3
+	VDXFilterAccelRunProc	accelRunProc;
 };
 
 //////////
@@ -326,6 +332,10 @@ public:
 	sint64	mFrameTimestampStart;		///< Starting timestamp of frame, in 100ns units.
 	sint64	mFrameTimestampEnd;			///< Ending timestamp of frame, in 100ns units.
 	sint64	mCookie;					///< Cookie supplied when frame was requested.
+
+	uint32	mVDXAHandle;				///< Acceleration handle to be used with VDXA routines.
+	uint32	mBorderWidth;
+	uint32	mBorderHeight;
 };
 
 // VDXFilterActivation: This is what is actually passed to filters at runtime.
@@ -350,6 +360,8 @@ public:
 	uint32		mSourceFrameCount;		// (V14+)
 	VDXFBitmap *const *mpSourceFrames;	// (V14+)
 	VDXFBitmap *const *mpOutputFrames;	// (V14+)
+
+	IVDXAContext	*mpVDXA;			// (V15+)
 };
 
 // These flags must match those in cpuaccel.h!

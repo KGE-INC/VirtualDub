@@ -11,6 +11,8 @@
 
 static const char g_szCannotFilter[]="Cannot use video filtering: ";
 
+bool VDPreferencesGetFilterAccelEnabled();
+
 ///////////////////////////////////////////////////////////////////////////
 //
 //	filters
@@ -697,12 +699,13 @@ void VDCaptureFilterChainFrameSource::Push(const VDPixmap& px) {
 
 	VDFilterFrameBuffer *buf = mFrameQueue[index];
 
-	const VDPixmap pxdst(VDPixmapFromLayout(mLayout, buf->GetBasePointer()));
+	const VDPixmap pxdst(VDPixmapFromLayout(mLayout, buf->LockWrite()));
 
 	if (!mpBlitter)
 		mpBlitter = VDPixmapCreateBlitter(pxdst, px);
 
 	mpBlitter->Blit(pxdst, px);
+	buf->Unlock();
 	++mWindowFrameCount;
 }
 
@@ -773,9 +776,10 @@ void VDCaptureFilterChainAdapter::Init(VDPixmapLayout& layout) {
 	mpFrameSource = new VDCaptureFilterChainFrameSource;
 	mpFrameSource->Init(3, filters.GetInputLayout());
 
-	filters.initLinearChain(&g_listFA, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
-
-	filters.ReadyFilters(VDXFilterStateInfo::kStateRealTime);
+	filters.SetVisualAccelDebugEnabled(false);
+	filters.SetAccelEnabled(VDPreferencesGetFilterAccelEnabled());
+	filters.initLinearChain(NULL, VDXFilterStateInfo::kStateRealTime, &g_listFA, mpFrameSource, layout.w, layout.h, layout.format, layout.palette, mFrameRate, -1, VDFraction(0, 0));
+	filters.ReadyFilters();
 
 	mpFrameSource->PreallocateFrames();
 
@@ -793,7 +797,14 @@ bool VDCaptureFilterChainAdapter::Run(VDPixmap& px) {
 bool VDCaptureFilterChainAdapter::ProcessOut(VDPixmap& px) {
 	if (mbFlushRequestNextCall) {
 		mbFlushRequestNextCall = false;
-		mpRequest = NULL;
+
+		if (mpRequest) {
+			VDFilterFrameBuffer *buf = mpRequest->GetResultBuffer();
+			if (buf)
+				buf->Unlock();
+
+			mpRequest = NULL;
+		}
 	}
 
 	if (!mpRequest) {
@@ -804,7 +815,7 @@ bool VDCaptureFilterChainAdapter::ProcessOut(VDPixmap& px) {
 	while(!mpRequest->IsCompleted()) {
 		mpFrameSource->Run();
 
-		if (!filters.RunToCompletion())
+		if (filters.Run(false) != FilterSystem::kRunResult_Running)
 			return false;
 	}
 	
@@ -817,13 +828,20 @@ bool VDCaptureFilterChainAdapter::ProcessOut(VDPixmap& px) {
 			throw MyError("Unknown error occurred while running video filters.");
 	}
 
-	px = VDPixmapFromLayout(filters.GetOutputLayout(), mpRequest->GetResultBuffer()->GetBasePointer());
+	VDFilterFrameBuffer *buf = mpRequest->GetResultBuffer();
+	px = VDPixmapFromLayout(filters.GetOutputLayout(), (void *)buf->LockRead());
 	mbFlushRequestNextCall = true;
 	return true;
 }
 
 void VDCaptureFilterChainAdapter::Shutdown() {
-	mpRequest = NULL;
+	if (mpRequest) {
+		VDFilterFrameBuffer *buf = mpRequest->GetResultBuffer();
+		if (buf)
+			buf->Unlock();
+
+		mpRequest = NULL;
+	}
 
 	filters.DeinitFilters();
 	filters.DeallocateBuffers();

@@ -554,23 +554,23 @@ namespace {
 
 		IVTCScore zero = {0};
 
-		if (h < 4)
+		if (h < 16)
 			return zero;
 
-		h -= 4;
+		h -= 16;
 
-		const void *src1data  = (const char *)px1.data  + 2*px1.pitch;
-		const void *src1data2 = (const char *)px1.data2 + 2*px1.pitch2;
-		const void *src1data3 = (const char *)px1.data3 + 2*px1.pitch3;
-		const void *src2data  = (const char *)px2.data  + 2*px2.pitch;
-		const void *src2data2 = (const char *)px2.data2 + 2*px2.pitch2;
-		const void *src2data3 = (const char *)px2.data3 + 2*px2.pitch3;
+		const void *src1data  = (const char *)px1.data  + 8*px1.pitch;
+		const void *src1data2 = (const char *)px1.data2 + 8*px1.pitch2;
+		const void *src1data3 = (const char *)px1.data3 + 8*px1.pitch3;
+		const void *src2data  = (const char *)px2.data  + 8*px2.pitch;
+		const void *src2data2 = (const char *)px2.data2 + 8*px2.pitch2;
+		const void *src2data3 = (const char *)px2.data3 + 8*px2.pitch3;
 
 		VDASSERT(px1.pitch == px2.pitch);
 
 		switch(px1.format) {
 			case nsVDXPixmap::kPixFormat_XRGB8888:
-				return	ComputeScanImprovement_XRGB8888(src1data, px2.data, px2.pitch, w, h);
+				return	ComputeScanImprovement_XRGB8888(src1data, src2data, px2.pitch, w, h);
 
 			case nsVDXPixmap::kPixFormat_YUV444_Planar:
 				return	ComputeScanImprovement(src1data,  src2data,  px2.pitch, w, h) +
@@ -589,7 +589,7 @@ namespace {
 
 			case nsVDXPixmap::kPixFormat_YUV422_UYVY:
 			case nsVDXPixmap::kPixFormat_YUV422_YUYV:
-				return ComputeScanImprovement(src1data, px2.data, px2.pitch, w*2, h);
+				return ComputeScanImprovement(src1data, src2data, px2.pitch, w*2, h);
 
 			default:
 				VDASSERT(false);
@@ -855,23 +855,29 @@ void VDVideoFilterIVTC::Run() {
 	// The raw scores we have are the amount of improvement we get at that frame from
 	// shifting the opposite field back one frame.
 	//
-	// Polarity == false means TFF field order.
+	// Polarity == true means TFF field order.
 
 	sint64 pscores[5][2];
 	for(int i=0; i<5; ++i) {
-		pscores[i][0]	= scores[i+1].mVarShift[0] + scores[i+2].mVarShift[0] - scores[i+1].mVar[0] - scores[i+2].mVar[0]
-						+ scores[i+6].mVarShift[0] + scores[i+7].mVarShift[0] - scores[i+6].mVar[0] - scores[i+7].mVar[0];
-		pscores[i][1]	= scores[i+1].mVarShift[1] + scores[i+2].mVarShift[1] - scores[i+1].mVar[1] - scores[i+2].mVar[1]
-						+ scores[i+6].mVarShift[1] + scores[i+7].mVarShift[1] - scores[i+6].mVar[1] - scores[i+7].mVar[1];
+		pscores[i][0]	= scores[i+1].mVarShift[0] + 0*scores[i+2].mVarShift[0] - scores[i+1].mVar[0] - scores[i+2].mVar[0]
+						+ scores[i+6].mVarShift[0] + 0*scores[i+7].mVarShift[0] - scores[i+6].mVar[0] - scores[i+7].mVar[0];
+		pscores[i][1]	= scores[i+1].mVarShift[1] + 0*scores[i+2].mVarShift[1] - scores[i+1].mVar[1] - scores[i+2].mVar[1]
+						+ scores[i+6].mVarShift[1] + 0*scores[i+7].mVarShift[1] - scores[i+6].mVar[1] - scores[i+7].mVar[1];
 
-		VDDEBUG("Pscores[%d]: %10lld | %-10lld\n", i, pscores[i][0], pscores[i][1]);
+		VDDEBUG("Pscores[%d]: %10lld | %-10lld (%10ld | %-10ld)\n"
+			, i
+			, pscores[i][0]
+			, pscores[i][1]
+			, pscores[i][0] > 0 ? 0 : -(long)sqrt(-(double)pscores[i][0])
+			, pscores[i][1] > 0 ? 0 : -(long)sqrt(-(double)pscores[i][1])
+		);
 	}
 
 	int bestPhase = -1;
 	bool bestPolarity = false;
 	sint64 bestScore = 0x7ffffffffffffffll;
 
-	static const uint8 kPolarityMasks[3]={ 0x03, 0x01, 0x02 };
+	static const uint8 kPolarityMasks[3]={ 0x03, 0x02, 0x01 };
 	const uint8 polMask = kPolarityMasks[mConfig.mFieldMode];
 
 	int minOffset = 0;
@@ -909,7 +915,7 @@ void VDVideoFilterIVTC::Run() {
 	//	A B C C D	BFF		A B C C D
 	//	A A B C D			A B C C D
 
-	VDDEBUG("bestPhase: %d/%d\n", bestPhase, bestPolarity);
+	VDDEBUG("bestPhase: %d/%d (offset=%d)\n", bestPhase, bestPolarity, (int)((fa->src.mFrameNumber + bestPhase + 1) % 5));
 
 	if (mConfig.mbReduceRate) {
 		// Compute where the second duplicate C frame occurs in a repeated 5-frame, phase-0

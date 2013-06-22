@@ -218,6 +218,9 @@ void VDUIProxyListView::InsertColumn(int index, const wchar_t *label, int width)
 }
 
 int VDUIProxyListView::InsertItem(int item, const wchar_t *text) {
+	if (item < 0)
+		item = 0x7FFFFFFF;
+
 	if (VDIsWindowsNT()) {
 		LVITEMW itemw = {};
 
@@ -240,6 +243,9 @@ int VDUIProxyListView::InsertItem(int item, const wchar_t *text) {
 
 int VDUIProxyListView::InsertVirtualItem(int item, IVDUIListViewVirtualItem *lvvi) {
 	int index;
+
+	if (item < 0)
+		item = 0x7FFFFFFF;
 
 	if (VDIsWindowsNT()) {
 		LVITEMW itemw = {};

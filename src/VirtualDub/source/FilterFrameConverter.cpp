@@ -51,16 +51,16 @@ sint64 VDFilterFrameConverter::GetNearestUniqueFrame(sint64 outputFrame) {
 	return mpSource->GetNearestUniqueFrame(outputFrame);
 }
 
-bool VDFilterFrameConverter::RunRequests() {
+VDFilterFrameConverter::RunResult VDFilterFrameConverter::RunRequests() {
 	if (!mpRequest) {
 		if (!GetNextRequest(~mpRequest))
-			return false;
+			return kRunResult_Idle;
 	} else {
 		if (!mpRequest->IsActive()) {
 			mpRequest->MarkComplete(false);
 			CompleteRequest(mpRequest, false);
 			mpRequest = NULL;
-			return true;
+			return kRunResult_Running;
 		}
 	}
 
@@ -69,26 +69,29 @@ bool VDFilterFrameConverter::RunRequests() {
 		mpRequest->MarkComplete(false);
 		CompleteRequest(mpRequest, false);
 		mpRequest = NULL;
-		return true;
+		return kRunResult_Running;
 	}
 
 	if (!AllocateRequestBuffer(mpRequest)) {
 		mpRequest->MarkComplete(false);
 		CompleteRequest(mpRequest, false);
 		mpRequest = NULL;
-		return true;
+		return kRunResult_Running;
 	}
 
 	VDFilterFrameBuffer *dstbuf = mpRequest->GetResultBuffer();
-	const VDPixmap& pxsrc = VDPixmapFromLayout(mSourceLayout, srcbuf->GetBasePointer());
-	const VDPixmap& pxdst = VDPixmapFromLayout(mLayout, dstbuf->GetBasePointer());
+	const VDPixmap& pxsrc = VDPixmapFromLayout(mSourceLayout, (void *)srcbuf->LockRead());
+	const VDPixmap& pxdst = VDPixmapFromLayout(mLayout, dstbuf->LockWrite());
 
 	mpBlitter->Blit(pxdst, pxsrc);
+
+	dstbuf->Unlock();
+	srcbuf->Unlock();
 
 	mpRequest->MarkComplete(true);
 	CompleteRequest(mpRequest, true);
 	mpRequest = NULL;
-	return true;
+	return kRunResult_Running;
 }
 
 bool VDFilterFrameConverter::InitNewRequest(VDFilterFrameRequest *req, sint64 outputFrame, bool writable) {

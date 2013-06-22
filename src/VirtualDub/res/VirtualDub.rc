@@ -138,6 +138,14 @@ BEGIN
         MENUITEM "Curve editor",                ID_VIEW_CURVEEDITOR
         MENUITEM "Audio display",               ID_VIEW_AUDIODISPLAY
         MENUITEM SEPARATOR
+        POPUP "Pane layout"
+        BEGIN
+            MENUITEM "Input pane only",             ID_PANELAYOUT_INPUTPANEONLY
+            MENUITEM "Output pane only",            ID_PANELAYOUT_OUTPUTPANEONLY
+            MENUITEM "Both panes",                  ID_PANELAYOUT_BOTHPANES
+            MENUITEM SEPARATOR
+            MENUITEM "Auto-size panes",             ID_PANELAYOUT_AUTOSIZE
+        END
         MENUITEM "&Input video pane\tF9",       ID_OPTIONS_DISPLAYINPUTVIDEO, CHECKED
         MENUITEM "&Output video pane\tF10",     ID_OPTIONS_DISPLAYOUTPUTVIDEO, CHECKED
         MENUITEM "Arrange video panes vertically", ID_OPTIONS_VERTICALDISPLAY
@@ -2641,8 +2649,8 @@ BEGIN
     CONTROL         "&Reduce frame rate",IDC_MODE_REDUCE,"Button",BS_AUTORADIOBUTTON,84,17,76,10
     LTEXT           "Field order",IDC_STATIC,7,32,77,10,SS_CENTERIMAGE
     CONTROL         "&Autodetect",IDC_FIELDORDER_AUTO,"Button",BS_AUTORADIOBUTTON | WS_GROUP,84,32,52,10
-    CONTROL         "&Even field first (TFF)",IDC_FIELDORDER_TFF,"Button",BS_AUTORADIOBUTTON,84,42,81,10
-    CONTROL         "&Odd field first (BFF)",IDC_FIELDORDER_BFF,"Button",BS_AUTORADIOBUTTON,84,52,79,10
+    CONTROL         "&Top field first (TFF)",IDC_FIELDORDER_TFF,"Button",BS_AUTORADIOBUTTON,84,42,77,10
+    CONTROL         "&Bottom field first (BFF)",IDC_FIELDORDER_BFF,"Button",BS_AUTORADIOBUTTON,84,52,88,10
     LTEXT           "Pattern phase",IDC_STATIC,7,67,77,10,SS_CENTERIMAGE
     CONTROL         "Ada&ptive",IDC_PHASE_ADAPTIVE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,84,67,45,10
     CONTROL         "&Manual",IDC_PHASE_MANUAL,"Button",BS_AUTORADIOBUTTON,84,77,39,10

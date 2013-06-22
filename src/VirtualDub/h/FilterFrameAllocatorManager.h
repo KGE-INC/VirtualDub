@@ -20,8 +20,9 @@
 
 #include <vd2/system/vdstl.h>
 
-class VDFilterFrameAllocator;
+class IVDFilterFrameAllocator;
 class VDFilterFrameAllocatorProxy;
+class VDFilterAccelEngine;
 
 class VDFilterFrameAllocatorManager {
 	VDFilterFrameAllocatorManager(const VDFilterFrameAllocatorManager&);
@@ -33,14 +34,18 @@ public:
 	void Shutdown();
 
 	void AddAllocatorProxy(VDFilterFrameAllocatorProxy *proxy);
-	void AssignAllocators();
+	void AssignAllocators(VDFilterAccelEngine *accelEngine);
 
 protected:
+	void AssignAllocators(VDFilterAccelEngine *accelEngine, int mode);
+
 	struct ProxyEntry {
 		VDFilterFrameAllocatorProxy *mpProxy;
-		VDFilterFrameAllocator *mpAllocator;
+		IVDFilterFrameAllocator *mpAllocator;
 		uint32 mMinSize;
 		uint32 mMaxSize;
+		uint32 mBorderWidth;
+		uint32 mBorderHeight;
 		ProxyEntry *mpParent;
 	};
 
@@ -48,7 +53,7 @@ protected:
 
 	typedef vdfastvector<ProxyEntry> Proxies;
 
-	Proxies		mProxies;
+	Proxies		mProxies[3];
 };
 
 #endif	// f_VD2_FILTERFRAMEALLOCATORMANAGER_H

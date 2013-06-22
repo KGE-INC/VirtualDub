@@ -24,19 +24,15 @@
 ///////////////////////////////////////////////////////////////////////////
 
 VDFilterFrameBuffer::VDFilterFrameBuffer()
-	: mpBuffer(NULL)
-	, mBufferSize(0)
-	, mbVirtAlloc(false)
-	, mpAllocator(NULL)
+	: mpAllocator(NULL)
 {
 }
 
 VDFilterFrameBuffer::~VDFilterFrameBuffer() {
-	Shutdown();
 }
 
 int VDFilterFrameBuffer::AddRef() {
-	int rc = vdrefcounted<IVDRefCount>::AddRef();
+	int rc = vdrefcounted<IVDRefUnknown>::AddRef();
 	if (rc == 2) {
 		if (mpAllocator)
 			mpAllocator->OnFrameBufferActive(this);
@@ -46,7 +42,7 @@ int VDFilterFrameBuffer::AddRef() {
 }
 
 int VDFilterFrameBuffer::Release() {
-	int rc = vdrefcounted<IVDRefCount>::Release();
+	int rc = vdrefcounted<IVDRefUnknown>::Release();
 	if (rc == 1) {
 		if (mpAllocator)
 			mpAllocator->OnFrameBufferIdle(this);
@@ -55,37 +51,15 @@ int VDFilterFrameBuffer::Release() {
 	return rc;
 }
 
-void VDFilterFrameBuffer::Init(uint32 size) {
-	VDASSERT(!mpBuffer);
-
-	if (size >= 262144) {
-		mbVirtAlloc = true;
-		mpBuffer = VDAlignedVirtualAlloc(size);
-	} else {
-		mbVirtAlloc = false;
-		mpBuffer = VDAlignedMalloc(size, 16);
-	}
-
-	if (!mpBuffer)
-		throw MyMemoryError();
-
-	mBufferSize = size;
+void *VDFilterFrameBuffer::AsInterface(uint32 iid) {
+	return NULL;
 }
 
 void VDFilterFrameBuffer::Shutdown() {
 	EvictFromCaches();
-
-	if (mpBuffer) {
-		if (mbVirtAlloc)
-			VDAlignedVirtualFree(mpBuffer);
-		else
-			VDAlignedFree(mpBuffer);
-		mpBuffer = NULL;
-		mBufferSize = 0;
-	}
 }
 
-void VDFilterFrameBuffer::SetAllocator(VDFilterFrameAllocator *allocator) {
+void VDFilterFrameBuffer::SetAllocator(IVDFilterFrameAllocator *allocator) {
 	mpAllocator = allocator;
 }
 

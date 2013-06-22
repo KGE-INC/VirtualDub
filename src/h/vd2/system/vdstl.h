@@ -168,6 +168,11 @@ public:
 	typedef	const T&	const_reference;
 	typedef	T			value_type;
 
+	vdaligned_alloc() {}
+
+	template<class U, unsigned kAlignment2>
+	vdaligned_alloc(const vdaligned_alloc<U, kAlignment2>&) {}
+
 	template<class U> struct rebind { typedef vdaligned_alloc<U, kAlignment> other; };
 
 	pointer			address(reference x) const			{ return &x; }
