@@ -27,7 +27,6 @@
 #include "resource.h"
 
 #include <vd2/system/list.h>
-#include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
@@ -41,7 +40,6 @@
 #include "InputFile.h"
 #include "AudioFilterSystem.h"
 
-#include "uiframe.h"
 #include "gui.h"
 #include "job.h"
 #include "command.h"
@@ -51,7 +49,6 @@
 #include "project.h"
 #include "filters.h"
 #include "oshelper.h"
-#include "projectui.h"
 
 #include "JobControl.h"
 
@@ -65,7 +62,6 @@ extern InputFileOptions *g_pInputOpts;
 extern VDProject *g_project;
 extern COMPVARS g_Vcompression;
 extern VDJobQueue g_VDJobQueue;
-extern vdrefptr<VDProjectUI> g_projectui;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -491,74 +487,111 @@ void JobAddConfigurationInputs(JobScriptOutput& output, const wchar_t *szFileInp
 	}
 }
 
+static void JobAddReloadMarker(JobScriptOutput& output) {
+	output.adds("  // -- $reloadstop --");
+}
+
+static void JobAddClose(JobScriptOutput& output) {
+	output.adds("VirtualDub.audio.SetSource(1);");		// required to close a WAV file
+	output.adds("VirtualDub.Close();");
+}
+
 void JobAddConfiguration(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFileOutput, bool fCompatibility, List2<InputFilenameNode> *pListAppended, long lSpillThreshold, long lSpillFrameThreshold, bool bIncludeEditList) {
-	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
-	try {
-		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
-		JobCreateScript(output, opt, bIncludeEditList);
+	JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
+	JobCreateScript(output, opt, bIncludeEditList);
+	JobAddReloadMarker(output);
 
-		// Add magic flag
-		output.adds("  // -- $reloadstop --");
+	// Add actual run option
+	if (lSpillThreshold)
+		output.addf("VirtualDub.SaveSegmentedAVI(\"%s\", %d, %d);", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()), lSpillThreshold, lSpillFrameThreshold);
+	else
+		output.addf("VirtualDub.Save%sAVI(\"%s\");", fCompatibility ? "Compatible" : "", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()));
 
-		// Add actual run option
+	JobAddClose(output);
 
-		if (lSpillThreshold)
-			output.addf("VirtualDub.SaveSegmentedAVI(\"%s\", %d, %d);", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()), lSpillThreshold, lSpillFrameThreshold);
-		else
-			output.addf("VirtualDub.Save%sAVI(\"%s\");", fCompatibility ? "Compatible" : "", strCify(VDTextWToU8(VDStringW(szFileOutput)).c_str()));
-		output.adds("VirtualDub.audio.SetSource(1);");		// required to close a WAV file
-		output.adds("VirtualDub.Close();");
+	///////////////////
 
-		///////////////////
+	vdautoptr<VDJob> vdj(new VDJob);
+	vdj->SetInputFile(szFileInput);
+	vdj->SetOutputFile(szFileOutput);
 
-		vdj->SetInputFile(VDTextWToA(szFileInput).c_str());
-		vdj->SetOutputFile(VDTextWToA(szFileOutput).c_str());
-
-		const JobScriptOutput::Script& script = output.getscript();
-		vdj->SetScript(script.data(), script.size(), true);
-		g_VDJobQueue.Add(vdj, false);
-	} catch(...) {
-		freemem(vdj);
-		throw;
-	}
+	const JobScriptOutput::Script& script = output.getscript();
+	vdj->SetScript(script.data(), script.size(), true);
+	g_VDJobQueue.Add(vdj.release(), false);
 }
 
 void JobAddConfigurationImages(const DubOptions *opt, const wchar_t *szFileInput, const wchar_t *pszInputDriver, const wchar_t *szFilePrefix, const wchar_t *szFileSuffix, int minDigits, int imageFormat, int quality, List2<InputFilenameNode> *pListAppended) {
-	VDJob *vdj = new VDJob;
 	JobScriptOutput output;
 
-	try {
-		JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
-		JobCreateScript(output, opt);
+	JobAddConfigurationInputs(output, szFileInput, pszInputDriver, pListAppended);
+	JobCreateScript(output, opt);
+	JobAddReloadMarker(output);
 
-		// Add magic flag
-		output.adds("  // -- $reloadstop --");
+	// Add actual run option
+	VDStringA s(strCify(VDTextWToU8(VDStringW(szFilePrefix)).c_str()));
 
-		// Add actual run option
+	output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d, %d);", s.c_str(), strCify(VDTextWToU8(VDStringW(szFileSuffix)).c_str()), minDigits, imageFormat, quality);
 
-		VDStringA s(strCify(VDTextWToU8(VDStringW(szFilePrefix)).c_str()));
+	JobAddClose(output);
 
-		output.addf("VirtualDub.SaveImageSequence(\"%s\", \"%s\", %d, %d, %d);", s.c_str(), strCify(VDTextWToU8(VDStringW(szFileSuffix)).c_str()), minDigits, imageFormat, quality);
+	///////////////////
 
-		output.adds("VirtualDub.audio.SetSource(1);");		// required to close a WAV file
-		output.adds("VirtualDub.Close();");
+	vdautoptr<VDJob> vdj(new VDJob);
+	vdj->SetInputFile(szFileInput);
+	VDStringW outputFile;
+	outputFile.sprintf(L"%ls*%ls", szFilePrefix, szFileSuffix);
+	vdj->SetOutputFile(outputFile.c_str());
 
-		///////////////////
+	const JobScriptOutput::Script& script = output.getscript();
+	vdj->SetScript(script.data(), script.size(), true);
+	g_VDJobQueue.Add(vdj.release(), false);
+}
 
-		vdj->SetInputFile(VDTextWToA(szFileInput).c_str());
-		VDStringA outputFile;
-		outputFile.sprintf("%ls*%ls", szFilePrefix, szFileSuffix);
-		vdj->SetOutputFile(outputFile.c_str());
+void JobAddConfigurationSaveAudio(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, const wchar_t *dstFile, bool raw, bool includeEditList) {
+	JobScriptOutput output;
 
-		const JobScriptOutput::Script& script = output.getscript();
-		vdj->SetScript(script.data(), script.size(), true);
-		g_VDJobQueue.Add(vdj, false);
-	} catch(...) {
-		freemem(vdj);
-		throw;
-	}
+	JobAddConfigurationInputs(output, srcFile, srcInputDriver, pListAppended);
+	JobCreateScript(output, opt, includeEditList);
+	JobAddReloadMarker(output);
+
+	// Add actual run option
+	output.addf("VirtualDub.Save%s(\"%s\");", raw ? "RawAudio" : "WAV", strCify(VDTextWToU8(VDStringW(dstFile)).c_str()));
+
+	JobAddClose(output);
+
+	///////////////////
+
+	vdautoptr<VDJob> vdj(new VDJob);
+	vdj->SetInputFile(srcFile);
+	vdj->SetOutputFile(dstFile);
+
+	const JobScriptOutput::Script& script = output.getscript();
+	vdj->SetScript(script.data(), script.size(), true);
+	g_VDJobQueue.Add(vdj.release(), false);
+}
+
+void JobAddConfigurationRunVideoAnalysisPass(const DubOptions *opt, const wchar_t *srcFile, const wchar_t *srcInputDriver, List2<InputFilenameNode> *pListAppended, bool includeEditList) {
+	JobScriptOutput output;
+
+	JobAddConfigurationInputs(output, srcFile, srcInputDriver, pListAppended);
+	JobCreateScript(output, opt, includeEditList);
+	JobAddReloadMarker(output);
+
+	// Add actual run option
+	output.adds("VirtualDub.RunNullVideoPass();");
+
+	JobAddClose(output);
+
+	///////////////////
+
+	vdautoptr<VDJob> vdj(new VDJob);
+	vdj->SetInputFile(srcFile);
+
+	const JobScriptOutput::Script& script = output.getscript();
+	vdj->SetScript(script.data(), script.size(), true);
+	g_VDJobQueue.Add(vdj.release(), false);
 }
 
 void JobWriteConfiguration(const wchar_t *filename, DubOptions *opt, bool bIncludeEditList, bool bIncludeTextInfo) {
@@ -601,36 +634,8 @@ void JobClearList() {
 	g_VDJobQueue.ListClear();
 }
 
-bool JobRunList() {
+void JobRunList() {
 	g_VDJobQueue.RunAllStart();
-
-	while(g_VDJobQueue.IsRunAllInProgress()) {
-		MSG msg;
-
-		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
-			if (msg.message == WM_QUIT) {
-				g_VDJobQueue.RunAllStop();
-				PostQuitMessage(msg.wParam);
-				return false;
-			}
-
-			if (guiCheckDialogs(&msg))
-				continue;
-
-			if (VDUIFrame::TranslateAcceleratorMessage(msg))
-				continue;
-
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-
-		if (!JobPollAutoRun()) {
-			VDClearEvilCPUStates();		// clear evil CPU states set by Borland DLLs
-
-			WaitMessage();
-		}
-	}
-	return true;
 }
 
 bool JobPollAutoRun() {

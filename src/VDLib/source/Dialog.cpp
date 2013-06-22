@@ -5,6 +5,50 @@
 
 extern HINSTANCE g_hInst;
 
+///////////////////////////////////////////////////////////////////////////////
+
+class VDUIDropFileListW32 : public IVDUIDropFileList {
+public:
+	VDUIDropFileListW32(VDZHDROP hdrop);
+
+	bool GetFileName(int index, VDStringW& fileName);
+
+protected:
+	const HDROP mhdrop;
+	const int mFileCount;
+};
+
+VDUIDropFileListW32::VDUIDropFileListW32(VDZHDROP hdrop)
+	: mhdrop(hdrop)
+	, mFileCount(DragQueryFile(mhdrop, 0xFFFFFFFF, NULL, 0))
+{
+}
+
+bool VDUIDropFileListW32::GetFileName(int index, VDStringW& fileName) {
+	if (index < 0 || index >= mFileCount)
+		return false;
+
+	if (VDIsWindowsNT()) {
+		wchar_t fileBufW[MAX_PATH];
+
+		if (!DragQueryFileW(mhdrop, index, fileBufW, MAX_PATH))
+			return false;
+
+		fileName = fileBufW;
+		return true;
+	} else {
+		char fileBufA[MAX_PATH];
+
+		if (!DragQueryFileA(mhdrop, index, fileBufA, MAX_PATH))
+			return false;
+
+		fileName = VDTextAToW(fileBufA);
+		return true;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 VDDialogFrameW32::VDDialogFrameW32(uint32 dlgid)
 	: mpDialogResourceName(MAKEINTRESOURCE(dlgid))
 	, mbIsModal(false)
@@ -148,6 +192,29 @@ double VDDialogFrameW32::GetControlValueDouble(uint32 id) {
 	return val;
 }
 
+VDStringW VDDialogFrameW32::GetControlValueString(uint32 id) {
+	if (!mhdlg) {
+		FailValidation(id);
+		return VDStringW();
+	}
+
+	HWND hwnd = GetDlgItem(mhdlg, id);
+	if (!hwnd) {
+		FailValidation(id);
+		return VDStringW();
+	}
+
+	return VDGetWindowTextW32(hwnd);
+}
+
+void VDDialogFrameW32::ExchangeControlValueBoolCheckbox(bool write, uint32 id, bool& val) {
+	if (write) {
+		val = IsButtonChecked(id);
+	} else {
+		CheckButton(id, val);
+	}
+}
+
 void VDDialogFrameW32::ExchangeControlValueDouble(bool write, uint32 id, const wchar_t *format, double& val, double minVal, double maxVal) {
 	if (write) {
 		val = GetControlValueDouble(id);
@@ -156,6 +223,13 @@ void VDDialogFrameW32::ExchangeControlValueDouble(bool write, uint32 id, const w
 	} else {
 		SetControlTextF(id, format, val);
 	}
+}
+
+void VDDialogFrameW32::ExchangeControlValueString(bool write, uint32 id, VDStringW& s) {
+	if (write)
+		s = GetControlValueString(id);
+	else
+		SetControlText(id, s.c_str());
 }
 
 void VDDialogFrameW32::CheckButton(uint32 id, bool checked) {
@@ -254,6 +328,16 @@ bool VDDialogFrameW32::OnCommand(uint32 id, uint32 extcode) {
 	return false;
 }
 
+void VDDialogFrameW32::OnDropFiles(VDZHDROP hdrop) {
+	VDUIDropFileListW32 dropList(hdrop);
+
+	OnDropFiles(&dropList);
+	DragFinish(hdrop);
+}
+
+void VDDialogFrameW32::OnDropFiles(IVDUIDropFileList *dropFileList) {
+}
+
 bool VDDialogFrameW32::PreNCDestroy() {
 	return false;
 }
@@ -320,6 +404,10 @@ VDZINT_PTR VDDialogFrameW32::DlgProc(VDZUINT msg, VDZWPARAM wParam, VDZLPARAM lP
 
 		case WM_TIMER:
 			return OnTimer((uint32)wParam);
+
+		case WM_DROPFILES:
+			OnDropFiles((VDZHDROP)wParam);
+			return 0;
 	}
 
 	return FALSE;

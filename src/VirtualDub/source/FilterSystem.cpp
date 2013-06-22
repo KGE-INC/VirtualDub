@@ -128,7 +128,7 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 		if (flags == FILTERPARAM_NOT_SUPPORTED || (flags & FILTERPARAM_SUPPORTS_ALTFORMATS)) {
 			using namespace nsVDPixmap;
 			VDASSERTCT(kPixFormat_Max_Standard < 32);
-			VDASSERTCT(kPixFormat_Max_Standard == kPixFormat_YUV410_Planar + 1);
+			VDASSERTCT(kPixFormat_Max_Standard == kPixFormat_YUV420_NV12 + 1);
 			uint32 formatMask	= (1 << kPixFormat_XRGB1555)
 								| (1 << kPixFormat_RGB565)
 								| (1 << kPixFormat_RGB888)
@@ -207,6 +207,14 @@ void FilterSystem::prepareLinearChain(List *listFA, uint32 src_width, uint32 src
 
 					case kPixFormat_YUV410_Planar:
 						format = kPixFormat_YUV420_Planar;
+						break;
+
+					case kPixFormat_YUV422_V210:
+						format = kPixFormat_YUV422_Planar;
+						break;
+
+					case kPixFormat_YUV422_UYVY_709:
+						format = kPixFormat_YUV422_UYVY;
 						break;
 
 					default:
@@ -681,6 +689,9 @@ bool FilterSystem::IsFiltered(VDPosition frame) const {
 }
 
 sint64 FilterSystem::GetSourceFrame(sint64 frame) const {
+	if (!(dwFlags & FILTERS_INITIALIZED))
+		return frame;
+
 	if (listFilters->IsEmpty())
 		return frame;
 
@@ -688,9 +699,6 @@ sint64 FilterSystem::GetSourceFrame(sint64 frame) const {
 		return frame;
 
 	FilterInstance *fa = (FilterInstance *)listFilters->tail.next;
-
-	if (!(dwFlags & FILTERS_INITIALIZED))
-		return frame;
 
 	while(fa->next) {
 		if (fa->IsEnabled()) {

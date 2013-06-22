@@ -14,6 +14,7 @@
 #define IDC_PREVIEW                     3
 #define IDC_SAVEASDEFAULT               3
 #define IDOK2                           3
+#define IDC_ADDTOQUEUE                  3
 #define IDC_REMOVE                      4
 #define IDS_TITLE_DUBBING               4
 #define IDC_MOVE_DOWN                   4
@@ -24,11 +25,13 @@
 #define IDC_SAVE_AS_DEFAULT             4
 #define IDC_HELP3                       4
 #define IDC_DEBUG                       4
+#define IDC_RENAMEFILES                 4
 #define IDC_MOVEUP                      5
 #define IDS_TITLE_DUBBING_MINIMIZED     5
 #define IDC_SAMPLE_MULTIPLE             5
 #define IDC_CLEAR                       5
 #define IDC_APPLY                       5
+#define IDC_FILTEROUTPUTNAMES           5
 #define IDC_MOVEDOWN                    6
 #define IDS_TITLE_STATUS                6
 #define IDC_POSTPONE                    6
@@ -222,6 +225,10 @@
 #define IDD_EXTOPENOPTS_MP3             275
 #define IDD_FILTER_PREVIEW_ZOOM         276
 #define IDD_FILTER_BOBDOUBLER           277
+#define IDD_FILTER_WARPSHARP            278
+#define IDD_BATCH_WIZARD                279
+#define IDD_BATCH_WIZARD_NAMEFILTER     280
+#define IDR_BATCHWIZARD_MENU            281
 #define IDC_CURRENT_VFRAME              1000
 #define IDC_CURRENT_ASAMPLE             1001
 #define IDC_TIME_REMAINING              1002
@@ -316,17 +323,25 @@
 #define IDC_OUTPUT_AUTOSELECT           1036
 #define IDC_ENABLE_CLIPPING             1037
 #define IDS_FILE_SAVECONFIGURATION      1037
+#define IDC_INPUT_YUV444_PLANAR         1037
 #define IDC_BIAS                        1038
 #define IDS_FILE_PREVIEWINPUT           1038
+#define IDC_OUTPUT_YUV444_PLANAR        1038
 #define IDC_SAMPLINGRATE_11KHZ          1039
 #define IDS_FILE_PREVIEWOUTPUT          1039
+#define IDC_INPUT_YUV422_V210           1039
 #define IDC_SAMPLINGRATE_NOCHANGE       1040
 #define IDS_FILE_APPENDSEGMENT          1040
+#define IDC_OUTPUT_YUV422_V210          1040
 #define IDC_SAMPLINGRATE_16KHZ          1041
 #define IDS_FILE_SAVESEGMENTEDAVI       1041
+#define IDC_INPUT_YUV422_UYVY_709       1041
 #define IDC_SAMPLINGRATE_48KHZ          1042
+#define IDC_OUTPUT_YUV422_UYVY_709      1042
 #define IDC_SAMPLINGRATE_8KHZ           1043
+#define IDC_INPUT_YUV420_NV12           1043
 #define IDC_SAMPLINGRATE_CUSTOM         1044
+#define IDC_OUTPUT_YUV420_NV12          1044
 #define IDC_SAMPLINGRATE_22KHZ          1047
 #define IDC_SAMPLINGRATE_44KHZ          1048
 #define IDC_SAMPLINGRATE_INTEGRAL       1049
@@ -451,6 +466,7 @@
 #define IDC_CRASH_DETAILS               1152
 #define IDC_CUTOFF                      1152
 #define IDC_ASPECT_RATIO1               1152
+#define IDC_OUTPUTFOLDER                1152
 #define IDS_VIDEO_FRAMERATE             1153
 #define IDC_DEFAULT_DRIVER              1153
 #define IDC_FILELIMIT_SETTING           1153
@@ -541,6 +557,7 @@
 #define IDC_SHOW_GRADIENT               1184
 #define IDC_SHOWIMAGEFORMATS            1184
 #define IDC_AUTOSTART                   1184
+#define IDC_MATCHCASE                   1184
 #define IDC_PERFOPT_MMX                 1185
 #define IDC_AVI_DISABLEOPTIMIZEDIO      1185
 #define IDC_DISABLE_ALL_MESSAGES        1185
@@ -626,6 +643,7 @@
 #define IDC_SPILL_DRIVES                1251
 #define IDC_EDIT4                       1257
 #define IDC_MIN_SIZE                    1257
+#define IDC_REPLACESTR                  1257
 #define IDC_EDIT5                       1258
 #define IDC_MAX_SIZE                    1258
 #define IDC_IF_NORMAL                   1260
@@ -653,6 +671,7 @@
 #define IDC_BUTTON1                     1282
 #define IDC_PICKCOLOR                   1282
 #define IDC_LOGOFILE_BROWSE             1282
+#define IDC_BROWSEOUTPUTFOLDER          1282
 #define IDS_AUDIO_SOURCE_AVI            1283
 #define IDC_REGDUMP                     1283
 #define IDC_ALPHAFILE_BROWSE            1283
@@ -847,6 +866,7 @@
 #define IDC_ALIGNMENT_1                 1427
 #define IDC_ALIGNMENT_4                 1428
 #define IDC_SLIDER1                     1428
+#define IDC_DEPTH                       1428
 #define IDC_ALIGNMENT_8                 1429
 #define IDC_STATIC_LIMIT                1429
 #define IDC_ALIGNMENT_16                1430
@@ -867,11 +887,21 @@
 #define IDC_DEINTERLACE_ELA             1447
 #define IDC_RADIO5                      1448
 #define IDC_DEINTERLACE_ADAPTIVEELA     1448
+#define IDC_BLUR                        1448
+#define IDC_STATIC_DEPTH                1449
+#define IDC_DEINTERLACE_NONE            1449
+#define IDC_DEINTERLACE_NONEHALF        1449
 #define IDC_DIR_MIDDLERIGHT             1450
+#define IDC_STATIC_BLUR                 1450
+#define IDC_DEINTERLACE_NONE2           1450
+#define IDC_DEINTERLACE_NONEFULL        1450
 #define IDC_DIR_TOPRIGHT                1451
 #define IDC_DIR_TOPCENTER               1452
+#define IDC_SEARCHSTR                   1452
 #define IDC_DIR_TOPLEFT                 1453
+#define IDC_OUTPUT_RELATIVE             1453
 #define IDC_DIR_MIDDLELEFT              1454
+#define IDC_OUTPUT_ABSOLUTE             1454
 #define IDC_DIR_BOTTOMLEFT              1455
 #define IDC_DIR_BOTTOMCENTER            1456
 #define IDC_DIR_BOTTOMRIGHT             1457
@@ -1283,6 +1313,28 @@
 #define ID_VIDEO_SKIPFILTERCONVERSION   40467
 #define ID_FILE_USELOCALJOBQUEUE        40468
 #define ID_FILE_USEREMOTEJOBQUEUE       40469
+#define ID_EDIT_CROPTOSELECTION         40482
+#define ID_FILE_BATCHWIZARD             40483
+#define ID_ADDTOQUEUE_R                 40484
+#define ID_ADDTOQUEUE_RESAVEASAVI       40484
+#define ID_ADDTOQUEUE_EXTRACTAUDIOTOWAV 40485
+#define ID_ADDTOQUEUE_EXTRACTAUDIOASWAV 40485
+#define ID_ADDTOQUEUE_EXTRACTRAWAUDIO   40486
+#define ID_ADDTOQUEUE_RUNVIDEOANALYSISPASS 40487
+#define ID_FILE_QUEUEBATCHOPERATION     40488
+#define ID_QUEUEBATCHOPERATION_SAVEASAVI 40489
+#define ID_QUEUEBATCHOPERATION_SAVEOLDFORMATAVI 40490
+#define ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI 40491
+#define ID_QUEUEBATCHOPERATION_SAVESEGMENTEDAVI 40492
+#define ID_QUEUEBATCHOPERATION_SAVEIMAGESEQUENCE 40493
+#define ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO 40494
+#define ID_QUEUEBATCHOPERATION_SAVEWAV  40495
+#define ID_QUEUEBATCHOPERATION_RUNVIDEOANALYSISPASS 40496
+#define ID_OPTIONS_WHENFINISHED         40497
+#define ID_WHENFINISHED_HIBERNATE       40498
+#define ID_WHENFINISHED_DONOTHING       40499
+#define ID_WHENFINISHED_SHUTDOWN        40500
+#define ID_WHENFINISHED_SLEEP           40501
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1337,9 +1389,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        278
-#define _APS_NEXT_COMMAND_VALUE         40482
-#define _APS_NEXT_CONTROL_VALUE         1448
+#define _APS_NEXT_RESOURCE_VALUE        281
+#define _APS_NEXT_COMMAND_VALUE         40502
+#define _APS_NEXT_CONTROL_VALUE         1454
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

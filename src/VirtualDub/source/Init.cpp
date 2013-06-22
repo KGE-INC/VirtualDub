@@ -931,11 +931,8 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 				}
 				else if (!wcscmp(token, L"r")) {
 					JobUnlockDubber();
-					bool success = JobRunList();
+					JobRunList();
 					JobLockDubber();
-
-					if (!success)
-						break;
 				}
 				else if (!wcscmp(token, L"s")) {
 					if (!cmdLine.GetNextNonSwitchArgument(it, token))

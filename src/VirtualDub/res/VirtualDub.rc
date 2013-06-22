@@ -84,6 +84,19 @@ BEGIN
             MENUITEM "Raw audio...",                ID_FILE_SAVERAWAUDIO
             MENUITEM "Animated GIF...",             ID_FILE_SAVEANIMATEDGIF
         END
+        POPUP "Queue batch operation"
+        BEGIN
+            MENUITEM "Run video analysis pass",     ID_QUEUEBATCHOPERATION_RUNVIDEOANALYSISPASS
+            MENUITEM "Save as AVI...",              ID_QUEUEBATCHOPERATION_SAVEASAVI
+            MENUITEM "Save old format AVI...",      ID_QUEUEBATCHOPERATION_SAVECOMPATIBLEAVI
+            MENUITEM "Save segmented AVI...",       ID_QUEUEBATCHOPERATION_SAVESEGMENTEDAVI
+            MENUITEM "Save image sequence...",      ID_QUEUEBATCHOPERATION_SAVEIMAGESEQUENCE
+            MENUITEM "Save WAV...",                 ID_QUEUEBATCHOPERATION_SAVEWAV
+            MENUITEM SEPARATOR
+            MENUITEM "Export raw audio...",         ID_QUEUEBATCHOPERATION_EXPORTRAWAUDIO
+            MENUITEM SEPARATOR
+            MENUITEM "Batch wizard...",             ID_FILE_BATCHWIZARD
+        END
         MENUITEM "File &Information...",        ID_FILE_AVIINFO
         MENUITEM "Set text information...",     ID_FILE_SETTEXTINFO
         MENUITEM "&Save WAV...",                ID_FILE_SAVEWAV
@@ -110,6 +123,7 @@ BEGIN
         MENUITEM "Delete\tDel",                 ID_EDIT_DELETE
         MENUITEM "Clear selection\tCtrl+D",     ID_EDIT_CLEAR
         MENUITEM "Select all\tCtrl+A",          ID_EDIT_SELECTALL
+        MENUITEM "Crop to selection",           ID_EDIT_CROPTOSELECTION
         MENUITEM SEPARATOR
         MENUITEM "Set selection start\tHome",   ID_EDIT_SETSELSTART
         MENUITEM "Set selection end\tEnd",      ID_EDIT_SETSELEND
@@ -514,7 +528,13 @@ BEGIN
     END
     POPUP "&Options"
     BEGIN
-        MENUITEM "&Shutdown when finished",     ID_OPTIONS_SHUTDOWNWHENFINISHED
+        POPUP "When finished"
+        BEGIN
+            MENUITEM "Do &Nothing",                 ID_WHENFINISHED_DONOTHING
+            MENUITEM "S&leep",                      ID_WHENFINISHED_SLEEP
+            MENUITEM "&Shut down",                  ID_WHENFINISHED_SHUTDOWN
+            MENUITEM "&Hibernate",                  ID_WHENFINISHED_HIBERNATE
+        END
     END
 END
 
@@ -623,6 +643,17 @@ BEGIN
     END
 END
 
+IDR_BATCHWIZARD_MENU MENU 
+BEGIN
+    POPUP "AddToQueue"
+    BEGIN
+        MENUITEM "Re-save as &AVI",             ID_ADDTOQUEUE_R
+        MENUITEM "Extract audio to &WAV",       ID_ADDTOQUEUE_EXTRACTAUDIOTOWAV
+        MENUITEM "Extract &raw audio",          ID_ADDTOQUEUE_EXTRACTRAWAUDIO
+        MENUITEM "Run video &analysis pass",    ID_ADDTOQUEUE_RUNVIDEOANALYSISPASS
+    END
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -672,13 +703,13 @@ BEGIN
     LTEXT           "Use positive values if the audio is playing too early, and negative values if the audio is playing too late.",IDC_STATIC,15,124,218,18
 END
 
-IDD_VIDEO_DEPTH DIALOGEX 0, 0, 354, 159
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_VIDEO_DEPTH DIALOGEX 0, 0, 354, 199
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTEXTHELP
 CAPTION "Video Color Depth"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "Decompression format ",IDC_STATIC,7,7,168,124
+    GROUPBOX        "Decompression format ",IDC_STATIC,7,7,168,164
     CONTROL         "Autoselect",IDC_INPUT_AUTOSELECT,"Button",BS_AUTORADIOBUTTON | WS_GROUP,14,16,49,10
     CONTROL         "16 bit RGB (555)",IDC_INPUT_XRGB1555,"Button",BS_AUTORADIOBUTTON,14,26,69,10
     CONTROL         "16 bit RGB (565)",IDC_INPUT_RGB565,"Button",BS_AUTORADIOBUTTON,14,36,69,10
@@ -687,14 +718,19 @@ BEGIN
                     "Button",BS_AUTORADIOBUTTON,14,56,143,10
     CONTROL         "4:2:2 YCbCr (UYVY)",IDC_INPUT_YUV422_UYVY,"Button",BS_AUTORADIOBUTTON,14,66,79,10
     CONTROL         "4:2:2 YCbCr (YUY2)",IDC_INPUT_YUV422_YUY2,"Button",BS_AUTORADIOBUTTON,14,76,79,10
-    CONTROL         "4:2:0 planar YCbCr (YV12)",IDC_INPUT_YUV420_PLANAR,
+    CONTROL         "4:4:4 planar YCbCr (YV24)",IDC_INPUT_YUV444_PLANAR,
                     "Button",BS_AUTORADIOBUTTON,14,86,99,10
     CONTROL         "4:2:2 planar YCbCr (YV16)",IDC_INPUT_YUV422_PLANAR,
                     "Button",BS_AUTORADIOBUTTON,14,96,99,10
+    CONTROL         "4:2:0 planar YCbCr (YV12)",IDC_INPUT_YUV420_PLANAR,
+                    "Button",BS_AUTORADIOBUTTON,14,106,99,10
     CONTROL         "4:1:0 planar YCbCr (YVU9)",IDC_INPUT_YUV410_PLANAR,
-                    "Button",BS_AUTORADIOBUTTON,14,106,100,10
-    CONTROL         "Luminance only (Y8)",IDC_INPUT_Y8,"Button",BS_AUTORADIOBUTTON,14,116,80,10
-    GROUPBOX        "Output format to compressor/display ",IDC_STATIC,179,7,168,124
+                    "Button",BS_AUTORADIOBUTTON,14,116,100,10
+    CONTROL         "Luminance only (Y8)",IDC_INPUT_Y8,"Button",BS_AUTORADIOBUTTON,14,126,80,10
+    CONTROL         "4:2:2 YCbCr 10-bit (v210)",IDC_INPUT_YUV422_V210,"Button",BS_AUTORADIOBUTTON,14,136,99,10
+    CONTROL         "4:2:2 YCbCr HD (HDYC)",IDC_INPUT_YUV422_UYVY_709,"Button",BS_AUTORADIOBUTTON,14,146,92,10
+    CONTROL         "4:2:0 YCbCr (NV12)",IDC_INPUT_YUV420_NV12,"Button",BS_AUTORADIOBUTTON,14,156,79,10
+    GROUPBOX        "Output format to compressor/display ",IDC_STATIC,179,7,168,164
     CONTROL         "Same as decompression format",IDC_OUTPUT_AUTOSELECT,
                     "Button",BS_AUTORADIOBUTTON | WS_GROUP,185,16,114,10
     CONTROL         "16 bit RGB (555)",IDC_OUTPUT_XRGB1555,"Button",BS_AUTORADIOBUTTON,185,26,69,10
@@ -704,16 +740,23 @@ BEGIN
                     "Button",BS_AUTORADIOBUTTON,185,56,143,10
     CONTROL         "4:2:2 YCbCr (UYVY)",IDC_OUTPUT_YUV422_UYVY,"Button",BS_AUTORADIOBUTTON,185,66,79,10
     CONTROL         "4:2:2 YCbCr (YUY2)",IDC_OUTPUT_YUV422_YUY2,"Button",BS_AUTORADIOBUTTON,185,76,79,10
-    CONTROL         "4:2:0 planar YCbCr (YV12)",IDC_OUTPUT_YUV420_PLANAR,
+    CONTROL         "4:4:4 planar YCbCr (YV24)",IDC_OUTPUT_YUV444_PLANAR,
                     "Button",BS_AUTORADIOBUTTON,185,86,99,10
     CONTROL         "4:2:2 planar YCbCr (YV16)",IDC_OUTPUT_YUV422_PLANAR,
                     "Button",BS_AUTORADIOBUTTON,185,96,99,10
+    CONTROL         "4:2:0 planar YCbCr (YV12)",IDC_OUTPUT_YUV420_PLANAR,
+                    "Button",BS_AUTORADIOBUTTON,185,106,99,10
     CONTROL         "4:1:0 planar YCbCr (YVU9)",IDC_OUTPUT_YUV410_PLANAR,
-                    "Button",BS_AUTORADIOBUTTON,185,106,100,10
-    CONTROL         "Luminance only (Y8)",IDC_OUTPUT_Y8,"Button",BS_AUTORADIOBUTTON,185,116,80,10
-    DEFPUSHBUTTON   "OK",IDOK,244,138,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,297,138,50,14
-    PUSHBUTTON      "Save as default",IDC_SAVEASDEFAULT,7,138,60,14
+                    "Button",BS_AUTORADIOBUTTON,185,116,100,10
+    CONTROL         "Luminance only (Y8)",IDC_OUTPUT_Y8,"Button",BS_AUTORADIOBUTTON,185,126,80,10
+    CONTROL         "4:2:2 YCbCr 10-bit (v210)",IDC_OUTPUT_YUV422_V210,
+                    "Button",BS_AUTORADIOBUTTON,185,136,99,10
+    CONTROL         "4:2:2 YCbCr HD (HDYC)",IDC_OUTPUT_YUV422_UYVY_709,
+                    "Button",BS_AUTORADIOBUTTON,185,146,92,10
+    CONTROL         "4:2:0 YCbCr (NV12)",IDC_OUTPUT_YUV420_NV12,"Button",BS_AUTORADIOBUTTON,185,156,79,10
+    PUSHBUTTON      "Save as default",IDC_SAVEASDEFAULT,7,178,60,14
+    DEFPUSHBUTTON   "OK",IDOK,244,178,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,297,178,50,14
 END
 
 IDD_PERFORMANCE DIALOG  0, 0, 286, 236
@@ -2464,9 +2507,9 @@ BEGIN
     LTEXT           "B: 0",IDC_BLUE,2,35,41,8
 END
 
-IDD_FILTER_BOBDOUBLER DIALOGEX 0, 0, 195, 90
+IDD_FILTER_BOBDOUBLER DIALOGEX 0, 0, 209, 114
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: bob doubler"
+CAPTION "Filter: Bob doubler"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     LTEXT           "&Field order",IDC_STATIC,7,7,35,8
@@ -2476,9 +2519,63 @@ BEGIN
     CONTROL         "B&ob",IDC_DEINTERLACE_BOB,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,86,33,28,10
     CONTROL         "&ELA",IDC_DEINTERLACE_ELA,"Button",BS_AUTORADIOBUTTON,86,43,28,10
     CONTROL         "&Adaptive ELA",IDC_DEINTERLACE_ADAPTIVEELA,"Button",BS_AUTORADIOBUTTON,86,53,59,10
-    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,69,50,14
-    DEFPUSHBUTTON   "OK",IDOK,86,69,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,138,69,50,14
+    CONTROL         "None - &alternate fields",IDC_DEINTERLACE_NONEHALF,
+                    "Button",BS_AUTORADIOBUTTON,86,63,87,10
+    CONTROL         "None - &double up frames",IDC_DEINTERLACE_NONEFULL,
+                    "Button",BS_AUTORADIOBUTTON,86,73,95,10
+    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,93,50,14
+    DEFPUSHBUTTON   "OK",IDOK,99,93,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,152,93,50,14
+END
+
+IDD_FILTER_WARPSHARP DIALOGEX 0, 0, 230, 71
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Filter: Warp sharp"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Depth",IDC_STATIC,7,7,20,15,SS_CENTERIMAGE
+    CONTROL         "",IDC_DEPTH,"msctls_trackbar32",TBS_AUTOTICKS | TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,53,7,144,15
+    RTEXT           "Static",IDC_STATIC_DEPTH,200,7,19,15,SS_CENTERIMAGE
+    LTEXT           "&Blur passes",IDC_STATIC,7,27,37,15,SS_CENTERIMAGE
+    CONTROL         "",IDC_BLUR,"msctls_trackbar32",TBS_AUTOTICKS | TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,53,27,144,15
+    RTEXT           "Static",IDC_STATIC_BLUR,200,27,19,15,SS_CENTERIMAGE
+    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,50,50,14
+    DEFPUSHBUTTON   "OK",IDOK,121,50,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,173,50,50,14
+END
+
+IDD_BATCH_WIZARD DIALOGEX 0, 0, 384, 220
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "Batch Wizard"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Output location",IDC_STATIC,7,7,60,10,SS_CENTERIMAGE
+    CONTROL         "Write outputs relative to source location",IDC_OUTPUT_RELATIVE,
+                    "Button",BS_AUTORADIOBUTTON,67,7,145,10
+    CONTROL         "Route outputs to a different folder:",IDC_OUTPUT_ABSOLUTE,
+                    "Button",BS_AUTORADIOBUTTON,67,17,130,10
+    EDITTEXT        IDC_OUTPUTFOLDER,67,29,288,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_BROWSEOUTPUTFOLDER,357,29,20,14
+    LTEXT           "List of files to batch process (drag and drop to add more):",IDC_STATIC,7,49,370,11
+    CONTROL         "",IDC_LIST,"SysListView32",LVS_REPORT | LVS_ALIGNLEFT | WS_TABSTOP,7,62,370,134,WS_EX_CLIENTEDGE
+    PUSHBUTTON      "Filter Output Names...",IDC_FILTEROUTPUTNAMES,7,199,85,14
+    PUSHBUTTON      "Rename Files",IDC_RENAMEFILES,181,199,69,14
+    PUSHBUTTON      "Add To Queue",IDC_ADDTOQUEUE,253,199,69,14
+    DEFPUSHBUTTON   "OK",IDOK,327,199,50,14
+END
+
+IDD_BATCH_WIZARD_NAMEFILTER DIALOGEX 0, 0, 321, 58
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Filter output names"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Search for:",IDC_STATIC,7,7,64,14,SS_CENTERIMAGE
+    EDITTEXT        IDC_SEARCHSTR,71,7,185,14,ES_AUTOHSCROLL
+    LTEXT           "&Replace with:",IDC_STATIC,7,24,64,14,SS_CENTERIMAGE
+    EDITTEXT        IDC_REPLACESTR,71,24,185,14,ES_AUTOHSCROLL
+    CONTROL         "Match &case",IDC_MATCHCASE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,71,41,185,10
+    DEFPUSHBUTTON   "OK",IDOK,264,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,264,24,50,14
 END
 
 
@@ -2513,8 +2610,8 @@ BEGIN
         RIGHTMARGIN, 347
         VERTGUIDE, 14
         TOPMARGIN, 7
-        BOTTOMMARGIN, 152
-        HORZGUIDE, 131
+        BOTTOMMARGIN, 192
+        HORZGUIDE, 171
     END
 
     IDD_PERFORMANCE, DIALOG
@@ -3413,10 +3510,37 @@ BEGIN
     IDD_FILTER_BOBDOUBLER, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 188
+        RIGHTMARGIN, 202
         VERTGUIDE, 86
         TOPMARGIN, 7
-        BOTTOMMARGIN, 83
+        BOTTOMMARGIN, 107
+    END
+
+    IDD_FILTER_WARPSHARP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 223
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 64
+    END
+
+    IDD_BATCH_WIZARD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 377
+        VERTGUIDE, 67
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 213
+    END
+
+    IDD_BATCH_WIZARD_NAMEFILTER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 314
+        VERTGUIDE, 71
+        VERTGUIDE, 256
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 51
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -3572,8 +3696,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,8,8,0
- PRODUCTVERSION 1,8,8,0
+ FILEVERSION 1,9,0,0
+ PRODUCTVERSION 1,9,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3589,12 +3713,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.8.8"
+            VALUE "FileVersion", "1.9.0"
             VALUE "InternalName", "VirtualDub"
             VALUE "LegalCopyright", "Copyright © 1998-2008 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.8.8"
+            VALUE "ProductVersion", "1.9.0"
         END
     END
     BLOCK "VarFileInfo"

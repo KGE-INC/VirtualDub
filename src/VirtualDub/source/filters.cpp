@@ -240,7 +240,7 @@ void VFBitmapInternal::ConvertPixmapLayoutToBitmapLayout() {
 	pitch	= -mPixmapLayout.pitch;
 	offset	= mPixmapLayout.pitch < 0 ? mPixmapLayout.data + mPixmapLayout.pitch*(h - 1) : mPixmapLayout.data;
 
-	uint32 bpr = formatInfo.qsize * -(-((sint32)w >> formatInfo.qwbits));
+	uint32 bpr = formatInfo.qsize * ((w + formatInfo.qw - 1) / formatInfo.qw);
 	modulo	= pitch - bpr;
 	size	= VDPixmapLayoutGetMinSize(mPixmapLayout) - offset;
 
@@ -266,7 +266,7 @@ void VFBitmapInternal::ConvertPixmapToBitmap() {
 	pitch	= -mPixmap.pitch;
 	data	= (Pixel *)((char *)mPixmap.data + mPixmap.pitch*(h - 1));
 
-	uint32 bpr = formatInfo.qsize * -(-((sint32)w >> formatInfo.qwbits));
+	uint32 bpr = formatInfo.qsize * ((w + formatInfo.qw - 1) / formatInfo.qw);
 	modulo	= pitch - bpr;
 }
 

@@ -1,15 +1,37 @@
 VirtualDub change log
+Build %build% (1.9.0, experimental): [%date%]
+   [features added]
+   * Added internal Huffyuv decoder.
+   * Added "crop to selection" command.
+   * Frameserver startup is now scriptable.
+   * MJPEG decoder now uses Rec. 601 color space instead of JFIF.
+   * 4:4:4 planar YCbCr (YV24) is now exposed in the Video Color Depth dialog.
+   * Added support for 4:2:2 10-bit YCbCr (v210) and 4:2:0 YCbCr with interleaved chroma (NV12).
+   * Moved "add as batch job" form of save operations to a separate menu to reduce confusion.
+   * The audio playback device can now be selected in Preferences.
+   * AMD64: MJPEG decoder is now available.
+   * Filters: Warp sharp added as internal filter with YCbCr 4:4:4 support.
+   * Filters: Perspective filter now supports bicubic filtering.
+   * Filters: Blur and Blur More are now supported on AMD64.
+   * Filters: Brightness/contrast filter now supports RGB24 and planar YCbCr formats.
+   * Filters: Levels filter can now work directly in YCbCr formats when luma mode is enabled.
+   * Filters: Bob doubler now allows deinterlacing to be disabled.
+   * Filters: Preview now keeps current position.
+   * Filters: Holding SHIFT when adjusting cropping now aligns to 16 pixel size boundaries.
+   * Display: OpenGL driver supports bicubic filtering.
+   * Display: The fallback to GDI when the app goes into the background can now be disabled.
+   * D3D: Added high-precision pixel shader 2.0 display mode with dithering for slightly better color fidelity.
+   * D3D: HDYC, v210, and Pal8 are now decoded in hardware.
+   * JobControl: The system can now also be put into sleep or hibernation at the end of job queue processing.
 
-Build %build% (1.8.8, stable): [%date%]
    [bugs fixed]
-   * Command line: MPEG parser status dialog ate Ctrl+C/Break.
-   * Command line: Ctrl+C/Break while running the job queue (/r) now skips the rest of the queue.
-   * PluginAPI: DetectBySignature() now receives correct file size instead of zero.
-   * PluginAPI: Fixed frame tracking bug in default video decoder object that caused intermittent failures.
-
-   [regressions fixed]
-   * JobControl: Command-line run (/r) was broken by retry logic (since 1.8.7).
-   * Filters: Blur and Blur More no longer write broken config lines into scripts (since 1.8.0).
+   * Fix for ACM decoding/encoding errors with some audio codecs related to requesting a conversion with 0 source bytes.
+   * SaveWAV() script command showed error dialogs instead of redirecting the errors.
+   * Audio display: Ctrl+Drag now explicitly says "shift audio" to avoid confusion.
+   * Capture: Fixed accumulation of "no device found" entries in the menu.
+   * DDraw: Workaround for rare DWMAPI.DLL->USER32.DLL load errors on XP.
+   * Display: Fixed bug where panes didn't redraw when disabled during a render operation.
+   * Display: Fixed disabled panes or panes showing end frames drawing bluish colors rather than the correct Windows background color.
 
 Build 30080 (1.8.7, stable): [December 21, 2008]
    [bugs fixed]

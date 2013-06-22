@@ -8,6 +8,11 @@
 #include <vd2/system/vdstl.h>
 #include <vd2/system/win32/miniwindows.h>
 
+class IVDUIDropFileList {
+public:
+	virtual bool GetFileName(int index, VDStringW& fileName) = 0;
+};
+
 class VDDialogFrameW32 {
 public:
 	VDZHWND GetWindowHandle() const { return mhdlg; }
@@ -33,8 +38,11 @@ protected:
 
 	uint32 GetControlValueUint32(uint32 id);
 	double GetControlValueDouble(uint32 id);
+	VDStringW GetControlValueString(uint32 id);
 
+	void ExchangeControlValueBoolCheckbox(bool write, uint32 id, bool& val);
 	void ExchangeControlValueDouble(bool write, uint32 id, const wchar_t *format, double& val, double minVal, double maxVal);
+	void ExchangeControlValueString(bool write, uint32 id, VDStringW& s);
 
 	void CheckButton(uint32 id, bool checked);
 	bool IsButtonChecked(uint32 id);
@@ -61,6 +69,8 @@ protected:
 	virtual void OnDestroy();
 	virtual bool OnTimer(uint32 id);
 	virtual bool OnCommand(uint32 id, uint32 extcode);
+	virtual void OnDropFiles(VDZHDROP hDrop);
+	virtual void OnDropFiles(IVDUIDropFileList *dropFileList);
 	virtual bool PreNCDestroy();
 
 	bool	mbValidationFailed;

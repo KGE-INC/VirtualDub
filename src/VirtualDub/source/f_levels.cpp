@@ -35,8 +35,9 @@
 
 extern HINSTANCE g_hInst;
 
-typedef struct LevelsFilterData {
+struct LevelsFilterData {
 	unsigned char xtblmono[256];
+	unsigned char xtblmono2[256];
 	int xtblluma[256];
 	const uint8 *xtblluma2[256];
 	
@@ -52,7 +53,7 @@ typedef struct LevelsFilterData {
 	long		lHistoMax;
 	bool		fInhibitUpdate;
 	bool		bLuma;
-} LevelsFilterData;
+};
 
 /////////////////////////////////////////////////////////////////////
 
@@ -254,14 +255,37 @@ no_single:
 	}
 }
 
+static void translate_plane(uint8 * VDRESTRICT dst, ptrdiff_t pitch, uint32 w, uint32 h, const uint8 * VDRESTRICT tbl) {
+	for(uint32 y=0; y<h; ++y) {
+		for(uint32 x=0; x<w; ++x)
+			dst[x] = tbl[dst[x]];
+
+		dst += pitch;
+	}
+}
+
 static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 	const LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
 
 	if (mfd->bLuma) {
-		if (CPUGetEnabledExtensions() & CPUF_SUPPORTS_MMX)
-			AsmLevelsRunMMX(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, mfd->xtblluma);
-		else
-			AsmLevelsRunScalar(fa->dst.data, fa->dst.pitch, fa->dst.w, fa->dst.h, mfd->xtblluma);
+		const VDXPixmap& px = *fa->src.mpPixmap;
+
+		switch(px.format) {
+			case nsVDXPixmap::kPixFormat_XRGB8888:
+				if (CPUGetEnabledExtensions() & CPUF_SUPPORTS_MMX)
+					AsmLevelsRunMMX((uint32 *)px.data, px.pitch, px.w, px.h, mfd->xtblluma);
+				else
+					AsmLevelsRunScalar((uint32 *)px.data, px.pitch, px.w, px.h, mfd->xtblluma);
+				break;
+
+			case nsVDXPixmap::kPixFormat_YUV444_Planar:
+			case nsVDXPixmap::kPixFormat_YUV422_Planar:
+			case nsVDXPixmap::kPixFormat_YUV420_Planar:
+			case nsVDXPixmap::kPixFormat_YUV411_Planar:
+			case nsVDXPixmap::kPixFormat_YUV410_Planar:
+				translate_plane((uint8 *)px.data, px.pitch, px.w, px.h, mfd->xtblmono2);
+				break;
+		}
 	} else
 		((VBitmap&)fa->dst).BitBltXlat1(0, 0, (VBitmap *)&fa->src, 0, 0, -1, -1, mfd->xtblmono);
 
@@ -322,7 +346,27 @@ static int levels_run(const FilterActivation *fa, const FilterFunctions *ff) {
 /////////////////////////////////////////////////////////////////////
 
 static long levels_param(FilterActivation *fa, const FilterFunctions *ff) {
+	LevelsFilterData *mfd = (LevelsFilterData *)fa->filter_data;
+
 	fa->dst.offset = fa->src.offset;
+
+	if (mfd->bLuma) {
+		switch(fa->src.mpPixmapLayout->format) {
+			case nsVDXPixmap::kPixFormat_XRGB8888:
+			case nsVDXPixmap::kPixFormat_Y8:
+			case nsVDXPixmap::kPixFormat_YUV444_Planar:
+			case nsVDXPixmap::kPixFormat_YUV422_Planar:
+			case nsVDXPixmap::kPixFormat_YUV420_Planar:
+			case nsVDXPixmap::kPixFormat_YUV411_Planar:
+			case nsVDXPixmap::kPixFormat_YUV410_Planar:
+				break;
+
+			default:
+				return FILTERPARAM_NOT_SUPPORTED;
+		}
+
+		return FILTERPARAM_SUPPORTS_ALTFORMATS;
+	}
 
 	return 0;
 }
@@ -347,10 +391,12 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 		bright_table_B[i] =  7471*i;
 	}
 
-	if (x_lo == x_hi)
+	if (x_lo == x_hi) {
 		for(i=0; i<256; i++)
 			mfd->xtblmono[i] = (unsigned char)(VDRoundToInt(y_base + y_range * 0.5) >> 8);
-	else
+	} else {
+		double gammapower = 1.0 / mfd->rGammaCorr;
+
 		for(i=0; i<256; i++) {
 			double y, x;
 
@@ -361,11 +407,39 @@ static void levelsRedoTables(LevelsFilterData *mfd) {
 			else if (x > x_hi)
 				mfd->xtblmono[i] = (unsigned char)(mfd->iOutputHi >> 8);
 			else {
-				y = pow((x - x_lo) / (x_hi - x_lo), 1.0/mfd->rGammaCorr);
+				y = pow((x - x_lo) / (x_hi - x_lo), gammapower);
 
 				mfd->xtblmono[i] = (unsigned char)(VDRoundToInt(y_base + y_range * y) >> 8);
 			}
 		}
+
+		static const double u_scale = 219.0f / 255.0f;
+		static const double u_bias = 16.0f / 255.0f;
+
+		static const double u_scale2 = 1.0f / 219.0f;
+		static const double u_bias2 = -16.0f / 219.0f;
+
+		double u_lo = x_lo;
+		double u_hi = x_hi;
+		double v_lo = (double)mfd->iOutputLo / 65535.0;
+		double v_hi = (double)mfd->iOutputHi / 65535.0;
+		double v_scale = (v_hi - v_lo) * u_scale;
+		double v_bias = v_lo * u_scale + u_bias;
+
+		for(i=0; i<256; ++i) {
+			double u = (double)i * u_scale2 + u_bias2;
+			double v;
+
+			if (u < u_lo)
+				v = 0.0;
+			else if (u > u_hi)
+				v = 1.0;
+			else
+				v = pow((u - u_lo) / (u_hi - u_lo), gammapower);
+
+			mfd->xtblmono2[i] = VDClampedRoundFixedToUint8Fast(v * v_scale + v_bias);
+		}
+	}
 
 	if (mfd->bLuma) {
 		if (CPUGetEnabledExtensions() & CPUF_SUPPORTS_MMX)

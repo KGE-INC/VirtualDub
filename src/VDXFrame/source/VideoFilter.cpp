@@ -68,6 +68,10 @@ int VDXVideoFilter::Deserialize(const char *buf, int maxbuf) {
 	return 0;
 }
 
+sint64 VDXVideoFilter::Prefetch(sint64 frame) {
+	return frame;
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 void __cdecl VDXVideoFilter::FilterDeinit   (VDXFilterActivation *fa, const VDXFilterFunctions *ff) {
@@ -130,10 +134,9 @@ bool __cdecl VDXVideoFilter::FilterScriptStr(VDXFilterActivation *fa, const VDXF
 
 	pThis->fa		= fa;
 
-	buf[0] = 0;
 	pThis->GetScriptString(buf, buflen);
 
-	return buf[0] != 0;
+	return true;
 }
 
 void __cdecl VDXVideoFilter::FilterString2  (const VDXFilterActivation *fa, const VDXFilterFunctions *ff, char *buf, int maxlen) {
@@ -158,6 +161,14 @@ void __cdecl VDXVideoFilter::FilterDeserialize  (VDXFilterActivation *fa, const 
 	pThis->fa		= fa;
 
 	pThis->Deserialize(buf, maxbuf);
+}
+
+sint64 __cdecl VDXVideoFilter::FilterPrefetch(const VDXFilterActivation *fa, const VDXFilterFunctions *ff, sint64 frame) {
+	VDXVideoFilter *pThis = *reinterpret_cast<VDXVideoFilter **>(fa->filter_data);
+
+	pThis->fa		= const_cast<VDXFilterActivation *>(fa);
+
+	return pThis->Prefetch(frame);
 }
 
 void VDXVideoFilter::SafePrintf(char *buf, int maxbuf, const char *format, ...) {

@@ -2412,7 +2412,6 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 			Skip(softskip);
 
 		bool forceAbort = false;
-		int errorCode;
 
 		try {
 			do {
@@ -2421,7 +2420,7 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 
 				file_cpos = Tell();
 
-				if (!guiDlgMessageLoop(hWndStatus, &errorCode))
+				if (!guiDlgMessageLoop(hWndStatus))
 					fAbort = forceAbort = true;
 
 				if (fAbort)
@@ -2610,7 +2609,6 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 		} catch(const MyUserAbortError&) {
 			if (forceAbort) {
 				delete mpScanPrefetcher;
-				::PostQuitMessage(errorCode);
 				throw;
 			}
 

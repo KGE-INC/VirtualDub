@@ -384,6 +384,9 @@ void VDDialogVideoDepthW32::ReinitDialog() {
 	case nsVDPixmap::kPixFormat_YUV422_YUYV:
 		CheckDlgButton(mhdlg, IDC_INPUT_YUV422_YUY2, TRUE);
 		break;
+	case nsVDPixmap::kPixFormat_YUV444_Planar:
+		CheckDlgButton(mhdlg, IDC_INPUT_YUV444_PLANAR, TRUE);
+		break;
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
 		CheckDlgButton(mhdlg, IDC_INPUT_YUV422_PLANAR, TRUE);
 		break;
@@ -395,6 +398,15 @@ void VDDialogVideoDepthW32::ReinitDialog() {
 		break;
 	case nsVDPixmap::kPixFormat_Y8:
 		CheckDlgButton(mhdlg, IDC_INPUT_Y8, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV422_V210:
+		CheckDlgButton(mhdlg, IDC_INPUT_YUV422_V210, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
+		CheckDlgButton(mhdlg, IDC_INPUT_YUV422_UYVY_709, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV420_NV12:
+		CheckDlgButton(mhdlg, IDC_INPUT_YUV420_NV12, TRUE);
 		break;
 	case nsVDPixmap::kPixFormat_RGB888:
 	default:
@@ -421,6 +433,9 @@ void VDDialogVideoDepthW32::ReinitDialog() {
 	case nsVDPixmap::kPixFormat_YUV422_YUYV:
 		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV422_YUY2, TRUE);
 		break;
+	case nsVDPixmap::kPixFormat_YUV444_Planar:
+		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV444_PLANAR, TRUE);
+		break;
 	case nsVDPixmap::kPixFormat_YUV422_Planar:
 		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV422_PLANAR, TRUE);
 		break;
@@ -432,6 +447,15 @@ void VDDialogVideoDepthW32::ReinitDialog() {
 		break;
 	case nsVDPixmap::kPixFormat_Y8:
 		CheckDlgButton(mhdlg, IDC_OUTPUT_Y8, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV422_V210:
+		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV422_V210, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV422_UYVY_709:
+		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV422_UYVY_709, TRUE);
+		break;
+	case nsVDPixmap::kPixFormat_YUV420_NV12:
+		CheckDlgButton(mhdlg, IDC_OUTPUT_YUV420_NV12, TRUE);
 		break;
 	case nsVDPixmap::kPixFormat_RGB888:
 	default:
@@ -463,6 +487,14 @@ void VDDialogVideoDepthW32::Commit() {
 		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_YUV410_Planar;
 	else if (IsDlgButtonChecked(mhdlg, IDC_INPUT_Y8))
 		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_Y8;
+	else if (IsDlgButtonChecked(mhdlg, IDC_INPUT_YUV444_PLANAR))
+		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_YUV444_Planar;
+	else if (IsDlgButtonChecked(mhdlg, IDC_INPUT_YUV422_V210))
+		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_YUV422_V210;
+	else if (IsDlgButtonChecked(mhdlg, IDC_INPUT_YUV422_UYVY_709))
+		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_YUV422_UYVY_709;
+	else if (IsDlgButtonChecked(mhdlg, IDC_INPUT_YUV420_NV12))
+		mOpts.video.mInputFormat = nsVDPixmap::kPixFormat_YUV420_NV12;
 
 	mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_RGB888;
 	if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_AUTOSELECT))
@@ -485,6 +517,14 @@ void VDDialogVideoDepthW32::Commit() {
 		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_YUV410_Planar;
 	else if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_Y8))
 		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_Y8;
+	else if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_YUV444_PLANAR))
+		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_YUV444_Planar;
+	else if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_YUV422_V210))
+		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_YUV422_V210;
+	else if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_YUV422_UYVY_709))
+		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_YUV422_UYVY_709;
+	else if (IsDlgButtonChecked(mhdlg, IDC_OUTPUT_YUV420_NV12))
+		mOpts.video.mOutputFormat = nsVDPixmap::kPixFormat_YUV420_NV12;
 }
 
 bool VDDisplayVideoDepthDialog(VDGUIHandle hParent, DubOptions& opts) {

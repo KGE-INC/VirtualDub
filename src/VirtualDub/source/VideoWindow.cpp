@@ -508,17 +508,13 @@ void VDVideoWindow::OnContextMenu(int x, int y) {
 	VDCheckMenuItemByCommandW32(hmenu, ID_DISPLAY_AR_FRAME_1777,  mbAspectIsFrameBased && fabs(mAspectRatio - 16.0/ 9.0) < 1e-5);
 
 	DWORD dwEnabled1 = MF_BYCOMMAND | MF_GRAYED;
-	DWORD dwEnabled2 = MF_BYCOMMAND | MF_GRAYED;
 	if (mpDisplay && !(g_prefs.fDisplay & Preferences::kDisplayDisableDX)) {
 		if (g_prefs.fDisplay & (Preferences::kDisplayEnableD3D | Preferences::kDisplayEnableOpenGL))
 			dwEnabled1 = MF_BYCOMMAND | MF_ENABLED;
-
-		if (g_prefs.fDisplay & Preferences::kDisplayEnableD3D)
-			dwEnabled2 = MF_BYCOMMAND | MF_ENABLED;
 	}
 	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_POINT, dwEnabled1);
 	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_BILINEAR, dwEnabled1);
-	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_BICUBIC, dwEnabled2);
+	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_BICUBIC, dwEnabled1);
 	EnableMenuItem(hmenu, ID_DISPLAY_FILTER_ANY, dwEnabled1);
 
 	if (mpDisplay) {

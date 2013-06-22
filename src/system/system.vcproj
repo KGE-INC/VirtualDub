@@ -706,6 +706,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\halffloat.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\hash.cpp"
 				>
 			</File>
@@ -1543,6 +1547,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\h\vd2\system\halffloat.h"
+				>
+			</File>
+			<File
 				RelativePath="..\h\vd2\system\hash.h"
 				>
 			</File>
@@ -1683,22 +1691,8 @@
 				RelativePath="source\a_memory.asm"
 				>
 				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Release|x64"
 					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
 					>
 					<Tool
 						Name="YASM"
@@ -1749,22 +1743,8 @@
 					/>
 				</FileConfiguration>
 				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|Win32"
 					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
 					>
 					<Tool
 						Name="YASM"
@@ -1783,22 +1763,8 @@
 					/>
 				</FileConfiguration>
 				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|Win32"
 					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
 					>
 					<Tool
 						Name="YASM"
@@ -1817,22 +1783,8 @@
 					/>
 				</FileConfiguration>
 				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
 					Name="Debug|Win32"
 					ExcludedFromBuild="true"
-					>
-					<Tool
-						Name="YASM"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|x64"
 					>
 					<Tool
 						Name="YASM"

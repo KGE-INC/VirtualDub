@@ -28,6 +28,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/file.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/strutil.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
@@ -834,7 +835,7 @@ INT_PTR CALLBACK FrameServerSetupDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 	return FALSE;
 }
 
-void ActivateFrameServerDialog(HWND hwnd) {
+void ActivateFrameServerDialog(HWND hwnd, const char *server) {
 	static wchar_t fileFilters[]=
 		L"VirtualDub AVIFile signpost (*.vdr,*.avi)\0"		L"*.vdr;*.avi\0"
 		L"All files\0"										L"*.*\0"
@@ -844,39 +845,46 @@ void ActivateFrameServerDialog(HWND hwnd) {
 
 	if (!InitServerDLL()) return;
 
-	if (!DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SERVER_SETUP), hwnd, FrameServerSetupDlgProc, (LPARAM)szServerName))
-		return;
+	if (server && *server) {
+		ivdsl->GetComputerName(szServerName);
+		vdstrlcpy(szServerName, server, 128);
+	} else {
+		if (!DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SERVER_SETUP), hwnd, FrameServerSetupDlgProc, (LPARAM)szServerName))
+			return;
+	}
 
 	try {
 		vdrefptr<Frameserver> fs(new Frameserver(inputVideo, inputAudio, hwnd, &g_dubOpts, g_project->GetTimeline().GetSubset()));
 
-		const VDStringW fname(VDGetSaveFileName(kFileDialog_Signpost, (VDGUIHandle)hwnd, L"Save .VDR signpost for AVIFile handler", fileFilters, g_prefs.main.fAttachExtension ? L"vdr" : NULL, 0, 0));
+		if (!server || !*server) {
+			const VDStringW fname(VDGetSaveFileName(kFileDialog_Signpost, (VDGUIHandle)hwnd, L"Save .VDR signpost for AVIFile handler", fileFilters, g_prefs.main.fAttachExtension ? L"vdr" : NULL, 0, 0));
 
-		if (!fname.empty()) {
-			long buf[5];
-			char sname[128];
-			int slen;
+			if (!fname.empty()) {
+				long buf[5];
+				char sname[128];
+				int slen;
 
-			ivdsl->GetComputerName(sname);
-			strcat(sname,"/");
-			strcat(sname,szServerName);
-			slen = strlen(sname);
-			slen += slen&1;
+				ivdsl->GetComputerName(sname);
+				strcat(sname,"/");
+				strcat(sname,szServerName);
+				slen = strlen(sname);
+				slen += slen&1;
 
-			buf[0] = 'FFIR';
-			buf[1] = slen+12;
-			buf[2] = 'MRDV';
-			buf[3] = 'HTAP';
-			buf[4] = slen;
+				buf[0] = 'FFIR';
+				buf[1] = slen+12;
+				buf[2] = 'MRDV';
+				buf[3] = 'HTAP';
+				buf[4] = slen;
 
-			VDFile file(fname.c_str(), nsVDFile::kWrite | nsVDFile::kDenyRead | nsVDFile::kCreateAlways);
+				VDFile file(fname.c_str(), nsVDFile::kWrite | nsVDFile::kDenyRead | nsVDFile::kCreateAlways);
 
-			file.write(buf, 20);
-			file.write(sname, strlen(sname));
-			if (strlen(sname) & 1)
-				file.write("", 1);
+				file.write(buf, 20);
+				file.write(sname, strlen(sname));
+				if (strlen(sname) & 1)
+					file.write("", 1);
 
-			file.close();
+				file.close();
+			}
 		}
 
 		VDDEBUG("Attempting to initialize frameserver...\n");

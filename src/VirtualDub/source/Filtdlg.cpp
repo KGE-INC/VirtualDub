@@ -172,8 +172,8 @@ class VDVideoFiltersDialog : public VDDialogBaseW32 {
 public:
 	VDVideoFiltersDialog();
 	
-	void Init(IVDVideoSource *pVS);
-	void Init(int w, int h, int format, const VDFraction& rate, sint64 length);
+	void Init(IVDVideoSource *pVS, VDPosition initialTime);
+	void Init(int w, int h, int format, const VDFraction& rate, sint64 length, VDPosition initialTime);
 
 	VDVideoFiltersDialogResult GetResult() const { return mResult; }
 
@@ -196,6 +196,7 @@ protected:
 	int			mInputFormat;
 	VDFraction	mInputRate;
 	sint64		mInputLength;
+	VDTime		mInitialTimeUS;
 	IVDVideoSource	*mpVS;
 
 	bool		mbShowFormats;
@@ -217,6 +218,7 @@ VDVideoFiltersDialog::VDVideoFiltersDialog()
 	, mInputFormat(nsVDPixmap::kPixFormat_XRGB8888)
 	, mInputRate(30, 1)
 	, mInputLength(100)
+	, mInitialTimeUS(-1)
 	, mpVS(NULL)
 	, mbShowFormats(false)
 	, mFilterEnablesUpdateLock(0)
@@ -226,7 +228,7 @@ VDVideoFiltersDialog::VDVideoFiltersDialog()
 	mResult.mbRescaleRequested = false;
 }
 
-void VDVideoFiltersDialog::Init(IVDVideoSource *pVS) {
+void VDVideoFiltersDialog::Init(IVDVideoSource *pVS, VDPosition initialTime) {
 	IVDStreamSource *pSS = pVS->asStream();
 	const VDPixmap& px = pVS->getTargetFormat();
 
@@ -236,15 +238,17 @@ void VDVideoFiltersDialog::Init(IVDVideoSource *pVS) {
 	mInputFormat	= px.format;
 	mInputRate		= pSS->getRate();
 	mInputLength	= pSS->getLength();
+	mInitialTimeUS	= initialTime;
 }
 
-void VDVideoFiltersDialog::Init(int w, int h, int format, const VDFraction& rate, sint64 length) {
+void VDVideoFiltersDialog::Init(int w, int h, int format, const VDFraction& rate, sint64 length, VDPosition initialTime) {
 	mpVS			= NULL;
 	mInputWidth		= w;
 	mInputHeight	= h;
 	mInputFormat	= format;
 	mInputRate		= rate;
 	mInputLength	= length;
+	mInitialTimeUS	= initialTime;
 }
 
 INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -326,6 +330,8 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 							vdrefptr<IVDVideoFilterPreviewDialog> fp;
 							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
+								if (mInitialTimeUS >= 0)
+									fp->SetInitialTime(mInitialTimeUS);
 								fa->ifp = fa->ifp2 = fp->AsIVDXFilterPreview2();
 
 								fRemove = 0!=fa->filter->configProc(fa->AsVDXFilterActivation(), &g_filterFuncs, (VDXHWND)mhdlg);
@@ -392,6 +398,8 @@ INT_PTR VDVideoFiltersDialog::DlgProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 							vdrefptr<IVDVideoFilterPreviewDialog> fp;
 							if (VDCreateVideoFilterPreviewDialog(mpVS ? &list : NULL, fa, ~fp)) {
+								if (mInitialTimeUS >= 0)
+									fp->SetInitialTime(mInitialTimeUS);
 								fa->ifp = fa->ifp2 = fp->AsIVDXFilterPreview2();
 
 								fa->filter->configProc(fa->AsVDXFilterActivation(), &g_filterFuncs, (VDXHWND)mhdlg);
@@ -688,6 +696,12 @@ void VDVideoFiltersDialog::OnLVGetDispInfo(NMLVDISPINFO& dispInfo) {
 							"YV12",
 							"YUV411",
 							"YVU9",
+							"YV16C",
+							"YV12C",
+							"YUV422-16F",
+							"V210",
+							"HDYC",
+							"NV12",
 						};
 
 						VDASSERTCT(sizeof(kFormatNames)/sizeof(kFormatNames[0]) == nsVDPixmap::kPixFormat_Max_Standard);
@@ -798,21 +812,21 @@ void VDVideoFiltersDialog::RelayoutFilterList() {
 	}
 }
 
-VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSource *pVS) {
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle h, IVDVideoSource *pVS, VDPosition initialTime) {
 	VDVideoFiltersDialog dlg;
 
 	if (pVS)
-		dlg.Init(pVS);
+		dlg.Init(pVS, initialTime);
 
 	dlg.ActivateDialog(h);
 
 	return dlg.GetResult();
 }
 
-VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, int h, int format, const VDFraction& rate, sint64 length) {
+VDVideoFiltersDialogResult VDShowDialogVideoFilters(VDGUIHandle hParent, int w, int h, int format, const VDFraction& rate, sint64 length, VDPosition initialTime) {
 	VDVideoFiltersDialog dlg;
 
-	dlg.Init(w, h, format, rate, length);
+	dlg.Init(w, h, format, rate, length, initialTime);
 	dlg.ActivateDialog(hParent);
 
 	return dlg.GetResult();

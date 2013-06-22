@@ -40,9 +40,9 @@ protected:
 void VDCaptureFilterCrop::Init(VDPixmapLayout& layout, uint32 x1, uint32 y1, uint32 x2, uint32 y2) {
 	const VDPixmapFormatInfo& format = VDPixmapGetInfo(layout.format);
 
-	x1 = (x1 >> (format.qwbits + format.auxwbits)) << (format.qwbits + format.auxwbits);
+	x1 -= x1 % (format.qw << format.auxwbits);
 	y1 = (y1 >> (format.qhbits + format.auxhbits)) << (format.qhbits + format.auxhbits);
-	x2 = (x2 >> (format.qwbits + format.auxwbits)) << (format.qwbits + format.auxwbits);
+	x2 -= x2 % (format.qw << format.auxwbits);
 	y2 = (y2 >> (format.qhbits + format.auxhbits)) << (format.qhbits + format.auxhbits);
 
 	mLayout = VDPixmapLayoutOffset(layout, x1, y1);
@@ -191,7 +191,7 @@ void VDCaptureFilterNoiseReduction::SetThreshold(int threshold) {
 void VDCaptureFilterNoiseReduction::Init(VDPixmapLayout& layout) {
 	const VDPixmapFormatInfo& format = VDPixmapGetInfo(layout.format);
 
-	uint32 rowdwords = -(((-layout.w >> format.qwbits) * format.qsize) >> 2);
+	uint32 rowdwords = ((((layout.w + format.qw - 1) / format.qw) * format.qsize) >> 2);
 	uint32 h = -(-layout.h >> format.qhbits);
 
 	mBuffer.resize(rowdwords * h);
@@ -431,18 +431,27 @@ void VDCaptureFilterLumaSquish::Run(VDPixmap& px) {
 
 class VDCaptureFilterSwapFields : public VDCaptureFilter {
 public:
-	void Init(VDPixmapLayout& layout) {}
+	void Init(VDPixmapLayout& layout);
 	void Run(VDPixmap& px);
 
 	static void SwapPlaneRows(void *p, ptrdiff_t pitch, unsigned w, unsigned h);
+
+protected:
+	uint32 mBytesPerRow;
 };
+
+void VDCaptureFilterSwapFields::Init(VDPixmapLayout& layout) {
+	const VDPixmapFormatInfo& format = VDPixmapGetInfo(layout.format);
+
+	mBytesPerRow = ((layout.w + format.qw - 1) / format.qw) * format.qsize;
+}
 
 void VDCaptureFilterSwapFields::Run(VDPixmap& px) {
 	const VDPixmapFormatInfo& format = VDPixmapGetInfo(px.format);
 
 	// swap plane 0 rows
 	if (!format.qhbits)
-		SwapPlaneRows(px.data, px.pitch, -(-px.w >> format.qwbits) * format.qsize, px.h);
+		SwapPlaneRows(px.data, px.pitch, mBytesPerRow, px.h);
 
 	// swap plane 1 and 2 rows
 	if (format.auxbufs && !format.auxhbits) {
@@ -495,7 +504,7 @@ void VDCaptureFilterVertSquash::SetMode(IVDCaptureFilterSystem::FilterMode mode)
 void VDCaptureFilterVertSquash::Init(VDPixmapLayout& layout) {
 	const VDPixmapFormatInfo& info = VDPixmapGetInfo(layout.format);
 
-	mDwordsPerRow = -(((-layout.w >> info.qwbits) * info.qsize) >> 2);
+	mDwordsPerRow = (((layout.w + info.qw - 1) / info.qw) * info.qsize) >> 2;
 
 	if (mMode == IVDCaptureFilterSystem::kFilterCubic)
 		mRowBuffers.resize(mDwordsPerRow * 3);

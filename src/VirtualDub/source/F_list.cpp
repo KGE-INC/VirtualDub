@@ -20,12 +20,15 @@
 #include "filters.h"
 
 extern const VDXFilterDefinition
-	filterDef_fieldbob2;
+	filterDef_fieldbob2,
+	filterDef_warpresize,
+	filterDef_warpsharp,
+	filterDef_blur,
+	filterDef_blurhi,
+	filterDef_brightcont;
 
 #ifdef _M_IX86
 extern const VDXFilterDefinition
-	filterDef_blur,
-	filterDef_blurhi,
 	filterDef_box,
 	filterDef_tv,
 	filterDef_timesmooth;
@@ -45,13 +48,12 @@ extern FilterDefinition
 	filterDef_deinterlace,
 	filterDef_rotate,
 	filterDef_hsv,
-	filterDef_warpresize,
 	filterDef_convertformat,
 	filterDef_threshold,
 	filterDef_grayscale,
 	filterDef_levels,
 	filterDef_logo,
-	filterDef_brightcont
+	filterDef_perspective
 
 #ifdef _M_IX86
 	,
@@ -61,8 +63,7 @@ extern FilterDefinition
 	filterDef_emboss,
 	filterDef_reduce2hq,
 	filterDef_smoother,
-	filterDef_rotate2,
-	filterDef_perspective
+	filterDef_rotate2
 #endif
 	;
 
@@ -88,6 +89,11 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_levels,
 	&filterDef_logo,
 	&filterDef_brightcont,
+	&filterDef_warpsharp,
+	&filterDef_perspective,
+	&filterDef_blur,
+	&filterDef_blurhi,
+
 #ifdef _M_IX86
 	&filterDef_reduceby2,
 	&filterDef_convolute,
@@ -97,11 +103,8 @@ static const FilterDefinition *const builtin_filters[]={
 	&filterDef_tv,
 	&filterDef_smoother,
 	&filterDef_rotate2,
-	&filterDef_blur,
-	&filterDef_blurhi,
 	&filterDef_box,
 	&filterDef_timesmooth,
-	&filterDef_perspective,
 #endif
 	NULL
 };

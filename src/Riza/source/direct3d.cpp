@@ -868,6 +868,12 @@ bool VDD3D9Manager::IsTextureFormatAvailable(D3DFORMAT format) {
 	return SUCCEEDED(hr);
 }
 
+bool VDD3D9Manager::CheckResourceFormat(DWORD usage, D3DRESOURCETYPE rtype, D3DFORMAT checkFormat) const {
+	HRESULT hr = mpD3D->CheckDeviceFormat(mAdapter, mDevType, mDisplayMode.Format, usage, rtype, checkFormat);
+
+	return SUCCEEDED(hr);
+}
+
 void VDD3D9Manager::ClearRenderTarget(IDirect3DTexture9 *pTexture) {
 	IDirect3DSurface9 *pRTSurface;
 	if (FAILED(pTexture->GetSurfaceLevel(0, &pRTSurface)))

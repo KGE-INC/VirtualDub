@@ -97,8 +97,8 @@ protected:
 
 ///////////////////////////////////////////////////////////////////////////
 
-extern FilterDefinition filterDef_warpresize = VDVFilterDefinition<WarpResizeFilter>(
-	"Avery Lee",
+extern const FilterDefinition filterDef_warpresize = VDVFilterDefinition<WarpResizeFilter>(
+	NULL,
 	"warp resize",
 	"Stretches an image with edge-directed sharpening using a variant of the warpsharp algorithm."
 	);

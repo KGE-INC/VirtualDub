@@ -117,6 +117,7 @@ public:
 	void Paste();
 	void Delete();
 	void DeleteInternal(bool tagAsCut, bool noTag);
+	void CropToSelection();
 	void MaskSelection(bool bMasked);
 
 	void DisplayFrame(bool bDispInput = true);
@@ -136,6 +137,7 @@ public:
 	void Preview(DubOptions *options);
 	void PreviewRestart();
 	void RunNullVideoPass();
+	void QueueNullVideoPass();
 	void CloseAVI();			// to be removed later....
 	void Close();
 
@@ -144,7 +146,7 @@ public:
 	void SaveAnimatedGIF(const wchar_t *pFilename, int loopCount);
 	void SaveRawAudio(const wchar_t *pFilename);
 
-	void StartServer();
+	void StartServer(const char *name = NULL);
 	void ShowInputInfo();
 	void SetVideoMode(int mode);
 	void CopySourceFrameToClipboard();

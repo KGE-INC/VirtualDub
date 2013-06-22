@@ -1188,11 +1188,11 @@
 				>
 			</File>
 			<File
-				RelativePath="res\resource.h"
+				RelativePath="..\Riza\res\resource.h"
 				>
 			</File>
 			<File
-				RelativePath="..\Riza\res\resource.h"
+				RelativePath="res\resource.h"
 				>
 			</File>
 			<File
@@ -2185,7 +2185,7 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="Source - User Interface"
+			Name="Source - Controls"
 			>
 			<File
 				RelativePath="source\AudioDisplay.cpp"
@@ -2603,7 +2603,7 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="Headers - User Interface"
+			Name="Headers - Controls"
 			>
 			<File
 				RelativePath="h\AudioDisplay.h"
@@ -3085,6 +3085,10 @@
 			</File>
 			<File
 				RelativePath=".\source\backface.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\source\BatchWizard.cpp"
 				>
 			</File>
 			<File
@@ -7097,6 +7101,10 @@
 				</File>
 				<File
 					RelativePath=".\source\f_warpresize.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\source\f_warpsharp.cpp"
 					>
 				</File>
 			</Filter>

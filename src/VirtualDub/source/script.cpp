@@ -1857,7 +1857,7 @@ static void func_VirtualDub_SaveImageSequence(IVDScriptInterpreter *, VDScriptVa
 static void func_VirtualDub_SaveWAV(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	const VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
 
-	SaveWAV(filename.c_str());
+	SaveWAV(filename.c_str(), true);
 }
 
 static void func_VirtualDub_SaveRawAudio(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1875,6 +1875,10 @@ static void func_VirtualDub_Log(IVDScriptInterpreter *, VDScriptValue *arglist, 
 static void func_VirtualDub_Exit(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_returnCode = arglist[0].asInt();
 	PostQuitMessage(0);
+}
+
+static void func_VirtualDub_StartServer(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_project->StartServer(*arglist[0].asString());
 }
 
 extern "C" unsigned long version_num;
@@ -1919,6 +1923,7 @@ static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ func_VirtualDub_SaveRawAudio,		"SaveRawAudio",			"0s" },
 	{ func_VirtualDub_Log,				"Log",					"0s" },
 	{ func_VirtualDub_Exit,				"Exit",					"0i" },
+	{ func_VirtualDub_StartServer,		"StartServer",			"0s" },
 	{ NULL }
 };
 

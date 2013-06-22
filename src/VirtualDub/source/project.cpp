@@ -67,7 +67,8 @@ namespace {
 		kVDM_MaskFrames,					// mask %lld frames at %lld (Undo/Redo)
 		kVDM_Paste,							// paste (Undo/Redo)
 		kVDM_ScanForErrors,					// scan for errors
-		kVDM_ResetTimeline					// reset timeline
+		kVDM_ResetTimeline,					// reset timeline
+		kVDM_Crop							// crop
 	};
 
 	enum {
@@ -100,6 +101,8 @@ extern bool g_fJobMode;
 
 extern wchar_t g_szInputAVIFile[MAX_PATH];
 extern wchar_t g_szInputWAVFile[MAX_PATH];
+
+extern char g_serverName[256];
 
 extern uint32 VDPreferencesGetRenderThrottlePercent();
 extern int VDPreferencesGetVideoCompressionThreadCount();
@@ -541,6 +544,22 @@ void VDProject::DeleteInternal(bool tagAsCut, bool noTag) {
 	MoveToFrame(start);
 }
 
+void VDProject::CropToSelection() {
+	FrameSubset& s = mTimeline.GetSubset();
+
+	if (!IsSelectionEmpty()) {
+		VDPosition start = GetSelectionStartFrame();
+		VDPosition end = GetSelectionEndFrame();
+
+		BeginTimelineUpdate(VDLoadString(0, kVDST_Project, kVDM_Crop));
+		s.clip(start, end-start);
+		EndTimelineUpdate();
+
+		ClearSelection(false);
+		MoveToFrame(0);
+	}
+}
+
 void VDProject::MaskSelection(bool bNewMode) {
 	VDPosition pos = GetCurrentFrame();
 	VDPosition start = GetSelectionStartFrame();
@@ -762,9 +781,9 @@ bool VDProject::UpdateFrame() {
 					mpCB->UIRefreshInputFrame(true);
 
 				if (mbUpdateOutputFrame) {
-					RefilterFrame(mDesiredOutputFrame, mDesiredTimelineFrame);
+					bool valid = RefilterFrame(mDesiredOutputFrame, mDesiredTimelineFrame);
 
-					mpCB->UIRefreshOutputFrame(true);
+					mpCB->UIRefreshOutputFrame(valid);
 				}
 
 				if (mbUpdateLong)
@@ -1257,6 +1276,13 @@ void VDProject::RunNullVideoPass() {
 	RunOperation(&nullout, FALSE, NULL, g_prefs.main.iDubPriority, true);
 }
 
+void VDProject::QueueNullVideoPass() {
+	if (!inputVideo)
+		throw MyError("No input file to process.");
+
+	JobAddConfigurationRunVideoAnalysisPass(&g_dubOpts, g_szInputAVIFile, mInputDriverName.c_str(), &inputAVI->listFiles, true);
+}
+
 void VDProject::CloseAVI() {
 	// kill current seek
 	mDesiredInputFrame = -1;
@@ -1337,8 +1363,16 @@ void VDProject::SaveRawAudio(const wchar_t *pFilename) {
 	RunOperation(&out, TRUE, NULL, 0, false);
 }
 
-void VDProject::StartServer() {
+void VDProject::StartServer(const char *serverName) {
+	if (!inputVideo)
+		throw MyError("No input file to process.");
+
 	VDGUIHandle hwnd = mhwnd;
+
+	if (serverName)
+		vdstrlcpy(g_serverName, serverName, sizeof(g_serverName)/sizeof(g_serverName[0]));
+	else
+		g_serverName[0] = 0;
 
 	VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)hwnd);
 
@@ -1892,15 +1926,18 @@ void VDProject::StartFilters() {
 
 	const VDPixmap& px = inputVideo->getTargetFormat();
 
-	// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
-	filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength());
-	filters.ReadyFilters();
+	if (px.format) {
+		// We explicitly use the stream length here as we're interested in the *uncut* filtered length.
+		filters.initLinearChain(&g_listFA, px.w, px.h, px.format, px.palette, framerate, pVSS->getLength());
+		filters.ReadyFilters();
+	}
 }
 
 void VDProject::UpdateFilterList() {
 	mLastDisplayedTimelineFrame = -1;
 	DisplayFrame();
-	mpCB->UIVideoFiltersUpdated();
+	if (mpCB)
+		mpCB->UIVideoFiltersUpdated();
 }
 
 ///////////////////////////////////////////////////////////////////////////

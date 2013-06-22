@@ -174,6 +174,7 @@ public:
 	~FilterPreview();
 
 	IVDXFilterPreview2 *AsIVDXFilterPreview2() { return this; }
+	void SetInitialTime(VDTime t);
 
 	void SetButtonCallback(VDXFilterPreviewButtonCallback, void *);
 	void SetSampleCallback(VDXFilterPreviewSampleCallback, void *);
@@ -221,6 +222,7 @@ private:
 	int			mDisplayW;
 	int			mDisplayH;
 
+	VDTime		mInitialTimeUS;
 	sint64		mLastOutputFrame;
 	sint64		mLastTimelineFrame;
 	sint64		mLastTimelineTimeMS;
@@ -266,6 +268,7 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 	, mDisplayY(0)
 	, mDisplayW(0)
 	, mDisplayH(0)
+	, mInitialTimeUS(-1)
 	, mLastOutputFrame(0)
 	, mLastTimelineFrame(0)
 	, mLastTimelineTimeMS(0)
@@ -282,6 +285,10 @@ FilterPreview::FilterPreview(List *pFilterList, FilterInstance *pfiThisFilter)
 FilterPreview::~FilterPreview() {
 	if (mhdlg)
 		DestroyWindow(mhdlg);
+}
+
+void FilterPreview::SetInitialTime(VDTime t) {
+	mInitialTimeUS = t;
 }
 
 INT_PTR CALLBACK FilterPreview::StaticDlgProc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -533,6 +540,12 @@ void FilterPreview::OnVideoResize(bool bInitial) {
 		mHeight = h;
 
 		mpPosition->SetRange(0, mFiltSys.GetOutputFrameCount());
+
+		if (mInitialTimeUS >= 0) {
+			const VDFraction outputRate(mFiltSys.GetOutputFrameRate());
+			mpPosition->SetPosition(VDRoundToInt64(outputRate.asDouble() * (double)mInitialTimeUS * (1.0 / 1000000.0)));
+		}
+
 	} catch(const MyError& e) {
 		mpDisplay->Reset();
 		ShowWindow(mhwndDisplay, SW_HIDE);
@@ -657,6 +670,8 @@ VDPosition FilterPreview::FetchFrame(VDPosition pos) {
 
 		if (!inputVideo->getFrame(srcFrame))
 			return -1;
+
+		mInitialTimeUS = VDRoundToInt64(mFiltSys.GetOutputFrameRate().AsInverseDouble() * 1000000.0 * (double)pos);
 
 	} catch(const MyError&) {
 		return -1;
